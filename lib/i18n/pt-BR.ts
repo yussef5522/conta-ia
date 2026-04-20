@@ -1,0 +1,213 @@
+/**
+ * Estrutura de traduções do Conta IA.
+ * Idioma padrão: pt-BR.
+ * Para adicionar novos idiomas: crie um arquivo com a mesma estrutura (ex: en-US.ts)
+ * e importe-o conforme a preferência do usuário.
+ */
+export const ptBR = {
+  app: {
+    name: 'Conta IA',
+    tagline: 'Seu contador inteligente que nunca dorme',
+  },
+
+  auth: {
+    login: {
+      title: 'Entrar na sua conta',
+      subtitle: 'Bem-vindo de volta ao Conta IA',
+      emailLabel: 'E-mail',
+      emailPlaceholder: 'seu@email.com',
+      passwordLabel: 'Senha',
+      passwordPlaceholder: '••••••••',
+      submitButton: 'Entrar',
+      loading: 'Entrando...',
+      noAccount: 'Não tem uma conta?',
+      signupLink: 'Criar conta grátis',
+      errors: {
+        invalidCredentials: 'E-mail ou senha inválidos',
+        serverError: 'Erro interno. Tente novamente.',
+      },
+    },
+    cadastro: {
+      title: 'Criar sua conta',
+      subtitle: 'Comece a usar o Conta IA hoje',
+      nameLabel: 'Nome completo',
+      namePlaceholder: 'Seu nome',
+      emailLabel: 'E-mail',
+      emailPlaceholder: 'seu@email.com',
+      passwordLabel: 'Senha',
+      passwordPlaceholder: '••••••••',
+      confirmPasswordLabel: 'Confirmar senha',
+      confirmPasswordPlaceholder: '••••••••',
+      submitButton: 'Criar conta',
+      loading: 'Criando conta...',
+      hasAccount: 'Já tem uma conta?',
+      loginLink: 'Entrar',
+      passwordHint: 'Mínimo 8 caracteres, uma maiúscula e um número',
+      errors: {
+        emailInUse: 'Este e-mail já está em uso',
+        serverError: 'Erro ao criar conta. Tente novamente.',
+      },
+    },
+  },
+
+  nav: {
+    dashboard: 'Dashboard',
+    empresas: 'Empresas',
+    contasBancarias: 'Contas Bancárias',
+    transacoes: 'Transações',
+    relatorios: 'Relatórios',
+    impostos: 'Impostos',
+    chatIA: 'Chat IA',
+    configuracoes: 'Configurações',
+    sair: 'Sair',
+    comingSoon: 'Em breve',
+  },
+
+  dashboard: {
+    title: 'Dashboard',
+    welcome: 'Bem-vindo de volta',
+    totalEmpresas: 'Total de Empresas',
+    empresasAtivas: 'Empresas Ativas',
+    saldoTotal: 'Saldo Total',
+    transacoesHoje: 'Transações Hoje',
+    emBreve: 'Disponível após conectar conta bancária',
+    atividadeRecente: 'Atividade Recente',
+    nenhumaAtividade: 'Nenhuma atividade recente',
+    iniciarHint: 'Comece cadastrando sua primeira empresa',
+    primeiraEmpresa: 'Cadastre sua primeira empresa',
+    primeiraEmpresaDesc: 'Adicione as informações da sua empresa para começar a usar o Conta IA.',
+    adicionarEmpresa: 'Adicionar Empresa',
+  },
+
+  empresa: {
+    list: {
+      title: 'Empresas',
+      subtitle: 'Gerencie suas empresas cadastradas',
+      newButton: 'Nova Empresa',
+      emptyTitle: 'Nenhuma empresa cadastrada',
+      emptySubtitle: 'Adicione sua primeira empresa para começar a controlar suas finanças.',
+      addFirst: 'Adicionar primeira empresa',
+      total: 'empresa',
+      totalPlural: 'empresas',
+    },
+    detail: {
+      title: 'Detalhes da Empresa',
+      infoBasica: 'Informações Básicas',
+      contato: 'Contato',
+      endereco: 'Endereço',
+      contas: 'Contas Bancárias',
+      nenhumaContaDesc: 'Integração bancária disponível em breve.',
+    },
+    form: {
+      titleNew: 'Nova Empresa',
+      titleEdit: 'Editar Empresa',
+      subtitleNew: 'Preencha os dados da sua empresa',
+      subtitleEdit: 'Atualize os dados da empresa',
+      cnpjLabel: 'CNPJ',
+      cnpjPlaceholder: '00.000.000/0000-00',
+      nameLabel: 'Razão Social',
+      namePlaceholder: 'Nome conforme CNPJ',
+      tradeNameLabel: 'Nome Fantasia',
+      tradeNamePlaceholder: 'Nome comercial (opcional)',
+      typeLabel: 'Setor de Atuação',
+      taxRegimeLabel: 'Regime Tributário',
+      emailLabel: 'E-mail da Empresa',
+      emailPlaceholder: 'contato@empresa.com.br',
+      phoneLabel: 'Telefone',
+      phonePlaceholder: '(11) 99999-9999',
+      addressLabel: 'Endereço',
+      addressPlaceholder: 'Rua, número, complemento',
+      cityLabel: 'Cidade',
+      cityPlaceholder: 'São Paulo',
+      stateLabel: 'Estado',
+      statePlaceholder: 'SP',
+      zipCodeLabel: 'CEP',
+      zipCodePlaceholder: '00000-000',
+      saveButton: 'Salvar empresa',
+      saveButtonEdit: 'Atualizar empresa',
+      cancelButton: 'Cancelar',
+      saving: 'Salvando...',
+      sections: {
+        dadosBasicos: 'Dados Básicos',
+        tributario: 'Informações Tributárias',
+        contato: 'Contato',
+        endereco: 'Endereço',
+      },
+    },
+    delete: {
+      title: 'Excluir Empresa',
+      description: 'Tem certeza que deseja excluir a empresa',
+      descriptionSuffix: '? Esta ação não pode ser desfeita.',
+      confirmButton: 'Sim, excluir',
+      cancelButton: 'Cancelar',
+    },
+    tipos: {
+      SERVICE: 'Serviços',
+      RETAIL: 'Varejo / Comércio',
+      RESTAURANT: 'Restaurante / Alimentação',
+      INDUSTRY: 'Indústria',
+      MIXED: 'Misto',
+      OTHER: 'Outro',
+    },
+    tiposDescricao: {
+      SERVICE: 'Academias, clínicas, salões, prestadores',
+      RETAIL: 'Lojas, comércios, roupas, eletrônicos',
+      RESTAURANT: 'Bares, restaurantes, lanchonetes, delivery',
+      INDUSTRY: 'Fabricação, manufatura, indústria',
+      MIXED: 'Empresas com múltiplas atividades',
+      OTHER: 'Outros tipos de negócio',
+    },
+    regimes: {
+      SIMPLES_NACIONAL: 'Simples Nacional',
+      LUCRO_PRESUMIDO: 'Lucro Presumido',
+      LUCRO_REAL: 'Lucro Real',
+      MEI: 'MEI',
+    },
+    status: {
+      ativo: 'Ativo',
+      inativo: 'Inativo',
+    },
+  },
+
+  common: {
+    loading: 'Carregando...',
+    save: 'Salvar',
+    cancel: 'Cancelar',
+    delete: 'Excluir',
+    edit: 'Editar',
+    view: 'Visualizar',
+    back: 'Voltar',
+    active: 'Ativo',
+    inactive: 'Inativo',
+    confirm: 'Confirmar',
+    yes: 'Sim',
+    no: 'Não',
+    success: 'Sucesso',
+    error: 'Erro',
+    actions: 'Ações',
+    optional: 'opcional',
+    required: 'obrigatório',
+    noData: 'Nenhum dado encontrado',
+  },
+
+  errors: {
+    unauthorized: 'Você não tem permissão para acessar este recurso',
+    notFound: 'Recurso não encontrado',
+    serverError: 'Erro interno do servidor. Tente novamente.',
+    validationError: 'Dados inválidos. Verifique os campos e tente novamente.',
+    cnpjJaCadastrado: 'Este CNPJ já está cadastrado',
+  },
+
+  success: {
+    empresaCriada: 'Empresa cadastrada com sucesso!',
+    empresaAtualizada: 'Empresa atualizada com sucesso!',
+    empresaExcluida: 'Empresa excluída com sucesso!',
+    contaCriada: 'Conta criada com sucesso!',
+    loginRealizado: 'Login realizado com sucesso!',
+  },
+} as const
+
+export type Translations = typeof ptBR
+
+// Idioma padrão exportado
+export const t = ptBR
