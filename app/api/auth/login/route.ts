@@ -4,8 +4,18 @@ import { ZodError } from 'zod'
 import { prisma } from '@/lib/db'
 import { signToken, COOKIE_NAME, COOKIE_OPTIONS } from '@/lib/auth'
 import { loginSchema } from '@/lib/validations/auth'
+import { rateLimit, rateLimitKey } from '@/lib/rate-limit'
 
 export async function POST(request: NextRequest) {
+  // 10 tentativas por minuto por IP
+  const { allowed, retryAfterMs } = rateLimit(rateLimitKey(request, 'login'), 10, 60_000)
+  if (!allowed) {
+    return NextResponse.json(
+      { erro: 'Muitas tentativas de login. Aguarde 1 minuto.' },
+      { status: 429, headers: { 'Retry-After': String(Math.ceil(retryAfterMs / 1000)) } }
+    )
+  }
+
   try {
     const body = await request.json()
     const data = loginSchema.parse(body)

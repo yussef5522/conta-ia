@@ -4,8 +4,18 @@ import { ZodError } from 'zod'
 import { prisma } from '@/lib/db'
 import { signToken, COOKIE_NAME, COOKIE_OPTIONS } from '@/lib/auth'
 import { cadastroSchema } from '@/lib/validations/auth'
+import { rateLimit, rateLimitKey } from '@/lib/rate-limit'
 
 export async function POST(request: NextRequest) {
+  // 5 cadastros por hora por IP
+  const { allowed, retryAfterMs } = rateLimit(rateLimitKey(request, 'cadastro'), 5, 60 * 60_000)
+  if (!allowed) {
+    return NextResponse.json(
+      { erro: 'Muitos cadastros deste IP. Aguarde antes de tentar novamente.' },
+      { status: 429, headers: { 'Retry-After': String(Math.ceil(retryAfterMs / 1000)) } }
+    )
+  }
+
   try {
     const body = await request.json()
     const data = cadastroSchema.parse(body)

@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { verifyToken, COOKIE_NAME } from '@/lib/auth'
-import { Sidebar } from '@/components/layout/sidebar'
+import { DashboardShell } from '@/components/layout/dashboard-shell'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const cookieStore = await cookies()
@@ -17,11 +17,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      <Sidebar userName={user.name} userEmail={user.email} />
-      <main className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-6xl px-6 py-8">{children}</div>
-      </main>
-    </div>
+    <DashboardShell userName={user.name} userEmail={user.email}>
+      {children}
+    </DashboardShell>
   )
 }

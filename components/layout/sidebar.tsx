@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useEffect } from 'react'
 import {
   LayoutDashboard,
   Building2,
@@ -13,6 +14,7 @@ import {
   Settings,
   LogOut,
   Sparkles,
+  X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { t } from '@/lib/i18n/pt-BR'
@@ -66,10 +68,16 @@ const navItems = [
 interface SidebarProps {
   userName: string
   userEmail: string
+  onClose?: () => void
 }
 
-export function Sidebar({ userName, userEmail }: SidebarProps) {
+export function Sidebar({ userName, userEmail, onClose }: SidebarProps) {
   const pathname = usePathname()
+
+  // Fecha o menu mobile ao navegar
+  useEffect(() => {
+    onClose?.()
+  }, [pathname])
 
   const initials = userName
     .split(' ')
@@ -85,7 +93,16 @@ export function Sidebar({ userName, userEmail }: SidebarProps) {
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500">
           <Sparkles className="h-4 w-4 text-white" />
         </div>
-        <span className="text-lg font-bold tracking-tight text-white">Conta IA</span>
+        <span className="text-lg font-bold tracking-tight text-white flex-1">Conta IA</span>
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="lg:hidden text-sidebar-foreground/60 hover:text-white transition-colors p-1 rounded"
+            aria-label="Fechar menu"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        )}
       </div>
 
       {/* Navegação */}

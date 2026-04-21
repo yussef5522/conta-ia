@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { t } from '@/lib/i18n/pt-BR'
+import { exibirCNPJ } from '@/lib/format/cnpj'
 import type { Metadata } from 'next'
 
 interface Props {
@@ -44,7 +45,7 @@ export default async function EmpresaDetailPage({ params }: Props) {
 
   return (
     <div className="space-y-6">
-      <Header title={empresa.tradeName || empresa.name} description={empresa.cnpj}>
+      <Header title={empresa.tradeName || empresa.name} description={exibirCNPJ(empresa.cnpj)}>
         <Button variant="outline" asChild>
           <Link href={`/empresas/${empresa.id}/editar`}>
             <Pencil className="mr-2 h-4 w-4" />
@@ -61,7 +62,7 @@ export default async function EmpresaDetailPage({ params }: Props) {
           <CardContent className="space-y-3">
             <InfoRow label="Razão Social" value={empresa.name} />
             {empresa.tradeName && <InfoRow label="Nome Fantasia" value={empresa.tradeName} />}
-            <InfoRow label="CNPJ" value={empresa.cnpj} mono />
+            <InfoRow label="CNPJ" value={exibirCNPJ(empresa.cnpj)} mono />
             <div className="flex items-center justify-between py-1">
               <span className="text-sm text-muted-foreground">Setor</span>
               <Badge variant="secondary">{tipo}</Badge>
