@@ -74,8 +74,15 @@ export async function POST(request: NextRequest) {
     const categorias = getDefaultCategories(data.type)
     if (categorias.length > 0) {
       await prisma.category.createMany({
-        data: categorias.map((c) => ({ ...c, companyId: empresa.id, isDefault: true })),
-        skipDuplicates: true,
+        data: categorias.map((c) => ({
+          name: c.name,
+          type: c.type,
+          color: c.color,
+          icon: c.icon ?? null,
+          isActive: true,
+          companyId: empresa.id,
+          isDefault: true as const,
+        })),
       })
     }
 
