@@ -271,7 +271,7 @@ export default function TransacoesPage() {
                     {new Date(t.date).toLocaleDateString('pt-BR')}
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    · {t.bankAccount.company.tradeName ?? t.bankAccount.company.name} / {t.bankAccount.name}
+                    · {t.bankAccount?.company?.tradeName ?? t.bankAccount?.company?.name ?? 'Empresa'} / {t.bankAccount?.name ?? 'Conta'}
                   </span>
                   {t.category && (
                     <span className="flex items-center gap-1 text-xs text-muted-foreground">

@@ -5,34 +5,39 @@ import { prisma } from '@/lib/db'
 import { contaBancariaSchema } from '@/lib/validations/conta-bancaria'
 
 export async function GET(request: NextRequest) {
-  const user = await getAuthUser(request)
-  if (!user) return NextResponse.json({ erro: 'Não autenticado' }, { status: 401 })
+  try {
+    const user = await getAuthUser(request)
+    if (!user) return NextResponse.json({ erro: 'Não autenticado' }, { status: 401 })
 
-  const { searchParams } = new URL(request.url)
-  const empresaId = searchParams.get('empresaId')
+    const { searchParams } = new URL(request.url)
+    const empresaId = searchParams.get('empresaId')
 
-  // Isolamento multi-tenant: só retorna contas de empresas do usuário logado
-  const userCompanies = await prisma.userCompany.findMany({
-    where: { userId: user.sub },
-    select: { companyId: true },
-  })
-  const empresasPermitidas = userCompanies.map((uc) => uc.companyId)
+    // Isolamento multi-tenant: só retorna contas de empresas do usuário logado
+    const userCompanies = await prisma.userCompany.findMany({
+      where: { userId: user.sub },
+      select: { companyId: true },
+    })
+    const empresasPermitidas = userCompanies.map((uc) => uc.companyId)
 
-  const where = {
-    companyId: empresaId
-      ? empresasPermitidas.includes(empresaId)
-        ? empresaId
-        : 'ACESSO_NEGADO'
-      : { in: empresasPermitidas },
+    const where = {
+      companyId: empresaId
+        ? empresasPermitidas.includes(empresaId)
+          ? empresaId
+          : 'ACESSO_NEGADO'
+        : { in: empresasPermitidas },
+    }
+
+    const contas = await prisma.bankAccount.findMany({
+      where,
+      include: { company: { select: { name: true, tradeName: true } } },
+      orderBy: { createdAt: 'asc' },
+    })
+
+    return NextResponse.json({ contas })
+  } catch (error) {
+    console.error('[CONTAS GET] Erro:', error)
+    return NextResponse.json({ erro: 'Erro ao buscar contas bancárias' }, { status: 500 })
   }
-
-  const contas = await prisma.bankAccount.findMany({
-    where,
-    include: { company: { select: { name: true, tradeName: true } } },
-    orderBy: { createdAt: 'asc' },
-  })
-
-  return NextResponse.json({ contas })
 }
 
 export async function POST(request: NextRequest) {

@@ -5,66 +5,71 @@ import { prisma } from '@/lib/db'
 import { transacaoSchema } from '@/lib/validations/transacao'
 
 export async function GET(request: NextRequest) {
-  const user = await getAuthUser(request)
-  if (!user) return NextResponse.json({ erro: 'Não autenticado' }, { status: 401 })
+  try {
+    const user = await getAuthUser(request)
+    if (!user) return NextResponse.json({ erro: 'Não autenticado' }, { status: 401 })
 
-  const { searchParams } = new URL(request.url)
-  const contaId = searchParams.get('contaId')
-  const page = Math.max(1, parseInt(searchParams.get('page') ?? '1'))
-  const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') ?? '50')))
-  const inicio = searchParams.get('inicio')
-  const fim = searchParams.get('fim')
-  const tipo = searchParams.get('tipo')
-  const status = searchParams.get('status')
+    const { searchParams } = new URL(request.url)
+    const contaId = searchParams.get('contaId')
+    const page = Math.max(1, parseInt(searchParams.get('page') ?? '1'))
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') ?? '50')))
+    const inicio = searchParams.get('inicio')
+    const fim = searchParams.get('fim')
+    const tipo = searchParams.get('tipo')
+    const status = searchParams.get('status')
 
-  // Monta cláusula de conta(s) com isolamento multi-tenant
-  let contaWhere: Record<string, unknown>
-  let contaSingle: { id: string; balance: number; name: string; bankName: string | null; accountType: string } | null = null
-  if (contaId) {
-    contaSingle = await prisma.bankAccount.findFirst({
-      where: { id: contaId, company: { users: { some: { userId: user.sub } } } },
-      select: { id: true, balance: true, name: true, bankName: true, accountType: true },
-    })
-    if (!contaSingle) return NextResponse.json({ erro: 'Conta não encontrada' }, { status: 404 })
-    contaWhere = { bankAccountId: contaId }
-  } else {
-    // Sem contaId: retorna de todas as contas do usuário
-    const userContas = await prisma.bankAccount.findMany({
-      where: { company: { users: { some: { userId: user.sub } } } },
-      select: { id: true },
-    })
-    contaWhere = { bankAccountId: { in: userContas.map((c) => c.id) } }
-  }
-
-  const where: Record<string, unknown> = { ...contaWhere }
-  if (inicio || fim) {
-    where.date = {
-      ...(inicio ? { gte: new Date(inicio) } : {}),
-      ...(fim ? { lte: new Date(fim + 'T23:59:59.999Z') } : {}),
+    // Monta cláusula de conta(s) com isolamento multi-tenant
+    let contaWhere: Record<string, unknown>
+    let contaSingle: { id: string; balance: number; name: string; bankName: string | null; accountType: string } | null = null
+    if (contaId) {
+      contaSingle = await prisma.bankAccount.findFirst({
+        where: { id: contaId, company: { users: { some: { userId: user.sub } } } },
+        select: { id: true, balance: true, name: true, bankName: true, accountType: true },
+      })
+      if (!contaSingle) return NextResponse.json({ erro: 'Conta não encontrada' }, { status: 404 })
+      contaWhere = { bankAccountId: contaId }
+    } else {
+      // Sem contaId: retorna de todas as contas do usuário
+      const userContas = await prisma.bankAccount.findMany({
+        where: { company: { users: { some: { userId: user.sub } } } },
+        select: { id: true },
+      })
+      contaWhere = { bankAccountId: { in: userContas.map((c) => c.id) } }
     }
+
+    const where: Record<string, unknown> = { ...contaWhere }
+    if (inicio || fim) {
+      where.date = {
+        ...(inicio ? { gte: new Date(inicio) } : {}),
+        ...(fim ? { lte: new Date(fim + 'T23:59:59.999Z') } : {}),
+      }
+    }
+    if (tipo) where.type = tipo
+    if (status) where.status = status
+
+    const [total, transacoes] = await Promise.all([
+      prisma.transaction.count({ where }),
+      prisma.transaction.findMany({
+        where,
+        orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+        skip: (page - 1) * limit,
+        take: limit,
+        include: {
+          category: { select: { id: true, name: true, color: true, type: true } },
+          bankAccount: { select: { id: true, name: true, bankName: true, balance: true, accountType: true, companyId: true, company: { select: { name: true, tradeName: true } } } },
+        },
+      }),
+    ])
+
+    return NextResponse.json({
+      transacoes,
+      conta: contaSingle,
+      paginacao: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    })
+  } catch (error) {
+    console.error('[TRANSACOES GET] Erro:', error)
+    return NextResponse.json({ erro: 'Erro ao buscar transações' }, { status: 500 })
   }
-  if (tipo) where.type = tipo
-  if (status) where.status = status
-
-  const [total, transacoes] = await Promise.all([
-    prisma.transaction.count({ where }),
-    prisma.transaction.findMany({
-      where,
-      orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
-      skip: (page - 1) * limit,
-      take: limit,
-      include: {
-        category: { select: { id: true, name: true, color: true, type: true } },
-        bankAccount: { select: { id: true, name: true, bankName: true, balance: true, accountType: true, companyId: true, company: { select: { name: true, tradeName: true } } } },
-      },
-    }),
-  ])
-
-  return NextResponse.json({
-    transacoes,
-    conta: contaSingle,
-    paginacao: { total, page, limit, totalPages: Math.ceil(total / limit) },
-  })
 }
 
 export async function POST(request: NextRequest) {
