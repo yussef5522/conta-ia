@@ -22,25 +22,26 @@ model User {
 }
 
 model Company {
-  id          String  @id @default(cuid())
-  cnpj        String  @unique
-  name        String
-  tradeName   String?
-  type        String  @default("OTHER")
-  email       String?
-  phone       String?
-  address     String?
-  city        String?
-  state       String?
-  zipCode     String?
-  taxRegime   String  @default("SIMPLES_NACIONAL")
-  isActive    Boolean @default(true)
+  id        String  @id @default(cuid())
+  cnpj      String  @unique
+  name      String
+  tradeName String?
+  type      String  @default("OTHER")
+  email     String?
+  phone     String?
+  address   String?
+  city      String?
+  state     String?
+  zipCode   String?
+  taxRegime String  @default("SIMPLES_NACIONAL")
+  isActive  Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   users        UserCompany[]
   bankAccounts BankAccount[]
+  categories   Category[]
 
   @@map("companies")
 }
@@ -60,18 +61,74 @@ model UserCompany {
 }
 
 model BankAccount {
-  id           String   @id @default(cuid())
+  id           String  @id @default(cuid())
   companyId    String
   name         String
   bankName     String?
-  accountType  String?
-  balance      Float    @default(0)
+  bankCode     String?
+  agency       String?
+  accountNumber String?
+  accountType  String  @default("CHECKING")
+  balance      Float   @default(0)
   pluggyItemId String?
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  pluggyAccountId String?
+  isActive     Boolean @default(true)
 
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
 
   @@map("bank_accounts")
+}
+
+model Transaction {
+  id            String   @id @default(cuid())
+  bankAccountId String
+  categoryId    String?
+  date          DateTime
+  description   String
+  amount        Float
+  // CREDIT = entrada de dinheiro, DEBIT = saída
+  type          String
+  // PENDING | RECONCILED | IGNORED
+  status        String   @default("PENDING")
+  // MANUAL | OFX | PLUGGY
+  origin        String   @default("MANUAL")
+  // ID único da transação na fonte (OFX FITID ou Pluggy ID) — evita duplicatas
+  externalId    String?
+  notes         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bankAccount BankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+  category    Category?   @relation(fields: [categoryId], references: [id])
+
+  @@unique([bankAccountId, externalId])
+  @@index([bankAccountId, date])
+  @@map("transactions")
+}
+
+model Category {
+  id        String  @id @default(cuid())
+  companyId String
+  name      String
+  // INCOME | EXPENSE | TRANSFER
+  type      String
+  color     String  @default("#6366f1")
+  icon      String?
+  // true = criada pelo sistema via seed de setor
+  isDefault Boolean @default(false)
+  isActive  Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@unique([companyId, name])
+  @@map("categories")
 }

@@ -1,12 +1,23 @@
 import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
+import { getDefaultCategories } from '../lib/categories/defaults'
 
 const prisma = new PrismaClient()
+
+async function seedCategories(companyId: string, companyType: string) {
+  const categorias = getDefaultCategories(companyType)
+  for (const cat of categorias) {
+    await prisma.category.upsert({
+      where: { companyId_name: { companyId, name: cat.name } },
+      update: {},
+      create: { companyId, ...cat, isDefault: true },
+    })
+  }
+}
 
 async function main() {
   console.log('Iniciando seed...')
 
-  // Usuário admin (Yussef)
   const senhaHash = await bcrypt.hash('ContaIA@2025', 12)
 
   const admin = await prisma.user.upsert({
@@ -21,13 +32,29 @@ async function main() {
   })
 
   console.log(`Usuário criado: ${admin.email}`)
-  console.log(`Senha inicial: ContaIA@2025`)
-  console.log('\nSeed concluído com sucesso!')
+
+  // Empresa de exemplo para testar
+  const empresa = await prisma.company.upsert({
+    where: { cnpj: '00000000000191' },
+    update: {},
+    create: {
+      cnpj: '00000000000191',
+      name: 'Empresa Demonstração Ltda',
+      tradeName: 'Demo Conta IA',
+      type: 'SERVICE',
+      taxRegime: 'SIMPLES_NACIONAL',
+      users: { create: { userId: admin.id, role: 'OWNER' } },
+    },
+  })
+
+  await seedCategories(empresa.id, empresa.type)
+  console.log(`Empresa de demonstração criada: ${empresa.tradeName}`)
+  console.log(`Categorias padrão criadas para o setor: ${empresa.type}`)
+
+  console.log('\nSeed concluído!')
+  console.log('Login: admin@contaia.com.br / ContaIA@2025')
 }
 
 main()
-  .catch((error) => {
-    console.error('Erro no seed:', error)
-    process.exit(1)
-  })
+  .catch((e) => { console.error('Erro no seed:', e); process.exit(1) })
   .finally(() => prisma.$disconnect())

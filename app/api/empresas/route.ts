@@ -3,6 +3,7 @@ import { ZodError } from 'zod'
 import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { empresaSchema } from '@/lib/validations/empresa'
+import { getDefaultCategories } from '@/lib/categories/defaults'
 
 export async function GET(request: NextRequest) {
   const user = await getAuthUser(request)
@@ -68,6 +69,15 @@ export async function POST(request: NextRequest) {
         },
       },
     })
+
+    // Cria categorias padrão para o setor — poupa configuração manual do usuário
+    const categorias = getDefaultCategories(data.type)
+    if (categorias.length > 0) {
+      await prisma.category.createMany({
+        data: categorias.map((c) => ({ ...c, companyId: empresa.id, isDefault: true })),
+        skipDuplicates: true,
+      })
+    }
 
     return NextResponse.json({ empresa }, { status: 201 })
   } catch (error) {
