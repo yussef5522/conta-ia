@@ -4,12 +4,18 @@ import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import {
   Plus, ArrowUpRight, ArrowDownRight, Filter,
-  ChevronLeft, ChevronRight, Upload, Building2,
+  ChevronLeft, ChevronRight, Building2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Header } from '@/components/layout/header'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
@@ -65,6 +71,7 @@ export default function TransacoesPage() {
   const [contas, setContas] = useState<ContaInfo[]>([])
   const [paginacao, setPaginacao] = useState<Paginacao>({ total: 0, page: 1, limit: 50, totalPages: 1 })
   const [loading, setLoading] = useState(true)
+  const [contasReady, setContasReady] = useState(false)
 
   const now = new Date()
   const [inicio, setInicio] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`)
@@ -74,7 +81,7 @@ export default function TransacoesPage() {
   const [contaFiltro, setContaFiltro] = useState('TODAS')
   const [page, setPage] = useState(1)
 
-  // Carrega lista de contas para o filtro
+  // Carrega lista de contas para o filtro e para o botão Nova Transação
   useEffect(() => {
     async function fetchContas() {
       const res = await fetch('/api/contas-bancarias')
@@ -82,6 +89,7 @@ export default function TransacoesPage() {
         const data = await res.json()
         setContas(data.contas)
       }
+      setContasReady(true)
     }
     fetchContas()
   }, [])
@@ -117,7 +125,42 @@ export default function TransacoesPage() {
       <Header
         title="Transações"
         description={`${paginacao.total} lançamento${paginacao.total !== 1 ? 's' : ''} no período`}
-      />
+      >
+        {!contasReady ? (
+          <Button size="sm" disabled>
+            <Plus className="mr-1.5 h-3.5 w-3.5" />Nova Transação
+          </Button>
+        ) : contas.length === 0 ? (
+          <Button size="sm" asChild>
+            <Link href="/contas-bancarias">
+              <Plus className="mr-1.5 h-3.5 w-3.5" />Nova Transação
+            </Link>
+          </Button>
+        ) : contas.length === 1 ? (
+          <Button size="sm" asChild>
+            <Link href={`/empresas/${contas[0].companyId}/contas/${contas[0].id}/transacoes/nova`}>
+              <Plus className="mr-1.5 h-3.5 w-3.5" />Nova Transação
+            </Link>
+          </Button>
+        ) : (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm">
+                <Plus className="mr-1.5 h-3.5 w-3.5" />Nova Transação
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {contas.map((c) => (
+                <DropdownMenuItem key={c.id} asChild>
+                  <Link href={`/empresas/${c.companyId}/contas/${c.id}/transacoes/nova`}>
+                    {c.company.tradeName ?? c.company.name} · {c.name}
+                  </Link>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </Header>
 
       {/* Cards resumo */}
       <div className="grid gap-4 sm:grid-cols-2">
