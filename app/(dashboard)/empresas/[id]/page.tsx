@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { Pencil, Landmark } from 'lucide-react'
+import { Pencil, Landmark, Plus, ArrowUpRight, ArrowDownRight } from 'lucide-react'
 import { verifyToken, COOKIE_NAME } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { Header } from '@/components/layout/header'
@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { t } from '@/lib/i18n/pt-BR'
 import { exibirCNPJ } from '@/lib/format/cnpj'
+import { formatBRL } from '@/lib/format/money'
 import type { Metadata } from 'next'
 
 interface Props {
@@ -104,13 +105,62 @@ export default async function EmpresaDetailPage({ params }: Props) {
         </Card>
 
         <Card className="lg:col-span-2">
-          <CardHeader className="flex flex-row items-center gap-3">
-            <Landmark className="h-4 w-4 text-muted-foreground" />
-            <CardTitle className="text-base">{t.empresa.detail.contas}</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <Landmark className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-base">{t.empresa.detail.contas}</CardTitle>
+              {empresa.bankAccounts.length > 0 && (
+                <Badge variant="secondary">{empresa.bankAccounts.length}</Badge>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {empresa.bankAccounts.length > 0 && (
+                <Button variant="ghost" size="sm" asChild>
+                  <Link href={`/empresas/${empresa.id}/contas`}>Ver todas</Link>
+                </Button>
+              )}
+              <Button size="sm" asChild>
+                <Link href={`/empresas/${empresa.id}/contas/nova`}>
+                  <Plus className="mr-1.5 h-3.5 w-3.5" />Adicionar Conta
+                </Link>
+              </Button>
+            </div>
           </CardHeader>
           <Separator />
           <CardContent className="pt-4">
-            <p className="text-sm text-muted-foreground">{t.empresa.detail.nenhumaContaDesc}</p>
+            {empresa.bankAccounts.length === 0 ? (
+              <div className="flex flex-col items-center py-8 text-center">
+                <Landmark className="h-10 w-10 text-muted-foreground mb-3" />
+                <p className="text-sm font-medium">Nenhuma conta cadastrada</p>
+                <p className="text-xs text-muted-foreground mt-1 mb-4">Cadastre uma conta para controlar o saldo desta empresa.</p>
+                <Button size="sm" asChild>
+                  <Link href={`/empresas/${empresa.id}/contas/nova`}>
+                    <Plus className="mr-1.5 h-3.5 w-3.5" />Adicionar primeira conta
+                  </Link>
+                </Button>
+              </div>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {empresa.bankAccounts.map((conta) => (
+                  <Link
+                    key={conta.id}
+                    href={`/empresas/${empresa.id}/contas/${conta.id}/transacoes`}
+                    className="flex items-center justify-between rounded-lg border p-3 hover:bg-muted/50 transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{conta.name}</p>
+                      <p className="text-xs text-muted-foreground">{conta.bankName ?? 'Banco não informado'}</p>
+                    </div>
+                    <div className={`flex items-center gap-1 font-semibold text-sm shrink-0 ${conta.balance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {conta.balance >= 0
+                        ? <ArrowUpRight className="h-3.5 w-3.5" />
+                        : <ArrowDownRight className="h-3.5 w-3.5" />}
+                      {formatBRL(conta.balance)}
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
