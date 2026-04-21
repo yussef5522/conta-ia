@@ -6,6 +6,12 @@ import { Plus, Landmark, ArrowUpRight, ArrowDownRight, Building2 } from 'lucide-
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Header } from '@/components/layout/header'
 import { formatBRL } from '@/lib/format/money'
 
@@ -86,7 +92,42 @@ export default function ContasBancariasPage() {
       <Header
         title="Contas Bancárias"
         description={`${totalContas} conta${totalContas !== 1 ? 's' : ''} em ${grupos.length} empresa${grupos.length !== 1 ? 's' : ''}`}
-      />
+      >
+        {loading ? (
+          <Button size="sm" disabled>
+            <Plus className="mr-1.5 h-3.5 w-3.5" />Nova Conta
+          </Button>
+        ) : grupos.length === 0 ? (
+          <Button size="sm" asChild>
+            <Link href="/empresas">
+              <Plus className="mr-1.5 h-3.5 w-3.5" />Nova Conta
+            </Link>
+          </Button>
+        ) : grupos.length === 1 ? (
+          <Button size="sm" asChild>
+            <Link href={`/empresas/${grupos[0].id}/contas/nova`}>
+              <Plus className="mr-1.5 h-3.5 w-3.5" />Nova Conta
+            </Link>
+          </Button>
+        ) : (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm">
+                <Plus className="mr-1.5 h-3.5 w-3.5" />Nova Conta
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {grupos.map((g) => (
+                <DropdownMenuItem key={g.id} asChild>
+                  <Link href={`/empresas/${g.id}/contas/nova`}>
+                    {g.tradeName ?? g.name}
+                  </Link>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </Header>
 
       {/* Saldo consolidado */}
       {!loading && totalContas > 0 && (
@@ -117,11 +158,11 @@ export default function ContasBancariasPage() {
           <Landmark className="h-12 w-12 text-muted-foreground mb-4" />
           <h3 className="font-semibold text-lg">Nenhuma conta cadastrada</h3>
           <p className="text-sm text-muted-foreground mt-1 mb-6">
-            Acesse uma empresa e cadastre a primeira conta bancária.
+            Selecione uma empresa para cadastrar a primeira conta bancária.
           </p>
           <Button asChild>
             <Link href="/empresas">
-              <Building2 className="mr-2 h-4 w-4" />Ver Empresas
+              <Building2 className="mr-2 h-4 w-4" />Ir para Empresas
             </Link>
           </Button>
         </div>
