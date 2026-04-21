@@ -37,13 +37,13 @@ const navItems = [
     label: t.nav.contasBancarias,
     href: '/contas-bancarias',
     icon: Landmark,
-    available: false,
+    available: true,
   },
   {
     label: t.nav.transacoes,
     href: '/transacoes',
     icon: ArrowLeftRight,
-    available: false,
+    available: true,
   },
   {
     label: t.nav.relatorios,

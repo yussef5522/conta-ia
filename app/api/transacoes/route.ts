@@ -17,16 +17,26 @@ export async function GET(request: NextRequest) {
   const tipo = searchParams.get('tipo')
   const status = searchParams.get('status')
 
-  if (!contaId) return NextResponse.json({ erro: 'contaId obrigatório' }, { status: 400 })
+  // Monta cláusula de conta(s) com isolamento multi-tenant
+  let contaWhere: Record<string, unknown>
+  let contaSingle: { id: string; balance: number; name: string; bankName: string | null; accountType: string } | null = null
+  if (contaId) {
+    contaSingle = await prisma.bankAccount.findFirst({
+      where: { id: contaId, company: { users: { some: { userId: user.sub } } } },
+      select: { id: true, balance: true, name: true, bankName: true, accountType: true },
+    })
+    if (!contaSingle) return NextResponse.json({ erro: 'Conta não encontrada' }, { status: 404 })
+    contaWhere = { bankAccountId: contaId }
+  } else {
+    // Sem contaId: retorna de todas as contas do usuário
+    const userContas = await prisma.bankAccount.findMany({
+      where: { company: { users: { some: { userId: user.sub } } } },
+      select: { id: true },
+    })
+    contaWhere = { bankAccountId: { in: userContas.map((c) => c.id) } }
+  }
 
-  // Verifica que o usuário tem acesso à conta
-  const conta = await prisma.bankAccount.findFirst({
-    where: { id: contaId, company: { users: { some: { userId: user.sub } } } },
-    select: { id: true, balance: true, name: true, bankName: true, accountType: true },
-  })
-  if (!conta) return NextResponse.json({ erro: 'Conta não encontrada' }, { status: 404 })
-
-  const where: Record<string, unknown> = { bankAccountId: contaId }
+  const where: Record<string, unknown> = { ...contaWhere }
   if (inicio || fim) {
     where.date = {
       ...(inicio ? { gte: new Date(inicio) } : {}),
@@ -43,13 +53,16 @@ export async function GET(request: NextRequest) {
       orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
       skip: (page - 1) * limit,
       take: limit,
-      include: { category: { select: { id: true, name: true, color: true, type: true } } },
+      include: {
+        category: { select: { id: true, name: true, color: true, type: true } },
+        bankAccount: { select: { id: true, name: true, bankName: true, balance: true, accountType: true, companyId: true, company: { select: { name: true, tradeName: true } } } },
+      },
     }),
   ])
 
   return NextResponse.json({
     transacoes,
-    conta,
+    conta: contaSingle,
     paginacao: { total, page, limit, totalPages: Math.ceil(total / limit) },
   })
 }
