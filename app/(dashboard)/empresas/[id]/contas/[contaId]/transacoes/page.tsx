@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import {
   Plus, ArrowUpRight, ArrowDownRight, MoreVertical,
-  Pencil, Trash2, Filter, ChevronLeft, ChevronRight
+  Pencil, Trash2, Filter, ChevronLeft, ChevronRight, Upload
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -124,6 +124,11 @@ export default function TransacoesPage() {
       >
         <Button variant="outline" asChild>
           <Link href={`/empresas/${empresaId}/contas`}>← Contas</Link>
+        </Button>
+        <Button variant="outline" asChild>
+          <Link href={`/empresas/${empresaId}/contas/${contaId}/importar`}>
+            <Upload className="mr-2 h-4 w-4" />Importar OFX
+          </Link>
         </Button>
         <Button asChild>
           <Link href={`/empresas/${empresaId}/contas/${contaId}/transacoes/nova`}>
