@@ -1,89 +1,109 @@
-# FASE 1 — Concluída ✅
+# FASE 2 — Concluída ✅
 
 **Data:** 2026-04-20  
-**Versão:** 0.1.0  
+**Versão:** 0.2.0  
 **Branch:** main
 
 ---
 
 ## O que foi construído
 
-### Infraestrutura
-- Next.js 16 + TypeScript (strict mode)
-- TailwindCSS + shadcn/ui (componentes: Button, Input, Card, Badge, Dialog, Select, Toast, Avatar, DropdownMenu)
-- Prisma ORM + SQLite (desenvolvimento local)
-- Vitest (22 testes passando)
+### Sub-etapa 2.1 — Utilitários + Fixes FASE 1
+- `lib/format/money.ts` — `formatBRL`, `formatBRLCompact`, `parseBRL`
+- `lib/format/cnpj.ts` — `formatCNPJ` (máscara progressiva), `exibirCNPJ` (display formatado)
+- `lib/rate-limit.ts` — rate limiting in-memory (login: 10/min, cadastro: 5/hora)
+- `components/layout/dashboard-shell.tsx` — sidebar mobile com hamburguer + overlay
+- Fix: CNPJ exibido formatado na tela de detalhes
+- Fix: sidebar colapsável em mobile
 
-### Autenticação
-- Login e cadastro com validação Zod
-- Senha com bcrypt (rounds = 12)
-- JWT armazenado em cookie httpOnly via biblioteca `jose`
-- Proteção de rotas via `proxy.ts` (Next.js 16)
-- Logout que limpa o cookie
+### Sub-etapa 2.2 — Schema + Categorias por Setor
+- Tabelas `Transaction` e `Category` adicionadas ao schema Prisma
+- `lib/categories/defaults.ts` — categorias padrão por setor (SERVICE/RETAIL/RESTAURANT/INDUSTRY/MIXED)
+- Seed automático de categorias ao criar empresa (7–14 por setor + comuns)
 
-### Banco de dados
-Schema completo com as tabelas:
-| Tabela | Descrição |
-|--------|-----------|
-| `users` | Usuários do sistema |
-| `companies` | Empresas (multi-tenant) |
-| `user_companies` | Relação N:N user ↔ empresa |
-| `bank_accounts` | Contas bancárias (estrutura pronta, sem dados) |
+### Sub-etapa 2.3 — CRUD de Contas Bancárias
+- `lib/validations/conta-bancaria.ts` — Zod schema
+- API REST `/api/contas-bancarias` (GET/POST) e `/api/contas-bancarias/[id]` (GET/PUT/DELETE)
+- Isolamento multi-tenant via `verificarAcesso(userId, contaId)`
+- Formulário com seletor dos 10 principais bancos BR (BB, Santander, CEF, Bradesco, Itaú, Nubank, PagBank, Mercado Pago, C6, Inter)
+- Listagem com card de saldo total (corrente + poupança) e ações por conta
+- 22 testes de isolamento e validação
 
-Seed cria o usuário admin inicial.
+### Sub-etapa 2.4 — Transações + Saldo em Tempo Real
+- `lib/validations/transacao.ts` — Zod schema (CREDIT/DEBIT, PENDING/RECONCILED/IGNORED)
+- API REST `/api/transacoes` (GET paginado + filtros por período/tipo/status) e `/api/transacoes/[id]`
+- Saldo da conta atualizado atomicamente via `prisma.$transaction` em CREATE/UPDATE/DELETE
+- Formulário de lançamento manual com categoria filtrada por tipo (INCOME → entrada, EXPENSE → saída)
+- Listagem com cards de saldo atual, entradas e saídas do período + paginação
 
-### CRUD de Empresas
-- **Listar** — grid com cards, estado vazio com CTA
-- **Criar** — formulário em 4 seções (dados básicos, tributário, contato, endereço)
-- **Visualizar** — página de detalhes com todas as informações
-- **Editar** — mesmo formulário, CNPJ bloqueado para edição
-- **Excluir** — dialog de confirmação antes de deletar
+### Sub-etapa 2.5 — Importação OFX/QFX
+- `lib/ofx/parser.ts` — parser puro sem dependências externas
+  - Suporte SGML (BB/Itaú/Bradesco) e XML (Nubank/fintechs)
+  - Tolerante a erros: transações inválidas são ignoradas com aviso
+- API `POST /api/contas-bancarias/[id]/importar-ofx` com `?preview=true` para pré-visualização
+- Deduplicação automática via FITID (`@@unique([bankAccountId, externalId])`)
+- Tela de upload com drag-and-drop, preview resumido (novas vs. duplicadas), confirmação antes de inserir
+- 17 testes do parser OFX
 
-Validações implementadas:
-- CNPJ com algoritmo de dígito verificador
-- Razão social obrigatória
-- Tipo de empresa e regime tributário obrigatórios
-- E-mail com formato válido (quando preenchido)
-- Formatação automática: CNPJ, telefone, CEP
-
-### Interface
-- Sidebar com navegação (itens futuros marcados "em breve")
-- Dashboard com 4 cards de métricas
-- Estado vazio no dashboard → CTA para criar primeira empresa
-- Todas as strings em pt-BR via `/lib/i18n/pt-BR.ts`
-- Design responsivo (desktop-first)
-
-### Segurança
-- `.env` no `.gitignore` (nunca vai pro GitHub)
-- JWT em cookie httpOnly (não acessível via JavaScript)
-- Isolamento multi-tenant: API valida que o usuário é dono da empresa antes de qualquer operação
-- Tokens de tempo constante no login (anti-enumeração de usuários)
+### Sub-etapa 2.6 — Pluggy.ai (Open Finance)
+- `lib/pluggy/client.ts` — cliente com autenticação e cache de token
+- `PLUGGY_ENABLED` flag: sistema funciona normalmente sem credenciais (retorna 503 graciosamente)
+- API `POST /api/pluggy/connect-token` — gera token para widget de conexão
+- API `POST /api/pluggy/sincronizar` — sincroniza transações com deduplicação e ajuste atômico de saldo
+- Para ativar: adicionar `PLUGGY_CLIENT_ID` e `PLUGGY_CLIENT_SECRET` ao `.env`
 
 ---
 
-## Estrutura de arquivos
+## Totais da FASE 2
+
+| Métrica | Valor |
+|---------|-------|
+| Arquivos criados | ~35 |
+| Linhas de código | ~3.200 |
+| Testes (total acumulado) | 78 passando |
+| Commits | 7 (2.1 → 2.6 + docs) |
+
+---
+
+## Estrutura de arquivos atual
 
 ```
 conta-ia/
 ├── app/
-│   ├── (auth)/login/          ← Tela de login
-│   ├── (auth)/cadastro/       ← Tela de cadastro
-│   ├── (dashboard)/dashboard/ ← Dashboard principal
-│   ├── (dashboard)/empresas/  ← CRUD de empresas
-│   └── api/auth/ + api/empresas/  ← API Routes
+│   ├── (auth)/login/ + cadastro/
+│   ├── (dashboard)/
+│   │   ├── dashboard/
+│   │   ├── empresas/
+│   │   │   ├── [id]/
+│   │   │   │   ├── contas/               ← listagem de contas
+│   │   │   │   │   ├── nova/             ← criar conta
+│   │   │   │   │   └── [contaId]/
+│   │   │   │   │       ├── editar/       ← editar conta
+│   │   │   │   │       ├── importar/     ← upload OFX
+│   │   │   │   │       └── transacoes/   ← listagem + lançamento
+│   │   │   │   └── editar/
+│   │   │   └── nova/
+│   └── api/
+│       ├── auth/ (login, cadastro, logout)
+│       ├── empresas/
+│       ├── contas-bancarias/ + [id]/ + [id]/importar-ofx/
+│       ├── transacoes/ + [id]/
+│       └── pluggy/ (connect-token, sincronizar)
 ├── components/
-│   ├── ui/                    ← shadcn/ui
-│   ├── layout/sidebar.tsx     ← Sidebar com navegação
-│   └── empresas/              ← Formulário, card, dialog
+│   ├── ui/ (+ Textarea adicionado)
+│   ├── layout/ (sidebar, header, dashboard-shell)
+│   ├── empresas/
+│   ├── contas-bancarias/
+│   └── transacoes/
 ├── lib/
-│   ├── auth.ts                ← JWT helpers
-│   ├── db.ts                  ← Prisma singleton
-│   ├── utils.ts               ← cn(), formatCNPJ(), formatPhone(), formatCEP()
-│   ├── i18n/pt-BR.ts          ← Todas as strings da UI
-│   └── validations/           ← Zod schemas
-├── prisma/schema.prisma        ← Schema do banco
-├── proxy.ts                   ← Proteção de rotas
-└── __tests__/                 ← 22 testes Vitest
+│   ├── auth.ts, db.ts, utils.ts
+│   ├── format/ (money.ts, cnpj.ts)
+│   ├── validations/ (auth, empresa, conta-bancaria, transacao)
+│   ├── categories/defaults.ts
+│   ├── ofx/parser.ts
+│   └── pluggy/client.ts
+├── prisma/schema.prisma (User, Company, UserCompany, BankAccount, Transaction, Category)
+└── __tests__/ (7 arquivos, 78 testes)
 ```
 
 ---
@@ -91,38 +111,25 @@ conta-ia/
 ## Como rodar localmente
 
 ```bash
-# 1. Instalar dependências
 npm install
-
-# 2. Criar banco de dados
 npm run db:push
-
-# 3. Popular com usuário admin
 npm run db:seed
-
-# 4. Iniciar servidor
 npm run dev
 ```
 
 Acesse: http://localhost:3000  
 Login: `admin@contaia.com.br` / `ContaIA@2025`
 
----
-
-## Problemas conhecidos
-
-| # | Problema | Impacto | Status |
-|---|----------|---------|--------|
-| 1 | O `package-lock.json` foi commitado no repositório | Espaço extra no repo, mas necessário para reprodutibilidade | Aceitável por ora |
-| 2 | `next-env.d.ts` não está no `.gitignore` (gerado pelo Next.js) | Arquivo gerado commitado | Corrigir na FASE 2 |
-| 3 | Sidebar não colapsa em telas pequenas | UX mobile prejudicada | Não prioritário (uso desktop) |
-| 4 | Não há rate limiting nas rotas de API | Segurança reduzida em produção | Implementar antes de abrir para clientes |
-| 5 | CNPJ exibido sem formatação na tela de detalhes | Visual ruim para CNPJs sem máscara | Fix simples, próximo sprint |
+Para ativar Pluggy, adicione ao `.env`:
+```
+PLUGGY_CLIENT_ID=seu_client_id
+PLUGGY_CLIENT_SECRET=seu_client_secret
+```
 
 ---
 
-## FASE 2 — Próximo
+## FASE 3 — Próximo
 
 Ver `docs/ROADMAP.md` para o planejamento completo.
 
-Foco previsto da FASE 2: **Contas Bancárias + Integração Open Finance (Pluggy)**
+Foco previsto da FASE 3: **Dashboard financeiro avançado + Relatórios (DRE, Fluxo de Caixa)**

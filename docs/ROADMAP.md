@@ -11,25 +11,29 @@ Prioridade definida pelo Yussef:
 ## FASE 1 — Setup inicial ✅
 Auth, CRUD de empresas, banco de dados, testes básicos.
 
-## FASE 2 — Contas Bancárias + Open Finance 🔜
-- Integração com Pluggy.ai
-- Cadastro de contas bancárias por empresa
-- Importação de extrato bancário
-- Listagem de transações brutas
+## FASE 2 — Contas Bancárias + Open Finance ✅
+- Integração com Pluggy.ai (ativa com credenciais)
+- Cadastro de contas bancárias por empresa (10 bancos BR)
+- Importação de extrato OFX/QFX com deduplicação por FITID
+- Lançamento manual de transações com categorias por setor
+- Listagem paginada com filtros de período/tipo/status
+- Saldo atualizado atomicamente em todas as operações
 
-## FASE 3 — Transações + Categorização
+## FASE 3 — Dashboard avançado + Relatórios 🔜
+- Dashboard com gráficos de fluxo de caixa (recharts ou chart.js)
+- DRE simplificada por período
+- Relatório de categorias (receita vs. despesa)
 - Motor de categorização automática por CNPJ
 - Tabela de fornecedores
+- Refresh token (JWT expira em 24h atualmente)
+
+## FASE 4 — IA Contadora + Regras de Aprendizado
+- Motor de categorização automática por CNPJ
+- Tabela de fornecedores com lookup Receita Federal
 - Regras de aprendizado da IA (`ai_learning_rules`)
 - Notificações de transações pendentes
 
-## FASE 4 — Relatórios e Dashboard avançado
-- DRE (Demonstração de Resultado)
-- Fluxo de caixa
-- Balancete
-- Gráficos e comparativos
-
-## FASE 5 — IA Contadora
+## FASE 5 — IA Contadora (Chat)
 - Chat conversacional com Claude (Anthropic API)
 - RAG com legislação tributária brasileira
 - Respostas sobre impostos, DAS, IRPJ, CSLL

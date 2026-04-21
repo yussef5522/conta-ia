@@ -27,9 +27,20 @@ Registro histórico de bugs, dívidas técnicas e limitações conhecidas.
 
 ---
 
+## Abertos — adicionados na FASE 2
+
+| # | Problema | Impacto | Prioridade | Fase prevista |
+|---|----------|---------|-----------|--------------|
+| 5 | `prisma.category.createMany` sem `skipDuplicates` no SQLite | Sem impacto prático (categorias criadas só na criação de empresa) | Baixa | Migrar para PostgreSQL em produção |
+| 6 | Rate limit Pluggy: sem retry exponencial em falhas de token | Em produção com alta carga poderia causar falhas intermitentes | Baixa | FASE 6 |
+| 7 | Paginação OFX: arquivos muito grandes (>1000 transações) carregados inteiros na memória | Impacto em uploads de extratos anuais | Média | FASE 5 |
+
+---
+
 ## Dívida técnica
 
 | # | Item | Descrição |
 |---|------|-----------|
 | 1 | `formatCNPJ` duplicado | Existe em `lib/utils.ts` e em `lib/format/cnpj.ts`. Remover de `utils.ts` quando todas as referências forem migradas |
 | 2 | Testes sem cobertura de API routes | As API routes de empresa e auth não têm testes de integração. Cobrir na FASE 3 |
+| 3 | Saldo em `BankAccount.balance` desnaturalizado | Saldo calculado via transações vs. campo desnaturalizado — em produção pode divergir se houver falha parcial. Decisão atual: manter desnaturalizado por performance, aceitar risco em MVP |
