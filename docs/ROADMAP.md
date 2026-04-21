@@ -12,26 +12,31 @@ Prioridade definida pelo Yussef:
 Auth, CRUD de empresas, banco de dados, testes básicos.
 
 ## FASE 2 — Contas Bancárias + Open Finance ✅
-- Integração com Pluggy.ai (ativa com credenciais)
+- Integração com Pluggy.ai (implementada, desativada — ver FASE 8)
 - Cadastro de contas bancárias por empresa (10 bancos BR)
 - Importação de extrato OFX/QFX com deduplicação por FITID
 - Lançamento manual de transações com categorias por setor
 - Listagem paginada com filtros de período/tipo/status
 - Saldo atualizado atomicamente em todas as operações
 
-## FASE 3 — Dashboard avançado + Relatórios 🔜
-- Dashboard com gráficos de fluxo de caixa (recharts ou chart.js)
-- DRE simplificada por período
-- Relatório de categorias (receita vs. despesa)
-- Motor de categorização automática por CNPJ
-- Tabela de fornecedores
+## FASE 2.1 — Correções de interface 🔜 (antes da FASE 3)
+- Bug #8: Botão "Nova Conta" no header e estado vazio de `/contas-bancarias`
+- Bug #9: Botão "Nova Transação" na página global de transações
+- Bug #10: try/catch nos handlers GET das APIs + acessos defensivos no frontend
+
+## FASE 3 — IA Contadora para transações OFX 🔜
+- Categorização automática de transações OFX via BrasilAPI (lookup de CNPJ)
+- Claude API para sugerir categoria quando CNPJ não é identificado pela BrasilAPI
+- Regras de aprendizado (`ai_learning_rules`): aprende uma vez, aplica em todas as próximas
+- Tabela de fornecedores com CNPJ, nome e categoria padrão
+- Notificações de transações pendentes de categorização
 - Refresh token (JWT expira em 24h atualmente)
 
-## FASE 4 — IA Contadora + Regras de Aprendizado
-- Motor de categorização automática por CNPJ
-- Tabela de fornecedores com lookup Receita Federal
-- Regras de aprendizado da IA (`ai_learning_rules`)
-- Notificações de transações pendentes
+## FASE 4 — Dashboard avançado + Relatórios
+- Dashboard com gráficos de fluxo de caixa (recharts ou chart.js)
+- DRE simplificada por período
+- Relatório de categorias (receita vs. despesa por setor)
+- Consolidação multi-empresa
 
 ## FASE 5 — IA Contadora (Chat)
 - Chat conversacional com Claude (Anthropic API)
@@ -49,3 +54,10 @@ Auth, CRUD de empresas, banco de dados, testes básicos.
 - Planos: Starter (R$149), Business (R$399), Enterprise (R$999)
 - Integração Stripe ou Kiwify
 - Onboarding de novos clientes
+
+## FASE 8 — Open Finance (Pluggy completo) ⏸ adiado
+**Motivo do adiamento:** bancos do usuário (Banrisul, Sicredi, Caixa Econômica Federal) não têm suporte estável no Pluggy. Enquanto isso, OFX cobre o caso de uso principal.
+- Reativar e completar integração Pluggy.ai
+- Widget de conexão bancária na interface
+- Sincronização automática em tempo real
+- Suporte a Banrisul, Sicredi e CEF quando disponíveis no Pluggy

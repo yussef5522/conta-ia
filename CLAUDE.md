@@ -10,7 +10,7 @@ Conta IA é um SaaS de gestão financeira para empresas brasileiras com agente d
 
 **Público-alvo inicial:** pequenas e médias empresas brasileiras de qualquer setor (academias, lojas, restaurantes, clínicas, salões, prestadores de serviço, comércios, etc.)
 
-**Fase atual:** MVP - desenvolvimento e validação interna
+**Fase atual:** FASE 2 concluída — em FASE 2.1 (correções de interface antes da FASE 3)
 
 ## Diferenciais competitivos
 
@@ -23,14 +23,16 @@ Conta IA é um SaaS de gestão financeira para empresas brasileiras com agente d
 
 ## Stack técnica
 
-- **Backend:** Node.js + Express + TypeScript
+- **Backend:** Next.js 14 API Routes + TypeScript (não Express — fullstack Next.js)
 - **Banco de dados:** SQLite (desenvolvimento local) / PostgreSQL (produção futura)
+- **ORM:** Prisma
 - **Frontend:** Next.js 14 + TailwindCSS + shadcn/ui
-- **Autenticação:** JWT + bcrypt
-- **Open Finance:** Pluggy.ai (integração principal)
-- **OCR:** Google Document AI ou AWS Textract
-- **IA Contadora:** API Anthropic (Claude) com RAG
-- **Pagamentos SaaS:** Stripe ou Kiwify
+- **Autenticação:** JWT + bcrypt (sem refresh token ainda — previsto FASE 3)
+- **Open Finance:** Pluggy.ai (implementado na FASE 2, adiado para FASE 8 — bancos do usuário não suportados bem)
+- **Importação bancária:** OFX/QFX (principal método atual — SGML e XML)
+- **IA Contadora:** API Anthropic (Claude) com BrasilAPI — previsto FASE 3
+- **OCR:** Google Document AI ou AWS Textract (futuro)
+- **Pagamentos SaaS:** Stripe ou Kiwify (futuro)
 - **Hospedagem:** localhost durante desenvolvimento (Windows)
 
 **Ambiente de desenvolvimento:** Windows do Yussef (mesma máquina do AcadOS)
@@ -124,14 +126,19 @@ Um usuário pode ter empresas ilimitadas (limitado pelo plano SaaS). Cada empres
 - Logs de auditoria para ações financeiras
 - Certificado digital A1/A3 para emissão de NF-e (quando implementado)
 
-## Próximos passos imediatos (FASE 1)
+## Próximos passos imediatos (FASE 2.1 → FASE 3)
 
-1. Setup inicial do projeto Next.js + Prisma + SQLite
-2. Schema do banco com migrations
-3. Tela de login e cadastro
-4. Dashboard vazio após login
-5. CRUD de empresas (sem integração bancária ainda)
-6. Testes básicos
+**FASE 2.1 — Correções de interface (em andamento):**
+1. Adicionar botão "Nova Conta" no header de `/contas-bancarias` e no estado vazio
+2. Adicionar botão "Nova Transação" na página global de transações
+3. Adicionar try/catch nos handlers GET das APIs de contas e transações
+
+**FASE 3 — IA Contadora para transações OFX:**
+- Categorização automática via BrasilAPI (CNPJ)
+- Claude API para sugerir categoria quando BrasilAPI não identifica
+- Regras de aprendizado (`ai_learning_rules`)
+- Tabela de fornecedores
+- Dashboard com gráficos de fluxo de caixa
 
 ## Observações do owner (Yussef)
 

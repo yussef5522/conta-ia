@@ -128,8 +128,35 @@ PLUGGY_CLIENT_SECRET=seu_client_secret
 
 ---
 
+---
+
+## FASE 2.1 — Correções pendentes (antes da FASE 3)
+
+**Status:** aguardando aprovação para implementação  
+**Data de identificação:** 2026-04-21
+
+### Bug #8 — Botão "Nova Conta" ausente no header e estado vazio
+- **Arquivo:** `app/(dashboard)/contas-bancarias/page.tsx`
+- **Problema:** o botão "Nova Conta" só aparece dentro do loop `grupos.map` (quando já existem contas cadastradas). O `<Header>` não recebe `children`, e o estado vazio direciona apenas para "Ver Empresas", sem opção de criar conta diretamente.
+- **Solução planejada:** adicionar botão "Nova Conta" como `children` do `<Header>` (sempre visível) e substituir o botão do estado vazio por "Nova Conta" com link para a empresa do usuário.
+- **Impacto:** Alta — bloqueia fluxo de primeiro uso.
+
+### Bug #9 — Botão "Nova Transação" ausente na página global
+- **Arquivo:** `app/(dashboard)/transacoes/page.tsx`
+- **Problema:** `Plus` e `Upload` são importados mas não utilizados no JSX. Não há botão de ação no `<Header>` nem na página. A rota `app/(dashboard)/transacoes/nova/` não existe.
+- **Solução planejada:** adicionar botão "Nova Transação" no header que direciona para seleção de conta, depois para `/empresas/[id]/contas/[contaId]/transacoes/nova`. Remover imports não utilizados.
+- **Impacto:** Alta — usuário não consegue lançar transação manual pela página global.
+
+### Bug #10 — Handlers GET sem try/catch nas APIs
+- **Arquivos:** `app/api/contas-bancarias/route.ts:7`, `app/api/transacoes/route.ts:7`
+- **Problema:** os handlers `GET` de ambas as rotas não têm try/catch. Qualquer erro de banco retorna 500 sem mensagem estruturada. No frontend, `t.bankAccount.company.tradeName` em `transacoes/page.tsx:232` é acessado sem verificação defensiva.
+- **Solução planejada:** adicionar try/catch em todos os handlers GET, retornar `{ erro: 'Mensagem em pt-BR' }` estruturado, adicionar verificações defensivas nos acessos a propriedades aninhadas no frontend.
+- **Impacto:** Médio — não quebra em operação normal, mas qualquer hiccup do banco vira erro sem diagnóstico.
+
+---
+
 ## FASE 3 — Próximo
 
 Ver `docs/ROADMAP.md` para o planejamento completo.
 
-Foco previsto da FASE 3: **Dashboard financeiro avançado + Relatórios (DRE, Fluxo de Caixa)**
+Foco previsto da FASE 3: **IA Contadora para transações OFX (Claude API + BrasilAPI + aprendizado)**

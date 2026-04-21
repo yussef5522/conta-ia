@@ -37,6 +37,16 @@ Registro histórico de bugs, dívidas técnicas e limitações conhecidas.
 
 ---
 
+## Abertos — bugs de interface identificados na FASE 2.1
+
+| # | Problema | Arquivo | Impacto | Prioridade | Fase prevista |
+|---|----------|---------|---------|-----------|--------------|
+| 8 | Botão "Nova Conta" ausente no header e no estado vazio da página global | `app/(dashboard)/contas-bancarias/page.tsx` | ALTO — usuário sem contas cadastradas não consegue criar conta a partir dessa página; botão só aparece dentro do loop quando já existem contas | Alta | FASE 2.1 |
+| 9 | Botão "Nova Transação" ausente na página global de transações | `app/(dashboard)/transacoes/page.tsx` | ALTO — ícones `Plus` e `Upload` importados mas não usados; não há caminho para lançar transação manualmente a partir dessa página | Alta | FASE 2.1 |
+| 10 | Handlers GET sem try/catch nas APIs de contas e transações | `app/api/contas-bancarias/route.ts:7` e `app/api/transacoes/route.ts:7` | MÉDIO — qualquer erro de banco (SQLite locked, connection drop) vira erro 500 sem mensagem útil; acesso a `t.bankAccount.company` no frontend é frágil se o include falhar | Média | FASE 2.1 |
+
+---
+
 ## Dívida técnica
 
 | # | Item | Descrição |
