@@ -130,10 +130,10 @@ PLUGGY_CLIENT_SECRET=seu_client_secret
 
 ---
 
-## FASE 2.1 — Correções pendentes (antes da FASE 3)
+## FASE 2.1 — Correções de interface ✅
 
-**Status:** aguardando aprovação para implementação  
-**Data de identificação:** 2026-04-21
+**Status:** concluída  
+**Data:** 2026-04-21
 
 ### Bug #8 — Botão "Nova Conta" ausente no header e estado vazio
 - **Arquivo:** `app/(dashboard)/contas-bancarias/page.tsx`

@@ -19,7 +19,7 @@ Auth, CRUD de empresas, banco de dados, testes básicos.
 - Listagem paginada com filtros de período/tipo/status
 - Saldo atualizado atomicamente em todas as operações
 
-## FASE 2.1 — Correções de interface 🔜 (antes da FASE 3)
+## FASE 2.1 — Correções de interface ✅
 - Bug #8: Botão "Nova Conta" no header e estado vazio de `/contas-bancarias`
 - Bug #9: Botão "Nova Transação" na página global de transações
 - Bug #10: try/catch nos handlers GET das APIs + acessos defensivos no frontend
