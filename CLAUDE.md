@@ -24,7 +24,7 @@ Conta IA é um SaaS de gestão financeira para empresas brasileiras com agente d
 ## Stack técnica
 
 - **Backend:** Next.js 14 API Routes + TypeScript (não Express — fullstack Next.js)
-- **Banco de dados:** SQLite (desenvolvimento local) / PostgreSQL (produção futura)
+- **Banco de dados:** SQLite (desenvolvimento local, `file:./dev.db`) / PostgreSQL 16 (produção no DigitalOcean) — estratégia dual: schema.prisma usa `provider = "sqlite"` em dev; no servidor, dois `sed` trocam para `postgresql` antes de `prisma migrate deploy` (ver `docs/DEPLOY.md` etapa 5)
 - **ORM:** Prisma
 - **Frontend:** Next.js 14 + TailwindCSS + shadcn/ui
 - **Autenticação:** JWT + bcrypt (sem refresh token ainda — previsto FASE 3)
@@ -33,7 +33,8 @@ Conta IA é um SaaS de gestão financeira para empresas brasileiras com agente d
 - **IA Contadora:** API Anthropic (Claude) com BrasilAPI — previsto FASE 3
 - **OCR:** Google Document AI ou AWS Textract (futuro)
 - **Pagamentos SaaS:** Stripe ou Kiwify (futuro)
-- **Hospedagem:** localhost durante desenvolvimento (Windows)
+- **Hospedagem:** desenvolvimento local Windows (`localhost:3000`) / produção DigitalOcean droplet `167.172.159.101` porta `3001` (PM2 + nginx)
+- **Guia de deploy:** `docs/DEPLOY.md` — inclui checklist de status, etapas completas e troubleshooting
 
 **Ambiente de desenvolvimento:** Windows do Yussef (mesma máquina do AcadOS)
 
