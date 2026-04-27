@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Plus, Landmark, ArrowUpRight, ArrowDownRight, Building2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -43,6 +44,7 @@ interface EmpresaGroup {
 }
 
 export default function ContasBancariasPage() {
+  const router = useRouter()
   const [grupos, setGrupos] = useState<EmpresaGroup[]>([])
   const [loading, setLoading] = useState(true)
   const [saldoGeral, setSaldoGeral] = useState(0)
@@ -118,10 +120,12 @@ export default function ContasBancariasPage() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               {grupos.map((g) => (
-                <DropdownMenuItem key={g.id} asChild>
-                  <Link href={`/empresas/${g.id}/contas/nova`}>
-                    {g.tradeName ?? g.name}
-                  </Link>
+                <DropdownMenuItem
+                  key={g.id}
+                  className="cursor-pointer"
+                  onSelect={() => router.push(`/empresas/${g.id}/contas/nova`)}
+                >
+                  {g.tradeName ?? g.name}
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   Plus, ArrowUpRight, ArrowDownRight, Filter,
@@ -65,6 +66,7 @@ interface Transacao {
 interface Paginacao { total: number; page: number; limit: number; totalPages: number }
 
 export default function TransacoesPage() {
+  const router = useRouter()
   const { toast } = useToast()
 
   const [transacoes, setTransacoes] = useState<Transacao[]>([])
@@ -151,10 +153,12 @@ export default function TransacoesPage() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               {contas.map((c) => (
-                <DropdownMenuItem key={c.id} asChild>
-                  <Link href={`/empresas/${c.companyId}/contas/${c.id}/transacoes/nova`}>
-                    {c.company.tradeName ?? c.company.name} · {c.name}
-                  </Link>
+                <DropdownMenuItem
+                  key={c.id}
+                  className="cursor-pointer"
+                  onSelect={() => router.push(`/empresas/${c.companyId}/contas/${c.id}/transacoes/nova`)}
+                >
+                  {c.company.tradeName ?? c.company.name} · {c.name}
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>
