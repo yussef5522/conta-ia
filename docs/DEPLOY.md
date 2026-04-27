@@ -1,10 +1,29 @@
 # Deploy — Conta IA no DigitalOcean
 
 **Servidor:** Ubuntu 24.04 LTS  
-**IP:** 167.172.159.XXX ← preencha com o IP completo  
+**IP:** 167.172.159.101  
 **Banco:** PostgreSQL 16  
-**Processo:** PM2  
+**Processo:** PM2 (porta 3001)  
 **App path:** /opt/conta-ia
+
+---
+
+## Status do deploy
+
+### Concluído (no repositório)
+- [x] Migrar schema Prisma para PostgreSQL (produção)
+- [x] Manter SQLite em desenvolvimento
+- [x] Criar migration inicial PostgreSQL
+- [x] Atualizar .env.example
+- [x] Criar docs/DEPLOY.md
+
+### Pendente (no servidor 167.172.159.101)
+- [ ] Instalar PostgreSQL no servidor
+- [ ] Criar banco contaia_production
+- [ ] Configurar variáveis de ambiente em produção
+- [ ] Clonar projeto em /opt/conta-ia
+- [ ] Buildar e subir no PM2 porta 3001
+- [ ] Testar acesso público
 
 ---
 
@@ -46,7 +65,7 @@ GRANT ALL PRIVILEGES ON DATABASE contaia_production TO contaia_user;
 \q
 ```
 
-Anote a senha — você vai precisar na ETAPA 5.
+Anote a senha — você vai precisar na ETAPA 4.
 
 Teste a conexão:
 ```bash
@@ -78,7 +97,7 @@ cp .env.example .env
 nano .env
 ```
 
-Preencha com estes valores (substitua os placeholders):
+Preencha com estes valores:
 
 ```env
 DATABASE_URL="postgresql://contaia_user:SENHA_FORTE_AQUI@localhost:5432/contaia_production"
@@ -86,7 +105,7 @@ DATABASE_URL="postgresql://contaia_user:SENHA_FORTE_AQUI@localhost:5432/contaia_
 # Gere com: openssl rand -base64 64
 JWT_SECRET="COLE_AQUI_O_RESULTADO_DO_OPENSSL"
 
-NEXT_PUBLIC_APP_URL="http://167.172.159.XXX"
+NEXT_PUBLIC_APP_URL="http://167.172.159.101:3001"
 ```
 
 Para gerar o JWT_SECRET:
@@ -97,10 +116,17 @@ openssl rand -base64 64
 
 ---
 
-## ETAPA 5 — Instalar dependências e executar migrations
+## ETAPA 5 — Ajustar schema para PostgreSQL e aplicar migration
+
+O schema.prisma em desenvolvimento usa SQLite. No servidor, antes de rodar
+a migration, é preciso trocar o provider para postgresql em dois arquivos:
 
 ```bash
 cd /opt/conta-ia
+
+# Troca provider de sqlite para postgresql no schema e no lock file
+sed -i 's/provider = "sqlite"/provider = "postgresql"/' prisma/schema.prisma
+sed -i 's/provider = "sqlite"/provider = "postgresql"/' prisma/migrations/migration_lock.toml
 
 # Instalar dependências (sem devDependencies)
 npm ci --omit=dev
@@ -110,7 +136,6 @@ npm run db:generate
 
 # Aplicar migration no banco de produção
 npm run db:migrate:deploy
-# Equivale a: prisma migrate deploy
 # Cria todas as tabelas conforme prisma/migrations/20260427000000_init/migration.sql
 
 # Criar usuário admin inicial
@@ -136,13 +161,13 @@ O build deve terminar com `✓ Compiled successfully`. Se falhar, verifique o lo
 
 ---
 
-## ETAPA 7 — Iniciar com PM2
+## ETAPA 7 — Iniciar com PM2 na porta 3001
 
 ```bash
 cd /opt/conta-ia
 
-# Iniciar a aplicação na porta 3000
-pm2 start npm --name "conta-ia" -- start
+# Iniciar a aplicação na porta 3001
+PORT=3001 pm2 start npm --name "conta-ia" -- start
 
 # Salvar processo para sobreviver a reboot
 pm2 save
@@ -154,12 +179,12 @@ pm2 status
 pm2 logs conta-ia --lines 50
 ```
 
-Teste no navegador: `http://167.172.159.XXX:3000`  
+Teste no navegador: `http://167.172.159.101:3001`  
 Login: `admin@contaia.com.br` / `ContaIA@2025`
 
 ---
 
-## ETAPA 8 — Configurar porta 80 com nginx (opcional mas recomendado)
+## ETAPA 8 — Configurar nginx na porta 80 (recomendado)
 
 ```bash
 apt install -y nginx
@@ -167,10 +192,10 @@ apt install -y nginx
 cat > /etc/nginx/sites-available/conta-ia << 'EOF'
 server {
     listen 80;
-    server_name 167.172.159.XXX;
+    server_name 167.172.159.101;
 
     location / {
-        proxy_pass http://localhost:3000;
+        proxy_pass http://localhost:3001;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -186,7 +211,7 @@ nginx -t
 systemctl reload nginx
 ```
 
-Com nginx, a aplicação fica acessível em `http://167.172.159.XXX` (porta 80).
+Com nginx, a aplicação fica acessível em `http://167.172.159.101` (porta 80).
 
 ---
 
@@ -198,7 +223,9 @@ cd /opt/conta-ia
 # Puxar código novo
 git pull origin main
 
-# Se houver novas migrations:
+# Se houver novas migrations (verificar se há arquivos novos em prisma/migrations/):
+sed -i 's/provider = "sqlite"/provider = "postgresql"/' prisma/schema.prisma
+sed -i 's/provider = "sqlite"/provider = "postgresql"/' prisma/migrations/migration_lock.toml
 npm run db:migrate:deploy
 
 # Rebuild e restart
@@ -212,34 +239,15 @@ pm2 logs conta-ia --lines 30
 
 ---
 
-## Atenção: desenvolvimento local após migração para PostgreSQL
+## Desenvolvimento local (SQLite — sem alteração)
 
-O schema Prisma agora usa `provider = "postgresql"`. Para rodar localmente, você precisa de PostgreSQL local. Opções:
+O schema.prisma usa `provider = "sqlite"` para desenvolvimento. Não é necessário
+instalar PostgreSQL localmente. O `.env` local continua com `DATABASE_URL="file:./dev.db"`.
 
-**Opção A — PostgreSQL local no Windows:**
-- Instale o PostgreSQL 16 para Windows: https://www.postgresql.org/download/windows/
-- Crie banco `contaia_dev` e usuário `contaia_user` localmente
-- Ajuste `DATABASE_URL` no `.env` local
-
-**Opção B — Docker (recomendado):**
 ```bash
-docker run -d \
-  --name conta-ia-postgres \
-  -e POSTGRES_USER=contaia_user \
-  -e POSTGRES_PASSWORD=postgres \
-  -e POSTGRES_DB=contaia_dev \
-  -p 5432:5432 \
-  postgres:16
-```
-Então no `.env` local:
-```
-DATABASE_URL="postgresql://contaia_user:postgres@localhost:5432/contaia_dev"
-```
-
-Após configurar o banco local:
-```bash
-npm run db:migrate:deploy   # aplica a migration
-npm run db:seed             # cria usuário admin
+# Comandos locais (sem mudança em relação ao padrão)
+npm run db:push     # aplica schema no SQLite local
+npm run db:seed     # cria usuário admin
 npm run dev
 ```
 
@@ -251,7 +259,7 @@ npm run dev
 |----------|-----------|-----------|
 | `DATABASE_URL` | String de conexão PostgreSQL | Definida nas etapas acima |
 | `JWT_SECRET` | Chave secreta para JWT | `openssl rand -base64 64` |
-| `NEXT_PUBLIC_APP_URL` | URL pública da aplicação | IP ou domínio do servidor |
+| `NEXT_PUBLIC_APP_URL` | URL pública da aplicação | `http://167.172.159.101:3001` |
 
 Variáveis opcionais (ativar conforme avanço das fases):
 
@@ -265,6 +273,14 @@ Variáveis opcionais (ativar conforme avanço das fases):
 
 ## Troubleshooting
 
+**`prisma migrate deploy` falha com "provider mismatch":**  
+Certifique-se de ter rodado os dois `sed` da ETAPA 5 antes de executar a migration.
+```bash
+grep provider prisma/schema.prisma
+grep provider prisma/migrations/migration_lock.toml
+# ambos devem mostrar: provider = "postgresql"
+```
+
 **`prisma migrate deploy` falha com "relation already exists":**  
 O banco já tem tabelas criadas manualmente. Limpe o banco e refaça:
 ```bash
@@ -272,14 +288,14 @@ sudo -u postgres psql -d contaia_production -c "DROP SCHEMA public CASCADE; CREA
 npm run db:migrate:deploy
 ```
 
-**PM2 não inicia / erro de porta:**  
+**PM2 não inicia / erro de porta:**
 ```bash
 pm2 logs conta-ia
-# verifique se PORT=3000 está livre
-lsof -i :3000
+# verificar se porta 3001 está livre
+lsof -i :3001
 ```
 
-**Build falha com erro de TypeScript:**  
+**Build falha com erro de TypeScript:**
 ```bash
 npm run build 2>&1 | head -50
 # corrija o erro reportado antes de continuar
