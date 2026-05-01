@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/components/ui/use-toast'
 import { TIPOS_CONTA } from '@/lib/validations/conta-bancaria'
+import { BANCOS_BR } from '@/lib/bancos'
 
 const TIPO_LABELS: Record<string, string> = {
   CHECKING: 'Conta Corrente',
@@ -16,19 +17,8 @@ const TIPO_LABELS: Record<string, string> = {
   INVESTMENT: 'Conta Investimento',
 }
 
-const BANCOS_BR = [
-  { code: '001', name: 'Banco do Brasil' },
-  { code: '033', name: 'Santander' },
-  { code: '104', name: 'Caixa Econômica Federal' },
-  { code: '237', name: 'Bradesco' },
-  { code: '341', name: 'Itaú' },
-  { code: '260', name: 'Nubank' },
-  { code: '290', name: 'PagBank' },
-  { code: '323', name: 'Mercado Pago' },
-  { code: '336', name: 'C6 Bank' },
-  { code: '077', name: 'Inter' },
-  { code: '000', name: 'Outro' },
-]
+// Código sentinela para "Outro" — usado só na UI, não pertence à lista canônica.
+const CODIGO_OUTRO = '000'
 
 interface ContaFormProps {
   empresaId: string
@@ -113,15 +103,17 @@ export function ContaForm({ empresaId, conta }: ContaFormProps) {
           <div className="space-y-2">
             <Label htmlFor="bankCode">Banco</Label>
             <Select value={form.bankCode} onValueChange={(v) => {
-              const banco = BANCOS_BR.find(b => b.code === v)
+              const banco = BANCOS_BR.find((b) => b.codigo === v)
               set('bankCode', v)
-              if (banco) set('bankName', banco.name)
+              if (banco) set('bankName', banco.nome)
+              else if (v === CODIGO_OUTRO) set('bankName', '')
             }}>
               <SelectTrigger id="bankCode"><SelectValue placeholder="Selecione o banco" /></SelectTrigger>
               <SelectContent>
                 {BANCOS_BR.map((b) => (
-                  <SelectItem key={b.code} value={b.code}>{b.name}</SelectItem>
+                  <SelectItem key={b.codigo} value={b.codigo}>{b.nome}</SelectItem>
                 ))}
+                <SelectItem value={CODIGO_OUTRO}>Outro</SelectItem>
               </SelectContent>
             </Select>
           </div>

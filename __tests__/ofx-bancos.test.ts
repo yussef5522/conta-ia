@@ -1,38 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { detectarBanco, normalizarCodigoBanco, bateComPerfilDaConta } from '../lib/ofx/bancos'
-
-describe('normalizarCodigoBanco', () => {
-  it('retorna null para entrada vazia ou null', () => {
-    expect(normalizarCodigoBanco(null)).toBeNull()
-    expect(normalizarCodigoBanco(undefined)).toBeNull()
-    expect(normalizarCodigoBanco('')).toBeNull()
-    expect(normalizarCodigoBanco('   ')).toBeNull()
-  })
-
-  it('retorna null para entrada não numérica', () => {
-    expect(normalizarCodigoBanco('abc')).toBeNull()
-    expect(normalizarCodigoBanco('341X')).toBeNull()
-  })
-
-  it('preserva código de 3 dígitos', () => {
-    expect(normalizarCodigoBanco('341')).toBe('341')
-    expect(normalizarCodigoBanco('001')).toBe('001')
-  })
-
-  it('preenche com zeros à esquerda códigos curtos', () => {
-    expect(normalizarCodigoBanco('41')).toBe('041')
-    expect(normalizarCodigoBanco('1')).toBe('001')
-  })
-
-  it('trunca para os últimos 3 dígitos quando longo', () => {
-    expect(normalizarCodigoBanco('0341')).toBe('341')
-    expect(normalizarCodigoBanco('00041')).toBe('041')
-  })
-
-  it('faz trim de espaços', () => {
-    expect(normalizarCodigoBanco('  341  ')).toBe('341')
-  })
-})
+import { detectarBanco, bateComPerfilDaConta } from '../lib/ofx/bancos'
+import { BANCOS_BR } from '../lib/bancos'
 
 describe('detectarBanco', () => {
   it('detecta os 8 bancos do Yussef', () => {
@@ -46,13 +14,13 @@ describe('detectarBanco', () => {
     expect(detectarBanco('260')?.nome).toBe('Nubank')
   })
 
-  it('detecta bancos adicionais (BB, Inter, BTG, C6, Mercado Pago, PagSeguro, Safra)', () => {
+  it('detecta bancos adicionais (BB, Inter, BTG, C6, Mercado Pago, PagBank, Safra)', () => {
     expect(detectarBanco('001')?.nome).toBe('Banco do Brasil')
     expect(detectarBanco('077')?.nome).toBe('Inter')
     expect(detectarBanco('208')?.nome).toBe('BTG Pactual')
     expect(detectarBanco('336')?.nome).toBe('C6 Bank')
     expect(detectarBanco('323')?.nome).toBe('Mercado Pago')
-    expect(detectarBanco('290')?.nome).toBe('PagSeguro')
+    expect(detectarBanco('290')?.nome).toBe('PagBank')
     expect(detectarBanco('422')?.nome).toBe('Safra')
   })
 
@@ -109,5 +77,36 @@ describe('bateComPerfilDaConta', () => {
   it('código tem prioridade sobre nome', () => {
     // Cadastro com nome certo mas código errado → false
     expect(bateComPerfilDaConta({ bankName: 'Banrisul', bankCode: '341' }, banrisul)).toBe(false)
+  })
+})
+
+describe('consistência entre lista canônica e detecção OFX', () => {
+  it('todo banco da lista canônica é detectável pelo seu próprio código', () => {
+    for (const b of BANCOS_BR) {
+      const detectado = detectarBanco(b.codigo)
+      expect(detectado, `banco ${b.nome} (${b.codigo}) não foi detectado`).not.toBeNull()
+      expect(detectado).toEqual({ codigo: b.codigo, nome: b.nome })
+    }
+  })
+
+  it('detecção retorna o mesmo nome que o cadastro do form (sem divergência)', () => {
+    // Garante que se mudar a lista, ambos os usos (form e OFX) leem o mesmo dado.
+    for (const b of BANCOS_BR) {
+      expect(detectarBanco(b.codigo)?.nome).toBe(b.nome)
+    }
+  })
+
+  it('cadastro com bankCode da lista canônica bate com detecção do mesmo código', () => {
+    for (const b of BANCOS_BR) {
+      const conta = { bankName: null, bankCode: b.codigo }
+      expect(bateComPerfilDaConta(conta, b)).toBe(true)
+    }
+  })
+
+  it('cadastro com bankName da lista canônica bate com detecção do mesmo banco', () => {
+    for (const b of BANCOS_BR) {
+      const conta = { bankName: b.nome, bankCode: null }
+      expect(bateComPerfilDaConta(conta, b)).toBe(true)
+    }
   })
 })

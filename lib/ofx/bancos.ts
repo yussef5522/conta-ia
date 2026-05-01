@@ -1,43 +1,17 @@
-// Mapa de códigos FEBRABAN (BANKID no OFX) para nome do banco.
-// Cobre os principais bancos brasileiros usados pelas empresas-alvo do Conta IA.
+// Helpers de detecção de banco a partir de arquivos OFX.
+// A lista canônica vive em `lib/bancos.ts` — este módulo só adiciona a lógica
+// específica do contexto OFX (mapear BANKID → banco e comparar com o cadastro).
 
-const BANCOS_FEBRABAN: Record<string, string> = {
-  '001': 'Banco do Brasil',
-  '033': 'Santander',
-  '041': 'Banrisul',
-  '077': 'Inter',
-  '104': 'Caixa Econômica Federal',
-  '208': 'BTG Pactual',
-  '237': 'Bradesco',
-  '260': 'Nubank',
-  '290': 'PagSeguro',
-  '323': 'Mercado Pago',
-  '336': 'C6 Bank',
-  '341': 'Itaú',
-  '422': 'Safra',
-  '748': 'Sicredi',
-  '756': 'Sicoob',
-}
+import { Banco, findBancoByCodigo, normalizarCodigoBanco } from '@/lib/bancos'
 
-export interface BancoDetectado {
-  codigo: string
-  nome: string
-}
+// Re-exporta utilitários genéricos para conveniência de quem importa daqui.
+export { normalizarCodigoBanco }
+export type { Banco }
 
-// Normaliza BANKID em código FEBRABAN de 3 dígitos (ex: "0341" → "341", "41" → "041").
-export function normalizarCodigoBanco(bankId: string | null | undefined): string | null {
-  if (!bankId) return null
-  const limpo = bankId.trim()
-  if (!limpo || !/^\d+$/.test(limpo)) return null
-  return limpo.padStart(3, '0').slice(-3)
-}
-
-export function detectarBanco(bankId: string | null | undefined): BancoDetectado | null {
-  const codigo = normalizarCodigoBanco(bankId)
-  if (!codigo) return null
-  const nome = BANCOS_FEBRABAN[codigo]
-  if (!nome) return null
-  return { codigo, nome }
+// Detecta o banco a partir do BANKID extraído do OFX.
+// Retorna null se o código não for reconhecido na lista canônica.
+export function detectarBanco(bankId: string | null | undefined): Banco | null {
+  return findBancoByCodigo(bankId)
 }
 
 // Retorna se o banco detectado bate com o cadastro da conta.
@@ -46,7 +20,7 @@ export function detectarBanco(bankId: string | null | undefined): BancoDetectado
 // false = não bate
 export function bateComPerfilDaConta(
   conta: { bankName: string | null; bankCode: string | null },
-  banco: BancoDetectado,
+  banco: Banco,
 ): boolean | null {
   if (conta.bankCode) {
     const codigoCadastrado = normalizarCodigoBanco(conta.bankCode)
