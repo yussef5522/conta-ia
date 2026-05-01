@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Upload, FileText, AlertCircle, Check, ArrowUpRight, ArrowDownRight, Loader2 } from 'lucide-react'
+import { Upload, FileText, AlertCircle, Check, ArrowUpRight, ArrowDownRight, Loader2, Landmark, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -19,12 +19,19 @@ interface PreviewItem {
   memo: string
 }
 
+interface BancoDetectado {
+  codigo: string
+  nome: string
+  batePerfilConta: boolean | null // null = conta sem cadastro, true/false = bate ou não
+}
+
 interface PreviewResult {
   preview: PreviewItem[]
   total: number
   novas: number
   duplicadas: number
   errosParser: string[]
+  banco: BancoDetectado | null
 }
 
 export default function ImportarOFXPage() {
@@ -38,10 +45,13 @@ export default function ImportarOFXPage() {
   const [preview, setPreview] = useState<PreviewResult | null>(null)
   const [loadingPreview, setLoadingPreview] = useState(false)
   const [loadingImport, setLoadingImport] = useState(false)
+  const [salvandoBanco, setSalvandoBanco] = useState(false)
+  const [bancoSalvo, setBancoSalvo] = useState(false)
 
   async function handleFile(file: File) {
     setArquivo(file)
     setPreview(null)
+    setBancoSalvo(false)
     setLoadingPreview(true)
 
     try {
@@ -61,6 +71,46 @@ export default function ImportarOFXPage() {
       toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível ler o arquivo.' })
     } finally {
       setLoadingPreview(false)
+    }
+  }
+
+  async function salvarBancoNoCadastro() {
+    if (!preview?.banco) return
+    setSalvandoBanco(true)
+    try {
+      // Busca dados atuais da conta para preservar campos não relacionados
+      const getRes = await fetch(`/api/contas-bancarias/${contaId}`)
+      if (!getRes.ok) {
+        toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível ler a conta atual.' })
+        return
+      }
+      const { conta } = await getRes.json()
+
+      // PUT espera o schema completo da conta — preservamos tudo, só sobrescrevemos banco
+      const putRes = await fetch(`/api/contas-bancarias/${contaId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: conta.name,
+          accountType: conta.accountType,
+          balance: conta.balance,
+          agency: conta.agency ?? '',
+          accountNumber: conta.accountNumber ?? '',
+          bankName: preview.banco.nome,
+          bankCode: preview.banco.codigo,
+        }),
+      })
+      if (!putRes.ok) {
+        const data = await putRes.json().catch(() => ({}))
+        toast({ variant: 'destructive', title: 'Erro ao salvar banco', description: data.erro ?? 'Tente novamente.' })
+        return
+      }
+      setBancoSalvo(true)
+      toast({ variant: 'success', title: 'Banco salvo no cadastro', description: `${preview.banco.nome} (${preview.banco.codigo}) vinculado à conta.` })
+    } catch {
+      toast({ variant: 'destructive', title: 'Erro', description: 'Falha ao salvar banco no cadastro.' })
+    } finally {
+      setSalvandoBanco(false)
     }
   }
 
@@ -135,6 +185,59 @@ export default function ImportarOFXPage() {
       {/* Preview */}
       {preview && (
         <>
+          {/* Banco detectado */}
+          {preview.banco && (
+            <Card
+              className={
+                preview.banco.batePerfilConta === false
+                  ? 'border-yellow-300 bg-yellow-50 dark:bg-yellow-950/20'
+                  : preview.banco.batePerfilConta === true || bancoSalvo
+                  ? 'border-green-300 bg-green-50 dark:bg-green-950/20'
+                  : ''
+              }
+            >
+              <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-start gap-3">
+                  {preview.banco.batePerfilConta === false ? (
+                    <AlertTriangle className="h-5 w-5 text-yellow-600 mt-0.5 shrink-0" />
+                  ) : preview.banco.batePerfilConta === true || bancoSalvo ? (
+                    <Check className="h-5 w-5 text-green-600 mt-0.5 shrink-0" />
+                  ) : (
+                    <Landmark className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
+                  )}
+                  <div>
+                    <p className="text-sm font-semibold">
+                      Banco detectado: {preview.banco.nome}{' '}
+                      <span className="font-normal text-muted-foreground">({preview.banco.codigo})</span>
+                    </p>
+                    {preview.banco.batePerfilConta === false ? (
+                      <p className="text-xs text-yellow-700 dark:text-yellow-400 mt-1">
+                        Não bate com o banco cadastrado nesta conta. Confira se você está importando o arquivo correto.
+                      </p>
+                    ) : preview.banco.batePerfilConta === true ? (
+                      <p className="text-xs text-green-700 dark:text-green-400 mt-1">
+                        Confere com o cadastro da conta.
+                      </p>
+                    ) : bancoSalvo ? (
+                      <p className="text-xs text-green-700 dark:text-green-400 mt-1">
+                        Banco vinculado ao cadastro da conta.
+                      </p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Esta conta ainda não tem banco cadastrado. Quer salvar?
+                      </p>
+                    )}
+                  </div>
+                </div>
+                {preview.banco.batePerfilConta === null && !bancoSalvo && (
+                  <Button size="sm" variant="outline" onClick={salvarBancoNoCadastro} disabled={salvandoBanco}>
+                    {salvandoBanco ? <><Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />Salvando...</> : 'Salvar no cadastro'}
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           <div className="grid gap-4 sm:grid-cols-3">
             <Card>
               <CardContent className="py-4">

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { parseOFX } from '@/lib/ofx/parser'
+import { detectarBanco, bateComPerfilDaConta } from '@/lib/ofx/bancos'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -36,7 +37,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ erro: 'Erro ao ler arquivo' }, { status: 400 })
   }
 
-  const { transactions, errors } = parseOFX(rawContent)
+  const { transactions, errors, bankId } = parseOFX(rawContent)
 
   if (transactions.length === 0) {
     return NextResponse.json({
@@ -44,6 +45,19 @@ export async function POST(request: NextRequest, { params }: Params) {
       errosParser: errors,
     }, { status: 400 })
   }
+
+  // Detecção de banco a partir do BANKID do OFX (FEBRABAN)
+  const bancoDetectado = detectarBanco(bankId)
+  const banco = bancoDetectado
+    ? {
+        codigo: bancoDetectado.codigo,
+        nome: bancoDetectado.nome,
+        batePerfilConta: bateComPerfilDaConta(
+          { bankName: conta.bankName, bankCode: conta.bankCode },
+          bancoDetectado,
+        ),
+      }
+    : null
 
   // Descobre quais FITIDs já existem para esta conta (deduplicação)
   const fitids = transactions.map((t) => t.fitid)
@@ -69,6 +83,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       novas: novas.length,
       duplicadas,
       errosParser: errors,
+      banco,
     })
   }
 
