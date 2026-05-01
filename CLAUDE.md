@@ -42,7 +42,7 @@
 | Lint | ESLint | next/core-web-vitals |
 | Importação bancária | OFX/QFX (SGML e XML) | atual |
 | Open Finance | Pluggy.ai | implementado FASE 2, ATIVO via Meu Pluggy (Yussef dev) |
-| IA | Anthropic Claude API + BrasilAPI | FASE 4 |
+| IA | Anthropic Claude API + BrasilAPI | FASE 3+4 |
 
 ### Hosting
 - **Dev:** localhost Windows do Yussef → `http://localhost:3000` ✅ FUNCIONANDO
@@ -166,8 +166,8 @@ user_companies       # N:N (user pode ter várias empresas)
 bank_accounts        # cada conta pertence a uma empresa
 transactions         # movimentações vinculadas à conta
 categories           # plano de contas customizável por empresa
-suppliers            # fornecedores identificados por CNPJ (FASE 4)
-ai_learning_rules    # regras aprendidas pela IA (FASE 4)
+suppliers            # fornecedores identificados por CNPJ (FASE 3+4)
+ai_learning_rules    # regras aprendidas pela IA (FASE 3+4)
 invoices             # NF-e, NFC-e, NFS-e (FASE 6)
 ```
 
@@ -185,7 +185,7 @@ Cadastro de empresa permite escolher tipo, sistema ajusta automaticamente plano 
 
 ## 📋 Regras de negócio críticas
 
-### Identificação automática de pagamentos (FASE 4)
+### Identificação automática de pagamentos (FASE 3+4)
 1. Sistema recebe transação (Pluggy ou OFX importado)
 2. Identifica tipo (PIX, TED, boleto, débito automático)
 3. Se tem CNPJ na descrição → consulta `suppliers` local OU BrasilAPI
@@ -212,7 +212,7 @@ Sistema precisa:
 - Comparativo entre empresas do mesmo tipo
 - IA aprende padrões POR EMPRESA (não mistura entre empresas)
 
-### Regra especial PJ → PF (FASE 4)
+### Regra especial PJ → PF (FASE 3+4)
 - Detectar transferências entre contas do mesmo dono (CNPJ → CPF)
 - Classificar como "Distribuição de Lucros" ou "Pró-labore"
 - Não é despesa operacional → afeta DRE corretamente
@@ -224,56 +224,115 @@ Sistema precisa:
 ### ✅ FASE 2.1 — Correções rápidas (CONCLUÍDA)
 3 botões + try/catch nas rotas. Destravou navegação.
 
-### 📍 FASE 3 — Melhorar UX OFX (3-5 dias)
-- Drag & drop de upload
-- Preview antes de importar (X transações, período)
-- Detecção automática do banco pelo OFX
-- Detecção de duplicatas (hash dedup)
-- "Última atualização há X dias" — pressão visual amigável
-- Múltiplos arquivos de uma vez
-- Histórico de uploads
-- **Stretch:** CSV com wizard de mapeamento
-- **Stretch:** PDF com Claude (fase 2)
+### 📍 FASE 3+4 — Importar e classificar perfeito (4-6 semanas) — DIFERENCIAL DO PRODUTO
 
-### 📍 FASE 4 — IA Contadora (1-2 semanas) — DIFERENCIAL DO PRODUTO
-**Setup técnico Yussef (manual, 30 min):**
+**Objetivo:** Yussef importa um OFX e a IA classifica automaticamente com ≥80% de acerto, aprendendo a cada confirmação manual.
+
+**Princípio de execução:** entrar no fluxo "OFX + IA" o quanto antes para Yussef testar com dados reais já a partir de 1 arquivo. Multi-arquivo e histórico de uploads ficam pro fim — não bloqueiam validação da IA.
+
+**Notação:** sub-etapas mantêm os prefixos `3.x` (UX OFX) e `4.x` (IA) por origem, mas a ordem de execução abaixo intercala os dois.
+
+#### 🧪 BLOCO A — UX OFX rápido (1-2 dias)
+Pequenas vitórias visuais antes de mexer com IA. Sem migration.
+
+- [ ] **3.1 — Detecção automática do banco no preview** (~1-2h)
+  - parser já extrai `BANKID`; falta usar
+  - novo `lib/ofx/bancos.ts` com mapa FEBRABAN → nome (Banrisul 041, Bradesco 237, Itaú 341, Santander 033, Sicredi 748, Sicoob 756, Caixa 104, Nubank 260)
+  - API preview retorna `banco: { codigo, nome, batePerfilConta }`
+  - UI mostra "Banco detectado: **Banrisul** (041)"; oferece auto-preencher se conta sem `bankName`
+  - **Teste:** importar OFX do Banrisul numa conta sem `bankName` → ver detecção → aceitar auto-preencher.
+
+- [ ] **3.2 — "Atualizado há X dias" na lista de contas** (~1-2h)
+  - calcular `lastImportAt = max(transactions.createdAt where origin in (OFX, PLUGGY))`
+  - badge na `/contas-bancarias` com cor: verde (<7d), amarelo (8-14d), vermelho (>14d ou nunca)
+  - **Teste:** importar OFX → badge "hoje" verde.
+
+#### 🧠 BLOCO B — Classificação com 1 arquivo (2-3 semanas) — TESTES COM DADOS REAIS COMEÇAM AQUI
+Foco em fazer Yussef classificar manualmente já criando regras, depois automatizar.
+
+- [ ] **4.1 — Schema novo (suppliers + ai_learning_rules)** (~2-3h)
+  - migration: `suppliers` (id, companyId, cnpj, razaoSocial, categoriaId?, fonte=BRASILAPI/MANUAL/CLAUDE, createdAt)
+  - migration: `ai_learning_rules` (id, companyId, padrao, tipoMatch=EXACT/CONTAINS/CNPJ, categoriaId, supplierId?, confianca, vezesAplicada, createdAt, updatedAt)
+  - sem mudança de UI ainda; só base
+  - rodar migration em dev (não em prod ainda)
+
+- [ ] **4.5 — Tela "Pendentes de Classificação" (manual ainda, sem IA)** (~3-4h)
+  - rota nova `/empresas/[id]/pendentes` (ou filtro `?status=PENDING` na página global de transações)
+  - lista transações com `status = PENDING` (todas as importadas via OFX entram assim)
+  - cada linha tem dropdown de categoria + botão "Confirmar"
+  - sem IA ainda — só interface humana eficiente
+  - **Teste:** importar 1 OFX e classificar 30-50 manualmente; medir tempo.
+
+- [ ] **4.6 — Loop: confirmar manualmente cria/atualiza regra** (~3-4h)
+  - ao confirmar categoria, salva `ai_learning_rule` com padrão = primeiras N palavras significativas do `description` (stop-words removidas)
+  - se regra similar já existe (mesmo `padrao` + `tipoMatch`), incrementa `vezesAplicada`
+  - se descrição contém CNPJ válido, salva `supplier` também
+  - 🎯 **MARCO 1:** Yussef já consegue treinar manualmente uma base de regras a partir de 1 OFX importado.
+
+- [ ] **4.2 — Pipeline etapa 1: aplicar regras automaticamente no import** (~2-3h)
+  - hook: ao inserir transações novas via OFX, antes do `createMany`, rodar match contra `ai_learning_rules` da empresa
+  - ordem de match: EXACT → CNPJ → CONTAINS
+  - se bate, `categoryId` preenchido + `status = RECONCILED` (ou novo `AUTOMATICO`)
+  - 🎯 **MARCO 2:** próximo OFX já vem 30-50% pré-classificado.
+
+- [ ] **4.3 — Pipeline etapa 2: enriquecer por CNPJ via BrasilAPI** (~3-4h)
+  - extractor de CNPJ na descrição (regex `\d{2}\.?\d{3}\.?\d{3}/?\d{4}-?\d{2}`)
+  - cache local em `suppliers` por CNPJ
+  - se não tem cache, consulta BrasilAPI (`/cnpj/v1/{cnpj}`), salva `razaoSocial` + sugestão de `categoria` baseada em CNAE primário
+  - rate-limit cliente: 3 req/s
+  - 🎯 **MARCO 3:** transações com CNPJ vêm com fornecedor identificado mesmo sem regra prévia.
+
+- [ ] **4.4 — Pipeline etapa 3: Claude Haiku com few-shot** (~4-6h)
+  - rota interna `/api/classificar` recebe `{ description, amount, type }` retorna `{ categoriaSugerida, confianca, justificativa }`
+  - prompt few-shot com 10-15 exemplos do setor da empresa
+  - prompt caching da Anthropic na parte fixa do prompt
+  - chama só pra transações que escaparam de 4.2 e 4.3
+  - 🎯 **MARCO 4:** pipeline completo 3 etapas funcionando. Critério de saída: ≥80% automático.
+
+#### 🪟 BLOCO C — Visibilidade e dashboard (1-2 semanas)
+Painéis para Yussef visualizar o que foi aprendido.
+
+- [ ] **4.7 — Tela "Regras Aprendidas" (CRUD)** (~3-4h)
+  - rota `/empresas/[id]/regras`
+  - tabela: padrão / tipo / categoria / vezes aplicada / confiança / ações (editar, desativar, excluir)
+  - filtro por categoria
+
+- [ ] **4.8 — Tela "Fornecedores"** (~2-3h)
+  - rota `/empresas/[id]/fornecedores`
+  - tabela: CNPJ / razão social / categoria padrão / total movimentado / última transação
+  - cada linha linka para transações filtradas
+
+- [ ] **4.9 — Dashboard com cards e gráficos** (~6-8h)
+  - cards: saldo consolidado, receitas mês, despesas mês, resultado
+  - gráfico linha: fluxo de caixa últimos 12 meses
+  - gráfico donut: composição de despesas por categoria no mês
+  - alertas: "X transações pendentes de classificação"
+  - usar Recharts (já em shadcn/ui)
+  - 🎯 **MARCO 5:** Yussef abre dashboard e bate olho em 1 academia inteira em 30 segundos.
+
+#### 📦 BLOCO D — Escalar import (1 semana)
+Depois que IA está validada, melhora ergonomia para volumes maiores.
+
+- [ ] **3.3 — Múltiplos arquivos OFX por vez** (~2-3h)
+  - input `multiple`, estado `arquivos: File[]`
+  - preview paralelo + confirmação em série
+  - tratamento de falha parcial (sem rollback — quem importou ficou)
+  - mensagem final: "5 arquivos · 142 transações importadas · 23 duplicadas · 1 com erro"
+
+- [ ] **3.4 — Histórico de uploads** (~3-4h)
+  - migration: `OfxImport` (id, bankAccountId, importedByUserId, fileName, fileSize, totalLidas, inseridas, duplicadas, errosCount, errosJSON, createdAt)
+  - rota `GET /api/contas-bancarias/[id]/importacoes`
+  - página `/empresas/[id]/contas/[contaId]/importacoes`
+  - link "Histórico" no header da página de transações da conta
+
+#### Setup técnico paralelo (Yussef faz manual, fora do código)
 - ✅ Conta `meu.pluggy.ai` criada
 - ✅ Banrisul conectado
-- [ ] Conectar Sicoob, Itaú, etc
-- [ ] Criar Application Development em `dashboard.pluggy.ai`
-- [ ] Salvar CLIENT_ID e CLIENT_SECRET no `.env` LOCAL (só Yussef)
-- [ ] OAuth ligando Meu Pluggy → App Dev
+- [ ] Conectar Sicoob, Itaú, etc (conforme dado real for sendo necessário pra treinar IA)
 
-**Tabelas novas no Prisma:**
-- [ ] `suppliers` (id, company_id, cnpj, razao_social, categoria_padrao)
-- [ ] `ai_learning_rules` (id, company_id, padrao, tipo_match, category_id, supplier_id, confianca, vezes_aplicada)
-
-**Pipeline de classificação (3 etapas):**
-1. Match em `ai_learning_rules` (exato → contém)
-2. Identificação por CNPJ via BrasilAPI
-3. Claude Haiku com few-shot
-
-**Loop de aprendizado:**
-- User confirma/corrige → cria/atualiza regra
-- Re-processa transações pendentes similares
-- Nunca pergunta 2x
-
-**Telas:**
-- [ ] Pendentes de Classificação
-- [ ] Regras Aprendidas (CRUD)
-- [ ] Fornecedores
-
-**Dashboard:**
-- [ ] Cards: saldo, receitas, despesas, resultado
-- [ ] Gráfico fluxo de caixa (12 meses)
-- [ ] Gráfico composição despesas (donut)
-- [ ] Alertas de pendências
-
-**Treino com dados reais (Yussef):**
-- Importar via Meu Pluggy + OFX
-- Yussef classifica 30-50 transações manualmente
-- IA aprende padrões de academia
-- Ajustar prompts conforme aparece
+#### Stretch (depois de tudo)
+- [ ] CSV com wizard de mapeamento
+- [ ] PDF com Claude (extrair extrato de PDF, fase 2)
 
 ### 📍 FASE 5 — Beta com amigos (2-3 semanas)
 - Convidar 5-10 amigos donos de PMEs (diversificar setores)
@@ -324,7 +383,7 @@ Sistema precisa:
 
 ## 🎯 Prioridade do Yussef (ranking)
 
-1. **Relatórios e dashboards** ← Fases 4 + 6
+1. **Relatórios e dashboards** ← Fases 3+4 + 6
 2. **Conciliação bancária automática** ← Fase 6
 3. **IA contadora que calcula impostos** ← Fases 8 + 9
 4. **Open Finance** ← Fase 10 (quando tiver clientes pagando)
@@ -383,17 +442,19 @@ Sistema precisa:
 
 **Próximo passo:** Yussef abre Claude Code apontado pra `Desktop\conta-ia`, cola prompt de auditoria/execução FASE 2.1.
 
-### 30/04/2026 — Auditoria e correção de checkboxes
+### 30/04/2026 — Auditoria, correção de checkboxes e unificação 3+4
 **Contexto:** primeira sessão usando Claude Code apontado para `Desktop\conta-ia` após a reorganização do dia 29/04.
 
 **Descobertas:**
-- FASE 2.1 já estava 100% implementada no código (commits `00817ea`, `0f7d45f`, `34ea23c`, `9d59af1`), mas a reescrita do CLAUDE.md de 29/04 regrediu os checkboxes para `[ ]` por descuido.
-- Os 5 itens foram verificados linha-a-linha contra o código real.
+- FASE 2.1 já estava 100% implementada no código (commits `00817ea`, `0f7d45f`, `34ea23c`, `9d59af1`), mas a reescrita do CLAUDE.md de 29/04 regrediu os checkboxes para `[ ]` por descuido. Verificado linha-a-linha contra o código real.
+- Auditoria do fluxo OFX mostrou que drag&drop, preview e dedup por FITID já estavam prontos. Faltavam: detecção do banco (parser já extrai, só não usa), "atualizado há X dias", múltiplos arquivos e histórico.
 
 **Decisões:**
-- Corrigir só o CLAUDE.md (marcar FASE 2.1 como concluída) e seguir para auditoria + plano da FASE 3 antes de codar qualquer coisa.
+- Marcar FASE 2.1 como concluída no CLAUDE.md (commit `0d54c80`).
+- **Unificar FASE 3 (UX OFX) e FASE 4 (IA Contadora) numa única "FASE 3+4 — Importar e classificar perfeito"**, com sub-etapas reordenadas para encurtar tempo até teste com dados reais. Sub-etapas mantêm prefixos `3.x`/`4.x` por origem.
+- Princípio: 3.1 + 3.2 (UX rápido) → 4.1 → 4.5 → 4.6 (Yussef já classifica manualmente com 1 OFX e cria regras) → 4.2 → 4.3 → 4.4 (pipeline completo) → 4.7-4.9 (visibilidade) → 3.3 + 3.4 (escalar). Múltiplos arquivos e histórico ficam pro fim.
 
-**Próximo passo:** apresentar plano da FASE 3 (UX OFX) em etapas pequenas, e aguardar OK do Yussef antes de começar a primeira etapa.
+**Próximo passo:** apresentar ordem unificada com dependências e aguardar OK do Yussef antes de começar a primeira sub-etapa (3.1).
 
 ### [Próxima sessão] — preencher
 - Data:
