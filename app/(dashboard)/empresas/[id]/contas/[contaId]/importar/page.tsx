@@ -13,6 +13,7 @@ import { formatBRL } from '@/lib/format/money'
 
 interface PreviewItem {
   fitid: string
+  dedupHash: string
   date: string
   amount: number
   type: 'CREDIT' | 'DEBIT'
@@ -291,7 +292,7 @@ export default function ImportarOFXPage() {
                 <CardContent className="p-0">
                   <div className="divide-y max-h-96 overflow-y-auto">
                     {preview.preview.map((t) => (
-                      <div key={t.fitid} className="flex items-center gap-3 px-4 py-3">
+                      <div key={t.dedupHash} className="flex items-center gap-3 px-4 py-3">
                         <div className={`shrink-0 flex h-8 w-8 items-center justify-center rounded-full ${
                           t.type === 'CREDIT' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
                         }`}>

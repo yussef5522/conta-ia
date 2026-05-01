@@ -97,8 +97,13 @@ model Transaction {
   status        String   @default("PENDING")
   // MANUAL | OFX | PLUGGY
   origin        String   @default("MANUAL")
-  // ID único da transação na fonte (OFX FITID ou Pluggy ID) — evita duplicatas
+  // ID original da transação na fonte (OFX FITID ou Pluggy ID) — preservado para auditoria.
+  // Não é mais usado como chave de deduplicação porque alguns bancos (ex: Banrisul) reusam
+  // FITIDs entre transações distintas. Ver lib/ofx/dedup.ts.
   externalId    String?
+  // Chave interna de deduplicação. Para OFX é sha256(fitid + data + valor + memo).
+  // Pluggy ainda não preenche este campo (NULLs não conflitam com a unique).
+  dedupHash     String?
   notes         String?
 
   createdAt DateTime @default(now())
@@ -107,7 +112,8 @@ model Transaction {
   bankAccount BankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
   category    Category?   @relation(fields: [categoryId], references: [id])
 
-  @@unique([bankAccountId, externalId])
+  @@unique([bankAccountId, dedupHash])
+  @@index([bankAccountId, externalId])
   @@index([bankAccountId, date])
   @@map("transactions")
 }

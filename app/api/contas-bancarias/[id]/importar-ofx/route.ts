@@ -3,6 +3,7 @@ import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { parseOFX } from '@/lib/ofx/parser'
 import { detectarBanco, bateComPerfilDaConta } from '@/lib/ofx/bancos'
+import { dedupHashOFX, filtrarNovasOFX } from '@/lib/ofx/dedup'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -59,21 +60,26 @@ export async function POST(request: NextRequest, { params }: Params) {
       }
     : null
 
-  // Descobre quais FITIDs já existem para esta conta (deduplicação)
-  const fitids = transactions.map((t) => t.fitid)
+  // Deduplicação por hash composto (ver lib/ofx/dedup.ts).
+  // Lookup contra DB usa os hashes que vamos calcular agora — evita pegar
+  // toda a tabela e reduz o IN(...) ao tamanho do arquivo.
+  const todosHashes = transactions.map((t) => dedupHashOFX(t))
   const existentes = await prisma.transaction.findMany({
-    where: { bankAccountId: contaId, externalId: { in: fitids } },
-    select: { externalId: true },
+    where: { bankAccountId: contaId, dedupHash: { in: todosHashes } },
+    select: { dedupHash: true },
   })
-  const fitidsExistentes = new Set(existentes.map((e) => e.externalId))
+  const hashesExistentes = new Set(
+    existentes.map((e) => e.dedupHash).filter((h): h is string => h !== null),
+  )
 
-  const novas = transactions.filter((t) => !fitidsExistentes.has(t.fitid))
-  const duplicadas = transactions.length - novas.length
+  const { novas, duplicadasNoArquivo, duplicadasNoBanco } = filtrarNovasOFX(transactions, hashesExistentes)
+  const duplicadas = duplicadasNoArquivo + duplicadasNoBanco
 
   if (isPreview) {
     return NextResponse.json({
       preview: novas.map((t) => ({
         fitid: t.fitid,
+        dedupHash: t.dedupHash,
         date: t.datePosted,
         amount: t.amount,
         type: t.type,
@@ -111,6 +117,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         status: 'PENDING',
         origin: 'OFX',
         externalId: t.fitid,
+        dedupHash: t.dedupHash,
       })),
     }),
     prisma.bankAccount.update({
