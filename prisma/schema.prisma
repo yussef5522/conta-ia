@@ -43,6 +43,8 @@ model Company {
   users        UserCompany[]
   bankAccounts BankAccount[]
   categories   Category[]
+  suppliers    Supplier[]
+  rules        AiLearningRule[]
 
   @@map("companies")
 }
@@ -62,18 +64,18 @@ model UserCompany {
 }
 
 model BankAccount {
-  id           String  @id @default(cuid())
-  companyId    String
-  name         String
-  bankName     String?
-  bankCode     String?
-  agency       String?
-  accountNumber String?
-  accountType  String  @default("CHECKING")
-  balance      Float   @default(0)
-  pluggyItemId String?
+  id              String  @id @default(cuid())
+  companyId       String
+  name            String
+  bankName        String?
+  bankCode        String?
+  agency          String?
+  accountNumber   String?
+  accountType     String  @default("CHECKING")
+  balance         Float   @default(0)
+  pluggyItemId    String?
   pluggyAccountId String?
-  isActive     Boolean @default(true)
+  isActive        Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -106,11 +108,23 @@ model Transaction {
   dedupHash     String?
   notes         String?
 
+  // Classificação automática (FASE 3+4 — IA Contadora)
+  // Fornecedor identificado (via regra CNPJ ou lookup BrasilAPI)
+  supplierId           String?
+  // Qual regra aplicou a categoria (NULL quando classificação foi manual ou veio de outra fonte)
+  classifiedByRuleId   String?
+  // Confiança no momento da classificação (snapshot, pode divergir de rule.confianca atual)
+  aiConfidence         Float?
+  // MANUAL | RULE | BRASILAPI | AI — origem da classificação
+  classificationSource String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  bankAccount BankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
-  category    Category?   @relation(fields: [categoryId], references: [id])
+  bankAccount      BankAccount     @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+  category         Category?       @relation(fields: [categoryId], references: [id])
+  supplier         Supplier?       @relation(fields: [supplierId], references: [id])
+  classifiedByRule AiLearningRule? @relation(fields: [classifiedByRuleId], references: [id])
 
   @@unique([bankAccountId, dedupHash])
   @@index([bankAccountId, externalId])
@@ -133,9 +147,82 @@ model Category {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company      Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
   transactions Transaction[]
+  suppliers    Supplier[]
+  rules        AiLearningRule[]
 
   @@unique([companyId, name])
   @@map("categories")
+}
+
+// Fornecedores identificados em transações (manualmente ou via BrasilAPI lookup por CNPJ).
+// Usado pra agrupar transações, sugerir categoria e dar visibilidade na tela "Fornecedores" (4.8).
+// Multi-tenant: cada empresa tem sua própria base; mesmo CNPJ pode existir em duas empresas distintas.
+model Supplier {
+  id                String    @id @default(cuid())
+  companyId         String
+  cnpj              String?
+  razaoSocial       String
+  nomeFantasia      String?
+  // Categoria padrão sugerida; nullable porque BrasilAPI pode trazer CNAE sem categoria correspondente
+  categoryId        String?
+  // CNAE primário (vindo da BrasilAPI), útil pra heurística de categoria
+  cnaePrincipal     String?
+  // MANUAL = cadastrado pelo Yussef; BRASILAPI = lookup público da Receita
+  fonte             String    @default("MANUAL")
+  // Quando o lookup BrasilAPI rodou (pra refresh futuro)
+  fonteAtualizadaEm DateTime?
+  isActive          Boolean   @default(true)
+  notes             String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company      Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  category     Category?        @relation(fields: [categoryId], references: [id])
+  transactions Transaction[]
+  rules        AiLearningRule[]
+
+  // Mesmo CNPJ pode existir em duas empresas-cliente diferentes
+  @@unique([companyId, cnpj])
+  @@index([companyId, razaoSocial])
+  @@index([companyId, isActive])
+  @@map("suppliers")
+}
+
+// Regras de classificação automática aprendidas a partir das confirmações manuais do usuário.
+// Pipeline (4.2 → 4.3 → 4.4): match em rules → CNPJ via BrasilAPI → Claude Haiku.
+// Multi-tenant: regras NÃO são compartilhadas entre empresas (academia ≠ restaurante).
+model AiLearningRule {
+  id            String  @id @default(cuid())
+  companyId     String
+  // EXACT = description igual a `padrao`
+  // CONTAINS = description contém `padrao` (case-insensitive)
+  // CNPJ = description contém o CNPJ em `padrao`
+  tipoMatch     String
+  padrao        String
+  categoryId    String?
+  supplierId    String?
+  // Intrínseca da regra: 1.0 = manual; <1 = sugerida por Claude
+  confianca     Float   @default(1.0)
+  // Telemetria pra ranking / faxina futura
+  vezesAplicada Int     @default(0)
+  isActive      Boolean @default(true)
+  // MANUAL = Yussef criou; CLAUDE = sugerida automaticamente
+  fonte         String  @default("MANUAL")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  category     Category?     @relation(fields: [categoryId], references: [id])
+  supplier     Supplier?     @relation(fields: [supplierId], references: [id])
+  transactions Transaction[]
+
+  // Não pode haver duas regras com mesmo padrão e tipo na mesma empresa
+  @@unique([companyId, tipoMatch, padrao])
+  // Lookup rápido durante import: filtra ativas por empresa, indexa o tipo de match
+  @@index([companyId, isActive, tipoMatch])
+  @@map("ai_learning_rules")
 }
