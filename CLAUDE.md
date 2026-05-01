@@ -235,12 +235,13 @@ Sistema precisa:
 #### 🧪 BLOCO A — UX OFX rápido (1-2 dias)
 Pequenas vitórias visuais antes de mexer com IA. Sem migration.
 
-- [ ] **3.1 — Detecção automática do banco no preview** (~1-2h)
-  - parser já extrai `BANKID`; falta usar
-  - novo `lib/ofx/bancos.ts` com mapa FEBRABAN → nome (Banrisul 041, Bradesco 237, Itaú 341, Santander 033, Sicredi 748, Sicoob 756, Caixa 104, Nubank 260)
+- [x] **3.1 — Detecção automática do banco no preview** (concluída 30/04/2026)
+  - parser já extraía `BANKID`; passou a usar
+  - lista canônica em `lib/bancos.ts` (15 bancos brasileiros — fonte única, ver entrada do log)
+  - `lib/ofx/bancos.ts` com helpers `detectarBanco` e `bateComPerfilDaConta`
   - API preview retorna `banco: { codigo, nome, batePerfilConta }`
-  - UI mostra "Banco detectado: **Banrisul** (041)"; oferece auto-preencher se conta sem `bankName`
-  - **Teste:** importar OFX do Banrisul numa conta sem `bankName` → ver detecção → aceitar auto-preencher.
+  - UI mostra "Banco detectado: **Banrisul** (041)" e oferece auto-preencher se conta sem `bankName`
+  - **Validado com dados reais:** 270 transações do Banrisul importadas, saldo R$ 5.821,08 correto, detecção verde.
 
 - [ ] **3.2 — "Atualizado há X dias" na lista de contas** (~1-2h)
   - calcular `lastImportAt = max(transactions.createdAt where origin in (OFX, PLUGGY))`
@@ -442,19 +443,27 @@ Depois que IA está validada, melhora ergonomia para volumes maiores.
 
 **Próximo passo:** Yussef abre Claude Code apontado pra `Desktop\conta-ia`, cola prompt de auditoria/execução FASE 2.1.
 
-### 30/04/2026 — Auditoria, correção de checkboxes e unificação 3+4
-**Contexto:** primeira sessão usando Claude Code apontado para `Desktop\conta-ia` após a reorganização do dia 29/04.
+### 30/04/2026 — Auditoria 2.1 + unificação 3+4 + sub-etapa 3.1 + 2 bugs bloqueadores
 
-**Descobertas:**
-- FASE 2.1 já estava 100% implementada no código (commits `00817ea`, `0f7d45f`, `34ea23c`, `9d59af1`), mas a reescrita do CLAUDE.md de 29/04 regrediu os checkboxes para `[ ]` por descuido. Verificado linha-a-linha contra o código real.
-- Auditoria do fluxo OFX mostrou que drag&drop, preview e dedup por FITID já estavam prontos. Faltavam: detecção do banco (parser já extrai, só não usa), "atualizado há X dias", múltiplos arquivos e histórico.
+**Contexto:** primeira sessão de execução com Claude Code apontado pra `Desktop\conta-ia` após a reorganização do dia 29/04.
 
-**Decisões:**
-- Marcar FASE 2.1 como concluída no CLAUDE.md (commit `0d54c80`).
-- **Unificar FASE 3 (UX OFX) e FASE 4 (IA Contadora) numa única "FASE 3+4 — Importar e classificar perfeito"**, com sub-etapas reordenadas para encurtar tempo até teste com dados reais. Sub-etapas mantêm prefixos `3.x`/`4.x` por origem.
-- Princípio: 3.1 + 3.2 (UX rápido) → 4.1 → 4.5 → 4.6 (Yussef já classifica manualmente com 1 OFX e cria regras) → 4.2 → 4.3 → 4.4 (pipeline completo) → 4.7-4.9 (visibilidade) → 3.3 + 3.4 (escalar). Múltiplos arquivos e histórico ficam pro fim.
+**O que foi feito (5 commits):**
+- `0d54c80` — Auditoria FASE 2.1: marcada como concluída no doc (já estava 100% no código, regressão de checkboxes na reescrita de 29/04).
+- `a83fe87` — Unificação FASE 3 (UX OFX) + FASE 4 (IA Contadora) em "Importar e classificar perfeito", com sub-etapas reordenadas pra encurtar tempo até teste com dados reais.
+- `3ebba31` — Sub-etapa 3.1: detecção automática do banco no preview (BANKID → nome via mapa FEBRABAN; UI mostra detecção e oferece auto-preencher cadastro).
+- `e4141ee` — **Bug bloqueador descoberto no teste:** lista de bancos do form de cadastro estava divergente da do OFX (Banrisul, Sicredi, Sicoob, BTG, Safra ausentes no form). Refatorado pra fonte única em `lib/bancos.ts` com testes de consistência ida-e-volta.
+- `54921d4` — **Bug bloqueador descoberto no teste com dados reais:** Banrisul reusa FITIDs ("000001", "000002", ...) entre transações distintas no mesmo OFX. A constraint `@@unique([bankAccountId, externalId])` fazia o import inteiro falhar. Refatorada dedup pra usar `dedupHash = sha256(fitid + data + valor + memo)` num campo separado; `externalId` virou só auditoria. Pluggy ficou intocado.
 
-**Próximo passo:** apresentar ordem unificada com dependências e aguardar OK do Yussef antes de começar a primeira sub-etapa (3.1).
+**Validação final com dados reais:** Yussef importou 270 transações do Banrisul, saldo R$ 5.821,08 calculado correto, transações de março/2026 aparecem ao filtrar pelo período, detecção automática do banco funciona (card verde "Banco detectado: Banrisul (041)").
+
+**Decisões de produto registradas:**
+- Pluggy congelado por tempo indeterminado — não pega contas PJ direito. Foco 100% em OFX manual até nova ordem.
+- Código FEBRABAN 290 = "PagBank" (nome de mercado, não razão social "PagSeguro").
+
+**Descoberta interessante:**
+- 2 dos 5 commits foram bugs bloqueadores descobertos só ao Yussef testar com dados reais (lista de bancos incompleta + FITIDs duplicados do Banrisul). Reforça o valor da estratégia "testar com 1 OFX real ASAP" do plano da FASE 3+4 — esses bugs ficariam invisíveis num beta sem dados brasileiros reais.
+
+**Próximo passo:** sub-etapa 4.1 — criar tabelas `suppliers` e `ai_learning_rules` no schema Prisma (base pra pipeline de classificação automática).
 
 ### [Próxima sessão] — preencher
 - Data:
