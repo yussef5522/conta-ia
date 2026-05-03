@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { Pencil, Landmark, Plus, ArrowUpRight, ArrowDownRight, Inbox } from 'lucide-react'
+import { Pencil, Landmark, Plus, ArrowUpRight, ArrowDownRight, Inbox, ListTree } from 'lucide-react'
 import { verifyToken, COOKIE_NAME } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { Header } from '@/components/layout/header'
@@ -69,6 +69,12 @@ export default async function EmpresaDetailPage({ params }: Props) {
             </Link>
           </Button>
         )}
+        <Button variant="outline" asChild>
+          <Link href={`/empresas/${empresa.id}/categorias`}>
+            <ListTree className="mr-2 h-4 w-4" />
+            Plano de Contas
+          </Link>
+        </Button>
         <Button variant="outline" asChild>
           <Link href={`/empresas/${empresa.id}/editar`}>
             <Pencil className="mr-2 h-4 w-4" />
