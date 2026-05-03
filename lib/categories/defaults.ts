@@ -1,3 +1,26 @@
+// Router de templates de plano de contas profissional.
+// Cada companyType roteia para um template específico (Fase B Plano de Contas).
+//
+// Mapping:
+//   service     → academia (template padrão pra serviços)
+//   restaurant  → restaurante
+//   clinica     → clinica (companyType novo)
+//   salao       → salao   (companyType novo)
+//   retail      → loja
+//   industry, mixed, other → academia (fallback genérico de serviços)
+
+import type { Prisma, PrismaClient } from '@prisma/client'
+import { regimesToJson } from '@/lib/categories/regimes'
+import { academiaTemplate } from '@/lib/categories/templates/academia'
+import { restauranteTemplate } from '@/lib/categories/templates/restaurante'
+import { clinicaTemplate } from '@/lib/categories/templates/clinica'
+import { salaoTemplate } from '@/lib/categories/templates/salao'
+import { lojaTemplate } from '@/lib/categories/templates/loja'
+import type { CategoryTemplateNode } from '@/lib/categories/templates/_common'
+
+// Compat: shape antigo usado por chamadores legados de `getDefaultCategories`.
+// Hoje só o seed do dev usa essa shape — produção e o POST de empresa passam
+// pelo aplicarTemplate (que entende hierarquia).
 export interface DefaultCategory {
   name: string
   type: 'INCOME' | 'EXPENSE' | 'TRANSFER'
@@ -5,59 +28,91 @@ export interface DefaultCategory {
   icon?: string
 }
 
-const COMUNS: DefaultCategory[] = [
-  { name: 'Transferência', type: 'TRANSFER', color: '#8b5cf6', icon: 'arrow-left-right' },
-  { name: 'Outros recebimentos', type: 'INCOME', color: '#10b981', icon: 'plus-circle' },
-  { name: 'Outras despesas', type: 'EXPENSE', color: '#6b7280', icon: 'minus-circle' },
-  { name: 'Impostos e taxas', type: 'EXPENSE', color: '#ef4444', icon: 'receipt' },
-  { name: 'Tarifas bancárias', type: 'EXPENSE', color: '#f97316', icon: 'landmark' },
-  { name: 'Salários e pró-labore', type: 'EXPENSE', color: '#3b82f6', icon: 'users' },
-  { name: 'Aluguel', type: 'EXPENSE', color: '#a855f7', icon: 'building' },
-  { name: 'Água, luz e internet', type: 'EXPENSE', color: '#06b6d4', icon: 'zap' },
-]
-
-const POR_SETOR: Record<string, DefaultCategory[]> = {
-  SERVICE: [
-    { name: 'Mensalidades recebidas', type: 'INCOME', color: '#10b981', icon: 'repeat' },
-    { name: 'Serviços prestados', type: 'INCOME', color: '#22c55e', icon: 'briefcase' },
-    { name: 'Consultas e avaliações', type: 'INCOME', color: '#84cc16', icon: 'clipboard' },
-    { name: 'ISS recolhido', type: 'EXPENSE', color: '#ef4444', icon: 'receipt' },
-    { name: 'Material de consumo', type: 'EXPENSE', color: '#f59e0b', icon: 'package' },
-    { name: 'Equipamentos e manutenção', type: 'EXPENSE', color: '#6b7280', icon: 'tool' },
-    { name: 'Marketing e publicidade', type: 'EXPENSE', color: '#ec4899', icon: 'megaphone' },
-  ],
-  RETAIL: [
-    { name: 'Vendas à vista', type: 'INCOME', color: '#10b981', icon: 'shopping-bag' },
-    { name: 'Vendas a prazo / parcelado', type: 'INCOME', color: '#22c55e', icon: 'credit-card' },
-    { name: 'Devolução de vendas', type: 'EXPENSE', color: '#ef4444', icon: 'corner-down-left' },
-    { name: 'Compra de mercadorias', type: 'EXPENSE', color: '#f59e0b', icon: 'shopping-cart' },
-    { name: 'Frete e logística', type: 'EXPENSE', color: '#6b7280', icon: 'truck' },
-    { name: 'ICMS recolhido', type: 'EXPENSE', color: '#ef4444', icon: 'receipt' },
-    { name: 'Embalagens', type: 'EXPENSE', color: '#a3a3a3', icon: 'package' },
-  ],
-  RESTAURANT: [
-    { name: 'Vendas balcão / salão', type: 'INCOME', color: '#10b981', icon: 'utensils' },
-    { name: 'Delivery', type: 'INCOME', color: '#22c55e', icon: 'bike' },
-    { name: 'Eventos e buffet', type: 'INCOME', color: '#84cc16', icon: 'calendar' },
-    { name: 'Insumos e ingredientes', type: 'EXPENSE', color: '#f59e0b', icon: 'shopping-cart' },
-    { name: 'Descartáveis e embalagens', type: 'EXPENSE', color: '#a3a3a3', icon: 'package' },
-    { name: 'Gás e combustível', type: 'EXPENSE', color: '#f97316', icon: 'flame' },
-    { name: 'Manutenção de equipamentos', type: 'EXPENSE', color: '#6b7280', icon: 'tool' },
-  ],
-  INDUSTRY: [
-    { name: 'Venda de produtos', type: 'INCOME', color: '#10b981', icon: 'factory' },
-    { name: 'Serviços industriais', type: 'INCOME', color: '#22c55e', icon: 'settings' },
-    { name: 'Matéria-prima', type: 'EXPENSE', color: '#f59e0b', icon: 'layers' },
-    { name: 'Frete e logística', type: 'EXPENSE', color: '#6b7280', icon: 'truck' },
-    { name: 'IPI recolhido', type: 'EXPENSE', color: '#ef4444', icon: 'receipt' },
-    { name: 'Manutenção industrial', type: 'EXPENSE', color: '#a3a3a3', icon: 'tool' },
-    { name: 'Energia elétrica industrial', type: 'EXPENSE', color: '#06b6d4', icon: 'zap' },
-  ],
-  MIXED: [],
-  OTHER: [],
+export function getTemplate(companyType: string): CategoryTemplateNode[] {
+  switch (companyType) {
+    case 'restaurant':
+      return restauranteTemplate
+    case 'clinica':
+      return clinicaTemplate
+    case 'salao':
+      return salaoTemplate
+    case 'retail':
+      return lojaTemplate
+    case 'service':
+    case 'industry':
+    case 'mixed':
+    case 'other':
+    default:
+      return academiaTemplate
+  }
 }
 
+// Compat shim: retorna lista achatada no shape antigo.
+// Usado pelo seed (`prisma/seed.ts`). NOVO callers devem usar aplicarTemplate.
 export function getDefaultCategories(companyType: string): DefaultCategory[] {
-  const especificas = POR_SETOR[companyType] ?? []
-  return [...especificas, ...COMUNS]
+  return getTemplate(companyType).map((node) => ({
+    name: node.name,
+    type: node.type,
+    color: node.color,
+    icon: node.icon ?? undefined,
+  }))
+}
+
+// Aplica o template completo (com hierarquia) numa empresa recém-criada.
+// Resolve parentId em runtime (template usa parentCode → mapeia pra ID criado).
+// Insere em ordem topológica: raízes primeiro, depois nível 2, depois nível 3.
+export async function aplicarTemplate(
+  tx: Prisma.TransactionClient | PrismaClient,
+  companyId: string,
+  companyType: string,
+): Promise<{ inseridas: number }> {
+  const template = getTemplate(companyType)
+
+  // Ordena por profundidade (parents antes dos filhos) e depois por order.
+  const profundidade = (code: string) => code.split('.').length
+  const ordenado = [...template].sort((a, b) => {
+    const dA = profundidade(a.code)
+    const dB = profundidade(b.code)
+    if (dA !== dB) return dA - dB
+    return a.order - b.order
+  })
+
+  const codeToId = new Map<string, string>()
+  let inseridas = 0
+
+  for (const node of ordenado) {
+    // Idempotência: pula se já existe categoria com mesmo (companyId, parentId, name).
+    const parentId = node.parentCode ? codeToId.get(node.parentCode) ?? null : null
+    const existente = await tx.category.findFirst({
+      where: { companyId, parentId, name: node.name },
+      select: { id: true },
+    })
+    if (existente) {
+      codeToId.set(node.code, existente.id)
+      continue
+    }
+
+    const cat = await tx.category.create({
+      data: {
+        companyId,
+        name: node.name,
+        type: node.type,
+        color: node.color,
+        icon: node.icon ?? null,
+        parentId,
+        dreGroup: node.dreGroup,
+        code: node.code,
+        description: node.description,
+        isSystemDefault: node.isSystemDefault ?? true,
+        isActive: node.isActive ?? true,
+        order: node.order,
+        visibleInRegimes: regimesToJson(node.visibleInRegimes),
+      },
+      select: { id: true },
+    })
+    codeToId.set(node.code, cat.id)
+    inseridas++
+  }
+
+  return { inseridas }
 }

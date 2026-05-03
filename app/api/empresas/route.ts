@@ -3,7 +3,7 @@ import { ZodError } from 'zod'
 import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { empresaSchema } from '@/lib/validations/empresa'
-import { getDefaultCategories } from '@/lib/categories/defaults'
+import { aplicarTemplate } from '@/lib/categories/defaults'
 
 export async function GET(request: NextRequest) {
   const user = await getAuthUser(request)
@@ -51,40 +51,30 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const empresa = await prisma.company.create({
-      data: {
-        cnpj: cnpjNums,
-        name: data.name,
-        tradeName: data.tradeName || null,
-        type: data.type,
-        taxRegime: data.taxRegime,
-        email: data.email || null,
-        phone: data.phone || null,
-        address: data.address || null,
-        city: data.city || null,
-        state: data.state || null,
-        zipCode: data.zipCode || null,
-        users: {
-          create: { userId: user.sub, role: 'OWNER' },
+    // Cria empresa + aplica template de plano de contas (com hierarquia,
+    // DRE groups, códigos SPED e visibleInRegimes) em uma transação atômica.
+    const empresa = await prisma.$transaction(async (tx) => {
+      const created = await tx.company.create({
+        data: {
+          cnpj: cnpjNums,
+          name: data.name,
+          tradeName: data.tradeName || null,
+          type: data.type,
+          taxRegime: data.taxRegime,
+          email: data.email || null,
+          phone: data.phone || null,
+          address: data.address || null,
+          city: data.city || null,
+          state: data.state || null,
+          zipCode: data.zipCode || null,
+          users: {
+            create: { userId: user.sub, role: 'OWNER' },
+          },
         },
-      },
-    })
-
-    // Cria categorias padrão para o setor — poupa configuração manual do usuário
-    const categorias = getDefaultCategories(data.type)
-    if (categorias.length > 0) {
-      await prisma.category.createMany({
-        data: categorias.map((c) => ({
-          name: c.name,
-          type: c.type,
-          color: c.color,
-          icon: c.icon ?? null,
-          isActive: true,
-          companyId: empresa.id,
-          isSystemDefault: true as const,
-        })),
       })
-    }
+      await aplicarTemplate(tx, created.id, data.type)
+      return created
+    })
 
     return NextResponse.json({ empresa }, { status: 201 })
   } catch (error) {

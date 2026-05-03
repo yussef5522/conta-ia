@@ -1,23 +1,13 @@
 import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
-import { getDefaultCategories } from '../lib/categories/defaults'
+import { aplicarTemplate } from '../lib/categories/defaults'
 
 const prisma = new PrismaClient()
 
 async function seedCategories(companyId: string, companyType: string) {
-  const categorias = getDefaultCategories(companyType)
-  // Usa findFirst+create em vez de upsert porque a unique do schema é
-  // [companyId, parentId, name] e NULLs são distintos no PostgreSQL.
-  // Idempotência é app-layer.
-  for (const cat of categorias) {
-    const existente = await prisma.category.findFirst({
-      where: { companyId, parentId: null, name: cat.name },
-    })
-    if (existente) continue
-    await prisma.category.create({
-      data: { companyId, ...cat, isSystemDefault: true },
-    })
-  }
+  // Usa o aplicarTemplate (idempotente) que respeita hierarquia + DRE groups +
+  // códigos SPED + visibleInRegimes do template profissional do subsetor.
+  await aplicarTemplate(prisma, companyId, companyType)
 }
 
 async function main() {

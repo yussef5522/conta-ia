@@ -145,35 +145,40 @@ model Transaction {
 // Plano de Contas Referencial SPED. Suporta hierarquia em árvore (até 3 níveis,
 // validado app-layer), grupo do DRE Gerencial e código contábil.
 model Category {
-  id              String  @id @default(cuid())
-  companyId       String
-  name            String
+  id               String  @id @default(cuid())
+  companyId        String
+  name             String
   // INCOME | EXPENSE | TRANSFER (mantido pra compat — DRE group dá granularidade)
-  type            String
-  color           String  @default("#6366f1")
-  icon            String?
+  type             String
+  color            String  @default("#6366f1")
+  icon             String?
   // Hierarquia em árvore: parent é null para categorias-raiz.
-  parentId        String?
+  parentId         String?
   // Grupo do DRE Gerencial (ver lib/dre-groups/). Define onde a categoria
   // aparece no relatório DRE: RECEITA_BRUTA, DEDUCOES, CUSTO_PRODUTO_VENDIDO,
   // DESPESAS_COMERCIAIS, DESPESAS_ADMINISTRATIVAS, DESPESAS_PESSOAL,
   // RECEITAS_FINANCEIRAS, DESPESAS_FINANCEIRAS, OUTRAS_RECEITAS, OUTRAS_DESPESAS,
   // IMPOSTOS_SOBRE_LUCRO, DISTRIBUICAO_LUCROS, INVESTIMENTOS, TRANSFERENCIA.
-  dreGroup        String?
+  dreGroup         String?
   // Código contábil opcional, padrão SPED (ex: "1.01.001"). Único por empresa
   // quando preenchido (validado app-layer).
-  code            String?
+  code             String?
   // Texto explicativo opcional (quando usar, exemplos).
-  description     String?
+  description      String?
   // Categoria criada pelo template do sistema. Não pode ser hard-deletada;
   // type e dreGroup ficam protegidos contra edição. Renomeada de `isDefault`
   // (semântica antiga era ambígua).
-  isSystemDefault Boolean @default(false)
-  isActive        Boolean @default(true)
+  isSystemDefault  Boolean @default(false)
+  isActive         Boolean @default(true)
   // Ordenação manual. Float pra suportar drag-and-drop (insere entre dois itens
   // sem reordenar a lista inteira). Default 0; valor real é calculado app-layer
   // ao criar (max(order) + 1) ou ao reordenar.
-  order           Float   @default(0)
+  order            Float   @default(0)
+  // Multi-regime tributário: JSON array de regimes onde a categoria fica visível.
+  // null = visível em todos os regimes (default).
+  // Exemplo: '["LUCRO_PRESUMIDO","LUCRO_REAL"]' pra ISS, IRPJ, CSLL.
+  // Filtragem é app-layer (lib/categories/regimes.ts:categoriaVisivelNoRegime).
+  visibleInRegimes String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
