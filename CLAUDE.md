@@ -504,6 +504,31 @@ Depois que IA está validada, melhora ergonomia para volumes maiores.
 
 **Próximo passo:** Yussef revisa o PRODUTO-NORTE.md, confirma decisões pendentes (seção 10.3), e damos sequência à Fase B do Plano de Contas com profundidade extrema (80-120 categorias, 3 níveis, foco academia primeiro).
 
+### 03/05/2026 (parte 2) — Etapa 2.4 backfill empresas existentes CONCLUÍDA
+**Contexto:** Bug descoberto no teste da 2.3 — cacula mix sem categorias, dropdown vazio.
+
+**Diagnóstico revelou 3 problemas:**
+- cacula mix com 0 categorias (criada antes do seed)
+- Tipos no banco em UPPERCASE (RESTAURANT, SERVICE) mas router em lowercase
+- taxRegime "SIMPLES_NACIONAL" genérico (sem sufixo do anexo)
+
+**Soluções aplicadas:**
+- Fix em `getTemplate()` pra normalizar lowercase + aceitar null/undefined
+- Script `scripts/backfill-templates.ts` (idempotente, atomic via `prisma.$transaction`)
+- Migration taxRegime legacy (`SIMPLES_NACIONAL` → `SIMPLES_NACIONAL_III`)
+- Aplicação automática de templates por companyType
+- Mapping heurístico de dreGroup pra categorias antigas (15 regras)
+- Movido `scripts/_diagnostico.ts` pra `docs/exemplos/diagnostico-empresas.ts`
+
+**Resultado:**
+- cacula mix: 0 → 182 categorias (template Restaurante)
+- Demo Conta IA: 15 → 210 categorias (195 do template Academia + 15 antigas mapeadas)
+- 270 transações da cacula mix preservadas (categoryId mantido)
+- 35 testes novos (267/267 total)
+- Validação visual: dropdown funcionando, classificação real OK (contador 100 → 99)
+
+**Próxima fase planejada (Fase B+):** UI de Gerenciamento de Categorias estilo Conta Azul — árvore navegável, drag-and-drop, edição inline, criar/desativar, restaurar template. Critério de prioridade: virou o próximo gargalo de UX agora que o backfill aplicou plano profissional nas empresas existentes.
+
 ### [Próxima sessão] — preencher
 - Data:
 - O que foi feito:

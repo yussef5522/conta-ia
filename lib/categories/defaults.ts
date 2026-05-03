@@ -28,8 +28,11 @@ export interface DefaultCategory {
   icon?: string
 }
 
-export function getTemplate(companyType: string): CategoryTemplateNode[] {
-  switch (companyType) {
+export function getTemplate(companyType: string | null | undefined): CategoryTemplateNode[] {
+  // Normaliza pra lowercase: empresas históricas têm type em UPPERCASE
+  // (RESTAURANT, SERVICE) — sem normalizar caem no fallback.
+  const t = (companyType ?? '').toLowerCase().trim()
+  switch (t) {
     case 'restaurant':
       return restauranteTemplate
     case 'clinica':
