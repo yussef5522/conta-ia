@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { Pencil, Landmark, Plus, ArrowUpRight, ArrowDownRight } from 'lucide-react'
+import { Pencil, Landmark, Plus, ArrowUpRight, ArrowDownRight, Inbox } from 'lucide-react'
 import { verifyToken, COOKIE_NAME } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { Header } from '@/components/layout/header'
@@ -27,6 +27,18 @@ async function getEmpresa(id: string, userId: string) {
   return userCompany?.company ?? null
 }
 
+// Conta transações sem categoria (pendentes de classificação) da empresa.
+// status=PENDING exclui as marcadas como ignoradas pelo usuário.
+async function getContagemPendentes(empresaId: string): Promise<number> {
+  return prisma.transaction.count({
+    where: {
+      categoryId: null,
+      status: 'PENDING',
+      bankAccount: { companyId: empresaId },
+    },
+  })
+}
+
 export const metadata: Metadata = { title: 'Detalhes da Empresa' }
 
 export default async function EmpresaDetailPage({ params }: Props) {
@@ -41,12 +53,22 @@ export default async function EmpresaDetailPage({ params }: Props) {
 
   if (!empresa) notFound()
 
+  const pendentesCount = await getContagemPendentes(empresa.id)
+
   const tipo = t.empresa.tipos[empresa.type as keyof typeof t.empresa.tipos] ?? empresa.type
   const regime = t.empresa.regimes[empresa.taxRegime as keyof typeof t.empresa.regimes] ?? empresa.taxRegime
 
   return (
     <div className="space-y-6">
       <Header title={empresa.tradeName || empresa.name} description={exibirCNPJ(empresa.cnpj)}>
+        {pendentesCount > 0 && (
+          <Button variant="outline" asChild>
+            <Link href={`/empresas/${empresa.id}/pendentes`}>
+              <Inbox className="mr-2 h-4 w-4" />
+              Pendentes ({pendentesCount})
+            </Link>
+          </Button>
+        )}
         <Button variant="outline" asChild>
           <Link href={`/empresas/${empresa.id}/editar`}>
             <Pencil className="mr-2 h-4 w-4" />
