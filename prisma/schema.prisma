@@ -17,7 +17,8 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  companies UserCompany[]
+  companies       UserCompany[]
+  categoryHistory CategoryHistory[]
 
   @@map("users")
 }
@@ -40,11 +41,13 @@ model Company {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users        UserCompany[]
-  bankAccounts BankAccount[]
-  categories   Category[]
-  suppliers    Supplier[]
-  rules        AiLearningRule[]
+  users           UserCompany[]
+  bankAccounts    BankAccount[]
+  categories      Category[]
+  suppliers       Supplier[]
+  rules           AiLearningRule[]
+  costCenters     CostCenter[]
+  categoryHistory CategoryHistory[]
 
   @@map("companies")
 }
@@ -121,39 +124,129 @@ model Transaction {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Centro de custo (matriz/filial/unidade) — útil pra DRE consolidado de
+  // grupos com várias empresas/filiais. Independente da categoria/DRE group.
+  costCenterId String?
+
   bankAccount      BankAccount     @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
   category         Category?       @relation(fields: [categoryId], references: [id])
   supplier         Supplier?       @relation(fields: [supplierId], references: [id])
   classifiedByRule AiLearningRule? @relation(fields: [classifiedByRuleId], references: [id])
+  costCenter       CostCenter?     @relation(fields: [costCenterId], references: [id])
 
   @@unique([bankAccountId, dedupHash])
   @@index([bankAccountId, externalId])
   @@index([bankAccountId, date])
+  @@index([costCenterId])
   @@map("transactions")
 }
 
+// Plano de Contas — modelo profissional inspirado em Conta Azul / QuickBooks /
+// Plano de Contas Referencial SPED. Suporta hierarquia em árvore (até 3 níveis,
+// validado app-layer), grupo do DRE Gerencial e código contábil.
 model Category {
-  id        String  @id @default(cuid())
-  companyId String
-  name      String
-  // INCOME | EXPENSE | TRANSFER
-  type      String
-  color     String  @default("#6366f1")
-  icon      String?
-  // true = criada pelo sistema via seed de setor
-  isDefault Boolean @default(false)
-  isActive  Boolean @default(true)
+  id              String  @id @default(cuid())
+  companyId       String
+  name            String
+  // INCOME | EXPENSE | TRANSFER (mantido pra compat — DRE group dá granularidade)
+  type            String
+  color           String  @default("#6366f1")
+  icon            String?
+  // Hierarquia em árvore: parent é null para categorias-raiz.
+  parentId        String?
+  // Grupo do DRE Gerencial (ver lib/dre-groups/). Define onde a categoria
+  // aparece no relatório DRE: RECEITA_BRUTA, DEDUCOES, CUSTO_PRODUTO_VENDIDO,
+  // DESPESAS_COMERCIAIS, DESPESAS_ADMINISTRATIVAS, DESPESAS_PESSOAL,
+  // RECEITAS_FINANCEIRAS, DESPESAS_FINANCEIRAS, OUTRAS_RECEITAS, OUTRAS_DESPESAS,
+  // IMPOSTOS_SOBRE_LUCRO, DISTRIBUICAO_LUCROS, INVESTIMENTOS, TRANSFERENCIA.
+  dreGroup        String?
+  // Código contábil opcional, padrão SPED (ex: "1.01.001"). Único por empresa
+  // quando preenchido (validado app-layer).
+  code            String?
+  // Texto explicativo opcional (quando usar, exemplos).
+  description     String?
+  // Categoria criada pelo template do sistema. Não pode ser hard-deletada;
+  // type e dreGroup ficam protegidos contra edição. Renomeada de `isDefault`
+  // (semântica antiga era ambígua).
+  isSystemDefault Boolean @default(false)
+  isActive        Boolean @default(true)
+  // Ordenação manual. Float pra suportar drag-and-drop (insere entre dois itens
+  // sem reordenar a lista inteira). Default 0; valor real é calculado app-layer
+  // ao criar (max(order) + 1) ou ao reordenar.
+  order           Float   @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  company      Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company      Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  parent       Category?         @relation("CategoryParent", fields: [parentId], references: [id], onDelete: SetNull)
+  children     Category[]        @relation("CategoryParent")
   transactions Transaction[]
   suppliers    Supplier[]
   rules        AiLearningRule[]
+  history      CategoryHistory[]
 
-  @@unique([companyId, name])
+  // Mesma sub-categoria pode existir em parents diferentes (ex: "Outras"
+  // sob "Receita Operacional" e sob "Despesas Operacionais").
+  @@unique([companyId, parentId, name])
+  @@index([companyId, parentId, order])
+  @@index([companyId, dreGroup])
   @@map("categories")
+}
+
+// Centro de custo — agrupador transversal independente das categorias.
+// Permite consolidar DRE por unidade (ex: "Academia Centro" vs "Academia Sul")
+// sem afetar a estrutura do plano de contas.
+//
+// Hierarquia em árvore (matriz → filiais), validada app-layer.
+model CostCenter {
+  id          String  @id @default(cuid())
+  companyId   String
+  name        String
+  // Código do centro de custo (ex: "001-MATRIZ", "002-FILIAL-CENTRO")
+  code        String?
+  description String?
+  parentId    String?
+  isActive    Boolean @default(true)
+  order       Float   @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  parent       CostCenter?   @relation("CostCenterParent", fields: [parentId], references: [id], onDelete: SetNull)
+  children     CostCenter[]  @relation("CostCenterParent")
+  transactions Transaction[]
+
+  @@unique([companyId, parentId, name])
+  @@index([companyId, parentId, order])
+  @@index([companyId, isActive])
+  @@map("cost_centers")
+}
+
+// Audit log de mudanças em Category. Registra ações pra rastreabilidade
+// contábil ("por que essa categoria mudou em outubro?") e compliance LGPD.
+// changedFields é JSON com { campo: { before, after } } pra ações UPDATE.
+model CategoryHistory {
+  id            String   @id @default(cuid())
+  categoryId    String
+  companyId     String
+  // userId é nullable: NULL quando a ação foi feita pelo sistema (seed,
+  // backfill, aplicar template).
+  userId        String?
+  // CREATE | UPDATE | SOFT_DELETE | RESTORE | RENAME | APPLY_TEMPLATE
+  action        String
+  // JSON serializado: { campo: { before, after } } para UPDATEs.
+  changedFields String?
+  createdAt     DateTime @default(now())
+
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user     User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, categoryId, createdAt])
+  @@index([userId, createdAt])
+  @@map("category_history")
 }
 
 // Fornecedores identificados em transações (manualmente ou via BrasilAPI lookup por CNPJ).

@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
           icon: c.icon ?? null,
           isActive: true,
           companyId: empresa.id,
-          isDefault: true as const,
+          isSystemDefault: true as const,
         })),
       })
     }

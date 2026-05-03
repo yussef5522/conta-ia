@@ -27,7 +27,7 @@ export async function GET(request: NextRequest, { params }: Params) {
         type: true,
         color: true,
         icon: true,
-        isDefault: true,
+        isSystemDefault: true,
       },
     })
 

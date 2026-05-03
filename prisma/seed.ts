@@ -6,11 +6,16 @@ const prisma = new PrismaClient()
 
 async function seedCategories(companyId: string, companyType: string) {
   const categorias = getDefaultCategories(companyType)
+  // Usa findFirst+create em vez de upsert porque a unique do schema é
+  // [companyId, parentId, name] e NULLs são distintos no PostgreSQL.
+  // Idempotência é app-layer.
   for (const cat of categorias) {
-    await prisma.category.upsert({
-      where: { companyId_name: { companyId, name: cat.name } },
-      update: {},
-      create: { companyId, ...cat, isDefault: true },
+    const existente = await prisma.category.findFirst({
+      where: { companyId, parentId: null, name: cat.name },
+    })
+    if (existente) continue
+    await prisma.category.create({
+      data: { companyId, ...cat, isSystemDefault: true },
     })
   }
 }
