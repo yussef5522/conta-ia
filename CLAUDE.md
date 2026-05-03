@@ -1,8 +1,25 @@
-# Conta IA — Documento Mestre do Projeto
+# Conta IA — Documento OPERACIONAL do Projeto
 
-> **ESTE É O ÚNICO ARQUIVO DE REFERÊNCIA DO PROJETO.**  
-> Toda sessão de trabalho deve começar com Claude (chat ou Claude Code) lendo este arquivo.  
-> **Última atualização:** 30/04/2026
+> **HIERARQUIA DE DOCUMENTOS:**
+>
+> 📍 **`CLAUDE.md`** (este arquivo) — Estado **OPERACIONAL** atual
+>    - Onde estamos hoje, próxima ação concreta, log de sessões
+>    - Atualizado a cada sessão de código
+>    - **LER PRIMEIRO** ao iniciar qualquer sessão
+>
+> 🎯 **`docs/CONTA-IA-NORTE.md`** — Visão **ESTRATÉGICA** (norte de longo prazo)
+>    - Posicionamento, arquitetura fundacional, roadmap 12 meses, decisões grandes
+>    - Atualizado raramente (apenas quando há decisão estratégica)
+>    - **LER quando:** precisar entender "PORQUÊ" das decisões ou guiar etapa nova
+>
+> 📚 **`docs/DEPLOY.md`** — Guia técnico de deploy
+>    - **LER quando:** for fazer deploy em produção
+>
+> **Em caso de conflito aparente entre documentos:**
+> - CLAUDE.md tem prioridade pra decisões **OPERACIONAIS** (próxima etapa, comandos)
+> - CONTA-IA-NORTE.md tem prioridade pra decisões **ESTRATÉGICAS** (visão, arquitetura)
+>
+> **Última atualização:** 03/05/2026
 
 ---
 
@@ -138,13 +155,13 @@ Commits relacionados: `00817ea`, `0f7d45f`, `34ea23c`, `9d59af1`, `3256259`.
 
 ---
 
-## 🎯 Norte do Produto — PRODUTO-NORTE.md
+## 🎯 Norte do Produto — CONTA-IA-NORTE.md
 
-Toda decisão estratégica do produto (priorização de features, escopo de fases, posicionamento de mercado, definição de templates por subsetor, integração com IA) deve ser tomada à luz do documento `docs/PRODUTO-NORTE.md` na raiz deste projeto.
+Toda decisão estratégica do produto (priorização de features, escopo de fases, posicionamento de mercado, definição de templates por subsetor, integração com IA) deve ser tomada à luz do documento `docs/CONTA-IA-NORTE.md` na raiz de `docs/`.
 
-Esse documento é resultado de pesquisa profunda de mercado (30+ buscas, fontes oficiais BR, benchmark de 15 sistemas) feita em 03/05/2026 e é o NORTE permanente do produto pelos próximos 12 meses.
+Esse documento consolida 30+ buscas web profundas, fontes oficiais BR, benchmark de 15 sistemas e 5 sessões iterativas de pesquisa (V1 → V2-A → V2-B → V2-C → V3). Substitui o `PRODUTO-NORTE.md` (arquivado em `docs/_arquivado/`) e é o NORTE permanente do produto pelos próximos 12 meses.
 
-Antes de propor qualquer mudança de roadmap, nova fase ou ajuste de prioridades, releia as seções relevantes do PRODUTO-NORTE.md.
+Antes de propor qualquer mudança de roadmap, nova fase ou ajuste de prioridades, releia as seções relevantes do CONTA-IA-NORTE.md.
 
 Especialização: produto inicia foco em SERVICE/Academia (Yussef = expert), depois replica pra Clínica, Salão, Restaurante (cacula mix), Loja.
 
@@ -488,7 +505,7 @@ Depois que IA está validada, melhora ergonomia para volumes maiores.
 - Cronograma Reforma Tributária 2026-2033
 
 **Resultado:**
-- Documento `docs/PRODUTO-NORTE.md` (~37KB, 934 linhas)
+- Documento `docs/PRODUTO-NORTE.md` (~37KB, 934 linhas) — arquivado em 03/05/2026, substituído por `docs/CONTA-IA-NORTE.md`
 - 5 insights principais de mercado
 - 6 diferenciais sustentáveis identificados
 - Roadmap revisado de 12 meses
@@ -502,7 +519,7 @@ Depois que IA está validada, melhora ergonomia para volumes maiores.
 - Folha integrada nativa (não add-on)
 - Pronto pra Reforma Tributária 2026 desde dia 1
 
-**Próximo passo:** Yussef revisa o PRODUTO-NORTE.md, confirma decisões pendentes (seção 10.3), e damos sequência à Fase B do Plano de Contas com profundidade extrema (80-120 categorias, 3 níveis, foco academia primeiro).
+**Próximo passo:** Yussef revisa o CONTA-IA-NORTE.md (versão consolidada que substituiu o PRODUTO-NORTE.md), confirma decisões pendentes, e damos sequência à Fase B do Plano de Contas com profundidade extrema (80-120 categorias, 3 níveis, foco academia primeiro).
 
 ### 03/05/2026 (parte 2) — Etapa 2.4 backfill empresas existentes CONCLUÍDA
 **Contexto:** Bug descoberto no teste da 2.3 — cacula mix sem categorias, dropdown vazio.
@@ -528,6 +545,39 @@ Depois que IA está validada, melhora ergonomia para volumes maiores.
 - Validação visual: dropdown funcionando, classificação real OK (contador 100 → 99)
 
 **Próxima fase planejada (Fase B+):** UI de Gerenciamento de Categorias estilo Conta Azul — árvore navegável, drag-and-drop, edição inline, criar/desativar, restaurar template. Critério de prioridade: virou o próximo gargalo de UX agora que o backfill aplicou plano profissional nas empresas existentes.
+
+### 03/05/2026 (parte 3) — Documentação estratégica consolidada
+**Contexto:** Após Etapa 2.4 concluída (commit `dfeb20c`), Yussef e Claude (chat) fizeram pesquisa profunda em 5 sessões iterativas (V1 → V2-A → V2-B → V2-C → V3 → consolidação final) sobre UI Categorias + DRE.
+
+**Achados principais:**
+- 18 furos identificados em V1 e corrigidos em V2/V3
+- Hierarquia de documentos clarificada (CLAUDE.md operacional vs CONTA-IA-NORTE.md estratégico)
+- Postura da IA definida: INTELIGENTE-PROATIVA (não conservadora demais, não agressiva)
+- Foco geográfico confirmado: BRASIL 100% (sem visão global)
+
+**Documentos consolidados:**
+- ✅ Criado `docs/CONTA-IA-NORTE.md` (2.332 linhas) — visão estratégica completa
+- ✅ Substitui PRODUTO-NORTE.md (arquivado em `docs/_arquivado/`)
+- ✅ Cabeçalho do CLAUDE.md atualizado com hierarquia clara
+
+**Decisões estratégicas registradas no CONTA-IA-NORTE.md (14 decisões):**
+- Hierarquia categorias: 3 default, schema permite até 5
+- Drag-and-drop: v1 reordenar mesmo nível, v1.5 entre níveis
+- Importação CSV: stretch v2
+- Insight IA: cache 24h, toggle ON
+- Drill-down DRE: modal lateral
+- 4 cards de KPI fixos (Receita/Bruto/EBITDA/Líquido)
+- Posicionamento honesto sem promessa "#1 BR"
+- Custom Roles em todos os planos (diferencial vs QuickBooks)
+- Audit log retenção 5 anos (LGPD anonimizar, não deletar)
+- Implementação: Categorias primeiro
+- Migrations faseadas (uma por vez)
+- Atalhos teclado em fases
+- Densidade árvore: compacta desktop, espaçada mobile
+- Paleta cores: 12 curadas + custom
+- IA Coach: postura INTELIGENTE-PROATIVA com simulações reais (ex: alerta migração regime tributário com economia em R$)
+
+**Próximo passo:** Etapa 5.1 — Tela `/empresas/[id]/categorias` (gerenciar Plano de Contas).
 
 ### [Próxima sessão] — preencher
 - Data:
