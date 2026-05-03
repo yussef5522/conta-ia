@@ -11,14 +11,17 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url)
     const contaId = searchParams.get('contaId')
+    const empresaId = searchParams.get('empresaId')
     const page = Math.max(1, parseInt(searchParams.get('page') ?? '1'))
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') ?? '50')))
     const inicio = searchParams.get('inicio')
     const fim = searchParams.get('fim')
     const tipo = searchParams.get('tipo')
     const status = searchParams.get('status')
+    const semCategoria = searchParams.get('semCategoria') === 'true'
 
-    // Monta cláusula de conta(s) com isolamento multi-tenant
+    // Monta cláusula de conta(s) com isolamento multi-tenant.
+    // Precedência: contaId > empresaId > todas as contas do usuário.
     let contaWhere: Record<string, unknown>
     let contaSingle: { id: string; balance: number; name: string; bankName: string | null; accountType: string } | null = null
     if (contaId) {
@@ -28,8 +31,15 @@ export async function GET(request: NextRequest) {
       })
       if (!contaSingle) return NextResponse.json({ erro: 'Conta não encontrada' }, { status: 404 })
       contaWhere = { bankAccountId: contaId }
+    } else if (empresaId) {
+      // Verifica acesso à empresa antes de scopar
+      const acesso = await prisma.userCompany.findFirst({
+        where: { userId: user.sub, companyId: empresaId },
+      })
+      if (!acesso) return NextResponse.json({ erro: 'Empresa não encontrada' }, { status: 404 })
+      contaWhere = { bankAccount: { companyId: empresaId } }
     } else {
-      // Sem contaId: retorna de todas as contas do usuário
+      // Sem contaId/empresaId: retorna de todas as contas do usuário
       const userContas = await prisma.bankAccount.findMany({
         where: { company: { users: { some: { userId: user.sub } } } },
         select: { id: true },
@@ -46,6 +56,7 @@ export async function GET(request: NextRequest) {
     }
     if (tipo) where.type = tipo
     if (status) where.status = status
+    if (semCategoria) where.categoryId = null
 
     const [total, transacoes] = await Promise.all([
       prisma.transaction.count({ where }),

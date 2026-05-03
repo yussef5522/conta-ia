@@ -3,6 +3,7 @@ import { ZodError } from 'zod'
 import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { transacaoUpdateSchema } from '@/lib/validations/transacao'
+import { montarUpdateClassificacaoManual } from '@/lib/transacoes/classificar'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -48,7 +49,13 @@ export async function PUT(request: NextRequest, { params }: Params) {
       const updated = await tx.transaction.update({
         where: { id },
         data: {
-          ...(data.categoryId !== undefined ? { categoryId: data.categoryId ?? null } : {}),
+          // Quando categoryId vem no body, é uma classificação manual: setamos
+          // todos os metadados de classificação juntos (source, aiConfidence, ruleId)
+          // pra manter o contrato da 4.1. Em 4.6, o helper vai ganhar a criação
+          // automática de regra.
+          ...(data.categoryId !== undefined
+            ? montarUpdateClassificacaoManual(data.categoryId ?? null)
+            : {}),
           ...(data.date !== undefined ? { date: data.date } : {}),
           ...(data.description !== undefined ? { description: data.description } : {}),
           ...(data.amount !== undefined ? { amount: data.amount } : {}),
