@@ -138,6 +138,18 @@ Commits relacionados: `00817ea`, `0f7d45f`, `34ea23c`, `9d59af1`, `3256259`.
 
 ---
 
+## 🎯 Norte do Produto — PRODUTO-NORTE.md
+
+Toda decisão estratégica do produto (priorização de features, escopo de fases, posicionamento de mercado, definição de templates por subsetor, integração com IA) deve ser tomada à luz do documento `docs/PRODUTO-NORTE.md` na raiz deste projeto.
+
+Esse documento é resultado de pesquisa profunda de mercado (30+ buscas, fontes oficiais BR, benchmark de 15 sistemas) feita em 03/05/2026 e é o NORTE permanente do produto pelos próximos 12 meses.
+
+Antes de propor qualquer mudança de roadmap, nova fase ou ajuste de prioridades, releia as seções relevantes do PRODUTO-NORTE.md.
+
+Especialização: produto inicia foco em SERVICE/Academia (Yussef = expert), depois replica pra Clínica, Salão, Restaurante (cacula mix), Loja.
+
+---
+
 ## 🏦 Bancos do Yussef (validados)
 
 Todos os 7 bancos exportam OFX nativamente. Pluggy também suporta todos:
@@ -464,6 +476,33 @@ Depois que IA está validada, melhora ergonomia para volumes maiores.
 - 2 dos 5 commits foram bugs bloqueadores descobertos só ao Yussef testar com dados reais (lista de bancos incompleta + FITIDs duplicados do Banrisul). Reforça o valor da estratégia "testar com 1 OFX real ASAP" do plano da FASE 3+4 — esses bugs ficariam invisíveis num beta sem dados brasileiros reais.
 
 **Próximo passo:** sub-etapa 4.1 — criar tabelas `suppliers` e `ai_learning_rules` no schema Prisma (base pra pipeline de classificação automática).
+
+### 03/05/2026 — Pesquisa profunda de mercado e definição do NORTE
+**Contexto:** Yussef estabeleceu filosofia "qualidade extrema > velocidade" (02/05) e pediu pesquisa profunda antes de prosseguir com Fase B do Plano de Contas.
+
+**Pesquisa realizada (no chat com Claude, não Code):**
+- 30+ buscas web profundas via WebSearch
+- Fontes oficiais (Receita Federal, Ministério Fazenda, leis)
+- Benchmark de 15 sistemas (BR e globais)
+- Análise IA financeira 2026
+- Cronograma Reforma Tributária 2026-2033
+
+**Resultado:**
+- Documento `docs/PRODUTO-NORTE.md` (~37KB, 934 linhas)
+- 5 insights principais de mercado
+- 6 diferenciais sustentáveis identificados
+- Roadmap revisado de 12 meses
+- Posicionamento e pricing definidos
+
+**Decisões registradas:**
+- Foco inicial: SERVICE/Academia (Yussef = expert)
+- Templates por SUBSETOR (não setor amplo)
+- IA como cérebro central, não feature
+- Recomendação tributária ativa = diferencial chave
+- Folha integrada nativa (não add-on)
+- Pronto pra Reforma Tributária 2026 desde dia 1
+
+**Próximo passo:** Yussef revisa o PRODUTO-NORTE.md, confirma decisões pendentes (seção 10.3), e damos sequência à Fase B do Plano de Contas com profundidade extrema (80-120 categorias, 3 níveis, foco academia primeiro).
 
 ### [Próxima sessão] — preencher
 - Data:
