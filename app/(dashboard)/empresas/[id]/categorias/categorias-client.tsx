@@ -18,8 +18,13 @@ import { Header } from '@/components/layout/header'
 import { Skeleton } from '@/components/ui/skeleton'
 import { CategoryTree } from '@/components/categorias/CategoryTree'
 import { CategoryFilters } from '@/components/categorias/CategoryFilters'
-import { CategoryDetail } from '@/components/categorias/CategoryDetail'
-import { buildTree, type CategoryFlat, type CategoryNode } from '@/lib/categories/buildTree'
+import { CategoryForm, type FormMode } from '@/components/categorias/CategoryForm'
+import {
+  buildTree,
+  flattenTree,
+  type CategoryFlat,
+  type CategoryNode,
+} from '@/lib/categories/buildTree'
 import {
   filterTree,
   DEFAULT_FILTERS,
@@ -47,6 +52,10 @@ export function CategoriasClient({
 
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [mode, setMode] = useState<FormMode>('view')
+
+  // Token pra forçar refetch após save/delete
+  const [refetchKey, setRefetchKey] = useState(0)
 
   useEffect(() => {
     let cancelado = false
@@ -71,12 +80,10 @@ export function CategoriasClient({
     return () => {
       cancelado = true
     }
-  }, [empresaId])
+  }, [empresaId, refetchKey])
 
-  // Árvore base (sem filtros) — referência pra buscar a categoria selecionada
   const treeBase = useMemo(() => buildTree(categorias), [categorias])
 
-  // DRE Groups presentes pra montar opções dinâmicas do filtro
   const dreGroupsPresentes = useMemo(() => {
     const set = new Set<string>()
     for (const c of categorias) {
@@ -85,10 +92,9 @@ export function CategoriasClient({
     return Array.from(set).sort()
   }, [categorias])
 
-  // Árvore filtrada
   const treeFiltrada = useMemo(() => filterTree(treeBase, filters), [treeBase, filters])
 
-  // Categoria selecionada (busca na árvore base, não filtrada — preserva mesmo se filtro esconder)
+  // Seleção busca na árvore base (não filtrada) — preserva mesmo se filtro esconder
   const selected = useMemo<CategoryNode | null>(() => {
     if (!selectedId) return null
     const buscar = (nodes: CategoryNode[]): CategoryNode | null => {
@@ -102,6 +108,20 @@ export function CategoriasClient({
     return buscar(treeBase)
   }, [selectedId, treeBase])
 
+  // Lista achatada de candidatas a parent — exclui self e descendentes (em modo edit)
+  const parentCandidates = useMemo<CategoryNode[]>(() => {
+    const todos = flattenTree(treeBase)
+    if (mode !== 'edit' || !selected) return todos
+    // Coleta IDs descendentes da selected
+    const proibidos = new Set<string>([selected.id])
+    const visitar = (n: CategoryNode) => {
+      proibidos.add(n.id)
+      for (const c of n.children) visitar(c)
+    }
+    visitar(selected)
+    return todos.filter((c) => !proibidos.has(c.id))
+  }, [treeBase, mode, selected])
+
   const filtrosAtivos =
     filters.search.trim() !== '' ||
     filters.type !== 'ALL' ||
@@ -109,9 +129,23 @@ export function CategoriasClient({
     filters.status !== DEFAULT_FILTERS.status
 
   const limparFiltros = () => setFilters(DEFAULT_FILTERS)
-
-  // Quando há busca, expande tudo automaticamente pra mostrar matches profundos
   const expandirTudo = filters.search.trim() !== ''
+
+  function handleNovaCategoria() {
+    setSelectedId(null)
+    setMode('create')
+  }
+
+  function handleSaved() {
+    setRefetchKey((k) => k + 1)
+    setMode('view')
+  }
+
+  function handleDeactivated() {
+    setRefetchKey((k) => k + 1)
+    setMode('view')
+    // Mantém selectedId pra mostrar a categoria como inativa
+  }
 
   return (
     <div className="space-y-6">
@@ -124,9 +158,14 @@ export function CategoriasClient({
         </Button>
       </Header>
 
-      {/* Toolbar — botões funcionarão em 5.1.C */}
+      {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" disabled aria-label="Criar nova categoria (5.1.C)">
+        <Button
+          size="sm"
+          onClick={handleNovaCategoria}
+          aria-label="Criar nova categoria"
+          disabled={mode !== 'view'}
+        >
           <Plus className="mr-1.5 h-3.5 w-3.5" />
           Nova Categoria
         </Button>
@@ -151,7 +190,7 @@ export function CategoriasClient({
         dreGroupsPresentes={dreGroupsPresentes}
       />
 
-      {/* Layout split 40/60 (responsivo: empilha em mobile <768px) */}
+      {/* Layout split 40/60 */}
       <div className="grid gap-4 md:grid-cols-[2fr_3fr]">
         {/* Coluna esquerda — Árvore */}
         <Card className="min-h-[480px]">
@@ -161,7 +200,8 @@ export function CategoriasClient({
               Árvore de Categorias
               {!loading && categorias.length > 0 && (
                 <span className="text-xs text-muted-foreground font-normal">
-                  ({treeFiltrada.length > 0 ? `mostrando ${countFlat(treeFiltrada)}` : '0'} de {categorias.length})
+                  ({treeFiltrada.length > 0 ? `mostrando ${countFlat(treeFiltrada)}` : '0'} de{' '}
+                  {categorias.length})
                 </span>
               )}
             </div>
@@ -198,21 +238,36 @@ export function CategoriasClient({
               <CategoryTree
                 tree={treeFiltrada}
                 selectedId={selectedId}
-                onSelect={(node) => setSelectedId(node.id)}
+                onSelect={(node) => {
+                  // Se está em modo create/edit, não permitir trocar seleção sem cancelar
+                  if (mode === 'view') {
+                    setSelectedId(node.id)
+                  }
+                }}
                 defaultExpandAll={expandirTudo}
               />
             )}
           </CardContent>
         </Card>
 
-        {/* Coluna direita — Detalhes (read-only nesta sub-etapa) */}
+        {/* Coluna direita — Form (view/create/edit) */}
         <Card className="min-h-[480px]">
           <CardContent className="py-4 space-y-3">
             <div className="flex items-center gap-2 text-sm font-semibold">
               <FileText className="h-4 w-4 text-muted-foreground" />
-              Detalhes da Categoria
+              {mode === 'view' && 'Detalhes da Categoria'}
+              {mode === 'create' && 'Nova Categoria'}
+              {mode === 'edit' && 'Editando Categoria'}
             </div>
-            <CategoryDetail empresaId={empresaId} selected={selected} />
+            <CategoryForm
+              empresaId={empresaId}
+              mode={mode}
+              selected={selected}
+              parentCandidates={parentCandidates}
+              onModeChange={setMode}
+              onSaved={handleSaved}
+              onDeactivated={handleDeactivated}
+            />
           </CardContent>
         </Card>
       </div>
@@ -229,7 +284,6 @@ export function CategoriasClient({
   )
 }
 
-// Conta total de nós em uma árvore (incluindo todos os filhos).
 function countFlat(tree: CategoryNode[]): number {
   let n = 0
   const visitar = (node: CategoryNode) => {
