@@ -4,6 +4,7 @@ import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { categoriaUpdateSchema } from '@/lib/validations/categoria'
 import { regimesToJson } from '@/lib/categories/regimes'
+import { canHardDelete, getHardDeleteDisabledReason } from '@/lib/categories/delete-rules'
 
 interface Params {
   params: Promise<{ id: string; catId: string }>
@@ -166,9 +167,14 @@ export async function PUT(request: NextRequest, { params }: Params) {
 }
 
 // DELETE /api/empresas/[id]/categorias/[catId]
-// Soft delete (isActive=false). NÃO faz hard delete pra preservar transações
-// vinculadas. Categorias isSystemDefault podem ser desativadas mas nunca
-// hard-deletadas (decisão estratégica).
+// Default: soft delete (isActive=false). Preserva transações vinculadas.
+//
+// Query opcional ?hard=true: hard delete (DELETE row) APENAS se:
+//   - !isSystemDefault (não é categoria do template)
+//   - transactionCount === 0 (zero transações vinculadas)
+//   - sem filhos (incluindo desativados — soft-deletados continuam ocupando
+//     o espaço hierárquico)
+// Validações via lib/categories/delete-rules.ts (mesmas regras do frontend).
 export async function DELETE(request: NextRequest, { params }: Params) {
   const { id: empresaId, catId } = await params
   const user = await getAuthUser(request)
@@ -180,6 +186,36 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       return NextResponse.json({ erro: 'Categoria não encontrada' }, { status: 404 })
     }
 
+    const isHardDelete = request.nextUrl.searchParams.get('hard') === 'true'
+
+    if (isHardDelete) {
+      // Conta filhos (incluindo inativos) e transações
+      const [transactionCount, childrenCount] = await Promise.all([
+        prisma.transaction.count({ where: { categoryId: catId } }),
+        prisma.category.count({ where: { parentId: catId } }),
+      ])
+
+      const ctx = {
+        isSystemDefault: atual.isSystemDefault,
+        transactionCount,
+        childrenCount,
+      }
+
+      if (!canHardDelete(ctx)) {
+        const motivo = getHardDeleteDisabledReason(ctx) ?? 'Não foi possível excluir'
+        return NextResponse.json({ erro: motivo }, { status: 400 })
+      }
+
+      await prisma.category.delete({ where: { id: catId } })
+
+      return NextResponse.json({
+        success: true,
+        deleted: true,
+        mensagem: 'Categoria excluída permanentemente',
+      })
+    }
+
+    // Soft delete padrão
     await prisma.category.update({
       where: { id: catId },
       data: { isActive: false },
@@ -188,6 +224,6 @@ export async function DELETE(request: NextRequest, { params }: Params) {
     return NextResponse.json({ mensagem: 'Categoria desativada com sucesso' })
   } catch (error) {
     console.error('[CATEGORIAS DELETE] Erro:', error)
-    return NextResponse.json({ erro: 'Erro ao desativar categoria' }, { status: 500 })
+    return NextResponse.json({ erro: 'Erro ao desativar/excluir categoria' }, { status: 500 })
   }
 }

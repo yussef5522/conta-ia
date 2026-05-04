@@ -8,6 +8,7 @@ import {
   Pencil,
   Trash2,
   Power,
+  PauseCircle,
   Sparkles,
   Wand2,
 } from 'lucide-react'
@@ -29,6 +30,10 @@ import { useToast } from '@/components/ui/use-toast'
 import { cn } from '@/lib/utils'
 import { useDebounce } from '@/lib/hooks/useDebounce'
 import { sugerir, type CategoryType } from '@/lib/categories/sugerir'
+import {
+  canHardDelete,
+  getHardDeleteDisabledReason,
+} from '@/lib/categories/delete-rules'
 import {
   DRE_COLOR_BG,
   getDreColorClass,
@@ -176,6 +181,7 @@ export function CategoryForm({
   const [salvando, setSalvando] = useState(false)
   const [erros, setErros] = useState<Record<string, string>>({})
   const [confirmDesativar, setConfirmDesativar] = useState(false)
+  const [confirmExcluir, setConfirmExcluir] = useState(false)
 
   const nomeInputRef = useRef<HTMLInputElement | null>(null)
   const successFlash = useRef<HTMLDivElement | null>(null)
@@ -425,6 +431,31 @@ export function CategoryForm({
     }
   }
 
+  async function handleExcluirPermanente() {
+    if (!selected) return
+    try {
+      const res = await fetch(
+        `/api/empresas/${empresaId}/categorias/${selected.id}?hard=true`,
+        { method: 'DELETE' },
+      )
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        toast({
+          variant: 'destructive',
+          title: 'Erro ao excluir',
+          description: data.erro ?? 'Tente novamente.',
+        })
+        // Mantém modal aberto pra user ler. ConfirmDialog não fecha em rejection.
+        throw new Error(data.erro ?? 'Erro')
+      }
+      toast({ variant: 'destructive', title: 'Categoria excluída permanentemente' })
+      onDeactivated()
+    } catch (e) {
+      // Re-throw pra ConfirmDialog não fechar
+      throw e
+    }
+  }
+
   async function handleReativar() {
     if (!selected) return
     try {
@@ -510,7 +541,7 @@ export function CategoryForm({
               )}
             </div>
           </div>
-          <div className="flex items-center gap-1 shrink-0">
+          <div className="flex items-center gap-2 shrink-0">
             {selected.isActive ? (
               <>
                 <Button
@@ -527,10 +558,34 @@ export function CategoryForm({
                   variant="outline"
                   onClick={() => setConfirmDesativar(true)}
                   aria-label="Desativar categoria"
-                  className="text-destructive hover:text-destructive"
+                  className="text-amber-600 hover:text-amber-700"
                 >
-                  <Trash2 className="h-3.5 w-3.5" />
+                  <PauseCircle className="mr-1.5 h-3.5 w-3.5" />
+                  Desativar
                 </Button>
+                {(() => {
+                  const ctx = {
+                    isSystemDefault: selected.isSystemDefault,
+                    transactionCount: selected.transactionCount,
+                    childrenCount: selected.children?.length ?? 0,
+                  }
+                  const podeExcluir = canHardDelete(ctx)
+                  const motivoBloqueio = getHardDeleteDisabledReason(ctx)
+                  return (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setConfirmExcluir(true)}
+                      disabled={!podeExcluir}
+                      aria-label="Excluir categoria permanentemente"
+                      title={motivoBloqueio ?? 'Excluir permanentemente'}
+                      className="text-red-600 hover:text-red-700 disabled:text-muted-foreground"
+                    >
+                      <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                      Excluir
+                    </Button>
+                  )
+                })()}
               </>
             ) : (
               <Button
@@ -538,6 +593,7 @@ export function CategoryForm({
                 variant="outline"
                 onClick={handleReativar}
                 aria-label="Reativar categoria"
+                className="text-green-600 hover:text-green-700"
               >
                 <Power className="mr-1.5 h-3.5 w-3.5" />
                 Reativar
@@ -639,6 +695,17 @@ export function CategoryForm({
           nome={selected.name}
           transactionCount={txCount}
           onConfirm={handleDesativar}
+        />
+
+        <ConfirmDialog
+          open={confirmExcluir}
+          onOpenChange={setConfirmExcluir}
+          title={`Excluir "${selected.name}" permanentemente?`}
+          description="Esta ação NÃO pode ser desfeita. A categoria será removida do banco de dados."
+          confirmLabel="Sim, excluir permanentemente"
+          cancelLabel="Cancelar"
+          variant="destructive"
+          onConfirm={handleExcluirPermanente}
         />
       </div>
     )
