@@ -15,7 +15,8 @@ export interface CategoryFlat {
   visibleInRegimes: string | null
   isActive: boolean
   isSystemDefault: boolean
-  _count?: { transactions: number }
+  templateKey?: string | null
+  _count?: { transactions: number; children?: number }
 }
 
 export interface CategoryNode {

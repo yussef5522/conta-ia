@@ -22,6 +22,7 @@ import { CategoryTree } from '@/components/categorias/CategoryTree'
 import { CategoryFilters } from '@/components/categorias/CategoryFilters'
 import { CategoryForm, type FormMode } from '@/components/categorias/CategoryForm'
 import { ShortcutsCheatsheet } from '@/components/categorias/ShortcutsCheatsheet'
+import { RestoreTemplateDialog } from '@/components/categorias/RestoreTemplateDialog'
 import {
   buildTree,
   flattenTree,
@@ -60,6 +61,7 @@ export function CategoriasClient({
   const [mode, setMode] = useState<FormMode>('view')
   const [refetchKey, setRefetchKey] = useState(0)
   const [cheatsheetOpen, setCheatsheetOpen] = useState(false)
+  const [restoreOpen, setRestoreOpen] = useState(false)
 
   const buscaInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -325,7 +327,13 @@ export function CategoriasClient({
           <Download className="mr-1.5 h-3.5 w-3.5" />
           Exportar
         </Button>
-        <Button size="sm" variant="outline" disabled aria-label="Restaurar template padrão (5.1.E)">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => setRestoreOpen(true)}
+          disabled={mode !== 'view'}
+          aria-label="Restaurar template padrão"
+        >
           <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
           Restaurar Padrão
         </Button>
@@ -436,6 +444,16 @@ export function CategoriasClient({
       )}
 
       <ShortcutsCheatsheet open={cheatsheetOpen} onOpenChange={setCheatsheetOpen} />
+
+      <RestoreTemplateDialog
+        open={restoreOpen}
+        onOpenChange={setRestoreOpen}
+        empresaId={empresaId}
+        onApplied={() => {
+          setRestoreOpen(false)
+          setRefetchKey((k) => k + 1)
+        }}
+      />
     </div>
   )
 }

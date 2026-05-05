@@ -17,8 +17,9 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  companies       UserCompany[]
-  categoryHistory CategoryHistory[]
+  companies           UserCompany[]
+  categoryHistory     CategoryHistory[]
+  categoryRestoreLogs CategoryRestoreLog[]
 
   @@map("users")
 }
@@ -48,6 +49,7 @@ model Company {
   rules           AiLearningRule[]
   costCenters     CostCenter[]
   categoryHistory CategoryHistory[]
+  restoreLogs     CategoryRestoreLog[]
 
   @@map("companies")
 }
@@ -179,6 +181,12 @@ model Category {
   // Exemplo: '["LUCRO_PRESUMIDO","LUCRO_REAL"]' pra ISS, IRPJ, CSLL.
   // Filtragem é app-layer (lib/categories/regimes.ts:categoriaVisivelNoRegime).
   visibleInRegimes String?
+  // Chave lógica do template (Sub-etapa 5.1.E). Preenchida em isSystemDefault=true
+  // via backfill em scripts/backfill-template-keys.ts. Permite identificar
+  // categorias do template após edições do usuário (nome muda, templateKey não).
+  // Formato: "SETOR:DRE_GROUP:slug_do_nome_original" (ver lib/categories/template-key.ts).
+  // null em categorias custom (isSystemDefault=false).
+  templateKey      String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -196,6 +204,7 @@ model Category {
   @@unique([companyId, parentId, name])
   @@index([companyId, parentId, order])
   @@index([companyId, dreGroup])
+  @@index([templateKey])
   @@map("categories")
 }
 
@@ -323,4 +332,27 @@ model AiLearningRule {
   // Lookup rápido durante import: filtra ativas por empresa, indexa o tipo de match
   @@index([companyId, isActive, tipoMatch])
   @@map("ai_learning_rules")
+}
+
+// Audit log de operações "Restaurar Padrão" (Sub-etapa 5.1.E).
+// Registra cada vez que o usuário aplica um diff template→atual, com snapshot
+// do que mudou. Permanente — não pode ser desfeito automaticamente, mas
+// histórico fica pra revisão e troubleshooting.
+model CategoryRestoreLog {
+  id            String   @id @default(cuid())
+  companyId     String
+  userId        String
+  timestamp     DateTime @default(now())
+  // Counts agregados pra exibição rápida no histórico
+  revertedCount Int      @default(0)
+  removedCount  Int      @default(0)
+  addedCount    Int      @default(0)
+  // JSON com snapshot do diff aplicado (categorias afetadas, valores antes/depois)
+  details       String
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id])
+
+  @@index([companyId, timestamp])
+  @@map("category_restore_log")
 }
