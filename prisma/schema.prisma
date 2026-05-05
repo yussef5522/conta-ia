@@ -20,6 +20,8 @@ model User {
   companies           UserCompany[]
   categoryHistory     CategoryHistory[]
   categoryRestoreLogs CategoryRestoreLog[]
+  userCompanyRoles    UserCompanyRole[]
+  auditLogs           AuditLog[]
 
   @@map("users")
 }
@@ -42,14 +44,17 @@ model Company {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users           UserCompany[]
-  bankAccounts    BankAccount[]
-  categories      Category[]
-  suppliers       Supplier[]
-  rules           AiLearningRule[]
-  costCenters     CostCenter[]
-  categoryHistory CategoryHistory[]
-  restoreLogs     CategoryRestoreLog[]
+  users            UserCompany[]
+  bankAccounts     BankAccount[]
+  categories       Category[]
+  suppliers        Supplier[]
+  rules            AiLearningRule[]
+  costCenters      CostCenter[]
+  categoryHistory  CategoryHistory[]
+  restoreLogs      CategoryRestoreLog[]
+  roles            Role[]
+  userCompanyRoles UserCompanyRole[]
+  auditLogs        AuditLog[]
 
   @@map("companies")
 }
@@ -122,6 +127,13 @@ model Transaction {
   aiConfidence         Float?
   // MANUAL | RULE | BRASILAPI | AI — origem da classificação
   classificationSource String?
+
+  // Regime competência (CFC) — Sub-etapa 5.3.A.
+  // competenceDate: data do fato gerador (quando o serviço/produto foi prestado/adquirido).
+  // paymentDate: data efetiva do pagamento (caixa). Pode ser null se ainda não foi pago.
+  // Em backfill, competenceDate = date (transactionDate) por padrão conservador.
+  competenceDate DateTime?
+  paymentDate    DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -332,6 +344,131 @@ model AiLearningRule {
   // Lookup rápido durante import: filtra ativas por empresa, indexa o tipo de match
   @@index([companyId, isActive, tipoMatch])
   @@map("ai_learning_rules")
+}
+
+// Permissões canônicas do sistema (Sub-etapa 5.3.A).
+// Lista fechada gerenciada em código (lib/auth/permissions.ts) e sincronizada
+// via scripts/seed-rbac.ts (idempotente). UI consulta esta tabela pra exibir
+// catálogo agrupado, mas a fonte da verdade são as constantes em código.
+model Permission {
+  id          String  @id @default(cuid())
+  // "category.create", "transaction.view", "company.delete", etc.
+  key         String  @unique
+  // Rótulo amigável: "Criar categoria"
+  name        String
+  // Descrição opcional pra hint na UI
+  description String?
+  // Agrupador na UI: "Categorias", "Transações", "Empresa", "Usuários", etc.
+  group       String
+
+  rolePermissions RolePermission[]
+
+  @@index([group])
+  @@map("permissions")
+}
+
+// Roles do sistema RBAC (Sub-etapa 5.3.A).
+// - Roles padrão: companyId = null + isSystemDefault = true (globais, imutáveis).
+// - Roles custom: companyId preenchido + isSystemDefault = false (escopadas por empresa).
+model Role {
+  id              String   @id @default(cuid())
+  // OWNER, ADMIN, ACCOUNTANT, FINANCIAL, VIEWER (padrão) ou nome custom escolhido pelo user
+  name            String
+  description     String?
+  // true bloqueia edição (UI não permite mexer)
+  isSystemDefault Boolean  @default(false)
+  // null = role global (padrão); preenchido = role custom da empresa
+  companyId       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  company          Company?          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  permissions      RolePermission[]
+  userCompanyRoles UserCompanyRole[]
+
+  // Nome único por empresa (custom). Pra roles globais (companyId=null), garante
+  // que só haja UM "OWNER", UM "ADMIN", etc. globalmente.
+  @@unique([companyId, name])
+  @@index([companyId])
+  @@index([isSystemDefault])
+  @@map("roles")
+}
+
+// Many-to-many entre Role e Permission (Sub-etapa 5.3.A).
+// Tabela de junção pura. Sincronizada pelo seed pra roles padrão.
+// Roles custom têm permissões editadas pelo OWNER/ADMIN da empresa.
+model RolePermission {
+  roleId       String
+  permissionId String
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}
+
+// Atribuição de Role a um par (User, Company) (Sub-etapa 5.3.A).
+// Substitui o campo `role` simples em UserCompany (que vira obsoleto, mas é
+// mantido na 5.3.A pra não quebrar rotas atuais — removido na 5.3.B).
+// 1 role por user por empresa.
+model UserCompanyRole {
+  id        String   @id @default(cuid())
+  userId    String
+  companyId String
+  roleId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  // Restrict: não permite excluir Role que tem UserCompanyRole apontando.
+  // Forçar reassign antes de excluir role.
+  role    Role    @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, companyId])
+  @@index([companyId])
+  @@index([userId])
+  @@map("user_company_roles")
+}
+
+// Audit log genérico nível de campo (Sub-etapa 5.3.A).
+// Substitui o CategoryHistory específico (que continua existindo pra compat,
+// mas novas integrações usam este modelo genérico).
+//
+// Snapshot de userName/userEmail é resiliente: mesmo se o user for deletado
+// (userId vira null via SetNull), o histórico preserva quem fez a ação.
+model AuditLog {
+  id            String   @id @default(cuid())
+  companyId     String
+  // FK pra User com SetNull on delete (preserva log mesmo se user sumir)
+  userId        String?
+  // Snapshot do user no momento da ação — resiliente a delete posterior
+  userName      String
+  userEmail     String
+  // CREATE | UPDATE | DELETE | ACTIVATE | DEACTIVATE | RESTORE_TEMPLATE | LOGIN | etc.
+  action        String
+  // Category | Transaction | Company | BankAccount | Role | UserCompanyRole | etc.
+  entityType    String
+  entityId      String
+  // JSON: { campo: { before: X, after: Y } } pra UPDATE; null pra CREATE/DELETE
+  fieldsChanged String?
+  // JSON livre: contexto adicional (parentName, valor formatado, etc.)
+  metadata      String?
+  // Contexto de auditoria/forense
+  ipAddress     String?
+  userAgent     String?
+  timestamp     DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, timestamp(sort: Desc)])
+  @@index([entityType, entityId])
+  @@index([userId])
+  @@index([action])
+  @@map("audit_log")
 }
 
 // Audit log de operações "Restaurar Padrão" (Sub-etapa 5.1.E).
