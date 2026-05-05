@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Plus,
   Download,
@@ -11,14 +11,17 @@ import {
   FileText,
   Inbox,
   FilterX,
+  Keyboard,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Header } from '@/components/layout/header'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useToast } from '@/components/ui/use-toast'
 import { CategoryTree } from '@/components/categorias/CategoryTree'
 import { CategoryFilters } from '@/components/categorias/CategoryFilters'
 import { CategoryForm, type FormMode } from '@/components/categorias/CategoryForm'
+import { ShortcutsCheatsheet } from '@/components/categorias/ShortcutsCheatsheet'
 import {
   buildTree,
   flattenTree,
@@ -30,6 +33,7 @@ import {
   DEFAULT_FILTERS,
   type CategoryFilters as Filters,
 } from '@/lib/categories/filterTree'
+import { useKeyboardShortcuts } from '@/lib/hooks/useKeyboardShortcuts'
 
 interface Props {
   empresaId: string
@@ -46,6 +50,7 @@ export function CategoriasClient({
   setorLabel,
   regimeLabel,
 }: Props) {
+  const { toast } = useToast()
   const [categorias, setCategorias] = useState<CategoryFlat[]>([])
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
@@ -53,9 +58,10 @@ export function CategoriasClient({
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [mode, setMode] = useState<FormMode>('view')
-
-  // Token pra forçar refetch após save/delete
   const [refetchKey, setRefetchKey] = useState(0)
+  const [cheatsheetOpen, setCheatsheetOpen] = useState(false)
+
+  const buscaInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     let cancelado = false
@@ -94,7 +100,8 @@ export function CategoriasClient({
 
   const treeFiltrada = useMemo(() => filterTree(treeBase, filters), [treeBase, filters])
 
-  // Seleção busca na árvore base (não filtrada) — preserva mesmo se filtro esconder
+  const flatVisible = useMemo(() => flattenTree(treeFiltrada), [treeFiltrada])
+
   const selected = useMemo<CategoryNode | null>(() => {
     if (!selectedId) return null
     const buscar = (nodes: CategoryNode[]): CategoryNode | null => {
@@ -108,11 +115,9 @@ export function CategoriasClient({
     return buscar(treeBase)
   }, [selectedId, treeBase])
 
-  // Lista achatada de candidatas a parent — exclui self e descendentes (em modo edit)
   const parentCandidates = useMemo<CategoryNode[]>(() => {
     const todos = flattenTree(treeBase)
     if (mode !== 'edit' || !selected) return todos
-    // Coleta IDs descendentes da selected
     const proibidos = new Set<string>([selected.id])
     const visitar = (n: CategoryNode) => {
       proibidos.add(n.id)
@@ -144,8 +149,142 @@ export function CategoriasClient({
   function handleDeactivated() {
     setRefetchKey((k) => k + 1)
     setMode('view')
-    // Mantém selectedId pra mostrar a categoria como inativa
   }
+
+  // Reorder via drag-and-drop (com optimistic update)
+  async function handleReorder(movedId: string, parentId: string | null, overId: string | null) {
+    // Calcula newIndex baseado no overId nos siblings
+    const siblings = categorias.filter((c) => (c.parentId ?? null) === (parentId ?? null))
+    const ordenados = [...siblings].sort((a, b) => a.order - b.order)
+    const overIndex = overId ? ordenados.findIndex((s) => s.id === overId) : ordenados.length - 1
+    if (overIndex < 0) return
+    const movedIndex = ordenados.findIndex((s) => s.id === movedId)
+    // Se o movido está antes do over, newIndex = overIndex; senão overIndex
+    const newIndex = overIndex
+
+    // Optimistic update local
+    const snapshot = categorias
+    const reordenadosIds = (() => {
+      const lista = ordenados.filter((s) => s.id !== movedId).map((s) => s.id)
+      lista.splice(Math.max(0, Math.min(newIndex, lista.length)), 0, movedId)
+      return lista
+    })()
+    setCategorias((prev) =>
+      prev.map((c) => {
+        if ((c.parentId ?? null) !== (parentId ?? null)) return c
+        const idx = reordenadosIds.indexOf(c.id)
+        return idx >= 0 ? { ...c, order: idx + 1 } : c
+      }),
+    )
+
+    try {
+      const res = await fetch(`/api/empresas/${empresaId}/categorias/reorder`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ categoryId: movedId, newOrder: newIndex, parentId }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.erro ?? 'Erro ao reordenar')
+      }
+    } catch (e) {
+      // Rollback
+      setCategorias(snapshot)
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao reordenar',
+        description: e instanceof Error ? e.message : 'Tente novamente.',
+      })
+    }
+  }
+
+  // Rename inline (com optimistic update)
+  async function handleRename(id: string, newName: string) {
+    const snapshot = categorias
+    setCategorias((prev) => prev.map((c) => (c.id === id ? { ...c, name: newName } : c)))
+
+    try {
+      const res = await fetch(`/api/empresas/${empresaId}/categorias/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.erro ?? 'Erro ao renomear')
+      }
+      toast({ variant: 'success', title: 'Categoria renomeada' })
+    } catch (e) {
+      setCategorias(snapshot)
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao renomear',
+        description: e instanceof Error ? e.message : 'Tente novamente.',
+      })
+    }
+  }
+
+  function navegarLista(direcao: 1 | -1) {
+    if (flatVisible.length === 0) return
+    const idxAtual = selectedId ? flatVisible.findIndex((n) => n.id === selectedId) : -1
+    let proximo = idxAtual + direcao
+    if (idxAtual === -1) proximo = direcao === 1 ? 0 : flatVisible.length - 1
+    if (proximo < 0) proximo = 0
+    if (proximo >= flatVisible.length) proximo = flatVisible.length - 1
+    setSelectedId(flatVisible[proximo].id)
+  }
+
+  // Atalhos de teclado (apenas em modo view)
+  const shortcutsEnabled = mode === 'view'
+  useKeyboardShortcuts(
+    [
+      { key: 'j', handler: () => navegarLista(1) },
+      { key: 'ArrowDown', handler: () => navegarLista(1) },
+      { key: 'k', handler: () => navegarLista(-1) },
+      { key: 'ArrowUp', handler: () => navegarLista(-1) },
+      {
+        key: 'Enter',
+        handler: () => {
+          if (selected) setMode('edit')
+        },
+      },
+      { key: 'n', handler: handleNovaCategoria },
+      {
+        key: 'e',
+        handler: () => {
+          if (selected) setMode('edit')
+        },
+      },
+      {
+        key: 'Delete',
+        handler: () => {
+          // Click programático no botão de desativar não é trivial.
+          // Estratégia: deixa o botão de desativar acessível via tab; aqui só mostra mensagem.
+          if (selected?.isActive) {
+            toast({
+              title: 'Use o botão Desativar',
+              description: 'Pra desativar use o botão na lateral direita pra abrir a confirmação.',
+            })
+          }
+        },
+      },
+      {
+        key: 'Escape',
+        handler: () => setSelectedId(null),
+      },
+      {
+        key: '/',
+        handler: () => {
+          buscaInputRef.current?.focus()
+        },
+      },
+      {
+        key: '?',
+        handler: () => setCheatsheetOpen(true),
+      },
+    ],
+    { enabled: shortcutsEnabled },
+  )
 
   return (
     <div className="space-y-6">
@@ -153,6 +292,15 @@ export function CategoriasClient({
         title={`Plano de Contas — ${empresaNome}`}
         description={`${totalCategorias} categorias · ${setorLabel} · ${regimeLabel}`}
       >
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setCheatsheetOpen(true)}
+          aria-label="Ver atalhos de teclado"
+          title="Atalhos (?)"
+        >
+          <Keyboard className="h-4 w-4" />
+        </Button>
         <Button variant="ghost" size="sm" aria-label="Configurar plano de contas" disabled>
           <Settings2 className="h-4 w-4" />
         </Button>
@@ -163,7 +311,7 @@ export function CategoriasClient({
         <Button
           size="sm"
           onClick={handleNovaCategoria}
-          aria-label="Criar nova categoria"
+          aria-label="Criar nova categoria (atalho N)"
           disabled={mode !== 'view'}
         >
           <Plus className="mr-1.5 h-3.5 w-3.5" />
@@ -188,11 +336,11 @@ export function CategoriasClient({
         filters={filters}
         onChange={setFilters}
         dreGroupsPresentes={dreGroupsPresentes}
+        searchInputRef={buscaInputRef}
       />
 
-      {/* Layout split 40/60 */}
+      {/* Layout split */}
       <div className="grid gap-4 md:grid-cols-[2fr_3fr]">
-        {/* Coluna esquerda — Árvore */}
         <Card className="min-h-[480px]">
           <CardContent className="py-4 space-y-3">
             <div className="flex items-center gap-2 text-sm font-semibold">
@@ -239,18 +387,24 @@ export function CategoriasClient({
                 tree={treeFiltrada}
                 selectedId={selectedId}
                 onSelect={(node) => {
-                  // Se está em modo create/edit, não permitir trocar seleção sem cancelar
-                  if (mode === 'view') {
-                    setSelectedId(node.id)
-                  }
+                  if (mode === 'view') setSelectedId(node.id)
                 }}
                 defaultExpandAll={expandirTudo}
+                onReorder={handleReorder}
+                onRename={handleRename}
+                interactiveDisabled={mode !== 'view'}
+                onInvalidDrop={() => {
+                  toast({
+                    title: 'Movimento entre níveis não permitido',
+                    description:
+                      "Use o campo 'É subcategoria de...' no formulário de edição pra mover entre níveis.",
+                  })
+                }}
               />
             )}
           </CardContent>
         </Card>
 
-        {/* Coluna direita — Form (view/create/edit) */}
         <Card className="min-h-[480px]">
           <CardContent className="py-4 space-y-3">
             <div className="flex items-center gap-2 text-sm font-semibold">
@@ -280,6 +434,8 @@ export function CategoriasClient({
           </Button>
         </div>
       )}
+
+      <ShortcutsCheatsheet open={cheatsheetOpen} onOpenChange={setCheatsheetOpen} />
     </div>
   )
 }

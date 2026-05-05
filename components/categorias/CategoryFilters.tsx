@@ -21,9 +21,16 @@ interface Props {
   onChange: (next: Filters) => void
   // DRE Groups disponíveis nas categorias atuais (pra montar opções dinâmicas).
   dreGroupsPresentes: string[]
+  // Ref opcional pra focar o input via atalho "/".
+  searchInputRef?: React.RefObject<HTMLInputElement | null>
 }
 
-export function CategoryFilters({ filters, onChange, dreGroupsPresentes }: Props) {
+export function CategoryFilters({
+  filters,
+  onChange,
+  dreGroupsPresentes,
+  searchInputRef,
+}: Props) {
   // Input local pra busca + debounce 200ms antes de propagar
   const [searchInput, setSearchInput] = useState(filters.search)
   const debouncedSearch = useDebounce(searchInput, 200)
@@ -48,12 +55,17 @@ export function CategoryFilters({ filters, onChange, dreGroupsPresentes }: Props
             <div className="relative">
               <Search className="absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
               <Input
+                ref={(el) => {
+                  if (searchInputRef) {
+                    ;(searchInputRef as { current: HTMLInputElement | null }).current = el
+                  }
+                }}
                 id="busca-categoria"
                 className="h-8 pl-8 text-sm"
                 placeholder="Buscar por nome..."
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
-                aria-label="Buscar categoria por nome"
+                aria-label="Buscar categoria por nome (atalho /)"
               />
             </div>
           </div>
