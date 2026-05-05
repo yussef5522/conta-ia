@@ -1,34 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { ZodError } from 'zod'
-import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { categoriaUpdateSchema } from '@/lib/validations/categoria'
 import { regimesToJson } from '@/lib/categories/regimes'
 import { canHardDelete, getHardDeleteDisabledReason } from '@/lib/categories/delete-rules'
+import { getAuthContext } from '@/lib/auth/rbac'
+import { logAudit, diffFields } from '@/lib/audit'
+import { handleApiError } from '@/lib/api/handle-error'
 
 interface Params {
   params: Promise<{ id: string; catId: string }>
 }
 
-async function verificarAcessoCategoria(userId: string, empresaId: string, categoriaId: string) {
-  return prisma.category.findFirst({
-    where: {
-      id: categoriaId,
-      companyId: empresaId,
-      company: { users: { some: { userId } } },
-    },
-  })
-}
-
 // GET /api/empresas/[id]/categorias/[catId]
 // Retorna a categoria + estatísticas (transactionCount, totalAmount12m, lastUsedAt).
 export async function GET(request: NextRequest, { params }: Params) {
-  const { id: empresaId, catId } = await params
-  const user = await getAuthUser(request)
-  if (!user) return NextResponse.json({ erro: 'Não autenticado' }, { status: 401 })
-
   try {
-    const categoria = await verificarAcessoCategoria(user.sub, empresaId, catId)
+    const { id: empresaId, catId } = await params
+    const ctx = await getAuthContext(request, empresaId)
+    ctx.requirePermission('category.view')
+
+    const categoria = await prisma.category.findFirst({
+      where: { id: catId, companyId: empresaId },
+    })
     if (!categoria) {
       return NextResponse.json({ erro: 'Categoria não encontrada' }, { status: 404 })
     }
@@ -58,8 +51,7 @@ export async function GET(request: NextRequest, { params }: Params) {
       },
     })
   } catch (error) {
-    console.error('[CATEGORIAS GET single] Erro:', error)
-    return NextResponse.json({ erro: 'Erro ao buscar categoria' }, { status: 500 })
+    return handleApiError(error)
   }
 }
 
@@ -69,12 +61,14 @@ export async function GET(request: NextRequest, { params }: Params) {
 // CONTA-IA-NORTE: type/dreGroup definem o DRE — não pode mudar pra
 // preservar consistência dos relatórios).
 export async function PUT(request: NextRequest, { params }: Params) {
-  const { id: empresaId, catId } = await params
-  const user = await getAuthUser(request)
-  if (!user) return NextResponse.json({ erro: 'Não autenticado' }, { status: 401 })
-
   try {
-    const atual = await verificarAcessoCategoria(user.sub, empresaId, catId)
+    const { id: empresaId, catId } = await params
+    const ctx = await getAuthContext(request, empresaId)
+    ctx.requirePermission('category.update')
+
+    const atual = await prisma.category.findFirst({
+      where: { id: catId, companyId: empresaId },
+    })
     if (!atual) {
       return NextResponse.json({ erro: 'Categoria não encontrada' }, { status: 404 })
     }
@@ -152,17 +146,26 @@ export async function PUT(request: NextRequest, { params }: Params) {
       data: updateData,
     })
 
+    const fieldsChanged = diffFields(
+      atual as unknown as Record<string, unknown>,
+      categoria as unknown as Record<string, unknown>,
+      ['name', 'dreGroup', 'parentId', 'icon', 'color', 'isActive', 'visibleInRegimes', 'description', 'code', 'type', 'order'],
+    )
+
+    if (fieldsChanged) {
+      await logAudit(ctx, {
+        action: 'UPDATE',
+        entityType: 'Category',
+        entityId: categoria.id,
+        fieldsChanged,
+        metadata: { name: categoria.name },
+        request,
+      })
+    }
+
     return NextResponse.json({ categoria })
   } catch (error) {
-    if (error instanceof ZodError) {
-      const campos: Record<string, string> = {}
-      error.errors.forEach((e) => {
-        if (e.path[0]) campos[e.path[0] as string] = e.message
-      })
-      return NextResponse.json({ erro: 'Dados inválidos', campos }, { status: 400 })
-    }
-    console.error('[CATEGORIAS PUT] Erro:', error)
-    return NextResponse.json({ erro: 'Erro ao atualizar categoria' }, { status: 500 })
+    return handleApiError(error)
   }
 }
 
@@ -176,17 +179,19 @@ export async function PUT(request: NextRequest, { params }: Params) {
 //     o espaço hierárquico)
 // Validações via lib/categories/delete-rules.ts (mesmas regras do frontend).
 export async function DELETE(request: NextRequest, { params }: Params) {
-  const { id: empresaId, catId } = await params
-  const user = await getAuthUser(request)
-  if (!user) return NextResponse.json({ erro: 'Não autenticado' }, { status: 401 })
-
   try {
-    const atual = await verificarAcessoCategoria(user.sub, empresaId, catId)
+    const { id: empresaId, catId } = await params
+    const isHardDelete = request.nextUrl.searchParams.get('hard') === 'true'
+
+    const ctx = await getAuthContext(request, empresaId)
+    ctx.requirePermission(isHardDelete ? 'category.delete' : 'category.deactivate')
+
+    const atual = await prisma.category.findFirst({
+      where: { id: catId, companyId: empresaId },
+    })
     if (!atual) {
       return NextResponse.json({ erro: 'Categoria não encontrada' }, { status: 404 })
     }
-
-    const isHardDelete = request.nextUrl.searchParams.get('hard') === 'true'
 
     if (isHardDelete) {
       // Conta filhos (incluindo inativos) e transações
@@ -195,18 +200,26 @@ export async function DELETE(request: NextRequest, { params }: Params) {
         prisma.category.count({ where: { parentId: catId } }),
       ])
 
-      const ctx = {
+      const hardCtx = {
         isSystemDefault: atual.isSystemDefault,
         transactionCount,
         childrenCount,
       }
 
-      if (!canHardDelete(ctx)) {
-        const motivo = getHardDeleteDisabledReason(ctx) ?? 'Não foi possível excluir'
+      if (!canHardDelete(hardCtx)) {
+        const motivo = getHardDeleteDisabledReason(hardCtx) ?? 'Não foi possível excluir'
         return NextResponse.json({ erro: motivo }, { status: 400 })
       }
 
       await prisma.category.delete({ where: { id: catId } })
+
+      await logAudit(ctx, {
+        action: 'DELETE',
+        entityType: 'Category',
+        entityId: catId,
+        metadata: { name: atual.name, hardDelete: true },
+        request,
+      })
 
       return NextResponse.json({
         success: true,
@@ -221,9 +234,16 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       data: { isActive: false },
     })
 
+    await logAudit(ctx, {
+      action: 'DEACTIVATE',
+      entityType: 'Category',
+      entityId: catId,
+      metadata: { name: atual.name, hardDelete: false },
+      request,
+    })
+
     return NextResponse.json({ mensagem: 'Categoria desativada com sucesso' })
   } catch (error) {
-    console.error('[CATEGORIAS DELETE] Erro:', error)
-    return NextResponse.json({ erro: 'Erro ao desativar/excluir categoria' }, { status: 500 })
+    return handleApiError(error)
   }
 }

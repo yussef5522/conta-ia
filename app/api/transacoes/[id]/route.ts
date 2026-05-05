@@ -1,45 +1,47 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { ZodError } from 'zod'
-import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { transacaoUpdateSchema } from '@/lib/validations/transacao'
 import { montarUpdateClassificacaoManual } from '@/lib/transacoes/classificar'
+import { getAuthContext } from '@/lib/auth/rbac'
+import { logAudit, diffFields } from '@/lib/audit'
+import { handleApiError } from '@/lib/api/handle-error'
 
 interface Params { params: Promise<{ id: string }> }
 
-async function verificarAcesso(userId: string, transacaoId: string) {
-  return prisma.transaction.findFirst({
-    where: {
-      id: transacaoId,
-      bankAccount: { company: { users: { some: { userId } } } },
-    },
+async function carregarTransacao(transacaoId: string) {
+  return prisma.transaction.findUnique({
+    where: { id: transacaoId },
     include: {
-      bankAccount: true,
+      bankAccount: { select: { id: true, companyId: true } },
       category: { select: { id: true, name: true, color: true, type: true } },
     },
   })
 }
 
 export async function GET(request: NextRequest, { params }: Params) {
-  const { id } = await params
-  const user = await getAuthUser(request)
-  if (!user) return NextResponse.json({ erro: 'Não autenticado' }, { status: 401 })
+  try {
+    const { id } = await params
+    const transacao = await carregarTransacao(id)
+    if (!transacao) return NextResponse.json({ erro: 'Transação não encontrada' }, { status: 404 })
 
-  const transacao = await verificarAcesso(user.sub, id)
-  if (!transacao) return NextResponse.json({ erro: 'Transação não encontrada' }, { status: 404 })
+    const ctx = await getAuthContext(request, transacao.bankAccount.companyId)
+    ctx.requirePermission('transaction.view')
 
-  return NextResponse.json({ transacao })
+    return NextResponse.json({ transacao })
+  } catch (error) {
+    return handleApiError(error)
+  }
 }
 
 export async function PUT(request: NextRequest, { params }: Params) {
-  const { id } = await params
-  const user = await getAuthUser(request)
-  if (!user) return NextResponse.json({ erro: 'Não autenticado' }, { status: 401 })
-
-  const antiga = await verificarAcesso(user.sub, id)
-  if (!antiga) return NextResponse.json({ erro: 'Transação não encontrada' }, { status: 404 })
-
   try {
+    const { id } = await params
+    const antiga = await carregarTransacao(id)
+    if (!antiga) return NextResponse.json({ erro: 'Transação não encontrada' }, { status: 404 })
+
+    const ctx = await getAuthContext(request, antiga.bankAccount.companyId)
+    ctx.requirePermission('transaction.update')
+
     const body = await request.json()
     const data = transacaoUpdateSchema.parse(body)
 
@@ -71,46 +73,81 @@ export async function PUT(request: NextRequest, { params }: Params) {
           data: { balance: { increment: ajusteSaldo } },
         })
       }
+
+      const fieldsChanged = diffFields(
+        antiga as unknown as Record<string, unknown>,
+        updated as unknown as Record<string, unknown>,
+        ['description', 'amount', 'date', 'competenceDate', 'paymentDate', 'categoryId', 'type', 'status', 'notes'],
+      )
+
+      if (fieldsChanged) {
+        await logAudit(
+          ctx,
+          {
+            action: 'UPDATE',
+            entityType: 'Transaction',
+            entityId: updated.id,
+            fieldsChanged,
+            metadata: { description: updated.description, amount: updated.amount },
+            request,
+          },
+          tx,
+        )
+      }
+
       return updated
     })
 
     return NextResponse.json({ transacao })
   } catch (error) {
-    if (error instanceof ZodError) {
-      const campos: Record<string, string> = {}
-      error.errors.forEach((e) => { if (e.path[0]) campos[e.path[0] as string] = e.message })
-      return NextResponse.json({ erro: 'Dados inválidos', campos }, { status: 400 })
-    }
-    console.error('[TRANSACOES PUT] Erro:', error)
-    return NextResponse.json({ erro: 'Erro interno do servidor' }, { status: 500 })
+    return handleApiError(error)
   }
 }
 
 export async function DELETE(request: NextRequest, { params }: Params) {
-  const { id } = await params
-  const user = await getAuthUser(request)
-  if (!user) return NextResponse.json({ erro: 'Não autenticado' }, { status: 401 })
+  try {
+    const { id } = await params
+    const transacao = await carregarTransacao(id)
+    if (!transacao) return NextResponse.json({ erro: 'Transação não encontrada' }, { status: 404 })
 
-  const transacao = await verificarAcesso(user.sub, id)
-  if (!transacao) return NextResponse.json({ erro: 'Transação não encontrada' }, { status: 404 })
+    const ctx = await getAuthContext(request, transacao.bankAccount.companyId)
+    ctx.requirePermission('transaction.delete')
 
-  // Reverte impacto no saldo
-  const reverso = transacao.type === 'CREDIT' ? -transacao.amount : transacao.amount
+    // Reverte impacto no saldo
+    const reverso = transacao.type === 'CREDIT' ? -transacao.amount : transacao.amount
 
-  await prisma.$transaction([
-    prisma.transaction.delete({ where: { id } }),
-    prisma.bankAccount.update({
-      where: { id: transacao.bankAccountId },
-      data: { balance: { increment: reverso } },
-    }),
-  ])
+    await prisma.$transaction(async (tx) => {
+      await tx.transaction.delete({ where: { id } })
+      await tx.bankAccount.update({
+        where: { id: transacao.bankAccountId },
+        data: { balance: { increment: reverso } },
+      })
+      await logAudit(
+        ctx,
+        {
+          action: 'DELETE',
+          entityType: 'Transaction',
+          entityId: id,
+          metadata: {
+            description: transacao.description,
+            amount: transacao.amount,
+            type: transacao.type,
+          },
+          request,
+        },
+        tx,
+      )
+    })
 
-  return NextResponse.json({ mensagem: 'Transação excluída com sucesso' })
+    return NextResponse.json({ mensagem: 'Transação excluída com sucesso' })
+  } catch (error) {
+    return handleApiError(error)
+  }
 }
 
 function calcularAjusteSaldo(
   antiga: { amount: number; type: string },
-  nova: { amount?: number; type?: string }
+  nova: { amount?: number; type?: string },
 ): number {
   const tipoAntigo = antiga.type
   const tipoNovo = nova.type ?? tipoAntigo

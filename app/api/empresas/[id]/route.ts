@@ -1,40 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { ZodError } from 'zod'
-import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { empresaSchema } from '@/lib/validations/empresa'
+import { getAuthContext } from '@/lib/auth/rbac'
+import { logAudit, diffFields } from '@/lib/audit'
+import { handleApiError } from '@/lib/api/handle-error'
 
 interface Params {
   params: Promise<{ id: string }>
 }
 
-async function verificarAcesso(userId: string, empresaId: string) {
-  return prisma.userCompany.findFirst({
-    where: { userId, companyId: empresaId },
-    include: { company: true },
-  })
-}
-
 export async function GET(request: NextRequest, { params }: Params) {
-  const { id } = await params
-  const user = await getAuthUser(request)
-  if (!user) return NextResponse.json({ erro: 'Não autenticado' }, { status: 401 })
+  try {
+    const { id } = await params
+    const ctx = await getAuthContext(request, id)
+    ctx.requirePermission('company.view')
 
-  const acesso = await verificarAcesso(user.sub, id)
-  if (!acesso) return NextResponse.json({ erro: 'Empresa não encontrada' }, { status: 404 })
+    const empresa = await prisma.company.findUnique({ where: { id } })
+    if (!empresa) return NextResponse.json({ erro: 'Empresa não encontrada' }, { status: 404 })
 
-  return NextResponse.json({ empresa: acesso.company })
+    return NextResponse.json({ empresa })
+  } catch (error) {
+    return handleApiError(error)
+  }
 }
 
 export async function PUT(request: NextRequest, { params }: Params) {
-  const { id } = await params
-  const user = await getAuthUser(request)
-  if (!user) return NextResponse.json({ erro: 'Não autenticado' }, { status: 401 })
-
-  const acesso = await verificarAcesso(user.sub, id)
-  if (!acesso) return NextResponse.json({ erro: 'Empresa não encontrada' }, { status: 404 })
-
   try {
+    const { id } = await params
+    const ctx = await getAuthContext(request, id)
+    ctx.requirePermission('company.update')
+
+    const antiga = await prisma.company.findUnique({ where: { id } })
+    if (!antiga) return NextResponse.json({ erro: 'Empresa não encontrada' }, { status: 404 })
+
     const body = await request.json()
     // Em edição, o CNPJ não é alterado — remover do parse
     const { cnpj: _cnpj, ...rest } = body
@@ -56,29 +54,52 @@ export async function PUT(request: NextRequest, { params }: Params) {
       },
     })
 
+    const fieldsChanged = diffFields(
+      antiga as unknown as Record<string, unknown>,
+      empresa as unknown as Record<string, unknown>,
+      ['name', 'tradeName', 'type', 'taxRegime', 'email', 'phone', 'address', 'city', 'state', 'zipCode'],
+    )
+
+    if (fieldsChanged) {
+      await logAudit(ctx, {
+        action: 'UPDATE',
+        entityType: 'Company',
+        entityId: empresa.id,
+        fieldsChanged,
+        metadata: { name: empresa.name },
+        request,
+      })
+    }
+
     return NextResponse.json({ empresa })
   } catch (error) {
-    if (error instanceof ZodError) {
-      const campos: Record<string, string> = {}
-      error.errors.forEach((e) => {
-        if (e.path[0]) campos[e.path[0] as string] = e.message
-      })
-      return NextResponse.json({ erro: 'Dados inválidos', campos }, { status: 400 })
-    }
-    console.error('[EMPRESAS PUT] Erro interno:', error)
-    return NextResponse.json({ erro: 'Erro interno do servidor' }, { status: 500 })
+    return handleApiError(error)
   }
 }
 
 export async function DELETE(request: NextRequest, { params }: Params) {
-  const { id } = await params
-  const user = await getAuthUser(request)
-  if (!user) return NextResponse.json({ erro: 'Não autenticado' }, { status: 401 })
+  try {
+    const { id } = await params
+    const ctx = await getAuthContext(request, id)
+    ctx.requirePermission('company.delete')
 
-  const acesso = await verificarAcesso(user.sub, id)
-  if (!acesso) return NextResponse.json({ erro: 'Empresa não encontrada' }, { status: 404 })
+    const empresa = await prisma.company.findUnique({ where: { id } })
+    if (!empresa) return NextResponse.json({ erro: 'Empresa não encontrada' }, { status: 404 })
 
-  await prisma.company.delete({ where: { id } })
+    // Audit log ANTES do delete (cascade vai apagar audit_log junto via FK companyId).
+    // Snapshot do nome em metadata pra rastreabilidade fora desta empresa.
+    await logAudit(ctx, {
+      action: 'DELETE',
+      entityType: 'Company',
+      entityId: id,
+      metadata: { name: empresa.name, cnpj: empresa.cnpj },
+      request,
+    })
 
-  return NextResponse.json({ mensagem: 'Empresa excluída com sucesso' })
+    await prisma.company.delete({ where: { id } })
+
+    return NextResponse.json({ mensagem: 'Empresa excluída com sucesso' })
+  } catch (error) {
+    return handleApiError(error)
+  }
 }

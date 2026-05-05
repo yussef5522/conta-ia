@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { ZodError } from 'zod'
-import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { transacaoSchema } from '@/lib/validations/transacao'
+import { getAuthContext } from '@/lib/auth/rbac'
+import { logAudit } from '@/lib/audit'
+import { handleApiError } from '@/lib/api/handle-error'
 
 export async function GET(request: NextRequest) {
   try {
-    const user = await getAuthUser(request)
-    if (!user) return NextResponse.json({ erro: 'Não autenticado' }, { status: 401 })
-
     const { searchParams } = new URL(request.url)
     const contaId = searchParams.get('contaId')
     const empresaId = searchParams.get('empresaId')
@@ -20,28 +18,51 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status')
     const semCategoria = searchParams.get('semCategoria') === 'true'
 
-    // Monta cláusula de conta(s) com isolamento multi-tenant.
-    // Precedência: contaId > empresaId > todas as contas do usuário.
-    let contaWhere: Record<string, unknown>
+    // Resolve companyId pra ter contexto RBAC.
+    // Precedência: contaId → empresaId → "global" (todas as empresas do user, sem permissão única).
+    let companyId: string | undefined
     let contaSingle: { id: string; balance: number; name: string; bankName: string | null; accountType: string } | null = null
+
     if (contaId) {
-      contaSingle = await prisma.bankAccount.findFirst({
-        where: { id: contaId, company: { users: { some: { userId: user.sub } } } },
-        select: { id: true, balance: true, name: true, bankName: true, accountType: true },
+      const conta = await prisma.bankAccount.findUnique({
+        where: { id: contaId },
+        select: { id: true, companyId: true, balance: true, name: true, bankName: true, accountType: true },
       })
-      if (!contaSingle) return NextResponse.json({ erro: 'Conta não encontrada' }, { status: 404 })
-      contaWhere = { bankAccountId: contaId }
+      if (!conta) return NextResponse.json({ erro: 'Conta não encontrada' }, { status: 404 })
+      companyId = conta.companyId
+      contaSingle = { id: conta.id, balance: conta.balance, name: conta.name, bankName: conta.bankName, accountType: conta.accountType }
     } else if (empresaId) {
-      // Verifica acesso à empresa antes de scopar
-      const acesso = await prisma.userCompany.findFirst({
-        where: { userId: user.sub, companyId: empresaId },
-      })
-      if (!acesso) return NextResponse.json({ erro: 'Empresa não encontrada' }, { status: 404 })
-      contaWhere = { bankAccount: { companyId: empresaId } }
+      companyId = empresaId
+    }
+
+    let contaWhere: Record<string, unknown>
+
+    if (companyId) {
+      // Path com empresa identificada → RBAC normal por empresa
+      const ctx = await getAuthContext(request, companyId)
+      ctx.requirePermission('transaction.view')
+
+      if (contaId) {
+        contaWhere = { bankAccountId: contaId }
+      } else {
+        contaWhere = { bankAccount: { companyId } }
+      }
     } else {
-      // Sem contaId/empresaId: retorna de todas as contas do usuário
+      // Path "global": agrega contas de TODAS empresas do user com permissão view.
+      // Sem companyId pra checar permission, então iteramos pelas UCRs do user.
+      const ctx = await getAuthContext(request)
+      const ucrs = await prisma.userCompanyRole.findMany({
+        where: { userId: ctx.user.id },
+        include: {
+          role: { include: { permissions: { include: { permission: true } } } },
+        },
+      })
+      const empresasComPermView = ucrs
+        .filter((u) => u.role.permissions.some((rp) => rp.permission.key === 'transaction.view' || rp.permission.key === 'transaction.*' || rp.permission.key === '*' || rp.permission.key === '*.view'))
+        .map((u) => u.companyId)
+
       const userContas = await prisma.bankAccount.findMany({
-        where: { company: { users: { some: { userId: user.sub } } } },
+        where: { companyId: { in: empresasComPermView } },
         select: { id: true },
       })
       contaWhere = { bankAccountId: { in: userContas.map((c) => c.id) } }
@@ -78,24 +99,24 @@ export async function GET(request: NextRequest) {
       paginacao: { total, page, limit, totalPages: Math.ceil(total / limit) },
     })
   } catch (error) {
-    console.error('[TRANSACOES GET] Erro:', error)
-    return NextResponse.json({ erro: 'Erro ao buscar transações' }, { status: 500 })
+    return handleApiError(error)
   }
 }
 
 export async function POST(request: NextRequest) {
-  const user = await getAuthUser(request)
-  if (!user) return NextResponse.json({ erro: 'Não autenticado' }, { status: 401 })
-
   try {
     const body = await request.json()
     const data = transacaoSchema.parse(body)
 
-    // Verifica acesso à conta
-    const conta = await prisma.bankAccount.findFirst({
-      where: { id: data.bankAccountId, company: { users: { some: { userId: user.sub } } } },
+    // Deriva companyId da conta antes de validar permissions
+    const conta = await prisma.bankAccount.findUnique({
+      where: { id: data.bankAccountId },
+      select: { id: true, companyId: true },
     })
     if (!conta) return NextResponse.json({ erro: 'Conta não encontrada' }, { status: 404 })
+
+    const ctx = await getAuthContext(request, conta.companyId)
+    ctx.requirePermission('transaction.create')
 
     // Se tem categoryId, verifica que a categoria pertence à mesma empresa
     if (data.categoryId) {
@@ -131,14 +152,22 @@ export async function POST(request: NextRequest) {
       }),
     ])
 
+    await logAudit(ctx, {
+      action: 'CREATE',
+      entityType: 'Transaction',
+      entityId: transacao.id,
+      metadata: {
+        description: transacao.description,
+        amount: transacao.amount,
+        type: transacao.type,
+        bankAccountId: transacao.bankAccountId,
+        categoryId: transacao.categoryId,
+      },
+      request,
+    })
+
     return NextResponse.json({ transacao }, { status: 201 })
   } catch (error) {
-    if (error instanceof ZodError) {
-      const campos: Record<string, string> = {}
-      error.errors.forEach((e) => { if (e.path[0]) campos[e.path[0] as string] = e.message })
-      return NextResponse.json({ erro: 'Dados inválidos', campos }, { status: 400 })
-    }
-    console.error('[TRANSACOES POST] Erro:', error)
-    return NextResponse.json({ erro: 'Erro interno do servidor' }, { status: 500 })
+    return handleApiError(error)
   }
 }

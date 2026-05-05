@@ -1,19 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { ZodError } from 'zod'
-import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { categoriaCreateSchema } from '@/lib/validations/categoria'
 import { regimesToJson } from '@/lib/categories/regimes'
+import { getAuthContext } from '@/lib/auth/rbac'
+import { logAudit } from '@/lib/audit'
+import { handleApiError } from '@/lib/api/handle-error'
 
 interface Params {
   params: Promise<{ id: string }>
-}
-
-// Verifica que o usuário pertence à empresa (multi-tenant safety).
-async function verificarAcesso(userId: string, empresaId: string) {
-  return prisma.userCompany.findFirst({
-    where: { userId, companyId: empresaId },
-  })
 }
 
 // GET /api/empresas/[id]/categorias
@@ -22,13 +16,10 @@ async function verificarAcesso(userId: string, empresaId: string) {
 //
 // Query opcional ?soAtivas=true filtra apenas isActive=true.
 export async function GET(request: NextRequest, { params }: Params) {
-  const { id: empresaId } = await params
-  const user = await getAuthUser(request)
-  if (!user) return NextResponse.json({ erro: 'Não autenticado' }, { status: 401 })
-
   try {
-    const acesso = await verificarAcesso(user.sub, empresaId)
-    if (!acesso) return NextResponse.json({ erro: 'Empresa não encontrada' }, { status: 404 })
+    const { id: empresaId } = await params
+    const ctx = await getAuthContext(request, empresaId)
+    ctx.requirePermission('category.view')
 
     const soAtivas = request.nextUrl.searchParams.get('soAtivas') === 'true'
 
@@ -55,21 +46,17 @@ export async function GET(request: NextRequest, { params }: Params) {
 
     return NextResponse.json({ categorias })
   } catch (error) {
-    console.error('[CATEGORIAS GET] Erro:', error)
-    return NextResponse.json({ erro: 'Erro ao buscar categorias' }, { status: 500 })
+    return handleApiError(error)
   }
 }
 
 // POST /api/empresas/[id]/categorias
 // Cria nova categoria (custom, isSystemDefault=false).
 export async function POST(request: NextRequest, { params }: Params) {
-  const { id: empresaId } = await params
-  const user = await getAuthUser(request)
-  if (!user) return NextResponse.json({ erro: 'Não autenticado' }, { status: 401 })
-
   try {
-    const acesso = await verificarAcesso(user.sub, empresaId)
-    if (!acesso) return NextResponse.json({ erro: 'Empresa não encontrada' }, { status: 404 })
+    const { id: empresaId } = await params
+    const ctx = await getAuthContext(request, empresaId)
+    ctx.requirePermission('category.create')
 
     const body = await request.json()
     const data = categoriaCreateSchema.parse(body)
@@ -113,16 +100,21 @@ export async function POST(request: NextRequest, { params }: Params) {
       },
     })
 
+    await logAudit(ctx, {
+      action: 'CREATE',
+      entityType: 'Category',
+      entityId: categoria.id,
+      metadata: {
+        name: categoria.name,
+        type: categoria.type,
+        dreGroup: categoria.dreGroup,
+        parentId: categoria.parentId,
+      },
+      request,
+    })
+
     return NextResponse.json({ categoria }, { status: 201 })
   } catch (error) {
-    if (error instanceof ZodError) {
-      const campos: Record<string, string> = {}
-      error.errors.forEach((e) => {
-        if (e.path[0]) campos[e.path[0] as string] = e.message
-      })
-      return NextResponse.json({ erro: 'Dados inválidos', campos }, { status: 400 })
-    }
-    console.error('[CATEGORIAS POST] Erro:', error)
-    return NextResponse.json({ erro: 'Erro ao criar categoria' }, { status: 500 })
+    return handleApiError(error)
   }
 }

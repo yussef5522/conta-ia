@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { z } from 'zod'
-import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import {
   computeTemplateDiff,
@@ -9,6 +7,9 @@ import {
 import { restoreSchema, validarRestorePayload } from '@/lib/categories/restore-validation'
 import { regimesToJson } from '@/lib/categories/regimes'
 import type { CategoryFlat } from '@/lib/categories/buildTree'
+import { getAuthContext } from '@/lib/auth/rbac'
+import { logAudit } from '@/lib/audit'
+import { handleApiError } from '@/lib/api/handle-error'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -17,18 +18,18 @@ interface Params {
 // POST /api/empresas/[id]/categorias/restore-template
 // Aplica o diff aprovado pelo usuário em transação atômica + cria audit log.
 export async function POST(request: NextRequest, { params }: Params) {
-  const { id: empresaId } = await params
-  const user = await getAuthUser(request)
-  if (!user) return NextResponse.json({ erro: 'Não autenticado' }, { status: 401 })
-
   try {
-    // Multi-tenant
-    const userCompany = await prisma.userCompany.findFirst({
-      where: { userId: user.sub, companyId: empresaId },
-      include: { company: { select: { id: true, type: true } } },
+    const { id: empresaId } = await params
+    const ctx = await getAuthContext(request, empresaId)
+    ctx.requirePermission('category.restore_template')
+
+    // Carrega empresa pra obter o tipo (setor) — multi-tenant já validado em getAuthContext
+    const company = await prisma.company.findUnique({
+      where: { id: empresaId },
+      select: { id: true, type: true },
     })
-    if (!userCompany) {
-      return NextResponse.json({ erro: 'Empresa não encontrada' }, { status: 403 })
+    if (!company) {
+      return NextResponse.json({ erro: 'Empresa não encontrada' }, { status: 404 })
     }
 
     const body = await request.json()
@@ -42,7 +43,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       return NextResponse.json({ erro: 'Nenhuma mudança selecionada' }, { status: 400 })
     }
 
-    const setor = userCompany.company.type
+    const setor = company.type
     const template = templateToFlat(setor)
     if (template.length === 0) {
       return NextResponse.json(
@@ -211,11 +212,11 @@ export async function POST(request: NextRequest, { params }: Params) {
         snapshot.added.push({ templateKey: tpl.templateKey, name: tpl.name })
       }
 
-      // 4. Audit log
+      // 4. Audit log específico de Restaurar Padrão (CategoryRestoreLog)
       const log = await tx.categoryRestoreLog.create({
         data: {
           companyId: empresaId,
-          userId: user.sub,
+          userId: ctx.user.id,
           revertedCount: snapshot.reverted.length,
           removedCount: snapshot.removed.length,
           addedCount: snapshot.added.length,
@@ -223,6 +224,24 @@ export async function POST(request: NextRequest, { params }: Params) {
         },
         select: { id: true },
       })
+
+      // 5. Audit log genérico (5.3.A) — participa da mesma transação via tx
+      await logAudit(
+        ctx,
+        {
+          action: 'RESTORE_TEMPLATE',
+          entityType: 'Company',
+          entityId: empresaId,
+          metadata: {
+            revertedCount: snapshot.reverted.length,
+            removedCount: snapshot.removed.length,
+            addedCount: snapshot.added.length,
+            categoryRestoreLogId: log.id,
+          },
+          request,
+        },
+        tx,
+      )
 
       return {
         applied: {
@@ -236,14 +255,6 @@ export async function POST(request: NextRequest, { params }: Params) {
 
     return NextResponse.json({ success: true, ...result })
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      const campos: Record<string, string> = {}
-      error.errors.forEach((e) => {
-        if (e.path[0]) campos[e.path[0] as string] = e.message
-      })
-      return NextResponse.json({ erro: 'Dados inválidos', campos }, { status: 400 })
-    }
-    console.error('[RESTORE-TEMPLATE POST] Erro:', error)
-    return NextResponse.json({ erro: 'Erro ao aplicar restauração' }, { status: 500 })
+    return handleApiError(error)
   }
 }
