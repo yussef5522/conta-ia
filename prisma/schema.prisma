@@ -22,6 +22,7 @@ model User {
   categoryRestoreLogs CategoryRestoreLog[]
   userCompanyRoles    UserCompanyRole[]
   auditLogs           AuditLog[]
+  sentInvites         CompanyInvite[]      @relation("InvitedBy")
 
   @@map("users")
 }
@@ -55,6 +56,7 @@ model Company {
   roles            Role[]
   userCompanyRoles UserCompanyRole[]
   auditLogs        AuditLog[]
+  invites          CompanyInvite[]
 
   @@map("companies")
 }
@@ -385,6 +387,7 @@ model Role {
   company          Company?          @relation(fields: [companyId], references: [id], onDelete: Cascade)
   permissions      RolePermission[]
   userCompanyRoles UserCompanyRole[]
+  invites          CompanyInvite[]
 
   // Nome único por empresa (custom). Pra roles globais (companyId=null), garante
   // que só haja UM "OWNER", UM "ADMIN", etc. globalmente.
@@ -469,6 +472,38 @@ model AuditLog {
   @@index([userId])
   @@index([action])
   @@map("audit_log")
+}
+
+// Convite por link pra empresa (Sub-sub-etapa 5.3.C3).
+// Token aleatório de 32 bytes (64 chars hex), expira em 7 dias.
+// Email do convite precisa bater com email da conta no momento de aceitar.
+// acceptedAt null = pendente; preenchido = aceito (não pode ser cancelado).
+model CompanyInvite {
+  id          String    @id @default(cuid())
+  companyId   String
+  // Email do convidado (case-insensitive — sempre lowercase no banco)
+  email       String
+  // Role que o convidado terá ao aceitar
+  roleId      String
+  // Token único pro link público
+  token       String    @unique
+  // Quando o convite expira (now + 7 dias)
+  expiresAt   DateTime
+  // null = pendente; data preenchida = aceito (snapshot pra audit)
+  acceptedAt  DateTime?
+  // Quem convidou (resiliente: cascade ao deletar user — ver Restrict em roleId pra evitar perda de role)
+  invitedById String
+  createdAt   DateTime  @default(now())
+
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  // Restrict: não permite excluir Role com convites apontando.
+  role      Role    @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  invitedBy User    @relation("InvitedBy", fields: [invitedById], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([token])
+  @@index([email, companyId])
+  @@map("company_invites")
 }
 
 // Audit log de operações "Restaurar Padrão" (Sub-etapa 5.1.E).
