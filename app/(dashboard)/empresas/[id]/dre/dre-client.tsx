@@ -6,7 +6,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
-import { RefreshCw, TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
@@ -20,6 +20,8 @@ import {
 import { Input } from '@/components/ui/input'
 import { DRETable, type DREResult } from './dre-table'
 import { DREDrillDown } from './dre-drill-down'
+import { HealthBanner } from './health-banner'
+import { KPIGrid } from './kpi-grid'
 import {
   PRESET_LABELS,
   PRESET_ORDER,
@@ -27,7 +29,8 @@ import {
   detectPreset,
   type PeriodPreset,
 } from '@/lib/dre/presets'
-import { formatBRL, formatPercentSigned, formatDateInputBR } from '@/lib/format/dre'
+import { formatDateInputBR } from '@/lib/format/dre'
+import { calculateKPIs } from '@/lib/dre/kpis'
 
 type Regime = 'competence' | 'cash'
 type ComparisonType =
@@ -296,29 +299,16 @@ export function DREClient({ empresaId, empresaNome }: Props) {
         </div>
       </Card>
 
-      {/* Cards básicos topo (KPIs detalhados ficam pra 5.4.C) */}
-      {data && !isLoading && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <KpiCard
-            label="Receita Líquida"
-            value={data.totals.receitaLiquida}
-            delta={data.totalsComparison.receitaLiquidaPct}
-            isPercent={false}
-          />
-          <KpiCard
-            label="Lucro Líquido"
-            value={data.totals.lucroLiquido}
-            delta={data.totalsComparison.lucroLiquidoPct}
-            isPercent={false}
-          />
-          <KpiCard
-            label="Margem Líquida"
-            value={data.totals.margemLiquida}
-            delta={data.totalsComparison.margemLiquidaDelta}
-            isPercent={true}
-          />
-        </div>
-      )}
+      {/* Banner de Saúde Financeira + 12 KPIs (Sub-etapa 5.4.C) */}
+      {data && !isLoading && (() => {
+        const kpis = calculateKPIs(data)
+        return (
+          <>
+            <HealthBanner health={kpis.health} />
+            <KPIGrid kpis={kpis} />
+          </>
+        )
+      })()}
 
       {/* Erro */}
       {error && (
@@ -361,38 +351,3 @@ export function DREClient({ empresaId, empresaNome }: Props) {
   )
 }
 
-interface KpiCardProps {
-  label: string
-  value: number
-  delta: number | null
-  isPercent: boolean
-}
-
-function KpiCard({ label, value, delta, isPercent }: KpiCardProps) {
-  const formatted = isPercent
-    ? `${value.toFixed(1).replace('.', ',')}%`
-    : formatBRL(value)
-
-  // Pra cards de KPI tratamos sempre como métrica em que ↑ é bom (receita/lucro/margem).
-  const positive = (delta ?? 0) > 0
-  const Icon = delta === null ? Minus : positive ? TrendingUp : TrendingDown
-  const color =
-    delta === null
-      ? 'text-muted-foreground'
-      : positive
-        ? 'text-emerald-700 dark:text-emerald-400'
-        : 'text-rose-700 dark:text-rose-400'
-
-  return (
-    <Card className="p-4">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-1 text-2xl font-bold">{formatted}</p>
-      {delta !== null && (
-        <p className={`mt-1 text-xs flex items-center gap-1 ${color}`}>
-          <Icon className="h-3 w-3" />
-          {isPercent ? `${delta > 0 ? '+' : ''}${delta.toFixed(1).replace('.', ',')} pp` : formatPercentSigned(delta)}
-        </p>
-      )}
-    </Card>
-  )
-}
