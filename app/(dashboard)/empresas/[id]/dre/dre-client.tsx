@@ -10,6 +10,8 @@ import { RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
+import { Breadcrumb } from '@/components/sidebar/breadcrumb'
+import { buildBreadcrumb } from '@/lib/sidebar/breadcrumb-helper'
 import {
   Select,
   SelectContent,
@@ -186,8 +188,16 @@ export function DREClient({ empresaId, empresaNome }: Props) {
     return `${startDate.toLocaleDateString('pt-BR')} a ${endDate.toLocaleDateString('pt-BR')}`
   }, [currentPreset, startDate, endDate])
 
+  const breadcrumbItems = buildBreadcrumb({
+    pathname,
+    empresaName: empresaNome,
+    empresaId,
+  })
+
   return (
     <div className="container max-w-7xl py-8 space-y-6">
+      <Breadcrumb items={breadcrumbItems} />
+
       {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>

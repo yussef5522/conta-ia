@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import { usePathname } from 'next/navigation'
 import { Download, Filter, RefreshCw, Search, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -13,6 +14,8 @@ import {
 } from '@/components/ui/select'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Breadcrumb } from '@/components/sidebar/breadcrumb'
+import { buildBreadcrumb } from '@/lib/sidebar/breadcrumb-helper'
 import { AuditLogEntry } from './audit-log-entry'
 
 interface Props {
@@ -179,8 +182,17 @@ export function AuditoriaClient({ empresaId, empresaNome, canExport }: Props) {
   const hasActiveFilters =
     period !== '30d' || userFilter || actionFilter || entityFilter || search
 
+  const pathname = usePathname()
+  const breadcrumbItems = buildBreadcrumb({
+    pathname,
+    empresaName: empresaNome,
+    empresaId,
+  })
+
   return (
     <div className="container max-w-6xl py-8 space-y-6">
+      <Breadcrumb items={breadcrumbItems} />
+
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">🔍 Auditoria</h1>

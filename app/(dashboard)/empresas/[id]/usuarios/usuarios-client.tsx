@@ -1,10 +1,13 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import { usePathname } from 'next/navigation'
 import { Plus, Mail, Clock, X, UserMinus, UserCog } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Breadcrumb } from '@/components/sidebar/breadcrumb'
+import { buildBreadcrumb } from '@/lib/sidebar/breadcrumb-helper'
 import { ConvidarUsuarioModal } from './convidar-usuario-modal'
 import { LinkConviteModal } from './link-convite-modal'
 import { MudarRoleModal } from './mudar-role-modal'
@@ -119,8 +122,17 @@ export function UsuariosClient({
     })
   }
 
+  const pathname = usePathname()
+  const breadcrumbItems = buildBreadcrumb({
+    pathname,
+    empresaName: empresaNome,
+    empresaId,
+  })
+
   return (
     <div className="container max-w-5xl py-8 space-y-6">
+      <Breadcrumb items={breadcrumbItems} />
+
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">👥 Usuários</h1>

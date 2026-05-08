@@ -1,10 +1,13 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import { usePathname } from 'next/navigation'
 import { Plus, Pencil, Trash2, Eye, Users, Key } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Breadcrumb } from '@/components/sidebar/breadcrumb'
+import { buildBreadcrumb } from '@/lib/sidebar/breadcrumb-helper'
 import { RoleEditModal } from './role-edit-modal'
 import { RoleViewModal } from './role-view-modal'
 import { RoleDeleteModal } from './role-delete-modal'
@@ -68,8 +71,17 @@ export function PermissoesClient({
   const systemRoles = roles.filter((r) => r.isSystemDefault)
   const customRoles = roles.filter((r) => !r.isSystemDefault)
 
+  const pathname = usePathname()
+  const breadcrumbItems = buildBreadcrumb({
+    pathname,
+    empresaName: empresaNome,
+    empresaId,
+  })
+
   return (
     <div className="container max-w-6xl py-8 space-y-6">
+      <Breadcrumb items={breadcrumbItems} />
+
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">🛡️ Roles e Permissões</h1>

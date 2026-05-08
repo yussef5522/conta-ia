@@ -1,9 +1,12 @@
 'use client'
 
 import { useState } from 'react'
+import { usePathname } from 'next/navigation'
 import { Menu } from 'lucide-react'
-import { Sparkles } from 'lucide-react'
-import { Sidebar } from '@/components/layout/sidebar'
+import { Button } from '@/components/ui/button'
+import { Sheet, SheetContent } from '@/components/ui/sheet'
+import { GlobalSidebar } from '@/components/sidebar/global-sidebar'
+import { ContextualSidebar } from '@/components/sidebar/contextual-sidebar'
 
 interface DashboardShellProps {
   userName: string
@@ -12,47 +15,62 @@ interface DashboardShellProps {
 }
 
 export function DashboardShell({ userName, userEmail, children }: DashboardShellProps) {
-  const [open, setOpen] = useState(false)
+  const pathname = usePathname()
+  const [mobileOpen, setMobileOpen] = useState(false)
+
+  // Detecta se está dentro de uma empresa
+  const empresaMatch = pathname.match(/^\/empresas\/([^/]+)/)
+  const empresaId = empresaMatch?.[1]
+
+  // Contextual aparece em /empresas/[id]/... mas não em /empresas (lista)
+  const showContextual = Boolean(empresaId) && pathname !== '/empresas'
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
-      {/* Overlay mobile */}
-      {open && (
-        <div
-          className="fixed inset-0 z-20 bg-black/50 lg:hidden"
-          onClick={() => setOpen(false)}
-          aria-hidden="true"
-        />
-      )}
-
-      {/* Sidebar */}
-      <div
-        className={[
-          'fixed inset-y-0 left-0 z-30 lg:static lg:z-auto',
-          'transition-transform duration-300 ease-in-out',
-          open ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
-        ].join(' ')}
-      >
-        <Sidebar userName={userName} userEmail={userEmail} onClose={() => setOpen(false)} />
+      {/* DESKTOP: Sidebar Global (sempre visível) */}
+      <div className="hidden md:block shrink-0">
+        <GlobalSidebar userName={userName} userEmail={userEmail} />
       </div>
 
-      {/* Conteúdo principal */}
+      {/* DESKTOP: Sidebar Contextual (quando em empresa) */}
+      {showContextual && empresaId && (
+        <div className="hidden md:block shrink-0">
+          <ContextualSidebar empresaId={empresaId} />
+        </div>
+      )}
+
+      {/* MOBILE: drawer combinado */}
+      <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+        <SheetContent side="left" className="p-0 w-80 max-w-full sm:max-w-md md:max-w-lg">
+          <div className="flex h-full">
+            <GlobalSidebar
+              userName={userName}
+              userEmail={userEmail}
+              onNavigate={() => setMobileOpen(false)}
+            />
+            {showContextual && empresaId && (
+              <ContextualSidebar
+                empresaId={empresaId}
+                onNavigate={() => setMobileOpen(false)}
+              />
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* CONTEÚDO PRINCIPAL */}
       <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
-        {/* Top bar mobile */}
-        <header className="flex h-14 items-center gap-3 border-b bg-background px-4 lg:hidden">
-          <button
-            onClick={() => setOpen(true)}
-            className="rounded-md p-1.5 hover:bg-accent transition-colors"
+        {/* Topbar mobile com botão hambúrguer */}
+        <header className="flex h-14 items-center gap-3 border-b bg-card px-4 md:hidden">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setMobileOpen(true)}
             aria-label="Abrir menu"
           >
             <Menu className="h-5 w-5" />
-          </button>
-          <div className="flex items-center gap-2">
-            <div className="flex h-6 w-6 items-center justify-center rounded bg-blue-500">
-              <Sparkles className="h-3 w-3 text-white" />
-            </div>
-            <span className="font-bold text-sm">Conta IA</span>
-          </div>
+          </Button>
+          <span className="font-bold text-sm">Conta IA</span>
         </header>
 
         <main className="flex-1 overflow-y-auto">
