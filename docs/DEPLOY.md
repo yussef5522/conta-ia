@@ -156,8 +156,9 @@ cd /opt/conta-ia
 bash scripts/swap-prisma-to-postgres.sh
 # Saída esperada: "OK: provider trocado para postgresql em ..."
 
-# Instalar dependências (sem devDependencies)
-npm ci --omit=dev
+# Instalar dependências (incluindo devDependencies — ver nota abaixo).
+# --legacy-peer-deps é necessário pelo conflito eslint vs eslint-config-next.
+npm ci --legacy-peer-deps
 
 # Gerar Prisma Client para PostgreSQL
 npm run db:generate
@@ -165,6 +166,12 @@ npm run db:generate
 # Aplicar migrations + rodar seed (cria tabelas + usuário admin)
 npm run deploy:db
 ```
+
+> ⚠️ **Por que NÃO usar `--omit=dev` aqui?** `prisma` (CLI), `tsx` (executor
+> do seed) e `typescript` (necessário pro `next build`) estão em
+> `devDependencies` no `package.json`. Sem eles, os passos seguintes
+> (`db:generate`, `deploy:db`, `npm run build`) falham. O custo é
+> ~500MB extras em `node_modules` — aceitável.
 
 Verifique se as tabelas foram criadas:
 ```bash
@@ -255,7 +262,7 @@ bash scripts/swap-prisma-to-postgres.sh
 npm run db:migrate:deploy
 
 # Rebuild e restart
-npm ci --omit=dev
+npm ci --legacy-peer-deps
 npm run build
 pm2 restart conta-ia
 

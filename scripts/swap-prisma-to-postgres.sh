@@ -34,9 +34,14 @@ fi
 sed -i 's/provider = "sqlite"/provider = "postgresql"/' "$SCHEMA"
 sed -i 's/provider = "sqlite"/provider = "postgresql"/' "$LOCK"
 
-# Validação: ambos os arquivos devem agora ter postgresql.
-schema_provider=$(grep -E '^\s*provider\s*=' "$SCHEMA" | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
-lock_provider=$(grep -E '^\s*provider\s*=' "$LOCK" | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+# Validação: ambos os arquivos devem agora ter provider = "postgresql".
+#
+# Para schema.prisma, isolamos o bloco `datasource db { ... }` antes de
+# extrair o provider — schema tem múltiplas declarações (generator block
+# também tem `provider = "prisma-client-js"`), então grep ingênuo pegaria
+# o provider errado.
+schema_provider=$(awk '/^datasource db {/,/^}/' "$SCHEMA" | grep -E '^\s*provider\s*=' | sed -E 's/.*"([^"]+)".*/\1/')
+lock_provider=$(grep -E '^\s*provider\s*=' "$LOCK" | sed -E 's/.*"([^"]+)".*/\1/')
 
 if [ "$schema_provider" != "postgresql" ]; then
   echo "ERRO: provider em $SCHEMA é '$schema_provider', esperado 'postgresql'." >&2
