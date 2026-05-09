@@ -51,8 +51,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Cria empresa + aplica template de plano de contas (com hierarquia,
-    // DRE groups, códigos SPED e visibleInRegimes) em uma transação atômica.
+    // Cria empresa + vínculos (UserCompany legacy + UserCompanyRole RBAC) +
+    // aplica template de plano de contas (hierarquia, DRE groups, códigos SPED
+    // e visibleInRegimes) em uma transação atômica.
     const empresa = await prisma.$transaction(async (tx) => {
       const created = await tx.company.create({
         data: {
@@ -72,6 +73,27 @@ export async function POST(request: NextRequest) {
           },
         },
       })
+
+      // RBAC: também atribui role OWNER (system default) via UserCompanyRole.
+      // Sem isso, getAuthContext (lib/auth/rbac.ts) retorna 403 em todos os
+      // endpoints novos. UserCompany legacy continua criado pra compat com
+      // listagem (GET /api/empresas) e outros consumidores ainda não migrados.
+      const ownerRole = await tx.role.findFirst({
+        where: { name: 'OWNER', companyId: null, isSystemDefault: true },
+      })
+      if (!ownerRole) {
+        throw new Error(
+          'Role OWNER (system default) não encontrada. Rode npx tsx scripts/seed-rbac.ts.'
+        )
+      }
+      await tx.userCompanyRole.create({
+        data: {
+          userId: user.sub,
+          companyId: created.id,
+          roleId: ownerRole.id,
+        },
+      })
+
       await aplicarTemplate(tx, created.id, data.type)
       return created
     })
