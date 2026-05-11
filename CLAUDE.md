@@ -286,11 +286,16 @@ Sistema precisa:
   - 50 testes novos (4 arquivos) — 769/769 passando
   - ⚠️ Saldo negativo (`allowNegativeBalance` check) movido pro Dia 3 com `lib/balance/`
 
-- [ ] **Dia 3 — Atualizar engines existentes (filtros)**
-  - `lib/dre/calculate.ts`: `where type !== 'TRANSFER'` (não infla receita/despesa)
-  - `lib/cashflow/consolidated.ts`: mesma regra
-  - `lib/cashflow/by-account.ts`: NÃO filtrar (mostra entrada/saída por conta normalmente)
-  - Testes garantindo DRE não conta transferências
+- [x] **Dia 3 — Engines + Validação Saldo** (concluído 11/05/2026, commit `b82a4eb`)
+  - `lib/balance/`: `prepare` (sinal por transação), `calculate` (saldo, dias negativo, lowest), `check` (validação com `BalanceCheckError` HTTP 422)
+  - `lib/cashflow/consolidated.ts`: escopo `companyId`, IGNORA `TRANSFER`, agrupa day/week/month
+  - `lib/cashflow/by-account.ts`: escopo `bankAccountId`, INCLUI `TRANSFER` (via signedAmount)
+  - `lib/cashflow/query.ts`: query builders centralizados (único ponto de filtro multi-tenant)
+  - Lógica de validação: `allowNegativeBalance=true` respeita `creditLimit` REAL por conta (Banrisul 600k, Sicredi 80k); `false` bloqueia qualquer negativo
+  - Integração: `createTransfer` + `POST /api/transacoes` validam saldo antes de criar
+  - `scripts/backfill-credit-limits.ts` — safety net pra Cacula Mix (rodar em prod antes do deploy)
+  - 71 testes novos (6 arquivos), incluindo 10 dedicados a isolamento multi-tenant — 840/840 passando
+  - ⚠️ DRE filtro de TRANSFER já estava feito no Dia 2 (SQL filter + loop guard)
 
 - [ ] **Dia 4 — UI**
   - Modal "Nova Transferência" (origem + destino + valor + data)
@@ -749,6 +754,68 @@ Esses 2 itens foram extraídos pro **Sprint 0.5 (3-4 dias)** que vira pré-requi
 3. `lib/cashflow/consolidated.ts` — engine de fluxo de caixa consolidado (todas as contas da empresa, filtra TRANSFER).
 4. `lib/cashflow/by-account.ts` — fluxo POR conta (NÃO filtra TRANSFER, mostra entrada/saída normalmente).
 5. Testes em massa.
+
+### 11/05/2026 (parte 3) — Sprint 0.5 Dia 3: engines de saldo e cashflow
+
+**Contexto:** Yussef quis avançar pro Dia 3 imediatamente após o Dia 2. Antes de codar, ele forneceu **correção crítica de entendimento de produto** sobre como `creditLimit` funciona no mundo real das 13 academias.
+
+**Contexto de produto registrado (ouro pra futuras sessões):**
+- Cada conta bancária tem cheque especial **REAL e DIFERENTE**:
+  - **Banrisul:** R$ 600.000 (pode ficar negativa até -600k)
+  - **Sicredi:** R$ 80.000 (pode ficar negativa até -80k)
+  - Outras contas: cada uma com seu limite próprio
+- Contas podem ficar negativas por **ANOS** (2, 3, 6 anos) dentro do limite — isso é operação NORMAL pra PME brasileira, não excepção
+- **Decisão de produto:** `allowNegativeBalance=true` significa "conta tem cheque especial"; `creditLimit` é o valor REAL do limite. Lógica:
+  ```ts
+  if (allowNegativeBalance === false) {
+    allowed = (saldo - amount) >= 0       // tipo poupança
+  } else {
+    allowed = (saldo - amount) >= -creditLimit   // cheque especial real
+  }
+  ```
+
+**O que foi feito (commit `b82a4eb`):**
+- **6 arquivos novos em `lib/`:**
+  - `lib/balance/prepare.ts` — atribui sinal por transação (CREDIT/+, DEBIT/−, TRANSFER conforme ordem por `createdAt`), FILTRA contas alheias (defesa em profundidade)
+  - `lib/balance/calculate.ts` — recomputa saldo do zero, retorna `{ current, available, inNegativeSince, daysInNegative, lowestBalance, lowestBalanceDate }`. `inNegativeSince` RESETA a cada volta a positivo
+  - `lib/balance/check.ts` — `checkBalance(input)` + `BalanceCheckError` (status 422). Implementa lógica exata dos exemplos do Yussef
+  - `lib/cashflow/query.ts` — query builders centralizados pra multi-tenant
+  - `lib/cashflow/consolidated.ts` — fluxo da empresa (`companyId`), ignora TRANSFER, agrupa day/week/month
+  - `lib/cashflow/by-account.ts` — fluxo por conta (`bankAccountId`), INCLUI TRANSFER via `signedAmount`
+- **Integração (3 arquivos modificados):**
+  - `lib/transfers/create.ts` — chama `checkBalance` antes do `$transaction`
+  - `app/api/transferencias/route.ts` — mapeia `BalanceCheckError` → HTTP 422
+  - `app/api/transacoes/route.ts` — POST agora valida saldo (DEBIT bloqueia se estoura; CREDIT sempre passa)
+- **Script de safety net:** `scripts/backfill-credit-limits.ts` — idempotente, cutoff `2026-05-11T23:59:59Z`, aplica `creditLimit=999.999.999` em contas pré-Sprint-0.5 com `creditLimit=0`. **Deve rodar em produção ANTES do próximo deploy** pra não travar Cacula Mix em despesas
+
+**Cenários reais cobertos em `balance-check.test.ts`:**
+- Banrisul 600k limit, saldo=-550k + despesa 30k → ALLOWED (dentro do limite)
+- Banrisul 600k limit, saldo=-550k + despesa 100k → BLOQUEADO (estoura -600k)
+- Sicredi 80k limit, saldo=-70k + despesa 20k → BLOQUEADO (estoura -80k)
+- Poupança `allowNegativeBalance=false`, saldo=100 + despesa 200 → BLOQUEADO
+- Conta nova `creditLimit=0 + allowNegativeBalance=true` → BLOQUEADO (limite=0)
+- CREDIT (entrada) sempre passa, mesmo conta MUITO negativa
+- Edge cases: exatamente no limite passa; 1 centavo abaixo bloqueia
+
+**Decisões técnicas notáveis:**
+- **Defesa em profundidade no multi-tenant**: 3 camadas. (1) Query builders centralizados rejeitam `companyId/bankAccountId` vazio; (2) Funções puras lançam se receberem ID vazio; (3) `prepareBalanceTransactions` FILTRA transações de contas alheias mesmo se passadas por engano
+- **Normalização de `-0`**: JavaScript retorna `-0` em `-creditLimit` quando `creditLimit=0`. Normalizado pra `0` no `check.ts` (caso 1 teste pegou)
+- **Rastreabilidade em results**: `calculateConsolidatedCashflow` retorna `companyId` no result; `calculateByAccountCashflow` retorna `bankAccountId`
+- **CREDIT (entrada) NUNCA bloqueia**: regra crítica — recebimento de dinheiro sempre passa, mesmo conta muito negativa. Bloquear receita por causa de saldo seria absurdo
+
+**Métricas:**
+- **71 testes novos** (6 arquivos): `balance-prepare` (10), `balance-calculate` (13), `balance-check` (18), `cashflow-consolidated` (10), `cashflow-by-account` (10), `multitenant-isolation` (10)
+- **840/840 testes passando** (era 769 no Dia 2)
+- `tsc --noEmit` exit 0
+- 16 arquivos no commit (13 novos + 3 modificados), +1668/-8 linhas
+
+**Próximo passo:** Sprint 0.5 Dia 4 — UI completa
+1. Modal "Nova Transferência" (dropdowns origem/destino + valor + data)
+2. Página `/transferencias` (lista agrupada por `transferGroupId` com filtros)
+3. Card de conta bancária: badge amarelo "ATENÇÃO" / vermelho "SALDO NEGATIVO" + dias no vermelho (usar `calculateBalance` engine)
+4. Tela de edição de conta: configurar `allowNegativeBalance`, `creditLimit`, `lowBalanceThreshold` (substituir o backfill)
+5. Integração da detecção heurística OFX no preview de import (oferecer 1-clique pra parear HIGH)
+6. Tratar HTTP 422 nas chamadas (mostrar mensagem amigável de cheque especial estourado)
 
 ### [Próxima sessão] — preencher
 - Data:
