@@ -267,13 +267,14 @@ Sistema precisa:
 
 **Escopo (4 dias):**
 
-- [ ] **Dia 1 — Migrations + Schema**
+- [x] **Dia 1 — Migrations + Schema** (concluído 11/05/2026, commit `183ae53`)
   - `transactions.transferGroupId String?` (par de transferência usa o mesmo ID)
   - `bank_accounts.allowNegativeBalance Boolean @default(true)`
   - `bank_accounts.creditLimit Float @default(0)` (limite do cheque especial)
   - `bank_accounts.lowBalanceThreshold Float?` (alerta IA)
   - Índice em `transferGroupId`
-  - Lembrar do dual SQLite/Postgres (`sed` no deploy)
+  - Migration SQL escrita à mão pra Postgres (`prisma/migrations/20260511000000_sprint_0_5_*`)
+  - 10 testes novos (4 schema-transfer + 6 schema-bank-account) — 719/719 passando
 
 - [ ] **Dia 2 — Backend Transferências**
   - `POST /api/transferencias` (atomic via `prisma.$transaction`, cria par com `type=TRANSFER` e mesmo `transferGroupId`)
@@ -662,6 +663,40 @@ Esses 2 itens foram extraídos pro **Sprint 0.5 (3-4 dias)** que vira pré-requi
 - Posicionamento: "Conta IA: a gestão financeira que a Conta Azul deveria ter sido."
 
 **Próximo passo (próxima sessão Claude Code):** iniciar **Sprint 0.5 Dia 1** — migrations Prisma para `transferGroupId` em `transactions` + `allowNegativeBalance`/`creditLimit`/`lowBalanceThreshold` em `bank_accounts`. Sem mexer em UI/API ainda — só schema + Prisma client + testes do schema.
+
+### 11/05/2026 — Sprint 0.5 Dia 1: schema + migrations
+
+**Contexto:** primeira sessão Claude Code no MacBook após migração de ambiente (10/05). Branch `feature/postgres-prod`, working tree limpo, 709/709 testes passando como baseline. Yussef autorizou começar Sprint 0.5 Dia 1 (fundação pro Dashboard Mundial).
+
+**O que foi feito (commit `183ae53`):**
+- `prisma/schema.prisma`: 4 campos novos
+  - `Transaction.transferGroupId String?` (nullable) + `@@index([transferGroupId])`
+  - `BankAccount.allowNegativeBalance Boolean @default(true)`
+  - `BankAccount.creditLimit Float @default(0)`
+  - `BankAccount.lowBalanceThreshold Float?` (nullable)
+- Comentário do `Transaction.type` atualizado pra mencionar `TRANSFER`
+- `prisma/migrations/20260511000000_sprint_0_5_transfers_and_negative_balance/migration.sql` — SQL Postgres puro pra `migrate deploy` em produção
+- Dev DB (SQLite) sincronizado via `npx prisma db push` + `prisma generate`
+- 2 arquivos de teste novos: `__tests__/schema-transfer.test.ts` (4 testes) + `__tests__/schema-bank-account.test.ts` (6 testes) — usam `Prisma.dmmf` + leitura da migration SQL (sem DB real, alinhado ao padrão do projeto)
+- 719/719 testes passando
+
+**Decisões/descobertas técnicas:**
+- `prisma migrate dev` quebra no shadow DB SQLite porque migrations existentes têm sintaxe Postgres (`ADD CONSTRAINT`). Confirmado que o projeto usa `db push` em dev + migration files escritas à mão pra prod. Mantido o padrão.
+- DMMF do Prisma 5.22 NÃO expõe `@@index` não-únicos no client gerado — só `uniqueIndexes`. Solução: teste de índice valida o conteúdo da migration SQL.
+- `field.documentation` do DMMF só preserva comentários `///` (triple slash), não `//`. Substituído por teste mais útil (índice via SQL).
+
+**Contexto de negócio validado com Yussef:**
+- 13 academias × 3-4 contas cada (~45 contas total)
+- Transferências entre contas da mesma empresa são FREQUENTES (várias/mês)
+- Saldo negativo é REGRA, não exceção (algumas contas ficam negativas 5-6 meses)
+- Sem Sprint 0.5, DRE inflaria em ~R$ 50-100k/mês de receita/despesa fake — confirma que essa etapa é CRÍTICA, não cosmética
+
+**Próximo passo:** Sprint 0.5 Dia 2 — Backend transferências
+1. `POST /api/transferencias` (atomic via `prisma.$transaction`, valida mesma empresa + saldo se `allowNegativeBalance=false`)
+2. `DELETE /api/transferencias/[groupId]` (remove o par completo)
+3. `GET /api/transferencias` (lista paginada)
+4. Detecção heurística no preview OFX (sugerir parear)
+5. Modal "Nova Transferência" simples (mover pra Dia 4 se precisar)
 
 ### [Próxima sessão] — preencher
 - Data:
