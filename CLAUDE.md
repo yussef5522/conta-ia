@@ -12,14 +12,20 @@
 >    - Atualizado raramente (apenas quando há decisão estratégica)
 >    - **LER quando:** precisar entender "PORQUÊ" das decisões ou guiar etapa nova
 >
+> 🎨 **`docs/DASHBOARD-PLAN.md`** — Plano Mestre Dashboard Mundial + Sprint Plan (10/05/2026)
+>    - Pesquisa profunda Conta Azul (forças/fraquezas), mockup do dashboard mundial, plano técnico em 3 sprints
+>    - Inclui requisitos críticos: Transferências entre contas + Saldo negativo (Sprint 0.5)
+>    - **LER quando:** for executar Sprint 0.5 ou Sprints 1-3 do Dashboard
+>
 > 📚 **`docs/DEPLOY.md`** — Guia técnico de deploy
 >    - **LER quando:** for fazer deploy em produção
 >
 > **Em caso de conflito aparente entre documentos:**
 > - CLAUDE.md tem prioridade pra decisões **OPERACIONAIS** (próxima etapa, comandos)
 > - CONTA-IA-NORTE.md tem prioridade pra decisões **ESTRATÉGICAS** (visão, arquitetura)
+> - DASHBOARD-PLAN.md tem prioridade pra **EXECUÇÃO** dos sprints de dashboard (0.5 → 3)
 >
-> **Última atualização:** 03/05/2026
+> **Última atualização:** 10/05/2026
 
 ---
 
@@ -252,6 +258,43 @@ Sistema precisa:
 
 ### ✅ FASE 2.1 — Correções rápidas (CONCLUÍDA)
 3 botões + try/catch nas rotas. Destravou navegação.
+
+### ⚡ SPRINT 0.5 — Transferências entre contas + Saldo negativo (3-4 dias) — PRÉ-REQUISITO
+
+> 📄 **Plano completo em `docs/DASHBOARD-PLAN.md` (seção C.4.1 e C.5).**
+>
+> **Por quê primeiro:** Yussef tem 13 academias, cada uma com 3-4 contas bancárias. Transferências internas (entre contas da MESMA empresa) hoje seriam contadas como receita + despesa pelo DRE — inflando resultado e gerando imposto sobre dinheiro que não foi ganho. Saldo negativo (cheque especial) também não tem suporte visual. Sem essas fundações, o **Dashboard Mundial** (Sprint 1-3) mostraria números errados. Por isso vem ANTES da FASE 3+4.
+
+**Escopo (4 dias):**
+
+- [ ] **Dia 1 — Migrations + Schema**
+  - `transactions.transferGroupId String?` (par de transferência usa o mesmo ID)
+  - `bank_accounts.allowNegativeBalance Boolean @default(true)`
+  - `bank_accounts.creditLimit Float @default(0)` (limite do cheque especial)
+  - `bank_accounts.lowBalanceThreshold Float?` (alerta IA)
+  - Índice em `transferGroupId`
+  - Lembrar do dual SQLite/Postgres (`sed` no deploy)
+
+- [ ] **Dia 2 — Backend Transferências**
+  - `POST /api/transferencias` (atomic via `prisma.$transaction`, cria par com `type=TRANSFER` e mesmo `transferGroupId`)
+  - `DELETE /api/transferencias/[groupId]` (sempre remove o par completo)
+  - `GET /api/transferencias` (listagem paginada)
+  - Validações Zod: mesma empresa, contas diferentes, valor > 0, checagem de saldo se `allowNegativeBalance=false`
+  - Testes de integração
+
+- [ ] **Dia 3 — Atualizar engines existentes (filtros)**
+  - `lib/dre/calculate.ts`: `where type !== 'TRANSFER'` (não infla receita/despesa)
+  - `lib/cashflow/consolidated.ts`: mesma regra
+  - `lib/cashflow/by-account.ts`: NÃO filtrar (mostra entrada/saída por conta normalmente)
+  - Testes garantindo DRE não conta transferências
+
+- [ ] **Dia 4 — UI**
+  - Modal "Nova Transferência" (origem + destino + valor + data)
+  - Página `/transferencias` (lista agrupada por `transferGroupId`)
+  - Cards de conta bancária: badge amarelo "ATENÇÃO" / vermelho "SALDO NEGATIVO" + dias no vermelho
+  - Detecção heurística no preview OFX: 2 transações no mesmo dia, mesmo valor, sinais opostos, contas diferentes da mesma empresa → sugere parear como transferência (1 clique)
+
+🎯 **Marco Sprint 0.5:** Transferências internas funcionam sem inflar DRE/Fluxo Consolidado. Saldo negativo permitido e visível. Base sólida pra Dashboard Mundial (Sprints 1-3 do DASHBOARD-PLAN.md).
 
 ### 📍 FASE 3+4 — Importar e classificar perfeito (4-6 semanas) — DIFERENCIAL DO PRODUTO
 
@@ -578,6 +621,47 @@ Depois que IA está validada, melhora ergonomia para volumes maiores.
 - IA Coach: postura INTELIGENTE-PROATIVA com simulações reais (ex: alerta migração regime tributário com economia em R$)
 
 **Próximo passo:** Etapa 5.1 — Tela `/empresas/[id]/categorias` (gerenciar Plano de Contas).
+
+### 10/05/2026 — Migração para MacBook + Plano Mestre Dashboard Mundial + Sprint 0.5
+
+**Contexto:** Yussef migrou o ambiente de desenvolvimento do PC Windows pro MacBook M5 (`/Users/yussef/Projects/conta-ia`). Sessão estratégica de planejamento via chat com Claude (não Code) pra desenhar o Dashboard que vai virar o jogo contra Conta Azul.
+
+**Migração de ambiente:**
+- PC Windows → MacBook M5 (Apple Silicon)
+- Pasta nova: `/Users/yussef/Projects/conta-ia`
+- Stack mantida (Next.js 16.2.4, Prisma 5.22, SQLite dev)
+- Daqui pra frente Claude Code roda no Mac
+
+**Pesquisa profunda Conta Azul (no chat):**
+- Mapeamento completo: dashboard, DRE, fluxo de caixa, conciliação, Conta AI Captura, pricing
+- 7 fraquezas reais identificadas (reajuste 165% num ciclo, suporte ruim, bugs NFS-e, dashboard fraco que precisa de Power BI externo, multi-empresa amarrado, personalização limitada, IA só de captura sem aprendizado, atualização D-1)
+- 6 forças reconhecidas (marca, emissão fiscal, conta PJ própria, parceria contadores, estoque/PDV, mobile maduro) — **NÃO** entramos nessas frentes no curto prazo
+
+**Benchmark mundial:**
+- Mercury, Brex, Ramp, Stripe — padrões visuais e UX
+- Tese: "Conta Azul melhorada — familiar BR, mas premium"
+- Paleta definida, tipografia (tabular-nums!), princípios fintech 2026
+
+**Documento criado:** `docs/DASHBOARD-PLAN.md` (620 linhas)
+- Parte A: pesquisa Conta Azul (forças, fraquezas, oportunidades)
+- Parte B: mockup do Dashboard Mundial (5 zonas: Hero KPIs, Saúde, Cashflow Waterfall + AI Insights, Mini-DRE + Top Categories, Recent + Pending)
+- Parte C: plano técnico em 3 Sprints (1-3) + Sprint 0.5 inserido como pré-requisito
+
+**🚨 Descoberta crítica (Sprint 0.5):**
+Conversa revelou 2 gaps fundacionais que impediriam o Dashboard de mostrar números corretos:
+
+1. **Transferências entre contas da MESMA empresa** — Yussef tem 13 academias, cada uma com 3-4 contas (Banrisul, Sicredi, Sicoob, Caixa). Move dinheiro entre contas pra cobrir folha. Hoje isso seria contado como receita + despesa pelo DRE → inflação artificial + risco de imposto sobre dinheiro fake. Solução: campo `transferGroupId` pareando as 2 pontas + filtro `type !== 'TRANSFER'` no DRE/Fluxo Consolidado.
+
+2. **Saldo negativo (cheque especial)** — Sistema atual não suporta visualmente. Solução: campos `allowNegativeBalance` + `creditLimit` + `lowBalanceThreshold` em `bank_accounts`; visual com badge amarelo/vermelho; alerta IA proativo.
+
+Esses 2 itens foram extraídos pro **Sprint 0.5 (3-4 dias)** que vira pré-requisito de QUALQUER avanço no dashboard. Inserido no roadmap ANTES da FASE 3+4.
+
+**Decisões registradas:**
+- Hierarquia de docs ampliada: CLAUDE.md (operacional) > CONTA-IA-NORTE.md (estratégico) > **DASHBOARD-PLAN.md (execução sprints dashboard)** > DEPLOY.md (deploy)
+- Stack visual confirmada: Recharts + Framer Motion (a adicionar)
+- Posicionamento: "Conta IA: a gestão financeira que a Conta Azul deveria ter sido."
+
+**Próximo passo (próxima sessão Claude Code):** iniciar **Sprint 0.5 Dia 1** — migrations Prisma para `transferGroupId` em `transactions` + `allowNegativeBalance`/`creditLimit`/`lowBalanceThreshold` em `bank_accounts`. Sem mexer em UI/API ainda — só schema + Prisma client + testes do schema.
 
 ### [Próxima sessão] — preencher
 - Data:
