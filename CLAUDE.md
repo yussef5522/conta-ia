@@ -276,12 +276,15 @@ Sistema precisa:
   - Migration SQL escrita à mão pra Postgres (`prisma/migrations/20260511000000_sprint_0_5_*`)
   - 10 testes novos (4 schema-transfer + 6 schema-bank-account) — 719/719 passando
 
-- [ ] **Dia 2 — Backend Transferências**
+- [x] **Dia 2 — Backend Transferências** (concluído 11/05/2026, commit `885bbc6`)
   - `POST /api/transferencias` (atomic via `prisma.$transaction`, cria par com `type=TRANSFER` e mesmo `transferGroupId`)
-  - `DELETE /api/transferencias/[groupId]` (sempre remove o par completo)
-  - `GET /api/transferencias` (listagem paginada)
-  - Validações Zod: mesma empresa, contas diferentes, valor > 0, checagem de saldo se `allowNegativeBalance=false`
-  - Testes de integração
+  - `DELETE /api/transferencias/[groupId]` (sempre remove o par completo, detecta direção via `createdAt ASC`)
+  - `GET /api/transferencias` (listagem paginada agrupada por `transferGroupId`)
+  - Validações Zod: mesma empresa, contas diferentes, valor > 0
+  - Detecção heurística OFX em 2 níveis (HIGH ≥0.90 PIX, MEDIUM 0.70-0.89 TED) + boost por keywords
+  - DRE ignora `type=TRANSFER` (SQL filter + loop guard)
+  - 50 testes novos (4 arquivos) — 769/769 passando
+  - ⚠️ Saldo negativo (`allowNegativeBalance` check) movido pro Dia 3 com `lib/balance/`
 
 - [ ] **Dia 3 — Atualizar engines existentes (filtros)**
   - `lib/dre/calculate.ts`: `where type !== 'TRANSFER'` (não infla receita/despesa)
@@ -697,6 +700,55 @@ Esses 2 itens foram extraídos pro **Sprint 0.5 (3-4 dias)** que vira pré-requi
 3. `GET /api/transferencias` (lista paginada)
 4. Detecção heurística no preview OFX (sugerir parear)
 5. Modal "Nova Transferência" simples (mover pra Dia 4 se precisar)
+
+### 11/05/2026 (parte 2) — Sprint 0.5 Dia 2: backend de transferências
+
+**Contexto:** Yussef decidiu avançar pro Dia 2 na mesma sessão após fechar o Dia 1. Plano aprovado com ajuste crítico de produto na detecção heurística OFX (2 níveis de confiança em vez de 1).
+
+**O que foi feito (commit `885bbc6`):**
+- **API REST nova** (`app/api/transferencias/`):
+  - `POST /api/transferencias` — cria par atomic via `prisma.$transaction` ([create debit, create credit, update from balance, update to balance])
+  - `GET /api/transferencias?empresaId=&page=&limit=` — lista agrupada por `transferGroupId`, paginação no nível dos grupos
+  - `DELETE /api/transferencias/[groupId]` — remove par completo + reverte saldos
+- **Lib nova** `lib/transfers/`:
+  - `validate.ts` — schema Zod + `assertSameCompany` + `TransferValidationError` (status 400)
+  - `build-operations.ts` — função PURA monta o par (testável sem DB)
+  - `create.ts` — orquestra fetch contas + permission + atomic + audit log
+  - `delete.ts` — detecta direção via `orderBy: createdAt ASC` (robusto pra description custom)
+- **Detecção heurística OFX** (`lib/ofx/detect-transfer.ts`) — NÃO integrada com import ainda (Dia 4 com UI):
+  - **HIGH ≥0.90:** mesmo dia + valor exato + sinais opostos → `AUTO_PAIR` (provável PIX)
+  - **MEDIUM 0.70-0.89:** D ou D+1 + valor exato + sinais opostos → `CONFIRM` (provável TED)
+  - **Boost por keyword:** PIX/TED = +0.10, TRANSF/DOC/ENTRE CONTAS = +0.05
+  - Tolerância 1 centavo (rounding); detecta direção automaticamente (DEBIT=from, CREDIT=to)
+- **DRE atualizada:**
+  - `lib/dre/types.ts` — `TransactionForDRE.type` aceita `'TRANSFER'`
+  - `lib/dre/calculator.ts` — `if (tx.type === 'TRANSFER') continue` (defesa em profundidade)
+  - `app/api/empresas/[id]/dre/route.ts` — `where: { type: { not: 'TRANSFER' } }` (otimização SQL)
+- **Audit log:** 1 entrada unificada por operação (`entityType: 'Transfer'`, `entityId: groupId`, metadata com IDs das 2 transações + contas)
+- **Permissions:** reuso de `transaction.create`/`view`/`delete` (sem mexer em RBAC catalog)
+
+**Contexto de produto registrado (vale ouro pra futuras sessões):**
+- PIX é o método predominante de transferência entre contas hoje no Yussef (instantâneo, sempre mesmo dia)
+- TED é minoritário mas existe (cai D+1 se feito após 16h)
+- Detecção em 2 níveis evita falsos positivos: valor coincidente em datas distantes NÃO sugere transferência
+
+**Decisões técnicas notáveis:**
+- **Defesa em profundidade no DRE:** filtragem em 2 camadas (SQL + engine puro). SQL é otimização; engine puro garante correção mesmo se chamado direto (testes, batch futuro).
+- **Detecção de direção no DELETE:** usa `orderBy: createdAt ASC` em vez de prefix de description (frágil pra description custom). Funciona porque `$transaction([create debit, create credit])` garante ordem.
+- **Função `buildTransferOperations` 100% pura:** sem DB, testável em isolamento, 13 testes específicos validam o shape exato dos 2 inserts.
+
+**Métricas:**
+- 50 testes novos (4 arquivos): `transfers-validate` (13), `transfers-build-operations` (13), `dre-ignores-transfer` (6), `ofx-detect-transfer` (18)
+- **769/769 testes passando** (era 719 no Dia 1)
+- `tsc --noEmit` exit 0 (TypeScript strict OK)
+- 14 arquivos no commit (11 novos + 3 modificados), +1273/-2 linhas
+
+**Próximo passo:** Sprint 0.5 Dia 3 — Engines de cálculo + validação de saldo
+1. `lib/balance/check.ts` — função pura que valida se transação deixa saldo abaixo de `-creditLimit` (quando `allowNegativeBalance=false`). Integrar no `createTransfer` + `POST /api/transacoes`.
+2. `lib/balance/calculate.ts` — calcula saldo atual e projetado por conta (já temos `balance` cacheado em `bank_accounts`, mas precisa de função pura pra recalcular do zero a partir das transações).
+3. `lib/cashflow/consolidated.ts` — engine de fluxo de caixa consolidado (todas as contas da empresa, filtra TRANSFER).
+4. `lib/cashflow/by-account.ts` — fluxo POR conta (NÃO filtra TRANSFER, mostra entrada/saída normalmente).
+5. Testes em massa.
 
 ### [Próxima sessão] — preencher
 - Data:
