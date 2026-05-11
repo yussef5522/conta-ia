@@ -119,7 +119,9 @@ export type ComparisonType =
 
 export interface TransactionForDRE {
   id: string
-  type: 'CREDIT' | 'DEBIT'
+  // TRANSFER existe pra transferências entre contas da mesma empresa (Sprint 0.5).
+  // O engine pula TRANSFER pra não inflar receita/despesa do DRE.
+  type: 'CREDIT' | 'DEBIT' | 'TRANSFER'
   amount: number               // sempre positivo (sinal vem do DREGroup)
   date: Date                   // data da transação (fallback se data específica do regime ausente)
   competenceDate: Date | null

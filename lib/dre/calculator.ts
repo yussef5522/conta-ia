@@ -160,6 +160,11 @@ function calculateForPeriod(
   let uncatCount = 0
 
   for (const tx of transactions) {
+    // Transferências entre contas da mesma empresa não compõem DRE (Sprint 0.5).
+    // Defesa em profundidade: a rota /api/empresas/[id]/dre já filtra no SQL,
+    // mas o engine puro também ignora pra casos de uso futuros (testes, batch).
+    if (tx.type === 'TRANSFER') continue
+
     if (!tx.categoryId) {
       uncatTotal += tx.amount
       uncatCount++
