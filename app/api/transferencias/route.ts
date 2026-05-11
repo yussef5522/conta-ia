@@ -9,6 +9,7 @@ import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import { transferCreateSchema, TransferValidationError } from '@/lib/transfers/validate'
 import { createTransfer } from '@/lib/transfers/create'
+import { BalanceCheckError } from '@/lib/balance/check'
 
 export async function POST(request: NextRequest) {
   try {
@@ -30,6 +31,12 @@ export async function POST(request: NextRequest) {
     const result = await createTransfer(input, ctx, request)
     return NextResponse.json({ transferencia: result }, { status: 201 })
   } catch (error) {
+    if (error instanceof BalanceCheckError) {
+      return NextResponse.json(
+        { erro: error.message, saldoCheck: error.result },
+        { status: error.status },
+      )
+    }
     if (error instanceof TransferValidationError) {
       return NextResponse.json({ erro: error.message }, { status: error.status })
     }

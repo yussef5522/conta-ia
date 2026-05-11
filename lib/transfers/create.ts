@@ -1,12 +1,12 @@
 // Cria transferência atomicamente: 2 transações + 2 updates de saldo + 1 audit log.
-// Validações de mesma empresa + permission. Saldo negativo NÃO é validado aqui
-// (fica pro Dia 3 em lib/balance/).
+// Validações: mesma empresa + permission + saldo (vs creditLimit / allowNegativeBalance).
 
 import { randomUUID } from 'crypto'
 import type { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
 import type { AuthContext } from '@/lib/auth/rbac'
+import { checkBalance, BalanceCheckError } from '@/lib/balance/check'
 import {
   assertSameCompany,
   TransferValidationError,
@@ -27,11 +27,18 @@ export async function createTransfer(
   ctx: AuthContext,
   request?: NextRequest,
 ): Promise<CreatedTransfer> {
-  // 1. Fetch das duas contas (precisamos do companyId pra validar)
+  // 1. Fetch das duas contas (precisamos do companyId + flags de saldo)
   const [fromAccount, toAccount] = await Promise.all([
     prisma.bankAccount.findUnique({
       where: { id: input.fromAccountId },
-      select: { id: true, name: true, companyId: true, balance: true },
+      select: {
+        id: true,
+        name: true,
+        companyId: true,
+        balance: true,
+        allowNegativeBalance: true,
+        creditLimit: true,
+      },
     }),
     prisma.bankAccount.findUnique({
       where: { id: input.toAccountId },
@@ -56,11 +63,23 @@ export async function createTransfer(
   }
   ctx.requirePermission('transaction.create')
 
-  // 4. Gera ID do grupo + monta operações (função pura)
+  // 4. Balance check: saída na conta de origem respeita creditLimit?
+  const balanceCheck = checkBalance({
+    currentBalance: fromAccount.balance,
+    allowNegativeBalance: fromAccount.allowNegativeBalance,
+    creditLimit: fromAccount.creditLimit,
+    amountChange: -input.amount,
+    accountName: fromAccount.name,
+  })
+  if (!balanceCheck.allowed) {
+    throw new BalanceCheckError(balanceCheck)
+  }
+
+  // 5. Gera ID do grupo + monta operações (função pura)
   const groupId = randomUUID()
   const ops = buildTransferOperations(input, fromAccount, toAccount, groupId)
 
-  // 5. Atomic: 2 creates + 2 balance updates + 1 audit log
+  // 6. Atomic: 2 creates + 2 balance updates
   const [debit, credit, fromUpdated, toUpdated] = await prisma.$transaction([
     prisma.transaction.create({ data: ops.debitTx }),
     prisma.transaction.create({ data: ops.creditTx }),
@@ -76,7 +95,7 @@ export async function createTransfer(
     }),
   ])
 
-  // 6. Audit log fora do $transaction (não é crítico estar atomic com os creates)
+  // 7. Audit log fora do $transaction (não é crítico estar atomic com os creates)
   await logAudit(ctx, {
     action: 'CREATE',
     entityType: 'Transfer',
