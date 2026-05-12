@@ -326,9 +326,9 @@ Sistema precisa:
 
 ---
 
-## 🚀 SPRINT 1 — DASHBOARD MUNDIAL — EM ANDAMENTO (11/05/2026)
+## 🏆 SPRINT 1 — DASHBOARD MUNDIAL — FINALIZADO (11/05/2026)
 
-**Plano completo:** `docs/DASHBOARD-PLAN.md` seção C.5 (Sprint 1, Semana 1).
+**Plano completo:** `docs/DASHBOARD-PLAN.md` seção C.5 (Sprint 1, Semana 1) + closing histórico ao final do arquivo.
 **Stack adicional:** Recharts 3.8.1 + Framer Motion 12.38.0.
 
 | Dia | Status | Hash | Foco |
@@ -337,9 +337,9 @@ Sistema precisa:
 | **Dia 2** | ✅ Concluído | `8e61263` | Mini-DRE compacta + Top 5 Despesas (donut Recharts) |
 | Dia 3 | ⏭️ Consolidado | — | (escopos absorvidos no Dia 2) |
 | **Dia 4** | ✅ Concluído | `4fd7f43` | Saúde Financeira — Burn, Runway (com cheque especial), Variação 30d, Margem |
-| Dia 5 | ⏳ Próximo | — | Recent Activity timeline + integração final + polimento |
+| **Dia 5** | ✅ Concluído | `f3e08df` | Recent Activity timeline + Pendentes CTA + closing docs |
 
-**Suite de testes (Sprint 1):** 881 → **951 (+70 testes nos Dias 1, 2 e 4).**
+**Suite de testes (Sprint 1):** 881 → **961 (+80 testes).** TypeScript strict: 0 erros.
 
 ### 📍 FASE 3+4 — Importar e classificar perfeito (4-6 semanas) — DIFERENCIAL DO PRODUTO
 
@@ -1057,6 +1057,64 @@ Banrisul cheque 600k, saldo seed 60k, 3 meses anteriores (50k receita + 35k desp
 3. Smoke test integrado de TODOS os componentes do Dashboard
 4. Documentação final do Sprint 1
 5. Marco Sprint 1 fechado → preparar Sprint 2 (Cashflow Waterfall + AI Insights)
+
+### 11/05/2026 (parte 8) — 🏁 FECHAMENTO HISTÓRICO: Sprint 0.5 + Sprint 1 numa única sessão
+
+**Marca da sessão:** maior dia de progresso da branch desde o início. **Sprint 0.5 (transferências/saldo/engines) + Sprint 1 (Dashboard Mundial)** entregues do zero em 1 sessão única de 11/05/2026.
+
+**Sprint 1 Dia 5 (commit `f3e08df`, 7 arquivos, +475 linhas):**
+- `lib/dashboard/format-activity-date.ts` — função PURA com formatação relativa pt-BR (Hoje/Ontem/Há X dias/DD/MM/DD/MM/YYYY)
+- `app/(dashboard)/dashboard/_components/RecentActivity.tsx` — timeline 10 últimas tx, avatar semântico CREDIT/DEBIT, click → editar tx
+- `app/(dashboard)/dashboard/_components/PendingClassification.tsx` — CTA sutil + estado celebração "🎉 Tudo classificado!"
+- `lib/dashboard/queries.ts` — `getRecentActivity` + `getPendingCount` com cache 60s
+- `dashboard/page.tsx` — grid 60/40 final (Recent | Pendentes) em Suspense
+- `docs/DASHBOARD-PLAN.md` — seção "🏆 SPRINT 1 CONCLUÍDO" com tabela, tree de componentes, métricas, 10 decisões de produto
+- 10 testes novos (`__tests__/dashboard-format-activity-date.test.ts`)
+
+**Decisões finais do Sprint 1 (Dia 5):**
+- Avatar por TIPO (CREDIT verde / DEBIT vermelho) — semântico instantâneo. Categoria fica em badge ao lado.
+- Datas relativas até 7 dias (Mercury/Brex pattern). Acima disso: DD/MM.
+- Click leva pra `/empresas/[id]/contas/[contaId]/transacoes/[id]/editar` (90% dos casos user quer corrigir).
+- Visual Pendentes SUTIL (`border-primary/20 bg-primary/5`) — sem competir com gradient do KPI Resultado.
+- Estado 0 pendentes: emoji 🎉 + "Tudo classificado! Você está em dia." — humano brasileiro.
+- Dashboard sem breadcrumb (é rota raiz).
+
+**Estatísticas históricas do dia 11/05/2026:**
+
+| Métrica | Valor |
+|---|---|
+| Início do dia | 709 testes, branch limpa após sprint 0.5 planejamento |
+| Fim do dia | **961 testes** (+252 testes, +35.5%) |
+| Sprint 0.5 | 4 commits feat + 4 commits docs (8 total) |
+| Sprint 1 | 4 commits feat + 5 commits docs (9 total) |
+| **Total commits do dia** | **17 commits** (acima dos 4 anteriores ao dia = ~21 ahead de main) |
+| Tempo planejado original (Sprint 0.5 + Sprint 1) | ~2 semanas |
+| Tempo real entregue | **1 dia (11/05/2026)** |
+| TypeScript strict no fim do dia | ✅ 0 erros |
+| Multi-tenant guards em todas as funções puras | ✅ |
+| Performance dashboard (cache hit) | 40-60ms validado empiricamente |
+
+**Componentes em produção (Dashboard Mundial completo):**
+- Hero Strip: 4 KPI cards + sparklines Recharts
+- Mini-DRE: 5 linhas + Lucro Líquido destacado + link "Ver DRE completa"
+- Top 5 Despesas: donut 120px + lista vertical + cores fixas
+- Saúde Financeira: Burn, Runway (com cheque especial), Variação 30d, Margem
+- Recent Activity: timeline 10 tx + avatar semântico + datas relativas
+- Pendentes Classification: CTA sutil + celebration state
+
+**Lib engines reusados em todo o Dashboard:**
+- `calculateDRE` (Sprint 0.5 Dia 2-3) → Hero, Mini-DRE, Margem
+- `calculateConsolidatedCashflow` (Sprint 0.5 Dia 3) → Sparklines, Burn, Variação 30d
+- `lib/balance/*` (Sprint 0.5 Dia 3) → potencial uso futuro pra projeções
+- `lib/dashboard/period.ts` → derivePeriods compartilhado
+
+**Próximo passo:** **Sprint 2 — Diferenciais** (DASHBOARD-PLAN.md seção C.5):
+1. **Cashflow Waterfall** — gráfico Recharts custom (saldo inicial → entradas → saídas → saldo final) com drill-down ao clicar nas barras
+2. **AI Insights** ⭐ (DIFERENCIAL CHAVE) — endpoint `/api/dashboard/insights` com Claude Haiku + RAG das últimas 100 tx + regras aprendidas + tendências do DRE. 4 tipos de insight: alerta, oportunidade, sugestão, parabéns. Cache 1h.
+3. **Recent Activity + Pending CTA** (já entregues no Sprint 1)
+4. **Company Selector multi-modo** — 3 modos: única (atual) / consolidado (todas empresas somadas) / comparativo (lado a lado)
+
+**Marco final do dia:** Conta IA tem agora um Dashboard Mundial visualmente competitivo com Brex/Mercury/Ramp + base de cálculo financeiro testada multi-tenant + transferências entre contas robustas + safety net pra deploy. Próxima sessão pode focar 100% nos diferenciais (Cashflow Waterfall + AI Insights) que fecham o gap conceitual vs Conta Azul.
 
 ### [Próxima sessão] — preencher
 - Data:
