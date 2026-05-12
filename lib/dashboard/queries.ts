@@ -45,7 +45,13 @@ export async function getHeroKPIs(
       tags: [`dashboard:${companyId}`],
     },
   )
-  return cached()
+  const result = await cached()
+  // ⚠️ unstable_cache do Next 15+ serializa via JSON: Date vira string ISO.
+  // Reidrata o campo Date pra preservar o contrato de tipos.
+  return {
+    ...result,
+    referenceDate: new Date(result.referenceDate),
+  }
 }
 
 async function loadHeroKPIs(
@@ -567,7 +573,13 @@ export async function getRecentActivity(
     [`dashboard:recent-activity:${companyId}:${limit}`],
     { revalidate: CACHE_TTL_SECONDS, tags: [`dashboard:${companyId}`] },
   )
-  return cached()
+  const items = await cached()
+  // ⚠️ unstable_cache do Next 15+ serializa via JSON: Date vira string ISO.
+  // Reidrata `date` pra preservar o contrato de tipos (RecentActivity.tsx
+  // chama formatActivityDate(item.date) que precisa de Date pra `.getTime()`).
+  // Bug em produção (12/05/2026): empresa com 753 tx quebrava com
+  // "TypeError: a.getTime is not a function".
+  return items.map((item) => ({ ...item, date: new Date(item.date) }))
 }
 
 async function loadRecentActivity(
