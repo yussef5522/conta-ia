@@ -324,6 +324,23 @@ Sistema precisa:
 
 **Suite de testes:** 709 → **881 (+172 testes, +24%)** sem regressões. **TypeScript strict:** 0 erros.
 
+---
+
+## 🚀 SPRINT 1 — DASHBOARD MUNDIAL — EM ANDAMENTO (11/05/2026)
+
+**Plano completo:** `docs/DASHBOARD-PLAN.md` seção C.5 (Sprint 1, Semana 1).
+**Stack adicional:** Recharts 3.8.1 + Framer Motion 12.38.0.
+
+| Dia | Status | Hash | Foco |
+|---|---|---|---|
+| **Dia 1** | ✅ Concluído | `7176ffe` | Hero Strip — 4 KPI cards + sparklines + cache 60s + empty states |
+| Dia 2 | ⏳ | — | Mini-DRE compacta (reusa engine DRE) |
+| Dia 3 | ⏳ | — | Top 5 Categorias (donut Recharts) |
+| Dia 4 | ⏳ | — | Saúde Financeira (Burn, Runway, Liquidez, EBITDA) |
+| Dia 5 | ⏳ | — | Recent Activity timeline + integração final + polimento |
+
+**Suite de testes (Sprint 1):** 881 → **902 (+21 testes Dia 1).**
+
 ### 📍 FASE 3+4 — Importar e classificar perfeito (4-6 semanas) — DIFERENCIAL DO PRODUTO
 
 **Objetivo:** Yussef importa um OFX e a IA classifica automaticamente com ≥80% de acerto, aprendendo a cada confirmação manual.
@@ -881,6 +898,59 @@ Em vez de modificar o endpoint de import OFX pra aceitar lista de skips (introdu
 1. Rodar `npx tsx scripts/backfill-credit-limits.ts` (safety net pra Cacula Mix)
 2. Yussef revisar e configurar `creditLimit` real por conta via UI (`/empresas/[id]/contas/[contaId]/editar` agora tem section "Cheque Especial")
 3. Smoke test do fluxo: criar transferência manual → import OFX → parear sugestão → confirmar import → verificar contadores em `/transferencias`
+
+### 11/05/2026 (parte 5) — Sprint 1 Dia 1: Hero Strip Dashboard Mundial
+
+**Contexto:** com Sprint 0.5 100% finalizado mais cedo no dia, Yussef decidiu emendar pra **Sprint 1 — Dashboard Mundial**. Dia 1 focado em fundação visual: Hero Strip com 4 KPIs + sparklines, infraestrutura de queries com cache, e empty states.
+
+**O que foi feito (commit `7176ffe`, 14 arquivos, +1768/-132 linhas):**
+
+Infraestrutura (lib/dashboard/):
+- `types.ts` — `HeroKPIsResult`, `KPIValue`, `KPIDelta`, `SparkPoint`
+- `period.ts` — `derivePeriods(refDate)` retorna 4 ranges (current/previous month, last 30 days, last 12 months) com edge cases de fim de mês e ano
+- `compute-kpis.ts` — função PURA `computeKPIsFromData` que agrega `calculateDRE` + `calculateConsolidatedCashflow` (Sprint 0.5) em KPIs
+- `queries.ts` — `getHeroKPIs(companyId)` server-side com `unstable_cache` 60s + tags `dashboard:${companyId}` (Sprint 2 vai revalidar em mutations)
+
+UI (app/(dashboard)/dashboard/_components/):
+- `HeroKPIs.tsx` — server component que faz fetch + grid 4 cards
+- `KPICard.tsx` — client component animado (Framer Motion stagger 50ms), variant primary com gradient azul Conta IA
+- `Sparkline.tsx` — Recharts AreaChart com gradient sutil, dinamicamente importada com `ssr: false` (resolve warning `width(-1)` do ResponsiveContainer)
+- `CompanySelector.tsx` — Select shadcn que muda `?empresa=` via `router.push`, renderiza só com 2+ empresas
+- `EmptyDashboard.tsx` — 3 empty states: sem empresas, sem contas, sem transações (com 2 CTAs: Importar OFX / Lançar Manualmente)
+
+Página principal:
+- `app/(dashboard)/dashboard/page.tsx` — REESCRITA completa. Server component lê `searchParams.empresa`, decide empty state, integra HeroKPIs em Suspense com Skeleton
+
+**Decisões técnicas notáveis:**
+- **URL como source-of-truth de empresa**: `?empresa=<id>` permite shareable links, back/forward funciona, cache-friendly. Sprint 2 expande pra modo "consolidado" facilmente.
+- **5 queries paralelas no Prisma**: previne N+1, ~125ms application-code consistente.
+- **Cache validado empiricamente**: 1ª call 1.99s (Turbopack compilando), 2ª call **127ms** (15x mais rápido) — confirma `unstable_cache` ativo.
+- **Sparkline saldo cumulativo**: caminha "pra trás" a partir do saldo atual, subtraindo o `net` de cada dia. Narrativa visual de tendência.
+- **Semântica invertida em despesas**: `direction='up'` (verde) quando despesa CAI vs mês anterior. Quem programa pensando "alto = bom" cai em erro aqui.
+- **Recharts SSR fix**: `dynamic(() => Sparkline, { ssr: false })` eliminou warnings `width(-1)` que apareciam em cada server render.
+
+**Smoke test (3 cenários reais com `npm run dev`):**
+- ✅ Sem auth → 307 redirect /login
+- ✅ Auth admin@contaia.com.br (1 empresa Demo, 0 contas) → renderiza empty state (b)
+- ✅ Auth + seed temporário 60 tx → Hero Strip completo com 4 cards + 8 sparklines visíveis no HTML
+
+**Stack adicional:**
+- `recharts@3.8.1` (charts)
+- `framer-motion@12.38.0` (animações entrance)
+- Instalado com `--legacy-peer-deps` (conflito pré-existente eslint 8 vs eslint-config-next 16 — não relacionado às novas deps)
+
+**Métricas:**
+- 14 arquivos no commit (11 novos + 3 modificados)
+- **21 testes novos** (7 dashboard-period + 14 dashboard-compute-kpis)
+- **902/902 testes passando** (era 881 no fim do Sprint 0.5 — superou estimativa de 895)
+- TypeScript strict: 0 erros
+- 1ª carga: 1.99s | 2ª carga: 127ms (cache hit)
+
+**Próximo passo:** **Sprint 1 Dia 2-3** — Mini-DRE compacta + Top 5 Categorias (donut Recharts). Componentes:
+1. `MiniDRE.tsx` — 5 linhas comprimidas (Receita Bruta, Deduções, Lucro Bruto, EBITDA, Lucro Líquido) com comparação mês anterior
+2. `TopCategories.tsx` — donut chart Recharts com top 5 categorias de despesa do mês corrente
+3. Queries em `lib/dashboard/queries.ts` reusando engines existentes
+4. Layout: linha abaixo do Hero Strip, 2 colunas (50%/50%)
 
 ### [Próxima sessão] — preencher
 - Data:
