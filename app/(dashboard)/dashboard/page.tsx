@@ -16,6 +16,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import type { Metadata } from 'next'
 import { CompanySelector } from './_components/CompanySelector'
 import { HeroKPIs } from './_components/HeroKPIs'
+import { MiniDRE } from './_components/MiniDRE'
+import { TopCategories } from './_components/TopCategories'
 import {
   NoCompaniesEmpty,
   NoAccountsEmpty,
@@ -108,9 +110,20 @@ export default async function DashboardPage({ searchParams }: PageProps) {
 
       {/* Hero Strip — sempre renderiza quando há contas (mesmo zerado) */}
       {contasCount > 0 && (
-        <Suspense fallback={<HeroKPIsSkeleton />}>
-          <HeroKPIs companyId={empresaAtual.id} />
-        </Suspense>
+        <>
+          <Suspense fallback={<HeroKPIsSkeleton />}>
+            <HeroKPIs companyId={empresaAtual.id} />
+          </Suspense>
+
+          <div className="grid gap-6 lg:grid-cols-2">
+            <Suspense fallback={<CardSkeleton height={280} />}>
+              <MiniDRE companyId={empresaAtual.id} />
+            </Suspense>
+            <Suspense fallback={<CardSkeleton height={280} />}>
+              <TopCategories companyId={empresaAtual.id} />
+            </Suspense>
+          </div>
+        </>
       )}
     </div>
   )
@@ -124,4 +137,8 @@ function HeroKPIsSkeleton() {
       ))}
     </div>
   )
+}
+
+function CardSkeleton({ height }: { height: number }) {
+  return <Skeleton style={{ height }} className="w-full rounded-lg" />
 }
