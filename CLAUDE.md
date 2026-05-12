@@ -335,11 +335,11 @@ Sistema precisa:
 |---|---|---|---|
 | **Dia 1** | ✅ Concluído | `7176ffe` | Hero Strip — 4 KPI cards + sparklines + cache 60s + empty states |
 | **Dia 2** | ✅ Concluído | `8e61263` | Mini-DRE compacta + Top 5 Despesas (donut Recharts) |
-| Dia 3 | ⏳ | — | (consolidação Dia 2 — Mini-DRE e Top já entregues) |
-| Dia 4 | ⏳ | — | Saúde Financeira (Burn, Runway, Liquidez, Margem) |
-| Dia 5 | ⏳ | — | Recent Activity timeline + integração final + polimento |
+| Dia 3 | ⏭️ Consolidado | — | (escopos absorvidos no Dia 2) |
+| **Dia 4** | ✅ Concluído | `4fd7f43` | Saúde Financeira — Burn, Runway (com cheque especial), Variação 30d, Margem |
+| Dia 5 | ⏳ Próximo | — | Recent Activity timeline + integração final + polimento |
 
-**Suite de testes (Sprint 1):** 881 → **927 (+46 testes nos Dias 1-2).**
+**Suite de testes (Sprint 1):** 881 → **951 (+70 testes nos Dias 1, 2 e 4).**
 
 ### 📍 FASE 3+4 — Importar e classificar perfeito (4-6 semanas) — DIFERENCIAL DO PRODUTO
 
@@ -1003,6 +1003,60 @@ Erro 500 inicial: `next/dynamic` com `ssr: false` **NÃO é permitido em Server 
 5. Reusar `calculateConsolidatedCashflow` (Sprint 0.5) pra histórico
 
 Dia 3 fica **livre** porque os escopos planejados (Mini-DRE e Top 5) já foram entregues juntos no Dia 2. Yussef decide se pula direto pro Dia 4 ou usa o Dia 3 pra polimento/testes adicionais.
+
+### 11/05/2026 (parte 7) — Sprint 1 Dia 4: Saúde Financeira
+
+**Contexto:** com Hero Strip (Dia 1) + Mini-DRE/Top 5 (Dia 2) entregues, o Dashboard ganha hoje a camada estratégica de "Como minha empresa está?". 4 indicadores de saúde financeira num único Card abaixo dos detalhes.
+
+**Decisões de produto significativas:**
+
+1. **Liquidez Corrente substituída por "Variação 30 dias"** — Sem AP/AR no schema atual (Sprint 0.5 não cobriu), calcular liquidez clássica seria matematicamente possível mas conceitualmente errado. Honestidade técnica > buzz word: variação 30d é o indicador REAL que conseguimos com dados disponíveis. Liquidez volta quando FASE 6+ implementar contas a pagar/receber.
+
+2. **Burn Rate comparado vs RECEITA média (não baseline histórico)** — Comparação histórica isolada esconde o cenário "margem zero = morte lenta" (burn cresce proporcionalmente à receita mas margem fica zero). Threshold sustainability-first: ≤70% receita = Saudável; 70-90% = Atenção; >90% = Crítico.
+
+3. **Runway INCLUI cheque especial** — Crítico pro caso real Yussef: Banrisul tem 600k de cheque especial. Sem incluir, conta legitimamente negativa (-550k) com burn 10k/mês daria Runway 0 (falso alarme). Fórmula real: `available = saldo + creditLimit (onde allowNegativeBalance=true)`. Subtext "Incluindo cheque especial" pra transparência.
+
+4. **Threshold margem ajustado pra PME BR (20%, não 30%)** — Academia típica fica 15-25%, restaurante 8-15%, loja 10-20%. 30% é meta de unicórnio SaaS. Por setor fica como melhoria Sprint 2+.
+
+5. **Cap Runway 24 meses → "Mais de 2 anos"** — Wording mais natural em pt-BR que "24+ meses". Acima do cap, mostra a frase + status Excelente + subtext "Reserva confortável".
+
+6. **Empty state com progresso** — `<3 meses de burnHistory` → status "Acumulando dados (X/3 meses)" em vez de só "—". User entende quanto falta + cria expectativa positiva.
+
+**O que foi feito (commit `4fd7f43`, 6 arquivos, +1049/-1 linhas):**
+
+Função pura:
+- `lib/dashboard/compute-health.ts` — 4 indicadores com thresholds dedicados + `progressPercent` pra barra visual + `subtext` pra info adicional. ID estável (`burn-rate`, `runway`, `variation-30d`, `margin`) pra React keys
+
+Query server-side:
+- `getHealthCheck(companyId)` em `lib/dashboard/queries.ts` — 5 queries paralelas (contas com flags, categorias DRE, 3 buckets de burn, net 30d, mês atual pra margem), `unstable_cache` 60s + tag `dashboard:${companyId}`. Reuso de `calculateConsolidatedCashflow` (Sprint 0.5 Dia 3) + `calculateDRE`. Bonus: removido import duplicado de `CashflowTransaction` no arquivo
+
+UI:
+- `HealthCheck.tsx` — Server orquestrador. Card único com `<Activity />` icon + título + grid 2×2 mobile / 1×4 desktop
+- `HealthIndicator.tsx` — Client com Framer Motion stagger 50ms. Status dot colorido + label CAPS + valor grande + progress bar opcional + status label + subtext
+
+Página integrada:
+- `dashboard/page.tsx` — `<HealthCheck>` em Suspense full width abaixo do grid Mini-DRE/Top Categories
+
+**Smoke test com cenário REAL Yussef:**
+Banrisul cheque 600k, saldo seed 60k, 3 meses anteriores (50k receita + 35k despesa = burn 70%), mês atual (40k receita + 25k despesa = margem 37.5%):
+- Burn: R$ 35k → 🟢 Saudável (70% da receita)
+- Runway: 18.9 meses → 🟢 Saudável + subtext "Incluindo cheque especial"
+- Variação 30d: +R$ 15k → 🟢 Subindo
+- Margem: 37.5% → 🟢 Saudável
+
+**Métricas:**
+- **24 testes novos** (excedeu estimativa de 15) cobrindo todos os edges
+- **951/951 testes passando** (era 927)
+- TypeScript strict: 0 erros
+- 1ª call: 467ms | 2ª call: **44ms** (cache hit)
+- Subtext "Incluindo cheque especial" empiricamente validado no DOM
+
+**Próximo passo:** **Sprint 1 Dia 5** — fechamento do Sprint 1:
+1. Recent Activity timeline (últimas N transações + transferências, agrupado por data)
+2. Polimento geral: revisar animações, dark mode, mobile responsive
+3. Smoke test integrado de TODOS os componentes do Dashboard
+4. Documentação final do Sprint 1
+5. Marco Sprint 1 fechado → preparar Sprint 2 (Cashflow Waterfall + AI Insights)
 
 ### [Próxima sessão] — preencher
 - Data:
