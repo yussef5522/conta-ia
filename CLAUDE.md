@@ -297,13 +297,32 @@ Sistema precisa:
   - 71 testes novos (6 arquivos), incluindo 10 dedicados a isolamento multi-tenant — 840/840 passando
   - ⚠️ DRE filtro de TRANSFER já estava feito no Dia 2 (SQL filter + loop guard)
 
-- [ ] **Dia 4 — UI**
-  - Modal "Nova Transferência" (origem + destino + valor + data)
-  - Página `/transferencias` (lista agrupada por `transferGroupId`)
-  - Cards de conta bancária: badge amarelo "ATENÇÃO" / vermelho "SALDO NEGATIVO" + dias no vermelho
-  - Detecção heurística no preview OFX: 2 transações no mesmo dia, mesmo valor, sinais opostos, contas diferentes da mesma empresa → sugere parear como transferência (1 clique)
+- [x] **Dia 4 — UI completa + Replace OFX** (concluído 11/05/2026, commit `d53ef79`)
+  - Modal "Nova Transferência" reutilizável (trata HTTP 422 inline sem fechar)
+  - Página `/empresas/[id]/transferencias` (filtros período + conta nos 2 lados, paginação, delete confirmado)
+  - Badge dinâmico de saldo nas contas: verde/amarelo/vermelho + % do cheque especial usado (porcentagem com cor própria)
+  - Section "Cheque Especial" no form de conta (toggle + creditLimit + lowBalanceThreshold com tooltips)
+  - Detecção heurística OFX no preview com cards HIGH/MEDIUM + ações individual/batch
+  - **Replace OFX (refinamento crítico):** endpoint `POST /api/transferencias/from-ofx` com estratégia "dedupHash reservation" — TRANSFER reserva slot UNIQUE, import OFX skipa duplicata naturalmente, ZERO mudança no endpoint de import
+  - ConfirmDialog quando tx existente tem categoria/notas + audit log preserva tudo no metadata pra rastreabilidade
+  - 19 testes novos (15 balance-badge-status + 7 conta-validation + 19 transfers-from-ofx — sendo 12 solicitados + 7 robustez extra)
 
-🎯 **Marco Sprint 0.5:** Transferências internas funcionam sem inflar DRE/Fluxo Consolidado. Saldo negativo permitido e visível. Base sólida pra Dashboard Mundial (Sprints 1-3 do DASHBOARD-PLAN.md).
+🎯 **Marco Sprint 0.5:** ✅ **ATINGIDO** — Transferências internas funcionam sem inflar DRE/Fluxo Consolidado. Saldo negativo permitido e visível com cheque especial real por conta. Base sólida pro Dashboard Mundial (Sprints 1-3 do DASHBOARD-PLAN.md).
+
+---
+
+## 🏆 SPRINT 0.5 — FINALIZADO (11/05/2026)
+
+**4 dias planejados → entregues em 1 sessão única.** 4 commits feat + 4 commits docs = **8 commits totais**.
+
+| Dia | Hash | Foco |
+|---|---|---|
+| Dia 1 | `183ae53` | Schema: `transferGroupId` + 3 campos cheque especial |
+| Dia 2 | `885bbc6` | Backend transferências (POST/GET/DELETE) + detecção heurística OFX |
+| Dia 3 | `b82a4eb` | Engines `lib/balance/` + `lib/cashflow/` + validação saldo + safety net |
+| Dia 4 | `d53ef79` | UI completa + Replace OFX (dedupHash reservation) |
+
+**Suite de testes:** 709 → **881 (+172 testes, +24%)** sem regressões. **TypeScript strict:** 0 erros.
 
 ### 📍 FASE 3+4 — Importar e classificar perfeito (4-6 semanas) — DIFERENCIAL DO PRODUTO
 
@@ -816,6 +835,52 @@ Esses 2 itens foram extraídos pro **Sprint 0.5 (3-4 dias)** que vira pré-requi
 4. Tela de edição de conta: configurar `allowNegativeBalance`, `creditLimit`, `lowBalanceThreshold` (substituir o backfill)
 5. Integração da detecção heurística OFX no preview de import (oferecer 1-clique pra parear HIGH)
 6. Tratar HTTP 422 nas chamadas (mostrar mensagem amigável de cheque especial estourado)
+
+### 11/05/2026 (parte 4) — Sprint 0.5 Dia 4: UI completa + Replace OFX  🏁 SPRINT 0.5 FINALIZADO
+
+**Contexto:** quarta e última etapa do Sprint 0.5 numa única sessão de hoje. Yussef pediu UI completa + integração com tudo que foi construído nos Dias 1-3, e durante a apresentação do plano inicial decidiu transformar o pareamento OFX num **Replace completo** em vez do MVP que eu havia proposto (que geraria duplicação). Decisão certa: Yussef vai usar muito o feature, precisa funcionar 100%.
+
+**O que foi feito (commit `d53ef79`, 15 arquivos, +2539/-57 linhas):**
+
+UI principal:
+- `components/transferencias/NovaTransferenciaModal.tsx` — Modal Dialog shadcn reutilizável, trata HTTP 422 com banner amarelo inline (não fecha o modal — UX permite ajustar e retentar)
+- `app/(dashboard)/empresas/[id]/transferencias/page.tsx` — Lista paginada com filtros (período + conta nos 2 lados origem/destino) e delete via ConfirmDialog
+- `app/(dashboard)/empresas/[id]/contas/page.tsx` — Badge dinâmico no card de conta usando `computeBalanceBadgeStatus` (verde/amarelo/vermelho + porcentagem colorida de uso do cheque especial)
+- `components/contas-bancarias/conta-form.tsx` — 3º Card "Cheque Especial" (Checkbox + 2 inputs com tooltips)
+- `app/(dashboard)/empresas/[id]/contas/[contaId]/importar/page.tsx` — Section "X transferências detectadas" com cards HIGH/MEDIUM + ConfirmDialog do Replace
+
+Backend:
+- `app/api/contas-bancarias/[id]/detectar-transferencias/route.ts` — endpoint enriquece candidatos com `existingTxCategoryName` + `existingTxHasNotes`
+- `app/api/transferencias/from-ofx/route.ts` — endpoint do Replace, mapeia 422/400
+- `lib/transfers/build-ofx-replace.ts` — função PURA (testável sem DB) que monta as operações
+- `lib/transfers/from-ofx.ts` — orquestrador atomic (revert saldo + delete existing + create par TRANSFER + audit)
+
+**🧠 Decisão técnica notável — "dedupHash reservation":**
+Em vez de modificar o endpoint de import OFX pra aceitar lista de skips (introduziria risco de regressão), reaproveitamos a constraint `@@unique([bankAccountId, dedupHash])` existente. A transação TRANSFER criada na conta importada recebe o mesmo `dedupHash` da OFX preview, ocupando o slot. Quando o user confirma o import depois, a tentativa de inserir a CREDIT/DEBIT colide naturalmente → import marca como "duplicada" e skipa. **Zero mudança no endpoint de import OFX. Risco de regressão = 0.**
+
+**Estatística histórica do dia (sessão única 11/05/2026):**
+- Começamos: **709 testes** (baseline antes do Sprint 0.5)
+- Terminamos: **881 testes** — **+172 testes (+24%) sem regressões**
+- 8 commits totais (4 feat + 4 docs)
+- 4 dias planejados → entregues em ~1 sessão
+
+**Distribuição dos testes novos (172 total):**
+- Dia 1: 10 (schema)
+- Dia 2: 50 (transferências + DRE filter + detecção heurística)
+- Dia 3: 71 (engines + multi-tenant)
+- Dia 4: 41 (UI helpers + Replace OFX)
+
+**Próximo passo:** **Sprint 1 — Dashboard Mundial** (Semana 1 do `docs/DASHBOARD-PLAN.md` Parte C.5).
+- Adicionar Recharts + Framer Motion
+- Implementar componentes base `KPICard`, `Sparkline`, `PeriodFilter`
+- Hero Strip com 4 KPIs principais (Saldo + Receita + Despesas + Resultado)
+- Health Check reusando `lib/kpis/saude-financeira`
+- Mini-DRE + Top Categories (donut)
+
+**Ações operacionais ANTES do próximo deploy em produção:**
+1. Rodar `npx tsx scripts/backfill-credit-limits.ts` (safety net pra Cacula Mix)
+2. Yussef revisar e configurar `creditLimit` real por conta via UI (`/empresas/[id]/contas/[contaId]/editar` agora tem section "Cheque Especial")
+3. Smoke test do fluxo: criar transferência manual → import OFX → parear sugestão → confirmar import → verificar contadores em `/transferencias`
 
 ### [Próxima sessão] — preencher
 - Data:
