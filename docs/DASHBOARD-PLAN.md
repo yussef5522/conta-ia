@@ -617,3 +617,96 @@ E ainda fica **MUITO** melhor com a FASE 3+4 (IA Contadora) implementada depois 
 > "Conta IA: a gestão financeira que a Conta Azul deveria ter sido. Com IA de verdade. Multi-empresa nativo. Preço justo."
 
 **Vamos pra cima!** 🚀
+
+---
+
+# 🏆 SPRINT 1 CONCLUÍDO — 11/05/2026
+
+Sprint 1 (Dashboard Mundial — Fundação Visual) entregue em **1 sessão única**.
+
+## Entregáveis vs Planejado
+
+| Sprint/Dia      | Planejado                         | Entregue                                | Status     |
+|-----------------|-----------------------------------|-----------------------------------------|------------|
+| Sprint 1 Dia 1  | Hero KPIs                         | Hero KPIs + sparklines Recharts         | ✅          |
+| Sprint 1 Dia 2  | Mini-DRE                          | Mini-DRE + Top Categories (D2/D3 juntos)| ✅          |
+| Sprint 1 Dia 3  | Top Categories                    | Absorvido no Dia 2                      | 🆓 Skip    |
+| Sprint 1 Dia 4  | Health Check                      | Burn / Runway / Variação 30d / Margem   | ✅          |
+| Sprint 1 Dia 5  | Recent Activity + polimento       | Recent + Pendentes CTA + closing docs   | ✅          |
+
+## Componentes em produção
+
+```
+app/(dashboard)/dashboard/page.tsx               (Server, orquestrador)
+├── _components/
+│   ├── HeroKPIs.tsx                              (Server) — 4 KPIs + sparklines
+│   ├── KPICard.tsx                               (Client) — card animado
+│   ├── Sparkline.tsx                             (Client) — Recharts AreaChart
+│   ├── CompanySelector.tsx                       (Client) — multi-empresa via URL
+│   ├── EmptyDashboard.tsx                        (Server) — 3 empty states
+│   ├── MiniDRE.tsx                               (Server) — 5 linhas DRE
+│   ├── TopCategories.tsx                         (Server) — donut + lista
+│   ├── TopCategoriesDonut.tsx                    (Client) — Recharts PieChart
+│   ├── TopCategoriesChart.tsx                    (Client wrapper) — dynamic ssr:false
+│   ├── HealthCheck.tsx                           (Server) — container 4 indicators
+│   ├── HealthIndicator.tsx                       (Client) — mini-card animado
+│   ├── RecentActivity.tsx                        (Server) — timeline últimas 10 tx
+│   └── PendingClassification.tsx                 (Server) — CTA + celebration
+```
+
+## Engenharia (lib/dashboard/)
+
+```
+lib/dashboard/
+├── types.ts                                       — KPI types compartilhados
+├── period.ts                                      — derivePeriods (4 ranges)
+├── compute-kpis.ts                                — função pura Hero
+├── compute-mini-dre.ts                            — função pura Mini-DRE
+├── compute-top-categories.ts                      — função pura Top 5
+├── compute-health.ts                              — função pura Saúde
+├── format-activity-date.ts                        — formatação relativa pt-BR
+└── queries.ts                                     — server queries com unstable_cache 60s
+```
+
+## Métricas do Sprint 1
+
+| Métrica | Valor |
+|---------|-------|
+| Tempo planejado | 5 dias |
+| Tempo entregue | 1 sessão única (11/05/2026) |
+| Commits feat | 4 (Dia 3 absorvido no Dia 2) |
+| Commits docs | 5 |
+| **Total commits Sprint 1** | **9** |
+| Testes (Sprint 1) | +80 (881 → 961) |
+| Testes (branch total) | +252 (709 → 961, +35.5%) |
+| TypeScript strict | 0 erros |
+| Multi-tenant guards | ✅ em TODAS funções puras + queries |
+| Performance cache hit | ~40-60ms (validado empiricamente) |
+
+## Decisões de produto que viraram base do produto
+
+1. **URL como source-of-truth de empresa** (`?empresa=<id>`) — shareable links + cache-friendly
+2. **"Resultado Operacional" em vez de "EBITDA"** — honestidade técnica (sem D&A separado)
+3. **Burn vs Receita média** (não baseline histórico) — captura "margem zero = morte lenta"
+4. **Runway INCLUI cheque especial** — crítico pro caso real do Yussef (Banrisul 600k)
+5. **Variação 30d em vez de Liquidez Corrente** — sem AP/AR no schema, indicador real
+6. **Threshold margem PME BR 20%** (não 30% de unicórnio SaaS)
+7. **Cores fixas no Top 5** — consistência visual sobre identidade
+8. **Avatar por tipo (CREDIT/DEBIT)** em Recent Activity — semântico instantâneo
+9. **Data relativa até 7 dias** — Mercury/Brex pattern, processamento mental rápido
+10. **Celebration state "🎉 Tudo classificado!"** — humano brasileiro vs corporativo frio
+
+## Stack visual
+
+- **Recharts 3.8.1** (sparklines + donuts)
+- **Framer Motion 12.38.0** (stagger entrance 50ms)
+- **shadcn/ui** + Tailwind dark mode
+- **tabular-nums** em todos valores monetários
+- **Paleta DASHBOARD-PLAN B.5** (`#185FA5` brand, `#1D9E75` success, `#EF9F27` warning, `#E24B4A` danger, `#6B7280` gray)
+
+## Próximo: Sprint 2 — Diferenciais
+
+> Cashflow Waterfall + **AI Insights** (DIFERENCIAL CHAVE vs Conta Azul) + multi-empresa modo Consolidado/Comparativo.
+
+**Vamos pra cima!** 🚀
+

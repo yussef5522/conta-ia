@@ -19,6 +19,8 @@ import { HeroKPIs } from './_components/HeroKPIs'
 import { MiniDRE } from './_components/MiniDRE'
 import { TopCategories } from './_components/TopCategories'
 import { HealthCheck } from './_components/HealthCheck'
+import { RecentActivity } from './_components/RecentActivity'
+import { PendingClassification } from './_components/PendingClassification'
 import {
   NoCompaniesEmpty,
   NoAccountsEmpty,
@@ -128,6 +130,20 @@ export default async function DashboardPage({ searchParams }: PageProps) {
           <Suspense fallback={<CardSkeleton height={200} />}>
             <HealthCheck companyId={empresaAtual.id} />
           </Suspense>
+
+          {/* Atividade Recente (60%) + Pendentes Classificação (40%) */}
+          <div className="grid gap-6 lg:grid-cols-5">
+            <div className="lg:col-span-3">
+              <Suspense fallback={<CardSkeleton height={420} />}>
+                <RecentActivity companyId={empresaAtual.id} />
+              </Suspense>
+            </div>
+            <div className="lg:col-span-2">
+              <Suspense fallback={<CardSkeleton height={420} />}>
+                <PendingClassification companyId={empresaAtual.id} />
+              </Suspense>
+            </div>
+          </div>
         </>
       )}
     </div>

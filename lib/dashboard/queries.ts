@@ -539,3 +539,92 @@ async function loadHealthCheck(
     currentMonthNetIncome: dreCurrent.totals.lucroLiquido,
   })
 }
+
+// ============================================================
+// Recent Activity — Sprint 1 Dia 5
+// ============================================================
+
+export interface RecentActivityItem {
+  id: string
+  description: string
+  amount: number
+  type: 'CREDIT' | 'DEBIT' | 'TRANSFER'
+  date: Date
+  categoryName: string | null
+  bankAccountId: string
+  bankAccountName: string
+}
+
+export async function getRecentActivity(
+  companyId: string,
+  limit = 10,
+): Promise<RecentActivityItem[]> {
+  if (!companyId) {
+    throw new Error('companyId é obrigatório (isolamento multi-tenant)')
+  }
+  const cached = unstable_cache(
+    async () => loadRecentActivity(companyId, limit),
+    [`dashboard:recent-activity:${companyId}:${limit}`],
+    { revalidate: CACHE_TTL_SECONDS, tags: [`dashboard:${companyId}`] },
+  )
+  return cached()
+}
+
+async function loadRecentActivity(
+  companyId: string,
+  limit: number,
+): Promise<RecentActivityItem[]> {
+  const txs = await prisma.transaction.findMany({
+    where: {
+      bankAccount: { companyId },
+      type: { not: 'TRANSFER' },
+    },
+    orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+    take: limit,
+    select: {
+      id: true,
+      description: true,
+      amount: true,
+      type: true,
+      date: true,
+      category: { select: { name: true } },
+      bankAccount: { select: { id: true, name: true } },
+    },
+  })
+
+  return txs.map((t) => ({
+    id: t.id,
+    description: t.description,
+    amount: t.amount,
+    type: t.type as 'CREDIT' | 'DEBIT' | 'TRANSFER',
+    date: t.date,
+    categoryName: t.category?.name ?? null,
+    bankAccountId: t.bankAccount.id,
+    bankAccountName: t.bankAccount.name,
+  }))
+}
+
+// ============================================================
+// Pending Classification Count — Sprint 1 Dia 5
+// ============================================================
+
+export async function getPendingCount(companyId: string): Promise<number> {
+  if (!companyId) {
+    throw new Error('companyId é obrigatório (isolamento multi-tenant)')
+  }
+  const cached = unstable_cache(
+    async () => loadPendingCount(companyId),
+    [`dashboard:pending-count:${companyId}`],
+    { revalidate: CACHE_TTL_SECONDS, tags: [`dashboard:${companyId}`] },
+  )
+  return cached()
+}
+
+async function loadPendingCount(companyId: string): Promise<number> {
+  return prisma.transaction.count({
+    where: {
+      bankAccount: { companyId },
+      status: 'PENDING',
+    },
+  })
+}
