@@ -18,6 +18,7 @@ import { CompanySelector } from './_components/CompanySelector'
 import { HeroKPIs } from './_components/HeroKPIs'
 import { MiniDRE } from './_components/MiniDRE'
 import { TopCategories } from './_components/TopCategories'
+import { HealthCheck } from './_components/HealthCheck'
 import {
   NoCompaniesEmpty,
   NoAccountsEmpty,
@@ -123,6 +124,10 @@ export default async function DashboardPage({ searchParams }: PageProps) {
               <TopCategories companyId={empresaAtual.id} />
             </Suspense>
           </div>
+
+          <Suspense fallback={<CardSkeleton height={200} />}>
+            <HealthCheck companyId={empresaAtual.id} />
+          </Suspense>
         </>
       )}
     </div>

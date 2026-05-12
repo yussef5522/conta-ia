@@ -13,10 +13,16 @@ import {
   type CategoryGroup,
   type CategoryMeta,
 } from './compute-top-categories'
+import {
+  computeHealthCheck,
+  type HealthCheckResult,
+  type BurnMonthBucket,
+} from './compute-health'
 import { calculateDRE } from '@/lib/dre/calculator'
+import { calculateConsolidatedCashflow } from '@/lib/cashflow/consolidated'
+import type { CashflowTransaction } from '@/lib/cashflow/consolidated'
 import type { HeroKPIsResult } from './types'
 import type { CategoryForDRE, TransactionForDRE } from '@/lib/dre/types'
-import type { CashflowTransaction } from '@/lib/cashflow/consolidated'
 
 const CACHE_TTL_SECONDS = 60
 
@@ -345,4 +351,191 @@ async function loadTopCategories(
     }))
 
   return computeTopCategories(groups, categoriesById, companyId, 5)
+}
+
+// ============================================================
+// Saúde Financeira — Sprint 1 Dia 4
+// ============================================================
+
+export async function getHealthCheck(
+  companyId: string,
+  referenceDate: Date = new Date(),
+): Promise<HealthCheckResult> {
+  if (!companyId) {
+    throw new Error('companyId é obrigatório (isolamento multi-tenant)')
+  }
+  const dayKey = referenceDate.toISOString().slice(0, 10)
+  const cached = unstable_cache(
+    async () => loadHealthCheck(companyId, referenceDate),
+    [`dashboard:health:${companyId}:${dayKey}`],
+    { revalidate: CACHE_TTL_SECONDS, tags: [`dashboard:${companyId}`] },
+  )
+  return cached()
+}
+
+async function loadHealthCheck(
+  companyId: string,
+  refDate: Date,
+): Promise<HealthCheckResult> {
+  const periods = derivePeriods(refDate)
+
+  // Range dos 3 meses ANTERIORES (não inclui o atual — evita inflação parcial)
+  const burnRangeStart = new Date(
+    Date.UTC(
+      periods.currentMonth.start.getUTCFullYear(),
+      periods.currentMonth.start.getUTCMonth() - 3,
+      1,
+    ),
+  )
+  const burnRangeEnd = new Date(periods.currentMonth.start.getTime() - 1)
+
+  // 5 queries paralelas (multi-tenant via bankAccount.companyId)
+  const [accounts, categoriesRaw, txBurnRaw, txLast30dRaw, txCurrentMonthRaw] =
+    await Promise.all([
+      // 1. Contas ativas com flags de cheque especial
+      prisma.bankAccount.findMany({
+        where: { companyId, isActive: true },
+        select: { balance: true, creditLimit: true, allowNegativeBalance: true },
+      }),
+      // 2. Categorias da empresa (pra DRE do mês atual)
+      prisma.category.findMany({
+        where: { companyId },
+        select: {
+          id: true,
+          name: true,
+          code: true,
+          dreGroup: true,
+          parentId: true,
+          isActive: true,
+          type: true,
+        },
+      }),
+      // 3. Transações dos 3 meses anteriores (burn rate)
+      prisma.transaction.findMany({
+        where: {
+          bankAccount: { companyId },
+          type: { not: 'TRANSFER' },
+          date: { gte: burnRangeStart, lte: burnRangeEnd },
+        },
+        select: { id: true, type: true, amount: true, date: true },
+      }),
+      // 4. Variação 30d (net)
+      prisma.transaction.findMany({
+        where: {
+          bankAccount: { companyId },
+          type: { not: 'TRANSFER' },
+          date: { gte: periods.last30Days.start, lte: periods.last30Days.end },
+        },
+        select: { id: true, type: true, amount: true, date: true },
+      }),
+      // 5. Mês atual (pra margem via DRE)
+      prisma.transaction.findMany({
+        where: {
+          bankAccount: { companyId },
+          OR: [
+            {
+              competenceDate: {
+                gte: periods.currentMonth.start,
+                lte: periods.currentMonth.end,
+              },
+            },
+            {
+              competenceDate: null,
+              date: {
+                gte: periods.currentMonth.start,
+                lte: periods.currentMonth.end,
+              },
+            },
+          ],
+        },
+        select: {
+          id: true,
+          type: true,
+          amount: true,
+          date: true,
+          competenceDate: true,
+          paymentDate: true,
+          categoryId: true,
+        },
+      }),
+    ])
+
+  // Burn history: 3 buckets month via calculateConsolidatedCashflow
+  const burnCashflow = calculateConsolidatedCashflow(
+    txBurnRaw.map((t) => ({
+      id: t.id,
+      type: t.type,
+      amount: t.amount,
+      date: t.date,
+    })) as CashflowTransaction[],
+    {
+      startDate: burnRangeStart,
+      endDate: burnRangeEnd,
+      groupBy: 'month',
+    },
+    companyId,
+  )
+
+  const burnHistory: BurnMonthBucket[] = burnCashflow.byPeriod.map((b) => ({
+    monthKey: b.bucketStart.toISOString().slice(0, 7),
+    expense: b.expense,
+    income: b.income,
+  }))
+
+  // Variação 30d (net)
+  const cashflow30d = calculateConsolidatedCashflow(
+    txLast30dRaw.map((t) => ({
+      id: t.id,
+      type: t.type,
+      amount: t.amount,
+      date: t.date,
+    })) as CashflowTransaction[],
+    {
+      startDate: periods.last30Days.start,
+      endDate: periods.last30Days.end,
+      groupBy: 'day',
+    },
+    companyId,
+  )
+
+  // DRE mês atual pra margem
+  const categories = categoriesRaw.map((c) => ({
+    id: c.id,
+    name: c.name,
+    code: c.code,
+    dreGroup: c.dreGroup ?? '',
+    parentId: c.parentId,
+    isActive: c.isActive,
+    type: c.type,
+  }))
+  const txCurrentMonth = txCurrentMonthRaw.map((t) => ({
+    id: t.id,
+    type: t.type as 'CREDIT' | 'DEBIT' | 'TRANSFER',
+    amount: t.amount,
+    date: t.date,
+    competenceDate: t.competenceDate,
+    paymentDate: t.paymentDate,
+    categoryId: t.categoryId,
+  }))
+  const dreCurrent = calculateDRE(txCurrentMonth, categories, {
+    period: {
+      startDate: periods.currentMonth.start,
+      endDate: periods.currentMonth.end,
+      regime: 'competence',
+    },
+  })
+
+  return computeHealthCheck({
+    companyId,
+    referenceDate: refDate,
+    accounts: accounts.map((a) => ({
+      balance: a.balance,
+      creditLimit: a.creditLimit,
+      allowNegativeBalance: a.allowNegativeBalance,
+    })),
+    burnHistory,
+    net30d: cashflow30d.totals.net,
+    currentMonthRevenue: dreCurrent.totals.receitaBruta,
+    currentMonthNetIncome: dreCurrent.totals.lucroLiquido,
+  })
 }
