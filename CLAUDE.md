@@ -334,12 +334,12 @@ Sistema precisa:
 | Dia | Status | Hash | Foco |
 |---|---|---|---|
 | **Dia 1** | ✅ Concluído | `7176ffe` | Hero Strip — 4 KPI cards + sparklines + cache 60s + empty states |
-| Dia 2 | ⏳ | — | Mini-DRE compacta (reusa engine DRE) |
-| Dia 3 | ⏳ | — | Top 5 Categorias (donut Recharts) |
-| Dia 4 | ⏳ | — | Saúde Financeira (Burn, Runway, Liquidez, EBITDA) |
+| **Dia 2** | ✅ Concluído | `8e61263` | Mini-DRE compacta + Top 5 Despesas (donut Recharts) |
+| Dia 3 | ⏳ | — | (consolidação Dia 2 — Mini-DRE e Top já entregues) |
+| Dia 4 | ⏳ | — | Saúde Financeira (Burn, Runway, Liquidez, Margem) |
 | Dia 5 | ⏳ | — | Recent Activity timeline + integração final + polimento |
 
-**Suite de testes (Sprint 1):** 881 → **902 (+21 testes Dia 1).**
+**Suite de testes (Sprint 1):** 881 → **927 (+46 testes nos Dias 1-2).**
 
 ### 📍 FASE 3+4 — Importar e classificar perfeito (4-6 semanas) — DIFERENCIAL DO PRODUTO
 
@@ -951,6 +951,58 @@ Página principal:
 2. `TopCategories.tsx` — donut chart Recharts com top 5 categorias de despesa do mês corrente
 3. Queries em `lib/dashboard/queries.ts` reusando engines existentes
 4. Layout: linha abaixo do Hero Strip, 2 colunas (50%/50%)
+
+### 11/05/2026 (parte 6) — Sprint 1 Dia 2: Mini-DRE + Top 5 Despesas
+
+**Contexto:** continuação do Sprint 1 Dashboard Mundial. Dia 1 entregou Hero Strip; Dia 2 adiciona a linha de detalhamento abaixo (Mini-DRE + Top Categorias). Decisão de produto importante feita junto com Yussef: **renomear "EBITDA" pra "Resultado Operacional"** — honestidade técnica (engine não calcula D&A separadamente, então usar "EBITDA" seria impreciso).
+
+**O que foi feito (commit `8e61263`, 10 arquivos, +933/-3 linhas):**
+
+Funções puras (lib/dashboard/):
+- `compute-mini-dre.ts` — extrai 5 linhas de `DRETotals` + calcula deltas com semântica por linha (receita ↑ é bom, deduções ↑ é ruim)
+- `compute-top-categories.ts` — filtra dreGroup de despesa (CUSTO_*, DESPESAS_*, OUTRAS_DESPESAS, IMPOSTOS), ordena, aplica paleta fixa
+
+Queries server-side:
+- `getMiniDRE(companyId)` — chama `calculateDRE` 2x (mês atual + anterior), `unstable_cache` 60s, tag `dashboard:${companyId}`
+- `getTopCategories(companyId)` — Prisma `groupBy` com `take: 20` + fetch metadata + filtra despesas + slice 5
+
+UI (app/(dashboard)/dashboard/_components/):
+- `MiniDRE.tsx` — Server, 5 linhas com deltas coloridos, Lucro Líquido em card destacado (`bg-primary/5 border-primary/20`)
+- `TopCategories.tsx` — Server orquestrador, layout flex (donut 120px + lista vertical), empty state amigável
+- `TopCategoriesDonut.tsx` — Client, Recharts `PieChart` com `Cell` colorido
+- `TopCategoriesChart.tsx` — **Wrapper Client** que isola `dynamic({ssr:false})` (necessário por bug Next 16 — ver abaixo)
+
+Página integrada:
+- `dashboard/page.tsx` — Hero Strip + grid 2 colunas `lg:grid-cols-2 gap-6` com Mini-DRE | Top Categories, ambos em Suspense com CardSkeleton
+
+**🐛 Bug Next 16 detectado e resolvido in-session:**
+Erro 500 inicial: `next/dynamic` com `ssr: false` **NÃO é permitido em Server Components** no Next 16 ("Please move it into a Client Component"). Solução idiomática: criar wrapper `'use client'` (`TopCategoriesChart.tsx`) que faz o dynamic, e o Server Component (`TopCategories.tsx`) importa o wrapper. 1 arquivo extra mas é o padrão idiomático Next 16. **Documentado nos comentários do wrapper pra futuros casos.**
+
+**Decisões técnicas/produto registradas:**
+- **"Resultado Operacional" em vez de "EBITDA"**: usa `totals.resultadoOperacional` (`lucroBruto + outrasReceitas - despesasOperacionais`). EBITDA real exige D&A (depreciação/amortização). Quando engine algum dia separar D&A, aí sim mostra "EBITDA". Honestidade técnica > buzz word.
+- **Cores fixas no Top 5** (#185FA5, #1D9E75, #EF9F27, #E24B4A, #6B7280) — ignora `category.color` do banco pra consistência visual. Dashboard = visualização de DADOS; páginas de gestão = visualização de IDENTIDADE (usa category.color lá).
+- **Mini-DRE rodando `calculateDRE` 2x**: 1ª pra mês atual, 2ª pra mês anterior. Tradeoff aceito pra MVP (cache 60s mitiga). Refactor futuro pode compartilhar tx do Hero Strip.
+- **Semântica de delta por linha**: receita/lucros ↑ é "up" (verde); deduções ↑ é "down" (vermelho). Frio matemático ≠ leitura humana.
+
+**Cenários cobertos em testes:**
+- Mini-DRE: deltas com previous=0 → percent null + direction calculável; TRANSFER não infla (testado via engine que já filtra); margem líquida copiada
+- Top Categories: limite 5 com 8 candidatos; ignora RECEITA_BRUTA e DISTRIBUICAO_LUCROS; ignora categoria órfã; cores nos índices 0-4; percent relativo ao total das top; empty → array vazio
+
+**Métricas:**
+- **25 testes novos** (13 mini-dre + 12 top-categories)
+- **927/927 testes passando** (era 902 — excedeu estimativa de 916)
+- TypeScript strict: 0 erros
+- Smoke test: 1ª call 451ms, 2ª call **40ms** (cache hit confirmado)
+- HTML output: +38KB vs Dia 1 (Mini-DRE + Donut SVG + lista)
+
+**Próximo passo:** **Sprint 1 Dia 4** — Saúde Financeira:
+1. Card de Burn Rate (despesas mensais médias 3-6 meses)
+2. Runway (meses até zerar caixa: saldo / burn rate)
+3. Liquidez (ativos líquidos / passivos curtos — placeholder enquanto não temos passivos)
+4. Margem operacional vs target (gauge ou barra)
+5. Reusar `calculateConsolidatedCashflow` (Sprint 0.5) pra histórico
+
+Dia 3 fica **livre** porque os escopos planejados (Mini-DRE e Top 5) já foram entregues juntos no Dia 2. Yussef decide se pula direto pro Dia 4 ou usa o Dia 3 pra polimento/testes adicionais.
 
 ### [Próxima sessão] — preencher
 - Data:
