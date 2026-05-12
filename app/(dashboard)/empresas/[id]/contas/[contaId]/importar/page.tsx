@@ -3,11 +3,12 @@
 import { useState, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Upload, FileText, AlertCircle, Check, ArrowUpRight, ArrowDownRight, Loader2, Landmark, AlertTriangle } from 'lucide-react'
+import { Upload, FileText, AlertCircle, Check, ArrowUpRight, ArrowDownRight, Loader2, Landmark, AlertTriangle, ArrowLeftRight, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Header } from '@/components/layout/header'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
 
@@ -35,6 +36,23 @@ interface PreviewResult {
   banco: BancoDetectado | null
 }
 
+interface TransferCandidate {
+  fromTransactionId: string
+  toTransactionId: string
+  fromAccountId: string
+  toAccountId: string
+  fromAccountName: string
+  toAccountName: string
+  confidence: number
+  confidenceLevel: 'HIGH' | 'MEDIUM'
+  reason: string
+  suggestedAction: 'AUTO_PAIR' | 'CONFIRM' | 'IGNORE'
+  // Sprint 0.5 Dia 4 refinamento — info da tx existente que será deletada
+  existingTxId: string
+  existingTxCategoryName: string | null
+  existingTxHasNotes: boolean
+}
+
 export default function ImportarOFXPage() {
   const params = useParams<{ id: string; contaId: string }>()
   const { id: empresaId, contaId } = params
@@ -48,11 +66,20 @@ export default function ImportarOFXPage() {
   const [loadingImport, setLoadingImport] = useState(false)
   const [salvandoBanco, setSalvandoBanco] = useState(false)
   const [bancoSalvo, setBancoSalvo] = useState(false)
+  // Detecção de transferências entre contas (Sprint 0.5 Dia 4)
+  const [candidatos, setCandidatos] = useState<TransferCandidate[]>([])
+  const [detectandoTransfers, setDetectandoTransfers] = useState(false)
+  const [pareados, setPareados] = useState<Set<string>>(new Set()) // keys = fromTxId
+  const [ignorados, setIgnorados] = useState<Set<string>>(new Set())
+  const [confirmReplace, setConfirmReplace] = useState<TransferCandidate | null>(null)
 
   async function handleFile(file: File) {
     setArquivo(file)
     setPreview(null)
     setBancoSalvo(false)
+    setCandidatos([])
+    setPareados(new Set())
+    setIgnorados(new Set())
     setLoadingPreview(true)
 
     try {
@@ -68,10 +95,131 @@ export default function ImportarOFXPage() {
         return
       }
       setPreview(data)
+      // Dispara detecção de transferências em background (não bloqueia)
+      detectarTransferencias(data.preview)
     } catch {
       toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível ler o arquivo.' })
     } finally {
       setLoadingPreview(false)
+    }
+  }
+
+  async function detectarTransferencias(itens: PreviewItem[]) {
+    if (itens.length === 0) return
+    setDetectandoTransfers(true)
+    try {
+      const res = await fetch(`/api/contas-bancarias/${contaId}/detectar-transferencias`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transacoesPreview: itens.map((t) => ({
+            id: t.dedupHash,
+            description: t.memo,
+            amount: t.amount,
+            type: t.type,
+            date: t.date,
+          })),
+        }),
+      })
+      if (!res.ok) return
+      const data = await res.json()
+      setCandidatos(data.candidates ?? [])
+    } finally {
+      setDetectandoTransfers(false)
+    }
+  }
+
+  function parearCandidato(c: TransferCandidate) {
+    // Se a tx existente tem categoria ou observações, abre dialog de confirmação
+    // antes do Replace (pra não deletar dados que o user já preencheu).
+    if (c.existingTxCategoryName || c.existingTxHasNotes) {
+      setConfirmReplace(c)
+      return
+    }
+    return executarParear(c)
+  }
+
+  async function executarParear(c: TransferCandidate) {
+    // A tx do PREVIEW é a que tem accountId = contaId (a importada).
+    // Identifica: se contaId == c.fromAccountId, o lado importing é "from"; senão "to".
+    const importingIsFrom = c.fromAccountId === contaId
+    const previewTxDedupHash = importingIsFrom ? c.fromTransactionId : c.toTransactionId
+    const ofxTx = preview?.preview.find((t) => t.dedupHash === previewTxDedupHash)
+    if (!ofxTx) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro',
+        description: 'Transação do preview não encontrada.',
+      })
+      return
+    }
+
+    try {
+      const res = await fetch('/api/transferencias/from-ofx', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          importingAccountId: contaId,
+          ofxTransaction: {
+            amount: ofxTx.amount,
+            date: ofxTx.date,
+            description: ofxTx.memo,
+            type: ofxTx.type,
+            dedupHash: ofxTx.dedupHash,
+            fitid: ofxTx.fitid,
+          },
+          existingTransactionId: c.existingTxId,
+        }),
+      })
+
+      if (res.status === 422) {
+        const data = await res.json()
+        toast({
+          variant: 'destructive',
+          title: 'Saldo insuficiente',
+          description: data.erro ?? 'Limite de cheque especial excedido.',
+        })
+        return
+      }
+      if (!res.ok) {
+        const data = await res.json()
+        toast({
+          variant: 'destructive',
+          title: 'Erro ao parear',
+          description: data.erro ?? 'Falha no pareamento',
+        })
+        return
+      }
+
+      setPareados((p) => new Set(p).add(c.fromTransactionId))
+      toast({
+        variant: 'success',
+        title: 'Pareamento realizado',
+        description:
+          'Tx existente substituída por par TRANSFER. Definitivo — pra desfazer: /transferencias delete + reimportar OFX.',
+      })
+    } catch {
+      toast({ variant: 'destructive', title: 'Erro', description: 'Falha ao parear.' })
+    }
+  }
+
+  function ignorarCandidato(c: TransferCandidate) {
+    setIgnorados((p) => new Set(p).add(c.fromTransactionId))
+  }
+
+  async function parearTodosAltaConfianca() {
+    // Batch HIGH só pareia candidatos SEM categoria/notes (pra não soterrar
+    // o user com dialogs em sequência). Os que têm dados ficam pra revisão manual.
+    const altaConfianca = candidatos.filter(
+      (c) =>
+        c.confidenceLevel === 'HIGH' &&
+        !pareados.has(c.fromTransactionId) &&
+        !ignorados.has(c.fromTransactionId) &&
+        !c.existingTxCategoryName &&
+        !c.existingTxHasNotes,
+    )
+    for (const c of altaConfianca) {
+      await executarParear(c)
     }
   }
 
@@ -239,6 +387,98 @@ export default function ImportarOFXPage() {
             </Card>
           )}
 
+          {/* Transferências detectadas (Sprint 0.5 Dia 4) */}
+          {(detectandoTransfers || candidatos.length > 0) && (
+            <Card className="border-blue-300 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30">
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-blue-600" />
+                  {detectandoTransfers
+                    ? 'Detectando possíveis transferências...'
+                    : `${candidatos.length} possível${candidatos.length !== 1 ? 'is' : ''} transferência${candidatos.length !== 1 ? 's' : ''} detectada${candidatos.length !== 1 ? 's' : ''}`}
+                </CardTitle>
+                {!detectandoTransfers && candidatos.length > 0 && (
+                  <p className="text-xs text-blue-700 dark:text-blue-300">
+                    Heurística baseada em data, valor e descrição comparando contra suas outras contas da mesma empresa.
+                  </p>
+                )}
+              </CardHeader>
+              {!detectandoTransfers && candidatos.length > 0 && (
+                <CardContent className="space-y-3">
+                  {candidatos.some((c) => c.confidenceLevel === 'HIGH' && !pareados.has(c.fromTransactionId) && !ignorados.has(c.fromTransactionId)) && (
+                    <div className="flex justify-end">
+                      <Button size="sm" variant="outline" onClick={parearTodosAltaConfianca}>
+                        <Sparkles className="mr-2 h-3.5 w-3.5" />
+                        Parear todas as Alta confiança
+                      </Button>
+                    </div>
+                  )}
+                  {candidatos.map((c) => {
+                    const isPareado = pareados.has(c.fromTransactionId)
+                    const isIgnorado = ignorados.has(c.fromTransactionId)
+                    const isMuted = isPareado || isIgnorado
+                    return (
+                      <div
+                        key={c.fromTransactionId + c.toTransactionId}
+                        className={`rounded-md border bg-card p-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between ${isMuted ? 'opacity-60' : ''}`}
+                      >
+                        <div className="flex items-start gap-3 min-w-0">
+                          <ArrowLeftRight className="h-5 w-5 text-blue-600 mt-0.5 shrink-0" />
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-medium text-sm truncate">{c.fromAccountName}</span>
+                              <span className="text-muted-foreground text-xs">→</span>
+                              <span className="font-medium text-sm truncate">{c.toAccountName}</span>
+                              <Badge
+                                variant="outline"
+                                className={
+                                  c.confidenceLevel === 'HIGH'
+                                    ? 'border-emerald-300 bg-emerald-50 text-emerald-700 text-xs dark:bg-emerald-950 dark:text-emerald-300'
+                                    : 'border-amber-300 bg-amber-50 text-amber-700 text-xs dark:bg-amber-950 dark:text-amber-300'
+                                }
+                              >
+                                {c.confidenceLevel === 'HIGH' ? 'Alta' : 'Média'} ({Math.round(c.confidence * 100)}%)
+                              </Badge>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-1">{c.reason}</p>
+                          </div>
+                        </div>
+                        {isPareado ? (
+                          <Badge variant="outline" className="border-emerald-300 bg-emerald-50 text-emerald-700 shrink-0">
+                            <Check className="h-3 w-3 mr-1" />
+                            Pareada
+                          </Badge>
+                        ) : isIgnorado ? (
+                          <Badge variant="outline" className="shrink-0">Ignorada</Badge>
+                        ) : (
+                          <div className="flex gap-2 shrink-0">
+                            <Button size="sm" variant="default" onClick={() => parearCandidato(c)}>
+                              Parear
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => ignorarCandidato(c)}>
+                              Ignorar
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                  {pareados.size > 0 && (
+                    <div className="text-xs rounded-md bg-emerald-50 border border-emerald-300 p-3 text-emerald-900 dark:bg-emerald-950 dark:border-emerald-800 dark:text-emerald-200">
+                      <strong>✓ {pareados.size} pareamento{pareados.size !== 1 ? 's' : ''}</strong>{' '}
+                      realizado{pareados.size !== 1 ? 's' : ''}. As transações existentes foram substituídas
+                      pelo par TRANSFER e a transação correspondente do extrato será ignorada
+                      automaticamente no import (slot UNIQUE reservado).{' '}
+                      <Link href={`/empresas/${empresaId}/transferencias`} className="underline">
+                        Ver em /transferencias →
+                      </Link>
+                    </div>
+                  )}
+                </CardContent>
+              )}
+            </Card>
+          )}
+
           <div className="grid gap-4 sm:grid-cols-3">
             <Card>
               <CardContent className="py-4">
@@ -322,6 +562,39 @@ export default function ImportarOFXPage() {
           )}
         </>
       )}
+
+      <ConfirmDialog
+        open={!!confirmReplace}
+        onOpenChange={(o) => !o && setConfirmReplace(null)}
+        title="Confirmar pareamento?"
+        description={
+          confirmReplace ? (
+            <>
+              A transação existente em <strong>{confirmReplace.fromAccountId === contaId ? confirmReplace.toAccountName : confirmReplace.fromAccountName}</strong>{' '}
+              {confirmReplace.existingTxCategoryName && (
+                <>
+                  está categorizada como <strong>{confirmReplace.existingTxCategoryName}</strong>
+                </>
+              )}
+              {confirmReplace.existingTxCategoryName && confirmReplace.existingTxHasNotes && ' e '}
+              {confirmReplace.existingTxHasNotes && <>tem observações preenchidas</>}.
+              <br />
+              <br />
+              O pareamento vai <strong>excluir</strong> essa transação e criar um par de transferência no lugar.
+              A categoria e observações serão perdidas (mas ficam registradas no audit log pra rastreabilidade).
+              <br />
+              <br />
+              Continuar?
+            </>
+          ) : ''
+        }
+        confirmLabel="Sim, parear e excluir"
+        variant="destructive"
+        onConfirm={async () => {
+          if (confirmReplace) await executarParear(confirmReplace)
+          setConfirmReplace(null)
+        }}
+      />
     </div>
   )
 }

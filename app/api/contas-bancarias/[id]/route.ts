@@ -51,7 +51,10 @@ export async function PUT(request: NextRequest, { params }: Params) {
     const fieldsChanged = diffFields(
       antiga as unknown as Record<string, unknown>,
       conta as unknown as Record<string, unknown>,
-      ['name', 'bankName', 'bankCode', 'agency', 'accountNumber', 'accountType', 'isActive'],
+      [
+        'name', 'bankName', 'bankCode', 'agency', 'accountNumber', 'accountType', 'isActive',
+        'allowNegativeBalance', 'creditLimit', 'lowBalanceThreshold',
+      ],
     )
 
     if (fieldsChanged) {
