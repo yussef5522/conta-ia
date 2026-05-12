@@ -14,6 +14,18 @@ export const contaBancariaSchema = z.object({
   accountNumber: z.string().max(30).optional().or(z.literal('')),
   accountType: z.enum(TIPOS_CONTA, { required_error: 'Tipo de conta é obrigatório' }),
   balance: z.coerce.number({ invalid_type_error: 'Saldo deve ser um número' }).default(0),
+  // Cheque especial (Sprint 0.5 Dia 4)
+  allowNegativeBalance: z.coerce.boolean().optional().default(true),
+  creditLimit: z.coerce
+    .number({ invalid_type_error: 'Limite deve ser um número' })
+    .min(0, 'Limite deve ser >= 0')
+    .optional()
+    .default(0),
+  lowBalanceThreshold: z.coerce
+    .number({ invalid_type_error: 'Alerta deve ser um número' })
+    .min(0, 'Alerta deve ser >= 0')
+    .optional()
+    .nullable(),
 })
 
 export type ContaBancariaInput = z.infer<typeof contaBancariaSchema>

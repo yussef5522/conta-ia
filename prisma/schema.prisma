@@ -85,6 +85,18 @@ model BankAccount {
   accountNumber   String?
   accountType     String  @default("CHECKING")
   balance         Float   @default(0)
+
+  // Saldo negativo / cheque especial (Sprint 0.5).
+  // allowNegativeBalance: se false, lançamentos/transferências que deixariam
+  //   saldo < -creditLimit são bloqueados na app-layer.
+  // creditLimit: limite do cheque especial em reais (positivo). Saldo mínimo
+  //   permitido = -creditLimit.
+  // lowBalanceThreshold: valor abaixo do qual a IA dispara alerta proativo.
+  //   null = sem alerta configurado.
+  allowNegativeBalance Boolean @default(true)
+  creditLimit          Float   @default(0)
+  lowBalanceThreshold  Float?
+
   pluggyItemId    String?
   pluggyAccountId String?
   isActive        Boolean @default(true)
@@ -105,7 +117,7 @@ model Transaction {
   date          DateTime
   description   String
   amount        Float
-  // CREDIT = entrada de dinheiro, DEBIT = saída
+  // CREDIT = entrada de dinheiro, DEBIT = saída, TRANSFER = par de transferência interna (Sprint 0.5)
   type          String
   // PENDING | RECONCILED | IGNORED
   status        String   @default("PENDING")
@@ -118,6 +130,14 @@ model Transaction {
   // Chave interna de deduplicação. Para OFX é sha256(fitid + data + valor + memo).
   // Pluggy ainda não preenche este campo (NULLs não conflitam com a unique).
   dedupHash     String?
+
+  // Transferência entre contas DA MESMA empresa (Sprint 0.5).
+  // Quando preenchido, é o ID que une as 2 pontas (saída na conta A + entrada na conta B).
+  // Ambas as transações pareadas têm type = "TRANSFER" e o MESMO transferGroupId.
+  // Filtrado em DRE e Fluxo Consolidado (não infla receita/despesa).
+  // Mantido em Fluxo POR CONTA (mostra entrada/saída normalmente).
+  transferGroupId String?
+
   notes         String?
 
   // Classificação automática (FASE 3+4 — IA Contadora)
@@ -154,6 +174,7 @@ model Transaction {
   @@index([bankAccountId, externalId])
   @@index([bankAccountId, date])
   @@index([costCenterId])
+  @@index([transferGroupId])
   @@map("transactions")
 }
 

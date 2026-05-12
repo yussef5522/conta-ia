@@ -4,6 +4,7 @@ import { transacaoSchema } from '@/lib/validations/transacao'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { logAudit } from '@/lib/audit'
 import { handleApiError } from '@/lib/api/handle-error'
+import { checkBalance, BalanceCheckError } from '@/lib/balance/check'
 
 export async function GET(request: NextRequest) {
   try {
@@ -111,7 +112,14 @@ export async function POST(request: NextRequest) {
     // Deriva companyId da conta antes de validar permissions
     const conta = await prisma.bankAccount.findUnique({
       where: { id: data.bankAccountId },
-      select: { id: true, companyId: true },
+      select: {
+        id: true,
+        companyId: true,
+        name: true,
+        balance: true,
+        allowNegativeBalance: true,
+        creditLimit: true,
+      },
     })
     if (!conta) return NextResponse.json({ erro: 'Conta não encontrada' }, { status: 404 })
 
@@ -124,6 +132,20 @@ export async function POST(request: NextRequest) {
         where: { id: data.categoryId, companyId: conta.companyId },
       })
       if (!cat) return NextResponse.json({ erro: 'Categoria inválida' }, { status: 400 })
+    }
+
+    // Balance check: bloqueia se DEBIT estoura -creditLimit (ou 0 se !allowNegativeBalance).
+    // CREDIT sempre passa (amountChange positivo).
+    const amountChange = data.type === 'CREDIT' ? data.amount : -data.amount
+    const balanceCheck = checkBalance({
+      currentBalance: conta.balance,
+      allowNegativeBalance: conta.allowNegativeBalance,
+      creditLimit: conta.creditLimit,
+      amountChange,
+      accountName: conta.name,
+    })
+    if (!balanceCheck.allowed) {
+      throw new BalanceCheckError(balanceCheck)
     }
 
     // Cria transação e recalcula saldo em uma transaction
@@ -168,6 +190,12 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ transacao }, { status: 201 })
   } catch (error) {
+    if (error instanceof BalanceCheckError) {
+      return NextResponse.json(
+        { erro: error.message, saldoCheck: error.result },
+        { status: error.status },
+      )
+    }
     return handleApiError(error)
   }
 }

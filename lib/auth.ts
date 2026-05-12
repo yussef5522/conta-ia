@@ -38,9 +38,19 @@ export async function getAuthUser(request: NextRequest): Promise<TokenPayload | 
 }
 
 export const COOKIE_NAME = 'auth_token'
+
+// COOKIE_SECURE override: por padrão, secure=true em produção (HTTPS only).
+// Quando o servidor ainda não tem SSL configurado (ex: pré-DNS/Let's Encrypt),
+// definir COOKIE_SECURE=false no .env permite o cookie persistir sobre HTTP.
+// Default mantém comportamento seguro: prod = secure, dev = insecure.
+const cookieSecure =
+  process.env.COOKIE_SECURE !== undefined
+    ? process.env.COOKIE_SECURE === 'true'
+    : process.env.NODE_ENV === 'production'
+
 export const COOKIE_OPTIONS = {
   httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
+  secure: cookieSecure,
   sameSite: 'lax' as const,
   maxAge: 60 * 60 * 24,
   path: '/',

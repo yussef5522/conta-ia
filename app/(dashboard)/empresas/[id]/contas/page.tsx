@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import { Plus, Landmark, MoreVertical, Pencil, Trash2, ArrowUpRight, ArrowDownRight } from 'lucide-react'
+import { Plus, Landmark, MoreVertical, Pencil, Trash2, ArrowUpRight, ArrowDownRight, ArrowLeftRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -11,6 +11,8 @@ import { Header } from '@/components/layout/header'
 import { DeleteDialog } from '@/components/empresas/delete-dialog'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
+import { computeBalanceBadgeStatus, type BadgeVariant } from '@/lib/balance/badge-status'
+import { NovaTransferenciaModal } from '@/components/transferencias/NovaTransferenciaModal'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuSeparator, DropdownMenuTrigger,
@@ -32,6 +34,30 @@ interface Conta {
   accountType: string
   balance: number
   isActive: boolean
+  allowNegativeBalance: boolean
+  creditLimit: number
+  lowBalanceThreshold: number | null
+}
+
+const VARIANT_STYLES: Record<BadgeVariant, { dot: string; label: string; text: string; percent: string }> = {
+  green: {
+    dot: 'bg-emerald-500',
+    label: 'bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:ring-emerald-800',
+    text: 'text-emerald-700 dark:text-emerald-400',
+    percent: 'text-emerald-600',
+  },
+  yellow: {
+    dot: 'bg-amber-500',
+    label: 'bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:ring-amber-800',
+    text: 'text-amber-700 dark:text-amber-400',
+    percent: 'text-amber-600',
+  },
+  red: {
+    dot: 'bg-rose-500',
+    label: 'bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-950 dark:text-rose-300 dark:ring-rose-800',
+    text: 'text-rose-700 dark:text-rose-400',
+    percent: 'text-rose-600',
+  },
 }
 
 export default function ContasPage() {
@@ -43,6 +69,7 @@ export default function ContasPage() {
   const [loading, setLoading] = useState(true)
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; nome: string } | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [transferenciaModal, setTransferenciaModal] = useState<{ fromAccountId?: string } | null>(null)
 
   async function fetchContas() {
     try {
@@ -79,6 +106,14 @@ export default function ContasPage() {
     <div className="space-y-6">
       <Header title="Contas Bancárias" description={`${contas.length} conta${contas.length !== 1 ? 's' : ''} cadastrada${contas.length !== 1 ? 's' : ''}`}>
         <Button variant="outline" asChild><Link href={`/empresas/${empresaId}`}>← Empresa</Link></Button>
+        {contas.length >= 2 && (
+          <Button
+            variant="outline"
+            onClick={() => setTransferenciaModal({})}
+          >
+            <ArrowLeftRight className="mr-2 h-4 w-4" />Nova Transferência
+          </Button>
+        )}
         <Button asChild>
           <Link href={`/empresas/${empresaId}/contas/nova`}>
             <Plus className="mr-2 h-4 w-4" />Nova Conta
@@ -116,61 +151,101 @@ export default function ContasPage() {
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
-          {contas.map((conta) => (
-            <Card key={conta.id} className="group">
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                      <Landmark className="h-5 w-5 text-primary" />
+          {contas.map((conta) => {
+            const status = computeBalanceBadgeStatus({
+              balance: conta.balance,
+              creditLimit: conta.creditLimit,
+              lowBalanceThreshold: conta.lowBalanceThreshold,
+            })
+            const styles = VARIANT_STYLES[status.variant]
+            return (
+              <Card key={conta.id} className="group">
+                <CardContent className="p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                        <Landmark className="h-5 w-5 text-primary" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-semibold truncate">{conta.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {conta.bankName ?? 'Banco não informado'}
+                          {conta.agency && ` • Ag. ${conta.agency}`}
+                          {conta.accountNumber && ` • ${conta.accountNumber}`}
+                        </p>
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <p className="font-semibold truncate">{conta.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {conta.bankName ?? 'Banco não informado'}
-                        {conta.agency && ` • Ag. ${conta.agency}`}
-                        {conta.accountNumber && ` • ${conta.accountNumber}`}
-                      </p>
-                    </div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100">
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem asChild>
+                          <Link href={`/empresas/${empresaId}/contas/${conta.id}/transacoes`} className="flex items-center gap-2">
+                            <ArrowUpRight className="h-4 w-4" />Ver transações
+                          </Link>
+                        </DropdownMenuItem>
+                        {contas.length >= 2 && (
+                          <DropdownMenuItem
+                            className="flex items-center gap-2"
+                            onClick={() => setTransferenciaModal({ fromAccountId: conta.id })}
+                          >
+                            <ArrowLeftRight className="h-4 w-4" />Transferir desta conta
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuItem asChild>
+                          <Link href={`/empresas/${empresaId}/contas/${conta.id}/editar`} className="flex items-center gap-2">
+                            <Pencil className="h-4 w-4" />Editar
+                          </Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem className="text-destructive focus:text-destructive flex items-center gap-2"
+                          onClick={() => setDeleteTarget({ id: conta.id, nome: conta.name })}>
+                          <Trash2 className="h-4 w-4" />Excluir
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100">
-                        <MoreVertical className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem asChild>
-                        <Link href={`/empresas/${empresaId}/contas/${conta.id}/transacoes`} className="flex items-center gap-2">
-                          <ArrowUpRight className="h-4 w-4" />Ver transações
-                        </Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link href={`/empresas/${empresaId}/contas/${conta.id}/editar`} className="flex items-center gap-2">
-                          <Pencil className="h-4 w-4" />Editar
-                        </Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem className="text-destructive focus:text-destructive flex items-center gap-2"
-                        onClick={() => setDeleteTarget({ id: conta.id, nome: conta.name })}>
-                        <Trash2 className="h-4 w-4" />Excluir
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
 
-                <div className="mt-4 flex items-center justify-between">
-                  <Badge variant="outline">{TIPO_LABELS[conta.accountType] ?? conta.accountType}</Badge>
-                  <div className={`flex items-center gap-1 font-bold text-lg ${conta.balance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {conta.balance >= 0
-                      ? <ArrowUpRight className="h-4 w-4" />
-                      : <ArrowDownRight className="h-4 w-4" />}
-                    {formatBRL(conta.balance)}
+                  <div className="mt-4 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Badge variant="outline" className="shrink-0">
+                        {TIPO_LABELS[conta.accountType] ?? conta.accountType}
+                      </Badge>
+                      <span
+                        className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${styles.label}`}
+                      >
+                        <span className={`h-1.5 w-1.5 rounded-full ${styles.dot}`} />
+                        {status.label}
+                      </span>
+                    </div>
+                    <div className={`flex items-center gap-1 font-bold text-lg shrink-0 ${styles.text}`}>
+                      {conta.balance >= 0
+                        ? <ArrowUpRight className="h-4 w-4" />
+                        : <ArrowDownRight className="h-4 w-4" />}
+                      {formatBRL(conta.balance)}
+                    </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+
+                  <p className="mt-2 text-xs text-muted-foreground tabular-nums">
+                    {status.usagePercent !== null && status.percentColor ? (
+                      <>
+                        {status.subtext.split('(')[0]}(
+                        <span className={`font-semibold ${VARIANT_STYLES[status.percentColor].percent}`}>
+                          {status.usagePercent}%
+                        </span>
+                        )
+                      </>
+                    ) : (
+                      status.subtext
+                    )}
+                  </p>
+                </CardContent>
+              </Card>
+            )
+          })}
         </div>
       )}
 
@@ -180,6 +255,17 @@ export default function ContasPage() {
         empresaNome={deleteTarget?.nome ?? ''}
         onConfirm={handleDelete}
         loading={deleting}
+      />
+
+      <NovaTransferenciaModal
+        empresaId={empresaId}
+        open={!!transferenciaModal}
+        onOpenChange={(o) => !o && setTransferenciaModal(null)}
+        defaultFromAccountId={transferenciaModal?.fromAccountId}
+        onSuccess={() => {
+          setTransferenciaModal(null)
+          fetchContas()
+        }}
       />
     </div>
   )

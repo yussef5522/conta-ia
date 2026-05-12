@@ -11,16 +11,20 @@
 ## Status do deploy
 
 ### Concluído (no repositório)
-- [x] Migrar schema Prisma para PostgreSQL (produção)
+- [x] Migrar schema Prisma para PostgreSQL (produção via swap script)
 - [x] Manter SQLite em desenvolvimento
-- [x] Criar migration inicial PostgreSQL
-- [x] Atualizar .env.example
-- [x] Criar docs/DEPLOY.md
+- [x] Criar migrations PostgreSQL (todas as 9 já em sintaxe Postgres)
+- [x] Atualizar .env.example + criar .env.production.example
+- [x] Adicionar scripts npm: `start:prod`, `deploy:db`
+- [x] Criar `scripts/swap-prisma-to-postgres.sh` (helper idempotente)
+- [x] Criar docs/DEPLOY.md (este arquivo)
+
+### Concluído (no servidor 167.172.159.101)
+- [x] PostgreSQL 16 instalado
+- [x] Banco `conta_ia_prod` criado com user `conta_ia_user`
 
 ### Pendente (no servidor 167.172.159.101)
-- [ ] Instalar PostgreSQL no servidor
-- [ ] Criar banco contaia_production
-- [ ] Configurar variáveis de ambiente em produção
+- [ ] Configurar variáveis de ambiente em produção (.env)
 - [ ] Clonar projeto em /opt/conta-ia
 - [ ] Buildar e subir no PM2 porta 3001
 - [ ] Testar acesso público
@@ -59,17 +63,22 @@ systemctl enable postgresql
 sudo -u postgres psql
 
 # Dentro do psql:
-CREATE USER contaia_user WITH PASSWORD 'SENHA_FORTE_AQUI';
-CREATE DATABASE contaia_production OWNER contaia_user;
-GRANT ALL PRIVILEGES ON DATABASE contaia_production TO contaia_user;
+CREATE USER conta_ia_user WITH PASSWORD 'SENHA_FORTE_AQUI';
+CREATE DATABASE conta_ia_prod OWNER conta_ia_user;
+GRANT ALL PRIVILEGES ON DATABASE conta_ia_prod TO conta_ia_user;
 \q
 ```
 
 Anote a senha — você vai precisar na ETAPA 4.
 
+> ⚠️ **Caracteres especiais na senha:** se a senha contiver `@`, `:`, `/`, `#`,
+> `?` ou espaço, esses caracteres precisam ser URL-encoded na `DATABASE_URL`
+> (ETAPA 4) — senão o parser quebra silenciosamente. Tabela:
+> `@→%40`, `:→%3A`, `/→%2F`, `#→%23`, `?→%3F`, `espaço→%20`.
+
 Teste a conexão:
 ```bash
-psql -U contaia_user -d contaia_production -h localhost
+psql -U conta_ia_user -d conta_ia_prod -h localhost
 # deve entrar sem erro
 \q
 ```
@@ -92,21 +101,39 @@ cd conta-ia
 
 ## ETAPA 4 — Criar .env de produção
 
+Use o template `.env.production.example` (commitado no repo) como base:
+
 ```bash
-cp .env.example .env
+cp .env.production.example .env
 nano .env
 ```
 
 Preencha com estes valores:
 
 ```env
-DATABASE_URL="postgresql://contaia_user:SENHA_FORTE_AQUI@localhost:5432/contaia_production"
+DATABASE_URL="postgresql://conta_ia_user:SENHA_URL_ENCODED@localhost:5432/conta_ia_prod?schema=public"
 
 # Gere com: openssl rand -base64 64
 JWT_SECRET="COLE_AQUI_O_RESULTADO_DO_OPENSSL"
 
 NEXT_PUBLIC_APP_URL="http://167.172.159.101:3001"
+NODE_ENV="production"
 ```
+
+> ⚠️ **URL-encoding obrigatório na DATABASE_URL.** Caracteres especiais na
+> senha (`@`, `:`, `/`, `#`, `?`, espaço) quebram o parser do Prisma. Aplique
+> a substituição abaixo na senha **antes** de colar em `DATABASE_URL`:
+>
+> | Caractere | Substituir por |
+> |---|---|
+> | `@` | `%40` |
+> | `:` | `%3A` |
+> | `/` | `%2F` |
+> | `#` | `%23` |
+> | `?` | `%3F` |
+> | espaço | `%20` |
+>
+> Exemplo: senha `ContaIA@DB2026` vira `ContaIA%40DB2026` na URL.
 
 Para gerar o JWT_SECRET:
 ```bash
@@ -119,33 +146,40 @@ openssl rand -base64 64
 ## ETAPA 5 — Ajustar schema para PostgreSQL e aplicar migration
 
 O schema.prisma em desenvolvimento usa SQLite. No servidor, antes de rodar
-a migration, é preciso trocar o provider para postgresql em dois arquivos:
+a migration, é preciso trocar o provider para postgresql. Use o script
+helper (idempotente):
 
 ```bash
 cd /opt/conta-ia
 
-# Troca provider de sqlite para postgresql no schema e no lock file
-sed -i 's/provider = "sqlite"/provider = "postgresql"/' prisma/schema.prisma
-sed -i 's/provider = "sqlite"/provider = "postgresql"/' prisma/migrations/migration_lock.toml
+# Trocar provider sqlite → postgresql em schema.prisma e migration_lock.toml
+bash scripts/swap-prisma-to-postgres.sh
+# Saída esperada: "OK: provider trocado para postgresql em ..."
 
-# Instalar dependências (sem devDependencies)
-npm ci --omit=dev
+# Instalar dependências (incluindo devDependencies — ver nota abaixo).
+# --legacy-peer-deps é necessário pelo conflito eslint vs eslint-config-next.
+npm ci --legacy-peer-deps
 
 # Gerar Prisma Client para PostgreSQL
 npm run db:generate
 
-# Aplicar migration no banco de produção
-npm run db:migrate:deploy
-# Cria todas as tabelas conforme prisma/migrations/20260427000000_init/migration.sql
-
-# Criar usuário admin inicial
-npm run db:seed
+# Aplicar migrations + rodar seed (cria tabelas + usuário admin)
+npm run deploy:db
 ```
+
+> ⚠️ **Por que NÃO usar `--omit=dev` aqui?** `prisma` (CLI), `tsx` (executor
+> do seed) e `typescript` (necessário pro `next build`) estão em
+> `devDependencies` no `package.json`. Sem eles, os passos seguintes
+> (`db:generate`, `deploy:db`, `npm run build`) falham. O custo é
+> ~500MB extras em `node_modules` — aceitável.
 
 Verifique se as tabelas foram criadas:
 ```bash
-sudo -u postgres psql -d contaia_production -c "\dt"
-# deve listar: users, companies, user_companies, bank_accounts, transactions, categories
+sudo -u postgres psql -d conta_ia_prod -c "\dt"
+# deve listar (entre outras): users, companies, user_companies, bank_accounts,
+# transactions, categories, suppliers, ai_learning_rules, cost_centers,
+# category_history, roles, permissions, role_permissions, user_company_roles,
+# audit_log, company_invites, category_restore_log
 ```
 
 ---
@@ -166,8 +200,8 @@ O build deve terminar com `✓ Compiled successfully`. Se falhar, verifique o lo
 ```bash
 cd /opt/conta-ia
 
-# Iniciar a aplicação na porta 3001
-PORT=3001 pm2 start npm --name "conta-ia" -- start
+# Iniciar a aplicação na porta 3001 (script start:prod usa -p 3001)
+pm2 start npm --name "conta-ia" -- run start:prod
 
 # Salvar processo para sobreviver a reboot
 pm2 save
@@ -224,12 +258,11 @@ cd /opt/conta-ia
 git pull origin main
 
 # Se houver novas migrations (verificar se há arquivos novos em prisma/migrations/):
-sed -i 's/provider = "sqlite"/provider = "postgresql"/' prisma/schema.prisma
-sed -i 's/provider = "sqlite"/provider = "postgresql"/' prisma/migrations/migration_lock.toml
+bash scripts/swap-prisma-to-postgres.sh
 npm run db:migrate:deploy
 
 # Rebuild e restart
-npm ci --omit=dev
+npm ci --legacy-peer-deps
 npm run build
 pm2 restart conta-ia
 
@@ -274,17 +307,23 @@ Variáveis opcionais (ativar conforme avanço das fases):
 ## Troubleshooting
 
 **`prisma migrate deploy` falha com "provider mismatch":**  
-Certifique-se de ter rodado os dois `sed` da ETAPA 5 antes de executar a migration.
+O `swap-prisma-to-postgres.sh` não foi executado (ou rodou e foi revertido por
+um `git pull`). Rode novamente e confira:
 ```bash
+bash scripts/swap-prisma-to-postgres.sh
 grep provider prisma/schema.prisma
 grep provider prisma/migrations/migration_lock.toml
 # ambos devem mostrar: provider = "postgresql"
 ```
 
+**Conexão recusada / "password authentication failed":**  
+Verifique se a senha foi URL-encoded na `DATABASE_URL`. Caracteres `@`, `:`,
+`/`, `#`, `?` ou espaço quebram o parser. Ver tabela na ETAPA 4.
+
 **`prisma migrate deploy` falha com "relation already exists":**  
 O banco já tem tabelas criadas manualmente. Limpe o banco e refaça:
 ```bash
-sudo -u postgres psql -d contaia_production -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+sudo -u postgres psql -d conta_ia_prod -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
 npm run db:migrate:deploy
 ```
 

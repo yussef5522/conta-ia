@@ -1,158 +1,165 @@
+// Dashboard Mundial — Sprint 1 Dia 1.
+// Server Component. Cache via lib/dashboard/queries (unstable_cache 60s).
+//
+// URL params:
+//   ?empresa=<id>  → fixa a empresa. Sem param: usa primeira por createdAt ASC.
+//
+// Empty states cobertos: sem empresas (a), sem contas (b), sem transações (c).
+
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
-import Link from 'next/link'
-import { Building2, Landmark, TrendingUp, Plus } from 'lucide-react'
+import { Suspense } from 'react'
 import { verifyToken, COOKIE_NAME } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import { Header } from '@/components/layout/header'
-import { Badge } from '@/components/ui/badge'
-import { t } from '@/lib/i18n/pt-BR'
+import { Skeleton } from '@/components/ui/skeleton'
 import type { Metadata } from 'next'
+import { CompanySelector } from './_components/CompanySelector'
+import { HeroKPIs } from './_components/HeroKPIs'
+import { MiniDRE } from './_components/MiniDRE'
+import { TopCategories } from './_components/TopCategories'
+import { HealthCheck } from './_components/HealthCheck'
+import { RecentActivity } from './_components/RecentActivity'
+import { PendingClassification } from './_components/PendingClassification'
+import {
+  NoCompaniesEmpty,
+  NoAccountsEmpty,
+  NoTransactionsBanner,
+} from './_components/EmptyDashboard'
 
 export const metadata: Metadata = { title: 'Dashboard' }
 
-async function getDashboardData(userId: string) {
-  const userCompanies = await prisma.userCompany.findMany({
-    where: { userId },
-    include: { company: true },
-  })
-
-  const empresas = userCompanies.map((uc) => uc.company)
-  const total = empresas.length
-  const ativas = empresas.filter((e) => e.isActive).length
-
-  return { total, ativas, empresas }
+interface PageProps {
+  searchParams: Promise<{ empresa?: string }>
 }
 
-export default async function DashboardPage() {
+export default async function DashboardPage({ searchParams }: PageProps) {
   const cookieStore = await cookies()
   const token = cookieStore.get(COOKIE_NAME)?.value
   if (!token) redirect('/login')
 
   const user = await verifyToken(token)
-  const { total, ativas, empresas } = await getDashboardData(user.sub)
+  const { empresa: empresaQueryId } = await searchParams
 
+  // Busca empresas do user (createdAt ASC pra determinismo)
+  const userCompanies = await prisma.userCompany.findMany({
+    where: { userId: user.sub },
+    include: { company: true },
+    orderBy: { createdAt: 'asc' },
+  })
+
+  const empresas = userCompanies.map((uc) => uc.company)
   const primeiroNome = user.name.split(' ')[0]
 
-  return (
-    <div className="space-y-8">
-      <Header
-        title={`${t.dashboard.welcome}, ${primeiroNome}!`}
-        description="Aqui está um resumo das suas empresas."
-      />
-
-      {/* Cards de métricas */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              {t.dashboard.totalEmpresas}
-            </CardTitle>
-            <Building2 className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">{total}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {total === 1 ? t.empresa.list.total : t.empresa.list.totalPlural} cadastradas
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              {t.dashboard.empresasAtivas}
-            </CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">{ativas}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {total > 0 ? `${Math.round((ativas / total) * 100)}% do total` : '—'}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="opacity-60">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              {t.dashboard.saldoTotal}
-            </CardTitle>
-            <Landmark className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">—</div>
-            <p className="text-xs text-muted-foreground mt-1">{t.dashboard.emBreve}</p>
-          </CardContent>
-        </Card>
-
-        <Card className="opacity-60">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              {t.dashboard.transacoesHoje}
-            </CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">—</div>
-            <p className="text-xs text-muted-foreground mt-1">{t.dashboard.emBreve}</p>
-          </CardContent>
-        </Card>
+  // ============================================================
+  // EMPTY STATE (a) — sem empresas
+  // ============================================================
+  if (empresas.length === 0) {
+    return (
+      <div className="space-y-8">
+        <Header
+          title={`Bem-vindo, ${primeiroNome}!`}
+          description="Vamos começar cadastrando sua empresa."
+        />
+        <NoCompaniesEmpty />
       </div>
+    )
+  }
 
-      {/* Conteúdo principal */}
-      {total === 0 ? (
-        // Estado vazio — sem empresas ainda
-        <Card className="border-dashed">
-          <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 mb-4">
-              <Building2 className="h-7 w-7 text-primary" />
+  // Resolve empresa atual: URL param OU primeira da lista
+  const empresaAtual =
+    (empresaQueryId && empresas.find((e) => e.id === empresaQueryId)) || empresas[0]
+
+  const companyOptions = empresas.map((e) => ({
+    id: e.id,
+    name: e.name,
+    tradeName: e.tradeName,
+  }))
+
+  // Checa contas e transações pra empresa atual (decidir empty states b/c)
+  const [contasCount, primeiraConta, transacoesCount] = await Promise.all([
+    prisma.bankAccount.count({
+      where: { companyId: empresaAtual.id, isActive: true },
+    }),
+    prisma.bankAccount.findFirst({
+      where: { companyId: empresaAtual.id, isActive: true },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
+    }),
+    prisma.transaction.count({
+      where: { bankAccount: { companyId: empresaAtual.id } },
+    }),
+  ])
+
+  return (
+    <div className="space-y-6">
+      <Header
+        title={`Bem-vindo, ${primeiroNome}!`}
+        description={empresaAtual.tradeName || empresaAtual.name}
+      >
+        <CompanySelector empresas={companyOptions} currentEmpresaId={empresaAtual.id} />
+      </Header>
+
+      {/* EMPTY STATE (b) — sem contas */}
+      {contasCount === 0 && <NoAccountsEmpty empresaId={empresaAtual.id} />}
+
+      {/* EMPTY STATE (c) — sem transações: banner discreto + KPIs zerados em sequência */}
+      {contasCount > 0 && transacoesCount === 0 && primeiraConta && (
+        <NoTransactionsBanner
+          empresaId={empresaAtual.id}
+          contaId={primeiraConta.id}
+        />
+      )}
+
+      {/* Hero Strip — sempre renderiza quando há contas (mesmo zerado) */}
+      {contasCount > 0 && (
+        <>
+          <Suspense fallback={<HeroKPIsSkeleton />}>
+            <HeroKPIs companyId={empresaAtual.id} />
+          </Suspense>
+
+          <div className="grid gap-6 lg:grid-cols-2">
+            <Suspense fallback={<CardSkeleton height={280} />}>
+              <MiniDRE companyId={empresaAtual.id} />
+            </Suspense>
+            <Suspense fallback={<CardSkeleton height={280} />}>
+              <TopCategories companyId={empresaAtual.id} />
+            </Suspense>
+          </div>
+
+          <Suspense fallback={<CardSkeleton height={200} />}>
+            <HealthCheck companyId={empresaAtual.id} />
+          </Suspense>
+
+          {/* Atividade Recente (60%) + Pendentes Classificação (40%) */}
+          <div className="grid gap-6 lg:grid-cols-5">
+            <div className="lg:col-span-3">
+              <Suspense fallback={<CardSkeleton height={420} />}>
+                <RecentActivity companyId={empresaAtual.id} />
+              </Suspense>
             </div>
-            <h3 className="text-lg font-semibold">{t.dashboard.primeiraEmpresa}</h3>
-            <p className="mt-2 text-sm text-muted-foreground max-w-sm">
-              {t.dashboard.primeiraEmpresaDesc}
-            </p>
-            <Button className="mt-6" asChild>
-              <Link href="/empresas/nova">
-                <Plus className="mr-2 h-4 w-4" />
-                {t.dashboard.adicionarEmpresa}
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
-      ) : (
-        // Lista resumida das empresas
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Suas Empresas</h2>
-            <Button variant="outline" size="sm" asChild>
-              <Link href="/empresas">Ver todas</Link>
-            </Button>
+            <div className="lg:col-span-2">
+              <Suspense fallback={<CardSkeleton height={420} />}>
+                <PendingClassification companyId={empresaAtual.id} />
+              </Suspense>
+            </div>
           </div>
-          <div className="grid gap-3">
-            {empresas.slice(0, 5).map((empresa) => (
-              <Link
-                key={empresa.id}
-                href={`/empresas/${empresa.id}`}
-                className="flex items-center gap-4 rounded-lg border bg-card p-4 hover:shadow-sm transition-shadow"
-              >
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 font-bold text-primary">
-                  {(empresa.tradeName || empresa.name)[0].toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium truncate">{empresa.tradeName || empresa.name}</p>
-                  <p className="text-xs text-muted-foreground font-mono">{empresa.cnpj}</p>
-                </div>
-                <Badge variant={empresa.isActive ? 'success' : 'outline'} className="shrink-0">
-                  {empresa.isActive ? t.empresa.status.ativo : t.empresa.status.inativo}
-                </Badge>
-              </Link>
-            ))}
-          </div>
-        </div>
+        </>
       )}
     </div>
   )
+}
+
+function HeroKPIsSkeleton() {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {[0, 1, 2, 3].map((i) => (
+        <Skeleton key={i} className="h-[148px] w-full rounded-lg" />
+      ))}
+    </div>
+  )
+}
+
+function CardSkeleton({ height }: { height: number }) {
+  return <Skeleton style={{ height }} className="w-full rounded-lg" />
 }

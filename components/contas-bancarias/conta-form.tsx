@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Checkbox } from '@/components/ui/checkbox'
 import { useToast } from '@/components/ui/use-toast'
 import { TIPOS_CONTA } from '@/lib/validations/conta-bancaria'
 import { BANCOS_BR } from '@/lib/bancos'
@@ -31,6 +32,9 @@ interface ContaFormProps {
     accountNumber: string | null
     accountType: string
     balance: number
+    allowNegativeBalance?: boolean
+    creditLimit?: number
+    lowBalanceThreshold?: number | null
   }
 }
 
@@ -49,9 +53,15 @@ export function ContaForm({ empresaId, conta }: ContaFormProps) {
     accountNumber: conta?.accountNumber ?? '',
     accountType: conta?.accountType ?? 'CHECKING',
     balance: conta?.balance?.toString() ?? '0',
+    allowNegativeBalance: conta?.allowNegativeBalance ?? true,
+    creditLimit: conta?.creditLimit?.toString() ?? '0',
+    lowBalanceThreshold:
+      conta?.lowBalanceThreshold !== null && conta?.lowBalanceThreshold !== undefined
+        ? conta.lowBalanceThreshold.toString()
+        : '',
   })
 
-  function set(field: string, value: string) {
+  function set(field: string, value: string | boolean) {
     setForm((p) => ({ ...p, [field]: value }))
     if (errors[field]) setErrors((p) => ({ ...p, [field]: '' }))
   }
@@ -68,7 +78,16 @@ export function ContaForm({ empresaId, conta }: ContaFormProps) {
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, balance: parseFloat(form.balance) || 0, empresaId }),
+        body: JSON.stringify({
+          ...form,
+          balance: parseFloat(form.balance) || 0,
+          creditLimit: parseFloat(form.creditLimit) || 0,
+          lowBalanceThreshold:
+            form.lowBalanceThreshold.trim() === ''
+              ? null
+              : parseFloat(form.lowBalanceThreshold) || 0,
+          empresaId,
+        }),
       })
 
       const data = await res.json()
@@ -151,6 +170,79 @@ export function ContaForm({ empresaId, conta }: ContaFormProps) {
             <Input id="balance" type="number" step="0.01" placeholder="0,00" value={form.balance} onChange={(e) => set('balance', e.target.value)} />
             <p className="text-xs text-muted-foreground">Informe o saldo atual desta conta para começar o controle.</p>
             {errors.balance && <p className="text-xs text-destructive">{errors.balance}</p>}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Cheque Especial</CardTitle>
+          <p className="text-xs text-muted-foreground">
+            Configure o limite real do cheque especial e alerta de saldo baixo (opcional).
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="flex items-start gap-3">
+            <Checkbox
+              id="allowNegativeBalance"
+              checked={form.allowNegativeBalance}
+              onCheckedChange={(v) => set('allowNegativeBalance', v === true)}
+            />
+            <div className="grid gap-1">
+              <Label
+                htmlFor="allowNegativeBalance"
+                className="cursor-pointer leading-tight"
+              >
+                Permitir saldo negativo (cheque especial)
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                Desabilite para contas tipo poupança ou que não usam cheque especial.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="creditLimit">Limite de cheque especial (R$)</Label>
+              <Input
+                id="creditLimit"
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="600000,00"
+                value={form.creditLimit}
+                onChange={(e) => set('creditLimit', e.target.value)}
+                disabled={!form.allowNegativeBalance}
+              />
+              <p className="text-xs text-muted-foreground">
+                Valor real do limite contratado (ex: Banrisul R$ 600k, Sicredi R$ 80k).
+              </p>
+              {errors.creditLimit && (
+                <p className="text-xs text-destructive">{errors.creditLimit}</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="lowBalanceThreshold">
+                Alerta de saldo baixo (R$){' '}
+                <span className="text-muted-foreground font-normal">— opcional</span>
+              </Label>
+              <Input
+                id="lowBalanceThreshold"
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="5000,00"
+                value={form.lowBalanceThreshold}
+                onChange={(e) => set('lowBalanceThreshold', e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Badge amarelo &quot;Atenção&quot; quando saldo cair abaixo deste valor.
+              </p>
+              {errors.lowBalanceThreshold && (
+                <p className="text-xs text-destructive">{errors.lowBalanceThreshold}</p>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>

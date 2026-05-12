@@ -89,6 +89,9 @@ export async function GET(request: NextRequest, { params }: Params) {
     const transactionsRaw = await prisma.transaction.findMany({
       where: {
         bankAccount: { companyId },
+        // Transferências entre contas da mesma empresa não compõem DRE (Sprint 0.5).
+        // Filtragem no SQL evita trafegar dados que o engine descartaria.
+        type: { not: 'TRANSFER' },
         OR: dateClauses,
       },
       select: {
@@ -104,7 +107,7 @@ export async function GET(request: NextRequest, { params }: Params) {
 
     const transactions: TransactionForDRE[] = transactionsRaw.map((t) => ({
       id: t.id,
-      type: t.type as 'CREDIT' | 'DEBIT',
+      type: t.type as 'CREDIT' | 'DEBIT' | 'TRANSFER',
       amount: t.amount,
       date: t.date,
       competenceDate: t.competenceDate,
