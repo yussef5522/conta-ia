@@ -19,6 +19,7 @@ import type { Metadata } from 'next'
 import type { WaterfallPeriodType } from '@/lib/dashboard/compute-waterfall'
 import { CompanySelector } from './_components/CompanySelector'
 import { HeroKPIs } from './_components/HeroKPIs'
+import { AIInsights } from './_components/AIInsights'
 import { MiniDRE } from './_components/MiniDRE'
 import { TopCategories } from './_components/TopCategories'
 import { HealthCheck } from './_components/HealthCheck'
@@ -126,6 +127,11 @@ export default async function DashboardPage({ searchParams }: PageProps) {
         <>
           <Suspense fallback={<HeroKPIsSkeleton />}>
             <HeroKPIs companyId={empresaAtual.id} />
+          </Suspense>
+
+          {/* AI Insights — Sprint 2 Dia 3. Posição: abaixo do Hero. */}
+          <Suspense fallback={<CardSkeleton height={80} />}>
+            <AIInsights companyId={empresaAtual.id} />
           </Suspense>
 
           <div className="grid gap-6 lg:grid-cols-2">
