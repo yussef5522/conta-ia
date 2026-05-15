@@ -80,6 +80,8 @@ export async function CashflowWaterfall({ companyId, periodType }: CashflowWater
               bars={waterfall.bars}
               totalEntradas={waterfall.totalEntradas}
               totalSaidas={waterfall.totalSaidas}
+              periodStart={waterfall.period.startDate.toISOString()}
+              periodEnd={waterfall.period.endDate.toISOString()}
             />
             {/* Resumo abaixo do gráfico */}
             <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-4 text-sm">

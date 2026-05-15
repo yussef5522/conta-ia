@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useState, useCallback, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
   Plus, ArrowUpRight, ArrowDownRight, Filter,
@@ -20,6 +20,7 @@ import {
 import { Header } from '@/components/layout/header'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
+import { parseTransacoesURLFilters } from '@/lib/transacoes/url-filters'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
@@ -65,9 +66,28 @@ interface Transacao {
 
 interface Paginacao { total: number; page: number; limit: number; totalPages: number }
 
+// Wrapper com Suspense — useSearchParams (em TransacoesPageInner) exige
+// boundary de Suspense no Next 15+.
 export default function TransacoesPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Carregando…</div>}>
+      <TransacoesPageInner />
+    </Suspense>
+  )
+}
+
+function TransacoesPageInner() {
   const router = useRouter()
   const { toast } = useToast()
+  const searchParams = useSearchParams()
+
+  // Drill-down do Cashflow Waterfall (e outros dashboards) linkam pra cá com
+  // ?tipo=&inicio=&fim=. Lê uma vez no init — Zod-validado, fallback graceful.
+  const urlFilters = parseTransacoesURLFilters({
+    tipo: searchParams.get('tipo'),
+    inicio: searchParams.get('inicio'),
+    fim: searchParams.get('fim'),
+  })
 
   const [transacoes, setTransacoes] = useState<Transacao[]>([])
   const [contas, setContas] = useState<ContaInfo[]>([])
@@ -76,9 +96,11 @@ export default function TransacoesPage() {
   const [contasReady, setContasReady] = useState(false)
 
   const now = new Date()
-  const [inicio, setInicio] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`)
-  const [fim, setFim] = useState(now.toISOString().split('T')[0])
-  const [tipo, setTipo] = useState('TODOS')
+  const [inicio, setInicio] = useState(
+    urlFilters.inicio ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`,
+  )
+  const [fim, setFim] = useState(urlFilters.fim ?? now.toISOString().split('T')[0])
+  const [tipo, setTipo] = useState<string>(urlFilters.tipo ?? 'TODOS')
   const [status, setStatus] = useState('TODOS')
   const [contaFiltro, setContaFiltro] = useState('TODAS')
   const [page, setPage] = useState(1)

@@ -17,6 +17,8 @@ interface CashflowWaterfallChartLoaderProps {
   bars: WaterfallBar[]
   totalEntradas: number
   totalSaidas: number
+  periodStart: string // ISO — pro drill-down
+  periodEnd: string // ISO
 }
 
 export function CashflowWaterfallChartLoader(props: CashflowWaterfallChartLoaderProps) {
