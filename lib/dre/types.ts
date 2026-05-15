@@ -32,11 +32,16 @@ export type NonDREGroup =
   | 'DISTRIBUICAO_LUCROS'
   | 'INVESTIMENTOS'
   | 'TRANSFERENCIA'
+  // Ajuste técnico de saldo inicial (Sprint 1.5). Lançamento que faz o saldo
+  // do sistema bater com o extrato real do banco. NÃO é receita nem despesa —
+  // só corrige o ponto de partida. Aparece como linha informativa no DRE.
+  | 'AJUSTE_SALDO'
 
 export const NON_DRE_GROUPS: NonDREGroup[] = [
   'DISTRIBUICAO_LUCROS',
   'INVESTIMENTOS',
   'TRANSFERENCIA',
+  'AJUSTE_SALDO',
 ]
 
 // Set pra lookup O(1) — usado pelo calculator.
@@ -93,6 +98,7 @@ export const NON_DRE_GROUP_LABELS: Record<NonDREGroup, string> = {
   DISTRIBUICAO_LUCROS: 'Distribuição de Lucros / Pró-labore',
   INVESTIMENTOS: 'Investimentos',
   TRANSFERENCIA: 'Transferências entre Contas',
+  AJUSTE_SALDO: 'Ajustes Técnicos de Saldo',
 }
 
 // ============================================================

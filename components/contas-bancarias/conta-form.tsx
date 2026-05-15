@@ -168,7 +168,11 @@ export function ContaForm({ empresaId, conta }: ContaFormProps) {
           <div className="space-y-2 max-w-xs">
             <Label htmlFor="balance">Saldo atual (R$)</Label>
             <Input id="balance" type="number" step="0.01" placeholder="0,00" value={form.balance} onChange={(e) => set('balance', e.target.value)} />
-            <p className="text-xs text-muted-foreground">Informe o saldo atual desta conta para começar o controle.</p>
+            <p className="text-xs text-muted-foreground">
+              Saldo atual da conta no banco. Pode ser negativo se estiver usando
+              cheque especial (ex: -5000). Se errar, dá pra corrigir depois pela
+              opção &quot;Ajustar saldo&quot;.
+            </p>
             {errors.balance && <p className="text-xs text-destructive">{errors.balance}</p>}
           </div>
         </CardContent>

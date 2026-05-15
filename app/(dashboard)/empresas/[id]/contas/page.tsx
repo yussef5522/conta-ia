@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import { Plus, Landmark, MoreVertical, Pencil, Trash2, ArrowUpRight, ArrowDownRight, ArrowLeftRight } from 'lucide-react'
+import { Plus, Landmark, MoreVertical, Pencil, Trash2, ArrowUpRight, ArrowDownRight, ArrowLeftRight, Scale } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -13,6 +13,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
 import { computeBalanceBadgeStatus, type BadgeVariant } from '@/lib/balance/badge-status'
 import { NovaTransferenciaModal } from '@/components/transferencias/NovaTransferenciaModal'
+import { AjustarSaldoModal } from '@/components/contas-bancarias/AjustarSaldoModal'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuSeparator, DropdownMenuTrigger,
@@ -70,6 +71,7 @@ export default function ContasPage() {
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; nome: string } | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [transferenciaModal, setTransferenciaModal] = useState<{ fromAccountId?: string } | null>(null)
+  const [ajustarSaldoTarget, setAjustarSaldoTarget] = useState<{ id: string; name: string; balance: number } | null>(null)
 
   async function fetchContas() {
     try {
@@ -200,6 +202,12 @@ export default function ContasPage() {
                             <Pencil className="h-4 w-4" />Editar
                           </Link>
                         </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="flex items-center gap-2"
+                          onClick={() => setAjustarSaldoTarget({ id: conta.id, name: conta.name, balance: conta.balance })}
+                        >
+                          <Scale className="h-4 w-4" />Ajustar saldo
+                        </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem className="text-destructive focus:text-destructive flex items-center gap-2"
                           onClick={() => setDeleteTarget({ id: conta.id, nome: conta.name })}>
@@ -264,6 +272,16 @@ export default function ContasPage() {
         defaultFromAccountId={transferenciaModal?.fromAccountId}
         onSuccess={() => {
           setTransferenciaModal(null)
+          fetchContas()
+        }}
+      />
+
+      <AjustarSaldoModal
+        open={!!ajustarSaldoTarget}
+        onOpenChange={(o) => !o && setAjustarSaldoTarget(null)}
+        conta={ajustarSaldoTarget}
+        onSuccess={() => {
+          setAjustarSaldoTarget(null)
           fetchContas()
         }}
       />
