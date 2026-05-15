@@ -4,7 +4,7 @@
 
 import { unstable_cache } from 'next/cache'
 import { prisma } from '@/lib/db'
-import { derivePeriods } from './period'
+import { derivePeriods, deriveWaterfallRange } from './period'
 import { computeKPIsFromData } from './compute-kpis'
 import { computeMiniDRE, type MiniDREResult } from './compute-mini-dre'
 import {
@@ -18,6 +18,12 @@ import {
   type HealthCheckResult,
   type BurnMonthBucket,
 } from './compute-health'
+import {
+  computeWaterfall,
+  type WaterfallResult,
+  type WaterfallPeriodType,
+  type WaterfallTransaction,
+} from './compute-waterfall'
 import { calculateDRE } from '@/lib/dre/calculator'
 import { calculateConsolidatedCashflow } from '@/lib/cashflow/consolidated'
 import type { CashflowTransaction } from '@/lib/cashflow/consolidated'
@@ -638,5 +644,109 @@ async function loadPendingCount(companyId: string): Promise<number> {
       bankAccount: { companyId },
       status: 'PENDING',
     },
+  })
+}
+
+// ============================================================
+// Cashflow Waterfall — Sprint 2 Dia 1
+// ============================================================
+
+export async function getCashflowWaterfall(
+  companyId: string,
+  periodType: WaterfallPeriodType,
+  referenceDate: Date = new Date(),
+): Promise<WaterfallResult> {
+  if (!companyId) {
+    throw new Error('companyId é obrigatório (isolamento multi-tenant)')
+  }
+  const dayKey = referenceDate.toISOString().slice(0, 10)
+  const cached = unstable_cache(
+    async () => loadCashflowWaterfall(companyId, periodType, referenceDate),
+    [`dashboard:waterfall:${companyId}:${periodType}:${dayKey}`],
+    { revalidate: CACHE_TTL_SECONDS, tags: [`dashboard:${companyId}`] },
+  )
+  const result = await cached()
+  // unstable_cache serializa Date → string. Reidrata os campos Date do period.
+  // (lição do hotfix 12/05/2026)
+  return {
+    ...result,
+    period: {
+      startDate: new Date(result.period.startDate),
+      endDate: new Date(result.period.endDate),
+    },
+  }
+}
+
+async function loadCashflowWaterfall(
+  companyId: string,
+  periodType: WaterfallPeriodType,
+  refDate: Date,
+): Promise<WaterfallResult> {
+  const range = deriveWaterfallRange(periodType, refDate)
+
+  // 3 queries paralelas (multi-tenant via bankAccount.companyId):
+  const [accounts, txsInPeriodRaw, txsAfterPeriodRaw] = await Promise.all([
+    // 1. Saldos cacheados (= saldo de HOJE)
+    prisma.bankAccount.findMany({
+      where: { companyId, isActive: true },
+      select: { balance: true },
+    }),
+    // 2. Transações DENTRO do período (com dreGroup da categoria)
+    prisma.transaction.findMany({
+      where: {
+        bankAccount: { companyId },
+        date: { gte: range.start, lte: range.end },
+      },
+      select: {
+        id: true,
+        type: true,
+        amount: true,
+        date: true,
+        category: { select: { dreGroup: true } },
+      },
+    }),
+    // 3. Transações DEPOIS do período (pra ajustar saldoFinal ao fim do período)
+    prisma.transaction.findMany({
+      where: {
+        bankAccount: { companyId },
+        date: { gt: range.end },
+      },
+      select: { type: true, amount: true, category: { select: { dreGroup: true } } },
+    }),
+  ])
+
+  const saldoAtual = accounts.reduce((s, a) => s + a.balance, 0)
+
+  // net de uma lista de transações (exclui TRANSFER e AJUSTE_SALDO — não são
+  // fluxo de caixa real pro waterfall)
+  const netOf = (
+    txs: Array<{ type: string; amount: number; category: { dreGroup: string | null } | null }>,
+  ): number =>
+    txs.reduce((sum, t) => {
+      if (t.type === 'TRANSFER') return sum
+      if (t.category?.dreGroup === 'AJUSTE_SALDO') return sum
+      if (t.type === 'CREDIT') return sum + t.amount
+      if (t.type === 'DEBIT') return sum - t.amount
+      return sum
+    }, 0)
+
+  // saldoFinal do período = saldo de hoje − net das transações pós-período
+  const saldoFinal = saldoAtual - netOf(txsAfterPeriodRaw)
+
+  const transactions: WaterfallTransaction[] = txsInPeriodRaw.map((t) => ({
+    id: t.id,
+    type: t.type as 'CREDIT' | 'DEBIT' | 'TRANSFER',
+    amount: t.amount,
+    date: t.date,
+    dreGroup: t.category?.dreGroup ?? null,
+  }))
+
+  return computeWaterfall({
+    companyId,
+    periodType,
+    periodStart: range.start,
+    periodEnd: range.end,
+    saldoFinal,
+    transactions,
   })
 }

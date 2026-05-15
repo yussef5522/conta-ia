@@ -63,3 +63,51 @@ export function derivePeriods(refDate: Date = new Date()): DashboardPeriods {
     last12Months: { start: last12Start, end: last12End },
   }
 }
+
+// ============================================================
+// Range pro Cashflow Waterfall — Sprint 2 Dia 1
+// ============================================================
+
+export type WaterfallPeriodType = 'semana' | 'mes' | 'trimestre' | 'ano'
+
+// Calcula o range [start, end] de um período pro waterfall.
+//   semana    → segunda a domingo da semana da refDate (locale BR: começa segunda)
+//   mes       → mês corrente completo
+//   trimestre → trimestre civil corrente (jan-mar, abr-jun, jul-set, out-dez)
+//   ano       → ano civil corrente
+export function deriveWaterfallRange(
+  periodType: WaterfallPeriodType,
+  refDate: Date = new Date(),
+): DateRange {
+  const y = refDate.getUTCFullYear()
+  const m = refDate.getUTCMonth()
+  const d = refDate.getUTCDate()
+
+  if (periodType === 'semana') {
+    // Segunda como início (getUTCDay: 0=dom...6=sáb)
+    const day = refDate.getUTCDay()
+    const daysSinceMonday = day === 0 ? 6 : day - 1
+    const start = new Date(Date.UTC(y, m, d - daysSinceMonday))
+    const end = new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000 - 1)
+    return { start, end }
+  }
+
+  if (periodType === 'trimestre') {
+    const quarterStartMonth = Math.floor(m / 3) * 3
+    const start = new Date(Date.UTC(y, quarterStartMonth, 1))
+    const end = new Date(Date.UTC(y, quarterStartMonth + 3, 1) - 1)
+    return { start, end }
+  }
+
+  if (periodType === 'ano') {
+    const start = new Date(Date.UTC(y, 0, 1))
+    const end = new Date(Date.UTC(y + 1, 0, 1) - 1)
+    return { start, end }
+  }
+
+  // 'mes' (default)
+  return {
+    start: startOfMonthUTC(refDate),
+    end: endOfMonthUTC(refDate),
+  }
+}

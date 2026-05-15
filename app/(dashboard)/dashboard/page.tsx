@@ -1,24 +1,28 @@
-// Dashboard Mundial — Sprint 1 Dia 1.
+// Dashboard Mundial — Sprint 1 Dia 1 + Sprint 2 Dia 1.
 // Server Component. Cache via lib/dashboard/queries (unstable_cache 60s).
 //
 // URL params:
 //   ?empresa=<id>  → fixa a empresa. Sem param: usa primeira por createdAt ASC.
+//   ?wf=<periodo>  → período do Cashflow Waterfall (semana|mes|trimestre|ano).
 //
 // Empty states cobertos: sem empresas (a), sem contas (b), sem transações (c).
 
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
+import { z } from 'zod'
 import { verifyToken, COOKIE_NAME } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { Header } from '@/components/layout/header'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { Metadata } from 'next'
+import type { WaterfallPeriodType } from '@/lib/dashboard/compute-waterfall'
 import { CompanySelector } from './_components/CompanySelector'
 import { HeroKPIs } from './_components/HeroKPIs'
 import { MiniDRE } from './_components/MiniDRE'
 import { TopCategories } from './_components/TopCategories'
 import { HealthCheck } from './_components/HealthCheck'
+import { CashflowWaterfall } from './_components/CashflowWaterfall'
 import { RecentActivity } from './_components/RecentActivity'
 import { PendingClassification } from './_components/PendingClassification'
 import {
@@ -29,8 +33,13 @@ import {
 
 export const metadata: Metadata = { title: 'Dashboard' }
 
+// Valida ?wf= no server — nunca confiar na URL. Default 'mes' se inválido/ausente.
+const waterfallPeriodSchema = z
+  .enum(['semana', 'mes', 'trimestre', 'ano'])
+  .catch('mes')
+
 interface PageProps {
-  searchParams: Promise<{ empresa?: string }>
+  searchParams: Promise<{ empresa?: string; wf?: string }>
 }
 
 export default async function DashboardPage({ searchParams }: PageProps) {
@@ -39,7 +48,8 @@ export default async function DashboardPage({ searchParams }: PageProps) {
   if (!token) redirect('/login')
 
   const user = await verifyToken(token)
-  const { empresa: empresaQueryId } = await searchParams
+  const { empresa: empresaQueryId, wf: wfRaw } = await searchParams
+  const waterfallPeriod: WaterfallPeriodType = waterfallPeriodSchema.parse(wfRaw)
 
   // Busca empresas do user (createdAt ASC pra determinismo)
   const userCompanies = await prisma.userCompany.findMany({
@@ -129,6 +139,14 @@ export default async function DashboardPage({ searchParams }: PageProps) {
 
           <Suspense fallback={<CardSkeleton height={200} />}>
             <HealthCheck companyId={empresaAtual.id} />
+          </Suspense>
+
+          {/* Cashflow Waterfall — full width */}
+          <Suspense fallback={<CardSkeleton height={440} />}>
+            <CashflowWaterfall
+              companyId={empresaAtual.id}
+              periodType={waterfallPeriod}
+            />
           </Suspense>
 
           {/* Atividade Recente (60%) + Pendentes Classificação (40%) */}
