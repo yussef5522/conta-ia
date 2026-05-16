@@ -9,6 +9,7 @@ import type {
   Insight,
   InsightAccountSnapshot,
   BurnHistoryEntry,
+  InsightTransaction,
 } from './types'
 import {
   calculateConsolidatedCashflow,
@@ -43,7 +44,24 @@ async function loadInsights(companyId: string, refDate: Date): Promise<Insight[]
     Date.UTC(refDate.getUTCFullYear(), refDate.getUTCMonth(), 1) - 1,
   )
 
-  const [pendingCount, accountsRaw, txsBurnRaw] = await Promise.all([
+  // Sprint 2 Dia 4: ranges adicionais pros 4 detectors novos.
+  const refMs = refDate.getTime()
+  const MS_PER_DAY = 24 * 60 * 60 * 1000
+  const last30dStart = new Date(refMs - 30 * MS_PER_DAY)
+  const last90dStart = new Date(refMs - 90 * MS_PER_DAY)
+  // expenseTx6m: 6 meses INCLUINDO o atual (vs burnRange que exclui o atual)
+  const last6mStart = new Date(
+    Date.UTC(refDate.getUTCFullYear(), refDate.getUTCMonth() - 5, 1),
+  )
+
+  const [
+    pendingCount,
+    accountsRaw,
+    txsBurnRaw,
+    uncategorizedRaw,
+    creditTx90dRaw,
+    expenseTx6mRaw,
+  ] = await Promise.all([
     // 1. Contagem de PENDING
     prisma.transaction.count({
       where: { bankAccount: { companyId }, status: 'PENDING' },
@@ -67,6 +85,56 @@ async function loadInsights(companyId: string, refDate: Date): Promise<Insight[]
         date: { gte: burnRangeStart, lte: burnRangeEnd },
       },
       select: { id: true, type: true, amount: true, date: true, category: { select: { dreGroup: true } } },
+    }),
+    // 4. Uncategorized últimos 30d (large-uncategorized) — sem TRANSFER
+    prisma.transaction.findMany({
+      where: {
+        bankAccount: { companyId },
+        categoryId: null,
+        type: { not: 'TRANSFER' },
+        date: { gte: last30dStart, lte: refDate },
+      },
+      select: {
+        id: true,
+        description: true,
+        amount: true,
+        type: true,
+        date: true,
+      },
+    }),
+    // 5. CREDIT últimos 90d (concentration-risk + revenue-growth)
+    prisma.transaction.findMany({
+      where: {
+        bankAccount: { companyId },
+        type: 'CREDIT',
+        date: { gte: last90dStart, lte: refDate },
+      },
+      select: {
+        id: true,
+        description: true,
+        amount: true,
+        type: true,
+        date: true,
+        category: { select: { dreGroup: true } },
+      },
+    }),
+    // 6. DEBIT últimos 6 meses (duplicate-subscriptions). Exclui categoria
+    // dreGroup=TRANSFERENCIA — não são despesa real.
+    prisma.transaction.findMany({
+      where: {
+        bankAccount: { companyId },
+        type: 'DEBIT',
+        date: { gte: last6mStart, lte: refDate },
+        NOT: { category: { dreGroup: 'TRANSFERENCIA' } },
+      },
+      select: {
+        id: true,
+        description: true,
+        amount: true,
+        type: true,
+        date: true,
+        category: { select: { dreGroup: true } },
+      },
     }),
   ])
 
@@ -111,10 +179,43 @@ async function loadInsights(companyId: string, refDate: Date): Promise<Insight[]
     allowNegativeBalance: a.allowNegativeBalance,
   }))
 
+  // Sprint 2 Dia 4: mapeamento pros 3 novos campos do contexto.
+  const uncategorizedLast30d: InsightTransaction[] = uncategorizedRaw.map(
+    (t) => ({
+      id: t.id,
+      description: t.description,
+      amount: t.amount,
+      type: t.type,
+      date: t.date,
+      dreGroup: null, // uncategorized por definição
+    }),
+  )
+
+  const creditTx90d: InsightTransaction[] = creditTx90dRaw.map((t) => ({
+    id: t.id,
+    description: t.description,
+    amount: t.amount,
+    type: t.type,
+    date: t.date,
+    dreGroup: t.category?.dreGroup ?? null,
+  }))
+
+  const expenseTx6m: InsightTransaction[] = expenseTx6mRaw.map((t) => ({
+    id: t.id,
+    description: t.description,
+    amount: t.amount,
+    type: t.type,
+    date: t.date,
+    dreGroup: t.category?.dreGroup ?? null,
+  }))
+
   return computeInsights({
     companyId,
     pendingCount,
     accounts,
     burnHistory,
+    uncategorizedLast30d,
+    creditTx90d,
+    expenseTx6m,
   })
 }

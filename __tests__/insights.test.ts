@@ -17,6 +17,9 @@ function makeCtx(overrides: Partial<InsightContext> = {}): InsightContext {
     pendingCount: 0,
     accounts: [],
     burnHistory: [],
+    uncategorizedLast30d: [],
+    creditTx90d: [],
+    expenseTx6m: [],
     ...overrides,
   }
 }
@@ -245,8 +248,8 @@ describe('detectBurnRateSpike — spike de despesa', () => {
 // ============================================================
 
 describe('computeInsights — ordenação + integração', () => {
-  it('3 detectors registrados (Dia 3)', () => {
-    expect(REGISTERED_DETECTORS).toHaveLength(3)
+  it('7 detectors registrados (Dia 3 + Dia 4)', () => {
+    expect(REGISTERED_DETECTORS).toHaveLength(7)
   })
 
   it('vazio quando ctx não trigga nada', () => {

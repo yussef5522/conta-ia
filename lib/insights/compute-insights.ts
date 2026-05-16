@@ -5,11 +5,19 @@ import type { Detector, Insight, InsightContext } from './types'
 import { detectPendingClassifications } from './detectors/pending-classifications'
 import { detectHighOverdraftUsage } from './detectors/high-overdraft-usage'
 import { detectBurnRateSpike } from './detectors/burn-rate-spike'
+import { detectLargeUncategorized } from './detectors/large-uncategorized'
+import { detectConcentrationRisk } from './detectors/concentration-risk'
+import { detectRevenueGrowth } from './detectors/revenue-growth'
+import { detectDuplicateSubscriptions } from './detectors/duplicate-subscriptions'
 
 const DETECTORS: Detector[] = [
   detectPendingClassifications,
   detectHighOverdraftUsage,
   detectBurnRateSpike,
+  detectLargeUncategorized,
+  detectConcentrationRisk,
+  detectRevenueGrowth,
+  detectDuplicateSubscriptions,
 ]
 
 // Ordem semântica de severity: alerta > oportunidade > sugestao > parabens.

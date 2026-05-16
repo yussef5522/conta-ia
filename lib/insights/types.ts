@@ -38,6 +38,17 @@ export interface InsightAccountSnapshot {
   allowNegativeBalance: boolean
 }
 
+// Transação leve usada por detectors do Dia 4 (sem campos pesados como
+// metadata/notes — só o que importa pra heurísticas).
+export interface InsightTransaction {
+  id: string
+  description: string
+  amount: number // positivo
+  type: 'CREDIT' | 'DEBIT' | 'TRANSFER' | string
+  date: Date
+  dreGroup: string | null // null se sem categoria
+}
+
 // Contexto rico pré-buscado pela query — passado pra todos os detectors.
 // Adicionar campo aqui = adicionar 1 query no loadInsights + detectors usam.
 export interface InsightContext {
@@ -48,6 +59,15 @@ export interface InsightContext {
   accounts: InsightAccountSnapshot[]
   // Últimos 6 meses (ASC). Detectors de tendência (burn spike) usam.
   burnHistory: BurnHistoryEntry[]
+  // Transações sem categoria (categoryId null) últimos 30 dias.
+  // Detector: detect-large-uncategorized.
+  uncategorizedLast30d: InsightTransaction[]
+  // Transações de ENTRADA (type=CREDIT) últimos 90 dias.
+  // Detector: detect-concentration-risk (guarda 50% receita), detect-revenue-growth.
+  creditTx90d: InsightTransaction[]
+  // Transações de SAÍDA (type=DEBIT) últimos 6 meses.
+  // Detector: detect-duplicate-subscriptions (Levenshtein + ±10% valor).
+  expenseTx6m: InsightTransaction[]
 }
 
 // Detector: função pura. Recebe contexto, retorna 0+ insights.
