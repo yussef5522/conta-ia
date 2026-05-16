@@ -20,6 +20,7 @@ import type { WaterfallPeriodType } from '@/lib/dashboard/compute-waterfall'
 import { CompanySelector } from './_components/CompanySelector'
 import { HeroKPIs } from './_components/HeroKPIs'
 import { AIInsights } from './_components/AIInsights'
+import { InsightsSkeleton } from './_components/InsightsSkeleton'
 import { MiniDRE } from './_components/MiniDRE'
 import { TopCategories } from './_components/TopCategories'
 import { HealthCheck } from './_components/HealthCheck'
@@ -39,8 +40,12 @@ const waterfallPeriodSchema = z
   .enum(['semana', 'mes', 'trimestre', 'ano'])
   .catch('mes')
 
+// Sprint 2 Dia 5: ?demoInsights=N → mock N insights (1-7). IGNORADO em prod.
+// Validação no server pra evitar injection (string arbitrária).
+const demoInsightsSchema = z.coerce.number().int().min(0).max(7).catch(0)
+
 interface PageProps {
-  searchParams: Promise<{ empresa?: string; wf?: string }>
+  searchParams: Promise<{ empresa?: string; wf?: string; demoInsights?: string }>
 }
 
 export default async function DashboardPage({ searchParams }: PageProps) {
@@ -49,8 +54,15 @@ export default async function DashboardPage({ searchParams }: PageProps) {
   if (!token) redirect('/login')
 
   const user = await verifyToken(token)
-  const { empresa: empresaQueryId, wf: wfRaw } = await searchParams
+  const { empresa: empresaQueryId, wf: wfRaw, demoInsights: demoRaw } =
+    await searchParams
   const waterfallPeriod: WaterfallPeriodType = waterfallPeriodSchema.parse(wfRaw)
+  // SEGURANÇA: demoInsights só funciona em dev. Em prod, demoCount=undefined
+  // sempre — AIInsights ignora e retorna lista real.
+  const demoCount =
+    process.env.NODE_ENV !== 'production'
+      ? demoInsightsSchema.parse(demoRaw) || undefined
+      : undefined
 
   // Busca empresas do user (createdAt ASC pra determinismo)
   const userCompanies = await prisma.userCompany.findMany({
@@ -129,9 +141,9 @@ export default async function DashboardPage({ searchParams }: PageProps) {
             <HeroKPIs companyId={empresaAtual.id} />
           </Suspense>
 
-          {/* AI Insights — Sprint 2 Dia 3. Posição: abaixo do Hero. */}
-          <Suspense fallback={<CardSkeleton height={80} />}>
-            <AIInsights companyId={empresaAtual.id} />
+          {/* AI Insights — Sprint 2 Dia 3 + polish Dia 5. */}
+          <Suspense fallback={<InsightsSkeleton />}>
+            <AIInsights companyId={empresaAtual.id} demoCount={demoCount} />
           </Suspense>
 
           <div className="grid gap-6 lg:grid-cols-2">
