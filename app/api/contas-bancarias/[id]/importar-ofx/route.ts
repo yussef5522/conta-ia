@@ -4,6 +4,11 @@ import { prisma } from '@/lib/db'
 import { parseOFX } from '@/lib/ofx/parser'
 import { detectarBanco, bateComPerfilDaConta } from '@/lib/ofx/bancos'
 import { dedupHashOFX, filtrarNovasOFX } from '@/lib/ofx/dedup'
+import {
+  autoClassifyTransactions,
+  buildRuleIndex,
+  loadActiveRules,
+} from '@/lib/ai-categorizer/apply'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -106,30 +111,66 @@ export async function POST(request: NextRequest, { params }: Params) {
     return acc + (t.type === 'CREDIT' ? t.amount : -t.amount)
   }, 0)
 
+  // Fase 3 Etapa 1: AUTO-CLASSIFY via regras EXACT (≥0.95) ANTES do insert.
+  // Multi-tenant: regras filtradas por companyId. Cache em memória durante
+  // este import — 1 query no DB pra todas as regras ativas.
+  const t0Predict = Date.now()
+  const activeRules = await loadActiveRules(conta.companyId)
+  const ruleIndex = buildRuleIndex(conta.companyId, activeRules)
+  const { classified, rulesFired, autoCount } = autoClassifyTransactions(
+    novas.map((t) => ({
+      bankAccountId: contaId,
+      date: t.datePosted,
+      description: t.memo,
+      amount: t.amount,
+      type: t.type,
+      externalId: t.fitid,
+      dedupHash: t.dedupHash,
+      origin: 'OFX',
+    })),
+    ruleIndex,
+  )
+  const predictMs = Date.now() - t0Predict
+
   await prisma.$transaction([
     prisma.transaction.createMany({
-      data: novas.map((t) => ({
-        bankAccountId: contaId,
-        date: t.datePosted,
-        description: t.memo,
+      data: classified.map((t) => ({
+        bankAccountId: t.bankAccountId,
+        date: t.date,
+        description: t.description,
         amount: t.amount,
         type: t.type,
-        status: 'PENDING',
-        origin: 'OFX',
-        externalId: t.fitid,
+        status: t.status,
+        origin: t.origin,
+        externalId: t.externalId,
         dedupHash: t.dedupHash,
+        // Campos AI (preenchidos só quando t.status='RECONCILED')
+        categoryId: t.categoryId ?? null,
+        classificationSource: t.classificationSource ?? null,
+        classifiedByRuleId: t.classifiedByRuleId ?? null,
+        aiConfidence: t.aiConfidence ?? null,
       })),
     }),
     prisma.bankAccount.update({
       where: { id: contaId },
       data: { balance: { increment: ajusteSaldo } },
     }),
+    // Incrementa vezesAplicada das regras que dispararam
+    ...Array.from(rulesFired.entries()).map(([ruleId, count]) =>
+      prisma.aiLearningRule.update({
+        where: { id: ruleId },
+        data: { vezesAplicada: { increment: count } },
+      }),
+    ),
   ])
 
   return NextResponse.json({
     mensagem: `${novas.length} transaç${novas.length !== 1 ? 'ões importadas' : 'ão importada'} com sucesso.`,
     inseridas: novas.length,
     duplicadas,
+    autoClassificadas: autoCount,
+    regrasDispararam: rulesFired.size,
+    predictMs,
     errosParser: errors,
   })
 }

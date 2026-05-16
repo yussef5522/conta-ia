@@ -5,6 +5,7 @@ import { montarUpdateClassificacaoManual } from '@/lib/transacoes/classificar'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { logAudit, diffFields } from '@/lib/audit'
 import { handleApiError } from '@/lib/api/handle-error'
+import { recordRuleOverride } from '@/lib/ai-categorizer/apply'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -97,6 +98,27 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
       return updated
     })
+
+    // Fase 3 Etapa 1: se a tx ANTIGA foi classificada por regra E o user
+    // MUDOU a categoria (override), penaliza a regra (cai confiança).
+    // Fora da $transaction pra não bloquear retorno; failure aqui é silencioso.
+    if (
+      antiga.classifiedByRuleId &&
+      antiga.classificationSource === 'RULE' &&
+      data.categoryId !== undefined &&
+      data.categoryId !== antiga.categoryId
+    ) {
+      try {
+        await recordRuleOverride(
+          antiga.classifiedByRuleId,
+          ctx,
+          request,
+          id,
+        )
+      } catch (e) {
+        console.error('[RULE OVERRIDE] Falha registrar penalidade:', e)
+      }
+    }
 
     return NextResponse.json({ transacao })
   } catch (error) {

@@ -29,17 +29,35 @@ export default async function PendentesPage({ params }: Props) {
   })
   if (!userCompany) notFound()
 
-  const categorias = await prisma.category.findMany({
-    where: { companyId: empresaId, isActive: true },
-    orderBy: { name: 'asc' },
-    select: { id: true, name: true, type: true, color: true },
-  })
+  // Fase 3 Etapa 1: stats da IA Contadora pro header
+  // Hoje UTC 00:00 → agora (cobre o dia atual em UTC, suficiente pra mostragem)
+  const hojeInicio = new Date()
+  hojeInicio.setUTCHours(0, 0, 0, 0)
+
+  const [categorias, autoClassificadasHoje, regrasAtivas] = await Promise.all([
+    prisma.category.findMany({
+      where: { companyId: empresaId, isActive: true },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true, type: true, color: true },
+    }),
+    prisma.transaction.count({
+      where: {
+        bankAccount: { companyId: empresaId },
+        classificationSource: 'RULE',
+        updatedAt: { gte: hojeInicio },
+      },
+    }),
+    prisma.aiLearningRule.count({
+      where: { companyId: empresaId, isActive: true },
+    }),
+  ])
 
   return (
     <PendentesClient
       empresaId={empresaId}
       empresaNome={userCompany.company.tradeName ?? userCompany.company.name}
       categorias={categorias}
+      stats={{ autoClassificadasHoje, regrasAtivas }}
     />
   )
 }

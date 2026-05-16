@@ -13,6 +13,7 @@ import {
   PartyPopper,
 } from 'lucide-react'
 import { VincularTransferenciaModal } from '@/components/pendentes/VincularTransferenciaModal'
+import { AprenderEAplicarModal } from '@/components/pendentes/AprenderEAplicarModal'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -48,9 +49,19 @@ interface Props {
   empresaId: string
   empresaNome: string
   categorias: Categoria[]
+  // Fase 3 Etapa 1: stats injetadas pelo server pra header
+  stats?: {
+    autoClassificadasHoje: number
+    regrasAtivas: number
+  }
 }
 
-export function PendentesClient({ empresaId, empresaNome, categorias }: Props) {
+export function PendentesClient({
+  empresaId,
+  empresaNome,
+  categorias,
+  stats,
+}: Props) {
   const { toast } = useToast()
 
   const [transacoes, setTransacoes] = useState<Transacao[]>([])
@@ -62,6 +73,10 @@ export function PendentesClient({ empresaId, empresaNome, categorias }: Props) {
   const [operandoIds, setOperandoIds] = useState<Set<string>>(new Set())
   // Transação selecionada pra modal "Vincular como transferência" (Sprint 1.7)
   const [vincularBase, setVincularBase] = useState<Transacao | null>(null)
+  // Fase 3 Etapa 1: transação + categoria pra modal "Aprender e aplicar"
+  const [aprenderState, setAprenderState] = useState<
+    { tx: Transacao; categoria: Categoria } | null
+  >(null)
 
   // Filtros
   const noventaDiasAtras = useMemo(() => {
@@ -129,35 +144,15 @@ export function PendentesClient({ empresaId, empresaNome, categorias }: Props) {
     })
   }
 
-  async function salvarCategoria(transacaoId: string) {
+  // Fase 3 Etapa 1: ao clicar ✓, em vez de PUT direto, abre modal de
+  // "Aprender e aplicar" que checa transações similares + permite criar regra.
+  function salvarCategoria(transacaoId: string) {
     const categoriaId = selecaoPorLinha[transacaoId]
     if (!categoriaId) return
-
-    marcarOperando(transacaoId, true)
-    try {
-      const res = await fetch(`/api/transacoes/${transacaoId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ categoryId: categoriaId }),
-      })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        toast({ variant: 'destructive', title: 'Erro ao salvar', description: data.erro ?? 'Tente novamente.' })
-        return
-      }
-      // Remove da lista (agora tem categoria)
-      setTransacoes((prev) => prev.filter((t) => t.id !== transacaoId))
-      setSelecaoPorLinha((prev) => {
-        const next = { ...prev }
-        delete next[transacaoId]
-        return next
-      })
-      toast({ variant: 'success', title: 'Classificada', description: 'Transação categorizada com sucesso.' })
-    } catch {
-      toast({ variant: 'destructive', title: 'Erro', description: 'Falha de rede ao salvar.' })
-    } finally {
-      marcarOperando(transacaoId, false)
-    }
+    const tx = transacoes.find((t) => t.id === transacaoId)
+    const categoria = categorias.find((c) => c.id === categoriaId)
+    if (!tx || !categoria) return
+    setAprenderState({ tx, categoria })
   }
 
   async function ignorarTransacao(transacaoId: string) {
@@ -193,6 +188,34 @@ export function PendentesClient({ empresaId, empresaNome, categorias }: Props) {
         title="Pendentes de Classificação"
         description={`${transacoesFiltradas.length} transação${transacoesFiltradas.length !== 1 ? 'ões' : ''} em ${empresaNome}`}
       />
+
+      {/* Fase 3 Etapa 1: stats da IA Contadora */}
+      {stats && (stats.autoClassificadasHoje > 0 || stats.regrasAtivas > 0) && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-md border bg-primary/5 border-primary/20 px-3 py-2 text-xs">
+          {stats.autoClassificadasHoje > 0 && (
+            <span className="flex items-center gap-1.5">
+              <span className="text-base leading-none">🤖</span>
+              <strong className="tabular-nums">{stats.autoClassificadasHoje}</strong>
+              <span className="text-muted-foreground">
+                {stats.autoClassificadasHoje === 1
+                  ? 'transação auto-classificada hoje'
+                  : 'transações auto-classificadas hoje'}
+              </span>
+            </span>
+          )}
+          {stats.regrasAtivas > 0 && (
+            <span className="flex items-center gap-1.5">
+              <span className="text-muted-foreground">·</span>
+              <strong className="tabular-nums">{stats.regrasAtivas}</strong>
+              <span className="text-muted-foreground">
+                {stats.regrasAtivas === 1
+                  ? 'regra aprendida'
+                  : 'regras aprendidas'}
+              </span>
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Filtros */}
       <Card>
@@ -381,6 +404,39 @@ export function PendentesClient({ empresaId, empresaNome, categorias }: Props) {
           // remove as 2 da lista local otimisticamente
           setTransacoes((prev) => prev.filter((t) => t.id !== idA && t.id !== idB))
           setVincularBase(null)
+        }}
+      />
+
+      <AprenderEAplicarModal
+        open={!!aprenderState}
+        onOpenChange={(o) => !o && setAprenderState(null)}
+        base={
+          aprenderState
+            ? {
+                id: aprenderState.tx.id,
+                description: aprenderState.tx.description,
+              }
+            : null
+        }
+        categoria={
+          aprenderState
+            ? { id: aprenderState.categoria.id, name: aprenderState.categoria.name }
+            : null
+        }
+        onApplied={({ affectedTxIds }) => {
+          // Remove tudo que foi classificado da lista local (base + similares
+          // do preview). O DB tem mais (até todas as similares); o user vê
+          // o preview removido imediatamente. Refetch pra puxar o resto.
+          setTransacoes((prev) =>
+            prev.filter((t) => !affectedTxIds.includes(t.id)),
+          )
+          setSelecaoPorLinha((prev) => {
+            const next = { ...prev }
+            affectedTxIds.forEach((id) => delete next[id])
+            return next
+          })
+          // Refetch async — pega as similares que não estavam no preview
+          fetchTransacoes()
         }}
       />
     </div>
