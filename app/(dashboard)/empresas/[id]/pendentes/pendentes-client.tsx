@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react'
 import {
   ArrowUpRight,
   ArrowDownRight,
+  ArrowLeftRight,
   Check,
   X,
   Loader2,
@@ -11,6 +12,7 @@ import {
   Filter,
   PartyPopper,
 } from 'lucide-react'
+import { VincularTransferenciaModal } from '@/components/pendentes/VincularTransferenciaModal'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -58,6 +60,8 @@ export function PendentesClient({ empresaId, empresaNome, categorias }: Props) {
   const [selecaoPorLinha, setSelecaoPorLinha] = useState<Record<string, string>>({})
   // Linhas com operação em andamento (salvar/ignorar)
   const [operandoIds, setOperandoIds] = useState<Set<string>>(new Set())
+  // Transação selecionada pra modal "Vincular como transferência" (Sprint 1.7)
+  const [vincularBase, setVincularBase] = useState<Transacao | null>(null)
 
   // Filtros
   const noventaDiasAtras = useMemo(() => {
@@ -327,6 +331,19 @@ export function PendentesClient({ empresaId, empresaNome, categorias }: Props) {
                     {operando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
                   </Button>
 
+                  {/* Botão "↔ É transferência" — Sprint 1.7. Pareia com tx em outra conta. */}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setVincularBase(t)}
+                    disabled={operando}
+                    title="É parte de uma transferência entre suas contas"
+                    className="gap-1.5"
+                  >
+                    <ArrowLeftRight className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline text-xs">É transferência</span>
+                  </Button>
+
                   {/* Botão "Ignorar" */}
                   <Button
                     size="sm"
@@ -343,6 +360,29 @@ export function PendentesClient({ empresaId, empresaNome, categorias }: Props) {
           })}
         </div>
       )}
+
+      <VincularTransferenciaModal
+        open={!!vincularBase}
+        onOpenChange={(o) => !o && setVincularBase(null)}
+        base={
+          vincularBase
+            ? {
+                id: vincularBase.id,
+                description: vincularBase.description,
+                amount: vincularBase.amount,
+                type: vincularBase.type,
+                date: vincularBase.date,
+                bankAccount: vincularBase.bankAccount,
+              }
+            : null
+        }
+        onSuccess={({ idA, idB }) => {
+          // Ambas as transações foram apagadas e viraram par TRANSFER —
+          // remove as 2 da lista local otimisticamente
+          setTransacoes((prev) => prev.filter((t) => t.id !== idA && t.id !== idB))
+          setVincularBase(null)
+        }}
+      />
     </div>
   )
 }

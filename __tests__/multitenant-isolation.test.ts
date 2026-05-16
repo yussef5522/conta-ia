@@ -34,6 +34,11 @@ describe('Query builders — contrato multi-tenant (Camada 1: SQL filter)', () =
     expect(where.type).toEqual({ not: 'TRANSFER' })
   })
 
+  it('buildConsolidatedCashflowWhere SEMPRE exclui categoria TRANSFERENCIA (Sprint 1.7 regression)', () => {
+    const where = buildConsolidatedCashflowWhere('comp-X', PERIODO)
+    expect(where.NOT).toEqual({ category: { dreGroup: 'TRANSFERENCIA' } })
+  })
+
   it('buildConsolidatedCashflowWhere inclui filtro de período', () => {
     const where = buildConsolidatedCashflowWhere('comp-X', PERIODO)
     expect(where.date).toEqual({ gte: PERIODO.startDate, lte: PERIODO.endDate })

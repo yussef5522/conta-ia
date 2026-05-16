@@ -137,6 +137,24 @@ describe('computeWaterfall — Sprint 2 Dia 1', () => {
     expect(bar(r, 'outras-saidas')).toBeUndefined()
   })
 
+  it('IGNORA dreGroup=TRANSFERENCIA (Sprint 1.7 regression — movimentação interna)', () => {
+    // Mesmo que CREDIT/DEBIT (não TRANSFER), se a categoria for "Transferências"
+    // não infla entradas/saídas do waterfall.
+    const r = run({
+      companyId: 'c1',
+      periodType: 'mes',
+      saldoFinal: 10000,
+      transactions: [
+        tx('CREDIT', 10000, 'RECEITA_BRUTA'),
+        tx('DEBIT', 50000, 'TRANSFERENCIA'),
+        tx('CREDIT', 50000, 'TRANSFERENCIA'),
+      ],
+    })
+    expect(r.totalEntradas).toBe(10000)
+    expect(r.totalSaidas).toBe(0)
+    expect(bar(r, 'outras-saidas')).toBeUndefined()
+  })
+
   it('DISTRIBUICAO_LUCROS + INVESTIMENTOS caem em "Outras saídas"', () => {
     const r = run({
       companyId: 'c1',

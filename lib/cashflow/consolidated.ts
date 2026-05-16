@@ -13,6 +13,10 @@ export interface CashflowTransaction {
   date: Date
   amount: number // sempre positivo
   type: 'CREDIT' | 'DEBIT' | string // TRANSFER se aparecer aqui é defendida via filtro
+  // dreGroup da categoria (opcional pra retrocompat com callers antigos).
+  // Quando == 'TRANSFERENCIA' a transação é tratada como movimentação interna
+  // e excluída do fluxo de caixa consolidado, mesmo se type for CREDIT/DEBIT.
+  dreGroup?: string | null
 }
 
 export type CashflowGroupBy = 'day' | 'week' | 'month'
@@ -58,8 +62,13 @@ export function calculateConsolidatedCashflow(
     throw new Error('startDate não pode ser maior que endDate')
   }
 
-  // Filtra TRANSFER por defesa em profundidade (caller já deve ter filtrado no SQL)
-  const filtered = transactions.filter((t) => t.type !== 'TRANSFER')
+  // Filtra TRANSFER por defesa em profundidade (caller já deve ter filtrado no SQL).
+  // Também filtra dreGroup='TRANSFERENCIA' (categoria "Transferências" criada
+  // pelo backfill): mesmo que type seja CREDIT/DEBIT, é movimentação interna
+  // entre contas do mesmo dono — não infla receita/despesa.
+  const filtered = transactions.filter(
+    (t) => t.type !== 'TRANSFER' && t.dreGroup !== 'TRANSFERENCIA',
+  )
 
   // Bucketing: agrupa por chave (string) preservando bucketStart/bucketEnd
   const buckets = new Map<

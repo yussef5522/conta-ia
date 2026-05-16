@@ -112,6 +112,9 @@ export function computeWaterfall(input: ComputeWaterfallInput): WaterfallResult 
   for (const tx of input.transactions) {
     if (tx.type === 'TRANSFER') continue
     if (tx.dreGroup === 'AJUSTE_SALDO') continue
+    // Categoria "Transferências" (dreGroup=TRANSFERENCIA): movimentação
+    // interna manual — não é fluxo real de caixa do negócio.
+    if (tx.dreGroup === 'TRANSFERENCIA') continue
 
     if (tx.type === 'CREDIT') {
       // Lado ENTRADA — dreGroup refina o bucket

@@ -124,7 +124,13 @@ async function loadHeroKPIs(
           type: { not: 'TRANSFER' },
           date: { gte: periods.last30Days.start, lte: periods.last30Days.end },
         },
-        select: { id: true, type: true, amount: true, date: true },
+        select: {
+          id: true,
+          type: true,
+          amount: true,
+          date: true,
+          category: { select: { dreGroup: true } },
+        },
       }),
       // 5. Últimos 12 meses — sparkline receita/despesa mensal. SEM TRANSFER.
       prisma.transaction.findMany({
@@ -133,7 +139,13 @@ async function loadHeroKPIs(
           type: { not: 'TRANSFER' },
           date: { gte: periods.last12Months.start, lte: periods.last12Months.end },
         },
-        select: { id: true, type: true, amount: true, date: true },
+        select: {
+          id: true,
+          type: true,
+          amount: true,
+          date: true,
+          category: { select: { dreGroup: true } },
+        },
       }),
     ])
 
@@ -164,6 +176,7 @@ async function loadHeroKPIs(
     type: t.type,
     amount: t.amount,
     date: t.date,
+    dreGroup: t.category?.dreGroup ?? null,
   }))
 
   const transactionsLast12m: CashflowTransaction[] = txLast12mRaw.map((t) => ({
@@ -171,6 +184,7 @@ async function loadHeroKPIs(
     type: t.type,
     amount: t.amount,
     date: t.date,
+    dreGroup: t.category?.dreGroup ?? null,
   }))
 
   return computeKPIsFromData({
@@ -429,7 +443,13 @@ async function loadHealthCheck(
           type: { not: 'TRANSFER' },
           date: { gte: burnRangeStart, lte: burnRangeEnd },
         },
-        select: { id: true, type: true, amount: true, date: true },
+        select: {
+          id: true,
+          type: true,
+          amount: true,
+          date: true,
+          category: { select: { dreGroup: true } },
+        },
       }),
       // 4. Variação 30d (net)
       prisma.transaction.findMany({
@@ -438,7 +458,13 @@ async function loadHealthCheck(
           type: { not: 'TRANSFER' },
           date: { gte: periods.last30Days.start, lte: periods.last30Days.end },
         },
-        select: { id: true, type: true, amount: true, date: true },
+        select: {
+          id: true,
+          type: true,
+          amount: true,
+          date: true,
+          category: { select: { dreGroup: true } },
+        },
       }),
       // 5. Mês atual (pra margem via DRE)
       prisma.transaction.findMany({
@@ -479,6 +505,7 @@ async function loadHealthCheck(
       type: t.type,
       amount: t.amount,
       date: t.date,
+      dreGroup: t.category?.dreGroup ?? null,
     })) as CashflowTransaction[],
     {
       startDate: burnRangeStart,
@@ -501,6 +528,7 @@ async function loadHealthCheck(
       type: t.type,
       amount: t.amount,
       date: t.date,
+      dreGroup: t.category?.dreGroup ?? null,
     })) as CashflowTransaction[],
     {
       startDate: periods.last30Days.start,
@@ -717,14 +745,15 @@ async function loadCashflowWaterfall(
 
   const saldoAtual = accounts.reduce((s, a) => s + a.balance, 0)
 
-  // net de uma lista de transações (exclui TRANSFER e AJUSTE_SALDO — não são
-  // fluxo de caixa real pro waterfall)
+  // net de uma lista de transações (exclui TRANSFER, AJUSTE_SALDO e
+  // TRANSFERENCIA — não são fluxo de caixa real pro waterfall)
   const netOf = (
     txs: Array<{ type: string; amount: number; category: { dreGroup: string | null } | null }>,
   ): number =>
     txs.reduce((sum, t) => {
       if (t.type === 'TRANSFER') return sum
       if (t.category?.dreGroup === 'AJUSTE_SALDO') return sum
+      if (t.category?.dreGroup === 'TRANSFERENCIA') return sum
       if (t.type === 'CREDIT') return sum + t.amount
       if (t.type === 'DEBIT') return sum - t.amount
       return sum

@@ -53,6 +53,24 @@ describe('calculateConsolidatedCashflow — happy paths', () => {
     expect(r.totals.transactionCount).toBe(2) // TRANSFER não conta
   })
 
+  it('IGNORA categoria com dreGroup=TRANSFERENCIA (Sprint 1.7 regression)', () => {
+    // Mesmo que type=CREDIT/DEBIT, se a categoria for "Transferências"
+    // a transação não deve inflar receita/despesa.
+    const r = calculateConsolidatedCashflow(
+      [
+        { id: 'real-receita', type: 'CREDIT', amount: 1000, date: new Date('2026-05-15T10:00:00Z') },
+        { id: 'transf-out', type: 'DEBIT', amount: 50_000, date: new Date('2026-05-15T11:00:00Z'), dreGroup: 'TRANSFERENCIA' },
+        { id: 'transf-in', type: 'CREDIT', amount: 50_000, date: new Date('2026-05-15T11:30:00Z'), dreGroup: 'TRANSFERENCIA' },
+        { id: 'real-despesa', type: 'DEBIT', amount: 200, date: new Date('2026-05-15T12:00:00Z') },
+      ],
+      PERIODO_MAIO,
+      'comp-X',
+    )
+    expect(r.totals.income).toBe(1000)
+    expect(r.totals.expense).toBe(200)
+    expect(r.totals.transactionCount).toBe(2) // TRANSFERENCIA não conta
+  })
+
   it('agrupa por month corretamente', () => {
     const period: CashflowPeriod = {
       startDate: new Date('2026-01-01T00:00:00Z'),

@@ -15,7 +15,9 @@ export interface CashflowQueryPeriod {
   endDate: Date
 }
 
-// Fluxo CONSOLIDADO da empresa: todas as contas dela, EXCLUI TRANSFER (não infla).
+// Fluxo CONSOLIDADO da empresa: todas as contas dela, EXCLUI TRANSFER (não infla)
+// E EXCLUI também categoria "Transferências" (dreGroup=TRANSFERENCIA), pra
+// quando o user marca uma transação manual como sendo movimentação interna.
 export function buildConsolidatedCashflowWhere(
   companyId: string,
   period: CashflowQueryPeriod,
@@ -33,6 +35,9 @@ export function buildConsolidatedCashflowWhere(
     bankAccount: { companyId },
     type: { not: 'TRANSFER' },
     date: { gte: period.startDate, lte: period.endDate },
+    // Exclui também transações categorizadas como "Transferências"
+    // (categoria criada pelo backfill com dreGroup=TRANSFERENCIA).
+    NOT: { category: { dreGroup: 'TRANSFERENCIA' } },
   }
 }
 

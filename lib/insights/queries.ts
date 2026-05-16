@@ -70,14 +70,20 @@ async function loadInsights(companyId: string, refDate: Date): Promise<Insight[]
     }),
   ])
 
-  // Filtra AJUSTE_SALDO do burnHistory (não é despesa real)
+  // Filtra AJUSTE_SALDO + TRANSFERENCIA do burnHistory (não são despesa real).
+  // dreGroup também é passado ao engine como defesa em profundidade.
   const txsBurn: CashflowTransaction[] = txsBurnRaw
-    .filter((t) => t.category?.dreGroup !== 'AJUSTE_SALDO')
+    .filter(
+      (t) =>
+        t.category?.dreGroup !== 'AJUSTE_SALDO' &&
+        t.category?.dreGroup !== 'TRANSFERENCIA',
+    )
     .map((t) => ({
       id: t.id,
       type: t.type,
       amount: t.amount,
       date: t.date,
+      dreGroup: t.category?.dreGroup ?? null,
     }))
 
   // Agrupa por mês usando o engine consolidado do Sprint 0.5
