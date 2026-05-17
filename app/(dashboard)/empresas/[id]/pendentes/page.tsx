@@ -34,35 +34,61 @@ export default async function PendentesPage({ params }: Props) {
   const hojeInicio = new Date()
   hojeInicio.setUTCHours(0, 0, 0, 0)
 
-  const [categorias, autoClassificadasHoje, regrasAtivas, fornecedoresDetectados] =
-    await Promise.all([
-      prisma.category.findMany({
-        where: { companyId: empresaId, isActive: true },
-        orderBy: { name: 'asc' },
-        select: { id: true, name: true, type: true, color: true },
-      }),
-      prisma.transaction.count({
-        where: {
-          bankAccount: { companyId: empresaId },
-          classificationSource: 'RULE',
-          updatedAt: { gte: hojeInicio },
-        },
-      }),
-      prisma.aiLearningRule.count({
-        where: { companyId: empresaId, isActive: true },
-      }),
-      // Fase 3 Etapa 2: total de Suppliers ativos (todas as fontes)
-      prisma.supplier.count({
-        where: { companyId: empresaId, isActive: true },
-      }),
-    ])
+  const [
+    categorias,
+    autoClassificadasHoje,
+    regrasAtivas,
+    fornecedoresDetectados,
+    iaUsageHoje,
+  ] = await Promise.all([
+    prisma.category.findMany({
+      where: { companyId: empresaId, isActive: true },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true, type: true, color: true },
+    }),
+    prisma.transaction.count({
+      where: {
+        bankAccount: { companyId: empresaId },
+        classificationSource: 'RULE',
+        updatedAt: { gte: hojeInicio },
+      },
+    }),
+    prisma.aiLearningRule.count({
+      where: { companyId: empresaId, isActive: true },
+    }),
+    // Fase 3 Etapa 2: total de Suppliers ativos (todas as fontes)
+    prisma.supplier.count({
+      where: { companyId: empresaId, isActive: true },
+    }),
+    // Fase 3 Etapa 3: stats IA hoje (sugestões + custo agregado)
+    prisma.aiUsageLog.aggregate({
+      where: {
+        companyId: empresaId,
+        createdAt: { gte: hojeInicio },
+      },
+      _count: { id: true },
+      _sum: { costCents: true },
+    }),
+  ])
+
+  // Fase 3 Etapa 3: flag claudeEnabled deriva de env (mesmo gate do server)
+  const claudeEnabled =
+    process.env.AI_CLAUDE_ENABLED !== 'false' &&
+    !!process.env.ANTHROPIC_API_KEY
 
   return (
     <PendentesClient
       empresaId={empresaId}
       empresaNome={userCompany.company.tradeName ?? userCompany.company.name}
       categorias={categorias}
-      stats={{ autoClassificadasHoje, regrasAtivas, fornecedoresDetectados }}
+      stats={{
+        autoClassificadasHoje,
+        regrasAtivas,
+        fornecedoresDetectados,
+        iaSugestoesHoje: iaUsageHoje._count.id ?? 0,
+        iaCustoCentavosHoje: iaUsageHoje._sum.costCents ?? 0,
+        claudeEnabled,
+      }}
     />
   )
 }

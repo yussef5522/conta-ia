@@ -20,6 +20,7 @@ import { buildRuleIndex, predictCategory, type RuleIndex } from './predict'
 import { findSimilarTransactions } from './similar'
 import { classifyForImport } from './pipeline'
 import { resolveCategoryFromHint } from './pipeline'
+import { invalidateCachedSuggestion } from './claude-cache'
 import type {
   Prediction,
   RuleSnapshot,
@@ -39,6 +40,13 @@ export interface ClassifyWithLearningInput {
   // Se true E learnPattern=true: aplica regra em TODAS as outras pendentes
   // que casam o padrão (modal "276 similares" com botão "Aplicar todas")
   applyToSimilar: boolean
+  // Fase 3 Etapa 3 — contexto de sugestão Claude (Camada 3):
+  //   - claudeCacheKey: chave do AiClaudeCache que originou a sugestão
+  //   - claudeSuggestedCategoryId: categoria que Claude havia sugerido
+  // Quando categoryId final !== claudeSuggestedCategoryId, invalida cache
+  // e NÃO cria regra (sugestão errada não vira aprendizado).
+  claudeCacheKey?: string
+  claudeSuggestedCategoryId?: string | null
 }
 
 export interface ClassifyResult {
@@ -46,6 +54,8 @@ export interface ClassifyResult {
   similarApplied: number // N similares pareadas no bulk
   ruleId: string | null // ID da regra criada/usada (null se learnPattern=false)
   ruleCreated: boolean // true se foi criação, false se foi reuso
+  // Quando user overrideu sugestão Claude
+  claudeCacheInvalidated: boolean
 }
 
 export async function classifyWithLearning(
@@ -78,12 +88,31 @@ export async function classifyWithLearning(
     throw new Error('Categoria inválida pra esta empresa')
   }
 
-  // 3. Se learnPattern=true: prepara regra (build OU reuse)
+  // Fase 3 Etapa 3: detecta OVERRIDE de sugestão Claude.
+  // Se user MUDOU a categoria sugerida pelo Claude:
+  //   - NÃO cria regra Camada 1 (sugestão errada não vira aprendizado)
+  //   - INVALIDA cache (próximo classifyAsync vai re-perguntar Claude)
+  //   - learnPattern é forçado false
+  const claudeOverridden =
+    input.claudeSuggestedCategoryId !== undefined &&
+    input.claudeSuggestedCategoryId !== null &&
+    input.claudeSuggestedCategoryId !== input.categoryId
+  const effectiveLearnPattern = claudeOverridden ? false : input.learnPattern
+
+  let claudeCacheInvalidated = false
+  if (claudeOverridden && input.claudeCacheKey) {
+    claudeCacheInvalidated = await invalidateCachedSuggestion(
+      ctx.company.id,
+      input.claudeCacheKey,
+    )
+  }
+
+  // 3. Se effectiveLearnPattern=true: prepara regra (build OU reuse)
   let ruleId: string | null = null
   let ruleCreated = false
   let ruleSnapshot: RuleSnapshot | null = null
 
-  if (input.learnPattern) {
+  if (effectiveLearnPattern) {
     const newRuleData = buildNewRule(
       ctx.company.id,
       base.description,
@@ -184,6 +213,14 @@ export async function classifyWithLearning(
 
   // 6. Audit log (fora da $transaction pra simplificar; já temos consistency
   // do update da regra com a aplicação via vezesAplicada incrementado dentro)
+  const auditSource = claudeOverridden
+    ? 'CLAUDE_OVERRIDDEN'
+    : input.claudeSuggestedCategoryId === input.categoryId
+      ? 'CLAUDE_CONFIRMED'
+      : input.applyToSimilar
+        ? 'AI_LEARNED_BULK'
+        : 'MANUAL'
+
   await logAudit(
     ctx,
     {
@@ -191,12 +228,15 @@ export async function classifyWithLearning(
       entityType: 'Transaction',
       entityId: input.transactionId,
       metadata: {
-        source: input.applyToSimilar ? 'AI_LEARNED_BULK' : 'MANUAL',
+        source: auditSource,
         categoryId: input.categoryId,
         ruleId,
         ruleCreated,
         similarApplied,
         similarTxIds: similarTxIds.slice(0, 50), // sample pra não inchar
+        // Contexto Claude (quando aplicável)
+        claudeSuggestedCategoryId: input.claudeSuggestedCategoryId ?? null,
+        claudeCacheInvalidated,
       },
       request,
     },
@@ -207,6 +247,7 @@ export async function classifyWithLearning(
     similarApplied,
     ruleId,
     ruleCreated,
+    claudeCacheInvalidated,
   }
 }
 

@@ -11,6 +11,7 @@ import {
   Search,
   Filter,
   PartyPopper,
+  Sparkles,
 } from 'lucide-react'
 import { VincularTransferenciaModal } from '@/components/pendentes/VincularTransferenciaModal'
 import { AprenderEAplicarModal } from '@/components/pendentes/AprenderEAplicarModal'
@@ -57,12 +58,27 @@ interface Props {
   empresaId: string
   empresaNome: string
   categorias: Categoria[]
-  // Fase 3 Etapa 1+2: stats injetadas pelo server pra header
+  // Fase 3 Etapas 1+2+3: stats injetadas pelo server pra header
   stats?: {
     autoClassificadasHoje: number
     regrasAtivas: number
     fornecedoresDetectados: number
+    // Fase 3 Etapa 3
+    iaSugestoesHoje: number
+    iaCustoCentavosHoje: number // soma de costCents do AiUsageLog do dia
+    claudeEnabled: boolean
   }
+}
+
+// Fase 3 Etapa 3 — sugestão Claude carregada lazy por linha
+interface ClaudeHint {
+  categoryId: string | null
+  confidence: number
+  reasoning: string
+  alternativeCategoryIds: string[]
+  cacheKey: string
+  fromCache: boolean
+  costCents: number
 }
 
 export function PendentesClient({
@@ -86,6 +102,9 @@ export function PendentesClient({
   const [aprenderState, setAprenderState] = useState<
     { tx: Transacao; categoria: Categoria } | null
   >(null)
+  // Fase 3 Etapa 3: sugestões Claude carregadas lazy por linha
+  const [claudeHints, setClaudeHints] = useState<Record<string, ClaudeHint>>({})
+  const [solicitandoIa, setSolicitandoIa] = useState<Set<string>>(new Set())
 
   // Filtros
   const noventaDiasAtras = useMemo(() => {
@@ -140,6 +159,56 @@ export function PendentesClient({
   }, [empresaId, inicio, fim, tipo, toast])
 
   useEffect(() => { fetchTransacoes() }, [fetchTransacoes])
+
+  // Fase 3 Etapa 3: pede sugestão Claude pra UMA transação (lazy load).
+  async function pedirSugestaoIA(t: Transacao) {
+    if (claudeHints[t.id]) return // já tem
+    setSolicitandoIa((prev) => new Set(prev).add(t.id))
+    try {
+      const res = await fetch(`/api/ai-categorizer/claude-suggest/${t.id}`, {
+        method: 'POST',
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast({
+          variant: 'destructive',
+          title: data.erro ?? 'Falha ao consultar IA',
+          description:
+            data.detalhe ??
+            (res.status === 429
+              ? 'Limite de uso atingido. Tente em breve.'
+              : 'Tente novamente em alguns segundos.'),
+        })
+        return
+      }
+      const hint: ClaudeHint = {
+        categoryId: data.suggestion.categoryId,
+        confidence: data.suggestion.confidence,
+        reasoning: data.suggestion.reasoning,
+        alternativeCategoryIds: data.suggestion.alternativeCategoryIds ?? [],
+        cacheKey: data.cacheKey,
+        fromCache: !!data.fromCache,
+        costCents: data.costCents ?? 0,
+      }
+      setClaudeHints((prev) => ({ ...prev, [t.id]: hint }))
+      // Pre-fill dropdown com sugestão (se categoryId válido)
+      if (hint.categoryId) {
+        setSelecaoPorLinha((prev) => ({ ...prev, [t.id]: hint.categoryId! }))
+      }
+    } catch {
+      toast({
+        variant: 'destructive',
+        title: 'Erro de rede',
+        description: 'Não foi possível consultar a IA. Tente novamente.',
+      })
+    } finally {
+      setSolicitandoIa((prev) => {
+        const next = new Set(prev)
+        next.delete(t.id)
+        return next
+      })
+    }
+  }
 
   // Categorias compatíveis com o tipo da transação:
   // CREDIT (entrada) → INCOME ou TRANSFER
@@ -249,6 +318,24 @@ export function PendentesClient({
               </span>
             </span>
           )}
+          {/* Fase 3 Etapa 3: stat sugestões IA */}
+          {stats.iaSugestoesHoje > 0 && (
+            <span className="flex items-center gap-1.5">
+              <span className="text-muted-foreground">·</span>
+              <span className="text-base leading-none">💭</span>
+              <strong className="tabular-nums">{stats.iaSugestoesHoje}</strong>
+              <span className="text-muted-foreground">
+                {stats.iaSugestoesHoje === 1
+                  ? 'classificação IA hoje'
+                  : 'classificações IA hoje'}
+                {stats.iaCustoCentavosHoje > 0 && (
+                  <>
+                    {' '}(US${(stats.iaCustoCentavosHoje / 100).toFixed(2)})
+                  </>
+                )}
+              </span>
+            </span>
+          )}
         </div>
       )}
 
@@ -320,6 +407,11 @@ export function PendentesClient({
             const cats = categoriasParaTransacao(t.type)
             const operando = operandoIds.has(t.id)
             const selecionada = selecaoPorLinha[t.id]
+            const hint = claudeHints[t.id]
+            const consultandoIa = solicitandoIa.has(t.id)
+            // Só oferece IA quando Camadas 1+2 falharam (sem supplier).
+            // E só se Claude está habilitado no server.
+            const podeIa = !t.supplier && stats?.claudeEnabled === true && !hint
 
             return (
               <div
@@ -359,6 +451,24 @@ export function PendentesClient({
                             → {t.supplier.category.name}
                           </span>
                         )}
+                      </span>
+                    )}
+                    {/* Fase 3 Etapa 3: badge sugestão Claude (Camada 3) */}
+                    {hint && (
+                      <span
+                        className="inline-flex items-center gap-1 mt-0.5 text-xs rounded px-1.5 py-0.5 border border-purple-300 bg-purple-50 text-purple-700 dark:border-purple-800 dark:bg-purple-950 dark:text-purple-200"
+                        title={hint.reasoning}
+                      >
+                        💭 IA sugere:{' '}
+                        <strong className="font-semibold">
+                          {hint.categoryId
+                            ? categorias.find((c) => c.id === hint.categoryId)?.name ?? 'Categoria removida'
+                            : 'Classificar manualmente'}
+                        </strong>
+                        <span className="opacity-80">
+                          ({Math.round(hint.confidence * 100)}%
+                          {hint.fromCache ? ' · cache' : ''})
+                        </span>
                       </span>
                     )}
                     <p className="text-xs text-muted-foreground mt-0.5">
@@ -403,6 +513,26 @@ export function PendentesClient({
                       )}
                     </SelectContent>
                   </Select>
+
+                  {/* Fase 3 Etapa 3: botão "💭 IA" — só pra tx sem cobertura
+                      Camadas 1+2 + Claude habilitado. Lazy load 3-5s. */}
+                  {podeIa && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => pedirSugestaoIA(t)}
+                      disabled={operando || consultandoIa}
+                      title="Pedir sugestão da IA Contadora (Claude)"
+                      className="gap-1.5 border-purple-300 text-purple-700 hover:bg-purple-50 dark:border-purple-800 dark:text-purple-200 dark:hover:bg-purple-950"
+                    >
+                      {consultandoIa ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-3.5 w-3.5" />
+                      )}
+                      <span className="hidden sm:inline text-xs">IA</span>
+                    </Button>
+                  )}
 
                   {/* Botão "✓" salvar — Enter no foco também aciona */}
                   <Button
@@ -484,6 +614,15 @@ export function PendentesClient({
             ? { id: aprenderState.categoria.id, name: aprenderState.categoria.name }
             : null
         }
+        claudeContext={
+          aprenderState && claudeHints[aprenderState.tx.id]
+            ? {
+                cacheKey: claudeHints[aprenderState.tx.id].cacheKey,
+                suggestedCategoryId:
+                  claudeHints[aprenderState.tx.id].categoryId,
+              }
+            : null
+        }
         onApplied={({ affectedTxIds }) => {
           // Remove tudo que foi classificado da lista local (base + similares
           // do preview). O DB tem mais (até todas as similares); o user vê
@@ -492,6 +631,12 @@ export function PendentesClient({
             prev.filter((t) => !affectedTxIds.includes(t.id)),
           )
           setSelecaoPorLinha((prev) => {
+            const next = { ...prev }
+            affectedTxIds.forEach((id) => delete next[id])
+            return next
+          })
+          // Fase 3 Etapa 3: limpa hint Claude (já foi aplicado/dispensado)
+          setClaudeHints((prev) => {
             const next = { ...prev }
             affectedTxIds.forEach((id) => delete next[id])
             return next

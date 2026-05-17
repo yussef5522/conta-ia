@@ -46,11 +46,20 @@ interface CategoriaSnapshot {
   name: string
 }
 
+// Fase 3 Etapa 3: contexto opcional de sugestão Claude que originou esta
+// classificação. Se passado E categoria final !== claudeSuggestedCategoryId,
+// o backend invalida o cache do Claude.
+export interface ClaudeContext {
+  cacheKey: string
+  suggestedCategoryId: string | null
+}
+
 interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
   base: BaseSnapshot | null
   categoria: CategoriaSnapshot | null
+  claudeContext?: ClaudeContext | null
   onApplied: (result: { affectedTxIds: string[]; total: number }) => void
 }
 
@@ -59,6 +68,7 @@ export function AprenderEAplicarModal({
   onOpenChange,
   base,
   categoria,
+  claudeContext,
   onApplied,
 }: Props) {
   const { toast } = useToast()
@@ -101,6 +111,13 @@ export function AprenderEAplicarModal({
             categoryId: categoria.id,
             learnPattern,
             applyToSimilar,
+            // Fase 3 Etapa 3: contexto Claude (invalidação de cache em override)
+            ...(claudeContext
+              ? {
+                  claudeCacheKey: claudeContext.cacheKey,
+                  claudeSuggestedCategoryId: claudeContext.suggestedCategoryId,
+                }
+              : {}),
           }),
         },
       )

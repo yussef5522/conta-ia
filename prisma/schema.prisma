@@ -23,6 +23,8 @@ model User {
   userCompanyRoles    UserCompanyRole[]
   auditLogs           AuditLog[]
   sentInvites         CompanyInvite[]      @relation("InvitedBy")
+  // Fase 3 Etapa 3 — Camada 3 do pipeline IA Contadora
+  aiUsageLogs         AiUsageLog[]
 
   @@map("users")
 }
@@ -57,6 +59,9 @@ model Company {
   userCompanyRoles UserCompanyRole[]
   auditLogs        AuditLog[]
   invites          CompanyInvite[]
+  // Fase 3 Etapa 3 — Camada 3 do pipeline IA Contadora
+  aiClaudeCache    AiClaudeCache[]
+  aiUsageLogs      AiUsageLog[]
 
   @@map("companies")
 }
@@ -548,4 +553,59 @@ model CategoryRestoreLog {
 
   @@index([companyId, timestamp])
   @@map("category_restore_log")
+}
+
+// ============================================================
+// Fase 3 Etapa 3 — Camada 3 do Pipeline IA Contadora
+// ============================================================
+
+// Cache de sugestões geradas pelo Claude API. Evita repetir chamadas pra
+// descrições normalizadas iguais (mesma keyword ⇒ mesma sugestão).
+// TTL controlado em código (90 dias). Schema dual SQLite/Postgres: usa String
+// (não Json) pra portabilidade dual-DB.
+model AiClaudeCache {
+  id            String   @id @default(cuid())
+  companyId     String
+  // sha256(normalizeDescription) — determinístico
+  cacheKey      String
+  // Descrição original — debug/auditoria
+  description   String
+  // normalizeDescription() — humanamente inspecionável
+  normalizedKey String
+  // JSON: { categoryId, confidence, reasoning, alternativeCategoryIds }
+  suggestion    String
+  usageCount    Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, cacheKey])
+  @@index([companyId, createdAt])
+  @@map("ai_claude_cache")
+}
+
+// Log de uso da API Claude — pra rate limiting (window por empresa)
+// + telemetria de custo + auditoria.
+// claudeApiCalled=false significa cache hit (sem custo).
+model AiUsageLog {
+  id              String   @id @default(cuid())
+  companyId       String
+  userId          String?
+  // Tx que originou a sugestão — rastreabilidade
+  transactionId   String?
+  claudeApiCalled Boolean  @default(true)
+  inputTokens     Int      @default(0)
+  outputTokens    Int      @default(0)
+  // Custo em centavos USD × 100 (fração centavo armazenada como float-like)
+  costCents       Int      @default(0)
+  cacheHit        Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, createdAt])
+  @@index([companyId, claudeApiCalled, createdAt])
+  @@map("ai_usage_log")
 }

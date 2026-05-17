@@ -25,6 +25,10 @@ const schema = z.object({
   categoryId: z.string().cuid(),
   learnPattern: z.boolean().default(true),
   applyToSimilar: z.boolean().default(false),
+  // Fase 3 Etapa 3 — contexto sugestão Claude (Camada 3)
+  // Quando passados, permite detectar override + invalidar cache do Claude.
+  claudeCacheKey: z.string().optional(),
+  claudeSuggestedCategoryId: z.string().nullable().optional(),
 })
 
 interface Params {
@@ -60,6 +64,8 @@ export async function POST(request: NextRequest, { params }: Params) {
         categoryId: input.categoryId,
         learnPattern: input.learnPattern,
         applyToSimilar: input.applyToSimilar,
+        claudeCacheKey: input.claudeCacheKey,
+        claudeSuggestedCategoryId: input.claudeSuggestedCategoryId,
       },
       ctx,
       request,

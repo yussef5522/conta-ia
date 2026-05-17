@@ -31,7 +31,7 @@ import type { Prediction } from './types'
 // Tipos
 // ============================================================
 
-export type Layer = 'RULE' | 'KEYWORD' | 'BRASILAPI'
+export type Layer = 'RULE' | 'KEYWORD' | 'BRASILAPI' | 'CLAUDE'
 
 // Resultado unificado de uma transação processada pelo pipeline.
 // caller usa isso pra decidir: criar Supplier? Aplicar AUTO? Marcar PENDING?
@@ -53,6 +53,17 @@ export interface PipelineResult {
     cnaeDescricao: string | null
     hint: CnaeHint | null // pode ser null se CNAE não mapeado
     confidence: number
+  }
+
+  // Quando Camada 3 (CLAUDE) casa — sugestão do Claude API
+  claudeData?: {
+    categoryId: string | null
+    confidence: number
+    reasoning: string
+    alternativeCategoryIds: string[]
+    fromCache: boolean
+    cacheKey: string
+    costCents: number
   }
 }
 
