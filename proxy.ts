@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { verifyToken, COOKIE_NAME } from '@/lib/auth'
 
-const PUBLIC_PAGES = ['/login', '/cadastro']
+const PUBLIC_PAGES = ['/login', '/cadastro', '/esqueci-senha']
 const PUBLIC_API = ['/api/auth/login', '/api/auth/cadastro']
 
 export async function proxy(request: NextRequest) {
