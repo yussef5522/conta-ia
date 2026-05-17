@@ -18,6 +18,8 @@ import type { AuthContext } from '@/lib/auth/rbac'
 import { buildNewRule, updateRuleOnOverride } from './learn'
 import { buildRuleIndex, predictCategory, type RuleIndex } from './predict'
 import { findSimilarTransactions } from './similar'
+import { classifyForImport } from './pipeline'
+import { resolveCategoryFromHint } from './pipeline'
 import type {
   Prediction,
   RuleSnapshot,
@@ -236,7 +238,28 @@ export interface AutoClassifyOutputTx extends AutoClassifyInputTx {
   categoryId?: string | null
   classificationSource?: string | null
   classifiedByRuleId?: string | null
+  supplierId?: string | null
   aiConfidence?: number | null
+}
+
+// Sugestão de fornecedor pendente (Camada 2A) — caller cria Supplier
+// + linka transaction.supplierId após o createMany.
+export interface SupplierSuggestion {
+  // Identificador da tx no array de input (índice + hash) — caller usa pra
+  // linkar a tx criada no DB (createMany não retorna IDs, então usamos
+  // dedupHash + bankAccountId como chave natural).
+  dedupHash: string | null
+  bankAccountId: string
+  // Dados do Supplier a criar/upsert
+  supplierName: string
+  cnpj: string | null
+  // Sugestão de categoria (resolveCategoryFromHint no caller)
+  categoryNameHint: string
+  dreGroup: string
+  // Confiança da sugestão (KEYWORD = 0.8)
+  confidence: number
+  // Fonte: "KEYWORD" (Camada 2A) ou "BRASILAPI" (Camada 2B, lazy)
+  fonte: 'KEYWORD' | 'BRASILAPI'
 }
 
 export interface AutoClassifyResult {
@@ -244,6 +267,9 @@ export interface AutoClassifyResult {
   // IDs das regras que dispararam → caller incrementa vezesAplicada delas
   rulesFired: Map<string, number> // ruleId → count
   autoCount: number
+  // Sugestões de fornecedor que Camada 2A detectou — caller persiste como Supplier
+  supplierSuggestions: SupplierSuggestion[]
+  keywordHits: number
 }
 
 // Cache simples por companyId — invalida via clearRulesCache() quando regras
@@ -276,30 +302,160 @@ export function autoClassifyTransactions(
 ): AutoClassifyResult {
   const classified: AutoClassifyOutputTx[] = []
   const rulesFired = new Map<string, number>()
+  const supplierSuggestions: SupplierSuggestion[] = []
   let autoCount = 0
+  let keywordHits = 0
 
   for (const tx of txs) {
-    const prediction = predictCategory({ description: tx.description }, index)
-    if (prediction && prediction.confidence >= 0.95) {
+    const pipelineResult = classifyForImport({ description: tx.description }, index)
+
+    // CAMADA 1 — Regra com confiança AUTO (≥0.95) → aplica direto
+    if (
+      pipelineResult.layer === 'RULE' &&
+      pipelineResult.rulePrediction &&
+      pipelineResult.rulePrediction.confidence >= 0.95
+    ) {
+      const pred = pipelineResult.rulePrediction
       classified.push({
         ...tx,
         status: 'RECONCILED',
-        categoryId: prediction.categoryId,
+        categoryId: pred.categoryId,
         classificationSource: 'RULE',
-        classifiedByRuleId: prediction.ruleId,
-        aiConfidence: prediction.confidence,
+        classifiedByRuleId: pred.ruleId,
+        aiConfidence: pred.confidence,
       })
-      rulesFired.set(
-        prediction.ruleId,
-        (rulesFired.get(prediction.ruleId) ?? 0) + 1,
-      )
+      rulesFired.set(pred.ruleId, (rulesFired.get(pred.ruleId) ?? 0) + 1)
       autoCount += 1
-    } else {
-      classified.push({ ...tx, status: 'PENDING' })
+      continue
     }
+
+    // CAMADA 2A — Keyword detector: marca PENDING mas registra sugestão
+    // de fornecedor. Caller cria Supplier + linka transaction.supplierId.
+    if (pipelineResult.layer === 'KEYWORD' && pipelineResult.keywordMatch) {
+      const kw = pipelineResult.keywordMatch
+      classified.push({ ...tx, status: 'PENDING' })
+      supplierSuggestions.push({
+        dedupHash: tx.dedupHash,
+        bankAccountId: tx.bankAccountId,
+        supplierName: kw.displayName,
+        cnpj: null,
+        categoryNameHint: kw.categoryNameHint,
+        dreGroup: kw.dreGroup,
+        confidence: kw.confidence,
+        fonte: 'KEYWORD',
+      })
+      keywordHits += 1
+      continue
+    }
+
+    // Sem match nas camadas síncronas → PENDING puro
+    classified.push({ ...tx, status: 'PENDING' })
   }
 
-  return { classified, rulesFired, autoCount }
+  return { classified, rulesFired, autoCount, supplierSuggestions, keywordHits }
+}
+
+// ============================================================
+// 2B. Persistir sugestões de Supplier (Camada 2A keyword)
+// ============================================================
+//
+// Chamado APÓS o createMany das transações no import. Para cada sugestão:
+//   1. Upsert Supplier por (companyId, razaoSocial NORMALIZADA)
+//   2. Resolve categoryId via plano de contas (resolveCategoryFromHint)
+//   3. updateMany das transactions ligadas (mesmo bankAccountId+dedupHash)
+//      → linka transaction.supplierId
+//
+// IMPORTANTE: NÃO seta status='RECONCILED' nem categoryId na tx — a Camada 2A
+// é sugestão, não auto-aplicação. UI mostra badge "Detectado: STONE" e o user
+// confirma com 1 click.
+
+export async function persistKeywordSuggestions(
+  companyId: string,
+  suggestions: SupplierSuggestion[],
+  categories: Array<{
+    id: string
+    name: string
+    dreGroup: string | null
+    isActive: boolean
+  }>,
+): Promise<{ suppliersCreated: number; transactionsLinked: number }> {
+  if (suggestions.length === 0) {
+    return { suppliersCreated: 0, transactionsLinked: 0 }
+  }
+
+  // Agrupa sugestões por supplierName (normalizado) — múltiplas tx podem
+  // bater na mesma keyword "STONE"
+  const byName = new Map<string, SupplierSuggestion[]>()
+  for (const s of suggestions) {
+    const key = s.supplierName.toLowerCase().trim()
+    const list = byName.get(key) ?? []
+    list.push(s)
+    byName.set(key, list)
+  }
+
+  let suppliersCreated = 0
+  let transactionsLinked = 0
+
+  for (const [, group] of byName) {
+    const sample = group[0]
+    const categoryId = resolveCategoryFromHint(categories, {
+      dreGroup: sample.dreGroup,
+      categoryNameHint: sample.categoryNameHint,
+    })
+
+    // Busca supplier existente por (companyId + razaoSocial exata).
+    // displayName da keyword é padronizado (sempre o mesmo pra cada entry),
+    // então equals literal é suficiente. SQLite (dev) não suporta `mode`.
+    const existing = await prisma.supplier.findFirst({
+      where: {
+        companyId,
+        razaoSocial: sample.supplierName,
+      },
+    })
+
+    let supplierId: string
+    if (existing) {
+      supplierId = existing.id
+      // Atualiza categoryId se ainda não tinha (preserva escolha do user)
+      if (!existing.categoryId && categoryId) {
+        await prisma.supplier.update({
+          where: { id: existing.id },
+          data: { categoryId, fonteAtualizadaEm: new Date() },
+        })
+      }
+    } else {
+      const created = await prisma.supplier.create({
+        data: {
+          companyId,
+          razaoSocial: sample.supplierName,
+          categoryId,
+          fonte: 'KEYWORD',
+          fonteAtualizadaEm: new Date(),
+        },
+      })
+      supplierId = created.id
+      suppliersCreated += 1
+    }
+
+    // Linka as transações desta sugestão pelo (bankAccountId, dedupHash)
+    const hashes = group
+      .map((s) => s.dedupHash)
+      .filter((h): h is string => h !== null && h !== '')
+    if (hashes.length === 0) continue
+
+    const linked = await prisma.transaction.updateMany({
+      where: {
+        bankAccount: { companyId },
+        bankAccountId: { in: Array.from(new Set(group.map((s) => s.bankAccountId))) },
+        dedupHash: { in: hashes },
+        supplierId: null, // só linka se ainda não tem
+      },
+      data: { supplierId, aiConfidence: sample.confidence },
+    })
+    transactionsLinked += linked.count
+  }
+
+  return { suppliersCreated, transactionsLinked }
 }
 
 // ============================================================

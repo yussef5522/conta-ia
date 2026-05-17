@@ -8,6 +8,7 @@ import {
   autoClassifyTransactions,
   buildRuleIndex,
   loadActiveRules,
+  persistKeywordSuggestions,
 } from '@/lib/ai-categorizer/apply'
 
 interface Params { params: Promise<{ id: string }> }
@@ -117,7 +118,13 @@ export async function POST(request: NextRequest, { params }: Params) {
   const t0Predict = Date.now()
   const activeRules = await loadActiveRules(conta.companyId)
   const ruleIndex = buildRuleIndex(conta.companyId, activeRules)
-  const { classified, rulesFired, autoCount } = autoClassifyTransactions(
+  const {
+    classified,
+    rulesFired,
+    autoCount,
+    supplierSuggestions,
+    keywordHits,
+  } = autoClassifyTransactions(
     novas.map((t) => ({
       bankAccountId: contaId,
       date: t.datePosted,
@@ -164,13 +171,35 @@ export async function POST(request: NextRequest, { params }: Params) {
     ),
   ])
 
+  // Fase 3 Etapa 2: persiste sugestões de fornecedor (Camada 2A keyword)
+  // APÓS o createMany. Cria Supplier + linka transaction.supplierId.
+  let supplierStats = { suppliersCreated: 0, transactionsLinked: 0 }
+  let keywordPersistMs = 0
+  if (supplierSuggestions.length > 0) {
+    const t0Persist = Date.now()
+    const categoriasEmpresa = await prisma.category.findMany({
+      where: { companyId: conta.companyId, isActive: true },
+      select: { id: true, name: true, dreGroup: true, isActive: true },
+    })
+    supplierStats = await persistKeywordSuggestions(
+      conta.companyId,
+      supplierSuggestions,
+      categoriasEmpresa,
+    )
+    keywordPersistMs = Date.now() - t0Persist
+  }
+
   return NextResponse.json({
     mensagem: `${novas.length} transaç${novas.length !== 1 ? 'ões importadas' : 'ão importada'} com sucesso.`,
     inseridas: novas.length,
     duplicadas,
     autoClassificadas: autoCount,
     regrasDispararam: rulesFired.size,
+    keywordHits,
+    fornecedoresDetectados: supplierStats.suppliersCreated,
+    transacoesComFornecedor: supplierStats.transactionsLinked,
     predictMs,
+    keywordPersistMs,
     errosParser: errors,
   })
 }

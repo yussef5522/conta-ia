@@ -43,16 +43,25 @@ interface Transacao {
     name: string
     bankName: string | null
   }
+  // Fase 3 Etapa 2: supplier detectado (Camada 2A keyword / 2B BrasilAPI)
+  supplier?: {
+    id: string
+    razaoSocial: string
+    nomeFantasia: string | null
+    fonte: string
+    category: { id: string; name: string } | null
+  } | null
 }
 
 interface Props {
   empresaId: string
   empresaNome: string
   categorias: Categoria[]
-  // Fase 3 Etapa 1: stats injetadas pelo server pra header
+  // Fase 3 Etapa 1+2: stats injetadas pelo server pra header
   stats?: {
     autoClassificadasHoje: number
     regrasAtivas: number
+    fornecedoresDetectados: number
   }
 }
 
@@ -111,7 +120,18 @@ export function PendentesClient({
         return
       }
       const data = await res.json()
-      setTransacoes(data.transacoes ?? [])
+      const txs: Transacao[] = data.transacoes ?? []
+      setTransacoes(txs)
+      // Fase 3 Etapa 2: pre-fill do dropdown quando supplier tem categoria sugerida
+      setSelecaoPorLinha((prev) => {
+        const next = { ...prev }
+        for (const t of txs) {
+          if (!next[t.id] && t.supplier?.category) {
+            next[t.id] = t.supplier.category.id
+          }
+        }
+        return next
+      })
     } catch {
       toast({ variant: 'destructive', title: 'Erro', description: 'Falha de rede ao carregar transações.' })
     } finally {
@@ -189,8 +209,11 @@ export function PendentesClient({
         description={`${transacoesFiltradas.length} transação${transacoesFiltradas.length !== 1 ? 'ões' : ''} em ${empresaNome}`}
       />
 
-      {/* Fase 3 Etapa 1: stats da IA Contadora */}
-      {stats && (stats.autoClassificadasHoje > 0 || stats.regrasAtivas > 0) && (
+      {/* Fase 3 Etapas 1+2: stats da IA Contadora */}
+      {stats &&
+        (stats.autoClassificadasHoje > 0 ||
+          stats.regrasAtivas > 0 ||
+          stats.fornecedoresDetectados > 0) && (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-md border bg-primary/5 border-primary/20 px-3 py-2 text-xs">
           {stats.autoClassificadasHoje > 0 && (
             <span className="flex items-center gap-1.5">
@@ -211,6 +234,18 @@ export function PendentesClient({
                 {stats.regrasAtivas === 1
                   ? 'regra aprendida'
                   : 'regras aprendidas'}
+              </span>
+            </span>
+          )}
+          {stats.fornecedoresDetectados > 0 && (
+            <span className="flex items-center gap-1.5">
+              <span className="text-muted-foreground">·</span>
+              <span className="text-base leading-none">💼</span>
+              <strong className="tabular-nums">{stats.fornecedoresDetectados}</strong>
+              <span className="text-muted-foreground">
+                {stats.fornecedoresDetectados === 1
+                  ? 'fornecedor detectado'
+                  : 'fornecedores detectados'}
               </span>
             </span>
           )}
@@ -300,6 +335,32 @@ export function PendentesClient({
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium truncate">{t.description}</p>
+                    {/* Fase 3 Etapa 2: badge fornecedor (Camada 2A keyword / 2B BrasilAPI) */}
+                    {t.supplier && (
+                      <span
+                        className={`inline-flex items-center gap-1 mt-0.5 text-xs rounded px-1.5 py-0.5 border ${
+                          t.supplier.fonte === 'BRASILAPI'
+                            ? 'border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-200'
+                            : 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900 dark:bg-sky-950 dark:text-sky-200'
+                        }`}
+                        title={
+                          t.supplier.fonte === 'BRASILAPI'
+                            ? 'Detectado via consulta CNPJ na BrasilAPI'
+                            : 'Detectado por palavra-chave (Conta IA)'
+                        }
+                      >
+                        💼{' '}
+                        {t.supplier.fonte === 'BRASILAPI'
+                          ? 'BrasilAPI'
+                          : 'Detectado'}
+                        : <strong className="font-semibold">{t.supplier.razaoSocial}</strong>
+                        {t.supplier.category && (
+                          <span className="opacity-80">
+                            → {t.supplier.category.name}
+                          </span>
+                        )}
+                      </span>
+                    )}
                     <p className="text-xs text-muted-foreground mt-0.5">
                       {new Date(t.date).toLocaleDateString('pt-BR')}
                       {' · '}

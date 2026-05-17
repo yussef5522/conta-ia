@@ -34,30 +34,35 @@ export default async function PendentesPage({ params }: Props) {
   const hojeInicio = new Date()
   hojeInicio.setUTCHours(0, 0, 0, 0)
 
-  const [categorias, autoClassificadasHoje, regrasAtivas] = await Promise.all([
-    prisma.category.findMany({
-      where: { companyId: empresaId, isActive: true },
-      orderBy: { name: 'asc' },
-      select: { id: true, name: true, type: true, color: true },
-    }),
-    prisma.transaction.count({
-      where: {
-        bankAccount: { companyId: empresaId },
-        classificationSource: 'RULE',
-        updatedAt: { gte: hojeInicio },
-      },
-    }),
-    prisma.aiLearningRule.count({
-      where: { companyId: empresaId, isActive: true },
-    }),
-  ])
+  const [categorias, autoClassificadasHoje, regrasAtivas, fornecedoresDetectados] =
+    await Promise.all([
+      prisma.category.findMany({
+        where: { companyId: empresaId, isActive: true },
+        orderBy: { name: 'asc' },
+        select: { id: true, name: true, type: true, color: true },
+      }),
+      prisma.transaction.count({
+        where: {
+          bankAccount: { companyId: empresaId },
+          classificationSource: 'RULE',
+          updatedAt: { gte: hojeInicio },
+        },
+      }),
+      prisma.aiLearningRule.count({
+        where: { companyId: empresaId, isActive: true },
+      }),
+      // Fase 3 Etapa 2: total de Suppliers ativos (todas as fontes)
+      prisma.supplier.count({
+        where: { companyId: empresaId, isActive: true },
+      }),
+    ])
 
   return (
     <PendentesClient
       empresaId={empresaId}
       empresaNome={userCompany.company.tradeName ?? userCompany.company.name}
       categorias={categorias}
-      stats={{ autoClassificadasHoje, regrasAtivas }}
+      stats={{ autoClassificadasHoje, regrasAtivas, fornecedoresDetectados }}
     />
   )
 }

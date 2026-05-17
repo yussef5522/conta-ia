@@ -90,6 +90,16 @@ export async function GET(request: NextRequest) {
         include: {
           category: { select: { id: true, name: true, color: true, type: true } },
           bankAccount: { select: { id: true, name: true, bankName: true, balance: true, accountType: true, companyId: true, company: { select: { name: true, tradeName: true } } } },
+          // Fase 3 Etapa 2: supplier (Camada 2A keyword / 2B BrasilAPI)
+          supplier: {
+            select: {
+              id: true,
+              razaoSocial: true,
+              nomeFantasia: true,
+              fonte: true,
+              category: { select: { id: true, name: true } },
+            },
+          },
         },
       }),
     ])
