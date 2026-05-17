@@ -63,7 +63,8 @@ export default function CadastroPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex items-center justify-center min-h-screen p-6">
+      <div className="w-full max-w-sm space-y-6">
       <div className="space-y-2 text-center">
         <h1 className="text-2xl font-bold">{t.auth.cadastro.title}</h1>
         <p className="text-sm text-muted-foreground">{t.auth.cadastro.subtitle}</p>
@@ -139,6 +140,7 @@ export default function CadastroPage() {
           {t.auth.cadastro.loginLink}
         </Link>
       </p>
+      </div>
     </div>
   )
 }
