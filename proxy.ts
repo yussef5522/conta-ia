@@ -12,8 +12,17 @@ import type { NextRequest } from 'next/server'
 import { verifyToken, COOKIE_NAME } from '@/lib/auth'
 import { resolveSubdomainAction } from '@/lib/middleware/subdomain'
 
-const PUBLIC_PAGES = ['/login', '/cadastro', '/esqueci-senha']
-const PUBLIC_API = ['/api/auth/login', '/api/auth/cadastro']
+const PUBLIC_PAGES = [
+  '/login',
+  '/cadastro',
+  '/esqueci-senha',
+  '/aceitar-convite',
+]
+const PUBLIC_API = [
+  '/api/auth/login',
+  '/api/auth/cadastro',
+  '/api/aceitar-convite',
+]
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
