@@ -169,7 +169,16 @@ export async function POST(request: NextRequest, { params }: Params) {
       return created
     })
 
-    const baseUrl = request.nextUrl.origin
+    // Sprint 1.4 fix: usar X-Forwarded-Host/Proto enviados pelo nginx.
+    // request.nextUrl.origin retorna o origin INTERNO (localhost:3001) e
+    // ignora o proxy reverso → inviteUrl ficava com URL não-pública.
+    const forwardedHost =
+      request.headers.get('x-forwarded-host') ?? request.headers.get('host')
+    const forwardedProto =
+      request.headers.get('x-forwarded-proto') ?? 'https'
+    const baseUrl = forwardedHost
+      ? `${forwardedProto}://${forwardedHost}`
+      : request.nextUrl.origin
     const inviteUrl = buildInviteUrl(baseUrl, token)
 
     return NextResponse.json(
