@@ -20,7 +20,7 @@ Registro histórico de bugs, dívidas técnicas e limitações conhecidas.
 
 | # | Problema | Impacto | Prioridade | Fase prevista |
 |---|----------|---------|-----------|--------------|
-| 1 | Rate limit em memória se perde ao reiniciar o servidor | Em produção com múltiplas instâncias, rate limit não funciona corretamente | Baixa (dev local) | FASE 7 (SaaS) — migrar para Redis |
+| 1 | Rate limit em memória (lib/rate-limit.ts + lib/security/forgot-password-rate-limit.ts) se perde ao reiniciar o servidor; não compartilha estado entre instâncias PM2 | Em produção com múltiplas instâncias, rate limit não funciona corretamente. Hoje rodamos 1 instância PM2 — OK. | Baixa (1 instância hoje) | Onda 2+ — migrar pra Redis quando escalar |
 | 2 | Sem refresh token — JWT expira em 24h | Usuário precisa fazer login todo dia | Média | FASE 3 |
 | 3 | Sidebar sem suporte completo a navegação por teclado (acessibilidade) | A11y prejudicada | Baixa | Backlog |
 | 4 | CNPJ do fornecedor não consultado na Receita Federal | Categorização automática depende de base local apenas | Alta | FASE 3 |

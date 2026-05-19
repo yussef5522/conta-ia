@@ -88,9 +88,11 @@ export function UsuariosClient({
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [creatingInvite, setCreatingInvite] = useState(false)
-  const [showLinkModal, setShowLinkModal] = useState<{ email: string; url: string } | null>(
-    null,
-  )
+  const [showLinkModal, setShowLinkModal] = useState<{
+    email: string
+    url: string
+    emailSent?: boolean
+  } | null>(null)
   const [editingUser, setEditingUser] = useState<UserMember | null>(null)
   const [removingUser, setRemovingUser] = useState<UserMember | null>(null)
 
@@ -456,7 +458,11 @@ export function UsuariosClient({
           onClose={() => setCreatingInvite(false)}
           onCreated={(invite) => {
             setCreatingInvite(false)
-            setShowLinkModal({ email: invite.email, url: invite.inviteUrl })
+            setShowLinkModal({
+              email: invite.email,
+              url: invite.inviteUrl,
+              emailSent: invite.emailSent,
+            })
             fetchData()
           }}
         />
@@ -466,6 +472,7 @@ export function UsuariosClient({
         <LinkConviteModal
           email={showLinkModal.email}
           url={showLinkModal.url}
+          emailSent={showLinkModal.emailSent}
           onClose={() => setShowLinkModal(null)}
         />
       )}

@@ -21,6 +21,14 @@ export type AuditAction =
   | 'REORDER'
   | 'IMPORT'
   | 'EXPORT'
+  // Sprint 1.5 — Esqueci senha + emails transacionais
+  | 'PASSWORD_RESET_REQUESTED'
+  | 'PASSWORD_RESET_VERIFIED'
+  | 'PASSWORD_RESET_COMPLETED'
+  | 'PASSWORD_RESET_FAILED'
+  | 'TEAM_INVITE_SENT'
+  | 'WELCOME_EMAIL_SENT'
+  | 'EMAIL_DELIVERY_FAILED'
 
 export type FieldsChanged = Record<string, { before: unknown; after: unknown }>
 

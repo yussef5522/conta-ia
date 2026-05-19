@@ -25,6 +25,8 @@ model User {
   sentInvites         CompanyInvite[]      @relation("InvitedBy")
   // Fase 3 Etapa 3 — Camada 3 do pipeline IA Contadora
   aiUsageLogs         AiUsageLog[]
+  // Sprint 1.5 — Esqueci senha (código 6 dígitos via Resend)
+  passwordResetCodes  PasswordResetCode[]
 
   @@map("users")
 }
@@ -608,4 +610,34 @@ model AiUsageLog {
   @@index([companyId, createdAt])
   @@index([companyId, claudeApiCalled, createdAt])
   @@map("ai_usage_log")
+}
+
+// ============================================================
+// Sprint 1.5 — Esqueci senha (código 6 dígitos via Resend)
+// ============================================================
+//
+// Fluxo: user solicita reset → gera código random 6 dígitos → bcrypt hash
+// salvo aqui → envia código em claro via email Resend → user volta com
+// código → valida (max 5 tentativas) → emite JWT temporário scope=password-reset
+// (15min) → user troca senha.
+//
+// codeHint guarda os 2 primeiros dígitos (ex: "48****") pra dica UX
+// "Código começa com 48" caso user precise confirmar qual email recebeu.
+model PasswordResetCode {
+  id        String    @id @default(cuid())
+  userId    String
+  code      String    // bcrypt hash do código 6 dígitos (NUNCA texto puro)
+  codeHint  String?   // primeiros 2 dígitos pra dica visual ("48****")
+  expiresAt DateTime  // now + 15 min
+  usedAt    DateTime?
+  attempts  Int       @default(0) // brute force guard — invalida em 5
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("password_reset_codes")
 }

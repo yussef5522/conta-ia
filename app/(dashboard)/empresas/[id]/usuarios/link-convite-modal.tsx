@@ -19,10 +19,12 @@ import { Input } from '@/components/ui/input'
 interface Props {
   email: string
   url: string
+  // Sprint 1.5 — feedback de envio de email via Resend.
+  emailSent?: boolean
   onClose: () => void
 }
 
-export function LinkConviteModal({ email, url, onClose }: Props) {
+export function LinkConviteModal({ email, url, emailSent, onClose }: Props) {
   const [copied, setCopied] = useState(false)
 
   function copyLink() {
@@ -55,15 +57,40 @@ export function LinkConviteModal({ email, url, onClose }: Props) {
             Convite criado
           </DialogTitle>
           <DialogDescription>
-            Link gerado pra <strong>{email}</strong>. Válido por 7 dias.
+            {emailSent ? (
+              <>
+                Enviamos um email pra <strong>{email}</strong>. Válido por 7 dias.
+              </>
+            ) : (
+              <>
+                Link gerado pra <strong>{email}</strong>. Válido por 7 dias.
+              </>
+            )}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
-          {/* Link copy */}
+          {/* Status email */}
+          {emailSent && (
+            <div
+              className="rounded-md border p-3 text-xs flex items-start gap-2"
+              style={{
+                background: 'rgba(29,158,117,0.06)',
+                borderColor: 'rgba(29,158,117,0.30)',
+              }}
+            >
+              <Check className="h-4 w-4 mt-0.5 shrink-0" style={{ color: '#1D9E75' }} />
+              <div className="leading-relaxed" style={{ color: '#075c47' }}>
+                <strong>Email enviado.</strong> Se a pessoa não receber em
+                alguns minutos, copie o link abaixo e envie por WhatsApp.
+              </div>
+            </div>
+          )}
+
+          {/* Link copy (sempre visível como fallback) */}
           <div className="space-y-1.5">
             <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
-              Link do convite
+              {emailSent ? 'Link manual (fallback)' : 'Link do convite'}
             </p>
             <div className="flex gap-2">
               <Input

@@ -5,6 +5,9 @@ import { prisma } from '@/lib/db'
 import { signToken, COOKIE_NAME, COOKIE_OPTIONS } from '@/lib/auth'
 import { cadastroSchema } from '@/lib/validations/auth'
 import { rateLimit, rateLimitKey } from '@/lib/rate-limit'
+import { sendEmail } from '@/lib/email/send'
+import { renderWelcomeHtml } from '@/lib/email/render'
+import { publicAppUrl } from '@/lib/email/client'
 
 export async function POST(request: NextRequest) {
   // 5 cadastros por hora por IP
@@ -53,6 +56,34 @@ export async function POST(request: NextRequest) {
     )
 
     response.cookies.set(COOKIE_NAME, token, COOKIE_OPTIONS)
+
+    // Sprint 1.5 — Welcome email fire-and-forget (não bloqueia signup).
+    // Capturamos host dos headers ANTES de retornar (request scope termina depois).
+    const forwardedHost =
+      request.headers.get('x-forwarded-host') ?? request.headers.get('host')
+    const forwardedProto =
+      request.headers.get('x-forwarded-proto') ?? 'https'
+    const appUrl = publicAppUrl(forwardedHost, forwardedProto)
+    void (async () => {
+      try {
+        const html = await renderWelcomeHtml({
+          userName: user.name,
+          appUrl,
+        })
+        await sendEmail({
+          to: user.email,
+          subject: 'Bem-vindo(a) ao CAIXAOS',
+          html,
+          type: 'welcome',
+          userId: user.id,
+        })
+      } catch (err) {
+        console.error(
+          '[welcome email] falha (não-fatal):',
+          err instanceof Error ? err.message : err,
+        )
+      }
+    })()
 
     return response
   } catch (error) {

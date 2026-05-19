@@ -8,7 +8,10 @@ import {
   generateInviteToken,
   calculateExpiration,
   buildInviteUrl,
+  INVITE_EXPIRES_DAYS,
 } from '@/lib/invites/helpers'
+import { sendEmail } from '@/lib/email/send'
+import { renderTeamInviteHtml } from '@/lib/email/render'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -74,7 +77,8 @@ export async function GET(request: NextRequest, { params }: Params) {
 }
 
 // POST /api/empresas/[id]/usuarios
-// Gera convite com token. NÃO envia email — frontend mostra link pra copiar.
+// Gera convite com token + envia email via Resend (Sprint 1.5).
+// Resposta inclui inviteUrl pra UI mostrar fallback "copiar link".
 export async function POST(request: NextRequest, { params }: Params) {
   try {
     const { id: companyId } = await params
@@ -87,7 +91,13 @@ export async function POST(request: NextRequest, { params }: Params) {
     // 1. Role precisa existir e ser elegível (system default OU custom da empresa)
     const role = await prisma.role.findUnique({
       where: { id: data.roleId },
-      select: { id: true, name: true, isSystemDefault: true, companyId: true },
+      select: {
+        id: true,
+        name: true,
+        isSystemDefault: true,
+        companyId: true,
+        description: true,
+      },
     })
 
     if (!role) {
@@ -181,6 +191,59 @@ export async function POST(request: NextRequest, { params }: Params) {
       : request.nextUrl.origin
     const inviteUrl = buildInviteUrl(baseUrl, token)
 
+    // Sprint 1.5 — envia email via Resend.
+    // Não bloqueia a resposta caso email falhe (frontend ainda tem inviteUrl
+    // pra fallback "copiar link" / WhatsApp).
+    let emailSent = false
+    let emailError: string | undefined
+    try {
+      const company = await prisma.company.findUnique({
+        where: { id: companyId },
+        select: { name: true, tradeName: true },
+      })
+      const inviterName = ctx.user.name ?? ctx.user.email ?? 'Alguém'
+      const html = await renderTeamInviteHtml({
+        inviterName,
+        companyName: company?.tradeName ?? company?.name ?? 'Sua empresa',
+        roleName: role.name,
+        roleDescription: role.description,
+        inviteUrl,
+        expiresInDays: INVITE_EXPIRES_DAYS,
+      })
+      const result = await sendEmail({
+        to: invite.email,
+        subject: `${inviterName} te convidou pra ${company?.tradeName ?? company?.name ?? 'CAIXAOS'}`,
+        html,
+        type: 'team-invite',
+      })
+      emailSent = result.success && !result.skipped
+      if (!result.success) emailError = result.error
+
+      // Audit do envio (não-fatal)
+      try {
+        await logAudit(
+          ctx,
+          {
+            action: emailSent ? 'TEAM_INVITE_SENT' : 'EMAIL_DELIVERY_FAILED',
+            entityType: 'CompanyInvite',
+            entityId: invite.id,
+            metadata: {
+              email: invite.email,
+              emailSent,
+              emailError,
+              type: 'team-invite',
+            },
+            request,
+          },
+        )
+      } catch {
+        /* audit é best-effort */
+      }
+    } catch (err) {
+      emailError = err instanceof Error ? err.message : 'erro desconhecido'
+      console.error('[invite email] falha:', emailError)
+    }
+
     return NextResponse.json(
       {
         invite: {
@@ -189,6 +252,7 @@ export async function POST(request: NextRequest, { params }: Params) {
           token: invite.token,
           expiresAt: invite.expiresAt,
           inviteUrl,
+          emailSent,
         },
       },
       { status: 201 },

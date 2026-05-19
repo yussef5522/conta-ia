@@ -1,56 +1,84 @@
-// Placeholder — Sprint 1.5 vai implementar reset via email + código 6 dígitos.
-// Sprint 1.2 só cria a página com mensagem amigável e link de volta.
+// Esqueci senha — Sprint 1.5.
+// Layout split 40/60 (igual login Sprint 1.2).
 
-import Link from 'next/link'
-import { Mail, ArrowLeft } from 'lucide-react'
-import { Logo } from '@/components/logo'
-import { Button } from '@/components/ui/button'
+import { Sparkles, KeyRound, ShieldCheck, MailCheck } from 'lucide-react'
 import type { Metadata } from 'next'
+import { Logo } from '@/components/logo'
+import { EsqueciSenhaClient } from './esqueci-senha-client'
 
 export const metadata: Metadata = {
-  title: 'Esqueci minha senha | Conta IA',
+  title: 'Esqueci minha senha | CAIXAOS',
+  description:
+    'Recupere o acesso à sua conta CAIXAOS com código de 6 dígitos.',
 }
 
 export default function EsqueciSenhaPage() {
   return (
-    <div className="flex items-center justify-center min-h-screen p-6 bg-white">
-      <div className="w-full max-w-[400px] space-y-6">
-        <Logo size="md" />
+    <div className="min-h-screen grid lg:grid-cols-[2fr_3fr] md:grid-cols-2">
+      {/* ESQUERDA — Form */}
+      <div className="flex items-center justify-center bg-white p-6 sm:p-10">
+        <div className="w-full max-w-[420px]">
+          <Logo size="md" className="mb-10" />
+          <EsqueciSenhaClient />
+        </div>
+      </div>
 
-        <div className="space-y-2">
-          <h1
-            className="font-medium tracking-tight"
-            style={{ fontSize: 22, color: '#0C447C' }}
+      {/* DIREITA — Hero gradient (esconde no mobile) */}
+      <div
+        className="hidden md:flex flex-col justify-center p-8 lg:p-12 text-white relative overflow-hidden"
+        style={{
+          background:
+            'linear-gradient(135deg, #0C447C 0%, #185FA5 50%, #378ADD 100%)',
+        }}
+      >
+        <div className="max-w-[520px] space-y-7">
+          <span
+            className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium"
+            style={{ background: 'rgba(255,255,255,0.15)' }}
           >
-            Esqueci minha senha
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Em breve você poderá redefinir sua senha por aqui.
+            <Sparkles className="h-3.5 w-3.5" />
+            Segurança em 3 passos
+          </span>
+
+          <h2 className="font-medium leading-[1.25]" style={{ fontSize: 26 }}>
+            Recupere o acesso
+            <br />
+            sem dor de cabeça.
+          </h2>
+
+          <p
+            style={{
+              fontSize: 13,
+              color: 'rgba(255,255,255,0.85)',
+              lineHeight: 1.55,
+            }}
+          >
+            Código de 6 dígitos por email · 15 minutos de validade · Sem
+            links suspeitos.
           </p>
-        </div>
 
-        <div className="rounded-md border bg-blue-50 dark:bg-blue-950/30 p-4">
-          <div className="flex items-start gap-3">
-            <Mail className="h-5 w-5 mt-0.5 text-blue-700 dark:text-blue-300 shrink-0" />
-            <div className="space-y-1 text-sm">
-              <p className="font-medium text-blue-900 dark:text-blue-100">
-                Função em desenvolvimento
-              </p>
-              <p className="text-blue-800/80 dark:text-blue-200/80">
-                A redefinição de senha por e-mail + código de 6 dígitos chega
-                no <strong>Sprint 1.5</strong>. Por enquanto, se você esqueceu
-                sua senha, entre em contato pelo suporte.
-              </p>
-            </div>
-          </div>
+          <ul className="space-y-3">
+            {[
+              { icon: MailCheck, text: 'Código enviado no seu email cadastrado' },
+              { icon: KeyRound, text: 'Digite o código e crie nova senha' },
+              { icon: ShieldCheck, text: 'Anti-phishing + criptografia LGPD' },
+            ].map(({ icon: Icon, text }) => (
+              <li
+                key={text}
+                className="flex items-center gap-3"
+                style={{ fontSize: 13 }}
+              >
+                <span
+                  className="flex h-7 w-7 items-center justify-center rounded-full shrink-0"
+                  style={{ background: 'rgba(255,255,255,0.2)' }}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                </span>
+                <span style={{ color: 'rgba(255,255,255,0.92)' }}>{text}</span>
+              </li>
+            ))}
+          </ul>
         </div>
-
-        <Button asChild variant="outline" className="w-full">
-          <Link href="/login">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Voltar ao login
-          </Link>
-        </Button>
       </div>
     </div>
   )

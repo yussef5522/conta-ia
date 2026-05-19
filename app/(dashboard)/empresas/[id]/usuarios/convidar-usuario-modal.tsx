@@ -39,7 +39,11 @@ interface Role {
 interface Props {
   empresaId: string
   onClose: () => void
-  onCreated: (invite: { email: string; inviteUrl: string }) => void
+  onCreated: (invite: {
+    email: string
+    inviteUrl: string
+    emailSent?: boolean
+  }) => void
 }
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -108,7 +112,11 @@ export function ConvidarUsuarioModal({ empresaId, onClose, onCreated }: Props) {
       }
 
       const data = await res.json()
-      onCreated({ email: data.invite.email, inviteUrl: data.invite.inviteUrl })
+      onCreated({
+        email: data.invite.email,
+        inviteUrl: data.invite.inviteUrl,
+        emailSent: data.invite.emailSent,
+      })
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erro desconhecido')
     } finally {

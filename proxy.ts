@@ -22,6 +22,10 @@ const PUBLIC_API = [
   '/api/auth/login',
   '/api/auth/cadastro',
   '/api/aceitar-convite',
+  // Sprint 1.5 — Esqueci senha (3 endpoints sem auth)
+  '/api/auth/forgot-password',
+  '/api/auth/verify-reset-code',
+  '/api/auth/reset-password',
 ]
 
 export async function proxy(request: NextRequest) {
