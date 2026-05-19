@@ -27,6 +27,8 @@ model User {
   aiUsageLogs         AiUsageLog[]
   // Sprint 1.5 — Esqueci senha (código 6 dígitos via Resend)
   passwordResetCodes  PasswordResetCode[]
+  // Sprint 1.7 — Cupons aplicados no signup
+  couponRedemptions   CouponRedemption[]
 
   @@map("users")
 }
@@ -675,9 +677,12 @@ model Gerenciador {
 // Audit log dos gerenciadores. ISOLADO do audit_log das companies.
 // Cobre: ADMIN_LOGIN, ADMIN_LOGOUT, ADMIN_LOGIN_FAILED, ADMIN_LOGIN_RATE_LIMITED,
 // CLIENT_SUSPEND (Onda 2+), COUPON_CREATE (Sprint 1.7), etc.
+// Sprint 1.7 (D11): gerenciadorId vira NULLABLE pra suportar eventos
+// de SISTEMA (ex: COUPON_REDEEMED disparado pelo signup sem gerenciador).
+// Eventos de gerenciador continuam preenchendo o campo normalmente.
 model GerenciadorAuditLog {
   id            String   @id @default(cuid())
-  gerenciadorId String
+  gerenciadorId String?  // NULL = evento de sistema (Sprint 1.7)
   action        String
   entityType    String?
   entityId      String?
@@ -686,9 +691,93 @@ model GerenciadorAuditLog {
   userAgent     String?
   createdAt     DateTime @default(now())
 
-  gerenciador Gerenciador @relation(fields: [gerenciadorId], references: [id], onDelete: Cascade)
+  gerenciador Gerenciador? @relation(fields: [gerenciadorId], references: [id], onDelete: Cascade)
 
   @@index([gerenciadorId, createdAt(sort: Desc)])
   @@index([action])
   @@map("gerenciador_audit_log")
+}
+
+// ============================================================
+// Sprint 1.7 — Cupons (admin.caixaos.com.br/cupons)
+// ============================================================
+//
+// 3 tipos de desconto (D12 em docs/DECISOES.md):
+//   - PERCENTAGE   — value=100 significa 100% off (ex: FUNDADOR100)
+//   - FIXED_AMOUNT — value em reais (ex: 50.00 = R$ 50 off)
+//   - FREE_MONTHS  — usa freeMonths (ex: 3 = 3 meses grátis)
+//
+// Status:
+//   - ACTIVE      — disponível
+//   - PAUSED      — temporariamente desabilitado (gerenciador pode retomar)
+//   - EXPIRED     — passou validUntil (auto via query, sem setar campo)
+//   - EXHAUSTED   — atingiu maxUses
+//   - DEACTIVATED — soft delete (desativado permanente)
+//
+// Enums implementados como String + comment (padrão do projeto, igual
+// users.role, categories.type, etc).
+model Coupon {
+  id              String    @id @default(cuid())
+  code            String    @unique // uppercase enforce no app-layer
+  description     String?
+  // PERCENTAGE | FIXED_AMOUNT | FREE_MONTHS
+  type            String
+  // Pra PERCENTAGE: 0.01-100.00 · Pra FIXED_AMOUNT: valor em R$ · Pra FREE_MONTHS: irrelevante (use freeMonths)
+  value           Decimal
+  freeMonths      Int?      // só pra type=FREE_MONTHS
+
+  // Validade
+  validFrom       DateTime  @default(now())
+  validUntil      DateTime?
+
+  // Limites
+  maxUses         Int?      // null = ilimitado
+  maxUsesPerUser  Int       @default(1)
+  currentUses     Int       @default(0)
+
+  // Status (string + comment, igual demais models)
+  // ACTIVE | PAUSED | EXPIRED | EXHAUSTED | DEACTIVATED
+  status          String    @default("ACTIVE")
+
+  // Quem criou (Gerenciador.id) — string sem FK porque é tabela ISOLADA
+  // de outro contexto. Auditoria via gerenciador_audit_log.
+  createdById     String
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deactivatedAt   DateTime?
+  deactivatedById String?
+
+  redemptions CouponRedemption[]
+
+  @@index([code])
+  @@index([status])
+  @@index([validUntil])
+  @@map("coupons")
+}
+
+// 1 redemption por (user, cupom) — enforce maxUsesPerUser=1 nativamente
+// via @@unique. Pra maxUsesPerUser > 1 no futuro, remover essa unique e
+// validar app-layer.
+model CouponRedemption {
+  id            String   @id @default(cuid())
+  couponId      String
+  userId        String
+  redeemedAt    DateTime @default(now())
+
+  // Snapshot (audit): code/type/value no momento da redemption.
+  // Se cupom for editado/desativado depois, snapshot preserva contexto.
+  codeSnapshot  String
+  typeSnapshot  String
+  valueSnapshot Decimal
+
+  ipAddress     String?
+  userAgent     String?
+
+  coupon Coupon @relation(fields: [couponId], references: [id], onDelete: Restrict)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([couponId, userId])
+  @@index([userId])
+  @@index([redeemedAt])
+  @@map("coupon_redemptions")
 }

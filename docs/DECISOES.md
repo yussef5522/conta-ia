@@ -199,4 +199,67 @@ Cada decisão tem **contexto**, **opções consideradas**, **escolha**, **razão
 
 ---
 
+## D11 — `gerenciador_audit_log.gerenciadorId` NULL pra eventos de sistema
+
+**Contexto:** Sprint 1.7 — `COUPON_REDEEMED` é disparado pelo signup do usuário, NÃO por um gerenciador logado. FK NOT NULL forçaria criar um "Gerenciador sistema" fake.
+
+**Opções:**
+- (A) Criar `Gerenciador` sentinel ("system") com email reservado
+- (B) Tornar `gerenciadorId` NULL com semântica "evento de sistema"
+- (C) Tabela separada `system_audit_log` (duplica infra)
+
+**Escolha:** **(B)** — `gerenciadorId String?` nullable.
+
+**Razão:**
+- Sentinel exige row "fake" no banco, complica seeds e gera 2 semânticas pro mesmo campo
+- Semântica clara: `gerenciadorId IS NULL` = ação automática do sistema
+- Mantém 1 tabela única de audit (queries de auditoria não bifurcam)
+- Migration faz `ALTER COLUMN DROP NOT NULL` + recria FK com `ON DELETE CASCADE` (mantém comportamento atual)
+
+**Implementação:** `prisma/migrations/20260519000001_*` faz o ALTER. `redeemCoupon` em `lib/coupons/apply.ts` insere audit com `gerenciadorId: null`.
+
+---
+
+## D12 — Snapshot fields em `coupon_redemptions`
+
+**Contexto:** Sprint 1.7 — cupom pode mudar de descrição/datas após resgates já existirem (edição admin permite mudar `description`, mas valor/type/code são imutáveis por design).
+
+**Opções:**
+- (A) Só guardar `couponId` na redemption; sempre buscar valor "atual" do cupom
+- (B) Snapshot do estado do cupom no momento do resgate (code, type, value)
+- (C) Bloquear toda edição do cupom após primeiro resgate
+
+**Escolha:** **(B)** — `codeSnapshot`, `typeSnapshot`, `valueSnapshot` na redemption.
+
+**Razão:**
+- Auditoria: resgate guarda exatamente o que o cliente "pegou" mesmo que o cupom mude depois
+- Relatórios fiscais futuros não dependem de estado atual da config
+- Cupom EXAURIDO permanece consultável: dá pra reconstruir histórico sem JOIN
+- `code` no schema é imutável (não tem PATCH pra ele); snapshot redundante mas barato e à prova de futuro
+
+**Trade-off:** ~30 bytes extras por resgate. Aceito.
+
+---
+
+## D13 — Resgate de cupom é fire-and-forget no signup
+
+**Contexto:** Sprint 1.7 — `POST /api/auth/cadastro` recebe `couponCode` opcional. Falha na aplicação do cupom deve barrar o cadastro?
+
+**Opções:**
+- (A) Cadastro 100% atomic: cupom inválido faz rollback do user
+- (B) Fire-and-forget: cadastro sempre cria user; cupom é aplicado em paralelo (UI já validou antes)
+- (C) Atomic + retornar erro específico de cupom (user tem que retentar)
+
+**Escolha:** **(B)** — fire-and-forget.
+
+**Razão:**
+- UI já validou via `POST /api/coupons/validate` ANTES de submeter — caminho feliz já garantido
+- Race condition rara (cupom exaure entre validate e cadastro) é tolerável: user cadastra sem desconto, contadores ficam consistentes (servidor é fonte da verdade)
+- Falha de cupom NÃO deve bloquear cadastro (UX premium: "ah que pena, não pegou, mas você já está dentro")
+- Atomicidade do user (criação + JWT + welcome email) já é alta — empilhar cupom em cima aumenta blast radius
+
+**Implementação:** `app/api/auth/cadastro/route.ts` chama `void redeemCoupon(...)` SEM await; falha vira `console.warn` (logs em produção pra Yussef monitorar).
+
+---
+
 **Doc mantido em `docs/DECISOES.md`. Atualizar a cada decisão significativa.**

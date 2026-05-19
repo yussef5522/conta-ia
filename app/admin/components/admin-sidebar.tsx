@@ -25,7 +25,7 @@ interface SidebarItem {
 const ITEMS: SidebarItem[] = [
   { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/admin/clientes', label: 'Clientes', icon: UsersIcon, comingSoon: true },
-  { href: '/admin/cupons', label: 'Cupons', icon: Ticket, comingSoon: true },
+  { href: '/admin/cupons', label: 'Cupons', icon: Ticket },
   { href: '/admin/metricas', label: 'Métricas', icon: BarChart3, comingSoon: true },
 ]
 
@@ -74,7 +74,10 @@ export function AdminSidebar({ gerenciadorName }: { gerenciadorName: string }) {
       {/* Nav */}
       <nav className="flex-1 px-2 py-3">
         {ITEMS.map((item) => {
-          const active = pathname === item.href
+          const active =
+            pathname === item.href ||
+            (item.href !== '/admin/dashboard' &&
+              pathname.startsWith(item.href + '/'))
           return (
             <Link
               key={item.href}

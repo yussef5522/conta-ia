@@ -26,6 +26,13 @@ export const cadastroSchema = z
       .regex(/[A-Z]/, 'Senha deve conter pelo menos uma letra maiúscula')
       .regex(/[0-9]/, 'Senha deve conter pelo menos um número'),
     confirmPassword: z.string({ required_error: 'Confirmação de senha é obrigatória' }),
+    // Sprint 1.7 — cupom opcional. Validação/aplicação no endpoint.
+    couponCode: z
+      .string()
+      .trim()
+      .toUpperCase()
+      .max(20, 'Código de cupom muito longo')
+      .optional(),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: 'As senhas não coincidem',

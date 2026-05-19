@@ -8,6 +8,7 @@ import { rateLimit, rateLimitKey } from '@/lib/rate-limit'
 import { sendEmail } from '@/lib/email/send'
 import { renderWelcomeHtml } from '@/lib/email/render'
 import { publicAppUrl } from '@/lib/email/client'
+import { redeemCoupon } from '@/lib/coupons/apply'
 
 export async function POST(request: NextRequest) {
   // 5 cadastros por hora por IP
@@ -56,6 +57,28 @@ export async function POST(request: NextRequest) {
     )
 
     response.cookies.set(COOKIE_NAME, token, COOKIE_OPTIONS)
+
+    // Sprint 1.7 — Resgate de cupom fire-and-forget (não bloqueia signup).
+    // Falha silenciosamente (cupom inválido → user cadastra mas sem desconto).
+    // UI já validou antes via /api/coupons/validate, mas re-validamos aqui (defesa).
+    if (data.couponCode) {
+      const ipAddress =
+        request.headers.get('x-forwarded-for')?.split(',')[0].trim() ??
+        request.headers.get('x-real-ip') ??
+        null
+      const userAgent = request.headers.get('user-agent') ?? null
+      void redeemCoupon(data.couponCode, user.id, {
+        ipAddress,
+        userAgent,
+      }).then((result) => {
+        if (!result.success) {
+          console.warn(
+            '[cadastro coupon]',
+            `code=${data.couponCode} userId=${user.id} reason=${result.reason}`,
+          )
+        }
+      })
+    }
 
     // Sprint 1.5 — Welcome email fire-and-forget (não bloqueia signup).
     // Capturamos host dos headers ANTES de retornar (request scope termina depois).
