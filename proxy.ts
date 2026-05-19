@@ -81,5 +81,11 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
+  // Excluir do middleware:
+  //   - Assets internos do Next (_next/static, _next/image)
+  //   - Favicon e arquivos públicos servidos diretamente (robots.txt, sitemap.xml)
+  //   - Extensões binárias (imagens, fontes, txt/xml)
+  matcher: [
+    '/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|xml|woff|woff2|ttf|otf)$).*)',
+  ],
 }
