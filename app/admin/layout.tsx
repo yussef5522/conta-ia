@@ -1,12 +1,12 @@
-// Layout do painel admin (admin.caixaos.com.br) — Sprint 1.3.
-// robots noindex/nofollow garante que Google NUNCA indexe este host.
-// nginx também serve um robots.txt embutido como defesa em profundidade.
+// Layout do painel admin (admin.caixaos.com.br) — Sprint 1.6 (dark premium).
+// robots noindex/nofollow + nginx serve robots.txt embutido.
+// Sprint 1.3 deixou versão light; Sprint 1.6 substituiu por dark vibe Linear.
 
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'CAIXAOS Admin',
-  description: 'Painel gerenciador interno.',
+  title: 'Admin',
+  description: 'Painel administrativo restrito.',
   robots: {
     index: false,
     follow: false,
@@ -24,5 +24,16 @@ export default function AdminLayout({
 }: {
   children: React.ReactNode
 }) {
-  return <div className="min-h-screen bg-white">{children}</div>
+  return (
+    <div
+      className="min-h-screen"
+      style={{
+        backgroundColor: '#0a0a0a',
+        color: '#e5e5e5',
+        colorScheme: 'dark',
+      }}
+    >
+      {children}
+    </div>
+  )
 }

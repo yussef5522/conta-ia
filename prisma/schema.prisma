@@ -641,3 +641,54 @@ model PasswordResetCode {
   @@index([expiresAt])
   @@map("password_reset_codes")
 }
+
+// ============================================================
+// Sprint 1.6 — Painel GERENCIADOR (admin.caixaos.com.br)
+// ============================================================
+//
+// Tabela SEPARADA do User do app. NUNCA cruza com clientes.
+// Decisões registradas em docs/DECISOES.md:
+//   - Por que não SUPERADMIN no User: impossibilidade de promoção acidental
+//   - Por que JWT_SECRET_ADMIN diferente: vazamento em um lado não compromete outro
+//   - Por que Cookie Domain=admin.caixaos.com.br literal: isolamento total
+//
+// Acesso: gerenciador@caixaos.com.br (seed inicial, Yussef único).
+// Role interna: OPERADOR (default) | OWNER (Yussef). Sem promoção via API
+// — mudança só via SQL direto (proteção extra).
+model Gerenciador {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String    // bcrypt rounds 12
+  name         String
+  role         String    @default("OPERADOR") // OPERADOR | OWNER
+  active       Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  auditLogs GerenciadorAuditLog[]
+
+  @@index([email])
+  @@map("gerenciadores")
+}
+
+// Audit log dos gerenciadores. ISOLADO do audit_log das companies.
+// Cobre: ADMIN_LOGIN, ADMIN_LOGOUT, ADMIN_LOGIN_FAILED, ADMIN_LOGIN_RATE_LIMITED,
+// CLIENT_SUSPEND (Onda 2+), COUPON_CREATE (Sprint 1.7), etc.
+model GerenciadorAuditLog {
+  id            String   @id @default(cuid())
+  gerenciadorId String
+  action        String
+  entityType    String?
+  entityId      String?
+  metadata      String?  // JSON
+  ipAddress     String?
+  userAgent     String?
+  createdAt     DateTime @default(now())
+
+  gerenciador Gerenciador @relation(fields: [gerenciadorId], references: [id], onDelete: Cascade)
+
+  @@index([gerenciadorId, createdAt(sort: Desc)])
+  @@index([action])
+  @@map("gerenciador_audit_log")
+}

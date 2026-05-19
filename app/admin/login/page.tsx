@@ -1,52 +1,35 @@
-// Placeholder do login admin — Sprint 1.3.
-// Sprint 1.6 vai implementar form real conectado à tabela Gerenciador.
+// Login admin — Sprint 1.6.
+// Vibe Linear/Vercel: minimalista, dark, sem brand chamativo.
 
-import Link from 'next/link'
-import { Shield, ArrowLeft } from 'lucide-react'
-import { Logo } from '@/components/logo'
-import { Button } from '@/components/ui/button'
+import type { Metadata } from 'next'
+import { AdminLoginForm } from './login-form'
 
-export default function AdminLoginPlaceholder() {
+export const metadata: Metadata = {
+  title: 'Admin',
+  robots: { index: false, follow: false, nocache: true },
+}
+
+export default function AdminLoginPage() {
   return (
-    <div className="flex items-center justify-center min-h-screen p-6">
-      <div className="w-full max-w-[400px] space-y-7">
-        <Logo size="md" />
-
-        <div className="space-y-2">
-          <h1
-            className="font-medium tracking-tight"
-            style={{ fontSize: 22, color: '#0C447C' }}
+    <div className="flex min-h-screen items-center justify-center px-6">
+      <div className="w-full max-w-[340px] space-y-7">
+        {/* Brand discreto — apenas "ADMIN" mono */}
+        <div className="text-center">
+          <p
+            className="font-mono text-[11px] uppercase tracking-[0.3em]"
+            style={{ color: '#737373' }}
           >
-            Acesso restrito
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Login Gerenciador em desenvolvimento.
+            CAIXAOS
           </p>
+          <h1
+            className="font-mono mt-1 text-xs uppercase tracking-[0.3em]"
+            style={{ color: '#525252' }}
+          >
+            admin
+          </h1>
         </div>
 
-        <div className="rounded-md border bg-slate-50 dark:bg-slate-900/30 p-4">
-          <div className="flex items-start gap-3">
-            <Shield className="h-5 w-5 mt-0.5 text-slate-700 dark:text-slate-300 shrink-0" />
-            <div className="space-y-1 text-sm">
-              <p className="font-medium text-slate-900 dark:text-slate-100">
-                Sprint 1.6 — Login Gerenciador
-              </p>
-              <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
-                Tabela <code>Gerenciador</code> separada do <code>users</code>{' '}
-                do app (isolamento por construção). Cookie diferente
-                (<code>admin_session</code>) com <code>Domain</code> próprio.
-                Login via email + senha + 2FA opcional (TODO Sprint 2).
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <Button asChild variant="outline" className="w-full">
-          <Link href="/admin">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Voltar
-          </Link>
-        </Button>
+        <AdminLoginForm />
       </div>
     </div>
   )
