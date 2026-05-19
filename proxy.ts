@@ -36,6 +36,8 @@ const PUBLIC_API = [
   '/api/auth/forgot-password',
   '/api/auth/verify-reset-code',
   '/api/auth/reset-password',
+  // Sprint 1.7 — Validação pública de cupom (rate-limited)
+  '/api/coupons/validate',
 ]
 
 // Rotas /admin/* que NÃO exigem admin_session:
