@@ -33,12 +33,14 @@ export async function POST(request: NextRequest, { params }: Params) {
   const isPreview = request.nextUrl.searchParams.get('preview') === 'true'
 
   let rawContent: string
+  let uploadedFileName = 'extrato.ofx'
   try {
     const formData = await request.formData()
     const file = formData.get('file')
     if (!file || typeof file === 'string') {
       return NextResponse.json({ erro: 'Arquivo OFX não enviado' }, { status: 400 })
     }
+    uploadedFileName = (file as File).name || 'extrato.ofx'
     rawContent = await (file as File).text()
   } catch {
     return NextResponse.json({ erro: 'Erro ao ler arquivo' }, { status: 400 })
@@ -112,6 +114,38 @@ export async function POST(request: NextRequest, { params }: Params) {
     return acc + (t.type === 'CREDIT' ? t.amount : -t.amount)
   }, 0)
 
+  // Onda 2 Sprint 2.3 — registra OfxImport (status=PROCESSING).
+  // Atualizado pra SUCCESS após o createMany abaixo.
+  // Capturamos IP/UA do header.
+  const ipAddress =
+    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+    request.headers.get('x-real-ip') ??
+    null
+  const userAgent = request.headers.get('user-agent')?.slice(0, 500) ?? null
+
+  // Período: min/max date das transações novas (snapshot do extrato)
+  const datasNovas = novas.map((t) => t.datePosted.getTime())
+  const periodStart =
+    datasNovas.length > 0 ? new Date(Math.min(...datasNovas)) : null
+  const periodEnd =
+    datasNovas.length > 0 ? new Date(Math.max(...datasNovas)) : null
+
+  const importRow = await prisma.ofxImport.create({
+    data: {
+      bankAccountId: contaId,
+      userId: user.sub,
+      status: 'PROCESSING',
+      fileName: uploadedFileName,
+      fileSize: rawContent.length,
+      totalTransactions: transactions.length,
+      duplicates: duplicadas,
+      periodStart,
+      periodEnd,
+      ipAddress,
+      userAgent,
+    },
+  })
+
   // Fase 3 Etapa 1: AUTO-CLASSIFY via regras EXACT (≥0.95) ANTES do insert.
   // Multi-tenant: regras filtradas por companyId. Cache em memória durante
   // este import — 1 query no DB pra todas as regras ativas.
@@ -139,37 +173,64 @@ export async function POST(request: NextRequest, { params }: Params) {
   )
   const predictMs = Date.now() - t0Predict
 
-  await prisma.$transaction([
-    prisma.transaction.createMany({
-      data: classified.map((t) => ({
-        bankAccountId: t.bankAccountId,
-        date: t.date,
-        description: t.description,
-        amount: t.amount,
-        type: t.type,
-        status: t.status,
-        origin: t.origin,
-        externalId: t.externalId,
-        dedupHash: t.dedupHash,
-        // Campos AI (preenchidos só quando t.status='RECONCILED')
-        categoryId: t.categoryId ?? null,
-        classificationSource: t.classificationSource ?? null,
-        classifiedByRuleId: t.classifiedByRuleId ?? null,
-        aiConfidence: t.aiConfidence ?? null,
-      })),
-    }),
-    prisma.bankAccount.update({
-      where: { id: contaId },
-      data: { balance: { increment: ajusteSaldo } },
-    }),
-    // Incrementa vezesAplicada das regras que dispararam
-    ...Array.from(rulesFired.entries()).map(([ruleId, count]) =>
-      prisma.aiLearningRule.update({
-        where: { id: ruleId },
-        data: { vezesAplicada: { increment: count } },
+  try {
+    await prisma.$transaction([
+      prisma.transaction.createMany({
+        data: classified.map((t) => ({
+          bankAccountId: t.bankAccountId,
+          date: t.date,
+          description: t.description,
+          amount: t.amount,
+          type: t.type,
+          status: t.status,
+          origin: t.origin,
+          externalId: t.externalId,
+          dedupHash: t.dedupHash,
+          // Onda 2 Sprint 2.3 — vincula ao registro de import (pra revert)
+          importId: importRow.id,
+          // Campos AI (preenchidos só quando t.status='RECONCILED')
+          categoryId: t.categoryId ?? null,
+          classificationSource: t.classificationSource ?? null,
+          classifiedByRuleId: t.classifiedByRuleId ?? null,
+          aiConfidence: t.aiConfidence ?? null,
+        })),
       }),
-    ),
-  ])
+      prisma.bankAccount.update({
+        where: { id: contaId },
+        data: { balance: { increment: ajusteSaldo } },
+      }),
+      // Incrementa vezesAplicada das regras que dispararam
+      ...Array.from(rulesFired.entries()).map(([ruleId, count]) =>
+        prisma.aiLearningRule.update({
+          where: { id: ruleId },
+          data: { vezesAplicada: { increment: count } },
+        }),
+      ),
+    ])
+  } catch (err) {
+    // Marca import como FAILED + propaga erro pra cliente
+    await prisma.ofxImport.update({
+      where: { id: importRow.id },
+      data: {
+        status: 'FAILED',
+        errorMessage: err instanceof Error ? err.message : String(err),
+      },
+    })
+    return NextResponse.json(
+      { erro: 'Erro ao salvar transações', importId: importRow.id },
+      { status: 500 },
+    )
+  }
+
+  // Atualiza import → SUCCESS + totais finais
+  await prisma.ofxImport.update({
+    where: { id: importRow.id },
+    data: {
+      status: 'SUCCESS',
+      newTransactions: novas.length,
+      autoClassified: autoCount,
+    },
+  })
 
   // Fase 3 Etapa 2: persiste sugestões de fornecedor (Camada 2A keyword)
   // APÓS o createMany. Cria Supplier + linka transaction.supplierId.
@@ -201,5 +262,6 @@ export async function POST(request: NextRequest, { params }: Params) {
     predictMs,
     keywordPersistMs,
     errosParser: errors,
+    importId: importRow.id,
   })
 }

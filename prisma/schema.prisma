@@ -29,6 +29,9 @@ model User {
   passwordResetCodes  PasswordResetCode[]
   // Sprint 1.7 — Cupons aplicados no signup
   couponRedemptions   CouponRedemption[]
+  // Onda 2 Sprint 2.3 — quem importou cada OFX
+  ofxImports          OfxImport[]
+  ofxImportsReverted  OfxImport[] @relation("OfxImportReverter")
 
   @@map("users")
 }
@@ -115,6 +118,8 @@ model BankAccount {
 
   company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
   transactions Transaction[]
+  // Onda 2 Sprint 2.3 — histórico de imports OFX
+  ofxImports   OfxImport[]
 
   @@map("bank_accounts")
 }
@@ -173,17 +178,23 @@ model Transaction {
   // grupos com várias empresas/filiais. Independente da categoria/DRE group.
   costCenterId String?
 
+  // Onda 2 Sprint 2.3 — qual import OFX trouxe essa transação (null = manual / antes da Onda 2).
+  importId     String?
+
   bankAccount      BankAccount     @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
   category         Category?       @relation(fields: [categoryId], references: [id])
   supplier         Supplier?       @relation(fields: [supplierId], references: [id])
   classifiedByRule AiLearningRule? @relation(fields: [classifiedByRuleId], references: [id])
   costCenter       CostCenter?     @relation(fields: [costCenterId], references: [id])
+  // Onda 2 Sprint 2.3 — vínculo com OfxImport (SetNull se import for deletado)
+  ofxImport        OfxImport?      @relation(fields: [importId], references: [id], onDelete: SetNull)
 
   @@unique([bankAccountId, dedupHash])
   @@index([bankAccountId, externalId])
   @@index([bankAccountId, date])
   @@index([costCenterId])
   @@index([transferGroupId])
+  @@index([importId])
   @@map("transactions")
 }
 
@@ -780,4 +791,47 @@ model CouponRedemption {
   @@index([userId])
   @@index([redeemedAt])
   @@map("coupon_redemptions")
+}
+
+// ============================================================
+// Onda 2 Sprint 2.3 — Histórico de imports OFX
+// ============================================================
+//
+// Cada upload de arquivo OFX cria 1 OfxImport (status PROCESSING).
+// Ao final, status vira SUCCESS (com totais) ou FAILED (com errorMessage).
+// "Reverter" um import deleta as transações vinculadas (importId) e marca
+// status=REVERTED — o registro do import permanece pra auditoria.
+//
+// Multi-OFX (Sprint 2.4): cada arquivo gera 1 linha (processamento sequencial).
+model OfxImport {
+  id                String   @id @default(cuid())
+  bankAccountId     String
+  userId            String
+  // PROCESSING | SUCCESS | FAILED | REVERTED
+  status            String   @default("PROCESSING")
+  fileName          String
+  fileSize          Int      @default(0)
+  totalTransactions Int      @default(0)
+  newTransactions   Int      @default(0)
+  duplicates        Int      @default(0)
+  autoClassified    Int      @default(0)
+  periodStart       DateTime?
+  periodEnd         DateTime?
+  ipAddress         String?
+  userAgent         String?
+  errorMessage      String?
+  revertedAt        DateTime?
+  revertedById      String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  bankAccount  BankAccount   @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  revertedBy   User?         @relation("OfxImportReverter", fields: [revertedById], references: [id])
+  transactions Transaction[]
+
+  @@index([bankAccountId, createdAt])
+  @@index([userId])
+  @@index([status])
+  @@map("ofx_imports")
 }
