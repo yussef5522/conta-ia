@@ -257,6 +257,7 @@ export function FornecedoresClient({
               <SelectItem value="MANUAL">Manual</SelectItem>
               <SelectItem value="BRASILAPI">BrasilAPI</SelectItem>
               <SelectItem value="CLAUDE">IA</SelectItem>
+              <SelectItem value="KEYWORD">Keyword</SelectItem>
             </SelectContent>
           </Select>
         </div>

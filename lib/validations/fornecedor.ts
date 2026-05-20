@@ -38,7 +38,9 @@ export type UpdateFornecedorInput = z.infer<typeof updateFornecedorSchema>
 
 export const listFornecedoresQuerySchema = z.object({
   q: z.string().trim().optional(),
-  fonte: z.enum(['MANUAL', 'BRASILAPI', 'CLAUDE', 'ALL']).default('ALL'),
+  fonte: z
+    .enum(['MANUAL', 'BRASILAPI', 'CLAUDE', 'KEYWORD', 'ALL'])
+    .default('ALL'),
   categoryId: z.string().cuid().optional(),
   comCnpj: z.enum(['all', 'true', 'false']).default('all'),
   isActive: z.enum(['all', 'true', 'false']).default('all'),

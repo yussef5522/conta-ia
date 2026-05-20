@@ -108,6 +108,7 @@ export async function GET(request: NextRequest, { params }: Params) {
       MANUAL: 0,
       BRASILAPI: 0,
       CLAUDE: 0,
+      KEYWORD: 0,
     }
     for (const s of statsRaw) {
       statsByFonte[s.fonte] = s._count.id
@@ -126,7 +127,10 @@ export async function GET(request: NextRequest, { params }: Params) {
       },
       stats: {
         totalAtivos:
-          statsByFonte.MANUAL + statsByFonte.BRASILAPI + statsByFonte.CLAUDE,
+          statsByFonte.MANUAL +
+          statsByFonte.BRASILAPI +
+          statsByFonte.CLAUDE +
+          statsByFonte.KEYWORD,
         porFonte: statsByFonte,
         topPorValor: topPorValorEnriched,
       },

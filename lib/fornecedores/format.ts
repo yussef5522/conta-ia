@@ -1,12 +1,13 @@
 // Helpers PUROS de UI pra fornecedores (Supplier) — Sprint 2.2.
 
-export type SupplierFonte = 'MANUAL' | 'BRASILAPI' | 'CLAUDE'
+export type SupplierFonte = 'MANUAL' | 'BRASILAPI' | 'CLAUDE' | 'KEYWORD'
 
 export function fonteLabel(f: string): string {
   switch (f) {
     case 'BRASILAPI': return 'BrasilAPI'
     case 'CLAUDE': return 'IA'
     case 'MANUAL': return 'Manual'
+    case 'KEYWORD': return 'Keyword'
     default: return f
   }
 }
@@ -19,6 +20,8 @@ export function fonteColor(f: string): { bg: string; text: string } {
       return { bg: 'bg-purple-500/10', text: 'text-purple-600 dark:text-purple-400' }
     case 'MANUAL':
       return { bg: 'bg-zinc-500/10', text: 'text-zinc-600 dark:text-zinc-400' }
+    case 'KEYWORD':
+      return { bg: 'bg-amber-500/10', text: 'text-amber-600 dark:text-amber-400' }
     default:
       return { bg: 'bg-zinc-500/10', text: 'text-zinc-500' }
   }

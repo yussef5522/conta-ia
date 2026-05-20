@@ -60,15 +60,17 @@ describe('formatCNPJ / unformatCNPJ', () => {
 })
 
 describe('fonteLabel / fonteColor', () => {
-  it('3 fontes oficiais', () => {
+  it('4 fontes (incluindo KEYWORD)', () => {
     expect(fonteLabel('MANUAL')).toBe('Manual')
     expect(fonteLabel('BRASILAPI')).toBe('BrasilAPI')
     expect(fonteLabel('CLAUDE')).toBe('IA')
+    expect(fonteLabel('KEYWORD')).toBe('Keyword')
   })
 
   it('cores distintas por fonte', () => {
     expect(fonteColor('BRASILAPI').text).toContain('blue')
     expect(fonteColor('CLAUDE').text).toContain('purple')
     expect(fonteColor('MANUAL').text).toContain('zinc')
+    expect(fonteColor('KEYWORD').text).toContain('amber')
   })
 })
