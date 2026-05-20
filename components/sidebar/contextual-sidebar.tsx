@@ -13,6 +13,8 @@ import {
   Shield,
   History,
   Settings,
+  Brain,
+  Store,
   type LucideIcon,
 } from 'lucide-react'
 import { SidebarItem } from './sidebar-item'
@@ -68,6 +70,23 @@ const MENU_GROUPS: MenuGroupDef[] = [
         hrefSuffix: '/dre',
         permission: 'dre.view',
         badge: '⭐',
+      },
+    ],
+  },
+  {
+    title: 'IA Contadora',
+    items: [
+      {
+        icon: Brain,
+        label: 'Regras Aprendidas',
+        hrefSuffix: '/regras',
+        permission: 'transaction.view',
+      },
+      {
+        icon: Store,
+        label: 'Fornecedores',
+        hrefSuffix: '/fornecedores',
+        permission: 'transaction.view',
       },
     ],
   },

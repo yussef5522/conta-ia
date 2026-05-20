@@ -29,6 +29,20 @@ export type AuditAction =
   | 'TEAM_INVITE_SENT'
   | 'WELCOME_EMAIL_SENT'
   | 'EMAIL_DELIVERY_FAILED'
+  // Onda 2 Sprint 2.1 — IA Contadora regras
+  | 'RULE_UPDATED'
+  | 'RULE_DELETED'
+  | 'RULE_PAUSED'
+  | 'RULE_RESUMED'
+  // Onda 2 Sprint 2.2 — IA Contadora fornecedores
+  | 'SUPPLIER_CREATED'
+  | 'SUPPLIER_UPDATED'
+  | 'SUPPLIER_DELETED'
+  // Onda 2 Sprint 2.3 — histórico OFX
+  | 'OFX_IMPORT_STARTED'
+  | 'OFX_IMPORT_COMPLETED'
+  | 'OFX_IMPORT_FAILED'
+  | 'OFX_IMPORT_REVERTED'
 
 export type FieldsChanged = Record<string, { before: unknown; after: unknown }>
 
