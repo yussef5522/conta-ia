@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { Plus, Landmark, ArrowUpRight, ArrowDownRight, Building2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { FreshnessBadge } from '@/components/contas-bancarias/freshness-badge'
 import { Badge } from '@/components/ui/badge'
 import {
   DropdownMenu,
@@ -33,6 +34,8 @@ interface Conta {
   isActive: boolean
   companyId: string
   company: { name: string; tradeName: string | null }
+  // Onda 2 Sprint 2.4 — badge "atualizado há X dias"
+  lastSuccessfulImportAt: string | null
 }
 
 interface EmpresaGroup {
@@ -211,7 +214,10 @@ export default function ContasBancariasPage() {
                         </div>
                       </div>
                       <div className="flex items-center justify-between">
-                        <Badge variant="outline">{TIPO_LABELS[conta.accountType] ?? conta.accountType}</Badge>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline">{TIPO_LABELS[conta.accountType] ?? conta.accountType}</Badge>
+                          <FreshnessBadge lastImportAt={conta.lastSuccessfulImportAt} />
+                        </div>
                         <div className={`flex items-center gap-1 font-bold text-lg ${conta.balance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                           {conta.balance >= 0
                             ? <ArrowUpRight className="h-4 w-4" />

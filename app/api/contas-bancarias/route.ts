@@ -21,7 +21,25 @@ export async function GET(request: NextRequest) {
         orderBy: { createdAt: 'asc' },
       })
 
-      return NextResponse.json({ contas })
+      // Onda 2 Sprint 2.4 — anexa lastSuccessfulImport pra badge freshness
+      const lastImports = await prisma.ofxImport.groupBy({
+        by: ['bankAccountId'],
+        where: {
+          bankAccountId: { in: contas.map((c) => c.id) },
+          status: 'SUCCESS',
+        },
+        _max: { createdAt: true },
+      })
+      const lastMap = new Map(
+        lastImports.map((i) => [i.bankAccountId, i._max.createdAt]),
+      )
+
+      return NextResponse.json({
+        contas: contas.map((c) => ({
+          ...c,
+          lastSuccessfulImportAt: lastMap.get(c.id) ?? null,
+        })),
+      })
     }
 
     // Path "global": agrega contas de todas empresas onde o user tem bank_account.view
@@ -47,7 +65,25 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: 'asc' },
     })
 
-    return NextResponse.json({ contas })
+    // Onda 2 Sprint 2.4 — lastSuccessfulImportAt no path global também
+    const lastImports = await prisma.ofxImport.groupBy({
+      by: ['bankAccountId'],
+      where: {
+        bankAccountId: { in: contas.map((c) => c.id) },
+        status: 'SUCCESS',
+      },
+      _max: { createdAt: true },
+    })
+    const lastMap = new Map(
+      lastImports.map((i) => [i.bankAccountId, i._max.createdAt]),
+    )
+
+    return NextResponse.json({
+      contas: contas.map((c) => ({
+        ...c,
+        lastSuccessfulImportAt: lastMap.get(c.id) ?? null,
+      })),
+    })
   } catch (error) {
     return handleApiError(error)
   }

@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   XCircle,
 } from 'lucide-react'
+import { MultiOfxDropZone } from '@/components/imports/multi-ofx-dropzone'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import {
@@ -86,6 +87,9 @@ export function ImportsClient({ empresaId, empresaNome, contas }: Props) {
 
   const [viewing, setViewing] = useState<ImportRow | null>(null)
   const [confirmRevert, setConfirmRevert] = useState<ImportRow | null>(null)
+  const [dropTargetConta, setDropTargetConta] = useState<string>(
+    contas[0]?.id ?? '',
+  )
 
   const fetchData = useCallback(
     async (resetPage = false) => {
@@ -166,6 +170,34 @@ export function ImportsClient({ empresaId, empresaNome, contas }: Props) {
           transações e ajusta saldo.
         </p>
       </div>
+
+      {/* Multi-OFX dropzone */}
+      {contas.length > 0 && (
+        <div className="rounded-lg border bg-card p-4 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold">Importar novos extratos</h2>
+            <Select value={dropTargetConta} onValueChange={setDropTargetConta}>
+              <SelectTrigger className="h-8 text-xs w-[260px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {contas.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.bankName ? `${c.bankName} · ` : ''}
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {dropTargetConta && (
+            <MultiOfxDropZone
+              bankAccountId={dropTargetConta}
+              onComplete={() => void fetchData(true)}
+            />
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <div className="space-y-1">

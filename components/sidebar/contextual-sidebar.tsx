@@ -15,6 +15,7 @@ import {
   Settings,
   Brain,
   Store,
+  Upload,
   type LucideIcon,
 } from 'lucide-react'
 import { SidebarItem } from './sidebar-item'
@@ -86,6 +87,12 @@ const MENU_GROUPS: MenuGroupDef[] = [
         icon: Store,
         label: 'Fornecedores',
         hrefSuffix: '/fornecedores',
+        permission: 'transaction.view',
+      },
+      {
+        icon: Upload,
+        label: 'Histórico OFX',
+        hrefSuffix: '/imports',
         permission: 'transaction.view',
       },
     ],
