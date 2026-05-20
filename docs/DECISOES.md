@@ -262,4 +262,60 @@ Cada decisão tem **contexto**, **opções consideradas**, **escolha**, **razão
 
 ---
 
+## D14 — Onda 2 = polish IA antes de cobrança (caminho A)
+
+**Contexto:** Após auditoria 20/05/2026 mostrar que engine IA estava 80% pronta (pipeline 3 camadas + Claude + BrasilAPI funcionando) mas docs estavam desatualizados, três caminhos foram considerados pra Onda 2:
+- (A) Polir IA + validar com OFX reais antes de divulgar
+- (B) Cobrança SaaS (Asaas/Stripe)
+- (C) Sprint 3 Dashboard + onboarding beta
+
+**Escolha:** **(A)** — fechar UI da IA (regras + fornecedores), histórico de imports, multi-OFX + badge, e só depois cobrar.
+
+**Razão:**
+- FUNDADOR100 já cobre 100 primeiros contratos → cobrança não é urgente
+- Validar IA com OFX reais antes de divulgar pros amigos transforma launch em "wow" em vez de "promete IA mas erra"
+- Backend pronto + UI bonita = produto verdadeiramente "ship-ready"
+- Risco de marketing IA sem validação real é maior que oportunidade de cobrar 100 free users imediatamente
+
+---
+
+## D15 — Multi-OFX processa SEQUENCIALMENTE (não paralelo)
+
+**Contexto:** Sprint 2.4 — usuário pode arrastar 5-20 arquivos OFX de uma vez. Processar em paralelo seria mais rápido mas tem risco de race condition no dedupHash (mesmo hash pode ser INSERT 2x).
+
+**Opções:**
+- (A) Promise.all paralelo (mais rápido, race condition possível)
+- (B) Loop for...of sequencial (mais lento, zero race)
+- (C) Promise.all com mutex por bankAccountId
+
+**Escolha:** **(B)** — sequencial.
+
+**Razão:**
+- Tempo de processar 10 arquivos OFX ≈ 5s sequencial vs 1.5s paralelo. Diferença irrelevante pra UX (já mostra fila visual com progress)
+- Race condition no `@@unique([bankAccountId, dedupHash])` causaria erro 500 imprevisível, requereria retry logic
+- Sequencial reusa rules + categorias carregadas 1 vez (cache de memória entre arquivos)
+- Mutex (C) é complexidade desnecessária pra ganho marginal
+
+**Implementação:** `for (const file of files) { ... }` em `app/api/contas-bancarias/[id]/importar-ofx-multiplos/route.ts`.
+
+---
+
+## D16 — Reverter import = DELETE + marcar REVERTED (não soft-delete tx)
+
+**Contexto:** Sprint 2.3 — funcionalidade de "reverter import OFX". Duas semânticas possíveis:
+- (A) Marcar transações como `status='REVERTED'` (soft-delete)
+- (B) DELETE transações + marcar só o OfxImport como REVERTED (hard-delete tx, soft no audit)
+
+**Escolha:** **(B)** — deletar transações, preservar OfxImport com status REVERTED.
+
+**Razão:**
+- Permite re-importar o mesmo arquivo OFX após revert (dedupHash fica livre porque a row sumiu)
+- Status REVERTED em Transaction adicionaria 4ª variante semântica (PENDING/RECONCILED/IGNORED/REVERTED) e poluiria queries em todo lugar (DRE, cashflow, balance, etc precisariam filtrar)
+- OfxImport.status=REVERTED preserva audit (quem reverteu, quando, quantas tx, ajuste de saldo)
+- Transferências (transferGroupId) deletam o par inteiro pra evitar "meia transferência órfã"
+
+**Implementação:** `app/api/empresas/[id]/imports/[importId]/revert/route.ts` faz atomic transaction com deleteMany + decrement balance + update OfxImport.
+
+---
+
 **Doc mantido em `docs/DECISOES.md`. Atualizar a cada decisão significativa.**

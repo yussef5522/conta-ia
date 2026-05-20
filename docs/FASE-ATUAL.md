@@ -1,25 +1,42 @@
-# Fase Atual — ✅ ONDA 1 FOUNDATION SaaS COMPLETA
+# Fase Atual — ✅ ONDA 2 IA CONTADORA POLISH COMPLETA
 
-**Status:** Onda 1 totalmente entregue em 19/05/2026. Próxima onda aguarda decisão do Yussef.
+**Status:** Onda 2 entregue em 20/05/2026. Aguardando Sprint 2.6 (validação real Yussef) antes da divulgação FUNDADOR100.
 
-Sprints 1.1 → 1.7 entregues:
-- 1.1 ✅ Investigação + plano (docs/ONDA-1-PLANO.md)
-- 1.2 ✅ Login premium (split 40/60, Logo Chart, brand #0C447C)
-- 1.3 ✅ nginx + subdomínios SSL (app/admin/caixaos)
-- 1.4 ✅ Meu Time (convidar via link copy)
-- 1.5 ✅ Esqueci senha + Resend (email transacional)
-- 1.6 ✅ Painel Gerenciador (admin.caixaos.com.br, tabela isolada)
-- 1.7 ✅ **CRUD Cupons + onboarding com desconto (FUNDADOR100 ativo)**
+## Histórico de ondas
 
-Documentos de referência:
-- `docs/SPRINT-1-7-RESUMO.md` — detalhes da sprint final
-- `docs/ONDA-1-COMPLETA.md` — celebração e estatísticas da Onda
-- `docs/DECISOES.md` — 13 decisões arquiteturais (D1-D13)
+### ✅ Onda 1 — Foundation SaaS (Sprints 1.1 → 1.7, 19/05/2026)
+Subdomínios, RBAC, audit, Resend email, password reset, painel admin, cupons.
 
-Próximas ondas possíveis (Yussef decide):
-- Onda 2 — Cobrança SaaS (Asaas/Stripe)
-- Onda 3 — Multi-tenant avançado
-- Onda 4 — Métricas (MRR/ARR)
-- Onda 5 — Onboarding produto
+### ✅ Onda 2 — IA Contadora Polish (Sprints 2.1 → 2.5, 20/05/2026)
+- 2.1 ✅ Tela `/regras` CRUD (5 endpoints + audit)
+- 2.2 ✅ Tela `/fornecedores` CRUD (4 endpoints + validador CNPJ módulo 11)
+- 2.3 ✅ Histórico OFX + Revert (migration `add_ofx_imports_history` + 4 endpoints)
+- 2.4 ✅ Multi-OFX sequencial + Badge "Atualizado há X dias"
+- 2.5 ✅ Limpeza docs (D14-D16, ONDA-2-COMPLETA.md)
 
-Antes (FASE 3) está documentado em `docs/_arquivado/` mais antigo.
+## Sprints paralelos já entregues (auditoria 20/05/2026 confirmou)
+
+- **Sprint 0.5** (11/05) Transferências entre contas + saldo negativo
+- **Sprint 1 Dashboard Mundial** (11/05) Hero Strip + Mini-DRE + Top 5 + Saúde + Recent + Pendentes
+- **Sprint 2 Dashboard** Cashflow Waterfall + AI Insights com 7 detectors
+- **Fase 3 IA Etapas 1+2+3** Engine completa (regras, BrasilAPI, Claude Haiku, cache, rate-limiter, telemetria)
+
+## Próximo passo
+
+### Sprint 2.6 — Validação real (Yussef executa, não-código)
+
+Importar 1 mês de OFX real das 3 contas principais (Banrisul/Sicredi/Caixa) e medir % de auto-classificação. Meta: ≥80% pra liberar divulgação do `FUNDADOR100`.
+
+### Onda 3 — opções (Yussef decide pós-2.6)
+
+- Cobrança SaaS (Asaas/Stripe)
+- Polimento Dashboard Sprint 3 (PDF/Excel)
+- Beta com 100 fundadores
+- Apuração de impostos (DAS/IRPJ + Reforma Tributária 2026)
+
+## Documentos
+
+- `docs/ONDA-1-COMPLETA.md` · `docs/ONDA-2-COMPLETA.md` — celebrações
+- `docs/DECISOES.md` — D1-D16 (16 decisões arquiteturais)
+- `docs/SPRINT-1-7-RESUMO.md` — último resumo detalhado
+- `docs/DASHBOARD-PLAN.md` — Sprint 3 e seguintes do dashboard

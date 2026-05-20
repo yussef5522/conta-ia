@@ -360,7 +360,7 @@ Pequenas vitórias visuais antes de mexer com IA. Sem migration.
   - UI mostra "Banco detectado: **Banrisul** (041)" e oferece auto-preencher se conta sem `bankName`
   - **Validado com dados reais:** 270 transações do Banrisul importadas, saldo R$ 5.821,08 correto, detecção verde.
 
-- [ ] **3.2 — "Atualizado há X dias" na lista de contas** (~1-2h)
+- [x] **3.2 — "Atualizado há X dias" na lista de contas** (Onda 2 Sprint 2.4)
   - calcular `lastImportAt = max(transactions.createdAt where origin in (OFX, PLUGGY))`
   - badge na `/contas-bancarias` com cor: verde (<7d), amarelo (8-14d), vermelho (>14d ou nunca)
   - **Teste:** importar OFX → badge "hoje" verde.
@@ -368,39 +368,39 @@ Pequenas vitórias visuais antes de mexer com IA. Sem migration.
 #### 🧠 BLOCO B — Classificação com 1 arquivo (2-3 semanas) — TESTES COM DADOS REAIS COMEÇAM AQUI
 Foco em fazer Yussef classificar manualmente já criando regras, depois automatizar.
 
-- [ ] **4.1 — Schema novo (suppliers + ai_learning_rules)** (~2-3h)
+- [x] **4.1 — Schema novo (suppliers + ai_learning_rules + ai_claude_cache + ai_usage_log)** (FASE 3 Etapa 1)
   - migration: `suppliers` (id, companyId, cnpj, razaoSocial, categoriaId?, fonte=BRASILAPI/MANUAL/CLAUDE, createdAt)
   - migration: `ai_learning_rules` (id, companyId, padrao, tipoMatch=EXACT/CONTAINS/CNPJ, categoriaId, supplierId?, confianca, vezesAplicada, createdAt, updatedAt)
   - sem mudança de UI ainda; só base
   - rodar migration em dev (não em prod ainda)
 
-- [ ] **4.5 — Tela "Pendentes de Classificação" (manual ainda, sem IA)** (~3-4h)
+- [x] **4.5 — Tela "Pendentes de Classificação" com sugestões Claude lazy** (FASE 3 Etapa 3)
   - rota nova `/empresas/[id]/pendentes` (ou filtro `?status=PENDING` na página global de transações)
   - lista transações com `status = PENDING` (todas as importadas via OFX entram assim)
   - cada linha tem dropdown de categoria + botão "Confirmar"
   - sem IA ainda — só interface humana eficiente
   - **Teste:** importar 1 OFX e classificar 30-50 manualmente; medir tempo.
 
-- [ ] **4.6 — Loop: confirmar manualmente cria/atualiza regra** (~3-4h)
+- [x] **4.6 — Loop: confirmar manualmente cria/atualiza regra** (FASE 3 Etapa 1 — `classificar-com-aprendizado`)
   - ao confirmar categoria, salva `ai_learning_rule` com padrão = primeiras N palavras significativas do `description` (stop-words removidas)
   - se regra similar já existe (mesmo `padrao` + `tipoMatch`), incrementa `vezesAplicada`
   - se descrição contém CNPJ válido, salva `supplier` também
   - 🎯 **MARCO 1:** Yussef já consegue treinar manualmente uma base de regras a partir de 1 OFX importado.
 
-- [ ] **4.2 — Pipeline etapa 1: aplicar regras automaticamente no import** (~2-3h)
+- [x] **4.2 — Pipeline etapa 1: aplicar regras automaticamente no import** (FASE 3 Etapa 1 — `autoClassifyTransactions`)
   - hook: ao inserir transações novas via OFX, antes do `createMany`, rodar match contra `ai_learning_rules` da empresa
   - ordem de match: EXACT → CNPJ → CONTAINS
   - se bate, `categoryId` preenchido + `status = RECONCILED` (ou novo `AUTOMATICO`)
   - 🎯 **MARCO 2:** próximo OFX já vem 30-50% pré-classificado.
 
-- [ ] **4.3 — Pipeline etapa 2: enriquecer por CNPJ via BrasilAPI** (~3-4h)
+- [x] **4.3 — Pipeline etapa 2: enriquecer por CNPJ via BrasilAPI** (FASE 3 Etapa 2)
   - extractor de CNPJ na descrição (regex `\d{2}\.?\d{3}\.?\d{3}/?\d{4}-?\d{2}`)
   - cache local em `suppliers` por CNPJ
   - se não tem cache, consulta BrasilAPI (`/cnpj/v1/{cnpj}`), salva `razaoSocial` + sugestão de `categoria` baseada em CNAE primário
   - rate-limit cliente: 3 req/s
   - 🎯 **MARCO 3:** transações com CNPJ vêm com fornecedor identificado mesmo sem regra prévia.
 
-- [ ] **4.4 — Pipeline etapa 3: Claude Haiku com few-shot** (~4-6h)
+- [x] **4.4 — Pipeline etapa 3: Claude Haiku com few-shot** (FASE 3 Etapa 3 — fetch direto sem SDK, modelo `claude-haiku-4-5-20251001`)
   - rota interna `/api/classificar` recebe `{ description, amount, type }` retorna `{ categoriaSugerida, confianca, justificativa }`
   - prompt few-shot com 10-15 exemplos do setor da empresa
   - prompt caching da Anthropic na parte fixa do prompt
@@ -410,12 +410,12 @@ Foco em fazer Yussef classificar manualmente já criando regras, depois automati
 #### 🪟 BLOCO C — Visibilidade e dashboard (1-2 semanas)
 Painéis para Yussef visualizar o que foi aprendido.
 
-- [ ] **4.7 — Tela "Regras Aprendidas" (CRUD)** (~3-4h)
+- [x] **4.7 — Tela "Regras Aprendidas" (CRUD)** (Onda 2 Sprint 2.1)
   - rota `/empresas/[id]/regras`
   - tabela: padrão / tipo / categoria / vezes aplicada / confiança / ações (editar, desativar, excluir)
   - filtro por categoria
 
-- [ ] **4.8 — Tela "Fornecedores"** (~2-3h)
+- [x] **4.8 — Tela "Fornecedores"** (Onda 2 Sprint 2.2)
   - rota `/empresas/[id]/fornecedores`
   - tabela: CNPJ / razão social / categoria padrão / total movimentado / última transação
   - cada linha linka para transações filtradas
@@ -431,13 +431,13 @@ Painéis para Yussef visualizar o que foi aprendido.
 #### 📦 BLOCO D — Escalar import (1 semana)
 Depois que IA está validada, melhora ergonomia para volumes maiores.
 
-- [ ] **3.3 — Múltiplos arquivos OFX por vez** (~2-3h)
+- [x] **3.3 — Múltiplos arquivos OFX por vez** (Onda 2 Sprint 2.4 — `<MultiOfxDropZone>` sequencial)
   - input `multiple`, estado `arquivos: File[]`
   - preview paralelo + confirmação em série
   - tratamento de falha parcial (sem rollback — quem importou ficou)
   - mensagem final: "5 arquivos · 142 transações importadas · 23 duplicadas · 1 com erro"
 
-- [ ] **3.4 — Histórico de uploads** (~3-4h)
+- [x] **3.4 — Histórico de uploads + revert** (Onda 2 Sprint 2.3 — `ofx_imports` + `/empresas/[id]/imports`)
   - migration: `OfxImport` (id, bankAccountId, importedByUserId, fileName, fileSize, totalLidas, inseridas, duplicadas, errosCount, errosJSON, createdAt)
   - rota `GET /api/contas-bancarias/[id]/importacoes`
   - página `/empresas/[id]/contas/[contaId]/importacoes`
