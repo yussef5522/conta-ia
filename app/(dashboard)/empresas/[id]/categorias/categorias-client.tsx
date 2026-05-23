@@ -71,7 +71,7 @@ export function CategoriasClient({
       try {
         setLoading(true)
         setErro(null)
-        const res = await fetch(`/api/empresas/${empresaId}/categorias`)
+        const res = await fetch(`/api/empresas/${empresaId}/categorias?comTotais=true`)
         if (!res.ok) {
           const data = await res.json().catch(() => ({}))
           throw new Error(data.erro ?? 'Erro ao carregar categorias')
@@ -401,6 +401,8 @@ export function CategoriasClient({
                 onReorder={handleReorder}
                 onRename={handleRename}
                 interactiveDisabled={mode !== 'view'}
+                empresaId={empresaId}
+                showTotals={true}
                 onInvalidDrop={() => {
                   toast({
                     title: 'Movimento entre níveis não permitido',

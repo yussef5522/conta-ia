@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useMemo, useState, useCallback } from 'react'
-import { ChevronRight, ChevronDown, EyeOff, GripVertical } from 'lucide-react'
+import { ChevronRight, ChevronDown, EyeOff, GripVertical, ExternalLink } from 'lucide-react'
+import Link from 'next/link'
 import {
   DndContext,
   PointerSensor,
@@ -37,6 +38,9 @@ interface Props {
   interactiveDisabled?: boolean
   // Mensagem mostrada via toast quando user tenta drop entre níveis (drag inválido).
   onInvalidDrop?: () => void
+  // Sprint 3.0.2 B3 — mostra Total R$ + drill-down pra /transacoes filtrado
+  empresaId?: string
+  showTotals?: boolean
 }
 
 export function CategoryTree({
@@ -48,6 +52,8 @@ export function CategoryTree({
   onRename,
   interactiveDisabled = false,
   onInvalidDrop,
+  empresaId,
+  showTotals = false,
 }: Props) {
   const initialExpanded = useMemo(() => {
     const set = new Set<string>()
@@ -148,6 +154,8 @@ export function CategoryTree({
               onRename={onRename}
               dndDisabled={dndDisabled}
               interactiveDisabled={interactiveDisabled}
+              empresaId={empresaId}
+              showTotals={showTotals}
             />
           ))}
         </ul>
@@ -168,6 +176,9 @@ interface ItemProps {
   onRename?: (id: string, newName: string) => void
   dndDisabled: boolean
   interactiveDisabled: boolean
+  // Sprint 3.0.2 B3
+  empresaId?: string
+  showTotals?: boolean
 }
 
 function CategoryTreeItem({
@@ -182,6 +193,8 @@ function CategoryTreeItem({
   onRename,
   dndDisabled,
   interactiveDisabled,
+  empresaId,
+  showTotals = false,
 }: ItemProps) {
   const isOpen = expanded.has(node.id)
   const isSelected = selectedId === node.id
@@ -302,24 +315,51 @@ function CategoryTreeItem({
           </span>
         )}
 
-        {/* Contador */}
-        {!isEditing &&
-          (node.transactionCount > 0 ? (
-            <span
-              className="shrink-0 text-xs text-muted-foreground tabular-nums"
-              aria-label={`${node.transactionCount} transações vinculadas`}
-            >
-              ({node.transactionCount})
-            </span>
-          ) : (
-            <span
-              className="shrink-0 text-xs text-muted-foreground/60 tabular-nums"
-              title="Nunca usada"
-              aria-label="Nunca usada"
-            >
-              (0)
-            </span>
-          ))}
+        {/* Contador + Total R$ (Sprint 3.0.2 B3) */}
+        {!isEditing && (
+          <>
+            {showTotals && node.totalAmountRollup > 0 && (
+              <span
+                className="shrink-0 text-xs text-muted-foreground tabular-nums hidden sm:inline"
+                title={
+                  node.children.length > 0 && node.totalAmount !== node.totalAmountRollup
+                    ? `Próprio: ${node.totalAmount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} · Com sub-categorias: ${node.totalAmountRollup.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`
+                    : node.totalAmountRollup.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                }
+              >
+                {node.totalAmountRollup.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}
+              </span>
+            )}
+            {node.transactionCount > 0 ? (
+              <span
+                className="shrink-0 text-xs text-muted-foreground tabular-nums"
+                aria-label={`${node.transactionCount} transações vinculadas`}
+              >
+                ({node.transactionCount})
+              </span>
+            ) : (
+              <span
+                className="shrink-0 text-xs text-muted-foreground/60 tabular-nums"
+                title="Nunca usada"
+                aria-label="Nunca usada"
+              >
+                (0)
+              </span>
+            )}
+            {/* Drill-down (Sprint 3.0.2 B3) */}
+            {empresaId && node.transactionCount > 0 && (
+              <Link
+                href={`/transacoes?empresaId=${empresaId}&categoryId=${node.id}`}
+                onClick={(e) => e.stopPropagation()}
+                aria-label="Ver transações desta categoria"
+                title="Ver transações desta categoria"
+                className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-primary"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+              </Link>
+            )}
+          </>
+        )}
 
         {/* Ícone inativa */}
         {!isEditing && isInactive && (
@@ -347,6 +387,8 @@ function CategoryTreeItem({
               onRename={onRename}
               dndDisabled={dndDisabled}
               interactiveDisabled={interactiveDisabled}
+              empresaId={empresaId}
+              showTotals={showTotals}
             />
           ))}
         </ul>

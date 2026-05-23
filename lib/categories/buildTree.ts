@@ -17,6 +17,8 @@ export interface CategoryFlat {
   isSystemDefault: boolean
   templateKey?: string | null
   _count?: { transactions: number; children?: number }
+  // Sprint 3.0.2 B3 — soma R$ de tx RECONCILED (opcional, vem se ?comTotais=true)
+  totalAmount?: number
 }
 
 export interface CategoryNode {
@@ -34,6 +36,10 @@ export interface CategoryNode {
   isActive: boolean
   isSystemDefault: boolean
   transactionCount: number
+  // Sprint 3.0.2 B3 — total R$ próprio (só dessa categoria, sem propagar pra cima)
+  totalAmount: number
+  // Sprint 3.0.2 B3 — total R$ incluindo descendentes (rollup)
+  totalAmountRollup: number
   children: CategoryNode[]
   depth: number
 }
@@ -74,6 +80,8 @@ export function buildTree(flat: CategoryFlat[]): CategoryNode[] {
       isActive: c.isActive,
       isSystemDefault: c.isSystemDefault,
       transactionCount: c._count?.transactions ?? 0,
+      totalAmount: c.totalAmount ?? 0,
+      totalAmountRollup: 0, // calculado depth-first depois
       children: [],
       depth: 0,
     })
@@ -102,6 +110,15 @@ export function buildTree(flat: CategoryFlat[]): CategoryNode[] {
     for (const c of n.children) calcularDepth(c, d + 1)
   }
   for (const r of roots) calcularDepth(r, 0)
+
+  // Sprint 3.0.2 B3 — calcula totalAmountRollup (próprio + descendentes)
+  const calcularRollup = (n: CategoryNode): number => {
+    let soma = n.totalAmount
+    for (const c of n.children) soma += calcularRollup(c)
+    n.totalAmountRollup = soma
+    return soma
+  }
+  for (const r of roots) calcularRollup(r)
 
   // Ordena raízes e filhos: order asc, depois name asc (pt-BR)
   const ordenarRecursivo = (nodes: CategoryNode[]) => {

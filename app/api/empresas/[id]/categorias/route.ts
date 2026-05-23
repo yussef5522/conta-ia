@@ -22,6 +22,7 @@ export async function GET(request: NextRequest, { params }: Params) {
     ctx.requirePermission('category.view')
 
     const soAtivas = request.nextUrl.searchParams.get('soAtivas') === 'true'
+    const comTotais = request.nextUrl.searchParams.get('comTotais') === 'true'
 
     const categorias = await prisma.category.findMany({
       where: { companyId: empresaId, ...(soAtivas ? { isActive: true } : {}) },
@@ -43,6 +44,28 @@ export async function GET(request: NextRequest, { params }: Params) {
         _count: { select: { transactions: true } },
       },
     })
+
+    // Sprint 3.0.2 B3 — soma R$ por categoria (opcional).
+    // Agregado SQL via groupBy pra evitar N+1; só inclui tx RECONCILED
+    // (não soma PENDING/IGNORED que distorceriam o total real).
+    if (comTotais) {
+      const totais = await prisma.transaction.groupBy({
+        by: ['categoryId'],
+        where: {
+          bankAccount: { companyId: empresaId },
+          categoryId: { in: categorias.map((c) => c.id) },
+          status: 'RECONCILED',
+        },
+        _sum: { amount: true },
+      })
+      const totalMap = new Map(totais.map((t) => [t.categoryId, Number(t._sum.amount ?? 0)]))
+      return NextResponse.json({
+        categorias: categorias.map((c) => ({
+          ...c,
+          totalAmount: totalMap.get(c.id) ?? 0,
+        })),
+      })
+    }
 
     return NextResponse.json({ categorias })
   } catch (error) {
