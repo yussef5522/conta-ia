@@ -624,4 +624,110 @@ Nota sobre AMORTIZACAO: 4 tx total na empresa (2 PENDING `C61021196` aplicadas e
 
 ---
 
+## D22 — Cacula Mix: Fechamento Final (funcionárias + 22 fornecedores diversos)
+
+**Data:** 2026-05-22
+**Status:** ✅ EXECUTADO
+
+**Contexto:**
+Após D17-D21 + Sprint 3.0.1, restavam 96 pendentes. Yussef revisou padrão a padrão (incluindo investigações: CIRO ASCIONE = NIS não CNPJ; COOPERATIVA SANTA TERESA = mensalidade escola filho = despesa pessoal). Esta migração fecha Cacula Mix em ~96.5%.
+
+**3 categorias novas:**
+- `Pagamento Cartão de Crédito` (sub `Despesas Financeiras`, DESPESAS_FINANCEIRAS) — pra pagamento da fatura do cartão (distinto de Maquininha, que é taxa adquirência)
+- `Segurança e Vigilância` (sub `Despesas Operacionais`, DESPESAS_ADMINISTRATIVAS) — pra serviços recorrentes tipo NC Eletrosul (existe `Sistema de Vigilância` sob INVESTIMENTOS, mas é equipamento, não mensalidade)
+- `Despesas Diversas` (sub `Outras Despesas`, OUTRAS_DESPESAS) — bucket pra compras pontuais sem categoria específica
+
+**Categorias reusadas (15):**
+Salários e Encargos · Matéria-Prima · Bebidas Revenda · Embalagens · Imobilizado · Maquininha de Cartão · Tarifas Bancárias · Juros e Encargos · Insumos Operacionais · Combustível Delivery · Cartorárias e Taxas Públicas · Marketing Digital · Tecnologia · Frete sobre Compras · Manutenção e Limpeza · Material de Escritório · Investimentos (raiz) · Distribuição de Lucros · Pagamento de Empréstimo
+
+**Regras IA novas (57 CONTAINS, confiança 0.92, fonte MANUAL):**
+
+22 funcionárias → Salários e Encargos (28 tx · R$ 40.543,65):
+- Eliane Garcia, Tiele Goncalves, Josyara Costa, Erica Karolayne, Alan Salbego, Renan da Silva Aires, Renan Ardais Cabral, Barbara Soares, Inaiara Silva, Jessica Oviedo, Isabel Almeida, Michelle Grohe, Tatiane de Mello, Ademar Bairros, Jessica Peres, Nadine da Luz, Andressa Raquel, Luana da Silva Ody, Renato Marques, Marcelo Kainoski, Luis Henrique Correa, Liege da Silva Boeira
+
+6 fornecedores → Matéria-Prima (6 tx · R$ 1.176,22):
+Nicola e Fernandes, Topflex, Carlos Cancian, Comercial Valoni, Casi Chocolates, Nestle Brasil
+
+1 fornecedor → Bebidas Revenda (2 tx · R$ 1.234,90): Bortolazzo
+
+1 pattern (TRENIER cobre 3 razões sociais) → Embalagens (3 tx · R$ 2.739,93)
+
+1 fornecedor → Imobilizado (1 tx · R$ 1.982,67): Irmãos Braun
+
+4 patterns → Pagamento Cartão de Crédito (4 tx · R$ 12.847,17):
+Debito Cartao de Credito, Cartoes Caixa Visa PJ, Deb.Cta.Fatura, NU Pagamentos S/A
+
+4 patterns → Maquininha (4 tx · R$ 1.444,11):
+Aluguel Maq Cartoes, Mensalidade Maquininha Stone, Vero Santo Antonio, Vero S A
+
+1 pattern → Tarifas Bancárias (1 tx · R$ 121,50): MENSALIDADE PACOTE
+
+1 pattern → Juros e Encargos (2 tx · R$ 266,45): JUROS
+
+1 pattern → Insumos Operacionais (1 tx · R$ 4.469,82): SUPERGASBRAS (gás cozinha)
+
+1 pattern → Combustível Delivery (1 tx · R$ 208,54): COMBUSTIVEIS PITANGUEIRA
+
+1 pattern → Cartorárias (1 tx · R$ 1.869,62): CARTORIO DO REGISTRO
+
+1 pattern → Marketing Digital (1 tx · R$ 1.000): GHOST AGENCIA
+
+1 pattern → Pagamento Empréstimo (1 tx · R$ 1.623,58): LIQUIDACAO DE PARCELA
+
+4 patterns → Tecnologia (3 tx · R$ 1.802,49):
+Vuca Solution, Ikatec Engenharia, NIC.BR, Nucleo de Informacao
+
+1 pattern → Frete sobre Compras (1 tx · R$ 2.849): LM TRANSP
+
+1 pattern → Manutenção (1 tx · R$ 1.000): DI CAR SUSPENSOES
+
+1 pattern → Segurança e Vigilância (1 tx · R$ 143): NC ELETROSUL
+
+1 pattern → Material de Escritório (1 tx · R$ 49,10): RM2 COMERCIO DE MATERIAIS
+
+1 pattern → Investimentos (1 tx · R$ 1.478,51): CONSORCIO (carro/imóvel)
+
+1 pattern → Distribuição de Lucros (1 tx · R$ 1.344,97): COOPERATIVA DE PAIS E MESTRES (mensalidade escola filho — despesa pessoal Yussef, não operacional)
+
+1 pattern → Despesas Diversas (1 tx · R$ 83,98): BRASIL FREE SHOP
+
+**Total aplicado: 66 tx · R$ 80.279,21 em 216ms (atomic via $transaction).**
+
+**Backup pré-execução:** `/opt/backups/pre-d22-cacula-20260522-221127.sql.gz`
+**Audit log:** 66 entries com `metadata.migration = 'D22 2026-05-22'` + `matchedPattern`.
+
+**Pendentes intencionais (29 tx restantes):**
+- `PIX ENVIADO` (7) / `PIX BANRISUL ENVIADO` (3) — descrições genéricas
+- `OP.CREDITO C/GARANTIA` sem espaço (4) — Yussef conservador
+- `CIRO ASCIONE JUNIOR` (2) — NIS não CNPJ, decisão pendente
+- `SOLOSUL SONDAGENS` (1) · `JR TERRAPLANAGEM` (1)
+- PFs esporádicos: Marcio, Ana Caroline, Daniela, Carla, Bruna, Cristiano (~5)
+- `PJBANK PAGAMENTOS` (1), `LUANA`, `PAOLA DORNELES`, etc
+
+**Estado final Cacula Mix:**
+- 1.755 tx total
+- **1.694 classificadas (96.5%)** ← era 92.8% após D21
+- 29 PENDING (1.7%)
+- 30 IGNORED (Yussef + workaround D20.1)
+- 2 RECONCILED sem categoryId (corner case)
+
+**Trajetória D17 → D22 (sessão única dia 22/05/2026):**
+| Migração | Tx | % acumulado |
+|---|---:|---:|
+| Inicial | — | 47.4% |
+| D17 (estrutura CMV + 39 regras) | 21 | 48.6% |
+| D18 (PIX/Stone/Conta Única) | 602 | 82.1% |
+| D19 (transferências + salários + fornecedores) | 106 | 88.1% |
+| D20 (funcionárias + imobilizado + outros) | 52 | 91.1% |
+| D20.1 + D21 | 19 | 92.8% |
+| **D22 (fechamento final)** | **66** | **96.5%** |
+| **ACUMULADO** | **866 tx** | **+49.1 pp · R$ 814.303,68 movimentados** |
+
+**Próximos passos:**
+1. **D23** — Replicar plano contábil Cacula Mix nas outras 12 academias do Yussef (adaptar pra setor SERVICE em vez de RESTAURANT)
+2. **Sprint 3.1 (tech debt)** — schema `AiLearningRule` com filtros `amountMin/Max/requireType`
+3. **Yussef classifica os 29 pendentes manuais** via UI (já com Safari fix da Sprint 3.0.1)
+
+---
+
 **Doc mantido em `docs/DECISOES.md`. Atualizar a cada decisão significativa.**
