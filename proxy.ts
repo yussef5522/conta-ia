@@ -157,8 +157,21 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // Rotas protegidas
+  // Sprint 3.0.1 — Safari ITP fix.
+  // Pra rotas de API protegidas: retorna 401 JSON em vez de 307 → /login.
+  // Razão: fetch JS com redirect:'follow' transformaria 307 em request pra /login,
+  // que retorna 200 (HTML) ou 405 (se método inválido) — confunde o front e gera
+  // bug "ação aparenta sucesso mas DB não muda". 401 JSON é claro pra UI.
+  // Páginas (não API) continuam com redirect 307 → /login (preserva UX humana).
+  const isApiPath = pathname.startsWith('/api')
+
   if (!token) {
+    if (isApiPath) {
+      return NextResponse.json(
+        { erro: 'Sessão expirada ou não autenticado', code: 'AUTH_REQUIRED' },
+        { status: 401 },
+      )
+    }
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
@@ -166,6 +179,14 @@ export async function proxy(request: NextRequest) {
     await verifyToken(token)
     return NextResponse.next()
   } catch {
+    if (isApiPath) {
+      const response = NextResponse.json(
+        { erro: 'Sessão inválida — faça login de novo', code: 'AUTH_INVALID' },
+        { status: 401 },
+      )
+      response.cookies.delete(COOKIE_NAME)
+      return response
+    }
     const response = NextResponse.redirect(new URL('/login', request.url))
     response.cookies.delete(COOKIE_NAME)
     return response

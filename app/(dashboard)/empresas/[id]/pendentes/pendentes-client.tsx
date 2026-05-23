@@ -105,6 +105,10 @@ export function PendentesClient({
   // Fase 3 Etapa 3: sugestões Claude carregadas lazy por linha
   const [claudeHints, setClaudeHints] = useState<Record<string, ClaudeHint>>({})
   const [solicitandoIa, setSolicitandoIa] = useState<Set<string>>(new Set())
+  // Sprint 3.0.1 — banner persistente de falhas (Safari ITP cookie bug)
+  const [falhasIgnorar, setFalhasIgnorar] = useState<
+    Array<{ id: string; description: string; razao: string }>
+  >([])
 
   // Filtros
   const noventaDiasAtras = useMemo(() => {
@@ -246,28 +250,101 @@ export function PendentesClient({
 
   async function ignorarTransacao(transacaoId: string) {
     marcarOperando(transacaoId, true)
+    const tx = transacoes.find((t) => t.id === transacaoId)
+    const descricaoCurta = tx?.description?.slice(0, 50) ?? transacaoId
     try {
+      // Sprint 3.0.1 — credentials:'include' contorna Safari ITP que pode
+      // suprimir cookies em PUT após inatividade.
       const res = await fetch(`/api/transacoes/${transacaoId}`, {
         method: 'PUT',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'IGNORED' }),
       })
-      if (!res.ok) {
+
+      // Sprint 3.0.1 — Detecção de sessão expirada (401 JSON do proxy.ts novo).
+      if (res.status === 401) {
         const data = await res.json().catch(() => ({}))
-        toast({ variant: 'destructive', title: 'Erro ao ignorar', description: data.erro ?? 'Tente novamente.' })
+        toast({
+          variant: 'destructive',
+          title: 'Sessão expirada',
+          description: 'Faça login de novo pra continuar.',
+        })
+        setFalhasIgnorar((prev) => [
+          ...prev.filter((f) => f.id !== transacaoId),
+          { id: transacaoId, description: descricaoCurta, razao: data.erro ?? 'Sessão expirada' },
+        ])
         return
       }
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        const razao = data.erro ?? `HTTP ${res.status}`
+        toast({ variant: 'destructive', title: 'Erro ao ignorar', description: razao })
+        setFalhasIgnorar((prev) => [
+          ...prev.filter((f) => f.id !== transacaoId),
+          { id: transacaoId, description: descricaoCurta, razao },
+        ])
+        return
+      }
+
+      // Sprint 3.0.1 — Confirmação DB anti-otimismo.
+      // Re-fetch da tx pra garantir que o status REALMENTE virou IGNORED no banco.
+      try {
+        const verifyRes = await fetch(`/api/transacoes/${transacaoId}`, {
+          credentials: 'include',
+        })
+        if (verifyRes.ok) {
+          const verifyData = await verifyRes.json()
+          const statusReal = verifyData?.transacao?.status ?? verifyData?.status
+          if (statusReal && statusReal !== 'IGNORED') {
+            // PUT pareceu OK mas status não mudou — bug silencioso.
+            setFalhasIgnorar((prev) => [
+              ...prev.filter((f) => f.id !== transacaoId),
+              {
+                id: transacaoId,
+                description: descricaoCurta,
+                razao: `PUT OK mas status=${statusReal} no banco`,
+              },
+            ])
+            toast({
+              variant: 'destructive',
+              title: 'Inconsistência detectada',
+              description: 'Servidor reportou sucesso mas status não atualizou.',
+            })
+            return
+          }
+        }
+      } catch {
+        // Verify falhou — segue assumindo OK (PUT já retornou 2xx).
+      }
+
+      // Sucesso confirmado: remove do array local + clean state
       setTransacoes((prev) => prev.filter((t) => t.id !== transacaoId))
       setSelecaoPorLinha((prev) => {
         const next = { ...prev }
         delete next[transacaoId]
         return next
       })
+      setFalhasIgnorar((prev) => prev.filter((f) => f.id !== transacaoId))
       toast({ title: 'Transação ignorada', description: 'Removida da fila de pendentes.' })
     } catch {
       toast({ variant: 'destructive', title: 'Erro', description: 'Falha de rede ao ignorar.' })
+      setFalhasIgnorar((prev) => [
+        ...prev.filter((f) => f.id !== transacaoId),
+        { id: transacaoId, description: descricaoCurta, razao: 'Falha de rede' },
+      ])
     } finally {
       marcarOperando(transacaoId, false)
+    }
+  }
+
+  // Sprint 3.0.1 — Tentar de novo todas as falhas
+  async function retryFalhas() {
+    const ids = falhasIgnorar.map((f) => f.id)
+    setFalhasIgnorar([])
+    for (const id of ids) {
+      await ignorarTransacao(id)
     }
   }
 
@@ -277,6 +354,47 @@ export function PendentesClient({
         title="Pendentes de Classificação"
         description={`${transacoesFiltradas.length} transação${transacoesFiltradas.length !== 1 ? 'ões' : ''} em ${empresaNome}`}
       />
+
+      {/* Sprint 3.0.1 — banner persistente de falhas (Safari ITP) */}
+      {falhasIgnorar.length > 0 && (
+        <div className="rounded-md border border-destructive/40 bg-destructive/5 px-4 py-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-destructive">
+                {falhasIgnorar.length} transaç{falhasIgnorar.length === 1 ? 'ão falhou' : 'ões falharam'} ao ignorar
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Pode ser sessão expirada (Safari). Tente novamente — se persistir, recarregue a página com Cmd+Shift+R.
+              </p>
+              <ul className="mt-2 space-y-0.5 text-xs">
+                {falhasIgnorar.slice(0, 5).map((f) => (
+                  <li key={f.id} className="truncate text-muted-foreground">
+                    • <span className="font-mono">{f.description}</span>
+                    {f.razao && <span className="ml-1 text-destructive">({f.razao})</span>}
+                  </li>
+                ))}
+                {falhasIgnorar.length > 5 && (
+                  <li className="text-muted-foreground">+ {falhasIgnorar.length - 5} mais</li>
+                )}
+              </ul>
+            </div>
+            <div className="flex flex-col gap-1.5 shrink-0">
+              <button
+                onClick={() => void retryFalhas()}
+                className="text-xs font-medium px-3 py-1.5 rounded bg-destructive text-destructive-foreground hover:opacity-90"
+              >
+                Tentar todas
+              </button>
+              <button
+                onClick={() => setFalhasIgnorar([])}
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                Limpar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Fase 3 Etapas 1+2: stats da IA Contadora */}
       {stats &&
