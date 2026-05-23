@@ -18,6 +18,10 @@ export async function GET(request: NextRequest) {
     const tipo = searchParams.get('tipo')
     const status = searchParams.get('status')
     const semCategoria = searchParams.get('semCategoria') === 'true'
+    // Sprint 3.0.2 — filtros novos
+    const categoryId = searchParams.get('categoryId')
+    const q = searchParams.get('q')?.trim() ?? null
+    const importId = searchParams.get('importId')
 
     // Resolve companyId pra ter contexto RBAC.
     // Precedência: contaId → empresaId → "global" (todas as empresas do user, sem permissão única).
@@ -79,6 +83,10 @@ export async function GET(request: NextRequest) {
     if (tipo) where.type = tipo
     if (status) where.status = status
     if (semCategoria) where.categoryId = null
+    // Sprint 3.0.2
+    if (categoryId) where.categoryId = categoryId
+    if (q) where.description = { contains: q, mode: 'insensitive' }
+    if (importId) where.importId = importId
 
     const [total, transacoes] = await Promise.all([
       prisma.transaction.count({ where }),

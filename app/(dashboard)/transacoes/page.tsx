@@ -4,8 +4,8 @@ import { useEffect, useState, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
-  Plus, ArrowUpRight, ArrowDownRight, Filter,
-  ChevronLeft, ChevronRight, Building2,
+  Plus, ArrowUpRight, ArrowDownRight, Filter, Search, X,
+  ChevronLeft, ChevronRight, Building2, Sparkles,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -82,12 +82,18 @@ function TransacoesPageInner() {
   const searchParams = useSearchParams()
 
   // Drill-down do Cashflow Waterfall (e outros dashboards) linkam pra cá com
-  // ?tipo=&inicio=&fim=. Lê uma vez no init — Zod-validado, fallback graceful.
+  // ?tipo=&inicio=&fim=. Sprint 3.0.2 — também aceita ?categoryId=&q=&importId=&conferencia=.
+  // Zod-validado, fallback graceful.
   const urlFilters = parseTransacoesURLFilters({
     tipo: searchParams.get('tipo'),
     inicio: searchParams.get('inicio'),
     fim: searchParams.get('fim'),
+    categoryId: searchParams.get('categoryId'),
+    q: searchParams.get('q'),
+    importId: searchParams.get('importId'),
+    conferencia: searchParams.get('conferencia'),
   })
+  const empresaIdParam = searchParams.get('empresaId')
 
   const [transacoes, setTransacoes] = useState<Transacao[]>([])
   const [contas, setContas] = useState<ContaInfo[]>([])
@@ -104,6 +110,13 @@ function TransacoesPageInner() {
   const [status, setStatus] = useState('TODOS')
   const [contaFiltro, setContaFiltro] = useState('TODAS')
   const [page, setPage] = useState(1)
+  // Sprint 3.0.2 — filtros novos
+  const [categoryId, setCategoryId] = useState(urlFilters.categoryId ?? 'TODAS')
+  const [q, setQ] = useState(urlFilters.q ?? '')
+  const [qDebounced, setQDebounced] = useState(urlFilters.q ?? '')
+  const [categorias, setCategorias] = useState<Category[]>([])
+  const importId = urlFilters.importId
+  const conferenciaMode = urlFilters.conferencia && !!importId
 
   // Carrega lista de contas para o filtro e para o botão Nova Transação
   useEffect(() => {
@@ -118,15 +131,43 @@ function TransacoesPageInner() {
     fetchContas()
   }, [])
 
+  // Sprint 3.0.2 — carrega categorias da empresa (se houver empresaId no URL OU
+  // se houver UMA empresa só após contas carregarem)
+  useEffect(() => {
+    const empId =
+      empresaIdParam ??
+      (contas.length > 0
+        ? Array.from(new Set(contas.map((c) => c.companyId)))[0]
+        : null)
+    if (!empId) return
+    fetch(`/api/empresas/${empId}/categorias?soAtivas=true`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.categorias) setCategorias(data.categorias)
+      })
+      .catch(() => {})
+  }, [empresaIdParam, contas])
+
+  // Sprint 3.0.2 — debounce 300ms na busca
+  useEffect(() => {
+    const t = setTimeout(() => setQDebounced(q.trim()), 300)
+    return () => clearTimeout(t)
+  }, [q])
+
   const fetchTransacoes = useCallback(async () => {
     setLoading(true)
     try {
       const qs = new URLSearchParams({ page: String(page), limit: '50' })
       if (contaFiltro !== 'TODAS') qs.set('contaId', contaFiltro)
+      if (empresaIdParam) qs.set('empresaId', empresaIdParam)
       if (inicio) qs.set('inicio', inicio)
       if (fim) qs.set('fim', fim)
       if (tipo !== 'TODOS') qs.set('tipo', tipo)
       if (status !== 'TODOS') qs.set('status', status)
+      // Sprint 3.0.2 — novos filtros
+      if (categoryId !== 'TODAS') qs.set('categoryId', categoryId)
+      if (qDebounced) qs.set('q', qDebounced)
+      if (importId) qs.set('importId', importId)
 
       const res = await fetch(`/api/transacoes?${qs}`)
       if (res.ok) {
@@ -137,17 +178,45 @@ function TransacoesPageInner() {
     } finally {
       setLoading(false)
     }
-  }, [contaFiltro, page, inicio, fim, tipo, status])
+  }, [contaFiltro, empresaIdParam, page, inicio, fim, tipo, status, categoryId, qDebounced, importId])
 
   useEffect(() => { fetchTransacoes() }, [fetchTransacoes])
 
   const entradas = transacoes.filter((t) => t.type === 'CREDIT').reduce((s, t) => s + t.amount, 0)
   const saidas = transacoes.filter((t) => t.type === 'DEBIT').reduce((s, t) => s + t.amount, 0)
 
+  // Sprint 3.0.2 — limpa todos filtros novos
+  function limparFiltrosNovos() {
+    setCategoryId('TODAS')
+    setQ('')
+    setQDebounced('')
+    setPage(1)
+  }
+
   return (
     <div className="space-y-6">
+      {/* Sprint 3.0.2 — Header destacado modo Conferência */}
+      {conferenciaMode && (
+        <div className="rounded-lg border border-primary/40 bg-primary/5 px-4 py-3 flex items-start gap-3">
+          <Sparkles className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-sm">🤖 Conferência pós-import</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {paginacao.total} transações deste import — confira a classificação da IA e ajuste o que precisar.
+            </p>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => router.push('/dashboard')}
+          >
+            Concluir e voltar
+          </Button>
+        </div>
+      )}
+
       <Header
-        title="Transações"
+        title={conferenciaMode ? 'Conferir Transações' : 'Transações'}
         description={`${paginacao.total} lançamento${paginacao.total !== 1 ? 's' : ''} no período`}
       >
         {!contasReady ? (
@@ -258,6 +327,61 @@ function TransacoesPageInner() {
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Sprint 3.0.2 A1 — Filtro categoria */}
+            {categorias.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Categoria</p>
+                <Select value={categoryId} onValueChange={(v) => { setCategoryId(v); setPage(1) }}>
+                  <SelectTrigger className="h-8 w-52 text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="TODAS">Todas as categorias</SelectItem>
+                    {categorias.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        <span className="inline-flex items-center gap-2">
+                          {c.color && (
+                            <span className="h-2 w-2 rounded-full" style={{ background: c.color }} />
+                          )}
+                          {c.name}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Sprint 3.0.2 A2 — Busca descrição */}
+            <div className="space-y-1 flex-1 min-w-[200px]">
+              <p className="text-xs text-muted-foreground">Buscar descrição</p>
+              <div className="relative">
+                <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                <Input
+                  type="text"
+                  className="h-8 pl-8 pr-7 text-sm"
+                  placeholder="Ex: NETFLIX, ATACADAO..."
+                  value={q}
+                  onChange={(e) => { setQ(e.target.value); setPage(1) }}
+                />
+                {q && (
+                  <button
+                    type="button"
+                    onClick={() => { setQ(''); setQDebounced(''); setPage(1) }}
+                    aria-label="Limpar busca"
+                    className="absolute right-2 top-2 text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Limpar todos filtros novos */}
+            {(categoryId !== 'TODAS' || qDebounced) && (
+              <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={limparFiltrosNovos}>
+                <X className="h-3.5 w-3.5 mr-1" />Limpar
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>
