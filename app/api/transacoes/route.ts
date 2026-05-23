@@ -108,6 +108,10 @@ export async function GET(request: NextRequest) {
               category: { select: { id: true, name: true } },
             },
           },
+          // Sprint 3.0.2 A4 — nome da regra IA pra tooltip do badge
+          classifiedByRule: {
+            select: { id: true, padrao: true, tipoMatch: true },
+          },
         },
       }),
     ])

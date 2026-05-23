@@ -21,6 +21,7 @@ import { Header } from '@/components/layout/header'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
 import { parseTransacoesURLFilters } from '@/lib/transacoes/url-filters'
+import { AiSourceBadge } from '@/components/transacoes/ai-source-badge'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
@@ -62,6 +63,10 @@ interface Transacao {
   bankAccountId: string
   category: Category | null
   bankAccount: ContaInfo
+  // Sprint 3.0.2 A4 — campos pro badge IA
+  classificationSource: string | null
+  aiConfidence: number | null
+  classifiedByRule: { id: string; padrao: string; tipoMatch: string } | null
 }
 
 interface Paginacao { total: number; page: number; limit: number; totalPages: number }
@@ -428,6 +433,15 @@ function TransacoesPageInner() {
                       <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ backgroundColor: t.category.color }} />
                       {t.category.name}
                     </span>
+                  )}
+                  {/* Sprint 3.0.2 A4 — Badge IA source */}
+                  {t.classificationSource && (
+                    <AiSourceBadge
+                      source={t.classificationSource}
+                      confidence={t.aiConfidence}
+                      ruleName={t.classifiedByRule?.padrao}
+                      compact={false}
+                    />
                   )}
                 </div>
               </div>
