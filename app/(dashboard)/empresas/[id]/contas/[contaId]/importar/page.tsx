@@ -279,7 +279,14 @@ export default function ImportarOFXPage() {
         return
       }
       toast({ variant: 'success', title: 'Importação concluída', description: data.mensagem })
-      router.push(`/empresas/${empresaId}/contas/${contaId}/transacoes`)
+      // Sprint 3.0.2 A3 — redirect pra Conferência se houver importId na resposta
+      if (data.importId) {
+        router.push(
+          `/transacoes?empresaId=${empresaId}&importId=${data.importId}&conferencia=true`,
+        )
+      } else {
+        router.push(`/empresas/${empresaId}/contas/${contaId}/transacoes`)
+      }
     } catch {
       toast({ variant: 'destructive', title: 'Erro', description: 'Falha na importação.' })
     } finally {
