@@ -411,4 +411,64 @@ Sem regra IA persistente, futuras tx com mesmo padrão entram pendentes e Yussef
 
 ---
 
+## D19 — Correções Cacula Mix: Transferências internas + Salários + Fornecedores
+
+**Data:** 2026-05-22
+**Status:** ✅ EXECUTADO
+
+**Contexto:**
+Após D18, Yussef revisou padrões pendentes e descobriu 3 correções importantes:
+1. **46 tx `YUSSEF ABU ZAHRY MUSA - TRANSFERÊNCIA | PIX`** (R$ 331.120) NÃO são aporte de sócio. São transferências entre contas DA MESMA EMPRESA Cacula Mix (Banrisul/Sicredi ↔ Stone, ambas direções). Não entram no DRE.
+2. **3 pessoas identificadas como funcionários** da Cacula Mix: Cristian de Matos Fortes (9 tx), Marcyelle da Silva dos Santos (4 tx), Carlise da Luz Lemos (4 tx). Total 17 tx / R$ 9.677,98.
+3. **2 fornecedores reclassificados:** SPAL IND BRAS DE BEBIDAS = engarrafadora Coca-Cola → Bebidas Revenda (não Matéria-Prima); CARGNELUTTI E CIA = distribuidora de cerveja → Bebidas Revenda.
+
+**Decisão:**
+- Reutilizar categoria existente `Entre Contas Próprias` (TRANSFER/TRANSFERENCIA, sub de "Transferências") como representação de "Transferência Interna" — semântica idêntica, evita duplicação.
+- Criar categoria `Salários e Encargos` (EXPENSE/DESPESAS_PESSOAL, sub de "Pessoal Administrativo"). Convive com `Folha CLT Administrativa`/`Encargos sobre Folha`/`Salários Cozinha/Motoboys/Salão` existentes — Yussef pode migrar pra granularidade maior depois.
+- **NÃO criar regras redundantes** (`LATICINIOS SANTO CRISTO`, `FRIGORIFICO SILVA`) — regras genéricas `LATICINIOS` e `FRIGORIFICO` do D17 já capturam essas variações.
+- Criar 9 regras IA `CONTAINS` (confiança 0.95, fonte `MANUAL`) — 6 fornecedores + 3 funcionários (pra capturar pagamentos futuros).
+
+**Aplicado (atomic via `prisma.$transaction` em chunks de 50):**
+
+Classificações diretas (63 tx · R$ 340.797,98):
+- 46 `YUSSEF ABU ZAHRY MUSA` → Entre Contas Próprias (R$ 331.120,00)
+- 9 `CRISTIAN DE MATOS FORTES` → Salários e Encargos (R$ 3.247,58)
+- 4 `MARCYELLE DA SILVA DOS SANTOS` → Salários e Encargos (R$ 4.339,82)
+- 4 `CARLISE DA LUZ LEMOS` → Salários e Encargos (R$ 2.090,58)
+
+Migração via regras (43 tx · R$ 97.217,55) — inclui regras genéricas D17:
+- 7 `LATICINIOS SANTO CRISTO` → Matéria-Prima (via regra genérica `LATICINIOS` D17)
+- 4 `FRIGORIFICO SILVA` → Matéria-Prima (via regra genérica `FRIGORIFICO` D17)
+- 6 `CASPER DISTRIBUIDORA` → Matéria-Prima (regra nova)
+- 6 `BOX PAPER` → Embalagens (regra nova)
+- 6 `SPAL IND BRAS DE BEBIDAS` → Bebidas Revenda (regra nova)
+- 5 `LAMANA` → Matéria-Prima (regra nova)
+- 5 `TOZZO ALIMENTOS` → Matéria-Prima (regra nova)
+- 4 `CARGNELUTTI E CIA` → Bebidas Revenda (regra nova)
+
+**Total movimentado: 106 tx · R$ 438.015,53**
+**Backup pré-execução:** `/opt/backups/pre-d19-cacula-20260522-195351.sql.gz`
+**Audit log:** 106 entries com `metadata.migration = 'D19 2026-05-22'` + `matchedPattern` + `batchKind` (`direct` ou `rule`).
+
+**Estado após D19 (Cacula Mix):**
+- Total tx: 1.755
+- **Classificadas: 1.546 (88.1%)** ← era 82.1% após D18, era 47% antes do D17
+- Pendentes: 209 (11.9%)
+- Entre Contas Próprias: 46 tx
+- Salários e Encargos: 17 tx
+- Matéria-Prima: 29 tx (acumulado D17+D19)
+- Bebidas Revenda: 10 tx
+- Embalagens: 7 tx
+- Receita de Vendas: 1.424 tx (do D18)
+
+**Próximos passos:**
+1. Yussef identifica natureza de fornecedores pendentes: `OESA COMERCIO`, `DALMOLIN VANZIN`, `I. V. S.`, `RG CAPITALIZACAO` (provavelmente seguro)
+2. Investigar `PIX ENVIADO` genérico (7 tx · R$ 42.387,86) — descrição genérica precisa contexto humano
+3. Sprint 3.1 (tech debt): adicionar `amountMin`/`amountMax`/`requireType` ao schema `AiLearningRule` pra regras com filtros robustas
+
+**Limitação aceita:**
+Os 209 pendentes restantes incluem fornecedores específicos ainda não cobertos por regra e descrições genéricas (`PIX ENVIADO`, `PIX MARKETPLACE`) que precisam contexto humano. Yussef classifica manualmente via `/pendentes` ou cria regras adicionais.
+
+---
+
 **Doc mantido em `docs/DECISOES.md`. Atualizar a cada decisão significativa.**
