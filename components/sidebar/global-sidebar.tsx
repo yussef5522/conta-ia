@@ -4,6 +4,7 @@ import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard,
   Building2,
+  ArrowLeftRight,
   Calculator,
   MessageSquare,
   Settings,
@@ -58,6 +59,13 @@ export function GlobalSidebar({ userName, userEmail, onNavigate }: GlobalSidebar
           label="Empresas"
           href="/empresas"
           isActive={pathname.startsWith('/empresas')}
+          onClick={onNavigate}
+        />
+        <SidebarItem
+          icon={ArrowLeftRight}
+          label="Transações"
+          href="/transacoes"
+          isActive={pathname.startsWith('/transacoes')}
           onClick={onNavigate}
         />
 
