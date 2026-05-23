@@ -471,4 +471,81 @@ Os 209 pendentes restantes incluem fornecedores específicos ainda não cobertos
 
 ---
 
+## D20 — Cacula Mix: Fechamento mês (funcionárias + fornecedores + imobilizado + outros)
+
+**Data:** 2026-05-22
+**Status:** ✅ EXECUTADO
+
+**Contexto:**
+Após D17 (categorias), D18 (PIX/Stone/Conta Única), D19 (transferências internas + 3 funcionários + 6 fornecedores), restavam 209 pendentes na Cacula Mix. Yussef revisou padrão a padrão e definiu natureza de cada um.
+
+**Categorias criadas (3, sob hierarquias existentes):**
+- `Imobilizado` (sub `Investimentos`, EXPENSE/INVESTIMENTOS) — pra equipamentos comprados sem identificação específica (vs Fogão/Câmara Fria/Mesas/PDV/etc que já existem como filhas específicas)
+- `Títulos de Capitalização` (sub `Investimentos`, EXPENSE/INVESTIMENTOS) — pra RG Capitalização (título de capitalização)
+- `Pagamento de Empréstimo` (sub `Despesas Financeiras`, EXPENSE/DESPESAS_FINANCEIRAS) — pra amortização + juros consolidados de empréstimo
+
+**Categorias reusadas (3):**
+- `Devoluções de Vendas` (sub `Deduções da Receita Bruta`, EXPENSE/DEDUCOES) — pra STONE REEMBOLSO (deduz receita no DRE corretamente)
+- `IOF` (sub `Despesas Financeiras`) — pra IOF + IOF ADICIONAL
+- `Salários e Encargos` (criada em D19) — pras 4 funcionárias novas
+
+**Regras IA novas (12, todas CONTAINS, confiança 0.95, fonte MANUAL):**
+
+Salários e Encargos (4 funcionárias):
+- `FERNANDA CHAVES RAMIRES`, `ERIKA FERREIRA DA SILVA`, `MARCOS SILVA PAIVA`, `JENIFER DOS SANTOS RODRIGUES`
+
+Matéria-Prima (2 fornecedores):
+- `OESA COMERCIO`, `DALMOLIN VANZIN`
+
+Imobilizado (2):
+- `I. V. S.` (equipamento), `PIX MARKETPLACE` (sempre compra equipamento)
+
+Outros (4):
+- `STONE INSTITUIÇÃO` → Devoluções de Vendas
+- `IOF` → IOF (captura tb "IOF ADICIONAL")
+- `RG CAPITALIZACAO` → Títulos de Capitalização
+- `CAIXA ECONOMICA FEDERAL` → Pagamento de Empréstimo
+
+**Aplicado (atomic, em 91ms):**
+| Categoria | Tx aplicadas | Valor |
+|---|---:|---:|
+| Salários e Encargos | 12 | R$ 3.736,25 |
+| Matéria-Prima (OESA + DALMOLIN) | 7 | R$ 12.030,24 |
+| Imobilizado (I. V. S. + PIX MARKETPLACE) | 11 | R$ 6.368,43 |
+| Devoluções de Vendas | 8 | R$ 456,54 |
+| IOF | 7 | R$ 677,40 |
+| Títulos de Capitalização | 4 | R$ 708,86 |
+| Pagamento de Empréstimo | 3 | R$ 7.707,86 |
+| **TOTAL** | **52** | **R$ 31.685,58** |
+
+**Decisão de dedup:** IOF é genérico (casa tudo que contém "IOF") — colocado por último na ordem de patterns. Outros patterns mais específicos pegam primeiro.
+
+**Backup pré-execução:** `/opt/backups/pre-d20-cacula-20260522-201636.sql.gz`
+**Audit log:** 52 entries com `metadata.migration = 'D20 2026-05-22'` + `matchedPattern` por tx.
+
+**Pendentes mantidos intencionalmente (manual):**
+- `PIX ENVIADO` (7 tx · R$ 42.387,86) — descrição genérica, contexto varia
+- `PIX BANRISUL ENVIADO` (3 tx · R$ 22.350,00) — varia
+- `OP.CREDITO C/GARANTIA` sem espaço (4 tx · R$ 8.017,90) — Yussef manteve conservador
+
+**Estado final Cacula Mix:**
+- 1.755 tx total
+- **1.598 classificadas (91.1%)** ← era 88.1% após D19, era 47% antes do D17
+- 157 pendentes (8.9%) — mistos de fornecedores ainda não cobertos + descrições genéricas
+- Distribuição: Receita de Vendas 1.424 / Entre Contas Próprias 46 / Salários 29 / Matéria-Prima 36 / Imobilizado 11 / Bebidas 10 / Devoluções 8 / IOF 7 / Embalagens 7 / Capitalização 4 / Pagamento Empréstimo 3
+
+**Trajetória D17 → D20 (sessão única 22/05/2026):**
+- D17: criou estrutura CMV (5 cat + 39 regras) + 21 tx migradas
+- D18: 602 tx PIX/Stone/Conta Única → Receita de Vendas (R$ 233.733)
+- D19: 106 tx transferências internas + salários + fornecedores (R$ 438.015)
+- D20: 52 tx fechamento mês (R$ 31.685)
+- **Acumulado: 781 tx classificadas em 4 migrações · R$ 703.434 movimentados · 47% → 91.1%**
+
+**Próximos passos:**
+1. Sprint 3.1 (tech debt): adicionar `amountMin`/`amountMax`/`requireType` ao schema `AiLearningRule` pra regras com filtros (destrava casos como "PIX >R$ 250 fica pendente")
+2. Replicar estrutura D17 (CMV) + D19/D20 (fornecedores específicos) pras outras 12 empresas do Yussef (academias) — adaptar regras pra setor SERVICE em vez de RESTAURANT
+3. Documentar padrões aprendidos como playbook por setor
+
+---
+
 **Doc mantido em `docs/DECISOES.md`. Atualizar a cada decisão significativa.**
