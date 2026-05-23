@@ -318,4 +318,97 @@ Cada decisão tem **contexto**, **opções consideradas**, **escolha**, **razão
 
 ---
 
+## D17 — Plano de contas profissional pra negócio de comida (Cacula Mix)
+
+**Data:** 2026-05-22
+**Status:** ✅ IMPLEMENTADO
+
+**Contexto:** Cacula Mix (pizzaria/lanchonete) precisa de plano de contas contabilmente correto. Frete de mercadoria deve ser separado em "Frete sobre Compras" (CMV) e "Frete sobre Vendas" (Operacional). Templates de categoria base (sistema) não tinham essas distinções.
+
+**Decisão:**
+- Criar 4 categorias filhas de "Custo dos Serviços Prestados" (CUSTO_PRODUTO_VENDIDO): Matéria-Prima, Embalagens, Bebidas Revenda, Frete sobre Compras
+- Criar 1 filha de "Despesas Operacionais" (DESPESAS_ADMINISTRATIVAS): Frete sobre Vendas
+- Reutilizar pai existente "Custo dos Serviços Prestados" em vez de criar raiz nova "CMV" — evita duplicação no DRE (ambos somariam no mesmo dreGroup)
+- Criar 39 regras IA `CONTAINS` específicas Cacula Mix (`MANUAL`, confiança 0.95) cobrindo: ATACADAO/MAKRO/ASSAI/CEASA/SADIA/PERDIGAO/LATICINIOS (matéria-prima), COCA COLA/AMBEV/PEPSICO (bebidas revenda), EMBALAGENS/PAPELÃO/CAIXA PIZZA (embalagens), TRANSPORTADORA/RODOVIARIO (frete compras), IFOOD/RAPPI/UBER EATS/MOTOBOY (frete vendas)
+
+**Consequências:**
+- DRE Cacula Mix passa a separar custo direto (CMV) de despesas operacionais corretamente
+- Frete sobre Vendas (iFood, Rappi, etc) entra como despesa operacional (não infla CMV)
+- IA aprende padrões específicos do setor restaurante → replicável pra outras pizzarias/lanchonetes
+- 21 transações pendentes migradas automaticamente pra novas categorias (Embalagens 7, Laticínios 7, Frigorífico 4, iFood 3)
+
+**Limitação aceita:**
+- Categoria órfã legada "materia prima" (lowercase, sem parent, 2 tx vinculadas) preservada intocada. Yussef decide se desativa/move depois.
+
+---
+
+## D18 — Migração one-shot PIX/Stone/Conta Única Cacula Mix
+
+**Data:** 2026-05-22
+**Status:** ✅ EXECUTADO
+
+**Contexto:**
+Cacula Mix tinha 917 transações pendentes acumuladas de múltiplas importações OFX (Banrisul, Stone, Sicredi). Padrões identificados:
+- `RECEBIMENTO PIX-PIX_CRED`: vendas via PIX (cliente paga)
+- `RECEBIMENTO PIX-PIX_CRE` (truncado no extrato): variante do mesmo
+- `RECEBIMENTO PIX-CX`: variante PIX
+- `STONE DEB BLF`: vendas cartão débito Stone (POS)
+- `OP. CREDITO C/GARANTIA`: vendas via Conta Única Banrisul (cheque especial empresarial onde vendas reduzem dívida do limite — NÃO é empréstimo novo)
+
+**Decisão:**
+Migração **ONE-SHOT** manual via script atomic (não persistir regra IA).
+
+**Razão técnica:** schema `AiLearningRule` atual só filtra por descrição (campo `padrao` + `tipoMatch`). Não suporta filtros de valor (`amountMin`/`amountMax`) nem tipo de transação. Yussef pediu Regra 2 ("PIX >R$ 250 fica pendente") que NÃO é implementável sem mudar schema + engine `lib/ai-categorizer/predict.ts`.
+
+Adiamos criação de regras IA persistentes pra Sprint 3.1 (tech debt) que vai:
+1. Adicionar campos `amountMin Float? / amountMax Float? / requireType String?` ao `AiLearningRule`
+2. Migration SQL Postgres
+3. Engine integrar filtros no matching
+4. UI `/regras` permitir editar filtros
+
+**Aplicado (atomic via `prisma.$transaction`):**
+- 602 transações classificadas como "Receita de Vendas"
+- Total movimentado: **R$ 233.733,23**
+- `classificationSource = 'MANUAL'` (honesto — humano decidiu, não engine)
+- `aiConfidence = 0.92`
+- `status = 'RECONCILED'`
+- Audit log: 602 entries com `metadata.migration = 'D18 one-shot 2026-05-22'` + `matchedPattern` por tx + `batchTotal: 602`
+- Backup `/opt/backups/pre-d18-cacula-pix-20260522-190024.sql.gz`
+
+**Breakdown por pattern:**
+| Pattern | Tx | R$ |
+|---|---:|---:|
+| `RECEBIMENTO PIX-PIX_CRED` | 457 | 63.984,19 |
+| `RECEBIMENTO PIX-PIX_CRE` (truncado) | 83 | 5.726,24 |
+| `OP. CREDITO C/GARANTIA` (Banrisul cheque especial) | 24 | 156.083,94 |
+| `RECEBIMENTO PIX-CX` | 24 | 1.891,78 |
+| `STONE DEB BLF` | 14 | 6.047,08 |
+| **TOTAL** | **602** | **233.733,23** |
+
+**Não aplicado (decisão Yussef — conservador):**
+- `OP.CREDITO C/GARANTIA` SEM espaço após ponto (4 tx / R$ 8.017,90) — variante do extrato. Pode ser aplicada em D18.1 se Yussef confirmar.
+
+**Pendentes restantes (315 tx):**
+- `Transferência | Pix`: 141 tx / R$ 403.467 (saídas PIX — funcionários/fornecedores informais/contas próprias)
+- `Outros (sem match)`: 163 tx (top: CASPER DISTRIBUIDORA 6x, LATICINIOS SANTO CRISTO 5x, SPAL IND BRAS DE BEBIDAS 5x, FRIGORIFICO SILVA 4x — fornecedores que merecem regras próprias)
+- `STONE REEMBOLSO`: 8 tx / R$ 456 (devolução cartão — manual)
+- `DEVOLUCAO PIX`: 3 tx / R$ 372 (manual)
+
+**Estado pós-migração Cacula Mix:**
+- 1.755 tx total
+- 1.440 classificadas (82.1%)
+- 315 pendentes (17.9%)
+- 1.424 em "Receita de Vendas" (R$ 298.769,94)
+
+**Próximos passos:**
+1. Sprint 3.1: estender schema `AiLearningRule` com filtros (amountMin/Max, requireType, action)
+2. Yussef cria regras pros fornecedores top (CASPER, LATICINIOS SANTO CRISTO, SPAL, FRIGORIFICO SILVA, DIS. DE PROD ALIM. LAMANA, TOZZO, OESA, CARGNELUTTI, BOX PAPER, DALMOLIN VANZIN, I.V.S.) — top 11 padrões cobrem ~40 tx de despesa
+3. Após Sprint 3.1: criar regras IA persistentes com filtros pras 13 academias do Yussef
+4. Yussef classifica manualmente novos PIX/Stone até Sprint 3.1 ficar pronto
+
+**Limitação aceita:**
+Sem regra IA persistente, futuras tx com mesmo padrão entram pendentes e Yussef classifica manual. Aceitável temporariamente porque ele revisa diariamente.
+
+---
+
 **Doc mantido em `docs/DECISOES.md`. Atualizar a cada decisão significativa.**
