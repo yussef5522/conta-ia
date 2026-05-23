@@ -548,4 +548,80 @@ Outros (4):
 
 ---
 
+## D21 — Cacula Mix: Finalização (funcionários + fornecedores + empréstimo) + Safari workaround
+
+**Data:** 2026-05-22
+**Status:** ✅ EXECUTADO
+
+**Contexto:**
+Após D20 (91.1% classificado, 157 pendentes), Yussef identificou os últimos padrões previsíveis. Em paralelo, investigamos bug reportado "tx volta após excluir" — diagnóstico: Safari ITP / cookie expiration intermitente em `PUT /api/transacoes/[id]` (detalhes em `docs/SPRINT-3.0.1-SAFARI-FIX.md`).
+
+**Ação 1 — Workaround Safari (5 tx):**
+5 transações `DEP DINHEIRO ATM` PENDING que Yussef tentou ignorar mas o PUT não chegou ao DB foram marcadas como IGNORED via script direto (`scripts/d21-acao1-ignore-atm.ts`). Audit `metadata.batch = 'D20.1 — Safari workaround'`.
+
+**Ação 2 — D21 classificação direta + regras:**
+
+Categorias usadas (todas existentes — zero criada):
+- `Salários e Encargos` (D19)
+- `Matéria-Prima` (D17)
+- `Pagamento de Empréstimo` (D20)
+
+Regras IA novas (6, CONTAINS, confiança 0.95, fonte MANUAL):
+- `WILLIAN FERREIRA DUARTE`, `FRANCIELE DE LIMA DIAS`, `EDUARDA ZENILDA RODRIGUES` → Salários e Encargos
+- `CIA DA FRUTA` → Matéria-Prima
+- `BAMBERG` → Matéria-Prima
+- `AMORTIZACAO CONTRATO` → Pagamento de Empréstimo
+
+Transações classificadas (14 atomic, 58ms):
+| Pattern | Tx | R$ |
+|---|---:|---:|
+| WILLIAN FERREIRA DUARTE | 2 | 3.374,50 |
+| FRANCIELE DE LIMA DIAS | 2 | 2.493,51 |
+| EDUARDA ZENILDA RODRIGUES | 2 | 2.018,56 |
+| CIA DA FRUTA | 2 | 7.914,74 |
+| BAMBERG | 4 | 12.660,99 |
+| AMORTIZACAO CONTRATO | 2 | 2.127,64 |
+| **TOTAL** | **14** | **30.589,94** |
+
+Nota sobre BAMBERG: 4 tx legítimas (3 pagamentos + 1 estorno) — todas `BAMBERG COMERCIO E REPRES LTDA`. Estorno classificado igual aos pagamentos (semântica de Matéria-Prima preservada via amount sign — sinal positivo no estorno reverte automaticamente no DRE).
+
+Nota sobre AMORTIZACAO: 4 tx total na empresa (2 PENDING `C61021196` aplicadas em D21, 2 já RECONCILED `C41022570` em batch anterior pelo Yussef via UI).
+
+**Não classificado (decisão Yussef):**
+- `CIRO ASCIONE JUNIOR` (2 tx, R$ 2.243,75) — descrição contém "60 964 094" (8 dígitos, NIS/PIS não CNPJ). BrasilAPI vazia. Provável PF prestador. Yussef decide categoria futuramente.
+
+**Backup pré-execução:** `/opt/backups/pre-d21-cacula-20260522-214256.sql.gz`
+
+**Estado final Cacula Mix:**
+- 1.755 tx total
+- **1.628 classificadas (92.8%)** ← era 91.1% após D20
+- 96 PENDING (5.5%)
+- 29 IGNORED (Yussef + workaround D20.1)
+- 2 RECONCILED sem categoryId (corner case raro)
+
+**Pendentes restantes intencionais (96):**
+- `PIX ENVIADO` (~7 tx) — descrição genérica, manual
+- `PIX BANRISUL ENVIADO` (~3 tx) — manual
+- `OP.CREDITO C/GARANTIA` (sem espaço, 4 tx) — Yussef conservador
+- `CIRO ASCIONE` (2 tx) — investigação pendente
+- Outros padrões esparsos (1-2 tx cada) — Yussef classifica manual via UI
+
+**Trajetória D17 → D21 (1 dia, 1 sessão única, 22/05/2026):**
+| Migração | Tx classificadas | Após |
+|---|---:|---:|
+| Inicial | — | 47.4% |
+| D17 (estrutura CMV + 39 regras) | 21 | 48.6% |
+| D18 (PIX/Stone/Conta Única) | 602 | 82.1% |
+| D19 (transferências + salários + fornecedores) | 106 | 88.1% |
+| D20 (funcionárias + imobilizado + outros) | 52 | 91.1% |
+| D20.1 + D21 (Safari workaround + finalização) | 5+14=19 | **92.8%** |
+| **Acumulado** | **800 tx** | **+R$ 734.024,47** movimentados |
+
+**Próximos passos:**
+1. **Sprint 3.0.1** — Fix Safari ITP cookie bug (doc criado em `docs/SPRINT-3.0.1-SAFARI-FIX.md`)
+2. **Sprint 3.1** (tech debt) — schema `AiLearningRule` com filtros `amountMin/Max/requireType`
+3. **D22** — replicar plano contábil Cacula Mix nas outras 12 academias do Yussef (adaptar pra setor SERVICE)
+
+---
+
 **Doc mantido em `docs/DECISOES.md`. Atualizar a cada decisão significativa.**
