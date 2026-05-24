@@ -1116,6 +1116,73 @@ Banrisul cheque 600k, saldo seed 60k, 3 meses anteriores (50k receita + 35k desp
 
 **Marco final do dia:** Conta IA tem agora um Dashboard Mundial visualmente competitivo com Brex/Mercury/Ramp + base de cálculo financeiro testada multi-tenant + transferências entre contas robustas + safety net pra deploy. Próxima sessão pode focar 100% nos diferenciais (Cashflow Waterfall + AI Insights) que fecham o gap conceitual vs Conta Azul.
 
+### 23/05/2026 — Sprint 3.0.4 (Polimento Pro): C1+C2+C3+C4 numa sessão
+
+**Contexto:** Sprint 3.0.3 (Edição Power) já em produção e estável. Sprint
+3.0.4 é o "polimento operacional" — features que aceleram o dia-a-dia de
+Yussef classificando transações em escala.
+
+**O que foi feito (4 commits feat + 1 docs):**
+
+- `e05dd54` — **C1 Export CSV**. Botão "Exportar" no header de `/transacoes`
+  baixa CSV (BOM UTF-8 + RFC 4180) abrindo direto no Excel BR. Reusa os
+  MESMOS filtros aplicados (tipo, status, categoria, busca, valores,
+  datas, conta, importId). Endpoint novo `GET /api/empresas/[id]/transacoes/export`
+  com cap 10k linhas e RBAC. Filename slug normalizado (acentos removidos,
+  cap 40 chars, fallback "export"). 11 colunas em pt-BR. 15 testes.
+
+- `3bfe328` — **C2 Atalhos teclado**. J/K navegação (com scroll smooth +
+  ring visual azul), / focar busca, Esc desfoca/fecha, Espaço seleciona,
+  Cmd+A select all, E edita, C abre dropdown categoria, X ignora, Enter
+  concilia, ? abre modal de ajuda. Hook `useKeyboardShortcuts` document-level
+  com função pura `matchShortcut()` testável; ignora foco em inputs EXCETO
+  safeInInputs (Esc, ?). Cross-platform Cmd/Ctrl. 17 testes.
+
+- `06ea25b` — **C3 Preview regra ao vivo**. No modal de editar regra,
+  enquanto digita padrão / tipoMatch, mostra contador "X pendentes seriam
+  classificadas" + 5 amostras (debounce 300ms). Endpoint `POST /regras/preview`
+  com janela 5000 tx PENDING (excluindo as já classificadas pela própria
+  regra via `excludeRuleId`). Função pura `txMatchesRegra` reusa
+  `normalizeExact`/`normalizeDescription` do `ai-categorizer/normalize.ts`
+  pra garantir consistência com pipeline real. 21 testes (4 tipos de match).
+
+- `939f00d` — **C4 URL persistente completa**. TODOS os filtros agora
+  refletidos no querystring (state → URL via `router.replace` com
+  `scroll: false`). Links shareable, back/forward funciona, refresh
+  preserva contexto. Parser extendido com `status` (enum), `contaId` (cuid),
+  `page` (int 1-10000). Builder novo `buildTransacoesURLParams()` omite
+  defaults pra URL limpa. Valores DEBOUNCED (q, valorMin, valorMax) só
+  comitam após user parar de digitar. 18 testes incluindo round-trip
+  build→parse.
+
+**Decisões técnicas notáveis:**
+- C1: filename slug usa NFD + UTC dates (bug pego em teste: `new Date('2026-05-23')`
+  parseado como UTC, mas `.getMonth()` retorna BRT-3 → filename ficava com
+  data do dia anterior).
+- C2: `isTypingTarget` duck-typed (procura `tagName` + `isContentEditable`)
+  pra ser testável em vitest com env `node` sem precisar de jsdom.
+- C3: `excludeRuleId` no preview é crítico — sem ele, editar uma regra
+  existente mostraria zero pendentes (já estavam todas classificadas pela
+  própria regra).
+- C4: `router.replace` (não `push`) e `scroll: false` impedem poluir
+  histórico do navegador e scrollar pro topo a cada keystroke.
+
+**Métricas:**
+- Suite testes: **1596 → 1667 (+71 testes, +4.4%)** sem regressões
+- TypeScript strict: 0 erros · `npm run build`: ✓ Compiled successfully
+- 4 commits feat: `e05dd54` · `3bfe328` · `06ea25b` · `939f00d`
+- 5 libs novas + 2 endpoints + 2 componentes + 4 arquivos de teste
+- Sem migrations — sprint puramente código
+- Documentação completa em `docs/SPRINT-3.0.4-POLIMENTO-PRO.md`
+
+**Próximo passo:**
+1. `git push origin main`
+2. Deploy prod (PM2 reload, sem migration)
+3. Yussef smoke test: Exportar CSV / `?` modal atalhos / J-K nav /
+   preview regra / refresh URL preserva filtros
+4. Próximo sprint: Sprint 3.0.5 (a planejar) ou pular pra FASE 6
+   (Relatórios PDF — DRE + DFC + Conciliação)
+
 ### [Próxima sessão] — preencher
 - Data:
 - O que foi feito:
