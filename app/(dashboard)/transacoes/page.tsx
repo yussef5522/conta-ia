@@ -26,7 +26,7 @@ import {
 import { Header } from '@/components/layout/header'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
-import { parseTransacoesURLFilters } from '@/lib/transacoes/url-filters'
+import { parseTransacoesURLFilters, buildTransacoesURLParams } from '@/lib/transacoes/url-filters'
 import { AiSourceBadge } from '@/components/transacoes/ai-source-badge'
 import { InlineCategorySelect } from '@/components/transacoes/inline-category-select'
 import {
@@ -104,6 +104,12 @@ function TransacoesPageInner() {
     q: searchParams.get('q'),
     importId: searchParams.get('importId'),
     conferencia: searchParams.get('conferencia'),
+    valorMin: searchParams.get('valorMin'),
+    valorMax: searchParams.get('valorMax'),
+    // Sprint 3.0.4 C4 — URL persistente completa
+    status: searchParams.get('status'),
+    contaId: searchParams.get('contaId'),
+    page: searchParams.get('page'),
   })
   const empresaIdParam = searchParams.get('empresaId')
 
@@ -119,9 +125,9 @@ function TransacoesPageInner() {
   )
   const [fim, setFim] = useState(urlFilters.fim ?? now.toISOString().split('T')[0])
   const [tipo, setTipo] = useState<string>(urlFilters.tipo ?? 'TODOS')
-  const [status, setStatus] = useState('TODOS')
-  const [contaFiltro, setContaFiltro] = useState('TODAS')
-  const [page, setPage] = useState(1)
+  const [status, setStatus] = useState(urlFilters.status ?? 'TODOS')
+  const [contaFiltro, setContaFiltro] = useState(urlFilters.contaId ?? 'TODAS')
+  const [page, setPage] = useState(urlFilters.page ?? 1)
   // Sprint 3.0.2 — filtros novos
   const [categoryId, setCategoryId] = useState(urlFilters.categoryId ?? 'TODAS')
   const [q, setQ] = useState(urlFilters.q ?? '')
@@ -227,6 +233,33 @@ function TransacoesPageInner() {
   }, [contaFiltro, empresaIdParam, page, inicio, fim, tipo, status, categoryId, qDebounced, importId, valorMinDebounced, valorMaxDebounced])
 
   useEffect(() => { fetchTransacoes() }, [fetchTransacoes])
+
+  // Sprint 3.0.4 C4 — URL persistente: state → URL (sincronia, sem reload).
+  // Usa router.replace pra não criar entrada no histórico do navegador a cada
+  // toque de tecla. Valores DEBOUNCED (q, valorMin, valorMax) garantem que
+  // só commitamos na URL após o user "parar de digitar".
+  useEffect(() => {
+    const p = buildTransacoesURLParams({
+      tipo,
+      status,
+      contaFiltro,
+      categoryId,
+      q: qDebounced,
+      valorMin: valorMinDebounced,
+      valorMax: valorMaxDebounced,
+      inicio,
+      fim,
+      page,
+      empresaId: empresaIdParam ?? undefined,
+      importId: importId ?? undefined,
+      conferencia: urlFilters.conferencia,
+    })
+    const qs = p.toString()
+    router.replace(qs ? `?${qs}` : '?', { scroll: false })
+  }, [
+    tipo, status, contaFiltro, categoryId, qDebounced, valorMinDebounced, valorMaxDebounced,
+    inicio, fim, page, empresaIdParam, importId, urlFilters.conferencia, router,
+  ])
 
   const entradas = transacoes.filter((t) => t.type === 'CREDIT').reduce((s, t) => s + t.amount, 0)
   const saidas = transacoes.filter((t) => t.type === 'DEBIT').reduce((s, t) => s + t.amount, 0)
