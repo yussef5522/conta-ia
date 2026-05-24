@@ -6,7 +6,7 @@ import Link from 'next/link'
 import {
   Plus, ArrowUpRight, ArrowDownRight, Filter, Search, X,
   ChevronLeft, ChevronRight, Building2, Sparkles,
-  Check, EyeOff, Trash2 as TrashIcon,
+  Check, EyeOff, Trash2 as TrashIcon, Download,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -338,6 +338,71 @@ function TransacoesPageInner() {
   const allOnPageSelected =
     transacoes.length > 0 && transacoes.every((t) => selectedIds.has(t.id))
 
+  // Sprint 3.0.4 C1 — export CSV. Reusa os MESMOS filtros aplicados na listagem.
+  // Exige empresaId (CSV é por-empresa pra evitar mistura de planos de contas).
+  const [exporting, setExporting] = useState(false)
+  const exportEmpresaId =
+    empresaIdParam ??
+    (contas.length > 0 && Array.from(new Set(contas.map((c) => c.companyId))).length === 1
+      ? contas[0].companyId
+      : null)
+
+  async function exportCSV() {
+    if (!exportEmpresaId) {
+      toast({
+        variant: 'destructive',
+        title: 'Selecione uma empresa',
+        description: 'Export precisa de uma empresa específica (use ?empresaId=).',
+      })
+      return
+    }
+    setExporting(true)
+    try {
+      const qs = new URLSearchParams()
+      if (contaFiltro !== 'TODAS') qs.set('contaId', contaFiltro)
+      if (inicio) qs.set('inicio', inicio)
+      if (fim) qs.set('fim', fim)
+      if (tipo !== 'TODOS') qs.set('tipo', tipo)
+      if (status !== 'TODOS') qs.set('status', status)
+      if (categoryId !== 'TODAS') qs.set('categoryId', categoryId)
+      if (qDebounced) qs.set('q', qDebounced)
+      if (importId) qs.set('importId', importId)
+      if (valorMinDebounced.trim() !== '' && Number(valorMinDebounced) >= 0)
+        qs.set('valorMin', String(Number(valorMinDebounced)))
+      if (valorMaxDebounced.trim() !== '' && Number(valorMaxDebounced) >= 0)
+        qs.set('valorMax', String(Number(valorMaxDebounced)))
+
+      const url = `/api/empresas/${exportEmpresaId}/transacoes/export${qs.toString() ? `?${qs}` : ''}`
+      const res = await fetch(url, { credentials: 'include' })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        toast({
+          variant: 'destructive',
+          title: 'Falha no export',
+          description: data.erro ?? `HTTP ${res.status}`,
+        })
+        return
+      }
+      const cd = res.headers.get('Content-Disposition') ?? ''
+      const match = cd.match(/filename="([^"]+)"/)
+      const filename = match?.[1] ?? `transacoes-${Date.now()}.csv`
+      const blob = await res.blob()
+      const objectUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = objectUrl
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(objectUrl)
+      toast({ title: 'CSV baixado', description: filename })
+    } catch {
+      toast({ variant: 'destructive', title: 'Erro', description: 'Falha de rede no export.' })
+    } finally {
+      setExporting(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Sprint 3.0.3 B2 — Bulk toolbar fixa quando há seleção */}
@@ -452,6 +517,23 @@ function TransacoesPageInner() {
         title={conferenciaMode ? 'Conferir Transações' : 'Transações'}
         description={`${paginacao.total} lançamento${paginacao.total !== 1 ? 's' : ''} no período`}
       >
+        {/* Sprint 3.0.4 C1 — Export CSV. Desabilita se não há empresa única identificável. */}
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={exportCSV}
+          disabled={exporting || !exportEmpresaId || paginacao.total === 0}
+          title={
+            !exportEmpresaId
+              ? 'Selecione uma empresa para exportar'
+              : paginacao.total === 0
+                ? 'Nenhuma transação para exportar'
+                : 'Exportar CSV (UTF-8, abre direto no Excel)'
+          }
+        >
+          <Download className="mr-1.5 h-3.5 w-3.5" />
+          {exporting ? 'Exportando…' : 'Exportar'}
+        </Button>
         {!contasReady ? (
           <Button size="sm" disabled>
             <Plus className="mr-1.5 h-3.5 w-3.5" />Nova Transação
