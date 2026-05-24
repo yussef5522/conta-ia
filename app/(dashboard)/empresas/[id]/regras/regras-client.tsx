@@ -568,6 +568,54 @@ function EditRegraModal({
   const [confianca, setConfianca] = useState(regra.confianca)
   const [saving, setSaving] = useState(false)
 
+  // Sprint 3.0.4 C3 — preview ao vivo do que a regra mataria
+  interface Sample {
+    id: string
+    description: string
+    amount: number
+    date: string
+    type: string
+  }
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewCount, setPreviewCount] = useState<number | null>(null)
+  const [previewSamples, setPreviewSamples] = useState<Sample[]>([])
+  const [previewTruncado, setPreviewTruncado] = useState(false)
+
+  useEffect(() => {
+    const padraoTrim = padrao.trim()
+    if (!padraoTrim) {
+      setPreviewCount(null)
+      setPreviewSamples([])
+      return
+    }
+    const handle = setTimeout(async () => {
+      setPreviewLoading(true)
+      try {
+        const res = await fetch(`/api/empresas/${empresaId}/regras/preview`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ padrao: padraoTrim, tipoMatch, excludeRuleId: regra.id }),
+        })
+        if (!res.ok) {
+          setPreviewCount(null)
+          setPreviewSamples([])
+          return
+        }
+        const data = await res.json()
+        setPreviewCount(data.count)
+        setPreviewSamples(data.samples ?? [])
+        setPreviewTruncado(!!data.truncado)
+      } catch {
+        setPreviewCount(null)
+        setPreviewSamples([])
+      } finally {
+        setPreviewLoading(false)
+      }
+    }, 300)
+    return () => clearTimeout(handle)
+  }, [padrao, tipoMatch, empresaId, regra.id])
+
   async function handleSave() {
     setSaving(true)
     try {
@@ -672,6 +720,45 @@ function EditRegraModal({
               className="w-full"
             />
           </div>
+        </div>
+
+        {/* Sprint 3.0.4 C3 — Preview ao vivo: o que essa regra mataria HOJE */}
+        <div className="rounded-md border border-border bg-muted/30 px-3 py-2.5 text-xs">
+          {previewLoading ? (
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Calculando preview…
+            </div>
+          ) : previewCount === null ? (
+            <p className="text-muted-foreground">
+              Digite um padrão pra ver quantas pendentes seriam classificadas.
+            </p>
+          ) : previewCount === 0 ? (
+            <p className="text-muted-foreground">
+              Nenhuma transação pendente bate com esse padrão.
+              {previewTruncado && ' (janela: 5000 tx mais recentes)'}
+            </p>
+          ) : (
+            <div className="space-y-1.5">
+              <p className="font-medium text-foreground">
+                <span className="tabular-nums">{previewCount}</span> transaç
+                {previewCount === 1 ? 'ão pendente seria classificada' : 'ões pendentes seriam classificadas'}
+                {previewTruncado && ' (de uma janela de 5000)'}
+              </p>
+              <ul className="space-y-0.5 pl-3 text-muted-foreground">
+                {previewSamples.map((s) => (
+                  <li key={s.id} className="truncate">
+                    • {s.description}
+                  </li>
+                ))}
+                {previewCount > previewSamples.length && (
+                  <li className="italic text-muted-foreground/70">
+                    + {previewCount - previewSamples.length} outras…
+                  </li>
+                )}
+              </ul>
+            </div>
+          )}
         </div>
 
         <DialogFooter>
