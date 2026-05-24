@@ -6,11 +6,14 @@ import Link from 'next/link'
 import {
   Plus, ArrowUpRight, ArrowDownRight, Filter, Search, X,
   ChevronLeft, ChevronRight, Building2, Sparkles,
+  Check, EyeOff, Trash2 as TrashIcon,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -124,6 +127,16 @@ function TransacoesPageInner() {
   const importId = urlFilters.importId
   const conferenciaMode = urlFilters.conferencia && !!importId
 
+  // Sprint 3.0.3 B2 — bulk select
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkCategoryId, setBulkCategoryId] = useState<string>('')
+  const [bulkLoading, setBulkLoading] = useState(false)
+  const [bulkConfirm, setBulkConfirm] = useState<
+    | { action: 'category'; targetId: string | null; targetName: string }
+    | { action: 'status'; status: 'IGNORED' | 'RECONCILED'; label: string }
+    | null
+  >(null)
+
   // Carrega lista de contas para o filtro e para o botão Nova Transação
   useEffect(() => {
     async function fetchContas() {
@@ -199,8 +212,194 @@ function TransacoesPageInner() {
     setPage(1)
   }
 
+  // Sprint 3.0.3 B2 — bulk select helpers
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function toggleSelectAllPage() {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      const allSelected = transacoes.every((t) => next.has(t.id))
+      if (allSelected) {
+        for (const t of transacoes) next.delete(t.id)
+      } else {
+        for (const t of transacoes) next.add(t.id)
+      }
+      return next
+    })
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set())
+    setBulkCategoryId('')
+  }
+
+  async function executeBulkCategory(catId: string | null) {
+    setBulkLoading(true)
+    try {
+      const ids = Array.from(selectedIds)
+      const res = await fetch('/api/transacoes/lote', {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transactionIds: ids, categoryId: catId }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast({
+          variant: 'destructive',
+          title: 'Falha no bulk update',
+          description: data.erro ?? `HTTP ${res.status}`,
+        })
+        return
+      }
+      toast({
+        title: `${data.atualizadas} transação${data.atualizadas === 1 ? '' : 'ões'} atualizada${data.atualizadas === 1 ? '' : 's'}`,
+        description: data.naoEncontradas > 0 ? `${data.naoEncontradas} não encontradas` : undefined,
+      })
+      clearSelection()
+      void fetchTransacoes()
+    } catch {
+      toast({ variant: 'destructive', title: 'Erro', description: 'Falha de rede.' })
+    } finally {
+      setBulkLoading(false)
+      setBulkConfirm(null)
+    }
+  }
+
+  async function executeBulkStatus(status: 'RECONCILED' | 'IGNORED') {
+    setBulkLoading(true)
+    try {
+      const ids = Array.from(selectedIds)
+      const res = await fetch('/api/transacoes/lote/status', {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transactionIds: ids, status }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast({
+          variant: 'destructive',
+          title: 'Falha no bulk update',
+          description: data.erro ?? `HTTP ${res.status}`,
+        })
+        return
+      }
+      toast({
+        title: `${data.atualizadas} transação${data.atualizadas === 1 ? '' : 'ões'} marcada${data.atualizadas === 1 ? '' : 's'} como ${status === 'RECONCILED' ? 'conciliada' : 'ignorada'}${data.atualizadas === 1 ? '' : 's'}`,
+        description: data.naoEncontradas > 0 ? `${data.naoEncontradas} não encontradas` : undefined,
+      })
+      clearSelection()
+      void fetchTransacoes()
+    } catch {
+      toast({ variant: 'destructive', title: 'Erro', description: 'Falha de rede.' })
+    } finally {
+      setBulkLoading(false)
+      setBulkConfirm(null)
+    }
+  }
+
+  const selectedCount = selectedIds.size
+  const allOnPageSelected =
+    transacoes.length > 0 && transacoes.every((t) => selectedIds.has(t.id))
+
   return (
     <div className="space-y-6">
+      {/* Sprint 3.0.3 B2 — Bulk toolbar fixa quando há seleção */}
+      {selectedCount > 0 && (
+        <div className="sticky top-0 z-20 rounded-lg border border-primary/40 bg-primary/5 backdrop-blur px-4 py-3 flex items-center gap-3 shadow-sm">
+          <Checkbox
+            checked={true}
+            onCheckedChange={() => clearSelection()}
+            aria-label="Limpar seleção"
+          />
+          <p className="text-sm font-semibold">
+            {selectedCount} selecionada{selectedCount === 1 ? '' : 's'}
+          </p>
+          <div className="flex-1" />
+          {/* Mudar categoria */}
+          {categorias.length > 0 && (
+            <Select
+              value={bulkCategoryId}
+              onValueChange={(v) => {
+                setBulkCategoryId(v)
+                const cat = categorias.find((c) => c.id === v)
+                setBulkConfirm({
+                  action: 'category',
+                  targetId: v === '__NONE__' ? null : v,
+                  targetName: v === '__NONE__' ? 'Sem categoria' : cat?.name ?? '?',
+                })
+              }}
+            >
+              <SelectTrigger className="h-8 w-48 text-sm">
+                <SelectValue placeholder="Mudar categoria..." />
+              </SelectTrigger>
+              <SelectContent className="max-h-[60vh]">
+                <SelectItem value="__NONE__">
+                  <span className="text-muted-foreground italic">Sem categoria</span>
+                </SelectItem>
+                {categorias.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    <span className="inline-flex items-center gap-2">
+                      {c.color && (
+                        <span
+                          className="h-2 w-2 rounded-full"
+                          style={{ background: c.color }}
+                        />
+                      )}
+                      {c.name}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={bulkLoading}
+            onClick={() =>
+              setBulkConfirm({
+                action: 'status',
+                status: 'RECONCILED',
+                label: 'Marcar como conciliadas',
+              })
+            }
+          >
+            <Check className="h-3.5 w-3.5 mr-1" />Confirmar
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={bulkLoading}
+            onClick={() =>
+              setBulkConfirm({
+                action: 'status',
+                status: 'IGNORED',
+                label: 'Marcar como ignoradas',
+              })
+            }
+          >
+            <EyeOff className="h-3.5 w-3.5 mr-1" />Ignorar
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={clearSelection}
+            aria-label="Limpar seleção"
+          >
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      )}
+
       {/* Sprint 3.0.2 — Header destacado modo Conferência */}
       {conferenciaMode && (
         <div className="rounded-lg border border-primary/40 bg-primary/5 px-4 py-3 flex items-start gap-3">
@@ -410,8 +609,31 @@ function TransacoesPageInner() {
         </div>
       ) : (
         <div className="rounded-lg border overflow-hidden">
+          {/* Sprint 3.0.3 B2 — selectAll header */}
+          <div className="flex items-center gap-3 px-4 py-2 bg-muted/30 border-b">
+            <Checkbox
+              checked={allOnPageSelected}
+              onCheckedChange={toggleSelectAllPage}
+              aria-label="Selecionar todas da página"
+            />
+            <span className="text-xs text-muted-foreground">
+              {selectedCount > 0
+                ? `${selectedCount} selecionada${selectedCount === 1 ? '' : 's'} (de ${paginacao.total} total)`
+                : 'Selecione transações pra ações em massa'}
+            </span>
+          </div>
           {transacoes.map((t, i) => (
-            <div key={t.id} className={`group flex items-center gap-3 px-4 py-3 hover:bg-muted/50 ${i > 0 ? 'border-t' : ''}`}>
+            <div
+              key={t.id}
+              className={`group flex items-center gap-3 px-4 py-3 hover:bg-muted/50 ${i > 0 ? 'border-t' : ''} ${selectedIds.has(t.id) ? 'bg-primary/5' : ''}`}
+            >
+              {/* Sprint 3.0.3 B2 — checkbox */}
+              <Checkbox
+                checked={selectedIds.has(t.id)}
+                onCheckedChange={() => toggleSelect(t.id)}
+                aria-label={`Selecionar ${t.description}`}
+                onClick={(e) => e.stopPropagation()}
+              />
               {/* Ícone */}
               <div className={`shrink-0 flex h-9 w-9 items-center justify-center rounded-full ${
                 t.type === 'CREDIT' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
@@ -517,6 +739,44 @@ function TransacoesPageInner() {
             </Button>
           </div>
         </div>
+      )}
+
+      {/* Sprint 3.0.3 B2 — Confirm dialog bulk */}
+      {bulkConfirm && (
+        <ConfirmDialog
+          open={!!bulkConfirm}
+          onOpenChange={(o) => { if (!o) { setBulkConfirm(null); setBulkCategoryId('') } }}
+          title={
+            bulkConfirm.action === 'category'
+              ? `Mudar categoria de ${selectedCount} transação${selectedCount === 1 ? '' : 'ões'}?`
+              : `${bulkConfirm.label} (${selectedCount} transação${selectedCount === 1 ? '' : 'ões'})?`
+          }
+          description={
+            bulkConfirm.action === 'category' ? (
+              <div className="text-sm">
+                <p>Nova categoria: <strong>{bulkConfirm.targetName}</strong></p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Source ficará MANUAL pra todas. IA confidence e regra-aplicada serão resetadas.
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm">
+                {bulkConfirm.status === 'IGNORED'
+                  ? 'Transações ignoradas saem da fila /pendentes mas continuam no histórico.'
+                  : 'Confirmar = marcar como conciliadas (revisadas).'}
+              </p>
+            )
+          }
+          confirmLabel={bulkLoading ? 'Aplicando...' : 'Confirmar'}
+          variant={bulkConfirm.action === 'status' && bulkConfirm.status === 'IGNORED' ? 'destructive' : 'default'}
+          onConfirm={async () => {
+            if (bulkConfirm.action === 'category') {
+              await executeBulkCategory(bulkConfirm.targetId)
+            } else {
+              await executeBulkStatus(bulkConfirm.status)
+            }
+          }}
+        />
       )}
     </div>
   )
