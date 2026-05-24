@@ -26,6 +26,7 @@ import { TopCategories } from './_components/TopCategories'
 import { HealthCheck } from './_components/HealthCheck'
 import { CashflowWaterfall } from './_components/CashflowWaterfall'
 import { RecentActivity } from './_components/RecentActivity'
+import { PrevistoSection } from './_components/PrevistoSection'
 import { PendingClassification } from './_components/PendingClassification'
 import {
   NoCompaniesEmpty,
@@ -157,6 +158,11 @@ export default async function DashboardPage({ searchParams }: PageProps) {
 
           <Suspense fallback={<CardSkeleton height={200} />}>
             <HealthCheck companyId={empresaAtual.id} />
+          </Suspense>
+
+          {/* Sprint 4.0.3 — Fluxo Previsto + Alertas Vencimento */}
+          <Suspense fallback={<CardSkeleton height={260} />}>
+            <PrevistoSection companyId={empresaAtual.id} />
           </Suspense>
 
           {/* Cashflow Waterfall — full width */}

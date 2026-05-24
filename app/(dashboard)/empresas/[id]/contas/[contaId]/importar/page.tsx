@@ -279,11 +279,40 @@ export default function ImportarOFXPage() {
         return
       }
       toast({ variant: 'success', title: 'Importação concluída', description: data.mensagem })
-      // Sprint 3.0.2 A3 — redirect pra Conferência se houver importId na resposta
+
+      // Sprint 4.0.3 — pós-import, escaneia sugestões de conciliação.
+      // Se houver ≥1 → wizard de conciliação (UX premium).
+      // Senão → fluxo Sprint 3.0.2 (conferência da classificação IA).
       if (data.importId) {
-        router.push(
-          `/transacoes?empresaId=${empresaId}&importId=${data.importId}&conferencia=true`,
-        )
+        let temSugestoes = false
+        try {
+          const scanRes = await fetch('/api/conciliacao/scan-by-import', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ importId: data.importId }),
+          })
+          if (scanRes.ok) {
+            const scanData = await scanRes.json()
+            temSugestoes = (scanData.suggestions?.length ?? 0) > 0
+            if (temSugestoes) {
+              toast({
+                title: `${scanData.suggestions.length} sugestão${scanData.suggestions.length === 1 ? '' : 'es'} de conciliação`,
+                description: 'Redirecionando pro wizard…',
+              })
+            }
+          }
+        } catch {
+          // scan é best-effort — se falhar, segue fluxo normal
+        }
+
+        if (temSugestoes) {
+          router.push(`/conciliacao/wizard?importId=${data.importId}`)
+        } else {
+          router.push(
+            `/transacoes?empresaId=${empresaId}&importId=${data.importId}&conferencia=true`,
+          )
+        }
       } else {
         router.push(`/empresas/${empresaId}/contas/${contaId}/transacoes`)
       }

@@ -1,6 +1,8 @@
 'use client'
 
-import { usePathname } from 'next/navigation'
+import { useEffect, useState } from 'react'
+import { usePathname, useSearchParams } from 'next/navigation'
+import { useSidebarBadges } from '@/lib/hooks/use-sidebar-badges'
 import {
   LayoutDashboard,
   Building2,
@@ -26,6 +28,44 @@ interface GlobalSidebarProps {
 
 export function GlobalSidebar({ userName, userEmail, onNavigate }: GlobalSidebarProps) {
   const pathname = usePathname()
+  const searchParams = useSearchParams()
+
+  // Sprint 4.0.3 — resolve empresaId pra badges:
+  //   1. ?empresaId= na URL atual (paginas AP/AR/Recorrentes/etc usam)
+  //   2. Match de /empresas/<id>/* (pages de detalhe)
+  //   3. Senão null (sem badges)
+  const [empresaId, setEmpresaId] = useState<string | null>(null)
+  useEffect(() => {
+    const fromQuery = searchParams.get('empresaId')
+    if (fromQuery) {
+      setEmpresaId(fromQuery)
+      return
+    }
+    const match = pathname.match(/^\/empresas\/([a-z0-9]{20,30})/i)
+    if (match) {
+      setEmpresaId(match[1])
+      return
+    }
+    // Senão tenta pegar a primeira empresa do user (1 fetch)
+    fetch('/api/empresas', { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.empresas?.length === 1) setEmpresaId(data.empresas[0].id)
+      })
+      .catch(() => {})
+  }, [pathname, searchParams])
+
+  const badges = useSidebarBadges(empresaId)
+  const apBadge = badges?.contasAPagar
+    ? badges.contasAPagar.vencidas + badges.contasAPagar.vencendoEm3Dias
+    : 0
+  const apTone: 'red' | 'amber' | 'neutral' =
+    badges?.contasAPagar?.vencidas
+      ? 'red'
+      : badges?.contasAPagar?.vencendoEm3Dias
+        ? 'amber'
+        : 'neutral'
+  const conciliacaoBadge = badges?.conciliacao?.pendentes ?? 0
 
   const initials = userName
     .split(' ')
@@ -79,6 +119,8 @@ export function GlobalSidebar({ userName, userEmail, onNavigate }: GlobalSidebar
           href="/contas-a-pagar"
           isActive={pathname.startsWith('/contas-a-pagar')}
           onClick={onNavigate}
+          badge={apBadge > 0 ? String(apBadge) : undefined}
+          badgeTone={apTone}
         />
         <SidebarItem
           icon={Wallet}
@@ -107,6 +149,8 @@ export function GlobalSidebar({ userName, userEmail, onNavigate }: GlobalSidebar
           href="/conciliacao"
           isActive={pathname.startsWith('/conciliacao')}
           onClick={onNavigate}
+          badge={conciliacaoBadge > 0 ? String(conciliacaoBadge) : undefined}
+          badgeTone="neutral"
         />
 
         {/* Separador */}
