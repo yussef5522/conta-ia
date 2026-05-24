@@ -1,23 +1,17 @@
 'use client'
 
-// Sprint 4.0.5.a — refactor: remove ContextualSidebar (sidebar dupla),
-// adiciona TopBar com WorkspaceSwitcher.
-//
-// Layout final:
-//   ┌──── TopBar (56px, sticky) ────────────────────┐
-//   │  [Logo] / [Cacula Mix ▼]              [👤]   │
-//   ├────────┬───────────────────────────────────────┤
-//   │ Side   │                                       │
-//   │ bar    │           Conteúdo                    │
-//   │ 240px  │                                       │
-//   └────────┴───────────────────────────────────────┘
+// Sprint 4.0.5.a/c — layout shell.
+// Desktop: TopBar 56px + Sidebar fixa 240px.
+// Mobile: TopBar 56px com hambúrguer + WorkspaceSwitcher + UserMenu;
+//         Sidebar via Sheet drawer.
 
 import { useState } from 'react'
 import { Menu } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { GlobalSidebar } from '@/components/sidebar/global-sidebar'
 import { TopBar } from './top-bar'
+import { WorkspaceSwitcher } from './workspace-switcher'
+import { UserMenu } from './user-menu'
 import { EmpresaProvider } from '@/lib/contexts/empresa-context'
 
 interface DashboardShellProps {
@@ -32,22 +26,25 @@ export function DashboardShell({ userName, userEmail, children }: DashboardShell
   return (
     <EmpresaProvider>
       <div className="flex h-screen flex-col overflow-hidden bg-zinc-50">
-        {/* TopBar global (desktop + mobile) */}
+        {/* TopBar global (desktop) */}
         <div className="hidden md:block">
           <TopBar userName={userName} userEmail={userEmail} />
         </div>
 
-        {/* TopBar mobile com hamburguer */}
-        <header className="flex h-14 items-center gap-3 border-b bg-white px-4 md:hidden sticky top-0 z-30">
-          <Button
-            variant="ghost"
-            size="sm"
+        {/* TopBar mobile: hambúrguer + workspace switcher + user menu */}
+        <header className="flex h-14 items-center gap-2 border-b bg-white px-3 md:hidden sticky top-0 z-30">
+          <button
+            type="button"
             onClick={() => setMobileOpen(true)}
             aria-label="Abrir menu"
+            className="flex items-center justify-center h-11 w-11 -ml-2 rounded-md text-zinc-700 hover:bg-zinc-100 active:scale-95 transition-all"
           >
             <Menu className="h-5 w-5" />
-          </Button>
-          <span className="font-semibold text-sm">Conta IA</span>
+          </button>
+          <div className="flex-1 min-w-0">
+            <WorkspaceSwitcher />
+          </div>
+          <UserMenu userName={userName} userEmail={userEmail} />
         </header>
 
         <div className="flex flex-1 overflow-hidden">
@@ -58,7 +55,7 @@ export function DashboardShell({ userName, userEmail, children }: DashboardShell
 
           {/* MOBILE: drawer */}
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-            <SheetContent side="left" className="p-0 w-72 max-w-full">
+            <SheetContent side="left" className="p-0 w-72 max-w-[85vw]">
               <GlobalSidebar
                 userName={userName}
                 userEmail={userEmail}
