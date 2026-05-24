@@ -125,6 +125,10 @@ export async function GET(request: NextRequest, { params }: Params) {
         type: { not: 'TRANSFER' },
         // Sprint 4.0.1.a/b — REALIZADO = EFFECTED; PREVISTO = PAYABLE/RECEIVABLE.
         lifecycle: lifecycleFilter,
+        // Sprint 4.0.2 — anti-dupla-contagem (só no Realizado).
+        // No Previsto, todas PAYABLE/RECEIVABLE têm reconciledWithId=NULL por
+        // definição (ainda pendentes), então o filtro é no-op mas seguro.
+        ...(view === 'realizado' ? { reconciledWithId: null } : {}),
         OR: lifecycleDateClauses,
       },
       select: {

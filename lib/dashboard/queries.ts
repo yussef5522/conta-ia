@@ -92,8 +92,10 @@ async function loadHeroKPIs(
         where: {
           bankAccount: { companyId },
           // Sprint 4.0.1.a — Dashboard mostra REALIZADO (EFFECTED).
-          // Pendentes (PAYABLE/RECEIVABLE) terão visão própria no Sprint 4.0.1.b.
+          // Sprint 4.0.2 — exclui PAYABLE conciliada (reconciledWithId != null) pra
+          // evitar dupla contagem com a OFX correspondente.
           lifecycle: 'EFFECTED',
+          reconciledWithId: null,
           OR: [
             {
               competenceDate: {
@@ -125,8 +127,10 @@ async function loadHeroKPIs(
         where: {
           bankAccount: { companyId },
           // Sprint 4.0.1.a — Dashboard mostra REALIZADO (EFFECTED).
-          // Pendentes (PAYABLE/RECEIVABLE) terão visão própria no Sprint 4.0.1.b.
+          // Sprint 4.0.2 — exclui PAYABLE conciliada (reconciledWithId != null) pra
+          // evitar dupla contagem com a OFX correspondente.
           lifecycle: 'EFFECTED',
+          reconciledWithId: null,
           type: { not: 'TRANSFER' },
           date: { gte: periods.last30Days.start, lte: periods.last30Days.end },
         },
@@ -143,8 +147,10 @@ async function loadHeroKPIs(
         where: {
           bankAccount: { companyId },
           // Sprint 4.0.1.a — Dashboard mostra REALIZADO (EFFECTED).
-          // Pendentes (PAYABLE/RECEIVABLE) terão visão própria no Sprint 4.0.1.b.
+          // Sprint 4.0.2 — exclui PAYABLE conciliada (reconciledWithId != null) pra
+          // evitar dupla contagem com a OFX correspondente.
           lifecycle: 'EFFECTED',
+          reconciledWithId: null,
           type: { not: 'TRANSFER' },
           date: { gte: periods.last12Months.start, lte: periods.last12Months.end },
         },
@@ -450,8 +456,10 @@ async function loadHealthCheck(
         where: {
           bankAccount: { companyId },
           // Sprint 4.0.1.a — Dashboard mostra REALIZADO (EFFECTED).
-          // Pendentes (PAYABLE/RECEIVABLE) terão visão própria no Sprint 4.0.1.b.
+          // Sprint 4.0.2 — exclui PAYABLE conciliada (reconciledWithId != null) pra
+          // evitar dupla contagem com a OFX correspondente.
           lifecycle: 'EFFECTED',
+          reconciledWithId: null,
           type: { not: 'TRANSFER' },
           date: { gte: burnRangeStart, lte: burnRangeEnd },
         },
@@ -468,8 +476,10 @@ async function loadHealthCheck(
         where: {
           bankAccount: { companyId },
           // Sprint 4.0.1.a — Dashboard mostra REALIZADO (EFFECTED).
-          // Pendentes (PAYABLE/RECEIVABLE) terão visão própria no Sprint 4.0.1.b.
+          // Sprint 4.0.2 — exclui PAYABLE conciliada (reconciledWithId != null) pra
+          // evitar dupla contagem com a OFX correspondente.
           lifecycle: 'EFFECTED',
+          reconciledWithId: null,
           type: { not: 'TRANSFER' },
           date: { gte: periods.last30Days.start, lte: periods.last30Days.end },
         },
@@ -486,8 +496,10 @@ async function loadHealthCheck(
         where: {
           bankAccount: { companyId },
           // Sprint 4.0.1.a — Dashboard mostra REALIZADO (EFFECTED).
-          // Pendentes (PAYABLE/RECEIVABLE) terão visão própria no Sprint 4.0.1.b.
+          // Sprint 4.0.2 — exclui PAYABLE conciliada (reconciledWithId != null) pra
+          // evitar dupla contagem com a OFX correspondente.
           lifecycle: 'EFFECTED',
+          reconciledWithId: null,
           OR: [
             {
               competenceDate: {

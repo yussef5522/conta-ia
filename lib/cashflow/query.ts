@@ -37,6 +37,10 @@ export function buildConsolidatedCashflowWhere(
     // Sprint 4.0.1.a — fluxo REALIZADO: apenas tx EFFECTED.
     // Pendentes (PAYABLE/RECEIVABLE) ficam pro fluxo PREVISTO (Sprint 4.0.1.b).
     lifecycle: 'EFFECTED',
+    // Sprint 4.0.2 — anti-dupla-contagem: PAYABLE/RECEIVABLE conciliada com OFX
+    // tem reconciledWithId = ofx.id. A OFX (lado real) entra normal; a PAYABLE
+    // conciliada é ignorada pra não somar o mesmo valor 2x.
+    reconciledWithId: null,
     date: { gte: period.startDate, lte: period.endDate },
     // Exclui também transações categorizadas como "Transferências"
     // (categoria criada pelo backfill com dreGroup=TRANSFERENCIA).
@@ -60,6 +64,8 @@ export function buildByAccountCashflowWhere(
     bankAccountId,
     // Sprint 4.0.1.a — extrato por conta mostra REALIZADO (PAYABLE não saiu do caixa ainda).
     lifecycle: 'EFFECTED',
+    // Sprint 4.0.2 — anti-dupla-contagem da PAYABLE conciliada (ver comentário acima)
+    reconciledWithId: null,
     date: { gte: period.startDate, lte: period.endDate },
   }
 }

@@ -13,6 +13,7 @@ import {
   Wallet,
   Repeat,
   Users,
+  Link2,
 } from 'lucide-react'
 import Link from 'next/link'
 import { SidebarItem } from './sidebar-item'
@@ -98,6 +99,13 @@ export function GlobalSidebar({ userName, userEmail, onNavigate }: GlobalSidebar
           label="Clientes"
           href="/clientes"
           isActive={pathname.startsWith('/clientes')}
+          onClick={onNavigate}
+        />
+        <SidebarItem
+          icon={Link2}
+          label="Conciliação"
+          href="/conciliacao"
+          isActive={pathname.startsWith('/conciliacao')}
           onClick={onNavigate}
         />
 
