@@ -98,6 +98,8 @@ export async function GET(request: NextRequest) {
     >()
     for (const tx of transacoes) {
       const gid = tx.transferGroupId!
+      // Sprint 4.0.1.a — transferências SEMPRE têm bankAccount (são tx EFFECTED por construção).
+      if (!tx.bankAccount) continue
       const existing = grupos.get(gid)
       if (!existing) {
         // Primeira ponta vista = saída (ordem ASC de createdAt dentro do grupo)

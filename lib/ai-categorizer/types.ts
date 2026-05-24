@@ -27,7 +27,9 @@ export interface TxSnapshot {
   description: string
   amount: number
   type: string
-  bankAccountId: string
+  // Sprint 4.0.1.a — nullable pra suportar PAYABLE/RECEIVABLE sem conta.
+  // AI categorizer só processa EFFECTED em produção, mas o tipo precisa refletir o schema.
+  bankAccountId: string | null
   status: string // PENDING | RECONCILED | IGNORED
   categoryId: string | null
 }

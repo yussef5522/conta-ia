@@ -38,6 +38,12 @@ export async function deleteTransferGroup(
   }
 
   const [fromSide, toSide] = pair
+  // Sprint 4.0.1.a — TRANSFER por construção SEMPRE tem ambos bankAccountId e bankAccount.
+  if (!fromSide.bankAccountId || !toSide.bankAccountId || !fromSide.bankAccount || !toSide.bankAccount) {
+    throw new TransferValidationError(
+      'Par de transferência corrompido: bankAccount ausente em pelo menos uma ponta',
+    )
+  }
   if (fromSide.bankAccount.companyId !== toSide.bankAccount.companyId) {
     throw new TransferValidationError(
       'Par de transferência tem contas de empresas diferentes (estado inválido)',

@@ -23,7 +23,7 @@ export default async function EditarTransacaoPage({ params }: Props) {
     },
     include: { bankAccount: { select: { companyId: true } } },
   })
-  if (!transacao) notFound()
+  if (!transacao || !transacao.bankAccount) notFound()
 
   const categories = await prisma.category.findMany({
     where: { companyId: transacao.bankAccount.companyId, isActive: true },

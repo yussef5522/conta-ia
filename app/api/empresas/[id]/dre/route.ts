@@ -92,6 +92,9 @@ export async function GET(request: NextRequest, { params }: Params) {
         // Transferências entre contas da mesma empresa não compõem DRE (Sprint 0.5).
         // Filtragem no SQL evita trafegar dados que o engine descartaria.
         type: { not: 'TRANSFER' },
+        // Sprint 4.0.1.a — DRE Realizado: apenas tx EFFECTED.
+        // PAYABLE/RECEIVABLE (pendentes) compõem visão "Previsto" (Sprint 4.0.1.b).
+        lifecycle: 'EFFECTED',
         OR: dateClauses,
       },
       select: {

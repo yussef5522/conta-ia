@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const ctx = await getAuthContext(request, ponta.bankAccount.companyId)
+    const ctx = await getAuthContext(request, ponta.bankAccount!.companyId)
     const result = await pairPendentes(input, ctx, request)
     return NextResponse.json({ transferencia: result }, { status: 201 })
   } catch (error) {

@@ -75,7 +75,7 @@ export async function classifyWithLearning(
     },
   })
   if (!base) throw new Error('Transação não encontrada')
-  if (base.bankAccount.companyId !== ctx.company.id) {
+  if (base.bankAccount!.companyId !== ctx.company.id) {
     throw new Error('Transação não pertence à empresa do contexto')
   }
 

@@ -24,6 +24,14 @@ export async function GET(request: NextRequest, { params }: Params) {
     const { id } = await params
     const transacao = await carregarTransacao(id)
     if (!transacao) return NextResponse.json({ erro: 'Transação não encontrada' }, { status: 404 })
+    // Sprint 4.0.1.a — rotas genéricas só lidam com EFFECTED (tx vinda do OFX ou manual já paga).
+    // PAYABLE/RECEIVABLE pendentes têm endpoints próprios em /api/contas-a-pagar e /contas-a-receber.
+    if (!transacao.bankAccount) {
+      return NextResponse.json(
+        { erro: 'Use /api/contas-a-pagar/[id] ou /api/contas-a-receber/[id] pra lançamentos pendentes' },
+        { status: 422 },
+      )
+    }
 
     const ctx = await getAuthContext(request, transacao.bankAccount.companyId)
     ctx.requirePermission('transaction.view')
@@ -39,6 +47,12 @@ export async function PUT(request: NextRequest, { params }: Params) {
     const { id } = await params
     const antiga = await carregarTransacao(id)
     if (!antiga) return NextResponse.json({ erro: 'Transação não encontrada' }, { status: 404 })
+    if (!antiga.bankAccount || !antiga.bankAccountId) {
+      return NextResponse.json(
+        { erro: 'Use endpoints de contas a pagar/receber pra lançamentos pendentes' },
+        { status: 422 },
+      )
+    }
 
     const ctx = await getAuthContext(request, antiga.bankAccount.companyId)
     ctx.requirePermission('transaction.update')
@@ -70,7 +84,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
       })
       if (ajusteSaldo !== 0) {
         await tx.bankAccount.update({
-          where: { id: antiga.bankAccountId },
+          where: { id: antiga.bankAccountId! },
           data: { balance: { increment: ajusteSaldo } },
         })
       }
@@ -131,6 +145,12 @@ export async function DELETE(request: NextRequest, { params }: Params) {
     const { id } = await params
     const transacao = await carregarTransacao(id)
     if (!transacao) return NextResponse.json({ erro: 'Transação não encontrada' }, { status: 404 })
+    if (!transacao.bankAccount || !transacao.bankAccountId) {
+      return NextResponse.json(
+        { erro: 'Use endpoints de contas a pagar/receber pra lançamentos pendentes' },
+        { status: 422 },
+      )
+    }
 
     const ctx = await getAuthContext(request, transacao.bankAccount.companyId)
     ctx.requirePermission('transaction.delete')
@@ -141,7 +161,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
     await prisma.$transaction(async (tx) => {
       await tx.transaction.delete({ where: { id } })
       await tx.bankAccount.update({
-        where: { id: transacao.bankAccountId },
+        where: { id: transacao.bankAccountId! },
         data: { balance: { increment: reverso } },
       })
       await logAudit(

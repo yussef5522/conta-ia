@@ -52,7 +52,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       )
     }
 
-    const ctx = await getAuthContext(request, tx.bankAccount.companyId)
+    const ctx = await getAuthContext(request, tx.bankAccount!.companyId)
     ctx.requirePermission('transaction.update')
 
     const body = await request.json()

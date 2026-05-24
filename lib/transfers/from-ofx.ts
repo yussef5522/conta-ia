@@ -105,9 +105,9 @@ export async function createTransferFromOfx(
       },
       existingTx: {
         id: existingTx.id,
-        bankAccountId: existingTx.bankAccount.id,
-        bankAccountName: existingTx.bankAccount.name,
-        bankAccountCompanyId: existingTx.bankAccount.companyId,
+        bankAccountId: existingTx.bankAccount!.id,
+        bankAccountName: existingTx.bankAccount!.name,
+        bankAccountCompanyId: existingTx.bankAccount!.companyId,
         type: existingTx.type,
         amount: existingTx.amount,
         categoryId: existingTx.categoryId,
@@ -124,15 +124,15 @@ export async function createTransferFromOfx(
   const fromIsImporting = ops.fromAccountId === importingAccount.id
   const fromAccountData = fromIsImporting ? importingAccount : existingTx.bankAccount
   const adjustedCurrentBalance = fromIsImporting
-    ? fromAccountData.balance
-    : fromAccountData.balance + ops.existingTxRevertDelta
+    ? fromAccountData!.balance
+    : fromAccountData!.balance + ops.existingTxRevertDelta
 
   const balanceCheck = checkBalance({
     currentBalance: adjustedCurrentBalance,
-    allowNegativeBalance: fromAccountData.allowNegativeBalance,
-    creditLimit: fromAccountData.creditLimit,
+    allowNegativeBalance: fromAccountData!.allowNegativeBalance,
+    creditLimit: fromAccountData!.creditLimit,
     amountChange: -input.ofxTransaction.amount,
-    accountName: fromAccountData.name,
+    accountName: fromAccountData!.name,
   })
   if (!balanceCheck.allowed) {
     throw new BalanceCheckError(balanceCheck)
@@ -144,7 +144,7 @@ export async function createTransferFromOfx(
   const [, , debitCreated, creditCreated, fromUpdated, toUpdated] =
     await prisma.$transaction([
       prisma.bankAccount.update({
-        where: { id: existingTx.bankAccount.id },
+        where: { id: existingTx.bankAccount!.id },
         data: { balance: { increment: ops.existingTxRevertDelta } },
       }),
       prisma.transaction.delete({ where: { id: existingTx.id } }),

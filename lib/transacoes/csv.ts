@@ -13,11 +13,12 @@ export interface TransacaoCsvRow {
   category: { name: string } | null
   supplier: { razaoSocial: string; nomeFantasia: string | null } | null
   classifiedByRule: { padrao: string } | null
+  // Sprint 4.0.1.a — nullable pq PAYABLE/RECEIVABLE podem ser exportadas sem conta.
   bankAccount: {
     name: string
     bankName: string | null
     company: { name: string; tradeName: string | null }
-  }
+  } | null
 }
 
 const HEADERS = [
@@ -111,8 +112,10 @@ export function generateTransacoesCSV(rows: TransacaoCsvRow[]): string {
     t.classificationSource ? SOURCE_LABELS[t.classificationSource] ?? t.classificationSource : '',
     formatConfidence(t.aiConfidence),
     t.classifiedByRule?.padrao ?? '',
-    t.bankAccount.company.tradeName ?? t.bankAccount.company.name,
-    `${t.bankAccount.bankName ?? ''} · ${t.bankAccount.name}`.replace(/^ · /, ''),
+    t.bankAccount?.company.tradeName ?? t.bankAccount?.company.name ?? '',
+    t.bankAccount
+      ? `${t.bankAccount.bankName ?? ''} · ${t.bankAccount.name}`.replace(/^ · /, '')
+      : '',
   ])
 
   // BOM UTF-8 pra Excel BR

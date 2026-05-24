@@ -56,7 +56,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       )
     }
 
-    const companyId = tx.bankAccount.companyId
+    const companyId = tx.bankAccount!.companyId
     const ctx = await getAuthContext(request, companyId)
     ctx.requirePermission('transaction.view')
 
@@ -154,8 +154,8 @@ export async function POST(request: NextRequest, { params }: Params) {
 
     // 6. Chama Claude
     const result = await callClaude({
-      tradeName: tx.bankAccount.company.tradeName ?? tx.bankAccount.company.name,
-      companyType: tx.bankAccount.company.type,
+      tradeName: tx.bankAccount!.company.tradeName ?? tx.bankAccount!.company.name,
+      companyType: tx.bankAccount!.company.type,
       categories: categoriasCompat,
       fewShot,
       description: tx.description,

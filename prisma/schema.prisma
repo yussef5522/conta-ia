@@ -31,7 +31,7 @@ model User {
   couponRedemptions   CouponRedemption[]
   // Onda 2 Sprint 2.3 — quem importou cada OFX
   ofxImports          OfxImport[]
-  ofxImportsReverted  OfxImport[] @relation("OfxImportReverter")
+  ofxImportsReverted  OfxImport[]          @relation("OfxImportReverter")
 
   @@map("users")
 }
@@ -58,6 +58,7 @@ model Company {
   bankAccounts     BankAccount[]
   categories       Category[]
   suppliers        Supplier[]
+  customers        Customer[]
   rules            AiLearningRule[]
   costCenters      CostCenter[]
   categoryHistory  CategoryHistory[]
@@ -88,15 +89,15 @@ model UserCompany {
 }
 
 model BankAccount {
-  id              String  @id @default(cuid())
-  companyId       String
-  name            String
-  bankName        String?
-  bankCode        String?
-  agency          String?
-  accountNumber   String?
-  accountType     String  @default("CHECKING")
-  balance         Float   @default(0)
+  id            String  @id @default(cuid())
+  companyId     String
+  name          String
+  bankName      String?
+  bankCode      String?
+  agency        String?
+  accountNumber String?
+  accountType   String  @default("CHECKING")
+  balance       Float   @default(0)
 
   // Saldo negativo / cheque especial (Sprint 0.5).
   // allowNegativeBalance: se false, lançamentos/transferências que deixariam
@@ -126,7 +127,10 @@ model BankAccount {
 
 model Transaction {
   id            String   @id @default(cuid())
-  bankAccountId String
+  // Sprint 4.0.1.a — bankAccountId nullable pra PAYABLE/RECEIVABLE criados sem
+  // conta definida (user nem sabe ainda de qual conta vai pagar a luz).
+  // Setado na efetivação manual OU conciliação OFX.
+  bankAccountId String?
   categoryId    String?
   date          DateTime
   description   String
@@ -152,7 +156,7 @@ model Transaction {
   // Mantido em Fluxo POR CONTA (mostra entrada/saída normalmente).
   transferGroupId String?
 
-  notes         String?
+  notes String?
 
   // Classificação automática (FASE 3+4 — IA Contadora)
   // Fornecedor identificado (via regra CNPJ ou lookup BrasilAPI)
@@ -179,11 +183,31 @@ model Transaction {
   costCenterId String?
 
   // Onda 2 Sprint 2.3 — qual import OFX trouxe essa transação (null = manual / antes da Onda 2).
-  importId     String?
+  importId String?
 
-  bankAccount      BankAccount     @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+  // Sprint 4.0.1.a — Core Financeiro AP/AR.
+  // lifecycle distingue lançamento REAL (EFFECTED — extrato OFX ou pagamento manual já feito)
+  // de lançamento PENDENTE (PAYABLE = conta a pagar, RECEIVABLE = conta a receber).
+  // DRE filtra lifecycle='EFFECTED' (visão Realizado) ou inclui PAYABLE/RECEIVABLE (visão Previsto).
+  lifecycle        String        @default("EFFECTED")
+  // dueDate é a data esperada de pagamento/recebimento (só faz sentido em PAYABLE/RECEIVABLE).
+  // Quando vira EFFECTED via efetivação manual ou conciliação OFX, paymentDate é setado e
+  // a data principal (`date`) reflete o caixa real.
+  dueDate          DateTime?
+  // Quando uma PAYABLE/RECEIVABLE é conciliada com uma tx OFX, aponta pra ela.
+  // Estratégia "link" (não merge): preserva FITID/dedupHash/importId pra auditoria fiscal +
+  // permite desfazer conciliação. DRE caixa filtra `reconciledWithId IS NULL` pra evitar dupla contagem.
+  reconciledWithId String?       @unique
+  reconciledWith   Transaction?  @relation("ConciliationLink", fields: [reconciledWithId], references: [id])
+  reconciledFrom   Transaction[] @relation("ConciliationLink")
+
+  // RECEIVABLE pode vincular cliente (Customer); PAYABLE usa supplierId já existente.
+  customerId String?
+
+  bankAccount      BankAccount?    @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
   category         Category?       @relation(fields: [categoryId], references: [id])
   supplier         Supplier?       @relation(fields: [supplierId], references: [id])
+  customer         Customer?       @relation(fields: [customerId], references: [id])
   classifiedByRule AiLearningRule? @relation(fields: [classifiedByRuleId], references: [id])
   costCenter       CostCenter?     @relation(fields: [costCenterId], references: [id])
   // Onda 2 Sprint 2.3 — vínculo com OfxImport (SetNull se import for deletado)
@@ -195,6 +219,9 @@ model Transaction {
   @@index([costCenterId])
   @@index([transferGroupId])
   @@index([importId])
+  @@index([lifecycle, dueDate])
+  @@index([lifecycle, status])
+  @@index([customerId])
   @@map("transactions")
 }
 
@@ -251,6 +278,7 @@ model Category {
   children     Category[]        @relation("CategoryParent")
   transactions Transaction[]
   suppliers    Supplier[]
+  customers    Customer[]
   rules        AiLearningRule[]
   history      CategoryHistory[]
 
@@ -321,6 +349,41 @@ model CategoryHistory {
 // Fornecedores identificados em transações (manualmente ou via BrasilAPI lookup por CNPJ).
 // Usado pra agrupar transações, sugerir categoria e dar visibilidade na tela "Fornecedores" (4.8).
 // Multi-tenant: cada empresa tem sua própria base; mesmo CNPJ pode existir em duas empresas distintas.
+// Sprint 4.0.1.a — Customer (cliente). Espelha Supplier mas semanticamente
+// é a contraparte de RECEIVABLE (quem nos PAGA). Cadastro pode ser:
+//   - MANUAL (Yussef criou)
+//   - BRASILAPI (lookup público quando CNPJ identificado em descrição)
+// Multi-tenant: cada empresa tem seus customers (Cacula Mix ≠ Academia X).
+model Customer {
+  id                String    @id @default(cuid())
+  companyId         String
+  cnpj              String?
+  cpf               String?
+  razaoSocial       String
+  nomeFantasia      String?
+  email             String?
+  phone             String?
+  // Categoria padrão sugerida (geralmente uma RECEITA_BRUTA específica)
+  categoryId        String?
+  fonte             String    @default("MANUAL")
+  fonteAtualizadaEm DateTime?
+  isActive          Boolean   @default(true)
+  notes             String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  category     Category?     @relation(fields: [categoryId], references: [id])
+  transactions Transaction[]
+
+  // Mesmo CNPJ pode existir em duas empresas-tenant diferentes
+  @@unique([companyId, cnpj])
+  @@index([companyId, razaoSocial])
+  @@index([companyId, isActive])
+  @@map("customers")
+}
+
 model Supplier {
   id                String    @id @default(cuid())
   companyId         String
@@ -639,9 +702,9 @@ model AiUsageLog {
 model PasswordResetCode {
   id        String    @id @default(cuid())
   userId    String
-  code      String    // bcrypt hash do código 6 dígitos (NUNCA texto puro)
-  codeHint  String?   // primeiros 2 dígitos pra dica visual ("48****")
-  expiresAt DateTime  // now + 15 min
+  code      String // bcrypt hash do código 6 dígitos (NUNCA texto puro)
+  codeHint  String? // primeiros 2 dígitos pra dica visual ("48****")
+  expiresAt DateTime // now + 15 min
   usedAt    DateTime?
   attempts  Int       @default(0) // brute force guard — invalida em 5
   ipAddress String?
@@ -671,7 +734,7 @@ model PasswordResetCode {
 model Gerenciador {
   id           String    @id @default(cuid())
   email        String    @unique
-  passwordHash String    // bcrypt rounds 12
+  passwordHash String // bcrypt rounds 12
   name         String
   role         String    @default("OPERADOR") // OPERADOR | OWNER
   active       Boolean   @default(true)
@@ -693,11 +756,11 @@ model Gerenciador {
 // Eventos de gerenciador continuam preenchendo o campo normalmente.
 model GerenciadorAuditLog {
   id            String   @id @default(cuid())
-  gerenciadorId String?  // NULL = evento de sistema (Sprint 1.7)
+  gerenciadorId String? // NULL = evento de sistema (Sprint 1.7)
   action        String
   entityType    String?
   entityId      String?
-  metadata      String?  // JSON
+  metadata      String? // JSON
   ipAddress     String?
   userAgent     String?
   createdAt     DateTime @default(now())
@@ -728,27 +791,27 @@ model GerenciadorAuditLog {
 // Enums implementados como String + comment (padrão do projeto, igual
 // users.role, categories.type, etc).
 model Coupon {
-  id              String    @id @default(cuid())
-  code            String    @unique // uppercase enforce no app-layer
-  description     String?
+  id          String  @id @default(cuid())
+  code        String  @unique // uppercase enforce no app-layer
+  description String?
   // PERCENTAGE | FIXED_AMOUNT | FREE_MONTHS
-  type            String
+  type        String
   // Pra PERCENTAGE: 0.01-100.00 · Pra FIXED_AMOUNT: valor em R$ · Pra FREE_MONTHS: irrelevante (use freeMonths)
-  value           Decimal
-  freeMonths      Int?      // só pra type=FREE_MONTHS
+  value       Decimal
+  freeMonths  Int? // só pra type=FREE_MONTHS
 
   // Validade
-  validFrom       DateTime  @default(now())
-  validUntil      DateTime?
+  validFrom  DateTime  @default(now())
+  validUntil DateTime?
 
   // Limites
-  maxUses         Int?      // null = ilimitado
-  maxUsesPerUser  Int       @default(1)
-  currentUses     Int       @default(0)
+  maxUses        Int? // null = ilimitado
+  maxUsesPerUser Int  @default(1)
+  currentUses    Int  @default(0)
 
   // Status (string + comment, igual demais models)
   // ACTIVE | PAUSED | EXPIRED | EXHAUSTED | DEACTIVATED
-  status          String    @default("ACTIVE")
+  status String @default("ACTIVE")
 
   // Quem criou (Gerenciador.id) — string sem FK porque é tabela ISOLADA
   // de outro contexto. Auditoria via gerenciador_audit_log.
@@ -770,10 +833,10 @@ model Coupon {
 // via @@unique. Pra maxUsesPerUser > 1 no futuro, remover essa unique e
 // validar app-layer.
 model CouponRedemption {
-  id            String   @id @default(cuid())
-  couponId      String
-  userId        String
-  redeemedAt    DateTime @default(now())
+  id         String   @id @default(cuid())
+  couponId   String
+  userId     String
+  redeemedAt DateTime @default(now())
 
   // Snapshot (audit): code/type/value no momento da redemption.
   // Se cupom for editado/desativado depois, snapshot preserva contexto.
@@ -781,8 +844,8 @@ model CouponRedemption {
   typeSnapshot  String
   valueSnapshot Decimal
 
-  ipAddress     String?
-  userAgent     String?
+  ipAddress String?
+  userAgent String?
 
   coupon Coupon @relation(fields: [couponId], references: [id], onDelete: Restrict)
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -804,17 +867,17 @@ model CouponRedemption {
 //
 // Multi-OFX (Sprint 2.4): cada arquivo gera 1 linha (processamento sequencial).
 model OfxImport {
-  id                String   @id @default(cuid())
+  id                String    @id @default(cuid())
   bankAccountId     String
   userId            String
   // PROCESSING | SUCCESS | FAILED | REVERTED
-  status            String   @default("PROCESSING")
+  status            String    @default("PROCESSING")
   fileName          String
-  fileSize          Int      @default(0)
-  totalTransactions Int      @default(0)
-  newTransactions   Int      @default(0)
-  duplicates        Int      @default(0)
-  autoClassified    Int      @default(0)
+  fileSize          Int       @default(0)
+  totalTransactions Int       @default(0)
+  newTransactions   Int       @default(0)
+  duplicates        Int       @default(0)
+  autoClassified    Int       @default(0)
   periodStart       DateTime?
   periodEnd         DateTime?
   ipAddress         String?
@@ -822,8 +885,8 @@ model OfxImport {
   errorMessage      String?
   revertedAt        DateTime?
   revertedById      String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   bankAccount  BankAccount   @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)

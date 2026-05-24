@@ -91,6 +91,9 @@ async function loadHeroKPIs(
       prisma.transaction.findMany({
         where: {
           bankAccount: { companyId },
+          // Sprint 4.0.1.a — Dashboard mostra REALIZADO (EFFECTED).
+          // Pendentes (PAYABLE/RECEIVABLE) terão visão própria no Sprint 4.0.1.b.
+          lifecycle: 'EFFECTED',
           OR: [
             {
               competenceDate: {
@@ -121,6 +124,9 @@ async function loadHeroKPIs(
       prisma.transaction.findMany({
         where: {
           bankAccount: { companyId },
+          // Sprint 4.0.1.a — Dashboard mostra REALIZADO (EFFECTED).
+          // Pendentes (PAYABLE/RECEIVABLE) terão visão própria no Sprint 4.0.1.b.
+          lifecycle: 'EFFECTED',
           type: { not: 'TRANSFER' },
           date: { gte: periods.last30Days.start, lte: periods.last30Days.end },
         },
@@ -136,6 +142,9 @@ async function loadHeroKPIs(
       prisma.transaction.findMany({
         where: {
           bankAccount: { companyId },
+          // Sprint 4.0.1.a — Dashboard mostra REALIZADO (EFFECTED).
+          // Pendentes (PAYABLE/RECEIVABLE) terão visão própria no Sprint 4.0.1.b.
+          lifecycle: 'EFFECTED',
           type: { not: 'TRANSFER' },
           date: { gte: periods.last12Months.start, lte: periods.last12Months.end },
         },
@@ -440,6 +449,9 @@ async function loadHealthCheck(
       prisma.transaction.findMany({
         where: {
           bankAccount: { companyId },
+          // Sprint 4.0.1.a — Dashboard mostra REALIZADO (EFFECTED).
+          // Pendentes (PAYABLE/RECEIVABLE) terão visão própria no Sprint 4.0.1.b.
+          lifecycle: 'EFFECTED',
           type: { not: 'TRANSFER' },
           date: { gte: burnRangeStart, lte: burnRangeEnd },
         },
@@ -455,6 +467,9 @@ async function loadHealthCheck(
       prisma.transaction.findMany({
         where: {
           bankAccount: { companyId },
+          // Sprint 4.0.1.a — Dashboard mostra REALIZADO (EFFECTED).
+          // Pendentes (PAYABLE/RECEIVABLE) terão visão própria no Sprint 4.0.1.b.
+          lifecycle: 'EFFECTED',
           type: { not: 'TRANSFER' },
           date: { gte: periods.last30Days.start, lte: periods.last30Days.end },
         },
@@ -470,6 +485,9 @@ async function loadHealthCheck(
       prisma.transaction.findMany({
         where: {
           bankAccount: { companyId },
+          // Sprint 4.0.1.a — Dashboard mostra REALIZADO (EFFECTED).
+          // Pendentes (PAYABLE/RECEIVABLE) terão visão própria no Sprint 4.0.1.b.
+          lifecycle: 'EFFECTED',
           OR: [
             {
               competenceDate: {
@@ -645,8 +663,8 @@ async function loadRecentActivity(
     type: t.type as 'CREDIT' | 'DEBIT' | 'TRANSFER',
     date: t.date,
     categoryName: t.category?.name ?? null,
-    bankAccountId: t.bankAccount.id,
-    bankAccountName: t.bankAccount.name,
+    bankAccountId: t.bankAccount!.id,
+    bankAccountName: t.bankAccount!.name,
   }))
 }
 

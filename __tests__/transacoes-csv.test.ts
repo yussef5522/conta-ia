@@ -109,13 +109,21 @@ describe('generateTransacoesCSV', () => {
       {
         ...ROW_BASE,
         bankAccount: {
-          ...ROW_BASE.bankAccount,
+          ...ROW_BASE.bankAccount!,
           company: { name: 'CACULA COMERCIO LTDA', tradeName: 'Cacula Mix' },
         },
       },
     ])
     expect(csv).toContain('Cacula Mix')
     expect(csv).not.toContain('CACULA COMERCIO LTDA')
+  })
+
+  it('Sprint 4.0.1.a — bankAccount null não quebra (PAYABLE export)', () => {
+    const csv = generateTransacoesCSV([
+      { ...ROW_BASE, bankAccount: null },
+    ])
+    // Não deve quebrar e empresa/conta ficam vazias
+    expect(csv).toContain('NETFLIX')
   })
 })
 

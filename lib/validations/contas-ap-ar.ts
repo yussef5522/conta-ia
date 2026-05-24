@@ -1,0 +1,68 @@
+// Sprint 4.0.1.a — Validações de Contas a Pagar/Receber + Customer.
+
+import { z } from 'zod'
+
+// Customer (cliente) — espelha fornecedor schema.
+export const customerSchema = z.object({
+  razaoSocial: z.string().min(1, 'Razão social obrigatória').max(200),
+  nomeFantasia: z.string().max(200).optional().nullable(),
+  cnpj: z
+    .string()
+    .regex(/^\d{14}$/, 'CNPJ deve ter 14 dígitos numéricos')
+    .optional()
+    .nullable(),
+  cpf: z
+    .string()
+    .regex(/^\d{11}$/, 'CPF deve ter 11 dígitos numéricos')
+    .optional()
+    .nullable(),
+  email: z.string().email('Email inválido').optional().nullable(),
+  phone: z.string().max(40).optional().nullable(),
+  categoryId: z.string().cuid().optional().nullable(),
+  notes: z.string().max(1000).optional().nullable(),
+})
+
+export type CustomerInput = z.infer<typeof customerSchema>
+
+// Conta a pagar (PAYABLE).
+//   - bankAccountId opcional (user pode não saber ainda qual conta usará)
+//   - dueDate obrigatório (data esperada de pagamento)
+//   - amount positivo
+//   - supplier opcional, customer NÃO se aplica (use contaAReceber)
+export const contaAPagarCreateSchema = z.object({
+  companyId: z.string().cuid('companyId inválido'),
+  description: z.string().min(1, 'Descrição obrigatória').max(255),
+  amount: z.coerce.number().positive('Valor deve ser positivo'),
+  dueDate: z.coerce.date(),
+  bankAccountId: z.string().cuid().optional().nullable(),
+  categoryId: z.string().cuid().optional().nullable(),
+  supplierId: z.string().cuid().optional().nullable(),
+  competenceDate: z.coerce.date().optional().nullable(),
+  notes: z.string().max(1000).optional().nullable(),
+})
+
+export type ContaAPagarCreateInput = z.infer<typeof contaAPagarCreateSchema>
+
+// Conta a receber (RECEIVABLE). Mesmo shape, mas com customerId em vez de supplierId.
+export const contaAReceberCreateSchema = z.object({
+  companyId: z.string().cuid('companyId inválido'),
+  description: z.string().min(1, 'Descrição obrigatória').max(255),
+  amount: z.coerce.number().positive('Valor deve ser positivo'),
+  dueDate: z.coerce.date(),
+  bankAccountId: z.string().cuid().optional().nullable(),
+  categoryId: z.string().cuid().optional().nullable(),
+  customerId: z.string().cuid().optional().nullable(),
+  competenceDate: z.coerce.date().optional().nullable(),
+  notes: z.string().max(1000).optional().nullable(),
+})
+
+export type ContaAReceberCreateInput = z.infer<typeof contaAReceberCreateSchema>
+
+// Efetivação manual (PATCH /api/transacoes/[id]/efetivar).
+// Marca PAYABLE/RECEIVABLE como EFFECTED (sem conciliar com OFX).
+export const efetivarSchema = z.object({
+  paymentDate: z.coerce.date(),
+  bankAccountId: z.string().cuid('bankAccountId obrigatório na efetivação'),
+})
+
+export type EfetivarInput = z.infer<typeof efetivarSchema>

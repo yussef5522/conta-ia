@@ -34,6 +34,9 @@ export function buildConsolidatedCashflowWhere(
   return {
     bankAccount: { companyId },
     type: { not: 'TRANSFER' },
+    // Sprint 4.0.1.a — fluxo REALIZADO: apenas tx EFFECTED.
+    // Pendentes (PAYABLE/RECEIVABLE) ficam pro fluxo PREVISTO (Sprint 4.0.1.b).
+    lifecycle: 'EFFECTED',
     date: { gte: period.startDate, lte: period.endDate },
     // Exclui também transações categorizadas como "Transferências"
     // (categoria criada pelo backfill com dreGroup=TRANSFERENCIA).
@@ -55,6 +58,8 @@ export function buildByAccountCashflowWhere(
 
   return {
     bankAccountId,
+    // Sprint 4.0.1.a — extrato por conta mostra REALIZADO (PAYABLE não saiu do caixa ainda).
+    lifecycle: 'EFFECTED',
     date: { gte: period.startDate, lte: period.endDate },
   }
 }

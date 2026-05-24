@@ -39,7 +39,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
       return NextResponse.json({ erro: 'Transação não encontrada' }, { status: 404 })
     }
 
-    const ctx = await getAuthContext(_request, base.bankAccount.companyId)
+    const ctx = await getAuthContext(_request, base.bankAccount!.companyId)
     ctx.requirePermission('transaction.view')
 
     const baseDateMs = base.date.getTime()
@@ -57,8 +57,8 @@ export async function GET(_request: NextRequest, { params }: Params) {
         status: 'PENDING',
         transferGroupId: null,
         type: oppositeType,
-        bankAccountId: { not: base.bankAccount.id },
-        bankAccount: { companyId: base.bankAccount.companyId },
+        bankAccountId: { not: base.bankAccount!.id },
+        bankAccount: { companyId: base.bankAccount!.companyId },
         date: { gte: dateMin, lte: dateMax },
       },
       include: {

@@ -40,13 +40,13 @@ export async function GET(request: NextRequest, { params }: Params) {
       )
     }
 
-    const ctx = await getAuthContext(request, base.bankAccount.companyId)
+    const ctx = await getAuthContext(request, base.bankAccount!.companyId)
     ctx.requirePermission('transaction.view')
 
     // Decide tipoMatch usando a mesma heurística da criação de regra:
     // se desc tem " - " → NORMALIZED, senão EXACT
     const ruleShape = buildNewRule(
-      base.bankAccount.companyId,
+      base.bankAccount!.companyId,
       base.description,
       'placeholder', // categoria não importa aqui, só usamos tipoMatch+padrao
     )
@@ -58,7 +58,7 @@ export async function GET(request: NextRequest, { params }: Params) {
         categoryId: null,
         status: 'PENDING',
         type: { not: 'TRANSFER' },
-        bankAccount: { companyId: base.bankAccount.companyId },
+        bankAccount: { companyId: base.bankAccount!.companyId },
       },
       select: {
         id: true,

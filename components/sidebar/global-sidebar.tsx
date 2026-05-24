@@ -9,6 +9,7 @@ import {
   MessageSquare,
   Settings,
   LogOut,
+  Clock,
 } from 'lucide-react'
 import Link from 'next/link'
 import { SidebarItem } from './sidebar-item'
@@ -66,6 +67,13 @@ export function GlobalSidebar({ userName, userEmail, onNavigate }: GlobalSidebar
           label="Transações"
           href="/transacoes"
           isActive={pathname.startsWith('/transacoes')}
+          onClick={onNavigate}
+        />
+        <SidebarItem
+          icon={Clock}
+          label="Contas a Pagar"
+          href="/contas-a-pagar"
+          isActive={pathname.startsWith('/contas-a-pagar')}
           onClick={onNavigate}
         />
 

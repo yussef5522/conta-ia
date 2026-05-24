@@ -41,7 +41,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       )
     }
 
-    const ctx = await getAuthContext(request, tx.bankAccount.companyId)
+    const ctx = await getAuthContext(request, tx.bankAccount!.companyId)
     ctx.requirePermission('transaction.view')
 
     // 1. Extrai CNPJ da descrição
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       })
     }
 
-    const companyId = tx.bankAccount.companyId
+    const companyId = tx.bankAccount!.companyId
 
     // 2. Cache: já temos esse CNPJ persistido pra essa empresa?
     let supplier = await prisma.supplier.findUnique({

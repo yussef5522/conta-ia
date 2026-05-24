@@ -61,7 +61,7 @@ export async function pairPendentes(
   }
 
   // Sanity check ctx — caller (rota) deve ter resolvido ctx pra companyId correto
-  if (ctx.company?.id !== txA.bankAccount.companyId) {
+  if (ctx.company?.id !== txA.bankAccount!.companyId) {
     throw new TransferValidationError(
       'Contexto de autenticação não corresponde à empresa da transação',
     )
@@ -78,9 +78,9 @@ export async function pairPendentes(
     {
       txA: {
         id: txA.id,
-        bankAccountId: txA.bankAccount.id,
-        bankAccountName: txA.bankAccount.name,
-        bankAccountCompanyId: txA.bankAccount.companyId,
+        bankAccountId: txA.bankAccount!.id,
+        bankAccountName: txA.bankAccount!.name,
+        bankAccountCompanyId: txA.bankAccount!.companyId,
         type: txA.type,
         amount: txA.amount,
         date: txA.date,
@@ -89,9 +89,9 @@ export async function pairPendentes(
       },
       txB: {
         id: txB.id,
-        bankAccountId: txB.bankAccount.id,
-        bankAccountName: txB.bankAccount.name,
-        bankAccountCompanyId: txB.bankAccount.companyId,
+        bankAccountId: txB.bankAccount!.id,
+        bankAccountName: txB.bankAccount!.name,
+        bankAccountCompanyId: txB.bankAccount!.companyId,
         type: txB.type,
         amount: txB.amount,
         date: txB.date,

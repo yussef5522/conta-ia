@@ -25,7 +25,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       return NextResponse.json({ erro: 'Transferência não encontrada' }, { status: 404 })
     }
 
-    const ctx = await getAuthContext(request, ponta.bankAccount.companyId)
+    const ctx = await getAuthContext(request, ponta.bankAccount!.companyId)
 
     const result = await deleteTransferGroup(groupId, ctx, request)
     return NextResponse.json({
