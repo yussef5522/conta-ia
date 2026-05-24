@@ -57,7 +57,6 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
   const conciliacaoBadge = badges?.conciliacao?.pendentes ?? 0
 
   const empresaQs = currentEmpresaId ? `?empresaId=${currentEmpresaId}` : ''
-  const empresaPathPrefix = currentEmpresaId ? `/empresas/${currentEmpresaId}` : '/empresas'
 
   return (
     <aside className="w-60 border-r bg-white flex flex-col h-full overflow-y-auto">
@@ -113,8 +112,8 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
         <SidebarItem
           icon={TrendingUp}
           label="DRE Gerencial"
-          href={currentEmpresaId ? `${empresaPathPrefix}/dre` : '#'}
-          isActive={pathname.includes('/dre')}
+          href="/dre"
+          isActive={pathname === '/dre' || pathname.startsWith('/empresas/') && pathname.endsWith('/dre')}
           onClick={onNavigate}
         />
 
@@ -136,15 +135,15 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
         <SidebarItem
           icon={Store}
           label="Fornecedores"
-          href={currentEmpresaId ? `${empresaPathPrefix}/fornecedores` : '#'}
-          isActive={pathname.includes('/fornecedores')}
+          href="/fornecedores"
+          isActive={pathname.startsWith('/fornecedores')}
           onClick={onNavigate}
         />
         <SidebarItem
           icon={FileText}
           label="Categorias"
-          href={currentEmpresaId ? `${empresaPathPrefix}/categorias` : '#'}
-          isActive={pathname.includes('/categorias')}
+          href="/categorias"
+          isActive={pathname.startsWith('/categorias')}
           onClick={onNavigate}
         />
 
@@ -152,15 +151,15 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
         <SidebarItem
           icon={Brain}
           label="Regras IA"
-          href={currentEmpresaId ? `${empresaPathPrefix}/regras` : '#'}
-          isActive={pathname.includes('/regras')}
+          href="/regras"
+          isActive={pathname.startsWith('/regras')}
           onClick={onNavigate}
         />
         <SidebarItem
           icon={History}
           label="Histórico OFX"
-          href={currentEmpresaId ? `${empresaPathPrefix}/imports` : '#'}
-          isActive={pathname.includes('/imports')}
+          href="/imports"
+          isActive={pathname.startsWith('/imports')}
           onClick={onNavigate}
         />
 
@@ -168,22 +167,22 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
         <SidebarItem
           icon={Shield}
           label="Usuários"
-          href={currentEmpresaId ? `${empresaPathPrefix}/usuarios` : '#'}
-          isActive={pathname.includes('/usuarios')}
+          href="/usuarios"
+          isActive={pathname.startsWith('/usuarios')}
           onClick={onNavigate}
         />
         <SidebarItem
           icon={ShieldCheck}
           label="Permissões"
-          href={currentEmpresaId ? `${empresaPathPrefix}/permissoes` : '#'}
-          isActive={pathname.includes('/permissoes')}
+          href="/permissoes"
+          isActive={pathname.startsWith('/permissoes')}
           onClick={onNavigate}
         />
         <SidebarItem
           icon={FileText}
           label="Auditoria"
-          href={currentEmpresaId ? `${empresaPathPrefix}/auditoria` : '#'}
-          isActive={pathname.includes('/auditoria')}
+          href="/auditoria"
+          isActive={pathname.startsWith('/auditoria')}
           onClick={onNavigate}
         />
         <SidebarItem

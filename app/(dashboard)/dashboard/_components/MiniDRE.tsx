@@ -20,7 +20,7 @@ export async function MiniDRE({ companyId }: MiniDREProps) {
       <CardHeader className="flex flex-row items-center justify-between pb-3">
         <CardTitle className="text-base">DRE Gerencial</CardTitle>
         <Link
-          href={`/empresas/${companyId}/dre`}
+          href={`/dre`}
           className="text-xs text-primary hover:underline flex items-center gap-0.5"
         >
           Ver DRE completa

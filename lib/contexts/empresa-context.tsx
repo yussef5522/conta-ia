@@ -107,6 +107,13 @@ export function EmpresaProvider({ children }: { children: React.ReactNode }) {
       } catch {
         // ignore quota errors
       }
+      // Sprint 4.0.5.b — sincroniza cookie httpOnly pra server pages globais lerem
+      void fetch('/api/empresas/atual', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ empresaId: next }),
+      }).catch(() => {})
     }
     if (!hydrated) setHydrated(true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -119,6 +126,13 @@ export function EmpresaProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // ignore
     }
+    // Sprint 4.0.5.b — sincroniza cookie httpOnly pra server pages globais
+    void fetch('/api/empresas/atual', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ empresaId: id }),
+    }).catch(() => {})
   }, [])
 
   const currentEmpresa = empresas.find((e) => e.id === currentEmpresaId) ?? null

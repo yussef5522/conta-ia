@@ -65,7 +65,7 @@ function buildDemoInsights(companyId: string, count: number): Insight[] {
       title: '963 transações aguardam classificação',
       description:
         'Sem categoria, o DRE não reflete a realidade do seu negócio.',
-      action: { label: 'Revisar', url: `/empresas/${companyId}/pendentes` },
+      action: { label: 'Revisar', url: `/pendentes` },
     },
     {
       id: 'large-uncategorized',
@@ -73,7 +73,7 @@ function buildDemoInsights(companyId: string, count: number): Insight[] {
       priority: 7,
       title: '12 transações grandes sem categoria (R$ 160.900,00)',
       description: 'Movimentações acima de R$ 5.000 sem categoria.',
-      action: { label: 'Classificar agora', url: `/empresas/${companyId}/pendentes` },
+      action: { label: 'Classificar agora', url: `/pendentes` },
     },
     {
       id: 'high-overdraft-usage',
@@ -81,7 +81,7 @@ function buildDemoInsights(companyId: string, count: number): Insight[] {
       priority: 6,
       title: 'Cheque especial da Banrisul em 75%',
       description: 'Considere transferir saldo de outra conta.',
-      action: { label: 'Ver contas', url: `/empresas/${companyId}/contas` },
+      action: { label: 'Ver contas', url: `/contas` },
     },
     {
       id: 'burn-rate-spike',
@@ -97,7 +97,7 @@ function buildDemoInsights(companyId: string, count: number): Insight[] {
       priority: 6,
       title: 'Top 3 clientes = 82% da receita',
       description: 'Ampliar a base de clientes traz mais previsibilidade.',
-      action: { label: 'Ver receitas', url: `/empresas/${companyId}/dre` },
+      action: { label: 'Ver receitas', url: `/dre` },
     },
     {
       id: 'revenue-growth',
@@ -105,7 +105,7 @@ function buildDemoInsights(companyId: string, count: number): Insight[] {
       priority: 7,
       title: '🚀 Receita cresceu 80% no mês',
       description: 'Crescimento expressivo — vale entender o que funcionou.',
-      action: { label: 'Ver DRE', url: `/empresas/${companyId}/dre` },
+      action: { label: 'Ver DRE', url: `/dre` },
     },
     {
       id: 'duplicate-subscriptions',
@@ -113,7 +113,7 @@ function buildDemoInsights(companyId: string, count: number): Insight[] {
       priority: 6,
       title: '3 cobranças recorrentes detectadas (~R$ 135,00/mês)',
       description: 'NETFLIX, SPOTIFY, GOOGLE WORKSPACE.',
-      action: { label: 'Revisar despesas', url: `/empresas/${companyId}/dre` },
+      action: { label: 'Revisar despesas', url: `/dre` },
     },
   ]
   return demos.slice(0, Math.min(count, demos.length))

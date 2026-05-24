@@ -46,7 +46,7 @@ function PendingCard({ companyId, count }: { companyId: string; count: number })
         </p>
 
         <Button asChild className="self-start">
-          <Link href={`/empresas/${companyId}/pendentes`}>
+          <Link href={`/pendentes`}>
             Revisar agora
             <ArrowRight className="ml-2 h-4 w-4" />
           </Link>

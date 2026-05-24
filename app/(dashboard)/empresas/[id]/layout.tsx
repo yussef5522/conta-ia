@@ -1,19 +1,6 @@
-// Sprint 4.0.5.a — layout compartilhado pras páginas /empresas/[id]/*.
-// Injeta EmpresaSubNav (tabs horizontais) substituindo a antiga ContextualSidebar.
+// Sprint 4.0.5.b — layout simplificado.
+// EmpresaSubNav removida (rotas agora são globais). Pass-through.
 
-import { EmpresaSubNav } from '@/components/layout/empresa-subnav'
-
-interface LayoutProps {
-  children: React.ReactNode
-  params: Promise<{ id: string }>
-}
-
-export default async function EmpresaLayout({ children, params }: LayoutProps) {
-  const { id } = await params
-  return (
-    <>
-      <EmpresaSubNav empresaId={id} />
-      {children}
-    </>
-  )
+export default function EmpresaLayout({ children }: { children: React.ReactNode }) {
+  return <>{children}</>
 }
