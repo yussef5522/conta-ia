@@ -1,13 +1,16 @@
 'use client'
 
-import { useEffect, useState, useCallback, Suspense } from 'react'
+import { useEffect, useState, useCallback, Suspense, useRef, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
   Plus, ArrowUpRight, ArrowDownRight, Filter, Search, X,
   ChevronLeft, ChevronRight, Building2, Sparkles,
-  Check, EyeOff, Trash2 as TrashIcon, Download,
+  Check, EyeOff, Trash2 as TrashIcon, Download, Keyboard as KeyboardIcon,
 } from 'lucide-react'
+import { useKeyboardShortcuts } from '@/lib/hooks/use-keyboard-shortcuts'
+import type { ShortcutHandler } from '@/lib/hooks/use-keyboard-shortcuts'
+import { KeyboardShortcutsHelp } from '@/components/transacoes/keyboard-shortcuts-help'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -403,6 +406,112 @@ function TransacoesPageInner() {
     }
   }
 
+  // Sprint 3.0.4 C2 — atalhos teclado
+  const [helpOpen, setHelpOpen] = useState(false)
+  const [cursorIndex, setCursorIndex] = useState(0)
+  const rowRefs = useRef<Array<HTMLDivElement | null>>([])
+  const searchRef = useRef<HTMLInputElement | null>(null)
+
+  // Reseta cursor quando lista muda
+  useEffect(() => {
+    setCursorIndex((prev) => Math.min(prev, Math.max(0, transacoes.length - 1)))
+  }, [transacoes.length])
+
+  // Scroll suave da row em foco
+  useEffect(() => {
+    const el = rowRefs.current[cursorIndex]
+    if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [cursorIndex])
+
+  // Marca status de UMA transação. Reusa o endpoint /lote/status com 1 ID.
+  const changeStatusSingle = useCallback(
+    async (txId: string, novoStatus: 'RECONCILED' | 'IGNORED') => {
+      try {
+        const res = await fetch('/api/transacoes/lote/status', {
+          method: 'PATCH',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ transactionIds: [txId], status: novoStatus }),
+        })
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          toast({
+            variant: 'destructive',
+            title: 'Falha',
+            description: data.erro ?? `HTTP ${res.status}`,
+          })
+          return
+        }
+        toast({
+          title: novoStatus === 'RECONCILED' ? 'Confirmada' : 'Ignorada',
+        })
+        void fetchTransacoes()
+      } catch {
+        toast({ variant: 'destructive', title: 'Erro', description: 'Falha de rede.' })
+      }
+    },
+    [toast, fetchTransacoes],
+  )
+
+  const shortcuts = useMemo<ShortcutHandler[]>(() => {
+    const current = transacoes[cursorIndex]
+    return [
+      // Help — funciona até dentro de inputs
+      { key: '?', shift: true, safeInInputs: true, run: () => setHelpOpen((o) => !o) },
+      // Esc fecha modal ou limpa busca
+      {
+        key: 'Escape',
+        safeInInputs: true,
+        run: () => {
+          if (helpOpen) {
+            setHelpOpen(false)
+            return
+          }
+          if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+        },
+      },
+      // Navegação
+      {
+        key: 'j',
+        run: () => setCursorIndex((i) => Math.min(i + 1, transacoes.length - 1)),
+      },
+      { key: 'k', run: () => setCursorIndex((i) => Math.max(0, i - 1)) },
+      { key: '/', run: () => searchRef.current?.focus() },
+      // Seleção
+      {
+        key: ' ',
+        run: () => {
+          if (current) toggleSelect(current.id)
+        },
+      },
+      { key: 'a', meta: true, run: () => toggleSelectAllPage() },
+      // Ações
+      {
+        key: 'e',
+        run: () => {
+          if (!current) return
+          router.push(
+            `/empresas/${current.bankAccount.companyId}/contas/${current.bankAccountId}/transacoes/${current.id}/editar`,
+          )
+        },
+      },
+      {
+        key: 'x',
+        run: () => {
+          if (current) void changeStatusSingle(current.id, 'IGNORED')
+        },
+      },
+      {
+        key: 'Enter',
+        run: () => {
+          if (current) void changeStatusSingle(current.id, 'RECONCILED')
+        },
+      },
+    ]
+  }, [transacoes, cursorIndex, helpOpen, router, changeStatusSingle])
+
+  useKeyboardShortcuts(shortcuts)
+
   return (
     <div className="space-y-6">
       {/* Sprint 3.0.3 B2 — Bulk toolbar fixa quando há seleção */}
@@ -517,6 +626,15 @@ function TransacoesPageInner() {
         title={conferenciaMode ? 'Conferir Transações' : 'Transações'}
         description={`${paginacao.total} lançamento${paginacao.total !== 1 ? 's' : ''} no período`}
       >
+        {/* Sprint 3.0.4 C2 — atalhos teclado (ajuda) */}
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => setHelpOpen(true)}
+          title="Atalhos de teclado (?)"
+        >
+          <KeyboardIcon className="h-4 w-4" />
+        </Button>
         {/* Sprint 3.0.4 C1 — Export CSV. Desabilita se não há empresa única identificável. */}
         <Button
           size="sm"
@@ -672,9 +790,10 @@ function TransacoesPageInner() {
               <div className="relative">
                 <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
                 <Input
+                  ref={searchRef}
                   type="text"
                   className="h-8 pl-8 pr-7 text-sm"
-                  placeholder="Ex: NETFLIX, ATACADAO..."
+                  placeholder="Ex: NETFLIX, ATACADAO... (atalho: /)"
                   value={q}
                   onChange={(e) => { setQ(e.target.value); setPage(1) }}
                 />
@@ -763,7 +882,9 @@ function TransacoesPageInner() {
           {transacoes.map((t, i) => (
             <div
               key={t.id}
-              className={`group flex items-center gap-3 px-4 py-3 hover:bg-muted/50 ${i > 0 ? 'border-t' : ''} ${selectedIds.has(t.id) ? 'bg-primary/5' : ''}`}
+              ref={(el) => { rowRefs.current[i] = el }}
+              className={`group flex items-center gap-3 px-4 py-3 hover:bg-muted/50 ${i > 0 ? 'border-t' : ''} ${selectedIds.has(t.id) ? 'bg-primary/5' : ''} ${i === cursorIndex ? 'ring-2 ring-inset ring-primary/40' : ''}`}
+              onClick={() => setCursorIndex(i)}
             >
               {/* Sprint 3.0.3 B2 — checkbox */}
               <Checkbox
@@ -916,6 +1037,9 @@ function TransacoesPageInner() {
           }}
         />
       )}
+
+      {/* Sprint 3.0.4 C2 — modal de ajuda dos atalhos */}
+      <KeyboardShortcutsHelp open={helpOpen} onOpenChange={setHelpOpen} />
     </div>
   )
 }
