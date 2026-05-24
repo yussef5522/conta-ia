@@ -22,6 +22,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
 import { parseTransacoesURLFilters } from '@/lib/transacoes/url-filters'
 import { AiSourceBadge } from '@/components/transacoes/ai-source-badge'
+import { InlineCategorySelect } from '@/components/transacoes/inline-category-select'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
@@ -428,11 +429,43 @@ function TransacoesPageInner() {
                   <span className="text-xs text-muted-foreground">
                     · {t.bankAccount?.company?.tradeName ?? t.bankAccount?.company?.name ?? 'Empresa'} / {t.bankAccount?.name ?? 'Conta'}
                   </span>
-                  {t.category && (
-                    <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                      <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ backgroundColor: t.category.color }} />
-                      {t.category.name}
-                    </span>
+                  {/* Sprint 3.0.3 B1 — edição inline categoria (se carregadas) */}
+                  {categorias.length > 0 ? (
+                    <InlineCategorySelect
+                      transacaoId={t.id}
+                      current={
+                        t.category
+                          ? { id: t.category.id, name: t.category.name, color: t.category.color }
+                          : null
+                      }
+                      categorias={categorias.map((c) => ({
+                        id: c.id,
+                        name: c.name,
+                        color: c.color ?? null,
+                      }))}
+                      onUpdated={(catId, cat) => {
+                        setTransacoes((prev) =>
+                          prev.map((x) =>
+                            x.id === t.id
+                              ? {
+                                  ...x,
+                                  categoryId: catId,
+                                  category: cat
+                                    ? { id: cat.id, name: cat.name, color: cat.color ?? '', type: '' }
+                                    : null,
+                                }
+                              : x,
+                          ),
+                        )
+                      }}
+                    />
+                  ) : (
+                    t.category && (
+                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ backgroundColor: t.category.color }} />
+                        {t.category.name}
+                      </span>
+                    )
                   )}
                   {/* Sprint 3.0.2 A4 — Badge IA source */}
                   {t.classificationSource && (
