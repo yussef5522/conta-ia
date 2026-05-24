@@ -55,11 +55,14 @@ export function computeKPIsFromData(input: ComputeKPIsInput): HeroKPIsResult {
     comparison: { type: 'previous_period' },
   })
 
-  // Valores brutos do mês corrente
+  // Valores brutos do mês corrente.
+  // resultadoMes usa resultadoOperacional (não lucroLiquido) pra UX consistente:
+  // Receita - Despesas dos cards ≈ Resultado mostrado. Lucro Líquido (após
+  // financeiras e impostos sobre lucro) continua visível no Mini-DRE.
   const receitaAtual = dre.totals.receitaBruta
   const despesasAtual =
     dre.totals.totalCustos + dre.totals.totalDespesasOperacionais
-  const resultadoAtual = dre.totals.lucroLiquido
+  const resultadoAtual = dre.totals.resultadoOperacional
 
   // Pra os deltas absolutos, recalcula DRE do mês anterior sozinho.
   // O `dre.totalsComparison` traz delta só de receitaLiquida/lucroLiquido.
@@ -74,7 +77,7 @@ export function computeKPIsFromData(input: ComputeKPIsInput): HeroKPIsResult {
   const receitaPrev = drePrev.totals.receitaBruta
   const despesasPrev =
     drePrev.totals.totalCustos + drePrev.totals.totalDespesasOperacionais
-  const resultadoPrev = drePrev.totals.lucroLiquido
+  const resultadoPrev = drePrev.totals.resultadoOperacional
 
   // ============================================================
   // 2. Sparkline saldo cumulativo 30 dias
@@ -127,7 +130,10 @@ export function computeKPIsFromData(input: ComputeKPIsInput): HeroKPIsResult {
   )
 
   // ============================================================
-  // 4. Margem líquida (% sobre receita bruta)
+  // 4. Margem operacional (% sobre receita bruta)
+  // Renomeada conceitualmente: agora usa resultadoOperacional, então é
+  // a margem ANTES de financeiras e impostos sobre lucro.
+  // Mantemos o nome do campo (margemLiquida) pra não quebrar consumidores.
   // ============================================================
   const margemLiquida = receitaAtual !== 0 ? (resultadoAtual / receitaAtual) * 100 : 0
 

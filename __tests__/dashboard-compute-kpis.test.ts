@@ -100,7 +100,7 @@ describe('computeKPIsFromData — Sprint 1 Dia 1', () => {
     expect(r.despesasMes.value).toBe(5_000)
   })
 
-  it('resultado = lucro líquido (receita - despesas - impostos)', () => {
+  it('resultado = resultado operacional (receita - deduções - CMV - despesas operacionais)', () => {
     const r = computeKPIsFromData({
       companyId: 'comp-1',
       referenceDate: REF,
@@ -114,7 +114,8 @@ describe('computeKPIsFromData — Sprint 1 Dia 1', () => {
       transactionsLast30d: [],
       transactionsLast12m: [],
     })
-    // Sem deduções/impostos no cenário: lucroLiquido = 10k - 3k = 7k
+    // Sem deduções/financeiras/impostos no cenário:
+    // resultadoOperacional = receita - despesa operacional = 10k - 3k = 7k
     expect(r.resultadoMes.value).toBe(7_000)
   })
 

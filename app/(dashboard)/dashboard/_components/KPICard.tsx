@@ -6,7 +6,7 @@
 
 import dynamic from 'next/dynamic'
 import { motion } from 'framer-motion'
-import { ArrowUpRight, ArrowDownRight, Minus } from 'lucide-react'
+import { ArrowUpRight, ArrowDownRight, Minus, Info } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { formatBRL } from '@/lib/format/money'
 import type { KPIValue } from '@/lib/dashboard/types'
@@ -31,6 +31,10 @@ interface KPICardProps {
   sparkColor?: string
   // Animação de entrada com delay (stagger entre cards)
   delay?: number
+  // Tooltip explicando o cálculo. Renderizado como ícone Info ao lado do label
+  // com tooltip nativo do browser (atributo `title` — acessível por padrão,
+  // funciona em hover e em tecnologia assistiva).
+  tooltip?: string
 }
 
 export function KPICard({
@@ -41,6 +45,7 @@ export function KPICard({
   icon,
   sparkColor,
   delay = 0,
+  tooltip,
 }: KPICardProps) {
   const isPrimary = variant === 'primary'
 
@@ -82,11 +87,23 @@ export function KPICard({
       >
         <CardContent className="p-5">
           <div className="flex items-start justify-between gap-2">
-            <p
-              className={`text-xs font-medium uppercase tracking-wide ${isPrimary ? 'text-white/80' : 'text-muted-foreground'}`}
-            >
-              {label}
-            </p>
+            <div className="flex items-center gap-1.5 min-w-0">
+              <p
+                className={`text-xs font-medium uppercase tracking-wide ${isPrimary ? 'text-white/80' : 'text-muted-foreground'}`}
+              >
+                {label}
+              </p>
+              {tooltip && (
+                <button
+                  type="button"
+                  title={tooltip}
+                  aria-label={`Detalhes: ${tooltip}`}
+                  className={`shrink-0 inline-flex ${isPrimary ? 'text-white/60 hover:text-white/90' : 'text-muted-foreground/70 hover:text-muted-foreground'} transition-colors`}
+                >
+                  <Info className="h-3 w-3" />
+                </button>
+              )}
+            </div>
             {icon && (
               <span className={isPrimary ? 'text-white/60' : 'text-muted-foreground'}>
                 {icon}
