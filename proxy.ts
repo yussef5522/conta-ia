@@ -199,6 +199,7 @@ export const config = {
   //   - Favicon e arquivos públicos servidos diretamente (robots.txt, sitemap.xml)
   //   - Extensões binárias (imagens, fontes, txt/xml)
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|xml|woff|woff2|ttf|otf)$).*)',
+    // Sprint 4.0.5.c — incluído manifest.json (PWA) + json na lista de exts ignoradas
+    '/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|manifest.json|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|xml|json|woff|woff2|ttf|otf)$).*)',
   ],
 }
