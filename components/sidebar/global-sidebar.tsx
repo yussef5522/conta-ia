@@ -1,97 +1,67 @@
 'use client'
 
+// Sprint 4.0.5.a — Sidebar única organizada por seções.
+// User info movido pro TopBar UserMenu.
+
 import { useEffect, useState } from 'react'
-import { usePathname, useSearchParams } from 'next/navigation'
-import { useSidebarBadges } from '@/lib/hooks/use-sidebar-badges'
+import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard,
-  Building2,
   ArrowLeftRight,
   Calculator,
   MessageSquare,
-  Settings,
-  LogOut,
   Clock,
   Wallet,
   Repeat,
   Users,
   Link2,
+  Building2,
+  Brain,
+  Store,
+  History,
+  TrendingUp,
+  Shield,
+  ShieldCheck,
+  FileText,
+  Settings,
+  Bell,
 } from 'lucide-react'
-import Link from 'next/link'
 import { SidebarItem } from './sidebar-item'
+import { useSidebarBadges } from '@/lib/hooks/use-sidebar-badges'
+import { useEmpresa } from '@/lib/contexts/empresa-context'
 
 interface GlobalSidebarProps {
-  userName: string
-  userEmail: string
+  userName?: string
+  userEmail?: string
   onNavigate?: () => void
 }
 
-export function GlobalSidebar({ userName, userEmail, onNavigate }: GlobalSidebarProps) {
+export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
   const pathname = usePathname()
-  const searchParams = useSearchParams()
+  const { currentEmpresaId } = useEmpresa()
+  const [empresaIdForBadges, setEmpresaIdForBadges] = useState<string | null>(null)
 
-  // Sprint 4.0.3 — resolve empresaId pra badges:
-  //   1. ?empresaId= na URL atual (paginas AP/AR/Recorrentes/etc usam)
-  //   2. Match de /empresas/<id>/* (pages de detalhe)
-  //   3. Senão null (sem badges)
-  const [empresaId, setEmpresaId] = useState<string | null>(null)
   useEffect(() => {
-    const fromQuery = searchParams.get('empresaId')
-    if (fromQuery) {
-      setEmpresaId(fromQuery)
-      return
-    }
-    const match = pathname.match(/^\/empresas\/([a-z0-9]{20,30})/i)
-    if (match) {
-      setEmpresaId(match[1])
-      return
-    }
-    // Senão tenta pegar a primeira empresa do user (1 fetch)
-    fetch('/api/empresas', { credentials: 'include' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data?.empresas?.length === 1) setEmpresaId(data.empresas[0].id)
-      })
-      .catch(() => {})
-  }, [pathname, searchParams])
+    setEmpresaIdForBadges(currentEmpresaId)
+  }, [currentEmpresaId])
 
-  const badges = useSidebarBadges(empresaId)
+  const badges = useSidebarBadges(empresaIdForBadges)
   const apBadge = badges?.contasAPagar
     ? badges.contasAPagar.vencidas + badges.contasAPagar.vencendoEm3Dias
     : 0
-  const apTone: 'red' | 'amber' | 'neutral' =
-    badges?.contasAPagar?.vencidas
-      ? 'red'
-      : badges?.contasAPagar?.vencendoEm3Dias
-        ? 'amber'
-        : 'neutral'
+  const apTone: 'red' | 'amber' | 'neutral' = badges?.contasAPagar?.vencidas
+    ? 'red'
+    : badges?.contasAPagar?.vencendoEm3Dias
+      ? 'amber'
+      : 'neutral'
   const conciliacaoBadge = badges?.conciliacao?.pendentes ?? 0
 
-  const initials = userName
-    .split(' ')
-    .map((n) => n[0])
-    .slice(0, 2)
-    .join('')
-    .toUpperCase()
+  const empresaQs = currentEmpresaId ? `?empresaId=${currentEmpresaId}` : ''
+  const empresaPathPrefix = currentEmpresaId ? `/empresas/${currentEmpresaId}` : '/empresas'
 
   return (
-    <aside className="w-56 border-r bg-card flex flex-col h-full">
-      {/* Logo */}
-      <div className="p-4 border-b">
-        <Link
-          href="/dashboard"
-          onClick={onNavigate}
-          className="flex items-center gap-2"
-        >
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-            <span className="text-primary-foreground font-bold text-sm">C</span>
-          </div>
-          <span className="font-bold">Conta IA</span>
-        </Link>
-      </div>
-
-      {/* Menu */}
-      <nav className="flex-1 overflow-y-auto p-3 space-y-1" aria-label="Menu principal">
+    <aside className="w-60 border-r bg-white flex flex-col h-full overflow-y-auto">
+      <nav className="flex-1 py-3 px-2 space-y-0.5" aria-label="Menu principal">
         <SidebarItem
           icon={LayoutDashboard}
           label="Dashboard"
@@ -99,24 +69,12 @@ export function GlobalSidebar({ userName, userEmail, onNavigate }: GlobalSidebar
           isActive={pathname === '/dashboard'}
           onClick={onNavigate}
         />
-        <SidebarItem
-          icon={Building2}
-          label="Empresas"
-          href="/empresas"
-          isActive={pathname.startsWith('/empresas')}
-          onClick={onNavigate}
-        />
-        <SidebarItem
-          icon={ArrowLeftRight}
-          label="Transações"
-          href="/transacoes"
-          isActive={pathname.startsWith('/transacoes')}
-          onClick={onNavigate}
-        />
+
+        <SectionLabel>Financeiro</SectionLabel>
         <SidebarItem
           icon={Clock}
           label="Contas a Pagar"
-          href="/contas-a-pagar"
+          href={`/contas-a-pagar${empresaQs}`}
           isActive={pathname.startsWith('/contas-a-pagar')}
           onClick={onNavigate}
           badge={apBadge > 0 ? String(apBadge) : undefined}
@@ -125,22 +83,15 @@ export function GlobalSidebar({ userName, userEmail, onNavigate }: GlobalSidebar
         <SidebarItem
           icon={Wallet}
           label="Contas a Receber"
-          href="/contas-a-receber"
+          href={`/contas-a-receber${empresaQs}`}
           isActive={pathname.startsWith('/contas-a-receber')}
           onClick={onNavigate}
         />
         <SidebarItem
           icon={Repeat}
           label="Recorrentes"
-          href="/recorrentes"
+          href={`/recorrentes${empresaQs}`}
           isActive={pathname.startsWith('/recorrentes')}
-          onClick={onNavigate}
-        />
-        <SidebarItem
-          icon={Users}
-          label="Clientes"
-          href="/clientes"
-          isActive={pathname.startsWith('/clientes')}
           onClick={onNavigate}
         />
         <SidebarItem
@@ -152,60 +103,110 @@ export function GlobalSidebar({ userName, userEmail, onNavigate }: GlobalSidebar
           badge={conciliacaoBadge > 0 ? String(conciliacaoBadge) : undefined}
           badgeTone="neutral"
         />
-
-        {/* Separador */}
-        <div className="my-2 border-t" />
-
-        {/* Itens "breve" */}
         <SidebarItem
-          icon={Calculator}
-          label="Impostos"
-          href="#"
-          isActive={false}
-          isComingSoon
+          icon={ArrowLeftRight}
+          label="Movimentações"
+          href={`/transacoes${empresaQs}`}
+          isActive={pathname.startsWith('/transacoes')}
+          onClick={onNavigate}
         />
         <SidebarItem
-          icon={MessageSquare}
-          label="Chat IA"
-          href="#"
-          isActive={false}
-          isComingSoon
+          icon={TrendingUp}
+          label="DRE Gerencial"
+          href={currentEmpresaId ? `${empresaPathPrefix}/dre` : '#'}
+          isActive={pathname.includes('/dre')}
+          onClick={onNavigate}
         />
+
+        <SectionLabel>Cadastros</SectionLabel>
+        <SidebarItem
+          icon={Building2}
+          label="Empresas"
+          href="/empresas"
+          isActive={pathname === '/empresas' || /^\/empresas\/[^/]+$/.test(pathname)}
+          onClick={onNavigate}
+        />
+        <SidebarItem
+          icon={Users}
+          label="Clientes"
+          href={`/clientes${empresaQs}`}
+          isActive={pathname.startsWith('/clientes')}
+          onClick={onNavigate}
+        />
+        <SidebarItem
+          icon={Store}
+          label="Fornecedores"
+          href={currentEmpresaId ? `${empresaPathPrefix}/fornecedores` : '#'}
+          isActive={pathname.includes('/fornecedores')}
+          onClick={onNavigate}
+        />
+        <SidebarItem
+          icon={FileText}
+          label="Categorias"
+          href={currentEmpresaId ? `${empresaPathPrefix}/categorias` : '#'}
+          isActive={pathname.includes('/categorias')}
+          onClick={onNavigate}
+        />
+
+        <SectionLabel>Inteligência</SectionLabel>
+        <SidebarItem
+          icon={Brain}
+          label="Regras IA"
+          href={currentEmpresaId ? `${empresaPathPrefix}/regras` : '#'}
+          isActive={pathname.includes('/regras')}
+          onClick={onNavigate}
+        />
+        <SidebarItem
+          icon={History}
+          label="Histórico OFX"
+          href={currentEmpresaId ? `${empresaPathPrefix}/imports` : '#'}
+          isActive={pathname.includes('/imports')}
+          onClick={onNavigate}
+        />
+
+        <SectionLabel>Sistema</SectionLabel>
+        <SidebarItem
+          icon={Shield}
+          label="Usuários"
+          href={currentEmpresaId ? `${empresaPathPrefix}/usuarios` : '#'}
+          isActive={pathname.includes('/usuarios')}
+          onClick={onNavigate}
+        />
+        <SidebarItem
+          icon={ShieldCheck}
+          label="Permissões"
+          href={currentEmpresaId ? `${empresaPathPrefix}/permissoes` : '#'}
+          isActive={pathname.includes('/permissoes')}
+          onClick={onNavigate}
+        />
+        <SidebarItem
+          icon={FileText}
+          label="Auditoria"
+          href={currentEmpresaId ? `${empresaPathPrefix}/auditoria` : '#'}
+          isActive={pathname.includes('/auditoria')}
+          onClick={onNavigate}
+        />
+        <SidebarItem
+          icon={Bell}
+          label="Alertas"
+          href="/configuracoes/alertas"
+          isActive={pathname.startsWith('/configuracoes/alertas')}
+          onClick={onNavigate}
+        />
+
+        <SectionLabel>Em breve</SectionLabel>
+        <SidebarItem icon={Calculator} label="Impostos" href="#" isActive={false} isComingSoon />
+        <SidebarItem icon={MessageSquare} label="Chat IA" href="#" isActive={false} isComingSoon />
+        <SidebarItem icon={Settings} label="Configurações" href="#" isActive={false} isComingSoon />
       </nav>
-
-      {/* Footer: Configurações + avatar + logout */}
-      <div className="border-t">
-        <div className="p-3 space-y-1">
-          <SidebarItem
-            icon={Settings}
-            label="Configurações"
-            href="/configuracoes"
-            isActive={pathname.startsWith('/configuracoes')}
-            isComingSoon
-            onClick={onNavigate}
-          />
-        </div>
-
-        <div className="flex items-center gap-3 px-3 py-3 border-t min-w-0">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
-            {initials}
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-xs font-medium">{userName}</p>
-            <p className="truncate text-[10px] text-muted-foreground">{userEmail}</p>
-          </div>
-          <form action="/api/auth/logout" method="POST">
-            <button
-              type="submit"
-              className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded"
-              title="Sair"
-              aria-label="Sair"
-            >
-              <LogOut className="h-4 w-4" />
-            </button>
-          </form>
-        </div>
-      </div>
     </aside>
+  )
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="px-3 pt-3 pb-1 text-[10px] uppercase font-semibold text-zinc-500 tracking-wider">
+      {children}
+    </p>
   )
 }
