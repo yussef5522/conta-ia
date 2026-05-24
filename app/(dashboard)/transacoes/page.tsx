@@ -124,6 +124,15 @@ function TransacoesPageInner() {
   const [q, setQ] = useState(urlFilters.q ?? '')
   const [qDebounced, setQDebounced] = useState(urlFilters.q ?? '')
   const [categorias, setCategorias] = useState<Category[]>([])
+  // Sprint 3.0.3 B4 — filtro valor
+  const [valorMin, setValorMin] = useState<string>(
+    urlFilters.valorMin !== null ? String(urlFilters.valorMin) : '',
+  )
+  const [valorMax, setValorMax] = useState<string>(
+    urlFilters.valorMax !== null ? String(urlFilters.valorMax) : '',
+  )
+  const [valorMinDebounced, setValorMinDebounced] = useState(valorMin)
+  const [valorMaxDebounced, setValorMaxDebounced] = useState(valorMax)
   const importId = urlFilters.importId
   const conferenciaMode = urlFilters.conferencia && !!importId
 
@@ -173,6 +182,16 @@ function TransacoesPageInner() {
     return () => clearTimeout(t)
   }, [q])
 
+  // Sprint 3.0.3 B4 — debounce 400ms nos valores (mais longo: typing R$)
+  useEffect(() => {
+    const t = setTimeout(() => setValorMinDebounced(valorMin), 400)
+    return () => clearTimeout(t)
+  }, [valorMin])
+  useEffect(() => {
+    const t = setTimeout(() => setValorMaxDebounced(valorMax), 400)
+    return () => clearTimeout(t)
+  }, [valorMax])
+
   const fetchTransacoes = useCallback(async () => {
     setLoading(true)
     try {
@@ -187,6 +206,11 @@ function TransacoesPageInner() {
       if (categoryId !== 'TODAS') qs.set('categoryId', categoryId)
       if (qDebounced) qs.set('q', qDebounced)
       if (importId) qs.set('importId', importId)
+      // Sprint 3.0.3 B4 — valor (debounced)
+      if (valorMinDebounced.trim() !== '' && Number(valorMinDebounced) >= 0)
+        qs.set('valorMin', String(Number(valorMinDebounced)))
+      if (valorMaxDebounced.trim() !== '' && Number(valorMaxDebounced) >= 0)
+        qs.set('valorMax', String(Number(valorMaxDebounced)))
 
       const res = await fetch(`/api/transacoes?${qs}`)
       if (res.ok) {
@@ -197,18 +221,22 @@ function TransacoesPageInner() {
     } finally {
       setLoading(false)
     }
-  }, [contaFiltro, empresaIdParam, page, inicio, fim, tipo, status, categoryId, qDebounced, importId])
+  }, [contaFiltro, empresaIdParam, page, inicio, fim, tipo, status, categoryId, qDebounced, importId, valorMinDebounced, valorMaxDebounced])
 
   useEffect(() => { fetchTransacoes() }, [fetchTransacoes])
 
   const entradas = transacoes.filter((t) => t.type === 'CREDIT').reduce((s, t) => s + t.amount, 0)
   const saidas = transacoes.filter((t) => t.type === 'DEBIT').reduce((s, t) => s + t.amount, 0)
 
-  // Sprint 3.0.2 — limpa todos filtros novos
+  // Sprint 3.0.2 + 3.0.3 — limpa todos filtros novos
   function limparFiltrosNovos() {
     setCategoryId('TODAS')
     setQ('')
     setQDebounced('')
+    setValorMin('')
+    setValorMax('')
+    setValorMinDebounced('')
+    setValorMaxDebounced('')
     setPage(1)
   }
 
@@ -581,8 +609,36 @@ function TransacoesPageInner() {
               </div>
             </div>
 
+            {/* Sprint 3.0.3 B4 — Filtro por valor */}
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">R$ De</p>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                inputMode="decimal"
+                placeholder="0,00"
+                className="h-8 w-28 text-sm tabular-nums"
+                value={valorMin}
+                onChange={(e) => { setValorMin(e.target.value); setPage(1) }}
+              />
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">R$ Até</p>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                inputMode="decimal"
+                placeholder="∞"
+                className="h-8 w-28 text-sm tabular-nums"
+                value={valorMax}
+                onChange={(e) => { setValorMax(e.target.value); setPage(1) }}
+              />
+            </div>
+
             {/* Limpar todos filtros novos */}
-            {(categoryId !== 'TODAS' || qDebounced) && (
+            {(categoryId !== 'TODAS' || qDebounced || valorMin || valorMax) && (
               <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={limparFiltrosNovos}>
                 <X className="h-3.5 w-3.5 mr-1" />Limpar
               </Button>

@@ -9,6 +9,8 @@ const EMPTY = {
   q: null,
   importId: null,
   conferencia: false,
+  valorMin: null,
+  valorMax: null,
 }
 
 describe('parseTransacoesURLFilters — Sprint 2 Dia 2', () => {
@@ -115,5 +117,48 @@ describe('parseTransacoesURLFilters — Sprint 3.0.2 (categoria, q, importId, co
     expect(parseTransacoesURLFilters({ conferencia: '1' }).conferencia).toBe(true)
     expect(parseTransacoesURLFilters({ conferencia: 'false' }).conferencia).toBe(false)
     expect(parseTransacoesURLFilters({ conferencia: null }).conferencia).toBe(false)
+  })
+})
+
+describe('parseTransacoesURLFilters — Sprint 3.0.3 B4 (valorMin/valorMax)', () => {
+  it('aceita número como string', () => {
+    const r = parseTransacoesURLFilters({ valorMin: '100', valorMax: '1000' })
+    expect(r.valorMin).toBe(100)
+    expect(r.valorMax).toBe(1000)
+  })
+
+  it('aceita número direto (client com state numérico)', () => {
+    const r = parseTransacoesURLFilters({ valorMin: 100, valorMax: 1000 })
+    expect(r.valorMin).toBe(100)
+    expect(r.valorMax).toBe(1000)
+  })
+
+  it('decimais aceitos', () => {
+    const r = parseTransacoesURLFilters({ valorMin: '99.99', valorMax: '1234.56' })
+    expect(r.valorMin).toBe(99.99)
+    expect(r.valorMax).toBe(1234.56)
+  })
+
+  it('rejeita negativo → null', () => {
+    expect(parseTransacoesURLFilters({ valorMin: '-10' }).valorMin).toBeNull()
+    expect(parseTransacoesURLFilters({ valorMax: '-1' }).valorMax).toBeNull()
+  })
+
+  it('string vazia → null (clear do input)', () => {
+    expect(parseTransacoesURLFilters({ valorMin: '' }).valorMin).toBeNull()
+    expect(parseTransacoesURLFilters({ valorMax: '' }).valorMax).toBeNull()
+  })
+
+  it('texto qualquer → null (defesa)', () => {
+    expect(parseTransacoesURLFilters({ valorMin: 'abc' }).valorMin).toBeNull()
+    expect(parseTransacoesURLFilters({ valorMax: '<script>' }).valorMax).toBeNull()
+  })
+
+  it('zero válido (filtra ≥ 0)', () => {
+    expect(parseTransacoesURLFilters({ valorMin: '0' }).valorMin).toBe(0)
+  })
+
+  it('Infinity bloqueado', () => {
+    expect(parseTransacoesURLFilters({ valorMin: 'Infinity' }).valorMin).toBeNull()
   })
 })

@@ -22,6 +22,17 @@ export async function GET(request: NextRequest) {
     const categoryId = searchParams.get('categoryId')
     const q = searchParams.get('q')?.trim() ?? null
     const importId = searchParams.get('importId')
+    // Sprint 3.0.3 B4 — filtro por valor (parse seguro)
+    const valorMinStr = searchParams.get('valorMin')
+    const valorMaxStr = searchParams.get('valorMax')
+    const valorMin =
+      valorMinStr && Number.isFinite(Number(valorMinStr)) && Number(valorMinStr) >= 0
+        ? Number(valorMinStr)
+        : null
+    const valorMax =
+      valorMaxStr && Number.isFinite(Number(valorMaxStr)) && Number(valorMaxStr) >= 0
+        ? Number(valorMaxStr)
+        : null
 
     // Resolve companyId pra ter contexto RBAC.
     // Precedência: contaId → empresaId → "global" (todas as empresas do user, sem permissão única).
@@ -87,6 +98,13 @@ export async function GET(request: NextRequest) {
     if (categoryId) where.categoryId = categoryId
     if (q) where.description = { contains: q, mode: 'insensitive' }
     if (importId) where.importId = importId
+    // Sprint 3.0.3 B4 — amount range
+    if (valorMin !== null || valorMax !== null) {
+      where.amount = {
+        ...(valorMin !== null ? { gte: valorMin } : {}),
+        ...(valorMax !== null ? { lte: valorMax } : {}),
+      }
+    }
 
     const [total, transacoes] = await Promise.all([
       prisma.transaction.count({ where }),
