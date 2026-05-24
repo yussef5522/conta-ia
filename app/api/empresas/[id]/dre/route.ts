@@ -43,6 +43,15 @@ export async function GET(request: NextRequest, { params }: Params) {
     const endDate = new Date(query.endDate)
     const regime = query.regime as RegimeContabil
 
+    // Sprint 4.0.1.b — view determina quais lifecycles entram no DRE.
+    //   'realizado' (default): só EFFECTED (caixa real / fato gerador efetivado)
+    //   'previsto': só PAYABLE/RECEIVABLE (compromissos pendentes)
+    const view = url.searchParams.get('view') === 'previsto' ? 'previsto' : 'realizado'
+    const lifecycleFilter: { in: string[] } | string =
+      view === 'previsto'
+        ? { in: ['PAYABLE', 'RECEIVABLE'] }
+        : 'EFFECTED'
+
     // Range de busca: cobre período atual + comparação (engine pura filtra fino)
     const searchRange = computeSearchRange(query, startDate, endDate)
 
@@ -86,16 +95,37 @@ export async function GET(request: NextRequest, { params }: Params) {
           ]
         : [{ paymentDate: { gte: searchRange.start, lte: searchRange.end } }]
 
+    // Sprint 4.0.1.b — PAYABLE/RECEIVABLE não têm bankAccountId obrigatório
+    // (criados sem conta definida). Pra view='previsto', resolvemos empresa via
+    // OR de relações; pra 'realizado' mantemos bankAccount.companyId (mais rápido).
+    const tenantFilter =
+      view === 'previsto'
+        ? {
+            OR: [
+              { bankAccount: { companyId } },
+              { supplier: { companyId } },
+              { customer: { companyId } },
+              { category: { companyId } },
+            ],
+          }
+        : { bankAccount: { companyId } }
+
+    // Para view='previsto', filtramos por dueDate (que é a data esperada)
+    // em vez de competenceDate/paymentDate.
+    const lifecycleDateClauses =
+      view === 'previsto'
+        ? [{ dueDate: { gte: searchRange.start, lte: searchRange.end } }]
+        : dateClauses
+
     const transactionsRaw = await prisma.transaction.findMany({
       where: {
-        bankAccount: { companyId },
+        ...tenantFilter,
         // Transferências entre contas da mesma empresa não compõem DRE (Sprint 0.5).
         // Filtragem no SQL evita trafegar dados que o engine descartaria.
         type: { not: 'TRANSFER' },
-        // Sprint 4.0.1.a — DRE Realizado: apenas tx EFFECTED.
-        // PAYABLE/RECEIVABLE (pendentes) compõem visão "Previsto" (Sprint 4.0.1.b).
-        lifecycle: 'EFFECTED',
-        OR: dateClauses,
+        // Sprint 4.0.1.a/b — REALIZADO = EFFECTED; PREVISTO = PAYABLE/RECEIVABLE.
+        lifecycle: lifecycleFilter,
+        OR: lifecycleDateClauses,
       },
       select: {
         id: true,

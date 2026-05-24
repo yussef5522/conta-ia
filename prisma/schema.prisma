@@ -32,6 +32,8 @@ model User {
   // Onda 2 Sprint 2.3 — quem importou cada OFX
   ofxImports          OfxImport[]
   ofxImportsReverted  OfxImport[]          @relation("OfxImportReverter")
+  // Sprint 4.0.1.b — quem criou cada schedule recorrente
+  recurringSchedules  RecurringSchedule[]
 
   @@map("users")
 }
@@ -54,22 +56,23 @@ model Company {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users            UserCompany[]
-  bankAccounts     BankAccount[]
-  categories       Category[]
-  suppliers        Supplier[]
-  customers        Customer[]
-  rules            AiLearningRule[]
-  costCenters      CostCenter[]
-  categoryHistory  CategoryHistory[]
-  restoreLogs      CategoryRestoreLog[]
-  roles            Role[]
-  userCompanyRoles UserCompanyRole[]
-  auditLogs        AuditLog[]
-  invites          CompanyInvite[]
+  users              UserCompany[]
+  bankAccounts       BankAccount[]
+  categories         Category[]
+  suppliers          Supplier[]
+  customers          Customer[]
+  recurringSchedules RecurringSchedule[]
+  rules              AiLearningRule[]
+  costCenters        CostCenter[]
+  categoryHistory    CategoryHistory[]
+  restoreLogs        CategoryRestoreLog[]
+  roles              Role[]
+  userCompanyRoles   UserCompanyRole[]
+  auditLogs          AuditLog[]
+  invites            CompanyInvite[]
   // Fase 3 Etapa 3 — Camada 3 do pipeline IA Contadora
-  aiClaudeCache    AiClaudeCache[]
-  aiUsageLogs      AiUsageLog[]
+  aiClaudeCache      AiClaudeCache[]
+  aiUsageLogs        AiUsageLog[]
 
   @@map("companies")
 }
@@ -204,6 +207,12 @@ model Transaction {
   // RECEIVABLE pode vincular cliente (Customer); PAYABLE usa supplierId já existente.
   customerId String?
 
+  // Sprint 4.0.1.b — gerada por schedule recorrente. Null = lançamento manual ou OFX.
+  // Anti-duplicação via @@unique([recurringScheduleId, dueDate]) abaixo: garante
+  // que o job de geração diária NÃO crie 2 tx pra mesma data se rodar 2x.
+  recurringScheduleId String?
+  recurringSchedule   RecurringSchedule? @relation(fields: [recurringScheduleId], references: [id], onDelete: SetNull)
+
   bankAccount      BankAccount?    @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
   category         Category?       @relation(fields: [categoryId], references: [id])
   supplier         Supplier?       @relation(fields: [supplierId], references: [id])
@@ -214,6 +223,8 @@ model Transaction {
   ofxImport        OfxImport?      @relation(fields: [importId], references: [id], onDelete: SetNull)
 
   @@unique([bankAccountId, dedupHash])
+  // Sprint 4.0.1.b — anti-dup: schedule X só gera 1 tx por dueDate
+  @@unique([recurringScheduleId, dueDate])
   @@index([bankAccountId, externalId])
   @@index([bankAccountId, date])
   @@index([costCenterId])
@@ -222,6 +233,7 @@ model Transaction {
   @@index([lifecycle, dueDate])
   @@index([lifecycle, status])
   @@index([customerId])
+  @@index([recurringScheduleId])
   @@map("transactions")
 }
 
@@ -273,14 +285,15 @@ model Category {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  company      Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  parent       Category?         @relation("CategoryParent", fields: [parentId], references: [id], onDelete: SetNull)
-  children     Category[]        @relation("CategoryParent")
-  transactions Transaction[]
-  suppliers    Supplier[]
-  customers    Customer[]
-  rules        AiLearningRule[]
-  history      CategoryHistory[]
+  company            Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  parent             Category?           @relation("CategoryParent", fields: [parentId], references: [id], onDelete: SetNull)
+  children           Category[]          @relation("CategoryParent")
+  transactions       Transaction[]
+  suppliers          Supplier[]
+  customers          Customer[]
+  recurringSchedules RecurringSchedule[]
+  rules              AiLearningRule[]
+  history            CategoryHistory[]
 
   // Mesma sub-categoria pode existir em parents diferentes (ex: "Outras"
   // sob "Receita Operacional" e sob "Despesas Operacionais").
@@ -373,9 +386,10 @@ model Customer {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  category     Category?     @relation(fields: [categoryId], references: [id])
-  transactions Transaction[]
+  company            Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  category           Category?           @relation(fields: [categoryId], references: [id])
+  transactions       Transaction[]
+  recurringSchedules RecurringSchedule[]
 
   // Mesmo CNPJ pode existir em duas empresas-tenant diferentes
   @@unique([companyId, cnpj])
@@ -404,10 +418,11 @@ model Supplier {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  company      Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  category     Category?        @relation(fields: [categoryId], references: [id])
-  transactions Transaction[]
-  rules        AiLearningRule[]
+  company            Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  category           Category?           @relation(fields: [categoryId], references: [id])
+  transactions       Transaction[]
+  rules              AiLearningRule[]
+  recurringSchedules RecurringSchedule[]
 
   // Mesmo CNPJ pode existir em duas empresas-cliente diferentes
   @@unique([companyId, cnpj])
@@ -419,6 +434,66 @@ model Supplier {
 // Regras de classificação automática aprendidas a partir das confirmações manuais do usuário.
 // Pipeline (4.2 → 4.3 → 4.4): match em rules → CNPJ via BrasilAPI → Claude Haiku.
 // Multi-tenant: regras NÃO são compartilhadas entre empresas (academia ≠ restaurante).
+// Sprint 4.0.1.b — Recurrence (recorrentes).
+// Modela compromissos repetitivos (folha mensal, aluguel, mensalidade).
+// Job diário (lib/recurrence/scheduler.ts via node-cron 06:00 America/Sao_Paulo)
+// gera Transaction PENDING (lifecycle PAYABLE ou RECEIVABLE) na janela dos próximos
+// 7 dias. Anti-dup via @@unique([recurringScheduleId, dueDate]) em transactions.
+model RecurringSchedule {
+  id        String @id @default(cuid())
+  companyId String
+
+  // Identificação
+  description String
+  // Tipo: PAYABLE (a pagar) ou RECEIVABLE (a receber).
+  // Espelha o lifecycle que cada Transaction gerada terá.
+  type        String
+
+  // Valor fixo. Quando o usuário cria conta com valor variável (água/luz),
+  // ele edita a Transaction depois da geração.
+  amount Float
+
+  // Periodicidade.
+  //   MONTHLY    — uma vez por mês, dia `dayOfMonth`
+  //   WEEKLY     — uma vez por semana, dia `dayOfWeek` (0=domingo, 6=sábado)
+  //   QUARTERLY  — uma vez a cada 3 meses, dia `dayOfMonth` (mês = startDate.month + 3n)
+  //   YEARLY     — uma vez por ano, dia `dayOfMonth` no mesmo mês de startDate
+  frequency  String
+  dayOfMonth Int?
+  dayOfWeek  Int?
+
+  // Vigência: gera apenas se hoje >= startDate. Para se hoje > endDate (null = sem fim).
+  startDate DateTime
+  endDate   DateTime?
+
+  // Estado: false = pausado, NÃO gera novas tx (mas as já geradas continuam).
+  active Boolean @default(true)
+
+  // Última data em que o job rodou pra esse schedule (UTC). Audit/telemetria.
+  lastGeneratedAt DateTime?
+
+  // FKs opcionais (mesma regra de PAYABLE/RECEIVABLE manual)
+  supplierId String?
+  customerId String?
+  categoryId String?
+  notes      String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String
+
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  supplier     Supplier?     @relation(fields: [supplierId], references: [id])
+  customer     Customer?     @relation(fields: [customerId], references: [id])
+  category     Category?     @relation(fields: [categoryId], references: [id])
+  createdBy    User          @relation(fields: [createdById], references: [id])
+  transactions Transaction[]
+
+  @@index([companyId, active])
+  @@index([type, frequency])
+  @@map("recurring_schedules")
+}
+
 model AiLearningRule {
   id            String  @id @default(cuid())
   companyId     String

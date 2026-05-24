@@ -10,6 +10,9 @@ import {
   Settings,
   LogOut,
   Clock,
+  Wallet,
+  Repeat,
+  Users,
 } from 'lucide-react'
 import Link from 'next/link'
 import { SidebarItem } from './sidebar-item'
@@ -74,6 +77,27 @@ export function GlobalSidebar({ userName, userEmail, onNavigate }: GlobalSidebar
           label="Contas a Pagar"
           href="/contas-a-pagar"
           isActive={pathname.startsWith('/contas-a-pagar')}
+          onClick={onNavigate}
+        />
+        <SidebarItem
+          icon={Wallet}
+          label="Contas a Receber"
+          href="/contas-a-receber"
+          isActive={pathname.startsWith('/contas-a-receber')}
+          onClick={onNavigate}
+        />
+        <SidebarItem
+          icon={Repeat}
+          label="Recorrentes"
+          href="/recorrentes"
+          isActive={pathname.startsWith('/recorrentes')}
+          onClick={onNavigate}
+        />
+        <SidebarItem
+          icon={Users}
+          label="Clientes"
+          href="/clientes"
+          isActive={pathname.startsWith('/clientes')}
           onClick={onNavigate}
         />
 

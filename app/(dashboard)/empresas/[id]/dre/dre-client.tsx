@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DRETable, type DREResult } from './dre-table'
 import { DREDrillDown } from './dre-drill-down'
 import { HealthBanner } from './health-banner'
@@ -107,6 +108,12 @@ export function DREClient({ empresaId, empresaNome }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [drillCategoryId, setDrillCategoryId] = useState<string | null>(null)
 
+  // Sprint 4.0.1.b — view alterna entre Realizado (lifecycle=EFFECTED, default)
+  // e Previsto (lifecycle PAYABLE/RECEIVABLE). Persistido em URL.
+  const initialView =
+    searchParams.get('view') === 'previsto' ? 'previsto' : 'realizado'
+  const [view, setView] = useState<'realizado' | 'previsto'>(initialView)
+
   // Atualiza URL quando filtros mudam (replace pra não poluir histórico)
   const updateURL = useCallback(
     (filters: {
@@ -137,6 +144,10 @@ export function DREClient({ empresaId, empresaNome }: Props) {
       if (comparison !== 'none') {
         params.set('comparison', comparison)
       }
+      // Sprint 4.0.1.b — encaminha view (realizado é default no backend, omitimos)
+      if (view === 'previsto') {
+        params.set('view', 'previsto')
+      }
 
       const res = await fetch(`/api/empresas/${empresaId}/dre?${params.toString()}`)
       if (!res.ok) {
@@ -151,7 +162,7 @@ export function DREClient({ empresaId, empresaNome }: Props) {
     } finally {
       setIsLoading(false)
     }
-  }, [empresaId, startDate, endDate, regime, comparison])
+  }, [empresaId, startDate, endDate, regime, comparison, view])
 
   useEffect(() => {
     fetchDRE()
@@ -205,6 +216,7 @@ export function DREClient({ empresaId, empresaNome }: Props) {
           <p className="mt-1 text-sm text-muted-foreground">
             {empresaNome} · Regime de {regime === 'competence' ? 'Competência' : 'Caixa'}
             {comparison !== 'none' && ` · vs ${COMPARISON_LABELS[comparison]}`}
+            {view === 'previsto' && ' · 📅 Visão PREVISTO (PAYABLE/RECEIVABLE)'}
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={fetchDRE} disabled={isLoading}>
@@ -212,6 +224,25 @@ export function DREClient({ empresaId, empresaNome }: Props) {
           Atualizar
         </Button>
       </div>
+
+      {/* Sprint 4.0.1.b — Tabs Realizado vs Previsto */}
+      <Tabs
+        value={view}
+        onValueChange={(v) => {
+          const newView = v === 'previsto' ? 'previsto' : 'realizado'
+          setView(newView)
+          // Atualiza URL preservando outros params
+          const params = new URLSearchParams(searchParams.toString())
+          if (newView === 'previsto') params.set('view', 'previsto')
+          else params.delete('view')
+          router.replace(`${pathname}?${params.toString()}`, { scroll: false })
+        }}
+      >
+        <TabsList>
+          <TabsTrigger value="realizado">Realizado</TabsTrigger>
+          <TabsTrigger value="previsto">Previsto</TabsTrigger>
+        </TabsList>
+      </Tabs>
 
       {/* Filtros */}
       <Card className="p-4 space-y-4">
