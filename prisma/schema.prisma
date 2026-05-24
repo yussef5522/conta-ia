@@ -9,11 +9,18 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  name      String
-  email     String   @unique
-  password  String
-  role      String   @default("CLIENT")
+  id       String @id @default(cuid())
+  name     String
+  email    String @unique
+  password String
+  role     String @default("CLIENT")
+
+  // Sprint 4.0.4 — preferências de email alerts.
+  // Default false (opt-in seguro): user ativa em /configuracoes/alertas.
+  // Frequência DAILY = cron 8:00 dias úteis; WEEKLY = segunda 8:00; NONE = não envia.
+  emailAlertsEnabled   Boolean @default(false)
+  emailAlertsFrequency String  @default("DAILY")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

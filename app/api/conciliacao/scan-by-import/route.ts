@@ -14,6 +14,7 @@ import {
   type MatchRecommendation,
 } from '@/lib/conciliacao/match'
 import { findReconciliationCandidates } from '@/lib/conciliacao/find-candidates'
+import { applyHybridBoost } from '@/lib/conciliacao/claude-judge'
 
 const scanSchema = z.object({
   importId: z.string().cuid(),
@@ -90,8 +91,18 @@ export async function POST(request: NextRequest) {
       const candidates = await findReconciliationCandidates(ofx, companyId)
       if (candidates.length === 0) continue
       const matches = rankCandidates(ofx, candidates)
-      const top = matches[0]
+      let top = matches[0]
       if (!top) continue
+
+      // Sprint 4.0.4 — Match híbrido AUTO no scan:
+      // Se score determinístico está na faixa cinzenta (50-69), pede boost
+      // semântico ao Claude Haiku. Cache 24h em AiClaudeCache evita custo
+      // recorrente. Fora dessa faixa, retorna o score original sem chamar IA.
+      const candForBoost = candidates.find((c) => c.id === top.candidateId)
+      if (candForBoost) {
+        top = await applyHybridBoost(top, ofx, candForBoost, companyId)
+      }
+
       const recommendation = classifyRecommendation(top.score)
       if (recommendation === 'NO_MATCH') continue
 
