@@ -55,12 +55,16 @@ function Line({ line }: { line: MiniDRELine }) {
         ? 'text-rose-600 dark:text-rose-400'
         : 'text-muted-foreground'
 
+  // deltaPercent é null quando o mês anterior era 0 (proteção contra div/0).
+  // ANTES caía em formatBRL(deltaAbsolute) que duplicava o próprio valor da
+  // linha visualmente. Agora mostramos "novo" — semântico ("primeira vez no
+  // período comparado") e curto, sem sobrepor o valor à esquerda.
   const deltaLabel =
     line.deltaPercent !== null
       ? `${line.deltaPercent > 0 ? '+' : ''}${line.deltaPercent.toFixed(1)}%`
       : line.deltaAbsolute === 0
         ? '—'
-        : formatBRL(line.deltaAbsolute)
+        : 'novo'
 
   if (line.highlighted) {
     return (
@@ -87,7 +91,7 @@ function Line({ line }: { line: MiniDRELine }) {
       <div className="flex items-center gap-2">
         <span className="text-sm font-medium tabular-nums">{valueDisplay}</span>
         <span
-          className={`inline-flex items-center gap-0.5 text-xs font-medium tabular-nums w-[68px] justify-end ${deltaColor}`}
+          className={`inline-flex items-center gap-0.5 text-xs font-medium tabular-nums w-[88px] justify-end ${deltaColor}`}
         >
           <DeltaIcon className="h-3 w-3" />
           {deltaLabel}

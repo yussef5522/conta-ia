@@ -124,7 +124,7 @@ export function KPICard({
                 ? `${kpi.delta.percent > 0 ? '+' : ''}${kpi.delta.percent.toFixed(1)}%`
                 : kpi.delta.absolute === 0
                   ? '—'
-                  : formatBRL(kpi.delta.absolute)}
+                  : 'novo'}
             </span>
             <span className={isPrimary ? 'text-white/60 font-normal' : 'text-muted-foreground font-normal'}>
               vs mês ant.
