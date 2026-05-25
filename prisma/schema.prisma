@@ -1029,6 +1029,9 @@ model CompanyTaxProfile {
   // lucro tributável. Default 15% como estimativa típica até user calibrar.
   margemReal Float   @default(15)
 
+  // Sprint 5.0.2.b — CNAE Expert vinculado
+  cnaeActivityId String?
+
   // Toggle pro user pausar cálculos automáticos
   enabled Boolean @default(true)
 
@@ -1038,10 +1041,48 @@ model CompanyTaxProfile {
 
   company      Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
   createdBy    User?            @relation("TaxProfileCreator", fields: [createdById], references: [id])
+  cnaeActivity CNAEActivity?    @relation(fields: [cnaeActivityId], references: [id])
   calculations TaxCalculation[]
 
   @@index([companyId])
+  @@index([cnaeActivityId])
   @@map("company_tax_profiles")
+}
+
+// ============================================================
+// Sprint 5.0.2.b — CNAE Expert (3 ramos verticais: Restaurantes, Academias, Comércio Roupas)
+//
+// CNAEActivity guarda o catálogo completo de CNAEs cobertos pelo sistema +
+// um snapshot da expertise (benefícios, otimizações, particularidades, erros
+// comuns) em JSON. O snapshot vive no banco pra (a) ser editável sem deploy
+// futuro e (b) servir como fonte versionada (campo `versao`) para auditoria.
+// ============================================================
+
+model CNAEActivity {
+  id           String  @id @default(cuid())
+  code         String  @unique // "5611-2/01"
+  name         String  // "Restaurantes e similares"
+  ramo         String  // RESTAURANTE | ACADEMIA | COMERCIO_ROUPA
+  anexoSimples String? // ANEXO_I | ANEXO_III | etc
+
+  // Snapshots em JSON (versionados pelo campo `versao`). String pra compat
+  // SQLite-dev / Postgres-prod (sem usar Json nativo).
+  expertise        String // EXPERTISE_RAMO completo (anexoPreferido, fatorR, etc)
+  beneficios       String // Array<BeneficioFiscal>
+  particularidades String // Array<string>
+  errosComuns      String // Array<string>
+
+  ativo  Boolean @default(true)
+  versao String  @default("2026")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  taxProfiles CompanyTaxProfile[]
+
+  @@index([code])
+  @@index([ramo])
+  @@map("cnae_activities")
 }
 
 model TaxCalculation {

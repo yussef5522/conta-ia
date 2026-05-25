@@ -5,7 +5,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ChevronLeft } from 'lucide-react'
+import { ChevronLeft, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -23,6 +23,14 @@ import { useEmpresa } from '@/lib/contexts/empresa-context'
 import { DisclaimerInfo } from '@/components/tax/disclaimer-info'
 import { ATIVIDADE_LABELS } from '@/lib/validations/tax-compare'
 import { UF_LABELS } from '@/lib/tax/lucro-real-tables'
+
+interface CNAEResult {
+  code: string
+  name: string
+  ramo: string
+  ramoLabel: string
+  anexo: string
+}
 
 interface Profile {
   regime: 'SIMPLES_NACIONAL' | 'LUCRO_PRESUMIDO' | 'LUCRO_REAL'
@@ -64,6 +72,12 @@ export default function PerfilTributarioPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
+  // Sprint 5.0.2.b — busca CNAE expert
+  const [cnaeQuery, setCnaeQuery] = useState('')
+  const [cnaeResults, setCnaeResults] = useState<CNAEResult[]>([])
+  const [cnaeSearchOpen, setCnaeSearchOpen] = useState(false)
+  const [selectedCNAE, setSelectedCNAE] = useState<CNAEResult | null>(null)
+
   useEffect(() => {
     if (!currentEmpresaId) return
     setLoading(true)
@@ -87,6 +101,34 @@ export default function PerfilTributarioPage() {
       })
       .catch(() => setLoading(false))
   }, [currentEmpresaId])
+
+  // Busca CNAE expert debounced
+  useEffect(() => {
+    if (!cnaeSearchOpen) return
+    const t = setTimeout(() => {
+      fetch(`/api/cnae/search?q=${encodeURIComponent(cnaeQuery)}&limit=20`, {
+        credentials: 'include',
+      })
+        .then((r) => r.json())
+        .then((d) => setCnaeResults(d.results ?? []))
+        .catch(() => setCnaeResults([]))
+    }, 200)
+    return () => clearTimeout(t)
+  }, [cnaeQuery, cnaeSearchOpen])
+
+  // Auto-popular CNAE selecionado quando profile carregar
+  useEffect(() => {
+    if (!cnae) return
+    fetch(`/api/cnae/search?q=${encodeURIComponent(cnae)}`, {
+      credentials: 'include',
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        const exact = d.results?.find((r: CNAEResult) => r.code === cnae)
+        if (exact) setSelectedCNAE(exact)
+      })
+      .catch(() => {})
+  }, [cnae])
 
   async function salvar() {
     if (!currentEmpresaId) {
@@ -256,14 +298,85 @@ export default function PerfilTributarioPage() {
             </label>
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-xs">CNAE principal (opcional)</label>
-            <Input
-              value={cnae}
-              onChange={(e) => setCnae(e.target.value)}
-              placeholder="9311-5/00"
-              maxLength={20}
-            />
+          <div className="space-y-2 pt-3 border-t">
+            <div className="flex items-center justify-between gap-3">
+              <label className="text-xs font-medium flex items-center gap-1.5">
+                <Sparkles className="h-3.5 w-3.5 text-indigo-500" />
+                CNAE principal
+              </label>
+              {selectedCNAE && (
+                <Link
+                  href="/tributario/expertise"
+                  className="text-xs text-indigo-600 hover:underline"
+                >
+                  Ver análise expert →
+                </Link>
+              )}
+            </div>
+
+            <div className="relative">
+              <Input
+                value={cnaeQuery || cnae}
+                onChange={(e) => {
+                  setCnaeQuery(e.target.value)
+                  setCnae(e.target.value)
+                  setCnaeSearchOpen(true)
+                  setSelectedCNAE(null)
+                }}
+                onFocus={() => setCnaeSearchOpen(true)}
+                onBlur={() => setTimeout(() => setCnaeSearchOpen(false), 200)}
+                placeholder="Buscar por código ou nome (ex: restaurante, 5611, academia)"
+                maxLength={50}
+              />
+              {cnaeSearchOpen && cnaeResults.length > 0 && (
+                <div className="absolute z-10 mt-1 w-full bg-white border rounded-md shadow-lg max-h-72 overflow-y-auto">
+                  {cnaeResults.map((r) => (
+                    <button
+                      key={r.code}
+                      type="button"
+                      className="w-full text-left px-3 py-2 hover:bg-zinc-50 border-b last:border-b-0 text-sm"
+                      onMouseDown={(e) => {
+                        e.preventDefault()
+                        setCnae(r.code)
+                        setCnaeQuery('')
+                        setSelectedCNAE(r)
+                        setCnaeSearchOpen(false)
+                      }}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-mono text-xs text-zinc-500">{r.code}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 bg-indigo-50 text-indigo-700 rounded">
+                          {r.ramoLabel}
+                        </span>
+                      </div>
+                      <div className="text-zinc-900 mt-0.5">{r.name}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {selectedCNAE && (
+              <div className="rounded-md bg-indigo-50/50 border border-indigo-100 p-3 text-xs space-y-1">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-3.5 w-3.5 text-indigo-600" />
+                  <span className="font-medium text-indigo-900">
+                    CNAE Expert: {selectedCNAE.ramoLabel}
+                  </span>
+                </div>
+                <p className="text-zinc-700">
+                  Sistema tem expertise profunda pra este ramo. Vá em{' '}
+                  <Link href="/tributario/expertise" className="text-indigo-600 underline">
+                    Expertise Fiscal
+                  </Link>{' '}
+                  pra ver benefícios, otimizações e alertas específicos.
+                </p>
+              </div>
+            )}
+
+            <p className="text-[10px] text-zinc-500">
+              Sistema cobre 19 CNAEs em 3 ramos: Restaurantes, Academias, Comércio de Roupas. Outros CNAEs aceitos mas sem expertise dedicada.
+            </p>
           </div>
 
           <div className="flex justify-end gap-2 pt-2">

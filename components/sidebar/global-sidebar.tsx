@@ -28,6 +28,7 @@ import {
   Receipt,
   Scale,
   BookOpen,
+  Sparkles,
 } from 'lucide-react'
 import { SidebarItem } from './sidebar-item'
 import { useSidebarBadges } from '@/lib/hooks/use-sidebar-badges'
@@ -140,6 +141,13 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
           label="Comparativo"
           href="/tributario/comparativo"
           isActive={pathname.startsWith('/tributario/comparativo')}
+          onClick={onNavigate}
+        />
+        <SidebarItem
+          icon={Sparkles}
+          label="Expertise"
+          href="/tributario/expertise"
+          isActive={pathname.startsWith('/tributario/expertise')}
           onClick={onNavigate}
         />
         <SidebarItem
