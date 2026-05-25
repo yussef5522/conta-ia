@@ -124,44 +124,9 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
         <SectionLabel>Tributário</SectionLabel>
         <SidebarItem
           icon={Receipt}
-          label="Visão Tributária"
+          label="Tributário"
           href="/tributario"
-          isActive={pathname === '/tributario'}
-          onClick={onNavigate}
-        />
-        <SidebarItem
-          icon={FileText}
-          label="Histórico DAS"
-          href="/tributario/historico"
-          isActive={pathname.startsWith('/tributario/historico')}
-          onClick={onNavigate}
-        />
-        <SidebarItem
-          icon={Scale}
-          label="Comparativo"
-          href="/tributario/comparativo"
-          isActive={pathname.startsWith('/tributario/comparativo')}
-          onClick={onNavigate}
-        />
-        <SidebarItem
-          icon={Sparkles}
-          label="Expertise"
-          href="/tributario/expertise"
-          isActive={pathname.startsWith('/tributario/expertise')}
-          onClick={onNavigate}
-        />
-        <SidebarItem
-          icon={Settings}
-          label="Perfil Fiscal"
-          href="/tributario/perfil"
-          isActive={pathname.startsWith('/tributario/perfil')}
-          onClick={onNavigate}
-        />
-        <SidebarItem
-          icon={BookOpen}
-          label="Metodologia"
-          href="/tributario/metodologia"
-          isActive={pathname.startsWith('/tributario/metodologia')}
+          isActive={pathname.startsWith('/tributario')}
           onClick={onNavigate}
         />
 
