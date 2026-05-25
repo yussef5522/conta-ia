@@ -7,11 +7,41 @@
 import type { CNAEEntry, ExpertiseRamo } from './types'
 
 export const CNAES_ACADEMIAS: CNAEEntry[] = [
-  { code: '9313-1/00', name: 'Atividades de condicionamento físico (academia)', anexo: 'III/V' },
-  { code: '9311-5/00', name: 'Gestão de instalações esportivas', anexo: 'III/V' },
-  { code: '8591-1/00', name: 'Ensino de esportes (crossfit, lutas)', anexo: 'III/V' },
-  { code: '8592-9/03', name: 'Ensino de dança / balé / ginástica', anexo: 'III/V' },
-  { code: '9319-1/01', name: 'Personal trainer', anexo: 'III/V' },
+  {
+    code: '9313-1/00',
+    name: 'Atividades de condicionamento físico (academia)',
+    anexo: 'III/V',
+    icon: '💪',
+    aliases: ['academia', 'ginastica', 'musculacao', 'fitness', 'smart fit', 'bodytech', 'condicionamento'],
+  },
+  {
+    code: '9311-5/00',
+    name: 'Gestão de instalações esportivas',
+    anexo: 'III/V',
+    icon: '🏟️',
+    aliases: ['gestao esportiva', 'quadra', 'arena', 'campo society', 'instalacao esportiva'],
+  },
+  {
+    code: '8591-1/00',
+    name: 'Ensino de esportes (crossfit, lutas)',
+    anexo: 'III/V',
+    icon: '🥋',
+    aliases: ['crossfit', 'lutas', 'jiu jitsu', 'mma', 'boxe', 'muay thai', 'karate', 'judo', 'ensino esportes'],
+  },
+  {
+    code: '8592-9/03',
+    name: 'Ensino de dança / balé / ginástica',
+    anexo: 'III/V',
+    icon: '💃',
+    aliases: ['danca', 'bale', 'ballet', 'ginastica artistica', 'zumba', 'forro', 'escola danca'],
+  },
+  {
+    code: '9319-1/01',
+    name: 'Personal trainer',
+    anexo: 'III/V',
+    icon: '🏃',
+    aliases: ['personal', 'personal trainer', 'treinador', 'preparador fisico', 'consultoria fitness'],
+  },
 ]
 
 export const EXPERTISE_ACADEMIAS: ExpertiseRamo = {

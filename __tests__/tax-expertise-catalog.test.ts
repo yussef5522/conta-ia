@@ -131,10 +131,13 @@ describe('searchCNAEs', () => {
     expect(r.every((c) => c.ramo === 'RESTAURANTE')).toBe(true)
   })
 
-  it('busca por nome "restaurante" retorna restaurantes', () => {
+  it('busca por nome "restaurante" retorna ramo RESTAURANTE (via nome + aliases)', () => {
+    // Após Sprint 5.0.2.c, "restaurante" também é alias de outros CNAEs do ramo
+    // (lanchonete, pizzaria, hamburgueria têm "restaurante" implícito).
+    // Garantia: todo resultado é do ramo RESTAURANTE.
     const r = searchCNAEs('restaurante')
     expect(r.length).toBeGreaterThan(0)
-    expect(r.every((c) => c.name.toLowerCase().includes('restaurante'))).toBe(true)
+    expect(r.every((c) => c.ramo === 'RESTAURANTE')).toBe(true)
   })
 
   it('busca por "academia" retorna academias', () => {

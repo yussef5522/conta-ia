@@ -7,14 +7,62 @@
 import type { CNAEEntry, ExpertiseRamo } from './types'
 
 export const CNAES_RESTAURANTES: CNAEEntry[] = [
-  { code: '5611-2/01', name: 'Restaurantes e similares', anexo: 'I' },
-  { code: '5611-2/02', name: 'Restaurante self-service', anexo: 'I' },
-  { code: '5611-2/03', name: 'Lanchonetes, casas de chá e sucos', anexo: 'I' },
-  { code: '5611-2/04', name: 'Bar com refeição', anexo: 'I' },
-  { code: '5611-2/05', name: 'Bar sem refeição', anexo: 'I' },
-  { code: '1091-1/02', name: 'Hamburgueria / Fast food', anexo: 'I' },
-  { code: '5620-1/01', name: 'Pizzaria delivery', anexo: 'I' },
-  { code: '5620-9/02', name: 'Padaria / Cafeteria', anexo: 'I' },
+  {
+    code: '5611-2/01',
+    name: 'Restaurantes e similares',
+    anexo: 'I',
+    icon: '🍽️',
+    aliases: ['restaurante', 'comida', 'almoco', 'jantar', 'churrascaria', 'comercial', 'a la carte'],
+  },
+  {
+    code: '5611-2/02',
+    name: 'Restaurante self-service',
+    anexo: 'I',
+    icon: '🍱',
+    aliases: ['self service', 'self-service', 'buffet', 'comida por quilo', 'quilao', 'kilo'],
+  },
+  {
+    code: '5611-2/03',
+    name: 'Lanchonetes, casas de chá e sucos',
+    anexo: 'I',
+    icon: '🥪',
+    aliases: ['lanchonete', 'lanche', 'cafeteria', 'suco', 'cha', 'cafe', 'snack'],
+  },
+  {
+    code: '5611-2/04',
+    name: 'Bar com refeição',
+    anexo: 'I',
+    icon: '🍻',
+    aliases: ['bar', 'boteco', 'pub', 'tira gosto', 'petisco', 'bar restaurante'],
+  },
+  {
+    code: '5611-2/05',
+    name: 'Bar sem refeição',
+    anexo: 'I',
+    icon: '🍺',
+    aliases: ['bar', 'choperia', 'cervejaria', 'pub', 'happy hour'],
+  },
+  {
+    code: '1091-1/02',
+    name: 'Hamburgueria / Fast food',
+    anexo: 'I',
+    icon: '🍔',
+    aliases: ['hamburgueria', 'fast food', 'hamburguer', 'burger', 'lanche americano', 'mcdonalds', 'burger king', 'subway'],
+  },
+  {
+    code: '5620-1/01',
+    name: 'Pizzaria delivery',
+    anexo: 'I',
+    icon: '🍕',
+    aliases: ['pizzaria', 'pizza', 'delivery', 'tele pizza', 'tele-pizza', 'massa'],
+  },
+  {
+    code: '5620-9/02',
+    name: 'Padaria / Cafeteria',
+    anexo: 'I',
+    icon: '🥐',
+    aliases: ['padaria', 'panificadora', 'cafeteria', 'confeitaria', 'paes', 'pao', 'doceria'],
+  },
 ]
 
 export const EXPERTISE_RESTAURANTES: ExpertiseRamo = {

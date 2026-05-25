@@ -6,6 +6,8 @@ export interface CNAEEntry {
   code: string // "5611-2/01"
   name: string // "Restaurantes e similares"
   anexo: string // "I" | "III/V" | etc — convenção curta pra display
+  aliases?: string[] // termos de busca alternativos (case-insensitive, sem acento)
+  icon?: string // emoji/pictograma 1 char
 }
 
 export interface BeneficioFiscal {

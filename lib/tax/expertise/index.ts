@@ -44,22 +44,50 @@ export function expertiseForCNAE(code: string): ExpertiseRamo | null {
 }
 
 /**
- * Search por código (substring) OU por nome (case-insensitive, normalizado).
- * Retorna até `limit` resultados.
+ * Normaliza string pra busca (lowercase + remove acentos).
+ */
+function normalize(s: string): string {
+  // ̀-ͯ = combining diacritical marks (acentos)
+  return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+}
+
+/**
+ * Search por código (substring), nome (normalizado) OU aliases (normalizado).
+ * Opcionalmente filtra por ramo. Retorna até `limit` resultados.
  */
 export function searchCNAEs(
   query: string,
   limit = 20,
+  ramo?: Ramo,
 ): Array<CNAEEntry & { ramo: Ramo }> {
+  const base = ramo ? ALL_CNAES.filter((c) => c.ramo === ramo) : ALL_CNAES
   const q = query.trim().toLowerCase()
-  if (!q) return ALL_CNAES.slice(0, limit)
+  if (!q) return base.slice(0, limit)
 
-  const norm = (s: string) =>
-    s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+  const nq = normalize(q)
+  return base
+    .filter((c) => {
+      if (c.code.toLowerCase().includes(q)) return true
+      if (normalize(c.name).includes(nq)) return true
+      if (c.aliases?.some((a) => normalize(a).includes(nq))) return true
+      return false
+    })
+    .slice(0, limit)
+}
 
-  const nq = norm(q)
-  return ALL_CNAES.filter((c) => c.code.toLowerCase().includes(q) || norm(c.name).includes(nq)).slice(
-    0,
-    limit,
-  )
+/**
+ * Contagem de CNAEs por ramo (pra chips de filtro).
+ */
+export function countCNAEsByRamo(): Record<Ramo, number> {
+  return {
+    RESTAURANTE: CNAES_RESTAURANTES.length,
+    ACADEMIA: CNAES_ACADEMIAS.length,
+    COMERCIO_ROUPA: CNAES_COMERCIO_ROUPA.length,
+  }
+}
+
+export const RAMO_ICONS: Record<Ramo, string> = {
+  RESTAURANTE: '🍔',
+  ACADEMIA: '💪',
+  COMERCIO_ROUPA: '🛒',
 }

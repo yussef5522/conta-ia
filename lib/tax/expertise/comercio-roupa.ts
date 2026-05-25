@@ -6,12 +6,48 @@
 import type { CNAEEntry, ExpertiseRamo } from './types'
 
 export const CNAES_COMERCIO_ROUPA: CNAEEntry[] = [
-  { code: '4781-4/00', name: 'Comércio varejista de artigos do vestuário', anexo: 'I' },
-  { code: '4782-2/01', name: 'Comércio varejista de calçados', anexo: 'I' },
-  { code: '4782-2/02', name: 'Comércio varejista de artigos de viagem', anexo: 'I' },
-  { code: '4755-5/01', name: 'Comércio varejista de tecidos', anexo: 'I' },
-  { code: '4755-5/02', name: 'Comércio varejista de artigos de armarinho', anexo: 'I' },
-  { code: '4789-0/01', name: 'Comércio varejista de artigos esportivos', anexo: 'I' },
+  {
+    code: '4781-4/00',
+    name: 'Comércio varejista de artigos do vestuário',
+    anexo: 'I',
+    icon: '👕',
+    aliases: ['loja roupa', 'roupas', 'vestuario', 'boutique', 'moda', 'fashion', 'renner', 'riachuelo', 'cea', 'zara'],
+  },
+  {
+    code: '4782-2/01',
+    name: 'Comércio varejista de calçados',
+    anexo: 'I',
+    icon: '👟',
+    aliases: ['calcados', 'sapato', 'tenis', 'sandalia', 'sapataria', 'loja sapato', 'arezzo', 'havaianas'],
+  },
+  {
+    code: '4782-2/02',
+    name: 'Comércio varejista de artigos de viagem',
+    anexo: 'I',
+    icon: '🎒',
+    aliases: ['mochila', 'mala', 'bolsa', 'viagem', 'samsonite', 'acessorio'],
+  },
+  {
+    code: '4755-5/01',
+    name: 'Comércio varejista de tecidos',
+    anexo: 'I',
+    icon: '🧵',
+    aliases: ['tecido', 'tecidos', 'pano', 'aviamento', 'malha', 'algodao'],
+  },
+  {
+    code: '4755-5/02',
+    name: 'Comércio varejista de artigos de armarinho',
+    anexo: 'I',
+    icon: '🪡',
+    aliases: ['armarinho', 'aviamento', 'botao', 'linha', 'agulha', 'costura'],
+  },
+  {
+    code: '4789-0/01',
+    name: 'Comércio varejista de artigos esportivos',
+    anexo: 'I',
+    icon: '⚽',
+    aliases: ['loja esportiva', 'esportivos', 'artigo esportivo', 'futebol', 'centauro', 'decathlon', 'netshoes'],
+  },
 ]
 
 export const EXPERTISE_COMERCIO_ROUPA: ExpertiseRamo = {
