@@ -85,6 +85,8 @@ model Company {
   // Sprint 5.0.1 — IA Tributária
   taxProfile         CompanyTaxProfile?
   taxCalculations    TaxCalculation[]
+  // Sprint 5.0.2.d — Claude analyzing real
+  aiAnalysisCache    AiAnalysisCache[]
 
   @@map("companies")
 }
@@ -1125,4 +1127,45 @@ model TaxCalculation {
   @@unique([profileId, paYear, paMonth])
   @@index([companyId, paYear, paMonth])
   @@map("tax_calculations")
+}
+
+// ============================================================
+// Sprint 5.0.2.d — AI Analysis Cache
+//
+// Cache 24h de análises tributárias geradas via Claude. Hash em cima do
+// snapshot relevante (CNAE + regime + receita média + folha + período).
+// Quando os dados mudam, hash muda, cache é refeito. Analysis JSON
+// armazenada como String (compat SQLite-dev / Postgres-prod).
+// ============================================================
+
+model AiAnalysisCache {
+  id        String @id @default(cuid())
+  companyId String
+
+  // Cache key: hash sha256 de { companyId, cnae, regime, receita, folha, period }
+  cacheKey String
+
+  // Inputs
+  topic       String // "general" | "regime-otimo" | "icms-st" | "fator-r" | ...
+  periodStart DateTime
+  periodEnd   DateTime
+
+  // Outputs (JSON serializado)
+  analysis     String // TaxAnalysisResult serializado
+  modelUsed    String // "claude-sonnet-4-6"
+  tokensInput  Int    @default(0)
+  tokensOutput Int    @default(0)
+  // Custo em USD (Float pra compat dual-DB)
+  costUSD      Float  @default(0)
+
+  // TTL — runtime descarta se Date.now() > expiresAt
+  expiresAt DateTime
+
+  createdAt DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, cacheKey])
+  @@index([companyId, expiresAt])
+  @@map("ai_analysis_cache")
 }

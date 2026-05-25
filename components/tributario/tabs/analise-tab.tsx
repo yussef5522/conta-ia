@@ -1,21 +1,27 @@
 'use client'
 
-// Sprint 5.0.2.c.2 — Tab Análise: 2 seções (Expert + Comparativo) com pills.
+// Sprint 5.0.2.c.2 — Tab Análise com 3 sub-seções.
+// Sprint 5.0.2.d adicionou Análise IA (Claude Sonnet 4.6).
 
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
 import { ExpertiseSection } from '@/components/tributario/expertise-section'
 import { ComparativoSection } from '@/components/tributario/comparativo-section'
-import { Sparkles, Scale } from 'lucide-react'
+import { AiAnalysisSection } from '@/components/tributario/ai-analysis-section'
+import { Sparkles, Scale, Bot } from 'lucide-react'
 
-type Sub = 'expertise' | 'comparativo'
+type Sub = 'ia' | 'expertise' | 'comparativo'
 
 export function AnaliseTab() {
-  const [sub, setSub] = useState<Sub>('expertise')
+  const [sub, setSub] = useState<Sub>('ia')
 
   return (
     <div className="space-y-4">
-      <div className="inline-flex bg-zinc-100 rounded-lg p-1">
+      <div className="inline-flex bg-zinc-100 rounded-lg p-1 flex-wrap gap-1">
+        <SubPill active={sub === 'ia'} onClick={() => setSub('ia')}>
+          <Bot className="h-3.5 w-3.5" />
+          Análise IA
+        </SubPill>
         <SubPill active={sub === 'expertise'} onClick={() => setSub('expertise')}>
           <Sparkles className="h-3.5 w-3.5" />
           Análise CNAE
@@ -26,7 +32,9 @@ export function AnaliseTab() {
         </SubPill>
       </div>
 
-      {sub === 'expertise' ? <ExpertiseSection /> : <ComparativoSection />}
+      {sub === 'ia' && <AiAnalysisSection />}
+      {sub === 'expertise' && <ExpertiseSection />}
+      {sub === 'comparativo' && <ComparativoSection />}
     </div>
   )
 }
