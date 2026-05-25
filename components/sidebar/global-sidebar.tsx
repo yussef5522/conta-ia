@@ -25,6 +25,7 @@ import {
   FileText,
   Settings,
   Bell,
+  Receipt,
 } from 'lucide-react'
 import { SidebarItem } from './sidebar-item'
 import { useSidebarBadges } from '@/lib/hooks/use-sidebar-badges'
@@ -113,7 +114,30 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
           icon={TrendingUp}
           label="DRE Gerencial"
           href="/dre"
-          isActive={pathname === '/dre' || pathname.startsWith('/empresas/') && pathname.endsWith('/dre')}
+          isActive={pathname === '/dre' || (pathname.startsWith('/empresas/') && pathname.endsWith('/dre'))}
+          onClick={onNavigate}
+        />
+
+        <SectionLabel>Tributário</SectionLabel>
+        <SidebarItem
+          icon={Receipt}
+          label="Visão Tributária"
+          href="/tributario"
+          isActive={pathname === '/tributario'}
+          onClick={onNavigate}
+        />
+        <SidebarItem
+          icon={FileText}
+          label="Histórico DAS"
+          href="/tributario/historico"
+          isActive={pathname.startsWith('/tributario/historico')}
+          onClick={onNavigate}
+        />
+        <SidebarItem
+          icon={Settings}
+          label="Perfil Fiscal"
+          href="/tributario/perfil"
+          isActive={pathname.startsWith('/tributario/perfil')}
           onClick={onNavigate}
         />
 

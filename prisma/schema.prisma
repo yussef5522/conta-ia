@@ -41,6 +41,8 @@ model User {
   ofxImportsReverted  OfxImport[]          @relation("OfxImportReverter")
   // Sprint 4.0.1.b — quem criou cada schedule recorrente
   recurringSchedules  RecurringSchedule[]
+  // Sprint 5.0.1 — IA Tributária
+  createdTaxProfiles  CompanyTaxProfile[]  @relation("TaxProfileCreator")
 
   @@map("users")
 }
@@ -80,6 +82,9 @@ model Company {
   // Fase 3 Etapa 3 — Camada 3 do pipeline IA Contadora
   aiClaudeCache      AiClaudeCache[]
   aiUsageLogs        AiUsageLog[]
+  // Sprint 5.0.1 — IA Tributária
+  taxProfile         CompanyTaxProfile?
+  taxCalculations    TaxCalculation[]
 
   @@map("companies")
 }
@@ -979,4 +984,89 @@ model OfxImport {
   @@index([userId])
   @@index([status])
   @@map("ofx_imports")
+}
+
+// ============================================================
+// Sprint 5.0.1 — IA Tributária Fundação
+//
+// CompanyTaxProfile: perfil tributário da empresa (regime + anexo + folha).
+// TaxCalculation: histórico de cálculos DAS (snapshot pra auditoria).
+//
+// ⚠️ AVISO LEGAL: estes cálculos são ESTIMATIVAS baseadas em LC 123/2006 +
+// tabelas vigentes 2026. NÃO substituem orientação contábil profissional.
+// ============================================================
+
+model CompanyTaxProfile {
+  id           String  @id @default(cuid())
+  companyId    String  @unique
+  // Regime tributário ativo da empresa
+  regime       String // SIMPLES_NACIONAL | LUCRO_PRESUMIDO | LUCRO_REAL
+  // Anexo do Simples (I-V) — null se regime != SIMPLES_NACIONAL
+  simplesAnexo String?
+
+  // Receita Bruta Acumulada últimos 12 meses (snapshot — atualizada pelo
+  // helper calculateRBA quando o user "Recalcular DAS")
+  rba12m    Float   @default(0)
+  // Folha últimos 12 meses (pra Fator R)
+  folha12m  Float   @default(0)
+  // Pró-labore mensal (computa dentro da folha pro Fator R)
+  proLabore Float   @default(0)
+  // CNAE principal (livre, validação leve)
+  cnae      String?
+
+  // Toggle pro user pausar cálculos automáticos
+  enabled Boolean @default(true)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
+
+  company      Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdBy    User?            @relation("TaxProfileCreator", fields: [createdById], references: [id])
+  calculations TaxCalculation[]
+
+  @@index([companyId])
+  @@map("company_tax_profiles")
+}
+
+model TaxCalculation {
+  id        String @id @default(cuid())
+  profileId String
+  companyId String
+
+  // Período de Apuração (PA): ano + mês competência
+  paYear  Int
+  paMonth Int
+
+  // Snapshot dos inputs no momento do cálculo
+  regime       String
+  simplesAnexo String?
+  receitaBruta Float
+  rbaAcumulada Float
+  folha12m     Float
+  fatorR       Float?
+
+  // Outputs Simples Nacional
+  aliquotaNominal Float?
+  parcelaDeduzir  Float?
+  aliquotaEfetiva Float?
+
+  // Valor final DAS (R$)
+  dasValue Float
+
+  // JSON breakdown { irpj, csll, pis, cofins, cpp, icms, iss, ... } + warnings[]
+  breakdown String
+
+  // Versão da tabela usada (rastreabilidade quando tabelas mudarem)
+  versaoTabela String @default("2026")
+
+  createdAt DateTime @default(now())
+
+  profile CompanyTaxProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  company Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  // Anti-dup: 1 cálculo por (profile, ano, mês). Recálculo é UPDATE.
+  @@unique([profileId, paYear, paMonth])
+  @@index([companyId, paYear, paMonth])
+  @@map("tax_calculations")
 }
