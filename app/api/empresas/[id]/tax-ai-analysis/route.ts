@@ -91,8 +91,16 @@ export async function POST(request: NextRequest, { params }: Params) {
       })
     }
 
-    // Chamar Claude
-    const result = await analyzeTaxOptimization(data)
+    // Chamar Claude — com retry 1x em caso de falha transitória ou JSON inválido
+    let result = await analyzeTaxOptimization(data)
+    if (
+      result.kind === 'invalid-json' ||
+      result.kind === 'error' ||
+      result.kind === 'max-rounds-exceeded'
+    ) {
+      console.warn('[tax-ai-analysis] First attempt failed:', result.kind, 'retrying once...')
+      result = await analyzeTaxOptimization(data)
+    }
 
     if (result.kind === 'disabled') {
       return NextResponse.json(

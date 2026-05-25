@@ -7,7 +7,12 @@
 // Pricing 2026 (Sonnet 4.6): $3/MTok input, $15/MTok output.
 
 import { TAX_EXPERT_SYSTEM_PROMPT } from '@/lib/tax/expert-prompt'
-import { TAX_ANALYSIS_TOOLS, executeToolCall, type ToolInput } from './tools'
+import {
+  TAX_ANALYSIS_TOOLS,
+  executeToolCall,
+  SUBMIT_ANALYSIS_TOOL_NAME,
+  type ToolInput,
+} from './tools'
 import type { CompanyTaxAnalysisData } from './data-aggregator'
 
 const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages'
@@ -149,7 +154,7 @@ export async function analyzeTaxOptimization(
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
   const systemPrompt =
     (options.systemPrompt ?? TAX_EXPERT_SYSTEM_PROMPT) +
-    `\n\nSEMPRE responda no formato JSON estruturado TaxAnalysisResult. Não envolva em markdown, sem texto extra. Inicie com { e termine com }.`
+    `\n\nIMPORTANTE: Após coletar os dados via get_knowledge / calculate_regime / get_benchmark_redes, você DEVE chamar a tool 'submit_analysis' com a análise final estruturada. NÃO escreva JSON em texto livre — use SEMPRE a tool submit_analysis pra retornar o resultado final.`
 
   const messages: AnthropicMessage[] = [
     { role: 'user', content: buildAnalysisContext(data) },
@@ -208,12 +213,32 @@ export async function analyzeTaxOptimization(
     totalOutputTokens += response.usage.output_tokens
 
     if (response.stop_reason === 'tool_use') {
-      // Coleta TODAS as tool calls e executa em paralelo
       const toolUses = response.content.filter(
         (b): b is AnthropicToolUseBlock => b.type === 'tool_use',
       )
       if (toolUses.length === 0) break
 
+      // Sprint 5.0.2.e — submit_analysis retorna estrutura GARANTIDA via tool input
+      const submitCall = toolUses.find((t) => t.name === SUBMIT_ANALYSIS_TOOL_NAME)
+      if (submitCall) {
+        const costUSD =
+          (totalInputTokens * PRICE_INPUT_PER_M_USD) / 1_000_000 +
+          (totalOutputTokens * PRICE_OUTPUT_PER_M_USD) / 1_000_000
+        return {
+          kind: 'success',
+          analysis: submitCall.input as unknown as TaxAnalysisResult,
+          metadata: {
+            tokensInput: totalInputTokens,
+            tokensOutput: totalOutputTokens,
+            modeloUsado: model,
+            duracaoMs: Date.now() - start,
+            costUSD,
+            toolRounds: rounds,
+          },
+        }
+      }
+
+      // Tools "normais" (não-submit) — executa todas em paralelo e continua loop
       const toolResults = toolUses.map((tu) => ({
         type: 'tool_result' as const,
         tool_use_id: tu.id,
@@ -225,7 +250,8 @@ export async function analyzeTaxOptimization(
       continue
     }
 
-    // Resposta final
+    // Fallback: Claude respondeu com texto em vez de chamar submit_analysis.
+    // Parser tolerante em 4 estratégias.
     const textBlock = response.content.find(
       (b): b is AnthropicTextBlock => b.type === 'text',
     )
@@ -267,25 +293,49 @@ async function safeText(res: Response): Promise<string> {
   }
 }
 
-function tryParseJson(text: string): unknown {
-  // Remove ```json e ``` se vier dentro
-  const cleaned = text
+/**
+ * Parser tolerante em 4 estratégias. Sprint 5.0.2.e — fallback caso
+ * Claude não use a tool submit_analysis e responda em texto.
+ */
+export function tryParseJson(text: string): unknown {
+  if (!text || typeof text !== 'string') return null
+
+  // 1. JSON puro
+  const trimmed = text.trim()
+  try {
+    return JSON.parse(trimmed)
+  } catch {}
+
+  // 2. Remove markdown ```json e ```
+  const noMarkdown = trimmed
     .replace(/^```json\s*/i, '')
     .replace(/^```\s*/i, '')
     .replace(/```\s*$/i, '')
     .trim()
-  try {
-    return JSON.parse(cleaned)
-  } catch {
-    // Tenta extrair primeiro JSON { ... }
-    const m = cleaned.match(/\{[\s\S]*\}/)
-    if (!m) return null
+  if (noMarkdown !== trimmed) {
     try {
-      return JSON.parse(m[0])
-    } catch {
-      return null
-    }
+      return JSON.parse(noMarkdown)
+    } catch {}
   }
+
+  // 3. Extrai primeiro objeto JSON balanceado (regex greedy)
+  const match = noMarkdown.match(/\{[\s\S]*\}/)
+  if (match) {
+    try {
+      return JSON.parse(match[0])
+    } catch {}
+  }
+
+  // 4. Trim de prosa antes/depois (último recurso)
+  const fromBrace = noMarkdown.indexOf('{')
+  const lastBrace = noMarkdown.lastIndexOf('}')
+  if (fromBrace >= 0 && lastBrace > fromBrace) {
+    try {
+      return JSON.parse(noMarkdown.slice(fromBrace, lastBrace + 1))
+    } catch {}
+  }
+
+  return null
 }
 
 /**

@@ -5,8 +5,8 @@ import { TAX_ANALYSIS_TOOLS, executeToolCall } from '@/lib/tax/ai-analysis/tools
 import { BENCHMARK_REDES } from '@/lib/tax/ai-analysis/benchmarks'
 
 describe('TAX_ANALYSIS_TOOLS — schema', () => {
-  it('tem 3 tools definidas', () => {
-    expect(TAX_ANALYSIS_TOOLS).toHaveLength(3)
+  it('tem 4 tools definidas (3 lookup + submit_analysis Sprint 5.0.2.e)', () => {
+    expect(TAX_ANALYSIS_TOOLS).toHaveLength(4)
   })
 
   it('todas têm name + description + input_schema', () => {

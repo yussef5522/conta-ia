@@ -1,8 +1,12 @@
 'use client'
 
-// Sprint 5.0.2.c.2 — Body do comparativo de regimes (sem Header).
+// Sprint 5.0.2.e — Comparativo de Regimes SEM dropdown genérico.
+// Atividade + hasICMS/hasISS são DERIVADOS automaticamente do CNAE
+// configurado em Tributário > Configurações. Se sem CNAE, mostra alert
+// vermelho com botão pra configurar.
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { Trophy, TrendingDown, AlertCircle, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -15,16 +19,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Checkbox } from '@/components/ui/checkbox'
 import { useToast } from '@/components/ui/use-toast'
 import { useEmpresa } from '@/lib/contexts/empresa-context'
 import { formatBRL } from '@/lib/format/money'
 import { CalculationFooter } from '@/components/tax/calculation-footer'
-import {
-  ATIVIDADE_LABELS,
-  type TaxCompareInput,
-} from '@/lib/validations/tax-compare'
 import { UF_LABELS } from '@/lib/tax/lucro-real-tables'
+import { deriveActivityFromCNAE } from '@/lib/tax/derive-activity-from-cnae'
+import { findCNAE, RAMO_LABELS } from '@/lib/tax/expertise'
 
 interface RegimeRow {
   regime: 'SIMPLES_NACIONAL' | 'LUCRO_PRESUMIDO' | 'LUCRO_REAL'
@@ -61,35 +62,52 @@ export function ComparativoSection() {
   const { currentEmpresaId } = useEmpresa()
 
   const [receita, setReceita] = useState('100000')
-  const [atividade, setAtividade] = useState<TaxCompareInput['atividade']>('SERVICOS')
   const [margemReal, setMargemReal] = useState('15')
   const [anexoSimples, setAnexoSimples] = useState<string>('ANEXO_III')
   const [estado, setEstado] = useState<string>('RS')
-  const [hasICMS, setHasICMS] = useState(false)
-  const [hasISS, setHasISS] = useState(true)
+  const [cnae, setCnae] = useState<string | null>(null)
+  const [profileLoading, setProfileLoading] = useState(true)
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<CompareResponse['result'] | null>(null)
 
+  // Carrega perfil pra pegar CNAE + estado + anexo + margem
   useEffect(() => {
-    if (!currentEmpresaId) return
+    if (!currentEmpresaId) {
+      setProfileLoading(false)
+      return
+    }
+    setProfileLoading(true)
     fetch(`/api/empresas/${currentEmpresaId}/tax-profile`, { credentials: 'include' })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         const p = data?.profile
-        if (!p) return
-        if (p.atividade) setAtividade(p.atividade)
+        if (!p) {
+          setProfileLoading(false)
+          return
+        }
         if (p.simplesAnexo) setAnexoSimples(p.simplesAnexo)
         if (p.estado) setEstado(p.estado)
-        if (typeof p.hasICMS === 'boolean') setHasICMS(p.hasICMS)
-        if (typeof p.hasISS === 'boolean') setHasISS(p.hasISS)
         if (typeof p.margemReal === 'number') setMargemReal(String(p.margemReal))
+        if (p.cnae) setCnae(p.cnae)
       })
       .catch(() => {})
+      .finally(() => setProfileLoading(false))
   }, [currentEmpresaId])
+
+  const cnaeEntry = cnae ? findCNAE(cnae) : null
+  const derived = cnae ? deriveActivityFromCNAE(cnae) : null
 
   async function calcular() {
     if (!currentEmpresaId) {
       toast({ variant: 'destructive', title: 'Selecione uma empresa' })
+      return
+    }
+    if (!cnae || !derived) {
+      toast({
+        variant: 'destructive',
+        title: 'CNAE não configurado',
+        description: 'Configure o CNAE em Tributário > Configurações.',
+      })
       return
     }
     if (!receita || Number(receita) <= 0) {
@@ -105,14 +123,14 @@ export function ComparativoSection() {
         body: JSON.stringify({
           receitaBrutaMes: Number(receita),
           anexoSimples,
-          atividade,
+          atividade: derived.presumidoAtividade,
           margemRealPercent: Number(margemReal),
           estado,
-          hasICMS,
-          hasISS,
+          hasICMS: derived.hasICMS,
+          hasISS: derived.hasISS,
         }),
       })
-      const data: CompareResponse = await res.json().catch(() => ({}))
+      const data: CompareResponse = await res.json().catch(() => ({}) as CompareResponse)
       if (!res.ok) {
         toast({
           variant: 'destructive',
@@ -129,11 +147,73 @@ export function ComparativoSection() {
 
   const melhor = result?.recomendacao?.regime
 
+  if (profileLoading) {
+    return <p className="text-sm text-zinc-500">Carregando perfil…</p>
+  }
+
+  // Sem CNAE: alert vermelho + CTA
+  if (!cnae) {
+    return (
+      <Card className="border-red-200 bg-red-50">
+        <CardContent className="py-6">
+          <div className="flex items-start gap-3 flex-wrap">
+            <AlertCircle className="h-5 w-5 text-red-600 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-[200px]">
+              <p className="text-sm font-medium text-red-900">CNAE não configurado</p>
+              <p className="text-xs text-red-700 mt-1">
+                O comparativo precisa do CNAE pra derivar a atividade e os tributos
+                aplicáveis (ICMS/ISS). Sem isso usaríamos valores genéricos imprecisos.
+              </p>
+            </div>
+            <Button asChild variant="outline" size="sm" className="shrink-0">
+              <Link href="/tributario?tab=config">Configurar CNAE →</Link>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
   return (
     <div className="space-y-6">
+      {/* Card resumo do CNAE */}
+      <Card className="bg-indigo-50/50 border-indigo-100">
+        <CardContent className="py-4">
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-2xl">{cnaeEntry?.icon ?? '📋'}</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] uppercase font-semibold text-indigo-700 tracking-wide">
+                Comparando para
+              </p>
+              <p className="text-sm font-medium text-zinc-900 truncate">
+                {cnaeEntry?.name ?? cnae}
+              </p>
+              <p className="text-xs text-zinc-600 mt-0.5">
+                <span className="font-mono">{cnae}</span>
+                {cnaeEntry && <> · {RAMO_LABELS[cnaeEntry.ramo]}</>}
+                {derived && (
+                  <>
+                    {' '}· Atividade Lucro Presumido: <strong>{derived.presumidoAtividade}</strong>
+                  </>
+                )}
+              </p>
+              {derived && (
+                <p className="text-[11px] text-zinc-500 mt-1">
+                  Tributos derivados: {derived.hasICMS ? 'ICMS ✓' : 'ICMS ✗'} ·{' '}
+                  {derived.hasISS ? 'ISS ✓' : 'ISS ✗'}
+                </p>
+              )}
+            </div>
+            <Button asChild variant="ghost" size="sm" className="shrink-0">
+              <Link href="/tributario?tab=config">Trocar CNAE →</Link>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardContent className="py-5 space-y-3">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div className="space-y-1.5">
               <label className="text-xs">Receita mensal (R$)</label>
               <Input
@@ -146,24 +226,6 @@ export function ComparativoSection() {
               />
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs">Atividade (Presumido)</label>
-              <Select
-                value={atividade}
-                onValueChange={(v) => setAtividade(v as TaxCompareInput['atividade'])}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.entries(ATIVIDADE_LABELS).map(([key, label]) => (
-                    <SelectItem key={key} value={key}>
-                      {label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
               <label className="text-xs">Margem real declarada (%)</label>
               <Input
                 type="number"
@@ -174,6 +236,7 @@ export function ComparativoSection() {
                 onChange={(e) => setMargemReal(e.target.value)}
                 placeholder="15"
               />
+              <p className="text-[10px] text-zinc-500">% lucro tributável (Lucro Real)</p>
             </div>
             <div className="space-y-1.5">
               <label className="text-xs">Anexo Simples</label>
@@ -204,16 +267,6 @@ export function ComparativoSection() {
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-            <div className="space-y-1.5 flex flex-col justify-end gap-2">
-              <label className="flex items-center gap-2 text-sm">
-                <Checkbox checked={hasICMS} onCheckedChange={(v) => setHasICMS(!!v)} />
-                Tem ICMS (comércio/indústria)
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <Checkbox checked={hasISS} onCheckedChange={(v) => setHasISS(!!v)} />
-                Tem ISS (serviços)
-              </label>
             </div>
           </div>
           <div className="flex justify-end">

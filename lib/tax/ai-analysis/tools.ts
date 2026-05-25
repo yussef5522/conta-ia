@@ -23,7 +23,160 @@ export interface ClaudeTool {
   }
 }
 
+/**
+ * Nome da tool de output estruturado. Quando Claude chamar, o analyzer
+ * extrai `input` diretamente como TaxAnalysisResult (sem JSON parsing).
+ */
+export const SUBMIT_ANALYSIS_TOOL_NAME = 'submit_analysis'
+
+/**
+ * Schema completo da análise final. Garante que Claude RETORNE estrutura
+ * válida em vez de texto livre. Anthropic faz tool input validation.
+ */
+const SUBMIT_ANALYSIS_TOOL: ClaudeTool = {
+  name: SUBMIT_ANALYSIS_TOOL_NAME,
+  description:
+    'Submete a análise tributária final estruturada. Use APENAS UMA VEZ no fim, após coletar todos os dados via get_knowledge, calculate_regime e get_benchmark_redes. Não escreva JSON em texto livre — use SEMPRE esta tool pra retornar a análise final.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      resumoExecutivo: {
+        type: 'object',
+        properties: {
+          cenarioAtual: { type: 'string' },
+          impostoPagoEstimado: { type: 'number' },
+          aliquotaEfetiva: { type: 'number' },
+          economiaPotencialAnual: { type: 'number' },
+        },
+        required: ['cenarioAtual', 'impostoPagoEstimado', 'aliquotaEfetiva', 'economiaPotencialAnual'],
+      },
+      oportunidades: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            prioridade: { type: 'number' },
+            titulo: { type: 'string' },
+            descricao: { type: 'string' },
+            economiaAnual: { type: 'number' },
+            baseLegal: { type: 'string' },
+            passosPraticos: { type: 'array', items: { type: 'string' } },
+            risco: { type: 'string', enum: ['BAIXO', 'MEDIO', 'ALTO'] },
+          },
+          required: [
+            'prioridade',
+            'titulo',
+            'descricao',
+            'economiaAnual',
+            'baseLegal',
+            'passosPraticos',
+            'risco',
+          ],
+        },
+      },
+      comparativoRegimes: {
+        type: 'object',
+        properties: {
+          atual: {
+            type: 'object',
+            properties: {
+              regime: { type: 'string' },
+              total: { type: 'number' },
+              aliquota: { type: 'number' },
+            },
+            required: ['regime', 'total', 'aliquota'],
+          },
+          simples: {
+            type: 'object',
+            properties: {
+              aplicavel: { type: 'boolean' },
+              total: { type: 'number' },
+              aliquota: { type: 'number' },
+              economia: { type: 'number' },
+            },
+            required: ['aplicavel', 'total', 'aliquota', 'economia'],
+          },
+          presumido: {
+            type: 'object',
+            properties: {
+              aplicavel: { type: 'boolean' },
+              total: { type: 'number' },
+              aliquota: { type: 'number' },
+              economia: { type: 'number' },
+            },
+            required: ['aplicavel', 'total', 'aliquota', 'economia'],
+          },
+          real: {
+            type: 'object',
+            properties: {
+              aplicavel: { type: 'boolean' },
+              total: { type: 'number' },
+              aliquota: { type: 'number' },
+              economia: { type: 'number' },
+            },
+            required: ['aplicavel', 'total', 'aliquota', 'economia'],
+          },
+          recomendacao: { type: 'string' },
+        },
+        required: ['atual', 'recomendacao'],
+      },
+      beneficiosEspecificos: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            tipo: { type: 'string' },
+            descricao: { type: 'string' },
+            economiaAnual: { type: 'number' },
+            aplicavel: { type: 'boolean' },
+            motivoAplicacao: { type: 'string' },
+          },
+          required: ['tipo', 'descricao', 'economiaAnual', 'aplicavel', 'motivoAplicacao'],
+        },
+      },
+      benchmarkRedes: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            rede: { type: 'string' },
+            regime: { type: 'string' },
+            estrategias: { type: 'array', items: { type: 'string' } },
+            aplicabilidade: { type: 'string' },
+          },
+          required: ['rede', 'regime', 'estrategias', 'aplicabilidade'],
+        },
+      },
+      proximosPassos: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            ordem: { type: 'number' },
+            acao: { type: 'string' },
+            urgencia: {
+              type: 'string',
+              enum: ['IMEDIATA', '30_DIAS', '90_DIAS', 'PROXIMO_ANO'],
+            },
+            impactoFinanceiro: { type: 'number' },
+          },
+          required: ['ordem', 'acao', 'urgencia', 'impactoFinanceiro'],
+        },
+      },
+    },
+    required: [
+      'resumoExecutivo',
+      'oportunidades',
+      'comparativoRegimes',
+      'beneficiosEspecificos',
+      'benchmarkRedes',
+      'proximosPassos',
+    ],
+  },
+}
+
 export const TAX_ANALYSIS_TOOLS: ClaudeTool[] = [
+  SUBMIT_ANALYSIS_TOOL,
   {
     name: 'get_knowledge',
     description:
