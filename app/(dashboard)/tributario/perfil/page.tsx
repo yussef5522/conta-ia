@@ -1,6 +1,6 @@
 'use client'
 
-// Sprint 5.0.1 — Form perfil tributário.
+// Sprint 5.0.1 + 5.0.2 — Form perfil tributário completo (Simples + Presumido + Real).
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -10,19 +10,31 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Header } from '@/components/layout/header'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from '@/components/ui/select'
 import { useToast } from '@/components/ui/use-toast'
 import { useEmpresa } from '@/lib/contexts/empresa-context'
-import { DisclaimerBanner } from '@/components/tax/disclaimer-banner'
+import { DisclaimerInfo } from '@/components/tax/disclaimer-info'
+import { ATIVIDADE_LABELS } from '@/lib/validations/tax-compare'
+import { UF_LABELS } from '@/lib/tax/lucro-real-tables'
 
 interface Profile {
-  regime: string
+  regime: 'SIMPLES_NACIONAL' | 'LUCRO_PRESUMIDO' | 'LUCRO_REAL'
   simplesAnexo: string | null
   folha12m: number
   proLabore: number
   cnae: string | null
+  atividade: string | null
+  estado: string | null
+  hasICMS: boolean
+  hasISS: boolean
+  margemReal: number
 }
 
 const ANEXO_OPTIONS = [
@@ -38,11 +50,17 @@ export default function PerfilTributarioPage() {
   const { toast } = useToast()
   const { currentEmpresaId } = useEmpresa()
 
-  const [regime, setRegime] = useState<'SIMPLES_NACIONAL' | 'LUCRO_PRESUMIDO' | 'LUCRO_REAL'>('SIMPLES_NACIONAL')
+  const [regime, setRegime] =
+    useState<Profile['regime']>('SIMPLES_NACIONAL')
   const [anexo, setAnexo] = useState<string>('ANEXO_III')
   const [folha12m, setFolha12m] = useState('')
   const [proLabore, setProLabore] = useState('')
   const [cnae, setCnae] = useState('')
+  const [atividade, setAtividade] = useState<string>('SERVICOS')
+  const [estado, setEstado] = useState<string>('RS')
+  const [hasICMS, setHasICMS] = useState(false)
+  const [hasISS, setHasISS] = useState(true)
+  const [margemReal, setMargemReal] = useState('15')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
@@ -54,11 +72,16 @@ export default function PerfilTributarioPage() {
       .then((data) => {
         const p: Profile | null = data?.profile ?? null
         if (p) {
-          setRegime(p.regime as typeof regime)
+          setRegime(p.regime)
           setAnexo(p.simplesAnexo ?? 'ANEXO_III')
           setFolha12m(String(p.folha12m ?? 0))
           setProLabore(String(p.proLabore ?? 0))
           setCnae(p.cnae ?? '')
+          if (p.atividade) setAtividade(p.atividade)
+          if (p.estado) setEstado(p.estado)
+          if (typeof p.hasICMS === 'boolean') setHasICMS(p.hasICMS)
+          if (typeof p.hasISS === 'boolean') setHasISS(p.hasISS)
+          if (typeof p.margemReal === 'number') setMargemReal(String(p.margemReal))
         }
         setLoading(false)
       })
@@ -82,6 +105,11 @@ export default function PerfilTributarioPage() {
           folha12m: Number(folha12m) || 0,
           proLabore: Number(proLabore) || 0,
           cnae: cnae || null,
+          atividade,
+          estado,
+          hasICMS,
+          hasISS,
+          margemReal: Number(margemReal) || 15,
         }),
       })
       const data = await res.json().catch(() => ({}))
@@ -107,6 +135,7 @@ export default function PerfilTributarioPage() {
   return (
     <div className="space-y-6">
       <Header title="Perfil Tributário" description="Configurações fiscais da empresa atual">
+        <DisclaimerInfo />
         <Button asChild variant="outline" size="sm">
           <Link href="/tributario">
             <ChevronLeft className="mr-1 h-4 w-4" />
@@ -115,22 +144,18 @@ export default function PerfilTributarioPage() {
         </Button>
       </Header>
 
-      <DisclaimerBanner />
-
       <Card>
         <CardContent className="py-6 space-y-4">
           <div className="space-y-1.5">
-            <label className="text-xs">Regime tributário <span className="text-red-500">*</span></label>
-            <Select value={regime} onValueChange={(v) => setRegime(v as typeof regime)}>
+            <label className="text-xs">
+              Regime tributário <span className="text-red-500">*</span>
+            </label>
+            <Select value={regime} onValueChange={(v) => setRegime(v as Profile['regime'])}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="SIMPLES_NACIONAL">Simples Nacional</SelectItem>
-                <SelectItem value="LUCRO_PRESUMIDO" disabled>
-                  Lucro Presumido (Sprint 5.0.2)
-                </SelectItem>
-                <SelectItem value="LUCRO_REAL" disabled>
-                  Lucro Real (Sprint 5.0.2)
-                </SelectItem>
+                <SelectItem value="LUCRO_PRESUMIDO">Lucro Presumido</SelectItem>
+                <SelectItem value="LUCRO_REAL">Lucro Real</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -142,14 +167,37 @@ export default function PerfilTributarioPage() {
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {ANEXO_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
           )}
+
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-xs">Atividade (pra Lucro Presumido)</label>
+              <Select value={atividade} onValueChange={setAtividade}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {Object.entries(ATIVIDADE_LABELS).map(([key, label]) => (
+                    <SelectItem key={key} value={key}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs">Estado (UF)</label>
+              <Select value={estado} onValueChange={setEstado}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent className="max-h-72">
+                  {Object.entries(UF_LABELS).map(([uf, label]) => (
+                    <SelectItem key={uf} value={uf}>{uf} — {label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
 
           <div className="grid sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
@@ -163,7 +211,7 @@ export default function PerfilTributarioPage() {
                 placeholder="0.00"
               />
               <p className="text-[10px] text-zinc-500">
-                Total pago em salários + encargos + pró-labore nos últimos 12 meses.
+                Total pago em salários + encargos + pró-labore nos últimos 12 meses (Fator R).
               </p>
             </div>
             <div className="space-y-1.5">
@@ -177,6 +225,35 @@ export default function PerfilTributarioPage() {
                 placeholder="0.00"
               />
             </div>
+          </div>
+
+          {regime === 'LUCRO_REAL' && (
+            <div className="space-y-1.5">
+              <label className="text-xs">Margem real declarada (%)</label>
+              <Input
+                type="number"
+                step="0.1"
+                min="0"
+                max="100"
+                value={margemReal}
+                onChange={(e) => setMargemReal(e.target.value)}
+                placeholder="15"
+              />
+              <p className="text-[10px] text-zinc-500">
+                % do faturamento que vira lucro tributável. Verifique no DRE da empresa.
+              </p>
+            </div>
+          )}
+
+          <div className="flex flex-col sm:flex-row gap-3 sm:items-center pt-2 border-t">
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox checked={hasICMS} onCheckedChange={(v) => setHasICMS(!!v)} />
+              Atividade tem ICMS (comércio/indústria)
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox checked={hasISS} onCheckedChange={(v) => setHasISS(!!v)} />
+              Atividade tem ISS (serviços)
+            </label>
           </div>
 
           <div className="space-y-1.5">

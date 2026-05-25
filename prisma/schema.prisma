@@ -1014,6 +1014,21 @@ model CompanyTaxProfile {
   // CNAE principal (livre, validação leve)
   cnae      String?
 
+  // Sprint 5.0.2 — Lucro Presumido + Real
+  // Atividade (pra margem de presunção): COMERCIO | INDUSTRIA | SERVICOS |
+  //   SERVICOS_HOSPITALARES | TRANSPORTE_CARGAS | TRANSPORTE_PASSAGEIROS |
+  //   REVENDA_COMBUSTIVEIS | CONSTRUCAO_CIVIL
+  atividade  String?
+  // UF (2 letras) pra alíquota ICMS estadual
+  estado     String?
+  // Se a atividade gera ICMS (comércio/indústria geralmente sim)
+  hasICMS    Boolean @default(false)
+  // Se gera ISS (serviços geralmente sim)
+  hasISS     Boolean @default(false)
+  // Margem real declarada pelo cliente (Lucro Real) — % faturamento que vira
+  // lucro tributável. Default 15% como estimativa típica até user calibrar.
+  margemReal Float   @default(15)
+
   // Toggle pro user pausar cálculos automáticos
   enabled Boolean @default(true)
 

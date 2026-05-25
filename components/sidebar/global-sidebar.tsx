@@ -26,6 +26,8 @@ import {
   Settings,
   Bell,
   Receipt,
+  Scale,
+  BookOpen,
 } from 'lucide-react'
 import { SidebarItem } from './sidebar-item'
 import { useSidebarBadges } from '@/lib/hooks/use-sidebar-badges'
@@ -134,10 +136,24 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
           onClick={onNavigate}
         />
         <SidebarItem
+          icon={Scale}
+          label="Comparativo"
+          href="/tributario/comparativo"
+          isActive={pathname.startsWith('/tributario/comparativo')}
+          onClick={onNavigate}
+        />
+        <SidebarItem
           icon={Settings}
           label="Perfil Fiscal"
           href="/tributario/perfil"
           isActive={pathname.startsWith('/tributario/perfil')}
+          onClick={onNavigate}
+        />
+        <SidebarItem
+          icon={BookOpen}
+          label="Metodologia"
+          href="/tributario/metodologia"
+          isActive={pathname.startsWith('/tributario/metodologia')}
           onClick={onNavigate}
         />
 

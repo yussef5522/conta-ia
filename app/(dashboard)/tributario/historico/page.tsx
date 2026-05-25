@@ -9,7 +9,8 @@ import {
   NoEmpresaSelectedState,
   NoAccessState,
 } from '@/components/empresa/empty-empresa-state'
-import { DisclaimerBanner } from '@/components/tax/disclaimer-banner'
+import { DisclaimerInfo } from '@/components/tax/disclaimer-info'
+import { CalculationFooter } from '@/components/tax/calculation-footer'
 import { Header } from '@/components/layout/header'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -52,6 +53,7 @@ export default async function HistoricoPage() {
         title="Histórico DAS"
         description={`${calcs.length} cálculo${calcs.length === 1 ? '' : 's'} salvo${calcs.length === 1 ? '' : 's'}`}
       >
+        <DisclaimerInfo />
         <Button asChild variant="outline" size="sm">
           <Link href="/tributario">
             <ChevronLeft className="mr-1 h-4 w-4" />
@@ -60,7 +62,7 @@ export default async function HistoricoPage() {
         </Button>
       </Header>
 
-      <DisclaimerBanner />
+      
 
       {calcs.length === 0 ? (
         <Card>

@@ -8,7 +8,8 @@ import {
   NoEmpresaSelectedState,
   NoAccessState,
 } from '@/components/empresa/empty-empresa-state'
-import { DisclaimerBanner } from '@/components/tax/disclaimer-banner'
+import { DisclaimerInfo } from '@/components/tax/disclaimer-info'
+import { CalculationFooter } from '@/components/tax/calculation-footer'
 import { Header } from '@/components/layout/header'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -40,6 +41,7 @@ export default async function TributarioPage() {
         title="Tributário"
         description={`Visão fiscal — ${access.empresa.tradeName ?? access.empresa.name}`}
       >
+        <DisclaimerInfo />
         <Button asChild variant="outline" size="sm">
           <Link href="/tributario/perfil">Editar perfil</Link>
         </Button>
@@ -48,7 +50,7 @@ export default async function TributarioPage() {
         </Button>
       </Header>
 
-      <DisclaimerBanner />
+      
 
       {!profile ? (
         <Card>
@@ -149,6 +151,7 @@ export default async function TributarioPage() {
                   </div>
                   <TributarioRecalcButton empresaId={access.empresaId} />
                 </div>
+                <CalculationFooter versaoTabela={lastCalc.versaoTabela} />
               </CardContent>
             </Card>
           )}
