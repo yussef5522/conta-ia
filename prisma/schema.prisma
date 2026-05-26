@@ -53,6 +53,10 @@ model Company {
   name      String
   tradeName String?
   type      String  @default("OTHER")
+  // Sprint 5.0.2.l — Setor normalizado pra Knowledge Base setorial.
+  // Valores: RESTAURANTE | ACADEMIA | COMERCIO_ROUPA | VAREJO_GERAL | OTHER.
+  // null permitido pra empresas legado (categorização cai só nas regras UNIVERSAL).
+  setor     String?
   email     String?
   phone     String?
   address   String?
@@ -1243,4 +1247,48 @@ model EmpresaRelacionada {
   @@unique([companyId, cnpjRelacionado])
   @@index([companyId])
   @@map("empresas_relacionadas")
+}
+
+
+// Sprint 5.0.2.l — Knowledge Base setorial de padrões de categorização BR.
+//
+// Estrutura: padrões CURATED por setor (UNIVERSAL + RESTAURANTE + ACADEMIA + ...).
+// Aplicados como Fase 3 do pipeline (entre regras aprendidas e Claude AI).
+//
+// Query típica:
+//   prisma.setorPattern.findMany({
+//     where: { active: true, setor: { in: ["UNIVERSAL", empresa.setor] } },
+//     orderBy: [{ setor: "desc" }, { confidence: "desc" }],
+//   })
+//
+// Multi-tenant: padrões são GLOBAIS (não pertencem a empresa). Cada empresa
+// só lê padrões UNIVERSAL + os do seu próprio setor. Crowd-sourcing futuro
+// (CROWDSOURCED_FUTURE em origem) entra aqui.
+model SetorPattern {
+  id              String   @id @default(cuid())
+
+  // RESTAURANTE | ACADEMIA | COMERCIO_ROUPA | VAREJO_GERAL | UNIVERSAL
+  setor           String
+
+  matchType       String   // STARTS_WITH | CONTAINS | EQUALS
+  pattern         String
+
+  // Nome canônico da categoria (resolvido contra plano de contas via
+  // ensureAllSystemCategories ou resolveUniversalCategoryId).
+  categoryName    String
+  // INCOME | EXPENSE | ANY
+  type            String
+  confidence      Float    @default(0.9)
+
+  description     String?
+  // CURATED | CROWDSOURCED_FUTURE (next sprints)
+  origem          String   @default("CURATED")
+
+  active          Boolean  @default(true)
+
+  createdAt       DateTime @default(now())
+
+  @@index([setor, active])
+  @@index([pattern])
+  @@map("setor_patterns")
 }

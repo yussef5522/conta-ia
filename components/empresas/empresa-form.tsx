@@ -16,7 +16,11 @@ import {
 import { useToast } from '@/components/ui/use-toast'
 import { t } from '@/lib/i18n/pt-BR'
 import { formatCNPJ, formatPhone, formatCEP } from '@/lib/utils'
-import { TIPOS_EMPRESA, REGIMES_TRIBUTARIOS } from '@/lib/validations/empresa'
+import {
+  TIPOS_EMPRESA,
+  REGIMES_TRIBUTARIOS,
+  SETORES_KB,
+} from '@/lib/validations/empresa'
 
 interface EmpresaFormProps {
   empresa?: {
@@ -25,6 +29,7 @@ interface EmpresaFormProps {
     name: string
     tradeName: string | null
     type: string
+    setor?: string | null
     taxRegime: string
     email: string | null
     phone: string | null
@@ -35,11 +40,20 @@ interface EmpresaFormProps {
   }
 }
 
+const SETOR_LABELS: Record<(typeof SETORES_KB)[number], string> = {
+  RESTAURANTE: 'Restaurante / Bar / Lanchonete',
+  ACADEMIA: 'Academia / Estúdio Fitness',
+  COMERCIO_ROUPA: 'Comércio de Roupa / Calçado',
+  VAREJO_GERAL: 'Varejo Geral',
+}
+
 interface FormData {
   cnpj: string
   name: string
   tradeName: string
   type: string
+  /** Sprint 5.0.2.l — Setor da KB SetorPattern. '' = não escolhido. */
+  setor: string
   taxRegime: string
   email: string
   phone: string
@@ -65,6 +79,7 @@ export function EmpresaForm({ empresa }: EmpresaFormProps) {
     name: empresa?.name ?? '',
     tradeName: empresa?.tradeName ?? '',
     type: empresa?.type ?? '',
+    setor: empresa?.setor ?? '',
     taxRegime: empresa?.taxRegime ?? '',
     email: empresa?.email ?? '',
     phone: empresa?.phone ?? '',
@@ -222,6 +237,30 @@ export function EmpresaForm({ empresa }: EmpresaFormProps) {
               </SelectContent>
             </Select>
             {errors.taxRegime && <p className="text-xs text-destructive">{errors.taxRegime}</p>}
+          </div>
+
+          {/* Sprint 5.0.2.l — Ramo principal pra Knowledge Base de categorização */}
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor="setor">Ramo principal (Knowledge Base)</Label>
+            <Select
+              value={form.setor || undefined}
+              onValueChange={(v) => handleChange('setor', v)}
+            >
+              <SelectTrigger id="setor">
+                <SelectValue placeholder="Escolha o ramo principal" />
+              </SelectTrigger>
+              <SelectContent>
+                {SETORES_KB.map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {SETOR_LABELS[s]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Sistema usará isso pra categorizar automaticamente transações típicas do seu ramo (iFood, AMBEV, JBS, Gympass, Hering, etc).
+            </p>
+            {errors.setor && <p className="text-xs text-destructive">{errors.setor}</p>}
           </div>
         </CardContent>
       </Card>

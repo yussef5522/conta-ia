@@ -61,6 +61,16 @@ export async function POST(request: NextRequest) {
           name: data.name,
           tradeName: data.tradeName || null,
           type: data.type,
+          // Sprint 5.0.2.l — setor pra Knowledge Base. Fallback derivado de type:
+          // RESTAURANT → RESTAURANTE; RETAIL/MIXED → VAREJO_GERAL; outros → null.
+          setor:
+            (data.setor as string | null | undefined) ||
+            ({
+              RESTAURANT: 'RESTAURANTE',
+              RETAIL: 'VAREJO_GERAL',
+              MIXED: 'VAREJO_GERAL',
+            } as Record<string, string>)[data.type] ||
+            null,
           taxRegime: data.taxRegime,
           email: data.email || null,
           phone: data.phone || null,

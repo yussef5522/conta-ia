@@ -26,16 +26,17 @@ import {
 } from './cnae-mapping'
 import { fetchCNPJ, type BrasilApiResult } from './brasilapi-client'
 import {
-  matchUniversalPattern,
-  type MatchUniversalResult,
-} from '@/lib/categorization/apply-universal-patterns'
+  matchAgainstPatterns,
+  type MatchSetorResult,
+  type SetorPatternSnapshot,
+} from '@/lib/categorization/match-setor-pattern'
 import type { Prediction } from './types'
 
 // ============================================================
 // Tipos
 // ============================================================
 
-export type Layer = 'RULE' | 'KEYWORD' | 'UNIVERSAL' | 'BRASILAPI' | 'CLAUDE'
+export type Layer = 'RULE' | 'KEYWORD' | 'SETOR' | 'BRASILAPI' | 'CLAUDE'
 
 // Resultado unificado de uma transação processada pelo pipeline.
 // caller usa isso pra decidir: criar Supplier? Aplicar AUTO? Marcar PENDING?
@@ -48,8 +49,8 @@ export interface PipelineResult {
   // Quando Camada 2A (KEYWORD) casa
   keywordMatch?: KeywordMatch & { confidence: number }
 
-  // Quando Camada 2C (UNIVERSAL Sprint 5.0.2.l) casa
-  universalMatch?: MatchUniversalResult
+  // Quando Camada 2C (SETOR Sprint 5.0.2.l — KB DB-backed) casa
+  setorMatch?: MatchSetorResult
 
   // Quando Camada 2B (BRASILAPI) casa
   brasilApiData?: {
@@ -77,7 +78,7 @@ export interface PipelineResult {
 // Entrada simplificada do pipeline pra cada transação
 export interface PipelineInputTx {
   description: string
-  /** Sprint 5.0.2.l — necessário pra Camada 2C (UNIVERSAL) filtrar INCOME/EXPENSE. */
+  /** Sprint 5.0.2.l — necessário pra Camada SETOR filtrar INCOME/EXPENSE. */
   type?: string
 }
 
@@ -89,6 +90,9 @@ export interface PipelineInputTx {
 export function classifyForImport(
   tx: PipelineInputTx,
   ruleIndex: RuleIndex,
+  /** Sprint 5.0.2.l — snapshot pre-carregado de SetorPattern (UNIVERSAL +
+   *  setor da empresa). Quando undefined, camada SETOR é skipada (modo legado). */
+  setorPatterns?: SetorPatternSnapshot[],
 ): PipelineResult {
   // CAMADA 1: regras aprendidas
   const prediction = predictCategory(tx, ruleIndex)
@@ -108,14 +112,16 @@ export function classifyForImport(
     }
   }
 
-  // CAMADA 2C (Sprint 5.0.2.l): padrões universais BR
-  // Só AUTO tier; SUGGEST tier fica pro bulk retroativo
-  const universal = matchUniversalPattern({
-    description: tx.description,
-    type: tx.type,
-  })
-  if (universal && universal.tier === 'AUTO') {
-    return { layer: 'UNIVERSAL', universalMatch: universal }
+  // CAMADA 2C (Sprint 5.0.2.l): SetorPattern KB DB-backed
+  // No import só AUTO tier; SUGGEST fica pro bulk retroativo (recategorize-all)
+  if (setorPatterns && setorPatterns.length > 0) {
+    const setorMatch = matchAgainstPatterns(
+      { description: tx.description, type: tx.type },
+      setorPatterns,
+    )
+    if (setorMatch && setorMatch.tier === 'AUTO') {
+      return { layer: 'SETOR', setorMatch }
+    }
   }
 
   // Sem match nas camadas síncronas. BrasilAPI fica pra modo async (lazy).

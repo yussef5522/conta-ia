@@ -11,7 +11,10 @@ import {
   persistKeywordSuggestions,
 } from '@/lib/ai-categorizer/apply'
 import { ensureAllSystemCategories } from '@/lib/categorias/ensure-system-categories'
-import { resolveUniversalCategoryId } from '@/lib/categorization/apply-universal-patterns'
+import {
+  loadPatternsForSetor,
+  resolveSetorCategoryId,
+} from '@/lib/categorization/match-setor-pattern'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -155,11 +158,20 @@ export async function POST(request: NextRequest, { params }: Params) {
   const activeRules = await loadActiveRules(conta.companyId)
   const ruleIndex = buildRuleIndex(conta.companyId, activeRules)
 
-  // Sprint 5.0.2.l — Camada UNIVERSAL: garante categorias do sistema +
-  // resolver categoryId pelo nome/dreGroup pros padrões universais BR.
-  const systemCats = await ensureAllSystemCategories(conta.companyId)
-  const universalResolver = (hint: { categoryNameHint: string; dreGroup: string }) =>
-    resolveUniversalCategoryId(systemCats.list, hint)
+  // Sprint 5.0.2.l — Camada SETOR (KB DB-backed):
+  //  1. Lê setor da empresa
+  //  2. Garante categorias do sistema (Pix + universais + setoriais)
+  //  3. Carrega snapshot de SetorPattern UNIVERSAL + setor empresa
+  //  4. Resolver retorna categoryId via nome
+  const empresa = await prisma.company.findUnique({
+    where: { id: conta.companyId },
+    select: { setor: true },
+  })
+  const setorEmpresa = empresa?.setor ?? null
+  const systemCats = await ensureAllSystemCategories(conta.companyId, setorEmpresa)
+  const setorPatterns = await loadPatternsForSetor(setorEmpresa)
+  const setorResolver = (name: string) =>
+    resolveSetorCategoryId(systemCats.list, name)
 
   const {
     classified,
@@ -167,7 +179,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     autoCount,
     supplierSuggestions,
     keywordHits,
-    universalAutoCount,
+    setorAutoCount,
   } = autoClassifyTransactions(
     novas.map((t) => ({
       bankAccountId: contaId,
@@ -180,7 +192,8 @@ export async function POST(request: NextRequest, { params }: Params) {
       origin: 'OFX',
     })),
     ruleIndex,
-    universalResolver,
+    setorPatterns,
+    setorResolver,
   )
   const predictMs = Date.now() - t0Predict
 
@@ -268,8 +281,9 @@ export async function POST(request: NextRequest, { params }: Params) {
     autoClassificadas: autoCount,
     regrasDispararam: rulesFired.size,
     keywordHits,
-    // Sprint 5.0.2.l — Camada UNIVERSAL hits
-    universalClassificadas: universalAutoCount,
+    // Sprint 5.0.2.l — Camada SETOR (KB) hits
+    setorClassificadas: setorAutoCount,
+    setorEmpresa,
     fornecedoresDetectados: supplierStats.suppliersCreated,
     transacoesComFornecedor: supplierStats.transactionsLinked,
     predictMs,

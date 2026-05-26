@@ -44,6 +44,8 @@ export async function PUT(request: NextRequest, { params }: Params) {
         name: data.name,
         tradeName: data.tradeName || null,
         type: data.type,
+        // Sprint 5.0.2.l — setor da KB SetorPattern
+        setor: (data.setor as string | null | undefined) || null,
         taxRegime: data.taxRegime,
         email: data.email || null,
         phone: data.phone || null,
@@ -57,7 +59,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
     const fieldsChanged = diffFields(
       antiga as unknown as Record<string, unknown>,
       empresa as unknown as Record<string, unknown>,
-      ['name', 'tradeName', 'type', 'taxRegime', 'email', 'phone', 'address', 'city', 'state', 'zipCode'],
+      ['name', 'tradeName', 'type', 'setor', 'taxRegime', 'email', 'phone', 'address', 'city', 'state', 'zipCode'],
     )
 
     if (fieldsChanged) {

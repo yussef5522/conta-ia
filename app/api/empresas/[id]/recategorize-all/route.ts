@@ -4,7 +4,7 @@
 //   FASE 0 — Same-company transfer (Sprint j)
 //   FASE 1 — Pix relacionado: sócio PF / empresa do grupo (Sprint i)
 //   FASE 2 — Regras de aprendizado da empresa EXACT/NORMALIZED/CONTAINS (Sprint k)
-//   FASE 3 — Padrões universais BR (Sprint l, NOVO — DARF, INSS, Stone, Celesc, Uber etc)
+//   FASE 3 — KB SetorPattern: UNIVERSAL + setor da empresa (Sprint l, DB-backed)
 //   FASE 4 — (Claude AI fica de fora; é lazy via UI /pendentes — caro pra bulk)
 //
 // Diferente de /recategorize-pix (que SÓ rodava 0 + 1), este endpoint
@@ -21,9 +21,10 @@ import { detectAndPlanPixApply } from '@/lib/pix-detection/auto-apply-pix'
 import { matchInternalTransferForTransaction } from '@/lib/conciliation/match-internal-transfer'
 import { matchSameCompanyTransfer } from '@/lib/conciliation/match-same-company-transfer'
 import {
-  matchUniversalPattern,
-  resolveUniversalCategoryId,
-} from '@/lib/categorization/apply-universal-patterns'
+  loadPatternsForSetor,
+  matchAgainstPatterns,
+  resolveSetorCategoryId,
+} from '@/lib/categorization/match-setor-pattern'
 import { loadActiveRules, buildRuleIndex } from '@/lib/ai-categorizer/apply'
 import { predictCategory } from '@/lib/ai-categorizer/predict'
 import { extractDescriptionStem } from '@/lib/rules/extract-stem'
@@ -43,12 +44,19 @@ export async function POST(request: NextRequest, { params }: Params) {
     const t0 = Date.now()
 
     // Pre-load tudo que precisamos
-    const [socios, empresas, systemCategories, activeRules] = await Promise.all([
-      prisma.socioPF.findMany({ where: { companyId } }),
-      prisma.empresaRelacionada.findMany({ where: { companyId } }),
-      ensureAllSystemCategories(companyId),
-      loadActiveRules(companyId),
-    ])
+    const empresa = await prisma.company.findUnique({
+      where: { id: companyId },
+      select: { setor: true },
+    })
+    const setorEmpresa = empresa?.setor ?? null
+    const [socios, empresas, systemCategories, activeRules, setorPatterns] =
+      await Promise.all([
+        prisma.socioPF.findMany({ where: { companyId } }),
+        prisma.empresaRelacionada.findMany({ where: { companyId } }),
+        ensureAllSystemCategories(companyId, setorEmpresa),
+        loadActiveRules(companyId),
+        loadPatternsForSetor(setorEmpresa),
+      ])
     const ruleIndex = buildRuleIndex(companyId, activeRules)
 
     // Pega TODAS as pendentes (sem categoria, status PENDING, lifecycle effected)
@@ -102,14 +110,16 @@ export async function POST(request: NextRequest, { params }: Params) {
     let pixGrupoPJCount = 0
     let ruleExactCount = 0
     let ruleContainsCount = 0
-    let universalCount = 0
+    let setorPatternCount = 0
+    let setorPatternUniversalCount = 0
+    let setorPatternEspecificoCount = 0
     let conciliacoesExternas = 0
 
     const sampleSameCompany: string[] = []
     const samplePixSocio: string[] = []
     const samplePixGrupo: string[] = []
     const sampleRule: string[] = []
-    const sampleUniversal: string[] = []
+    const sampleSetor: string[] = []
 
     for (const tx of pendentes) {
       const dateForMatch = tx.paymentDate ?? tx.date
@@ -248,30 +258,35 @@ export async function POST(request: NextRequest, { params }: Params) {
       }
 
       // ───────────────────────────────────────────────────────────
-      // FASE 3 — Padrões universais BR (Sprint l, NOVO)
+      // FASE 3 — KB SetorPattern (Sprint l DB-backed)
       //   No bulk retroativo, aceitamos AUTO + SUGGEST tiers.
       // ───────────────────────────────────────────────────────────
-      const universal = matchUniversalPattern({
-        description: tx.description,
-        type: tx.type,
-      })
-      if (universal) {
-        const categoryId = resolveUniversalCategoryId(systemCategories.list, {
-          categoryNameHint: universal.pattern.categoryNameHint,
-          dreGroup: universal.pattern.dreGroup,
-        })
+      const setorMatch = matchAgainstPatterns(
+        { description: tx.description, type: tx.type },
+        setorPatterns,
+      )
+      if (setorMatch) {
+        const categoryId = resolveSetorCategoryId(
+          systemCategories.list,
+          setorMatch.pattern.categoryName,
+        )
         if (categoryId) {
           await prisma.transaction.update({
             where: { id: tx.id },
             data: {
               categoryId,
               status: 'RECONCILED',
-              classificationSource: 'UNIVERSAL',
-              aiConfidence: universal.pattern.confidence,
+              classificationSource: 'SETOR_PATTERN',
+              aiConfidence: setorMatch.pattern.confidence,
             },
           })
-          universalCount++
-          if (sampleUniversal.length < 5) sampleUniversal.push(tx.id)
+          setorPatternCount++
+          if (setorMatch.pattern.setor === 'UNIVERSAL') {
+            setorPatternUniversalCount++
+          } else {
+            setorPatternEspecificoCount++
+          }
+          if (sampleSetor.length < 5) sampleSetor.push(tx.id)
           continue
         }
       }
@@ -287,17 +302,19 @@ export async function POST(request: NextRequest, { params }: Params) {
       pixGrupoPJCount +
       ruleExactCount +
       ruleContainsCount +
-      universalCount
+      setorPatternCount
 
     console.log(
-      `[RECATEGORIZE-ALL] company=${companyId} analisadas=${pendentes.length} ` +
-        `categorizadas=${totalCategorizadas} ` +
+      `[RECATEGORIZE-ALL] company=${companyId} setor=${setorEmpresa ?? 'none'} ` +
+        `analisadas=${pendentes.length} categorizadas=${totalCategorizadas} ` +
         `[sc=${sameCompanyCount} pix_socio=${pixSocioPFCount} pix_grupo=${pixGrupoPJCount} ` +
         `rule_exact=${ruleExactCount} rule_contains=${ruleContainsCount} ` +
-        `universal=${universalCount}] elapsed=${elapsedMs}ms`,
+        `setor=${setorPatternCount} (universal=${setorPatternUniversalCount} esp=${setorPatternEspecificoCount})] ` +
+        `elapsed=${elapsedMs}ms`,
     )
 
     return NextResponse.json({
+      setor: setorEmpresa,
       analisadas: pendentes.length,
       totalCategorizadas,
       sameCompany: sameCompanyCount,
@@ -305,21 +322,23 @@ export async function POST(request: NextRequest, { params }: Params) {
       pixGrupoPJ: pixGrupoPJCount,
       ruleExact: ruleExactCount,
       ruleContains: ruleContainsCount,
-      universal: universalCount,
+      setorPattern: setorPatternCount,
+      setorPatternUniversal: setorPatternUniversalCount,
+      setorPatternEspecifico: setorPatternEspecificoCount,
       conciliacoesExternas,
       sampleIds: {
         sameCompany: sampleSameCompany,
         pixSocio: samplePixSocio,
         pixGrupo: samplePixGrupo,
         rule: sampleRule,
-        universal: sampleUniversal,
+        setor: sampleSetor,
       },
       elapsedMs,
       breakdown: {
         fase0_sameCompany: sameCompanyCount,
         fase1_pix: pixSocioPFCount + pixGrupoPJCount,
         fase2_rules: ruleExactCount + ruleContainsCount,
-        fase3_universal: universalCount,
+        fase3_setorPattern: setorPatternCount,
       },
     })
   } catch (error) {

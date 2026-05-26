@@ -21,6 +21,7 @@ import { buildRuleIndex, predictCategory, type RuleIndex } from './predict'
 import { findSimilarTransactions } from './similar'
 import { classifyForImport } from './pipeline'
 import { resolveCategoryFromHint } from './pipeline'
+import type { SetorPatternSnapshot } from '@/lib/categorization/match-setor-pattern'
 import { invalidateCachedSuggestion } from './claude-cache'
 import type {
   Prediction,
@@ -363,9 +364,9 @@ export interface AutoClassifyResult {
   // Sugestões de fornecedor que Camada 2A detectou — caller persiste como Supplier
   supplierSuggestions: SupplierSuggestion[]
   keywordHits: number
-  // Sprint 5.0.2.l — Camada 2C (UNIVERSAL): hits + count que viraram RECONCILED
-  universalHits: number
-  universalAutoCount: number
+  // Sprint 5.0.2.l — Camada SETOR (KB DB-backed): hits + count
+  setorHits: number
+  setorAutoCount: number
 }
 
 // Cache simples por companyId — invalida via clearRulesCache() quando regras
@@ -395,22 +396,25 @@ export async function loadActiveRules(
 export function autoClassifyTransactions(
   txs: AutoClassifyInputTx[],
   index: RuleIndex,
-  /** Sprint 5.0.2.l — resolver categoryNameHint → categoryId pra Camada UNIVERSAL.
-   *  Quando não passado, UNIVERSAL fica desabilitada (modo legado). */
-  universalResolver?: (hint: { categoryNameHint: string; dreGroup: string }) => string | null,
+  /** Sprint 5.0.2.l — snapshot pré-carregado de SetorPattern (KB DB).
+   *  Quando undefined, camada SETOR é skipada. */
+  setorPatterns?: SetorPatternSnapshot[],
+  /** Sprint 5.0.2.l — resolver categoryName → categoryId pra Camada SETOR. */
+  setorResolver?: (categoryName: string) => string | null,
 ): AutoClassifyResult {
   const classified: AutoClassifyOutputTx[] = []
   const rulesFired = new Map<string, number>()
   const supplierSuggestions: SupplierSuggestion[] = []
   let autoCount = 0
   let keywordHits = 0
-  let universalHits = 0
-  let universalAutoCount = 0
+  let setorHits = 0
+  let setorAutoCount = 0
 
   for (const tx of txs) {
     const pipelineResult = classifyForImport(
       { description: tx.description, type: tx.type },
       index,
+      setorPatterns,
     )
 
     // CAMADA 1 — Regra com confiança AUTO (≥0.95) → aplica direto
@@ -452,27 +456,24 @@ export function autoClassifyTransactions(
       continue
     }
 
-    // CAMADA 2C (Sprint 5.0.2.l) — Padrão universal BR (tier AUTO)
+    // CAMADA 2C (Sprint 5.0.2.l) — SetorPattern KB (tier AUTO)
     if (
-      pipelineResult.layer === 'UNIVERSAL' &&
-      pipelineResult.universalMatch &&
-      universalResolver
+      pipelineResult.layer === 'SETOR' &&
+      pipelineResult.setorMatch &&
+      setorResolver
     ) {
-      universalHits += 1
-      const u = pipelineResult.universalMatch
-      const categoryId = universalResolver({
-        categoryNameHint: u.pattern.categoryNameHint,
-        dreGroup: u.pattern.dreGroup,
-      })
+      setorHits += 1
+      const s = pipelineResult.setorMatch
+      const categoryId = setorResolver(s.pattern.categoryName)
       if (categoryId) {
         classified.push({
           ...tx,
           status: 'RECONCILED',
           categoryId,
-          classificationSource: 'UNIVERSAL',
-          aiConfidence: u.pattern.confidence,
+          classificationSource: 'SETOR_PATTERN',
+          aiConfidence: s.pattern.confidence,
         })
-        universalAutoCount += 1
+        setorAutoCount += 1
         continue
       }
       // Não resolveu categoria — cai pra PENDING
@@ -488,8 +489,8 @@ export function autoClassifyTransactions(
     autoCount,
     supplierSuggestions,
     keywordHits,
-    universalHits,
-    universalAutoCount,
+    setorHits,
+    setorAutoCount,
   }
 }
 

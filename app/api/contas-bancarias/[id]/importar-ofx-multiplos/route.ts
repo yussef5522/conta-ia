@@ -17,7 +17,10 @@ import {
   persistKeywordSuggestions,
 } from '@/lib/ai-categorizer/apply'
 import { ensureAllSystemCategories } from '@/lib/categorias/ensure-system-categories'
-import { resolveUniversalCategoryId } from '@/lib/categorization/apply-universal-patterns'
+import {
+  loadPatternsForSetor,
+  resolveSetorCategoryId,
+} from '@/lib/categorization/match-setor-pattern'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -77,11 +80,16 @@ export async function POST(request: NextRequest, { params }: Params) {
   // Carrega regras 1 vez (reusa entre arquivos)
   const activeRules = await loadActiveRules(conta.companyId)
   const ruleIndex = buildRuleIndex(conta.companyId, activeRules)
-  // Sprint 5.0.2.l — garante categorias do sistema (Pix + universais BR) +
-  // resolver pra Camada UNIVERSAL
-  const systemCats = await ensureAllSystemCategories(conta.companyId)
-  const universalResolver = (hint: { categoryNameHint: string; dreGroup: string }) =>
-    resolveUniversalCategoryId(systemCats.list, hint)
+  // Sprint 5.0.2.l — Camada SETOR DB-backed
+  const empresa = await prisma.company.findUnique({
+    where: { id: conta.companyId },
+    select: { setor: true },
+  })
+  const setorEmpresa = empresa?.setor ?? null
+  const systemCats = await ensureAllSystemCategories(conta.companyId, setorEmpresa)
+  const setorPatterns = await loadPatternsForSetor(setorEmpresa)
+  const setorResolver = (name: string) =>
+    resolveSetorCategoryId(systemCats.list, name)
   const categoriasEmpresa = systemCats.list
 
   const results: FileResult[] = []
@@ -178,7 +186,8 @@ export async function POST(request: NextRequest, { params }: Params) {
           origin: 'OFX',
         })),
         ruleIndex,
-        universalResolver,
+        setorPatterns,
+        setorResolver,
       )
 
       try {

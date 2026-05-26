@@ -10,6 +10,12 @@
 
 import { prisma } from '@/lib/db'
 import { UNIVERSAL_PATTERN_CATEGORIES } from '@/lib/categorization/universal-patterns-br'
+import {
+  CATEGORY_NAME_TO_DRE_GROUP,
+  categoriesNeededForSetor,
+  categoryTypeForName,
+  type SetorEnum,
+} from '@/prisma/seeds/setor-patterns'
 
 export interface SystemCategoriesResult {
   distribuicaoLucrosId: string
@@ -149,11 +155,15 @@ export interface AllSystemCategoriesResult extends SystemCategoriesResult {
 
 export async function ensureAllSystemCategories(
   companyId: string,
+  /** Sprint 5.0.2.l — setor da empresa pra criar categorias setoriais
+   *  (ex: "Fornecedor Carnes" em RESTAURANTE, "Compras Suplementos" em ACADEMIA).
+   *  Se null, só cria UNIVERSAL. */
+  setorEmpresa?: SetorEnum | string | null,
 ): Promise<AllSystemCategoriesResult> {
   // 1. Garante as 3 categorias do Pix (Sprint i)
   const pix = await ensureSystemCategoriesForPix(companyId)
 
-  // 2. Garante as ~35 categorias dos padrões universais (Sprint l)
+  // 2. Garante as ~35 categorias dos padrões universais (Sprint l hard-coded)
   //    Loop sequencial pra evitar race nas tx criadas dentro do mesmo companyId.
   for (const cat of UNIVERSAL_PATTERN_CATEGORIES) {
     await ensureCategory(companyId, {
@@ -164,7 +174,29 @@ export async function ensureAllSystemCategories(
     })
   }
 
-  // 3. Carrega todas as categorias do plano + indexa
+  // 3. Sprint 5.0.2.l — categorias setoriais derivadas da KB SetorPattern.
+  //    `categoriesNeededForSetor` retorna UNIVERSAL + setor da empresa.
+  //    Nomes já criados em (2) acima são pulados (ensureCategory é idempotente).
+  if (setorEmpresa) {
+    const validSetor = (
+      ['UNIVERSAL', 'RESTAURANTE', 'ACADEMIA', 'COMERCIO_ROUPA', 'VAREJO_GERAL'].includes(setorEmpresa)
+        ? setorEmpresa
+        : 'UNIVERSAL'
+    ) as SetorEnum
+    const needed = categoriesNeededForSetor(validSetor)
+    for (const name of needed) {
+      const dreGroup = CATEGORY_NAME_TO_DRE_GROUP[name] ?? 'OUTRAS_DESPESAS'
+      const txType = categoryTypeForName(name)
+      await ensureCategory(companyId, {
+        name,
+        type: categoryTypeForDreGroup(dreGroup, txType),
+        dreGroup,
+        color: colorForDreGroup(dreGroup),
+      })
+    }
+  }
+
+  // 4. Carrega todas as categorias do plano + indexa
   const all = await prisma.category.findMany({
     where: { companyId, isActive: true },
     select: { id: true, name: true, dreGroup: true, isActive: true },

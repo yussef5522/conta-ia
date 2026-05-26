@@ -115,11 +115,12 @@ export function PendentesClient({
   const [autoCatResult, setAutoCatResult] = useState<{
     analisadas: number
     totalCategorizadas: number
+    setor: string | null
     breakdown: {
       fase0_sameCompany: number
       fase1_pix: number
       fase2_rules: number
-      fase3_universal: number
+      fase3_setorPattern: number
     }
   } | null>(null)
 
@@ -184,7 +185,7 @@ export function PendentesClient({
     setAutoCatLoading(true)
     setAutoCatResult(null)
     try {
-      const res = await fetch(`/api/empresas/${empresaId}/recategorize-all`, {
+      const res = await fetch(`/api/empresas/${empresaId}/auto-categorize-all`, {
         method: 'POST',
         credentials: 'include',
       })
@@ -201,11 +202,12 @@ export function PendentesClient({
       setAutoCatResult({
         analisadas: data.analisadas,
         totalCategorizadas: data.totalCategorizadas,
+        setor: data.setor ?? null,
         breakdown: data.breakdown,
       })
       toast({
         title: `${data.totalCategorizadas} de ${data.analisadas} categorizadas`,
-        description: `Same-company: ${data.breakdown.fase0_sameCompany} · Pix: ${data.breakdown.fase1_pix} · Regras: ${data.breakdown.fase2_rules} · Padrões BR: ${data.breakdown.fase3_universal}`,
+        description: `Mesma empresa: ${data.breakdown.fase0_sameCompany} · Pix: ${data.breakdown.fase1_pix} · Regras: ${data.breakdown.fase2_rules} · KB ${data.setor ?? 'UNIVERSAL'}: ${data.breakdown.fase3_setorPattern}`,
       })
       await fetchTransacoes()
     } catch {
@@ -429,12 +431,17 @@ export function PendentesClient({
         <div className="rounded-md border border-primary/30 bg-primary/5 px-4 py-3">
           <p className="text-sm font-semibold">
             ✨ {autoCatResult.totalCategorizadas} de {autoCatResult.analisadas} pendentes categorizadas automaticamente
+            {autoCatResult.setor && (
+              <span className="text-xs text-muted-foreground ml-2 font-normal">
+                (KB: {autoCatResult.setor})
+              </span>
+            )}
           </p>
           <p className="text-xs text-muted-foreground mt-1">
             Transferências internas: <strong>{autoCatResult.breakdown.fase0_sameCompany}</strong> ·
             Pix relacionado: <strong>{autoCatResult.breakdown.fase1_pix}</strong> ·
             Regras aprendidas: <strong>{autoCatResult.breakdown.fase2_rules}</strong> ·
-            Padrões universais BR: <strong>{autoCatResult.breakdown.fase3_universal}</strong>
+            Padrões setoriais: <strong>{autoCatResult.breakdown.fase3_setorPattern}</strong>
           </p>
         </div>
       )}

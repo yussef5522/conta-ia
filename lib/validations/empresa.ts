@@ -30,6 +30,17 @@ export const TIPOS_EMPRESA = [
   'OTHER',
 ] as const
 
+// Sprint 5.0.2.l — Setor normalizado pra Knowledge Base SetorPattern.
+// Valores devem casar com prisma/seeds/setor-patterns.ts > SetorEnum.
+export const SETORES_KB = [
+  'RESTAURANTE',
+  'ACADEMIA',
+  'COMERCIO_ROUPA',
+  'VAREJO_GERAL',
+] as const
+
+export type SetorKB = (typeof SETORES_KB)[number]
+
 export const REGIMES_TRIBUTARIOS = [
   'SIMPLES_NACIONAL',
   'LUCRO_PRESUMIDO',
@@ -51,6 +62,9 @@ export const empresaSchema = z.object({
     .max(150, 'Razão social muito longa'),
   tradeName: z.string().max(150, 'Nome fantasia muito longo').optional().or(z.literal('')),
   type: z.enum(TIPOS_EMPRESA, { required_error: 'Setor é obrigatório' }),
+  // Sprint 5.0.2.l — Setor normalizado pra KB de padrões. Opcional pra
+  // empresas legado; novas empresas escolhem no form.
+  setor: z.enum(SETORES_KB).optional().nullable().or(z.literal('')),
   taxRegime: z.enum(REGIMES_TRIBUTARIOS, { required_error: 'Regime tributário é obrigatório' }),
   email: z.string().email('E-mail inválido').optional().or(z.literal('')),
   phone: z.string().max(20).optional().or(z.literal('')),
