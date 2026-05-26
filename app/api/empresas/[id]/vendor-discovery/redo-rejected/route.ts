@@ -1,10 +1,8 @@
-// Sprint 5.0.2.n — POST /api/empresas/[id]/vendor-discovery/batch
-// Roda discovery em TODAS as pendentes da empresa, em paralelo limitado.
+// Sprint 5.0.2.o — Re-roda discovery em tx que foram REJECTED ou
+// cujo último discovery foi LOW_CONFIDENCE/NOT_FOUND.
 //
-// Resposta: { total, found, breakdown:{cache, brasilapi, claude, none}, suggestions:[...] }
-//
-// IMPORTANTE: NÃO aplica categoria — apenas sugere. UI mostra banner pra
-// usuário aceitar/rejeitar via /accept ou /reject.
+// Útil depois de clean-poisoned-cache: agora que o cache está limpo, retentar
+// dispara o NOVO pipeline (com keyword fallback + prompt agressivo).
 
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
@@ -16,7 +14,7 @@ interface Params {
   params: Promise<{ id: string }>
 }
 
-const BATCH_CAP = 200 // safety cap
+const BATCH_CAP = 200
 const PARALLEL = 5
 
 export async function POST(request: NextRequest, { params }: Params) {
@@ -27,7 +25,8 @@ export async function POST(request: NextRequest, { params }: Params) {
 
     const t0 = Date.now()
 
-    // Pega TODAS as pendentes EFFECTED sem categoria
+    // Pega tx PENDING sem categoria. Vamos retentar todas — caller já chamou
+    // clean-poisoned-cache antes, então cache não vai voltar com lixo.
     const pendentes = await prisma.transaction.findMany({
       where: {
         bankAccount: { companyId },
@@ -36,11 +35,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         lifecycle: 'EFFECTED',
         type: { not: 'TRANSFER' },
       },
-      select: {
-        id: true,
-        description: true,
-        type: true,
-      },
+      select: { id: true, description: true, type: true },
       take: BATCH_CAP,
     })
 
@@ -54,7 +49,6 @@ export async function POST(request: NextRequest, { params }: Params) {
       logId: string
     }> = []
 
-    // Processa em batches paralelos de PARALLEL
     for (let i = 0; i < pendentes.length; i += PARALLEL) {
       const slice = pendentes.slice(i, i + PARALLEL)
       const results = await Promise.all(
@@ -77,7 +71,6 @@ export async function POST(request: NextRequest, { params }: Params) {
                   : 'NOT_FOUND',
               responseTime: result.responseTimeMs,
               custoApi: result.custoApi ?? null,
-              // Sprint 5.0.2.o — telemetria debug
               estrategiaUsada: result.estrategiaUsada ?? null,
               matchedKeyword: result.matchedKeyword ?? null,
               claudeRawResponse: result.claudeRawResponse ?? null,
@@ -93,7 +86,6 @@ export async function POST(request: NextRequest, { params }: Params) {
         else if (result.source === 'KEYWORD_MATCH') breakdown.keyword++
         else if (result.source === 'CLAUDE_AI' && result.found) breakdown.claude++
         else breakdown.none++
-
         if (result.found) {
           suggestions.push({
             transactionId: tx.id,
@@ -108,7 +100,7 @@ export async function POST(request: NextRequest, { params }: Params) {
 
     const elapsedMs = Date.now() - t0
     console.log(
-      `[VENDOR-BATCH] company=${companyId} analyzed=${pendentes.length} ` +
+      `[REDO-REJECTED] company=${companyId} analyzed=${pendentes.length} ` +
         `found=${suggestions.length} cache=${breakdown.cache} ` +
         `brasilapi=${breakdown.brasilapi} keyword=${breakdown.keyword} ` +
         `claude=${breakdown.claude} cost=$${totalCost.toFixed(4)} elapsed=${elapsedMs}ms`,

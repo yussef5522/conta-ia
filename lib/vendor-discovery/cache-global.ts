@@ -87,7 +87,7 @@ export async function persistDiscovery(params: {
   categoriaSugerida: string
   categoriaConfidence: number
   tipoTransacao: 'INCOME' | 'EXPENSE' | 'ANY'
-  origem: 'BRASIL_API' | 'CLAUDE_AI' | 'USER_CONFIRMED'
+  origem: 'BRASIL_API' | 'CLAUDE_AI' | 'USER_CONFIRMED' | 'KEYWORD_MATCH'
   scoreInicial: number
 }): Promise<string> {
   const cnpjLimpo = params.cnpj

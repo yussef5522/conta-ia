@@ -1371,6 +1371,11 @@ model VendorDiscoveryLog {
   userAction      String?
   finalCategoryId String?
 
+  // Sprint 5.0.2.o — debug fields pra diagnosticar prompts ruins
+  claudeRawResponse String?
+  estrategiaUsada   String? // RECONHECIMENTO_DIRETO | PISTA_NO_NOME | CONTEXTO | SEM_PISTA
+  matchedKeyword    String? // se ETAPA keyword bateu, qual palavra
+
   createdAt DateTime @default(now())
 
   @@index([companyId])

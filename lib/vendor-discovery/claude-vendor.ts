@@ -22,6 +22,10 @@ export interface ClaudeVendorResult {
   confidence: number
   description: string
   custoApi: number
+  /** Sprint 5.0.2.o — qual estratégia Claude usou (telemetria). */
+  estrategiaUsada?: string
+  /** Sprint 5.0.2.o — texto cru do Claude pra debug. */
+  rawText?: string
   rawJson?: unknown
 }
 
@@ -32,55 +36,106 @@ export interface ClaudeVendorInput {
   transactionType: 'DEBIT' | 'CREDIT'
 }
 
-const SYSTEM_PROMPT = `Você é um especialista em categorização contábil de transações bancárias brasileiras.
+// Sprint 5.0.2.o — Prompt reescrito (mais corajoso, com pistas).
+const SYSTEM_PROMPT = `Você é um especialista em empresas brasileiras e categorização contábil.
 
-Sua tarefa: identificar quem é um vendor (fornecedor/cliente) que apareceu em uma transação bancária brasileira e sugerir a categoria contábil adequada.
+Sua tarefa: identificar empresas brasileiras que aparecem em transações bancárias
+e sugerir a categoria contábil correta.
 
-REGRAS CRÍTICAS:
-1. Use APENAS conhecimento verificado. Se não souber, retorne confidence baixo (<0.7).
-2. NUNCA invente informações. Melhor admitir incerteza.
-3. Empresas brasileiras conhecidas: use dados públicos (CNAE, ramo).
-4. Categorias devem usar padrões contábeis BR.
+ESTRATÉGIA EM ORDEM DE PRIORIDADE:
 
-CATEGORIAS COMUNS:
-- Software/Tecnologia
-- Fornecedor Bebidas, Fornecedor Carnes, Fornecedor Alimentos
-- Compras Mercadoria
-- Energia Elétrica, Água e Esgoto, Telefonia e Internet, Gás
-- Tarifas Bancárias, Taxa Cartão
-- Salários, Vale Alimentação, Vale Refeição, Vale Transporte
-- Aluguel, Condomínio
-- Combustível, Frete
-- Marketing Digital
-- Honorários Contábeis, Honorários Jurídicos
-- Assinaturas/Streaming
-- Refeições/Alimentação, Receita Delivery
-- Saúde/Clínica, Educação/Cursos
+1. RECONHECIMENTO DIRETO:
+   Se você reconhece a empresa (marca BR), use seu conhecimento.
+   - AMBEV, COCA-COLA, SPAL, HEINEKEN → Fornecedor Bebidas (conf 0.95)
+   - JBS, FRIBOI, MARFRIG, SADIA, PERDIGAO → Fornecedor Carnes (conf 0.95)
+   - SHELL, IPIRANGA, PETROBRAS → Combustível (conf 0.95)
+   - CELESC, CPFL, ENEL, COPEL → Energia Elétrica (conf 0.95)
+   - VIVO, TIM, CLARO → Telefonia e Internet (conf 0.90)
+   - STONE, CIELO, REDE, GETNET → Receita Cartão (conf 0.95)
+   - IFOOD, RAPPI, UBER EATS → Receita Delivery (conf 0.95)
+
+2. PISTAS NA RAZÃO SOCIAL:
+   Se nome contém palavras descritivas, USE para categorizar (conf 0.80-0.90):
+   - "EMBALAGENS" / "EMBALAGEM" → Material de Embalagem
+   - "BEBIDAS" → Fornecedor Bebidas
+   - "CARNES" / "FRIGORIFICO" / "AVICOLA" → Fornecedor Carnes
+   - "CONSERVAS" → Fornecedor Alimentos
+   - "PRODUTOS ALIMENTICIOS" / "ALIMENTOS" → Fornecedor Alimentos
+   - "HORTIFRUTI" / "FRUTAS" / "LEGUMES" → Hortifruti
+   - "DISTRIBUIDORA" + alimentos → Compras Mercadoria
+   - "PADARIA" / "CONFEITARIA" → Padaria
+   - "SOFTWARE" / "SISTEMAS" / "TECNOLOGIA" / "INFORMATICA" → Software/Tecnologia
+   - "CONTROL DE PONTO" / "PONTO ELETRONICO" → Software/Tecnologia
+   - "POSTO" / "COMBUSTIVEIS" → Combustível
+   - "TRANSPORTADORA" / "LOGISTICA" → Frete
+   - "CONTABILIDADE" / "CONTADOR" → Honorários Contábeis
+   - "ADVOGADO" / "ADVOCACIA" / "JURIDICO" → Honorários Jurídicos
+   - "CONSTRUTORA" / "ENGENHARIA" → Serviços de Engenharia
+   - "MEDICINA" / "CLINICA" / "MEDICO" → Saúde
+   - "IMOBILIARIA" → Aluguel
+   - "MARKETING" / "PUBLICIDADE" / "PROPAGANDA" → Marketing Digital
+   - "SEGURANCA" / "VIGILANCIA" → Segurança
+   - "LIMPEZA" / "CONSERVACAO" → Material/Serviço de Limpeza
+   - "MATERIAIS ELETRICOS" → Material Elétrico
+   - "MATERIAIS DE CONSTRUCAO" → Material de Construção
+   - "AUTO PECAS" / "AUTOPECAS" → Manutenção Veículos
+   - "OFICINA" → Manutenção Veículos
+   - "FARMACIA" / "DROGARIA" → Material Médico
+
+3. INFERÊNCIA POR CONTEXTO:
+   Se descrição inclui contexto (ex: "PAGAMENTO ALUGUEL JOAO DA SILVA"),
+   use o contexto.
+
+4. SOMENTE SE NADA DAS 3 ESTRATÉGIAS FUNCIONAR:
+   Retorne confidence baixo (<0.6) e categoria "A Categorizar".
+
+CATEGORIAS VÁLIDAS (use uma destas):
+RECEITAS: Receita de Vendas, Receita Cartão, Receita Pix, Receita TED, Receita Boleto, Receita Delivery, Receita Gympass/Wellhub, Receita E-commerce
+FORNECEDORES: Compras Mercadoria, Fornecedor Bebidas, Fornecedor Carnes, Fornecedor Alimentos, Hortifruti, Material de Embalagem, Material de Limpeza, Material de Escritório, Material Elétrico, Material de Construção, Material Médico, Padaria
+OPERACIONAIS: Salários, Vale Transporte, Vale Alimentação, Vale Refeição, Aluguel, Condomínio, Energia Elétrica, Água e Esgoto, Telefonia e Internet, Gás, Combustível, Manutenção Veículos, Frete, Software/Tecnologia, Marketing Digital, Assinaturas
+SERVIÇOS: Honorários Contábeis, Honorários Jurídicos, Serviços de Engenharia, Serviços Profissionais, Segurança, Limpeza, Saúde, Educação/Cursos
+TRIBUTÁRIAS: Tributos Federais, DAS Simples Nacional, DAS MEI, INSS, FGTS, ICMS, ICMS-ST, ISS, IPTU, IPVA
+BANCÁRIAS: Tarifas Bancárias, Juros e Encargos, Taxa Cartão
+PESSOAIS: Distribuição de Lucros, Pró-labore, Refeições/Alimentação
+
+CONFIANÇA HONESTA:
+- 0.90-0.95: empresa muito conhecida ou pista MUITO clara na descrição
+- 0.75-0.89: pista clara mas marca não famosa
+- 0.60-0.74: inferência razoável
+- < 0.60: realmente não tem pista
+
+NUNCA seja medroso quando há pistas óbvias. "EMBALAGENS LTDA" claramente vende
+embalagens. "PRODUTOS ALIMENTICIOS LTDA" claramente vende alimentos. USE ISSO.
 
 RESPOSTA: JSON puro, sem markdown.`
 
 function buildUserPrompt(input: ClaudeVendorInput): string {
   const tipo =
-    input.transactionType === 'DEBIT' ? 'pagamento (despesa)' : 'recebimento (receita)'
+    input.transactionType === 'DEBIT' ? 'Pagamento (despesa)' : 'Recebimento (receita)'
   return [
-    `Identifique este vendor que apareceu em ${tipo} bancário brasileiro:`,
+    `Identifique esta empresa que apareceu em transação bancária brasileira:`,
     '',
-    `Nome detectado: ${input.vendorName}`,
+    `Razão social/Nome: ${input.vendorName}`,
     input.cnpj ? `CNPJ: ${input.cnpj}` : '',
-    `Descrição completa: ${input.transactionDescription}`,
+    `Descrição completa do extrato: ${input.transactionDescription}`,
+    `Tipo: ${tipo}`,
     '',
-    'Retorne JSON:',
+    'Aplique a estratégia em ordem:',
+    '1. Você reconhece a empresa?',
+    '2. Tem palavras-chave descritivas no nome?',
+    '3. Tem contexto na descrição?',
+    '',
+    'Retorne JSON (sem markdown, sem explicação fora do JSON):',
     '{',
     '  "vendor_existe": true|false,',
-    '  "razao_social": "...",',
-    '  "nome_fantasia": "...",',
-    '  "ramo_atividade": "descrição curta do que faz",',
-    '  "categoria_sugerida": "uma das categorias da lista",',
+    '  "razao_social": "razão social formal",',
+    '  "nome_fantasia": "nome comercial se diferente",',
+    '  "ramo_atividade": "descrição clara do que a empresa faz",',
+    '  "categoria_sugerida": "uma das categorias da lista do system prompt",',
     '  "confidence": 0.0-1.0,',
-    '  "description": "explicação curta pro usuário"',
+    '  "description": "explicação curta (1 frase) do raciocínio",',
+    '  "estrategia_usada": "RECONHECIMENTO_DIRETO" | "PISTA_NO_NOME" | "CONTEXTO" | "SEM_PISTA"',
     '}',
-    '',
-    'Se NÃO conhecer o vendor, retorne confidence < 0.5.',
   ]
     .filter(Boolean)
     .join('\n')
@@ -142,6 +197,7 @@ export async function askClaudeAboutVendor(
       categoria_sugerida?: string
       confidence?: number | string
       description?: string
+      estrategia_usada?: string
     }
 
     const inputTok = data.usage?.input_tokens ?? 0
@@ -163,6 +219,8 @@ export async function askClaudeAboutVendor(
       confidence: Math.max(0, Math.min(1, confidenceNum || 0.5)),
       description: parsed.description ?? '',
       custoApi,
+      estrategiaUsada: parsed.estrategia_usada,
+      rawText: text,
       rawJson: parsed,
     }
   } catch (err) {

@@ -15,12 +15,19 @@ import { fetchCNPJ } from '@/lib/ai-categorizer/brasilapi-client'
 import { lookupCacheGlobal, persistDiscovery, incrementCacheHit } from './cache-global'
 import { inferirCategoriaContabilFromCNAE } from './cnae-to-category'
 import { askClaudeAboutVendor } from './claude-vendor'
+import { matchByRazaoSocialKeywords } from './keyword-fallback'
+import { normalizeVendorName } from './normalize'
 
 export type DiscoverySource =
   | 'CACHE_GLOBAL'
   | 'BRASIL_API'
+  | 'KEYWORD_MATCH'
   | 'CLAUDE_AI'
   | 'NONE'
+
+/** Sprint 5.0.2.o — confidence mínimo pra persistir no cache global.
+ *  Abaixo disso, log apenas (não envenena cache pra próximos clientes). */
+export const MIN_CACHE_CONFIDENCE = 0.6
 
 export interface VendorDiscoveryResult {
   found: boolean
@@ -38,6 +45,10 @@ export interface VendorDiscoveryResult {
   cacheId?: string
   responseTimeMs: number
   custoApi?: number
+  // Sprint 5.0.2.o — telemetria debug
+  estrategiaUsada?: string
+  matchedKeyword?: string
+  claudeRawResponse?: string
 }
 
 export interface DiscoverInput {
@@ -47,11 +58,13 @@ export interface DiscoverInput {
   skipClaude?: boolean
 }
 
-const MIN_CACHE_CONFIDENCE = 0.7
-
 /**
- * Roda as 3 camadas em sequência. Primeira que casa com confidence ≥ threshold
- * vence. Caller usa `result.found && result.confidence >= 0.70` como gate.
+ * Roda as 4 camadas em sequência:
+ *   1. Cache Global (~5ms, grátis)
+ *   2. BrasilAPI (~500ms, grátis, só se tem CNPJ)
+ *   3. Keyword Fallback (~1ms, grátis — Sprint 5.0.2.o)
+ *   4. Claude Haiku (~2s, ~$0.001)
+ * Primeira que casa com confidence ≥ threshold vence.
  */
 export async function discoverVendor(
   input: DiscoverInput,
@@ -156,11 +169,47 @@ export async function discoverVendor(
         custoApi: 0,
       }
     }
-    // Erro BrasilAPI (timeout/rate-limited/not-found/error) → cai pra Claude
+    // Erro BrasilAPI (timeout/rate-limited/not-found/error) → cai pras próximas
   }
 
   // ─────────────────────────────────────────────────────────
-  // CAMADA 3: Claude Haiku
+  // CAMADA 3 (Sprint 5.0.2.o): KEYWORD FALLBACK
+  // Roda em descrição completa procurando pistas óbvias (EMBALAGENS, CONSERVAS,
+  // SOFTWARE, etc). Mais barato e mais rápido que Claude pra casos óbvios.
+  // ─────────────────────────────────────────────────────────
+  const kwMatch = matchByRazaoSocialKeywords(input.description, input.type)
+  if (kwMatch && kwMatch.confidence >= 0.8) {
+    const vendorName = anchor ?? input.description.slice(0, 60).trim()
+    const cacheId = await persistDiscovery({
+      cnpj: cnpj ?? null,
+      vendorName,
+      razaoSocial: null,
+      nomeFantasia: null,
+      categoriaSugerida: kwMatch.category,
+      categoriaConfidence: kwMatch.confidence,
+      tipoTransacao,
+      origem: 'KEYWORD_MATCH',
+      scoreInicial: kwMatch.confidence,
+    })
+    return {
+      found: true,
+      source: 'KEYWORD_MATCH',
+      vendorName,
+      cnpj: cnpj ?? null,
+      categoriaSugerida: kwMatch.category,
+      tipoTransacao,
+      confidence: kwMatch.confidence,
+      description: `Identificado pela palavra "${kwMatch.matchedKeyword}" na descrição`,
+      cacheId,
+      responseTimeMs: Date.now() - startTime,
+      custoApi: 0,
+      estrategiaUsada: 'PISTA_NO_NOME',
+      matchedKeyword: kwMatch.matchedKeyword,
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────
+  // CAMADA 4: Claude Haiku (com prompt agressivo Sprint 5.0.2.o)
   // ─────────────────────────────────────────────────────────
   if (input.skipClaude) {
     return {
@@ -178,6 +227,8 @@ export async function discoverVendor(
     transactionType: input.type === 'CREDIT' ? 'CREDIT' : 'DEBIT',
   })
 
+  // Sprint 5.0.2.o — NÃO cacheia respostas ruins (envenenamento do cache).
+  // Threshold subiu pra evitar "A Categorizar" entrar no cache global.
   if (claudeResult.confidence >= MIN_CACHE_CONFIDENCE) {
     const cacheId = await persistDiscovery({
       cnpj: cnpj ?? null,
@@ -204,10 +255,13 @@ export async function discoverVendor(
       cacheId,
       responseTimeMs: Date.now() - startTime,
       custoApi: claudeResult.custoApi,
+      estrategiaUsada: claudeResult.estrategiaUsada,
+      claudeRawResponse: claudeResult.rawText,
     }
   }
 
-  // Confidence baixa — não persiste, mas reporta pra UI mostrar mensagem.
+  // Confidence baixa — NÃO persiste no cache (evita envenenamento).
+  // Reporta pra UI/log mostrar mensagem.
   return {
     found: false,
     source: 'CLAUDE_AI',
@@ -215,5 +269,7 @@ export async function discoverVendor(
     responseTimeMs: Date.now() - startTime,
     custoApi: claudeResult.custoApi,
     description: claudeResult.description,
+    estrategiaUsada: claudeResult.estrategiaUsada,
+    claudeRawResponse: claudeResult.rawText,
   }
 }

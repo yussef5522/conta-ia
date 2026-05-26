@@ -12,7 +12,7 @@ export interface VendorSuggestion {
   transactionId: string
   cacheId: string
   logId?: string
-  source: 'CACHE_GLOBAL' | 'BRASIL_API' | 'CLAUDE_AI'
+  source: 'CACHE_GLOBAL' | 'BRASIL_API' | 'KEYWORD_MATCH' | 'CLAUDE_AI'
   vendorName: string
   razaoSocial?: string | null
   cnpj?: string | null
@@ -20,6 +20,7 @@ export interface VendorSuggestion {
   categoriaSugerida: string
   confidence: number
   description?: string
+  matchedKeyword?: string
 }
 
 interface Props {
@@ -32,6 +33,7 @@ interface Props {
 const SOURCE_LABEL: Record<VendorSuggestion['source'], string> = {
   CACHE_GLOBAL: 'Conhecido',
   BRASIL_API: 'Receita Federal',
+  KEYWORD_MATCH: 'Palavra-chave',
   CLAUDE_AI: 'IA',
 }
 
@@ -157,6 +159,11 @@ export function VendorSuggestionBanner({
           {suggestion.cnaeDescricao && (
             <p className="text-[11px] text-muted-foreground italic truncate">
               {suggestion.cnaeDescricao}
+            </p>
+          )}
+          {suggestion.source === 'KEYWORD_MATCH' && suggestion.matchedKeyword && (
+            <p className="text-[11px] text-muted-foreground italic truncate">
+              Palavra detectada: <span className="font-mono">{suggestion.matchedKeyword}</span>
             </p>
           )}
           <p className="text-sm mt-1">

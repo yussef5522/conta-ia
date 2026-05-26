@@ -132,7 +132,13 @@ export function PendentesClient({
   const [vendorDiscoveryStats, setVendorDiscoveryStats] = useState<{
     total: number
     found: number
-    breakdown: { cache: number; brasilapi: number; claude: number; none: number }
+    breakdown: {
+      cache: number
+      brasilapi: number
+      keyword: number
+      claude: number
+      none: number
+    }
     totalCostUsd: number
   } | null>(null)
   const [vendorSuggestions, setVendorSuggestions] = useState<
@@ -235,12 +241,16 @@ export function PendentesClient({
           categoriaSugerida: s.result.categoriaSugerida,
           confidence: s.result.confidence,
           description: s.result.description,
+          matchedKeyword: s.result.matchedKeyword,
         }
       }
       setVendorSuggestions(map)
+      const kwPart = data.breakdown.keyword
+        ? ` · Palavra-chave: ${data.breakdown.keyword}`
+        : ''
       toast({
         title: `${data.found} sugestões em ${data.total} pendentes`,
-        description: `Cache: ${data.breakdown.cache} · BrasilAPI: ${data.breakdown.brasilapi} · IA: ${data.breakdown.claude} · Custo: $${data.totalCostUsd.toFixed(4)}`,
+        description: `Cache: ${data.breakdown.cache} · BrasilAPI: ${data.breakdown.brasilapi}${kwPart} · IA: ${data.breakdown.claude} · Custo: $${data.totalCostUsd.toFixed(4)}`,
         duration: 6000,
       })
     } catch {
@@ -256,6 +266,76 @@ export function PendentesClient({
       delete next[txId]
       return next
     })
+  }
+
+  // Sprint 5.0.2.o — Limpar cache envenenado + re-rodar discovery
+  async function limparCacheEReanalizar() {
+    if (vendorDiscoveryLoading) return
+    setVendorDiscoveryLoading(true)
+    setVendorDiscoveryStats(null)
+    try {
+      const cleanRes = await fetch(
+        '/api/admin/vendor-discovery/clean-poisoned-cache',
+        { method: 'POST', credentials: 'include' },
+      )
+      const cleanData = await cleanRes.json().catch(() => ({}))
+      if (!cleanRes.ok) {
+        toast({
+          variant: 'destructive',
+          title: 'Falha ao limpar cache',
+          description: cleanData.erro ?? `HTTP ${cleanRes.status}`,
+        })
+        return
+      }
+      const redoRes = await fetch(
+        `/api/empresas/${empresaId}/vendor-discovery/redo-rejected`,
+        { method: 'POST', credentials: 'include' },
+      )
+      if (!redoRes.ok) {
+        const data = await redoRes.json().catch(() => ({}))
+        toast({
+          variant: 'destructive',
+          title: 'Falha ao re-analisar',
+          description: data.erro ?? `HTTP ${redoRes.status}`,
+        })
+        return
+      }
+      const data = await redoRes.json()
+      setVendorDiscoveryStats({
+        total: data.total,
+        found: data.found,
+        breakdown: data.breakdown,
+        totalCostUsd: data.totalCostUsd,
+      })
+      const map: Record<string, VendorSuggestion> = {}
+      for (const s of data.suggestions ?? []) {
+        if (!s.result?.cacheId) continue
+        map[s.transactionId] = {
+          transactionId: s.transactionId,
+          cacheId: s.result.cacheId,
+          logId: s.logId,
+          source: s.result.source,
+          vendorName: s.result.vendorName,
+          razaoSocial: s.result.razaoSocial,
+          cnpj: s.result.cnpj,
+          cnaeDescricao: s.result.cnaeDescricao,
+          categoriaSugerida: s.result.categoriaSugerida,
+          confidence: s.result.confidence,
+          description: s.result.description,
+          matchedKeyword: s.result.matchedKeyword,
+        }
+      }
+      setVendorSuggestions(map)
+      toast({
+        title: `🧹 ${cleanData.deleted} cache · ✨ ${data.found} sugestões`,
+        description: `Cache: ${data.breakdown.cache} · BrasilAPI: ${data.breakdown.brasilapi} · Palavra-chave: ${data.breakdown.keyword} · IA: ${data.breakdown.claude}`,
+        duration: 7000,
+      })
+    } catch {
+      toast({ variant: 'destructive', title: 'Erro de rede' })
+    } finally {
+      setVendorDiscoveryLoading(false)
+    }
   }
 
   // Sprint 5.0.2.l — Auto-categorizar TODAS as pendentes em bulk.
@@ -505,6 +585,15 @@ export function PendentesClient({
           {vendorDiscoveryLoading ? 'Pesquisando IA...' : 'Sugerir IA'}
         </Button>
         <Button
+          onClick={() => void limparCacheEReanalizar()}
+          disabled={vendorDiscoveryLoading || transacoes.length === 0}
+          variant="outline"
+          className="gap-2"
+          title="Remove sugestões ruins do cache global e re-analisa pendentes"
+        >
+          🧹 Limpar + Re-analisar
+        </Button>
+        <Button
           onClick={() => void autoCategorizarTudo()}
           disabled={autoCatLoading || transacoes.length === 0}
           variant="default"
@@ -528,6 +617,7 @@ export function PendentesClient({
           <p className="text-xs text-muted-foreground mt-1">
             Cache global: <strong>{vendorDiscoveryStats.breakdown.cache}</strong> ·
             BrasilAPI: <strong>{vendorDiscoveryStats.breakdown.brasilapi}</strong> ·
+            Palavra-chave: <strong>{vendorDiscoveryStats.breakdown.keyword}</strong> ·
             Claude IA: <strong>{vendorDiscoveryStats.breakdown.claude}</strong> ·
             Custo: <strong>${vendorDiscoveryStats.totalCostUsd.toFixed(4)}</strong>
           </p>

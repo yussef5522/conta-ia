@@ -64,6 +64,10 @@ export async function POST(request: NextRequest, { params }: Params) {
             : 'NOT_FOUND',
         responseTime: result.responseTimeMs,
         custoApi: result.custoApi ?? null,
+        // Sprint 5.0.2.o — telemetria debug
+        estrategiaUsada: result.estrategiaUsada ?? null,
+        matchedKeyword: result.matchedKeyword ?? null,
+        claudeRawResponse: result.claudeRawResponse ?? null,
       },
     })
 
