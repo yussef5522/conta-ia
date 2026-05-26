@@ -3,7 +3,7 @@
 // Sprint 5.0.2.h — UI Pessoas Vinculadas (CRUD).
 
 import { useEffect, useState, useCallback } from 'react'
-import { Users, Building2, Plus, Trash2, Sparkles, Wand2, Loader2 } from 'lucide-react'
+import { Users, Building2, Plus, Trash2, Sparkles, Wand2, Loader2, CheckCircle2, X, ArrowRightLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -60,6 +60,7 @@ export function PessoasVinculadasClient({ empresaId, empresaNome }: Props) {
   const [showSocioForm, setShowSocioForm] = useState(false)
   const [showEmpresaForm, setShowEmpresaForm] = useState(false)
   const [recategorizing, setRecategorizing] = useState(false)
+  const [resultado, setResultado] = useState<RecategorizeResult | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -115,10 +116,8 @@ export function PessoasVinculadasClient({ empresaId, empresaNome }: Props) {
         })
         return
       }
-      toast({
-        title: 'Re-categorização concluída',
-        description: `Analisadas: ${data.analisadas} · Sócios PF: ${data.socioPF} · Grupo PJ: ${data.grupoPJ} · Conciliações: ${data.conciliacoes}`,
-      })
+      // Sprint 5.0.2.j — substitui toast por modal detalhado
+      setResultado(data as RecategorizeResult)
     } finally {
       setRecategorizing(false)
     }
@@ -138,6 +137,10 @@ export function PessoasVinculadasClient({ empresaId, empresaNome }: Props) {
 
   return (
     <div className="space-y-6">
+      {resultado && (
+        <ResultadoReanaliseModal resultado={resultado} onClose={() => setResultado(null)} />
+      )}
+
       <Header
         title="Pessoas Vinculadas"
         description={`Sócios e CNPJs do grupo — ${empresaNome}`}
@@ -559,4 +562,162 @@ function formatCPF(d: string): string {
 function formatCNPJ(d: string): string {
   if (d.length !== 14) return d
   return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`
+}
+
+interface RecategorizeResult {
+  analisadas: number
+  socioPF: number
+  socioPFImpact: number
+  socioPFIds: string[]
+  grupoPJ: number
+  grupoPJImpact: number
+  grupoPJIds: string[]
+  sameCompany: number
+  sameCompanyImpact: number
+  sameCompanyIds: string[]
+  conciliacoes: number
+  impactoDRETotal: number
+}
+
+function fmtBRL(v: number): string {
+  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
+
+function ResultadoReanaliseModal({
+  resultado,
+  onClose,
+}: {
+  resultado: RecategorizeResult
+  onClose: () => void
+}) {
+  const totalAlteradas = resultado.socioPF + resultado.grupoPJ + resultado.sameCompany
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+      <Card className="w-full max-w-xl max-h-[85vh] overflow-y-auto">
+        <CardContent className="py-6 space-y-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+              <h3 className="text-lg font-semibold">Re-análise concluída</h3>
+            </div>
+            <Button variant="ghost" size="sm" onClick={onClose}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+
+          <p className="text-sm text-zinc-600">
+            <strong>{resultado.analisadas}</strong> transações Pix analisadas ·{' '}
+            <strong>{totalAlteradas}</strong> alteradas
+          </p>
+
+          <div className="space-y-2">
+            {/* SAME COMPANY (sem cadastro necessário) */}
+            <ResultRow
+              icon={<ArrowRightLeft className="h-4 w-4 text-cyan-600" />}
+              label="Conta Própria (mesma empresa)"
+              count={resultado.sameCompany}
+              impact={resultado.sameCompanyImpact}
+              tone="cyan"
+              hint="Pix entre contas do mesmo CNPJ — sem cadastro necessário"
+            />
+            <ResultRow
+              icon={<Users className="h-4 w-4 text-amber-600" />}
+              label="Distribuição/Pró-labore (sócio)"
+              count={resultado.socioPF}
+              impact={resultado.socioPFImpact}
+              tone="amber"
+              hint="Pix para CPF de sócio cadastrado"
+            />
+            <ResultRow
+              icon={<Building2 className="h-4 w-4 text-blue-600" />}
+              label="Transferência entre Grupo (CNPJ)"
+              count={resultado.grupoPJ}
+              impact={resultado.grupoPJImpact}
+              tone="blue"
+              hint="Pix para outro CNPJ do grupo cadastrado"
+            />
+            {resultado.conciliacoes > 0 && (
+              <div className="rounded-md bg-emerald-50/50 border border-emerald-200 p-3 text-xs flex items-center gap-2">
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                <span>
+                  <strong>{resultado.conciliacoes}</strong> pares bilaterais conciliados
+                  (Empresa A saída ↔ Empresa B entrada)
+                </span>
+              </div>
+            )}
+          </div>
+
+          {resultado.impactoDRETotal > 0 && (
+            <div className="rounded-md bg-emerald-50 border border-emerald-200 p-3">
+              <p className="text-[10px] uppercase font-semibold text-emerald-700 tracking-wide">
+                Impacto no DRE Realizado
+              </p>
+              <p className="text-sm text-emerald-900 mt-1">
+                <strong>{fmtBRL(resultado.impactoDRETotal)}</strong> SAÍRAM de despesas/receitas
+                — agora classificadas como movimentação interna (não inflam mais o DRE).
+              </p>
+            </div>
+          )}
+
+          {totalAlteradas === 0 && (
+            <div className="rounded-md bg-amber-50 border border-amber-200 p-3 text-sm text-amber-900">
+              Nenhuma transação foi alterada. Possíveis causas:
+              <ul className="list-disc list-inside mt-1 text-xs">
+                <li>Empresa tem só 1 conta bancária (sem same-company match)</li>
+                <li>Sócios/CNPJs do grupo ainda não cadastrados</li>
+                <li>Pix da empresa não bate nomes/chaves cadastrados</li>
+              </ul>
+            </div>
+          )}
+
+          <div className="flex justify-end pt-2 border-t">
+            <Button onClick={onClose}>Fechar</Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+function ResultRow({
+  icon,
+  label,
+  count,
+  impact,
+  tone,
+  hint,
+}: {
+  icon: React.ReactNode
+  label: string
+  count: number
+  impact: number
+  tone: 'cyan' | 'amber' | 'blue'
+  hint: string
+}) {
+  if (count === 0) return null
+
+  const toneClass: Record<string, string> = {
+    cyan: 'bg-cyan-50 border-cyan-200',
+    amber: 'bg-amber-50 border-amber-200',
+    blue: 'bg-blue-50 border-blue-200',
+  }
+
+  return (
+    <div className={'rounded-md border p-3 ' + toneClass[tone]}>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="flex items-start gap-2 min-w-0">
+          {icon}
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-zinc-900">{label}</p>
+            <p className="text-[11px] text-zinc-600 mt-0.5">{hint}</p>
+          </div>
+        </div>
+        <div className="text-right shrink-0">
+          <p className="text-sm font-bold text-zinc-900">{count}</p>
+          <p className="text-[11px] text-zinc-600 tabular-nums">{fmtBRL(impact)}</p>
+        </div>
+      </div>
+    </div>
+  )
 }

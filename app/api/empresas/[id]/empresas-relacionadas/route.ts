@@ -48,6 +48,24 @@ export async function POST(request: NextRequest, { params }: Params) {
     const body = await request.json()
     const data = empresaRelSchema.parse(body)
 
+    // Sprint 5.0.2.j — bloqueia cadastrar a PRÓPRIA empresa como relacionada.
+    // Transferências entre contas DA MESMA empresa são detectadas
+    // automaticamente via detectSameCompanyTransfer (sem precisar cadastro).
+    const empresaAtual = await prisma.company.findUnique({
+      where: { id: companyId },
+      select: { cnpj: true },
+    })
+    if (empresaAtual?.cnpj === data.cnpjRelacionado) {
+      return NextResponse.json(
+        {
+          erro: 'CNPJ inválido',
+          mensagem:
+            'Não pode cadastrar a EMPRESA ATUAL como relacionada. Transferências entre contas da mesma empresa são detectadas automaticamente.',
+        },
+        { status: 400 },
+      )
+    }
+
     const created = await prisma.empresaRelacionada.create({
       data: {
         companyId,

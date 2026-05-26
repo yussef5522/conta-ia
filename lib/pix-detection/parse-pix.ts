@@ -127,9 +127,42 @@ export function parsePixDescription(description: string | null | undefined): Par
 /**
  * Match heurístico por nome: case-insensitive, sem acentos, fuzzy básico.
  * Retorna true se o nome aparece na descrição (substring).
+ *
+ * Sprint 5.0.2.j — torna mais flexível: ignora stopwords (de/da/do) e aceita
+ * prefixos de palavras (>=4 chars). Permite match de "Yussef Musa" cadastrado
+ * em "YUSSEF ABU ZAHRY MUSA" da descrição EMV.
  */
 export function nameMatch(nomeCadastrado: string, textoLimpo: string | null): boolean {
-  if (!nomeCadastrado || !textoLimpo) return false
+  return nameMatchFlexible(nomeCadastrado, textoLimpo).match
+}
+
+/** Stopwords PT-BR pra ignorar em match de nome */
+const STOPWORDS = new Set(['de', 'da', 'do', 'das', 'dos', 'e', 'em', 'na', 'no'])
+
+export interface NameMatchResult {
+  match: boolean
+  confidence: number // 0.0 a 1.0
+  matchedWords: string[]
+}
+
+/**
+ * Match flexível com confidence. Útil pra ordenar candidatos por relevância.
+ *
+ * Algoritmo:
+ * 1. Normaliza ambos (lowercase, sem acento, remove pontuação)
+ * 2. Tokeniza em palavras >=3 chars (ignora stopwords)
+ * 3. Match exato substring do nome completo → confidence 1.0
+ * 4. Senão: conta palavras do nome cadastrado que aparecem na descrição
+ *    (exatas OU prefixos >=4 chars)
+ * 5. Nome com 1 palavra: precisa match exato (>=3 chars)
+ * 6. Nome com 2+ palavras: precisa >=2 matches → confidence = matched/total
+ */
+export function nameMatchFlexible(
+  nomeCadastrado: string,
+  textoLimpo: string | null,
+): NameMatchResult {
+  const empty: NameMatchResult = { match: false, confidence: 0, matchedWords: [] }
+  if (!nomeCadastrado || !textoLimpo) return empty
 
   const norm = (s: string) =>
     s
@@ -142,19 +175,46 @@ export function nameMatch(nomeCadastrado: string, textoLimpo: string | null): bo
 
   const n = norm(nomeCadastrado)
   const t = norm(textoLimpo)
-  if (!n || !t) return false
+  if (!n || !t) return empty
 
-  // Match exato substring
-  if (t.includes(n)) return true
+  // 1. Substring exato → confidence máxima
+  if (t.includes(n)) {
+    return { match: true, confidence: 1.0, matchedWords: n.split(' ') }
+  }
 
-  // Match por palavras significativas (>= 3 chars). Precisa ter pelo menos 2 palavras
-  // do nome cadastrado dentro do texto, ou 1 se nome só tem 1 palavra.
-  const palavras = n.split(' ').filter((w) => w.length >= 3)
-  if (palavras.length === 0) return false
+  // 2. Tokeniza ignorando stopwords e palavras muito curtas
+  const tokensCad = n.split(' ').filter((w) => w.length >= 3 && !STOPWORDS.has(w))
+  const tokensDesc = t.split(' ').filter((w) => w.length >= 2 && !STOPWORDS.has(w))
+  if (tokensCad.length === 0) return empty
 
-  const matched = palavras.filter((w) => t.includes(w))
-  if (palavras.length === 1) return matched.length === 1
-  return matched.length >= 2
+  // 3. Match por palavra (exata OU prefixo >=4)
+  const matchedWords: string[] = []
+  for (const cad of tokensCad) {
+    const hit = tokensDesc.some((d) => {
+      if (d === cad) return true
+      if (cad.length >= 4 && d.startsWith(cad)) return true
+      if (d.length >= 4 && cad.startsWith(d)) return true
+      return false
+    })
+    if (hit) matchedWords.push(cad)
+  }
+
+  // 4. Decisão final
+  if (tokensCad.length === 1) {
+    return {
+      match: matchedWords.length === 1,
+      confidence: matchedWords.length === 1 ? 0.9 : 0,
+      matchedWords,
+    }
+  }
+  if (matchedWords.length >= 2) {
+    return {
+      match: true,
+      confidence: matchedWords.length / tokensCad.length,
+      matchedWords,
+    }
+  }
+  return { match: false, confidence: 0, matchedWords }
 }
 
 /**
