@@ -6,12 +6,38 @@ import {
   longestCommonStem,
 } from '@/lib/rules/extract-stem'
 
-describe('extractDescriptionStem — caso real Yussef', () => {
+describe('extractDescriptionStem — caso real Yussef (Sprint 5.0.2.l)', () => {
+  it('PIX-PIX_CRED com CPF + nome → corta no CPF', () => {
+    expect(extractDescriptionStem('RECEBIMENTO PIX-PIX_CRED 86284304072 MURILLO CARDOSO')).toBe(
+      'RECEBIMENTO PIX-PIX_CRED',
+    )
+  })
+
+  it('PIX-PIX_CRE (bug banco truncar D) preserva forma original', () => {
+    expect(extractDescriptionStem('RECEBIMENTO PIX-PIX_CRE 83915761087 CRISTIAN PEREIRA')).toBe(
+      'RECEBIMENTO PIX-PIX_CRE',
+    )
+  })
+
+  it('PIX-PIX_CRED com CNPJ 14 dígitos + nome empresa', () => {
+    expect(
+      extractDescriptionStem('RECEBIMENTO PIX-PIX_CRED 44072835000122 ALISSON ALVES'),
+    ).toBe('RECEBIMENTO PIX-PIX_CRED')
+  })
+
+  it('CPFs/nomes DIFERENTES produzem MESMO stem', () => {
+    const a = extractDescriptionStem('RECEBIMENTO PIX-PIX_CRED 11111111111 João')
+    const b = extractDescriptionStem('RECEBIMENTO PIX-PIX_CRED 22222222222 Maria')
+    const c = extractDescriptionStem('RECEBIMENTO PIX-PIX_CRED 03898134008 Gabriel Berno')
+    expect(a).toBe(b)
+    expect(b).toBe(c)
+    expect(a).toBe('RECEBIMENTO PIX-PIX_CRED')
+  })
+
   it('"RECEBIMENTO PIX-PIX_CRED 03955593088 João Vitor Soares" → stem core', () => {
     const s = extractDescriptionStem('RECEBIMENTO PIX-PIX_CRED 03955593088 João Vitor Soares')
     expect(s).toContain('RECEBIMENTO')
     expect(s).toContain('PIX-PIX_CRED')
-    // Não deve conter CPF nem nomes próprios
     expect(s).not.toContain('03955593088')
     expect(s).not.toContain('João')
   })
@@ -22,12 +48,11 @@ describe('extractDescriptionStem — caso real Yussef', () => {
     expect(s1).toBe(s2)
   })
 
-  it('"PAGAMENTO BOLETO BANRISUL 9847234" remove ID (2 palavras top)', () => {
-    const s = extractDescriptionStem('PAGAMENTO BOLETO BANRISUL 9847234')
-    // STEM_WORD_LIMIT=2 → "PAGAMENTO BOLETO"
-    expect(s).toContain('PAGAMENTO')
-    expect(s).toContain('BOLETO')
-    expect(s).not.toContain('9847234')
+  it('"PAGAMENTO BOLETO BANRISUL 9847234" — corte no número, 3 palavras', () => {
+    // Sprint 5.0.2.l: corte no primeiro 6+ dígitos. STEM_WORD_LIMIT=3 → todas
+    expect(extractDescriptionStem('PAGAMENTO BOLETO BANRISUL 9847234')).toBe(
+      'PAGAMENTO BOLETO BANRISUL',
+    )
   })
 
   it('"TARIFA MENSALIDADE 12/2025" remove data', () => {
@@ -91,10 +116,10 @@ describe('extractDescriptionStem — edge cases', () => {
     expect(s).toContain('PIX')
   })
 
-  it('máximo 2 palavras (sweet spot)', () => {
+  it('máximo 3 palavras (Sprint 5.0.2.l: corte no número compensa STEM_WORD_LIMIT=3)', () => {
     const s = extractDescriptionStem('UMA DUAS TRES QUATRO CINCO SEIS SETE')
     const palavras = s.split(' ').filter(Boolean)
-    expect(palavras.length).toBeLessThanOrEqual(2)
+    expect(palavras.length).toBeLessThanOrEqual(3)
   })
 })
 
