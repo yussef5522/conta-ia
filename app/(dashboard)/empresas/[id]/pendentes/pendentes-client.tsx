@@ -16,6 +16,10 @@ import {
 } from 'lucide-react'
 import { VincularTransferenciaModal } from '@/components/pendentes/VincularTransferenciaModal'
 import { AprenderEAplicarModal } from '@/components/pendentes/AprenderEAplicarModal'
+import {
+  VendorSuggestionBanner,
+  type VendorSuggestion,
+} from '@/components/pendentes/VendorSuggestionBanner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -123,6 +127,17 @@ export function PendentesClient({
       fase3_setorPattern: number
     }
   } | null>(null)
+  // Sprint 5.0.2.n — Vendor Discovery batch
+  const [vendorDiscoveryLoading, setVendorDiscoveryLoading] = useState(false)
+  const [vendorDiscoveryStats, setVendorDiscoveryStats] = useState<{
+    total: number
+    found: number
+    breakdown: { cache: number; brasilapi: number; claude: number; none: number }
+    totalCostUsd: number
+  } | null>(null)
+  const [vendorSuggestions, setVendorSuggestions] = useState<
+    Record<string, VendorSuggestion>
+  >({})
 
   // Filtros
   const noventaDiasAtras = useMemo(() => {
@@ -177,6 +192,71 @@ export function PendentesClient({
   }, [empresaId, inicio, fim, tipo, toast])
 
   useEffect(() => { fetchTransacoes() }, [fetchTransacoes])
+
+  // Sprint 5.0.2.n — Vendor Discovery batch (sugere; não auto-aplica)
+  async function sugerirIaParaPendentes() {
+    if (vendorDiscoveryLoading) return
+    setVendorDiscoveryLoading(true)
+    setVendorDiscoveryStats(null)
+    try {
+      const res = await fetch(
+        `/api/empresas/${empresaId}/vendor-discovery/batch`,
+        { method: 'POST', credentials: 'include' },
+      )
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        toast({
+          variant: 'destructive',
+          title: 'Falha no Vendor Discovery',
+          description: data.erro ?? `HTTP ${res.status}`,
+        })
+        return
+      }
+      const data = await res.json()
+      setVendorDiscoveryStats({
+        total: data.total,
+        found: data.found,
+        breakdown: data.breakdown,
+        totalCostUsd: data.totalCostUsd,
+      })
+      // Mapeia sugestões por transactionId
+      const map: Record<string, VendorSuggestion> = {}
+      for (const s of data.suggestions ?? []) {
+        if (!s.result?.cacheId) continue
+        map[s.transactionId] = {
+          transactionId: s.transactionId,
+          cacheId: s.result.cacheId,
+          logId: s.logId,
+          source: s.result.source,
+          vendorName: s.result.vendorName,
+          razaoSocial: s.result.razaoSocial,
+          cnpj: s.result.cnpj,
+          cnaeDescricao: s.result.cnaeDescricao,
+          categoriaSugerida: s.result.categoriaSugerida,
+          confidence: s.result.confidence,
+          description: s.result.description,
+        }
+      }
+      setVendorSuggestions(map)
+      toast({
+        title: `${data.found} sugestões em ${data.total} pendentes`,
+        description: `Cache: ${data.breakdown.cache} · BrasilAPI: ${data.breakdown.brasilapi} · IA: ${data.breakdown.claude} · Custo: $${data.totalCostUsd.toFixed(4)}`,
+        duration: 6000,
+      })
+    } catch {
+      toast({ variant: 'destructive', title: 'Erro de rede' })
+    } finally {
+      setVendorDiscoveryLoading(false)
+    }
+  }
+
+  function dismissSuggestion(txId: string) {
+    setVendorSuggestions((prev) => {
+      const next = { ...prev }
+      delete next[txId]
+      return next
+    })
+  }
 
   // Sprint 5.0.2.l — Auto-categorizar TODAS as pendentes em bulk.
   // Pipeline 5 fases: same-company → pix → regras EXACT/CONTAINS → universal BR.
@@ -412,6 +492,19 @@ export function PendentesClient({
         description={`${transacoesFiltradas.length} transação${transacoesFiltradas.length !== 1 ? 'ões' : ''} em ${empresaNome}`}
       >
         <Button
+          onClick={() => void sugerirIaParaPendentes()}
+          disabled={vendorDiscoveryLoading || transacoes.length === 0}
+          variant="outline"
+          className="gap-2"
+        >
+          {vendorDiscoveryLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Sparkles className="h-4 w-4" />
+          )}
+          {vendorDiscoveryLoading ? 'Pesquisando IA...' : 'Sugerir IA'}
+        </Button>
+        <Button
           onClick={() => void autoCategorizarTudo()}
           disabled={autoCatLoading || transacoes.length === 0}
           variant="default"
@@ -425,6 +518,21 @@ export function PendentesClient({
           {autoCatLoading ? 'Categorizando...' : 'Auto-categorizar tudo'}
         </Button>
       </Header>
+
+      {/* Sprint 5.0.2.n — resultado do Vendor Discovery batch */}
+      {vendorDiscoveryStats && (
+        <div className="rounded-md border border-purple-500/30 bg-purple-500/5 px-4 py-3">
+          <p className="text-sm font-semibold">
+            ✨ {vendorDiscoveryStats.found} sugestões em {vendorDiscoveryStats.total} pendentes
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Cache global: <strong>{vendorDiscoveryStats.breakdown.cache}</strong> ·
+            BrasilAPI: <strong>{vendorDiscoveryStats.breakdown.brasilapi}</strong> ·
+            Claude IA: <strong>{vendorDiscoveryStats.breakdown.claude}</strong> ·
+            Custo: <strong>${vendorDiscoveryStats.totalCostUsd.toFixed(4)}</strong>
+          </p>
+        </div>
+      )}
 
       {/* Sprint 5.0.2.l — resultado do bulk auto-categorize */}
       {autoCatResult && (
@@ -778,6 +886,20 @@ export function PendentesClient({
                     <X className="h-3.5 w-3.5" />
                   </Button>
                 </div>
+                {/* Sprint 5.0.2.n — Banner Sugerido por IA (Vendor Discovery) */}
+                {vendorSuggestions[t.id] && (
+                  <div className="sm:col-span-full sm:basis-full">
+                    <VendorSuggestionBanner
+                      empresaId={empresaId}
+                      suggestion={vendorSuggestions[t.id]}
+                      onAccepted={() => {
+                        dismissSuggestion(t.id)
+                        void fetchTransacoes()
+                      }}
+                      onRejected={() => dismissSuggestion(t.id)}
+                    />
+                  </div>
+                )}
               </div>
             )
           })}

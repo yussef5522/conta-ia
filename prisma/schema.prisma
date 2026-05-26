@@ -1292,3 +1292,88 @@ model SetorPattern {
   @@index([pattern])
   @@map("setor_patterns")
 }
+
+// Sprint 5.0.2.n — Cache GLOBAL anonimizado de descobertas de vendor.
+//
+// Compartilhado entre TODAS as empresas do CAIXAOS. Network effect:
+//   - 1º cliente paga lookup (BrasilAPI ou Claude AI)
+//   - 2º cliente reusa direto do cache (instantâneo, grátis)
+//
+// PRIVACIDADE LGPD: NUNCA armazena companyId, valores, dados pessoais.
+// Apenas:
+//   - Identificação pública do vendor (CNPJ + razão social — dados Receita)
+//   - Categoria contábil sugerida
+//   - Estatísticas agregadas (aceito/rejeitado por X usuários no total)
+model GlobalVendorKnowledge {
+  id String @id @default(cuid())
+
+  // CNPJ é unique quando preenchido. nome é sempre preenchido.
+  cnpj                 String?
+  vendorName           String
+  // sem acentos, lowercase, pra busca fuzzy
+  vendorNameNormalized String
+
+  // Dados oficiais via BrasilAPI (quando disponível)
+  razaoSocial   String?
+  nomeFantasia  String?
+  cnaePrincipal String?
+  cnaeDescricao String?
+  setor         String?
+
+  // Sugestão contábil
+  categoriaSugerida   String
+  categoriaConfidence Float
+  // INCOME | EXPENSE | ANY
+  tipoTransacao       String
+
+  // BRASIL_API | CLAUDE_AI | USER_CONFIRMED
+  origem       String
+  descobertoEm DateTime @default(now())
+
+  // Estatísticas agregadas (todos clientes somados)
+  vezesUsado      Int @default(0)
+  vezesConfirmado Int @default(0)
+  vezesRejeitado  Int @default(0)
+
+  // Score dinâmico — ajustado por cron baseado em accept rate
+  scoreAtual Float   @default(0.85)
+  active     Boolean @default(true)
+
+  ultimaValidacao DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // CNPJ é unique quando preenchido (caller faz upsert via findFirst dado o nullable)
+  @@unique([cnpj])
+  @@index([vendorNameNormalized])
+  @@index([scoreAtual, active])
+  @@map("global_vendor_knowledge")
+}
+
+// Sprint 5.0.2.n — Log de discoveries por empresa (auditoria + ajuste).
+// É POR EMPRESA, mas NÃO contém dados pessoais — só metadados da chamada.
+model VendorDiscoveryLog {
+  id            String  @id @default(cuid())
+  companyId     String
+  transactionId String?
+
+  vendorNameQueried String
+  cnpjQueried       String?
+
+  // CACHE_GLOBAL | BRASIL_API | CLAUDE_AI | NONE
+  origem    String
+  // FOUND | NOT_FOUND | LOW_CONFIDENCE
+  resultado String
+
+  responseTime Int
+  custoApi     Float?
+
+  // ACCEPTED | REJECTED | MODIFIED | null
+  userAction      String?
+  finalCategoryId String?
+
+  createdAt DateTime @default(now())
+
+  @@index([companyId])
+  @@index([createdAt])
+  @@map("vendor_discovery_logs")
+}
