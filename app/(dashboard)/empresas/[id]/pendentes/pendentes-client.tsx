@@ -12,6 +12,7 @@ import {
   Filter,
   PartyPopper,
   Sparkles,
+  Wand2,
 } from 'lucide-react'
 import { VincularTransferenciaModal } from '@/components/pendentes/VincularTransferenciaModal'
 import { AprenderEAplicarModal } from '@/components/pendentes/AprenderEAplicarModal'
@@ -109,6 +110,18 @@ export function PendentesClient({
   const [falhasIgnorar, setFalhasIgnorar] = useState<
     Array<{ id: string; description: string; razao: string }>
   >([])
+  // Sprint 5.0.2.l — estado do botão "Auto-categorizar tudo"
+  const [autoCatLoading, setAutoCatLoading] = useState(false)
+  const [autoCatResult, setAutoCatResult] = useState<{
+    analisadas: number
+    totalCategorizadas: number
+    breakdown: {
+      fase0_sameCompany: number
+      fase1_pix: number
+      fase2_rules: number
+      fase3_universal: number
+    }
+  } | null>(null)
 
   // Filtros
   const noventaDiasAtras = useMemo(() => {
@@ -163,6 +176,48 @@ export function PendentesClient({
   }, [empresaId, inicio, fim, tipo, toast])
 
   useEffect(() => { fetchTransacoes() }, [fetchTransacoes])
+
+  // Sprint 5.0.2.l — Auto-categorizar TODAS as pendentes em bulk.
+  // Pipeline 5 fases: same-company → pix → regras EXACT/CONTAINS → universal BR.
+  async function autoCategorizarTudo() {
+    if (autoCatLoading) return
+    setAutoCatLoading(true)
+    setAutoCatResult(null)
+    try {
+      const res = await fetch(`/api/empresas/${empresaId}/recategorize-all`, {
+        method: 'POST',
+        credentials: 'include',
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        toast({
+          variant: 'destructive',
+          title: 'Falha na auto-categorização',
+          description: data.erro ?? `HTTP ${res.status}`,
+        })
+        return
+      }
+      const data = await res.json()
+      setAutoCatResult({
+        analisadas: data.analisadas,
+        totalCategorizadas: data.totalCategorizadas,
+        breakdown: data.breakdown,
+      })
+      toast({
+        title: `${data.totalCategorizadas} de ${data.analisadas} categorizadas`,
+        description: `Same-company: ${data.breakdown.fase0_sameCompany} · Pix: ${data.breakdown.fase1_pix} · Regras: ${data.breakdown.fase2_rules} · Padrões BR: ${data.breakdown.fase3_universal}`,
+      })
+      await fetchTransacoes()
+    } catch {
+      toast({
+        variant: 'destructive',
+        title: 'Erro de rede',
+        description: 'Falha ao auto-categorizar. Tente novamente.',
+      })
+    } finally {
+      setAutoCatLoading(false)
+    }
+  }
 
   // Fase 3 Etapa 3: pede sugestão Claude pra UMA transação (lazy load).
   async function pedirSugestaoIA(t: Transacao) {
@@ -353,7 +408,36 @@ export function PendentesClient({
       <Header
         title="Pendentes de Classificação"
         description={`${transacoesFiltradas.length} transação${transacoesFiltradas.length !== 1 ? 'ões' : ''} em ${empresaNome}`}
-      />
+      >
+        <Button
+          onClick={() => void autoCategorizarTudo()}
+          disabled={autoCatLoading || transacoes.length === 0}
+          variant="default"
+          className="gap-2"
+        >
+          {autoCatLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Wand2 className="h-4 w-4" />
+          )}
+          {autoCatLoading ? 'Categorizando...' : 'Auto-categorizar tudo'}
+        </Button>
+      </Header>
+
+      {/* Sprint 5.0.2.l — resultado do bulk auto-categorize */}
+      {autoCatResult && (
+        <div className="rounded-md border border-primary/30 bg-primary/5 px-4 py-3">
+          <p className="text-sm font-semibold">
+            ✨ {autoCatResult.totalCategorizadas} de {autoCatResult.analisadas} pendentes categorizadas automaticamente
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Transferências internas: <strong>{autoCatResult.breakdown.fase0_sameCompany}</strong> ·
+            Pix relacionado: <strong>{autoCatResult.breakdown.fase1_pix}</strong> ·
+            Regras aprendidas: <strong>{autoCatResult.breakdown.fase2_rules}</strong> ·
+            Padrões universais BR: <strong>{autoCatResult.breakdown.fase3_universal}</strong>
+          </p>
+        </div>
+      )}
 
       {/* Sprint 3.0.1 — banner persistente de falhas (Safari ITP) */}
       {falhasIgnorar.length > 0 && (

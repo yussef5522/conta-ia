@@ -10,6 +10,8 @@ import {
   loadActiveRules,
   persistKeywordSuggestions,
 } from '@/lib/ai-categorizer/apply'
+import { ensureAllSystemCategories } from '@/lib/categorias/ensure-system-categories'
+import { resolveUniversalCategoryId } from '@/lib/categorization/apply-universal-patterns'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -152,12 +154,20 @@ export async function POST(request: NextRequest, { params }: Params) {
   const t0Predict = Date.now()
   const activeRules = await loadActiveRules(conta.companyId)
   const ruleIndex = buildRuleIndex(conta.companyId, activeRules)
+
+  // Sprint 5.0.2.l — Camada UNIVERSAL: garante categorias do sistema +
+  // resolver categoryId pelo nome/dreGroup pros padrões universais BR.
+  const systemCats = await ensureAllSystemCategories(conta.companyId)
+  const universalResolver = (hint: { categoryNameHint: string; dreGroup: string }) =>
+    resolveUniversalCategoryId(systemCats.list, hint)
+
   const {
     classified,
     rulesFired,
     autoCount,
     supplierSuggestions,
     keywordHits,
+    universalAutoCount,
   } = autoClassifyTransactions(
     novas.map((t) => ({
       bankAccountId: contaId,
@@ -170,6 +180,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       origin: 'OFX',
     })),
     ruleIndex,
+    universalResolver,
   )
   const predictMs = Date.now() - t0Predict
 
@@ -257,6 +268,8 @@ export async function POST(request: NextRequest, { params }: Params) {
     autoClassificadas: autoCount,
     regrasDispararam: rulesFired.size,
     keywordHits,
+    // Sprint 5.0.2.l — Camada UNIVERSAL hits
+    universalClassificadas: universalAutoCount,
     fornecedoresDetectados: supplierStats.suppliersCreated,
     transacoesComFornecedor: supplierStats.transactionsLinked,
     predictMs,

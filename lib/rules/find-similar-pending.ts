@@ -42,7 +42,14 @@ export async function findSimilarPendingTransactions(
     transactionIds: [],
     sampleDescriptions: [],
   }
-  if (!stem || stem.length < 4) return empty
+  if (!stem || stem.length < 4) {
+    // Sprint 5.0.2.l — log debug PM2 prod
+    console.log(
+      `[FIND_SIMILAR] baseDesc="${(input.baseDescription ?? '').slice(0, 60)}" ` +
+        `stem_vazio_ou_curto stem="${stem}"`,
+    )
+    return empty
+  }
 
   const onlyPending = input.onlyPending !== false
 
@@ -66,6 +73,13 @@ export async function findSimilarPendingTransactions(
     },
     take: 500, // safety cap
   })
+
+  // Sprint 5.0.2.l — log debug PM2 prod
+  console.log(
+    `[FIND_SIMILAR] baseDesc="${(input.baseDescription ?? '').slice(0, 60)}" ` +
+      `stem="${stem}" candidates=${candidates.length} ` +
+      `baseType=${input.baseType} onlyPending=${onlyPending}`,
+  )
 
   const totalAmount = candidates.reduce((sum, t) => sum + t.amount, 0)
   return {

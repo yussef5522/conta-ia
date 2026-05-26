@@ -363,6 +363,9 @@ export interface AutoClassifyResult {
   // Sugestões de fornecedor que Camada 2A detectou — caller persiste como Supplier
   supplierSuggestions: SupplierSuggestion[]
   keywordHits: number
+  // Sprint 5.0.2.l — Camada 2C (UNIVERSAL): hits + count que viraram RECONCILED
+  universalHits: number
+  universalAutoCount: number
 }
 
 // Cache simples por companyId — invalida via clearRulesCache() quando regras
@@ -392,15 +395,23 @@ export async function loadActiveRules(
 export function autoClassifyTransactions(
   txs: AutoClassifyInputTx[],
   index: RuleIndex,
+  /** Sprint 5.0.2.l — resolver categoryNameHint → categoryId pra Camada UNIVERSAL.
+   *  Quando não passado, UNIVERSAL fica desabilitada (modo legado). */
+  universalResolver?: (hint: { categoryNameHint: string; dreGroup: string }) => string | null,
 ): AutoClassifyResult {
   const classified: AutoClassifyOutputTx[] = []
   const rulesFired = new Map<string, number>()
   const supplierSuggestions: SupplierSuggestion[] = []
   let autoCount = 0
   let keywordHits = 0
+  let universalHits = 0
+  let universalAutoCount = 0
 
   for (const tx of txs) {
-    const pipelineResult = classifyForImport({ description: tx.description }, index)
+    const pipelineResult = classifyForImport(
+      { description: tx.description, type: tx.type },
+      index,
+    )
 
     // CAMADA 1 — Regra com confiança AUTO (≥0.95) → aplica direto
     if (
@@ -441,11 +452,45 @@ export function autoClassifyTransactions(
       continue
     }
 
+    // CAMADA 2C (Sprint 5.0.2.l) — Padrão universal BR (tier AUTO)
+    if (
+      pipelineResult.layer === 'UNIVERSAL' &&
+      pipelineResult.universalMatch &&
+      universalResolver
+    ) {
+      universalHits += 1
+      const u = pipelineResult.universalMatch
+      const categoryId = universalResolver({
+        categoryNameHint: u.pattern.categoryNameHint,
+        dreGroup: u.pattern.dreGroup,
+      })
+      if (categoryId) {
+        classified.push({
+          ...tx,
+          status: 'RECONCILED',
+          categoryId,
+          classificationSource: 'UNIVERSAL',
+          aiConfidence: u.pattern.confidence,
+        })
+        universalAutoCount += 1
+        continue
+      }
+      // Não resolveu categoria — cai pra PENDING
+    }
+
     // Sem match nas camadas síncronas → PENDING puro
     classified.push({ ...tx, status: 'PENDING' })
   }
 
-  return { classified, rulesFired, autoCount, supplierSuggestions, keywordHits }
+  return {
+    classified,
+    rulesFired,
+    autoCount,
+    supplierSuggestions,
+    keywordHits,
+    universalHits,
+    universalAutoCount,
+  }
 }
 
 // ============================================================

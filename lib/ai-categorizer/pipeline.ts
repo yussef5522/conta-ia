@@ -25,13 +25,17 @@ import {
   type CnaeHint,
 } from './cnae-mapping'
 import { fetchCNPJ, type BrasilApiResult } from './brasilapi-client'
+import {
+  matchUniversalPattern,
+  type MatchUniversalResult,
+} from '@/lib/categorization/apply-universal-patterns'
 import type { Prediction } from './types'
 
 // ============================================================
 // Tipos
 // ============================================================
 
-export type Layer = 'RULE' | 'KEYWORD' | 'BRASILAPI' | 'CLAUDE'
+export type Layer = 'RULE' | 'KEYWORD' | 'UNIVERSAL' | 'BRASILAPI' | 'CLAUDE'
 
 // Resultado unificado de uma transação processada pelo pipeline.
 // caller usa isso pra decidir: criar Supplier? Aplicar AUTO? Marcar PENDING?
@@ -43,6 +47,9 @@ export interface PipelineResult {
 
   // Quando Camada 2A (KEYWORD) casa
   keywordMatch?: KeywordMatch & { confidence: number }
+
+  // Quando Camada 2C (UNIVERSAL Sprint 5.0.2.l) casa
+  universalMatch?: MatchUniversalResult
 
   // Quando Camada 2B (BRASILAPI) casa
   brasilApiData?: {
@@ -70,6 +77,8 @@ export interface PipelineResult {
 // Entrada simplificada do pipeline pra cada transação
 export interface PipelineInputTx {
   description: string
+  /** Sprint 5.0.2.l — necessário pra Camada 2C (UNIVERSAL) filtrar INCOME/EXPENSE. */
+  type?: string
 }
 
 // ============================================================
@@ -87,7 +96,7 @@ export function classifyForImport(
     return { layer: 'RULE', rulePrediction: prediction }
   }
 
-  // CAMADA 2A: keyword detector (local, sem API)
+  // CAMADA 2A: keyword detector (local, sem API) — cria Supplier suggestion
   const keyword = detectKeyword(tx.description)
   if (keyword) {
     return {
@@ -97,6 +106,16 @@ export function classifyForImport(
         confidence: KEYWORD_DETECTION_CONFIDENCE,
       },
     }
+  }
+
+  // CAMADA 2C (Sprint 5.0.2.l): padrões universais BR
+  // Só AUTO tier; SUGGEST tier fica pro bulk retroativo
+  const universal = matchUniversalPattern({
+    description: tx.description,
+    type: tx.type,
+  })
+  if (universal && universal.tier === 'AUTO') {
+    return { layer: 'UNIVERSAL', universalMatch: universal }
   }
 
   // Sem match nas camadas síncronas. BrasilAPI fica pra modo async (lazy).

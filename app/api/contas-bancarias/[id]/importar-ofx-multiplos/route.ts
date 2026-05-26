@@ -16,6 +16,8 @@ import {
   loadActiveRules,
   persistKeywordSuggestions,
 } from '@/lib/ai-categorizer/apply'
+import { ensureAllSystemCategories } from '@/lib/categorias/ensure-system-categories'
+import { resolveUniversalCategoryId } from '@/lib/categorization/apply-universal-patterns'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -75,10 +77,12 @@ export async function POST(request: NextRequest, { params }: Params) {
   // Carrega regras 1 vez (reusa entre arquivos)
   const activeRules = await loadActiveRules(conta.companyId)
   const ruleIndex = buildRuleIndex(conta.companyId, activeRules)
-  const categoriasEmpresa = await prisma.category.findMany({
-    where: { companyId: conta.companyId, isActive: true },
-    select: { id: true, name: true, dreGroup: true, isActive: true },
-  })
+  // Sprint 5.0.2.l — garante categorias do sistema (Pix + universais BR) +
+  // resolver pra Camada UNIVERSAL
+  const systemCats = await ensureAllSystemCategories(conta.companyId)
+  const universalResolver = (hint: { categoryNameHint: string; dreGroup: string }) =>
+    resolveUniversalCategoryId(systemCats.list, hint)
+  const categoriasEmpresa = systemCats.list
 
   const results: FileResult[] = []
   let totalNovas = 0
@@ -174,6 +178,7 @@ export async function POST(request: NextRequest, { params }: Params) {
           origin: 'OFX',
         })),
         ruleIndex,
+        universalResolver,
       )
 
       try {
