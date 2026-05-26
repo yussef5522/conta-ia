@@ -24,6 +24,29 @@ export {
 export { FATOR_R, type FatorRKnowledge } from './09-fator-r'
 export { JURISPRUDENCIA, type JurisprudenciaKnowledge } from './10-jurisprudencia'
 
+// Sprint 5.0.2.g — Knowledge Base PROFUNDA (10 arquivos especializados)
+export { RESTAURANTES_KB } from './deep/01-restaurantes-completo'
+export { ACADEMIAS_KB } from './deep/02-academias-completo'
+export { COMERCIO_ROUPA_KB } from './deep/03-comercio-roupa-completo'
+export { GRANDES_REDES_KB } from './deep/04-grandes-redes-benchmarks'
+export { ICMS_ST_POR_ESTADO_KB } from './deep/05-icms-st-por-estado'
+export { PIS_COFINS_CREDITOS_KB } from './deep/06-pis-cofins-creditos'
+export { FATOR_R_KB as FATOR_R_DEEP_KB } from './deep/07-fator-r-completo'
+export { PERSE_KB } from './deep/08-perse-detalhado'
+export { REFORMA_TRIBUTARIA_DEEP_KB } from './deep/09-reforma-tributaria'
+export { JURISPRUDENCIA_DEEP_KB } from './deep/10-jurisprudencia-recente'
+
+import { RESTAURANTES_KB } from './deep/01-restaurantes-completo'
+import { ACADEMIAS_KB } from './deep/02-academias-completo'
+import { COMERCIO_ROUPA_KB } from './deep/03-comercio-roupa-completo'
+import { GRANDES_REDES_KB } from './deep/04-grandes-redes-benchmarks'
+import { ICMS_ST_POR_ESTADO_KB } from './deep/05-icms-st-por-estado'
+import { PIS_COFINS_CREDITOS_KB } from './deep/06-pis-cofins-creditos'
+import { FATOR_R_KB as FATOR_R_DEEP_KB } from './deep/07-fator-r-completo'
+import { PERSE_KB } from './deep/08-perse-detalhado'
+import { REFORMA_TRIBUTARIA_DEEP_KB } from './deep/09-reforma-tributaria'
+import { JURISPRUDENCIA_DEEP_KB } from './deep/10-jurisprudencia-recente'
+
 import { SIMPLES_NACIONAL } from './01-simples-nacional'
 import { LUCRO_PRESUMIDO } from './02-lucro-presumido'
 import { LUCRO_REAL } from './03-lucro-real'
@@ -46,6 +69,17 @@ export type KnowledgeTopic =
   | 'estados-particularidades'
   | 'fator-r'
   | 'jurisprudencia'
+  // Sprint 5.0.2.g — KB PROFUNDA (truques reais grandes redes)
+  | 'restaurantes-deep'
+  | 'academias-deep'
+  | 'comercio-roupa-deep'
+  | 'grandes-redes'
+  | 'icms-st-estados'
+  | 'pis-cofins-creditos'
+  | 'fator-r-deep'
+  | 'perse-deep'
+  | 'reforma-tributaria-deep'
+  | 'jurisprudencia-deep'
 
 /**
  * Retorna a base de conhecimento de um tópico específico.
@@ -73,6 +107,27 @@ export function getKnowledgeFor(topic: KnowledgeTopic) {
       return FATOR_R
     case 'jurisprudencia':
       return JURISPRUDENCIA
+    // Sprint 5.0.2.g — KB profunda
+    case 'restaurantes-deep':
+      return RESTAURANTES_KB
+    case 'academias-deep':
+      return ACADEMIAS_KB
+    case 'comercio-roupa-deep':
+      return COMERCIO_ROUPA_KB
+    case 'grandes-redes':
+      return GRANDES_REDES_KB
+    case 'icms-st-estados':
+      return ICMS_ST_POR_ESTADO_KB
+    case 'pis-cofins-creditos':
+      return PIS_COFINS_CREDITOS_KB
+    case 'fator-r-deep':
+      return FATOR_R_DEEP_KB
+    case 'perse-deep':
+      return PERSE_KB
+    case 'reforma-tributaria-deep':
+      return REFORMA_TRIBUTARIA_DEEP_KB
+    case 'jurisprudencia-deep':
+      return JURISPRUDENCIA_DEEP_KB
   }
 }
 
@@ -103,4 +158,15 @@ export const KNOWLEDGE_TOPICS: Array<{ key: KnowledgeTopic; label: string }> = [
   { key: 'estados-particularidades', label: 'Particularidades por UF' },
   { key: 'fator-r', label: 'Fator R' },
   { key: 'jurisprudencia', label: 'Jurisprudência STF/STJ/CARF' },
+  // Sprint 5.0.2.g — KB PROFUNDA
+  { key: 'restaurantes-deep', label: 'Restaurantes (DEEP: combo Mc/BK, PERSE, LC 192/2022)' },
+  { key: 'academias-deep', label: 'Academias (DEEP: Fator R, Smart Fit, holdings)' },
+  { key: 'comercio-roupa-deep', label: 'Comércio Roupa (DEEP: Renner, Riachuelo, DIFAL, NCM)' },
+  { key: 'grandes-redes', label: 'Benchmark grandes redes (Mc, BK, Madero, Smart Fit, Renner)' },
+  { key: 'icms-st-estados', label: 'ICMS-ST por estado (Convênio 142/2018)' },
+  { key: 'pis-cofins-creditos', label: 'Créditos PIS/COFINS detalhado (Lei 10.637 + 10.833)' },
+  { key: 'fator-r-deep', label: 'Fator R profundo (LC 123/06 § 5º-J)' },
+  { key: 'perse-deep', label: 'PERSE detalhado (Lei 14.148/2021 + 14.859/2024)' },
+  { key: 'reforma-tributaria-deep', label: 'Reforma Tributária profunda (EC 132/2023 + LC 214/2025)' },
+  { key: 'jurisprudencia-deep', label: 'Jurisprudência STF/STJ/CARF + Teses 574706' },
 ]

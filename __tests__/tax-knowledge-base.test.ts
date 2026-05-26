@@ -246,8 +246,8 @@ describe('Index e helpers', () => {
     expect(Object.keys(ALL_KNOWLEDGE)).toHaveLength(10)
   })
 
-  it('KNOWLEDGE_TOPICS lista 10 entries', () => {
-    expect(KNOWLEDGE_TOPICS).toHaveLength(10)
+  it('KNOWLEDGE_TOPICS lista 20 entries (10 originais + 10 deep Sprint 5.0.2.g)', () => {
+    expect(KNOWLEDGE_TOPICS).toHaveLength(20)
   })
 
   it('getKnowledgeFor("simples-nacional") retorna SIMPLES_NACIONAL', () => {

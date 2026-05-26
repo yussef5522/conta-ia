@@ -6,6 +6,11 @@
 //   3. get_benchmark_redes — retorna como grandes redes do ramo otimizam
 
 import { getKnowledgeFor, type KnowledgeTopic } from '@/lib/tax/knowledge'
+import {
+  validateSimplesNacional,
+  validateLucroPresumido,
+  calcularRBAProjecada,
+} from '@/lib/tax/regime-validators'
 import { calculateSimples } from '@/lib/tax/simples-engine'
 import type { SimplesAnexo } from '@/lib/tax/simples-nacional-tables'
 import { calculatePresumido } from '@/lib/tax/presumido-engine'
@@ -180,7 +185,7 @@ export const TAX_ANALYSIS_TOOLS: ClaudeTool[] = [
   {
     name: 'get_knowledge',
     description:
-      'Consulta a Knowledge Base contábil 2026 sobre um tópico específico. Use sempre que precisar citar lei, alíquota, faixa, regra. Retorna JSON estruturado.',
+      'Consulta a Knowledge Base contábil 2026. Use SEMPRE antes de afirmar lei/alíquota/regra. Tópicos DEEP (Sprint 5.0.2.g) trazem truques reais e benchmark de grandes redes — use restaurantes-deep / academias-deep / comercio-roupa-deep / grandes-redes / icms-st-estados / pis-cofins-creditos / fator-r-deep / perse-deep / reforma-tributaria-deep / jurisprudencia-deep.',
     input_schema: {
       type: 'object',
       properties: {
@@ -197,10 +202,38 @@ export const TAX_ANALYSIS_TOOLS: ClaudeTool[] = [
             'estados-particularidades',
             'fator-r',
             'jurisprudencia',
+            'restaurantes-deep',
+            'academias-deep',
+            'comercio-roupa-deep',
+            'grandes-redes',
+            'icms-st-estados',
+            'pis-cofins-creditos',
+            'fator-r-deep',
+            'perse-deep',
+            'reforma-tributaria-deep',
+            'jurisprudencia-deep',
           ],
         },
       },
       required: ['topic'],
+    },
+  },
+
+  {
+    name: 'validate_recommendation',
+    description:
+      'Valida se uma recomendação de regime é LEGALMENTE viável (Sprint 5.0.2.g). Verifica limite Simples (R$ 4.8M, LC 123/06 art. 3º), limite Presumido (R$ 78M, Lei 9.718/98 art. 13), CNAEs vedados. CHAME ANTES de recomendar qualquer regime — evita sugerir regime ilegal.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        regime: { type: 'string', enum: ['SIMPLES_NACIONAL', 'LUCRO_PRESUMIDO', 'LUCRO_REAL'] },
+        receitaBrutaMes: { type: 'number', description: 'Receita mensal (R$). Usada pra projetar anual.' },
+        rbaAcumulada12m: { type: 'number', description: 'RBA histórica (R$). Se 0, usa projeção mensal × 12.' },
+        cnaeCode: { type: 'string', description: 'CNAE (ex: 5611-2/01).' },
+        hasSocioPJ: { type: 'boolean' },
+        hasDebitos: { type: 'boolean' },
+      },
+      required: ['regime', 'receitaBrutaMes'],
     },
   },
 
@@ -283,6 +316,10 @@ export function executeToolCall(toolName: string, toolInput: ToolInput): string 
         return JSON.stringify({ ramo, redes: getBenchmarkRedes(ramo) })
       }
 
+      case 'validate_recommendation': {
+        return JSON.stringify(executeValidateRecommendation(toolInput))
+      }
+
       default:
         return JSON.stringify({ error: `Tool desconhecida: ${toolName}` })
     }
@@ -291,6 +328,26 @@ export function executeToolCall(toolName: string, toolInput: ToolInput): string 
       error: err instanceof Error ? err.message : 'Falha ao executar tool',
     })
   }
+}
+
+function executeValidateRecommendation(input: ToolInput) {
+  const regime = input.regime as string
+  const receitaBrutaMes = Number(input.receitaBrutaMes ?? 0)
+  const rbaAcumulada12m = Number(input.rbaAcumulada12m ?? 0)
+  const rbaProjecada = calcularRBAProjecada(rbaAcumulada12m, receitaBrutaMes)
+  const cnaeCode = (input.cnaeCode as string) ?? null
+  const hasSocioPJ = Boolean(input.hasSocioPJ ?? false)
+  const hasDebitos = Boolean(input.hasDebitos ?? false)
+
+  if (regime === 'SIMPLES_NACIONAL') {
+    const r = validateSimplesNacional({ rbaProjecada12m: rbaProjecada, cnaeCode, hasSocioPJ, hasDebitos })
+    return { regime, rbaProjecada, ...r }
+  }
+  if (regime === 'LUCRO_PRESUMIDO') {
+    const r = validateLucroPresumido({ rbaProjecada12m: rbaProjecada, cnaeCode })
+    return { regime, rbaProjecada, ...r }
+  }
+  return { regime, rbaProjecada, aplicavel: true }
 }
 
 function executeCalculateRegime(input: ToolInput) {

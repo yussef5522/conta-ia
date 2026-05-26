@@ -92,8 +92,8 @@ describe('submit_analysis — tool schema', () => {
     expect(TAX_ANALYSIS_TOOLS.some((t) => t.name === SUBMIT_ANALYSIS_TOOL_NAME)).toBe(true)
   })
 
-  it('tem 4 tools no total (submit + 3 lookups)', () => {
-    expect(TAX_ANALYSIS_TOOLS).toHaveLength(4)
+  it('tem 5 tools no total (submit + 4 lookups Sprint 5.0.2.g)', () => {
+    expect(TAX_ANALYSIS_TOOLS).toHaveLength(5)
   })
 
   it('SUBMIT_ANALYSIS_TOOL_NAME === "submit_analysis"', () => {
