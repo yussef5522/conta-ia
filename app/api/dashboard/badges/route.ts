@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
       ],
     }
 
-    const [vencidas, vencendoEm3, conciliacaoPendente] = await Promise.all([
+    const [vencidas, vencendoEm3, conciliacaoPendente, transacoesPendentes] = await Promise.all([
       prisma.transaction.count({
         where: {
           ...tenantOR,
@@ -57,6 +57,14 @@ export async function GET(request: NextRequest) {
           status: { not: 'IGNORED' },
         },
       }),
+      // Sprint 5.0.2.h — Tx EFFECTED PENDING (sem categoria classificada)
+      prisma.transaction.count({
+        where: {
+          bankAccount: { companyId: empresaId },
+          lifecycle: 'EFFECTED',
+          status: 'PENDING',
+        },
+      }),
     ])
 
     return NextResponse.json({
@@ -67,6 +75,7 @@ export async function GET(request: NextRequest) {
       conciliacao: {
         pendentes: conciliacaoPendente,
       },
+      transacoesPendentes,
     })
   } catch (error) {
     return handleApiError(error)

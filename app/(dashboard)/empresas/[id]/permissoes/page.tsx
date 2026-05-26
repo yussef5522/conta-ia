@@ -1,7 +1,6 @@
-// Sprint 4.0.5.b — redirect 308 pra /permissoes.
+// Sprint 5.0.2.h — Redirect via route handler (cookies só em Server Action/Route Handler).
 
 import { redirect } from 'next/navigation'
-import { setCurrentEmpresaCookie } from '@/lib/auth/current-empresa-cookie'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -9,6 +8,5 @@ interface PageProps {
 
 export default async function OldPage({ params }: PageProps) {
   const { id } = await params
-  await setCurrentEmpresaCookie(id)
-  redirect('/permissoes')
+  redirect(`/api/empresas/${id}/select-and-redirect?to=/permissoes`)
 }

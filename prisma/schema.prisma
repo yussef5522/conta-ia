@@ -87,6 +87,9 @@ model Company {
   taxCalculations    TaxCalculation[]
   // Sprint 5.0.2.d — Claude analyzing real
   aiAnalysisCache    AiAnalysisCache[]
+  // Sprint 5.0.2.h — Detecção Pix PJ↔PF/PJ
+  sociosPF           SocioPF[]
+  empresasRelacionadas EmpresaRelacionada[]
 
   @@map("companies")
 }
@@ -202,6 +205,13 @@ model Transaction {
   // Onda 2 Sprint 2.3 — qual import OFX trouxe essa transação (null = manual / antes da Onda 2).
   importId String?
 
+  // Sprint 5.0.2.h — Detecção Pix relacionado.
+  // relatedPartyType: SOCIO_PF | GRUPO_PJ | null
+  // relatedPartyId: aponta pra SocioPF.id ou EmpresaRelacionada.id (não FK
+  //   constrained — flexibilidade pra detecção retroativa sem cascade).
+  relatedPartyType String?
+  relatedPartyId   String?
+
   // Sprint 4.0.1.a — Core Financeiro AP/AR.
   // lifecycle distingue lançamento REAL (EFFECTED — extrato OFX ou pagamento manual já feito)
   // de lançamento PENDENTE (PAYABLE = conta a pagar, RECEIVABLE = conta a receber).
@@ -248,6 +258,7 @@ model Transaction {
   @@index([lifecycle, status])
   @@index([customerId])
   @@index([recurringScheduleId])
+  @@index([relatedPartyType])
   @@map("transactions")
 }
 
@@ -1168,4 +1179,60 @@ model AiAnalysisCache {
   @@unique([companyId, cacheKey])
   @@index([companyId, expiresAt])
   @@map("ai_analysis_cache")
+}
+
+// ============================================================
+// Sprint 5.0.2.h — Detecção automática Pix PJ↔PF e PJ↔PJ grupo.
+//
+// Quando Yussef cadastra:
+//   - SocioPF: seu CPF, chaves Pix (email/tel/aleatorias)
+//   - EmpresaRelacionada: outros CNPJs do grupo, chaves Pix delas
+// Sistema detecta Pix nas Transactions e categoriza automaticamente:
+//   - Pix PJ→CPF sócio  = Distribuição de Lucros / Pró-labore
+//   - Pix entre CNPJs do grupo = Transferência entre Contas (filtrada do DRE)
+//
+// Compat dual-DB: pixKeys serializadas como String (JSON array). Postgres
+// permite String[] mas SQLite-dev não. Padrão do projeto: JSON em TEXT.
+// ============================================================
+
+model SocioPF {
+  id        String  @id @default(cuid())
+  companyId String
+
+  nome    String
+  cpf     String? // Pode ser null se user não souber/quiser
+  // JSON array de chaves Pix: email, telefone, CPF, aleatória
+  pixKeys String  @default("[]")
+  // SOCIO | ADMINISTRADOR | FAMILIAR
+  papel   String  @default("SOCIO")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, cpf])
+  @@index([companyId])
+  @@map("socios_pf")
+}
+
+model EmpresaRelacionada {
+  id        String @id @default(cuid())
+  companyId String // empresa de referência
+
+  cnpjRelacionado String
+  nomeFantasia    String
+  // JSON array de chaves Pix do CNPJ relacionado
+  pixKeys         String @default("[]")
+  // MESMO_GRUPO | SOCIO_COMUM | CONTROLADA | CONTROLADORA
+  relacao         String @default("MESMO_GRUPO")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, cnpjRelacionado])
+  @@index([companyId])
+  @@map("empresas_relacionadas")
 }

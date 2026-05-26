@@ -8,6 +8,8 @@ import { useEffect, useState } from 'react'
 export interface SidebarBadges {
   contasAPagar: { vencidas: number; vencendoEm3Dias: number }
   conciliacao: { pendentes: number }
+  // Sprint 5.0.2.h — Transações com status PENDING (precisam categorizar)
+  transacoesPendentes?: number
 }
 
 const POLL_INTERVAL_MS = 60_000

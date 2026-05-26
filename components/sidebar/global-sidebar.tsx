@@ -29,6 +29,8 @@ import {
   Scale,
   BookOpen,
   Sparkles,
+  Landmark,
+  Inbox,
 } from 'lucide-react'
 import { SidebarItem } from './sidebar-item'
 import { useSidebarBadges } from '@/lib/hooks/use-sidebar-badges'
@@ -59,6 +61,7 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
       ? 'amber'
       : 'neutral'
   const conciliacaoBadge = badges?.conciliacao?.pendentes ?? 0
+  const pendentesBadge = badges?.transacoesPendentes ?? 0
 
   const empresaQs = currentEmpresaId ? `?empresaId=${currentEmpresaId}` : ''
 
@@ -95,6 +98,29 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
           label="Recorrentes"
           href={`/recorrentes${empresaQs}`}
           isActive={pathname.startsWith('/recorrentes')}
+          onClick={onNavigate}
+        />
+        <SidebarItem
+          icon={Landmark}
+          label="Bancos"
+          href={`/bancos${empresaQs}`}
+          isActive={pathname.startsWith('/bancos')}
+          onClick={onNavigate}
+        />
+        <SidebarItem
+          icon={Inbox}
+          label="Pendentes"
+          href={`/pendentes${empresaQs}`}
+          isActive={pathname.startsWith('/pendentes')}
+          onClick={onNavigate}
+          badge={pendentesBadge > 0 ? String(pendentesBadge) : undefined}
+          badgeTone="amber"
+        />
+        <SidebarItem
+          icon={Users}
+          label="Pessoas Vinculadas"
+          href={`/pessoas-vinculadas${empresaQs}`}
+          isActive={pathname.startsWith('/pessoas-vinculadas')}
           onClick={onNavigate}
         />
         <SidebarItem
