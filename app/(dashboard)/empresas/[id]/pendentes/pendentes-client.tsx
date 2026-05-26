@@ -20,6 +20,10 @@ import {
   VendorSuggestionBanner,
   type VendorSuggestion,
 } from '@/components/pendentes/VendorSuggestionBanner'
+import {
+  AutoCategorizePreviewModal,
+  type PreviewData,
+} from '@/components/pendentes/AutoCategorizePreviewModal'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -144,6 +148,9 @@ export function PendentesClient({
   const [vendorSuggestions, setVendorSuggestions] = useState<
     Record<string, VendorSuggestion>
   >({})
+  // Sprint 5.0.2.p — Preview modal
+  const [previewOpen, setPreviewOpen] = useState(false)
+  const [previewData, setPreviewData] = useState<PreviewData | null>(null)
 
   // Filtros
   const noventaDiasAtras = useMemo(() => {
@@ -275,7 +282,7 @@ export function PendentesClient({
     setVendorDiscoveryStats(null)
     try {
       const cleanRes = await fetch(
-        '/api/admin/vendor-discovery/clean-poisoned-cache',
+        `/api/empresas/${empresaId}/vendor-discovery/clean-cache`,
         { method: 'POST', credentials: 'include' },
       )
       const cleanData = await cleanRes.json().catch(() => ({}))
@@ -338,47 +345,54 @@ export function PendentesClient({
     }
   }
 
-  // Sprint 5.0.2.l — Auto-categorizar TODAS as pendentes em bulk.
-  // Pipeline 5 fases: same-company → pix → regras EXACT/CONTAINS → universal BR.
+  // Sprint 5.0.2.p — Auto-categorizar agora abre PREVIEW (não aplica direto).
   async function autoCategorizarTudo() {
     if (autoCatLoading) return
     setAutoCatLoading(true)
-    setAutoCatResult(null)
+    setPreviewData(null)
     try {
-      const res = await fetch(`/api/empresas/${empresaId}/auto-categorize-all`, {
-        method: 'POST',
-        credentials: 'include',
-      })
+      const res = await fetch(
+        `/api/empresas/${empresaId}/auto-categorize-all/preview`,
+        { method: 'POST', credentials: 'include' },
+      )
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         toast({
           variant: 'destructive',
-          title: 'Falha na auto-categorização',
+          title: 'Falha ao gerar preview',
           description: data.erro ?? `HTTP ${res.status}`,
         })
         return
       }
       const data = await res.json()
-      setAutoCatResult({
-        analisadas: data.analisadas,
-        totalCategorizadas: data.totalCategorizadas,
-        setor: data.setor ?? null,
-        breakdown: data.breakdown,
-      })
-      toast({
-        title: `${data.totalCategorizadas} de ${data.analisadas} categorizadas`,
-        description: `Mesma empresa: ${data.breakdown.fase0_sameCompany} · Pix: ${data.breakdown.fase1_pix} · Regras: ${data.breakdown.fase2_rules} · KB ${data.setor ?? 'UNIVERSAL'}: ${data.breakdown.fase3_setorPattern}`,
-      })
-      await fetchTransacoes()
+      setPreviewData(data as PreviewData)
+      setPreviewOpen(true)
     } catch {
       toast({
         variant: 'destructive',
         title: 'Erro de rede',
-        description: 'Falha ao auto-categorizar. Tente novamente.',
+        description: 'Falha ao gerar preview. Tente novamente.',
       })
     } finally {
       setAutoCatLoading(false)
     }
+  }
+
+  function onPreviewApplied(aplicadas: number) {
+    setAutoCatResult({
+      analisadas: previewData?.totalAnalisadas ?? aplicadas,
+      totalCategorizadas: aplicadas,
+      setor: previewData?.setor ?? null,
+      breakdown: {
+        fase0_sameCompany: previewData?.breakdown.sameCompany ?? 0,
+        fase1_pix: previewData?.breakdown.pix ?? 0,
+        fase2_rules:
+          (previewData?.breakdown.ruleExact ?? 0) +
+          (previewData?.breakdown.ruleContains ?? 0),
+        fase3_setorPattern: previewData?.breakdown.setorPattern ?? 0,
+      },
+    })
+    void fetchTransacoes()
   }
 
   // Fase 3 Etapa 3: pede sugestão Claude pra UMA transação (lazy load).
@@ -1065,6 +1079,15 @@ export function PendentesClient({
           // Refetch async — pega as similares que não estavam no preview
           fetchTransacoes()
         }}
+      />
+
+      {/* Sprint 5.0.2.p — Preview do Auto-categorizar */}
+      <AutoCategorizePreviewModal
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        empresaId={empresaId}
+        data={previewData}
+        onApplied={onPreviewApplied}
       />
     </div>
   )

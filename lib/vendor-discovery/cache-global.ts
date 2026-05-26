@@ -95,56 +95,47 @@ export async function persistDiscovery(params: {
     : null
   const normalized = normalizeVendorName(params.vendorName)
 
-  // Se temos CNPJ, upsert via cnpj unique. Senão create + dedup por
-  // vendorNameNormalized (caller seria responsabilidade de evitar duplicata).
-  if (cnpjLimpo && cnpjLimpo.length === 14) {
-    const result = await prisma.globalVendorKnowledge.upsert({
-      where: { cnpj: cnpjLimpo },
-      create: {
-        cnpj: cnpjLimpo,
-        vendorName: params.vendorName,
-        vendorNameNormalized: normalized,
-        razaoSocial: params.razaoSocial ?? null,
-        nomeFantasia: params.nomeFantasia ?? null,
-        cnaePrincipal: params.cnaePrincipal ?? null,
-        cnaeDescricao: params.cnaeDescricao ?? null,
-        setor: params.setor ?? null,
-        categoriaSugerida: params.categoriaSugerida,
-        categoriaConfidence: params.categoriaConfidence,
-        tipoTransacao: params.tipoTransacao,
-        origem: params.origem,
-        scoreAtual: params.scoreInicial,
-      },
-      update: {
-        vendorName: params.vendorName,
-        vendorNameNormalized: normalized,
-        razaoSocial: params.razaoSocial ?? null,
-        nomeFantasia: params.nomeFantasia ?? null,
-        cnaePrincipal: params.cnaePrincipal ?? null,
-        cnaeDescricao: params.cnaeDescricao ?? null,
-        ultimaValidacao: new Date(),
-      },
-    })
-    return result.id
-  }
+  // Sprint 5.0.2.p — Fix Bug 2: NÃO usar upsert.
+  //
+  // O índice unique no schema é PARCIAL (`WHERE cnpj IS NOT NULL` no SQL
+  // de produção). Prisma upsert tenta ON CONFLICT na constraint cnpj_key,
+  // mas Postgres rejeita: `code: 42P10 — there is no unique or exclusion
+  // constraint matching the ON CONFLICT specification`.
+  //
+  // Solução: findFirst + update/create. Levemente race-prone (2 inserts
+  // concorrentes podem duplicar), mas dedup natural via normalized name
+  // mitiga, e o cron de auto-ajuste consolidaria duplicatas se aparecessem.
+  const where = cnpjLimpo
+    ? { cnpj: cnpjLimpo }
+    : { vendorNameNormalized: normalized, cnpj: null }
 
-  // Sem CNPJ: dedup por nome normalizado
-  const existing = await prisma.globalVendorKnowledge.findFirst({
-    where: { vendorNameNormalized: normalized, cnpj: null },
-  })
+  const existing = await prisma.globalVendorKnowledge.findFirst({ where })
   if (existing) {
     await prisma.globalVendorKnowledge.update({
       where: { id: existing.id },
-      data: { ultimaValidacao: new Date() },
+      data: {
+        vendorName: params.vendorName,
+        vendorNameNormalized: normalized,
+        razaoSocial: params.razaoSocial ?? existing.razaoSocial,
+        nomeFantasia: params.nomeFantasia ?? existing.nomeFantasia,
+        cnaePrincipal: params.cnaePrincipal ?? existing.cnaePrincipal,
+        cnaeDescricao: params.cnaeDescricao ?? existing.cnaeDescricao,
+        ultimaValidacao: new Date(),
+      },
     })
     return existing.id
   }
 
   const created = await prisma.globalVendorKnowledge.create({
     data: {
-      cnpj: null,
+      cnpj: cnpjLimpo,
       vendorName: params.vendorName,
       vendorNameNormalized: normalized,
+      razaoSocial: params.razaoSocial ?? null,
+      nomeFantasia: params.nomeFantasia ?? null,
+      cnaePrincipal: params.cnaePrincipal ?? null,
+      cnaeDescricao: params.cnaeDescricao ?? null,
+      setor: params.setor ?? null,
       categoriaSugerida: params.categoriaSugerida,
       categoriaConfidence: params.categoriaConfidence,
       tipoTransacao: params.tipoTransacao,
