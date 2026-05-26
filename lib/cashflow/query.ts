@@ -41,6 +41,9 @@ export function buildConsolidatedCashflowWhere(
     // tem reconciledWithId = ofx.id. A OFX (lado real) entra normal; a PAYABLE
     // conciliada é ignorada pra não somar o mesmo valor 2x.
     reconciledWithId: null,
+    // Sprint 5.0.2.i — Transferências internas conciliadas entre CNPJs do
+    // grupo NÃO inflam fluxo consolidado (não é receita nem despesa).
+    isInternalTransfer: false,
     date: { gte: period.startDate, lte: period.endDate },
     // Exclui também transações categorizadas como "Transferências"
     // (categoria criada pelo backfill com dreGroup=TRANSFERENCIA).

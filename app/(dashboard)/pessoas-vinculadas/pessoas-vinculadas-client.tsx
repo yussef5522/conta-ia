@@ -3,7 +3,7 @@
 // Sprint 5.0.2.h — UI Pessoas Vinculadas (CRUD).
 
 import { useEffect, useState, useCallback } from 'react'
-import { Users, Building2, Plus, Trash2, Sparkles } from 'lucide-react'
+import { Users, Building2, Plus, Trash2, Sparkles, Wand2, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -59,6 +59,7 @@ export function PessoasVinculadasClient({ empresaId, empresaNome }: Props) {
   const [loading, setLoading] = useState(true)
   const [showSocioForm, setShowSocioForm] = useState(false)
   const [showEmpresaForm, setShowEmpresaForm] = useState(false)
+  const [recategorizing, setRecategorizing] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -92,6 +93,37 @@ export function PessoasVinculadasClient({ empresaId, empresaNome }: Props) {
     }
   }
 
+  async function recategorizePix() {
+    if (
+      !confirm(
+        'Re-analisar TODAS as transações Pix antigas com os cadastros atuais? Pode demorar alguns segundos.',
+      )
+    )
+      return
+    setRecategorizing(true)
+    try {
+      const res = await fetch(`/api/empresas/${empresaId}/recategorize-pix`, {
+        method: 'POST',
+        credentials: 'include',
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast({
+          variant: 'destructive',
+          title: 'Falha',
+          description: data.erro ?? `HTTP ${res.status}`,
+        })
+        return
+      }
+      toast({
+        title: 'Re-categorização concluída',
+        description: `Analisadas: ${data.analisadas} · Sócios PF: ${data.socioPF} · Grupo PJ: ${data.grupoPJ} · Conciliações: ${data.conciliacoes}`,
+      })
+    } finally {
+      setRecategorizing(false)
+    }
+  }
+
   async function deleteEmpresa(id: string) {
     if (!confirm('Remover esta empresa relacionada?')) return
     const res = await fetch(`/api/empresas/${empresaId}/empresas-relacionadas/${id}`, {
@@ -112,23 +144,45 @@ export function PessoasVinculadasClient({ empresaId, empresaNome }: Props) {
       />
 
       <Card className="bg-indigo-50/40 border-indigo-100">
-        <CardContent className="py-4 flex items-start gap-3">
-          <Sparkles className="h-5 w-5 text-indigo-600 shrink-0 mt-0.5" />
-          <div className="text-sm text-zinc-700">
-            <p className="font-medium text-indigo-900 mb-1">Detecção automática de Pix</p>
-            <p>
-              Cadastre <strong>seus CPFs (sócios)</strong> e <strong>outros CNPJs do grupo</strong>. O sistema vai
-              detectar automaticamente Pix entre vocês e categorizar corretamente como:
-            </p>
-            <ul className="list-disc list-inside mt-2 text-xs space-y-0.5">
-              <li>
-                Pix para CPF de sócio = <strong>Distribuição de Lucros</strong> ou <strong>Pró-labore</strong>
-              </li>
-              <li>
-                Pix entre seus CNPJs = <strong>Transferência entre Contas</strong> (não é despesa, não infla DRE)
-              </li>
-            </ul>
+        <CardContent className="py-4">
+          <div className="flex items-start gap-3">
+            <Sparkles className="h-5 w-5 text-indigo-600 shrink-0 mt-0.5" />
+            <div className="text-sm text-zinc-700 flex-1">
+              <p className="font-medium text-indigo-900 mb-1">Detecção automática de Pix</p>
+              <p>
+                Cadastre <strong>seus CPFs (sócios)</strong> e <strong>outros CNPJs do grupo</strong>. O sistema vai
+                detectar automaticamente Pix entre vocês e categorizar corretamente como:
+              </p>
+              <ul className="list-disc list-inside mt-2 text-xs space-y-0.5">
+                <li>
+                  Pix para CPF de sócio = <strong>Distribuição de Lucros</strong> ou <strong>Pró-labore</strong>
+                </li>
+                <li>
+                  Pix entre seus CNPJs = <strong>Transferência entre Contas</strong> (não é despesa, não infla DRE)
+                </li>
+              </ul>
+            </div>
           </div>
+          {(socios.length > 0 || empresasRel.length > 0) && (
+            <div className="mt-3 pt-3 border-t border-indigo-100 flex items-center justify-between gap-3 flex-wrap">
+              <p className="text-xs text-indigo-900">
+                Já cadastrou? <strong>Re-analise transações Pix antigas</strong> aplicando os cadastros atuais.
+              </p>
+              <Button size="sm" variant="default" onClick={recategorizePix} disabled={recategorizing}>
+                {recategorizing ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                    Analisando…
+                  </>
+                ) : (
+                  <>
+                    <Wand2 className="h-3.5 w-3.5 mr-1.5" />
+                    Re-analisar Pix antigos
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 

@@ -212,6 +212,13 @@ model Transaction {
   relatedPartyType String?
   relatedPartyId   String?
 
+  // Sprint 5.0.2.i — Conciliação automática Transferência interna grupo.
+  // Quando match entre Empresa A (saída) ↔ Empresa B (entrada) confirmado,
+  // ambas marcadas isInternalTransfer=true e linkadas pelo linkedTransactionId.
+  // DRE e fluxo CONSOLIDADO filtram isInternalTransfer=true.
+  isInternalTransfer  Boolean @default(false)
+  linkedTransactionId String? @unique
+
   // Sprint 4.0.1.a — Core Financeiro AP/AR.
   // lifecycle distingue lançamento REAL (EFFECTED — extrato OFX ou pagamento manual já feito)
   // de lançamento PENDENTE (PAYABLE = conta a pagar, RECEIVABLE = conta a receber).
@@ -259,6 +266,7 @@ model Transaction {
   @@index([customerId])
   @@index([recurringScheduleId])
   @@index([relatedPartyType])
+  @@index([isInternalTransfer])
   @@map("transactions")
 }
 

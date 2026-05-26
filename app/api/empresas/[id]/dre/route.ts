@@ -129,6 +129,9 @@ export async function GET(request: NextRequest, { params }: Params) {
         // No Previsto, todas PAYABLE/RECEIVABLE têm reconciledWithId=NULL por
         // definição (ainda pendentes), então o filtro é no-op mas seguro.
         ...(view === 'realizado' ? { reconciledWithId: null } : {}),
+        // Sprint 5.0.2.i — Transferências internas grupo conciliadas NÃO compõem DRE
+        // (não são receita nem despesa - só movimentação entre CNPJs do mesmo grupo).
+        isInternalTransfer: false,
         OR: lifecycleDateClauses,
       },
       select: {
