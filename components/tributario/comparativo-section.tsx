@@ -7,7 +7,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Trophy, TrendingDown, AlertCircle, Loader2 } from 'lucide-react'
+import { Trophy, TrendingDown, AlertCircle, Loader2, XCircle, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -31,6 +31,7 @@ interface RegimeRow {
   regime: 'SIMPLES_NACIONAL' | 'LUCRO_PRESUMIDO' | 'LUCRO_REAL'
   aplicavel: boolean
   motivoNaoAplicavel?: string
+  baseLegal?: string
   total: number
   aliquotaEfetiva: number
   totalAnual: number
@@ -69,6 +70,13 @@ export function ComparativoSection() {
   const [profileLoading, setProfileLoading] = useState(true)
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<CompareResponse['result'] | null>(null)
+  // Sprint 5.0.2.f — compras mensais (gera créditos PIS/COFINS no Real)
+  const [comprasMes, setComprasMes] = useState('0')
+  const [comprasDetectadas, setComprasDetectadas] = useState<{
+    mensalMedia: number
+    percentSobreReceita: number
+    fornecedores: number
+  } | null>(null)
 
   // Carrega perfil pra pegar CNAE + estado + anexo + margem
   useEffect(() => {
@@ -92,6 +100,24 @@ export function ComparativoSection() {
       })
       .catch(() => {})
       .finally(() => setProfileLoading(false))
+  }, [currentEmpresaId])
+
+  // Sprint 5.0.2.f — auto-detect compras das Transactions
+  useEffect(() => {
+    if (!currentEmpresaId) return
+    fetch(`/api/empresas/${currentEmpresaId}/detectar-compras`, { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d) return
+        if (d.totalCompras12m > 0) {
+          setComprasDetectadas({
+            mensalMedia: d.comprasMensalMedia,
+            percentSobreReceita: d.percentSobreReceita,
+            fornecedores: d.fornecedoresDetectados,
+          })
+        }
+      })
+      .catch(() => {})
   }, [currentEmpresaId])
 
   const cnaeEntry = cnae ? findCNAE(cnae) : null
@@ -128,6 +154,8 @@ export function ComparativoSection() {
           estado,
           hasICMS: derived.hasICMS,
           hasISS: derived.hasISS,
+          comprasMes: Number(comprasMes) || 0,
+          cnaeCode: cnae,
         }),
       })
       const data: CompareResponse = await res.json().catch(() => ({}) as CompareResponse)
@@ -224,6 +252,32 @@ export function ComparativoSection() {
                 onChange={(e) => setReceita(e.target.value)}
                 placeholder="100000"
               />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs">Compras mensais (R$)</label>
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                value={comprasMes}
+                onChange={(e) => setComprasMes(e.target.value)}
+                placeholder="0"
+              />
+              <p className="text-[10px] text-zinc-500">
+                Insumos/embalagens/mercadorias. Gera crédito PIS+COFINS 9,25% no Lucro Real.
+              </p>
+              {comprasDetectadas && comprasDetectadas.mensalMedia > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setComprasMes(String(Math.round(comprasDetectadas.mensalMedia)))}
+                  className="text-[11px] text-emerald-700 hover:underline flex items-center gap-1"
+                >
+                  <Sparkles className="h-3 w-3" />
+                  Detectado nas suas transações: R$ {Math.round(comprasDetectadas.mensalMedia).toLocaleString('pt-BR')}/mês
+                  ({(comprasDetectadas.percentSobreReceita * 100).toFixed(0)}% da receita,{' '}
+                  {comprasDetectadas.fornecedores} fornecedores)
+                </button>
+              )}
             </div>
             <div className="space-y-1.5">
               <label className="text-xs">Margem real declarada (%)</label>
@@ -342,25 +396,43 @@ function RegimeCard({ row, highlight }: { row: RegimeRow; highlight: boolean }) 
         highlight
           ? 'border-emerald-300 bg-emerald-50/40'
           : !row.aplicavel
-            ? 'border-zinc-200 bg-zinc-50/60 opacity-70'
+            ? 'border-zinc-300 bg-zinc-50'
             : ''
       }
     >
       <CardContent className="py-5">
         <div className="flex items-center justify-between mb-3">
-          <p className="text-sm font-semibold text-zinc-900">{REGIME_LABEL[row.regime]}</p>
+          <p
+            className={
+              'text-sm font-semibold ' + (row.aplicavel ? 'text-zinc-900' : 'text-zinc-500')
+            }
+          >
+            {REGIME_LABEL[row.regime]}
+          </p>
           {highlight && (
             <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
               <TrendingDown className="h-3 w-3 mr-1" />
               Melhor
             </Badge>
           )}
+          {!row.aplicavel && (
+            <Badge variant="outline" className="text-[10px] text-zinc-600 border-zinc-300">
+              Não aplicável
+            </Badge>
+          )}
         </div>
 
         {!row.aplicavel ? (
-          <div className="text-xs text-zinc-500 flex items-start gap-1.5">
-            <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-            <span>{row.motivoNaoAplicavel ?? 'Não aplicável'}</span>
+          <div className="space-y-1.5">
+            <div className="text-xs text-zinc-700 flex items-start gap-1.5">
+              <XCircle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-zinc-400" />
+              <span>{row.motivoNaoAplicavel ?? 'Não aplicável'}</span>
+            </div>
+            {row.baseLegal && (
+              <p className="text-[10px] text-zinc-500 ml-5">
+                Base legal: <span className="font-mono">{row.baseLegal}</span>
+              </p>
+            )}
           </div>
         ) : (
           <>

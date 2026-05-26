@@ -49,6 +49,12 @@ function makeData(overrides?: Partial<CompanyTaxAnalysisData>): CompanyTaxAnalys
       totalPagoEstimado: 144_000,
       aliquotaEfetivaAtual: 12,
     },
+    compras: {
+      total12m: 360_000,
+      mensalMedia: 30_000,
+      percentSobreReceita: 0.3,
+      fornecedoresDetectados: 5,
+    },
     ...overrides,
   }
 }

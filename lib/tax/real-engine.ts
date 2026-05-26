@@ -16,8 +16,14 @@ export interface RealCalculationInput {
   estado?: string | null
   hasICMS: boolean
   hasISS: boolean
-  // Créditos PIS/COFINS dedutíveis (insumos, energia, aluguel, etc).
-  // Default 0 — usuário pode preencher quando souber.
+  // Sprint 5.0.2.f — Compras do mês (insumos, embalagens, mercadorias, etc).
+  // Quando informado, calcula CRÉDITOS PIS/COFINS automaticamente:
+  //   creditoPIS = comprasMes × 1,65%
+  //   creditoCOFINS = comprasMes × 7,6%
+  // Lei 10.637/2002 art. 3º + Lei 10.833/2003 art. 3º.
+  comprasMes?: number
+  // Créditos PIS/COFINS em VALOR DIRETO (R$). Override do auto-cálculo via
+  // comprasMes — pra casos avançados onde user já calculou o crédito real.
   creditosPIS?: number
   creditosCOFINS?: number
 }
@@ -67,13 +73,28 @@ export function calculateReal(input: RealCalculationInput): RealCalculationResul
 
   const csll = round2(lucroReal * REAL_ALIQUOTAS.CSLL)
 
-  // PIS/COFINS não-cumulativo com desconto de créditos
+  // PIS/COFINS não-cumulativo com desconto de créditos.
+  // Sprint 5.0.2.f — créditos AUTO de compras OU manuais em R$.
   const pisBruto = round2(input.receitaBrutaMes * REAL_ALIQUOTAS.PIS)
   const cofinsBruto = round2(input.receitaBrutaMes * REAL_ALIQUOTAS.COFINS)
-  const pisCreditos = round2(input.creditosPIS ?? 0)
-  const cofinsCreditos = round2(input.creditosCOFINS ?? 0)
+
+  // Override em R$ tem prioridade; senão calcula de comprasMes
+  const comprasMes = input.comprasMes ?? 0
+  const pisCreditosAuto = round2(comprasMes * REAL_ALIQUOTAS.PIS)
+  const cofinsCreditosAuto = round2(comprasMes * REAL_ALIQUOTAS.COFINS)
+
+  const pisCreditos = round2(input.creditosPIS ?? pisCreditosAuto)
+  const cofinsCreditos = round2(input.creditosCOFINS ?? cofinsCreditosAuto)
   const pis = round2(Math.max(0, pisBruto - pisCreditos))
   const cofins = round2(Math.max(0, cofinsBruto - cofinsCreditos))
+
+  // Warning quando user não informa compras (Lucro Real sem créditos é
+  // artificialmente caro — sinal claro pra UI mostrar)
+  if (comprasMes === 0 && pisCreditos === 0 && cofinsCreditos === 0) {
+    warnings.push(
+      '⚠️ Sem compras informadas — créditos PIS/COFINS não-cumulativos NÃO aplicados (Lei 10.637/02 + 10.833/03). Lucro Real pode ficar mais barato ao informar custos.',
+    )
+  }
 
   const icms = input.hasICMS
     ? round2(input.receitaBrutaMes * getICMSAliquota(input.estado))

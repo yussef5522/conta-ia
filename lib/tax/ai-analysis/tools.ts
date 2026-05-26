@@ -217,6 +217,11 @@ export const TAX_ANALYSIS_TOOLS: ClaudeTool[] = [
         anexoSimples: { type: 'string', enum: ['ANEXO_I', 'ANEXO_II', 'ANEXO_III', 'ANEXO_IV', 'ANEXO_V'] },
         folha12m: { type: 'number', description: 'Pra Fator R (Anexo III/V)' },
         margemRealPercent: { type: 'number', description: 'Margem declarada (Lucro Real)' },
+        comprasMes: {
+          type: 'number',
+          description:
+            'Compras mensais (insumos/embalagens/mercadorias). Gera créditos PIS/COFINS 9,25% no Lucro Real (Lei 10.637/02 + 10.833/03). SEMPRE informe quando disponível.',
+        },
         atividade: {
           type: 'string',
           enum: [
@@ -294,6 +299,7 @@ function executeCalculateRegime(input: ToolInput) {
   const rbaAcumulada = Number(input.rbaAcumulada ?? receitaMensal * 12)
   const folha12m = Number(input.folha12m ?? 0)
   const margemRealPercent = Number(input.margemRealPercent ?? 15)
+  const comprasMes = Number(input.comprasMes ?? 0)
   const atividade = (input.atividade as string) ?? 'SERVICOS'
   const estado = (input.estado as string) ?? 'SP'
   const hasICMS = Boolean(input.hasICMS ?? false)
@@ -345,13 +351,14 @@ function executeCalculateRegime(input: ToolInput) {
     }
   }
 
-  // LUCRO_REAL
+  // LUCRO_REAL — comprasMes gera créditos PIS/COFINS automaticamente
   const r = calculateReal({
     receitaBrutaMes: receitaMensal,
     margemRealPercent,
     estado,
     hasICMS,
     hasISS,
+    comprasMes,
   })
   return {
     regime,

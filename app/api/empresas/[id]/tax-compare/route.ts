@@ -44,6 +44,11 @@ export async function POST(request: NextRequest, { params }: Params) {
       hasISS: data.hasISS,
       creditosPIS: data.creditosPIS,
       creditosCOFINS: data.creditosCOFINS,
+      // Sprint 5.0.2.f
+      comprasMes: data.comprasMes,
+      cnaeCode: data.cnaeCode ?? profile?.cnae ?? null,
+      hasSocioPJ: data.hasSocioPJ,
+      hasDebitos: data.hasDebitos,
     })
 
     return NextResponse.json({

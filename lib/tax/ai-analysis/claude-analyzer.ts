@@ -405,6 +405,15 @@ export function buildAnalysisContext(data: CompanyTaxAnalysisData): string {
           `${i + 1}. ${f.nome} (${f.categoria}) — ${fmt(f.valor12m)} em ${f.transacoes} tx`,
       ),
     '',
+    '### COMPRAS DETECTADAS (Sprint 5.0.2.f — geram créditos PIS/COFINS no Lucro Real)',
+    `Total 12m: ${fmt(data.compras.total12m)}`,
+    `Mensal média: ${fmt(data.compras.mensalMedia)}`,
+    `% sobre receita: ${(data.compras.percentSobreReceita * 100).toFixed(1)}%`,
+    `Fornecedores únicos: ${data.compras.fornecedoresDetectados}`,
+    data.compras.total12m === 0
+      ? '⚠️ Nenhuma compra detectada — usar `comprasMes: 0` no calculate_regime (Lucro Real ficará caro sem créditos).'
+      : `✅ Use **comprasMes: ${Math.round(data.compras.mensalMedia)}** ao chamar calculate_regime para LUCRO_REAL.`,
+    '',
     '## IMPOSTOS DETECTADOS NAS TRANSAÇÕES',
     data.impostosAtual.detectados.length === 0
       ? 'Nenhum imposto identificado pelas descrições/categorias das transações.'
@@ -421,7 +430,7 @@ export function buildAnalysisContext(data: CompanyTaxAnalysisData): string {
     'Faça análise tributária COMPLETA dessa empresa usando os dados REAIS acima:',
     '',
     '1. RESUMO EXECUTIVO — cenário atual, imposto pago, alíquota efetiva, economia potencial total/ano',
-    '2. COMPARATIVO 3 REGIMES — USE a tool `calculate_regime` pra Simples + Presumido + Real, baseado na receita média mensal e dados reais. Inclua tradeoffs.',
+    '2. COMPARATIVO 3 REGIMES — USE a tool `calculate_regime` pra Simples + Presumido + Real, baseado na receita média mensal. Para Lucro Real passe SEMPRE `comprasMes` (já detectado acima). Se receita anual projetada > R$ 4,8M, Simples é NÃO APLICÁVEL (LC 123/06 art. 3º) — não recomende. Se > R$ 78M, Presumido também é NÃO APLICÁVEL (Lei 9.718 art. 13).',
     '3. OPORTUNIDADES — use `get_knowledge` pra citar leis específicas. Quantifique CADA UMA em R$/ano.',
     '4. BENEFÍCIOS ESPECÍFICOS — use `get_knowledge` topic="beneficios-fiscais" + topic relevante ao ramo (ex: monofásico se restaurante). PERSE, ICMS-ST, Fator R.',
     '5. BENCHMARK GRANDES REDES — use `get_benchmark_redes` com o ramo. Mostre como Madero/Smart Fit/Renner fazem e adaptação prática pra ESSA empresa.',

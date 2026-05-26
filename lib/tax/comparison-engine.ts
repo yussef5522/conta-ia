@@ -10,17 +10,19 @@ import {
   calculateSimples,
   type SimplesCalculationResult,
 } from './simples-engine'
-import {
-  SIMPLES_LIMITE_RBA_2026,
-  type SimplesAnexo,
-} from './simples-nacional-tables'
+import type { SimplesAnexo } from './simples-nacional-tables'
 import {
   calculatePresumido,
-  PRESUMIDO_LIMITE_RBA_2026,
   type PresumidoCalculationResult,
 } from './presumido-engine'
 import type { AtividadePresumido } from './lucro-presumido-tables'
 import { calculateReal, type RealCalculationResult } from './real-engine'
+import {
+  validateSimplesNacional,
+  validateLucroPresumido,
+  calcularRBAProjecada,
+} from './regime-validators'
+import { deriveActivityFromCNAE } from './derive-activity-from-cnae'
 
 export type RegimeKey = 'SIMPLES_NACIONAL' | 'LUCRO_PRESUMIDO' | 'LUCRO_REAL'
 
@@ -40,12 +42,21 @@ export interface ComparisonInput {
   hasISS: boolean
   creditosPIS?: number
   creditosCOFINS?: number
+  // Sprint 5.0.2.f — compras pra créditos PIS/COFINS automáticos (Real)
+  comprasMes?: number
+  // CNAE pra validação de regimes vedados + projeção RBA
+  cnaeCode?: string | null
+  // Flags adicionais de impedimento Simples (LC 123/06 art. 17)
+  hasSocioPJ?: boolean
+  hasDebitos?: boolean
 }
 
 export interface RegimeRow {
   regime: RegimeKey
   aplicavel: boolean
   motivoNaoAplicavel?: string
+  // Sprint 5.0.2.f — citação da lei que impede o regime (LC 123/06 art. 3º, etc)
+  baseLegal?: string
   total: number
   aliquotaEfetiva: number
   totalAnual: number // = total × 12 (estimativa)
@@ -79,19 +90,38 @@ function row(opts: Partial<RegimeRow> & { regime: RegimeKey }): RegimeRow {
 }
 
 export function compareRegimes(input: ComparisonInput): ComparisonResult {
-  // 1. Simples
+  // Sprint 5.0.2.f — RBA PROJECADA pra validação de limite.
+  // Quando user simula "vou faturar X/mês", a projeção (X × 12) é mais
+  // honesta que o RBA histórico do banco (que pode estar baixo em empresa nova).
+  const rbaProjecada = calcularRBAProjecada(input.rbaAcumulada, input.receitaBrutaMes)
+
+  // Se não foi passada atividade explícita mas tem CNAE, deriva automaticamente
+  const atividadeDerivada = input.cnaeCode
+    ? deriveActivityFromCNAE(input.cnaeCode).presumidoAtividade
+    : input.atividade
+  const atividade = input.atividade ?? atividadeDerivada
+
+  // 1. Simples — valida ANTES de calcular
+  const validacaoSimples = validateSimplesNacional({
+    rbaProjecada12m: rbaProjecada,
+    cnaeCode: input.cnaeCode,
+    hasSocioPJ: input.hasSocioPJ,
+    hasDebitos: input.hasDebitos,
+  })
+
   let simplesRow: RegimeRow
-  if (!input.anexoSimples) {
+  if (!validacaoSimples.aplicavel) {
+    simplesRow = row({
+      regime: 'SIMPLES_NACIONAL',
+      aplicavel: false,
+      motivoNaoAplicavel: validacaoSimples.motivoNaoAplicavel,
+      baseLegal: validacaoSimples.baseLegal,
+    })
+  } else if (!input.anexoSimples) {
     simplesRow = row({
       regime: 'SIMPLES_NACIONAL',
       aplicavel: false,
       motivoNaoAplicavel: 'Anexo do Simples não informado',
-    })
-  } else if (input.rbaAcumulada + input.receitaBrutaMes > SIMPLES_LIMITE_RBA_2026) {
-    simplesRow = row({
-      regime: 'SIMPLES_NACIONAL',
-      aplicavel: false,
-      motivoNaoAplicavel: `Faturamento R$ ${(input.rbaAcumulada + input.receitaBrutaMes).toLocaleString('pt-BR')} excede teto Simples (R$ 4,8M)`,
     })
   } else {
     const det = calculateSimples({
@@ -110,17 +140,23 @@ export function compareRegimes(input: ComparisonInput): ComparisonResult {
     }
   }
 
-  // 2. Presumido
+  // 2. Presumido — valida ANTES de calcular
+  const validacaoPresumido = validateLucroPresumido({
+    rbaProjecada12m: rbaProjecada,
+    cnaeCode: input.cnaeCode,
+  })
+
   let presumidoRow: RegimeRow
-  if (input.rbaAcumulada + input.receitaBrutaMes > PRESUMIDO_LIMITE_RBA_2026) {
+  if (!validacaoPresumido.aplicavel) {
     presumidoRow = row({
       regime: 'LUCRO_PRESUMIDO',
       aplicavel: false,
-      motivoNaoAplicavel: `Faturamento excede limite Lucro Presumido (R$ 78M)`,
+      motivoNaoAplicavel: validacaoPresumido.motivoNaoAplicavel,
+      baseLegal: validacaoPresumido.baseLegal,
     })
   } else {
     const det = calculatePresumido({
-      atividade: input.atividade,
+      atividade,
       receitaBrutaMes: input.receitaBrutaMes,
       rbaAcumulada: input.rbaAcumulada,
       estado: input.estado,
@@ -137,13 +173,14 @@ export function compareRegimes(input: ComparisonInput): ComparisonResult {
     }
   }
 
-  // 3. Real (sempre aplicável)
+  // 3. Real (sempre aplicável) — com créditos PIS/COFINS automáticos via comprasMes
   const realDet = calculateReal({
     receitaBrutaMes: input.receitaBrutaMes,
     margemRealPercent: input.margemRealPercent,
     estado: input.estado,
     hasICMS: input.hasICMS,
     hasISS: input.hasISS,
+    comprasMes: input.comprasMes,
     creditosPIS: input.creditosPIS,
     creditosCOFINS: input.creditosCOFINS,
   })

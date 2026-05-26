@@ -48,6 +48,12 @@ function makeData(): CompanyTaxAnalysisData {
       totalPagoEstimado: 0,
       aliquotaEfetivaAtual: 0,
     },
+    compras: {
+      total12m: 0,
+      mensalMedia: 0,
+      percentSobreReceita: 0,
+      fornecedoresDetectados: 0,
+    },
   }
 }
 

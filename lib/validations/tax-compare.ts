@@ -33,6 +33,11 @@ export const taxCompareSchema = z.object({
   hasISS: z.boolean().default(false),
   creditosPIS: z.coerce.number().min(0).optional(),
   creditosCOFINS: z.coerce.number().min(0).optional(),
+  // Sprint 5.0.2.f
+  comprasMes: z.coerce.number().min(0).optional(),
+  cnaeCode: z.string().max(20).nullable().optional(),
+  hasSocioPJ: z.boolean().optional(),
+  hasDebitos: z.boolean().optional(),
 })
 
 export type TaxCompareInput = z.infer<typeof taxCompareSchema>

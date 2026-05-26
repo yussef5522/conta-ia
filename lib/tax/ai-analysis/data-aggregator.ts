@@ -13,6 +13,7 @@
 
 import { prisma } from '@/lib/db'
 import { findCNAE, expertiseForCNAE, type Ramo } from '@/lib/tax/expertise'
+import { detectComprasFromTransactions } from '@/lib/tax/detect-compras'
 
 export interface CompanyTaxAnalysisData {
   companyId: string
@@ -71,6 +72,14 @@ export interface CompanyTaxAnalysisData {
     }>
     totalPagoEstimado: number
     aliquotaEfetivaAtual: number
+  }
+
+  // Sprint 5.0.2.f — compras detectadas (geram créditos PIS/COFINS no Real)
+  compras: {
+    total12m: number
+    mensalMedia: number
+    percentSobreReceita: number
+    fornecedoresDetectados: number
   }
 }
 
@@ -291,6 +300,11 @@ export async function loadCompanyTaxData(
   )
   const { impostosDetectados, ...financial } = aggregated
 
+  // Sprint 5.0.2.f — detecta compras (créditos PIS/COFINS no Lucro Real)
+  const comprasDetect = detectComprasFromTransactions(
+    transactions as unknown as Parameters<typeof detectComprasFromTransactions>[0],
+  )
+
   const totalPagoEstimado = impostosDetectados.reduce((s, i) => s + i.valor12m, 0)
   const aliquotaEfetivaAtual =
     financial.receitaTotal > 0 ? (totalPagoEstimado / financial.receitaTotal) * 100 : 0
@@ -336,6 +350,15 @@ export async function loadCompanyTaxData(
       detectados: impostosDetectados,
       totalPagoEstimado,
       aliquotaEfetivaAtual,
+    },
+    compras: {
+      total12m: comprasDetect.totalCompras,
+      mensalMedia: comprasDetect.totalCompras / monthsBack,
+      percentSobreReceita:
+        comprasDetect.receitaTotal > 0
+          ? comprasDetect.totalCompras / comprasDetect.receitaTotal
+          : 0,
+      fornecedoresDetectados: comprasDetect.fornecedoresUnicos,
     },
   }
 }
