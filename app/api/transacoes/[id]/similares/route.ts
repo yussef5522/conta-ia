@@ -102,12 +102,57 @@ export async function GET(request: NextRequest, { params }: Params) {
     // Mapa id → date pro preview
     const dateMap = new Map(candidatas.map((c) => [c.id, c.date]))
 
-    const totalAmount = similares.reduce(
+    // Sprint 5.0.2.k+l — STEM fallback: se EXACT/NORMALIZED retornaram 0,
+    // tenta substring do stem (corta no primeiro número 6+ dígitos).
+    let finalSimilares: typeof similares = similares
+    let finalTipoMatch: 'EXACT' | 'NORMALIZED' | 'STEM' = ruleShape.tipoMatch as
+      | 'EXACT'
+      | 'NORMALIZED'
+    let finalPadrao = ruleShape.padrao
+
+    if (similares.length === 0) {
+      const stem = extractDescriptionStem(base.description)
+      if (stem && stem.length >= 4) {
+        const stemUpper = stem.toUpperCase()
+        const stemMatches = candidatas
+          .filter((c) => c.id !== id)
+          .filter((c) => c.categoryId === null)
+          .filter((c) => c.type === base.type)
+          .filter((c) => (c.description ?? '').toUpperCase().includes(stemUpper))
+
+        // Sprint 5.0.2.l — log debug PM2 prod
+        console.log(
+          `[SIMILARES] base="${base.description?.slice(0, 60)}" ` +
+            `tipoMatch_inicial=${ruleShape.tipoMatch} count_inicial=0 ` +
+            `stem="${stem}" stem_matches=${stemMatches.length}`,
+        )
+
+        if (stemMatches.length >= 2) {
+          finalSimilares = stemMatches.map((c) => ({
+            id: c.id,
+            description: c.description,
+            amount: c.amount,
+            type: c.type,
+            bankAccountId: c.bankAccountId,
+            status: c.status,
+            categoryId: c.categoryId,
+          }))
+          finalTipoMatch = 'STEM'
+          finalPadrao = stem
+        }
+      } else {
+        console.log(
+          `[SIMILARES] base="${base.description?.slice(0, 60)}" stem_vazio_ou_curto stem="${stem}"`,
+        )
+      }
+    }
+
+    const totalAmount = finalSimilares.reduce(
       (s, t) => s + Math.abs(t.amount),
       0,
     )
 
-    const preview = similares.slice(0, 5).map((t) => ({
+    const preview = finalSimilares.slice(0, 5).map((t) => ({
       id: t.id,
       description: t.description,
       amount: t.amount,
@@ -116,10 +161,10 @@ export async function GET(request: NextRequest, { params }: Params) {
     }))
 
     return NextResponse.json({
-      total: similares.length,
+      total: finalSimilares.length,
       totalAmount: Math.round(totalAmount * 100) / 100,
-      tipoMatch: ruleShape.tipoMatch,
-      padrao: ruleShape.padrao,
+      tipoMatch: finalTipoMatch,
+      padrao: finalPadrao,
       preview,
     })
   } catch (error) {
