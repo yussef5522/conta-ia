@@ -64,13 +64,27 @@ export function InlineCategorySelect({
         })
         return
       }
+      const data = await res.json().catch(() => ({}))
       const novaCat = novoId
         ? categorias.find((c) => c.id === novoId) ?? null
         : null
       onUpdated(novoId, novaCat)
+
+      // Sprint 5.0.2.m — Vendor Memory: backend pode ter aprendido fornecedor
+      // e aplicado retroativamente em outras pendentes. Mostra count no toast.
+      const vm: { anchor: string | null; retroactiveCount: number } | undefined =
+        data?.vendorMemory
+      let description = novaCat?.name ?? 'Sem categoria'
+      if (vm?.anchor && vm.retroactiveCount > 0) {
+        description = `+${vm.retroactiveCount} ${vm.anchor} categorizadas automaticamente`
+      } else if (vm?.anchor) {
+        description = `Próximas "${vm.anchor}" serão automáticas · ${novaCat?.name ?? ''}`
+      }
+
       toast({
         title: 'Categoria atualizada',
-        description: novaCat?.name ?? 'Sem categoria',
+        description,
+        duration: vm?.anchor ? 4500 : 2500,
       })
       setOpen(false)
     } catch {

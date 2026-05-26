@@ -1,7 +1,8 @@
 // Tipos do Engine de Aprendizado — Fase 3 Etapa 1.
 // Compartilhados entre normalize/learn/predict/similar/apply.
 
-export type TipoMatch = 'EXACT' | 'NORMALIZED'
+// Sprint 5.0.2.m — CONTAINS adicionado pra Vendor Memory (anchor word).
+export type TipoMatch = 'EXACT' | 'NORMALIZED' | 'CONTAINS'
 
 // Fonte do trigger da regra: como o user criou
 export type RuleFonte = 'MANUAL' | 'CLAUDE'

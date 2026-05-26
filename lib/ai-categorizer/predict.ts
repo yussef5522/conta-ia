@@ -26,15 +26,19 @@ const NORMALIZED_PENALTY = 0.9
 
 // Index O(1) de regras por padrão.
 //
-// Duas estruturas pra busca dual:
+// 3 estruturas pra busca em camadas:
 //   exactByPattern: lookup direto via descrição original normalizada (case+acentos)
 //   normalizedByPattern: lookup via descrição com strip prefixo+data
+//   containsRules: array (Sprint 5.0.2.m) — Vendor Memory (anchor word).
+//     CONTAINS roda em loop O(N×M) mas N é pequeno (<100 regras CONTAINS
+//     típicas por empresa) e M é pequeno (~500 tx por OFX). Trivial.
 //
 // Multi-tenant: armazena companyId. Caller deve filtrar antes de buildRuleIndex.
 export interface RuleIndex {
   companyId: string
   exactByPattern: Map<string, RuleSnapshot>
   normalizedByPattern: Map<string, RuleSnapshot>
+  containsRules: RuleSnapshot[]
 }
 
 export function buildRuleIndex(
@@ -47,6 +51,7 @@ export function buildRuleIndex(
 
   const exactByPattern = new Map<string, RuleSnapshot>()
   const normalizedByPattern = new Map<string, RuleSnapshot>()
+  const containsRules: RuleSnapshot[] = []
 
   for (const rule of rules) {
     // Defesa em profundidade: NUNCA indexar regra de outra empresa.
@@ -60,16 +65,29 @@ export function buildRuleIndex(
       exactByPattern.set(rule.padrao, rule)
     } else if (rule.tipoMatch === 'NORMALIZED') {
       normalizedByPattern.set(rule.padrao, rule)
+    } else if ((rule.tipoMatch as string) === 'CONTAINS') {
+      containsRules.push(rule)
     }
-    // Outros tipos (CONTAINS, CNPJ) ignorados nesta Etapa 1
+    // CNPJ ignorado nesta etapa
   }
 
-  return { companyId, exactByPattern, normalizedByPattern }
+  // Ordena CONTAINS por (vezesAplicada desc → padrão length desc):
+  //  - regras mais usadas batem primeiro (heurística "high confidence")
+  //  - padrão mais longo desempata (mais específico ganha)
+  containsRules.sort((a, b) => {
+    if (b.vezesAplicada !== a.vezesAplicada) {
+      return b.vezesAplicada - a.vezesAplicada
+    }
+    return b.padrao.length - a.padrao.length
+  })
+
+  return { companyId, exactByPattern, normalizedByPattern, containsRules }
 }
 
 // Predição: retorna a melhor regra que casa com a transação OU null.
 //
-// Prioridade EXACT > NORMALIZED. Se nenhum match → null.
+// Prioridade EXACT > NORMALIZED > CONTAINS (Sprint 5.0.2.m Vendor Memory).
+// Se nenhum match → null.
 export function predictCategory(
   tx: { description: string },
   index: RuleIndex,
@@ -92,6 +110,18 @@ export function predictCategory(
       1.0,
     )
     return predictionFromRule(normRule, 'NORMALIZED', adjustedConfidence)
+  }
+
+  // 3. Sprint 5.0.2.m — Tentativa CONTAINS (Vendor Memory).
+  //    Substring case-insensitive. Linear no número de regras CONTAINS
+  //    (já ordenadas por vezesAplicada desc + length desc).
+  if (index.containsRules.length > 0) {
+    const descUpper = tx.description.toUpperCase()
+    for (const rule of index.containsRules) {
+      if (descUpper.includes(rule.padrao.toUpperCase())) {
+        return predictionFromRule(rule, 'CONTAINS', rule.confianca)
+      }
+    }
   }
 
   return null

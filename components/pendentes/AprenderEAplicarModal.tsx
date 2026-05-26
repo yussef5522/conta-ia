@@ -127,13 +127,16 @@ export function AprenderEAplicarModal({
         return
       }
       const similarApplied = data.similarApplied ?? 0
+      // Sprint 5.0.2.m — Vendor Memory adicional via anchor word
+      const vm: { anchor: string | null; retroactiveCount: number } | undefined =
+        data.vendorMemory
+      const totalAffected = 1 + similarApplied + (vm?.retroactiveCount ?? 0)
       const affected = [base.id, ...(similares?.preview ?? []).map((p) => p.id)]
-      // similarApplied pode ser maior que preview (até 5) — caller refetch também
       onApplied({
         affectedTxIds: applyToSimilar
           ? [base.id, ...(similares?.preview ?? []).map((p) => p.id)]
           : [base.id],
-        total: 1 + similarApplied,
+        total: totalAffected,
       })
 
       const ruleMsg = data.ruleId
@@ -141,18 +144,26 @@ export function AprenderEAplicarModal({
           ? 'Regra aprendida 🤖'
           : 'Regra reforçada 🤖'
         : ''
+      // Sprint 5.0.2.m — descrição inclui vendor memory quando aplicável
+      const vmMsg =
+        vm && vm.anchor && vm.retroactiveCount > 0
+          ? `+${vm.retroactiveCount} ${vm.anchor} categorizadas automaticamente`
+          : vm && vm.anchor
+            ? `Próximas com "${vm.anchor}" serão categorizadas automaticamente`
+            : ''
+      const description = [ruleMsg, vmMsg].filter(Boolean).join(' · ')
 
       if (applyToSimilar && similarApplied > 0) {
         toast({
           variant: 'success',
-          title: `${1 + similarApplied} classificadas como ${categoria.name}`,
-          description: ruleMsg || `Aplicado em ${similarApplied} similares.`,
+          title: `${totalAffected} classificadas como ${categoria.name}`,
+          description: description || `Aplicado em ${similarApplied} similares.`,
         })
       } else {
         toast({
           variant: 'success',
           title: `Classificada como ${categoria.name}`,
-          description: ruleMsg || 'Sem similares pendentes.',
+          description: description || 'Sem similares pendentes.',
         })
       }
       onOpenChange(false)

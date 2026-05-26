@@ -22,6 +22,7 @@ import { findSimilarTransactions } from './similar'
 import { classifyForImport } from './pipeline'
 import { resolveCategoryFromHint } from './pipeline'
 import type { SetorPatternSnapshot } from '@/lib/categorization/match-setor-pattern'
+import { autoMemorizeVendor } from '@/lib/categorization/auto-memorize-vendor'
 import { invalidateCachedSuggestion } from './claude-cache'
 import type {
   Prediction,
@@ -58,6 +59,11 @@ export interface ClassifyResult {
   ruleCreated: boolean // true se foi criação, false se foi reuso
   // Quando user overrideu sugestão Claude
   claudeCacheInvalidated: boolean
+  // Sprint 5.0.2.m — Vendor Memory (auto-criação de regra CONTAINS por anchor)
+  vendorMemory: {
+    anchor: string | null
+    retroactiveCount: number
+  }
 }
 
 export async function classifyWithLearning(
@@ -295,12 +301,43 @@ export async function classifyWithLearning(
     },
   )
 
+  // Sprint 5.0.2.m — Memória Automática de Fornecedor (sempre, silenciosa).
+  // Roda DEPOIS do classify-and-apply normal pra cobrir tx similares por anchor
+  // que escaparam dos matches EXACT/NORMALIZED/CONTAINS-stem.
+  // Falha silenciosa: erro aqui NÃO bloqueia retorno.
+  let vendorMemory: { anchor: string | null; retroactiveCount: number } = {
+    anchor: null,
+    retroactiveCount: 0,
+  }
+  try {
+    const memResult = await autoMemorizeVendor({
+      companyId: ctx.company.id,
+      baseTransactionId: input.transactionId,
+      baseDescription: base.description,
+      categoryId: input.categoryId,
+      baseType: base.type,
+    })
+    vendorMemory = {
+      anchor: memResult.anchor,
+      retroactiveCount: memResult.retroactiveCount,
+    }
+    if (memResult.anchor) {
+      console.log(
+        `[AUTO_MEMORIZE] (classifyWithLearning) anchor="${memResult.anchor}" ` +
+          `retroactive=${memResult.retroactiveCount} ruleCreated=${memResult.ruleCreated}`,
+      )
+    }
+  } catch (e) {
+    console.error('[AUTO_MEMORIZE] erro em classifyWithLearning:', e)
+  }
+
   return {
     confirmed: 1,
     similarApplied,
     ruleId,
     ruleCreated,
     claudeCacheInvalidated,
+    vendorMemory,
   }
 }
 

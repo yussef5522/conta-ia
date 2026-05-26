@@ -47,5 +47,10 @@ export function confidenceColors(c: number): { bg: string; text: string } {
 }
 
 export function fonteLabel(f: string): string {
-  return f === 'CLAUDE' ? 'IA' : 'Manual'
+  // Sprint 5.0.2.m — AUTO_FROM_MANUAL é criada em background quando user
+  // categoriza manualmente (sem modal). Label diferencia das criadas via
+  // modal "Aprender e aplicar".
+  if (f === 'CLAUDE') return 'IA'
+  if (f === 'AUTO_FROM_MANUAL') return 'Aprendido'
+  return 'Manual'
 }

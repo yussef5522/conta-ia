@@ -6,6 +6,7 @@ import { getAuthContext } from '@/lib/auth/rbac'
 import { logAudit, diffFields } from '@/lib/audit'
 import { handleApiError } from '@/lib/api/handle-error'
 import { recordRuleOverride } from '@/lib/ai-categorizer/apply'
+import { autoMemorizeVendor } from '@/lib/categorization/auto-memorize-vendor'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -134,7 +135,44 @@ export async function PUT(request: NextRequest, { params }: Params) {
       }
     }
 
-    return NextResponse.json({ transacao })
+    // Sprint 5.0.2.m — Memória Automática de Fornecedor (QuickBooks-style).
+    // Sempre que user categoriza manualmente (categoryId vem no body), extrai
+    // anchor word, cria/atualiza regra CONTAINS silenciosa, aplica retroativo.
+    let vendorMemory: { anchor: string | null; retroactiveCount: number } = {
+      anchor: null,
+      retroactiveCount: 0,
+    }
+    if (
+      data.categoryId !== undefined &&
+      data.categoryId !== null &&
+      data.categoryId !== antiga.categoryId
+    ) {
+      try {
+        const result = await autoMemorizeVendor({
+          companyId: antiga.bankAccount.companyId,
+          baseTransactionId: id,
+          baseDescription: transacao.description,
+          categoryId: data.categoryId,
+          baseType: transacao.type,
+        })
+        vendorMemory = {
+          anchor: result.anchor,
+          retroactiveCount: result.retroactiveCount,
+        }
+        if (result.anchor) {
+          console.log(
+            `[AUTO_MEMORIZE] company=${antiga.bankAccount.companyId} ` +
+              `anchor="${result.anchor}" retroactive=${result.retroactiveCount} ` +
+              `ruleCreated=${result.ruleCreated}`,
+          )
+        }
+      } catch (e) {
+        // Silencioso — falha de memória não bloqueia categorização
+        console.error('[AUTO_MEMORIZE] erro:', e)
+      }
+    }
+
+    return NextResponse.json({ transacao, vendorMemory })
   } catch (error) {
     return handleApiError(error)
   }
