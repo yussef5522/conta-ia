@@ -16,6 +16,7 @@ import { prisma } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
 import type { AuthContext } from '@/lib/auth/rbac'
 import { buildNewRule, updateRuleOnOverride } from './learn'
+import { extractDescriptionStem } from '@/lib/rules/extract-stem'
 import { buildRuleIndex, predictCategory, type RuleIndex } from './predict'
 import { findSimilarTransactions } from './similar'
 import { classifyForImport } from './pipeline'
@@ -153,6 +154,7 @@ export async function classifyWithLearning(
   // 4. Se applyToSimilar=true E temos regra: busca pendentes similares
   let similarApplied = 0
   let similarTxIds: string[] = []
+  let stemRule: { id: string; padrao: string } | null = null
   if (input.applyToSimilar && ruleSnapshot) {
     const candidatas = await fetchPendingCandidates(
       ctx.company.id,
@@ -168,6 +170,52 @@ export async function classifyWithLearning(
     )
     similarTxIds = similares.map((s) => s.id)
     similarApplied = similarTxIds.length
+
+    // Sprint 5.0.2.k — STEM FALLBACK: se EXACT/NORMALIZED não pegou nada
+    // (caso típico: "RECEBIMENTO PIX-PIX_CRED 12345... João Vitor"), tenta
+    // substring do stem (remove CPF/CNPJ/IDs/nomes). Cria regra CONTAINS
+    // separada pra próximos imports.
+    if (similarTxIds.length === 0) {
+      const stem = extractDescriptionStem(base.description)
+      if (stem && stem.length >= 4) {
+        const stemUpper = stem.toUpperCase()
+        const stemMatches = candidatas
+          .filter((c) => c.id !== input.transactionId)
+          .filter((c) => c.categoryId === null)
+          .filter((c) => c.type === base.type)
+          .filter((c) => (c.description ?? '').toUpperCase().includes(stemUpper))
+        if (stemMatches.length >= 2) {
+          similarTxIds = stemMatches.map((s) => s.id)
+          similarApplied = similarTxIds.length
+
+          // Cria/upsert regra CONTAINS com padrao = stem
+          const containsRule = await prisma.aiLearningRule.upsert({
+            where: {
+              companyId_tipoMatch_padrao: {
+                companyId: ctx.company.id,
+                tipoMatch: 'CONTAINS',
+                padrao: stem,
+              },
+            },
+            create: {
+              companyId: ctx.company.id,
+              tipoMatch: 'CONTAINS',
+              padrao: stem,
+              categoryId: input.categoryId,
+              confianca: 1.0,
+              fonte: 'MANUAL',
+              isActive: true,
+            },
+            update: {
+              isActive: true,
+              categoryId: input.categoryId,
+              confianca: 1.0,
+            },
+          })
+          stemRule = { id: containsRule.id, padrao: stem }
+        }
+      }
+    }
   }
 
   // 5. ATOMIC: update transaction base + update similares + audit log
@@ -186,6 +234,11 @@ export async function classifyWithLearning(
 
     // Update similares
     if (similarTxIds.length > 0 && ruleSnapshot) {
+      // Sprint 5.0.2.k — stemRule pode ter sido criada (substring CONTAINS);
+      // se sim, é ela que atribuiu as similares.
+      const effectiveRuleId = stemRule ? stemRule.id : ruleSnapshot.id
+      const effectiveConfianca = stemRule ? 1.0 : ruleSnapshot.confianca
+
       await tx.transaction.updateMany({
         where: {
           id: { in: similarTxIds },
@@ -198,14 +251,13 @@ export async function classifyWithLearning(
           categoryId: input.categoryId,
           status: 'RECONCILED',
           classificationSource: 'RULE',
-          classifiedByRuleId: ruleSnapshot.id,
-          aiConfidence: ruleSnapshot.confianca,
+          classifiedByRuleId: effectiveRuleId,
+          aiConfidence: effectiveConfianca,
         },
       })
 
-      // Atualiza estatística da regra
       await tx.aiLearningRule.update({
-        where: { id: ruleSnapshot.id },
+        where: { id: effectiveRuleId },
         data: { vezesAplicada: { increment: similarTxIds.length } },
       })
     }

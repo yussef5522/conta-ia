@@ -1,13 +1,21 @@
 // GET /api/transacoes/[id]/similares
-// Fase 3 Etapa 1.
+// Fase 3 Etapa 1 + Sprint 5.0.2.k (STEM fallback).
 //
 // Conta + lista preview de transações pendentes COM MESMO PADRÃO que [id].
 // Usado pra mostrar modal "276 similares · aplicar todas?" antes do bulk.
 //
+// Estratégia tripla (ordem):
+//   1. EXACT/NORMALIZED (lib/ai-categorizer Fase 3 Etapa 1)
+//   2. STEM fallback (Sprint 5.0.2.k) — quando 1 retorna 0, tenta substring
+//      do stem (remove CPF/CNPJ/datas/IDs/nomes). Cobre "RECEBIMENTO
+//      PIX-PIX_CRED ... João" onde 150 tx têm mesma estrutura mas CPF/nome
+//      diferentes — sem " - " no meio (não cai no NORMALIZED).
+//
 // Response: {
 //   total: number,
 //   totalAmount: number,
-//   tipoMatch: 'EXACT' | 'NORMALIZED',
+//   tipoMatch: 'EXACT' | 'NORMALIZED' | 'STEM',
+//   padrao: string,
 //   preview: [{ id, description, amount, date }, ... até 5]
 // }
 
@@ -19,6 +27,7 @@ import {
   findSimilarTransactions,
 } from '@/lib/ai-categorizer/similar'
 import { buildNewRule } from '@/lib/ai-categorizer/learn'
+import { extractDescriptionStem } from '@/lib/rules/extract-stem'
 
 interface Params {
   params: Promise<{ id: string }>
