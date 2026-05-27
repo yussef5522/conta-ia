@@ -3,7 +3,7 @@
 import { redirect, notFound } from 'next/navigation'
 import { Header } from '@/components/layout/header'
 import { prisma } from '@/lib/db'
-import { verifyToken } from '@/lib/auth'
+import { verifyToken, COOKIE_NAME } from '@/lib/auth'
 import { ImportExcelClient } from './import-excel-client'
 
 interface Params {
@@ -16,7 +16,7 @@ export default async function ImportExcelPage({ params }: Params) {
   const { id: empresaId } = await params
 
   const { cookies } = await import('next/headers')
-  const token = (await cookies()).get('token')?.value
+  const token = (await cookies()).get(COOKIE_NAME)?.value
   if (!token) redirect('/login')
 
   let user: { sub: string } | null = null
