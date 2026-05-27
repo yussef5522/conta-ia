@@ -62,3 +62,26 @@ export function isUniqueConstraintError(err: unknown): boolean {
     err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002'
   )
 }
+
+/**
+ * Sprint 5.0.2.4 — Decide se uma linha do staging precisa de revisão humana.
+ *
+ * REGRA CORRIGIDA: marcar NEEDS_REVIEW SÓ quando classify.confidence (favorecido)
+ * é baixo. NÃO incluir categoryConfidence — categoria com confidence 0 só
+ * significa "propor nova com nome do CC" (estratégia 4 do mapCategories) —
+ * caminho normal, não justifica skip.
+ *
+ * Sprint 5.0.2.0 ORIGINAL incluía `categoryConfidence < 0.7` no critério →
+ * 46/94 linhas do Cacula viraram NEEDS_REVIEW → /confirm skipou silenciosamente
+ * → R$ 76.405,02 fora do DRE (bug Sprint 5.0.2.4).
+ *
+ * @param favorecidoConfidence Confidence do classifyFavorecido (0-1). Baixo
+ *   significa ambiguidade real (nome que pode ser PF ou PJ, etc).
+ * @param threshold Default 0.7. Configurável pra testes.
+ */
+export function decideStagedUserDecision(
+  favorecidoConfidence: number,
+  threshold = 0.7,
+): 'NEEDS_REVIEW' | 'INCLUDE' {
+  return favorecidoConfidence < threshold ? 'NEEDS_REVIEW' : 'INCLUDE'
+}

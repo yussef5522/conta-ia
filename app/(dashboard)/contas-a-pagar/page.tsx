@@ -51,6 +51,9 @@ interface KPIs {
   countPendente: number
   totalVencido: number
   countVencido: number
+  // Sprint 5.0.2.4 — KPI Pagas (3º card)
+  totalPagas: number
+  countPagas: number
 }
 
 interface Paginacao { total: number; page: number; limit: number; totalPages: number }
@@ -76,6 +79,8 @@ function ContasAPagarInner() {
     countPendente: 0,
     totalVencido: 0,
     countVencido: 0,
+    totalPagas: 0,
+    countPagas: 0,
   })
   const [paginacao, setPaginacao] = useState<Paginacao>({ total: 0, page: 1, limit: 50, totalPages: 1 })
   const [loading, setLoading] = useState(true)
@@ -258,8 +263,8 @@ function ContasAPagarInner() {
 
       {empresaId && (
         <>
-          {/* KPIs */}
-          <div className="grid gap-4 sm:grid-cols-2">
+          {/* KPIs — Sprint 5.0.2.4 adiciona 3º card "Pagas" */}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <Card>
               <CardContent className="py-4">
                 <div className="flex items-center justify-between">
@@ -287,6 +292,22 @@ function ContasAPagarInner() {
                     </p>
                   </div>
                   <AlertCircle className="h-8 w-8 text-red-300" />
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="py-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs uppercase text-muted-foreground">Pagas</p>
+                    <p className="text-2xl font-semibold tabular-nums mt-1 text-emerald-600 dark:text-emerald-400">
+                      {formatBRL(kpis.totalPagas)}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {kpis.countPagas} conta{kpis.countPagas !== 1 ? 's' : ''}
+                    </p>
+                  </div>
+                  <CheckCircle2 className="h-8 w-8 text-emerald-400/40" />
                 </div>
               </CardContent>
             </Card>
