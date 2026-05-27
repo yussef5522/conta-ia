@@ -13,7 +13,14 @@ import {
   PartyPopper,
   Sparkles,
   Wand2,
+  MoreVertical,
 } from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '@/components/ui/dropdown-menu'
 import { VincularTransferenciaModal } from '@/components/pendentes/VincularTransferenciaModal'
 import { AprenderEAplicarModal } from '@/components/pendentes/AprenderEAplicarModal'
 import {
@@ -912,18 +919,9 @@ export function PendentesClient({
                     {operando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
                   </Button>
 
-                  {/* Botão "↔ É transferência" — Sprint 1.7. Pareia com tx em outra conta. */}
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setVincularBase(t)}
-                    disabled={operando}
-                    title="É parte de uma transferência entre suas contas"
-                    className="gap-1.5"
-                  >
-                    <ArrowLeftRight className="h-3.5 w-3.5" />
-                    <span className="hidden sm:inline text-xs">É transferência</span>
-                  </Button>
+                  {/* Sprint 5.0.2.v/w — Botão "↔ É transferência" REMOVIDO inline.
+                      Caso de uso atual = transferências detectadas no /import/staging
+                      (Sprint u). Marcação manual via menu 3 pontinhos abaixo. */}
 
                   {/* Botão "Ignorar" */}
                   <Button
@@ -935,6 +933,30 @@ export function PendentesClient({
                   >
                     <X className="h-3.5 w-3.5" />
                   </Button>
+
+                  {/* Sprint 5.0.2.w — Menu de 3 pontinhos pra ações secundárias */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={operando}
+                        title="Mais opções"
+                        className="h-8 w-8 p-0"
+                      >
+                        <MoreVertical className="h-3.5 w-3.5" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-56">
+                      <DropdownMenuItem
+                        onClick={() => setVincularBase(t)}
+                        className="gap-2"
+                      >
+                        <ArrowLeftRight className="h-4 w-4" />
+                        Marcar como transferência interna
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
                 </div>
                 {/* Sprint 5.0.2.r — Banner Sugerido por IA: SIBLING embaixo
