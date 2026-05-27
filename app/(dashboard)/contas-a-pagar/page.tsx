@@ -56,6 +56,19 @@ import { EditarContaDialog } from '@/components/contas-pagar/EditarContaDialog'
 import { MarcarPagaDialog } from '@/components/contas-pagar/MarcarPagaDialog'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/components/ui/use-toast'
+// Sprint 5.0.3.0b — Power features
+import { SavedViewTabs } from '@/components/contas-pagar/SavedViewTabs'
+import { BulkActionsBar } from '@/components/contas-pagar/BulkActionsBar'
+import { MarkPaidBulkDialog } from '@/components/contas-pagar/MarkPaidBulkDialog'
+import { ExportButton } from '@/components/contas-pagar/ExportButton'
+import { PrintButton } from '@/components/contas-pagar/PrintButton'
+import { useSavedView } from '@/lib/contas-pagar/use-saved-view'
+import {
+  isValidSavedViewId,
+  getSavedView,
+  type SavedViewId,
+  type PayableFilterStateExt,
+} from '@/lib/contas-pagar/saved-views'
 
 interface Empresa {
   id: string
@@ -142,7 +155,37 @@ function ContasAPagarInner() {
   const [editar, setEditar] = useState<PayableRow | null>(null)
   const [markPaid, setMarkPaid] = useState<PayableRow | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<PayableRow | null>(null)
+  // Sprint 5.0.3.0b — bulk action dialogs
+  const [bulkMarkPaidOpen, setBulkMarkPaidOpen] = useState(false)
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const { toast } = useToast()
+
+  // IDs selecionadas (derivado do RowSelection state do @tanstack/react-table)
+  const selectedIds = useMemo(
+    () => Object.keys(selection).filter((k) => selection[k]),
+    [selection],
+  )
+  const selectedCount = selectedIds.length
+
+  // Sprint 5.0.3.0b — Saved view derivado da URL
+  const urlViewParam = searchParams.get('view')
+  const { activeViewId, applyView } = useSavedView({
+    currentFilters: filters as Partial<PayableFilterStateExt>,
+    urlViewParam,
+  })
+
+  function handleSelectView(id: SavedViewId) {
+    const next = applyView(id, new Date())
+    // Mapeia PayableFilterStateExt → PayableFilterState (q preservado)
+    setFilters({
+      q: filters.q, // mantém busca
+      dataDe: next.dataDe,
+      dataAte: next.dataAte,
+      status: next.status,
+      vencidasOnly: next.vencidasOnly,
+    })
+    setPage(1)
+  }
 
   // Carrega empresas
   useEffect(() => {
@@ -218,7 +261,7 @@ function ContasAPagarInner() {
     void fetchItems()
   }, [fetchItems])
 
-  // Sync URL com state (sem provocar reload)
+  // Sync URL com state (sem provocar reload). Inclui ?view= quando ativa.
   useEffect(() => {
     if (!empresaId) return
     const sp = new URLSearchParams()
@@ -228,8 +271,26 @@ function ContasAPagarInner() {
     if (filters.dataAte) sp.set('dataAte', filters.dataAte)
     if (filters.status !== 'PENDING') sp.set('status', filters.status)
     if (filters.vencidasOnly) sp.set('vencidasOnly', 'true')
+    if (activeViewId) sp.set('view', activeViewId)
     router.replace(`?${sp}`, { scroll: false })
-  }, [empresaId, filters, router])
+  }, [empresaId, filters, router, activeViewId])
+
+  // Hydrata view inicial da URL (uma vez, no mount com empresaId)
+  useEffect(() => {
+    if (!empresaId) return
+    const v = searchParams.get('view')
+    if (v && isValidSavedViewId(v)) {
+      const f = getSavedView(v).buildFilters(new Date())
+      setFilters({
+        q: filters.q,
+        dataDe: f.dataDe,
+        dataAte: f.dataAte,
+        status: f.status,
+        vencidasOnly: f.vencidasOnly,
+      })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [empresaId])
 
   function clearFilters() {
     setFilters(EMPTY_FILTERS)
@@ -315,6 +376,53 @@ function ContasAPagarInner() {
     }
   }
 
+  // Sprint 5.0.3.0b — Bulk actions
+  async function executeBulkDelete() {
+    if (selectedIds.length === 0 || !empresaId) return
+    try {
+      const res = await fetch(
+        `/api/empresas/${empresaId}/contas-pagar/bulk`,
+        {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'delete',
+            transactionIds: selectedIds,
+          }),
+        },
+      )
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        toast({
+          variant: 'destructive',
+          title: 'Falha ao excluir em lote',
+          description: data.erro ?? `HTTP ${res.status}`,
+        })
+        return
+      }
+      const data = await res.json()
+      toast({
+        title: `${data.success} contas excluídas`,
+      })
+      setSelection({})
+      void fetchItems()
+    } catch {
+      toast({ variant: 'destructive', title: 'Erro de rede' })
+    }
+  }
+
+  // Query string atual (pro ExportButton montar URL com mesmos filtros)
+  const filtersQS = useMemo(() => {
+    const sp = new URLSearchParams()
+    if (filters.q) sp.set('q', filters.q)
+    if (filters.dataDe) sp.set('dataDe', filters.dataDe)
+    if (filters.dataAte) sp.set('dataAte', filters.dataAte)
+    if (filters.status !== 'PENDING') sp.set('status', filters.status)
+    if (filters.vencidasOnly) sp.set('vencidasOnly', 'true')
+    return sp.toString()
+  }, [filters])
+
   function applyFilterPreset(kind: 'paid' | 'pending' | 'warn3d' | 'overdue') {
     if (kind === 'paid') {
       setFilters({ ...EMPTY_FILTERS, status: 'RECONCILED' })
@@ -357,6 +465,12 @@ function ContasAPagarInner() {
             : 'Selecione uma empresa pra ver as contas a pagar'
         }
       >
+        <ExportButton
+          empresaId={empresaId}
+          filtersQS={filtersQS}
+          disabled={!empresaId}
+        />
+        <PrintButton disabled={!empresaId} />
         <Button size="sm" variant="outline" asChild disabled={!empresaId}>
           <Link
             href={
@@ -378,6 +492,24 @@ function ContasAPagarInner() {
           </Link>
         </Button>
       </Header>
+
+      {/* Sprint 5.0.3.0b — Saved Views tabs */}
+      {empresaId && !loading && (
+        <SavedViewTabs
+          activeViewId={activeViewId}
+          onSelect={handleSelectView}
+        />
+      )}
+
+      {/* Sprint 5.0.3.0b — Bulk actions bar (aparece quando ≥1 selecionada) */}
+      {selectedCount > 0 && (
+        <BulkActionsBar
+          selectedCount={selectedCount}
+          onMarkPaid={() => setBulkMarkPaidOpen(true)}
+          onDelete={() => setBulkDeleteOpen(true)}
+          onClear={() => setSelection({})}
+        />
+      )}
 
       {/* Empresa selector quando há múltiplas */}
       {empresas.length > 1 && (
@@ -591,6 +723,35 @@ function ContasAPagarInner() {
         confirmLabel="Excluir"
         variant="destructive"
         onConfirm={executeDelete}
+      />
+
+      {/* Sprint 5.0.3.0b — Bulk mark paid */}
+      <MarkPaidBulkDialog
+        open={bulkMarkPaidOpen}
+        count={selectedCount}
+        empresaId={empresaId}
+        transactionIds={selectedIds}
+        onClose={() => setBulkMarkPaidOpen(false)}
+        onDone={() => {
+          setSelection({})
+          void fetchItems()
+        }}
+      />
+
+      {/* Sprint 5.0.3.0b — Bulk delete confirm */}
+      <ConfirmDialog
+        open={bulkDeleteOpen}
+        onOpenChange={setBulkDeleteOpen}
+        title={`Excluir ${selectedCount} ${selectedCount === 1 ? 'conta' : 'contas'} a pagar?`}
+        description={
+          <>
+            Esta ação não pode ser desfeita. Contas efetivadas com banco terão
+            o saldo bancário revertido automaticamente.
+          </>
+        }
+        confirmLabel={`Excluir ${selectedCount}`}
+        variant="destructive"
+        onConfirm={executeBulkDelete}
       />
     </div>
   )
