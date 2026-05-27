@@ -428,6 +428,39 @@ export function PendentesClient({
     void fetchTransacoes()
   }
 
+  // Sprint 5.0.2.u — Reverter transferências marcadas erradas (Sprint t lenient)
+  async function reverterTransferenciasErradas() {
+    if (transferLoading) return
+    setTransferLoading(true)
+    try {
+      const res = await fetch(
+        `/api/empresas/${empresaId}/conciliation/unmark-bad-transfers`,
+        { method: 'POST', credentials: 'include' },
+      )
+      const data = await res.json()
+      if (!res.ok) {
+        toast({
+          variant: 'destructive',
+          title: 'Falha ao reverter',
+          description: data.erro ?? `HTTP ${res.status}`,
+        })
+        return
+      }
+      toast({
+        title: `${data.paresRevertidos} pares revertidos`,
+        description:
+          data.paresRevertidos > 0
+            ? `${data.transacoesRevertidas} transações voltaram pra pendentes`
+            : 'Nenhuma transferência marcada errada (regras estritas OK)',
+      })
+      await fetchTransacoes()
+    } catch {
+      toast({ variant: 'destructive', title: 'Erro de rede' })
+    } finally {
+      setTransferLoading(false)
+    }
+  }
+
   function onPreviewApplied(aplicadas: number) {
     setAutoCatResult({
       analisadas: previewData?.totalAnalisadas ?? aplicadas,
@@ -662,7 +695,7 @@ export function PendentesClient({
           disabled={transferLoading || transacoes.length === 0}
           variant="outline"
           className="gap-2"
-          title="Procura pares (DEBIT/CREDIT) com mesmo valor entre contas da empresa"
+          title="Procura pares PIX↔PIX com mesmo valor e CNPJ próprio entre contas da empresa"
         >
           {transferLoading ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -670,6 +703,16 @@ export function PendentesClient({
             <ArrowLeftRight className="h-4 w-4" />
           )}
           Detectar transferências
+        </Button>
+        <Button
+          onClick={() => void reverterTransferenciasErradas()}
+          disabled={transferLoading}
+          variant="ghost"
+          size="sm"
+          className="gap-2 text-muted-foreground"
+          title="Reverte pares marcados pelas regras antigas que falham as estritas"
+        >
+          ⚠️ Reverter erradas
         </Button>
         <Button
           onClick={() => void autoCategorizarTudo()}
