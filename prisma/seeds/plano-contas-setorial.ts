@@ -54,6 +54,8 @@ const UNIVERSAIS: ReadonlyArray<ContaSetorial> = [
   { nome: 'Frete', codigo: '3.2.08.002', type: 'EXPENSE', dreGroup: 'DESPESAS_COMERCIAIS', isCreditavel: true },
   { nome: 'Honorários Contábeis', codigo: '3.2.09.001', type: 'EXPENSE', dreGroup: 'DESPESAS_ADMINISTRATIVAS' },
   { nome: 'Honorários Jurídicos', codigo: '3.2.09.002', type: 'EXPENSE', dreGroup: 'DESPESAS_ADMINISTRATIVAS' },
+  // Sprint 5.0.2.t — Prestadores PF (CARLA FABIANA SCHWEIG-style)
+  { nome: 'Serviços PF (Prestadores)', codigo: '3.2.09.003', type: 'EXPENSE', dreGroup: 'DESPESAS_ADMINISTRATIVAS' },
 
   // TRIBUTÁRIAS
   { nome: 'DAS Simples Nacional', codigo: '3.3.01.001', type: 'EXPENSE', dreGroup: 'IMPOSTOS_SOBRE_LUCRO' },

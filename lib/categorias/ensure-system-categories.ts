@@ -175,7 +175,13 @@ export interface AllSystemCategoriesResult extends SystemCategoriesResult {
   /** Map de dreGroup → array de ids (fallback quando nome não casa) */
   byDreGroup: Map<string, string[]>
   /** Snapshot resumido pra resolveUniversalCategoryId (compatível) */
-  list: Array<{ id: string; name: string; dreGroup: string | null; isActive: boolean }>
+  list: Array<{
+    id: string
+    name: string
+    type: string
+    dreGroup: string | null
+    isActive: boolean
+  }>
 }
 
 export async function ensureAllSystemCategories(
@@ -246,7 +252,7 @@ export async function ensureAllSystemCategories(
   // 4. Carrega todas as categorias do plano + indexa
   const all = await prisma.category.findMany({
     where: { companyId, isActive: true },
-    select: { id: true, name: true, dreGroup: true, isActive: true },
+    select: { id: true, name: true, type: true, dreGroup: true, isActive: true },
   })
   const byName = new Map<string, string>()
   const byDreGroup = new Map<string, string[]>()

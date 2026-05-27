@@ -24,6 +24,10 @@ import {
   AutoCategorizePreviewModal,
   type PreviewData,
 } from '@/components/pendentes/AutoCategorizePreviewModal'
+import {
+  DetectarTransferenciasModal,
+  type TransferCandidateDTO,
+} from '@/components/pendentes/DetectarTransferenciasModal'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -151,6 +155,11 @@ export function PendentesClient({
   // Sprint 5.0.2.p — Preview modal
   const [previewOpen, setPreviewOpen] = useState(false)
   const [previewData, setPreviewData] = useState<PreviewData | null>(null)
+  // Sprint 5.0.2.t — Detector de transferências cross-conta
+  const [transferModalOpen, setTransferModalOpen] = useState(false)
+  const [transferLoading, setTransferLoading] = useState(false)
+  const [transferCandidates, setTransferCandidates] =
+    useState<TransferCandidateDTO[] | null>(null)
 
   // Filtros
   const noventaDiasAtras = useMemo(() => {
@@ -376,6 +385,47 @@ export function PendentesClient({
     } finally {
       setAutoCatLoading(false)
     }
+  }
+
+  // Sprint 5.0.2.t — Detectar transferências entre contas
+  async function detectarTransferencias() {
+    if (transferLoading) return
+    setTransferLoading(true)
+    setTransferCandidates(null)
+    setTransferModalOpen(true)
+    try {
+      const res = await fetch(
+        `/api/empresas/${empresaId}/conciliation/detect-active-transfers`,
+        {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ daysWindow: 3 }),
+        },
+      )
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        toast({
+          variant: 'destructive',
+          title: 'Falha ao detectar transferências',
+          description: data.erro ?? `HTTP ${res.status}`,
+        })
+        setTransferModalOpen(false)
+        return
+      }
+      const data = await res.json()
+      setTransferCandidates(data.candidates ?? [])
+    } catch {
+      toast({ variant: 'destructive', title: 'Erro de rede' })
+      setTransferModalOpen(false)
+    } finally {
+      setTransferLoading(false)
+    }
+  }
+
+  function onTransfersApplied(_aplicadas: number) {
+    void _aplicadas
+    void fetchTransacoes()
   }
 
   function onPreviewApplied(aplicadas: number) {
@@ -606,6 +656,20 @@ export function PendentesClient({
           title="Remove sugestões ruins do cache global e re-analisa pendentes"
         >
           🧹 Limpar + Re-analisar
+        </Button>
+        <Button
+          onClick={() => void detectarTransferencias()}
+          disabled={transferLoading || transacoes.length === 0}
+          variant="outline"
+          className="gap-2"
+          title="Procura pares (DEBIT/CREDIT) com mesmo valor entre contas da empresa"
+        >
+          {transferLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <ArrowLeftRight className="h-4 w-4" />
+          )}
+          Detectar transferências
         </Button>
         <Button
           onClick={() => void autoCategorizarTudo()}
@@ -1094,6 +1158,15 @@ export function PendentesClient({
         empresaId={empresaId}
         data={previewData}
         onApplied={onPreviewApplied}
+      />
+
+      {/* Sprint 5.0.2.t — Detector cross-conta de transferências */}
+      <DetectarTransferenciasModal
+        open={transferModalOpen}
+        onOpenChange={setTransferModalOpen}
+        empresaId={empresaId}
+        candidates={transferCandidates}
+        onApplied={onTransfersApplied}
       />
     </div>
   )

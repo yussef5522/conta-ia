@@ -18,6 +18,7 @@ import {
 } from '@/lib/categorization/match-setor-pattern'
 import { loadActiveRules, buildRuleIndex } from '@/lib/ai-categorizer/apply'
 import { predictCategory } from '@/lib/ai-categorizer/predict'
+import { isCategoryCompatibleWithTxType } from '@/lib/categorization/type-validation'
 
 export type PlanSource =
   | 'SAME_COMPANY_TRANSFER'
@@ -125,7 +126,12 @@ export async function buildCategorizePlan(
 
   // Index categorias por id pra resolver nome rapidamente
   const categoryById = new Map<string, string>()
-  for (const c of systemCategories.list) categoryById.set(c.id, c.name)
+  // Sprint 5.0.2.t — tipo da categoria pra validar compatibilidade com tx.type
+  const categoryTypeById = new Map<string, string>()
+  for (const c of systemCategories.list) {
+    categoryById.set(c.id, c.name)
+    categoryTypeById.set(c.id, c.type)
+  }
 
   const planEntries: PlanEntry[] = []
   let semSugestao = 0
@@ -208,7 +214,16 @@ export async function buildCategorizePlan(
     // FASE 2 — Regras EXACT/NORMALIZED + CONTAINS
     if (tx.description) {
       const pred = predictCategory({ description: tx.description }, ruleIndex)
-      if (pred && pred.categoryId && pred.confidence >= 0.95) {
+      if (
+        pred &&
+        pred.categoryId &&
+        pred.confidence >= 0.95 &&
+        // Sprint 5.0.2.t — guard de tipo
+        isCategoryCompatibleWithTxType(
+          categoryTypeById.get(pred.categoryId),
+          tx.type,
+        )
+      ) {
         planEntries.push({
           transactionId: tx.id,
           description: tx.description,
@@ -229,8 +244,17 @@ export async function buildCategorizePlan(
       let matchedContains: typeof containsRules[number] | null = null
       for (const r of containsRules) {
         if (descUpper.includes(r.padrao.toUpperCase())) {
-          matchedContains = r
-          break
+          // Sprint 5.0.2.t — filtra pelo tipo da categoria
+          if (
+            r.categoryId &&
+            isCategoryCompatibleWithTxType(
+              categoryTypeById.get(r.categoryId),
+              tx.type,
+            )
+          ) {
+            matchedContains = r
+            break
+          }
         }
       }
       if (matchedContains && matchedContains.categoryId) {
@@ -262,7 +286,14 @@ export async function buildCategorizePlan(
         systemCategories.list,
         setorMatch.pattern.categoryName,
       )
-      if (categoryId) {
+      if (
+        categoryId &&
+        // Sprint 5.0.2.t — guard de tipo
+        isCategoryCompatibleWithTxType(
+          categoryTypeById.get(categoryId),
+          tx.type,
+        )
+      ) {
         planEntries.push({
           transactionId: tx.id,
           description: tx.description,

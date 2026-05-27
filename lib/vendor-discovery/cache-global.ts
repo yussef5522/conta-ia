@@ -5,6 +5,7 @@
 
 import { prisma } from '@/lib/db'
 import { normalizeVendorName } from './normalize'
+import { isCacheTipoCompatible } from '@/lib/categorization/type-validation'
 
 export interface CacheHit {
   id: string
@@ -29,6 +30,10 @@ export interface CacheHit {
 export async function lookupCacheGlobal(params: {
   cnpj?: string | null
   vendorName?: string | null
+  /** Sprint 5.0.2.t — filtra cache pelo tipo da tx (INCOME/EXPENSE/ANY).
+   *  Quando setado, só retorna hit cuja `tipoTransacao` bate.
+   *  Evita retornar "Receita Pix" pra tx DEBIT. */
+  txType?: 'CREDIT' | 'DEBIT' | string | null
 }): Promise<CacheHit | null> {
   const MIN_SCORE = 0.7
 
@@ -39,7 +44,12 @@ export async function lookupCacheGlobal(params: {
       const found = await prisma.globalVendorKnowledge.findFirst({
         where: { cnpj: cnpjLimpo, active: true, scoreAtual: { gte: MIN_SCORE } },
       })
-      if (found) return toCacheHit(found)
+      if (
+        found &&
+        (!params.txType || isCacheTipoCompatible(found.tipoTransacao, params.txType))
+      ) {
+        return toCacheHit(found)
+      }
     }
   }
 
@@ -47,12 +57,21 @@ export async function lookupCacheGlobal(params: {
   if (params.vendorName) {
     const normalized = normalizeVendorName(params.vendorName)
     if (normalized.length >= 3) {
+      // Quando temos txType, filtra direto no DB
+      const where = {
+        vendorNameNormalized: normalized,
+        active: true,
+        scoreAtual: { gte: MIN_SCORE },
+        ...(params.txType
+          ? {
+              tipoTransacao: {
+                in: ['ANY', params.txType === 'CREDIT' ? 'INCOME' : 'EXPENSE'],
+              },
+            }
+          : {}),
+      }
       const found = await prisma.globalVendorKnowledge.findFirst({
-        where: {
-          vendorNameNormalized: normalized,
-          active: true,
-          scoreAtual: { gte: MIN_SCORE },
-        },
+        where,
         orderBy: [{ vezesConfirmado: 'desc' }, { scoreAtual: 'desc' }],
       })
       if (found) return toCacheHit(found)

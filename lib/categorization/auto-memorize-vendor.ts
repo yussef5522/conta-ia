@@ -14,6 +14,7 @@
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { extractAnchorWord } from './extract-anchor-word'
+import { isCategoryCompatibleWithTxType } from './type-validation'
 
 /** Fonte da regra criada por esta sprint — diferencia das MANUAL/CLAUDE. */
 export const AUTO_FROM_MANUAL_FONTE = 'AUTO_FROM_MANUAL'
@@ -54,6 +55,24 @@ export async function autoMemorizeVendor(
   const anchor = extractAnchorWord(input.baseDescription)
   if (!anchor) {
     return { anchor: null, retroactiveCount: 0, ruleId: null, ruleCreated: false }
+  }
+
+  // Sprint 5.0.2.t — Sanity check: NÃO criar regra se categoria escolhida
+  // for incompatível com tipo da tx. Yussef pode ter clicado errado, mas
+  // não queremos perpetuar mismatch em regras silenciosas.
+  const category = await prisma.category.findUnique({
+    where: { id: input.categoryId },
+    select: { type: true, name: true },
+  })
+  if (
+    category &&
+    !isCategoryCompatibleWithTxType(category.type, input.baseType)
+  ) {
+    console.warn(
+      `[AUTO_MEMORIZE] BLOQUEADO: categoria "${category.name}" tipo=${category.type} ` +
+        `incompatível com tx tipo=${input.baseType} (anchor="${anchor}")`,
+    )
+    return { anchor, retroactiveCount: 0, ruleId: null, ruleCreated: false }
   }
 
   // 1. Upsert regra CONTAINS via chave natural (companyId, tipoMatch, padrao)

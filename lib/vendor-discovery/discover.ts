@@ -93,9 +93,13 @@ export async function discoverVendor(
   }
 
   // ─────────────────────────────────────────────────────────
-  // CAMADA 1: Cache Global
+  // CAMADA 1: Cache Global (filtrado por tipo da tx — Sprint t)
   // ─────────────────────────────────────────────────────────
-  const cacheHit = await lookupCacheGlobal({ cnpj, vendorName: anchor })
+  const cacheHit = await lookupCacheGlobal({
+    cnpj,
+    vendorName: anchor,
+    txType: input.type,
+  })
   if (cacheHit) {
     await incrementCacheHit(cacheHit.id)
     return {
