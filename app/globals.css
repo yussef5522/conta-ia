@@ -49,3 +49,76 @@
     -webkit-tap-highlight-color: transparent;
   }
 }
+
+/* Sprint 5.0.3.0b — Print stylesheet pra /contas-a-pagar.
+ * Esconde chrome do app, otimiza tabela pra A4 paisagem, preserva tarja lateral. */
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 1cm;
+  }
+
+  /* Esconde sidebar, header global, filtros, tabs, bulk bar, sticky footer */
+  [data-sidebar],
+  [data-app-header],
+  [data-testid='saved-view-tabs'],
+  [data-testid='filters-bar'],
+  [data-testid='bulk-actions-bar'],
+  [data-testid='sticky-footer'],
+  [data-no-print],
+  nav,
+  aside,
+  .no-print {
+    display: none !important;
+  }
+
+  /* Esconde dropdown menu da última coluna */
+  td:last-child > div,
+  th:last-child {
+    display: none !important;
+  }
+
+  /* Cores forçadas pra branco/preto + manter sombras zeradas */
+  body, .bg-card, .bg-background, .bg-muted, .bg-muted\/30, .bg-muted\/10 {
+    background: white !important;
+    color: black !important;
+    box-shadow: none !important;
+  }
+
+  /* Tabela: bordas finas + tipografia compacta */
+  [data-testid='payable-table'] {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    font-size: 10pt;
+  }
+  [data-testid='payable-table'] thead {
+    display: table-header-group;
+  }
+  [data-testid='payable-table'] tbody tr {
+    page-break-inside: avoid;
+    border-bottom: 1px solid #e5e5e5 !important;
+  }
+  [data-testid='payable-table'] th,
+  [data-testid='payable-table'] td {
+    padding: 4pt 6pt !important;
+  }
+
+  /* Mantém tarja lateral colorida (4 cores semânticas) — Chrome/Edge */
+  .bg-emerald-500,
+  .bg-sky-500,
+  .bg-amber-500,
+  .bg-red-500 {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .grid {
+    page-break-inside: avoid;
+  }
+
+  /* Remove botões de paginação */
+  [aria-label='Página anterior'],
+  [aria-label='Próxima página'] {
+    display: none !important;
+  }
+}
