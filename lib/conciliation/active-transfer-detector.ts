@@ -141,11 +141,60 @@ export function descContainsCnpj(
   return descDigits.includes(cnpjLimpo)
 }
 
+/** Palavras administrativas/genéricas que NÃO indicam nome de pessoa. */
+const PERSON_STOPWORDS = new Set([
+  // Operacionais
+  'ENTRE',
+  'CONTAS',
+  'CONTA',
+  'CACULA',
+  'EMPRESA',
+  'TRANSFERENCIA',
+  'TRANSFERÊNCIA',
+  'TRANSF',
+  'TRANSFER',
+  'PAGAMENTO',
+  'PAGAMENTOS',
+  'RECEBIMENTO',
+  'RECEBIMENTOS',
+  // Bancos / instituições
+  'BANRISUL',
+  'BANCO',
+  'SICREDI',
+  'STONE',
+  'CIELO',
+  'REDE',
+  'GETNET',
+  'SICOOB',
+  'ITAU',
+  'BRADESCO',
+  'SANTANDER',
+  'CAIXA',
+  // PIX / transação
+  'PIX',
+  'CRED',
+  'CREDITO',
+  'CRÉDITO',
+  'DEB',
+  'DEBITO',
+  'DÉBITO',
+  'TED',
+  'DOC',
+  'BOLETO',
+  // Outros
+  'LTDA',
+  'EIRELI',
+  'EPP',
+  'CIA',
+  'COMERCIO',
+  'COMÉRCIO',
+])
+
 /**
  * Heurística pra detectar nome próprio de PESSOA na descrição.
  * Sinais:
- *   - CPF (11 dígitos isolados de 14)
- *   - Pelo menos 2 palavras com 4+ letras seguidas (típico de NOMES — PEDRO SILVA)
+ *   - CPF (11 dígitos isolados; ignora se aparece CNPJ junto)
+ *   - 2+ palavras-nome consecutivas: 4+ letras alfabéticas E não-stopword
  */
 export function hasPersonName(description: string | null | undefined): boolean {
   const desc = upper(description)
@@ -155,23 +204,22 @@ export function hasPersonName(description: string | null | undefined): boolean {
   if (/\d{3}\.\d{3}\.\d{3}-?\d{2}/.test(desc)) return true
 
   // CPF não formatado (11 dígitos isolados)
-  // Atenção: também aceita 11 dígitos dentro de seq maior, então só conta
-  // se NÃO houver CNPJ (14 dígitos) nas redondezas
+  // Só conta se NÃO houver CNPJ (14 dígitos)
   const has14 = /\d{14}/.test(desc.replace(/\D/g, ''))
   if (!has14 && /(?:^|\D)\d{11}(?:\D|$)/.test(desc.replace(/[.\-/]/g, ''))) {
     return true
   }
 
-  // Padrão: 2+ palavras com 4+ letras (sem dígitos), sequenciais
-  // ex: "PEDRO SILVA", "MARIA DA CONCEICAO"
+  // Padrão: 2+ palavras-NOME consecutivas (4+ letras E não stopword)
   const palavras = desc
     .replace(/[^\wÀ-Ú\s]/gi, ' ')
     .split(/\s+/)
     .filter(Boolean)
   let nomeSeq = 0
   for (const p of palavras) {
-    // palavra de 4+ letras só (sem dígitos)
-    if (p.length >= 4 && /^[A-ZÀ-Ú]+$/i.test(p)) {
+    const isAlpha = p.length >= 4 && /^[A-ZÀ-Ú]+$/i.test(p)
+    const isStopword = PERSON_STOPWORDS.has(p)
+    if (isAlpha && !isStopword) {
       nomeSeq++
       if (nomeSeq >= 2) return true
     } else {
@@ -301,34 +349,47 @@ export function validateTransferPair(input: ValidationInput): ValidationResult {
     }
   }
 
-  // REGRA 4: Anti-pessoa — ambas pernas com nome de pessoa terceira
-  // e SEM CNPJ próprio → quase certo que são pagamentos distintos
-  if (
-    debitHasPerson &&
-    creditHasPerson &&
-    !debitContainsOwnCnpj &&
-    !creditContainsOwnCnpj
-  ) {
+  // REGRA 4: Anti-pessoa — Sprint 5.0.2.u (estrito): se QUALQUER perna
+  // mencionar nome de pessoa (CPF ou padrão de 2+ palavras), rejeita
+  // EXCETO se a outra perna tem CNPJ próprio (caso transferência feita
+  // pra/de "Yussef Pessoa" usando CNPJ Cacula como destino — raro mas
+  // possível). Por padrão, conservador: bloqueia.
+  if (debitHasPerson || creditHasPerson) {
+    // Permite APENAS quando NENHUMA outra perna tem nome de pessoa E
+    // a perna sem pessoa tem CNPJ próprio (improvável mas técnico).
+    // Aqui simplificamos: pessoa em qualquer perna → rejeita.
     return {
       valid: false,
-      reason: 'Ambas pernas mencionam pessoas terceiras (pagamentos distintos)',
+      reason: debitHasPerson && creditHasPerson
+        ? 'Ambas pernas mencionam pessoas (pagamentos distintos)'
+        : 'Uma das pernas menciona pessoa terceira (não é transferência interna)',
       confidence: 0,
       signals,
     }
   }
 
-  // CONFIDENCE
-  let confidence = 0.7 // base
-  if (debitContainsOwnCnpj || creditContainsOwnCnpj) {
-    confidence = 0.9 // CNPJ próprio em pelo menos uma perna
-  }
+  // REGRA 5: PIX é INSTANTÂNEO — exige same-day. ±0 dias.
+  // Sprint t permitia ±3 dias, mas isso gerou falsos positivos com
+  // depósitos/empréstimos com mesmo valor em dias próximos.
   const debitDate = debit.paymentDate ?? debit.date
   const creditDate = credit.paymentDate ?? credit.date
-  if (sameDay(debitDate, creditDate)) {
-    confidence = Math.min(0.99, confidence + 0.05)
+  if (!sameDay(debitDate, creditDate)) {
+    return {
+      valid: false,
+      reason: 'PIX é instantâneo: pernas em dias diferentes (provável coincidência)',
+      confidence: 0,
+      signals,
+    }
   }
+
+  // CONFIDENCE (mesmo dia garantido daqui pra baixo)
+  let confidence = 0.85 // base (era 0.70; subiu pq same-day já é hard requirement)
+  if (debitContainsOwnCnpj || creditContainsOwnCnpj) {
+    confidence = 0.99 // CNPJ próprio explícito = altíssima confiança
+  }
+  // Sprint u: penalidade valor comum aumentada de -0.20 → -0.30
   if (valorComum) {
-    confidence = Math.max(0.5, confidence - 0.2)
+    confidence = Math.max(0.5, confidence - 0.3)
   }
 
   return { valid: true, reason: null, confidence, signals }

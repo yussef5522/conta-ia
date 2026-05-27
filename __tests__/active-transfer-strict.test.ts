@@ -131,7 +131,7 @@ describe('ACCEPTS — transferência interna LEGÍTIMA', () => {
     expect(r.confidence).toBeGreaterThanOrEqual(0.9)
   })
 
-  it('PIX CNPJ próprio + dias diferentes (D+2) → ainda ≥0.85', () => {
+  it('Sprint u: PIX em dias DIFERENTES (D+2) → REJEITA (same-day obrigatório)', () => {
     const r = validateTransferPair(
       mkInput(
         'PAGAMENTO PIX-PIX_DEB 29756732000198 CACULA',
@@ -139,11 +139,11 @@ describe('ACCEPTS — transferência interna LEGÍTIMA', () => {
         { sameDate: false },
       ),
     )
-    expect(r.valid).toBe(true)
-    expect(r.confidence).toBeGreaterThanOrEqual(0.85)
+    expect(r.valid).toBe(false)
+    expect(r.reason).toContain('instantâneo')
   })
 
-  it('valor comum aplica penalidade -0.20', () => {
+  it('valor comum aplica penalidade −0.30 (Sprint u apertado)', () => {
     const semPenalidade = validateTransferPair(
       mkInput(
         'PAGAMENTO PIX-PIX_DEB 29756732000198 CACULA',
@@ -158,7 +158,20 @@ describe('ACCEPTS — transferência interna LEGÍTIMA', () => {
       ),
     )
     expect(comPenalidade.confidence).toBeLessThan(semPenalidade.confidence)
-    expect(semPenalidade.confidence - comPenalidade.confidence).toBeCloseTo(0.2, 1)
+    expect(semPenalidade.confidence - comPenalidade.confidence).toBeCloseTo(0.3, 1)
+  })
+})
+
+describe('REGRA 4 (Sprint u apertada): UMA perna com pessoa → REJEITA', () => {
+  it('PIX_DEB Cacula CNPJ + PIX_CRED com nome de pessoa → rejeita', () => {
+    const r = validateTransferPair(
+      mkInput(
+        'PAGAMENTO PIX-PIX_DEB 29756732000198 CACULA',
+        'RECEBIMENTO PIX-PIX_CRED ALGUEM FORTES MATOS',
+      ),
+    )
+    expect(r.valid).toBe(false)
+    expect(r.reason).toMatch(/pessoa/i)
   })
 })
 

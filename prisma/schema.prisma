@@ -94,6 +94,8 @@ model Company {
   // Sprint 5.0.2.h — Detecção Pix PJ↔PF/PJ
   sociosPF           SocioPF[]
   empresasRelacionadas EmpresaRelacionada[]
+  // Sprint 5.0.2.u — Multi-statement staging (Xero/QuickBooks pattern)
+  importStagings     ImportStaging[]
 
   @@map("companies")
 }
@@ -145,6 +147,8 @@ model BankAccount {
   transactions Transaction[]
   // Onda 2 Sprint 2.3 — histórico de imports OFX
   ofxImports   OfxImport[]
+  // Sprint 5.0.2.u — multi-statement staging
+  importStagings ImportStaging[]
 
   @@map("bank_accounts")
 }
@@ -1387,4 +1391,74 @@ model VendorDiscoveryLog {
   @@index([companyId])
   @@index([createdAt])
   @@map("vendor_discovery_logs")
+}
+
+// Sprint 5.0.2.u — Multi-statement staging (padrão Xero/QuickBooks).
+//
+// User importa N extratos OFX juntos. Sistema detecta transferências
+// cross-account no staging ANTES de criar Transactions. User revisa e
+// confirma → tx vão pra Transaction com transferGroupId correto.
+//
+// Idempotência: fileHash unique por empresa pra detectar reuploads.
+model ImportStaging {
+  id                String   @id @default(cuid())
+  companyId         String
+
+  // Batch — múltiplos OFX sob mesmo batchId quando enviados juntos
+  batchId           String
+
+  // Origem
+  bankAccountId     String
+  fileName          String
+  fileHash          String // sha256 do conteúdo OFX
+
+  // Snapshot estatístico
+  totalTransactions Int
+  totalCreditsCents Int  @default(0) // armazena em centavos pra evitar Decimal precision
+  totalDebitsCents  Int  @default(0)
+  periodStart       DateTime?
+  periodEnd         DateTime?
+
+  // PENDING_REVIEW | TRANSFER_DETECTED | CONFIRMED | CANCELLED
+  status            String   @default("PENDING_REVIEW")
+  importedAt        DateTime?
+
+  createdAt         DateTime @default(now())
+
+  // Relations
+  company            Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  bankAccount        BankAccount         @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+  stagedTransactions StagedTransaction[]
+
+  @@unique([companyId, fileHash])
+  @@index([companyId, batchId])
+  @@index([companyId, status])
+  @@map("import_stagings")
+}
+
+model StagedTransaction {
+  id                  String   @id @default(cuid())
+  stagingId           String
+
+  // Dados originais OFX
+  fitId               String?
+  effectedDate        DateTime
+  amount              Float
+  // CREDIT | DEBIT
+  type                String
+  description         String
+
+  // Detecção de transferência cross-account (Sprint u)
+  isInternalTransfer  Boolean  @default(false)
+  matchedStagedId     String?
+  transferConfidence  Float?
+  transferReason      String?
+
+  createdAt           DateTime @default(now())
+
+  staging             ImportStaging @relation(fields: [stagingId], references: [id], onDelete: Cascade)
+
+  @@index([stagingId])
+  @@index([matchedStagedId])
+  @@map("staged_transactions")
 }
