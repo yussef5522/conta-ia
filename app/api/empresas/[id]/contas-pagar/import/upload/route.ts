@@ -21,6 +21,12 @@ import {
   heuristicFallback,
   type ColumnMapping,
 } from '@/lib/excel-import/detect-columns'
+import { isValidExcel } from '@/lib/excel-import/magic-bytes'
+
+// Sprint 5.0.2.3 — runtime explícito + maxDuration generoso pra batches grandes.
+// Node runtime é OBRIGATÓRIO (exceljs usa Buffer/fs internamente).
+export const runtime = 'nodejs'
+export const maxDuration = 60
 
 interface Params {
   params: Promise<{ id: string }>
@@ -71,20 +77,39 @@ export async function POST(request: NextRequest, { params }: Params) {
     const form = await request.formData()
     const file = form.get('file')
     if (!(file instanceof File)) {
-      return NextResponse.json({ erro: 'Arquivo não enviado' }, { status: 400 })
+      return NextResponse.json(
+        { erro: 'Arquivo não enviado', code: 'FILE_REQUIRED' },
+        { status: 400 },
+      )
     }
     if (file.size > MAX_BYTES) {
-      return NextResponse.json({ erro: 'Arquivo excede 10MB' }, { status: 413 })
+      return NextResponse.json(
+        { erro: 'Arquivo excede 10MB', code: 'FILE_TOO_LARGE' },
+        { status: 413 },
+      )
     }
     const fileName = file.name || 'planilha.xlsx'
     if (!/\.xlsx?$/i.test(fileName)) {
       return NextResponse.json(
-        { erro: 'Apenas .xlsx ou .xls suportados' },
+        { erro: 'Apenas .xlsx ou .xls suportados', code: 'FILE_TYPE_INVALID' },
         { status: 415 },
       )
     }
 
     const ab = await file.arrayBuffer()
+
+    // Sprint 5.0.2.3 — magic bytes check (defesa em profundidade vs extensão renomeada)
+    if (!isValidExcel(ab)) {
+      return NextResponse.json(
+        {
+          erro:
+            'Arquivo não tem assinatura de Excel válido (pode estar corrompido ou ser outro formato renomeado)',
+          code: 'FILE_CORRUPTED',
+        },
+        { status: 400 },
+      )
+    }
+
     const fileHash = sha256(ab)
 
     // Idempotência: reupload mesmo arquivo
@@ -96,16 +121,32 @@ export async function POST(request: NextRequest, { params }: Params) {
         batchId: existing.id,
         status: existing.status,
         duplicate: true,
+        code: 'DUPLICATE_BATCH',
         totalRows: existing.totalRows,
       })
     }
 
-    // Parse local
-    const parsed = await parseXlsx(ab)
+    // Parse local — try/catch pra encapsular erros de exceljs em PARSE_FAILED
+    let parsed
+    try {
+      parsed = await parseXlsx(ab)
+    } catch (parseErr) {
+      console.error('[EXCEL-UPLOAD] parseXlsx failed:', parseErr)
+      return NextResponse.json(
+        {
+          erro:
+            'Não conseguimos ler a planilha (pode estar protegida por senha ou em formato não suportado)',
+          code: 'PARSE_FAILED',
+          details: parseErr instanceof Error ? parseErr.message : String(parseErr),
+        },
+        { status: 422 },
+      )
+    }
     if (parsed.rows.length === 0) {
       return NextResponse.json(
         {
           erro: 'Planilha sem linhas válidas (após filtrar totais e vazias)',
+          code: 'EMPTY_FILE',
           totalSheets: parsed.totalSheets,
         },
         { status: 400 },
@@ -113,7 +154,11 @@ export async function POST(request: NextRequest, { params }: Params) {
     }
     if (parsed.rows.length > MAX_ROWS) {
       return NextResponse.json(
-        { erro: `Planilha excede ${MAX_ROWS} linhas (recebeu ${parsed.rows.length})` },
+        {
+          erro: `Planilha excede ${MAX_ROWS} linhas (recebeu ${parsed.rows.length})`,
+          code: 'TOO_MANY_ROWS',
+          rowCount: parsed.rows.length,
+        },
         { status: 413 },
       )
     }

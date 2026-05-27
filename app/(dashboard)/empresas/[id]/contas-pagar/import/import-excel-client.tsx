@@ -18,12 +18,16 @@ import {
   X,
   Sparkles,
   AlertTriangle,
+  RotateCw,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
 import { ConfidenceSignal } from '@/components/pendentes/ConfidenceSignal'
+import { uploadWithProgress } from '@/lib/excel-import/upload-with-progress'
+import { errorInfo } from '@/lib/excel-import/error-codes'
+import { detectExcelType } from '@/lib/excel-import/magic-bytes'
 
 interface Props {
   empresaId: string
@@ -93,6 +97,20 @@ interface ConfirmResponse {
   totalAmount: number
 }
 
+type UploadPhase =
+  | 'idle'
+  | 'validating'
+  | 'uploading'
+  | 'processing' // upload terminou, servidor processando
+  | 'retrying'
+  | 'error'
+
+interface UploadError {
+  code: string
+  // Opcional: serverMessage técnico (mantido pra debug, não exibido cru)
+  serverMessage?: string
+}
+
 export function ImportExcelClient({ empresaId }: Props) {
   const { toast } = useToast()
   const router = useRouter()
@@ -104,37 +122,80 @@ export function ImportExcelClient({ empresaId }: Props) {
   const [rows, setRows] = useState<ReviewRow[]>([])
   const [excluded, setExcluded] = useState<Set<string>>(new Set())
   const [confirmResult, setConfirmResult] = useState<ConfirmResponse | null>(null)
+  // Sprint 5.0.2.3 — UX do upload (progress bar real + retry visual)
+  const [uploadPhase, setUploadPhase] = useState<UploadPhase>('idle')
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const [uploadError, setUploadError] = useState<UploadError | null>(null)
 
+  // ─── Sprint 5.0.2.3 — Upload robusto: XHR + progress + retry + erros humanos ─
   async function handleUpload() {
     if (!file || busy) return
     setBusy(true)
+    setUploadError(null)
+    setUploadProgress(0)
+
     try {
-      const fd = new FormData()
-      fd.append('file', file)
-      const res = await fetch(
-        `/api/empresas/${empresaId}/contas-pagar/import/upload`,
-        { method: 'POST', credentials: 'include', body: fd },
-      )
-      const data = await res.json()
-      if (!res.ok) {
-        toast({
-          variant: 'destructive',
-          title: 'Falha no upload',
-          description: data.erro ?? `HTTP ${res.status}`,
-        })
+      // Validação cliente (rápida — feedback instantâneo)
+      setUploadPhase('validating')
+      if (file.size > 10 * 1024 * 1024) {
+        setUploadError({ code: 'FILE_TOO_LARGE' })
+        setUploadPhase('error')
         return
       }
-      setUpload(data)
+      if (!/\.xlsx?$/i.test(file.name)) {
+        setUploadError({ code: 'FILE_TYPE_INVALID' })
+        setUploadPhase('error')
+        return
+      }
+      // Magic bytes check no cliente também (defesa em profundidade)
+      const head = await file.slice(0, 8).arrayBuffer()
+      if (detectExcelType(head) === 'INVALID') {
+        setUploadError({ code: 'FILE_CORRUPTED' })
+        setUploadPhase('error')
+        return
+      }
+
+      // Upload com XHR + progress + retry automático em network errors
+      setUploadPhase('uploading')
+      const result = await uploadWithProgress<UploadResponse>({
+        url: `/api/empresas/${empresaId}/contas-pagar/import/upload`,
+        file,
+        onProgress: (p) => setUploadProgress(p.percent),
+        onProcessing: () => setUploadPhase('processing'),
+        onRetry: () => setUploadPhase('retrying'),
+        timeoutMs: 90_000,
+        maxRetries: 1,
+      })
+
+      if (!result.ok || !result.data) {
+        setUploadError({
+          code: result.errorCode ?? 'INTERNAL_ERROR',
+          serverMessage: result.errorMessage,
+        })
+        setUploadPhase('error')
+        return
+      }
+
+      setUpload(result.data)
       setStep('DETECT')
+      setUploadPhase('idle')
       toast({
         title: 'Upload OK',
-        description: `${data.totalRows} linhas válidas (${data.filteredCount} filtradas)`,
+        description: `${result.data.totalRows} linhas válidas (${result.data.filteredCount} filtradas)`,
       })
-    } catch {
-      toast({ variant: 'destructive', title: 'Erro de rede' })
+    } catch (err) {
+      console.error('[UPLOAD] unexpected error:', err)
+      setUploadError({ code: 'INTERNAL_ERROR' })
+      setUploadPhase('error')
     } finally {
       setBusy(false)
     }
+  }
+
+  function resetUploadState() {
+    setUploadError(null)
+    setUploadPhase('idle')
+    setUploadProgress(0)
   }
 
   async function handleDetect() {
@@ -471,18 +532,38 @@ export function ImportExcelClient({ empresaId }: Props) {
     )
   }
 
-  // STEP: UPLOAD
+  // STEP: UPLOAD — Sprint 5.0.2.3 com progress bar + alert inline retry
+  const errInfo = uploadError ? errorInfo(uploadError.code) : null
+  const phaseLabel: Record<UploadPhase, string> = {
+    idle: '',
+    validating: 'Validando arquivo…',
+    uploading: `Enviando… ${uploadProgress}%`,
+    processing: 'Servidor processando planilha…',
+    retrying: 'Erro de rede, tentando de novo…',
+    error: '',
+  }
+  const isInFlight =
+    uploadPhase === 'validating' ||
+    uploadPhase === 'uploading' ||
+    uploadPhase === 'processing' ||
+    uploadPhase === 'retrying'
+
   return (
     <div className="space-y-4 max-w-2xl">
       <label
         htmlFor="excel-upload"
-        className="block rounded-md border-2 border-dashed border-border bg-card hover:bg-muted/30 transition-colors p-8 cursor-pointer text-center"
+        aria-disabled={isInFlight}
+        className={`block rounded-md border-2 border-dashed bg-card transition-colors p-8 text-center ${
+          isInFlight
+            ? 'border-border opacity-60 cursor-not-allowed'
+            : 'border-border hover:bg-muted/30 cursor-pointer'
+        }`}
       >
         <div className="flex flex-col items-center gap-2">
           <Upload className="h-10 w-10 text-muted-foreground" />
           {file ? (
             <>
-              <p className="text-sm font-medium">{file.name}</p>
+              <p className="text-sm font-medium" data-testid="upload-filename">{file.name}</p>
               <p className="text-xs text-muted-foreground">
                 {(file.size / 1024).toFixed(1)} KB · clique pra trocar
               </p>
@@ -502,18 +583,96 @@ export function ImportExcelClient({ empresaId }: Props) {
           type="file"
           accept=".xlsx,.xls"
           className="hidden"
-          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          disabled={isInFlight}
+          onChange={(e) => {
+            setFile(e.target.files?.[0] ?? null)
+            resetUploadState()
+          }}
         />
       </label>
 
+      {/* Sprint 5.0.2.3 — Progress bar real durante upload */}
+      {isInFlight && (
+        <div
+          className="rounded-md border bg-card p-4 space-y-2"
+          data-testid="upload-progress"
+        >
+          <div className="flex items-center gap-2 text-sm">
+            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+            <span className="text-muted-foreground">{phaseLabel[uploadPhase]}</span>
+          </div>
+          <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full bg-primary transition-all duration-300 ease-out"
+              style={{
+                width: `${
+                  uploadPhase === 'uploading'
+                    ? uploadProgress
+                    : uploadPhase === 'processing' || uploadPhase === 'retrying'
+                      ? 100
+                      : 5
+                }%`,
+              }}
+              data-testid="upload-progress-bar"
+            />
+          </div>
+          {uploadPhase === 'processing' && (
+            <p className="text-xs text-muted-foreground">
+              Pode levar até 30 segundos pra planilhas grandes.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Sprint 5.0.2.3 — Erro inline com retry humano */}
+      {uploadPhase === 'error' && errInfo && (
+        <div
+          className="rounded-md border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/20 p-4"
+          data-testid="upload-error"
+        >
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0 space-y-2">
+              <div>
+                <h4 className="text-sm font-medium text-red-900 dark:text-red-100">
+                  {errInfo.title}
+                </h4>
+                <p className="text-sm text-red-700 dark:text-red-300 mt-0.5">
+                  {errInfo.description}
+                </p>
+                <p className="text-[10px] uppercase tracking-wide text-red-600/70 dark:text-red-400/70 mt-1.5 font-mono">
+                  cód: {uploadError?.code}
+                </p>
+              </div>
+              {errInfo.retryable && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleUpload}
+                  disabled={busy || !file}
+                  data-testid="upload-retry"
+                >
+                  <RotateCw className="h-3.5 w-3.5 mr-1.5" />
+                  Tentar de novo
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex justify-end">
-        <Button onClick={handleUpload} disabled={busy || !file}>
-          {busy ? (
+        <Button
+          onClick={handleUpload}
+          disabled={busy || !file || isInFlight}
+          data-testid="upload-submit"
+        >
+          {isInFlight ? (
             <Loader2 className="h-4 w-4 animate-spin mr-1" />
           ) : (
             <Upload className="h-4 w-4 mr-1" />
           )}
-          Enviar planilha
+          {isInFlight ? 'Enviando…' : 'Enviar planilha'}
         </Button>
       </div>
     </div>

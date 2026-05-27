@@ -19,6 +19,10 @@ import { handleApiError } from '@/lib/api/handle-error'
 import { classifyFavorecido } from '@/lib/excel-import/classify-favorecido'
 import { mapCategories } from '@/lib/excel-import/map-categories'
 
+// Sprint 5.0.2.3 — Node runtime explícito + 60s timeout pra batches grandes
+export const runtime = 'nodejs'
+export const maxDuration = 60
+
 interface Params {
   params: Promise<{ id: string; batchId: string }>
 }
@@ -42,14 +46,20 @@ export async function POST(request: NextRequest, { params }: Params) {
       where: { id: batchId, companyId },
     })
     if (!batch) {
-      return NextResponse.json({ erro: 'Batch não encontrado' }, { status: 404 })
+      return NextResponse.json(
+        { erro: 'Batch não encontrado', code: 'BATCH_NOT_FOUND' },
+        { status: 404 },
+      )
     }
 
     const rows = await prisma.stagedPayableRow.findMany({
       where: { batchId },
     })
     if (rows.length === 0) {
-      return NextResponse.json({ erro: 'Batch sem linhas' }, { status: 400 })
+      return NextResponse.json(
+        { erro: 'Batch sem linhas', code: 'BATCH_EMPTY' },
+        { status: 400 },
+      )
     }
 
     // Pre-load suppliers/employees/categorias da empresa

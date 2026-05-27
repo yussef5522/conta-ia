@@ -521,6 +521,64 @@ Depois que IA está validada, melhora ergonomia para volumes maiores.
 
 ---
 
+## 🛡️ Definição de Pronto (DoD) — REGRA CRÍTICA
+
+Sprint 5.0.2.3 (26/05/2026) instituiu esse protocolo PERMANENTE após
+3 sprints seguidas chegarem em prod com bugs que teste end-to-end teria pego:
+
+| # | Sprint | Bug que escapou |
+|---|---|---|
+| 5.0.2.1 | Botão "Importar Excel" — não tinha entrada na UI | Faltou abrir o caminho do usuário |
+| 5.0.2.2 | Cookie name errado em 4 server components | Unit tests passaram, ninguém clicou |
+| 5.0.2.3 | `/confirm` viola unique constraint + cookies in RSC | Sem E2E real com planilha do contador |
+
+### NENHUMA sprint pode ser declarada "entregue" sem TODOS estes:
+
+1. ✅ **Unit/integration tests passando** (`npx vitest run`)
+2. ✅ **Build sem erros** (`npm run build`)
+3. ✅ **TS strict sem erros** (`npx tsc --noEmit`)
+4. ✅ **Teste end-to-end REAL no browser** com:
+   - Fluxo completo do usuário, do primeiro click ao resultado final
+   - Para features de import/upload: usar **fixture real** + validar
+     contagem numérica do resultado (ex: "94/94 linhas")
+   - Playwright headless gera PNGs em `tests/e2e/screenshots/{sprint-id}/`
+5. ✅ **Smoke test em produção** após deploy:
+   - PM2 online (`pm2 list | grep online`)
+   - URL principal responde 200 (`curl -sI`)
+   - Fluxo crítico funciona manualmente (Yussef confirma)
+6. ✅ **Relatório com evidência** entregue ao Yussef:
+   - Métricas numéricas concretas (não "funcionou"; "94/94 linhas, R$ X")
+   - PNGs do Playwright ou screenshots manuais
+   - Logs limpos do deploy (`pm2 logs --err | head -20` sem erros novos)
+   - Tempo medido das operações críticas
+7. ✅ **Backup do banco em prod ANTES de qualquer deploy** que mude schema
+   ou lógica financeira: `pg_dump -Fc | tee /var/backups/conta-ia/<sprint>.dump`
+
+### Sintomas de violação
+
+Se você (Claude Code) está tentado a dizer "entregue" sem ter feito o teste
+end-to-end com a fixture real do Yussef, PARE. Faça o teste primeiro.
+
+Se você está rodando só unit tests + build + TS check, ISSO NÃO É SUFICIENTE
+pra features de fluxo do usuário (upload, navegação, formulários multi-step).
+
+Se você não tem como testar end-to-end neste ambiente (sem browser interativo,
+sem credenciais), DECLARE EXPLICITAMENTE essa limitação no relatório e peça
+ao Yussef pra fazer o smoke test em prod ANTES de fechar a sprint.
+
+### Cenários típicos de teste E2E obrigatório
+
+| Feature | Cenários mínimos |
+|---|---|
+| Upload de arquivo | (1) válido fluxo completo; (2) >limit tamanho; (3) tipo errado; (4) re-upload idempotência; (5) rede instável retry |
+| Form multi-step | (1) golden path; (2) voltar/avançar; (3) validation errors visíveis |
+| CRUD listagem | (1) criar; (2) editar; (3) deletar; (4) filtros; (5) paginação |
+| Conciliação | (1) match manual 1-1; (2) split; (3) ignore |
+
+VIOLAR ESSA REGRA = bug em produção = retrabalho = quebra de confiança.
+
+---
+
 ## 🛡️ Segurança e LGPD
 
 - ✅ Senhas com bcrypt rounds=12
