@@ -23,6 +23,13 @@ import {
   type ColumnOrderState,
 } from '@tanstack/react-table'
 import type { DensityLevel } from '@/lib/contas-pagar/use-table-preferences'
+// Sprint 5.0.3.0c (c3) — Edit inline
+import { EditableCell } from './cells/EditableCell'
+import {
+  CategoryComboboxCell,
+  type CategoryOption,
+} from './cells/CategoryComboboxCell'
+import type { EditableField } from '@/lib/contas-pagar/use-edit-cell'
 import {
   ArrowUpDown,
   MoreHorizontal,
@@ -93,6 +100,23 @@ interface Props {
   hiddenColumns?: string[]
   /** Ordem das colunas (passa pra ColumnOrderState). Default = ordem natural. */
   columnOrder?: string[]
+  // Sprint 5.0.3.0c (c3) — Edit Inline
+  /** Categorias disponíveis pro combobox de edit. */
+  categoryOptions?: CategoryOption[]
+  /** API do hook useEditCell — passada pelos cell renderers. */
+  editCell?: {
+    isEditing: (rowId: string, field: EditableField) => boolean
+    isSaving: (rowId: string, field: EditableField) => boolean
+    hasError: (rowId: string, field: EditableField) => boolean
+    startEdit: (rowId: string, field: EditableField) => void
+    save: (
+      rowId: string,
+      field: EditableField,
+      newValue: unknown,
+      prevValue: unknown,
+    ) => void
+    cancel: () => void
+  }
 }
 
 function formatDate(d: string | null): string {
@@ -135,6 +159,8 @@ export function PayableTable({
   density = 'normal',
   hiddenColumns = [],
   columnOrder = [],
+  categoryOptions = [],
+  editCell,
 }: Props) {
   const [sorting, setSorting] = useState<SortingState>([
     { id: 'dueDate', desc: false },
@@ -181,11 +207,31 @@ export function PayableTable({
       id: 'dueDate',
       header: 'Vencimento',
       accessorKey: 'dueDate',
-      cell: ({ row }) => (
-        <span className="text-xs tabular-nums">
-          {formatDate(row.original.dueDate)}
-        </span>
-      ),
+      cell: ({ row }) => {
+        const r = row.original
+        if (editCell) {
+          return (
+            <EditableCell
+              type="date"
+              value={r.dueDate ?? ''}
+              isEditing={editCell.isEditing(r.id, 'dueDate')}
+              isSaving={editCell.isSaving(r.id, 'dueDate')}
+              hasError={editCell.hasError(r.id, 'dueDate')}
+              onStartEdit={() => editCell.startEdit(r.id, 'dueDate')}
+              onSave={(v) =>
+                editCell.save(r.id, 'dueDate', v, r.dueDate)
+              }
+              onCancel={editCell.cancel}
+              aria={`Editar vencimento de ${favorecidoLabel(r)}`}
+            />
+          )
+        }
+        return (
+          <span className="text-xs tabular-nums">
+            {formatDate(r.dueDate)}
+          </span>
+        )
+      },
     },
     {
       id: 'paymentDate',
@@ -211,38 +257,102 @@ export function PayableTable({
       id: 'description',
       header: 'Descrição',
       accessorKey: 'description',
-      cell: ({ row }) => (
-        <span className="max-w-[250px] truncate inline-block text-muted-foreground">
-          {row.original.description}
-        </span>
-      ),
+      cell: ({ row }) => {
+        const r = row.original
+        if (editCell) {
+          return (
+            <span className="max-w-[250px] truncate inline-block text-muted-foreground">
+              <EditableCell
+                type="text"
+                value={r.description}
+                isEditing={editCell.isEditing(r.id, 'description')}
+                isSaving={editCell.isSaving(r.id, 'description')}
+                hasError={editCell.hasError(r.id, 'description')}
+                onStartEdit={() => editCell.startEdit(r.id, 'description')}
+                onSave={(v) =>
+                  editCell.save(r.id, 'description', v, r.description)
+                }
+                onCancel={editCell.cancel}
+                aria={`Editar descrição de ${favorecidoLabel(r)}`}
+              />
+            </span>
+          )
+        }
+        return (
+          <span className="max-w-[250px] truncate inline-block text-muted-foreground">
+            {r.description}
+          </span>
+        )
+      },
     },
     {
       id: 'category',
       header: 'Categoria',
       accessorFn: (row) => row.category?.name ?? '',
-      cell: ({ row }) =>
-        row.original.category ? (
+      cell: ({ row }) => {
+        const r = row.original
+        if (editCell) {
+          return (
+            <CategoryComboboxCell
+              currentId={r.category?.id ?? null}
+              currentName={r.category?.name ?? null}
+              isEditing={editCell.isEditing(r.id, 'categoryId')}
+              isSaving={editCell.isSaving(r.id, 'categoryId')}
+              hasError={editCell.hasError(r.id, 'categoryId')}
+              options={categoryOptions}
+              onStartEdit={() => editCell.startEdit(r.id, 'categoryId')}
+              onSave={(v) =>
+                editCell.save(r.id, 'categoryId', v, r.category?.id ?? null)
+              }
+              onCancel={editCell.cancel}
+            />
+          )
+        }
+        return r.category ? (
           <span className="flex items-center gap-1.5 text-xs">
             <span
               className="inline-block h-1.5 w-1.5 rounded-full"
-              style={{ backgroundColor: row.original.category.color }}
+              style={{ backgroundColor: r.category.color }}
             />
-            {row.original.category.name}
+            {r.category.name}
           </span>
         ) : (
           <span className="text-muted-foreground">—</span>
-        ),
+        )
+      },
     },
     {
       id: 'amount',
       header: () => <span className="block text-right">Valor</span>,
       accessorKey: 'amount',
-      cell: ({ row }) => (
-        <span className="block text-right tabular-nums font-medium text-red-600">
-          − R$ {formatBRL(row.original.amount)}
-        </span>
-      ),
+      cell: ({ row }) => {
+        const r = row.original
+        if (editCell) {
+          return (
+            <span className="block text-right tabular-nums font-medium text-red-600">
+              − R${' '}
+              <EditableCell
+                type="number"
+                value={String(r.amount)}
+                isEditing={editCell.isEditing(r.id, 'amount')}
+                isSaving={editCell.isSaving(r.id, 'amount')}
+                hasError={editCell.hasError(r.id, 'amount')}
+                onStartEdit={() => editCell.startEdit(r.id, 'amount')}
+                onSave={(v) =>
+                  editCell.save(r.id, 'amount', v, r.amount)
+                }
+                onCancel={editCell.cancel}
+                aria={`Editar valor de ${favorecidoLabel(r)}`}
+              />
+            </span>
+          )
+        }
+        return (
+          <span className="block text-right tabular-nums font-medium text-red-600">
+            − R$ {formatBRL(r.amount)}
+          </span>
+        )
+      },
     },
     {
       id: 'actions',

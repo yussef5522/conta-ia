@@ -69,6 +69,12 @@ import {
   type ColumnDef as ColumnVisibilityDef,
 } from '@/components/contas-pagar/ColumnsButton'
 import { useTablePreferences } from '@/lib/contas-pagar/use-table-preferences'
+// Sprint 5.0.3.0c (c3) — Edit Inline
+import {
+  useEditCell,
+  type EditableField,
+} from '@/lib/contas-pagar/use-edit-cell'
+import type { CategoryOption } from '@/components/contas-pagar/cells/CategoryComboboxCell'
 import { useSavedView } from '@/lib/contas-pagar/use-saved-view'
 import {
   isValidSavedViewId,
@@ -184,6 +190,133 @@ function ContasAPagarInner() {
     alwaysVisible: ALWAYS_VISIBLE_COLS,
     defaultColumnOrder: ALL_COLUMNS.map((c) => c.id),
   })
+
+  // Sprint 5.0.3.0c (c3) — Edit Inline state
+  const [categoryOptions, setCategoryOptions] = useState<CategoryOption[]>([])
+  const [cellErrors, setCellErrors] = useState<
+    Record<string, Set<EditableField>>
+  >({})
+
+  const editCellApi = useEditCell({
+    empresaId,
+    onOptimisticUpdate: (rowId, field, value) => {
+      setItems((prev) =>
+        prev.map((r) => {
+          if (r.id !== rowId) return r
+          if (field === 'description') return { ...r, description: value as string }
+          if (field === 'amount') return { ...r, amount: value as number }
+          if (field === 'dueDate') {
+            const iso = (value as Date).toISOString()
+            return { ...r, dueDate: iso }
+          }
+          if (field === 'categoryId') {
+            const newCatId = value as string | null
+            if (newCatId === null) return { ...r, category: null }
+            // Se sentinel __create__, ainda não sabemos o id real — server retorna
+            if (newCatId.startsWith('__create__:')) {
+              const name = newCatId.replace('__create__:', '')
+              return {
+                ...r,
+                category: { id: 'pending', name, color: '#999999' },
+              }
+            }
+            const opt = categoryOptions.find((o) => o.id === newCatId)
+            return {
+              ...r,
+              category: opt
+                ? { id: opt.id, name: opt.name, color: '#888888' }
+                : r.category,
+            }
+          }
+          return r
+        }),
+      )
+      // Limpa erro previo
+      setCellErrors((prev) => {
+        const next = { ...prev }
+        if (next[rowId]) {
+          const set = new Set(next[rowId])
+          set.delete(field)
+          if (set.size === 0) delete next[rowId]
+          else next[rowId] = set
+        }
+        return next
+      })
+    },
+    onRevert: (rowId, field, prevValue) => {
+      setItems((prev) =>
+        prev.map((r) => {
+          if (r.id !== rowId) return r
+          if (field === 'description')
+            return { ...r, description: prevValue as string }
+          if (field === 'amount') return { ...r, amount: prevValue as number }
+          if (field === 'dueDate') return { ...r, dueDate: prevValue as string }
+          if (field === 'categoryId') {
+            // Não temos snapshot completo de category aqui — recarrega
+            void fetchItems()
+            return r
+          }
+          return r
+        }),
+      )
+      // Marca erro
+      setCellErrors((prev) => {
+        const next = { ...prev }
+        const set = new Set(next[rowId] ?? [])
+        set.add(field)
+        next[rowId] = set
+        return next
+      })
+    },
+    onError: (message) => {
+      toast({ variant: 'destructive', title: 'Erro ao salvar', description: message })
+    },
+  })
+
+  // Carrega categorias da empresa pro combobox
+  useEffect(() => {
+    if (!empresaId) {
+      setCategoryOptions([])
+      return
+    }
+    fetch(`/api/empresas/${empresaId}/categorias`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.categorias) {
+          setCategoryOptions(
+            data.categorias.map((c: { id: string; name: string }) => ({
+              id: c.id,
+              name: c.name,
+            })),
+          )
+        }
+      })
+      .catch(() => {})
+  }, [empresaId])
+
+  // editCellAdapter pra PayableTable (formato esperado)
+  const editCellAdapter = useMemo(
+    () => ({
+      isEditing: (rowId: string, field: EditableField) =>
+        editCellApi.isEditing(rowId, field),
+      isSaving: (rowId: string, field: EditableField) =>
+        editCellApi.isEditing(rowId, field) &&
+        editCellApi.status === 'saving',
+      hasError: (rowId: string, field: EditableField) =>
+        cellErrors[rowId]?.has(field) === true,
+      startEdit: editCellApi.startEdit,
+      save: (
+        rowId: string,
+        field: EditableField,
+        newValue: unknown,
+        prevValue: unknown,
+      ) => {
+        void editCellApi.save(rowId, field, newValue, prevValue)
+      },
+      cancel: editCellApi.cancel,
+    }),
+    [editCellApi, cellErrors],
+  )
 
   // IDs selecionadas (derivado do RowSelection state do @tanstack/react-table)
   const selectedIds = useMemo(
@@ -651,6 +784,8 @@ function ContasAPagarInner() {
               density={tablePrefs.effectiveDensity}
               hiddenColumns={tablePrefs.prefs.columnHidden}
               columnOrder={tablePrefs.prefs.columnOrder}
+              categoryOptions={categoryOptions}
+              editCell={editCellAdapter}
               onEfetivar={(row) =>
                 setEfetivar({
                   id: row.id,
