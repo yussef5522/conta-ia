@@ -117,12 +117,24 @@ export async function POST(request: NextRequest, { params }: Params) {
       where: { companyId_fileHash: { companyId, fileHash } },
     })
     if (existing) {
+      // Sprint 5.0.2.3 — retorna fileName + parsed columnMapping pra UI degradar
+      // graciosamente no step DETECT quando duplicate
+      let existingMapping: ColumnMapping | null = null
+      if (existing.columnMapping) {
+        try {
+          existingMapping = JSON.parse(existing.columnMapping) as ColumnMapping
+        } catch {
+          /* ignore — UI já tem fallback */
+        }
+      }
       return NextResponse.json({
         batchId: existing.id,
         status: existing.status,
         duplicate: true,
         code: 'DUPLICATE_BATCH',
         totalRows: existing.totalRows,
+        fileName: existing.fileName,
+        mapping: existingMapping,
       })
     }
 
