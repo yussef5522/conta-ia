@@ -75,6 +75,13 @@ import {
   type EditableField,
 } from '@/lib/contas-pagar/use-edit-cell'
 import type { CategoryOption } from '@/components/contas-pagar/cells/CategoryComboboxCell'
+// Sprint 5.0.3.0c (c4) — Aging Dashboard
+import { AgingDashboard } from '@/components/contas-pagar/AgingDashboard'
+import {
+  periodFromBucket,
+  type AgingResult,
+  type AgingBucketId,
+} from '@/lib/contas-pagar/aging'
 import { useSavedView } from '@/lib/contas-pagar/use-saved-view'
 import {
   isValidSavedViewId,
@@ -293,6 +300,41 @@ function ContasAPagarInner() {
       })
       .catch(() => {})
   }, [empresaId])
+
+  // Sprint 5.0.3.0c (c4) — Aging Dashboard data
+  const [aging, setAging] = useState<AgingResult | null>(null)
+  const [agingLoading, setAgingLoading] = useState(false)
+
+  const refetchAging = useCallback(() => {
+    if (!empresaId) {
+      setAging(null)
+      return
+    }
+    setAgingLoading(true)
+    void fetch(`/api/empresas/${empresaId}/contas-pagar/aging`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.aging) setAging(data.aging)
+      })
+      .catch(() => {})
+      .finally(() => setAgingLoading(false))
+  }, [empresaId])
+
+  useEffect(() => {
+    refetchAging()
+  }, [refetchAging])
+
+  function applyAgingFilter(bucketId: AgingBucketId) {
+    const { dataDe, dataAte } = periodFromBucket(bucketId)
+    setFilters({
+      q: filters.q,
+      status: 'PENDING',
+      vencidasOnly: false, // usa período em dueDate em vez de "só vencidas"
+      dataDe,
+      dataAte,
+    })
+    setPage(1)
+  }
 
   // editCellAdapter pra PayableTable (formato esperado)
   const editCellAdapter = useMemo(
@@ -677,6 +719,15 @@ function ContasAPagarInner() {
           onMarkPaid={() => setBulkMarkPaidOpen(true)}
           onDelete={() => setBulkDeleteOpen(true)}
           onClear={() => setSelection({})}
+        />
+      )}
+
+      {/* Sprint 5.0.3.0c (c4) — Aging Dashboard (acima dos stats) */}
+      {empresaId && !loading && (
+        <AgingDashboard
+          result={aging}
+          loading={agingLoading}
+          onClickBucket={applyAgingFilter}
         />
       )}
 
