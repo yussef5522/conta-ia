@@ -41,3 +41,11 @@ next-env.d.ts
 # Prisma
 /prisma/migrations/*.db
 .claude/
+
+# Sprint 5.0.2.3 — Fixtures reais não vão pro git (dados sensíveis do contador)
+tests/fixtures/*.xlsx
+tests/fixtures/*.xls
+tests/e2e/screenshots/
+
+# macOS
+.DS_Store
