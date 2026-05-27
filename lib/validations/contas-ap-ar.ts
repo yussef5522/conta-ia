@@ -43,6 +43,23 @@ export const contaAPagarCreateSchema = z.object({
 
 export type ContaAPagarCreateInput = z.infer<typeof contaAPagarCreateSchema>
 
+// Sprint 5.0.3.0a-fix — PATCH conta a pagar pendente (ou já paga).
+// Todos os campos são opcionais (partial update). paymentDate=null limpa pagamento.
+export const contaAPagarUpdateSchema = z.object({
+  description: z.string().min(1, 'Descrição obrigatória').max(255).optional(),
+  amount: z.coerce.number().positive('Valor deve ser positivo').optional(),
+  dueDate: z.coerce.date().optional(),
+  paymentDate: z.coerce.date().nullable().optional(),
+  categoryId: z.string().cuid().nullable().optional(),
+  supplierId: z.string().cuid().nullable().optional(),
+  employeeId: z.string().cuid().nullable().optional(),
+  bankAccountId: z.string().cuid().nullable().optional(),
+  competenceDate: z.coerce.date().nullable().optional(),
+  notes: z.string().max(1000).nullable().optional(),
+})
+
+export type ContaAPagarUpdateInput = z.infer<typeof contaAPagarUpdateSchema>
+
 // Conta a receber (RECEIVABLE). Mesmo shape, mas com customerId em vez de supplierId.
 export const contaAReceberCreateSchema = z.object({
   companyId: z.string().cuid('companyId inválido'),

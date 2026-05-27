@@ -20,7 +20,16 @@ import {
   type SortingState,
   type RowSelectionState,
 } from '@tanstack/react-table'
-import { ArrowUpDown, MoreHorizontal, Check } from 'lucide-react'
+import {
+  ArrowUpDown,
+  MoreHorizontal,
+  Check,
+  Pencil,
+  RotateCcw,
+  Copy,
+  Trash2,
+  Banknote,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Badge } from '@/components/ui/badge'
@@ -28,6 +37,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { formatBRL } from '@/lib/format/money'
@@ -59,7 +69,18 @@ export interface PayableRow {
 interface Props {
   rows: PayableRow[]
   onRowClick?: (row: PayableRow) => void
+  /** Efetivar pagamento COM banco (atualiza saldo) — Sprint 4.0.1.a */
   onEfetivar?: (row: PayableRow) => void
+  /** Edit modal — Sprint 5.0.3.0a-fix */
+  onEdit?: (row: PayableRow) => void
+  /** Marcar como paga (sem banco) — Sprint 5.0.3.0a-fix */
+  onMarkPaid?: (row: PayableRow) => void
+  /** Marcar como NÃO paga (PATCH paymentDate=null) — Sprint 5.0.3.0a-fix */
+  onMarkUnpaid?: (row: PayableRow) => void
+  /** Duplicar (POST cria nova com dueDate+1mês) — Sprint 5.0.3.0a-fix */
+  onDuplicate?: (row: PayableRow) => void
+  /** Excluir (com ConfirmDialog no parent) — Sprint 5.0.3.0a-fix */
+  onDelete?: (row: PayableRow) => void
   selection: RowSelectionState
   onSelectionChange: (s: RowSelectionState) => void
 }
@@ -94,6 +115,11 @@ export function PayableTable({
   rows,
   onRowClick,
   onEfetivar,
+  onEdit,
+  onMarkPaid,
+  onMarkUnpaid,
+  onDuplicate,
+  onDelete,
   selection,
   onSelectionChange,
 }: Props) {
@@ -211,6 +237,7 @@ export function PayableTable({
           dueDate: row.original.dueDate,
           paymentDate: row.original.paymentDate,
         })
+        const isPaid = visual === 'paid'
         return (
           <div onClick={(e) => e.stopPropagation()}>
             <DropdownMenu>
@@ -219,23 +246,72 @@ export function PayableTable({
                   variant="ghost"
                   size="icon"
                   className="h-7 w-7"
-                  aria-label="Ações"
+                  aria-label="Ações da conta"
+                  aria-haspopup="menu"
+                  data-testid={`row-actions-${row.original.id}`}
                 >
                   <MoreHorizontal className="h-3.5 w-3.5" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {visual !== 'paid' && onEfetivar && (
+              <DropdownMenuContent align="end" className="w-56">
+                {onEdit && (
                   <DropdownMenuItem
-                    onSelect={() => onEfetivar(row.original)}
+                    onSelect={() => onEdit(row.original)}
+                    data-testid="row-action-edit"
                   >
-                    <Check className="mr-2 h-3.5 w-3.5" />
-                    Efetivar pagamento
+                    <Pencil className="mr-2 h-3.5 w-3.5" />
+                    Editar
                   </DropdownMenuItem>
                 )}
-                <DropdownMenuItem onSelect={() => onRowClick?.(row.original)}>
-                  Ver detalhes
-                </DropdownMenuItem>
+                {!isPaid && onMarkPaid && (
+                  <DropdownMenuItem
+                    onSelect={() => onMarkPaid(row.original)}
+                    data-testid="row-action-mark-paid"
+                  >
+                    <Check className="mr-2 h-3.5 w-3.5 text-emerald-600" />
+                    Marcar como paga
+                  </DropdownMenuItem>
+                )}
+                {isPaid && onMarkUnpaid && (
+                  <DropdownMenuItem
+                    onSelect={() => onMarkUnpaid(row.original)}
+                    data-testid="row-action-mark-unpaid"
+                  >
+                    <RotateCcw className="mr-2 h-3.5 w-3.5 text-amber-600" />
+                    Marcar como não paga
+                  </DropdownMenuItem>
+                )}
+                {!isPaid && onEfetivar && (
+                  <DropdownMenuItem
+                    onSelect={() => onEfetivar(row.original)}
+                    data-testid="row-action-efetivar"
+                  >
+                    <Banknote className="mr-2 h-3.5 w-3.5 text-sky-600" />
+                    Efetivar com banco…
+                  </DropdownMenuItem>
+                )}
+                {onDuplicate && (
+                  <DropdownMenuItem
+                    onSelect={() => onDuplicate(row.original)}
+                    data-testid="row-action-duplicate"
+                  >
+                    <Copy className="mr-2 h-3.5 w-3.5" />
+                    Duplicar
+                  </DropdownMenuItem>
+                )}
+                {onDelete && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onSelect={() => onDelete(row.original)}
+                      className="text-red-600 focus:text-red-700 focus:bg-red-50 dark:focus:bg-red-950/30"
+                      data-testid="row-action-delete"
+                    >
+                      <Trash2 className="mr-2 h-3.5 w-3.5" />
+                      Excluir
+                    </DropdownMenuItem>
+                  </>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>

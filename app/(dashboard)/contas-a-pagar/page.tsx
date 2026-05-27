@@ -52,6 +52,10 @@ import {
   type PayableForEfetivar,
   type BankAccountOption,
 } from '@/components/contas-pagar/EfetivarDialog'
+import { EditarContaDialog } from '@/components/contas-pagar/EditarContaDialog'
+import { MarcarPagaDialog } from '@/components/contas-pagar/MarcarPagaDialog'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { useToast } from '@/components/ui/use-toast'
 
 interface Empresa {
   id: string
@@ -134,6 +138,11 @@ function ContasAPagarInner() {
   const [selection, setSelection] = useState<Record<string, boolean>>({})
   const [bankAccounts, setBankAccounts] = useState<BankAccountOption[]>([])
   const [efetivar, setEfetivar] = useState<PayableForEfetivar | null>(null)
+  // Sprint 5.0.3.0a-fix — dialogs de row actions
+  const [editar, setEditar] = useState<PayableRow | null>(null)
+  const [markPaid, setMarkPaid] = useState<PayableRow | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<PayableRow | null>(null)
+  const { toast } = useToast()
 
   // Carrega empresas
   useEffect(() => {
@@ -225,6 +234,85 @@ function ContasAPagarInner() {
   function clearFilters() {
     setFilters(EMPTY_FILTERS)
     setPage(1)
+  }
+
+  // Sprint 5.0.3.0a-fix — Row actions handlers
+  async function handleMarkUnpaid(row: PayableRow) {
+    try {
+      const res = await fetch(`/api/contas-a-pagar/${row.id}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paymentDate: null }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        toast({
+          variant: 'destructive',
+          title: 'Falha ao desmarcar pagamento',
+          description: data.erro ?? `HTTP ${res.status}`,
+        })
+        return
+      }
+      toast({
+        title: 'Conta marcada como não paga',
+        description: row.description,
+      })
+      void fetchItems()
+    } catch {
+      toast({ variant: 'destructive', title: 'Erro de rede' })
+    }
+  }
+
+  async function handleDuplicate(row: PayableRow) {
+    try {
+      const res = await fetch(`/api/contas-a-pagar/${row.id}/duplicar`, {
+        method: 'POST',
+        credentials: 'include',
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        toast({
+          variant: 'destructive',
+          title: 'Falha ao duplicar',
+          description: data.erro ?? `HTTP ${res.status}`,
+        })
+        return
+      }
+      toast({
+        title: 'Conta duplicada',
+        description: 'Edite a nova conta com os detalhes finais.',
+      })
+      void fetchItems()
+    } catch {
+      toast({ variant: 'destructive', title: 'Erro de rede' })
+    }
+  }
+
+  async function executeDelete() {
+    if (!confirmDelete) return
+    try {
+      const res = await fetch(`/api/contas-a-pagar/${confirmDelete.id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        toast({
+          variant: 'destructive',
+          title: 'Falha ao excluir',
+          description: data.erro ?? `HTTP ${res.status}`,
+        })
+        return
+      }
+      toast({
+        title: 'Conta excluída',
+        description: confirmDelete.description,
+      })
+      void fetchItems()
+    } catch {
+      toast({ variant: 'destructive', title: 'Erro de rede' })
+    }
   }
 
   function applyFilterPreset(kind: 'paid' | 'pending' | 'warn3d' | 'overdue') {
@@ -402,6 +490,11 @@ function ContasAPagarInner() {
                     : null,
                 })
               }
+              onEdit={(row) => setEditar(row)}
+              onMarkPaid={(row) => setMarkPaid(row)}
+              onMarkUnpaid={handleMarkUnpaid}
+              onDuplicate={handleDuplicate}
+              onDelete={(row) => setConfirmDelete(row)}
             />
           )}
 
@@ -454,13 +547,50 @@ function ContasAPagarInner() {
         />
       )}
 
-      {/* Modal Efetivar */}
+      {/* Modal Efetivar (com banco) */}
       <EfetivarDialog
         open={!!efetivar}
         conta={efetivar}
         bankAccounts={bankAccounts}
         onClose={() => setEfetivar(null)}
         onDone={() => void fetchItems()}
+      />
+
+      {/* Sprint 5.0.3.0a-fix — Modal Editar */}
+      <EditarContaDialog
+        open={!!editar}
+        conta={editar}
+        onClose={() => setEditar(null)}
+        onSaved={() => void fetchItems()}
+      />
+
+      {/* Sprint 5.0.3.0a-fix — Modal Marcar como paga (sem banco) */}
+      <MarcarPagaDialog
+        open={!!markPaid}
+        conta={markPaid}
+        onClose={() => setMarkPaid(null)}
+        onDone={() => void fetchItems()}
+      />
+
+      {/* Sprint 5.0.3.0a-fix — Confirm Excluir */}
+      <ConfirmDialog
+        open={!!confirmDelete}
+        onOpenChange={(o) => !o && setConfirmDelete(null)}
+        title="Excluir conta a pagar"
+        description={
+          confirmDelete ? (
+            <>
+              Tem certeza que deseja excluir{' '}
+              <strong>&quot;{confirmDelete.description}&quot;</strong>? Esta
+              ação não pode ser desfeita.
+            </>
+          ) : (
+            'Esta ação não pode ser desfeita.'
+          )
+        }
+        confirmLabel="Excluir"
+        variant="destructive"
+        onConfirm={executeDelete}
       />
     </div>
   )
