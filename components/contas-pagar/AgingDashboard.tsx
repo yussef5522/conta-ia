@@ -101,7 +101,56 @@ export function AgingDashboard({
                 Nenhuma conta vencida. Seu fluxo está em dia!
               </div>
             ) : (
-              <div className="overflow-x-auto -mx-2">
+              <>
+              {/* Sprint 5.0.3.0d (d3) — Mobile: cards stacked em <md */}
+              <div className="md:hidden space-y-2 mt-2">
+                {AGING_BUCKET_IDS.map((id) => {
+                  const bucket = result!.buckets.find((b) => b.id === id)!
+                  const cores = AGING_COLORS[id]
+                  const isEmpty = bucket.count === 0
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      disabled={isEmpty}
+                      onClick={() => !isEmpty && onClickBucket(id)}
+                      className={`w-full flex items-center justify-between rounded-md border px-3 py-2.5 text-left min-h-11 ${
+                        isEmpty
+                          ? 'opacity-40'
+                          : 'hover:bg-muted/30 active:bg-muted/50'
+                      }`}
+                      data-testid={`aging-bucket-mobile-${id}`}
+                    >
+                      <span
+                        className={`inline-block px-2 py-0.5 rounded text-xs ${cores.bg} ${cores.text}`}
+                      >
+                        {cores.label}
+                      </span>
+                      <div className="text-right">
+                        <div
+                          className={`text-sm font-medium tabular-nums ${cores.text}`}
+                        >
+                          R$ {formatBRL(bucket.amount)}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground">
+                          {bucket.count}{' '}
+                          {bucket.count === 1 ? 'conta' : 'contas'} ·{' '}
+                          {bucket.percent.toFixed(1)}%
+                        </div>
+                      </div>
+                    </button>
+                  )
+                })}
+                <div className="border-t pt-2 px-3 flex items-center justify-between text-sm">
+                  <span className="font-medium">Total</span>
+                  <span className="font-medium tabular-nums">
+                    R$ {formatBRL(result!.total.amount)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Desktop: tabela */}
+              <div className="hidden md:block overflow-x-auto -mx-2">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-xs uppercase tracking-wide text-muted-foreground">
@@ -186,6 +235,7 @@ export function AgingDashboard({
                   </tbody>
                 </table>
               </div>
+              </>
             )}
           </div>
         )}

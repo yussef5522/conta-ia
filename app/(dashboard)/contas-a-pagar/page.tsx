@@ -741,17 +741,19 @@ function ContasAPagarInner() {
                 ? `/empresas/${empresaId}/contas-pagar/import`
                 : '#'
             }
+            aria-label="Importar Excel"
           >
-            <Upload className="mr-1.5 h-3.5 w-3.5" />
-            Importar Excel
+            <Upload className="h-3.5 w-3.5 sm:mr-1.5" />
+            <span className="hidden sm:inline">Importar Excel</span>
           </Link>
         </Button>
         <Button size="sm" asChild disabled={!empresaId}>
           <Link
             href={`/contas-a-pagar/nova${empresaId ? `?empresaId=${empresaId}` : ''}`}
+            aria-label="Nova conta a pagar"
           >
-            <Plus className="mr-1.5 h-3.5 w-3.5" />
-            Nova conta a pagar
+            <Plus className="h-3.5 w-3.5 sm:mr-1.5" />
+            <span className="hidden sm:inline">Nova conta a pagar</span>
           </Link>
         </Button>
       </Header>
@@ -898,7 +900,20 @@ function ContasAPagarInner() {
               selection={selection}
               onSelectionChange={setSelection}
               density={tablePrefs.effectiveDensity}
-              hiddenColumns={tablePrefs.prefs.columnHidden}
+              hiddenColumns={
+                // Sprint 5.0.3.0d (d3) — Em mobile, esconde colunas secundárias
+                // por default. User pode reabrir via dropdown "Colunas".
+                tablePrefs.isMobile
+                  ? Array.from(
+                      new Set([
+                        ...tablePrefs.prefs.columnHidden,
+                        'paymentDate',
+                        'description',
+                        'category',
+                      ]),
+                    )
+                  : tablePrefs.prefs.columnHidden
+              }
               columnOrder={tablePrefs.prefs.columnOrder}
               categoryOptions={categoryOptions}
               editCell={editCellAdapter}
