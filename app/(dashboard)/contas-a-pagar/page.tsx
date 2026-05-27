@@ -82,6 +82,13 @@ import {
   type AgingResult,
   type AgingBucketId,
 } from '@/lib/contas-pagar/aging'
+// Sprint 5.0.3.0c (c5) — Saved Views CRUD UI
+import {
+  useSavedViews,
+  type CustomSavedView,
+} from '@/lib/contas-pagar/use-saved-views'
+import { NewViewModal } from '@/components/contas-pagar/NewViewModal'
+import { RenameViewDialog } from '@/components/contas-pagar/RenameViewDialog'
 import { useSavedView } from '@/lib/contas-pagar/use-saved-view'
 import {
   isValidSavedViewId,
@@ -334,6 +341,51 @@ function ContasAPagarInner() {
       dataAte,
     })
     setPage(1)
+  }
+
+  // Sprint 5.0.3.0c (c5) — Custom Saved Views CRUD
+  const savedViewsApi = useSavedViews({
+    empresaId,
+    scope: 'payable',
+    onError: (msg) =>
+      toast({ variant: 'destructive', title: 'Falha', description: msg }),
+  })
+
+  const [newViewOpen, setNewViewOpen] = useState(false)
+  const [renamingView, setRenamingView] = useState<CustomSavedView | null>(null)
+  const [confirmDeleteView, setConfirmDeleteView] =
+    useState<CustomSavedView | null>(null)
+  const [activeCustomId, setActiveCustomId] = useState<string | null>(null)
+
+  function handleSelectCustom(view: CustomSavedView) {
+    try {
+      const parsedFilters = JSON.parse(view.filters)
+      setFilters({
+        q: filters.q,
+        dataDe: parsedFilters.dataDe ?? '',
+        dataAte: parsedFilters.dataAte ?? '',
+        status: parsedFilters.status ?? 'PENDING',
+        vencidasOnly: parsedFilters.vencidasOnly === true,
+      })
+      setActiveCustomId(view.id)
+      setPage(1)
+    } catch {
+      toast({
+        variant: 'destructive',
+        title: 'View corrompida',
+        description: 'Filtros desta view estão inválidos.',
+      })
+    }
+  }
+
+  async function executeDeleteView() {
+    if (!confirmDeleteView) return
+    const ok = await savedViewsApi.remove(confirmDeleteView.id)
+    if (ok) {
+      if (activeCustomId === confirmDeleteView.id) setActiveCustomId(null)
+      toast({ title: 'View excluída' })
+    }
+    setConfirmDeleteView(null)
   }
 
   // editCellAdapter pra PayableTable (formato esperado)
@@ -704,11 +756,24 @@ function ContasAPagarInner() {
         </Button>
       </Header>
 
-      {/* Sprint 5.0.3.0b — Saved Views tabs */}
+      {/* Sprint 5.0.3.0b — Saved Views tabs (evoluído em 5.0.3.0c c5) */}
       {empresaId && !loading && (
         <SavedViewTabs
           activeViewId={activeViewId}
-          onSelect={handleSelectView}
+          activeCustomId={activeCustomId}
+          customViews={savedViewsApi.views}
+          onSelectSystem={(id) => {
+            setActiveCustomId(null)
+            handleSelectView(id)
+          }}
+          onSelectCustom={handleSelectCustom}
+          onNew={() => setNewViewOpen(true)}
+          onRename={(view) => setRenamingView(view)}
+          onDuplicate={async (id) => {
+            const dup = await savedViewsApi.duplicate(id)
+            if (dup) toast({ title: 'View duplicada' })
+          }}
+          onDelete={(view) => setConfirmDeleteView(view)}
         />
       )}
 
@@ -977,6 +1042,56 @@ function ContasAPagarInner() {
         confirmLabel={`Excluir ${selectedCount}`}
         variant="destructive"
         onConfirm={executeBulkDelete}
+      />
+
+      {/* Sprint 5.0.3.0c (c5) — Saved Views modals */}
+      <NewViewModal
+        open={newViewOpen}
+        currentFilters={filters as unknown as Record<string, unknown>}
+        onClose={() => setNewViewOpen(false)}
+        onCreate={async ({ name, icon, filters: f }) => {
+          const created = await savedViewsApi.create({
+            name,
+            icon,
+            filters: f,
+            density: tablePrefs.prefs.density,
+            columnOrder: JSON.stringify(tablePrefs.prefs.columnOrder),
+            columnHidden: JSON.stringify(tablePrefs.prefs.columnHidden),
+          })
+          if (created) {
+            toast({ title: 'View criada', description: created.name })
+            setActiveCustomId(created.id)
+          }
+        }}
+      />
+
+      <RenameViewDialog
+        view={renamingView}
+        onClose={() => setRenamingView(null)}
+        onSave={async ({ name, icon }) => {
+          if (!renamingView) return
+          const ok = await savedViewsApi.update(renamingView.id, { name, icon })
+          if (ok) toast({ title: 'View renomeada' })
+        }}
+      />
+
+      <ConfirmDialog
+        open={!!confirmDeleteView}
+        onOpenChange={(o) => !o && setConfirmDeleteView(null)}
+        title="Excluir view?"
+        description={
+          confirmDeleteView ? (
+            <>
+              Tem certeza que deseja excluir a view{' '}
+              <strong>&quot;{confirmDeleteView.name}&quot;</strong>?
+            </>
+          ) : (
+            ''
+          )
+        }
+        confirmLabel="Excluir"
+        variant="destructive"
+        onConfirm={executeDeleteView}
       />
     </div>
   )
