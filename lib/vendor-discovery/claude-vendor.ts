@@ -34,6 +34,8 @@ export interface ClaudeVendorInput {
   cnpj?: string | null
   transactionDescription: string
   transactionType: 'DEBIT' | 'CREDIT'
+  /** Sprint 5.0.2.s — setor da empresa pra prompt setorial. */
+  setor?: string | null
 }
 
 // Sprint 5.0.2.o — Prompt reescrito (mais corajoso, com pistas).
@@ -109,9 +111,23 @@ embalagens. "PRODUTOS ALIMENTICIOS LTDA" claramente vende alimentos. USE ISSO.
 
 RESPOSTA: JSON puro, sem markdown.`
 
+// Sprint 5.0.2.s — orientação contábil POR SETOR
+const SETOR_HINTS: Record<string, string> = {
+  RESTAURANTE:
+    'Para RESTAURANTE distinga: insumos para preparar pratos = "Matéria-Prima - Outros Insumos" / "Matéria-Prima - Carnes" / "Matéria-Prima - Bebidas" / "Matéria-Prima - Hortifruti" (NÃO "Fornecedor X"). Embalagens delivery = "Embalagens - Delivery". Descartáveis = "Embalagens - Descartáveis".',
+  ACADEMIA:
+    'Para ACADEMIA distinga: suplementos para revenda (Growth, Max Titanium, Probiotica) = "Mercadoria Revenda - Suplementos". Equipamentos novos = "Equipamentos Academia". Software (PACT/Tecnofit) = "Software Gestão Academia".',
+  COMERCIO_ROUPA:
+    'Para COMÉRCIO DE ROUPAS distinga: confecção/fornecedor têxtil = "Mercadoria Revenda - Confecções". Sacolas/etiquetas = "Embalagens Loja". Frete (Jadlog/Correios) = "Frete".',
+  VAREJO_GERAL:
+    'Para VAREJO GERAL use "Mercadoria para Revenda" ou "Compras Mercadoria" pra produtos revendidos.',
+}
+
 function buildUserPrompt(input: ClaudeVendorInput): string {
   const tipo =
     input.transactionType === 'DEBIT' ? 'Pagamento (despesa)' : 'Recebimento (receita)'
+  const hintSetor =
+    input.setor && SETOR_HINTS[input.setor] ? `\n\nCONTEXTO CONTÁBIL: ${SETOR_HINTS[input.setor]}\n` : ''
   return [
     `Identifique esta empresa que apareceu em transação bancária brasileira:`,
     '',
@@ -119,7 +135,8 @@ function buildUserPrompt(input: ClaudeVendorInput): string {
     input.cnpj ? `CNPJ: ${input.cnpj}` : '',
     `Descrição completa do extrato: ${input.transactionDescription}`,
     `Tipo: ${tipo}`,
-    '',
+    input.setor ? `Setor da empresa: ${input.setor}` : '',
+    hintSetor,
     'Aplique a estratégia em ordem:',
     '1. Você reconhece a empresa?',
     '2. Tem palavras-chave descritivas no nome?',

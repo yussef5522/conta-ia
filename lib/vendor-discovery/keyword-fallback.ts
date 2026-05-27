@@ -14,6 +14,42 @@ export interface KeywordCategoryMapping {
   confidence: number
 }
 
+// Sprint 5.0.2.s — Overrides POR SETOR. Quando empresa.setor está cadastrado,
+// o engine consulta primeiro os overrides do setor e DEPOIS cai no array
+// universal abaixo. Isso permite RESTAURANTE retornar "Matéria-Prima - Carnes"
+// em vez de "Fornecedor Carnes" pra mesma keyword.
+//
+// Categorias setoriais DEVEM existir no plano de contas (criadas por
+// ensureAllSystemCategories quando setor é setado).
+export const SETOR_OVERRIDES: Record<
+  string,
+  ReadonlyArray<KeywordCategoryMapping>
+> = {
+  RESTAURANTE: [
+    { keywords: ['EMBALAGEM', 'EMBALAGENS', 'PACKAGING'], category: 'Embalagens - Descartáveis', confidence: 0.88 },
+    { keywords: ['CONSERVAS'], category: 'Matéria-Prima - Outros Insumos', confidence: 0.88 },
+    { keywords: ['HORTIFRUTI', 'HORTIFRUTIGRANJEIROS', 'FRUTAS E LEGUMES', 'LEGUMES'], category: 'Matéria-Prima - Hortifruti', confidence: 0.92 },
+    { keywords: ['PADARIA', 'CONFEITARIA', 'PANIFICADORA'], category: 'Matéria-Prima - Outros Insumos', confidence: 0.88 },
+    { keywords: ['PRODUTOS ALIMENTICIOS', 'ALIMENTOS', 'ALIMENTICIOS', 'ALIMENTAR'], category: 'Matéria-Prima - Outros Insumos', confidence: 0.88 },
+    { keywords: ['BEBIDAS', 'CERVEJARIA', 'REFRIGERANTE'], category: 'Matéria-Prima - Bebidas', confidence: 0.92 },
+    { keywords: ['CARNES', 'FRIGORIFICO', 'AVICOLA', 'BOVINOS', 'SUINOS', 'AVIARIO'], category: 'Matéria-Prima - Carnes', confidence: 0.92 },
+    { keywords: ['ATACADO', 'ATACADISTA'], category: 'Matéria-Prima - Outros Insumos', confidence: 0.82 },
+    { keywords: ['DISTRIBUIDORA', 'DISTRIBUIDOR'], category: 'Matéria-Prima - Outros Insumos', confidence: 0.78 },
+  ],
+  ACADEMIA: [
+    { keywords: ['SUPLEMENTOS', 'SUPLEMENTO', 'WHEY', 'CREATINA'], category: 'Mercadoria Revenda - Suplementos', confidence: 0.92 },
+    { keywords: ['EQUIPAMENTO ACADEMIA', 'EQUIPAMENTOS ACADEMIA'], category: 'Equipamentos Academia', confidence: 0.9 },
+  ],
+  COMERCIO_ROUPA: [
+    { keywords: ['CONFECCAO', 'CONFECCOES', 'TEXTIL'], category: 'Mercadoria Revenda - Confecções', confidence: 0.92 },
+    { keywords: ['ATACADO', 'ATACADISTA'], category: 'Mercadoria Revenda - Confecções', confidence: 0.82 },
+    { keywords: ['DISTRIBUIDORA', 'DISTRIBUIDOR'], category: 'Mercadoria Revenda - Confecções', confidence: 0.78 },
+  ],
+  VAREJO_GERAL: [
+    // Sem overrides — usa lista universal abaixo
+  ],
+}
+
 export const RAZAO_SOCIAL_KEYWORDS_BR: ReadonlyArray<KeywordCategoryMapping> = [
   // ─────────────────────────────────────────────────────────
   // EMBALAGENS / MATERIAIS
@@ -115,21 +151,36 @@ function normalizeDescUpper(s: string): string {
   return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase()
 }
 
+function sortByConfidenceDesc(
+  list: ReadonlyArray<KeywordCategoryMapping>,
+): KeywordCategoryMapping[] {
+  return [...list]
+    .map((m) => ({
+      ...m,
+      longestKw: Math.max(...m.keywords.map((k) => k.length)),
+    }))
+    .sort((a, b) => {
+      if (b.confidence !== a.confidence) return b.confidence - a.confidence
+      return b.longestKw - a.longestKw
+    })
+}
+
 // Pre-sorted por (confidence desc, keyword length desc) pra match mais
 // específico primeiro
-const SORTED_MAPPINGS = [...RAZAO_SOCIAL_KEYWORDS_BR]
-  .map((m) => ({
-    ...m,
-    // Tamanho da MAIOR keyword do mapping (proxy de especificidade)
-    longestKw: Math.max(...m.keywords.map((k) => k.length)),
-  }))
-  .sort((a, b) => {
-    if (b.confidence !== a.confidence) return b.confidence - a.confidence
-    return b.longestKw - a.longestKw
-  })
+const SORTED_MAPPINGS = sortByConfidenceDesc(RAZAO_SOCIAL_KEYWORDS_BR)
+const SORTED_OVERRIDES: Record<string, KeywordCategoryMapping[]> = Object.fromEntries(
+  Object.entries(SETOR_OVERRIDES).map(([setor, list]) => [
+    setor,
+    sortByConfidenceDesc(list),
+  ]),
+)
 
 /**
  * Tenta categorizar pela razão social.
+ *
+ * Estratégia (Sprint 5.0.2.s):
+ *   1. Se `setor` setado E tem override pra ele → consulta overrides primeiro
+ *   2. Fallback: lista universal RAZAO_SOCIAL_KEYWORDS_BR
  *
  * - SÓ roda em DEBIT (despesas) — para CREDIT a heurística não é confiável.
  * - Retorna o PRIMEIRO match (mais confiante + mais específico).
@@ -138,12 +189,29 @@ const SORTED_MAPPINGS = [...RAZAO_SOCIAL_KEYWORDS_BR]
 export function matchByRazaoSocialKeywords(
   description: string | null | undefined,
   type: 'DEBIT' | 'CREDIT' | string,
+  setor?: string | null,
 ): KeywordMatchResult | null {
   if (!description) return null
   if (type !== 'DEBIT') return null
 
   const desc = normalizeDescUpper(description)
 
+  // 1. Setor overrides
+  if (setor && SORTED_OVERRIDES[setor]) {
+    for (const mapping of SORTED_OVERRIDES[setor]) {
+      for (const kw of mapping.keywords) {
+        if (desc.includes(kw)) {
+          return {
+            category: mapping.category,
+            confidence: mapping.confidence,
+            matchedKeyword: kw,
+          }
+        }
+      }
+    }
+  }
+
+  // 2. Universal fallback
   for (const mapping of SORTED_MAPPINGS) {
     for (const kw of mapping.keywords) {
       if (desc.includes(kw)) {

@@ -45,9 +45,16 @@ export async function POST(request: NextRequest, { params }: Params) {
       return NextResponse.json({ erro: 'Forbidden' }, { status: 403 })
     }
 
+    // Sprint 5.0.2.s — propaga setor pra keyword/Claude retornar categorias contábeis corretas
+    const empresa = await prisma.company.findUnique({
+      where: { id: companyId },
+      select: { setor: true },
+    })
+
     const result = await discoverVendor({
       description: tx.description,
       type: tx.type,
+      setor: empresa?.setor ?? null,
     })
 
     const log = await prisma.vendorDiscoveryLog.create({

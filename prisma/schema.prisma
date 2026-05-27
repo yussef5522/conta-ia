@@ -319,6 +319,12 @@ model Category {
   // null em categorias custom (isSystemDefault=false).
   templateKey      String?
 
+  // Sprint 5.0.2.s — Categoria gera CRÉDITO de PIS/COFINS no Lucro Real
+  // (insumo, embalagem, energia, gás, transporte de mercadoria).
+  // Para Simples/Lucro Presumido fica ignorado.
+  // Default false: regra contábil exige declaração explícita.
+  isCreditavel     Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

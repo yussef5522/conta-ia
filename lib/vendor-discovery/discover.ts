@@ -56,6 +56,9 @@ export interface DiscoverInput {
   type: 'CREDIT' | 'DEBIT' | string
   /** Permite caller forçar pular Claude (modo grátis-only). Default: false. */
   skipClaude?: boolean
+  /** Sprint 5.0.2.s — setor da empresa pra escolher keywords contábeis corretas
+   *  (RESTAURANTE retorna "Matéria-Prima - Carnes" em vez de "Fornecedor Carnes"). */
+  setor?: string | null
 }
 
 /**
@@ -177,7 +180,11 @@ export async function discoverVendor(
   // Roda em descrição completa procurando pistas óbvias (EMBALAGENS, CONSERVAS,
   // SOFTWARE, etc). Mais barato e mais rápido que Claude pra casos óbvios.
   // ─────────────────────────────────────────────────────────
-  const kwMatch = matchByRazaoSocialKeywords(input.description, input.type)
+  const kwMatch = matchByRazaoSocialKeywords(
+    input.description,
+    input.type,
+    input.setor ?? null,
+  )
   if (kwMatch && kwMatch.confidence >= 0.8) {
     const vendorName = anchor ?? input.description.slice(0, 60).trim()
     const cacheId = await persistDiscovery({
@@ -225,6 +232,7 @@ export async function discoverVendor(
     cnpj: cnpj ?? null,
     transactionDescription: input.description,
     transactionType: input.type === 'CREDIT' ? 'CREDIT' : 'DEBIT',
+    setor: input.setor ?? null,
   })
 
   // Sprint 5.0.2.o — NÃO cacheia respostas ruins (envenenamento do cache).

@@ -16,6 +16,10 @@ import {
   categoryTypeForName,
   type SetorEnum,
 } from '@/prisma/seeds/setor-patterns'
+import {
+  planoContasParaSetor,
+  type SetorPlano,
+} from '@/prisma/seeds/plano-contas-setorial'
 
 export interface SystemCategoriesResult {
   distribuicaoLucrosId: string
@@ -67,6 +71,10 @@ interface CategoryShape {
   type: string
   dreGroup: string
   color: string
+  /** Sprint 5.0.2.s — código contábil padrão SPED (ex: "3.1.01.001") */
+  code?: string
+  /** Sprint 5.0.2.s — gera crédito PIS/COFINS Lucro Real */
+  isCreditavel?: boolean
 }
 
 async function ensureCategory(companyId: string, shape: CategoryShape) {
@@ -77,7 +85,22 @@ async function ensureCategory(companyId: string, shape: CategoryShape) {
       dreGroup: shape.dreGroup,
     },
   })
-  if (existing) return existing
+  if (existing) {
+    // Backfill de code/isCreditavel quando passamos novos
+    if (
+      (shape.code && !existing.code) ||
+      (shape.isCreditavel && !existing.isCreditavel)
+    ) {
+      return prisma.category.update({
+        where: { id: existing.id },
+        data: {
+          ...(shape.code && !existing.code ? { code: shape.code } : {}),
+          ...(shape.isCreditavel ? { isCreditavel: true } : {}),
+        },
+      })
+    }
+    return existing
+  }
 
   return prisma.category.create({
     data: {
@@ -89,6 +112,8 @@ async function ensureCategory(companyId: string, shape: CategoryShape) {
       icon: null,
       isActive: true,
       isSystemDefault: true,
+      code: shape.code ?? null,
+      isCreditavel: shape.isCreditavel ?? false,
     },
   })
 }
@@ -192,6 +217,28 @@ export async function ensureAllSystemCategories(
         type: categoryTypeForDreGroup(dreGroup, txType),
         dreGroup,
         color: colorForDreGroup(dreGroup),
+      })
+    }
+  }
+
+  // 4. Sprint 5.0.2.s — plano de contas CONTÁBIL setorial.
+  //    Cria categorias com nomes contábeis corretos (Matéria-Prima vs
+  //    Fornecedor) + código SPED + isCreditavel pra Lucro Real.
+  if (setorEmpresa) {
+    const validSetor = (
+      ['RESTAURANTE', 'ACADEMIA', 'COMERCIO_ROUPA', 'VAREJO_GERAL'].includes(setorEmpresa)
+        ? setorEmpresa
+        : 'VAREJO_GERAL'
+    ) as SetorPlano
+    const plano = planoContasParaSetor(validSetor)
+    for (const conta of plano) {
+      await ensureCategory(companyId, {
+        name: conta.nome,
+        type: conta.type,
+        dreGroup: conta.dreGroup,
+        color: colorForDreGroup(conta.dreGroup),
+        code: conta.codigo,
+        isCreditavel: conta.isCreditavel,
       })
     }
   }

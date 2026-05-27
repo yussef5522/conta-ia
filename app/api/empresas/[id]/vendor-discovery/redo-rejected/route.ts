@@ -39,6 +39,13 @@ export async function POST(request: NextRequest, { params }: Params) {
       take: BATCH_CAP,
     })
 
+    // Sprint 5.0.2.s — propaga setor
+    const empresa = await prisma.company.findUnique({
+      where: { id: companyId },
+      select: { setor: true },
+    })
+    const setorEmpresa = empresa?.setor ?? null
+
     let totalCost = 0
     const breakdown = { cache: 0, brasilapi: 0, keyword: 0, claude: 0, none: 0 }
     const suggestions: Array<{
@@ -56,6 +63,7 @@ export async function POST(request: NextRequest, { params }: Params) {
           const result = await discoverVendor({
             description: tx.description,
             type: tx.type,
+            setor: setorEmpresa,
           })
           const log = await prisma.vendorDiscoveryLog.create({
             data: {
