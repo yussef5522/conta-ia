@@ -96,6 +96,9 @@ model Company {
   empresasRelacionadas EmpresaRelacionada[]
   // Sprint 5.0.2.u — Multi-statement staging (Xero/QuickBooks pattern)
   importStagings     ImportStaging[]
+  // Sprint 5.0.2.0 — Importador Excel Contas a Pagar
+  employees          Employee[]
+  excelImportBatches ExcelImportBatch[]
 
   @@map("companies")
 }
@@ -189,6 +192,9 @@ model Transaction {
   // Classificação automática (FASE 3+4 — IA Contadora)
   // Fornecedor identificado (via regra CNPJ ou lookup BrasilAPI)
   supplierId           String?
+  // Sprint 5.0.2.0 — Funcionário relacionado (alternativo a supplierId pra
+  // PAYABLE de folha). Mutuamente exclusivo com supplierId na prática.
+  employeeId           String?
   // Qual regra aplicou a categoria (NULL quando classificação foi manual ou veio de outra fonte)
   classifiedByRuleId   String?
   // Confiança no momento da classificação (snapshot, pode divergir de rule.confianca atual)
@@ -256,6 +262,8 @@ model Transaction {
   category         Category?       @relation(fields: [categoryId], references: [id])
   supplier         Supplier?       @relation(fields: [supplierId], references: [id])
   customer         Customer?       @relation(fields: [customerId], references: [id])
+  // Sprint 5.0.2.0 — Funcionário (folha de pagamento via import Excel)
+  employee         Employee?       @relation(fields: [employeeId], references: [id])
   classifiedByRule AiLearningRule? @relation(fields: [classifiedByRuleId], references: [id])
   costCenter       CostCenter?     @relation(fields: [costCenterId], references: [id])
   // Onda 2 Sprint 2.3 — vínculo com OfxImport (SetNull se import for deletado)
@@ -1461,4 +1469,146 @@ model StagedTransaction {
   @@index([stagingId])
   @@index([matchedStagedId])
   @@map("staged_transactions")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Sprint 5.0.2.0 — Importador Excel de Contas a Pagar (CAIXAOS)
+// ─────────────────────────────────────────────────────────────────────────
+
+// Employee MINIMAL — separa funcionários de Suppliers (folha tem natureza
+// distinta: encargos, 13º, rescisão). Plano de contas setorial (Sprint s)
+// tem categorias como "Salário Professor" que ganham filtro próprio.
+//
+// Campos adicionais (CPF, cargo, admissão, salário base) ficam pra Sprint
+// dedicada de Folha/RH. Aqui: NOME + TIPO + ATIVO.
+model Employee {
+  id        String  @id @default(cuid())
+  companyId String
+  nome      String
+  // CLT | ESTAGIO | PJ | AUTONOMO (mantido como String pra evolução fácil)
+  tipo      String  @default("CLT")
+  ativo     Boolean @default(true)
+  notes     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@unique([companyId, nome])
+  @@index([companyId, ativo])
+  @@map("employees")
+}
+
+// Lote de import Excel — análogo a ImportStaging (Sprint u OFX) mas pra AP.
+// Status: PENDING_REVIEW → DETECTED → CONFIRMED | CANCELLED
+model ExcelImportBatch {
+  id        String @id @default(cuid())
+  companyId String
+
+  // Origem
+  fileName String
+  fileHash String // sha256 do conteúdo completo (idempotência)
+  // sha256 SÓ dos headers (linha 1) — usado pra cache cross-import
+  // ("aprendizado": próxima planilha com mesmo header reusa column mapping)
+  headerHash String
+
+  // Snapshot stats
+  totalRows         Int
+  totalCreditsCents Int @default(0)
+  totalDebitsCents  Int @default(0)
+  periodStart       DateTime?
+  periodEnd         DateTime?
+
+  // PENDING_REVIEW | DETECTED | CONFIRMED | CANCELLED
+  status     String    @default("PENDING_REVIEW")
+  importedAt DateTime?
+
+  // Snapshot do mapeamento de colunas decidido pela IA (JSON)
+  // ex: {"favorecido":"Favorecido","valor":"Valor","vencimento":"Vencimento",...}
+  columnMapping String?
+  // Confidence agregada da detecção (0-1)
+  detectConfidence Float?
+  // Custo Claude API em USD pra essa detecção
+  detectCostUsd Float? @default(0)
+
+  createdAt DateTime @default(now())
+
+  company         Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  stagedRows      StagedPayableRow[]
+
+  @@unique([companyId, fileHash])
+  @@index([companyId, status])
+  @@index([companyId, headerHash])
+  @@map("excel_import_batches")
+}
+
+// Linha individual do staging — vira Transaction PAYABLE ao confirmar.
+model StagedPayableRow {
+  id      String @id @default(cuid())
+  batchId String
+
+  // Índice da linha na planilha (pra UI mostrar)
+  rowIndex Int
+
+  // ──── Dados brutos extraídos da planilha (snapshot, não muda) ────
+  rawFavorecido   String?
+  rawBeneficiario String?
+  rawDescricao    String?
+  rawCentroCusto  String?
+  rawLancamento   String? // string DD/MM/YYYY
+  rawCompetencia  String? // string MM/YYYY
+  rawVencimento   String?
+  rawPagamento    String? // vazio = a pagar
+  rawValor        Float?
+  rawValorBaixa   Float?
+  rawNota         String?
+  rawStatus       String?
+
+  // ──── Dados normalizados pelo parser ────
+  valor      Float
+  vencimento DateTime?
+  pagamento  DateTime?
+  competencia DateTime?
+  // PAID se pagamento preenchido; PENDING se vazio
+  paymentStatus String // "PAID" | "PENDING"
+
+  // ──── Match decidido pela IA (sugestão pra user revisar) ────
+  // Tipo de favorecido: SUPPLIER | EMPLOYEE | ORGAO_PUBLICO
+  favorecidoType String?
+  // Match com Supplier/Employee existente (null = novo)
+  matchedSupplierId String?
+  matchedEmployeeId String?
+  // Confidence do match favorecido (0-1)
+  favorecidoConfidence Float?
+
+  // Match com Category do plano de contas (Sprint s)
+  matchedCategoryId  String?
+  // Nome novo proposto se não houve match (será criado no confirm)
+  proposedCategoryName String?
+  // Confidence do match categoria (0-1)
+  categoryConfidence Float?
+
+  // ──── Anti-dup ────
+  // sha256(favorecido + descricao + vencimento + valor) — bate contra
+  // Transaction.dedupHash dos últimos 90 dias da empresa
+  dedupHash         String?
+  duplicateOf       String? // Transaction.id caso bata
+
+  // ──── Decisão do user no staging ────
+  // INCLUDE (default) | EXCLUDE (user marcou) | NEEDS_REVIEW (low confidence)
+  userDecision String @default("INCLUDE")
+
+  // Mensagem de validação (em PT-BR) — null se OK
+  validationError String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  batch ExcelImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([batchId, userDecision])
+  @@index([batchId, paymentStatus])
+  @@map("staged_payable_rows")
 }
