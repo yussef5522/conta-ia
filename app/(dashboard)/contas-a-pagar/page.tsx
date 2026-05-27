@@ -13,6 +13,8 @@ import {
   CalendarClock,
   AlertCircle,
   CheckCircle2,
+  Upload,
+  FileSpreadsheet,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -27,6 +29,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog'
 import { formatBRL } from '@/lib/format/money'
+import { isEmpresaZerada } from '@/lib/contas-pagar/empty-state'
 
 interface Conta {
   id: string
@@ -216,6 +219,12 @@ function ContasAPagarInner() {
             : 'Selecione uma empresa pra ver as contas a pagar'
         }
       >
+        <Button size="sm" variant="outline" asChild disabled={!empresaId}>
+          <Link href={empresaId ? `/empresas/${empresaId}/contas-pagar/import` : '#'}>
+            <Upload className="mr-1.5 h-3.5 w-3.5" />
+            Importar Excel
+          </Link>
+        </Button>
         <Button size="sm" asChild disabled={!empresaId}>
           <Link href={`/contas-a-pagar/nova${empresaId ? `?empresaId=${empresaId}` : ''}`}>
             <Plus className="mr-1.5 h-3.5 w-3.5" />
@@ -315,12 +324,47 @@ function ContasAPagarInner() {
           {loading ? (
             <p className="text-sm text-muted-foreground">Carregando…</p>
           ) : items.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center text-muted-foreground">
-                <CheckCircle2 className="h-10 w-10 mx-auto mb-2 text-emerald-600" />
-                <p className="text-sm">Nenhuma conta a pagar no filtro atual.</p>
-              </CardContent>
-            </Card>
+            isEmpresaZerada({ status, vencidasOnly, kpis }) ? (
+              // Sprint 5.0.2.1 — Empresa sem nenhuma conta cadastrada:
+              // empty state primary com CTA de import (descoberta da feature)
+              <Card>
+                <CardContent className="py-12 text-center">
+                  <FileSpreadsheet
+                    className="h-15 w-15 mx-auto mb-3 text-primary/40"
+                    style={{ width: 60, height: 60 }}
+                  />
+                  <h3 className="text-lg font-medium text-foreground mb-1">
+                    Comece importando a planilha do seu contador
+                  </h3>
+                  <p className="text-sm text-muted-foreground max-w-md mx-auto mb-5">
+                    A IA cadastra fornecedores, funcionários e categorias
+                    automaticamente — você só revisa e confirma.
+                  </p>
+                  <div className="flex flex-col items-center gap-2">
+                    <Button asChild>
+                      <Link href={`/empresas/${empresaId}/contas-pagar/import`}>
+                        <Upload className="mr-1.5 h-3.5 w-3.5" />
+                        Importar planilha Excel
+                      </Link>
+                    </Button>
+                    <Link
+                      href={`/contas-a-pagar/nova?empresaId=${empresaId}`}
+                      className="text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      ou cadastrar conta manualmente
+                    </Link>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              // Filtro aplicado mas vazio (empresa TEM contas, mas nenhuma bate)
+              <Card>
+                <CardContent className="py-12 text-center text-muted-foreground">
+                  <CheckCircle2 className="h-10 w-10 mx-auto mb-2 text-emerald-600" />
+                  <p className="text-sm">Nenhuma conta a pagar no filtro atual.</p>
+                </CardContent>
+              </Card>
+            )
           ) : (
             <div className="border rounded-lg overflow-hidden bg-card">
               {items.map((t, i) => (
