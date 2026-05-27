@@ -43,8 +43,41 @@ model User {
   recurringSchedules  RecurringSchedule[]
   // Sprint 5.0.1 — IA Tributária
   createdTaxProfiles  CompanyTaxProfile[]  @relation("TaxProfileCreator")
+  // Sprint 5.0.3.0c — Saved views customizadas (CRUD em /contas-a-pagar)
+  savedViews          SavedView[]
 
   @@map("users")
+}
+
+// Sprint 5.0.3.0c ELITE — Views customizadas (tabs em /contas-a-pagar etc).
+// As 4 views default (Todas/Vencidas/A vencer 7d/Pagas no mês) continuam
+// hardcoded em lib/contas-pagar/saved-views.ts. Esta tabela armazena APENAS
+// views CUSTOM criadas pelo usuário.
+//
+// Multi-tenant: usuário só vê SUAS próprias views (não as de outros usuários
+// da mesma empresa).
+model SavedView {
+  id          String   @id @default(cuid())
+  userId      String
+  empresaId   String? // null = view global do usuário (todas empresas)
+  scope       String   @default("payable") // payable | receivable | transactions
+  name        String
+  icon        String? // emoji curto (1-4 chars)
+  filters     String // JSON com filtros aplicados
+  sortBy      String?
+  sortDir     String? // asc | desc
+  columnOrder String   @default("[]") // JSON array
+  columnHidden String  @default("[]") // JSON array
+  density     String   @default("normal") // compact | normal | comfortable
+  pinnedOrder Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, empresaId, scope, name])
+  @@index([userId, empresaId, scope])
+  @@map("saved_views")
 }
 
 model Company {

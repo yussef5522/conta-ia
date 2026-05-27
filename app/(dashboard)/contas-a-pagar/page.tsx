@@ -62,6 +62,33 @@ import { BulkActionsBar } from '@/components/contas-pagar/BulkActionsBar'
 import { MarkPaidBulkDialog } from '@/components/contas-pagar/MarkPaidBulkDialog'
 import { ExportButton } from '@/components/contas-pagar/ExportButton'
 import { PrintButton } from '@/components/contas-pagar/PrintButton'
+// Sprint 5.0.3.0c (c2) — Density + Columns
+import { DensityToggle } from '@/components/contas-pagar/DensityToggle'
+import {
+  ColumnsButton,
+  type ColumnDef as ColumnVisibilityDef,
+} from '@/components/contas-pagar/ColumnsButton'
+import { useTablePreferences } from '@/lib/contas-pagar/use-table-preferences'
+// Sprint 5.0.3.0c (c3) — Edit Inline
+import {
+  useEditCell,
+  type EditableField,
+} from '@/lib/contas-pagar/use-edit-cell'
+import type { CategoryOption } from '@/components/contas-pagar/cells/CategoryComboboxCell'
+// Sprint 5.0.3.0c (c4) — Aging Dashboard
+import { AgingDashboard } from '@/components/contas-pagar/AgingDashboard'
+import {
+  periodFromBucket,
+  type AgingResult,
+  type AgingBucketId,
+} from '@/lib/contas-pagar/aging'
+// Sprint 5.0.3.0c (c5) — Saved Views CRUD UI
+import {
+  useSavedViews,
+  type CustomSavedView,
+} from '@/lib/contas-pagar/use-saved-views'
+import { NewViewModal } from '@/components/contas-pagar/NewViewModal'
+import { RenameViewDialog } from '@/components/contas-pagar/RenameViewDialog'
 import { useSavedView } from '@/lib/contas-pagar/use-saved-view'
 import {
   isValidSavedViewId,
@@ -159,6 +186,231 @@ function ContasAPagarInner() {
   const [bulkMarkPaidOpen, setBulkMarkPaidOpen] = useState(false)
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const { toast } = useToast()
+
+  // Sprint 5.0.3.0c (c2) — Table preferences (density + columns)
+  const ALWAYS_VISIBLE_COLS = ['status', 'amount', 'actions']
+  const ALL_COLUMNS: ColumnVisibilityDef[] = [
+    { id: 'status', name: 'Status', alwaysVisible: true },
+    { id: 'dueDate', name: 'Vencimento' },
+    { id: 'paymentDate', name: 'Pagamento' },
+    { id: 'favorecido', name: 'Favorecido' },
+    { id: 'description', name: 'Descrição' },
+    { id: 'category', name: 'Categoria' },
+    { id: 'amount', name: 'Valor', alwaysVisible: true },
+    { id: 'actions', name: 'Ações', alwaysVisible: true },
+  ]
+  const tablePrefs = useTablePreferences({
+    storageKey: 'caixaos:contas-pagar:prefs',
+    alwaysVisible: ALWAYS_VISIBLE_COLS,
+    defaultColumnOrder: ALL_COLUMNS.map((c) => c.id),
+  })
+
+  // Sprint 5.0.3.0c (c3) — Edit Inline state
+  const [categoryOptions, setCategoryOptions] = useState<CategoryOption[]>([])
+  const [cellErrors, setCellErrors] = useState<
+    Record<string, Set<EditableField>>
+  >({})
+
+  const editCellApi = useEditCell({
+    empresaId,
+    onOptimisticUpdate: (rowId, field, value) => {
+      setItems((prev) =>
+        prev.map((r) => {
+          if (r.id !== rowId) return r
+          if (field === 'description') return { ...r, description: value as string }
+          if (field === 'amount') return { ...r, amount: value as number }
+          if (field === 'dueDate') {
+            const iso = (value as Date).toISOString()
+            return { ...r, dueDate: iso }
+          }
+          if (field === 'categoryId') {
+            const newCatId = value as string | null
+            if (newCatId === null) return { ...r, category: null }
+            // Se sentinel __create__, ainda não sabemos o id real — server retorna
+            if (newCatId.startsWith('__create__:')) {
+              const name = newCatId.replace('__create__:', '')
+              return {
+                ...r,
+                category: { id: 'pending', name, color: '#999999' },
+              }
+            }
+            const opt = categoryOptions.find((o) => o.id === newCatId)
+            return {
+              ...r,
+              category: opt
+                ? { id: opt.id, name: opt.name, color: '#888888' }
+                : r.category,
+            }
+          }
+          return r
+        }),
+      )
+      // Limpa erro previo
+      setCellErrors((prev) => {
+        const next = { ...prev }
+        if (next[rowId]) {
+          const set = new Set(next[rowId])
+          set.delete(field)
+          if (set.size === 0) delete next[rowId]
+          else next[rowId] = set
+        }
+        return next
+      })
+    },
+    onRevert: (rowId, field, prevValue) => {
+      setItems((prev) =>
+        prev.map((r) => {
+          if (r.id !== rowId) return r
+          if (field === 'description')
+            return { ...r, description: prevValue as string }
+          if (field === 'amount') return { ...r, amount: prevValue as number }
+          if (field === 'dueDate') return { ...r, dueDate: prevValue as string }
+          if (field === 'categoryId') {
+            // Não temos snapshot completo de category aqui — recarrega
+            void fetchItems()
+            return r
+          }
+          return r
+        }),
+      )
+      // Marca erro
+      setCellErrors((prev) => {
+        const next = { ...prev }
+        const set = new Set(next[rowId] ?? [])
+        set.add(field)
+        next[rowId] = set
+        return next
+      })
+    },
+    onError: (message) => {
+      toast({ variant: 'destructive', title: 'Erro ao salvar', description: message })
+    },
+  })
+
+  // Carrega categorias da empresa pro combobox
+  useEffect(() => {
+    if (!empresaId) {
+      setCategoryOptions([])
+      return
+    }
+    fetch(`/api/empresas/${empresaId}/categorias`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.categorias) {
+          setCategoryOptions(
+            data.categorias.map((c: { id: string; name: string }) => ({
+              id: c.id,
+              name: c.name,
+            })),
+          )
+        }
+      })
+      .catch(() => {})
+  }, [empresaId])
+
+  // Sprint 5.0.3.0c (c4) — Aging Dashboard data
+  const [aging, setAging] = useState<AgingResult | null>(null)
+  const [agingLoading, setAgingLoading] = useState(false)
+
+  const refetchAging = useCallback(() => {
+    if (!empresaId) {
+      setAging(null)
+      return
+    }
+    setAgingLoading(true)
+    void fetch(`/api/empresas/${empresaId}/contas-pagar/aging`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.aging) setAging(data.aging)
+      })
+      .catch(() => {})
+      .finally(() => setAgingLoading(false))
+  }, [empresaId])
+
+  useEffect(() => {
+    refetchAging()
+  }, [refetchAging])
+
+  function applyAgingFilter(bucketId: AgingBucketId) {
+    const { dataDe, dataAte } = periodFromBucket(bucketId)
+    setFilters({
+      q: filters.q,
+      status: 'PENDING',
+      vencidasOnly: false, // usa período em dueDate em vez de "só vencidas"
+      dataDe,
+      dataAte,
+    })
+    setPage(1)
+  }
+
+  // Sprint 5.0.3.0c (c5) — Custom Saved Views CRUD
+  const savedViewsApi = useSavedViews({
+    empresaId,
+    scope: 'payable',
+    onError: (msg) =>
+      toast({ variant: 'destructive', title: 'Falha', description: msg }),
+  })
+
+  const [newViewOpen, setNewViewOpen] = useState(false)
+  const [renamingView, setRenamingView] = useState<CustomSavedView | null>(null)
+  const [confirmDeleteView, setConfirmDeleteView] =
+    useState<CustomSavedView | null>(null)
+  const [activeCustomId, setActiveCustomId] = useState<string | null>(null)
+
+  function handleSelectCustom(view: CustomSavedView) {
+    try {
+      const parsedFilters = JSON.parse(view.filters)
+      setFilters({
+        q: filters.q,
+        dataDe: parsedFilters.dataDe ?? '',
+        dataAte: parsedFilters.dataAte ?? '',
+        status: parsedFilters.status ?? 'PENDING',
+        vencidasOnly: parsedFilters.vencidasOnly === true,
+      })
+      setActiveCustomId(view.id)
+      setPage(1)
+    } catch {
+      toast({
+        variant: 'destructive',
+        title: 'View corrompida',
+        description: 'Filtros desta view estão inválidos.',
+      })
+    }
+  }
+
+  async function executeDeleteView() {
+    if (!confirmDeleteView) return
+    const ok = await savedViewsApi.remove(confirmDeleteView.id)
+    if (ok) {
+      if (activeCustomId === confirmDeleteView.id) setActiveCustomId(null)
+      toast({ title: 'View excluída' })
+    }
+    setConfirmDeleteView(null)
+  }
+
+  // editCellAdapter pra PayableTable (formato esperado)
+  const editCellAdapter = useMemo(
+    () => ({
+      isEditing: (rowId: string, field: EditableField) =>
+        editCellApi.isEditing(rowId, field),
+      isSaving: (rowId: string, field: EditableField) =>
+        editCellApi.isEditing(rowId, field) &&
+        editCellApi.status === 'saving',
+      hasError: (rowId: string, field: EditableField) =>
+        cellErrors[rowId]?.has(field) === true,
+      startEdit: editCellApi.startEdit,
+      save: (
+        rowId: string,
+        field: EditableField,
+        newValue: unknown,
+        prevValue: unknown,
+      ) => {
+        void editCellApi.save(rowId, field, newValue, prevValue)
+      },
+      cancel: editCellApi.cancel,
+    }),
+    [editCellApi, cellErrors],
+  )
 
   // IDs selecionadas (derivado do RowSelection state do @tanstack/react-table)
   const selectedIds = useMemo(
@@ -465,6 +717,17 @@ function ContasAPagarInner() {
             : 'Selecione uma empresa pra ver as contas a pagar'
         }
       >
+        {/* Sprint 5.0.3.0c (c2) — Density + Columns */}
+        <DensityToggle
+          density={tablePrefs.prefs.density}
+          onChange={tablePrefs.setDensity}
+          disabled={tablePrefs.isMobile}
+        />
+        <ColumnsButton
+          columns={ALL_COLUMNS}
+          hidden={tablePrefs.prefs.columnHidden}
+          onToggle={tablePrefs.toggleColumnHidden}
+        />
         <ExportButton
           empresaId={empresaId}
           filtersQS={filtersQS}
@@ -493,11 +756,24 @@ function ContasAPagarInner() {
         </Button>
       </Header>
 
-      {/* Sprint 5.0.3.0b — Saved Views tabs */}
+      {/* Sprint 5.0.3.0b — Saved Views tabs (evoluído em 5.0.3.0c c5) */}
       {empresaId && !loading && (
         <SavedViewTabs
           activeViewId={activeViewId}
-          onSelect={handleSelectView}
+          activeCustomId={activeCustomId}
+          customViews={savedViewsApi.views}
+          onSelectSystem={(id) => {
+            setActiveCustomId(null)
+            handleSelectView(id)
+          }}
+          onSelectCustom={handleSelectCustom}
+          onNew={() => setNewViewOpen(true)}
+          onRename={(view) => setRenamingView(view)}
+          onDuplicate={async (id) => {
+            const dup = await savedViewsApi.duplicate(id)
+            if (dup) toast({ title: 'View duplicada' })
+          }}
+          onDelete={(view) => setConfirmDeleteView(view)}
         />
       )}
 
@@ -508,6 +784,15 @@ function ContasAPagarInner() {
           onMarkPaid={() => setBulkMarkPaidOpen(true)}
           onDelete={() => setBulkDeleteOpen(true)}
           onClear={() => setSelection({})}
+        />
+      )}
+
+      {/* Sprint 5.0.3.0c (c4) — Aging Dashboard (acima dos stats) */}
+      {empresaId && !loading && (
+        <AgingDashboard
+          result={aging}
+          loading={agingLoading}
+          onClickBucket={applyAgingFilter}
         />
       )}
 
@@ -612,6 +897,11 @@ function ContasAPagarInner() {
               rows={items}
               selection={selection}
               onSelectionChange={setSelection}
+              density={tablePrefs.effectiveDensity}
+              hiddenColumns={tablePrefs.prefs.columnHidden}
+              columnOrder={tablePrefs.prefs.columnOrder}
+              categoryOptions={categoryOptions}
+              editCell={editCellAdapter}
               onEfetivar={(row) =>
                 setEfetivar({
                   id: row.id,
@@ -752,6 +1042,56 @@ function ContasAPagarInner() {
         confirmLabel={`Excluir ${selectedCount}`}
         variant="destructive"
         onConfirm={executeBulkDelete}
+      />
+
+      {/* Sprint 5.0.3.0c (c5) — Saved Views modals */}
+      <NewViewModal
+        open={newViewOpen}
+        currentFilters={filters as unknown as Record<string, unknown>}
+        onClose={() => setNewViewOpen(false)}
+        onCreate={async ({ name, icon, filters: f }) => {
+          const created = await savedViewsApi.create({
+            name,
+            icon,
+            filters: f,
+            density: tablePrefs.prefs.density,
+            columnOrder: JSON.stringify(tablePrefs.prefs.columnOrder),
+            columnHidden: JSON.stringify(tablePrefs.prefs.columnHidden),
+          })
+          if (created) {
+            toast({ title: 'View criada', description: created.name })
+            setActiveCustomId(created.id)
+          }
+        }}
+      />
+
+      <RenameViewDialog
+        view={renamingView}
+        onClose={() => setRenamingView(null)}
+        onSave={async ({ name, icon }) => {
+          if (!renamingView) return
+          const ok = await savedViewsApi.update(renamingView.id, { name, icon })
+          if (ok) toast({ title: 'View renomeada' })
+        }}
+      />
+
+      <ConfirmDialog
+        open={!!confirmDeleteView}
+        onOpenChange={(o) => !o && setConfirmDeleteView(null)}
+        title="Excluir view?"
+        description={
+          confirmDeleteView ? (
+            <>
+              Tem certeza que deseja excluir a view{' '}
+              <strong>&quot;{confirmDeleteView.name}&quot;</strong>?
+            </>
+          ) : (
+            ''
+          )
+        }
+        confirmLabel="Excluir"
+        variant="destructive"
+        onConfirm={executeDeleteView}
       />
     </div>
   )

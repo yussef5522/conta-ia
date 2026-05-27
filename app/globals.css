@@ -122,3 +122,38 @@
     display: none !important;
   }
 }
+
+/* Sprint 5.0.3.0c (c2) — Density toggle pra tabelas de dados.
+ * Aplicado em <table class="density-compact|normal|comfortable"> ou wrapper.
+ * Mobile (<768px) força compact via overrride no PayableTable callsite. */
+.density-compact tbody tr {
+  height: 36px;
+  font-size: 12px;
+}
+.density-compact tbody td {
+  padding-top: 4px !important;
+  padding-bottom: 4px !important;
+}
+
+.density-normal tbody tr {
+  height: 48px;
+  font-size: 14px;
+}
+
+.density-comfortable tbody tr {
+  height: 60px;
+  font-size: 14px;
+}
+.density-comfortable tbody td {
+  padding-top: 12px !important;
+  padding-bottom: 12px !important;
+}
+
+/* Transição suave ao trocar density (skip em print pra não atrasar render) */
+@media not print {
+  table.density-compact tbody tr,
+  table.density-normal tbody tr,
+  table.density-comfortable tbody tr {
+    transition: height 150ms ease-out;
+  }
+}
