@@ -902,6 +902,8 @@ function ContasAPagarInner() {
               columnOrder={tablePrefs.prefs.columnOrder}
               categoryOptions={categoryOptions}
               editCell={editCellAdapter}
+              onColumnOrderChange={tablePrefs.setColumnOrder}
+              disableDrag={tablePrefs.isMobile}
               onEfetivar={(row) =>
                 setEfetivar({
                   id: row.id,

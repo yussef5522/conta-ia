@@ -10,7 +10,7 @@
 // Layout: tarja lateral colorida (cor = payableVisualStatus), 12 colunas,
 // linha hover, click → modal detalhe (placeholder), click no menu ⋯ → actions.
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import {
   useReactTable,
   getCoreRowModel,
@@ -21,8 +21,28 @@ import {
   type RowSelectionState,
   type VisibilityState,
   type ColumnOrderState,
+  type Header,
 } from '@tanstack/react-table'
 import type { DensityLevel } from '@/lib/contas-pagar/use-table-preferences'
+// Sprint 5.0.3.0d (d1) — Column reorder drag
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  horizontalListSortingStrategy,
+  sortableKeyboardCoordinates,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import { GripVertical } from 'lucide-react'
 // Sprint 5.0.3.0c (c3) — Edit inline
 import { EditableCell } from './cells/EditableCell'
 import {
@@ -100,6 +120,10 @@ interface Props {
   hiddenColumns?: string[]
   /** Ordem das colunas (passa pra ColumnOrderState). Default = ordem natural. */
   columnOrder?: string[]
+  /** Callback de reorder via drag — Sprint 5.0.3.0d (d1). */
+  onColumnOrderChange?: (newOrder: string[]) => void
+  /** True desabilita drag (mobile). */
+  disableDrag?: boolean
   // Sprint 5.0.3.0c (c3) — Edit Inline
   /** Categorias disponíveis pro combobox de edit. */
   categoryOptions?: CategoryOption[]
@@ -161,6 +185,8 @@ export function PayableTable({
   columnOrder = [],
   categoryOptions = [],
   editCell,
+  onColumnOrderChange,
+  disableDrag = false,
 }: Props) {
   const [sorting, setSorting] = useState<SortingState>([
     { id: 'dueDate', desc: false },
@@ -472,49 +498,72 @@ export function PayableTable({
     enableRowSelection: true,
   })
 
+  // Sprint 5.0.3.0d (d1) — Setup do drag column reorder
+  const FIXED_COLUMNS = ['select', 'status', 'amount', 'actions']
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  )
+
+  const draggableHeaders = useMemo(() => {
+    if (disableDrag || !onColumnOrderChange) return []
+    return table
+      .getHeaderGroups()[0]
+      ?.headers.filter((h) => !FIXED_COLUMNS.includes(h.column.id))
+      .map((h) => h.column.id) ?? []
+  }, [table, disableDrag, onColumnOrderChange])
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    if (!over || active.id === over.id || !onColumnOrderChange) return
+
+    const allIds = table.getHeaderGroups()[0]?.headers.map((h) => h.column.id) ?? []
+    const oldIdx = allIds.indexOf(active.id as string)
+    const newIdx = allIds.indexOf(over.id as string)
+    if (oldIdx < 0 || newIdx < 0) return
+
+    // Não permite mover FIXED columns
+    if (FIXED_COLUMNS.includes(active.id as string)) return
+    if (FIXED_COLUMNS.includes(over.id as string)) return
+
+    const newOrder = arrayMove(allIds, oldIdx, newIdx)
+    onColumnOrderChange(newOrder)
+  }
+
   return (
     <div className="rounded-md border overflow-hidden bg-card">
-      <table
-        className={`w-full text-sm density-${density}`}
-        data-testid="payable-table"
-        data-density={density}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
       >
-        <thead>
-          {table.getHeaderGroups().map((group) => (
-            <tr key={group.id} className="border-b bg-muted/30">
-              <th className="w-1" aria-hidden="true" />
-              {group.headers.map((h) => {
-                const canSort = h.column.getCanSort()
-                return (
-                  <th
-                    key={h.id}
-                    className="text-left px-3 py-2 text-xs uppercase tracking-wide font-medium text-muted-foreground"
-                    style={{ width: h.column.columnDef.size }}
-                  >
-                    {canSort ? (
-                      <button
-                        type="button"
-                        onClick={h.column.getToggleSortingHandler()}
-                        className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
-                      >
-                        {flexRender(h.column.columnDef.header, h.getContext())}
-                        <ArrowUpDown
-                          className={`h-3 w-3 transition-opacity ${
-                            h.column.getIsSorted()
-                              ? 'opacity-100 text-primary'
-                              : 'opacity-40'
-                          }`}
-                        />
-                      </button>
+        <table
+          className={`w-full text-sm density-${density}`}
+          data-testid="payable-table"
+          data-density={density}
+        >
+          <thead>
+            {table.getHeaderGroups().map((group) => (
+              <SortableContext
+                key={group.id}
+                items={draggableHeaders}
+                strategy={horizontalListSortingStrategy}
+              >
+                <tr className="border-b bg-muted/30">
+                  <th className="w-1" aria-hidden="true" />
+                  {group.headers.map((h) =>
+                    FIXED_COLUMNS.includes(h.column.id) || disableDrag ? (
+                      <FixedHeaderCell key={h.id} header={h} />
                     ) : (
-                      flexRender(h.column.columnDef.header, h.getContext())
-                    )}
-                  </th>
-                )
-              })}
-            </tr>
-          ))}
-        </thead>
+                      <DraggableHeaderCell key={h.id} header={h} />
+                    ),
+                  )}
+                </tr>
+              </SortableContext>
+            ))}
+          </thead>
         <tbody>
           {table.getRowModel().rows.map((row, i) => {
             const visual = payableVisualStatus({
@@ -540,10 +589,114 @@ export function PayableTable({
                   </td>
                 ))}
               </tr>
-            )
-          })}
-        </tbody>
-      </table>
+              )
+            })}
+          </tbody>
+        </table>
+      </DndContext>
     </div>
+  )
+}
+
+// ─── Sprint 5.0.3.0d (d1) — Header cells ───────────────────────────────
+
+interface HeaderCellProps {
+  header: Header<PayableRow, unknown>
+}
+
+/** Header cell FIXO (não-draggable) — Status/Valor/Ações/Select. */
+function FixedHeaderCell({ header }: HeaderCellProps) {
+  const canSort = header.column.getCanSort()
+  return (
+    <th
+      className="text-left px-3 py-2 text-xs uppercase tracking-wide font-medium text-muted-foreground"
+      style={{ width: header.column.columnDef.size }}
+    >
+      {canSort ? (
+        <button
+          type="button"
+          onClick={header.column.getToggleSortingHandler()}
+          className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+        >
+          {flexRender(header.column.columnDef.header, header.getContext())}
+          <ArrowUpDown
+            className={`h-3 w-3 transition-opacity ${
+              header.column.getIsSorted()
+                ? 'opacity-100 text-primary'
+                : 'opacity-40'
+            }`}
+          />
+        </button>
+      ) : (
+        flexRender(header.column.columnDef.header, header.getContext())
+      )}
+    </th>
+  )
+}
+
+/** Header cell DRAGGABLE — coluna pode ser reordenada via @dnd-kit. */
+function DraggableHeaderCell({ header }: HeaderCellProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: header.column.id })
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    cursor: isDragging ? 'grabbing' : undefined,
+    width: header.column.columnDef.size,
+    position: 'relative',
+  }
+
+  const canSort = header.column.getCanSort()
+
+  return (
+    <th
+      ref={setNodeRef}
+      style={style}
+      className="text-left px-3 py-2 text-xs uppercase tracking-wide font-medium text-muted-foreground group/header"
+      data-testid={`th-${header.column.id}`}
+    >
+      <div className="flex items-center gap-1">
+        {/* Drag handle aparece no hover do header */}
+        <button
+          type="button"
+          {...attributes}
+          {...listeners}
+          className="opacity-0 group-hover/header:opacity-100 transition-opacity cursor-grab active:cursor-grabbing -ml-1 p-0.5 text-muted-foreground/60 hover:text-foreground"
+          aria-label={`Mover coluna ${header.column.id}`}
+          data-testid={`drag-handle-${header.column.id}`}
+          tabIndex={0}
+        >
+          <GripVertical className="h-3 w-3" />
+        </button>
+        {canSort ? (
+          <button
+            type="button"
+            onClick={header.column.getToggleSortingHandler()}
+            className="inline-flex items-center gap-1 hover:text-foreground transition-colors flex-1"
+          >
+            {flexRender(header.column.columnDef.header, header.getContext())}
+            <ArrowUpDown
+              className={`h-3 w-3 transition-opacity ${
+                header.column.getIsSorted()
+                  ? 'opacity-100 text-primary'
+                  : 'opacity-40'
+              }`}
+            />
+          </button>
+        ) : (
+          <span className="flex-1">
+            {flexRender(header.column.columnDef.header, header.getContext())}
+          </span>
+        )}
+      </div>
+    </th>
   )
 }
