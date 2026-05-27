@@ -18,6 +18,8 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
+import { ConfidenceSignal } from './ConfidenceSignal'
+import { SourceBadge } from './SourceBadge'
 
 export interface PreviewTransacao {
   transactionId: string
@@ -63,13 +65,7 @@ export interface PreviewData {
   resumoPorCategoria: PreviewGrupo[]
 }
 
-const SOURCE_LABEL: Record<PreviewTransacao['source'], string> = {
-  SAME_COMPANY_TRANSFER: 'Transferência interna',
-  PIX_DETECTION: 'Pix sócio/grupo',
-  RULE_EXACT_NORMALIZED: 'Regra aprendida',
-  RULE_CONTAINS: 'Memória anchor',
-  SETOR_PATTERN: 'Padrão setorial',
-}
+// Sprint 5.0.2.q — SOURCE_LABEL movido pra components/SourceBadge.tsx
 
 interface Props {
   open: boolean
@@ -196,60 +192,82 @@ export function AutoCategorizePreviewModal({
     }
   }
 
+  // Total a categorizar (R$) — só somando aceitas
+  const totalAmountAceitas = useMemo(() => {
+    if (!data) return 0
+    let total = 0
+    for (const g of data.resumoPorCategoria) {
+      for (const t of g.transacoes) {
+        if (!rejected.has(t.transactionId)) total += t.amount
+      }
+    }
+    return total
+  }, [data, rejected])
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-primary" />
-            Auto-categorizar pendentes
+      <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col p-0">
+        {/* Header compacto, padrão Stripe */}
+        <DialogHeader className="px-6 pt-5 pb-4 border-b">
+          <DialogTitle className="flex items-center gap-2 text-lg">
+            <Sparkles className="h-5 w-5 text-violet-600" />
+            Auto-categorização
           </DialogTitle>
           <DialogDescription>
-            Revise as sugestões antes de aplicar. Você pode desmarcar
-            individualmente ou rejeitar grupos inteiros.
+            Confira as sugestões antes de aplicar — pode desmarcar individualmente
+            ou rejeitar grupos.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="overflow-y-auto flex-1 -mx-6 px-6">
+        {/* Stat cards */}
+        {data && (
+          <div className="grid grid-cols-3 gap-3 px-6 py-4 border-b bg-muted/10">
+            <div className="rounded-md border bg-card px-3 py-2">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
+                Com sugestão
+              </p>
+              <p className="text-xl font-semibold tabular-nums mt-0.5">
+                {data.totalSugeridas}
+                <span className="text-sm text-muted-foreground font-normal ml-1">
+                  / {data.totalAnalisadas}
+                </span>
+              </p>
+            </div>
+            <div className="rounded-md border bg-card px-3 py-2">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
+                Total selecionado
+              </p>
+              <p className="text-xl font-semibold tabular-nums mt-0.5 text-foreground">
+                {formatBRL(totalAmountAceitas)}
+              </p>
+            </div>
+            <div className="rounded-md border bg-card px-3 py-2">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
+                Sem sugestão
+              </p>
+              <p
+                className={`text-xl font-semibold tabular-nums mt-0.5 ${
+                  data.semSugestao > 0 ? 'text-amber-600 dark:text-amber-400' : ''
+                }`}
+              >
+                {data.semSugestao}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Lista de grupos */}
+        <div className="overflow-y-auto flex-1">
           {!data ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
+          ) : data.resumoPorCategoria.length === 0 ? (
+            <div className="text-center py-16 text-sm text-muted-foreground">
+              Nenhuma sugestão. Categorize manualmente as pendentes.
+            </div>
           ) : (
-            <div className="space-y-3">
-              {/* Resumo */}
-              <div className="rounded-md border bg-primary/5 px-3 py-2 text-sm">
-                <p className="font-semibold">
-                  📊 {data.totalSugeridas} de {data.totalAnalisadas} pendentes com sugestão
-                  {data.setor && (
-                    <span className="text-xs text-muted-foreground ml-2 font-normal">
-                      (setor: {data.setor})
-                    </span>
-                  )}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Transf. interna: <strong>{data.breakdown.sameCompany}</strong> ·
-                  Pix: <strong>{data.breakdown.pix}</strong> ·
-                  Regras: <strong>{data.breakdown.ruleExact + data.breakdown.ruleContains}</strong> ·
-                  Setor: <strong>{data.breakdown.setorPattern}</strong>
-                  {data.semSugestao > 0 && (
-                    <>
-                      {' · '}
-                      <span className="text-amber-600">
-                        Sem sugestão: <strong>{data.semSugestao}</strong>
-                      </span>
-                    </>
-                  )}
-                </p>
-              </div>
-
-              {/* Grupos por categoria */}
-              {data.resumoPorCategoria.length === 0 && (
-                <div className="text-center py-12 text-muted-foreground text-sm">
-                  Nenhuma sugestão. Categorize manualmente as pendentes.
-                </div>
-              )}
-
+            <div>
               {data.resumoPorCategoria.map((grupo) => {
                 const isOpen = expanded.has(grupo.categoryId)
                 const grupoAceitos = grupo.transacoes.filter(
@@ -258,76 +276,96 @@ export function AutoCategorizePreviewModal({
                 return (
                   <div
                     key={grupo.categoryId}
-                    className="border rounded-md overflow-hidden"
+                    className="border-b last:border-0"
                   >
                     <button
                       type="button"
                       onClick={() => toggleGroup(grupo.categoryId)}
-                      className="w-full flex items-center gap-2 px-3 py-2 hover:bg-muted/30 text-left"
+                      className="w-full flex items-center gap-3 px-6 py-3 hover:bg-muted/30 text-left transition-colors"
                     >
                       {isOpen ? (
-                        <ChevronDown className="h-4 w-4 shrink-0" />
+                        <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
                       ) : (
-                        <ChevronRight className="h-4 w-4 shrink-0" />
+                        <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
                       )}
-                      <span className="font-semibold flex-1 truncate">
-                        {grupo.categoryName}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">
+                          {grupo.categoryName}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5 tabular-nums">
+                          {grupoAceitos}/{grupo.count} aceitas
+                        </p>
+                      </div>
+                      <span className="text-sm font-mono tabular-nums text-foreground shrink-0">
+                        {formatBRL(grupo.totalAmount)}
                       </span>
-                      <span className="text-xs text-muted-foreground tabular-nums shrink-0">
-                        {grupoAceitos}/{grupo.count} · {formatBRL(grupo.totalAmount)}
-                      </span>
+                      <div
+                        className="flex items-center gap-2 shrink-0 ml-2"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => acceptGroup(grupo)}
+                          className="text-xs font-medium text-emerald-600 hover:text-emerald-700 dark:text-emerald-400"
+                        >
+                          Aceitar todas
+                        </button>
+                        <span className="text-muted-foreground">·</span>
+                        <button
+                          type="button"
+                          onClick={() => rejectGroup(grupo)}
+                          className="text-xs font-medium text-muted-foreground hover:text-foreground"
+                        >
+                          Rejeitar
+                        </button>
+                      </div>
                     </button>
+
                     {isOpen && (
-                      <div className="border-t bg-muted/10">
-                        <div className="px-3 py-1.5 flex gap-2 border-b">
-                          <button
-                            type="button"
-                            onClick={() => acceptGroup(grupo)}
-                            className="text-xs text-emerald-700 dark:text-emerald-400 hover:underline"
-                          >
-                            Aceitar todas
-                          </button>
-                          <span className="text-xs text-muted-foreground">·</span>
-                          <button
-                            type="button"
-                            onClick={() => rejectGroup(grupo)}
-                            className="text-xs text-destructive hover:underline"
-                          >
-                            Rejeitar todas
-                          </button>
-                        </div>
-                        <ul className="divide-y">
-                          {grupo.transacoes.map((tx) => {
-                            const aceito = !rejected.has(tx.transactionId)
-                            return (
-                              <li
-                                key={tx.transactionId}
-                                className={`flex items-center gap-2 px-3 py-1.5 text-xs ${
-                                  aceito ? '' : 'opacity-50 line-through'
+                      <div className="bg-muted/10 border-t">
+                        {grupo.transacoes.map((tx) => {
+                          const aceito = !rejected.has(tx.transactionId)
+                          return (
+                            <div
+                              key={tx.transactionId}
+                              className={`flex items-center gap-3 px-6 py-2.5 hover:bg-background transition-colors ${
+                                aceito ? '' : 'opacity-50'
+                              }`}
+                            >
+                              <Checkbox
+                                checked={aceito}
+                                onCheckedChange={() => toggleTx(tx.transactionId)}
+                                aria-label="Aceitar sugestão"
+                              />
+                              <div className="flex-1 min-w-0">
+                                <p
+                                  className={`text-sm font-medium truncate ${
+                                    aceito ? 'text-foreground' : 'line-through'
+                                  }`}
+                                  title={tx.description}
+                                >
+                                  {tx.description}
+                                </p>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  <ConfidenceSignal
+                                    confidence={tx.confidence}
+                                    compact
+                                  />
+                                  <SourceBadge source={tx.source} />
+                                </div>
+                              </div>
+                              <span
+                                className={`font-mono text-sm tabular-nums shrink-0 ${
+                                  tx.type === 'CREDIT'
+                                    ? 'text-emerald-600'
+                                    : 'text-red-600'
                                 }`}
                               >
-                                <Checkbox
-                                  checked={aceito}
-                                  onCheckedChange={() => toggleTx(tx.transactionId)}
-                                  aria-label="Aceitar sugestão"
-                                />
-                                <span className="flex-1 truncate" title={tx.description}>
-                                  {tx.description}
-                                </span>
-                                <span
-                                  className={`tabular-nums shrink-0 ${
-                                    tx.type === 'CREDIT' ? 'text-emerald-600' : 'text-red-600'
-                                  }`}
-                                >
-                                  {tx.type === 'CREDIT' ? '+' : '−'} {formatBRL(tx.amount)}
-                                </span>
-                                <span className="text-[10px] uppercase rounded bg-muted px-1.5 py-0.5 shrink-0">
-                                  {SOURCE_LABEL[tx.source]}
-                                </span>
-                              </li>
-                            )
-                          })}
-                        </ul>
+                                {tx.type === 'CREDIT' ? '+' : '−'} {formatBRL(tx.amount)}
+                              </span>
+                            </div>
+                          )
+                        })}
                       </div>
                     )}
                   </div>
@@ -337,19 +375,33 @@ export function AutoCategorizePreviewModal({
           )}
         </div>
 
-        <DialogFooter className="border-t pt-3 -mb-2">
-          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={applying}>
-            <X className="h-4 w-4 mr-1" />
-            Cancelar
-          </Button>
-          <Button onClick={aplicar} disabled={applying || acceptedCount === 0}>
-            {applying ? (
-              <Loader2 className="h-4 w-4 animate-spin mr-1" />
-            ) : (
-              <Sparkles className="h-4 w-4 mr-1" />
-            )}
-            Aplicar {acceptedCount} categorizações
-          </Button>
+        {/* Footer fixo */}
+        <DialogFooter className="border-t bg-background px-6 py-3 sm:flex-row sm:justify-between">
+          <p className="text-sm text-muted-foreground">
+            <strong className="text-foreground tabular-nums">{acceptedCount}</strong>{' '}
+            {acceptedCount === 1 ? 'sugestão será aplicada' : 'sugestões serão aplicadas'}
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="ghost"
+              onClick={() => onOpenChange(false)}
+              disabled={applying}
+            >
+              <X className="h-4 w-4 mr-1" />
+              Cancelar
+            </Button>
+            <Button
+              onClick={aplicar}
+              disabled={applying || acceptedCount === 0}
+            >
+              {applying ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-1" />
+              ) : (
+                <Sparkles className="h-4 w-4 mr-1" />
+              )}
+              Aplicar {acceptedCount}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
