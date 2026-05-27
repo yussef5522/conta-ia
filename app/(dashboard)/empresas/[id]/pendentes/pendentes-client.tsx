@@ -809,17 +809,19 @@ export function PendentesClient({
           {[1, 2, 3, 4, 5].map((i) => <div key={i} className="h-16 rounded-lg border bg-muted animate-pulse" />)}
         </div>
       ) : transacoesFiltradas.length === 0 ? (
-        <div className="flex flex-col items-center py-16 text-center">
-          <PartyPopper className="h-12 w-12 text-green-500 mb-4" />
-          <h3 className="font-semibold text-lg">
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <div className="w-16 h-16 rounded-full bg-emerald-50 dark:bg-emerald-950/30 flex items-center justify-center mb-4">
+            <PartyPopper className="h-8 w-8 text-emerald-600 dark:text-emerald-400" />
+          </div>
+          <h3 className="font-medium text-lg text-foreground">
             {busca || tipo !== 'TODOS'
-              ? 'Nenhuma transação corresponde aos filtros'
-              : 'Nenhuma transação pendente nesta empresa'}
+              ? 'Nada bate os filtros'
+              : 'Tudo categorizado'}
           </h3>
-          <p className="text-sm text-muted-foreground mt-1">
+          <p className="text-sm text-muted-foreground mt-1 max-w-md">
             {busca || tipo !== 'TODOS'
-              ? 'Tente alterar os filtros acima.'
-              : 'Tudo classificado por aqui.'}
+              ? 'Ajuste período, tipo ou texto da busca pra ver outras transações.'
+              : 'Nenhuma transação aguardando classificação. Volte quando importar um OFX ou receber novos lançamentos.'}
           </p>
         </div>
       ) : (
@@ -837,8 +839,10 @@ export function PendentesClient({
             return (
               <div
                 key={t.id}
-                className={`flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center ${i > 0 ? 'border-t' : ''}`}
+                className={`group flex flex-col transition-colors hover:bg-muted/20 ${i > 0 ? 'border-t' : ''}`}
               >
+                {/* Sprint 5.0.2.r — ROW PRINCIPAL (sempre visível) */}
+                <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center">
                 {/* Ícone + descrição + meta */}
                 <div className="flex items-start gap-3 min-w-0 flex-1">
                   <div className={`shrink-0 flex h-9 w-9 items-center justify-center rounded-full ${
@@ -990,19 +994,21 @@ export function PendentesClient({
                     <X className="h-3.5 w-3.5" />
                   </Button>
                 </div>
-                {/* Sprint 5.0.2.n — Banner Sugerido por IA (Vendor Discovery) */}
+                </div>
+                {/* Sprint 5.0.2.r — Banner Sugerido por IA: SIBLING embaixo
+                    (não LATERAL). Container outer é flex-col, então fica
+                    em linha nova garantidamente — descrição da empresa
+                    nunca é empurrada/escondida. */}
                 {vendorSuggestions[t.id] && (
-                  <div className="sm:col-span-full sm:basis-full">
-                    <VendorSuggestionBanner
-                      empresaId={empresaId}
-                      suggestion={vendorSuggestions[t.id]}
-                      onAccepted={() => {
-                        dismissSuggestion(t.id)
-                        void fetchTransacoes()
-                      }}
-                      onRejected={() => dismissSuggestion(t.id)}
-                    />
-                  </div>
+                  <VendorSuggestionBanner
+                    empresaId={empresaId}
+                    suggestion={vendorSuggestions[t.id]}
+                    onAccepted={() => {
+                      dismissSuggestion(t.id)
+                      void fetchTransacoes()
+                    }}
+                    onRejected={() => dismissSuggestion(t.id)}
+                  />
                 )}
               </div>
             )
