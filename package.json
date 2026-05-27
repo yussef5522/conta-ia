@@ -38,6 +38,7 @@
     "@react-email/render": "^2.0.8",
     "@tanstack/react-query": "^5.100.14",
     "@tanstack/react-table": "^8.21.3",
+    "@tanstack/react-virtual": "^3.13.26",
     "@types/node-cron": "^3.0.11",
     "bcryptjs": "^2.4.3",
     "class-variance-authority": "^0.7.0",
