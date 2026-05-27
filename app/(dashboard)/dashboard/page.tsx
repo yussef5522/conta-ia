@@ -33,6 +33,7 @@ import {
   NoAccountsEmpty,
   NoTransactionsBanner,
 } from './_components/EmptyDashboard'
+import { ImportedBanner } from './_components/ImportedBanner'
 
 export const metadata: Metadata = { title: 'Dashboard' }
 
@@ -46,7 +47,7 @@ const waterfallPeriodSchema = z
 const demoInsightsSchema = z.coerce.number().int().min(0).max(7).catch(0)
 
 interface PageProps {
-  searchParams: Promise<{ empresa?: string; wf?: string; demoInsights?: string }>
+  searchParams: Promise<{ empresa?: string; wf?: string; demoInsights?: string; imported?: string; totalAmount?: string; empresaNome?: string }>
 }
 
 export default async function DashboardPage({ searchParams }: PageProps) {
@@ -55,8 +56,17 @@ export default async function DashboardPage({ searchParams }: PageProps) {
   if (!token) redirect('/login')
 
   const user = await verifyToken(token)
-  const { empresa: empresaQueryId, wf: wfRaw, demoInsights: demoRaw } =
-    await searchParams
+  const {
+    empresa: empresaQueryId,
+    wf: wfRaw,
+    demoInsights: demoRaw,
+    imported: importedRaw,
+    totalAmount: totalAmountRaw,
+    empresaNome: importedFileName,
+  } = await searchParams
+  // Sprint 5.0.2.0 — banner pós-import (defensivo: parsing seguro)
+  const importedCount = importedRaw ? parseInt(importedRaw, 10) : NaN
+  const importedTotalAmount = totalAmountRaw ? parseFloat(totalAmountRaw) : NaN
   const waterfallPeriod: WaterfallPeriodType = waterfallPeriodSchema.parse(wfRaw)
   // SEGURANÇA: demoInsights só funciona em dev. Em prod, demoCount=undefined
   // sempre — AIInsights ignora e retorna lista real.
@@ -123,6 +133,13 @@ export default async function DashboardPage({ searchParams }: PageProps) {
       >
         <CompanySelector empresas={companyOptions} currentEmpresaId={empresaAtual.id} />
       </Header>
+
+      {/* Sprint 5.0.2.0 — Banner pós-import Excel (só renderiza com query params) */}
+      <ImportedBanner
+        imported={Number.isFinite(importedCount) ? importedCount : undefined}
+        totalAmount={Number.isFinite(importedTotalAmount) ? importedTotalAmount : undefined}
+        fileName={importedFileName}
+      />
 
       {/* EMPTY STATE (b) — sem contas */}
       {contasCount === 0 && <NoAccountsEmpty empresaId={empresaAtual.id} />}
