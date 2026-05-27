@@ -18,6 +18,7 @@ import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import { classifyFavorecido } from '@/lib/excel-import/classify-favorecido'
 import { mapCategories } from '@/lib/excel-import/map-categories'
+import { decideStagedUserDecision } from '@/lib/excel-import/decide-row-action'
 
 // Sprint 5.0.2.3 — Node runtime explícito + 60s timeout pra batches grandes
 export const runtime = 'nodejs'
@@ -174,6 +175,18 @@ export async function POST(request: NextRequest, { params }: Params) {
       const duplicateOf = row.dedupHash ? dupByHash.get(row.dedupHash) ?? null : null
       if (duplicateOf) countDuplicates++
 
+      // Sprint 5.0.2.4 — FIX CRÍTICO: NEEDS_REVIEW só por classify.confidence.
+      //
+      // BUG (Sprint 5.0.2.0): a regra incluía `categoryConfidence < 0.7` como
+      // critério, mas categoria PROPOSTA NOVA (estratégia 4 do mapCategories)
+      // SEMPRE retorna confidence=0 — ou seja, qualquer CC sem match exato/hint
+      // virava NEEDS_REVIEW. O /confirm skipa NEEDS_REVIEW silenciosamente,
+      // → 46 das 94 linhas do Cacula perdidas (R$ 76k em transações fora do DRE).
+      //
+      // CORREÇÃO: categoryConfidence baixo significa "vai criar categoria nova
+      // com nome do CC" — caminho normal, não razão pra pular. Só ambiguidade
+      // de favorecido (classify.confidence baixo, ex: nome PF ambíguo) justifica
+      // revisão humana.
       updateOperations.push(
         prisma.stagedPayableRow.update({
           where: { id: row.id },
@@ -186,11 +199,7 @@ export async function POST(request: NextRequest, { params }: Params) {
             proposedCategoryName,
             categoryConfidence,
             duplicateOf,
-            // Marca NEEDS_REVIEW quando confidence baixo
-            userDecision:
-              classify.confidence < 0.7 || (categoryConfidence ?? 1) < 0.7
-                ? 'NEEDS_REVIEW'
-                : 'INCLUDE',
+            userDecision: decideStagedUserDecision(classify.confidence),
           },
         }),
       )

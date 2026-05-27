@@ -52,7 +52,10 @@ export async function GET(request: NextRequest) {
     const categoryId = sp.get('categoryId')
 
     const now = new Date()
-    const where: Record<string, unknown> = {
+    // Sprint 5.0.2.4 — `whereBase` SEM filtro de status/vencidas pra KPIs
+    // sempre refletirem o universo todo da empresa. `whereList` aplica os
+    // filtros adicionais só pro listing/paginação.
+    const whereBase: Record<string, unknown> = {
       lifecycle: 'PAYABLE',
       // Multi-tenant via bankAccount.companyId NÃO funciona aqui (bankAccountId pode ser null).
       // Filtramos via supplier/customer/category todos ligados à empresa, OU via OR explícito.
@@ -63,14 +66,16 @@ export async function GET(request: NextRequest) {
         { category: { companyId } },
       ],
     }
-    if (status) where.status = status
-    if (supplierId) where.supplierId = supplierId
-    if (categoryId) where.categoryId = categoryId
-    if (vencidasOnly) where.dueDate = { lt: now }
+    if (supplierId) whereBase.supplierId = supplierId
+    if (categoryId) whereBase.categoryId = categoryId
 
-    const [items, total, kpiAggregates] = await Promise.all([
+    const whereList: Record<string, unknown> = { ...whereBase }
+    if (status) whereList.status = status
+    if (vencidasOnly) whereList.dueDate = { lt: now }
+
+    const [items, total, kpiPendente, kpiVencidas, kpiPagas] = await Promise.all([
       prisma.transaction.findMany({
-        where,
+        where: whereList,
         orderBy: [{ dueDate: 'asc' }, { createdAt: 'desc' }],
         skip: (page - 1) * limit,
         take: limit,
@@ -80,19 +85,25 @@ export async function GET(request: NextRequest) {
           bankAccount: { select: { id: true, name: true, bankName: true } },
         },
       }),
-      prisma.transaction.count({ where }),
+      prisma.transaction.count({ where: whereList }),
       prisma.transaction.aggregate({
-        where: { ...where, status: 'PENDING' },
+        where: { ...whereBase, status: 'PENDING' },
+        _sum: { amount: true },
+        _count: { _all: true },
+      }),
+      prisma.transaction.aggregate({
+        where: { ...whereBase, status: 'PENDING', dueDate: { lt: now } },
+        _sum: { amount: true },
+        _count: { _all: true },
+      }),
+      // Sprint 5.0.2.4 — KPI Pagas: PAYABLE com paymentDate preenchida
+      // (status RECONCILED quando vem do efetivar OU import Excel PAID).
+      prisma.transaction.aggregate({
+        where: { ...whereBase, paymentDate: { not: null } },
         _sum: { amount: true },
         _count: { _all: true },
       }),
     ])
-
-    const kpiVencidas = await prisma.transaction.aggregate({
-      where: { ...where, status: 'PENDING', dueDate: { lt: now } },
-      _sum: { amount: true },
-      _count: { _all: true },
-    })
 
     return NextResponse.json({
       items,
@@ -103,10 +114,12 @@ export async function GET(request: NextRequest) {
         totalPages: Math.max(1, Math.ceil(total / limit)),
       },
       kpis: {
-        totalPendente: kpiAggregates._sum.amount ?? 0,
-        countPendente: kpiAggregates._count._all,
+        totalPendente: kpiPendente._sum.amount ?? 0,
+        countPendente: kpiPendente._count._all,
         totalVencido: kpiVencidas._sum.amount ?? 0,
         countVencido: kpiVencidas._count._all,
+        totalPagas: kpiPagas._sum.amount ?? 0,
+        countPagas: kpiPagas._count._all,
       },
     })
   } catch (error) {

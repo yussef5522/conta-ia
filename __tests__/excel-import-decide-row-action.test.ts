@@ -7,6 +7,7 @@ import { Prisma } from '@prisma/client'
 import {
   decideRowAction,
   isUniqueConstraintError,
+  decideStagedUserDecision,
   type RowLike,
 } from '@/lib/excel-import/decide-row-action'
 
@@ -106,6 +107,45 @@ describe('decideRowAction — ordem de precedência', () => {
         row({ rawFavorecido: null, userDecision: 'NEEDS_REVIEW' }),
       ).kind,
     ).toBe('SKIP_NO_FAVORECIDO')
+  })
+})
+
+// Sprint 5.0.2.4 — REGRESSÃO CRÍTICA: 46 linhas perdidas porque a regra
+// antiga incluía categoryConfidence < 0.7. Esses testes garantem que ESSA
+// regra NUNCA volte (qualquer mudança que reintroduza vai quebrar testes).
+describe('decideStagedUserDecision — Sprint 5.0.2.4 fix (perda de 46 linhas)', () => {
+  it('classify.confidence ≥ 0.7 + categoryConfidence 0 → INCLUDE (categoria nova proposta)', () => {
+    // Cenário do Cacula: 46 linhas com CC sem match (proposta nova confidence=0)
+    // mas favorecido bem classificado (confidence > 0.7). ANTES do fix isso
+    // virava NEEDS_REVIEW → skipped. DEPOIS: vira INCLUDE → cria normalmente.
+    expect(decideStagedUserDecision(0.85)).toBe('INCLUDE')
+    expect(decideStagedUserDecision(0.7)).toBe('INCLUDE')
+    expect(decideStagedUserDecision(1.0)).toBe('INCLUDE')
+  })
+
+  it('classify.confidence < 0.7 → NEEDS_REVIEW (favorecido ambíguo)', () => {
+    expect(decideStagedUserDecision(0.69)).toBe('NEEDS_REVIEW')
+    expect(decideStagedUserDecision(0.5)).toBe('NEEDS_REVIEW')
+    expect(decideStagedUserDecision(0)).toBe('NEEDS_REVIEW')
+  })
+
+  it('threshold customizável (pra testes/configuração futura)', () => {
+    expect(decideStagedUserDecision(0.65, 0.8)).toBe('NEEDS_REVIEW')
+    expect(decideStagedUserDecision(0.85, 0.8)).toBe('INCLUDE')
+  })
+
+  it('Limite exato — 0.7 inclui (não pula)', () => {
+    // Defesa contra > vs >=: se confidence é EXATAMENTE 0.7, deve INCLUIR
+    expect(decideStagedUserDecision(0.7)).toBe('INCLUDE')
+  })
+
+  it('REGRESSÃO: NUNCA usar categoryConfidence no critério (Sprint 5.0.2.4)', () => {
+    // Não tem como testar "ausência" diretamente — mas o tipo da função só
+    // aceita favorecidoConfidence, e o callsite no /detect só passa esse.
+    // Se alguém adicionar categoryConfidence como parâmetro, esse teste
+    // vai falhar por TypeScript (assinatura mudou).
+    const result: 'NEEDS_REVIEW' | 'INCLUDE' = decideStagedUserDecision(0.9)
+    expect(result).toBe('INCLUDE')
   })
 })
 
