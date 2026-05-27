@@ -62,6 +62,13 @@ import { BulkActionsBar } from '@/components/contas-pagar/BulkActionsBar'
 import { MarkPaidBulkDialog } from '@/components/contas-pagar/MarkPaidBulkDialog'
 import { ExportButton } from '@/components/contas-pagar/ExportButton'
 import { PrintButton } from '@/components/contas-pagar/PrintButton'
+// Sprint 5.0.3.0c (c2) — Density + Columns
+import { DensityToggle } from '@/components/contas-pagar/DensityToggle'
+import {
+  ColumnsButton,
+  type ColumnDef as ColumnVisibilityDef,
+} from '@/components/contas-pagar/ColumnsButton'
+import { useTablePreferences } from '@/lib/contas-pagar/use-table-preferences'
 import { useSavedView } from '@/lib/contas-pagar/use-saved-view'
 import {
   isValidSavedViewId,
@@ -159,6 +166,24 @@ function ContasAPagarInner() {
   const [bulkMarkPaidOpen, setBulkMarkPaidOpen] = useState(false)
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const { toast } = useToast()
+
+  // Sprint 5.0.3.0c (c2) — Table preferences (density + columns)
+  const ALWAYS_VISIBLE_COLS = ['status', 'amount', 'actions']
+  const ALL_COLUMNS: ColumnVisibilityDef[] = [
+    { id: 'status', name: 'Status', alwaysVisible: true },
+    { id: 'dueDate', name: 'Vencimento' },
+    { id: 'paymentDate', name: 'Pagamento' },
+    { id: 'favorecido', name: 'Favorecido' },
+    { id: 'description', name: 'Descrição' },
+    { id: 'category', name: 'Categoria' },
+    { id: 'amount', name: 'Valor', alwaysVisible: true },
+    { id: 'actions', name: 'Ações', alwaysVisible: true },
+  ]
+  const tablePrefs = useTablePreferences({
+    storageKey: 'caixaos:contas-pagar:prefs',
+    alwaysVisible: ALWAYS_VISIBLE_COLS,
+    defaultColumnOrder: ALL_COLUMNS.map((c) => c.id),
+  })
 
   // IDs selecionadas (derivado do RowSelection state do @tanstack/react-table)
   const selectedIds = useMemo(
@@ -465,6 +490,17 @@ function ContasAPagarInner() {
             : 'Selecione uma empresa pra ver as contas a pagar'
         }
       >
+        {/* Sprint 5.0.3.0c (c2) — Density + Columns */}
+        <DensityToggle
+          density={tablePrefs.prefs.density}
+          onChange={tablePrefs.setDensity}
+          disabled={tablePrefs.isMobile}
+        />
+        <ColumnsButton
+          columns={ALL_COLUMNS}
+          hidden={tablePrefs.prefs.columnHidden}
+          onToggle={tablePrefs.toggleColumnHidden}
+        />
         <ExportButton
           empresaId={empresaId}
           filtersQS={filtersQS}
@@ -612,6 +648,9 @@ function ContasAPagarInner() {
               rows={items}
               selection={selection}
               onSelectionChange={setSelection}
+              density={tablePrefs.effectiveDensity}
+              hiddenColumns={tablePrefs.prefs.columnHidden}
+              columnOrder={tablePrefs.prefs.columnOrder}
               onEfetivar={(row) =>
                 setEfetivar({
                   id: row.id,

@@ -19,7 +19,10 @@ import {
   type ColumnDef,
   type SortingState,
   type RowSelectionState,
+  type VisibilityState,
+  type ColumnOrderState,
 } from '@tanstack/react-table'
+import type { DensityLevel } from '@/lib/contas-pagar/use-table-preferences'
 import {
   ArrowUpDown,
   MoreHorizontal,
@@ -83,6 +86,13 @@ interface Props {
   onDelete?: (row: PayableRow) => void
   selection: RowSelectionState
   onSelectionChange: (s: RowSelectionState) => void
+  // Sprint 5.0.3.0c (c2) — Density + column visibility/order
+  /** Density level — aplica classe CSS no <table>. Default 'normal'. */
+  density?: DensityLevel
+  /** IDs das colunas escondidas (passa pra VisibilityState do @tanstack/react-table). */
+  hiddenColumns?: string[]
+  /** Ordem das colunas (passa pra ColumnOrderState). Default = ordem natural. */
+  columnOrder?: string[]
 }
 
 function formatDate(d: string | null): string {
@@ -122,10 +132,18 @@ export function PayableTable({
   onDelete,
   selection,
   onSelectionChange,
+  density = 'normal',
+  hiddenColumns = [],
+  columnOrder = [],
 }: Props) {
   const [sorting, setSorting] = useState<SortingState>([
     { id: 'dueDate', desc: false },
   ])
+
+  // Sprint 5.0.3.0c (c2) — Visibility state derivado de hiddenColumns
+  const columnVisibility: VisibilityState = Object.fromEntries(
+    hiddenColumns.map((id) => [id, false]),
+  )
 
   const columns: ColumnDef<PayableRow>[] = [
     {
@@ -323,7 +341,15 @@ export function PayableTable({
   const table = useReactTable({
     data: rows,
     columns,
-    state: { sorting, rowSelection: selection },
+    state: {
+      sorting,
+      rowSelection: selection,
+      columnVisibility,
+      // Só passa columnOrder se foi customizada — senão deixa ordem natural
+      ...(columnOrder.length > 0
+        ? { columnOrder: columnOrder as ColumnOrderState }
+        : {}),
+    },
     onSortingChange: setSorting,
     onRowSelectionChange: (updater) => {
       const next =
@@ -339,8 +365,9 @@ export function PayableTable({
   return (
     <div className="rounded-md border overflow-hidden bg-card">
       <table
-        className="w-full text-sm"
+        className={`w-full text-sm density-${density}`}
         data-testid="payable-table"
+        data-density={density}
       >
         <thead>
           {table.getHeaderGroups().map((group) => (
