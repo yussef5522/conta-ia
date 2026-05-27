@@ -1,5 +1,8 @@
 // Sprint 4.0.1.a — Contas a Pagar (PAYABLE).
-// POST cria; GET lista paginado.
+// Sprint 5.0.2.4 — KPI Pagas no GET.
+// Sprint 5.0.3.0a — Filtros completos (período, multi-select, busca, sort).
+//
+// POST cria nova conta a pagar. GET lista paginado com filtros expandidos.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
@@ -7,6 +10,11 @@ import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import { contaAPagarCreateSchema } from '@/lib/validations/contas-ap-ar'
 import { createContaPendente, ContaCreateError } from '@/lib/contas-ap-ar/create'
+import {
+  buildPayableListWhere,
+  buildPayableOrderBy,
+  listPayableSchema,
+} from '@/lib/contas-pagar/list-filters'
 
 export async function POST(request: NextRequest) {
   try {
@@ -36,90 +44,134 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const sp = request.nextUrl.searchParams
-    const companyId = sp.get('empresaId')
-    if (!companyId) {
-      return NextResponse.json({ erro: 'empresaId obrigatório' }, { status: 400 })
+    const empresaId = sp.get('empresaId')
+    if (!empresaId) {
+      return NextResponse.json(
+        { erro: 'empresaId obrigatório', code: 'EMPRESA_REQUIRED' },
+        { status: 400 },
+      )
     }
 
-    const ctx = await getAuthContext(request, companyId)
+    const ctx = await getAuthContext(request, empresaId)
     ctx.requirePermission('transaction.view')
 
-    const page = Math.max(1, Number(sp.get('page') ?? 1))
-    const limit = Math.min(100, Math.max(1, Number(sp.get('limit') ?? 50)))
-    const status = sp.get('status') // PENDING | RECONCILED | IGNORED
-    const vencidasOnly = sp.get('vencidas') === 'true'
-    const supplierId = sp.get('supplierId')
-    const categoryId = sp.get('categoryId')
+    // Parse + valida todos os filtros via Zod (defesa em profundidade)
+    const input = listPayableSchema.parse(
+      Object.fromEntries(sp.entries()),
+    )
 
     const now = new Date()
-    // Sprint 5.0.2.4 — `whereBase` SEM filtro de status/vencidas pra KPIs
-    // sempre refletirem o universo todo da empresa. `whereList` aplica os
-    // filtros adicionais só pro listing/paginação.
-    const whereBase: Record<string, unknown> = {
-      lifecycle: 'PAYABLE',
-      // Multi-tenant via bankAccount.companyId NÃO funciona aqui (bankAccountId pode ser null).
-      // Filtramos via supplier/customer/category todos ligados à empresa, OU via OR explícito.
-      OR: [
-        { bankAccount: { companyId } },
-        { supplier: { companyId } },
-        { customer: { companyId } },
-        { category: { companyId } },
-      ],
-    }
-    if (supplierId) whereBase.supplierId = supplierId
-    if (categoryId) whereBase.categoryId = categoryId
+    const whereList = buildPayableListWhere(input, now)
+    const orderBy = buildPayableOrderBy(input)
 
-    const whereList: Record<string, unknown> = { ...whereBase }
-    if (status) whereList.status = status
-    if (vencidasOnly) whereList.dueDate = { lt: now }
+    // Sprint 5.0.3.0a — 4 KPIs sempre refletem universo da empresa SEM os
+    // filtros de status/vencidas/período aplicados ao listing (whereList).
+    // whereBase = só multi-tenant + lifecycle PAYABLE + filtros que NÃO mudam
+    // a semântica do KPI (supplier/categoria/banco). Período NÃO entra em
+    // KPIs — eles são "snapshot atual" das contas pendentes/vencidas/etc.
+    const kpiBaseInput = {
+      ...input,
+      // Remove campos que NÃO devem afetar KPIs (status/vencidas/período/busca)
+      status: undefined,
+      vencidasOnly: false,
+      dataDe: undefined,
+      dataAte: undefined,
+      q: undefined,
+    } as typeof input
+    const whereBase = buildPayableListWhere(kpiBaseInput, now)
 
-    const [items, total, kpiPendente, kpiVencidas, kpiPagas] = await Promise.all([
-      prisma.transaction.findMany({
-        where: whereList,
-        orderBy: [{ dueDate: 'asc' }, { createdAt: 'desc' }],
-        skip: (page - 1) * limit,
-        take: limit,
-        include: {
-          category: { select: { id: true, name: true, color: true } },
-          supplier: { select: { id: true, razaoSocial: true, nomeFantasia: true } },
-          bankAccount: { select: { id: true, name: true, bankName: true } },
-        },
-      }),
-      prisma.transaction.count({ where: whereList }),
-      prisma.transaction.aggregate({
-        where: { ...whereBase, status: 'PENDING' },
-        _sum: { amount: true },
-        _count: { _all: true },
-      }),
-      prisma.transaction.aggregate({
-        where: { ...whereBase, status: 'PENDING', dueDate: { lt: now } },
-        _sum: { amount: true },
-        _count: { _all: true },
-      }),
-      // Sprint 5.0.2.4 — KPI Pagas: PAYABLE com paymentDate preenchida
-      // (status RECONCILED quando vem do efetivar OU import Excel PAID).
-      prisma.transaction.aggregate({
-        where: { ...whereBase, paymentDate: { not: null } },
-        _sum: { amount: true },
-        _count: { _all: true },
-      }),
-    ])
+    const [items, total, kpiPagas, kpiPendentes, kpiVencidas, kpiAVencer3d] =
+      await Promise.all([
+        prisma.transaction.findMany({
+          where: whereList,
+          orderBy,
+          skip: (input.page - 1) * input.limit,
+          take: input.limit,
+          include: {
+            category: { select: { id: true, name: true, color: true } },
+            supplier: {
+              select: { id: true, razaoSocial: true, nomeFantasia: true },
+            },
+            employee: { select: { id: true, nome: true } },
+            bankAccount: {
+              select: { id: true, name: true, bankName: true },
+            },
+          },
+        }),
+        prisma.transaction.count({ where: whereList }),
+        // PAGAS = paymentDate preenchida (status RECONCILED ou EFFECTED)
+        prisma.transaction.aggregate({
+          where: { ...whereBase, paymentDate: { not: null } },
+          _sum: { amount: true },
+          _count: { _all: true },
+        }),
+        // A PAGAR PENDENTE = status PENDING, dueDate >= hoje (não vencida)
+        prisma.transaction.aggregate({
+          where: {
+            ...whereBase,
+            status: 'PENDING',
+            OR: [{ dueDate: { gte: now } }, { dueDate: null }],
+          },
+          _sum: { amount: true },
+          _count: { _all: true },
+        }),
+        // VENCIDAS = status PENDING, dueDate < hoje
+        prisma.transaction.aggregate({
+          where: { ...whereBase, status: 'PENDING', dueDate: { lt: now } },
+          _sum: { amount: true },
+          _count: { _all: true },
+        }),
+        // A VENCER em até 3 dias = status PENDING, dueDate entre hoje e +3d
+        prisma.transaction.aggregate({
+          where: {
+            ...whereBase,
+            status: 'PENDING',
+            dueDate: {
+              gte: now,
+              lte: new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000),
+            },
+          },
+          _sum: { amount: true },
+          _count: { _all: true },
+        }),
+      ])
 
     return NextResponse.json({
       items,
       paginacao: {
         total,
-        page,
-        limit,
-        totalPages: Math.max(1, Math.ceil(total / limit)),
+        page: input.page,
+        limit: input.limit,
+        totalPages: Math.max(1, Math.ceil(total / input.limit)),
       },
       kpis: {
-        totalPendente: kpiPendente._sum.amount ?? 0,
-        countPendente: kpiPendente._count._all,
-        totalVencido: kpiVencidas._sum.amount ?? 0,
-        countVencido: kpiVencidas._count._all,
+        // Sprint 5.0.3.0a — 4 KPIs (PAGAS verde, A PAGAR azul, A VENCER 3d amarelo, VENCIDAS vermelho)
         totalPagas: kpiPagas._sum.amount ?? 0,
         countPagas: kpiPagas._count._all,
+        totalPendente: kpiPendentes._sum.amount ?? 0,
+        countPendente: kpiPendentes._count._all,
+        totalAVencer3d: kpiAVencer3d._sum.amount ?? 0,
+        countAVencer3d: kpiAVencer3d._count._all,
+        totalVencido: kpiVencidas._sum.amount ?? 0,
+        countVencido: kpiVencidas._count._all,
+      },
+      // Sprint 5.0.3.0a — Echo dos filtros parseados (UI sincroniza state)
+      appliedFilters: {
+        dataDe: input.dataDe,
+        dataAte: input.dataAte,
+        dataField: input.dataField,
+        status: input.status,
+        vencidasOnly: input.vencidasOnly,
+        supplierIds: input.supplierIds,
+        employeeIds: input.employeeIds,
+        categoryIds: input.categoryIds,
+        bankAccountIds: input.bankAccountIds,
+        origins: input.origins,
+        q: input.q,
+        valorMin: input.valorMin,
+        valorMax: input.valorMax,
+        sortBy: input.sortBy,
+        sortDir: input.sortDir,
       },
     })
   } catch (error) {
