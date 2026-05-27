@@ -38,13 +38,16 @@ type Step = 'UPLOAD' | 'DETECT' | 'REVIEW' | 'CONFIRMED'
 
 interface UploadResponse {
   batchId: string
-  fileName: string
+  fileName?: string
   totalRows: number
-  filteredCount: number
-  headers: string[]
-  totalSheets: number
-  sheetName: string
-  mapping: {
+  // Sprint 5.0.2.3 — quando duplicate=true, backend retorna shape mínimo
+  // (sem re-parsear). Campos abaixo são opcionais e UI degrada graciosamente.
+  duplicate?: boolean
+  filteredCount?: number
+  headers?: string[]
+  totalSheets?: number
+  sheetName?: string
+  mapping?: {
     fields: Record<string, string | null>
     confidence: number
     reasoning: string
@@ -287,7 +290,7 @@ export function ImportExcelClient({ empresaId }: Props) {
     if (confirmResult) {
       params.set('imported', String(confirmResult.transactionsCreated))
       params.set('totalAmount', String(confirmResult.totalAmount))
-      if (upload) params.set('empresaNome', upload.fileName)
+      if (upload?.fileName) params.set('empresaNome', upload.fileName)
     }
     router.push(`/dashboard?${params.toString()}`)
   }
@@ -490,28 +493,48 @@ export function ImportExcelClient({ empresaId }: Props) {
   }
 
   if (step === 'DETECT' && upload) {
+    // Sprint 5.0.2.3 — guards pra caso `duplicate=true` (response mínimo do upload).
+    // Se mapping/headers/etc estão ausentes, mostra info mínima sem crashar.
+    const isDuplicate = upload.duplicate === true
+    const filteredCount = upload.filteredCount ?? 0
+    const headersCount = upload.headers?.length ?? null
+    const totalSheets = upload.totalSheets ?? 1
+    const mappingConfidence = upload.mapping?.confidence ?? null
+    const mappingReasoning = upload.mapping?.reasoning ?? ''
+
     return (
       <div className="space-y-4">
+        {isDuplicate && (
+          <div className="rounded-md border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/20 px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
+            ⚠️ Esta planilha já foi enviada antes. Retomando o batch existente
+            (você pode confirmar de novo — duplicatas vão ser puladas automaticamente).
+          </div>
+        )}
         <div className="rounded-md border bg-card p-4">
           <div className="flex items-center gap-2 mb-3">
             <FileSpreadsheet className="h-5 w-5 text-violet-600" />
-            <h3 className="font-medium">{upload.fileName}</h3>
+            <h3 className="font-medium">{upload.fileName ?? 'Planilha'}</h3>
           </div>
           <ul className="text-sm space-y-1 text-muted-foreground">
             <li>
               <strong className="text-foreground tabular-nums">{upload.totalRows}</strong> linhas válidas
-              {upload.filteredCount > 0 && ` (${upload.filteredCount} filtradas — totais/vazias)`}
+              {filteredCount > 0 && ` (${filteredCount} filtradas — totais/vazias)`}
             </li>
-            <li>
-              <strong className="text-foreground tabular-nums">{upload.headers.length}</strong> colunas detectadas
-              {upload.totalSheets > 1 &&
-                ` · aba "${upload.sheetName}" de ${upload.totalSheets}`}
-            </li>
-            <li>
-              Mapeamento heurístico: confidence{' '}
-              <strong>{Math.round(upload.mapping.confidence * 100)}%</strong>
-              {upload.mapping.reasoning && ` · ${upload.mapping.reasoning}`}
-            </li>
+            {headersCount !== null && (
+              <li>
+                <strong className="text-foreground tabular-nums">{headersCount}</strong> colunas detectadas
+                {totalSheets > 1 &&
+                  upload.sheetName &&
+                  ` · aba "${upload.sheetName}" de ${totalSheets}`}
+              </li>
+            )}
+            {mappingConfidence !== null && (
+              <li>
+                Mapeamento heurístico: confidence{' '}
+                <strong>{Math.round(mappingConfidence * 100)}%</strong>
+                {mappingReasoning && ` · ${mappingReasoning}`}
+              </li>
+            )}
           </ul>
         </div>
 
