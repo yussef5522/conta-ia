@@ -24,10 +24,6 @@ import {
   AutoCategorizePreviewModal,
   type PreviewData,
 } from '@/components/pendentes/AutoCategorizePreviewModal'
-import {
-  DetectarTransferenciasModal,
-  type TransferCandidateDTO,
-} from '@/components/pendentes/DetectarTransferenciasModal'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -155,11 +151,6 @@ export function PendentesClient({
   // Sprint 5.0.2.p — Preview modal
   const [previewOpen, setPreviewOpen] = useState(false)
   const [previewData, setPreviewData] = useState<PreviewData | null>(null)
-  // Sprint 5.0.2.t — Detector de transferências cross-conta
-  const [transferModalOpen, setTransferModalOpen] = useState(false)
-  const [transferLoading, setTransferLoading] = useState(false)
-  const [transferCandidates, setTransferCandidates] =
-    useState<TransferCandidateDTO[] | null>(null)
 
   // Filtros
   const noventaDiasAtras = useMemo(() => {
@@ -215,12 +206,25 @@ export function PendentesClient({
 
   useEffect(() => { fetchTransacoes() }, [fetchTransacoes])
 
-  // Sprint 5.0.2.n — Vendor Discovery batch (sugere; não auto-aplica)
+  // Sprint 5.0.2.n + v — Vendor Discovery: limpa cache envenenado primeiro,
+  // depois re-roda batch. Comportamento de "Limpar + Re-analisar" da Sprint o
+  // absorvido aqui (Sprint v: header reduzido a 2 botões).
   async function sugerirIaParaPendentes() {
     if (vendorDiscoveryLoading) return
     setVendorDiscoveryLoading(true)
     setVendorDiscoveryStats(null)
     try {
+      // Passo 1: limpa cache envenenado (silenciosamente — não bloqueia)
+      try {
+        await fetch(
+          `/api/empresas/${empresaId}/vendor-discovery/clean-cache`,
+          { method: 'POST', credentials: 'include' },
+        )
+      } catch {
+        // ignora — cleanup é best-effort, discovery roda mesmo se falhar
+      }
+
+      // Passo 2: batch discovery
       const res = await fetch(
         `/api/empresas/${empresaId}/vendor-discovery/batch`,
         { method: 'POST', credentials: 'include' },
@@ -284,75 +288,9 @@ export function PendentesClient({
     })
   }
 
-  // Sprint 5.0.2.o — Limpar cache envenenado + re-rodar discovery
-  async function limparCacheEReanalizar() {
-    if (vendorDiscoveryLoading) return
-    setVendorDiscoveryLoading(true)
-    setVendorDiscoveryStats(null)
-    try {
-      const cleanRes = await fetch(
-        `/api/empresas/${empresaId}/vendor-discovery/clean-cache`,
-        { method: 'POST', credentials: 'include' },
-      )
-      const cleanData = await cleanRes.json().catch(() => ({}))
-      if (!cleanRes.ok) {
-        toast({
-          variant: 'destructive',
-          title: 'Falha ao limpar cache',
-          description: cleanData.erro ?? `HTTP ${cleanRes.status}`,
-        })
-        return
-      }
-      const redoRes = await fetch(
-        `/api/empresas/${empresaId}/vendor-discovery/redo-rejected`,
-        { method: 'POST', credentials: 'include' },
-      )
-      if (!redoRes.ok) {
-        const data = await redoRes.json().catch(() => ({}))
-        toast({
-          variant: 'destructive',
-          title: 'Falha ao re-analisar',
-          description: data.erro ?? `HTTP ${redoRes.status}`,
-        })
-        return
-      }
-      const data = await redoRes.json()
-      setVendorDiscoveryStats({
-        total: data.total,
-        found: data.found,
-        breakdown: data.breakdown,
-        totalCostUsd: data.totalCostUsd,
-      })
-      const map: Record<string, VendorSuggestion> = {}
-      for (const s of data.suggestions ?? []) {
-        if (!s.result?.cacheId) continue
-        map[s.transactionId] = {
-          transactionId: s.transactionId,
-          cacheId: s.result.cacheId,
-          logId: s.logId,
-          source: s.result.source,
-          vendorName: s.result.vendorName,
-          razaoSocial: s.result.razaoSocial,
-          cnpj: s.result.cnpj,
-          cnaeDescricao: s.result.cnaeDescricao,
-          categoriaSugerida: s.result.categoriaSugerida,
-          confidence: s.result.confidence,
-          description: s.result.description,
-          matchedKeyword: s.result.matchedKeyword,
-        }
-      }
-      setVendorSuggestions(map)
-      toast({
-        title: `🧹 ${cleanData.deleted} cache · ✨ ${data.found} sugestões`,
-        description: `Cache: ${data.breakdown.cache} · BrasilAPI: ${data.breakdown.brasilapi} · Palavra-chave: ${data.breakdown.keyword} · IA: ${data.breakdown.claude}`,
-        duration: 7000,
-      })
-    } catch {
-      toast({ variant: 'destructive', title: 'Erro de rede' })
-    } finally {
-      setVendorDiscoveryLoading(false)
-    }
-  }
+  // Sprint 5.0.2.v — handler "Limpar + Re-analisar" removido (comportamento
+  // absorvido em sugerirIaParaPendentes). Endpoint /vendor-discovery/clean-cache
+  // segue disponível via /empresas/[id]/manutencao (admin).
 
   // Sprint 5.0.2.p — Auto-categorizar agora abre PREVIEW (não aplica direto).
   async function autoCategorizarTudo() {
@@ -387,79 +325,9 @@ export function PendentesClient({
     }
   }
 
-  // Sprint 5.0.2.t — Detectar transferências entre contas
-  async function detectarTransferencias() {
-    if (transferLoading) return
-    setTransferLoading(true)
-    setTransferCandidates(null)
-    setTransferModalOpen(true)
-    try {
-      const res = await fetch(
-        `/api/empresas/${empresaId}/conciliation/detect-active-transfers`,
-        {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ daysWindow: 3 }),
-        },
-      )
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        toast({
-          variant: 'destructive',
-          title: 'Falha ao detectar transferências',
-          description: data.erro ?? `HTTP ${res.status}`,
-        })
-        setTransferModalOpen(false)
-        return
-      }
-      const data = await res.json()
-      setTransferCandidates(data.candidates ?? [])
-    } catch {
-      toast({ variant: 'destructive', title: 'Erro de rede' })
-      setTransferModalOpen(false)
-    } finally {
-      setTransferLoading(false)
-    }
-  }
-
-  function onTransfersApplied(_aplicadas: number) {
-    void _aplicadas
-    void fetchTransacoes()
-  }
-
-  // Sprint 5.0.2.u — Reverter transferências marcadas erradas (Sprint t lenient)
-  async function reverterTransferenciasErradas() {
-    if (transferLoading) return
-    setTransferLoading(true)
-    try {
-      const res = await fetch(
-        `/api/empresas/${empresaId}/conciliation/unmark-bad-transfers`,
-        { method: 'POST', credentials: 'include' },
-      )
-      const data = await res.json()
-      if (!res.ok) {
-        toast({
-          variant: 'destructive',
-          title: 'Falha ao reverter',
-          description: data.erro ?? `HTTP ${res.status}`,
-        })
-        return
-      }
-      toast({
-        title: `${data.paresRevertidos} pares revertidos`,
-        description:
-          data.paresRevertidos > 0
-            ? `${data.transacoesRevertidas} transações voltaram pra pendentes`
-            : 'Nenhuma transferência marcada errada (regras estritas OK)',
-      })
-      await fetchTransacoes()
-    } catch {
-      toast({ variant: 'destructive', title: 'Erro de rede' })
-    } finally {
-      setTransferLoading(false)
-    }
-  }
+  // Sprint 5.0.2.v — handlers "Detectar transferências" e "Reverter erradas"
+  // removidos do /pendentes (obsoletos com staging Sprint u + cleanup admin).
+  // Endpoints /conciliation/* seguem disponíveis via /empresas/[id]/manutencao.
 
   function onPreviewApplied(aplicadas: number) {
     setAutoCatResult({
@@ -680,39 +548,6 @@ export function PendentesClient({
             <Sparkles className="h-4 w-4" />
           )}
           {vendorDiscoveryLoading ? 'Pesquisando IA...' : 'Sugerir IA'}
-        </Button>
-        <Button
-          onClick={() => void limparCacheEReanalizar()}
-          disabled={vendorDiscoveryLoading || transacoes.length === 0}
-          variant="outline"
-          className="gap-2"
-          title="Remove sugestões ruins do cache global e re-analisa pendentes"
-        >
-          🧹 Limpar + Re-analisar
-        </Button>
-        <Button
-          onClick={() => void detectarTransferencias()}
-          disabled={transferLoading || transacoes.length === 0}
-          variant="outline"
-          className="gap-2"
-          title="Procura pares PIX↔PIX com mesmo valor e CNPJ próprio entre contas da empresa"
-        >
-          {transferLoading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <ArrowLeftRight className="h-4 w-4" />
-          )}
-          Detectar transferências
-        </Button>
-        <Button
-          onClick={() => void reverterTransferenciasErradas()}
-          disabled={transferLoading}
-          variant="ghost"
-          size="sm"
-          className="gap-2 text-muted-foreground"
-          title="Reverte pares marcados pelas regras antigas que falham as estritas"
-        >
-          ⚠️ Reverter erradas
         </Button>
         <Button
           onClick={() => void autoCategorizarTudo()}
@@ -1203,14 +1038,6 @@ export function PendentesClient({
         onApplied={onPreviewApplied}
       />
 
-      {/* Sprint 5.0.2.t — Detector cross-conta de transferências */}
-      <DetectarTransferenciasModal
-        open={transferModalOpen}
-        onOpenChange={setTransferModalOpen}
-        empresaId={empresaId}
-        candidates={transferCandidates}
-        onApplied={onTransfersApplied}
-      />
     </div>
   )
 }
