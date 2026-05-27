@@ -1,9 +1,16 @@
 'use client'
 
 // Sprint 4.0.1.a — Contas a Pagar (PAYABLE).
-// Lista paginada + KPIs no header + filtros + ações efetivar/cancelar.
+// Sprint 5.0.3.0a — Refator world-class: 4 stats / tabela densa / footer fixo /
+// filtros / skeleton / 3 empty states. Componentes extraídos pra
+// components/contas-pagar/*.tsx.
+//
+// Próximas sub-sprints:
+//   5.0.3.0b — Saved views + bulk actions + export CSV
+//   5.0.3.0c — Command palette (Cmd+K) + edit inline + density toggle + aging
+//   5.0.3.0d — Polish: E2E + mobile + a11y
 
-import { useEffect, useState, useCallback, Suspense } from 'react'
+import { useEffect, useState, useCallback, useMemo, Suspense } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
@@ -13,54 +20,77 @@ import {
   CalendarClock,
   AlertCircle,
   CheckCircle2,
+  Clock,
   Upload,
-  FileSpreadsheet,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Header } from '@/components/layout/header'
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from '@/components/ui/select'
-import { Input } from '@/components/ui/input'
-import { useToast } from '@/components/ui/use-toast'
+import { StatsCard } from '@/components/contas-pagar/StatsCard'
+import { PayableSkeleton } from '@/components/contas-pagar/PayableSkeleton'
+import { PayableEmptyState } from '@/components/contas-pagar/PayableEmptyState'
+import { StickyFooter } from '@/components/contas-pagar/StickyFooter'
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
-} from '@/components/ui/dialog'
-import { formatBRL } from '@/lib/format/money'
-import { isEmpresaZerada } from '@/lib/contas-pagar/empty-state'
+  PayableFilters,
+  EMPTY_FILTERS,
+  isFilterActive,
+  type PayableFilterState,
+} from '@/components/contas-pagar/PayableFilters'
+import {
+  PayableTable,
+  type PayableRow,
+} from '@/components/contas-pagar/PayableTable'
+import {
+  EfetivarDialog,
+  type PayableForEfetivar,
+  type BankAccountOption,
+} from '@/components/contas-pagar/EfetivarDialog'
 
-interface Conta {
+interface Empresa {
   id: string
-  description: string
-  amount: number
-  dueDate: string | null
-  status: string
-  notes: string | null
-  category: { id: string; name: string; color: string } | null
-  supplier: { id: string; razaoSocial: string; nomeFantasia: string | null } | null
-  bankAccount: { id: string; name: string; bankName: string | null } | null
+  name: string
+  tradeName: string | null
 }
-
-interface Empresa { id: string; name: string; tradeName: string | null }
-interface BankAccount { id: string; name: string; bankName: string | null; companyId: string }
 
 interface KPIs {
-  totalPendente: number
-  countPendente: number
-  totalVencido: number
-  countVencido: number
-  // Sprint 5.0.2.4 — KPI Pagas (3º card)
   totalPagas: number
   countPagas: number
+  totalPendente: number
+  countPendente: number
+  totalAVencer3d: number
+  countAVencer3d: number
+  totalVencido: number
+  countVencido: number
 }
 
-interface Paginacao { total: number; page: number; limit: number; totalPages: number }
+interface Paginacao {
+  total: number
+  page: number
+  limit: number
+  totalPages: number
+}
+
+const EMPTY_KPIS: KPIs = {
+  totalPagas: 0,
+  countPagas: 0,
+  totalPendente: 0,
+  countPendente: 0,
+  totalAVencer3d: 0,
+  countAVencer3d: 0,
+  totalVencido: 0,
+  countVencido: 0,
+}
 
 export default function ContasAPagarPage() {
   return (
-    <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Carregando…</div>}>
+    <Suspense fallback={<PayableSkeleton />}>
       <ContasAPagarInner />
     </Suspense>
   )
@@ -68,31 +98,42 @@ export default function ContasAPagarPage() {
 
 function ContasAPagarInner() {
   const router = useRouter()
-  const { toast } = useToast()
   const searchParams = useSearchParams()
 
   const [empresas, setEmpresas] = useState<Empresa[]>([])
-  const [empresaId, setEmpresaId] = useState<string>(searchParams.get('empresaId') ?? '')
-  const [items, setItems] = useState<Conta[]>([])
-  const [kpis, setKpis] = useState<KPIs>({
-    totalPendente: 0,
-    countPendente: 0,
-    totalVencido: 0,
-    countVencido: 0,
-    totalPagas: 0,
-    countPagas: 0,
-  })
-  const [paginacao, setPaginacao] = useState<Paginacao>({ total: 0, page: 1, limit: 50, totalPages: 1 })
-  const [loading, setLoading] = useState(true)
-  const [status, setStatus] = useState<string>('PENDING')
-  const [vencidasOnly, setVencidasOnly] = useState(false)
-  const [page, setPage] = useState(1)
+  const [empresaId, setEmpresaId] = useState<string>(
+    searchParams.get('empresaId') ?? '',
+  )
 
-  const [efetivar, setEfetivar] = useState<Conta | null>(null)
-  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
-  const [efetivarBankId, setEfetivarBankId] = useState('')
-  const [efetivarDate, setEfetivarDate] = useState(new Date().toISOString().slice(0, 10))
-  const [efetivarLoading, setEfetivarLoading] = useState(false)
+  // Filtros — hydratam de URL na 1ª carga
+  const [filters, setFilters] = useState<PayableFilterState>(() => ({
+    q: searchParams.get('q') ?? '',
+    dataDe: searchParams.get('dataDe') ?? '',
+    dataAte: searchParams.get('dataAte') ?? '',
+    status:
+      (searchParams.get('status') as PayableFilterState['status']) ?? 'PENDING',
+    vencidasOnly: searchParams.get('vencidasOnly') === 'true',
+  }))
+  // Busca textual debounce
+  const [qDebounced, setQDebounced] = useState(filters.q)
+  useEffect(() => {
+    const id = setTimeout(() => setQDebounced(filters.q), 300)
+    return () => clearTimeout(id)
+  }, [filters.q])
+
+  const [items, setItems] = useState<PayableRow[]>([])
+  const [kpis, setKpis] = useState<KPIs>(EMPTY_KPIS)
+  const [paginacao, setPaginacao] = useState<Paginacao>({
+    total: 0,
+    page: 1,
+    limit: 50,
+    totalPages: 1,
+  })
+  const [page, setPage] = useState(1)
+  const [loading, setLoading] = useState(true)
+  const [selection, setSelection] = useState<Record<string, boolean>>({})
+  const [bankAccounts, setBankAccounts] = useState<BankAccountOption[]>([])
+  const [efetivar, setEfetivar] = useState<PayableForEfetivar | null>(null)
 
   // Carrega empresas
   useEffect(() => {
@@ -116,7 +157,9 @@ function ContasAPagarInner() {
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data?.contas) {
-          setBankAccounts(data.contas.filter((c: BankAccount) => c.companyId === empresaId))
+          setBankAccounts(
+            data.contas.filter((c: BankAccountOption & { companyId: string }) => c.companyId === empresaId),
+          )
         }
       })
       .catch(() => {})
@@ -134,10 +177,15 @@ function ContasAPagarInner() {
         page: String(page),
         limit: '50',
       })
-      if (status !== 'TODOS') qs.set('status', status)
-      if (vencidasOnly) qs.set('vencidas', 'true')
+      if (qDebounced) qs.set('q', qDebounced)
+      if (filters.dataDe) qs.set('dataDe', filters.dataDe)
+      if (filters.dataAte) qs.set('dataAte', filters.dataAte)
+      if (filters.status !== 'TODOS') qs.set('status', filters.status)
+      if (filters.vencidasOnly) qs.set('vencidasOnly', 'true')
 
-      const res = await fetch(`/api/contas-a-pagar?${qs}`, { credentials: 'include' })
+      const res = await fetch(`/api/contas-a-pagar?${qs}`, {
+        credentials: 'include',
+      })
       if (res.ok) {
         const data = await res.json()
         setItems(data.items)
@@ -147,75 +195,72 @@ function ContasAPagarInner() {
     } finally {
       setLoading(false)
     }
-  }, [empresaId, page, status, vencidasOnly])
+  }, [
+    empresaId,
+    page,
+    qDebounced,
+    filters.dataDe,
+    filters.dataAte,
+    filters.status,
+    filters.vencidasOnly,
+  ])
 
-  useEffect(() => { fetchItems() }, [fetchItems])
+  useEffect(() => {
+    void fetchItems()
+  }, [fetchItems])
 
-  // Sync URL com empresa selecionada
+  // Sync URL com state (sem provocar reload)
   useEffect(() => {
     if (!empresaId) return
     const sp = new URLSearchParams()
     sp.set('empresaId', empresaId)
+    if (filters.q) sp.set('q', filters.q)
+    if (filters.dataDe) sp.set('dataDe', filters.dataDe)
+    if (filters.dataAte) sp.set('dataAte', filters.dataAte)
+    if (filters.status !== 'PENDING') sp.set('status', filters.status)
+    if (filters.vencidasOnly) sp.set('vencidasOnly', 'true')
     router.replace(`?${sp}`, { scroll: false })
-  }, [empresaId, router])
+  }, [empresaId, filters, router])
 
-  async function executarEfetivacao() {
-    if (!efetivar || !efetivarBankId || !efetivarDate) return
-    setEfetivarLoading(true)
-    try {
-      const res = await fetch(`/api/transacoes/${efetivar.id}/efetivar`, {
-        method: 'PATCH',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          paymentDate: efetivarDate,
-          bankAccountId: efetivarBankId,
-        }),
+  function clearFilters() {
+    setFilters(EMPTY_FILTERS)
+    setPage(1)
+  }
+
+  function applyFilterPreset(kind: 'paid' | 'pending' | 'warn3d' | 'overdue') {
+    if (kind === 'paid') {
+      setFilters({ ...EMPTY_FILTERS, status: 'RECONCILED' })
+    } else if (kind === 'overdue') {
+      setFilters({ ...EMPTY_FILTERS, status: 'PENDING', vencidasOnly: true })
+    } else if (kind === 'pending') {
+      setFilters({ ...EMPTY_FILTERS, status: 'PENDING' })
+    } else if (kind === 'warn3d') {
+      // 3 dias à frente
+      const today = new Date()
+      const in3d = new Date(today.getTime() + 3 * 86400_000)
+      setFilters({
+        ...EMPTY_FILTERS,
+        status: 'PENDING',
+        dataDe: today.toISOString().slice(0, 10),
+        dataAte: in3d.toISOString().slice(0, 10),
       })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        toast({
-          variant: 'destructive',
-          title: 'Falha ao efetivar',
-          description: data.erro ?? `HTTP ${res.status}`,
-        })
-        return
-      }
-      toast({ title: 'Efetivada', description: efetivar.description })
-      setEfetivar(null)
-      setEfetivarBankId('')
-      void fetchItems()
-    } catch {
-      toast({ variant: 'destructive', title: 'Erro', description: 'Falha de rede.' })
-    } finally {
-      setEfetivarLoading(false)
     }
+    setPage(1)
   }
 
-  function vencimentoCor(dueDate: string | null): string {
-    if (!dueDate) return 'text-muted-foreground'
-    const due = new Date(dueDate)
-    const now = new Date()
-    const diff = (due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
-    if (diff < 0) return 'text-red-600 font-semibold'
-    if (diff <= 3) return 'text-amber-600 font-medium'
-    return 'text-muted-foreground'
-  }
-
-  function vencimentoLabel(dueDate: string | null): string {
-    if (!dueDate) return '—'
-    const due = new Date(dueDate)
-    const now = new Date()
-    const diffDays = Math.floor((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
-    const fmt = due.toLocaleDateString('pt-BR')
-    if (diffDays < 0) return `${fmt} · vencida há ${Math.abs(diffDays)}d`
-    if (diffDays === 0) return `${fmt} · vence hoje`
-    if (diffDays <= 3) return `${fmt} · vence em ${diffDays}d`
-    return fmt
-  }
+  const empresaZerada = useMemo(
+    () =>
+      !loading &&
+      items.length === 0 &&
+      !isFilterActive(filters) &&
+      kpis.countPendente === 0 &&
+      kpis.countVencido === 0 &&
+      kpis.countPagas === 0,
+    [loading, items.length, filters, kpis],
+  )
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-20">
       <Header
         title="Contas a Pagar"
         description={
@@ -225,13 +270,21 @@ function ContasAPagarInner() {
         }
       >
         <Button size="sm" variant="outline" asChild disabled={!empresaId}>
-          <Link href={empresaId ? `/empresas/${empresaId}/contas-pagar/import` : '#'}>
+          <Link
+            href={
+              empresaId
+                ? `/empresas/${empresaId}/contas-pagar/import`
+                : '#'
+            }
+          >
             <Upload className="mr-1.5 h-3.5 w-3.5" />
             Importar Excel
           </Link>
         </Button>
         <Button size="sm" asChild disabled={!empresaId}>
-          <Link href={`/contas-a-pagar/nova${empresaId ? `?empresaId=${empresaId}` : ''}`}>
+          <Link
+            href={`/contas-a-pagar/nova${empresaId ? `?empresaId=${empresaId}` : ''}`}
+          >
             <Plus className="mr-1.5 h-3.5 w-3.5" />
             Nova conta a pagar
           </Link>
@@ -261,194 +314,125 @@ function ContasAPagarInner() {
         </Card>
       )}
 
-      {empresaId && (
+      {/* Loading state */}
+      {loading && empresaId && <PayableSkeleton />}
+
+      {/* Conteúdo principal */}
+      {empresaId && !loading && (
         <>
-          {/* KPIs — Sprint 5.0.2.4 adiciona 3º card "Pagas" */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <Card>
-              <CardContent className="py-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs uppercase text-muted-foreground">A pagar pendente</p>
-                    <p className="text-2xl font-semibold tabular-nums mt-1">{formatBRL(kpis.totalPendente)}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {kpis.countPendente} conta{kpis.countPendente !== 1 ? 's' : ''}
-                    </p>
-                  </div>
-                  <CalendarClock className="h-8 w-8 text-muted-foreground/30" />
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="py-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs uppercase text-muted-foreground">Vencidas</p>
-                    <p className="text-2xl font-semibold tabular-nums mt-1 text-red-600">
-                      {formatBRL(kpis.totalVencido)}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {kpis.countVencido} conta{kpis.countVencido !== 1 ? 's' : ''}
-                    </p>
-                  </div>
-                  <AlertCircle className="h-8 w-8 text-red-300" />
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="py-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs uppercase text-muted-foreground">Pagas</p>
-                    <p className="text-2xl font-semibold tabular-nums mt-1 text-emerald-600 dark:text-emerald-400">
-                      {formatBRL(kpis.totalPagas)}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {kpis.countPagas} conta{kpis.countPagas !== 1 ? 's' : ''}
-                    </p>
-                  </div>
-                  <CheckCircle2 className="h-8 w-8 text-emerald-400/40" />
-                </div>
-              </CardContent>
-            </Card>
+          {/* 4 stats — Sprint 5.0.3.0a */}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatsCard
+              variant="paid"
+              label="Pagas"
+              amount={kpis.totalPagas}
+              count={kpis.countPagas}
+              icon={CheckCircle2}
+              onClick={() => applyFilterPreset('paid')}
+            />
+            <StatsCard
+              variant="pending"
+              label="A pagar pendente"
+              amount={kpis.totalPendente}
+              count={kpis.countPendente}
+              icon={CalendarClock}
+              onClick={() => applyFilterPreset('pending')}
+            />
+            <StatsCard
+              variant="warn"
+              label="A vencer (3d)"
+              amount={kpis.totalAVencer3d}
+              count={kpis.countAVencer3d}
+              icon={Clock}
+              onClick={() => applyFilterPreset('warn3d')}
+            />
+            <StatsCard
+              variant="overdue"
+              label="Vencidas"
+              amount={kpis.totalVencido}
+              count={kpis.countVencido}
+              icon={AlertCircle}
+              onClick={() => applyFilterPreset('overdue')}
+            />
           </div>
 
           {/* Filtros */}
           <Card>
             <CardContent className="py-3">
-              <div className="flex flex-wrap items-center gap-3">
-                <Select value={status} onValueChange={(v) => { setStatus(v); setPage(1) }}>
-                  <SelectTrigger className="w-auto min-w-[150px] h-8">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="PENDING">Pendentes</SelectItem>
-                    <SelectItem value="RECONCILED">Conciliadas</SelectItem>
-                    <SelectItem value="IGNORED">Ignoradas</SelectItem>
-                    <SelectItem value="TODOS">Todos status</SelectItem>
-                  </SelectContent>
-                </Select>
-                <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                  <Input
-                    type="checkbox"
-                    className="w-3.5 h-3.5"
-                    checked={vencidasOnly}
-                    onChange={(e) => { setVencidasOnly(e.target.checked); setPage(1) }}
-                  />
-                  Só vencidas
-                </label>
-              </div>
+              <PayableFilters
+                value={filters}
+                onChange={(f) => {
+                  setFilters(f)
+                  setPage(1)
+                }}
+                onClear={clearFilters}
+                total={paginacao.total}
+              />
             </CardContent>
           </Card>
 
-          {/* Lista */}
-          {loading ? (
-            <p className="text-sm text-muted-foreground">Carregando…</p>
-          ) : items.length === 0 ? (
-            isEmpresaZerada({ status, vencidasOnly, kpis }) ? (
-              // Sprint 5.0.2.1 — Empresa sem nenhuma conta cadastrada:
-              // empty state primary com CTA de import (descoberta da feature)
-              <Card>
-                <CardContent className="py-12 text-center">
-                  <FileSpreadsheet
-                    className="h-15 w-15 mx-auto mb-3 text-primary/40"
-                    style={{ width: 60, height: 60 }}
-                  />
-                  <h3 className="text-lg font-medium text-foreground mb-1">
-                    Comece importando a planilha do seu contador
-                  </h3>
-                  <p className="text-sm text-muted-foreground max-w-md mx-auto mb-5">
-                    A IA cadastra fornecedores, funcionários e categorias
-                    automaticamente — você só revisa e confirma.
-                  </p>
-                  <div className="flex flex-col items-center gap-2">
-                    <Button asChild>
-                      <Link href={`/empresas/${empresaId}/contas-pagar/import`}>
-                        <Upload className="mr-1.5 h-3.5 w-3.5" />
-                        Importar planilha Excel
-                      </Link>
-                    </Button>
-                    <Link
-                      href={`/contas-a-pagar/nova?empresaId=${empresaId}`}
-                      className="text-xs text-muted-foreground hover:text-foreground"
-                    >
-                      ou cadastrar conta manualmente
-                    </Link>
-                  </div>
-                </CardContent>
-              </Card>
+          {/* Tabela / Empty states */}
+          {items.length === 0 ? (
+            empresaZerada ? (
+              <PayableEmptyState kind="zerada" empresaId={empresaId} />
+            ) : qDebounced ? (
+              <PayableEmptyState
+                kind="buscaVazia"
+                query={qDebounced}
+                onClearQuery={() => setFilters({ ...filters, q: '' })}
+              />
             ) : (
-              // Filtro aplicado mas vazio (empresa TEM contas, mas nenhuma bate)
-              <Card>
-                <CardContent className="py-12 text-center text-muted-foreground">
-                  <CheckCircle2 className="h-10 w-10 mx-auto mb-2 text-emerald-600" />
-                  <p className="text-sm">Nenhuma conta a pagar no filtro atual.</p>
-                </CardContent>
-              </Card>
+              <PayableEmptyState
+                kind="filtroVazio"
+                onClearFilters={clearFilters}
+              />
             )
           ) : (
-            <div className="border rounded-lg overflow-hidden bg-card">
-              {items.map((t, i) => (
-                <div
-                  key={t.id}
-                  className={`flex items-center gap-3 px-4 py-3 hover:bg-muted/30 ${i > 0 ? 'border-t' : ''}`}
-                >
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{t.description}</p>
-                    <div className="flex items-center gap-2 mt-0.5 flex-wrap text-xs text-muted-foreground">
-                      <span className={vencimentoCor(t.dueDate)}>
-                        {vencimentoLabel(t.dueDate)}
-                      </span>
-                      {t.supplier && (
-                        <span>· {t.supplier.nomeFantasia ?? t.supplier.razaoSocial}</span>
-                      )}
-                      {t.category && (
-                        <span className="flex items-center gap-1">
-                          ·
-                          <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ backgroundColor: t.category.color }} />
-                          {t.category.name}
-                        </span>
-                      )}
-                      {t.bankAccount && (
-                        <span>· {t.bankAccount.bankName ?? t.bankAccount.name}</span>
-                      )}
-                    </div>
-                  </div>
-                  <Badge variant="outline" className="hidden sm:inline-flex text-xs">
-                    {t.status === 'PENDING' ? 'Pendente' : t.status === 'RECONCILED' ? 'Conciliada' : 'Ignorada'}
-                  </Badge>
-                  <span className="shrink-0 font-semibold text-sm text-red-600">
-                    − {formatBRL(t.amount)}
-                  </span>
-                  {t.status === 'PENDING' && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        setEfetivar(t)
-                        setEfetivarBankId(t.bankAccount?.id ?? bankAccounts[0]?.id ?? '')
-                      }}
-                    >
-                      Efetivar
-                    </Button>
-                  )}
-                </div>
-              ))}
-            </div>
+            <PayableTable
+              rows={items}
+              selection={selection}
+              onSelectionChange={setSelection}
+              onEfetivar={(row) =>
+                setEfetivar({
+                  id: row.id,
+                  description: row.description,
+                  amount: row.amount,
+                  bankAccount: row.bankAccount
+                    ? { id: row.bankAccount.id }
+                    : null,
+                })
+              }
+            />
           )}
 
           {/* Paginação */}
           {paginacao.totalPages > 1 && (
             <div className="flex items-center justify-between">
               <p className="text-sm text-muted-foreground">
-                {paginacao.total} conta{paginacao.total !== 1 ? 's' : ''}
+                {paginacao.total} {paginacao.total === 1 ? 'conta' : 'contas'}
               </p>
               <div className="flex items-center gap-2">
-                <Button variant="outline" size="icon" className="h-8 w-8" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8"
+                  disabled={page <= 1}
+                  onClick={() => setPage((p) => p - 1)}
+                  aria-label="Página anterior"
+                >
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
-                <span className="text-sm">{page} / {paginacao.totalPages}</span>
-                <Button variant="outline" size="icon" className="h-8 w-8" disabled={page >= paginacao.totalPages} onClick={() => setPage((p) => p + 1)}>
+                <span className="text-sm">
+                  {page} / {paginacao.totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8"
+                  disabled={page >= paginacao.totalPages}
+                  onClick={() => setPage((p) => p + 1)}
+                  aria-label="Próxima página"
+                >
                   <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>
@@ -457,61 +441,27 @@ function ContasAPagarInner() {
         </>
       )}
 
+      {/* Footer fixo com totalizadores */}
+      {empresaId && !loading && (kpis.countPagas + kpis.countPendente + kpis.countAVencer3d + kpis.countVencido) > 0 && (
+        <StickyFooter
+          totals={{
+            paid: kpis.totalPagas,
+            pending: kpis.totalPendente,
+            warn3d: kpis.totalAVencer3d,
+            overdue: kpis.totalVencido,
+          }}
+          onClickFilter={applyFilterPreset}
+        />
+      )}
+
       {/* Modal Efetivar */}
-      <Dialog open={!!efetivar} onOpenChange={(o) => !o && setEfetivar(null)}>
-        <DialogContent className="max-w-md">
-          {efetivar && (
-            <>
-              <DialogHeader>
-                <DialogTitle>Efetivar pagamento</DialogTitle>
-                <DialogDescription>
-                  Marca como paga (lifecycle EFFECTED) e atualiza saldo da conta.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-3 py-2">
-                <p className="text-sm font-medium">{efetivar.description}</p>
-                <div className="space-y-1.5">
-                  <label className="text-xs">Data do pagamento</label>
-                  <Input
-                    type="date"
-                    value={efetivarDate}
-                    onChange={(e) => setEfetivarDate(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs">Conta bancária</label>
-                  <Select value={efetivarBankId} onValueChange={setEfetivarBankId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione conta…" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {bankAccounts.map((b) => (
-                        <SelectItem key={b.id} value={b.id}>
-                          {b.bankName ?? b.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Valor: <strong className="tabular-nums">{formatBRL(efetivar.amount)}</strong>
-                </p>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setEfetivar(null)} disabled={efetivarLoading}>
-                  Cancelar
-                </Button>
-                <Button
-                  onClick={executarEfetivacao}
-                  disabled={!efetivarBankId || !efetivarDate || efetivarLoading}
-                >
-                  {efetivarLoading ? 'Efetivando…' : 'Efetivar'}
-                </Button>
-              </DialogFooter>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
+      <EfetivarDialog
+        open={!!efetivar}
+        conta={efetivar}
+        bankAccounts={bankAccounts}
+        onClose={() => setEfetivar(null)}
+        onDone={() => void fetchItems()}
+      />
     </div>
   )
 }
