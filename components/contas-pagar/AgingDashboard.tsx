@@ -36,6 +36,10 @@ export function AgingDashboard({
   const [open, setOpen] = useState(false)
   const [hydrated, setHydrated] = useState(false)
 
+  // Sprint 5.0.3.1 (Bug #3) — Esconde TOTALMENTE quando 0 vencidas (não
+  // mostra empty state positivo). Yussef prefere UX limpa.
+  if (!loading && result && result.total.count === 0) return null
+
   // Hidrata de localStorage no mount
   useEffect(() => {
     if (typeof window === 'undefined') return

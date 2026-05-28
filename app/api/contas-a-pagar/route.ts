@@ -64,18 +64,13 @@ export async function GET(request: NextRequest) {
     const whereList = buildPayableListWhere(input, now)
     const orderBy = buildPayableOrderBy(input)
 
-    // Sprint 5.0.3.0a — 4 KPIs sempre refletem universo da empresa SEM os
-    // filtros de status/vencidas/período aplicados ao listing (whereList).
-    // whereBase = só multi-tenant + lifecycle PAYABLE + filtros que NÃO mudam
-    // a semântica do KPI (supplier/categoria/banco). Período NÃO entra em
-    // KPIs — eles são "snapshot atual" das contas pendentes/vencidas/etc.
+    // Sprint 5.0.3.1 (Bug #2) — KPIs respeitam dataDe/dataAte do filtro do user.
+    // Removida limpeza de dataDe/dataAte/dataField; mantém limpeza de
+    // status/vencidasOnly/q (essas mudam a semântica de cada KPI).
     const kpiBaseInput = {
       ...input,
-      // Remove campos que NÃO devem afetar KPIs (status/vencidas/período/busca)
       status: undefined,
       vencidasOnly: false,
-      dataDe: undefined,
-      dataAte: undefined,
       q: undefined,
     } as typeof input
     const whereBase = buildPayableListWhere(kpiBaseInput, now)
@@ -106,11 +101,16 @@ export async function GET(request: NextRequest) {
           _count: { _all: true },
         }),
         // A PAGAR PENDENTE = status PENDING, dueDate >= hoje (não vencida)
+        // Sprint 5.0.3.1 (Bug #1) — AND explícito preserva OR multi-tenant
+        // do whereBase. Spread + override do OR APAGAVA o filtro multi-tenant
+        // e a aggregate rodava no banco inteiro (vazava txs de outras empresas).
         prisma.transaction.aggregate({
           where: {
-            ...whereBase,
-            status: 'PENDING',
-            OR: [{ dueDate: { gte: now } }, { dueDate: null }],
+            AND: [
+              whereBase,
+              { status: 'PENDING' },
+              { OR: [{ dueDate: { gte: now } }, { dueDate: null }] },
+            ],
           },
           _sum: { amount: true },
           _count: { _all: true },

@@ -46,8 +46,11 @@ interface UseTablePreferencesArgs {
 const DEFAULT_STORAGE_KEY = 'caixaos:contas-pagar:prefs'
 const MOBILE_BREAKPOINT = 768
 
+// Sprint 5.0.3.1 (UX #2) — Density fixa em 'comfortable'. Default mudou
+// de 'normal' pra 'comfortable'. Toggle removido da UI; setDensity continua
+// no shape do hook mas vira no-op (ignora chamadas) pra preservar callsites.
 const DEFAULT_PREFS: TablePreferences = {
-  density: 'normal',
+  density: 'comfortable',
   columnOrder: [],
   columnHidden: [],
 }
@@ -124,7 +127,10 @@ export function useTablePreferences(
     const stored = readFromStorage(storageKey)
     if (stored) {
       setPrefs({
-        density: stored.density,
+        // Sprint 5.0.3.1 (UX #2) — density vem SEMPRE de 'comfortable' (default
+        // fixo), ignora valor do localStorage. setDensity é no-op pra evitar
+        // refactor em callsites.
+        density: 'comfortable',
         columnOrder: stored.columnOrder.length
           ? stored.columnOrder
           : defaultOrder,
@@ -153,8 +159,12 @@ export function useTablePreferences(
     writeToStorage(storageKey, prefs)
   }, [hydrated, storageKey, prefs])
 
-  const setDensity = useCallback((d: DensityLevel) => {
-    setPrefs((p) => ({ ...p, density: d }))
+  // Sprint 5.0.3.1 (UX #2) — setDensity vira no-op. Density está fixa em
+  // 'comfortable' (desktop) ou 'compact' (mobile via effectiveDensity).
+  // Assinatura preservada pra não quebrar callsites antigos.
+  const setDensity = useCallback((_d: DensityLevel) => {
+    void _d
+    // intentionally no-op
   }, [])
 
   const setColumnOrder = useCallback((order: string[]) => {
