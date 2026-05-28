@@ -132,6 +132,12 @@ const EMPTY_KPIS: KPIs = {
   countVencido: 0,
 }
 
+// Sprint 5.0.3.2 — Feature flag pra esconder UI das tabs Saved Views.
+// Backend (model SavedView, endpoints, hooks, modais) continua INTOCADO.
+// Sprint 5.0.4.0 RELATÓRIOS vai reusar o componente em outra tela
+// (basta flipar pra true em outro callsite, OU true aqui novamente).
+const SHOW_SAVED_VIEWS_TABS_IN_CONTAS_PAGAR = false
+
 export default function ContasAPagarPage() {
   return (
     <Suspense fallback={<PayableSkeleton />}>
@@ -749,8 +755,12 @@ function ContasAPagarInner() {
         </Button>
       </Header>
 
-      {/* Sprint 5.0.3.0b — Saved Views tabs (evoluído em 5.0.3.0c c5) */}
-      {empresaId && !loading && (
+      {/* Sprint 5.0.3.2 — UI das tabs Saved Views ESCONDIDA em /contas-a-pagar
+          a pedido do Yussef (UX limpa, dropdown de status já cobre o caso).
+          Sprint 5.0.4.0 RELATÓRIOS vai reativar o componente em outra tela —
+          basta flipar a flag pra true. Todo o backend (model SavedView, 5
+          endpoints CRUD, hooks, modais NewView/RenameView) continua intacto. */}
+      {SHOW_SAVED_VIEWS_TABS_IN_CONTAS_PAGAR && empresaId && !loading && (
         <SavedViewTabs
           activeViewId={activeViewId}
           activeCustomId={activeCustomId}

@@ -17,7 +17,8 @@ import { Header } from '@/components/layout/header'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { Metadata } from 'next'
 import type { WaterfallPeriodType } from '@/lib/dashboard/compute-waterfall'
-import { CompanySelector } from './_components/CompanySelector'
+// Sprint 5.0.3.2 — CompanySelector import removido (não usado mais aqui).
+// Arquivo do componente preservado pra reuso futuro.
 import { HeroKPIs } from './_components/HeroKPIs'
 import { AIInsights } from './_components/AIInsights'
 import { InsightsSkeleton } from './_components/InsightsSkeleton'
@@ -131,7 +132,9 @@ export default async function DashboardPage({ searchParams }: PageProps) {
         title={`Bem-vindo, ${primeiroNome}!`}
         description={empresaAtual.tradeName || empresaAtual.name}
       >
-        <CompanySelector empresas={companyOptions} currentEmpresaId={empresaAtual.id} />
+        {/* Sprint 5.0.3.2 — CompanySelector removido do dashboard.
+            WorkspaceSwitcher (top bar global) é o canônico pra trocar empresa.
+            Componente CompanySelector.tsx mantido no projeto pra reuso futuro. */}
       </Header>
 
       {/* Sprint 5.0.2.0 — Banner pós-import Excel (só renderiza com query params) */}
