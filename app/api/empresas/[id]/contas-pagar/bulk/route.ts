@@ -125,6 +125,11 @@ export async function POST(request: NextRequest, { params }: Params) {
             paymentDate: parsed.paymentDate,
             status: 'RECONCILED',
             date: parsed.paymentDate,
+            // Bug-fix 28/05/2026: transição PAYABLE → EFFECTED ao marcar como
+            // paga. Antes mantinha PAYABLE+paymentDate (inválido per
+            // lib/lifecycle/index.ts:60-69 e invisível aos relatórios).
+            // Veja docs/sprints/bug-despesas-relatorios-audit.md.
+            lifecycle: 'EFFECTED',
           },
         })
         await logAudit(
