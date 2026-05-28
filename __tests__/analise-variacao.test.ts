@@ -7,11 +7,33 @@ import {
   decompor,
   buildWaterfallBars,
   analiseVariacao,
+  selecionarDriversVisuais,
+  gerarTituloNarrativo,
+  gerarInsightsPrincipais,
+  type DriverVariacao,
 } from '@/lib/relatorios/analise-variacao'
 import {
   parseRefMonth,
   type ComparativoInputTx,
 } from '@/lib/relatorios/comparativo'
+
+function driver(
+  id: string,
+  name: string,
+  diferenca: number,
+  tipo: DriverVariacao['tipo'] = 'aumentou',
+): DriverVariacao {
+  return {
+    categoryId: id,
+    categoryName: name,
+    dreGroup: null,
+    valorInvestigado: Math.max(0, diferenca),
+    valorComparacao: Math.max(0, -diferenca),
+    diferenca,
+    percentual: null,
+    tipo,
+  }
+}
 
 function tx(
   id: string,
@@ -278,6 +300,223 @@ describe('buildWaterfallBars — estrutura Recharts-ready', () => {
     expect(bars).toHaveLength(2)
     expect(bars[0].tipo).toBe('inicio')
     expect(bars[1].tipo).toBe('fim')
+  })
+})
+
+describe('selecionarDriversVisuais — Top N + threshold 5% + mín 5 (Sprint Redesign)', () => {
+  it('Top 10 quando todos passam threshold', () => {
+    const drivers: DriverVariacao[] = Array.from({ length: 12 }, (_, i) =>
+      driver(`c${i}`, `Cat ${i}`, 8_000),
+    )
+    const r = selecionarDriversVisuais(drivers, 100_000)
+    expect(r.visiveis).toHaveLength(10)
+    expect(r.outrosCount).toBe(2)
+  })
+
+  it('Drivers abaixo threshold vão pra outros', () => {
+    const drivers: DriverVariacao[] = [
+      driver('a', 'A', 60_000),
+      driver('b', 'B', 30_000),
+      driver('c', 'C', 10_000),
+      ...Array.from({ length: 8 }, (_, i) => driver(`p${i}`, `Peq ${i}`, 1_000)),
+    ]
+    drivers.sort((a, b) => Math.abs(b.diferenca) - Math.abs(a.diferenca))
+    const r = selecionarDriversVisuais(drivers, 100_000)
+    // Threshold 5k → A, B, C passam. minVisible=5 garante mín 5 visíveis.
+    expect(r.visiveis).toHaveLength(5)
+    expect(r.visiveis[0].categoryId).toBe('a')
+    expect(r.outrosCount).toBe(6)
+  })
+
+  it('Garante mínimo 5 visíveis mesmo abaixo do threshold', () => {
+    const drivers: DriverVariacao[] = [
+      driver('a', 'A', 50_000),
+      driver('b', 'B', 30_000),
+      driver('c', 'C', 10_000),
+      driver('d', 'D', 4_000),
+      driver('e', 'E', 3_000),
+      driver('f', 'F', 2_000),
+      driver('g', 'G', 1_000),
+    ]
+    const r = selecionarDriversVisuais(drivers, 100_000)
+    expect(r.visiveis).toHaveLength(5)
+    expect(r.visiveis[3].categoryId).toBe('d') // abaixo do threshold mas visível
+  })
+
+  it('Aritmética preservada: visiveis + outros = soma total', () => {
+    const drivers: DriverVariacao[] = [
+      driver('a', 'A', 50_000),
+      driver('b', 'B', 20_000),
+      driver('c', 'C', 10_000),
+      driver('d', 'D', 5_000),
+      driver('e', 'E', 3_000),
+      driver('f', 'F', 2_000),
+      driver('g', 'G', -500),
+    ]
+    const total = drivers.reduce((s, d) => s + d.diferenca, 0)
+    const r = selecionarDriversVisuais(drivers, total)
+    const somaVisiveis = r.visiveis.reduce((s, d) => s + d.diferenca, 0)
+    expect(somaVisiveis + r.outrosDelta).toBeCloseTo(total, 2)
+  })
+
+  it('opts customizadas (topN=5, minImpactPct=0.10)', () => {
+    const drivers: DriverVariacao[] = Array.from({ length: 8 }, (_, i) =>
+      driver(`c${i}`, `Cat ${i}`, 15_000 - i * 500),
+    )
+    const r = selecionarDriversVisuais(drivers, 100_000, {
+      topN: 5,
+      minImpactPct: 0.1,
+      minVisible: 3,
+    })
+    expect(r.visiveis).toHaveLength(5)
+    expect(r.outrosCount).toBe(3)
+  })
+
+  it('drivers com diff zero excluídos', () => {
+    const drivers: DriverVariacao[] = [
+      driver('a', 'A', 100_000),
+      driver('b', 'B', 0),
+      driver('c', 'C', 0),
+    ]
+    const r = selecionarDriversVisuais(drivers, 100_000, { minVisible: 1 })
+    expect(r.visiveis).toHaveLength(1)
+    expect(r.visiveis[0].categoryId).toBe('a')
+  })
+
+  it('zero drivers: result vazio', () => {
+    const r = selecionarDriversVisuais([], 0)
+    expect(r.visiveis).toHaveLength(0)
+    expect(r.outrosCount).toBe(0)
+  })
+})
+
+describe('gerarTituloNarrativo — McKinsey style', () => {
+  it('formato base: mês X custou +R$ Y a mais — A e B 80%', () => {
+    const drivers: DriverVariacao[] = [
+      driver('a', 'IRPJ', 60_000, 'novo'),
+      driver('b', 'CSLL', 20_000, 'novo'),
+      driver('c', 'Outros', 20_000),
+    ]
+    const t = gerarTituloNarrativo({
+      mesInvestigadoLabel: 'Janeiro/2026',
+      comparacaoLabel: 'Fevereiro/2026',
+      diferencaTotal: 100_000,
+      drivers,
+    })
+    expect(t).toContain('Janeiro/2026')
+    expect(t).toContain('Fevereiro/2026')
+    expect(t).toContain('a mais')
+    expect(t).toContain('IRPJ e CSLL')
+    expect(t).toContain('80%')
+  })
+
+  it('quando diferença é negativa: "a menos"', () => {
+    const drivers: DriverVariacao[] = [driver('a', 'A', -50_000, 'reduziu')]
+    const t = gerarTituloNarrativo({
+      mesInvestigadoLabel: 'Fevereiro/2026',
+      comparacaoLabel: 'Janeiro/2026',
+      diferencaTotal: -50_000,
+      drivers,
+    })
+    expect(t).toContain('a menos')
+    expect(t).toContain('-')
+  })
+
+  it('quando estável (~0): mensagem específica', () => {
+    const t = gerarTituloNarrativo({
+      mesInvestigadoLabel: 'Mar/26',
+      comparacaoLabel: 'Fev/26',
+      diferencaTotal: 0,
+      drivers: [],
+    })
+    expect(t).toContain('estável')
+  })
+
+  it('um único driver: usa "respondeu" (singular)', () => {
+    const drivers: DriverVariacao[] = [driver('a', 'IRPJ', 100_000, 'novo')]
+    const t = gerarTituloNarrativo({
+      mesInvestigadoLabel: 'Jan/26',
+      comparacaoLabel: 'Fev/26',
+      diferencaTotal: 100_000,
+      drivers,
+    })
+    expect(t).toContain('respondeu')
+    expect(t).not.toContain('responderam')
+    expect(t).toContain('100%')
+  })
+})
+
+describe('gerarInsightsPrincipais', () => {
+  it('Top 1 driver com tipo "novo": insight "só apareceu agora"', () => {
+    const drivers: DriverVariacao[] = [driver('a', 'IRPJ', 56_507, 'novo')]
+    const r = gerarInsightsPrincipais({
+      drivers,
+      diferencaTotal: 56_507,
+      visiveis: drivers,
+    })
+    expect(r[0].tipo).toBe('top-driver')
+    expect(r[0].texto).toContain('IRPJ')
+    expect(r[0].texto).toContain('só apareceu agora')
+  })
+
+  it('Top 2 drivers com diferentes tipos', () => {
+    const drivers: DriverVariacao[] = [
+      driver('a', 'IRPJ', 56_000, 'novo'),
+      driver('b', 'CSLL', 22_000, 'novo'),
+      driver('c', 'Outros', 5_000),
+    ]
+    const r = gerarInsightsPrincipais({
+      drivers,
+      diferencaTotal: 83_000,
+      visiveis: drivers,
+    })
+    expect(r.filter((i) => i.tipo === 'top-driver')).toHaveLength(2)
+    expect(r[0].texto).toContain('IRPJ')
+    expect(r[1].texto).toContain('CSLL')
+  })
+
+  it('Concentração: insight quando top 2 >= 50% do total', () => {
+    const drivers: DriverVariacao[] = [
+      driver('a', 'A', 50_000),
+      driver('b', 'B', 30_000),
+      driver('c', 'C', 10_000),
+      driver('d', 'D', 5_000),
+    ]
+    const r = gerarInsightsPrincipais({
+      drivers,
+      diferencaTotal: 95_000,
+      visiveis: drivers,
+    })
+    const conc = r.find((i) => i.tipo === 'concentracao')
+    expect(conc).toBeDefined()
+    expect(conc!.texto).toContain('Top 2')
+  })
+
+  it('Insight "outros" quando há drivers fora dos visíveis', () => {
+    const visiveis = [driver('a', 'A', 50_000), driver('b', 'B', 30_000)]
+    const drivers = [
+      ...visiveis,
+      driver('c', 'C', 10_000),
+      driver('d', 'D', 5_000),
+      driver('e', 'E', 4_000),
+    ]
+    const r = gerarInsightsPrincipais({
+      drivers,
+      diferencaTotal: 99_000,
+      visiveis,
+    })
+    const outros = r.find((i) => i.tipo === 'outros')
+    expect(outros).toBeDefined()
+    expect(outros!.texto).toContain('3 outros')
+  })
+
+  it('zero drivers: insights vazios', () => {
+    const r = gerarInsightsPrincipais({
+      drivers: [],
+      diferencaTotal: 0,
+      visiveis: [],
+    })
+    expect(r).toHaveLength(0)
   })
 })
 

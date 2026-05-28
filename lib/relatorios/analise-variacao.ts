@@ -76,6 +76,29 @@ export interface AnaliseVariacaoResult {
   aritmeticaFecha: boolean
   /** |soma - diferencaTotal| em R$. Esperado ~0 */
   aritmeticaResiduo: number
+  // ────────────────────────────────────────────────────────
+  // Sprint Waterfall Redesign McKinsey (28/05/2026)
+  // ────────────────────────────────────────────────────────
+  /** Título dinâmico narrativo: "Janeiro custou +R$ 99k a mais — IRPJ e CSLL responderam por 80%" */
+  tituloNarrativo: string
+  /** Insights principais (3-5 bullets) — Top drivers + casos NEW/GONE notáveis */
+  insightsPrincipais: Insight[]
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Sprint Waterfall Redesign McKinsey (28/05/2026)
+// ────────────────────────────────────────────────────────────────────
+
+export type InsightTipo =
+  | 'top-driver' // top 1-2 drivers em magnitude
+  | 'novo' // categoria nova (sazonal/pontual)
+  | 'sumiu' // categoria que sumiu
+  | 'concentracao' // % do total nos top N
+  | 'outros' // resumo de "Outros"
+
+export interface Insight {
+  tipo: InsightTipo
+  texto: string
 }
 
 export interface AnaliseVariacaoInputComum {
@@ -489,19 +512,42 @@ export function analiseVariacao(
       ? null
       : (totalInvestigado - totalComparacao) / totalComparacao
 
-  const waterfallBars = buildWaterfallBars(
+  // Sprint Waterfall Redesign McKinsey: aplica filtro 5% + Top N + mín 5
+  // ANTES de construir bars. Garante chart enxuto e legível.
+  const { visiveis } = selecionarDriversVisuais(drivers, diferencaTotal, {
+    topN,
+    minImpactPct: 0.05,
+    minVisible: 5,
+  })
+
+  // buildWaterfallBars usa `visiveis` como input direto; o resto vira "Outros"
+  // automaticamente preservando aritmética.
+  const waterfallBars = buildWaterfallBarsFromSelection(
+    visiveis,
     drivers,
     totalComparacao,
     totalInvestigado,
     mesInvestigadoLabel,
     comparacaoLabel,
-    topN,
   )
 
   // Aritmética: soma de TODOS os drivers (não só top N) deve bater
   const somaDrivers = drivers.reduce((s, d) => s + d.diferenca, 0)
   const aritmeticaResiduo = Math.abs(somaDrivers - diferencaTotal)
   const aritmeticaFecha = aritmeticaResiduo < ARITMETICA_TOLERANCE
+
+  // Título narrativo + insights (Sprint Waterfall Redesign)
+  const tituloNarrativo = gerarTituloNarrativo({
+    mesInvestigadoLabel,
+    comparacaoLabel,
+    diferencaTotal,
+    drivers,
+  })
+  const insightsPrincipais = gerarInsightsPrincipais({
+    drivers,
+    diferencaTotal,
+    visiveis,
+  })
 
   return {
     mesInvestigadoLabel,
@@ -514,5 +560,348 @@ export function analiseVariacao(
     waterfallBars,
     aritmeticaFecha,
     aritmeticaResiduo,
+    tituloNarrativo,
+    insightsPrincipais,
   }
+}
+
+// ════════════════════════════════════════════════════════════════════
+// Sprint Waterfall Redesign McKinsey (28/05/2026)
+// ════════════════════════════════════════════════════════════════════
+//
+// Funções novas pra deixar o waterfall enxuto e narrativo:
+// - selecionarDriversVisuais: aplica threshold 5% + Top N + mín 5
+// - buildWaterfallBarsFromSelection: usa visiveis + agrupa resto em Outros
+// - gerarTituloNarrativo: "Mês X custou +R$ Y a mais — A e B 80%"
+// - gerarInsightsPrincipais: 3-5 bullets enumerando top drivers + NEW/GONE
+
+const DEFAULT_MIN_IMPACT_PCT = 0.05 // 5% do |diferencaTotal|
+const DEFAULT_MIN_VISIBLE = 5
+
+export interface SelecaoDriversVisuais {
+  visiveis: DriverVariacao[]
+  /** Drivers que NÃO entraram no waterfall (todos exceto visiveis). */
+  resto: DriverVariacao[]
+  /** Soma das diferenças do resto (pra construir bar "Outros"). */
+  outrosDelta: number
+  outrosCount: number
+}
+
+/**
+ * Aplica regras visuais pra reduzir poluição do chart:
+ * - Filtra drivers com |delta| < threshold * |diferencaTotal|
+ * - Limita a Top N (default 10)
+ * - Garante mínimo `minVisible` drivers visíveis mesmo se threshold filtrar
+ *   demais (pra evitar chart só com Início + Fim + Outros)
+ *
+ * RECEBE drivers JÁ ORDENADOS por |diferenca| DESC (output do decompor).
+ *
+ * Aritmética: visiveis + outrosDelta = soma de TODOS os drivers.
+ */
+export function selecionarDriversVisuais(
+  drivers: DriverVariacao[],
+  diferencaTotal: number,
+  opts: { topN?: number; minImpactPct?: number; minVisible?: number } = {},
+): SelecaoDriversVisuais {
+  const topN = opts.topN ?? DEFAULT_TOP_N
+  const minImpactPct = opts.minImpactPct ?? DEFAULT_MIN_IMPACT_PCT
+  const minVisible = opts.minVisible ?? DEFAULT_MIN_VISIBLE
+
+  // Filtra drivers com diff < tolerancia (estaveis irrelevantes pro chart)
+  const driversNonZero = drivers.filter(
+    (d) => Math.abs(d.diferenca) >= ARITMETICA_TOLERANCE,
+  )
+
+  // Aplica threshold 5% do |diferencaTotal|
+  const threshold = Math.abs(diferencaTotal) * minImpactPct
+  const acimaThreshold = driversNonZero.filter(
+    (d) => Math.abs(d.diferenca) >= threshold,
+  )
+
+  // Top N que passam o threshold
+  const candidatos = acimaThreshold.slice(0, topN)
+
+  // Garantia mínima: se filtrou demais, pega os top `minVisible` mesmo abaixo
+  const visiveis =
+    candidatos.length >= minVisible
+      ? candidatos
+      : driversNonZero.slice(0, minVisible)
+
+  // Resto = drivers que não entraram nos visíveis
+  const visiveisIds = new Set(
+    visiveis.map((d) => d.categoryId ?? '__null__'),
+  )
+  const resto = drivers.filter(
+    (d) => !visiveisIds.has(d.categoryId ?? '__null__'),
+  )
+
+  const outrosDelta = resto.reduce((s, d) => s + d.diferenca, 0)
+  const outrosCount = resto.length
+
+  return { visiveis, resto, outrosDelta, outrosCount }
+}
+
+/**
+ * Constrói waterfall bars a partir da seleção visual.
+ * Sempre adiciona barra "Outros" se outrosCount > 0 (com soma do resto pra
+ * preservar aritmética).
+ */
+export function buildWaterfallBarsFromSelection(
+  visiveis: DriverVariacao[],
+  todosDrivers: DriverVariacao[],
+  totalComparacao: number,
+  totalInvestigado: number,
+  mesInvestigadoLabel: string,
+  comparacaoLabel: string,
+): WaterfallBar[] {
+  const bars: WaterfallBar[] = []
+
+  bars.push({
+    label: comparacaoLabel,
+    base: 0,
+    value: totalComparacao,
+    delta: totalComparacao,
+    end: totalComparacao,
+    tipo: 'inicio',
+  })
+
+  let cumulative = totalComparacao
+
+  for (const d of visiveis) {
+    if (Math.abs(d.diferenca) < ARITMETICA_TOLERANCE) continue
+    if (d.diferenca > 0) {
+      const base = cumulative
+      const value = d.diferenca
+      const end = base + value
+      bars.push({
+        label: d.categoryName,
+        base,
+        value,
+        delta: d.diferenca,
+        end,
+        tipo: 'aumento',
+      })
+      cumulative = end
+    } else {
+      const value = Math.abs(d.diferenca)
+      const end = cumulative - value
+      bars.push({
+        label: d.categoryName,
+        base: end,
+        value,
+        delta: d.diferenca,
+        end: cumulative,
+        tipo: 'reducao',
+      })
+      cumulative = end
+    }
+  }
+
+  // Outros: soma dos drivers fora dos visíveis (preserva aritmética).
+  const visiveisIds = new Set(
+    visiveis.map((d) => d.categoryId ?? '__null__'),
+  )
+  const resto = todosDrivers.filter(
+    (d) => !visiveisIds.has(d.categoryId ?? '__null__'),
+  )
+  const outrosDelta = resto.reduce((s, d) => s + d.diferenca, 0)
+  const outrosCount = resto.length
+
+  if (outrosCount > 0 && Math.abs(outrosDelta) >= ARITMETICA_TOLERANCE) {
+    if (outrosDelta > 0) {
+      const base = cumulative
+      const value = outrosDelta
+      const end = base + value
+      bars.push({
+        label: `Outros (${outrosCount})`,
+        base,
+        value,
+        delta: outrosDelta,
+        end,
+        tipo: 'aumento',
+        isOutros: true,
+      })
+      cumulative = end
+    } else {
+      const value = Math.abs(outrosDelta)
+      const end = cumulative - value
+      bars.push({
+        label: `Outros (${outrosCount})`,
+        base: end,
+        value,
+        delta: outrosDelta,
+        end: cumulative,
+        tipo: 'reducao',
+        isOutros: true,
+      })
+      cumulative = end
+    }
+  }
+
+  bars.push({
+    label: mesInvestigadoLabel,
+    base: 0,
+    value: totalInvestigado,
+    delta: totalInvestigado,
+    end: totalInvestigado,
+    tipo: 'fim',
+  })
+
+  return bars
+}
+
+function formatBRLForNarrative(v: number): string {
+  // Formata abreviado pra título (R$ 99,1k ou R$ 99.141,04 conforme magnitude)
+  const abs = Math.abs(v)
+  if (abs >= 1_000_000) {
+    return `R$ ${(v / 1_000_000).toLocaleString('pt-BR', {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    })}M`
+  }
+  if (abs >= 10_000) {
+    return `R$ ${(v / 1_000).toLocaleString('pt-BR', {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    })}k`
+  }
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+    maximumFractionDigits: 2,
+  }).format(v)
+}
+
+export interface TituloNarrativoInput {
+  mesInvestigadoLabel: string
+  comparacaoLabel: string
+  diferencaTotal: number
+  drivers: DriverVariacao[] // todos, ordenados por |diff| desc
+}
+
+export function gerarTituloNarrativo(input: TituloNarrativoInput): string {
+  const { mesInvestigadoLabel, comparacaoLabel, diferencaTotal, drivers } =
+    input
+
+  if (Math.abs(diferencaTotal) < ARITMETICA_TOLERANCE) {
+    return `${mesInvestigadoLabel} ficou estável em relação a ${comparacaoLabel}`
+  }
+
+  const direcao = diferencaTotal > 0 ? 'a mais' : 'a menos'
+  const valorFormatado = formatBRLForNarrative(diferencaTotal)
+  // Sempre incluir sinal explícito
+  const valorComSinal = diferencaTotal >= 0
+    ? `+${valorFormatado}`
+    : valorFormatado
+
+  // Calcula concentração nos top 2 (ou top 1 se só houver um significativo)
+  const driversNonZero = drivers.filter(
+    (d) => Math.abs(d.diferenca) >= ARITMETICA_TOLERANCE,
+  )
+  if (driversNonZero.length === 0) {
+    return `${mesInvestigadoLabel} custou ${valorComSinal} ${direcao} que ${comparacaoLabel}`
+  }
+
+  const top = driversNonZero.slice(0, Math.min(2, driversNonZero.length))
+  const sumTop = top.reduce((s, d) => s + Math.abs(d.diferenca), 0)
+  const pct = Math.round((sumTop / Math.abs(diferencaTotal)) * 100)
+
+  const labelTop =
+    top.length === 1
+      ? top[0].categoryName
+      : `${top[0].categoryName} e ${top[1].categoryName}`
+
+  return `${mesInvestigadoLabel} custou ${valorComSinal} ${direcao} que ${comparacaoLabel} — ${labelTop} ${
+    top.length > 1 ? 'responderam' : 'respondeu'
+  } por ${pct}%`
+}
+
+export interface InsightsInput {
+  drivers: DriverVariacao[]
+  diferencaTotal: number
+  visiveis: DriverVariacao[]
+}
+
+export function gerarInsightsPrincipais(input: InsightsInput): Insight[] {
+  const insights: Insight[] = []
+  const { drivers, diferencaTotal, visiveis } = input
+
+  const driversNonZero = drivers.filter(
+    (d) => Math.abs(d.diferenca) >= ARITMETICA_TOLERANCE,
+  )
+  if (driversNonZero.length === 0) return insights
+
+  // Top driver
+  const top1 = driversNonZero[0]
+  const sinal1 = top1.diferenca >= 0 ? '+' : ''
+  const valor1 = formatBRLForNarrative(top1.diferenca)
+  const acao1 =
+    top1.tipo === 'novo'
+      ? 'só apareceu agora'
+      : top1.tipo === 'sumiu'
+        ? 'só estava antes'
+        : top1.diferenca > 0
+          ? 'subiu vs comparação'
+          : 'caiu vs comparação'
+
+  insights.push({
+    tipo: 'top-driver',
+    texto: `${top1.categoryName} ${sinal1}${valor1} — ${acao1}`,
+  })
+
+  // Top 2 se relevante
+  if (driversNonZero.length >= 2) {
+    const top2 = driversNonZero[1]
+    const sinal2 = top2.diferenca >= 0 ? '+' : ''
+    const valor2 = formatBRLForNarrative(top2.diferenca)
+    const acao2 =
+      top2.tipo === 'novo'
+        ? 'só apareceu agora'
+        : top2.tipo === 'sumiu'
+          ? 'só estava antes'
+          : top2.diferenca > 0
+            ? 'subiu vs comparação'
+            : 'caiu vs comparação'
+
+    insights.push({
+      tipo: 'top-driver',
+      texto: `${top2.categoryName} ${sinal2}${valor2} — ${acao2}`,
+    })
+  }
+
+  // Concentração: % nos top 2-3
+  if (driversNonZero.length >= 2) {
+    const topN = Math.min(2, driversNonZero.length)
+    const sumTop = driversNonZero
+      .slice(0, topN)
+      .reduce((s, d) => s + Math.abs(d.diferenca), 0)
+    const pct = Math.round((sumTop / Math.abs(diferencaTotal)) * 100)
+    if (pct >= 50) {
+      insights.push({
+        tipo: 'concentracao',
+        texto: `Top ${topN} drivers concentram ${pct}% da variação total`,
+      })
+    }
+  }
+
+  // Outros: se há drivers fora dos visíveis e somam significativo
+  const visiveisIds = new Set(visiveis.map((d) => d.categoryId ?? '__null__'))
+  const resto = drivers.filter(
+    (d) =>
+      !visiveisIds.has(d.categoryId ?? '__null__') &&
+      Math.abs(d.diferenca) >= ARITMETICA_TOLERANCE,
+  )
+  if (resto.length > 0) {
+    const restoDelta = resto.reduce((s, d) => s + d.diferenca, 0)
+    const restoPct = Math.round(
+      (Math.abs(restoDelta) / Math.abs(diferencaTotal)) * 100,
+    )
+    const sinalR = restoDelta >= 0 ? '+' : ''
+    insights.push({
+      tipo: 'outros',
+      texto: `${resto.length} outros drivers somam ${sinalR}${formatBRLForNarrative(restoDelta)} (${restoPct}% do total)`,
+    })
+  }
+
+  return insights
 }
