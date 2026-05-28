@@ -595,6 +595,47 @@ VIOLAR ESSA REGRA = bug em produção = retrabalho = quebra de confiança.
 
 ---
 
+## 📊 Padrão de Relatórios — CAIXAOS
+
+A partir da Sprint 5.0.4.0a, **todos os relatórios financeiros** ficam em
+`/empresas/[id]/relatorios/<nome>`. `/relatorios` global redireciona pra
+per-empresa via cookie. Sidebar tem item "Relatórios" ativo.
+
+**Estrutura obrigatória de cada relatório:**
+- Breadcrumb "← Voltar pra Relatórios"
+- Header com título + subtítulo descritivo
+- Linha de filtros (período, comparações, tipo)
+- Stats cards (3-4) com indicadores e contadores
+- Conteúdo principal (tabela ou gráfico)
+- Drill-down clicando linhas (quando aplicável)
+
+**Cores semânticas:**
+- Receitas: `emerald-600`
+- Despesas: `red-600`
+- Resultados positivos: `emerald` bold
+- Resultados negativos: `red` bold
+- Estável: `slate`
+- Crescimento: `↑↑` (red, > +50%) · `↑` (amber, +15-50%) · `━` (slate, ±15%) · `↓` (sky, -15-50%) · `↓↓` (sky escuro, < -50%)
+- Novidade: `🆕` + `purple` (categoria apareceu pela 1ª vez)
+- Sumiu: `✕` + slate-400
+
+**DRE existente (lib/dre/*) é REUSADO em /relatorios/dre-gerencial** — não
+foi duplicado nem refatorado. Mesma fonte da verdade rodando em URL nova.
+
+**Rotas iniciais (5.0.4.0a):**
+- `/relatorios` (global, redirect cookie)
+- `/empresas/[id]/relatorios` (index com 3 cards)
+- `/empresas/[id]/relatorios/dre-gerencial` (reusa DREClient)
+- `/empresas/[id]/relatorios/comparativo` (3 meses lado a lado)
+- `/empresas/[id]/relatorios/categorias` (top N + barra horizontal)
+
+**Rotas futuras:**
+- Sprint 5.0.4.0b: fluxo-caixa, fornecedores, funcionarios
+- Sprint 5.0.4.0c: variancias (IA), multi-empresa
+- Sprint 5.0.4.0d: export PDF, mobile polish, E2E
+
+---
+
 ## 📝 Log de sessões
 
 ### 29/04/2026 — Reorganização e estratégia OFX-first
