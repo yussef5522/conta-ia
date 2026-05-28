@@ -115,7 +115,7 @@ describe('buildPeriodos — granularidade ano', () => {
   })
 })
 
-describe('calcularMediaHistorica (exclui último/ref)', () => {
+describe('calcularMediaHistorica (exclui último/ref + ignora zeros)', () => {
   it('6 valores [10,20,30,40,50,99] → média de 5 anteriores = 30', () => {
     expect(calcularMediaHistorica([10, 20, 30, 40, 50, 99])).toBe(30)
   })
@@ -132,35 +132,65 @@ describe('calcularMediaHistorica (exclui último/ref)', () => {
     expect(calcularMediaHistorica([])).toBeNull()
   })
 
-  it('média 0 → null (sem base de comparação)', () => {
+  it('Bug-fix: zeros não diluem média', () => {
+    // [0, 0, 100, 200, 300, 99] → anteriores [0, 0, 100, 200, 300]
+    // ANTES: 600/5 = 120 ❌
+    // DEPOIS: 600/3 = 200 ✅ (só meses com valor)
+    expect(calcularMediaHistorica([0, 0, 100, 200, 300, 99])).toBe(200)
+  })
+
+  it('Bug-fix: todos anteriores zerados → null', () => {
     expect(calcularMediaHistorica([0, 0, 100])).toBeNull()
+  })
+
+  it('Bug-fix: 5 períodos com 3 zerados, divide só pelos 2 com valor', () => {
+    // [0, 0, 0, 30, 50, 999] → anteriores [0,0,0,30,50] → comValor [30,50] = média 40
+    expect(calcularMediaHistorica([0, 0, 0, 30, 50, 999])).toBe(40)
   })
 })
 
 describe('calcularDesvio', () => {
   it('current 41 sobre média 31.8 → +28.9%', () => {
     const r = calcularDesvio(41, 31.8)
-    expect(r).toBeCloseTo(0.289, 2)
+    expect(r.desvioPct).toBeCloseTo(0.289, 2)
+    expect(r.referenciaVazia).toBe(false)
   })
 
   it('current 100, média 80 → +25%', () => {
-    expect(calcularDesvio(100, 80)).toBeCloseTo(0.25, 5)
+    expect(calcularDesvio(100, 80).desvioPct).toBeCloseTo(0.25, 5)
   })
 
   it('current 60, média 80 → -25%', () => {
-    expect(calcularDesvio(60, 80)).toBeCloseTo(-0.25, 5)
+    expect(calcularDesvio(60, 80).desvioPct).toBeCloseTo(-0.25, 5)
   })
 
   it('média null → null', () => {
-    expect(calcularDesvio(100, null)).toBeNull()
+    expect(calcularDesvio(100, null).desvioPct).toBeNull()
   })
 
   it('média 0 → null', () => {
-    expect(calcularDesvio(100, 0)).toBeNull()
+    expect(calcularDesvio(100, 0).desvioPct).toBeNull()
+  })
+
+  it('Bug-fix: current=0 com média>0 → referenciaVazia=true (não -100%)', () => {
+    const r = calcularDesvio(0, 1000)
+    expect(r.desvioPct).toBeNull()
+    expect(r.referenciaVazia).toBe(true)
+  })
+
+  it('current=0 com média=0/null → referenciaVazia=false', () => {
+    expect(calcularDesvio(0, null).referenciaVazia).toBe(false)
+    expect(calcularDesvio(0, 0).referenciaVazia).toBe(false)
   })
 })
 
 describe('classifyCellTone — semântica IBCS', () => {
+  it('Bug-fix: value=0 com média>0 → transparent (não fav-strong)', () => {
+    // Mês ainda sem dados não deveria ser "favorável" (despesa caiu 100%)
+    expect(classifyCellTone(0, 1000, 'DESPESA')).toBe('transparent')
+    expect(classifyCellTone(0, 1000, 'RECEITA')).toBe('transparent')
+  })
+
   it('DESPESA acima da média = desfavorável (vermelho)', () => {
     // value 120, média 100 → +20% = unfav-weak
     expect(classifyCellTone(120, 100, 'DESPESA')).toBe('unfav-weak')
