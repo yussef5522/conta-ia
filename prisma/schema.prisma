@@ -32,6 +32,8 @@ model User {
   sentInvites         CompanyInvite[]      @relation("InvitedBy")
   // Fase 3 Etapa 3 — Camada 3 do pipeline IA Contadora
   aiUsageLogs         AiUsageLog[]
+  // Sprint 5.0.4.0c1 — Insights narrativos Sonnet 4.6
+  aiInsightsLogs      AiInsightsLog[]
   // Sprint 1.5 — Esqueci senha (código 6 dígitos via Resend)
   passwordResetCodes  PasswordResetCode[]
   // Sprint 1.7 — Cupons aplicados no signup
@@ -119,6 +121,8 @@ model Company {
   // Fase 3 Etapa 3 — Camada 3 do pipeline IA Contadora
   aiClaudeCache      AiClaudeCache[]
   aiUsageLogs        AiUsageLog[]
+  // Sprint 5.0.4.0c1 — Insights narrativos Sonnet 4.6
+  aiInsightsLogs     AiInsightsLog[]
   // Sprint 5.0.1 — IA Tributária
   taxProfile         CompanyTaxProfile?
   taxCalculations    TaxCalculation[]
@@ -849,6 +853,41 @@ model AiUsageLog {
   @@index([companyId, createdAt])
   @@index([companyId, claudeApiCalled, createdAt])
   @@map("ai_usage_log")
+}
+
+// Sprint 5.0.4.0c1 — Log de insights narrativos gerados por Sonnet 4.6.
+// SEPARADO do AiUsageLog (que é pra ai-categorizer / Haiku) por causa:
+// - Modelo diferente (Sonnet vs Haiku) → pricing diferente
+// - Feature diferente (insights vs classify) → métricas separadas
+// - Precisa cachear o responseJson (1h TTL — feature "Gerar novamente")
+model AiInsightsLog {
+  id            String   @id @default(cuid())
+  companyId     String
+  userId        String?
+  // Feature que gerou a chamada (ex: 'monthly-insights')
+  feature       String
+  // Modelo usado (ex: 'claude-sonnet-4-6')
+  model         String
+  // Períodos analisados — pra cache lookup
+  currentPeriod String? // YYYY-MM
+  basePeriod    String? // YYYY-MM
+  inputTokens   Int      @default(0)
+  outputTokens  Int      @default(0)
+  // Custo em centavos USD × 100 (mesma convenção do AiUsageLog)
+  costCents     Int      @default(0)
+  elapsedMs     Int      @default(0)
+  // JSON com a análise gerada (cache + auditoria histórica)
+  responseJson  String?
+  // Se falhou, mensagem do erro
+  errorMessage  String?
+  createdAt     DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, createdAt])
+  @@index([companyId, feature, currentPeriod, basePeriod, createdAt])
+  @@map("ai_insights_log")
 }
 
 // ============================================================
