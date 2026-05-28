@@ -806,6 +806,102 @@ export const CELL_TONE_CLASSES: Record<CellTone, string> = {
   'unfav-strong': 'bg-red-200 dark:bg-red-800/60',
 }
 
+// ════════════════════════════════════════════════════════════════════
+// Hotfix 28/05/2026 — getDesvioVisual pra coluna "vs Média"
+// ════════════════════════════════════════════════════════════════════
+//
+// Substitui getTrendVisualSemantic na coluna "vs Média". A diferença
+// fundamental:
+// - getTrendVisualSemantic usa trend.indicator (current vs prev1 — mês
+//   imediatamente anterior). Útil pra "Tendência" geral.
+// - getDesvioVisual usa desvioPct + referenciaVazia (current vs média
+//   histórica). É a métrica CORRETA pra coluna "vs Média".
+//
+// Antes deste fix, a coluna "vs Média" mostrava ícone do trend +
+// número do desvio — métricas conflitantes. Ex: Salários Mar/26 mostrava
+// "↑ -0,3%" (subiu 15% vs Fev mas está 0,3% abaixo da média).
+
+export type DesvioStatus =
+  | 'sem-media' // mediaHistorica null
+  | 'ref-vazia' // referenciaVazia=true
+  | 'na-media' // |desvio| <= 0.15
+  | 'acima' // desvio > +0.15
+  | 'abaixo' // desvio < -0.15
+
+export interface DesvioVisual {
+  status: DesvioStatus
+  /** "" / "↑" / "↓" / "━" — sem ícone solto pra sem-media/ref-vazia */
+  symbol: string
+  /** Classes Tailwind */
+  colorClass: string
+  /** Label longo pra acessibilidade/title */
+  label: string
+}
+
+const DESVIO_THRESHOLD = 0.15
+
+export function getDesvioVisual(
+  desvioPct: number | null,
+  referenciaVazia: boolean,
+  tipo: 'DESPESA' | 'RECEITA',
+): DesvioVisual {
+  if (referenciaVazia) {
+    return {
+      status: 'ref-vazia',
+      symbol: '',
+      colorClass: 'text-muted-foreground italic',
+      label: 'Mês de referência sem lançamentos',
+    }
+  }
+  if (desvioPct === null) {
+    return {
+      status: 'sem-media',
+      symbol: '',
+      colorClass: 'text-muted-foreground',
+      label: 'Sem média histórica',
+    }
+  }
+  if (Math.abs(desvioPct) <= DESVIO_THRESHOLD) {
+    return {
+      status: 'na-media',
+      symbol: '━',
+      colorClass: 'text-slate-500 dark:text-slate-400',
+      label: 'Na média',
+    }
+  }
+  const acima = desvioPct > 0
+  // Semântica IBCS: DESPESA subir = desfavorável (vermelho)
+  //                 RECEITA subir = favorável (verde)
+  const favoravel = tipo === 'DESPESA' ? !acima : acima
+
+  return {
+    status: acima ? 'acima' : 'abaixo',
+    symbol: acima ? '↑' : '↓',
+    colorClass: favoravel
+      ? 'text-emerald-600 dark:text-emerald-400'
+      : 'text-red-600 dark:text-red-400',
+    label: acima ? 'Acima da média' : 'Abaixo da média',
+  }
+}
+
+/**
+ * Formata desvio em pct com 1 casa decimal + sinal explícito.
+ * Hotfix 28/05/2026: substitui Math.round() que arredondava -0,26% pra "0%"
+ * (perdia sinal + magnitude pequena).
+ *
+ * Ex: 0.0026 → "+0,3%" · -0.0026 → "-0,3%" · 0.234 → "+23,4%"
+ */
+export function formatDesvioPct(v: number | null): string {
+  if (v === null) return '—'
+  const pct = v * 100
+  // Locale BR usa vírgula decimal
+  const formatted = pct.toLocaleString('pt-BR', {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  })
+  return pct >= 0 ? `+${formatted}%` : `${formatted}%`
+}
+
 /**
  * Visual semântico IBCS — cor depende de (indicator × tipo).
  * SOBRESCREVE TREND_VISUAL pra usos novos. Mantém visualmente coerente:

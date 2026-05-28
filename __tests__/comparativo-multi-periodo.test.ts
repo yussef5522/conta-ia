@@ -13,6 +13,8 @@ import {
   computeComparativoMulti,
   filterRowsMulti,
   getTrendVisualSemantic,
+  getDesvioVisual,
+  formatDesvioPct,
   CELL_TONE_CLASSES,
   type ComparativoInputTx,
 } from '@/lib/relatorios/comparativo'
@@ -389,6 +391,185 @@ describe('computeComparativoMulti — cenário Yussef profit sao borja 6 meses',
     })
     expect(r.rows).toHaveLength(1)
     expect(r.rows[0].categoryId).toBe('2')
+  })
+})
+
+describe('getDesvioVisual — coluna vs Média (Hotfix 28/05)', () => {
+  it('referenciaVazia=true → status ref-vazia, sem ícone', () => {
+    const v = getDesvioVisual(null, true, 'DESPESA')
+    expect(v.status).toBe('ref-vazia')
+    expect(v.symbol).toBe('')
+    expect(v.colorClass).toContain('muted-foreground')
+  })
+
+  it('desvioPct null sem refVazia → sem-media (—)', () => {
+    const v = getDesvioVisual(null, false, 'DESPESA')
+    expect(v.status).toBe('sem-media')
+    expect(v.symbol).toBe('')
+  })
+
+  it('|desvio| ≤ 15% → na-media (━ cinza)', () => {
+    expect(getDesvioVisual(0.05, false, 'DESPESA').status).toBe('na-media')
+    expect(getDesvioVisual(-0.0026, false, 'DESPESA').status).toBe('na-media')
+    expect(getDesvioVisual(0.15, false, 'DESPESA').status).toBe('na-media')
+    const v = getDesvioVisual(0.05, false, 'DESPESA')
+    expect(v.symbol).toBe('━')
+    expect(v.colorClass).toContain('slate')
+  })
+
+  it('DESPESA acima da média (>15%) → ↑ vermelho (desfavorável)', () => {
+    const v = getDesvioVisual(0.25, false, 'DESPESA')
+    expect(v.status).toBe('acima')
+    expect(v.symbol).toBe('↑')
+    expect(v.colorClass).toContain('red')
+  })
+
+  it('DESPESA abaixo da média (<-15%) → ↓ verde (favorável)', () => {
+    const v = getDesvioVisual(-0.25, false, 'DESPESA')
+    expect(v.status).toBe('abaixo')
+    expect(v.symbol).toBe('↓')
+    expect(v.colorClass).toContain('emerald')
+  })
+
+  it('RECEITA acima da média (>15%) → ↑ verde (favorável)', () => {
+    const v = getDesvioVisual(0.25, false, 'RECEITA')
+    expect(v.symbol).toBe('↑')
+    expect(v.colorClass).toContain('emerald')
+  })
+
+  it('RECEITA abaixo da média (<-15%) → ↓ vermelho (desfavorável)', () => {
+    const v = getDesvioVisual(-0.25, false, 'RECEITA')
+    expect(v.symbol).toBe('↓')
+    expect(v.colorClass).toContain('red')
+  })
+
+  it('Bug-fix: seta segue SINAL do desvio, não trend.indicator', () => {
+    // Cenário Yussef: Mar=R$45.159, Fev=R$38.977, Média=R$45.277
+    // trend.indicator (vs Fev) = UP (subiu 15.9%)
+    // desvioPct (vs média) = -0.26% → DEVE mostrar na-media com ━, NÃO ↑
+    const v = getDesvioVisual(-0.0026, false, 'DESPESA')
+    expect(v.symbol).toBe('━')
+    expect(v.symbol).not.toBe('↑')
+  })
+})
+
+describe('formatDesvioPct — 1 casa decimal + sinal sempre (Hotfix 28/05)', () => {
+  it('+0,3% mantém sinal e 1 casa decimal', () => {
+    expect(formatDesvioPct(0.0026)).toBe('+0,3%')
+  })
+
+  it('-0,3% mantém sinal negativo (não vira "0%" como antes)', () => {
+    expect(formatDesvioPct(-0.0026)).toBe('-0,3%')
+  })
+
+  it('+8,8% formato BR', () => {
+    expect(formatDesvioPct(0.088)).toBe('+8,8%')
+  })
+
+  it('-23,4% formato BR', () => {
+    expect(formatDesvioPct(-0.234)).toBe('-23,4%')
+  })
+
+  it('null retorna "—"', () => {
+    expect(formatDesvioPct(null)).toBe('—')
+  })
+
+  it('zero exato fica "+0,0%" (mantém sinal positivo)', () => {
+    expect(formatDesvioPct(0)).toBe('+0,0%')
+  })
+
+  it('valores grandes formatam corretamente', () => {
+    expect(formatDesvioPct(1.5)).toBe('+150,0%')
+  })
+})
+
+describe('Bug-fix: média preenchida com 2/3/4/6 períodos', () => {
+  // Cria array sintético com valores conhecidos
+  function buildTxsMonth(values: number[], baseYearMonth = '2026-03') {
+    const [y, m] = baseYearMonth.split('-').map(Number)
+    const txs: ComparativoInputTx[] = []
+    // Insere de trás pra frente (último = mês de referência)
+    values.forEach((amt, i) => {
+      const offset = values.length - 1 - i
+      const targetM = m - offset
+      const targetY = targetM <= 0 ? y - 1 : y
+      const realM = targetM <= 0 ? targetM + 12 : targetM
+      const dateStr = `${targetY}-${String(realM).padStart(2, '0')}-15T12:00:00.000Z`
+      txs.push({
+        bucketDate: new Date(dateStr),
+        amount: amt,
+        type: 'DEBIT',
+        categoryId: 'cat1',
+        categoryName: 'Salários',
+        dreGroup: 'DESPESAS_PESSOAL',
+      })
+    })
+    return txs
+  }
+
+  it('2 períodos: média = anterior (único)', () => {
+    const r = computeComparativoMulti(buildTxsMonth([100, 200]), {
+      ymRef: '2026-03',
+      nPeriodos: 2,
+      granularidade: 'mes',
+      tipo: 'DESPESA',
+    })
+    expect(r.rows[0].mediaHistorica).toBe(100)
+  })
+
+  it('3 períodos: média = (Jan+Fev)/2 ignorando zeros (Sprint Yussef real)', () => {
+    // Jan=44032, Fev=38977, Mar=45159 (ref)
+    // Média esperada: (44032+38977)/2 = 41504.5
+    const r = computeComparativoMulti(
+      buildTxsMonth([44032, 38977, 45159]),
+      {
+        ymRef: '2026-03',
+        nPeriodos: 3,
+        granularidade: 'mes',
+        tipo: 'DESPESA',
+      },
+    )
+    expect(r.rows[0].mediaHistorica).toBeCloseTo(41504.5, 0)
+  })
+
+  it('4 períodos com 1 zero: ignora zero, média = 2 anteriores válidos', () => {
+    // [0, 100, 200, 50] (Dez/Jan/Fev/Mar) — Dez zerado
+    // anteriores [0, 100, 200] → comValor [100, 200] = 150
+    const r = computeComparativoMulti(
+      buildTxsMonth([0, 100, 200, 50], '2026-03'),
+      {
+        ymRef: '2026-03',
+        nPeriodos: 4,
+        granularidade: 'mes',
+        tipo: 'DESPESA',
+      },
+    )
+    expect(r.rows[0].mediaHistorica).toBe(150)
+  })
+
+  it('6 períodos cenário Yussef confirmado', () => {
+    // Out=0, Nov=0, Dez=52823, Jan=44032, Fev=38977, Mar=45159
+    // Média esperada (ignorando zeros): (52823+44032+38977)/3 = 45277.33
+    const r = computeComparativoMulti(
+      buildTxsMonth([0, 0, 52823, 44032, 38977, 45159]),
+      {
+        ymRef: '2026-03',
+        nPeriodos: 6,
+        granularidade: 'mes',
+        tipo: 'DESPESA',
+      },
+    )
+    expect(r.rows[0].mediaHistorica).toBeCloseTo(45277.33, 0)
+  })
+
+  it('2 períodos com anterior zerado: média null', () => {
+    const r = computeComparativoMulti(buildTxsMonth([0, 100]), {
+      ymRef: '2026-03',
+      nPeriodos: 2,
+      granularidade: 'mes',
+      tipo: 'DESPESA',
+    })
+    expect(r.rows[0].mediaHistorica).toBeNull()
   })
 })
 
