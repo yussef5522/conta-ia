@@ -74,12 +74,14 @@ export type ListPayableInput = z.infer<typeof listPayableSchema>
 /**
  * Constrói o `where` Prisma com:
  *   - Multi-tenant guard via OR em supplier/employee/category/bankAccount.companyId
- *   - lifecycle='PAYABLE' fixo
+ *   - Escopo "Contas a Pagar": PAYABLE (a pagar) OR EFFECTED que nasceu de PAYABLE
+ *     (paga via mark_paid ou Excel isPaid). Identificada por dueDate IS NOT NULL
+ *     + type=DEBIT + reconciledWithId IS NULL. Bug-fix 28/05/2026.
  *   - Filtros aplicados condicionalmente
  *   - Período no campo escolhido (dataField)
  *   - Busca textual case-insensitive em description + supplier
  *
- * IMPORTANTE: NUNCA retornar where sem `lifecycle:PAYABLE` E `OR multi-tenant`.
+ * IMPORTANTE: NUNCA retornar where sem o lifecycle scope E o OR multi-tenant.
  */
 export function buildPayableListWhere(
   input: ListPayableInput,
@@ -87,16 +89,38 @@ export function buildPayableListWhere(
 ): Record<string, unknown> {
   const { empresaId } = input
 
-  // Multi-tenant guard — bankAccountId pode ser null em PAYABLE.
-  const where: Record<string, unknown> = {
-    lifecycle: 'PAYABLE',
+  // Escopo "Contas a Pagar" (lifecycle scope):
+  //   - PAYABLE: contas pendentes, comportamento original
+  //   - EFFECTED com dueDate+type=DEBIT+sem conciliação: contas que JÁ foram
+  //     pagas mas nasceram como conta a pagar (via mark_paid ou Excel isPaid).
+  //     Antes do bug-fix 28/05/2026 ficavam PAYABLE+paymentDate. Após o fix
+  //     viram EFFECTED. Mantemos visíveis aqui pra UX de histórico.
+  //     reconciledWithId IS NULL exclui as conciliadas com OFX (que aparecem
+  //     em /movimentacoes).
+  const lifecycleScope = {
     OR: [
-      { bankAccount: { companyId: empresaId } },
-      { supplier: { companyId: empresaId } },
-      { employee: { companyId: empresaId } },
-      { customer: { companyId: empresaId } },
-      { category: { companyId: empresaId } },
+      { lifecycle: 'PAYABLE' },
+      {
+        lifecycle: 'EFFECTED',
+        dueDate: { not: null },
+        type: 'DEBIT',
+        reconciledWithId: null,
+      },
     ],
+  }
+
+  // Multi-tenant guard — bankAccountId pode ser null em PAYABLE.
+  const multiTenantOR = [
+    { bankAccount: { companyId: empresaId } },
+    { supplier: { companyId: empresaId } },
+    { employee: { companyId: empresaId } },
+    { customer: { companyId: empresaId } },
+    { category: { companyId: empresaId } },
+  ]
+
+  // Combina via AND (lifecycleScope precisa do próprio OR + multi-tenant tem o seu)
+  const where: Record<string, unknown> = {
+    AND: [{ OR: multiTenantOR }, lifecycleScope],
   }
 
   // Status
@@ -129,29 +153,26 @@ export function buildPayableListWhere(
   if (input.origins?.length) where.origin = { in: input.origins }
 
   // Busca textual: description OR supplier.razaoSocial OR employee.nome
+  // Bug-fix 28/05/2026: where.AND já contém [multiTenantOR, lifecycleScope].
+  // Adicionamos um terceiro elemento com o OR da busca.
   if (input.q && input.q.trim()) {
     const q = input.q.trim()
-    // Compose com o OR multi-tenant: precisa de AND wrap
-    const existingOR = where.OR as Array<Record<string, unknown>>
-    delete where.OR
-    where.AND = [
-      { OR: existingOR }, // multi-tenant
-      {
-        OR: [
-          { description: { contains: q, mode: 'insensitive' } },
-          { notes: { contains: q, mode: 'insensitive' } },
-          {
-            supplier: {
-              OR: [
-                { razaoSocial: { contains: q, mode: 'insensitive' } },
-                { nomeFantasia: { contains: q, mode: 'insensitive' } },
-              ],
-            },
+    const existingAND = where.AND as Array<Record<string, unknown>>
+    existingAND.push({
+      OR: [
+        { description: { contains: q, mode: 'insensitive' } },
+        { notes: { contains: q, mode: 'insensitive' } },
+        {
+          supplier: {
+            OR: [
+              { razaoSocial: { contains: q, mode: 'insensitive' } },
+              { nomeFantasia: { contains: q, mode: 'insensitive' } },
+            ],
           },
-          { employee: { nome: { contains: q, mode: 'insensitive' } } },
-        ],
-      },
-    ]
+        },
+        { employee: { nome: { contains: q, mode: 'insensitive' } } },
+      ],
+    })
   }
 
   // Valor (amount range)

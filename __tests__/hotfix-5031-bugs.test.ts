@@ -31,13 +31,17 @@ describe('Bug #1 — Aggregate "A pagar pendente" preserva multi-tenant', () => 
     }
   }
 
-  it('whereBase tem 5 OR multi-tenant', () => {
+  it('whereBase tem 5 OR multi-tenant (agora em AND[0])', () => {
+    // Bug-fix 28/05/2026: multi-tenant migrou de where.OR top-level pra
+    // where.AND[0].OR (pra coexistir com lifecycle scope OR).
     const whereBase = buildPayableListWhere(
       listPayableSchema.parse({ empresaId: COMPANY_A }),
       NOW,
     )
-    expect(whereBase.OR).toBeDefined()
-    expect((whereBase.OR as unknown[]).length).toBe(5)
+    const and = whereBase.AND as Array<Record<string, unknown>>
+    expect(Array.isArray(and)).toBe(true)
+    expect(and).toHaveLength(2) // [mt, lifecycleScope]
+    expect((and[0].OR as unknown[]).length).toBe(5)
   })
 
   it('Aggregate where: AND[0] preserva whereBase intacto', () => {
@@ -49,8 +53,12 @@ describe('Bug #1 — Aggregate "A pagar pendente" preserva multi-tenant', () => 
     const and = aggWhere.AND as Array<Record<string, unknown>>
     expect(and).toHaveLength(3)
     expect(and[0]).toBe(whereBase) // referência preservada
-    expect(and[0].OR).toBeDefined() // multi-tenant ainda lá
-    expect((and[0].OR as unknown[]).length).toBe(5)
+    // Bug-fix 28/05: whereBase.AND[0].OR tem multi-tenant, .AND[1].OR tem lifecycle
+    const innerAnd = (and[0] as Record<string, unknown>).AND as Array<
+      Record<string, unknown>
+    >
+    expect(innerAnd).toHaveLength(2)
+    expect((innerAnd[0].OR as unknown[]).length).toBe(5)
   })
 
   it('Aggregate where: AND[1] = status PENDING, AND[2] = dueDate OR', () => {
@@ -94,9 +102,11 @@ describe('Bug #1 — Aggregate "A pagar pendente" preserva multi-tenant', () => 
       listPayableSchema.parse({ empresaId: COMPANY_B }),
       NOW,
     )
-    // Cada empresa tem seu próprio OR multi-tenant com seu companyId
-    const orA = wA.OR as Array<Record<string, Record<string, string>>>
-    const orB = wB.OR as Array<Record<string, Record<string, string>>>
+    // Bug-fix 28/05/2026: multi-tenant em AND[0].OR
+    const andA = wA.AND as Array<Record<string, unknown>>
+    const andB = wB.AND as Array<Record<string, unknown>>
+    const orA = andA[0].OR as Array<Record<string, Record<string, string>>>
+    const orB = andB[0].OR as Array<Record<string, Record<string, string>>>
     expect(orA[0].bankAccount.companyId).toBe(COMPANY_A)
     expect(orB[0].bankAccount.companyId).toBe(COMPANY_B)
   })

@@ -17,27 +17,45 @@ function parse(qs: Record<string, string>) {
   return listPayableSchema.parse({ empresaId: COMPANY, ...qs })
 }
 
-describe('buildPayableListWhere — multi-tenant guard', () => {
-  it('sem filtros: lifecycle PAYABLE + OR companyId em 5 relações', () => {
+describe('buildPayableListWhere — multi-tenant guard + lifecycle scope', () => {
+  it('sem filtros: AND[mt, lifecycleScope] (bug-fix 28/05/2026)', () => {
     const where = buildPayableListWhere(parse({}), NOW)
-    expect(where.lifecycle).toBe('PAYABLE')
-    expect(where.OR).toHaveLength(5)
-    expect(where.OR).toContainEqual({ bankAccount: { companyId: COMPANY } })
-    expect(where.OR).toContainEqual({ supplier: { companyId: COMPANY } })
-    expect(where.OR).toContainEqual({ employee: { companyId: COMPANY } })
-    expect(where.OR).toContainEqual({ category: { companyId: COMPANY } })
+    // Bug-fix 28/05: lifecycle não está mais top-level.
+    // Estrutura nova: AND[0]=multi-tenant OR, AND[1]=lifecycle scope OR
+    expect(where.lifecycle).toBeUndefined()
+    expect(Array.isArray(where.AND)).toBe(true)
+    const and = where.AND as Array<Record<string, unknown>>
+    expect(and).toHaveLength(2)
+    // AND[0] = multi-tenant OR (5 paths)
+    const mtOR = and[0].OR as Array<Record<string, unknown>>
+    expect(mtOR).toHaveLength(5)
+    expect(mtOR).toContainEqual({ bankAccount: { companyId: COMPANY } })
+    expect(mtOR).toContainEqual({ supplier: { companyId: COMPANY } })
+    expect(mtOR).toContainEqual({ employee: { companyId: COMPANY } })
+    expect(mtOR).toContainEqual({ category: { companyId: COMPANY } })
+    // AND[1] = lifecycle scope (PAYABLE OR EFFECTED-com-dueDate)
+    const lifecycleOR = and[1].OR as Array<Record<string, unknown>>
+    expect(lifecycleOR).toHaveLength(2)
+    expect(lifecycleOR[0]).toEqual({ lifecycle: 'PAYABLE' })
+    expect(lifecycleOR[1]).toMatchObject({
+      lifecycle: 'EFFECTED',
+      type: 'DEBIT',
+      reconciledWithId: null,
+    })
   })
 
-  it('busca textual transforma OR multi-tenant em AND[mt, busca]', () => {
+  it('busca textual adiciona AND[2] sem destruir multi-tenant/lifecycle', () => {
     const where = buildPayableListWhere(parse({ q: 'gestra' }), NOW)
     expect(where.OR).toBeUndefined()
     expect(Array.isArray(where.AND)).toBe(true)
     const and = where.AND as Array<Record<string, unknown>>
-    expect(and).toHaveLength(2)
+    expect(and).toHaveLength(3)
     // AND[0] = OR multi-tenant
     expect((and[0].OR as unknown[]).length).toBe(5)
-    // AND[1] = busca textual em description/notes/supplier/employee
-    expect(Array.isArray(and[1].OR)).toBe(true)
+    // AND[1] = lifecycle scope OR
+    expect((and[1].OR as unknown[]).length).toBe(2)
+    // AND[2] = busca textual
+    expect(Array.isArray(and[2].OR)).toBe(true)
   })
 })
 
@@ -127,10 +145,13 @@ describe('buildPayableListWhere — filtros condicionais', () => {
     expect(where.amount).toEqual({ gte: 100, lte: 500 })
   })
 
-  it('busca textual normaliza com trim — vazia ignora', () => {
+  it('busca textual normaliza com trim — vazia mantém AND[mt, lifecycle]', () => {
     const where = buildPayableListWhere(parse({ q: '   ' }), NOW)
-    expect(where.AND).toBeUndefined()
-    expect(where.OR).toBeDefined() // multi-tenant preservado
+    expect(where.OR).toBeUndefined() // tudo agora dentro de AND
+    expect(Array.isArray(where.AND)).toBe(true)
+    const and = where.AND as Array<Record<string, unknown>>
+    // q vazia NÃO adiciona AND[2] de busca — mantém só [mt, lifecycle]
+    expect(and).toHaveLength(2)
   })
 })
 
