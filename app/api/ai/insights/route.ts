@@ -1,14 +1,20 @@
-// Sprint 5.0.4.0c1 Fase 4 — Endpoint POST /api/ai/insights.
+// Hotfix 5.0.4.0c1-fix — Endpoint POST /api/ai/insights.
 //
-// Body: { empresaId, currentPeriod, basePeriod, force?: boolean }
+// REFATORADO:
+// - Body novo: { empresaId, startDate, endDate, compareStartDate?, compareEndDate?, force? }
+// - Modo automático via inferMode (comparative | evolution | single)
+// - Validação 12 meses no backend
+// - Cache key inclui modo + 4 datas
 //
 // Fluxo:
 // 1. Auth + permission check
-// 2. Lookup cache (skip se force=true)
-// 3. Coleta dados (DRE atual + base + variâncias + top categorias)
-// 4. Chama Claude Sonnet 4.6
-// 5. Persiste log (sucesso ou erro)
-// 6. Retorna insights
+// 2. Validação Zod + limite 12 meses
+// 3. Infere modo
+// 4. Lookup cache (skip se force=true)
+// 5. Coleta dados (dispatcher por modo)
+// 6. Chama Claude Sonnet 4.6
+// 7. Persiste log
+// 8. Retorna insights + metadata
 
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
@@ -20,20 +26,35 @@ import {
   lookupInsightsCache,
   saveInsightsLog,
 } from '@/lib/ai/insights-cache'
+import {
+  inferMode,
+  validatePeriodLimit,
+} from '@/lib/dates/period-presets'
 
 export const runtime = 'nodejs'
-// Sonnet 4.6 pode levar 10-25s
 export const maxDuration = 60
 
-const ymRegex = /^\d{4}-\d{2}$/
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato YYYY-MM-DD esperado')
 const FEATURE = 'monthly-insights'
 
-const bodySchema = z.object({
-  empresaId: z.string().min(1),
-  currentPeriod: z.string().regex(ymRegex),
-  basePeriod: z.string().regex(ymRegex),
-  force: z.boolean().optional(),
-})
+const bodySchema = z
+  .object({
+    empresaId: z.string().min(1),
+    startDate: isoDate,
+    endDate: isoDate,
+    compareStartDate: isoDate.optional(),
+    compareEndDate: isoDate.optional(),
+    force: z.boolean().optional(),
+  })
+  .refine(
+    (b) =>
+      (b.compareStartDate && b.compareEndDate) ||
+      (!b.compareStartDate && !b.compareEndDate),
+    {
+      message:
+        'compareStartDate e compareEndDate precisam vir juntos ou nenhum dos dois',
+    },
+  )
 
 export async function POST(request: NextRequest) {
   try {
@@ -42,24 +63,54 @@ export async function POST(request: NextRequest) {
     const ctx = await getAuthContext(request, body.empresaId)
     ctx.requirePermission('dre.view')
 
-    if (body.currentPeriod === body.basePeriod) {
-      return NextResponse.json(
-        { error: 'Períodos atual e base não podem ser iguais' },
-        { status: 400 },
-      )
+    // Validação 12 meses no período principal
+    const limit = validatePeriodLimit(body.startDate, body.endDate, 12)
+    if (!limit.ok) {
+      return NextResponse.json({ error: limit.error }, { status: 400 })
     }
+
+    // Validação compare period (também 12m max)
+    if (body.compareStartDate && body.compareEndDate) {
+      const cmpLimit = validatePeriodLimit(
+        body.compareStartDate,
+        body.compareEndDate,
+        12,
+      )
+      if (!cmpLimit.ok) {
+        return NextResponse.json(
+          { error: `Período de comparação: ${cmpLimit.error}` },
+          { status: 400 },
+        )
+      }
+    }
+
+    const mode = inferMode({
+      startDate: body.startDate,
+      endDate: body.endDate,
+      compareStartDate: body.compareStartDate,
+      compareEndDate: body.compareEndDate,
+    })
 
     // 1. Tentar cache (skip se force=true)
     if (!body.force) {
       const cached = await lookupInsightsCache({
         companyId: body.empresaId,
         feature: FEATURE,
-        currentPeriod: body.currentPeriod,
-        basePeriod: body.basePeriod,
+        mode,
+        startDate: body.startDate,
+        endDate: body.endDate,
+        compareStartDate: body.compareStartDate ?? null,
+        compareEndDate: body.compareEndDate ?? null,
       })
       if (cached) {
         return NextResponse.json({
           insights: cached.insights,
+          mode,
+          period: { start: body.startDate, end: body.endDate },
+          comparePeriod:
+            body.compareStartDate && body.compareEndDate
+              ? { start: body.compareStartDate, end: body.compareEndDate }
+              : null,
           cacheHit: true,
           cachedAt: cached.cachedAt,
         })
@@ -69,14 +120,29 @@ export async function POST(request: NextRequest) {
     // 2. Coleta dados
     const inputData = await collectInsightData({
       empresaId: body.empresaId,
-      currentPeriod: body.currentPeriod,
-      basePeriod: body.basePeriod,
+      startDate: body.startDate,
+      endDate: body.endDate,
+      compareStartDate: body.compareStartDate,
+      compareEndDate: body.compareEndDate,
     })
 
     // 3. Chama Claude
     const startTime = Date.now()
     const result = await callInsightsAPI(inputData)
     const elapsedMs = Date.now() - startTime
+
+    const logBase = {
+      companyId: body.empresaId,
+      userId: ctx.user.id,
+      feature: FEATURE,
+      model: INSIGHTS_MODEL,
+      mode,
+      currentPeriod: body.startDate,
+      currentEndPeriod: body.endDate,
+      basePeriod: body.compareStartDate ?? null,
+      baseEndPeriod: body.compareEndDate ?? null,
+      elapsedMs,
+    }
 
     if (result.kind === 'disabled') {
       return NextResponse.json(
@@ -94,16 +160,10 @@ export async function POST(request: NextRequest) {
 
     if (result.kind === 'invalid-json') {
       await saveInsightsLog({
-        companyId: body.empresaId,
-        userId: ctx.user.id,
-        feature: FEATURE,
-        model: INSIGHTS_MODEL,
-        currentPeriod: body.currentPeriod,
-        basePeriod: body.basePeriod,
+        ...logBase,
         inputTokens: 0,
         outputTokens: 0,
         costCents: 0,
-        elapsedMs,
         errorMessage: 'invalid-json',
       })
       return NextResponse.json(
@@ -117,16 +177,10 @@ export async function POST(request: NextRequest) {
 
     if (result.kind === 'error') {
       await saveInsightsLog({
-        companyId: body.empresaId,
-        userId: ctx.user.id,
-        feature: FEATURE,
-        model: INSIGHTS_MODEL,
-        currentPeriod: body.currentPeriod,
-        basePeriod: body.basePeriod,
+        ...logBase,
         inputTokens: 0,
         outputTokens: 0,
         costCents: 0,
-        elapsedMs,
         errorMessage: result.message,
       })
       return NextResponse.json(
@@ -138,32 +192,37 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // result.kind === 'success' | 'cache-hit'
     if (result.kind === 'cache-hit') {
-      // Não deveria acontecer aqui (cache externo), mas tratado
+      // Não deveria acontecer aqui (cache externo), mas defesa
       return NextResponse.json({
         insights: result.insights,
+        mode,
+        period: { start: body.startDate, end: body.endDate },
+        comparePeriod:
+          body.compareStartDate && body.compareEndDate
+            ? { start: body.compareStartDate, end: body.compareEndDate }
+            : null,
         cacheHit: true,
       })
     }
 
-    // success — persiste log + retorna
+    // success — persiste + retorna
     await saveInsightsLog({
-      companyId: body.empresaId,
-      userId: ctx.user.id,
-      feature: FEATURE,
-      model: INSIGHTS_MODEL,
-      currentPeriod: body.currentPeriod,
-      basePeriod: body.basePeriod,
+      ...logBase,
       inputTokens: result.tokensUsed?.input ?? 0,
       outputTokens: result.tokensUsed?.output ?? 0,
       costCents: result.costCents ?? 0,
-      elapsedMs,
       insights: result.insights,
     })
 
     return NextResponse.json({
       insights: result.insights,
+      mode,
+      period: { start: body.startDate, end: body.endDate },
+      comparePeriod:
+        body.compareStartDate && body.compareEndDate
+          ? { start: body.compareStartDate, end: body.compareEndDate }
+          : null,
       cacheHit: false,
       elapsedMs,
     })
