@@ -34,7 +34,9 @@ import {
   type ReportPreviewLine,
 } from '@/components/relatorios/ReportPreviewCard'
 import { FutureReportCard } from '@/components/relatorios/FutureReportCard'
-import { AIInsightsCard } from '@/components/relatorios/AIInsightsCard'
+import { AIInsightsPreviewCard } from '@/components/relatorios/AIInsightsPreviewCard'
+import type { InsightOutput } from '@/lib/ai/insights-types'
+import type { InsightMode } from '@/lib/dates/period-presets'
 
 export const metadata: Metadata = { title: 'Relatórios' }
 export const dynamic = 'force-dynamic'
@@ -71,15 +73,30 @@ export default async function RelatoriosIndexPage({ params }: PageProps) {
   })
   if (!empresa) notFound()
 
-  const preview = await getRelatoriosPreview(empresaId)
+  const [preview, ultimaAIRaw] = await Promise.all([
+    getRelatoriosPreview(empresaId),
+    prisma.aiInsightsLog.findFirst({
+      where: {
+        companyId: empresaId,
+        feature: 'monthly-insights',
+        responseJson: { not: null },
+        errorMessage: null,
+      },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        mode: true,
+        currentPeriod: true,
+        currentEndPeriod: true,
+        basePeriod: true,
+        baseEndPeriod: true,
+        responseJson: true,
+        createdAt: true,
+      },
+    }),
+  ])
 
-  // Períodos pro AI Insights — mês atual vs mês anterior (UTC)
-  const now = new Date()
-  const cy = now.getUTCFullYear()
-  const cm = now.getUTCMonth() + 1
-  const py = cm === 1 ? cy - 1 : cy
-  const pm = cm === 1 ? 12 : cm - 1
-  const MES = [
+  // Helpers locais
+  const MES_FULL_INDEX = [
     'Janeiro',
     'Fevereiro',
     'Março',
@@ -93,11 +110,47 @@ export default async function RelatoriosIndexPage({ params }: PageProps) {
     'Novembro',
     'Dezembro',
   ]
-  const aiPeriods = {
-    current: `${cy}-${String(cm).padStart(2, '0')}`,
-    base: `${py}-${String(pm).padStart(2, '0')}`,
-    currentLabel: `${MES[cm - 1]}/${cy}`,
-    baseLabel: `${MES[pm - 1]}/${py}`,
+  const normalizePeriod = (s: string | null): string | null => {
+    if (!s) return null
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
+    if (/^\d{4}-\d{2}$/.test(s)) return `${s}-01`
+    return null
+  }
+  const formatLabel = (start: string, end: string): string => {
+    const [sy, sm, sd] = start.split('-').map(Number)
+    const [ey, em, ed] = end.split('-').map(Number)
+    if (sy === ey && sm === em) return `${sd} a ${ed} de ${MES_FULL_INDEX[sm - 1]} de ${sy}`
+    if (sy === ey) return `${MES_FULL_INDEX[sm - 1]} a ${MES_FULL_INDEX[em - 1]}/${sy}`
+    return `${sd}/${sm}/${sy} a ${ed}/${em}/${ey}`
+  }
+
+  let ultimaAI: {
+    mode: InsightMode | null
+    periodLabel: string
+    compareLabel?: string | null
+    generatedAt: Date
+    destaquesCount: number
+  } | null = null
+
+  if (ultimaAIRaw?.responseJson) {
+    const sd = normalizePeriod(ultimaAIRaw.currentPeriod)
+    const ed = normalizePeriod(ultimaAIRaw.currentEndPeriod) ?? sd
+    const csd = normalizePeriod(ultimaAIRaw.basePeriod)
+    const ced = normalizePeriod(ultimaAIRaw.baseEndPeriod) ?? csd
+    if (sd && ed) {
+      try {
+        const parsed = JSON.parse(ultimaAIRaw.responseJson) as InsightOutput
+        ultimaAI = {
+          mode: ultimaAIRaw.mode as InsightMode | null,
+          periodLabel: formatLabel(sd, ed),
+          compareLabel: csd && ced ? formatLabel(csd, ced) : null,
+          generatedAt: ultimaAIRaw.createdAt,
+          destaquesCount: parsed.destaques?.length ?? 0,
+        }
+      } catch {
+        ultimaAI = null
+      }
+    }
   }
 
   // ---- Build cards data ----
@@ -148,15 +201,6 @@ export default async function RelatoriosIndexPage({ params }: PageProps) {
 
       {/* HERO CARD */}
       <HeroCard preview={preview.hero} empresaId={empresaId} />
-
-      {/* AI INSIGHTS — Sprint 5.0.4.0c1 */}
-      <AIInsightsCard
-        empresaId={empresaId}
-        currentPeriod={aiPeriods.current}
-        basePeriod={aiPeriods.base}
-        currentLabel={aiPeriods.currentLabel}
-        baseLabel={aiPeriods.baseLabel}
-      />
 
       {/* VISÃO GERAL */}
       <div className="space-y-4">
@@ -373,7 +417,7 @@ export default async function RelatoriosIndexPage({ params }: PageProps) {
             title="Variâncias Detectadas"
             primaryStat={{
               label: 'Mudanças significativas',
-              value: `${aiPeriods.currentLabel.split('/')[0]} vs ${aiPeriods.baseLabel.split('/')[0]}`,
+              value: 'Mês atual vs anterior',
               tone: 'red',
             }}
             lines={[
@@ -391,6 +435,9 @@ export default async function RelatoriosIndexPage({ params }: PageProps) {
             ctaLabel="Ver variâncias"
             testId="preview-card-variancias"
           />
+
+          {/* Análise da IA (Hotfix 5.0.4.0c1-fix — agora preview card) */}
+          <AIInsightsPreviewCard empresaId={empresaId} ultima={ultimaAI} />
         </div>
       </div>
 

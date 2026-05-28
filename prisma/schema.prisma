@@ -868,9 +868,15 @@ model AiInsightsLog {
   feature       String
   // Modelo usado (ex: 'claude-sonnet-4-6')
   model         String
-  // Períodos analisados — pra cache lookup
-  currentPeriod String? // YYYY-MM
-  basePeriod    String? // YYYY-MM
+  // Períodos analisados — pra cache lookup.
+  // Hotfix 5.0.4.0c1-fix: campos agora aceitam YYYY-MM-DD (ISO start date).
+  // Compat com YYYY-MM antigo (parser aceita os 2 formatos).
+  currentPeriod    String? // ISO YYYY-MM-DD (start do período principal)
+  currentEndPeriod String? // ISO YYYY-MM-DD (end do período principal)
+  basePeriod       String? // ISO YYYY-MM-DD (start do período de comparação, NULL em evolution/single)
+  baseEndPeriod    String? // ISO YYYY-MM-DD (end do período de comparação)
+  // 'comparative' | 'evolution' | 'single' — modo inferido automaticamente
+  mode             String?
   inputTokens   Int      @default(0)
   outputTokens  Int      @default(0)
   // Custo em centavos USD × 100 (mesma convenção do AiUsageLog)

@@ -1,6 +1,7 @@
 // Sprint 5.0.4.0c1 — Testes de cálculo de custo e parser JSON do client AI.
+// Hotfix 5.0.4.0c1-fix: shape atualizado pra union discriminada por modo.
 
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import {
   calculateInsightCostCents,
   INSIGHTS_MODEL,
@@ -9,12 +10,15 @@ import {
 import type { InsightInputData } from '@/lib/ai/insights-types'
 
 const MINIMAL_INPUT: InsightInputData = {
+  mode: 'comparative',
   empresaId: 'test',
   empresaName: 'Test',
-  currentPeriod: '2026-05',
-  basePeriod: '2026-04',
-  currentLabel: 'Maio/2026',
-  baseLabel: 'Abril/2026',
+  startDate: '2026-05-01',
+  endDate: '2026-05-31',
+  periodLabel: '1 a 31 de Maio de 2026',
+  compareStartDate: '2026-04-01',
+  compareEndDate: '2026-04-30',
+  compareLabel: '1 a 30 de Abril de 2026',
   currentTotals: { receita: 100, despesas: 50, lucro: 50, margem: 50 },
   baseTotals: { receita: 100, despesas: 50, lucro: 50, margem: 50 },
   variances: [],

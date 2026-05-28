@@ -1,16 +1,23 @@
-// Sprint 5.0.4.0c1 — Prompts pro feature "Monthly Insights" (Sonnet 4.6).
+// Hotfix 5.0.4.0c1-fix — Prompts pro feature "Monthly Insights" (Sonnet 4.6).
+//
+// REFATORADO: 1 system prompt único + buildUserPrompt despacha por modo.
 //
 // Strategy:
 // - SYSTEM_PROMPT define persona "IA Contador CAIXAOS" (PT-BR informal)
-// - buildUserPrompt monta dados em XML tags (boa prática Anthropic)
-// - Output esperado: JSON estruturado conforme InsightOutput
-// - Zod valida JSON antes de aceitar
+// - Regras específicas POR MODO dentro do mesmo system prompt
+// - buildUserPrompt monta XML diferente conforme modo (discriminado union)
+// - Output esperado SEMPRE: InsightOutput JSON (schema único)
 
-import type { InsightInputData } from '../insights-types'
+import type {
+  InsightInputData,
+  ComparativeInputData,
+  EvolutionInputData,
+  SingleInputData,
+} from '../insights-types'
 
 export const SYSTEM_PROMPT = `Você é o IA Contador do CAIXAOS, um sistema financeiro brasileiro para pequenas e médias empresas.
 
-Sua função é analisar dados financeiros mensais e gerar insights em português brasileiro NATURAL e INFORMAL — o jeito que o dono da empresa fala.
+Sua função é analisar dados financeiros e gerar insights em português brasileiro NATURAL e INFORMAL — o jeito que o dono da empresa fala.
 
 REGRAS DE TOM:
 - Português brasileiro coloquial (NÃO formal/contábil)
@@ -19,16 +26,35 @@ REGRAS DE TOM:
 - Valores em R$ no formato brasileiro (R$ 10.000,00)
 - Variações em % com 1 casa decimal (+15,3%)
 
-REGRAS DE CONTEÚDO:
-- Foque no que MUDOU vs período anterior
-- Destaque o que MERECE ATENÇÃO (alta significativa de despesa, queda inesperada de receita, categoria nova)
-- Sugira PERGUNTAS práticas, não respostas (você não conhece o contexto real do negócio)
-- NÃO invente dados — use APENAS os números fornecidos nos dados
+REGRAS GERAIS DE CONTEÚDO:
+- NÃO invente dados — use APENAS os números fornecidos
+- Sugira PERGUNTAS práticas, não respostas (você não conhece o contexto real)
 - Se não houver mudança relevante, diga isso honestamente
+
+REGRAS ESPECÍFICAS POR MODO DE ANÁLISE:
+
+🔵 MODO COMPARATIVE (você recebe 2 períodos: atual + comparação)
+- Foque no que MUDOU entre os 2 períodos
+- Destaque variações significativas (>15%) de receita, despesas, categorias
 - Quando uma categoria aparece pela primeira vez (NEW), pergunte se foi pontual ou recorrente
 - Quando despesa cresce muito mais que receita, alerte sobre margem
 
-REGRAS DE SAÍDA:
+🟢 MODO EVOLUTION (você recebe N meses do mesmo período — 3 a 12 meses)
+- Foque em TENDÊNCIAS ao longo do período
+- Identifique padrões de crescimento, queda ou sazonalidade
+- Destaque categorias EMERGENTES (começaram no meio do período) e DESAPARECIDAS
+- NÃO faça comparação simples A vs B — analise a SÉRIE TEMPORAL completa
+- Quando uma categoria está em quase todos os meses, marque como recorrente
+- Identifique meses ATÍPICOS (muito acima/abaixo da média)
+
+🟡 MODO SINGLE (você recebe 1 período curto — 1 a 2 meses)
+- NÃO faça comparações temporais — não há histórico
+- Foque em COMPOSIÇÃO da receita/despesa atual
+- Destaque CONCENTRAÇÃO em poucas categorias (risco)
+- Aponte saúde financeira (margem, distribuição de despesas)
+- Sugira o que monitorar daqui pra frente
+
+REGRAS DE SAÍDA (idênticas em todos os modos):
 - Responda APENAS com JSON válido seguindo o schema abaixo
 - NÃO inclua \`\`\`json ou texto fora do JSON
 - Mínimo 2 destaques, máximo 5
@@ -54,13 +80,17 @@ SCHEMA DE SAÍDA:
 
 EXEMPLOS DE TOM:
 
-❌ Formal: "A categoria 'Folha de Pagamento' apresentou variação positiva de 15,3% em relação ao período anterior, demandando análise detalhada."
+❌ Formal: "A categoria 'Folha de Pagamento' apresentou variação positiva de 15,3% em relação ao período anterior."
 
-✅ Informal CAIXAOS: "Folha subiu R$ 10.000,00 (+15,3%) vs Abr/26. Vale checar se contratou alguém novo ou se foi reajuste."
+✅ Informal CAIXAOS: "Folha subiu R$ 10.000,00 (+15,3%) vs Abr/26. Vale checar se contratou alguém novo."
 
-❌ Formal: "Recomenda-se realizar análise pormenorizada dos contratos de fornecedores em vista do aumento das despesas operacionais."
+❌ Formal: "Identificou-se tendência crescente nos custos administrativos ao longo do trimestre."
 
-✅ Informal CAIXAOS: "Revisar contratos com os top fornecedores antes do próximo mês — talvez tenha um reajuste passando despercebido."`
+✅ Informal CAIXAOS: "Despesas administrativas vêm subindo todo mês — começou em R$ 5k no Jan/26 e já tá em R$ 9k no Mar/26. Vale entender o que tá puxando."`
+
+// ============================================================
+// Format helpers
+// ============================================================
 
 function formatBRL(v: number): string {
   return new Intl.NumberFormat('pt-BR', {
@@ -75,7 +105,11 @@ function formatPct(v: number | null): string {
   return `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`
 }
 
-export function buildUserPrompt(data: InsightInputData): string {
+// ============================================================
+// User prompt builders (1 por modo)
+// ============================================================
+
+function buildComparativePrompt(data: ComparativeInputData): string {
   const variancesXml =
     data.variances.length === 0
       ? '  (Nenhuma variância detectada acima do threshold)'
@@ -83,8 +117,8 @@ export function buildUserPrompt(data: InsightInputData): string {
           .slice(0, 15)
           .map(
             (v) => `  - ${v.categoryName} [${v.level}]
-    ${data.currentLabel}: ${formatBRL(v.currentAmount)}
-    ${data.baseLabel}: ${formatBRL(v.baseAmount)}
+    Período atual (${data.periodLabel}): ${formatBRL(v.currentAmount)}
+    Período comparação (${data.compareLabel}): ${formatBRL(v.baseAmount)}
     Variação: ${formatPct(v.variationPct)}`,
           )
           .join('\n')
@@ -102,8 +136,9 @@ export function buildUserPrompt(data: InsightInputData): string {
 
   return `<dados_financeiros>
 Empresa: ${data.empresaName}
-Período analisado: ${data.currentLabel}
-Período de comparação: ${data.baseLabel}
+<modo_analise>comparative</modo_analise>
+Período analisado: ${data.periodLabel}
+Período de comparação: ${data.compareLabel}
 
 <resumo_periodo_atual>
 Receita Bruta: ${formatBRL(data.currentTotals.receita)}
@@ -112,12 +147,12 @@ Lucro Líquido: ${formatBRL(data.currentTotals.lucro)}
 Margem Líquida: ${data.currentTotals.margem.toFixed(1)}%
 </resumo_periodo_atual>
 
-<resumo_periodo_base>
+<resumo_periodo_comparacao>
 Receita Bruta: ${formatBRL(data.baseTotals.receita)}
 Despesas: ${formatBRL(data.baseTotals.despesas)}
 Lucro Líquido: ${formatBRL(data.baseTotals.lucro)}
 Margem Líquida: ${data.baseTotals.margem.toFixed(1)}%
-</resumo_periodo_base>
+</resumo_periodo_comparacao>
 
 <variancias_detectadas>
 ${variancesXml}
@@ -128,5 +163,113 @@ ${topCatsXml}
 </top_categorias_periodo_atual>
 </dados_financeiros>
 
-Analise os dados acima e gere insights úteis para o gestor da empresa. Responda APENAS com o JSON conforme schema definido no system prompt — sem texto adicional, sem code fences.`
+Analise os dados acima COMPARANDO os 2 períodos e gere insights úteis. Responda APENAS com o JSON conforme schema definido no system prompt.`
+}
+
+function buildEvolutionPrompt(data: EvolutionInputData): string {
+  const monthsXml = data.months
+    .map(
+      (m) => `${m.label}:
+    Receita: ${formatBRL(m.receita)}
+    Despesas: ${formatBRL(m.despesas)}
+    Lucro: ${formatBRL(m.lucro)}
+    Margem: ${m.margem.toFixed(1)}%`,
+    )
+    .join('\n\n')
+
+  const topCatsXml =
+    data.topCategories.length === 0
+      ? '  (Sem categorias agregadas)'
+      : data.topCategories
+          .slice(0, 15)
+          .map(
+            (c, i) =>
+              `  ${i + 1}. ${c.name}: ${formatBRL(c.total)} (em ${c.monthsPresent} de ${data.months.length} meses)`,
+          )
+          .join('\n')
+
+  const emergingXml =
+    data.emergingCategories.length === 0
+      ? '  (Nenhuma)'
+      : data.emergingCategories
+          .map((c) => `  - ${c.name}: começou em ${c.firstMonth}, total ${formatBRL(c.total)}`)
+          .join('\n')
+
+  const disappearedXml =
+    data.disappearedCategories.length === 0
+      ? '  (Nenhuma)'
+      : data.disappearedCategories
+          .map(
+            (c) =>
+              `  - ${c.name}: presente até ${c.lastMonth}, total histórico ${formatBRL(c.total)}`,
+          )
+          .join('\n')
+
+  return `<dados_financeiros>
+Empresa: ${data.empresaName}
+<modo_analise>evolution</modo_analise>
+Período analisado: ${data.periodLabel}
+Total de meses: ${data.months.length}
+
+<evolucao_mensal>
+${monthsXml}
+</evolucao_mensal>
+
+<top_categorias_periodo_todo>
+${topCatsXml}
+</top_categorias_periodo_todo>
+
+<categorias_emergentes>
+${emergingXml}
+</categorias_emergentes>
+
+<categorias_desaparecidas>
+${disappearedXml}
+</categorias_desaparecidas>
+</dados_financeiros>
+
+Analise a EVOLUÇÃO dos ${data.months.length} meses e identifique tendências, padrões e mudanças importantes. NÃO compare período A vs B — analise a série temporal. Responda APENAS com o JSON conforme schema definido no system prompt.`
+}
+
+function buildSinglePrompt(data: SingleInputData): string {
+  const topCatsXml =
+    data.topCategoriesCurrent.length === 0
+      ? '  (Sem categorias no período)'
+      : data.topCategoriesCurrent
+          .slice(0, 10)
+          .map(
+            (c, i) =>
+              `  ${i + 1}. ${c.name}: ${formatBRL(c.amount)} (${c.percent.toFixed(1)}% do total)`,
+          )
+          .join('\n')
+
+  return `<dados_financeiros>
+Empresa: ${data.empresaName}
+<modo_analise>single</modo_analise>
+Período analisado: ${data.periodLabel}
+
+<resumo_periodo>
+Receita Bruta: ${formatBRL(data.currentTotals.receita)}
+Despesas: ${formatBRL(data.currentTotals.despesas)}
+Lucro Líquido: ${formatBRL(data.currentTotals.lucro)}
+Margem Líquida: ${data.currentTotals.margem.toFixed(1)}%
+</resumo_periodo>
+
+<top_categorias>
+${topCatsXml}
+</top_categorias>
+</dados_financeiros>
+
+Analise este período ISOLADO (sem histórico pra comparar) — foque na COMPOSIÇÃO da receita/despesa, CONCENTRAÇÃO em categorias e SAÚDE financeira atual. NÃO faça comparações temporais. Responda APENAS com o JSON conforme schema definido no system prompt.`
+}
+
+export function buildUserPrompt(data: InsightInputData): string {
+  switch (data.mode) {
+    case 'comparative':
+      return buildComparativePrompt(data)
+    case 'evolution':
+      return buildEvolutionPrompt(data)
+    case 'single':
+      return buildSinglePrompt(data)
+  }
 }
