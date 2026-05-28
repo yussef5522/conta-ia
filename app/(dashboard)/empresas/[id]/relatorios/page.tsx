@@ -19,6 +19,7 @@ import {
   LayoutGrid,
   FileText,
   AlertTriangle,
+  GitCompare,
 } from 'lucide-react'
 import type { Metadata } from 'next'
 import { Header } from '@/components/layout/header'
@@ -438,6 +439,32 @@ export default async function RelatoriosIndexPage({ params }: PageProps) {
 
           {/* Análise da IA (Hotfix 5.0.4.0c1-fix — agora preview card) */}
           <AIInsightsPreviewCard empresaId={empresaId} ultima={ultimaAI} />
+
+          {/* Análise de Variação (Sprint waterfall — 28/05/2026) */}
+          <ReportPreviewCard
+            icon={GitCompare}
+            iconColor="#0891b2"
+            title="Análise de Variação"
+            primaryStat={{
+              label: 'Cascata (bridge/waterfall)',
+              value: 'Por que um mês custou mais?',
+              tone: 'sky',
+            }}
+            lines={[
+              {
+                label: 'Decompõe',
+                value: 'Categoria por categoria',
+              },
+              {
+                label: 'Compara',
+                value: 'Mês × mês OU mês × média',
+              },
+            ]}
+            hasData={true}
+            ctaHref={`/empresas/${empresaId}/relatorios/analise-variacao`}
+            ctaLabel="Investigar variação"
+            testId="preview-card-analise-variacao"
+          />
         </div>
       </div>
 
