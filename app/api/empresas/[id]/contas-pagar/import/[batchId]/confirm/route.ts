@@ -218,7 +218,12 @@ export async function POST(request: NextRequest, { params }: Params) {
             }
           }
 
-          // ─── Cria Transaction PAYABLE (com try/catch P2002) ────────────
+          // ─── Cria Transaction (com try/catch P2002) ────────────────────
+          // Bug-fix 28/05/2026: linhas com pagamento já realizado (paymentDate)
+          // viram EFFECTED imediatamente. Antes ficavam PAYABLE+paymentDate,
+          // estado que VIOLA lib/lifecycle/index.ts:60-69 e fica invisível aos
+          // relatórios (que filtram lifecycle='EFFECTED'). Veja
+          // docs/sprints/bug-despesas-relatorios-audit.md.
           const isPaid = !!row.pagamento
           const txDate = row.pagamento ?? row.vencimento ?? new Date()
           try {
@@ -235,7 +240,7 @@ export async function POST(request: NextRequest, { params }: Params) {
                 type: 'DEBIT',
                 status: isPaid ? 'RECONCILED' : 'PENDING',
                 origin: 'IMPORT_EXCEL',
-                lifecycle: 'PAYABLE',
+                lifecycle: isPaid ? 'EFFECTED' : 'PAYABLE',
                 dueDate: row.vencimento,
                 paymentDate: row.pagamento,
                 competenceDate: row.competencia,
