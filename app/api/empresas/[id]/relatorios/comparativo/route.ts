@@ -11,9 +11,7 @@ import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import {
-  computeComparativo,
   computeComparativoMulti,
-  threeMonthsForRef,
   buildPeriodos,
   type ComparativoInputTx,
   type Granularidade,
@@ -112,16 +110,11 @@ export async function GET(request: NextRequest, { params }: Params) {
       dreGroup: t.category?.dreGroup ?? null,
     }))
 
-    // Retrocompat: defaults antigos (3 meses, granularidade mês) → engine antigo
-    const isLegacyShape = input.meses === 3 && input.granularidade === 'mes'
-
-    if (isLegacyShape) {
-      const result = computeComparativo(inputTxs, input.refMonth, input.tipo)
-      // Anexa flag pra UI saber qual shape veio
-      return NextResponse.json({ ...result, multi: false })
-    }
-
-    // Shape novo (Sprint A)
+    // Hotfix 28/05/2026 (média vazia c/ 3 períodos): removido caminho legacy
+    // isLegacyShape. Sempre usar computeComparativoMulti pra garantir que
+    // a coluna Média/vs-Média seja calculada em todos os casos (legacy
+    // engine não tinha esses campos). Veja
+    // docs/sprints/comparativo-fix-media-audit.md.
     const result = computeComparativoMulti(inputTxs, {
       ymRef: input.refMonth,
       nPeriodos: input.meses,
@@ -134,5 +127,3 @@ export async function GET(request: NextRequest, { params }: Params) {
   }
 }
 
-// Suprime warning: threeMonthsForRef ainda exportado pela lib pra outras callers
-void threeMonthsForRef

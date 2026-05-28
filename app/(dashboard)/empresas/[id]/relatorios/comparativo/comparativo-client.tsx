@@ -18,7 +18,8 @@ import { formatBRL } from '@/lib/format/money'
 import {
   CELL_TONE_CLASSES,
   filterRowsMulti,
-  getTrendVisualSemantic,
+  getDesvioVisual,
+  formatDesvioPct,
   type ComparativoRowMulti,
   type ComparativoTipoFilter,
   type ComparativoFilterMode,
@@ -77,13 +78,6 @@ function labelForRef(ym: string): string {
   return `${MES[m - 1]}/${String(y).slice(-2)}`
 }
 
-function formatPct(v: number | null, withSign = true): string {
-  if (v === null) return '—'
-  const pct = v * 100
-  const rounded = Math.round(pct)
-  if (withSign && rounded > 0) return `+${rounded}%`
-  return `${rounded}%`
-}
 
 export function ComparativoClient({ empresaId }: Props) {
   const { toast } = useToast()
@@ -110,76 +104,9 @@ export function ComparativoClient({ empresaId }: Props) {
     })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        // Endpoint sempre retorna multi=true quando meses != 3 OU granularidade != mes
-        // Quando defaults legacy, retorna multi=false — convertemos pro shape novo
-        if (d?.multi === false) {
-          // Adapta o shape legacy pro novo (3 colunas fixas)
-          const legacy = d as {
-            rows: Array<{
-              categoryId: string | null
-              categoryName: string
-              dreGroup: string | null
-              prev2: number
-              prev1: number
-              current: number
-              total: number
-              trend: { indicator: string; percentVsPrev1: number | null }
-            }>
-            meses: {
-              prev2: { ym: string; label: string; start: string; end: string }
-              prev1: { ym: string; label: string; start: string; end: string }
-              current: { ym: string; label: string; start: string; end: string }
-            }
-          }
-          const adapted: ApiResponseMulti = {
-            multi: true,
-            periodos: [
-              {
-                id: legacy.meses.prev2.ym,
-                label: legacy.meses.prev2.label,
-                start: new Date(legacy.meses.prev2.start),
-                end: new Date(legacy.meses.prev2.end),
-              },
-              {
-                id: legacy.meses.prev1.ym,
-                label: legacy.meses.prev1.label,
-                start: new Date(legacy.meses.prev1.start),
-                end: new Date(legacy.meses.prev1.end),
-              },
-              {
-                id: legacy.meses.current.ym,
-                label: legacy.meses.current.label,
-                start: new Date(legacy.meses.current.start),
-                end: new Date(legacy.meses.current.end),
-              },
-            ],
-            // Cliente sempre re-pede com defaults novos. Estado raro.
-            rows: legacy.rows.map((r) => ({
-              ...r,
-              values: [r.prev2, r.prev1, r.current],
-              mediaHistorica: null,
-              desvioPct: null,
-              referenciaVazia: false,
-              cellTones: ['transparent', 'transparent', 'transparent'],
-              trend: {
-                indicator: r.trend.indicator,
-                percentVsPrev1: r.trend.percentVsPrev1,
-                percentVsPrev2: null,
-              },
-            })) as unknown as ComparativoRowMulti[],
-            totals: {
-              porPeriodo: [0, 0, 0],
-              mediaHistorica: null,
-              desvioPct: null,
-              referenciaVazia: false,
-              total: 0,
-            },
-            summary: { novas: 0, subindo: 0, descendo: 0, foraDaMedia: 0 },
-          }
-          setData(adapted)
-        } else {
-          setData(d as ApiResponseMulti)
-        }
+        // Hotfix 28/05/2026: servidor sempre retorna shape multi (caminho
+        // legacy isLegacyShape removido pra resolver bug da média vazia).
+        setData(d as ApiResponseMulti)
       })
       .catch(() => {
         toast({
@@ -414,7 +341,38 @@ export function ComparativoClient({ empresaId }: Props) {
                       : '—'}
                   </td>
                   <td className="px-3 py-2.5 text-center bg-muted/30">
-                    {formatPct(data.totals.desvioPct)}
+                    {(() => {
+                      // Linha Total usa o mesmo helper, tom 'DESPESA' por
+                      // padrão (totals agregados sem distinção de tipo)
+                      const totalDesvio = getDesvioVisual(
+                        data.totals.desvioPct,
+                        data.totals.referenciaVazia,
+                        tipo === 'RECEITA' ? 'RECEITA' : 'DESPESA',
+                      )
+                      if (totalDesvio.status === 'ref-vazia') {
+                        return (
+                          <span className="text-xs text-muted-foreground italic">
+                            ref. vazia
+                          </span>
+                        )
+                      }
+                      if (totalDesvio.status === 'sem-media') {
+                        return <span className="text-xs">—</span>
+                      }
+                      return (
+                        <span
+                          className={`inline-flex items-center gap-1 text-xs ${totalDesvio.colorClass}`}
+                          title={totalDesvio.label}
+                        >
+                          <span className="text-base leading-none">
+                            {totalDesvio.symbol}
+                          </span>
+                          <span className="tabular-nums">
+                            {formatDesvioPct(data.totals.desvioPct)}
+                          </span>
+                        </span>
+                      )
+                    })()}
                   </td>
                   <td className="px-3 py-2.5 text-right tabular-nums">
                     {formatBRL(data.totals.total)}
@@ -503,7 +461,8 @@ function Row({
 }) {
   const tipoSemantic: 'DESPESA' | 'RECEITA' =
     tipo === 'RECEITA' ? 'RECEITA' : 'DESPESA'
-  const visual = getTrendVisualSemantic(row.trend.indicator, tipoSemantic)
+  // Hotfix 28/05/2026: coluna "vs Média" agora usa desvioPct (não trend.indicator)
+  const desvio = getDesvioVisual(row.desvioPct, row.referenciaVazia, tipoSemantic)
 
   return (
     <tr
@@ -535,22 +494,31 @@ function Row({
         {row.mediaHistorica !== null ? formatBRL(row.mediaHistorica) : '—'}
       </td>
       <td className="px-3 py-2.5 text-center bg-muted/20">
-        {row.referenciaVazia ? (
+        {desvio.status === 'ref-vazia' ? (
           <span
-            className="inline-flex items-center gap-1 text-xs text-muted-foreground italic"
-            title="Mês de referência ainda sem lançamentos"
+            className={`inline-flex items-center gap-1 text-xs ${desvio.colorClass}`}
+            title={desvio.label}
+            data-testid={`desvio-${row.categoryId ?? 'none'}-${desvio.status}`}
           >
             ref. vazia
           </span>
+        ) : desvio.status === 'sem-media' ? (
+          <span
+            className="text-xs text-muted-foreground"
+            data-testid={`desvio-${row.categoryId ?? 'none'}-sem-media`}
+          >
+            —
+          </span>
         ) : (
           <span
-            className={`inline-flex items-center gap-1 text-xs ${visual.colorClass}`}
-            title={visual.label}
+            className={`inline-flex items-center gap-1 text-xs ${desvio.colorClass}`}
+            title={desvio.label}
+            data-testid={`desvio-${row.categoryId ?? 'none'}-${desvio.status}`}
           >
-            <span className="text-base leading-none">{visual.symbol}</span>
-            {row.desvioPct !== null && (
-              <span className="tabular-nums">{formatPct(row.desvioPct)}</span>
-            )}
+            <span className="text-base leading-none">{desvio.symbol}</span>
+            <span className="tabular-nums">
+              {formatDesvioPct(row.desvioPct)}
+            </span>
           </span>
         )}
       </td>
