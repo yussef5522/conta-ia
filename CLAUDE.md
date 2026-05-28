@@ -1437,6 +1437,174 @@ via merge no main. Pode ser deletada (mantida no remote pra histórico).
 **Próximo passo:** Sprint 5.0.4.0c1 — Variâncias + IA narrativa
 (aguardando prompt do Yussef).
 
+### 27-28/05/2026 — Sprint 5.0.4.0c1 + 2 hotfixes (sessão maratona)
+
+**Contexto:** sessão única e longa cobrindo a entrega da Sprint
+5.0.4.0c1 INTELIGÊNCIA + 2 hotfixes consecutivos. Tudo validado em prod
+por Yussef ao fim.
+
+#### 1) Sprint 5.0.4.0c1 — Variâncias + IA narrativa (Sonnet 4.6)
+
+**Diferencial competitivo entregue:** detecção automática de variâncias
+(que Conta Azul/Omie/Bling não têm) + insights narrativos em PT-BR
+informal via Claude Sonnet 4.6.
+
+**Algoritmo de variâncias** (`lib/variance/detect-variances.ts`):
+- 9 levels: NEW / CRITICAL_UP (>+50%) / HIGH_UP / MODERATE_UP / STABLE
+  (filtrado) / MODERATE_DOWN / HIGH_DOWN / CRITICAL_DOWN / DISAPPEARED
+- Materiality filter R$ 500 (env `VARIANCE_MIN_ABSOLUTE_VALUE`)
+- Ordena por severidade DESC + |variationAbs| DESC
+
+**Rota `/relatorios/variancias`**: 4 stats cards + 5 seções agrupadas
+(🚨/⚠️/✨ novidades/📊 moderadas/🛑 sumiram) + cards com cores
+semânticas + visual SVG.
+
+**Claude API integration** (DECISÃO IMPORTANTE: NÃO instalar
+`@anthropic-ai/sdk` — seguir padrão `lib/ai-categorizer/claude-client.ts`
+com fetch direto). Stack:
+- `lib/ai/insights-client.ts` (fetch direto, fetcher injetável)
+- `lib/ai/prompts/monthly-insights.ts` (SYSTEM_PROMPT PT-BR informal)
+- `lib/ai/insights-cache.ts` (DB-based, NÃO Redis — projeto não tem)
+- `lib/ai/collect-insight-data.ts` (orquestra DRE + variâncias + top cat)
+- Migration `AiInsightsLog` (separada do `AiUsageLog` do Haiku)
+
+**Custo real em prod:** ~$0.022 USD = R$ 0,11/análise · 20-25s · 1500
+input + 1100 output tokens. Cache 1h via DB.
+
+**UI inicial** (depois movida em 5.0.4.0c1-fix): card `AIInsightsCard`
+inline na `/relatorios` com 4 estados (idle/loading/success/error).
+
+**Checkpoint do dia:** Yussef validou qualidade do JSON gerado pela IA
+antes de eu construir UI — output PT-BR natural, perguntas práticas,
+sem invenção de dados.
+
+**Métricas:** Tests 3192 → 3236 (+44). TS strict 0. Migration aplicada.
+
+Commits: `dc535be` (audit), `7f56fa4` (impl), merge `9d8709e`, fix
+migration `d0b96d8`.
+
+#### 2) Hotfix 5.0.4.0c1-fix — Arquitetura + Períodos
+
+**2 problemas Yussef detectou em prod:**
+
+1. **Arquitetural**: Análise IA aparecia INLINE em `/relatorios`
+   poluindo a tela. Padrão CAIXAOS é "página dedicada por relatório".
+2. **Períodos hardcoded**: análise só fazia "mês atual vs anterior".
+   Yussef queria 7 presets + custom datas (limite 12 meses).
+
+**Decisão técnica chave:** repurpose dos campos `currentPeriod`/
+`basePeriod` (TEXT YYYY-MM) como ISO YYYY-MM-DD (start dates) — `2026-05`
+parseia compativelmente como `2026-05-01`. Adiciona 3 campos novos
+(`currentEndPeriod`, `baseEndPeriod`, `mode`) em vez de 5 colunas DATE
+do zero. Zero breaking change em logs antigos.
+
+**Modo automático** (transparente pro usuário):
+- `comparative`: 2 períodos com `compareStartDate`
+- `evolution`: período principal >= 3 meses sem compare
+- `single`: < 3 meses sem compare
+
+**1 system prompt único** (não 3 separados) com regras por modo. Shape
+`InsightOutput` consistente. Adicionar 4º modo no futuro = adicionar
+regra no mesmo prompt.
+
+**`lib/dates/period-presets.ts`** (NÃO instalar date-fns — helpers
+nativos UTC consistentes com o projeto):
+- 7 presets (month-vs-prev, month-vs-yoy, quarter-vs-prev, year-vs-prev,
+  last-3m, last-6m, last-12m)
+- `inferMode()` + `validatePeriodLimit()` (12m max)
+
+**Nova rota `/relatorios/analise-ia`**: PeriodSelector com 7 presets +
+toggle custom + date pickers + validação inline + botão "Gerar análise"
+com cost estimate. Reusa `AnalysisDisplay` extraído.
+
+**Card preview** em `/relatorios` substitui render inline. Mostra
+última análise (ou estado vazio).
+
+**Checkpoint do dia:** Yussef validou os 3 outputs distintos (compar/
+evol/single) em prod com Claude real antes de UI.
+
+**Métricas:** Tests 3236 → 3276 (+40). Migration ALTER TABLE 3 colunas
+aplicada. `AIInsightsCard.tsx` antigo deletado (código morto após
+extrair `AnalysisDisplay`).
+
+Commits: `dd105d3` (audit), `8c43c81` (impl), merge `65824c7`.
+
+#### 3) Bug-fix LIFECYCLE PAYABLE+paymentDate (causa raiz histórica)
+
+**Contexto:** Yussef testou Análise IA da `profit sao borja` e a IA
+disse "despesas zeradas" — MAS tinha 398 contas pagas (R$ 757k) em
+`/contas-a-pagar`. Contradição grave.
+
+**Investigação SQL profunda** revelou:
+- 398 contas PAYABLE + paymentDate + categoryId + dreGroup populados
+- Estado VIOLA `lib/lifecycle/index.ts:60-69` ("PAYABLE/RECEIVABLE NÃO
+  podem ter paymentDate") — `validateLifecycleState` retornaria
+  inválido pras 398
+- 24 ocorrências em 5 arquivos filtram `lifecycle='EFFECTED'` nos
+  relatórios → 398 invisíveis
+
+**Universo total afetado:**
+- profit sao borja: 398 contas / R$ 757.499,35
+- **cacula mix: 94 contas / R$ 182.396,54** (Yussef pensou que cacula
+  funcionava, mas ela tinha 287 EFFECTED via OFX R$ 611k mascarando
+  o bug das 94 Excel)
+- TOTAL: **492 contas / R$ 939.895,89 invisíveis nos relatórios**
+
+**Causa raiz (2 paths que corrompiam lifecycle):**
+1. `confirm/route.ts:238` (import Excel) hardcodava `lifecycle: 'PAYABLE'`
+   mesmo quando Excel vinha com paymentDate (compras pagas no passado)
+2. `bulk/route.ts:121-129` (mark_paid) setava paymentDate sem
+   transicionar `PAYABLE → EFFECTED`
+
+**Auditoria extra confirmou que outros 3 paths estão corretos:**
+- staging/confirm (OFX) — default schema `'EFFECTED'`
+- ajustar-saldo — default `'EFFECTED'`
+- conciliacao/reconcile — transiciona explícito (Sprint 4.0.1.a)
+
+**5 fixes aplicados:**
+
+| Fix | O que mudou |
+|---|---|
+| A1 | Import Excel: `lifecycle: isPaid ? 'EFFECTED' : 'PAYABLE'` |
+| A2 | `mark_paid` bulk: adiciona `lifecycle: 'EFFECTED'` no updateMany |
+| B | Migration backfill `20260610000000`: 492 contas viraram EFFECTED (critério reconciledWithId=null pra evitar dupla contagem OFX) |
+| C | Listagem `/contas-a-pagar` estendida pra incluir EFFECTED com dueDate (preserva visibilidade das pagas) |
+| D | Helper `lib/contas-pagar/lifecycle-scope.ts` + edit/delete/duplicar/inline aceitam EFFECTED-que-eram-PAYABLE |
+
+**Lição de produto registrada** (aplicada nos próximos imports):
+- `lifecycle` representa estado financeiro (intenção vs realizado)
+- `paymentDate` em PAYABLE/RECEIVABLE é estado **inválido** (lib doc)
+- Toda transição deve ser explícita: PAYABLE/RECEIVABLE → EFFECTED via
+  conciliação OFX, mark_paid, OU import Excel com pagamento já feito
+
+**Validação Yussef em prod (5/5 caminhos OK):**
+1. `/profit/relatorios` → Hero mostra despesas reais
+2. `/profit/relatorios/analise-ia` → IA agora vê R$ 757k
+3. `/cacula/relatorios` → DRE +R$ 182k que estavam invisíveis
+4. `/contas-a-pagar?empresaId=profit` → 398 pagas continuam visíveis
+5. Edit/duplicar contas pagas funciona
+
+**Métricas:** Tests 3276 → 3305 (+29) · 0 violações remanescentes ·
+backup pré-fix 573K · pm2 ↺ 145.
+
+Commits: `406d09e` (audit), `24f83c1` (A1+A2+B), `d2182fe` (merge),
+`d814e6e` (fix C), `5200a36` (fix D).
+
+#### Estatística histórica da sessão
+
+| Item | Valor |
+|---|---|
+| Duração | 27-28/05/2026 (sessão única longa) |
+| Sprints/hotfixes | 3 |
+| Migrations aplicadas | 2 (`ai_insights_log` + `bugfix_payable_paymentdate`) |
+| Testes adicionados | +113 (3192 → 3305) |
+| Commits totais | 13 |
+| pm2 restart final | ↺ 145 |
+| Contas restauradas pro DRE | 492 (R$ 939.895,89) |
+| Limitação visual declarada | Sem browser → Yussef validou 5+ caminhos em prod |
+
+**Próximo passo:** aguardando próximo prompt do Yussef.
+
 ### [Próxima sessão] — preencher
 - Data:
 - O que foi feito:
