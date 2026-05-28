@@ -303,17 +303,21 @@ describe('buildWaterfallBars — estrutura Recharts-ready', () => {
   })
 })
 
-describe('selecionarDriversVisuais — Top N + threshold 5% + mín 5 (Sprint Redesign)', () => {
-  it('Top 10 quando todos passam threshold', () => {
+describe('selecionarDriversVisuais — Top 6 + threshold 8% + mín 4 (Hotfix SVG)', () => {
+  it('Top 6 (default novo) quando todos passam threshold', () => {
+    // Hotfix waterfall SVG: defaults agressivos (topN=6, antes 10).
+    // 12 drivers × 10k = 12% cada (acima do 8% threshold). Topo 6 visível.
     const drivers: DriverVariacao[] = Array.from({ length: 12 }, (_, i) =>
-      driver(`c${i}`, `Cat ${i}`, 8_000),
+      driver(`c${i}`, `Cat ${i}`, 10_000),
     )
     const r = selecionarDriversVisuais(drivers, 100_000)
-    expect(r.visiveis).toHaveLength(10)
-    expect(r.outrosCount).toBe(2)
+    expect(r.visiveis).toHaveLength(6)
+    expect(r.outrosCount).toBe(6)
   })
 
-  it('Drivers abaixo threshold vão pra outros', () => {
+  it('Drivers abaixo threshold 8% vão pra outros (mín 4)', () => {
+    // Threshold 8% de 100k = 8k. A (60k), B (30k), C (10k) passam.
+    // minVisible=4 garante 4 visíveis (acrescenta o próximo maior).
     const drivers: DriverVariacao[] = [
       driver('a', 'A', 60_000),
       driver('b', 'B', 30_000),
@@ -322,13 +326,12 @@ describe('selecionarDriversVisuais — Top N + threshold 5% + mín 5 (Sprint Red
     ]
     drivers.sort((a, b) => Math.abs(b.diferenca) - Math.abs(a.diferenca))
     const r = selecionarDriversVisuais(drivers, 100_000)
-    // Threshold 5k → A, B, C passam. minVisible=5 garante mín 5 visíveis.
-    expect(r.visiveis).toHaveLength(5)
+    expect(r.visiveis).toHaveLength(4) // mín 4
     expect(r.visiveis[0].categoryId).toBe('a')
-    expect(r.outrosCount).toBe(6)
+    expect(r.outrosCount).toBe(7)
   })
 
-  it('Garante mínimo 5 visíveis mesmo abaixo do threshold', () => {
+  it('Garante mínimo 4 visíveis mesmo abaixo do threshold', () => {
     const drivers: DriverVariacao[] = [
       driver('a', 'A', 50_000),
       driver('b', 'B', 30_000),
@@ -339,7 +342,8 @@ describe('selecionarDriversVisuais — Top N + threshold 5% + mín 5 (Sprint Red
       driver('g', 'G', 1_000),
     ]
     const r = selecionarDriversVisuais(drivers, 100_000)
-    expect(r.visiveis).toHaveLength(5)
+    // Threshold 8k filtra A, B, C (acima). minVisible=4 acrescenta D.
+    expect(r.visiveis).toHaveLength(4)
     expect(r.visiveis[3].categoryId).toBe('d') // abaixo do threshold mas visível
   })
 
@@ -492,7 +496,8 @@ describe('gerarInsightsPrincipais', () => {
     expect(conc!.texto).toContain('Top 2')
   })
 
-  it('Insight "outros" quando há drivers fora dos visíveis', () => {
+  it('Hotfix SVG: bullet "X outros drivers" REMOVIDO dos insights', () => {
+    // Yussef classificou como ruído. Insights agora só top-driver + concentracao.
     const visiveis = [driver('a', 'A', 50_000), driver('b', 'B', 30_000)]
     const drivers = [
       ...visiveis,
@@ -506,8 +511,7 @@ describe('gerarInsightsPrincipais', () => {
       visiveis,
     })
     const outros = r.find((i) => i.tipo === 'outros')
-    expect(outros).toBeDefined()
-    expect(outros!.texto).toContain('3 outros')
+    expect(outros).toBeUndefined() // bullet "X outros drivers" removido
   })
 
   it('zero drivers: insights vazios', () => {
@@ -709,5 +713,129 @@ describe('analiseVariacao — engine completa', () => {
     // Tem barra Outros
     const outros = r.waterfallBars.find((b) => b.isOutros)
     expect(outros).toBeDefined()
+  })
+})
+
+// ────────────────────────────────────────────────────────────────────
+// Hotfix Waterfall SVG (28/05/2026) — Garantias narrativas
+//   Confirmar que `mesInvestigadoLabel` SEMPRE é sujeito do título,
+//   independente da direção da diferença ou do modo de comparação.
+// ────────────────────────────────────────────────────────────────────
+
+describe('Hotfix SVG: título narrativo — sujeito sempre o investigado', () => {
+  it('mes-vs-mes positivo: Jan vs Fev, Jan é sujeito', () => {
+    const drivers: DriverVariacao[] = [driver('a', 'IRPJ', 100_000, 'novo')]
+    const t = gerarTituloNarrativo({
+      mesInvestigadoLabel: 'Janeiro/2026',
+      comparacaoLabel: 'Fevereiro/2026',
+      diferencaTotal: 100_000,
+      drivers,
+    })
+    // Janeiro DEVE aparecer ANTES de Fevereiro
+    expect(t.indexOf('Janeiro/2026')).toBeLessThan(t.indexOf('Fevereiro/2026'))
+    expect(t).toMatch(/^Janeiro\/2026/)
+  })
+
+  it('mes-vs-mes negativo: Fev vs Jan (investigado caiu), Fev é sujeito', () => {
+    const drivers: DriverVariacao[] = [driver('a', 'IRPJ', -50_000, 'reduziu')]
+    const t = gerarTituloNarrativo({
+      mesInvestigadoLabel: 'Fevereiro/2026',
+      comparacaoLabel: 'Janeiro/2026',
+      diferencaTotal: -50_000,
+      drivers,
+    })
+    expect(t).toMatch(/^Fevereiro\/2026/)
+    expect(t).toContain('a menos')
+  })
+
+  it('mes-vs-media: investigado é sujeito, "Média dos últimos N" é objeto', () => {
+    const drivers: DriverVariacao[] = [driver('a', 'IRPJ', 30_000, 'aumentou')]
+    const t = gerarTituloNarrativo({
+      mesInvestigadoLabel: 'Janeiro/2026',
+      comparacaoLabel: 'Média dos últimos 6',
+      diferencaTotal: 30_000,
+      drivers,
+    })
+    expect(t).toMatch(/^Janeiro\/2026/)
+    expect(t).toContain('Média dos últimos 6')
+  })
+
+  it('estável: investigado ainda é sujeito', () => {
+    const t = gerarTituloNarrativo({
+      mesInvestigadoLabel: 'Mar/26',
+      comparacaoLabel: 'Fev/26',
+      diferencaTotal: 0,
+      drivers: [],
+    })
+    expect(t).toMatch(/^Mar\/26/)
+    expect(t).toContain('estável')
+  })
+})
+
+// ────────────────────────────────────────────────────────────────────
+// Hotfix Waterfall SVG (28/05/2026) — Defaults agressivos no e2e
+//   Garantir que analiseVariacao() retorna AT MOST 6 visíveis + 2 totais
+//   (inicio + fim), com threshold 8% e mínimo 4 aplicados.
+// ────────────────────────────────────────────────────────────────────
+
+describe('Hotfix SVG: defaults agressivos em analiseVariacao', () => {
+  function tx(
+    catId: string,
+    catName: string,
+    date: string,
+    amount: number,
+  ): ComparativoInputTx {
+    return {
+      type: 'DEBIT',
+      amount,
+      bucketDate: new Date(date),
+      categoryId: catId,
+      categoryName: catName,
+      dreGroup: null,
+    }
+  }
+
+  it('com 10 categorias relevantes: waterfall enxuto (Top 6 visíveis)', () => {
+    const txs: ComparativoInputTx[] = []
+    // 10 categorias com volumes decrescentes claros (10k, 9k, 8k, ..., 1k)
+    for (let i = 0; i < 10; i++) {
+      txs.push(
+        tx(`c${i}`, `Cat${i}`, '2026-01-15T12:00:00.000Z', (10 - i) * 1000),
+      )
+      txs.push(tx(`c${i}`, `Cat${i}`, '2026-02-15T12:00:00.000Z', 0))
+    }
+    const r = analiseVariacao({
+      mode: 'mes-vs-mes',
+      txs,
+      mesInvestigado: '2026-01',
+      ymComparacao: '2026-02',
+      tipo: 'DESPESA',
+      topNDrivers: 10, // caller pede 10 mas DEFAULT_TOP_N=6 prevalece nos visuais
+    })
+    // Bars = início + visíveis (≤6) + talvez Outros + fim
+    // Limite superior: 1 + 6 + 1 + 1 = 9. Limite inferior: 1 + 4 + 0 + 1 = 6.
+    expect(r.waterfallBars.length).toBeGreaterThanOrEqual(6)
+    expect(r.waterfallBars.length).toBeLessThanOrEqual(9)
+    // Aritmética continua fechando independente do top
+    expect(r.aritmeticaFecha).toBe(true)
+  })
+
+  it('insights NÃO contém bullet "outros drivers" (removido no hotfix)', () => {
+    const txs: ComparativoInputTx[] = []
+    for (let i = 0; i < 10; i++) {
+      txs.push(
+        tx(`c${i}`, `Cat${i}`, '2026-01-15T12:00:00.000Z', (10 - i) * 1000),
+      )
+      txs.push(tx(`c${i}`, `Cat${i}`, '2026-02-15T12:00:00.000Z', 0))
+    }
+    const r = analiseVariacao({
+      mode: 'mes-vs-mes',
+      txs,
+      mesInvestigado: '2026-01',
+      ymComparacao: '2026-02',
+      tipo: 'DESPESA',
+    })
+    const outros = r.insightsPrincipais.find((i) => i.tipo === 'outros')
+    expect(outros).toBeUndefined()
   })
 })

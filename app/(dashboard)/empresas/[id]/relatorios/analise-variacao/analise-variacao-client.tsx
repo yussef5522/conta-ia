@@ -26,7 +26,7 @@ import {
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
-import { WaterfallChartDynamic } from '@/components/relatorios/analise-variacao/WaterfallChartWrapper'
+import { WaterfallChartSvgDynamic } from '@/components/relatorios/analise-variacao/WaterfallChartSvgWrapper'
 import type {
   AnaliseVariacaoResult,
   ComparacaoMode,
@@ -308,7 +308,7 @@ export function AnaliseVariacaoClient({ empresaId }: Props) {
                 Cada barra mostra o impacto de uma categoria. Linhas
                 pontilhadas conectam o efeito acumulado.
               </p>
-              <WaterfallChartDynamic bars={data.waterfallBars} />
+              <WaterfallChartSvgDynamic bars={data.waterfallBars} />
             </CardContent>
           </Card>
 
