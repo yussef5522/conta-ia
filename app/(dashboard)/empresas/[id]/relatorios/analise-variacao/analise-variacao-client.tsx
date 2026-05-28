@@ -31,6 +31,7 @@ import type {
   AnaliseVariacaoResult,
   ComparacaoMode,
   DriverVariacao,
+  Insight,
 } from '@/lib/relatorios/analise-variacao'
 import type { ComparativoTipoFilter } from '@/lib/relatorios/comparativo'
 
@@ -296,15 +297,25 @@ export function AnaliseVariacaoClient({ empresaId }: Props) {
           {/* Resumo executivo */}
           <ResumoCard data={data} />
 
-          {/* Waterfall chart */}
+          {/* Waterfall chart (Sprint Redesign McKinsey) */}
           <Card>
             <CardContent className="py-5">
-              <h3 className="text-sm font-semibold mb-3">
-                Cascata da variação
+              {/* Título dinâmico narrativo — substitui "Cascata da variação" */}
+              <h3 className="text-base font-semibold mb-1 leading-snug">
+                {data.tituloNarrativo}
               </h3>
+              <p className="text-xs text-muted-foreground mb-4">
+                Cada barra mostra o impacto de uma categoria. Linhas
+                pontilhadas conectam o efeito acumulado.
+              </p>
               <WaterfallChartDynamic bars={data.waterfallBars} />
             </CardContent>
           </Card>
+
+          {/* Bloco de insights principais (Sprint Redesign) */}
+          {data.insightsPrincipais.length > 0 && (
+            <InsightsCard insights={data.insightsPrincipais} />
+          )}
 
           {/* Tabela drivers */}
           <DriversTabela
@@ -367,6 +378,46 @@ function ResumoCard({ data }: { data: AnaliseVariacaoResult }) {
             </p>
           </div>
         </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function InsightsCard({ insights }: { insights: Insight[] }) {
+  const iconForTipo = (tipo: Insight['tipo']) => {
+    switch (tipo) {
+      case 'top-driver':
+        return '▸'
+      case 'novo':
+        return '🆕'
+      case 'sumiu':
+        return '✕'
+      case 'concentracao':
+        return '◆'
+      case 'outros':
+        return '·'
+    }
+  }
+  return (
+    <Card>
+      <CardContent className="py-4 px-6">
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-3">
+          💡 Insights principais
+        </p>
+        <ul className="space-y-2">
+          {insights.map((i, idx) => (
+            <li
+              key={idx}
+              className="text-sm flex items-start gap-2"
+              data-testid={`insight-${i.tipo}-${idx}`}
+            >
+              <span className="text-primary shrink-0 mt-0.5">
+                {iconForTipo(i.tipo)}
+              </span>
+              <span className="flex-1 text-foreground/90">{i.texto}</span>
+            </li>
+          ))}
+        </ul>
       </CardContent>
     </Card>
   )
