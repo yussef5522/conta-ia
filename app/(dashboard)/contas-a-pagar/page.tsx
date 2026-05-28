@@ -717,17 +717,8 @@ function ContasAPagarInner() {
             : 'Selecione uma empresa pra ver as contas a pagar'
         }
       >
-        {/* Sprint 5.0.3.0c (c2) — Density + Columns */}
-        <DensityToggle
-          density={tablePrefs.prefs.density}
-          onChange={tablePrefs.setDensity}
-          disabled={tablePrefs.isMobile}
-        />
-        <ColumnsButton
-          columns={ALL_COLUMNS}
-          hidden={tablePrefs.prefs.columnHidden}
-          onToggle={tablePrefs.toggleColumnHidden}
-        />
+        {/* Sprint 5.0.3.1 (UX #1) — Toolbar minimal: removidos DensityToggle
+            e ColumnsButton. Componentes mantidos no projeto pra reuso futuro. */}
         <ExportButton
           empresaId={empresaId}
           filtersQS={filtersQS}
@@ -798,28 +789,8 @@ function ContasAPagarInner() {
         />
       )}
 
-      {/* Empresa selector quando há múltiplas */}
-      {empresas.length > 1 && (
-        <Card>
-          <CardContent className="py-3">
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-muted-foreground">Empresa:</span>
-              <Select value={empresaId} onValueChange={setEmpresaId}>
-                <SelectTrigger className="w-auto min-w-[280px]">
-                  <SelectValue placeholder="Selecione…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {empresas.map((e) => (
-                    <SelectItem key={e.id} value={e.id}>
-                      {e.tradeName ?? e.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      {/* Sprint 5.0.3.1 (Bug #4) — Dropdown empresa removido. Seletor
+          global em workspace-switcher (topo do app) é o canônico. */}
 
       {/* Loading state */}
       {loading && empresaId && <PayableSkeleton />}
