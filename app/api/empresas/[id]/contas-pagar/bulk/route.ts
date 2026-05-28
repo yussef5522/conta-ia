@@ -53,13 +53,25 @@ async function loadOwnedTxs(
   const txs = await prisma.transaction.findMany({
     where: {
       id: { in: ids },
-      lifecycle: 'PAYABLE',
+      // Bug-fix 28/05/2026: aceita PAYABLE OR EFFECTED-que-nasceu-PAYABLE.
+      // Mas mark_paid SÓ deve operar sobre PAYABLE (validation depois detecta).
       OR: [
         { supplier: { companyId: empresaId } },
         { employee: { companyId: empresaId } },
         { category: { companyId: empresaId } },
         { bankAccount: { companyId: empresaId } },
       ],
+      AND: {
+        OR: [
+          { lifecycle: 'PAYABLE' },
+          {
+            lifecycle: 'EFFECTED',
+            dueDate: { not: null },
+            type: 'DEBIT',
+            reconciledWithId: null,
+          },
+        ],
+      },
     },
     select: {
       id: true,

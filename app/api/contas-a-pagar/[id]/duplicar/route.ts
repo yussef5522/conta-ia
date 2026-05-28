@@ -12,6 +12,7 @@ import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import { logAudit } from '@/lib/audit'
+import { isInPayableScope } from '@/lib/contas-pagar/lifecycle-scope'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -41,9 +42,13 @@ export async function POST(request: NextRequest, { params }: Params) {
         { status: 404 },
       )
     }
-    if (original.lifecycle !== 'PAYABLE') {
+    // Bug-fix 28/05/2026: aceita EFFECTED que nasceu como PAYABLE
+    if (!isInPayableScope(original)) {
       return NextResponse.json(
-        { erro: 'Só duplicamos lifecycle=PAYABLE', code: 'NOT_PAYABLE' },
+        {
+          erro: 'Conta fora do escopo de Contas a Pagar',
+          code: 'NOT_PAYABLE_SCOPE',
+        },
         { status: 422 },
       )
     }

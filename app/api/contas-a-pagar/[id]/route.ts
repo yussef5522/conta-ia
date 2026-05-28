@@ -12,6 +12,7 @@ import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import { logAudit, diffFields } from '@/lib/audit'
 import { contaAPagarUpdateSchema } from '@/lib/validations/contas-ap-ar'
+import { isInPayableScope } from '@/lib/contas-pagar/lifecycle-scope'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -28,6 +29,7 @@ async function carregarPayable(id: string) {
     },
   })
 }
+
 
 function resolveCompanyId(tx: {
   bankAccount?: { companyId: string } | null
@@ -54,9 +56,14 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         { status: 404 },
       )
     }
-    if (antiga.lifecycle !== 'PAYABLE') {
+    // Bug-fix 28/05/2026: aceita EFFECTED que nasceu como PAYABLE (Excel
+    // isPaid ou mark_paid após backfill). Veja lib/contas-pagar/lifecycle-scope.ts
+    if (!isInPayableScope(antiga)) {
       return NextResponse.json(
-        { erro: 'Endpoint só aceita lifecycle=PAYABLE', code: 'NOT_PAYABLE' },
+        {
+          erro: 'Conta fora do escopo de Contas a Pagar',
+          code: 'NOT_PAYABLE_SCOPE',
+        },
         { status: 422 },
       )
     }
@@ -186,9 +193,13 @@ export async function DELETE(request: NextRequest, { params }: Params) {
         { status: 404 },
       )
     }
-    if (tx.lifecycle !== 'PAYABLE') {
+    // Bug-fix 28/05/2026: aceita EFFECTED que nasceu como PAYABLE
+    if (!isInPayableScope(tx)) {
       return NextResponse.json(
-        { erro: 'Endpoint só aceita lifecycle=PAYABLE', code: 'NOT_PAYABLE' },
+        {
+          erro: 'Conta fora do escopo de Contas a Pagar',
+          code: 'NOT_PAYABLE_SCOPE',
+        },
         { status: 422 },
       )
     }

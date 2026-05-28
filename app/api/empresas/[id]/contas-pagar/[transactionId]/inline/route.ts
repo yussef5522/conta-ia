@@ -31,17 +31,28 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     const ctx = await getAuthContext(request, empresaId)
     ctx.requirePermission('transaction.update')
 
-    // Carrega a tx com escopo multi-tenant via OR
+    // Carrega a tx com escopo multi-tenant via OR.
+    // Bug-fix 28/05/2026: aceita PAYABLE OR EFFECTED-que-nasceu-PAYABLE.
     const antiga = await prisma.transaction.findFirst({
       where: {
         id: transactionId,
-        lifecycle: 'PAYABLE',
         OR: [
           { supplier: { companyId: empresaId } },
           { employee: { companyId: empresaId } },
           { category: { companyId: empresaId } },
           { bankAccount: { companyId: empresaId } },
         ],
+        AND: {
+          OR: [
+            { lifecycle: 'PAYABLE' },
+            {
+              lifecycle: 'EFFECTED',
+              dueDate: { not: null },
+              type: 'DEBIT',
+              reconciledWithId: null,
+            },
+          ],
+        },
       },
     })
     if (!antiga) {
