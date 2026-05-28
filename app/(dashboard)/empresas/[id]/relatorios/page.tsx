@@ -1,17 +1,38 @@
-// Sprint 5.0.4.0a — Index per-empresa de Relatórios.
+// Sprint 5.0.4.0b — Index /relatorios redesenhado world-class.
 //
-// 3 cards inicial: DRE Gerencial / Análise por Categoria / Comparativo 3 Meses.
-// Sub-sprints b/c/d adicionam mais cards (Fluxo de Caixa, Fornecedores,
-// Funcionários, Variâncias, Multi-empresa).
+// Estrutura:
+// - HERO CARD (Lucro Líquido do mês + sparkline + 3 mini-stats + CTA pro DRE)
+// - VISÃO GERAL (5 cards de preview com dados reais embutidos)
+// - ANÁLISES INTELIGENTES — EM BREVE (3 cards desabilitados, Sprint 5.0.4.0c)
+// - DEVE CHEGAR DEPOIS (lista textual com bullets)
+//
+// Server Component faz fetch único via getRelatoriosPreview (paralelo + cache 60s).
 
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { ArrowRight, BarChart3, PieChart, TrendingUp } from 'lucide-react'
+import {
+  PieChart,
+  TrendingUp,
+  Wallet,
+  Users,
+  Building2,
+  Sparkles,
+  LayoutGrid,
+  FileText,
+} from 'lucide-react'
 import type { Metadata } from 'next'
-import { Card, CardContent } from '@/components/ui/card'
 import { Header } from '@/components/layout/header'
 import { prisma } from '@/lib/db'
 import { resolveEmpresaAccess } from '@/lib/auth/resolve-empresa-access'
+import {
+  getRelatoriosPreview,
+  monthLabelShort,
+} from '@/lib/relatorios/preview-queries'
+import { HeroCard } from '@/components/relatorios/HeroCard'
+import {
+  ReportPreviewCard,
+  type ReportPreviewLine,
+} from '@/components/relatorios/ReportPreviewCard'
+import { FutureReportCard } from '@/components/relatorios/FutureReportCard'
 
 export const metadata: Metadata = { title: 'Relatórios' }
 export const dynamic = 'force-dynamic'
@@ -20,44 +41,21 @@ interface PageProps {
   params: Promise<{ id: string }>
 }
 
-interface ReportCard {
-  id: string
-  title: string
-  description: string
-  href: (empresaId: string) => string
-  icon: typeof BarChart3
-  accentClass: string
+function formatBRL(v: number): string {
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+    maximumFractionDigits: 0,
+  }).format(v)
 }
 
-const REPORTS: ReportCard[] = [
-  {
-    id: 'dre-gerencial',
-    title: 'DRE Gerencial',
-    description:
-      'Demonstrativo de resultado do exercício — receita, custos, lucro mensal e variações vs período anterior.',
-    href: (id) => `/empresas/${id}/relatorios/dre-gerencial`,
-    icon: BarChart3,
-    accentClass: 'text-emerald-600 dark:text-emerald-400',
-  },
-  {
-    id: 'categorias',
-    title: 'Análise por Categoria',
-    description:
-      'Top 10 categorias onde sua empresa mais gastou. Drill-down em fornecedores e transações.',
-    href: (id) => `/empresas/${id}/relatorios/categorias`,
-    icon: PieChart,
-    accentClass: 'text-sky-600 dark:text-sky-400',
-  },
-  {
-    id: 'comparativo',
-    title: 'Comparativo Mensal',
-    description:
-      '3 meses lado a lado. Veja o que aumentou, o que diminuiu e o que apareceu pela primeira vez.',
-    href: (id) => `/empresas/${id}/relatorios/comparativo`,
-    icon: TrendingUp,
-    accentClass: 'text-purple-600 dark:text-purple-400',
-  },
-]
+function formatBRLPrecise(v: number): string {
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+    maximumFractionDigits: 2,
+  }).format(v)
+}
 
 export default async function RelatoriosIndexPage({ params }: PageProps) {
   const { id: empresaId } = await params
@@ -65,60 +63,313 @@ export default async function RelatoriosIndexPage({ params }: PageProps) {
   if (access.kind === 'no-access' || access.kind === 'forbidden') notFound()
   if (access.kind === 'no-empresa-selected') notFound()
 
-  // Garante que a URL bate com a empresa do cookie (defesa em profundidade)
   const empresa = await prisma.company.findUnique({
     where: { id: empresaId },
     select: { id: true, name: true, tradeName: true },
   })
   if (!empresa) notFound()
 
+  const preview = await getRelatoriosPreview(empresaId)
+
+  // ---- Build cards data ----
+
+  // Categorias
+  const categoriasLines: ReportPreviewLine[] = preview.categorias.top3.map(
+    (c) => ({
+      label: c.name,
+      value: `${c.percent.toFixed(0)}%`,
+      tone: 'neutral',
+    }),
+  )
+
+  // Comparativo — sparkline 3m em vermelho (despesas)
+  const compSpark = preview.comparativo.sparkline3m
+
+  // Fluxo Caixa — saldo positivo verde / negativo vermelho
+  const fluxoSaldoTone = preview.fluxoCaixa.isPositive ? 'emerald' : 'red'
+  const proxResultTone =
+    preview.fluxoCaixa.proxima30.resultado >= 0 ? 'emerald' : 'red'
+
+  // Fornecedores — top supplier + crescimento
+  const fornecedoresLines: ReportPreviewLine[] = []
+  if (preview.fornecedores.maiorCrescimento) {
+    fornecedoresLines.push({
+      label: 'Maior crescimento',
+      value: `${preview.fornecedores.maiorCrescimento.name} +${preview.fornecedores.maiorCrescimento.percent.toFixed(0)}%`,
+      tone: 'amber',
+    })
+  }
+  fornecedoresLines.push({
+    label: 'Cadastrados',
+    value: String(preview.fornecedores.totalSuppliers),
+  })
+
+  // Funcionários
+  const funcMediaPorFunc =
+    preview.funcionarios.ativos > 0
+      ? preview.funcionarios.totalFolhaMes / preview.funcionarios.ativos
+      : 0
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <Header
         title="Relatórios"
         description={`Entenda para onde vai o dinheiro de ${empresa.tradeName ?? empresa.name}`}
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {REPORTS.map((r) => {
-          const Icon = r.icon
-          return (
-            <Link
-              key={r.id}
-              href={r.href(empresaId)}
-              className="group block focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 rounded-lg"
-              data-testid={`report-card-${r.id}`}
-            >
-              <Card className="h-full transition-all hover:border-primary/40 hover:shadow-md cursor-pointer">
-                <CardContent className="py-6 px-5 space-y-3">
-                  <div className="flex items-start gap-3">
-                    <Icon className={`h-8 w-8 shrink-0 ${r.accentClass}`} />
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-base">{r.title}</h3>
-                    </div>
-                  </div>
-                  <p className="text-sm text-muted-foreground leading-relaxed">
-                    {r.description}
-                  </p>
-                  <div className="flex items-center gap-1 text-sm text-primary group-hover:gap-2 transition-all pt-1">
-                    <span className="font-medium">Abrir relatório</span>
-                    <ArrowRight className="h-3.5 w-3.5" />
-                  </div>
-                </CardContent>
-              </Card>
-            </Link>
-          )
-        })}
+      {/* HERO CARD */}
+      <HeroCard preview={preview.hero} empresaId={empresaId} />
+
+      {/* VISÃO GERAL */}
+      <div className="space-y-4">
+        <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+          <LayoutGrid className="h-3.5 w-3.5" />
+          Visão Geral
+        </h2>
+
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {/* Análise por Categoria */}
+          <ReportPreviewCard
+            icon={PieChart}
+            iconColor="#0ea5e9"
+            title="Análise por Categoria"
+            primaryStat={
+              preview.categorias.topCategory
+                ? {
+                    label: 'Top categoria',
+                    value: `${preview.categorias.topCategory.name} ${formatBRL(preview.categorias.topCategory.value)}`,
+                    tone: 'sky',
+                  }
+                : undefined
+            }
+            lines={categoriasLines}
+            hasData={preview.categorias.hasData}
+            emptyMessage="Sem despesas categorizadas no mês."
+            ctaHref={`/empresas/${empresaId}/relatorios/categorias`}
+            ctaLabel="Abrir análise"
+            testId="preview-card-categorias"
+          />
+
+          {/* Comparativo Mensal */}
+          <ReportPreviewCard
+            icon={TrendingUp}
+            iconColor="#a855f7"
+            title="Comparativo Mensal"
+            primaryStat={{
+              label: 'Categorias subindo este mês',
+              value: String(preview.comparativo.subindo),
+              tone: preview.comparativo.subindo > 0 ? 'amber' : 'neutral',
+            }}
+            lines={
+              preview.comparativo.maiorAlta
+                ? [
+                    {
+                      label: 'Maior alta',
+                      value: `${preview.comparativo.maiorAlta.name} +${preview.comparativo.maiorAlta.percent.toFixed(0)}%`,
+                      tone: 'red',
+                    },
+                  ]
+                : undefined
+            }
+            sparkline={
+              compSpark.length >= 2
+                ? { data: compSpark, color: '#ef4444' }
+                : undefined
+            }
+            hasData={preview.comparativo.subindo > 0 || compSpark.some((p) => p.value > 0)}
+            emptyMessage="Sem dados suficientes para comparar (mínimo 2 meses)."
+            ctaHref={`/empresas/${empresaId}/relatorios/comparativo`}
+            ctaLabel="Ver comparativo"
+            testId="preview-card-comparativo"
+          />
+
+          {/* Fluxo de Caixa (NOVO) */}
+          <ReportPreviewCard
+            icon={Wallet}
+            iconColor="#10b981"
+            title="Fluxo de Caixa"
+            primaryStat={{
+              label: `Saldo ${preview.fluxoCaixa.monthLabel}`,
+              value: formatBRLPrecise(preview.fluxoCaixa.saldoMesAtual),
+              tone: fluxoSaldoTone,
+            }}
+            lines={[
+              {
+                label: 'Próx 30d — Entradas',
+                value: formatBRL(preview.fluxoCaixa.proxima30.entradas),
+                tone: 'emerald',
+              },
+              {
+                label: 'Próx 30d — Saídas',
+                value: formatBRL(preview.fluxoCaixa.proxima30.saidas),
+                tone: 'red',
+              },
+              {
+                label: 'Próx 30d — Resultado',
+                value:
+                  (preview.fluxoCaixa.proxima30.resultado >= 0 ? '+' : '') +
+                  formatBRL(preview.fluxoCaixa.proxima30.resultado),
+                tone: proxResultTone,
+              },
+            ]}
+            hasData={true}
+            ctaHref={`/empresas/${empresaId}/relatorios/fluxo-caixa`}
+            ctaLabel="Ver fluxo completo"
+            testId="preview-card-fluxo-caixa"
+          />
+
+          {/* Top Fornecedores (NOVO) */}
+          <ReportPreviewCard
+            icon={Building2}
+            iconColor="#f59e0b"
+            title="Top Fornecedores"
+            primaryStat={
+              preview.fornecedores.topSupplier
+                ? {
+                    label: 'Top fornecedor do mês',
+                    value: `${preview.fornecedores.topSupplier.name}`,
+                    tone: 'amber',
+                  }
+                : undefined
+            }
+            lines={
+              preview.fornecedores.topSupplier
+                ? [
+                    {
+                      label: 'Pago',
+                      value: formatBRL(preview.fornecedores.topSupplier.value),
+                    },
+                    {
+                      label: '% do total',
+                      value: `${preview.fornecedores.topSupplier.percent.toFixed(0)}%`,
+                    },
+                    ...fornecedoresLines,
+                  ]
+                : fornecedoresLines
+            }
+            hasData={preview.fornecedores.topSupplier !== null}
+            emptyMessage="Sem pagamentos a fornecedores no mês."
+            ctaHref={`/empresas/${empresaId}/relatorios/fornecedores`}
+            ctaLabel="Ver top fornecedores"
+            testId="preview-card-fornecedores"
+          />
+
+          {/* Folha Funcionários (NOVO) */}
+          <ReportPreviewCard
+            icon={Users}
+            iconColor="#8b5cf6"
+            title="Folha de Pagamento"
+            primaryStat={{
+              label: `Folha ${preview.funcionarios.monthLabel}`,
+              value: formatBRL(preview.funcionarios.totalFolhaMes),
+              tone: 'purple',
+            }}
+            lines={[
+              {
+                label: 'Funcionários ativos',
+                value: String(preview.funcionarios.ativos),
+              },
+              ...(preview.funcionarios.ativos > 0
+                ? [
+                    {
+                      label: 'Média por funcionário',
+                      value: formatBRL(funcMediaPorFunc),
+                    },
+                  ]
+                : []),
+            ]}
+            hasData={
+              preview.funcionarios.ativos > 0 ||
+              preview.funcionarios.totalFolhaMes > 0
+            }
+            emptyMessage="Sem funcionários cadastrados."
+            ctaHref={`/empresas/${empresaId}/relatorios/funcionarios`}
+            ctaLabel="Detalhar folha"
+            testId="preview-card-funcionarios"
+          />
+
+          {/* DRE Gerencial — mantém visibilidade próxima ao hero (último card) */}
+          <ReportPreviewCard
+            icon={FileText}
+            iconColor="#0d9488"
+            title="DRE Gerencial"
+            primaryStat={{
+              label: 'Demonstrativo completo',
+              value: 'Receita → Lucro',
+              tone: 'emerald',
+            }}
+            lines={[
+              {
+                label: 'Margem líquida',
+                value:
+                  preview.hero.margemPct !== null
+                    ? `${preview.hero.margemPct.toFixed(1)}%`
+                    : '—',
+                tone: 'emerald',
+              },
+              {
+                label: 'Comparativo',
+                value: `${preview.hero.monthLabel.split('/')[0]} vs ${monthLabelShort(
+                  new Date(
+                    Date.UTC(
+                      Number(preview.hero.monthLabel.split('/')[1]),
+                      ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'].indexOf(
+                        preview.hero.monthLabel.split('/')[0],
+                      ) - 1,
+                      1,
+                    ),
+                  ),
+                )}`,
+              },
+            ]}
+            hasData={true}
+            ctaHref={`/empresas/${empresaId}/relatorios/dre-gerencial`}
+            ctaLabel="Abrir DRE"
+            testId="preview-card-dre"
+          />
+        </div>
       </div>
 
-      <Card className="bg-muted/30 border-dashed">
-        <CardContent className="py-4 px-5">
-          <p className="text-xs text-muted-foreground">
-            Mais relatórios chegando em breve: Fluxo de Caixa, Top Fornecedores,
-            Análise de Variâncias com IA, Consolidado Multi-empresa.
-          </p>
-        </CardContent>
-      </Card>
+      {/* ANÁLISES INTELIGENTES — EM BREVE */}
+      <div className="space-y-4">
+        <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+          <Sparkles className="h-3.5 w-3.5" />
+          Análises Inteligentes — em breve
+        </h2>
+
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <FutureReportCard
+            icon={Sparkles}
+            title="Detecção de Variâncias"
+            description="IA identifica gastos atípicos no mês e te avisa antes de fechar o resultado."
+            sprintLabel="Sprint 5.0.4.0c"
+          />
+          <FutureReportCard
+            icon={Building2}
+            title="Multi-empresa Consolidado"
+            description="DRE consolidada das suas 13 academias num único painel comparativo."
+            sprintLabel="Sprint 5.0.4.0c"
+          />
+          <FutureReportCard
+            icon={FileText}
+            title="Insights Narrativos com IA"
+            description="Resumo automático em texto: o que mudou, por que mudou e o que fazer."
+            sprintLabel="Sprint 5.0.4.0c"
+          />
+        </div>
+      </div>
+
+      {/* DEVE CHEGAR DEPOIS */}
+      <div className="rounded-lg border border-dashed border-slate-200 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-900/30 p-5">
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+          Deve chegar depois
+        </p>
+        <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
+          <li>Export PDF profissional (Sprint 5.0.4.0d)</li>
+          <li>Comparativo orçado vs realizado</li>
+          <li>Análise por centro de custo</li>
+        </ul>
+      </div>
     </div>
   )
 }
