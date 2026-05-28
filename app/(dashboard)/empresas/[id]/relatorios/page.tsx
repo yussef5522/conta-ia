@@ -18,6 +18,7 @@ import {
   Sparkles,
   LayoutGrid,
   FileText,
+  AlertTriangle,
 } from 'lucide-react'
 import type { Metadata } from 'next'
 import { Header } from '@/components/layout/header'
@@ -33,6 +34,7 @@ import {
   type ReportPreviewLine,
 } from '@/components/relatorios/ReportPreviewCard'
 import { FutureReportCard } from '@/components/relatorios/FutureReportCard'
+import { AIInsightsCard } from '@/components/relatorios/AIInsightsCard'
 
 export const metadata: Metadata = { title: 'Relatórios' }
 export const dynamic = 'force-dynamic'
@@ -70,6 +72,33 @@ export default async function RelatoriosIndexPage({ params }: PageProps) {
   if (!empresa) notFound()
 
   const preview = await getRelatoriosPreview(empresaId)
+
+  // Períodos pro AI Insights — mês atual vs mês anterior (UTC)
+  const now = new Date()
+  const cy = now.getUTCFullYear()
+  const cm = now.getUTCMonth() + 1
+  const py = cm === 1 ? cy - 1 : cy
+  const pm = cm === 1 ? 12 : cm - 1
+  const MES = [
+    'Janeiro',
+    'Fevereiro',
+    'Março',
+    'Abril',
+    'Maio',
+    'Junho',
+    'Julho',
+    'Agosto',
+    'Setembro',
+    'Outubro',
+    'Novembro',
+    'Dezembro',
+  ]
+  const aiPeriods = {
+    current: `${cy}-${String(cm).padStart(2, '0')}`,
+    base: `${py}-${String(pm).padStart(2, '0')}`,
+    currentLabel: `${MES[cm - 1]}/${cy}`,
+    baseLabel: `${MES[pm - 1]}/${py}`,
+  }
 
   // ---- Build cards data ----
 
@@ -119,6 +148,15 @@ export default async function RelatoriosIndexPage({ params }: PageProps) {
 
       {/* HERO CARD */}
       <HeroCard preview={preview.hero} empresaId={empresaId} />
+
+      {/* AI INSIGHTS — Sprint 5.0.4.0c1 */}
+      <AIInsightsCard
+        empresaId={empresaId}
+        currentPeriod={aiPeriods.current}
+        basePeriod={aiPeriods.base}
+        currentLabel={aiPeriods.currentLabel}
+        baseLabel={aiPeriods.baseLabel}
+      />
 
       {/* VISÃO GERAL */}
       <div className="space-y-4">
@@ -327,6 +365,32 @@ export default async function RelatoriosIndexPage({ params }: PageProps) {
             ctaLabel="Abrir DRE"
             testId="preview-card-dre"
           />
+
+          {/* Variâncias (NOVO Sprint 5.0.4.0c1) */}
+          <ReportPreviewCard
+            icon={AlertTriangle}
+            iconColor="#ef4444"
+            title="Variâncias Detectadas"
+            primaryStat={{
+              label: 'Mudanças significativas',
+              value: `${aiPeriods.currentLabel.split('/')[0]} vs ${aiPeriods.baseLabel.split('/')[0]}`,
+              tone: 'red',
+            }}
+            lines={[
+              {
+                label: 'Threshold',
+                value: 'Variação > 15% · R$ 500+',
+              },
+              {
+                label: 'Detecta',
+                value: '↑↑ críticas · 🆕 novas · ✕ sumiu',
+              },
+            ]}
+            hasData={true}
+            ctaHref={`/empresas/${empresaId}/relatorios/variancias`}
+            ctaLabel="Ver variâncias"
+            testId="preview-card-variancias"
+          />
         </div>
       </div>
 
@@ -337,24 +401,18 @@ export default async function RelatoriosIndexPage({ params }: PageProps) {
           Análises Inteligentes — em breve
         </h2>
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <FutureReportCard
-            icon={Sparkles}
-            title="Detecção de Variâncias"
-            description="IA identifica gastos atípicos no mês e te avisa antes de fechar o resultado."
-            sprintLabel="Sprint 5.0.4.0c"
-          />
+        <div className="grid gap-4 sm:grid-cols-2">
           <FutureReportCard
             icon={Building2}
             title="Multi-empresa Consolidado"
             description="DRE consolidada das suas 13 academias num único painel comparativo."
-            sprintLabel="Sprint 5.0.4.0c"
+            sprintLabel="Sprint 5.0.4.0c2"
           />
           <FutureReportCard
             icon={FileText}
-            title="Insights Narrativos com IA"
-            description="Resumo automático em texto: o que mudou, por que mudou e o que fazer."
-            sprintLabel="Sprint 5.0.4.0c"
+            title="Export PDF profissional"
+            description="DRE + Categorias + Variâncias num PDF com sua marca pra enviar pro contador."
+            sprintLabel="Sprint 5.0.4.0d"
           />
         </div>
       </div>
