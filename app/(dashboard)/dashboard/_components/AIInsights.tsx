@@ -97,7 +97,7 @@ function buildDemoInsights(companyId: string, count: number): Insight[] {
       priority: 6,
       title: 'Top 3 clientes = 82% da receita',
       description: 'Ampliar a base de clientes traz mais previsibilidade.',
-      action: { label: 'Ver receitas', url: `/dre` },
+      action: { label: 'Ver receitas', url: `/empresas/${companyId}/relatorios/dre-gerencial` },
     },
     {
       id: 'revenue-growth',
@@ -105,7 +105,7 @@ function buildDemoInsights(companyId: string, count: number): Insight[] {
       priority: 7,
       title: '🚀 Receita cresceu 80% no mês',
       description: 'Crescimento expressivo — vale entender o que funcionou.',
-      action: { label: 'Ver DRE', url: `/dre` },
+      action: { label: 'Ver DRE', url: `/empresas/${companyId}/relatorios/dre-gerencial` },
     },
     {
       id: 'duplicate-subscriptions',
@@ -113,7 +113,7 @@ function buildDemoInsights(companyId: string, count: number): Insight[] {
       priority: 6,
       title: '3 cobranças recorrentes detectadas (~R$ 135,00/mês)',
       description: 'NETFLIX, SPOTIFY, GOOGLE WORKSPACE.',
-      action: { label: 'Revisar despesas', url: `/dre` },
+      action: { label: 'Revisar despesas', url: `/empresas/${companyId}/relatorios/dre-gerencial` },
     },
   ]
   return demos.slice(0, Math.min(count, demos.length))

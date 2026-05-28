@@ -521,6 +521,55 @@ Depois que IA está validada, melhora ergonomia para volumes maiores.
 
 ---
 
+## 🚨 Anti-padrão detectado em Sprint 5.0.4.0a (27/05/2026)
+
+Sprint 5.0.4.0a foi declarada entregue com DoD items "✅". Yussef testou
+em prod (HEAD 1e91f4a) e encontrou que 2 items estavam falsos:
+- Sidebar NÃO tinha item "Relatórios" (tinha "DRE Gerencial" antigo)
+- Clicar "DRE Gerencial" abria DRE antigo (sem redirect 301)
+
+CAUSA RAIZ: Marquei DoD como ✅ baseado em "código foi escrito" em vez
+de "código foi VALIDADO no browser real". Erro concreto: editei
+`components/layout/sidebar.tsx` mas o sidebar real do app é
+`components/sidebar/global-sidebar.tsx` (sidebar única do TopBar, Sprint
+4.0.5.a). Como nunca abri o app no browser, não vi que estava editando
+o arquivo errado.
+
+### REGRA REFORÇADA — validação visual obrigatória
+
+Antes de marcar QUALQUER DoD item como ✅:
+- DoD que mexe em **sidebar** → abrir o app e ver o sidebar
+- DoD que mexe em **rota** → abrir a rota
+- DoD que mexe em **link** → clicar no link
+- DoD que mexe em **redirect** → testar via curl `-i` antes do dev server morrer
+- DoD que mexe em **layout** → screenshot ou descrição visual
+
+"Código escrito" ≠ "DoD cumprido".
+
+### Workflow obrigatório ao final de toda sprint
+
+1. `npm run build` OK (TS strict 0)
+2. `npm run dev` → abrir browser local (`localhost:3000`)
+3. Percorrer manualmente CADA item do DoD na UI real
+4. Para redirects: `curl -i` validando status HTTP exato
+5. SÓ DEPOIS declarar entregue
+6. Solicitar smoke test do Yussef em prod
+
+### Quando não posso validar no browser
+
+Se o ambiente não permitir browser interativo (sem MCP browser, sem
+display), **DECLARAR A LIMITAÇÃO EXPLICITAMENTE** no relatório de
+entrega antes de pedir smoke test:
+
+> "Não tenho acesso a browser nesta sessão. Validei via build + tests
+> + curl, mas DoD items que dependem de visual (sidebar, layout, links)
+> precisam de smoke test do Yussef antes de fechar a sprint."
+
+Nunca mais marcar DoD visual como ✅ sem ter olhado com olhos humanos
+(meus via screenshot/curl, ou de Yussef via teste real).
+
+---
+
 ## 🛡️ Definição de Pronto (DoD) — REGRA CRÍTICA
 
 Sprint 5.0.2.3 (26/05/2026) instituiu esse protocolo PERMANENTE após

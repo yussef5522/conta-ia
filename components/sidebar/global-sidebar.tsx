@@ -20,6 +20,7 @@ import {
   Store,
   History,
   TrendingUp,
+  BarChart3,
   Shield,
   ShieldCheck,
   FileText,
@@ -139,11 +140,17 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
           isActive={pathname.startsWith('/transacoes')}
           onClick={onNavigate}
         />
+        {/* Hotfix 5.0.4.0a-fix — Relatórios substituiu DRE Gerencial.
+            Index per-empresa contém DRE + Categorias + Comparativo. */}
         <SidebarItem
-          icon={TrendingUp}
-          label="DRE Gerencial"
-          href="/dre"
-          isActive={pathname === '/dre' || (pathname.startsWith('/empresas/') && pathname.endsWith('/dre'))}
+          icon={BarChart3}
+          label="Relatórios"
+          href={currentEmpresaId ? `/empresas/${currentEmpresaId}/relatorios` : '/relatorios'}
+          isActive={
+            pathname === '/relatorios' ||
+            pathname.startsWith('/relatorios/') ||
+            /^\/empresas\/[^/]+\/relatorios(\/|$)/.test(pathname)
+          }
           onClick={onNavigate}
         />
 
