@@ -1331,6 +1331,112 @@ Yussef classificando transações em escala.
 4. Próximo sprint: Sprint 3.0.5 (a planejar) ou pular pra FASE 6
    (Relatórios PDF — DRE + DFC + Conciliação)
 
+### 27/05/2026 — Hotfix 5.0.4.0a-fix + Sprint 5.0.4.0b DEEP DIVE
+
+**Contexto:** sessão dupla — primeiro um hotfix da Sprint 5.0.4.0a (DoD
+falhado), depois Sprint 5.0.4.0b inteira em sequência única.
+
+#### Hotfix 5.0.4.0a-fix (commit `d5c5a0c`, merge `83997b9`)
+
+Yussef testou Sprint 5.0.4.0a em prod e detectou 2 DoD items declarados
+✅ que estavam FALSOS:
+- Sidebar AINDA tinha "DRE Gerencial" antigo
+- DRE antigo abria sem redirect 301
+
+**Causa raiz:** eu editei `components/layout/sidebar.tsx` quando o sidebar
+real do app é `components/sidebar/global-sidebar.tsx` (TopBar Sprint
+4.0.5.a). Como nunca abri o app no browser, não vi que tava no arquivo
+errado. Marquei DoD baseado em "código foi escrito" em vez de "código
+foi validado visualmente".
+
+**Fix completo:**
+- `global-sidebar.tsx`: removido item TrendingUp "DRE Gerencial" → /dre;
+  adicionado BarChart3 "Relatórios" com href per-empresa
+  (`/empresas/${currentEmpresaId}/relatorios` quando há empresa no
+  contexto, fallback `/relatorios` cookie-based)
+- `next.config.mjs`: redirects 301 explícitos pra `/empresas/:id/dre` +
+  `/empresas/:id/dre-gerencial` (Next default seria 308 com
+  `permanent:true`; forçado `statusCode: 301` conforme spec)
+- `MiniDRE.tsx` + `AIInsights.tsx`: 4 URLs `/dre` atualizadas pra
+  `/empresas/${companyId}/relatorios/dre-gerencial`
+- `app/(dashboard)/empresas/[id]/dre/page.tsx` DELETADO (next.config
+  pega antes do file system routing, 1 hop em vez de cadeia de 2)
+- `CLAUDE.md`: nova seção "🚨 Anti-padrão detectado em Sprint 5.0.4.0a"
+  com regra reforçada "Código escrito ≠ DoD cumprido" + workflow visual
+  obrigatório + protocolo pra quando não tenho browser
+
+**Validação:** curl em dev local + prod confirmou HTTP 301 explícito.
+
+#### Sprint 5.0.4.0b DEEP DIVE (merge `22ad9d6`, 4 commits)
+
+**Pedido do Yussef:** transformar `/relatorios` de MVP (3 cards iguais)
+em world-class Pilot.com/Ramp/Mercury (hero gradient + cards com dados
+reais embutidos + roadmap visual) + entregar 3 relatórios novos.
+
+**Auditoria pré-execução** (commit `dc535be`):
+- Backup `/var/backups/conta-ia/pre-5.0.4.0b-20260527_214933.dump` (553K)
+- Recharts 3.8.1 + Framer Motion 12.38.0 já instalados
+- Employee.tipo já é String — **sem migration**
+- Cacula tem só 4 meses de dados — sparkline adaptativo (3-12m) em vez
+  de 12m fixo
+- profit itaqui zerado — empty states graciosos necessários
+- 10 libs reusáveis mapeadas (zero engine novo)
+
+**Fase 2** (commit `1b0c2cf`): Redesign `/relatorios`
+- `lib/relatorios/preview-queries.ts` (548 linhas, 6 funções server +
+  orquestrador paralelo) com cache 60s tag `relatorios:${empresaId}`
+- 7 componentes novos em `components/relatorios/`: HeroCard (gradient
+  slate-900→blue-900, sparkline Recharts AreaChart, 3 mini-stats),
+  HeroSparkline + Wrapper (dynamic ssr:false pro Next 16),
+  MiniSparkline + Wrapper, ReportPreviewCard (reusável tipado com
+  tones semânticos), FutureReportCard (opacity-60 + sprint badge)
+- Page.tsx reescrita: Hero + Visão Geral (6 cards) + Análises
+  Inteligentes (3 future Sprint 0c) + Deve chegar depois (3 bullets 0d)
+
+**Fases 3-5** (commit `e81efaa`):
+- **Fluxo Caixa** (`/relatorios/fluxo-caixa`): `lib/cash-flow.ts` com
+  `computeCashFlowProjection` (30/60/90 cumulativo) +
+  `computeAccumulatedBalance`. Endpoint reusa
+  `calculateConsolidatedCashflow` (Sprint 0.5). UI com 4 stats +
+  CashFlowChart (Recharts ComposedChart 2 Bar + Line) + tabela projeção
+- **Fornecedores** (`/relatorios/fornecedores`): `lib/top-suppliers.ts`
+  com trendIndicator simplificado (NEW/UP/DOWN_STRONG/etc) +
+  concentracaoTop5. UI com top 10 + trend visual + barra concentração
+  com warning > 60%
+- **Folha** (`/relatorios/funcionarios`): `lib/payroll.ts` com
+  breakdown por tipo (CLT/ESTAGIO/PJ/AUTONOMO/OUTRO). UI com badges
+  coloridos + tabela detalhada + flag inativo
+
+**Decisão de produto registrada:**
+- Drill-down modal lateral fica pro backlog Sprint 5.0.4.0d (junto com
+  Export PDF). Tabela atual + filtros + hover row são suficientes pra
+  MVP. Yussef aprovou.
+
+**Checkpoint após Fase 2:** deploy parcial feature branch em prod,
+Yussef validou visualmente, aprovou pra seguir Fases 3-5.
+
+**Métricas finais:**
+- Tests: **3136 → 3192 (+56)** ✓ atingiu alvo +50 da spec
+- TypeScript strict: 0 erros
+- Build: ✓ 4.2s
+- 4 commits feat + 1 audit + 1 merge = 6 commits totais
+- Sem migration · backup pré-sprint salvo
+- pm2 ↺ 138 online
+
+**6 rotas de relatórios funcionais em prod:**
+- /relatorios/dre-gerencial (5.0.4.0a)
+- /relatorios/categorias (5.0.4.0a)
+- /relatorios/comparativo (5.0.4.0a)
+- /relatorios/fluxo-caixa (5.0.4.0b NOVO)
+- /relatorios/fornecedores (5.0.4.0b NOVO)
+- /relatorios/funcionarios (5.0.4.0b NOVO)
+
+Branch `feature/sprint-5.0.4.0b-deep-dive-redesign` ENTREGUE em prod
+via merge no main. Pode ser deletada (mantida no remote pra histórico).
+
+**Próximo passo:** Sprint 5.0.4.0c1 — Variâncias + IA narrativa
+(aguardando prompt do Yussef).
+
 ### [Próxima sessão] — preencher
 - Data:
 - O que foi feito:
