@@ -164,6 +164,22 @@ function ContasAPagarInner() {
       (searchParams.get('status') as PayableFilterState['status']) ?? 'PENDING',
     vencidasOnly: searchParams.get('vencidasOnly') === 'true',
   }))
+  // Sprint 5.0.3.3 — Sincroniza state local com searchParams.empresaId.
+  // Necessário porque WorkspaceSwitcher faz router.replace(?empresaId=X) e
+  // o `useState(searchParams.get('empresaId'))` só roda no INIT. Sem este
+  // effect, mudanças na URL via switcher não atualizavam o state local —
+  // page continuava fetchando dados da empresa antiga ("precisava sair e voltar").
+  useEffect(() => {
+    const urlEmpresaId = searchParams.get('empresaId') ?? ''
+    if (urlEmpresaId && urlEmpresaId !== empresaId) {
+      setEmpresaId(urlEmpresaId)
+      // Reseta state derivado da empresa (paginação + seleção)
+      setSelection({})
+      setPage(1)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
+
   // Busca textual debounce
   const [qDebounced, setQDebounced] = useState(filters.q)
   useEffect(() => {

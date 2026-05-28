@@ -45,6 +45,17 @@ function ClientesInner() {
 
   const [empresas, setEmpresas] = useState<Empresa[]>([])
   const [empresaId, setEmpresaId] = useState<string>(searchParams.get('empresaId') ?? '')
+
+  // Sprint 5.0.3.3 — Sincroniza state com searchParams.empresaId quando
+  // WorkspaceSwitcher troca empresa.
+  useEffect(() => {
+    const urlEmpresaId = searchParams.get('empresaId') ?? ''
+    if (urlEmpresaId && urlEmpresaId !== empresaId) {
+      setEmpresaId(urlEmpresaId)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
+
   const [customers, setCustomers] = useState<Customer[]>([])
   const [loading, setLoading] = useState(true)
   const [busca, setBusca] = useState('')

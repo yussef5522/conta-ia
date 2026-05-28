@@ -25,7 +25,14 @@ interface EmpresaContextValue {
   currentEmpresa: EmpresaMini | null
   empresas: EmpresaMini[]
   loading: boolean
-  setCurrentEmpresa: (id: string) => void
+  /**
+   * Sprint 5.0.3.3 — Retorna Promise. Awaita o cookie httpOnly setar
+   * no server antes de navegação/refresh (evita race condition com Server
+   * Components que leem o cookie).
+   *
+   * Callsites podem `void setCurrentEmpresa(id)` se não precisarem aguardar.
+   */
+  setCurrentEmpresa: (id: string) => Promise<void>
   reloadEmpresas: () => Promise<void>
 }
 
@@ -120,51 +127,63 @@ export function EmpresaProvider({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname, searchParams, empresas])
 
-  const setCurrentEmpresa = useCallback((id: string) => {
-    setCurrentEmpresaIdState(id)
-    try {
-      window.localStorage.setItem(STORAGE_KEY, id)
-    } catch {
-      // ignore
-    }
-    // Sprint 4.0.5.b — sincroniza cookie httpOnly pra server pages globais
-    void fetch('/api/empresas/atual', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ empresaId: id }),
-    }).catch(() => {})
+  const setCurrentEmpresa = useCallback(
+    async (id: string): Promise<void> => {
+      setCurrentEmpresaIdState(id)
+      try {
+        window.localStorage.setItem(STORAGE_KEY, id)
+      } catch {
+        // ignore
+      }
 
-    // Sprint 5.0.3.2 — Navegação reativa ao trocar empresa.
-    // Antes: contexto atualizava state mas página atual continuava lendo
-    // `?empresaId=` ou `?empresa=` antigo da URL → stale data até reload manual.
-    //
-    // 3 caminhos pra refletir mudança:
-    //   1. Path `/empresas/[oldId]/...` → navega pra `/empresas/[newId]/...`
-    //   2. URL tem `?empresaId=` ou `?empresa=` → substitui pelo novo ID
-    //   3. Página global sem empresa na URL → router.refresh()
-    const pathMatch = pathname.match(PATH_EMPRESA_RE)
-    if (pathMatch) {
-      const oldId = pathMatch[1]
-      if (oldId !== id) {
-        const newPath = pathname.replace(oldId, id)
-        const qs = searchParams.toString()
-        router.push(qs ? `${newPath}?${qs}` : newPath)
+      // Sprint 5.0.3.3 — AWAIT o fetch ANTES de navigate/refresh.
+      // Antes (5.0.3.2): void fetch (fire-and-forget) + router.refresh em
+      // sequência → race condition: Server Components liam o cookie ANTIGO
+      // porque o POST estava em voo. Dashboard mostrava empresa errada
+      // intermitentemente.
+      //
+      // Agora: aguardamos o cookie httpOnly setar no server ANTES de
+      // qualquer navegação → garante consistência cookie → server reads.
+      try {
+        await fetch('/api/empresas/atual', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ empresaId: id }),
+        })
+      } catch {
+        // Cookie pode não setar (rede caiu) — UI continua reagindo via state local.
       }
-    } else {
-      const params = new URLSearchParams(searchParams.toString())
-      const hasEmpresaId = params.has('empresaId')
-      const hasEmpresa = params.has('empresa')
-      if (hasEmpresaId || hasEmpresa) {
-        if (hasEmpresaId) params.set('empresaId', id)
-        if (hasEmpresa) params.set('empresa', id)
-        router.replace(`${pathname}?${params.toString()}`)
+
+      // Sprint 5.0.3.2 — Navegação reativa ao trocar empresa.
+      // 3 caminhos:
+      //   1. Path `/empresas/[oldId]/...` → navega pra `/empresas/[newId]/...`
+      //   2. URL tem `?empresaId=` ou `?empresa=` → substitui pelo novo ID
+      //   3. Página global sem empresa na URL → router.refresh()
+      const pathMatch = pathname.match(PATH_EMPRESA_RE)
+      if (pathMatch) {
+        const oldId = pathMatch[1]
+        if (oldId !== id) {
+          const newPath = pathname.replace(oldId, id)
+          const qs = searchParams.toString()
+          router.push(qs ? `${newPath}?${qs}` : newPath)
+        }
       } else {
-        // Página global sem empresa na URL — força re-render do server
-        router.refresh()
+        const params = new URLSearchParams(searchParams.toString())
+        const hasEmpresaId = params.has('empresaId')
+        const hasEmpresa = params.has('empresa')
+        if (hasEmpresaId || hasEmpresa) {
+          if (hasEmpresaId) params.set('empresaId', id)
+          if (hasEmpresa) params.set('empresa', id)
+          router.replace(`${pathname}?${params.toString()}`)
+        } else {
+          // Página global sem empresa na URL — força re-render do server
+          router.refresh()
+        }
       }
-    }
-  }, [pathname, searchParams, router])
+    },
+    [pathname, searchParams, router],
+  )
 
   const currentEmpresa = empresas.find((e) => e.id === currentEmpresaId) ?? null
 

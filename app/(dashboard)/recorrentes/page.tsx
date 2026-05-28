@@ -53,6 +53,17 @@ function RecorrentesInner() {
 
   const [empresas, setEmpresas] = useState<Empresa[]>([])
   const [empresaId, setEmpresaId] = useState<string>(searchParams.get('empresaId') ?? '')
+
+  // Sprint 5.0.3.3 — Sincroniza state com searchParams.empresaId quando
+  // WorkspaceSwitcher troca empresa (router.replace).
+  useEffect(() => {
+    const urlEmpresaId = searchParams.get('empresaId') ?? ''
+    if (urlEmpresaId && urlEmpresaId !== empresaId) {
+      setEmpresaId(urlEmpresaId)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
+
   const [schedules, setSchedules] = useState<Schedule[]>([])
   const [loading, setLoading] = useState(true)
   const [type, setType] = useState<string>('TODOS')

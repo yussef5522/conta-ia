@@ -1,0 +1,140 @@
+// Sprint 5.0.3.3 — Playwright E2E specs WorkspaceSwitcher.
+//
+// ⚠️ ESBOÇO — não rodado no sandbox do Claude Code. Yussef ativa
+// renomeando .template → .ts e configurando credenciais (ver README).
+//
+// Pra rodar:
+//   1. npm install -D @playwright/test
+//   2. npx playwright install chromium webkit
+//   3. Renomear pra switcher.spec.ts
+//   4. npx playwright test tests/e2e/workspace-switcher
+
+import { test, expect } from '@playwright/test'
+
+const BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost:3000'
+const USER_EMAIL = process.env.E2E_USER_EMAIL ?? 'admin@contaia.com.br'
+const USER_PASSWORD = process.env.E2E_USER_PASSWORD ?? 'ContaIA@2025'
+
+async function login(page) {
+  await page.goto(`${BASE_URL}/login`)
+  await page.fill('input[name=email]', USER_EMAIL)
+  await page.fill('input[name=password]', USER_PASSWORD)
+  await page.click('button[type=submit]')
+  await page.waitForURL((url) => !url.pathname.includes('/login'))
+}
+
+test.describe('WorkspaceSwitcher — Sprint 5.0.3.3', () => {
+  test.beforeEach(async ({ page }) => {
+    await login(page)
+  })
+
+  test('Dashboard: troca empresa atualiza header + cards INSTANT', async ({
+    page,
+  }) => {
+    await page.goto(`${BASE_URL}/dashboard`)
+    const initialHeader = await page
+      .locator('[data-testid=app-header-description]')
+      .textContent()
+
+    // Abre switcher
+    await page.click('[data-testid=workspace-switcher-trigger]')
+    // Clica numa empresa diferente
+    const otherEmpresa = page.locator('[role=menuitem]').nth(1)
+    await otherEmpresa.click()
+
+    // Espera header mudar (< 2s)
+    await page.waitForFunction(
+      (oldText) => {
+        const el = document.querySelector('[data-testid=app-header-description]')
+        return el && el.textContent !== oldText
+      },
+      initialHeader,
+      { timeout: 2000 },
+    )
+
+    // Validação dura: header novo é DIFERENTE
+    const newHeader = await page
+      .locator('[data-testid=app-header-description]')
+      .textContent()
+    expect(newHeader).not.toBe(initialHeader)
+  })
+
+  test('Contas a pagar: troca empresa atualiza URL + dados SEM reload manual', async ({
+    page,
+  }) => {
+    await page.goto(`${BASE_URL}/contas-a-pagar`)
+    await page.waitForLoadState('networkidle')
+
+    const initialEmpresaIdParam = new URL(page.url()).searchParams.get(
+      'empresaId',
+    )
+
+    // Troca empresa
+    await page.click('[data-testid=workspace-switcher-trigger]')
+    await page.locator('[role=menuitem]').nth(1).click()
+
+    // URL atualiza com novo ?empresaId=
+    await page.waitForFunction(
+      (oldId) => {
+        const url = new URL(window.location.href)
+        const newId = url.searchParams.get('empresaId')
+        return newId && newId !== oldId
+      },
+      initialEmpresaIdParam,
+      { timeout: 3000 },
+    )
+
+    // Dados recarregam (loading spinner aparece e some)
+    await expect(page.locator('[data-testid=payable-skeleton]')).toBeVisible()
+    await expect(
+      page.locator('[data-testid=payable-skeleton]'),
+    ).not.toBeVisible({ timeout: 5000 })
+  })
+
+  test('Voltar empresa (A → B → A) funciona', async ({ page }) => {
+    await page.goto(`${BASE_URL}/dashboard`)
+    const empresaA = await page
+      .locator('[data-testid=app-header-description]')
+      .textContent()
+
+    // A → B
+    await page.click('[data-testid=workspace-switcher-trigger]')
+    await page.locator('[role=menuitem]').nth(1).click()
+    await page.waitForFunction(
+      (old) =>
+        document.querySelector('[data-testid=app-header-description]')
+          ?.textContent !== old,
+      empresaA,
+      { timeout: 2000 },
+    )
+
+    // B → A (volta)
+    await page.click('[data-testid=workspace-switcher-trigger]')
+    await page.locator(`text=${empresaA}`).first().click()
+    await page.waitForFunction(
+      (target) =>
+        document.querySelector('[data-testid=app-header-description]')
+          ?.textContent === target,
+      empresaA,
+      { timeout: 2000 },
+    )
+
+    expect(
+      await page.locator('[data-testid=app-header-description]').textContent(),
+    ).toBe(empresaA)
+  })
+
+  test('Trocar empresa em /contas-a-pagar PRESERVA a rota', async ({ page }) => {
+    await page.goto(`${BASE_URL}/contas-a-pagar`)
+    await page.waitForLoadState('networkidle')
+
+    await page.click('[data-testid=workspace-switcher-trigger]')
+    await page.locator('[role=menuitem]').nth(1).click()
+
+    // Aguarda 1s pra possíveis redirects acontecerem
+    await page.waitForTimeout(1000)
+
+    // URL ainda contém /contas-a-pagar (não foi pra /dashboard)
+    expect(page.url()).toContain('/contas-a-pagar')
+  })
+})

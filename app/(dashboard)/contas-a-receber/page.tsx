@@ -67,6 +67,17 @@ function ContasAReceberInner() {
 
   const [empresas, setEmpresas] = useState<Empresa[]>([])
   const [empresaId, setEmpresaId] = useState<string>(searchParams.get('empresaId') ?? '')
+
+  // Sprint 5.0.3.3 — Sincroniza state local com searchParams.empresaId.
+  // WorkspaceSwitcher faz router.replace(?empresaId=X) → state local precisa
+  // reagir (useState só roda no init).
+  useEffect(() => {
+    const urlEmpresaId = searchParams.get('empresaId') ?? ''
+    if (urlEmpresaId && urlEmpresaId !== empresaId) {
+      setEmpresaId(urlEmpresaId)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
   const [items, setItems] = useState<Conta[]>([])
   const [kpis, setKpis] = useState<KPIs>({
     totalPendente: 0,

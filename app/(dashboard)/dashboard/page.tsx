@@ -12,6 +12,7 @@ import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
 import { z } from 'zod'
 import { verifyToken, COOKIE_NAME } from '@/lib/auth'
+import { getCurrentEmpresaIdFromCookie } from '@/lib/auth/current-empresa-cookie'
 import { prisma } from '@/lib/db'
 import { Header } from '@/components/layout/header'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -101,9 +102,22 @@ export default async function DashboardPage({ searchParams }: PageProps) {
     )
   }
 
-  // Resolve empresa atual: URL param OU primeira da lista
-  const empresaAtual =
-    (empresaQueryId && empresas.find((e) => e.id === empresaQueryId)) || empresas[0]
+  // Sprint 5.0.3.3 — Resolve empresa atual com prioridade:
+  //   1. URL param `?empresa=` (deep-link / share)
+  //   2. Cookie httpOnly `current_empresa_id` (escolha do user no WorkspaceSwitcher)
+  //   3. empresas[0] (primeira por createdAt — fallback determinístico)
+  //
+  // Antes: só (1) e (3) → dashboard sempre pegava `empresas[0]` quando user
+  // navegava de outra tela sem `?empresa=` na URL. WorkspaceSwitcher setava
+  // o cookie mas o dashboard ignorava — empresa errada exibida.
+  const cookieEmpresaId = await getCurrentEmpresaIdFromCookie()
+  const fromQuery = empresaQueryId
+    ? empresas.find((e) => e.id === empresaQueryId)
+    : undefined
+  const fromCookie = cookieEmpresaId
+    ? empresas.find((e) => e.id === cookieEmpresaId)
+    : undefined
+  const empresaAtual = fromQuery ?? fromCookie ?? empresas[0]
 
   const companyOptions = empresas.map((e) => ({
     id: e.id,
