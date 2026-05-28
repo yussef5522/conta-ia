@@ -46,10 +46,13 @@ const navItems = [
     available: true,
   },
   {
+    // Sprint 5.0.4.0a — Relatórios habilitado. Index em /relatorios + 3 sub-rotas
+    // iniciais: dre-gerencial, categorias, comparativo. Sub-sprints b/c/d
+    // adicionam: fluxo-caixa, fornecedores, funcionários, variâncias, multi-empresa.
     label: t.nav.relatorios,
     href: '/relatorios',
     icon: BarChart3,
-    available: false,
+    available: true,
   },
   {
     label: t.nav.impostos,
