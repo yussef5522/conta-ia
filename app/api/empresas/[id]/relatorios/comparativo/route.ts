@@ -1,7 +1,9 @@
-// Sprint 5.0.4.0a (a2) — GET Comparativo 3 Meses.
+// Sprint Comparativo-A (28/05/2026) — Endpoint multi-período.
 //
-// Carrega transactions da empresa nos últimos 3 meses (a partir de refMonth)
-// e delega cálculo pra lib pura.
+// Retrocompat: defaults (meses=3, granularidade=mes) retornam o mesmo
+// shape do antigo (rows/totals/meses) usando computeComparativo. Quando
+// caller passa meses != 3 OU granularidade != 'mes', usamos
+// computeComparativoMulti (shape novo).
 
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
@@ -10,15 +12,20 @@ import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import {
   computeComparativo,
+  computeComparativoMulti,
   threeMonthsForRef,
+  buildPeriodos,
   type ComparativoInputTx,
+  type Granularidade,
 } from '@/lib/relatorios/comparativo'
 
 const querySchema = z.object({
   refMonth: z.string().regex(/^\d{4}-\d{2}$/, 'refMonth deve ser YYYY-MM'),
   tipo: z.enum(['DESPESA', 'RECEITA', 'TODOS']).default('DESPESA'),
-  /** Regime: competência (default) usa competenceDate || date; caixa usa paymentDate || date. */
   regime: z.enum(['competencia', 'caixa']).default('competencia'),
+  // Sprint A: novos params (opcionais com defaults retrocompat)
+  meses: z.coerce.number().int().min(2).max(12).default(3),
+  granularidade: z.enum(['mes', 'trimestre', 'ano']).default('mes'),
 })
 
 interface Params {
@@ -36,9 +43,16 @@ export async function GET(request: NextRequest, { params }: Params) {
     const sp = request.nextUrl.searchParams
     const input = querySchema.parse(Object.fromEntries(sp.entries()))
 
-    const meses = threeMonthsForRef(input.refMonth)
+    // Range SQL: do início do PRIMEIRO período até o fim do ÚLTIMO.
+    // Usa buildPeriodos pra cobrir mes/tri/ano uniformemente.
+    const periodos = buildPeriodos(
+      input.refMonth,
+      input.meses,
+      input.granularidade as Granularidade,
+    )
+    const sqlRangeStart = periodos[0].start
+    const sqlRangeEnd = periodos[periodos.length - 1].end
 
-    // Carrega transactions dos 3 meses. Multi-tenant via OR em supplier/employee/etc.
     const txs = await prisma.transaction.findMany({
       where: {
         OR: [
@@ -48,11 +62,8 @@ export async function GET(request: NextRequest, { params }: Params) {
           { customer: { companyId: empresaId } },
           { category: { companyId: empresaId } },
         ],
-        // Filtra status válidos pra cálculo (não usar IGNORED)
         status: { in: ['RECONCILED', 'PENDING'] },
-        // Carregamos largo no SQL (range em date principal); lib pura aloca
-        // por bucket usando competenceDate||date OR paymentDate||date conforme regime.
-        date: { gte: meses.prev2.start, lte: meses.current.end },
+        date: { gte: sqlRangeStart, lte: sqlRangeEnd },
       },
       select: {
         amount: true,
@@ -65,10 +76,9 @@ export async function GET(request: NextRequest, { params }: Params) {
           select: { id: true, name: true, dreGroup: true },
         },
       },
-      take: 50_000, // cap defensivo (3 meses de uma empresa grande ~20k)
+      take: 50_000,
     })
 
-    // Adapta pro tipo da lib pura
     const inputTxs: ComparativoInputTx[] = txs.map((t) => ({
       bucketDate:
         input.regime === 'caixa'
@@ -81,10 +91,27 @@ export async function GET(request: NextRequest, { params }: Params) {
       dreGroup: t.category?.dreGroup ?? null,
     }))
 
-    const result = computeComparativo(inputTxs, input.refMonth, input.tipo)
+    // Retrocompat: defaults antigos (3 meses, granularidade mês) → engine antigo
+    const isLegacyShape = input.meses === 3 && input.granularidade === 'mes'
 
-    return NextResponse.json(result)
+    if (isLegacyShape) {
+      const result = computeComparativo(inputTxs, input.refMonth, input.tipo)
+      // Anexa flag pra UI saber qual shape veio
+      return NextResponse.json({ ...result, multi: false })
+    }
+
+    // Shape novo (Sprint A)
+    const result = computeComparativoMulti(inputTxs, {
+      ymRef: input.refMonth,
+      nPeriodos: input.meses,
+      granularidade: input.granularidade as Granularidade,
+      tipo: input.tipo,
+    })
+    return NextResponse.json({ ...result, multi: true })
   } catch (error) {
     return handleApiError(error)
   }
 }
+
+// Suprime warning: threeMonthsForRef ainda exportado pela lib pra outras callers
+void threeMonthsForRef
