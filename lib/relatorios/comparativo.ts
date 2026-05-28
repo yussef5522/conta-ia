@@ -362,3 +362,443 @@ export const TREND_VISUAL: Record<
     label: 'Sem dados',
   },
 }
+
+// ════════════════════════════════════════════════════════════════════
+// Sprint Comparativo-A (28/05/2026) — Multi-período + Média + Heatmap
+// ════════════════════════════════════════════════════════════════════
+//
+// Adições sem quebrar o código antigo (Sprint 5.0.4.0a). O cliente novo
+// (Sprint A) usa computeComparativoMulti(); cliente antigo continua usando
+// computeComparativo().
+//
+// Diferenças chave do antigo:
+// - N períodos configuráveis (2/3/6/12), não fixo em 3
+// - Granularidade mês/trimestre/ano
+// - Coluna Média Histórica (exclui o período de referência)
+// - Coluna Desvio % (current vs média)
+// - Tone por célula (heatmap intensidade)
+// - Semântica IBCS (cor depende de favorável/desfavorável, não direção)
+
+export type Granularidade = 'mes' | 'trimestre' | 'ano'
+
+export interface PeriodoBucket {
+  /** "2026-03" | "2026-Q1" | "2026" */
+  id: string
+  /** "Mar/26" | "Q1/26" | "2025" */
+  label: string
+  start: Date
+  end: Date
+}
+
+/**
+ * Cor semântica de uma célula no heatmap.
+ * - transparent: dentro da margem (|desvio| < 15%)
+ * - fav-* : favorável (despesa abaixo da média OU receita acima) — verde
+ * - unfav-*: desfavorável (despesa acima da média OU receita abaixo) — vermelho
+ * - Intensidade: weak (15-40%) · medium (40-80%) · strong (>80%)
+ */
+export type CellTone =
+  | 'transparent'
+  | 'fav-weak'
+  | 'fav-medium'
+  | 'fav-strong'
+  | 'unfav-weak'
+  | 'unfav-medium'
+  | 'unfav-strong'
+
+export interface ComparativoRowMulti {
+  categoryId: string | null
+  categoryName: string
+  dreGroup: string | null
+  /** Valores por período (mesma ordem de `periodos`). Último é o "atual". */
+  values: number[]
+  /** Média dos values[0..N-1] (EXCLUI o último — referência). null se < 1 período anterior. */
+  mediaHistorica: number | null
+  /** Desvio do current vs mediaHistorica em frações. null se média=0 ou null. */
+  desvioPct: number | null
+  /** Soma de values[] */
+  total: number
+  /** Trend compat com UI antiga (current vs penúltimo) */
+  trend: TrendResult
+  /** Cor heatmap por célula. Index alinhado com values[] */
+  cellTones: CellTone[]
+}
+
+export interface ComparativoMultiResult {
+  rows: ComparativoRowMulti[]
+  /** Soma de cada período (linha "Total" da tabela) + total geral */
+  totals: {
+    porPeriodo: number[]
+    mediaHistorica: number | null
+    desvioPct: number | null
+    total: number
+  }
+  /** Buckets de período em ordem ASC (oldest first, current last) */
+  periodos: PeriodoBucket[]
+  /** Contadores agregados pros stats cards */
+  summary: {
+    novas: number
+    subindo: number
+    descendo: number
+    foraDaMedia: number // count de DESPESAS com desvio > +15%
+  }
+}
+
+// Reusa STABLE_TOLERANCE (0.15) e STRONG_THRESHOLD (0.5) do antigo
+// pra consistência entre relatórios. Define limites do heatmap também:
+const HEAT_WEAK = 0.15 // mesmo limite "fora da média"
+const HEAT_MEDIUM = 0.4
+const HEAT_STRONG = 0.8
+
+// ────────────────────────────────────────────────────────────────────
+// Helpers de período
+// ────────────────────────────────────────────────────────────────────
+
+function quarterStartUTC(d: Date): Date {
+  const m = d.getUTCMonth()
+  const qStart = Math.floor(m / 3) * 3
+  return new Date(Date.UTC(d.getUTCFullYear(), qStart, 1))
+}
+
+function quarterEndUTC(d: Date): Date {
+  const s = quarterStartUTC(d)
+  return new Date(Date.UTC(s.getUTCFullYear(), s.getUTCMonth() + 3, 0, 23, 59, 59, 999))
+}
+
+function quarterLabel(d: Date): string {
+  const m = d.getUTCMonth()
+  const q = Math.floor(m / 3) + 1
+  return `Q${q}/${String(d.getUTCFullYear()).slice(-2)}`
+}
+
+function yearStartUTC(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
+}
+
+function yearEndUTC(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), 11, 31, 23, 59, 59, 999))
+}
+
+/**
+ * Constrói N períodos consecutivos terminando no ymRef (current).
+ * Retorna ordem ASC: [oldest, ..., current].
+ */
+export function buildPeriodos(
+  ymRef: string,
+  nPeriodos: number,
+  granularidade: Granularidade,
+): PeriodoBucket[] {
+  if (nPeriodos < 1) throw new Error('nPeriodos deve ser >= 1')
+  if (nPeriodos > 12) throw new Error('nPeriodos máximo é 12')
+
+  const refMonth = parseRefMonth(ymRef)
+  const result: PeriodoBucket[] = []
+
+  if (granularidade === 'mes') {
+    // Backward N meses a partir do ref
+    const refDate = refMonth.start
+    for (let i = nPeriodos - 1; i >= 0; i--) {
+      const totalMonth = refDate.getUTCMonth() - i
+      const yAdj = refDate.getUTCFullYear() + Math.floor(totalMonth / 12)
+      const mNorm = ((totalMonth % 12) + 12) % 12
+      const start = new Date(Date.UTC(yAdj, mNorm, 1))
+      const end = new Date(Date.UTC(yAdj, mNorm + 1, 0, 23, 59, 59, 999))
+      result.push({
+        id: `${yAdj}-${String(mNorm + 1).padStart(2, '0')}`,
+        label: `${MES_ABREV[mNorm]}/${String(yAdj).slice(-2)}`,
+        start,
+        end,
+      })
+    }
+  } else if (granularidade === 'trimestre') {
+    // Backward N trimestres
+    const refQStart = quarterStartUTC(refMonth.start)
+    for (let i = nPeriodos - 1; i >= 0; i--) {
+      const qDate = new Date(Date.UTC(refQStart.getUTCFullYear(), refQStart.getUTCMonth() - i * 3, 1))
+      const start = quarterStartUTC(qDate)
+      const end = quarterEndUTC(qDate)
+      result.push({
+        id: `${start.getUTCFullYear()}-Q${Math.floor(start.getUTCMonth() / 3) + 1}`,
+        label: quarterLabel(start),
+        start,
+        end,
+      })
+    }
+  } else {
+    // Backward N anos
+    const refYear = refMonth.start.getUTCFullYear()
+    for (let i = nPeriodos - 1; i >= 0; i--) {
+      const year = refYear - i
+      const start = yearStartUTC(new Date(Date.UTC(year, 0, 1)))
+      const end = yearEndUTC(new Date(Date.UTC(year, 0, 1)))
+      result.push({
+        id: `${year}`,
+        label: `${year}`,
+        start,
+        end,
+      })
+    }
+  }
+
+  return result
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Helpers de média + desvio + heatmap
+// ────────────────────────────────────────────────────────────────────
+
+/**
+ * Média dos valores ANTERIORES (exclui o último). Retorna null se array
+ * tem menos de 2 elementos OU se a média for 0 (não há base de comparação).
+ */
+export function calcularMediaHistorica(values: number[]): number | null {
+  if (values.length < 2) return null
+  const anteriores = values.slice(0, -1)
+  const sum = anteriores.reduce((a, b) => a + b, 0)
+  const media = sum / anteriores.length
+  return media === 0 ? null : media
+}
+
+/**
+ * Desvio relativo de current vs media. null se media ausente.
+ * Ex: current=100, media=80 → +0.25 (25% acima)
+ */
+export function calcularDesvio(current: number, media: number | null): number | null {
+  if (media === null || media === 0) return null
+  return (current - media) / media
+}
+
+/**
+ * Classifica cor da célula no heatmap.
+ *
+ * @param value valor da célula (do mês específico)
+ * @param mediaCategoria média histórica da categoria (referência)
+ * @param tipo DESPESA ou RECEITA — define semântica favorável/desfavorável
+ *
+ * Regra IBCS:
+ * - DESPESA: subir = desfavorável (vermelho), descer = favorável (verde)
+ * - RECEITA: subir = favorável (verde), descer = desfavorável (vermelho)
+ */
+export function classifyCellTone(
+  value: number,
+  mediaCategoria: number | null,
+  tipo: 'DESPESA' | 'RECEITA',
+): CellTone {
+  if (mediaCategoria === null || mediaCategoria === 0) return 'transparent'
+  const desvio = (value - mediaCategoria) / mediaCategoria
+  const absDesvio = Math.abs(desvio)
+
+  if (absDesvio < HEAT_WEAK) return 'transparent'
+
+  const acima = desvio > 0
+  const favoravel = tipo === 'DESPESA' ? !acima : acima
+  const prefix = favoravel ? 'fav' : 'unfav'
+
+  if (absDesvio >= HEAT_STRONG) return `${prefix}-strong` as CellTone
+  if (absDesvio >= HEAT_MEDIUM) return `${prefix}-medium` as CellTone
+  return `${prefix}-weak` as CellTone
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Engine principal: computeComparativoMulti
+// ────────────────────────────────────────────────────────────────────
+
+export interface ComparativoMultiInput {
+  ymRef: string
+  nPeriodos: number
+  granularidade: Granularidade
+  tipo: ComparativoTipoFilter
+}
+
+export function computeComparativoMulti(
+  txs: ComparativoInputTx[],
+  opts: ComparativoMultiInput,
+): ComparativoMultiResult {
+  const periodos = buildPeriodos(opts.ymRef, opts.nPeriodos, opts.granularidade)
+  const N = periodos.length
+
+  // Mapa categoryId → values[N], dreGroup, nome
+  type Bucket = { name: string; dreGroup: string | null; values: number[] }
+  const buckets = new Map<string, Bucket>()
+
+  for (const tx of txs) {
+    if (opts.tipo === 'DESPESA' && tx.type !== 'DEBIT') continue
+    if (opts.tipo === 'RECEITA' && tx.type !== 'CREDIT') continue
+
+    const date = tx.bucketDate instanceof Date ? tx.bucketDate : new Date(tx.bucketDate)
+    if (Number.isNaN(date.getTime())) continue
+
+    // Localiza qual bucket cobre essa data
+    let idx = -1
+    for (let i = 0; i < N; i++) {
+      const p = periodos[i]
+      if (date >= p.start && date <= p.end) {
+        idx = i
+        break
+      }
+    }
+    if (idx < 0) continue
+
+    const key = tx.categoryId ?? '__sem_categoria__'
+    let bucket = buckets.get(key)
+    if (!bucket) {
+      bucket = {
+        name: tx.categoryName ?? 'Sem categoria',
+        dreGroup: tx.dreGroup,
+        values: Array<number>(N).fill(0),
+      }
+      buckets.set(key, bucket)
+    }
+    bucket.values[idx] += Math.abs(tx.amount)
+  }
+
+  // Constrói rows
+  const tipoForHeat: 'DESPESA' | 'RECEITA' =
+    opts.tipo === 'RECEITA' ? 'RECEITA' : 'DESPESA' // 'TODOS' usa DESPESA como default visual
+  const rows: ComparativoRowMulti[] = []
+  for (const [key, bucket] of buckets) {
+    const currentValue = bucket.values[N - 1] ?? 0
+    const prevValue = N >= 2 ? bucket.values[N - 2] ?? 0 : 0
+    const prev2Value = N >= 3 ? bucket.values[N - 3] ?? 0 : 0
+    const trend = trendIndicator(prev2Value, prevValue, currentValue)
+    const mediaHistorica = calcularMediaHistorica(bucket.values)
+    const desvioPct = calcularDesvio(currentValue, mediaHistorica)
+    const cellTones: CellTone[] = bucket.values.map((v) =>
+      classifyCellTone(v, mediaHistorica, tipoForHeat),
+    )
+    const total = bucket.values.reduce((a, b) => a + b, 0)
+
+    rows.push({
+      categoryId: key === '__sem_categoria__' ? null : key,
+      categoryName: bucket.name,
+      dreGroup: bucket.dreGroup,
+      values: bucket.values,
+      mediaHistorica,
+      desvioPct,
+      total,
+      trend,
+      cellTones,
+    })
+  }
+
+  rows.sort((a, b) => b.total - a.total)
+
+  // Totals por período
+  const totalsPorPeriodo = Array<number>(N).fill(0)
+  let totalGeral = 0
+  for (const r of rows) {
+    for (let i = 0; i < N; i++) {
+      totalsPorPeriodo[i] += r.values[i]
+    }
+    totalGeral += r.total
+  }
+  const totalsMedia = calcularMediaHistorica(totalsPorPeriodo)
+  const totalsDesvio = calcularDesvio(totalsPorPeriodo[N - 1] ?? 0, totalsMedia)
+
+  // Summary pros stats cards
+  let novas = 0
+  let subindo = 0
+  let descendo = 0
+  let foraDaMedia = 0
+  for (const r of rows) {
+    if (r.trend.indicator === 'NEW') novas++
+    if (r.trend.indicator === 'UP' || r.trend.indicator === 'UP_STRONG') subindo++
+    if (r.trend.indicator === 'DOWN' || r.trend.indicator === 'DOWN_STRONG') descendo++
+    // "Fora da média" = SÓ DESPESAS com desvio > +15% (decisão Yussef)
+    if (
+      opts.tipo === 'DESPESA' &&
+      r.desvioPct !== null &&
+      r.desvioPct > HEAT_WEAK
+    ) {
+      foraDaMedia++
+    }
+  }
+
+  return {
+    rows,
+    totals: {
+      porPeriodo: totalsPorPeriodo,
+      mediaHistorica: totalsMedia,
+      desvioPct: totalsDesvio,
+      total: totalGeral,
+    },
+    periodos,
+    summary: { novas, subindo, descendo, foraDaMedia },
+  }
+}
+
+/** Filtra rows do multi conforme modo de UI. */
+export function filterRowsMulti(
+  rows: ComparativoRowMulti[],
+  mode: ComparativoFilterMode['filter'],
+): ComparativoRowMulti[] {
+  if (mode === 'ALL') return rows
+  if (mode === 'NEW_ONLY') return rows.filter((r) => r.trend.indicator === 'NEW')
+  if (mode === 'UP_ONLY')
+    return rows.filter(
+      (r) => r.trend.indicator === 'UP' || r.trend.indicator === 'UP_STRONG',
+    )
+  if (mode === 'DOWN_ONLY')
+    return rows.filter(
+      (r) =>
+        r.trend.indicator === 'DOWN' || r.trend.indicator === 'DOWN_STRONG',
+    )
+  return rows
+}
+
+/** Classes Tailwind por CellTone (Sprint A safelist). */
+export const CELL_TONE_CLASSES: Record<CellTone, string> = {
+  transparent: '',
+  'fav-weak': 'bg-emerald-50 dark:bg-emerald-950/40',
+  'fav-medium': 'bg-emerald-100 dark:bg-emerald-900/50',
+  'fav-strong': 'bg-emerald-200 dark:bg-emerald-800/60',
+  'unfav-weak': 'bg-red-50 dark:bg-red-950/40',
+  'unfav-medium': 'bg-red-100 dark:bg-red-900/50',
+  'unfav-strong': 'bg-red-200 dark:bg-red-800/60',
+}
+
+/**
+ * Visual semântico IBCS — cor depende de (indicator × tipo).
+ * SOBRESCREVE TREND_VISUAL pra usos novos. Mantém visualmente coerente:
+ * - DESPESA subindo → vermelho
+ * - RECEITA subindo → verde
+ */
+export function getTrendVisualSemantic(
+  indicator: TrendIndicator,
+  tipo: 'DESPESA' | 'RECEITA',
+): { symbol: string; colorClass: string; label: string } {
+  // NEW/GONE/EMPTY/STABLE são independentes do tipo
+  if (indicator === 'NEW') return TREND_VISUAL.NEW
+  if (indicator === 'GONE') return TREND_VISUAL.GONE
+  if (indicator === 'EMPTY') return TREND_VISUAL.EMPTY
+  if (indicator === 'STABLE') return TREND_VISUAL.STABLE
+
+  // UP/UP_STRONG/DOWN/DOWN_STRONG dependem da semântica
+  const colors: Record<
+    'UP_STRONG' | 'UP' | 'DOWN' | 'DOWN_STRONG',
+    Record<'DESPESA' | 'RECEITA', string>
+  > = {
+    UP_STRONG: {
+      DESPESA: 'text-red-600 dark:text-red-400 font-bold',
+      RECEITA: 'text-emerald-600 dark:text-emerald-400 font-bold',
+    },
+    UP: {
+      DESPESA: 'text-red-600 dark:text-red-400',
+      RECEITA: 'text-emerald-600 dark:text-emerald-400',
+    },
+    DOWN: {
+      DESPESA: 'text-emerald-600 dark:text-emerald-400',
+      RECEITA: 'text-red-600 dark:text-red-400',
+    },
+    DOWN_STRONG: {
+      DESPESA: 'text-emerald-700 dark:text-emerald-300 font-bold',
+      RECEITA: 'text-red-700 dark:text-red-300 font-bold',
+    },
+  }
+
+  return {
+    symbol: TREND_VISUAL[indicator].symbol,
+    colorClass: colors[indicator as keyof typeof colors][tipo],
+    label: TREND_VISUAL[indicator].label,
+  }
+}
