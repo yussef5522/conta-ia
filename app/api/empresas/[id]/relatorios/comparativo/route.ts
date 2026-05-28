@@ -53,17 +53,38 @@ export async function GET(request: NextRequest, { params }: Params) {
     const sqlRangeStart = periodos[0].start
     const sqlRangeEnd = periodos[periodos.length - 1].end
 
+    // Bug-fix 28/05/2026 (comparativo-bug-referencia): filtro por
+    // competenceDate (com fallback `date` quando NULL) — não por `date` direto.
+    // Antes: SQL filtrava t.date IN [range], mas bucket interno alocava por
+    // competenceDate || date. Resultado: txs com competenceDate em mês X e
+    // paymentDate (=date) em mês X+1 ficavam FORA do range quando X era o
+    // último mês — causando bucket "ref" vazio. Veja
+    // docs/sprints/comparativo-bug-referencia-audit.md.
     const txs = await prisma.transaction.findMany({
       where: {
-        OR: [
-          { bankAccount: { companyId: empresaId } },
-          { supplier: { companyId: empresaId } },
-          { employee: { companyId: empresaId } },
-          { customer: { companyId: empresaId } },
-          { category: { companyId: empresaId } },
+        AND: [
+          {
+            OR: [
+              { bankAccount: { companyId: empresaId } },
+              { supplier: { companyId: empresaId } },
+              { employee: { companyId: empresaId } },
+              { customer: { companyId: empresaId } },
+              { category: { companyId: empresaId } },
+            ],
+          },
+          {
+            OR: [
+              {
+                competenceDate: { gte: sqlRangeStart, lte: sqlRangeEnd },
+              },
+              {
+                competenceDate: null,
+                date: { gte: sqlRangeStart, lte: sqlRangeEnd },
+              },
+            ],
+          },
         ],
         status: { in: ['RECONCILED', 'PENDING'] },
-        date: { gte: sqlRangeStart, lte: sqlRangeEnd },
       },
       select: {
         amount: true,

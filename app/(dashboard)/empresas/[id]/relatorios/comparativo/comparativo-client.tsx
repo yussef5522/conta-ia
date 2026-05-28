@@ -33,6 +33,7 @@ interface ApiResponseMulti {
     porPeriodo: number[]
     mediaHistorica: number | null
     desvioPct: number | null
+    referenciaVazia: boolean
     total: number
   }
   periodos: PeriodoBucket[]
@@ -158,6 +159,7 @@ export function ComparativoClient({ empresaId }: Props) {
               values: [r.prev2, r.prev1, r.current],
               mediaHistorica: null,
               desvioPct: null,
+              referenciaVazia: false,
               cellTones: ['transparent', 'transparent', 'transparent'],
               trend: {
                 indicator: r.trend.indicator,
@@ -169,6 +171,7 @@ export function ComparativoClient({ empresaId }: Props) {
               porPeriodo: [0, 0, 0],
               mediaHistorica: null,
               desvioPct: null,
+              referenciaVazia: false,
               total: 0,
             },
             summary: { novas: 0, subindo: 0, descendo: 0, foraDaMedia: 0 },
@@ -532,15 +535,24 @@ function Row({
         {row.mediaHistorica !== null ? formatBRL(row.mediaHistorica) : '—'}
       </td>
       <td className="px-3 py-2.5 text-center bg-muted/20">
-        <span
-          className={`inline-flex items-center gap-1 text-xs ${visual.colorClass}`}
-          title={visual.label}
-        >
-          <span className="text-base leading-none">{visual.symbol}</span>
-          {row.desvioPct !== null && (
-            <span className="tabular-nums">{formatPct(row.desvioPct)}</span>
-          )}
-        </span>
+        {row.referenciaVazia ? (
+          <span
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground italic"
+            title="Mês de referência ainda sem lançamentos"
+          >
+            ref. vazia
+          </span>
+        ) : (
+          <span
+            className={`inline-flex items-center gap-1 text-xs ${visual.colorClass}`}
+            title={visual.label}
+          >
+            <span className="text-base leading-none">{visual.symbol}</span>
+            {row.desvioPct !== null && (
+              <span className="tabular-nums">{formatPct(row.desvioPct)}</span>
+            )}
+          </span>
+        )}
       </td>
       <td className="px-3 py-2.5 text-right tabular-nums font-medium">
         {formatBRL(row.total)}

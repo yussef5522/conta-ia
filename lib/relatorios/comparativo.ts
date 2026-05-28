@@ -414,8 +414,10 @@ export interface ComparativoRowMulti {
   values: number[]
   /** Média dos values[0..N-1] (EXCLUI o último — referência). null se < 1 período anterior. */
   mediaHistorica: number | null
-  /** Desvio do current vs mediaHistorica em frações. null se média=0 ou null. */
+  /** Desvio do current vs mediaHistorica em frações. null se média=0/null OU ref vazia. */
   desvioPct: number | null
+  /** Bug-fix 28/05: true quando current=0 mas média>0 (mês ref ainda sem dados) */
+  referenciaVazia: boolean
   /** Soma de values[] */
   total: number
   /** Trend compat com UI antiga (current vs penúltimo) */
@@ -431,6 +433,7 @@ export interface ComparativoMultiResult {
     porPeriodo: number[]
     mediaHistorica: number | null
     desvioPct: number | null
+    referenciaVazia: boolean
     total: number
   }
   /** Buckets de período em ordem ASC (oldest first, current last) */
@@ -548,24 +551,61 @@ export function buildPeriodos(
 // ────────────────────────────────────────────────────────────────────
 
 /**
- * Média dos valores ANTERIORES (exclui o último). Retorna null se array
- * tem menos de 2 elementos OU se a média for 0 (não há base de comparação).
+ * Média dos valores ANTERIORES (exclui o último).
+ *
+ * Bug-fix 28/05/2026: divide só pelos meses COM VALOR > 0. Antes dividia
+ * pelo total, diluindo a média quando havia meses zerados (categoria nova
+ * ou sem lançamento). Veja docs/sprints/comparativo-bug-referencia-audit.md.
+ *
+ * Retorna null se:
+ * - array tem menos de 2 elementos
+ * - todos os anteriores são 0 (sem base histórica de comparação)
  */
 export function calcularMediaHistorica(values: number[]): number | null {
   if (values.length < 2) return null
   const anteriores = values.slice(0, -1)
-  const sum = anteriores.reduce((a, b) => a + b, 0)
-  const media = sum / anteriores.length
-  return media === 0 ? null : media
+  const comValor = anteriores.filter((v) => v > 0)
+  if (comValor.length === 0) return null
+  const sum = comValor.reduce((a, b) => a + b, 0)
+  return sum / comValor.length
+}
+
+export interface DesvioResult {
+  desvioPct: number | null
+  /** True quando current=0 mas media > 0 — mês de referência ainda sem dados */
+  referenciaVazia: boolean
 }
 
 /**
- * Desvio relativo de current vs media. null se media ausente.
- * Ex: current=100, media=80 → +0.25 (25% acima)
+ * Desvio relativo de current vs media.
+ *
+ * Bug-fix 28/05/2026: distingue "ref vazia" (current=0 com média>0) de
+ * "queda 100%". Antes retornava -100% pra esse caso, agora retorna
+ * desvioPct=null + referenciaVazia=true. UI mostra "—" ou "ref vazia".
  */
-export function calcularDesvio(current: number, media: number | null): number | null {
-  if (media === null || media === 0) return null
-  return (current - media) / media
+export function calcularDesvio(
+  current: number,
+  media: number | null,
+): DesvioResult {
+  if (media === null || media === 0) {
+    return { desvioPct: null, referenciaVazia: false }
+  }
+  if (current === 0) {
+    // Mês de referência sem lançamentos ainda — não é "caiu 100%"
+    return { desvioPct: null, referenciaVazia: true }
+  }
+  return { desvioPct: (current - media) / media, referenciaVazia: false }
+}
+
+/**
+ * Helper: extrai SÓ o número (compat com chamadas antigas).
+ * @deprecated use calcularDesvio() que retorna {desvioPct, referenciaVazia}
+ */
+export function calcularDesvioNumber(
+  current: number,
+  media: number | null,
+): number | null {
+  return calcularDesvio(current, media).desvioPct
 }
 
 /**
@@ -585,6 +625,10 @@ export function classifyCellTone(
   tipo: 'DESPESA' | 'RECEITA',
 ): CellTone {
   if (mediaCategoria === null || mediaCategoria === 0) return 'transparent'
+  // Bug-fix 28/05/2026: célula zerada com média > 0 = "sem dado ainda",
+  // não "caiu 100%". Não colorir (transparente). Antes colorava como
+  // fav-strong (despesa) ou unfav-strong (receita) — confusão semântica.
+  if (value === 0) return 'transparent'
   const desvio = (value - mediaCategoria) / mediaCategoria
   const absDesvio = Math.abs(desvio)
 
@@ -662,7 +706,7 @@ export function computeComparativoMulti(
     const prev2Value = N >= 3 ? bucket.values[N - 3] ?? 0 : 0
     const trend = trendIndicator(prev2Value, prevValue, currentValue)
     const mediaHistorica = calcularMediaHistorica(bucket.values)
-    const desvioPct = calcularDesvio(currentValue, mediaHistorica)
+    const desvio = calcularDesvio(currentValue, mediaHistorica)
     const cellTones: CellTone[] = bucket.values.map((v) =>
       classifyCellTone(v, mediaHistorica, tipoForHeat),
     )
@@ -674,7 +718,8 @@ export function computeComparativoMulti(
       dreGroup: bucket.dreGroup,
       values: bucket.values,
       mediaHistorica,
-      desvioPct,
+      desvioPct: desvio.desvioPct,
+      referenciaVazia: desvio.referenciaVazia,
       total,
       trend,
       cellTones,
@@ -693,7 +738,10 @@ export function computeComparativoMulti(
     totalGeral += r.total
   }
   const totalsMedia = calcularMediaHistorica(totalsPorPeriodo)
-  const totalsDesvio = calcularDesvio(totalsPorPeriodo[N - 1] ?? 0, totalsMedia)
+  const totalsDesvio = calcularDesvio(
+    totalsPorPeriodo[N - 1] ?? 0,
+    totalsMedia,
+  )
 
   // Summary pros stats cards
   let novas = 0
@@ -719,7 +767,8 @@ export function computeComparativoMulti(
     totals: {
       porPeriodo: totalsPorPeriodo,
       mediaHistorica: totalsMedia,
-      desvioPct: totalsDesvio,
+      desvioPct: totalsDesvio.desvioPct,
+      referenciaVazia: totalsDesvio.referenciaVazia,
       total: totalGeral,
     },
     periodos,
