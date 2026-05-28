@@ -12,7 +12,7 @@
 // Provider envolto pelo layout dashboard pra estar disponível em toda página.
 
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
-import { usePathname, useSearchParams } from 'next/navigation'
+import { usePathname, useSearchParams, useRouter } from 'next/navigation'
 
 export interface EmpresaMini {
   id: string
@@ -47,6 +47,7 @@ function getInitialFromStorage(): string | null {
 export function EmpresaProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const router = useRouter()
 
   const [empresas, setEmpresas] = useState<EmpresaMini[]>([])
   const [loading, setLoading] = useState(true)
@@ -133,7 +134,37 @@ export function EmpresaProvider({ children }: { children: React.ReactNode }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ empresaId: id }),
     }).catch(() => {})
-  }, [])
+
+    // Sprint 5.0.3.2 — Navegação reativa ao trocar empresa.
+    // Antes: contexto atualizava state mas página atual continuava lendo
+    // `?empresaId=` ou `?empresa=` antigo da URL → stale data até reload manual.
+    //
+    // 3 caminhos pra refletir mudança:
+    //   1. Path `/empresas/[oldId]/...` → navega pra `/empresas/[newId]/...`
+    //   2. URL tem `?empresaId=` ou `?empresa=` → substitui pelo novo ID
+    //   3. Página global sem empresa na URL → router.refresh()
+    const pathMatch = pathname.match(PATH_EMPRESA_RE)
+    if (pathMatch) {
+      const oldId = pathMatch[1]
+      if (oldId !== id) {
+        const newPath = pathname.replace(oldId, id)
+        const qs = searchParams.toString()
+        router.push(qs ? `${newPath}?${qs}` : newPath)
+      }
+    } else {
+      const params = new URLSearchParams(searchParams.toString())
+      const hasEmpresaId = params.has('empresaId')
+      const hasEmpresa = params.has('empresa')
+      if (hasEmpresaId || hasEmpresa) {
+        if (hasEmpresaId) params.set('empresaId', id)
+        if (hasEmpresa) params.set('empresa', id)
+        router.replace(`${pathname}?${params.toString()}`)
+      } else {
+        // Página global sem empresa na URL — força re-render do server
+        router.refresh()
+      }
+    }
+  }, [pathname, searchParams, router])
 
   const currentEmpresa = empresas.find((e) => e.id === currentEmpresaId) ?? null
 
