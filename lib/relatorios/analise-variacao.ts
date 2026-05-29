@@ -25,21 +25,21 @@ import {
 export type ComparacaoMode = 'mes-vs-mes' | 'mes-vs-media'
 
 export type DriverTipo =
-  | 'aumentou' // existia antes, gastou mais agora
-  | 'reduziu' // existia antes, gastou menos agora
-  | 'novo' // não tinha antes, tem agora
-  | 'sumiu' // tinha antes, não tem agora
-  | 'estavel' // |diferenca| < threshold
+  | 'aumentou' // ambos > 0, novo > antigo (subiu cronologicamente)
+  | 'reduziu' // ambos > 0, novo < antigo (caiu cronologicamente)
+  | 'novo' // antigo=0, novo>0 (apareceu no mês mais recente)
+  | 'sumiu' // antigo>0, novo=0 (deixou de existir no mais recente)
+  | 'estavel' // |novo - antigo| < threshold
 
 export interface DriverVariacao {
   categoryId: string | null
   categoryName: string
   dreGroup: string | null
-  valorInvestigado: number
-  valorComparacao: number
-  /** investigado - comparacao (positivo = aumentou). */
+  valorNovo: number
+  valorAntigo: number
+  /** novo - antigo (positivo = subiu cronologicamente). */
   diferenca: number
-  /** Variação relativa em frações. null se comparacao = 0. */
+  /** Variação relativa em frações. null se antigo = 0. */
   percentual: number | null
   tipo: DriverTipo
 }
@@ -62,10 +62,12 @@ export interface WaterfallBar {
 }
 
 export interface AnaliseVariacaoResult {
-  mesInvestigadoLabel: string // "Janeiro/26"
-  comparacaoLabel: string // "Fevereiro/26" | "Média dos últimos 6 meses (excl. Jan/26)"
-  totalInvestigado: number
-  totalComparacao: number
+  /** Label do mês cronologicamente mais NOVO (sujeito do título narrativo). */
+  novoLabel: string
+  /** Label do mês mais ANTIGO ou "Média dos últimos N meses". */
+  antigoLabel: string
+  totalNovo: number
+  totalAntigo: number
   diferencaTotal: number
   percentualTotal: number | null
   /** Drivers ordenados por |diferenca| DESC */
@@ -103,9 +105,14 @@ export interface Insight {
 
 export interface AnaliseVariacaoInputComum {
   txs: ComparativoInputTx[]
-  mesInvestigado: string // YYYY-MM
+  /**
+   * YYYY-MM do mês mais NOVO. Hotfix cronológica (28/05/2026):
+   * API route faz `ordenarCronologicamente` antes de chamar, então a
+   * engine recebe sempre antigo ≤ novo.
+   */
+  mesNovo: string
   tipo: ComparativoTipoFilter
-  /** Top N drivers no waterfall (resto vira "Outros"). Default 10. */
+  /** Top N drivers no waterfall (resto vira "Outros"). Default 6. */
   topNDrivers?: number
   /** Threshold |diferenca| pra classificar como "estavel". Default R$ 100. */
   estavelThreshold?: number
@@ -113,8 +120,8 @@ export interface AnaliseVariacaoInputComum {
 
 export interface AnaliseVariacaoInputMesVsMes extends AnaliseVariacaoInputComum {
   mode: 'mes-vs-mes'
-  /** YYYY-MM — pode ser não-consecutivo do mesInvestigado */
-  ymComparacao: string
+  /** YYYY-MM do mês mais ANTIGO (≤ mesNovo). */
+  mesAntigo: string
 }
 
 export interface AnaliseVariacaoInputMesVsMedia
@@ -216,14 +223,14 @@ export function agregarPorCategoria(
 // ────────────────────────────────────────────────────────────────────
 
 export function classificarDriver(
-  valorInvestigado: number,
-  valorComparacao: number,
+  valorNovo: number,
+  valorAntigo: number,
   estavelThreshold = DEFAULT_ESTAVEL_THRESHOLD,
 ): DriverTipo {
-  if (valorInvestigado === 0 && valorComparacao === 0) return 'estavel'
-  if (valorComparacao === 0 && valorInvestigado > 0) return 'novo'
-  if (valorInvestigado === 0 && valorComparacao > 0) return 'sumiu'
-  const diff = valorInvestigado - valorComparacao
+  if (valorNovo === 0 && valorAntigo === 0) return 'estavel'
+  if (valorAntigo === 0 && valorNovo > 0) return 'novo'
+  if (valorNovo === 0 && valorAntigo > 0) return 'sumiu'
+  const diff = valorNovo - valorAntigo
   if (Math.abs(diff) < estavelThreshold) return 'estavel'
   return diff > 0 ? 'aumentou' : 'reduziu'
 }
@@ -235,47 +242,52 @@ export function classificarDriver(
 /**
  * Decompõe a diferença entre 2 conjuntos agregados de categorias.
  * Retorna lista de drivers ordenada por |diferenca| DESC.
+ *
+ * Convenção (Hotfix cronológica 28/05/2026):
+ *   diferenca = valorNovo - valorAntigo
+ *   - positivo → categoria subiu cronologicamente
+ *   - negativo → categoria caiu cronologicamente
  */
 export function decompor(
-  investigado: CategoriaAggregate[],
-  comparacao: CategoriaAggregate[],
+  novo: CategoriaAggregate[],
+  antigo: CategoriaAggregate[],
   estavelThreshold = DEFAULT_ESTAVEL_THRESHOLD,
 ): DriverVariacao[] {
   // Indexa ambos por categoryId pra fazer join
-  const investMap = new Map(
-    investigado.map((c) => [c.categoryId ?? '__null__', c]),
+  const novoMap = new Map(
+    novo.map((c) => [c.categoryId ?? '__null__', c]),
   )
-  const compMap = new Map(
-    comparacao.map((c) => [c.categoryId ?? '__null__', c]),
+  const antigoMap = new Map(
+    antigo.map((c) => [c.categoryId ?? '__null__', c]),
   )
 
-  const allKeys = new Set([...investMap.keys(), ...compMap.keys()])
+  const allKeys = new Set([...novoMap.keys(), ...antigoMap.keys()])
 
   const drivers: DriverVariacao[] = []
 
   for (const key of allKeys) {
-    const inv = investMap.get(key)
-    const cmp = compMap.get(key)
+    const inv = novoMap.get(key)
+    const cmp = antigoMap.get(key)
 
-    const valorInvestigado = inv?.totalNoBucket ?? 0
-    const valorComparacao = cmp?.totalNoBucket ?? 0
-    const diferenca = valorInvestigado - valorComparacao
+    const valorNovo = inv?.totalNoBucket ?? 0
+    const valorAntigo = cmp?.totalNoBucket ?? 0
+    const diferenca = valorNovo - valorAntigo
     const percentual =
-      valorComparacao === 0
+      valorAntigo === 0
         ? null
-        : (valorInvestigado - valorComparacao) / valorComparacao
+        : (valorNovo - valorAntigo) / valorAntigo
 
     drivers.push({
       categoryId: key === '__null__' ? null : key,
       categoryName: inv?.categoryName ?? cmp?.categoryName ?? 'Sem categoria',
       dreGroup: inv?.dreGroup ?? cmp?.dreGroup ?? null,
-      valorInvestigado,
-      valorComparacao,
+      valorNovo,
+      valorAntigo,
       diferenca,
       percentual,
       tipo: classificarDriver(
-        valorInvestigado,
-        valorComparacao,
+        valorNovo,
+        valorAntigo,
         estavelThreshold,
       ),
     })
@@ -298,35 +310,35 @@ export function decompor(
 /**
  * Constrói as barras do waterfall chart. Estrutura:
  *
- *   [0] Início (Comparação)    base=0,                value=totalComparacao
- *   [1..N] Top N drivers       base=cumulativo,       value=|diferenca|
- *   [N+1] Outros (se houver)   base=cumulativo,       value=|sobra|
- *   [N+2] Fim (Investigado)    base=0,                value=totalInvestigado
+ *   [0]     Início (ANTIGO)   base=0,           value=totalAntigo
+ *   [1..N]  Top N drivers     base=cumulativo,  value=|diferenca|
+ *   [N+1]   Outros (se há)    base=cumulativo,  value=|sobra|
+ *   [N+2]   Fim (NOVO)        base=0,           value=totalNovo
  *
  * Para cada driver:
  * - delta > 0 (aumento): base = cumulativo, end = base + value
  * - delta < 0 (redução): base = cumulativo - value, end = base
  *   (a barra desce DA base PRA cumulative atual)
  *
- * Aritmética fecha porque o último cumulative = totalInvestigado.
+ * Aritmética fecha porque o último cumulative = totalNovo.
  */
 export function buildWaterfallBars(
   drivers: DriverVariacao[],
-  totalComparacao: number,
-  totalInvestigado: number,
-  mesInvestigadoLabel: string,
-  comparacaoLabel: string,
+  totalAntigo: number,
+  totalNovo: number,
+  novoLabel: string,
+  antigoLabel: string,
   topN = DEFAULT_TOP_N,
 ): WaterfallBar[] {
   const bars: WaterfallBar[] = []
 
   // Barra inicial: total da comparação
   bars.push({
-    label: comparacaoLabel,
+    label: antigoLabel,
     base: 0,
-    value: totalComparacao,
-    delta: totalComparacao,
-    end: totalComparacao,
+    value: totalAntigo,
+    delta: totalAntigo,
+    end: totalAntigo,
     tipo: 'inicio',
   })
 
@@ -337,7 +349,7 @@ export function buildWaterfallBars(
   const topDrivers = driversNonZero.slice(0, topN)
   const resto = driversNonZero.slice(topN)
 
-  let cumulative = totalComparacao
+  let cumulative = totalAntigo
 
   for (const d of topDrivers) {
     if (d.diferenca > 0) {
@@ -407,15 +419,38 @@ export function buildWaterfallBars(
 
   // Barra final: total investigado
   bars.push({
-    label: mesInvestigadoLabel,
+    label: novoLabel,
     base: 0,
-    value: totalInvestigado,
-    delta: totalInvestigado,
-    end: totalInvestigado,
+    value: totalNovo,
+    delta: totalNovo,
+    end: totalNovo,
     tipo: 'fim',
   })
 
   return bars
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Hotfix cronológica (28/05/2026) — ordenação automática antigo/novo
+// ────────────────────────────────────────────────────────────────────
+
+/**
+ * Ordena 2 strings YYYY-MM cronologicamente.
+ *
+ * YYYY-MM comparado lexicograficamente é equivalente a comparação
+ * cronológica (zero-padded). Retorna { antigo, novo } com antigo ≤ novo.
+ *
+ * Usado pela API route ANTES de chamar analiseVariacao, garantindo
+ * que a engine sempre receba mesAntigo ≤ mesNovo independente da
+ * ordem em que o usuário escolheu os dropdowns na UI.
+ */
+export function ordenarCronologicamente(
+  mesA: string,
+  mesB: string,
+): { antigo: string; novo: string } {
+  return mesA <= mesB
+    ? { antigo: mesA, novo: mesB }
+    : { antigo: mesB, novo: mesA }
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -444,30 +479,28 @@ export function analiseVariacao(
   const topN = input.topNDrivers ?? DEFAULT_TOP_N
   const estavelThreshold = input.estavelThreshold ?? DEFAULT_ESTAVEL_THRESHOLD
 
-  const investBucket = parseRefMonth(input.mesInvestigado)
-  const mesInvestigadoLabel = labelMonth(input.mesInvestigado)
+  const novoBucket = parseRefMonth(input.mesNovo)
+  const novoLabel = labelMonth(input.mesNovo)
 
-  const investigado = agregarPorCategoria(input.txs, investBucket, input.tipo)
-  const totalInvestigado = investigado.reduce(
-    (s, c) => s + c.totalNoBucket,
-    0,
-  )
+  const novoAgg = agregarPorCategoria(input.txs, novoBucket, input.tipo)
+  const totalNovo = novoAgg.reduce((s, c) => s + c.totalNoBucket, 0)
 
-  let comparacao: CategoriaAggregate[]
-  let totalComparacao: number
-  let comparacaoLabel: string
+  let antigoAgg: CategoriaAggregate[]
+  let totalAntigo: number
+  let antigoLabel: string
 
   if (input.mode === 'mes-vs-mes') {
-    const compBucket = parseRefMonth(input.ymComparacao)
-    comparacao = agregarPorCategoria(input.txs, compBucket, input.tipo)
-    totalComparacao = comparacao.reduce((s, c) => s + c.totalNoBucket, 0)
-    comparacaoLabel = labelMonth(input.ymComparacao)
+    const antigoBucket = parseRefMonth(input.mesAntigo)
+    antigoAgg = agregarPorCategoria(input.txs, antigoBucket, input.tipo)
+    totalAntigo = antigoAgg.reduce((s, c) => s + c.totalNoBucket, 0)
+    antigoLabel = labelMonth(input.mesAntigo)
   } else {
-    // mes-vs-media: agrega cada um dos N-1 meses ANTERIORES (exclui o investigado)
+    // mes-vs-media: agrega cada um dos N-1 meses ANTERIORES (exclui o novo).
+    // Média sempre representa o "passado agregado" → antigo cronologicamente.
     const N = input.nMesesContexto ?? DEFAULT_N_MESES_CONTEXTO
     const mesesAnteriores: MonthRange[] = []
     for (let i = 1; i <= N - 1; i++) {
-      mesesAnteriores.push(backMonths(input.mesInvestigado, i))
+      mesesAnteriores.push(backMonths(input.mesNovo, i))
     }
 
     // Para cada categoria, calcula média dos meses anteriores (ignora zeros)
@@ -497,22 +530,22 @@ export function analiseVariacao(
       }
     }
 
-    comparacao = Array.from(mediaPorCat.entries()).map(([key, v]) => ({
+    antigoAgg = Array.from(mediaPorCat.entries()).map(([key, v]) => ({
       categoryId: key === '__null__' ? null : key,
       categoryName: v.name,
       dreGroup: v.dreGroup,
       totalNoBucket: v.count > 0 ? v.soma / v.count : 0,
     }))
-    totalComparacao = comparacao.reduce((s, c) => s + c.totalNoBucket, 0)
-    comparacaoLabel = `Média dos últimos ${N - 1} meses (excl. ${mesInvestigadoLabel})`
+    totalAntigo = antigoAgg.reduce((s, c) => s + c.totalNoBucket, 0)
+    antigoLabel = `Média dos últimos ${N - 1} meses (excl. ${novoLabel})`
   }
 
-  const drivers = decompor(investigado, comparacao, estavelThreshold)
-  const diferencaTotal = totalInvestigado - totalComparacao
+  const drivers = decompor(novoAgg, antigoAgg, estavelThreshold)
+  const diferencaTotal = totalNovo - totalAntigo
   const percentualTotal =
-    totalComparacao === 0
+    totalAntigo === 0
       ? null
-      : (totalInvestigado - totalComparacao) / totalComparacao
+      : (totalNovo - totalAntigo) / totalAntigo
 
   // Hotfix Waterfall SVG (28/05/2026): defaults agressivos (8% / mín 4)
   // Top N vem do input (default 6 — antes 10). Yussef pediu chart enxuto.
@@ -526,10 +559,10 @@ export function analiseVariacao(
   const waterfallBars = buildWaterfallBarsFromSelection(
     visiveis,
     drivers,
-    totalComparacao,
-    totalInvestigado,
-    mesInvestigadoLabel,
-    comparacaoLabel,
+    totalAntigo,
+    totalNovo,
+    novoLabel,
+    antigoLabel,
   )
 
   // Aritmética: soma de TODOS os drivers (não só top N) deve bater
@@ -539,8 +572,8 @@ export function analiseVariacao(
 
   // Título narrativo + insights (Sprint Waterfall Redesign)
   const tituloNarrativo = gerarTituloNarrativo({
-    mesInvestigadoLabel,
-    comparacaoLabel,
+    novoLabel,
+    antigoLabel,
     diferencaTotal,
     drivers,
   })
@@ -551,10 +584,10 @@ export function analiseVariacao(
   })
 
   return {
-    mesInvestigadoLabel,
-    comparacaoLabel,
-    totalInvestigado,
-    totalComparacao,
+    novoLabel,
+    antigoLabel,
+    totalNovo,
+    totalAntigo,
     diferencaTotal,
     percentualTotal,
     drivers,
@@ -651,23 +684,23 @@ export function selecionarDriversVisuais(
 export function buildWaterfallBarsFromSelection(
   visiveis: DriverVariacao[],
   todosDrivers: DriverVariacao[],
-  totalComparacao: number,
-  totalInvestigado: number,
-  mesInvestigadoLabel: string,
-  comparacaoLabel: string,
+  totalAntigo: number,
+  totalNovo: number,
+  novoLabel: string,
+  antigoLabel: string,
 ): WaterfallBar[] {
   const bars: WaterfallBar[] = []
 
   bars.push({
-    label: comparacaoLabel,
+    label: antigoLabel,
     base: 0,
-    value: totalComparacao,
-    delta: totalComparacao,
-    end: totalComparacao,
+    value: totalAntigo,
+    delta: totalAntigo,
+    end: totalAntigo,
     tipo: 'inicio',
   })
 
-  let cumulative = totalComparacao
+  let cumulative = totalAntigo
 
   for (const d of visiveis) {
     if (Math.abs(d.diferenca) < ARITMETICA_TOLERANCE) continue
@@ -741,11 +774,11 @@ export function buildWaterfallBarsFromSelection(
   }
 
   bars.push({
-    label: mesInvestigadoLabel,
+    label: novoLabel,
     base: 0,
-    value: totalInvestigado,
-    delta: totalInvestigado,
-    end: totalInvestigado,
+    value: totalNovo,
+    delta: totalNovo,
+    end: totalNovo,
     tipo: 'fim',
   })
 
@@ -775,18 +808,18 @@ function formatBRLForNarrative(v: number): string {
 }
 
 export interface TituloNarrativoInput {
-  mesInvestigadoLabel: string
-  comparacaoLabel: string
+  novoLabel: string
+  antigoLabel: string
   diferencaTotal: number
   drivers: DriverVariacao[] // todos, ordenados por |diff| desc
 }
 
 export function gerarTituloNarrativo(input: TituloNarrativoInput): string {
-  const { mesInvestigadoLabel, comparacaoLabel, diferencaTotal, drivers } =
+  const { novoLabel, antigoLabel, diferencaTotal, drivers } =
     input
 
   if (Math.abs(diferencaTotal) < ARITMETICA_TOLERANCE) {
-    return `${mesInvestigadoLabel} ficou estável em relação a ${comparacaoLabel}`
+    return `${novoLabel} ficou estável em relação a ${antigoLabel}`
   }
 
   const direcao = diferencaTotal > 0 ? 'a mais' : 'a menos'
@@ -801,7 +834,7 @@ export function gerarTituloNarrativo(input: TituloNarrativoInput): string {
     (d) => Math.abs(d.diferenca) >= ARITMETICA_TOLERANCE,
   )
   if (driversNonZero.length === 0) {
-    return `${mesInvestigadoLabel} custou ${valorComSinal} ${direcao} que ${comparacaoLabel}`
+    return `${novoLabel} custou ${valorComSinal} ${direcao} que ${antigoLabel}`
   }
 
   const top = driversNonZero.slice(0, Math.min(2, driversNonZero.length))
@@ -813,9 +846,12 @@ export function gerarTituloNarrativo(input: TituloNarrativoInput): string {
       ? top[0].categoryName
       : `${top[0].categoryName} e ${top[1].categoryName}`
 
-  return `${mesInvestigadoLabel} custou ${valorComSinal} ${direcao} que ${comparacaoLabel} — ${labelTop} ${
+  // Hotfix cronológica (28/05/2026): adiciona "da alta/queda" no fim pra
+  // deixar a direção da variação 100% clara mesmo sem ler o sinal.
+  const tipoMov = diferencaTotal > 0 ? 'alta' : 'queda'
+  return `${novoLabel} custou ${valorComSinal} ${direcao} que ${antigoLabel} — ${labelTop} ${
     top.length > 1 ? 'responderam' : 'respondeu'
-  } por ${pct}%`
+  } por ${pct}% da ${tipoMov}`
 }
 
 export interface InsightsInput {
@@ -833,18 +869,23 @@ export function gerarInsightsPrincipais(input: InsightsInput): Insight[] {
   )
   if (driversNonZero.length === 0) return insights
 
+  // Hotfix cronológica (28/05/2026): wording cronológico explícito.
+  // 'novo'    → categoria apareceu no mês mais novo
+  // 'sumiu'   → existia no antigo, deixou de existir no novo
+  // 'aumentou'→ subiu de antigo pra novo
+  // 'reduziu' → caiu de antigo pra novo
+  function acaoCronologica(tipo: DriverTipo, dif: number): string {
+    if (tipo === 'novo') return 'apareceu no mês novo'
+    if (tipo === 'sumiu') return 'sumiu (era pago no mês antigo)'
+    if (dif > 0) return 'aumentou vs antigo'
+    return 'reduziu vs antigo'
+  }
+
   // Top driver
   const top1 = driversNonZero[0]
   const sinal1 = top1.diferenca >= 0 ? '+' : ''
   const valor1 = formatBRLForNarrative(top1.diferenca)
-  const acao1 =
-    top1.tipo === 'novo'
-      ? 'só apareceu agora'
-      : top1.tipo === 'sumiu'
-        ? 'só estava antes'
-        : top1.diferenca > 0
-          ? 'subiu vs comparação'
-          : 'caiu vs comparação'
+  const acao1 = acaoCronologica(top1.tipo, top1.diferenca)
 
   insights.push({
     tipo: 'top-driver',
@@ -856,14 +897,7 @@ export function gerarInsightsPrincipais(input: InsightsInput): Insight[] {
     const top2 = driversNonZero[1]
     const sinal2 = top2.diferenca >= 0 ? '+' : ''
     const valor2 = formatBRLForNarrative(top2.diferenca)
-    const acao2 =
-      top2.tipo === 'novo'
-        ? 'só apareceu agora'
-        : top2.tipo === 'sumiu'
-          ? 'só estava antes'
-          : top2.diferenca > 0
-            ? 'subiu vs comparação'
-            : 'caiu vs comparação'
+    const acao2 = acaoCronologica(top2.tipo, top2.diferenca)
 
     insights.push({
       tipo: 'top-driver',
@@ -909,27 +943,27 @@ export function gerarInsightsPrincipais(input: InsightsInput): Insight[] {
 
 export interface TabelaHeadersInput {
   modo: ComparacaoMode
-  mesInvestigadoLabel: string
-  comparacaoLabel: string
+  novoLabel: string
+  antigoLabel: string
   nMesesContexto?: number
 }
 
 export interface TabelaHeaders {
-  labelInvestigado: string
-  labelComparacao: string
+  labelNovo: string
+  labelAntigo: string
 }
 
 export function computeTabelaHeaders(input: TabelaHeadersInput): TabelaHeaders {
-  const { modo, mesInvestigadoLabel, comparacaoLabel, nMesesContexto } = input
+  const { modo, novoLabel, antigoLabel, nMesesContexto } = input
   if (modo === 'mes-vs-media') {
     const n = nMesesContexto ?? 6
     return {
-      labelInvestigado: mesInvestigadoLabel,
-      labelComparacao: `Média ${n}M`,
+      labelNovo: novoLabel,
+      labelAntigo: `Média ${n}M`,
     }
   }
   return {
-    labelInvestigado: mesInvestigadoLabel,
-    labelComparacao: comparacaoLabel,
+    labelNovo: novoLabel,
+    labelAntigo: antigoLabel,
   }
 }

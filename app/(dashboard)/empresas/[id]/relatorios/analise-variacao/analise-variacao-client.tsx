@@ -318,19 +318,19 @@ export function AnaliseVariacaoClient({ empresaId }: Props) {
             <InsightsCard insights={data.insightsPrincipais} />
           )}
 
-          {/* Tabela drivers */}
+          {/* Tabela drivers — ANTIGO esquerda, NOVO direita (hotfix cronológica) */}
           {(() => {
             const headers = computeTabelaHeaders({
               modo: mode,
-              mesInvestigadoLabel: data.mesInvestigadoLabel,
-              comparacaoLabel: data.comparacaoLabel,
+              novoLabel: data.novoLabel,
+              antigoLabel: data.antigoLabel,
               nMesesContexto,
             })
             return (
               <DriversTabela
                 drivers={data.drivers}
-                labelInvestigado={headers.labelInvestigado}
-                labelComparacao={headers.labelComparacao}
+                labelAntigo={headers.labelAntigo}
+                labelNovo={headers.labelNovo}
               />
             )
           })()}
@@ -357,21 +357,22 @@ function ResumoCard({ data }: { data: AnaliseVariacaoResult }) {
   return (
     <Card className={`border ${corBorda}`}>
       <CardContent className="py-5 space-y-2">
+        {/* Hotfix cronológica: ANTIGO esquerda, NOVO direita, Diferença = novo - antigo */}
         <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
           <div>
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
-              {data.mesInvestigadoLabel}
+              {data.antigoLabel}
             </p>
-            <p className="text-xl font-semibold tabular-nums mt-0.5">
-              {formatBRL(data.totalInvestigado)}
+            <p className="text-xl font-semibold tabular-nums mt-0.5 text-muted-foreground">
+              {formatBRL(data.totalAntigo)}
             </p>
           </div>
           <div>
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
-              {data.comparacaoLabel}
+              {data.novoLabel}
             </p>
-            <p className="text-xl font-semibold tabular-nums mt-0.5 text-muted-foreground">
-              {formatBRL(data.totalComparacao)}
+            <p className="text-xl font-semibold tabular-nums mt-0.5">
+              {formatBRL(data.totalNovo)}
             </p>
           </div>
           <div>
@@ -437,12 +438,12 @@ function InsightsCard({ insights }: { insights: Insight[] }) {
 
 function DriversTabela({
   drivers,
-  labelInvestigado,
-  labelComparacao,
+  labelAntigo,
+  labelNovo,
 }: {
   drivers: DriverVariacao[]
-  labelInvestigado: string
-  labelComparacao: string
+  labelAntigo: string
+  labelNovo: string
 }) {
   // Filtra os "estavel" pra mostrar só drivers relevantes
   const visiveis = drivers.filter((d) => d.tipo !== 'estavel')
@@ -459,11 +460,10 @@ function DriversTabela({
     )
   }
 
-  // Headers dinâmicos: nomes dos períodos em vez de "Investigado/Comparação".
-  // Quando muito longos (>24 chars), o `tracking-wide` + uppercase já força quebra
-  // visual aceitável; mas mantemos truncate de fallback pra labels gigantes.
-  const headerInvestigado = labelInvestigado.toUpperCase()
-  const headerComparacao = labelComparacao.toUpperCase()
+  // Hotfix cronológica: ANTIGO esquerda (col 2), NOVO direita (col 3).
+  // Labels uppercase pra header consistente.
+  const headerAntigo = labelAntigo.toUpperCase()
+  const headerNovo = labelNovo.toUpperCase()
 
   return (
     <Card>
@@ -478,15 +478,15 @@ function DriversTabela({
                 <th className="text-left px-3 py-2 font-medium">Categoria</th>
                 <th
                   className="text-right px-3 py-2 font-medium"
-                  data-testid="header-investigado"
+                  data-testid="header-antigo"
                 >
-                  {headerInvestigado}
+                  {headerAntigo}
                 </th>
                 <th
                   className="text-right px-3 py-2 font-medium"
-                  data-testid="header-comparacao"
+                  data-testid="header-novo"
                 >
-                  {headerComparacao}
+                  {headerNovo}
                 </th>
                 <th className="text-right px-3 py-2 font-medium">Diferença</th>
                 <th className="text-left px-3 py-2 font-medium">Tipo</th>
@@ -555,11 +555,12 @@ function DriverRow({ d }: { d: DriverVariacao }) {
           </div>
         )}
       </td>
-      <td className="px-3 py-2.5 text-right tabular-nums">
-        {d.valorInvestigado > 0 ? formatBRL(d.valorInvestigado) : '—'}
-      </td>
+      {/* Hotfix cronológica: ANTIGO esquerda, NOVO direita */}
       <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">
-        {d.valorComparacao > 0 ? formatBRL(d.valorComparacao) : '—'}
+        {d.valorAntigo > 0 ? formatBRL(d.valorAntigo) : '—'}
+      </td>
+      <td className="px-3 py-2.5 text-right tabular-nums">
+        {d.valorNovo > 0 ? formatBRL(d.valorNovo) : '—'}
       </td>
       <td className={`px-3 py-2.5 text-right tabular-nums font-semibold ${m.tone}`}>
         {d.diferenca >= 0 ? '+' : ''}
