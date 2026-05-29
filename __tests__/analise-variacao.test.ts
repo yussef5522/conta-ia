@@ -4,6 +4,7 @@ import { describe, it, expect } from 'vitest'
 import {
   agregarPorCategoria,
   classificarDriver,
+  computeTabelaHeaders,
   decompor,
   buildWaterfallBars,
   analiseVariacao,
@@ -837,5 +838,104 @@ describe('Hotfix SVG: defaults agressivos em analiseVariacao', () => {
     })
     const outros = r.insightsPrincipais.find((i) => i.tipo === 'outros')
     expect(outros).toBeUndefined()
+  })
+
+  it('insights NÃO contém string "outros drivers somam" em nenhum bullet', () => {
+    const txs: ComparativoInputTx[] = []
+    for (let i = 0; i < 10; i++) {
+      txs.push(
+        tx(`c${i}`, `Cat${i}`, '2026-01-15T12:00:00.000Z', (10 - i) * 1000),
+      )
+      txs.push(tx(`c${i}`, `Cat${i}`, '2026-02-15T12:00:00.000Z', 0))
+    }
+    const r = analiseVariacao({
+      mode: 'mes-vs-mes',
+      txs,
+      mesInvestigado: '2026-01',
+      ymComparacao: '2026-02',
+      tipo: 'DESPESA',
+    })
+    expect(
+      r.insightsPrincipais.every((b) => !b.texto.includes('outros drivers')),
+    ).toBe(true)
+    expect(
+      r.insightsPrincipais.every((b) => !b.texto.includes('drivers somam')),
+    ).toBe(true)
+  })
+})
+
+// ────────────────────────────────────────────────────────────────────
+// Hotfix headers-bullets (28/05/2026) — computeTabelaHeaders
+//   Headers da tabela "Onde foi a diferença" dinâmicos: mostram nome
+//   do período (mês ou "Média NM") em vez de "Investigado/Comparação".
+// ────────────────────────────────────────────────────────────────────
+
+describe('Hotfix headers-bullets: computeTabelaHeaders', () => {
+  it('mes-vs-mes: ambos headers mostram nomes dos meses', () => {
+    const r = computeTabelaHeaders({
+      modo: 'mes-vs-mes',
+      mesInvestigadoLabel: 'Janeiro/2026',
+      comparacaoLabel: 'Fevereiro/2026',
+    })
+    expect(r.labelInvestigado).toBe('Janeiro/2026')
+    expect(r.labelComparacao).toBe('Fevereiro/2026')
+  })
+
+  it('mes-vs-mes: nunca usa palavra "Investigado" ou "Comparação"', () => {
+    const r = computeTabelaHeaders({
+      modo: 'mes-vs-mes',
+      mesInvestigadoLabel: 'Mar/26',
+      comparacaoLabel: 'Fev/26',
+    })
+    expect(r.labelInvestigado.toLowerCase()).not.toContain('investigado')
+    expect(r.labelComparacao.toLowerCase()).not.toContain('comparação')
+  })
+
+  it('mes-vs-media: investigado mantém mês, comparação vira "Média NM"', () => {
+    const r = computeTabelaHeaders({
+      modo: 'mes-vs-media',
+      mesInvestigadoLabel: 'Janeiro/2026',
+      comparacaoLabel: 'média 6 meses',
+      nMesesContexto: 6,
+    })
+    expect(r.labelInvestigado).toBe('Janeiro/2026')
+    expect(r.labelComparacao).toBe('Média 6M')
+  })
+
+  it('mes-vs-media: respeita N=3 e N=12', () => {
+    const r3 = computeTabelaHeaders({
+      modo: 'mes-vs-media',
+      mesInvestigadoLabel: 'Jan/26',
+      comparacaoLabel: 'média 3 meses',
+      nMesesContexto: 3,
+    })
+    expect(r3.labelComparacao).toBe('Média 3M')
+
+    const r12 = computeTabelaHeaders({
+      modo: 'mes-vs-media',
+      mesInvestigadoLabel: 'Jan/26',
+      comparacaoLabel: 'média 12 meses',
+      nMesesContexto: 12,
+    })
+    expect(r12.labelComparacao).toBe('Média 12M')
+  })
+
+  it('mes-vs-media: fallback nMesesContexto undefined usa 6', () => {
+    const r = computeTabelaHeaders({
+      modo: 'mes-vs-media',
+      mesInvestigadoLabel: 'Jan/26',
+      comparacaoLabel: 'média X meses',
+    })
+    expect(r.labelComparacao).toBe('Média 6M')
+  })
+
+  it('preserva caracteres da label investigado (acentos)', () => {
+    const r = computeTabelaHeaders({
+      modo: 'mes-vs-mes',
+      mesInvestigadoLabel: 'Março/2026',
+      comparacaoLabel: 'Fevereiro/2026',
+    })
+    expect(r.labelInvestigado).toBe('Março/2026')
+    expect(r.labelComparacao).toBe('Fevereiro/2026')
   })
 })

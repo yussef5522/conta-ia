@@ -893,3 +893,43 @@ export function gerarInsightsPrincipais(input: InsightsInput): Insight[] {
 
   return insights
 }
+
+// ────────────────────────────────────────────────────────────────────
+// Hotfix headers-bullets (28/05/2026)
+//
+// Headers da tabela "Onde foi a diferença" agora mostram dinamicamente
+// o nome do período em vez de "INVESTIGADO/COMPARAÇÃO" (abstrato).
+//
+// Regras:
+//  - mes-vs-mes  → ambos viram os labels dos meses (Ex: "Janeiro/2026")
+//  - mes-vs-media → investigado vira label do mês; comparação vira "Média NM"
+//    (forma compacta — "Média 6 meses" do título narrativo NÃO cabe num
+//    th estreito da tabela)
+// ────────────────────────────────────────────────────────────────────
+
+export interface TabelaHeadersInput {
+  modo: ComparacaoMode
+  mesInvestigadoLabel: string
+  comparacaoLabel: string
+  nMesesContexto?: number
+}
+
+export interface TabelaHeaders {
+  labelInvestigado: string
+  labelComparacao: string
+}
+
+export function computeTabelaHeaders(input: TabelaHeadersInput): TabelaHeaders {
+  const { modo, mesInvestigadoLabel, comparacaoLabel, nMesesContexto } = input
+  if (modo === 'mes-vs-media') {
+    const n = nMesesContexto ?? 6
+    return {
+      labelInvestigado: mesInvestigadoLabel,
+      labelComparacao: `Média ${n}M`,
+    }
+  }
+  return {
+    labelInvestigado: mesInvestigadoLabel,
+    labelComparacao: comparacaoLabel,
+  }
+}
