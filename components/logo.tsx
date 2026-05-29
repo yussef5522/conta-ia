@@ -1,10 +1,10 @@
-// Logo Conta IA — componente reutilizável (Sprint 1.2).
+// Logo CAIXAOS — componente reutilizável (Sprint 1.2 — wordmark atualizado
+// Sprint Brand CAIXAOS 29/05/2026 mantendo o SVG legado azul Foundation).
 // SVG "Chart": 4 barras crescentes (3 brand-light + 1 success-light) com
-// círculo de "data point" no topo da barra mais alta. Identidade visual
-// alinhada à proposta Foundation SaaS (dashboard contábil + IA).
+// círculo de "data point" no topo da barra mais alta.
 //
-// Usado em: login, header dashboard, favicon, email templates, exports,
-// páginas de erro.
+// Usado em: header dashboard antigo, email templates, exports, páginas
+// de erro. Login agora usa /brand/logo-vertical.svg direto.
 
 import { cn } from '@/lib/utils'
 
@@ -36,7 +36,7 @@ export function Logo({
         height={svgSize}
         viewBox="0 0 36 36"
         fill="none"
-        aria-label="Logo Conta IA"
+        aria-label="Logo CAIXAOS"
         role="img"
       >
         <rect width="36" height="36" rx="9" fill="#0C447C" />
@@ -58,7 +58,7 @@ export function Logo({
           className="font-medium tracking-tight"
           style={{ fontSize: textSize, color: textColor, letterSpacing: '-0.2px' }}
         >
-          Conta IA
+          CAIXAOS
         </span>
       )}
     </div>

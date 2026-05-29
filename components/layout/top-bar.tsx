@@ -19,7 +19,7 @@ export function TopBar({ userName, userEmail }: Props) {
           <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary">
             <span className="text-primary-foreground font-bold text-xs">C</span>
           </div>
-          <span className="font-semibold text-sm hidden sm:inline">Conta IA</span>
+          <span className="font-semibold text-sm hidden sm:inline">CAIXAOS</span>
         </Link>
         <span className="text-zinc-300">/</span>
         <WorkspaceSwitcher />

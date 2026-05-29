@@ -5,32 +5,35 @@ import { Toaster } from '@/components/ui/toaster'
 
 const inter = Inter({ subsets: ['latin'] })
 
+// Sprint Brand CAIXAOS (29/05/2026): título/metadata/favicon trocados pra
+// nova identidade. theme-color violet-600 (#7c3aed) bate com logo.
 export const metadata: Metadata = {
   title: {
-    default: 'Conta IA',
-    template: '%s | Conta IA',
+    default: 'CAIXAOS',
+    template: '%s | CAIXAOS',
   },
-  description: 'Seu contador inteligente que nunca dorme. Gestão financeira para empresas brasileiras.',
+  description: 'Sistema operacional do seu caixa. Gestão financeira com IA pra PMEs brasileiras.',
   // Sprint 4.0.5.c — PWA
   manifest: '/manifest.json',
-  applicationName: 'Conta IA',
+  applicationName: 'CAIXAOS',
   appleWebApp: {
     capable: true,
-    title: 'Conta IA',
+    title: 'CAIXAOS',
     statusBarStyle: 'default',
   },
   icons: {
-    icon: '/icon.svg',
-    apple: '/icon.svg',
+    icon: '/favicon.svg',
+    apple: '/favicon.svg',
   },
 }
 
 // Sprint 4.0.5.c — viewport mobile-friendly
+// Sprint Brand CAIXAOS — themeColor agora bate com logo violet-600
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   maximumScale: 5,
-  themeColor: '#6366F1', // indigo-500 (brand 4.0.5.a)
+  themeColor: '#7c3aed',
 }
 
 export default function RootLayout({

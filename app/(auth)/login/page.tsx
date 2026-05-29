@@ -1,14 +1,16 @@
 // Login premium — Sprint 1.2.
 // Server Component (sem interatividade). Layout split 40/60 desktop,
 // 50/50 tablet, full-width mobile.
+// Sprint Brand CAIXAOS (29/05/2026) — logo vertical do CAIXAOS substitui
+// o componente <Logo> antigo (mantido em outros lugares por enquanto).
 
 import { Sparkles, Quote, Check } from 'lucide-react'
 import type { Metadata } from 'next'
-import { Logo } from '@/components/logo'
+import Image from 'next/image'
 import { LoginForm } from './login-form'
 
 export const metadata: Metadata = {
-  title: 'Entrar | Conta IA',
+  title: 'Entrar | CAIXAOS',
   description:
     'Acesse seu dashboard financeiro com IA. Importa OFX, categoriza sozinha, gera DRE.',
 }
@@ -19,7 +21,16 @@ export default function LoginPage() {
       {/* ========== ESQUERDA — Form ========== */}
       <div className="flex items-center justify-center bg-white p-6 sm:p-10">
         <div className="w-full max-w-[400px]">
-          <Logo size="md" className="mb-10" />
+          {/* Sprint Brand CAIXAOS — logo vertical no topo do card */}
+          <div className="flex justify-center mb-8">
+            <Image
+              src="/brand/logo-vertical.svg"
+              alt="CAIXAOS"
+              width={160}
+              height={128}
+              priority
+            />
+          </div>
 
           <div className="mb-7">
             <h1
@@ -121,7 +132,7 @@ export default function LoginPage() {
               }}
             >
               Enquanto outros sistemas pedem que você classifique tudo
-              manualmente, a Conta IA aprende com cada classificação tua e
+              manualmente, o CAIXAOS aprende com cada classificação tua e
               categoriza automaticamente.
             </p>
           </div>
