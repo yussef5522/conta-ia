@@ -24,12 +24,14 @@ import {
 
 export type ComparacaoMode = 'mes-vs-mes' | 'mes-vs-media'
 
+// Hotfix limpeza final (28/05/2026): tipos 'novo' e 'sumiu' REMOVIDOS.
+// Categoria que aparece (antigo=0, novo>0) vira 'aumentou' (vermelho).
+// Categoria que some (antigo>0, novo=0) vira 'reduziu' (verde).
+// Decisão: a INFORMAÇÃO já está no valor da diferença + colunas com '—'.
 export type DriverTipo =
-  | 'aumentou' // ambos > 0, novo > antigo (subiu cronologicamente)
-  | 'reduziu' // ambos > 0, novo < antigo (caiu cronologicamente)
-  | 'novo' // antigo=0, novo>0 (apareceu no mês mais recente)
-  | 'sumiu' // antigo>0, novo=0 (deixou de existir no mais recente)
-  | 'estavel' // |novo - antigo| < threshold
+  | 'aumentou' // diferenca > 0 (subiu de antigo pra novo)
+  | 'reduziu' // diferenca < 0 (caiu de antigo pra novo)
+  | 'estavel' // |diferenca| < threshold
 
 export interface DriverVariacao {
   categoryId: string | null
@@ -83,24 +85,6 @@ export interface AnaliseVariacaoResult {
   // ────────────────────────────────────────────────────────
   /** Título dinâmico narrativo: "Janeiro custou +R$ 99k a mais — IRPJ e CSLL responderam por 80%" */
   tituloNarrativo: string
-  /** Insights principais (3-5 bullets) — Top drivers + casos NEW/GONE notáveis */
-  insightsPrincipais: Insight[]
-}
-
-// ────────────────────────────────────────────────────────────────────
-// Sprint Waterfall Redesign McKinsey (28/05/2026)
-// ────────────────────────────────────────────────────────────────────
-
-export type InsightTipo =
-  | 'top-driver' // top 1-2 drivers em magnitude
-  | 'novo' // categoria nova (sazonal/pontual)
-  | 'sumiu' // categoria que sumiu
-  | 'concentracao' // % do total nos top N
-  | 'outros' // resumo de "Outros"
-
-export interface Insight {
-  tipo: InsightTipo
-  texto: string
 }
 
 export interface AnaliseVariacaoInputComum {
@@ -227,9 +211,9 @@ export function classificarDriver(
   valorAntigo: number,
   estavelThreshold = DEFAULT_ESTAVEL_THRESHOLD,
 ): DriverTipo {
-  if (valorNovo === 0 && valorAntigo === 0) return 'estavel'
-  if (valorAntigo === 0 && valorNovo > 0) return 'novo'
-  if (valorNovo === 0 && valorAntigo > 0) return 'sumiu'
+  // Hotfix limpeza final (28/05/2026): só 3 tipos. Apareceu (antigo=0) →
+  // aumentou; sumiu (novo=0) → reduziu. O valor R$0 na coluna + sinal
+  // da diferença já comunicam o caso especial.
   const diff = valorNovo - valorAntigo
   if (Math.abs(diff) < estavelThreshold) return 'estavel'
   return diff > 0 ? 'aumentou' : 'reduziu'
@@ -577,12 +561,6 @@ export function analiseVariacao(
     diferencaTotal,
     drivers,
   })
-  const insightsPrincipais = gerarInsightsPrincipais({
-    drivers,
-    diferencaTotal,
-    visiveis,
-  })
-
   return {
     novoLabel,
     antigoLabel,
@@ -595,7 +573,6 @@ export function analiseVariacao(
     aritmeticaFecha,
     aritmeticaResiduo,
     tituloNarrativo,
-    insightsPrincipais,
   }
 }
 
@@ -607,7 +584,9 @@ export function analiseVariacao(
 // - selecionarDriversVisuais: aplica threshold 5% + Top N + mín 5
 // - buildWaterfallBarsFromSelection: usa visiveis + agrupa resto em Outros
 // - gerarTituloNarrativo: "Mês X custou +R$ Y a mais — A e B 80%"
-// - gerarInsightsPrincipais: 3-5 bullets enumerando top drivers + NEW/GONE
+//
+// Hotfix limpeza final (28/05/2026): bloco "Insights principais" REMOVIDO.
+// Título narrativo + tabela já comunicam tudo — bullets eram redundância.
 
 // Hotfix waterfall SVG (28/05/2026): 8% / mín 4 (antes 5% / 5).
 const DEFAULT_MIN_IMPACT_PCT = 0.08
@@ -854,79 +833,9 @@ export function gerarTituloNarrativo(input: TituloNarrativoInput): string {
   } por ${pct}% da ${tipoMov}`
 }
 
-export interface InsightsInput {
-  drivers: DriverVariacao[]
-  diferencaTotal: number
-  visiveis: DriverVariacao[]
-}
-
-export function gerarInsightsPrincipais(input: InsightsInput): Insight[] {
-  const insights: Insight[] = []
-  const { drivers, diferencaTotal, visiveis } = input
-
-  const driversNonZero = drivers.filter(
-    (d) => Math.abs(d.diferenca) >= ARITMETICA_TOLERANCE,
-  )
-  if (driversNonZero.length === 0) return insights
-
-  // Hotfix cronológica (28/05/2026): wording cronológico explícito.
-  // 'novo'    → categoria apareceu no mês mais novo
-  // 'sumiu'   → existia no antigo, deixou de existir no novo
-  // 'aumentou'→ subiu de antigo pra novo
-  // 'reduziu' → caiu de antigo pra novo
-  function acaoCronologica(tipo: DriverTipo, dif: number): string {
-    if (tipo === 'novo') return 'apareceu no mês novo'
-    if (tipo === 'sumiu') return 'sumiu (era pago no mês antigo)'
-    if (dif > 0) return 'aumentou vs antigo'
-    return 'reduziu vs antigo'
-  }
-
-  // Top driver
-  const top1 = driversNonZero[0]
-  const sinal1 = top1.diferenca >= 0 ? '+' : ''
-  const valor1 = formatBRLForNarrative(top1.diferenca)
-  const acao1 = acaoCronologica(top1.tipo, top1.diferenca)
-
-  insights.push({
-    tipo: 'top-driver',
-    texto: `${top1.categoryName} ${sinal1}${valor1} — ${acao1}`,
-  })
-
-  // Top 2 se relevante
-  if (driversNonZero.length >= 2) {
-    const top2 = driversNonZero[1]
-    const sinal2 = top2.diferenca >= 0 ? '+' : ''
-    const valor2 = formatBRLForNarrative(top2.diferenca)
-    const acao2 = acaoCronologica(top2.tipo, top2.diferenca)
-
-    insights.push({
-      tipo: 'top-driver',
-      texto: `${top2.categoryName} ${sinal2}${valor2} — ${acao2}`,
-    })
-  }
-
-  // Concentração: % nos top 2-3
-  if (driversNonZero.length >= 2) {
-    const topN = Math.min(2, driversNonZero.length)
-    const sumTop = driversNonZero
-      .slice(0, topN)
-      .reduce((s, d) => s + Math.abs(d.diferenca), 0)
-    const pct = Math.round((sumTop / Math.abs(diferencaTotal)) * 100)
-    if (pct >= 50) {
-      insights.push({
-        tipo: 'concentracao',
-        texto: `Top ${topN} drivers concentram ${pct}% da variação total`,
-      })
-    }
-  }
-
-  // Hotfix waterfall SVG (28/05/2026): bullet "X outros drivers somam Y"
-  // REMOVIDO. Yussef classificou como ruído. Insights ficam só top-driver
-  // (1-2) + concentração (≥ 50%). O usuário já vê "Outros" na barra do
-  // chart e na tabela de drivers — não precisa repetir em bullet.
-
-  return insights
-}
+// Hotfix limpeza final (28/05/2026): `gerarInsightsPrincipais`, `Insight`,
+// `InsightTipo` e `InsightsInput` REMOVIDOS. Bullets redundavam o título
+// narrativo. Título + tabela cobrem 100% do storytelling.
 
 // ────────────────────────────────────────────────────────────────────
 // Hotfix headers-bullets (28/05/2026)

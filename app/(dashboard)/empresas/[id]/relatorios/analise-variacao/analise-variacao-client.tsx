@@ -32,7 +32,6 @@ import {
   type AnaliseVariacaoResult,
   type ComparacaoMode,
   type DriverVariacao,
-  type Insight,
 } from '@/lib/relatorios/analise-variacao'
 import type { ComparativoTipoFilter } from '@/lib/relatorios/comparativo'
 
@@ -313,11 +312,6 @@ export function AnaliseVariacaoClient({ empresaId }: Props) {
             </CardContent>
           </Card>
 
-          {/* Bloco de insights principais (Sprint Redesign) */}
-          {data.insightsPrincipais.length > 0 && (
-            <InsightsCard insights={data.insightsPrincipais} />
-          )}
-
           {/* Tabela drivers — ANTIGO esquerda, NOVO direita (hotfix cronológica) */}
           {(() => {
             const headers = computeTabelaHeaders({
@@ -391,46 +385,6 @@ function ResumoCard({ data }: { data: AnaliseVariacaoResult }) {
             </p>
           </div>
         </div>
-      </CardContent>
-    </Card>
-  )
-}
-
-function InsightsCard({ insights }: { insights: Insight[] }) {
-  const iconForTipo = (tipo: Insight['tipo']) => {
-    switch (tipo) {
-      case 'top-driver':
-        return '▸'
-      case 'novo':
-        return '🆕'
-      case 'sumiu':
-        return '✕'
-      case 'concentracao':
-        return '◆'
-      case 'outros':
-        return '·'
-    }
-  }
-  return (
-    <Card>
-      <CardContent className="py-4 px-6">
-        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-3">
-          💡 Insights principais
-        </p>
-        <ul className="space-y-2">
-          {insights.map((i, idx) => (
-            <li
-              key={idx}
-              className="text-sm flex items-start gap-2"
-              data-testid={`insight-${i.tipo}-${idx}`}
-            >
-              <span className="text-primary shrink-0 mt-0.5">
-                {iconForTipo(i.tipo)}
-              </span>
-              <span className="flex-1 text-foreground/90">{i.texto}</span>
-            </li>
-          ))}
-        </ul>
       </CardContent>
     </Card>
   )
@@ -519,18 +473,6 @@ function DriverRow({ d }: { d: DriverVariacao }) {
       icon: Minus,
       label: 'reduziu',
       tone: 'text-emerald-600 dark:text-emerald-400',
-      bgRow: '',
-    },
-    novo: {
-      icon: Plus,
-      label: 'novo',
-      tone: 'text-purple-600 dark:text-purple-400',
-      bgRow: '',
-    },
-    sumiu: {
-      icon: Minus,
-      label: 'sumiu',
-      tone: 'text-slate-500 dark:text-slate-400',
       bgRow: '',
     },
     estavel: {

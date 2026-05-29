@@ -11,7 +11,6 @@ import {
   ordenarCronologicamente,
   selecionarDriversVisuais,
   gerarTituloNarrativo,
-  gerarInsightsPrincipais,
   type DriverVariacao,
 } from '@/lib/relatorios/analise-variacao'
 import {
@@ -111,11 +110,11 @@ describe('classificarDriver', () => {
   })
 
   it('novo: existia=0 e investigado>0', () => {
-    expect(classificarDriver(500, 0)).toBe('novo')
+    expect(classificarDriver(500, 0)).toBe('aumentou')
   })
 
   it('sumiu: investigado=0 mas existia antes', () => {
-    expect(classificarDriver(0, 500)).toBe('sumiu')
+    expect(classificarDriver(0, 500)).toBe('reduziu')
   })
 
   it('estavel: |diferenca| < threshold R$ 100', () => {
@@ -161,7 +160,7 @@ describe('decompor — ordenação e join de categorias', () => {
   it('categoria nova (não estava na comparação)', () => {
     const r = decompor(inv, cmp)
     const c = r.find((d) => d.categoryId === 'c')!
-    expect(c.tipo).toBe('novo')
+    expect(c.tipo).toBe('aumentou')
     expect(c.valorAntigo).toBe(0)
     expect(c.diferenca).toBe(200)
     expect(c.percentual).toBeNull() // comparacao = 0
@@ -170,7 +169,7 @@ describe('decompor — ordenação e join de categorias', () => {
   it('categoria que sumiu', () => {
     const r = decompor(inv, cmp)
     const d = r.find((row) => row.categoryId === 'd')!
-    expect(d.tipo).toBe('sumiu')
+    expect(d.tipo).toBe('reduziu')
     expect(d.valorNovo).toBe(0)
     expect(d.diferenca).toBe(-300)
   })
@@ -399,8 +398,8 @@ describe('selecionarDriversVisuais — Top 6 + threshold 8% + mín 4 (Hotfix SVG
 describe('gerarTituloNarrativo — McKinsey style', () => {
   it('formato base: mês X custou +R$ Y a mais — A e B 80%', () => {
     const drivers: DriverVariacao[] = [
-      driver('a', 'IRPJ', 60_000, 'novo'),
-      driver('b', 'CSLL', 20_000, 'novo'),
+      driver('a', 'IRPJ', 60_000, 'aumentou'),
+      driver('b', 'CSLL', 20_000, 'aumentou'),
       driver('c', 'Outros', 20_000),
     ]
     const t = gerarTituloNarrativo({
@@ -439,7 +438,7 @@ describe('gerarTituloNarrativo — McKinsey style', () => {
   })
 
   it('um único driver: usa "respondeu" (singular)', () => {
-    const drivers: DriverVariacao[] = [driver('a', 'IRPJ', 100_000, 'novo')]
+    const drivers: DriverVariacao[] = [driver('a', 'IRPJ', 100_000, 'aumentou')]
     const t = gerarTituloNarrativo({
       novoLabel: 'Jan/26',
       antigoLabel: 'Fev/26',
@@ -452,79 +451,9 @@ describe('gerarTituloNarrativo — McKinsey style', () => {
   })
 })
 
-describe('gerarInsightsPrincipais', () => {
-  it('Top 1 driver com tipo "novo": insight "apareceu no mês novo"', () => {
-    const drivers: DriverVariacao[] = [driver('a', 'IRPJ', 56_507, 'novo')]
-    const r = gerarInsightsPrincipais({
-      drivers,
-      diferencaTotal: 56_507,
-      visiveis: drivers,
-    })
-    expect(r[0].tipo).toBe('top-driver')
-    expect(r[0].texto).toContain('IRPJ')
-    expect(r[0].texto).toContain('apareceu no mês novo')
-  })
-
-  it('Top 2 drivers com diferentes tipos', () => {
-    const drivers: DriverVariacao[] = [
-      driver('a', 'IRPJ', 56_000, 'novo'),
-      driver('b', 'CSLL', 22_000, 'novo'),
-      driver('c', 'Outros', 5_000),
-    ]
-    const r = gerarInsightsPrincipais({
-      drivers,
-      diferencaTotal: 83_000,
-      visiveis: drivers,
-    })
-    expect(r.filter((i) => i.tipo === 'top-driver')).toHaveLength(2)
-    expect(r[0].texto).toContain('IRPJ')
-    expect(r[1].texto).toContain('CSLL')
-  })
-
-  it('Concentração: insight quando top 2 >= 50% do total', () => {
-    const drivers: DriverVariacao[] = [
-      driver('a', 'A', 50_000),
-      driver('b', 'B', 30_000),
-      driver('c', 'C', 10_000),
-      driver('d', 'D', 5_000),
-    ]
-    const r = gerarInsightsPrincipais({
-      drivers,
-      diferencaTotal: 95_000,
-      visiveis: drivers,
-    })
-    const conc = r.find((i) => i.tipo === 'concentracao')
-    expect(conc).toBeDefined()
-    expect(conc!.texto).toContain('Top 2')
-  })
-
-  it('Hotfix SVG: bullet "X outros drivers" REMOVIDO dos insights', () => {
-    // Yussef classificou como ruído. Insights agora só top-driver + concentracao.
-    const visiveis = [driver('a', 'A', 50_000), driver('b', 'B', 30_000)]
-    const drivers = [
-      ...visiveis,
-      driver('c', 'C', 10_000),
-      driver('d', 'D', 5_000),
-      driver('e', 'E', 4_000),
-    ]
-    const r = gerarInsightsPrincipais({
-      drivers,
-      diferencaTotal: 99_000,
-      visiveis,
-    })
-    const outros = r.find((i) => i.tipo === 'outros')
-    expect(outros).toBeUndefined() // bullet "X outros drivers" removido
-  })
-
-  it('zero drivers: insights vazios', () => {
-    const r = gerarInsightsPrincipais({
-      drivers: [],
-      diferencaTotal: 0,
-      visiveis: [],
-    })
-    expect(r).toHaveLength(0)
-  })
-})
+// Hotfix limpeza final (28/05/2026): describe 'gerarInsightsPrincipais'
+// REMOVIDO inteiro. Função + bloco UI deletados — bullets redundavam o
+// título narrativo.
 
 describe('analiseVariacao — engine completa', () => {
   // Cenário Yussef: Jan/26 vs Fev/26 profit
@@ -579,7 +508,7 @@ describe('analiseVariacao — engine completa', () => {
       tipo: 'DESPESA',
     })
     const irpj = r.drivers.find((d) => d.categoryId === 'irpj')!
-    expect(irpj.tipo).toBe('novo')
+    expect(irpj.tipo).toBe('aumentou')
     expect(irpj.diferenca).toBe(56507)
   })
 
@@ -726,7 +655,7 @@ describe('analiseVariacao — engine completa', () => {
 
 describe('Hotfix SVG: título narrativo — sujeito sempre o investigado', () => {
   it('mes-vs-mes positivo: Jan vs Fev, Jan é sujeito', () => {
-    const drivers: DriverVariacao[] = [driver('a', 'IRPJ', 100_000, 'novo')]
+    const drivers: DriverVariacao[] = [driver('a', 'IRPJ', 100_000, 'aumentou')]
     const t = gerarTituloNarrativo({
       novoLabel: 'Janeiro/2026',
       antigoLabel: 'Fevereiro/2026',
@@ -822,47 +751,8 @@ describe('Hotfix SVG: defaults agressivos em analiseVariacao', () => {
     expect(r.aritmeticaFecha).toBe(true)
   })
 
-  it('insights NÃO contém bullet "outros drivers" (removido no hotfix)', () => {
-    const txs: ComparativoInputTx[] = []
-    for (let i = 0; i < 10; i++) {
-      txs.push(
-        tx(`c${i}`, `Cat${i}`, '2026-01-15T12:00:00.000Z', (10 - i) * 1000),
-      )
-      txs.push(tx(`c${i}`, `Cat${i}`, '2026-02-15T12:00:00.000Z', 0))
-    }
-    const r = analiseVariacao({
-      mode: 'mes-vs-mes',
-      txs,
-      mesNovo: '2026-01',
-      mesAntigo: '2026-02',
-      tipo: 'DESPESA',
-    })
-    const outros = r.insightsPrincipais.find((i) => i.tipo === 'outros')
-    expect(outros).toBeUndefined()
-  })
-
-  it('insights NÃO contém string "outros drivers somam" em nenhum bullet', () => {
-    const txs: ComparativoInputTx[] = []
-    for (let i = 0; i < 10; i++) {
-      txs.push(
-        tx(`c${i}`, `Cat${i}`, '2026-01-15T12:00:00.000Z', (10 - i) * 1000),
-      )
-      txs.push(tx(`c${i}`, `Cat${i}`, '2026-02-15T12:00:00.000Z', 0))
-    }
-    const r = analiseVariacao({
-      mode: 'mes-vs-mes',
-      txs,
-      mesNovo: '2026-01',
-      mesAntigo: '2026-02',
-      tipo: 'DESPESA',
-    })
-    expect(
-      r.insightsPrincipais.every((b) => !b.texto.includes('outros drivers')),
-    ).toBe(true)
-    expect(
-      r.insightsPrincipais.every((b) => !b.texto.includes('drivers somam')),
-    ).toBe(true)
-  })
+  // Hotfix limpeza final (28/05/2026): 2 tests sobre `insightsPrincipais`
+  // REMOVIDOS — field não existe mais no AnaliseVariacaoResult.
 })
 
 // ────────────────────────────────────────────────────────────────────
@@ -1008,7 +898,7 @@ describe('Hotfix cronológica: analiseVariacao recebe mesAntigo/mesNovo', () => 
     })
     const irpj = r.drivers.find((d) => d.categoryName === 'IRPJ')
     expect(irpj).toBeDefined()
-    expect(irpj!.tipo).toBe('sumiu')
+    expect(irpj!.tipo).toBe('reduziu')
     expect(irpj!.valorAntigo).toBe(56_507)
     expect(irpj!.valorNovo).toBe(0)
     expect(irpj!.diferenca).toBe(-56_507)
@@ -1027,7 +917,7 @@ describe('Hotfix cronológica: analiseVariacao recebe mesAntigo/mesNovo', () => 
     })
     const resc = r.drivers.find((d) => d.categoryName === 'Rescisão Academia')
     expect(resc).toBeDefined()
-    expect(resc!.tipo).toBe('novo')
+    expect(resc!.tipo).toBe('aumentou')
     expect(resc!.valorAntigo).toBe(0)
     expect(resc!.valorNovo).toBe(5_172)
     expect(resc!.diferenca).toBe(5_172)
@@ -1072,8 +962,8 @@ describe('Hotfix cronológica: analiseVariacao recebe mesAntigo/mesNovo', () => 
 describe('Hotfix cronológica: título narrativo "da alta/queda"', () => {
   it('Fev<Jan (queda total): título contém "a menos" e "% da queda"', () => {
     const drivers: DriverVariacao[] = [
-      driver('irpj', 'IRPJ', -56_000, 'sumiu'),
-      driver('csll', 'CSLL', -22_000, 'sumiu'),
+      driver('irpj', 'IRPJ', -56_000, 'reduziu'),
+      driver('csll', 'CSLL', -22_000, 'reduziu'),
       driver('out', 'Outros', -21_000),
     ]
     const t = gerarTituloNarrativo({
@@ -1132,45 +1022,8 @@ describe('Hotfix cronológica: título narrativo "da alta/queda"', () => {
   })
 })
 
-describe('Hotfix cronológica: insights cronológicos', () => {
-  it('top1 tipo "novo": insight "apareceu no mês novo"', () => {
-    const drivers: DriverVariacao[] = [driver('a', 'IRPJ', 56_507, 'novo')]
-    const r = gerarInsightsPrincipais({
-      drivers,
-      diferencaTotal: 56_507,
-      visiveis: drivers,
-    })
-    expect(r[0].texto).toContain('apareceu no mês novo')
-  })
-
-  it('top1 tipo "sumiu": insight "sumiu (era pago no mês antigo)"', () => {
-    const drivers: DriverVariacao[] = [driver('a', 'IRPJ', -56_507, 'sumiu')]
-    const r = gerarInsightsPrincipais({
-      drivers,
-      diferencaTotal: -56_507,
-      visiveis: drivers,
-    })
-    expect(r[0].texto).toContain('sumiu (era pago no mês antigo)')
-  })
-
-  it('top1 tipo "aumentou"→"aumentou vs antigo", "reduziu"→"reduziu vs antigo"', () => {
-    const aumentou: DriverVariacao[] = [driver('a', 'X', 5_000, 'aumentou')]
-    const ra = gerarInsightsPrincipais({
-      drivers: aumentou,
-      diferencaTotal: 5_000,
-      visiveis: aumentou,
-    })
-    expect(ra[0].texto).toContain('aumentou vs antigo')
-
-    const reduziu: DriverVariacao[] = [driver('a', 'X', -5_000, 'reduziu')]
-    const rr = gerarInsightsPrincipais({
-      drivers: reduziu,
-      diferencaTotal: -5_000,
-      visiveis: reduziu,
-    })
-    expect(rr[0].texto).toContain('reduziu vs antigo')
-  })
-})
+// Hotfix limpeza final (28/05/2026): describe 'Hotfix cronológica:
+// insights cronológicos' REMOVIDO — gerarInsightsPrincipais não existe mais.
 
 describe('Hotfix cronológica: aritmética preservada', () => {
   function tx(
@@ -1229,7 +1082,7 @@ describe('Hotfix cronológica: aritmética preservada', () => {
   })
 })
 
-describe('Hotfix cronológica: coerência tabela ↔ waterfall ↔ insights', () => {
+describe('Hotfix cronológica: coerência tabela ↔ waterfall', () => {
   function tx(
     catId: string,
     catName: string,
@@ -1246,7 +1099,7 @@ describe('Hotfix cronológica: coerência tabela ↔ waterfall ↔ insights', ()
     }
   }
 
-  it('driver "novo" → bar "aumento" (vermelho) + insight "apareceu"', () => {
+  it('driver que apareceu (antigo=0, novo>0) → tipo AUMENTOU + bar aumento (vermelho)', () => {
     const txs: ComparativoInputTx[] = [
       tx('a', 'Rescisão', '2026-02-15T12:00:00Z', 50_000),
     ]
@@ -1258,13 +1111,12 @@ describe('Hotfix cronológica: coerência tabela ↔ waterfall ↔ insights', ()
       tipo: 'DESPESA',
     })
     const d = r.drivers[0]
-    expect(d.tipo).toBe('novo')
+    expect(d.tipo).toBe('aumentou')
     const bar = r.waterfallBars.find((b) => b.label === 'Rescisão')
     expect(bar?.tipo).toBe('aumento')
-    expect(r.insightsPrincipais[0].texto).toContain('apareceu no mês novo')
   })
 
-  it('driver "sumiu" → bar "reducao" (verde) + insight "sumiu (era pago...)"', () => {
+  it('driver que sumiu (antigo>0, novo=0) → tipo REDUZIU + bar reducao (verde)', () => {
     const txs: ComparativoInputTx[] = [
       tx('a', 'IRPJ', '2026-01-15T12:00:00Z', 50_000),
     ]
@@ -1276,10 +1128,9 @@ describe('Hotfix cronológica: coerência tabela ↔ waterfall ↔ insights', ()
       tipo: 'DESPESA',
     })
     const d = r.drivers[0]
-    expect(d.tipo).toBe('sumiu')
+    expect(d.tipo).toBe('reduziu')
     const bar = r.waterfallBars.find((b) => b.label === 'IRPJ')
     expect(bar?.tipo).toBe('reducao')
-    expect(r.insightsPrincipais[0].texto).toContain('sumiu (era pago no mês antigo)')
   })
 
   it('Waterfall bars[0]=antigo, bars[last]=novo (ordem cronológica)', () => {
