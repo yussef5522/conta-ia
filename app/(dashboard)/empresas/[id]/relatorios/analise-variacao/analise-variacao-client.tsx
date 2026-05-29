@@ -26,12 +26,13 @@ import {
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
-import { WaterfallChartDynamic } from '@/components/relatorios/analise-variacao/WaterfallChartWrapper'
-import type {
-  AnaliseVariacaoResult,
-  ComparacaoMode,
-  DriverVariacao,
-  Insight,
+import { WaterfallChartSvgDynamic } from '@/components/relatorios/analise-variacao/WaterfallChartSvgWrapper'
+import {
+  computeTabelaHeaders,
+  type AnaliseVariacaoResult,
+  type ComparacaoMode,
+  type DriverVariacao,
+  type Insight,
 } from '@/lib/relatorios/analise-variacao'
 import type { ComparativoTipoFilter } from '@/lib/relatorios/comparativo'
 
@@ -308,7 +309,7 @@ export function AnaliseVariacaoClient({ empresaId }: Props) {
                 Cada barra mostra o impacto de uma categoria. Linhas
                 pontilhadas conectam o efeito acumulado.
               </p>
-              <WaterfallChartDynamic bars={data.waterfallBars} />
+              <WaterfallChartSvgDynamic bars={data.waterfallBars} />
             </CardContent>
           </Card>
 
@@ -318,10 +319,21 @@ export function AnaliseVariacaoClient({ empresaId }: Props) {
           )}
 
           {/* Tabela drivers */}
-          <DriversTabela
-            drivers={data.drivers}
-            comparacaoLabel={data.comparacaoLabel}
-          />
+          {(() => {
+            const headers = computeTabelaHeaders({
+              modo: mode,
+              mesInvestigadoLabel: data.mesInvestigadoLabel,
+              comparacaoLabel: data.comparacaoLabel,
+              nMesesContexto,
+            })
+            return (
+              <DriversTabela
+                drivers={data.drivers}
+                labelInvestigado={headers.labelInvestigado}
+                labelComparacao={headers.labelComparacao}
+              />
+            )
+          })()}
 
           {/* Validação aritmética */}
           <ValidacaoArit data={data} />
@@ -425,10 +437,12 @@ function InsightsCard({ insights }: { insights: Insight[] }) {
 
 function DriversTabela({
   drivers,
-  comparacaoLabel,
+  labelInvestigado,
+  labelComparacao,
 }: {
   drivers: DriverVariacao[]
-  comparacaoLabel: string
+  labelInvestigado: string
+  labelComparacao: string
 }) {
   // Filtra os "estavel" pra mostrar só drivers relevantes
   const visiveis = drivers.filter((d) => d.tipo !== 'estavel')
@@ -445,6 +459,12 @@ function DriversTabela({
     )
   }
 
+  // Headers dinâmicos: nomes dos períodos em vez de "Investigado/Comparação".
+  // Quando muito longos (>24 chars), o `tracking-wide` + uppercase já força quebra
+  // visual aceitável; mas mantemos truncate de fallback pra labels gigantes.
+  const headerInvestigado = labelInvestigado.toUpperCase()
+  const headerComparacao = labelComparacao.toUpperCase()
+
   return (
     <Card>
       <CardContent className="py-3">
@@ -456,11 +476,17 @@ function DriversTabela({
             <thead>
               <tr className="border-b text-xs uppercase tracking-wide text-muted-foreground">
                 <th className="text-left px-3 py-2 font-medium">Categoria</th>
-                <th className="text-right px-3 py-2 font-medium">
-                  Investigado
+                <th
+                  className="text-right px-3 py-2 font-medium"
+                  data-testid="header-investigado"
+                >
+                  {headerInvestigado}
                 </th>
-                <th className="text-right px-3 py-2 font-medium">
-                  {comparacaoLabel.length > 24 ? 'Comparação' : comparacaoLabel}
+                <th
+                  className="text-right px-3 py-2 font-medium"
+                  data-testid="header-comparacao"
+                >
+                  {headerComparacao}
                 </th>
                 <th className="text-right px-3 py-2 font-medium">Diferença</th>
                 <th className="text-left px-3 py-2 font-medium">Tipo</th>

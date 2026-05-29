@@ -132,7 +132,9 @@ export type AnaliseVariacaoInput =
 // Constantes
 // ────────────────────────────────────────────────────────────────────
 
-const DEFAULT_TOP_N = 10
+// Hotfix waterfall SVG (28/05/2026): defaults mais agressivos pra chart enxuto.
+// Antes: 10/5%/5. Yussef pediu corte forte pra evitar "13 barras" no chart.
+const DEFAULT_TOP_N = 6
 const DEFAULT_ESTAVEL_THRESHOLD = 100 // R$
 const DEFAULT_N_MESES_CONTEXTO = 6
 const ARITMETICA_TOLERANCE = 0.01 // R$ 0,01
@@ -512,12 +514,11 @@ export function analiseVariacao(
       ? null
       : (totalInvestigado - totalComparacao) / totalComparacao
 
-  // Sprint Waterfall Redesign McKinsey: aplica filtro 5% + Top N + mín 5
-  // ANTES de construir bars. Garante chart enxuto e legível.
+  // Hotfix Waterfall SVG (28/05/2026): defaults agressivos (8% / mín 4)
+  // Top N vem do input (default 6 — antes 10). Yussef pediu chart enxuto.
   const { visiveis } = selecionarDriversVisuais(drivers, diferencaTotal, {
     topN,
-    minImpactPct: 0.05,
-    minVisible: 5,
+    // Usa os DEFAULT_MIN_* atualizados (8% / 4) — não hardcoda mais 5%/5
   })
 
   // buildWaterfallBars usa `visiveis` como input direto; o resto vira "Outros"
@@ -575,8 +576,9 @@ export function analiseVariacao(
 // - gerarTituloNarrativo: "Mês X custou +R$ Y a mais — A e B 80%"
 // - gerarInsightsPrincipais: 3-5 bullets enumerando top drivers + NEW/GONE
 
-const DEFAULT_MIN_IMPACT_PCT = 0.05 // 5% do |diferencaTotal|
-const DEFAULT_MIN_VISIBLE = 5
+// Hotfix waterfall SVG (28/05/2026): 8% / mín 4 (antes 5% / 5).
+const DEFAULT_MIN_IMPACT_PCT = 0.08
+const DEFAULT_MIN_VISIBLE = 4
 
 export interface SelecaoDriversVisuais {
   visiveis: DriverVariacao[]
@@ -884,24 +886,50 @@ export function gerarInsightsPrincipais(input: InsightsInput): Insight[] {
     }
   }
 
-  // Outros: se há drivers fora dos visíveis e somam significativo
-  const visiveisIds = new Set(visiveis.map((d) => d.categoryId ?? '__null__'))
-  const resto = drivers.filter(
-    (d) =>
-      !visiveisIds.has(d.categoryId ?? '__null__') &&
-      Math.abs(d.diferenca) >= ARITMETICA_TOLERANCE,
-  )
-  if (resto.length > 0) {
-    const restoDelta = resto.reduce((s, d) => s + d.diferenca, 0)
-    const restoPct = Math.round(
-      (Math.abs(restoDelta) / Math.abs(diferencaTotal)) * 100,
-    )
-    const sinalR = restoDelta >= 0 ? '+' : ''
-    insights.push({
-      tipo: 'outros',
-      texto: `${resto.length} outros drivers somam ${sinalR}${formatBRLForNarrative(restoDelta)} (${restoPct}% do total)`,
-    })
-  }
+  // Hotfix waterfall SVG (28/05/2026): bullet "X outros drivers somam Y"
+  // REMOVIDO. Yussef classificou como ruído. Insights ficam só top-driver
+  // (1-2) + concentração (≥ 50%). O usuário já vê "Outros" na barra do
+  // chart e na tabela de drivers — não precisa repetir em bullet.
 
   return insights
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Hotfix headers-bullets (28/05/2026)
+//
+// Headers da tabela "Onde foi a diferença" agora mostram dinamicamente
+// o nome do período em vez de "INVESTIGADO/COMPARAÇÃO" (abstrato).
+//
+// Regras:
+//  - mes-vs-mes  → ambos viram os labels dos meses (Ex: "Janeiro/2026")
+//  - mes-vs-media → investigado vira label do mês; comparação vira "Média NM"
+//    (forma compacta — "Média 6 meses" do título narrativo NÃO cabe num
+//    th estreito da tabela)
+// ────────────────────────────────────────────────────────────────────
+
+export interface TabelaHeadersInput {
+  modo: ComparacaoMode
+  mesInvestigadoLabel: string
+  comparacaoLabel: string
+  nMesesContexto?: number
+}
+
+export interface TabelaHeaders {
+  labelInvestigado: string
+  labelComparacao: string
+}
+
+export function computeTabelaHeaders(input: TabelaHeadersInput): TabelaHeaders {
+  const { modo, mesInvestigadoLabel, comparacaoLabel, nMesesContexto } = input
+  if (modo === 'mes-vs-media') {
+    const n = nMesesContexto ?? 6
+    return {
+      labelInvestigado: mesInvestigadoLabel,
+      labelComparacao: `Média ${n}M`,
+    }
+  }
+  return {
+    labelInvestigado: mesInvestigadoLabel,
+    labelComparacao: comparacaoLabel,
+  }
 }
