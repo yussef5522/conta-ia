@@ -812,7 +812,7 @@ export function PendentesClient({
                         title={
                           t.supplier.fonte === 'BRASILAPI'
                             ? 'Detectado via consulta CNPJ na BrasilAPI'
-                            : 'Detectado por palavra-chave (Conta IA)'
+                            : 'Detectado por palavra-chave (CAIXAOS)'
                         }
                       >
                         💼{' '}

@@ -1,17 +1,17 @@
 {
-  "name": "Conta IA — CAIXAOS",
-  "short_name": "Conta IA",
-  "description": "Gestão financeira inteligente para PMEs brasileiras.",
+  "name": "CAIXAOS",
+  "short_name": "CAIXAOS",
+  "description": "Sistema operacional do seu caixa — gestão financeira com IA pra PMEs brasileiras.",
   "lang": "pt-BR",
   "start_url": "/dashboard",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
   "background_color": "#ffffff",
-  "theme_color": "#6366F1",
+  "theme_color": "#7c3aed",
   "icons": [
     {
-      "src": "/icon.svg",
+      "src": "/favicon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"

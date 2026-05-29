@@ -29,10 +29,11 @@ describe('PWA manifest.json', () => {
     expect(manifest.display).toBe('standalone')
   })
 
-  it('theme_color casa com --primary indigo-500', () => {
+  it('theme_color casa com brand CAIXAOS violet-600', () => {
     manifest = JSON.parse(raw)
-    // #6366F1 = HSL 239 84% 67% = indigo-500 Tailwind
-    expect(manifest.theme_color).toBe('#6366F1')
+    // Sprint Brand CAIXAOS (29/05/2026): #7c3aed = violet-600 Tailwind
+    // (antes #6366F1 indigo-500). Bate com logo da nova identidade.
+    expect(manifest.theme_color).toBe('#7c3aed')
   })
 
   it('lang pt-BR', () => {

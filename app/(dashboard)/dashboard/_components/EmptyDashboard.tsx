@@ -15,7 +15,7 @@ export function NoCompaniesEmpty() {
         </div>
         <h3 className="text-lg font-semibold">Cadastre sua primeira empresa</h3>
         <p className="mt-2 text-sm text-muted-foreground max-w-sm">
-          O Conta IA é multi-empresa. Cada CNPJ vira uma empresa separada — você pode
+          O CAIXAOS é multi-empresa. Cada CNPJ vira uma empresa separada — você pode
           ter quantas quiser.
         </p>
         <Button className="mt-6" asChild>

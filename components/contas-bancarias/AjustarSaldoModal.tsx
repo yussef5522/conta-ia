@@ -114,7 +114,7 @@ export function AjustarSaldoModal({
             Ajustar Saldo — {conta.name}
           </DialogTitle>
           <DialogDescription>
-            Faz o saldo do Conta IA bater com o extrato real do seu banco.
+            Faz o saldo do CAIXAOS bater com o extrato real do seu banco.
           </DialogDescription>
         </DialogHeader>
 

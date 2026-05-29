@@ -2,8 +2,11 @@
 
 // Sprint 4.0.5.a — Sidebar única organizada por seções.
 // User info movido pro TopBar UserMenu.
+// Sprint Brand CAIXAOS (29/05/2026) — logo horizontal no header.
 
 import { useEffect, useState } from 'react'
+import Image from 'next/image'
+import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard,
@@ -68,6 +71,22 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
 
   return (
     <aside className="w-60 border-r bg-white flex flex-col h-full overflow-y-auto">
+      {/* Sprint Brand CAIXAOS (29/05/2026) — logo no header */}
+      <div className="px-4 py-3 border-b">
+        <Link
+          href="/dashboard"
+          className="inline-flex items-center"
+          aria-label="CAIXAOS — ir pro dashboard"
+        >
+          <Image
+            src="/brand/logo-horizontal.svg"
+            alt="CAIXAOS"
+            width={140}
+            height={32}
+            priority
+          />
+        </Link>
+      </div>
       <nav className="flex-1 py-3 px-2 space-y-0.5" aria-label="Menu principal">
         <SidebarItem
           icon={LayoutDashboard}
