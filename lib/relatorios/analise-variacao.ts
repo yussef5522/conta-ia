@@ -61,6 +61,9 @@ export interface WaterfallBar {
   tipo: WaterfallBarTipo
   /** True se é a barra "Outros" agregando drivers pequenos */
   isOutros?: boolean
+  // Sprint Drill-Down (29/05/2026)
+  /** ID da categoria que originou a barra. Null pra inicio/fim/outros. */
+  categoryId?: string | null
 }
 
 export interface AnaliseVariacaoResult {
@@ -348,6 +351,7 @@ export function buildWaterfallBars(
         delta: d.diferenca,
         end,
         tipo: 'aumento',
+        categoryId: d.categoryId,
       })
       cumulative = end
     } else {
@@ -361,6 +365,7 @@ export function buildWaterfallBars(
         delta: d.diferenca,
         end: cumulative,
         tipo: 'reducao',
+        categoryId: d.categoryId,
       })
       cumulative = end
     }
@@ -694,6 +699,7 @@ export function buildWaterfallBarsFromSelection(
         delta: d.diferenca,
         end,
         tipo: 'aumento',
+        categoryId: d.categoryId,
       })
       cumulative = end
     } else {
@@ -706,6 +712,7 @@ export function buildWaterfallBarsFromSelection(
         delta: d.diferenca,
         end: cumulative,
         tipo: 'reducao',
+        categoryId: d.categoryId,
       })
       cumulative = end
     }
