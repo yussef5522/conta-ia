@@ -9,6 +9,7 @@ import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import {
   analiseVariacao,
+  ordenarCronologicamente,
   type AnaliseVariacaoInput,
 } from '@/lib/relatorios/analise-variacao'
 import type { ComparativoInputTx } from '@/lib/relatorios/comparativo'
@@ -130,20 +131,29 @@ export async function GET(request: NextRequest, { params }: Params) {
       dreGroup: t.category?.dreGroup ?? null,
     }))
 
+    // Hotfix cronológica (28/05/2026):
+    // Adapter cronológico — engine sempre recebe antigo/novo ordenados.
+    // Mes-vs-media: média = passado agregado → antigo; mês escolhido → novo.
     const analiseInput: AnaliseVariacaoInput =
       input.mode === 'mes-vs-mes'
-        ? {
-            mode: 'mes-vs-mes',
-            txs: inputTxs,
-            mesInvestigado: input.mesInvestigado,
-            ymComparacao: input.ymComparacao,
-            tipo: input.tipo,
-            topNDrivers: input.topNDrivers,
-          }
+        ? (() => {
+            const { antigo, novo } = ordenarCronologicamente(
+              input.mesInvestigado,
+              input.ymComparacao,
+            )
+            return {
+              mode: 'mes-vs-mes',
+              txs: inputTxs,
+              mesAntigo: antigo,
+              mesNovo: novo,
+              tipo: input.tipo,
+              topNDrivers: input.topNDrivers,
+            }
+          })()
         : {
             mode: 'mes-vs-media',
             txs: inputTxs,
-            mesInvestigado: input.mesInvestigado,
+            mesNovo: input.mesInvestigado,
             nMesesContexto: input.nMesesContexto,
             tipo: input.tipo,
             topNDrivers: input.topNDrivers,
