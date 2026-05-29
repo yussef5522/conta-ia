@@ -17,6 +17,12 @@ interface Props {
   bars: WaterfallBar[]
   width?: number
   height?: number
+  /**
+   * Sprint Drill-Down (29/05/2026) — callback ao clicar numa barra de
+   * driver (não inicio/fim/outros). Recebe a barra clicada pra montar
+   * o filtro do modal.
+   */
+  onBarClick?: (bar: WaterfallBar) => void
 }
 
 // ─────────────────────────────────────────
@@ -135,8 +141,12 @@ export function WaterfallChartSvg({
   bars,
   width = 900,
   height = 440,
+  onBarClick,
 }: Props) {
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null)
+  // Helper: true se a barra é clicável (driver com categoryId, NÃO outros)
+  const isClickable = (b: WaterfallBar): boolean =>
+    Boolean(onBarClick && b.categoryId && !b.isOutros)
 
   if (bars.length === 0) {
     return (
@@ -233,13 +243,18 @@ export function WaterfallChartSvg({
             // - Reducao: yBot é o topo (Y menor)
             const labelY = yMin - 8
 
+            const clickable = isClickable(b)
             return (
               <g
                 key={i}
                 onMouseEnter={() => setHoveredIdx(i)}
                 onMouseLeave={() => setHoveredIdx(null)}
-                style={{ cursor: 'pointer' }}
+                onClick={
+                  clickable && onBarClick ? () => onBarClick(b) : undefined
+                }
+                style={{ cursor: clickable ? 'pointer' : 'default' }}
                 data-testid={`waterfall-bar-${i}`}
+                data-clickable={clickable}
               >
                 {/* Retângulo */}
                 <rect
@@ -249,7 +264,7 @@ export function WaterfallChartSvg({
                   height={Math.max(h, 2)}
                   fill={cor}
                   rx={2}
-                  opacity={isHovered ? 0.85 : 1}
+                  opacity={isHovered && clickable ? 0.85 : 1}
                 />
 
                 {/* Data label */}

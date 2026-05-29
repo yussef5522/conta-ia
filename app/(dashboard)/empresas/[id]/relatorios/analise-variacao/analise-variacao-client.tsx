@@ -32,8 +32,29 @@ import {
   type AnaliseVariacaoResult,
   type ComparacaoMode,
   type DriverVariacao,
+  type WaterfallBar,
 } from '@/lib/relatorios/analise-variacao'
 import type { ComparativoTipoFilter } from '@/lib/relatorios/comparativo'
+import {
+  TransacaoDrillDownModal,
+  type DrillDownPeriodo,
+} from '@/components/relatorios/drill-down/TransacaoDrillDownModal'
+
+interface DrillDownState {
+  categoriaId: string
+  categoriaName: string
+  periodo: DrillDownPeriodo
+}
+
+/** YYYY-MM → { dataInicio: YYYY-MM-01, dataFim: YYYY-MM-{lastDay} } UTC. */
+function ymToDateRange(ym: string): { dataInicio: string; dataFim: string } {
+  const [y, m] = ym.split('-').map(Number)
+  const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate()
+  return {
+    dataInicio: `${ym}-01`,
+    dataFim: `${ym}-${String(lastDay).padStart(2, '0')}`,
+  }
+}
 
 const MES = [
   'Jan',
@@ -107,6 +128,78 @@ export function AnaliseVariacaoClient({ empresaId }: Props) {
   const [data, setData] = useState<AnaliseVariacaoResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [executed, setExecuted] = useState(false)
+  const [drillDown, setDrillDown] = useState<DrillDownState | null>(null)
+
+  // Sprint Drill-Down (29/05/2026): helpers pra montar período do drill-down.
+  // Em mes-vs-mes: antigoYM = min(mesInvestigado, ymComparacao), novoYM = max.
+  // Em mes-vs-media: valorAntigo é média de N-1 meses → NÃO drill-down (mistura
+  // múltiplos meses, soma do drill ≠ valor da cell). Só novoYM = mesInvestigado.
+  const periodosDrillDown = useMemo(() => {
+    if (mode === 'mes-vs-mes') {
+      const antigoYM =
+        mesInvestigado <= ymComparacao ? mesInvestigado : ymComparacao
+      const novoYM =
+        mesInvestigado <= ymComparacao ? ymComparacao : mesInvestigado
+      return { antigoYM, novoYM }
+    }
+    return { antigoYM: null, novoYM: mesInvestigado }
+  }, [mode, mesInvestigado, ymComparacao])
+
+  const openDrillDownAntigo = (d: DriverVariacao) => {
+    if (!d.categoryId || !periodosDrillDown.antigoYM) return
+    const r = ymToDateRange(periodosDrillDown.antigoYM)
+    setDrillDown({
+      categoriaId: d.categoryId,
+      categoriaName: d.categoryName,
+      periodo: {
+        dataInicio: r.dataInicio,
+        dataFim: r.dataFim,
+        label: data?.antigoLabel ?? '',
+      },
+    })
+  }
+  const openDrillDownNovo = (d: DriverVariacao) => {
+    if (!d.categoryId) return
+    const r = ymToDateRange(periodosDrillDown.novoYM)
+    setDrillDown({
+      categoriaId: d.categoryId,
+      categoriaName: d.categoryName,
+      periodo: {
+        dataInicio: r.dataInicio,
+        dataFim: r.dataFim,
+        label: data?.novoLabel ?? '',
+      },
+    })
+  }
+  const openDrillDownBar = (bar: WaterfallBar) => {
+    if (!bar.categoryId || bar.isOutros) return
+    // Em mes-vs-mes: union antigo+novo. Em mes-vs-media: só novo (única
+    // janela atômica — média não drilla).
+    if (periodosDrillDown.antigoYM) {
+      const a = ymToDateRange(periodosDrillDown.antigoYM)
+      const n = ymToDateRange(periodosDrillDown.novoYM)
+      setDrillDown({
+        categoriaId: bar.categoryId,
+        categoriaName: bar.label,
+        periodo: {
+          dataInicio: a.dataInicio,
+          dataFim: n.dataFim,
+          label: `${data?.antigoLabel} → ${data?.novoLabel}`,
+        },
+      })
+    } else {
+      const n = ymToDateRange(periodosDrillDown.novoYM)
+      setDrillDown({
+        categoriaId: bar.categoryId,
+        categoriaName: bar.label,
+        periodo: {
+          dataInicio: n.dataInicio,
+          dataFim: n.dataFim,
+          label: data?.novoLabel ?? '',
+        },
+      })
+    }
+  }
 
   const refOptions = useMemo(() => generateRefMonthOptions(today), [today])
 
@@ -308,7 +401,10 @@ export function AnaliseVariacaoClient({ empresaId }: Props) {
                 Cada barra mostra o impacto de uma categoria. Linhas
                 pontilhadas conectam o efeito acumulado.
               </p>
-              <WaterfallChartSvgDynamic bars={data.waterfallBars} />
+              <WaterfallChartSvgDynamic
+                bars={data.waterfallBars}
+                onBarClick={openDrillDownBar}
+              />
             </CardContent>
           </Card>
 
@@ -325,6 +421,11 @@ export function AnaliseVariacaoClient({ empresaId }: Props) {
                 drivers={data.drivers}
                 labelAntigo={headers.labelAntigo}
                 labelNovo={headers.labelNovo}
+                onDrillDownAntigo={
+                  // Mes-vs-media: cell antigo é média de N-1 meses (não drilla)
+                  periodosDrillDown.antigoYM ? openDrillDownAntigo : null
+                }
+                onDrillDownNovo={openDrillDownNovo}
               />
             )
           })()}
@@ -332,6 +433,21 @@ export function AnaliseVariacaoClient({ empresaId }: Props) {
           {/* Validação aritmética */}
           <ValidacaoArit data={data} />
         </>
+      )}
+
+      {/* Sprint Drill-Down (29/05/2026) — Modal único compartilhado */}
+      {drillDown && (
+        <TransacaoDrillDownModal
+          open
+          onOpenChange={(o) => {
+            if (!o) setDrillDown(null)
+          }}
+          empresaId={empresaId}
+          categoriaId={drillDown.categoriaId}
+          categoriaName={drillDown.categoriaName}
+          periodo={drillDown.periodo}
+          tipo={tipo}
+        />
       )}
     </div>
   )
@@ -394,10 +510,15 @@ function DriversTabela({
   drivers,
   labelAntigo,
   labelNovo,
+  onDrillDownAntigo,
+  onDrillDownNovo,
 }: {
   drivers: DriverVariacao[]
   labelAntigo: string
   labelNovo: string
+  /** Null em mes-vs-media (cell antigo é média multi-mês). */
+  onDrillDownAntigo: ((d: DriverVariacao) => void) | null
+  onDrillDownNovo: (d: DriverVariacao) => void
 }) {
   // Filtra os "estavel" pra mostrar só drivers relevantes
   const visiveis = drivers.filter((d) => d.tipo !== 'estavel')
@@ -448,7 +569,12 @@ function DriversTabela({
             </thead>
             <tbody>
               {visiveis.map((d) => (
-                <DriverRow key={d.categoryId ?? '__sem__'} d={d} />
+                <DriverRow
+                  key={d.categoryId ?? '__sem__'}
+                  d={d}
+                  onDrillDownAntigo={onDrillDownAntigo}
+                  onDrillDownNovo={onDrillDownNovo}
+                />
               ))}
             </tbody>
           </table>
@@ -458,7 +584,16 @@ function DriversTabela({
   )
 }
 
-function DriverRow({ d }: { d: DriverVariacao }) {
+function DriverRow({
+  d,
+  onDrillDownAntigo,
+  onDrillDownNovo,
+}: {
+  d: DriverVariacao
+  onDrillDownAntigo: ((d: DriverVariacao) => void) | null
+  onDrillDownNovo: (d: DriverVariacao) => void
+}) {
+  const canDrill = d.categoryId !== null
   const tipoMeta: Record<
     DriverVariacao['tipo'],
     { icon: typeof Plus; label: string; tone: string; bgRow: string }
@@ -498,11 +633,38 @@ function DriverRow({ d }: { d: DriverVariacao }) {
         )}
       </td>
       {/* Hotfix cronológica: ANTIGO esquerda, NOVO direita */}
+      {/* Sprint Drill-Down (29/05/2026): cells clicáveis quando há categoryId */}
       <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">
-        {d.valorAntigo > 0 ? formatBRL(d.valorAntigo) : '—'}
+        {d.valorAntigo > 0 && canDrill && onDrillDownAntigo ? (
+          <button
+            type="button"
+            onClick={() => onDrillDownAntigo(d)}
+            className="hover:underline hover:text-primary cursor-pointer"
+            data-testid={`drilldown-antigo-${d.categoryId}`}
+          >
+            {formatBRL(d.valorAntigo)}
+          </button>
+        ) : d.valorAntigo > 0 ? (
+          formatBRL(d.valorAntigo)
+        ) : (
+          '—'
+        )}
       </td>
       <td className="px-3 py-2.5 text-right tabular-nums">
-        {d.valorNovo > 0 ? formatBRL(d.valorNovo) : '—'}
+        {d.valorNovo > 0 && canDrill ? (
+          <button
+            type="button"
+            onClick={() => onDrillDownNovo(d)}
+            className="hover:underline hover:text-primary cursor-pointer"
+            data-testid={`drilldown-novo-${d.categoryId}`}
+          >
+            {formatBRL(d.valorNovo)}
+          </button>
+        ) : d.valorNovo > 0 ? (
+          formatBRL(d.valorNovo)
+        ) : (
+          '—'
+        )}
       </td>
       <td className={`px-3 py-2.5 text-right tabular-nums font-semibold ${m.tone}`}>
         {d.diferenca >= 0 ? '+' : ''}

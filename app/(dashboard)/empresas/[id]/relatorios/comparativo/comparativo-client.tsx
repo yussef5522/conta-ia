@@ -1,6 +1,7 @@
 'use client'
 
 // Sprint Comparativo-A (28/05/2026) — UI multi-período com média + heatmap.
+// Sprint Drill-Down (29/05/2026) — cells de valor clicáveis → modal.
 
 import { useEffect, useMemo, useState } from 'react'
 import { Loader2, Sparkles, AlertTriangle, TrendingUp, TrendingDown } from 'lucide-react'
@@ -26,6 +27,21 @@ import {
   type Granularidade,
   type PeriodoBucket,
 } from '@/lib/relatorios/comparativo'
+import {
+  TransacaoDrillDownModal,
+  type DrillDownPeriodo,
+} from '@/components/relatorios/drill-down/TransacaoDrillDownModal'
+
+interface DrillDownState {
+  categoriaId: string
+  categoriaName: string
+  periodo: DrillDownPeriodo
+}
+
+/** Converte Date/ISO string pra "YYYY-MM-DD" UTC (robusto a serialização JSON). */
+function toYMDate(d: Date | string): string {
+  return new Date(d).toISOString().slice(0, 10)
+}
 
 interface ApiResponseMulti {
   multi: true
@@ -90,6 +106,7 @@ export function ComparativoClient({ empresaId }: Props) {
 
   const [data, setData] = useState<ApiResponseMulti | null>(null)
   const [loading, setLoading] = useState(true)
+  const [drillDown, setDrillDown] = useState<DrillDownState | null>(null)
 
   useEffect(() => {
     setLoading(true)
@@ -323,7 +340,25 @@ export function ComparativoClient({ empresaId }: Props) {
               </thead>
               <tbody>
                 {filteredRows.map((row) => (
-                  <Row key={row.categoryId ?? '__sem__'} row={row} tipo={tipo} />
+                  <Row
+                    key={row.categoryId ?? '__sem__'}
+                    row={row}
+                    tipo={tipo}
+                    periodos={data.periodos}
+                    onDrillDown={(cellIdx) => {
+                      if (!row.categoryId) return
+                      const p = data.periodos[cellIdx]
+                      setDrillDown({
+                        categoriaId: row.categoryId,
+                        categoriaName: row.categoryName,
+                        periodo: {
+                          dataInicio: toYMDate(p.start),
+                          dataFim: toYMDate(p.end),
+                          label: p.label,
+                        },
+                      })
+                    }}
+                  />
                 ))}
                 {/* Linha Total */}
                 <tr className="border-t-2 font-semibold bg-muted/20">
@@ -405,6 +440,21 @@ export function ComparativoClient({ empresaId }: Props) {
           </div>
         </div>
       )}
+
+      {/* Sprint Drill-Down (29/05/2026) — Modal disparado por click em cell */}
+      {drillDown && (
+        <TransacaoDrillDownModal
+          open
+          onOpenChange={(o) => {
+            if (!o) setDrillDown(null)
+          }}
+          empresaId={empresaId}
+          categoriaId={drillDown.categoriaId}
+          categoriaName={drillDown.categoriaName}
+          periodo={drillDown.periodo}
+          tipo={tipo}
+        />
+      )}
     </div>
   )
 }
@@ -455,14 +505,21 @@ function StatCard({
 function Row({
   row,
   tipo,
+  periodos,
+  onDrillDown,
 }: {
   row: ComparativoRowMulti
   tipo: ComparativoTipoFilter
+  periodos: PeriodoBucket[]
+  onDrillDown: (cellIdx: number) => void
 }) {
   const tipoSemantic: 'DESPESA' | 'RECEITA' =
     tipo === 'RECEITA' ? 'RECEITA' : 'DESPESA'
   // Hotfix 28/05/2026: coluna "vs Média" agora usa desvioPct (não trend.indicator)
   const desvio = getDesvioVisual(row.desvioPct, row.referenciaVazia, tipoSemantic)
+  // Sprint Drill-Down (29/05/2026): só categoria nomeada permite drill-down
+  const canDrill = row.categoryId !== null
+  void periodos
 
   return (
     <tr
@@ -480,13 +537,27 @@ function Row({
       {row.values.map((v, i) => {
         const tone = row.cellTones[i] ?? 'transparent'
         const toneClass = CELL_TONE_CLASSES[tone]
+        const hasValue = v > 0
         return (
           <td
             key={i}
             className={`px-3 py-2.5 text-right tabular-nums ${toneClass}`}
             data-tone={tone}
           >
-            {v > 0 ? formatBRL(v) : '—'}
+            {hasValue && canDrill ? (
+              <button
+                type="button"
+                onClick={() => onDrillDown(i)}
+                className="hover:underline hover:text-primary cursor-pointer"
+                data-testid={`drilldown-cell-${row.categoryId}-${i}`}
+              >
+                {formatBRL(v)}
+              </button>
+            ) : hasValue ? (
+              formatBRL(v)
+            ) : (
+              '—'
+            )}
           </td>
         )
       })}
