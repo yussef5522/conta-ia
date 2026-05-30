@@ -47,5 +47,12 @@ tests/fixtures/*.xlsx
 tests/fixtures/*.xls
 tests/e2e/screenshots/
 
+# Sprint CSV Import (30/05/2026) — CSVs reais com dados pessoais (LGPD)
+# A fixture anonimizada `__tests__/fixtures/cacula-formato-anon.csv` PODE ir
+# pro git. Arquivos reais (cacula-real-*.csv) ficam só local.
+__tests__/fixtures/cacula-real-*.csv
+__tests__/fixtures/contas-pagar-*.csv
+/tmp/cacula-real-*.csv
+
 # macOS
 .DS_Store

@@ -1652,6 +1652,13 @@ model StagedPayableRow {
   // PAID se pagamento preenchido; PENDING se vazio
   paymentStatus String // "PAID" | "PENDING"
 
+  // Sprint CSV Import (30/05/2026) — pra CACULA fast-path determinar
+  // lifecycle no upload. Null pro Excel/CSV genérico — confirm usa
+  // lógica antiga baseada em paymentStatus. Quando preenchido,
+  // confirm usa este valor (já validado por validateLifecycleState
+  // pra impedir bug R$ 939k).
+  lifecycle String? // "EFFECTED" | "PAYABLE" | "RECEIVABLE" | NULL
+
   // ──── Match decidido pela IA (sugestão pra user revisar) ────
   // Tipo de favorecido: SUPPLIER | EMPLOYEE | ORGAO_PUBLICO
   favorecidoType String?

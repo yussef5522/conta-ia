@@ -145,17 +145,22 @@ export function ImportExcelClient({ empresaId }: Props) {
         setUploadPhase('error')
         return
       }
-      if (!/\.xlsx?$/i.test(file.name)) {
+      // Sprint CSV Import (30/05/2026): aceita .csv também
+      const isCsv = /\.csv$/i.test(file.name)
+      const isExcel = /\.xlsx?$/i.test(file.name)
+      if (!isCsv && !isExcel) {
         setUploadError({ code: 'FILE_TYPE_INVALID' })
         setUploadPhase('error')
         return
       }
-      // Magic bytes check no cliente também (defesa em profundidade)
-      const head = await file.slice(0, 8).arrayBuffer()
-      if (detectExcelType(head) === 'INVALID') {
-        setUploadError({ code: 'FILE_CORRUPTED' })
-        setUploadPhase('error')
-        return
+      // Magic bytes só pra Excel — CSV é texto puro, valida no servidor
+      if (isExcel) {
+        const head = await file.slice(0, 8).arrayBuffer()
+        if (detectExcelType(head) === 'INVALID') {
+          setUploadError({ code: 'FILE_CORRUPTED' })
+          setUploadPhase('error')
+          return
+        }
       }
 
       // Upload com XHR + progress + retry automático em network errors
@@ -593,7 +598,7 @@ export function ImportExcelClient({ empresaId }: Props) {
             </>
           ) : (
             <>
-              <p className="text-sm font-medium">Arraste seu .xlsx aqui ou clique pra escolher</p>
+              <p className="text-sm font-medium">Arraste seu .xlsx ou .csv aqui ou clique pra escolher</p>
               <p className="text-xs text-muted-foreground">
                 Aceita planilha do contador em qualquer formato — IA detecta as colunas
               </p>
@@ -604,7 +609,7 @@ export function ImportExcelClient({ empresaId }: Props) {
         <input
           id="excel-upload"
           type="file"
-          accept=".xlsx,.xls"
+          accept=".xlsx,.xls,.csv"
           className="hidden"
           disabled={isInFlight}
           onChange={(e) => {
