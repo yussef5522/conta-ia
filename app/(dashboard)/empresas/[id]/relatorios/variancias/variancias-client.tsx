@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useToast } from '@/components/ui/use-toast'
+import { ExportReportButton } from '@/components/relatorios/ExportReportButton'
 import {
   classesForLevel,
   VARIANCE_LEVEL_VISUAL,
@@ -237,6 +238,14 @@ export function VarianciasClient({ empresaId }: Props) {
                 <SelectItem value="disappeared">Sumiram</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+          <div className="ml-auto">
+            <ExportReportButton
+              relatorio="variancias"
+              empresaId={empresaId}
+              filtrosQS={new URLSearchParams({ current, base }).toString()}
+              disabled={loading || !data}
+            />
           </div>
         </CardContent>
       </Card>

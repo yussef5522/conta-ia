@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useToast } from '@/components/ui/use-toast'
+import { ExportReportButton } from '@/components/relatorios/ExportReportButton'
 
 interface Row {
   supplierId: string
@@ -123,6 +124,14 @@ export function FornecedoresClient({ empresaId }: Props) {
                 <SelectItem value="50">50</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+          <div className="ml-auto">
+            <ExportReportButton
+              relatorio="fornecedores"
+              empresaId={empresaId}
+              filtrosQS={new URLSearchParams({ from, to, topN: String(topN) }).toString()}
+              disabled={loading || !data}
+            />
           </div>
         </CardContent>
       </Card>

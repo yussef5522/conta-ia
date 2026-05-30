@@ -34,6 +34,7 @@ import {
 } from '@/lib/dre/presets'
 import { formatDateInputBR } from '@/lib/format/dre'
 import { calculateKPIs } from '@/lib/dre/kpis'
+import { ExportReportButton } from '@/components/relatorios/ExportReportButton'
 
 type Regime = 'competence' | 'cash'
 type ComparisonType =
@@ -219,10 +220,25 @@ export function DREClient({ empresaId, empresaNome }: Props) {
             {view === 'previsto' && ' · 📅 Visão PREVISTO (PAYABLE/RECEIVABLE)'}
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={fetchDRE} disabled={isLoading}>
-          <RefreshCw className={`mr-2 h-3 w-3 ${isLoading ? 'animate-spin' : ''}`} />
-          Atualizar
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={fetchDRE} disabled={isLoading}>
+            <RefreshCw className={`mr-2 h-3 w-3 ${isLoading ? 'animate-spin' : ''}`} />
+            Atualizar
+          </Button>
+          {/* Sprint Export CSV+PDF (29/05/2026) — Botão Exportar */}
+          <ExportReportButton
+            relatorio="dre"
+            empresaId={empresaId}
+            filtrosQS={new URLSearchParams({
+              startDate: startDate.toISOString(),
+              endDate: endDate.toISOString(),
+              regime,
+              comparison: 'none',
+              ...(view === 'previsto' ? { view: 'previsto' } : {}),
+            }).toString()}
+            disabled={isLoading}
+          />
+        </div>
       </div>
 
       {/* Sprint 4.0.1.b — Tabs Realizado vs Previsto */}

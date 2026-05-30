@@ -31,6 +31,7 @@ import {
   TransacaoDrillDownModal,
   type DrillDownPeriodo,
 } from '@/components/relatorios/drill-down/TransacaoDrillDownModal'
+import { ExportReportButton } from '@/components/relatorios/ExportReportButton'
 
 interface DrillDownState {
   categoriaId: string
@@ -232,6 +233,20 @@ export function ComparativoClient({ empresaId }: Props) {
                 <SelectItem value="NEW_ONLY">Só novas 🆕</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+          {/* Sprint Export CSV+PDF (29/05/2026) — Botão Exportar */}
+          <div className="ml-auto">
+            <ExportReportButton
+              relatorio="comparativo"
+              empresaId={empresaId}
+              filtrosQS={new URLSearchParams({
+                refMonth,
+                tipo,
+                meses: String(meses),
+                granularidade,
+              }).toString()}
+              disabled={loading || !data}
+            />
           </div>
         </CardContent>
       </Card>
