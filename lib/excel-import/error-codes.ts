@@ -21,6 +21,9 @@ export type ErrorCode =
   | 'NETWORK_ERROR'
   | 'TIMEOUT'
   | 'INTERNAL_ERROR'
+  // Sprint CSV Import (30/05/2026)
+  | 'CSV_HEADER_DESCONHECIDO'
+  | 'CSV_DECODE_FAILED'
 
 interface ErrorInfo {
   /** Mensagem curta (1 linha) — vira título do alert. */
@@ -46,13 +49,26 @@ const ERROR_MESSAGES: Record<ErrorCode, ErrorInfo> = {
   FILE_TYPE_INVALID: {
     title: 'Formato não suportado',
     description:
-      'Envie uma planilha Excel (.xlsx ou .xls). PDF, CSV e outros formatos ainda não são aceitos.',
+      'Envie uma planilha Excel (.xlsx, .xls) ou CSV. PDF e outros formatos ainda não são aceitos.',
     retryable: false,
   },
   FILE_CORRUPTED: {
     title: 'Arquivo parece corrompido',
     description:
-      'O arquivo não tem a assinatura de um Excel válido. Tente abrir/salvar de novo no Excel ou enviar outra cópia.',
+      'O arquivo não tem a assinatura de um Excel ou CSV válido. Tente abrir/salvar de novo ou enviar outra cópia.',
+    retryable: false,
+  },
+  // Sprint CSV Import (30/05/2026)
+  CSV_HEADER_DESCONHECIDO: {
+    title: 'Header CSV não reconhecido',
+    description:
+      'O CSV foi lido mas o formato do cabeçalho não bate com nenhum conhecido. Vou tentar mapear com IA — pode ter erros, revise no preview.',
+    retryable: false,
+  },
+  CSV_DECODE_FAILED: {
+    title: 'Não conseguimos decodificar o CSV',
+    description:
+      'O arquivo precisa estar em UTF-8 (Excel BR salva por padrão). Re-salve como "CSV UTF-8" e tente de novo.',
     retryable: false,
   },
   PARSE_FAILED: {

@@ -224,8 +224,22 @@ export async function POST(request: NextRequest, { params }: Params) {
           // estado que VIOLA lib/lifecycle/index.ts:60-69 e fica invisível aos
           // relatórios (que filtram lifecycle='EFFECTED'). Veja
           // docs/sprints/bug-despesas-relatorios-audit.md.
-          const isPaid = !!row.pagamento
-          const txDate = row.pagamento ?? row.vencimento ?? new Date()
+          //
+          // Sprint CSV Import (30/05/2026): se a linha tem lifecycle preenchido
+          // (CACULA fast-path já decidiu + validateLifecycleState validou no
+          // upload), respeitamos. Senão, lógica antiga via row.pagamento.
+          const lifecycle: 'EFFECTED' | 'PAYABLE' =
+            row.lifecycle === 'EFFECTED' || row.lifecycle === 'PAYABLE'
+              ? row.lifecycle
+              : row.pagamento
+                ? 'EFFECTED'
+                : 'PAYABLE'
+          const isPaid = lifecycle === 'EFFECTED'
+          // Sanity: PAYABLE com pagamento preenchido é estado inválido
+          // (lib/lifecycle:60-69). Se cair aqui (não deveria), zera pagamento
+          // pra não criar a regressão R$ 939k.
+          const paymentDateSafe = lifecycle === 'EFFECTED' ? row.pagamento : null
+          const txDate = paymentDateSafe ?? row.vencimento ?? new Date()
           try {
             await tx.transaction.create({
               data: {
@@ -240,9 +254,9 @@ export async function POST(request: NextRequest, { params }: Params) {
                 type: 'DEBIT',
                 status: isPaid ? 'RECONCILED' : 'PENDING',
                 origin: 'IMPORT_EXCEL',
-                lifecycle: isPaid ? 'EFFECTED' : 'PAYABLE',
+                lifecycle,
                 dueDate: row.vencimento,
-                paymentDate: row.pagamento,
+                paymentDate: paymentDateSafe,
                 competenceDate: row.competencia,
                 notes: row.rawNota ? `NF: ${row.rawNota}` : null,
                 dedupHash: row.dedupHash,
