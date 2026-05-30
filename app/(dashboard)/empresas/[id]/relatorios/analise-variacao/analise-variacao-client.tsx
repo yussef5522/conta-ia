@@ -39,6 +39,7 @@ import {
   TransacaoDrillDownModal,
   type DrillDownPeriodo,
 } from '@/components/relatorios/drill-down/TransacaoDrillDownModal'
+import { ExportReportButton } from '@/components/relatorios/ExportReportButton'
 
 interface DrillDownState {
   categoriaId: string
@@ -343,7 +344,7 @@ export function AnaliseVariacaoClient({ empresaId }: Props) {
             </div>
           </div>
 
-          <div className="pt-2">
+          <div className="pt-2 flex items-center gap-3">
             <Button onClick={handleAnalisar} disabled={loading} className="gap-2">
               {loading ? (
                 <>
@@ -357,6 +358,27 @@ export function AnaliseVariacaoClient({ empresaId }: Props) {
                 </>
               )}
             </Button>
+            {/* Sprint Export CSV+PDF (29/05/2026) — só visível após análise rodar */}
+            {data && !loading && (
+              <ExportReportButton
+                relatorio="analise-variacao"
+                empresaId={empresaId}
+                filtrosQS={(() => {
+                  const p = new URLSearchParams({
+                    mesInvestigado,
+                    mode,
+                    tipo,
+                    topNDrivers: '10',
+                  })
+                  if (mode === 'mes-vs-mes') {
+                    p.set('ymComparacao', ymComparacao)
+                  } else {
+                    p.set('nMesesContexto', String(nMesesContexto))
+                  }
+                  return p.toString()
+                })()}
+              />
+            )}
           </div>
         </CardContent>
       </Card>

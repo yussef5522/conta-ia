@@ -1,0 +1,200 @@
+// Sprint Export CSV+PDF (29/05/2026) — Endpoint export Análise de Variação.
+// Replica filtro + engine do GET base (../route.ts) + serializa CSV/PDF.
+
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
+import { renderToBuffer } from '@react-pdf/renderer'
+import { prisma } from '@/lib/db'
+import { getAuthContext } from '@/lib/auth/rbac'
+import { handleApiError } from '@/lib/api/handle-error'
+import {
+  analiseVariacao,
+  ordenarCronologicamente,
+  type AnaliseVariacaoInput,
+} from '@/lib/relatorios/analise-variacao'
+import type { ComparativoInputTx } from '@/lib/relatorios/comparativo'
+import { parseRefMonth } from '@/lib/relatorios/comparativo'
+import {
+  renderAnaliseVariacaoCSV,
+  renderAnaliseVariacaoPDF,
+} from '@/lib/export/render/analise-variacao'
+import { exportFilename } from '@/lib/export/csv/format'
+
+const ymRegex = /^\d{4}-\d{2}$/
+const baseSchema = z.object({
+  mesInvestigado: z.string().regex(ymRegex),
+  mode: z.enum(['mes-vs-mes', 'mes-vs-media']),
+  tipo: z.enum(['DESPESA', 'RECEITA', 'TODOS']).default('DESPESA'),
+  regime: z.enum(['competencia', 'caixa']).default('competencia'),
+  topNDrivers: z.coerce.number().int().min(3).max(20).default(10),
+  format: z.enum(['csv', 'pdf']).default('csv'),
+})
+const mesVsMesSchema = baseSchema.extend({
+  mode: z.literal('mes-vs-mes'),
+  ymComparacao: z.string().regex(ymRegex),
+})
+const mesVsMediaSchema = baseSchema.extend({
+  mode: z.literal('mes-vs-media'),
+  nMesesContexto: z.coerce.number().int().min(2).max(12).default(6),
+})
+const querySchema = z.union([mesVsMesSchema, mesVsMediaSchema])
+
+interface Params {
+  params: Promise<{ id: string }>
+}
+
+export const runtime = 'nodejs'
+
+function formatGeradoEmBR(d: Date): string {
+  return d.toLocaleString('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+export async function GET(request: NextRequest, { params }: Params) {
+  try {
+    const { id: empresaId } = await params
+    const ctx = await getAuthContext(request, empresaId)
+    ctx.requirePermission('dre.view')
+
+    const sp = request.nextUrl.searchParams
+    const input = querySchema.parse(Object.fromEntries(sp.entries()))
+
+    const empresa = await prisma.company.findUnique({
+      where: { id: empresaId },
+      select: { name: true, tradeName: true },
+    })
+    const empresaNome = empresa?.tradeName ?? empresa?.name ?? 'Empresa'
+
+    // SQL range (mesma lógica do GET base)
+    const investRange = parseRefMonth(input.mesInvestigado)
+    let sqlRangeStart: Date
+    let sqlRangeEnd: Date
+    if (input.mode === 'mes-vs-mes') {
+      const cmpRange = parseRefMonth(input.ymComparacao)
+      sqlRangeStart =
+        investRange.start < cmpRange.start ? investRange.start : cmpRange.start
+      sqlRangeEnd =
+        investRange.end > cmpRange.end ? investRange.end : cmpRange.end
+    } else {
+      const N = input.nMesesContexto
+      const earliestM = investRange.start.getUTCMonth() - (N - 1)
+      const yAdj = investRange.start.getUTCFullYear() + Math.floor(earliestM / 12)
+      const mNorm = ((earliestM % 12) + 12) % 12
+      sqlRangeStart = new Date(Date.UTC(yAdj, mNorm, 1))
+      sqlRangeEnd = investRange.end
+    }
+
+    const txs = await prisma.transaction.findMany({
+      where: {
+        AND: [
+          {
+            OR: [
+              { bankAccount: { companyId: empresaId } },
+              { supplier: { companyId: empresaId } },
+              { employee: { companyId: empresaId } },
+              { customer: { companyId: empresaId } },
+              { category: { companyId: empresaId } },
+            ],
+          },
+          {
+            OR: [
+              { competenceDate: { gte: sqlRangeStart, lte: sqlRangeEnd } },
+              {
+                competenceDate: null,
+                date: { gte: sqlRangeStart, lte: sqlRangeEnd },
+              },
+            ],
+          },
+        ],
+        status: { in: ['RECONCILED', 'PENDING'] },
+      },
+      select: {
+        amount: true,
+        type: true,
+        date: true,
+        competenceDate: true,
+        paymentDate: true,
+        categoryId: true,
+        category: { select: { id: true, name: true, dreGroup: true } },
+      },
+      take: 50_000,
+    })
+
+    const inputTxs: ComparativoInputTx[] = txs.map((t) => ({
+      bucketDate:
+        input.regime === 'caixa'
+          ? (t.paymentDate ?? t.date)
+          : (t.competenceDate ?? t.date),
+      amount: t.amount,
+      type: t.type,
+      categoryId: t.category?.id ?? null,
+      categoryName: t.category?.name ?? null,
+      dreGroup: t.category?.dreGroup ?? null,
+    }))
+
+    const analiseInput: AnaliseVariacaoInput =
+      input.mode === 'mes-vs-mes'
+        ? (() => {
+            const { antigo, novo } = ordenarCronologicamente(
+              input.mesInvestigado,
+              input.ymComparacao,
+            )
+            return {
+              mode: 'mes-vs-mes',
+              txs: inputTxs,
+              mesAntigo: antigo,
+              mesNovo: novo,
+              tipo: input.tipo,
+              topNDrivers: input.topNDrivers,
+            }
+          })()
+        : {
+            mode: 'mes-vs-media',
+            txs: inputTxs,
+            mesNovo: input.mesInvestigado,
+            nMesesContexto: input.nMesesContexto,
+            tipo: input.tipo,
+            topNDrivers: input.topNDrivers,
+          }
+
+    const result = analiseVariacao(analiseInput)
+
+    if (input.format === 'csv') {
+      const csv = renderAnaliseVariacaoCSV(result)
+      return new NextResponse(csv, {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/csv; charset=utf-8',
+          'Content-Disposition': `attachment; filename="${exportFilename('analise-variacao', empresaNome, 'csv')}"`,
+          'X-Row-Count': String(result.drivers.length),
+        },
+      })
+    }
+
+    const buf = await renderToBuffer(
+      renderAnaliseVariacaoPDF(result, {
+        empresaNome,
+        tipo: input.tipo,
+        regime: input.regime,
+        mode: input.mode,
+        geradoEm: formatGeradoEmBR(new Date()),
+      }),
+    )
+    return new NextResponse(new Uint8Array(buf), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="${exportFilename('analise-variacao', empresaNome, 'pdf')}"`,
+        'X-Row-Count': String(result.drivers.length),
+      },
+    })
+  } catch (error) {
+    return handleApiError(error)
+  }
+}

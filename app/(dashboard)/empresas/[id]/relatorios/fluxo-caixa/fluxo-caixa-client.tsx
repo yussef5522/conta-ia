@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/select'
 import { useToast } from '@/components/ui/use-toast'
 import { CashFlowChartDynamic } from '@/components/relatorios/fluxo-caixa/CashFlowChartWrapper'
+import { ExportReportButton } from '@/components/relatorios/ExportReportButton'
 
 interface MonthRow {
   monthKey: string
@@ -145,6 +146,15 @@ export function FluxoCaixaClient({ empresaId }: Props) {
                 <SelectItem value="previsto">Só Previsto</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+          {/* Sprint Export CSV+PDF (29/05/2026) — Botão Exportar */}
+          <div className="ml-auto">
+            <ExportReportButton
+              relatorio="fluxo-caixa"
+              empresaId={empresaId}
+              filtrosQS={new URLSearchParams({ meses: String(meses) }).toString()}
+              disabled={loading || !data}
+            />
           </div>
         </CardContent>
       </Card>

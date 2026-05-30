@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/select'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
+import { ExportReportButton } from '@/components/relatorios/ExportReportButton'
 import {
   colorForIndex,
   type TopCategoriaRow,
@@ -129,6 +130,19 @@ export function CategoriasClient({ empresaId }: Props) {
                 <SelectItem value="50">50</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+          <div className="ml-auto">
+            <ExportReportButton
+              relatorio="categorias"
+              empresaId={empresaId}
+              filtrosQS={new URLSearchParams({
+                from,
+                to,
+                tipo,
+                topN: String(topN),
+              }).toString()}
+              disabled={loading || !data}
+            />
           </div>
         </CardContent>
       </Card>
