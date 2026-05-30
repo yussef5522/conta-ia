@@ -2,13 +2,13 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { renderToBuffer } from '@react-pdf/renderer'
 import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import { collectVariances } from '@/lib/variance/collect'
-import { renderVarianciasCSV, renderVarianciasPDF } from '@/lib/export/render/variancias'
+import { renderVarianciasCSV } from '@/lib/export/render/variancias'
 import { exportFilename } from '@/lib/export/csv/format'
+import { renderPdfInWorker } from '@/lib/export/pdf-worker-client'
 
 export const runtime = 'nodejs'
 
@@ -68,13 +68,11 @@ export async function GET(request: NextRequest, { params }: Params) {
       })
     }
 
-    const buf = await renderToBuffer(
-      renderVarianciasPDF(result, {
-        empresaNome,
-        minAbsoluteValue,
-        geradoEm: formatGeradoEmBR(new Date()),
-      }),
-    )
+    const buf = await renderPdfInWorker('variancias', result, {
+      empresaNome,
+      minAbsoluteValue,
+      geradoEm: formatGeradoEmBR(new Date()),
+    })
     return new NextResponse(new Uint8Array(buf), {
       status: 200,
       headers: {

@@ -2,13 +2,13 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { renderToBuffer } from '@react-pdf/renderer'
 import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import { computePayroll } from '@/lib/relatorios/payroll'
-import { renderFuncionariosCSV, renderFuncionariosPDF } from '@/lib/export/render/funcionarios'
+import { renderFuncionariosCSV } from '@/lib/export/render/funcionarios'
 import { exportFilename } from '@/lib/export/csv/format'
+import { renderPdfInWorker } from '@/lib/export/pdf-worker-client'
 
 export const runtime = 'nodejs'
 
@@ -100,15 +100,13 @@ export async function GET(request: NextRequest, { params }: Params) {
       })
     }
 
-    const buf = await renderToBuffer(
-      renderFuncionariosPDF(filtered, {
-        empresaNome,
-        from: input.from,
-        to: input.to,
-        filterTipo: input.tipo ?? null,
-        geradoEm: formatGeradoEmBR(new Date()),
-      }),
-    )
+    const buf = await renderPdfInWorker('funcionarios', filtered, {
+      empresaNome,
+      from: input.from,
+      to: input.to,
+      filterTipo: input.tipo ?? null,
+      geradoEm: formatGeradoEmBR(new Date()),
+    })
     return new NextResponse(new Uint8Array(buf), {
       status: 200,
       headers: {

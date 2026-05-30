@@ -9,7 +9,15 @@ import process from 'node:process'
 
 const WORKER_TIMEOUT_MS = 30_000 // 30s — gera bem rápido pra qualquer relatório
 
-export type WorkerReportType = 'comparativo'
+export type WorkerReportType =
+  | 'comparativo'
+  | 'analise-variacao'
+  | 'dre'
+  | 'fluxo-caixa'
+  | 'categorias'
+  | 'fornecedores'
+  | 'funcionarios'
+  | 'variancias'
 
 export async function renderPdfInWorker<TData, TCtx>(
   type: WorkerReportType,

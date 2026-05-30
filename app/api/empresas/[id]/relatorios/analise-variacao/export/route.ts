@@ -3,7 +3,6 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { renderToBuffer } from '@react-pdf/renderer'
 import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
@@ -14,11 +13,9 @@ import {
 } from '@/lib/relatorios/analise-variacao'
 import type { ComparativoInputTx } from '@/lib/relatorios/comparativo'
 import { parseRefMonth } from '@/lib/relatorios/comparativo'
-import {
-  renderAnaliseVariacaoCSV,
-  renderAnaliseVariacaoPDF,
-} from '@/lib/export/render/analise-variacao'
+import { renderAnaliseVariacaoCSV } from '@/lib/export/render/analise-variacao'
 import { exportFilename } from '@/lib/export/csv/format'
+import { renderPdfInWorker } from '@/lib/export/pdf-worker-client'
 
 const ymRegex = /^\d{4}-\d{2}$/
 const baseSchema = z.object({
@@ -177,15 +174,15 @@ export async function GET(request: NextRequest, { params }: Params) {
       })
     }
 
-    const buf = await renderToBuffer(
-      renderAnaliseVariacaoPDF(result, {
-        empresaNome,
-        tipo: input.tipo,
-        regime: input.regime,
-        mode: input.mode,
-        geradoEm: formatGeradoEmBR(new Date()),
-      }),
-    )
+    // Hotfix worker (29/05/2026): PDF gerado em processo isolado pra
+    // evitar Next 16 React 19-canary vs react-pdf React 18 mismatch.
+    const buf = await renderPdfInWorker('analise-variacao', result, {
+      empresaNome,
+      tipo: input.tipo,
+      regime: input.regime,
+      mode: input.mode,
+      geradoEm: formatGeradoEmBR(new Date()),
+    })
     return new NextResponse(new Uint8Array(buf), {
       status: 200,
       headers: {

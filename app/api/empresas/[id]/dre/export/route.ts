@@ -2,7 +2,6 @@
 // Reusa filtros + engine `calculateDRE` da route base. Adiciona `format=csv|pdf`.
 
 import { NextRequest, NextResponse } from 'next/server'
-import { renderToBuffer } from '@react-pdf/renderer'
 import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
@@ -14,8 +13,9 @@ import type {
   CalculateDREOptions,
   RegimeContabil,
 } from '@/lib/dre/types'
-import { renderDRECSV, renderDREPDF } from '@/lib/export/render/dre'
+import { renderDRECSV } from '@/lib/export/render/dre'
 import { exportFilename } from '@/lib/export/csv/format'
+import { renderPdfInWorker } from '@/lib/export/pdf-worker-client'
 import { z } from 'zod'
 
 interface Params {
@@ -175,14 +175,13 @@ export async function GET(request: NextRequest, { params }: Params) {
       })
     }
 
-    const buf = await renderToBuffer(
-      renderDREPDF(result, {
-        empresaNome,
-        regime,
-        periodoLabel: formatPeriodoLabel(startDate, endDate),
-        geradoEm: formatGeradoEmBR(new Date()),
-      }),
-    )
+    // Hotfix worker (29/05/2026): PDF via processo isolado
+    const buf = await renderPdfInWorker('dre', result, {
+      empresaNome,
+      regime,
+      periodoLabel: formatPeriodoLabel(startDate, endDate),
+      geradoEm: formatGeradoEmBR(new Date()),
+    })
     return new NextResponse(new Uint8Array(buf), {
       status: 200,
       headers: {

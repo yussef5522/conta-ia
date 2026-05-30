@@ -167,11 +167,16 @@ npm run db:generate
 npm run deploy:db
 ```
 
-> ⚠️ **Por que NÃO usar `--omit=dev` aqui?** `prisma` (CLI), `tsx` (executor
-> do seed) e `typescript` (necessário pro `next build`) estão em
-> `devDependencies` no `package.json`. Sem eles, os passos seguintes
-> (`db:generate`, `deploy:db`, `npm run build`) falham. O custo é
-> ~500MB extras em `node_modules` — aceitável.
+> ⚠️ **Por que NÃO usar `--omit=dev` aqui?** `prisma` (CLI) e `typescript`
+> (necessário pro `next build`) estão em `devDependencies` no
+> `package.json`. Sem eles, os passos seguintes (`db:generate`, `deploy:db`,
+> `npm run build`) falham. O custo é ~500MB extras em `node_modules` —
+> aceitável.
+>
+> **Nota (29/05/2026):** `tsx` foi MOVIDO de `devDependencies` pra
+> `dependencies` porque virou runtime dependency: o worker de PDF
+> (`lib/export/pdf-worker.ts`) é spawned como child process via `tsx`
+> em todos os exports de PDF dos relatórios.
 
 Verifique se as tabelas foram criadas:
 ```bash

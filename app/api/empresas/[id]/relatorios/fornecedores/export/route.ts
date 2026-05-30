@@ -2,13 +2,13 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { renderToBuffer } from '@react-pdf/renderer'
 import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import { computeTopSuppliers } from '@/lib/relatorios/top-suppliers'
-import { renderFornecedoresCSV, renderFornecedoresPDF } from '@/lib/export/render/fornecedores'
+import { renderFornecedoresCSV } from '@/lib/export/render/fornecedores'
 import { exportFilename } from '@/lib/export/csv/format'
+import { renderPdfInWorker } from '@/lib/export/pdf-worker-client'
 
 export const runtime = 'nodejs'
 
@@ -101,11 +101,9 @@ export async function GET(request: NextRequest, { params }: Params) {
           },
         })
       }
-      const buf = await renderToBuffer(
-        renderFornecedoresPDF(empty, {
-          empresaNome, from: input.from, to: input.to, geradoEm: formatGeradoEmBR(new Date()),
-        }),
-      )
+      const buf = await renderPdfInWorker('fornecedores', empty, {
+        empresaNome, from: input.from, to: input.to, geradoEm: formatGeradoEmBR(new Date()),
+      })
       return new NextResponse(new Uint8Array(buf), {
         status: 200,
         headers: {
@@ -153,11 +151,9 @@ export async function GET(request: NextRequest, { params }: Params) {
       })
     }
 
-    const buf = await renderToBuffer(
-      renderFornecedoresPDF(result, {
-        empresaNome, from: input.from, to: input.to, geradoEm: formatGeradoEmBR(new Date()),
-      }),
-    )
+    const buf = await renderPdfInWorker('fornecedores', result, {
+      empresaNome, from: input.from, to: input.to, geradoEm: formatGeradoEmBR(new Date()),
+    })
     return new NextResponse(new Uint8Array(buf), {
       status: 200,
       headers: {

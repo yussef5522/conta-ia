@@ -18,9 +18,26 @@
 
 import { renderToBuffer } from '@react-pdf/renderer'
 import { renderComparativoPDFNoJSX } from './render/comparativo-no-jsx'
+import { renderAnaliseVariacaoPDF } from './render/analise-variacao'
+import { renderDREPDF } from './render/dre'
+import { renderFluxoCaixaPDF } from './render/fluxo-caixa'
+import { renderCategoriasPDF } from './render/categorias'
+import { renderFornecedoresPDF } from './render/fornecedores'
+import { renderFuncionariosPDF } from './render/funcionarios'
+import { renderVarianciasPDF } from './render/variancias'
+
+export type WorkerReportType =
+  | 'comparativo'
+  | 'analise-variacao'
+  | 'dre'
+  | 'fluxo-caixa'
+  | 'categorias'
+  | 'fornecedores'
+  | 'funcionarios'
+  | 'variancias'
 
 interface WorkerRequest {
-  type: 'comparativo'
+  type: WorkerReportType
   data: unknown
   ctx: unknown
 }
@@ -41,19 +58,32 @@ async function readStdin(): Promise<WorkerRequest> {
   })
 }
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
 async function buildElement(req: WorkerRequest) {
+  const d = req.data as any
+  const c = req.ctx as any
   switch (req.type) {
     case 'comparativo':
-      return renderComparativoPDFNoJSX(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        req.data as any,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        req.ctx as any,
-      )
+      return renderComparativoPDFNoJSX(d, c)
+    case 'analise-variacao':
+      return renderAnaliseVariacaoPDF(d, c)
+    case 'dre':
+      return renderDREPDF(d, c)
+    case 'fluxo-caixa':
+      return renderFluxoCaixaPDF(d, c)
+    case 'categorias':
+      return renderCategoriasPDF(d, c)
+    case 'fornecedores':
+      return renderFornecedoresPDF(d, c)
+    case 'funcionarios':
+      return renderFuncionariosPDF(d, c)
+    case 'variancias':
+      return renderVarianciasPDF(d, c)
     default:
       throw new Error(`Builder desconhecido: ${(req as { type: string }).type}`)
   }
 }
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 async function main(): Promise<void> {
   const req = await readStdin()
