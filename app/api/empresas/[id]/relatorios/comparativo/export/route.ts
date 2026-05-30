@@ -8,7 +8,6 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { renderToBuffer } from '@react-pdf/renderer'
 import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
@@ -18,10 +17,7 @@ import {
   type ComparativoInputTx,
   type Granularidade,
 } from '@/lib/relatorios/comparativo'
-import {
-  renderComparativoCSV,
-  renderComparativoPDF,
-} from '@/lib/export/render/comparativo'
+import { renderComparativoCSV } from '@/lib/export/render/comparativo'
 import { exportFilename } from '@/lib/export/csv/format'
 
 const querySchema = z.object({
@@ -150,8 +146,13 @@ export async function GET(request: NextRequest, { params }: Params) {
       })
     }
 
-    // PDF
+    // PDF — dynamic imports pra contornar bundling issues do Next 16 com
+    // @react-pdf/renderer (React error #31 quando bundled estaticamente).
     const geradoEm = formatGeradoEmBR(new Date())
+    const [{ renderToBuffer }, { renderComparativoPDF }] = await Promise.all([
+      import('@react-pdf/renderer'),
+      import('@/lib/export/render/comparativo'),
+    ])
     const pdfBuffer = await renderToBuffer(
       renderComparativoPDF(result, {
         empresaNome,
