@@ -146,22 +146,21 @@ export async function GET(request: NextRequest, { params }: Params) {
       })
     }
 
-    // PDF — dynamic imports pra contornar bundling issues do Next 16 com
-    // @react-pdf/renderer (React error #31 quando bundled estaticamente).
+    // PDF — Tentativa 4 (29/05/2026): worker child_process.
+    // Next 16 injeta React 19-canary nos route handlers, enquanto
+    // @react-pdf/reconciler carrega React 18.3.1 do node_modules.
+    // 2 Reacts no processo → $$typeof mismatch → error #31.
+    // Fix: spawn processo Node isolado que usa SÓ react 18.3.1
+    // do node_modules (igual o probe tsx que sempre funcionou).
     const geradoEm = formatGeradoEmBR(new Date())
-    const [{ renderToBuffer }, { renderComparativoPDF }] = await Promise.all([
-      import('@react-pdf/renderer'),
-      import('@/lib/export/render/comparativo'),
-    ])
-    const pdfBuffer = await renderToBuffer(
-      renderComparativoPDF(result, {
-        empresaNome,
-        tipo: input.tipo,
-        regime: input.regime,
-        granularidade: input.granularidade,
-        geradoEm,
-      }),
-    )
+    const { renderPdfInWorker } = await import('@/lib/export/pdf-worker-client')
+    const pdfBuffer = await renderPdfInWorker('comparativo', result, {
+      empresaNome,
+      tipo: input.tipo,
+      regime: input.regime,
+      granularidade: input.granularidade,
+      geradoEm,
+    })
     const filename = exportFilename('comparativo', empresaNome, 'pdf')
     return new NextResponse(new Uint8Array(pdfBuffer), {
       status: 200,
