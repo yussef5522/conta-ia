@@ -34,7 +34,12 @@ export function handleApiError(error: unknown): NextResponse {
   }
 
   if (error instanceof Error) {
+    // Hotfix Export CSV+PDF (29/05/2026): adicionar stack completo
+    // pra debugar erros minificados (ex.: React error #31 do react-pdf).
     console.error('[API ERROR]', error.name, error.message)
+    if (error.stack) {
+      console.error('[API ERROR STACK]', error.stack)
+    }
     return NextResponse.json(
       { erro: error.message || 'Erro interno' },
       { status: 500 },
