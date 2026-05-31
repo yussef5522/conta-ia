@@ -16,6 +16,7 @@ import { LandingComparativo } from '@/components/landing/comparativo'
 import { LandingPricingSummary } from '@/components/landing/pricing-summary'
 import { LandingCTA } from '@/components/landing/cta-final'
 import { LandingFooter } from '@/components/landing/footer'
+import { WhatsAppFloat } from '@/components/landing/whatsapp-float'
 
 export const metadata: Metadata = {
   title: 'CAIXAOS · Enxergue cada centavo do seu negócio',
@@ -52,7 +53,7 @@ export default async function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-white text-slate-900 antialiased">
+    <main className="min-h-screen bg-slate-950 text-slate-900 antialiased">
       <LandingHeader />
       <LandingHero />
       <LandingSocialProof />
@@ -61,6 +62,7 @@ export default async function Home() {
       <LandingPricingSummary />
       <LandingCTA />
       <LandingFooter />
+      <WhatsAppFloat />
     </main>
   )
 }
