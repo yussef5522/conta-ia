@@ -1,9 +1,12 @@
 'use client'
 
-// Sprint Landing Page (30/05/2026) — FAQ accordion da página /planos.
+// Sprint Landing v2 Elite (30/05/2026) — FAQ accordion premium da /planos.
 
 import { useState } from 'react'
-import { Plus, Minus } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Plus } from 'lucide-react'
+import { SectionReveal } from './section-reveal'
+import { fadeUp, EASE_OUT_EXPO } from '@/lib/motion/variants'
 
 const FAQS = [
   {
@@ -44,52 +47,89 @@ export function PlanosFAQ() {
   const [openIdx, setOpenIdx] = useState<number | null>(0)
 
   return (
-    <section className="py-20 sm:py-28 bg-slate-50/50 border-t border-slate-200/70">
-      <div className="mx-auto max-w-3xl px-5 sm:px-8">
-        <div className="text-center">
-          <p className="text-xs font-medium uppercase tracking-[0.18em] text-violet-600">
-            Perguntas frequentes
-          </p>
-          <h2 className="mt-3 text-3xl sm:text-4xl font-semibold tracking-[-0.02em] text-slate-900">
-            Dúvidas comuns sobre os planos
-          </h2>
-        </div>
+    <section className="relative py-28 sm:py-36 bg-slate-50/60 border-t border-slate-200/70 overflow-hidden">
+      <div
+        aria-hidden
+        className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-violet-200 to-transparent"
+      />
 
-        <div className="mt-12 space-y-3">
+      <div className="mx-auto max-w-3xl px-5 sm:px-8">
+        <SectionReveal variants={fadeUp}>
+          <div className="text-center">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-violet-600">
+              FAQ
+            </p>
+            <h2 className="mt-4 text-4xl sm:text-5xl font-semibold tracking-[-0.03em] text-slate-900 font-display leading-[1.05]">
+              Dúvidas comuns sobre os{' '}
+              <span className="italic text-gradient-violet">planos</span>
+            </h2>
+          </div>
+        </SectionReveal>
+
+        <div className="mt-14 space-y-3">
           {FAQS.map((faq, i) => {
             const open = openIdx === i
             return (
-              <div
+              <SectionReveal
                 key={i}
-                className={[
-                  'rounded-xl border transition-all overflow-hidden',
-                  open ? 'border-violet-200 bg-white shadow-sm' : 'border-slate-200 bg-white',
-                ].join(' ')}
+                variants={{
+                  hidden: { opacity: 0, y: 12 },
+                  visible: {
+                    opacity: 1,
+                    y: 0,
+                    transition: { duration: 0.5, delay: i * 0.04, ease: EASE_OUT_EXPO },
+                  },
+                }}
               >
-                <button
-                  type="button"
-                  onClick={() => setOpenIdx(open ? null : i)}
-                  className="w-full flex items-start justify-between gap-4 px-5 py-4 text-left"
-                  aria-expanded={open}
+                <div
+                  className={[
+                    'rounded-2xl border transition-all overflow-hidden',
+                    open
+                      ? 'border-violet-200 bg-white shadow-floating'
+                      : 'border-slate-200/80 bg-white hover:border-slate-300 hover:shadow-md',
+                  ].join(' ')}
                 >
-                  <span className="text-sm sm:text-base font-medium text-slate-900 leading-snug pt-0.5">
-                    {faq.q}
-                  </span>
-                  <span
-                    className={[
-                      'shrink-0 h-7 w-7 rounded-full flex items-center justify-center transition-all',
-                      open ? 'bg-violet-100 text-violet-700' : 'bg-slate-100 text-slate-500',
-                    ].join(' ')}
+                  <button
+                    type="button"
+                    onClick={() => setOpenIdx(open ? null : i)}
+                    className="w-full flex items-start justify-between gap-4 px-6 py-5 text-left"
+                    aria-expanded={open}
                   >
-                    {open ? <Minus size={14} /> : <Plus size={14} />}
-                  </span>
-                </button>
-                {open && (
-                  <div className="px-5 pb-5 pt-0">
-                    <p className="text-sm text-slate-600 leading-relaxed">{faq.a}</p>
-                  </div>
-                )}
-              </div>
+                    <span className="text-base sm:text-lg font-medium text-slate-900 leading-snug pt-0.5">
+                      {faq.q}
+                    </span>
+                    <motion.span
+                      animate={{ rotate: open ? 45 : 0 }}
+                      transition={{ duration: 0.3, ease: EASE_OUT_EXPO }}
+                      className={[
+                        'shrink-0 h-8 w-8 rounded-full flex items-center justify-center transition-colors',
+                        open
+                          ? 'bg-gradient-to-br from-violet-500 to-violet-700 text-white'
+                          : 'bg-slate-100 text-slate-500',
+                      ].join(' ')}
+                    >
+                      <Plus size={14} />
+                    </motion.span>
+                  </button>
+                  <AnimatePresence initial={false}>
+                    {open && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.35, ease: EASE_OUT_EXPO }}
+                        className="overflow-hidden"
+                      >
+                        <div className="px-6 pb-6 pt-0">
+                          <p className="text-base text-slate-600 leading-relaxed">
+                            {faq.a}
+                          </p>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              </SectionReveal>
             )
           })}
         </div>

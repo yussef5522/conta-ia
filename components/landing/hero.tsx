@@ -1,90 +1,131 @@
-// Sprint Landing Page (30/05/2026) — Hero principal da landing.
-// Vibe editorial minimalista, violeta como acento estratégico, dashboards
-// reais à direita como prova de superioridade.
+'use client'
+
+// Sprint Landing v2 Elite (30/05/2026) — Hero premium com gradient mesh
+// animado, tipografia display, entrada motion-rich, dashboards 3D.
 
 import Link from 'next/link'
+import { motion } from 'framer-motion'
 import { ArrowRight, Sparkles } from 'lucide-react'
 import { HeroVisual } from './hero-visual'
+import { MeshBg } from './mesh-bg'
+import { EASE_OUT_EXPO } from '@/lib/motion/variants'
+
+const HEADLINE_WORDS = ['Enxergue', 'cada', 'centavo', 'do']
 
 export function LandingHero() {
   return (
-    <section className="relative overflow-hidden pt-28 sm:pt-32 pb-16 sm:pb-24">
-      {/* Background: noise sutil + grid faded + gradient violet bottom-left */}
-      <div
-        aria-hidden
-        className="absolute inset-0 -z-10"
-        style={{
-          background:
-            'radial-gradient(80% 60% at 100% 0%, rgba(244,243,255,0.6) 0%, transparent 50%), radial-gradient(60% 50% at 0% 100%, rgba(237,233,254,0.7) 0%, transparent 60%), #ffffff',
-        }}
-      />
-      <div
-        aria-hidden
-        className="absolute inset-0 -z-10 opacity-[0.025]"
-        style={{
-          backgroundImage:
-            "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")",
-        }}
-      />
+    <section className="relative overflow-hidden pt-32 sm:pt-36 pb-20 sm:pb-32">
+      <MeshBg variant="light" grid noise />
 
-      <div className="mx-auto max-w-7xl px-5 sm:px-8">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-center">
-          {/* === Coluna esquerda: copy === */}
-          <div className="lg:col-span-6 max-w-xl">
-            <div className="inline-flex items-center gap-1.5 rounded-full border border-violet-200/70 bg-violet-50/60 px-3 py-1 text-[11px] font-medium text-violet-700 backdrop-blur-sm">
+      <div className="relative mx-auto max-w-7xl px-5 sm:px-8">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-10 items-center">
+          {/* === Copy === */}
+          <div className="lg:col-span-6 max-w-2xl">
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, ease: EASE_OUT_EXPO }}
+              className="inline-flex items-center gap-2 rounded-full border border-violet-200/80 bg-white/60 backdrop-blur-md px-3.5 py-1.5 text-[12px] font-medium text-violet-800 shadow-sm shadow-violet-900/5"
+            >
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-violet-500 opacity-60" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-violet-600" />
+              </span>
               <Sparkles size={12} className="text-violet-600" />
               <span>Novo: IA que entende seu caixa</span>
-            </div>
+            </motion.div>
 
-            <h1 className="mt-5 text-[2.5rem] sm:text-5xl lg:text-[3.5rem] leading-[1.05] font-semibold tracking-[-0.03em] text-slate-900">
-              Enxergue cada centavo do{' '}
-              <span className="relative inline-block">
-                <span className="relative z-10">seu negócio</span>
-                <span
-                  aria-hidden
-                  className="absolute left-0 bottom-1 h-[10px] w-full -z-0 bg-violet-200/70 rounded-sm"
-                />
-              </span>
+            <h1 className="mt-7 text-[2.75rem] sm:text-6xl lg:text-[5.25rem] leading-[1.02] font-semibold tracking-[-0.04em] text-slate-900 text-balance font-display">
+              {HEADLINE_WORDS.map((word, i) => (
+                <motion.span
+                  key={i}
+                  initial={{ opacity: 0, y: 24, filter: 'blur(8px)' }}
+                  animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                  transition={{
+                    duration: 0.8,
+                    delay: 0.15 + i * 0.08,
+                    ease: EASE_OUT_EXPO,
+                  }}
+                  className="inline-block mr-[0.22em]"
+                >
+                  {word}
+                </motion.span>
+              ))}
+              <motion.span
+                initial={{ opacity: 0, y: 24, filter: 'blur(8px)' }}
+                animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                transition={{ duration: 0.9, delay: 0.55, ease: EASE_OUT_EXPO }}
+                className="inline-block italic text-gradient-violet font-display"
+              >
+                seu negócio.
+              </motion.span>
             </h1>
 
-            <p className="mt-5 text-base sm:text-lg leading-relaxed text-slate-600 max-w-lg">
+            <motion.p
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.7, delay: 0.75, ease: EASE_OUT_EXPO }}
+              className="mt-7 text-lg sm:text-xl leading-relaxed text-slate-600 max-w-xl font-sans"
+            >
               Gestão financeira com inteligência de verdade. Importe, analise e
               entenda para onde vai seu dinheiro — em segundos, não em
               planilhas.
-            </p>
+            </motion.p>
 
-            <div className="mt-7 flex flex-col sm:flex-row gap-3">
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.7, delay: 0.9, ease: EASE_OUT_EXPO }}
+              className="mt-8 flex flex-col sm:flex-row gap-3"
+            >
               <Link
                 href="/cadastro"
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-violet-600 px-5 py-3 text-sm font-medium text-white shadow-lg shadow-violet-600/25 transition-all hover:bg-violet-700 hover:shadow-xl hover:shadow-violet-600/30 active:scale-[0.98]"
+                className="group inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-violet-500 to-violet-700 px-6 py-3.5 text-[15px] font-semibold text-white glow-violet-strong transition-all hover:from-violet-400 hover:to-violet-600 active:scale-[0.98]"
               >
                 Teste grátis
-                <ArrowRight size={16} />
+                <ArrowRight
+                  size={16}
+                  className="transition-transform group-hover:translate-x-1"
+                />
               </Link>
               <Link
                 href="/planos"
-                className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-5 py-3 text-sm font-medium text-slate-700 transition-all hover:border-slate-400 hover:bg-slate-50"
+                className="group inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300/80 bg-white/70 backdrop-blur-md px-6 py-3.5 text-[15px] font-medium text-slate-800 transition-all hover:bg-white hover:border-slate-400 hover:shadow-md"
               >
-                Ver planos
+                Ver planos e preços
               </Link>
-            </div>
+            </motion.div>
 
-            <div className="mt-7 flex items-center gap-5 text-xs text-slate-500">
-              <div className="flex items-center gap-1.5">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.8, delay: 1.1 }}
+              className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-500"
+            >
+              <div className="flex items-center gap-2">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
                 Sem cartão de crédito
               </div>
-              <div className="flex items-center gap-1.5">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                Cancele a hora que quiser
+              <div className="flex items-center gap-2">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
+                Cancele quando quiser
               </div>
-            </div>
+              <div className="flex items-center gap-2">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
+                Setup em 1 minuto
+              </div>
+            </motion.div>
           </div>
 
-          {/* === Coluna direita: visual === */}
-          <div className="lg:col-span-6 relative">
+          {/* === Visual === */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 1, delay: 0.3, ease: EASE_OUT_EXPO }}
+            className="lg:col-span-6 relative"
+          >
             <HeroVisual />
-          </div>
+          </motion.div>
         </div>
       </div>
     </section>
