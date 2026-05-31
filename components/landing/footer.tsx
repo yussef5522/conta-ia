@@ -51,7 +51,7 @@ export function LandingFooter() {
             <Link href="/" className="inline-flex transition-opacity hover:opacity-80">
               <CaixaosLogo variant="light-text" />
             </Link>
-            <p className="mt-6 text-base text-white/65 leading-relaxed max-w-sm font-display italic">
+            <p className="mt-6 text-base text-white/65 leading-relaxed max-w-sm">
               Sistema operacional do seu caixa. Gestão financeira com IA pra PMEs
               brasileiras.
             </p>

@@ -17,7 +17,10 @@ const config: Config = {
     extend: {
       fontFamily: {
         sans: ['var(--font-sans)', 'Inter', 'system-ui', 'sans-serif'],
-        display: ['var(--font-display)', 'Georgia', 'serif'],
+        // Sprint v3.2: display aponta pra Inter (era Instrument Serif).
+        // Mantemos a chave pra não quebrar className `font-display`
+        // espalhado nos componentes — agora tudo é Inter coeso.
+        display: ['var(--font-sans)', 'Inter', 'system-ui', 'sans-serif'],
       },
       colors: {
         border: 'hsl(var(--border))',

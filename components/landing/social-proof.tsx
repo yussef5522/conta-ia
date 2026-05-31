@@ -35,7 +35,7 @@ export function LandingSocialProof() {
             <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-violet-300">
               POR QUE CAIXAOS
             </p>
-            <p className="mt-3 text-2xl sm:text-3xl font-medium text-white/95 leading-snug font-display italic">
+            <p className="mt-3 text-2xl sm:text-3xl font-semibold text-white/95 leading-snug font-display tracking-tight">
               Detecta despesas que sua planilha esconde.
             </p>
           </div>

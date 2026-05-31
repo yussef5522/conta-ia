@@ -1,21 +1,15 @@
 import type { Metadata, Viewport } from 'next'
-import { Inter, Instrument_Serif } from 'next/font/google'
+import { Inter } from 'next/font/google'
 import './globals.css'
 import { Toaster } from '@/components/ui/toaster'
 
+// Sprint Landing v3.2 (31/05/2026): voltou a Inter como ÚNICA família.
+// Instrument Serif (editorial) ficou "desenhada demais" pro feedback do
+// Yussef — preferiu vibe SaaS tech limpa estilo Conta Azul. Mantemos
+// var --font-display pra não quebrar referências, mas aponta pra Inter.
 const inter = Inter({
   subsets: ['latin'],
   variable: '--font-sans',
-  display: 'swap',
-})
-
-// Sprint Landing v2 Elite (30/05/2026) — Display font editorial pra hero
-// e seções de landing. Mantém Inter como body em todo o app.
-const instrumentSerif = Instrument_Serif({
-  subsets: ['latin'],
-  weight: '400',
-  style: ['normal', 'italic'],
-  variable: '--font-display',
   display: 'swap',
 })
 
@@ -56,7 +50,7 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="pt-BR" className={`${inter.variable} ${instrumentSerif.variable}`}>
+    <html lang="pt-BR" className={inter.variable}>
       <body className={inter.className}>
         {children}
         <Toaster />

@@ -17,13 +17,15 @@ export function LandingHero() {
     <section className="relative pt-40 sm:pt-44 lg:pt-52 pb-24 sm:pb-32 overflow-hidden text-white">
       <MeshBg variant="hero-immersive" grid noise />
 
-      {/* Transition gradient pra próxima seção (SocialProof = slate-950) */}
+      {/* Transition gradient pra próxima seção (SocialProof = slate-950).
+       * Sprint v3.2: agora suaviza o salto do novo violeta-dark claro
+       * (#1d1733) pro slate-950 — gradient passa por tom intermediário. */}
       <div
         aria-hidden
-        className="absolute inset-x-0 bottom-0 h-40 pointer-events-none"
+        className="absolute inset-x-0 bottom-0 h-56 pointer-events-none"
         style={{
           background:
-            'linear-gradient(to bottom, transparent 0%, rgba(2, 6, 23, 0.6) 60%, rgb(2, 6, 23) 100%)',
+            'linear-gradient(to bottom, transparent 0%, rgba(15, 11, 33, 0.4) 30%, rgba(8, 8, 22, 0.85) 70%, rgb(2, 6, 23) 100%)',
           zIndex: 5,
         }}
       />
@@ -47,7 +49,7 @@ export function LandingHero() {
               <span>Novo: IA que entende seu caixa</span>
             </motion.div>
 
-            <h1 className="mt-7 text-[2.75rem] sm:text-6xl lg:text-[5.25rem] leading-[1.02] font-semibold tracking-[-0.04em] text-white text-balance font-display">
+            <h1 className="mt-7 text-[2.75rem] sm:text-6xl lg:text-[5.25rem] leading-[1.02] font-bold tracking-[-0.035em] text-white text-balance font-display">
               {HEADLINE_WORDS.map((word, i) => (
                 <motion.span
                   key={i}
@@ -67,7 +69,7 @@ export function LandingHero() {
                 initial={{ opacity: 0, y: 24, filter: 'blur(8px)' }}
                 animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
                 transition={{ duration: 0.9, delay: 0.55, ease: EASE_OUT_EXPO }}
-                className="inline-block italic font-display"
+                className="inline-block font-display"
                 style={{
                   backgroundImage:
                     'linear-gradient(115deg, #f5f3ff 0%, #c4b5fd 35%, #a78bfa 100%)',
