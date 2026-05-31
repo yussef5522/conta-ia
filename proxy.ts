@@ -23,6 +23,8 @@ import {
 } from '@/lib/admin-auth/jwt'
 
 const PUBLIC_PAGES = [
+  '/',
+  '/planos',
   '/login',
   '/cadastro',
   '/esqueci-senha',
