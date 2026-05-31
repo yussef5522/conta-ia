@@ -34,10 +34,16 @@ export function LandingHero() {
         }}
       />
 
+      {/* Sprint v3.4 (31/05/2026): max-w removido do wrapper externo pra
+       * permitir o sangramento dos cards à direita sem inflar a página.
+       * O grid interno mantém max-w-7xl + padding. */}
       <div className="relative mx-auto max-w-7xl px-5 sm:px-8">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-6 items-center">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-6 items-center relative z-0">
           {/* === Copy === */}
-          <div className="lg:col-span-5 max-w-xl relative z-10">
+          {/* z-20 garante que a copy fica sempre POR CIMA caso algum
+           * card da direita encoste — defesa em profundidade contra
+           * regressões de layout. */}
+          <div className="lg:col-span-5 max-w-xl relative z-20">
             <motion.div
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
@@ -143,23 +149,23 @@ export function LandingHero() {
           </div>
 
           {/* === Dashboards sangrando à direita === */}
+          {/* Sprint v3.4 fix bug: removido o `absolute + top-1/2`
+           * que (quando o pai col-span-7 tinha altura 0) empurrava
+           * os cards 250px pra CIMA, invadindo a área do header.
+           * Agora usa fluxo natural: items-center do grid já alinha
+           * verticalmente. Sangramento via HeroVisual w-[900px] que
+           * é > col-span-7 (~620px) — extende naturalmente à direita,
+           * com overflow visível no parent. NÃO INVADE a coluna
+           * esquerda porque o motion.div começa em col 6 do grid. */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 1, delay: 0.3, ease: EASE_OUT_EXPO }}
             className="lg:col-span-7 relative"
           >
-            {/* lg:top-1/2 -translate-y-1/2 centraliza vertical (cards
-             * compactos agora cabem alinhados ao copy). Sangramento
-             * lg:right-[-10vw] (era -15vw) — reduzido proporcional. */}
-            <div className="relative lg:absolute lg:left-0 lg:right-[-10vw] lg:top-1/2 lg:-translate-y-1/2">
-              <HeroVisual />
-            </div>
+            <HeroVisual />
           </motion.div>
         </div>
-
-        {/* Espaçador desktop — reduzido pra acomodar cards compactos */}
-        <div className="hidden lg:block lg:h-[540px]" aria-hidden />
       </div>
     </section>
   )
