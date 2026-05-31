@@ -168,6 +168,58 @@
     radial-gradient(at 10% 85%, rgba(76, 29, 149, 0.40) 0px, transparent 55%);
 }
 
+/* Hero v3 imersivo: dark profundo com alma violeta MUITO mais saturada */
+.mesh-hero-immersive {
+  background-color: #0b0716;
+  background-image:
+    radial-gradient(at 22% 18%, rgba(139, 92, 246, 0.70) 0px, transparent 50%),
+    radial-gradient(at 80% 12%, rgba(124, 58, 237, 0.55) 0px, transparent 55%),
+    radial-gradient(at 92% 70%, rgba(91, 33, 182, 0.60) 0px, transparent 50%),
+    radial-gradient(at 8% 85%, rgba(167, 139, 250, 0.45) 0px, transparent 55%),
+    radial-gradient(at 50% 50%, rgba(76, 29, 149, 0.25) 0px, transparent 70%);
+}
+
+/* Glow ambient halo pros cantos do hero dark */
+.hero-corner-glow-tl {
+  background: radial-gradient(circle at 0% 0%, rgba(167, 139, 250, 0.45) 0%, transparent 50%);
+}
+.hero-corner-glow-br {
+  background: radial-gradient(circle at 100% 100%, rgba(124, 58, 237, 0.40) 0%, transparent 50%);
+}
+
+/* Hero card no dark: glass branco translúcido com sombra colorida */
+.hero-card-on-dark {
+  background: rgba(255, 255, 255, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 0 0 1px rgba(124, 58, 237, 0.08),
+    0 8px 16px -4px rgba(15, 23, 42, 0.20),
+    0 24px 48px -12px rgba(91, 33, 182, 0.35),
+    0 40px 80px -20px rgba(76, 29, 149, 0.40);
+}
+
+/* Variant minimalista dark (pra cards de "Contas a vencer" em estilo escuro) */
+.hero-card-on-dark-glass {
+  background: rgba(15, 12, 27, 0.65);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border: 1px solid rgba(167, 139, 250, 0.18);
+  box-shadow:
+    0 8px 16px -4px rgba(0, 0, 0, 0.4),
+    0 24px 48px -12px rgba(91, 33, 182, 0.40);
+}
+
+/* Grid violet pra hero dark — linhas violeta sutis com mask radial */
+.bg-grid-violet {
+  background-image:
+    linear-gradient(rgba(167, 139, 250, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(167, 139, 250, 0.08) 1px, transparent 1px);
+  background-size: 56px 56px;
+  background-position: -1px -1px;
+  mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, #000 40%, transparent 95%);
+  -webkit-mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, #000 40%, transparent 95%);
+}
+
 /* Blob animado em SVG isolado (não no body, pra perf) */
 @keyframes mesh-drift-1 {
   0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
