@@ -1,15 +1,22 @@
 // Sprint Landing v2 Elite (30/05/2026) — Página /planos detalhada.
+// Sprint Perf P1+P2 (31/05/2026): estática + lazy abaixo-do-fold.
+// Middleware proxy.ts já redireciona logado → /dashboard via PUBLIC_PAGES.
 
-import { cookies } from 'next/headers'
-import { redirect } from 'next/navigation'
 import type { Metadata } from 'next'
-import { verifyToken, COOKIE_NAME } from '@/lib/auth'
+import dynamic from 'next/dynamic'
 import { LandingHeader } from '@/components/landing/header'
-import { LandingFooter } from '@/components/landing/footer'
-import { LandingCTA } from '@/components/landing/cta-final'
-import { PlanosFAQ } from '@/components/landing/planos-faq'
 import { MeshBg } from '@/components/landing/mesh-bg'
 import { PlanosClient } from './planos-client'
+
+const LandingCTA = dynamic(
+  () => import('@/components/landing/cta-final').then((m) => m.LandingCTA),
+)
+const LandingFooter = dynamic(
+  () => import('@/components/landing/footer').then((m) => m.LandingFooter),
+)
+const PlanosFAQ = dynamic(
+  () => import('@/components/landing/planos-faq').then((m) => m.PlanosFAQ),
+)
 
 export const metadata: Metadata = {
   title: 'Planos e Preços',
@@ -17,20 +24,7 @@ export const metadata: Metadata = {
     'Escolha o plano CAIXAOS que cabe no seu negócio. Do MEI à holding multi-empresa. Teste grátis, sem cartão.',
 }
 
-export const dynamic = 'force-dynamic'
-
-export default async function PlanosPage() {
-  const cookieStore = await cookies()
-  const token = cookieStore.get(COOKIE_NAME)?.value
-  if (token) {
-    try {
-      await verifyToken(token)
-      redirect('/dashboard')
-    } catch {
-      // Token inválido — segue pra página pública
-    }
-  }
-
+export default function PlanosPage() {
   return (
     <main className="min-h-screen bg-white text-slate-900 antialiased">
       <LandingHeader />
