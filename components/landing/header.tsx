@@ -1,15 +1,16 @@
 'use client'
 
-// Sprint Landing Page (30/05/2026) — Header sticky com nav + CTA.
-// Aparece scrolled (sombra + bg blur) após 8px de scroll.
+// Sprint Landing v2 Elite (30/05/2026) — Header sticky com glass premium.
+// Transparente no topo, vira glassmorphism quando scrolla.
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Menu, X } from 'lucide-react'
+import { Menu, X, ArrowRight } from 'lucide-react'
 import { CaixaosLogo } from './logo'
 
 const NAV_LINKS = [
   { href: '#funcionalidades', label: 'Funcionalidades' },
+  { href: '#comparativo', label: 'Comparar' },
   { href: '/planos', label: 'Planos' },
 ] as const
 
@@ -27,15 +28,18 @@ export function LandingHeader() {
   return (
     <header
       className={[
-        'fixed top-0 left-0 right-0 z-50 transition-all duration-300',
+        'fixed top-0 left-0 right-0 z-50 transition-all duration-500',
         scrolled
-          ? 'bg-white/85 backdrop-blur-xl border-b border-slate-200/60 shadow-[0_1px_0_rgba(15,23,42,0.04)]'
+          ? 'bg-white/70 backdrop-blur-xl backdrop-saturate-150 border-b border-slate-200/40 shadow-[0_1px_0_rgba(15,23,42,0.04),0_6px_24px_-12px_rgba(91,33,182,0.18)]'
           : 'bg-transparent border-b border-transparent',
       ].join(' ')}
     >
       <div className="mx-auto max-w-7xl px-5 sm:px-8">
-        <div className="flex h-16 items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 -ml-1">
+        <div className="flex h-[68px] items-center justify-between">
+          <Link
+            href="/"
+            className="flex items-center gap-2 -ml-1 transition-opacity hover:opacity-80"
+          >
             <CaixaosLogo />
           </Link>
 
@@ -44,12 +48,15 @@ export function LandingHeader() {
               <Link
                 key={link.href}
                 href={link.href}
-                className="px-3 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors rounded-md"
+                className="relative px-3.5 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors rounded-md group"
               >
-                {link.label}
+                <span className="relative">
+                  {link.label}
+                  <span className="absolute -bottom-0.5 left-0 h-[1.5px] w-0 bg-violet-600 transition-all duration-300 group-hover:w-full" />
+                </span>
               </Link>
             ))}
-            <div className="ml-2 flex items-center gap-2">
+            <div className="ml-3 flex items-center gap-2 pl-3 border-l border-slate-200/70">
               <Link
                 href="/login"
                 className="px-4 py-2 text-sm font-medium text-slate-700 hover:text-slate-900 transition-colors"
@@ -58,9 +65,13 @@ export function LandingHeader() {
               </Link>
               <Link
                 href="/cadastro"
-                className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white shadow-sm shadow-violet-600/20 transition-all hover:bg-violet-700 hover:shadow-md hover:shadow-violet-600/25 active:scale-[0.98]"
+                className="group inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-b from-violet-500 to-violet-600 px-4 py-2 text-sm font-medium text-white glow-violet transition-all hover:from-violet-400 hover:to-violet-600 active:scale-[0.98]"
               >
                 Teste grátis
+                <ArrowRight
+                  size={14}
+                  className="transition-transform group-hover:translate-x-0.5"
+                />
               </Link>
             </div>
           </nav>
@@ -100,7 +111,7 @@ export function LandingHeader() {
               <Link
                 href="/cadastro"
                 onClick={() => setMobileOpen(false)}
-                className="mt-1 inline-flex items-center justify-center rounded-lg bg-violet-600 px-4 py-3 text-base font-medium text-white shadow-sm"
+                className="mt-1 inline-flex items-center justify-center rounded-lg bg-gradient-to-b from-violet-500 to-violet-600 px-4 py-3 text-base font-medium text-white glow-violet"
               >
                 Teste grátis
               </Link>
