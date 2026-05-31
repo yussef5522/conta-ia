@@ -2,6 +2,9 @@ import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { verifyToken, COOKIE_NAME } from '@/lib/auth'
 import { DashboardShell } from '@/components/layout/dashboard-shell'
+// Sprint Perf P3 (31/05/2026): Toaster movido do root layout pra cá
+// (dashboard inteiro usa toast; landing pública não usa).
+import { Toaster } from '@/components/ui/toaster'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const cookieStore = await cookies()
@@ -19,6 +22,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   return (
     <DashboardShell userName={user.name} userEmail={user.email}>
       {children}
+      <Toaster />
     </DashboardShell>
   )
 }
