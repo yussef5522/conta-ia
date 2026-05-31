@@ -2,7 +2,7 @@
 //
 // Detecta sessão via cookie:
 //   - LOGADO   → redirect /dashboard (comportamento anterior preservado)
-//   - DESLOGADO → renderiza landing pública (Hero + seções comerciais)
+//   - DESLOGADO → renderiza landing pública completa
 
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
@@ -10,6 +10,12 @@ import type { Metadata } from 'next'
 import { verifyToken, COOKIE_NAME } from '@/lib/auth'
 import { LandingHeader } from '@/components/landing/header'
 import { LandingHero } from '@/components/landing/hero'
+import { LandingSocialProof } from '@/components/landing/social-proof'
+import { LandingFeatures } from '@/components/landing/features'
+import { LandingComparativo } from '@/components/landing/comparativo'
+import { LandingPricingSummary } from '@/components/landing/pricing-summary'
+import { LandingCTA } from '@/components/landing/cta-final'
+import { LandingFooter } from '@/components/landing/footer'
 
 export const metadata: Metadata = {
   title: 'CAIXAOS · Enxergue cada centavo do seu negócio',
@@ -21,6 +27,12 @@ export const metadata: Metadata = {
       'Gestão financeira com IA pra PMEs brasileiras. Importe, analise e entenda — em segundos.',
     type: 'website',
     locale: 'pt_BR',
+    siteName: 'CAIXAOS',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'CAIXAOS · Enxergue cada centavo do seu negócio',
+    description: 'Gestão financeira com IA pra PMEs brasileiras.',
   },
 }
 
@@ -43,6 +55,12 @@ export default async function Home() {
     <main className="min-h-screen bg-white text-slate-900 antialiased">
       <LandingHeader />
       <LandingHero />
+      <LandingSocialProof />
+      <LandingFeatures />
+      <LandingComparativo />
+      <LandingPricingSummary />
+      <LandingCTA />
+      <LandingFooter />
     </main>
   )
 }

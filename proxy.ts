@@ -25,6 +25,8 @@ import {
 const PUBLIC_PAGES = [
   '/',
   '/planos',
+  '/termos',
+  '/privacidade',
   '/login',
   '/cadastro',
   '/esqueci-senha',
