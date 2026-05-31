@@ -170,18 +170,17 @@
     radial-gradient(at 10% 85%, rgba(76, 29, 149, 0.40) 0px, transparent 55%);
 }
 
-/* Sprint v3.2: Hero imersivo — fundo MAIS CLARO (violeta dark elegante,
- * não mais "buraco negro"). Base #1d1733 (era #0b0716) — sobe a
- * luminosidade mantendo a alma violeta. Blobs ligeiramente menos
- * saturados pra não competir com o novo base. */
+/* Sprint v3.3 (31/05/2026): Hero imersivo — fundo AINDA mais claro.
+ * Base #2a2548 (era #1d1733). Violeta-acinzentado vivo, "respirado".
+ * Mantém alma violeta e contraste com cards glass. */
 .mesh-hero-immersive {
-  background-color: #1d1733;
+  background-color: #2a2548;
   background-image:
-    radial-gradient(at 22% 18%, rgba(167, 139, 250, 0.55) 0px, transparent 50%),
-    radial-gradient(at 80% 12%, rgba(139, 92, 246, 0.50) 0px, transparent 55%),
-    radial-gradient(at 92% 70%, rgba(124, 58, 237, 0.45) 0px, transparent 50%),
-    radial-gradient(at 8% 85%, rgba(196, 181, 253, 0.35) 0px, transparent 55%),
-    radial-gradient(at 50% 50%, rgba(91, 33, 182, 0.20) 0px, transparent 70%);
+    radial-gradient(at 22% 18%, rgba(167, 139, 250, 0.45) 0px, transparent 50%),
+    radial-gradient(at 80% 12%, rgba(139, 92, 246, 0.40) 0px, transparent 55%),
+    radial-gradient(at 92% 70%, rgba(124, 58, 237, 0.38) 0px, transparent 50%),
+    radial-gradient(at 8% 85%, rgba(196, 181, 253, 0.30) 0px, transparent 55%),
+    radial-gradient(at 50% 50%, rgba(91, 33, 182, 0.15) 0px, transparent 70%);
 }
 
 /* Glow ambient halo pros cantos do hero dark */
