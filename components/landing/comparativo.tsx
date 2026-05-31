@@ -85,9 +85,9 @@ export function LandingComparativo() {
             <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-violet-600">
               Comparativo
             </p>
-            <h2 className="mt-4 text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-[-0.035em] text-slate-900 leading-[1.05] font-display">
+            <h2 className="mt-4 text-4xl sm:text-5xl lg:text-6xl font-bold tracking-[-0.03em] text-slate-900 leading-[1.05] font-display">
               O que sai de{' '}
-              <span className="italic text-gradient-violet">R$ 49/mês</span>{' '}
+              <span className="text-gradient-violet">R$ 49/mês</span>{' '}
               não te leva longe.
             </h2>
             <p className="mt-6 text-lg text-slate-600 max-w-2xl mx-auto">

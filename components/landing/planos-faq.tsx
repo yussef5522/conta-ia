@@ -59,9 +59,9 @@ export function PlanosFAQ() {
             <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-violet-600">
               FAQ
             </p>
-            <h2 className="mt-4 text-4xl sm:text-5xl font-semibold tracking-[-0.03em] text-slate-900 font-display leading-[1.05]">
+            <h2 className="mt-4 text-4xl sm:text-5xl font-bold tracking-[-0.03em] text-slate-900 font-display leading-[1.05]">
               Dúvidas comuns sobre os{' '}
-              <span className="italic text-gradient-violet">planos</span>
+              <span className="text-gradient-violet">planos</span>
             </h2>
           </div>
         </SectionReveal>

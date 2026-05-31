@@ -69,9 +69,9 @@ export function LandingFeatures() {
             <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-violet-600">
               Funcionalidades
             </p>
-            <h2 className="mt-4 text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-[-0.035em] text-slate-900 leading-[1.05] font-display">
+            <h2 className="mt-4 text-4xl sm:text-5xl lg:text-6xl font-bold tracking-[-0.03em] text-slate-900 leading-[1.05] font-display">
               Tudo que sua planilha{' '}
-              <span className="italic text-gradient-violet">não consegue</span> fazer.
+              <span className="text-gradient-violet">não consegue</span> fazer.
             </h2>
             <p className="mt-6 text-lg text-slate-600 leading-relaxed max-w-2xl">
               Quatro diferenciais que transformam dado bruto em decisão. Sem
@@ -108,7 +108,7 @@ function FeatureRow({ feature, flipped }: { feature: Feature; flipped: boolean }
               {feature.badge}
             </span>
           </div>
-          <h3 className="mt-5 text-3xl sm:text-4xl lg:text-[2.5rem] font-semibold tracking-[-0.025em] text-slate-900 leading-[1.1] font-display">
+          <h3 className="mt-5 text-3xl sm:text-4xl lg:text-[2.5rem] font-bold tracking-[-0.025em] text-slate-900 leading-[1.1] font-display">
             {feature.title}
           </h3>
           <p className="mt-5 text-base sm:text-lg text-slate-600 leading-relaxed">

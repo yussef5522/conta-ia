@@ -42,9 +42,9 @@ export default async function PlanosPage() {
           <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-violet-600">
             Planos e Preços
           </p>
-          <h1 className="mt-5 text-5xl sm:text-6xl lg:text-[5rem] font-semibold tracking-[-0.04em] text-slate-900 leading-[1.02] font-display text-balance">
+          <h1 className="mt-5 text-5xl sm:text-6xl lg:text-[5rem] font-bold tracking-[-0.035em] text-slate-900 leading-[1.02] font-display text-balance">
             Um plano pra cada{' '}
-            <span className="italic text-gradient-violet">tamanho</span> de negócio.
+            <span className="text-gradient-violet">tamanho</span> de negócio.
           </h1>
           <p className="mt-7 text-lg sm:text-xl text-slate-600 max-w-2xl mx-auto leading-relaxed">
             Do autônomo ao grupo com várias empresas. Teste 14 dias grátis em

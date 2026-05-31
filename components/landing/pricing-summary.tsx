@@ -31,9 +31,9 @@ export function LandingPricingSummary() {
             <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-violet-600">
               Planos
             </p>
-            <h2 className="mt-4 text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-[-0.035em] text-slate-900 leading-[1.05] font-display">
+            <h2 className="mt-4 text-4xl sm:text-5xl lg:text-6xl font-bold tracking-[-0.03em] text-slate-900 leading-[1.05] font-display">
               Comece de graça.{' '}
-              <span className="italic text-gradient-violet">Escale</span> quando precisar.
+              <span className="text-gradient-violet">Escale</span> quando precisar.
             </h2>
             <p className="mt-6 text-lg text-slate-600">
               Sem fidelidade, sem cartão pra testar. Troca de plano em 1 clique.

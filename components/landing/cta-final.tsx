@@ -19,10 +19,10 @@ export function LandingCTA() {
           <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-violet-300">
             Sua vez
           </p>
-          <h2 className="mt-5 text-4xl sm:text-6xl lg:text-7xl font-semibold tracking-[-0.035em] leading-[1.02] text-white font-display text-balance">
+          <h2 className="mt-5 text-4xl sm:text-6xl lg:text-7xl font-bold tracking-[-0.035em] leading-[1.02] text-white font-display text-balance">
             Comece grátis hoje.
             <br />
-            <span className="italic text-gradient-violet">Pague</span> quando crescer.
+            <span className="text-gradient-violet">Pague</span> quando crescer.
           </h2>
           <p className="mt-7 text-lg sm:text-xl text-white/70 max-w-2xl mx-auto leading-relaxed">
             Sem cartão de crédito. Sem fidelidade. Cancele a hora que quiser.
