@@ -14,7 +14,7 @@ const HEADLINE_WORDS = ['Enxergue', 'cada', 'centavo', 'do']
 
 export function LandingHero() {
   return (
-    <section className="relative pt-32 sm:pt-36 pb-24 sm:pb-32 overflow-hidden text-white">
+    <section className="relative pt-40 sm:pt-44 lg:pt-52 pb-24 sm:pb-32 overflow-hidden text-white">
       <MeshBg variant="hero-immersive" grid noise />
 
       {/* Transition gradient pra próxima seção (SocialProof = slate-950) */}
@@ -146,16 +146,18 @@ export function LandingHero() {
             className="lg:col-span-7 relative"
           >
             {/* Container que SANGRA: estende além da viewport pra direita.
-                Em desktop, translate-x positivo + width maior que container.
-                Mobile: contido normalmente. */}
-            <div className="relative lg:absolute lg:left-0 lg:right-[-15vw] lg:top-1/2 lg:-translate-y-1/2">
+                lg:top-[58%] empurra cards ligeiramente ABAIXO do centro
+                vertical pra dar respiro do header (evita "Saldo Consolidado"
+                + "Receitas" colarem nos itens do menu). */}
+            <div className="relative lg:absolute lg:left-0 lg:right-[-15vw] lg:top-[58%] lg:-translate-y-1/2">
               <HeroVisual />
             </div>
           </motion.div>
         </div>
 
-        {/* Espaçador pra preencher altura quando dashboards estão absolutos no desktop */}
-        <div className="hidden lg:block lg:h-[680px]" aria-hidden />
+        {/* Espaçador pra preencher altura quando dashboards estão absolutos no desktop.
+            720px = acomoda o offset top-[58%] sem cortar o último card abaixo. */}
+        <div className="hidden lg:block lg:h-[720px]" aria-hidden />
       </div>
     </section>
   )
