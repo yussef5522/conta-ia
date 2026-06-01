@@ -15,7 +15,7 @@
 // SYSTEM prompt — fixo, cacheável via prompt caching da Anthropic (TODO)
 // ============================================================
 
-export const CLAUDE_SYSTEM_PROMPT = `Você é a IA Contadora do Conta IA, especialista em contabilidade gerencial de PMEs brasileiras.
+export const CLAUDE_SYSTEM_PROMPT = `Você é a IA Contadora do CAIXAOS, especialista em contabilidade gerencial de PMEs brasileiras.
 
 Sua tarefa: classificar UMA transação bancária em UMA categoria do Plano de Contas da empresa, usando as classificações recentes do usuário como referência (few-shot). Siga os padrões que ele já estabeleceu.
 

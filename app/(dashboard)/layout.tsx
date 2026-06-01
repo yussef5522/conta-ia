@@ -7,6 +7,8 @@ import { DashboardShell } from '@/components/layout/dashboard-shell'
 import { Toaster } from '@/components/ui/toaster'
 // Sprint Engine de Assinatura FATIA 1 (31/05/2026): banner trial no topo
 import { TrialBanner } from '@/components/layout/trial-banner'
+// Sprint post-3B: dev tools só em sandbox
+import { isDevToolsEnabled } from '@/lib/dev/guard'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const cookieStore = await cookies()
@@ -21,8 +23,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
     redirect('/login')
   }
 
+  const devToolsEnabled = isDevToolsEnabled()
+
   return (
-    <DashboardShell userName={user.name} userEmail={user.email}>
+    <DashboardShell
+      userName={user.name}
+      userEmail={user.email}
+      devToolsEnabled={devToolsEnabled}
+    >
       <TrialBanner />
       {children}
       <Toaster />

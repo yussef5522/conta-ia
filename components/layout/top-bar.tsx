@@ -9,9 +9,10 @@ import { UserMenu } from './user-menu'
 interface Props {
   userName: string
   userEmail: string
+  devToolsEnabled?: boolean
 }
 
-export function TopBar({ userName, userEmail }: Props) {
+export function TopBar({ userName, userEmail, devToolsEnabled = false }: Props) {
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b bg-white px-4">
       <div className="flex items-center gap-3">
@@ -27,7 +28,7 @@ export function TopBar({ userName, userEmail }: Props) {
 
       <div className="flex-1" />
 
-      <UserMenu userName={userName} userEmail={userEmail} />
+      <UserMenu userName={userName} userEmail={userEmail} devToolsEnabled={devToolsEnabled} />
     </header>
   )
 }

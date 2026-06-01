@@ -17,10 +17,12 @@ import { EmpresaProvider } from '@/lib/contexts/empresa-context'
 interface DashboardShellProps {
   userName: string
   userEmail: string
+  /** Sprint post-3B: passa pro UserMenu mostrar dev tools só em sandbox. */
+  devToolsEnabled?: boolean
   children: React.ReactNode
 }
 
-export function DashboardShell({ userName, userEmail, children }: DashboardShellProps) {
+export function DashboardShell({ userName, userEmail, devToolsEnabled = false, children }: DashboardShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false)
 
   return (
@@ -28,7 +30,7 @@ export function DashboardShell({ userName, userEmail, children }: DashboardShell
       <div className="flex h-screen flex-col overflow-hidden bg-zinc-50">
         {/* TopBar global (desktop) */}
         <div className="hidden md:block">
-          <TopBar userName={userName} userEmail={userEmail} />
+          <TopBar userName={userName} userEmail={userEmail} devToolsEnabled={devToolsEnabled} />
         </div>
 
         {/* TopBar mobile: hambúrguer + workspace switcher + user menu */}
@@ -44,7 +46,7 @@ export function DashboardShell({ userName, userEmail, children }: DashboardShell
           <div className="flex-1 min-w-0">
             <WorkspaceSwitcher />
           </div>
-          <UserMenu userName={userName} userEmail={userEmail} />
+          <UserMenu userName={userName} userEmail={userEmail} devToolsEnabled={devToolsEnabled} />
         </header>
 
         <div className="flex flex-1 overflow-hidden">

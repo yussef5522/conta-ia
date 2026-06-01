@@ -96,7 +96,7 @@ export function Sidebar({ userName, userEmail, onClose }: SidebarProps) {
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500">
           <Sparkles className="h-4 w-4 text-white" />
         </div>
-        <span className="text-lg font-bold tracking-tight text-white flex-1">Conta IA</span>
+        <span className="text-lg font-bold tracking-tight text-white flex-1">CAIXAOS</span>
         {onClose && (
           <button
             onClick={onClose}

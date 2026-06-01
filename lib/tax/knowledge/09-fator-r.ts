@@ -125,7 +125,7 @@ export const FATOR_R = {
       tatica: 'Monitorar mensalmente',
       explicacao:
         'NÃO esperar fechamento anual. Calcular Fator R todo mês e ajustar pró-labore antes do fechamento',
-      ferramenta: 'Sistema Conta IA calcula automaticamente (Sprint 5.0.2.b expertise engine)',
+      ferramenta: 'CAIXAOS calcula automaticamente (expertise engine)',
     },
     {
       tatica: 'Sazonalizar pró-labore',
