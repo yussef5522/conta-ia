@@ -13,6 +13,25 @@ import type { AsaasConfig, AsaasEnv } from './types'
 const SANDBOX_URL = 'https://api-sandbox.asaas.com/v3'
 const PRODUCTION_URL = 'https://api.asaas.com/v3'
 
+// Melhoria B (01/06/2026): warn no boot se a chave estiver vazia.
+// O check roda 1 vez por processo (flag module-level) pra não spammar
+// logs em cada request. NÃO bloqueia o app (rotas que não usam Asaas
+// continuam funcionando) — só sinaliza nos logs PM2 que algo está
+// errado antes do primeiro cliente clicar Pix/Cartão.
+let _bootCheckDone = false
+function runBootCheck(): void {
+  if (_bootCheckDone) return
+  _bootCheckDone = true
+  const key = (process.env.ASAAS_API_KEY ?? '').trim()
+  const env = (process.env.ASAAS_ENV ?? 'sandbox').trim().toLowerCase()
+  if (!key) {
+    console.error(
+      '🚨 [asaas/config] ASAAS_API_KEY vazia ou ausente. Endpoints de checkout vão falhar.',
+      { env, hint: 'Se o valor começa com "$", aspas simples NÃO bastam — escape com "\\$". Ver .env.example.' },
+    )
+  }
+}
+
 /**
  * Lê config do process.env. Lança AsaasConfigError com mensagem
  * acionável se algo estiver inválido.
@@ -27,6 +46,9 @@ export type AsaasEnvSource = Record<string, string | undefined>
 export function loadAsaasConfig(
   envOverride?: AsaasEnvSource,
 ): AsaasConfig {
+  // Boot check (1x por processo) só quando lemos do process.env real.
+  // Em testes (com envOverride), pulamos pra não poluir.
+  if (!envOverride) runBootCheck()
   const env = envOverride ?? (process.env as AsaasEnvSource)
 
   const apiKey = (env.ASAAS_API_KEY ?? '').trim()
