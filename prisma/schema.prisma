@@ -21,6 +21,11 @@ model User {
   emailAlertsEnabled   Boolean @default(false)
   emailAlertsFrequency String  @default("DAILY")
 
+  // Sprint Gestão de Conta (31/05/2026) — quando admin reseta a senha
+  // do cliente, seta true → próximo login redireciona pra /trocar-senha
+  // antes do dashboard. Zera após user definir nova senha.
+  mustChangePassword Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

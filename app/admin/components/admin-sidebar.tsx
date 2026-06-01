@@ -24,7 +24,7 @@ interface SidebarItem {
 
 const ITEMS: SidebarItem[] = [
   { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/admin/clientes', label: 'Clientes', icon: UsersIcon, comingSoon: true },
+  { href: '/admin/clientes', label: 'Clientes', icon: UsersIcon },
   { href: '/admin/cupons', label: 'Cupons', icon: Ticket },
   { href: '/admin/metricas', label: 'Métricas', icon: BarChart3, comingSoon: true },
 ]

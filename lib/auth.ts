@@ -6,6 +6,11 @@ export interface TokenPayload {
   email: string
   name: string
   role: string
+  // Sprint Gestão de Conta (31/05/2026) — flag de force-change.
+  // Quando true, middleware bloqueia qualquer rota != /trocar-senha
+  // (e API que não seja change-password/logout). Setada pelo login
+  // quando User.mustChangePassword=true. Zerada após user trocar senha.
+  mustChangePassword?: boolean
 }
 
 function getSecret(): Uint8Array {
