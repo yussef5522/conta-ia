@@ -152,7 +152,11 @@ export async function proxy(request: NextRequest) {
   if (PUBLIC_PAGES.some((page) => pathname === page)) {
     if (token) {
       try {
-        await verifyToken(token)
+        const payload = await verifyToken(token)
+        // Sprint Gestão de Conta: se precisa trocar senha, força /trocar-senha
+        if (payload.mustChangePassword) {
+          return NextResponse.redirect(new URL('/trocar-senha', request.url))
+        }
         return NextResponse.redirect(new URL('/dashboard', request.url))
       } catch {
         // Token inválido — deixa acessar o login
@@ -180,7 +184,35 @@ export async function proxy(request: NextRequest) {
   }
 
   try {
-    await verifyToken(token)
+    const payload = await verifyToken(token)
+
+    // Sprint Gestão de Conta: força troca de senha no 1º login após reset.
+    // Permite SÓ: /trocar-senha (página) + change-password endpoint + logout.
+    // Tudo o resto redireciona (página) ou 403 (API).
+    if (payload.mustChangePassword) {
+      const FORCE_CHANGE_ALLOWED = [
+        '/trocar-senha',
+        '/api/auth/me/change-password',
+        '/api/auth/logout',
+        '/api/auth/me',
+      ]
+      const isAllowed = FORCE_CHANGE_ALLOWED.some(
+        (p) => pathname === p || pathname.startsWith(p + '/'),
+      )
+      if (!isAllowed) {
+        if (isApiPath) {
+          return NextResponse.json(
+            {
+              erro: 'Defina uma nova senha antes de continuar.',
+              code: 'MUST_CHANGE_PASSWORD',
+            },
+            { status: 403 },
+          )
+        }
+        return NextResponse.redirect(new URL('/trocar-senha', request.url))
+      }
+    }
+
     return NextResponse.next()
   } catch {
     if (isApiPath) {

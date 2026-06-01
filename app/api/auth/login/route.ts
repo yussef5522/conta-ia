@@ -58,11 +58,15 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Sprint Gestão de Conta (31/05/2026) — força troca de senha no 1º login
+    // após reset pelo admin. JWT carrega a flag; middleware bloqueia tudo
+    // exceto /trocar-senha + endpoints da troca.
     const token = await signToken({
       sub: user.id,
       email: user.email,
       name: user.name,
       role: user.role,
+      mustChangePassword: user.mustChangePassword,
     })
 
     // Sprint 1.2 — Audit USER_LOGIN escopado à primeira empresa do user.
@@ -80,6 +84,8 @@ export async function POST(request: NextRequest) {
         name: user.name,
         role: user.role,
       },
+      // Sprint Gestão de Conta: UI redireciona pra /trocar-senha quando true
+      mustChangePassword: user.mustChangePassword,
     })
 
     response.cookies.set(COOKIE_NAME, token, COOKIE_OPTIONS)

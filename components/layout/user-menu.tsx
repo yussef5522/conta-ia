@@ -3,7 +3,7 @@
 // Sprint 4.0.5.a — UserMenu (avatar + dropdown).
 
 import { useRouter } from 'next/navigation'
-import { LogOut, Settings, Bell } from 'lucide-react'
+import { LogOut, Settings, Bell, UserCircle } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -51,6 +51,13 @@ export function UserMenu({ userName, userEmail }: Props) {
           <p className="text-sm font-medium truncate">{userName}</p>
           <p className="text-xs text-zinc-500 truncate">{userEmail}</p>
         </div>
+        <DropdownMenuItem
+          className="cursor-pointer text-sm"
+          onSelect={() => router.push('/minha-conta')}
+        >
+          <UserCircle className="mr-2 h-4 w-4" />
+          Minha conta
+        </DropdownMenuItem>
         <DropdownMenuItem
           className="cursor-pointer text-sm"
           onSelect={() => router.push('/configuracoes/alertas')}
