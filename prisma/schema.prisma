@@ -29,6 +29,8 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  subscription Subscription?
+
   companies           UserCompany[]
   categoryHistory     CategoryHistory[]
   categoryRestoreLogs CategoryRestoreLog[]
@@ -1701,4 +1703,52 @@ model StagedPayableRow {
   @@index([batchId, userDecision])
   @@index([batchId, paymentStatus])
   @@map("staged_payable_rows")
+}
+
+// Sprint Engine de Assinatura FATIA 1 (31/05/2026)
+// Subscription do usuário. 1:1 com User. Fonte da verdade pro acesso
+// ao app + trial + bloqueio EXPIRED. Campos de gateway preparados
+// nullable pra Fatia 3 (Asaas) sem migração futura.
+model Subscription {
+  id     String @id @default(cuid())
+  userId String @unique
+
+  // Plano contratado (id de lib/planos/config.ts):
+  // 'inicio' | 'controle' | 'inteligencia' | 'performance'
+  planId String
+
+  // Estado da assinatura:
+  // TRIAL    — em período de teste grátis (trialEndsAt no futuro)
+  // ACTIVE   — paga e em dia
+  // EXPIRED  — trial acabou OU pagamento parou
+  // CANCELED — user cancelou explicitamente
+  // PAST_DUE — cobrança falhou (Fatia 3)
+  // GRANTED  — concedida sem cobrança (early adopter / cortesia / equipe)
+  status String @default("TRIAL")
+
+  // Trial 14 dias contados do cadastro. Pode ser estendido por cupom
+  // FREE_MONTHS. NULL quando não-trial (ACTIVE/GRANTED direto).
+  trialEndsAt DateTime?
+
+  // Fim do ciclo pago atual (Fatia 3 preenche). null no trial/granted.
+  currentPeriodEnd DateTime?
+
+  canceledAt DateTime?
+
+  // Snapshot do cupom que originou desconto/trial estendido (audit).
+  // Não-FK porque cupom pode ser deletado e queremos preservar trace.
+  originCouponId String?
+
+  // ===== Fatia 3 (gateway de pagamento) — preparado mas nullable =====
+  gatewayCustomerId     String?
+  gatewaySubscriptionId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([trialEndsAt])
+  @@map("subscriptions")
 }

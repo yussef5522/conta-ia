@@ -9,6 +9,9 @@ import { sendEmail } from '@/lib/email/send'
 import { renderWelcomeHtml } from '@/lib/email/render'
 import { publicAppUrl } from '@/lib/email/client'
 import { redeemCoupon } from '@/lib/coupons/apply'
+import { validateCoupon } from '@/lib/coupons/validate'
+import { createTrialSubscription } from '@/lib/subscription/create-trial'
+import { couponToTrialBonusDays } from '@/lib/subscription/apply-coupon-bonus'
 
 export async function POST(request: NextRequest) {
   // 5 cadastros por hora por IP
@@ -42,6 +45,37 @@ export async function POST(request: NextRequest) {
         password: senhaHash,
         role: 'CLIENT',
       },
+    })
+
+    // Sprint Engine de Assinatura FATIA 1 (31/05/2026) — cria Subscription
+    // TRIAL no cadastro. Se o user trouxe cupom FREE_MONTHS, valida síncrono
+    // pra esticar o trialEndsAt em freeMonths*30 dias antes de criar a sub.
+    // O redeem REAL do cupom (gravar CouponRedemption + bumpar contador)
+    // continua fire-and-forget abaixo — não precisa bloquear o signup.
+    let bonusDays = 0
+    let originCouponId: string | null = null
+    if (data.couponCode) {
+      try {
+        const validation = await validateCoupon(data.couponCode, user.id)
+        if (validation.valid) {
+          bonusDays = couponToTrialBonusDays(
+            validation.coupon.type,
+            validation.coupon.freeMonths,
+          )
+          originCouponId = validation.coupon.id
+        }
+      } catch (err) {
+        // Validação do cupom falhou — segue com trial padrão 14d
+        console.warn(
+          '[cadastro coupon validate]',
+          err instanceof Error ? err.message : 'erro',
+        )
+      }
+    }
+    await createTrialSubscription(prisma, {
+      userId: user.id,
+      bonusDays,
+      originCouponId,
     })
 
     const token = await signToken({

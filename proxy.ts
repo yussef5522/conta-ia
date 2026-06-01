@@ -157,6 +157,10 @@ export async function proxy(request: NextRequest) {
         if (payload.mustChangePassword) {
           return NextResponse.redirect(new URL('/trocar-senha', request.url))
         }
+        // Sprint Engine de Assinatura FATIA 1: trial expirou → /assinar
+        if (payload.subscriptionExpired) {
+          return NextResponse.redirect(new URL('/assinar', request.url))
+        }
         return NextResponse.redirect(new URL('/dashboard', request.url))
       } catch {
         // Token inválido — deixa acessar o login
@@ -210,6 +214,34 @@ export async function proxy(request: NextRequest) {
           )
         }
         return NextResponse.redirect(new URL('/trocar-senha', request.url))
+      }
+    }
+
+    // Sprint Engine de Assinatura FATIA 1 (31/05/2026) — trial expirado.
+    // Permite SÓ: /assinar (placeholder), /api/subscription/*, logout, me.
+    // Tudo o resto: redirect /assinar (página) ou 403 SUBSCRIPTION_EXPIRED.
+    if (payload.subscriptionExpired) {
+      const EXPIRED_ALLOWED = [
+        '/assinar',
+        '/api/subscription',
+        '/api/auth/logout',
+        '/api/auth/me',
+      ]
+      const isAllowed = EXPIRED_ALLOWED.some(
+        (p) => pathname === p || pathname.startsWith(p + '/'),
+      )
+      if (!isAllowed) {
+        if (isApiPath) {
+          return NextResponse.json(
+            {
+              erro:
+                'Seu período de teste acabou. Assine um plano pra continuar.',
+              code: 'SUBSCRIPTION_EXPIRED',
+            },
+            { status: 403 },
+          )
+        }
+        return NextResponse.redirect(new URL('/assinar', request.url))
       }
     }
 
