@@ -26,6 +26,11 @@ model User {
   // antes do dashboard. Zera após user definir nova senha.
   mustChangePassword Boolean @default(false)
 
+  // Sprint Asaas 3B (31/05/2026) — CPF (11 dígitos) ou CNPJ (14).
+  // SÓ dígitos. Coletado no checkout 1ª vez. Não-unique pois cônjuges
+  // ou MEI+PF do mesmo CPF podem ter contas separadas.
+  cpfCnpj String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1742,6 +1747,10 @@ model Subscription {
   // ===== Fatia 3 (gateway de pagamento) — preparado mas nullable =====
   gatewayCustomerId     String?
   gatewaySubscriptionId String?
+
+  // Sprint Asaas 3B (31/05/2026) — última sessão de checkout cartão.
+  // Usado pra dedup (cliques rápidos) e callback /assinar/sucesso.
+  checkoutSessionId String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
