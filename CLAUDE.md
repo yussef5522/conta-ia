@@ -1605,6 +1605,146 @@ Commits: `406d09e` (audit), `24f83c1` (A1+A2+B), `d2182fe` (merge),
 
 **Próximo passo:** aguardando próximo prompt do Yussef.
 
+### 31/05/2026 — Sprint Gestão de Conta (admin + autoatendimento + force-change senha)
+
+**Contexto:** auditoria do dia 30/05 mostrou 2 lados pendentes — admin gerenciar
+contas dos clientes (placeholder `comingSoon` em `/admin/clientes`) e
+autoatendimento (cliente editar perfil/senha/excluir própria conta). Sprint
+entregue em 1 sessão com Fase 1 (auditoria + aprovação) → Fase 2 Parte A
+(admin) → checkpoint Yussef → Parte B+C (autoatendimento + force change) →
+deploy + smoke 6/6 ✓.
+
+**Doc completo de auditoria:** `docs/sprints/gestao-conta-audit.md` (commit
+`6ead5dc`) — mapa de FK do User, riscos LGPD, algoritmo cascade em 7 passos.
+
+**O que foi entregue:**
+
+🏛️ **Schema + migração** (commit `1630727`, deploy `0UfOfVeQr8Ydmg7yIP99K`):
+- `User.mustChangePassword Boolean @default(false)` — migration aditiva
+  `20260531000000_gestao_conta_must_change_password`
+- Backup prod salvo: `pre-gestao-conta-20260531_212016.dump` (582KB)
+- Coluna confirmada no `information_schema` pós-deploy
+
+🛡️ **Cascade da exclusão** (`lib/admin-clientes/delete-user-cascade.ts`):
+Algoritmo §2.3 atomic em 7 passos via `prisma.$transaction`:
+1. Identifica companies onde user é único dono (preserva multi-dono)
+2. `UPDATE OfxImport SET revertedById=null` (FK Restrict)
+3. `UPDATE CompanyTaxProfile SET createdById=null` (FK Restrict)
+4. `DELETE RecurringSchedule WHERE createdById=:userId` (FK Restrict)
+5. `DELETE Company` cascade massivo (BankAccount → Transaction, Category,
+   Supplier, Customer, AiLearningRule, Role custom, AuditLog scoped, etc)
+6. `DELETE User` (cascade restante: SavedView, UserCompany, UserCompanyRole,
+   AiUsageLog, AiInsightsLog, CouponRedemption, PasswordResetCode)
+7. `AuditLog.userId` + `CategoryHistory.userId` viram NULL via SetNull
+   (preserva histórico anonimizado pra LGPD/fiscal)
+
+Retorna snapshot completo pro audit log (companies deletadas vs preservadas
++ counts dos updates Restrict). Reusado pela exclusão admin **E** pela
+exclusão autoatendimento.
+
+🔑 **Senha temporária** (`lib/admin-clientes/generate-temp-password.ts`):
+16 chars com garantia de 4 classes (uppercase + lowercase + digit + symbol).
+Sem chars confusos (I/O/l/0/1). Fisher-Yates shuffle pra entropia real.
+Crypto-secure via `crypto.randomBytes`.
+
+🔐 **Re-auth do Gerenciador** (`lib/admin-clientes/re-auth.ts`):
+bcrypt.compare da senha do Gerenciador + rate-limit 3 tentativas / 15min
+por (gerenciadorId, action). Exigido em todas as 3 ações sensíveis.
+
+🛂 **PARTE A — `/admin/clientes` (admin)**
+
+Endpoints REST:
+- `GET  /api/admin/clientes` — list paginado + busca name/email
+- `GET  /api/admin/clientes/[userId]` — detalhe + counts agregados
+- `POST /api/admin/clientes/[userId]/reset-password` — OPERADOR+OWNER
+- `PATCH /api/admin/clientes/[userId]/email` — OPERADOR+OWNER + UNICIDADE 409
+- `DELETE /api/admin/clientes/[userId]` — 🚨 **OWNER ONLY** (403 pra
+  OPERADOR com `code: 'FORBIDDEN_RBAC'`)
+
+UI dark Linear-like coerente com `/admin/cupons`:
+- Lista com busca, paginação, badge "Troca pendente"
+- Detalhe com 4 stats + 3 cards de ação
+- Card "Excluir" **RBAC-aware**: pra OPERADOR mostra "Apenas gerenciadores
+  OWNER. Você é OPERADOR." e botão disabled
+- `TempPasswordRevealModal` — auto-copy clipboard + countdown 60s + auto-close
+- Sidebar admin: "Clientes" `comingSoon` REMOVIDO
+
+3 audit actions novas no `GerenciadorAuditLog`:
+- `ADMIN_RESET_USER_PASSWORD`
+- `ADMIN_CHANGE_USER_EMAIL` (metadata `{oldEmail, newEmail}`)
+- `ADMIN_DELETE_USER` (metadata snapshot completo do cascade)
+
+👤 **PARTE B — `/minha-conta` (autoatendimento)**
+
+Multi-tenant rígido: TODOS endpoints `/me/*` usam `session.sub` do JWT, NUNCA
+aceitam `userId` no body — smuggle é ignorado pelo Zod schema.
+
+- `PATCH /api/auth/me/perfil` — só nome (email exige verificação futura)
+- `POST  /api/auth/me/change-password` — **2 fluxos no mesmo endpoint**:
+  - Autoatendimento (`mustChangePassword=false`): exige `currentPassword`
+    + `novaSenha`, bcrypt.compare na atual
+  - Force-change (true): **PULA** `currentPassword` (login já validou a
+    temp), regenera cookie limpo após sucesso
+- `DELETE /api/auth/me` — `currentPassword` + `confirmText="EXCLUIR"` →
+  REUSA `deleteUserCascade` → limpa cookie → redirect /login
+
+UI em `(dashboard)/minha-conta`:
+- Perfil: nome editável, email read-only
+- Segurança: trocar senha (3 inputs)
+- Zona de perigo: collapse + dupla confirmação
+
+Link "Minha conta" no UserMenu do TopBar (substitui "Configurações breve").
+
+⚡ **PARTE C — Force-change senha no 1º login**
+
+Decisão técnica: flag `mustChangePassword` vai no **payload do JWT**
+(evita DB lookup a cada request).
+
+- `lib/auth.ts` `TokenPayload` recebe campo opcional
+- `/api/auth/login`: ao detectar `User.mustChangePassword=true`, JWT é
+  assinado com a flag E response retorna `{mustChangePassword: true}` pra
+  UI redirecionar
+- `proxy.ts`: quando token tem flag, bloqueia tudo exceto
+  `[/trocar-senha, /api/auth/me/change-password, /api/auth/me, /api/auth/logout]`.
+  Outras URLs: redirect /trocar-senha (página) ou 403 `MUST_CHANGE_PASSWORD`
+  (API). **Defesa em profundidade contra "skip" via URL direta.**
+- Rota `/trocar-senha` em raiz: server component valida sessão+flag,
+  redirect /dashboard se flag=false (proteção pós-troca)
+- Form client POST `/api/auth/me/change-password` → cookie regenerado
+  sem a flag → middleware libera o app
+
+**Testes (+44, total 3706):**
+- `generate-temp-password.test.ts` (7) — entropia, 4 classes, sem chars
+  confusos, 100 unique em 100 calls
+- `delete-user-cascade.test.ts` (6) — solo, multi-dono, FK Restrict
+  OfxImport/RecurringSchedule/CompanyTaxProfile, throws inexistente, snapshot
+- `admin-endpoints.test.ts` (15) — RBAC OPERADOR reset+email OK, OWNER
+  delete OK, OPERADOR delete bloqueado 403, audit das 3 actions, email
+  duplicado 409, formato inválido 400, confirmEmail mismatch 400
+- `autoatendimento.test.ts` (16) — PATCH perfil, smuggle userId ignorado,
+  change-password (auto vs force), cookie regenerado, DELETE me sucesso/erros,
+  smuggle userId no DELETE ignorado, GET me retorna flag
+
+**Smoke prod Yussef (6/6 ✅):**
+- A: reset senha → recebe temp 16 chars
+- B: login com temp → forçado pra /trocar-senha (sem skip)
+- C: trocar email + duplicado bloqueia (409)
+- D: criar cliente fake → excluir → sumiu da lista
+- E: cliente troca própria senha em /minha-conta
+- F: cliente tenta /admin/clientes → 404 (subdomain routing)
+
+**Métricas finais:**
+- 4 commits: `6ead5dc` (audit doc), `1630727` (feat), `ac1e080` (merge), deploy
+- TS strict 0, suite 3706/3706 (+44)
+- Migration aditiva aplicada em prod, coluna `mustChangePassword boolean
+  default false` confirmada
+- PM2 ↺ 174, BUILD_ID `0UfOfVeQr8Ydmg7yIP99K`
+
+**Próximo passo:** aguardando próximo prompt do Yussef. Sprint comercial
+SaaS agora tem 3/5 pilares prontos (auth, gestão conta, cupons) — faltam
+**subscription/planos** e **gateway de pagamento** (mapeados na auditoria
+de 30/05 em `docs/sprints/`).
+
 ### [Próxima sessão] — preencher
 - Data:
 - O que foi feito:
