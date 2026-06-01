@@ -1,19 +1,19 @@
 /**
- * Estrutura de traduções do Conta IA.
+ * Estrutura de traduções do CAIXAOS.
  * Idioma padrão: pt-BR.
  * Para adicionar novos idiomas: crie um arquivo com a mesma estrutura (ex: en-US.ts)
  * e importe-o conforme a preferência do usuário.
  */
 export const ptBR = {
   app: {
-    name: 'Conta IA',
-    tagline: 'Seu contador inteligente que nunca dorme',
+    name: 'CAIXAOS',
+    tagline: 'Sistema operacional do seu caixa',
   },
 
   auth: {
     login: {
       title: 'Entrar na sua conta',
-      subtitle: 'Bem-vindo de volta ao Conta IA',
+      subtitle: 'Bem-vindo de volta ao CAIXAOS',
       emailLabel: 'E-mail',
       emailPlaceholder: 'seu@email.com',
       passwordLabel: 'Senha',
@@ -29,7 +29,7 @@ export const ptBR = {
     },
     cadastro: {
       title: 'Criar sua conta',
-      subtitle: 'Comece a usar o Conta IA hoje',
+      subtitle: 'Comece a usar o CAIXAOS hoje',
       nameLabel: 'Nome completo',
       namePlaceholder: 'Seu nome',
       emailLabel: 'E-mail',
@@ -75,7 +75,7 @@ export const ptBR = {
     nenhumaAtividade: 'Nenhuma atividade recente',
     iniciarHint: 'Comece cadastrando sua primeira empresa',
     primeiraEmpresa: 'Cadastre sua primeira empresa',
-    primeiraEmpresaDesc: 'Adicione as informações da sua empresa para começar a usar o Conta IA.',
+    primeiraEmpresaDesc: 'Adicione as informações da sua empresa para começar a usar o CAIXAOS.',
     adicionarEmpresa: 'Adicionar Empresa',
   },
 

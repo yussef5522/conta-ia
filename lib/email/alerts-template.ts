@@ -91,7 +91,7 @@ export function buildAlertEmail(input: AlertEmailInput): AlertEmailPayload {
 
   const html = `<!DOCTYPE html>
 <html lang="pt-BR">
-<head><meta charset="UTF-8"><title>Alertas Conta IA</title></head>
+<head><meta charset="UTF-8"><title>Alertas CAIXAOS</title></head>
 <body style="margin:0;padding:24px;background:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#0a0a0a">
   <table style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:8px;border:1px solid #e5e7eb;border-collapse:collapse" cellpadding="0" cellspacing="0">
     <tr><td style="padding:24px">
@@ -112,7 +112,7 @@ export function buildAlertEmail(input: AlertEmailInput): AlertEmailPayload {
 
       <div style="margin-top:24px;text-align:center">
         <a href="${input.dashboardUrl}" style="display:inline-block;padding:10px 20px;background:#185FA5;color:#ffffff;text-decoration:none;border-radius:6px;font-size:14px;font-weight:500">
-          Ver no Conta IA
+          Ver no CAIXAOS
         </a>
       </div>
 
