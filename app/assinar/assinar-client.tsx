@@ -86,6 +86,26 @@ export function AssinarClient({ cpfCnpjExistente }: Props) {
     }
   }, [step, pixData, pixStatus])
 
+  // 🛡️ Helper: extrai mensagem amigável SEM revelar detalhes internos
+  // do servidor (PCI/sec). Server 5xx → mensagem genérica de "tente
+  // novamente". Validações (400/403/409) → mensagem do server (já é
+  // adequada pra cliente: "CPF inválido", "Já tem assinatura", etc).
+  async function parseErrorResponse(r: Response): Promise<string> {
+    if (r.status >= 500) {
+      return 'Problema temporário no servidor de pagamento. Tente novamente em alguns segundos ou fale com o suporte.'
+    }
+    try {
+      const data = await r.json()
+      return (
+        data.erro ??
+        'Não foi possível completar a operação. Tente novamente.'
+      )
+    } catch {
+      // Server devolveu HTML (Next error page) em vez de JSON
+      return 'Problema temporário no servidor de pagamento. Tente novamente em alguns segundos ou fale com o suporte.'
+    }
+  }
+
   async function submitPix() {
     setErro(null)
     setSubmitting(true)
@@ -95,15 +115,17 @@ export function AssinarClient({ cpfCnpjExistente }: Props) {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ planId: planoId, ciclo, cpfCnpj }),
       })
-      const data = await r.json()
       if (!r.ok) {
-        setErro(data.erro ?? 'Erro ao gerar Pix')
+        setErro(await parseErrorResponse(r))
         return
       }
+      const data = await r.json()
       setPixData(data)
       setStep('pix')
     } catch {
-      setErro('Erro de rede.')
+      setErro(
+        'Sem conexão com o servidor. Verifique sua internet e tente novamente.',
+      )
     } finally {
       setSubmitting(false)
     }
@@ -118,14 +140,16 @@ export function AssinarClient({ cpfCnpjExistente }: Props) {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ planId: planoId, ciclo, cpfCnpj }),
       })
-      const data = await r.json()
       if (!r.ok) {
-        setErro(data.erro ?? 'Erro ao iniciar checkout')
+        setErro(await parseErrorResponse(r))
         return
       }
+      const data = await r.json()
       window.location.href = data.checkoutUrl
     } catch {
-      setErro('Erro de rede.')
+      setErro(
+        'Sem conexão com o servidor. Verifique sua internet e tente novamente.',
+      )
     } finally {
       setSubmitting(false)
     }
@@ -138,10 +162,40 @@ export function AssinarClient({ cpfCnpjExistente }: Props) {
     }
   }
 
+  // 🛡️ Banner de erro VISÍVEL no topo (não escondido em cards)
+  const ErrorBanner = erro ? (
+    <div
+      role="alert"
+      className="rounded-xl border border-red-400/40 bg-red-500/15 backdrop-blur-md px-4 py-3.5 flex items-start gap-3 text-sm text-red-100"
+    >
+      <svg
+        className="h-5 w-5 shrink-0 text-red-300 mt-0.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        viewBox="0 0 24 24"
+        aria-hidden
+      >
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+      </svg>
+      <div className="flex-1">
+        <p className="font-semibold">{erro}</p>
+      </div>
+      <button
+        onClick={() => setErro(null)}
+        aria-label="Fechar"
+        className="shrink-0 text-red-300 hover:text-white"
+      >
+        ✕
+      </button>
+    </div>
+  ) : null
+
   // ============ Step PLANO ============
   if (step === 'plano') {
     return (
       <div className="space-y-6">
+        {ErrorBanner}
         {/* Toggle ciclo */}
         <div className="flex items-center justify-center">
           <div className="inline-flex items-center rounded-full bg-white/[0.06] border border-white/10 p-1 backdrop-blur-md">
@@ -240,6 +294,7 @@ export function AssinarClient({ cpfCnpjExistente }: Props) {
   if (step === 'metodo') {
     return (
       <div className="space-y-6">
+        {ErrorBanner}
         <button
           onClick={() => setStep('plano')}
           className="text-sm text-slate-400 hover:text-white"
@@ -303,6 +358,7 @@ export function AssinarClient({ cpfCnpjExistente }: Props) {
     const isPixFlow = method === 'PIX'
     return (
       <div className="max-w-md mx-auto space-y-5">
+        {ErrorBanner}
         <button onClick={() => setStep('metodo')} className="text-sm text-slate-400 hover:text-white">
           ← Trocar método
         </button>
@@ -333,11 +389,7 @@ export function AssinarClient({ cpfCnpjExistente }: Props) {
             </p>
           </div>
 
-          {erro && (
-            <div className="mt-4 rounded-md bg-red-500/10 border border-red-500/30 px-3 py-2 text-sm text-red-200">
-              {erro}
-            </div>
-          )}
+          {/* erro mostrado no ErrorBanner global no topo */}
 
           <div className="mt-5 rounded-md bg-violet-500/5 border border-violet-500/20 px-3 py-2.5 text-xs text-violet-100/90 leading-relaxed">
             {isPixFlow ? (
