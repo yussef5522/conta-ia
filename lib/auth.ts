@@ -11,6 +11,12 @@ export interface TokenPayload {
   // (e API que não seja change-password/logout). Setada pelo login
   // quando User.mustChangePassword=true. Zerada após user trocar senha.
   mustChangePassword?: boolean
+  // Sprint Engine de Assinatura FATIA 1 (31/05/2026) — flag de bloqueio.
+  // Quando true (subscription EXPIRED ou TRIAL com trialEndsAt passado),
+  // middleware redireciona pra /assinar. Setada no login a partir do
+  // status efetivo da Subscription. Stale até próximo login (aceitável
+  // pro MVP — Fatia 3 webhook do gateway vai forçar refresh).
+  subscriptionExpired?: boolean
 }
 
 function getSecret(): Uint8Array {

@@ -61,12 +61,29 @@ export async function POST(request: NextRequest) {
     // Sprint Gestão de Conta (31/05/2026) — força troca de senha no 1º login
     // após reset pelo admin. JWT carrega a flag; middleware bloqueia tudo
     // exceto /trocar-senha + endpoints da troca.
+    //
+    // Sprint Engine de Assinatura FATIA 1 (31/05/2026) — computa flag
+    // subscriptionExpired aqui (1 query). Se não existe Subscription
+    // (race / migration), getOrCreateSubscription cria trial default 14d.
+    const { getOrCreateSubscription } = await import(
+      '@/lib/subscription/queries'
+    )
+    const { computeEffectiveStatus } = await import('@/lib/subscription/access')
+    const subscription = await getOrCreateSubscription(user.id)
+    const effectiveStatus = computeEffectiveStatus({
+      status: subscription.status,
+      planId: subscription.planId,
+      trialEndsAt: subscription.trialEndsAt,
+    })
+    const subscriptionExpired = effectiveStatus === 'EXPIRED'
+
     const token = await signToken({
       sub: user.id,
       email: user.email,
       name: user.name,
       role: user.role,
       mustChangePassword: user.mustChangePassword,
+      subscriptionExpired,
     })
 
     // Sprint 1.2 — Audit USER_LOGIN escopado à primeira empresa do user.
