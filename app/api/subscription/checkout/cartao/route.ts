@@ -117,11 +117,13 @@ export async function POST(request: NextRequest) {
 
   const appUrl = appUrlFromRequest(request)
   const checkout = await createHostedCheckout({
-    customerData: {
-      name: user.name,
-      email: user.email,
-      cpfCnpj: cpfCnpjDigits,
-    },
+    // ⚠️ Sprint 3B post-fix (01/06/2026): customerData REMOVIDO.
+    // O Asaas em RECURRENT exige customerData COMPLETO (10 campos: name
+    // + email + cpfCnpj + phone + address + addressNumber + postalCode
+    // + city ID IBGE + ...) OU NENHUM. Pra evitar coletar endereço/CEP
+    // no nosso UI (fricção + sem uso real), NÃO enviamos. Cliente
+    // preenche tudo no hosted Asaas (mesmo form do cartão).
+    // Detalhes: docs/sprints/asaas-3b-impl.md.
     items: [
       {
         name: `CAIXAOS ${plano.nome} (${ciclo === 'YEARLY' ? 'anual' : 'mensal'})`,
@@ -140,6 +142,8 @@ export async function POST(request: NextRequest) {
       nextDueDate,
       endDate,
     },
+    // ⚠️ CRÍTICO: o externalReference é como o webhook (3C) vai
+    // identificar quem pagou. NÃO remover.
     externalReference: `user:${user.id}|plan:${planId}|ciclo:${ciclo}`,
     minutesToExpire: 30,
   })
