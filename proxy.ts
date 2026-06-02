@@ -42,6 +42,9 @@ const PUBLIC_API = [
   '/api/auth/reset-password',
   // Sprint 1.7 — Validação pública de cupom (rate-limited)
   '/api/coupons/validate',
+  // Sprint Asaas 3C (02/06/2026) — webhook autenticado por
+  // asaas-access-token (NÃO por JWT de user).
+  '/api/webhooks/asaas',
 ]
 
 // Rotas /admin/* que NÃO exigem admin_session:
