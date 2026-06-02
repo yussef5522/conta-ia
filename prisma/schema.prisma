@@ -60,6 +60,14 @@ model User {
   // Sprint 5.0.3.0c — Saved views customizadas (CRUD em /contas-a-pagar)
   savedViews          SavedView[]
 
+  // Sprint PF Fatia 1 (02/06/2026) — Perfis pessoa física.
+  personalProfiles    UserPersonalProfile[]
+
+  // Sprint PF Fatia 1 (02/06/2026) — Onboarding (pergunta PF/PJ).
+  // null = users existentes (legacy) — pulam o onboarding.
+  // Setado quando user completa o /onboarding.
+  onboardingCompletedAt DateTime?
+
   @@map("users")
 }
 
@@ -1813,4 +1821,163 @@ model WebhookEvent {
   @@index([status])
   @@index([createdAt])
   @@map("webhook_events")
+}
+
+// ============================================================
+// Sprint PF Fatia 1 (02/06/2026) — Fundação PESSOA FÍSICA
+// ============================================================
+// Schema paralelo a Company/Transaction/BankAccount/Category — não
+// reusa as PJ pra preservar o Princípio Contábil da Entidade (PF ≠ PJ).
+// Migration 100% ADITIVA: zero ALTER em tabelas PJ existentes.
+
+model PersonalProfile {
+  id        String  @id @default(cuid())
+
+  // CPF opcional (multiplos perfis por CPF possíveis em casos legítimos —
+  // ex: conta conjugal). Index pra busca, sem UNIQUE.
+  cpf       String?
+  name      String  // "Yussef", "Filho Pedro", "Filha Ana"
+
+  // OWN       — perfil do titular adulto (gerencia o próprio)
+  // DEPENDENT — perfil menor de idade gerenciado pelo OWN (filho/filha)
+  type      String  @default("OWN")
+
+  birthDate DateTime?
+  isActive  Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users        UserPersonalProfile[]
+  bankAccounts PersonalBankAccount[]
+  transactions PersonalTransaction[]
+  categories   PersonalCategory[]
+
+  @@index([cpf])
+  @@map("personal_profiles")
+}
+
+// Vínculo User ↔ PersonalProfile (N:N — 1 user pode gerenciar vários perfis;
+// 1 perfil pode ser visto por vários users via convites na Fatia 5).
+model UserPersonalProfile {
+  id        String @id @default(cuid())
+  userId    String
+  profileId String
+
+  // OWNER — pode editar tudo (default ao criar perfil)
+  // VIEWER — só lê (Fatia 5 vai introduzir via convites entre users)
+  role   String  @default("OWNER")
+
+  // true: o perfil é DO PRÓPRIO usuário (não dependente).
+  // Útil pra "saudar pelo nome" e marcar self-profile pra ponte PJ→PF (Fatia 4).
+  isSelf Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  profile PersonalProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, profileId])
+  @@index([userId])
+  @@index([profileId])
+  @@map("user_personal_profiles")
+}
+
+model PersonalBankAccount {
+  id            String @id @default(cuid())
+  profileId     String
+
+  name          String
+  bankName      String?
+  bankCode      String?
+  agency        String?
+  accountNumber String?
+  // CHECKING | SAVINGS | DIGITAL_WALLET
+  accountType   String @default("CHECKING")
+  balance       Float  @default(0)
+
+  // Reuso do conceito Sprint 0.5 (cheque especial PJ).
+  allowNegativeBalance Boolean @default(true)
+  creditLimit          Float   @default(0)
+  lowBalanceThreshold  Float?
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  profile      PersonalProfile       @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  transactions PersonalTransaction[]
+
+  @@index([profileId])
+  @@map("personal_bank_accounts")
+}
+
+model PersonalTransaction {
+  id            String  @id @default(cuid())
+  profileId     String  // redundante via bankAccount, mas necessário pra queries diretas
+  bankAccountId String?
+  categoryId    String?
+
+  date        DateTime
+  description String
+  amount      Float    // sempre positivo; sinal vem de `type`
+  // CREDIT (entrada) | DEBIT (saída)
+  // TRANSFER (entre contas do mesmo perfil) fica pra fatia futura.
+  type   String
+  // PENDING | RECONCILED | IGNORED
+  status String @default("RECONCILED")
+  // MANUAL (Fatia 1) | OFX | AI (Fatia 3)
+  origin String @default("MANUAL")
+
+  externalId String?
+  dedupHash  String?
+
+  notes String?
+
+  // Campos preparados pra fatias futuras (NULLABLE — não usados na Fatia 1):
+  // creditCardId        String?    — Fatia 2 (cartão)
+  // creditCardInvoiceId String?    — Fatia 2
+  // installmentGroupId  String?    — Fatia 2
+  // bridgeId            String?    — Fatia 4 (ponte PJ→PF)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  profile     PersonalProfile      @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  bankAccount PersonalBankAccount? @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
+  category    PersonalCategory?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  @@index([profileId, date])
+  @@index([bankAccountId])
+  @@index([categoryId])
+  @@map("personal_transactions")
+}
+
+model PersonalCategory {
+  id        String  @id @default(cuid())
+  profileId String?  // NULL = template default (não vinculado a perfil)
+
+  name String
+  // INCOME (receita) | EXPENSE (despesa)
+  type String
+
+  color     String?
+  icon      String?
+  isDefault Boolean @default(false)
+
+  // Hierarquia opcional (Mercado/Restaurante dentro de Alimentação, etc).
+  parentId String?
+  parent   PersonalCategory?  @relation("PersonalCategoryParent", fields: [parentId], references: [id], onDelete: SetNull)
+  children PersonalCategory[] @relation("PersonalCategoryParent")
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  profile      PersonalProfile?      @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  transactions PersonalTransaction[]
+
+  @@index([profileId])
+  @@index([parentId])
+  @@map("personal_categories")
 }
