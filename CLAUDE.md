@@ -20,12 +20,16 @@
 > 📚 **`docs/DEPLOY.md`** — Guia técnico de deploy
 >    - **LER quando:** for fazer deploy em produção
 >
+> 💳 **`docs/sprints/PAGAMENTO-RETOMAR-AQUI.md`** — Estado da frente de pagamento Asaas
+>    - 3A + 3B + 3C deployados em sandbox; falta ativar webhook + smoke + virar pra prod (3D)
+>    - **LER quando:** for retomar a frente de cobrança/SaaS
+>
 > **Em caso de conflito aparente entre documentos:**
 > - CLAUDE.md tem prioridade pra decisões **OPERACIONAIS** (próxima etapa, comandos)
 > - CONTA-IA-NORTE.md tem prioridade pra decisões **ESTRATÉGICAS** (visão, arquitetura)
 > - DASHBOARD-PLAN.md tem prioridade pra **EXECUÇÃO** dos sprints de dashboard (0.5 → 3)
 >
-> **Última atualização:** 10/05/2026
+> **Última atualização:** 02/06/2026
 
 ---
 
@@ -1808,6 +1812,101 @@ Decisão técnica: flag `mustChangePassword` vai no **payload do JWT**
 SaaS agora tem 3/5 pilares prontos (auth, gestão conta, cupons) — faltam
 **subscription/planos** e **gateway de pagamento** (mapeados na auditoria
 de 30/05 em `docs/sprints/`).
+
+### 02/06/2026 — Sprint Asaas 3C (webhook) + checkpoint org
+
+**Contexto:** continuação direta da sessão 31/05-01/06 (3A + 3B). Yussef
+aprovou seguir pro 3C imediatamente após o checkout cartão funcionar
+end-to-end (fix do `NEXT_PUBLIC_APP_URL` callback URL).
+
+#### Sprint 3C — Webhook (Asaas sandbox) ✅ DEPLOYADO
+**Branch:** `feature/asaas-3c-webhook` → mergeada na `main` em `2a15128`.
+
+Fase 1 — Investigação (`docs/sprints/asaas-3c-webhook.md`):
+- Auth header oficial: `asaas-access-token` (citação verbatim da doc)
+- Idempotência: `body.id` (top-level — formato `evt_<hash>&<num>`)
+- Payload: `{id, event, payment: {id, status, subscription,
+  externalReference, customer, ...}}`
+- 28 PAYMENT_* + 7 SUBSCRIPTION_* mapeados
+- Doc: 15 falhas consecutivas → fila pausa; sem timeout especificado
+- 4 IPs oficiais Asaas (NÃO usamos — token protege)
+
+5 decisões aprovadas:
+1. CHARGEBACK_REQUESTED → PAST_DUE (não cancela imediato)
+2. Ignorar todos SUBSCRIPTION_* (gravar pra auditoria)
+3. Sem filtro de IP no MVP — token protege
+4. Síncrono no MVP (sem fila)
+5. `gatewaySubscriptionId` set lazy na 1ª confirmação webhook
+
+Fase 2 — Implementação:
+- Schema `WebhookEvent` (asaasEventId @unique + race handling P2002 +
+  FK SetNull pra Subscription)
+- Migration `20260612000000_asaas_3c_webhook_event` — PURAMENTE ADITIVA
+  (só CREATE TABLE webhook_events + 5 índices + FK na própria tabela)
+- `lib/asaas/webhook.ts` puro (testável sem DB):
+  - `validateAsaasToken(received, expected)` via `crypto.timingSafeEqual`
+  - `parseExternalReference(ref)` → `{userId, planId, ciclo, dias?}`
+  - `calculateNextPeriodEnd(current, ciclo, now)` — `max(now, current) + delta`
+  - `routeEvent(event)` → ACTIVATE | PAST_DUE | CANCEL | IGNORE
+- `POST /api/webhooks/asaas` (orquestrador) — fluxo:
+  1. Valida `asaas-access-token` (fail-closed se var ausente)
+  2. Idempotência via findUnique + try/catch P2002 no atomic
+  3. Roteia + atualiza Subscription + grava WebhookEvent num único
+     `prisma.$transaction`
+- 3 camadas pra identificar Subscription: externalReference (preferida)
+  → gatewaySubscriptionId → gatewayCustomerId
+- Sub não localizada → status=ERROR + 200 (não trava fila Asaas)
+- `proxy.ts` — `/api/webhooks/asaas` em PUBLIC_API (auth por token, não JWT)
+
+Fase 3 — Testes:
+- **+67 testes** (3845 → 3912): 42 puros + 25 endpoint integration
+- TypeScript strict: 0 erros
+- Build prod local: ✓ Compiled
+- Cobertura: auth (5) / body validation (3) / idempotência (1) /
+  ACTIVATE (7) / PAST_DUE (1) / CANCEL (2) / chargeback (1) /
+  IGNORED (3) / ERROR fallback (2) + 42 puros (token + parser +
+  calc + router)
+
+**Bonus fix dentro da sprint** (em `lib/asaas/client.ts`):
+Quando o WAF/proxy do Asaas retorna body não-JSON em 4xx, agora logamos
+`contentType + bodyFirst300` com REDACT da `apiKey` (caso proxy
+intermediário ecoasse headers no body). Preserva diagnóstico útil
+(HTML do WAF) sem vetor de vazamento. Teste de segurança existente
+(`Sanitização de logs`) volta a passar.
+
+#### Deploy passo-a-passo
+1. Backup `pg_dump -Fc` → `/var/backups/conta-ia/pre-3c-webhook-20260601_234500.dump` (541.823 bytes · 340 itens via `pg_restore --list`)
+2. `swap-prisma-to-postgres.sh` (no-op — prod já estava em postgres)
+3. `prisma migrate status` → 1 pendente (apenas a do 3C) ✓ confirmado com Yussef antes de aplicar
+4. `prisma migrate deploy` → migration aplicada
+5. Counts pré/pós: **subscriptions 5=5 · transactions 2663=2663 · users 5=5** (dados intactos)
+6. `npm run build` + `pm2 reload --update-env`
+7. Smokes 401 confirmados (sem header / token aleatório sem var / via nginx público)
+
+#### Pegadinha #5 nova (3C): webhook token hex NÃO precisa escape de `$`
+(token é hex puro vindo do `openssl rand -hex 32`).
+
+#### Checkpoint de organização (após 3C)
+Yussef pediu pausa da frente pagamento pra mexer em outras partes.
+Estado salvo:
+- **Triplo match HEAD** Mac=GitHub=Prod = `2a15128`
+- Working tree limpo · todas as branches locais mergeadas na main
+- `docs/sprints/PAGAMENTO-RETOMAR-AQUI.md` criado — playbook pra
+  retomar (ativar webhook + smoke + virar 3D)
+- CLAUDE.md atualizado: cabeçalho aponta pro PAGAMENTO-RETOMAR-AQUI
+
+**Pendência de segurança registrada:**
+- Rotacionar senha do banco Postgres prod quando puder
+  (`PGPASSWORD` apareceu em texto durante a investigação do bug
+  callback URL — higiene boa = rotação. Sem vetor externo conhecido)
+
+**Próximo passo (frente pagamento):** Yussef executar a seção
+"ATIVAR O WEBHOOK" de `docs/sprints/PAGAMENTO-RETOMAR-AQUI.md` quando
+quiser retomar.
+
+**Próximo passo (sessão atual):** Yussef decide qual outra frente
+abrir (nenhuma específica indicada — pode ser dashboard, IA contadora,
+relatórios, etc).
 
 ### [Próxima sessão] — preencher
 - Data:
