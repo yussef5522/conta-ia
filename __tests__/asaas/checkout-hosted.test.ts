@@ -27,13 +27,11 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks())
 
 describe('createHostedCheckout', () => {
+  // Sprint 3B post-fix (01/06/2026): customerData REMOVIDO do default
+  // payload. O Asaas em RECURRENT exige customerData COMPLETO ou
+  // NENHUM. Mantemos NENHUM e o cliente preenche tudo no hosted page.
   function buildInput(cycle: 'MONTHLY' | 'YEARLY' = 'MONTHLY') {
     return {
-      customerData: {
-        name: 'Yussef Test',
-        email: 'test@dev.local',
-        cpfCnpj: '11144477735',
-      },
       items: [
         {
           name: 'CAIXAOS Inteligência (mensal)',
@@ -81,12 +79,50 @@ describe('createHostedCheckout', () => {
     expect(reqBody.subscription.cycle).toBe('YEARLY')
   })
 
-  test('🛡️ NENHUM campo de cartão no payload (só customerData)', async () => {
+  test('🛡️ NENHUM campo de cartão no payload', async () => {
     const fetchSpy = mockFetch({ id: 'chk_003' })
     await createHostedCheckout(buildInput(), { env: ENV_SANDBOX, fetch: fetchSpy })
     const call = (fetchSpy as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls[0]
     const body = call[1].body as string
     expect(body).not.toMatch(/cardNumber|cvv|holderName|expiryMonth|expiryYear|creditCard/i)
+  })
+
+  test('🛡️ customerData OMITIDO por default (causa do bug "campo phone obrigatório")', async () => {
+    const fetchSpy = mockFetch({ id: 'chk_no_customer' })
+    await createHostedCheckout(buildInput(), { env: ENV_SANDBOX, fetch: fetchSpy })
+    const call = (fetchSpy as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls[0]
+    const reqBody = JSON.parse(call[1].body as string)
+    // Asaas em RECURRENT exige customerData COMPLETO ou NENHUM —
+    // enviar parcial quebra com 400. Default = NENHUM.
+    expect(reqBody.customerData).toBeUndefined()
+  })
+
+  test('customerData COMPLETO é enviado quando passado explicitamente (caminho opcional)', async () => {
+    const fetchSpy = mockFetch({ id: 'chk_with_customer' })
+    await createHostedCheckout(
+      {
+        ...buildInput(),
+        customerData: {
+          name: 'Test',
+          email: 'test@dev.local',
+          cpfCnpj: '11144477735',
+          phone: '11987654321',
+        },
+      },
+      { env: ENV_SANDBOX, fetch: fetchSpy },
+    )
+    const call = (fetchSpy as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls[0]
+    const reqBody = JSON.parse(call[1].body as string)
+    expect(reqBody.customerData).toBeDefined()
+    expect(reqBody.customerData.cpfCnpj).toBe('11144477735')
+  })
+
+  test('⚠️ externalReference SEMPRE no payload (webhook 3C precisa)', async () => {
+    const fetchSpy = mockFetch({ id: 'chk_extref' })
+    await createHostedCheckout(buildInput(), { env: ENV_SANDBOX, fetch: fetchSpy })
+    const call = (fetchSpy as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls[0]
+    const reqBody = JSON.parse(call[1].body as string)
+    expect(reqBody.externalReference).toBe('user:abc|plan:inteligencia|ciclo:MONTHLY')
   })
 
   test('callback inclui 3 URLs absolutas', async () => {

@@ -521,6 +521,70 @@ Depois que IA está validada, melhora ergonomia para volumes maiores.
 
 ---
 
+## ⚠️ Pegadinhas operacionais Asaas (Sprint 3A/3B/3C)
+
+### 1. `$` na ASAAS_API_KEY precisa de escape `\$` no `.env`
+
+Chaves do Asaas começam com `$aact_hmlg_...` (sandbox) ou `$aact_prod_...`
+(produção). O Next.js usa `@next/env` que aplica dotenv-expand: o `$`
+inicial é interpretado como **expansão de variável shell**, e como o
+nome (`aact_hmlg_...`) não é uma var existente, **a chave vira string
+vazia em runtime**.
+
+⚠️ Aspas simples NÃO bastam (diferente do bash). Tem que ESCAPAR:
+
+```
+❌ ASAAS_API_KEY=$aact_hmlg_xxx       → string vazia
+❌ ASAAS_API_KEY='$aact_hmlg_xxx'     → string vazia
+❌ ASAAS_API_KEY="$aact_hmlg_xxx"     → string vazia
+✅ ASAAS_API_KEY=\$aact_hmlg_xxx      → FUNCIONA
+```
+
+Sintoma: `AsaasConfigError: ASAAS_API_KEY não configurada` nos logs
+PM2 + endpoints de checkout retornam 500. Health check via `node
+--env-file=.env script.mjs` continua funcionando (parser nativo do
+Node NÃO faz expansão) — não use isso como validação suficiente.
+
+Validação que pega o bug:
+```bash
+node -e "const{loadEnvConfig}=require('@next/env');loadEnvConfig('.');
+console.log(JSON.stringify({defined:!!process.env.ASAAS_API_KEY,
+length:(process.env.ASAAS_API_KEY||'').length}))"
+```
+
+Vale pra sandbox E produção. Antes de promover pra 3D, escapar o `$`
+da chave de produção também.
+
+### 2. Conta Asaas precisa de CHAVE PIX cadastrada pra Pix funcionar
+
+`POST /v3/payments` com `billingType:PIX` retorna 200 e cria a cobrança
+mesmo sem chave Pix cadastrada — MAS `pixTransaction` fica `null`.
+Quando você chama `GET /v3/payments/{id}/pixQrCode`, retorna 400
+`invalid_action: "Esta cobrança não permite pagamentos via Pix."`.
+
+Pra resolver: no painel sandbox.asaas.com (ou www.asaas.com em prod),
+ir em **Pix > Chaves Pix > Nova chave** e cadastrar qualquer tipo
+(EVP aleatória é a mais fácil).
+
+Vale pra sandbox E produção (3D). Em prod precisa de chave Pix antes
+de aceitar cobranças Pix dos clientes.
+
+### 3. `POST /v3/checkouts` com RECURRENT exige customerData COMPLETO ou NENHUM
+
+Enviar `customerData` parcial (ex: name+email+cpfCnpj sem phone+
+endereço) retorna 400. Os campos obrigatórios são: `name`, `email`,
+`cpfCnpj`, `phone`, `address`, `addressNumber`, `postalCode`, `city`
+(ID IBGE numérico), `province`.
+
+Sprint 3B usa a estratégia "NENHUM" — cliente preenche tudo no hosted
+Asaas (mesma página onde digita cartão). Zero fricção no nosso UI,
+zero coleta de endereço/CEP.
+
+Se algum dia precisar enviar customerData (ex: pré-preencher) →
+enviar TODOS os 9 campos. Integrar ViaCEP + lookup IBGE city ID.
+
+---
+
 ## 🚨 Anti-padrão detectado em Sprint 5.0.4.0a (27/05/2026)
 
 Sprint 5.0.4.0a foi declarada entregue com DoD items "✅". Yussef testou

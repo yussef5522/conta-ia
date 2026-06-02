@@ -36,7 +36,17 @@ export interface CheckoutCallback {
 }
 
 export interface CreateHostedCheckoutInput {
-  customerData: CheckoutCustomerData
+  /**
+   * ⚠️ Sprint 3B post-fix (01/06/2026): customerData OPCIONAL.
+   *
+   * Razão: o Asaas em RECURRENT exige customerData COMPLETO (name+email
+   * +cpfCnpj+phone+address+addressNumber+postalCode+city — todos
+   * obrigatórios) OU NENHUM (deixa cliente preencher no hosted).
+   * Enviar parcial → 400. Pra evitar coletar endereço/CEP/cidade na
+   * nossa UI (fricção alta + sem uso real no nosso DB), NÃO enviamos.
+   * Cliente preenche TUDO no hosted Asaas (mesmo form do cartão).
+   */
+  customerData?: CheckoutCustomerData
   items: CheckoutItem[]
   callback: CheckoutCallback
   subscription: {
@@ -45,6 +55,11 @@ export interface CreateHostedCheckoutInput {
     endDate: string // YYYY-MM-DD
   }
   minutesToExpire?: number // 10..1440, default 30
+  /**
+   * ⚠️ CRÍTICO: o externalReference é como o webhook (3C) vai
+   * identificar quem pagou. NUNCA remover deste payload.
+   * Formato: `user:<userId>|plan:<planId>|ciclo:<MONTHLY|YEARLY>`.
+   */
   externalReference?: string
 }
 
@@ -71,15 +86,20 @@ export async function createHostedCheckout(
   input: CreateHostedCheckoutInput,
   deps: { env?: Record<string, string | undefined>; fetch?: FetchLike } = {},
 ): Promise<HostedCheckoutResponse> {
-  const body = {
+  // Monta body OMITINDO customerData quando ausente. Enviar
+  // `customerData: undefined` pode quebrar a validação em alguns
+  // backends — por segurança, só inclui a chave se tiver valor.
+  const body: Record<string, unknown> = {
     billingTypes: ['CREDIT_CARD'],
     chargeTypes: ['RECURRENT'],
     minutesToExpire: input.minutesToExpire ?? 30,
     callback: input.callback,
     items: input.items,
-    customerData: input.customerData,
     subscription: input.subscription,
     externalReference: input.externalReference,
+  }
+  if (input.customerData) {
+    body.customerData = input.customerData
   }
   return asaasRequest<HostedCheckoutResponse>(
     '/checkouts',
