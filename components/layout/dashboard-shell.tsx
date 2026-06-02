@@ -10,9 +10,11 @@ import { Menu } from 'lucide-react'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { GlobalSidebar } from '@/components/sidebar/global-sidebar'
 import { TopBar } from './top-bar'
-import { WorkspaceSwitcher } from './workspace-switcher'
+import { WorkspaceSwitcherDual } from './workspace-switcher-dual'
 import { UserMenu } from './user-menu'
 import { EmpresaProvider } from '@/lib/contexts/empresa-context'
+// Sprint PF Fatia 1 — dual workspace (PJ + PF)
+import { WorkspaceProvider } from '@/lib/contexts/workspace-context'
 
 interface DashboardShellProps {
   userName: string
@@ -27,6 +29,7 @@ export function DashboardShell({ userName, userEmail, devToolsEnabled = false, c
 
   return (
     <EmpresaProvider>
+      <WorkspaceProvider>
       <div className="flex h-screen flex-col overflow-hidden bg-zinc-50">
         {/* TopBar global (desktop) */}
         <div className="hidden md:block">
@@ -44,7 +47,7 @@ export function DashboardShell({ userName, userEmail, devToolsEnabled = false, c
             <Menu className="h-5 w-5" />
           </button>
           <div className="flex-1 min-w-0">
-            <WorkspaceSwitcher />
+            <WorkspaceSwitcherDual />
           </div>
           <UserMenu userName={userName} userEmail={userEmail} devToolsEnabled={devToolsEnabled} />
         </header>
@@ -72,6 +75,7 @@ export function DashboardShell({ userName, userEmail, devToolsEnabled = false, c
           </main>
         </div>
       </div>
+      </WorkspaceProvider>
     </EmpresaProvider>
   )
 }

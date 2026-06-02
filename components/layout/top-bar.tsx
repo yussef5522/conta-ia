@@ -3,7 +3,7 @@
 // Sprint 4.0.5.a — TopBar sticky com Workspace Switcher + User Menu.
 
 import Link from 'next/link'
-import { WorkspaceSwitcher } from './workspace-switcher'
+import { WorkspaceSwitcherDual } from './workspace-switcher-dual'
 import { UserMenu } from './user-menu'
 
 interface Props {
@@ -23,7 +23,7 @@ export function TopBar({ userName, userEmail, devToolsEnabled = false }: Props) 
           <span className="font-semibold text-sm hidden sm:inline">CAIXAOS</span>
         </Link>
         <span className="text-zinc-300">/</span>
-        <WorkspaceSwitcher />
+        <WorkspaceSwitcherDual />
       </div>
 
       <div className="flex-1" />
