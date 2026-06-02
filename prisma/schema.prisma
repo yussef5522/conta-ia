@@ -1757,7 +1757,60 @@ model Subscription {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  // Sprint Asaas 3C (02/06/2026) — relação reversa
+  webhookEvents WebhookEvent[]
+
   @@index([status])
   @@index([trialEndsAt])
   @@map("subscriptions")
+}
+
+// Sprint Asaas FATIA 3C (02/06/2026) — Webhook events do Asaas.
+// Idempotência rígida: asaasEventId UNIQUE garante que mesmo evento
+// não é processado 2x (Asaas envia at-least-once).
+// Auditoria: payload completo guardado pra debug + além dos 14d Asaas.
+model WebhookEvent {
+  id           String   @id @default(cuid())
+
+  // body.id do payload Asaas — chave de idempotência.
+  // Formato: "evt_<hash>&<numero>"
+  asaasEventId String   @unique
+
+  // body.event — tipo do evento (PAYMENT_CONFIRMED, PAYMENT_RECEIVED, ...).
+  eventType    String
+
+  // body.payment.id — id da cobrança no Asaas. NULL em eventos
+  // que não envolvem payment (raros, ex: ACCOUNT_STATUS_UPDATED).
+  paymentId    String?
+
+  // FK pra Subscription quando conseguimos identificar (via
+  // externalReference, gatewaySubscriptionId ou gatewayCustomerId).
+  // NULL quando não localizamos (gravado com status=ERROR).
+  subscriptionId String?
+
+  // body completo do evento (JSON stringificado) — auditoria + debug.
+  // 4-8KB típico (cobrança Asaas tem ~30 campos).
+  // String (não Json) pra portabilidade dual SQLite-dev / Postgres-prod.
+  payload      String
+
+  // Estado do processamento:
+  //   RECEIVED  — gravado mas ainda não roteado (transiente)
+  //   PROCESSED — efeito aplicado na Subscription
+  //   IGNORED   — evento não-relevante pra nós (gravado pra auditoria)
+  //   ERROR     — Subscription não localizada / erro durante processamento
+  status       String
+
+  // Mensagem técnica quando status=ERROR (debug).
+  errorMessage String?
+
+  processedAt  DateTime?
+  createdAt    DateTime @default(now())
+
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  @@index([eventType])
+  @@index([paymentId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("webhook_events")
 }

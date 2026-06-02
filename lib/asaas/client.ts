@@ -100,14 +100,20 @@ export async function asaasRequest<T>(
     try {
       parsed = JSON.parse(text)
     } catch {
-      // Body não-JSON. Logamos só status + tamanho, NUNCA o text bruto
-      // (pode conter dados que o Asaas anexou em prod e a gente não
-      // quer dependendo do caso).
+      // Body não-JSON em status 4xx/5xx: diagnóstico crítico
+      // (ex: WAF Cloudflare retornando HTML, rate-limit page).
+      // Logamos primeiros 300 chars do body, MAS REDACTING a apiKey
+      // caso um proxy intermediário tenha ecoado headers no body.
+      const sanitized = config.apiKey
+        ? text.split(config.apiKey).join('[REDACTED]')
+        : text
       console.error('[asaas] resposta não-JSON', {
         path,
         env: config.env,
         statusCode: response.status,
         bodyLength: text.length,
+        contentType: response.headers.get('content-type'),
+        bodyFirst300: sanitized.substring(0, 300),
       })
     }
   }
@@ -122,6 +128,9 @@ export async function asaasRequest<T>(
       env: config.env,
       statusCode: response.status,
       asaasError: firstErr?.code ?? 'unknown',
+      // Em 4xx onde body PARSED existe, loga descrição (sem dado sensível
+      // — Asaas só retorna code+description em errors[]).
+      asaasErrorDescription: firstErr?.description ?? null,
     })
     throw new AsaasApiError(response.status, path, body, summary)
   }
