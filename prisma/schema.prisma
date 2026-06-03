@@ -56,6 +56,8 @@ model User {
   // Sprint PF Fatia 3
   personalOfxImports         PersonalOfxImport[]
   personalOfxImportsReverted PersonalOfxImport[] @relation("PersonalOfxImportReverter")
+  // Sprint PF Fatia 3.5
+  pdfExtractCaches           PersonalPdfExtractCache[] @relation("PdfCacheOwner")
   // Sprint 4.0.1.b — quem criou cada schedule recorrente
   recurringSchedules  RecurringSchedule[]
   // Sprint 5.0.1 — IA Tributária
@@ -2162,6 +2164,16 @@ model PersonalOfxImport {
   detectedFid       String?    // "260"
   detectedAcctId    String?    // ACCTID do OFX
 
+  // === Sprint PF Fatia 3.5 (03/06/2026) — PDF via Claude Vision ===
+  // OFX (default) | PDF (Fatia 3.5)
+  sourceType            String   @default("OFX")
+  // 0-1 — confidence global da extração (só preenchido pra PDF)
+  extractionConfidence  Float?
+  // SHA256 do PDF (pra ligar ao cache PersonalPdfExtractCache)
+  pdfSha256             String?
+  // DIGITAL | SCANNED_HIGH | SCANNED_LOW | MOBILE_PHOTO (só PDF)
+  pdfScanQuality        String?
+
   ipAddress         String?
   userAgent         String?
   errorMessage      String?
@@ -2182,4 +2194,41 @@ model PersonalOfxImport {
   @@index([creditCardId])
   @@index([status])
   @@map("personal_ofx_imports")
+}
+
+// ============================================================
+// Sprint PF FATIA 3.5 (03/06/2026) — Cache de extração PDF (Vision)
+// ============================================================
+// Cache global por SHA256 do PDF — qualquer user que upload o MESMO
+// PDF reusa a extração (sem nova chamada ao Claude Vision).
+// TTL 7 dias. User pode deletar o cache do PDF dele.
+//
+// ⚠️ NÃO armazena o PDF em si — apenas o resultJson extraído + hash.
+// ⚠️ Privacy: cartão mascarado (****1234) antes do resultJson cache.
+model PersonalPdfExtractCache {
+  id               String   @id @default(cuid())
+  // SHA256 do PDF (lower hex 64 chars) — chave global
+  pdfSha256        String   @unique
+  // Modelo Claude usado (claude-sonnet-4-6 etc) — pra auditoria
+  modelVersion     String
+  // JSON serializado do PdfExtractResult — SEM PDF original
+  resultJson       String
+  // Telemetria de custo
+  inputTokens      Int
+  outputTokens     Int
+  costCentsUsdX100 Int
+  // user que primeiro fez upload — permite DELETE pra dono
+  ownerUserId      String?
+  // contadores
+  hitCount         Int      @default(0)
+  cachedAt         DateTime @default(now())
+  // cachedAt + 7 dias (limpeza por job futuro)
+  expiresAt        DateTime
+
+  owner User? @relation("PdfCacheOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+
+  @@index([pdfSha256])
+  @@index([expiresAt])
+  @@index([ownerUserId])
+  @@map("personal_pdf_extract_cache")
 }

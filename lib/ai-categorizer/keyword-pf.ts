@@ -99,6 +99,7 @@ export const KEYWORDS_PF: readonly KeywordPfEntry[] = [
   { keyword: 'alura', displayName: 'Alura', personalCategoryHint: 'Educação' },
   { keyword: 'rocketseat', displayName: 'Rocketseat', personalCategoryHint: 'Educação' },
   { keyword: 'claude', displayName: 'Anthropic Claude', personalCategoryHint: 'Educação' },
+  { keyword: 'anthropic', displayName: 'Anthropic', personalCategoryHint: 'Educação' },
   { keyword: 'chatgpt', displayName: 'OpenAI ChatGPT', personalCategoryHint: 'Educação' },
   { keyword: 'duolingo', displayName: 'Duolingo', personalCategoryHint: 'Educação' },
 
