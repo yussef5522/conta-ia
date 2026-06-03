@@ -34,7 +34,7 @@
 > - CONTA-IA-NORTE.md tem prioridade pra decisões **ESTRATÉGICAS** (visão, arquitetura)
 > - DASHBOARD-PLAN.md tem prioridade pra **EXECUÇÃO** dos sprints de dashboard (0.5 → 3)
 >
-> **Última atualização:** 03/06/2026
+> **Última atualização:** 03/06/2026 (Sprint PF Fatia 4)
 
 ---
 
@@ -2411,6 +2411,128 @@ já em prod). Doc completo: `docs/sprints/pf-fatia-3.5-LIGAR-PDF.md`.
 - **Dashboard PF nível Mobills** (sprint atrasado, todos endpoints prontos)
 - **Fatia 4** (ponte PJ→PF — diferencial competitivo final)
 - Outra (retomar Asaas 3D, etc)
+
+### 03/06/2026 (parte 4) — Sprint PF Fatia 4 (Ponte PJ→PF) deployada — diferencial competitivo final
+
+**Contexto:** Yussef aprovou plano (`docs/sprints/pf-fatia-4-ponte.md`) + 7 decisões iniciais + ajustes de privacidade multi-sócio (5 decisões A-E) após eu levantar o ponto crítico. Construção inteira + smoke real 5/5 em prod.
+
+#### Sprint PF Fatia 4 — Ponte PJ→PF ✅ DEPLOYADA EM PROD
+**Branch:** `feature/pf-fatia-4-ponte` → main em `4cc2d70` (commit feat `67a09fb`).
+
+**Schema (1 model + ZERO ALTER em tabelas existentes):**
+- `PJtoPFBridge` (UNIQUE em pjTransactionId/pfTransactionId — sem `bridgeId` em
+  `transactions` PJ pra **proteger as 2907 linhas reais**)
+- Migration `20260617000000_pf_fatia_4_ponte_pj_pf` PURAMENTE ADITIVA:
+  só CREATE TABLE + 4 índices + 6 FKs. Zero ALTER em transactions/personal_transactions
+- FK Restrict nas 2 tx (PJ + PF): bloqueia hard delete direto, força user
+  deletar ponte primeiro (UX 409 HAS_ACTIVE_BRIDGE)
+
+**🔒 Privacidade multi-sócio (decisões A-E aprovadas):**
+- A: Lista `/empresas/[id]/pontes` filtra `profileId IN owned_by_user_logado`
+- B: Badge na tx PJ pra terceiros é anônimo (sem nome/conta)
+- C: GET `/pontes/[id]` retorna 404 pra quem não é dono nem criador (não revela existência)
+- D: Sugestão filtra por userId em `find-candidate-profile` (sócio B não vê CPF de A)
+- E: Visão consolidada anonimizada pra ADMINISTRADOR societário fica pra Fatia 6+
+
+**Tratamento contábil (validado com engine DRE existente):**
+- PRO_LABORE → categoria `dreGroup='DESPESAS_PESSOAL'` (AFETA DRE)
+- DISTRIBUICAO/ADIANTAMENTO/RETIRADA → `DISTRIBUICAO_LUCROS` (NÃO afeta DRE — non-DRE group)
+- REEMBOLSO → `suggestedPjDreGroup=null` (força user escolher manualmente)
+
+**Lib `lib/bridges/` (6 arquivos):**
+- `types.ts` — BridgeError + 14 códigos privacy-safe
+- `kind-defaults.ts` — 5 kinds × dreGroup PJ × categoria PF sugerida
+- `find-candidate-profile.ts` — filtro por userId (privacidade D)
+- `suggest-bridge.ts` — sugestões sob demanda
+- `create.ts` — atomic 3-camadas (RBAC PJ + ProfileAccess OWNER + companyId match)
+- `delete.ts` — 2 modos LINK_ONLY/WITH_PF_TX (privacidade C)
+- `queries.ts` — listBridges (filtro privacidade) + getBridgeDetail + getBridgeSummary +
+  checkPjTxBridgeForUser (retorna bridgeId=null pra terceiros, badge anônimo)
+
+**6 endpoints REST:**
+- POST `/api/pontes` (auth + RBAC `transaction.create`)
+- GET/DELETE `/api/pontes/[id]?mode=` (404 anonimizado)
+- GET `/api/empresas/[id]/pontes` (lista filtrada)
+- GET `/api/empresas/[id]/pontes/sugestoes` (cache 60s tag `bridges:suggestions:${id}`)
+- GET `/api/perfis/[id]/pontes` (multi-tenant via checkProfileAccess)
+- GET `/api/pontes/summary` (agregados privados)
+
+**5 telas + 4 componentes:**
+- `/empresas/[id]/pontes` — lista com **banner de privacidade explícito**
+- `/perfis/[id]/pontes` — lista lado PF (foco "de qual empresa")
+- `/empresas/[id]/pontes/nova` — form 3 passos (tx PJ + tipo + destino PF)
+- `/pontes/[id]` — detalhe (404 anonimizado pra terceiros)
+- Sidebar: item "Pontes PJ→PF" (com Workflow icon, só quando há empresa contextual)
+- Componentes: `BridgeKindRadio`, `BridgeBadge` (prop `belongsToMe`),
+  `BridgeDeleteModal` (2 modos), `BridgeSuggestionCard`
+
+**Testes (+83, suite 4228 → 4311):**
+- kind-defaults (11) — 5 tipos + sugestões por papel SocioPF
+- find-candidate-profile (15) — incl **3 ★ privacidade multi-sócio**
+- create (10) — caminho feliz + 7 bloqueios + **★ privacidade**
+- delete (7) — 2 modos + auth + FK Restrict
+- queries (15) — incl **5 ★ privacidade**
+- dre-contabil (4) — engine DRE não infla + tratamento correto
+- endpoints (21) — incl **7 ★ privacidade entre sócios**
+
+#### Deploy passo-a-passo
+
+1. Backup `pg_dump -Fc` → `pre-pf-fatia-4-20260603_035703.dump` (629K · 428 itens)
+2. **Counts pré:** users=5, companies=3, subscriptions=5, **transactions=2907 (CRÍTICO)**,
+   personal_profiles=1, credit_cards=1, socios_pf=1, ai_learning_rules=176
+3. git pull → npm ci → swap → **prisma generate DEPOIS do swap** → migrate status:
+   1 pendente (a do PF Fatia 4)
+4. `prisma migrate deploy` → SUCCESS
+5. **Counts pós (idênticos):** todos batendo + `pj_to_pf_bridges=0` (nova)
+6. admin@contaia.com.br plano `inteligencia` status `GRANTED` preservado ✓
+7. npm run build + pm2 reload (PID 532016 ↺ 246 online)
+
+**Smoke real (5/5 ✅) — usando IDs reais profit sao borja + perfil Yussef:**
+
+| # | Validação | Resultado |
+|---|---|---|
+| 1 | POST `/api/pontes` PROFIT → Yussef → DISTRIBUICAO R$10k | **201** + bridgeId retornado |
+| 2 | DRE PROFIT — NÃO afetado | Categoria dreGroup=DISTRIBUICAO_LUCROS (non-DRE) · Soma DESPESAS_PESSOAL maio=R$0 · Soma DISTRIBUICAO maio=R$10k |
+| 3 | Dashboard PF — entrada criada | personal_transaction CREDIT R$10k no perfil Yussef · Categoria INCOME · Soma entradas maio=R$10k |
+| 4 | Audit log BRIDGE_CREATED | 1 entrada · entity=PJtoPFBridge · by=Yussef Musa · metadata completa (pjTx + pfTx + kind + amount + createdVia) |
+| 5 | DELETE LINK_ONLY | 200 + pfTransactionDeleted:false · bridge=0 · tx PJ=1 · tx PF=1 · audit BRIDGE_DELETED_LINK_ONLY |
+
+**Cleanup pós-smoke:**
+- Tx PJ + PF de teste deletadas (após DELETE LINK_ONLY que removeu a bridge)
+- Senha admin revertida ao hash original (PWD_REVERTED=OK)
+- Arquivos `/tmp/*.mjs` e `/tmp/*.json` removidos do servidor
+
+**Counts FINAIS (idênticos aos iniciais):**
+- users=5, companies=3, subscriptions=5
+- **transactions=2907 ✓ (intacto)**
+- personal_transactions=0, personal_profiles=1
+- **pj_to_pf_bridges=0** (tabela criada vazia)
+
+**Documentação:**
+- `docs/sprints/pf-fatia-4-ponte.md` — plano completo + 5 decisões privacidade
+- `docs/decisoes/categoria-pj-nominada-vs-generica.md` — caveat post-MVP (categoria
+  PJ nominada vaza nome do sócio; refactor genérico fica pra quando entrar 2º sócio
+  na mesma empresa)
+
+**Métricas:**
+- 33 arquivos no commit feat (+4150 linhas)
+- TS strict 0
+- Suite 4311/4311 (+83 vs Fatia 3.5)
+- Migration 100% aditiva, dados PJ intactos
+- PM2 ↺ 246 online após reload
+- Backup 629K · 428 itens verificados
+
+**🚨 PENDÊNCIA REGISTRADA (não esquecer):** quando entrar 2º sócio numa mesma empresa
+(cenário multi-sócio real), revisar `docs/decisoes/categoria-pj-nominada-vs-generica.md`
+ANTES de abrir acesso. Categoria PJ atual permite nome ("Distribuição p/Yussef") que
+vaza pra outros sócios — corrigir antes ou depois fica mais caro.
+
+**Próximo passo:** Yussef decide próxima frente:
+- **Dashboard PF nível Mobills** (sprint atrasado — todos os endpoints prontos das Fatias 1-3)
+- **Ligar PDF Vision** (depende ZDR Anthropic — frente externa)
+- **Asaas 3D** (retomar pagamento prod — playbook em `docs/sprints/PAGAMENTO-RETOMAR-AQUI.md`)
+- **Fatia 5** (Família/multi-perfis compartilhados + convites entre Users)
+- Refactor categoria genérica (`docs/decisoes/categoria-pj-nominada-vs-generica.md`)
 
 ### [Próxima sessão] — preencher
 - Data:
