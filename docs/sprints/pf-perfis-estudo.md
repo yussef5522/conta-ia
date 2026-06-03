@@ -830,7 +830,89 @@ Quebra:
 
 ---
 
-## 9. Mapa rápido dos arquivos atuais relevantes (referência futura)
+## 9. Decisão de arquitetura: `SocioPF` × `PersonalProfile` (02/06/2026)
+
+**Pergunta levantada por Yussef ANTES de criar o 1º perfil PF:** já existe
+um `SocioPF "yussef abu zahry musa"` (CPF 600.258.890-60) cadastrado em
+`/pessoas-vinculadas`. Criar um `PersonalProfile "Yussef"` com mesmo CPF
+não vai duplicar / quebrar / criar bagunça?
+
+### Resposta: NÃO. São conceitos diferentes que coexistem legitimamente.
+
+| Aspecto | `SocioPF` (Sprint 5.0.2.h) | `PersonalProfile` (Fatia 1) |
+|---|---|---|
+| Função | "Como a empresa X enxerga essa pessoa" (cartão de visita interno) | "Espaço financeiro da pessoa" (carteira pessoal) |
+| Vínculo | Pertence a UMA empresa (`companyId NOT NULL`) | Independente de empresas |
+| UNIQUE | `(companyId, cpf)` — único POR empresa | NENHUM em `cpf` — só index pra busca |
+| Tem contas/tx/categorias? | ❌ Não — é só nome + CPF + chaves Pix + papel | ✅ Sim — bankAccounts + transactions + categories |
+| Quantos existem por CPF? | N (1 por empresa que a pessoa é sócia/familiar) | 1 (a vida pessoal) |
+| Exemplo Yussef | 3 SocioPF (profit + cacula + itaqui — todos com CPF 600.258.890-60) | 1 PersonalProfile "Yussef" |
+
+### Decisão (opção C — separados, conectam via CPF na Fatia 4)
+
+**Rejeitadas:**
+- ❌ Unificar SocioPF → PersonalProfile (quebra modelo: SocioPF é
+  por-empresa N:1 ↔ PersonalProfile é por-pessoa 1:1; perde semântica de
+  `SocioPF.papel` que só faz sentido relacionado à empresa)
+- ❌ FK direta `SocioPF.personalProfileId` (acoplamento desnecessário;
+  CPF já basta como elo lógico)
+
+**Aprovada (opção C):**
+- ✅ Os dois modelos coexistem sem mudança
+- ✅ Conexão lógica por **CPF** (campo comum em ambos)
+- ✅ Detecção Pix atual (Sprint 5.0.2.h) continua funcionando EXATAMENTE
+  igual — não há mudança em `lib/pix-detection/*`
+- ✅ Quando a Fatia 4 (ponte PJ→PF) chegar, vai ADICIONAR um lookup
+  paralelo: além de `SocioPF.cpf`, também busca `PersonalProfile.cpf`.
+  Se ambos batem → propõe ponte com 1 clique.
+
+### Como a Fatia 4 vai construir a ponte
+
+```
+1. Pix R$ 10k sai da PROFIT pro CPF 600.258.890-60 (entra no OFX)
+2. Sistema (Sprint 5.0.2.h, ATUAL):
+   - Lookup em SocioPF da PROFIT por CPF → acha "Yussef sócio"
+   - Classifica como Distribuição de Lucros no DRE da PROFIT
+3. Fatia 4 vai ADICIONAR:
+   - Lookup em PersonalProfile por CPF → acha "Yussef" (perfil pessoal)
+   - Propõe: "🎯 Criar ponte? Dinheiro vai pro seu perfil 'Yussef'"
+   - User aprova → cria 2 transações pareadas + PJtoPFBridge
+```
+
+### Recomendação adicional pra Fatia 4 (registrar agora)
+
+`PJtoPFBridge` (modelo que vai aparecer na Fatia 4) terá campo opcional
+`socioPFId String?` pra rastreabilidade — "essa ponte foi criada porque
+o sistema reconheceu o sócio X da empresa Y". Não obrigatório (ponte
+pode existir sem SocioPF — ex: user adicionou perfil PF mas não cadastrou
+o SocioPF correspondente; CPF basta), mas útil pra auditoria.
+
+Schema preview (decidido na Fatia 4):
+```prisma
+model PJtoPFBridge {
+  id              String @id @default(cuid())
+  pjTransactionId String @unique     // lado PJ
+  pfTransactionId String @unique     // lado PF
+  kind            String              // PRO_LABORE | DISTRIBUICAO | REEMBOLSO | ...
+  // Rastreabilidade opcional — qual SocioPF disparou a detecção?
+  socioPFId       String?
+  socioPF         SocioPF? @relation(...)
+  createdAt       DateTime @default(now())
+}
+```
+
+### Implicação prática para o Yussef criar perfil agora
+
+- ✅ Cria PersonalProfile "Yussef" com CPF 600.258.890-60 (mesmo do
+  SocioPF — recomendado, facilita ponte automática)
+- ✅ Os 3 SocioPF existentes (profit/cacula/itaqui) ficam INTACTOS
+- ✅ Detecção Pix continua igual
+- ✅ Zero retrabalho — Fatia 4 conecta sem mexer no schema atual
+- ✅ Sem violação de constraint (PersonalProfile.cpf é nullable + sem UNIQUE)
+
+---
+
+## 10. Mapa rápido dos arquivos atuais relevantes (referência futura)
 
 ```
 SCHEMA:
