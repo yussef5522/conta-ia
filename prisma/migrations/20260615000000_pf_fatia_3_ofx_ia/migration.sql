@@ -98,8 +98,10 @@ ALTER TABLE "personal_transactions"
 -- ============================================================
 -- 3. ai_learning_rules — companyId nullable + profileId/personalCategoryId
 -- ============================================================
--- Postgres: derrubar UNIQUE (companyId, tipoMatch, padrao) ANTES de tornar nullable.
+-- Postgres: derrubar UNIQUE (companyId, tipoMatch, padrao) — ambos
+-- constraint e index implícito.
 ALTER TABLE "ai_learning_rules" DROP CONSTRAINT IF EXISTS "ai_learning_rules_companyId_tipoMatch_padrao_key";
+DROP INDEX IF EXISTS "ai_learning_rules_companyId_tipoMatch_padrao_key";
 
 -- Torna companyId nullable
 ALTER TABLE "ai_learning_rules" ALTER COLUMN "companyId" DROP NOT NULL;
