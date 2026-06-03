@@ -2111,6 +2111,112 @@ compra à vista + 1 parcelada (preview) → pagar fatura → estornar.
 Quando aprovar, próximo sprint é **DASHBOARD PF** (Mobills/Organizze-grade)
 ou **Fatia 3 (OFX + IA classificação PF)**. Decisão pendente.
 
+### 03/06/2026 (parte 2) — Sprint PF Fatia 3 (OFX cartão + IA) ✅ deployada
+
+**Contexto:** Yussef aprovou plano + 8 decisões; pediu Fatia 3.5 (PDF
+via Claude Vision) registrada como próximo passo. Fatia 3 inteira
+entregue em 1 sessão.
+
+#### Sprint PF Fatia 3 — OFX import + IA categorização PF ✅ PROD
+**Branch:** `feature/pf-fatia-3-ofx-ia` → main em `8a3513c` (+ fix migration `3355b3e`).
+
+**Schema (1 model + 9 colunas aditivas):**
+- `PersonalOfxImport` (clone OfxImport PJ — histórico + revert)
+- `PersonalTransaction` +6 cols: `ofxImportId`, `isInternational`,
+  `internationalCurrency`, `classifiedByRuleId`, `aiConfidence`, `classifiedBy`
+- `AiLearningRule.companyId` virou nullable + `+profileId` +
+  `+personalCategoryId` (REUSO da tabela PJ — sem duplicar)
+- Migration `20260615000000_pf_fatia_3_ofx_ia` aditiva
+
+**6 helpers puros (funções testáveis):**
+- `parseOFXExtended` (statementType BANK|CREDITCARD + ORG/FID/CCACCTFROM)
+- `detectInstallment` (4 regex Parcela X/Y + clamp num≤total≤99)
+- `detectSpecialTx` (Pagamento|IOF|Multa|Rotativo|Internacional|Juros)
+- `keyword-pf` (~70 marcas BR: iFood/Uber/Netflix/Apple/Airbnb/Posto/Mercado/etc)
+- `detect-recurring` (Jaccard + stdev<15%, ≥3 meses → assinatura)
+- `dedup-against-manual` (fuzzy tokens + ±1d + valor exato)
+- `categorize-pf` orquestrador (RULE → KEYWORD → SPECIAL → NONE/Claude)
+
+**IA PF parametrizada:**
+- `claude-prompt-pf.ts` (SYSTEM_PROMPT específico — sem DRE/regimes/CNAE)
+- `buildUserMessagePf` (categorias por INCOME|EXPENSE)
+- Bloco condicional pra cartão (parcela, IOF, internacional)
+- `apply.ts` PJ ajustado pra `companyId nullable`
+
+**5 endpoints REST:**
+- `POST preview` (multipart ou JSON, max 5MB, 500 tx)
+- `POST confirm` (decisões por linha)
+- `GET historico`
+- `POST reverter`
+- `GET insights/recorrentes`
+
+**4 telas UI (foco no preview EDITÁVEL — diferencial):**
+- `/importar` (upload + pré-fill cartão via `?cartao=`)
+- `/importar/preview/[importId]` ⭐ — pílulas resumo + filtros + bulk +
+  confidence badge colorido + flags 📦💳🌐⚠️ + sticky confirm
+- `/imports` (histórico + revert 1-clique)
+- `/insights` (assinaturas recorrentes + total mensal)
+- Atalho "Importar fatura OFX" no detalhe do cartão
+
+**Pegadinhas resolvidas com fixture Nubank real:**
+- Pagamento recebido (CREDIT) → SKIP + warn
+- Posto → Transporte (KEYWORD 0.85)
+- Claude.Ai → Educação
+- Airbnb Parcela 5/6 → Lazer + isInstallment 5/6
+- Multa fatura atrasada → Cartão de crédito (SPECIAL)
+- IOF internacional → `isInternational=true`
+- Valor pendente mês anterior → CARRYOVER + warn rotativo
+- Reimport → dedupHash existente
+- Dup com manual → fuzzy match jaccard ≥0.3 + ±1d + valor exato
+
+**Multi-tenant:**
+- `checkProfileAccess` em toda rota + validação `INVALID_CARD/CATEGORY`
+- 9 testes isolamento (GET/POST/DELETE userB → A → 404)
+- Cross-perfil same-user (cardId de perfil A2 em import A1) → 400
+
+**98 testes novos (4053 → 4151):**
+- 11 parser-ext (fixture Nubank real)
+- 15 installment
+- 16 special-tx
+- 16 keyword-pf
+- 9 recurring
+- 7 dedup-against-manual
+- 12 categorize-pf
+- 11 integration e2e (preview/confirm/revert com fixture)
+- 9 multi-tenant isolamento
+
+#### Deploy passo-a-passo
+1. Backup `pg_dump -Fc` → 616.431 bytes · 401 itens
+2. **Baseline counts:** users=5, companies=3, transactions=2907,
+   subscriptions=5, personal_profiles=1, personal_transactions=0,
+   credit_cards=1 (Yussef criou Nubank), credit_card_invoices=0,
+   ai_learning_rules=176 (PJ existentes)
+3. git pull main + npm ci + swap + **prisma generate DEPOIS do swap**
+4. `prisma migrate status` → SÓ a do PF Fatia 3 pendente
+5. ⚠️ **1ª tentativa falhou** ("relation ai_learning_rules_companyId_tipoMatch_padrao_key already exists") — Postgres mantém INDEX implícito após DROP CONSTRAINT
+6. **Fix in-flight:** adicionar `DROP INDEX IF EXISTS` antes do CREATE
+   UNIQUE INDEX (commit `3355b3e`). Prisma rollback total da 1ª tentativa
+   garantiu state limpo
+7. `prisma migrate deploy` (2ª tentativa) → SUCCESS
+8. **Counts pós:** todos intactos (5/3/2907/5/1/0/1/0/176) + `personal_ofx_imports`=0
+9. `ai_learning_rules.companyId` agora nullable ✓ +  `profileId`/`personalCategoryId` ✓
+10. Admin GRANTED preservado ✓
+11. npm run build + pm2 reload → PID 525012 online
+
+**Smoke tests:**
+- (a) preview sem auth → 401 ✓
+- (b) GET historico → `{imports:[]}` ✓
+- (c) GET insights → `{recurring:[],monthlyTotal:0}` ✓
+- (d) POST preview com mini-OFX (Netflix) → IA categorizou + statementType=CREDITCARD detectado + `lines:[{description:"Netflix",...}]` ✓
+- Smoke import deletado pós-validação
+
+**Próximo passo:** Yussef testa em prod com seu OFX REAL do Nubank
+(15 tx, 3 parcelas, encargos, pagamento). Quando aprovar:
+- **Fatia 3.5** (PDF via Claude Vision) — doc dedicado existente
+- **Dashboard PF nível Mobills** — sprint atrasado, agora todos os
+  endpoints dashboard-ready estão prontos
+- **Fatia 4** (ponte PJ→PF) — diferencial competitivo final
+
 ### [Próxima sessão] — preencher
 - Data:
 - O que foi feito:
