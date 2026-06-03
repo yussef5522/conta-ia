@@ -10,6 +10,7 @@
 //   5. gatewaySubscriptionId set lazy na 1ª confirmação
 
 import { timingSafeEqual } from 'crypto'
+import { addMonths, addYears } from '@/lib/dates/add-months'
 import type { WebhookRouteAction } from './types'
 
 // ============================================================
@@ -110,21 +111,8 @@ export function calculateNextPeriodEnd(
   return ciclo === 'YEARLY' ? addYears(base, 1) : addMonths(base, 1)
 }
 
-/** Soma N meses preservando UTC. Ajusta pra último dia se mês alvo é menor. */
-function addMonths(d: Date, n: number): Date {
-  const y = d.getUTCFullYear()
-  const m = d.getUTCMonth()
-  const day = d.getUTCDate()
-  // Cria com dia 1 do mês alvo, depois ajusta pro dia desejado (capped)
-  const target = new Date(Date.UTC(y, m + n, 1, d.getUTCHours(), d.getUTCMinutes(), d.getUTCSeconds(), d.getUTCMilliseconds()))
-  const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate()
-  target.setUTCDate(Math.min(day, lastDay))
-  return target
-}
-
-function addYears(d: Date, n: number): Date {
-  return addMonths(d, n * 12)
-}
+// addMonths / addYears foram movidos pra lib/dates/add-months.ts
+// (Sprint PF Fatia 2 — reuso entre webhook e cartão de crédito).
 
 // ============================================================
 // 4. Roteamento evento → ação
