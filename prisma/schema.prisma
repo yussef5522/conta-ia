@@ -36,42 +36,45 @@ model User {
 
   subscription Subscription?
 
-  companies           UserCompany[]
-  categoryHistory     CategoryHistory[]
-  categoryRestoreLogs CategoryRestoreLog[]
-  userCompanyRoles    UserCompanyRole[]
-  auditLogs           AuditLog[]
-  sentInvites         CompanyInvite[]      @relation("InvitedBy")
+  companies                  UserCompany[]
+  categoryHistory            CategoryHistory[]
+  categoryRestoreLogs        CategoryRestoreLog[]
+  userCompanyRoles           UserCompanyRole[]
+  auditLogs                  AuditLog[]
+  sentInvites                CompanyInvite[]           @relation("InvitedBy")
   // Fase 3 Etapa 3 — Camada 3 do pipeline IA Contadora
-  aiUsageLogs         AiUsageLog[]
+  aiUsageLogs                AiUsageLog[]
   // Sprint 5.0.4.0c1 — Insights narrativos Sonnet 4.6
-  aiInsightsLogs      AiInsightsLog[]
+  aiInsightsLogs             AiInsightsLog[]
   // Sprint 1.5 — Esqueci senha (código 6 dígitos via Resend)
-  passwordResetCodes  PasswordResetCode[]
+  passwordResetCodes         PasswordResetCode[]
   // Sprint 1.7 — Cupons aplicados no signup
-  couponRedemptions   CouponRedemption[]
+  couponRedemptions          CouponRedemption[]
   // Onda 2 Sprint 2.3 — quem importou cada OFX
-  ofxImports          OfxImport[]
-  ofxImportsReverted  OfxImport[]          @relation("OfxImportReverter")
+  ofxImports                 OfxImport[]
+  ofxImportsReverted         OfxImport[]               @relation("OfxImportReverter")
   // Sprint PF Fatia 3
   personalOfxImports         PersonalOfxImport[]
-  personalOfxImportsReverted PersonalOfxImport[] @relation("PersonalOfxImportReverter")
+  personalOfxImportsReverted PersonalOfxImport[]       @relation("PersonalOfxImportReverter")
   // Sprint PF Fatia 3.5
   pdfExtractCaches           PersonalPdfExtractCache[] @relation("PdfCacheOwner")
   // Sprint 4.0.1.b — quem criou cada schedule recorrente
-  recurringSchedules  RecurringSchedule[]
+  recurringSchedules         RecurringSchedule[]
   // Sprint 5.0.1 — IA Tributária
-  createdTaxProfiles  CompanyTaxProfile[]  @relation("TaxProfileCreator")
+  createdTaxProfiles         CompanyTaxProfile[]       @relation("TaxProfileCreator")
   // Sprint 5.0.3.0c — Saved views customizadas (CRUD em /contas-a-pagar)
-  savedViews          SavedView[]
+  savedViews                 SavedView[]
 
   // Sprint PF Fatia 1 (02/06/2026) — Perfis pessoa física.
-  personalProfiles    UserPersonalProfile[]
+  personalProfiles UserPersonalProfile[]
 
   // Sprint PF Fatia 1 (02/06/2026) — Onboarding (pergunta PF/PJ).
   // null = users existentes (legacy) — pulam o onboarding.
   // Setado quando user completa o /onboarding.
   onboardingCompletedAt DateTime?
+
+  // Sprint PF Fatia 4 (03/06/2026) — Pontes criadas por este user.
+  pjToPfBridges PJtoPFBridge[]
 
   @@map("users")
 }
@@ -84,21 +87,21 @@ model User {
 // Multi-tenant: usuário só vê SUAS próprias views (não as de outros usuários
 // da mesma empresa).
 model SavedView {
-  id          String   @id @default(cuid())
-  userId      String
-  empresaId   String? // null = view global do usuário (todas empresas)
-  scope       String   @default("payable") // payable | receivable | transactions
-  name        String
-  icon        String? // emoji curto (1-4 chars)
-  filters     String // JSON com filtros aplicados
-  sortBy      String?
-  sortDir     String? // asc | desc
-  columnOrder String   @default("[]") // JSON array
-  columnHidden String  @default("[]") // JSON array
-  density     String   @default("normal") // compact | normal | comfortable
-  pinnedOrder Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String   @id @default(cuid())
+  userId       String
+  empresaId    String? // null = view global do usuário (todas empresas)
+  scope        String   @default("payable") // payable | receivable | transactions
+  name         String
+  icon         String? // emoji curto (1-4 chars)
+  filters      String // JSON com filtros aplicados
+  sortBy       String?
+  sortDir      String? // asc | desc
+  columnOrder  String   @default("[]") // JSON array
+  columnHidden String   @default("[]") // JSON array
+  density      String   @default("normal") // compact | normal | comfortable
+  pinnedOrder  Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -129,38 +132,40 @@ model Company {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users              UserCompany[]
-  bankAccounts       BankAccount[]
-  categories         Category[]
-  suppliers          Supplier[]
-  customers          Customer[]
-  recurringSchedules RecurringSchedule[]
-  rules              AiLearningRule[]
-  costCenters        CostCenter[]
-  categoryHistory    CategoryHistory[]
-  restoreLogs        CategoryRestoreLog[]
-  roles              Role[]
-  userCompanyRoles   UserCompanyRole[]
-  auditLogs          AuditLog[]
-  invites            CompanyInvite[]
+  users                UserCompany[]
+  bankAccounts         BankAccount[]
+  categories           Category[]
+  suppliers            Supplier[]
+  customers            Customer[]
+  recurringSchedules   RecurringSchedule[]
+  rules                AiLearningRule[]
+  costCenters          CostCenter[]
+  categoryHistory      CategoryHistory[]
+  restoreLogs          CategoryRestoreLog[]
+  roles                Role[]
+  userCompanyRoles     UserCompanyRole[]
+  auditLogs            AuditLog[]
+  invites              CompanyInvite[]
   // Fase 3 Etapa 3 — Camada 3 do pipeline IA Contadora
-  aiClaudeCache      AiClaudeCache[]
-  aiUsageLogs        AiUsageLog[]
+  aiClaudeCache        AiClaudeCache[]
+  aiUsageLogs          AiUsageLog[]
   // Sprint 5.0.4.0c1 — Insights narrativos Sonnet 4.6
-  aiInsightsLogs     AiInsightsLog[]
+  aiInsightsLogs       AiInsightsLog[]
   // Sprint 5.0.1 — IA Tributária
-  taxProfile         CompanyTaxProfile?
-  taxCalculations    TaxCalculation[]
+  taxProfile           CompanyTaxProfile?
+  taxCalculations      TaxCalculation[]
   // Sprint 5.0.2.d — Claude analyzing real
-  aiAnalysisCache    AiAnalysisCache[]
+  aiAnalysisCache      AiAnalysisCache[]
   // Sprint 5.0.2.h — Detecção Pix PJ↔PF/PJ
-  sociosPF           SocioPF[]
+  sociosPF             SocioPF[]
   empresasRelacionadas EmpresaRelacionada[]
   // Sprint 5.0.2.u — Multi-statement staging (Xero/QuickBooks pattern)
-  importStagings     ImportStaging[]
+  importStagings       ImportStaging[]
   // Sprint 5.0.2.0 — Importador Excel Contas a Pagar
-  employees          Employee[]
-  excelImportBatches ExcelImportBatch[]
+  employees            Employee[]
+  excelImportBatches   ExcelImportBatch[]
+  // Sprint PF Fatia 4 (03/06/2026) — Pontes desta empresa
+  pjToPfBridges        PJtoPFBridge[]
 
   @@map("companies")
 }
@@ -208,10 +213,10 @@ model BankAccount {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  transactions Transaction[]
+  company        Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  transactions   Transaction[]
   // Onda 2 Sprint 2.3 — histórico de imports OFX
-  ofxImports   OfxImport[]
+  ofxImports     OfxImport[]
   // Sprint 5.0.2.u — multi-statement staging
   importStagings ImportStaging[]
 
@@ -330,6 +335,9 @@ model Transaction {
   costCenter       CostCenter?     @relation(fields: [costCenterId], references: [id])
   // Onda 2 Sprint 2.3 — vínculo com OfxImport (SetNull se import for deletado)
   ofxImport        OfxImport?      @relation(fields: [importId], references: [id], onDelete: SetNull)
+  // Sprint PF Fatia 4 (03/06/2026) — Ponte PJ→PF (1:0..1).
+  // Restrict no delete: pra deletar essa tx PJ, remover a ponte antes.
+  bridge           PJtoPFBridge?   @relation("PjBridge")
 
   @@unique([bankAccountId, dedupHash])
   // Sprint 4.0.1.b — anti-dup: schedule X só gera 1 tx por dueDate
@@ -397,7 +405,7 @@ model Category {
   // (insumo, embalagem, energia, gás, transporte de mercadoria).
   // Para Simples/Lucro Presumido fica ignorado.
   // Default false: regra contábil exige declaração explícita.
-  isCreditavel     Boolean @default(false)
+  isCreditavel Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -612,38 +620,38 @@ model RecurringSchedule {
 }
 
 model AiLearningRule {
-  id            String  @id @default(cuid())
+  id                 String  @id @default(cuid())
   // Sprint PF Fatia 3 — companyId virou nullable.
   // Quando regra é PJ → companyId preenchido, profileId null.
   // Quando regra é PF → profileId preenchido, companyId null.
   // Mutuamente exclusivo (validado em app-layer).
-  companyId     String?
-  profileId     String?
+  companyId          String?
+  profileId          String?
   // EXACT = description igual a `padrao`
   // CONTAINS = description contém `padrao` (case-insensitive)
   // CNPJ = description contém o CNPJ em `padrao`
-  tipoMatch     String
-  padrao        String
-  categoryId    String?
+  tipoMatch          String
+  padrao             String
+  categoryId         String?
   personalCategoryId String?
-  supplierId    String?
+  supplierId         String?
   // Intrínseca da regra: 1.0 = manual; <1 = sugerida por Claude
-  confianca     Float   @default(1.0)
+  confianca          Float   @default(1.0)
   // Telemetria pra ranking / faxina futura
-  vezesAplicada Int     @default(0)
-  isActive      Boolean @default(true)
+  vezesAplicada      Int     @default(0)
+  isActive           Boolean @default(true)
   // MANUAL = Yussef criou; CLAUDE = sugerida automaticamente
-  fonte         String  @default("MANUAL")
+  fonte              String  @default("MANUAL")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  company      Company?       @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  profile      PersonalProfile? @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  category     Category?     @relation(fields: [categoryId], references: [id])
-  personalCategory PersonalCategory? @relation(fields: [personalCategoryId], references: [id])
-  supplier     Supplier?     @relation(fields: [supplierId], references: [id])
-  transactions Transaction[]
+  company              Company?              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  profile              PersonalProfile?      @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  category             Category?             @relation(fields: [categoryId], references: [id])
+  personalCategory     PersonalCategory?     @relation(fields: [personalCategoryId], references: [id])
+  supplier             Supplier?             @relation(fields: [supplierId], references: [id])
+  transactions         Transaction[]
   personalTransactions PersonalTransaction[] @relation("PfClassifiedByRule")
 
   // Não pode haver duas regras com mesmo padrão e tipo na mesma empresa
@@ -897,13 +905,13 @@ model AiUsageLog {
 // - Feature diferente (insights vs classify) → métricas separadas
 // - Precisa cachear o responseJson (1h TTL — feature "Gerar novamente")
 model AiInsightsLog {
-  id            String   @id @default(cuid())
-  companyId     String
-  userId        String?
+  id               String   @id @default(cuid())
+  companyId        String
+  userId           String?
   // Feature que gerou a chamada (ex: 'monthly-insights')
-  feature       String
+  feature          String
   // Modelo usado (ex: 'claude-sonnet-4-6')
-  model         String
+  model            String
   // Períodos analisados — pra cache lookup.
   // Hotfix 5.0.4.0c1-fix: campos agora aceitam YYYY-MM-DD (ISO start date).
   // Compat com YYYY-MM antigo (parser aceita os 2 formatos).
@@ -913,16 +921,16 @@ model AiInsightsLog {
   baseEndPeriod    String? // ISO YYYY-MM-DD (end do período de comparação)
   // 'comparative' | 'evolution' | 'single' — modo inferido automaticamente
   mode             String?
-  inputTokens   Int      @default(0)
-  outputTokens  Int      @default(0)
+  inputTokens      Int      @default(0)
+  outputTokens     Int      @default(0)
   // Custo em centavos USD × 100 (mesma convenção do AiUsageLog)
-  costCents     Int      @default(0)
-  elapsedMs     Int      @default(0)
+  costCents        Int      @default(0)
+  elapsedMs        Int      @default(0)
   // JSON com a análise gerada (cache + auditoria histórica)
-  responseJson  String?
+  responseJson     String?
   // Se falhou, mensagem do erro
-  errorMessage  String?
-  createdAt     DateTime @default(now())
+  errorMessage     String?
+  createdAt        DateTime @default(now())
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
   user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
@@ -1218,8 +1226,8 @@ model CompanyTaxProfile {
 model CNAEActivity {
   id           String  @id @default(cuid())
   code         String  @unique // "5611-2/01"
-  name         String  // "Restaurantes e similares"
-  ramo         String  // RESTAURANTE | ACADEMIA | COMERCIO_ROUPA
+  name         String // "Restaurantes e similares"
+  ramo         String // RESTAURANTE | ACADEMIA | COMERCIO_ROUPA
   anexoSimples String? // ANEXO_I | ANEXO_III | etc
 
   // Snapshots em JSON (versionados pelo campo `versao`). String pra compat
@@ -1340,7 +1348,7 @@ model AiAnalysisCache {
 // ============================================================
 
 model SocioPF {
-  id        String  @id @default(cuid())
+  id        String @id @default(cuid())
   companyId String
 
   nome    String
@@ -1353,7 +1361,9 @@ model SocioPF {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  // Sprint PF Fatia 4 (03/06/2026) — Pontes que rastrearam este sócio (opcional)
+  bridges PJtoPFBridge[]
 
   @@unique([companyId, cpf])
   @@index([companyId])
@@ -1381,7 +1391,6 @@ model EmpresaRelacionada {
   @@map("empresas_relacionadas")
 }
 
-
 // Sprint 5.0.2.l — Knowledge Base setorial de padrões de categorização BR.
 //
 // Estrutura: padrões CURATED por setor (UNIVERSAL + RESTAURANTE + ACADEMIA + ...).
@@ -1397,28 +1406,28 @@ model EmpresaRelacionada {
 // só lê padrões UNIVERSAL + os do seu próprio setor. Crowd-sourcing futuro
 // (CROWDSOURCED_FUTURE em origem) entra aqui.
 model SetorPattern {
-  id              String   @id @default(cuid())
+  id String @id @default(cuid())
 
   // RESTAURANTE | ACADEMIA | COMERCIO_ROUPA | VAREJO_GERAL | UNIVERSAL
-  setor           String
+  setor String
 
-  matchType       String   // STARTS_WITH | CONTAINS | EQUALS
-  pattern         String
+  matchType String // STARTS_WITH | CONTAINS | EQUALS
+  pattern   String
 
   // Nome canônico da categoria (resolvido contra plano de contas via
   // ensureAllSystemCategories ou resolveUniversalCategoryId).
-  categoryName    String
+  categoryName String
   // INCOME | EXPENSE | ANY
-  type            String
-  confidence      Float    @default(0.9)
+  type         String
+  confidence   Float  @default(0.9)
 
-  description     String?
+  description String?
   // CURATED | CROWDSOURCED_FUTURE (next sprints)
-  origem          String   @default("CURATED")
+  origem      String  @default("CURATED")
 
-  active          Boolean  @default(true)
+  active Boolean @default(true)
 
-  createdAt       DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@index([setor, active])
   @@index([pattern])
@@ -1523,29 +1532,29 @@ model VendorDiscoveryLog {
 //
 // Idempotência: fileHash unique por empresa pra detectar reuploads.
 model ImportStaging {
-  id                String   @id @default(cuid())
-  companyId         String
+  id        String @id @default(cuid())
+  companyId String
 
   // Batch — múltiplos OFX sob mesmo batchId quando enviados juntos
-  batchId           String
+  batchId String
 
   // Origem
-  bankAccountId     String
-  fileName          String
-  fileHash          String // sha256 do conteúdo OFX
+  bankAccountId String
+  fileName      String
+  fileHash      String // sha256 do conteúdo OFX
 
   // Snapshot estatístico
   totalTransactions Int
-  totalCreditsCents Int  @default(0) // armazena em centavos pra evitar Decimal precision
-  totalDebitsCents  Int  @default(0)
+  totalCreditsCents Int       @default(0) // armazena em centavos pra evitar Decimal precision
+  totalDebitsCents  Int       @default(0)
   periodStart       DateTime?
   periodEnd         DateTime?
 
   // PENDING_REVIEW | TRANSFER_DETECTED | CONFIRMED | CANCELLED
-  status            String   @default("PENDING_REVIEW")
-  importedAt        DateTime?
+  status     String    @default("PENDING_REVIEW")
+  importedAt DateTime?
 
-  createdAt         DateTime @default(now())
+  createdAt DateTime @default(now())
 
   // Relations
   company            Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -1559,26 +1568,26 @@ model ImportStaging {
 }
 
 model StagedTransaction {
-  id                  String   @id @default(cuid())
-  stagingId           String
+  id        String @id @default(cuid())
+  stagingId String
 
   // Dados originais OFX
-  fitId               String?
-  effectedDate        DateTime
-  amount              Float
+  fitId        String?
+  effectedDate DateTime
+  amount       Float
   // CREDIT | DEBIT
-  type                String
-  description         String
+  type         String
+  description  String
 
   // Detecção de transferência cross-account (Sprint u)
-  isInternalTransfer  Boolean  @default(false)
-  matchedStagedId     String?
-  transferConfidence  Float?
-  transferReason      String?
+  isInternalTransfer Boolean @default(false)
+  matchedStagedId    String?
+  transferConfidence Float?
+  transferReason     String?
 
-  createdAt           DateTime @default(now())
+  createdAt DateTime @default(now())
 
-  staging             ImportStaging @relation(fields: [stagingId], references: [id], onDelete: Cascade)
+  staging ImportStaging @relation(fields: [stagingId], references: [id], onDelete: Cascade)
 
   @@index([stagingId])
   @@index([matchedStagedId])
@@ -1622,16 +1631,16 @@ model ExcelImportBatch {
   companyId String
 
   // Origem
-  fileName String
-  fileHash String // sha256 do conteúdo completo (idempotência)
+  fileName   String
+  fileHash   String // sha256 do conteúdo completo (idempotência)
   // sha256 SÓ dos headers (linha 1) — usado pra cache cross-import
   // ("aprendizado": próxima planilha com mesmo header reusa column mapping)
   headerHash String
 
   // Snapshot stats
   totalRows         Int
-  totalCreditsCents Int @default(0)
-  totalDebitsCents  Int @default(0)
+  totalCreditsCents Int       @default(0)
+  totalDebitsCents  Int       @default(0)
   periodStart       DateTime?
   periodEnd         DateTime?
 
@@ -1641,16 +1650,16 @@ model ExcelImportBatch {
 
   // Snapshot do mapeamento de colunas decidido pela IA (JSON)
   // ex: {"favorecido":"Favorecido","valor":"Valor","vencimento":"Vencimento",...}
-  columnMapping String?
+  columnMapping    String?
   // Confidence agregada da detecção (0-1)
   detectConfidence Float?
   // Custo Claude API em USD pra essa detecção
-  detectCostUsd Float? @default(0)
+  detectCostUsd    Float?  @default(0)
 
   createdAt DateTime @default(now())
 
-  company         Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  stagedRows      StagedPayableRow[]
+  company    Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  stagedRows StagedPayableRow[]
 
   @@unique([companyId, fileHash])
   @@index([companyId, status])
@@ -1681,10 +1690,10 @@ model StagedPayableRow {
   rawStatus       String?
 
   // ──── Dados normalizados pelo parser ────
-  valor      Float
-  vencimento DateTime?
-  pagamento  DateTime?
-  competencia DateTime?
+  valor         Float
+  vencimento    DateTime?
+  pagamento     DateTime?
+  competencia   DateTime?
   // PAID se pagamento preenchido; PENDING se vazio
   paymentStatus String // "PAID" | "PENDING"
 
@@ -1697,25 +1706,25 @@ model StagedPayableRow {
 
   // ──── Match decidido pela IA (sugestão pra user revisar) ────
   // Tipo de favorecido: SUPPLIER | EMPLOYEE | ORGAO_PUBLICO
-  favorecidoType String?
+  favorecidoType       String?
   // Match com Supplier/Employee existente (null = novo)
-  matchedSupplierId String?
-  matchedEmployeeId String?
+  matchedSupplierId    String?
+  matchedEmployeeId    String?
   // Confidence do match favorecido (0-1)
   favorecidoConfidence Float?
 
   // Match com Category do plano de contas (Sprint s)
-  matchedCategoryId  String?
+  matchedCategoryId    String?
   // Nome novo proposto se não houve match (será criado no confirm)
   proposedCategoryName String?
   // Confidence do match categoria (0-1)
-  categoryConfidence Float?
+  categoryConfidence   Float?
 
   // ──── Anti-dup ────
   // sha256(favorecido + descricao + vencimento + valor) — bate contra
   // Transaction.dedupHash dos últimos 90 dias da empresa
-  dedupHash         String?
-  duplicateOf       String? // Transaction.id caso bata
+  dedupHash   String?
+  duplicateOf String? // Transaction.id caso bata
 
   // ──── Decisão do user no staging ────
   // INCLUDE (default) | EXCLUDE (user marcou) | NEEDS_REVIEW (low confidence)
@@ -1794,18 +1803,18 @@ model Subscription {
 // não é processado 2x (Asaas envia at-least-once).
 // Auditoria: payload completo guardado pra debug + além dos 14d Asaas.
 model WebhookEvent {
-  id           String   @id @default(cuid())
+  id String @id @default(cuid())
 
   // body.id do payload Asaas — chave de idempotência.
   // Formato: "evt_<hash>&<numero>"
-  asaasEventId String   @unique
+  asaasEventId String @unique
 
   // body.event — tipo do evento (PAYMENT_CONFIRMED, PAYMENT_RECEIVED, ...).
-  eventType    String
+  eventType String
 
   // body.payment.id — id da cobrança no Asaas. NULL em eventos
   // que não envolvem payment (raros, ex: ACCOUNT_STATUS_UPDATED).
-  paymentId    String?
+  paymentId String?
 
   // FK pra Subscription quando conseguimos identificar (via
   // externalReference, gatewaySubscriptionId ou gatewayCustomerId).
@@ -1815,20 +1824,20 @@ model WebhookEvent {
   // body completo do evento (JSON stringificado) — auditoria + debug.
   // 4-8KB típico (cobrança Asaas tem ~30 campos).
   // String (não Json) pra portabilidade dual SQLite-dev / Postgres-prod.
-  payload      String
+  payload String
 
   // Estado do processamento:
   //   RECEIVED  — gravado mas ainda não roteado (transiente)
   //   PROCESSED — efeito aplicado na Subscription
   //   IGNORED   — evento não-relevante pra nós (gravado pra auditoria)
   //   ERROR     — Subscription não localizada / erro durante processamento
-  status       String
+  status String
 
   // Mensagem técnica quando status=ERROR (debug).
   errorMessage String?
 
-  processedAt  DateTime?
-  createdAt    DateTime @default(now())
+  processedAt DateTime?
+  createdAt   DateTime  @default(now())
 
   subscription Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
 
@@ -1847,31 +1856,33 @@ model WebhookEvent {
 // Migration 100% ADITIVA: zero ALTER em tabelas PJ existentes.
 
 model PersonalProfile {
-  id        String  @id @default(cuid())
+  id String @id @default(cuid())
 
   // CPF opcional (multiplos perfis por CPF possíveis em casos legítimos —
   // ex: conta conjugal). Index pra busca, sem UNIQUE.
-  cpf       String?
-  name      String  // "Yussef", "Filho Pedro", "Filha Ana"
+  cpf  String?
+  name String // "Yussef", "Filho Pedro", "Filha Ana"
 
   // OWN       — perfil do titular adulto (gerencia o próprio)
   // DEPENDENT — perfil menor de idade gerenciado pelo OWN (filho/filha)
-  type      String  @default("OWN")
+  type String @default("OWN")
 
   birthDate DateTime?
-  isActive  Boolean @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
-  users        UserPersonalProfile[]
-  bankAccounts PersonalBankAccount[]
-  transactions PersonalTransaction[]
-  categories   PersonalCategory[]
+  users           UserPersonalProfile[]
+  bankAccounts    PersonalBankAccount[]
+  transactions    PersonalTransaction[]
+  categories      PersonalCategory[]
   // Sprint PF Fatia 2
-  creditCards  CreditCard[]
+  creditCards     CreditCard[]
   // Sprint PF Fatia 3
   aiLearningRules AiLearningRule[]
   ofxImports      PersonalOfxImport[]
+  // Sprint PF Fatia 4 (03/06/2026) — Pontes deste perfil
+  bridges         PJtoPFBridge[]
 
   @@index([cpf])
   @@map("personal_profiles")
@@ -1886,7 +1897,7 @@ model UserPersonalProfile {
 
   // OWNER — pode editar tudo (default ao criar perfil)
   // VIEWER — só lê (Fatia 5 vai introduzir via convites entre users)
-  role   String  @default("OWNER")
+  role String @default("OWNER")
 
   // true: o perfil é DO PRÓPRIO usuário (não dependente).
   // Útil pra "saudar pelo nome" e marcar self-profile pra ponte PJ→PF (Fatia 4).
@@ -1905,8 +1916,8 @@ model UserPersonalProfile {
 }
 
 model PersonalBankAccount {
-  id            String @id @default(cuid())
-  profileId     String
+  id        String @id @default(cuid())
+  profileId String
 
   name          String
   bankName      String?
@@ -1914,8 +1925,8 @@ model PersonalBankAccount {
   agency        String?
   accountNumber String?
   // CHECKING | SAVINGS | DIGITAL_WALLET
-  accountType   String @default("CHECKING")
-  balance       Float  @default(0)
+  accountType   String  @default("CHECKING")
+  balance       Float   @default(0)
 
   // Reuso do conceito Sprint 0.5 (cheque especial PJ).
   allowNegativeBalance Boolean @default(true)
@@ -1926,10 +1937,10 @@ model PersonalBankAccount {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  profile      PersonalProfile       @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  transactions PersonalTransaction[]
+  profile             PersonalProfile       @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  transactions        PersonalTransaction[]
   // Sprint PF Fatia 2 — cartões que usam essa conta como pagamento default
-  cardDefaultPayments CreditCard[]   @relation("CardDefaultPayment")
+  cardDefaultPayments CreditCard[]          @relation("CardDefaultPayment")
   // Sprint PF Fatia 3
   ofxImports          PersonalOfxImport[]
 
@@ -1939,20 +1950,20 @@ model PersonalBankAccount {
 
 model PersonalTransaction {
   id            String  @id @default(cuid())
-  profileId     String  // redundante via bankAccount, mas necessário pra queries diretas
+  profileId     String // redundante via bankAccount, mas necessário pra queries diretas
   bankAccountId String?
   categoryId    String?
 
   date        DateTime
   description String
-  amount      Float    // sempre positivo; sinal vem de `type`
+  amount      Float // sempre positivo; sinal vem de `type`
   // CREDIT (entrada) | DEBIT (saída)
   // TRANSFER (entre contas do mesmo perfil) fica pra fatia futura.
-  type   String
+  type        String
   // PENDING | RECONCILED | IGNORED
-  status String @default("RECONCILED")
+  status      String   @default("RECONCILED")
   // MANUAL (Fatia 1) | OFX | AI (Fatia 3)
-  origin String @default("MANUAL")
+  origin      String   @default("MANUAL")
 
   externalId String?
   dedupHash  String?
@@ -1976,31 +1987,34 @@ model PersonalTransaction {
 
   // === Sprint PF Fatia 3 (03/06/2026) — Import OFX + IA categorização PF ===
   // FK pra PersonalOfxImport quando tx veio de OFX/PDF.
-  ofxImportId String?
+  ofxImportId           String?
   // Compra internacional detectada (regex "internacional" no memo).
   isInternational       Boolean @default(false)
   internationalCurrency String?
   // Qual AiLearningRule classificou (NULL = manual ou IA Claude direta).
-  classifiedByRuleId String?
+  classifiedByRuleId    String?
   // Confidence da categorização IA (0-1; NULL pra MANUAL).
-  aiConfidence Float?
+  aiConfidence          Float?
   // RULE | KEYWORD | CLAUDE | MANUAL — origem da categoria
-  classifiedBy String?
+  classifiedBy          String?
 
-  // === Sprint PF Fatia 4 (futuro) — Ponte PJ→PF ===
-  // bridgeId String?  — adicionado na Fatia 4
+  // === Sprint PF Fatia 4 (03/06/2026) — Ponte PJ→PF ===
+  // Decisão: lookup via UNIQUE em PJtoPFBridge.pfTransactionId (sem ADD COLUMN aqui).
+  // Relação inverse abaixo.
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  profile           PersonalProfile     @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  profile           PersonalProfile      @relation(fields: [profileId], references: [id], onDelete: Cascade)
   bankAccount       PersonalBankAccount? @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
-  category          PersonalCategory?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  creditCard        CreditCard?         @relation(fields: [creditCardId], references: [id], onDelete: SetNull)
-  creditCardInvoice CreditCardInvoice?  @relation(fields: [creditCardInvoiceId], references: [id], onDelete: SetNull)
+  category          PersonalCategory?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  creditCard        CreditCard?          @relation(fields: [creditCardId], references: [id], onDelete: SetNull)
+  creditCardInvoice CreditCardInvoice?   @relation(fields: [creditCardInvoiceId], references: [id], onDelete: SetNull)
   // Sprint PF Fatia 3
-  ofxImport         PersonalOfxImport?  @relation(fields: [ofxImportId], references: [id], onDelete: SetNull)
-  classifiedByRule  AiLearningRule?     @relation("PfClassifiedByRule", fields: [classifiedByRuleId], references: [id], onDelete: SetNull)
+  ofxImport         PersonalOfxImport?   @relation(fields: [ofxImportId], references: [id], onDelete: SetNull)
+  classifiedByRule  AiLearningRule?      @relation("PfClassifiedByRule", fields: [classifiedByRuleId], references: [id], onDelete: SetNull)
+  // Sprint PF Fatia 4 — ponte (1:0..1). Restrict no delete.
+  bridge            PJtoPFBridge?        @relation("PfBridge")
 
   @@index([profileId, date])
   @@index([bankAccountId])
@@ -2014,7 +2028,7 @@ model PersonalTransaction {
 
 model PersonalCategory {
   id        String  @id @default(cuid())
-  profileId String?  // NULL = template default (não vinculado a perfil)
+  profileId String? // NULL = template default (não vinculado a perfil)
 
   name String
   // INCOME (receita) | EXPENSE (despesa)
@@ -2033,8 +2047,8 @@ model PersonalCategory {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  profile      PersonalProfile?      @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  transactions PersonalTransaction[]
+  profile         PersonalProfile?      @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  transactions    PersonalTransaction[]
   // Sprint PF Fatia 3
   aiLearningRules AiLearningRule[]
 
@@ -2053,17 +2067,17 @@ model PersonalCategory {
 
 model CreditCard {
   id        String @id @default(cuid())
-  profileId String  // Fatia 2 só PF. PJ futuro se necessário.
+  profileId String // Fatia 2 só PF. PJ futuro se necessário.
 
-  name        String  // "Nubank Roxinho", "Itaú Personnalité"
-  bankName    String?
-  lastDigits  String? // últimos 4 (auditoria; NUNCA o número completo)
+  name       String // "Nubank Roxinho", "Itaú Personnalité"
+  bankName   String?
+  lastDigits String? // últimos 4 (auditoria; NUNCA o número completo)
   // VISA | MASTERCARD | ELO | AMEX | HIPERCARD (opcional)
-  brand       String?
+  brand      String?
 
-  creditLimit Float   // limite total
-  closingDay  Int     // 1-31
-  dueDay      Int     // 1-31
+  creditLimit Float // limite total
+  closingDay  Int // 1-31
+  dueDay      Int // 1-31
 
   // ATUAL  — compra NO dia do fechamento entra na fatura que fecha hoje (default Nubank/Itaú)
   // PROXIMA — entra na próxima fatura (alguns bancos invertem)
@@ -2077,8 +2091,8 @@ model CreditCard {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  profile               PersonalProfile      @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  defaultPaymentAccount PersonalBankAccount? @relation("CardDefaultPayment", fields: [defaultPaymentAccountId], references: [id], onDelete: SetNull)
+  profile               PersonalProfile       @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  defaultPaymentAccount PersonalBankAccount?  @relation("CardDefaultPayment", fields: [defaultPaymentAccountId], references: [id], onDelete: SetNull)
   invoices              CreditCardInvoice[]
   transactions          PersonalTransaction[]
   // Sprint PF Fatia 3
@@ -2133,55 +2147,55 @@ model CreditCardInvoice {
 // Histórico/auditoria de imports OFX em perfis PF. Paralelo ao
 // OfxImport PJ (Sprint 2.4). Permite revert + audit + métricas.
 model PersonalOfxImport {
-  id                String   @id @default(cuid())
-  profileId         String
+  id            String  @id @default(cuid())
+  profileId     String
   // Cartão escolhido pra import (Fatia 3 — só cartão).
-  creditCardId      String?
+  creditCardId  String?
   // bankAccountId reservado pra Fatia 3B (OFX de conta PF).
-  bankAccountId     String?
-  userId            String
+  bankAccountId String?
+  userId        String
 
   // PROCESSING | SUCCESS | FAILED | REVERTED
-  status            String   @default("PROCESSING")
-  fileName          String
-  fileSize          Int      @default(0)
+  status        String @default("PROCESSING")
+  fileName      String
+  fileSize      Int    @default(0)
   // BANK | CREDITCARD (detectado do parser estendido)
-  statementType     String
+  statementType String
 
   // Métricas pós-confirm
-  totalTransactions       Int @default(0)
-  newTransactions         Int @default(0)
-  duplicates              Int @default(0)
-  autoClassified          Int @default(0)
-  invoicePaymentsSkipped  Int @default(0)
-  parcelasDetected        Int @default(0)
+  totalTransactions      Int @default(0)
+  newTransactions        Int @default(0)
+  duplicates             Int @default(0)
+  autoClassified         Int @default(0)
+  invoicePaymentsSkipped Int @default(0)
+  parcelasDetected       Int @default(0)
 
-  periodStart       DateTime?
-  periodEnd         DateTime?
+  periodStart DateTime?
+  periodEnd   DateTime?
 
   // Metadados do cartão detectado (auditoria)
-  detectedOrg       String?    // "NU PAGAMENTOS S.A."
-  detectedFid       String?    // "260"
-  detectedAcctId    String?    // ACCTID do OFX
+  detectedOrg    String? // "NU PAGAMENTOS S.A."
+  detectedFid    String? // "260"
+  detectedAcctId String? // ACCTID do OFX
 
   // === Sprint PF Fatia 3.5 (03/06/2026) — PDF via Claude Vision ===
   // OFX (default) | PDF (Fatia 3.5)
-  sourceType            String   @default("OFX")
+  sourceType           String  @default("OFX")
   // 0-1 — confidence global da extração (só preenchido pra PDF)
-  extractionConfidence  Float?
+  extractionConfidence Float?
   // SHA256 do PDF (pra ligar ao cache PersonalPdfExtractCache)
-  pdfSha256             String?
+  pdfSha256            String?
   // DIGITAL | SCANNED_HIGH | SCANNED_LOW | MOBILE_PHOTO (só PDF)
-  pdfScanQuality        String?
+  pdfScanQuality       String?
 
-  ipAddress         String?
-  userAgent         String?
-  errorMessage      String?
-  revertedAt        DateTime?
-  revertedById      String?
+  ipAddress    String?
+  userAgent    String?
+  errorMessage String?
+  revertedAt   DateTime?
+  revertedById String?
 
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   profile      PersonalProfile       @relation(fields: [profileId], references: [id], onDelete: Cascade)
   creditCard   CreditCard?           @relation(fields: [creditCardId], references: [id], onDelete: SetNull)
@@ -2231,4 +2245,79 @@ model PersonalPdfExtractCache {
   @@index([expiresAt])
   @@index([ownerUserId])
   @@map("personal_pdf_extract_cache")
+}
+
+// ============================================================
+// Sprint PF Fatia 4 — Ponte PJ→PF (03/06/2026)
+// ============================================================
+// Conecta uma transação PJ de saída (DEBIT em transactions) com uma
+// transação PF de entrada (CREDIT em personal_transactions). Preserva
+// o Princípio da Entidade: cada lado fica na sua tabela; PJtoPFBridge
+// só liga + classifica + rastreia.
+//
+// PRIVACIDADE MULTI-SÓCIO (decisões A-E no docs/sprints/pf-fatia-4-ponte.md §0.b):
+// - Listagens filtram por profileId IN owned_by_user.
+// - GET detalhe é 404 pra quem não é dono nem criador.
+// - Sugestões filtram por userId (find-candidate-profile).
+// - Badge anônimo na tx PJ pra terceiros.
+//
+// Migration é PURAMENTE ADITIVA: apenas CREATE TABLE pj_to_pf_bridges.
+// Zero ALTER em transactions (PJ, 2907 linhas reais) e zero ALTER em
+// personal_transactions (vazia mas mesma regra). Lookup "essa tx tem
+// bridge?" via UNIQUE em pjTransactionId/pfTransactionId.
+
+model PJtoPFBridge {
+  id String @id @default(cuid())
+
+  // === LADO PJ (empresa) ===
+  // Sempre type=DEBIT (saída) na tx PJ. UNIQUE: cada tx PJ participa de no
+  // máximo UMA ponte.
+  pjTransactionId String @unique
+  // Redundante mas necessário pra queries multi-tenant rápidas.
+  companyId       String
+
+  // === LADO PF (perfil pessoal) ===
+  // Sempre type=CREDIT (entrada) na PersonalTransaction. UNIQUE.
+  pfTransactionId String @unique
+  // Redundante por simetria. Permite filtro "todas pontes do perfil X".
+  profileId       String
+
+  // === CLASSIFICAÇÃO ===
+  // PRO_LABORE | DISTRIBUICAO | REEMBOLSO | ADIANTAMENTO | RETIRADA_SOCIOS
+  kind String
+
+  // Valor + data redundantes (= tx PJ / PF). Facilita relatório "pontes do mês".
+  amount Float
+  date   DateTime
+
+  // === RASTREABILIDADE OPCIONAL ===
+  // Quando ponte foi criada via detecção Pix PJ→CPF (5.0.2.h), aponta
+  // pro SocioPF que disparou. NULL quando criação manual.
+  socioPFId String?
+
+  // === AUDITORIA ===
+  createdById String
+  // CREATED_FROM_DETECTION | CREATED_MANUAL
+  createdVia  String @default("CREATED_MANUAL")
+
+  notes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // === RELATIONS ===
+  // Restrict nas 2 tx → bloqueia delete direto da tx; força user deletar
+  // a ponte primeiro (UX explica em 409 HAS_ACTIVE_BRIDGE).
+  pjTransaction Transaction         @relation("PjBridge", fields: [pjTransactionId], references: [id], onDelete: Restrict)
+  pfTransaction PersonalTransaction @relation("PfBridge", fields: [pfTransactionId], references: [id], onDelete: Restrict)
+  company       Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  profile       PersonalProfile     @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  socioPF       SocioPF?            @relation(fields: [socioPFId], references: [id], onDelete: SetNull)
+  createdBy     User                @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([companyId, date])
+  @@index([profileId, date])
+  @@index([socioPFId])
+  @@index([createdById])
+  @@map("pj_to_pf_bridges")
 }
