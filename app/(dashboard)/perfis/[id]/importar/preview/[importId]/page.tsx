@@ -4,7 +4,7 @@
 'use client'
 
 import { use, useEffect, useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
   ArrowLeft,
@@ -51,6 +51,14 @@ interface PreviewResponse {
   importId: string
   statementType: string
   org?: string
+  // Sprint Fatia 3.5 — só PDF preenche
+  scanQuality?: string
+  detectedBank?: string | null
+  declaredTotal?: number | null
+  extractedSum?: number | null
+  confidence?: number
+  detectedCardLast4?: string | null
+  warnings?: string[]
   totalLines: number
   toImport: number
   parcelasDetected: number
@@ -85,6 +93,8 @@ export default function PreviewImportPage({
 }) {
   const { id, importId } = use(params)
   const router = useRouter()
+  const search = useSearchParams()
+  const isPdf = search.get('source') === 'pdf'
   const [data, setData] = useState<PreviewResponse | null>(null)
   const [categories, setCategories] = useState<CategoryMini[]>([])
   const [loading, setLoading] = useState(true)
@@ -94,6 +104,35 @@ export default function PreviewImportPage({
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
+    if (isPdf) {
+      // PDF: carrega do sessionStorage SEM re-chamar Vision
+      const cached = sessionStorage.getItem(`pdf-preview:${importId}`)
+      if (!cached) {
+        setError('Sessão de PDF expirou. Faça o upload novamente.')
+        setLoading(false)
+        return
+      }
+      try {
+        const parsed = JSON.parse(cached) as PreviewResponse
+        setData(parsed)
+        const init = new Map<string, { skip: boolean; categoryId: string | null }>()
+        for (const l of parsed.lines) {
+          init.set(l.fitid, {
+            skip: l.shouldSkipImport,
+            categoryId: l.suggestedCategoryId,
+          })
+        }
+        setDecisions(init)
+      } catch {
+        setError('Cache PDF corrompido')
+      }
+      fetch(`/api/perfis/${id}/categorias`)
+        .then((r) => r.json())
+        .then((d) => setCategories(d.categories ?? []))
+      setLoading(false)
+      return
+    }
+
     // Lê preview do sessionStorage (precisa rerodar parser no backend)
     const rawContent = sessionStorage.getItem(`ofx-content:${importId}`)
     if (!rawContent) {
@@ -186,14 +225,41 @@ export default function PreviewImportPage({
 
   async function handleConfirm() {
     if (!data) return
-    const rawContent = sessionStorage.getItem(`ofx-content:${importId}`)
-    if (!rawContent) {
-      setError('Sessão expirou — re-upload necessário')
-      return
-    }
     setSubmitting(true)
     setError(null)
     try {
+      // PDF tem confirm próprio (não precisa rawContent — lê do cache SHA256)
+      if (isPdf) {
+        const r = await fetch(`/api/perfis/${id}/pdf-import/confirm`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            importId,
+            decisions: data.lines.map((l) => {
+              const d = decisions.get(l.fitid)
+              return {
+                fitid: l.fitid,
+                skip: d?.skip ?? l.shouldSkipImport,
+                categoryId: d?.categoryId ?? null,
+              }
+            }),
+          }),
+        })
+        if (!r.ok) {
+          const d = await r.json().catch(() => ({}))
+          setError(d.erro ?? 'Falha ao confirmar')
+          return
+        }
+        sessionStorage.removeItem(`pdf-preview:${importId}`)
+        router.push(`/perfis/${id}/cartoes`)
+        return
+      }
+
+      const rawContent = sessionStorage.getItem(`ofx-content:${importId}`)
+      if (!rawContent) {
+        setError('Sessão expirou — re-upload necessário')
+        return
+      }
       const r = await fetch(`/api/perfis/${id}/ofx-import/confirm`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -271,6 +337,43 @@ export default function PreviewImportPage({
           </p>
         </div>
       </div>
+
+      {/* Banner quality PDF (só PDF) */}
+      {isPdf && data.confidence !== undefined && (
+        <div
+          className={`mb-4 rounded-lg p-3 text-sm ${
+            data.confidence >= 0.85
+              ? 'bg-emerald-50 border border-emerald-200 text-emerald-900'
+              : data.confidence >= 0.65
+                ? 'bg-amber-50 border border-amber-200 text-amber-900'
+                : 'bg-red-50 border border-red-200 text-red-900'
+          }`}
+        >
+          <div className="font-semibold">
+            {data.confidence >= 0.85
+              ? `✅ Qualidade da extração: ${(data.confidence * 100).toFixed(0)}% — leitura confiável`
+              : data.confidence >= 0.65
+                ? `⚠️ Qualidade: ${(data.confidence * 100).toFixed(0)}% — revise valores antes de confirmar`
+                : `🚨 Qualidade baixa: ${(data.confidence * 100).toFixed(0)}% — recomendamos revisar CADA linha`}
+          </div>
+          {(data.detectedBank || data.declaredTotal != null) && (
+            <div className="text-xs mt-1 opacity-80">
+              {data.detectedBank && <>Banco: <strong>{data.detectedBank}</strong> · </>}
+              {data.detectedCardLast4 && <>Cartão ****{data.detectedCardLast4} · </>}
+              {data.declaredTotal != null && (
+                <>Total declarado: <strong>R$ {data.declaredTotal.toFixed(2)}</strong></>
+              )}
+            </div>
+          )}
+          {data.warnings && data.warnings.length > 0 && (
+            <ul className="mt-2 text-xs space-y-1 list-disc list-inside opacity-90">
+              {data.warnings.map((w, i) => (
+                <li key={i}>{w}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {/* Pílulas de resumo */}
       <div className="flex flex-wrap gap-2 mb-4">

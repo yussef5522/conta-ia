@@ -1,0 +1,49 @@
+{
+  "detectedBank": "Nubank",
+  "scanQuality": "DIGITAL",
+  "closingDate": "2026-05-14",
+  "dueDate": "2026-05-20",
+  "declaredTotal": 6771.22,
+  "extractedSum": 6771.22,
+  "declaredTxCount": 22,
+  "confidence": 0.92,
+  "detectedCardLast4": "2716",
+  "transactions": [
+    { "date": "2026-04-12", "amount": 6563.50, "type": "CREDIT", "memo": "Pagamento em 12 ABR", "lineConfidence": 0.95 },
+
+    { "date": "2026-04-18", "amount": 89.90, "type": "DEBIT", "memo": "Mercadolivre*Rgs - Parcela 4/10", "lineConfidence": 0.93 },
+    { "date": "2026-04-20", "amount": 380.00, "type": "DEBIT", "memo": "Airbnb * Hm9z23za5s - Parcela 4/6", "lineConfidence": 0.92 },
+    { "date": "2026-04-22", "amount": 220.00, "type": "DEBIT", "memo": "Laghetto Golden - Parcela 3/9", "lineConfidence": 0.91 },
+
+    { "date": "2026-04-23", "amount": 5.00, "type": "DEBIT", "memo": "NuTag", "lineConfidence": 0.95 },
+    { "date": "2026-04-24", "amount": 7.50, "type": "DEBIT", "memo": "NuTag", "lineConfidence": 0.95 },
+    { "date": "2026-04-26", "amount": 10.00, "type": "DEBIT", "memo": "NuTag", "lineConfidence": 0.95 },
+
+    { "date": "2026-04-28", "amount": 25.00, "type": "DEBIT", "memo": "Facebk *Ymtzzn5hf2", "lineConfidence": 0.90 },
+    { "date": "2026-04-29", "amount": 30.00, "type": "DEBIT", "memo": "Facebk *Abcdef1234", "lineConfidence": 0.90 },
+
+    { "date": "2026-05-01", "amount": 24.90, "type": "DEBIT", "memo": "Apple.Com/Bill", "lineConfidence": 0.96 },
+    { "date": "2026-05-02", "amount": 21.90, "type": "DEBIT", "memo": "Spotify", "lineConfidence": 0.95 },
+    { "date": "2026-05-03", "amount": 55.90, "type": "DEBIT", "memo": "Netflix", "lineConfidence": 0.95 },
+    { "date": "2026-05-04", "amount": 39.90, "type": "DEBIT", "memo": "Hostinger", "lineConfidence": 0.91 },
+
+    { "date": "2026-05-05", "amount": 334.03, "type": "DEBIT", "memo": "Tog4dev (JOD)", "lineConfidence": 0.88, "isInternational": true, "originalCurrency": "JOD" },
+    { "date": "2026-05-05", "amount": 5.34, "type": "DEBIT", "memo": "IOF compra internacional", "lineConfidence": 0.92 },
+
+    { "date": "2026-05-06", "amount": 61.06, "type": "DEBIT", "memo": "Digitalocean (USD)", "lineConfidence": 0.92, "isInternational": true, "originalCurrency": "USD", "originalAmount": 11.77 },
+    { "date": "2026-05-06", "amount": 0.97, "type": "DEBIT", "memo": "IOF compra internacional", "lineConfidence": 0.92 },
+
+    { "date": "2026-05-07", "amount": 102.49, "type": "DEBIT", "memo": "Anthropic (USD)", "lineConfidence": 0.93, "isInternational": true, "originalCurrency": "USD", "originalAmount": 20.0 },
+    { "date": "2026-05-07", "amount": 1.64, "type": "DEBIT", "memo": "IOF compra internacional", "lineConfidence": 0.92 },
+
+    { "date": "2026-05-08", "amount": 11.42, "type": "DEBIT", "memo": "IOF outros", "lineConfidence": 0.88 },
+    { "date": "2026-05-09", "amount": 45.28, "type": "DEBIT", "memo": "Anuidade cartão", "lineConfidence": 0.94 },
+
+    { "date": "2026-05-10", "amount": 5298.99, "type": "DEBIT", "memo": "Compra exemplo grande Mercado", "lineConfidence": 0.95 }
+  ],
+  "warnings": [],
+  "modelVersion": "claude-sonnet-4-6-fixture",
+  "inputTokens": 9000,
+  "outputTokens": 3200,
+  "costCentsUsdX100": 750
+}

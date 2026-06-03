@@ -10,6 +10,8 @@ import {
   Upload,
   Loader2,
   CreditCard as CardIcon,
+  FileText,
+  Sparkles,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -37,30 +39,72 @@ export default function ImportarPage({
   const [file, setFile] = useState<File | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Sprint Fatia 3.5
+  const [pdfAllowed, setPdfAllowed] = useState<boolean>(false)
+  const [pdfStatusMsg, setPdfStatusMsg] = useState<string>('')
 
   useEffect(() => {
     fetch(`/api/perfis/${id}/cartoes`)
       .then((r) => r.json())
       .then((d) => setCards(d.cards ?? []))
+    fetch(`/api/perfis/${id}/pdf-import/status`)
+      .then((r) => r.json())
+      .then((d) => {
+        setPdfAllowed(d?.allowed === true)
+        if (d?.message) setPdfStatusMsg(d.message)
+      })
+      .catch(() => setPdfAllowed(false))
   }, [id])
+
+  function isPdf(f: File): boolean {
+    return f.name.toLowerCase().endsWith('.pdf') || f.type.includes('pdf')
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
     if (!file) {
-      setError('Selecione um arquivo OFX')
+      setError('Selecione um arquivo')
       return
     }
     if (!selectedCard) {
       setError('Selecione um cartão')
       return
     }
+    const usingPdf = isPdf(file)
+    if (usingPdf && !pdfAllowed) {
+      setError(pdfStatusMsg || 'Import de PDF não está disponível no momento. Use OFX.')
+      return
+    }
     setSubmitting(true)
     try {
-      // Lê o conteúdo do file pra guardar no sessionStorage (precisa
-      // pra etapa de CONFIRM — re-parsea o mesmo OFX).
-      const rawContent = await file.text()
+      if (usingPdf) {
+        // PDF: extrai via Claude Vision, depois redireciona pro preview
+        const form = new FormData()
+        form.append('file', file)
+        form.append('creditCardId', selectedCard)
+        const r = await fetch(`/api/perfis/${id}/pdf-import/preview`, {
+          method: 'POST',
+          body: form,
+        })
+        if (!r.ok) {
+          const d = await r.json().catch(() => ({}))
+          setError(d.erro ?? 'Falha ao ler PDF')
+          return
+        }
+        const data = await r.json()
+        // Cache preview no sessionStorage (sem rawContent — PDF não re-parsea)
+        try {
+          sessionStorage.setItem(`pdf-preview:${data.importId}`, JSON.stringify(data))
+        } catch {
+          // quota
+        }
+        router.push(`/perfis/${id}/importar/preview/${data.importId}?source=pdf`)
+        return
+      }
 
+      // OFX: caminho existente
+      const rawContent = await file.text()
       const form = new FormData()
       form.append('file', file)
       form.append('creditCardId', selectedCard)
@@ -74,12 +118,10 @@ export default function ImportarPage({
         return
       }
       const data = await r.json()
-      // Guarda rawContent na sessionStorage com key do importId pra
-      // preview page usar no confirm.
       try {
         sessionStorage.setItem(`ofx-content:${data.importId}`, rawContent)
       } catch {
-        // quota — confirm vai falhar mas preview funciona
+        // quota
       }
       router.push(`/perfis/${id}/importar/preview/${data.importId}`)
     } catch {
@@ -110,22 +152,47 @@ export default function ImportarPage({
         </div>
       </div>
 
+      {pdfAllowed && (
+        <Card className="mb-4 border-purple-200 bg-purple-50/40">
+          <CardContent className="p-4 flex items-start gap-3">
+            <Sparkles className="h-5 w-5 text-purple-600 shrink-0 mt-0.5" />
+            <div className="text-sm">
+              <p className="font-medium text-purple-900">
+                Novo: aceita PDF da fatura (IA Vision lê automaticamente)
+              </p>
+              <p className="text-xs text-purple-700 mt-0.5">
+                Bancos sem OFX: C6, Inter, Will, faturas antigas em PDF — IA
+                extrai as transações. Revisão obrigatória antes de importar.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardContent className="p-6">
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
               <label className="text-sm font-medium text-zinc-700 block mb-2">
-                1. Arquivo OFX *
+                1. Arquivo {pdfAllowed ? 'OFX ou PDF' : 'OFX'} *
               </label>
               <input
                 type="file"
-                accept=".ofx,.qfx"
+                accept={pdfAllowed ? '.ofx,.qfx,.pdf' : '.ofx,.qfx'}
                 onChange={(e) => setFile(e.target.files?.[0] ?? null)}
                 className="block w-full text-sm file:mr-3 file:py-2 file:px-3 file:rounded-md file:border-0 file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 cursor-pointer"
               />
               <p className="text-xs text-zinc-500 mt-1">
-                Aceita .ofx ou .qfx · máx 5MB · até 500 transações
+                {pdfAllowed
+                  ? 'Aceita .ofx, .qfx ou .pdf · máx 5MB · até 500 transações'
+                  : 'Aceita .ofx ou .qfx · máx 5MB · até 500 transações'}
               </p>
+              {file && isPdf(file) && (
+                <p className="text-xs text-purple-700 mt-1 flex items-center gap-1">
+                  <FileText className="h-3 w-3" />
+                  PDF detectado — vai usar IA Vision pra ler (~10-20s)
+                </p>
+              )}
             </div>
 
             <div>
