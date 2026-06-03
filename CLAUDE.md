@@ -1908,6 +1908,108 @@ quiser retomar.
 abrir (nenhuma específica indicada — pode ser dashboard, IA contadora,
 relatórios, etc).
 
+### 02/06/2026 (parte 2) — Sprint PF Fatia 1 (Fundação) entregue em prod
+
+**Contexto:** Yussef aprovou a Fatia 1 da frente PESSOA FÍSICA após estudo
+profundo de arquitetura. Decisões fechadas: PersonalProfile separado de
+Company, ponte PJ→PF via 2 transações pareadas (futuro Fatia 4), cartão
+como Fatia 2 dedicada, plano PF R$ 19,99 (Fatia 6), onboarding pergunta
+PF/PJ pós-cadastro.
+
+#### Sprint PF Fatia 1 — Fundação ✅ DEPLOYADA EM PROD
+**Branch:** `feature/pf-fatia-1-fundacao` → main em `5f4aa33`.
+
+**Schema (5 models novos + 1 coluna):**
+- `PersonalProfile` (cpf opcional, type OWN|DEPENDENT)
+- `UserPersonalProfile` (N:N + role + isSelf flag)
+- `PersonalBankAccount` (reusa cheque especial Sprint 0.5)
+- `PersonalCategory` (15 default + hierarquia)
+- `PersonalTransaction` (CREDIT|DEBIT; campos cartão/ponte reservados)
+- `User.onboardingCompletedAt` (gate users existentes)
+- Migration `20260613000000_pf_fatia_1_fundacao` PURAMENTE ADITIVA
+
+**Lib + queries (lib/personal-profile/):**
+- `default-categories.ts` — 15 templates (3 INCOME + 12 EXPENSE)
+- `queries.ts` — `checkProfileAccess` centralizado pra multi-tenant
+  rígido. Toda chamada passa por aqui antes de retornar dados.
+- `ProfileAccessError` com códigos: NO_ACCESS | INSUFFICIENT_ROLE |
+  INVALID_PARENT | INVALID_ACCOUNT | INVALID_CATEGORY
+
+**8 endpoints REST + 2 utilitários:**
+- /api/perfis (GET/POST)
+- /api/perfis/[id] (GET/PATCH/DELETE — com summary embutido)
+- /api/perfis/[id]/contas[/contaId] (CRUD)
+- /api/perfis/[id]/transacoes[/txId] (CRUD + recalc saldo automático)
+- /api/perfis/[id]/categorias[/catId] (CRUD)
+- /api/perfis/atual (cookie httpOnly de profile selecionado)
+- /api/auth/me/onboarding (gate de onboarding)
+
+**UI dual PJ × PF:**
+- `lib/contexts/workspace-context.tsx` — NOVO (EmpresaContext intacto)
+- `components/layout/workspace-switcher-dual.tsx` — switcher com cor
+  forte (🟦 azul Building2 = empresas, 🟢 verde Users = pessoal)
+- Pill colorida no header indica contexto ativo
+- Badge PJ/PF ao lado do nome do workspace
+- TopBar + DashboardShell atualizados
+
+**6 telas em /perfis/*:**
+1. Lista de perfis (cards verdes com tipo + CPF mascarado)
+2. /novo (form OWN|DEPENDENT + CPF opcional)
+3. /[id] (dashboard: saldo / entradas+saídas 30d / resultado / top 5
+   despesas + lista de contas)
+4. /[id]/contas (lista + form inline com cheque especial)
+5. /[id]/transacoes (lista + form inline filtrando categorias por tipo)
+6. /[id]/categorias (2 colunas: receitas + despesas)
+
+**Onboarding /onboarding:**
+- 3 cards: 🏢 Empresa (azul) / 👤 PF (verde) / 🔀 Os dois (roxo)
+- Gate via `User.onboardingCompletedAt` — users existentes (5 atuais)
+  com NULL podem ignorar
+- "Pular por agora" → /dashboard + marca completed
+
+**52 testes novos (3912 → 3964):**
+- `default-categories.test.ts` (9 puros) — 15 cats, hex valid, placeholders
+- `queries.test.ts` (27 integração) — CRUD + autorização + saldo automático
+- `endpoint-multi-tenant.test.ts` (16 isolamento) — 10+ críticos:
+  - userB → perfilA: GET/PATCH/DELETE/POST contas/tx → todos 404
+  - cross-account: tx do perfilA usando conta do perfilA2 → 400
+  - POST /api/perfis/atual com profileId alheio → 404
+  - listagem só retorna perfis do user logado (nunca vaza)
+
+#### Deploy passo-a-passo
+1. Backup `pg_dump -Fc` → `/var/backups/conta-ia/pre-pf-fatia-1-20260602_141414.dump` (550.800 bytes · 349 itens)
+2. git fetch + reset main → 5f4aa33
+3. `npm ci --legacy-peer-deps`
+4. `swap-prisma-to-postgres.sh` (no-op — já estava postgres)
+5. `prisma migrate status` → 1 pendente (a do PF Fatia 1)
+6. `prisma migrate deploy` → migration aplicada
+7. **⚠️ Bug pego (importante registrar):** `npm ci` rodou `prisma generate`
+   ANTES do swap, gerando client com schema=sqlite. Login retornou 500
+   "url must start with file:". Fix: `npx prisma generate` DEPOIS do
+   swap + `npm run build` de novo + pm2 reload. Registrar no `docs/DEPLOY.md`
+   na próxima oportunidade: ordem correta = git pull → swap → npm ci →
+   prisma generate → migrate deploy → build → reload.
+8. Counts pré/pós: users 5=5, companies 3=3, subscriptions 5=5 (intactos)
+9. transactions: 2698 → 2907 (+209) durante o deploy — **NÃO** foi meu
+   código. Eram OFX/Excel imports do Yussef usando o sistema em paralelo.
+   PM2 reload é hot → uso real não foi interrompido. Confirma robustez
+   do deploy.
+10. admin@contaia.com.br continua GRANTED + plano "inteligencia"
+11. Smoke: GET /api/perfis sem auth → 401 ✓ · com auth → []
+    ✓ · POST perfil → criado ✓ · cleanup perfil de smoke
+
+**Métricas finais:**
+- 28 arquivos, +4462 linhas
+- TypeScript strict: 0 erros
+- Build prod: ✓
+- Suite: 3964/3964 (52 PF + base 3912)
+- 5 models criados, todos vazios em prod (esperado)
+- PM2 ↺ 240, BUILD_ID nova
+
+**Próximo passo:** Yussef testa em prod (admin pode criar perfil PF
+próprio + dependente, validar switcher visual PJ/PF + isolamento entre
+contas). Quando aprovar, segue Fatia 2 (cartão de crédito robusto).
+
 ### [Próxima sessão] — preencher
 - Data:
 - O que foi feito:
