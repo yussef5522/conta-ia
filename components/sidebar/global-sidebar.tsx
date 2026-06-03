@@ -125,13 +125,23 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
           badge={pendentesBadge > 0 ? String(pendentesBadge) : undefined}
           badgeTone="amber"
         />
-        <SidebarItem
-          icon={Users}
-          label="Pessoas Vinculadas"
-          href={`/pessoas-vinculadas${empresaQs}`}
-          isActive={pathname.startsWith('/pessoas-vinculadas')}
-          onClick={onNavigate}
-        />
+        {/* Sprint Unificar Sócios (03/06/2026) — substitui "Pessoas Vinculadas"
+            + "Pontes PJ→PF". 1 item só com 2 abas: Sócios PF | Empresas do Grupo.
+            Privacidade Fatia 4 mantida (queries filtradas por user). */}
+        {currentEmpresaId && (
+          <SidebarItem
+            icon={Users}
+            label="Sócios"
+            href={`/empresas/${currentEmpresaId}/socios`}
+            isActive={
+              /^\/empresas\/[^/]+\/socios(\/|$)/.test(pathname) ||
+              /^\/empresas\/[^/]+\/pontes(\/|$)/.test(pathname) ||
+              pathname.startsWith('/pontes/') ||
+              pathname.startsWith('/pessoas-vinculadas')
+            }
+            onClick={onNavigate}
+          />
+        )}
         <SidebarItem
           icon={Link2}
           label="Conciliação"
@@ -148,18 +158,6 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
           isActive={pathname.startsWith('/transacoes')}
           onClick={onNavigate}
         />
-        {/* Sprint PF Fatia 4 — Pontes PJ→PF (diferencial competitivo).
-            Só mostra quando user tá com empresa no contexto. Privacidade:
-            cada user vê só as próprias pontes. */}
-        {currentEmpresaId && (
-          <SidebarItem
-            icon={Workflow}
-            label="Pontes PJ→PF"
-            href={`/empresas/${currentEmpresaId}/pontes`}
-            isActive={/^\/empresas\/[^/]+\/pontes(\/|$)/.test(pathname) || pathname.startsWith('/pontes/')}
-            onClick={onNavigate}
-          />
-        )}
         {/* Hotfix 5.0.4.0a-fix — Relatórios substituiu DRE Gerencial.
             Index per-empresa contém DRE + Categorias + Comparativo. */}
         <SidebarItem
