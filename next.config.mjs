@@ -18,6 +18,21 @@ const nextConfig = {
         destination: '/empresas/:id/relatorios/dre-gerencial',
         statusCode: 301,
       },
+      // Sprint Unificar Sócios (03/06/2026) — /pessoas-vinculadas e
+      // /empresas/:id/pontes viraram /empresas/:id/socios.
+      // 301 permanent pra atualizar bookmarks.
+      // Mantemos /pontes/[id] (detalhe global) e /pontes/nova (legacy) sem redirect.
+      // /pessoas-vinculadas vai pra rota global /socios que resolve empresa do cookie.
+      {
+        source: '/pessoas-vinculadas',
+        destination: '/socios',
+        statusCode: 301,
+      },
+      {
+        source: '/empresas/:id/pontes',
+        destination: '/empresas/:id/socios',
+        statusCode: 301,
+      },
     ]
   },
 }
