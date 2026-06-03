@@ -24,12 +24,17 @@
 >    - 3A + 3B + 3C deployados em sandbox; falta ativar webhook + smoke + virar pra prod (3D)
 >    - **LER quando:** for retomar a frente de cobrança/SaaS
 >
+> 📕 **`docs/sprints/pf-fatia-3.5-LIGAR-PDF.md`** — Como ATIVAR PDF Vision em prod
+>    - Sprint deployada em 03/06/2026 mas **GATED** (PDF_IMPORT_ENABLED=false em prod)
+>    - Bloqueada até Yussef solicitar/assinar ZDR com Anthropic (sales 1-2 sem)
+>    - **LER quando:** for ligar PDF (ou desligar emergencialmente)
+>
 > **Em caso de conflito aparente entre documentos:**
 > - CLAUDE.md tem prioridade pra decisões **OPERACIONAIS** (próxima etapa, comandos)
 > - CONTA-IA-NORTE.md tem prioridade pra decisões **ESTRATÉGICAS** (visão, arquitetura)
 > - DASHBOARD-PLAN.md tem prioridade pra **EXECUÇÃO** dos sprints de dashboard (0.5 → 3)
 >
-> **Última atualização:** 02/06/2026
+> **Última atualização:** 03/06/2026
 
 ---
 
@@ -2288,6 +2293,124 @@ entregue em 1 sessão.
 - **Dashboard PF nível Mobills** — sprint atrasado, agora todos os
   endpoints dashboard-ready estão prontos
 - **Fatia 4** (ponte PJ→PF) — diferencial competitivo final
+
+### 03/06/2026 (parte 3) — Sprint PF Fatia 3.5 (PDF Vision) deployada GATED
+
+**Contexto:** Yussef aprovou plano (`docs/sprints/pf-fatia-3.5-pdf.md`) +
+8 decisões (Sonnet 4.6, cache 7d, 5 bancos, max 10 pgs, PDF criptografado
+→ erro, ZDR via sales, owner deleta cache, reject MOBILE_PHOTO). Construção
+inteira em 1 sessão + checkpoint pré-deploy aprovado + deploy GATED em prod.
+
+#### Sprint PF Fatia 3.5 — PDF Vision ✅ DEPLOYADA GATED EM PROD
+**Branch:** `feature/pf-fatia-3.5-pdf-vision` → main em `a8a160e` + fix gate `0fa18ba`.
+
+**Schema (1 model + 4 colunas aditivas):**
+- `PersonalPdfExtractCache` (UNIQUE `pdfSha256`, owner-scoped via FK,
+  TTL `expiresAt` 7 dias)
+- `PersonalOfxImport` +4 cols nullable: `sourceType` DEFAULT 'OFX',
+  `extractionConfidence`, `pdfSha256`, `pdfScanQuality`
+- Migration `20260616000000_pf_fatia_3_5_pdf_vision` PURAMENTE ADITIVA
+  (zero ALTER em tabela com dados reais que mude semântica)
+
+**Lib `lib/pdf-import/` (8 arquivos):**
+- `feature-flag.ts` — gate dual env: dev/test só PDF_IMPORT_ENABLED=true,
+  prod exige AMBAS `PDF_IMPORT_ENABLED=true` AND `PDF_IMPORT_ZDR_CONFIRMED=true`
+- `extract-from-pdf.ts` — orquestrador Claude Sonnet 4.6 Vision, fetch
+  injetável, pre-validações (≤5MB, header %PDF-, /Encrypt detect, timeout 30s)
+- `pdf-templates/` — 5 bancos (Nubank/Itaú/Bradesco/Inter/C6) + genérico,
+  detecção por filename
+- `validate.ts` — 4 camadas: soma=total ±R$0.50, count, line confidence
+  mínima, scan quality. Rejeita MOBILE_PHOTO
+- `cache.ts` — global por SHA256, delete LGPD scoped por dono
+- `queries.ts` — `createPdfPreview` orquestrador (gate → multi-tenant →
+  SHA256 → cache OR Vision → PersonalOfxImport sourceType='PDF' → preview
+  via pipeline F3)
+- `confirm.ts` — separado do OFX confirm (lê do cache)
+- `types.ts` — ScanQuality + PdfExtractedTx + PdfExtractError + códigos
+
+**5 endpoints REST + UI:**
+- GET `/api/perfis/[id]/pdf-import/status` (feature flag — sempre 200)
+- POST `/api/perfis/[id]/pdf-import/preview` (multipart, 403 quando gated)
+- POST `/api/perfis/[id]/pdf-import/confirm` (decisões, 403 quando gated)
+- GET `/api/auth/me/pdf-cache` (listar próprios caches)
+- DELETE `/api/auth/me/pdf-cache/[sha256]` (deletar próprio, LGPD)
+- UI: `/perfis/[id]/importar` aceita .pdf quando pdfAllowed (escondido se gated)
+- UI: preview com banner colorido por scan quality
+
+**Privacidade:**
+- Fixture `__tests__/fixtures/nubank-mai-2026.json` SINTÉTICO (NUNCA
+  commitar PDF real). README documenta decisão
+- Logs do extract gravam só `sha256` + tokens + cost. Nunca conteúdo
+
+**Multi-tenant:**
+- `__tests__/pdf-import/multi-tenant.test.ts` (9 testes): userB → cache de
+  A retorna 404, DELETE cache alheio retorna 404, confirm cross-user 404
+
+**Testes (+77, suite 4151 → 4228):**
+- feature-flag (10) — gate dev/test/prod com matriz
+- validate (11) — 4 camadas + reject MOBILE_PHOTO
+- extract-from-pdf (17) — Claude API mockada
+- templates (11) — catálogo bancos + filename detection
+- cache (10) — LGPD ownership
+- integration-pipeline (9) — fixture sintético soma R$6.771,22
+- multi-tenant (9) — isolamento entre users
+
+#### Deploy passo-a-passo (resultado)
+
+1. Backup `pg_dump -Fc` → `/var/backups/conta-ia/pre-pf-fatia-3.5-20260603_023028.dump`
+   (639KB · 419 itens via `pg_restore --list`)
+2. **Counts pré:** users=5, companies=3, subscriptions=5, personal_profiles=1,
+   credit_cards=1, personal_ofx_imports=0, personal_transactions=0,
+   transactions=2907, ai_learning_rules=176
+3. git pull main + npm ci + swap + **prisma generate DEPOIS do swap**
+4. prisma migrate status → SÓ a do PF Fatia 3.5 pendente
+5. prisma migrate deploy → SUCCESS
+6. **Counts pós:** TODOS idênticos + nova tabela `personal_pdf_extract_cache=0`
+7. Verificação colunas: `sourceType` NOT NULL DEFAULT 'OFX', 3 outras nullable
+8. Admin `admin@contaia.com.br` plano `inteligencia` status `GRANTED` preservado ✓
+9. **Gate fechado em prod:** adicionei `PDF_IMPORT_ENABLED=false` +
+   `PDF_IMPORT_ZDR_CONFIRMED=false` explicit em `.env`
+10. npm run build + pm2 reload (PID 528977 ↺ 244 online)
+
+**Smoke test em prod (4 cenários — 4/4 ✓):**
+- status sem auth → 401 AUTH_REQUIRED ✓
+- status autenticado → 200 `{allowed:false, reason:"DISABLED"}` (UI esconde botão) ✓
+- preview autenticado → 403 DISABLED (gate intercepta) ✓
+- confirm autenticado → 403 DISABLED (gate intercepta) ✓
+
+**Bug pego no smoke (fix in-flight, commit `0fa18ba`):**
+Os endpoints preview/confirm rodavam validação de file/JSON ANTES do gate,
+retornando 400/404 em vez de 403. Movi `checkPdfImportFlag()` pra logo após
+auth check. PM2 PID 530076 ↺ 245 online após reload do fix.
+
+**Como LIGAR PDF (registrado em `docs/sprints/pf-fatia-3.5-LIGAR-PDF.md`):**
+1. Solicitar ZDR à Anthropic via <https://claude.com/contact-sales>
+   (1-2 semanas) — pedir explicitamente elegibilidade pra PDF Vision
+2. Assinar DPA addendum recebido
+3. Em prod: trocar AMBAS `PDF_IMPORT_ENABLED=true` + `PDF_IMPORT_ZDR_CONFIRMED=true`
+   no `.env` + `pm2 reload conta-ia --update-env`
+4. Smoke: GET `/pdf-import/status` retorna `{allowed:true,reason:null}`
+
+**Custo esperado quando ligar:** ~R$ 0,18 por fatura nova Nubank (~6 pgs),
+R$ 0,00 em re-import dentro de 7d (cache SHA256). Pra 10 academias × 4 cartões
+× 1 import/mês = ~R$ 7,20/mês.
+
+**Métricas finais:**
+- 36 arquivos no merge (+3178 linhas), TS strict 0
+- Suite: 4228/4228 (+77 vs Fatia 3)
+- Migration aplicada, dados intactos
+- PM2 ↺ 245 online após fix do gate
+- Cleanup: senha admin revertida ao hash original, tmp files removidos
+
+**🚨 PENDÊNCIA PRO YUSSEF:** solicitar ZDR com Anthropic quando quiser
+ligar PDF. Enquanto isso, OFX continua funcionando normalmente (Fatia 3
+já em prod). Doc completo: `docs/sprints/pf-fatia-3.5-LIGAR-PDF.md`.
+
+**Próximo passo:** Yussef decide próxima frente:
+- Ligar PDF (depende do ZDR — frente externa)
+- **Dashboard PF nível Mobills** (sprint atrasado, todos endpoints prontos)
+- **Fatia 4** (ponte PJ→PF — diferencial competitivo final)
+- Outra (retomar Asaas 3D, etc)
 
 ### [Próxima sessão] — preencher
 - Data:
