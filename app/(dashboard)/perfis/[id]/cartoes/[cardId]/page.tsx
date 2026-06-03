@@ -11,6 +11,7 @@ import {
   Pencil,
   FileText,
   Loader2,
+  Upload,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -225,11 +226,17 @@ export default function CartaoDashboardPage({
         </Card>
       </div>
 
-      <div className="mt-4 flex justify-center">
+      <div className="mt-4 flex justify-center gap-3">
         <Button asChild variant="outline">
           <Link href={`/perfis/${id}/cartoes/${cardId}/faturas`}>
             <FileText className="h-4 w-4 mr-1" />
             Histórico de faturas
+          </Link>
+        </Button>
+        <Button asChild variant="outline" className="border-emerald-200 text-emerald-700 hover:bg-emerald-50">
+          <Link href={`/perfis/${id}/importar?cartao=${cardId}`}>
+            <Upload className="h-4 w-4 mr-1" />
+            Importar fatura OFX
           </Link>
         </Button>
       </div>

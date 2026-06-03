@@ -53,6 +53,9 @@ model User {
   // Onda 2 Sprint 2.3 — quem importou cada OFX
   ofxImports          OfxImport[]
   ofxImportsReverted  OfxImport[]          @relation("OfxImportReverter")
+  // Sprint PF Fatia 3
+  personalOfxImports         PersonalOfxImport[]
+  personalOfxImportsReverted PersonalOfxImport[] @relation("PersonalOfxImportReverter")
   // Sprint 4.0.1.b — quem criou cada schedule recorrente
   recurringSchedules  RecurringSchedule[]
   // Sprint 5.0.1 — IA Tributária
@@ -608,13 +611,19 @@ model RecurringSchedule {
 
 model AiLearningRule {
   id            String  @id @default(cuid())
-  companyId     String
+  // Sprint PF Fatia 3 — companyId virou nullable.
+  // Quando regra é PJ → companyId preenchido, profileId null.
+  // Quando regra é PF → profileId preenchido, companyId null.
+  // Mutuamente exclusivo (validado em app-layer).
+  companyId     String?
+  profileId     String?
   // EXACT = description igual a `padrao`
   // CONTAINS = description contém `padrao` (case-insensitive)
   // CNPJ = description contém o CNPJ em `padrao`
   tipoMatch     String
   padrao        String
   categoryId    String?
+  personalCategoryId String?
   supplierId    String?
   // Intrínseca da regra: 1.0 = manual; <1 = sugerida por Claude
   confianca     Float   @default(1.0)
@@ -627,15 +636,20 @@ model AiLearningRule {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company      Company?       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  profile      PersonalProfile? @relation(fields: [profileId], references: [id], onDelete: Cascade)
   category     Category?     @relation(fields: [categoryId], references: [id])
+  personalCategory PersonalCategory? @relation(fields: [personalCategoryId], references: [id])
   supplier     Supplier?     @relation(fields: [supplierId], references: [id])
   transactions Transaction[]
+  personalTransactions PersonalTransaction[] @relation("PfClassifiedByRule")
 
   // Não pode haver duas regras com mesmo padrão e tipo na mesma empresa
   @@unique([companyId, tipoMatch, padrao])
-  // Lookup rápido durante import: filtra ativas por empresa, indexa o tipo de match
+  @@unique([profileId, tipoMatch, padrao])
+  // Lookup rápido durante import
   @@index([companyId, isActive, tipoMatch])
+  @@index([profileId, isActive, tipoMatch])
   @@map("ai_learning_rules")
 }
 
@@ -1853,6 +1867,9 @@ model PersonalProfile {
   categories   PersonalCategory[]
   // Sprint PF Fatia 2
   creditCards  CreditCard[]
+  // Sprint PF Fatia 3
+  aiLearningRules AiLearningRule[]
+  ofxImports      PersonalOfxImport[]
 
   @@index([cpf])
   @@map("personal_profiles")
@@ -1911,6 +1928,8 @@ model PersonalBankAccount {
   transactions PersonalTransaction[]
   // Sprint PF Fatia 2 — cartões que usam essa conta como pagamento default
   cardDefaultPayments CreditCard[]   @relation("CardDefaultPayment")
+  // Sprint PF Fatia 3
+  ofxImports          PersonalOfxImport[]
 
   @@index([profileId])
   @@map("personal_bank_accounts")
@@ -1953,6 +1972,19 @@ model PersonalTransaction {
   // False (default) = compra ou crédito normal.
   isInvoicePayment Boolean @default(false)
 
+  // === Sprint PF Fatia 3 (03/06/2026) — Import OFX + IA categorização PF ===
+  // FK pra PersonalOfxImport quando tx veio de OFX/PDF.
+  ofxImportId String?
+  // Compra internacional detectada (regex "internacional" no memo).
+  isInternational       Boolean @default(false)
+  internationalCurrency String?
+  // Qual AiLearningRule classificou (NULL = manual ou IA Claude direta).
+  classifiedByRuleId String?
+  // Confidence da categorização IA (0-1; NULL pra MANUAL).
+  aiConfidence Float?
+  // RULE | KEYWORD | CLAUDE | MANUAL — origem da categoria
+  classifiedBy String?
+
   // === Sprint PF Fatia 4 (futuro) — Ponte PJ→PF ===
   // bridgeId String?  — adicionado na Fatia 4
 
@@ -1964,6 +1996,9 @@ model PersonalTransaction {
   category          PersonalCategory?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   creditCard        CreditCard?         @relation(fields: [creditCardId], references: [id], onDelete: SetNull)
   creditCardInvoice CreditCardInvoice?  @relation(fields: [creditCardInvoiceId], references: [id], onDelete: SetNull)
+  // Sprint PF Fatia 3
+  ofxImport         PersonalOfxImport?  @relation(fields: [ofxImportId], references: [id], onDelete: SetNull)
+  classifiedByRule  AiLearningRule?     @relation("PfClassifiedByRule", fields: [classifiedByRuleId], references: [id], onDelete: SetNull)
 
   @@index([profileId, date])
   @@index([bankAccountId])
@@ -1971,6 +2006,7 @@ model PersonalTransaction {
   @@index([creditCardId])
   @@index([creditCardInvoiceId])
   @@index([installmentGroupId])
+  @@index([ofxImportId])
   @@map("personal_transactions")
 }
 
@@ -1997,6 +2033,8 @@ model PersonalCategory {
 
   profile      PersonalProfile?      @relation(fields: [profileId], references: [id], onDelete: Cascade)
   transactions PersonalTransaction[]
+  // Sprint PF Fatia 3
+  aiLearningRules AiLearningRule[]
 
   @@index([profileId])
   @@index([parentId])
@@ -2041,6 +2079,8 @@ model CreditCard {
   defaultPaymentAccount PersonalBankAccount? @relation("CardDefaultPayment", fields: [defaultPaymentAccountId], references: [id], onDelete: SetNull)
   invoices              CreditCardInvoice[]
   transactions          PersonalTransaction[]
+  // Sprint PF Fatia 3
+  ofxImports            PersonalOfxImport[]
 
   @@index([profileId])
   @@map("credit_cards")
@@ -2083,4 +2123,63 @@ model CreditCardInvoice {
   @@index([creditCardId, status])
   @@index([dueDate])
   @@map("credit_card_invoices")
+}
+
+// ============================================================
+// Sprint PF FATIA 3 (03/06/2026) — Import OFX cartão + IA PF
+// ============================================================
+// Histórico/auditoria de imports OFX em perfis PF. Paralelo ao
+// OfxImport PJ (Sprint 2.4). Permite revert + audit + métricas.
+model PersonalOfxImport {
+  id                String   @id @default(cuid())
+  profileId         String
+  // Cartão escolhido pra import (Fatia 3 — só cartão).
+  creditCardId      String?
+  // bankAccountId reservado pra Fatia 3B (OFX de conta PF).
+  bankAccountId     String?
+  userId            String
+
+  // PROCESSING | SUCCESS | FAILED | REVERTED
+  status            String   @default("PROCESSING")
+  fileName          String
+  fileSize          Int      @default(0)
+  // BANK | CREDITCARD (detectado do parser estendido)
+  statementType     String
+
+  // Métricas pós-confirm
+  totalTransactions       Int @default(0)
+  newTransactions         Int @default(0)
+  duplicates              Int @default(0)
+  autoClassified          Int @default(0)
+  invoicePaymentsSkipped  Int @default(0)
+  parcelasDetected        Int @default(0)
+
+  periodStart       DateTime?
+  periodEnd         DateTime?
+
+  // Metadados do cartão detectado (auditoria)
+  detectedOrg       String?    // "NU PAGAMENTOS S.A."
+  detectedFid       String?    // "260"
+  detectedAcctId    String?    // ACCTID do OFX
+
+  ipAddress         String?
+  userAgent         String?
+  errorMessage      String?
+  revertedAt        DateTime?
+  revertedById      String?
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  profile      PersonalProfile       @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  creditCard   CreditCard?           @relation(fields: [creditCardId], references: [id], onDelete: SetNull)
+  bankAccount  PersonalBankAccount?  @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
+  user         User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  revertedBy   User?                 @relation("PersonalOfxImportReverter", fields: [revertedById], references: [id])
+  transactions PersonalTransaction[]
+
+  @@index([profileId])
+  @@index([creditCardId])
+  @@index([status])
+  @@map("personal_ofx_imports")
 }

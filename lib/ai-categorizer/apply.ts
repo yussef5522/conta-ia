@@ -716,7 +716,9 @@ async function fetchPendingCandidates(
 
 interface RuleRowLike {
   id: string
-  companyId: string
+  // Sprint PF Fatia 3 — companyId virou nullable no schema (regras PF
+  // têm profileId no lugar). Pra pipeline PJ, mantém como string.
+  companyId: string | null
   tipoMatch: string
   padrao: string
   categoryId: string | null
@@ -730,7 +732,7 @@ interface RuleRowLike {
 function toRuleSnapshot(rule: RuleRowLike): RuleSnapshot {
   return {
     id: rule.id,
-    companyId: rule.companyId,
+    companyId: rule.companyId ?? '',
     // Schema usa string; runtime valida que é EXACT|NORMALIZED (Etapa 1)
     tipoMatch: rule.tipoMatch as TipoMatch,
     padrao: rule.padrao,
