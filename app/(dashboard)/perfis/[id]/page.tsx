@@ -14,6 +14,7 @@ import {
   Loader2,
   UserRound,
   User,
+  CreditCard as CardIcon,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -53,6 +54,13 @@ function formatBRL(n: number): string {
   }).format(n)
 }
 
+interface CreditSummary {
+  cardsCount: number
+  totalLimit: number
+  totalUsed: number
+  totalAvailable: number
+}
+
 export default function PerfilDashboardPage({
   params,
 }: {
@@ -60,6 +68,7 @@ export default function PerfilDashboardPage({
 }) {
   const { id } = use(params)
   const [data, setData] = useState<ProfileData | null>(null)
+  const [credit, setCredit] = useState<CreditSummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -77,6 +86,15 @@ export default function PerfilDashboardPage({
         if (d) setData(d)
       })
       .finally(() => setLoading(false))
+    // Sprint Fatia 2 — busca summary de cartões (não bloqueia render)
+    fetch(`/api/perfis/${id}/cartoes/dashboard-summary`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.summary) setCredit(d.summary)
+      })
+      .catch(() => {
+        // sem cartões = OK
+      })
   }, [id])
 
   if (loading) {
@@ -186,6 +204,77 @@ export default function PerfilDashboardPage({
           </CardContent>
         </Card>
       </div>
+
+      {/* Sprint Fatia 2 — Card cartões (só mostra se tiver ao menos 1) */}
+      {credit && credit.cardsCount > 0 && (
+        <Card className="mb-4 border-emerald-200/60">
+          <CardContent className="p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700">
+                  <CardIcon className="h-5 w-5" />
+                </span>
+                <div>
+                  <h2 className="font-semibold text-zinc-900">
+                    Cartões ({credit.cardsCount})
+                  </h2>
+                  <p className="text-xs text-zinc-500">
+                    Limite consolidado e fatura prevista
+                  </p>
+                </div>
+              </div>
+              <Link
+                href={`/perfis/${id}/cartoes`}
+                className="text-xs text-emerald-700 font-medium hover:underline"
+              >
+                Ver cartões →
+              </Link>
+            </div>
+            <div className="grid sm:grid-cols-3 gap-4 mt-4">
+              <div>
+                <div className="text-xs text-zinc-500">Limite total</div>
+                <div className="text-lg font-bold tabular-nums">
+                  {formatBRL(credit.totalLimit)}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-zinc-500">Usado</div>
+                <div className="text-lg font-bold tabular-nums text-red-700">
+                  {formatBRL(credit.totalUsed)}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-zinc-500">Disponível</div>
+                <div className="text-lg font-bold tabular-nums text-emerald-700">
+                  {formatBRL(credit.totalAvailable)}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Atalho rápido pra criar 1º cartão se ainda não tem */}
+      {credit && credit.cardsCount === 0 && (
+        <Card className="mb-4 border-dashed">
+          <CardContent className="p-4 flex items-center gap-3">
+            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700">
+              <CardIcon className="h-4 w-4" />
+            </span>
+            <div className="flex-1">
+              <p className="text-sm font-medium text-zinc-900">
+                Adicione seu cartão de crédito
+              </p>
+              <p className="text-xs text-zinc-500">
+                Controle fatura, parcelamento e limite disponível
+              </p>
+            </div>
+            <Button asChild size="sm" variant="outline">
+              <Link href={`/perfis/${id}/cartoes/novo`}>+ Cartão</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Contas + Top categorias */}
       <div className="grid lg:grid-cols-2 gap-4">

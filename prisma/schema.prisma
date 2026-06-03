@@ -1851,6 +1851,8 @@ model PersonalProfile {
   bankAccounts PersonalBankAccount[]
   transactions PersonalTransaction[]
   categories   PersonalCategory[]
+  // Sprint PF Fatia 2
+  creditCards  CreditCard[]
 
   @@index([cpf])
   @@map("personal_profiles")
@@ -1907,6 +1909,8 @@ model PersonalBankAccount {
 
   profile      PersonalProfile       @relation(fields: [profileId], references: [id], onDelete: Cascade)
   transactions PersonalTransaction[]
+  // Sprint PF Fatia 2 — cartões que usam essa conta como pagamento default
+  cardDefaultPayments CreditCard[]   @relation("CardDefaultPayment")
 
   @@index([profileId])
   @@map("personal_bank_accounts")
@@ -1934,22 +1938,39 @@ model PersonalTransaction {
 
   notes String?
 
-  // Campos preparados pra fatias futuras (NULLABLE — não usados na Fatia 1):
-  // creditCardId        String?    — Fatia 2 (cartão)
-  // creditCardInvoiceId String?    — Fatia 2
-  // installmentGroupId  String?    — Fatia 2
-  // bridgeId            String?    — Fatia 4 (ponte PJ→PF)
+  // === Sprint PF Fatia 2 (02/06/2026) — Cartão de crédito ===
+  // Quando preenchidos, esta tx é compra/pagamento de cartão.
+  // NULL = tx normal (Fatia 1 — entrada/saída direta em conta bancária).
+  creditCardId        String?
+  creditCardInvoiceId String?
+
+  // Parcelamento Nx: compra cria N tx com o MESMO installmentGroupId.
+  installmentNumber  Int?
+  installmentTotal   Int?
+  installmentGroupId String?
+
+  // True quando esta tx é o PAGAMENTO da fatura (debita conta bancária).
+  // False (default) = compra ou crédito normal.
+  isInvoicePayment Boolean @default(false)
+
+  // === Sprint PF Fatia 4 (futuro) — Ponte PJ→PF ===
+  // bridgeId String?  — adicionado na Fatia 4
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  profile     PersonalProfile      @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  bankAccount PersonalBankAccount? @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
-  category    PersonalCategory?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  profile           PersonalProfile     @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  bankAccount       PersonalBankAccount? @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
+  category          PersonalCategory?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  creditCard        CreditCard?         @relation(fields: [creditCardId], references: [id], onDelete: SetNull)
+  creditCardInvoice CreditCardInvoice?  @relation(fields: [creditCardInvoiceId], references: [id], onDelete: SetNull)
 
   @@index([profileId, date])
   @@index([bankAccountId])
   @@index([categoryId])
+  @@index([creditCardId])
+  @@index([creditCardInvoiceId])
+  @@index([installmentGroupId])
   @@map("personal_transactions")
 }
 
@@ -1980,4 +2001,86 @@ model PersonalCategory {
   @@index([profileId])
   @@index([parentId])
   @@map("personal_categories")
+}
+
+// ============================================================
+// Sprint PF FATIA 2 (02/06/2026) — Cartão de crédito robusto
+// ============================================================
+// Schema aditivo paralelo a PersonalBankAccount/PersonalTransaction.
+// Cartão NÃO é BankAccount: tem dívida + limite (não saldo), fatura
+// como entidade intermediária, parcelamento Nx nativo, fechamento ≠
+// vencimento. Pegadinhas resolvidas em lib/credit-card/*.
+
+model CreditCard {
+  id        String @id @default(cuid())
+  profileId String  // Fatia 2 só PF. PJ futuro se necessário.
+
+  name        String  // "Nubank Roxinho", "Itaú Personnalité"
+  bankName    String?
+  lastDigits  String? // últimos 4 (auditoria; NUNCA o número completo)
+  // VISA | MASTERCARD | ELO | AMEX | HIPERCARD (opcional)
+  brand       String?
+
+  creditLimit Float   // limite total
+  closingDay  Int     // 1-31
+  dueDay      Int     // 1-31
+
+  // ATUAL  — compra NO dia do fechamento entra na fatura que fecha hoje (default Nubank/Itaú)
+  // PROXIMA — entra na próxima fatura (alguns bancos invertem)
+  closingDayRule String @default("ATUAL")
+
+  // Conta padrão que paga a fatura (PersonalBankAccount.id).
+  // null = user escolhe a cada pagamento.
+  defaultPaymentAccountId String?
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  profile               PersonalProfile      @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  defaultPaymentAccount PersonalBankAccount? @relation("CardDefaultPayment", fields: [defaultPaymentAccountId], references: [id], onDelete: SetNull)
+  invoices              CreditCardInvoice[]
+  transactions          PersonalTransaction[]
+
+  @@index([profileId])
+  @@map("credit_cards")
+}
+
+model CreditCardInvoice {
+  id           String @id @default(cuid())
+  creditCardId String
+
+  // Mês de competência YYYY-MM (mês do fechamento).
+  // UNIQUE por cartão — 1 fatura por mês por cartão.
+  reference String
+
+  closingDate DateTime
+  dueDate     DateTime
+
+  totalAmount Float @default(0) // soma das tx vinculadas
+  paidAmount  Float @default(0)
+
+  // OPEN     — date <= closingDate (aceita lançamentos)
+  // CLOSED   — closingDate < now <= dueDate (aguarda pagamento)
+  // PAID     — paga total
+  // PARTIAL  — paga parcial (rotativo gerou tx na próxima)
+  // OVERDUE  — vencida sem pagar total
+  status String @default("OPEN")
+
+  // Rastreabilidade do rotativo: se essa fatura foi gerada por
+  // carry-over de uma anterior parcial, aponta pra ela. Normal = null.
+  carryoverFromInvoiceId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  creditCard    CreditCard            @relation(fields: [creditCardId], references: [id], onDelete: Cascade)
+  carryoverFrom CreditCardInvoice?    @relation("CarryoverChain", fields: [carryoverFromInvoiceId], references: [id], onDelete: SetNull)
+  carryoverTo   CreditCardInvoice[]   @relation("CarryoverChain")
+  transactions  PersonalTransaction[]
+
+  @@unique([creditCardId, reference])
+  @@index([creditCardId, status])
+  @@index([dueDate])
+  @@map("credit_card_invoices")
 }
