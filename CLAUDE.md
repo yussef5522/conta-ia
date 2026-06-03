@@ -34,7 +34,7 @@
 > - CONTA-IA-NORTE.md tem prioridade pra decisões **ESTRATÉGICAS** (visão, arquitetura)
 > - DASHBOARD-PLAN.md tem prioridade pra **EXECUÇÃO** dos sprints de dashboard (0.5 → 3)
 >
-> **Última atualização:** 03/06/2026 (Sprint PF Fatia 4)
+> **Última atualização:** 03/06/2026 (Sprint Unificar Sócios)
 
 ---
 
@@ -2533,6 +2533,119 @@ vaza pra outros sócios — corrigir antes ou depois fica mais caro.
 - **Asaas 3D** (retomar pagamento prod — playbook em `docs/sprints/PAGAMENTO-RETOMAR-AQUI.md`)
 - **Fatia 5** (Família/multi-perfis compartilhados + convites entre Users)
 - Refactor categoria genérica (`docs/decisoes/categoria-pj-nominada-vs-generica.md`)
+
+### 03/06/2026 (parte 5) — Sprint Unificar Sócios (UX consolidação)
+
+**Contexto:** Yussef notou sobreposição UX entre `/pessoas-vinculadas` (cadastro
+SocioPF + EmpresaRelacionada) e `/empresas/[id]/pontes` (Fatia 4 recém-deployada).
+Pediu unificação estilo QuickBooks/Xero/Conta Azul. Estudo + 6 decisões
+aprovadas + construção + deploy em 1 sessão. Ordem: Yussef escolheu fazer
+Unificação ANTES do Dashboard PF (minha recomendação) pra evitar links
+inconsistentes no dashboard futuro.
+
+#### Sprint Unificar Sócios ✅ DEPLOYADA EM PROD
+**Branch:** `feature/unificar-socios` → main em `be9acf4` (commit feat `7f3e017`).
+
+**O que mudou (100% UI, ZERO migration):**
+- Sidebar: 9 → 8 itens. "Pessoas Vinculadas" + "Pontes PJ→PF" removidos,
+  "Sócios" adicionado
+- `/empresas/[id]/socios` com 2 abas:
+  - "Sócios PF" — tabela com coluna **"Suas pontes"** filtrada por user
+  - "Empresas do Grupo" — CNPJs relacionados (sem timeline)
+- `/empresas/[id]/socios/[socioId]` com 4 abas:
+  - **Dados** (público): nome, CPF, papel, chaves Pix, cadastrado em
+  - **Suas pontes** (privado): timeline filtrada por `profileId IN owned_by_user`
+  - **Detecção Pix** (público): tx PJ identificadas com badge 🌉 anônimo
+  - **Nova ponte** (form contextual com `socioPFId` pré-preenchido)
+- `/socios` rota global resolve cookie `current_empresa_id` → redirect
+- Toast enxuto "Pontes agora estão em Sócios" (1x por user via localStorage)
+
+**Reuso máximo (zero código novo):**
+- Endpoints existentes `/api/empresas/[id]/socios-pf` + `/empresas-relacionadas`
+  (CRUD intacto)
+- Componentes Fatia 4: `BridgeBadge`, `BridgeDeleteModal`, `BridgeKindRadio`,
+  `KIND_DEFAULTS`
+- Lib Fatia 4: `getUserOwnedProfileIds`, queries de pontes
+- `lib/pix-detection/*` (detecção Pix intacta — 67 testes verdes)
+- Reuso do form de criação de ponte → extraído em `NovaPonteForm.tsx`
+
+**1 novo endpoint:** `GET /api/empresas/[id]/socios/[socioId]/aggregated`
+- Retorna: socio + suasPontes (filtradas por user) + agregados + txPixDetected (público)
+- Cache 60s com **userId NA CHAVE** (privacidade — sócio B nunca vê totals do A)
+
+**Redirects 301 em `next.config.mjs`:**
+- `/pessoas-vinculadas` → `/socios` (rota global resolve cookie)
+- `/empresas/:id/pontes` → `/empresas/:id/socios`
+- `/pontes/[id]` (detalhe global) e `/pontes/nova` (legacy) MANTIDOS
+
+#### 🔒 Privacidade Fatia 4 INTACTA + 3 novos testes ★
+- 83/83 testes Fatia 4 verdes (incl 9 ★ privacidade entre sócios)
+- 67/67 testes pix-detection verdes
+- 11 testes novos `aggregated-endpoint` incl **3 ★ privacidade**:
+  - userA dono perfil + 2 bridges → totals R$ 15k ✓
+  - 🚨 userB sem perfil → vê dados públicos do sócio MAS totals zerados + suasPontes=[] ✓
+  - 🚨 Tx Pix detectadas são públicas (hasBridge=true sem detalhes) ✓
+
+**Suite:** 4311 → **4322 (+11 testes)** sem regressões.
+
+#### Deploy passo-a-passo (ZERO MIGRATION)
+
+1. Backup `pg_dump -Fc` → `pre-unificar-socios-20260603_153249.dump` (651K · 443 itens)
+2. **Counts pré:** users=5, companies=3, **transactions=2907**, personal_profiles=1,
+   personal_transactions=0, pj_to_pf_bridges=0, **socios_pf=1**
+3. git pull → npm ci → swap → **prisma generate DEPOIS** → `migrate status`:
+   `Database schema is up to date!` ✓ **(0 pendentes — confirmado zero migration)**
+4. `npm run build` ✓ → pm2 reload (PID 541118 ↺ 247 online)
+5. **Counts pós:** TODOS idênticos ✓
+6. admin@contaia plano `inteligencia` status `GRANTED` preservado ✓
+
+**Smoke real (5 cenários ✅):**
+
+| # | Validação | Resultado |
+|---|---|---|
+| 1 | `curl /pessoas-vinculadas` | **301 → /socios** ✓ |
+| 2 | `curl /empresas/<id>/pontes` | **301 → /empresas/<id>/socios** ✓ |
+| 3 | GET aggregated sem auth | **401 AUTH_REQUIRED** ✓ |
+| 4 | GET aggregated com admin logado | **200** + payload completo (socio + suasPontes + agregados + txPixDetected) ✓ |
+| 5 | HTML `/empresas/<id>/socios` | **200**, title "Sócios \| CAIXAOS" ✓ |
+
+**Defense in depth descoberto durante smoke:** UserB sem `UserCompanyRole` é
+bloqueado em camada anterior (403 antes do endpoint). Proteção em prod MAIOR
+que nos testes (que mockam contexto pra cobrir o cenário "RBAC ok + perfil
+inexistente"). Zero risco real.
+
+**Cleanup pós-smoke:**
+- Sócio smoke + userB temporário deletados
+- Senha admin revertida ao hash bcrypt original (PWD_REVERTED=OK)
+- /tmp limpo (zero arquivo de teste)
+
+**Counts finais (idênticos baseline):** users=5, transactions=2907,
+socios_pf=1, pj_to_pf_bridges=0.
+
+**Documentação:**
+- `docs/sprints/unificar-socios-pontes.md` — plano + decisões A-F
+- `docs/sprints/pf-dashboard.md` — próxima sprint pendente (Dashboard PF
+  estilo Mobills/Organizze, propostas 6 zonas + 5 decisões)
+
+**Métricas:**
+- 8 arquivos novos + 3 modificados (+1944 linhas)
+- TS strict 0
+- Build prod: ✓
+- Suite 4322/4322 (+11)
+- Migration aplicada: **0** (zero ALTER, zero CREATE TABLE)
+- PM2 ↺ 247 online após reload
+- Backup 651K · 443 itens
+
+**Próximo passo:** **Sprint Dashboard PF** (`docs/sprints/pf-dashboard.md`).
+Yussef vai aprovar as 6 decisões do plano (layout 6 zonas, cortes,
+endpoint evolução mensal, etc) e parte pra construção. Endpoints
+de dados (Fatia 1-4) já existem, falta só camada visual.
+
+Alternativas que podem ser priorizadas em vez do Dashboard PF:
+- **Ligar PDF Vision** (depende ZDR Anthropic — frente externa)
+- **Asaas 3D** (retomar pagamento prod)
+- **Fatia 5 PF** (Família/multi-perfis compartilhados)
+- **Refactor categoria genérica** (`docs/decisoes/categoria-pj-nominada-vs-generica.md`)
 
 ### [Próxima sessão] — preencher
 - Data:
