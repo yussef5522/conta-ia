@@ -696,6 +696,78 @@ VIOLAR ESSA REGRA = bug em produção = retrabalho = quebra de confiança.
 
 ---
 
+## 🛡️ Migrations em tabelas com dados reais — AVISO OBRIGATÓRIO NO PLANO
+
+Estabelecida na Fatia 3 PF (03/06/2026) após auto-correção. Yussef
+pegou que a migration alterou `ai_learning_rules.companyId NOT NULL → NULL`
+(tabela com 176 regras vivas da IA PJ) sem que eu tivesse destacado no
+plano. Reagiu certo: mudanças em dados reais merecem aviso explícito.
+
+### Quando aplica
+
+Toda vez que uma migration for além de "100% aditiva pura" (= `CREATE
+TABLE` em tabela nova OU `ADD COLUMN nullable / com default` em tabela
+sem dados reais), o plano DEVE conter uma seção destacada
+**"⚠️ ALTERs em tabelas com dados reais"**.
+
+### O que SIM é "aditivo puro" (não precisa destacar)
+
+- `CREATE TABLE` (tabela nova)
+- `ADD COLUMN` nullable em tabela criada na mesma migration
+- `ADD COLUMN` com `DEFAULT` em tabela com dados reais MAS a default
+  preenche todas as linhas existentes sem alterar comportamento
+- Índices novos / FKs novas em colunas novas
+- Backfills idempotentes documentados
+
+### O que EXIGE destaque no plano
+
+| Tipo | Exemplo | Risco típico |
+|---|---|---|
+| `DROP NOT NULL` em coluna existente | `ALTER COLUMN companyId DROP NOT NULL` | Baixo — mas muda semântica |
+| `SET NOT NULL` em coluna existente | requer backfill prévio | Médio — quebra se houver NULLs |
+| `DROP CONSTRAINT` / recriar UNIQUE | mudança de unicidade | Médio — risco de colisão |
+| `ALTER COLUMN TYPE` | `INTEGER → BIGINT` | Médio — rebuild de índice; tempo proporcional a linhas |
+| `DROP COLUMN` | remoção | Alto — perda de dados; coordenar deploy |
+| `RENAME COLUMN/TABLE` | renomear | Alto — código antigo quebra durante deploy rolling |
+| Backfill não-idempotente | `UPDATE rows SET x = …` | Alto — re-execução duplica |
+| Migração de dados entre tabelas | mover linhas | Alto — atomic + rollback plan |
+
+### Formato do destaque (template)
+
+```
+## ⚠️ ALTERs em tabelas com DADOS REAIS
+
+| Tabela | Coluna/Operação | Tipo | Linhas afetadas | Risco | Mitigação |
+|---|---|---|---|---|---|
+| ai_learning_rules | companyId | DROP NOT NULL | 176 vivas | Baixo (relaxa restrição; valores existentes seguem válidos) | Verificação pós: COUNT WHERE companyId IS NULL = 0 |
+| personal_transactions | +6 cols (ofxImportId, …) | ADD COLUMN nullable | 0 (tabela vazia em prod) | Zero | Default false no único boolean |
+```
+
+### Como o relatório de deploy deve confirmar
+
+Pós-migration, mostrar **evidência objetiva** dos dados reais
+afetados:
+- COUNT antes/depois bate (já fazemos)
+- Estado da coluna alterada (ex: `is_nullable = YES`)
+- Distribuição preservada (ex: regras por companyId continuam iguais)
+- FKs/índices intactos (lista de pg_indexes / pg_constraint)
+- Query típica do pipeline existente continua retornando dados certos
+
+### Por que essa regra existe
+
+- Yussef tem 5 users + 2907 transações + 176 regras IA + 3 empresas
+  reais — dados de Yussef + esposa + clientes (profit/cacula/itaqui)
+- Mudança em tabela viva sem aviso pode passar despercebida no review
+- Forçar o destaque transforma "decisão técnica oculta" em "decisão
+  explícita aprovada"
+- O custo de digitar a seção é minutos; o custo de perder dados é
+  catastrófico
+
+VIOLAR ESSA REGRA (alterar tabela com dados reais sem aviso no plano)
+= mesma gravidade de violar a DoD = retrabalho + quebra de confiança.
+
+---
+
 ## 🛡️ Segurança e LGPD
 
 - ✅ Senhas com bcrypt rounds=12
