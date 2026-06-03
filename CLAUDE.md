@@ -2010,6 +2010,107 @@ PF/PJ pós-cadastro.
 próprio + dependente, validar switcher visual PJ/PF + isolamento entre
 contas). Quando aprovar, segue Fatia 2 (cartão de crédito robusto).
 
+### 03/06/2026 — Sprint PF Fatia 2 (Cartão de crédito) entregue em prod
+
+**Contexto:** Yussef aprovou o plano detalhado (`docs/sprints/pf-fatia-2-cartao.md`)
++ as 7 decisões (closingDayRule default ATUAL, máx 24 parcelas, juros
+manual no MVP, anuidade manual, estorno em fatura paga vira crédito
+automático na próxima, brand opcional). Construção inteira em 1 sessão
++ checkpoint pré-deploy aprovado.
+
+#### Sprint PF Fatia 2 — Cartão robusto ✅ DEPLOYADA EM PROD
+**Branch:** `feature/pf-fatia-2-cartao` → main em `8704107`.
+
+**Schema (2 models novos + 7 colunas aditivas + 1 reverso):**
+- `CreditCard` (limite, closingDay, dueDay, closingDayRule ATUAL|PROXIMA,
+  defaultPaymentAccountId opcional, brand/lastDigits opcionais)
+- `CreditCardInvoice` (reference YYYY-MM @unique, status OPEN|CLOSED|
+  PAID|PARTIAL|OVERDUE, `carryoverFromInvoiceId` pra rastrear rotativo)
+- PersonalTransaction ganhou 7 colunas: creditCardId, creditCardInvoiceId,
+  installmentNumber, installmentTotal, installmentGroupId, isInvoicePayment
+- PersonalBankAccount ganhou relação reversa `cardDefaultPayments`
+- PersonalProfile ganhou `creditCards[]`
+- Migration `20260614000000_pf_fatia_2_cartao` puramente aditiva
+
+**5 helpers puros (testáveis sem DB):**
+- `lib/dates/add-months.ts` (EXTRAÍDO de Sprint 3C `lib/asaas/webhook.ts`
+  — agora genérico, reusado em PJ webhook + Fatia 2 cartão)
+- `calculate-invoice-reference` (closingDayRule ATUAL|PROXIMA + clamp último dia)
+- `build-installments` (1-24 parcelas, round half-up, sum exato qualquer N)
+- `calculate-card-summary` (limite usado/disponível real-time, OPEN+CLOSED+PARTIAL contam, PAID não)
+- `calculate-profile-credit-summary` (consolidado N cartões pro dashboard)
+- `lib/credit-card/queries.ts` (orquestrador atomic com $transaction + checkProfileAccess)
+
+**13 endpoints REST:**
+- CRUD cartão (lista, novo, detalhe+summary, editar, soft delete)
+- Faturas (lista, detalhe+tx, pagar com juros opcional)
+- Compras (criar à vista 1x ou parcelada 2-24x, estornar SINGLE|ALL_GROUP)
+- `dashboard-summary` (consolidado + topCategoriesOnCards + invoiceHistory 12m — rosca/line/bar READY)
+- `saldo-previsto` (saldo - faturas ≤30d - parcelas futuras)
+- `installments-preview` (alimenta `<InstallmentPreview>` sem criar compra)
+
+**UI dual PJ × PF:**
+- 7 telas novas em `/perfis/[id]/cartoes/*`: lista, novo, dashboard
+  do cartão, editar, faturas (lista + detalhe + pagar), nova compra
+- Componente reusável `<InstallmentPreview>` (mostra "1ª R$ 33,33 em
+  jul/2026, 2ª R$ 33,33 em ago/2026..." em real-time enquanto user
+  digita)
+- Dashboard PF (`/perfis/[id]`) ganha card "Cartões" com limite
+  consolidado + atalho "Criar 1º cartão" se zero
+
+**10 pegadinhas resolvidas com testes:**
+1. Compra no dia do fechamento — closingDayRule ATUAL|PROXIMA
+2. Virada de mês parcelado (31/jan → 28/fev) — addMonths com clamp
+3. Estorno parcelado em fatura paga — crédito automático na próxima
+4. Pagamento parcial → carryoverFromInvoiceId + tx rotativa + juros opcional
+5-10. USD/cashback/pontos FORA · anuidade manual · limite real-time ·
+multi-cartões · OFX Fatia 3 · juros user informa
+
+**Multi-tenant rígido:**
+- Toda rota usa `checkProfileAccess` (helper Fatia 1)
+- `CreditCardError` com códigos NO_ACCESS|CARD_NOT_FOUND|INVALID_*
+- 15 testes isolamento confirmam zero vazamento
+
+**89 testes novos (3964 → 4053):**
+- 12 add-months (extraído + clamp + bissexto)
+- 23 calculate-invoice-reference (todas pegadinhas de data)
+- 14 build-installments (sum exato qualquer N, 31/jan, 12x cruza ano)
+- 12 calculate-card-summary (limit usado/PAID/PARTIAL/clamps)
+- 13 queries-integration (à vista, parcelado, rotativo+juros, estorno SINGLE|ALL_GROUP)
+- 15 multi-tenant-isolamento (15 cenários críticos endpoint)
+
+#### Deploy passo-a-passo (resultado)
+1. Backup `pg_dump -Fc` → `pre-pf-fatia-2-20260603_001635.dump` (607.153 bytes · 382 itens)
+2. **Baseline counts:** users=5, companies=3, transactions=2907, subscriptions=5, personal_profiles=1 (Yussef criou após decisão SocioPF×PersonalProfile), personal_transactions=0
+3. git pull main → HEAD `8704107`
+4. swap-prisma-to-postgres.sh (no-op — já em postgres)
+5. **prisma generate DEPOIS do swap** (fix do bug Fatia 1 — sem isso login dá 500)
+6. prisma migrate status: 1 pendente (a do PF Fatia 2)
+7. **prisma migrate deploy** → aplicada
+8. **Counts pós:** users=5✓, companies=3✓, transactions=2907✓, subscriptions=5✓, personal_profiles=1✓, personal_transactions=0✓
+9. Yussef admin GRANTED+inteligencia preservado ✓
+10. 7 colunas novas em personal_transactions verificadas no information_schema (6 nullable + 1 NOT NULL com default)
+11. credit_cards=0, credit_card_invoices=0 (esperado)
+12. npm run build OK
+13. pm2 reload --update-env → PID 522947 online
+
+**Smoke tests:**
+- (a) GET /cartoes sem auth → 401 ✓
+- (b) Login admin + GET /perfis → lista 1 perfil ("yussef abu zahry musa", CPF 600.258.890-60, isSelf:true)
+- (c) GET /cartoes do perfil → `{"cards":[]}` ✓
+- (d) GET /cartoes/dashboard-summary → `{summary:{cardsCount:0,totalLimit:0,...},topCategoriesOnCards:[],invoiceHistory:[]}` ✓
+- (e) GET /saldo-previsto → `{saldoAtual:0,faturasAbertas:0,parcelasFuturas:0,saldoPrevisto:0}` ✓
+
+**Descoberta interessante:**
+- Yussef já criou o PersonalProfile dele (`cmpxg38zj000omro5yw0v3xr0`) com
+  CPF 600.258.890-60 entre nossa decisão SocioPF×PersonalProfile e o
+  deploy da Fatia 2. Preservado ✓
+
+**Próximo passo:** Yussef testa criar 1 cartão real (Nubank/Itaú) → lançar
+compra à vista + 1 parcelada (preview) → pagar fatura → estornar.
+Quando aprovar, próximo sprint é **DASHBOARD PF** (Mobills/Organizze-grade)
+ou **Fatia 3 (OFX + IA classificação PF)**. Decisão pendente.
+
 ### [Próxima sessão] — preencher
 - Data:
 - O que foi feito:
