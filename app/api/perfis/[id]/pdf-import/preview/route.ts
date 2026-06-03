@@ -11,6 +11,7 @@ import {
   isProfileAccessError,
   isCreditCardError,
 } from '@/lib/pdf-import/queries'
+import { checkPdfImportFlag } from '@/lib/pdf-import/feature-flag'
 import type { BankHint } from '@/lib/pdf-import/pdf-templates'
 
 const VALID_BANK_HINTS: BankHint[] = ['NUBANK', 'ITAU', 'BRADESCO', 'INTER', 'C6', 'GENERIC']
@@ -59,6 +60,14 @@ export async function POST(
   const user = await getAuthUser(request)
   if (!user) return NextResponse.json({ erro: 'Não autenticado' }, { status: 401 })
   const { id } = await params
+
+  const gate = checkPdfImportFlag()
+  if (!gate.allowed) {
+    return NextResponse.json(
+      { erro: gate.message, code: gate.reason },
+      { status: 403 },
+    )
+  }
 
   const ct = request.headers.get('content-type') ?? ''
   if (!ct.includes('multipart/form-data')) {

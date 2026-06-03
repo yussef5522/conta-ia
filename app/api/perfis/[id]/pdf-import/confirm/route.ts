@@ -9,6 +9,7 @@ import {
 } from '@/lib/pdf-import/confirm'
 import { ProfileAccessError } from '@/lib/personal-profile/queries'
 import { isCreditCardError } from '@/lib/credit-card/queries'
+import { checkPdfImportFlag } from '@/lib/pdf-import/feature-flag'
 
 function errorResponse(err: unknown) {
   if (err instanceof ProfileAccessError) {
@@ -57,6 +58,15 @@ export async function POST(
   const user = await getAuthUser(request)
   if (!user) return NextResponse.json({ erro: 'Não autenticado' }, { status: 401 })
   const { id } = await params
+
+  const gate = checkPdfImportFlag()
+  if (!gate.allowed) {
+    return NextResponse.json(
+      { erro: gate.message, code: gate.reason },
+      { status: 403 },
+    )
+  }
+
   let body: unknown
   try {
     body = await request.json()
