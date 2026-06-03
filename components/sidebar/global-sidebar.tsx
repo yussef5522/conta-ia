@@ -35,6 +35,7 @@ import {
   Sparkles,
   Landmark,
   Inbox,
+  Workflow,
 } from 'lucide-react'
 import { SidebarItem } from './sidebar-item'
 import { useSidebarBadges } from '@/lib/hooks/use-sidebar-badges'
@@ -147,6 +148,18 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
           isActive={pathname.startsWith('/transacoes')}
           onClick={onNavigate}
         />
+        {/* Sprint PF Fatia 4 — Pontes PJ→PF (diferencial competitivo).
+            Só mostra quando user tá com empresa no contexto. Privacidade:
+            cada user vê só as próprias pontes. */}
+        {currentEmpresaId && (
+          <SidebarItem
+            icon={Workflow}
+            label="Pontes PJ→PF"
+            href={`/empresas/${currentEmpresaId}/pontes`}
+            isActive={/^\/empresas\/[^/]+\/pontes(\/|$)/.test(pathname) || pathname.startsWith('/pontes/')}
+            onClick={onNavigate}
+          />
+        )}
         {/* Hotfix 5.0.4.0a-fix — Relatórios substituiu DRE Gerencial.
             Index per-empresa contém DRE + Categorias + Comparativo. */}
         <SidebarItem
