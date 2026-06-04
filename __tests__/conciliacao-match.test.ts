@@ -245,3 +245,71 @@ describe('classifyRecommendation', () => {
     expect(classifyRecommendation(0)).toBe('NO_MATCH')
   })
 })
+
+// =============================================================================
+// Sprint A (03/06/2026) — Caso real Cacula Mix Nestle
+//
+// ANTES da Sprint A: match falhava na descrição porque normalizeDescription
+// strippava o prefixo " - " (categorização) e matava o nome do fornecedor:
+//   OFX "NESTLE BRASIL LTDA - Pagamento" → "pagamento"
+//   Excel "Nestle Brasil Ltda" → "nestle brasil ltda"
+//   Jaro-Winkler ≈ 0.0 → 0 pts descrição (mesmo com valor+data exatos)
+//
+// DEPOIS: normalizeForMatch preserva nome do fornecedor, strippa sufixos
+// comerciais. Match exato após normalização → 10 pts descrição → score ≥ 90.
+// =============================================================================
+
+describe('scoreMatch — Sprint A: caso real Cacula Mix Nestle 03/06', () => {
+  it('OFX "NESTLE BRASIL LTDA - Pagamento" vs Excel "Nestle Brasil Ltda" → score ≥ 90', () => {
+    const ofxNestle: OFXTransaction = {
+      id: 'ofx-real',
+      description: 'NESTLE BRASIL LTDA - Pagamento',
+      amount: 105.86,
+      type: 'DEBIT',
+      date: utc(2026, 5, 3),
+      supplierId: null,
+      bankAccountId: 'ba-banrisul',
+    }
+    const excelNestle: MatchCandidate = {
+      id: 'excel-real',
+      lifecycle: 'PAYABLE', // ramo 2: EFFECTED órfão entra aqui mapeado como PAYABLE
+      description: 'Nestle Brasil Ltda',
+      amount: 105.86,
+      dueDate: utc(2026, 5, 3),
+      supplierId: null,
+      customerId: null,
+      categoryId: null,
+    }
+    const r = scoreMatch(ofxNestle, excelNestle)
+    expect(r).not.toBeNull()
+    expect(r!.breakdown.amount).toBe(50) // valor exato
+    expect(r!.breakdown.date).toBe(30) // mesmo dia
+    expect(r!.breakdown.description).toBe(10) // após normalize, descrição idêntica
+    expect(r!.score).toBeGreaterThanOrEqual(90) // → AUTO_RECONCILE
+    expect(classifyRecommendation(r!.score)).toBe('AUTO_RECONCILE')
+  })
+
+  it('regressão protegida: AMBEV - Pagamento + AMBEV S.A. mantém ≥ 90', () => {
+    const ofx: OFXTransaction = {
+      id: 'ofx-ambev',
+      description: 'AMBEV - Pagamento',
+      amount: 1245,
+      type: 'DEBIT',
+      date: utc(2026, 5, 2),
+      supplierId: null,
+      bankAccountId: 'ba',
+    }
+    const ap: MatchCandidate = {
+      id: 'excel-ambev',
+      lifecycle: 'PAYABLE',
+      description: 'AMBEV S.A.',
+      amount: 1245,
+      dueDate: utc(2026, 5, 2),
+      supplierId: null,
+      customerId: null,
+      categoryId: null,
+    }
+    const r = scoreMatch(ofx, ap)
+    expect(r!.score).toBeGreaterThanOrEqual(85) // ambev vs ambev s.a → Jaro-Winkler alto
+  })
+})

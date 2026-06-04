@@ -19,7 +19,7 @@
 //   - Valor candidate dentro ±20% do ofx.amount
 
 import { jaroWinkler } from './jaro-winkler'
-import { normalizeDescription } from '@/lib/ai-categorizer/normalize'
+import { normalizeForMatch } from './normalize-for-match'
 
 export interface MatchCandidate {
   id: string
@@ -119,9 +119,12 @@ export function scoreMatch(
     reasoning.push('Fornecedor exato')
   }
 
-  // 4) DESCRIÇÃO — jaroWinkler na descrição normalizada
-  const ofxNorm = normalizeDescription(ofx.description)
-  const candNorm = normalizeDescription(candidate.description)
+  // 4) DESCRIÇÃO — jaroWinkler na descrição normalizada PRA MATCH
+  // Sprint A: usa normalizeForMatch (preserva nome do fornecedor, strippa
+  // só sufixos comerciais tipo "- Pagamento") em vez do normalizeDescription
+  // de categorização (que mataria o nome do fornecedor).
+  const ofxNorm = normalizeForMatch(ofx.description)
+  const candNorm = normalizeForMatch(candidate.description)
   if (ofxNorm && candNorm) {
     const sim = jaroWinkler(ofxNorm, candNorm)
     if (sim >= 0.85) {
