@@ -314,9 +314,17 @@ model Transaction {
   // Quando uma PAYABLE/RECEIVABLE é conciliada com uma tx OFX, aponta pra ela.
   // Estratégia "link" (não merge): preserva FITID/dedupHash/importId pra auditoria fiscal +
   // permite desfazer conciliação. DRE caixa filtra `reconciledWithId IS NULL` pra evitar dupla contagem.
-  reconciledWithId String?       @unique
+  // Sprint A-effected Fase B.3: @unique REMOVIDO pra suportar N:1 (várias APs
+  // apontando pra mesma OFX — caso CIA DA FRUTA). Defesa em profundidade
+  // continua via: 3 camadas de guards reconciledFrom + validação de soma
+  // exata (±0.01) no endpoint find-and-match/reconcile + flag
+  // allowMultiReconcile no lib/conciliacao/reconcile.
+  reconciledWithId String?
   reconciledWith   Transaction?  @relation("ConciliationLink", fields: [reconciledWithId], references: [id])
   reconciledFrom   Transaction[] @relation("ConciliationLink")
+  // Sprint A-effected Fase B.3: agrupa N:1 (várias candidates conciliadas
+  // com mesma OFX via Find & Match). null = single 1:1 ou pré-B.3.
+  reconcileGroupId String?
 
   // RECEIVABLE pode vincular cliente (Customer); PAYABLE usa supplierId já existente.
   customerId String?
@@ -367,6 +375,11 @@ model Transaction {
   @@index([recurringScheduleId])
   @@index([relatedPartyType])
   @@index([isInternalTransfer])
+  // Sprint A-effected Fase B.3: índice não-único em reconciledWithId
+  // (substitui o @unique removido pra permitir N:1) + reconcileGroupId
+  // pra lookups rápidos de undo do grupo.
+  @@index([reconciledWithId])
+  @@index([reconcileGroupId])
   @@map("transactions")
 }
 
