@@ -2745,6 +2745,170 @@ Noura, Noura não vê perfil do admin. Multi-user PF rodando 100% isolado em pro
   — agora que multi-user PF está validado em prod)
 - **Refactor categoria PJ genérica** (`docs/decisoes/categoria-pj-nominada-vs-generica.md`)
 
+### 03-04/06/2026 — Reformulação Conciliação no modelo Xero (Sprint A-effected B.1+B.2+B.3)
+
+**Contexto:** Yussef usando a tela de conciliação Fase B atual (4 ações por linha + bulk
+approve) com dados reais da Cacula Mix (pizzaria, 22 duplicatas Excel↔OFX conhecidas)
+encontrou 3 problemas estruturais — a tela tinha ficado inventiva, não refletia o
+modelo mental do negócio dele. Decisão: **copiar o Xero LITERALMENTE** (referência
+mundial). Sprint dividida em B.1 + B.2 + B.3, branch `feature/sprint-a-matcher-hotfix`
+mergeada em main em `f903bf5`.
+
+**Histórico longo da branch (8 dias, 17 commits):** começou como hotfix do matcher
+(Sprint A — relaxar filtro lifecycle pra incluir EFFECTED órfão), virou Sprint A-fix
+(endpoint /match retorna candidate metadata embarcado — resolve N+1 fetch da UI), depois
+Sprint A-effected (reconcile aceita EFFECTED órfão como candidato + transferência
+cooperativa de category/supplier), depois Fase 1 (aba Já Conciliado + saldo banner),
+depois Fase 2 (4 abas confidence + bulk-dry-run), depois Fase 2-fix (refreshKey do
+banner + reverse-link guard descoberto via Lamana), e finalmente a reformulação Xero
+(B.1+B.2+B.3) que substituiu toda UI.
+
+#### Sprint A — Hotfix matcher
+- `lib/conciliacao/find-candidates.ts` — relaxa filtro `lifecycle`: RAMO 1 (clássico
+  PAYABLE/RECEIVABLE) + RAMO 2 NOVO (EFFECTED órfão, origin Excel/Manual, sem link)
+- `lib/conciliacao/normalize-for-match.ts` (NOVO) — normalizer dedicado pra match
+  (preserva nome do fornecedor, strippa só sufixos comerciais tipo "- Pagamento").
+  Diferente do normalizeDescription da categorização (que cortaria o nome).
+- 20 backfill PAYABLE+RECONCILED+null link → PENDING (`scripts/sprint-a-backfill-
+  payable-orphans.ts`)
+
+#### Sprint A-fix — endpoint /match embarca candidate metadata
+Bug crítico: UI fazia GET `/api/transacoes/[id]` por candidato (N+1) que retornava
+422 quando `bankAccountId IS NULL` (todas as candidatas EFFECTED órfão Excel sem
+conta). UI silenciava com `.filter(r.ok)` → vazio. **Fix:** endpoint `/match`
+embarca candidate metadata via Map lookup O(1). Performance caiu de 500-2000ms
+(5 GETs sequenciais) pra ~100-200ms.
+
+#### Sprint A-effected — reconcile aceita EFFECTED órfão
+2 modos no reconcile:
+- **CLASSIC** (Sprint 4.0.2): PAYABLE → EFFECTED + paymentDate=OFX.date + link.
+- **ORPHAN** (NOVO): EFFECTED órfão → SÓ cria reconciledWithId + status=RECONCILED.
+  NÃO mexe em lifecycle/paymentDate/date/bankAccountId/amount/description (Excel
+  já tem a verdade contábil). **Backfill cooperativo Excel → OFX** quando OFX está
+  com categoryId/supplierId nulos.
+- Audit metadata grava `ofxBefore` + `ofxBackfilled` + `candidateStatusBefore` pra
+  undo restaurar bit-pra-bit.
+
+#### Fase 1 — Aba Já Conciliado + StatementBalance + filtros
+- Aba "Já Conciliado" (HistoricoTable) com busca + Desfazer
+- BalanceBanner topo (refreshKey adicionado na Fase 2-fix)
+- Filtro de período + tipo (TipoSelector com heurística por `companyType`:
+  restaurant/retail/industry → "apenas-pagamentos"; service/mixed → "todos")
+
+#### Fase 2 — 4 abas confidence + bulk approve
+- Alta confiança (≥90) / Revisar (70-89) / Sem match / Já conciliado
+- Endpoint `bulk-dry-run` pré-classifica todas as OFX pendentes em batch
+- BulkDryRunModal com checkboxes individuais + revisão antes de aplicar
+
+#### Fase 2-fix — refreshKey + reverse-link guard (caso Lamana)
+Yussef descobriu **triplicação Lamana** (cadastro duplicado Excel #1 +
+Excel #2, 1 OFX). Excel #1 já conciliada → Excel #2 aparecia como
+candidata pra mesma OFX. Fix em **4 camadas de defesa em profundidade**:
+1. `bulk-dry-run` filtra `reconciledFrom: { none: {} }`
+2. NOVO endpoint `ofx-pendentes` (substituto de `/api/transacoes` na UI) filtra reverso
+3. `/api/conciliacao/match` rejeita 422 quando reverso existe
+4. `lib/reconcile` rejeita ANTES do UNIQUE constraint
+
+#### Reformulação B.1 — UI Xero literal
+Yussef parou: "PARA de inventar. Vamos COPIAR o Xero EXATAMENTE."
+- `StatementBalanceHeader` (NOVO) substitui BalanceBanner colorido → 2 números
+  sóbrios "Saldo do extrato (banco)" e "Saldo no sistema" + linha "→ R$ X a
+  conciliar pra bater"
+- 4 abas Xero literais: **Reconcile** (default) / Cash coding (placeholder Fase C) /
+  Bank statements (link `/imports`) / **Account transactions** (HistoricoTable)
+- `XeroRow` (NOVO) substitui ConfidenceList/RowActions:
+  - **Esquerda:** card box com Date/Description/Reference/**Spent**/**Received**
+    em colunas distintas (cópia fiel Xero — facilita scan)
+  - **Direita:** card com **4 tabs** (Match/Create/Transfer/Discuss) + menu "..."
+    com IGNORAR (não polui as 4 tabs)
+  - **Fundo verde claro** (`bg-emerald-50/40`) quando há match auto
+  - Cinza/branco quando sem sugestão
+  - Botão **OK verde** + link **"Find & Match"** azul no rodapé
+
+#### B.2 — Find & Match inline (single-select)
+Resolve caso "auto-match não acha mas a nota existe":
+- NOVO endpoint `GET /api/conciliacao/find-and-match` — busca AP/AR pendentes
+  + EFFECTED órfão por description/supplier/CNPJ/externalId/amount exato. SEM
+  janela de data (busca manual permite tolerância infinita).
+- `FindAndMatchPanel` (NOVO) **inline takeover** do card direito: header
+  "Statement: X · Selected: Y · Diff: Z" + busca debounced + tabela com checkbox
+  + botão Reconcile só ativa quando Diff ≤ R$ 0,01.
+- **Descoberta crítica no smoke real:** A CIA DA FRUTA da Cacula (R$ 3.786,78)
+  é um **PIX consolidado N:1** — 13 candidatas, **7 notas somam R$ 3.786,77**.
+  Schema atual `reconciledWithId @unique` BLOQUEIA N:1. B.2 ficou single-select
+  com banner detector amarelo avisando "vem na B.3".
+
+#### B.3 — N:1 multi-select + Desfazer grupo
+Migration aditiva `20260619000000_conciliacao_fase_b3_n_to_one`:
+- `DROP INDEX transactions_reconciledWithId_key` (era unique index, não constraint
+  — descoberto no 1º deploy attempt que falhou)
+- `CREATE INDEX transactions_reconciledWithId_idx` (não-único)
+- `ADD COLUMN reconcileGroupId String?` nullable (NULL implícito em 3014 linhas)
+- `CREATE INDEX transactions_reconcileGroupId_idx`
+
+**4 camadas substituem o @unique removido:**
+1. Guard `reconciledFrom.length > 0` no reconcile (só dispara quando
+   `!input.allowMultiReconcile`)
+2. Flag `allowMultiReconcile` só passa via endpoint dedicado
+3. **Validação SOMA == OFX.amount (±R$ 0,02)** ANTES de chamar reconcile
+4. Multi-tenant: todas candidates checadas na mesma empresa do OFX
+
+**Endpoints novos:**
+- `POST /api/conciliacao/find-and-match/reconcile` — N:1 com groupId compartilhado
+- `POST /api/conciliacao/desfazer-grupo/[groupId]` — atomic loop undoReconciliation
+
+**UI:** Find & Match multi-select habilitado. HistoricoTable agrupa por
+`reconcileGroupId` (useMemo `GroupedEntry { single | group }`) com header azul
+"Grupo N:1 · N notas", soma, lista filhas compacta, botão "Desfazer grupo (N)".
+
+**lib/conciliacao/reconcile.ts:**
+- Param `allowMultiReconcile` + `reconcileGroupId`
+- Pula validação valor exato no N:1 (cada candidate individual NÃO bate; soma
+  é validada upstream)
+- Propaga groupId em ambos modos CLASSIC + ORPHAN
+- `undoReconciliation` limpa `reconcileGroupId` no UPDATE
+
+**Smoke real CIA DA FRUTA end-to-end na Cacula (com reverso completo):**
+```
+OFX: cmpygh3g4000ns76djiatdouh R$ 3.786,78
+14 candidatas → escolheu 7 que somam R$ 3.786,77 (diff 1¢ dentro de ±2¢)
+DRE ANTES: R$ 90.823,66
+groupId gerado: rg_smoke_b3c28ed7
+7 reconciled atomic
+DRE PÓS: R$ 89.486,13 (-R$ 1.337,53 — 4 EFFECTED órfãs saíram do realizado)
+reconcileGroupId NOT NULL: 0 → 7
+Reconcilied With Id NOT NULL: 3 → 10
+Todas as 7 apontam pra mesma OFX: true ✓
+
+UNDO grupo: 7 undone
+DRE PÓS UNDO: R$ 90.823,66 == ANTES ✓ (bit-pra-bit)
+reconcileGroupId NOT NULL: 7 → 0
+Conciliações antigas (Nestle/Lamana/DISTRIB): intactas ✓
+```
+
+#### Stats consolidadas
+- **8 dias** (27/05 → 04/06) — 1 das maiores branches do projeto
+- **17 commits** na branch + 1 merge
+- **+8.209 / -288 linhas** no merge final
+- **+39 arquivos novos** (lib + endpoints + componentes + tests + docs)
+- **3 migrations aditivas:**
+  - `20260617000000_pf_fatia_4_ponte_pj_pf` (já existia, não dessa sprint)
+  - `20260618000000_conciliacao_fase_b_ignorar_cashcoded` (5 colunas pra IGNORAR + CRIAR)
+  - `20260619000000_conciliacao_fase_b3_n_to_one` (DROP @unique + reconcileGroupId)
+- **2 backfills idempotentes** (PAYABLE órfãos → PENDING + categoria órfã)
+- **Suite:** 4322 → **4417** (+95 testes), TS strict 0
+- **0 ALTER em dados reais** (3014 transactions intactas durante todas migrations)
+- **PM2 ↺ 247 → 261** (12 reloads de deploy)
+
+#### Próximo passo (Yussef decide)
+**Recomendação:** Yussef pode CONCILIAR DE VERDADE agora na tela B (sem esperar Fase C).
+- **Pagamentos** (caso Cacula — 22 duplicatas + CIA DA FRUTA + IGNORAR falsas):
+  resolve 100% com a tela Xero atual (Match auto + Find & Match N:1 + menu IGNORAR).
+  Fase C (cash coding) é OTIMIZAÇÃO pra recebimentos varejo (alto volume PIX
+  maquininha), NÃO pré-requisito pra limpar duplicação atual.
+- **Recebimentos avulsos** (vendas pizzaria): podem esperar Fase C (cash coding
+  em lote) — não causam duplicação de DRE (cada uma é entrada única).
+
 ### [Próxima sessão] — preencher
 - Data:
 - O que foi feito:
