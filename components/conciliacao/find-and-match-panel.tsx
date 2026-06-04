@@ -120,8 +120,16 @@ export function FindAndMatchPanel({
   function toggleCandidate(id: string) {
     setSelectedIds((s) => {
       const next = new Set(s)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        // Sprint A-effected Fase B.2 — single select only.
+        // N:1 (várias notas → 1 PIX consolidado) viola UNIQUE em
+        // reconciledWithId no schema atual. Schema change vai na Fase B.3.
+        // Por ora: clicar outra candidate desmarca a anterior.
+        next.clear()
+        next.add(id)
+      }
       return next
     })
   }
@@ -132,7 +140,9 @@ export function FindAndMatchPanel({
     .reduce((acc, c) => acc + Math.abs(c.amount), 0)
   const diff = statementAmount - selectedTotal
   const diffAbs = Math.abs(diff)
-  const bate = diffAbs < 0.01
+  // Tolerância <= R$ 0,01: arredondamento bancário típico (caso real CIA DA
+  // FRUTA: 7 notas somam R$ 3.786,77 vs PIX R$ 3.786,78 — exato 1 centavo).
+  const bate = diffAbs <= 0.01
 
   async function aplicarReconcile() {
     if (!bate || selectedIds.size === 0) return
@@ -207,6 +217,21 @@ export function FindAndMatchPanel({
           {totalEncontrado} encontrad{totalEncontrado === 1 ? 'a' : 'as'}
         </span>
       </div>
+
+      {/* Detecção N:1 — várias notas pendentes da mesma busca somam pro
+          statement line. Avisa user que vai precisar de B.3. */}
+      {candidates.length >= 2 &&
+        candidates.reduce((s, c) => s + Math.abs(c.amount), 0) >= statementAmount * 0.95 &&
+        candidates.reduce((s, c) => s + Math.abs(c.amount), 0) <= statementAmount * 1.05 && (
+          <div className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            🚨 <strong>Pagamento consolidado N:1 detectado.</strong> Várias notas
+            ({candidates.length}) somam aproximadamente {formatBRL(statementAmount)} (
+            {formatBRL(candidates.reduce((s, c) => s + Math.abs(c.amount), 0))}).
+            <br />
+            Suporte a múltipla seleção (N:1) vem na Fase B.3 (requer migration
+            de schema). Por ora, você pode escolher 1 nota representativa.
+          </div>
+        )}
 
       {/* Search input */}
       <div className="relative">
