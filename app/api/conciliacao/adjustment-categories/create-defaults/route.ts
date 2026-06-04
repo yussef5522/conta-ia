@@ -54,13 +54,13 @@ export async function POST(request: NextRequest) {
       for (const tpl of ADJUSTMENT_CATEGORY_TEMPLATES) {
         if (!wantedKeys.has(tpl.key)) continue
 
-        // Já existe? Match por nome ou dreGroup
+        // Já existe? Match RIGOROSO só por nome exato + type
+        // (B.4.1 smoke mostrou que match por dreGroup era frouxo demais)
         const nomeNormalizado = tpl.name.toLowerCase().trim()
         const existing = categoriasExistentes.find(
           (c) =>
-            (c.type === tpl.type &&
-              c.name.toLowerCase().trim() === nomeNormalizado) ||
-            (c.type === tpl.type && c.dreGroup === tpl.dreGroup),
+            c.type === tpl.type &&
+            c.name.toLowerCase().trim() === nomeNormalizado,
         )
 
         if (existing) {

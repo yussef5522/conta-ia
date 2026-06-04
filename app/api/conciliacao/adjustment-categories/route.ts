@@ -3,9 +3,9 @@
 // Retorna o status das 4 categorias-template de ajuste pra empresa.
 // Pra cada uma: existe? Se sim, qual id. Se não, qual template usar.
 //
-// Match flexível: já existe se nome (case-insensitive) bater + type bater.
-// (Acomoda empresa que já tem "Juros e Multas" mas com nome ligeiramente
-// diferente. Match exato por dreGroup desempata.)
+// Match RIGOROSO (smoke B.4.1 mostrou que match por dreGroup era frouxo
+// demais — pegava "Taxa Cartão" como Juros): SÓ nome exato
+// (case-insensitive) + mesmo type. Sem match → cria nova categoria.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
@@ -37,19 +37,15 @@ export async function GET(request: NextRequest) {
       },
     })
 
-    // Pra cada template, descobrir se a empresa já tem uma categoria que
-    // bate (nome case-insensitive + type), ou tem mesmo dreGroup
+    // Match RIGOROSO: nome exato (case-insensitive) + mesmo type.
+    // Sem match → cria nova. Evita confundir "Taxa Cartão" com "Juros".
     const status = ADJUSTMENT_CATEGORY_TEMPLATES.map((tpl) => {
       const nomeNormalizado = tpl.name.toLowerCase().trim()
-      const matchExato = categorias.find(
+      const existing = categorias.find(
         (c) =>
           c.type === tpl.type &&
           c.name.toLowerCase().trim() === nomeNormalizado,
       )
-      const matchDreGroup = categorias.find(
-        (c) => c.type === tpl.type && c.dreGroup === tpl.dreGroup,
-      )
-      const existing = matchExato ?? matchDreGroup
 
       return {
         key: tpl.key,
@@ -57,11 +53,7 @@ export async function GET(request: NextRequest) {
         exists: !!existing,
         existingId: existing?.id ?? null,
         existingName: existing?.name ?? null,
-        matchType: matchExato
-          ? 'exact_name'
-          : matchDreGroup
-            ? 'dre_group'
-            : null,
+        matchType: existing ? 'exact_name' : null,
       }
     })
 
