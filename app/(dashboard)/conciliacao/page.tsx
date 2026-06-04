@@ -28,17 +28,28 @@ interface OfxTx {
   bankAccount: { name: string; bankName: string | null } | null
 }
 
+interface CandidateMeta {
+  id: string
+  description: string
+  amount: number
+  dueDate: string | null
+  lifecycle: string
+}
+
+// Resposta do backend: candidate pode vir null (defesa em profundidade).
+interface MatchResultRaw {
+  candidateId: string
+  score: number
+  reasoning: string[]
+  candidate: CandidateMeta | null
+}
+
+// Já filtrado (renderizado na UI): candidate sempre presente.
 interface MatchResult {
   candidateId: string
   score: number
   reasoning: string[]
-  candidate: {
-    id: string
-    description: string
-    amount: number
-    dueDate: string | null
-    lifecycle: string
-  }
+  candidate: CandidateMeta
 }
 
 export default function ConciliacaoPage() {
@@ -138,27 +149,12 @@ function ConciliacaoInner() {
         })
         return
       }
-      // matches vem do backend; enriquece com candidate metadata via 2ª query
-      const enriched: MatchResult[] = []
-      for (const m of data.matches.slice(0, 5)) {
-        // O endpoint /match retorna candidateId mas não os meta — buscar individual
-        const r = await fetch(`/api/transacoes/${m.candidateId}`, { credentials: 'include' })
-        if (r.ok) {
-          const td = await r.json()
-          enriched.push({
-            candidateId: m.candidateId,
-            score: m.score,
-            reasoning: m.reasoning,
-            candidate: {
-              id: td.transacao.id,
-              description: td.transacao.description,
-              amount: td.transacao.amount,
-              dueDate: td.transacao.dueDate,
-              lifecycle: td.transacao.lifecycle,
-            },
-          })
-        }
-      }
+      // Sprint A-fix: endpoint /match já retorna candidate metadata embarcado.
+      // Antes precisava de GET /api/transacoes/[id] por candidato, mas isso
+      // dava 422 pra PAYABLE/Manual sem bankAccount → "candidatos vazios" na UI.
+      const enriched: MatchResult[] = (data.matches as MatchResultRaw[])
+        .slice(0, 5)
+        .filter((m): m is MatchResult => m.candidate !== null)
       setMatches(enriched)
     } finally {
       setMatchLoading(false)

@@ -1,5 +1,10 @@
-// Sprint 4.0.2 — POST /api/conciliacao/match
+// Sprint 4.0.2 + Sprint A-fix (03/06/2026) — POST /api/conciliacao/match
 // Recebe ofxTransactionId, retorna candidatos PAYABLE/RECEIVABLE rankeados.
+//
+// Sprint A-fix: response inclui candidate metadata embarcado em cada match,
+// pra UI renderizar direto sem precisar de GET /api/transacoes/[id] por
+// candidato (que retorna 422 quando bankAccountId IS NULL — caso típico de
+// PAYABLE/Manual). Elimina N+1 fetch e o bug "candidatos vazios na tela".
 
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
@@ -57,6 +62,26 @@ export async function POST(request: NextRequest) {
     const topScore = matches[0]?.score ?? 0
     const recommendation = classifyRecommendation(topScore)
 
+    // Sprint A-fix: embarca metadata do candidato em cada match (lookup O(1) por
+    // id, mantendo a ordem do rankCandidates). Evita N+1 do client e o bug do
+    // GET /api/transacoes/[id] retornar 422 pra candidatos sem bankAccount.
+    const candidateById = new Map(candidates.map((c) => [c.id, c]))
+    const enrichedMatches = matches.map((m) => {
+      const c = candidateById.get(m.candidateId)
+      return {
+        ...m,
+        candidate: c
+          ? {
+              id: c.id,
+              description: c.description,
+              amount: c.amount,
+              dueDate: c.dueDate.toISOString(),
+              lifecycle: c.lifecycle,
+            }
+          : null,
+      }
+    })
+
     return NextResponse.json({
       ofxTransaction: {
         id: ofxTx.id,
@@ -65,7 +90,7 @@ export async function POST(request: NextRequest) {
         date: ofxTx.date,
         type: ofxTx.type,
       },
-      matches,
+      matches: enrichedMatches,
       recommendation,
     })
   } catch (error) {
