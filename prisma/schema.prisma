@@ -53,6 +53,8 @@ model User {
   // Onda 2 Sprint 2.3 — quem importou cada OFX
   ofxImports                 OfxImport[]
   ofxImportsReverted         OfxImport[]               @relation("OfxImportReverter")
+  // Sprint A-effected Fase B — quem ignorou cada tx (Transaction.ignoredBy)
+  transactionsIgnored        Transaction[]             @relation("TransactionIgnoredBy")
   // Sprint PF Fatia 3
   personalOfxImports         PersonalOfxImport[]
   personalOfxImportsReverted PersonalOfxImport[]       @relation("PersonalOfxImportReverter")
@@ -312,9 +314,17 @@ model Transaction {
   // Quando uma PAYABLE/RECEIVABLE é conciliada com uma tx OFX, aponta pra ela.
   // Estratégia "link" (não merge): preserva FITID/dedupHash/importId pra auditoria fiscal +
   // permite desfazer conciliação. DRE caixa filtra `reconciledWithId IS NULL` pra evitar dupla contagem.
-  reconciledWithId String?       @unique
+  // Sprint A-effected Fase B.3: @unique REMOVIDO pra suportar N:1 (várias APs
+  // apontando pra mesma OFX — caso CIA DA FRUTA). Defesa em profundidade
+  // continua via: 3 camadas de guards reconciledFrom + validação de soma
+  // exata (±0.01) no endpoint find-and-match/reconcile + flag
+  // allowMultiReconcile no lib/conciliacao/reconcile.
+  reconciledWithId String?
   reconciledWith   Transaction?  @relation("ConciliationLink", fields: [reconciledWithId], references: [id])
   reconciledFrom   Transaction[] @relation("ConciliationLink")
+  // Sprint A-effected Fase B.3: agrupa N:1 (várias candidates conciliadas
+  // com mesma OFX via Find & Match). null = single 1:1 ou pré-B.3.
+  reconcileGroupId String?
 
   // RECEIVABLE pode vincular cliente (Customer); PAYABLE usa supplierId já existente.
   customerId String?
@@ -339,6 +349,18 @@ model Transaction {
   // Restrict no delete: pra deletar essa tx PJ, remover a ponte antes.
   bridge           PJtoPFBridge?   @relation("PjBridge")
 
+  // Sprint A-effected Fase B (03/06/2026) — Ações IGNORAR + CRIAR (cash coding).
+  // IGNORAR marca tx como não-conciliável (taxa banco, estorno, lançamento errado).
+  // Lista de pendentes filtra ignoredAt IS NULL.
+  ignoredAt       DateTime?
+  ignoredReason   String?
+  ignoredByUserId String?
+  ignoredBy       User?     @relation("TransactionIgnoredBy", fields: [ignoredByUserId], references: [id])
+  // CRIAR (cash coding estilo Xero): categorizada direto sem candidato AP.
+  // Diferencia de "EFFECTED conciliada via match" pra relatórios futuros.
+  cashCoded       Boolean   @default(false)
+  cashCodedAt     DateTime?
+
   @@unique([bankAccountId, dedupHash])
   // Sprint 4.0.1.b — anti-dup: schedule X só gera 1 tx por dueDate
   @@unique([recurringScheduleId, dueDate])
@@ -353,6 +375,11 @@ model Transaction {
   @@index([recurringScheduleId])
   @@index([relatedPartyType])
   @@index([isInternalTransfer])
+  // Sprint A-effected Fase B.3: índice não-único em reconciledWithId
+  // (substitui o @unique removido pra permitir N:1) + reconcileGroupId
+  // pra lookups rápidos de undo do grupo.
+  @@index([reconciledWithId])
+  @@index([reconcileGroupId])
   @@map("transactions")
 }
 

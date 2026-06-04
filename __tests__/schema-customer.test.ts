@@ -67,10 +67,18 @@ describe('schema Transaction novos campos (Sprint 4.0.1.a)', () => {
     expect(f?.isRequired).toBe(false)
   })
 
-  it('Transaction.reconciledWithId opcional + unique', () => {
+  it('Transaction.reconciledWithId opcional (Fase B.3: NÃO mais unique pra suportar N:1)', () => {
     const f = tx!.fields.find((f) => f.name === 'reconciledWithId')
     expect(f?.isRequired).toBe(false)
-    expect(f?.isUnique).toBe(true)
+    // Sprint A-effected Fase B.3 — @unique removido. Defesa via guards
+    // reconciledFrom (3 camadas) + allowMultiReconcile flag + validação
+    // de soma exata no endpoint /find-and-match/reconcile.
+    expect(f?.isUnique).toBe(false)
+  })
+
+  it('Transaction.reconcileGroupId opcional (Fase B.3 N:1 group)', () => {
+    const f = tx!.fields.find((f) => f.name === 'reconcileGroupId')
+    expect(f?.isRequired).toBe(false)
   })
 
   it('Transaction.customerId opcional', () => {
