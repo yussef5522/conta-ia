@@ -2647,6 +2647,104 @@ Alternativas que podem ser priorizadas em vez do Dashboard PF:
 - **Fatia 5 PF** (Família/multi-perfis compartilhados)
 - **Refactor categoria genérica** (`docs/decisoes/categoria-pj-nominada-vs-generica.md`)
 
+### 03/06/2026 (parte 6) — Sprint Dashboard PF (Mobills/Mercury) deployada
+
+**Contexto:** Yussef priorizou Dashboard PF logo após Unificar Sócios (mesma
+sessão). 6 zonas verticais + reuso máximo dos endpoints das Fatias 1-4.
+Sessão anterior travou no smoke test final (depois do PM2 reload e build OK).
+Sessão atual confirmou: deploy COMPLETOU em prod antes do travamento.
+
+#### Sprint Dashboard PF ✅ DEPLOYADA EM PROD
+**Branch:** `feature/dashboard-pf` → main em `a963f74` (commit feat `db26759`).
+
+**O que mudou (100% UI + 1 endpoint, ZERO migration):**
+- `/perfis/[id]/page.tsx` reescrita em 6 zonas verticais:
+  1. **PFHero** — gradient esmeralda + saldo grande + sparkline + 3 sub-KPIs
+     + saldo previsto com cheque especial
+  2. **PFTopExpenses** ("a bola") — donut Recharts 220px + lista lateral
+     + hover interativo no centro + drill-down link
+  3. **MonthlyEvolutionChart** — ComposedChart 12m (barras entradas+saídas
+     + linha saldo cumulativo)
+  4. **DiferenciaisGrid** — 3 cards: Bridge PJ→PF (linka pra /socios coerente
+     com unificação), Recorrentes (top 5 + total anual), Cartões (barra
+     limite usado verde/amber/red)
+  5. **RecentActivityPF** — timeline 8 últimas tx + avatar semântico
+     CREDIT/DEBIT + categoria color dot + flags 🌐 internacional + parcela
+  6. **PFFooterStrip** — contas (até 4 visíveis) + pendentes (estado
+     celebração quando 0)
+
+**Endpoint novo:**
+- `GET /api/perfis/[id]/evolucao-mensal?months=12` (Prisma groupBy)
+- `lib/dashboard-pf/aggregate-monthly.ts` — função PURA testada (virada
+  de ano, saldo cumulativo retrocedendo, tx fora da janela)
+
+**Empty states caprichados** (dashboard começa vazio):
+- Donut 🥧 / Evolução 📈 / Bridge 🌉 / Recorrentes 🔁 / Cartões 💳 /
+  Recent 📋 / Contas / Pendentes 0 = 🎉 "Tudo em dia"
+
+**Reuso máximo (zero refactor):**
+- Sparkline do PJ (mesmo componente)
+- `formatBRL`, padrão Card, Button shadcn
+- BridgeBadge (Fatia 4) disponível
+- Pattern dynamic ssr:false / client wrapper do PJ Dashboard (lição Next 16
+  Sprint 1 PJ)
+
+**🔗 Coerência com unificação Sócios:**
+- Card Bridge linka pra `/empresas/<companyId>/socios` (NÃO `/pontes` legacy)
+- Mantém privacidade Fatia 4 (queries filtradas por user)
+
+**Testes (+18, suite 4322 → 4340):**
+- aggregate-monthly (12) — virada de ano, saldo cumulativo, fora janela
+- evolucao-mensal-endpoint (6) — auth + privacidade + shape resposta
+
+#### Deploy passo-a-passo (resultado)
+
+1. Backup `pg_dump -Fc` → `pre-dashboard-pf-20260603_155932.dump` (639K)
+2. **Counts pré:** users=5, companies=3, subscriptions=5, transactions=2907,
+   personal_profiles=1, personal_transactions=0, socios_pf=1,
+   pj_to_pf_bridges=0, credit_cards=1
+3. git pull → npm ci → swap → **prisma generate DEPOIS do swap** →
+   migrate status: `Database schema is up to date!` (0 pendentes — confirmado
+   ZERO migration)
+4. `npm run build` ✓ (BUILD_ID `S2U9FtnsYUER6cMLZBkld`, mtime 16:02)
+5. pm2 reload → ↺ **248** online
+
+**Validação na sessão de fechamento** (sessão anterior travou no smoke):
+- HEAD prod `a963f74` ✓
+- migrate status limpo ✓
+- PM2 online uptime 5h ↺ 248 ✓
+- Endpoint `GET /api/perfis/<id>/evolucao-mensal` → HTTP **401**
+  `{"erro":"Sessão expirada","code":"AUTH_REQUIRED"}` ✓ (porta 3001)
+- `transactions=3014` (+107 uso real do Yussef hoje, NÃO deploy)
+- `personal_profiles=2` (+1 = `nouraawni90@gmail.com` criou perfil dela às
+  18:58, depois do deploy 16:02)
+
+**🔒 Isolamento entre perfis CONFIRMADO no SQL:**
+```
+        user_email      |        profile_id         | isSelf | total_users_with_access
+admin@contaia.com.br    | cmpxg38zj000omro5yw0v3xr0 | t      |                       1
+nouraawni90@gmail.com   | cmpyfimdf002f6lippdy6ahgk | t      |                       1
+```
+Cada perfil tem APENAS 1 entrada em `user_personal_profiles` apontando pro
+próprio dono. Privacidade Fatia 1/4 funcionando — admin não vê perfil da
+Noura, Noura não vê perfil do admin. Multi-user PF rodando 100% isolado em prod.
+
+**Métricas:**
+- 15 arquivos no commit feat (+2164/-316 linhas)
+- TS strict 0
+- Build prod: ✓
+- Suite 4340/4340 (+18 vs Unificar Sócios)
+- Migration aplicada: **0** (ZERO ALTER, ZERO CREATE TABLE)
+- PM2 ↺ 248 online
+- Backup 639K · 408 itens
+
+**Próximo passo:** Yussef decide próxima frente:
+- **Ligar PDF Vision** (depende ZDR Anthropic — frente externa)
+- **Asaas 3D** (retomar pagamento prod — `docs/sprints/PAGAMENTO-RETOMAR-AQUI.md`)
+- **Fatia 5 PF** (Família/multi-perfis compartilhados + convites entre Users
+  — agora que multi-user PF está validado em prod)
+- **Refactor categoria PJ genérica** (`docs/decisoes/categoria-pj-nominada-vs-generica.md`)
+
 ### [Próxima sessão] — preencher
 - Data:
 - O que foi feito:
