@@ -27,14 +27,15 @@
 --   - SELECT COUNT(*) FROM transactions WHERE "reconcileGroupId" IS NOT NULL → 0 (novo) ✓
 --   - Conciliações existentes (Nestle/Lamana/DISTRIB) preservadas
 
--- 1. Remove constraint UNIQUE em reconciledWithId
-ALTER TABLE "transactions" DROP CONSTRAINT "transactions_reconciledWithId_key";
+-- 1. Remove UNIQUE INDEX em reconciledWithId
+--    (Prisma criou como unique index, não como named constraint)
+DROP INDEX IF EXISTS "transactions_reconciledWithId_key";
 
 -- 2. Recria como índice normal (não-único)
-CREATE INDEX "transactions_reconciledWithId_idx" ON "transactions"("reconciledWithId");
+CREATE INDEX IF NOT EXISTS "transactions_reconciledWithId_idx" ON "transactions"("reconciledWithId");
 
 -- 3. Adiciona coluna reconcileGroupId nullable
-ALTER TABLE "transactions" ADD COLUMN "reconcileGroupId" TEXT;
+ALTER TABLE "transactions" ADD COLUMN IF NOT EXISTS "reconcileGroupId" TEXT;
 
 -- 4. Índice em reconcileGroupId pra lookups rápidos do Desfazer Grupo
-CREATE INDEX "transactions_reconcileGroupId_idx" ON "transactions"("reconcileGroupId");
+CREATE INDEX IF NOT EXISTS "transactions_reconcileGroupId_idx" ON "transactions"("reconcileGroupId");
