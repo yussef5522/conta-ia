@@ -55,6 +55,15 @@ describe('defaultTipoForCompany — heurística por tipo de empresa', () => {
   it('tipo desconhecido → todos (defesa em profundidade)', () => {
     expect(defaultTipoForCompany('agronegocio')).toBe('todos')
   })
+
+  it('case-insensitive: "RESTAURANT" === "restaurant"', () => {
+    // Schema BR salvou alguns tipos em uppercase historicamente (caso real
+    // da Cacula Mix em prod). Normalizar previne bug de fallback silencioso.
+    expect(defaultTipoForCompany('RESTAURANT')).toBe('apenas-pagamentos')
+    expect(defaultTipoForCompany('Restaurant')).toBe('apenas-pagamentos')
+    expect(defaultTipoForCompany('RETAIL')).toBe('apenas-pagamentos')
+    expect(defaultTipoForCompany('SERVICE')).toBe('todos')
+  })
 })
 
 describe('parseTipoParam — segurança do query string', () => {

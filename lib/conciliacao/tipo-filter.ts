@@ -52,7 +52,11 @@ export function getTipoFilter(
 export function defaultTipoForCompany(
   companyType: CompanyType | string | null | undefined,
 ): TipoConciliacao {
-  switch (companyType) {
+  // Normalização case-insensitive: schema atual armazena "RESTAURANT" em
+  // alguns lugares e "restaurant" em outros (CompanyType enum BR foi salvo
+  // uppercase historicamente). Normaliza pra prevenir o bug de fallback.
+  const normalized = (companyType ?? '').toString().toLowerCase()
+  switch (normalized) {
     case 'restaurant':
     case 'retail':
     case 'industry':
