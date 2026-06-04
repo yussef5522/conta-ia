@@ -22,6 +22,7 @@ import {
   XCircle,
   Search,
 } from 'lucide-react'
+import { FindAndMatchPanel } from './find-and-match-panel'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -93,6 +94,8 @@ export function XeroRow({ ofx, empresaId, suggestion, onAction }: Props) {
   const [tab, setTab] = useState<Tab>(hasMatch ? 'MATCH' : 'CREATE')
   const [submitting, setSubmitting] = useState(false)
   const [ignoreOpen, setIgnoreOpen] = useState(false)
+  // Sprint A-effected Fase B.2 — Find & Match takeover do card direito
+  const [findMode, setFindMode] = useState(false)
   const { toast } = useToast()
 
   const fmtDate = (d: string) => new Date(d).toLocaleDateString('pt-BR')
@@ -167,88 +170,104 @@ export function XeroRow({ ofx, empresaId, suggestion, onAction }: Props) {
       </div>
 
       {/* ============================================================== */}
-      {/* LADO DIREITO — Match card 4 tabs                                 */}
+      {/* LADO DIREITO — Match card 4 tabs OU Find & Match (takeover B.2) */}
       {/* ============================================================== */}
-      <div className={`rounded border ${rightBg}`}>
-        {/* Tab bar */}
-        <div className="flex items-center justify-between border-b">
-          <div className="flex">
-            {(['MATCH', 'CREATE', 'TRANSFER', 'DISCUSS'] as Tab[]).map((t) => {
-              const active = tab === t
-              const isAutoSuggestion = hasMatch && t === 'MATCH'
-              return (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setTab(t)}
-                  className={`px-3 py-1.5 text-xs font-semibold border-b-2 -mb-px transition-colors ${
-                    active
-                      ? 'border-emerald-600 text-foreground'
-                      : 'border-transparent text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  {t === 'MATCH' ? 'Match' : t === 'CREATE' ? 'Create' : t === 'TRANSFER' ? 'Transfer' : 'Discuss'}
-                  {isAutoSuggestion && (
-                    <span className="ml-1 text-emerald-600">✓</span>
-                  )}
-                </button>
-              )
-            })}
-          </div>
-          {/* Menu "..." com IGNORAR */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className="p-2 text-muted-foreground hover:text-foreground"
-                aria-label="Mais ações"
-              >
-                <MoreVertical className="h-4 w-4" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={() => setIgnoreOpen(true)}>
-                <XCircle className="h-3.5 w-3.5 mr-2" />
-                Ignorar esta tx
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-
-        {/* Conteúdo da aba ativa */}
-        <div className="p-3 min-h-[110px]">
-          {tab === 'MATCH' && (
-            <MatchPanel
-              ofx={ofx}
-              suggestion={suggestion}
-              fmtDate={fmtDate}
-              onApply={aplicarMatch}
-              submitting={submitting}
-            />
-          )}
-          {tab === 'CREATE' && (
-            <CreatePanel
+      <div className={`rounded border ${findMode ? 'bg-card border-blue-300' : rightBg}`}>
+        {findMode ? (
+          // Find & Match toma conta do card inteiro
+          <div className="p-3">
+            <FindAndMatchPanel
               ofx={ofx}
               empresaId={empresaId}
-              onApplied={onAction}
+              onCancel={() => setFindMode(false)}
+              onReconciled={() => {
+                setFindMode(false)
+                onAction()
+              }}
             />
-          )}
-          {tab === 'TRANSFER' && <TransferPanel />}
-          {tab === 'DISCUSS' && <DiscussPanel />}
-        </div>
+          </div>
+        ) : (
+          <>
+            {/* Tab bar */}
+            <div className="flex items-center justify-between border-b">
+              <div className="flex">
+                {(['MATCH', 'CREATE', 'TRANSFER', 'DISCUSS'] as Tab[]).map((t) => {
+                  const active = tab === t
+                  const isAutoSuggestion = hasMatch && t === 'MATCH'
+                  return (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setTab(t)}
+                      className={`px-3 py-1.5 text-xs font-semibold border-b-2 -mb-px transition-colors ${
+                        active
+                          ? 'border-emerald-600 text-foreground'
+                          : 'border-transparent text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {t === 'MATCH' ? 'Match' : t === 'CREATE' ? 'Create' : t === 'TRANSFER' ? 'Transfer' : 'Discuss'}
+                      {isAutoSuggestion && (
+                        <span className="ml-1 text-emerald-600">✓</span>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+              {/* Menu "..." com IGNORAR */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="p-2 text-muted-foreground hover:text-foreground"
+                    aria-label="Mais ações"
+                  >
+                    <MoreVertical className="h-4 w-4" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onSelect={() => setIgnoreOpen(true)}>
+                    <XCircle className="h-3.5 w-3.5 mr-2" />
+                    Ignorar esta tx
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
 
-        {/* Rodapé com Find & Match (placeholder B.2) */}
-        <div className="border-t px-3 py-1.5 flex justify-end">
-          <button
-            type="button"
-            disabled
-            className="text-xs text-blue-600 hover:underline disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-            title="Em breve (Fase B.2)"
-          >
-            <Search className="h-3 w-3" />
-            Find &amp; Match
-          </button>
-        </div>
+            {/* Conteúdo da aba ativa */}
+            <div className="p-3 min-h-[110px]">
+              {tab === 'MATCH' && (
+                <MatchPanel
+                  ofx={ofx}
+                  suggestion={suggestion}
+                  fmtDate={fmtDate}
+                  onApply={aplicarMatch}
+                  submitting={submitting}
+                />
+              )}
+              {tab === 'CREATE' && (
+                <CreatePanel
+                  ofx={ofx}
+                  empresaId={empresaId}
+                  onApplied={onAction}
+                />
+              )}
+              {tab === 'TRANSFER' && <TransferPanel />}
+              {tab === 'DISCUSS' && <DiscussPanel />}
+            </div>
+
+            {/* Rodapé com Find & Match (ativa takeover) */}
+            <div className="border-t px-3 py-1.5 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setFindMode(true)}
+                className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+              >
+                <Search className="h-3 w-3" />
+                Find &amp; Match
+              </button>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Modal de IGNORAR (acionado pelo menu "...") */}
