@@ -28,10 +28,13 @@ import { MatchCard } from '@/components/conciliacao/match-card'
 import { BalanceBanner } from '@/components/conciliacao/balance-banner'
 import { HistoricoTable } from '@/components/conciliacao/historico-table'
 import {
-  ConfidenceList,
   type ConfidencePair,
 } from '@/components/conciliacao/confidence-list'
 import { BulkDryRunModal } from '@/components/conciliacao/bulk-dry-run-modal'
+import {
+  RowActions,
+  type MatchSuggestion,
+} from '@/components/conciliacao/row-actions'
 import { TipoSelector } from '@/components/conciliacao/tipo-selector'
 import {
   defaultTipoForCompany,
@@ -219,24 +222,33 @@ function ConciliacaoInner() {
     router.replace(`?${sp}`, { scroll: false })
   }, [empresaId, tipo, router])
 
-  // Split client-side: ≥90 → Alta, 70-89 → Revisar
-  const { altaPairs, revisarPairs, ofxIdsWithMatch, semMatchOfxs } = useMemo(() => {
-    const alta: ConfidencePair[] = []
-    const revisar: ConfidencePair[] = []
-    const idsWithMatch = new Set<string>()
+  // Sprint A-effected Fase B — Map ofxId → suggestion top pra consolidar
+  // tudo na aba "Conciliar". RowActions decide CASAR/CRIAR conforme suggestion
+  // existe ou não. Cor do botão CASAR indica confiança (≥90 verde, 70-89 amarelo).
+  const suggestionByOfxId = useMemo(() => {
+    const m = new Map<string, MatchSuggestion>()
     for (const p of dryRunPairs) {
-      idsWithMatch.add(p.ofx.id)
-      if (p.score >= HIGH_CONFIDENCE_THRESHOLD) alta.push(p)
-      else revisar.push(p)
+      m.set(p.ofx.id, {
+        candidateId: p.candidate.id,
+        score: p.score,
+        reasoning: p.reasoning,
+        candidate: p.candidate,
+      })
     }
-    const semMatch = ofxTxs.filter((t) => !idsWithMatch.has(t.id))
-    return {
-      altaPairs: alta,
-      revisarPairs: revisar,
-      ofxIdsWithMatch: idsWithMatch,
-      semMatchOfxs: semMatch,
-    }
-  }, [dryRunPairs, ofxTxs])
+    return m
+  }, [dryRunPairs])
+
+  const altaCount = useMemo(
+    () => dryRunPairs.filter((p) => p.score >= HIGH_CONFIDENCE_THRESHOLD).length,
+    [dryRunPairs],
+  )
+  const altaTotal = useMemo(
+    () =>
+      dryRunPairs
+        .filter((p) => p.score >= HIGH_CONFIDENCE_THRESHOLD)
+        .reduce((acc, p) => acc + Math.abs(p.ofx.amount), 0),
+    [dryRunPairs],
+  )
 
   function refresh() {
     void fetchOfxTxs()
@@ -280,19 +292,16 @@ function ConciliacaoInner() {
       {empresaId && <BalanceBanner empresaId={empresaId} refreshKey={refreshKey} />}
 
       {empresaId && (
-        <Tabs defaultValue="alta" className="space-y-4">
-          <TabsList className="grid w-full max-w-2xl grid-cols-4">
-            <TabsTrigger value="alta">
-              🟢 Alta ({dryRunLoading ? '…' : altaPairs.length})
+        <Tabs defaultValue="conciliar" className="space-y-4">
+          <TabsList className="grid w-full max-w-lg grid-cols-3">
+            <TabsTrigger value="conciliar">
+              Conciliar ({loadingOfx ? '…' : ofxTxs.length})
             </TabsTrigger>
-            <TabsTrigger value="revisar">
-              🟡 Revisar ({dryRunLoading ? '…' : revisarPairs.length})
-            </TabsTrigger>
-            <TabsTrigger value="sem-match">
-              ⚪ Sem match ({loadingOfx || dryRunLoading ? '…' : semMatchOfxs.length})
+            <TabsTrigger value="em-lote">
+              Em lote ({dryRunLoading ? '…' : altaCount})
             </TabsTrigger>
             <TabsTrigger value="conciliadas">
-              ✓ Conciliado
+              ✓ Já Conciliado
             </TabsTrigger>
           </TabsList>
 
@@ -315,104 +324,74 @@ function ConciliacaoInner() {
             </div>
           </div>
 
-          {/* 🟢 ALTA CONFIANÇA */}
-          <TabsContent value="alta" className="space-y-4">
+          {/* CONCILIAR — lista consolidada com 4 ações por linha */}
+          <TabsContent value="conciliar" className="space-y-4">
+            {loadingOfx || dryRunLoading ? (
+              <Card>
+                <CardContent className="py-10 text-center text-sm text-muted-foreground">
+                  <Sparkles className="h-6 w-6 mx-auto mb-2 animate-pulse" />
+                  Carregando transações e calculando matches...
+                </CardContent>
+              </Card>
+            ) : ofxTxs.length === 0 ? (
+              <Card>
+                <CardContent className="py-10 text-center text-sm text-muted-foreground">
+                  <CheckCircle2 className="h-6 w-6 mx-auto mb-2 text-emerald-600" />
+                  Nada pendente. Tudo conciliado ou categorizado ✓
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-3">
+                {ofxTxs.map((t) => (
+                  <RowActions
+                    key={t.id}
+                    ofx={t}
+                    empresaId={empresaId}
+                    suggestion={suggestionByOfxId.get(t.id) ?? null}
+                    onAction={refresh}
+                  />
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* EM LOTE — bulk approve só de alta confiança */}
+          <TabsContent value="em-lote" className="space-y-4">
             {dryRunLoading ? (
               <Card>
                 <CardContent className="py-10 text-center text-sm text-muted-foreground">
                   <Sparkles className="h-6 w-6 mx-auto mb-2 animate-pulse" />
-                  Classificando candidatos...
+                  Calculando pares de alta confiança...
+                </CardContent>
+              </Card>
+            ) : altaCount === 0 ? (
+              <Card>
+                <CardContent className="py-10 text-center text-sm text-muted-foreground">
+                  Nenhum match com score ≥ 90 disponível pra bulk no momento.
+                  <p className="text-xs mt-2 max-w-md mx-auto">
+                    Vá na aba "Conciliar" pra revisar candidatos de score 70-89
+                    (precisam confirmação manual).
+                  </p>
                 </CardContent>
               </Card>
             ) : (
-              <>
-                {altaPairs.length > 0 && (
-                  <div className="flex items-center justify-between gap-3 border rounded-lg bg-emerald-50/50 border-emerald-200 p-3">
-                    <div className="text-sm">
-                      <strong>{altaPairs.length} pares</strong> com alta confiança
-                      ({altaPairs.length === 0 ? 'R$ 0,00' : formatBRL(altaPairs.reduce((acc, p) => acc + Math.abs(p.ofx.amount), 0))}).
-                      Revise antes de aplicar em lote.
-                    </div>
+              <Card>
+                <CardContent className="py-6">
+                  <div className="text-center space-y-3">
+                    <p className="text-sm">
+                      <strong>{altaCount}</strong> pares de alta confiança disponíveis
+                      somando <strong>{formatBRL(altaTotal)}</strong>.
+                    </p>
+                    <p className="text-xs text-muted-foreground max-w-md mx-auto">
+                      Revise a lista no modal antes de aplicar. Você desmarca o que não
+                      quer e confirma o resto em 1 click.
+                    </p>
                     <Button onClick={() => setBulkOpen(true)}>
                       Revisar e conciliar em lote →
                     </Button>
                   </div>
-                )}
-                <ConfidenceList
-                  pairs={altaPairs}
-                  emptyMessage="Nenhum match com score ≥ 90 no momento. Verifique a aba 'Revisar' pra os candidatos 70-89."
-                  onConciliated={refresh}
-                />
-              </>
-            )}
-          </TabsContent>
-
-          {/* 🟡 REVISAR */}
-          <TabsContent value="revisar" className="space-y-4">
-            {dryRunLoading ? (
-              <Card>
-                <CardContent className="py-10 text-center text-sm text-muted-foreground">
-                  <Sparkles className="h-6 w-6 mx-auto mb-2 animate-pulse" />
-                  Classificando candidatos...
                 </CardContent>
               </Card>
-            ) : (
-              <ConfidenceList
-                pairs={revisarPairs}
-                emptyMessage="Nenhum match na faixa 70-89."
-                onConciliated={refresh}
-              />
-            )}
-          </TabsContent>
-
-          {/* ⚪ SEM MATCH */}
-          <TabsContent value="sem-match" className="space-y-4">
-            {loadingOfx ? (
-              <Card>
-                <CardContent className="py-10 text-center text-sm text-muted-foreground">
-                  Carregando...
-                </CardContent>
-              </Card>
-            ) : semMatchOfxs.length === 0 ? (
-              <Card>
-                <CardContent className="py-10 text-center text-sm text-muted-foreground">
-                  <CheckCircle2 className="h-6 w-6 mx-auto mb-2 text-emerald-600" />
-                  Todas as transações do extrato têm candidatos compatíveis.
-                </CardContent>
-              </Card>
-            ) : (
-              <>
-                <p className="text-xs text-muted-foreground">
-                  Transações OFX que não têm conta a pagar/receber compatível no
-                  sistema (score &lt; 70). Use os botões abaixo (ações virão na
-                  Fase 4) ou cadastre manualmente uma conta nova.
-                </p>
-                <div className="border rounded-lg bg-card divide-y">
-                  {semMatchOfxs.map((t) => (
-                    <div
-                      key={t.id}
-                      className="flex items-center gap-3 px-3 py-2.5"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{t.description}</p>
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <span>{new Date(t.date).toLocaleDateString('pt-BR')}</span>
-                          {t.bankAccount && (
-                            <span>· {t.bankAccount.bankName ?? t.bankAccount.name}</span>
-                          )}
-                        </div>
-                      </div>
-                      <span
-                        className={`shrink-0 font-semibold text-sm tabular-nums ${
-                          t.type === 'CREDIT' ? 'text-emerald-600' : 'text-red-600'
-                        }`}
-                      >
-                        {t.type === 'CREDIT' ? '+' : '−'} {formatBRL(t.amount)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </>
             )}
           </TabsContent>
 

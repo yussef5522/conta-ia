@@ -57,6 +57,9 @@ export async function GET(request: NextRequest) {
         reconciledWithId: null,
         reconciledFrom: { none: {} },
         isInternalTransfer: false,
+        // Sprint A-effected Fase B — exclui ações terminais (ignoradas, cash-coded)
+        ignoredAt: null,
+        cashCoded: false,
         bankAccount: { companyId: data.empresaId },
         ...tipoFilter,
       },

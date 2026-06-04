@@ -48,6 +48,9 @@ export async function GET(request: NextRequest) {
         reconciledWithId: null,
         reconciledFrom: { none: {} }, // crítico: sem reverso
         isInternalTransfer: false,
+        // Sprint A-effected Fase B — exclui ações terminais:
+        ignoredAt: null, // não ignorada manualmente
+        cashCoded: false, // não categorizada via CRIAR
         bankAccount: { companyId: data.empresaId },
         ...(Object.keys(dateFilter).length > 0 ? { date: dateFilter } : {}),
         ...tipoFilter,
