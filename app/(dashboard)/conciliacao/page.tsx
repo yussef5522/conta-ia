@@ -1,20 +1,20 @@
 'use client'
 
-// Sprint 4.0.2 + Sprint A-effected Fase 1+2 — Página /conciliacao.
+// Sprint A-effected Fase B.1 — Página /conciliacao no modelo Xero.
 //
-// 4 abas de confiança (estilo Botkeeper) + Já Conciliado:
-//   🟢 Alta confiança (≥90) — pré-classificados, BULK APPROVE
-//   🟡 Revisar (70-89)      — confirmar manualmente, 1-a-1
-//   ⚪ Sem match (<70)       — OFX sem candidato bom
-//   ✓ Já conciliado         — histórico com Desfazer
+// 4 abas do Xero:
+//   - Reconcile (default) — lista de statement lines com 4 ações por linha
+//   - Cash coding         — placeholder Fase C (grid bulk pra varejo)
+//   - Bank statements     — placeholder com link pra import OFX
+//   - Account transactions — histórico de conciliadas (era "Já Conciliado")
 //
-// Banner de saldo no topo. Filtro de período. Candidatos top filtrados a
-// score >= 70 (esconde poluição).
+// Topo sóbrio: Statement Balance / Balance in Xero / Diferença a conciliar.
+// Filtros: Conta / Período / Tipo (Só pagamentos/Só recebimentos/Todos).
 
 import { useEffect, useState, useCallback, Suspense, useMemo } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { ArrowLeftRight, Sparkles, CheckCircle2 } from 'lucide-react'
+import { Sparkles, CheckCircle2, FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Header } from '@/components/layout/header'
@@ -22,19 +22,14 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
-import { MatchCard } from '@/components/conciliacao/match-card'
-import { BalanceBanner } from '@/components/conciliacao/balance-banner'
+import { StatementBalanceHeader } from '@/components/conciliacao/statement-balance-header'
 import { HistoricoTable } from '@/components/conciliacao/historico-table'
-import {
-  type ConfidencePair,
-} from '@/components/conciliacao/confidence-list'
 import { BulkDryRunModal } from '@/components/conciliacao/bulk-dry-run-modal'
 import {
-  RowActions,
+  XeroRow,
   type MatchSuggestion,
-} from '@/components/conciliacao/row-actions'
+} from '@/components/conciliacao/xero-row'
 import { TipoSelector } from '@/components/conciliacao/tipo-selector'
 import {
   defaultTipoForCompany,
@@ -62,6 +57,20 @@ interface OfxTx {
   bankAccount: { name: string; bankName: string | null } | null
 }
 
+// Tipo local pra evitar import de ConfidenceList (Fase B descontinuada — XeroRow assume)
+interface DryRunPair {
+  ofx: { id: string; description: string; amount: number; date: string; type: string }
+  candidate: {
+    id: string
+    description: string
+    amount: number
+    dueDate: string
+    lifecycle: string
+  }
+  score: number
+  reasoning: string[]
+}
+
 export default function ConciliacaoPage() {
   return (
     <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Carregando…</div>}>
@@ -72,7 +81,6 @@ export default function ConciliacaoPage() {
 
 function ConciliacaoInner() {
   const router = useRouter()
-  const { toast } = useToast()
   const searchParams = useSearchParams()
 
   const [empresas, setEmpresas] = useState<Empresa[]>([])
@@ -105,7 +113,7 @@ function ConciliacaoInner() {
 
   // Sprint A-effected Fase 2 — Pares pré-classificados (≥70) carregados em
   // batch via /api/conciliacao/bulk-dry-run. Client divide em Alta e Revisar.
-  const [dryRunPairs, setDryRunPairs] = useState<ConfidencePair[]>([])
+  const [dryRunPairs, setDryRunPairs] = useState<DryRunPair[]>([])
   const [dryRunLoading, setDryRunLoading] = useState(false)
 
   // Bulk modal (revisão pré-aplicação)
@@ -199,7 +207,7 @@ function ConciliacaoInner() {
       })
       if (res.ok) {
         const data = await res.json()
-        setDryRunPairs(data.pairs as ConfidencePair[])
+        setDryRunPairs(data.pairs as DryRunPair[])
       }
     } finally {
       setDryRunLoading(false)
@@ -289,19 +297,24 @@ function ConciliacaoInner() {
         </Card>
       )}
 
-      {empresaId && <BalanceBanner empresaId={empresaId} refreshKey={refreshKey} />}
+      {empresaId && (
+        <StatementBalanceHeader empresaId={empresaId} refreshKey={refreshKey} />
+      )}
 
       {empresaId && (
-        <Tabs defaultValue="conciliar" className="space-y-4">
-          <TabsList className="grid w-full max-w-lg grid-cols-3">
-            <TabsTrigger value="conciliar">
-              Conciliar ({loadingOfx ? '…' : ofxTxs.length})
+        <Tabs defaultValue="reconcile" className="space-y-4">
+          <TabsList className="grid w-full max-w-2xl grid-cols-4">
+            <TabsTrigger value="reconcile">
+              Reconcile ({loadingOfx ? '…' : ofxTxs.length})
             </TabsTrigger>
-            <TabsTrigger value="em-lote">
-              Em lote ({dryRunLoading ? '…' : altaCount})
+            <TabsTrigger value="cash-coding">
+              Cash coding
             </TabsTrigger>
-            <TabsTrigger value="conciliadas">
-              ✓ Já Conciliado
+            <TabsTrigger value="bank-statements">
+              Bank statements
+            </TabsTrigger>
+            <TabsTrigger value="account-transactions">
+              Account transactions
             </TabsTrigger>
           </TabsList>
 
@@ -324,79 +337,75 @@ function ConciliacaoInner() {
             </div>
           </div>
 
-          {/* CONCILIAR — lista consolidada com 4 ações por linha */}
-          <TabsContent value="conciliar" className="space-y-4">
+          {/* RECONCILE — statement lines com 4 ações por linha (Xero style) */}
+          <TabsContent value="reconcile" className="space-y-4">
             {loadingOfx || dryRunLoading ? (
               <Card>
                 <CardContent className="py-10 text-center text-sm text-muted-foreground">
                   <Sparkles className="h-6 w-6 mx-auto mb-2 animate-pulse" />
-                  Carregando transações e calculando matches...
+                  Loading statement lines and matching...
                 </CardContent>
               </Card>
             ) : ofxTxs.length === 0 ? (
               <Card>
                 <CardContent className="py-10 text-center text-sm text-muted-foreground">
                   <CheckCircle2 className="h-6 w-6 mx-auto mb-2 text-emerald-600" />
-                  Nada pendente. Tudo conciliado ou categorizado ✓
+                  All caught up. Statement balance and Balance in Xero are in sync ✓
                 </CardContent>
               </Card>
             ) : (
-              <div className="space-y-3">
+              <div className="border rounded-lg bg-card divide-y">
                 {ofxTxs.map((t) => (
-                  <RowActions
-                    key={t.id}
-                    ofx={t}
-                    empresaId={empresaId}
-                    suggestion={suggestionByOfxId.get(t.id) ?? null}
-                    onAction={refresh}
-                  />
+                  <div key={t.id} className="px-3">
+                    <XeroRow
+                      ofx={t}
+                      empresaId={empresaId}
+                      suggestion={suggestionByOfxId.get(t.id) ?? null}
+                      onAction={refresh}
+                    />
+                  </div>
                 ))}
               </div>
             )}
           </TabsContent>
 
-          {/* EM LOTE — bulk approve só de alta confiança */}
-          <TabsContent value="em-lote" className="space-y-4">
-            {dryRunLoading ? (
-              <Card>
-                <CardContent className="py-10 text-center text-sm text-muted-foreground">
-                  <Sparkles className="h-6 w-6 mx-auto mb-2 animate-pulse" />
-                  Calculando pares de alta confiança...
-                </CardContent>
-              </Card>
-            ) : altaCount === 0 ? (
-              <Card>
-                <CardContent className="py-10 text-center text-sm text-muted-foreground">
-                  Nenhum match com score ≥ 90 disponível pra bulk no momento.
-                  <p className="text-xs mt-2 max-w-md mx-auto">
-                    Vá na aba "Conciliar" pra revisar candidatos de score 70-89
-                    (precisam confirmação manual).
-                  </p>
-                </CardContent>
-              </Card>
-            ) : (
-              <Card>
-                <CardContent className="py-6">
-                  <div className="text-center space-y-3">
-                    <p className="text-sm">
-                      <strong>{altaCount}</strong> pares de alta confiança disponíveis
-                      somando <strong>{formatBRL(altaTotal)}</strong>.
-                    </p>
-                    <p className="text-xs text-muted-foreground max-w-md mx-auto">
-                      Revise a lista no modal antes de aplicar. Você desmarca o que não
-                      quer e confirma o resto em 1 click.
-                    </p>
-                    <Button onClick={() => setBulkOpen(true)}>
-                      Revisar e conciliar em lote →
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+          {/* CASH CODING — placeholder Fase C */}
+          <TabsContent value="cash-coding" className="space-y-4">
+            <Card>
+              <CardContent className="py-10 text-center text-sm text-muted-foreground">
+                <Sparkles className="h-6 w-6 mx-auto mb-2 text-amber-600" />
+                <p className="font-medium mb-1">Cash coding — em breve (Fase C)</p>
+                <p className="text-xs max-w-md mx-auto">
+                  Grid de 100-200 linhas pra categorizar muitas vendas PIX/maquininha
+                  de uma vez. Ordena, seleciona em lote, aplica categoria + regra.
+                </p>
+              </CardContent>
+            </Card>
           </TabsContent>
 
-          {/* ✓ JÁ CONCILIADO */}
-          <TabsContent value="conciliadas" className="space-y-4">
+          {/* BANK STATEMENTS — placeholder com link pra import */}
+          <TabsContent value="bank-statements" className="space-y-4">
+            <Card>
+              <CardContent className="py-10 text-center text-sm text-muted-foreground">
+                <FileText className="h-6 w-6 mx-auto mb-2 text-blue-600" />
+                <p className="font-medium mb-1">Bank statements</p>
+                <p className="text-xs max-w-md mx-auto mb-3">
+                  Importações OFX recentes desta conta. Ver histórico, reverter, e
+                  importar novo extrato.
+                </p>
+                {empresaId && (
+                  <Link href={`/empresas/${empresaId}/imports`}>
+                    <Button variant="outline" size="sm">
+                      Ver imports OFX →
+                    </Button>
+                  </Link>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* ACCOUNT TRANSACTIONS — histórico de conciliadas (Xero name) */}
+          <TabsContent value="account-transactions" className="space-y-4">
             <HistoricoTable
               empresaId={empresaId}
               onAfterUndo={refresh}
