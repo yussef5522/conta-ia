@@ -1,10 +1,17 @@
 'use client'
 
-// Sprint 4.0.2 + Sprint A-effected Fase 1 — Página /conciliacao.
-// 2 abas: Pendentes (matcher OFX→AP) + Já Conciliado (histórico + desfazer).
-// Banner de saldo no topo. Candidatos filtrados a score >= 70 (esconde poluição).
+// Sprint 4.0.2 + Sprint A-effected Fase 1+2 — Página /conciliacao.
+//
+// 4 abas de confiança (estilo Botkeeper) + Já Conciliado:
+//   🟢 Alta confiança (≥90) — pré-classificados, BULK APPROVE
+//   🟡 Revisar (70-89)      — confirmar manualmente, 1-a-1
+//   ⚪ Sem match (<70)       — OFX sem candidato bom
+//   ✓ Já conciliado         — histórico com Desfazer
+//
+// Banner de saldo no topo. Filtro de período. Candidatos top filtrados a
+// score >= 70 (esconde poluição).
 
-import { useEffect, useState, useCallback, Suspense } from 'react'
+import { useEffect, useState, useCallback, Suspense, useMemo } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowLeftRight, Sparkles, CheckCircle2 } from 'lucide-react'
@@ -20,11 +27,15 @@ import { formatBRL } from '@/lib/format/money'
 import { MatchCard } from '@/components/conciliacao/match-card'
 import { BalanceBanner } from '@/components/conciliacao/balance-banner'
 import { HistoricoTable } from '@/components/conciliacao/historico-table'
+import {
+  ConfidenceList,
+  type ConfidencePair,
+} from '@/components/conciliacao/confidence-list'
+import { BulkDryRunModal } from '@/components/conciliacao/bulk-dry-run-modal'
 
-// Score mínimo pra mostrar candidato (esconde poluição score < 70).
-// Sprint A-effected: 24 duplicatas têm score 80+ (CONFIRM). Score 40-50 (TIELE/
-// THIAGO casos) NÃO são da Nestle — só compartilham valor próximo. Esconder.
-const MIN_CANDIDATE_SCORE = 70
+// Score mínimo pra entrar na pré-classificação (esconde "TIELE/THIAGO").
+const DRY_RUN_MIN_SCORE = 70
+const HIGH_CONFIDENCE_THRESHOLD = 90
 
 interface Empresa { id: string; name: string; tradeName: string | null }
 
@@ -35,30 +46,6 @@ interface OfxTx {
   date: string
   type: string
   bankAccount: { name: string; bankName: string | null } | null
-}
-
-interface CandidateMeta {
-  id: string
-  description: string
-  amount: number
-  dueDate: string | null
-  lifecycle: string
-}
-
-// Resposta do backend: candidate pode vir null (defesa em profundidade).
-interface MatchResultRaw {
-  candidateId: string
-  score: number
-  reasoning: string[]
-  candidate: CandidateMeta | null
-}
-
-// Já filtrado (renderizado na UI): candidate sempre presente.
-interface MatchResult {
-  candidateId: string
-  score: number
-  reasoning: string[]
-  candidate: CandidateMeta
 }
 
 export default function ConciliacaoPage() {
@@ -77,8 +64,6 @@ function ConciliacaoInner() {
   const [empresas, setEmpresas] = useState<Empresa[]>([])
   const [empresaId, setEmpresaId] = useState<string>(searchParams.get('empresaId') ?? '')
 
-  // Sprint 5.0.3.3 — Sincroniza state com searchParams.empresaId quando
-  // WorkspaceSwitcher troca empresa.
   useEffect(() => {
     const urlEmpresaId = searchParams.get('empresaId') ?? ''
     if (urlEmpresaId && urlEmpresaId !== empresaId) {
@@ -88,29 +73,16 @@ function ConciliacaoInner() {
   }, [searchParams])
 
   const [ofxTxs, setOfxTxs] = useState<OfxTx[]>([])
-  const [loading, setLoading] = useState(true)
-
-  // Sprint A-effected Fase 1 — filtro de período (default: últimos 60 dias).
-  // 60d cobre o ciclo típico de boleto/AP da Cacula sem inflar a lista.
+  const [loadingOfx, setLoadingOfx] = useState(true)
   const [periodo, setPeriodo] = useState<'30d' | '60d' | '90d' | 'mes' | 'todos'>('60d')
 
-  const [selected, setSelected] = useState<OfxTx | null>(null)
-  const [matches, setMatches] = useState<MatchResult[]>([])
-  const [matchLoading, setMatchLoading] = useState(false)
-  const [confirming, setConfirming] = useState(false)
+  // Sprint A-effected Fase 2 — Pares pré-classificados (≥70) carregados em
+  // batch via /api/conciliacao/bulk-dry-run. Client divide em Alta e Revisar.
+  const [dryRunPairs, setDryRunPairs] = useState<ConfidencePair[]>([])
+  const [dryRunLoading, setDryRunLoading] = useState(false)
 
-  function periodoToRange(p: typeof periodo): { inicio?: string; fim?: string } {
-    if (p === 'todos') return {}
-    const now = new Date()
-    const fim = now.toISOString().slice(0, 10)
-    if (p === 'mes') {
-      const ym = new Date(now.getFullYear(), now.getMonth(), 1)
-      return { inicio: ym.toISOString().slice(0, 10), fim }
-    }
-    const days = p === '30d' ? 30 : p === '60d' ? 60 : 90
-    const inicio = new Date(now.getTime() - days * 86400000).toISOString().slice(0, 10)
-    return { inicio, fim }
-  }
+  // Bulk modal (revisão pré-aplicação)
+  const [bulkOpen, setBulkOpen] = useState(false)
 
   useEffect(() => {
     fetch('/api/empresas')
@@ -125,31 +97,64 @@ function ConciliacaoInner() {
       })
   }, [empresaId])
 
+  function periodoToRange(p: typeof periodo): { inicio?: string; fim?: string } {
+    if (p === 'todos') return {}
+    const now = new Date()
+    const fim = now.toISOString().slice(0, 10)
+    if (p === 'mes') {
+      const ym = new Date(now.getFullYear(), now.getMonth(), 1)
+      return { inicio: ym.toISOString().slice(0, 10), fim }
+    }
+    const days = p === '30d' ? 30 : p === '60d' ? 60 : 90
+    const inicio = new Date(now.getTime() - days * 86400000).toISOString().slice(0, 10)
+    return { inicio, fim }
+  }
+
   const fetchOfxTxs = useCallback(async () => {
     if (!empresaId) {
-      setLoading(false)
+      setLoadingOfx(false)
       return
     }
-    setLoading(true)
+    setLoadingOfx(true)
     try {
-      // Reusa /api/transacoes: lifecycle=EFFECTED, origem=OFX, sem reconciledWithId
-      const qs = new URLSearchParams({ empresaId, limit: '100' })
+      const qs = new URLSearchParams({ empresaId, limit: '200' })
       const { inicio, fim } = periodoToRange(periodo)
       if (inicio) qs.set('inicio', inicio)
       if (fim) qs.set('fim', fim)
       const res = await fetch(`/api/transacoes?${qs}`, { credentials: 'include' })
       if (res.ok) {
         const data = await res.json()
-        // Filtra cliente-side por enquanto: tx EFFECTED + sem conciliação
-        // (endpoint /api/transacoes não retorna reconciledWithId — limita aqui)
         setOfxTxs(data.transacoes.filter((t: { origin: string }) => t.origin === 'OFX'))
       }
     } finally {
-      setLoading(false)
+      setLoadingOfx(false)
     }
   }, [empresaId, periodo])
 
-  useEffect(() => { fetchOfxTxs() }, [fetchOfxTxs])
+  const fetchDryRun = useCallback(async () => {
+    if (!empresaId) return
+    setDryRunLoading(true)
+    try {
+      const res = await fetch(
+        `/api/conciliacao/bulk-dry-run?empresaId=${empresaId}&minScore=${DRY_RUN_MIN_SCORE}`,
+        { credentials: 'include' },
+      )
+      if (res.ok) {
+        const data = await res.json()
+        setDryRunPairs(data.pairs as ConfidencePair[])
+      }
+    } finally {
+      setDryRunLoading(false)
+    }
+  }, [empresaId])
+
+  useEffect(() => {
+    fetchOfxTxs()
+  }, [fetchOfxTxs])
+
+  useEffect(() => {
+    fetchDryRun()
+  }, [fetchDryRun])
 
   useEffect(() => {
     if (!empresaId) return
@@ -158,67 +163,28 @@ function ConciliacaoInner() {
     router.replace(`?${sp}`, { scroll: false })
   }, [empresaId, router])
 
-  async function buscarCandidatos(tx: OfxTx) {
-    setSelected(tx)
-    setMatches([])
-    setMatchLoading(true)
-    try {
-      const res = await fetch('/api/conciliacao/match', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ofxTransactionId: tx.id }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        toast({
-          variant: 'destructive',
-          title: 'Falha',
-          description: data.erro ?? `HTTP ${res.status}`,
-        })
-        return
-      }
-      // Sprint A-fix: endpoint /match já retorna candidate metadata embarcado.
-      // Sprint A-effected Fase 1: filtra score >= 70 (esconde "TIELE/THIAGO"
-      // que aparecem só por valor próximo mas não são o fornecedor certo).
-      const enriched: MatchResult[] = (data.matches as MatchResultRaw[])
-        .filter((m): m is MatchResult => m.candidate !== null && m.score >= MIN_CANDIDATE_SCORE)
-        .slice(0, 5)
-      setMatches(enriched)
-    } finally {
-      setMatchLoading(false)
+  // Split client-side: ≥90 → Alta, 70-89 → Revisar
+  const { altaPairs, revisarPairs, ofxIdsWithMatch, semMatchOfxs } = useMemo(() => {
+    const alta: ConfidencePair[] = []
+    const revisar: ConfidencePair[] = []
+    const idsWithMatch = new Set<string>()
+    for (const p of dryRunPairs) {
+      idsWithMatch.add(p.ofx.id)
+      if (p.score >= HIGH_CONFIDENCE_THRESHOLD) alta.push(p)
+      else revisar.push(p)
     }
-  }
+    const semMatch = ofxTxs.filter((t) => !idsWithMatch.has(t.id))
+    return {
+      altaPairs: alta,
+      revisarPairs: revisar,
+      ofxIdsWithMatch: idsWithMatch,
+      semMatchOfxs: semMatch,
+    }
+  }, [dryRunPairs, ofxTxs])
 
-  async function confirmar(m: MatchResult) {
-    if (!selected) return
-    setConfirming(true)
-    try {
-      const res = await fetch('/api/conciliacao/confirmar', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ofxTransactionId: selected.id,
-          candidateId: m.candidateId,
-        }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        toast({
-          variant: 'destructive',
-          title: 'Falha',
-          description: data.erro ?? `HTTP ${res.status}`,
-        })
-        return
-      }
-      toast({ title: 'Conciliada', description: selected.description })
-      setSelected(null)
-      setMatches([])
-      void fetchOfxTxs()
-    } finally {
-      setConfirming(false)
-    }
+  function refresh() {
+    void fetchOfxTxs()
+    void fetchDryRun()
   }
 
   return (
@@ -227,7 +193,7 @@ function ConciliacaoInner() {
         title="Conciliação"
         description={
           empresaId
-            ? `${ofxTxs.length} transação${ofxTxs.length === 1 ? '' : 'ões'} OFX disponível${ofxTxs.length === 1 ? '' : 'eis'}`
+            ? `${ofxTxs.length} transação${ofxTxs.length === 1 ? '' : 'ões'} no extrato`
             : 'Selecione uma empresa pra ver as transações'
         }
       />
@@ -257,143 +223,157 @@ function ConciliacaoInner() {
       {empresaId && <BalanceBanner empresaId={empresaId} />}
 
       {empresaId && (
-        <Tabs defaultValue="pendentes" className="space-y-4">
-          <TabsList className="grid w-full max-w-md grid-cols-2">
-            <TabsTrigger value="pendentes">
-              Pendentes ({ofxTxs.length})
+        <Tabs defaultValue="alta" className="space-y-4">
+          <TabsList className="grid w-full max-w-2xl grid-cols-4">
+            <TabsTrigger value="alta">
+              🟢 Alta ({dryRunLoading ? '…' : altaPairs.length})
+            </TabsTrigger>
+            <TabsTrigger value="revisar">
+              🟡 Revisar ({dryRunLoading ? '…' : revisarPairs.length})
+            </TabsTrigger>
+            <TabsTrigger value="sem-match">
+              ⚪ Sem match ({loadingOfx || dryRunLoading ? '…' : semMatchOfxs.length})
             </TabsTrigger>
             <TabsTrigger value="conciliadas">
-              ✓ Já Conciliado
+              ✓ Conciliado
             </TabsTrigger>
           </TabsList>
 
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-muted-foreground">Período:</span>
+            <Select value={periodo} onValueChange={(v) => setPeriodo(v as typeof periodo)}>
+              <SelectTrigger className="w-auto min-w-[180px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="mes">Mês corrente</SelectItem>
+                <SelectItem value="30d">Últimos 30 dias</SelectItem>
+                <SelectItem value="60d">Últimos 60 dias</SelectItem>
+                <SelectItem value="90d">Últimos 90 dias</SelectItem>
+                <SelectItem value="todos">Todos</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* 🟢 ALTA CONFIANÇA */}
+          <TabsContent value="alta" className="space-y-4">
+            {dryRunLoading ? (
+              <Card>
+                <CardContent className="py-10 text-center text-sm text-muted-foreground">
+                  <Sparkles className="h-6 w-6 mx-auto mb-2 animate-pulse" />
+                  Classificando candidatos...
+                </CardContent>
+              </Card>
+            ) : (
+              <>
+                {altaPairs.length > 0 && (
+                  <div className="flex items-center justify-between gap-3 border rounded-lg bg-emerald-50/50 border-emerald-200 p-3">
+                    <div className="text-sm">
+                      <strong>{altaPairs.length} pares</strong> com alta confiança
+                      ({altaPairs.length === 0 ? 'R$ 0,00' : formatBRL(altaPairs.reduce((acc, p) => acc + Math.abs(p.ofx.amount), 0))}).
+                      Revise antes de aplicar em lote.
+                    </div>
+                    <Button onClick={() => setBulkOpen(true)}>
+                      Revisar e conciliar em lote →
+                    </Button>
+                  </div>
+                )}
+                <ConfidenceList
+                  pairs={altaPairs}
+                  emptyMessage="Nenhum match com score ≥ 90 no momento. Verifique a aba 'Revisar' pra os candidatos 70-89."
+                  onConciliated={refresh}
+                />
+              </>
+            )}
+          </TabsContent>
+
+          {/* 🟡 REVISAR */}
+          <TabsContent value="revisar" className="space-y-4">
+            {dryRunLoading ? (
+              <Card>
+                <CardContent className="py-10 text-center text-sm text-muted-foreground">
+                  <Sparkles className="h-6 w-6 mx-auto mb-2 animate-pulse" />
+                  Classificando candidatos...
+                </CardContent>
+              </Card>
+            ) : (
+              <ConfidenceList
+                pairs={revisarPairs}
+                emptyMessage="Nenhum match na faixa 70-89."
+                onConciliated={refresh}
+              />
+            )}
+          </TabsContent>
+
+          {/* ⚪ SEM MATCH */}
+          <TabsContent value="sem-match" className="space-y-4">
+            {loadingOfx ? (
+              <Card>
+                <CardContent className="py-10 text-center text-sm text-muted-foreground">
+                  Carregando...
+                </CardContent>
+              </Card>
+            ) : semMatchOfxs.length === 0 ? (
+              <Card>
+                <CardContent className="py-10 text-center text-sm text-muted-foreground">
+                  <CheckCircle2 className="h-6 w-6 mx-auto mb-2 text-emerald-600" />
+                  Todas as transações do extrato têm candidatos compatíveis.
+                </CardContent>
+              </Card>
+            ) : (
+              <>
+                <p className="text-xs text-muted-foreground">
+                  Transações OFX que não têm conta a pagar/receber compatível no
+                  sistema (score &lt; 70). Use os botões abaixo (ações virão na
+                  Fase 4) ou cadastre manualmente uma conta nova.
+                </p>
+                <div className="border rounded-lg bg-card divide-y">
+                  {semMatchOfxs.map((t) => (
+                    <div
+                      key={t.id}
+                      className="flex items-center gap-3 px-3 py-2.5"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{t.description}</p>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <span>{new Date(t.date).toLocaleDateString('pt-BR')}</span>
+                          {t.bankAccount && (
+                            <span>· {t.bankAccount.bankName ?? t.bankAccount.name}</span>
+                          )}
+                        </div>
+                      </div>
+                      <span
+                        className={`shrink-0 font-semibold text-sm tabular-nums ${
+                          t.type === 'CREDIT' ? 'text-emerald-600' : 'text-red-600'
+                        }`}
+                      >
+                        {t.type === 'CREDIT' ? '+' : '−'} {formatBRL(t.amount)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </TabsContent>
+
+          {/* ✓ JÁ CONCILIADO */}
           <TabsContent value="conciliadas" className="space-y-4">
             <HistoricoTable
               empresaId={empresaId}
-              onAfterUndo={() => void fetchOfxTxs()}
+              onAfterUndo={refresh}
             />
           </TabsContent>
-
-          <TabsContent value="pendentes" className="space-y-4">
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-muted-foreground">Período:</span>
-          <Select value={periodo} onValueChange={(v) => setPeriodo(v as typeof periodo)}>
-            <SelectTrigger className="w-auto min-w-[180px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="mes">Mês corrente</SelectItem>
-              <SelectItem value="30d">Últimos 30 dias</SelectItem>
-              <SelectItem value="60d">Últimos 60 dias</SelectItem>
-              <SelectItem value="90d">Últimos 90 dias</SelectItem>
-              <SelectItem value="todos">Todos</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="grid lg:grid-cols-2 gap-6">
-          {/* ESQUERDA: lista OFX */}
-          <div className="space-y-3">
-            <h2 className="text-sm font-semibold uppercase text-muted-foreground">
-              Extrato bancário (banco)
-            </h2>
-            {loading ? (
-              <p className="text-sm text-muted-foreground">Carregando…</p>
-            ) : ofxTxs.length === 0 ? (
-              <Card>
-                <CardContent className="py-8 text-center text-muted-foreground text-sm">
-                  Nenhuma tx OFX disponível.
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="border rounded-lg bg-card divide-y">
-                {ofxTxs.map((t) => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => buscarCandidatos(t)}
-                    className={`w-full text-left flex items-center gap-3 px-3 py-2.5 hover:bg-muted/40 transition-colors ${selected?.id === t.id ? 'bg-primary/5' : ''}`}
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{t.description}</p>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <span>{new Date(t.date).toLocaleDateString('pt-BR')}</span>
-                        {t.bankAccount && (
-                          <span>· {t.bankAccount.bankName ?? t.bankAccount.name}</span>
-                        )}
-                      </div>
-                    </div>
-                    <span
-                      className={`shrink-0 font-semibold text-sm ${t.type === 'CREDIT' ? 'text-emerald-600' : 'text-red-600'}`}
-                    >
-                      {t.type === 'CREDIT' ? '+' : '−'} {formatBRL(t.amount)}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* DIREITA: contas a pagar / receber compatíveis */}
-          <div className="space-y-3">
-            <h2 className="text-sm font-semibold uppercase text-muted-foreground">
-              Contas a pagar / receber (sistema)
-            </h2>
-            {!selected ? (
-              <Card>
-                <CardContent className="py-12 text-center text-muted-foreground text-sm">
-                  <ArrowLeftRight className="h-10 w-10 mx-auto mb-2" />
-                  Clique numa tx do extrato pra ver candidatos.
-                </CardContent>
-              </Card>
-            ) : matchLoading ? (
-              <Card>
-                <CardContent className="py-8 text-center text-muted-foreground text-sm">
-                  <Sparkles className="h-6 w-6 mx-auto mb-2 animate-pulse" />
-                  Calculando matches…
-                </CardContent>
-              </Card>
-            ) : matches.length === 0 ? (
-              <Card>
-                <CardContent className="py-8 text-center text-muted-foreground text-sm">
-                  <CheckCircle2 className="h-6 w-6 mx-auto mb-2 text-emerald-600" />
-                  Nenhuma conta pendente compatível com essa tx.
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="space-y-3">
-                {matches.map((m) => (
-                  <div key={m.candidateId} className="space-y-2">
-                    <MatchCard
-                      ofx={{
-                        id: selected.id,
-                        description: selected.description,
-                        amount: selected.amount,
-                        date: selected.date,
-                        type: selected.type,
-                      }}
-                      candidate={m.candidate}
-                      score={m.score}
-                      reasoning={m.reasoning}
-                      selected={false}
-                      onToggle={() => {}}
-                      recommendation={
-                        m.score >= 90 ? 'AUTO_RECONCILE' : m.score >= 70 ? 'CONFIRM' : 'NO_MATCH'
-                      }
-                    />
-                    <div className="flex justify-end">
-                      <Button size="sm" onClick={() => confirmar(m)} disabled={confirming}>
-                        {confirming ? 'Conciliando…' : 'Conciliar'}
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-          </TabsContent>
         </Tabs>
+      )}
+
+      {empresaId && (
+        <BulkDryRunModal
+          empresaId={empresaId}
+          open={bulkOpen}
+          onClose={() => setBulkOpen(false)}
+          onAfterBulk={refresh}
+          minScore={HIGH_CONFIDENCE_THRESHOLD}
+        />
       )}
     </div>
   )
