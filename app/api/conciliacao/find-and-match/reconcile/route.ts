@@ -29,10 +29,24 @@ import {
   reconcileTransactions,
   ReconciliationError,
 } from '@/lib/conciliacao/reconcile'
+import {
+  adjustmentSignedAmount,
+  buildAdjustmentTxData,
+} from '@/lib/conciliacao/create-adjustment'
+import { logAudit } from '@/lib/audit'
+
+const adjustmentSchema = z.object({
+  categoryId: z.string().cuid(),
+  amount: z.number().positive(),
+  sign: z.enum(['EXPENSE', 'INCOME']),
+  description: z.string().min(1).max(200),
+})
 
 const bodySchema = z.object({
   ofxTransactionId: z.string().cuid(),
   candidateIds: z.array(z.string().cuid()).min(1).max(50),
+  // Sprint A-effected Fase B.4.1 — ajustes opcionais (cap 3 — decisão Yussef #6)
+  adjustments: z.array(adjustmentSchema).max(3).optional(),
 })
 
 const SUM_TOLERANCE = 0.02 // 2 cents — acomoda arredondamento bancário de 1¢
@@ -132,18 +146,55 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // VALIDAÇÃO CRÍTICA — soma das candidates == OFX.amount
-    // Substitui a defesa de @unique que foi removida na migration B.3
+    // Sprint A-effected Fase B.4.1 — validar adjustments (se houver)
+    const adjustments = data.adjustments ?? []
+
+    if (adjustments.length > 0) {
+      // Categorias precisam pertencer à empresa
+      const catIds = Array.from(new Set(adjustments.map((a) => a.categoryId)))
+      const cats = await prisma.category.findMany({
+        where: { id: { in: catIds }, companyId },
+        select: { id: true, name: true, type: true, dreGroup: true },
+      })
+      if (cats.length !== catIds.length) {
+        return NextResponse.json(
+          { erro: 'Uma ou mais categoryId dos ajustes não pertencem à empresa' },
+          { status: 422 },
+        )
+      }
+      // Sanidade: categoria INCOME só com sign=INCOME; EXPENSE só com EXPENSE
+      const catById = new Map(cats.map((c) => [c.id, c]))
+      for (const adj of adjustments) {
+        const c = catById.get(adj.categoryId)!
+        const expectedSign = c.type === 'INCOME' ? 'INCOME' : 'EXPENSE'
+        if (adj.sign !== expectedSign) {
+          return NextResponse.json(
+            {
+              erro: `Ajuste de categoria "${c.name}" (${c.type}) precisa ter sign=${expectedSign}, recebeu ${adj.sign}`,
+            },
+            { status: 422 },
+          )
+        }
+      }
+    }
+
+    // VALIDAÇÃO CRÍTICA — soma das candidates ± adjustments com sinal == OFX
+    // Defesa em profundidade que substitui o @unique removido na migração B.3.
     const sumCandidates = candidates.reduce(
       (acc, c) => acc + Math.abs(c.amount),
       0,
     )
+    const sumAdjustmentsSigned = adjustments.reduce(
+      (acc, a) => acc + adjustmentSignedAmount(a.amount, a.sign),
+      0,
+    )
     const ofxAbs = Math.abs(ofx.amount)
-    const diff = Math.abs(sumCandidates - ofxAbs)
+    const totalSelected = sumCandidates + sumAdjustmentsSigned
+    const diff = Math.abs(totalSelected - ofxAbs)
     if (diff > SUM_TOLERANCE) {
       return NextResponse.json(
         {
-          erro: `Soma das ${uniqueIds.length} candidate(s) (R$ ${sumCandidates.toFixed(2)}) não bate com OFX (R$ ${ofxAbs.toFixed(2)}). Diferença: R$ ${diff.toFixed(2)}. Tolerância máxima: R$ ${SUM_TOLERANCE.toFixed(2)}.`,
+          erro: `Soma ${candidates.length} candidate(s) ${adjustments.length > 0 ? `+ ${adjustments.length} ajuste(s)` : ''} (R$ ${totalSelected.toFixed(2)}) não bate com OFX (R$ ${ofxAbs.toFixed(2)}). Diferença: R$ ${diff.toFixed(2)}. Tolerância máxima: R$ ${SUM_TOLERANCE.toFixed(2)}.`,
         },
         { status: 422 },
       )
@@ -152,9 +203,10 @@ export async function POST(request: NextRequest) {
     // Gera groupId compartilhado (cuid-like)
     const reconcileGroupId = makeGroupId()
 
-    // Atomic loop: reconcileTransactions com allowMultiReconcile=true
+    // Atomic loop: reconcileTransactions com allowMultiReconcile=true + criar adjustments
     let reconciled = 0
     let failed = 0
+    let adjustmentsCreated = 0
     const errors: Array<{ candidateId: string; error: string }> = []
 
     for (const candidateId of uniqueIds) {
@@ -186,11 +238,58 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Sprint A-effected Fase B.4.1 — criar txs de ajuste (origin='ADJUSTMENT')
+    // dentro do mesmo grupo. Resolve caso boleto+juros.
+    if (adjustments.length > 0 && ofx.bankAccount) {
+      const ofxFull = await prisma.transaction.findUnique({
+        where: { id: data.ofxTransactionId },
+        select: { date: true, bankAccountId: true },
+      })
+      if (ofxFull?.bankAccountId) {
+        await prisma.$transaction(async (trx) => {
+          for (const adj of adjustments) {
+            const txData = buildAdjustmentTxData({
+              ofxTransactionId: data.ofxTransactionId,
+              bankAccountId: ofxFull.bankAccountId!,
+              companyId,
+              categoryId: adj.categoryId,
+              amount: adj.amount,
+              sign: adj.sign,
+              description: adj.description,
+              reconcileGroupId,
+              date: ofxFull.date,
+              userId: ctx.user.id,
+            })
+            const created = await trx.transaction.create({ data: txData })
+            await logAudit(
+              ctx,
+              {
+                action: 'CREATE',
+                entityType: 'Adjustment',
+                entityId: created.id,
+                metadata: {
+                  reconcileGroupId,
+                  ofxTransactionId: data.ofxTransactionId,
+                  categoryId: adj.categoryId,
+                  amount: adj.amount,
+                  sign: adj.sign,
+                  description: adj.description,
+                },
+              },
+              trx,
+            )
+            adjustmentsCreated += 1
+          }
+        })
+      }
+    }
+
     return NextResponse.json({
       ok: true,
       groupId: reconcileGroupId,
       reconciled,
       failed,
+      adjustmentsCreated,
       errors,
     })
   } catch (error) {
