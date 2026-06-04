@@ -53,6 +53,8 @@ model User {
   // Onda 2 Sprint 2.3 — quem importou cada OFX
   ofxImports                 OfxImport[]
   ofxImportsReverted         OfxImport[]               @relation("OfxImportReverter")
+  // Sprint A-effected Fase B — quem ignorou cada tx (Transaction.ignoredBy)
+  transactionsIgnored        Transaction[]             @relation("TransactionIgnoredBy")
   // Sprint PF Fatia 3
   personalOfxImports         PersonalOfxImport[]
   personalOfxImportsReverted PersonalOfxImport[]       @relation("PersonalOfxImportReverter")
@@ -338,6 +340,18 @@ model Transaction {
   // Sprint PF Fatia 4 (03/06/2026) — Ponte PJ→PF (1:0..1).
   // Restrict no delete: pra deletar essa tx PJ, remover a ponte antes.
   bridge           PJtoPFBridge?   @relation("PjBridge")
+
+  // Sprint A-effected Fase B (03/06/2026) — Ações IGNORAR + CRIAR (cash coding).
+  // IGNORAR marca tx como não-conciliável (taxa banco, estorno, lançamento errado).
+  // Lista de pendentes filtra ignoredAt IS NULL.
+  ignoredAt       DateTime?
+  ignoredReason   String?
+  ignoredByUserId String?
+  ignoredBy       User?     @relation("TransactionIgnoredBy", fields: [ignoredByUserId], references: [id])
+  // CRIAR (cash coding estilo Xero): categorizada direto sem candidato AP.
+  // Diferencia de "EFFECTED conciliada via match" pra relatórios futuros.
+  cashCoded       Boolean   @default(false)
+  cashCodedAt     DateTime?
 
   @@unique([bankAccountId, dedupHash])
   // Sprint 4.0.1.b — anti-dup: schedule X só gera 1 tx por dueDate
