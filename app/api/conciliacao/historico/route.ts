@@ -69,6 +69,7 @@ export async function GET(request: NextRequest) {
           lifecycle: true,
           status: true,
           reconciledWithId: true,
+          reconcileGroupId: true,
           updatedAt: true,
           category: { select: { id: true, name: true, color: true } },
           supplier: { select: { id: true, razaoSocial: true, nomeFantasia: true } },

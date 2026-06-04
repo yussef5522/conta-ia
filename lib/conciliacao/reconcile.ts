@@ -47,6 +47,15 @@ export interface ReconcileInput {
   ofxTransactionId: string
   candidateId: string
   force?: boolean
+  // Sprint A-effected Fase B.3 — N:1 support
+  // Quando true, relaxa o guard de reverse link (permite várias candidates
+  // apontarem pra mesma OFX). Default false: mantém defesa de 1:1.
+  // SÓ deve ser true quando chamador validou soma das candidates == OFX.amount
+  // (responsabilidade do endpoint /find-and-match/reconcile).
+  allowMultiReconcile?: boolean
+  // groupId compartilhado entre N candidates do mesmo Find & Match (pra
+  // undo agrupado). Null quando 1:1.
+  reconcileGroupId?: string | null
 }
 
 const MAX_DAYS_APART = 5
@@ -97,7 +106,10 @@ export async function reconcileTransactions(
   if (ofx.reconciledWithId) {
     throw new ReconciliationError('Transação OFX já está conciliada')
   }
-  if (ofx.reconciledFrom.length > 0) {
+  // Sprint A-effected Fase B.3: o guard de reverse link bloqueia N:1 acidental
+  // (1:1 auto-match). Quando chamador valida soma e pede explicitamente N:1
+  // via allowMultiReconcile, o guard relaxa.
+  if (ofx.reconciledFrom.length > 0 && !input.allowMultiReconcile) {
     throw new ReconciliationError(
       'Tx OFX já tem outra conta conciliada com ela (link reverso)',
     )
@@ -160,7 +172,10 @@ export async function reconcileTransactions(
 
   // Pré-validações cumulativas (Sprint A-effected — defesa em profundidade)
   // Aplica nos 2 modos pra prevenir reconcile errôneo via API direta.
-  if (!input.force) {
+  // Sprint A-effected Fase B.3: pula validação de valor exato no N:1 (cada
+  // candidate individual NÃO bate com OFX; a soma das N bate, validada
+  // upstream no endpoint /find-and-match/reconcile).
+  if (!input.force && !input.allowMultiReconcile) {
     if (Math.abs(ofx.amount - candidate.amount) >= AMOUNT_EQ_TOLERANCE) {
       throw new ReconciliationError(
         `Valor divergente — OFX R$ ${ofx.amount.toFixed(2)} vs candidato R$ ${candidate.amount.toFixed(2)} (tolerância < R$ 0,01)`,
@@ -188,6 +203,10 @@ export async function reconcileTransactions(
           bankAccountId: ofx.bankAccountId,
           reconciledWithId: ofx.id,
           status: 'RECONCILED',
+          // Sprint A-effected Fase B.3 — groupId pra undo agrupado N:1
+          ...(input.reconcileGroupId !== undefined
+            ? { reconcileGroupId: input.reconcileGroupId }
+            : {}),
         },
         include: {
           category: { select: { id: true, name: true, color: true } },
@@ -214,6 +233,7 @@ export async function reconcileTransactions(
             ofxAmount: ofx.amount,
             candidateDescription: candidate.description,
             candidateAmount: candidate.amount,
+            reconcileGroupId: input.reconcileGroupId ?? null,
           },
         },
         trx,
@@ -241,6 +261,10 @@ export async function reconcileTransactions(
       data: {
         reconciledWithId: ofx.id,
         status: 'RECONCILED',
+        // Sprint A-effected Fase B.3 — groupId pra undo agrupado N:1
+        ...(input.reconcileGroupId !== undefined
+          ? { reconcileGroupId: input.reconcileGroupId }
+          : {}),
         // NÃO mexer em: lifecycle, paymentDate, date, bankAccountId,
         // amount, description, categoryId, supplierId.
       },
@@ -278,6 +302,7 @@ export async function reconcileTransactions(
           ofxBefore,
           ofxBackfilled: ofxBackfill,
           candidateStatusBefore: candidate.status,
+          reconcileGroupId: input.reconcileGroupId ?? null,
         },
       },
       trx,
@@ -372,6 +397,7 @@ export async function undoReconciliation(
           paymentDate: null,
           bankAccountId: null,
           reconciledWithId: null,
+          reconcileGroupId: null, // Fase B.3 — limpa groupId no undo
           status: 'PENDING',
         },
       })
@@ -395,6 +421,7 @@ export async function undoReconciliation(
       where: { id: candidateId },
       data: {
         reconciledWithId: null,
+        reconcileGroupId: null, // Fase B.3 — limpa groupId no undo
         status: statusBefore,
         // NÃO toca em lifecycle (já era EFFECTED), paymentDate, bankAccountId, etc.
       },

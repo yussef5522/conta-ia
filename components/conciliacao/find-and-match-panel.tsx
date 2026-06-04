@@ -120,16 +120,8 @@ export function FindAndMatchPanel({
   function toggleCandidate(id: string) {
     setSelectedIds((s) => {
       const next = new Set(s)
-      if (next.has(id)) {
-        next.delete(id)
-      } else {
-        // Sprint A-effected Fase B.2 — single select only.
-        // N:1 (várias notas → 1 PIX consolidado) viola UNIQUE em
-        // reconciledWithId no schema atual. Schema change vai na Fase B.3.
-        // Por ora: clicar outra candidate desmarca a anterior.
-        next.clear()
-        next.add(id)
-      }
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
       return next
     })
   }
@@ -146,17 +138,20 @@ export function FindAndMatchPanel({
 
   async function aplicarReconcile() {
     if (!bate || selectedIds.size === 0) return
-    const pairs = Array.from(selectedIds).map((candidateId) => ({
-      ofxTransactionId: ofx.id,
-      candidateId,
-    }))
+    const candidateIds = Array.from(selectedIds)
     setSubmitting(true)
     try {
-      const res = await fetch('/api/conciliacao/bulk-confirmar', {
+      // Sprint A-effected Fase B.3 — endpoint dedicado N:1.
+      // Valida soma == OFX, gera reconcileGroupId, loop atomic
+      // com allowMultiReconcile=true.
+      const res = await fetch('/api/conciliacao/find-and-match/reconcile', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pairs }),
+        body: JSON.stringify({
+          ofxTransactionId: ofx.id,
+          candidateIds,
+        }),
       })
       const body = await res.json().catch(() => ({}))
       if (!res.ok) {
@@ -218,20 +213,9 @@ export function FindAndMatchPanel({
         </span>
       </div>
 
-      {/* Detecção N:1 — várias notas pendentes da mesma busca somam pro
-          statement line. Avisa user que vai precisar de B.3. */}
-      {candidates.length >= 2 &&
-        candidates.reduce((s, c) => s + Math.abs(c.amount), 0) >= statementAmount * 0.95 &&
-        candidates.reduce((s, c) => s + Math.abs(c.amount), 0) <= statementAmount * 1.05 && (
-          <div className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-            🚨 <strong>Pagamento consolidado N:1 detectado.</strong> Várias notas
-            ({candidates.length}) somam aproximadamente {formatBRL(statementAmount)} (
-            {formatBRL(candidates.reduce((s, c) => s + Math.abs(c.amount), 0))}).
-            <br />
-            Suporte a múltipla seleção (N:1) vem na Fase B.3 (requer migration
-            de schema). Por ora, você pode escolher 1 nota representativa.
-          </div>
-        )}
+      {/* Sprint A-effected Fase B.3 — Multi-select habilitado.
+          Marque várias notas que somam o statement line (PIX consolidado).
+          O indicador Diff fica verde quando bate. */}
 
       {/* Search input */}
       <div className="relative">

@@ -455,9 +455,12 @@ describe('undoReconciliation — ORPHAN undo (Sprint A-effected)', () => {
     await undoReconciliation('orphan-nestle', fakeCtx)
 
     // Excel: limpa link + status volta pra PENDING
+    // Sprint A-effected Fase B.3: também limpa reconcileGroupId (no caso single
+    // já era null, mas o update propaga pra garantir consistência pós-N:1).
     const excelCall = updateMock.mock.calls.find((c) => c[0].where.id === 'orphan-nestle')
     expect(excelCall![0].data).toEqual({
       reconciledWithId: null,
+      reconcileGroupId: null,
       status: 'PENDING',
     })
     // OFX: restaura categoryId/supplierId pro NULL anterior
