@@ -37,12 +37,19 @@ export async function GET(request: NextRequest) {
     const ctx = await getAuthContext(request, data.empresaId)
     ctx.requirePermission('transaction.view')
 
-    // Tx OFX candidatas (não conciliadas, EFFECTED, da empresa)
+    // Tx OFX candidatas (não conciliadas, EFFECTED, da empresa).
+    // Filtra DOIS sentidos do link:
+    //   - reconciledWithId IS NULL: OFX não aponta pra ninguém (sempre verdade
+    //     pra OFX porque link é unidirecional Excel→OFX, mas defesa em profundidade)
+    //   - reconciledFrom NONE: nenhuma Excel/Manual aponta PRA esta OFX
+    //     ↪ Resolve caso Lamana: Excel #1 já conciliada com OFX → Excel #2 órfã
+    //     não deve achar essa OFX como candidata.
     const ofxTxs = await prisma.transaction.findMany({
       where: {
         origin: 'OFX',
         lifecycle: 'EFFECTED',
         reconciledWithId: null,
+        reconciledFrom: { none: {} },
         isInternalTransfer: false,
         bankAccount: { companyId: data.empresaId },
       },

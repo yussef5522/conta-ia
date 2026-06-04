@@ -55,6 +55,7 @@ const baseOFX: {
   reconciledWithId: string | null
   bankAccountId: string
   bankAccount: { companyId: string }
+  reconciledFrom: { id: string }[]
   description: string
   amount: number
   type: string
@@ -67,6 +68,7 @@ const baseOFX: {
   reconciledWithId: null,
   bankAccountId: FAKE_BANK,
   bankAccount: { companyId: FAKE_COMPANY },
+  reconciledFrom: [], // Sprint A-effected Fase 2-fix — OFX limpa (sem reverso)
   description: 'NESTLE BRASIL LTDA - Pagamento',
   amount: 105.86,
   type: 'DEBIT',
@@ -367,6 +369,29 @@ describe('reconcileTransactions — multi-tenant guard', () => {
         fakeCtx,
       ),
     ).rejects.toThrow(/empresas diferentes/)
+  })
+})
+
+// ============================================================================
+// Sprint A-effected Fase 2-fix — reverse link (caso Lamana)
+// ============================================================================
+describe('reconcileTransactions — rejeita OFX já com Excel apontando (reverso)', () => {
+  it('OFX com reconciledFrom não-vazio → erro "link reverso"', async () => {
+    // Cenário Lamana: OFX já está conciliada com Excel #1. Excel #2 tenta
+    // conciliar a mesma OFX. Deve falhar com mensagem explícita ANTES da
+    // UNIQUE constraint do banco.
+    const ofxOcupada = {
+      ...baseOFX,
+      reconciledFrom: [{ id: 'excel-ja-pareada' }],
+    }
+    mockBothFinds(ofxOcupada, baseCandidateOrphan)
+
+    await expect(
+      reconcileTransactions(
+        { ofxTransactionId: 'ofx-nestle', candidateId: 'orphan-nestle' },
+        fakeCtx,
+      ),
+    ).rejects.toThrow(/link reverso/)
   })
 })
 

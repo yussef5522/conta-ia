@@ -34,6 +34,38 @@
 
 ---
 
+## 💡 Melhorias futuras anotadas (03/06/2026 — dry-run das 22 da Cacula revelou)
+
+### 1. Vendor enrichment → bulk approve viável
+**Problema atual:** dos 16 pares ≥70 no dry-run da Cacula, 10 são claramente certos (Nestle/Ambev style: mesmo dia, valor exato, descrição quase idêntica), mas nenhum atinge ≥90 porque o **supplier match (15pts)** sempre dá 0 — os fornecedores PJ da Cacula não têm registro em `suppliers` linkado nas tx Excel.
+
+**Solução:** cadastrar suppliers (CNPJ + razaoSocial) e linkar `transactions.supplierId` em massa. Pipeline F3.4.3 (BrasilAPI lookup por CNPJ) já existe — basta integrar no import Excel ou rodar batch.
+
+**Impacto esperado:** 10 pares óbvios saltariam de score 85 → 100 → entram em "🟢 Alta confiança" → **bulk approve funciona** → 1 click resolve tudo.
+
+**Esforço:** ~1 dia. Pode ser Sprint dedicada "Vendor enrichment" ou parte da Fase 4.
+
+### 2. Threshold de Alta Confiança descer pra ≥85
+**Hoje:** AUTO_RECONCILE ≥90, CONFIRM 70-89.
+**Hipótese:** após Yussef conciliar manualmente N casos de score 85 (Nestle-style) e confirmar zero falsos positivos, sobe threshold pra ≥85 → bulk approve funciona pra "match perfeito sem supplier_id".
+
+**Pré-requisito:** validação histórica empírica (zero falsos positivos em N=10+ conciliações score 85).
+
+**Risco:** com 85 vira default, casos limítrofes (D±1d, descrição diferente) entrariam no bulk e gerariam falsos positivos como DIVINE/TURATTI do dry-run da Cacula. Precisa cuidado.
+
+**Recomendado:** manter ≥90 enquanto Vendor enrichment (#1) não estiver pronto. Vendor enrichment + threshold 90 dá segurança e bulk.
+
+### 3. Fase 4 — Marcar par como "não é match"
+**Caso real:** dos 16 pares ≥70 da Cacula, 5 são **falsos positivos** (nomes diferentes, só compartilham valor próximo: DIVINE↔TURATTI, ECO VERDE↔PREFEITURA, FERNANDA↔CIA DA FRUTA, 2× PODAL com valor 5% diferente). Hoje esses pares ficam permanentemente na aba "🟡 Revisar" — Yussef ignora visualmente mas eles voltam toda vez que ele abre a tela.
+
+**Solução proposta:** nova tabela `match_rejections (ofxId, candidateId, reason, rejectedAt, rejectedBy)`. UI ganha botão "Não é match" no card de Revisar → grava rejeição. `find-candidates` filtra rejeitados (NOT EXISTS) → aquele par específico nunca mais aparece como sugestão.
+
+**Aba "Ignorado" da Fase 4** ganha listagem das rejeições com botão "Reverter" pra desfazer.
+
+**Esforço:** ~3-4h (1 migration aditiva + endpoints CRUD + UI).
+
+---
+
 ## 0. Estado atual (auditoria visual)
 
 ### 0.1 Tela `/conciliacao` hoje

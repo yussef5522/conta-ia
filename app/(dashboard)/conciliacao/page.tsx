@@ -84,6 +84,11 @@ function ConciliacaoInner() {
   // Bulk modal (revisão pré-aplicação)
   const [bulkOpen, setBulkOpen] = useState(false)
 
+  // Sprint A-effected Fase 2-fix — refreshKey força BalanceBanner a refetch
+  // quando algo é conciliado/desfeito. Sem isso, banner ficaria parado
+  // mostrando saldo antigo até F5 manual.
+  const [refreshKey, setRefreshKey] = useState(0)
+
   useEffect(() => {
     fetch('/api/empresas')
       .then((r) => (r.ok ? r.json() : null))
@@ -117,14 +122,18 @@ function ConciliacaoInner() {
     }
     setLoadingOfx(true)
     try {
+      // Sprint A-effected Fase 2-fix: endpoint dedicado filtra OFX já
+      // conciliada via reconciledFrom (resolve fantasma Lamana #2).
       const qs = new URLSearchParams({ empresaId, limit: '200' })
       const { inicio, fim } = periodoToRange(periodo)
       if (inicio) qs.set('inicio', inicio)
       if (fim) qs.set('fim', fim)
-      const res = await fetch(`/api/transacoes?${qs}`, { credentials: 'include' })
+      const res = await fetch(`/api/conciliacao/ofx-pendentes?${qs}`, {
+        credentials: 'include',
+      })
       if (res.ok) {
         const data = await res.json()
-        setOfxTxs(data.transacoes.filter((t: { origin: string }) => t.origin === 'OFX'))
+        setOfxTxs(data.transacoes)
       }
     } finally {
       setLoadingOfx(false)
@@ -185,6 +194,7 @@ function ConciliacaoInner() {
   function refresh() {
     void fetchOfxTxs()
     void fetchDryRun()
+    setRefreshKey((k) => k + 1) // dispara refetch do BalanceBanner
   }
 
   return (
@@ -220,7 +230,7 @@ function ConciliacaoInner() {
         </Card>
       )}
 
-      {empresaId && <BalanceBanner empresaId={empresaId} />}
+      {empresaId && <BalanceBanner empresaId={empresaId} refreshKey={refreshKey} />}
 
       {empresaId && (
         <Tabs defaultValue="alta" className="space-y-4">

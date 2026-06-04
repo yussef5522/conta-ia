@@ -71,7 +71,11 @@ export async function reconcileTransactions(
   const [ofx, candidate] = await Promise.all([
     prisma.transaction.findUnique({
       where: { id: input.ofxTransactionId },
-      include: { bankAccount: { select: { companyId: true } } },
+      include: {
+        bankAccount: { select: { companyId: true } },
+        // Sprint A-effected Fase 2-fix — reverso (Excel apontando pra OFX)
+        reconciledFrom: { select: { id: true }, take: 1 },
+      },
     }),
     prisma.transaction.findUnique({
       where: { id: input.candidateId },
@@ -92,6 +96,11 @@ export async function reconcileTransactions(
   }
   if (ofx.reconciledWithId) {
     throw new ReconciliationError('Transação OFX já está conciliada')
+  }
+  if (ofx.reconciledFrom.length > 0) {
+    throw new ReconciliationError(
+      'Tx OFX já tem outra conta conciliada com ela (link reverso)',
+    )
   }
   if (candidate.reconciledWithId) {
     throw new ReconciliationError('Candidato já está conciliado com outra OFX')

@@ -23,9 +23,13 @@ interface BalanceCheckResponse {
 
 interface Props {
   empresaId: string
+  // Sprint A-effected Fase 2-fix — incrementar pra forçar refetch (após
+  // conciliar/desfazer). Sem isso o banner ficaria parado mostrando o saldo
+  // de quando a página abriu.
+  refreshKey?: number
 }
 
-export function BalanceBanner({ empresaId }: Props) {
+export function BalanceBanner({ empresaId, refreshKey = 0 }: Props) {
   const [data, setData] = useState<BalanceCheckResponse | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -41,7 +45,7 @@ export function BalanceBanner({ empresaId }: Props) {
         setLoading(false)
       })
       .catch(() => setLoading(false))
-  }, [empresaId])
+  }, [empresaId, refreshKey])
 
   if (loading) {
     return (

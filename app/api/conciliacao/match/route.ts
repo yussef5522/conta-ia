@@ -25,7 +25,12 @@ export async function POST(request: NextRequest) {
 
     const ofxTx = await prisma.transaction.findUnique({
       where: { id: data.ofxTransactionId },
-      include: { bankAccount: { select: { companyId: true } } },
+      include: {
+        bankAccount: { select: { companyId: true } },
+        // Sprint A-effected Fase 2-fix — reverse link: alguma Excel já
+        // aponta pra essa OFX? Se sim, ela está "ocupada".
+        reconciledFrom: { select: { id: true }, take: 1 },
+      },
     })
     if (!ofxTx || !ofxTx.bankAccount) {
       return NextResponse.json({ erro: 'Transação OFX não encontrada' }, { status: 404 })
@@ -39,6 +44,12 @@ export async function POST(request: NextRequest) {
     if (ofxTx.reconciledWithId) {
       return NextResponse.json(
         { erro: 'Tx OFX já está conciliada' },
+        { status: 422 },
+      )
+    }
+    if (ofxTx.reconciledFrom.length > 0) {
+      return NextResponse.json(
+        { erro: 'Tx OFX já tem outra conta conciliada com ela' },
         { status: 422 },
       )
     }
