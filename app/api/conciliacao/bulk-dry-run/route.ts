@@ -21,10 +21,13 @@ import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import { findReconciliationCandidates } from '@/lib/conciliacao/find-candidates'
 import { rankCandidates } from '@/lib/conciliacao/match'
+import { getTipoFilter, parseTipoParam } from '@/lib/conciliacao/tipo-filter'
 
 const querySchema = z.object({
   empresaId: z.string().cuid(),
   minScore: z.coerce.number().int().min(0).max(100).default(90),
+  // Sprint A-effected Fase A — filtro por tipo (default todos)
+  tipo: z.string().optional(),
   // Cap defensivo: evita varrer 10k tx OFX e estourar tempo
   limit: z.coerce.number().int().min(1).max(500).default(200),
 })
@@ -44,6 +47,9 @@ export async function GET(request: NextRequest) {
     //   - reconciledFrom NONE: nenhuma Excel/Manual aponta PRA esta OFX
     //     ↪ Resolve caso Lamana: Excel #1 já conciliada com OFX → Excel #2 órfã
     //     não deve achar essa OFX como candidata.
+    const tipo = parseTipoParam(data.tipo)
+    const tipoFilter = getTipoFilter(tipo)
+
     const ofxTxs = await prisma.transaction.findMany({
       where: {
         origin: 'OFX',
@@ -52,6 +58,7 @@ export async function GET(request: NextRequest) {
         reconciledFrom: { none: {} },
         isInternalTransfer: false,
         bankAccount: { companyId: data.empresaId },
+        ...tipoFilter,
       },
       select: {
         id: true,

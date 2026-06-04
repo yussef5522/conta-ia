@@ -32,12 +32,23 @@ import {
   type ConfidencePair,
 } from '@/components/conciliacao/confidence-list'
 import { BulkDryRunModal } from '@/components/conciliacao/bulk-dry-run-modal'
+import { TipoSelector } from '@/components/conciliacao/tipo-selector'
+import {
+  defaultTipoForCompany,
+  parseTipoParam,
+  type TipoConciliacao,
+} from '@/lib/conciliacao/tipo-filter'
 
 // Score mínimo pra entrar na pré-classificação (esconde "TIELE/THIAGO").
 const DRY_RUN_MIN_SCORE = 70
 const HIGH_CONFIDENCE_THRESHOLD = 90
 
-interface Empresa { id: string; name: string; tradeName: string | null }
+interface Empresa {
+  id: string
+  name: string
+  tradeName: string | null
+  type: string | null
+}
 
 interface OfxTx {
   id: string
@@ -76,6 +87,19 @@ function ConciliacaoInner() {
   const [loadingOfx, setLoadingOfx] = useState(true)
   const [periodo, setPeriodo] = useState<'30d' | '60d' | '90d' | 'mes' | 'todos'>('60d')
 
+  // Sprint A-effected Fase A — TIPO de conciliação. Estratégia de inicialização:
+  //   1. Se URL traz ?tipo=... → respeita
+  //   2. Caso contrário, aplica default heurístico quando empresa carregar
+  //      (companyType=restaurant/retail/industry → apenas-pagamentos;
+  //      service/mixed/other → todos)
+  //   3. State persiste em URL via router.replace pra preservar entre nav
+  const [tipo, setTipo] = useState<TipoConciliacao>(
+    parseTipoParam(searchParams.get('tipo')),
+  )
+  const [tipoInitialized, setTipoInitialized] = useState<boolean>(
+    !!searchParams.get('tipo'),
+  )
+
   // Sprint A-effected Fase 2 — Pares pré-classificados (≥70) carregados em
   // batch via /api/conciliacao/bulk-dry-run. Client divide em Alta e Revisar.
   const [dryRunPairs, setDryRunPairs] = useState<ConfidencePair[]>([])
@@ -102,6 +126,23 @@ function ConciliacaoInner() {
       })
   }, [empresaId])
 
+  // Sprint A-effected Fase A — aplica default heurístico de tipo pela empresa
+  // selecionada quando URL não traz o param. Roda só 1 vez por troca de empresa.
+  useEffect(() => {
+    if (tipoInitialized || !empresaId || empresas.length === 0) return
+    const empresa = empresas.find((e) => e.id === empresaId)
+    if (!empresa) return
+    const defaultTipo = defaultTipoForCompany(empresa.type)
+    setTipo(defaultTipo)
+    setTipoInitialized(true)
+  }, [empresaId, empresas, tipoInitialized])
+
+  // Trocar empresa = re-aplicar o default heurístico da nova empresa
+  // (só se o user não tinha mexido manualmente — preserva intencionalidade).
+  useEffect(() => {
+    setTipoInitialized(false)
+  }, [empresaId])
+
   function periodoToRange(p: typeof periodo): { inicio?: string; fim?: string } {
     if (p === 'todos') return {}
     const now = new Date()
@@ -124,7 +165,8 @@ function ConciliacaoInner() {
     try {
       // Sprint A-effected Fase 2-fix: endpoint dedicado filtra OFX já
       // conciliada via reconciledFrom (resolve fantasma Lamana #2).
-      const qs = new URLSearchParams({ empresaId, limit: '200' })
+      // Fase A: passa tipo (apenas-pagamentos/recebimentos/todos).
+      const qs = new URLSearchParams({ empresaId, limit: '200', tipo })
       const { inicio, fim } = periodoToRange(periodo)
       if (inicio) qs.set('inicio', inicio)
       if (fim) qs.set('fim', fim)
@@ -138,16 +180,20 @@ function ConciliacaoInner() {
     } finally {
       setLoadingOfx(false)
     }
-  }, [empresaId, periodo])
+  }, [empresaId, periodo, tipo])
 
   const fetchDryRun = useCallback(async () => {
     if (!empresaId) return
     setDryRunLoading(true)
     try {
-      const res = await fetch(
-        `/api/conciliacao/bulk-dry-run?empresaId=${empresaId}&minScore=${DRY_RUN_MIN_SCORE}`,
-        { credentials: 'include' },
-      )
+      const qs = new URLSearchParams({
+        empresaId,
+        minScore: String(DRY_RUN_MIN_SCORE),
+        tipo,
+      })
+      const res = await fetch(`/api/conciliacao/bulk-dry-run?${qs}`, {
+        credentials: 'include',
+      })
       if (res.ok) {
         const data = await res.json()
         setDryRunPairs(data.pairs as ConfidencePair[])
@@ -155,7 +201,7 @@ function ConciliacaoInner() {
     } finally {
       setDryRunLoading(false)
     }
-  }, [empresaId])
+  }, [empresaId, tipo])
 
   useEffect(() => {
     fetchOfxTxs()
@@ -169,8 +215,9 @@ function ConciliacaoInner() {
     if (!empresaId) return
     const sp = new URLSearchParams()
     sp.set('empresaId', empresaId)
+    if (tipo !== 'todos') sp.set('tipo', tipo) // 'todos' é default na maioria — omite pra URL limpa
     router.replace(`?${sp}`, { scroll: false })
-  }, [empresaId, router])
+  }, [empresaId, tipo, router])
 
   // Split client-side: ≥90 → Alta, 70-89 → Revisar
   const { altaPairs, revisarPairs, ofxIdsWithMatch, semMatchOfxs } = useMemo(() => {
@@ -249,20 +296,23 @@ function ConciliacaoInner() {
             </TabsTrigger>
           </TabsList>
 
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-muted-foreground">Período:</span>
-            <Select value={periodo} onValueChange={(v) => setPeriodo(v as typeof periodo)}>
-              <SelectTrigger className="w-auto min-w-[180px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="mes">Mês corrente</SelectItem>
-                <SelectItem value="30d">Últimos 30 dias</SelectItem>
-                <SelectItem value="60d">Últimos 60 dias</SelectItem>
-                <SelectItem value="90d">Últimos 90 dias</SelectItem>
-                <SelectItem value="todos">Todos</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="flex flex-wrap items-center gap-4">
+            <TipoSelector value={tipo} onChange={setTipo} />
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Período:</span>
+              <Select value={periodo} onValueChange={(v) => setPeriodo(v as typeof periodo)}>
+                <SelectTrigger className="w-auto min-w-[180px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="mes">Mês corrente</SelectItem>
+                  <SelectItem value="30d">Últimos 30 dias</SelectItem>
+                  <SelectItem value="60d">Últimos 60 dias</SelectItem>
+                  <SelectItem value="90d">Últimos 90 dias</SelectItem>
+                  <SelectItem value="todos">Todos</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           {/* 🟢 ALTA CONFIANÇA */}

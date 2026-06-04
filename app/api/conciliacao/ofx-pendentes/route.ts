@@ -15,11 +15,14 @@ import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
+import { getTipoFilter, parseTipoParam } from '@/lib/conciliacao/tipo-filter'
 
 const querySchema = z.object({
   empresaId: z.string().cuid(),
   inicio: z.string().optional(),
   fim: z.string().optional(),
+  // Sprint A-effected Fase A — filtro por tipo (apenas-pagamentos|recebimentos|todos)
+  tipo: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(500).default(200),
 })
 
@@ -35,6 +38,9 @@ export async function GET(request: NextRequest) {
     if (data.inicio) dateFilter.gte = new Date(data.inicio)
     if (data.fim) dateFilter.lte = new Date(data.fim)
 
+    const tipo = parseTipoParam(data.tipo)
+    const tipoFilter = getTipoFilter(tipo)
+
     const transacoes = await prisma.transaction.findMany({
       where: {
         origin: 'OFX',
@@ -44,6 +50,7 @@ export async function GET(request: NextRequest) {
         isInternalTransfer: false,
         bankAccount: { companyId: data.empresaId },
         ...(Object.keys(dateFilter).length > 0 ? { date: dateFilter } : {}),
+        ...tipoFilter,
       },
       select: {
         id: true,
