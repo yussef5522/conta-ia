@@ -1,7 +1,8 @@
 'use client'
 
-// Sprint 4.0.2 — Página /conciliacao backup.
-// Lista tx OFX não conciliadas + ao clicar mostra candidatos rankeados.
+// Sprint 4.0.2 + Sprint A-effected Fase 1 — Página /conciliacao.
+// 2 abas: Pendentes (matcher OFX→AP) + Já Conciliado (histórico + desfazer).
+// Banner de saldo no topo. Candidatos filtrados a score >= 70 (esconde poluição).
 
 import { useEffect, useState, useCallback, Suspense } from 'react'
 import Link from 'next/link'
@@ -13,9 +14,17 @@ import { Header } from '@/components/layout/header'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
 import { MatchCard } from '@/components/conciliacao/match-card'
+import { BalanceBanner } from '@/components/conciliacao/balance-banner'
+import { HistoricoTable } from '@/components/conciliacao/historico-table'
+
+// Score mínimo pra mostrar candidato (esconde poluição score < 70).
+// Sprint A-effected: 24 duplicatas têm score 80+ (CONFIRM). Score 40-50 (TIELE/
+// THIAGO casos) NÃO são da Nestle — só compartilham valor próximo. Esconder.
+const MIN_CANDIDATE_SCORE = 70
 
 interface Empresa { id: string; name: string; tradeName: string | null }
 
@@ -81,10 +90,27 @@ function ConciliacaoInner() {
   const [ofxTxs, setOfxTxs] = useState<OfxTx[]>([])
   const [loading, setLoading] = useState(true)
 
+  // Sprint A-effected Fase 1 — filtro de período (default: últimos 60 dias).
+  // 60d cobre o ciclo típico de boleto/AP da Cacula sem inflar a lista.
+  const [periodo, setPeriodo] = useState<'30d' | '60d' | '90d' | 'mes' | 'todos'>('60d')
+
   const [selected, setSelected] = useState<OfxTx | null>(null)
   const [matches, setMatches] = useState<MatchResult[]>([])
   const [matchLoading, setMatchLoading] = useState(false)
   const [confirming, setConfirming] = useState(false)
+
+  function periodoToRange(p: typeof periodo): { inicio?: string; fim?: string } {
+    if (p === 'todos') return {}
+    const now = new Date()
+    const fim = now.toISOString().slice(0, 10)
+    if (p === 'mes') {
+      const ym = new Date(now.getFullYear(), now.getMonth(), 1)
+      return { inicio: ym.toISOString().slice(0, 10), fim }
+    }
+    const days = p === '30d' ? 30 : p === '60d' ? 60 : 90
+    const inicio = new Date(now.getTime() - days * 86400000).toISOString().slice(0, 10)
+    return { inicio, fim }
+  }
 
   useEffect(() => {
     fetch('/api/empresas')
@@ -108,6 +134,9 @@ function ConciliacaoInner() {
     try {
       // Reusa /api/transacoes: lifecycle=EFFECTED, origem=OFX, sem reconciledWithId
       const qs = new URLSearchParams({ empresaId, limit: '100' })
+      const { inicio, fim } = periodoToRange(periodo)
+      if (inicio) qs.set('inicio', inicio)
+      if (fim) qs.set('fim', fim)
       const res = await fetch(`/api/transacoes?${qs}`, { credentials: 'include' })
       if (res.ok) {
         const data = await res.json()
@@ -118,7 +147,7 @@ function ConciliacaoInner() {
     } finally {
       setLoading(false)
     }
-  }, [empresaId])
+  }, [empresaId, periodo])
 
   useEffect(() => { fetchOfxTxs() }, [fetchOfxTxs])
 
@@ -150,11 +179,11 @@ function ConciliacaoInner() {
         return
       }
       // Sprint A-fix: endpoint /match já retorna candidate metadata embarcado.
-      // Antes precisava de GET /api/transacoes/[id] por candidato, mas isso
-      // dava 422 pra PAYABLE/Manual sem bankAccount → "candidatos vazios" na UI.
+      // Sprint A-effected Fase 1: filtra score >= 70 (esconde "TIELE/THIAGO"
+      // que aparecem só por valor próximo mas não são o fornecedor certo).
       const enriched: MatchResult[] = (data.matches as MatchResultRaw[])
+        .filter((m): m is MatchResult => m.candidate !== null && m.score >= MIN_CANDIDATE_SCORE)
         .slice(0, 5)
-        .filter((m): m is MatchResult => m.candidate !== null)
       setMatches(enriched)
     } finally {
       setMatchLoading(false)
@@ -225,12 +254,48 @@ function ConciliacaoInner() {
         </Card>
       )}
 
+      {empresaId && <BalanceBanner empresaId={empresaId} />}
+
       {empresaId && (
+        <Tabs defaultValue="pendentes" className="space-y-4">
+          <TabsList className="grid w-full max-w-md grid-cols-2">
+            <TabsTrigger value="pendentes">
+              Pendentes ({ofxTxs.length})
+            </TabsTrigger>
+            <TabsTrigger value="conciliadas">
+              ✓ Já Conciliado
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="conciliadas" className="space-y-4">
+            <HistoricoTable
+              empresaId={empresaId}
+              onAfterUndo={() => void fetchOfxTxs()}
+            />
+          </TabsContent>
+
+          <TabsContent value="pendentes" className="space-y-4">
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-muted-foreground">Período:</span>
+          <Select value={periodo} onValueChange={(v) => setPeriodo(v as typeof periodo)}>
+            <SelectTrigger className="w-auto min-w-[180px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="mes">Mês corrente</SelectItem>
+              <SelectItem value="30d">Últimos 30 dias</SelectItem>
+              <SelectItem value="60d">Últimos 60 dias</SelectItem>
+              <SelectItem value="90d">Últimos 90 dias</SelectItem>
+              <SelectItem value="todos">Todos</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
         <div className="grid lg:grid-cols-2 gap-6">
           {/* ESQUERDA: lista OFX */}
           <div className="space-y-3">
             <h2 className="text-sm font-semibold uppercase text-muted-foreground">
-              Extrato bancário
+              Extrato bancário (banco)
             </h2>
             {loading ? (
               <p className="text-sm text-muted-foreground">Carregando…</p>
@@ -269,10 +334,10 @@ function ConciliacaoInner() {
             )}
           </div>
 
-          {/* DIREITA: candidatos */}
+          {/* DIREITA: contas a pagar / receber compatíveis */}
           <div className="space-y-3">
             <h2 className="text-sm font-semibold uppercase text-muted-foreground">
-              Candidatos a conciliação
+              Contas a pagar / receber (sistema)
             </h2>
             {!selected ? (
               <Card>
@@ -327,6 +392,8 @@ function ConciliacaoInner() {
             )}
           </div>
         </div>
+          </TabsContent>
+        </Tabs>
       )}
     </div>
   )

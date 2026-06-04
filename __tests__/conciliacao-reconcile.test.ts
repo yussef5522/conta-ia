@@ -43,12 +43,25 @@ const utc = (y: number, m: number, d: number) => new Date(Date.UTC(y, m, d))
 const FAKE_COMPANY = 'cmp-cacula'
 const FAKE_BANK = 'ba-banrisul'
 
+const fakeCtxPermissionMock = vi.fn()
 const fakeCtx = {
   company: { id: FAKE_COMPANY },
-  requirePermission: vi.fn(),
+  requirePermission: fakeCtxPermissionMock,
 } as unknown as Parameters<typeof reconcileTransactions>[1]
 
-const baseOFX = {
+const baseOFX: {
+  id: string
+  lifecycle: string
+  reconciledWithId: string | null
+  bankAccountId: string
+  bankAccount: { companyId: string }
+  description: string
+  amount: number
+  type: string
+  date: Date
+  categoryId: string | null
+  supplierId: string | null
+} = {
   id: 'ofx-nestle',
   lifecycle: 'EFFECTED',
   reconciledWithId: null,
@@ -62,7 +75,26 @@ const baseOFX = {
   supplierId: null,
 }
 
-const baseCandidatePayable = {
+const baseCandidatePayable: {
+  id: string
+  lifecycle: string
+  reconciledWithId: string | null
+  bankAccountId: string | null
+  bankAccount: { companyId: string } | null
+  supplier: { companyId: string } | null
+  customer: { companyId: string } | null
+  category: { companyId: string } | null
+  description: string
+  amount: number
+  type: string
+  date: Date
+  dueDate: Date | null
+  paymentDate: Date | null
+  status: string
+  origin: string
+  categoryId: string | null
+  supplierId: string | null
+} = {
   id: 'pay-nestle',
   lifecycle: 'PAYABLE',
   reconciledWithId: null,
@@ -102,7 +134,7 @@ beforeEach(() => {
   updateMock.mockReset()
   findFirstMock.mockReset()
   logAuditMock.mockReset()
-  ;(fakeCtx as { requirePermission: ReturnType<typeof vi.fn> }).requirePermission.mockReset()
+  fakeCtxPermissionMock.mockReset()
   updateMock.mockImplementation(({ data, where }: { data: Record<string, unknown>; where: { id: string } }) =>
     Promise.resolve({ id: where.id, ...data }),
   )
