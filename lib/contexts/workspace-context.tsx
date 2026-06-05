@@ -137,6 +137,18 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       } catch {
         // quota
       }
+      // Bug 2 fix: sempre sincronizar cookie de workspace type pra
+      // Server Components decidirem redirect (PF→/perfis, PJ→/dashboard).
+      try {
+        await fetch('/api/workspace/atual', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type }),
+        })
+      } catch {
+        // ignore
+      }
       if (type === 'pf' && id) {
         setCurrentProfileId(id)
         try {

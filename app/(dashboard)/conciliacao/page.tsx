@@ -11,7 +11,7 @@
 // Topo sóbrio: Statement Balance / Balance in Xero / Diferença a conciliar.
 // Filtros: Conta / Período / Tipo (Só pagamentos/Só recebimentos/Todos).
 
-import { useEffect, useState, useCallback, Suspense, useMemo } from 'react'
+import { useEffect, useState, useCallback, Suspense, useMemo, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Sparkles, CheckCircle2, FileText } from 'lucide-react'
@@ -124,6 +124,13 @@ function ConciliacaoInner() {
   // Bulk modal (revisão pré-aplicação)
   const [bulkOpen, setBulkOpen] = useState(false)
 
+  // Bug 3 fix v2: AbortController pra cancelar fetch anterior quando
+  // tipo/periodo/empresaId muda. Sem isso, race condition: Promise A
+  // (tipo='todos' inicial) resolve DEPOIS de Promise B (tipo='apenas-
+  // pagamentos' após heurística) → setOfxTxs sobrescreve com dados antigos.
+  const ofxAbortRef = useRef<AbortController | null>(null)
+  const dryRunAbortRef = useRef<AbortController | null>(null)
+
   // Sprint A-effected Fase 2-fix — refreshKey força BalanceBanner a refetch
   // quando algo é conciliado/desfeito. Sem isso, banner ficaria parado
   // mostrando saldo antigo até F5 manual.
@@ -173,29 +180,47 @@ function ConciliacaoInner() {
       setLoadingOfx(false)
       return
     }
+    // Bug 3 fix v2: aborta fetch anterior antes de disparar novo
+    ofxAbortRef.current?.abort()
+    const controller = new AbortController()
+    ofxAbortRef.current = controller
+
     setLoadingOfx(true)
     try {
-      // Sprint A-effected Fase 2-fix: endpoint dedicado filtra OFX já
-      // conciliada via reconciledFrom (resolve fantasma Lamana #2).
-      // Fase A: passa tipo (apenas-pagamentos/recebimentos/todos).
       const qs = new URLSearchParams({ empresaId, limit: '200', tipo })
       const { inicio, fim } = periodoToRange(periodo)
       if (inicio) qs.set('inicio', inicio)
       if (fim) qs.set('fim', fim)
       const res = await fetch(`/api/conciliacao/ofx-pendentes?${qs}`, {
         credentials: 'include',
+        signal: controller.signal,
       })
       if (res.ok) {
         const data = await res.json()
-        setOfxTxs(data.transacoes)
+        // Só aplica se ESTE controller ainda é o ativo (não foi sobrescrito)
+        if (ofxAbortRef.current === controller) {
+          setOfxTxs(data.transacoes)
+        }
+      }
+    } catch (err) {
+      // Aborted: silencia. Outros erros propagam logs do navegador.
+      if ((err as Error)?.name !== 'AbortError') {
+        throw err
       }
     } finally {
-      setLoadingOfx(false)
+      if (ofxAbortRef.current === controller) {
+        setLoadingOfx(false)
+      }
     }
   }, [empresaId, periodo, tipo])
 
   const fetchDryRun = useCallback(async () => {
     if (!empresaId) return
+    // Bug 3 fix v2: AbortController igual fetchOfxTxs
+    dryRunAbortRef.current?.abort()
+    const controller = new AbortController()
+    dryRunAbortRef.current = controller
+
     setDryRunLoading(true)
     try {
       const qs = new URLSearchParams({
@@ -205,13 +230,22 @@ function ConciliacaoInner() {
       })
       const res = await fetch(`/api/conciliacao/bulk-dry-run?${qs}`, {
         credentials: 'include',
+        signal: controller.signal,
       })
       if (res.ok) {
         const data = await res.json()
-        setDryRunPairs(data.pairs as DryRunPair[])
+        if (dryRunAbortRef.current === controller) {
+          setDryRunPairs(data.pairs as DryRunPair[])
+        }
+      }
+    } catch (err) {
+      if ((err as Error)?.name !== 'AbortError') {
+        throw err
       }
     } finally {
-      setDryRunLoading(false)
+      if (dryRunAbortRef.current === controller) {
+        setDryRunLoading(false)
+      }
     }
   }, [empresaId, tipo])
 

@@ -57,6 +57,17 @@ export default async function DashboardPage({ searchParams }: PageProps) {
   const token = cookieStore.get(COOKIE_NAME)?.value
   if (!token) redirect('/login')
 
+  // Bug 2 fix: se workspace=PF, redirect pro perfil PF correspondente.
+  // Server Component não tem acesso ao workspace-context (client), então
+  // lê do cookie httpOnly setado em /api/workspace/atual.
+  const workspaceType = cookieStore.get('caixaos_workspace_type')?.value
+  if (workspaceType === 'pf') {
+    const profileId = cookieStore.get('caixaos_perfil_atual')?.value
+    if (profileId) {
+      redirect(`/perfis/${profileId}`)
+    }
+  }
+
   const user = await verifyToken(token)
   const {
     empresa: empresaQueryId,
