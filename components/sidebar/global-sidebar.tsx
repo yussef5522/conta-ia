@@ -40,6 +40,7 @@ import {
 import { SidebarItem } from './sidebar-item'
 import { useSidebarBadges } from '@/lib/hooks/use-sidebar-badges'
 import { useEmpresa } from '@/lib/contexts/empresa-context'
+import { useWorkspace } from '@/lib/contexts/workspace-context'
 
 interface GlobalSidebarProps {
   userName?: string
@@ -50,11 +51,20 @@ interface GlobalSidebarProps {
 export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
   const pathname = usePathname()
   const { currentEmpresaId } = useEmpresa()
+  const { workspaceType } = useWorkspace()
   const [empresaIdForBadges, setEmpresaIdForBadges] = useState<string | null>(null)
 
+  // Sprint Sidebar-Badges-Sync: zera badges quando workspace é PF (badges são
+  // PJ-only — Contas a Pagar/Receber, Conciliação, Pendentes referem a empresa).
+  // Antes: ao trocar pra PF, currentEmpresaId continuava apontando pra última
+  // PJ → badges mostravam dados de empresa que o user nem está visualizando.
   useEffect(() => {
-    setEmpresaIdForBadges(currentEmpresaId)
-  }, [currentEmpresaId])
+    if (workspaceType === 'pf') {
+      setEmpresaIdForBadges(null)
+    } else {
+      setEmpresaIdForBadges(currentEmpresaId)
+    }
+  }, [currentEmpresaId, workspaceType])
 
   const badges = useSidebarBadges(empresaIdForBadges)
   const apBadge = badges?.contasAPagar

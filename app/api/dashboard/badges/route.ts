@@ -47,14 +47,21 @@ export async function GET(request: NextRequest) {
           dueDate: { gte: now, lte: in3Days },
         },
       }),
-      // Tx OFX EFFECTED sem conciliação (candidatas a wizard)
+      // Tx OFX EFFECTED a conciliar — IDÊNTICO ao filtro de
+      // /api/conciliacao/ofx-pendentes pra badge bater com a aba.
+      // Sprint Sync-Pendentes-Conciliacao: inclui categoryId IS NULL
+      // (OFX categorizada via Pendentes/Create/regra IA sai da fila).
       prisma.transaction.count({
         where: {
           bankAccount: { companyId: empresaId },
-          lifecycle: 'EFFECTED',
           origin: 'OFX',
+          lifecycle: 'EFFECTED',
           reconciledWithId: null,
-          status: { not: 'IGNORED' },
+          reconciledFrom: { none: {} },
+          isInternalTransfer: false,
+          ignoredAt: null,
+          cashCoded: false,
+          categoryId: null,
         },
       }),
       // Sprint 5.0.2.h — Tx EFFECTED PENDING (sem categoria classificada)
