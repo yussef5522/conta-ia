@@ -62,6 +62,8 @@ export async function GET(request: NextRequest) {
         date: true,
         type: true,
         origin: true,
+        // Sprint Conciliação-Visual: FITID exibido no footer do card (auditoria/tooltip)
+        externalId: true,
         bankAccount: { select: { name: true, bankName: true } },
       },
       orderBy: { date: 'desc' },

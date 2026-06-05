@@ -146,6 +146,10 @@ function ConciliacaoInner() {
   // mostrando saldo antigo até F5 manual.
   const [refreshKey, setRefreshKey] = useState(0)
 
+  // Sprint Conciliação-Visual: busca local sem refetch (preserva scroll
+  // do update otimista). Filtra ofxTxs por descrição/valor/banco/conta.
+  const [busca, setBusca] = useState('')
+
   useEffect(() => {
     fetch('/api/empresas')
       .then((r) => (r.ok ? r.json() : null))
@@ -291,6 +295,21 @@ function ConciliacaoInner() {
     return m
   }, [dryRunPairs])
 
+  // Filtragem local — sem refetch, sem perda de scroll. Busca em descrição,
+  // valor (formatado), nome da conta e nome do banco.
+  const ofxTxsFiltradas = useMemo(() => {
+    const term = busca.trim().toLowerCase()
+    if (!term) return ofxTxs
+    return ofxTxs.filter((t) => {
+      if (t.description.toLowerCase().includes(term)) return true
+      const valorStr = formatBRL(Math.abs(t.amount)).toLowerCase()
+      if (valorStr.includes(term)) return true
+      if ((t.bankAccount?.name ?? '').toLowerCase().includes(term)) return true
+      if ((t.bankAccount?.bankName ?? '').toLowerCase().includes(term)) return true
+      return false
+    })
+  }, [ofxTxs, busca])
+
   const altaCount = useMemo(
     () => dryRunPairs.filter((p) => p.score >= HIGH_CONFIDENCE_THRESHOLD).length,
     [dryRunPairs],
@@ -337,22 +356,27 @@ function ConciliacaoInner() {
 
       {empresaId && (
         <Tabs defaultValue="reconcile" className="space-y-4">
-          <TabsList className="grid w-full max-w-2xl grid-cols-4">
-            <TabsTrigger value="reconcile">
-              Reconcile ({loadingOfx ? '…' : ofxTxs.length})
-            </TabsTrigger>
-            <TabsTrigger value="cash-coding">
-              Cash coding
-            </TabsTrigger>
-            <TabsTrigger value="bank-statements">
-              Bank statements
-            </TabsTrigger>
-            <TabsTrigger value="account-transactions">
-              Account transactions
-            </TabsTrigger>
-          </TabsList>
+          {/* Sprint Conciliação-Visual: abas reduzidas a 2 (Cash coding +
+              Bank statements removidas — modal "aprender e aplicar" e link
+              "Importações OFX →" cobrem). */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <TabsList className="grid w-auto grid-cols-2 min-w-[320px]">
+              <TabsTrigger value="reconcile">
+                A conciliar ({loadingOfx ? '…' : ofxTxs.length})
+              </TabsTrigger>
+              <TabsTrigger value="account-transactions">
+                Já conciliadas
+              </TabsTrigger>
+            </TabsList>
+            <Link href={`/empresas/${empresaId}/imports`}>
+              <Button variant="ghost" size="sm" className="text-xs gap-1.5">
+                <FileText className="h-3.5 w-3.5" />
+                Importações OFX
+              </Button>
+            </Link>
+          </div>
 
-          <div className="flex flex-wrap items-center gap-4">
+          <div className="flex flex-wrap items-center gap-3">
             <TipoSelector value={tipo} onChange={setTipoUser} />
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground">Período:</span>
@@ -369,6 +393,14 @@ function ConciliacaoInner() {
                 </SelectContent>
               </Select>
             </div>
+            {/* Busca local — preserva scroll do update otimista (sem refetch) */}
+            <input
+              type="search"
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="Buscar por nome, valor, banco..."
+              className="flex-1 min-w-[200px] max-w-md h-9 px-3 text-sm rounded-md border bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+            />
           </div>
 
           {/* RECONCILE — statement lines com 4 ações por linha (Xero style) */}
@@ -384,12 +416,18 @@ function ConciliacaoInner() {
               <Card>
                 <CardContent className="py-10 text-center text-sm text-muted-foreground">
                   <CheckCircle2 className="h-6 w-6 mx-auto mb-2 text-emerald-600" />
-                  All caught up. Statement balance and Balance in Xero are in sync ✓
+                  Tudo conciliado. Saldo do extrato e saldo no sistema estão em sincronia ✓
+                </CardContent>
+              </Card>
+            ) : ofxTxsFiltradas.length === 0 ? (
+              <Card>
+                <CardContent className="py-8 text-center text-sm text-muted-foreground">
+                  Nenhuma transação bate o filtro &quot;{busca}&quot;.
                 </CardContent>
               </Card>
             ) : (
               <div className="border rounded-lg bg-card divide-y">
-                {ofxTxs.map((t) => (
+                {ofxTxsFiltradas.map((t) => (
                   <div key={t.id} className="px-3">
                     <XeroRow
                       ofx={t}
@@ -403,42 +441,7 @@ function ConciliacaoInner() {
             )}
           </TabsContent>
 
-          {/* CASH CODING — placeholder Fase C */}
-          <TabsContent value="cash-coding" className="space-y-4">
-            <Card>
-              <CardContent className="py-10 text-center text-sm text-muted-foreground">
-                <Sparkles className="h-6 w-6 mx-auto mb-2 text-amber-600" />
-                <p className="font-medium mb-1">Cash coding — em breve (Fase C)</p>
-                <p className="text-xs max-w-md mx-auto">
-                  Grid de 100-200 linhas pra categorizar muitas vendas PIX/maquininha
-                  de uma vez. Ordena, seleciona em lote, aplica categoria + regra.
-                </p>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* BANK STATEMENTS — placeholder com link pra import */}
-          <TabsContent value="bank-statements" className="space-y-4">
-            <Card>
-              <CardContent className="py-10 text-center text-sm text-muted-foreground">
-                <FileText className="h-6 w-6 mx-auto mb-2 text-blue-600" />
-                <p className="font-medium mb-1">Bank statements</p>
-                <p className="text-xs max-w-md mx-auto mb-3">
-                  Importações OFX recentes desta conta. Ver histórico, reverter, e
-                  importar novo extrato.
-                </p>
-                {empresaId && (
-                  <Link href={`/empresas/${empresaId}/imports`}>
-                    <Button variant="outline" size="sm">
-                      Ver imports OFX →
-                    </Button>
-                  </Link>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* ACCOUNT TRANSACTIONS — histórico de conciliadas (Xero name) */}
+          {/* JÁ CONCILIADAS — histórico + Desfazer */}
           <TabsContent value="account-transactions" className="space-y-4">
             <HistoricoTable
               empresaId={empresaId}

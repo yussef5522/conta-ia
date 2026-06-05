@@ -12,16 +12,18 @@
 // Engine reusada: confirmar (Match), cash-code (Create), ignorar (menu).
 // Transfer + Discuss = placeholder pra Fase B.3.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   ArrowRight,
   Check,
+  Landmark,
   Loader2,
   MoreVertical,
   Tag,
   XCircle,
   Search,
 } from 'lucide-react'
+import { extractStatementInfo, type KindHint } from '@/lib/conciliacao/parse-ofx-description'
 import { FindAndMatchPanel } from './find-and-match-panel'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -50,6 +52,7 @@ export interface OfxLine {
   amount: number
   date: string
   type: string
+  externalId?: string | null // FITID — auditoria, exibido truncado no footer
   bankAccount: { name: string; bankName: string | null } | null
 }
 
@@ -101,8 +104,6 @@ export function XeroRow({ ofx, empresaId, suggestion, onAction }: Props) {
   const fmtDate = (d: string) => new Date(d).toLocaleDateString('pt-BR')
 
   const isCredit = ofx.type === 'CREDIT'
-  const spentValue = !isCredit ? Math.abs(ofx.amount) : null
-  const receivedValue = isCredit ? Math.abs(ofx.amount) : null
 
   async function aplicarMatch() {
     if (!suggestion) return
@@ -133,41 +134,35 @@ export function XeroRow({ ofx, empresaId, suggestion, onAction }: Props) {
     }
   }
 
-  // Cor de fundo do card direito: verde claro quando há match auto, neutro senão
-  const rightBg = hasMatch
-    ? 'bg-emerald-50/40 border-emerald-200'
-    : 'bg-card border-border'
+  // Sprint Conciliação-Visual: parse da descrição pra extrair favorecido +
+  // sub-descrição + chips de tipo (PIX/TED/BOLETO/etc).
+  const info = useMemo(() => extractStatementInfo(ofx.description), [ofx.description])
+
+  // Cor de fundo do card direito:
+  //   - emerald quando há match com diff zero (bate exato)
+  //   - amber quando há match mas com diff > 0 (precisa ajuste — B.4)
+  //   - neutro quando sem suggestion
+  const matchDiff = suggestion
+    ? Math.abs(ofx.amount - suggestion.candidate.amount)
+    : null
+  const matchBate = matchDiff !== null && matchDiff < 0.01
+  const rightBg = !hasMatch
+    ? 'bg-card border-border'
+    : matchBate
+      ? 'bg-emerald-50/40 border-emerald-200'
+      : 'bg-amber-50/40 border-amber-200'
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-[1fr_1.2fr] gap-3 border-b last:border-b-0 py-3">
+    <div className="grid grid-cols-1 md:grid-cols-[1fr_1.2fr] gap-3 border-b last:border-b-0 py-2.5">
       {/* ============================================================== */}
-      {/* LADO ESQUERDO — Statement line (card box do Xero)               */}
+      {/* LADO ESQUERDO — Statement line estilo Mercury/Linear             */}
       {/* ============================================================== */}
-      <div className="rounded border bg-card px-3 py-2.5">
-        <div className="grid grid-cols-[auto_1fr_auto_auto] gap-x-3 gap-y-0.5 items-baseline">
-          <span className="text-xs text-muted-foreground tabular-nums">
-            {fmtDate(ofx.date)}
-          </span>
-          <span className="text-sm font-medium truncate" title={ofx.description}>
-            {ofx.description}
-          </span>
-          {/* Spent (DEBIT) coluna separada */}
-          <span className="text-sm tabular-nums text-right text-red-600 min-w-[80px]">
-            {spentValue !== null ? formatBRL(spentValue) : '—'}
-          </span>
-          {/* Received (CREDIT) coluna separada */}
-          <span className="text-sm tabular-nums text-right text-emerald-700 min-w-[80px]">
-            {receivedValue !== null ? formatBRL(receivedValue) : '—'}
-          </span>
-        </div>
-        <div className="text-[10px] uppercase tracking-wide text-muted-foreground/70 mt-1 flex items-center gap-2">
-          <span>
-            {!isCredit ? 'SPENT' : 'RECEIVED'}
-            {ofx.bankAccount &&
-              ` · ${ofx.bankAccount.bankName ?? ofx.bankAccount.name}`}
-          </span>
-        </div>
-      </div>
+      <StatementLineCard
+        ofx={ofx}
+        info={info}
+        isCredit={isCredit}
+        fmtDate={fmtDate}
+      />
 
       {/* ============================================================== */}
       {/* LADO DIREITO — Match card 4 tabs OU Find & Match (takeover B.2) */}
@@ -360,7 +355,11 @@ function MatchPanel({
           size="sm"
           onClick={onApply}
           disabled={submitting}
-          className="bg-emerald-600 hover:bg-emerald-700 h-7"
+          className={`h-7 ${
+            bate
+              ? 'bg-emerald-600 hover:bg-emerald-700'
+              : 'bg-amber-600 hover:bg-amber-700'
+          }`}
         >
           {submitting ? (
             <Loader2 className="h-3 w-3 animate-spin" />
@@ -642,6 +641,121 @@ function IgnoreDialog({
           </Button>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ============================================================================
+// STATEMENT LINE CARD — lado esquerdo estilo Mercury/Linear
+// Sprint Conciliação-Visual: descrição completa sem cortar, favorecido em
+// destaque, chips de tipo, footer com banco + FITID.
+// ============================================================================
+
+const KIND_CHIP_CLASS: Record<KindHint, string> = {
+  PIX: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-900',
+  TED: 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-300 dark:border-purple-900',
+  DOC: 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-300 dark:border-purple-900',
+  BOLETO: 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950 dark:text-orange-300 dark:border-orange-900',
+  PAGAMENTO: 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700',
+  TARIFA: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-900',
+  ESTORNO: 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950 dark:text-rose-300 dark:border-rose-900',
+  'ANTECIPAÇÃO':
+    'bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-950 dark:text-cyan-300 dark:border-cyan-900',
+}
+
+function StatementLineCard({
+  ofx,
+  info,
+  isCredit,
+  fmtDate,
+}: {
+  ofx: OfxLine
+  info: ReturnType<typeof extractStatementInfo>
+  isCredit: boolean
+  fmtDate: (d: string) => string
+}) {
+  const bankLabel = ofx.bankAccount
+    ? ofx.bankAccount.bankName ?? ofx.bankAccount.name
+    : null
+  const fitidShort =
+    ofx.externalId && ofx.externalId.length > 8
+      ? ofx.externalId.slice(0, 8) + '…'
+      : ofx.externalId ?? null
+
+  return (
+    <div className="rounded border bg-card px-3 py-2.5 space-y-1">
+      {/* Header: data · chips · valor */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+          <span className="text-xs text-muted-foreground tabular-nums shrink-0">
+            {fmtDate(ofx.date)}
+          </span>
+          {info.kindHints.map((kind) => (
+            <span
+              key={kind}
+              className={`px-1.5 py-0 rounded text-[10px] font-semibold uppercase tracking-wide border ${KIND_CHIP_CLASS[kind]}`}
+            >
+              {kind}
+            </span>
+          ))}
+          <span
+            className={`px-1.5 py-0 rounded text-[10px] font-semibold uppercase tracking-wide border ${
+              isCredit
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-900'
+                : 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-300 dark:border-red-900'
+            }`}
+          >
+            {isCredit ? 'Recebido' : 'Pago'}
+          </span>
+        </div>
+        <span
+          className={`text-sm font-semibold font-mono tabular-nums shrink-0 ${
+            isCredit ? 'text-emerald-700' : 'text-red-600'
+          }`}
+        >
+          {isCredit ? '+' : '−'} {formatBRL(Math.abs(ofx.amount))}
+        </span>
+      </div>
+
+      {/* Favorecido — quebra de linha completa, sem truncate */}
+      <p
+        className="text-sm font-medium break-words leading-snug text-foreground"
+        title={ofx.description}
+      >
+        {info.favored || ofx.description}
+      </p>
+
+      {/* Sub-descrição (quando separador encontrado) */}
+      {info.subDescription && (
+        <p className="text-xs text-muted-foreground break-words leading-snug">
+          {info.subDescription}
+        </p>
+      )}
+
+      {/* Footer: banco · FITID */}
+      {(bankLabel || fitidShort) && (
+        <div className="flex items-center gap-2 text-[10px] text-muted-foreground/70 pt-0.5">
+          {bankLabel && (
+            <span className="inline-flex items-center gap-1">
+              <Landmark className="h-2.5 w-2.5" />
+              {bankLabel}
+            </span>
+          )}
+          {bankLabel && fitidShort && <span>·</span>}
+          {fitidShort && (
+            <span
+              className="font-mono"
+              title={
+                ofx.externalId && ofx.externalId.length > 8
+                  ? `FITID completo: ${ofx.externalId}`
+                  : undefined
+              }
+            >
+              FITID {fitidShort}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   )
 }
