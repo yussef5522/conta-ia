@@ -9,7 +9,7 @@
 // Indicador de contexto ativo: pill colorida no botão (azul ou verde).
 
 import { useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   Building2,
@@ -44,6 +44,7 @@ function initials(name: string): string {
 
 export function WorkspaceSwitcherDual() {
   const router = useRouter()
+  const pathname = usePathname()
   const empresaCtx = useEmpresa()
   const wsCtx = useWorkspace()
   const [q, setQ] = useState('')
@@ -67,6 +68,12 @@ export function WorkspaceSwitcherDual() {
 
   function selectEmpresa(id: string) {
     void wsCtx.setWorkspace('pj')
+    // Bug 2 fix: se user está numa página PF (/perfis/...), navega pro
+    // dashboard PJ antes do setCurrentEmpresa. Senão o router.refresh
+    // do empresa-context refresca a página PF atual, não navega.
+    if (pathname.startsWith('/perfis/') || pathname === '/perfis') {
+      router.push(`/dashboard?empresa=${id}`)
+    }
     void empresaCtx.setCurrentEmpresa(id)
     setOpen(false)
     setQ('')

@@ -98,18 +98,23 @@ function ConciliacaoInner() {
   const [loadingOfx, setLoadingOfx] = useState(true)
   const [periodo, setPeriodo] = useState<'30d' | '60d' | '90d' | 'mes' | 'todos'>('60d')
 
-  // Sprint A-effected Fase A — TIPO de conciliação. Estratégia de inicialização:
-  //   1. Se URL traz ?tipo=... → respeita
-  //   2. Caso contrário, aplica default heurístico quando empresa carregar
-  //      (companyType=restaurant/retail/industry → apenas-pagamentos;
-  //      service/mixed/other → todos)
-  //   3. State persiste em URL via router.replace pra preservar entre nav
+  // Sprint A-effected Fase A — TIPO de conciliação. Bug 3 fix:
+  // Removi o useEffect "setTipoInitialized(false) on empresaId" que causava
+  // race entre estado da URL e heurística. Agora: 1) URL traz tipo → usa e
+  // trava. 2) URL não traz → tipo='todos' temporário até heurística rodar
+  // (só roda uma vez, marcada via tipoLocked).
   const [tipo, setTipo] = useState<TipoConciliacao>(
     parseTipoParam(searchParams.get('tipo')),
   )
-  const [tipoInitialized, setTipoInitialized] = useState<boolean>(
+  const [tipoLocked, setTipoLocked] = useState<boolean>(
     !!searchParams.get('tipo'),
   )
+
+  // Wrapper: quando user troca manualmente, trava (heurística não sobrescreve)
+  const setTipoUser = useCallback((next: TipoConciliacao) => {
+    setTipo(next)
+    setTipoLocked(true)
+  }, [])
 
   // Sprint A-effected Fase 2 — Pares pré-classificados (≥70) carregados em
   // batch via /api/conciliacao/bulk-dry-run. Client divide em Alta e Revisar.
@@ -137,22 +142,18 @@ function ConciliacaoInner() {
       })
   }, [empresaId])
 
-  // Sprint A-effected Fase A — aplica default heurístico de tipo pela empresa
-  // selecionada quando URL não traz o param. Roda só 1 vez por troca de empresa.
+  // Sprint A-effected Fase A — heurística de default por companyType.
+  // Bug 3 fix: roda APENAS se tipo não foi escolhido (tipoLocked=false).
+  // O useEffect anterior `setTipoInitialized(false) on empresaId` foi REMOVIDO
+  // — ele causava reset em mount inicial, sobrescrevendo URL param.
   useEffect(() => {
-    if (tipoInitialized || !empresaId || empresas.length === 0) return
+    if (tipoLocked || !empresaId || empresas.length === 0) return
     const empresa = empresas.find((e) => e.id === empresaId)
     if (!empresa) return
     const defaultTipo = defaultTipoForCompany(empresa.type)
     setTipo(defaultTipo)
-    setTipoInitialized(true)
-  }, [empresaId, empresas, tipoInitialized])
-
-  // Trocar empresa = re-aplicar o default heurístico da nova empresa
-  // (só se o user não tinha mexido manualmente — preserva intencionalidade).
-  useEffect(() => {
-    setTipoInitialized(false)
-  }, [empresaId])
+    setTipoLocked(true)
+  }, [empresaId, empresas, tipoLocked])
 
   function periodoToRange(p: typeof periodo): { inicio?: string; fim?: string } {
     if (p === 'todos') return {}
@@ -319,7 +320,7 @@ function ConciliacaoInner() {
           </TabsList>
 
           <div className="flex flex-wrap items-center gap-4">
-            <TipoSelector value={tipo} onChange={setTipo} />
+            <TipoSelector value={tipo} onChange={setTipoUser} />
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground">Período:</span>
               <Select value={periodo} onValueChange={(v) => setPeriodo(v as typeof periodo)}>

@@ -182,7 +182,7 @@ export function AprenderEAplicarModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-2xl w-[calc(100vw-2rem)] break-words">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-primary" />
@@ -258,7 +258,7 @@ export function AprenderEAplicarModal({
             </label>
           </>
         ) : (
-          <div className="rounded-md border bg-muted/20 p-3 text-sm text-muted-foreground">
+          <div className="rounded-md border bg-muted/20 p-3 text-sm text-muted-foreground break-words">
             Nenhuma transação similar pendente. Só esta vai ser classificada.
             {' '}
             {learnPattern && 'Uma regra será criada pra próximos imports.'}
