@@ -309,6 +309,17 @@ function ConciliacaoInner() {
     setRefreshKey((k) => k + 1) // dispara refetch do BalanceBanner
   }
 
+  // Sprint UX-scroll-jump: remoção otimista sem refetch da lista inteira.
+  // Antes: refresh() → setLoadingOfx(true) → TabsContent renderiza Card de
+  // loading no lugar da lista → unmount → scroll volta pro topo.
+  // Agora: remove só o item conciliado/ignorado do array local + dispara
+  // refresh do balance (header). Lista nunca desmonta, scroll preservado.
+  const removeOfxOptimistic = useCallback((ofxId: string) => {
+    setOfxTxs((prev) => prev.filter((t) => t.id !== ofxId))
+    setDryRunPairs((prev) => prev.filter((p) => p.ofx.id !== ofxId))
+    setRefreshKey((k) => k + 1) // BalanceBanner refetcha saldos (não mexe na lista)
+  }, [])
+
   return (
     <div className="space-y-6">
       <Header
@@ -384,7 +395,7 @@ function ConciliacaoInner() {
                       ofx={t}
                       empresaId={empresaId}
                       suggestion={suggestionByOfxId.get(t.id) ?? null}
-                      onAction={refresh}
+                      onAction={() => removeOfxOptimistic(t.id)}
                     />
                   </div>
                 ))}
