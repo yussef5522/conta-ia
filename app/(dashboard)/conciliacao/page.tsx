@@ -106,7 +106,11 @@ function ConciliacaoInner() {
 
   const [ofxTxs, setOfxTxs] = useState<OfxTx[]>([])
   const [loadingOfx, setLoadingOfx] = useState(true)
-  const [periodo, setPeriodo] = useState<'30d' | '60d' | '90d' | 'mes' | 'todos'>('60d')
+  // Sprint Sync-Pendentes-Conciliacao: default 'todos' (mostra fila inteira
+  // incluindo data futura tipo cheque pré-datado / débito agendado). User
+  // pode restringir período manualmente. Antes default '60d' escondia tx
+  // futuras → mismatch com badge da sidebar.
+  const [periodo, setPeriodo] = useState<'30d' | '60d' | '90d' | 'mes' | 'todos'>('todos')
 
   // Sprint A-effected Fase A — TIPO de conciliação. Bug 3 fix:
   // Removi o useEffect "setTipoInitialized(false) on empresaId" que causava

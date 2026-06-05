@@ -681,6 +681,10 @@ function StatementLineCard({
     ofx.externalId && ofx.externalId.length > 8
       ? ofx.externalId.slice(0, 8) + '…'
       : ofx.externalId ?? null
+  // Sprint Sync-Pendentes-Conciliacao: tx com data > hoje (pré-datado, débito
+  // agendado, cheque futuro) ganha chip âmbar "Agendada" pra deixar claro que
+  // não é movimento passado. Comparação em UTC pra evitar deriva de timezone.
+  const isFuture = new Date(ofx.date).getTime() > Date.now()
 
   return (
     <div className="rounded border bg-card px-3 py-2.5 space-y-1">
@@ -707,6 +711,14 @@ function StatementLineCard({
           >
             {isCredit ? 'Recebido' : 'Pago'}
           </span>
+          {isFuture && (
+            <span
+              className="px-1.5 py-0 rounded text-[10px] font-semibold uppercase tracking-wide border bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-900"
+              title="Data no futuro — pré-datado / débito agendado"
+            >
+              ⏳ Agendada
+            </span>
+          )}
         </div>
         <span
           className={`text-sm font-semibold font-mono tabular-nums shrink-0 ${

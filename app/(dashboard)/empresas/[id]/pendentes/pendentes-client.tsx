@@ -159,15 +159,12 @@ export function PendentesClient({
   const [previewOpen, setPreviewOpen] = useState(false)
   const [previewData, setPreviewData] = useState<PreviewData | null>(null)
 
-  // Filtros
-  const noventaDiasAtras = useMemo(() => {
-    const d = new Date()
-    d.setDate(d.getDate() - 90)
-    return d.toISOString().split('T')[0]
-  }, [])
-  const hoje = useMemo(() => new Date().toISOString().split('T')[0], [])
-  const [inicio, setInicio] = useState(noventaDiasAtras)
-  const [fim, setFim] = useState(hoje)
+  // Filtros — Sprint Sync-Pendentes-Conciliacao: defaults vazios pra mostrar
+  // a fila INTEIRA (padrão Xero/QuickBooks). Antes: últimos 90 dias escondia
+  // tx antigas ou futuras e gerava mismatch com badge da sidebar. Date pickers
+  // continuam funcionando — user pode restringir período se quiser.
+  const [inicio, setInicio] = useState('')
+  const [fim, setFim] = useState('')
   const [tipo, setTipo] = useState<'TODOS' | 'CREDIT' | 'DEBIT'>('TODOS')
   const [busca, setBusca] = useState('')
 

@@ -64,12 +64,19 @@ export async function GET(request: NextRequest) {
           categoryId: null,
         },
       }),
-      // Sprint 5.0.2.h — Tx EFFECTED PENDING (sem categoria classificada)
+      // Sprint Sync-Pendentes-Conciliacao: alinha filtro com a tela
+      // /empresas/[id]/pendentes (semCategoria=true + status=PENDING) + exclui
+      // tx já conciliadas via Match (reconciledFrom/reconciledWithId) cujo
+      // status ficou PENDING por flow ORPHAN. Sem isso o badge contava
+      // OFX conciliadas com backfill de categoria como se fossem trabalho.
       prisma.transaction.count({
         where: {
           bankAccount: { companyId: empresaId },
           lifecycle: 'EFFECTED',
           status: 'PENDING',
+          categoryId: null,
+          reconciledWithId: null,
+          reconciledFrom: { none: {} },
         },
       }),
     ])
