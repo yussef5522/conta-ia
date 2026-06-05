@@ -23,6 +23,10 @@ export function LoginForm() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({})
+  // Sprint Rate-Limit-Login: contador local de falhas pra destacar
+  // "Esqueci minha senha" após 2 erros consecutivos. Zera quando user
+  // muda o email (assume nova tentativa em outra conta) ou loga OK.
+  const [failedAttempts, setFailedAttempts] = useState(0)
 
   function validate(): boolean {
     const next = validateLoginForm({ email, password })
@@ -58,10 +62,15 @@ export function LoginForm() {
           title: 'Erro ao entrar',
           description: errMsg,
         })
+        // Incrementa contador local pra destacar "Esqueci minha senha"
+        if (res.status === 401 || res.status === 429) {
+          setFailedAttempts((n) => n + 1)
+        }
         return
       }
 
-      // Sucesso: redirect pra dashboard (rota raiz autenticada)
+      // Sucesso: zera contador + redirect pra dashboard (rota raiz autenticada)
+      setFailedAttempts(0)
       router.push('/dashboard')
       router.refresh()
     } catch {
@@ -92,7 +101,11 @@ export function LoginForm() {
           type="email"
           placeholder="seu@empresa.com.br"
           value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          onChange={(e) => {
+            setEmail(e.target.value)
+            // Trocou de email → reset contador (provavelmente outra conta)
+            if (failedAttempts > 0) setFailedAttempts(0)
+          }}
           autoComplete="email"
           autoFocus
           aria-invalid={!!errors.email}
@@ -117,9 +130,13 @@ export function LoginForm() {
           </Label>
           <Link
             href="/esqueci-senha"
-            className="text-xs font-medium text-primary hover:underline"
+            className={
+              failedAttempts >= 2
+                ? 'text-xs font-semibold rounded px-2 py-1 bg-amber-100 text-amber-900 border border-amber-300 hover:bg-amber-200 transition-colors'
+                : 'text-xs font-medium text-primary hover:underline'
+            }
           >
-            Esqueci minha senha
+            {failedAttempts >= 2 ? '→ Esqueci minha senha' : 'Esqueci minha senha'}
           </Link>
         </div>
         <PasswordInput

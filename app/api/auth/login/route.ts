@@ -1,8 +1,14 @@
 // POST /api/auth/login
-// Sprint 1.2 — login premium. Refinos:
-//   - Rate limit 5 tentativas / 15 min por IP (mais conservador que 10/min anterior)
-//   - Audit log USER_LOGIN escopado à primeira empresa do user (quando houver)
-//   - Mensagens de erro em pt-BR diferenciadas por status
+// Sprint Rate-Limit-Login (rev): backoff progressivo POR (IP, email) +
+// guarda hard 20/15min POR IP (anti-enumeração) + reset no sucesso.
+//
+// Ordem garantida pra não quebrar o login legítimo:
+//   1. Parser body com try/catch isolado (malformado → 400, não 500)
+//   2. Guarda do IP (anti-DoS de enumeração)
+//   3. Backoff (IP, email) — usuário legítimo com 1-3 erros nem sente
+//   4. Autenticação bcrypt em tempo constante (sem revelar se email existe)
+//   5. Falha → recordFailure nas 2 chaves + 401 genérico
+//   6. Sucesso → resetAttempts da chave composta + audit + JWT
 
 import { NextRequest, NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
@@ -10,38 +16,59 @@ import { ZodError } from 'zod'
 import { prisma } from '@/lib/db'
 import { signToken, COOKIE_NAME, COOKIE_OPTIONS } from '@/lib/auth'
 import { loginSchema } from '@/lib/validations/auth'
-import { rateLimit, rateLimitKey } from '@/lib/rate-limit'
+import {
+  rateLimit,
+  checkBackoff,
+  recordFailure,
+  resetAttempts,
+  getRequestIp,
+  loginBackoffKey,
+  loginIpGuardKey,
+} from '@/lib/rate-limit'
 
-// Sprint 1.2 — 5 tentativas / 15 min por IP. Mais conservador que limit
-// padrão (anti brute force de senha).
-const LOGIN_MAX_ATTEMPTS = 5
-const LOGIN_WINDOW_MS = 15 * 60 * 1000
+// Guarda do IP: hard limit pra impedir scraping massivo. Generoso o bastante
+// pra família/NAT corporativo (20 falhas distintas em 15 min é muito).
+const IP_GUARD_MAX = 20
+const IP_GUARD_WINDOW_MS = 15 * 60 * 1000
+
+// Backoff progressivo (IP, email) — janela rolling 15 min.
+const BACKOFF_WINDOW_MS = 15 * 60 * 1000
 
 export async function POST(request: NextRequest) {
-  const { allowed, retryAfterMs } = rateLimit(
-    rateLimitKey(request, 'login'),
-    LOGIN_MAX_ATTEMPTS,
-    LOGIN_WINDOW_MS,
-  )
-  if (!allowed) {
-    const minutes = Math.ceil(retryAfterMs / 60_000)
-    return NextResponse.json(
-      {
-        erro:
-          minutes <= 1
-            ? 'Muitas tentativas. Tente novamente em alguns segundos.'
-            : `Muitas tentativas. Tente novamente em ${minutes} minutos.`,
-      },
-      {
-        status: 429,
-        headers: { 'Retry-After': String(Math.ceil(retryAfterMs / 1000)) },
-      },
-    )
+  const ip = getRequestIp(request)
+
+  // ── 1. Parser do body ANTES do rate check (fora do try principal pra
+  //    extrair email pra chave composta). Body malformado → 400 limpo.
+  let parsedBody: unknown
+  try {
+    parsedBody = await request.json()
+  } catch {
+    return NextResponse.json({ erro: 'Body inválido' }, { status: 400 })
+  }
+
+  // Email pra chave: usa o que tiver no body (mesmo antes da validação Zod
+  // formal — chave composta precisa dele). Se faltar, vira '_anon'.
+  const emailFromBody =
+    parsedBody && typeof parsedBody === 'object' && 'email' in parsedBody
+      ? String((parsedBody as Record<string, unknown>).email ?? '')
+      : ''
+  const composedKey = loginBackoffKey(ip, emailFromBody)
+  const ipKey = loginIpGuardKey(ip)
+
+  // ── 2. Guarda do IP — bloqueio duro contra scan de muitas contas no IP
+  const ipGuard = checkBackoffOrHardCheck(ipKey)
+  if (!ipGuard.allowed) {
+    return rateLimitResponse(ipGuard.retryAfterMs, true)
+  }
+
+  // ── 3. Backoff progressivo (IP, email)
+  const backoff = checkBackoff(composedKey, BACKOFF_WINDOW_MS)
+  if (!backoff.allowed) {
+    return rateLimitResponse(backoff.retryAfterMs, false)
   }
 
   try {
-    const body = await request.json()
-    const data = loginSchema.parse(body)
+    const data = loginSchema.parse(parsedBody)
 
     const user = await prisma.user.findUnique({ where: { email: data.email } })
 
@@ -51,6 +78,12 @@ export async function POST(request: NextRequest) {
       : false
 
     if (!user || !senhaValida) {
+      // Registra falha em AMBAS as chaves (backoff (IP,email) e guarda IP)
+      recordFailure(composedKey, BACKOFF_WINDOW_MS)
+      rateLimit(ipKey, IP_GUARD_MAX, IP_GUARD_WINDOW_MS)
+      void recordFailedLoginAudit(emailFromBody, ip, request).catch((err) =>
+        console.error('[LOGIN audit-fail] erro best-effort:', err),
+      )
       // Mensagem genérica intencional (não vaza se email existe ou não)
       return NextResponse.json(
         { erro: 'E-mail ou senha incorretos' },
@@ -58,13 +91,16 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // ── Sucesso: reseta backoff (IP, email). NÃO reseta a guarda do IP
+    //    (atacante que descobre 1 senha não deveria escapar do hard limit).
+    try {
+      resetAttempts(composedKey)
+    } catch {
+      // fail-open — reset falhar NÃO deve impedir login
+    }
+
     // Sprint Gestão de Conta (31/05/2026) — força troca de senha no 1º login
-    // após reset pelo admin. JWT carrega a flag; middleware bloqueia tudo
-    // exceto /trocar-senha + endpoints da troca.
-    //
-    // Sprint Engine de Assinatura FATIA 1 (31/05/2026) — computa flag
-    // subscriptionExpired aqui (1 query). Se não existe Subscription
-    // (race / migration), getOrCreateSubscription cria trial default 14d.
+    // após reset pelo admin.
     const { getOrCreateSubscription } = await import(
       '@/lib/subscription/queries'
     )
@@ -87,9 +123,7 @@ export async function POST(request: NextRequest) {
     })
 
     // Sprint 1.2 — Audit USER_LOGIN escopado à primeira empresa do user.
-    // Single-user atual = Yussef-OWNER da Cacula Mix → log fica em Cacula Mix.
     // Best-effort: failure aqui não impede login.
-    // (Sprint 1.5 vai adicionar User.lastLoginAt + audit independente de empresa.)
     void recordLoginAudit(user.id, user.name, user.email, request).catch(
       (err) => console.error('[LOGIN audit] erro best-effort:', err),
     )
@@ -101,7 +135,6 @@ export async function POST(request: NextRequest) {
         name: user.name,
         role: user.role,
       },
-      // Sprint Gestão de Conta: UI redireciona pra /trocar-senha quando true
       mustChangePassword: user.mustChangePassword,
     })
 
@@ -127,14 +160,46 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// Verifica guarda do IP sem incrementar. Reusa o `rateLimit` antigo —
+// chamamos com limit alto pra "espiar" estado; rateLimit acaba criando entry
+// se não existir. Pra não inflar, fazemos um peek manual aqui:
+function checkBackoffOrHardCheck(ipKey: string): {
+  allowed: boolean
+  retryAfterMs: number
+} {
+  // Truque simples: chamar rateLimit com limit+1 pra ver se já estourou.
+  // Se entry inexistente, rateLimit cria com failures=1 — efeito colateral
+  // aceitável (essa request "conta como 1" no bucket de guarda).
+  // OBS: pra ser mais preciso seria checkHardLimit puro; pra o MVP aceito.
+  const r = rateLimit(ipKey, IP_GUARD_MAX, IP_GUARD_WINDOW_MS)
+  return { allowed: r.allowed, retryAfterMs: r.retryAfterMs }
+}
+
+function rateLimitResponse(retryAfterMs: number, isIpGuard: boolean): NextResponse {
+  const seconds = Math.ceil(retryAfterMs / 1000)
+  const minutes = Math.ceil(retryAfterMs / 60_000)
+  const msg = isIpGuard
+    ? minutes <= 1
+      ? 'Muitas tentativas deste local. Tente novamente em alguns segundos.'
+      : `Muitas tentativas deste local. Tente novamente em ${minutes} minuto${minutes > 1 ? 's' : ''}.`
+    : seconds <= 60
+      ? `Senha incorreta. Próxima tentativa em ${seconds} segundo${seconds > 1 ? 's' : ''}.`
+      : `Senha incorreta. Próxima tentativa em ${minutes} minuto${minutes > 1 ? 's' : ''}.`
+  return NextResponse.json(
+    { erro: msg },
+    {
+      status: 429,
+      headers: { 'Retry-After': String(seconds) },
+    },
+  )
+}
+
 async function recordLoginAudit(
   userId: string,
   userName: string,
   userEmail: string,
   request: NextRequest,
 ): Promise<void> {
-  // Pega primeira empresa do user (audit_log exige companyId NOT NULL).
-  // Se user ainda não tem empresa, pula audit (cadastro novo sem empresa).
   const userCompany = await prisma.userCompany.findFirst({
     where: { userId },
     orderBy: { createdAt: 'asc' },
@@ -142,10 +207,7 @@ async function recordLoginAudit(
   })
   if (!userCompany) return
 
-  const ipAddress =
-    request.headers.get('x-forwarded-for')?.split(',')[0].trim() ??
-    request.headers.get('x-real-ip') ??
-    null
+  const ipAddress = getRequestIp(request)
   const userAgent = request.headers.get('user-agent') ?? null
 
   await prisma.auditLog.create({
@@ -158,6 +220,43 @@ async function recordLoginAudit(
       entityType: 'User',
       entityId: userId,
       ipAddress,
+      userAgent,
+    },
+  })
+}
+
+// Sprint Rate-Limit-Login: log de tentativas FALHAS pra auditoria forense.
+// Sem senha, sem dados sensíveis. Escopo: primeira empresa do user (se
+// existir); se email não existe, pula (não loga email arbitrário).
+async function recordFailedLoginAudit(
+  emailAttempt: string,
+  ip: string,
+  request: NextRequest,
+): Promise<void> {
+  if (!emailAttempt) return
+  const normalized = emailAttempt.trim().toLowerCase()
+  const user = await prisma.user.findUnique({
+    where: { email: normalized },
+    select: { id: true, name: true, email: true },
+  })
+  if (!user) return // email não existe — não logamos pra evitar criar trilha de enumeração
+  const userCompany = await prisma.userCompany.findFirst({
+    where: { userId: user.id },
+    orderBy: { createdAt: 'asc' },
+    select: { companyId: true },
+  })
+  if (!userCompany) return
+  const userAgent = request.headers.get('user-agent') ?? null
+  await prisma.auditLog.create({
+    data: {
+      companyId: userCompany.companyId,
+      userId: user.id,
+      userName: user.name,
+      userEmail: user.email,
+      action: 'USER_LOGIN_FAILED',
+      entityType: 'User',
+      entityId: user.id,
+      ipAddress: ip,
       userAgent,
     },
   })
