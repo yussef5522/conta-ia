@@ -60,6 +60,9 @@ export async function GET(request: NextRequest) {
         // Sprint A-effected Fase B — exclui ações terminais (ignoradas, cash-coded)
         ignoredAt: null,
         cashCoded: false,
+        // Sprint Sync-Pendentes-Conciliacao: mesma regra do /ofx-pendentes.
+        // OFX já categorizada não entra no pre-classify batch.
+        categoryId: null,
         bankAccount: { companyId: data.empresaId },
         ...tipoFilter,
       },

@@ -51,6 +51,11 @@ export async function GET(request: NextRequest) {
         // Sprint A-effected Fase B — exclui ações terminais:
         ignoredAt: null, // não ignorada manualmente
         cashCoded: false, // não categorizada via CRIAR
+        // Sprint Sync-Pendentes-Conciliacao: OFX já categorizada (via Pendentes
+        // em lote, regra IA no import, etc) sai da Conciliação. Padrão Xero/
+        // QuickBooks: tx do extrato resolvida UMA vez. Reversível: descategorizar
+        // faz voltar. Não esconde pendente pura (categoryId NULL continua).
+        categoryId: null,
         bankAccount: { companyId: data.empresaId },
         ...(Object.keys(dateFilter).length > 0 ? { date: dateFilter } : {}),
         ...tipoFilter,
