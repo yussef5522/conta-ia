@@ -22,6 +22,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useEmpresa } from '@/lib/contexts/empresa-context'
 import { formatBRL } from '@/lib/format/money'
 import { StatementBalanceHeader } from '@/components/conciliacao/statement-balance-header'
 import { HistoricoTable } from '@/components/conciliacao/historico-table'
@@ -82,17 +83,26 @@ export default function ConciliacaoPage() {
 function ConciliacaoInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  // Fonte única da empresa atual: WorkspaceSwitcher no topo (EmpresaContext).
+  // URL ?empresaId= continua override pra deep-links antigos.
+  const { currentEmpresaId: ctxEmpresaId } = useEmpresa()
 
   const [empresas, setEmpresas] = useState<Empresa[]>([])
-  const [empresaId, setEmpresaId] = useState<string>(searchParams.get('empresaId') ?? '')
+  const [empresaId, setEmpresaId] = useState<string>(
+    searchParams.get('empresaId') ?? ctxEmpresaId ?? '',
+  )
 
   useEffect(() => {
     const urlEmpresaId = searchParams.get('empresaId') ?? ''
-    if (urlEmpresaId && urlEmpresaId !== empresaId) {
-      setEmpresaId(urlEmpresaId)
+    if (urlEmpresaId) {
+      // URL é source-of-truth (deep-link). Vence o contexto.
+      if (urlEmpresaId !== empresaId) setEmpresaId(urlEmpresaId)
+    } else if (ctxEmpresaId && ctxEmpresaId !== empresaId) {
+      // Sem URL: sincroniza com WorkspaceSwitcher (user trocou no topo).
+      setEmpresaId(ctxEmpresaId)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams])
+  }, [searchParams, ctxEmpresaId])
 
   const [ofxTxs, setOfxTxs] = useState<OfxTx[]>([])
   const [loadingOfx, setLoadingOfx] = useState(true)
@@ -309,28 +319,6 @@ function ConciliacaoInner() {
             : 'Selecione uma empresa pra ver as transações'
         }
       />
-
-      {empresas.length > 1 && (
-        <Card>
-          <CardContent className="py-3">
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-muted-foreground">Empresa:</span>
-              <Select value={empresaId} onValueChange={setEmpresaId}>
-                <SelectTrigger className="w-auto min-w-[280px]">
-                  <SelectValue placeholder="Selecione…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {empresas.map((e) => (
-                    <SelectItem key={e.id} value={e.id}>
-                      {e.tradeName ?? e.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {empresaId && (
         <StatementBalanceHeader empresaId={empresaId} refreshKey={refreshKey} />
