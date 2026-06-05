@@ -37,6 +37,10 @@ import {
   decideRowAction,
   isUniqueConstraintError,
 } from '@/lib/excel-import/decide-row-action'
+import {
+  detectSkipMotivo,
+  humanizarMotivoSkip,
+} from '@/lib/excel-import/humanize-skip-reason'
 
 // Sprint 5.0.2.3 — Node runtime + 60s timeout (loop pode demorar pra 5000 linhas)
 export const runtime = 'nodejs'
@@ -125,6 +129,13 @@ export async function POST(request: NextRequest, { params }: Params) {
         let paid = 0
         let pending = 0
         let totalAmountCents = 0
+        // Sprint Import-Transparência: rastreia IDs por outcome pra não deletar
+        // staged_rows + permitir resolução individual depois.
+        const importedRowIds: string[] = []
+        const skippedNeedsReviewRowIds: string[] = []
+        const skippedNoFavorecidoRowIds: string[] = []
+        const skippedDuplicateRowIds: string[] = []
+        // (EXCLUDED não entra em "puladas pelo sistema" — user já decidiu)
 
         for (const row of rows) {
           const override = overridesById.get(row.id)
@@ -135,10 +146,12 @@ export async function POST(request: NextRequest, { params }: Params) {
           }
           if (action.kind === 'SKIP_NO_FAVORECIDO') {
             noFavorecidoSkipped++
+            skippedNoFavorecidoRowIds.push(row.id)
             continue
           }
           if (action.kind === 'SKIP_NEEDS_REVIEW') {
             needsReviewSkipped++
+            skippedNeedsReviewRowIds.push(row.id)
             continue
           }
           // action.kind === 'PROCEED' — segue criando supplier/employee/category/tx
@@ -265,6 +278,7 @@ export async function POST(request: NextRequest, { params }: Params) {
               },
             })
             createdTransactions++
+            importedRowIds.push(row.id)
             totalAmountCents += Math.round(row.valor * 100)
             if (isPaid) paid++
             else pending++
@@ -273,6 +287,7 @@ export async function POST(request: NextRequest, { params }: Params) {
             // OU recurringScheduleId + dueDate). Skip a linha sem matar batch.
             if (isUniqueConstraintError(err)) {
               duplicateSkipped++
+              skippedDuplicateRowIds.push(row.id)
               const dedupShort = row.dedupHash?.slice(0, 8) ?? '(nulo)'
               console.warn(
                 `[EXCEL-CONFIRM] skip duplicate batch=${batchId} ` +
@@ -291,9 +306,26 @@ export async function POST(request: NextRequest, { params }: Params) {
           data: { status: 'CONFIRMED', importedAt: new Date() },
         })
 
-        // Limpa StagedPayableRows pra não inflar tabela (audit fica no batch).
-        // Dentro do $transaction — rollback junto se algo falhar acima.
-        await tx.stagedPayableRow.deleteMany({ where: { batchId } })
+        // Sprint Import-Transparência: NÃO deletar staged_rows. Marcar outcome
+        // pra preservar evidência + permitir resolução individual posterior.
+        // - IMPORTED: linha virou transaction (sucesso)
+        // - NEEDS_REVIEW: continua igual (espera decisão humana via /resolve-row)
+        // - EXCLUDE: continua igual (user já decidiu)
+        // - DUPLICATE: marca como NEEDS_REVIEW pra user decidir o que fazer
+        if (importedRowIds.length > 0) {
+          await tx.stagedPayableRow.updateMany({
+            where: { id: { in: importedRowIds } },
+            data: { userDecision: 'IMPORTED' },
+          })
+        }
+        // skippedDuplicateRowIds → marca como NEEDS_REVIEW (precisa atenção)
+        if (skippedDuplicateRowIds.length > 0) {
+          await tx.stagedPayableRow.updateMany({
+            where: { id: { in: skippedDuplicateRowIds } },
+            data: { userDecision: 'NEEDS_REVIEW' },
+          })
+        }
+        // NEEDS_REVIEW + NO_FAVORECIDO já vêm com userDecision correto
 
         return {
           createdTransactions,
@@ -329,6 +361,36 @@ export async function POST(request: NextRequest, { params }: Params) {
         `total=R$${(result.totalAmountCents / 100).toFixed(2)} elapsed=${elapsedMs}ms`,
     )
 
+    // Sprint Import-Transparência: busca staged_rows pulados pelo sistema com
+    // dados completos pra UI mostrar imediatamente (em vez de só contador).
+    // Excluded NÃO entra (user já decidiu — não é "silêncio").
+    const skippedRowsRaw = await prisma.stagedPayableRow.findMany({
+      where: {
+        batchId,
+        userDecision: { in: ['NEEDS_REVIEW'] },
+      },
+      orderBy: { rowIndex: 'asc' },
+    })
+    const skippedRows = skippedRowsRaw.map((r) => {
+      const motivo = detectSkipMotivo(r)
+      return {
+        rowId: r.id,
+        rowIndex: r.rowIndex,
+        favorecido: r.rawFavorecido ?? null,
+        favorecidoConfidence: r.favorecidoConfidence ?? null,
+        valor: r.valor,
+        vencimento: r.vencimento ? r.vencimento.toISOString() : null,
+        descricao: r.rawDescricao ?? null,
+        motivo,
+        motivoHumano: humanizarMotivoSkip({
+          motivo,
+          favorecidoConfidence: r.favorecidoConfidence,
+          rawFavorecido: r.rawFavorecido,
+          duplicateOf: r.duplicateOf,
+        }),
+      }
+    })
+
     return NextResponse.json({
       batchId,
       transactionsCreated: result.createdTransactions,
@@ -345,6 +407,10 @@ export async function POST(request: NextRequest, { params }: Params) {
         excluded: result.excludedSkipped,
         noFavorecido: result.noFavorecidoSkipped,
       },
+      // Sprint Import-Transparência: lista detalhada das linhas puladas pelo
+      // sistema (NEEDS_REVIEW/DUPLICATE/NO_FAVORECIDO). UI mostra cada uma com
+      // motivo humano + 3 ações (importar mesmo, editar, excluir).
+      skippedRows,
       totalAmount: result.totalAmountCents / 100,
       elapsedMs,
       summary: {

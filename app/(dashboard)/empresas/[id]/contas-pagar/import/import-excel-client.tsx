@@ -88,6 +88,18 @@ interface ReviewRow {
   userDecision: string
 }
 
+interface SkippedRowDetail {
+  rowId: string
+  rowIndex: number
+  favorecido: string | null
+  favorecidoConfidence: number | null
+  valor: number
+  vencimento: string | null
+  descricao: string | null
+  motivo: string
+  motivoHumano: string
+}
+
 interface ConfirmResponse {
   batchId: string
   transactionsCreated: number
@@ -97,6 +109,15 @@ interface ConfirmResponse {
   employeesCreated: number
   categoriesCreated: number
   skipped: number
+  skippedBreakdown?: {
+    duplicate: number
+    needsReview: number
+    excluded: number
+    noFavorecido: number
+  }
+  // Sprint Import-Transparência: lista detalhada de pendências pra UI mostrar
+  // ações por linha (Importar mesmo / Editar / Excluir) sem deixar nada sumir.
+  skippedRows?: SkippedRowDetail[]
   totalAmount: number
 }
 
@@ -303,43 +324,90 @@ export function ImportExcelClient({ empresaId }: Props) {
   // ─── RENDER ────────────────────────────────────────────────────────
 
   if (step === 'CONFIRMED' && confirmResult) {
+    const breakdown = confirmResult.skippedBreakdown
+    const pendentesNotInUserList = confirmResult.skippedRows ?? []
+    const excluidasPeloUser = breakdown?.excluded ?? 0
+    const totalArquivo =
+      confirmResult.transactionsCreated +
+      excluidasPeloUser +
+      pendentesNotInUserList.length
+
     return (
-      <div className="rounded-md border bg-card p-8 text-center max-w-2xl mx-auto">
-        <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-emerald-50 dark:bg-emerald-950/30 flex items-center justify-center">
-          <Check className="w-8 h-8 text-emerald-600" />
+      <div className="space-y-6 max-w-3xl mx-auto">
+        {/* Resumo honesto */}
+        <div className="rounded-md border bg-card p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-12 h-12 rounded-full bg-emerald-50 dark:bg-emerald-950/30 flex items-center justify-center">
+              <Check className="w-6 h-6 text-emerald-600" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold">Importação concluída</h3>
+              <p className="text-xs text-muted-foreground">
+                Resumo do arquivo (todas as linhas contadas)
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+            <SummaryTile
+              tone="emerald"
+              label="Importadas"
+              value={confirmResult.transactionsCreated}
+              subtitle={`R$ ${formatBRL(confirmResult.totalAmount)} · ${confirmResult.paid} pagas · ${confirmResult.pending} a pagar`}
+            />
+            <SummaryTile
+              tone="slate"
+              label="Excluídas por você"
+              value={excluidasPeloUser}
+              subtitle={excluidasPeloUser === 0 ? '—' : 'marcadas na revisão'}
+            />
+            <SummaryTile
+              tone={pendentesNotInUserList.length > 0 ? 'amber' : 'slate'}
+              label="Puladas pelo sistema"
+              value={pendentesNotInUserList.length}
+              subtitle={
+                pendentesNotInUserList.length > 0
+                  ? 'precisam sua decisão ↓'
+                  : 'nenhuma — limpo'
+              }
+            />
+          </div>
+
+          <div className="text-xs text-muted-foreground border-t pt-3">
+            Total de linhas no arquivo: <strong>{totalArquivo}</strong> · novidades:{' '}
+            {confirmResult.suppliersCreated} fornecedor
+            {confirmResult.suppliersCreated === 1 ? '' : 'es'},{' '}
+            {confirmResult.employeesCreated} funcionário
+            {confirmResult.employeesCreated === 1 ? '' : 's'},{' '}
+            {confirmResult.categoriesCreated} categoria
+            {confirmResult.categoriesCreated === 1 ? '' : 's'}
+          </div>
         </div>
-        <h3 className="text-xl font-semibold">
-          {confirmResult.transactionsCreated} contas importadas
-        </h3>
-        <p className="text-sm text-muted-foreground mt-1 mb-4">
-          R$ {formatBRL(confirmResult.totalAmount)} ·{' '}
-          {confirmResult.paid} pagas · {confirmResult.pending} a pagar
-        </p>
-        <div className="grid grid-cols-3 gap-3 text-sm mb-5">
-          <Stat
-            label="Fornecedores"
-            value={confirmResult.suppliersCreated}
-            suffix={confirmResult.suppliersCreated === 1 ? 'novo' : 'novos'}
+
+        {/* Lista de pendentes (NEEDS_REVIEW + NO_FAVORECIDO + DUPLICATE) */}
+        {pendentesNotInUserList.length > 0 && (
+          <PendingRowsList
+            empresaId={empresaId}
+            batchId={confirmResult.batchId}
+            initialRows={pendentesNotInUserList}
+            onAllResolved={() => {
+              toast({
+                title: 'Tudo resolvido',
+                description: 'Nenhuma linha pendente — pode seguir.',
+                duration: 4000,
+              })
+            }}
           />
-          <Stat
-            label="Funcionários"
-            value={confirmResult.employeesCreated}
-            suffix={confirmResult.employeesCreated === 1 ? 'novo' : 'novos'}
-          />
-          <Stat
-            label="Categorias"
-            value={confirmResult.categoriesCreated}
-            suffix={confirmResult.categoriesCreated === 1 ? 'nova' : 'novas'}
-          />
-        </div>
-        {confirmResult.skipped > 0 && (
-          <p className="text-xs text-amber-600 dark:text-amber-400 mb-4">
-            {confirmResult.skipped} linhas puladas (revisão pendente ou excluídas)
-          </p>
         )}
-        <Button onClick={goToDashboard} size="lg">
-          Ir pro Dashboard
-        </Button>
+
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={() => router.push('/contas-a-pagar')}>
+            Ver Contas a Pagar
+          </Button>
+          <Button onClick={goToDashboard} size="lg">
+            Ir pro Dashboard
+          </Button>
+        </div>
       </div>
     )
   }
@@ -412,7 +480,7 @@ export function ImportExcelClient({ empresaId }: Props) {
                       />
                     </td>
                     <td className="px-3 py-2 max-w-xs truncate" title={r.rawFavorecido ?? ''}>
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <span className={isExcluded ? 'line-through' : ''}>
                           {r.rawFavorecido ?? '—'}
                         </span>
@@ -426,6 +494,19 @@ export function ImportExcelClient({ empresaId }: Props) {
                         ) : (
                           <span className="text-[10px] rounded bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 px-1">
                             novo
+                          </span>
+                        )}
+                        {/* Sprint Import-Transparência: badge âmbar preventivo
+                            nas linhas NEEDS_REVIEW. Se user confirmar sem
+                            decidir, vão cair na lista de "puladas pelo sistema"
+                            do modal final — mas agora ele VÊ antes. */}
+                        {r.userDecision === 'NEEDS_REVIEW' && !isExcluded && (
+                          <span
+                            className="text-[10px] font-semibold rounded border border-amber-300 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 px-1.5 inline-flex items-center gap-0.5"
+                            title="Sistema marcou pra revisão. Confirme o favorecido (clique no checkbox) ou desmarque pra excluir — senão vai aparecer na lista de pendentes no final."
+                          >
+                            <AlertTriangle className="h-2.5 w-2.5" />
+                            Precisa decisão
                           </span>
                         )}
                       </div>
@@ -759,6 +840,319 @@ function StatCard({
           <span className="ml-1 text-xs font-normal text-muted-foreground">{suffix}</span>
         )}
       </p>
+    </div>
+  )
+}
+
+// ============================================================================
+// Sprint Import-Transparência — SummaryTile + PendingRowsList
+// ============================================================================
+
+function SummaryTile({
+  label,
+  value,
+  subtitle,
+  tone,
+}: {
+  label: string
+  value: number
+  subtitle: string
+  tone: 'emerald' | 'amber' | 'slate'
+}) {
+  const toneClass =
+    tone === 'emerald'
+      ? 'border-emerald-200 bg-emerald-50/40 dark:bg-emerald-950/20 dark:border-emerald-900'
+      : tone === 'amber'
+        ? 'border-amber-200 bg-amber-50/40 dark:bg-amber-950/20 dark:border-amber-900'
+        : 'border-slate-200 bg-slate-50/40 dark:bg-slate-900/20 dark:border-slate-800'
+  const valueClass =
+    tone === 'emerald'
+      ? 'text-emerald-700 dark:text-emerald-400'
+      : tone === 'amber'
+        ? 'text-amber-700 dark:text-amber-400'
+        : 'text-slate-700 dark:text-slate-300'
+  return (
+    <div className={`rounded-md border p-3 ${toneClass}`}>
+      <p className="text-[10px] uppercase tracking-wide font-semibold text-muted-foreground">
+        {label}
+      </p>
+      <p className={`text-2xl font-bold tabular-nums mt-1 ${valueClass}`}>
+        {value}
+      </p>
+      <p className="text-[11px] text-muted-foreground mt-0.5">{subtitle}</p>
+    </div>
+  )
+}
+
+interface PendingRowsListProps {
+  empresaId: string
+  batchId: string
+  initialRows: SkippedRowDetail[]
+  onAllResolved: () => void
+}
+
+function PendingRowsList({
+  empresaId,
+  batchId,
+  initialRows,
+  onAllResolved,
+}: PendingRowsListProps) {
+  const { toast } = useToast()
+  const [rows, setRows] = useState<SkippedRowDetail[]>(initialRows)
+  // Sprint Import-Transparência: status local por linha — pra travar buttons
+  // enquanto a request rola e mostrar resultado individual.
+  const [busyById, setBusyById] = useState<Set<string>>(new Set())
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editForm, setEditForm] = useState<{
+    rawFavorecido: string
+    valor: string
+    vencimento: string
+  } | null>(null)
+
+  async function resolve(
+    rowId: string,
+    action: 'IMPORT' | 'IMPORT_EDITED' | 'EXCLUDE',
+    overrides?: Record<string, unknown>,
+  ) {
+    setBusyById((p) => new Set(p).add(rowId))
+    try {
+      const res = await fetch(
+        `/api/empresas/${empresaId}/contas-pagar/import/${batchId}/resolve-row`,
+        {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rowId, action, overrides }),
+        },
+      )
+      const data = await res.json()
+      if (!res.ok) {
+        toast({
+          variant: 'destructive',
+          title: 'Falha',
+          description: data.erro ?? `HTTP ${res.status}`,
+        })
+        return
+      }
+      const verb =
+        action === 'EXCLUDE'
+          ? 'excluída'
+          : action === 'IMPORT'
+            ? 'importada'
+            : 'importada com edição'
+      toast({ title: `Linha ${verb}` })
+      setRows((p) => {
+        const next = p.filter((r) => r.rowId !== rowId)
+        if (next.length === 0) onAllResolved()
+        return next
+      })
+      setEditingId(null)
+      setEditForm(null)
+    } finally {
+      setBusyById((p) => {
+        const n = new Set(p)
+        n.delete(rowId)
+        return n
+      })
+    }
+  }
+
+  if (rows.length === 0) {
+    return (
+      <div className="rounded-md border border-emerald-200 bg-emerald-50/40 dark:bg-emerald-950/20 p-4 flex items-center gap-3">
+        <Check className="h-5 w-5 text-emerald-600" />
+        <p className="text-sm">
+          <strong>Tudo resolvido.</strong> Nenhuma linha pendente.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-md border border-amber-200 bg-amber-50/30 dark:bg-amber-950/20 dark:border-amber-900 p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <AlertTriangle className="h-4 w-4 text-amber-600" />
+        <p className="text-sm font-medium text-amber-900 dark:text-amber-200">
+          {rows.length} linha{rows.length === 1 ? '' : 's'} pulada
+          {rows.length === 1 ? '' : 's'} — decida o que fazer com cada uma:
+        </p>
+      </div>
+
+      <div className="space-y-2.5">
+        {rows.map((r) => {
+          const isBusy = busyById.has(r.rowId)
+          const isEditing = editingId === r.rowId
+
+          return (
+            <div
+              key={r.rowId}
+              className="rounded border bg-card p-3 text-sm space-y-2"
+            >
+              {/* Header da linha: linha + favorecido + motivo */}
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] uppercase font-bold tracking-wide bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 px-1.5 py-0.5 rounded">
+                      Linha {r.rowIndex}
+                    </span>
+                    <span className="font-medium break-words">
+                      {r.favorecido || (
+                        <span className="italic text-muted-foreground">
+                          (favorecido vazio)
+                        </span>
+                      )}
+                    </span>
+                    {r.favorecidoConfidence !== null && (
+                      <span className="text-[10px] text-muted-foreground tabular-nums">
+                        {Math.round(r.favorecidoConfidence * 100)}%
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                    {r.motivoHumano}
+                  </p>
+                </div>
+                <div className="text-right tabular-nums shrink-0">
+                  <p className="text-sm font-mono font-semibold">
+                    R$ {formatBRL(r.valor)}
+                  </p>
+                  {r.vencimento && (
+                    <p className="text-[10px] text-muted-foreground">
+                      vence {formatDate(r.vencimento)}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {r.descricao && (
+                <p className="text-xs text-muted-foreground break-words border-l-2 border-muted pl-2">
+                  {r.descricao}
+                </p>
+              )}
+
+              {/* Form de edição (aparece quando "Editar e importar") */}
+              {isEditing && editForm && (
+                <div className="rounded bg-muted/30 p-2.5 space-y-2">
+                  <p className="text-[10px] uppercase font-semibold text-muted-foreground">
+                    Corrigir antes de importar
+                  </p>
+                  <input
+                    type="text"
+                    value={editForm.rawFavorecido}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, rawFavorecido: e.target.value })
+                    }
+                    placeholder="Favorecido"
+                    className="w-full px-2 py-1 text-sm rounded border bg-background"
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={editForm.valor}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, valor: e.target.value })
+                      }
+                      placeholder="Valor"
+                      className="px-2 py-1 text-sm rounded border bg-background tabular-nums"
+                    />
+                    <input
+                      type="date"
+                      value={editForm.vencimento}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, vencimento: e.target.value })
+                      }
+                      className="px-2 py-1 text-sm rounded border bg-background"
+                    />
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        setEditingId(null)
+                        setEditForm(null)
+                      }}
+                      disabled={isBusy}
+                    >
+                      Cancelar
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        const overrides: Record<string, unknown> = {
+                          rawFavorecido: editForm.rawFavorecido.trim(),
+                          valor: Number(editForm.valor),
+                        }
+                        if (editForm.vencimento) {
+                          overrides.vencimento = new Date(
+                            editForm.vencimento,
+                          ).toISOString()
+                        }
+                        void resolve(r.rowId, 'IMPORT_EDITED', overrides)
+                      }}
+                      disabled={
+                        isBusy ||
+                        !editForm.rawFavorecido.trim() ||
+                        !editForm.valor ||
+                        Number(editForm.valor) <= 0
+                      }
+                    >
+                      {isBusy && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
+                      Importar editada
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Ações */}
+              {!isEditing && (
+                <div className="flex gap-2 justify-end pt-1">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setEditingId(r.rowId)
+                      setEditForm({
+                        rawFavorecido: r.favorecido ?? '',
+                        valor: String(r.valor),
+                        vencimento: r.vencimento
+                          ? r.vencimento.split('T')[0]
+                          : '',
+                      })
+                    }}
+                    disabled={isBusy}
+                  >
+                    Editar e importar
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="default"
+                    onClick={() => void resolve(r.rowId, 'IMPORT')}
+                    disabled={isBusy || !r.favorecido}
+                    title={
+                      !r.favorecido
+                        ? 'Favorecido vazio — use Editar pra preencher'
+                        : 'Importa com os dados originais'
+                    }
+                  >
+                    {isBusy && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
+                    Importar mesmo assim
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => void resolve(r.rowId, 'EXCLUDE')}
+                    disabled={isBusy}
+                  >
+                    Excluir
+                  </Button>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
