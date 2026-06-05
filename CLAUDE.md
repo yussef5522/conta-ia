@@ -2909,6 +2909,132 @@ Conciliações antigas (Nestle/Lamana/DISTRIB): intactas ✓
 - **Recebimentos avulsos** (vendas pizzaria): podem esperar Fase C (cash coding
   em lote) — não causam duplicação de DRE (cada uma é entrada única).
 
+### 04/06/2026 (parte 2) — Fase B.4 (Ajustes Juros/Tarifas/Descontos) + 3 bugs UX
+
+**Contexto:** Yussef conciliou 14 singles 1:1 + 4 grupos N:1 na Cacula
+(incluindo CIA DA FRUTA com 7 notas → 1 PIX). DRE caiu de R$ 91.700
+(inflado) pra R$ 71.766 (24 ligações conciliadas). Pediu Ajustes
+(Juros/Multas/Descontos) ANTES de continuar — caso real "boleto R$
+5.000 pago atrasado R$ 5.070" não conciliava.
+
+#### Fase B.4.1 — Backend ajustes (commits `0fefc36` + `3e78bc0`)
+
+**Templates 4 categorias** (`lib/conciliacao/adjustment-categories.ts`):
+- JUROS_MULTAS_BANCARIAS (EXPENSE, DESPESAS_FINANCEIRAS)
+- TARIFAS_BANCARIAS (EXPENSE, DESPESAS_FINANCEIRAS)
+- DESCONTOS_OBTIDOS (INCOME, RECEITAS_FINANCEIRAS) ← diferencial vs Xero
+- AJUSTES_ARREDONDAMENTO (EXPENSE, OUTRAS_DESPESAS, threshold R$ 1)
+- `applicableTemplates(diff)` dropdown adaptativo pelo sinal do Diff
+
+**Endpoints:**
+- `GET /api/conciliacao/adjustment-categories` (status por empresa)
+- `POST .../create-defaults` (idempotente, match SÓ por nome exato após
+  smoke ter pego match frouxo "Taxa Cartão" como Juros)
+- `POST /find-and-match/reconcile` estendido com `adjustments[]`
+  validando soma + sign INCOME/EXPENSE batem com categoria
+- `POST /desfazer-grupo/[groupId]` estendido — DELETE atomic pra
+  `origin='ADJUSTMENT'` + audit preservado
+
+**Lib `create-adjustment.ts`** (função pura testável):
+- `buildAdjustmentTxData` cria tx com origin='ADJUSTMENT', lifecycle=
+  EFFECTED, reconciledWithId=NULL (entra no DRE direto), reconcileGroupId
+  compartilhado com candidates do grupo
+- Decisão crítica: ajuste TEM reconciledWithId=NULL (não filtrado pelo
+  DRE) E reconcileGroupId aponta pro grupo (undo deleta junto)
+
+**Tests +31** (4417 → 4448): templates + suggest/applicable + build data
+defensive. Zero migration.
+
+**Smoke real Cacula:** AP R$ 121 + Ajuste R$ 0,50 = OFX R$ 121,50 ✓ →
+DRE +R$ 0,50 (ajuste entra na categoria Juros) → UNDO grupo deleta
+ajuste → DRE volta exato.
+
+#### Fase B.4.2 — UI ajustes (commit `4deb86d`)
+
+`components/conciliacao/adjustment-controls.tsx` (3 exports):
+- `AdjustmentMenu` dropdown adaptativo no rodapé do Find & Match
+- `AdjustmentForm` form inline (categoria preset + descrição auto
+  "Juros — [supplier]" + valor pré-fill do diff)
+- `EnsureAdjustmentCategoriesModal` opt-in 1º uso
+
+Integrado em `FindAndMatchPanel.tsx`:
+- State `adjustments[]` (cap 3 — decisão Yussef #6)
+- Diff calc: `sum(candidates) + sum(adjustmentsSigned)`
+- Reconcile só ativa quando `|diff| <= 0.01` incluindo ajustes
+- Reconcile body passa `adjustments[]` com `categoryId/amount/sign/description`
+- Toast "X reconciled + N ajuste(s)"
+
+**4 casos reais identificados na Cacula pra Yussef testar:** 4 boletos
+PODAL DISTRIBUIDORA com diff R$ 1,00 exato (boleto+juros típico).
+
+#### 3 bugs UX (commits `747ebf5` v1 falho + `ae2022c` v2 correto)
+
+Yussef reportou 3 bugs em sequência. 1ª tentativa errou a causa raiz nos
+bugs 2 e 3 — ele provou via screenshot que continuavam quebrados. 2ª
+tentativa achei as causas REAIS:
+
+**Bug 1 — Modal Classificar cortado:** `DialogContent max-w-lg` (512px)
+apertado + texto sem `break-words`. Fix: `max-w-2xl w-[calc(100vw-2rem)]
+break-words` no `AprenderEAplicarModal`.
+
+**Bug 2 v1 falho → v2 correto:** v1 só fixou `selectEmpresa` em PF.
+**Causa real:** Dashboard é Server Component que NÃO conhecia
+workspaceType (cookie não existia). Yussef dava F5 em `/dashboard` com
+workspace PF → server renderiza dashboard PJ (Cacula) enquanto switcher
+client mostra PF.
+
+v2 correto:
+- NOVO cookie httpOnly `caixaos_workspace_type`
+- NOVO endpoint `POST /api/workspace/atual` (set) + GET (lê)
+- `workspace-context.setWorkspace` sincroniza cookie SEMPRE (antes só
+  setava profileId quando PF)
+- `dashboard/page.tsx`: lê cookie ANTES de queries. Se `pf` + profileId
+  → redirect server-side pra `/perfis/[id]`
+
+**Bug 3 v1 falho → v2 correto:** v1 mexeu em `tipoLocked` mas tipo no
+state já estava correto. **Causa real:** race condition entre fetches
+concorrentes.
+
+Sequência:
+1. Mount sem URL tipo → Promise A (tipo='todos') dispara
+2. Heurística roda → setTipo('apenas-pagamentos') → Promise B dispara
+3. Se A resolve depois de B → `setOfxTxs(A.data)` sobrescreve B
+4. Lista mostra CREDIT mesmo seletor mostrando "Só pagamentos"
+
+v2 correto: `useRef<AbortController>` em `fetchOfxTxs` e `fetchDryRun`.
+Aborta o anterior antes de cada novo fetch. Defesa adicional: `if
+(ref.current === controller)` antes de `setState` (Promise abortada
+não sobrescreve).
+
+**Validação SQL direta confirmou** que a query com filtro funciona: tipo
+DEBIT retorna 19 tx, 0 CREDIT na Cacula. O fix garante que a query
+RECEBA o tipo correto sem ser sobrescrita por Promise stale.
+
+**Lição:** quando user diz "fix não funcionou", causa raiz REAL é
+outra. v1 sempre olhei o sintoma (state local), v2 olhei o que server
+realmente recebe (cookie ausente, Promise stale).
+
+#### Estatísticas do dia (sessão única)
+- 6 commits feat/fix (`0fefc36` → `ae2022c`)
+- Tests 4417 → 4448 (+31, ajustes templates + create-adjustment)
+- Suite verde sem regressão
+- TS strict 0 · zero migration
+- PM2 reloads: 263 → 266
+- 24 conciliações reais na Cacula (DRE caiu R$ 19.934 — de R$ 91.700
+  inflado pra R$ 71.766)
+
+#### Próximo passo (Yussef decide)
+
+Casos restantes Cacula pra zerar a duplicação completa:
+- 6 duplicatas Excel #2 conhecidas (R$ 8.714,43) — DELETAR ou IGNORAR
+- 2 conciliações revisar (TURATTI↔DIVINE + PREFEITURA↔ECO VERDE — pode
+  ter sido erro ou cadastro estranho)
+- 211 OFX CREDIT órfãs (vendas PIX maquininha — Fase C cash coding em
+  lote, ainda não construída)
+- 1 OFX DEBIT futura (PAGAMENTO CONSORCIO R$ 1.478,51 em 09/06)
+
+DRE atual: R$ 71.766. Estimado real pós-desdup: ~R$ 63k.
+
 ### [Próxima sessão] — preencher
 - Data:
 - O que foi feito:
