@@ -142,10 +142,26 @@ export async function POST(request: NextRequest, { params }: Params) {
       const importingIsFrom = c.fromAccountId === conta.id
       const existingTxId = importingIsFrom ? c.toTransactionId : c.fromTransactionId
       const existing = existingTxMap.get(existingTxId)
+      const fromAccountName = accNames.get(c.fromAccountId) ?? '?'
+      const toAccountName = accNames.get(c.toAccountId) ?? '?'
       return {
         ...c,
-        fromAccountName: accNames.get(c.fromAccountId) ?? '?',
-        toAccountName: accNames.get(c.toAccountId) ?? '?',
+        fromAccountName,
+        toAccountName,
+        // Enriquecimento Sprint Card-Transfer: 2 lados + flag isPreview.
+        // Datas em ISO string (Date não viaja em JSON nativo).
+        from: {
+          ...c.from,
+          date: c.from.date.toISOString(),
+          accountName: fromAccountName,
+          isPreview: c.fromAccountId === conta.id,
+        },
+        to: {
+          ...c.to,
+          date: c.to.date.toISOString(),
+          accountName: toAccountName,
+          isPreview: c.toAccountId === conta.id,
+        },
         existingTxId,
         existingTxCategoryName: existing?.category?.name ?? null,
         existingTxHasNotes: !!(existing?.notes && existing.notes.trim().length > 0),

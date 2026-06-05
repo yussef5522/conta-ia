@@ -36,6 +36,23 @@ interface PreviewResult {
   banco: BancoDetectado | null
 }
 
+interface TransferSide {
+  transactionId: string
+  accountId: string
+  accountName: string
+  date: string // ISO
+  amount: number
+  description: string
+  isPreview: boolean // true = lado vem do OFX importando agora; false = tx já no banco
+}
+
+interface TransferEvidence {
+  sameDay: boolean
+  deltaDays: number
+  amountExact: boolean
+  keywordMatched: string | null
+}
+
 interface TransferCandidate {
   fromTransactionId: string
   toTransactionId: string
@@ -47,6 +64,10 @@ interface TransferCandidate {
   confidenceLevel: 'HIGH' | 'MEDIUM'
   reason: string
   suggestedAction: 'AUTO_PAIR' | 'CONFIRM' | 'IGNORE'
+  // Sprint Card-Transfer: 2 lados embarcados + evidência granular
+  from: TransferSide
+  to: TransferSide
+  evidence: TransferEvidence
   // Sprint 0.5 Dia 4 refinamento — info da tx existente que será deletada
   existingTxId: string
   existingTxCategoryName: string | null
@@ -453,49 +474,121 @@ export default function ImportarOFXPage() {
                     const isPareado = pareados.has(c.fromTransactionId)
                     const isIgnorado = ignorados.has(c.fromTransactionId)
                     const isMuted = isPareado || isIgnorado
+                    const fromDate = new Date(c.from.date).toLocaleDateString('pt-BR', {
+                      day: '2-digit', month: '2-digit', year: 'numeric',
+                    })
+                    const toDate = new Date(c.to.date).toLocaleDateString('pt-BR', {
+                      day: '2-digit', month: '2-digit', year: 'numeric',
+                    })
                     return (
                       <div
                         key={c.fromTransactionId + c.toTransactionId}
-                        className={`rounded-md border bg-card p-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between ${isMuted ? 'opacity-60' : ''}`}
+                        className={`rounded-md border bg-card p-3 space-y-3 ${isMuted ? 'opacity-60' : ''}`}
                       >
-                        <div className="flex items-start gap-3 min-w-0">
-                          <ArrowLeftRight className="h-5 w-5 text-blue-600 mt-0.5 shrink-0" />
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-medium text-sm truncate">{c.fromAccountName}</span>
-                              <span className="text-muted-foreground text-xs">→</span>
-                              <span className="font-medium text-sm truncate">{c.toAccountName}</span>
-                              <Badge
-                                variant="outline"
-                                className={
-                                  c.confidenceLevel === 'HIGH'
-                                    ? 'border-emerald-300 bg-emerald-50 text-emerald-700 text-xs dark:bg-emerald-950 dark:text-emerald-300'
-                                    : 'border-amber-300 bg-amber-50 text-amber-700 text-xs dark:bg-amber-950 dark:text-amber-300'
-                                }
-                              >
-                                {c.confidenceLevel === 'HIGH' ? 'Alta' : 'Média'} ({Math.round(c.confidence * 100)}%)
-                              </Badge>
+                        {/* Header: ícone + accounts + badge confiança + ações */}
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="flex items-center gap-2 flex-wrap min-w-0">
+                            <ArrowLeftRight className="h-4 w-4 text-blue-600 shrink-0" />
+                            <span className="font-medium text-sm truncate">{c.fromAccountName}</span>
+                            <span className="text-muted-foreground text-xs">→</span>
+                            <span className="font-medium text-sm truncate">{c.toAccountName}</span>
+                            <Badge
+                              variant="outline"
+                              className={
+                                c.confidenceLevel === 'HIGH'
+                                  ? 'border-emerald-300 bg-emerald-50 text-emerald-700 text-xs dark:bg-emerald-950 dark:text-emerald-300'
+                                  : 'border-amber-300 bg-amber-50 text-amber-700 text-xs dark:bg-amber-950 dark:text-amber-300'
+                              }
+                            >
+                              {c.confidenceLevel === 'HIGH' ? 'Alta' : 'Média'} ({Math.round(c.confidence * 100)}%)
+                            </Badge>
+                          </div>
+                          {isPareado ? (
+                            <Badge variant="outline" className="border-emerald-300 bg-emerald-50 text-emerald-700 shrink-0 self-start">
+                              <Check className="h-3 w-3 mr-1" />
+                              Pareada
+                            </Badge>
+                          ) : isIgnorado ? (
+                            <Badge variant="outline" className="shrink-0 self-start">Ignorada</Badge>
+                          ) : (
+                            <div className="flex gap-2 shrink-0">
+                              <Button size="sm" variant="default" onClick={() => parearCandidato(c)}>
+                                Parear
+                              </Button>
+                              <Button size="sm" variant="ghost" onClick={() => ignorarCandidato(c)}>
+                                Ignorar
+                              </Button>
                             </div>
-                            <p className="text-xs text-muted-foreground mt-1">{c.reason}</p>
+                          )}
+                        </div>
+
+                        {/* Grid 2-col: SAÍDA (esq, vermelha) + ENTRADA (dir, verde) */}
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {/* SAÍDA */}
+                          <div className="rounded border border-red-200 bg-red-50/50 p-2.5 dark:border-red-900 dark:bg-red-950/20">
+                            <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-red-700 dark:text-red-300">
+                              <ArrowUpRight className="h-3 w-3" />
+                              Saída · {c.from.accountName}
+                            </div>
+                            <div className="mt-1 text-sm font-mono tabular-nums text-red-700 dark:text-red-300">
+                              −{formatBRL(c.from.amount)}
+                            </div>
+                            <div className="mt-0.5 text-xs text-muted-foreground">{fromDate}</div>
+                            <div className="mt-1 text-xs font-mono break-words text-foreground/80" title={c.from.description}>
+                              {c.from.description}
+                            </div>
+                            <Badge variant="outline" className="mt-1.5 text-[9px] px-1.5 py-0">
+                              {c.from.isPreview ? 'Do extrato (novo)' : 'Já no sistema'}
+                            </Badge>
+                          </div>
+
+                          {/* ENTRADA */}
+                          <div className="rounded border border-emerald-200 bg-emerald-50/50 p-2.5 dark:border-emerald-900 dark:bg-emerald-950/20">
+                            <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
+                              <ArrowDownRight className="h-3 w-3" />
+                              Entrada · {c.to.accountName}
+                            </div>
+                            <div className="mt-1 text-sm font-mono tabular-nums text-emerald-700 dark:text-emerald-300">
+                              +{formatBRL(c.to.amount)}
+                            </div>
+                            <div className="mt-0.5 text-xs text-muted-foreground">{toDate}</div>
+                            <div className="mt-1 text-xs font-mono break-words text-foreground/80" title={c.to.description}>
+                              {c.to.description}
+                            </div>
+                            <Badge variant="outline" className="mt-1.5 text-[9px] px-1.5 py-0">
+                              {c.to.isPreview ? 'Do extrato (novo)' : 'Já no sistema'}
+                            </Badge>
                           </div>
                         </div>
-                        {isPareado ? (
-                          <Badge variant="outline" className="border-emerald-300 bg-emerald-50 text-emerald-700 shrink-0">
-                            <Check className="h-3 w-3 mr-1" />
-                            Pareada
-                          </Badge>
-                        ) : isIgnorado ? (
-                          <Badge variant="outline" className="shrink-0">Ignorada</Badge>
-                        ) : (
-                          <div className="flex gap-2 shrink-0">
-                            <Button size="sm" variant="default" onClick={() => parearCandidato(c)}>
-                              Parear
-                            </Button>
-                            <Button size="sm" variant="ghost" onClick={() => ignorarCandidato(c)}>
-                              Ignorar
-                            </Button>
-                          </div>
-                        )}
+
+                        {/* Evidência granular */}
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                          <span className="flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
+                            <Check className="h-3 w-3" />
+                            {c.evidence.sameDay ? 'Mesmo dia' : `D+${c.evidence.deltaDays}`}
+                          </span>
+                          {c.evidence.amountExact && (
+                            <span className="flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
+                              <Check className="h-3 w-3" />
+                              Valor exato
+                            </span>
+                          )}
+                          {c.evidence.keywordMatched && (
+                            <span className="flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
+                              <Check className="h-3 w-3" />
+                              Contém &quot;{c.evidence.keywordMatched}&quot;
+                            </span>
+                          )}
+                          {/* Avisos sobre tx existente que será substituída no Parear */}
+                          {(c.existingTxCategoryName || c.existingTxHasNotes) && !isMuted && (
+                            <span className="text-amber-700 dark:text-amber-400 text-[11px]">
+                              ⚠ Tx existente tem
+                              {c.existingTxCategoryName && ` categoria "${c.existingTxCategoryName}"`}
+                              {c.existingTxCategoryName && c.existingTxHasNotes && ' e'}
+                              {c.existingTxHasNotes && ' anotação'} — será preservado no audit
+                            </span>
+                          )}
+                        </div>
                       </div>
                     )
                   })}

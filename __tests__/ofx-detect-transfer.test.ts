@@ -210,3 +210,60 @@ describe('detectarTransferenciasNoPreview — REASON e suggestedAction', () => {
     expect(byId['c'].suggestedAction).toBe('CONFIRM')
   })
 })
+
+describe('detectarTransferenciasNoPreview — snapshots from/to e evidence', () => {
+  it('embarca snapshots completos dos 2 lados (id, accountId, date, amount, description)', () => {
+    const novas = [tx('saida', 'DEBIT', 9100, '2026-06-03', 'PIX ENVIADO')]
+    const outras = [
+      bundle(CONTA_SICOOB, [tx('entrada', 'CREDIT', 9100, '2026-06-03', 'PIX RECEBIDO')]),
+    ]
+    const r = detectarTransferenciasNoPreview(novas, outras, CONTA_IMPORTADA)
+    const c = r.candidates[0]
+    expect(c.from.transactionId).toBe('saida')
+    expect(c.from.accountId).toBe('acc-banrisul')
+    expect(c.from.amount).toBe(9100)
+    expect(c.from.description).toBe('PIX ENVIADO')
+    expect(c.from.date.toISOString().slice(0, 10)).toBe('2026-06-03')
+    expect(c.to.transactionId).toBe('entrada')
+    expect(c.to.accountId).toBe('acc-sicoob')
+    expect(c.to.amount).toBe(9100)
+    expect(c.to.description).toBe('PIX RECEBIDO')
+    expect(c.to.date.toISOString().slice(0, 10)).toBe('2026-06-03')
+  })
+
+  it('evidence: sameDay=true, deltaDays=0, amountExact=true, keyword="PIX"', () => {
+    const novas = [tx('n1', 'DEBIT', 1000, '2026-05-11', 'PIX ENVIADO')]
+    const outras = [bundle(CONTA_SICOOB, [tx('o1', 'CREDIT', 1000, '2026-05-11')])]
+    const r = detectarTransferenciasNoPreview(novas, outras, CONTA_IMPORTADA)
+    expect(r.candidates[0].evidence).toEqual({
+      sameDay: true,
+      deltaDays: 0,
+      amountExact: true,
+      keywordMatched: 'PIX',
+    })
+  })
+
+  it('evidence MEDIUM sem keyword: sameDay=false, deltaDays=1, keywordMatched=null', () => {
+    const novas = [tx('n1', 'DEBIT', 1000, '2026-05-11')]
+    const outras = [bundle(CONTA_SICOOB, [tx('o1', 'CREDIT', 1000, '2026-05-12')])]
+    const r = detectarTransferenciasNoPreview(novas, outras, CONTA_IMPORTADA)
+    expect(r.candidates[0].evidence).toEqual({
+      sameDay: false,
+      deltaDays: 1,
+      amountExact: true,
+      keywordMatched: null,
+    })
+  })
+
+  it('CREDIT do preview vira "to" (entrada) — direção independe de quem é preview', () => {
+    const novas = [tx('credit-importando', 'CREDIT', 500, '2026-06-03', 'PIX')]
+    const outras = [bundle(CONTA_SICOOB, [tx('debit-existente', 'DEBIT', 500, '2026-06-03')])]
+    const r = detectarTransferenciasNoPreview(novas, outras, CONTA_IMPORTADA)
+    const c = r.candidates[0]
+    // Saída = DEBIT (a existente do sicoob); Entrada = CREDIT (a do preview banrisul)
+    expect(c.from.transactionId).toBe('debit-existente')
+    expect(c.from.accountId).toBe('acc-sicoob')
+    expect(c.to.transactionId).toBe('credit-importando')
+    expect(c.to.accountId).toBe('acc-banrisul')
+  })
+})

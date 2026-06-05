@@ -37,6 +37,23 @@ export interface AccountTransactionsBundle {
 export type ConfidenceLevel = 'HIGH' | 'MEDIUM'
 export type SuggestedAction = 'AUTO_PAIR' | 'CONFIRM' | 'IGNORE'
 
+// Snapshot dos 2 lados pra UI mostrar lado-a-lado (data/valor/descrição completos).
+export interface TransferSideSnapshot {
+  transactionId: string
+  accountId: string
+  date: Date
+  amount: number
+  description: string
+}
+
+// Evidência granular (substitui parsing da string `reason` na UI).
+export interface TransferEvidence {
+  sameDay: boolean
+  deltaDays: number
+  amountExact: boolean // sempre true hoje (já filtrado antes), mas explícito p/ UI
+  keywordMatched: string | null // 'PIX' | 'TED' | 'TRANSF...' | null
+}
+
 export interface TransferCandidate {
   fromTransactionId: string
   toTransactionId: string
@@ -46,6 +63,10 @@ export interface TransferCandidate {
   confidenceLevel: ConfidenceLevel
   reason: string
   suggestedAction: SuggestedAction
+  // Snapshots dos 2 lados (saída + entrada) para card 2-col na UI.
+  from: TransferSideSnapshot
+  to: TransferSideSnapshot
+  evidence: TransferEvidence
 }
 
 export interface DetectTransferResult {
@@ -170,6 +191,26 @@ export function detectarTransferenciasNoPreview(
         confidenceLevel: confidence >= 0.9 ? 'HIGH' : level,
         reason: reasonParts.join(' + '),
         suggestedAction: actionForConfidence(confidence),
+        from: {
+          transactionId: fromTx.id,
+          accountId: fromAccountId,
+          date: fromTx.date,
+          amount: fromTx.amount,
+          description: fromTx.description,
+        },
+        to: {
+          transactionId: toTx.id,
+          accountId: toAccountId,
+          date: toTx.date,
+          amount: toTx.amount,
+          description: toTx.description,
+        },
+        evidence: {
+          sameDay: delta === 0,
+          deltaDays: delta,
+          amountExact: true,
+          keywordMatched: matchedKw,
+        },
       })
     }
   }
