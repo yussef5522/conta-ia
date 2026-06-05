@@ -43,6 +43,11 @@ export interface ClassifyWithLearningInput {
   // Se true E learnPattern=true: aplica regra em TODAS as outras pendentes
   // que casam o padrão (modal "276 similares" com botão "Aplicar todas")
   applyToSimilar: boolean
+  // Sprint UX-bulk-review: lista explícita de IDs similares que o user marcou
+  // na UI. Quando passada (mesmo vazia), SOBRESCREVE a busca server-side por
+  // findSimilarTransactions/STEM. Permite user desmarcar tx estranhas no lote.
+  // Multi-tenant guard preservado via where bankAccount.companyId no updateMany.
+  explicitSimilarTxIds?: string[]
   // Fase 3 Etapa 3 — contexto de sugestão Claude (Camada 3):
   //   - claudeCacheKey: chave do AiClaudeCache que originou a sugestão
   //   - claudeSuggestedCategoryId: categoria que Claude havia sugerido
@@ -158,68 +163,80 @@ export async function classifyWithLearning(
     ruleSnapshot = toRuleSnapshot(upserted)
   }
 
-  // 4. Se applyToSimilar=true E temos regra: busca pendentes similares
+  // 4. Se applyToSimilar=true E temos regra: busca pendentes similares.
+  //    Sprint UX-bulk-review: se explicitSimilarTxIds foi passado, usa
+  //    diretamente (user já filtrou na UI desmarcando algumas).
   let similarApplied = 0
   let similarTxIds: string[] = []
   let stemRule: { id: string; padrao: string } | null = null
   if (input.applyToSimilar && ruleSnapshot) {
-    const candidatas = await fetchPendingCandidates(
-      ctx.company.id,
-      input.transactionId,
-    )
-    const similares = findSimilarTransactions(
-      {
-        baseDescription: base.description,
-        tipoMatch: ruleSnapshot.tipoMatch,
-        candidatas,
-      },
-      input.transactionId,
-    )
-    similarTxIds = similares.map((s) => s.id)
-    similarApplied = similarTxIds.length
+    if (input.explicitSimilarTxIds !== undefined) {
+      // User escolheu explicitamente quais incluir (pode ter desmarcado
+      // outliers). Pula findSimilarTransactions + STEM fallback.
+      similarTxIds = input.explicitSimilarTxIds.filter(
+        (id) => id !== input.transactionId,
+      )
+      similarApplied = similarTxIds.length
+    } else {
+      const candidatas = await fetchPendingCandidates(
+        ctx.company.id,
+        input.transactionId,
+      )
+      const similares = findSimilarTransactions(
+        {
+          baseDescription: base.description,
+          tipoMatch: ruleSnapshot.tipoMatch,
+          candidatas,
+        },
+        input.transactionId,
+      )
+      similarTxIds = similares.map((s) => s.id)
+      similarApplied = similarTxIds.length
 
-    // Sprint 5.0.2.k — STEM FALLBACK: se EXACT/NORMALIZED não pegou nada
-    // (caso típico: "RECEBIMENTO PIX-PIX_CRED 12345... João Vitor"), tenta
-    // substring do stem (remove CPF/CNPJ/IDs/nomes). Cria regra CONTAINS
-    // separada pra próximos imports.
-    if (similarTxIds.length === 0) {
-      const stem = extractDescriptionStem(base.description)
-      if (stem && stem.length >= 4) {
-        const stemUpper = stem.toUpperCase()
-        const stemMatches = candidatas
-          .filter((c) => c.id !== input.transactionId)
-          .filter((c) => c.categoryId === null)
-          .filter((c) => c.type === base.type)
-          .filter((c) => (c.description ?? '').toUpperCase().includes(stemUpper))
-        if (stemMatches.length >= 2) {
-          similarTxIds = stemMatches.map((s) => s.id)
-          similarApplied = similarTxIds.length
+      // Sprint 5.0.2.k — STEM FALLBACK: se EXACT/NORMALIZED não pegou nada
+      // (caso típico: "RECEBIMENTO PIX-PIX_CRED 12345... João Vitor"), tenta
+      // substring do stem (remove CPF/CNPJ/IDs/nomes). Cria regra CONTAINS
+      // separada pra próximos imports. SÓ roda quando explicitSimilarTxIds
+      // não foi passado (user não escolheu manualmente).
+      if (similarTxIds.length === 0) {
+        const stem = extractDescriptionStem(base.description)
+        if (stem && stem.length >= 4) {
+          const stemUpper = stem.toUpperCase()
+          const stemMatches = candidatas
+            .filter((c) => c.id !== input.transactionId)
+            .filter((c) => c.categoryId === null)
+            .filter((c) => c.type === base.type)
+            .filter((c) => (c.description ?? '').toUpperCase().includes(stemUpper))
+          if (stemMatches.length >= 2) {
+            similarTxIds = stemMatches.map((s) => s.id)
+            similarApplied = similarTxIds.length
 
-          // Cria/upsert regra CONTAINS com padrao = stem
-          const containsRule = await prisma.aiLearningRule.upsert({
-            where: {
-              companyId_tipoMatch_padrao: {
+            // Cria/upsert regra CONTAINS com padrao = stem
+            const containsRule = await prisma.aiLearningRule.upsert({
+              where: {
+                companyId_tipoMatch_padrao: {
+                  companyId: ctx.company.id,
+                  tipoMatch: 'CONTAINS',
+                  padrao: stem,
+                },
+              },
+              create: {
                 companyId: ctx.company.id,
                 tipoMatch: 'CONTAINS',
                 padrao: stem,
+                categoryId: input.categoryId,
+                confianca: 1.0,
+                fonte: 'MANUAL',
+                isActive: true,
               },
-            },
-            create: {
-              companyId: ctx.company.id,
-              tipoMatch: 'CONTAINS',
-              padrao: stem,
-              categoryId: input.categoryId,
-              confianca: 1.0,
-              fonte: 'MANUAL',
-              isActive: true,
-            },
-            update: {
-              isActive: true,
-              categoryId: input.categoryId,
-              confianca: 1.0,
-            },
-          })
-          stemRule = { id: containsRule.id, padrao: stem }
+              update: {
+                isActive: true,
+                categoryId: input.categoryId,
+                confianca: 1.0,
+              },
+            })
+            stemRule = { id: containsRule.id, padrao: stem }
+          }
         }
       }
     }

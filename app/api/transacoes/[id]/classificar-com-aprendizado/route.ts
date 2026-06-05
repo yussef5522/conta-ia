@@ -25,6 +25,11 @@ const schema = z.object({
   categoryId: z.string().cuid(),
   learnPattern: z.boolean().default(true),
   applyToSimilar: z.boolean().default(false),
+  // Sprint UX-bulk-review: lista explícita de IDs similares pra aplicar.
+  // Quando passada, sobrescreve a busca server-side (user escolheu na UI quais
+  // entrar no lote, possivelmente desmarcando algumas que viu como estranhas).
+  // Cap 500 alinhado com /similares.
+  similarTxIds: z.array(z.string().cuid()).max(500).optional(),
   // Fase 3 Etapa 3 — contexto sugestão Claude (Camada 3)
   // Quando passados, permite detectar override + invalidar cache do Claude.
   claudeCacheKey: z.string().optional(),
@@ -64,6 +69,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         categoryId: input.categoryId,
         learnPattern: input.learnPattern,
         applyToSimilar: input.applyToSimilar,
+        explicitSimilarTxIds: input.similarTxIds,
         claudeCacheKey: input.claudeCacheKey,
         claudeSuggestedCategoryId: input.claudeSuggestedCategoryId,
       },

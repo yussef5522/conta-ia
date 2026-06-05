@@ -99,8 +99,18 @@ export async function GET(request: NextRequest, { params }: Params) {
       id,
     )
 
-    // Mapa id → date pro preview
+    // Mapa id → {date, bankAccountId} pra preview + items completos.
+    // Sprint UX-bulk-review: items inclui TODAS as similares (cap 500) pra modal
+    // mostrar lista navegável com checkbox em vez de só 5 + "X escondidas".
     const dateMap = new Map(candidatas.map((c) => [c.id, c.date]))
+    const accountIds = Array.from(
+      new Set(candidatas.map((c) => c.bankAccountId).filter((id): id is string => id !== null)),
+    )
+    const accounts = await prisma.bankAccount.findMany({
+      where: { id: { in: accountIds } },
+      select: { id: true, name: true, bankName: true },
+    })
+    const accountMap = new Map(accounts.map((a) => [a.id, a]))
 
     // Sprint 5.0.2.k+l — STEM fallback: se EXACT/NORMALIZED retornaram 0,
     // tenta substring do stem (corta no primeiro número 6+ dígitos).
@@ -160,12 +170,36 @@ export async function GET(request: NextRequest, { params }: Params) {
       date: dateMap.get(t.id),
     }))
 
+    // Sprint UX-bulk-review: items completos (cap 500) com bankAccount nome+banco.
+    // Modal usa pra checkbox individual + busca + detecção de outliers.
+    const ITEMS_CAP = 500
+    const items = finalSimilares.slice(0, ITEMS_CAP).map((t) => {
+      const accInfo = candidatas.find((c) => c.id === t.id)
+      const acc =
+        accInfo && accInfo.bankAccountId
+          ? accountMap.get(accInfo.bankAccountId)
+          : null
+      return {
+        id: t.id,
+        description: t.description,
+        amount: t.amount,
+        type: t.type,
+        date: dateMap.get(t.id),
+        bankAccount: acc
+          ? { name: acc.name, bankName: acc.bankName ?? null }
+          : null,
+      }
+    })
+
     return NextResponse.json({
       total: finalSimilares.length,
       totalAmount: Math.round(totalAmount * 100) / 100,
       tipoMatch: finalTipoMatch,
       padrao: finalPadrao,
       preview,
+      items,
+      itemsCap: ITEMS_CAP,
+      itemsTruncated: finalSimilares.length > ITEMS_CAP,
     })
   } catch (error) {
     return handleApiError(error)
