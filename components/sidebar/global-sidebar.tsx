@@ -95,6 +95,9 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
           onClick={onNavigate}
         />
 
+        {/* Sprint Sidebar-Reorder — ordem segue fluxo de trabalho real:
+            cadastrar contas → conciliar → categorizar → conferir relatório.
+            Bancos virou Cadastro (configura uma vez); Relatórios por último. */}
         <SectionLabel>Financeiro</SectionLabel>
         <SidebarItem
           icon={Clock}
@@ -113,18 +116,13 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
           onClick={onNavigate}
         />
         <SidebarItem
-          icon={Repeat}
-          label="Recorrentes"
-          href={`/recorrentes${empresaQs}`}
-          isActive={pathname.startsWith('/recorrentes')}
+          icon={Link2}
+          label="Conciliação"
+          href="/conciliacao"
+          isActive={pathname.startsWith('/conciliacao')}
           onClick={onNavigate}
-        />
-        <SidebarItem
-          icon={Landmark}
-          label="Bancos"
-          href={`/bancos${empresaQs}`}
-          isActive={pathname.startsWith('/bancos')}
-          onClick={onNavigate}
+          badge={conciliacaoBadge > 0 ? String(conciliacaoBadge) : undefined}
+          badgeTone="neutral"
         />
         <SidebarItem
           icon={Inbox}
@@ -135,31 +133,12 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
           badge={pendentesBadge > 0 ? String(pendentesBadge) : undefined}
           badgeTone="amber"
         />
-        {/* Sprint Unificar Sócios (03/06/2026) — substitui "Pessoas Vinculadas"
-            + "Pontes PJ→PF". 1 item só com 2 abas: Sócios PF | Empresas do Grupo.
-            Privacidade Fatia 4 mantida (queries filtradas por user). */}
-        {currentEmpresaId && (
-          <SidebarItem
-            icon={Users}
-            label="Sócios"
-            href={`/empresas/${currentEmpresaId}/socios`}
-            isActive={
-              /^\/empresas\/[^/]+\/socios(\/|$)/.test(pathname) ||
-              /^\/empresas\/[^/]+\/pontes(\/|$)/.test(pathname) ||
-              pathname.startsWith('/pontes/') ||
-              pathname.startsWith('/pessoas-vinculadas')
-            }
-            onClick={onNavigate}
-          />
-        )}
         <SidebarItem
-          icon={Link2}
-          label="Conciliação"
-          href="/conciliacao"
-          isActive={pathname.startsWith('/conciliacao')}
+          icon={Repeat}
+          label="Recorrentes"
+          href={`/recorrentes${empresaQs}`}
+          isActive={pathname.startsWith('/recorrentes')}
           onClick={onNavigate}
-          badge={conciliacaoBadge > 0 ? String(conciliacaoBadge) : undefined}
-          badgeTone="neutral"
         />
         <SidebarItem
           icon={ArrowLeftRight}
@@ -200,6 +179,13 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
           onClick={onNavigate}
         />
         <SidebarItem
+          icon={Landmark}
+          label="Bancos"
+          href={`/bancos${empresaQs}`}
+          isActive={pathname.startsWith('/bancos')}
+          onClick={onNavigate}
+        />
+        <SidebarItem
           icon={Users}
           label="Clientes"
           href={`/clientes${empresaQs}`}
@@ -220,6 +206,24 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
           isActive={pathname.startsWith('/categorias')}
           onClick={onNavigate}
         />
+        {/* Sprint Unificar Sócios (03/06/2026) — substitui "Pessoas Vinculadas"
+            + "Pontes PJ→PF". 1 item só com 2 abas: Sócios PF | Empresas do Grupo.
+            Privacidade Fatia 4 mantida (queries filtradas por user).
+            Sprint Sidebar-Reorder — movido de Financeiro pra Cadastros. */}
+        {currentEmpresaId && (
+          <SidebarItem
+            icon={Users}
+            label="Sócios"
+            href={`/empresas/${currentEmpresaId}/socios`}
+            isActive={
+              /^\/empresas\/[^/]+\/socios(\/|$)/.test(pathname) ||
+              /^\/empresas\/[^/]+\/pontes(\/|$)/.test(pathname) ||
+              pathname.startsWith('/pontes/') ||
+              pathname.startsWith('/pessoas-vinculadas')
+            }
+            onClick={onNavigate}
+          />
+        )}
 
         <SectionLabel>Inteligência</SectionLabel>
         <SidebarItem
