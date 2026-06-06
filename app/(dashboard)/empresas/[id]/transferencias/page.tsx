@@ -6,11 +6,22 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import { ArrowLeftRight, ArrowRight, Trash2, Filter, X } from 'lucide-react'
+import {
+  ArrowLeftRight,
+  ArrowRight,
+  Trash2,
+  Filter,
+  X,
+  Check,
+  AlertTriangle,
+  Sparkles,
+  Loader2,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import {
   Select,
   SelectContent,
@@ -39,6 +50,39 @@ interface Transferencia {
   notes: string | null
 }
 
+// Sprint Central de Transferências
+interface SugestaoSide {
+  id: string
+  bankAccountId: string
+  bankAccountName: string
+  date: string
+  amount: number
+  description: string
+}
+interface Sugestao {
+  from: SugestaoSide
+  to: SugestaoSide
+  confidence: number
+  evidences: string[]
+}
+interface Sozinha {
+  tx: {
+    id: string
+    bankAccountName: string
+    date: string
+    type: 'CREDIT' | 'DEBIT'
+    amount: number
+    description: string
+  }
+  signals: {
+    hasOwnCnpj: boolean
+    hasOwnName: boolean
+    hasOwnAccountName: boolean
+    hasTransferKeyword: boolean
+  }
+  signalCount: number
+}
+
 interface Paginacao {
   total: number
   page: number
@@ -57,6 +101,13 @@ export default function TransferenciasPage() {
   const [paginacao, setPaginacao] = useState<Paginacao | null>(null)
   const [contas, setContas] = useState<Conta[]>([])
   const [loading, setLoading] = useState(true)
+  // Sprint Central de Transferências — Abas Sugeridas + Sozinhas
+  const [activeTab, setActiveTab] = useState<'pareadas' | 'sugeridas' | 'sozinhas'>('pareadas')
+  const [sugestoes, setSugestoes] = useState<Sugestao[]>([])
+  const [sozinhas, setSozinhas] = useState<Sozinha[]>([])
+  const [loadingSugestoes, setLoadingSugestoes] = useState(false)
+  const [loadingSozinhas, setLoadingSozinhas] = useState(false)
+  const [resolvingId, setResolvingId] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const [modalOpen, setModalOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Transferencia | null>(null)
@@ -153,6 +204,99 @@ export default function TransferenciasPage() {
     setDeleteTarget(null)
   }
 
+  // Sprint Central de Transferências — fetches Sugeridas/Sozinhas (lazy)
+  async function fetchSugestoes() {
+    setLoadingSugestoes(true)
+    try {
+      const res = await fetch(`/api/empresas/${empresaId}/transferencias/sugestoes`)
+      if (res.ok) {
+        const data = await res.json()
+        setSugestoes(data.pairs ?? [])
+      }
+    } finally {
+      setLoadingSugestoes(false)
+    }
+  }
+  async function fetchSozinhas() {
+    setLoadingSozinhas(true)
+    try {
+      const res = await fetch(`/api/empresas/${empresaId}/transferencias/sozinhas`)
+      if (res.ok) {
+        const data = await res.json()
+        setSozinhas(data.lonely ?? [])
+      }
+    } finally {
+      setLoadingSozinhas(false)
+    }
+  }
+
+  async function confirmarSugestao(s: Sugestao) {
+    setResolvingId(s.from.id + s.to.id)
+    try {
+      const res = await fetch(
+        `/api/empresas/${empresaId}/transferencias/sugestoes/confirmar`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fromTxId: s.from.id, toTxId: s.to.id }),
+        },
+      )
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        toast({
+          variant: 'destructive',
+          title: 'Falha',
+          description: body.erro ?? `HTTP ${res.status}`,
+        })
+        return
+      }
+      toast({ title: 'Confirmada', description: 'Par criado como transferência interna.' })
+      // Remove otimista + refresh pareadas
+      setSugestoes((p) => p.filter((x) => !(x.from.id === s.from.id && x.to.id === s.to.id)))
+      fetchTransferencias()
+    } finally {
+      setResolvingId(null)
+    }
+  }
+
+  async function recusarSugestao(s: Sugestao) {
+    setResolvingId(s.from.id + s.to.id)
+    try {
+      const res = await fetch(
+        `/api/empresas/${empresaId}/transferencias/sugestoes/recusar`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fromTxId: s.from.id, toTxId: s.to.id }),
+        },
+      )
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        toast({
+          variant: 'destructive',
+          title: 'Falha',
+          description: body.erro ?? `HTTP ${res.status}`,
+        })
+        return
+      }
+      toast({ title: 'Marcadas como "não é transferência"' })
+      setSugestoes((p) => p.filter((x) => !(x.from.id === s.from.id && x.to.id === s.to.id)))
+    } finally {
+      setResolvingId(null)
+    }
+  }
+
+  // Lazy: só busca quando a aba é aberta pela primeira vez
+  useEffect(() => {
+    if (activeTab === 'sugeridas' && sugestoes.length === 0 && !loadingSugestoes) {
+      void fetchSugestoes()
+    }
+    if (activeTab === 'sozinhas' && sozinhas.length === 0 && !loadingSozinhas) {
+      void fetchSozinhas()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab])
+
   function formatDate(iso: string): string {
     const d = new Date(iso)
     return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
@@ -191,6 +335,21 @@ export default function TransferenciasPage() {
         </Card>
       )}
 
+      {/* Sprint Central de Transferências — Tabs */}
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)} className="space-y-4">
+        <TabsList className="grid w-full max-w-2xl grid-cols-3">
+          <TabsTrigger value="pareadas">
+            Pareadas {paginacao && `(${paginacao.total})`}
+          </TabsTrigger>
+          <TabsTrigger value="sugeridas">
+            Sugeridas {sugestoes.length > 0 && `(${sugestoes.length})`}
+          </TabsTrigger>
+          <TabsTrigger value="sozinhas">
+            Sozinhas {sozinhas.length > 0 && `(${sozinhas.length})`}
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="pareadas" className="space-y-4">
       {/* Filtros */}
       <Card>
         <CardContent className="py-4">
@@ -352,6 +511,189 @@ export default function TransferenciasPage() {
           </div>
         </div>
       )}
+        </TabsContent>
+
+        {/* Aba SUGERIDAS */}
+        <TabsContent value="sugeridas" className="space-y-4">
+          {loadingSugestoes ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground py-8 justify-center">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Procurando candidatas no histórico...
+            </div>
+          ) : sugestoes.length === 0 ? (
+            <Card>
+              <CardContent className="py-10 text-center text-sm text-muted-foreground space-y-2">
+                <Check className="h-6 w-6 mx-auto text-emerald-600" />
+                <p className="font-medium">Sem sugestões pendentes</p>
+                <p className="text-xs max-w-sm mx-auto">
+                  O sistema não encontrou pares de saída + entrada com sinais
+                  fortes (CNPJ próprio, nome da empresa, transferência) no
+                  histórico de 12 meses.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-3">
+              {sugestoes.map((s) => {
+                const isBusy = resolvingId === s.from.id + s.to.id
+                return (
+                  <Card key={s.from.id + s.to.id} className="border-amber-200 dark:border-amber-900">
+                    <CardContent className="p-4 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="h-4 w-4 text-amber-600" />
+                        <span className="text-sm font-semibold">
+                          Possível transferência
+                        </span>
+                        <span className="ml-auto text-xs font-mono bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 px-2 py-0.5 rounded">
+                          Confiança {Math.round(s.confidence * 100)}%
+                        </span>
+                      </div>
+
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {/* SAÍDA */}
+                        <div className="rounded border border-red-200 bg-red-50/40 dark:bg-red-950/20 p-2.5">
+                          <p className="text-[10px] uppercase font-semibold tracking-wide text-red-700 dark:text-red-300">
+                            ↑ Saída · {s.from.bankAccountName}
+                          </p>
+                          <p className="text-sm font-mono tabular-nums text-red-700 dark:text-red-300 mt-1">
+                            −{formatBRL(s.from.amount)}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {formatDate(s.from.date)}
+                          </p>
+                          <p className="text-xs font-mono break-words mt-1" title={s.from.description}>
+                            {s.from.description}
+                          </p>
+                        </div>
+                        {/* ENTRADA */}
+                        <div className="rounded border border-emerald-200 bg-emerald-50/40 dark:bg-emerald-950/20 p-2.5">
+                          <p className="text-[10px] uppercase font-semibold tracking-wide text-emerald-700 dark:text-emerald-300">
+                            ↓ Entrada · {s.to.bankAccountName}
+                          </p>
+                          <p className="text-sm font-mono tabular-nums text-emerald-700 dark:text-emerald-300 mt-1">
+                            +{formatBRL(s.to.amount)}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {formatDate(s.to.date)}
+                          </p>
+                          <p className="text-xs font-mono break-words mt-1" title={s.to.description}>
+                            {s.to.description}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Evidências */}
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                        {s.evidences.map((e) => (
+                          <span key={e} className="flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
+                            <Check className="h-3 w-3" />
+                            {e}
+                          </span>
+                        ))}
+                      </div>
+
+                      <div className="flex gap-2 justify-end">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => recusarSugestao(s)}
+                          disabled={isBusy}
+                        >
+                          Não é transferência
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() => confirmarSugestao(s)}
+                          disabled={isBusy}
+                        >
+                          {isBusy && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
+                          Confirmar como transferência
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* Aba SOZINHAS */}
+        <TabsContent value="sozinhas" className="space-y-4">
+          {loadingSozinhas ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground py-8 justify-center">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Procurando transações com cara de transferência...
+            </div>
+          ) : sozinhas.length === 0 ? (
+            <Card>
+              <CardContent className="py-10 text-center text-sm text-muted-foreground space-y-2">
+                <Check className="h-6 w-6 mx-auto text-emerald-600" />
+                <p className="font-medium">Nenhuma sozinha</p>
+                <p className="text-xs max-w-sm mx-auto">
+                  Toda transação com cara de transferência (CNPJ próprio, nome
+                  da empresa, etc) já tem par ou foi resolvida.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-3">
+              {sozinhas.map((l) => {
+                const isOut = l.tx.type === 'DEBIT'
+                return (
+                  <Card key={l.tx.id} className="border-slate-200 dark:border-slate-800">
+                    <CardContent className="p-4 space-y-2">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap text-xs">
+                            <AlertTriangle className="h-3.5 w-3.5 text-slate-500" />
+                            <span className="font-semibold text-sm">{l.tx.bankAccountName}</span>
+                            <span className="text-muted-foreground">{formatDate(l.tx.date)}</span>
+                            <span className={`px-1.5 py-0 rounded text-[10px] font-semibold uppercase ${isOut ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                              {isOut ? 'Saída' : 'Entrada'}
+                            </span>
+                          </div>
+                          <p className="text-sm font-mono break-words mt-1.5">
+                            {l.tx.description}
+                          </p>
+                        </div>
+                        <span className={`text-sm font-mono font-semibold tabular-nums shrink-0 ${isOut ? 'text-red-600' : 'text-emerald-700'}`}>
+                          {isOut ? '−' : '+'} {formatBRL(l.tx.amount)}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-2 text-[11px] pt-1">
+                        {l.signals.hasOwnCnpj && (
+                          <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
+                            <Check className="h-3 w-3" /> CNPJ próprio
+                          </span>
+                        )}
+                        {l.signals.hasOwnName && (
+                          <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
+                            <Check className="h-3 w-3" /> Nome da empresa
+                          </span>
+                        )}
+                        {l.signals.hasOwnAccountName && (
+                          <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
+                            <Check className="h-3 w-3" /> Nome de outra conta
+                          </span>
+                        )}
+                        {l.signals.hasTransferKeyword && (
+                          <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
+                            <Check className="h-3 w-3" /> Palavra de transferência
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-muted-foreground italic border-t pt-2 mt-1">
+                        Parece transferência interna, mas o outro lado não está no banco. Importe o extrato da conta destino e o sistema casa sozinho.
+                      </p>
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
 
       <NovaTransferenciaModal
         empresaId={empresaId}

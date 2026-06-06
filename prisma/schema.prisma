@@ -256,6 +256,12 @@ model Transaction {
   // Mantido em Fluxo POR CONTA (mostra entrada/saída normalmente).
   transferGroupId String?
 
+  // Sprint Central de Transferências (Detecção Retroativa) — marcado quando
+  // user clica "Não é transferência" num par sugerido pela varredura. A
+  // varredura filtra IS NULL pra não voltar a sugerir o mesmo par. Reversível
+  // via UPDATE direta no DB ou tela administrativa (futuro).
+  transferDismissedAt DateTime?
+
   notes String?
 
   // Classificação automática (FASE 3+4 — IA Contadora)

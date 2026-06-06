@@ -124,6 +124,16 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
           badge={conciliacaoBadge > 0 ? String(conciliacaoBadge) : undefined}
           badgeTone="neutral"
         />
+        {/* Sprint Central de Transferências — sidebar item dedicado */}
+        {currentEmpresaId && (
+          <SidebarItem
+            icon={ArrowLeftRight}
+            label="Transferências"
+            href={`/empresas/${currentEmpresaId}/transferencias`}
+            isActive={/^\/empresas\/[^/]+\/transferencias(\/|$)/.test(pathname) || pathname === '/transferencias'}
+            onClick={onNavigate}
+          />
+        )}
         <SidebarItem
           icon={Inbox}
           label="Pendentes"
