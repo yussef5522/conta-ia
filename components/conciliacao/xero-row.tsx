@@ -24,6 +24,8 @@ import {
   Search,
 } from 'lucide-react'
 import { extractStatementInfo, type KindHint } from '@/lib/conciliacao/parse-ofx-description'
+import { WithdrawalPanel } from '@/components/withdrawals/WithdrawalPanel'
+import type { WithdrawalKind } from '@/lib/withdrawals/suggest-from-description'
 import { FindAndMatchPanel } from './find-and-match-panel'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -80,10 +82,18 @@ interface Props {
   ofx: OfxLine
   empresaId: string
   suggestion: MatchSuggestion | null
+  /** Sprint Retirada-1-Clique: sugestão precomputada pelo page.tsx */
+  withdrawalSuggestion?: {
+    socioId: string
+    socioNome: string
+    suggestedKind: WithdrawalKind
+    strength: 'STRONG' | 'WEAK'
+    reasons: string[]
+  } | null
   onAction: () => void
 }
 
-type Tab = 'MATCH' | 'CREATE' | 'TRANSFER' | 'DISCUSS'
+type Tab = 'MATCH' | 'CREATE' | 'TRANSFER' | 'WITHDRAWAL' | 'DISCUSS'
 
 const MOTIVOS = [
   { id: 'TAXA_BANCO', label: 'Taxa do banco' },
@@ -92,8 +102,9 @@ const MOTIVOS = [
   { id: 'OUTRO', label: 'Outro' },
 ] as const
 
-export function XeroRow({ ofx, empresaId, suggestion, onAction }: Props) {
+export function XeroRow({ ofx, empresaId, suggestion, withdrawalSuggestion, onAction }: Props) {
   const hasMatch = !!suggestion
+  const hasWithdrawalHint = !!withdrawalSuggestion
   const [tab, setTab] = useState<Tab>(hasMatch ? 'MATCH' : 'CREATE')
   const [submitting, setSubmitting] = useState(false)
   const [ignoreOpen, setIgnoreOpen] = useState(false)
@@ -186,9 +197,10 @@ export function XeroRow({ ofx, empresaId, suggestion, onAction }: Props) {
             {/* Tab bar */}
             <div className="flex items-center justify-between border-b">
               <div className="flex">
-                {(['MATCH', 'CREATE', 'TRANSFER', 'DISCUSS'] as Tab[]).map((t) => {
+                {(['MATCH', 'CREATE', 'TRANSFER', 'WITHDRAWAL', 'DISCUSS'] as Tab[]).map((t) => {
                   const active = tab === t
                   const isAutoSuggestion = hasMatch && t === 'MATCH'
+                  const isWithdrawalHint = hasWithdrawalHint && t === 'WITHDRAWAL'
                   return (
                     <button
                       key={t}
@@ -200,9 +212,20 @@ export function XeroRow({ ofx, empresaId, suggestion, onAction }: Props) {
                           : 'border-transparent text-muted-foreground hover:text-foreground'
                       }`}
                     >
-                      {t === 'MATCH' ? 'Match' : t === 'CREATE' ? 'Create' : t === 'TRANSFER' ? 'Transfer' : 'Discuss'}
+                      {t === 'MATCH'
+                        ? 'Match'
+                        : t === 'CREATE'
+                          ? 'Create'
+                          : t === 'TRANSFER'
+                            ? 'Transfer'
+                            : t === 'WITHDRAWAL'
+                              ? '💸 Retirada'
+                              : 'Discuss'}
                       {isAutoSuggestion && (
                         <span className="ml-1 text-emerald-600">✓</span>
+                      )}
+                      {isWithdrawalHint && (
+                        <span className="ml-1 text-amber-600">⚠</span>
                       )}
                     </button>
                   )
@@ -247,6 +270,53 @@ export function XeroRow({ ofx, empresaId, suggestion, onAction }: Props) {
                 />
               )}
               {tab === 'TRANSFER' && <TransferPanel />}
+              {tab === 'WITHDRAWAL' && (
+                ofx.type !== 'DEBIT' ? (
+                  <div className="text-xs text-muted-foreground py-3 text-center">
+                    Retirada de sócio só vale pra SAÍDA (DEBIT).
+                  </div>
+                ) : (
+                  <>
+                    {/* Chip de sugestão visível dentro da aba */}
+                    {withdrawalSuggestion && (
+                      <div
+                        className={`rounded border px-2.5 py-1.5 mb-2 text-xs flex items-start gap-2 ${
+                          withdrawalSuggestion.strength === 'STRONG'
+                            ? 'border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900 text-amber-900 dark:text-amber-200'
+                            : 'border-slate-200 bg-slate-50 dark:bg-slate-900/40 text-slate-700 dark:text-slate-300'
+                        }`}
+                      >
+                        <span>{withdrawalSuggestion.strength === 'STRONG' ? '💡' : '🤔'}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium">
+                            Parece retirada de {withdrawalSuggestion.socioNome}
+                          </p>
+                          <p className="text-[11px] opacity-80">
+                            {withdrawalSuggestion.reasons.join(' · ')} ·
+                            Tipo sugerido: <strong>{withdrawalSuggestion.suggestedKind === 'PRO_LABORE' ? 'Pró-labore' : withdrawalSuggestion.suggestedKind === 'DISTRIBUICAO' ? 'Distribuição' : withdrawalSuggestion.suggestedKind === 'ADIANTAMENTO' ? 'Adiantamento' : withdrawalSuggestion.suggestedKind === 'REEMBOLSO' ? 'Reembolso' : 'Retirada'}</strong> (confirme abaixo)
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                    <WithdrawalPanel
+                      empresaId={empresaId}
+                      pjTransactionId={ofx.id}
+                      pjAmount={Math.abs(ofx.amount)}
+                      pjDescription={ofx.description}
+                      initialSuggestion={
+                        withdrawalSuggestion
+                          ? {
+                              socioId: withdrawalSuggestion.socioId,
+                              suggestedKind: withdrawalSuggestion.suggestedKind,
+                            }
+                          : null
+                      }
+                      onConfirmed={onAction}
+                      onCancel={() => setTab(hasMatch ? 'MATCH' : 'CREATE')}
+                    />
+                  </>
+                )
+              )}
               {tab === 'DISCUSS' && <DiscussPanel />}
             </div>
 

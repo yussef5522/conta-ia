@@ -23,6 +23,9 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { VincularTransferenciaModal } from '@/components/pendentes/VincularTransferenciaModal'
 import { AprenderEAplicarModal } from '@/components/pendentes/AprenderEAplicarModal'
+// Sprint Retirada-1-Clique
+import { WithdrawalPanel } from '@/components/withdrawals/WithdrawalPanel'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
   VendorSuggestionBanner,
   type VendorSuggestion,
@@ -114,6 +117,8 @@ export function PendentesClient({
   const [operandoIds, setOperandoIds] = useState<Set<string>>(new Set())
   // Transação selecionada pra modal "Vincular como transferência" (Sprint 1.7)
   const [vincularBase, setVincularBase] = useState<Transacao | null>(null)
+  // Sprint Retirada-1-Clique
+  const [retiradaTx, setRetiradaTx] = useState<Transacao | null>(null)
   // Fase 3 Etapa 1: transação + categoria pra modal "Aprender e aplicar"
   const [aprenderState, setAprenderState] = useState<
     { tx: Transacao; categoria: Categoria } | null
@@ -944,7 +949,7 @@ export function PendentesClient({
                         <MoreVertical className="h-3.5 w-3.5" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuContent align="end" className="w-64">
                       <DropdownMenuItem
                         onClick={() => setVincularBase(t)}
                         className="gap-2"
@@ -952,6 +957,15 @@ export function PendentesClient({
                         <ArrowLeftRight className="h-4 w-4" />
                         Marcar como transferência interna
                       </DropdownMenuItem>
+                      {t.type === 'DEBIT' && (
+                        <DropdownMenuItem
+                          onClick={() => setRetiradaTx(t)}
+                          className="gap-2"
+                        >
+                          <span className="text-base leading-none">💸</span>
+                          Marcar como retirada de sócio
+                        </DropdownMenuItem>
+                      )}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
@@ -999,6 +1013,31 @@ export function PendentesClient({
           setVincularBase(null)
         }}
       />
+
+      {/* Sprint Retirada-1-Clique — modal pra marcar tx como retirada de sócio */}
+      <Dialog open={!!retiradaTx} onOpenChange={(o) => !o && setRetiradaTx(null)}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span>💸</span>
+              Marcar como retirada de sócio
+            </DialogTitle>
+          </DialogHeader>
+          {retiradaTx && (
+            <WithdrawalPanel
+              empresaId={empresaId}
+              pjTransactionId={retiradaTx.id}
+              pjAmount={Math.abs(retiradaTx.amount)}
+              pjDescription={retiradaTx.description}
+              onConfirmed={() => {
+                setTransacoes((prev) => prev.filter((t) => t.id !== retiradaTx.id))
+                setRetiradaTx(null)
+              }}
+              onCancel={() => setRetiradaTx(null)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
 
       <AprenderEAplicarModal
         open={!!aprenderState}

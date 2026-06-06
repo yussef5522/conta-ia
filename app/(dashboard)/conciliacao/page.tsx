@@ -24,6 +24,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useEmpresa } from '@/lib/contexts/empresa-context'
 import { formatBRL } from '@/lib/format/money'
+import { suggestWithdrawal, type SocioRef } from '@/lib/withdrawals/suggest-from-description'
 import { StatementBalanceHeader } from '@/components/conciliacao/statement-balance-header'
 import { HistoricoTable } from '@/components/conciliacao/historico-table'
 import { BulkDryRunModal } from '@/components/conciliacao/bulk-dry-run-modal'
@@ -153,6 +154,26 @@ function ConciliacaoInner() {
   // Sprint Conciliação-Visual: busca local sem refetch (preserva scroll
   // do update otimista). Filtra ofxTxs por descrição/valor/banco/conta.
   const [busca, setBusca] = useState('')
+
+  // Sprint Retirada-1-Clique: sócios da empresa carregados 1x pra sugestão
+  // visual nos XeroRows (chip "Parece retirada"). Lazy: só se houver empresa.
+  const [socios, setSocios] = useState<SocioRef[]>([])
+  useEffect(() => {
+    if (!empresaId) {
+      setSocios([])
+      return
+    }
+    fetch(`/api/empresas/${empresaId}/withdrawal-context`, {
+      credentials: 'include',
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { socios?: SocioRef[] } | null) => {
+        if (data?.socios) setSocios(data.socios)
+      })
+      .catch(() => {
+        /* silencioso — chip desaparece, restante segue */
+      })
+  }, [empresaId])
 
   useEffect(() => {
     fetch('/api/empresas')
@@ -431,16 +452,24 @@ function ConciliacaoInner() {
               </Card>
             ) : (
               <div className="border rounded-lg bg-card divide-y">
-                {ofxTxsFiltradas.map((t) => (
-                  <div key={t.id} className="px-3">
-                    <XeroRow
-                      ofx={t}
-                      empresaId={empresaId}
-                      suggestion={suggestionByOfxId.get(t.id) ?? null}
-                      onAction={() => removeOfxOptimistic(t.id)}
-                    />
-                  </div>
-                ))}
+                {ofxTxsFiltradas.map((t) => {
+                  // Sugestão de retirada (chip + pré-fill) — só pra DEBIT
+                  const withdrawalSuggestion =
+                    t.type === 'DEBIT' && socios.length > 0
+                      ? suggestWithdrawal(t.description, socios)
+                      : null
+                  return (
+                    <div key={t.id} className="px-3">
+                      <XeroRow
+                        ofx={t}
+                        empresaId={empresaId}
+                        suggestion={suggestionByOfxId.get(t.id) ?? null}
+                        withdrawalSuggestion={withdrawalSuggestion}
+                        onAction={() => removeOfxOptimistic(t.id)}
+                      />
+                    </div>
+                  )
+                })}
               </div>
             )}
           </TabsContent>
