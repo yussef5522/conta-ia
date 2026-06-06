@@ -124,6 +124,15 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
           badge={conciliacaoBadge > 0 ? String(conciliacaoBadge) : undefined}
           badgeTone="neutral"
         />
+        <SidebarItem
+          icon={Inbox}
+          label="Pendentes"
+          href={`/pendentes${empresaQs}`}
+          isActive={pathname.startsWith('/pendentes')}
+          onClick={onNavigate}
+          badge={pendentesBadge > 0 ? String(pendentesBadge) : undefined}
+          badgeTone="amber"
+        />
         {/* Sprint Central de Transferências — sidebar item dedicado */}
         {currentEmpresaId && (
           <SidebarItem
@@ -134,15 +143,6 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
             onClick={onNavigate}
           />
         )}
-        <SidebarItem
-          icon={Inbox}
-          label="Pendentes"
-          href={`/pendentes${empresaQs}`}
-          isActive={pathname.startsWith('/pendentes')}
-          onClick={onNavigate}
-          badge={pendentesBadge > 0 ? String(pendentesBadge) : undefined}
-          badgeTone="amber"
-        />
         <SidebarItem
           icon={Repeat}
           label="Recorrentes"
