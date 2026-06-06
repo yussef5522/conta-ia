@@ -155,6 +155,23 @@ export function SocioDetailClient({ empresaId, empresaNome, socioId }: Props) {
   const [filtroTipo, setFiltroTipo] = useState<BridgeKind | 'todos'>('todos')
   const [filtroPeriodo, setFiltroPeriodo] = useState<PeriodoValue>('tudo')
 
+  // Sprint Retirada-Despesa-PF: update OTIMISTA — atualiza só o card no
+  // estado local em vez de refazer fetch (evita scroll voltar pro topo).
+  const updateBridge = useCallback(
+    (bridgeId: string, partial: Partial<BridgeListItem>) => {
+      setData((prev) => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          suasPontes: prev.suasPontes.map((b) =>
+            b.id === bridgeId ? { ...b, ...partial } : b,
+          ),
+        }
+      })
+    },
+    [],
+  )
+
   const load = useCallback(async () => {
     setLoading(true)
     try {
@@ -377,7 +394,7 @@ export function SocioDetailClient({ empresaId, empresaNome, socioId }: Props) {
               filtroPeriodo={filtroPeriodo}
               setFiltroPeriodo={setFiltroPeriodo}
               onDelete={setDeleteTarget}
-              onRefresh={load}
+              onUpdateBridge={updateBridge}
             />
           )}
         </TabsContent>
@@ -480,7 +497,7 @@ interface RetiradasTabProps {
   filtroPeriodo: PeriodoValue
   setFiltroPeriodo: (v: PeriodoValue) => void
   onDelete: (b: BridgeListItem) => void
-  onRefresh: () => void
+  onUpdateBridge: (bridgeId: string, partial: Partial<BridgeListItem>) => void
 }
 
 function RetiradasTab({
@@ -491,7 +508,7 @@ function RetiradasTab({
   filtroPeriodo,
   setFiltroPeriodo,
   onDelete,
-  onRefresh,
+  onUpdateBridge,
 }: RetiradasTabProps) {
   // Filtra por período + tipo (client-side — universo já é ≤100 itens)
   const filtered = useMemo(() => {
@@ -685,7 +702,7 @@ function RetiradasTab({
                 bridge={b}
                 spendOptions={spendOptionsByProfile[b.profileId] ?? { accounts: [], categories: [] }}
                 onDelete={() => onDelete(b)}
-                onRefresh={onRefresh}
+                onUpdateBridge={onUpdateBridge}
               />
             ))}
           </div>
@@ -699,10 +716,10 @@ interface RetiradaCardProps {
   bridge: BridgeListItem
   spendOptions: SpendOption
   onDelete: () => void
-  onRefresh: () => void
+  onUpdateBridge: (bridgeId: string, partial: Partial<BridgeListItem>) => void
 }
 
-function RetiradaCard({ bridge, spendOptions, onDelete, onRefresh }: RetiradaCardProps) {
+function RetiradaCard({ bridge, spendOptions, onDelete, onUpdateBridge }: RetiradaCardProps) {
   const d = KIND_DEFAULTS[bridge.kind]
   const dateStr = new Date(bridge.date).toLocaleDateString('pt-BR', {
     day: '2-digit',
@@ -794,13 +811,13 @@ function RetiradaCard({ bridge, spendOptions, onDelete, onRefresh }: RetiradaCar
           <SpendInviteForm
             bridge={bridge}
             spendOptions={spendOptions}
-            onRefresh={onRefresh}
+            onUpdateBridge={onUpdateBridge}
           />
         )}
 
         {/* Estado 3: "Agora não" — botão minimalista pra reabrir convite */}
         {!hasSpend && acknowledged && (
-          <SpendDismissedBox bridge={bridge} onRefresh={onRefresh} />
+          <SpendDismissedBox bridge={bridge} onUpdateBridge={onUpdateBridge} />
         )}
       </CardContent>
     </Card>
@@ -844,10 +861,10 @@ function SpendRegisteredBox({ bridge }: { bridge: BridgeListItem }) {
 
 function SpendDismissedBox({
   bridge,
-  onRefresh,
+  onUpdateBridge,
 }: {
   bridge: BridgeListItem
-  onRefresh: () => void
+  onUpdateBridge: (bridgeId: string, partial: Partial<BridgeListItem>) => void
 }) {
   const { toast } = useToast()
   const [busy, setBusy] = useState(false)
@@ -864,7 +881,8 @@ function SpendDismissedBox({
         const j = await res.json().catch(() => ({}))
         throw new Error(j.erro ?? 'Erro ao reabrir')
       }
-      onRefresh()
+      // Update OTIMISTA — só este card, sem recarregar a página
+      onUpdateBridge(bridge.id, { spendAcknowledged: false })
     } catch (err) {
       toast({
         title: 'Erro',
@@ -895,10 +913,10 @@ function SpendDismissedBox({
 interface SpendInviteFormProps {
   bridge: BridgeListItem
   spendOptions: SpendOption
-  onRefresh: () => void
+  onUpdateBridge: (bridgeId: string, partial: Partial<BridgeListItem>) => void
 }
 
-function SpendInviteForm({ bridge, spendOptions, onRefresh }: SpendInviteFormProps) {
+function SpendInviteForm({ bridge, spendOptions, onUpdateBridge }: SpendInviteFormProps) {
   const { toast } = useToast()
 
   // Sugestão por keyword na descrição PJ. Conf ≥ 0.85.
@@ -969,8 +987,22 @@ function SpendInviteForm({ bridge, spendOptions, onRefresh }: SpendInviteFormPro
         const j = await res.json().catch(() => ({}))
         throw new Error(j.erro ?? 'Erro ao criar despesa')
       }
+      const body = (await res.json()) as { spendTransactionId: string; bridgeId: string }
       toast({ title: 'Despesa PF criada', description: formatBRL(valorNum) })
-      onRefresh()
+
+      // Update OTIMISTA — só este card. Lookup local pros nomes/cores
+      // (evita refetch que joga o scroll pro topo).
+      const cat = spendOptions.categories.find((c) => c.id === categoryId)
+      const acc = spendOptions.accounts.find((a) => a.id === bankAccountId)
+      onUpdateBridge(bridge.id, {
+        spendTransactionId: body.spendTransactionId,
+        spendAmount: valorNum,
+        spendDate: new Date(bridge.date),
+        spendCategoryName: cat?.name ?? null,
+        spendCategoryColor: cat?.color ?? null,
+        spendBankAccountName: acc?.name ?? null,
+        spendAcknowledged: false,
+      })
     } catch (err) {
       toast({
         title: 'Erro',
@@ -994,7 +1026,8 @@ function SpendInviteForm({ bridge, spendOptions, onRefresh }: SpendInviteFormPro
         const j = await res.json().catch(() => ({}))
         throw new Error(j.erro ?? 'Erro')
       }
-      onRefresh()
+      // Update OTIMISTA — só este card, sem recarregar
+      onUpdateBridge(bridge.id, { spendAcknowledged: true })
     } catch (err) {
       toast({
         title: 'Erro',
