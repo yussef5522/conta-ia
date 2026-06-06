@@ -63,6 +63,20 @@ export async function deleteBridge(
 
     let pfDeleted = false
     if (input.mode === 'WITH_PF_TX') {
+      // Sprint Retirada-Despesa-PF/saldo-fix: reverte saldo da conta PF
+      // antes de deletar a tx (CREDIT vira decrement). Espelha o increment
+      // feito no createBridge.
+      const pfTx = await tx.personalTransaction.findUnique({
+        where: { id: bridge.pfTransactionId },
+        select: { bankAccountId: true, amount: true, type: true },
+      })
+      if (pfTx?.bankAccountId) {
+        const delta = pfTx.type === 'CREDIT' ? -pfTx.amount : pfTx.amount
+        await tx.personalBankAccount.update({
+          where: { id: pfTx.bankAccountId },
+          data: { balance: { increment: delta } },
+        })
+      }
       await tx.personalTransaction.delete({ where: { id: bridge.pfTransactionId } })
       pfDeleted = true
     }

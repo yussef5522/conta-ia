@@ -210,6 +210,15 @@ export async function createBridge(
         },
       })
 
+      // Sprint Retirada-Despesa-PF/saldo-fix: incrementa balance da conta PF
+      // (a entrada CREDIT precisa refletir no saldo cacheado, igual
+      // createTransaction faz). Sem isso, Saldo Total do dashboard PF
+      // ignora distribuições recebidas via ponte e fica negativo.
+      await tx.personalBankAccount.update({
+        where: { id: input.pfBankAccountId },
+        data: { balance: { increment: pjTx.amount } },
+      })
+
       // 5a. Sprint Retirada-Conciliação-Fix: seta categoryId na tx PJ pra que
       // o filtro Conciliação (categoryId IS NULL) deixe de retornar. Resolve
       // categoria certa por kind (DISTRIBUICAO → "Distribuição de Lucros",
