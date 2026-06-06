@@ -34,6 +34,11 @@ import {
   diagnosticoPermiteBatch,
   type CsvDiagnostico,
 } from '@/lib/csv-import/diagnose-csv'
+// Sprint Reimport-DedupByData: detecta dedup REAL por dado (não por arquivo).
+import {
+  checkBatchAlive,
+  type BatchAliveStats,
+} from '@/lib/excel-import/check-batch-alive'
 
 // Sprint 5.0.2.3 — runtime explícito + maxDuration generoso pra batches grandes.
 // Node runtime é OBRIGATÓRIO (exceljs usa Buffer/fs internamente).
@@ -152,29 +157,80 @@ export async function POST(request: NextRequest, { params }: Params) {
 
     const fileHash = sha256(ab)
 
-    // Idempotência: reupload mesmo arquivo
-    const existing = await prisma.excelImportBatch.findUnique({
+    // Sprint Reimport-DedupByData: ao invés de bloquear por fileHash, calcula
+    // dedup REAL (quantas tx do batch antigo ainda existem). Cenários:
+    //   - ALL_DELETED: reativa o batch (recria staged_rows do arquivo novo,
+    //     status → PENDING_REVIEW). Flow segue normal pro user.
+    //   - PARTIAL: idem ALL_DELETED mas confirm vai dedup automático por
+    //     dedupHash (pular as N já vivas).
+    //   - ALL_ALIVE: idem; user pode prosseguir mas confirm vai pular tudo.
+    // O batch antigo é REUSADO (mesmo batch.id) — preserva @@unique([companyId,
+    // fileHash]) sem mexer em schema.
+    const existingBatch = await prisma.excelImportBatch.findUnique({
       where: { companyId_fileHash: { companyId, fileHash } },
     })
-    if (existing) {
-      // Sprint 5.0.2.3 — retorna fileName + parsed columnMapping pra UI degradar
-      // graciosamente no step DETECT quando duplicate
-      let existingMapping: ColumnMapping | null = null
-      if (existing.columnMapping) {
-        try {
-          existingMapping = JSON.parse(existing.columnMapping) as ColumnMapping
-        } catch {
-          /* ignore — UI já tem fallback */
+
+    let aliveStats: BatchAliveStats | null = null
+    let isReactivation = false
+
+    if (existingBatch) {
+      // Conta dedup REAL: dedupHashes dos staged_rows IMPORTED vs tx vivas.
+      aliveStats = await checkBatchAlive({
+        loadImportedDedupHashes: async () => {
+          const rows = await prisma.stagedPayableRow.findMany({
+            where: { batchId: existingBatch.id, userDecision: 'IMPORTED' },
+            select: { dedupHash: true },
+          })
+          return rows
+            .map((r) => r.dedupHash)
+            .filter((h): h is string => h !== null && h !== undefined)
+        },
+        countAliveTxByDedupHash: async (hashes) =>
+          prisma.transaction.count({
+            where: {
+              bankAccount: { companyId },
+              dedupHash: { in: hashes },
+            },
+          }),
+      })
+
+      // Se o batch existente JÁ ESTÁ em PENDING_REVIEW (não foi confirmado
+      // ainda), só devolve o batch antigo — user pode continuar de onde parou.
+      // Não reprocessa o arquivo (pode estar com edições no review).
+      if (existingBatch.status === 'PENDING_REVIEW') {
+        let existingMapping: ColumnMapping | null = null
+        if (existingBatch.columnMapping) {
+          try {
+            existingMapping = JSON.parse(
+              existingBatch.columnMapping,
+            ) as ColumnMapping
+          } catch {
+            /* ignore */
+          }
         }
+        return NextResponse.json({
+          batchId: existingBatch.id,
+          status: existingBatch.status,
+          duplicate: true,
+          code: 'DUPLICATE_BATCH_PENDING',
+          totalRows: existingBatch.totalRows,
+          fileName: existingBatch.fileName,
+          mapping: existingMapping,
+          reimportInfo: {
+            scenario: aliveStats.scenario,
+            aliveCount: aliveStats.aliveCount,
+            totalImported: aliveStats.totalImported,
+            reactivated: false,
+          },
+        })
       }
-      return NextResponse.json({
-        batchId: existing.id,
-        status: existing.status,
-        duplicate: true,
-        code: 'DUPLICATE_BATCH',
-        totalRows: existing.totalRows,
-        fileName: existing.fileName,
-        mapping: existingMapping,
+
+      // Batch CONFIRMED → vamos reativar (deletar staged_rows antigas +
+      // recriar do arquivo novo). Continua o fluxo normal abaixo, mas marca
+      // pra usar update em vez de create no final.
+      isReactivation = true
+      await prisma.stagedPayableRow.deleteMany({
+        where: { batchId: existingBatch.id },
       })
     }
 
@@ -389,23 +445,44 @@ export async function POST(request: NextRequest, { params }: Params) {
           }
         })
 
-    const batch = await prisma.excelImportBatch.create({
-      data: {
-        companyId,
-        fileName,
-        fileHash,
-        headerHash: parsed.headerHash,
-        totalRows: parsed.rows.length,
-        totalCreditsCents: credits,
-        totalDebitsCents: debits,
-        periodStart: minDate,
-        periodEnd: maxDate,
-        status: 'PENDING_REVIEW',
-        columnMapping: JSON.stringify(mapping),
-        detectConfidence: mapping.confidence,
-        detectCostUsd: 0,
-      },
-    })
+    // Sprint Reimport-DedupByData: na reativação, REUSA o batch.id antigo
+    // (preserva @@unique([companyId, fileHash])) e faz UPDATE em vez de CREATE.
+    // staged_rows antigas já foram deletadas acima; aqui só insere as novas.
+    const batch = isReactivation && existingBatch
+      ? await prisma.excelImportBatch.update({
+          where: { id: existingBatch.id },
+          data: {
+            fileName,
+            headerHash: parsed.headerHash,
+            totalRows: parsed.rows.length,
+            totalCreditsCents: credits,
+            totalDebitsCents: debits,
+            periodStart: minDate,
+            periodEnd: maxDate,
+            status: 'PENDING_REVIEW',
+            importedAt: null,
+            columnMapping: JSON.stringify(mapping),
+            detectConfidence: mapping.confidence,
+            detectCostUsd: 0,
+          },
+        })
+      : await prisma.excelImportBatch.create({
+          data: {
+            companyId,
+            fileName,
+            fileHash,
+            headerHash: parsed.headerHash,
+            totalRows: parsed.rows.length,
+            totalCreditsCents: credits,
+            totalDebitsCents: debits,
+            periodStart: minDate,
+            periodEnd: maxDate,
+            status: 'PENDING_REVIEW',
+            columnMapping: JSON.stringify(mapping),
+            detectConfidence: mapping.confidence,
+            detectCostUsd: 0,
+          },
+        })
 
     await prisma.stagedPayableRow.createMany({
       data: stagedData.map((d) => ({ ...d, batchId: batch.id })),
@@ -414,7 +491,10 @@ export async function POST(request: NextRequest, { params }: Params) {
     console.log(
       `[EXCEL-UPLOAD] company=${companyId} batch=${batch.id} fileName=${fileName} ` +
         `rows=${parsed.rows.length} filtered=${parsed.filteredCount} ` +
-        `mapping_confidence=${mapping.confidence.toFixed(2)}`,
+        `mapping_confidence=${mapping.confidence.toFixed(2)}` +
+        (isReactivation
+          ? ` REACTIVATED scenario=${aliveStats?.scenario} alive=${aliveStats?.aliveCount}/${aliveStats?.totalImported}`
+          : ''),
     )
 
     return NextResponse.json({
@@ -428,6 +508,15 @@ export async function POST(request: NextRequest, { params }: Params) {
       sheetName: parsed.sheetName,
       mapping,
       status: 'PENDING_REVIEW',
+      // Sprint Reimport-DedupByData: info pra UI mostrar banner adequado
+      reimportInfo: aliveStats
+        ? {
+            scenario: aliveStats.scenario,
+            aliveCount: aliveStats.aliveCount,
+            totalImported: aliveStats.totalImported,
+            reactivated: isReactivation,
+          }
+        : null,
     })
   } catch (error) {
     return handleApiError(error)

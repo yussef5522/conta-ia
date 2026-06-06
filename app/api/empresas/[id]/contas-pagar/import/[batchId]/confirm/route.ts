@@ -106,6 +106,28 @@ export async function POST(request: NextRequest, { params }: Params) {
       orderBy: { rowIndex: 'asc' },
     })
 
+    // Sprint Reimport-DedupByData (defesa em profundidade): pré-carrega TODOS
+    // os dedupHashes que já existem em transactions vivas da empresa. No loop,
+    // se row.dedupHash bate, pula sem tentar create. Isso cobre o caso onde
+    // PAYABLE não tem bankAccountId (constraint @@unique([bankAccountId,
+    // dedupHash]) não dispara → P2002 não pega).
+    const dedupHashesNoBatch = rows
+      .map((r) => r.dedupHash)
+      .filter((h): h is string => h !== null && h !== undefined)
+    const existingDedupHashesSet = new Set<string>()
+    if (dedupHashesNoBatch.length > 0) {
+      const existing = await prisma.transaction.findMany({
+        where: {
+          bankAccount: { companyId },
+          dedupHash: { in: dedupHashesNoBatch },
+        },
+        select: { dedupHash: true },
+      })
+      for (const t of existing) {
+        if (t.dedupHash) existingDedupHashesSet.add(t.dedupHash)
+      }
+    }
+
     const t0 = Date.now()
 
     // ─── Wrap completo em $transaction pra rollback atômico ──────────────
@@ -152,6 +174,15 @@ export async function POST(request: NextRequest, { params }: Params) {
           if (action.kind === 'SKIP_NEEDS_REVIEW') {
             needsReviewSkipped++
             skippedNeedsReviewRowIds.push(row.id)
+            continue
+          }
+          // Sprint Reimport-DedupByData: dedup EXPLÍCITO por dado. Se já
+          // existe tx viva com mesmo dedupHash na empresa, pula sem criar.
+          // Cobre o caso ALL_ALIVE/PARTIAL onde user re-importou a planilha
+          // com algumas contas ainda no sistema.
+          if (row.dedupHash && existingDedupHashesSet.has(row.dedupHash)) {
+            duplicateSkipped++
+            skippedDuplicateRowIds.push(row.id)
             continue
           }
           // action.kind === 'PROCEED' — segue criando supplier/employee/category/tx

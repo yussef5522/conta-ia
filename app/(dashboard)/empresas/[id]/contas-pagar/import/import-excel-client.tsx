@@ -36,6 +36,14 @@ interface Props {
 
 type Step = 'UPLOAD' | 'DETECT' | 'REVIEW' | 'CONFIRMED'
 
+// Sprint Reimport-DedupByData
+interface ReimportInfo {
+  scenario: 'NEVER_IMPORTED' | 'ALL_DELETED' | 'PARTIAL' | 'ALL_ALIVE'
+  aliveCount: number
+  totalImported: number
+  reactivated: boolean
+}
+
 interface UploadResponse {
   batchId: string
   fileName?: string
@@ -52,6 +60,9 @@ interface UploadResponse {
     confidence: number
     reasoning: string
   }
+  // Sprint Reimport-DedupByData: presente quando re-upload de planilha que
+  // já foi enviada antes (mesmo fileHash). UI mostra banner explicativo.
+  reimportInfo?: ReimportInfo | null
 }
 
 interface DetectBreakdown {
@@ -616,7 +627,12 @@ export function ImportExcelClient({ empresaId }: Props) {
 
     return (
       <div className="space-y-4">
-        {isDuplicate && (
+        {/* Sprint Reimport-DedupByData: banner por cenário de reimport */}
+        {upload.reimportInfo && (
+          <ReimportBanner info={upload.reimportInfo} />
+        )}
+        {/* Mantém banner antigo só se backend não retornou reimportInfo */}
+        {isDuplicate && !upload.reimportInfo && (
           <div className="rounded-md border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/20 px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
             ⚠️ Esta planilha já foi enviada antes. Retomando o batch existente
             (você pode confirmar de novo — duplicatas vão ser puladas automaticamente).
@@ -1279,4 +1295,58 @@ function CsvDiagnosticDetail({ diag }: { diag: CsvDiagnosticoUI }) {
       </p>
     </div>
   )
+}
+
+// ============================================================================
+// Sprint Reimport-DedupByData — ReimportBanner
+// 4 cenários de re-upload de planilha que já passou por aqui:
+//   NEVER_IMPORTED — havia batch antigo mas zero linhas viraram tx (cancelado)
+//   ALL_DELETED    — todas N foram criadas E todas foram deletadas no /CAP
+//   PARTIAL        — algumas vivas, algumas excluídas
+//   ALL_ALIVE      — todas as N continuam no sistema
+// ============================================================================
+
+function ReimportBanner({ info }: { info: ReimportInfo }) {
+  if (info.scenario === 'ALL_DELETED') {
+    return (
+      <div className="rounded-md border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/20 px-4 py-3 text-sm flex items-start gap-2">
+        <Check className="h-4 w-4 text-emerald-600 mt-0.5 shrink-0" />
+        <div className="text-emerald-900 dark:text-emerald-200">
+          <strong>Importação liberada.</strong> Você importou esta planilha
+          antes ({info.totalImported} contas) mas todas foram excluídas. Vou
+          reimportar do zero — as {info.totalImported} entram normais.
+        </div>
+      </div>
+    )
+  }
+  if (info.scenario === 'PARTIAL') {
+    return (
+      <div className="rounded-md border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/20 px-4 py-3 text-sm flex items-start gap-2">
+        <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+        <div className="text-amber-900 dark:text-amber-200">
+          <strong>
+            {info.aliveCount} de {info.totalImported}
+          </strong>{' '}
+          contas dessa planilha já estão no sistema (não foram excluídas). Vou
+          pular essas {info.aliveCount} automaticamente — só importo as{' '}
+          {info.totalImported - info.aliveCount} restantes.
+        </div>
+      </div>
+    )
+  }
+  if (info.scenario === 'ALL_ALIVE') {
+    return (
+      <div className="rounded-md border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 px-4 py-3 text-sm flex items-start gap-2">
+        <AlertTriangle className="h-4 w-4 text-slate-600 mt-0.5 shrink-0" />
+        <div className="text-slate-900 dark:text-slate-200">
+          <strong>Esta planilha já está 100% importada.</strong> As{' '}
+          {info.totalImported} contas continuam no sistema. Se confirmar, todas
+          vão ser puladas (dedup automático). Se quer mesmo reimportar, exclua
+          antes em /contas-a-pagar.
+        </div>
+      </div>
+    )
+  }
+  // NEVER_IMPORTED — batch existia mas zero linhas viraram tx; segue normal
+  return null
 }
