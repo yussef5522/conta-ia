@@ -129,10 +129,32 @@ type UploadPhase =
   | 'retrying'
   | 'error'
 
+// Sprint CSV-Encoding: diagnóstico do CSV quando upload falha pra ler
+interface CsvDiagnosticoUI {
+  encoding: string
+  bomDetected: boolean
+  replacementCharsCount: number
+  separator: string
+  separatorLabel: string
+  headers: string[]
+  dataLineCount: number
+  filteredBlankCount: number
+  previewRows: string[][]
+  mapping: {
+    favorecido: string | null
+    valor: string | null
+    vencimento: string | null
+    confidence: number
+  }
+  warnings: string[]
+}
+
 interface UploadError {
   code: string
   // Opcional: serverMessage técnico (mantido pra debug, não exibido cru)
   serverMessage?: string
+  // Sprint CSV-Encoding: diagnóstico estruturado do CSV (quando aplicável)
+  diagnostico?: CsvDiagnosticoUI
 }
 
 export function ImportExcelClient({ empresaId }: Props) {
@@ -197,9 +219,13 @@ export function ImportExcelClient({ empresaId }: Props) {
       })
 
       if (!result.ok || !result.data) {
+        // Sprint CSV-Encoding: extrai diagnostico se backend embarcou (CSV_NO_DATA / EMPTY_FILE / PARSE_FAILED)
+        const data = (result.data as Record<string, unknown> | null) ?? {}
+        const diag = data.diagnostico as CsvDiagnosticoUI | undefined
         setUploadError({
           code: result.errorCode ?? 'INTERNAL_ERROR',
           serverMessage: result.errorMessage,
+          diagnostico: diag,
         })
         setUploadPhase('error')
         return
@@ -747,12 +773,16 @@ export function ImportExcelClient({ empresaId }: Props) {
                   {errInfo.title}
                 </h4>
                 <p className="text-sm text-red-700 dark:text-red-300 mt-0.5">
-                  {errInfo.description}
+                  {uploadError?.serverMessage ?? errInfo.description}
                 </p>
                 <p className="text-[10px] uppercase tracking-wide text-red-600/70 dark:text-red-400/70 mt-1.5 font-mono">
                   cód: {uploadError?.code}
                 </p>
               </div>
+              {/* Sprint CSV-Encoding: diagnóstico estruturado quando backend embarca */}
+              {uploadError?.diagnostico && (
+                <CsvDiagnosticDetail diag={uploadError.diagnostico} />
+              )}
               {errInfo.retryable && (
                 <Button
                   size="sm"
@@ -1153,6 +1183,100 @@ function PendingRowsList({
           )
         })}
       </div>
+    </div>
+  )
+}
+
+// ============================================================================
+// Sprint CSV-Encoding — CsvDiagnosticDetail
+// Mostra encoding/separador/headers/preview/warnings em banner expansível.
+// ============================================================================
+
+function CsvDiagnosticDetail({ diag }: { diag: CsvDiagnosticoUI }) {
+  return (
+    <div className="rounded border border-red-300 dark:border-red-800 bg-white/70 dark:bg-black/20 p-3 space-y-2 text-xs">
+      <div className="flex items-center gap-1.5 text-red-900 dark:text-red-200 font-semibold">
+        <Sparkles className="h-3.5 w-3.5" />
+        Diagnóstico do arquivo
+      </div>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+        <dt className="font-medium text-muted-foreground">Encoding:</dt>
+        <dd className="font-mono">
+          {diag.encoding}
+          {diag.bomDetected && (
+            <span className="ml-1 text-[10px] text-muted-foreground">(BOM)</span>
+          )}
+        </dd>
+        <dt className="font-medium text-muted-foreground">Separador:</dt>
+        <dd>{diag.separatorLabel}</dd>
+        <dt className="font-medium text-muted-foreground">Cabeçalhos lidos:</dt>
+        <dd className="break-words">
+          {diag.headers.length === 0 ? (
+            <span className="italic text-muted-foreground">(nenhum)</span>
+          ) : (
+            diag.headers.join(' | ')
+          )}
+        </dd>
+        <dt className="font-medium text-muted-foreground">Linhas de dado:</dt>
+        <dd className="tabular-nums">
+          {diag.dataLineCount}
+          {diag.filteredBlankCount > 0 && (
+            <span className="ml-1 text-[10px] text-muted-foreground">
+              (+{diag.filteredBlankCount} em branco filtradas)
+            </span>
+          )}
+        </dd>
+        <dt className="font-medium text-muted-foreground">Mapping:</dt>
+        <dd>
+          <span className={diag.mapping.favorecido ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'}>
+            favorecido: {diag.mapping.favorecido ?? '—'}
+          </span>
+          {' · '}
+          <span className={diag.mapping.valor ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'}>
+            valor: {diag.mapping.valor ?? '—'}
+          </span>
+          {' · '}
+          <span className={diag.mapping.vencimento ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'}>
+            vencimento: {diag.mapping.vencimento ?? '—'}
+          </span>
+        </dd>
+      </dl>
+
+      {diag.previewRows.length > 0 && (
+        <div className="border-t pt-2 mt-2">
+          <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wide mb-1">
+            Primeiras linhas lidas
+          </p>
+          <pre className="text-[11px] font-mono overflow-x-auto whitespace-pre-wrap break-words bg-muted/30 p-2 rounded">
+            {diag.previewRows
+              .map((r) => r.join(' | '))
+              .join('\n')}
+          </pre>
+        </div>
+      )}
+
+      {diag.warnings.length > 0 && (
+        <div className="border-t pt-2 mt-2 space-y-1">
+          <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wide">
+            Avisos
+          </p>
+          {diag.warnings.map((w, i) => (
+            <p
+              key={i}
+              className="text-xs text-amber-700 dark:text-amber-300 flex items-start gap-1"
+            >
+              <span className="shrink-0">•</span>
+              <span>{w}</span>
+            </p>
+          ))}
+        </div>
+      )}
+
+      <p className="text-[11px] text-muted-foreground border-t pt-2 mt-2">
+        Esperado: colunas tipo <strong>Favorecido</strong>, <strong>Descrição</strong>,{' '}
+        <strong>Valor</strong>, <strong>Vencimento</strong>. Separador{' '}
+        <code>;</code> ou <code>,</code>.
+      </p>
     </div>
   )
 }

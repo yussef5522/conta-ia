@@ -3035,6 +3035,86 @@ Casos restantes Cacula pra zerar a duplicação completa:
 
 DRE atual: R$ 71.766. Estimado real pós-desdup: ~R$ 63k.
 
+### 05/06/2026 — Hardening UX/segurança em sequência (sessão maratona)
+
+**Contexto:** sessão longa cobrindo 12 frentes de hardening do produto após
+auditoria UX real do Yussef testando contas de teste e CSV próprio. Todas
+shipadas em prod (PM2 ↺ 271 → 279), zero migration, suite 4452 → 4530
+(+78 testes).
+
+| # | Sprint/fix | Commit | Suite |
+|---|---|---|---|
+| 1 | Seletor empresa duplicado em /conciliacao removido (usa WorkspaceSwitcher) | `fc19540` | 4452 |
+| 2 | Card de transferência detectada no import OFX mostra 2 lados completos | `632eeb4` | 4456 |
+| 3 | Conciliar item não joga scroll pro topo (update otimista) | `5da6343` | — |
+| 4 | Modal "aprender e aplicar" com lista completa + checkbox + outliers | `0212c5e` | 4461 |
+| 5 | Visual conciliação nível Mercury/Linear + 2 abas + busca local | `46099b3` | 4482 |
+| 6 | OFX categorizada some da Conciliação (sync Pendentes ↔ Conciliação) | `fd13628` | — |
+| 7 | Badge sidebar bate com aba + zera em workspace PF | `5a7321c` | — |
+| 8 | Badges Pendentes+Conciliação batem com telas (consórcio futuro, ORPHANs) | `d44c434` | — |
+| 9 | Sidebar reordenada por fluxo de trabalho (Bancos vira Cadastro) | `0d90c17` | — |
+| 10 | Rate limit por (IP+email) + backoff progressivo + reset OK | `5c90366` | 4502 |
+| 11 | Import Excel: nunca pular linha em silêncio + 3 ações por pendente | `cdb717e` | 4513 |
+| 12 | CSV import: detecção encoding (UTF-8/ANSI/UTF-16) + separador TAB + diagnóstico | hoje | 4530 |
+
+**Highlights do dia:**
+
+**#10 Rate limit (Sprint Rate-Limit-Login):** Yussef ficou travado 7min
+após errar senha 2-3x. Filtro por IP só vazava entre emails — família/NAT
+travavam-se mútuo. Refatorei pra (IP+email) com backoff progressivo
+(1-3=0s, 4=30s, 5=60s, 6=180s, 7+=300s teto) + guarda IP 20/15min +
+reset no login OK + UI link "Esqueci senha" amber após 2 falhas. Política
+fail-open em qualquer exceção: rate limit NUNCA bloqueia login legítimo.
+Smoke 5/5 com IP forjado `192.0.2.1` + emails `@test.invalid`.
+
+**#11 Import transparência (Sprint Import-Transparência):** Yussef importou
+38 contas, sistema disse 35 — 3 sumiram em silêncio (`NEEDS_REVIEW` por
+`favorecidoConfidence < 0.7`). Pior: `stagedPayableRow.deleteMany` após
+confirm apagava evidência. Fix sem migration reusando `userDecision`:
+confirm NÃO deleta mais, marca outcome (`IMPORTED`/`NEEDS_REVIEW`/`EXCLUDE`),
+response ganha `skippedRows[]` detalhado, novo endpoint `resolve-row`
+com 3 ações por linha (IMPORT/IMPORT_EDITED/EXCLUDE), UI com tiles
+"Importadas · Excluídas por você · Puladas pelo sistema" + lista de
+pendentes editáveis inline. Badge âmbar `⚠ Precisa decisão` preventivo
+na review.
+
+**#12 CSV encoding (Sprint CSV-Encoding):** CSV BR exportado do Excel deu
+"batch sem linhas". Causa raiz: `Buffer.toString('utf8')` quebra
+Windows-1252 (ANSI BR padrão) — acentos viram U+FFFD → mapping não acha
+"Descrição" etc. Fix:
+- `lib/csv-import/decode-bytes.ts`: detecção via BOM (UTF-8/UTF-16 LE/BE)
+  + heurística >1% replacement chars → Windows-1252
+- `parse-csv.ts`: `detectSeparator` ganha TAB (vence só com maioria
+  absoluta pra evitar falso positivo)
+- `lib/csv-import/diagnose-csv.ts`: orquestrador puro retorna
+  `{encoding, separator, headers, dataLineCount, previewRows, mapping,
+  warnings}` em pt-BR
+- `upload/route.ts` substitui decode raw por diagnose; quando
+  `dataLineCount === 0`, retorna 422 `CSV_NO_DATA` com diagnóstico
+  embarcado no body
+- UI `CsvDiagnosticDetail`: banner expansível com encoding + separador
+  + cabeçalhos lidos + linhas de dado + mapping (verde/vermelho por
+  campo) + preview 3 linhas + lista de warnings
++17 testes com fixtures binárias (latin1/utf16le/ansi BR).
+
+**Lições registradas pra futuras sessões:**
+
+- **Sincronização badge ↔ tela**: badge da sidebar precisa usar
+  EXATAMENTE o mesmo filtro do endpoint da tela. Filtros divergentes
+  geram desinformação de gestão. Padrão: contagem por mesmo `where:`.
+- **Período em fila de trabalho**: default `'todos'` (Xero/QuickBooks
+  pattern). Período vira filtro opcional. Data futura (consórcio
+  pré-datado) sempre conta — é trabalho real pendente.
+- **Pulada em silêncio = bug grave em sistema financeiro.** Toda linha
+  precisa estar em alguma categoria visível (importada / excluída por
+  user / pulada pelo sistema com motivo). Total arquivo sempre bate.
+- **Fail-open em rate limit**: política de segurança é nunca impedir
+  login legítimo por bug do limiter. Try/catch em toda função, qualquer
+  exceção retorna `allowed: true`.
+- **Encoding-aware** em qualquer importação de CSV BR: Excel salva em
+  Windows-1252 por padrão. UTF-8 strict só funciona em arquivos US ou
+  exportados por sistema moderno (web).
+
 ### [Próxima sessão] — preencher
 - Data:
 - O que foi feito:

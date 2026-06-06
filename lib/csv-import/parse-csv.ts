@@ -12,31 +12,35 @@
 // NÃO faz inferência de tipo — tudo vem como string. Caller decide
 // como parsear cada coluna (valor BR, data BR, etc).
 
+export type CsvSeparator = ',' | ';' | '\t'
+
 export interface ParseCsvOptions {
   /**
    * Força separador específico. Se omitido, detecta automaticamente.
-   * CACULA = ';'
+   * CACULA = ';'. Sprint CSV-Encoding: aceita TAB pra TSV exportados.
    */
-  separator?: ',' | ';'
+  separator?: CsvSeparator
 }
 
 export interface ParsedCsv {
   headers: string[]
   rows: string[][]
-  separator: ',' | ';'
+  separator: CsvSeparator
   /** Quantas linhas em branco foram ignoradas */
   linhasIgnoradas: number
 }
 
 /**
  * Detecta separador da primeira linha lendo qual aparece mais.
- * Empate → ';' (padrão BR). Sem nenhum → ',' (RFC default).
+ * Ranking: maior contagem ganha. Empate entre `;` e `,` → `;` (BR padrão).
+ * TAB só vence se aparecer estritamente mais que os 2 outros.
  */
-function detectSeparator(firstLine: string): ',' | ';' {
+function detectSeparator(firstLine: string): CsvSeparator {
   // Conta SÓ separadores fora de aspas pra não confundir com texto
   let inQuote = false
   let comma = 0
   let semi = 0
+  let tab = 0
   for (let i = 0; i < firstLine.length; i++) {
     const ch = firstLine[i]
     if (ch === '"') {
@@ -51,17 +55,20 @@ function detectSeparator(firstLine: string): ',' | ';' {
     if (inQuote) continue
     if (ch === ',') comma++
     else if (ch === ';') semi++
+    else if (ch === '\t') tab++
   }
+  // TAB vence só com maioria absoluta (evita falso positivo em campo livre)
+  if (tab > comma && tab > semi) return '\t'
   if (semi > comma) return ';'
   if (comma > semi) return ','
-  return ';' // empate → BR padrão
+  return ';' // empate ;/, → BR padrão
 }
 
 /**
  * Parser RFC 4180 — stateful character-by-character.
  * Retorna array de linhas, cada linha é array de campos string.
  */
-function parseRfc4180(text: string, separator: ',' | ';'): string[][] {
+function parseRfc4180(text: string, separator: CsvSeparator): string[][] {
   const rows: string[][] = []
   let row: string[] = []
   let field = ''

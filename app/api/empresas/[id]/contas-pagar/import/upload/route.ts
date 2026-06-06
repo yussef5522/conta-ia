@@ -27,6 +27,13 @@ import { parseCsv } from '@/lib/csv-import/parse-csv'
 import { parseCsvAsXlsx } from '@/lib/csv-import/parse-csv-as-xlsx'
 import { isCaculaHeader } from '@/lib/csv-import/detect-cacula'
 import { mapearCacula } from '@/lib/csv-import/map-cacula'
+// Sprint CSV-Encoding: diagnóstico encoding-aware (UTF-8/ANSI/UTF-16) +
+// detecção de separador (TAB) + mensagem de erro rica pra UI.
+import {
+  diagnoseCsv,
+  diagnosticoPermiteBatch,
+  type CsvDiagnostico,
+} from '@/lib/csv-import/diagnose-csv'
 
 // Sprint 5.0.2.3 — runtime explícito + maxDuration generoso pra batches grandes.
 // Node runtime é OBRIGATÓRIO (exceljs usa Buffer/fs internamente).
@@ -47,6 +54,26 @@ function sha256(buf: ArrayBuffer | Buffer): string {
       : (buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer)
   const data = Buffer.from(ab)
   return createHash('sha256').update(data).digest('hex')
+}
+
+/**
+ * Sprint CSV-Encoding: serializa diagnóstico pra response sem expor o texto
+ * inteiro do arquivo (decodedText fica só no server). Preview é trunc 3 linhas.
+ */
+function serializeDiagnostico(d: CsvDiagnostico) {
+  return {
+    encoding: d.encoding,
+    bomDetected: d.bomDetected,
+    replacementCharsCount: d.replacementCharsCount,
+    separator: d.separator,
+    separatorLabel: d.separatorLabel,
+    headers: d.headers,
+    dataLineCount: d.dataLineCount,
+    filteredBlankCount: d.filteredBlankCount,
+    previewRows: d.previewRows,
+    mapping: d.mapping,
+    warnings: d.warnings,
+  }
 }
 
 function pickStr(
@@ -156,11 +183,28 @@ export async function POST(request: NextRequest, { params }: Params) {
     //   - CSV CACULA (header exato) → fast-path em loadCaculaFastPath
     //   - CSV genérico → adapter parseCsvAsXlsx → mesmo flow Excel
     //   - Excel → parseXlsx
+    // Sprint CSV-Encoding: pra CSV, usa diagnose pra detectar encoding +
+    // separador + retornar erro RICO se arquivo for ilegível (em vez de
+    // EMPTY_FILE genérico).
     let parsed
     let caculaResult: ReturnType<typeof mapearCacula> | null = null
+    let csvDiag: CsvDiagnostico | null = null
     try {
       if (isCsv) {
-        const text = Buffer.from(ab).toString('utf8')
+        csvDiag = diagnoseCsv(ab)
+        if (!diagnosticoPermiteBatch(csvDiag)) {
+          return NextResponse.json(
+            {
+              erro: csvDiag.dataLineCount === 0 && csvDiag.headers.length > 0
+                ? 'Achei o cabeçalho mas 0 linhas de dado. Confere se o arquivo tem mesmo dados depois do cabeçalho.'
+                : 'Não consegui ler o arquivo. Verifique se é um CSV válido com pelo menos uma linha de dado.',
+              code: 'CSV_NO_DATA',
+              diagnostico: serializeDiagnostico(csvDiag),
+            },
+            { status: 422 },
+          )
+        }
+        const text = csvDiag.decodedText
         const rawCsv = parseCsv(text)
         if (isCaculaHeader(rawCsv.headers)) {
           // FAST-PATH CACULA: mapping determinístico (skip IA)
@@ -181,6 +225,8 @@ export async function POST(request: NextRequest, { params }: Params) {
             'Não conseguimos ler o arquivo (pode estar protegido por senha ou em formato não suportado)',
           code: 'PARSE_FAILED',
           details: parseErr instanceof Error ? parseErr.message : String(parseErr),
+          // Sprint CSV-Encoding: se conseguimos diagnóstico parcial, embarca
+          diagnostico: csvDiag ? serializeDiagnostico(csvDiag) : undefined,
         },
         { status: 422 },
       )
@@ -191,6 +237,7 @@ export async function POST(request: NextRequest, { params }: Params) {
           erro: 'Planilha sem linhas válidas (após filtrar totais e vazias)',
           code: 'EMPTY_FILE',
           totalSheets: parsed.totalSheets,
+          diagnostico: csvDiag ? serializeDiagnostico(csvDiag) : undefined,
         },
         { status: 400 },
       )
