@@ -10,7 +10,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { ArrowLeft, Plus, Trash2, Lock, ArrowUpFromLine, ArrowDownToLine } from 'lucide-react'
+import {
+  ArrowLeft,
+  Plus,
+  Trash2,
+  Lock,
+  ArrowUpFromLine,
+  ArrowDownToLine,
+  Check,
+  Lightbulb,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -18,6 +27,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
 import { KIND_DEFAULTS } from '@/lib/bridges/kind-defaults'
+import { suggestSpendCategory } from '@/lib/bridges/suggest-spend-category'
 import { BridgeBadge } from '@/components/bridges/BridgeBadge'
 import { BridgeDeleteModal } from '@/components/bridges/BridgeDeleteModal'
 import { NovaPonteForm } from '@/components/bridges/NovaPonteForm'
@@ -85,6 +95,11 @@ interface DetectedTx {
   hasBridge: boolean
 }
 
+interface SpendOption {
+  accounts: { id: string; name: string }[]
+  categories: { id: string; name: string; color: string | null }[]
+}
+
 interface AggregatedData {
   socio: SocioData
   suasPontes: BridgeListItem[]
@@ -94,6 +109,7 @@ interface AggregatedData {
     byKind: Record<string, { count: number; amount: number }>
   }
   txPixDetected: DetectedTx[]
+  spendOptionsByProfile: Record<string, SpendOption>
 }
 
 interface Props {
@@ -355,11 +371,13 @@ export function SocioDetailClient({ empresaId, empresaNome, socioId }: Props) {
           ) : (
             <RetiradasTab
               suasPontes={suasPontes}
+              spendOptionsByProfile={data.spendOptionsByProfile}
               filtroTipo={filtroTipo}
               setFiltroTipo={setFiltroTipo}
               filtroPeriodo={filtroPeriodo}
               setFiltroPeriodo={setFiltroPeriodo}
               onDelete={setDeleteTarget}
+              onRefresh={load}
             />
           )}
         </TabsContent>
@@ -456,20 +474,24 @@ export function SocioDetailClient({ empresaId, empresaNome, socioId }: Props) {
 
 interface RetiradasTabProps {
   suasPontes: BridgeListItem[]
+  spendOptionsByProfile: Record<string, SpendOption>
   filtroTipo: BridgeKind | 'todos'
   setFiltroTipo: (v: BridgeKind | 'todos') => void
   filtroPeriodo: PeriodoValue
   setFiltroPeriodo: (v: PeriodoValue) => void
   onDelete: (b: BridgeListItem) => void
+  onRefresh: () => void
 }
 
 function RetiradasTab({
   suasPontes,
+  spendOptionsByProfile,
   filtroTipo,
   setFiltroTipo,
   filtroPeriodo,
   setFiltroPeriodo,
   onDelete,
+  onRefresh,
 }: RetiradasTabProps) {
   // Filtra por período + tipo (client-side — universo já é ≤100 itens)
   const filtered = useMemo(() => {
@@ -492,6 +514,24 @@ function RetiradasTab({
       total += b.amount
     }
     return { byKind, total, count: filtered.length }
+  }, [filtered])
+
+  // Sprint Retirada-Despesa-PF: estatística "destino" — quantas têm despesa PF
+  const destinoStats = useMemo(() => {
+    let catCount = 0
+    let catAmount = 0
+    let pendCount = 0
+    let pendAmount = 0
+    for (const b of filtered) {
+      if (b.spendTransactionId) {
+        catCount++
+        catAmount += b.spendAmount ?? b.amount
+      } else {
+        pendCount++
+        pendAmount += b.amount
+      }
+    }
+    return { catCount, catAmount, pendCount, pendAmount }
   }, [filtered])
 
   return (
@@ -595,6 +635,37 @@ function RetiradasTab({
             )
           })}
         </div>
+
+        {/* Sprint Retirada-Despesa-PF: Destino do dinheiro */}
+        {summary.count > 0 && (
+          <Card className="mt-3 border-slate-200 bg-gradient-to-br from-slate-50 to-white">
+            <CardContent className="space-y-2 p-3">
+              <p className="flex items-center gap-1 text-xs uppercase text-slate-600">
+                📊 Destino dos {formatBRL(summary.total)} (despesa PF correspondente)
+              </p>
+              <div className="grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+                <div className="flex items-center justify-between rounded border border-emerald-100 bg-emerald-50/60 p-2">
+                  <span className="flex items-center gap-1 text-emerald-700">
+                    <Check className="h-3 w-3" /> Categorizadas
+                  </span>
+                  <span className="font-semibold tabular-nums text-emerald-700">
+                    {formatBRL(destinoStats.catAmount)} ({destinoStats.catCount}/
+                    {summary.count})
+                  </span>
+                </div>
+                <div className="flex items-center justify-between rounded border border-amber-100 bg-amber-50/60 p-2">
+                  <span className="flex items-center gap-1 text-amber-700">
+                    <Lightbulb className="h-3 w-3" /> Pendentes
+                  </span>
+                  <span className="font-semibold tabular-nums text-amber-700">
+                    {formatBRL(destinoStats.pendAmount)} ({destinoStats.pendCount}/
+                    {summary.count})
+                  </span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Lista 2-sided */}
@@ -612,7 +683,9 @@ function RetiradasTab({
               <RetiradaCard
                 key={b.id}
                 bridge={b}
+                spendOptions={spendOptionsByProfile[b.profileId] ?? { accounts: [], categories: [] }}
                 onDelete={() => onDelete(b)}
+                onRefresh={onRefresh}
               />
             ))}
           </div>
@@ -624,16 +697,21 @@ function RetiradasTab({
 
 interface RetiradaCardProps {
   bridge: BridgeListItem
+  spendOptions: SpendOption
   onDelete: () => void
+  onRefresh: () => void
 }
 
-function RetiradaCard({ bridge, onDelete }: RetiradaCardProps) {
+function RetiradaCard({ bridge, spendOptions, onDelete, onRefresh }: RetiradaCardProps) {
   const d = KIND_DEFAULTS[bridge.kind]
   const dateStr = new Date(bridge.date).toLocaleDateString('pt-BR', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
   })
+
+  const hasSpend = !!bridge.spendTransactionId
+  const acknowledged = !!bridge.spendAcknowledged
 
   return (
     <Card>
@@ -660,12 +738,7 @@ function RetiradaCard({ bridge, onDelete }: RetiradaCardProps) {
             >
               Detalhes
             </Link>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onDelete}
-              title="Desfazer"
-            >
+            <Button variant="ghost" size="sm" onClick={onDelete} title="Desfazer">
               <Trash2 className="h-4 w-4 text-red-500" />
             </Button>
           </div>
@@ -709,8 +782,346 @@ function RetiradaCard({ bridge, onDelete }: RetiradaCardProps) {
             </p>
           </div>
         </div>
+
+        {/* === SPRINT RETIRADA-DESPESA-PF === */}
+        {/* Estado 1: despesa JÁ registrada (✓) */}
+        {hasSpend && (
+          <SpendRegisteredBox bridge={bridge} />
+        )}
+
+        {/* Estado 2: convite ativo (sem despesa, sem "Agora não") */}
+        {!hasSpend && !acknowledged && (
+          <SpendInviteForm
+            bridge={bridge}
+            spendOptions={spendOptions}
+            onRefresh={onRefresh}
+          />
+        )}
+
+        {/* Estado 3: "Agora não" — botão minimalista pra reabrir convite */}
+        {!hasSpend && acknowledged && (
+          <SpendDismissedBox bridge={bridge} onRefresh={onRefresh} />
+        )}
       </CardContent>
     </Card>
+  )
+}
+
+// ----------------------------------------------------------------------------
+// Estado 1: Despesa registrada — confirmação compacta
+// ----------------------------------------------------------------------------
+
+function SpendRegisteredBox({ bridge }: { bridge: BridgeListItem }) {
+  const spendDate = bridge.spendDate
+    ? new Date(bridge.spendDate).toLocaleDateString('pt-BR')
+    : '—'
+  return (
+    <div className="mt-3 flex items-center justify-between rounded border border-emerald-200 bg-emerald-50/60 p-2 text-xs">
+      <span className="flex items-center gap-2 text-emerald-800">
+        <Check className="h-4 w-4" />
+        <span className="font-semibold">Despesa PF registrada</span>
+        {bridge.spendCategoryColor && (
+          <span
+            className="inline-block h-2 w-2 rounded-full"
+            style={{ backgroundColor: bridge.spendCategoryColor }}
+            aria-hidden
+          />
+        )}
+        <span>{bridge.spendCategoryName ?? '—'}</span>
+        <span className="text-emerald-700">
+          · {bridge.spendAmount != null ? formatBRL(bridge.spendAmount) : '—'}
+        </span>
+        <span className="text-emerald-700">· {bridge.spendBankAccountName ?? '—'}</span>
+        <span className="text-emerald-600">· {spendDate}</span>
+      </span>
+    </div>
+  )
+}
+
+// ----------------------------------------------------------------------------
+// Estado 3: "Agora não" — botão pra reabrir convite
+// ----------------------------------------------------------------------------
+
+function SpendDismissedBox({
+  bridge,
+  onRefresh,
+}: {
+  bridge: BridgeListItem
+  onRefresh: () => void
+}) {
+  const { toast } = useToast()
+  const [busy, setBusy] = useState(false)
+
+  async function reabrir() {
+    setBusy(true)
+    try {
+      const res = await fetch(`/api/pontes/${bridge.id}/spend`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ acknowledged: false }),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.erro ?? 'Erro ao reabrir')
+      }
+      onRefresh()
+    } catch (err) {
+      toast({
+        title: 'Erro',
+        description: (err as Error).message,
+        variant: 'destructive',
+      })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="mt-3 flex items-center justify-between rounded border border-slate-200 bg-slate-50/60 p-2 text-xs">
+      <span className="text-slate-600">
+        Convite ocultado. Tem despesa correspondente?
+      </span>
+      <Button variant="link" size="sm" disabled={busy} onClick={reabrir} className="h-auto p-0 text-xs">
+        Categorizar
+      </Button>
+    </div>
+  )
+}
+
+// ----------------------------------------------------------------------------
+// Estado 2: Convite — form inline com sugestão por keyword
+// ----------------------------------------------------------------------------
+
+interface SpendInviteFormProps {
+  bridge: BridgeListItem
+  spendOptions: SpendOption
+  onRefresh: () => void
+}
+
+function SpendInviteForm({ bridge, spendOptions, onRefresh }: SpendInviteFormProps) {
+  const { toast } = useToast()
+
+  // Sugestão por keyword na descrição PJ. Conf ≥ 0.85.
+  const suggestion = useMemo(
+    () => suggestSpendCategory(bridge.pjDescription ?? null),
+    [bridge.pjDescription],
+  )
+
+  // Match no nome (case-insensitive) com as categorias EXPENSE do perfil.
+  // Se a categoria sugerida não existir no perfil (não criada/desativada),
+  // dropdown fica vazio — user escolhe.
+  const suggestedCategoryId = useMemo(() => {
+    if (!suggestion) return ''
+    const lc = suggestion.categoryName.toLowerCase()
+    const found = spendOptions.categories.find((c) => c.name.toLowerCase() === lc)
+    return found?.id ?? ''
+  }, [suggestion, spendOptions.categories])
+
+  // Conta PF default = MESMA da entrada (decisão 5 Yussef)
+  const defaultBankAccountId = bridge.pfBankAccountId ?? spendOptions.accounts[0]?.id ?? ''
+
+  // Descrição: "<Categoria sugerida> — <descrição PJ>" (decisão 6 Yussef)
+  // Atualiza quando user troca categoria.
+  const initialDescription = useMemo(() => {
+    const pjDesc = bridge.pjDescription ?? ''
+    if (suggestion) return `${suggestion.categoryName} — ${pjDesc}`.trim()
+    return pjDesc
+  }, [bridge.pjDescription, suggestion])
+
+  const [categoryId, setCategoryId] = useState(suggestedCategoryId)
+  const [bankAccountId, setBankAccountId] = useState(defaultBankAccountId)
+  const [amount, setAmount] = useState(String(bridge.amount.toFixed(2)))
+  const [description, setDescription] = useState(initialDescription)
+  const [busy, setBusy] = useState(false)
+
+  const noAccounts = spendOptions.accounts.length === 0
+  const noCategories = spendOptions.categories.length === 0
+
+  async function criar() {
+    const valorNum = Number(amount.replace(',', '.'))
+    if (!Number.isFinite(valorNum) || valorNum <= 0) {
+      toast({ title: 'Valor inválido', variant: 'destructive' })
+      return
+    }
+    if (!categoryId) {
+      toast({ title: 'Escolha uma categoria', variant: 'destructive' })
+      return
+    }
+    if (!bankAccountId) {
+      toast({ title: 'Escolha uma conta PF', variant: 'destructive' })
+      return
+    }
+
+    setBusy(true)
+    try {
+      const res = await fetch(`/api/pontes/${bridge.id}/spend`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: valorNum,
+          date: new Date(bridge.date).toISOString(),
+          description: description.trim() || 'Despesa',
+          bankAccountId,
+          categoryId,
+        }),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.erro ?? 'Erro ao criar despesa')
+      }
+      toast({ title: 'Despesa PF criada', description: formatBRL(valorNum) })
+      onRefresh()
+    } catch (err) {
+      toast({
+        title: 'Erro',
+        description: (err as Error).message,
+        variant: 'destructive',
+      })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function agoraNao() {
+    setBusy(true)
+    try {
+      const res = await fetch(`/api/pontes/${bridge.id}/spend`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ acknowledged: true }),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.erro ?? 'Erro')
+      }
+      onRefresh()
+    } catch (err) {
+      toast({
+        title: 'Erro',
+        description: (err as Error).message,
+        variant: 'destructive',
+      })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // Empty state: perfil sem contas OU sem categorias EXPENSE
+  if (noAccounts || noCategories) {
+    return (
+      <div className="mt-3 rounded border border-amber-200 bg-amber-50/60 p-3 text-xs">
+        <p className="mb-1 flex items-center gap-1 font-semibold text-amber-900">
+          <Lightbulb className="h-3 w-3" />
+          Esse dinheiro já foi gasto?
+        </p>
+        <p className="text-amber-800">
+          {noAccounts && (
+            <>
+              Você não tem conta cadastrada no perfil PF.{' '}
+              <Link
+                href={`/perfis/${bridge.profileId}/contas/nova`}
+                className="font-medium underline"
+              >
+                Criar conta PF
+              </Link>
+              .
+            </>
+          )}
+          {noCategories && !noAccounts && (
+            <>Você não tem categorias de despesa no perfil PF.</>
+          )}
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-3 rounded border border-sky-200 bg-sky-50/40 p-3">
+      <p className="mb-2 flex items-center gap-1 text-xs font-semibold text-sky-900">
+        <Lightbulb className="h-3 w-3" />
+        Esse dinheiro já foi gasto? Registrar a despesa no seu PF:
+      </p>
+      {suggestion && suggestedCategoryId && (
+        <p className="mb-2 text-[10px] text-sky-700">
+          ✨ Sugestão: <strong>{suggestion.categoryName}</strong> (
+          {Math.round(suggestion.confidence * 100)}% — &ldquo;
+          {suggestion.matchedKeyword}&rdquo;)
+        </p>
+      )}
+
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <label className="block text-[10px] uppercase text-slate-600">
+          Categoria
+          <select
+            value={categoryId}
+            onChange={(e) => setCategoryId(e.target.value)}
+            className="mt-1 block w-full rounded border border-slate-300 bg-white p-1.5 text-xs"
+          >
+            <option value="">Escolha…</option>
+            {spendOptions.categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block text-[10px] uppercase text-slate-600">
+          Conta PF
+          <select
+            value={bankAccountId}
+            onChange={(e) => setBankAccountId(e.target.value)}
+            className="mt-1 block w-full rounded border border-slate-300 bg-white p-1.5 text-xs"
+          >
+            {spendOptions.accounts.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block text-[10px] uppercase text-slate-600">
+          Valor (R$)
+          <input
+            type="number"
+            step="0.01"
+            min="0.01"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            className="mt-1 block w-full rounded border border-slate-300 bg-white p-1.5 text-xs tabular-nums"
+          />
+        </label>
+        <label className="block text-[10px] uppercase text-slate-600 sm:col-span-1">
+          Descrição
+          <input
+            type="text"
+            maxLength={200}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            className="mt-1 block w-full rounded border border-slate-300 bg-white p-1.5 text-xs"
+          />
+        </label>
+      </div>
+
+      <div className="mt-3 flex items-center justify-end gap-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={agoraNao}
+          disabled={busy}
+          className="text-xs"
+        >
+          Agora não
+        </Button>
+        <Button
+          size="sm"
+          onClick={criar}
+          disabled={busy || !categoryId || !bankAccountId}
+          className="bg-sky-600 text-xs text-white hover:bg-sky-700"
+        >
+          {busy ? 'Criando…' : 'Criar despesa no PF'}
+        </Button>
+      </div>
+    </div>
   )
 }
 

@@ -56,6 +56,9 @@ export type BridgeErrorCode =
   | 'NO_ACCESS_PF'         // 403 — sem OWNER no perfil
   | 'BRIDGE_NOT_FOUND'     // 404 — id inexistente OU privacidade (não revela)
   | 'INVALID_MODE'         // 400 — mode de delete fora do enum
+  // Sprint Retirada-Despesa-PF
+  | 'SPEND_ALREADY_LINKED' // 409 — bridge já tem spendTransactionId
+  | 'SPEND_INVALID_TYPE'   // 400 — tipo da tx PF de despesa deve ser DEBIT
 
 export class BridgeError extends Error {
   constructor(message: string, readonly code: BridgeErrorCode) {
@@ -111,7 +114,17 @@ export interface BridgeListItem {
   profileId: string
   profileName: string
   pfTransactionId: string
+  pfBankAccountId?: string | null
   pfBankAccountName: string | null
   pfCategoryName?: string | null
   socioPFName: string | null
+  // Sprint Retirada-Despesa-PF
+  spendTransactionId?: string | null
+  spendAcknowledged?: boolean
+  // Quando spendTransactionId não é null
+  spendCategoryName?: string | null
+  spendCategoryColor?: string | null
+  spendBankAccountName?: string | null
+  spendAmount?: number | null
+  spendDate?: Date | null
 }

@@ -83,8 +83,19 @@ export async function GET(
               pfTransaction: {
                 select: {
                   id: true,
+                  bankAccountId: true,
                   bankAccount: { select: { name: true } },
                   category: { select: { name: true } },
+                },
+              },
+              // Sprint Retirada-Despesa-PF — despesa PF vinculada (vínculo opcional)
+              spendTransaction: {
+                select: {
+                  id: true,
+                  amount: true,
+                  date: true,
+                  bankAccount: { select: { name: true } },
+                  category: { select: { name: true, color: true } },
                 },
               },
             },
@@ -107,9 +118,18 @@ export async function GET(
             profileId: b.profileId,
             profileName: b.profile.name,
             pfTransactionId: b.pfTransactionId,
+            pfBankAccountId: b.pfTransaction.bankAccountId,
             pfBankAccountName: b.pfTransaction.bankAccount?.name ?? null,
             pfCategoryName: b.pfTransaction.category?.name ?? null,
             socioPFName: b.socioPF?.nome ?? null,
+            // Sprint Retirada-Despesa-PF
+            spendTransactionId: b.spendTransactionId,
+            spendAcknowledged: b.spendAcknowledged,
+            spendCategoryName: b.spendTransaction?.category?.name ?? null,
+            spendCategoryColor: b.spendTransaction?.category?.color ?? null,
+            spendBankAccountName: b.spendTransaction?.bankAccount?.name ?? null,
+            spendAmount: b.spendTransaction?.amount ?? null,
+            spendDate: b.spendTransaction?.date ?? null,
           }))
 
           totalCount = bridges.length
@@ -150,6 +170,46 @@ export async function GET(
           hasBridge: t.bridge !== null,
         }))
 
+        // Sprint Retirada-Despesa-PF: contas + categorias EXPENSE por perfil
+        // do user (pra o convite ter opções). Só pros perfis que realmente
+        // têm ponte com esse sócio.
+        const profileIdsWithBridges = Array.from(new Set(bridges.map((b) => b.profileId)))
+        const spendOptionsByProfile: Record<
+          string,
+          {
+            accounts: { id: string; name: string }[]
+            categories: { id: string; name: string; color: string | null }[]
+          }
+        > = {}
+        if (profileIdsWithBridges.length > 0) {
+          const [accounts, categories] = await Promise.all([
+            prisma.personalBankAccount.findMany({
+              where: { profileId: { in: profileIdsWithBridges }, isActive: true },
+              select: { id: true, name: true, profileId: true },
+              orderBy: { name: 'asc' },
+            }),
+            prisma.personalCategory.findMany({
+              where: {
+                profileId: { in: profileIdsWithBridges },
+                type: 'EXPENSE',
+                isActive: true,
+              },
+              select: { id: true, name: true, color: true, profileId: true },
+              orderBy: { name: 'asc' },
+            }),
+          ])
+          for (const pid of profileIdsWithBridges) {
+            spendOptionsByProfile[pid] = {
+              accounts: accounts
+                .filter((a) => a.profileId === pid)
+                .map((a) => ({ id: a.id, name: a.name })),
+              categories: categories
+                .filter((c) => c.profileId === pid)
+                .map((c) => ({ id: c.id, name: c.name, color: c.color })),
+            }
+          }
+        }
+
         return {
           socio: {
             id: socio.id,
@@ -166,6 +226,7 @@ export async function GET(
             byKind,
           },
           txPixDetected,
+          spendOptionsByProfile,
         }
       },
       [`socio-aggregated-${companyId}-${socioId}-${userId}`],
