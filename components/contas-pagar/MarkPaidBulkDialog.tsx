@@ -1,9 +1,11 @@
 'use client'
 
 // Sprint 5.0.3.0b — Modal "Marcar N contas como pagas" em lote.
+// Sprint Caixa: adiciona seletor "Pagar com" (opcional) — bancos + Caixa
+// diferenciado por ícone. Se Caixa, backend valida saldo.
 
-import { useEffect, useState } from 'react'
-import { Loader2, AlertCircle } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Loader2, AlertCircle, Wallet, Landmark } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -16,6 +18,13 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/components/ui/use-toast'
+
+interface ContaPagamento {
+  id: string
+  name: string
+  accountType: string
+  balance: number
+}
 
 interface Props {
   open: boolean
@@ -46,17 +55,37 @@ export function MarkPaidBulkDialog({
   const [date, setDate] = useState(todayISO())
   const [loading, setLoading] = useState(false)
   const [blockedCount, setBlockedCount] = useState<number | null>(null)
+  // Sprint Caixa — seletor "Pagar com" (opcional)
+  const [contas, setContas] = useState<ContaPagamento[]>([])
+  const [bankAccountId, setBankAccountId] = useState<string>('')
+  const [insufficientError, setInsufficientError] = useState<string | null>(null)
 
   useEffect(() => {
     if (open) {
       setDate(todayISO())
       setBlockedCount(null)
+      setBankAccountId('')
+      setInsufficientError(null)
+      // Busca contas da empresa pra popular o select
+      fetch(`/api/contas-bancarias?empresaId=${empresaId}`, {
+        credentials: 'include',
+      })
+        .then((r) => (r.ok ? r.json() : { contas: [] }))
+        .then((d) => setContas((d.contas ?? []) as ContaPagamento[]))
+        .catch(() => setContas([]))
     }
-  }, [open])
+  }, [open, empresaId])
+
+  const selectedConta = useMemo(
+    () => contas.find((c) => c.id === bankAccountId) ?? null,
+    [contas, bankAccountId],
+  )
+  const isCash = selectedConta?.accountType === 'CASH'
 
   async function executar() {
     setLoading(true)
     setBlockedCount(null)
+    setInsufficientError(null)
     try {
       const res = await fetch(
         `/api/empresas/${empresaId}/contas-pagar/bulk`,
@@ -68,6 +97,7 @@ export function MarkPaidBulkDialog({
             action: 'mark_paid',
             transactionIds,
             paymentDate: date,
+            ...(bankAccountId ? { bankAccountId } : {}),
           }),
         },
       )
@@ -77,6 +107,11 @@ export function MarkPaidBulkDialog({
         if (data.code === 'BULK_BLOCKED_BY_EFFECTED') {
           setBlockedCount(data.blockedTransactionIds?.length ?? 0)
           onBlocked?.(data.blockedTransactionIds ?? [])
+          return
+        }
+        // Sprint Caixa — saldo insuficiente / cheque especial estourou
+        if (data.code === 'CASH_INSUFFICIENT' || data.code === 'BALANCE_EXCEEDED') {
+          setInsufficientError(data.erro)
           return
         }
         toast({
@@ -136,6 +171,63 @@ export function MarkPaidBulkDialog({
               data-testid="bulk-payment-date"
             />
           </div>
+
+          {/* Sprint Caixa — Pagar com (opcional) */}
+          <div className="space-y-1.5">
+            <Label htmlFor="bulk-pay-account">
+              Pagar com{' '}
+              <span className="font-normal text-muted-foreground">— opcional</span>
+            </Label>
+            <select
+              id="bulk-pay-account"
+              value={bankAccountId}
+              onChange={(e) => {
+                setBankAccountId(e.target.value)
+                setInsufficientError(null)
+              }}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              data-testid="bulk-pay-account"
+            >
+              <option value="">Não definir conta agora</option>
+              <optgroup label="Bancos">
+                {contas
+                  .filter((c) => c.accountType !== 'CASH')
+                  .map((c) => (
+                    <option key={c.id} value={c.id}>
+                      🏦 {c.name} · {c.balance.toFixed(2)}
+                    </option>
+                  ))}
+              </optgroup>
+              <optgroup label="Caixa (dinheiro físico)">
+                {contas
+                  .filter((c) => c.accountType === 'CASH')
+                  .map((c) => (
+                    <option key={c.id} value={c.id}>
+                      💰 {c.name} · {c.balance.toFixed(2)}
+                    </option>
+                  ))}
+              </optgroup>
+            </select>
+            {selectedConta && (
+              <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                {isCash ? (
+                  <Wallet className="h-3 w-3 text-amber-700" />
+                ) : (
+                  <Landmark className="h-3 w-3" />
+                )}
+                {isCash
+                  ? 'Caixa físico — saldo será debitado, não vai pra Conciliação'
+                  : 'Banco — saldo será debitado, não vai pra Conciliação (origem manual)'}
+              </p>
+            )}
+          </div>
+
+          {insufficientError && (
+            <div className="flex items-start gap-2 rounded-md border border-rose-200 bg-rose-50 p-3 text-sm dark:border-rose-900 dark:bg-rose-950/30">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" />
+              <p className="text-rose-900 dark:text-rose-100">{insufficientError}</p>
+            </div>
+          )}
 
           {blockedCount !== null && blockedCount > 0 && (
             <div

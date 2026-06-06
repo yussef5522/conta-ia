@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import { Plus, Landmark, MoreVertical, Pencil, Trash2, ArrowUpRight, ArrowDownRight, ArrowLeftRight, Scale } from 'lucide-react'
+import { Plus, Landmark, MoreVertical, Pencil, Trash2, ArrowUpRight, ArrowDownRight, ArrowLeftRight, Scale, Wallet } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -23,6 +23,7 @@ const TIPO_LABELS: Record<string, string> = {
   CHECKING: 'Corrente',
   SAVINGS: 'Poupança',
   INVESTMENT: 'Investimento',
+  CASH: 'Caixa',
 }
 
 interface Conta {
@@ -33,6 +34,7 @@ interface Conta {
   agency: string | null
   accountNumber: string | null
   accountType: string
+  cashKind: string | null
   balance: number
   isActive: boolean
   allowNegativeBalance: boolean
@@ -154,6 +156,7 @@ export default function ContasPage() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
           {contas.map((conta) => {
+            const isCash = conta.accountType === 'CASH'
             const status = computeBalanceBadgeStatus({
               balance: conta.balance,
               creditLimit: conta.creditLimit,
@@ -161,19 +164,36 @@ export default function ContasPage() {
             })
             const styles = VARIANT_STYLES[status.variant]
             return (
-              <Card key={conta.id} className="group">
+              <Card
+                key={conta.id}
+                className={`group ${isCash ? 'border-amber-200 bg-amber-50/40' : ''}`}
+              >
                 <CardContent className="p-5">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                        <Landmark className="h-5 w-5 text-primary" />
+                      <div
+                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
+                          isCash ? 'bg-amber-100' : 'bg-primary/10'
+                        }`}
+                      >
+                        {isCash ? (
+                          <Wallet className="h-5 w-5 text-amber-700" />
+                        ) : (
+                          <Landmark className="h-5 w-5 text-primary" />
+                        )}
                       </div>
                       <div className="min-w-0">
                         <p className="font-semibold truncate">{conta.name}</p>
                         <p className="text-xs text-muted-foreground">
-                          {conta.bankName ?? 'Banco não informado'}
-                          {conta.agency && ` • Ag. ${conta.agency}`}
-                          {conta.accountNumber && ` • ${conta.accountNumber}`}
+                          {isCash
+                            ? 'Dinheiro físico'
+                            : (
+                                <>
+                                  {conta.bankName ?? 'Banco não informado'}
+                                  {conta.agency && ` • Ag. ${conta.agency}`}
+                                  {conta.accountNumber && ` • ${conta.accountNumber}`}
+                                </>
+                              )}
                         </p>
                       </div>
                     </div>

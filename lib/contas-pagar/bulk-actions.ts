@@ -14,6 +14,11 @@ export const bulkActionSchema = z.discriminatedUnion('action', [
     action: z.literal('mark_paid'),
     transactionIds: z.array(z.string().cuid()).min(1).max(500),
     paymentDate: z.coerce.date(),
+    // Sprint Caixa — conta usada pra pagar (opcional). Se preenchida:
+    //   - tx é vinculada à conta (atualiza balance)
+    //   - se CASH, valida saldo (não permite estourar)
+    //   - sem mudança em "origin" — bulk usa origin existente (EXCEL/MANUAL)
+    bankAccountId: z.string().cuid().optional().nullable(),
   }),
   z.object({
     action: z.literal('delete'),

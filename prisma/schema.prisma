@@ -194,7 +194,17 @@ model BankAccount {
   bankCode      String?
   agency        String?
   accountNumber String?
+  // CHECKING | SAVINGS | CASH
+  // CASH = Conta Caixa (dinheiro físico/cofre) — Sprint Caixa.
+  // Travas: allowNegativeBalance=false, creditLimit=0, sem campos bancários,
+  //   sem importação OFX, não aparece em Conciliação (origin != OFX).
   accountType   String  @default("CHECKING")
+  // Sprint Caixa — subtipo da Conta Caixa pra crescer pro PDV completo no
+  // futuro sem refactor. null em CHECKING/SAVINGS. Em CASH:
+  //   MAIN          — caixa principal (default no MVP)
+  //   PETTY         — fundo fixo / petty cash
+  //   PDV_TERMINAL  — terminal de venda (etapa futura)
+  cashKind      String?
   balance       Float   @default(0)
 
   // Saldo negativo / cheque especial (Sprint 0.5).

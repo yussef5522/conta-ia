@@ -1,7 +1,11 @@
 import { z } from 'zod'
 
-export const TIPOS_CONTA = ['CHECKING', 'SAVINGS', 'INVESTMENT'] as const
+// CASH = Conta Caixa (Sprint Caixa). INVESTMENT legacy ainda aceito.
+export const TIPOS_CONTA = ['CHECKING', 'SAVINGS', 'INVESTMENT', 'CASH'] as const
 export type TipoConta = (typeof TIPOS_CONTA)[number]
+
+export const TIPOS_CASH_KIND = ['MAIN', 'PETTY', 'PDV_TERMINAL'] as const
+export type TipoCashKind = (typeof TIPOS_CASH_KIND)[number]
 
 export const contaBancariaSchema = z.object({
   name: z
@@ -13,6 +17,8 @@ export const contaBancariaSchema = z.object({
   agency: z.string().max(20).optional().or(z.literal('')),
   accountNumber: z.string().max(30).optional().or(z.literal('')),
   accountType: z.enum(TIPOS_CONTA, { required_error: 'Tipo de conta é obrigatório' }),
+  // Sprint Caixa — subtipo do Caixa
+  cashKind: z.enum(TIPOS_CASH_KIND).optional().nullable(),
   balance: z.coerce.number({ invalid_type_error: 'Saldo deve ser um número' }).default(0),
   // Cheque especial (Sprint 0.5 Dia 4)
   allowNegativeBalance: z.coerce.boolean().optional().default(true),

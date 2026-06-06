@@ -9,6 +9,7 @@
 import { NextResponse } from 'next/server'
 import { ZodError } from 'zod'
 import { AuthenticationError, ForbiddenError } from '@/lib/auth/rbac'
+import { CashValidationError } from '@/lib/contas-bancarias/cash-validate'
 
 export function handleApiError(error: unknown): NextResponse {
   if (error instanceof AuthenticationError) {
@@ -19,6 +20,14 @@ export function handleApiError(error: unknown): NextResponse {
     return NextResponse.json(
       { erro: error.message, permission: error.permission },
       { status: 403 },
+    )
+  }
+
+  // Sprint Caixa — trava CASH (400 com code semântico)
+  if (error instanceof CashValidationError) {
+    return NextResponse.json(
+      { erro: error.message, code: error.code },
+      { status: error.status },
     )
   }
 

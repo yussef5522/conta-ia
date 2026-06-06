@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { contaBancariaSchema } from '@/lib/validations/conta-bancaria'
+import {
+  CashValidationError,
+  normalizeAndValidateCashAccount,
+} from '@/lib/contas-bancarias/cash-validate'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { logAudit } from '@/lib/audit'
 import { handleApiError } from '@/lib/api/handle-error'
@@ -103,14 +107,34 @@ export async function POST(request: NextRequest) {
 
     const data = contaBancariaSchema.parse(rest)
 
+    // Sprint Caixa — Trava CASH (força allowNegativeBalance=false,
+    // creditLimit=0, zera campos bancários; rejeita configurações inválidas)
+    const safe = normalizeAndValidateCashAccount({
+      accountType: data.accountType,
+      allowNegativeBalance: data.allowNegativeBalance ?? true,
+      creditLimit: data.creditLimit ?? 0,
+      cashKind: data.cashKind ?? null,
+      bankName: data.bankName || null,
+      bankCode: data.bankCode || null,
+      agency: data.agency || null,
+      accountNumber: data.accountNumber || null,
+      lowBalanceThreshold: data.lowBalanceThreshold ?? null,
+    })
+
     const conta = await prisma.bankAccount.create({
       data: {
-        ...data,
+        name: data.name,
+        balance: data.balance,
         companyId: empresaId,
-        bankName: data.bankName || null,
-        bankCode: data.bankCode || null,
-        agency: data.agency || null,
-        accountNumber: data.accountNumber || null,
+        accountType: safe.accountType,
+        cashKind: safe.cashKind,
+        allowNegativeBalance: safe.allowNegativeBalance,
+        creditLimit: safe.creditLimit,
+        lowBalanceThreshold: safe.lowBalanceThreshold,
+        bankName: safe.bankName,
+        bankCode: safe.bankCode,
+        agency: safe.agency,
+        accountNumber: safe.accountNumber,
       },
     })
 

@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { Wallet } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -16,6 +17,7 @@ const TIPO_LABELS: Record<string, string> = {
   CHECKING: 'Conta Corrente',
   SAVINGS: 'Conta Poupança',
   INVESTMENT: 'Conta Investimento',
+  CASH: 'Caixa (dinheiro físico)',
 }
 
 // Código sentinela para "Outro" — usado só na UI, não pertence à lista canônica.
@@ -66,6 +68,28 @@ export function ContaForm({ empresaId, conta }: ContaFormProps) {
     if (errors[field]) setErrors((p) => ({ ...p, [field]: '' }))
   }
 
+  // Sprint Caixa — quando vira CASH, força travas no client (server também
+  // valida via normalizeAndValidateCashAccount).
+  const isCash = form.accountType === 'CASH'
+  function selectAccountType(v: string) {
+    setForm((p) => ({
+      ...p,
+      accountType: v,
+      // Caixa: zera campos bancários + força allowNegativeBalance=false +
+      // creditLimit=0. UI fica espelhando o backend.
+      ...(v === 'CASH'
+        ? {
+            bankCode: '',
+            bankName: '',
+            agency: '',
+            accountNumber: '',
+            allowNegativeBalance: false,
+            creditLimit: '0',
+          }
+        : {}),
+    }))
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
@@ -110,36 +134,34 @@ export function ContaForm({ empresaId, conta }: ContaFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      <Card>
-        <CardHeader><CardTitle className="text-base">Identificação</CardTitle></CardHeader>
+      <Card className={isCash ? 'border-amber-200 bg-amber-50/40' : undefined}>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            {isCash && <Wallet className="h-4 w-4 text-amber-700" />}
+            Identificação
+          </CardTitle>
+          {isCash && (
+            <p className="text-xs text-amber-800">
+              💰 <strong>Conta Caixa</strong> — dinheiro físico (cofre / gaveta).
+              Sem banco, sem cheque especial, sem importação de OFX.
+            </p>
+          )}
+        </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2 sm:col-span-2">
             <Label htmlFor="name">Nome da Conta <span className="text-destructive">*</span></Label>
-            <Input id="name" placeholder="Ex: Conta Principal Itaú" value={form.name} onChange={(e) => set('name', e.target.value)} />
+            <Input
+              id="name"
+              placeholder={isCash ? 'Ex: Caixa Loja / Cofre' : 'Ex: Conta Principal Itaú'}
+              value={form.name}
+              onChange={(e) => set('name', e.target.value)}
+            />
             {errors.name && <p className="text-xs text-destructive">{errors.name}</p>}
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="bankCode">Banco</Label>
-            <Select value={form.bankCode} onValueChange={(v) => {
-              const banco = BANCOS_BR.find((b) => b.codigo === v)
-              set('bankCode', v)
-              if (banco) set('bankName', banco.nome)
-              else if (v === CODIGO_OUTRO) set('bankName', '')
-            }}>
-              <SelectTrigger id="bankCode"><SelectValue placeholder="Selecione o banco" /></SelectTrigger>
-              <SelectContent>
-                {BANCOS_BR.map((b) => (
-                  <SelectItem key={b.codigo} value={b.codigo}>{b.nome}</SelectItem>
-                ))}
-                <SelectItem value={CODIGO_OUTRO}>Outro</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
+          <div className="space-y-2 sm:col-span-2">
             <Label htmlFor="accountType">Tipo de Conta <span className="text-destructive">*</span></Label>
-            <Select value={form.accountType} onValueChange={(v) => set('accountType', v)}>
+            <Select value={form.accountType} onValueChange={selectAccountType}>
               <SelectTrigger id="accountType"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {TIPOS_CONTA.map((t) => (
@@ -150,15 +172,38 @@ export function ContaForm({ empresaId, conta }: ContaFormProps) {
             {errors.accountType && <p className="text-xs text-destructive">{errors.accountType}</p>}
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="agency">Agência</Label>
-            <Input id="agency" placeholder="0001" value={form.agency} onChange={(e) => set('agency', e.target.value)} />
-          </div>
+          {/* Campos bancários: esconde em CASH (não tem banco) */}
+          {!isCash && (
+            <>
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="bankCode">Banco</Label>
+                <Select value={form.bankCode} onValueChange={(v) => {
+                  const banco = BANCOS_BR.find((b) => b.codigo === v)
+                  set('bankCode', v)
+                  if (banco) set('bankName', banco.nome)
+                  else if (v === CODIGO_OUTRO) set('bankName', '')
+                }}>
+                  <SelectTrigger id="bankCode"><SelectValue placeholder="Selecione o banco" /></SelectTrigger>
+                  <SelectContent>
+                    {BANCOS_BR.map((b) => (
+                      <SelectItem key={b.codigo} value={b.codigo}>{b.nome}</SelectItem>
+                    ))}
+                    <SelectItem value={CODIGO_OUTRO}>Outro</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="accountNumber">Número da Conta</Label>
-            <Input id="accountNumber" placeholder="12345-6" value={form.accountNumber} onChange={(e) => set('accountNumber', e.target.value)} />
-          </div>
+              <div className="space-y-2">
+                <Label htmlFor="agency">Agência</Label>
+                <Input id="agency" placeholder="0001" value={form.agency} onChange={(e) => set('agency', e.target.value)} />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="accountNumber">Número da Conta</Label>
+                <Input id="accountNumber" placeholder="12345-6" value={form.accountNumber} onChange={(e) => set('accountNumber', e.target.value)} />
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
 
@@ -166,18 +211,30 @@ export function ContaForm({ empresaId, conta }: ContaFormProps) {
         <CardHeader><CardTitle className="text-base">Saldo Inicial</CardTitle></CardHeader>
         <CardContent>
           <div className="space-y-2 max-w-xs">
-            <Label htmlFor="balance">Saldo atual (R$)</Label>
-            <Input id="balance" type="number" step="0.01" placeholder="0,00" value={form.balance} onChange={(e) => set('balance', e.target.value)} />
+            <Label htmlFor="balance">
+              {isCash ? 'Dinheiro na gaveta agora (R$)' : 'Saldo atual (R$)'}
+            </Label>
+            <Input
+              id="balance"
+              type="number"
+              step="0.01"
+              min={isCash ? '0' : undefined}
+              placeholder="0,00"
+              value={form.balance}
+              onChange={(e) => set('balance', e.target.value)}
+            />
             <p className="text-xs text-muted-foreground">
-              Saldo atual da conta no banco. Pode ser negativo se estiver usando
-              cheque especial (ex: -5000). Se errar, dá pra corrigir depois pela
-              opção &quot;Ajustar saldo&quot;.
+              {isCash
+                ? 'Quanto tem fisicamente no caixa/cofre nesse momento. Caixa nunca fica negativo.'
+                : 'Saldo atual da conta no banco. Pode ser negativo se estiver usando cheque especial (ex: -5000). Se errar, dá pra corrigir depois pela opção "Ajustar saldo".'}
             </p>
             {errors.balance && <p className="text-xs text-destructive">{errors.balance}</p>}
           </div>
         </CardContent>
       </Card>
 
+      {/* Cheque Especial: NÃO aparece em CASH (Caixa não tem cheque especial) */}
+      {!isCash && (
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Cheque Especial</CardTitle>
@@ -250,6 +307,7 @@ export function ContaForm({ empresaId, conta }: ContaFormProps) {
           </div>
         </CardContent>
       </Card>
+      )}
 
       <div className="flex items-center gap-3 justify-end">
         <Button type="button" variant="outline" onClick={() => router.back()} disabled={loading}>Cancelar</Button>

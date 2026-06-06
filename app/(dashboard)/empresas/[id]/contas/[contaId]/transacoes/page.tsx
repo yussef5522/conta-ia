@@ -125,11 +125,14 @@ export default function TransacoesPage() {
         <Button variant="outline" asChild>
           <Link href={`/empresas/${empresaId}/contas`}>← Contas</Link>
         </Button>
-        <Button variant="outline" asChild>
-          <Link href={`/empresas/${empresaId}/contas/${contaId}/importar`}>
-            <Upload className="mr-2 h-4 w-4" />Importar OFX
-          </Link>
-        </Button>
+        {/* Sprint Caixa: Caixa não tem extrato OFX */}
+        {conta?.accountType !== 'CASH' && (
+          <Button variant="outline" asChild>
+            <Link href={`/empresas/${empresaId}/contas/${contaId}/importar`}>
+              <Upload className="mr-2 h-4 w-4" />Importar OFX
+            </Link>
+          </Button>
+        )}
         <Button asChild>
           <Link href={`/empresas/${empresaId}/contas/${contaId}/transacoes/nova`}>
             <Plus className="mr-2 h-4 w-4" />Novo Lançamento

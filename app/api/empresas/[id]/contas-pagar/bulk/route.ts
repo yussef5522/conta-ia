@@ -130,20 +130,97 @@ export async function POST(request: NextRequest, { params }: Params) {
         )
       }
 
-      const result = await prisma.$transaction(async (tx) => {
-        await tx.transaction.updateMany({
-          where: { id: { in: validation.allowed } },
-          data: {
-            paymentDate: parsed.paymentDate,
-            status: 'RECONCILED',
-            date: parsed.paymentDate,
-            // Bug-fix 28/05/2026: transição PAYABLE → EFFECTED ao marcar como
-            // paga. Antes mantinha PAYABLE+paymentDate (inválido per
-            // lib/lifecycle/index.ts:60-69 e invisível aos relatórios).
-            // Veja docs/sprints/bug-despesas-relatorios-audit.md.
-            lifecycle: 'EFFECTED',
+      // Sprint Caixa — Validação de conta de pagamento (opcional).
+      // Se passada, valida que pertence à empresa, calcula saldo necessário
+      // e (se conta com trava `allowNegativeBalance=false`) bloqueia se
+      // estouraria. Aplica também a conta CASH automaticamente.
+      const allowedTxs = found.filter((t) => validation.allowed.includes(t.id))
+      let payAccount: {
+        id: string
+        balance: number
+        accountType: string
+        allowNegativeBalance: boolean
+        creditLimit: number
+        companyId: string
+      } | null = null
+      if (parsed.bankAccountId) {
+        payAccount = await prisma.bankAccount.findUnique({
+          where: { id: parsed.bankAccountId },
+          select: {
+            id: true,
+            balance: true,
+            accountType: true,
+            allowNegativeBalance: true,
+            creditLimit: true,
+            companyId: true,
           },
         })
+        if (!payAccount || payAccount.companyId !== empresaId) {
+          return NextResponse.json(
+            { erro: 'Conta de pagamento não encontrada nesta empresa', code: 'PAY_ACCOUNT_NOT_FOUND' },
+            { status: 404 },
+          )
+        }
+        // Soma de TODAS as despesas (DEBIT) a sair desta conta
+        const totalDebit = allowedTxs
+          .filter((t) => t.type === 'DEBIT')
+          .reduce((s, t) => s + t.amount, 0)
+        const projected = payAccount.balance - totalDebit
+        const floor = payAccount.allowNegativeBalance ? -payAccount.creditLimit : 0
+        if (projected < floor - 0.005) {
+          const isCash = payAccount.accountType === 'CASH'
+          return NextResponse.json(
+            {
+              erro: isCash
+                ? `Caixa não tem dinheiro suficiente. Saldo atual: ${payAccount.balance.toFixed(2)} · A pagar: ${totalDebit.toFixed(2)} (resultaria em ${projected.toFixed(2)})`
+                : `Pagamento estouraria o limite. Saldo após: ${projected.toFixed(2)} · Mínimo permitido: ${floor.toFixed(2)}`,
+              code: isCash ? 'CASH_INSUFFICIENT' : 'BALANCE_EXCEEDED',
+              projectedBalance: projected,
+              floor,
+            },
+            { status: 422 },
+          )
+        }
+      }
+
+      const result = await prisma.$transaction(async (tx) => {
+        const updateData: {
+          paymentDate: Date
+          status: string
+          date: Date
+          lifecycle: string
+          bankAccountId?: string
+        } = {
+          paymentDate: parsed.paymentDate,
+          status: 'RECONCILED',
+          date: parsed.paymentDate,
+          // Bug-fix 28/05/2026: transição PAYABLE → EFFECTED ao marcar como
+          // paga. Antes mantinha PAYABLE+paymentDate (inválido per
+          // lib/lifecycle/index.ts:60-69 e invisível aos relatórios).
+          // Veja docs/sprints/bug-despesas-relatorios-audit.md.
+          lifecycle: 'EFFECTED',
+        }
+        if (payAccount) updateData.bankAccountId = payAccount.id
+
+        await tx.transaction.updateMany({
+          where: { id: { in: validation.allowed } },
+          data: updateData,
+        })
+
+        // Sprint Caixa — Atualiza balance da conta de pagamento
+        if (payAccount) {
+          const delta = allowedTxs.reduce(
+            (s, t) => s + (t.type === 'DEBIT' ? -t.amount : t.amount),
+            0,
+          )
+          if (delta !== 0) {
+            await tx.bankAccount.update({
+              where: { id: payAccount.id },
+              data: { balance: { increment: delta } },
+            })
+          }
+        }
+
         await logAudit(
           ctx,
           {
@@ -155,6 +232,12 @@ export async function POST(request: NextRequest, { params }: Params) {
               count: validation.allowed.length,
               ids: validation.allowed,
               paymentDate: parsed.paymentDate.toISOString(),
+              ...(payAccount
+                ? {
+                    payBankAccountId: payAccount.id,
+                    payAccountType: payAccount.accountType,
+                  }
+                : {}),
             },
             request,
           },
@@ -165,7 +248,8 @@ export async function POST(request: NextRequest, { params }: Params) {
 
       console.log(
         `[BULK-MARK-PAID] empresa=${empresaId} count=${result.updated} ` +
-          `paymentDate=${parsed.paymentDate.toISOString().slice(0, 10)}`,
+          `paymentDate=${parsed.paymentDate.toISOString().slice(0, 10)}` +
+          (payAccount ? ` payAccount=${payAccount.id} (${payAccount.accountType})` : ''),
       )
 
       return NextResponse.json({
