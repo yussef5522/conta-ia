@@ -2048,6 +2048,8 @@ model PersonalTransaction {
   classifiedByRule  AiLearningRule?      @relation("PfClassifiedByRule", fields: [classifiedByRuleId], references: [id], onDelete: SetNull)
   // Sprint PF Fatia 4 — ponte (1:0..1). Restrict no delete.
   bridge            PJtoPFBridge?        @relation("PfBridge")
+  // Sprint Retirada-Despesa-PF — ponte que aponta pra ESTA tx como despesa (vínculo opcional).
+  bridgeAsSpend     PJtoPFBridge?        @relation("BridgeSpend")
 
   @@index([profileId, date])
   @@index([bankAccountId])
@@ -2334,6 +2336,16 @@ model PJtoPFBridge {
   createdVia  String @default("CREATED_MANUAL")
 
   notes String?
+
+  // === SPRINT RETIRADA-DESPESA-PF ===
+  // Vínculo OPCIONAL: tx PF de DESPESA criada via convite "esse dinheiro
+  // já foi gasto?". Quando preenchido, UI mostra "✓ Despesa PF registrada".
+  // SetNull: se user apaga a despesa, vínculo vira null e convite reaparece.
+  spendTransactionId String?              @unique
+  spendTransaction   PersonalTransaction? @relation("BridgeSpend", fields: [spendTransactionId], references: [id], onDelete: SetNull)
+  // Flag "Agora não" — esconde convite sem criar despesa. User pode
+  // destrancar depois pra ver o convite de novo.
+  spendAcknowledged  Boolean              @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

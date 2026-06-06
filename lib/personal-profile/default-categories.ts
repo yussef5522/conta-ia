@@ -25,6 +25,8 @@ export const PF_DEFAULT_CATEGORIES: readonly PersonalCategoryTemplate[] = [
   { name: 'Transporte', type: 'EXPENSE', color: '#3b82f6', icon: 'Car' },
   { name: 'Moradia', type: 'EXPENSE', color: '#8b5cf6', icon: 'Home' },
   { name: 'Contas (luz, água, internet)', type: 'EXPENSE', color: '#ef4444', icon: 'Zap' },
+  // Telefone/Celular separado de "Contas" — Sprint Retirada-Despesa-PF.
+  { name: 'Telefone/Celular', type: 'EXPENSE', color: '#0891b2', icon: 'Phone' },
   { name: 'Saúde', type: 'EXPENSE', color: '#ec4899', icon: 'Heart' },
   { name: 'Educação', type: 'EXPENSE', color: '#06b6d4', icon: 'BookOpen' },
   { name: 'Lazer', type: 'EXPENSE', color: '#a855f7', icon: 'Music' },
