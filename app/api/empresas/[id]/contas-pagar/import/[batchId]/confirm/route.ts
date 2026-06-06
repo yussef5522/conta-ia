@@ -157,13 +157,20 @@ export async function POST(request: NextRequest, { params }: Params) {
         const skippedNeedsReviewRowIds: string[] = []
         const skippedNoFavorecidoRowIds: string[] = []
         const skippedDuplicateRowIds: string[] = []
-        // (EXCLUDED não entra em "puladas pelo sistema" — user já decidiu)
+        // Sprint Resumo-Contador: rows excluídas via override no body do confirm
+        // precisam ser persistidas como userDecision='EXCLUDE' no DB. Sem isso,
+        // a query skippedRows (WHERE userDecision='NEEDS_REVIEW') retorna essas
+        // rows também (porque continuam NEEDS_REVIEW no DB), inflando o
+        // contador "puladas pelo sistema" e duplicando com "excluídas por você"
+        // → total UI fica > total do arquivo.
+        const excludedOverrideRowIds: string[] = []
 
         for (const row of rows) {
           const override = overridesById.get(row.id)
           const action = decideRowAction(row, override)
           if (action.kind === 'SKIP_EXCLUDED') {
             excludedSkipped++
+            excludedOverrideRowIds.push(row.id)
             continue
           }
           if (action.kind === 'SKIP_NO_FAVORECIDO') {
@@ -354,6 +361,15 @@ export async function POST(request: NextRequest, { params }: Params) {
           await tx.stagedPayableRow.updateMany({
             where: { id: { in: skippedDuplicateRowIds } },
             data: { userDecision: 'NEEDS_REVIEW' },
+          })
+        }
+        // Sprint Resumo-Contador: persiste override EXCLUDE no DB. Sem isso,
+        // o contador de "puladas pelo sistema" duplica com "excluídas por você"
+        // → total resumo > total arquivo (bug 35+21+13=69 visto pelo Yussef).
+        if (excludedOverrideRowIds.length > 0) {
+          await tx.stagedPayableRow.updateMany({
+            where: { id: { in: excludedOverrideRowIds } },
+            data: { userDecision: 'EXCLUDE' },
           })
         }
         // NEEDS_REVIEW + NO_FAVORECIDO já vêm com userDecision correto
