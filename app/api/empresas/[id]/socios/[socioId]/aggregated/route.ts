@@ -73,10 +73,19 @@ export async function GET(
               profile: { select: { name: true } },
               socioPF: { select: { nome: true } },
               pjTransaction: {
-                select: { id: true, bankAccount: { select: { name: true } } },
+                select: {
+                  id: true,
+                  description: true,
+                  bankAccount: { select: { name: true } },
+                  category: { select: { name: true, dreGroup: true } },
+                },
               },
               pfTransaction: {
-                select: { id: true, bankAccount: { select: { name: true } } },
+                select: {
+                  id: true,
+                  bankAccount: { select: { name: true } },
+                  category: { select: { name: true } },
+                },
               },
             },
           })
@@ -91,10 +100,15 @@ export async function GET(
             companyName: b.company.name,
             pjTransactionId: b.pjTransactionId,
             pjBankAccountName: b.pjTransaction.bankAccount?.name ?? null,
+            // Sprint Tela-Retiradas: campos novos pros 2 lados PJ/PF
+            pjDescription: b.pjTransaction.description,
+            pjCategoryName: b.pjTransaction.category?.name ?? null,
+            pjDreGroup: b.pjTransaction.category?.dreGroup ?? null,
             profileId: b.profileId,
             profileName: b.profile.name,
             pfTransactionId: b.pfTransactionId,
             pfBankAccountName: b.pfTransaction.bankAccount?.name ?? null,
+            pfCategoryName: b.pfTransaction.category?.name ?? null,
             socioPFName: b.socioPF?.nome ?? null,
           }))
 

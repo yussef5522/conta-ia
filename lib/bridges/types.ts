@@ -103,10 +103,15 @@ export interface BridgeListItem {
   companyName: string
   pjTransactionId: string
   pjBankAccountName: string | null
+  // Sprint Tela-Retiradas: detalhes do lado PJ pra exibir nos 2 lados
+  pjDescription?: string | null
+  pjCategoryName?: string | null
+  pjDreGroup?: string | null
   // Lado PF
   profileId: string
   profileName: string
   pfTransactionId: string
   pfBankAccountName: string | null
+  pfCategoryName?: string | null
   socioPFName: string | null
 }

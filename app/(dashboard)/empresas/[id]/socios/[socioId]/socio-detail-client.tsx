@@ -7,10 +7,10 @@
 // - "Suas pontes": só aparece se user tem pontes deste sócio (privado)
 // - "Detecção Pix": público (mesma info que /transacoes mostra)
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { ArrowLeft, Plus, Trash2, ArrowRight, Lock } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Lock, ArrowUpFromLine, ArrowDownToLine } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -22,6 +22,50 @@ import { BridgeBadge } from '@/components/bridges/BridgeBadge'
 import { BridgeDeleteModal } from '@/components/bridges/BridgeDeleteModal'
 import { NovaPonteForm } from '@/components/bridges/NovaPonteForm'
 import type { BridgeKind, BridgeListItem, BridgeDeleteMode } from '@/lib/bridges/types'
+
+const BRIDGE_KINDS_ORDER: BridgeKind[] = [
+  'DISTRIBUICAO',
+  'PRO_LABORE',
+  'ADIANTAMENTO',
+  'REEMBOLSO',
+  'RETIRADA_SOCIOS',
+]
+
+// Sprint Tela-Retiradas: rótulo fiscal curto por kind (mostrado no card-resumo).
+const FISCAL_LABEL: Record<BridgeKind, string> = {
+  PRO_LABORE: 'INSS + IR',
+  DISTRIBUICAO: 'isento',
+  ADIANTAMENTO: 'a devolver',
+  REEMBOLSO: 'reembolso',
+  RETIRADA_SOCIOS: 'genérica',
+}
+
+// Sprint Tela-Retiradas: períodos pré-definidos pro filtro.
+const PERIODOS = [
+  { value: 'tudo', label: 'Tudo' },
+  { value: 'mes', label: 'Este mês' },
+  { value: '3m', label: '3 meses' },
+  { value: '6m', label: '6 meses' },
+  { value: '12m', label: '12 meses' },
+] as const
+
+type PeriodoValue = (typeof PERIODOS)[number]['value']
+
+function startOfPeriod(periodo: PeriodoValue, now: Date): Date | null {
+  const d = new Date(now)
+  switch (periodo) {
+    case 'tudo':
+      return null
+    case 'mes':
+      return new Date(d.getFullYear(), d.getMonth(), 1)
+    case '3m':
+      return new Date(d.getFullYear(), d.getMonth() - 2, 1)
+    case '6m':
+      return new Date(d.getFullYear(), d.getMonth() - 5, 1)
+    case '12m':
+      return new Date(d.getFullYear(), d.getMonth() - 11, 1)
+  }
+}
 
 interface SocioData {
   id: string
@@ -91,6 +135,9 @@ export function SocioDetailClient({ empresaId, empresaNome, socioId }: Props) {
     searchParams.get('action') === 'nova-ponte' ? 'nova-ponte' : 'dados',
   )
   const [deleteTarget, setDeleteTarget] = useState<BridgeListItem | null>(null)
+  // Sprint Tela-Retiradas: filtros
+  const [filtroTipo, setFiltroTipo] = useState<BridgeKind | 'todos'>('todos')
+  const [filtroPeriodo, setFiltroPeriodo] = useState<PeriodoValue>('tudo')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -239,7 +286,7 @@ export function SocioDetailClient({ empresaId, empresaNome, socioId }: Props) {
         <TabsList>
           <TabsTrigger value="dados">Dados</TabsTrigger>
           <TabsTrigger value="suas-pontes">
-            Suas pontes ({agregados.totalCount})
+            💸 Retiradas ({agregados.totalCount})
           </TabsTrigger>
           <TabsTrigger value="deteccao">
             Detecção Pix ({txPixDetected.length})
@@ -290,74 +337,30 @@ export function SocioDetailClient({ empresaId, empresaNome, socioId }: Props) {
           </Card>
         </TabsContent>
 
-        {/* ABA SUAS PONTES (privado) */}
+        {/* ABA RETIRADAS (privado) — resumo no topo + lista 2-sided embaixo */}
         <TabsContent value="suas-pontes">
           {!userTemPontes ? (
             <Card>
               <CardContent className="p-8 text-center">
                 <Lock className="mx-auto mb-3 h-8 w-8 text-slate-400" />
                 <p className="text-sm text-slate-600">
-                  Você não tem pontes registradas com este sócio.
+                  Você não tem retiradas registradas com este sócio.
                 </p>
                 <p className="mt-1 text-xs text-slate-500">
-                  Se você é dono do perfil PF correspondente, pode criar uma ponte na aba
+                  Se você é dono do perfil PF correspondente, crie uma na aba
                   &quot;Nova ponte&quot;.
                 </p>
               </CardContent>
             </Card>
           ) : (
-            <Card>
-              <CardContent className="p-0">
-                <table className="w-full text-sm">
-                  <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
-                    <tr>
-                      <th className="px-4 py-3 text-left">Data</th>
-                      <th className="px-4 py-3 text-left">Tipo</th>
-                      <th className="px-4 py-3 text-right">Valor</th>
-                      <th className="px-4 py-3 text-left">Conta PF</th>
-                      <th className="px-4 py-3 text-right">Ações</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {suasPontes.map((b) => {
-                      const d = KIND_DEFAULTS[b.kind]
-                      return (
-                        <tr key={b.id} className="border-b border-slate-100 hover:bg-slate-50">
-                          <td className="px-4 py-3 text-slate-700">
-                            {new Date(b.date).toLocaleDateString('pt-BR')}
-                          </td>
-                          <td className="px-4 py-3">
-                            {d.emoji} {d.label}
-                          </td>
-                          <td className="px-4 py-3 text-right font-medium text-emerald-600">
-                            {formatBRL(b.amount)}
-                          </td>
-                          <td className="px-4 py-3 text-slate-700">
-                            {b.pfBankAccountName ?? '—'}
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            <div className="flex items-center justify-end gap-1">
-                              <Link href={`/pontes/${b.id}`}>
-                                <Button variant="ghost" size="sm">
-                                  <ArrowRight className="h-4 w-4" />
-                                </Button>
-                              </Link>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setDeleteTarget(b)}
-                              >
-                                <Trash2 className="h-4 w-4 text-red-500" />
-                              </Button>
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </CardContent>
-            </Card>
+            <RetiradasTab
+              suasPontes={suasPontes}
+              filtroTipo={filtroTipo}
+              setFiltroTipo={setFiltroTipo}
+              filtroPeriodo={filtroPeriodo}
+              setFiltroPeriodo={setFiltroPeriodo}
+              onDelete={setDeleteTarget}
+            />
           )}
         </TabsContent>
 
@@ -441,3 +444,273 @@ export function SocioDetailClient({ empresaId, empresaNome, socioId }: Props) {
     </main>
   )
 }
+
+// ============================================================================
+// Sprint Tela-Retiradas — Aba "💸 Retiradas"
+// ============================================================================
+// Layout aprovado pelo Yussef:
+// - Resumo bate-olho no topo: total + 5 cards por kind (valor + count + etiqueta fiscal)
+// - Filtros: tipo + período
+// - Lista cardificada com 2 lados: ↑ saída PJ (conta + categoria) · ↓ entrada PF (conta + categoria)
+// - Desfazer reusa o flow existente (BridgeDeleteModal)
+
+interface RetiradasTabProps {
+  suasPontes: BridgeListItem[]
+  filtroTipo: BridgeKind | 'todos'
+  setFiltroTipo: (v: BridgeKind | 'todos') => void
+  filtroPeriodo: PeriodoValue
+  setFiltroPeriodo: (v: PeriodoValue) => void
+  onDelete: (b: BridgeListItem) => void
+}
+
+function RetiradasTab({
+  suasPontes,
+  filtroTipo,
+  setFiltroTipo,
+  filtroPeriodo,
+  setFiltroPeriodo,
+  onDelete,
+}: RetiradasTabProps) {
+  // Filtra por período + tipo (client-side — universo já é ≤100 itens)
+  const filtered = useMemo(() => {
+    const startDate = startOfPeriod(filtroPeriodo, new Date())
+    return suasPontes.filter((b) => {
+      if (filtroTipo !== 'todos' && b.kind !== filtroTipo) return false
+      if (startDate && new Date(b.date) < startDate) return false
+      return true
+    })
+  }, [suasPontes, filtroTipo, filtroPeriodo])
+
+  // Agrega filtered por kind pro resumo
+  const summary = useMemo(() => {
+    const byKind: Record<string, { count: number; amount: number }> = {}
+    let total = 0
+    for (const b of filtered) {
+      byKind[b.kind] = byKind[b.kind] ?? { count: 0, amount: 0 }
+      byKind[b.kind].count++
+      byKind[b.kind].amount += b.amount
+      total += b.amount
+    }
+    return { byKind, total, count: filtered.length }
+  }, [filtered])
+
+  return (
+    <div className="space-y-4">
+      {/* Filtros */}
+      <Card>
+        <CardContent className="flex flex-wrap items-center gap-3 p-4">
+          <div className="flex items-center gap-2">
+            <span className="text-xs uppercase text-slate-500">Tipo:</span>
+            <div className="flex flex-wrap gap-1">
+              <button
+                type="button"
+                onClick={() => setFiltroTipo('todos')}
+                className={`rounded-full px-3 py-1 text-xs ${
+                  filtroTipo === 'todos'
+                    ? 'bg-slate-900 text-white'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
+              >
+                Todos
+              </button>
+              {BRIDGE_KINDS_ORDER.map((k) => {
+                const d = KIND_DEFAULTS[k]
+                const active = filtroTipo === k
+                return (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => setFiltroTipo(k)}
+                    className={`rounded-full px-3 py-1 text-xs ${
+                      active
+                        ? 'bg-slate-900 text-white'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    }`}
+                  >
+                    {d.emoji} {d.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs uppercase text-slate-500">Período:</span>
+            <div className="flex gap-1">
+              {PERIODOS.map((p) => {
+                const active = filtroPeriodo === p.value
+                return (
+                  <button
+                    key={p.value}
+                    type="button"
+                    onClick={() => setFiltroPeriodo(p.value)}
+                    className={`rounded-full px-3 py-1 text-xs ${
+                      active
+                        ? 'bg-slate-900 text-white'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Resumo: total + 5 cards por kind */}
+      <div>
+        <div className="mb-2 flex items-baseline justify-between">
+          <h3 className="text-xs uppercase text-slate-500">Resumo</h3>
+          <span className="text-xs text-slate-500">
+            {summary.count} retirada{summary.count === 1 ? '' : 's'} ·{' '}
+            <strong className="text-emerald-700">{formatBRL(summary.total)}</strong>
+          </span>
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+          {BRIDGE_KINDS_ORDER.map((k) => {
+            const d = KIND_DEFAULTS[k]
+            const stat = summary.byKind[k] ?? { count: 0, amount: 0 }
+            const zero = stat.count === 0
+            return (
+              <Card key={k} className={zero ? 'opacity-50' : ''}>
+                <CardContent className="space-y-1 p-3">
+                  <p className="flex items-center gap-1 text-xs text-slate-600">
+                    <span>{d.emoji}</span>
+                    <span className="truncate">{d.label}</span>
+                  </p>
+                  <p className="text-lg font-bold tabular-nums text-slate-900">
+                    {zero ? '—' : formatBRL(stat.amount)}
+                  </p>
+                  <div className="flex items-center justify-between text-[10px]">
+                    <span className="text-slate-500">
+                      {stat.count} retirada{stat.count === 1 ? '' : 's'}
+                    </span>
+                    <Badge variant="outline" className="text-[9px]">
+                      {FISCAL_LABEL[k]}
+                    </Badge>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Lista 2-sided */}
+      <div>
+        <h3 className="mb-2 text-xs uppercase text-slate-500">Detalhes</h3>
+        {filtered.length === 0 ? (
+          <Card>
+            <CardContent className="p-8 text-center text-sm text-slate-500">
+              Nenhuma retirada nos filtros atuais.
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-2">
+            {filtered.map((b) => (
+              <RetiradaCard
+                key={b.id}
+                bridge={b}
+                onDelete={() => onDelete(b)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+interface RetiradaCardProps {
+  bridge: BridgeListItem
+  onDelete: () => void
+}
+
+function RetiradaCard({ bridge, onDelete }: RetiradaCardProps) {
+  const d = KIND_DEFAULTS[bridge.kind]
+  const dateStr = new Date(bridge.date).toLocaleDateString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  })
+
+  return (
+    <Card>
+      <CardContent className="p-4">
+        {/* Header */}
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">{d.emoji}</span>
+            <div>
+              <p className="text-sm font-semibold text-slate-900">{d.label}</p>
+              <p className="text-xs text-slate-500">{dateStr}</p>
+            </div>
+            <Badge variant="outline" className="ml-1 text-[10px]">
+              {FISCAL_LABEL[bridge.kind]}
+            </Badge>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-base font-bold tabular-nums text-emerald-700">
+              {formatBRL(bridge.amount)}
+            </span>
+            <Link
+              href={`/pontes/${bridge.id}`}
+              className="rounded px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+            >
+              Detalhes
+            </Link>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onDelete}
+              title="Desfazer"
+            >
+              <Trash2 className="h-4 w-4 text-red-500" />
+            </Button>
+          </div>
+        </div>
+
+        {bridge.pjDescription && (
+          <p className="mb-3 truncate text-xs text-slate-600">{bridge.pjDescription}</p>
+        )}
+
+        {/* 2 lados */}
+        <div className="grid gap-2 sm:grid-cols-2">
+          {/* ↑ Saída PJ */}
+          <div className="rounded border border-red-100 bg-red-50/40 p-2">
+            <p className="mb-1 flex items-center gap-1 text-[10px] uppercase text-red-700">
+              <ArrowUpFromLine className="h-3 w-3" />
+              Saída PJ ({bridge.companyName})
+            </p>
+            <p className="text-xs text-slate-700">
+              <span className="text-slate-500">Conta:</span>{' '}
+              <span className="font-medium">{bridge.pjBankAccountName ?? '—'}</span>
+            </p>
+            <p className="text-xs text-slate-700">
+              <span className="text-slate-500">Categoria:</span>{' '}
+              <span className="font-medium">{bridge.pjCategoryName ?? '—'}</span>
+            </p>
+          </div>
+
+          {/* ↓ Entrada PF */}
+          <div className="rounded border border-emerald-100 bg-emerald-50/40 p-2">
+            <p className="mb-1 flex items-center gap-1 text-[10px] uppercase text-emerald-700">
+              <ArrowDownToLine className="h-3 w-3" />
+              Entrada PF ({bridge.profileName})
+            </p>
+            <p className="text-xs text-slate-700">
+              <span className="text-slate-500">Conta:</span>{' '}
+              <span className="font-medium">{bridge.pfBankAccountName ?? '—'}</span>
+            </p>
+            <p className="text-xs text-slate-700">
+              <span className="text-slate-500">Categoria:</span>{' '}
+              <span className="font-medium">{bridge.pfCategoryName ?? '—'}</span>
+            </p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
