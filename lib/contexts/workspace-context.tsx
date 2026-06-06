@@ -15,7 +15,14 @@
 //
 // 🟦 PJ = azul (Building2)  ·  🟢 PF = verde (Users)
 
-import { createContext, useCallback, useContext, useEffect, useState } from 'react'
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from 'react'
 import { usePathname } from 'next/navigation'
 
 export type WorkspaceType = 'pj' | 'pf'
@@ -102,24 +109,37 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     void reloadProfiles()
   }, [reloadProfiles])
 
-  // URL é source-of-truth: path /perfis/[id] força workspace=pf + id
+  // URL é source-of-truth APENAS em NAVEGAÇÃO REAL.
+  //
+  // Sprint workspace-fix (bug PF→PJ indicador preso): o effect anterior tinha
+  // `workspaceType` e `currentProfileId` nas deps, o que fazia o effect rodar
+  // quando o switcher chamava `setWorkspace('pj')`. Como `router.push` é
+  // async, na próxima render o pathname AINDA era `/perfis/[id]` → o regex
+  // casava → effect REVERTIA o state pra 'pf'. Só pathname deve disparar
+  // esse effect — quando o usuário navega de verdade.
+  //
+  // Pra evitar lint warning sobre deps faltantes, rastreamos o pathname
+  // anterior numa ref. O effect roda só quando pathname mudou.
+  const lastProcessedPath = useRef<string | null>(null)
   useEffect(() => {
+    if (lastProcessedPath.current === pathname) return
+    lastProcessedPath.current = pathname
+
     const match = pathname.match(PATH_PROFILE_RE)
     if (match) {
+      // Entrou em /perfis/[id] → força pf + id (cobre links externos /
+      // back/forward que pulam o switcher)
       const fromPath = match[1]
-      if (workspaceType !== 'pf' || currentProfileId !== fromPath) {
-        setWorkspaceType('pf')
-        setCurrentProfileId(fromPath)
-        try {
-          window.localStorage.setItem(STORAGE_TYPE, 'pf')
-          window.localStorage.setItem(STORAGE_PROFILE, fromPath)
-        } catch {
-          // quota
-        }
+      setWorkspaceType('pf')
+      setCurrentProfileId(fromPath)
+      try {
+        window.localStorage.setItem(STORAGE_TYPE, 'pf')
+        window.localStorage.setItem(STORAGE_PROFILE, fromPath)
+      } catch {
+        // quota
       }
-    }
-    // path /empresas/[id] força workspace=pj (mas EmpresaContext já lida)
-    else if (pathname.startsWith('/empresas/') && workspaceType !== 'pj') {
+    } else if (pathname.startsWith('/empresas/')) {
+      // Entrou em /empresas/[id] → força pj (mesma razão acima)
       setWorkspaceType('pj')
       try {
         window.localStorage.setItem(STORAGE_TYPE, 'pj')
@@ -127,7 +147,9 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         // quota
       }
     }
-  }, [pathname, workspaceType, currentProfileId])
+    // Outras rotas (/dashboard, /transacoes, etc): NÃO força nada.
+    // Respeita o último setWorkspace do switcher.
+  }, [pathname])
 
   const setWorkspace = useCallback(
     async (type: WorkspaceType, id?: string | null): Promise<void> => {
