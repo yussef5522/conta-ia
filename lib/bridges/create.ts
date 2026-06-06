@@ -9,6 +9,7 @@ import { prisma } from '@/lib/db'
 import { checkProfileAccess, ProfileAccessError } from '@/lib/personal-profile/queries'
 import { BridgeError, type BridgeKind, type CreatedVia, BRIDGE_KINDS, CREATED_VIA } from './types'
 import { getKindDefaults } from './kind-defaults'
+import { resolvePjCategoryForKind } from './resolve-pj-category'
 import { Prisma } from '@prisma/client'
 
 export interface CreateBridgeInput {
@@ -208,6 +209,26 @@ export async function createBridge(
           notes: input.notes ?? null,
         },
       })
+
+      // 5a. Sprint Retirada-Conciliação-Fix: seta categoryId na tx PJ pra que
+      // o filtro Conciliação (categoryId IS NULL) deixe de retornar. Resolve
+      // categoria certa por kind (DISTRIBUICAO → "Distribuição de Lucros",
+      // PRO_LABORE → "Pró-labore", etc). Fail-open: se categoria não existir,
+      // deixa NULL e a retirada continua salva (só fica visível na conciliação).
+      const resolvedCategoryId = await resolvePjCategoryForKind(
+        tx,
+        input.companyId,
+        input.kind,
+      )
+      if (resolvedCategoryId) {
+        await tx.transaction.update({
+          where: { id: pjTx.id },
+          data: {
+            categoryId: resolvedCategoryId,
+            classificationSource: 'BRIDGE',
+          },
+        })
+      }
 
       // 5. Cria Bridge
       const bridge = await tx.pJtoPFBridge.create({
