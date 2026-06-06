@@ -12,7 +12,8 @@
 // default que esconda a decisão — user clica conscientemente.
 
 import { useEffect, useState } from 'react'
-import { Loader2, Check, AlertTriangle } from 'lucide-react'
+import Link from 'next/link'
+import { Loader2, Check, AlertTriangle, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
@@ -226,8 +227,12 @@ export function WithdrawalPanel({
       </div>
     )
   }
-  if (ctx.profiles.length === 0 && createPfEntry) {
-    // Permite confirmar SEM criar entrada PF (caso o sócio não tenha perfil)
+  // Sprint Retirada-Fix: API /api/pontes exige pfBankAccountId obrigatório.
+  // Logo "criar entrada PF" não é opcional quando o user TEM perfis PF.
+  // Se user NÃO tem nenhum perfil → checkbox aparece (e fica false) só
+  // pra UI indicar "estado sem PF". Ponte não vai ser criada (TODO Fatia 5).
+  const hasPfProfile = ctx.profiles.length > 0
+  if (!hasPfProfile && createPfEntry) {
     setCreatePfEntry(false)
   }
 
@@ -312,98 +317,148 @@ export function WithdrawalPanel({
         </div>
       </div>
 
-      {/* Caixa PF do sócio (opcional) */}
-      {ctx.profiles.length > 0 && (
+      {/* Caixa PF do sócio (sempre cria quando há perfil PF do user) */}
+      {hasPfProfile && (
         <>
-          <label className="flex items-center gap-2 text-xs cursor-pointer">
-            <input
-              type="checkbox"
-              checked={createPfEntry}
-              onChange={(e) => setCreatePfEntry(e.target.checked)}
-            />
+          <div className="text-xs text-muted-foreground flex items-center gap-2 pt-1">
+            <Check className="h-3 w-3 text-emerald-600" />
             <span>
-              Criar entrada equivalente no caixa pessoal do sócio
-              <span className="text-muted-foreground"> (recomendado)</span>
+              Criando entrada equivalente no caixa pessoal do sócio (rastreável
+              no PF).
             </span>
-          </label>
+          </div>
 
-          {createPfEntry && (
-            <>
-              <div className="space-y-1">
-                <label className="text-[10px] uppercase font-semibold text-muted-foreground">
-                  Perfil PF
-                </label>
-                <select
-                  value={profileId}
-                  onChange={(e) => {
-                    setProfileId(e.target.value)
-                    setAccountId('')
-                    setCategoryId('')
-                  }}
-                  className="w-full h-9 px-2 text-sm rounded border bg-background"
-                >
-                  <option value="">Escolher perfil PF...</option>
-                  {ctx.profiles.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+          <div className="space-y-1">
+            <label className="text-[10px] uppercase font-semibold text-muted-foreground">
+              Perfil PF
+            </label>
+            <select
+              value={profileId}
+              onChange={(e) => {
+                setProfileId(e.target.value)
+                setAccountId('')
+                setCategoryId('')
+              }}
+              className="w-full h-9 px-2 text-sm rounded border bg-background"
+            >
+              <option value="">Escolher perfil PF...</option>
+              {ctx.profiles.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
 
               {profile && (
                 <>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-1">
-                      <label className="text-[10px] uppercase font-semibold text-muted-foreground">
-                        Conta PF
-                      </label>
-                      <select
-                        value={accountId}
-                        onChange={(e) => setAccountId(e.target.value)}
-                        className="w-full h-9 px-2 text-sm rounded border bg-background"
+                  {/* Sprint Retirada-Fix: profile sem conta → banner explicativo
+                      no lugar do dropdown vazio (em vez de só ficar vazio sem
+                      explicação). Botão pra cadastrar leva direto pra rota. */}
+                  {profile.accounts.length === 0 ? (
+                    <div className="rounded border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900 p-3 text-xs space-y-2">
+                      <div className="flex items-start gap-2 text-amber-900 dark:text-amber-200">
+                        <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                        <div>
+                          <p className="font-semibold">
+                            Seu perfil PF &quot;{profile.name}&quot; não tem nenhuma
+                            conta bancária cadastrada.
+                          </p>
+                          <p className="text-amber-800 dark:text-amber-300 mt-0.5">
+                            Pra rastrear a retirada no seu caixa pessoal,
+                            cadastre uma conta. Ou desmarque o checkbox acima
+                            pra completar SÓ a saída PJ (categoria DRE fica
+                            certa).
+                          </p>
+                        </div>
+                      </div>
+                      <Link
+                        href={`/perfis/${profile.id}/contas/nova`}
+                        target="_blank"
+                        className="inline-flex items-center gap-1 text-amber-900 dark:text-amber-100 font-semibold text-xs underline hover:no-underline"
                       >
-                        <option value="">Escolher...</option>
-                        {profile.accounts.map((a) => (
-                          <option key={a.id} value={a.id}>
-                            {a.bankName ?? a.name}
-                          </option>
-                        ))}
-                      </select>
+                        <Plus className="h-3 w-3" />
+                        Cadastrar conta no perfil &quot;{profile.name}&quot;
+                      </Link>
                     </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] uppercase font-semibold text-muted-foreground">
-                        Categoria PF
-                      </label>
-                      <select
-                        value={categoryId}
-                        onChange={(e) => setCategoryId(e.target.value)}
-                        className="w-full h-9 px-2 text-sm rounded border bg-background"
-                      >
-                        <option value="">Escolher...</option>
-                        {profile.incomeCategories.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.name}
-                          </option>
-                        ))}
-                      </select>
+                  ) : profile.incomeCategories.length === 0 ? (
+                    <div className="rounded border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900 p-3 text-xs">
+                      <div className="flex items-start gap-2 text-amber-900 dark:text-amber-200">
+                        <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                        <p>
+                          O perfil &quot;{profile.name}&quot; não tem categorias
+                          de receita. Cadastre em{' '}
+                          <Link
+                            href={`/perfis/${profile.id}/categorias`}
+                            target="_blank"
+                            className="underline font-semibold"
+                          >
+                            Categorias do perfil
+                          </Link>
+                          .
+                        </p>
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <label className="text-[10px] uppercase font-semibold text-muted-foreground">
+                          Conta PF
+                        </label>
+                        <select
+                          value={accountId}
+                          onChange={(e) => setAccountId(e.target.value)}
+                          className="w-full h-9 px-2 text-sm rounded border bg-background"
+                        >
+                          <option value="">Escolher...</option>
+                          {profile.accounts.map((a) => (
+                            <option key={a.id} value={a.id}>
+                              {a.bankName ?? a.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] uppercase font-semibold text-muted-foreground">
+                          Categoria PF
+                        </label>
+                        <select
+                          value={categoryId}
+                          onChange={(e) => setCategoryId(e.target.value)}
+                          className="w-full h-9 px-2 text-sm rounded border bg-background"
+                        >
+                          <option value="">Escolher...</option>
+                          {profile.incomeCategories.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
-            </>
-          )}
         </>
       )}
 
-      {!createPfEntry && (
-        <div className="rounded border border-slate-200 bg-slate-50 dark:bg-slate-900/40 px-3 py-2 text-xs text-slate-700 dark:text-slate-300 flex items-start gap-1.5">
-          <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-          <span>
-            Sem caixa PF cadastrado pra este sócio. Vou marcar só a saída PJ
-            como retirada. Pra rastrear no caixa pessoal, cadastre um Perfil
-            PF antes.
-          </span>
+      {!hasPfProfile && (
+        <div className="rounded border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900 px-3 py-2 text-xs text-amber-900 dark:text-amber-200 space-y-1">
+          <div className="flex items-start gap-1.5">
+            <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+            <span>
+              Você não tem nenhum perfil PF cadastrado. Pra rastrear a retirada
+              no seu caixa pessoal, cadastre um perfil.
+            </span>
+          </div>
+          <Link
+            href="/perfis/novo"
+            target="_blank"
+            className="inline-flex items-center gap-1 font-semibold underline hover:no-underline"
+          >
+            <Plus className="h-3 w-3" />
+            Criar meu perfil PF
+          </Link>
         </div>
       )}
 
@@ -425,8 +480,14 @@ export function WithdrawalPanel({
           onClick={confirmar}
           disabled={
             submitting ||
-            !canSubmit ||
-            (createPfEntry && (!accountId || !categoryId))
+            !socioId ||
+            !kind ||
+            (createPfEntry && (!profileId || !accountId || !categoryId))
+          }
+          title={
+            createPfEntry && profile && profile.accounts.length === 0
+              ? 'Cadastre uma conta no perfil PF, ou desmarque o checkbox pra completar só a saída PJ'
+              : undefined
           }
         >
           {submitting ? (
