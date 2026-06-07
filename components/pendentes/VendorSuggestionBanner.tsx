@@ -33,7 +33,9 @@ export interface VendorSuggestion {
 interface Props {
   empresaId: string
   suggestion: VendorSuggestion
-  onAccepted: (categoryName: string) => void
+  /** Sprint Tier1-no-scroll-jump: callback recebe transactionId pro caller
+   *  remover do estado local sem refetch. */
+  onAccepted: (categoryName: string, transactionId: string) => void
   onRejected: () => void
 }
 
@@ -84,7 +86,7 @@ export function VendorSuggestionBanner({
           ? `+${vm.retroactiveCount} ${vm.anchor} categorizadas automaticamente`
           : `Categorizada como ${data.categoryName}`
       toast({ title: 'Sugestão aceita', description })
-      onAccepted(suggestion.categoriaSugerida)
+      onAccepted(suggestion.categoriaSugerida, suggestion.transactionId)
     } catch {
       toast({ variant: 'destructive', title: 'Erro de rede' })
     } finally {

@@ -304,6 +304,27 @@ function TransacoesPageInner() {
     setBulkCategoryId('')
   }
 
+  // Sprint Tier1-no-scroll-jump (07/06/2026) — Updates OTIMISTAS.
+  // Mesma técnica de /contas-a-pagar / Conciliação / Retiradas: muda só
+  // as rows afetadas no estado local em vez de refetch+remount da lista.
+  const updateTxOptimistic = useCallback(
+    (txId: string, partial: Partial<Transacao>) => {
+      setTransacoes((prev) =>
+        prev.map((t) => (t.id === txId ? { ...t, ...partial } : t)),
+      )
+    },
+    [],
+  )
+  const updateManyTxOptimistic = useCallback(
+    (ids: string[], partial: Partial<Transacao>) => {
+      const idSet = new Set(ids)
+      setTransacoes((prev) =>
+        prev.map((t) => (idSet.has(t.id) ? { ...t, ...partial } : t)),
+      )
+    },
+    [],
+  )
+
   async function executeBulkCategory(catId: string | null) {
     setBulkLoading(true)
     try {
@@ -327,8 +348,14 @@ function TransacoesPageInner() {
         title: `${data.atualizadas} transação${data.atualizadas === 1 ? '' : 'ões'} atualizada${data.atualizadas === 1 ? '' : 's'}`,
         description: data.naoEncontradas > 0 ? `${data.naoEncontradas} não encontradas` : undefined,
       })
+      // Update OTIMISTA — sem refetch da lista (preserva scroll)
+      const newCat = catId ? categorias.find((c) => c.id === catId) ?? null : null
+      updateManyTxOptimistic(ids, {
+        categoryId: catId,
+        category: newCat,
+        classificationSource: 'MANUAL',
+      })
       clearSelection()
-      void fetchTransacoes()
     } catch {
       toast({ variant: 'destructive', title: 'Erro', description: 'Falha de rede.' })
     } finally {
@@ -360,8 +387,9 @@ function TransacoesPageInner() {
         title: `${data.atualizadas} transação${data.atualizadas === 1 ? '' : 'ões'} marcada${data.atualizadas === 1 ? '' : 's'} como ${status === 'RECONCILED' ? 'conciliada' : 'ignorada'}${data.atualizadas === 1 ? '' : 's'}`,
         description: data.naoEncontradas > 0 ? `${data.naoEncontradas} não encontradas` : undefined,
       })
+      // Update OTIMISTA — só os status nas rows afetadas
+      updateManyTxOptimistic(ids, { status })
       clearSelection()
-      void fetchTransacoes()
     } catch {
       toast({ variant: 'destructive', title: 'Erro', description: 'Falha de rede.' })
     } finally {
@@ -478,12 +506,13 @@ function TransacoesPageInner() {
         toast({
           title: novoStatus === 'RECONCILED' ? 'Confirmada' : 'Ignorada',
         })
-        void fetchTransacoes()
+        // Update OTIMISTA — só esta row, sem refetch
+        updateTxOptimistic(txId, { status: novoStatus })
       } catch {
         toast({ variant: 'destructive', title: 'Erro', description: 'Falha de rede.' })
       }
     },
-    [toast, fetchTransacoes],
+    [toast, updateTxOptimistic],
   )
 
   const shortcuts = useMemo<ShortcutHandler[]>(() => {

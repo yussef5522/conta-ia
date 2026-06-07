@@ -108,10 +108,55 @@ export default function FaturaDetalhePage({
         setError(d.erro ?? 'Falha no pagamento')
         return
       }
+      // Sprint Tier1-no-scroll-jump: update OTIMISTA sem reload da página.
+      // Endpoint retorna { invoice, paymentTx, rotativeTx?, jurosTx? }.
+      const body = await r.json().catch(() => null)
+      if (body?.invoice && invoice) {
+        const inv = body.invoice as {
+          totalAmount: number
+          paidAmount: number
+          status: string
+        }
+        const newTxs: InvoiceTx[] = []
+        const mapTx = (
+          t: {
+            id: string
+            date: string
+            description: string
+            amount: number
+            type: string
+          } | null,
+        ): InvoiceTx | null => {
+          if (!t) return null
+          return {
+            id: t.id,
+            date: t.date,
+            description: t.description,
+            amount: t.amount,
+            type: t.type === 'CREDIT' ? 'CREDIT' : 'DEBIT',
+            installmentNumber: null,
+            installmentTotal: null,
+            isInvoicePayment: true,
+            category: null,
+          }
+        }
+        const payment = mapTx(body.paymentTx)
+        const rotative = mapTx(body.rotativeTx)
+        const juros = mapTx(body.jurosTx)
+        if (payment) newTxs.push(payment)
+        if (rotative) newTxs.push(rotative)
+        if (juros) newTxs.push(juros)
+        setInvoice({
+          ...invoice,
+          totalAmount: inv.totalAmount,
+          paidAmount: inv.paidAmount,
+          status: inv.status,
+          transactions: [...newTxs, ...invoice.transactions],
+        })
+      }
       setShowPay(false)
       setPayAmount('')
       setPayJuros('')
-      reload()
     } catch {
       setError('Sem conexão')
     } finally {

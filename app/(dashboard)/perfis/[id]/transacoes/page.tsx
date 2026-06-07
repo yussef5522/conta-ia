@@ -120,12 +120,37 @@ export default function TransacoesPFPage({
         setError(d.erro ?? 'Falha ao criar transação')
         return
       }
+      // Sprint Tier1-no-scroll-jump: insere a tx criada no topo do estado
+      // local sem reload() da lista inteira (preserva scroll).
+      const body = await r.json().catch(() => null)
+      const created = body?.transaction as
+        | {
+            id: string
+            date: string
+            description: string
+            amount: number
+            type: 'CREDIT' | 'DEBIT'
+          }
+        | undefined
+      if (created) {
+        const acc = accounts.find((a) => a.id === bankAccountId) ?? null
+        const cat = categories.find((c) => c.id === categoryId) ?? null
+        const newTx: Tx = {
+          id: created.id,
+          date: created.date,
+          description: created.description,
+          amount: created.amount,
+          type: created.type,
+          bankAccount: acc ? { id: acc.id, name: acc.name } : null,
+          category: cat ? { id: cat.id, name: cat.name, color: null } : null,
+        }
+        setItems((prev) => [newTx, ...prev])
+      }
       // Reset
       setDescription('')
       setAmount('')
       setNotes('')
       setShowForm(false)
-      reload()
     } catch {
       setError('Sem conexão')
     } finally {

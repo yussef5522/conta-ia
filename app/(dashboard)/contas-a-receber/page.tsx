@@ -180,9 +180,23 @@ function ContasAReceberInner() {
         return
       }
       toast({ title: 'Recebida', description: efetivar.description })
+      // Sprint Tier1-no-scroll-jump: update OTIMISTA — só essa row, sem refetch.
+      const bank = bankAccounts.find((b) => b.id === efetivarBankId) ?? null
+      setItems((prev) =>
+        prev.map((r) =>
+          r.id === efetivar.id
+            ? {
+                ...r,
+                status: 'RECONCILED',
+                bankAccount: bank
+                  ? { id: bank.id, name: bank.name, bankName: bank.bankName ?? null }
+                  : r.bankAccount,
+              }
+            : r,
+        ),
+      )
       setEfetivar(null)
       setEfetivarBankId('')
-      void fetchItems()
     } catch {
       toast({ variant: 'destructive', title: 'Erro', description: 'Falha de rede.' })
     } finally {

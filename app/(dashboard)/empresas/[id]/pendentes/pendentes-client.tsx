@@ -338,7 +338,7 @@ export function PendentesClient({
   // removidos do /pendentes (obsoletos com staging Sprint u + cleanup admin).
   // Endpoints /conciliation/* seguem disponíveis via /empresas/[id]/manutencao.
 
-  function onPreviewApplied(aplicadas: number) {
+  function onPreviewApplied(aplicadas: number, appliedTxIds: string[]) {
     setAutoCatResult({
       analisadas: previewData?.totalAnalisadas ?? aplicadas,
       totalCategorizadas: aplicadas,
@@ -352,7 +352,12 @@ export function PendentesClient({
         fase3_setorPattern: previewData?.breakdown.setorPattern ?? 0,
       },
     })
-    void fetchTransacoes()
+    // Tier1-no-scroll-jump: remove as tx categorizadas do estado local sem
+    // refetch (rows saem do filtro PENDING naturalmente). Preserva scroll.
+    if (appliedTxIds.length > 0) {
+      const idSet = new Set(appliedTxIds)
+      setTransacoes((prev) => prev.filter((t) => !idSet.has(t.id)))
+    }
   }
 
   // Fase 3 Etapa 3: pede sugestão Claude pra UMA transação (lazy load).
@@ -978,9 +983,11 @@ export function PendentesClient({
                   <VendorSuggestionBanner
                     empresaId={empresaId}
                     suggestion={vendorSuggestions[t.id]}
-                    onAccepted={() => {
-                      dismissSuggestion(t.id)
-                      void fetchTransacoes()
+                    onAccepted={(_categoryName, txId) => {
+                      dismissSuggestion(txId)
+                      // Tier1-no-scroll-jump: tx categorizada sai do PENDING.
+                      // Remove do estado local sem refetch (preserva scroll).
+                      setTransacoes((prev) => prev.filter((x) => x.id !== txId))
                     }}
                     onRejected={() => dismissSuggestion(t.id)}
                   />

@@ -72,7 +72,9 @@ interface Props {
   onOpenChange: (open: boolean) => void
   empresaId: string
   data: PreviewData | null
-  onApplied: (aplicadas: number) => void
+  /** Sprint Tier1-no-scroll-jump: callback recebe contagem + IDs aplicados
+   *  pra que a página remova as rows do estado local sem refetch. */
+  onApplied: (aplicadas: number, appliedTxIds: string[]) => void
 }
 
 export function AutoCategorizePreviewModal({
@@ -183,7 +185,10 @@ export function AutoCategorizePreviewModal({
         title: `✓ ${result.aplicadas} transações categorizadas`,
         description: `${data.resumoPorCategoria.length} categorias diferentes`,
       })
-      onApplied(result.aplicadas)
+      // Tier1-no-scroll-jump: passa os IDs aceitos pro caller remover do
+      // estado local sem refetch (preserva scroll).
+      const appliedTxIds = items.map((it) => it.transactionId as string)
+      onApplied(result.aplicadas, appliedTxIds)
       onOpenChange(false)
     } catch {
       toast({ variant: 'destructive', title: 'Erro de rede' })
