@@ -32,8 +32,10 @@ interface Props {
   empresaId: string
   transactionIds: string[]
   onClose: () => void
-  /** Disparado quando bulk completa com sucesso. */
-  onDone: () => void
+  /** Disparado quando bulk completa com sucesso. Passa data ISO + bankAccountId
+   *  (opcional) pra que a página faça update OTIMISTA sem refetch (Sprint
+   *  contas-pagar/no-scroll-jump). */
+  onDone: (paymentDateISO: string, bankAccountId: string | null) => void
   /** Disparado se backend retorna BLOCKED — UI pode oferecer ação de filtrar */
   onBlocked?: (blockedIds: string[]) => void
 }
@@ -137,7 +139,7 @@ export function MarkPaidBulkDialog({
         title: `${data.success} contas marcadas como pagas`,
         description: `Data: ${date.split('-').reverse().join('/')}`,
       })
-      onDone()
+      onDone(date, bankAccountId || null)
       onClose()
     } catch {
       toast({ variant: 'destructive', title: 'Erro de rede' })

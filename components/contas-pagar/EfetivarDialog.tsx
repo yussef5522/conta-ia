@@ -42,7 +42,9 @@ interface Props {
   conta: PayableForEfetivar | null
   bankAccounts: BankAccountOption[]
   onClose: () => void
-  onDone: () => void
+  /** Sprint contas-pagar/no-scroll-jump: callback recebe data ISO + bankAccountId
+   *  pra que a página faça update otimista da row sem refetch. */
+  onDone: (paymentDateISO: string, bankAccountId: string) => void
 }
 
 export function EfetivarDialog({
@@ -82,7 +84,7 @@ export function EfetivarDialog({
         return
       }
       toast({ title: 'Efetivada', description: conta.description })
-      onDone()
+      onDone(date, bankId)
       onClose()
     } catch {
       toast({ variant: 'destructive', title: 'Erro', description: 'Falha de rede.' })

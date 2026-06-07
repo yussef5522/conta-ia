@@ -27,7 +27,9 @@ interface Props {
   open: boolean
   conta: PayableRow | null
   onClose: () => void
-  onDone: () => void
+  /** Sprint contas-pagar/no-scroll-jump: callback recebe a data ISO escolhida
+   *  pra que a página faça update otimista da row sem refetch. */
+  onDone: (paymentDateISO: string) => void
 }
 
 function todayISO(): string {
@@ -67,7 +69,7 @@ export function MarcarPagaDialog({ open, conta, onClose, onDone }: Props) {
         title: 'Marcada como paga',
         description: conta.description,
       })
-      onDone()
+      onDone(date)
       onClose()
     } catch {
       toast({

@@ -309,6 +309,31 @@ function ContasAPagarInner() {
     },
   })
 
+  // Sprint contas-pagar/no-scroll-jump (07/06/2026) — Updates OTIMISTAS pras
+  // ações de linha. Evita refetch+remount da lista que joga scroll pro topo.
+  //
+  // updateRowOptimistic: muda só os campos da row no estado (paga/desmarcar)
+  // removeRowsOptimistic: remove rows do array sem refetch (excluir/bulk)
+  //
+  // Padrão idêntico ao da aba 💸 Retiradas (Sprint Retirada-Despesa-PF) e do
+  // FindAndMatchPanel da Conciliação.
+  const updateRowOptimistic = useCallback(
+    (rowId: string, partial: Partial<PayableRow>) => {
+      setItems((prev) => prev.map((r) => (r.id === rowId ? { ...r, ...partial } : r)))
+    },
+    [],
+  )
+  const removeRowsOptimistic = useCallback((rowIds: string[]) => {
+    const idSet = new Set(rowIds)
+    setItems((prev) => prev.filter((r) => !idSet.has(r.id)))
+    // Limpa seleção se estavam selecionadas
+    setSelection((prev) => {
+      const next = { ...prev }
+      for (const id of rowIds) delete next[id]
+      return next
+    })
+  }, [])
+
   // Carrega categorias da empresa pro combobox
   useEffect(() => {
     if (!empresaId) {
@@ -593,7 +618,10 @@ function ContasAPagarInner() {
         title: 'Conta marcada como não paga',
         description: row.description,
       })
-      void fetchItems()
+      // Update OTIMISTA — só essa row, sem refetch
+      updateRowOptimistic(row.id, { paymentDate: null, status: 'PENDING' })
+      // Aging usa contagens/totais agregados; recalcula em paralelo (não bloqueia UI)
+      refetchAging()
     } catch {
       toast({ variant: 'destructive', title: 'Erro de rede' })
     }
@@ -644,7 +672,9 @@ function ContasAPagarInner() {
         title: 'Conta excluída',
         description: confirmDelete.description,
       })
-      void fetchItems()
+      // Remoção OTIMISTA — sem refetch da lista (preserva scroll)
+      removeRowsOptimistic([confirmDelete.id])
+      refetchAging()
     } catch {
       toast({ variant: 'destructive', title: 'Erro de rede' })
     }
@@ -679,8 +709,9 @@ function ContasAPagarInner() {
       toast({
         title: `${data.success} contas excluídas`,
       })
-      setSelection({})
-      void fetchItems()
+      // Remoção OTIMISTA em lote — preserva scroll
+      removeRowsOptimistic(selectedIds)
+      refetchAging()
     } catch {
       toast({ variant: 'destructive', title: 'Erro de rede' })
     }
@@ -989,7 +1020,20 @@ function ContasAPagarInner() {
         conta={efetivar}
         bankAccounts={bankAccounts}
         onClose={() => setEfetivar(null)}
-        onDone={() => void fetchItems()}
+        onDone={(paymentDateISO, bankAccountId) => {
+          if (efetivar) {
+            const bankAcc = bankAccounts.find((b) => b.id === bankAccountId) ?? null
+            // Update OTIMISTA — sem refetch
+            updateRowOptimistic(efetivar.id, {
+              paymentDate: paymentDateISO,
+              status: 'RECONCILED',
+              bankAccount: bankAcc
+                ? { id: bankAcc.id, name: bankAcc.name, bankName: bankAcc.bankName ?? null }
+                : null,
+            })
+            refetchAging()
+          }
+        }}
       />
 
       {/* Sprint 5.0.3.0a-fix — Modal Editar */}
@@ -1005,7 +1049,16 @@ function ContasAPagarInner() {
         open={!!markPaid}
         conta={markPaid}
         onClose={() => setMarkPaid(null)}
-        onDone={() => void fetchItems()}
+        onDone={(paymentDateISO) => {
+          if (markPaid) {
+            // Update OTIMISTA — sem refetch
+            updateRowOptimistic(markPaid.id, {
+              paymentDate: paymentDateISO,
+              status: 'RECONCILED',
+            })
+            refetchAging()
+          }
+        }}
       />
 
       {/* Sprint 5.0.3.0a-fix — Confirm Excluir */}
@@ -1036,9 +1089,28 @@ function ContasAPagarInner() {
         empresaId={empresaId}
         transactionIds={selectedIds}
         onClose={() => setBulkMarkPaidOpen(false)}
-        onDone={() => {
+        onDone={(paymentDateISO, bankAccountId) => {
+          // Update OTIMISTA em lote — sem refetch (preserva scroll)
+          const idSet = new Set(selectedIds)
+          const bankAcc = bankAccountId
+            ? bankAccounts.find((b) => b.id === bankAccountId)
+            : null
+          setItems((prev) =>
+            prev.map((r) =>
+              idSet.has(r.id)
+                ? {
+                    ...r,
+                    paymentDate: paymentDateISO,
+                    status: 'RECONCILED',
+                    bankAccount: bankAcc
+                      ? { id: bankAcc.id, name: bankAcc.name, bankName: bankAcc.bankName ?? null }
+                      : r.bankAccount,
+                  }
+                : r,
+            ),
+          )
           setSelection({})
-          void fetchItems()
+          refetchAging()
         }}
       />
 
