@@ -267,10 +267,14 @@ export default function TransacoesPage() {
                 </div>
               </div>
 
-              {/* Status */}
-              <Badge variant={STATUS_VARIANTS[t.status] ?? 'outline'} className="hidden sm:inline-flex text-xs">
-                {STATUS_LABELS[t.status] ?? t.status}
-              </Badge>
+              {/* Status — Sprint Caixa-Status (08/06/2026): esconde badge em
+                  contas Caixa. Dinheiro físico não tem extrato OFX pra conciliar
+                  (padrão Conta Azul/QuickBooks/Xero). Saldo já é definitivo. */}
+              {conta?.accountType !== 'CASH' && (
+                <Badge variant={STATUS_VARIANTS[t.status] ?? 'outline'} className="hidden sm:inline-flex text-xs">
+                  {STATUS_LABELS[t.status] ?? t.status}
+                </Badge>
+              )}
 
               {/* Valor */}
               <span className={`shrink-0 font-semibold text-sm ${t.type === 'CREDIT' ? 'text-green-600' : 'text-red-600'}`}>

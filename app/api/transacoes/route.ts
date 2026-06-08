@@ -166,6 +166,9 @@ export async function POST(request: NextRequest) {
         balance: true,
         allowNegativeBalance: true,
         creditLimit: true,
+        // Sprint Caixa-Status (08/06/2026): conta CASH não tem extrato OFX
+        // pra conciliar — tx nasce RECONCILED direto.
+        accountType: true,
       },
     })
     if (!conta) return NextResponse.json({ erro: 'Conta não encontrada' }, { status: 404 })
@@ -195,6 +198,12 @@ export async function POST(request: NextRequest) {
       throw new BalanceCheckError(balanceCheck)
     }
 
+    // Sprint Caixa-Status (08/06/2026): tx vinculada a conta Caixa (dinheiro
+    // físico) nasce RECONCILED. Caixa não tem extrato OFX pra esperar — saída
+    // já é definitiva no momento do lançamento. Padrão QuickBooks/Xero/Conta Azul.
+    const statusEfetivo =
+      conta.accountType === 'CASH' ? 'RECONCILED' : data.status
+
     // Cria transação e recalcula saldo em uma transaction
     const [transacao] = await prisma.$transaction([
       prisma.transaction.create({
@@ -205,7 +214,7 @@ export async function POST(request: NextRequest) {
           description: data.description,
           amount: data.amount,
           type: data.type,
-          status: data.status,
+          status: statusEfetivo,
           notes: data.notes ?? null,
           origin: 'MANUAL',
         },
