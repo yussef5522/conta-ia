@@ -306,6 +306,7 @@ export default function TransacoesPage() {
                 pjAmount={t.amount}
                 pjDescription={t.description}
                 categoryDreGroup={t.category?.dreGroup ?? null}
+                categoryName={t.category?.name ?? null}
                 onCompleted={() => {
                   // Update OTIMISTA — marca a row como tendo ponte
                   setTransacoes((prev) =>

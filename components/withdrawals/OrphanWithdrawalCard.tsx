@@ -31,6 +31,9 @@ interface Props {
   pjDescription: string
   /** dreGroup da categoria — usado pra inferir kind no WithdrawalPanel. */
   categoryDreGroup: string | null
+  /** Nome da categoria — usado pra distinguir Pró-labore Sócios vs
+   *  Distribuição de Lucros dentro do mesmo dreGroup. */
+  categoryName?: string | null
   /** Disparado após criar a ponte com sucesso. Parent deve marcar
    *  esta row como "ponte ativa" no estado local (update otimista). */
   onCompleted: () => void
@@ -46,11 +49,12 @@ export function OrphanWithdrawalCard({
   pjAmount,
   pjDescription,
   categoryDreGroup,
+  categoryName,
   onCompleted,
   variant = 'inline',
 }: Props) {
   const [open, setOpen] = useState(false)
-  const suggestedKind = inferKindFromDreGroup(categoryDreGroup)
+  const suggestedKind = inferKindFromDreGroup(categoryDreGroup, categoryName)
   const initialSuggestion = suggestedKind
     ? { socioId: '', suggestedKind }
     : null

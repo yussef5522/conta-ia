@@ -14,14 +14,22 @@ import type { WithdrawalKind } from './suggest-from-description'
 /**
  * dreGroups que disparam o fluxo de Retirada de Sócio.
  *
- * Decisão #4 do Yussef (08/06/2026):
- *   - DISTRIBUICAO_LUCROS → cobre: Distribuição, Adiantamento, Retirada genérica
- *   - DESPESAS_PESSOAL → cobre: Pró-labore (folha de sócio)
- *   - Reembolso fica de fora (não é retirada de fato — é restituição)
+ * Decisão #4 do Yussef (08/06/2026) — refinada após validação em prod:
+ *   - DISTRIBUICAO_LUCROS é o ÚNICO dreGroup que dispara
+ *   - Cobre: Distribuição de Lucros, Pró-labore Sócios, Pró-labore e
+ *     Distribuição, INSS sobre Pró-labore, Adiantamento a sócio,
+ *     Retirada de Sócios (genérica)
+ *   - DESPESAS_PESSOAL fica FORA: é folha CLT (Salários, FGTS, INSS
+ *     Patronal, Benefícios, Vale Transporte, etc) — NÃO é retirada
+ *   - Reembolso fica de fora também (não é retirada — é restituição)
+ *
+ * Distinção robusta: o template de plano de contas BR já separa
+ * Pró-labore de sócio (DISTRIBUICAO_LUCROS) de Pró-labore folha CLT
+ * (DESPESAS_PESSOAL). Cliente que segue o template não tem ambiguidade.
+ * Cliente que renomeou pode SEMPRE criar ponte manual pelo menu /pendentes.
  */
 export const WITHDRAWAL_DRE_GROUPS: ReadonlySet<string> = new Set([
   'DISTRIBUICAO_LUCROS',
-  'DESPESAS_PESSOAL',
 ])
 
 export interface OrphanCandidate {
@@ -60,17 +68,31 @@ export function isOrphanWithdrawal(c: OrphanCandidate): boolean {
 }
 
 /**
- * Infere o WithdrawalKind a partir do dreGroup da categoria.
+ * Infere o WithdrawalKind a partir do dreGroup da categoria + nome.
  * Usado pra pré-preencher o WithdrawalPanel ao abrir o convite.
  *
- *   DISTRIBUICAO_LUCROS → DISTRIBUICAO (default; user pode trocar pra ADIANTAMENTO/RETIRADA_SOCIOS)
- *   DESPESAS_PESSOAL     → PRO_LABORE
+ * Lógica:
+ *   1. dreGroup ≠ DISTRIBUICAO_LUCROS → null (não dispara, defensivo)
+ *   2. nome contém "labore" → PRO_LABORE (pró-labore + INSS sobre pró-labore)
+ *   3. caso geral → DISTRIBUICAO (default; user pode trocar pra ADIANTAMENTO/RETIRADA_SOCIOS)
+ *
+ * Normaliza acento e case pra "pró-labore" / "pro-labore" / "prolabore" baterem.
  */
+function normalize(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+}
+
 export function inferKindFromDreGroup(
   dreGroup: string | null | undefined,
+  categoryName?: string | null,
 ): WithdrawalKind | null {
   if (!dreGroup) return null
-  if (dreGroup === 'DISTRIBUICAO_LUCROS') return 'DISTRIBUICAO'
-  if (dreGroup === 'DESPESAS_PESSOAL') return 'PRO_LABORE'
-  return null
+  if (dreGroup !== 'DISTRIBUICAO_LUCROS') return null
+  if (categoryName && normalize(categoryName).includes('labore')) {
+    return 'PRO_LABORE'
+  }
+  return 'DISTRIBUICAO'
 }

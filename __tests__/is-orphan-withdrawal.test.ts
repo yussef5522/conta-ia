@@ -57,33 +57,63 @@ describe('isOrphanWithdrawal', () => {
     ).toBe(false)
   })
 
-  it('DESPESAS_PESSOAL (pró-labore) → é órfã se EFFECTED sem ponte', () => {
+  it('DESPESAS_PESSOAL (folha CLT — Salários, FGTS, etc) → NÃO dispara (Opção 3)', () => {
     expect(
       isOrphanWithdrawal({ ...base, categoryDreGroup: 'DESPESAS_PESSOAL' }),
-    ).toBe(true)
+    ).toBe(false)
   })
 
-  it('REEMBOLSO (decisão #4 — fica de fora) → não dispara', () => {
-    // dreGroup OUTRAS_DESPESAS é comum em reembolso
+  it('CUSTO_PRODUTO_VENDIDO (Salários Cozinha CLT) → NÃO dispara', () => {
+    expect(
+      isOrphanWithdrawal({ ...base, categoryDreGroup: 'CUSTO_PRODUTO_VENDIDO' }),
+    ).toBe(false)
+  })
+
+  it('REEMBOLSO (OUTRAS_DESPESAS) → não dispara', () => {
     expect(
       isOrphanWithdrawal({ ...base, categoryDreGroup: 'OUTRAS_DESPESAS' }),
     ).toBe(false)
   })
 
-  it('WITHDRAWAL_DRE_GROUPS contém exatamente 2 grupos', () => {
-    expect(WITHDRAWAL_DRE_GROUPS.size).toBe(2)
+  it('WITHDRAWAL_DRE_GROUPS contém exatamente 1 grupo (Opção 3)', () => {
+    expect(WITHDRAWAL_DRE_GROUPS.size).toBe(1)
     expect(WITHDRAWAL_DRE_GROUPS.has('DISTRIBUICAO_LUCROS')).toBe(true)
-    expect(WITHDRAWAL_DRE_GROUPS.has('DESPESAS_PESSOAL')).toBe(true)
+    expect(WITHDRAWAL_DRE_GROUPS.has('DESPESAS_PESSOAL')).toBe(false)
   })
 })
 
 describe('inferKindFromDreGroup', () => {
-  it('DISTRIBUICAO_LUCROS → DISTRIBUICAO', () => {
+  it('DISTRIBUICAO_LUCROS sem nome → DISTRIBUICAO (default)', () => {
     expect(inferKindFromDreGroup('DISTRIBUICAO_LUCROS')).toBe('DISTRIBUICAO')
   })
 
-  it('DESPESAS_PESSOAL → PRO_LABORE', () => {
-    expect(inferKindFromDreGroup('DESPESAS_PESSOAL')).toBe('PRO_LABORE')
+  it('DISTRIBUICAO_LUCROS + "Distribuição de Lucros" → DISTRIBUICAO', () => {
+    expect(
+      inferKindFromDreGroup('DISTRIBUICAO_LUCROS', 'Distribuição de Lucros'),
+    ).toBe('DISTRIBUICAO')
+  })
+
+  it('DISTRIBUICAO_LUCROS + "Pró-labore Sócios" → PRO_LABORE', () => {
+    expect(
+      inferKindFromDreGroup('DISTRIBUICAO_LUCROS', 'Pró-labore Sócios'),
+    ).toBe('PRO_LABORE')
+  })
+
+  it('DISTRIBUICAO_LUCROS + "Pro labore" (sem acento) → PRO_LABORE', () => {
+    expect(inferKindFromDreGroup('DISTRIBUICAO_LUCROS', 'Pro labore')).toBe(
+      'PRO_LABORE',
+    )
+  })
+
+  it('DISTRIBUICAO_LUCROS + "INSS sobre Pró-labore" → PRO_LABORE', () => {
+    expect(
+      inferKindFromDreGroup('DISTRIBUICAO_LUCROS', 'INSS sobre Pró-labore'),
+    ).toBe('PRO_LABORE')
+  })
+
+  it('DESPESAS_PESSOAL → null (Opção 3 — não dispara)', () => {
+    expect(inferKindFromDreGroup('DESPESAS_PESSOAL')).toBeNull()
+    expect(inferKindFromDreGroup('DESPESAS_PESSOAL', 'Salários')).toBeNull()
   })
 
   it('outros dreGroups → null', () => {
