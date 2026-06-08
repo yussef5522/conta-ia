@@ -105,6 +105,21 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           ? 'PENDING'
           : 'RECONCILED'
 
+    // Sprint Bug-Desmarcar-Paga (07/06/2026):
+    // Quando user desmarca paga (paymentDate=null) numa tx EFFECTED que
+    // NUNCA foi efetivada com banco (bankAccountId=null), revertemos o
+    // lifecycle pra PAYABLE. Sem isso, a tx fica em estado órfão
+    // (EFFECTED+paymentDate=null) — UI mostra "Efetivar com banco" mas o
+    // endpoint /efetivar rejeita "tx EFFECTED".
+    //
+    // 🛡 Segurança preservada: o caso COM bankAccount já é bloqueado acima
+    // (CANNOT_UNMARK_PAID_EFFECTED). Aqui só age no caso seguro sem banco.
+    const revertendoLifecycle =
+      data.paymentDate === null &&
+      antiga.paymentDate !== null &&
+      !antiga.bankAccountId &&
+      antiga.lifecycle === 'EFFECTED'
+
     const atualizada = await prisma.$transaction(async (tx) => {
       const updated = await tx.transaction.update({
         where: { id },
@@ -134,6 +149,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
             : {}),
           ...(data.notes !== undefined ? { notes: data.notes } : {}),
           ...(novoStatus !== undefined ? { status: novoStatus } : {}),
+          ...(revertendoLifecycle ? { lifecycle: 'PAYABLE' } : {}),
         },
       })
 
@@ -152,6 +168,8 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           'competenceDate',
           'notes',
           'status',
+          // Sprint Bug-Desmarcar-Paga (07/06/2026): rastreia reversão lifecycle
+          'lifecycle',
         ],
       )
 
