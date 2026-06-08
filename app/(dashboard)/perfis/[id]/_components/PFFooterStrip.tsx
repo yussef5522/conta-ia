@@ -4,7 +4,7 @@
 
 import Link from 'next/link'
 import { motion } from 'framer-motion'
-import { Wallet, Inbox, Plus } from 'lucide-react'
+import { Wallet, Inbox, Plus, FileText } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { formatBRL } from '@/lib/format/money'
@@ -28,7 +28,7 @@ export function PFFooterStrip({ profileId, accounts, pendingCount }: Props) {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.4, delay: 0.6 }}
-      className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_auto]"
+      className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_auto_auto]"
     >
       <Card>
         <CardContent className="p-4">
@@ -113,6 +113,26 @@ export function PFFooterStrip({ profileId, accounts, pendingCount }: Props) {
               </p>
             </>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Sprint Categorias-PF-Nav (07/06/2026): card de atalho pras
+          Categorias do perfil — antes não havia link nenhum no dashboard,
+          cliente se perdia procurando. */}
+      <Card>
+        <CardContent className="flex flex-col justify-center p-4 sm:min-w-[180px]">
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-sky-700">
+            <FileText className="h-4 w-4" />
+            Categorias
+          </h3>
+          <p className="mt-1 text-xs text-slate-600">
+            Plano de contas pessoal (separado da empresa)
+          </p>
+          <Link href={`/perfis/${profileId}/categorias`}>
+            <Button size="sm" className="mt-2 w-full" variant="outline">
+              Gerenciar →
+            </Button>
+          </Link>
         </CardContent>
       </Card>
     </motion.div>

@@ -218,10 +218,34 @@ export async function createCategory(
       throw new ProfileAccessError('parentId inválido', 'INVALID_PARENT')
     }
   }
+  // Sprint Categorias-PF-Nav (07/06/2026): valida nome duplicado no perfil
+  // (case-insensitive, trim). Evita "Nora" + "nora" duplicadas. Multi-tenant
+  // garantido via checkProfileAccess acima.
+  //
+  // Comparação case-insensitive feita em JS (não em SQL) porque o Prisma
+  // dev DB é SQLite e não aceita `mode: 'insensitive'`. Trade-off aceito:
+  // 1 query a mais em cria-categoria (não é hot path) em troca de
+  // funcionar nos 2 providers sem schema-aware code.
+  const trimmedName = input.name.trim()
+  if (trimmedName.length === 0) {
+    throw new ProfileAccessError('Nome obrigatório', 'INVALID_NAME')
+  }
+  const trimmedLower = trimmedName.toLowerCase()
+  const existing = await prisma.personalCategory.findMany({
+    where: { profileId: input.profileId },
+    select: { id: true, name: true },
+  })
+  const duplicate = existing.find((c) => c.name.toLowerCase() === trimmedLower)
+  if (duplicate) {
+    throw new ProfileAccessError(
+      `Já existe uma categoria chamada "${duplicate.name}"`,
+      'CATEGORY_DUPLICATE',
+    )
+  }
   return prisma.personalCategory.create({
     data: {
       profileId: input.profileId,
-      name: input.name,
+      name: trimmedName,
       type: input.type,
       color: input.color ?? null,
       icon: input.icon ?? null,

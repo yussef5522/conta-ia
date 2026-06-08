@@ -1,4 +1,5 @@
 // Sprint PF FATIA 1 — Categorias do perfil PF.
+// Sprint Categorias-PF-Nav (07/06/2026) — modal limpo + update otimista.
 
 'use client'
 
@@ -7,15 +8,10 @@ import Link from 'next/link'
 import { ArrowLeft, Plus, Loader2 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+  NovaCategoriaPFModal,
+  type PersonalCategoryCreated,
+} from '@/components/categorias-pf/NovaCategoriaPFModal'
 
 interface Category {
   id: string
@@ -35,54 +31,29 @@ export default function CategoriasPFPage({
   const { id } = use(params)
   const [items, setItems] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
-  const [showForm, setShowForm] = useState(false)
+  const [modalOpen, setModalOpen] = useState(false)
 
-  // Form
-  const [name, setName] = useState('')
-  const [type, setType] = useState<'INCOME' | 'EXPENSE'>('EXPENSE')
-  const [color, setColor] = useState('#10b981')
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  function reload() {
+  useEffect(() => {
+    let cancelled = false
     setLoading(true)
     fetch(`/api/perfis/${id}/categorias`)
       .then((r) => r.json())
-      .then((d) => setItems(d.categories ?? []))
-      .finally(() => setLoading(false))
-  }
-
-  useEffect(() => {
-    reload()
+      .then((d) => {
+        if (!cancelled) setItems(d.categories ?? [])
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [id])
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setError(null)
-    setSubmitting(true)
-    try {
-      const r = await fetch(`/api/perfis/${id}/categorias`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: name.trim(),
-          type,
-          color,
-        }),
-      })
-      if (!r.ok) {
-        const d = await r.json().catch(() => ({}))
-        setError(d.erro ?? 'Falha ao criar categoria')
-        return
-      }
-      setName('')
-      setShowForm(false)
-      reload()
-    } catch {
-      setError('Sem conexão')
-    } finally {
-      setSubmitting(false)
-    }
+  function handleCreated(cat: PersonalCategoryCreated) {
+    // Sprint Categorias-PF-Nav: update OTIMISTA — insere no estado local
+    // sem refetch. Categoria aparece na seção certa (Receita/Despesa)
+    // imediatamente, sem perder scroll nem causar flash de loading.
+    setItems((prev) => [...prev, cat as Category])
   }
 
   const incomes = items.filter((c) => c.type === 'INCOME')
@@ -100,93 +71,25 @@ export default function CategoriasPFPage({
 
       <div className="flex items-start justify-between gap-3 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-zinc-900">Categorias</h1>
+          <h1 className="text-2xl font-bold text-zinc-900">
+            Categorias{' '}
+            <span className="text-sm font-normal text-emerald-700">
+              (perfil pessoal)
+            </span>
+          </h1>
           <p className="text-sm text-zinc-600">
-            Plano de contas pessoal — 15 categorias padrão + suas customizadas
+            Plano de contas pessoal — 15 padrão + suas customizadas.
+            Separadas das categorias da empresa.
           </p>
         </div>
-        {!showForm && (
-          <Button
-            onClick={() => setShowForm(true)}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white"
-          >
-            <Plus className="h-4 w-4 mr-1" />
-            Nova categoria
-          </Button>
-        )}
+        <Button
+          onClick={() => setModalOpen(true)}
+          className="bg-emerald-600 hover:bg-emerald-700 text-white"
+        >
+          <Plus className="h-4 w-4 mr-1" />
+          Nova categoria
+        </Button>
       </div>
-
-      {showForm && (
-        <Card className="mb-4 border-emerald-200">
-          <CardContent className="p-5">
-            <form onSubmit={handleSubmit} className="grid sm:grid-cols-3 gap-4">
-              <div className="sm:col-span-2">
-                <Label htmlFor="cat-name">Nome *</Label>
-                <Input
-                  id="cat-name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  required
-                  maxLength={60}
-                  className="mt-1"
-                  placeholder='Ex: "Pet", "Streaming"'
-                />
-              </div>
-
-              <div>
-                <Label>Tipo *</Label>
-                <Select value={type} onValueChange={(v) => setType(v as 'INCOME' | 'EXPENSE')}>
-                  <SelectTrigger className="mt-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="EXPENSE">Despesa</SelectItem>
-                    <SelectItem value="INCOME">Receita</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <Label htmlFor="color">Cor</Label>
-                <Input
-                  id="color"
-                  type="color"
-                  value={color}
-                  onChange={(e) => setColor(e.target.value)}
-                  className="mt-1 h-9 w-full"
-                />
-              </div>
-
-              {error && (
-                <div className="sm:col-span-3 p-3 rounded-md bg-red-50 border border-red-200 text-sm text-red-700">
-                  {error}
-                </div>
-              )}
-
-              <div className="sm:col-span-3 flex gap-3">
-                <Button
-                  type="submit"
-                  disabled={submitting || !name.trim()}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                >
-                  {submitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                  Criar
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    setShowForm(false)
-                    setError(null)
-                  }}
-                >
-                  Cancelar
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-      )}
 
       {loading ? (
         <div className="flex items-center justify-center py-12">
@@ -249,6 +152,14 @@ export default function CategoriasPFPage({
           </Card>
         </div>
       )}
+
+      <NovaCategoriaPFModal
+        open={modalOpen}
+        profileId={id}
+        defaultType="EXPENSE"
+        onClose={() => setModalOpen(false)}
+        onCreated={handleCreated}
+      />
     </div>
   )
 }

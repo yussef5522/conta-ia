@@ -15,6 +15,9 @@ function errorResponse(err: unknown) {
       NO_ACCESS: 404,
       INSUFFICIENT_ROLE: 403,
       INVALID_PARENT: 400,
+      // Sprint Categorias-PF-Nav (07/06/2026)
+      INVALID_NAME: 400,
+      CATEGORY_DUPLICATE: 409,
     }
     return NextResponse.json(
       { erro: err.message, code: err.code },

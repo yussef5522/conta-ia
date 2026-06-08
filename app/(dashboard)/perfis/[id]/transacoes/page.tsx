@@ -1,4 +1,6 @@
 // Sprint PF FATIA 1 — Transações do perfil PF (lista + criar inline).
+// Sprint Categorias-PF-Nav (07/06/2026) — botão "Categorias" no header +
+// "+ Criar nova categoria" no dropdown com auto-select após criar.
 
 'use client'
 
@@ -10,6 +12,7 @@ import {
   Loader2,
   ArrowUpRight,
   ArrowDownRight,
+  FileText,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -22,7 +25,12 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  SelectSeparator,
 } from '@/components/ui/select'
+import {
+  NovaCategoriaPFModal,
+  type PersonalCategoryCreated,
+} from '@/components/categorias-pf/NovaCategoriaPFModal'
 
 interface Tx {
   id: string
@@ -67,6 +75,8 @@ export default function TransacoesPFPage({
   const [showForm, setShowForm] = useState(false)
   const [accounts, setAccounts] = useState<AccountMini[]>([])
   const [categories, setCategories] = useState<CategoryMini[]>([])
+  // Sprint Categorias-PF-Nav (07/06/2026): modal "+ criar categoria" inline
+  const [novaCatOpen, setNovaCatOpen] = useState(false)
 
   // Form
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
@@ -180,13 +190,23 @@ export default function TransacoesPFPage({
           </p>
         </div>
         {!showForm && (
-          <Button
-            onClick={() => setShowForm(true)}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white"
-          >
-            <Plus className="h-4 w-4 mr-1" />
-            Nova transação
-          </Button>
+          <div className="flex items-center gap-2">
+            {/* Sprint Categorias-PF-Nav: atalho pra gerenciar categorias do
+                perfil (separadas das categorias da empresa). */}
+            <Button asChild variant="outline">
+              <Link href={`/perfis/${id}/categorias`}>
+                <FileText className="h-4 w-4 mr-1" />
+                Categorias
+              </Link>
+            </Button>
+            <Button
+              onClick={() => setShowForm(true)}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              <Plus className="h-4 w-4 mr-1" />
+              Nova transação
+            </Button>
+          </div>
         )}
       </div>
 
@@ -265,7 +285,17 @@ export default function TransacoesPFPage({
 
               <div className="sm:col-span-2">
                 <Label>Categoria</Label>
-                <Select value={categoryId} onValueChange={setCategoryId}>
+                <Select
+                  value={categoryId}
+                  onValueChange={(v) => {
+                    // Sprint Categorias-PF-Nav: sentinel pra abrir modal
+                    if (v === '__create__') {
+                      setNovaCatOpen(true)
+                      return
+                    }
+                    setCategoryId(v)
+                  }}
+                >
                   <SelectTrigger className="mt-1">
                     <SelectValue placeholder="Selecione (opcional)" />
                   </SelectTrigger>
@@ -275,6 +305,13 @@ export default function TransacoesPFPage({
                         {c.name}
                       </SelectItem>
                     ))}
+                    {filteredCategories.length > 0 && <SelectSeparator />}
+                    {/* Sprint Categorias-PF-Nav (07/06/2026): atalho "+ criar"
+                        no fim do dropdown — abre modal pré-selecionando o
+                        tipo certo (despesa/receita conforme `type` do form). */}
+                    <SelectItem value="__create__" className="text-emerald-700 dark:text-emerald-400 font-medium">
+                      ✚ Criar nova categoria…
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -380,6 +417,26 @@ export default function TransacoesPFPage({
           </CardContent>
         </Card>
       )}
+
+      {/* Sprint Categorias-PF-Nav (07/06/2026): modal "+ criar nova categoria"
+          inline. Pré-seleciona o tipo conforme o que está sendo lançado
+          (despesa OU receita). Após criar, a categoria já vem SELECIONADA
+          no dropdown sem o user sair da tela. */}
+      <NovaCategoriaPFModal
+        open={novaCatOpen}
+        profileId={id}
+        defaultType={type === 'CREDIT' ? 'INCOME' : 'EXPENSE'}
+        onClose={() => setNovaCatOpen(false)}
+        onCreated={(cat: PersonalCategoryCreated) => {
+          // 1. Insere no estado local sem refetch
+          setCategories((prev) => [
+            ...prev,
+            { id: cat.id, name: cat.name, type: cat.type },
+          ])
+          // 2. Auto-select da categoria criada no dropdown
+          setCategoryId(cat.id)
+        }}
+      />
     </div>
   )
 }

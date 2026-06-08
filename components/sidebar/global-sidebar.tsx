@@ -51,7 +51,7 @@ interface GlobalSidebarProps {
 export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
   const pathname = usePathname()
   const { currentEmpresaId } = useEmpresa()
-  const { workspaceType } = useWorkspace()
+  const { workspaceType, currentProfileId } = useWorkspace()
   const [empresaIdForBadges, setEmpresaIdForBadges] = useState<string | null>(null)
 
   // Sprint Sidebar-Badges-Sync: zera badges quando workspace é PF (badges são
@@ -209,11 +209,23 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
           isActive={pathname.startsWith('/fornecedores')}
           onClick={onNavigate}
         />
+        {/* Sprint Categorias-PF-Nav (07/06/2026): item REATIVO ao workspace.
+            Em PF, vai pras categorias do PERFIL (plano pessoal); em PJ,
+            vai pro Plano de Contas da EMPRESA. Antes dava sempre /categorias
+            (PJ) — confundia cliente que estava em PF. */}
         <SidebarItem
           icon={FileText}
           label="Categorias"
-          href="/categorias"
-          isActive={pathname.startsWith('/categorias')}
+          href={
+            workspaceType === 'pf' && currentProfileId
+              ? `/perfis/${currentProfileId}/categorias`
+              : '/categorias'
+          }
+          isActive={
+            workspaceType === 'pf'
+              ? /^\/perfis\/[^/]+\/categorias(\/|$)/.test(pathname)
+              : pathname.startsWith('/categorias')
+          }
           onClick={onNavigate}
         />
         {/* Sprint Unificar Sócios (03/06/2026) — substitui "Pessoas Vinculadas"
