@@ -77,7 +77,13 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
     let patch
     try {
-      patch = buildEffectivePatch(data.paymentDate, data.bankAccountId)
+      // Sprint Bug-Filtro-Pendentes (08/06/2026): markReconciled=true.
+      // Antes ficava sem flag → patch sobrescrevia status pra PENDING
+      // (regressão silenciosa), fazendo tx EFFECTED+pagas continuarem
+      // aparecendo no filtro "Pendentes" de Contas a Pagar.
+      patch = buildEffectivePatch(data.paymentDate, data.bankAccountId, {
+        markReconciled: true,
+      })
     } catch (e) {
       if (e instanceof LifecycleValidationError) {
         return NextResponse.json({ erro: e.reason }, { status: 422 })
