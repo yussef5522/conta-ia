@@ -114,7 +114,11 @@ export async function GET(request: NextRequest) {
         skip: (page - 1) * limit,
         take: limit,
         include: {
-          category: { select: { id: true, name: true, color: true, type: true } },
+          // Sprint Fluxo-Único-Retirada (08/06/2026): + dreGroup pra detectar
+          // tx categorizadas como Distribuição/Pró-labore órfãs.
+          category: {
+            select: { id: true, name: true, color: true, type: true, dreGroup: true },
+          },
           bankAccount: { select: { id: true, name: true, bankName: true, balance: true, accountType: true, companyId: true, company: { select: { name: true, tradeName: true } } } },
           // Fase 3 Etapa 2: supplier (Camada 2A keyword / 2B BrasilAPI)
           supplier: {
@@ -130,6 +134,9 @@ export async function GET(request: NextRequest) {
           classifiedByRule: {
             select: { id: true, padrao: true, tipoMatch: true },
           },
+          // Sprint Fluxo-Único-Retirada (08/06/2026): bridge pra detectar
+          // tx já vinculadas à entrada PF.
+          bridge: { select: { id: true } },
         },
       }),
     ])

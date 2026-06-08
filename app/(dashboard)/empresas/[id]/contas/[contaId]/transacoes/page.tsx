@@ -13,6 +13,8 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Header } from '@/components/layout/header'
 import { DeleteDialog } from '@/components/empresas/delete-dialog'
+import { OrphanWithdrawalCard } from '@/components/withdrawals/OrphanWithdrawalCard'
+import { isOrphanWithdrawal } from '@/lib/withdrawals/is-orphan'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
 import {
@@ -35,7 +37,7 @@ const STATUS_VARIANTS: Record<string, 'outline' | 'secondary' | 'destructive'> =
   IGNORED: 'destructive',
 }
 
-interface Category { id: string; name: string; color: string; type: string }
+interface Category { id: string; name: string; color: string; type: string; dreGroup?: string | null }
 
 interface Transacao {
   id: string
@@ -48,6 +50,11 @@ interface Transacao {
   notes: string | null
   categoryId: string | null
   category: Category | null
+  // Sprint Fluxo-Único-Retirada (08/06/2026) — campos pra detectar orfã
+  lifecycle?: string | null
+  isInternalTransfer?: boolean | null
+  transferGroupId?: string | null
+  bridge?: { id: string } | null
 }
 
 interface Conta { id: string; name: string; bankName: string | null; balance: number; accountType: string }
@@ -224,8 +231,19 @@ export default function TransacoesPage() {
         </div>
       ) : (
         <div className="rounded-lg border overflow-hidden">
-          {transacoes.map((t, i) => (
-            <div key={t.id} className={`group flex items-center gap-3 px-4 py-3 hover:bg-muted/50 ${i > 0 ? 'border-t' : ''}`}>
+          {transacoes.map((t, i) => {
+            // Sprint Fluxo-Único-Retirada (08/06/2026): detecta órfã
+            const isOrfaRetirada = isOrphanWithdrawal({
+              lifecycle: t.lifecycle ?? '',
+              type: t.type,
+              isInternalTransfer: t.isInternalTransfer ?? false,
+              transferGroupId: t.transferGroupId ?? null,
+              categoryDreGroup: t.category?.dreGroup ?? null,
+              hasBridge: !!t.bridge,
+            })
+            return (
+            <div key={t.id} className={`group flex flex-col px-4 py-3 hover:bg-muted/50 ${i > 0 ? 'border-t' : ''}`}>
+            <div className="flex items-center gap-3">
               {/* Ícone entrada/saída */}
               <div className={`shrink-0 flex h-9 w-9 items-center justify-center rounded-full ${
                 t.type === 'CREDIT' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
@@ -280,7 +298,28 @@ export default function TransacoesPage() {
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
-          ))}
+            {/* Sprint Fluxo-Único-Retirada: convite âmbar */}
+            {isOrfaRetirada && (
+              <OrphanWithdrawalCard
+                empresaId={empresaId}
+                pjTransactionId={t.id}
+                pjAmount={t.amount}
+                pjDescription={t.description}
+                categoryDreGroup={t.category?.dreGroup ?? null}
+                onCompleted={() => {
+                  // Update OTIMISTA — marca a row como tendo ponte
+                  setTransacoes((prev) =>
+                    prev.map((x) =>
+                      x.id === t.id
+                        ? { ...x, bridge: { id: '__just-created__' } }
+                        : x,
+                    ),
+                  )
+                }}
+              />
+            )}
+            </div>
+          )})}
         </div>
       )}
 

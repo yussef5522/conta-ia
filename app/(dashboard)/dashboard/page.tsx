@@ -26,6 +26,7 @@ import { InsightsSkeleton } from './_components/InsightsSkeleton'
 import { MiniDRE } from './_components/MiniDRE'
 import { TopCategories } from './_components/TopCategories'
 import { HealthCheck } from './_components/HealthCheck'
+import { OrphanWithdrawalsBanner } from './_components/OrphanWithdrawalsBanner'
 import { CashflowWaterfall } from './_components/CashflowWaterfall'
 import { RecentActivity } from './_components/RecentActivity'
 import { PrevistoSection } from './_components/PrevistoSection'
@@ -203,6 +204,12 @@ export default async function DashboardPage({ searchParams }: PageProps) {
 
           <Suspense fallback={<CardSkeleton height={200} />}>
             <HealthCheck companyId={empresaAtual.id} />
+          </Suspense>
+
+          {/* Sprint Fluxo-Único-Retirada (08/06/2026) — contador de
+              retiradas órfãs. Renderiza nada se count=0 (zero ruído). */}
+          <Suspense fallback={null}>
+            <OrphanWithdrawalsBanner companyId={empresaAtual.id} />
           </Suspense>
 
           {/* Sprint 4.0.3 — Fluxo Previsto + Alertas Vencimento */}

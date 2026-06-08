@@ -29,6 +29,8 @@ import { formatBRL } from '@/lib/format/money'
 import { parseTransacoesURLFilters, buildTransacoesURLParams } from '@/lib/transacoes/url-filters'
 import { AiSourceBadge } from '@/components/transacoes/ai-source-badge'
 import { InlineCategorySelect } from '@/components/transacoes/inline-category-select'
+import { OrphanWithdrawalCard } from '@/components/withdrawals/OrphanWithdrawalCard'
+import { isOrphanWithdrawal } from '@/lib/withdrawals/is-orphan'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
@@ -45,7 +47,7 @@ const STATUS_VARIANTS: Record<string, 'outline' | 'secondary' | 'destructive'> =
   IGNORED: 'destructive',
 }
 
-interface Category { id: string; name: string; color: string; type: string }
+interface Category { id: string; name: string; color: string; type: string; dreGroup?: string | null }
 
 interface ContaInfo {
   id: string
@@ -74,6 +76,11 @@ interface Transacao {
   classificationSource: string | null
   aiConfidence: number | null
   classifiedByRule: { id: string; padrao: string; tipoMatch: string } | null
+  // Sprint Fluxo-Único-Retirada (08/06/2026) — campos pra detectar orfã
+  lifecycle?: string | null
+  isInternalTransfer?: boolean | null
+  transferGroupId?: string | null
+  bridge?: { id: string } | null
 }
 
 interface Paginacao { total: number; page: number; limit: number; totalPages: number }
@@ -941,13 +948,24 @@ function TransacoesPageInner() {
                 : 'Selecione transações pra ações em massa'}
             </span>
           </div>
-          {transacoes.map((t, i) => (
+          {transacoes.map((t, i) => {
+            // Sprint Fluxo-Único-Retirada (08/06/2026): detecta se é retirada órfã
+            const isOrfaRetirada = isOrphanWithdrawal({
+              lifecycle: t.lifecycle ?? '',
+              type: t.type,
+              isInternalTransfer: t.isInternalTransfer ?? false,
+              transferGroupId: t.transferGroupId ?? null,
+              categoryDreGroup: t.category?.dreGroup ?? null,
+              hasBridge: !!t.bridge,
+            })
+            return (
             <div
               key={t.id}
               ref={(el) => { rowRefs.current[i] = el }}
-              className={`group flex items-center gap-3 px-4 py-3 hover:bg-muted/50 ${i > 0 ? 'border-t' : ''} ${selectedIds.has(t.id) ? 'bg-primary/5' : ''} ${i === cursorIndex ? 'ring-2 ring-inset ring-primary/40' : ''}`}
+              className={`group flex flex-col px-4 py-3 hover:bg-muted/50 ${i > 0 ? 'border-t' : ''} ${selectedIds.has(t.id) ? 'bg-primary/5' : ''} ${i === cursorIndex ? 'ring-2 ring-inset ring-primary/40' : ''}`}
               onClick={() => setCursorIndex(i)}
             >
+            <div className="flex items-center gap-3">
               {/* Sprint 3.0.3 B2 — checkbox */}
               <Checkbox
                 checked={selectedIds.has(t.id)}
@@ -1040,7 +1058,24 @@ function TransacoesPageInner() {
                 Editar
               </Link>
             </div>
-          ))}
+            {/* Sprint Fluxo-Único-Retirada: convite âmbar quando tx é
+                retirada órfã (categorizada Distribuição/Pró-labore + sem ponte PF) */}
+            {isOrfaRetirada && (
+              <OrphanWithdrawalCard
+                empresaId={t.bankAccount.companyId}
+                pjTransactionId={t.id}
+                pjAmount={t.amount}
+                pjDescription={t.description}
+                categoryDreGroup={t.category?.dreGroup ?? null}
+                onCompleted={() => {
+                  // Update OTIMISTA — marca a row com bridge fictícia pro
+                  // card sumir sem refetch.
+                  updateTxOptimistic(t.id, { bridge: { id: '__just-created__' } })
+                }}
+              />
+            )}
+          </div>
+          )})}
         </div>
       )}
 
