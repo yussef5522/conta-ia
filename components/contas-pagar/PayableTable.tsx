@@ -353,9 +353,18 @@ export function PayableTable({
       accessorKey: 'amount',
       cell: ({ row }) => {
         const r = row.original
+        // Sprint Cor-Valor-Status (07/06/2026): cor do valor segue o mesmo
+        // status visual da palavra (paid=verde, overdue=vermelho, warn=âmbar,
+        // pending=neutro). Antes era hardcoded vermelho em todos os estados.
+        const visualForAmount = payableVisualStatus({
+          status: r.status,
+          dueDate: r.dueDate,
+          paymentDate: r.paymentDate,
+        })
+        const amountColor = PAYABLE_STATUS_COLOR[visualForAmount].amountText
         if (editCell) {
           return (
-            <span className="block text-right tabular-nums font-medium text-red-600">
+            <span className={`block text-right tabular-nums font-medium ${amountColor}`}>
               − R${' '}
               <EditableCell
                 type="number"
@@ -374,7 +383,7 @@ export function PayableTable({
           )
         }
         return (
-          <span className="block text-right tabular-nums font-medium text-red-600">
+          <span className={`block text-right tabular-nums font-medium ${amountColor}`}>
             − R$ {formatBRL(r.amount)}
           </span>
         )

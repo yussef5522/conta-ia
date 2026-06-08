@@ -60,26 +60,35 @@ export function payableStatusLabel(s: PayableVisualStatus): string {
 /** Classes Tailwind pro badge + tarja lateral. Mapas explícitos (safelist). */
 export const PAYABLE_STATUS_COLOR: Record<
   PayableVisualStatus,
-  { stripe: string; badgeBg: string; badgeText: string }
+  { stripe: string; badgeBg: string; badgeText: string; amountText: string }
 > = {
   paid: {
     stripe: 'bg-emerald-500',
     badgeBg: 'bg-emerald-100 dark:bg-emerald-950/40',
     badgeText: 'text-emerald-700 dark:text-emerald-300',
+    // Sprint Cor-Valor-Status (07/06/2026): valor verde quando paga,
+    // batendo com a palavra "Paga"
+    amountText: 'text-emerald-700 dark:text-emerald-400',
   },
   pending: {
     stripe: 'bg-sky-500',
     badgeBg: 'bg-sky-100 dark:bg-sky-950/40',
     badgeText: 'text-sky-700 dark:text-sky-300',
+    // Pendente normal (não vencida, sem urgência) → neutro
+    amountText: 'text-foreground',
   },
   warn: {
     stripe: 'bg-amber-500',
     badgeBg: 'bg-amber-100 dark:bg-amber-950/40',
     badgeText: 'text-amber-700 dark:text-amber-300',
+    // Vence em breve (≤3d) → âmbar suave, mesmo tom do badge
+    amountText: 'text-amber-700 dark:text-amber-400',
   },
   overdue: {
     stripe: 'bg-red-500',
     badgeBg: 'bg-red-100 dark:bg-red-950/40',
     badgeText: 'text-red-700 dark:text-red-300',
+    // Vencida → vermelho (comportamento atual)
+    amountText: 'text-red-600 dark:text-red-400',
   },
 }
