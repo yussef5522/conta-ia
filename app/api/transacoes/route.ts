@@ -92,12 +92,28 @@ export async function GET(request: NextRequest) {
         ...(fim ? { lte: new Date(fim + 'T23:59:59.999Z') } : {}),
       }
     }
-    if (tipo) where.type = tipo
     if (status) where.status = status
     // Sprint Fix-Caixa-Vinculo (08/06/2026): suporta filtro lifecycle pra
     // lista da conta mostrar só EFFECTED (tx que JÁ saiu/entrou).
     if (lifecycle) where.lifecycle = lifecycle
-    if (semCategoria) where.categoryId = null
+    if (semCategoria) {
+      where.categoryId = null
+      // Sprint Fix-Pendentes-Transfer (08/06/2026): transferência entre
+      // contas próprias NÃO precisa de categoria (não é receita nem despesa
+      // — só dinheiro mudando de conta). Padrão QuickBooks/Xero/Conta Azul:
+      // tx marcada como Transfer sai automaticamente da fila "a categorizar".
+      // Defesa em profundidade: transferGroupId IS NULL.
+      where.transferGroupId = null
+    }
+    // type: compõe AND com guard anti-TRANSFER quando semCategoria
+    // (pra cobrir o caso da query `tipo` vir junto e sobrescrever).
+    if (tipo && semCategoria) {
+      where.type = { equals: tipo, not: 'TRANSFER' }
+    } else if (tipo) {
+      where.type = tipo
+    } else if (semCategoria) {
+      where.type = { not: 'TRANSFER' }
+    }
     // Sprint 3.0.2
     if (categoryId) where.categoryId = categoryId
     if (q) where.description = { contains: q, mode: 'insensitive' }
