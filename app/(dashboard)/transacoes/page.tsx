@@ -727,7 +727,7 @@ function TransacoesPageInner() {
           </Button>
         ) : contas.length === 0 ? (
           <Button size="sm" asChild>
-            <Link href="/contas-bancarias">
+            <Link href="/empresas">
               <Plus className="mr-1.5 h-3.5 w-3.5" />Nova Transação
             </Link>
           </Button>
@@ -928,7 +928,7 @@ function TransacoesPageInner() {
           <h3 className="font-semibold text-lg">Nenhuma transação no período</h3>
           <p className="text-sm text-muted-foreground mt-1 mb-6">Altere os filtros ou acesse uma conta para lançar transações.</p>
           <Button asChild>
-            <Link href="/contas-bancarias">
+            <Link href="/empresas">
               <Building2 className="mr-2 h-4 w-4" />Ver Contas Bancárias
             </Link>
           </Button>

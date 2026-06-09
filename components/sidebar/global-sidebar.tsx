@@ -188,11 +188,23 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
           isActive={pathname === '/empresas' || /^\/empresas\/[^/]+$/.test(pathname)}
           onClick={onNavigate}
         />
+        {/* Sprint Unificar-Contas (08/06/2026): item Bancos REATIVO ao
+            workspace. PJ → /empresas/[id]/contas (tela completa unificada,
+            cobre bancos + Caixa); fallback /empresas se sem contexto.
+            Mesma técnica do item Categorias (Sprint Categorias-PF-Nav). */}
         <SidebarItem
           icon={Landmark}
           label="Bancos"
-          href={`/bancos${empresaQs}`}
-          isActive={pathname.startsWith('/bancos')}
+          href={
+            currentEmpresaId
+              ? `/empresas/${currentEmpresaId}/contas`
+              : '/empresas'
+          }
+          isActive={
+            /^\/empresas\/[^/]+\/contas(\/|$)/.test(pathname) ||
+            pathname.startsWith('/bancos') ||
+            pathname === '/contas-bancarias'
+          }
           onClick={onNavigate}
         />
         <SidebarItem

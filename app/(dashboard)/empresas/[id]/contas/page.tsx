@@ -3,7 +3,11 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import { Plus, Landmark, MoreVertical, Pencil, Trash2, ArrowUpRight, ArrowDownRight, ArrowLeftRight, Scale, Wallet } from 'lucide-react'
+import { Plus, Landmark, MoreVertical, Pencil, Trash2, ArrowUpRight, ArrowDownRight, ArrowLeftRight, Scale, Wallet, Upload } from 'lucide-react'
+import {
+  freshnessLabel,
+  FRESHNESS_TONE_CLASSES,
+} from '@/lib/contas-bancarias/freshness'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -40,6 +44,8 @@ interface Conta {
   allowNegativeBalance: boolean
   creditLimit: number
   lowBalanceThreshold: number | null
+  // Sprint Unificar-Contas (08/06/2026) — herdado do endpoint
+  lastSuccessfulImportAt: string | null
 }
 
 const VARIANT_STYLES: Record<BadgeVariant, { dot: string; label: string; text: string; percent: string }> = {
@@ -270,6 +276,36 @@ export default function ContasPage() {
                       status.subtext
                     )}
                   </p>
+
+                  {/* Sprint Unificar-Contas (08/06/2026): freshness badge +
+                      botão direto "Importar OFX" — herdados da /bancos antiga.
+                      Em CASH não aparecem (dinheiro físico não tem extrato). */}
+                  {!isCash && (() => {
+                    const fresh = freshnessLabel(
+                      conta.lastSuccessfulImportAt
+                        ? new Date(conta.lastSuccessfulImportAt)
+                        : null,
+                    )
+                    return (
+                      <div className="mt-3 flex items-center justify-between gap-2 pt-3 border-t">
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${FRESHNESS_TONE_CLASSES[fresh.tone]}`}
+                          title="Última importação OFX bem-sucedida"
+                        >
+                          <Upload className="h-2.5 w-2.5" />
+                          {fresh.label}
+                        </span>
+                        <Button asChild variant="outline" size="sm" className="h-7">
+                          <Link
+                            href={`/empresas/${empresaId}/contas/${conta.id}/importar`}
+                          >
+                            <Upload className="h-3 w-3 mr-1" />
+                            Importar OFX
+                          </Link>
+                        </Button>
+                      </div>
+                    )
+                  })()}
                 </CardContent>
               </Card>
             )
