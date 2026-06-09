@@ -56,6 +56,12 @@ export async function GET(request: NextRequest) {
         // QuickBooks: tx do extrato resolvida UMA vez. Reversível: descategorizar
         // faz voltar. Não esconde pendente pura (categoryId NULL continua).
         categoryId: null,
+        // Sprint Fix A2 (08/06/2026): transferência entre contas próprias já
+        // pareada (transferGroupId NOT NULL ou type='TRANSFER') NÃO entra na
+        // Conciliação. Não é despesa nem receita — só dinheiro mudando de conta.
+        // Mesma lógica do Fix A em /api/transacoes?semCategoria=true.
+        transferGroupId: null,
+        type: { not: 'TRANSFER' },
         bankAccount: { companyId: data.empresaId },
         ...(Object.keys(dateFilter).length > 0 ? { date: dateFilter } : {}),
         ...tipoFilter,
