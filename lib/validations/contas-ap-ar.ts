@@ -39,6 +39,9 @@ export const contaAPagarCreateSchema = z.object({
   supplierId: z.string().cuid().optional().nullable(),
   competenceDate: z.coerce.date().optional().nullable(),
   notes: z.string().max(1000).optional().nullable(),
+  // Sprint Fix-Caixa-Vinculo (08/06/2026): se informado + bankAccountId,
+  // "lança já paga" — cria EFFECTED em vez de PAYABLE + atualiza saldo.
+  paymentDate: z.coerce.date().optional().nullable(),
 })
 
 export type ContaAPagarCreateInput = z.infer<typeof contaAPagarCreateSchema>
@@ -71,6 +74,9 @@ export const contaAReceberCreateSchema = z.object({
   customerId: z.string().cuid().optional().nullable(),
   competenceDate: z.coerce.date().optional().nullable(),
   notes: z.string().max(1000).optional().nullable(),
+  // Sprint Fix-Caixa-Vinculo (08/06/2026): se informado + bankAccountId,
+  // "recebe já" — cria EFFECTED + atualiza saldo.
+  paymentDate: z.coerce.date().optional().nullable(),
 })
 
 export type ContaAReceberCreateInput = z.infer<typeof contaAReceberCreateSchema>

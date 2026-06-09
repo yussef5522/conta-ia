@@ -17,6 +17,7 @@ export async function GET(request: NextRequest) {
     const fim = searchParams.get('fim')
     const tipo = searchParams.get('tipo')
     const status = searchParams.get('status')
+    const lifecycle = searchParams.get('lifecycle')
     const semCategoria = searchParams.get('semCategoria') === 'true'
     // Sprint 3.0.2 — filtros novos
     const categoryId = searchParams.get('categoryId')
@@ -93,6 +94,9 @@ export async function GET(request: NextRequest) {
     }
     if (tipo) where.type = tipo
     if (status) where.status = status
+    // Sprint Fix-Caixa-Vinculo (08/06/2026): suporta filtro lifecycle pra
+    // lista da conta mostrar só EFFECTED (tx que JÁ saiu/entrou).
+    if (lifecycle) where.lifecycle = lifecycle
     if (semCategoria) where.categoryId = null
     // Sprint 3.0.2
     if (categoryId) where.categoryId = categoryId

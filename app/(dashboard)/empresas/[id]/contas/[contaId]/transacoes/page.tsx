@@ -89,6 +89,11 @@ export default function TransacoesPage() {
       if (fim) qs.set('fim', fim)
       if (tipo !== 'TODOS') qs.set('tipo', tipo)
       if (status !== 'TODOS') qs.set('status', status)
+      // Sprint Fix-Caixa-Vinculo (08/06/2026): lista da conta só mostra
+      // o que JÁ saiu/entrou (lifecycle=EFFECTED). Conta a pagar futura
+      // (PAYABLE) NÃO aparece aqui — vai pra /contas-a-pagar.
+      // Padrão QuickBooks/Xero/Conta Azul.
+      qs.set('lifecycle', 'EFFECTED')
 
       const res = await fetch(`/api/transacoes?${qs}`)
       if (res.ok) {
