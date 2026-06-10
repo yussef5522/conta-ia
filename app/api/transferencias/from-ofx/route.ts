@@ -7,6 +7,7 @@ import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import { fromOfxSchema, createTransferFromOfx } from '@/lib/transfers/from-ofx'
 import { TransferValidationError } from '@/lib/transfers/validate'
+import { DuplicateTransferGroupError } from '@/lib/transfers/check-duplicate-group'
 import { BalanceCheckError } from '@/lib/balance/check'
 
 export async function POST(request: NextRequest) {
@@ -33,6 +34,17 @@ export async function POST(request: NextRequest) {
     if (error instanceof BalanceCheckError) {
       return NextResponse.json(
         { erro: error.message, saldoCheck: error.result },
+        { status: error.status },
+      )
+    }
+    if (error instanceof DuplicateTransferGroupError) {
+      return NextResponse.json(
+        {
+          erro: error.message,
+          code: error.code,
+          existingGroupId: error.existing.groupId,
+          existingGroupDate: error.existing.date.toISOString(),
+        },
         { status: error.status },
       )
     }

@@ -15,6 +15,7 @@ import type { AuthContext } from '@/lib/auth/rbac'
 import { checkBalance, BalanceCheckError } from '@/lib/balance/check'
 import { TransferValidationError } from './validate'
 import { buildOfxReplaceOperations } from './build-ofx-replace'
+import { assertNoDuplicateTransferGroup } from './check-duplicate-group'
 
 export const fromOfxSchema = z.object({
   importingAccountId: z.string().cuid(),
@@ -117,6 +118,18 @@ export async function createTransferFromOfx(
     },
     groupId,
   )
+
+  // Sprint E1 (09/06/2026): bloqueia se já existe grupo com mesmas contas+
+  // valor+data±1d. Caso real Cacula: Replace OFX criou 2 grupos R$ 34k
+  // banrisul↔stone em dias consecutivos (7de154c4 + fb603cee). Sem este
+  // guard, Banrisul recicla FITID → re-import gera OFX nova órfã → user
+  // pareia de novo → grupo paralelo.
+  await assertNoDuplicateTransferGroup({
+    fromAccountId: ops.fromAccountId,
+    toAccountId: ops.toAccountId,
+    amount: input.ofxTransaction.amount,
+    date: input.ofxTransaction.date,
+  })
 
   // 3. Balance check na fromAccount.
   // Se a fromAccount é a accountDoExisting, ela vai sofrer o revert ANTES da saída.

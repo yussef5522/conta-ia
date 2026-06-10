@@ -13,6 +13,7 @@ import {
   type TransferInput,
 } from './validate'
 import { buildTransferOperations } from './build-operations'
+import { assertNoDuplicateTransferGroup } from './check-duplicate-group'
 
 export interface CreatedTransfer {
   groupId: string
@@ -63,7 +64,18 @@ export async function createTransfer(
   }
   ctx.requirePermission('transaction.create')
 
-  // 4. Balance check: saída na conta de origem respeita creditLimit?
+  // 4. Sprint E1 (09/06/2026): bloqueia se já existe grupo com mesmas contas+
+  // valor+data±1d. Caso real Cacula: usuário pareou R$ 34k banrisul→stone em
+  // 08/jun (grupo 7de154c4); ao re-importar OFX no dia seguinte, criou outro
+  // grupo (fb603cee) sem perceber → R$ 34k duplicado.
+  await assertNoDuplicateTransferGroup({
+    fromAccountId: fromAccount.id,
+    toAccountId: toAccount.id,
+    amount: input.amount,
+    date: input.date,
+  })
+
+  // 5. Balance check: saída na conta de origem respeita creditLimit?
   const balanceCheck = checkBalance({
     currentBalance: fromAccount.balance,
     allowNegativeBalance: fromAccount.allowNegativeBalance,

@@ -12,6 +12,7 @@ import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import { logAudit } from '@/lib/audit'
+import { findDuplicateTransferGroup } from '@/lib/transfers/check-duplicate-group'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -89,6 +90,29 @@ export async function POST(request: NextRequest, { params }: Params) {
       return NextResponse.json(
         { erro: 'Mesma conta — não pode ser transferência interna', code: 'SAME_ACCOUNT' },
         { status: 400 },
+      )
+    }
+
+    // Sprint E1 (09/06/2026): mesmo bloqueio dos outros caminhos. Aba Sugeridas
+    // pode mostrar um par que aparenta ser nova transferência, mas já existe
+    // grupo cobrindo as mesmas 2 contas+valor+data. Retorna 409 com payload
+    // estruturado pra UI mostrar "esta transferência já está pareada em ..."
+    const dupGroup = await findDuplicateTransferGroup({
+      fromAccountId: fromTx.bankAccount.id,
+      toAccountId: toTx.bankAccount.id,
+      amount: fromTx.amount,
+      date: fromTx.date,
+    })
+    if (dupGroup) {
+      const dia = dupGroup.date.toISOString().slice(0, 10).split('-').reverse().join('/')
+      return NextResponse.json(
+        {
+          erro: `Esta transferência (R$ ${dupGroup.amount.toFixed(2)}, ${dupGroup.fromAccountName} ↔ ${dupGroup.toAccountName}, ${dia}) já foi pareada. Não vou criar de novo pra não duplicar.`,
+          code: 'DUPLICATE_TRANSFER_GROUP',
+          existingGroupId: dupGroup.groupId,
+          existingGroupDate: dupGroup.date.toISOString(),
+        },
+        { status: 409 },
       )
     }
 
