@@ -104,6 +104,16 @@ export async function GET(request: NextRequest) {
       // tx marcada como Transfer sai automaticamente da fila "a categorizar".
       // Defesa em profundidade: transferGroupId IS NULL.
       where.transferGroupId = null
+      // B3 (09/06/2026): tx JÁ conciliada via Match NÃO aparece em Pendentes.
+      // Padrão Xero/Conta Azul: conciliada = classificada implicitamente
+      // (mesmo que categoryId ainda esteja NULL, porque o Match modo ORPHAN/
+      // CLASSIC pode deixar categoria vazia). Sintoma corrigido: 35 tx Stone
+      // (Marcyelle, Cristian, Mauricio) já conciliadas com Excel apareciam
+      // erroneamente em /pendentes.
+      // - reconciledWithId NOT NULL: ESTA tx aponta pra outra (lado Excel→OFX)
+      // - reconciledFrom: { some: {} }: OUTRA tx aponta pra ESTA (lado OFX←Excel)
+      where.reconciledWithId = null
+      where.reconciledFrom = { none: {} }
     }
     // type: compõe AND com guard anti-TRANSFER quando semCategoria
     // (pra cobrir o caso da query `tipo` vir junto e sobrescrever).

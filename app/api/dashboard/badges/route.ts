@@ -5,6 +5,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
+import {
+  defaultTipoForCompany,
+  getTipoFilter,
+} from '@/lib/conciliacao/tipo-filter'
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,6 +20,17 @@ export async function GET(request: NextRequest) {
 
     const ctx = await getAuthContext(request, empresaId)
     ctx.requirePermission('transaction.view')
+
+    // B1 + B2 (09/06/2026): badge da Conciliação tem que casar com a tela.
+    // Carrega companyType pra aplicar a MESMA heurística de tipo que a UI usa
+    // por default (restaurant/retail/industry → apenas-pagamentos; resto →
+    // todos). Sem isso o badge contava CREDIT que a tela escondia.
+    const empresa = await prisma.company.findUnique({
+      where: { id: empresaId },
+      select: { type: true },
+    })
+    const tipoDefault = defaultTipoForCompany(empresa?.type)
+    const tipoFilter = getTipoFilter(tipoDefault)
 
     const now = new Date()
     const in3Days = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000)
@@ -51,6 +66,11 @@ export async function GET(request: NextRequest) {
       // /api/conciliacao/ofx-pendentes pra badge bater com a aba.
       // Sprint Sync-Pendentes-Conciliacao: inclui categoryId IS NULL
       // (OFX categorizada via Pendentes/Create/regra IA sai da fila).
+      // B1 (09/06/2026): transferGroupId IS NULL + type != 'TRANSFER' —
+      //   transferência pareada não é trabalho de conciliação.
+      // B2 (09/06/2026): tipoFilter por defaultTipoForCompany pra contador
+      //   bater com o que a tela mostra por default. Se tipoFilter.type
+      //   estiver setado (DEBIT/CREDIT), já cobre "!= TRANSFER" naturalmente.
       prisma.transaction.count({
         where: {
           bankAccount: { companyId: empresaId },
@@ -62,6 +82,10 @@ export async function GET(request: NextRequest) {
           ignoredAt: null,
           cashCoded: false,
           categoryId: null,
+          transferGroupId: null,
+          ...(tipoFilter.type
+            ? { type: tipoFilter.type }
+            : { type: { not: 'TRANSFER' } }),
         },
       }),
       // Sprint Sync-Pendentes-Conciliacao: alinha filtro com a tela
