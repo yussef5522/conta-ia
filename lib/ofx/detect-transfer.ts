@@ -1,25 +1,33 @@
 // Detecção heurística de transferências entre contas da MESMA empresa.
 //
-// Contexto real (Yussef): 13 academias × 3-4 contas cada, transferências
-// frequentes entre contas (PIX hoje predomina, TED minoritário).
+// Sprint R1 (10/06/2026): refatorado pra usar lib/transfers/score-pair.ts
+// (fórmula UNIFICADA com varredura retroativa). Antes, preview tinha sua
+// fórmula própria SEM own-entity-signals — daí "pega umas e falha em
+// outras". Agora preview ganha CNPJ/nome/conta próprios "de graça".
 //
-// Estratégia em 2 níveis de confiança:
+// Caller (rota de preview OFX) deve passar:
+//   - `transacoesNovas` (do arquivo OFX sendo importado)
+//   - `outrasContasDaEmpresa` (tx existentes nas outras contas, ±7d)
+//   - `contaSendoImportada` (id + name)
+//   - `refs` (NOVO — OwnEntityRefs da empresa: cnpj + names + accountNames)
 //
-//   NÍVEL ALTO (≥0.90) → mesma data + mesmo valor abs + sinais opostos
-//     → provável PIX (instantâneo, mesmo dia)
-//     → UI pode oferecer "auto-parear" (1 clique)
-//
-//   NÍVEL MÉDIO (0.70-0.89) → D ou D+1 + mesmo valor abs + sinais opostos
-//     → provável TED (D+1 quando feita após 16h)
-//     → UI pede confirmação
-//
-//   BOOST → descrição contém PIX/TED/TRANSF/etc → +0.05 a +0.10
-//
-// Threshold pra sugerir: ≥ 0.70. Abaixo disso, não vira sugestão.
-// Threshold pra auto-pair (decisão UI, não desta lib): ≥ 0.90.
+// THRESHOLDS (centralizados em score-pair.ts):
+//   - HIGH ≥ 0.85  → action AUTO_PAIR
+//   - MEDIUM ≥ 0.70 → action CONFIRM
+//   - <0.70 → IGNORE (não vira candidato)
+
+import {
+  scorePair,
+  actionForConfidence,
+  CONFIRM_THRESHOLD,
+  PAIR_THRESHOLD,
+  CENT_TOLERANCE,
+  MAX_DELTA_DAYS,
+  MS_PER_DAY,
+} from '@/lib/transfers/score-pair'
+import type { OwnEntityRefs } from '@/lib/transfers/own-entity-signals'
 
 export interface OfxCandidateTransaction {
-  // ID temporário do preview (não persistido ainda) ou ID real após import.
   id: string
   description: string
   // amount sempre positivo; sinal vem do type (CREDIT=entrada, DEBIT=saída).
@@ -37,7 +45,6 @@ export interface AccountTransactionsBundle {
 export type ConfidenceLevel = 'HIGH' | 'MEDIUM'
 export type SuggestedAction = 'AUTO_PAIR' | 'CONFIRM' | 'IGNORE'
 
-// Snapshot dos 2 lados pra UI mostrar lado-a-lado (data/valor/descrição completos).
 export interface TransferSideSnapshot {
   transactionId: string
   accountId: string
@@ -46,12 +53,15 @@ export interface TransferSideSnapshot {
   description: string
 }
 
-// Evidência granular (substitui parsing da string `reason` na UI).
 export interface TransferEvidence {
   sameDay: boolean
   deltaDays: number
-  amountExact: boolean // sempre true hoje (já filtrado antes), mas explícito p/ UI
-  keywordMatched: string | null // 'PIX' | 'TED' | 'TRANSF...' | null
+  amountExact: boolean
+  keywordMatched: string | null // 'STRONG' | 'SOFT' | null (Sprint R1)
+  /** Sprint R1: own-entity signals presentes (qualquer um dos 2 lados) */
+  hasOwnCnpj: boolean
+  hasOwnName: boolean
+  hasOwnAccountName: boolean
 }
 
 export interface TransferCandidate {
@@ -59,11 +69,10 @@ export interface TransferCandidate {
   toTransactionId: string
   fromAccountId: string
   toAccountId: string
-  confidence: number // 0-1
+  confidence: number
   confidenceLevel: ConfidenceLevel
   reason: string
   suggestedAction: SuggestedAction
-  // Snapshots dos 2 lados (saída + entrada) para card 2-col na UI.
   from: TransferSideSnapshot
   to: TransferSideSnapshot
   evidence: TransferEvidence
@@ -73,59 +82,28 @@ export interface DetectTransferResult {
   candidates: TransferCandidate[]
 }
 
-// Regex pra detectar palavras-chave de transferência na descrição
-const TRANSFER_KEYWORDS = /\b(PIX|TED|DOC|TRANSF(?:ERENCIA|ER[EÊ]NCIA)?|ENTRE\s+CONTAS)\b/i
-
-// Boost por keyword: +0.10 se PIX/TED, +0.05 pra outros transfer hints
-function keywordBoost(description: string): { boost: number; matched: string | null } {
-  const match = description.match(TRANSFER_KEYWORDS)
-  if (!match) return { boost: 0, matched: null }
-  const upper = match[0].toUpperCase()
-  if (upper === 'PIX' || upper.startsWith('TED')) {
-    return { boost: 0.1, matched: upper }
-  }
-  return { boost: 0.05, matched: upper }
-}
-
-// Confiança base por proximidade de data:
-//   - mesmo dia → 0.90
-//   - D+1 → 0.75
-//   - >1 dia → 0 (não sugere)
-function baseConfidenceByDateDelta(deltaDays: number): { base: number; level: ConfidenceLevel | null } {
-  if (deltaDays === 0) return { base: 0.9, level: 'HIGH' }
-  if (deltaDays === 1) return { base: 0.75, level: 'MEDIUM' }
-  return { base: 0, level: null }
-}
-
 function diffInDays(a: Date, b: Date): number {
-  const MS_PER_DAY = 24 * 60 * 60 * 1000
-  // Normaliza pra meia-noite local pra evitar problemas de timezone/hora
   const dayA = Math.floor(a.getTime() / MS_PER_DAY)
   const dayB = Math.floor(b.getTime() / MS_PER_DAY)
   return Math.abs(dayA - dayB)
 }
 
-function actionForConfidence(c: number): SuggestedAction {
-  if (c >= 0.9) return 'AUTO_PAIR'
-  if (c >= 0.7) return 'CONFIRM'
-  return 'IGNORE'
-}
-
-// Detecta candidatos de transferência olhando UMA transação por vez (a que está
-// sendo importada via OFX preview) e comparando contra TODAS as transações
-// existentes nas OUTRAS contas da mesma empresa.
-//
-// Importante: a função NÃO consulta DB — recebe tudo já carregado.
-// Caller (rota OFX preview) é responsável por buscar `outrasContasDaEmpresa`
-// num range de data razoável (±7 dias da transação sendo importada).
+/**
+ * Sprint R1 (Gap 4): preview agora consome a fórmula UNIFICADA.
+ *
+ * `refs` é OPCIONAL pra retrocompat — se o caller não passar (chamadores
+ * legados), usa OwnEntityRefs vazio (sem boost de CNPJ/nome). Mas o
+ * endpoint /detectar-transferencias passa `refs` populadas pra ganhar
+ * detecção melhor.
+ */
 export function detectarTransferenciasNoPreview(
   transacoesNovas: OfxCandidateTransaction[],
   outrasContasDaEmpresa: AccountTransactionsBundle[],
   contaSendoImportada: { id: string; name: string },
+  refs: OwnEntityRefs = { cnpj: null, names: [], accountNames: [] },
 ): DetectTransferResult {
   const candidates: TransferCandidate[] = []
 
-  // Pre-index: junta TODAS as transações das outras contas com referência da conta
   type IndexedTx = OfxCandidateTransaction & {
     accountId: string
     accountName: string
@@ -144,53 +122,42 @@ export function detectarTransferenciasNoPreview(
 
   for (const txNova of transacoesNovas) {
     for (const txOutra of otherTxs) {
-      // 1. Mesmo valor absoluto (tolerância de 1 centavo pra rounding errors)
-      if (Math.abs(txNova.amount - txOutra.amount) > 0.01) continue
-
-      // 2. Sinais opostos (CREDIT ↔ DEBIT). TRANSFER já pareada não vira candidato.
+      // Pré-filtros (baratos antes do scoring)
+      if (Math.abs(txNova.amount - txOutra.amount) > CENT_TOLERANCE) continue
       const opposite =
         (txNova.type === 'CREDIT' && txOutra.type === 'DEBIT') ||
         (txNova.type === 'DEBIT' && txOutra.type === 'CREDIT')
       if (!opposite) continue
-
-      // 3. Proximidade de data
       const delta = diffInDays(txNova.date, txOutra.date)
-      const { base, level } = baseConfidenceByDateDelta(delta)
-      if (!level) continue
+      if (delta > MAX_DELTA_DAYS) continue
 
-      // 4. Boost por keyword (olha as 2 descrições — qualquer uma menciona transfer)
-      const boostNova = keywordBoost(txNova.description)
-      const boostOutra = keywordBoost(txOutra.description)
-      const boost = Math.max(boostNova.boost, boostOutra.boost)
-      const matchedKw = boostNova.matched ?? boostOutra.matched
+      // Fórmula UNIFICADA
+      const scoring = scorePair(txNova, txOutra, refs)
+      if (scoring.confidence < CONFIRM_THRESHOLD) continue
 
-      const confidence = Math.min(1, base + boost)
-
-      // 5. Threshold pra virar sugestão
-      if (confidence < 0.7) continue
-
-      // Direção: quem é "from" (saída) e quem é "to" (entrada)?
-      // Saída = DEBIT (sai de uma conta); Entrada = CREDIT (chega na outra).
+      // Direção: DEBIT → from, CREDIT → to
       const fromIsNova = txNova.type === 'DEBIT'
       const fromTx = fromIsNova ? txNova : txOutra
       const toTx = fromIsNova ? txOutra : txNova
-      const fromAccountId = fromIsNova ? contaSendoImportada.id : txOutra.accountId
-      const toAccountId = fromIsNova ? txOutra.accountId : contaSendoImportada.id
+      const fromAccountId = fromIsNova
+        ? contaSendoImportada.id
+        : txOutra.accountId
+      const toAccountId = fromIsNova
+        ? txOutra.accountId
+        : contaSendoImportada.id
 
-      const reasonParts: string[] = []
-      reasonParts.push(delta === 0 ? 'Mesmo dia' : `D+${delta}`)
-      reasonParts.push('valor exato')
-      if (matchedKw) reasonParts.push(`descrição contém "${matchedKw}"`)
+      const confidenceLevel: ConfidenceLevel =
+        scoring.confidence >= PAIR_THRESHOLD ? 'HIGH' : 'MEDIUM'
 
       candidates.push({
         fromTransactionId: fromTx.id,
         toTransactionId: toTx.id,
         fromAccountId,
         toAccountId,
-        confidence: roundTo2(confidence),
-        confidenceLevel: confidence >= 0.9 ? 'HIGH' : level,
-        reason: reasonParts.join(' + '),
-        suggestedAction: actionForConfidence(confidence),
+        confidence: scoring.confidence,
+        confidenceLevel,
+        reason: scoring.evidences.join(' + '),
+        suggestedAction: actionForConfidence(scoring.confidence),
         from: {
           transactionId: fromTx.id,
           accountId: fromAccountId,
@@ -209,7 +176,10 @@ export function detectarTransferenciasNoPreview(
           sameDay: delta === 0,
           deltaDays: delta,
           amountExact: true,
-          keywordMatched: matchedKw,
+          keywordMatched: scoring.matchedKeyword,
+          hasOwnCnpj: scoring.evidences.includes('CNPJ próprio'),
+          hasOwnName: scoring.evidences.includes('Nome da empresa'),
+          hasOwnAccountName: scoring.evidences.includes('Nome de conta própria'),
         },
       })
     }
@@ -219,8 +189,4 @@ export function detectarTransferenciasNoPreview(
   candidates.sort((a, b) => b.confidence - a.confidence)
 
   return { candidates }
-}
-
-function roundTo2(n: number): number {
-  return Math.round(n * 100) / 100
 }

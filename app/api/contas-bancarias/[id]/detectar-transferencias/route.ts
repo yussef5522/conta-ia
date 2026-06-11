@@ -13,6 +13,10 @@ import {
   type AccountTransactionsBundle,
   type OfxCandidateTransaction,
 } from '@/lib/ofx/detect-transfer'
+import {
+  normalizeCnpj,
+  type OwnEntityRefs,
+} from '@/lib/transfers/own-entity-signals'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -40,7 +44,14 @@ export async function POST(request: NextRequest, { params }: Params) {
 
     const conta = await prisma.bankAccount.findUnique({
       where: { id: contaId },
-      select: { id: true, name: true, companyId: true },
+      select: {
+        id: true,
+        name: true,
+        companyId: true,
+        company: {
+          select: { cnpj: true, name: true, tradeName: true },
+        },
+      },
     })
     if (!conta) {
       return NextResponse.json({ erro: 'Conta não encontrada' }, { status: 404 })
@@ -110,10 +121,26 @@ export async function POST(request: NextRequest, { params }: Params) {
       date: t.date,
     }))
 
-    const result = detectarTransferenciasNoPreview(novas, bundles, {
-      id: conta.id,
-      name: conta.name,
-    })
+    // Sprint R1: passa refs da empresa pra preview ganhar own-entity-signals
+    // (CNPJ + nome + nome de outras contas). Sem refs, preview cai em fórmula
+    // crua (sem boosts de "tx é própria"). Carrega accountNames de TODAS as
+    // contas ativas (incluindo a importada — bancos gravam o nome próprio
+    // do destinatário às vezes).
+    const todasContasNomes = [conta.name, ...outrasContas.map((c) => c.name)]
+    const refs: OwnEntityRefs = {
+      cnpj: normalizeCnpj(conta.company.cnpj),
+      names: [conta.company.tradeName, conta.company.name].filter(
+        (n): n is string => n !== null && n !== '',
+      ),
+      accountNames: todasContasNomes,
+    }
+
+    const result = detectarTransferenciasNoPreview(
+      novas,
+      bundles,
+      { id: conta.id, name: conta.name },
+      refs,
+    )
 
     // Enriquece candidatos com nomes das contas + info da tx existente
     // (categoryName / hasNotes) pra UI exibir dialog de confirmação quando

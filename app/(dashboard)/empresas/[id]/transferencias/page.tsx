@@ -82,6 +82,28 @@ interface Sozinha {
   }
   signalCount: number
 }
+// Sprint R1 — 4ª aba "Duplicatas detectadas" (Gap 2: órfã × pareada)
+interface Duplicata {
+  orphan: {
+    id: string
+    bankAccountName: string
+    date: string
+    type: 'CREDIT' | 'DEBIT'
+    amount: number
+    description: string
+    origin: string
+  }
+  pairedSide: {
+    id: string
+    bankAccountName: string
+    date: string
+    amount: number
+    description: string
+  }
+  transferGroupId: string
+  deltaDays: number
+  scenario: 'OFX_AFTER_MANUAL_PAIR' | 'OTHER'
+}
 
 interface Paginacao {
   total: number
@@ -102,11 +124,16 @@ export default function TransferenciasPage() {
   const [contas, setContas] = useState<Conta[]>([])
   const [loading, setLoading] = useState(true)
   // Sprint Central de Transferências — Abas Sugeridas + Sozinhas
-  const [activeTab, setActiveTab] = useState<'pareadas' | 'sugeridas' | 'sozinhas'>('pareadas')
+  // Sprint R1 (10/06/2026) — 4ª aba Duplicatas (Gap 2: órfã × pareada)
+  const [activeTab, setActiveTab] = useState<
+    'pareadas' | 'sugeridas' | 'sozinhas' | 'duplicatas'
+  >('pareadas')
   const [sugestoes, setSugestoes] = useState<Sugestao[]>([])
   const [sozinhas, setSozinhas] = useState<Sozinha[]>([])
+  const [duplicatas, setDuplicatas] = useState<Duplicata[]>([])
   const [loadingSugestoes, setLoadingSugestoes] = useState(false)
   const [loadingSozinhas, setLoadingSozinhas] = useState(false)
+  const [loadingDuplicatas, setLoadingDuplicatas] = useState(false)
   const [resolvingId, setResolvingId] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const [modalOpen, setModalOpen] = useState(false)
@@ -229,6 +256,19 @@ export default function TransferenciasPage() {
       setLoadingSozinhas(false)
     }
   }
+  // Sprint R1 — fetch Duplicatas (lazy, igual sugeridas/sozinhas)
+  async function fetchDuplicatas() {
+    setLoadingDuplicatas(true)
+    try {
+      const res = await fetch(`/api/empresas/${empresaId}/transferencias/duplicatas`)
+      if (res.ok) {
+        const data = await res.json()
+        setDuplicatas(data.duplicatas ?? [])
+      }
+    } finally {
+      setLoadingDuplicatas(false)
+    }
+  }
 
   async function confirmarSugestao(s: Sugestao) {
     setResolvingId(s.from.id + s.to.id)
@@ -294,6 +334,9 @@ export default function TransferenciasPage() {
     if (activeTab === 'sozinhas' && sozinhas.length === 0 && !loadingSozinhas) {
       void fetchSozinhas()
     }
+    if (activeTab === 'duplicatas' && duplicatas.length === 0 && !loadingDuplicatas) {
+      void fetchDuplicatas()
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab])
 
@@ -337,7 +380,7 @@ export default function TransferenciasPage() {
 
       {/* Sprint Central de Transferências — Tabs */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)} className="space-y-4">
-        <TabsList className="grid w-full max-w-2xl grid-cols-3">
+        <TabsList className="grid w-full max-w-3xl grid-cols-4">
           <TabsTrigger value="pareadas">
             Pareadas {paginacao && `(${paginacao.total})`}
           </TabsTrigger>
@@ -346,6 +389,13 @@ export default function TransferenciasPage() {
           </TabsTrigger>
           <TabsTrigger value="sozinhas">
             Sozinhas {sozinhas.length > 0 && `(${sozinhas.length})`}
+          </TabsTrigger>
+          <TabsTrigger value="duplicatas">
+            Duplicatas {duplicatas.length > 0 && (
+              <span className="ml-1 inline-flex items-center justify-center rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-400 text-[10px] font-bold px-1.5 py-0.5">
+                {duplicatas.length}
+              </span>
+            )}
           </TabsTrigger>
         </TabsList>
 
@@ -685,6 +735,148 @@ export default function TransferenciasPage() {
                       </div>
                       <p className="text-[11px] text-muted-foreground italic border-t pt-2 mt-1">
                         Parece transferência interna, mas o outro lado não está no banco. Importe o extrato da conta destino e o sistema casa sozinho.
+                      </p>
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* Sprint R1 — Aba DUPLICATAS (órfã × pareada). SÓ MOSTRA, não apaga */}
+        <TabsContent value="duplicatas" className="space-y-4">
+          {loadingDuplicatas ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground py-8 justify-center">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Procurando possíveis duplicatas de transferências pareadas...
+            </div>
+          ) : duplicatas.length === 0 ? (
+            <Card>
+              <CardContent className="py-10 text-center text-sm text-muted-foreground space-y-2">
+                <Check className="h-6 w-6 mx-auto text-emerald-600" />
+                <p className="font-medium">Nenhuma duplicata detectada</p>
+                <p className="text-xs max-w-md mx-auto">
+                  Não encontrei transação órfã (sem par) que coincida com lado
+                  já pareado de outra transferência. Se reimportar um OFX e o
+                  banco gerar FITID novo, o sistema avisa aqui antes de
+                  inflar saldos.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-3">
+              <Card className="border-amber-300 bg-amber-50/30 dark:bg-amber-950/10">
+                <CardContent className="py-3 text-xs text-amber-900 dark:text-amber-200 flex items-start gap-2">
+                  <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                  <div>
+                    Possível duplicação: <strong>{duplicatas.length}</strong>{' '}
+                    transação{duplicatas.length !== 1 ? 'ões' : ''} órfã{duplicatas.length !== 1 ? 's' : ''}{' '}
+                    coincide{duplicatas.length !== 1 ? 'm' : ''} com lado de
+                    transferência já pareada. Revise CADA caso — o sistema NÃO
+                    apaga nada sozinho.
+                  </div>
+                </CardContent>
+              </Card>
+              {duplicatas.map((d) => {
+                const isOut = d.orphan.type === 'DEBIT'
+                return (
+                  <Card
+                    key={d.orphan.id}
+                    className="border-amber-300 dark:border-amber-700"
+                  >
+                    <CardContent className="p-4 space-y-3">
+                      <div className="flex items-center justify-between gap-2 text-[11px] uppercase font-semibold">
+                        <span className="text-amber-700 dark:text-amber-400">
+                          Possível duplicata
+                        </span>
+                        <span className="text-muted-foreground">
+                          grupo {d.transferGroupId.slice(0, 8)} ·{' '}
+                          {d.deltaDays === 0
+                            ? 'mesmo dia'
+                            : `Δ ${d.deltaDays}d`}
+                        </span>
+                      </div>
+
+                      {/* Órfã */}
+                      <div className="rounded border border-slate-200 dark:border-slate-700 bg-slate-50/30 dark:bg-slate-900/30 p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="text-[10px] uppercase font-bold text-slate-500 mb-1">
+                              Tx órfã ({d.orphan.origin})
+                            </div>
+                            <div className="text-xs flex items-center gap-2 flex-wrap">
+                              <span className="font-semibold text-sm">
+                                {d.orphan.bankAccountName}
+                              </span>
+                              <span className="text-muted-foreground">
+                                {formatDate(d.orphan.date)}
+                              </span>
+                              <span
+                                className={`px-1.5 py-0 rounded text-[10px] font-semibold uppercase ${
+                                  isOut
+                                    ? 'bg-red-50 text-red-700'
+                                    : 'bg-emerald-50 text-emerald-700'
+                                }`}
+                              >
+                                {isOut ? 'Saída' : 'Entrada'}
+                              </span>
+                            </div>
+                            <p className="text-sm font-mono break-words mt-1">
+                              {d.orphan.description}
+                            </p>
+                          </div>
+                          <span
+                            className={`text-sm font-mono font-semibold tabular-nums shrink-0 ${
+                              isOut ? 'text-red-600' : 'text-emerald-700'
+                            }`}
+                          >
+                            {isOut ? '−' : '+'} {formatBRL(d.orphan.amount)}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Lado pareado */}
+                      <div className="rounded border border-emerald-200 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-950/20 p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="text-[10px] uppercase font-bold text-emerald-700 dark:text-emerald-400 mb-1">
+                              Lado pareado existente
+                            </div>
+                            <div className="text-xs flex items-center gap-2 flex-wrap">
+                              <span className="font-semibold text-sm">
+                                {d.pairedSide.bankAccountName}
+                              </span>
+                              <span className="text-muted-foreground">
+                                {formatDate(d.pairedSide.date)}
+                              </span>
+                            </div>
+                            <p className="text-sm font-mono break-words mt-1">
+                              {d.pairedSide.description}
+                            </p>
+                          </div>
+                          <span className="text-sm font-mono font-semibold tabular-nums shrink-0 text-slate-600">
+                            {formatBRL(d.pairedSide.amount)}
+                          </span>
+                        </div>
+                      </div>
+
+                      <p className="text-[11px] text-muted-foreground italic border-t pt-2">
+                        {d.scenario === 'OFX_AFTER_MANUAL_PAIR' ? (
+                          <>
+                            Cenário típico: você pareou via Replace OFX antes,
+                            depois reimportou o OFX do banco e ele gerou outra
+                            tx. Se for o mesmo dinheiro, a órfã é cópia —
+                            considere ignorá-la ou excluí-la pela tela de
+                            transações.
+                          </>
+                        ) : (
+                          <>
+                            A tx órfã coincide com lado de grupo já pareado.
+                            Verifique se é a mesma transferência ou movimento
+                            novo coincidente.
+                          </>
+                        )}
                       </p>
                     </CardContent>
                   </Card>
