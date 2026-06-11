@@ -101,6 +101,14 @@ export async function GET(request: NextRequest) {
           categoryId: null,
           reconciledWithId: null,
           reconciledFrom: { none: {} },
+          // Fix Badge-Pendentes (11/06/2026): alinha com /api/transacoes?
+          // semCategoria=true que aplicou Fix B3 ontem mas o badge ficou
+          // pra trás. Sintoma: pareou 3 transferências hoje (R$ 20.300 +
+          // R$ 3.000), elas ficaram com type=TRANSFER + categoryId=null +
+          // status=PENDING; tela /pendentes esconde TRANSFER pareada, badge
+          // continuava contando como "trabalho a fazer".
+          transferGroupId: null,
+          type: { not: 'TRANSFER' },
         },
       }),
     ])
