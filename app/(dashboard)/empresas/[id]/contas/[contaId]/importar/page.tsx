@@ -11,6 +11,7 @@ import { Header } from '@/components/layout/header'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
+import { PreviewV2Classificado } from '@/components/importar-ofx/PreviewV2Classificado'
 
 interface PreviewItem {
   fitid: string
@@ -389,7 +390,19 @@ export default function ImportarOFXPage() {
       </Card>
 
       {/* Preview */}
-      {preview && (
+      {/* Sub-fase 2C (Yussef 12/06/2026) — Tela V2 quando payload vem com `classificacao`.
+          Detecta pelo shape: se IMPORT_PREVIEW_V2=true em prod, backend manda V2 → renderiza
+          tela nova. Senão renderiza a UI legada. /confirm legado (handleImport) inalterado. */}
+      {preview && 'classificacao' in (preview as unknown as Record<string, unknown>) && (
+        <PreviewV2Classificado
+          payload={preview as unknown}
+          onConfirmar={handleImport}
+          onCancelar={() => { setArquivo(null); setPreview(null) }}
+          loading={loadingImport}
+        />
+      )}
+
+      {preview && !('classificacao' in (preview as unknown as Record<string, unknown>)) && (
         <>
           {/* Banco detectado */}
           {preview.banco && (
