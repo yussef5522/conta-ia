@@ -56,7 +56,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ erro: 'Erro ao ler arquivo' }, { status: 400 })
   }
 
-  const { transactions, errors, bankId } = parseOFX(rawContent)
+  const { transactions, errors, bankId, ledgerBalance } = parseOFX(rawContent)
 
   if (transactions.length === 0) {
     return NextResponse.json({
@@ -170,6 +170,11 @@ export async function POST(request: NextRequest, { params }: Params) {
         banco,
         contaId,
         candidates: [...candidatesMesmaConta, ...candidatesExcelPayable],
+        // Sub-fase 2B: balance da conta + LEDGERBAL do arquivo (rede de
+        // segurança matemática estilo Conta Azul). Função pura calcula
+        // delta e detecta divergência.
+        contaBalance: conta.balance,
+        ledgerBalance,
       }),
     )
   }

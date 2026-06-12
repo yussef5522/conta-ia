@@ -12,6 +12,9 @@ export interface OFXParseResult {
   currency?: string
   transactions: OFXTransaction[]
   errors: string[]
+  /** Saldo final do extrato (BALAMT) + data (DTASOF) — Sub-fase 2B.
+   *  null quando OFX não traz <LEDGERBAL> ou BALAMT é inválido. */
+  ledgerBalance?: { amount: number; asOfDate: Date } | null
 }
 
 function extractTag(content: string, tag: string): string | null {
@@ -35,6 +38,31 @@ function parseOFXDate(raw: string): Date | null {
   if (!y || !mo || !d) return null
   const date = new Date(`${y}-${mo}-${d}T12:00:00Z`)
   return isNaN(date.getTime()) ? null : date
+}
+
+/** Extrai bloco <LEDGERBAL>…</LEDGERBAL> (com ou sem closing tag SGML).
+ *  Retorna null se ausente. */
+function extractLedgerBalanceBlock(content: string): string | null {
+  // XML strict
+  const xml = content.match(/<LEDGERBAL>([\s\S]*?)<\/LEDGERBAL>/i)
+  if (xml) return xml[1]
+  // SGML: pega tudo entre <LEDGERBAL> e o próximo tag de nível superior
+  const sgml = content.match(/<LEDGERBAL>([\s\S]*?)(?:<\/?(?:STMTRS|BANKMSGSRSV1|STMTTRNRS|AVAILBAL|OFX)>|$)/i)
+  return sgml ? sgml[1] : null
+}
+
+function extractLedgerBalance(content: string): { amount: number; asOfDate: Date } | null {
+  const block = extractLedgerBalanceBlock(content)
+  if (!block) return null
+  const amountStr = extractTag(block, 'BALAMT')
+  if (!amountStr) return null
+  const amount = parseFloat(amountStr.replace(',', '.'))
+  if (isNaN(amount)) return null
+  // Decisão Yussef 2B: DTASOF ausente/inválido = fallback `new Date()`.
+  // Amount sem data ainda é útil pro check.
+  const dateStr = extractTag(block, 'DTASOF')
+  const asOfDate = (dateStr ? parseOFXDate(dateStr) : null) ?? new Date()
+  return { amount, asOfDate }
 }
 
 function extractStmtTrnList(content: string): string[] {
@@ -93,5 +121,7 @@ export function parseOFX(raw: string): OFXParseResult {
     transactions.push({ fitid, datePosted: date, amount, type, memo: memo || `Transação ${fitid}` })
   }
 
-  return { accountId, bankId, currency, transactions, errors }
+  const ledgerBalance = extractLedgerBalance(content)
+
+  return { accountId, bankId, currency, transactions, errors, ledgerBalance }
 }

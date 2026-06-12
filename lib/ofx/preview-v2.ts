@@ -140,6 +140,38 @@ export interface V2NovaGenuinaItem extends V2BaseItem {
   dedupHash: string
 }
 
+/** Hipótese sobre causa de divergência LEDGERBAL ≠ saldoPos (Sub-fase 2B). */
+export type LedgerBalHipoteseTipo =
+  | 'dup_marcada_nova'        // alguma nova é dup escondida
+  | 'real_marcada_dup'        // alguma marcada como dup era real
+  | 'historico_errado'        // balance pré-existente diverge do banco
+
+export interface LedgerBalHipotese {
+  tipo: LedgerBalHipoteseTipo
+  label: string
+  /** Indica a "mais provável" — pra UI destacar */
+  maisProvavel: boolean
+  /** ofxIndex que casam exatos com diff (quando aplicável) */
+  suspeitos?: number[]
+}
+
+export interface LedgerBalCheckPayload {
+  /** Dados do extrato */
+  ledgerBalAmount: number | null
+  ledgerBalDate: string | null     // ISO
+  /** Dado do sistema */
+  balanceAtual: number
+  /** Cálculo do delta */
+  deltaImportProposto: number
+  saldoPosImport: number
+  /** Verdict */
+  available: boolean               // false se ledgerBalAmount=null
+  bate: boolean                    // true se |LEDGERBAL - saldoPos| ≤ 0.02
+  diff: number                     // LEDGERBAL - saldoPos
+  /** Pro UI explicar quando não bate (vazio quando bate) */
+  hipoteses: LedgerBalHipotese[]
+}
+
 export interface V2PreviewPayload {
   banco: BancoDetectadoPayload | null
   total: number
@@ -159,6 +191,117 @@ export interface V2PreviewPayload {
       duplicadasHashLegado: number
     }
   }
+  ledgerBalCheck: LedgerBalCheckPayload
+}
+
+// ───────────────────────────────────────────────────────────────
+// LedgerBalCheck (Sub-fase 2B) — função pura
+// ───────────────────────────────────────────────────────────────
+
+const LEDGER_BAL_TOLERANCE = 0.02
+
+/** Signed amount pra cálculo do delta:
+ *  CREDIT (+amount) — entrada de dinheiro
+ *  DEBIT  (-amount) — saída de dinheiro */
+function signedAmount(item: { type: 'CREDIT' | 'DEBIT'; amount: number }): number {
+  return item.type === 'CREDIT' ? item.amount : -item.amount
+}
+
+/** Constrói o LedgerBalCheck a partir do estado atual + classificação.
+ *
+ *  SKIP_DUP e REPLACE_MANUAL NÃO entram no delta (já estavam contados no
+ *  balance). Apenas novasGenuinas + CONCILIATE_PAYABLE (que cria saída real)
+ *  contribuem pro delta. */
+export function buildLedgerBalCheck(input: {
+  ledgerBalance: { amount: number; asOfDate: Date } | null
+  balanceAtual: number
+  novasGenuinas: V2NovaGenuinaItem[]
+  conciliatePayable: V2ConciliatePayableItem[]
+}): LedgerBalCheckPayload {
+  const deltaNovas = input.novasGenuinas.reduce((s, t) => s + signedAmount(t), 0)
+  const deltaConcil = input.conciliatePayable.reduce((s, t) => s + signedAmount(t), 0)
+  const deltaImportProposto = deltaNovas + deltaConcil
+  const saldoPosImport = input.balanceAtual + deltaImportProposto
+
+  // Sem LEDGERBAL no arquivo: verificação indisponível
+  if (input.ledgerBalance === null) {
+    return {
+      ledgerBalAmount: null,
+      ledgerBalDate: null,
+      balanceAtual: input.balanceAtual,
+      deltaImportProposto,
+      saldoPosImport,
+      available: false,
+      bate: false,
+      diff: 0,
+      hipoteses: [],
+    }
+  }
+
+  const diff = input.ledgerBalance.amount - saldoPosImport
+  const bate = Math.abs(diff) <= LEDGER_BAL_TOLERANCE
+
+  // Quando bate: nenhuma hipótese
+  if (bate) {
+    return {
+      ledgerBalAmount: input.ledgerBalance.amount,
+      ledgerBalDate: input.ledgerBalance.asOfDate.toISOString(),
+      balanceAtual: input.balanceAtual,
+      deltaImportProposto,
+      saldoPosImport,
+      available: true,
+      bate: true,
+      diff: 0,
+      hipoteses: [],
+    }
+  }
+
+  // Quando NÃO bate: lista as 3 hipóteses + identifica a mais provável
+  // Sinal do diff:
+  //   diff > 0 (LEDGERBAL > saldoPos) → banco tem MAIS saldo que sistema
+  //     → falta entrada que sistema marcou como dup, ou tem saída a mais
+  //   diff < 0 (LEDGERBAL < saldoPos) → banco tem MENOS saldo que sistema
+  //     → sistema tem entrada falsa (algo marcado como nova que era dup),
+  //       ou falta saída
+  const suspeitosNovas = input.novasGenuinas
+    .filter((t) => Math.abs(Math.abs(signedAmount(t)) - Math.abs(diff)) <= LEDGER_BAL_TOLERANCE)
+    .map((t) => t.ofxIndex)
+
+  // Heurística "mais provável":
+  //   Se algum item nas novasGenuinas casa exato com |diff| → hipótese 1
+  //   Caso contrário → hipótese 3 (histórico errado) é o palpite default
+  const hasSuspeitoNova = suspeitosNovas.length > 0
+
+  const hipoteses: LedgerBalHipotese[] = [
+    {
+      tipo: 'dup_marcada_nova',
+      label: 'Alguma transação marcada como nova é, na verdade, duplicata (vai contar 2×).',
+      maisProvavel: hasSuspeitoNova,
+      suspeitos: hasSuspeitoNova ? suspeitosNovas : undefined,
+    },
+    {
+      tipo: 'real_marcada_dup',
+      label: 'Alguma transação marcada como "já no sistema" era real (faltando no balance).',
+      maisProvavel: false,
+    },
+    {
+      tipo: 'historico_errado',
+      label: 'Balance pré-existente diverge do banco (estrago histórico não relacionado a este import).',
+      maisProvavel: !hasSuspeitoNova,
+    },
+  ]
+
+  return {
+    ledgerBalAmount: input.ledgerBalance.amount,
+    ledgerBalDate: input.ledgerBalance.asOfDate.toISOString(),
+    balanceAtual: input.balanceAtual,
+    deltaImportProposto,
+    saldoPosImport,
+    available: true,
+    bate: false,
+    diff,
+    hipoteses,
+  }
 }
 
 export function buildV2PreviewPayload(input: {
@@ -169,6 +312,10 @@ export function buildV2PreviewPayload(input: {
   banco: BancoDetectadoPayload | null
   contaId: string
   candidates: CandidateWithMeta[]
+  /** NOVO 2B — balance atual da conta (pra LedgerBalCheck) */
+  contaBalance?: number
+  /** NOVO 2B — LEDGERBAL extraído do OFX (pode ser null) */
+  ledgerBalance?: { amount: number; asOfDate: Date } | null
 }): V2PreviewPayload {
   // 1. Mapeia novas pra IncomingOfxTx
   const incoming: IncomingOfxTx[] = input.novas.map((t, index) => ({
@@ -277,6 +424,13 @@ export function buildV2PreviewPayload(input: {
     }
   }
 
+  const ledgerBalCheck = buildLedgerBalCheck({
+    ledgerBalance: input.ledgerBalance ?? null,
+    balanceAtual: input.contaBalance ?? 0,
+    novasGenuinas,
+    conciliatePayable,
+  })
+
   return {
     banco: input.banco,
     total: input.totalArquivo,
@@ -296,6 +450,7 @@ export function buildV2PreviewPayload(input: {
         duplicadasHashLegado: input.duplicadasHashLegado,
       },
     },
+    ledgerBalCheck,
   }
 }
 
