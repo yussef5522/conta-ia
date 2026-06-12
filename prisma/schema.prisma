@@ -78,6 +78,10 @@ model User {
   // Sprint PF Fatia 4 (03/06/2026) — Pontes criadas por este user.
   pjToPfBridges PJtoPFBridge[]
 
+  // Fase 4 (12/06/2026) — quem revisou warnings de duplicação pós-import
+  importWarningsDismissed ImportWarning[] @relation("ImportWarningDismissedBy")
+  importWarningsResolved  ImportWarning[] @relation("ImportWarningResolvedBy")
+
   @@map("users")
 }
 
@@ -169,6 +173,9 @@ model Company {
   // Sprint PF Fatia 4 (03/06/2026) — Pontes desta empresa
   pjToPfBridges        PJtoPFBridge[]
 
+  // Fase 4 (12/06/2026) — Warnings de duplicação pós-import
+  importWarnings ImportWarning[]
+
   @@map("companies")
 }
 
@@ -231,6 +238,8 @@ model BankAccount {
   ofxImports     OfxImport[]
   // Sprint 5.0.2.u — multi-statement staging
   importStagings ImportStaging[]
+  // Fase 4 (12/06/2026)
+  importWarnings ImportWarning[]
 
   @@map("bank_accounts")
 }
@@ -376,6 +385,10 @@ model Transaction {
   // Diferencia de "EFFECTED conciliada via match" pra relatórios futuros.
   cashCoded       Boolean   @default(false)
   cashCodedAt     DateTime?
+
+  // Fase 4 (12/06/2026) — warnings de duplicação pós-import
+  warningsAsNew          ImportWarning[] @relation("ImportWarningNewTx")
+  warningsAsSuspectedDup ImportWarning[] @relation("ImportWarningSuspectedDup")
 
   @@unique([bankAccountId, dedupHash])
   // Sprint 4.0.1.b — anti-dup: schedule X só gera 1 tx por dueDate
@@ -1183,10 +1196,12 @@ model OfxImport {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  bankAccount  BankAccount   @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  revertedBy   User?         @relation("OfxImportReverter", fields: [revertedById], references: [id])
-  transactions Transaction[]
+  bankAccount    BankAccount     @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  revertedBy     User?           @relation("OfxImportReverter", fields: [revertedById], references: [id])
+  transactions   Transaction[]
+  // Fase 4 (12/06/2026) — Warnings de duplicação detectados neste import
+  importWarnings ImportWarning[]
 
   @@index([bankAccountId, createdAt])
   @@index([userId])
@@ -2375,4 +2390,49 @@ model PJtoPFBridge {
   @@index([socioPFId])
   @@index([createdById])
   @@map("pj_to_pf_bridges")
+}
+
+// ============================================================
+// Fase 4 — Detector de duplicação pós-import (Yussef 12/06/2026)
+//
+// Após cada /v2-confirm, um job assíncrono varre as tx criadas nos últimos
+// 5 minutos procurando duplicações que escaparam do classificador (Fase 1)
+// ou do LedgerBalCheck (Fase 2B). Cada match suspeito vira um ImportWarning.
+//
+// Yussef revê em /empresas/[id]/import-warnings e decide:
+//   - DISMISSED: "não é dup, ignorar" → marca dismissedAt
+//   - DELETED_NEW: "sim é dup, deletar a nova" → deleta newTx + reverte saldo
+//                  + marca resolvedAt
+//
+// Migration aditiva (CREATE TABLE). Zero risco a dados existentes.
+// ============================================================
+
+model ImportWarning {
+  id             String    @id @default(cuid())
+  companyId      String
+  bankAccountId  String
+  importId       String?
+  newTxId        String
+  suspectedDupId String
+  similarity     Float
+  reason         String
+  detectedAt     DateTime  @default(now())
+  dismissedAt    DateTime?
+  dismissedById  String?
+  resolvedAt     DateTime?
+  resolvedById   String?
+  // DISMISSED | DELETED_NEW
+  resolution     String?
+
+  company      Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  bankAccount  BankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+  import       OfxImport?  @relation(fields: [importId], references: [id], onDelete: SetNull)
+  newTx        Transaction @relation("ImportWarningNewTx", fields: [newTxId], references: [id], onDelete: Cascade)
+  suspectedDup Transaction @relation("ImportWarningSuspectedDup", fields: [suspectedDupId], references: [id], onDelete: Cascade)
+  dismissedBy  User?       @relation("ImportWarningDismissedBy", fields: [dismissedById], references: [id], onDelete: SetNull)
+  resolvedBy   User?       @relation("ImportWarningResolvedBy", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@index([companyId])
+  @@index([bankAccountId, detectedAt(sort: Desc)])
+  @@map("import_warnings")
 }

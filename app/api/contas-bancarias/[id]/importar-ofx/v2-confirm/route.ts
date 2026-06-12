@@ -18,6 +18,7 @@ import {
   V2ConfirmError,
   type V2ConfirmRequestBody,
 } from '@/lib/ofx/v2-confirm'
+import { runDetectorPostImport } from '@/lib/import-warnings/run'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -137,6 +138,16 @@ export async function POST(request: NextRequest, { params }: Params) {
       ledgerBalAmount: body.ledgerBalAmount,
       expectedDelta: computedDelta,
       acceptHistoricalDivergence: body.acceptHistoricalDivergence,
+    })
+
+    // ───── Fase 4: detector pós-import (fire-and-forget, NÃO bloqueia response)
+    // Roda APÓS o commit. Se falhar, log + ignora. Import já está safe.
+    runDetectorPostImport(prisma, {
+      bankAccountId: contaId,
+      companyId: conta.companyId,
+      windowMinutes: 5,
+    }).catch((err) => {
+      console.error('[Fase 4 detector] falha pós-import (import já commitado):', err)
     })
 
     return NextResponse.json(result)
