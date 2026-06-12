@@ -92,8 +92,10 @@ export async function POST(request: NextRequest, { params }: Params) {
         },
       })
 
-      await tx.transaction.delete({ where: { id: newTx.id } })
-
+      // ⚠️ Marca warning ANTES de deletar tx — porque FK newTxId tem onDelete=Cascade
+      // (delete tx removeria o warning junto). Após o update, podemos deletar.
+      // OBS: o warning vai sumir mesmo assim pelo cascade — mas pelo menos
+      // mantemos resolvedAt no audit log via metadata acima.
       await tx.importWarning.update({
         where: { id: warningId },
         data: {
@@ -102,6 +104,8 @@ export async function POST(request: NextRequest, { params }: Params) {
           resolution: 'DELETED_NEW',
         },
       })
+
+      await tx.transaction.delete({ where: { id: newTx.id } })
 
       return { newTxAlreadyDeleted: false, balanceReverted: balanceDelta }
     })
