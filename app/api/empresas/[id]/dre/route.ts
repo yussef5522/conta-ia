@@ -3,7 +3,7 @@
 // Query params (validados em lib/dre/validation.ts):
 //   startDate (ISO 8601 obrigatório)
 //   endDate (ISO 8601 obrigatório)
-//   regime ('competence' | 'cash', default 'competence')
+//   regime ('competence' | 'cash', default 'cash' — Yussef 11/06/2026)
 //   comparison ('none' | 'previous_period' | 'same_period_last_year' |
 //               'previous_year' | 'ytd_vs_ytd' | 'custom', default 'none')
 //   comparisonStartDate / comparisonEndDate (obrigatórios se comparison=custom)
@@ -83,7 +83,13 @@ export async function GET(request: NextRequest, { params }: Params) {
     // Transações: multi-tenant via bankAccount.companyId (não há FK direta).
     // Range de query inclui transações cujo competenceDate (regime=competência)
     // OU paymentDate (regime=caixa) caia no range. Pra cobrir transações sem
-    // competenceDate (legacy), também busca por `date` quando regime=competência.
+    // competenceDate ou paymentDate (legacy), também busca por `date` como fallback.
+    //
+    // Fix DRE Caixa (Yussef 11/06/2026): regime cash agora tem fallback pra `date`
+    // quando paymentDate IS NULL. Necessário porque OFX importadas (469 em Stone)
+    // NÃO recebem paymentDate, mas seu `date` é exatamente a data da operação
+    // bancária — que é o significado de regime caixa. Sem o fallback o DRE caixa
+    // ficava praticamente vazio (só ADJ e Excel/Manual pareadas entravam).
     const dateClauses =
       regime === 'competence'
         ? [
@@ -93,7 +99,13 @@ export async function GET(request: NextRequest, { params }: Params) {
               date: { gte: searchRange.start, lte: searchRange.end },
             },
           ]
-        : [{ paymentDate: { gte: searchRange.start, lte: searchRange.end } }]
+        : [
+            { paymentDate: { gte: searchRange.start, lte: searchRange.end } },
+            {
+              paymentDate: null,
+              date: { gte: searchRange.start, lte: searchRange.end },
+            },
+          ]
 
     // Sprint 4.0.1.b — PAYABLE/RECEIVABLE não têm bankAccountId obrigatório
     // (criados sem conta definida). Pra view='previsto', resolvemos empresa via
@@ -125,10 +137,33 @@ export async function GET(request: NextRequest, { params }: Params) {
         type: { not: 'TRANSFER' },
         // Sprint 4.0.1.a/b — REALIZADO = EFFECTED; PREVISTO = PAYABLE/RECEIVABLE.
         lifecycle: lifecycleFilter,
-        // Sprint 4.0.2 — anti-dupla-contagem (só no Realizado).
-        // No Previsto, todas PAYABLE/RECEIVABLE têm reconciledWithId=NULL por
-        // definição (ainda pendentes), então o filtro é no-op mas seguro.
-        ...(view === 'realizado' ? { reconciledWithId: null } : {}),
+        // Anti-dupla-contagem (só no Realizado). Yussef 11/06/2026 (fix DRE):
+        // SUBSTITUI o filtro Sprint 4.0.2 (`reconciledWithId IS NULL`) que tinha
+        // 2 bugs:
+        //   1. Excel/Manual filhas pareadas (com `reconciledWithId` set) ficavam
+        //      FORA do DRE — perdiam-se categoria boa (cat caía em uncategorized).
+        //   2. ADJUSTMENT criado em grupo com OFX-pai duplicava o juros: ADJ entrava
+        //      (rec link null por design) E OFX-pai entrava com valor inteiro já
+        //      contendo juros embutido. Conta 2× (R$ 501,18 inflavam Stone).
+        //
+        // Regra nova: EXCLUI apenas a OFX-pai conciliada (origin=OFX, sem rec link,
+        // mas com `reconciledFrom` apontando pra ela = é "irmã duplicada" das
+        // Excel/Manual/ADJ filhas que carregam categoria boa).
+        //
+        // Casos cobertos: 1:1 simples, 1:1 com ADJ, N:1 (CIA DA FRUTA), Excel ORPHAN
+        // (Sprint A-effected). OFX órfã (sem ninguém apontando) continua entrando.
+        //
+        // No Previsto, todas PAYABLE/RECEIVABLE têm reconciledWithId=NULL e
+        // reconciledFrom vazio por definição, então o filtro é no-op mas seguro.
+        ...(view === 'realizado'
+          ? {
+              NOT: {
+                origin: 'OFX',
+                reconciledWithId: null,
+                reconciledFrom: { some: {} },
+              },
+            }
+          : {}),
         // Sprint 5.0.2.i — Transferências internas grupo conciliadas NÃO compõem DRE
         // (não são receita nem despesa - só movimentação entre CNPJs do mesmo grupo).
         isInternalTransfer: false,

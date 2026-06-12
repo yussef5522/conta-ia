@@ -8,8 +8,11 @@ export const dreQuerySchema = z
     startDate: z.string().datetime({ message: 'startDate inválido (ISO 8601)' }),
     endDate: z.string().datetime({ message: 'endDate inválido (ISO 8601)' }),
 
-    // Regime contábil (default: competência, conforme legislação BR)
-    regime: z.enum(['competence', 'cash']).default('competence'),
+    // Regime contábil. Yussef 11/06/2026: default mudou pra cash (dia de pagamento).
+    // Motivo: planilhas Excel chegam com competenceDate frequentemente errado
+    // (compras pagas em jun com data de compra em mai/abr). Regime caixa usa
+    // paymentDate (fallback pra `date`) que é a verdade financeira do extrato.
+    regime: z.enum(['competence', 'cash']).default('cash'),
 
     // Tipo de comparação
     comparison: z

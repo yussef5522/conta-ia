@@ -107,7 +107,9 @@ export function calculateDRE(
 // ============================================================
 //
 // Regime competência: usa competenceDate (com fallback pra date se ausente).
-// Regime caixa: usa paymentDate (sem fallback — não pago = fora do período).
+// Regime caixa: usa paymentDate, COM fallback pra date (Yussef 11/06/2026).
+// Motivo do fallback caixa: OFX importadas não recebem paymentDate, mas seu `date`
+// é exatamente a data da operação bancária = significado de regime caixa.
 
 function filterTransactionsByPeriod(
   transactions: TransactionForDRE[],
@@ -121,7 +123,7 @@ function filterTransactionsByPeriod(
     if (period.regime === 'competence') {
       date = tx.competenceDate ?? tx.date ?? null
     } else {
-      date = tx.paymentDate ?? null
+      date = tx.paymentDate ?? tx.date ?? null
     }
 
     if (!date) return false
