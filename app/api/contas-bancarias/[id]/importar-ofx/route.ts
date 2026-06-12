@@ -5,6 +5,11 @@ import { parseOFX } from '@/lib/ofx/parser'
 import { detectarBanco, bateComPerfilDaConta } from '@/lib/ofx/bancos'
 import { dedupHashOFX, filtrarNovasOFX } from '@/lib/ofx/dedup'
 import {
+  buildLegacyPreviewPayload,
+  buildV2PreviewPayload,
+  isV2PreviewEnabled,
+} from '@/lib/ofx/preview-v2'
+import {
   autoClassifyTransactions,
   buildRuleIndex,
   loadActiveRules,
@@ -89,21 +94,84 @@ export async function POST(request: NextRequest, { params }: Params) {
   const duplicadas = duplicadasNoArquivo + duplicadasNoBanco
 
   if (isPreview) {
-    return NextResponse.json({
-      preview: novas.map((t) => ({
-        fitid: t.fitid,
-        dedupHash: t.dedupHash,
-        date: t.datePosted,
-        amount: t.amount,
-        type: t.type,
-        memo: t.memo,
-      })),
-      total: transactions.length,
-      novas: novas.length,
-      duplicadas,
-      errosParser: errors,
-      banco,
-    })
+    // Sprint 3-Bugs Fase 2A (Yussef 12/06/2026) — flag IMPORT_PREVIEW_V2
+    //
+    // Quando V2=true: payload enriquecido com classificação 4-grupos
+    //   (skipDup / replaceManual / conciliatePayable / novasGenuinas).
+    //   Pré-empta os 3 bugs (FITID reciclado / manual + OFX / Excel↔OFX).
+    //
+    // Quando V2=false ou ausente: payload IDÊNTICO ao legado (preservado
+    //   bit-pra-bit). UI antiga continua funcionando 100%.
+    //
+    // O /confirm legado (linhas abaixo) NÃO mudou — esta sub-fase é
+    // puramente "preview enriquecido". O atomic de criação de tx continua
+    // sendo o histórico até a Fase 2D.
+    if (!isV2PreviewEnabled()) {
+      return NextResponse.json(
+        buildLegacyPreviewPayload({
+          novas,
+          totalArquivo: transactions.length,
+          duplicadas,
+          errosParser: errors,
+          banco,
+        }),
+      )
+    }
+
+    // V2: busca candidatos do sistema (somente leitura) + classifica
+    const datesIncoming = novas.map((t) => t.datePosted.getTime())
+    const minDate = new Date(Math.min(...datesIncoming) - 5 * 86400_000)
+    const maxDate = new Date(Math.max(...datesIncoming) + 1 * 86400_000)
+
+    const [candidatesMesmaConta, candidatesExcelPayable] = await Promise.all([
+      prisma.transaction.findMany({
+        where: {
+          bankAccountId: contaId,
+          lifecycle: 'EFFECTED',
+          origin: { in: ['OFX', 'MANUAL'] },
+          date: { gte: minDate, lte: maxDate },
+        },
+        select: {
+          id: true, bankAccountId: true, amount: true, date: true,
+          dueDate: true, description: true, type: true, origin: true,
+          lifecycle: true, reconciledWithId: true, transferGroupId: true,
+          category: { select: { name: true } },
+          supplier: { select: { razaoSocial: true } },
+        },
+      }),
+      prisma.transaction.findMany({
+        where: {
+          origin: 'IMPORT_EXCEL',
+          lifecycle: { in: ['PAYABLE', 'RECEIVABLE'] },
+          OR: [
+            { bankAccount: { companyId: conta.companyId } },
+            { supplier: { companyId: conta.companyId } },
+            { customer: { companyId: conta.companyId } },
+            { category: { companyId: conta.companyId } },
+          ],
+          dueDate: { gte: minDate, lte: maxDate },
+        },
+        select: {
+          id: true, bankAccountId: true, amount: true, date: true,
+          dueDate: true, description: true, type: true, origin: true,
+          lifecycle: true, reconciledWithId: true, transferGroupId: true,
+          category: { select: { name: true } },
+          supplier: { select: { razaoSocial: true } },
+        },
+      }),
+    ])
+
+    return NextResponse.json(
+      buildV2PreviewPayload({
+        novas,
+        totalArquivo: transactions.length,
+        duplicadasHashLegado: duplicadas,
+        errosParser: errors,
+        banco,
+        contaId,
+        candidates: [...candidatesMesmaConta, ...candidatesExcelPayable],
+      }),
+    )
   }
 
   // Inserção em lote das transações novas + recalcula saldo
