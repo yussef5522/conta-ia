@@ -176,6 +176,10 @@ model Company {
   // Fase 4 (12/06/2026) — Warnings de duplicação pós-import
   importWarnings ImportWarning[]
 
+  // Fase 5 (12/06/2026) — Métricas diárias de monitoramento
+  monitorMetrics MonitorMetric[]
+  monitorAlerts  MonitorAlert[]
+
   @@map("companies")
 }
 
@@ -2435,4 +2439,55 @@ model ImportWarning {
   @@index([companyId])
   @@index([bankAccountId, detectedAt(sort: Desc)])
   @@map("import_warnings")
+}
+
+// ============================================================
+// Fase 5 — Métricas diárias de monitoramento (Yussef 12/06/2026)
+//
+// Job cron `scripts/monitor-dups-daily.ts` roda 1×/dia (06h UTC) e grava
+// snapshots em monitor_metrics. Função pura `detectAlerts` compara
+// hoje vs ontem e dispara alertas APENAS quando algum valor SUBIU
+// (evita ruído do lixo histórico estável).
+//
+// monitor_alerts persiste os alertas dispensados pelo user — assim ele
+// não é incomodado de novo até a métrica MUDAR.
+//
+// Migration aditiva: 2 CREATE TABLE + índices. Zero ALTER.
+// ============================================================
+
+model MonitorMetric {
+  id         String   @id @default(cuid())
+  measuredAt DateTime @default(now())
+  // 'A' | 'B' | 'C' | 'D'
+  metricKey  String
+  // null = global; preenchido = por empresa
+  companyId  String?
+  value      Int
+  metadata   String?
+
+  company Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([metricKey, measuredAt(sort: Desc)])
+  @@map("monitor_metrics")
+}
+
+model MonitorAlert {
+  id            String    @id @default(cuid())
+  // 'A' | 'B' | 'C' | 'D'
+  metricKey     String
+  companyId     String
+  // Valores que dispararam o alerta
+  valueOntem    Int
+  valueHoje     Int
+  delta         Int
+  detectedAt    DateTime  @default(now())
+  // Dismiss "até nova mudança": resetado pra null quando a métrica MUDAR
+  // (sobe de novo ou volta a estável). Lógica fica no detectAlerts.
+  dismissedAt   DateTime?
+  dismissedById String?
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, dismissedAt, detectedAt(sort: Desc)])
+  @@map("monitor_alerts")
 }
