@@ -20,6 +20,8 @@ import {
   loadPatternsForSetor,
   resolveSetorCategoryId,
 } from '@/lib/categorization/match-setor-pattern'
+import { isReconcileV2Enabled } from '@/lib/reconciliation/flag'
+import { runImportV2 } from '@/lib/reconciliation/import-orchestrator'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -63,6 +65,61 @@ export async function POST(request: NextRequest, { params }: Params) {
       erro: 'Nenhuma transação encontrada no arquivo',
       errosParser: errors,
     }, { status: 400 })
+  }
+
+  // ────────────────────────────────────────────────────────────────
+  // RECONCILE_V2: motor de conciliação bidirecional (Espelho do Extrato).
+  // Flag OFF → caminho legado abaixo segue 100% intacto. Rollback = desligar.
+  // Aplicado SÓ no confirm (não no ?preview=true, que já tem seu V2 próprio).
+  // ────────────────────────────────────────────────────────────────
+  if (!isPreview && isReconcileV2Enabled()) {
+    const ipAddress =
+      request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+      request.headers.get('x-real-ip') ??
+      undefined
+    const userAgent = request.headers.get('user-agent')?.slice(0, 500) ?? undefined
+
+    try {
+      const result = await prisma.$transaction(
+        async (tx) =>
+          runImportV2(tx, {
+            bankAccountId: contaId,
+            rawOfx: rawContent,
+            userId: user.sub,
+            fileName: uploadedFileName,
+            ipAddress,
+            userAgent,
+          }),
+        { timeout: 120000, maxWait: 10000 },
+      )
+      // Contrato: mantém os campos essenciais do legado (`mensagem`,
+      // `inseridas`, `duplicadas`, `importId`, `errosParser`) + adiciona
+      // métricas novas do V2 (preview/orphan/ledgerBalance).
+      const inseridas =
+        result.classification.effected + result.classification.preview
+      return NextResponse.json({
+        mode: 'RECONCILE_V2',
+        mensagem: `${inseridas} transaç${inseridas !== 1 ? 'ões importadas' : 'ão importada'} (${result.classification.effected} efetivadas, ${result.classification.preview} agendadas).`,
+        inseridas,
+        duplicadas: result.classification.skippedMatched,
+        effected: result.classification.effected,
+        previewNovas: result.classification.preview,
+        previewJaExistia: result.classification.previewAlreadyExisting,
+        orphanWarnings: result.classification.orphanWarnings,
+        matchedExact: result.matchedExact,
+        matchedFuzzy: result.matchedFuzzy,
+        warnings: result.warnings,
+        importId: result.importId,
+        ledgerBalance: result.ledgerBalance,
+        errosParser: errors,
+      })
+    } catch (e: any) {
+      console.error('[importar-ofx RECONCILE_V2] falhou:', e?.message)
+      return NextResponse.json(
+        { erro: e?.message ?? 'Falha no import V2', code: 'RECONCILE_V2_FAILED' },
+        { status: 500 },
+      )
+    }
   }
 
   // Detecção de banco a partir do BANKID do OFX (FEBRABAN)
