@@ -30,6 +30,9 @@ export interface ImportOrchestratorInput {
   fileName: string
   ipAddress?: string
   userAgent?: string
+  // Override opcional pro corte min(DTASOF, today). Default = new Date().
+  // Em testes ou simulações determinísticas é útil; em prod normal não passar.
+  today?: Date
 }
 
 export interface ImportOrchestratorResult {
@@ -133,7 +136,9 @@ export async function runImportV2(
   }))
 
   // 4. Reconcile bidirecional (Tier 1 EXACT + Tier 2 FUZZY)
-  const result = reconcileStatement(lines, dbBankTxs, dtAsOf)
+  // Passa `today` pro corte de preview ser min(DTASOF, today) — cobre
+  // bancos que declaram DTASOF futuro (Sicredi: 30/06 num extrato de 13/06).
+  const result = reconcileStatement(lines, dbBankTxs, dtAsOf, input.today)
 
   // 5. Criar OfxImport + rawOfxBlob
   const bankAcc = await tx.bankAccount.findUniqueOrThrow({

@@ -34,12 +34,16 @@ export function reconcileStatement(
   statementLines: StatementLine[],
   dbBankTxInWindow: DbBankTransaction[],
   dtAsOf: Date,
+  today?: Date,
 ): ReconcileResult {
   // 1. Separa previews — não vão pra nenhum tier
+  // Corte efetivo = min(DTASOF, HOJE): bancos como Sicredi declaram DTASOF no
+  // fim do mês mesmo gerando o extrato hoje, então usar SÓ DTASOF deixa
+  // passar linhas agendadas como reais.
   const previews: StatementLine[] = []
   const realLines: StatementLine[] = []
   for (const line of statementLines) {
-    if (isPreviewLine(line, dtAsOf)) previews.push(line)
+    if (isPreviewLine(line, dtAsOf, today)) previews.push(line)
     else realLines.push(line)
   }
 

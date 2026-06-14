@@ -51,4 +51,26 @@ describe('isPreviewLine', () => {
     const line = { datePosted: D('2026-06-12'), fitid: '999888' }
     expect(isPreviewLine(line, D('2026-06-12'))).toBe(false)
   })
+
+  it('DTASOF NO FUTURO + linha futura vs HOJE → PREVIEW (caso Sicredi 15/06 com DTASOF=30/06, hoje=13/06)', () => {
+    // Sicredi declara LEDGERBAL/DTASOF no fim do mês (30/06) mesmo gerando
+    // o extrato em 13/06. Linhas de 15/06 são AGENDADAS — devem virar preview.
+    const line = { datePosted: D('2026-06-15'), fitid: '22474815379' }
+    const dtAsOf = D('2026-06-30') // fim de mês declarado pelo banco
+    const today = D('2026-06-13') // HOJE
+    expect(isPreviewLine(line, dtAsOf, today)).toBe(true)
+  })
+
+  it('DTASOF futuro + linha JÁ ocorrida vs HOJE → NÃO é preview', () => {
+    // Linha de 12/06 num extrato com DTASOF 30/06 e HOJE=13/06: é real
+    const line = { datePosted: D('2026-06-12'), fitid: '22474815379' }
+    expect(isPreviewLine(line, D('2026-06-30'), D('2026-06-13'))).toBe(false)
+  })
+
+  it('Sem parâmetro today: usa new Date() implicitamente (backward compatible)', () => {
+    // Não dá pra testar valor exato sem mock, mas o cenário onde dtAsOf<<hoje funciona
+    const line = { datePosted: D('2026-01-15') }
+    // dtAsOf no passado, linha em data próxima do dtAsOf → não preview
+    expect(isPreviewLine(line, D('2026-01-31'))).toBe(false)
+  })
 })
