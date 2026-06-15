@@ -1,8 +1,9 @@
-// Componente compartilhado de filtro de data — Sprint Filtro de Data Parte A.
-// Sprint Visual (15/06/2026): UPGRADE pra botão + popover (2 colunas).
-//   - Esquerda: 7 presets (sentence case)
-//   - Direita: 2 inputs De/Até + Calendar com range
-// Cores via tokens do design system (primary roxo do app).
+// Componente compartilhado de filtro de data.
+// Sprint Visual: botão + popover (presets + Calendar + inputs).
+// Sprint Frontend (15/06/2026): pending state + rodapé Aplicar/Limpar
+// (USWDS: NÃO auto-submeter na seleção). Clique no Calendar, em preset ou
+// nos inputs apenas mexe no pendingRange interno; só APLICAR escreve na
+// URL/dispara filtro. Fechar fora ou Esc descarta o pending.
 
 'use client'
 
@@ -71,19 +72,34 @@ function detectPreset(range: DateRangeInput): VisualPresetId {
   return 'custom'
 }
 
+const MONTHS_PT = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
+
 function formatRange(value: DateRangeInput): string {
   if (!value.inicio && !value.fim) return 'Selecionar período'
   const fmt = (iso: string) => {
     if (!iso) return ''
     const d = new Date(iso + 'T12:00:00Z')
-    const months = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
-    return `${d.getUTCDate()} ${months[d.getUTCMonth()]}`
+    return `${d.getUTCDate()} ${MONTHS_PT[d.getUTCMonth()]}`
   }
   if (value.inicio && value.fim) {
     if (value.inicio === value.fim) return fmt(value.inicio)
     return `${fmt(value.inicio)} – ${fmt(value.fim)}`
   }
   return fmt(value.inicio || value.fim)
+}
+
+// "3 jun – 9 jun · 7 dias" (inclusivo). Vazio/parcial: "Selecione um período".
+function formatPendingSummary(pending: DateRangeInput): string {
+  if (!pending.inicio || !pending.fim) return 'Selecione um período'
+  const fmt = (iso: string) => {
+    const d = new Date(iso + 'T12:00:00Z')
+    return `${d.getUTCDate()} ${MONTHS_PT[d.getUTCMonth()]}`
+  }
+  const a = new Date(pending.inicio + 'T12:00:00Z').getTime()
+  const b = new Date(pending.fim + 'T12:00:00Z').getTime()
+  const days = Math.round((b - a) / 86400000) + 1
+  const head = pending.inicio === pending.fim ? fmt(pending.inicio) : `${fmt(pending.inicio)} – ${fmt(pending.fim)}`
+  return `${head} · ${days} dia${days === 1 ? '' : 's'}`
 }
 
 // Converte ISO YYYY-MM-DD <-> Date pro react-day-picker (UTC midday pra evitar TZ drift).
@@ -98,49 +114,77 @@ function dateToIso(d: Date | undefined): string {
 
 export function DateRangeFilter({ value, onChange, label = 'Período' }: Props) {
   const [open, setOpen] = React.useState(false)
-  const selectedPreset = React.useMemo(() => detectPreset(value), [value])
-  const hasValue = !!(value.inicio || value.fim)
+  // PENDING STATE LOCAL — só comita no APLICAR. Sync com `value` quando abre.
+  const [pending, setPending] = React.useState<DateRangeInput>(value)
+
+  // Ao ABRIR o popover, ressincroniza pending com o range JÁ comitado.
+  // Ao FECHAR (sem aplicar), o efeito não dispara — descarta o pending
+  // automaticamente porque o trigger sempre lê `value`, não `pending`.
+  React.useEffect(() => {
+    if (open) setPending(value)
+  }, [open, value])
+
+  const selectedPreset = React.useMemo(() => detectPreset(pending), [pending])
+  const hasCommittedValue = !!(value.inicio || value.fim)
 
   const dpRange: DateRange | undefined = React.useMemo(() => {
-    if (!value.inicio && !value.fim) return undefined
+    if (!pending.inicio && !pending.fim) return undefined
     return {
-      from: isoToDate(value.inicio) ?? undefined,
-      to: isoToDate(value.fim) ?? undefined,
+      from: isoToDate(pending.inicio) ?? undefined,
+      to: isoToDate(pending.fim) ?? undefined,
     }
-  }, [value.inicio, value.fim])
+  }, [pending.inicio, pending.fim])
 
-  function applyPreset(id: VisualPresetId) {
-    if (id === 'custom') return
-    if (id === 'todos') {
-      onChange({ inicio: '', fim: '' })
-      setOpen(false)
+  // ====== Handlers — TODOS apenas mexem no `pending`. NÃO comitam. ======
+
+  function handlePreset(id: VisualPresetId) {
+    if (id === 'custom') {
+      // "Personalizado": só esvazia o calendário pra usuário escolher manualmente.
+      // NÃO comita.
+      setPending({ inicio: '', fim: '' })
       return
     }
-    onChange(resolvePreset(id))
+    if (id === 'todos') {
+      setPending({ inicio: '', fim: '' })
+      return
+    }
+    // Preset pré-preenche o pending, não comita, não fecha.
+    setPending(resolvePreset(id))
+  }
+
+  function handleCalendarSelect(range: DateRange | undefined) {
+    // ⚠️ AQUI ESTAVA O BUG ANTIGO (auto-submit). Agora SÓ mexe no pending.
+    if (!range) {
+      setPending({ inicio: '', fim: '' })
+      return
+    }
+    setPending({ inicio: dateToIso(range.from), fim: dateToIso(range.to) })
+  }
+
+  function handleInput(field: 'inicio' | 'fim', v: string) {
+    const next = { ...pending, [field]: v }
+    if (next.inicio && next.fim && next.inicio > next.fim) {
+      // ordem garantida — colapsa pro mesmo dia
+      setPending({ inicio: v, fim: v })
+      return
+    }
+    setPending(next)
+  }
+
+  // APLICAR: enabled quando completo OU totalmente vazio (=limpa).
+  const isComplete = !!(pending.inicio && pending.fim)
+  const isEmpty = !pending.inicio && !pending.fim
+  const canApply = isComplete || isEmpty
+
+  function handleApply() {
+    if (!canApply) return
+    onChange(pending) // ÚNICO ponto de commit/URL write/dispara filtro
     setOpen(false)
   }
 
-  function applyCalendar(range: DateRange | undefined) {
-    if (!range) {
-      onChange({ inicio: '', fim: '' })
-      return
-    }
-    const inicio = dateToIso(range.from)
-    const fim = dateToIso(range.to)
-    onChange({ inicio, fim })
-    if (range.from && range.to) {
-      setOpen(false)
-    }
-  }
-
-  function applyInputs(field: 'inicio' | 'fim', v: string) {
-    const next = { ...value, [field]: v }
-    // Garante inicio <= fim
-    if (next.inicio && next.fim && next.inicio > next.fim) {
-      onChange(field === 'inicio' ? { inicio: v, fim: v } : { inicio: v, fim: v })
-      return
-    }
-    onChange(next)
+  function handleClear() {
+    // Zera APENAS o pending. NÃO toca no filtro comitado, NÃO fecha.
+    setPending({ inicio: '', fim: '' })
   }
 
   return (
@@ -153,7 +197,8 @@ export function DateRangeFilter({ value, onChange, label = 'Período' }: Props) 
             variant="outline"
             className={cn(
               'h-8 justify-start gap-2 text-sm font-normal pl-3 pr-2',
-              hasValue && 'bg-primary/10 border-primary/40 text-primary hover:bg-primary/15 hover:text-primary',
+              // Trigger reflete o VALOR COMITADO (não o pending).
+              hasCommittedValue && 'bg-primary/10 border-primary/40 text-primary hover:bg-primary/15 hover:text-primary',
             )}
           >
             <CalendarIcon className="size-3.5" />
@@ -163,6 +208,7 @@ export function DateRangeFilter({ value, onChange, label = 'Período' }: Props) 
         </PopoverTrigger>
         <PopoverContent className="w-auto p-0" align="start">
           <div className="flex">
+            {/* Esquerda: presets */}
             <div className="w-[180px] border-r p-2 space-y-0.5">
               {PRESETS.map((p) => {
                 const active = selectedPreset === p.id
@@ -170,7 +216,7 @@ export function DateRangeFilter({ value, onChange, label = 'Período' }: Props) 
                   <button
                     key={p.id}
                     type="button"
-                    onClick={() => applyPreset(p.id)}
+                    onClick={() => handlePreset(p.id)}
                     className={cn(
                       'w-full text-left text-sm px-3 py-1.5 rounded-md flex items-center justify-between gap-2 transition-colors',
                       active
@@ -184,6 +230,7 @@ export function DateRangeFilter({ value, onChange, label = 'Período' }: Props) 
                 )
               })}
             </div>
+            {/* Direita: inputs De/Até + Calendar */}
             <div className="p-3 space-y-3">
               <div className="flex items-end gap-2">
                 <div className="space-y-1">
@@ -191,8 +238,8 @@ export function DateRangeFilter({ value, onChange, label = 'Período' }: Props) 
                   <Input
                     type="date"
                     className="h-8 w-32 text-sm"
-                    value={value.inicio}
-                    onChange={(e) => applyInputs('inicio', e.target.value)}
+                    value={pending.inicio}
+                    onChange={(e) => handleInput('inicio', e.target.value)}
                   />
                 </div>
                 <div className="space-y-1">
@@ -200,8 +247,8 @@ export function DateRangeFilter({ value, onChange, label = 'Período' }: Props) 
                   <Input
                     type="date"
                     className="h-8 w-32 text-sm"
-                    value={value.fim}
-                    onChange={(e) => applyInputs('fim', e.target.value)}
+                    value={pending.fim}
+                    onChange={(e) => handleInput('fim', e.target.value)}
                   />
                 </div>
               </div>
@@ -209,9 +256,38 @@ export function DateRangeFilter({ value, onChange, label = 'Período' }: Props) 
                 mode="range"
                 numberOfMonths={1}
                 selected={dpRange}
-                onSelect={applyCalendar}
-                defaultMonth={isoToDate(value.inicio) ?? new Date()}
+                onSelect={handleCalendarSelect}
+                defaultMonth={isoToDate(pending.inicio) ?? new Date()}
               />
+            </div>
+          </div>
+          {/* Rodapé com Aplicar/Limpar (padrão USWDS/GA/Semrush) */}
+          <div className="flex items-center justify-between gap-2 border-t bg-muted/30 px-3 py-2 text-xs">
+            <span className={cn(
+              'text-muted-foreground',
+              isComplete && 'text-foreground font-medium',
+            )}>
+              {formatPendingSummary(pending)}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={handleClear}
+                className="h-7 text-xs"
+              >
+                Limpar
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleApply}
+                disabled={!canApply}
+                className="h-7 text-xs"
+              >
+                Aplicar
+              </Button>
             </div>
           </div>
         </PopoverContent>

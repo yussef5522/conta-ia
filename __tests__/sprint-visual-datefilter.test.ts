@@ -34,9 +34,9 @@ describe('Sprint Visual — DateRangeFilter upgrade (popover + presets + Calenda
     }
   })
 
-  it('botão trigger destacado em primary quando há valor', () => {
+  it('botão trigger destacado em primary quando há valor (Sprint Frontend renomeou pra hasCommittedValue)', () => {
     const code = readFileSync(PATH, 'utf-8')
-    expect(code).toMatch(/hasValue && 'bg-primary\/10/)
+    expect(code).toMatch(/hasCommittedValue && 'bg-primary\/10/)
     expect(code).toMatch(/border-primary\/40 text-primary/)
   })
 
