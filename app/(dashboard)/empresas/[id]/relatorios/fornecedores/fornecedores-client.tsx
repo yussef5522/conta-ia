@@ -15,6 +15,8 @@ import {
 } from '@/components/ui/select'
 import { useToast } from '@/components/ui/use-toast'
 import { ExportReportButton } from '@/components/relatorios/ExportReportButton'
+import { DateRangeFilter } from '@/components/shared/DateRangeFilter'
+import { useDateRangeFilter } from '@/lib/hooks/use-date-range-filter'
 
 interface Row {
   supplierId: string
@@ -62,8 +64,11 @@ function formatBRL(v: number): string {
 export function FornecedoresClient({ empresaId }: Props) {
   const { toast } = useToast()
   const initial = defaultPeriod()
-  const [from, setFrom] = useState(initial.from)
-  const [to, setTo] = useState(initial.to)
+  // Sprint Filtro de Data Parte B (15/06/2026): hook compartilhado + URL sync.
+  // Quando a URL não traz ?inicio=&fim=, usa o mês corrente (default histórico).
+  const { inicio, fim, setRange } = useDateRangeFilter()
+  const from = inicio || initial.from
+  const to = fim || initial.to
   const [topN, setTopN] = useState(10)
   const [data, setData] = useState<ApiResponse | null>(null)
   const [loading, setLoading] = useState(true)
@@ -93,24 +98,11 @@ export function FornecedoresClient({ empresaId }: Props) {
     <div className="space-y-4">
       <Card>
         <CardContent className="py-3 flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2">
-            <label className="text-sm text-muted-foreground">De:</label>
-            <Input
-              type="date"
-              value={from}
-              onChange={(e) => setFrom(e.target.value)}
-              className="w-auto h-9 text-sm"
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="text-sm text-muted-foreground">Até:</label>
-            <Input
-              type="date"
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
-              className="w-auto h-9 text-sm"
-            />
-          </div>
+          <DateRangeFilter
+            value={{ inicio: from, fim: to }}
+            onChange={(r) => setRange(r)}
+            label="Período"
+          />
           <div className="flex items-center gap-2">
             <label className="text-sm text-muted-foreground">Top:</label>
             <Select value={String(topN)} onValueChange={(v) => setTopN(Number(v))}>

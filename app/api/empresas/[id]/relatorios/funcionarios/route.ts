@@ -26,7 +26,11 @@ export async function GET(request: NextRequest, { params }: Params) {
     ctx.requirePermission('dre.view')
 
     const sp = request.nextUrl.searchParams
-    const input = querySchema.parse(Object.fromEntries(sp.entries()))
+    // Sprint Filtro de Data Parte B: aceita ?inicio=&fim= como alias de from/to
+    const raw = Object.fromEntries(sp.entries())
+    if (!raw.from && raw.inicio) raw.from = raw.inicio as string
+    if (!raw.to && raw.fim) raw.to = raw.fim as string
+    const input = querySchema.parse(raw)
 
     const start = new Date(`${input.from}T00:00:00.000Z`)
     const end = new Date(`${input.to}T23:59:59.999Z`)

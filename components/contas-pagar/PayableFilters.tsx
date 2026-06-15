@@ -12,9 +12,10 @@
 // 5.0.3.0b adiciona: dataField select, multi-select supplier/categoria, valor range.
 // 5.0.3.0c adiciona: forma pagamento, banco, NFe, recorrente.
 
-import { Search, X, CalendarRange } from 'lucide-react'
+import { Search, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { DateRangeFilter } from '@/components/shared/DateRangeFilter'
 import {
   Select,
   SelectContent,
@@ -75,27 +76,15 @@ export function PayableFilters({ value, onChange, onClear, total }: Props) {
         />
       </div>
 
-      {/* Período */}
-      <div className="flex items-center gap-1.5 bg-muted/30 rounded-md px-2 h-9 text-xs">
-        <CalendarRange className="h-3.5 w-3.5 text-muted-foreground" />
-        <Input
-          type="date"
-          value={value.dataDe}
-          onChange={(e) => onChange({ ...value, dataDe: e.target.value })}
-          className="h-7 w-32 border-0 bg-transparent p-0 text-xs"
-          aria-label="Data de início"
-          data-testid="filter-dataDe"
-        />
-        <span className="text-muted-foreground">→</span>
-        <Input
-          type="date"
-          value={value.dataAte}
-          onChange={(e) => onChange({ ...value, dataAte: e.target.value })}
-          className="h-7 w-32 border-0 bg-transparent p-0 text-xs"
-          aria-label="Data fim"
-          data-testid="filter-dataAte"
-        />
-      </div>
+      {/* Período (Sprint Filtro de Data Parte B): DateRangeFilter compartilhado
+          + dateField=dueDate (semântica de contas a pagar). Mantém state local
+          dataDe/dataAte pra não quebrar consumers. */}
+      <DateRangeFilter
+        value={{ inicio: value.dataDe, fim: value.dataAte }}
+        onChange={(r) => onChange({ ...value, dataDe: r.inicio, dataAte: r.fim })}
+        dateField="dueDate"
+        label="Vencimento"
+      />
 
       {/* Status */}
       <Select

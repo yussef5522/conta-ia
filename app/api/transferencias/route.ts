@@ -87,11 +87,15 @@ export async function GET(request: NextRequest) {
       ...(Object.keys(dateFilter).length > 0 ? { date: dateFilter } : {}),
     } as const
 
-    // Conta total de grupos distintos (= count de uma das pontas; usamos a "saída"
-    // determinada por createdAt mínimo dentro do grupo). Simplificação: count
-    // total de transações TRANSFER dividido por 2.
-    const totalTransacoesTransfer = await prisma.transaction.count({ where: baseWhere })
-    const totalGrupos = Math.floor(totalTransacoesTransfer / 2)
+    // Sprint Filtro de Data Parte B (15/06/2026): count agora vai por
+    // groupBy(transferGroupId) — antes era Math.floor(totalTxs/2), que com
+    // filtro de data pegava pernas isoladas (1 perna dentro do range + irmã
+    // fora) e dava off-by-one (ex: 9 returned / total=8).
+    const gruposDistintos = await prisma.transaction.groupBy({
+      by: ['transferGroupId'],
+      where: baseWhere,
+    })
+    const totalGrupos = gruposDistintos.length
 
     // Busca as transações TRANSFER da empresa, ordenadas. Agrupa em memória
     // pelo transferGroupId. Paginação aplica no NÍVEL DOS GRUPOS, não das transações.

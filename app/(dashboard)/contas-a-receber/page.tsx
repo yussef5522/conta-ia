@@ -27,6 +27,8 @@ import {
 } from '@/components/ui/dialog'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
+import { DateRangeFilter } from '@/components/shared/DateRangeFilter'
+import { useDateRangeFilter } from '@/lib/hooks/use-date-range-filter'
 
 interface Conta {
   id: string
@@ -90,6 +92,8 @@ function ContasAReceberInner() {
   const [status, setStatus] = useState<string>('PENDING')
   const [vencidasOnly, setVencidasOnly] = useState(false)
   const [page, setPage] = useState(1)
+  // Sprint Filtro de Data Parte B (15/06/2026): filtro por dueDate. URL sync.
+  const { inicio: dateRangeInicio, fim: dateRangeFim, setRange: setDateRange } = useDateRangeFilter()
 
   const [efetivar, setEfetivar] = useState<Conta | null>(null)
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
@@ -135,6 +139,9 @@ function ContasAReceberInner() {
       })
       if (status !== 'TODOS') qs.set('status', status)
       if (vencidasOnly) qs.set('vencidas', 'true')
+      // Sprint Filtro de Data Parte B: filtro de vencimento (dueDate)
+      if (dateRangeInicio) qs.set('inicio', dateRangeInicio)
+      if (dateRangeFim) qs.set('fim', dateRangeFim)
 
       const res = await fetch(`/api/contas-a-receber?${qs}`, { credentials: 'include' })
       if (res.ok) {
@@ -146,7 +153,7 @@ function ContasAReceberInner() {
     } finally {
       setLoading(false)
     }
-  }, [empresaId, page, status, vencidasOnly])
+  }, [empresaId, page, status, vencidasOnly, dateRangeInicio, dateRangeFim])
 
   useEffect(() => { fetchItems() }, [fetchItems])
 
@@ -327,6 +334,12 @@ function ContasAReceberInner() {
                   />
                   Só atrasadas
                 </label>
+                <DateRangeFilter
+                  value={{ inicio: dateRangeInicio, fim: dateRangeFim }}
+                  onChange={(r) => { setDateRange(r); setPage(1) }}
+                  dateField="dueDate"
+                  label="Vencimento"
+                />
               </div>
             </CardContent>
           </Card>

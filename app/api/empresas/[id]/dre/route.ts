@@ -37,6 +37,11 @@ export async function GET(request: NextRequest, { params }: Params) {
     // Valida query params
     const url = new URL(request.url)
     const rawQuery = Object.fromEntries(url.searchParams)
+    // Sprint Filtro de Data Parte B (15/06/2026): aceita ?inicio=&fim= como
+    // ALIAS de startDate/endDate (padronização da Parte A). Não quebra o
+    // contrato original — se startDate/endDate vierem, prevalecem.
+    if (!rawQuery.startDate && rawQuery.inicio) rawQuery.startDate = new Date(rawQuery.inicio as string).toISOString()
+    if (!rawQuery.endDate && rawQuery.fim) rawQuery.endDate = new Date((rawQuery.fim as string) + 'T23:59:59.999Z').toISOString()
     const query = dreQuerySchema.parse(rawQuery)
 
     const startDate = new Date(query.startDate)

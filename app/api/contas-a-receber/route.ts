@@ -7,6 +7,7 @@ import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import { contaAReceberCreateSchema } from '@/lib/validations/contas-ap-ar'
 import { createContaPendente, ContaCreateError } from '@/lib/contas-ap-ar/create'
+import { readDateRangeParams } from '@/lib/api/date-range-params'
 
 export async function POST(request: NextRequest) {
   try {
@@ -50,6 +51,8 @@ export async function GET(request: NextRequest) {
     const vencidasOnly = sp.get('vencidas') === 'true'
     const customerId = sp.get('customerId')
     const categoryId = sp.get('categoryId')
+    // Sprint Filtro de Data Parte B (15/06/2026): filtro por dueDate.
+    const { inicio, fim } = readDateRangeParams(sp)
 
     const now = new Date()
     const where: Record<string, unknown> = {
@@ -64,7 +67,16 @@ export async function GET(request: NextRequest) {
     if (status) where.status = status
     if (customerId) where.customerId = customerId
     if (categoryId) where.categoryId = categoryId
-    if (vencidasOnly) where.dueDate = { lt: now }
+    // Sprint Filtro de Data Parte B: filtro por dueDate via inicio/fim
+    // (precedência sobre vencidasOnly: se user passou range, respeita range).
+    if (inicio || fim) {
+      where.dueDate = {
+        ...(inicio ? { gte: new Date(inicio) } : {}),
+        ...(fim ? { lte: new Date(fim + 'T23:59:59.999Z') } : {}),
+      }
+    } else if (vencidasOnly) {
+      where.dueDate = { lt: now }
+    }
 
     const [items, total, kpiAggregates, kpiVencidas] = await Promise.all([
       prisma.transaction.findMany({
