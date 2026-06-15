@@ -34,6 +34,8 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
 import { NovaTransferenciaModal } from '@/components/transferencias/NovaTransferenciaModal'
+import { DateRangeFilter } from '@/components/shared/DateRangeFilter'
+import { useDateRangeFilter } from '@/lib/hooks/use-date-range-filter'
 
 interface Conta {
   id: string
@@ -140,16 +142,23 @@ export default function TransferenciasPage() {
   const [deleteTarget, setDeleteTarget] = useState<Transferencia | null>(null)
 
   // Filtros
-  const [dataInicio, setDataInicio] = useState('')
-  const [dataFim, setDataFim] = useState('')
+  // Sprint Filtro de Data Parte A (15/06/2026): hook compartilhado + URL sync.
+  const { inicio: dataInicio, fim: dataFim, setRange: setDateRange, clear: clearDateRange } = useDateRangeFilter()
   const [contaFiltro, setContaFiltro] = useState<string>('ALL')
 
   async function fetchTransferencias() {
     setLoading(true)
     try {
-      const res = await fetch(
-        `/api/transferencias?empresaId=${empresaId}&page=${page}&limit=${ITEMS_PER_PAGE}`,
-      )
+      const qs = new URLSearchParams({
+        empresaId,
+        page: String(page),
+        limit: String(ITEMS_PER_PAGE),
+      })
+      // Sprint Filtro de Data Parte A: envia inicio/fim ao backend (não mais
+      // filtro client-side por data — backend honra desde esta sprint).
+      if (dataInicio) qs.set('inicio', dataInicio)
+      if (dataFim) qs.set('fim', dataFim)
+      const res = await fetch(`/api/transferencias?${qs}`)
       if (res.ok) {
         const data = await res.json()
         setTransferencias(data.transferencias ?? [])
@@ -181,10 +190,11 @@ export default function TransferenciasPage() {
   useEffect(() => {
     fetchTransferencias()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page])
+  }, [page, dataInicio, dataFim])
 
   // Filtros aplicados client-side (sobre o page atual da API).
-  // Filtro de conta cobre AMBOS os lados (origem OU destino).
+  // Filtro de CONTA cobre AMBOS os lados (origem OU destino) — data agora
+  // vem pré-filtrada do backend, então o filtro client-side de data é defensivo.
   const transferenciasFiltradas = useMemo(() => {
     return transferencias.filter((t) => {
       if (dataInicio && t.date < dataInicio) return false
@@ -202,8 +212,7 @@ export default function TransferenciasPage() {
   const temFiltros = dataInicio || dataFim || contaFiltro !== 'ALL'
 
   function clearFiltros() {
-    setDataInicio('')
-    setDataFim('')
+    clearDateRange()
     setContaFiltro('ALL')
   }
 
@@ -408,26 +417,11 @@ export default function TransferenciasPage() {
               <Filter className="h-4 w-4" />
               Filtros
             </div>
-            <div className="space-y-1">
-              <Label htmlFor="dataInicio" className="text-xs">Início</Label>
-              <Input
-                id="dataInicio"
-                type="date"
-                value={dataInicio}
-                onChange={(e) => setDataInicio(e.target.value)}
-                className="w-[160px]"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="dataFim" className="text-xs">Fim</Label>
-              <Input
-                id="dataFim"
-                type="date"
-                value={dataFim}
-                onChange={(e) => setDataFim(e.target.value)}
-                className="w-[160px]"
-              />
-            </div>
+            <DateRangeFilter
+              value={{ inicio: dataInicio, fim: dataFim }}
+              onChange={(r) => setDateRange(r)}
+              label="Período"
+            />
             <div className="space-y-1">
               <Label htmlFor="contaFiltro" className="text-xs">Conta (origem ou destino)</Label>
               <Select value={contaFiltro} onValueChange={setContaFiltro}>

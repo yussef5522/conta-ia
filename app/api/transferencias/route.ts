@@ -66,30 +66,37 @@ export async function GET(request: NextRequest) {
     }
     const page = Math.max(1, parseInt(searchParams.get('page') ?? '1'))
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') ?? '50')))
+    // Sprint Filtro de Data Parte A (15/06/2026): API agora honra inicio/fim
+    // (?inicio=YYYY-MM-DD&fim=YYYY-MM-DD). Antes a /transferencias filtrava
+    // apenas client-side, escondendo do user que páginas distantes tinham tx
+    // fora do range visível.
+    const inicio = searchParams.get('inicio')
+    const fim = searchParams.get('fim')
+    const dateFilter: Record<string, Date> = {}
+    if (inicio) dateFilter.gte = new Date(inicio)
+    if (fim) dateFilter.lte = new Date(fim + 'T23:59:59.999Z')
 
     const ctx = await getAuthContext(request, empresaId)
     ctx.requirePermission('transaction.view')
 
+    // where compartilhado para count + findMany (mantém consistência).
+    const baseWhere = {
+      bankAccount: { companyId: empresaId },
+      type: 'TRANSFER',
+      transferGroupId: { not: null },
+      ...(Object.keys(dateFilter).length > 0 ? { date: dateFilter } : {}),
+    } as const
+
     // Conta total de grupos distintos (= count de uma das pontas; usamos a "saída"
     // determinada por createdAt mínimo dentro do grupo). Simplificação: count
     // total de transações TRANSFER dividido por 2.
-    const totalTransacoesTransfer = await prisma.transaction.count({
-      where: {
-        bankAccount: { companyId: empresaId },
-        type: 'TRANSFER',
-        transferGroupId: { not: null },
-      },
-    })
+    const totalTransacoesTransfer = await prisma.transaction.count({ where: baseWhere })
     const totalGrupos = Math.floor(totalTransacoesTransfer / 2)
 
     // Busca as transações TRANSFER da empresa, ordenadas. Agrupa em memória
     // pelo transferGroupId. Paginação aplica no NÍVEL DOS GRUPOS, não das transações.
     const transacoes = await prisma.transaction.findMany({
-      where: {
-        bankAccount: { companyId: empresaId },
-        type: 'TRANSFER',
-        transferGroupId: { not: null },
-      },
+      where: baseWhere,
       orderBy: [{ date: 'desc' }, { createdAt: 'asc' }, { id: 'asc' }],
       include: {
         bankAccount: { select: { id: true, name: true, bankName: true } },

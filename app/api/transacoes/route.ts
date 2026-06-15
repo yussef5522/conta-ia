@@ -12,7 +12,11 @@ export async function GET(request: NextRequest) {
     const contaId = searchParams.get('contaId')
     const empresaId = searchParams.get('empresaId')
     const page = Math.max(1, parseInt(searchParams.get('page') ?? '1'))
-    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') ?? '50')))
+    // Sprint Filtro de Data Parte A (15/06/2026): cap subiu de 100 → 500.
+    // /pendentes pedia limit=500 mas API entregava 100 silente — usuário via
+    // só 100 das 206 tx PENDING+semCategoria, perdendo as mais antigas. Cap
+    // de 500 cobre fluxos atuais; quem precisar mais usa paginação real.
+    const limit = Math.min(500, Math.max(1, parseInt(searchParams.get('limit') ?? '50')))
     const inicio = searchParams.get('inicio')
     const fim = searchParams.get('fim')
     const tipo = searchParams.get('tipo')

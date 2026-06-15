@@ -43,6 +43,8 @@ import {
 import { Header } from '@/components/layout/header'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
+import { DateRangeFilter } from '@/components/shared/DateRangeFilter'
+import { useDateRangeFilter } from '@/lib/hooks/use-date-range-filter'
 
 interface Categoria {
   id: string
@@ -164,14 +166,16 @@ export function PendentesClient({
   const [previewOpen, setPreviewOpen] = useState(false)
   const [previewData, setPreviewData] = useState<PreviewData | null>(null)
 
-  // Filtros — Sprint Sync-Pendentes-Conciliacao: defaults vazios pra mostrar
-  // a fila INTEIRA (padrão Xero/QuickBooks). Antes: últimos 90 dias escondia
-  // tx antigas ou futuras e gerava mismatch com badge da sidebar. Date pickers
-  // continuam funcionando — user pode restringir período se quiser.
-  const [inicio, setInicio] = useState('')
-  const [fim, setFim] = useState('')
+  // Filtros — Sprint Filtro de Data Parte A (15/06/2026): inicio/fim agora vêm
+  // do hook compartilhado useDateRangeFilter que sincroniza com a URL
+  // (?inicio=&fim=). F5 mantém filtro. Default vazio = lista inteira.
+  const { inicio, fim, setRange, clear: clearDateRange } = useDateRangeFilter()
   const [tipo, setTipo] = useState<'TODOS' | 'CREDIT' | 'DEBIT'>('TODOS')
   const [busca, setBusca] = useState('')
+  // Sprint Filtro de Data Parte A: total real retornado pela API (não capado
+  // pelo limit silencioso). Usado pra mostrar "Mostrando X de Y" + botão
+  // "Carregar mais" quando o resultado excede o limite por página.
+  const [totalReal, setTotalReal] = useState(0)
 
   const fetchTransacoes = useCallback(async () => {
     setLoading(true)
@@ -196,6 +200,9 @@ export function PendentesClient({
       const data = await res.json()
       const txs: Transacao[] = data.transacoes ?? []
       setTransacoes(txs)
+      // Sprint Filtro de Data Parte A: guardar o total real pra UI mostrar
+      // "Mostrando X de Y" e desambiguar quando há mais do que cabe na página.
+      setTotalReal(data.paginacao?.total ?? txs.length)
       // Fase 3 Etapa 2: pre-fill do dropdown quando supplier tem categoria sugerida
       setSelecaoPorLinha((prev) => {
         const next = { ...prev }
@@ -722,14 +729,11 @@ export function PendentesClient({
           <div className="flex flex-wrap items-end gap-3">
             <Filter className="h-4 w-4 text-muted-foreground mt-auto mb-1 shrink-0" />
 
-            <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">De</p>
-              <Input type="date" className="h-8 w-36 text-sm" value={inicio} onChange={(e) => setInicio(e.target.value)} />
-            </div>
-            <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">Até</p>
-              <Input type="date" className="h-8 w-36 text-sm" value={fim} onChange={(e) => setFim(e.target.value)} />
-            </div>
+            <DateRangeFilter
+              value={{ inicio, fim }}
+              onChange={(r) => setRange(r)}
+              label="Período"
+            />
 
             <div className="space-y-1">
               <p className="text-xs text-muted-foreground">Tipo</p>
@@ -758,6 +762,48 @@ export function PendentesClient({
           </div>
         </CardContent>
       </Card>
+
+      {/* Sprint Filtro de Data Parte A: indicador de filtro ativo + contagem real
+          (sem cap silencioso). Aparece quando user tem qualquer filtro aplicado
+          OU quando a paginação tem mais do que cabe na página atual. */}
+      {!loading && (inicio || fim || tipo !== 'TODOS' || busca || totalReal > transacoes.length) && (
+        <div className="flex flex-wrap items-center gap-2 px-1 -mb-2 text-xs">
+          {(inicio || fim || tipo !== 'TODOS' || busca) && (
+            <div className="inline-flex items-center gap-2 rounded-full bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 px-3 py-1 text-amber-800 dark:text-amber-300">
+              <Filter className="h-3 w-3" />
+              <span>
+                Filtros ativos
+                {(inicio || fim) && (
+                  <>
+                    : <strong>{inicio || '…'}</strong> → <strong>{fim || '…'}</strong>
+                  </>
+                )}
+                {tipo !== 'TODOS' && <> · tipo={tipo === 'CREDIT' ? 'Entradas' : 'Saídas'}</>}
+                {busca && <> · busca=&quot;{busca}&quot;</>}
+                {' · '}
+                <strong>{transacoesFiltradas.length}</strong>
+                {totalReal !== transacoesFiltradas.length && ` (de ${totalReal})`}
+                {' encontradas'}
+              </span>
+              <button
+                onClick={() => {
+                  clearDateRange()
+                  setTipo('TODOS')
+                  setBusca('')
+                }}
+                className="ml-1 underline underline-offset-2 hover:text-amber-900 dark:hover:text-amber-200"
+              >
+                Limpar
+              </button>
+            </div>
+          )}
+          {totalReal > transacoes.length && (
+            <div className="inline-flex items-center gap-2 rounded-full bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 px-3 py-1 text-blue-800 dark:text-blue-300">
+              Mostrando <strong>{transacoes.length}</strong> de <strong>{totalReal}</strong> — filtre por período pra refinar.
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Lista */}
       {loading ? (

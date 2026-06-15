@@ -38,6 +38,8 @@ import {
   parseTipoParam,
   type TipoConciliacao,
 } from '@/lib/conciliacao/tipo-filter'
+import { DateRangeFilter } from '@/components/shared/DateRangeFilter'
+import { useDateRangeFilter } from '@/lib/hooks/use-date-range-filter'
 
 // Score mínimo pra entrar na pré-classificação (esconde "TIELE/THIAGO").
 const DRY_RUN_MIN_SCORE = 70
@@ -107,11 +109,10 @@ function ConciliacaoInner() {
 
   const [ofxTxs, setOfxTxs] = useState<OfxTx[]>([])
   const [loadingOfx, setLoadingOfx] = useState(true)
-  // Sprint Sync-Pendentes-Conciliacao: default 'todos' (mostra fila inteira
-  // incluindo data futura tipo cheque pré-datado / débito agendado). User
-  // pode restringir período manualmente. Antes default '60d' escondia tx
-  // futuras → mismatch com badge da sidebar.
-  const [periodo, setPeriodo] = useState<'30d' | '60d' | '90d' | 'mes' | 'todos'>('todos')
+  // Sprint Filtro de Data Parte A (15/06/2026): substituído pelo hook
+  // useDateRangeFilter compartilhado (presets + custom + URL sync).
+  // ?inicio=&fim= ficam na URL — F5 mantém filtro.
+  const { inicio: rangeInicio, fim: rangeFim, setRange } = useDateRangeFilter()
 
   // Sprint A-effected Fase A — TIPO de conciliação. Bug 3 fix:
   // Removi o useEffect "setTipoInitialized(false) on empresaId" que causava
@@ -201,19 +202,6 @@ function ConciliacaoInner() {
     setTipoLocked(true)
   }, [empresaId, empresas, tipoLocked])
 
-  function periodoToRange(p: typeof periodo): { inicio?: string; fim?: string } {
-    if (p === 'todos') return {}
-    const now = new Date()
-    const fim = now.toISOString().slice(0, 10)
-    if (p === 'mes') {
-      const ym = new Date(now.getFullYear(), now.getMonth(), 1)
-      return { inicio: ym.toISOString().slice(0, 10), fim }
-    }
-    const days = p === '30d' ? 30 : p === '60d' ? 60 : 90
-    const inicio = new Date(now.getTime() - days * 86400000).toISOString().slice(0, 10)
-    return { inicio, fim }
-  }
-
   const fetchOfxTxs = useCallback(async () => {
     if (!empresaId) {
       setLoadingOfx(false)
@@ -227,9 +215,8 @@ function ConciliacaoInner() {
     setLoadingOfx(true)
     try {
       const qs = new URLSearchParams({ empresaId, limit: '200', tipo })
-      const { inicio, fim } = periodoToRange(periodo)
-      if (inicio) qs.set('inicio', inicio)
-      if (fim) qs.set('fim', fim)
+      if (rangeInicio) qs.set('inicio', rangeInicio)
+      if (rangeFim) qs.set('fim', rangeFim)
       const res = await fetch(`/api/conciliacao/ofx-pendentes?${qs}`, {
         credentials: 'include',
         signal: controller.signal,
@@ -251,7 +238,7 @@ function ConciliacaoInner() {
         setLoadingOfx(false)
       }
     }
-  }, [empresaId, periodo, tipo])
+  }, [empresaId, rangeInicio, rangeFim, tipo])
 
   const fetchDryRun = useCallback(async () => {
     if (!empresaId) return
@@ -403,21 +390,11 @@ function ConciliacaoInner() {
 
           <div className="flex flex-wrap items-center gap-3">
             <TipoSelector value={tipo} onChange={setTipoUser} />
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">Período:</span>
-              <Select value={periodo} onValueChange={(v) => setPeriodo(v as typeof periodo)}>
-                <SelectTrigger className="w-auto min-w-[180px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="mes">Mês corrente</SelectItem>
-                  <SelectItem value="30d">Últimos 30 dias</SelectItem>
-                  <SelectItem value="60d">Últimos 60 dias</SelectItem>
-                  <SelectItem value="90d">Últimos 90 dias</SelectItem>
-                  <SelectItem value="todos">Todos</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <DateRangeFilter
+              value={{ inicio: rangeInicio, fim: rangeFim }}
+              onChange={(r) => setRange(r)}
+              label="Período"
+            />
             {/* Busca local — preserva scroll do update otimista (sem refetch) */}
             <input
               type="search"
