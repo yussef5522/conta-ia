@@ -167,6 +167,12 @@ export async function GET(request: NextRequest, { params }: Params) {
         // Sprint 5.0.2.i — Transferências internas grupo conciliadas NÃO compõem DRE
         // (não são receita nem despesa - só movimentação entre CNPJs do mesmo grupo).
         isInternalTransfer: false,
+        // Fase 2.1 (14/06/2026) — tx marcadas como IGNORADAS pelo user (via UI
+        // /transacoes ou /pendentes) não entram no DRE. Semântica do user:
+        // "tirar da fila contábil". Coerente com lib/tax/calculate-rba.ts:47
+        // que já filtra IGNORED do RBA tributário. Cacula Mix em 14/06/2026
+        // tinha 0 tx IGNORED → mudança prospectiva, zero impacto retroativo.
+        status: { not: 'IGNORED' },
         OR: lifecycleDateClauses,
       },
       select: {
