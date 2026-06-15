@@ -45,6 +45,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
 import { DateRangeFilter } from '@/components/shared/DateRangeFilter'
 import { useDateRangeFilter } from '@/lib/hooks/use-date-range-filter'
+import { ActiveFilterChips, type ActiveChip } from '@/components/shared/ActiveFilterChips'
 
 interface Categoria {
   id: string
@@ -763,47 +764,55 @@ export function PendentesClient({
         </CardContent>
       </Card>
 
-      {/* Sprint Filtro de Data Parte A: indicador de filtro ativo + contagem real
-          (sem cap silencioso). Aparece quando user tem qualquer filtro aplicado
-          OU quando a paginação tem mais do que cabe na página atual. */}
-      {!loading && (inicio || fim || tipo !== 'TODOS' || busca || totalReal > transacoes.length) && (
-        <div className="flex flex-wrap items-center gap-2 px-1 -mb-2 text-xs">
-          {(inicio || fim || tipo !== 'TODOS' || busca) && (
-            <div className="inline-flex items-center gap-2 rounded-full bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 px-3 py-1 text-amber-800 dark:text-amber-300">
-              <Filter className="h-3 w-3" />
-              <span>
-                Filtros ativos
-                {(inicio || fim) && (
-                  <>
-                    : <strong>{inicio || '…'}</strong> → <strong>{fim || '…'}</strong>
-                  </>
-                )}
-                {tipo !== 'TODOS' && <> · tipo={tipo === 'CREDIT' ? 'Entradas' : 'Saídas'}</>}
-                {busca && <> · busca=&quot;{busca}&quot;</>}
-                {' · '}
-                <strong>{transacoesFiltradas.length}</strong>
-                {totalReal !== transacoesFiltradas.length && ` (de ${totalReal})`}
-                {' encontradas'}
+      {/* Sprint Visual (15/06/2026): chips substituem banner amarelo. */}
+      {!loading && (() => {
+        const chips: ActiveChip[] = []
+        if (inicio || fim) {
+          const labelDate = (iso: string) => {
+            if (!iso) return '…'
+            const d = new Date(iso + 'T12:00:00Z')
+            const months = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
+            return `${d.getUTCDate()} ${months[d.getUTCMonth()]}`
+          }
+          const label =
+            inicio && fim && inicio !== fim
+              ? `${labelDate(inicio)} – ${labelDate(fim)}`
+              : labelDate(inicio || fim)
+          chips.push({ id: 'periodo', label, onRemove: clearDateRange })
+        }
+        if (tipo !== 'TODOS') {
+          chips.push({
+            id: 'tipo',
+            label: `Tipo: ${tipo === 'CREDIT' ? 'Recebimentos' : 'Pagamentos'}`,
+            onRemove: () => setTipo('TODOS'),
+          })
+        }
+        if (busca) {
+          chips.push({ id: 'busca', label: `Busca: "${busca}"`, onRemove: () => setBusca('') })
+        }
+        const showCapHint = totalReal > transacoes.length
+        if (chips.length === 0 && !showCapHint) return null
+        return (
+          <div className="flex flex-wrap items-center justify-between gap-2 px-1 -mb-2">
+            <ActiveFilterChips
+              chips={chips}
+              onClearAll={() => {
+                clearDateRange()
+                setTipo('TODOS')
+                setBusca('')
+              }}
+              count={transacoesFiltradas.length}
+              countLabel={{ one: 'lançamento', other: 'lançamentos' }}
+            />
+            {showCapHint && (
+              <span className="text-xs text-muted-foreground">
+                Mostrando <strong className="text-foreground">{transacoes.length}</strong> de{' '}
+                <strong className="text-foreground">{totalReal}</strong> — filtre por período pra refinar.
               </span>
-              <button
-                onClick={() => {
-                  clearDateRange()
-                  setTipo('TODOS')
-                  setBusca('')
-                }}
-                className="ml-1 underline underline-offset-2 hover:text-amber-900 dark:hover:text-amber-200"
-              >
-                Limpar
-              </button>
-            </div>
-          )}
-          {totalReal > transacoes.length && (
-            <div className="inline-flex items-center gap-2 rounded-full bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 px-3 py-1 text-blue-800 dark:text-blue-300">
-              Mostrando <strong>{transacoes.length}</strong> de <strong>{totalReal}</strong> — filtre por período pra refinar.
-            </div>
-          )}
-        </div>
-      )}
+            )}
+          </div>
+        )
+      })()}
 
       {/* Lista */}
       {loading ? (

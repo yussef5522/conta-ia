@@ -78,7 +78,10 @@ describe('Sprint Filtro de Data Parte A — uso compartilhado nas 3 páginas', (
     expect(code).toMatch(/DateRangeFilter/)
     expect(code).toMatch(/totalReal/)
     expect(code).toMatch(/Mostrando/)
-    expect(code).toMatch(/Filtros ativos/)
+    // Sprint Visual (15/06/2026): banner "Filtros ativos" foi substituído
+    // por <ActiveFilterChips>. O sinal de filtros ativos agora é a presença
+    // dos próprios chips.
+    expect(code).toMatch(/ActiveFilterChips/)
   })
 
   it('/conciliacao usa useDateRangeFilter + DateRangeFilter (sem mais Select 30d/60d/90d)', () => {
