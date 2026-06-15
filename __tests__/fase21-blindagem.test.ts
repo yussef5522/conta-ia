@@ -45,6 +45,13 @@ describe('Fase 2.1 — migration cria UNIQUE + 2 CHECKs', () => {
     expect(sql).toMatch(/type\s*!=\s*'TRANSFER'\s+OR\s+"transferDirection"\s+IN\s*\(\s*'OUT'\s*,\s*'IN'\s*\)/i)
   })
 
+  it('hotfix: CHECK transfer_has_direction rejeita NULL explicitamente (SQL three-valued logic)', () => {
+    const HOTFIX_SQL = join(__dirname, '..', 'prisma/migrations/20260614231500_fix_transfer_has_direction_null/migration.sql')
+    const sql = readFileSync(HOTFIX_SQL, 'utf-8')
+    expect(sql).toMatch(/DROP CONSTRAINT IF EXISTS "transfer_has_direction"/i)
+    expect(sql).toMatch(/"transferDirection"\s+IS NOT NULL\s+AND\s+"transferDirection"\s+IN/i)
+  })
+
   it('CHECK direction_requires_group (direção ⇒ grupo)', () => {
     const sql = readFileSync(MIGRATION_SQL, 'utf-8')
     expect(sql).toMatch(/CONSTRAINT "direction_requires_group"\s+CHECK/i)
