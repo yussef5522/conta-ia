@@ -42,6 +42,8 @@ export function buildTransferOperations(
     status: 'RECONCILED',
     origin: 'MANUAL',
     transferGroupId: groupId,
+    // Fase 2: direção EXPLÍCITA (saída na conta de origem)
+    transferDirection: 'OUT',
     notes: input.notes ?? null,
   }
 
@@ -55,6 +57,8 @@ export function buildTransferOperations(
     status: 'RECONCILED',
     origin: 'MANUAL',
     transferGroupId: groupId,
+    // Fase 2: direção EXPLÍCITA (entrada na conta de destino)
+    transferDirection: 'IN',
     notes: input.notes ?? null,
   }
 

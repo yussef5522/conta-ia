@@ -167,6 +167,8 @@ export function buildPairPendentes(
     status: 'RECONCILED',
     origin: 'MANUAL',
     transferGroupId: groupId,
+    // Fase 2: DEBIT original = saída no fromAccount
+    transferDirection: 'OUT',
     dedupHash: debitTxOriginal.dedupHash,
     notes: null,
   }
@@ -181,6 +183,8 @@ export function buildPairPendentes(
     status: 'RECONCILED',
     origin: 'MANUAL',
     transferGroupId: groupId,
+    // Fase 2: CREDIT original = entrada no toAccount
+    transferDirection: 'IN',
     dedupHash: creditTxOriginal.dedupHash,
     notes: null,
   }

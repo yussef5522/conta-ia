@@ -129,6 +129,8 @@ export async function POST(request: NextRequest, { params }: Params) {
         data: {
           type: 'TRANSFER',
           transferGroupId: groupId,
+          // Fase 2: débito original = saída no fromAccount
+          transferDirection: 'OUT',
           categoryId: null,
         },
       })
@@ -137,6 +139,8 @@ export async function POST(request: NextRequest, { params }: Params) {
         data: {
           type: 'TRANSFER',
           transferGroupId: groupId,
+          // Fase 2: crédito original = entrada no toAccount
+          transferDirection: 'IN',
           categoryId: null,
         },
       })

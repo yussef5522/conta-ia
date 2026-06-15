@@ -21,6 +21,9 @@ export interface RawBalanceTransaction {
   amount: number // sempre positivo
   bankAccountId: string
   transferGroupId: string | null
+  // Fase 2: direção EXPLÍCITA quando preenchida. Quando NULL, fallback
+  // para heurística createdAt-ASC (tx criadas antes da migration Fase 2).
+  transferDirection?: 'OUT' | 'IN' | null
 }
 
 export interface SignedBalanceTransaction {
@@ -86,6 +89,17 @@ export function prepareBalanceTransactions(
         // TRANSFER sem groupId é estado inválido — skip e segue (resiliente).
         continue
       }
+      // Fase 2: prioriza coluna transferDirection EXPLÍCITA.
+      // Vantagem: imune a pernas órfãs ou ordem createdAt distorcida.
+      if (tx.transferDirection === 'OUT') {
+        result.push({ id: tx.id, date: tx.date, signedAmount: -tx.amount, rawType: 'TRANSFER' })
+        continue
+      }
+      if (tx.transferDirection === 'IN') {
+        result.push({ id: tx.id, date: tx.date, signedAmount: tx.amount, rawType: 'TRANSFER' })
+        continue
+      }
+      // FALLBACK: tx pré-Fase-2 (transferDirection NULL) — heurística createdAt-ASC
       const group = transferGroups.get(tx.transferGroupId)
       if (!group || group.length !== 2) {
         // Par corrompido: skip pra não inflar/deflar saldo errado.

@@ -159,6 +159,8 @@ export function buildOfxReplaceOperations(
     status: 'RECONCILED',
     origin: 'MANUAL',
     transferGroupId: groupId,
+    // Fase 2: ofxIsDebit ? importing=OUT : importing=IN (sempre saída no fromAccount)
+    transferDirection: 'OUT',
     dedupHash: importingIsFrom ? input.ofxTransaction.dedupHash : null,
     notes: null,
   }
@@ -173,6 +175,8 @@ export function buildOfxReplaceOperations(
     status: 'RECONCILED',
     origin: 'MANUAL',
     transferGroupId: groupId,
+    // Fase 2: contraparte oposto (sempre entrada no toAccount)
+    transferDirection: 'IN',
     dedupHash: importingIsFrom ? null : input.ofxTransaction.dedupHash,
     notes: null,
   }

@@ -279,6 +279,12 @@ model Transaction {
   // Mantido em Fluxo POR CONTA (mostra entrada/saída normalmente).
   transferGroupId String?
 
+  // Sprint Fase 2 (14/06/2026) — direção EXPLÍCITA da perna de transferência.
+  // 'OUT' = origem/saída · 'IN' = destino/entrada · NULL = tx não-TRANSFER
+  // Listagem e prepareBalanceTransactions usam este campo; quando NULL,
+  // fallback pra heurística createdAt-ASC (compatibilidade com tx antigas).
+  transferDirection String?
+
   // Sprint Central de Transferências (Detecção Retroativa) — marcado quando
   // user clica "Não é transferência" num par sugerido pela varredura. A
   // varredura filtra IS NULL pra não voltar a sugerir o mesmo par. Reversível

@@ -11,6 +11,7 @@ import { transferCreateSchema, TransferValidationError } from '@/lib/transfers/v
 import { DuplicateTransferGroupError } from '@/lib/transfers/check-duplicate-group'
 import { createTransfer } from '@/lib/transfers/create'
 import { BalanceCheckError } from '@/lib/balance/check'
+import { groupTransfersForList } from '@/lib/transfers/group-for-list'
 
 export async function POST(request: NextRequest) {
   try {
@@ -95,40 +96,11 @@ export async function GET(request: NextRequest) {
       },
     })
 
-    // Agrupa por transferGroupId mantendo ordem da primeira ocorrência (desc por data).
-    const grupos = new Map<
-      string,
-      {
-        groupId: string
-        date: Date
-        amount: number
-        fromAccount: { id: string; name: string; bankName: string | null }
-        toAccount: { id: string; name: string; bankName: string | null }
-        description: string
-        notes: string | null
-      }
-    >()
-    for (const tx of transacoes) {
-      const gid = tx.transferGroupId!
-      // Sprint 4.0.1.a — transferências SEMPRE têm bankAccount (são tx EFFECTED por construção).
-      if (!tx.bankAccount) continue
-      const existing = grupos.get(gid)
-      if (!existing) {
-        // Primeira ponta vista = saída (ordem ASC de createdAt dentro do grupo)
-        grupos.set(gid, {
-          groupId: gid,
-          date: tx.date,
-          amount: tx.amount,
-          fromAccount: tx.bankAccount,
-          // toAccount preenche na segunda iteração
-          toAccount: tx.bankAccount,
-          description: tx.description,
-          notes: tx.notes,
-        })
-      } else {
-        // Segunda ponta = entrada (chega depois no orderBy)
-        existing.toAccount = tx.bankAccount
-      }
+    // Fase 2: agrupamento via função PURA (testável). Usa transferDirection
+    // EXPLÍCITA quando preenchida; fallback createdAt-ASC quando NULL.
+    const grupos = new Map<string, ReturnType<typeof groupTransfersForList>[number]>()
+    for (const g of groupTransfersForList(transacoes as any)) {
+      grupos.set(g.groupId, g)
     }
 
     // Paginação no array agrupado
