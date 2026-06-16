@@ -190,6 +190,13 @@ export function XeroRow({ ofx, empresaId, suggestion, withdrawalSuggestion, onAc
                 setFindMode(false)
                 onAction()
               }}
+              // Sprint Find&Match World-Class: nudge "→ Criar entrada" volta
+              // pro modo tabs com a aba CREATE ativa (form pré-preenche dos
+              // dados da OFX porque o CreatePanel já lê `ofx.amount`, type).
+              onSwitchToCreate={() => {
+                setFindMode(false)
+                setTab('CREATE')
+              }}
             />
           </div>
         ) : (
