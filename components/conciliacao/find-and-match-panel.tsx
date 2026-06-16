@@ -2,13 +2,13 @@
 
 // Sprint A-effected Fase B.2 — Find & Match Panel
 //
-// Inline takeover do card direito: quando user clica "Find & Match", o
-// painel de 4 tabs some e este componente expande no lugar, ocupando
-// largura inteira do card direito.
-//
-// Resolve o caso CIA DA FRUTA (Yussef pagou R$ 3.786,78 mas auto-match
-// não acha): user busca "CIA DA FRUTA", vê as notas em aberto, marca
-// a NF-1234, indicador fica verde, clica Reconcile.
+// Sprint Find&Match World-Class (15/06/2026):
+//   - Candidatos ranqueados por scoreMatch (DESC).
+//   - Selo "Provável" (verde ≥90) / "Quase" (âmbar 70-89) / sem selo (<70).
+//   - Chips do "porque" usando reasons[] estáveis do backend.
+//   - Banner nudge "isso é Create" quando nenhum candidato tem valor próximo.
+//   - Filtro de janela de data (±15d default, opção "Todas as datas").
+//   - Paginação top 15 + "Ver mais" quando hasMore=true.
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import {
@@ -17,13 +17,22 @@ import {
   X,
   Check,
   Plus,
-  Minus,
   Tag,
+  Sparkles,
+  CalendarRange,
+  ArrowRight,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Badge } from '@/components/ui/badge'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
 import {
@@ -38,6 +47,7 @@ import {
   adjustmentSignedAmount,
 } from '@/lib/conciliacao/create-adjustment'
 import type { AdjustmentCategoryTemplate } from '@/lib/conciliacao/adjustment-categories'
+import type { MatchReason } from '@/lib/conciliacao/match'
 
 // Cap de ajustes por reconcile (decisão Yussef #6)
 const MAX_ADJUSTMENTS = 3
@@ -66,6 +76,20 @@ interface Candidate {
     nomeFantasia: string | null
     cnpj: string | null
   } | null
+  // Sprint Find&Match World-Class
+  score: number
+  reasons: MatchReason[]
+}
+
+interface RankingInfo {
+  totalRanked: number
+  page: number
+  limit: number
+  hasMore: boolean
+  topScore: number
+  hasAnyAmountClose: boolean
+  nudgeCreate: boolean
+  windowDays: number | 'all'
 }
 
 interface Props {
@@ -73,24 +97,79 @@ interface Props {
   empresaId: string
   onCancel: () => void
   onReconciled: () => void
+  /** Sprint Find&Match World-Class: nudge "→ Create" chama esta callback
+   *  que troca o card direito de volta pro modo tabs com `Create` ativo. */
+  onSwitchToCreate?: () => void
 }
 
 const SEARCH_DEBOUNCE_MS = 300
+
+type WindowOption = '15' | '30' | '90' | 'all'
+
+const WINDOW_OPTIONS: Array<{ id: WindowOption; label: string }> = [
+  { id: '15', label: '±15 dias (recomendado)' },
+  { id: '30', label: '±30 dias' },
+  { id: '90', label: '±90 dias' },
+  { id: 'all', label: 'Todas as datas' },
+]
+
+// Sprint Find&Match World-Class — labels e estilos por reason key.
+// Verde = sinal forte de match real; primary roxo = sinal médio; cinza = fraco.
+const REASON_LABEL: Record<MatchReason, string> = {
+  VALOR_EXATO: 'Mesmo valor',
+  VALOR_PROXIMO_1PCT: 'Valor quase exato',
+  VALOR_PROXIMO_5PCT: 'Valor próximo',
+  DATA_MESMA: 'Mesma data',
+  DATA_D1: 'Data D±1',
+  DATA_PROXIMA: 'Data próxima',
+  DATA_SEMANA: 'Mesma semana',
+  FORNECEDOR_IGUAL: 'Mesmo fornecedor',
+  DESC_MUITO_SIMILAR: 'Descrição parecida',
+  DESC_SIMILAR: 'Descrição similar',
+}
+
+function reasonStyle(reason: MatchReason): string {
+  if (reason === 'VALOR_EXATO') {
+    return 'bg-emerald-50 text-emerald-700 ring-emerald-300'
+  }
+  if (reason === 'VALOR_PROXIMO_1PCT' || reason === 'FORNECEDOR_IGUAL') {
+    return 'bg-emerald-50/60 text-emerald-700 ring-emerald-200'
+  }
+  if (
+    reason === 'VALOR_PROXIMO_5PCT' ||
+    reason === 'DATA_MESMA' ||
+    reason === 'DATA_D1' ||
+    reason === 'DESC_MUITO_SIMILAR'
+  ) {
+    return 'bg-primary/10 text-primary ring-primary/30'
+  }
+  return 'bg-slate-100 text-slate-600 ring-slate-200'
+}
+
+function confidenceTier(score: number): 'STRONG' | 'WEAK' | null {
+  if (score >= 90) return 'STRONG'
+  if (score >= 70) return 'WEAK'
+  return null
+}
 
 export function FindAndMatchPanel({
   ofx,
   empresaId,
   onCancel,
   onReconciled,
+  onSwitchToCreate,
 }: Props) {
   const { toast } = useToast()
   const [busca, setBusca] = useState('')
+  const [windowDays, setWindowDays] = useState<WindowOption>('15')
   const [loading, setLoading] = useState(false)
   const [candidates, setCandidates] = useState<Candidate[]>([])
-  const [totalEncontrado, setTotalEncontrado] = useState(0)
+  const [ranking, setRanking] = useState<RankingInfo | null>(null)
+  const [page, setPage] = useState(0)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [submitting, setSubmitting] = useState(false)
   const debounceRef = useRef<NodeJS.Timeout | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
   // Sprint A-effected Fase B.4.2 — ajustes pendentes (cap 3)
   const [adjustments, setAdjustments] = useState<PendingAdjustment[]>([])
@@ -129,45 +208,63 @@ export function FindAndMatchPanel({
   }, [fetchCategoriesStatus])
 
   const fetchCandidates = useCallback(
-    async (term: string) => {
+    async (term: string, pageNum: number, win: WindowOption, replace: boolean) => {
+      // Aborta fetch anterior pra evitar race condition (lição Sprint B.4 bug 3)
+      if (abortRef.current) abortRef.current.abort()
+      const controller = new AbortController()
+      abortRef.current = controller
+
       setLoading(true)
       try {
         const qs = new URLSearchParams({
           empresaId,
           ofxTransactionId: ofx.id,
+          page: String(pageNum),
+          limit: '15',
+          windowDays: win,
         })
         if (term.trim()) qs.set('busca', term.trim())
         const res = await fetch(`/api/conciliacao/find-and-match?${qs}`, {
           credentials: 'include',
+          signal: controller.signal,
         })
-        if (res.ok) {
-          const data = await res.json()
+        if (!res.ok) return
+        const data = await res.json()
+        if (abortRef.current !== controller) return // stale response
+        if (replace) {
           setCandidates(data.candidates as Candidate[])
-          setTotalEncontrado(data.total)
+        } else {
+          // Append (ver mais)
+          setCandidates((prev) => [...prev, ...(data.candidates as Candidate[])])
         }
+        setRanking(data.ranking as RankingInfo)
+      } catch (err) {
+        if ((err as Error).name === 'AbortError') return
       } finally {
-        setLoading(false)
+        if (abortRef.current === controller) setLoading(false)
       }
     },
     [empresaId, ofx.id],
   )
 
-  // Carga inicial sem filtro (mostra alguns candidates já)
-  useEffect(() => {
-    void fetchCandidates('')
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  // Debounce search
+  // Debounce search/window: reseta pra página 0
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => {
-      void fetchCandidates(busca)
+      setPage(0)
+      setSelectedIds(new Set())
+      void fetchCandidates(busca, 0, windowDays, true)
     }, SEARCH_DEBOUNCE_MS)
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
-  }, [busca, fetchCandidates])
+  }, [busca, windowDays, fetchCandidates])
+
+  function loadMore() {
+    const next = page + 1
+    setPage(next)
+    void fetchCandidates(busca, next, windowDays, false)
+  }
 
   function toggleCandidate(id: string) {
     setSelectedIds((s) => {
@@ -182,20 +279,14 @@ export function FindAndMatchPanel({
   const candidatesTotal = candidates
     .filter((c) => selectedIds.has(c.id))
     .reduce((acc, c) => acc + Math.abs(c.amount), 0)
-  // Sprint A-effected Fase B.4.2 — soma dos ajustes COM SINAL
-  // EXPENSE: + (soma na seleção, banco pagou mais) / INCOME: − (banco pagou menos)
   const adjustmentsSigned = adjustments.reduce(
     (acc, a) => acc + adjustmentSignedAmount(a.amount, a.sign),
     0,
   )
   const selectedTotal = candidatesTotal + adjustmentsSigned
-  // Diff antes dos ajustes (pra UI sugerir ajuste de valor exato)
   const diffBeforeAdjustments = statementAmount - candidatesTotal
-  // Diff atual considerando ajustes (pra habilitar Reconcile)
   const diff = statementAmount - selectedTotal
   const diffAbs = Math.abs(diff)
-  // Tolerância <= R$ 0,01: arredondamento bancário típico (caso real CIA DA
-  // FRUTA: 7 notas somam R$ 3.786,77 vs PIX R$ 3.786,78 — exato 1 centavo).
   const bate = diffAbs <= 0.01
 
   // Handlers de ajuste
@@ -251,7 +342,6 @@ export function FindAndMatchPanel({
     const candidateIds = Array.from(selectedIds)
     setSubmitting(true)
     try {
-      // Sprint A-effected Fase B.3 + B.4.2 — endpoint dedicado N:1 com ajustes.
       const res = await fetch('/api/conciliacao/find-and-match/reconcile', {
         method: 'POST',
         credentials: 'include',
@@ -301,9 +391,19 @@ export function FindAndMatchPanel({
   const fmtDate = (d: string | null) =>
     d ? new Date(d).toLocaleDateString('pt-BR') : '—'
 
+  const isCredit = ofx.type === 'CREDIT'
+  // Nudge "isso provavelmente é Create" — banner âmbar/azul no topo.
+  const showNudge = ranking !== null && ranking.nudgeCreate && !busca.trim()
+
+  // TODO Fase 2: linha de ajuste/baixa parcial pra diferença de tarifa
+  //              (UI já tem AdjustmentMenu; melhorias de fluxo ficam pra depois).
+  // TODO Fase 2: limpeza dos EFFECTED órfãos do Excel (filtro/aba dedicada).
+
   return (
     <div className="space-y-3">
-      {/* Header com indicador de soma */}
+      {/* ============================================================== */}
+      {/* HEADER — Statement line / Selected / Diff (preserva B.2/B.3)     */}
+      {/* ============================================================== */}
       <div className="flex items-center gap-x-4 gap-y-1 flex-wrap text-sm">
         <span>
           <span className="text-muted-foreground">Statement line:</span>{' '}
@@ -315,102 +415,230 @@ export function FindAndMatchPanel({
         </span>
         <span
           className={`font-semibold tabular-nums ${
-            bate
-              ? 'text-emerald-700'
-              : 'text-amber-700'
+            bate ? 'text-emerald-700' : 'text-amber-700'
           }`}
         >
           Diff: {formatBRL(diffAbs)}
           {bate ? ' ✓' : ''}
         </span>
         <span className="ml-auto text-xs text-muted-foreground">
-          {totalEncontrado} encontrad{totalEncontrado === 1 ? 'a' : 'as'}
+          {ranking
+            ? `${ranking.totalRanked} ranqueado${ranking.totalRanked === 1 ? '' : 's'}`
+            : ''}
         </span>
       </div>
 
-      {/* Sprint A-effected Fase B.3 — Multi-select habilitado.
-          Marque várias notas que somam o statement line (PIX consolidado).
-          O indicador Diff fica verde quando bate. */}
+      {/* ============================================================== */}
+      {/* NUDGE — "isso é Create" (caso JUROS R$ 1.546,70 da Cacula)      */}
+      {/* ============================================================== */}
+      {showNudge && (
+        <div
+          data-testid="nudge-create"
+          className="rounded border ring-[0.5px] ring-amber-200/70 border-amber-200 bg-amber-50/40 px-3 py-2.5 flex items-start gap-3"
+        >
+          <Sparkles className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+          <div className="flex-1 min-w-0 text-sm">
+            <p className="font-medium text-amber-900">
+              Nenhum candidato com valor próximo de {formatBRL(statementAmount)}.
+            </p>
+            <p className="text-xs text-amber-800/80 mt-0.5">
+              Provavelmente esta é uma {isCredit ? 'receita' : 'despesa'} nova
+              (juros do banco, tarifa, ajuste). Crie uma entrada nova em vez de
+              forçar match.
+            </p>
+          </div>
+          {onSwitchToCreate && (
+            <Button
+              type="button"
+              size="sm"
+              onClick={onSwitchToCreate}
+              className="h-7 bg-amber-600 hover:bg-amber-700 shrink-0"
+            >
+              <Plus className="h-3.5 w-3.5 mr-1" />
+              Criar entrada
+              <ArrowRight className="h-3.5 w-3.5 ml-1" />
+            </Button>
+          )}
+        </div>
+      )}
 
-      {/* Search input */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          value={busca}
-          onChange={(e) => setBusca(e.target.value)}
-          placeholder="Buscar por nome, NF, CNPJ, valor (ex: 3786,78)…"
-          className="pl-9"
-          autoFocus
-        />
-        {loading && (
-          <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground animate-spin" />
-        )}
+      {/* ============================================================== */}
+      {/* CONTROLES — Busca + janela de data                              */}
+      {/* ============================================================== */}
+      <div className="flex items-stretch gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder="Buscar por nome, NF, CNPJ, valor…"
+            className="pl-9 ring-[0.5px] ring-primary/20 focus-visible:ring-primary/50"
+            autoFocus
+          />
+          {loading && (
+            <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground animate-spin" />
+          )}
+        </div>
+        <Select
+          value={windowDays}
+          onValueChange={(v) => setWindowDays(v as WindowOption)}
+        >
+          <SelectTrigger
+            className="w-[180px] ring-[0.5px] ring-primary/20"
+            aria-label="Janela de data"
+          >
+            <CalendarRange className="h-3.5 w-3.5 mr-1 text-primary" />
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {WINDOW_OPTIONS.map((o) => (
+              <SelectItem key={o.id} value={o.id}>
+                {o.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
-      {/* Tabela de resultados */}
-      <div className="border rounded bg-card max-h-96 overflow-y-auto">
+      {/* ============================================================== */}
+      {/* LISTA — ranqueada DESC com selo + chips                          */}
+      {/* ============================================================== */}
+      <div className="border rounded bg-card max-h-[28rem] overflow-y-auto ring-[0.5px] ring-primary/10">
         {candidates.length === 0 ? (
           <div className="py-8 text-center text-sm text-muted-foreground">
             {loading
               ? 'Buscando…'
               : busca
                 ? `Nenhuma conta pendente bate com "${busca}".`
-                : 'Nenhuma conta pendente disponível.'}
+                : 'Nenhuma conta pendente disponível na janela escolhida.'}
           </div>
         ) : (
-          <div className="divide-y">
-            <div className="grid grid-cols-[auto_auto_auto_1fr_auto] gap-2 px-3 py-1.5 bg-muted/30 text-[10px] uppercase tracking-wide font-semibold text-muted-foreground">
-              <span></span>
-              <span>Data</span>
-              <span>Ref</span>
-              <span>To/From</span>
-              <span className="text-right">Valor</span>
-            </div>
+          <ul className="divide-y">
             {candidates.map((c) => {
               const isSelected = selectedIds.has(c.id)
               const dateShow = c.dueDate ?? c.paymentDate ?? c.date
               const supplierName =
                 c.supplier?.nomeFantasia ??
                 c.supplier?.razaoSocial ??
-                c.description.slice(0, 40)
+                c.description.slice(0, 60)
+              const tier = confidenceTier(c.score)
               return (
-                <button
-                  type="button"
+                <li
                   key={c.id}
-                  onClick={() => toggleCandidate(c.id)}
-                  className={`w-full grid grid-cols-[auto_auto_auto_1fr_auto] gap-2 px-3 py-2 items-center text-sm text-left hover:bg-muted/40 transition-colors ${
-                    isSelected ? 'bg-emerald-50/40' : ''
+                  className={`px-3 py-2.5 transition-colors ${
+                    isSelected
+                      ? 'bg-emerald-50/50 ring-[0.5px] ring-emerald-200'
+                      : tier === 'STRONG'
+                        ? 'bg-emerald-50/20 hover:bg-emerald-50/40'
+                        : tier === 'WEAK'
+                          ? 'bg-amber-50/20 hover:bg-amber-50/40'
+                          : 'hover:bg-muted/40'
                   }`}
                 >
-                  <Checkbox checked={isSelected} className="pointer-events-none" />
-                  <span className="text-xs tabular-nums text-muted-foreground">
-                    {fmtDate(dateShow)}
-                  </span>
-                  <span className="text-xs text-muted-foreground truncate min-w-[60px]">
-                    {c.externalId ?? '—'}
-                  </span>
-                  <span className="truncate" title={supplierName}>
-                    {supplierName}
-                    {c.lifecycle === 'EFFECTED' && (
-                      <Badge
-                        variant="outline"
-                        className="ml-2 text-[9px] bg-amber-50 text-amber-700 border-amber-200"
-                      >
-                        EFFECTED
-                      </Badge>
-                    )}
-                  </span>
-                  <span className="text-sm tabular-nums font-semibold text-right">
-                    {formatBRL(c.amount)}
-                  </span>
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => toggleCandidate(c.id)}
+                    className="w-full grid grid-cols-[auto_1fr_auto] gap-3 items-start text-left"
+                  >
+                    <Checkbox
+                      checked={isSelected}
+                      className="mt-1 pointer-events-none"
+                    />
+                    <div className="min-w-0 space-y-1">
+                      {/* Linha 1: selo + supplier + EFFECTED */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {tier === 'STRONG' && (
+                          <Badge
+                            data-testid="confidence-strong"
+                            variant="outline"
+                            className="bg-emerald-100 text-emerald-800 border-emerald-300 ring-[0.5px] ring-emerald-300 font-semibold text-[10px]"
+                          >
+                            <Check className="h-2.5 w-2.5 mr-0.5" />
+                            Provável · {c.score}
+                          </Badge>
+                        )}
+                        {tier === 'WEAK' && (
+                          <Badge
+                            data-testid="confidence-weak"
+                            variant="outline"
+                            className="bg-amber-100 text-amber-800 border-amber-300 ring-[0.5px] ring-amber-300 font-semibold text-[10px]"
+                          >
+                            Quase · {c.score}
+                          </Badge>
+                        )}
+                        <span
+                          className="text-sm font-medium truncate"
+                          title={supplierName}
+                        >
+                          {supplierName}
+                        </span>
+                        {c.lifecycle === 'EFFECTED' && (
+                          <Badge
+                            variant="outline"
+                            className="text-[9px] bg-slate-50 text-slate-600 border-slate-200"
+                          >
+                            EFFECTED
+                          </Badge>
+                        )}
+                      </div>
+                      {/* Linha 2: chips "porque" */}
+                      {c.reasons.length > 0 && (
+                        <div
+                          data-testid="reason-chips"
+                          className="flex items-center gap-1 flex-wrap"
+                        >
+                          {c.reasons.map((r) => (
+                            <span
+                              key={r}
+                              className={`px-1.5 py-0 rounded text-[10px] font-medium ring-[0.5px] ${reasonStyle(r)}`}
+                            >
+                              {REASON_LABEL[r]}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {/* Linha 3: data + ref */}
+                      <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                        <span className="tabular-nums">{fmtDate(dateShow)}</span>
+                        {c.externalId && (
+                          <span className="font-mono truncate">
+                            ref {c.externalId}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    {/* Coluna direita: valor */}
+                    <span className="text-sm tabular-nums font-semibold text-right shrink-0">
+                      {formatBRL(c.amount)}
+                    </span>
+                  </button>
+                </li>
               )
             })}
-          </div>
+            {ranking?.hasMore && (
+              <li className="px-3 py-2.5 text-center">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={loadMore}
+                  disabled={loading}
+                  className="h-7 text-xs text-primary hover:bg-primary/5"
+                >
+                  {loading ? (
+                    <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                  ) : null}
+                  Ver mais ({ranking.totalRanked - candidates.length} restantes)
+                </Button>
+              </li>
+            )}
+          </ul>
         )}
       </div>
 
-      {/* Sprint A-effected Fase B.4.2 — Lista de ajustes adicionados */}
+      {/* ============================================================== */}
+      {/* AJUSTES — lista + form (Sprint B.4.2 preservado)                */}
+      {/* ============================================================== */}
       {adjustments.length > 0 && (
         <div className="space-y-1">
           <p className="text-[10px] uppercase tracking-wide font-semibold text-muted-foreground">
@@ -449,7 +677,6 @@ export function FindAndMatchPanel({
         </div>
       )}
 
-      {/* Sprint A-effected Fase B.4.2 — Form de novo ajuste (quando aberto) */}
       {adjustmentFormOpen && (
         <AdjustmentForm
           empresaId={empresaId}
@@ -460,15 +687,15 @@ export function FindAndMatchPanel({
         />
       )}
 
-      {/* Footer com Cancelar + Ajustar (dropdown) + Reconcile */}
+      {/* ============================================================== */}
+      {/* FOOTER — Cancel + Ajustar + Reconcile (preservado)              */}
+      {/* ============================================================== */}
       <div className="flex justify-between items-center pt-2">
         <Button variant="ghost" size="sm" onClick={onCancel}>
           <X className="h-3.5 w-3.5 mr-1" />
           Cancelar
         </Button>
         <div className="flex items-center gap-2">
-          {/* Dropdown de ajuste — aparece só quando há candidates selecionadas
-              E ainda há diff != 0 E user ainda pode adicionar (cap 3) */}
           {selectedIds.size > 0 &&
             Math.abs(diff) > 0.01 &&
             adjustments.length < MAX_ADJUSTMENTS && (
@@ -506,7 +733,6 @@ export function FindAndMatchPanel({
         </div>
       </div>
 
-      {/* Modal opcional — criar categorias faltantes */}
       {ensureModalOpen && (
         <EnsureAdjustmentCategoriesModal
           empresaId={empresaId}

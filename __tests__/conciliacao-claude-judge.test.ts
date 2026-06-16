@@ -50,6 +50,7 @@ describe('applyHybridBoost — fora da faixa cinzenta', () => {
       score: 30,
       breakdown: { amount: 25, date: 5, supplier: 0, description: 0 },
       reasoning: ['Valor próximo (≤5%)'],
+      reasons: ['VALOR_PROXIMO_5PCT'],
     }
     const fetcher = vi.fn()
     const r = await applyHybridBoost(base, baseOFX, baseCandidate, 'company-1', {
@@ -65,6 +66,7 @@ describe('applyHybridBoost — fora da faixa cinzenta', () => {
       score: 85,
       breakdown: { amount: 50, date: 30, supplier: 0, description: 5 },
       reasoning: ['Valor exato', 'Mesmo dia'],
+      reasons: ['VALOR_EXATO', 'DATA_MESMA'],
     }
     const fetcher = vi.fn()
     const r = await applyHybridBoost(base, baseOFX, baseCandidate, 'company-1', {
@@ -82,6 +84,7 @@ describe('applyHybridBoost — faixa cinzenta 50-69', () => {
       score: 50,
       breakdown: { amount: 50, date: 0, supplier: 0, description: 0 },
       reasoning: ['Valor exato'],
+      reasons: ['VALOR_EXATO'],
     }
     const fetcher = vi.fn().mockResolvedValue({
       ok: true,
@@ -105,6 +108,7 @@ describe('applyHybridBoost — faixa cinzenta 50-69', () => {
       score: 65,
       breakdown: { amount: 50, date: 15, supplier: 0, description: 0 },
       reasoning: [],
+      reasons: [],
     }
     const fetcher = vi.fn().mockResolvedValue({
       ok: true,
@@ -126,6 +130,7 @@ describe('applyHybridBoost — faixa cinzenta 50-69', () => {
       score: 55,
       breakdown: { amount: 50, date: 5, supplier: 0, description: 0 },
       reasoning: [],
+      reasons: [],
     }
     const fetcher = vi.fn().mockRejectedValue(new Error('network'))
     const r = await applyHybridBoost(base, baseOFX, baseCandidate, 'company-1', {
@@ -141,6 +146,7 @@ describe('applyHybridBoost — faixa cinzenta 50-69', () => {
       score: 60,
       breakdown: { amount: 50, date: 5, supplier: 5, description: 0 },
       reasoning: [],
+      reasons: [],
     }
     const fetcher = vi.fn().mockResolvedValue({
       ok: true,
@@ -158,6 +164,7 @@ describe('applyHybridBoost — faixa cinzenta 50-69', () => {
       score: 60,
       breakdown: { amount: 50, date: 5, supplier: 5, description: 0 },
       reasoning: [],
+      reasons: [],
     }
     const fetcher = vi.fn().mockResolvedValue({
       ok: true,
@@ -179,6 +186,7 @@ describe('applyHybridBoost — faixa cinzenta 50-69', () => {
       score: 60,
       breakdown: { amount: 50, date: 5, supplier: 5, description: 0 },
       reasoning: [],
+      reasons: [],
     }
     const fetcher = vi.fn()
     const r = await applyHybridBoost(base, baseOFX, baseCandidate, 'company-1', {
