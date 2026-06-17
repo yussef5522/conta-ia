@@ -386,6 +386,142 @@ export async function POST(request: NextRequest, { params }: Params) {
     },
   })
 
+  // Sprint Transfer-Pairing-Retroativo (16/06/2026) — auto-parear HIGH+nameOk
+  // após criar as tx. Roda em background mas dentro do mesmo request pra
+  // garantir consistência. Falha silenciosa: erro aqui NÃO mata o import.
+  //
+  // Resolve o problema histórico "detectarTransferencias só roda no preview
+  // de UM arquivo": agora pares cross-account ficam pareados mesmo quando o
+  // user importa Banrisul, Sicredi e Stone em sequência sem clicar em
+  // "Parear" no painel do preview.
+  let autoPairedCount = 0
+  try {
+    const { scanRetroativo } = await import('@/lib/transfers/scan-retroativo')
+    const { normalizeCnpj } = await import('@/lib/transfers/own-entity-signals')
+    const crypto = await import('node:crypto')
+
+    const companyForRefs = await prisma.company.findUnique({
+      where: { id: conta.companyId },
+      select: {
+        cnpj: true,
+        name: true,
+        tradeName: true,
+        bankAccounts: { where: { isActive: true }, select: { id: true, name: true } },
+        sociosPF: { select: { nome: true } },
+      },
+    })
+    if (companyForRefs) {
+      const refs = {
+        cnpj: normalizeCnpj(companyForRefs.cnpj),
+        names: [
+          companyForRefs.name,
+          companyForRefs.tradeName,
+          ...companyForRefs.sociosPF.map((s) => s.nome),
+        ].filter((n): n is string => typeof n === 'string' && n.length > 0),
+        accountNames: companyForRefs.bankAccounts.map((a) => a.name),
+      }
+      const accIds = companyForRefs.bankAccounts.map((a) => a.id)
+      const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+      const orphans = await prisma.transaction.findMany({
+        where: {
+          bankAccountId: { in: accIds },
+          origin: 'OFX',
+          lifecycle: 'EFFECTED',
+          transferGroupId: null,
+          type: { in: ['CREDIT', 'DEBIT'] },
+          date: { gte: since7d },
+          reconciledWithId: null,
+          reconciledFrom: { none: {} },
+        },
+        select: {
+          id: true,
+          bankAccountId: true,
+          date: true,
+          type: true,
+          amount: true,
+          description: true,
+          bankAccount: { select: { name: true } },
+        },
+      })
+      const scan = scanRetroativo({
+        txs: orphans.map((o) => ({
+          id: o.id,
+          bankAccountId: o.bankAccountId!,
+          bankAccountName: o.bankAccount?.name ?? '',
+          date: o.date,
+          type: o.type as 'CREDIT' | 'DEBIT',
+          amount: o.amount,
+          description: o.description,
+        })),
+        refs,
+      })
+      // Gate: SOMENTE HIGH + nameMatchOk (a mesma regra usada no endpoint
+      // /transferencias/scan-retroativo). MEDIUM fica como pendente — UI
+      // futura (Fase 2) mostra como candidato pra user confirmar.
+      const toApply = scan.pairs.filter((p) => p.level === 'HIGH' && p.nameMatchOk)
+      if (toApply.length > 0) {
+        await prisma.$transaction(async (txp) => {
+          for (const p of toApply) {
+            const groupId = crypto.randomUUID()
+            const r1 = await txp.transaction.updateMany({
+              where: { id: p.from.id, transferGroupId: null, type: 'DEBIT' },
+              data: {
+                type: 'TRANSFER',
+                transferGroupId: groupId,
+                transferDirection: 'OUT',
+                status: 'RECONCILED',
+              },
+            })
+            const r2 = await txp.transaction.updateMany({
+              where: { id: p.to.id, transferGroupId: null, type: 'CREDIT' },
+              data: {
+                type: 'TRANSFER',
+                transferGroupId: groupId,
+                transferDirection: 'IN',
+                status: 'RECONCILED',
+              },
+            })
+            if (r1.count === 1 && r2.count === 1) {
+              autoPairedCount += 1
+            } else {
+              // Rollback do lado órfão se um pareou e outro não
+              if (r1.count === 1 && r2.count !== 1) {
+                await txp.transaction.update({
+                  where: { id: p.from.id },
+                  data: {
+                    type: 'DEBIT',
+                    transferGroupId: null,
+                    transferDirection: null,
+                    status: 'PENDING',
+                  },
+                })
+              }
+              if (r2.count === 1 && r1.count !== 1) {
+                await txp.transaction.update({
+                  where: { id: p.to.id },
+                  data: {
+                    type: 'CREDIT',
+                    transferGroupId: null,
+                    transferDirection: null,
+                    status: 'PENDING',
+                  },
+                })
+              }
+            }
+          }
+        })
+      }
+      if (autoPairedCount > 0) {
+        console.log(
+          `[IMPORT-OFX] auto-pareou ${autoPairedCount} transferência(s) ` +
+            `cross-account (HIGH + nameMatchOk) — company=${conta.companyId}`,
+        )
+      }
+    }
+  } catch (e) {
+    console.error('[IMPORT-OFX] auto-pareamento falhou (não bloqueia import):', e)
+  }
+
   // Fase 3 Etapa 2: persiste sugestões de fornecedor (Camada 2A keyword)
   // APÓS o createMany. Cria Supplier + linka transaction.supplierId.
   let supplierStats = { suppliersCreated: 0, transactionsLinked: 0 }
@@ -416,6 +552,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     setorEmpresa,
     fornecedoresDetectados: supplierStats.suppliersCreated,
     transacoesComFornecedor: supplierStats.transactionsLinked,
+    transferenciasAutoPareadas: autoPairedCount,
     predictMs,
     keywordPersistMs,
     errosParser: errors,
