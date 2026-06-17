@@ -291,6 +291,18 @@ export async function POST(request: NextRequest, { params }: Params) {
           // pra não criar a regressão R$ 939k.
           const paymentDateSafe = lifecycle === 'EFFECTED' ? row.pagamento : null
           const txDate = paymentDateSafe ?? row.vencimento ?? new Date()
+          // Sprint Trava-Permanente (16/06/2026) — regra 5.
+          // Excel NUNCA traz bankAccountId (planilha não tem coluna de conta).
+          // Se a linha viraria EFFECTED órfã (sem banco), marca cashCoded=true
+          // pra significar "despesa em dinheiro" e cumprir a regra 5 de
+          // validateLifecycleState. Sem isso, a constraint Postgres
+          // effected_needs_bank_or_cash_or_reconcile rejeita o INSERT.
+          //
+          // TODO Fase 2 UI: ao invés de auto-cashCoded, perguntar no review
+          // "De qual conta saiu esse pagamento?" e atribuir bankAccountId
+          // (interpretação contábil mais correta). Hoje fica auto pra não
+          // bloquear import.
+          const isCashCodedFromOrphanEffected = isPaid // Excel sem bank + EFFECTED
           try {
             await tx.transaction.create({
               data: {
@@ -313,6 +325,9 @@ export async function POST(request: NextRequest, { params }: Params) {
                 dedupHash: row.dedupHash,
                 classificationSource: 'IMPORT_EXCEL',
                 aiConfidence: row.categoryConfidence,
+                // Trava regra 5: EFFECTED órfão do Excel vira cash-coded
+                cashCoded: isCashCodedFromOrphanEffected,
+                cashCodedAt: isCashCodedFromOrphanEffected ? new Date() : null,
               },
             })
             createdTransactions++

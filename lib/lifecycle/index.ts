@@ -47,6 +47,19 @@ export interface LifecycleStateInput {
   paymentDate: Date | string | null | undefined
   dueDate: Date | string | null | undefined
   bankAccountId: string | null | undefined
+  /**
+   * Sprint Trava-Permanente (16/06/2026) — regra 5.
+   * Cash-coded = despesa em dinheiro físico, sem extrato bancário pra conciliar.
+   * Default false quando omitido.
+   */
+  cashCoded?: boolean | null | undefined
+  /**
+   * Sprint Trava-Permanente — regra 5.
+   * Quando a tx foi conciliada com outra (par OFX), reconciledWithId aponta pra
+   * tx-par que tem o banco. Estado legítimo: Excel cadastrada como PAYABLE+sem-bank,
+   * depois conciliada com OFX-par → vira EFFECTED mas bankAccountId continua null.
+   */
+  reconciledWithId?: string | null | undefined
 }
 
 export interface ValidationResult {
@@ -62,7 +75,12 @@ export interface ValidationResult {
  *   2. PAYABLE/RECEIVABLE DEVEM ter dueDate (precisa saber quando vence).
  *   3. EFFECTED com paymentDate=null é OK (regime competência sem pagamento ainda).
  *   4. bankAccountId pode ser null em PAYABLE/RECEIVABLE (user nem sabe ainda).
- *   5. EFFECTED criada via OFX DEVE ter bankAccountId (não há OFX sem conta).
+ *   5. Sprint Trava-Permanente (16/06/2026): EFFECTED exige ≥1 de:
+ *      (a) bankAccountId NOT NULL — banco próprio da tx, OU
+ *      (b) cashCoded=true       — despesa em dinheiro físico (caixa, sem extrato), OU
+ *      (c) reconciledWithId NOT NULL — conciliada com OFX-par (par tem banco).
+ *      Estado proibido: EFFECTED + bankAccountId NULL + cashCoded NÃO true +
+ *      reconciledWithId NULL = órfão silencioso que vaza no Find & Match.
  */
 export function validateLifecycleState(input: LifecycleStateInput): ValidationResult {
   if (!isLifecycle(input.lifecycle)) {
@@ -82,6 +100,22 @@ export function validateLifecycleState(input: LifecycleStateInput): ValidationRe
       return {
         valid: false,
         error: `${input.lifecycle} requer dueDate (data esperada de pagamento/recebimento)`,
+      }
+    }
+  }
+
+  // Regra 5 — trava do EFFECTED órfão (Sprint Trava-Permanente)
+  if (input.lifecycle === 'EFFECTED') {
+    const hasBank = input.bankAccountId !== null && input.bankAccountId !== undefined && input.bankAccountId !== ''
+    const isCashCoded = input.cashCoded === true
+    const hasReconcile =
+      input.reconciledWithId !== null && input.reconciledWithId !== undefined && input.reconciledWithId !== ''
+    if (!hasBank && !isCashCoded && !hasReconcile) {
+      return {
+        valid: false,
+        error:
+          'EFFECTED exige bankAccountId, cashCoded=true OU reconciledWithId. ' +
+          'Não crie EFFECTED órfão sem banco e sem cash-coding (vaza no Find & Match).',
       }
     }
   }
