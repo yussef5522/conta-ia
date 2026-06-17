@@ -95,12 +95,17 @@ export function decidirLifecycleCacula(
 
   // 🛡 VALIDAÇÃO FINAL — guarda contra bug R$ 939k.
   // Se cair aqui, é bug no mapper acima. NUNCA deve gravar estado inválido.
+  //
+  // Sprint Trava-Permanente (16/06/2026): pra cumprir regra 5, EFFECTED órfão
+  // do CACULA (sem bank) vira cash-coded no confirm — espelhamos aqui pra
+  // validar o estado FINAL que será gravado.
   const validation = validateLifecycleState({
     lifecycle,
     status: 'PENDING', // status do Transaction (PENDING/RECONCILED) é ortogonal
     paymentDate: paymentDateFinal,
     dueDate: input.dueDate,
     bankAccountId: null, // CACULA não traz conta; nullable em PAYABLE
+    cashCoded: lifecycle === 'EFFECTED', // confirm Excel marca true em EFFECTED órfão
   })
   if (!validation.valid) {
     throw new Error(

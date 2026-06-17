@@ -61,12 +61,13 @@ describe('Invariante PAYABLE/RECEIVABLE não pode ter paymentDate', () => {
   })
 
   it('EFFECTED sem paymentDate (regime competência) é VÁLIDO', () => {
+    // Sprint Trava-Permanente: regra 5 exige bank OU cashCoded OU reconcile.
     const r = validateLifecycleState({
       lifecycle: 'EFFECTED',
       status: 'PENDING',
       paymentDate: null,
       dueDate: null,
-      bankAccountId: null,
+      bankAccountId: 'bank-1',
     })
     expect(r.valid).toBe(true)
   })
@@ -115,6 +116,8 @@ describe('Lógica do Fix A1 — import Excel: lifecycle por isPaid', () => {
   })
 
   it('estado resultante (EFFECTED + paymentDate) é válido', () => {
+    // Sprint Trava-Permanente: Excel confirm seta cashCoded=true quando
+    // EFFECTED+sem-bank (regra 5).
     const isPaid = true
     const lifecycle = lifecycleForImport(isPaid)
     const r = validateLifecycleState({
@@ -123,6 +126,7 @@ describe('Lógica do Fix A1 — import Excel: lifecycle por isPaid', () => {
       paymentDate: new Date('2026-04-15'),
       dueDate: new Date('2026-04-10'),
       bankAccountId: null,
+      cashCoded: true,
     })
     expect(r.valid).toBe(true)
   })
