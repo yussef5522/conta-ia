@@ -49,7 +49,16 @@ export async function POST(request: NextRequest, { params }: Params) {
         name: true,
         companyId: true,
         company: {
-          select: { cnpj: true, name: true, tradeName: true },
+          select: {
+            cnpj: true,
+            name: true,
+            tradeName: true,
+            // Sprint Transfer-Pairing-Retroativo (16/06/2026): inclui sócios
+            // PF nas refs.names. Caso real: transferências internas Banrisul
+            // → Stone vêm com memo "YUSSEF ABU ZAHRY MUSA - Transferência |
+            // Pix" — sem isso, hasOwnName=false e o score não bate HIGH.
+            sociosPF: { select: { nome: true } },
+          },
         },
       },
     })
@@ -129,9 +138,14 @@ export async function POST(request: NextRequest, { params }: Params) {
     const todasContasNomes = [conta.name, ...outrasContas.map((c) => c.name)]
     const refs: OwnEntityRefs = {
       cnpj: normalizeCnpj(conta.company.cnpj),
-      names: [conta.company.tradeName, conta.company.name].filter(
-        (n): n is string => n !== null && n !== '',
-      ),
+      names: [
+        conta.company.tradeName,
+        conta.company.name,
+        // Sprint Transfer-Pairing-Retroativo: sócios PF (Yussef etc) viram
+        // own-entity name pra que "YUSSEF Transferência | Pix" no memo
+        // contribua com NAME_BOOST (+0.10) no score.
+        ...conta.company.sociosPF.map((s) => s.nome),
+      ].filter((n): n is string => n !== null && n !== ''),
       accountNames: todasContasNomes,
     }
 
