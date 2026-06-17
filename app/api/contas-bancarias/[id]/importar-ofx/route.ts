@@ -328,6 +328,13 @@ export async function POST(request: NextRequest, { params }: Params) {
   const predictMs = Date.now() - t0Predict
 
   try {
+    // Sprint Saldo-Ancorado-LEDGERBAL (17/06/2026):
+    // (1) createMany das tx novas
+    // (2) atualiza ledgerBal + ledgerBalDate do bankAccount com BALAMT/DTASOF
+    //     do arquivo (se OFX trouxe — alguns extratos têm <LEDGERBAL/> vazio)
+    // (3) Vezes aplicada das regras
+    // Fora do $transaction: recalcularSaldoConta (sequencial, depois) —
+    // precisa LER as tx recém-criadas + ledgerBal recém-gravado.
     await prisma.$transaction([
       prisma.transaction.createMany({
         data: classified.map((t) => ({
@@ -349,9 +356,16 @@ export async function POST(request: NextRequest, { params }: Params) {
           aiConfidence: t.aiConfidence ?? null,
         })),
       }),
+      // Atualiza ledgerBal + ledgerBalDate quando OFX trouxe (substitui o
+      // increment cumulativo que driftou; balance será recalculado depois).
       prisma.bankAccount.update({
         where: { id: contaId },
-        data: { balance: { increment: ajusteSaldo } },
+        data: ledgerBalance
+          ? {
+              ledgerBal: ledgerBalance.amount,
+              ledgerBalDate: ledgerBalance.asOfDate,
+            }
+          : {},
       }),
       // Incrementa vezesAplicada das regras que dispararam
       ...Array.from(rulesFired.entries()).map(([ruleId, count]) =>
@@ -361,6 +375,18 @@ export async function POST(request: NextRequest, { params }: Params) {
         }),
       ),
     ])
+
+    // Recalcula balance ANCORADO no LEDGERBAL.
+    // Conta SEM ledgerBal: usa SUM(signed) total.
+    // Conta COM ledgerBal: usa ledgerBal + SUM(tx pós-ledgerBalDate).
+    try {
+      const { recalcularSaldoConta } = await import('@/lib/balance/recalcular')
+      await recalcularSaldoConta(prisma, contaId)
+    } catch (rcErr) {
+      // Falha silenciosa: balance fica desatualizado mas tx foram criadas.
+      // Cron de saúde futuro pode pegar isso.
+      console.error('[importar-ofx] recalcularSaldo falhou:', rcErr)
+    }
   } catch (err) {
     // Marca import como FAILED + propaga erro pra cliente
     await prisma.ofxImport.update({

@@ -218,6 +218,15 @@ model BankAccount {
   cashKind      String?
   balance       Float   @default(0)
 
+  // Sprint Saldo-Ancorado-LEDGERBAL (17/06/2026) — "o banco é a lei".
+  // LEDGERBAL = saldo final do extrato OFX no momento do import (DTASOF).
+  // Regra de cálculo:
+  //   balance = ledgerBal + SUM(signed amount das tx com date > ledgerBalDate)
+  // Tx até ledgerBalDate JÁ estão no LEDGERBAL — não somar de novo.
+  // Conta sem extrato (cash/manual): ledgerBalDate=NULL, balance = SUM(signed tx).
+  ledgerBal     Float?
+  ledgerBalDate DateTime?
+
   // Saldo negativo / cheque especial (Sprint 0.5).
   // allowNegativeBalance: se false, lançamentos/transferências que deixariam
   //   saldo < -creditLimit são bloqueados na app-layer.
