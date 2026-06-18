@@ -438,6 +438,7 @@ describe('Sprint AI/Contrato — type safety', () => {
     const ex: ContractExtraction = {
       bank: null, contractNumber: null, amortizationSystem: null,
       rateType: null, indexer: null, indexerPercent: null,
+      dataContratacao: null, dataLiberacao: null,
       principal: null, valorFinanciado: null, iof: null, tarifas: null,
       taxaPreMensal: null, nParcelas: null, parcelasPagas: null,
       parcelasAPagar: null, primeiraParcela: null, vencimentoFinal: null,

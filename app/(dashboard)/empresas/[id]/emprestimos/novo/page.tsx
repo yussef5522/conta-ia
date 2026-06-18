@@ -141,6 +141,11 @@ export default function NovoEmprestimoPage({
       if (e.rateType) next.rateType = e.rateType
       if (e.indexer) next.indexer = e.indexer
       if (e.indexerPercent !== null) next.indexerPercent = String(e.indexerPercent)
+      // Fix Data-Liberação: AI agora extrai dataLiberacao + dataContratacao
+      // (Banrisul: "LIBERAÇÃO em 19/10/2021"). Pré-preenche o campo do form.
+      // Fallback: dataContratacao quando dataLiberacao ausente.
+      if (e.dataLiberacao) next.disbursementDate = e.dataLiberacao
+      else if (e.dataContratacao) next.disbursementDate = e.dataContratacao
       // Modo EM_ANDAMENTO se há parcelas pagas
       if (e.parcelasPagas !== null && e.parcelasPagas > 0) {
         setModo('EM_ANDAMENTO')
@@ -281,6 +286,8 @@ export default function NovoEmprestimoPage({
       toast({ variant: 'destructive', title: 'Faltam dados do empréstimo novo' })
       return
     }
+    // Em EM_ANDAMENTO disbursementDate é INFORMATIVA — não trava o save.
+    // Saldo atual + 1ª parcela futura são o que importa.
     if (modo === 'EM_ANDAMENTO' && (!form.outstandingBalanceInitial || !form.futureCount || !form.firstDueDate)) {
       toast({
         variant: 'destructive',
@@ -780,12 +787,18 @@ export default function NovoEmprestimoPage({
                   required
                 />
               </Field>
-              <Field label="Data da liberação *">
+              <Field
+                label={
+                  modo === 'EM_ANDAMENTO'
+                    ? 'Data da liberação (informativo)'
+                    : 'Data da liberação *'
+                }
+              >
                 <Input
                   type="date"
                   value={form.disbursementDate}
                   onChange={(e) => setForm({ ...form, disbursementDate: e.target.value })}
-                  required
+                  required={modo === 'NOVO'}
                 />
               </Field>
               <Field label="1º vencimento *">

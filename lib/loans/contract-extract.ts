@@ -38,6 +38,10 @@ export interface ContractExtraction {
   indexer: ContractIndexer
   /** % do indexador (100 = 100% CDI) */
   indexerPercent: number | null
+  /** Data da CONTRATAÇÃO do empréstimo (assinatura). YYYY-MM-DD */
+  dataContratacao: string | null
+  /** Data da LIBERAÇÃO do dinheiro (crédito caiu na conta). YYYY-MM-DD */
+  dataLiberacao: string | null
   /** Valor inicial liberado (sem IOF) */
   principal: number | null
   /** Valor financiado total (principal + IOF + tarifas, opcional) */
@@ -102,6 +106,8 @@ Estrutura exata:
   "rateType": "PRE" | "POS" | null,
   "indexer": "CDI" | "SELIC" | "IPCA" | null,
   "indexerPercent": number | null,
+  "dataContratacao": "YYYY-MM-DD" | null,
+  "dataLiberacao": "YYYY-MM-DD" | null,
   "principal": number | null,
   "valorFinanciado": number | null,
   "iof": number | null,
@@ -126,7 +132,9 @@ Regras importantes:
 1. taxaPreMensal: DECIMAL. 0,35% a.m. = 0.0035. NUNCA 0.35.
 2. indexerPercent: 100 = 100% do indexador. 130 = 130%.
 3. Se for CDC SAC/CDI = pós-fixado (POS) com indexer="CDI". Se for tabela PRICE pura = PRE.
-4. saldoDevedorAtual: PROCURE "Valor para Liquidação na Data" ou "Saldo Devedor Atual". É o valor que o cliente teria que pagar HOJE pra quitar.
+4. dataContratacao: data de assinatura do contrato ("Data da Contratação", "Data Contratação"). YYYY-MM-DD.
+5. dataLiberacao: data em que o dinheiro caiu na conta ("LIBERAÇÃO em DD/MM/AAAA", "Data Liberação", "Data Crédito"). Quando o contrato traz só 1 data, use a mesma pros dois campos. YYYY-MM-DD.
+6. saldoDevedorAtual: PROCURE "Valor para Liquidação na Data" ou "Saldo Devedor Atual". É o valor que o cliente teria que pagar HOJE pra quitar.
 5. amortizacaoConstante: SAC tem amortização fixa por parcela (ex: R$ 1.898,69). Se SAC, EXTRAIR.
 6. parcelasAPagarLista: lista TODAS as parcelas A PAGAR (futuras). NÃO incluir as já pagas.
 7. carencia: N primeiras parcelas SEM amortização (só juros). Em SAC com carência, primeiras N parcelas têm amort=0.
@@ -287,6 +295,8 @@ export function normalizeExtraction(raw: unknown): ContractExtraction {
     rateType: rt(obj.rateType),
     indexer: idx(obj.indexer),
     indexerPercent: num(obj.indexerPercent),
+    dataContratacao: str(obj.dataContratacao),
+    dataLiberacao: str(obj.dataLiberacao),
     principal: num(obj.principal),
     valorFinanciado: num(obj.valorFinanciado),
     iof: num(obj.iof),

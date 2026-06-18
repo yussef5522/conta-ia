@@ -203,7 +203,10 @@ const createMidLifeSchema = z.object({
   /** Data da PRÓXIMA parcela (a 1ª futura) */
   firstDueDate: z.coerce.date(),
   trackingStartDate: z.coerce.date(),
-  disbursementDate: z.coerce.date(),
+  // Em EM_ANDAMENTO disbursementDate é INFORMATIVA (passado). Quando ausente,
+  // o handler usa firstDueDate como fallback (já que o save reusa pra
+  // satisfazer FK do model).
+  disbursementDate: z.coerce.date().optional(),
   iof: z.coerce.number().min(0).default(0),
   tarifas: z.coerce.number().min(0).default(0),
   carencia: z.coerce.number().int().min(0).max(60).default(0),
@@ -320,7 +323,9 @@ export async function POST(request: NextRequest, { params }: Params) {
         firstDueDate: d.firstDueDate,
         iof: d.iof,
         tarifas: d.tarifas,
-        disbursementDate: d.disbursementDate,
+        // EM_ANDAMENTO: disbursementDate é informativa; quando omitida,
+        // fallback pra firstDueDate (Loan.disbursementDate é NOT NULL).
+        disbursementDate: d.disbursementDate ?? d.firstDueDate,
         rateType: d.rateType,
         indexer: d.indexer ?? null,
         indexerPercent: d.indexerPercent ?? null,
