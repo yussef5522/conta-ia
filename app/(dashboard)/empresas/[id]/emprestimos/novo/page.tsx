@@ -5,7 +5,17 @@
 import { useEffect, useState, useMemo, use } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Calculator, Loader2, AlertCircle, Link2, CheckCircle2 } from 'lucide-react'
+import {
+  ArrowLeft,
+  Calculator,
+  Loader2,
+  AlertCircle,
+  Link2,
+  CheckCircle2,
+  Sparkles,
+  Upload,
+  History,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -56,6 +66,11 @@ export default function NovoEmprestimoPage({
   const [candidates, setCandidates] = useState<Candidate[]>([])
   const [linking, setLinking] = useState(false)
 
+  // Modo "EM_ANDAMENTO" quando AI detectou parcelas pagas OU user marca manual
+  const [modo, setModo] = useState<'NOVO' | 'EM_ANDAMENTO'>('NOVO')
+  const [aiExtracting, setAiExtracting] = useState(false)
+  const [aiWarnings, setAiWarnings] = useState<string[]>([])
+
   const [form, setForm] = useState({
     bankAccountId: '',
     lender: '',
@@ -66,8 +81,85 @@ export default function NovoEmprestimoPage({
     amortizationSystem: 'PRICE' as 'PRICE' | 'SAC',
     firstDueDate: '',
     iof: '0',
+    tarifas: '0',
     disbursementDate: '',
+    // EM_ANDAMENTO
+    outstandingBalanceInitial: '',
+    installmentsPaidBefore: '0',
+    amortizationConstant: '',
+    rateType: 'PRE' as 'PRE' | 'POS',
+    indexer: '' as '' | 'CDI' | 'SELIC' | 'IPCA',
+    indexerPercent: '100',
+    estimatedCorrectionMonthly: '0',
+    futureCount: '',
+    trackingStartDate: '',
+    carencia: '0',
   })
+
+  async function handleUploadPdf(file: File) {
+    setAiExtracting(true)
+    setAiWarnings([])
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch(`/api/empresas/${empresaId}/emprestimos/extrair-contrato`, {
+        method: 'POST',
+        credentials: 'include',
+        body: fd,
+      })
+      const body = await res.json()
+      if (!res.ok) {
+        toast({
+          variant: 'destructive',
+          title: 'Não consegui ler o contrato',
+          description: body.erro,
+        })
+        return
+      }
+      const e = body.extraction
+      // Pré-preenche
+      const next = { ...form }
+      if (e.bank) next.lender = e.bank
+      if (e.contractNumber) next.contractNumber = e.contractNumber
+      if (e.amortizationSystem) next.amortizationSystem = e.amortizationSystem
+      if (e.principal) next.principal = String(e.principal)
+      if (e.iof !== null) next.iof = String(e.iof)
+      if (e.tarifas !== null) next.tarifas = String(e.tarifas)
+      if (e.taxaPreMensal !== null) next.interestRateMonthly = String(e.taxaPreMensal * 100)
+      if (e.nParcelas) next.termMonths = String(e.nParcelas)
+      if (e.carencia !== null) next.carencia = String(e.carencia)
+      if (e.amortizacaoConstante !== null) next.amortizationConstant = String(e.amortizacaoConstante)
+      if (e.rateType) next.rateType = e.rateType
+      if (e.indexer) next.indexer = e.indexer
+      if (e.indexerPercent !== null) next.indexerPercent = String(e.indexerPercent)
+      // Modo EM_ANDAMENTO se há parcelas pagas
+      if (e.parcelasPagas !== null && e.parcelasPagas > 0) {
+        setModo('EM_ANDAMENTO')
+        next.installmentsPaidBefore = String(e.parcelasPagas)
+        if (e.saldoDevedorAtual) next.outstandingBalanceInitial = String(e.saldoDevedorAtual)
+        if (e.parcelasAPagar) next.futureCount = String(e.parcelasAPagar)
+        // 1ª parcela futura = primeira da lista (se veio)
+        if (e.parcelasAPagarLista && e.parcelasAPagarLista.length > 0) {
+          next.firstDueDate = e.parcelasAPagarLista[0].dueDate
+          next.trackingStartDate = e.parcelasAPagarLista[0].dueDate
+        }
+      } else {
+        setModo('NOVO')
+        if (e.primeiraParcela) next.firstDueDate = e.primeiraParcela
+      }
+      setForm(next)
+      if (e.warnings && e.warnings.length > 0) setAiWarnings(e.warnings)
+      toast({
+        title: 'Contrato lido pela IA',
+        description:
+          e.parcelasPagas > 0
+            ? `Empréstimo em andamento detectado: ${e.parcelasPagas} pagas, ${e.parcelasAPagar} a pagar. Confira antes de salvar.`
+            : 'Pré-preenchido. Confira antes de salvar.',
+      })
+    } finally {
+      setAiExtracting(false)
+    }
+  }
 
   useEffect(() => {
     fetch(`/api/empresas/${empresaId}/contas-bancarias`, { credentials: 'include' })
@@ -110,31 +202,74 @@ export default function NovoEmprestimoPage({
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
-    if (!form.bankAccountId || !form.lender || !form.principal || !form.firstDueDate || !form.disbursementDate) {
+    if (!form.bankAccountId || !form.lender) {
+      toast({ variant: 'destructive', title: 'Campos obrigatórios faltando' })
+      return
+    }
+    if (modo === 'NOVO' && (!form.principal || !form.firstDueDate || !form.disbursementDate)) {
+      toast({ variant: 'destructive', title: 'Faltam dados do empréstimo novo' })
+      return
+    }
+    if (modo === 'EM_ANDAMENTO' && (!form.outstandingBalanceInitial || !form.futureCount || !form.firstDueDate)) {
       toast({
         variant: 'destructive',
-        title: 'Campos obrigatórios faltando',
+        title: 'Faltam dados do empréstimo em andamento',
+        description: 'Saldo devedor atual + parcelas a pagar + 1ª parcela futura',
       })
       return
     }
     setSubmitting(true)
     try {
+      const payload =
+        modo === 'NOVO'
+          ? {
+              modo: 'NOVO' as const,
+              bankAccountId: form.bankAccountId,
+              lender: form.lender.trim(),
+              contractNumber: form.contractNumber.trim() || null,
+              principal: parseFloat(form.principal),
+              interestRateMonthly: parseFloat(form.interestRateMonthly) / 100,
+              termMonths: parseInt(form.termMonths, 10),
+              amortizationSystem: form.amortizationSystem,
+              firstDueDate: form.firstDueDate,
+              iof: parseFloat(form.iof || '0'),
+              tarifas: parseFloat(form.tarifas || '0'),
+              disbursementDate: form.disbursementDate,
+              rateType: form.rateType,
+              indexer: form.indexer || null,
+              indexerPercent: form.indexer ? parseFloat(form.indexerPercent) : null,
+              carencia: parseInt(form.carencia || '0', 10),
+            }
+          : {
+              modo: 'EM_ANDAMENTO' as const,
+              bankAccountId: form.bankAccountId,
+              lender: form.lender.trim(),
+              contractNumber: form.contractNumber.trim() || null,
+              outstandingBalanceInitial: parseFloat(form.outstandingBalanceInitial),
+              termMonths: parseInt(form.termMonths, 10),
+              installmentsPaidBefore: parseInt(form.installmentsPaidBefore, 10),
+              interestRateMonthly: parseFloat(form.interestRateMonthly) / 100,
+              amortizationSystem: form.amortizationSystem,
+              amortizationConstant: form.amortizationConstant
+                ? parseFloat(form.amortizationConstant)
+                : null,
+              rateType: form.rateType,
+              indexer: form.indexer || null,
+              indexerPercent: form.indexer ? parseFloat(form.indexerPercent) : null,
+              estimatedCorrectionMonthly: parseFloat(form.estimatedCorrectionMonthly) / 100,
+              firstDueDate: form.firstDueDate,
+              trackingStartDate: form.trackingStartDate || form.firstDueDate,
+              disbursementDate: form.disbursementDate || form.firstDueDate,
+              iof: parseFloat(form.iof || '0'),
+              tarifas: parseFloat(form.tarifas || '0'),
+              carencia: parseInt(form.carencia || '0', 10),
+              futureCount: parseInt(form.futureCount, 10),
+            }
       const res = await fetch(`/api/empresas/${empresaId}/emprestimos`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          bankAccountId: form.bankAccountId,
-          lender: form.lender.trim(),
-          contractNumber: form.contractNumber.trim() || null,
-          principal: parseFloat(form.principal),
-          interestRateMonthly: parseFloat(form.interestRateMonthly) / 100,
-          termMonths: parseInt(form.termMonths, 10),
-          amortizationSystem: form.amortizationSystem,
-          firstDueDate: form.firstDueDate,
-          iof: parseFloat(form.iof || '0'),
-          disbursementDate: form.disbursementDate,
-        }),
+        body: JSON.stringify(payload),
       })
       const body = await res.json()
       if (!res.ok) {
@@ -268,6 +403,85 @@ export default function NovoEmprestimoPage({
         </Link>
       </Header>
 
+      {/* Upload PDF — AI extrai e pré-preenche */}
+      <Card className="border-primary/30 bg-primary/5">
+        <CardContent className="p-4 flex items-start gap-3">
+          <Sparkles className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+          <div className="flex-1 space-y-2">
+            <p className="text-sm font-semibold">Tem o PDF do contrato?</p>
+            <p className="text-xs text-muted-foreground">
+              A IA extrai banco, taxa, sistema, saldo devedor atual e parcelas restantes
+              automaticamente. Você confere antes de salvar.
+            </p>
+            <label className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border bg-background hover:bg-primary/10 cursor-pointer transition-colors">
+              {aiExtracting ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Lendo contrato com IA…
+                </>
+              ) : (
+                <>
+                  <Upload className="h-3.5 w-3.5" />
+                  Enviar contrato (PDF)
+                </>
+              )}
+              <input
+                type="file"
+                accept="application/pdf"
+                className="hidden"
+                disabled={aiExtracting}
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  if (f) handleUploadPdf(f)
+                }}
+              />
+            </label>
+            {aiWarnings.length > 0 && (
+              <ul className="text-xs text-amber-700 space-y-0.5 pt-1">
+                {aiWarnings.map((w, idx) => (
+                  <li key={idx}>⚠ {w}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Tabs NOVO / EM_ANDAMENTO */}
+      <div className="inline-flex bg-muted/50 rounded-md p-1 text-sm">
+        <button
+          type="button"
+          onClick={() => setModo('NOVO')}
+          className={`px-3 py-1.5 rounded ${modo === 'NOVO' ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground'}`}
+        >
+          Empréstimo novo
+        </button>
+        <button
+          type="button"
+          onClick={() => setModo('EM_ANDAMENTO')}
+          className={`px-3 py-1.5 rounded inline-flex items-center gap-1 ${modo === 'EM_ANDAMENTO' ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground'}`}
+        >
+          <History className="h-3.5 w-3.5" />
+          Em andamento
+        </button>
+      </div>
+
+      {modo === 'EM_ANDAMENTO' && (
+        <Card className="border-amber-300 bg-amber-50/40">
+          <CardContent className="p-4 flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+            <div className="text-sm">
+              <p className="font-medium text-amber-900">Confira antes de salvar</p>
+              <p className="text-amber-800/80 text-xs mt-0.5">
+                Empréstimo em andamento entra pelo <strong>SALDO DEVEDOR ATUAL</strong>, NÃO pelo
+                principal original. Parcelas já pagas ficam só como histórico — não viram lançamento
+                novo, não poluem o DRE com juros passados. Confira saldo + taxa antes de salvar.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <form onSubmit={handleCreate} className="space-y-6">
         <Card>
           <CardContent className="p-5 space-y-4">
@@ -327,11 +541,140 @@ export default function NovoEmprestimoPage({
           </CardContent>
         </Card>
 
+        {/* Card EM_ANDAMENTO específico — destaque saldo devedor */}
+        {modo === 'EM_ANDAMENTO' && (
+          <Card className="border-primary/30 bg-primary/5">
+            <CardContent className="p-5 space-y-4">
+              <p className="text-sm font-medium flex items-center gap-1.5">
+                <Sparkles className="h-3.5 w-3.5 text-primary" />
+                Estado atual (campo destacado = revise SEMPRE)
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <Field label="Saldo devedor ATUAL *">
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={form.outstandingBalanceInitial}
+                    onChange={(e) =>
+                      setForm({ ...form, outstandingBalanceInitial: e.target.value })
+                    }
+                    placeholder="40295.17"
+                    className="border-primary/50 focus-visible:ring-primary text-base font-semibold"
+                    required
+                  />
+                </Field>
+                <Field label="Parcelas já pagas (histórico)">
+                  <Input
+                    type="number"
+                    step="1"
+                    min="0"
+                    value={form.installmentsPaidBefore}
+                    onChange={(e) =>
+                      setForm({ ...form, installmentsPaidBefore: e.target.value })
+                    }
+                  />
+                </Field>
+                <Field label="Parcelas a pagar (futuras) *">
+                  <Input
+                    type="number"
+                    step="1"
+                    min="1"
+                    value={form.futureCount}
+                    onChange={(e) => setForm({ ...form, futureCount: e.target.value })}
+                    required
+                  />
+                </Field>
+                {form.amortizationSystem === 'SAC' && (
+                  <Field label="Amortização constante (SAC)">
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={form.amortizationConstant}
+                      onChange={(e) =>
+                        setForm({ ...form, amortizationConstant: e.target.value })
+                      }
+                      placeholder="1898.69"
+                    />
+                  </Field>
+                )}
+                <Field label="Data 1ª parcela futura *">
+                  <Input
+                    type="date"
+                    value={form.firstDueDate}
+                    onChange={(e) => setForm({ ...form, firstDueDate: e.target.value })}
+                    required
+                  />
+                </Field>
+                <Field label="Pré ou pós-fixado">
+                  <Select
+                    value={form.rateType}
+                    onValueChange={(v) =>
+                      setForm({
+                        ...form,
+                        rateType: v as 'PRE' | 'POS',
+                        indexer: v === 'PRE' ? '' : form.indexer || 'CDI',
+                      })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="PRE">Pré-fixado</SelectItem>
+                      <SelectItem value="POS">Pós-fixado (indexado)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
+                {form.rateType === 'POS' && (
+                  <>
+                    <Field label="Indexador">
+                      <Select
+                        value={form.indexer || 'CDI'}
+                        onValueChange={(v) =>
+                          setForm({ ...form, indexer: v as 'CDI' | 'SELIC' | 'IPCA' })
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="CDI">CDI</SelectItem>
+                          <SelectItem value="SELIC">SELIC</SelectItem>
+                          <SelectItem value="IPCA">IPCA</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    <Field label="% indexador (100 = 100%)">
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={form.indexerPercent}
+                        onChange={(e) => setForm({ ...form, indexerPercent: e.target.value })}
+                      />
+                    </Field>
+                  </>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         <Card>
           <CardContent className="p-5 space-y-4">
-            <p className="text-sm font-medium">Valores</p>
+            <p className="text-sm font-medium">
+              {modo === 'NOVO' ? 'Valores' : 'Contrato original (informativo)'}
+            </p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <Field label="Valor liberado *">
+              <Field
+                label={
+                  modo === 'NOVO'
+                    ? 'Valor liberado *'
+                    : 'Valor original (informativo)'
+                }
+              >
                 <Input
                   type="number"
                   step="0.01"
@@ -339,7 +682,7 @@ export default function NovoEmprestimoPage({
                   value={form.principal}
                   onChange={(e) => setForm({ ...form, principal: e.target.value })}
                   placeholder="100000.00"
-                  required
+                  required={modo === 'NOVO'}
                 />
               </Field>
               <Field label="Taxa % ao mês *">

@@ -2554,6 +2554,25 @@ model Loan {
   disbursementTransactionId String?      @unique
   disbursementTransaction   Transaction? @relation("LoanDisbursement", fields: [disbursementTransactionId], references: [id], onDelete: SetNull)
 
+  // Sprint Empréstimos AI/Contrato (17/06/2026)
+  // PRE = taxa fixa | POS = taxa fixa + indexação (CDI/SELIC/IPCA)
+  rateType                  String?
+  indexer                   String?    // CDI | SELIC | IPCA
+  indexerPercent            Float?     // 100 = 100% CDI; 130 = 130% CDI
+  // Empréstimo já em andamento entra pelo SALDO DEVEDOR ATUAL, não pelo principal.
+  // Quando setado, generateMidLifeSchedule usa esse saldo como base.
+  outstandingBalanceInitial Float?
+  // Data do corte: parcelas com dueDate >= trackingStartDate são tratáveis;
+  // anteriores são SÓ histórico informativo (não viram tx).
+  trackingStartDate         DateTime?
+  installmentsPaidBefore    Int        @default(0)
+  // SAC: amortização constante. Permite reconstruir agenda futura quando
+  // entramos em andamento.
+  amortizationConstant      Float?
+  // N primeiras parcelas SEM amortização (só juros/correção). 0 = sem carência.
+  carencia                  Int        @default(0)
+  tarifas                   Float      @default(0)
+
   status    String   @default("ACTIVE") // ACTIVE | PAID_OFF | LATE
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2583,6 +2602,13 @@ model LoanInstallment {
   reconciledTransactionId  String?   @unique
   reconciledTransaction    Transaction? @relation("LoanInstallmentReconcile", fields: [reconciledTransactionId], references: [id], onDelete: SetNull)
   createdAt                DateTime @default(now())
+
+  // Sprint Empréstimos AI/Contrato (17/06/2026)
+  // isEstimate=true → parcela criada como ESTIMATIVA (pós-fixado);
+  // ao conciliar, usa o valor REAL debitado e recalcula correção/juros.
+  isEstimate  Boolean @default(false)
+  correcao    Float   @default(0)   // parte de indexação (CDI/SELIC/IPCA)
+  realPayment Float?                 // valor REAL debitado quando PAID
 
   @@unique([loanId, number])
   @@index([dueDate])
