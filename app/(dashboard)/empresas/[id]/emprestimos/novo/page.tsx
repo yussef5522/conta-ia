@@ -70,6 +70,11 @@ export default function NovoEmprestimoPage({
   const [modo, setModo] = useState<'NOVO' | 'EM_ANDAMENTO'>('NOVO')
   const [aiExtracting, setAiExtracting] = useState(false)
   const [aiWarnings, setAiWarnings] = useState<string[]>([])
+  // Sprint Fix-Previa: lista de parcelas futuras com payment LÍQUIDO (após
+  // desconto). Vem do PDF e é enviada como paymentOverrides ao salvar.
+  const [paymentOverrides, setPaymentOverrides] = useState<
+    Array<{ number: number; payment: number }>
+  >([])
 
   const [form, setForm] = useState({
     bankAccountId: '',
@@ -142,9 +147,22 @@ export default function NovoEmprestimoPage({
         if (e.parcelasAPagarLista && e.parcelasAPagarLista.length > 0) {
           next.firstDueDate = e.parcelasAPagarLista[0].dueDate
           next.trackingStartDate = e.parcelasAPagarLista[0].dueDate
+          // Sprint Fix-Previa: payment LÍQUIDO (após desconto) — o que realmente
+          // debita. Casa melhor no extrato. Quando o PDF traz `discount`, o
+          // líquido = payment − discount; senão usa payment direto.
+          const overrides = e.parcelasAPagarLista.map(
+            (p: { number: number; payment: number; discount?: number | null }) => ({
+              number: p.number,
+              payment: p.discount ? p.payment - p.discount : p.payment,
+            }),
+          )
+          setPaymentOverrides(overrides)
+        } else {
+          setPaymentOverrides([])
         }
       } else {
         setModo('NOVO')
+        setPaymentOverrides([])
         if (e.primeiraParcela) next.firstDueDate = e.primeiraParcela
       }
       setForm(next)
@@ -170,15 +188,53 @@ export default function NovoEmprestimoPage({
       })
   }, [empresaId])
 
-  // Preview da primeira parcela (cálculo local, instantâneo)
+  // 2 previews distintas — Sprint Fix-Previa (17/06/2026):
+  //   1) NOVO: SAC/PRICE pré-fixado clássico (calculado do principal)
+  //   2) EM_ANDAMENTO / POS: realidade futura — saldo devedor real, futuras,
+  //      amortização constante, juros pré ESTIMADO. NÃO mostra "total juros"
+  //      fixo porque pós-fixado tem correção CDI variável.
   const preview = useMemo(() => {
-    const p = parseFloat(form.principal)
     const i = parseFloat(form.interestRateMonthly) / 100
+
+    if (modo === 'EM_ANDAMENTO') {
+      const saldo = parseFloat(form.outstandingBalanceInitial)
+      const futuras = parseInt(form.futureCount, 10)
+      const amortConst =
+        form.amortizationSystem === 'SAC' && form.amortizationConstant
+          ? parseFloat(form.amortizationConstant)
+          : saldo && futuras
+            ? saldo / futuras
+            : 0
+      if (!saldo || !futuras) return null
+      const juros1Estimado = isFinite(i) ? saldo * i : 0
+      // Soma estimada de juros PRÉ ao longo das parcelas futuras (informativa).
+      // Pra SAC: soma de saldo decrescente × i. Pra PRICE: já fica embutida no PMT.
+      let jurosPreFuturoEstimado = 0
+      let s = saldo
+      for (let k = 0; k < futuras; k++) {
+        if (!isFinite(i)) break
+        jurosPreFuturoEstimado += s * i
+        s = Math.max(0, s - amortConst)
+      }
+      return {
+        kind: 'EM_ANDAMENTO' as const,
+        saldoDevedor: saldo,
+        futuras,
+        amortConst,
+        juros1Estimado,
+        jurosPreFuturoEstimado,
+        isPosFixed: form.rateType === 'POS',
+      }
+    }
+
+    // NOVO (pré-fixado)
+    const p = parseFloat(form.principal)
     const n = parseInt(form.termMonths, 10)
     if (!p || !n || isNaN(i)) return null
     if (form.amortizationSystem === 'PRICE') {
       const pmt = i === 0 ? p / n : (p * i) / (1 - Math.pow(1 + i, -n))
       return {
+        kind: 'NOVO' as const,
         parcela1: pmt,
         juros1: p * i,
         amort1: pmt - p * i,
@@ -189,8 +245,9 @@ export default function NovoEmprestimoPage({
       const amort = p / n
       const juros1 = p * i
       const pmt1 = amort + juros1
-      const totalJuros = (p * i * (n + 1)) / 2 // soma juros SAC simplificada
+      const totalJuros = (p * i * (n + 1)) / 2
       return {
+        kind: 'NOVO' as const,
         parcela1: pmt1,
         juros1,
         amort1: amort,
@@ -198,7 +255,17 @@ export default function NovoEmprestimoPage({
         totalJuros,
       }
     }
-  }, [form.principal, form.interestRateMonthly, form.termMonths, form.amortizationSystem])
+  }, [
+    modo,
+    form.principal,
+    form.interestRateMonthly,
+    form.termMonths,
+    form.amortizationSystem,
+    form.outstandingBalanceInitial,
+    form.futureCount,
+    form.amortizationConstant,
+    form.rateType,
+  ])
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
@@ -264,6 +331,8 @@ export default function NovoEmprestimoPage({
               tarifas: parseFloat(form.tarifas || '0'),
               carencia: parseInt(form.carencia || '0', 10),
               futureCount: parseInt(form.futureCount, 10),
+              paymentOverrides:
+                paymentOverrides.length > 0 ? paymentOverrides : undefined,
             }
       const res = await fetch(`/api/empresas/${empresaId}/emprestimos`, {
         method: 'POST',
@@ -736,19 +805,62 @@ export default function NovoEmprestimoPage({
           </CardContent>
         </Card>
 
-        {preview && (
+        {preview && preview.kind === 'NOVO' && (
           <Card className="border-primary/20 bg-primary/5">
             <CardContent className="p-4 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
               <div className="flex items-center gap-2 col-span-2 md:col-span-4">
                 <Calculator className="h-4 w-4 text-primary" />
                 <span className="text-xs font-semibold text-muted-foreground">
-                  Pré-visualização ({form.amortizationSystem})
+                  Pré-visualização ({form.amortizationSystem}) — empréstimo novo
                 </span>
               </div>
               <Box label="1ª parcela" value={formatBRL(preview.parcela1)} />
               <Box label="Juros (1ª)" value={formatBRL(preview.juros1)} tone="muted" />
               <Box label="Total pago" value={formatBRL(preview.totalPago)} />
               <Box label="Total juros" value={formatBRL(preview.totalJuros)} tone="muted" />
+            </CardContent>
+          </Card>
+        )}
+
+        {preview && preview.kind === 'EM_ANDAMENTO' && (
+          <Card className="border-primary/20 bg-primary/5">
+            <CardContent className="p-4 space-y-3 text-sm">
+              <div className="flex items-center gap-2">
+                <Calculator className="h-4 w-4 text-primary" />
+                <span className="text-xs font-semibold text-muted-foreground">
+                  Pré-visualização — empréstimo em andamento ({form.amortizationSystem}
+                  {preview.isPosFixed ? ' · pós-fixado' : ' · pré-fixado'})
+                </span>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <Box label="Saldo devedor" value={formatBRL(preview.saldoDevedor)} />
+                <Box label="Parcelas futuras" value={String(preview.futuras)} tone="muted" />
+                <Box label="Amortização constante" value={formatBRL(preview.amortConst)} />
+                <Box
+                  label={preview.isPosFixed ? 'Juros pré (1ª, estimado)' : 'Juros (1ª)'}
+                  value={formatBRL(preview.juros1Estimado)}
+                  tone="muted"
+                />
+              </div>
+              {preview.isPosFixed ? (
+                <div className="rounded border border-amber-200 bg-amber-50/40 px-3 py-2 text-xs text-amber-900 space-y-1">
+                  <p className="font-medium">⚠ Pós-fixado — não dá pra prever o total</p>
+                  <p className="text-amber-800/80">
+                    A parcela <strong>varia com o {form.indexer || 'CDI'}</strong>. A taxa pré (
+                    <strong>{form.interestRateMonthly}% a.m.</strong>) é só o spread fixo; a
+                    correção {form.indexer || 'CDI'} entra por cima e <strong>só é conhecida
+                    quando a parcela debita no extrato</strong>. Estimativa de juros pré pra todas
+                    as {preview.futuras} parcelas futuras: ~
+                    <strong>{formatBRL(preview.jurosPreFuturoEstimado)}</strong> + correção{' '}
+                    {form.indexer || 'CDI'} variável.
+                  </p>
+                </div>
+              ) : (
+                <p className="text-[11px] text-muted-foreground">
+                  Estimativa de juros pré pra todas as {preview.futuras} parcelas futuras: ~
+                  <strong>{formatBRL(preview.jurosPreFuturoEstimado)}</strong>
+                </p>
+              )}
             </CardContent>
           </Card>
         )}
