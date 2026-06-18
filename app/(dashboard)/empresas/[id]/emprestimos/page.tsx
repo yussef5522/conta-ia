@@ -22,6 +22,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Header } from '@/components/layout/header'
 import { formatBRL } from '@/lib/format/money'
+import { fmtRateMonthly } from '@/lib/loans/format'
 
 interface LoanRow {
   id: string
@@ -56,8 +57,7 @@ interface CarteiraResponse {
 const fmtDate = (iso: string) =>
   new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })
 
-const fmtRate = (r: number) =>
-  `${(r * 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}% a.m.`
+const fmtRate = fmtRateMonthly
 
 function StatusPill({ s }: { s: LoanRow['statusVisual'] }) {
   if (s === 'QUITADO')

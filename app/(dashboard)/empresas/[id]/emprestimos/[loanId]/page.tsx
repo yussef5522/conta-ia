@@ -24,6 +24,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { Header } from '@/components/layout/header'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { formatBRL } from '@/lib/format/money'
+import { fmtRateMonthly } from '@/lib/loans/format'
 import { CandidatosDialog } from './_components/candidatos-dialog'
 
 const SaldoDevedorChart = dynamic(
@@ -92,7 +93,7 @@ interface LoanDetalhe {
 const fmtDate = (iso: string) =>
   new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: '2-digit' })
 
-const fmtRate = (r: number) => `${(r * 100).toFixed(2)}% a.m.`
+const fmtRate = fmtRateMonthly
 
 function StatusInstallment({ s }: { s: 'PAID' | 'OPEN' | 'LATE' }) {
   if (s === 'PAID')
