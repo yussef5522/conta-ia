@@ -111,6 +111,17 @@ export async function GET(request: NextRequest, { params }: Params) {
         iof: loan.iof,
         disbursementDate: loan.disbursementDate.toISOString(),
         status: loan.status,
+        // Fix detalhe EM_ANDAMENTO (17/06/2026): expõe campos pra UI detectar
+        // que o empréstimo entrou pelo saldo devedor (não pelo principal).
+        // Quando outstandingBalanceInitial != null, é em-andamento → badge
+        // de "liberação não linkada" NÃO se aplica (liberação foi anterior
+        // ao período do CAIXAOS, nunca entrou como receita no DRE).
+        outstandingBalanceInitial: loan.outstandingBalanceInitial,
+        installmentsPaidBefore: loan.installmentsPaidBefore,
+        trackingStartDate: loan.trackingStartDate?.toISOString() ?? null,
+        rateType: loan.rateType,
+        indexer: loan.indexer,
+        indexerPercent: loan.indexerPercent,
         bankAccount: loan.bankAccount,
         disbursementTransaction: loan.disbursementTransaction
           ? {
