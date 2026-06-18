@@ -167,22 +167,39 @@ function calculateForPeriod(
     // mas o engine puro também ignora pra casos de uso futuros (testes, batch).
     if (tx.type === 'TRANSFER') continue
 
+    // Sprint Empréstimos Backend (17/06/2026):
+    // (a) Liberação de empréstimo = entrada de PASSIVO, não receita. Pula.
+    if (tx.isLoanDisbursement) continue
+
+    // (b) Pagamento de parcela: usa SÓ os juros (loanInterestSplit) como
+    //     amount efetivo no DRE. A amortização (= amount original - juros)
+    //     é baixa de passivo, NÃO entra. categoryId DEVE estar setado pelo
+    //     caller (categoria "Juros sobre Empréstimos" / DESPESAS_FINANCEIRAS).
+    //     Se loanInterestSplit é 0, a parcela toda foi amortização — ignora.
+    const txAmount =
+      tx.loanInterestSplit !== undefined && tx.loanInterestSplit !== null
+        ? tx.loanInterestSplit
+        : tx.amount
+    if (tx.loanInterestSplit !== undefined && tx.loanInterestSplit !== null && txAmount === 0) {
+      continue
+    }
+
     if (!tx.categoryId) {
-      uncatTotal += tx.amount
+      uncatTotal += txAmount
       uncatCount++
       continue
     }
 
     const cat = catById.get(tx.categoryId)
     if (!cat) {
-      uncatTotal += tx.amount
+      uncatTotal += txAmount
       uncatCount++
       continue
     }
 
     const dreGroup = cat.dreGroup
     if (!dreGroup) {
-      uncatTotal += tx.amount
+      uncatTotal += txAmount
       uncatCount++
       continue
     }
@@ -191,18 +208,18 @@ function calculateForPeriod(
       if (!byDreGroup.has(dreGroup)) byDreGroup.set(dreGroup, new Map())
       const groupMap = byDreGroup.get(dreGroup)!
       const existing = groupMap.get(tx.categoryId) ?? { total: 0, count: 0 }
-      existing.total += tx.amount
+      existing.total += txAmount
       existing.count++
       groupMap.set(tx.categoryId, existing)
     } else if (NON_DRE_GROUP_SET.has(dreGroup)) {
       const key = dreGroup as NonDREGroup
       const existing = byNonDreGroup.get(key) ?? { total: 0, count: 0 }
-      existing.total += tx.amount
+      existing.total += txAmount
       existing.count++
       byNonDreGroup.set(key, existing)
     } else {
       // dreGroup desconhecido (string fora do enum) — vai pra uncategorized
-      uncatTotal += tx.amount
+      uncatTotal += txAmount
       uncatCount++
     }
   }

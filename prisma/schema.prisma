@@ -180,6 +180,9 @@ model Company {
   monitorMetrics MonitorMetric[]
   monitorAlerts  MonitorAlert[]
 
+  // Sprint Empréstimos (17/06/2026) — passivo financeiro
+  loans          Loan[]
+
   @@map("companies")
 }
 
@@ -253,6 +256,9 @@ model BankAccount {
   importStagings ImportStaging[]
   // Fase 4 (12/06/2026)
   importWarnings ImportWarning[]
+
+  // Sprint Empréstimos (17/06/2026)
+  loans Loan[]
 
   @@map("bank_accounts")
 }
@@ -408,6 +414,13 @@ model Transaction {
   // Fase 4 (12/06/2026) — warnings de duplicação pós-import
   warningsAsNew          ImportWarning[] @relation("ImportWarningNewTx")
   warningsAsSuspectedDup ImportWarning[] @relation("ImportWarningSuspectedDup")
+
+  // Sprint Empréstimos (17/06/2026)
+  // - loanDisbursement: tx é liberação de algum Loan (CREDIT entrada de passivo).
+  // - loanInstallmentPaid: tx é pagamento de parcela de algum LoanInstallment.
+  // SetNull no delete pra preservar histórico financeiro sem cascade nada.
+  loanDisbursement      Loan?            @relation("LoanDisbursement")
+  loanInstallmentPaid   LoanInstallment? @relation("LoanInstallmentReconcile")
 
   @@unique([bankAccountId, dedupHash])
   // Sprint 4.0.1.b — anti-dup: schedule X só gera 1 tx por dueDate
@@ -2505,4 +2518,74 @@ model MonitorAlert {
 
   @@index([companyId, dismissedAt, detectedAt(sort: Desc)])
   @@map("monitor_alerts")
+}
+
+// ============================================================================
+// Sprint Empréstimos (17/06/2026) — passivo financeiro genérico (N bancos, N
+// empréstimos por empresa). Modelo PRICE/SAC + auto-conciliação por parcela.
+//
+// Contabilidade (consenso QuickBooks + CPC BR):
+//   - Liberação = entrada de passivo, NÃO receita → fora do DRE.
+//   - Cada parcela: amortização baixa passivo (NÃO despesa) + juros = despesa
+//     financeira. Só juros entram no DRE.
+//   - IOF + tarifas da contratação = despesa financeira (UI decide cadastro).
+//   - Curto prazo (≤12m) circulante; longo (>12m) não circulante.
+// ============================================================================
+
+model Loan {
+  id            String   @id @default(cuid())
+  companyId     String
+  company       Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  // Conta que recebe a liberação E paga as parcelas.
+  bankAccountId String
+  bankAccount   BankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
+
+  lender              String   // ex: "Banrisul", "Sicredi"
+  contractNumber      String?  // pode ser usado pra match forte na conciliação
+  principal           Float    // valor liberado (sem IOF)
+  interestRateMonthly Float    // taxa mensal (0.025 = 2.5% a.m.)
+  termMonths          Int      // total de parcelas
+  amortizationSystem  String   // 'PRICE' | 'SAC'
+  firstDueDate        DateTime
+  iof                 Float    @default(0)
+  disbursementDate    DateTime
+
+  // Tx de liberação no extrato (CREDIT) — vincula a Loan p/ DRE excluir.
+  disbursementTransactionId String?      @unique
+  disbursementTransaction   Transaction? @relation("LoanDisbursement", fields: [disbursementTransactionId], references: [id], onDelete: SetNull)
+
+  status    String   @default("ACTIVE") // ACTIVE | PAID_OFF | LATE
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  installments LoanInstallment[]
+
+  @@index([companyId])
+  @@index([bankAccountId])
+  @@index([contractNumber])
+  @@map("loans")
+}
+
+model LoanInstallment {
+  id             String   @id @default(cuid())
+  loanId         String
+  loan           Loan     @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  number         Int      // 1, 2, 3, …, termMonths
+  dueDate        DateTime
+  openingBalance Float    // saldo devedor antes da parcela
+  interest       Float    // juros da parcela (saldo * i)
+  amortization   Float    // amortização (PMT - juros pra PRICE; P/n pra SAC)
+  payment        Float    // valor total da parcela (interest + amortization)
+  closingBalance Float    // saldo devedor após a parcela (== openingBalance - amortization)
+
+  status                   String    @default("OPEN") // OPEN | PAID | LATE
+  paidDate                 DateTime?
+  reconciledTransactionId  String?   @unique
+  reconciledTransaction    Transaction? @relation("LoanInstallmentReconcile", fields: [reconciledTransactionId], references: [id], onDelete: SetNull)
+  createdAt                DateTime @default(now())
+
+  @@unique([loanId, number])
+  @@index([dueDate])
+  @@index([status])
+  @@map("loan_installments")
 }

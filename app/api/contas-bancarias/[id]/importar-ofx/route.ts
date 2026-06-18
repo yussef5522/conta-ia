@@ -376,6 +376,22 @@ export async function POST(request: NextRequest, { params }: Params) {
       ),
     ])
 
+    // Sprint Empréstimos Backend (17/06/2026) — auto-concilia parcelas
+    // OPEN com DEBITs novos da conta. Falha silenciosa: erro não mata o
+    // import (try/catch como scan-retroativo de transferência).
+    try {
+      const { autoConciliarParcelas } = await import('@/lib/loans/auto-conciliacao')
+      const r = await autoConciliarParcelas(prisma, conta.companyId)
+      if (r.matched.length > 0) {
+        console.log(
+          `[IMPORT-OFX] auto-conciliou ${r.matched.length} parcela(s) de empréstimo ` +
+            `(${r.ambiguous.length} ambíguas) — company=${conta.companyId}`,
+        )
+      }
+    } catch (e) {
+      console.error('[IMPORT-OFX] auto-conciliação empréstimo falhou:', e)
+    }
+
     // Recalcula balance ANCORADO no LEDGERBAL.
     // Conta SEM ledgerBal: usa SUM(signed) total.
     // Conta COM ledgerBal: usa ledgerBal + SUM(tx pós-ledgerBalDate).

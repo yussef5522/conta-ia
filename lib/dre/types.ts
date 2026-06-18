@@ -133,6 +133,24 @@ export interface TransactionForDRE {
   competenceDate: Date | null
   paymentDate: Date | null
   categoryId: string | null
+
+  // ============================================================
+  // Sprint Empréstimos Backend (17/06/2026)
+  // ============================================================
+  /**
+   * True quando a tx é a LIBERAÇÃO de algum Loan (CREDIT que entrou na conta
+   * como passivo, não receita). O engine PULA essas tx — não conta como
+   * receita do DRE. Caller resolve via Loan.disbursementTransactionId.
+   */
+  isLoanDisbursement?: boolean
+  /**
+   * Quando setado, a tx é PAGAMENTO DE PARCELA de empréstimo. O engine usa
+   * APENAS este valor (juros) no DRE, ignorando o amount original. A
+   * amortização (= amount - loanInterestSplit) NÃO entra no DRE — é baixa
+   * de passivo, não despesa. Caller resolve via
+   * LoanInstallment.reconciledTransactionId + installment.interest.
+   */
+  loanInterestSplit?: number
 }
 
 export interface CategoryForDRE {
