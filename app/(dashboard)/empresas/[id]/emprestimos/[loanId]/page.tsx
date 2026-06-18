@@ -45,6 +45,13 @@ interface LoanDetalhe {
     iof: number
     disbursementDate: string
     status: 'ACTIVE' | 'PAID_OFF' | 'LATE'
+    // Fix EM_ANDAMENTO: campos pra detectar empréstimo herdado (saldo inicial)
+    outstandingBalanceInitial: number | null
+    installmentsPaidBefore: number
+    trackingStartDate: string | null
+    rateType: 'PRE' | 'POS' | null
+    indexer: 'CDI' | 'SELIC' | 'IPCA' | null
+    indexerPercent: number | null
     bankAccount: { id: string; name: string; bankName: string | null }
     disbursementTransaction: {
       id: string
@@ -90,8 +97,22 @@ interface LoanDetalhe {
   chartPoints: Array<{ x: number; label: string; saldoDevedor: number }>
 }
 
-const fmtDate = (iso: string) =>
-  new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: '2-digit' })
+// Fix off-by-one (17/06/2026): ISO `YYYY-MM-DD` sem timezone vira UTC
+// midnight; em BRT-3 toLocaleDateString mostra o dia anterior. Parsea
+// pelos componentes Y/M/D pra evitar deslocamento de fuso. Quando a string
+// tem hora (datetime ISO completo), também só pega Y-M-D — pra data
+// contábil de empréstimo, hora não importa.
+const fmtDate = (iso: string) => {
+  if (!iso) return '—'
+  const ymd = iso.slice(0, 10) // "2021-10-19"
+  const [y, m, d] = ymd.split('-').map(Number)
+  if (!y || !m || !d) return '—'
+  return new Date(y, m - 1, d).toLocaleDateString('pt-BR', {
+    day: '2-digit',
+    month: 'short',
+    year: '2-digit',
+  })
+}
 
 const fmtRate = fmtRateMonthly
 
@@ -213,11 +234,31 @@ export default function DetalheEmprestimoPage({
         >
           {loan.status === 'PAID_OFF' ? 'Quitado' : 'Ativo'}
         </Badge>
-        {!loan.disbursementTransaction && (
-          <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
-            <AlertTriangle className="h-3 w-3 mr-1" />
-            Liberação não linkada — receita fake no DRE
+        {/* Fix badge EM_ANDAMENTO (17/06/2026):
+            - Empréstimo EM ANDAMENTO (outstandingBalanceInitial setado): a
+              liberação foi ANTES do período do CAIXAOS, NUNCA entrou como
+              receita no DRE → badge alarmista é falso positivo. Mostra
+              badge neutro "Em andamento · liberação anterior ao período".
+            - Empréstimo NOVO sem tx linkada + status≠QUITADO: aí sim, é
+              receita fake no DRE → badge amber alarmista correto. */}
+        {loan.outstandingBalanceInitial !== null ? (
+          <Badge
+            variant="outline"
+            className="bg-slate-50 text-slate-700 border-slate-200"
+          >
+            Em andamento · liberação anterior ao período
           </Badge>
+        ) : (
+          !loan.disbursementTransaction &&
+          loan.status !== 'PAID_OFF' && (
+            <Badge
+              variant="outline"
+              className="bg-amber-50 text-amber-700 border-amber-200"
+            >
+              <AlertTriangle className="h-3 w-3 mr-1" />
+              Liberação não linkada — receita fake no DRE
+            </Badge>
+          )
         )}
       </div>
 
