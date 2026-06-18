@@ -45,6 +45,14 @@ export interface MidLifeScheduleInput {
    * padrão (amort + interest + correção estimada uniforme).
    */
   paymentOverrides?: Map<number, number>
+  /**
+   * Sprint Fix-PRICE (17/06/2026) — parcela FIXA do contrato PRICE.
+   * Quando passado, ramo PRICE usa esse valor em vez de recalcular PMT
+   * (recalculo do PMT diverge da parcela real do contrato por day-count
+   * e arredondamento bancário; pode dar +R$ 15 vs o que o banco cobra).
+   * Amortização cresce: amort_t = fixedPayment - juros_t (saldo×i).
+   */
+  fixedPayment?: number
 }
 
 export interface MidLifeScheduleRow {
@@ -84,11 +92,15 @@ export function generateMidLifeSchedule(input: MidLifeScheduleInput): MidLifeSch
   let saldo = round2(outstandingBalance)
 
   if (system === 'PRICE') {
+    // Sprint Fix-PRICE: fixedPayment do contrato VENCE. Quando ausente,
+    // recalcula PMT (modo legado / cálculo "do zero").
     const pmt =
-      rateMonthly === 0
-        ? outstandingBalance / futureCount
-        : (outstandingBalance * rateMonthly) /
-          (1 - Math.pow(1 + rateMonthly, -futureCount))
+      input.fixedPayment && input.fixedPayment > 0
+        ? input.fixedPayment
+        : rateMonthly === 0
+          ? outstandingBalance / futureCount
+          : (outstandingBalance * rateMonthly) /
+            (1 - Math.pow(1 + rateMonthly, -futureCount))
     const pmtR = round2(pmt)
     for (let k = 0; k < futureCount; k++) {
       const isLast = k === futureCount - 1
