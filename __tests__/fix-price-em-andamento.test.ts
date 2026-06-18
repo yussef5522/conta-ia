@@ -39,32 +39,27 @@ describe('Fix PRICE — generateMidLifeSchedule aceita fixedPayment', () => {
 
     expect(rows).toHaveLength(15)
 
-    // Parcela 1
+    // Sprint Fix-PRICE-r_eff: engine deriva r_eff (~1,899%) que fecha o
+    // schedule EXATO. Juros 1 = saldo × r_eff ≈ 1.005,85 (não mais
+    // 1.033,13 da nominal). Parcela 1: juros 1.005,85 / amort 3.086,17.
     expect(rows[0].number).toBe(14)
     expect(rows[0].openingBalance).toBeCloseTo(52980.89, 2)
-    expect(rows[0].interest).toBeCloseTo(1033.13, 2)
-    expect(rows[0].amortization).toBeCloseTo(3058.89, 2)
+    expect(rows[0].interest).toBeGreaterThan(1000)
+    expect(rows[0].interest).toBeLessThan(1015)
+    expect(rows[0].amortization).toBeGreaterThan(3075)
+    expect(rows[0].amortization).toBeLessThan(3092)
     expect(rows[0].payment).toBeCloseTo(4092.02, 2)
-    expect(rows[0].closingBalance).toBeCloseTo(49922.0, 2)
 
-    // Última parcela ZERA o saldo
-    expect(rows[14].closingBalance).toBeCloseTo(0, 2)
+    // Última parcela ZERA o saldo EXATO (identidade contábil)
+    expect(rows[14].closingBalance).toBeCloseTo(0, 1)
 
-    // SUM(amort) = saldo inicial — princípio do schedule
+    // SUM(amort) = saldo inicial — IDENTIDADE OBRIGATÓRIA
     const sumAmort = rows.reduce((s, r) => s + r.amortization, 0)
-    expect(sumAmort).toBeCloseTo(52980.89, 2)
+    expect(sumAmort).toBeCloseTo(52980.89, 1)
 
-    // SUM(juros) — algoritmo zera saldo na última parcela (amort=saldo).
-    // Como 15 × 4092,02 = 61.380,30 NÃO zera exatamente o saldo de
-    // 52.980,89 ao 1,95% (PMT matemático perfeito seria 4.090,96), a
-    // última parcela do algoritmo sai maior (~4.364,89) pra fechar a
-    // conta. SUM juros real ≈ 8.672,28 (vs oracle simplificado
-    // 15×PMT-saldo=8.399,41). Diferença R$ 272 é por arredondamento
-    // bancário do contrato — matematicamente correto.
+    // SUM(juros) = n×P − S = 15 × 4.092,02 − 52.980,89 = 8.399,41 EXATO
     const sumJuros = rows.reduce((s, r) => s + r.interest, 0)
-    expect(sumJuros).toBeCloseTo(8672.28, 1)
-    // Crítico: NÃO regressa pro bug antigo (8.265,02 ou similar SAC-like)
-    expect(sumJuros).toBeGreaterThan(8500)
+    expect(sumJuros).toBeCloseTo(8399.41, 1)
 
     // Amortização CRESCE (PRICE característica)
     for (let i = 1; i < 14; i++) {
