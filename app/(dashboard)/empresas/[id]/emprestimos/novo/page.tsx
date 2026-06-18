@@ -30,6 +30,7 @@ import {
 import { useToast } from '@/components/ui/use-toast'
 import { Header } from '@/components/layout/header'
 import { formatBRL } from '@/lib/format/money'
+import { fmtPercentValue, cleanFloat } from '@/lib/loans/format'
 
 interface BankAccount {
   id: string
@@ -130,7 +131,10 @@ export default function NovoEmprestimoPage({
       if (e.principal) next.principal = String(e.principal)
       if (e.iof !== null) next.iof = String(e.iof)
       if (e.tarifas !== null) next.tarifas = String(e.tarifas)
-      if (e.taxaPreMensal !== null) next.interestRateMonthly = String(e.taxaPreMensal * 100)
+      // Sprint Fix-Arredondamento: cleanFloat elimina lixo de float
+      // (0.0035 * 100 = 0.35000000000000003 → 0.35)
+      if (e.taxaPreMensal !== null)
+        next.interestRateMonthly = String(cleanFloat(e.taxaPreMensal * 100))
       if (e.nParcelas) next.termMonths = String(e.nParcelas)
       if (e.carencia !== null) next.carencia = String(e.carencia)
       if (e.amortizacaoConstante !== null) next.amortizationConstant = String(e.amortizacaoConstante)
@@ -847,7 +851,7 @@ export default function NovoEmprestimoPage({
                   <p className="font-medium">⚠ Pós-fixado — não dá pra prever o total</p>
                   <p className="text-amber-800/80">
                     A parcela <strong>varia com o {form.indexer || 'CDI'}</strong>. A taxa pré (
-                    <strong>{form.interestRateMonthly}% a.m.</strong>) é só o spread fixo; a
+                    <strong>{fmtPercentValue(form.interestRateMonthly)}% a.m.</strong>) é só o spread fixo; a
                     correção {form.indexer || 'CDI'} entra por cima e <strong>só é conhecida
                     quando a parcela debita no extrato</strong>. Estimativa de juros pré pra todas
                     as {preview.futuras} parcelas futuras: ~
