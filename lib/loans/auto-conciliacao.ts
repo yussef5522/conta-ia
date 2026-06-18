@@ -46,6 +46,10 @@ const STRONG_DATE_WINDOW_DAYS = 3
 const AMBIGUOUS_DATE_WINDOW_DAYS = 5
 const MS_PER_DAY = 24 * 60 * 60 * 1000
 
+function round2(n: number): number {
+  return Math.round((n + Number.EPSILON) * 100) / 100
+}
+
 function diffDays(a: Date, b: Date): number {
   return Math.abs(a.getTime() - b.getTime()) / MS_PER_DAY
 }
@@ -78,9 +82,19 @@ export async function autoConciliarParcelas(
       id: true,
       bankAccountId: true,
       contractNumber: true,
+      interestRateMonthly: true,
       installments: {
         where: { status: 'OPEN' },
-        select: { id: true, number: true, dueDate: true, payment: true, interest: true, amortization: true },
+        select: {
+          id: true,
+          number: true,
+          dueDate: true,
+          payment: true,
+          interest: true,
+          amortization: true,
+          openingBalance: true,
+          isEstimate: true,
+        },
         orderBy: { number: 'asc' },
       },
     },
@@ -133,11 +147,22 @@ export async function autoConciliarParcelas(
         const amountDiff = Math.abs(tx.amount - ins.payment)
         const dateDiff = diffDays(tx.date, ins.dueDate)
 
+        // Sprint AI/Contrato (17/06/2026) — tolerância expandida pra ESTIMATE
+        // (pós-fixado): o valor real pode variar significativamente do estimado
+        // por causa da correção CDI. Aceita até 25% de diff quando contrato bate
+        // ou ±15% genérico.
+        const strongAmountTol = ins.isEstimate
+          ? Math.max(ins.payment * 0.05, STRONG_AMOUNT_TOL)
+          : STRONG_AMOUNT_TOL
+        const ambiguousAmountTol = ins.isEstimate
+          ? Math.max(ins.payment * 0.15, AMBIGUOUS_AMOUNT_TOL)
+          : AMBIGUOUS_AMOUNT_TOL
+
         // (1) contractNumber match
         if (
           contractKey &&
           normalizeForContractMatch(tx.description).includes(contractKey) &&
-          amountDiff <= STRONG_AMOUNT_TOL
+          amountDiff <= (ins.isEstimate ? Math.max(ins.payment * 0.30, STRONG_AMOUNT_TOL) : strongAmountTol)
         ) {
           strongMatch = { tx, reason: 'CONTRACT_NUMBER' }
           break
@@ -155,22 +180,55 @@ export async function autoConciliarParcelas(
           continue
         }
 
-        // (3) janela mais larga = ambíguo
-        if (amountDiff <= AMBIGUOUS_AMOUNT_TOL && dateDiff <= AMBIGUOUS_DATE_WINDOW_DAYS) {
+        // (3) janela mais larga = ambíguo (ou strong quando ESTIMATE com janela curta)
+        if (amountDiff <= ambiguousAmountTol && dateDiff <= AMBIGUOUS_DATE_WINDOW_DAYS) {
           ambiguousCandidates.push(tx)
         }
       }
 
       if (strongMatch) {
         try {
+          // Sprint AI/Contrato (17/06/2026):
+          // Quando ins.isEstimate (pós-fixado), recalcula juros + correção +
+          // closingBalance com base no realPayment. Mantém amortização constante
+          // (= ins.amortization), porque é fixa pelo SAC.
+          //   juros     = openingBalance * rateMonthly (fixo pelo contrato)
+          //   correcao  = realPayment - amortization - juros
+          //   closing   = openingBalance - amortization
+          // realPayment é salvo na coluna pra DRE enrichment usar.
+          const realPayment = strongMatch.tx.amount
+          let updateData: {
+            status: string
+            paidDate: Date
+            reconciledTransactionId: string
+            realPayment: number
+            interest?: number
+            correcao?: number
+            closingBalance?: number
+            payment?: number
+          } = {
+            status: 'PAID',
+            paidDate: strongMatch.tx.date,
+            reconciledTransactionId: strongMatch.tx.id,
+            realPayment,
+          }
+          if (ins.isEstimate) {
+            const interest = round2(ins.openingBalance * loan.interestRateMonthly)
+            const correcao = round2(realPayment - ins.amortization - interest)
+            const closingBalance = round2(ins.openingBalance - ins.amortization)
+            updateData = {
+              ...updateData,
+              interest,
+              correcao,
+              closingBalance,
+              payment: realPayment,
+            }
+          }
+
           await prisma.$transaction(async (txClient) => {
             const upd = await txClient.loanInstallment.updateMany({
               where: { id: ins.id, status: 'OPEN', reconciledTransactionId: null },
-              data: {
-                status: 'PAID',
-                paidDate: strongMatch!.tx.date,
-                reconciledTransactionId: strongMatch!.tx.id,
-              },
+              data: updateData,
             })
             if (upd.count !== 1) {
               throw new Error('Race: installment já foi marcada')
@@ -181,8 +239,10 @@ export async function autoConciliarParcelas(
             installmentId: ins.id,
             installmentNumber: ins.number,
             transactionId: strongMatch.tx.id,
-            payment: ins.payment,
-            interest: ins.interest,
+            payment: ins.isEstimate ? realPayment : ins.payment,
+            interest: ins.isEstimate
+              ? round2(ins.openingBalance * loan.interestRateMonthly)
+              : ins.interest,
             amortization: ins.amortization,
             reason: strongMatch.reason,
           })

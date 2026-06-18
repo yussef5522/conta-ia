@@ -16,8 +16,11 @@ export interface LoanContextRow {
 export interface InstallmentContextRow {
   /** LoanInstallment.reconciledTransactionId não-nulo */
   reconciledTransactionId: string
-  /** LoanInstallment.interest (parte da parcela que é despesa financeira) */
+  /** LoanInstallment.interest (juros pré) */
   interest: number
+  /** Sprint AI/Contrato — correção pós-fixado (CDI/SELIC/IPCA).
+   *  DRE conta interest + correcao como DESPESAS_FINANCEIRAS. */
+  correcao?: number
 }
 
 export interface LoanContext {
@@ -40,7 +43,11 @@ export function enrichTransactionsForDRE(
   const interestByTxId = new Map<string, number>()
   for (const i of ctx.installments) {
     if (i.reconciledTransactionId) {
-      interestByTxId.set(i.reconciledTransactionId, i.interest)
+      // DRE pega juros + correção. Amortização fora (baixa de passivo).
+      interestByTxId.set(
+        i.reconciledTransactionId,
+        Math.round((i.interest + (i.correcao ?? 0)) * 100) / 100,
+      )
     }
   }
 

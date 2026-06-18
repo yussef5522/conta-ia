@@ -151,9 +151,16 @@ export async function GET(request: NextRequest, { params }: Params) {
 }
 
 // ============================================================================
-// POST — cria Loan + generateSchedule
+// POST — cria Loan + schedule
+//
+// 2 modos:
+//   NOVO         → passivo = principal; generateSchedule gera todas as parcelas
+//   EM_ANDAMENTO → passivo = outstandingBalanceInitial (saldo devedor ATUAL);
+//                  generateMidLifeSchedule gera SÓ as parcelas futuras;
+//                  parcelas já pagas viram installmentsPaidBefore (histórico).
 // ============================================================================
-const createSchema = z.object({
+const createNovoSchema = z.object({
+  modo: z.literal('NOVO').optional().default('NOVO'),
   bankAccountId: z.string().cuid(),
   lender: z.string().min(1).max(80),
   contractNumber: z.string().min(1).max(40).optional().nullable(),
@@ -163,8 +170,48 @@ const createSchema = z.object({
   amortizationSystem: z.enum(['PRICE', 'SAC']),
   firstDueDate: z.coerce.date(),
   iof: z.coerce.number().min(0).default(0),
+  tarifas: z.coerce.number().min(0).default(0),
   disbursementDate: z.coerce.date(),
+  rateType: z.enum(['PRE', 'POS']).optional().default('PRE'),
+  indexer: z.enum(['CDI', 'SELIC', 'IPCA']).optional().nullable(),
+  indexerPercent: z.coerce.number().min(0).max(1000).optional().nullable(),
+  carencia: z.coerce.number().int().min(0).max(60).default(0),
 })
+
+const createMidLifeSchema = z.object({
+  modo: z.literal('EM_ANDAMENTO'),
+  bankAccountId: z.string().cuid(),
+  lender: z.string().min(1).max(80),
+  contractNumber: z.string().min(1).max(40).optional().nullable(),
+  /** Saldo devedor ATUAL — esse é o passivo que entra. */
+  outstandingBalanceInitial: z.coerce.number().positive(),
+  /** Total de parcelas do contrato (informativo) */
+  termMonths: z.coerce.number().int().min(1).max(480),
+  /** Quantas parcelas já foram pagas ANTES da entrada (informativo) */
+  installmentsPaidBefore: z.coerce.number().int().min(0).max(480),
+  /** Taxa pré mensal (decimal) */
+  interestRateMonthly: z.coerce.number().min(0).max(1),
+  amortizationSystem: z.enum(['PRICE', 'SAC']),
+  /** SAC: amortização constante extraída do contrato */
+  amortizationConstant: z.coerce.number().positive().optional().nullable(),
+  /** Pós-fixado quando indexer presente */
+  rateType: z.enum(['PRE', 'POS']),
+  indexer: z.enum(['CDI', 'SELIC', 'IPCA']).optional().nullable(),
+  indexerPercent: z.coerce.number().min(0).max(1000).optional().nullable(),
+  /** Estimativa mensal de correção pra pós-fixado (opcional, cliente decide) */
+  estimatedCorrectionMonthly: z.coerce.number().min(0).max(0.5).optional().default(0),
+  /** Data da PRÓXIMA parcela (a 1ª futura) */
+  firstDueDate: z.coerce.date(),
+  trackingStartDate: z.coerce.date(),
+  disbursementDate: z.coerce.date(),
+  iof: z.coerce.number().min(0).default(0),
+  tarifas: z.coerce.number().min(0).default(0),
+  carencia: z.coerce.number().int().min(0).max(60).default(0),
+  /** Quantas parcelas FUTURAS gerar (= termMonths - installmentsPaidBefore) */
+  futureCount: z.coerce.number().int().min(1).max(480),
+})
+
+const createSchema = z.union([createMidLifeSchema, createNovoSchema])
 
 export async function POST(request: NextRequest, { params }: Params) {
   try {
@@ -175,39 +222,101 @@ export async function POST(request: NextRequest, { params }: Params) {
     const body = await request.json()
     const data = createSchema.parse(body)
 
-    // Multi-tenant: confirma que bankAccount pertence à empresa
     const conta = await prisma.bankAccount.findUnique({
       where: { id: data.bankAccountId },
       select: { id: true, companyId: true },
     })
     if (!conta || conta.companyId !== empresaId) {
-      return NextResponse.json(
-        { erro: 'Conta bancária inválida' },
-        { status: 400 },
-      )
+      return NextResponse.json({ erro: 'Conta bancária inválida' }, { status: 400 })
     }
 
-    const schedule = generateSchedule({
-      principal: data.principal,
-      rateMonthly: data.interestRateMonthly,
-      termMonths: data.termMonths,
-      system: data.amortizationSystem,
-      firstDueDate: data.firstDueDate,
+    // ====== Modo NOVO (padrão) ======
+    if (data.modo === 'NOVO' || data.modo === undefined) {
+      const d = data as z.infer<typeof createNovoSchema>
+      const schedule = generateSchedule({
+        principal: d.principal,
+        rateMonthly: d.interestRateMonthly,
+        termMonths: d.termMonths,
+        system: d.amortizationSystem,
+        firstDueDate: d.firstDueDate,
+      })
+
+      const loan = await prisma.loan.create({
+        data: {
+          companyId: empresaId,
+          bankAccountId: d.bankAccountId,
+          lender: d.lender,
+          contractNumber: d.contractNumber ?? null,
+          principal: d.principal,
+          interestRateMonthly: d.interestRateMonthly,
+          termMonths: d.termMonths,
+          amortizationSystem: d.amortizationSystem,
+          firstDueDate: d.firstDueDate,
+          iof: d.iof,
+          tarifas: d.tarifas,
+          disbursementDate: d.disbursementDate,
+          rateType: d.rateType,
+          indexer: d.indexer ?? null,
+          indexerPercent: d.indexerPercent ?? null,
+          carencia: d.carencia,
+          installments: {
+            create: schedule.map((r) => ({
+              number: r.number,
+              dueDate: r.dueDate,
+              openingBalance: r.openingBalance,
+              interest: r.interest,
+              amortization: r.amortization,
+              payment: r.payment,
+              closingBalance: r.closingBalance,
+            })),
+          },
+        },
+        include: { installments: { orderBy: { number: 'asc' } } },
+      })
+      return NextResponse.json({ loan }, { status: 201 })
+    }
+
+    // ====== Modo EM_ANDAMENTO ======
+    const d = data as z.infer<typeof createMidLifeSchema>
+    const { generateMidLifeSchedule } = await import('@/lib/loans/mid-life-schedule')
+    const startNumber = d.installmentsPaidBefore + 1
+    const schedule = generateMidLifeSchedule({
+      outstandingBalance: d.outstandingBalanceInitial,
+      rateMonthly: d.interestRateMonthly,
+      futureCount: d.futureCount,
+      startNumber,
+      firstDueDate: d.firstDueDate,
+      system: d.amortizationSystem,
+      amortizationConstant: d.amortizationConstant ?? undefined,
+      isPostFixed: d.rateType === 'POS',
+      estimatedCorrectionMonthly: d.estimatedCorrectionMonthly ?? 0,
     })
 
     const loan = await prisma.loan.create({
       data: {
         companyId: empresaId,
-        bankAccountId: data.bankAccountId,
-        lender: data.lender,
-        contractNumber: data.contractNumber ?? null,
-        principal: data.principal,
-        interestRateMonthly: data.interestRateMonthly,
-        termMonths: data.termMonths,
-        amortizationSystem: data.amortizationSystem,
-        firstDueDate: data.firstDueDate,
-        iof: data.iof,
-        disbursementDate: data.disbursementDate,
+        bankAccountId: d.bankAccountId,
+        lender: d.lender,
+        contractNumber: d.contractNumber ?? null,
+        // Princípio crítico: passivo = SALDO ATUAL, não principal original.
+        // Mantemos principal como o saldo devedor inicial pra coerência com o
+        // engine de saldo devedor existente (= principal - SUM(amort)).
+        principal: d.outstandingBalanceInitial,
+        outstandingBalanceInitial: d.outstandingBalanceInitial,
+        interestRateMonthly: d.interestRateMonthly,
+        termMonths: d.termMonths,
+        amortizationSystem: d.amortizationSystem,
+        amortizationConstant: d.amortizationConstant ?? null,
+        firstDueDate: d.firstDueDate,
+        iof: d.iof,
+        tarifas: d.tarifas,
+        disbursementDate: d.disbursementDate,
+        rateType: d.rateType,
+        indexer: d.indexer ?? null,
+        indexerPercent: d.indexerPercent ?? null,
+        carencia: d.carencia,
+        installmentsPaidBefore: d.installmentsPaidBefore,
+        trackingStartDate: d.trackingStartDate,
         installments: {
           create: schedule.map((r) => ({
             number: r.number,
@@ -215,14 +324,15 @@ export async function POST(request: NextRequest, { params }: Params) {
             openingBalance: r.openingBalance,
             interest: r.interest,
             amortization: r.amortization,
+            correcao: r.correcao,
             payment: r.payment,
             closingBalance: r.closingBalance,
+            isEstimate: r.isEstimate,
           })),
         },
       },
       include: { installments: { orderBy: { number: 'asc' } } },
     })
-
     return NextResponse.json({ loan }, { status: 201 })
   } catch (error) {
     return handleApiError(error)
