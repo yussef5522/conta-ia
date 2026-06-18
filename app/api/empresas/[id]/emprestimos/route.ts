@@ -209,6 +209,12 @@ const createMidLifeSchema = z.object({
   carencia: z.coerce.number().int().min(0).max(60).default(0),
   /** Quantas parcelas FUTURAS gerar (= termMonths - installmentsPaidBefore) */
   futureCount: z.coerce.number().int().min(1).max(480),
+  /** Sprint Fix-Previa: overrides de payment vindos do PDF (valor líquido
+   *  da parcela, após desconto). Mapa { number: payment }. */
+  paymentOverrides: z
+    .array(z.object({ number: z.coerce.number().int().min(1), payment: z.coerce.number().positive() }))
+    .max(480)
+    .optional(),
 })
 
 const createSchema = z.union([createMidLifeSchema, createNovoSchema])
@@ -280,6 +286,9 @@ export async function POST(request: NextRequest, { params }: Params) {
     const d = data as z.infer<typeof createMidLifeSchema>
     const { generateMidLifeSchedule } = await import('@/lib/loans/mid-life-schedule')
     const startNumber = d.installmentsPaidBefore + 1
+    const overridesMap = d.paymentOverrides
+      ? new Map(d.paymentOverrides.map((o) => [o.number, o.payment]))
+      : undefined
     const schedule = generateMidLifeSchedule({
       outstandingBalance: d.outstandingBalanceInitial,
       rateMonthly: d.interestRateMonthly,
@@ -290,6 +299,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       amortizationConstant: d.amortizationConstant ?? undefined,
       isPostFixed: d.rateType === 'POS',
       estimatedCorrectionMonthly: d.estimatedCorrectionMonthly ?? 0,
+      paymentOverrides: overridesMap,
     })
 
     const loan = await prisma.loan.create({

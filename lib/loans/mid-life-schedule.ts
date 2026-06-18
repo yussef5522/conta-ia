@@ -34,6 +34,17 @@ export interface MidLifeScheduleInput {
    *  Quando 0/undefined, parcela estimada tem correcao=0 (juros pré só).
    *  Recalculado na conciliação. */
   estimatedCorrectionMonthly?: number
+  /**
+   * Sprint Fix-Previa (17/06/2026) — overrides de payment vindos do PDF
+   * (valor LÍQUIDO da parcela, após descontos). Usar quando o contrato já
+   * traz a estimativa precisa pra cada parcela futura. Engine usa esse
+   * payment, mantém amortização constante e RECALCULA correção =
+   * payment - amort - interest pra refletir a estimativa.
+   *
+   * Mapa: number → payment (líquido). Parcelas sem override usam o cálculo
+   * padrão (amort + interest + correção estimada uniforme).
+   */
+  paymentOverrides?: Map<number, number>
 }
 
 export interface MidLifeScheduleRow {
@@ -83,13 +94,22 @@ export function generateMidLifeSchedule(input: MidLifeScheduleInput): MidLifeSch
       const isLast = k === futureCount - 1
       const juros = round2(saldo * rateMonthly)
       const amort = isLast ? round2(saldo) : round2(pmtR - juros)
-      const correcao = isPostFixed
-        ? round2(saldo * estimatedCorrectionMonthly)
-        : 0
-      const payment = round2(amort + juros + correcao)
+      const number = startNumber + k
+      const override = input.paymentOverrides?.get(number)
+      let correcao: number
+      let payment: number
+      if (override !== undefined && override > 0) {
+        payment = round2(override)
+        correcao = round2(payment - amort - juros)
+      } else {
+        correcao = isPostFixed
+          ? round2(saldo * estimatedCorrectionMonthly)
+          : 0
+        payment = round2(amort + juros + correcao)
+      }
       const closing = round2(saldo - amort)
       rows.push({
-        number: startNumber + k,
+        number,
         dueDate: addMonths(firstDueDate, k),
         openingBalance: saldo,
         interest: juros,
@@ -113,13 +133,24 @@ export function generateMidLifeSchedule(input: MidLifeScheduleInput): MidLifeSch
       const isLast = k === futureCount - 1
       const juros = round2(saldo * rateMonthly)
       const amort = isLast ? round2(saldo) : amortBase
-      const correcao = isPostFixed
-        ? round2(saldo * estimatedCorrectionMonthly)
-        : 0
-      const payment = round2(amort + juros + correcao)
+      const number = startNumber + k
+      const override = input.paymentOverrides?.get(number)
+      let correcao: number
+      let payment: number
+      if (override !== undefined && override > 0) {
+        // Override do PDF (valor líquido): mantém amort + juros pré; correção
+        // é o que sobra. Pode ser negativa quando há desconto pesado.
+        payment = round2(override)
+        correcao = round2(payment - amort - juros)
+      } else {
+        correcao = isPostFixed
+          ? round2(saldo * estimatedCorrectionMonthly)
+          : 0
+        payment = round2(amort + juros + correcao)
+      }
       const closing = round2(saldo - amort)
       rows.push({
-        number: startNumber + k,
+        number,
         dueDate: addMonths(firstDueDate, k),
         openingBalance: saldo,
         interest: juros,
