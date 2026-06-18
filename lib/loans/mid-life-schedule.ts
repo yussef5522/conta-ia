@@ -13,6 +13,7 @@
 //   - Função PURA — caller cria as installments no DB.
 
 import { addMonths } from './amortization'
+import { solveEffectiveRate } from './effective-rate'
 
 export interface MidLifeScheduleInput {
   /** Saldo devedor atual (na entrada do sistema) */
@@ -92,19 +93,42 @@ export function generateMidLifeSchedule(input: MidLifeScheduleInput): MidLifeSch
   let saldo = round2(outstandingBalance)
 
   if (system === 'PRICE') {
-    // Sprint Fix-PRICE: fixedPayment do contrato VENCE. Quando ausente,
-    // recalcula PMT (modo legado / cálculo "do zero").
-    const pmt =
-      input.fixedPayment && input.fixedPayment > 0
-        ? input.fixedPayment
-        : rateMonthly === 0
+    // Sprint Fix-PRICE-r_eff (17/06/2026): quando contrato traz a parcela
+    // FIXA real (vinda do PDF), derivamos a taxa EFETIVA r_eff que fecha
+    // o schedule exato (S = P × (1-(1+r)^-n) / r). A taxa nominal informada
+    // (1,95%) frequentemente NÃO fecha por causa de day-count + capitalização
+    // do banco. r_eff garante identidade contábil: SUM(amort)=saldo,
+    // juros total = n×P − S, saldo final = 0.
+    //
+    // Quando NÃO há fixedPayment (PRICE novo / cálculo do zero), continua
+    // PMT pela nominal — comportamento intacto.
+    const hasFixedPayment = input.fixedPayment && input.fixedPayment > 0
+    let pmt: number
+    let scheduleRate: number
+    if (hasFixedPayment) {
+      pmt = input.fixedPayment!
+      try {
+        scheduleRate = solveEffectiveRate({
+          outstandingBalance,
+          fixedPayment: pmt,
+          futureCount,
+        })
+      } catch {
+        // Fallback: solver não conseguiu (parcela inviável) — usa nominal
+        scheduleRate = rateMonthly
+      }
+    } else {
+      pmt =
+        rateMonthly === 0
           ? outstandingBalance / futureCount
           : (outstandingBalance * rateMonthly) /
             (1 - Math.pow(1 + rateMonthly, -futureCount))
+      scheduleRate = rateMonthly
+    }
     const pmtR = round2(pmt)
     for (let k = 0; k < futureCount; k++) {
       const isLast = k === futureCount - 1
-      const juros = round2(saldo * rateMonthly)
+      const juros = round2(saldo * scheduleRate)
       const amort = isLast ? round2(saldo) : round2(pmtR - juros)
       const number = startNumber + k
       const override = input.paymentOverrides?.get(number)

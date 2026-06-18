@@ -31,6 +31,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { Header } from '@/components/layout/header'
 import { formatBRL } from '@/lib/format/money'
 import { fmtPercentValue, cleanFloat } from '@/lib/loans/format'
+import { solveEffectiveRate } from '@/lib/loans/effective-rate'
 
 interface BankAccount {
   id: string
@@ -237,25 +238,34 @@ export default function NovoEmprestimoPage({
       // SAC:   amortização CONSTANTE; juros caem; parcela CAI.
       if (form.amortizationSystem === 'PRICE') {
         const parcelaFixa = parseFloat(fixedPayment) || 0
-        let jurosTotal = 0
-        let s = saldo
-        if (parcelaFixa > 0 && isFinite(i)) {
-          for (let k = 0; k < futuras; k++) {
-            const juros = s * i
-            jurosTotal += juros
-            // amort = parcela - juros (cresce conforme juros caem)
-            const amort = k === futuras - 1 ? s : parcelaFixa - juros
-            s = Math.max(0, s - amort)
+        // Sprint Fix-PRICE-r_eff: quando parcela fixa existe, derivamos a
+        // taxa EFETIVA que fecha o schedule (juros total = n×P − S exato,
+        // SUM(amort) = S, saldo final 0). Fallback pra taxa nominal i quando
+        // o solver não consegue (parcela muito baixa) ou parcelaFixa==0.
+        let rEff = isFinite(i) ? i : 0
+        if (parcelaFixa > 0) {
+          try {
+            rEff = solveEffectiveRate({
+              outstandingBalance: saldo,
+              fixedPayment: parcelaFixa,
+              futureCount: futuras,
+            })
+          } catch {
+            // mantém nominal
           }
         }
+        const juros1PreciseEstimado = saldo * rEff
+        // Identidade contábil: juros total = n×P − S (vale exato quando rEff fecha)
+        const jurosTotalIdentidade =
+          parcelaFixa > 0 ? parcelaFixa * futuras - saldo : 0
         return {
           kind: 'EM_ANDAMENTO' as const,
           system: 'PRICE' as const,
           saldoDevedor: saldo,
           futuras,
           parcelaFixa,
-          juros1Estimado,
-          jurosPreFuturoEstimado: jurosTotal,
+          juros1Estimado: juros1PreciseEstimado,
+          jurosPreFuturoEstimado: jurosTotalIdentidade,
           isPosFixed,
         }
       }
