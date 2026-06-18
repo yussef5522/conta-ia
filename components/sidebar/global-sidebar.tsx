@@ -34,6 +34,7 @@ import {
   BookOpen,
   Sparkles,
   Landmark,
+  HandCoins,
   Inbox,
   Workflow,
 } from 'lucide-react'
@@ -140,6 +141,15 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
             label="Transferências"
             href={`/empresas/${currentEmpresaId}/transferencias`}
             isActive={/^\/empresas\/[^/]+\/transferencias(\/|$)/.test(pathname) || pathname === '/transferencias'}
+            onClick={onNavigate}
+          />
+        )}
+        {currentEmpresaId && (
+          <SidebarItem
+            icon={HandCoins}
+            label="Empréstimos"
+            href={`/empresas/${currentEmpresaId}/emprestimos`}
+            isActive={/^\/empresas\/[^/]+\/emprestimos(\/|$)/.test(pathname)}
             onClick={onNavigate}
           />
         )}
