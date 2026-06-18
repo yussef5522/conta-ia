@@ -189,11 +189,17 @@ export default function NovoEmprestimoPage({
   }
 
   useEffect(() => {
-    fetch(`/api/empresas/${empresaId}/contas-bancarias`, { credentials: 'include' })
+    // Fix dropdown vazio (17/06/2026): endpoint correto é o que a página
+    // de contas já usa (/api/contas-bancarias?empresaId=...). A URL anterior
+    // (/api/empresas/[id]/contas-bancarias) não existe — middleware retornava
+    // 401 silente, dropdown ficava vazio sem erro visível.
+    fetch(`/api/contas-bancarias?empresaId=${empresaId}`, { credentials: 'include' })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        if (d?.contasBancarias) setContas(d.contasBancarias)
-        else if (d?.contas) setContas(d.contas)
+        if (d?.contas) {
+          // Só contas ativas — onde a parcela pode debitar
+          setContas(d.contas.filter((c: { isActive: boolean }) => c.isActive))
+        }
       })
   }, [empresaId])
 
