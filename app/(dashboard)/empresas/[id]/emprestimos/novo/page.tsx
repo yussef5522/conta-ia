@@ -76,6 +76,10 @@ export default function NovoEmprestimoPage({
   const [paymentOverrides, setPaymentOverrides] = useState<
     Array<{ number: number; payment: number }>
   >([])
+  // Sprint Fix-PRICE (17/06/2026): parcela FIXA do contrato PRICE.
+  // Vinda do PDF (1ª parcela da lista) ou input manual. Engine usa esse
+  // valor em vez de recalcular PMT — evita divergência de R$ 15 vs banco.
+  const [fixedPayment, setFixedPayment] = useState<string>('')
 
   const [form, setForm] = useState({
     bankAccountId: '',
@@ -156,22 +160,32 @@ export default function NovoEmprestimoPage({
         if (e.parcelasAPagarLista && e.parcelasAPagarLista.length > 0) {
           next.firstDueDate = e.parcelasAPagarLista[0].dueDate
           next.trackingStartDate = e.parcelasAPagarLista[0].dueDate
-          // Sprint Fix-Previa: payment LÍQUIDO (após desconto) — o que realmente
-          // debita. Casa melhor no extrato. Quando o PDF traz `discount`, o
-          // líquido = payment − discount; senão usa payment direto.
+          // Sprint Fix-PRICE: PRE-fixado debita parcela CHEIA (desconto é
+          // antecipação, não projeção CDI). POS-fixado usa LÍQUIDO (desconto
+          // já considera CDI esperado). 1ª parcela define fixedPayment do
+          // PRICE (parcela fixa do contrato — NÃO recalcular PMT).
+          const isPos = e.rateType === 'POS'
           const overrides = e.parcelasAPagarLista.map(
             (p: { number: number; payment: number; discount?: number | null }) => ({
               number: p.number,
-              payment: p.discount ? p.payment - p.discount : p.payment,
+              payment: isPos && p.discount ? p.payment - p.discount : p.payment,
             }),
           )
           setPaymentOverrides(overrides)
+          // PRICE: usar payment da 1ª parcela como fixed (parcela fixa real)
+          if (e.amortizationSystem === 'PRICE') {
+            setFixedPayment(String(e.parcelasAPagarLista[0].payment))
+          } else {
+            setFixedPayment('')
+          }
         } else {
           setPaymentOverrides([])
+          setFixedPayment('')
         }
       } else {
         setModo('NOVO')
         setPaymentOverrides([])
+        setFixedPayment('')
         if (e.primeiraParcela) next.firstDueDate = e.primeiraParcela
       }
       setForm(next)
@@ -214,16 +228,43 @@ export default function NovoEmprestimoPage({
     if (modo === 'EM_ANDAMENTO') {
       const saldo = parseFloat(form.outstandingBalanceInitial)
       const futuras = parseInt(form.futureCount, 10)
-      const amortConst =
-        form.amortizationSystem === 'SAC' && form.amortizationConstant
-          ? parseFloat(form.amortizationConstant)
-          : saldo && futuras
-            ? saldo / futuras
-            : 0
       if (!saldo || !futuras) return null
       const juros1Estimado = isFinite(i) ? saldo * i : 0
-      // Soma estimada de juros PRÉ ao longo das parcelas futuras (informativa).
-      // Pra SAC: soma de saldo decrescente × i. Pra PRICE: já fica embutida no PMT.
+      const isPosFixed = form.rateType === 'POS'
+
+      // Sprint Fix-PRICE: 2 ramos diferentes.
+      // PRICE: parcela FIXA (do contrato); amortização CRESCE; juros caem.
+      // SAC:   amortização CONSTANTE; juros caem; parcela CAI.
+      if (form.amortizationSystem === 'PRICE') {
+        const parcelaFixa = parseFloat(fixedPayment) || 0
+        let jurosTotal = 0
+        let s = saldo
+        if (parcelaFixa > 0 && isFinite(i)) {
+          for (let k = 0; k < futuras; k++) {
+            const juros = s * i
+            jurosTotal += juros
+            // amort = parcela - juros (cresce conforme juros caem)
+            const amort = k === futuras - 1 ? s : parcelaFixa - juros
+            s = Math.max(0, s - amort)
+          }
+        }
+        return {
+          kind: 'EM_ANDAMENTO' as const,
+          system: 'PRICE' as const,
+          saldoDevedor: saldo,
+          futuras,
+          parcelaFixa,
+          juros1Estimado,
+          jurosPreFuturoEstimado: jurosTotal,
+          isPosFixed,
+        }
+      }
+
+      // SAC
+      const amortConst =
+        form.amortizationConstant
+          ? parseFloat(form.amortizationConstant)
+          : saldo / futuras
       let jurosPreFuturoEstimado = 0
       let s = saldo
       for (let k = 0; k < futuras; k++) {
@@ -233,12 +274,13 @@ export default function NovoEmprestimoPage({
       }
       return {
         kind: 'EM_ANDAMENTO' as const,
+        system: 'SAC' as const,
         saldoDevedor: saldo,
         futuras,
         amortConst,
         juros1Estimado,
         jurosPreFuturoEstimado,
-        isPosFixed: form.rateType === 'POS',
+        isPosFixed,
       }
     }
 
@@ -280,6 +322,7 @@ export default function NovoEmprestimoPage({
     form.futureCount,
     form.amortizationConstant,
     form.rateType,
+    fixedPayment,
   ])
 
   async function handleCreate(e: React.FormEvent) {
@@ -337,6 +380,11 @@ export default function NovoEmprestimoPage({
               amortizationConstant: form.amortizationConstant
                 ? parseFloat(form.amortizationConstant)
                 : null,
+              // Sprint Fix-PRICE: parcela fixa do contrato PRICE (vence PMT).
+              fixedPayment:
+                form.amortizationSystem === 'PRICE' && fixedPayment
+                  ? parseFloat(fixedPayment)
+                  : undefined,
               rateType: form.rateType,
               indexer: form.indexer || null,
               indexerPercent: form.indexer ? parseFloat(form.indexerPercent) : null,
@@ -685,6 +733,18 @@ export default function NovoEmprestimoPage({
                     />
                   </Field>
                 )}
+                {form.amortizationSystem === 'PRICE' && (
+                  <Field label="Parcela fixa (PRICE)">
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={fixedPayment}
+                      onChange={(e) => setFixedPayment(e.target.value)}
+                      placeholder="4092.02"
+                    />
+                  </Field>
+                )}
                 <Field label="Data 1ª parcela futura *">
                   <Input
                     type="date"
@@ -858,7 +918,11 @@ export default function NovoEmprestimoPage({
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <Box label="Saldo devedor" value={formatBRL(preview.saldoDevedor)} />
                 <Box label="Parcelas futuras" value={String(preview.futuras)} tone="muted" />
-                <Box label="Amortização constante" value={formatBRL(preview.amortConst)} />
+                {preview.system === 'PRICE' ? (
+                  <Box label="Parcela (fixa)" value={formatBRL(preview.parcelaFixa)} />
+                ) : (
+                  <Box label="Amortização constante" value={formatBRL(preview.amortConst)} />
+                )}
                 <Box
                   label={preview.isPosFixed ? 'Juros pré (1ª, estimado)' : 'Juros (1ª)'}
                   value={formatBRL(preview.juros1Estimado)}

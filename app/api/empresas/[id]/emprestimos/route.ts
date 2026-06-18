@@ -218,6 +218,8 @@ const createMidLifeSchema = z.object({
     .array(z.object({ number: z.coerce.number().int().min(1), payment: z.coerce.number().positive() }))
     .max(480)
     .optional(),
+  /** Sprint Fix-PRICE: parcela fixa do contrato PRICE (não recalcular PMT). */
+  fixedPayment: z.coerce.number().positive().optional(),
 })
 
 const createSchema = z.union([createMidLifeSchema, createNovoSchema])
@@ -303,6 +305,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       isPostFixed: d.rateType === 'POS',
       estimatedCorrectionMonthly: d.estimatedCorrectionMonthly ?? 0,
       paymentOverrides: overridesMap,
+      fixedPayment: d.fixedPayment,
     })
 
     const loan = await prisma.loan.create({
