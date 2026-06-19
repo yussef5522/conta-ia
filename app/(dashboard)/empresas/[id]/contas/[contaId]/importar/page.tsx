@@ -12,6 +12,11 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
 import { PreviewV2Classificado } from '@/components/importar-ofx/PreviewV2Classificado'
+import {
+  EditablePreviewTable,
+  type CategoryOption,
+  type CategorySuggestion,
+} from '@/components/importar-ofx/EditablePreviewTable'
 
 interface PreviewItem {
   fitid: string
@@ -35,6 +40,9 @@ interface PreviewResult {
   duplicadas: number
   errosParser: string[]
   banco: BancoDetectado | null
+  // Sprint Import Categoria Editável (18/06/2026)
+  categorySuggestions?: CategorySuggestion[]
+  categoriesForUI?: CategoryOption[]
 }
 
 interface TransferSide {
@@ -94,6 +102,9 @@ export default function ImportarOFXPage() {
   const [pareados, setPareados] = useState<Set<string>>(new Set()) // keys = fromTxId
   const [ignorados, setIgnorados] = useState<Set<string>>(new Set())
   const [confirmReplace, setConfirmReplace] = useState<TransferCandidate | null>(null)
+  // Sprint Import Categoria Editável (18/06/2026)
+  const [overrides, setOverrides] = useState<Record<string, string | null>>({})
+  const [newRules, setNewRules] = useState<Array<{ tipoMatch: 'EXACT' | 'CONTAINS' | 'CNPJ'; padrao: string; categoryId: string }>>([])
 
   async function handleFile(file: File) {
     setArquivo(file)
@@ -291,6 +302,16 @@ export default function ImportarOFXPage() {
     try {
       const fd = new FormData()
       fd.append('file', arquivo)
+      // Sprint Import Categoria Editável (18/06/2026): envia overrides + regras
+      const overridesArr = Object.entries(overrides)
+        .filter(([, v]) => v !== undefined)
+        .map(([dedupHash, categoryId]) => ({ dedupHash, categoryId }))
+      if (overridesArr.length > 0) {
+        fd.append('categoryOverrides', JSON.stringify(overridesArr))
+      }
+      if (newRules.length > 0) {
+        fd.append('newRules', JSON.stringify(newRules))
+      }
       const res = await fetch(`/api/contas-bancarias/${contaId}/importar-ofx`, {
         method: 'POST',
         body: fd,
@@ -400,6 +421,51 @@ export default function ImportarOFXPage() {
           onCancelar={() => { setArquivo(null); setPreview(null) }}
           loading={loadingImport}
         />
+      )}
+
+      {/* Sprint Import Categoria Editável (18/06/2026): tabela editável
+          quando o preview vier com suggestions + categorias. Renderiza
+          ENTRE banco detectado e CTA de confirmação. */}
+      {preview && !('classificacao' in (preview as unknown as Record<string, unknown>))
+        && preview.categorySuggestions
+        && preview.categoriesForUI
+        && preview.novas > 0 && (
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-primary" />
+                Conferir categorias antes de confirmar
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <EditablePreviewTable
+                novas={preview.preview.map((p) => ({
+                  fitid: p.fitid,
+                  dedupHash: p.dedupHash,
+                  date: p.date,
+                  amount: p.amount,
+                  type: p.type,
+                  memo: p.memo,
+                }))}
+                transferencias={candidatos.map((c) => ({
+                  dedupHash: c.fromTransactionId,
+                  date: c.from.date,
+                  amount: c.from.amount,
+                  memo: c.from.description,
+                  pareadoCom: c.toAccountName,
+                }))}
+                duplicadas={preview.duplicadas}
+                suggestions={preview.categorySuggestions}
+                categories={preview.categoriesForUI}
+                overrides={overrides}
+                setOverrides={setOverrides}
+                newRules={newRules}
+                setNewRules={setNewRules}
+              />
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {preview && !('classificacao' in (preview as unknown as Record<string, unknown>)) && (
