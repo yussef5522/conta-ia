@@ -4,6 +4,11 @@ import { prisma } from '@/lib/db'
 import { parseOFX } from '@/lib/ofx/parser'
 import { detectarBanco, bateComPerfilDaConta } from '@/lib/ofx/bancos'
 import { dedupHashOFX, filtrarNovasOFX } from '@/lib/ofx/dedup'
+import { computeIdentity } from '@/lib/import-identity/compute-identity'
+import { computeFileHash } from '@/lib/import-identity/file-hash'
+import { applyIdentityGate, type GateInput } from '@/lib/import-identity/apply-gate'
+import { loadLedgerState } from '@/lib/import-identity/ledger-queries'
+import { findBatchWarnings } from '@/lib/import-identity/batch-overlap'
 import {
   buildLegacyPreviewPayload,
   buildV2PreviewPayload,
@@ -135,10 +140,55 @@ export async function POST(request: NextRequest, { params }: Params) {
       }
     : null
 
-  // Deduplicação por hash composto (ver lib/ofx/dedup.ts).
-  // Lookup contra DB usa os hashes que vamos calcular agora — evita pegar
-  // toda a tabela e reduz o IN(...) ao tamanho do arquivo.
-  const todosHashes = transactions.map((t) => dedupHashOFX(t))
+  // Sprint Import Idempotente (18/06/2026) — IDENTIDADE CANÔNICA.
+  // Calcula fitidKey + contentHash de TODAS as tx incoming. Esses 2 campos
+  // são robustos a re-export do banco (ignora hora/tz; normaliza desc).
+  const incomingIdentities = transactions.map((t) => ({
+    payload: t,
+    identity: computeIdentity({
+      accountId: contaId,
+      fitid: t.fitid,
+      date: t.datePosted,
+      amount: t.amount,
+      type: t.type,
+      name: undefined,
+      memo: t.memo,
+    }),
+  }))
+
+  // Carrega estado do seen-ledger pra essa conta.
+  const ledgerState = await loadLedgerState(
+    contaId,
+    incomingIdentities
+      .map((i) => i.identity.fitidKey)
+      .filter((k): k is string => k !== null),
+    incomingIdentities.map((i) => i.identity.contentHash),
+  )
+  const gateResult = applyIdentityGate(incomingIdentities, ledgerState)
+
+  // FileHash do upload (idempotência de arquivo)
+  const fileHashHex = computeFileHash(new TextEncoder().encode(rawContent))
+
+  // Período (min/max das datas do arquivo TODO, não só novas)
+  const datasArquivo = transactions.map((t) => t.datePosted.getTime())
+  const periodArquivoStart =
+    datasArquivo.length > 0 ? new Date(Math.min(...datasArquivo)) : null
+  const periodArquivoEnd =
+    datasArquivo.length > 0 ? new Date(Math.max(...datasArquivo)) : null
+
+  // Warnings pré-import (arquivo exato + overlap período)
+  const batchWarnings = await findBatchWarnings(
+    contaId,
+    fileHashHex,
+    periodArquivoStart,
+    periodArquivoEnd,
+  )
+
+  // Deduplicação por hash composto (ver lib/ofx/dedup.ts) — caminho LEGACY
+  // mantido como defesa em profundidade (@@unique [bankAccountId, dedupHash]).
+  // O gate de identidade canônica acima já filtrou; sobra só transforma o
+  // que `gateResult.toInsert` tem em payload pro pipeline existente.
+  const todosHashes = gateResult.toInsert.map((i) => dedupHashOFX(i.payload))
   const existentes = await prisma.transaction.findMany({
     where: { bankAccountId: contaId, dedupHash: { in: todosHashes } },
     select: { dedupHash: true },
@@ -147,8 +197,19 @@ export async function POST(request: NextRequest, { params }: Params) {
     existentes.map((e) => e.dedupHash).filter((h): h is string => h !== null),
   )
 
-  const { novas, duplicadasNoArquivo, duplicadasNoBanco } = filtrarNovasOFX(transactions, hashesExistentes)
-  const duplicadas = duplicadasNoArquivo + duplicadasNoBanco
+  const { novas, duplicadasNoArquivo, duplicadasNoBanco } = filtrarNovasOFX(
+    gateResult.toInsert.map((i) => i.payload),
+    hashesExistentes,
+  )
+  // Duplicatas TOTAIS: o gate + legacy.
+  const duplicadas =
+    duplicadasNoArquivo + duplicadasNoBanco + gateResult.skipped.length
+
+  // Mapa pra recuperar a identidade canônica de cada `novas[]` (pra salvar
+  // em Transaction + criar ImportedIdentity)
+  const identityByDedupHash = new Map(
+    gateResult.toInsert.map((i) => [dedupHashOFX(i.payload), i.identity]),
+  )
 
   if (isPreview) {
     // Sprint 3-Bugs Fase 2A (Yussef 12/06/2026) — flag IMPORT_PREVIEW_V2
@@ -164,15 +225,21 @@ export async function POST(request: NextRequest, { params }: Params) {
     // puramente "preview enriquecido". O atomic de criação de tx continua
     // sendo o histórico até a Fase 2D.
     if (!isV2PreviewEnabled()) {
-      return NextResponse.json(
-        buildLegacyPreviewPayload({
-          novas,
-          totalArquivo: transactions.length,
-          duplicadas,
-          errosParser: errors,
-          banco,
-        }),
-      )
+      const payload = buildLegacyPreviewPayload({
+        novas,
+        totalArquivo: transactions.length,
+        duplicadas,
+        errosParser: errors,
+        banco,
+      })
+      // Sprint Import Idempotente: adiciona warnings + stats do gate
+      return NextResponse.json({
+        ...payload,
+        importIdentity: {
+          gate: gateResult.stats,
+          batchWarnings,
+        },
+      })
     }
 
     // V2: busca candidatos do sistema (somente leitura) + classifica
@@ -278,6 +345,9 @@ export async function POST(request: NextRequest, { params }: Params) {
       periodEnd,
       ipAddress,
       userAgent,
+      // Sprint Import Idempotente (18/06/2026)
+      fileHash: fileHashHex,
+      source: 'OFX',
     },
   })
 
@@ -337,24 +407,31 @@ export async function POST(request: NextRequest, { params }: Params) {
     // precisa LER as tx recém-criadas + ledgerBal recém-gravado.
     await prisma.$transaction([
       prisma.transaction.createMany({
-        data: classified.map((t) => ({
-          bankAccountId: t.bankAccountId,
-          date: t.date,
-          description: t.description,
-          amount: t.amount,
-          type: t.type,
-          status: t.status,
-          origin: t.origin,
-          externalId: t.externalId,
-          dedupHash: t.dedupHash,
-          // Onda 2 Sprint 2.3 — vincula ao registro de import (pra revert)
-          importId: importRow.id,
-          // Campos AI (preenchidos só quando t.status='RECONCILED')
-          categoryId: t.categoryId ?? null,
-          classificationSource: t.classificationSource ?? null,
-          classifiedByRuleId: t.classifiedByRuleId ?? null,
-          aiConfidence: t.aiConfidence ?? null,
-        })),
+        data: classified.map((t) => {
+          // Sprint Import Idempotente: recupera identidade canônica via dedupHash
+          const ident = t.dedupHash ? identityByDedupHash.get(t.dedupHash) : null
+          return {
+            bankAccountId: t.bankAccountId,
+            date: t.date,
+            description: t.description,
+            amount: t.amount,
+            type: t.type,
+            status: t.status,
+            origin: t.origin,
+            externalId: t.externalId,
+            dedupHash: t.dedupHash,
+            // Onda 2 Sprint 2.3 — vincula ao registro de import (pra revert)
+            importId: importRow.id,
+            // Campos AI (preenchidos só quando t.status='RECONCILED')
+            categoryId: t.categoryId ?? null,
+            classificationSource: t.classificationSource ?? null,
+            classifiedByRuleId: t.classifiedByRuleId ?? null,
+            aiConfidence: t.aiConfidence ?? null,
+            // Sprint Import Idempotente (18/06/2026)
+            fitidKey: ident?.fitidKey ?? null,
+            contentHash: ident?.contentHash ?? null,
+          }
+        }),
       }),
       // Atualiza ledgerBal + ledgerBalDate quando OFX trouxe (substitui o
       // increment cumulativo que driftou; balance será recalculado depois).
@@ -427,6 +504,36 @@ export async function POST(request: NextRequest, { params }: Params) {
       autoClassified: autoCount,
     },
   })
+
+  // Sprint Import Idempotente (18/06/2026) — registra TODA tx criada no
+  // seen-ledger. Falha silenciosa: erro aqui não mata o import, mas
+  // log fica pra cron de auditoria pegar.
+  try {
+    const createdTxs = await prisma.transaction.findMany({
+      where: { importId: importRow.id },
+      select: { id: true, dedupHash: true },
+    })
+    const identityRows = createdTxs
+      .map((t) => {
+        const ident = t.dedupHash ? identityByDedupHash.get(t.dedupHash) : null
+        if (!ident) return null
+        return {
+          companyId: conta.companyId,
+          bankAccountId: contaId,
+          importBatchId: importRow.id,
+          fitidKey: ident.fitidKey,
+          contentHash: ident.contentHash,
+          transactionId: t.id,
+          tombstone: false,
+        }
+      })
+      .filter((r): r is NonNullable<typeof r> => r !== null)
+    if (identityRows.length > 0) {
+      await prisma.importedIdentity.createMany({ data: identityRows })
+    }
+  } catch (e) {
+    console.error('[importar-ofx] seed identities falhou:', e)
+  }
 
   // Sprint Transfer-Pairing-Retroativo (16/06/2026) — auto-parear HIGH+nameOk
   // após criar as tx. Roda em background mas dentro do mesmo request pra

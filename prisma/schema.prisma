@@ -260,6 +260,9 @@ model BankAccount {
   // Sprint Empréstimos (17/06/2026)
   loans Loan[]
 
+  // Sprint Import Idempotente (18/06/2026)
+  importedIdentities ImportedIdentity[]
+
   @@map("bank_accounts")
 }
 
@@ -286,6 +289,17 @@ model Transaction {
   // Chave interna de deduplicação. Para OFX é sha256(fitid + data + valor + memo).
   // Pluggy ainda não preenche este campo (NULLs não conflitam com a unique).
   dedupHash     String?
+
+  // Sprint Import Idempotente (18/06/2026) — IDENTIDADE CANÔNICA.
+  // fitidKey: sha256(accountId|FITID) quando FITID é CONFIÁVEL (heurística
+  //   em lib/import-identity/heuristic-fitid.ts). Banrisul fitid curto =
+  //   null. Stone UUID / Sicredi 10+ dígitos = populado.
+  // contentHash: sha256(accountId|yyyymmdd|valorCentavos|descNormalizada).
+  //   SEMPRE presente após Sprint Import Idempotente. Imutável a re-export
+  //   do banco (ignora hora/tz, normaliza descrição).
+  // Gate de import usa ambos via tabela ImportedIdentity (seen-ledger).
+  fitidKey      String?
+  contentHash   String?
 
   // Transferência entre contas DA MESMA empresa (Sprint 0.5).
   // Quando preenchido, é o ID que une as 2 pontas (saída na conta A + entrada na conta B).
@@ -422,11 +436,18 @@ model Transaction {
   loanDisbursement      Loan?            @relation("LoanDisbursement")
   loanInstallmentPaid   LoanInstallment? @relation("LoanInstallmentReconcile")
 
+  // Sprint Import Idempotente (18/06/2026) — entries do seen-ledger
+  // apontando pra essa tx. Delete da Tx -> SetNull (ledger vira tombstone).
+  importedIdentities    ImportedIdentity[]
+
   @@unique([bankAccountId, dedupHash])
   // Sprint 4.0.1.b — anti-dup: schedule X só gera 1 tx por dueDate
   @@unique([recurringScheduleId, dueDate])
   @@index([bankAccountId, externalId])
   @@index([bankAccountId, date])
+  // Sprint Import Idempotente (18/06/2026) — gate em 2 etapas
+  @@index([bankAccountId, fitidKey])
+  @@index([bankAccountId, contentHash])
   @@index([costCenterId])
   @@index([transferGroupId])
   @@index([importId])
@@ -1225,6 +1246,12 @@ model OfxImport {
   errorMessage      String?
   revertedAt        DateTime?
   revertedById      String?
+  // Sprint Import Idempotente (18/06/2026) — idempotência de ARQUIVO.
+  // fileHash = sha256 do buffer cru do upload. Permite avisar "voce ja
+  // importou ESTE arquivo em DD/MM" antes mesmo de parsear.
+  fileHash          String?
+  // source = OFX | EXCEL | PDF | MANUAL — registra canal de origem do batch
+  source            String    @default("OFX")
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
@@ -1234,11 +1261,50 @@ model OfxImport {
   transactions   Transaction[]
   // Fase 4 (12/06/2026) — Warnings de duplicação detectados neste import
   importWarnings ImportWarning[]
+  // Sprint Import Idempotente (18/06/2026) — entries do seen-ledger
+  identities     ImportedIdentity[]
 
   @@index([bankAccountId, createdAt])
   @@index([userId])
   @@index([status])
+  // Idempotência arquivo: lookup rápido por (conta, fileHash)
+  @@index([bankAccountId, fileHash])
   @@map("ofx_imports")
+}
+
+// Sprint Import Idempotente (18/06/2026) — seen-ledger.
+// Toda transação importada gera UMA entrada aqui (vinculada ao batch).
+// Sobrevive à deleção da Transaction via campo `tombstone`:
+//   - tombstone=false: tx viva (transactionId aponta pra ela)
+//   - tombstone=true:  tx foi deletada manualmente; bloqueia reimport
+//     dela em re-upload do mesmo arquivo. Quando o user reverte o batch
+//     inteiro, as entries do batch são DELETADAS (não viram tombstone)
+//     pra permitir reimport corrigido.
+model ImportedIdentity {
+  id              String   @id @default(cuid())
+  companyId       String
+  bankAccountId   String
+  importBatchId   String
+  // sha256(accountId|FITID) — null quando FITID não confiável
+  fitidKey        String?
+  // sha256(accountId|yyyymmdd|valorCentavos|descNormalizada) — sempre presente
+  contentHash     String
+  // FK SetNull pra Transaction. NULL quando a tx foi deletada (tombstone).
+  transactionId   String?
+  tombstone       Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  bankAccount BankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+  importBatch OfxImport   @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+  transaction Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+
+  // Gates: lookup rápido (conta, fitidKey/contentHash)
+  @@index([bankAccountId, fitidKey])
+  @@index([bankAccountId, contentHash])
+  @@index([importBatchId])
+  @@index([transactionId])
+  @@index([companyId, createdAt])
+  @@map("imported_identities")
 }
 
 // ============================================================
