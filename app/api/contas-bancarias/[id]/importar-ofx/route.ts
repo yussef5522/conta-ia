@@ -9,6 +9,7 @@ import { computeFileHash } from '@/lib/import-identity/file-hash'
 import { applyIdentityGate, type GateInput } from '@/lib/import-identity/apply-gate'
 import { loadLedgerState } from '@/lib/import-identity/ledger-queries'
 import { findBatchWarnings } from '@/lib/import-identity/batch-overlap'
+import { reconcileTransferPlaceholders } from '@/lib/import-identity/reconcile-placeholder'
 import {
   buildLegacyPreviewPayload,
   buildV2PreviewPayload,
@@ -140,10 +141,62 @@ export async function POST(request: NextRequest, { params }: Params) {
       }
     : null
 
+  // Sprint Reconcile Transfer Identity (18/06/2026) — RECONCILE pré-gate.
+  // SÓ no caminho de confirm (NÃO no preview, pra não mutar dado em dry-run).
+  // Cria importRow early com status=PROCESSING (duplicates atualizado depois)
+  // e reconcilia placeholders TRANSFER órfãos (origin=MANUAL/externalId=null)
+  // com as linhas reais do OFX antes do gate de identidade.
+  let importRowPre: { id: string } | null = null
+  let reconciledCount = 0
+  let effectiveTxs = transactions
+  if (!isPreview) {
+    const ipAddressEarly =
+      request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+      request.headers.get('x-real-ip') ??
+      null
+    const userAgentEarly = request.headers.get('user-agent')?.slice(0, 500) ?? null
+    const fileHashEarly = computeFileHash(new TextEncoder().encode(rawContent))
+    const datasArquivoEarly = transactions.map((t) => t.datePosted.getTime())
+    const periodStartEarly =
+      datasArquivoEarly.length > 0 ? new Date(Math.min(...datasArquivoEarly)) : null
+    const periodEndEarly =
+      datasArquivoEarly.length > 0 ? new Date(Math.max(...datasArquivoEarly)) : null
+    importRowPre = await prisma.ofxImport.create({
+      data: {
+        bankAccountId: contaId,
+        userId: user.sub,
+        status: 'PROCESSING',
+        fileName: uploadedFileName,
+        fileSize: rawContent.length,
+        totalTransactions: transactions.length,
+        duplicates: 0,
+        periodStart: periodStartEarly,
+        periodEnd: periodEndEarly,
+        ipAddress: ipAddressEarly,
+        userAgent: userAgentEarly,
+        fileHash: fileHashEarly,
+        source: 'OFX',
+      },
+      select: { id: true },
+    })
+    try {
+      const r = await reconcileTransferPlaceholders(prisma, transactions, {
+        bankAccountId: contaId,
+        companyId: conta.companyId,
+        importBatchId: importRowPre.id,
+      })
+      reconciledCount = r.reconciled.length
+      effectiveTxs = r.remaining
+    } catch (e) {
+      // Falha aqui não trava import — segue com todas as tx originais
+      console.error('[importar-ofx] reconcileTransferPlaceholders falhou:', e)
+    }
+  }
+
   // Sprint Import Idempotente (18/06/2026) — IDENTIDADE CANÔNICA.
   // Calcula fitidKey + contentHash de TODAS as tx incoming. Esses 2 campos
   // são robustos a re-export do banco (ignora hora/tz; normaliza desc).
-  const incomingIdentities = transactions.map((t) => ({
+  const incomingIdentities = effectiveTxs.map((t) => ({
     payload: t,
     identity: computeIdentity({
       accountId: contaId,
@@ -332,24 +385,31 @@ export async function POST(request: NextRequest, { params }: Params) {
   const periodEnd =
     datasNovas.length > 0 ? new Date(Math.max(...datasNovas)) : null
 
-  const importRow = await prisma.ofxImport.create({
-    data: {
-      bankAccountId: contaId,
-      userId: user.sub,
-      status: 'PROCESSING',
-      fileName: uploadedFileName,
-      fileSize: rawContent.length,
-      totalTransactions: transactions.length,
-      duplicates: duplicadas,
-      periodStart,
-      periodEnd,
-      ipAddress,
-      userAgent,
-      // Sprint Import Idempotente (18/06/2026)
-      fileHash: fileHashHex,
-      source: 'OFX',
-    },
-  })
+  // Sprint Reconcile Transfer Identity (18/06/2026): se importRowPre já foi
+  // criado no early-step (caminho confirm), reusa e atualiza duplicates.
+  // Caso contrário, cria normalmente.
+  const importRow = importRowPre
+    ? await prisma.ofxImport.update({
+        where: { id: importRowPre.id },
+        data: { duplicates: duplicadas + reconciledCount },
+      })
+    : await prisma.ofxImport.create({
+        data: {
+          bankAccountId: contaId,
+          userId: user.sub,
+          status: 'PROCESSING',
+          fileName: uploadedFileName,
+          fileSize: rawContent.length,
+          totalTransactions: transactions.length,
+          duplicates: duplicadas,
+          periodStart,
+          periodEnd,
+          ipAddress,
+          userAgent,
+          fileHash: fileHashHex,
+          source: 'OFX',
+        },
+      })
 
   // Fase 3 Etapa 1: AUTO-CLASSIFY via regras EXACT (≥0.95) ANTES do insert.
   // Multi-tenant: regras filtradas por companyId. Cache em memória durante
@@ -690,9 +750,10 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
 
   return NextResponse.json({
-    mensagem: `${novas.length} transaç${novas.length !== 1 ? 'ões importadas' : 'ão importada'} com sucesso.`,
+    mensagem: `${novas.length} transaç${novas.length !== 1 ? 'ões importadas' : 'ão importada'} com sucesso${reconciledCount > 0 ? ` (${reconciledCount} contrapartes reconciliadas)` : ''}.`,
     inseridas: novas.length,
     duplicadas,
+    reconciledTransferPlaceholders: reconciledCount,
     autoClassificadas: autoCount,
     regrasDispararam: rulesFired.size,
     keywordHits,
