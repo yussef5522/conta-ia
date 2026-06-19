@@ -101,29 +101,34 @@ export function scanRetroativo(input: {
     else if (tx.type === 'CREDIT') credits.push(tx)
   }
 
-  const pairs: ScanRetroativoPair[] = []
-  const usedIds = new Set<string>()
-
-  // Greedy: pra cada DEBIT, escolhe o melhor CREDIT disponível
+  // Sprint Import Idempotente FASE 7 (18/06/2026):
+  // Antes era greedy POR-DEBIT, que perdia o pareamento ótimo quando
+  // 2 DEBITs disputam o mesmo CREDIT — o iterado primeiro "roubava".
+  // Cenário real Cacula 06/2026: 3 PIX YUSSEF órfãos viraram CRÉDITOS
+  // categorizados como CUSTO porque o detector iterou em ordem que
+  // priorizava pares sem nameOk.
+  //
+  // Nova abordagem: ENUMERA TODOS os candidatos válidos, ordena por
+  // (nameMatchOk DESC, confidence DESC, deltaDays ASC), e PEGA gulosamente
+  // em ordem. Garante:
+  //   - tx só entra em 1 par (idempotência)
+  //   - pares com nome próprio em AMBOS os lados ganham prioridade
+  //   - empate em score -> menor distância de dia
+  const allCandidates: ScanRetroativoPair[] = []
   for (const d of debits) {
-    if (usedIds.has(d.id)) continue
-    let best: ScanRetroativoPair | null = null
     for (const c of credits) {
-      if (usedIds.has(c.id)) continue
       if (Math.abs(c.amount - d.amount) > CENT_TOLERANCE) continue
       if (c.bankAccountId === d.bankAccountId) continue
       const delta = Math.abs(c.date.getTime() - d.date.getTime()) / MS_PER_DAY
       if (delta > MAX_DELTA_DAYS) continue
       const scoring = scorePair(d, c, input.refs)
       if (scoring.confidence < minConf) continue
-
       const level: ScanLevel =
         scoring.confidence >= PAIR_THRESHOLD ? 'HIGH' : 'MEDIUM'
       const nameMatchOk =
         hasTransferIntent(d.description, input.refs) &&
         hasTransferIntent(c.description, input.refs)
-
-      const candidate: ScanRetroativoPair = {
+      allCandidates.push({
         from: d,
         to: c,
         confidence: scoring.confidence,
@@ -131,20 +136,26 @@ export function scanRetroativo(input: {
         deltaDays: scoring.deltaDays,
         evidences: scoring.evidences,
         nameMatchOk,
-      }
-      if (
-        best === null ||
-        scoring.confidence > best.confidence ||
-        (scoring.confidence === best.confidence && scoring.deltaDays < best.deltaDays)
-      ) {
-        best = candidate
-      }
+      })
     }
-    if (best) {
-      pairs.push(best)
-      usedIds.add(best.from.id)
-      usedIds.add(best.to.id)
-    }
+  }
+
+  // Sort: nameMatchOk DESC -> confidence DESC -> deltaDays ASC -> level (HIGH primeiro)
+  allCandidates.sort((a, b) => {
+    if (a.nameMatchOk !== b.nameMatchOk) return a.nameMatchOk ? -1 : 1
+    if (a.confidence !== b.confidence) return b.confidence - a.confidence
+    if (a.deltaDays !== b.deltaDays) return a.deltaDays - b.deltaDays
+    return 0
+  })
+
+  // Greedy 1-to-1: pega em ordem; pula se algum lado já foi usado
+  const pairs: ScanRetroativoPair[] = []
+  const usedIds = new Set<string>()
+  for (const cand of allCandidates) {
+    if (usedIds.has(cand.from.id) || usedIds.has(cand.to.id)) continue
+    pairs.push(cand)
+    usedIds.add(cand.from.id)
+    usedIds.add(cand.to.id)
   }
 
   pairs.sort((a, b) => b.confidence - a.confidence)
