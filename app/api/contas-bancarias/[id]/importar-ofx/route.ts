@@ -10,6 +10,14 @@ import { applyIdentityGate, type GateInput } from '@/lib/import-identity/apply-g
 import { loadLedgerState } from '@/lib/import-identity/ledger-queries'
 import { findBatchWarnings } from '@/lib/import-identity/batch-overlap'
 import { reconcileTransferPlaceholders } from '@/lib/import-identity/reconcile-placeholder'
+import { predictSuggestionsForPreview } from '@/lib/import-categorization/predict-for-preview'
+import { loadPredictionContext } from '@/lib/import-categorization/load-prediction-context'
+import {
+  applyCategoryOverrides,
+  persistNewRules,
+  type CategoryOverride,
+  type NewRuleSpec,
+} from '@/lib/import-categorization/apply-overrides'
 import {
   buildLegacyPreviewPayload,
   buildV2PreviewPayload,
@@ -52,6 +60,10 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   let rawContent: string
   let uploadedFileName = 'extrato.ofx'
+  // Sprint Import Categoria Editável (18/06/2026): overrides do usuário
+  // (mapa dedupHash -> categoryId) + regras a persistir após sucesso.
+  let categoryOverrides: CategoryOverride[] = []
+  let newRules: NewRuleSpec[] = []
   try {
     const formData = await request.formData()
     const file = formData.get('file')
@@ -60,6 +72,20 @@ export async function POST(request: NextRequest, { params }: Params) {
     }
     uploadedFileName = (file as File).name || 'extrato.ofx'
     rawContent = await (file as File).text()
+    const overridesRaw = formData.get('categoryOverrides')
+    if (typeof overridesRaw === 'string' && overridesRaw.trim()) {
+      try {
+        const parsed = JSON.parse(overridesRaw)
+        if (Array.isArray(parsed)) categoryOverrides = parsed
+      } catch {}
+    }
+    const rulesRaw = formData.get('newRules')
+    if (typeof rulesRaw === 'string' && rulesRaw.trim()) {
+      try {
+        const parsed = JSON.parse(rulesRaw)
+        if (Array.isArray(parsed)) newRules = parsed
+      } catch {}
+    }
   } catch {
     return NextResponse.json({ erro: 'Erro ao ler arquivo' }, { status: 400 })
   }
@@ -285,13 +311,40 @@ export async function POST(request: NextRequest, { params }: Params) {
         errosParser: errors,
         banco,
       })
-      // Sprint Import Idempotente: adiciona warnings + stats do gate
+      // Sprint Import Idempotente: warnings + stats do gate
+      // Sprint Import Categoria Editável (18/06/2026): suggestions por tx
+      // (somente leitura — UI usa pra renderizar dropdown editável + bolinha).
+      let categorySuggestions: ReturnType<typeof predictSuggestionsForPreview> = []
+      let categoriesForUI: Array<{ id: string; name: string; type: string; dreGroup: string | null; parentId: string | null }> = []
+      try {
+        const ctx = await loadPredictionContext(conta.companyId)
+        categorySuggestions = predictSuggestionsForPreview(
+          novas.map((t) => ({
+            dedupHash: t.dedupHash,
+            description: t.memo,
+            amount: t.amount,
+            type: t.type,
+          })),
+          ctx,
+        )
+        // Lista plana das categorias da empresa pra dropdown na UI
+        const allCats = await prisma.category.findMany({
+          where: { companyId: conta.companyId, isActive: true },
+          select: { id: true, name: true, type: true, dreGroup: true, parentId: true },
+          orderBy: [{ type: 'asc' }, { name: 'asc' }],
+        })
+        categoriesForUI = allCats
+      } catch (e) {
+        console.error('[importar-ofx preview] categorySuggestions falhou:', e)
+      }
       return NextResponse.json({
         ...payload,
         importIdentity: {
           gate: gateResult.stats,
           batchWarnings,
         },
+        categorySuggestions,
+        categoriesForUI,
       })
     }
 
@@ -434,7 +487,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     resolveSetorCategoryId(systemCats.list, name)
 
   const {
-    classified,
+    classified: classifiedRaw,
     rulesFired,
     autoCount,
     supplierSuggestions,
@@ -455,6 +508,13 @@ export async function POST(request: NextRequest, { params }: Params) {
     setorPatterns,
     setorResolver,
   )
+  // Sprint Import Categoria Editável (18/06/2026): override de categorias
+  // editadas pelo user na UI (formData.categoryOverrides). Pipeline IA é
+  // executado normalmente; user pode sobrescrever no momento do confirm.
+  const classified = categoryOverrides.length > 0
+    ? applyCategoryOverrides(classifiedRaw, categoryOverrides)
+    : classifiedRaw
+  const overridesApplied = categoryOverrides.length
   const predictMs = Date.now() - t0Predict
 
   try {
@@ -564,6 +624,20 @@ export async function POST(request: NextRequest, { params }: Params) {
       autoClassified: autoCount,
     },
   })
+
+  // Sprint Import Categoria Editável (18/06/2026): persiste AiLearningRules
+  // criadas pelo usuário durante o import. Falha silenciosa.
+  let rulesCreated = 0
+  let rulesUpdated = 0
+  if (newRules.length > 0) {
+    try {
+      const r = await persistNewRules(prisma, conta.companyId, newRules)
+      rulesCreated = r.created
+      rulesUpdated = r.updated
+    } catch (e) {
+      console.error('[importar-ofx] persistNewRules falhou:', e)
+    }
+  }
 
   // Sprint Import Idempotente (18/06/2026) — registra TODA tx criada no
   // seen-ledger. Falha silenciosa: erro aqui não mata o import, mas
@@ -750,10 +824,13 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
 
   return NextResponse.json({
-    mensagem: `${novas.length} transaç${novas.length !== 1 ? 'ões importadas' : 'ão importada'} com sucesso${reconciledCount > 0 ? ` (${reconciledCount} contrapartes reconciliadas)` : ''}.`,
+    mensagem: `${novas.length} transaç${novas.length !== 1 ? 'ões importadas' : 'ão importada'} com sucesso${reconciledCount > 0 ? ` (${reconciledCount} contrapartes reconciliadas)` : ''}${overridesApplied > 0 ? ` · ${overridesApplied} categoria(s) editada(s)` : ''}${rulesCreated + rulesUpdated > 0 ? ` · ${rulesCreated} regra(s) criada(s)${rulesUpdated > 0 ? ` (${rulesUpdated} atualizadas)` : ''}` : ''}.`,
     inseridas: novas.length,
     duplicadas,
     reconciledTransferPlaceholders: reconciledCount,
+    categoryOverridesApplied: overridesApplied,
+    rulesCreated,
+    rulesUpdated,
     autoClassificadas: autoCount,
     regrasDispararam: rulesFired.size,
     keywordHits,
