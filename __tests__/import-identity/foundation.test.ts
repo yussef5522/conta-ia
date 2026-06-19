@@ -69,9 +69,9 @@ describe('normalize.valorToCents', () => {
 })
 
 describe('normalize.normalizeDescription', () => {
-  it('uppercase + colapsa espaços', () => {
+  it('uppercase + colapsa espaços (e strip de hífen virou separador)', () => {
     expect(normalizeDescription('  Acai Especial   - Lote  ')).toBe(
-      'ACAI ESPECIAL - LOTE',
+      'ACAI ESPECIAL LOTE',
     )
   })
   it('remove acentos', () => {
@@ -85,6 +85,38 @@ describe('normalize.normalizeDescription', () => {
   it('undefined retorna vazio', () => {
     expect(normalizeDescription(undefined)).toBe('')
   })
+
+  // Sprint Iter 2 — caso real Banrisul que estava furando o gate
+  it('OP. CREDITO C/GARANTIA == OP CREDITO C/GARANTIA (pontuação)', () => {
+    expect(normalizeDescription('OP. CREDITO C/GARANTIA')).toBe(
+      normalizeDescription('OP CREDITO C/GARANTIA'),
+    )
+    expect(normalizeDescription('OP. CREDITO C/GARANTIA')).toBe(
+      'OP CREDITO C GARANTIA',
+    )
+  })
+  it('PIX YUSSEF | TRANSFERENCIA -> sem pipe', () => {
+    expect(normalizeDescription('PIX YUSSEF | TRANSFERÊNCIA')).toBe(
+      'PIX YUSSEF TRANSFERENCIA',
+    )
+  })
+  it('preserva números — PARCELA 1/12 != PARCELA 2/12', () => {
+    const a = normalizeDescription('PARCELA 1/12')
+    const b = normalizeDescription('PARCELA 2/12')
+    expect(a).not.toBe(b)
+    expect(a).toBe('PARCELA 1 12')
+    expect(b).toBe('PARCELA 2 12')
+  })
+  it('preserva números — externalIds com dígitos diferentes não fundem', () => {
+    expect(normalizeDescription('REF 70193920247')).not.toBe(
+      normalizeDescription('REF 70193920248'),
+    )
+  })
+  it('NÃO funde tx legítimamente DIFERENTES no texto base', () => {
+    expect(normalizeDescription('PAGAMENTO ENERGIA')).not.toBe(
+      normalizeDescription('PAGAMENTO ENERGIA SOLAR'),
+    )
+  })
 })
 
 describe('normalize.buildDescription', () => {
@@ -96,9 +128,9 @@ describe('normalize.buildDescription', () => {
       'PIX ENVIADO CACULA MIX',
     )
   })
-  it('só MEMO', () => {
+  it('só MEMO (pontuação removida)', () => {
     expect(buildDescription(null, 'OP. CREDITO C/GARANTIA')).toBe(
-      'OP. CREDITO C/GARANTIA',
+      'OP CREDITO C GARANTIA',
     )
   })
 })
