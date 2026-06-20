@@ -71,8 +71,11 @@ export async function reconcileTransferPlaceholders(
 
   for (const ofxTx of incoming) {
     // 1) Busca placeholders compatíveis na MESMA conta
-    // Critério: mesma conta + mesmo amount (CREDIT positivo, é entrada)
-    //   + data ±1d + type=TRANSFER + transferGroupId NOT NULL + externalId=null
+    // Sprint Detector-No-Sintese (19/06/2026): cobre AMBAS direções.
+    //   - ofxTx.type='CREDIT' (entrada) -> placeholder IN
+    //   - ofxTx.type='DEBIT'  (saída)   -> placeholder OUT
+    // Critério comum: mesma conta + mesmo amount + data ±1d +
+    //   type=TRANSFER + transferGroupId NOT NULL + externalId=null
     const dayMin = new Date(ofxTx.datePosted.getTime() - DAY_MS)
     const dayMax = new Date(ofxTx.datePosted.getTime() + DAY_MS)
 
@@ -90,14 +93,18 @@ export async function reconcileTransferPlaceholders(
       take: 5,
     })
 
-    // 2) Guard: match único E lado IN (faz sentido pra OFX positive=entrada).
-    //    Se >1 placeholders compatíveis ou nenhum, não reconcilia.
-    const inMatches = matches.filter((m) => m.transferDirection === 'IN' || m.transferDirection === null)
-    if (inMatches.length !== 1) {
+    // 2) Guard: match único E direção compatível com o tipo da OFX.
+    //    CREDIT (entrada) -> placeholder IN; DEBIT (saída) -> placeholder OUT.
+    //    Aceita placeholder com transferDirection=null pra compat com tx antigas.
+    const wantedDirection = ofxTx.type === 'DEBIT' ? 'OUT' : 'IN'
+    const dirMatches = matches.filter(
+      (m) => m.transferDirection === wantedDirection || m.transferDirection === null,
+    )
+    if (dirMatches.length !== 1) {
       remaining.push(ofxTx)
       continue
     }
-    const placeholder = inMatches[0]
+    const placeholder = dirMatches[0]
 
     // 3) Calcula nova identidade
     const newIdent = computeIdentity({

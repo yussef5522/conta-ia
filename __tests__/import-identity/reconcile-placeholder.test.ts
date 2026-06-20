@@ -144,16 +144,65 @@ describe('reconcileTransferPlaceholders — cenários reais', () => {
     expect(res.remaining).toHaveLength(1)
   })
 
-  it('placeholder com transferDirection=OUT -> NÃO reconcilia (OFX é entrada)', async () => {
+  it('OFX CREDIT vs placeholder direction=OUT -> NÃO reconcilia (direções incompatíveis)', async () => {
     const ofx = mkOFX({
       fitid: 'X',
       amount: 500,
       datePosted: date,
       memo: 'PIX',
+      type: 'CREDIT',
     })
     const m = mkPrismaMock({
       matchesByAmountDate: [
         { id: 'p1', date, transferDirection: 'OUT', transferGroupId: 'g1' },
+      ],
+    })
+    const res = await reconcileTransferPlaceholders(m.prisma, [ofx], {
+      bankAccountId: 'STONE',
+      companyId: 'CACULA',
+      importBatchId: 'batch-1',
+    })
+    expect(res.reconciled).toHaveLength(0)
+    expect(res.remaining).toHaveLength(1)
+  })
+
+  it('OFX DEBIT vs placeholder direction=OUT -> RECONCILIA (caso bug 21k)', async () => {
+    const ofx = mkOFX({
+      fitid: '918448',
+      amount: 21000,
+      datePosted: date,
+      memo: 'PIX ENVIADO',
+      type: 'DEBIT',
+    })
+    const m = mkPrismaMock({
+      matchesByAmountDate: [
+        { id: 'placeholder-out', date, transferDirection: 'OUT', transferGroupId: 'g1' },
+      ],
+    })
+    const res = await reconcileTransferPlaceholders(m.prisma, [ofx], {
+      bankAccountId: 'BANRISUL',
+      companyId: 'CACULA',
+      importBatchId: 'b1',
+    })
+    expect(res.reconciled).toHaveLength(1)
+    expect(res.reconciled[0].transactionId).toBe('placeholder-out')
+    expect(res.remaining).toHaveLength(0)
+    const txUpd = m.updates.find((u) => u.kind === 'transaction' && u.where?.id === 'placeholder-out')
+    expect(txUpd.data.description).toBe('PIX ENVIADO')
+    expect(txUpd.data.externalId).toBe('918448')
+  })
+
+  it('OFX DEBIT vs placeholder direction=IN -> NÃO reconcilia', async () => {
+    const ofx = mkOFX({
+      fitid: 'X',
+      amount: 500,
+      datePosted: date,
+      memo: 'PIX ENVIADO',
+      type: 'DEBIT',
+    })
+    const m = mkPrismaMock({
+      matchesByAmountDate: [
+        { id: 'p1', date, transferDirection: 'IN', transferGroupId: 'g1' },
       ],
     })
     const res = await reconcileTransferPlaceholders(m.prisma, [ofx], {
