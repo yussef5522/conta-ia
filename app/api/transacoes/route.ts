@@ -175,10 +175,56 @@ export async function GET(request: NextRequest) {
       }),
     ])
 
+    // Sprint Transfer Display+Sync (20/06/2026): enriquece TRANSFER pareadas
+    // com nome da conta do OUTRO lado do par. 1 query por página, não N+1.
+    const groupIdsVisiveis = Array.from(
+      new Set(
+        transacoes
+          .filter((t) => t.type === 'TRANSFER' && t.transferGroupId)
+          .map((t) => t.transferGroupId as string),
+      ),
+    )
+    const partnerNameByTxId: Record<string, { partnerAccountId: string; partnerAccountName: string }> = {}
+    if (groupIdsVisiveis.length > 0) {
+      const sides = await prisma.transaction.findMany({
+        where: { transferGroupId: { in: groupIdsVisiveis } },
+        select: {
+          id: true,
+          transferGroupId: true,
+          bankAccountId: true,
+          bankAccount: { select: { name: true } },
+        },
+      })
+      // Agrupa por groupId
+      const byGroup = new Map<string, typeof sides>()
+      for (const s of sides) {
+        const gid = s.transferGroupId!
+        if (!byGroup.has(gid)) byGroup.set(gid, [])
+        byGroup.get(gid)!.push(s)
+      }
+      // Pra cada tx visível, encontra o partner (lado != bankAccountId)
+      for (const t of transacoes) {
+        if (t.type !== 'TRANSFER' || !t.transferGroupId) continue
+        const group = byGroup.get(t.transferGroupId)
+        if (!group) continue
+        const partner = group.find(
+          (s) => s.bankAccountId !== t.bankAccountId,
+        )
+        if (partner && partner.bankAccount) {
+          partnerNameByTxId[t.id] = {
+            partnerAccountId: partner.bankAccountId ?? '',
+            partnerAccountName: partner.bankAccount.name,
+          }
+        }
+      }
+    }
+
     return NextResponse.json({
       transacoes,
       conta: contaSingle,
       paginacao: { total, page, limit, totalPages: Math.ceil(total / limit) },
+      // Sprint Transfer Display+Sync — opcional, só pra TRANSFER pareadas
+      transferPartners: partnerNameByTxId,
     })
   } catch (error) {
     return handleApiError(error)

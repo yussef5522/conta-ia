@@ -5,7 +5,8 @@ import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import {
   Plus, ArrowUpRight, ArrowDownRight, MoreVertical,
-  Pencil, Trash2, Filter, ChevronLeft, ChevronRight, Upload
+  Pencil, Trash2, Filter, ChevronLeft, ChevronRight, Upload,
+  ArrowRight, ArrowLeft, ExternalLink,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -54,8 +55,12 @@ interface Transacao {
   lifecycle?: string | null
   isInternalTransfer?: boolean | null
   transferGroupId?: string | null
+  transferDirection?: 'OUT' | 'IN' | null
   bridge?: { id: string } | null
 }
+
+// Sprint Transfer Display+Sync (20/06/2026)
+interface TransferPartner { partnerAccountId: string; partnerAccountName: string }
 
 interface Conta { id: string; name: string; bankName: string | null; balance: number; accountType: string }
 
@@ -67,6 +72,7 @@ export default function TransacoesPage() {
   const { toast } = useToast()
 
   const [transacoes, setTransacoes] = useState<Transacao[]>([])
+  const [transferPartners, setTransferPartners] = useState<Record<string, TransferPartner>>({})
   const [conta, setConta] = useState<Conta | null>(null)
   const [paginacao, setPaginacao] = useState<Paginacao>({ total: 0, page: 1, limit: 50, totalPages: 1 })
   const [loading, setLoading] = useState(true)
@@ -101,6 +107,8 @@ export default function TransacoesPage() {
         setTransacoes(data.transacoes)
         setConta(data.conta)
         setPaginacao(data.paginacao)
+        // Sprint Transfer Display+Sync (20/06/2026): nome do par
+        setTransferPartners(data.transferPartners ?? {})
       }
     } finally {
       setLoading(false)
@@ -263,18 +271,30 @@ export default function TransacoesPage() {
                   <span className="text-xs text-muted-foreground">
                     {new Date(t.date).toLocaleDateString('pt-BR')}
                   </span>
-                  {/* Sprint Detector-No-Sintese (19/06/2026): pra type=TRANSFER,
-                      mostra badge "Transferência interna" + link grupo, evitando
-                      "Sem categoria" enganoso (transferência nunca tem categoria). */}
+                  {/* Sprint Transfer Display+Sync (20/06/2026): TRANSFER pareada
+                      mostra "para/de [conta destino]" com seta direcional + link.
+                      Órfã: amber "Aguardando outro extrato". */}
                   {t.type === 'TRANSFER' ? (
                     t.transferGroupId ? (
-                      <Link
-                        href={`/empresas/${empresaId}/transferencias?groupId=${t.transferGroupId}`}
-                        className="flex items-center gap-1 text-xs text-blue-700 hover:underline"
-                      >
-                        <span className="inline-block h-1.5 w-1.5 rounded-full bg-blue-500" />
-                        Transferência interna
-                      </Link>
+                      (() => {
+                        const partner = transferPartners[t.id]
+                        const isOut = t.transferDirection === 'OUT'
+                        const Arrow = isOut ? ArrowRight : ArrowLeft
+                        const label = isOut
+                          ? `Transferência para ${partner?.partnerAccountName ?? 'outra conta'}`
+                          : `Transferência de ${partner?.partnerAccountName ?? 'outra conta'}`
+                        return (
+                          <Link
+                            href={`/empresas/${empresaId}/transferencias?groupId=${t.transferGroupId}`}
+                            className="flex items-center gap-1 text-xs text-blue-700 hover:underline"
+                            title="Abrir par desta transferência"
+                          >
+                            <Arrow className="h-3 w-3" />
+                            <span>{label}</span>
+                            <ExternalLink className="h-2.5 w-2.5 opacity-60" />
+                          </Link>
+                        )
+                      })()
                     ) : (
                       <span className="flex items-center gap-1 text-xs text-amber-700">
                         <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500" />

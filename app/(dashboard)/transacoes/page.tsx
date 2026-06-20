@@ -121,6 +121,8 @@ function TransacoesPageInner() {
   const empresaIdParam = searchParams.get('empresaId')
 
   const [transacoes, setTransacoes] = useState<Transacao[]>([])
+  // Sprint Transfer Display+Sync (20/06/2026)
+  const [transferPartners, setTransferPartners] = useState<Record<string, { partnerAccountId: string; partnerAccountName: string }>>({})
   const [contas, setContas] = useState<ContaInfo[]>([])
   const [paginacao, setPaginacao] = useState<Paginacao>({ total: 0, page: 1, limit: 50, totalPages: 1 })
   const [loading, setLoading] = useState(true)
@@ -233,6 +235,8 @@ function TransacoesPageInner() {
         const data = await res.json()
         setTransacoes(data.transacoes)
         setPaginacao(data.paginacao)
+        // Sprint Transfer Display+Sync (20/06/2026)
+        setTransferPartners(data.transferPartners ?? {})
       }
     } finally {
       setLoading(false)
@@ -990,8 +994,39 @@ function TransacoesPageInner() {
                   <span className="text-xs text-muted-foreground">
                     · {t.bankAccount?.company?.tradeName ?? t.bankAccount?.company?.name ?? 'Empresa'} / {t.bankAccount?.name ?? 'Conta'}
                   </span>
-                  {/* Sprint 3.0.3 B1 — edição inline categoria (se carregadas) */}
-                  {categorias.length > 0 ? (
+                  {/* Sprint Transfer Display+Sync (20/06/2026): TRANSFER pareada
+                      mostra "para/de [conta]" + link; órfã = "Aguardando outro extrato". */}
+                  {t.type === 'TRANSFER' ? (
+                    t.transferGroupId ? (
+                      (() => {
+                        const partner = transferPartners[t.id]
+                        const isOut = (t as any).transferDirection === 'OUT'
+                        const label = isOut
+                          ? `Transferência para ${partner?.partnerAccountName ?? 'outra conta'}`
+                          : `Transferência de ${partner?.partnerAccountName ?? 'outra conta'}`
+                        const companyIdLink = (t.bankAccount as any)?.companyId
+                        return (
+                          <Link
+                            href={
+                              companyIdLink
+                                ? `/empresas/${companyIdLink}/transferencias?groupId=${t.transferGroupId}`
+                                : '#'
+                            }
+                            className="flex items-center gap-1 text-xs text-blue-700 hover:underline"
+                            title={`groupId: ${t.transferGroupId}`}
+                          >
+                            <span className="inline-block h-1.5 w-1.5 rounded-full bg-blue-500" />
+                            {label}
+                          </Link>
+                        )
+                      })()
+                    ) : (
+                      <span className="flex items-center gap-1 text-xs text-amber-700">
+                        <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500" />
+                        Aguardando outro extrato
+                      </span>
+                    )
+                  ) : categorias.length > 0 ? (
                     <InlineCategorySelect
                       transacaoId={t.id}
                       current={
