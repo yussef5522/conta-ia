@@ -21,6 +21,15 @@ export interface IdentityInput {
   amount: number
   /** Tipo (CREDIT / DEBIT / TRANSFER) */
   type: 'CREDIT' | 'DEBIT' | 'TRANSFER' | string
+  /**
+   * Sprint ContentHash Estável (20/06/2026): direção pra TRANSFER.
+   * Quando type=TRANSFER, esta direção determina o sinal:
+   *   IN  -> +cents (entrada na conta — equivalente a CREDIT)
+   *   OUT -> -cents (saída da conta  — equivalente a DEBIT)
+   * Resultado: DEBIT incoming bate o contentHash do TRANSFER OUT no DB.
+   * Ignora pra type CREDIT/DEBIT.
+   */
+  transferDirection?: 'IN' | 'OUT' | null
   /** NAME do OFX */
   name?: string | null
   /** MEMO do OFX (ou descrição livre Excel/Manual) */
@@ -43,7 +52,11 @@ export interface IdentityOutput {
 
 export function computeIdentity(input: IdentityInput): IdentityOutput {
   const dateKey = extractDateKey(input.date)
-  const valorCentavos = valorToCents(input.amount, input.type)
+  const valorCentavos = valorToCents(
+    input.amount,
+    input.type,
+    input.transferDirection,
+  )
   const description = buildDescription(input.name, input.memo)
 
   const fitidConfiavel = isFitidConfiavel(input.fitid)
