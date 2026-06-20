@@ -37,16 +37,54 @@ export function extractDateKey(raw: string | Date): string {
 }
 
 /**
- * Converte valor float pra centavos inteiros COM SINAL.
- *   4092.02 CREDIT -> 409202
- *   1033.13 DEBIT  -> -103313
- *   0 -> 0
+ * Converte valor float pra centavos inteiros COM SINAL — pela DIREÇÃO DE
+ * CAIXA, NÃO pelo type cru.
+ *
+ * Mapeamento (Sprint ContentHash Estável — 20/06/2026):
+ *   CREDIT             -> +cents  (entrada na conta)
+ *   DEBIT              -> -cents  (saída da conta)
+ *   TRANSFER + IN      -> +cents  (entrada na conta)
+ *   TRANSFER + OUT     -> -cents  (saída da conta)
+ *   TRANSFER + null    -> -cents  (DEFAULT seguro: trata como saída — compat
+ *                                   pra tx antigas sem transferDirection;
+ *                                   ainda assim previne colisão DEBIT/CREDIT)
+ *   Resto              -> +cents  (CREDIT-like)
+ *
+ * Causa raiz que estamos matando: ANTES, `type='TRANSFER'` caía no else=+1
+ * (CREDIT-like). Quando o detector promovia DEBIT (-) → TRANSFER OUT,
+ * o contentHash MUDAVA de sinal. Banrisul re-export com FITID renumerado
+ * (curto, não-confiável) trazia o DEBIT (-) original; gate via contentHash
+ * incoming (-) ≠ stored (+) → considerava nova → duplicava.
+ *
+ * Agora a direção de CAIXA é a verdade: DEBIT (-) e TRANSFER OUT (-)
+ * geram o MESMO contentHash. Re-import vê hash idêntico → barra. ✓
+ *
+ * Garantia anti-colisão preservada: DEBIT(-100) e CREDIT(+100) seguem
+ * gerando hashes distintos.
  *
  * Round half-up pra evitar drift de float (0.005 -> 1 centavo).
  */
-export function valorToCents(amount: number, type: 'CREDIT' | 'DEBIT' | string): number {
+export function valorToCents(
+  amount: number,
+  type: 'CREDIT' | 'DEBIT' | 'TRANSFER' | string,
+  transferDirection?: 'IN' | 'OUT' | null,
+): number {
   if (!isFinite(amount)) return 0
-  const sign = type === 'CREDIT' ? 1 : type === 'DEBIT' ? -1 : 1
+  let sign: 1 | -1
+  if (type === 'CREDIT') {
+    sign = 1
+  } else if (type === 'DEBIT') {
+    sign = -1
+  } else if (type === 'TRANSFER') {
+    if (transferDirection === 'IN') sign = 1
+    else if (transferDirection === 'OUT') sign = -1
+    // Default DEFENSIVO pra TRANSFER sem direction:
+    // trata como OUT (-1) pra preservar a regra "DEBIT == TRANSFER OUT".
+    // Não usamos +1 default porque cria falsa colisão com CREDIT.
+    else sign = -1
+  } else {
+    sign = 1
+  }
   const abs = Math.abs(amount)
   const cents = Math.floor(abs * 100 + 0.5)
   return sign * cents

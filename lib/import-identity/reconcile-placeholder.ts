@@ -107,12 +107,16 @@ export async function reconcileTransferPlaceholders(
     const placeholder = dirMatches[0]
 
     // 3) Calcula nova identidade
+    // Sprint ContentHash Estável (20/06/2026): passa transferDirection pra
+    // o sinal de valorCentavos refletir caixa (OUT=-, IN=+) e bater com
+    // o DEBIT/CREDIT do incoming OFX.
     const newIdent = computeIdentity({
       accountId: input.bankAccountId,
       fitid: ofxTx.fitid,
       date: ofxTx.datePosted,
       amount: ofxTx.amount,
       type: 'TRANSFER',
+      transferDirection: wantedDirection,
       memo: ofxTx.memo,
     })
 
