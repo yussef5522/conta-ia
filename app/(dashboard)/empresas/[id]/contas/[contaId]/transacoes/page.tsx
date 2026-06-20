@@ -263,11 +263,31 @@ export default function TransacoesPage() {
                   <span className="text-xs text-muted-foreground">
                     {new Date(t.date).toLocaleDateString('pt-BR')}
                   </span>
-                  {t.category && (
-                    <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                      <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ backgroundColor: t.category.color }} />
-                      {t.category.name}
-                    </span>
+                  {/* Sprint Detector-No-Sintese (19/06/2026): pra type=TRANSFER,
+                      mostra badge "Transferência interna" + link grupo, evitando
+                      "Sem categoria" enganoso (transferência nunca tem categoria). */}
+                  {t.type === 'TRANSFER' ? (
+                    t.transferGroupId ? (
+                      <Link
+                        href={`/empresas/${empresaId}/transferencias?groupId=${t.transferGroupId}`}
+                        className="flex items-center gap-1 text-xs text-blue-700 hover:underline"
+                      >
+                        <span className="inline-block h-1.5 w-1.5 rounded-full bg-blue-500" />
+                        Transferência interna
+                      </Link>
+                    ) : (
+                      <span className="flex items-center gap-1 text-xs text-amber-700">
+                        <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500" />
+                        Aguardando outro extrato
+                      </span>
+                    )
+                  ) : (
+                    t.category && (
+                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ backgroundColor: t.category.color }} />
+                        {t.category.name}
+                      </span>
+                    )
                   )}
                 </div>
               </div>
