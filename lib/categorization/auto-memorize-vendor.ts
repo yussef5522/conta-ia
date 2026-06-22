@@ -15,6 +15,7 @@ import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { extractAnchorWord } from './extract-anchor-word'
 import { isCategoryCompatibleWithTxType } from './type-validation'
+import { isAutoRuleGenerationEnabled } from '@/lib/regras/feature-flag'
 
 /** Fonte da regra criada por esta sprint — diferencia das MANUAL/CLAUDE. */
 export const AUTO_FROM_MANUAL_FONTE = 'AUTO_FROM_MANUAL'
@@ -52,6 +53,16 @@ export interface AutoMemorizeInput {
 export async function autoMemorizeVendor(
   input: AutoMemorizeInput,
 ): Promise<AutoMemorizeResult> {
+  // Sprint Regras-Cadastro (22/06/2026): gate por feature flag
+  // AUTO_RULE_GENERATION (default OFF). Esse é o gerador que produzia
+  // padrões muito genéricos a partir de 1 palavra (anchor) — "PAGAMENTO",
+  // "BANRI", "STONE", "PIX-PIX_CRE" — que classificavam transações erradas.
+  // Decisão Yussef: parar de criar regras automáticas; deixar só a APLICAÇÃO
+  // das existentes funcionando + tela /regras pra gerenciar manualmente.
+  if (!isAutoRuleGenerationEnabled()) {
+    return { anchor: null, retroactiveCount: 0, ruleId: null, ruleCreated: false }
+  }
+
   const anchor = extractAnchorWord(input.baseDescription)
   if (!anchor) {
     return { anchor: null, retroactiveCount: 0, ruleId: null, ruleCreated: false }

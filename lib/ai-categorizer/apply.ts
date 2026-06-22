@@ -121,11 +121,18 @@ export async function classifyWithLearning(
   }
 
   // 3. Se effectiveLearnPattern=true: prepara regra (build OU reuse)
+  // Sprint Regras-Cadastro (22/06/2026): GATE pela feature flag
+  // AUTO_RULE_GENERATION (default OFF). Quando OFF, classificação manual
+  // aplica SÓ aquela transação — nenhuma regra global é criada.
+  // O APLICADOR de regras (autoClassifyTransactions) continua intacto.
+  const { isAutoRuleGenerationEnabled } = await import('@/lib/regras/feature-flag')
+  const autoRuleGenOn = isAutoRuleGenerationEnabled()
+
   let ruleId: string | null = null
   let ruleCreated = false
   let ruleSnapshot: RuleSnapshot | null = null
 
-  if (effectiveLearnPattern) {
+  if (effectiveLearnPattern && autoRuleGenOn) {
     const newRuleData = buildNewRule(
       ctx.company.id,
       base.description,
@@ -211,31 +218,35 @@ export async function classifyWithLearning(
             similarTxIds = stemMatches.map((s) => s.id)
             similarApplied = similarTxIds.length
 
-            // Cria/upsert regra CONTAINS com padrao = stem
-            const containsRule = await prisma.aiLearningRule.upsert({
-              where: {
-                companyId_tipoMatch_padrao: {
+            // Sprint Regras-Cadastro (22/06/2026): gate por feature flag.
+            // Stem CONTAINS é justamente o tipo de regra que mais criou
+            // padrões tóxicos (1 palavra genérica). Off por default.
+            if (autoRuleGenOn) {
+              const containsRule = await prisma.aiLearningRule.upsert({
+                where: {
+                  companyId_tipoMatch_padrao: {
+                    companyId: ctx.company.id,
+                    tipoMatch: 'CONTAINS',
+                    padrao: stem,
+                  },
+                },
+                create: {
                   companyId: ctx.company.id,
                   tipoMatch: 'CONTAINS',
                   padrao: stem,
+                  categoryId: input.categoryId,
+                  confianca: 1.0,
+                  fonte: 'MANUAL',
+                  isActive: true,
                 },
-              },
-              create: {
-                companyId: ctx.company.id,
-                tipoMatch: 'CONTAINS',
-                padrao: stem,
-                categoryId: input.categoryId,
-                confianca: 1.0,
-                fonte: 'MANUAL',
-                isActive: true,
-              },
-              update: {
-                isActive: true,
-                categoryId: input.categoryId,
-                confianca: 1.0,
-              },
-            })
-            stemRule = { id: containsRule.id, padrao: stem }
+                update: {
+                  isActive: true,
+                  categoryId: input.categoryId,
+                  confianca: 1.0,
+                },
+              })
+              stemRule = { id: containsRule.id, padrao: stem }
+            }
           }
         }
       }
