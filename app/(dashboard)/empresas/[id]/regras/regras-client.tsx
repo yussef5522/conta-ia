@@ -64,6 +64,9 @@ interface Regra {
   updatedAt: string
   category: { id: string; name: string; dreGroup: string | null; color: string | null } | null
   supplier: { id: string; razaoSocial: string } | null
+  // Sprint Regras-Cadastro (22/06/2026)
+  isToxic?: boolean
+  toxicReason?: string | null
 }
 
 interface Stats {
@@ -95,6 +98,8 @@ export function RegrasClient({ empresaId, empresaNome, categorias }: Props) {
   const [tipoMatch, setTipoMatch] = useState<string>('ALL')
   const [categoryId, setCategoryId] = useState<string>('ALL')
   const [status, setStatus] = useState<string>('ALL')
+  // Sprint Regras-Cadastro (22/06/2026): filtro client-side "só amplas"
+  const [onlyToxic, setOnlyToxic] = useState(false)
 
   const [editing, setEditing] = useState<Regra | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<Regra | null>(null)
@@ -313,6 +318,28 @@ export function RegrasClient({ empresaId, empresaNome, categorias }: Props) {
         </div>
       </div>
 
+      {/* Sprint Regras-Cadastro (22/06/2026): banner de regras amplas */}
+      {(() => {
+        const toxicCount = items.filter((r) => r.isToxic).length
+        if (toxicCount === 0) return null
+        return (
+          <div className="rounded-md border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20 px-4 py-3 flex items-center justify-between gap-3">
+            <div className="text-sm text-amber-900 dark:text-amber-200">
+              <strong>{toxicCount} regra{toxicCount > 1 ? 's' : ''} ampla{toxicCount > 1 ? 's' : ''}</strong>{' '}
+              detectada{toxicCount > 1 ? 's' : ''} nesta página. Padrões muito genéricos
+              podem classificar transações demais (ex: "PAGAMENTO" → Contabilidade).
+              Revise uma a uma — pause ou apague as que estiverem erradas.
+            </div>
+            <button
+              onClick={() => setOnlyToxic((v) => !v)}
+              className="shrink-0 text-xs px-3 py-1.5 rounded border border-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/40 text-amber-900 dark:text-amber-200 font-medium"
+            >
+              {onlyToxic ? 'Mostrar todas' : `Só amplas (${toxicCount})`}
+            </button>
+          </div>
+        )
+      })()}
+
       {/* Tabela */}
       <div className="rounded-md border bg-card">
         {loading && !data ? (
@@ -345,7 +372,7 @@ export function RegrasClient({ empresaId, empresaNome, categorias }: Props) {
               </tr>
             </thead>
             <tbody>
-              {items.map((r) => {
+              {(onlyToxic ? items.filter((r) => r.isToxic) : items).map((r) => {
                 const mc = matchTypeColor(r.tipoMatch)
                 const cc = confidenceColors(r.confianca)
                 return (
@@ -358,6 +385,15 @@ export function RegrasClient({ empresaId, empresaNome, categorias }: Props) {
                       {!r.isActive && (
                         <span className="ml-2 text-[10px] uppercase text-amber-600 dark:text-amber-400">
                           pausada
+                        </span>
+                      )}
+                      {/* Sprint Regras-Cadastro (22/06/2026): badge "Regra ampla — revisar" */}
+                      {r.isToxic && (
+                        <span
+                          className="ml-2 inline-flex items-center gap-1 text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded font-sans font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+                          title={r.toxicReason ?? 'Regra com padrão amplo'}
+                        >
+                          ⚠ Regra ampla — revisar
                         </span>
                       )}
                     </td>

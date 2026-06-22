@@ -69,8 +69,19 @@ export async function GET(request: NextRequest, { params }: Params) {
       select: { padrao: true, createdAt: true },
     })
 
+    // Sprint Regras-Cadastro (22/06/2026): marca tóxicas
+    const { detectToxicPattern } = await import('@/lib/regras/detect-toxic')
+    const itemsEnriquecidos = items.map((r) => {
+      const tox = detectToxicPattern({ tipoMatch: r.tipoMatch, padrao: r.padrao })
+      return {
+        ...r,
+        isToxic: tox.isToxic,
+        toxicReason: tox.reason ?? null,
+      }
+    })
+
     return NextResponse.json({
-      items,
+      items: itemsEnriquecidos,
       pagination: {
         total,
         page,
