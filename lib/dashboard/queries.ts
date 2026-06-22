@@ -202,13 +202,36 @@ async function loadHeroKPIs(
     dreGroup: t.category?.dreGroup ?? null,
   }))
 
+  // Sprint 4 Motor Único (22/06/2026) — MoM honesto: mata "+1860%" enganoso.
+  // Avalia cobertura do mês anterior. Se < 20% da contagem do atual,
+  // "zera" as tx do mês anterior pro engine → deltaPercent vira null
+  // (UI mostra "novo"/"—" em vez de número inflado).
+  const txCurrent = transactionsForDRE.filter(
+    (t) => t.date >= periods.currentMonth.start && t.date <= periods.currentMonth.end,
+  ).length
+  const txPrevious = transactionsForDRE.filter(
+    (t) => t.date >= periods.previousMonth.start && t.date <= periods.previousMonth.end,
+  ).length
+  const { computeMoM } = await import('./engine')
+  const momCheck = computeMoM({
+    receitaCurrent: 0, // não importa aqui — só queremos saber se cobertura permite comparação
+    receitaPrevious: 0,
+    txCurrent,
+    txPrevious,
+  })
+  const effectiveTxForDRE = momCheck.comparable
+    ? transactionsForDRE
+    : transactionsForDRE.filter(
+        (t) => !(t.date >= periods.previousMonth.start && t.date <= periods.previousMonth.end),
+      )
+
   return computeKPIsFromData({
     companyId,
     referenceDate,
     periods,
     accountsBalanceTotal,
     categories,
-    transactionsForDRE,
+    transactionsForDRE: effectiveTxForDRE,
     transactionsLast30d,
     transactionsLast12m,
   })
@@ -316,7 +339,42 @@ async function loadMiniDRE(companyId: string, refDate: Date): Promise<MiniDRERes
     },
   })
 
-  return computeMiniDRE(dreCurrent.totals, drePrevious.totals, companyId)
+  // Sprint 4 Motor Único (22/06/2026) — MoM honesto: se mês anterior tem
+  // < 20% das tx do atual, oculta deltaPercent (mostrar "+1860%" quando
+  // maio está parcial é enganoso).
+  // Conta tx EFFECTED non-TRANSFER de cada mês pra avaliar cobertura.
+  const [txCurrent, txPrevious] = await Promise.all([
+    prisma.transaction.count({
+      where: {
+        bankAccount: { companyId },
+        lifecycle: 'EFFECTED',
+        type: { not: 'TRANSFER' },
+        date: { gte: periods.currentMonth.start, lte: periods.currentMonth.end },
+      },
+    }),
+    prisma.transaction.count({
+      where: {
+        bankAccount: { companyId },
+        lifecycle: 'EFFECTED',
+        type: { not: 'TRANSFER' },
+        date: { gte: periods.previousMonth.start, lte: periods.previousMonth.end },
+      },
+    }),
+  ])
+  const { computeMoM } = await import('./engine')
+  const momCheck = computeMoM({
+    receitaCurrent: dreCurrent.totals.receitaBruta,
+    receitaPrevious: drePrevious.totals.receitaBruta,
+    txCurrent,
+    txPrevious,
+  })
+
+  // Quando NÃO comparável, passa previous = current pra computeMiniDRE
+  // → deltaPercent = 0, UI mostra "—" (em vez de número enganoso)
+  const previousForMini = momCheck.comparable
+    ? drePrevious.totals
+    : dreCurrent.totals
+  return computeMiniDRE(dreCurrent.totals, previousForMini, companyId)
 }
 
 // ============================================================
@@ -345,15 +403,25 @@ async function loadTopCategories(
 ): Promise<TopCategoriesResult> {
   const periods = derivePeriods(refDate)
 
-  // 1. Agrega sums por categoria via Prisma groupBy.
-  //    Multi-tenant guard: bankAccount.companyId.
-  //    Filtra TRANSFER + categoryId NULL antes de agregar.
-  //    take=20 pra deixar margem (filtramos só despesas depois, então pega mais
-  //    e o slice(0,5) limita).
+  // Sprint 4 Motor Único (22/06/2026) — Top5 a prova de vazamento:
+  //   - lifecycle='EFFECTED' (só realizado)
+  //   - reconciledWithId=null (anti-dupla-contagem OFX-pai)
+  //   - transferGroupId=null (transferência pareada não pode vazar)
+  //   - type != TRANSFER (defesa em profundidade)
+  //   - categoryId not null
+  //   - status != 'IGNORED'
+  //   - NON_DRE_GROUPS (TRANSFERENCIA, DISTRIBUICAO_LUCROS, INVESTIMENTOS,
+  //     AJUSTE_SALDO) excluídos por compute-top-categories.ts via
+  //     EXPENSE_DRE_GROUPS allow-list (defesa de identidade).
   const grouped = await prisma.transaction.groupBy({
     by: ['categoryId'],
     where: {
       bankAccount: { companyId },
+      lifecycle: 'EFFECTED',
+      status: { not: 'IGNORED' },
+      reconciledWithId: null,
+      reconciledFrom: { none: {} },
+      transferGroupId: null,
       type: { not: 'TRANSFER' },
       categoryId: { not: null },
       date: {
@@ -697,10 +765,20 @@ export async function getPendingCount(companyId: string): Promise<number> {
 }
 
 async function loadPendingCount(companyId: string): Promise<number> {
+  // Sprint 4 Motor Único (22/06/2026): UMA definição de "Pendente a
+  // classificar" — alinhada com o badge sidebar + tela /pendentes.
+  // Antes: só `status='PENDING'` → contava 67 (tx já categorizadas).
+  // Agora: filtros completos → conta APENAS trabalho real.
   return prisma.transaction.count({
     where: {
       bankAccount: { companyId },
+      lifecycle: 'EFFECTED',
       status: 'PENDING',
+      categoryId: null,
+      reconciledWithId: null,
+      reconciledFrom: { none: {} },
+      transferGroupId: null,
+      type: { not: 'TRANSFER' },
     },
   })
 }
