@@ -6,7 +6,7 @@
 // só toggle/filtros + expansão de categoria + fetch de transações sob
 // demanda. Total exibido bate com despesaOperacional do dashboard.
 
-import { useEffect, useMemo, useState, useTransition } from 'react'
+import { useCallback, useEffect, useMemo, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
@@ -19,10 +19,15 @@ import {
   AlertTriangle,
   Loader2,
   ArrowLeft,
+  Tag,
+  Undo2,
+  X,
+  Sparkles,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Select,
   SelectContent,
@@ -30,12 +35,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
 import type {
   ExpenseBreakdownResult,
   ExpenseTransactionItem,
 } from '@/lib/dashboard/expenses-breakdown'
 import type { Regime } from '@/lib/dashboard/engine'
+import { CategoryPicker, type CategoriaPickerItem } from './category-picker'
 
 interface Conta {
   id: string
@@ -47,12 +54,22 @@ interface DespesasClientProps {
   empresaNome: string
   breakdown: ExpenseBreakdownResult
   contas: Conta[]
+  categorias: CategoriaPickerItem[]
   regime: Regime
   periodStart: string // yyyy-mm-dd
   periodEnd: string
   initialExpandedCategoryId: string | null
   initialContaId: string | null
   initialQuery: string
+}
+
+// Sprint 10 — info da última recategorização (pra Undo + oferta de regra)
+interface LastRecat {
+  previousByTxId: Record<string, string | null>
+  novaCategoria: { id: string; name: string }
+  affectedIds: string[]
+  /** Descrição da primeira tx — usada como base pra sugerir regra "CONTAINS". */
+  sampleDescription?: string
 }
 
 const DRE_GROUP_LABEL: Record<string, string> = {
@@ -78,6 +95,7 @@ const DRE_GROUP_COLOR: Record<string, string> = {
 export function DespesasClient(props: DespesasClientProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { toast } = useToast()
 
   const [expanded, setExpanded] = useState<Set<string>>(
     new Set(props.initialExpandedCategoryId ? [props.initialExpandedCategoryId] : []),
@@ -88,6 +106,31 @@ export function DespesasClient(props: DespesasClientProps) {
   const [orderBy, setOrderBy] = useState<'gasto' | 'nome'>('gasto')
 
   const [isPending, startTransition] = useTransition()
+
+  // Sprint 10 — seleção em lote (cross-category) + picker compartilhado
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [pickerOpenFor, setPickerOpenFor] = useState<{
+    txIds: string[]
+    anchorRect: DOMRect | null
+  } | null>(null)
+  const [recategorizing, setRecategorizing] = useState(false)
+  const [lastRecat, setLastRecat] = useState<LastRecat | null>(null)
+  /** Map auxiliar: id → tx (pra calcular valor selecionado + descrição base) */
+  const txById = useMemo(() => {
+    const m = new Map<string, ExpenseTransactionItem>()
+    for (const entry of Object.values(txCache)) {
+      for (const t of entry.items) m.set(t.id, t)
+    }
+    return m
+  }, [txCache])
+  const selectedAmount = useMemo(() => {
+    let total = 0
+    for (const id of selectedIds) {
+      const t = txById.get(id)
+      if (t) total += t.amount
+    }
+    return total
+  }, [selectedIds, txById])
 
   // Categorias ordenadas
   const categoriasOrdenadas = useMemo(() => {
@@ -151,6 +194,166 @@ export function DespesasClient(props: DespesasClientProps) {
     expanded.forEach((catId) => loadTx(catId))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, contaFilter])
+
+  // Sprint 10 — handlers de seleção + recategorização
+  const toggleSelect = useCallback((txId: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(txId)) next.delete(txId)
+      else next.add(txId)
+      return next
+    })
+  }, [])
+
+  const selectAllInCategory = useCallback((categoryId: string, items: ExpenseTransactionItem[]) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      const allSelected = items.every((t) => next.has(t.id))
+      if (allSelected) for (const t of items) next.delete(t.id)
+      else for (const t of items) next.add(t.id)
+      return next
+    })
+  }, [])
+
+  const clearSelection = useCallback(() => setSelectedIds(new Set()), [])
+
+  const openPickerFor = useCallback((txIds: string[], anchorRect: DOMRect | null) => {
+    if (txIds.length === 0) return
+    setPickerOpenFor({ txIds, anchorRect })
+  }, [])
+
+  const recategorize = useCallback(
+    async (txIds: string[], novaCategoriaId: string) => {
+      if (txIds.length === 0) return
+      setRecategorizing(true)
+      try {
+        const res = await fetch(
+          `/api/empresas/${props.empresaId}/despesas/recategorizar`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ transactionIds: txIds, novaCategoriaId }),
+            credentials: 'include',
+          },
+        )
+        const data = await res.json()
+        if (!res.ok) {
+          toast({
+            variant: 'destructive',
+            title: 'Erro',
+            description: data.erro ?? 'Falha ao recategorizar.',
+          })
+          return
+        }
+        const novaCat = props.categorias.find((c) => c.id === novaCategoriaId)
+        toast({
+          title:
+            data.updated === 1
+              ? `Movido pra "${novaCat?.name ?? 'categoria'}"`
+              : `${data.updated} movidas pra "${novaCat?.name ?? 'categoria'}"`,
+          description: data.totalAmount
+            ? formatBRL(data.totalAmount)
+            : undefined,
+        })
+        // Guarda último para undo + oferta de regra
+        const firstTx = txIds.map((id) => txById.get(id)).find(Boolean)
+        setLastRecat({
+          previousByTxId: data.previousByTxId ?? {},
+          novaCategoria: { id: novaCategoriaId, name: novaCat?.name ?? '' },
+          affectedIds: txIds,
+          sampleDescription: firstTx?.description,
+        })
+        // Limpa seleção e fecha picker
+        setSelectedIds(new Set())
+        setPickerOpenFor(null)
+        // Refresh do server (re-renderiza breakdown + tx)
+        startTransition(() => {
+          router.refresh()
+          // Limpa caches locais — vão recarregar do server
+          setTxCache({})
+        })
+      } finally {
+        setRecategorizing(false)
+      }
+    },
+    [props.empresaId, props.categorias, toast, router, txById],
+  )
+
+  const undoLastRecat = useCallback(async () => {
+    if (!lastRecat) return
+    // Inverte: agrupa ids por categoria original e faz POST por grupo
+    const byPrevious = new Map<string, string[]>()
+    const orphans: string[] = []
+    for (const id of lastRecat.affectedIds) {
+      const prev = lastRecat.previousByTxId[id]
+      if (!prev) {
+        orphans.push(id)
+        continue
+      }
+      const arr = byPrevious.get(prev) ?? []
+      arr.push(id)
+      byPrevious.set(prev, arr)
+    }
+    if (orphans.length > 0) {
+      toast({
+        variant: 'destructive',
+        title: 'Desfazer impossível',
+        description: `${orphans.length} sem categoria anterior. Recategorize manualmente.`,
+      })
+    }
+    let totalUndone = 0
+    for (const [prevCatId, ids] of byPrevious) {
+      const res = await fetch(
+        `/api/empresas/${props.empresaId}/despesas/recategorizar`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            transactionIds: ids,
+            novaCategoriaId: prevCatId,
+          }),
+          credentials: 'include',
+        },
+      )
+      if (res.ok) {
+        const data = await res.json()
+        totalUndone += data.updated ?? 0
+      }
+    }
+    toast({
+      title: 'Desfeito',
+      description:
+        totalUndone === 1
+          ? '1 transação voltou pra categoria anterior.'
+          : `${totalUndone} transações voltaram pra categoria anterior.`,
+    })
+    setLastRecat(null)
+    startTransition(() => {
+      router.refresh()
+      setTxCache({})
+    })
+  }, [lastRecat, props.empresaId, router, toast])
+
+  // Sugere um padrão "CONTAINS" a partir da primeira tx recategorizada (Fase 3).
+  // Heurística: primeiras 2 palavras significativas (sem números).
+  const ruleSuggestion = useMemo(() => {
+    if (!lastRecat?.sampleDescription) return null
+    const tokens = lastRecat.sampleDescription
+      .replace(/[^\w\sÀ-ÿ]/g, ' ')
+      .split(/\s+/)
+      .filter((w) => w.length >= 3 && !/^\d+$/.test(w))
+    if (tokens.length === 0) return null
+    const padrao = tokens.slice(0, 2).join(' ').toUpperCase()
+    return {
+      padrao,
+      novaCategoriaId: lastRecat.novaCategoria.id,
+      novaCategoriaName: lastRecat.novaCategoria.name,
+    }
+  }, [lastRecat])
+
+  function dismissOfertaRegra() {
+    setLastRecat(null)
+  }
 
   function exportCsv() {
     const params = new URLSearchParams({
@@ -316,13 +519,40 @@ export function DespesasClient(props: DespesasClientProps) {
             Nome (A-Z)
           </button>
         </div>
-        {isPending && (
+        {(isPending || recategorizing) && (
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Loader2 className="h-3 w-3 animate-spin" />
-            Atualizando…
+            {recategorizing ? 'Recategorizando…' : 'Atualizando…'}
           </div>
         )}
       </div>
+
+      {/* Sprint 10 — Barra sticky de ação em lote */}
+      {selectedIds.size > 0 && (
+        <BulkActionBar
+          selectedCount={selectedIds.size}
+          selectedAmount={selectedAmount}
+          onClear={clearSelection}
+          onChangeCategory={(e) => {
+            openPickerFor(
+              Array.from(selectedIds),
+              e.currentTarget.getBoundingClientRect(),
+            )
+          }}
+        />
+      )}
+
+      {/* Sprint 10 — Banner de oferta de regra (Fase 3, opcional + explícito) */}
+      {lastRecat && ruleSuggestion && (
+        <OfertaRegraBanner
+          empresaId={props.empresaId}
+          padrao={ruleSuggestion.padrao}
+          categoriaNome={ruleSuggestion.novaCategoriaName}
+          categoriaId={ruleSuggestion.novaCategoriaId}
+          onUndo={undoLastRecat}
+          onDismiss={dismissOfertaRegra}
+        />
+      )}
 
       {/* Lista de categorias */}
       {categoriasOrdenadas.length === 0 ? (
@@ -386,7 +616,16 @@ export function DespesasClient(props: DespesasClientProps) {
                         carregando transações…
                       </div>
                     ) : tx && tx.items.length > 0 ? (
-                      <TxTable items={tx.items} total={tx.total} categoryId={cat.categoryId} empresaId={props.empresaId} />
+                      <TxTable
+                        items={tx.items}
+                        total={tx.total}
+                        categoryId={cat.categoryId}
+                        empresaId={props.empresaId}
+                        selectedIds={selectedIds}
+                        onToggleSelect={toggleSelect}
+                        onSelectAll={() => selectAllInCategory(cat.categoryId, tx.items)}
+                        onOpenPicker={openPickerFor}
+                      />
                     ) : (
                       <div className="py-4 text-center text-xs text-muted-foreground">
                         Sem transações no filtro atual.
@@ -405,6 +644,23 @@ export function DespesasClient(props: DespesasClientProps) {
         Lendo do mesmo motor do dashboard ·{' '}
         <span className="font-mono">getExpenseBreakdown</span> · TRANSFER + DISTRIBUIÇÃO de lucros + INVESTIMENTOS excluídos
       </p>
+
+      {/* Sprint 10 — CategoryPicker compartilhado (inline + lote) */}
+      <CategoryPicker
+        open={pickerOpenFor !== null}
+        categorias={props.categorias}
+        currentCategoryId={
+          pickerOpenFor && pickerOpenFor.txIds.length === 1
+            ? txById.get(pickerOpenFor.txIds[0])?.categoryId
+            : undefined
+        }
+        loading={recategorizing}
+        onClose={() => setPickerOpenFor(null)}
+        onPick={(catId) => {
+          if (pickerOpenFor) recategorize(pickerOpenFor.txIds, catId)
+        }}
+        anchorRect={pickerOpenFor?.anchorRect ?? null}
+      />
     </div>
   )
 }
@@ -424,45 +680,100 @@ function StatCard({ label, value, accent, big }: { label: string; value: string;
   )
 }
 
-function TxTable({ items, total, categoryId, empresaId }: {
+function TxTable({
+  items,
+  total,
+  categoryId,
+  empresaId,
+  selectedIds,
+  onToggleSelect,
+  onSelectAll,
+  onOpenPicker,
+}: {
   items: ExpenseTransactionItem[]
   total: number
   categoryId: string
   empresaId: string
+  selectedIds: Set<string>
+  onToggleSelect: (txId: string) => void
+  onSelectAll: () => void
+  onOpenPicker: (txIds: string[], anchorRect: DOMRect | null) => void
 }) {
+  const allSelected = items.length > 0 && items.every((t) => selectedIds.has(t.id))
+  const someSelected = !allSelected && items.some((t) => selectedIds.has(t.id))
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
           <tr className="text-left text-xs uppercase tracking-wider text-muted-foreground border-b">
+            <th className="px-4 py-2 font-medium w-8">
+              <Checkbox
+                checked={allSelected ? true : someSelected ? 'indeterminate' : false}
+                onCheckedChange={() => onSelectAll()}
+                aria-label="Selecionar todas"
+              />
+            </th>
             <th className="px-4 py-2 font-medium">Data</th>
             <th className="px-4 py-2 font-medium">Descrição</th>
+            <th className="px-4 py-2 font-medium">Categoria</th>
             <th className="px-4 py-2 font-medium">Fornecedor</th>
             <th className="px-4 py-2 font-medium">Banco</th>
             <th className="px-4 py-2 font-medium text-right">Valor</th>
           </tr>
         </thead>
         <tbody>
-          {items.map((t) => (
-            <tr key={t.id} className="border-b last:border-b-0 hover:bg-muted/40 transition-colors">
-              <td className="px-4 py-2 tabular-nums text-xs text-muted-foreground whitespace-nowrap">
-                {formatDateBR(t.date)}
-              </td>
-              <td className="px-4 py-2 truncate max-w-[280px]">{t.description}</td>
-              <td className="px-4 py-2 text-xs text-muted-foreground truncate max-w-[160px]">
-                {t.supplierName ?? '—'}
-              </td>
-              <td className="px-4 py-2 text-xs text-muted-foreground whitespace-nowrap">
-                <span className="inline-flex items-center gap-1">
-                  <Wallet className="h-3 w-3" />
-                  {t.bankAccountName ?? '—'}
-                </span>
-              </td>
-              <td className="px-4 py-2 text-right tabular-nums font-medium text-red-600 dark:text-red-400">
-                {formatBRL(t.amount)}
-              </td>
-            </tr>
-          ))}
+          {items.map((t) => {
+            const isSelected = selectedIds.has(t.id)
+            return (
+              <tr
+                key={t.id}
+                className={`border-b last:border-b-0 transition-colors ${
+                  isSelected ? 'bg-primary/5' : 'hover:bg-muted/40'
+                }`}
+              >
+                <td className="px-4 py-2 w-8">
+                  <Checkbox
+                    checked={isSelected}
+                    onCheckedChange={() => onToggleSelect(t.id)}
+                    aria-label={`Selecionar ${t.description}`}
+                  />
+                </td>
+                <td className="px-4 py-2 tabular-nums text-xs text-muted-foreground whitespace-nowrap">
+                  {formatDateBR(t.date)}
+                </td>
+                <td className="px-4 py-2 truncate max-w-[260px]">{t.description}</td>
+                <td className="px-4 py-2">
+                  {/* Sprint 10 — célula categoria clicável (inline) */}
+                  <button
+                    type="button"
+                    onClick={(e) =>
+                      onOpenPicker([t.id], e.currentTarget.getBoundingClientRect())
+                    }
+                    className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-md border border-dashed border-muted-foreground/30 hover:border-foreground/40 hover:bg-muted/50 transition-colors max-w-[160px]"
+                    title="Mudar categoria"
+                  >
+                    <Tag className="h-3 w-3 text-muted-foreground shrink-0" />
+                    <span className="truncate text-foreground/80">
+                      {t.categoryName}
+                    </span>
+                    <ChevronDown className="h-3 w-3 text-muted-foreground/60 shrink-0" />
+                  </button>
+                </td>
+                <td className="px-4 py-2 text-xs text-muted-foreground truncate max-w-[140px]">
+                  {t.supplierName ?? '—'}
+                </td>
+                <td className="px-4 py-2 text-xs text-muted-foreground whitespace-nowrap">
+                  <span className="inline-flex items-center gap-1">
+                    <Wallet className="h-3 w-3" />
+                    {t.bankAccountName ?? '—'}
+                  </span>
+                </td>
+                <td className="px-4 py-2 text-right tabular-nums font-medium text-red-600 dark:text-red-400">
+                  {formatBRL(t.amount)}
+                </td>
+              </tr>
+            )
+          })}
         </tbody>
       </table>
       {total > items.length && (
@@ -496,6 +807,172 @@ function EmptyState() {
         </p>
       </CardContent>
     </Card>
+  )
+}
+
+// Sprint 10 — Barra sticky de ação em lote (aparece quando N >= 1)
+function BulkActionBar({
+  selectedCount,
+  selectedAmount,
+  onChangeCategory,
+  onClear,
+}: {
+  selectedCount: number
+  selectedAmount: number
+  onChangeCategory: (e: React.MouseEvent<HTMLButtonElement>) => void
+  onClear: () => void
+}) {
+  return (
+    <div className="sticky top-2 z-30">
+      <div className="rounded-lg border bg-card shadow-md px-4 py-2.5 flex items-center gap-3 flex-wrap">
+        <span className="text-sm font-medium tabular-nums">
+          {selectedCount} selecionada{selectedCount === 1 ? '' : 's'}
+        </span>
+        <span className="text-xs text-muted-foreground">·</span>
+        <span className="text-sm tabular-nums text-muted-foreground">
+          {formatBRL(selectedAmount)}
+        </span>
+        <span className="text-xs text-muted-foreground">·</span>
+        <Button
+          size="sm"
+          onClick={onChangeCategory}
+          className="gap-1.5 h-8"
+        >
+          <Tag className="h-3.5 w-3.5" />
+          Mudar categoria…
+        </Button>
+        <button
+          type="button"
+          onClick={onClear}
+          className="ml-auto text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1 transition-colors"
+        >
+          <X className="h-3 w-3" />
+          limpar
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// Sprint 10 — Banner discreto de oferta de regra (Fase 3, opcional)
+function OfertaRegraBanner({
+  empresaId,
+  padrao,
+  categoriaNome,
+  categoriaId,
+  onUndo,
+  onDismiss,
+}: {
+  empresaId: string
+  padrao: string
+  categoriaNome: string
+  categoriaId: string
+  onUndo: () => void | Promise<void>
+  onDismiss: () => void
+}) {
+  const { toast } = useToast()
+  const [previewCount, setPreviewCount] = useState<number | null>(null)
+  const [creating, setCreating] = useState(false)
+
+  useEffect(() => {
+    let aborted = false
+    fetch(`/api/empresas/${empresaId}/regras/preview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ padrao, tipoMatch: 'CONTAINS' }),
+      credentials: 'include',
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (aborted) return
+        if (d) setPreviewCount(d.count ?? 0)
+      })
+      .catch(() => {})
+    return () => {
+      aborted = true
+    }
+  }, [empresaId, padrao])
+
+  async function criarRegra() {
+    setCreating(true)
+    try {
+      const res = await fetch(
+        `/api/empresas/${empresaId}/rules/create-and-apply`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            padrao,
+            tipoMatch: 'CONTAINS',
+            categoryId: categoriaId,
+            applyToExisting: true,
+          }),
+          credentials: 'include',
+        },
+      )
+      const data = await res.json()
+      if (!res.ok) {
+        toast({
+          variant: 'destructive',
+          title: 'Erro',
+          description: data.erro ?? 'Falha ao criar regra.',
+        })
+        return
+      }
+      toast({
+        title: 'Regra criada',
+        description: data.appliedTo
+          ? `Classificou +${data.appliedTo} transação${data.appliedTo === 1 ? '' : 'es'} no fluxo.`
+          : 'Ativa para próximas transações.',
+      })
+      onDismiss()
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 flex items-center gap-3 flex-wrap">
+      <Sparkles className="h-4 w-4 text-primary shrink-0" />
+      <div className="text-sm flex-1 min-w-0">
+        <span className="text-muted-foreground">Quer aplicar isso sempre?</span>{' '}
+        <span className="font-medium">
+          Descrição contém &quot;{padrao}&quot; → {categoriaNome}
+        </span>
+        {previewCount !== null && previewCount > 0 && (
+          <span className="text-xs text-muted-foreground ml-2">
+            (vai pegar +{previewCount} pendente{previewCount === 1 ? '' : 's'})
+          </span>
+        )}
+      </div>
+      <Button
+        size="sm"
+        variant="default"
+        onClick={() => void criarRegra()}
+        disabled={creating}
+        className="h-8 gap-1.5"
+      >
+        {creating && <Loader2 className="h-3 w-3 animate-spin" />}
+        Criar regra
+      </Button>
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() => void onUndo()}
+        className="h-8 gap-1.5"
+      >
+        <Undo2 className="h-3 w-3" />
+        Desfazer
+      </Button>
+      <button
+        type="button"
+        onClick={onDismiss}
+        className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+        aria-label="Dispensar"
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
+    </div>
   )
 }
 

@@ -72,12 +72,26 @@ export default async function DespesasPage({ params, searchParams }: PageProps) 
     orderBy: { name: 'asc' },
   })
 
+  // Sprint 10 — todas as categorias da empresa (pro CategoryPicker inline/lote)
+  const categorias = await prisma.category.findMany({
+    where: { companyId: empresaId, isActive: true },
+    select: {
+      id: true,
+      name: true,
+      type: true,
+      dreGroup: true,
+      color: true,
+    },
+    orderBy: { name: 'asc' },
+  })
+
   return (
     <DespesasClient
       empresaId={empresaId}
       empresaNome={empresa.tradeName ?? empresa.name}
       breakdown={breakdown}
       contas={contas}
+      categorias={categorias}
       regime={regime}
       periodStart={periodStart.toISOString().slice(0, 10)}
       periodEnd={periodEnd.toISOString().slice(0, 10)}
