@@ -14,6 +14,7 @@ import {
   Trash2,
   Loader2,
   Search,
+  Plus,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -43,6 +44,7 @@ import {
   confidenceColors,
   fonteLabel,
 } from '@/lib/regras/format'
+import { NovaRegraModal } from './nova-regra-modal'
 
 interface Categoria {
   id: string
@@ -103,6 +105,7 @@ export function RegrasClient({ empresaId, empresaNome, categorias }: Props) {
 
   const [editing, setEditing] = useState<Regra | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<Regra | null>(null)
+  const [creatingNew, setCreatingNew] = useState(false)
 
   const fetchData = useCallback(
     async (resetPage = false) => {
@@ -198,7 +201,9 @@ export function RegrasClient({ empresaId, empresaNome, categorias }: Props) {
 
   return (
     <div className="p-6 space-y-6">
-      {/* Header */}
+      {/* Header — Sprint 9: removido link "Pendentes →" quebrado;
+          adicionado botão primário "Nova regra"; textos atualizados pra
+          refletir que regra agora é MANUAL (gerador automático OFF). */}
       <div className="flex items-center justify-between gap-4">
         <div>
           <p className="text-xs uppercase tracking-wider text-muted-foreground">
@@ -206,18 +211,17 @@ export function RegrasClient({ empresaId, empresaNome, categorias }: Props) {
           </p>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <Brain className="h-6 w-6 text-primary" />
-            Regras Aprendidas
+            Regras de classificação
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Padrões que a IA Contadora reconhece pra classificar automaticamente.
+            Regras que você cria pra classificar transações automaticamente.
+            Crie uma nova com o botão ao lado.
           </p>
         </div>
-        <Link
-          href={`/empresas/${empresaId}/pendentes`}
-          className="text-sm text-primary hover:underline"
-        >
-          Pendentes →
-        </Link>
+        <Button onClick={() => setCreatingNew(true)} className="gap-1.5">
+          <Plus className="h-4 w-4" />
+          Nova regra
+        </Button>
       </div>
 
       {/* Stats */}
@@ -347,15 +351,24 @@ export function RegrasClient({ empresaId, empresaNome, categorias }: Props) {
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
           </div>
         ) : items.length === 0 ? (
-          <div className="p-10 text-center text-sm text-muted-foreground">
-            Nenhuma regra encontrada. Classifique transações em{' '}
-            <Link
-              href={`/empresas/${empresaId}/pendentes`}
-              className="underline"
+          <div className="p-12 text-center">
+            <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-muted mb-3">
+              <Brain className="h-5 w-5 text-muted-foreground" />
+            </div>
+            <p className="text-sm font-medium">Nenhuma regra ainda.</p>
+            <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
+              Clique em <strong>Nova regra</strong> pra criar a primeira.
+              Cada regra classifica automaticamente as transações que batem
+              com o padrão que você definir.
+            </p>
+            <Button
+              onClick={() => setCreatingNew(true)}
+              className="mt-4 gap-1.5"
+              size="sm"
             >
-              /pendentes
-            </Link>{' '}
-            pra criar regras automaticamente.
+              <Plus className="h-3.5 w-3.5" />
+              Nova regra
+            </Button>
           </div>
         ) : (
           <table className="w-full text-sm">
@@ -510,6 +523,19 @@ export function RegrasClient({ empresaId, empresaNome, categorias }: Props) {
           </div>
         )}
       </div>
+
+      {/* Sprint 9 — Modal Nova regra (SE → ENTÃO + preview ao vivo) */}
+      {creatingNew && (
+        <NovaRegraModal
+          empresaId={empresaId}
+          categorias={categorias}
+          onClose={() => setCreatingNew(false)}
+          onCreated={() => {
+            setCreatingNew(false)
+            void fetchData(true) // reseta paginação pra ver a nova regra
+          }}
+        />
+      )}
 
       {/* Edit modal */}
       {editing && (
