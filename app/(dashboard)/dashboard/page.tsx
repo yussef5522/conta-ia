@@ -90,7 +90,7 @@ export default async function DashboardPage({ searchParams }: PageProps) {
   const now = new Date()
   let currentYear: number
   let currentMonth: number // 0-11
-  let customPeriod: CustomPeriod | undefined
+  let customPeriod!: CustomPeriod // definite assignment via if/else abaixo
 
   // Prioridade: ?de=&ate= (raro, custom range) → ?periodo=YYYY-MM → MTD default
   if (sp.de && sp.ate) {
