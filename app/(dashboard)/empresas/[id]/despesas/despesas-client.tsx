@@ -43,6 +43,7 @@ import type {
 } from '@/lib/dashboard/expenses-breakdown'
 import type { Regime } from '@/lib/dashboard/engine'
 import { CategoryPicker, type CategoriaPickerItem } from './category-picker'
+import { applyOptimisticMove } from './optimistic-move'
 
 interface Conta {
   id: string
@@ -100,6 +101,13 @@ export function DespesasClient(props: DespesasClientProps) {
   const [expanded, setExpanded] = useState<Set<string>>(
     new Set(props.initialExpandedCategoryId ? [props.initialExpandedCategoryId] : []),
   )
+  // Sprint 11 — breakdown vira estado local pra updates otimistas (recategorizar
+  // não dispara router.refresh, não causa reset de scroll/expansão).
+  const [breakdown, setBreakdown] = useState<ExpenseBreakdownResult>(props.breakdown)
+  // Quando o prop muda (filtros / período / regime via URL), reseta o estado
+  useEffect(() => {
+    setBreakdown(props.breakdown)
+  }, [props.breakdown])
   const [txCache, setTxCache] = useState<Record<string, { items: ExpenseTransactionItem[]; total: number; loading?: boolean }>>({})
   const [query, setQuery] = useState(props.initialQuery)
   const [contaFilter, setContaFilter] = useState<string>(props.initialContaId ?? 'all')
@@ -134,11 +142,11 @@ export function DespesasClient(props: DespesasClientProps) {
 
   // Categorias ordenadas
   const categoriasOrdenadas = useMemo(() => {
-    const arr = [...props.breakdown.categorias]
+    const arr = [...breakdown.categorias]
     if (orderBy === 'nome') arr.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
     else arr.sort((a, b) => b.total - a.total)
     return arr
-  }, [props.breakdown.categorias, orderBy])
+  }, [breakdown.categorias, orderBy])
 
   // Aplica filtros via URL (server refaz breakdown)
   function updateUrl(updates: Record<string, string | null>) {
@@ -263,20 +271,30 @@ export function DespesasClient(props: DespesasClientProps) {
           affectedIds: txIds,
           sampleDescription: firstTx?.description,
         })
-        // Limpa seleção e fecha picker
+        // Sprint 11 — atualização OTIMISTA: move tx no breakdown + txCache local
+        // SEM router.refresh() e SEM setTxCache({}). Resultado: scroll position
+        // preservada, grupos continuam expandidos, Cards não desmontam.
+        // Server cache foi invalidado via revalidateTag no endpoint; a próxima
+        // navegação real verá os dados do server, mas a página atual segue
+        // com seu estado otimista (que é exato, porque sabemos qual tx moveu).
+        const moved = applyOptimisticMove({
+          breakdown,
+          txCache,
+          txById,
+          txIds,
+          novaCategoriaId,
+          categoriasCatalogo: props.categorias,
+        })
+        setBreakdown(moved.breakdown)
+        setTxCache(moved.txCache)
+        // Limpa seleção (lote) e fecha picker
         setSelectedIds(new Set())
         setPickerOpenFor(null)
-        // Refresh do server (re-renderiza breakdown + tx)
-        startTransition(() => {
-          router.refresh()
-          // Limpa caches locais — vão recarregar do server
-          setTxCache({})
-        })
       } finally {
         setRecategorizing(false)
       }
     },
-    [props.empresaId, props.categorias, toast, router, txById],
+    [props.empresaId, props.categorias, toast, txById, breakdown, txCache],
   )
 
   const undoLastRecat = useCallback(async () => {
@@ -302,6 +320,10 @@ export function DespesasClient(props: DespesasClientProps) {
       })
     }
     let totalUndone = 0
+    // Sprint 11 — também otimista no undo. Acumula movimentos pra aplicar
+    // depois de TODOS os POSTs OK (ou parciais), mantendo scroll/expansão.
+    let curBreakdown = breakdown
+    let curTxCache = txCache
     for (const [prevCatId, ids] of byPrevious) {
       const res = await fetch(
         `/api/empresas/${props.empresaId}/despesas/recategorizar`,
@@ -318,8 +340,26 @@ export function DespesasClient(props: DespesasClientProps) {
       if (res.ok) {
         const data = await res.json()
         totalUndone += data.updated ?? 0
+        // Aplica otimisticamente o movimento inverso (ids voltam pra prevCatId).
+        // Rebuilda txById local com curTxCache pra refletir movimentos já aplicados.
+        const localTxById = new Map<string, ExpenseTransactionItem>()
+        for (const entry of Object.values(curTxCache)) {
+          for (const t of entry.items) localTxById.set(t.id, t)
+        }
+        const moved = applyOptimisticMove({
+          breakdown: curBreakdown,
+          txCache: curTxCache,
+          txById: localTxById,
+          txIds: ids,
+          novaCategoriaId: prevCatId,
+          categoriasCatalogo: props.categorias,
+        })
+        curBreakdown = moved.breakdown
+        curTxCache = moved.txCache
       }
     }
+    setBreakdown(curBreakdown)
+    setTxCache(curTxCache)
     toast({
       title: 'Desfeito',
       description:
@@ -328,11 +368,7 @@ export function DespesasClient(props: DespesasClientProps) {
           : `${totalUndone} transações voltaram pra categoria anterior.`,
     })
     setLastRecat(null)
-    startTransition(() => {
-      router.refresh()
-      setTxCache({})
-    })
-  }, [lastRecat, props.empresaId, router, toast])
+  }, [lastRecat, props.empresaId, props.categorias, breakdown, txCache, toast])
 
   // Sugere um padrão "CONTAINS" a partir da primeira tx recategorizada (Fase 3).
   // Heurística: primeiras 2 palavras significativas (sem números).
@@ -422,17 +458,17 @@ export function DespesasClient(props: DespesasClientProps) {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <StatCard
           label="Total de despesas"
-          value={formatBRL(props.breakdown.totalGeral)}
+          value={formatBRL(breakdown.totalGeral)}
           accent="text-red-600 dark:text-red-400"
           big
         />
         <StatCard
           label="Transações"
-          value={String(props.breakdown.totalTx)}
+          value={String(breakdown.totalTx)}
         />
         <StatCard
           label="Categorias"
-          value={String(props.breakdown.totalCategorias)}
+          value={String(breakdown.totalCategorias)}
         />
       </div>
 
