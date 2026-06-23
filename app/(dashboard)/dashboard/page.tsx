@@ -1,36 +1,29 @@
-// Dashboard Mundial — Sprint 1 Dia 1 + Sprint 2 Dia 1.
-// Server Component. Cache via lib/dashboard/queries (unstable_cache 60s).
+// Sprint 7 — Dashboard Mercury (24/06/2026).
 //
-// URL params:
-//   ?empresa=<id>  → fixa a empresa. Sem param: usa primeira por createdAt ASC.
-//   ?wf=<periodo>  → período do Cashflow Waterfall (semana|mes|trimestre|ano).
-//
-// Empty states cobertos: sem empresas (a), sem contas (b), sem transações (c).
+// Reescrito do zero — fonte única (motor Sprint 4), layout calmo, seletor
+// compacto de período. Componentes antigos (HeroKPIs, AIInsights, MiniDRE,
+// HealthCheck, CashflowWaterfall, OrphanWithdrawalsBanner, PrevistoSection,
+// RecentActivity, PendingClassification) preservados no projeto pra rota
+// /dashboard-old caso seja necessário.
 
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
-import { z } from 'zod'
 import { verifyToken, COOKIE_NAME } from '@/lib/auth'
 import { getCurrentEmpresaIdFromCookie } from '@/lib/auth/current-empresa-cookie'
 import { prisma } from '@/lib/db'
-import { Header } from '@/components/layout/header'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { Metadata } from 'next'
-import type { WaterfallPeriodType } from '@/lib/dashboard/compute-waterfall'
-// Sprint 5.0.3.2 — CompanySelector import removido (não usado mais aqui).
-// Arquivo do componente preservado pra reuso futuro.
-import { HeroKPIs } from './_components/HeroKPIs'
-import { AIInsights } from './_components/AIInsights'
-import { InsightsSkeleton } from './_components/InsightsSkeleton'
-import { MiniDRE } from './_components/MiniDRE'
-import { TopCategories } from './_components/TopCategories'
-import { HealthCheck } from './_components/HealthCheck'
-import { OrphanWithdrawalsBanner } from './_components/OrphanWithdrawalsBanner'
-import { CashflowWaterfall } from './_components/CashflowWaterfall'
-import { RecentActivity } from './_components/RecentActivity'
-import { PrevistoSection } from './_components/PrevistoSection'
-import { PendingClassification } from './_components/PendingClassification'
+import type { CustomPeriod, Regime } from '@/lib/dashboard/engine'
+import {
+  getCurrentMTD,
+  getFullMonth,
+  isCurrentMonth,
+  labelMesAno,
+  parsePeriodoYM,
+} from '@/lib/dashboard/period-sp'
+import { PeriodSelector } from './_components/PeriodSelector'
+import { MercuryDashboard } from './_components/MercuryDashboard'
 import {
   NoCompaniesEmpty,
   NoAccountsEmpty,
@@ -40,17 +33,17 @@ import { ImportedBanner } from './_components/ImportedBanner'
 
 export const metadata: Metadata = { title: 'Dashboard' }
 
-// Valida ?wf= no server — nunca confiar na URL. Default 'mes' se inválido/ausente.
-const waterfallPeriodSchema = z
-  .enum(['semana', 'mes', 'trimestre', 'ano'])
-  .catch('mes')
-
-// Sprint 2 Dia 5: ?demoInsights=N → mock N insights (1-7). IGNORADO em prod.
-// Validação no server pra evitar injection (string arbitrária).
-const demoInsightsSchema = z.coerce.number().int().min(0).max(7).catch(0)
-
 interface PageProps {
-  searchParams: Promise<{ empresa?: string; wf?: string; demoInsights?: string; imported?: string; totalAmount?: string; empresaNome?: string }>
+  searchParams: Promise<{
+    empresa?: string
+    regime?: string
+    periodo?: string
+    de?: string
+    ate?: string
+    imported?: string
+    totalAmount?: string
+    empresaNome?: string
+  }>
 }
 
 export default async function DashboardPage({ searchParams }: PageProps) {
@@ -58,86 +51,76 @@ export default async function DashboardPage({ searchParams }: PageProps) {
   const token = cookieStore.get(COOKIE_NAME)?.value
   if (!token) redirect('/login')
 
-  // Bug 2 fix: se workspace=PF, redirect pro perfil PF correspondente.
-  // Server Component não tem acesso ao workspace-context (client), então
-  // lê do cookie httpOnly setado em /api/workspace/atual.
+  // PF redirect (preservado da versão anterior)
   const workspaceType = cookieStore.get('caixaos_workspace_type')?.value
   if (workspaceType === 'pf') {
     const profileId = cookieStore.get('caixaos_perfil_atual')?.value
-    if (profileId) {
-      redirect(`/perfis/${profileId}`)
-    }
+    if (profileId) redirect(`/perfis/${profileId}`)
   }
 
   const user = await verifyToken(token)
-  const {
-    empresa: empresaQueryId,
-    wf: wfRaw,
-    demoInsights: demoRaw,
-    imported: importedRaw,
-    totalAmount: totalAmountRaw,
-    empresaNome: importedFileName,
-  } = await searchParams
-  // Sprint 5.0.2.0 — banner pós-import (defensivo: parsing seguro)
-  const importedCount = importedRaw ? parseInt(importedRaw, 10) : NaN
-  const importedTotalAmount = totalAmountRaw ? parseFloat(totalAmountRaw) : NaN
-  const waterfallPeriod: WaterfallPeriodType = waterfallPeriodSchema.parse(wfRaw)
-  // SEGURANÇA: demoInsights só funciona em dev. Em prod, demoCount=undefined
-  // sempre — AIInsights ignora e retorna lista real.
-  const demoCount =
-    process.env.NODE_ENV !== 'production'
-      ? demoInsightsSchema.parse(demoRaw) || undefined
-      : undefined
+  const sp = await searchParams
 
-  // Busca empresas do user (createdAt ASC pra determinismo)
   const userCompanies = await prisma.userCompany.findMany({
     where: { userId: user.sub },
     include: { company: true },
     orderBy: { createdAt: 'asc' },
   })
-
   const empresas = userCompanies.map((uc) => uc.company)
-  const primeiroNome = user.name.split(' ')[0]
 
-  // ============================================================
-  // EMPTY STATE (a) — sem empresas
-  // ============================================================
+  // ====== Empty state — sem empresas ======
   if (empresas.length === 0) {
     return (
-      <div className="space-y-8">
-        <Header
-          title={`Bem-vindo, ${primeiroNome}!`}
-          description="Vamos começar cadastrando sua empresa."
-        />
+      <div className="space-y-6">
+        <h1 className="text-2xl font-medium">Bem-vindo, {user.name.split(' ')[0]}</h1>
         <NoCompaniesEmpty />
       </div>
     )
   }
 
-  // Sprint 5.0.3.3 — Resolve empresa atual com prioridade:
-  //   1. URL param `?empresa=` (deep-link / share)
-  //   2. Cookie httpOnly `current_empresa_id` (escolha do user no WorkspaceSwitcher)
-  //   3. empresas[0] (primeira por createdAt — fallback determinístico)
-  //
-  // Antes: só (1) e (3) → dashboard sempre pegava `empresas[0]` quando user
-  // navegava de outra tela sem `?empresa=` na URL. WorkspaceSwitcher setava
-  // o cookie mas o dashboard ignorava — empresa errada exibida.
+  // Resolução de empresa: URL → cookie → first
   const cookieEmpresaId = await getCurrentEmpresaIdFromCookie()
-  const fromQuery = empresaQueryId
-    ? empresas.find((e) => e.id === empresaQueryId)
-    : undefined
-  const fromCookie = cookieEmpresaId
-    ? empresas.find((e) => e.id === cookieEmpresaId)
-    : undefined
+  const fromQuery = sp.empresa ? empresas.find((e) => e.id === sp.empresa) : undefined
+  const fromCookie = cookieEmpresaId ? empresas.find((e) => e.id === cookieEmpresaId) : undefined
   const empresaAtual = fromQuery ?? fromCookie ?? empresas[0]
 
-  const companyOptions = empresas.map((e) => ({
-    id: e.id,
-    name: e.name,
-    tradeName: e.tradeName,
-  }))
+  // ====== Regime e Período ======
+  const regime: Regime = sp.regime === 'competencia' ? 'competencia' : 'caixa'
 
-  // Checa contas e transações pra empresa atual (decidir empty states b/c)
+  const now = new Date()
+  let currentYear: number
+  let currentMonth: number // 0-11
+  let customPeriod: CustomPeriod | undefined
+
+  // Prioridade: ?de=&ate= (raro, custom range) → ?periodo=YYYY-MM → MTD default
+  if (sp.de && sp.ate) {
+    const start = new Date(`${sp.de}T00:00:00.000Z`)
+    const end = new Date(`${sp.ate}T23:59:59.999Z`)
+    customPeriod = { start, end }
+    currentYear = start.getUTCFullYear()
+    currentMonth = start.getUTCMonth()
+  } else {
+    const parsed = parsePeriodoYM(sp.periodo)
+    if (parsed && !isCurrentMonth(parsed.year, parsed.month, now)) {
+      // Mês passado completo
+      customPeriod = getFullMonth(parsed.year, parsed.month)
+      currentYear = parsed.year
+      currentMonth = parsed.month
+    } else {
+      // Default: MTD em SP
+      const mtd = getCurrentMTD(now)
+      customPeriod = { start: mtd.start, end: mtd.end }
+      currentYear = mtd.year
+      currentMonth = mtd.month
+    }
+  }
+
+  const isMTD = isCurrentMonth(currentYear, currentMonth, now)
+  const periodLabel = isMTD
+    ? `${labelMesAno(currentYear, currentMonth).toLowerCase()} até hoje`
+    : labelMesAno(currentYear, currentMonth).toLowerCase()
+
+  // ====== Empty checks ======
   const [contasCount, primeiraConta, transacoesCount] = await Promise.all([
     prisma.bankAccount.count({
       where: { companyId: empresaAtual.id, isActive: true },
@@ -152,28 +135,40 @@ export default async function DashboardPage({ searchParams }: PageProps) {
     }),
   ])
 
-  return (
-    <div className="space-y-6">
-      <Header
-        title={`Bem-vindo, ${primeiroNome}!`}
-        description={empresaAtual.tradeName || empresaAtual.name}
-      >
-        {/* Sprint 5.0.3.2 — CompanySelector removido do dashboard.
-            WorkspaceSwitcher (top bar global) é o canônico pra trocar empresa.
-            Componente CompanySelector.tsx mantido no projeto pra reuso futuro. */}
-      </Header>
+  // Banner pós-import (preservado)
+  const importedCount = sp.imported ? parseInt(sp.imported, 10) : NaN
+  const importedTotalAmount = sp.totalAmount ? parseFloat(sp.totalAmount) : NaN
 
-      {/* Sprint 5.0.2.0 — Banner pós-import Excel (só renderiza com query params) */}
+  // ====== Render ======
+  return (
+    <div className="space-y-8 max-w-5xl mx-auto">
+      {/* Header sutil */}
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="space-y-0.5">
+          <div className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
+            Dashboard
+          </div>
+          <h1 className="text-xl font-medium">
+            {empresaAtual.tradeName ?? empresaAtual.name}
+          </h1>
+        </div>
+        <PeriodSelector
+          empresaId={empresaAtual.id}
+          currentYear={currentYear}
+          currentMonth={currentMonth}
+          regime={regime}
+          isMTD={isMTD}
+        />
+      </div>
+
       <ImportedBanner
         imported={Number.isFinite(importedCount) ? importedCount : undefined}
         totalAmount={Number.isFinite(importedTotalAmount) ? importedTotalAmount : undefined}
-        fileName={importedFileName}
+        fileName={sp.empresaNome}
       />
 
-      {/* EMPTY STATE (b) — sem contas */}
+      {/* Empty states */}
       {contasCount === 0 && <NoAccountsEmpty empresaId={empresaAtual.id} />}
-
-      {/* EMPTY STATE (c) — sem transações: banner discreto + KPIs zerados em sequência */}
       {contasCount > 0 && transacoesCount === 0 && primeiraConta && (
         <NoTransactionsBanner
           empresaId={empresaAtual.id}
@@ -181,79 +176,32 @@ export default async function DashboardPage({ searchParams }: PageProps) {
         />
       )}
 
-      {/* Hero Strip — sempre renderiza quando há contas (mesmo zerado) */}
+      {/* Mercury layout */}
       {contasCount > 0 && (
-        <>
-          <Suspense fallback={<HeroKPIsSkeleton />}>
-            <HeroKPIs companyId={empresaAtual.id} />
-          </Suspense>
-
-          {/* AI Insights — Sprint 2 Dia 3 + polish Dia 5. */}
-          <Suspense fallback={<InsightsSkeleton />}>
-            <AIInsights companyId={empresaAtual.id} demoCount={demoCount} />
-          </Suspense>
-
-          <div className="grid gap-6 lg:grid-cols-2">
-            <Suspense fallback={<CardSkeleton height={280} />}>
-              <MiniDRE companyId={empresaAtual.id} />
-            </Suspense>
-            <Suspense fallback={<CardSkeleton height={280} />}>
-              <TopCategories companyId={empresaAtual.id} />
-            </Suspense>
-          </div>
-
-          <Suspense fallback={<CardSkeleton height={200} />}>
-            <HealthCheck companyId={empresaAtual.id} />
-          </Suspense>
-
-          {/* Sprint Fluxo-Único-Retirada (08/06/2026) — contador de
-              retiradas órfãs. Renderiza nada se count=0 (zero ruído). */}
-          <Suspense fallback={null}>
-            <OrphanWithdrawalsBanner companyId={empresaAtual.id} />
-          </Suspense>
-
-          {/* Sprint 4.0.3 — Fluxo Previsto + Alertas Vencimento */}
-          <Suspense fallback={<CardSkeleton height={260} />}>
-            <PrevistoSection companyId={empresaAtual.id} />
-          </Suspense>
-
-          {/* Cashflow Waterfall — full width */}
-          <Suspense fallback={<CardSkeleton height={440} />}>
-            <CashflowWaterfall
-              companyId={empresaAtual.id}
-              periodType={waterfallPeriod}
-            />
-          </Suspense>
-
-          {/* Atividade Recente (60%) + Pendentes Classificação (40%) */}
-          <div className="grid gap-6 lg:grid-cols-5">
-            <div className="lg:col-span-3">
-              <Suspense fallback={<CardSkeleton height={420} />}>
-                <RecentActivity companyId={empresaAtual.id} />
-              </Suspense>
-            </div>
-            <div className="lg:col-span-2">
-              <Suspense fallback={<CardSkeleton height={420} />}>
-                <PendingClassification companyId={empresaAtual.id} />
-              </Suspense>
-            </div>
-          </div>
-        </>
+        <Suspense fallback={<DashboardSkeleton />}>
+          <MercuryDashboard
+            empresaId={empresaAtual.id}
+            regime={regime}
+            customPeriod={customPeriod}
+            periodLabel={periodLabel}
+          />
+        </Suspense>
       )}
     </div>
   )
 }
 
-function HeroKPIsSkeleton() {
+function DashboardSkeleton() {
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      {[0, 1, 2, 3].map((i) => (
-        <Skeleton key={i} className="h-[148px] w-full rounded-lg" />
-      ))}
+    <div className="space-y-10">
+      <Skeleton className="h-20 w-72" />
+      <Skeleton className="h-16 w-full" />
+      <div className="grid grid-cols-3 gap-3">
+        <Skeleton className="h-24" />
+        <Skeleton className="h-24" />
+        <Skeleton className="h-24" />
+      </div>
+      <Skeleton className="h-64 w-full" />
     </div>
   )
-}
-
-function CardSkeleton({ height }: { height: number }) {
-  return <Skeleton style={{ height }} className="w-full rounded-lg" />
 }

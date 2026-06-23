@@ -103,21 +103,34 @@ export interface DashboardData {
 const CACHE_TTL_SECONDS = 60
 
 /**
+ * Período custom opcional. Quando passado, sobrescreve o currentMonth derivado
+ * de refDate. previousMonth é re-derivado simétrico (mesmo tamanho, anterior).
+ * Sprint 7 — seletor de mês corrente.
+ */
+export interface CustomPeriod {
+  start: Date
+  end: Date
+}
+
+/**
  * Fonte ÚNICA da verdade pro dashboard.
- * Cache key consolidado: 1 entrada por (companyId, regime, refDateDayKey).
+ * Cache key consolidado: 1 entrada por (companyId, regime, periodKey).
  */
 export async function getDashboardData(
   companyId: string,
   refDate: Date = new Date(),
   regime: Regime = 'caixa',
+  customPeriod?: CustomPeriod,
 ): Promise<DashboardData> {
   if (!companyId) {
     throw new Error('companyId é obrigatório (isolamento multi-tenant)')
   }
-  const dayKey = refDate.toISOString().slice(0, 10)
+  const periodKey = customPeriod
+    ? `${customPeriod.start.toISOString().slice(0, 10)}_${customPeriod.end.toISOString().slice(0, 10)}`
+    : refDate.toISOString().slice(0, 10)
   const cached = unstable_cache(
-    async () => loadDashboardData(companyId, refDate, regime),
-    [`dashboard:engine:${companyId}:${regime}:${dayKey}`],
+    async () => loadDashboardData(companyId, refDate, regime, customPeriod),
+    [`dashboard:engine:${companyId}:${regime}:${periodKey}`],
     { revalidate: CACHE_TTL_SECONDS, tags: [`dashboard:${companyId}`] },
   )
   // unstable_cache do Next 15+ serializa via JSON — Date vira string.
@@ -132,8 +145,15 @@ export async function loadDashboardData(
   companyId: string,
   refDate: Date,
   regime: Regime,
+  customPeriod?: CustomPeriod,
 ): Promise<DashboardData> {
-  const periods = derivePeriods(refDate)
+  // Sprint 7: customPeriod sobrescreve currentMonth. previousMonth fica
+  // simétrico (mesmo tamanho, anterior) pra preservar shape MoM. UI Mercury
+  // (Sprint 7) ignora MoM, mas APIs/cards antigos ainda leem previousTotals.
+  const periodsBase = derivePeriods(refDate)
+  const periods = customPeriod
+    ? applyCustomPeriod(periodsBase, customPeriod)
+    : periodsBase
 
   const [
     accounts,
@@ -412,6 +432,26 @@ function computeTop5FromDREGroups(
   }))
 
   return { items, totalDespesas, companyId }
+}
+
+/**
+ * Sprint 7 — aplica período custom ao DashboardPeriods existente.
+ * - currentMonth = custom
+ * - previousMonth = anterior simétrico (mesma duração, anterior ao custom.start)
+ * - last30Days e last12Months preservados (referência ainda é refDate)
+ */
+function applyCustomPeriod(
+  base: DashboardPeriods,
+  custom: CustomPeriod,
+): DashboardPeriods {
+  const durationMs = custom.end.getTime() - custom.start.getTime()
+  const previousStart = new Date(custom.start.getTime() - durationMs - 1)
+  const previousEnd = new Date(custom.start.getTime() - 1)
+  return {
+    ...base,
+    currentMonth: { start: custom.start, end: custom.end },
+    previousMonth: { start: previousStart, end: previousEnd },
+  }
 }
 
 /**
