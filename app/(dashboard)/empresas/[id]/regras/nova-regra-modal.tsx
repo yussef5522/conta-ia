@@ -85,8 +85,10 @@ export function NovaRegraModal({
   const { toast } = useToast()
 
   // SE
+  // Sprint 9 fix (22/06/2026) — removi NORMALIZED da UI (técnico demais).
+  // O backend de "CONTAINS" já trata case-insensitive internamente.
   const [padrao, setPadrao] = useState(initialPadrao ?? '')
-  const [tipoMatch, setTipoMatch] = useState<'CONTAINS' | 'EXACT' | 'CNPJ' | 'NORMALIZED'>('CONTAINS')
+  const [tipoMatch, setTipoMatch] = useState<'CONTAINS' | 'EXACT' | 'CNPJ'>('CONTAINS')
   const [tipoTx, setTipoTx] = useState<'ALL' | 'CREDIT' | 'DEBIT'>(initialType ?? 'ALL')
 
   // ENTÃO
@@ -157,7 +159,7 @@ export function NovaRegraModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           padrao: padrao.trim(),
-          tipoMatch: tipoMatch === 'NORMALIZED' ? 'CONTAINS' : tipoMatch, // backend só aceita EXACT/CONTAINS/CNPJ
+          tipoMatch, // backend aceita EXACT/CONTAINS/CNPJ (mesmas opções da UI)
           categoryId,
           type: tipoTx === 'ALL' ? undefined : tipoTx,
           applyToExisting: true,
@@ -204,58 +206,67 @@ export function NovaRegraModal({
 
         <div className="space-y-4 py-2">
           {/* ─── SE ─── */}
+          {/* Sprint 9 fix (22/06/2026):
+              - REMOVIDO: Select disabled "Campo" (decorativo, criava overlay
+                fantasma do Radix em alguns navegadores). Vira label plana
+                "Descrição" no header da linha.
+              - REMOVIDO: autoFocus do Input (brigava com onOpenAutoFocus do
+                Radix DialogContent e prendia foco no DialogClose).
+              - REORGANIZADO: grid 3-col apertado → linha 1 com "Como comparar"
+                + "Texto" (input ocupa 2/3 = espaço respiratório). */}
           <section className="rounded-md border border-dashed bg-muted/30 p-3 space-y-3">
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-              SE — Quando a transação...
+            <div className="flex items-baseline justify-between gap-2">
+              <div className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                SE — Quando a transação...
+              </div>
+              <div className="text-xs text-muted-foreground">
+                campo: <span className="font-medium text-foreground">descrição</span>
+              </div>
             </div>
 
             <div className="grid grid-cols-3 gap-2 items-end">
               <div className="space-y-1">
-                <Label className="text-xs">Campo</Label>
-                <Select value="descricao" onValueChange={() => {}} disabled>
-                  <SelectTrigger className="h-9 text-sm">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="descricao">Descrição</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Operador</Label>
+                <Label htmlFor="regra-comparar" className="text-xs">
+                  Como comparar
+                </Label>
                 <Select
                   value={tipoMatch}
                   onValueChange={(v) => setTipoMatch(v as typeof tipoMatch)}
                 >
-                  <SelectTrigger className="h-9 text-sm">
+                  <SelectTrigger id="regra-comparar" className="h-9 text-sm">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="CONTAINS">contém</SelectItem>
+                    <SelectItem value="CONTAINS">contém o texto</SelectItem>
                     <SelectItem value="EXACT">é exatamente</SelectItem>
                     <SelectItem value="CNPJ">CNPJ é</SelectItem>
-                    <SelectItem value="NORMALIZED">normalizado contém</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Valor</Label>
+              <div className="space-y-1 col-span-2">
+                <Label htmlFor="regra-valor" className="text-xs">
+                  {tipoMatch === 'CNPJ' ? 'CNPJ' : 'Texto'}
+                </Label>
                 <Input
+                  id="regra-valor"
+                  type="text"
                   value={padrao}
                   onChange={(e) => setPadrao(e.target.value)}
-                  placeholder="ex: FRIGORIFICO"
+                  placeholder={tipoMatch === 'CNPJ' ? 'ex: 12.345.678/0001-99' : 'ex: FRIGORIFICO'}
                   className="h-9 text-sm font-mono"
                   maxLength={120}
-                  autoFocus
+                  data-testid="regra-valor-input"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-2 items-end">
               <div className="space-y-1">
-                <Label className="text-xs">E o tipo for</Label>
+                <Label htmlFor="regra-tipo" className="text-xs">
+                  E o tipo for
+                </Label>
                 <Select value={tipoTx} onValueChange={(v) => setTipoTx(v as typeof tipoTx)}>
-                  <SelectTrigger className="h-9 text-sm">
+                  <SelectTrigger id="regra-tipo" className="h-9 text-sm">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -265,7 +276,7 @@ export function NovaRegraModal({
                   </SelectContent>
                 </Select>
               </div>
-              <div className="text-xs text-muted-foreground pb-2">
+              <div className="text-xs text-muted-foreground pb-2 self-end">
                 + adicionar condição{' '}
                 <span className="italic text-muted-foreground/60">(v2)</span>
               </div>
