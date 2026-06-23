@@ -23,6 +23,7 @@ import {
   Store,
   History,
   TrendingUp,
+  TrendingDown,
   BarChart3,
   Shield,
   ShieldCheck,
@@ -167,6 +168,18 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
           isActive={pathname.startsWith('/transacoes')}
           onClick={onNavigate}
         />
+        {/* Sprint 6 — Despesas (drill-down do Top 5 do dashboard). Mesma
+            fonte do motor único; total bate com despesaOperacional do
+            dashboard ao centavo. */}
+        {currentEmpresaId && (
+          <SidebarItem
+            icon={TrendingDown}
+            label="Despesas"
+            href={`/empresas/${currentEmpresaId}/despesas`}
+            isActive={/^\/empresas\/[^/]+\/despesas(\/|$)/.test(pathname)}
+            onClick={onNavigate}
+          />
+        )}
         {/* Hotfix 5.0.4.0a-fix — Relatórios substituiu DRE Gerencial.
             Index per-empresa contém DRE + Categorias + Comparativo. */}
         <SidebarItem
