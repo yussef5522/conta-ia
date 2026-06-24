@@ -45,6 +45,10 @@ const PUBLIC_API = [
   // Sprint Asaas 3C (02/06/2026) — webhook autenticado por
   // asaas-access-token (NÃO por JWT de user).
   '/api/webhooks/asaas',
+  // Sprint 15 — endpoint de telemetria de erro client-side.
+  // SEM auth (queremos capturar erros mesmo se sessao expirou).
+  // Protegido por body limit 8KB + cap implicito do nginx.
+  '/api/client-error-report',
 ]
 
 // Rotas /admin/* que NÃO exigem admin_session:
