@@ -3,7 +3,7 @@
 // Sprint 5.0.3.0a — Modal "Efetivar pagamento" extraído da page atual.
 // Reusado em bulk action (Sprint 5.0.3.0b) também.
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -59,10 +59,18 @@ export function EfetivarDialog({
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
   const [loading, setLoading] = useState(false)
 
-  // Reset state quando abre uma conta nova
-  if (open && conta && !bankId) {
-    setBankId(conta.bankAccount?.id ?? bankAccounts[0]?.id ?? '')
-  }
+  // Sprint 15 FASE 2 — MOVIDO de setState-no-corpo-do-render pra useEffect.
+  // Antigo (linhas 63-65) chamava setBankId DENTRO do return path do render:
+  //     if (open && conta && !bankId) setBankId(...)
+  // Isso é antipattern do React (setState durante render) — causa
+  // re-render imediato e pode contribuir pra erros de hooks order como
+  // o React #310 que vimos no AgingDashboard. Reset agora é declarativo
+  // via useEffect com deps explicitas.
+  useEffect(() => {
+    if (open && conta && !bankId) {
+      setBankId(conta.bankAccount?.id ?? bankAccounts[0]?.id ?? '')
+    }
+  }, [open, conta, bankAccounts, bankId])
 
   async function executar() {
     if (!conta || !bankId || !date) return

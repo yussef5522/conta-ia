@@ -36,11 +36,15 @@ export function AgingDashboard({
   const [open, setOpen] = useState(false)
   const [hydrated, setHydrated] = useState(false)
 
-  // Sprint 5.0.3.1 (Bug #3) — Esconde TOTALMENTE quando 0 vencidas (não
-  // mostra empty state positivo). Yussef prefere UX limpa.
-  if (!loading && result && result.total.count === 0) return null
-
   // Hidrata de localStorage no mount
+  // Sprint 15 FASE 2 — MOVIDO antes do early return de "0 vencidas".
+  // O early return na linha 41 ANTIGA estava CAUSANDO React error #310
+  // ("rendered fewer hooks than expected") quando o user excluia conta:
+  //   Render anterior: result.total.count > 0 → não retorna → 3 hooks rodam
+  //   Render apos exclusao + refetchAging: count === 0 → return null →
+  //     useEffects NAO rodam → 2 hooks → React detecta mismatch → #310.
+  // Solução: TODOS os hooks SEMPRE no topo, antes de qualquer return
+  // condicional. Hidden = early return DEPOIS dos hooks.
   useEffect(() => {
     if (typeof window === 'undefined') return
     try {
@@ -61,6 +65,11 @@ export function AgingDashboard({
       /* ignore */
     }
   }, [open, hydrated, storageKey])
+
+  // Sprint 5.0.3.1 (Bug #3) — Esconde TOTALMENTE quando 0 vencidas (não
+  // mostra empty state positivo). Yussef prefere UX limpa.
+  // ⚠ Esse early return DEVE ficar APÓS todos os hooks (Sprint 15 FASE 2).
+  if (!loading && result && result.total.count === 0) return null
 
   const hasVencidas = (result?.total.count ?? 0) > 0
 
