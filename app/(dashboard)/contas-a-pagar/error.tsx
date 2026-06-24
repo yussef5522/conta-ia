@@ -13,6 +13,7 @@
 import { useEffect } from 'react'
 import Link from 'next/link'
 import { AlertTriangle, RefreshCw, ArrowLeft } from 'lucide-react'
+import { reportClientError } from '@/lib/dev/report-client-error'
 
 interface Props {
   error: Error & { digest?: string }
@@ -24,6 +25,12 @@ export default function ContasAPagarError({ error, reset }: Props) {
     // Log no console pra debug (sem expor pro usuário)
     // eslint-disable-next-line no-console
     console.error('[contas-a-pagar/error.tsx]', error)
+    // Sprint 15 — reporta pro servidor pra capturar stack no PM2 log
+    reportClientError({
+      context: 'contas-a-pagar/error.tsx (page boundary)',
+      error,
+      digest: error.digest,
+    })
   }, [error])
 
   return (

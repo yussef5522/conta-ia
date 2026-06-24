@@ -26,6 +26,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Header } from '@/components/layout/header'
+import { reportClientError } from '@/lib/dev/report-client-error'
 import {
   Select,
   SelectContent,
@@ -154,6 +155,39 @@ function ContasAPagarInner() {
   const [empresaId, setEmpresaId] = useState<string>(
     searchParams.get('empresaId') ?? '',
   )
+
+  // Sprint 15 — Listener global window pra capturar QUALQUER erro JS
+  // ou unhandledrejection que aconteça enquanto a tela está montada.
+  // Isso pega causas que não passam pelo try/catch dos handlers (ex:
+  // erro em um useEffect terceirizado, em Radix, em react-table, em
+  // qualquer render).
+  useEffect(() => {
+    function onError(e: ErrorEvent) {
+      reportClientError({
+        context: 'window.onerror @/contas-a-pagar',
+        error: e.error ?? e.message,
+        extra: {
+          filename: e.filename,
+          lineno: e.lineno,
+          colno: e.colno,
+          type: 'error',
+        },
+      })
+    }
+    function onUnhandled(e: PromiseRejectionEvent) {
+      reportClientError({
+        context: 'window.unhandledrejection @/contas-a-pagar',
+        error: e.reason,
+        extra: { type: 'unhandledrejection' },
+      })
+    }
+    window.addEventListener('error', onError)
+    window.addEventListener('unhandledrejection', onUnhandled)
+    return () => {
+      window.removeEventListener('error', onError)
+      window.removeEventListener('unhandledrejection', onUnhandled)
+    }
+  }, [])
 
   // Filtros — hydratam de URL na 1ª carga
   const [filters, setFilters] = useState<PayableFilterState>(() => ({
@@ -654,11 +688,12 @@ function ContasAPagarInner() {
 
   async function executeDelete() {
     if (!confirmDelete) return
-    // Sprint 14 — snapshot ANTES de qualquer setState. Garante que mesmo
-    // se confirmDelete for limpo no meio do fluxo (race condition em
-    // navegações concorrentes), seguimos com os valores corretos.
     const target = confirmDelete
+    // Sprint 15 — instrumentar: cada passo dentro de try/catch dedicado
+    // pra reportar exatamente em qual ponto estoura. Cada catch reporta
+    // contexto + re-throw pra subir pro error boundary (que também loga).
     try {
+      // ── PASSO 1: DELETE no server ──
       const res = await fetch(`/api/contas-a-pagar/${target.id}`, {
         method: 'DELETE',
         credentials: 'include',
@@ -672,23 +707,68 @@ function ContasAPagarInner() {
         })
         return
       }
-      toast({
-        title: 'Conta excluída',
-        description: target.description,
-      })
-      // Sprint 14 — Reordenar: limpa o foco do dialog ANTES de remover a
-      // row da lista. Sem isso, o Radix DropdownMenu pode tentar restaurar
-      // foco no trigger original (a row), que já foi desmontada → erro
-      // silencioso que sobe pra error boundary mostrando "this page
-      // can't find". Limpar confirmDelete fecha o dialog primeiro (Radix
-      // libera foco) e SÓ DEPOIS removemos a row.
-      setConfirmDelete(null)
-      // Aguarda 1 microtask pra Radix desmontar o dialog antes de mexer na lista
+
+      // ── PASSO 2: toast de sucesso ──
+      try {
+        toast({
+          title: 'Conta excluída',
+          description: target.description,
+        })
+      } catch (e) {
+        reportClientError({
+          context: 'executeDelete:toast',
+          error: e,
+          extra: { targetId: target.id },
+        })
+        // não re-throw — toast falhar não deveria quebrar a tela
+      }
+
+      // ── PASSO 3: fechar dialog (setConfirmDelete null) ──
+      try {
+        setConfirmDelete(null)
+      } catch (e) {
+        reportClientError({
+          context: 'executeDelete:setConfirmDelete(null)',
+          error: e,
+          extra: { targetId: target.id },
+        })
+      }
+
+      // ── PASSO 4: aguardar microtask pra Radix desmontar ──
       await Promise.resolve()
-      removeRowsOptimistic([target.id])
-      refetchAging()
-    } catch {
-      toast({ variant: 'destructive', title: 'Erro de rede' })
+
+      // ── PASSO 5: remover row do estado items ──
+      try {
+        removeRowsOptimistic([target.id])
+      } catch (e) {
+        reportClientError({
+          context: 'executeDelete:removeRowsOptimistic',
+          error: e,
+          extra: { targetId: target.id },
+        })
+        throw e
+      }
+
+      // ── PASSO 6: refetchAging em paralelo (background) ──
+      try {
+        refetchAging()
+      } catch (e) {
+        reportClientError({
+          context: 'executeDelete:refetchAging',
+          error: e,
+          extra: { targetId: target.id },
+        })
+        // não re-throw — refetch é background
+      }
+    } catch (e) {
+      // Sprint 15 — catch geral: reporta ANTES do toast pra garantir captura
+      reportClientError({
+        context: 'executeDelete:outer-catch',
+        error: e,
+        extra: { targetId: target.id, targetDescription: target.description },
+      })
+      // Se for erro de rede do fetch, toast destructive
+      toast({ variant: 'destructive', title: 'Erro inesperado', description: e instanceof Error ? e.message : 'Veja PM2 log' })
     }
   }
 

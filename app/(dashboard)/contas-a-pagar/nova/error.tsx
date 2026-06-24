@@ -7,6 +7,7 @@
 import { useEffect } from 'react'
 import Link from 'next/link'
 import { AlertTriangle, RefreshCw, ArrowLeft } from 'lucide-react'
+import { reportClientError } from '@/lib/dev/report-client-error'
 
 interface Props {
   error: Error & { digest?: string }
@@ -17,6 +18,11 @@ export default function ContasAPagarNovaError({ error, reset }: Props) {
   useEffect(() => {
     // eslint-disable-next-line no-console
     console.error('[contas-a-pagar/nova/error.tsx]', error)
+    reportClientError({
+      context: 'contas-a-pagar/nova/error.tsx (page boundary)',
+      error,
+      digest: error.digest,
+    })
   }, [error])
 
   return (
