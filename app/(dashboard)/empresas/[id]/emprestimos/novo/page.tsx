@@ -842,13 +842,18 @@ export default function NovoEmprestimoPage({
                 />
               </Field>
               <Field label="Taxa % ao mês *">
+                {/* Sprint Taxa-precisao (24/06/2026): step="any" libera
+                    qualquer precisao decimal. ANTES era step="0.001" — HTML5
+                    bloqueava "0,4868" do PRONAMPE pos-fixado com "Enter a
+                    valid value" porque 0,4868 nao e multiplo de 0,001. */}
                 <Input
                   type="number"
-                  step="0.001"
+                  step="any"
                   min="0"
+                  inputMode="decimal"
                   value={form.interestRateMonthly}
                   onChange={(e) => setForm({ ...form, interestRateMonthly: e.target.value })}
-                  placeholder="2.5"
+                  placeholder="ex: 0.4868 ou 1.87"
                   required
                 />
               </Field>
