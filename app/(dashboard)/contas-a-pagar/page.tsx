@@ -654,8 +654,12 @@ function ContasAPagarInner() {
 
   async function executeDelete() {
     if (!confirmDelete) return
+    // Sprint 14 — snapshot ANTES de qualquer setState. Garante que mesmo
+    // se confirmDelete for limpo no meio do fluxo (race condition em
+    // navegações concorrentes), seguimos com os valores corretos.
+    const target = confirmDelete
     try {
-      const res = await fetch(`/api/contas-a-pagar/${confirmDelete.id}`, {
+      const res = await fetch(`/api/contas-a-pagar/${target.id}`, {
         method: 'DELETE',
         credentials: 'include',
       })
@@ -670,10 +674,18 @@ function ContasAPagarInner() {
       }
       toast({
         title: 'Conta excluída',
-        description: confirmDelete.description,
+        description: target.description,
       })
-      // Remoção OTIMISTA — sem refetch da lista (preserva scroll)
-      removeRowsOptimistic([confirmDelete.id])
+      // Sprint 14 — Reordenar: limpa o foco do dialog ANTES de remover a
+      // row da lista. Sem isso, o Radix DropdownMenu pode tentar restaurar
+      // foco no trigger original (a row), que já foi desmontada → erro
+      // silencioso que sobe pra error boundary mostrando "this page
+      // can't find". Limpar confirmDelete fecha o dialog primeiro (Radix
+      // libera foco) e SÓ DEPOIS removemos a row.
+      setConfirmDelete(null)
+      // Aguarda 1 microtask pra Radix desmontar o dialog antes de mexer na lista
+      await Promise.resolve()
+      removeRowsOptimistic([target.id])
       refetchAging()
     } catch {
       toast({ variant: 'destructive', title: 'Erro de rede' })
@@ -683,6 +695,8 @@ function ContasAPagarInner() {
   // Sprint 5.0.3.0b — Bulk actions
   async function executeBulkDelete() {
     if (selectedIds.length === 0 || !empresaId) return
+    // Sprint 14 — snapshot dos ids antes de qualquer setState
+    const targetIds = [...selectedIds]
     try {
       const res = await fetch(
         `/api/empresas/${empresaId}/contas-pagar/bulk`,
@@ -692,7 +706,7 @@ function ContasAPagarInner() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             action: 'delete',
-            transactionIds: selectedIds,
+            transactionIds: targetIds,
           }),
         },
       )
@@ -709,8 +723,11 @@ function ContasAPagarInner() {
       toast({
         title: `${data.success} contas excluídas`,
       })
-      // Remoção OTIMISTA em lote — preserva scroll
-      removeRowsOptimistic(selectedIds)
+      // Sprint 14 — fecha bulk dialog ANTES de remover rows (mesma lógica
+      // do executeDelete individual).
+      setBulkDeleteOpen(false)
+      await Promise.resolve()
+      removeRowsOptimistic(targetIds)
       refetchAging()
     } catch {
       toast({ variant: 'destructive', title: 'Erro de rede' })
