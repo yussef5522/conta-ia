@@ -53,6 +53,24 @@ export async function createContaPendente(
   const paymentDateEfetivo = lancaJaPaga ? input.paymentDate : null
   const statusEfetivo = lancaJaPaga ? 'RECONCILED' : 'PENDING'
 
+  // Sprint 13 — fix "This page couldn't load":
+  // Rejeita tx órfã do multi-tenant guard. Sem nenhum vínculo (bankAccount,
+  // category, supplier, customer, employee), a tx fica invisível na
+  // listagem (filtro OR exige ≥1 vínculo) E PATCH/DELETE retornam 404
+  // ("Conta não encontrada") porque a mesma guard bloqueia o lookup.
+  // Resultado UX no navegador: "This page couldn't load" pós-ação.
+  const hasLink =
+    input.bankAccountId != null ||
+    input.categoryId != null ||
+    input.supplierId != null ||
+    input.customerId != null
+  if (!hasLink) {
+    throw new ContaCreateError(
+      'Defina ao menos uma categoria, fornecedor ou conta bancária — sem isso a conta fica invisível na listagem.',
+      400,
+    )
+  }
+
   // 1. Validações de lifecycle (sob estado final)
   const validation = validateLifecycleState({
     lifecycle: lifecycleEfetivo,

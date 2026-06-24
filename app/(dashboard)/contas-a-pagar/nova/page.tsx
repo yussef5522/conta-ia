@@ -94,6 +94,18 @@ function NovaContaInner() {
       })
       return
     }
+    // Sprint 13 — fix "This page couldn't load":
+    // Tx sem nenhum vínculo (categoria, fornecedor, conta) vira órfã do
+    // multi-tenant guard e PATCH/DELETE retornam 404. Exige ≥1 vínculo.
+    if (!categoryId && !supplierId && !bankAccountId) {
+      toast({
+        variant: 'destructive',
+        title: 'Defina ao menos um vínculo',
+        description:
+          'Escolha uma categoria, fornecedor OU conta bancária prevista. Sem isso, a conta fica invisível na listagem.',
+      })
+      return
+    }
     setSaving(true)
     try {
       const res = await fetch('/api/contas-a-pagar', {
@@ -209,7 +221,12 @@ function NovaContaInner() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs">Categoria (opcional)</label>
+            <label className="text-xs">
+              Categoria{' '}
+              <span className="text-amber-600 dark:text-amber-400">
+                (escolha 1: categoria, fornecedor ou conta)
+              </span>
+            </label>
             <Select value={categoryId} onValueChange={setCategoryId} disabled={!empresaId}>
               <SelectTrigger>
                 <SelectValue placeholder="Sem categoria" />
