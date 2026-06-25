@@ -35,6 +35,16 @@ CADA LINHA pode ter:
 - cardLastDigits (quando fatura tem MÚLTIPLOS cartões, qual cartão fez a compra)
 - needsReview: true quando a descrição é ambígua ou valor difícil de ler
 - note: nota livre explicando o que verificar
+- suggestedCategoryName: nome curto da categoria em PT-BR brasileiro
+  (ex: "Marketing", "Refeições", "Software / Assinaturas", "Combustível",
+  "Material de escritório", "Manutenção", "Despesas Financeiras",
+  "Compras", "Hospedagem / Viagens", "Frete", "Telefonia / Internet").
+  IMPORTANTE: NÃO inventar — só sugira se a descrição for clara
+  (ex: "NETFLIX" -> "Software / Assinaturas"; "FACEBK ADS" -> "Marketing";
+  "IFOOD" -> "Refeições"; "POSTO IPIRANGA" -> "Combustível";
+  "MERCADOLIVRE" -> "Compras"; "UBER" -> "Transporte"). Se não souber,
+  deixe omisso (UI mostrará "escolher categoria"). ENCARGO_FINANCEIRO
+  e IGNORAR não precisam.
 
 EXEMPLO de output (fatura Caixa com 2 cartões):
 
@@ -54,6 +64,7 @@ EXEMPLO de output (fatura Caixa com 2 cartões):
       "description": "FACEBK *FACEBOOK ADS",
       "amount": 350.00,
       "suggestedKind": "COMPRA_AVISTA",
+      "suggestedCategoryName": "Marketing",
       "cardLastDigits": "2937"
     },
     {
@@ -61,6 +72,7 @@ EXEMPLO de output (fatura Caixa com 2 cartões):
       "description": "MERCADOLIVRE 08/12",
       "amount": 233.50,
       "suggestedKind": "COMPRA_PARCELADA",
+      "suggestedCategoryName": "Compras",
       "installmentNumber": 8,
       "installmentTotal": 12,
       "cardLastDigits": "3883"

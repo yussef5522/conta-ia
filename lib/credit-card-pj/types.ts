@@ -24,6 +24,12 @@ export interface InvoiceLine {
   needsReview?: boolean
   /** Nota livre da IA pro user (ex: "valor pequeno - verifique") */
   note?: string
+  /**
+   * Sprint Cartao R2 (24/06/2026) — categoria sugerida pelo Claude
+   * em PT-BR. Pode bater literal com nome de categoria EXPENSE da empresa,
+   * fuzzy match aproximado, ou ser omisso quando IA nao tem certeza.
+   */
+  suggestedCategoryName?: string
 }
 
 export interface InvoiceExtraction {

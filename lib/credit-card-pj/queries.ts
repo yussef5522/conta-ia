@@ -163,19 +163,24 @@ export async function getCardDashboard(
 }
 
 /**
- * Verifica se existe alguma transacao DEBIT recente na empresa que tenha
- * descricao tipo "PAGAMENTO CARTAO" e valor proximo do total da fatura.
- * Usado pra sugerir reclassificar como TRANSFER quando o pagamento foi
- * importado como despesa antes do cartao existir.
+ * Sprint Cartao R2 (24/06/2026) — busca candidatos pra casar com fatura.
  *
- * Retorna candidatos ate 60 dias atras com fuzzy match de valor (±R$ 1).
+ * Inclui:
+ *   (a) tx classificadas como despesa por engano (isCardPayment=false) +
+ *       descricao tipo PAGAMENTO/CARTAO/FATURA + valor proximo. Caso real
+ *       R$ 2.654,63 Banrisul.
+ *   (b) tx ja marcadas como pagamento de cartao mas SEM cardId
+ *       (isCardPayment=true, businessCreditCardId=null = aguardando casar),
+ *       independente do valor. Essas vem do hook do import OFX.
+ *
+ * Resultado ordenado por data desc. Janela 120 dias.
  */
 export async function findCardPaymentCandidatesInBank(
   companyId: string,
   totalFatura: number,
   /** Valor sugerido vir da fatura — busca proximo */
   toleranceBRL: number = 1,
-  daysBack: number = 60,
+  daysBack: number = 120,
 ) {
   const since = new Date()
   since.setDate(since.getDate() - daysBack)
@@ -184,19 +189,27 @@ export async function findCardPaymentCandidatesInBank(
     where: {
       bankAccount: { companyId },
       type: 'DEBIT',
-      isCardPayment: false,
       businessCreditCardId: null,
       date: { gte: since },
-      amount: { gte: totalFatura - toleranceBRL, lte: totalFatura + toleranceBRL },
       OR: [
-        { description: { contains: 'PAGAMENTO' } },
-        { description: { contains: 'pagamento' } },
-        { description: { contains: 'CARTAO' } },
-        { description: { contains: 'cartao' } },
-        { description: { contains: 'CARTÃO' } },
-        { description: { contains: 'cartão' } },
-        { description: { contains: 'FATURA' } },
-        { description: { contains: 'fatura' } },
+        // (a) descrição parece pagamento E valor proximo (caso R$ 2.654,63)
+        {
+          isCardPayment: false,
+          amount: { gte: totalFatura - toleranceBRL, lte: totalFatura + toleranceBRL },
+          OR: [
+            { description: { contains: 'PAGAMENTO' } },
+            { description: { contains: 'pagamento' } },
+            { description: { contains: 'CARTAO' } },
+            { description: { contains: 'cartao' } },
+            { description: { contains: 'CARTÃO' } },
+            { description: { contains: 'cartão' } },
+            { description: { contains: 'FATURA' } },
+            { description: { contains: 'fatura' } },
+          ],
+        },
+        // (b) ja marcadas pelo hook OFX como pagamento, aguardando casar
+        // (qualquer valor — geralmente faz match pelo total da fatura tambem)
+        { isCardPayment: true },
       ],
     },
     include: {
@@ -204,7 +217,7 @@ export async function findCardPaymentCandidatesInBank(
       bankAccount: { select: { name: true } },
     },
     orderBy: { date: 'desc' },
-    take: 10,
+    take: 15,
   })
 }
 

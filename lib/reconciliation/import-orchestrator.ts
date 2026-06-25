@@ -235,6 +235,27 @@ export async function runImportV2(
     insertedTxIds.push(created.id)
   }
 
+  // 8.5. Sprint Cartao R2 (24/06/2026) — marca tx que parecem PAGAMENTO DE
+  // CARTAO como isCardPayment=true (sem cartao vinculado ainda — fica
+  // aguardando casar com fatura PDF). Filtro do DRE/cashflow ja pula
+  // isCardPayment=true, entao a tx sai do DRE imediatamente.
+  if (insertedTxIds.length > 0) {
+    const { detectCardPayment } = await import('@/lib/credit-card-pj/payment-detector')
+    const justCreated = await tx.transaction.findMany({
+      where: { id: { in: insertedTxIds } },
+      select: { id: true, description: true, type: true },
+    })
+    const cardPaymentIds = justCreated
+      .filter((t) => detectCardPayment({ description: t.description, type: t.type }).isLikely)
+      .map((t) => t.id)
+    if (cardPaymentIds.length > 0) {
+      await tx.transaction.updateMany({
+        where: { id: { in: cardPaymentIds } },
+        data: { isCardPayment: true },
+      })
+    }
+  }
+
   // 9. Warnings para orphans (NUNCA delete automático)
   const insertedWarningIds: string[] = []
   const warningsOut: ImportOrchestratorResult['warnings'] = []

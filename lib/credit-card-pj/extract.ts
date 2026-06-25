@@ -242,6 +242,7 @@ function coerceLine(raw: unknown): InvoiceLine | null {
     cardLastDigits,
     needsReview: o.needsReview === true,
     note: stringOrNull(o.note) ?? undefined,
+    suggestedCategoryName: stringOrNull(o.suggestedCategoryName) ?? undefined,
   }
 }
 

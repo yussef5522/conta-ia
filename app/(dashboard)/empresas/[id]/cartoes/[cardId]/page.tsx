@@ -5,7 +5,8 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import { CreditCard, Upload, Loader2, ArrowLeft, Repeat } from 'lucide-react'
+import { CreditCard, Upload, Loader2, ArrowLeft, Repeat, Link2 } from 'lucide-react'
+import { useToast } from '@/components/ui/use-toast'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -44,20 +45,71 @@ interface DashboardData {
   }>
 }
 
+interface PagamentoPendente {
+  id: string
+  date: string
+  description: string
+  amount: number
+  bankAccountId: string | null
+  bankAccountName: string | null
+  currentCategoryId: string | null
+  currentCategoryName: string | null
+}
+
 export default function CartaoDashboardPage() {
   const params = useParams<{ id: string; cardId: string }>()
+  const { toast } = useToast()
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [pendentes, setPendentes] = useState<PagamentoPendente[]>([])
+  const [casandoId, setCasandoId] = useState<string | null>(null)
+
+  function reload() {
+    setLoading(true)
+    Promise.all([
+      fetch(`/api/empresas/${params.id}/cartoes/${params.cardId}`, { credentials: 'include' })
+        .then((r) => (r.ok ? r.json() : null)),
+      fetch(`/api/empresas/${params.id}/cartoes/pagamentos-pendentes`, { credentials: 'include' })
+        .then((r) => (r.ok ? r.json() : { pendentes: [] })),
+    ])
+      .then(([dashRes, pendRes]) => {
+        setData(dashRes)
+        setPendentes(pendRes?.pendentes ?? [])
+      })
+      .finally(() => setLoading(false))
+  }
 
   useEffect(() => {
-    setLoading(true)
-    fetch(`/api/empresas/${params.id}/cartoes/${params.cardId}`, {
-      credentials: 'include',
-    })
-      .then((r) => (r.ok ? r.json() : null))
-      .then(setData)
-      .finally(() => setLoading(false))
+    reload()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.id, params.cardId])
+
+  async function casarPagamento(txId: string) {
+    setCasandoId(txId)
+    try {
+      const resp = await fetch(
+        `/api/empresas/${params.id}/cartoes/${params.cardId}/casar-pagamento`,
+        {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ txId }),
+        },
+      )
+      const json = await resp.json()
+      if (!resp.ok) {
+        toast({ title: 'Erro', description: json.erro || 'Tente novamente', variant: 'destructive' })
+        return
+      }
+      toast({
+        title: 'Pagamento casado',
+        description: `Saiu do DRE como despesa (R$ ${json.deltaDespesaRemovidoDoDRE.toFixed(2)})`,
+      })
+      reload()
+    } finally {
+      setCasandoId(null)
+    }
+  }
 
   if (loading) {
     return (
@@ -153,6 +205,60 @@ export default function CartaoDashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Pagamentos aguardando casar */}
+      {pendentes.length > 0 && (
+        <Card className="border-indigo-200 bg-indigo-50/40">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Link2 className="h-4 w-4 text-indigo-600" />
+              Pagamento{pendentes.length > 1 ? 's' : ''} de cartão aguardando casar
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <p className="text-xs text-indigo-900">
+              Detectei {pendentes.length} pagamento{pendentes.length > 1 ? 's' : ''} de cartão no extrato.
+              Cada um já está <strong>fora do DRE</strong> (não conta como despesa). Marque o que
+              pertence a este cartão pra confirmar o casamento.
+            </p>
+            <div className="space-y-1">
+              {pendentes.map((p) => (
+                <div
+                  key={p.id}
+                  className="flex items-center justify-between gap-3 py-1.5 border-t border-indigo-100 first:border-0"
+                >
+                  <div className="flex-1 min-w-0 text-sm">
+                    <span>{fmtDateBR(p.date)} · {p.description} · </span>
+                    <strong>{formatBRL(p.amount)}</strong>
+                    {p.bankAccountName && (
+                      <span className="text-muted-foreground"> · {p.bankAccountName}</span>
+                    )}
+                    {p.currentCategoryName && (
+                      <span className="text-amber-700"> · hoje: {p.currentCategoryName}</span>
+                    )}
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={casandoId === p.id}
+                    onClick={() => casarPagamento(p.id)}
+                    className="border-indigo-300 text-indigo-700 hover:bg-indigo-50"
+                  >
+                    {casandoId === p.id ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <>
+                        <Link2 className="h-3.5 w-3.5 mr-1" />
+                        Casar com este cartão
+                      </>
+                    )}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Barra de utilização */}
       <div className="space-y-1">

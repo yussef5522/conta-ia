@@ -49,7 +49,7 @@ interface PreviewLine {
   contentHash: string
   isDuplicate: boolean
   suggestedCategoryId: string | null
-  suggestedCategorySource: 'RULE' | 'KEYWORD' | 'DEFAULT' | 'NONE'
+  suggestedCategorySource: 'RULE' | 'AI_NAME' | 'DEFAULT' | 'NONE'
   suggestedConfidence: number
 }
 
@@ -726,18 +726,29 @@ function EditableRow({
         {isIgnored ? (
           <span className="text-[10px] text-muted-foreground">—</span>
         ) : (
-          <select
-            value={line.categoryId ?? ''}
-            onChange={(e) => onUpdate({ categoryId: e.target.value || null })}
-            className="text-xs border rounded h-8 px-1 w-full"
-          >
-            <option value="">— escolher —</option>
-            {categories
-              .filter((c) => c.type === 'EXPENSE')
-              .map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-          </select>
+          <div className="space-y-0.5">
+            <select
+              value={line.categoryId ?? ''}
+              onChange={(e) => onUpdate({ categoryId: e.target.value || null })}
+              className={`text-xs border rounded h-8 px-1 w-full ${
+                line.categoryId === null ? 'border-amber-400 bg-amber-50/30' : ''
+              }`}
+            >
+              <option value="">— escolher categoria —</option>
+              {categories
+                .filter((c) => c.type === 'EXPENSE')
+                .map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+            </select>
+            {line.categoryId !== null && line.categoryId === line.suggestedCategoryId && (
+              <p className="text-[9px] text-muted-foreground">
+                {line.suggestedCategorySource === 'RULE' && '🧠 regra aprendida'}
+                {line.suggestedCategorySource === 'AI_NAME' && '✨ IA sugeriu'}
+                {line.suggestedCategorySource === 'DEFAULT' && '⚙ default'}
+              </p>
+            )}
+          </div>
         )}
       </td>
       <td className="py-2 text-right">
