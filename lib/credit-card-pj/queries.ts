@@ -14,14 +14,19 @@ export interface CardCardSummary {
   closingDayRule: string
   defaultPaymentBankAccountId: string | null
   isActive: boolean
-  /** Soma das compras + encargos do MES corrente (R$) */
+  /** R4: soma da FATURA mais recente importada (era "mes corrente") */
   monthSpend: number
-  /** Quantidade de tx do mes corrente */
   monthTxCount: number
-  /** Limite usado / limite total (0-1, clamp ate 1.0 visual) */
   utilizationPct: number
+  /** R4: competencia da fatura usada nos totais acima (YYYY-MM ou null) */
+  latestInvoiceMonth: string | null
 }
 
+/**
+ * Sprint R4 — soma agora eh por FATURA (invoiceMonth) em vez de "mes corrente".
+ * Pega a fatura mais recente de cada cartao (max invoiceMonth) e soma essa.
+ * Se cartao nao tem nenhuma fatura importada -> 0.
+ */
 export async function listCardsForCompany(
   companyId: string,
 ): Promise<CardCardSummary[]> {
@@ -31,31 +36,47 @@ export async function listCardsForCompany(
   })
   if (cards.length === 0) return []
 
-  // Soma compras+encargos do mes corrente por cartao
-  const now = new Date()
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-
-  const monthTotals = await prisma.transaction.groupBy({
+  // Acha a competencia mais recente por cartao
+  const latestInvoiceByCard = await prisma.transaction.groupBy({
     by: ['businessCreditCardId'],
     where: {
       businessCreditCardId: { in: cards.map((c) => c.id) },
+      invoiceMonth: { not: null },
       isCardPayment: false,
-      type: 'DEBIT',
-      date: { gte: startOfMonth, lte: now },
     },
-    _sum: { amount: true },
-    _count: { _all: true },
+    _max: { invoiceMonth: true },
   })
-
-  const totalsByCard = new Map(
-    monthTotals.map((t) => [
-      t.businessCreditCardId as string,
-      { sum: t._sum.amount ?? 0, count: t._count._all },
+  const latestByCardId = new Map(
+    latestInvoiceByCard.map((r) => [
+      r.businessCreditCardId as string,
+      r._max.invoiceMonth,
     ]),
   )
 
+  // Soma compras+encargos da fatura mais recente de cada cartao
+  const totalsByCard = new Map<string, { sum: number; count: number; invoiceMonth: string }>()
+  for (const cardId of cards.map((c) => c.id)) {
+    const inv = latestByCardId.get(cardId)
+    if (!inv) continue
+    const agg = await prisma.transaction.aggregate({
+      where: {
+        businessCreditCardId: cardId,
+        invoiceMonth: inv,
+        isCardPayment: false,
+        type: 'DEBIT',
+      },
+      _sum: { amount: true },
+      _count: { _all: true },
+    })
+    totalsByCard.set(cardId, {
+      sum: agg._sum.amount ?? 0,
+      count: agg._count._all,
+      invoiceMonth: inv,
+    })
+  }
+
   return cards.map((c) => {
-    const t = totalsByCard.get(c.id) ?? { sum: 0, count: 0 }
+    const t = totalsByCard.get(c.id) ?? { sum: 0, count: 0, invoiceMonth: null as string | null }
     return {
       id: c.id,
       name: c.name,
@@ -71,6 +92,7 @@ export async function listCardsForCompany(
       monthSpend: round2(t.sum),
       monthTxCount: t.count,
       utilizationPct: c.creditLimit > 0 ? Math.min(1, t.sum / c.creditLimit) : 0,
+      latestInvoiceMonth: t.invoiceMonth,
     }
   })
 }
@@ -107,11 +129,17 @@ export interface CardDashboardData {
     bankAccountId: string | null
     bankAccountName: string | null
   }>
+  /** R4: lista de competencias YYYY-MM disponiveis pra esse cartao (mais recente 1o) */
+  availableInvoices: string[]
+  /** R4: competencia ativa nesta view */
+  currentInvoiceMonth: string | null
 }
 
 export async function getCardDashboard(
   companyId: string,
   cardId: string,
+  /** R4: competencia YYYY-MM. Default = fatura mais recente */
+  invoiceMonthFilter?: string | null,
 ): Promise<CardDashboardData | null> {
   const card = await prisma.businessCreditCard.findFirst({
     where: { id: cardId, companyId },
@@ -123,20 +151,39 @@ export async function getCardDashboard(
   const summary = list.find((c) => c.id === cardId)
   if (!summary) return null
 
-  const now = new Date()
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-
-  const txs = await prisma.transaction.findMany({
+  // R4: faturas disponiveis (DISTINCT invoiceMonth ordenadas desc)
+  const invoicesAvail = await prisma.transaction.findMany({
     where: {
       businessCreditCardId: cardId,
-      date: { gte: startOfMonth, lte: now },
+      invoiceMonth: { not: null },
+      isCardPayment: false,
     },
-    orderBy: { date: 'desc' },
-    take: 200,
-    include: {
-      category: { select: { name: true } },
-    },
+    distinct: ['invoiceMonth'],
+    select: { invoiceMonth: true },
+    orderBy: { invoiceMonth: 'desc' },
   })
+  const availableInvoices = invoicesAvail
+    .map((r) => r.invoiceMonth)
+    .filter((m): m is string => !!m)
+
+  // Competencia ativa: filtro do query string OU default (mais recente)
+  const currentInvoiceMonth =
+    invoiceMonthFilter && availableInvoices.includes(invoiceMonthFilter)
+      ? invoiceMonthFilter
+      : (availableInvoices[0] ?? null)
+
+  // Tx da fatura ativa
+  const txs = currentInvoiceMonth
+    ? await prisma.transaction.findMany({
+        where: {
+          businessCreditCardId: cardId,
+          invoiceMonth: currentInvoiceMonth,
+        },
+        orderBy: { date: 'desc' },
+        take: 500,
+        include: { category: { select: { name: true } } },
+      })
+    : []
 
   // Por categoria
   const byCat = new Map<string, { categoryId: string | null; name: string; amount: number }>()
@@ -200,31 +247,38 @@ export async function getCardDashboard(
       bankAccountId: p.bankAccountId,
       bankAccountName: p.bankAccount?.name ?? null,
     })),
+    availableInvoices,
+    currentInvoiceMonth,
   }
 }
 
 /**
- * Sprint Cartao R3 (24/06/2026) — busca candidatos pra casar com fatura.
+ * Sprint Cartao R4 (25/06/2026) — busca candidatos pra casar com fatura.
  *
- * Aceita MULTIPLOS valores-alvo (totalToPay E/OU totalDeclared) — a fatura
- * tem 2 valores que podem casar com o pagamento (compras do periodo vs
- * total a pagar). Cobre:
- *   (a) tx classificadas como despesa por engano (isCardPayment=false) +
- *       descricao tipo PAGAMENTO/CARTAO/FATURA + valor proximo a QUALQUER
- *       dos targets. Caso real R$ 2.654,63 Banrisul.
- *   (b) tx ja marcadas como pagamento de cartao mas SEM cardId
- *       (isCardPayment=true, businessCreditCardId=null = aguardando casar),
- *       independente do valor.
+ * VALOR EXATO eh CRITERIO SUFICIENTE (sem precisar de descricao de pagamento).
+ * Caso real: "LIQUIDACAO BOLETO- 00360305000104 CARTOES" R$ 4.333,41 paga
+ * a fatura Caixa via Sicredi — descricao nao tem PAGAMENTO/CARTAO/FATURA
+ * mas o valor bate EXATO com totalToPay. Antes (R3) era exigido AMBOS
+ * (descricao-regex AND valor proximo) e o pagamento sumia.
  *
- * Resultado ordenado por data desc. Janela 120 dias.
+ * Niveis de candidato:
+ *   - EXATO (±R$0,02) com totalToPay OU totalDeclared       — sempre candidato
+ *   - APROXIMADO (±R$1,00) + descricao parece pagamento     — candidato
+ *   - APROXIMADO (±R$1,00) sem descricao parecida           — NAO candidato (anti-FP)
+ *   - isCardPayment=true ja marcado pelo hook OFX           — sempre candidato
+ *
+ * Anti falso-positivo: valor APROXIMADO sozinho NAO basta — exige descricao
+ * parecida. Valor EXATO sozinho basta (chance de coincidencia ao centavo eh
+ * baixissima, e usuario sempre confirma no banner).
  */
 export async function findCardPaymentCandidatesInBank(
   companyId: string,
   /**
    * Valor(es) alvo. Pode ser 1 (total declarado) ou 2 (total declarado +
-   * total a pagar). Busca tx com valor ±tolerance de QUALQUER um.
+   * total a pagar). Busca tx com valor proximo a QUALQUER um.
    */
   totalsFatura: number | number[],
+  /** Tolerancia pra match APROXIMADO (com descricao). EXATO usa fixo ±0.02. */
   toleranceBRL: number = 1,
   daysBack: number = 120,
 ) {
@@ -237,35 +291,49 @@ export async function findCardPaymentCandidatesInBank(
       ? [totalsFatura]
       : []
 
-  // OR de ranges {amount BETWEEN target±tolerance} pra cada target valido
-  const amountClauses = targets.map((target) => ({
-    amount: { gte: target - toleranceBRL, lte: target + toleranceBRL },
+  const EXACT = 0.02
+  const exactClauses = targets.map((t) => ({
+    amount: { gte: t - EXACT, lte: t + EXACT },
+  }))
+  const approxClauses = targets.map((t) => ({
+    amount: { gte: t - toleranceBRL, lte: t + toleranceBRL },
   }))
 
-  // Quando ha targets validos, busca (a) parece pagamento + valor proximo
-  // OU (b) ja marcadas pelo hook. Sem targets, busca SO as marcadas.
-  const orClauses: import('@prisma/client').Prisma.TransactionWhereInput[] =
-    amountClauses.length > 0
-      ? [
-          {
-            isCardPayment: false,
-            OR: amountClauses,
-            AND: {
-              OR: [
-                { description: { contains: 'PAGAMENTO' } },
-                { description: { contains: 'pagamento' } },
-                { description: { contains: 'CARTAO' } },
-                { description: { contains: 'cartao' } },
-                { description: { contains: 'CARTÃO' } },
-                { description: { contains: 'cartão' } },
-                { description: { contains: 'FATURA' } },
-                { description: { contains: 'fatura' } },
-              ],
-            },
-          },
-          { isCardPayment: true },
-        ]
-      : [{ isCardPayment: true }]
+  // Regex AMPLIADO (R4): pega LIQUIDACAO, BOLETO, CARTOES plural, PGTO/PAGTO,
+  // alem dos atuais PAGAMENTO/CARTAO/FATURA.
+  const descKeywords = [
+    'PAGAMENTO', 'pagamento',
+    'PAGTO', 'pagto',
+    'PGTO', 'pgto',
+    'CARTAO', 'cartao', 'CARTÃO', 'cartão',
+    'CARTOES', 'cartoes', 'CARTÕES', 'cartões',
+    'FATURA', 'fatura',
+    'LIQUIDACAO', 'liquidacao', 'LIQUIDAÇÃO', 'liquidação',
+    'BOLETO', 'boleto',
+  ]
+  const descOr = descKeywords.map((kw) => ({
+    description: { contains: kw },
+  }))
+
+  const orClauses: import('@prisma/client').Prisma.TransactionWhereInput[] = []
+
+  if (exactClauses.length > 0) {
+    // (a) Valor EXATO -> sempre candidato (descricao irrelevante)
+    orClauses.push({
+      isCardPayment: false,
+      OR: exactClauses,
+    })
+    // (b) Valor APROXIMADO + descricao parece pagamento
+    orClauses.push({
+      isCardPayment: false,
+      AND: [
+        { OR: approxClauses },
+        { OR: descOr },
+      ],
+    })
+  }
+  // (c) ja marcadas pelo hook OFX como pagamento aguardando casar
+  orClauses.push({ isCardPayment: true })
 
   return prisma.transaction.findMany({
     where: {
@@ -280,7 +348,7 @@ export async function findCardPaymentCandidatesInBank(
       bankAccount: { select: { name: true } },
     },
     orderBy: { date: 'desc' },
-    take: 15,
+    take: 20,
   })
 }
 

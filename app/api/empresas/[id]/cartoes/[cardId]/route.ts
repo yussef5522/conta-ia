@@ -32,7 +32,10 @@ export async function GET(request: NextRequest, { params }: Params) {
   if (!card) {
     return NextResponse.json({ erro: 'Cartão não encontrado' }, { status: 404 })
   }
-  const dashboard = await getCardDashboard(companyId, cardId)
+  // R4: ?fatura=YYYY-MM filtra a competencia (default = mais recente)
+  const faturaParam = request.nextUrl.searchParams.get('fatura')
+  const validFatura = faturaParam && /^\d{4}-\d{2}$/.test(faturaParam) ? faturaParam : null
+  const dashboard = await getCardDashboard(companyId, cardId, validFatura)
   return NextResponse.json(dashboard)
 }
 

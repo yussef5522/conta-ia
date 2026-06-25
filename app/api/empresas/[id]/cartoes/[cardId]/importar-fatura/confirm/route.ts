@@ -180,6 +180,15 @@ export async function POST(request: NextRequest, { params }: Params) {
     return { line, identity }
   })
 
+  // Sprint R4 — Competencia da fatura (YYYY-MM) extraida do vencimento.
+  // Caixa 12/06 -> 2026-06; Banrisul 15/06 -> 2026-06. Permite dashboard
+  // agrupar por fatura (nao por data da compra, que pode ser velha pra
+  // parceladas).
+  const invoiceMonth =
+    body.dueDate && /^\d{4}-\d{2}-\d{2}$/.test(body.dueDate)
+      ? body.dueDate.slice(0, 7)
+      : null
+
   // GroupId por parcelamento (compartilhado pelas N parcelas — neste batch
   // só vem 1 parcela do mês, mas o ID pode ser usado em batches futuros).
   const installmentGroupByLine = new Map<number, string>()
@@ -244,6 +253,7 @@ export async function POST(request: NextRequest, { params }: Params) {
               installmentTotal: line.installmentTotal ?? null,
               installmentGroupId: installmentGroupByLine.get(origIdx) ?? null,
               isCardPayment: false,
+              invoiceMonth: invoiceMonth,
             }
           }),
         })

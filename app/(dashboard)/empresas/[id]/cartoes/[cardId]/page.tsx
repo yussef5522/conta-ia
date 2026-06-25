@@ -26,6 +26,7 @@ interface DashboardData {
     monthSpend: number
     monthTxCount: number
     utilizationPct: number
+    latestInvoiceMonth: string | null
   }
   monthTransactions: Array<{
     id: string
@@ -51,6 +52,8 @@ interface DashboardData {
     bankAccountId: string | null
     bankAccountName: string | null
   }>
+  availableInvoices: string[]
+  currentInvoiceMonth: string | null
 }
 
 interface PagamentoPendente {
@@ -72,12 +75,15 @@ export default function CartaoDashboardPage() {
   const [pendentes, setPendentes] = useState<PagamentoPendente[]>([])
   const [casandoId, setCasandoId] = useState<string | null>(null)
   const [desfazendoId, setDesfazendoId] = useState<string | null>(null)
+  const [selectedInvoice, setSelectedInvoice] = useState<string | null>(null)
 
   function reload() {
     setLoading(true)
+    const dashUrl = selectedInvoice
+      ? `/api/empresas/${params.id}/cartoes/${params.cardId}?fatura=${encodeURIComponent(selectedInvoice)}`
+      : `/api/empresas/${params.id}/cartoes/${params.cardId}`
     Promise.all([
-      fetch(`/api/empresas/${params.id}/cartoes/${params.cardId}`, { credentials: 'include' })
-        .then((r) => (r.ok ? r.json() : null)),
+      fetch(dashUrl, { credentials: 'include' }).then((r) => (r.ok ? r.json() : null)),
       fetch(`/api/empresas/${params.id}/cartoes/pagamentos-pendentes`, { credentials: 'include' })
         .then((r) => (r.ok ? r.json() : { pendentes: [] })),
     ])
@@ -91,7 +97,7 @@ export default function CartaoDashboardPage() {
   useEffect(() => {
     reload()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.id, params.cardId])
+  }, [params.id, params.cardId, selectedInvoice])
 
   async function casarPagamento(txId: string) {
     setCasandoId(txId)
@@ -194,6 +200,25 @@ export default function CartaoDashboardPage() {
         </div>
       </Header>
 
+      {/* R4 — Seletor de fatura */}
+      {data.availableInvoices.length > 0 && (
+        <div className="flex items-center gap-2 text-sm">
+          <span className="text-muted-foreground">Fatura:</span>
+          <select
+            value={data.currentInvoiceMonth ?? ''}
+            onChange={(e) => setSelectedInvoice(e.target.value || null)}
+            className="border rounded-md h-8 px-2 text-sm"
+          >
+            {data.availableInvoices.map((m) => (
+              <option key={m} value={m}>{fmtInvoiceLabel(m)}</option>
+            ))}
+          </select>
+          <span className="text-xs text-muted-foreground">
+            · {data.monthTransactions.filter((t) => !t.isCardPayment).length} compras + encargos
+          </span>
+        </div>
+      )}
+
       {/* 4 KPI cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card>
@@ -204,7 +229,9 @@ export default function CartaoDashboardPage() {
         </Card>
         <Card>
           <CardContent className="py-3">
-            <p className="text-xs text-muted-foreground">Usado no mês</p>
+            <p className="text-xs text-muted-foreground">
+              {data.currentInvoiceMonth ? `Fatura ${fmtInvoiceLabel(data.currentInvoiceMonth)}` : 'Sem fatura'}
+            </p>
             <p
               className={`text-lg font-semibold tabular-nums ${
                 card.utilizationPct >= 0.9
@@ -452,4 +479,13 @@ function fmtDateBR(iso: string): string {
   if (!iso) return ''
   const [y, m, d] = iso.split('-')
   return `${d}/${m}/${y}`
+}
+
+const MESES_PT = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
+
+function fmtInvoiceLabel(ym: string): string {
+  if (!/^\d{4}-\d{2}$/.test(ym)) return ym
+  const [y, m] = ym.split('-')
+  const idx = Math.max(0, Math.min(11, parseInt(m, 10) - 1))
+  return `${MESES_PT[idx]}/${y}`
 }

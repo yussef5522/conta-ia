@@ -9,6 +9,7 @@
 // NUNCA bloqueia o import. Apenas SUGERE pra UI mostrar como "aguardando".
 
 const POSITIVE_PATTERNS: RegExp[] = [
+  // Padroes classicos
   /pagamento\s+(cartao|cartão|cart[aã]o\s+de\s+cr[eé]dito|fatura)/i,
   /pagto\s+(cartao|cartão|cart[aã]o)/i,
   /pag\.?\s+fatura/i,
@@ -16,6 +17,9 @@ const POSITIVE_PATTERNS: RegExp[] = [
   /quita[cç]ao\s+fatura/i,
   /^pagamento\s+cartao/i,
   /^pag(amento|to)\.?\s+cart[aã]o\s+de\s+cr[eé]dito/i,
+  // R4: liquidacao de boleto de cartoes (caso real Caixa)
+  /liquida[cç][aã]o\s+(de\s+)?boleto.*cart(ao|ão|oes|ões)/i,
+  /boleto\s+cart(ao|ão|oes|ões)/i,
 ]
 
 const NEGATIVE_PATTERNS: RegExp[] = [

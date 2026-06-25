@@ -23,6 +23,15 @@ interface CardRow {
   monthSpend: number
   monthTxCount: number
   utilizationPct: number
+  latestInvoiceMonth: string | null
+}
+
+const MESES_PT = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
+function fmtInvoiceLabel(ym: string | null): string {
+  if (!ym || !/^\d{4}-\d{2}$/.test(ym)) return ''
+  const [y, m] = ym.split('-')
+  const idx = Math.max(0, Math.min(11, parseInt(m, 10) - 1))
+  return `${MESES_PT[idx]}/${y}`
 }
 
 export default function CartoesListaPage() {
@@ -107,7 +116,9 @@ export default function CartoesListaPage() {
                         <p className="text-sm font-medium">{formatBRL(c.creditLimit)}</p>
                       </div>
                       <div>
-                        <p className="text-[10px] uppercase text-muted-foreground">Gasto do mês</p>
+                        <p className="text-[10px] uppercase text-muted-foreground">
+                          {c.latestInvoiceMonth ? `Fatura ${fmtInvoiceLabel(c.latestInvoiceMonth)}` : 'Sem fatura'}
+                        </p>
                         <p className={`text-sm font-medium ${tone}`}>{formatBRL(c.monthSpend)}</p>
                       </div>
                     </div>
@@ -125,7 +136,7 @@ export default function CartoesListaPage() {
                         />
                       </div>
                       <p className="text-[10px] text-muted-foreground">
-                        Fechamento dia {c.closingDay} · vence dia {c.dueDay} · {c.monthTxCount} transações
+                        Fechamento dia {c.closingDay} · vence dia {c.dueDay} · {c.monthTxCount} compras/encargos
                       </p>
                     </div>
                   </CardContent>

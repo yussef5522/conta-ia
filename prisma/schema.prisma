@@ -498,6 +498,12 @@ model Transaction {
   // banco -> cartao). Permite filtrar do DRE como nao-despesa.
   isCardPayment      Boolean @default(false)
 
+  // Sprint Cartao PJ R4 (25/06/2026): competencia da fatura "YYYY-MM"
+  // capturada do vencimento da fatura no import. Permite agrupar dashboard
+  // por FATURA (Caixa 2026-06) em vez de data da compra (que pode ser
+  // 2025-12 pra parceladas antigas). Null pra tx pre-existentes.
+  invoiceMonth       String?
+
   @@unique([bankAccountId, dedupHash])
   // Sprint 4.0.1.b — anti-dup: schedule X só gera 1 tx por dueDate
   @@unique([recurringScheduleId, dueDate])
@@ -523,6 +529,8 @@ model Transaction {
   // Sprint Cartao Credito PJ (24/06/2026)
   @@index([businessCreditCardId])
   @@index([installmentGroupId])
+  // Sprint Cartao PJ R4 (25/06/2026)
+  @@index([businessCreditCardId, invoiceMonth])
   @@map("transactions")
 }
 
