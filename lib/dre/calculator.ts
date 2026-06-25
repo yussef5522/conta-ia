@@ -167,6 +167,10 @@ function calculateForPeriod(
     // mas o engine puro também ignora pra casos de uso futuros (testes, batch).
     if (tx.type === 'TRANSFER') continue
 
+    // Sprint Cartao Credito PJ (24/06/2026): pagamento de fatura nao eh
+    // despesa — a despesa real foi a COMPRA registrada com businessCreditCardId.
+    if (tx.isCardPayment) continue
+
     // Sprint Empréstimos Backend (17/06/2026):
     // (a) Liberação de empréstimo = entrada de PASSIVO, não receita. Pula.
     if (tx.isLoanDisbursement) continue

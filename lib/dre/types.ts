@@ -144,6 +144,13 @@ export interface TransactionForDRE {
    */
   isLoanDisbursement?: boolean
   /**
+   * Sprint Cartao Credito PJ (24/06/2026). True quando a tx eh pagamento
+   * de fatura de cartao (saída do banco -> entrada cartao). A despesa real
+   * foi a COMPRA registrada com businessCreditCardId. Engine pula pra nao
+   * contar 2x.
+   */
+  isCardPayment?: boolean
+  /**
    * Quando setado, a tx é PAGAMENTO DE PARCELA de empréstimo. O engine usa
    * APENAS este valor (juros) no DRE, ignorando o amount original. A
    * amortização (= amount - loanInterestSplit) NÃO entra no DRE — é baixa

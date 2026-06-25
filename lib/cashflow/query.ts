@@ -34,6 +34,10 @@ export function buildConsolidatedCashflowWhere(
   return {
     bankAccount: { companyId },
     type: { not: 'TRANSFER' },
+    // Sprint Cartao Credito PJ (24/06/2026): pagamento de fatura é movimentação
+    // banco→cartão (TRANSFER lógica). Não conta como saída do fluxo
+    // consolidado da empresa — a despesa real foi a COMPRA do cartão.
+    isCardPayment: false,
     // Sprint 4.0.1.a — fluxo REALIZADO: apenas tx EFFECTED.
     // Pendentes (PAYABLE/RECEIVABLE) ficam pro fluxo PREVISTO (Sprint 4.0.1.b).
     lifecycle: 'EFFECTED',

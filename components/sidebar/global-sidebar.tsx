@@ -36,6 +36,7 @@ import {
   Sparkles,
   Landmark,
   HandCoins,
+  CreditCard,
   Inbox,
   Workflow,
 } from 'lucide-react'
@@ -151,6 +152,15 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
             label="Empréstimos"
             href={`/empresas/${currentEmpresaId}/emprestimos`}
             isActive={/^\/empresas\/[^/]+\/emprestimos(\/|$)/.test(pathname)}
+            onClick={onNavigate}
+          />
+        )}
+        {currentEmpresaId && (
+          <SidebarItem
+            icon={CreditCard}
+            label="Cartões"
+            href={`/empresas/${currentEmpresaId}/cartoes`}
+            isActive={/^\/empresas\/[^/]+\/cartoes(\/|$)/.test(pathname)}
             onClick={onNavigate}
           />
         )}

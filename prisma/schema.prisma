@@ -183,6 +183,9 @@ model Company {
   // Sprint Empréstimos (17/06/2026) — passivo financeiro
   loans          Loan[]
 
+  // Sprint Cartao de Credito PJ (24/06/2026)
+  businessCreditCards BusinessCreditCard[]
+
   @@map("companies")
 }
 
@@ -263,7 +266,47 @@ model BankAccount {
   // Sprint Import Idempotente (18/06/2026)
   importedIdentities ImportedIdentity[]
 
+  // Sprint Cartao Credito PJ (24/06/2026) — cartoes que pagam default por esta conta.
+  cardsAsDefaultPayment BusinessCreditCard[] @relation("CardDefaultPayment")
+
   @@map("bank_accounts")
+}
+
+// Sprint Cartao de Credito PJ (24/06/2026).
+// Conta de cartao SEPARADA de BankAccount: nao afeta saldo bancario.
+// Compras viram Transaction com businessCreditCardId apontando pra essa
+// conta cartao. Pagamento da fatura aparece como TRANSFER bancário -> cartao.
+model BusinessCreditCard {
+  id          String  @id @default(cuid())
+  companyId   String
+  name        String  // "Sicredi Visa", "Caixa Mastercard 3883", etc
+  bankName    String? // emissor (Caixa, Banrisul, Sicredi, etc)
+  brand       String? // VISA | MASTERCARD | ELO | AMEX | HIPERCARD
+  lastDigits  String? // últimos 4 (auditoria; NUNCA o numero completo)
+
+  creditLimit Float   // limite total em R$
+  closingDay  Int     // dia do fechamento (1-31)
+  dueDay      Int     // dia do vencimento (1-31)
+
+  // ATUAL | PROXIMA — compras NO dia do fechamento entram na fatura ATUAL (default)
+  // ou na PROXIMA. Padrao Caixa/Banrisul/Sicredi BR = ATUAL.
+  closingDayRule String @default("ATUAL")
+
+  // Conta bancaria padrao que paga a fatura (BankAccount.id).
+  // null = usuario escolhe a cada pagamento.
+  defaultPaymentBankAccountId String?
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company                    Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  defaultPaymentBankAccount  BankAccount?  @relation("CardDefaultPayment", fields: [defaultPaymentBankAccountId], references: [id], onDelete: SetNull)
+  transactions               Transaction[] @relation("CardTransactions")
+
+  @@index([companyId])
+  @@index([companyId, isActive])
+  @@map("business_credit_cards")
 }
 
 model Transaction {
@@ -440,6 +483,21 @@ model Transaction {
   // apontando pra essa tx. Delete da Tx -> SetNull (ledger vira tombstone).
   importedIdentities    ImportedIdentity[]
 
+  // === Sprint Cartao Credito PJ (24/06/2026) ===
+  // Quando preenchido, esta tx eh compra/encargo de cartao (NAO entra em
+  // saldo bancario). bankAccountId pode ser null nesse caso.
+  businessCreditCardId String?
+  businessCreditCard   BusinessCreditCard? @relation("CardTransactions", fields: [businessCreditCardId], references: [id], onDelete: SetNull)
+  // Parcelamento: compra "MERCADOLIVRE 08/12" gera 1 tx no mes da parcela
+  // com installmentNumber=8, installmentTotal=12 e installmentGroupId
+  // compartilhado entre as parcelas da mesma compra.
+  installmentNumber  Int?
+  installmentTotal   Int?
+  installmentGroupId String?
+  // True quando esta tx eh PAGAMENTO da fatura do cartao (par TRANSFER
+  // banco -> cartao). Permite filtrar do DRE como nao-despesa.
+  isCardPayment      Boolean @default(false)
+
   @@unique([bankAccountId, dedupHash])
   // Sprint 4.0.1.b — anti-dup: schedule X só gera 1 tx por dueDate
   @@unique([recurringScheduleId, dueDate])
@@ -462,6 +520,9 @@ model Transaction {
   // pra lookups rápidos de undo do grupo.
   @@index([reconciledWithId])
   @@index([reconcileGroupId])
+  // Sprint Cartao Credito PJ (24/06/2026)
+  @@index([businessCreditCardId])
+  @@index([installmentGroupId])
   @@map("transactions")
 }
 
