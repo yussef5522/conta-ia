@@ -118,6 +118,9 @@ export async function GET(request: NextRequest) {
       // - reconciledFrom: { some: {} }: OUTRA tx aponta pra ESTA (lado OFX←Excel)
       where.reconciledWithId = null
       where.reconciledFrom = { none: {} }
+      // Sprint Cartao PJ R6.1 (25/06/2026): pagamento de cartao casado eh
+      // TRANSFER logica banco->cartao. Filtra junto com transferGroupId.
+      where.isCardPayment = false
     }
     // type: compõe AND com guard anti-TRANSFER quando semCategoria
     // (pra cobrir o caso da query `tipo` vir junto e sobrescrever).

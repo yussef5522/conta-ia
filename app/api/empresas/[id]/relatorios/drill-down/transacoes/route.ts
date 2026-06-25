@@ -92,6 +92,12 @@ export async function GET(request: NextRequest, { params }: Params) {
           typeFilter,
           // Excluir transferências (mesma decisão do DRE — não infla)
           { type: { not: 'TRANSFER' } },
+          // Sprint Cartao PJ R6.1 (25/06/2026): pagamento de cartao casado
+          // NAO aparece em drill-down de categoria (mesma decisao do DRE —
+          // engine pula isCardPayment=true). Se Yussef categorizar uma por
+          // engano fora deste filtro, ela nao entraria aqui mas tambem nao
+          // entra no DRE, entao mantem consistencia visual.
+          { isCardPayment: false },
         ],
         status: { in: ['RECONCILED', 'PENDING'] },
       },

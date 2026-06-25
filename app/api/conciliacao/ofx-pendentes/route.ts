@@ -62,6 +62,11 @@ export async function GET(request: NextRequest) {
         // Mesma lógica do Fix A em /api/transacoes?semCategoria=true.
         transferGroupId: null,
         type: { not: 'TRANSFER' },
+        // Sprint Cartao PJ R6.1 (25/06/2026): pagamento de cartao casado
+        // (isCardPayment=true + cartao vinculado) eh TRANSFERENCIA logica
+        // banco->cartao — ja resolvido via casamento, NAO precisa categoria.
+        // Yussef desfaz pelo header verde do dashboard do cartao se quiser.
+        isCardPayment: false,
         bankAccount: { companyId: data.empresaId },
         ...(Object.keys(dateFilter).length > 0 ? { date: dateFilter } : {}),
         ...tipoFilter,

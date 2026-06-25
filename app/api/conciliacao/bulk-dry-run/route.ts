@@ -63,6 +63,9 @@ export async function GET(request: NextRequest) {
         // Sprint Sync-Pendentes-Conciliacao: mesma regra do /ofx-pendentes.
         // OFX já categorizada não entra no pre-classify batch.
         categoryId: null,
+        // Sprint Cartao PJ R6.1 (25/06/2026): pagamento de cartao casado
+        // eh TRANSFER logica resolvida — fora da bulk pre-classify.
+        isCardPayment: false,
         bankAccount: { companyId: data.empresaId },
         ...tipoFilter,
       },

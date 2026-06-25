@@ -83,6 +83,8 @@ export async function GET(request: NextRequest) {
           cashCoded: false,
           categoryId: null,
           transferGroupId: null,
+          // Sprint Cartao PJ R6.1 (25/06/2026): badge bate com a conciliacao
+          isCardPayment: false,
           ...(tipoFilter.type
             ? { type: tipoFilter.type }
             : { type: { not: 'TRANSFER' } }),
@@ -109,6 +111,8 @@ export async function GET(request: NextRequest) {
           // continuava contando como "trabalho a fazer".
           transferGroupId: null,
           type: { not: 'TRANSFER' },
+          // Sprint Cartao PJ R6.1 (25/06/2026): badge bate com /pendentes
+          isCardPayment: false,
         },
       }),
     ])
