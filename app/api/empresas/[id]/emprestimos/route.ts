@@ -62,6 +62,7 @@ export async function GET(request: NextRequest, { params }: Params) {
     let totalSaldoDevedor = 0
     let totalParcelaMes = 0
     let totalJurosMes = 0
+    let totalParcelaMensalRec = 0
     let proximoVencimento: { dueDate: string; loanId: string; lender: string } | null = null
 
     const carteira = loans.map((l) => {
@@ -99,6 +100,12 @@ export async function GET(request: NextRequest, { params }: Params) {
       totalSaldoDevedor += saldoDevedor
       totalParcelaMes += compromissoMes
       totalJurosMes += jurosMes
+      // Recorrência mensal: payment da PRÓXIMA OPEN de cada loan ainda ATIVO.
+      // Diferente de "vence este mês" (que depende da data) — representa o
+      // compromisso mensal típico do contrato.
+      if (l.status === 'ACTIVE' && proximaOpen) {
+        totalParcelaMensalRec += proximaOpen.payment
+      }
 
       if (proximaOpen) {
         if (
@@ -139,7 +146,11 @@ export async function GET(request: NextRequest, { params }: Params) {
       loans: carteira,
       agregados: {
         totalSaldoDevedor: Math.round(totalSaldoDevedor * 100) / 100,
+        // "Vence este mês" — parcelas OPEN cujo dueDate cai no mês corrente
         compromissoMes: Math.round(totalParcelaMes * 100) / 100,
+        // "Parcela mensal total" — soma da próxima OPEN de cada loan ativo
+        // (representa o compromisso recorrente do contrato, independente do mês)
+        parcelaMensalTotal: Math.round(totalParcelaMensalRec * 100) / 100,
         jurosMes: Math.round(totalJurosMes * 100) / 100,
         proximoVencimento,
         contratosAtivos: carteira.filter((l) => l.status === 'ACTIVE').length,

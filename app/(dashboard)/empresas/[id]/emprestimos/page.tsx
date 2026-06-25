@@ -8,7 +8,6 @@ import { use } from 'react'
 import {
   Wallet,
   Plus,
-  TrendingDown,
   Calendar,
   CreditCard,
   CheckCircle2,
@@ -47,7 +46,10 @@ interface CarteiraResponse {
   loans: LoanRow[]
   agregados: {
     totalSaldoDevedor: number
+    /** Parcelas vencendo no mês corrente (ainda não pagas) */
     compromissoMes: number
+    /** Soma da próxima OPEN de cada loan ativo — compromisso mensal recorrente */
+    parcelaMensalTotal: number
     jurosMes: number
     proximoVencimento: { dueDate: string; loanId: string; lender: string } | null
     contratosAtivos: number
@@ -161,16 +163,16 @@ export default function CarteiraEmprestimosPage({
             />
             <KpiCard
               icon={<Calendar className="h-4 w-4 text-amber-600" />}
-              label="Compromisso do mês"
+              label="Vence este mês"
               value={formatBRL(data.agregados.compromissoMes)}
-              sub="Soma das parcelas em aberto"
+              sub="Parcelas com vencimento no mês corrente"
               tone="amber"
             />
             <KpiCard
-              icon={<TrendingDown className="h-4 w-4 text-red-600" />}
-              label="Juros do mês"
-              value={formatBRL(data.agregados.jurosMes)}
-              sub="Despesa financeira no DRE"
+              icon={<CreditCard className="h-4 w-4 text-red-600" />}
+              label="Parcela mensal total"
+              value={formatBRL(data.agregados.parcelaMensalTotal)}
+              sub={`Compromisso mensal · juros ${formatBRL(data.agregados.jurosMes)}`}
               tone="red"
             />
             <KpiCard
