@@ -76,7 +76,10 @@ describe('Sprint Empréstimos UI — telas', () => {
     expect(code).toMatch(/ProgressBar/)
     expect(code).toMatch(/StatusPill/)
     expect(code).toMatch(/Dívida total|totalSaldoDevedor/)
-    expect(code).toMatch(/Compromisso do mês/)
+    // KPI top revisado: Vence este mês + Parcela mensal total (substitui
+    // Compromisso do mês + Juros do mês)
+    expect(code).toMatch(/Vence este mês/)
+    expect(code).toMatch(/Parcela mensal total/)
     expect(code).toMatch(/Próximo vencimento/)
   })
 

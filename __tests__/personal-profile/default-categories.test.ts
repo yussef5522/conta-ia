@@ -7,8 +7,8 @@ import {
 } from '@/lib/personal-profile/default-categories'
 
 describe('PF_DEFAULT_CATEGORIES', () => {
-  test('tem exatamente 15 categorias', () => {
-    expect(PF_DEFAULT_CATEGORIES).toHaveLength(15)
+  test('tem exatamente 16 categorias', () => {
+    expect(PF_DEFAULT_CATEGORIES).toHaveLength(16)
   })
 
   test('todas têm nome único', () => {
@@ -16,11 +16,11 @@ describe('PF_DEFAULT_CATEGORIES', () => {
     expect(new Set(names).size).toBe(names.length)
   })
 
-  test('3 receitas + 12 despesas', () => {
+  test('3 receitas + 13 despesas', () => {
     const incomes = PF_DEFAULT_CATEGORIES.filter((c) => c.type === 'INCOME')
     const expenses = PF_DEFAULT_CATEGORIES.filter((c) => c.type === 'EXPENSE')
     expect(incomes).toHaveLength(3)
-    expect(expenses).toHaveLength(12)
+    expect(expenses).toHaveLength(13)
   })
 
   test('inclui categorias placeholder pra fatias futuras', () => {

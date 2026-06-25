@@ -369,9 +369,17 @@ export default function ImportarOFXPage() {
   return (
     <div className="space-y-6">
       <Header title="Importar Extrato OFX" description="Importe transações a partir de um arquivo .ofx ou .qfx">
-        <Button variant="outline" asChild>
-          <Link href={`/empresas/${empresaId}/contas/${contaId}/transacoes`}>← Transações</Link>
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" asChild>
+            <Link href={`/empresas/${empresaId}/contas/${contaId}/importar-pdf-extrato`}>
+              <FileText className="h-4 w-4 mr-1" />
+              Importar por PDF
+            </Link>
+          </Button>
+          <Button variant="outline" asChild>
+            <Link href={`/empresas/${empresaId}/contas/${contaId}/transacoes`}>← Transações</Link>
+          </Button>
+        </div>
       </Header>
 
       {/* Drop zone */}

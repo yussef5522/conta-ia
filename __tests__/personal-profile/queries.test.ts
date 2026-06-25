@@ -38,7 +38,7 @@ afterAll(async () => {
 })
 
 describe('createProfile', () => {
-  test('cria perfil + vínculo OWNER + 15 categorias default', async () => {
+  test('cria perfil + vínculo OWNER + 16 categorias default', async () => {
     const profile = await createProfile({
       userId: userA.id,
       name: 'A1 self',
@@ -57,7 +57,7 @@ describe('createProfile', () => {
     const cats = await prisma.personalCategory.count({
       where: { profileId: profile.id },
     })
-    expect(cats).toBe(15)
+    expect(cats).toBe(16)
   })
 
   test('2º perfil OWN do mesmo user NÃO marca isSelf (já tem um)', async () => {
@@ -231,9 +231,9 @@ describe('Categorias PF', () => {
     ).rejects.toThrow(ProfileAccessError)
   })
 
-  test('listCategoriesForProfile: 15 default + customs do perfil', async () => {
+  test('listCategoriesForProfile: 16 default + customs do perfil', async () => {
     const cats = await listCategoriesForProfile(userA.id, profileY.id)
-    expect(cats.length).toBeGreaterThanOrEqual(15)
+    expect(cats.length).toBeGreaterThanOrEqual(16)
     expect(cats.every((c) => c.profileId === profileY.id)).toBe(true)
   })
 })
