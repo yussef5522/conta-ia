@@ -133,6 +133,25 @@ export interface CardDashboardData {
   availableInvoices: string[]
   /** R4: competencia ativa nesta view */
   currentInvoiceMonth: string | null
+  /**
+   * R5: candidatos a pagamento desta fatura que AINDA NAO ESTAO CASADOS.
+   * Inclui (a) tx isCardPayment=true sem cartao (hook OFX antigo R2) + (b)
+   * tx com valor exato dos totals da fatura (R4). Deduplicados por id.
+   * Cada candidato tem matchScore + label visual.
+   */
+  paymentCandidates: Array<{
+    id: string
+    date: string
+    description: string
+    amount: number
+    bankAccountId: string | null
+    bankAccountName: string | null
+    currentCategoryId: string | null
+    currentCategoryName: string | null
+    matchScore: number
+    matchLabel: string
+    isAlreadyMarkedPayment: boolean
+  }>
 }
 
 export async function getCardDashboard(
@@ -225,6 +244,70 @@ export async function getCardDashboard(
     take: 24,
   })
 
+  // R5: Detector forte por VALOR EXATO — usa os totals da ultima fatura
+  // do cartao (R5 schema) pra achar candidatos legitimos.
+  const targets: number[] = []
+  if (card.lastInvoiceTotalToPay && card.lastInvoiceTotalToPay > 0) {
+    targets.push(card.lastInvoiceTotalToPay)
+  }
+  if (
+    card.lastInvoiceTotalDeclared &&
+    card.lastInvoiceTotalDeclared > 0 &&
+    Math.abs(card.lastInvoiceTotalDeclared - (card.lastInvoiceTotalToPay ?? 0)) > 0.02
+  ) {
+    targets.push(card.lastInvoiceTotalDeclared)
+  }
+  const candidatesRaw =
+    targets.length > 0
+      ? await findCardPaymentCandidatesInBank(companyId, targets)
+      : await findCardPaymentCandidatesInBank(companyId, []) // ainda pega isCardPayment=true sem cartao
+
+  // Calcula score visual por candidato. Logica espelha o que o preview/import
+  // ja faz, pra UI ser consistente.
+  const toPay = card.lastInvoiceTotalToPay ?? null
+  const declared = card.lastInvoiceTotalDeclared ?? null
+  const paymentCandidates = candidatesRaw.map((c) => {
+    let matchScore = 0
+    let matchLabel = ''
+    if (toPay && Math.abs(c.amount - toPay) <= 0.02) {
+      matchScore = 1.0
+      matchLabel = 'valor exato da fatura'
+    } else if (declared && Math.abs(c.amount - declared) <= 0.02) {
+      matchScore = 0.95
+      matchLabel = 'valor exato (total compras)'
+    } else if (toPay && Math.abs(c.amount - toPay) <= 1) {
+      matchScore = 0.9
+      matchLabel = 'valor próximo'
+    } else if (declared && Math.abs(c.amount - declared) <= 1) {
+      matchScore = 0.85
+      matchLabel = 'valor próximo'
+    }
+    if (c.isCardPayment) {
+      // ja marcado pelo hook OFX — sempre mostra mesmo sem targets
+      matchScore = Math.max(matchScore, 0.7)
+      if (!matchLabel) matchLabel = 'detectado pelo extrato'
+    }
+    return {
+      id: c.id,
+      date: c.date.toISOString().slice(0, 10),
+      description: c.description,
+      amount: c.amount,
+      bankAccountId: c.bankAccountId,
+      bankAccountName: c.bankAccount?.name ?? null,
+      currentCategoryId: c.categoryId,
+      currentCategoryName: c.category?.name ?? null,
+      matchScore,
+      matchLabel,
+      isAlreadyMarkedPayment: c.isCardPayment,
+    }
+  })
+
+  // Ordena por matchScore desc, depois data desc
+  paymentCandidates.sort((a, b) => {
+    if (a.matchScore !== b.matchScore) return b.matchScore - a.matchScore
+    return a.date < b.date ? 1 : -1
+  })
+
   return {
     card: summary,
     monthTransactions: txs.map((t) => ({
@@ -249,6 +332,7 @@ export async function getCardDashboard(
     })),
     availableInvoices,
     currentInvoiceMonth,
+    paymentCandidates,
   }
 }
 

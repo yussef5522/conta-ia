@@ -33,6 +33,7 @@ const bodySchema = z.object({
   dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   closingDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   totalDeclared: z.number().nullable().optional(),
+  totalToPay: z.number().nullable().optional(),
   detectedBank: z.string().max(60).nullable().optional(),
   lines: z.array(lineSchema).min(1).max(1000),
   /**
@@ -283,6 +284,19 @@ export async function POST(request: NextRequest, { params }: Params) {
           duplicates: duplicadas,
         },
       })
+
+      // R5: grava metadata da fatura no cartao pra detector poder achar
+      // candidatos por valor exato no dashboard
+      if (invoiceMonth || body.totalDeclared || body.totalToPay) {
+        await tx.businessCreditCard.update({
+          where: { id: cardId },
+          data: {
+            lastInvoiceMonth: invoiceMonth,
+            lastInvoiceTotalDeclared: body.totalDeclared ?? null,
+            lastInvoiceTotalToPay: body.totalToPay ?? null,
+          },
+        })
+      }
     })
   } catch (err) {
     await prisma.ofxImport.update({

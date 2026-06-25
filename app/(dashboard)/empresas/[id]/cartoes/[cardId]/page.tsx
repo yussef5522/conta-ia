@@ -54,17 +54,19 @@ interface DashboardData {
   }>
   availableInvoices: string[]
   currentInvoiceMonth: string | null
-}
-
-interface PagamentoPendente {
-  id: string
-  date: string
-  description: string
-  amount: number
-  bankAccountId: string | null
-  bankAccountName: string | null
-  currentCategoryId: string | null
-  currentCategoryName: string | null
+  paymentCandidates: Array<{
+    id: string
+    date: string
+    description: string
+    amount: number
+    bankAccountId: string | null
+    bankAccountName: string | null
+    currentCategoryId: string | null
+    currentCategoryName: string | null
+    matchScore: number
+    matchLabel: string
+    isAlreadyMarkedPayment: boolean
+  }>
 }
 
 export default function CartaoDashboardPage() {
@@ -72,7 +74,6 @@ export default function CartaoDashboardPage() {
   const { toast } = useToast()
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
-  const [pendentes, setPendentes] = useState<PagamentoPendente[]>([])
   const [casandoId, setCasandoId] = useState<string | null>(null)
   const [desfazendoId, setDesfazendoId] = useState<string | null>(null)
   const [selectedInvoice, setSelectedInvoice] = useState<string | null>(null)
@@ -82,15 +83,11 @@ export default function CartaoDashboardPage() {
     const dashUrl = selectedInvoice
       ? `/api/empresas/${params.id}/cartoes/${params.cardId}?fatura=${encodeURIComponent(selectedInvoice)}`
       : `/api/empresas/${params.id}/cartoes/${params.cardId}`
-    Promise.all([
-      fetch(dashUrl, { credentials: 'include' }).then((r) => (r.ok ? r.json() : null)),
-      fetch(`/api/empresas/${params.id}/cartoes/pagamentos-pendentes`, { credentials: 'include' })
-        .then((r) => (r.ok ? r.json() : { pendentes: [] })),
-    ])
-      .then(([dashRes, pendRes]) => {
-        setData(dashRes)
-        setPendentes(pendRes?.pendentes ?? [])
-      })
+    // R5: paymentCandidates vem agora dentro do dashboard payload (substitui
+    // o endpoint /pagamentos-pendentes que so retornava isCardPayment=true).
+    fetch(dashUrl, { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((dashRes) => setData(dashRes))
       .finally(() => setLoading(false))
   }
 
@@ -264,35 +261,51 @@ export default function CartaoDashboardPage() {
         </Card>
       </div>
 
-      {/* Pagamentos aguardando casar */}
-      {pendentes.length > 0 && (
+      {/* R5: Candidatos a pagamento (valor exato R4 + hook OFX R2 unificados) */}
+      {data.paymentCandidates.length > 0 && (
         <Card className="border-indigo-200 bg-indigo-50/40">
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
               <Link2 className="h-4 w-4 text-indigo-600" />
-              Pagamento{pendentes.length > 1 ? 's' : ''} de cartão aguardando casar
+              Pagamento{data.paymentCandidates.length > 1 ? 's' : ''} aguardando casar
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             <p className="text-xs text-indigo-900">
-              Detectei {pendentes.length} pagamento{pendentes.length > 1 ? 's' : ''} de cartão no extrato.
-              Cada um já está <strong>fora do DRE</strong> (não conta como despesa). Marque o que
-              pertence a este cartão pra confirmar o casamento.
+              Detectei {data.paymentCandidates.length} possível{data.paymentCandidates.length > 1 ? 'is' : ''} pagamento{data.paymentCandidates.length > 1 ? 's' : ''} desta fatura
+              no extrato. Casar vira <strong>transferência banco → cartão</strong> (não conta como despesa
+              no DRE). Você confirma cada um.
             </p>
             <div className="space-y-1">
-              {pendentes.map((p) => (
+              {data.paymentCandidates.map((p) => (
                 <div
                   key={p.id}
                   className="flex items-center justify-between gap-3 py-1.5 border-t border-indigo-100 first:border-0"
                 >
                   <div className="flex-1 min-w-0 text-sm">
-                    <span>{fmtDateBR(p.date)} · {p.description} · </span>
-                    <strong>{formatBRL(p.amount)}</strong>
-                    {p.bankAccountName && (
-                      <span className="text-muted-foreground"> · {p.bankAccountName}</span>
-                    )}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span>{fmtDateBR(p.date)} · {p.description} · </span>
+                      <strong>{formatBRL(p.amount)}</strong>
+                      {p.bankAccountName && (
+                        <span className="text-muted-foreground"> · {p.bankAccountName}</span>
+                      )}
+                      {p.matchLabel && (
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] py-0 ${
+                            p.matchScore >= 0.95
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : p.matchScore >= 0.85
+                                ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                : 'bg-slate-50 text-slate-600 border-slate-200'
+                          }`}
+                        >
+                          {p.matchLabel}
+                        </Badge>
+                      )}
+                    </div>
                     {p.currentCategoryName && (
-                      <span className="text-amber-700"> · hoje: {p.currentCategoryName}</span>
+                      <p className="text-[11px] text-amber-700">hoje: {p.currentCategoryName}</p>
                     )}
                   </div>
                   <Button

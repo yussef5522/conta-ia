@@ -300,6 +300,14 @@ model BusinessCreditCard {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Sprint Cartao PJ R5 (25/06/2026) — metadata da ULTIMA fatura importada.
+  // Usado pelo dashboard pra alimentar o detector de pagamento por VALOR
+  // EXATO (findCardPaymentCandidatesInBank). Sem isso o dashboard nao sabe
+  // qual eh o valor da fatura aberta, e nao consegue achar candidatos.
+  lastInvoiceMonth          String?
+  lastInvoiceTotalDeclared  Float?
+  lastInvoiceTotalToPay     Float?
+
   company                    Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
   defaultPaymentBankAccount  BankAccount?  @relation("CardDefaultPayment", fields: [defaultPaymentBankAccountId], references: [id], onDelete: SetNull)
   transactions               Transaction[] @relation("CardTransactions")
