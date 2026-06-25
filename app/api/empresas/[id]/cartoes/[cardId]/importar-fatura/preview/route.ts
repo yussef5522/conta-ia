@@ -130,15 +130,25 @@ export async function POST(request: NextRequest, { params }: Params) {
     }
   }
 
-  // Detector de "pagamento ja registrado como despesa" (caso real
-  // R$ 2.654,63 Banrisul Sprint 5) — busca candidatos quando ha totalDeclared
-  let paymentCandidates: Awaited<ReturnType<typeof findCardPaymentCandidatesInBank>> = []
-  if (extraction.totalDeclared && extraction.totalDeclared > 0) {
-    paymentCandidates = await findCardPaymentCandidatesInBank(
-      companyId,
-      extraction.totalDeclared,
-    )
+  // Detector de "pagamento ja registrado como despesa" — busca candidatos
+  // pelos 2 valores possiveis da fatura (totalToPay = valor que sai do banco;
+  // totalDeclared = soma das compras+encargos do periodo). Caso real R$ 2.654,63.
+  // Sempre busca tambem pagamentos aguardando (isCardPayment=true sem cardId).
+  const targetTotals: number[] = []
+  if (extraction.totalToPay && extraction.totalToPay > 0) {
+    targetTotals.push(extraction.totalToPay)
   }
+  if (
+    extraction.totalDeclared &&
+    extraction.totalDeclared > 0 &&
+    Math.abs(extraction.totalDeclared - (extraction.totalToPay ?? 0)) > 0.02
+  ) {
+    targetTotals.push(extraction.totalDeclared)
+  }
+  const paymentCandidates = await findCardPaymentCandidatesInBank(
+    companyId,
+    targetTotals,
+  )
 
   // Log observabilidade
   console.log('[credit-card-pj/preview]', {
@@ -166,6 +176,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       dueDate: extraction.dueDate,
       closingDate: extraction.closingDate,
       totalDeclared: extraction.totalDeclared,
+      totalToPay: extraction.totalToPay,
       creditLimit: extraction.creditLimit,
       availableLimit: extraction.availableLimit,
       detectedBank: extraction.detectedBank,
@@ -213,16 +224,38 @@ export async function POST(request: NextRequest, { params }: Params) {
     /**
      * Candidatos a "este pagamento já foi importado como despesa antes" —
      * UI mostra avisa pro user marcar pra RECLASSIFICAR como TRANSFER.
+     * Score: 0-1, mais alto = melhor match. Calculado pelo proximidade do
+     * valor com totalToPay (preferido) ou totalDeclared (fallback).
      */
-    paymentCandidates: paymentCandidates.map((c) => ({
-      id: c.id,
-      date: c.date.toISOString().slice(0, 10),
-      description: c.description,
-      amount: c.amount,
-      bankAccountId: c.bankAccountId,
-      bankAccountName: c.bankAccount?.name ?? null,
-      currentCategoryName: c.category?.name ?? null,
-    })),
+    paymentCandidates: paymentCandidates
+      .map((c) => {
+        // Match score: proximidade do valor + isCardPayment ja marcado
+        let matchScore = 0
+        if (extraction.totalToPay && extraction.totalToPay > 0) {
+          const diff = Math.abs(c.amount - extraction.totalToPay)
+          if (diff <= 0.02) matchScore = 1.0
+          else if (diff <= 1.0) matchScore = 0.9
+        }
+        if (matchScore < 0.5 && extraction.totalDeclared && extraction.totalDeclared > 0) {
+          const diff = Math.abs(c.amount - extraction.totalDeclared)
+          if (diff <= 0.02) matchScore = Math.max(matchScore, 0.95)
+          else if (diff <= 1.0) matchScore = Math.max(matchScore, 0.85)
+        }
+        // Boost pequeno se ja marcado pelo hook (isCardPayment=true aguardando)
+        if (c.isCardPayment) matchScore = Math.max(matchScore, 0.7)
+        return {
+          id: c.id,
+          date: c.date.toISOString().slice(0, 10),
+          description: c.description,
+          amount: c.amount,
+          bankAccountId: c.bankAccountId,
+          bankAccountName: c.bankAccount?.name ?? null,
+          currentCategoryName: c.category?.name ?? null,
+          isAlreadyMarkedPayment: c.isCardPayment,
+          matchScore,
+        }
+      })
+      .sort((a, b) => b.matchScore - a.matchScore),
     metrics: {
       durationMs: metrics.durationMs,
       model: metrics.model,

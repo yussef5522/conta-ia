@@ -188,6 +188,7 @@ export function coerceInvoiceExtraction(raw: unknown): InvoiceExtraction {
     dueDate: stringOrNull(r.dueDate),
     closingDate: stringOrNull(r.closingDate),
     totalDeclared: numberOrNull(r.totalDeclared),
+    totalToPay: numberOrNull(r.totalToPay),
     creditLimit: numberOrNull(r.creditLimit),
     availableLimit: numberOrNull(r.availableLimit),
     detectedBank: stringOrNull(r.detectedBank),

@@ -37,8 +37,15 @@ export interface InvoiceExtraction {
   dueDate: string | null
   /** Data de fechamento — null se ausente */
   closingDate: string | null
-  /** Total de gastos declarado na fatura (R$) — null se ausente */
+  /** Total de gastos declarado no PERIODO (compras + encargos) — null se ausente */
   totalDeclared: number | null
+  /**
+   * Sprint Cartao R3 (24/06/2026) — VALOR A PAGAR / saldo devedor da fatura.
+   * Eh o que VAI SAIR DO BANCO. Pode incluir saldo anterior, descontar
+   * creditos, etc. Usado pra casar com pagamento existente no extrato.
+   * Quando null, fallback pra totalDeclared.
+   */
+  totalToPay: number | null
   /** Limite total do cartao declarado na fatura (R$) — null se ausente */
   creditLimit: number | null
   /** Limite disponivel apos fatura (R$) — null se ausente */

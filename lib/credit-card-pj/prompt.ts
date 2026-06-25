@@ -24,7 +24,8 @@ D) "IGNORAR" — linhas que NÃO devem entrar no DRE. Exemplos: "TOTAL FATURA AN
 CAMPOS METADATA DO HEADER:
 - dueDate (vencimento da fatura)
 - closingDate (fechamento)
-- totalDeclared (total de gastos do período — não confunda com "total a pagar" que pode incluir saldo anterior)
+- totalDeclared (total de gastos do PERÍODO atual — soma das compras+encargos do extrato, sem fatura anterior nem créditos)
+- totalToPay (VALOR A PAGAR / SALDO DEVEDOR DA FATURA — pode incluir saldo anterior, descontar créditos, etc. É o valor que VAI SAIR do banco). Geralmente fica destacado no topo: "Total a pagar", "Total da fatura", "Valor da fatura". É DIFERENTE de totalDeclared quando há saldo anterior, pagamentos parciais ou créditos.
 - creditLimit (limite total)
 - availableLimit (limite disponível depois desta fatura)
 - detectedBank (Caixa, Banrisul, Sicredi, etc — pelo logo/header)
@@ -52,6 +53,7 @@ EXEMPLO de output (fatura Caixa com 2 cartões):
   "dueDate": "2026-07-10",
   "closingDate": "2026-06-25",
   "totalDeclared": 4333.41,
+  "totalToPay": 4333.41,
   "creditLimit": 8000,
   "availableLimit": 3666.59,
   "detectedBank": "Caixa",
@@ -101,7 +103,7 @@ EXEMPLO de output (fatura Caixa com 2 cartões):
 
 Se o PDF não for fatura de cartão (ex: extrato bancário, NF-e, boleto), retorne:
 {
-  "dueDate": null, "closingDate": null, "totalDeclared": null,
+  "dueDate": null, "closingDate": null, "totalDeclared": null, "totalToPay": null,
   "creditLimit": null, "availableLimit": null, "detectedBank": null,
   "cardLastDigitsFound": [], "scanQuality": "UNKNOWN",
   "notes": ["Documento não parece ser fatura de cartão"], "lines": []

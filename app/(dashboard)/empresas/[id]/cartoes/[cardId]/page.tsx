@@ -5,7 +5,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import { CreditCard, Upload, Loader2, ArrowLeft, Repeat, Link2 } from 'lucide-react'
+import { CreditCard, Upload, Loader2, ArrowLeft, Repeat, Link2, CheckCircle2, Undo2 } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -43,6 +43,14 @@ interface DashboardData {
     categoryName: string
     amount: number
   }>
+  matchedPayments: Array<{
+    id: string
+    date: string
+    description: string
+    amount: number
+    bankAccountId: string | null
+    bankAccountName: string | null
+  }>
 }
 
 interface PagamentoPendente {
@@ -63,6 +71,7 @@ export default function CartaoDashboardPage() {
   const [loading, setLoading] = useState(true)
   const [pendentes, setPendentes] = useState<PagamentoPendente[]>([])
   const [casandoId, setCasandoId] = useState<string | null>(null)
+  const [desfazendoId, setDesfazendoId] = useState<string | null>(null)
 
   function reload() {
     setLoading(true)
@@ -108,6 +117,28 @@ export default function CartaoDashboardPage() {
       reload()
     } finally {
       setCasandoId(null)
+    }
+  }
+
+  async function desfazerCasamento(txId: string) {
+    setDesfazendoId(txId)
+    try {
+      const resp = await fetch(
+        `/api/empresas/${params.id}/cartoes/${params.cardId}/casar-pagamento?txId=${encodeURIComponent(txId)}`,
+        { method: 'DELETE', credentials: 'include' },
+      )
+      const json = await resp.json()
+      if (!resp.ok) {
+        toast({ title: 'Erro', description: json.erro || 'Tente novamente', variant: 'destructive' })
+        return
+      }
+      toast({
+        title: 'Casamento desfeito',
+        description: 'Volta a "aguardando casar" — você pode casar de novo se quiser.',
+      })
+      reload()
+    } finally {
+      setDesfazendoId(null)
     }
   }
 
@@ -256,6 +287,62 @@ export default function CartaoDashboardPage() {
                 </div>
               ))}
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Sprint R3 — pagamentos JÁ CASADOS com este cartão */}
+      {data.matchedPayments.length > 0 && (
+        <Card className="border-emerald-200 bg-emerald-50/40">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+              Pagamento{data.matchedPayments.length > 1 ? 's' : ''} casado{data.matchedPayments.length > 1 ? 's' : ''} com este cartão
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1">
+            <p className="text-xs text-emerald-900 mb-2">
+              {data.matchedPayments.length} pagamento{data.matchedPayments.length > 1 ? 's' : ''} já estão
+              fora do DRE como despesa (viram transferência banco → cartão). Pode desfazer se precisar.
+            </p>
+            {data.matchedPayments.map((p) => (
+              <div
+                key={p.id}
+                className="flex items-center justify-between gap-3 py-1.5 border-t border-emerald-100 first:border-0"
+              >
+                <div className="flex-1 min-w-0 text-sm">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] bg-emerald-100 text-emerald-700 border-emerald-300"
+                    >
+                      ✓ casado
+                    </Badge>
+                    <span>{fmtDateBR(p.date)} · {p.description}</span>
+                    <strong className="tabular-nums">{formatBRL(p.amount)}</strong>
+                    {p.bankAccountName && (
+                      <span className="text-xs text-muted-foreground">· {p.bankAccountName}</span>
+                    )}
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={desfazendoId === p.id}
+                  onClick={() => desfazerCasamento(p.id)}
+                  className="text-emerald-700 hover:bg-emerald-100"
+                >
+                  {desfazendoId === p.id ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <>
+                      <Undo2 className="h-3.5 w-3.5 mr-1" />
+                      desfazer
+                    </>
+                  )}
+                </Button>
+              </div>
+            ))}
           </CardContent>
         </Card>
       )}

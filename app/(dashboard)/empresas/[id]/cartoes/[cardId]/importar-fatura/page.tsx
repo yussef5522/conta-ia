@@ -61,6 +61,8 @@ interface PaymentCandidate {
   bankAccountId: string | null
   bankAccountName: string | null
   currentCategoryName: string | null
+  isAlreadyMarkedPayment: boolean
+  matchScore: number
 }
 
 interface PreviewResponse {
@@ -69,6 +71,7 @@ interface PreviewResponse {
     dueDate: string | null
     closingDate: string | null
     totalDeclared: number | null
+    totalToPay: number | null
     creditLimit: number | null
     availableLimit: number | null
     detectedBank: string | null
@@ -123,6 +126,10 @@ export default function ImportarFaturaPage() {
   const [extractError, setExtractError] = useState<string | null>(null)
   const [reclassPaymentTxId, setReclassPaymentTxId] = useState<string | null>(null)
   const [importResult, setImportResult] = useState<{ inseridas: number; duplicadas: number; reclassificadaTxId: string | null } | null>(null)
+  /** Pagamento ja casado imediato pelo banner (alem do fluxo do confirm) */
+  const [casadoImediatoId, setCasadoImediatoId] = useState<string | null>(null)
+  const [casandoAgora, setCasandoAgora] = useState(false)
+  const [dismissedBanner, setDismissedBanner] = useState(false)
 
   async function handleUpload(selectedFile: File) {
     setFile(selectedFile)
@@ -204,6 +211,49 @@ export default function ImportarFaturaPage() {
   }
   function removeLine(idx: number) {
     setEditableLines((prev) => prev.filter((l) => l.index !== idx))
+  }
+
+  /**
+   * Sprint Cartao R3 — casa pagamento IMEDIATO pelo banner azul (sem
+   * esperar o confirm do import). Chama o endpoint casar-pagamento e
+   * remove o candidato da lista.
+   */
+  async function casarAgora(txId: string) {
+    setCasandoAgora(true)
+    try {
+      const resp = await fetch(
+        `/api/empresas/${params.id}/cartoes/${params.cardId}/casar-pagamento`,
+        {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ txId }),
+        },
+      )
+      const json = await resp.json()
+      if (!resp.ok) {
+        toast({
+          title: 'Erro ao casar pagamento',
+          description: json.erro || 'Tente novamente',
+          variant: 'destructive',
+        })
+        return
+      }
+      setCasadoImediatoId(txId)
+      toast({
+        title: '✓ Pagamento casado',
+        description: `R$ ${json.deltaDespesaRemovidoDoDRE.toFixed(2)} saiu do DRE como despesa.`,
+      })
+      // Remove o candidato da lista local
+      if (previewData) {
+        setPreviewData({
+          ...previewData,
+          paymentCandidates: previewData.paymentCandidates.filter((c) => c.id !== txId),
+        })
+      }
+    } finally {
+      setCasandoAgora(false)
+    }
   }
 
   const selectedLines = editableLines.filter((l) => l.selected && l.kind !== 'IGNORAR')
@@ -374,6 +424,88 @@ export default function ImportarFaturaPage() {
 
       {step === 'PREVIEW' && previewData && (
         <>
+          {/* SPRINT R3 — Banner azul prominente: pagamento desta fatura encontrado */}
+          {(() => {
+            const top = previewData.paymentCandidates[0]
+            const showBanner =
+              top &&
+              top.matchScore >= 0.9 &&
+              !dismissedBanner &&
+              casadoImediatoId !== top.id
+
+            if (!showBanner) return null
+            return (
+              <Card className="border-2 border-blue-500 bg-blue-50 shadow-md">
+                <CardContent className="py-5">
+                  <div className="flex items-start gap-4">
+                    <div className="flex-shrink-0 mt-1">
+                      <div className="bg-blue-600 text-white rounded-full p-2">
+                        <Repeat className="h-5 w-5" />
+                      </div>
+                    </div>
+                    <div className="flex-1 min-w-0 space-y-2">
+                      <h3 className="text-base font-semibold text-blue-900">
+                        Achei o pagamento desta fatura no seu extrato
+                      </h3>
+                      <div className="text-sm text-blue-900">
+                        <p>
+                          <strong>{formatBRL(top.amount)}</strong> pago em{' '}
+                          <strong>{fmtDateBR(top.date)}</strong>
+                          {top.bankAccountName && (
+                            <> · conta <strong>{top.bankAccountName}</strong></>
+                          )}
+                        </p>
+                        <p className="text-xs text-blue-800 mt-1">
+                          {top.isAlreadyMarkedPayment
+                            ? 'Já está marcado como pagamento de cartão (fora do DRE), aguardando você confirmar qual cartão pagou.'
+                            : top.currentCategoryName
+                              ? `Hoje está como "${top.currentCategoryName}" — vamos reclassificar como transferência banco → cartão.`
+                              : 'Vamos reclassificar como transferência banco → cartão.'}
+                          {' '}Casando agora, esse valor NÃO entra como despesa no DRE (a despesa real são as compras desta fatura).
+                        </p>
+                      </div>
+                      <div className="flex gap-2 pt-1">
+                        <Button
+                          size="sm"
+                          onClick={() => casarAgora(top.id)}
+                          disabled={casandoAgora}
+                          className="bg-blue-600 hover:bg-blue-700 text-white"
+                        >
+                          {casandoAgora ? (
+                            <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                          ) : (
+                            <Repeat className="h-4 w-4 mr-1" />
+                          )}
+                          Casar pagamento
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setDismissedBanner(true)}
+                          className="text-blue-700 hover:bg-blue-100"
+                        >
+                          Agora não
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })()}
+
+          {/* Confirmacao visual quando casou imediato */}
+          {casadoImediatoId && (
+            <Card className="border-emerald-200 bg-emerald-50">
+              <CardContent className="py-3 flex items-center gap-2">
+                <CheckCircle2 className="h-5 w-5 text-emerald-600 flex-shrink-0" />
+                <p className="text-sm text-emerald-800">
+                  Pagamento casado com sucesso. Continue conferindo as compras desta fatura abaixo.
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Banner totais */}
           <Card
             className={
@@ -461,52 +593,58 @@ export default function ImportarFaturaPage() {
             )}
           </div>
 
-          {/* Candidatos de pagamento já importado como despesa */}
-          {previewData.paymentCandidates.length > 0 && (
-            <Card className="border-indigo-200 bg-indigo-50/40">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Repeat className="h-4 w-4 text-indigo-600" />
-                  Achei possível pagamento desta fatura na conta bancária
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <p className="text-xs text-indigo-900">
-                  Essas transações têm valor próximo do total da fatura e descrição de pagamento.
-                  Se marcar uma, ela será reclassificada como <strong>transferência banco → cartão</strong>{' '}
-                  (em vez de despesa) — pra não contar 2x no DRE.
-                </p>
-                <div className="space-y-1">
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="radio"
-                      name="reclass"
-                      checked={reclassPaymentTxId === null}
-                      onChange={() => setReclassPaymentTxId(null)}
-                    />
-                    <span>Nenhuma — não reclassificar</span>
-                  </label>
-                  {previewData.paymentCandidates.map((c) => (
-                    <label key={c.id} className="flex items-center gap-2 text-sm">
+          {/* Outros candidatos de pagamento (so quando NAO ha banner azul de top match
+              OU quando user dismissou o banner). Mantemos pra casos ambiguos. */}
+          {(() => {
+            const otherCandidates = previewData.paymentCandidates.filter(
+              (c) => c.matchScore < 0.9 && c.id !== casadoImediatoId,
+            )
+            if (otherCandidates.length === 0) return null
+            return (
+              <Card className="border-slate-200 bg-slate-50/40">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Repeat className="h-4 w-4 text-slate-500" />
+                    Outros possíveis pagamentos (confiança menor)
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <p className="text-xs text-slate-700">
+                    Se algum desses for o pagamento desta fatura, marque aqui — será reclassificado
+                    no momento do "Confirmar e importar".
+                  </p>
+                  <div className="space-y-1">
+                    <label className="flex items-center gap-2 text-sm">
                       <input
                         type="radio"
                         name="reclass"
-                        checked={reclassPaymentTxId === c.id}
-                        onChange={() => setReclassPaymentTxId(c.id)}
+                        checked={reclassPaymentTxId === null}
+                        onChange={() => setReclassPaymentTxId(null)}
                       />
-                      <span>
-                        {fmtDateBR(c.date)} · {c.description} · <strong>{formatBRL(c.amount)}</strong> ·{' '}
-                        {c.bankAccountName ?? 'Conta'}{' '}
-                        {c.currentCategoryName && (
-                          <span className="text-muted-foreground">(hoje: {c.currentCategoryName})</span>
-                        )}
-                      </span>
+                      <span>Nenhum — não reclassificar nada</span>
                     </label>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
+                    {otherCandidates.map((c) => (
+                      <label key={c.id} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="radio"
+                          name="reclass"
+                          checked={reclassPaymentTxId === c.id}
+                          onChange={() => setReclassPaymentTxId(c.id)}
+                        />
+                        <span>
+                          {fmtDateBR(c.date)} · {c.description} · <strong>{formatBRL(c.amount)}</strong> ·{' '}
+                          {c.bankAccountName ?? 'Conta'}{' '}
+                          {c.currentCategoryName && (
+                            <span className="text-muted-foreground">(hoje: {c.currentCategoryName})</span>
+                          )}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })()}
 
           {/* Tabela editável */}
           <Card>

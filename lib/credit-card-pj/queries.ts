@@ -95,6 +95,18 @@ export interface CardDashboardData {
     categoryName: string
     amount: number
   }>
+  /**
+   * Sprint R3 — pagamentos JA CASADOS com este cartao (isCardPayment=true +
+   * businessCreditCardId=cardId). Janela 180 dias. Cada item tem desfazer.
+   */
+  matchedPayments: Array<{
+    id: string
+    date: string
+    description: string
+    amount: number
+    bankAccountId: string | null
+    bankAccountName: string | null
+  }>
 }
 
 export async function getCardDashboard(
@@ -145,6 +157,27 @@ export async function getCardDashboard(
       amount: round2(c.amount),
     }))
 
+  // Sprint R3 — pagamentos JA CASADOS com este cartao (180 dias)
+  const since180 = new Date()
+  since180.setDate(since180.getDate() - 180)
+  const matchedPaymentsRaw = await prisma.transaction.findMany({
+    where: {
+      isCardPayment: true,
+      businessCreditCardId: cardId,
+      date: { gte: since180 },
+    },
+    select: {
+      id: true,
+      date: true,
+      description: true,
+      amount: true,
+      bankAccountId: true,
+      bankAccount: { select: { name: true } },
+    },
+    orderBy: { date: 'desc' },
+    take: 24,
+  })
+
   return {
     card: summary,
     monthTransactions: txs.map((t) => ({
@@ -159,31 +192,80 @@ export async function getCardDashboard(
       isCardPayment: t.isCardPayment,
     })),
     spendByCategory,
+    matchedPayments: matchedPaymentsRaw.map((p) => ({
+      id: p.id,
+      date: p.date.toISOString().slice(0, 10),
+      description: p.description,
+      amount: p.amount,
+      bankAccountId: p.bankAccountId,
+      bankAccountName: p.bankAccount?.name ?? null,
+    })),
   }
 }
 
 /**
- * Sprint Cartao R2 (24/06/2026) — busca candidatos pra casar com fatura.
+ * Sprint Cartao R3 (24/06/2026) — busca candidatos pra casar com fatura.
  *
- * Inclui:
+ * Aceita MULTIPLOS valores-alvo (totalToPay E/OU totalDeclared) — a fatura
+ * tem 2 valores que podem casar com o pagamento (compras do periodo vs
+ * total a pagar). Cobre:
  *   (a) tx classificadas como despesa por engano (isCardPayment=false) +
- *       descricao tipo PAGAMENTO/CARTAO/FATURA + valor proximo. Caso real
- *       R$ 2.654,63 Banrisul.
+ *       descricao tipo PAGAMENTO/CARTAO/FATURA + valor proximo a QUALQUER
+ *       dos targets. Caso real R$ 2.654,63 Banrisul.
  *   (b) tx ja marcadas como pagamento de cartao mas SEM cardId
  *       (isCardPayment=true, businessCreditCardId=null = aguardando casar),
- *       independente do valor. Essas vem do hook do import OFX.
+ *       independente do valor.
  *
  * Resultado ordenado por data desc. Janela 120 dias.
  */
 export async function findCardPaymentCandidatesInBank(
   companyId: string,
-  totalFatura: number,
-  /** Valor sugerido vir da fatura — busca proximo */
+  /**
+   * Valor(es) alvo. Pode ser 1 (total declarado) ou 2 (total declarado +
+   * total a pagar). Busca tx com valor ±tolerance de QUALQUER um.
+   */
+  totalsFatura: number | number[],
   toleranceBRL: number = 1,
   daysBack: number = 120,
 ) {
   const since = new Date()
   since.setDate(since.getDate() - daysBack)
+
+  const targets = Array.isArray(totalsFatura)
+    ? totalsFatura.filter((n) => typeof n === 'number' && n > 0)
+    : totalsFatura > 0
+      ? [totalsFatura]
+      : []
+
+  // OR de ranges {amount BETWEEN target±tolerance} pra cada target valido
+  const amountClauses = targets.map((target) => ({
+    amount: { gte: target - toleranceBRL, lte: target + toleranceBRL },
+  }))
+
+  // Quando ha targets validos, busca (a) parece pagamento + valor proximo
+  // OU (b) ja marcadas pelo hook. Sem targets, busca SO as marcadas.
+  const orClauses: import('@prisma/client').Prisma.TransactionWhereInput[] =
+    amountClauses.length > 0
+      ? [
+          {
+            isCardPayment: false,
+            OR: amountClauses,
+            AND: {
+              OR: [
+                { description: { contains: 'PAGAMENTO' } },
+                { description: { contains: 'pagamento' } },
+                { description: { contains: 'CARTAO' } },
+                { description: { contains: 'cartao' } },
+                { description: { contains: 'CARTÃO' } },
+                { description: { contains: 'cartão' } },
+                { description: { contains: 'FATURA' } },
+                { description: { contains: 'fatura' } },
+              ],
+            },
+          },
+          { isCardPayment: true },
+        ]
+      : [{ isCardPayment: true }]
 
   return prisma.transaction.findMany({
     where: {
@@ -191,26 +273,7 @@ export async function findCardPaymentCandidatesInBank(
       type: 'DEBIT',
       businessCreditCardId: null,
       date: { gte: since },
-      OR: [
-        // (a) descrição parece pagamento E valor proximo (caso R$ 2.654,63)
-        {
-          isCardPayment: false,
-          amount: { gte: totalFatura - toleranceBRL, lte: totalFatura + toleranceBRL },
-          OR: [
-            { description: { contains: 'PAGAMENTO' } },
-            { description: { contains: 'pagamento' } },
-            { description: { contains: 'CARTAO' } },
-            { description: { contains: 'cartao' } },
-            { description: { contains: 'CARTÃO' } },
-            { description: { contains: 'cartão' } },
-            { description: { contains: 'FATURA' } },
-            { description: { contains: 'fatura' } },
-          ],
-        },
-        // (b) ja marcadas pelo hook OFX como pagamento, aguardando casar
-        // (qualquer valor — geralmente faz match pelo total da fatura tambem)
-        { isCardPayment: true },
-      ],
+      OR: orClauses,
     },
     include: {
       category: { select: { name: true } },

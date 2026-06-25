@@ -9,6 +9,7 @@ function mk(overrides: Partial<InvoiceExtraction> = {}): InvoiceExtraction {
     dueDate: null,
     closingDate: null,
     totalDeclared: null,
+    totalToPay: null,
     creditLimit: null,
     availableLimit: null,
     detectedBank: null,
