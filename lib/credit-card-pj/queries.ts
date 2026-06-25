@@ -20,6 +20,8 @@ export interface CardCardSummary {
   utilizationPct: number
   /** R4: competencia da fatura usada nos totais acima (YYYY-MM ou null) */
   latestInvoiceMonth: string | null
+  /** R6: true se existe pagamento casado (isCardPayment=true) com este cartao */
+  isLatestInvoicePaid: boolean
 }
 
 /**
@@ -75,6 +77,22 @@ export async function listCardsForCompany(
     })
   }
 
+  // R6: cartoes com algum pagamento casado (isCardPayment=true)
+  const paidCardIds = new Set(
+    (
+      await prisma.transaction.findMany({
+        where: {
+          businessCreditCardId: { in: cards.map((c) => c.id) },
+          isCardPayment: true,
+        },
+        distinct: ['businessCreditCardId'],
+        select: { businessCreditCardId: true },
+      })
+    )
+      .map((r) => r.businessCreditCardId)
+      .filter((id): id is string => !!id),
+  )
+
   return cards.map((c) => {
     const t = totalsByCard.get(c.id) ?? { sum: 0, count: 0, invoiceMonth: null as string | null }
     return {
@@ -93,6 +111,7 @@ export async function listCardsForCompany(
       monthTxCount: t.count,
       utilizationPct: c.creditLimit > 0 ? Math.min(1, t.sum / c.creditLimit) : 0,
       latestInvoiceMonth: t.invoiceMonth,
+      isLatestInvoicePaid: paidCardIds.has(c.id),
     }
   })
 }

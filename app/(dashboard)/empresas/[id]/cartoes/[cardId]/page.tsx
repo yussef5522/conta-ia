@@ -5,7 +5,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import { CreditCard, Upload, Loader2, ArrowLeft, Repeat, Link2, CheckCircle2, Undo2 } from 'lucide-react'
+import { CreditCard, Upload, Loader2, ArrowLeft, Repeat, Link2, CheckCircle2, Undo2, AlertCircle } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -168,6 +168,12 @@ export default function CartaoDashboardPage() {
   const { card, monthTransactions, spendByCategory } = data
   const limiteUsado = card.monthSpend
   const limiteDisp = Math.max(0, card.creditLimit - limiteUsado)
+  const purchasesCount = monthTransactions.filter((t) => !t.isCardPayment).length
+
+  // R6 — Status da fatura: paga se há matchedPayments na competência ativa
+  const faturaPaga = data.matchedPayments.length > 0
+  const topMatchedPayment = data.matchedPayments[0] ?? null
+  const topCandidate = data.paymentCandidates[0] ?? null
 
   return (
     <div className="space-y-6">
@@ -186,9 +192,7 @@ export default function CartaoDashboardPage() {
               Cartões
             </Button>
           </Link>
-          <Link
-            href={`/empresas/${params.id}/cartoes/${card.id}/importar-fatura`}
-          >
+          <Link href={`/empresas/${params.id}/cartoes/${card.id}/importar-fatura`}>
             <Button>
               <Upload className="h-4 w-4 mr-1" />
               Importar fatura PDF
@@ -197,189 +201,185 @@ export default function CartaoDashboardPage() {
         </div>
       </Header>
 
-      {/* R4 — Seletor de fatura */}
-      {data.availableInvoices.length > 0 && (
-        <div className="flex items-center gap-2 text-sm">
-          <span className="text-muted-foreground">Fatura:</span>
-          <select
-            value={data.currentInvoiceMonth ?? ''}
-            onChange={(e) => setSelectedInvoice(e.target.value || null)}
-            className="border rounded-md h-8 px-2 text-sm"
-          >
-            {data.availableInvoices.map((m) => (
-              <option key={m} value={m}>{fmtInvoiceLabel(m)}</option>
-            ))}
-          </select>
-          <span className="text-xs text-muted-foreground">
-            · {data.monthTransactions.filter((t) => !t.isCardPayment).length} compras + encargos
-          </span>
+      {/* R6 — HEADER PREMIUM DA FATURA (estilo Mercury) */}
+      <Card className="rounded-2xl border-border/60 shadow-sm overflow-hidden">
+        {/* Top row: mini cartão + selo + seletor */}
+        <div className="px-6 pt-6 pb-4 flex items-start justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-14 rounded-lg bg-gradient-to-br from-slate-900 to-slate-700 dark:from-slate-100 dark:to-slate-300 flex items-end justify-end p-1.5 shadow-sm">
+              <CreditCard className="h-3.5 w-3.5 text-white/80 dark:text-slate-900/80" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">
+                {card.brand ?? 'Cartão'} {card.lastDigits ? `· •••• ${card.lastDigits}` : ''}
+              </p>
+              <p className="text-sm font-medium truncate">{card.name}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 flex-wrap">
+            {data.availableInvoices.length > 0 && (
+              <select
+                value={data.currentInvoiceMonth ?? ''}
+                onChange={(e) => setSelectedInvoice(e.target.value || null)}
+                className="border border-border bg-background rounded-full h-8 px-3 text-xs font-medium hover:border-foreground/30 transition-colors"
+                aria-label="Selecionar fatura"
+              >
+                {data.availableInvoices.map((m) => (
+                  <option key={m} value={m}>{fmtInvoiceLabel(m)}</option>
+                ))}
+              </select>
+            )}
+            <StatusPill paga={faturaPaga} />
+          </div>
         </div>
-      )}
 
-      {/* 4 KPI cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card>
-          <CardContent className="py-3">
-            <p className="text-xs text-muted-foreground">Limite total</p>
-            <p className="text-lg font-semibold tabular-nums">{formatBRL(card.creditLimit)}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-3">
-            <p className="text-xs text-muted-foreground">
-              {data.currentInvoiceMonth ? `Fatura ${fmtInvoiceLabel(data.currentInvoiceMonth)}` : 'Sem fatura'}
+        {/* Valor central + métricas */}
+        <div className="px-6 pb-5 space-y-5">
+          <div>
+            <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">
+              Fatura {data.currentInvoiceMonth ? fmtInvoiceLabel(data.currentInvoiceMonth) : 'pendente'}
             </p>
-            <p
-              className={`text-lg font-semibold tabular-nums ${
-                card.utilizationPct >= 0.9
-                  ? 'text-red-700'
-                  : card.utilizationPct >= 0.7
-                    ? 'text-amber-700'
-                    : 'text-foreground'
-              }`}
-            >
+            <p className="text-[38px] leading-tight font-medium tabular-nums tracking-[-0.02em]">
               {formatBRL(limiteUsado)}
             </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-3">
-            <p className="text-xs text-muted-foreground">Disponível</p>
-            <p className="text-lg font-semibold tabular-nums text-emerald-700">
-              {formatBRL(limiteDisp)}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-3">
-            <p className="text-xs text-muted-foreground">Vencimento</p>
-            <p className="text-lg font-semibold">dia {card.dueDay}</p>
-            <p className="text-[10px] text-muted-foreground">
-              fecha dia {card.closingDay}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+          </div>
 
-      {/* R5: Candidatos a pagamento (valor exato R4 + hook OFX R2 unificados) */}
-      {data.paymentCandidates.length > 0 && (
-        <Card className="border-indigo-200 bg-indigo-50/40">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Link2 className="h-4 w-4 text-indigo-600" />
-              Pagamento{data.paymentCandidates.length > 1 ? 's' : ''} aguardando casar
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <p className="text-xs text-indigo-900">
-              Detectei {data.paymentCandidates.length} possível{data.paymentCandidates.length > 1 ? 'is' : ''} pagamento{data.paymentCandidates.length > 1 ? 's' : ''} desta fatura
-              no extrato. Casar vira <strong>transferência banco → cartão</strong> (não conta como despesa
-              no DRE). Você confirma cada um.
-            </p>
-            <div className="space-y-1">
-              {data.paymentCandidates.map((p) => (
-                <div
-                  key={p.id}
-                  className="flex items-center justify-between gap-3 py-1.5 border-t border-indigo-100 first:border-0"
-                >
-                  <div className="flex-1 min-w-0 text-sm">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span>{fmtDateBR(p.date)} · {p.description} · </span>
-                      <strong>{formatBRL(p.amount)}</strong>
-                      {p.bankAccountName && (
-                        <span className="text-muted-foreground"> · {p.bankAccountName}</span>
-                      )}
-                      {p.matchLabel && (
-                        <Badge
-                          variant="outline"
-                          className={`text-[10px] py-0 ${
-                            p.matchScore >= 0.95
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                              : p.matchScore >= 0.85
-                                ? 'bg-blue-50 text-blue-700 border-blue-200'
-                                : 'bg-slate-50 text-slate-600 border-slate-200'
-                          }`}
-                        >
-                          {p.matchLabel}
-                        </Badge>
-                      )}
-                    </div>
-                    {p.currentCategoryName && (
-                      <p className="text-[11px] text-amber-700">hoje: {p.currentCategoryName}</p>
-                    )}
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={casandoId === p.id}
-                    onClick={() => casarPagamento(p.id)}
-                    className="border-indigo-300 text-indigo-700 hover:bg-indigo-50"
-                  >
-                    {casandoId === p.id ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <>
-                        <Link2 className="h-3.5 w-3.5 mr-1" />
-                        Casar com este cartão
-                      </>
-                    )}
-                  </Button>
-                </div>
-              ))}
+          {/* Barra de limite */}
+          <div className="space-y-1.5">
+            <div className="h-[5px] bg-muted rounded-full overflow-hidden">
+              <div
+                className={`h-full transition-all duration-500 ${
+                  card.utilizationPct >= 0.9
+                    ? 'bg-red-500'
+                    : card.utilizationPct >= 0.7
+                      ? 'bg-amber-500'
+                      : 'bg-emerald-500/80'
+                }`}
+                style={{ width: `${Math.min(100, card.utilizationPct * 100)}%` }}
+              />
             </div>
-          </CardContent>
-        </Card>
-      )}
+            <p className="text-[11px] text-muted-foreground">
+              <span className="font-medium text-foreground">{Math.round(card.utilizationPct * 100)}%</span> do limite ·{' '}
+              <span className="font-medium text-foreground tabular-nums">{formatBRL(limiteDisp)}</span> disponível
+            </p>
+          </div>
 
-      {/* Sprint R3 — pagamentos JÁ CASADOS com este cartão */}
-      {data.matchedPayments.length > 0 && (
-        <Card className="border-emerald-200 bg-emerald-50/40">
+          {/* 3 métricas com divisores */}
+          <div className="grid grid-cols-3 divide-x divide-border border-t border-border pt-4 -mx-6 px-6">
+            <Metric label="Vencimento" value={`dia ${card.dueDay}`} />
+            <Metric label="Lançamentos" value={String(purchasesCount)} centered />
+            <Metric label="Fechamento" value={`dia ${card.closingDay}`} rightAligned />
+          </div>
+        </div>
+
+        {/* Linha de pagamento integrada — paga (verde) OU candidato (azul) OU aviso (âmbar) */}
+        {faturaPaga && topMatchedPayment && (
+          <div className="bg-emerald-50/70 dark:bg-emerald-950/30 border-t border-emerald-200/60 dark:border-emerald-900/40 px-6 py-3.5 flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2.5 text-sm">
+              <div className="h-7 w-7 rounded-full bg-emerald-600 dark:bg-emerald-500 flex items-center justify-center flex-shrink-0">
+                <Repeat className="h-3.5 w-3.5 text-white" />
+              </div>
+              <div className="text-emerald-900 dark:text-emerald-100">
+                Paga em <span className="font-medium">{fmtDateBR(topMatchedPayment.date)}</span>
+                {topMatchedPayment.bankAccountName && (
+                  <> pela <span className="font-medium">{topMatchedPayment.bankAccountName}</span></>
+                )}
+                {' · '}
+                <span className="font-medium tabular-nums">{formatBRL(topMatchedPayment.amount)}</span>
+              </div>
+            </div>
+            <button
+              type="button"
+              disabled={desfazendoId === topMatchedPayment.id}
+              onClick={() => desfazerCasamento(topMatchedPayment.id)}
+              className="text-xs text-emerald-700 dark:text-emerald-300 hover:text-emerald-900 dark:hover:text-emerald-100 font-medium inline-flex items-center gap-1 disabled:opacity-50"
+            >
+              {desfazendoId === topMatchedPayment.id ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Undo2 className="h-3 w-3" />
+              )}
+              desfazer
+            </button>
+          </div>
+        )}
+
+        {!faturaPaga && topCandidate && (
+          <div className="bg-blue-50/70 dark:bg-blue-950/30 border-t border-blue-200/60 dark:border-blue-900/40 px-6 py-3.5 flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2.5 text-sm">
+              <div className="h-7 w-7 rounded-full bg-blue-600 dark:bg-blue-500 flex items-center justify-center flex-shrink-0">
+                <Link2 className="h-3.5 w-3.5 text-white" />
+              </div>
+              <div className="text-blue-900 dark:text-blue-100">
+                Achei pagamento{' '}
+                <span className="font-medium tabular-nums">{formatBRL(topCandidate.amount)}</span>{' '}
+                em <span className="font-medium">{fmtDateBR(topCandidate.date)}</span>
+                {topCandidate.bankAccountName && (
+                  <> · <span className="font-medium">{topCandidate.bankAccountName}</span></>
+                )}
+                {topCandidate.matchLabel && (
+                  <span className="text-blue-700 dark:text-blue-300"> · {topCandidate.matchLabel}</span>
+                )}
+              </div>
+            </div>
+            <Button
+              size="sm"
+              disabled={casandoId === topCandidate.id}
+              onClick={() => casarPagamento(topCandidate.id)}
+              className="h-7 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium"
+            >
+              {casandoId === topCandidate.id ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Link2 className="h-3 w-3 mr-1" />
+              )}
+              Casar pagamento
+            </Button>
+          </div>
+        )}
+
+        {!faturaPaga && !topCandidate && data.currentInvoiceMonth && purchasesCount > 0 && (
+          <div className="bg-amber-50/70 dark:bg-amber-950/30 border-t border-amber-200/60 dark:border-amber-900/40 px-6 py-3.5 flex items-center gap-2.5 text-sm text-amber-900 dark:text-amber-100">
+            <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+            <span>Fatura em aberto. Quando o pagamento aparecer no extrato, dá pra casar aqui.</span>
+          </div>
+        )}
+      </Card>
+
+      {/* Candidatos extras (quando há > 1) — só lista se top já mostrado no header e ainda restam outros */}
+      {data.paymentCandidates.length > 1 && (
+        <Card className="rounded-xl border-border/60">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-              Pagamento{data.matchedPayments.length > 1 ? 's' : ''} casado{data.matchedPayments.length > 1 ? 's' : ''} com este cartão
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Outros possíveis pagamentos
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-1">
-            <p className="text-xs text-emerald-900 mb-2">
-              {data.matchedPayments.length} pagamento{data.matchedPayments.length > 1 ? 's' : ''} já estão
-              fora do DRE como despesa (viram transferência banco → cartão). Pode desfazer se precisar.
-            </p>
-            {data.matchedPayments.map((p) => (
+          <CardContent className="space-y-1 pt-0">
+            {data.paymentCandidates.slice(1).map((p) => (
               <div
                 key={p.id}
-                className="flex items-center justify-between gap-3 py-1.5 border-t border-emerald-100 first:border-0"
+                className="flex items-center justify-between gap-3 py-2 border-t border-border first:border-0 text-sm"
               >
-                <div className="flex-1 min-w-0 text-sm">
+                <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] bg-emerald-100 text-emerald-700 border-emerald-300"
-                    >
-                      ✓ casado
-                    </Badge>
                     <span>{fmtDateBR(p.date)} · {p.description}</span>
-                    <strong className="tabular-nums">{formatBRL(p.amount)}</strong>
+                    <span className="font-medium tabular-nums">{formatBRL(p.amount)}</span>
                     {p.bankAccountName && (
-                      <span className="text-xs text-muted-foreground">· {p.bankAccountName}</span>
+                      <span className="text-muted-foreground">· {p.bankAccountName}</span>
+                    )}
+                    {p.matchLabel && (
+                      <span className="text-[11px] text-muted-foreground">· {p.matchLabel}</span>
                     )}
                   </div>
                 </div>
                 <Button
                   size="sm"
                   variant="ghost"
-                  disabled={desfazendoId === p.id}
-                  onClick={() => desfazerCasamento(p.id)}
-                  className="text-emerald-700 hover:bg-emerald-100"
+                  disabled={casandoId === p.id}
+                  onClick={() => casarPagamento(p.id)}
+                  className="h-7 text-xs"
                 >
-                  {desfazendoId === p.id ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <>
-                      <Undo2 className="h-3.5 w-3.5 mr-1" />
-                      desfazer
-                    </>
-                  )}
+                  {casandoId === p.id ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Casar'}
                 </Button>
               </div>
             ))}
@@ -387,39 +387,57 @@ export default function CartaoDashboardPage() {
         </Card>
       )}
 
-      {/* Barra de utilização */}
-      <div className="space-y-1">
-        <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-          <div
-            className={`h-full transition-all ${
-              card.utilizationPct >= 0.9
-                ? 'bg-red-500'
-                : card.utilizationPct >= 0.7
-                  ? 'bg-amber-500'
-                  : 'bg-emerald-500'
-            }`}
-            style={{ width: `${Math.min(100, card.utilizationPct * 100)}%` }}
-          />
-        </div>
-        <p className="text-xs text-muted-foreground">
-          {Math.round(card.utilizationPct * 100)}% utilizado neste mês
-        </p>
-      </div>
+      {/* Pagamentos casados anteriores (só lista quando há > 1 — o atual ja ta no header) */}
+      {data.matchedPayments.length > 1 && (
+        <Card className="rounded-xl border-border/60">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Pagamentos anteriores
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 pt-0">
+            {data.matchedPayments.slice(1).map((p) => (
+              <div
+                key={p.id}
+                className="flex items-center justify-between gap-3 py-2 border-t border-border first:border-0 text-sm"
+              >
+                <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 flex-shrink-0" />
+                  <span>{fmtDateBR(p.date)} · {p.description}</span>
+                  <span className="font-medium tabular-nums">{formatBRL(p.amount)}</span>
+                  {p.bankAccountName && (
+                    <span className="text-muted-foreground">· {p.bankAccountName}</span>
+                  )}
+                </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={desfazendoId === p.id}
+                  onClick={() => desfazerCasamento(p.id)}
+                  className="h-7 text-xs text-muted-foreground"
+                >
+                  {desfazendoId === p.id ? <Loader2 className="h-3 w-3 animate-spin" /> : 'desfazer'}
+                </Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Spend by category */}
-        <Card className="lg:col-span-1">
+        <Card className="lg:col-span-1 rounded-xl border-border/60">
           <CardHeader>
-            <CardTitle className="text-base">Gasto por categoria</CardTitle>
+            <CardTitle className="text-base">Por categoria</CardTitle>
           </CardHeader>
           <CardContent>
             {spendByCategory.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Sem compras neste mês.</p>
+              <p className="text-sm text-muted-foreground">Sem compras nesta fatura.</p>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-2.5">
                 {spendByCategory.map((c) => (
                   <div key={c.categoryId ?? 'no-cat'} className="flex justify-between text-sm">
-                    <span className="truncate flex-1">{c.categoryName}</span>
+                    <span className="truncate flex-1 text-muted-foreground">{c.categoryName}</span>
                     <span className="tabular-nums font-medium">{formatBRL(c.amount)}</span>
                   </div>
                 ))}
@@ -429,9 +447,11 @@ export default function CartaoDashboardPage() {
         </Card>
 
         {/* Recent transactions */}
-        <Card className="lg:col-span-2">
+        <Card className="lg:col-span-2 rounded-xl border-border/60">
           <CardHeader>
-            <CardTitle className="text-base">Compras do mês</CardTitle>
+            <CardTitle className="text-base">
+              Compras da fatura {data.currentInvoiceMonth ? fmtInvoiceLabel(data.currentInvoiceMonth) : ''}
+            </CardTitle>
           </CardHeader>
           <CardContent>
             {monthTransactions.length === 0 ? (
@@ -439,11 +459,11 @@ export default function CartaoDashboardPage() {
                 Sem compras importadas ainda. Importe a fatura PDF pra ver tudo aqui.
               </p>
             ) : (
-              <div className="space-y-2">
-                {monthTransactions.map((t) => (
+              <div className="space-y-0">
+                {monthTransactions.filter((t) => !t.isCardPayment).map((t) => (
                   <div
                     key={t.id}
-                    className="flex items-center justify-between py-1.5 border-b last:border-0 text-sm gap-3"
+                    className="flex items-center justify-between py-2.5 border-t border-border first:border-0 text-sm gap-3"
                   >
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -451,30 +471,17 @@ export default function CartaoDashboardPage() {
                         {t.installmentNumber && t.installmentTotal && (
                           <Badge
                             variant="outline"
-                            className="text-[10px] bg-sky-50 text-sky-700 border-sky-200"
+                            className="text-[10px] py-0 font-normal"
                           >
                             {t.installmentNumber}/{t.installmentTotal}
                           </Badge>
                         )}
-                        {t.isCardPayment && (
-                          <Badge
-                            variant="outline"
-                            className="text-[10px] bg-indigo-50 text-indigo-700 border-indigo-200"
-                          >
-                            <Repeat className="h-3 w-3 mr-0.5" />
-                            pagamento
-                          </Badge>
-                        )}
                       </div>
-                      <p className="text-[11px] text-muted-foreground">
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
                         {fmtDateBR(t.date)} {t.categoryName ? `· ${t.categoryName}` : ''}
                       </p>
                     </div>
-                    <span
-                      className={`tabular-nums font-medium ${
-                        t.isCardPayment ? 'text-indigo-700' : 'text-foreground'
-                      }`}
-                    >
+                    <span className="tabular-nums font-medium text-foreground">
                       {formatBRL(t.amount)}
                     </span>
                   </div>
@@ -484,6 +491,43 @@ export default function CartaoDashboardPage() {
           </CardContent>
         </Card>
       </div>
+    </div>
+  )
+}
+
+function StatusPill({ paga }: { paga: boolean }) {
+  if (paga) {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/70 dark:border-emerald-900/60 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+        <CheckCircle2 className="h-3 w-3" />
+        Fatura paga
+      </span>
+    )
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 dark:bg-amber-950/40 border border-amber-200/70 dark:border-amber-900/60 px-2.5 py-1 text-xs font-medium text-amber-700 dark:text-amber-300">
+      <AlertCircle className="h-3 w-3" />
+      Em aberto
+    </span>
+  )
+}
+
+function Metric({
+  label,
+  value,
+  centered = false,
+  rightAligned = false,
+}: {
+  label: string
+  value: string
+  centered?: boolean
+  rightAligned?: boolean
+}) {
+  const align = rightAligned ? 'text-right pr-0 pl-4' : centered ? 'text-center px-4' : 'text-left pl-0 pr-4'
+  return (
+    <div className={align}>
+      <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">{label}</p>
+      <p className="text-[15px] font-medium tabular-nums mt-0.5">{value}</p>
     </div>
   )
 }
