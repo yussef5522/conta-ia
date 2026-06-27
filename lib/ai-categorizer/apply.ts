@@ -170,13 +170,23 @@ export async function classifyWithLearning(
     ruleSnapshot = toRuleSnapshot(upserted)
   }
 
-  // 4. Se applyToSimilar=true E temos regra: busca pendentes similares.
-  //    Sprint UX-bulk-review: se explicitSimilarTxIds foi passado, usa
-  //    diretamente (user já filtrou na UI desmarcando algumas).
+  // 4. Se applyToSimilar=true: busca pendentes similares.
+  //
+  // Sprint Pendentes Fix (27/06/2026): DESACOPLADO da criação de regra.
+  // Antes, dependia de `ruleSnapshot` (que só é populado quando flag
+  // AUTO_RULE_GENERATION=true). Com flag OFF, o lote NUNCA rodava.
+  // Agora rodа sempre que applyToSimilar=true — infere tipoMatch via
+  // buildNewRule (sem persistir), ou usa explicitSimilarTxIds quando o
+  // front passa a lista.
+  //
+  // Sprint UX-bulk-review: se explicitSimilarTxIds foi passado, usa
+  // diretamente (user já filtrou na UI desmarcando algumas).
   let similarApplied = 0
   let similarTxIds: string[] = []
   let stemRule: { id: string; padrao: string } | null = null
-  if (input.applyToSimilar && ruleSnapshot) {
+  // tipoMatch inferido pra busca server-side de similares (sem regra)
+  const inferredRule = buildNewRule(ctx.company.id, base.description, input.categoryId)
+  if (input.applyToSimilar) {
     if (input.explicitSimilarTxIds !== undefined) {
       // User escolheu explicitamente quais incluir (pode ter desmarcado
       // outliers). Pula findSimilarTransactions + STEM fallback.
@@ -192,7 +202,10 @@ export async function classifyWithLearning(
       const similares = findSimilarTransactions(
         {
           baseDescription: base.description,
-          tipoMatch: ruleSnapshot.tipoMatch,
+          // Quando há regra criada usa o tipoMatch dela; senão infere
+          // pela mesma heurística do buildNewRule (EXACT por default,
+          // NORMALIZED quando há prefixo " - ")
+          tipoMatch: ruleSnapshot?.tipoMatch ?? inferredRule.tipoMatch,
           candidatas,
         },
         input.transactionId,
@@ -268,11 +281,22 @@ export async function classifyWithLearning(
     })
 
     // Update similares
-    if (similarTxIds.length > 0 && ruleSnapshot) {
+    //
+    // Sprint Pendentes Fix (27/06/2026): roda sempre que houver similarTxIds.
+    // Quando ruleSnapshot existe (flag AUTO_RULE_GENERATION ON), marca
+    // classificationSource=RULE + classifiedByRuleId. Quando não há regra
+    // (flag OFF), marca como MANUAL — o user aplicou em lote sem criar
+    // regra global.
+    if (similarTxIds.length > 0) {
       // Sprint 5.0.2.k — stemRule pode ter sido criada (substring CONTAINS);
       // se sim, é ela que atribuiu as similares.
-      const effectiveRuleId = stemRule ? stemRule.id : ruleSnapshot.id
-      const effectiveConfianca = stemRule ? 1.0 : ruleSnapshot.confianca
+      const effectiveRuleId = stemRule
+        ? stemRule.id
+        : ruleSnapshot?.id ?? null
+      const effectiveConfianca = stemRule
+        ? 1.0
+        : ruleSnapshot?.confianca ?? null
+      const effectiveSource = effectiveRuleId ? 'RULE' : 'MANUAL'
 
       await tx.transaction.updateMany({
         where: {
@@ -285,16 +309,20 @@ export async function classifyWithLearning(
         data: {
           categoryId: input.categoryId,
           status: 'RECONCILED',
-          classificationSource: 'RULE',
+          classificationSource: effectiveSource,
           classifiedByRuleId: effectiveRuleId,
           aiConfidence: effectiveConfianca,
         },
       })
 
-      await tx.aiLearningRule.update({
-        where: { id: effectiveRuleId },
-        data: { vezesAplicada: { increment: similarTxIds.length } },
-      })
+      // Incrementa vezesAplicada SÓ se há regra (flag ON ou stem CONTAINS criada).
+      // Sem regra, lote ainda funcionou — só não há contador global pra atualizar.
+      if (effectiveRuleId) {
+        await tx.aiLearningRule.update({
+          where: { id: effectiveRuleId },
+          data: { vezesAplicada: { increment: similarTxIds.length } },
+        })
+      }
     }
   })
 
