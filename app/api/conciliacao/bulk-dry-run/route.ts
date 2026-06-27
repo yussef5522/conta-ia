@@ -66,6 +66,9 @@ export async function GET(request: NextRequest) {
         // Sprint Cartao PJ R6.1 (25/06/2026): pagamento de cartao casado
         // eh TRANSFER logica resolvida — fora da bulk pre-classify.
         isCardPayment: false,
+        // Sprint Pendentes Fix R2 (27/06/2026): pagamento de parcela
+        // emprestimo casada — fora da bulk pre-classify.
+        loanInstallmentPaid: { is: null },
         bankAccount: { companyId: data.empresaId },
         ...tipoFilter,
       },

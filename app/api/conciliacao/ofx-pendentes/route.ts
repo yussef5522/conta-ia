@@ -67,6 +67,12 @@ export async function GET(request: NextRequest) {
         // banco->cartao — ja resolvido via casamento, NAO precisa categoria.
         // Yussef desfaz pelo header verde do dashboard do cartao se quiser.
         isCardPayment: false,
+        // Sprint Pendentes Fix R2 (27/06/2026): tx que eh pagamento de
+        // parcela de emprestimo casada (LoanInstallment.reconciledTransactionId
+        // = tx.id) NAO precisa categoria. O DRE engine ja contabiliza o
+        // juros via loanInterestSplit. Se aparecer aqui pedindo categoria,
+        // user pode duplicar contagem.
+        loanInstallmentPaid: { is: null },
         bankAccount: { companyId: data.empresaId },
         ...(Object.keys(dateFilter).length > 0 ? { date: dateFilter } : {}),
         ...tipoFilter,

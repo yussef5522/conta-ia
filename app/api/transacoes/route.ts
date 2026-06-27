@@ -121,6 +121,10 @@ export async function GET(request: NextRequest) {
       // Sprint Cartao PJ R6.1 (25/06/2026): pagamento de cartao casado eh
       // TRANSFER logica banco->cartao. Filtra junto com transferGroupId.
       where.isCardPayment = false
+      // Sprint Pendentes Fix R2 (27/06/2026): pagamento de parcela de
+      // emprestimo casada nao precisa categoria (DRE engine ja conta o juros
+      // via loanInterestSplit). Filtra similar ao R6.1.
+      where.loanInstallmentPaid = { is: null }
     }
     // type: compõe AND com guard anti-TRANSFER quando semCategoria
     // (pra cobrir o caso da query `tipo` vir junto e sobrescrever).

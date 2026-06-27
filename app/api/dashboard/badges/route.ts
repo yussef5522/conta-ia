@@ -85,6 +85,8 @@ export async function GET(request: NextRequest) {
           transferGroupId: null,
           // Sprint Cartao PJ R6.1 (25/06/2026): badge bate com a conciliacao
           isCardPayment: false,
+          // Sprint Pendentes Fix R2 (27/06/2026): bate com nova exclusao
+          loanInstallmentPaid: { is: null },
           ...(tipoFilter.type
             ? { type: tipoFilter.type }
             : { type: { not: 'TRANSFER' } }),
@@ -113,6 +115,8 @@ export async function GET(request: NextRequest) {
           type: { not: 'TRANSFER' },
           // Sprint Cartao PJ R6.1 (25/06/2026): badge bate com /pendentes
           isCardPayment: false,
+          // Sprint Pendentes Fix R2 (27/06/2026): mesmo critério
+          loanInstallmentPaid: { is: null },
         },
       }),
     ])

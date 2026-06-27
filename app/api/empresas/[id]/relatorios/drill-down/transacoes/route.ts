@@ -98,6 +98,10 @@ export async function GET(request: NextRequest, { params }: Params) {
           // engano fora deste filtro, ela nao entraria aqui mas tambem nao
           // entra no DRE, entao mantem consistencia visual.
           { isCardPayment: false },
+          // Sprint Pendentes Fix R2 (27/06/2026): pagamento de parcela
+          // emprestimo NAO aparece em drill-down (DRE conta so juros via
+          // loanInterestSplit). Mesmo padrao do R6.1.
+          { loanInstallmentPaid: { is: null } },
         ],
         status: { in: ['RECONCILED', 'PENDING'] },
       },
