@@ -15,17 +15,12 @@
 //     → janela curta (regra do Yussef: ±3d por feriado/fim-de-semana)
 //     → pos-fixado: aceita até 15% diff com selo "confira"
 
-const MS_PER_DAY = 24 * 60 * 60 * 1000
+// Sprint Contract Suffix Fix (27/06/2026) — helper centralizado em
+// lib/loans/contract-core.ts. Re-export pra retrocompat dos testes R7.
+import { descriptionMatchesContract } from './contract-core'
+export { normalizeForContractMatch } from './contract-core'
 
-/**
- * Normaliza string pra comparação substring de contrato:
- * lowercase + remove tudo que não é alfanumérico.
- * "LIQUIDACAO DE PARCELA-C41022227" → "liquidacaodeparcelac41022227"
- * "C41022227" → "c41022227" → match.
- */
-export function normalizeForContractMatch(s: string): string {
-  return (s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '')
-}
+const MS_PER_DAY = 24 * 60 * 60 * 1000
 
 /**
  * Procura padrões de contrato brasileiro na descrição:
@@ -124,15 +119,16 @@ export function findLoanInstallmentForTransaction(
   } = opts
 
   const txDate = new Date(tx.date)
-  const txDescNorm = normalizeForContractMatch(tx.description)
   const isLoanWord = /empr[eé]stimo|emprestimo|parcela|financ|liquida[cç][aã]o\s+de\s+parcela/i.test(tx.description)
 
   // FASE 1 — Contrato forte
+  // Sprint Contract Suffix Fix (27/06/2026): descriptionMatchesContract
+  // extrai o "core" do contractNumber (ignora sufixo "-N") antes de
+  // comparar. Resolve C41033828-8 vs descrição "C41033828".
   const strongMatches: CandidateMatch[] = []
   for (const loan of loans) {
     if (!loan.contractNumber || loan.contractNumber.length < 5) continue
-    const contractKey = normalizeForContractMatch(loan.contractNumber)
-    if (!contractKey || !txDescNorm.includes(contractKey)) continue
+    if (!descriptionMatchesContract(tx.description, loan.contractNumber)) continue
     // contrato bate — varredura nas pending pelo +próximo do due
     for (const p of loan.pendingInstallments) {
       const due = new Date(p.dueDate)

@@ -17,6 +17,12 @@
 // dele. Multi-tenant: caller passa companyId; carrega Loans dessa empresa.
 
 import type { PrismaClient } from '@prisma/client'
+// Sprint Contract Suffix Fix (27/06/2026): helper único pra match de
+// contrato com/sem sufixo "-N". Antes era duplicado aqui.
+import {
+  descriptionMatchesContract,
+  normalizeForContractMatch as normalizeForContractMatchShared,
+} from './contract-core'
 
 export interface AutoConciliacaoResult {
   matched: Array<{
@@ -54,8 +60,11 @@ function diffDays(a: Date, b: Date): number {
   return Math.abs(a.getTime() - b.getTime()) / MS_PER_DAY
 }
 
+// Sprint Contract Suffix Fix (27/06/2026): mantido só pra retrocompat de
+// outros usos internos — delega pro helper compartilhado. Match de contrato
+// agora usa descriptionMatchesContract (que extrai o "core" sem sufixo).
 function normalizeForContractMatch(s: string): string {
-  return (s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '')
+  return normalizeForContractMatchShared(s)
 }
 
 /**
@@ -128,10 +137,10 @@ export async function autoConciliarParcelas(
     })
     if (candidates.length === 0) continue
 
-    const contractKey =
-      loan.contractNumber && loan.contractNumber.length >= 5
-        ? normalizeForContractMatch(loan.contractNumber)
-        : null
+    // Sprint Contract Suffix Fix (27/06/2026): hasContract avaliado pela
+    // mesma lógica do helper compartilhado (extrai core sem sufixo "-N").
+    const hasContractToMatch =
+      !!loan.contractNumber && loan.contractNumber.length >= 5
 
     for (const ins of loan.installments) {
       if (installmentsAlreadyClaimed.has(ins.id)) continue
@@ -158,10 +167,12 @@ export async function autoConciliarParcelas(
           ? Math.max(ins.payment * 0.15, AMBIGUOUS_AMOUNT_TOL)
           : AMBIGUOUS_AMOUNT_TOL
 
-        // (1) contractNumber match
+        // (1) contractNumber match — agora via helper compartilhado, que
+        // extrai o "core" do contractNumber (ignora sufixo "-N"). Resolve
+        // C41033828-8 vs descrição "LIQUIDACAO DE PARCELA-C41033828".
         if (
-          contractKey &&
-          normalizeForContractMatch(tx.description).includes(contractKey) &&
+          hasContractToMatch &&
+          descriptionMatchesContract(tx.description, loan.contractNumber) &&
           amountDiff <= (ins.isEstimate ? Math.max(ins.payment * 0.30, STRONG_AMOUNT_TOL) : strongAmountTol)
         ) {
           strongMatch = { tx, reason: 'CONTRACT_NUMBER' }
