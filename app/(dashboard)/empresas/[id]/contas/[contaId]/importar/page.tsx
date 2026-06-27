@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Upload, FileText, AlertCircle, Check, ArrowUpRight, ArrowDownRight, Loader2, Landmark, AlertTriangle, ArrowLeftRight, Sparkles } from 'lucide-react'
@@ -12,6 +12,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
 import { PreviewV2Classificado } from '@/components/importar-ofx/PreviewV2Classificado'
+import { PreviewV3Premium, type V3Decisions } from '@/components/importar-ofx/PreviewV3Premium'
 import {
   EditablePreviewTable,
   type CategoryOption,
@@ -94,6 +95,11 @@ export default function ImportarOFXPage() {
   const [preview, setPreview] = useState<PreviewResult | null>(null)
   const [loadingPreview, setLoadingPreview] = useState(false)
   const [loadingImport, setLoadingImport] = useState(false)
+  // Sprint OFX V3 (27/06/2026)
+  const [v3Enabled, setV3Enabled] = useState(false)
+  const [v3Cards, setV3Cards] = useState<Array<{ id: string; name: string; lastDigits: string | null }>>([])
+  const [v3Loans, setV3Loans] = useState<Array<{ id: string; lender: string; contractNumber: string | null; pendingInstallments: Array<{ number: number; dueDate: string; payment: number }> }>>([])
+  const [v3PendingDecisions, setV3PendingDecisions] = useState<V3Decisions | null>(null)
   const [salvandoBanco, setSalvandoBanco] = useState(false)
   const [bancoSalvo, setBancoSalvo] = useState(false)
   // Detecção de transferências entre contas (Sprint 0.5 Dia 4)
@@ -105,6 +111,101 @@ export default function ImportarOFXPage() {
   // Sprint Import Categoria Editável (18/06/2026)
   const [overrides, setOverrides] = useState<Record<string, string | null>>({})
   const [newRules, setNewRules] = useState<Array<{ tipoMatch: 'EXACT' | 'CONTAINS' | 'CNPJ'; padrao: string; categoryId: string }>>([])
+
+  // Sprint OFX V3 — checa flag e carrega cards/loans pra dropdowns
+  useEffect(() => {
+    let cancelled = false
+    async function bootV3() {
+      try {
+        const flagRes = await fetch('/api/feature-flags/ofx-v3', { credentials: 'include' })
+        if (!flagRes.ok || cancelled) return
+        const flag = await flagRes.json().catch(() => ({ enabled: false }))
+        if (cancelled || !flag.enabled) return
+        setV3Enabled(true)
+        const [cardsR, loansR] = await Promise.all([
+          fetch(`/api/empresas/${empresaId}/cartoes`, { credentials: 'include' }).then((r) => (r.ok ? r.json() : { cards: [] })),
+          fetch(`/api/empresas/${empresaId}/emprestimos`, { credentials: 'include' }).then((r) => (r.ok ? r.json() : { loans: [] })),
+        ])
+        if (cancelled) return
+        setV3Cards(
+          (cardsR.cards ?? []).map((c: { id: string; name: string; lastDigits: string | null }) => ({
+            id: c.id, name: c.name, lastDigits: c.lastDigits,
+          })),
+        )
+        // mapear loans: pegar parcelas OPEN futuras
+        const loansOut = await Promise.all(
+          (loansR.loans ?? []).slice(0, 50).map(async (l: { id: string; lender: string; contractNumber: string | null }) => {
+            try {
+              const det = await fetch(`/api/empresas/${empresaId}/emprestimos/${l.id}`, { credentials: 'include' })
+              if (!det.ok) return { id: l.id, lender: l.lender, contractNumber: l.contractNumber, pendingInstallments: [] }
+              const data = await det.json()
+              const pending = (data.loan?.installments ?? [])
+                .filter((p: { status: string }) => p.status === 'OPEN' || p.status === 'LATE')
+                .slice(0, 12)
+                .map((p: { number: number; dueDate: string; payment: number }) => ({
+                  number: p.number,
+                  dueDate: p.dueDate,
+                  payment: p.payment,
+                }))
+              return { id: l.id, lender: l.lender, contractNumber: l.contractNumber, pendingInstallments: pending }
+            } catch {
+              return { id: l.id, lender: l.lender, contractNumber: l.contractNumber, pendingInstallments: [] }
+            }
+          }),
+        )
+        if (!cancelled) setV3Loans(loansOut)
+      } catch {
+        // V3 silent — preview V2 segue como fallback
+      }
+    }
+    bootV3()
+    return () => { cancelled = true }
+  }, [empresaId])
+
+  // Sprint OFX V3 — pós-import, aplica as marcações via /apply-marks
+  async function applyV3MarksAfterImport(importId: string, decisions: V3Decisions) {
+    if (decisions.marks.size === 0) return
+    try {
+      // Busca tx criadas no import pra mapear dedupHash → transactionId
+      const txRes = await fetch(`/api/transacoes?empresaId=${empresaId}&importId=${importId}&limit=2000`, {
+        credentials: 'include',
+      })
+      if (!txRes.ok) return
+      const txData = await txRes.json()
+      // Map by dedupHash (V2NovaGenuinaItem.dedupHash bate com transaction.dedupHash)
+      const txByDedupHash = new Map<string, string>()
+      const novasGenuinas = (preview as unknown as { classificacao: { novasGenuinas: Array<{ ofxIndex: number; dedupHash: string }> } } | null)
+        ?.classificacao?.novasGenuinas ?? []
+      const hashByOfxIndex = new Map(novasGenuinas.map((n) => [n.ofxIndex, n.dedupHash]))
+      for (const tx of (txData.transacoes ?? []) as Array<{ id: string; dedupHash: string | null }>) {
+        if (tx.dedupHash) txByDedupHash.set(tx.dedupHash, tx.id)
+      }
+      const marks: Array<{ transactionId: string; kind: string; params?: Record<string, unknown> }> = []
+      decisions.marks.forEach((mark, ofxIndex) => {
+        const dedupHash = hashByOfxIndex.get(ofxIndex)
+        if (!dedupHash) return
+        const txId = txByDedupHash.get(dedupHash)
+        if (!txId) return
+        marks.push({ transactionId: txId, kind: mark.kind, params: mark.params as Record<string, unknown> | undefined })
+      })
+      if (marks.length === 0) return
+      const applyRes = await fetch(`/api/contas-bancarias/${contaId}/importar-ofx/apply-marks`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ marks }),
+      })
+      if (applyRes.ok) {
+        const r = await applyRes.json()
+        toast({
+          title: `✨ ${r.applied} marcações aplicadas`,
+          description: r.failed?.length > 0 ? `${r.failed.length} falharam — revise em /transacoes` : 'Tudo certo!',
+        })
+      }
+    } catch (err) {
+      console.error('[V3 apply-marks]', err)
+    }
+  }
 
   async function handleFile(file: File) {
     setArquivo(file)
@@ -323,6 +424,12 @@ export default function ImportarOFXPage() {
       }
       toast({ variant: 'success', title: 'Importação concluída', description: data.mensagem })
 
+      // Sprint OFX V3 — após criar as tx, aplica marcações declarativas
+      if (data.importId && v3PendingDecisions) {
+        await applyV3MarksAfterImport(data.importId, v3PendingDecisions)
+        setV3PendingDecisions(null)
+      }
+
       // Sprint 4.0.3 — pós-import, escaneia sugestões de conciliação.
       // Se houver ≥1 → wizard de conciliação (UX premium).
       // Senão → fluxo Sprint 3.0.2 (conferência da classificação IA).
@@ -422,11 +529,38 @@ export default function ImportarOFXPage() {
       {/* Sub-fase 2C (Yussef 12/06/2026) — Tela V2 quando payload vem com `classificacao`.
           Detecta pelo shape: se IMPORT_PREVIEW_V2=true em prod, backend manda V2 → renderiza
           tela nova. Senão renderiza a UI legada. /confirm legado (handleImport) inalterado. */}
-      {preview && 'classificacao' in (preview as unknown as Record<string, unknown>) && (
+      {preview && 'classificacao' in (preview as unknown as Record<string, unknown>) && !v3Enabled && (
         <PreviewV2Classificado
           payload={preview as unknown}
           onConfirmar={handleImport}
           onCancelar={() => { setArquivo(null); setPreview(null) }}
+          loading={loadingImport}
+        />
+      )}
+
+      {/* Sprint OFX V3 Premium (27/06/2026) — preview com seletor de tipo +
+          IA explica. Ativa via OFX_IMPORT_V3_ENABLED=true em prod. */}
+      {preview && 'classificacao' in (preview as unknown as Record<string, unknown>) && v3Enabled && (
+        <PreviewV3Premium
+          payload={preview as unknown as import('@/lib/ofx/preview-v2').V2PreviewPayload}
+          categories={(preview.categoriesForUI ?? []).map((c) => ({
+            id: c.id, name: c.name, type: c.type,
+          }))}
+          cards={v3Cards}
+          loans={v3Loans}
+          categorySuggestions={(preview.categorySuggestions ?? []).map((s) => ({
+            dedupHash: s.dedupHash,
+            categoryId: s.categoryId,
+            categoryName: s.categoryName,
+            // confidence string 'ALTA' | 'REVISAR' → número aproximado
+            confidence: s.confidence === 'ALTA' ? 0.95 : 0.75,
+            rulePattern: s.source === 'RULE' ? 'RULE' : null,
+          }))}
+          onConfirmar={async (decisions) => {
+            setV3PendingDecisions(decisions)
+            await handleImport()
+          }}
+          onCancelar={() => { setArquivo(null); setPreview(null); setV3PendingDecisions(null) }}
           loading={loadingImport}
         />
       )}
