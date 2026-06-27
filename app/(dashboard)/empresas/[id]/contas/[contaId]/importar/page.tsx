@@ -44,6 +44,12 @@ interface PreviewResult {
   // Sprint Import Categoria Editável (18/06/2026)
   categorySuggestions?: CategorySuggestion[]
   categoriesForUI?: CategoryOption[]
+  // Sprint OFX V3 R7 (27/06/2026) — refs da empresa pra detector de TRANSFER
+  ownEntityRefs?: {
+    cnpj: string | null
+    names: string[]
+    accountNames: string[]
+  }
 }
 
 interface TransferSide {
@@ -139,9 +145,11 @@ export default function ImportarOFXPage() {
               const det = await fetch(`/api/empresas/${empresaId}/emprestimos/${l.id}`, { credentials: 'include' })
               if (!det.ok) return { id: l.id, lender: l.lender, contractNumber: l.contractNumber, pendingInstallments: [] }
               const data = await det.json()
+              // Sprint OFX V3 R7 (27/06/2026): aumenta cap pra cobrir BNDES
+              // parcela #56 etc. Antes era 12 — invisível pra contratos longos.
               const pending = (data.loan?.installments ?? [])
                 .filter((p: { status: string }) => p.status === 'OPEN' || p.status === 'LATE')
-                .slice(0, 12)
+                .slice(0, 60)
                 .map((p: { number: number; dueDate: string; payment: number }) => ({
                   number: p.number,
                   dueDate: p.dueDate,
@@ -556,6 +564,7 @@ export default function ImportarOFXPage() {
             confidence: s.confidence === 'ALTA' ? 0.95 : 0.75,
             rulePattern: s.source === 'RULE' ? 'RULE' : null,
           }))}
+          ownEntityRefs={preview.ownEntityRefs}
           onConfirmar={async (decisions) => {
             setV3PendingDecisions(decisions)
             await handleImport()

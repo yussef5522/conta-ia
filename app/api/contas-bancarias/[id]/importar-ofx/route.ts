@@ -303,6 +303,67 @@ export async function POST(request: NextRequest, { params }: Params) {
     // O /confirm legado (linhas abaixo) NÃO mudou — esta sub-fase é
     // puramente "preview enriquecido". O atomic de criação de tx continua
     // sendo o histórico até a Fase 2D.
+
+    // Sprint OFX V3 R7 (27/06/2026) — FIX 3: categorySuggestions +
+    // categoriesForUI passam a ser computados pra AMBOS os caminhos
+    // (legacy + V2). Antes ficavam DENTRO do `if (!isV2PreviewEnabled())`
+    // e o V3 (que consome esse payload) recebia tudo vazio → tudo virava
+    // "escolha você". Agora aproveita as 11 regras + 60 fornecedores que
+    // o user já ensinou pra Cacula.
+    let categorySuggestions: ReturnType<typeof predictSuggestionsForPreview> = []
+    let categoriesForUI: Array<{ id: string; name: string; type: string; dreGroup: string | null; parentId: string | null }> = []
+    try {
+      const ctx = await loadPredictionContext(conta.companyId)
+      categorySuggestions = predictSuggestionsForPreview(
+        novas.map((t) => ({
+          dedupHash: t.dedupHash,
+          description: t.memo,
+          amount: t.amount,
+          type: t.type,
+        })),
+        ctx,
+      )
+      const allCats = await prisma.category.findMany({
+        where: { companyId: conta.companyId, isActive: true },
+        select: { id: true, name: true, type: true, dreGroup: true, parentId: true },
+        orderBy: [{ type: 'asc' }, { name: 'asc' }],
+      })
+      categoriesForUI = allCats
+    } catch (e) {
+      console.error('[importar-ofx preview] categorySuggestions falhou:', e)
+    }
+
+    // Sprint OFX V3 R7 (27/06/2026) — FIX 1: passa OwnEntityRefs pra UI
+    // detectar transferência interna por sinal forte (CNPJ próprio +
+    // nome empresa + nome de outra conta da mesma empresa).
+    let ownEntityRefs: { cnpj: string | null; names: string[]; accountNames: string[] } = {
+      cnpj: null,
+      names: [],
+      accountNames: [],
+    }
+    try {
+      const { normalizeCnpj } = await import('@/lib/transfers/own-entity-signals')
+      const companyForRefs = await prisma.company.findUnique({
+        where: { id: conta.companyId },
+        select: {
+          cnpj: true,
+          name: true,
+          tradeName: true,
+          bankAccounts: { where: { isActive: true }, select: { name: true } },
+        },
+      })
+      if (companyForRefs) {
+        ownEntityRefs = {
+          cnpj: normalizeCnpj(companyForRefs.cnpj),
+          names: [companyForRefs.name, companyForRefs.tradeName]
+            .filter((n): n is string => typeof n === 'string' && n.length > 0),
+          accountNames: companyForRefs.bankAccounts.map((a) => a.name),
+        }
+      }
+    } catch (e) {
+      console.error('[importar-ofx preview] ownEntityRefs falhou:', e)
+    }
+
     if (!isV2PreviewEnabled()) {
       const payload = buildLegacyPreviewPayload({
         novas,
@@ -311,32 +372,6 @@ export async function POST(request: NextRequest, { params }: Params) {
         errosParser: errors,
         banco,
       })
-      // Sprint Import Idempotente: warnings + stats do gate
-      // Sprint Import Categoria Editável (18/06/2026): suggestions por tx
-      // (somente leitura — UI usa pra renderizar dropdown editável + bolinha).
-      let categorySuggestions: ReturnType<typeof predictSuggestionsForPreview> = []
-      let categoriesForUI: Array<{ id: string; name: string; type: string; dreGroup: string | null; parentId: string | null }> = []
-      try {
-        const ctx = await loadPredictionContext(conta.companyId)
-        categorySuggestions = predictSuggestionsForPreview(
-          novas.map((t) => ({
-            dedupHash: t.dedupHash,
-            description: t.memo,
-            amount: t.amount,
-            type: t.type,
-          })),
-          ctx,
-        )
-        // Lista plana das categorias da empresa pra dropdown na UI
-        const allCats = await prisma.category.findMany({
-          where: { companyId: conta.companyId, isActive: true },
-          select: { id: true, name: true, type: true, dreGroup: true, parentId: true },
-          orderBy: [{ type: 'asc' }, { name: 'asc' }],
-        })
-        categoriesForUI = allCats
-      } catch (e) {
-        console.error('[importar-ofx preview] categorySuggestions falhou:', e)
-      }
       return NextResponse.json({
         ...payload,
         importIdentity: {
@@ -345,6 +380,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         },
         categorySuggestions,
         categoriesForUI,
+        ownEntityRefs,
       })
     }
 
@@ -391,8 +427,8 @@ export async function POST(request: NextRequest, { params }: Params) {
       }),
     ])
 
-    return NextResponse.json(
-      buildV2PreviewPayload({
+    return NextResponse.json({
+      ...buildV2PreviewPayload({
         novas,
         totalArquivo: transactions.length,
         duplicadasHashLegado: duplicadas,
@@ -406,7 +442,10 @@ export async function POST(request: NextRequest, { params }: Params) {
         contaBalance: conta.balance,
         ledgerBalance,
       }),
-    )
+      categorySuggestions,
+      categoriesForUI,
+      ownEntityRefs,
+    })
   }
 
   // Inserção em lote das transações novas + recalcula saldo

@@ -17,6 +17,9 @@ import { TransactionKindSelect } from '@/components/import-shared/TransactionKin
 import type { V2PreviewPayload, V2NovaGenuinaItem } from '@/lib/ofx/preview-v2'
 import type { OfxLineKind, AiSuggestion, OfxLineMark } from '@/lib/ofx-v3/types'
 import { suggestLineKind } from '@/lib/ofx-v3/suggest-line-kind'
+import { findLoanInstallmentForTransaction } from '@/lib/loans/match-contract-in-description'
+import { extractOwnSignals, type OwnEntityRefs } from '@/lib/transfers/own-entity-signals'
+import { detectTransferKeyword } from '@/lib/ofx-v3/transfer-keyword'
 
 interface CategoryOption {
   id: string
@@ -52,6 +55,8 @@ interface Props {
   cards: CardOption[]
   loans: LoanOption[]
   categorySuggestions: CategorySuggestion[]
+  /** Sprint OFX V3 R7 — referência da empresa pra detector single-side de TRANSFER */
+  ownEntityRefs?: OwnEntityRefs
   onConfirmar: (decisions: V3Decisions) => Promise<void>
   onCancelar: () => void
   loading?: boolean
@@ -79,6 +84,7 @@ export function PreviewV3Premium({
   cards,
   loans,
   categorySuggestions,
+  ownEntityRefs,
   onConfirmar,
   onCancelar,
   loading,
@@ -91,11 +97,55 @@ export function PreviewV3Premium({
     [categorySuggestions],
   )
 
+  // Refs effective: usa o que veio do endpoint OU defaults (segurança)
+  const effectiveRefs: OwnEntityRefs = useMemo(
+    () => ownEntityRefs ?? { cnpj: null, names: [], accountNames: [] },
+    [ownEntityRefs],
+  )
+
   // Sugestões IA por linha (kind + categoria + explicação)
   const aiSuggestionByIndex = useMemo(() => {
     const m = new Map<number, AiSuggestion>()
     for (const n of novas) {
       const sug = suggestionByHash.get(n.dedupHash)
+
+      // Sprint OFX V3 R7 — FIX 1: detector single-side de TRANSFER.
+      // Sinais (extraídos de lib/transfers/own-entity-signals):
+      //  - CNPJ próprio na descrição (29756732000198 CACULA MIX → +0.15)
+      //  - Nome da empresa (CACULA → +0.10)
+      //  - Nome de outra conta da empresa (SICREDI → +0.10)
+      // Soma >=0.10 + keyword PIX/TED/DOC/TRANSFER → marca transferDetected.
+      // suggestLineKind decide se vira ALTA/MEDIA/AGUARDA_PAR.
+      const ownSignals = extractOwnSignals(n.memo, effectiveRefs)
+      const keyword = detectTransferKeyword(n.memo)
+      let transferDetected: { confidence: number; hasPair: boolean; keyword: string | null } | null = null
+      if (ownSignals.signalCount > 0 && keyword) {
+        // base 0.60 + boost dos sinais (max 0.30) — fica entre 0.70-0.90 single-side
+        const confidence = Math.min(0.90, 0.60 + ownSignals.scoreBoost)
+        transferDetected = {
+          confidence,
+          hasPair: false, // single-side aqui — scanRetroativo pareia pós-import
+          keyword,
+        }
+      }
+
+      // Sprint OFX V3 R7 — FIX 2: match por contractNumber (FORTE) ou
+      // valor+data±3d (MÉDIO). Lib reutilizável, idêntica regra do
+      // auto-conciliacao.ts pós-import.
+      const loanCandidate = findLoanInstallmentForTransaction(
+        { description: n.memo, amount: n.amount, type: n.type, date: n.date },
+        loans.map((l) => ({
+          id: l.id,
+          lender: l.lender,
+          contractNumber: l.contractNumber,
+          pendingInstallments: l.pendingInstallments.map((p) => ({
+            number: p.number,
+            dueDate: p.dueDate,
+            payment: p.payment,
+          })),
+        })),
+      )
+
       const ai = suggestLineKind({
         description: n.memo,
         type: n.type,
@@ -105,12 +155,27 @@ export function PreviewV3Premium({
         predictedConfidence: sug?.confidence,
         predictedRulePattern: sug?.rulePattern ?? null,
         cardPaymentLikely: detectCardPayLikely(n.memo, n.type),
-        loanInstallmentCandidate: findLoanInstallmentCandidate(n, loans),
+        loanInstallmentCandidate: loanCandidate
+          ? {
+              loanLender: loanCandidate.loanLender,
+              contractNumber: loanCandidate.contractNumber,
+              installmentNumber: loanCandidate.installmentNumber,
+              plannedAmount: loanCandidate.plannedAmount,
+              daysFromDueDate: loanCandidate.daysFromDueDate,
+            }
+          : null,
+        transferDetected,
       })
+
+      // Preserve loanId (lib retorna mas suggestLineKind não)
+      if (loanCandidate && ai.suggestedKind === 'PAGAMENTO_EMPRESTIMO') {
+        ai.suggestedLoanId = loanCandidate.loanId
+      }
+
       m.set(n.ofxIndex, ai)
     }
     return m
-  }, [novas, suggestionByHash, loans])
+  }, [novas, suggestionByHash, loans, effectiveRefs])
 
   // Estado inicial: aplica a sugestão da IA por linha
   const [linesState, setLinesState] = useState<Map<number, LineState>>(() => {
@@ -460,40 +525,6 @@ function detectCardPayLikely(memo: string, type: 'CREDIT' | 'DEBIT'): boolean {
     || /liquida[cç][aã]o.*cart(ao|ão|oes|ões)/i.test(s)
     || /pagto\s+cart/i.test(s)
     || /\b(boleto)\b.*cart(ao|ão|oes|ões)/i.test(s)
-}
-
-function findLoanInstallmentCandidate(
-  n: V2NovaGenuinaItem,
-  loans: LoanOption[],
-): {
-  loanLender: string
-  contractNumber: string | null
-  installmentNumber: number
-  plannedAmount: number
-  daysFromDueDate: number
-} | null {
-  if (n.type !== 'DEBIT') return null
-  const isLoanWord = /empr[eé]stimo|emprestimo|parcela|financ/i.test(n.memo)
-  const txDate = new Date(n.date).getTime()
-  for (const l of loans) {
-    for (const p of l.pendingInstallments) {
-      const due = new Date(p.dueDate).getTime()
-      const days = Math.abs(Math.round((txDate - due) / (1000 * 60 * 60 * 24)))
-      if (days > 5) continue
-      const diff = Math.abs(n.amount - p.payment)
-      // Match exato (<=R$0,50) ou desvio ≤10% (pós-fixado caso BNDES R$ 2.516 vs R$ 2.365)
-      if (diff <= 0.50 || (isLoanWord && diff <= n.amount * 0.10)) {
-        return {
-          loanLender: l.lender,
-          contractNumber: l.contractNumber,
-          installmentNumber: p.number,
-          plannedAmount: p.payment,
-          daysFromDueDate: days,
-        }
-      }
-    }
-  }
-  return null
 }
 
 function fmtBRL(v: number): string {
