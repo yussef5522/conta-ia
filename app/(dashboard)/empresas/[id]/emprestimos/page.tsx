@@ -135,12 +135,20 @@ export default function CarteiraEmprestimosPage({
   return (
     <div className="space-y-6">
       <Header title="Empréstimos" description="Carteira de financiamentos da empresa">
-        <Link href={`/empresas/${empresaId}/emprestimos/novo`}>
-          <Button>
-            <Plus className="h-4 w-4 mr-1" />
-            Novo empréstimo
-          </Button>
-        </Link>
+        <div className="flex gap-2">
+          <Link href={`/empresas/${empresaId}/emprestimos/parcelas-do-mes`}>
+            <Button variant="outline">
+              <Calendar className="h-4 w-4 mr-1" />
+              Parcelas do mês
+            </Button>
+          </Link>
+          <Link href={`/empresas/${empresaId}/emprestimos/novo`}>
+            <Button>
+              <Plus className="h-4 w-4 mr-1" />
+              Novo empréstimo
+            </Button>
+          </Link>
+        </div>
       </Header>
 
       {/* KPI Cards */}
