@@ -520,12 +520,26 @@ function SocioForm({ empresaId, onCreated, onCancel }: SocioFormProps) {
     >
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
-          <Label className="text-xs">Nome *</Label>
-          <Input value={nome} onChange={(e) => setNome(e.target.value)} required />
+          <Label className="text-xs">Nome completo *</Label>
+          <Input
+            value={nome}
+            onChange={(e) => setNome(e.target.value)}
+            placeholder="Ex.: Yussef Abu Zahry Musa"
+            required
+          />
+          <p className="mt-1 text-[10px] text-slate-500 leading-snug">
+            Use o nome <strong>completo</strong>, como aparece nos extratos bancários.
+            O sistema usa pra detectar movimentações próprias (transferências, PIX) e separá-las
+            das vendas no DRE.
+          </p>
         </div>
         <div>
           <Label className="text-xs">CPF</Label>
           <Input value={cpf} onChange={(e) => setCpf(e.target.value)} placeholder="600.258.890-60" />
+          <p className="mt-1 text-[10px] text-slate-500 leading-snug">
+            Sinal forte pra detectar transferências do dono (quando o banco
+            inclui o CPF na descrição do PIX).
+          </p>
         </div>
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
