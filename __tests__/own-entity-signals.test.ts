@@ -61,7 +61,7 @@ describe('extractOwnSignals — caso real Yussef', () => {
   const refs = {
     cnpj: '29756732000198',
     names: ['caçula mix', 'CACULA MIX RESTAURANTE LTDA'],
-    accountNames: ['sicredi', 'stone', 'banrisul'],
+    accountNames: ['sicredi', 'stone', 'banrisul'], ownerCpfs: [], ownerNames: [],
   }
 
   it('descrição com CNPJ + nome + nada de conta → 2 sinais', () => {
@@ -97,13 +97,18 @@ describe('extractOwnSignals — caso real Yussef', () => {
     expect(sig.scoreBoost).toBe(0)
   })
 
-  it('CNPJ + nome + conta → 3 sinais (boost máximo)', () => {
+  it('CNPJ + nome + conta → 3 sinais (boost parcial)', () => {
+    // Sprint Owner Detection (28/06/2026): MAX_OWN_SIGNAL_BOOST cresceu de
+    // 0.35 → 0.60 (CPF dono +0.15 + nome dono +0.10 NOVOS). Este caso só
+    // dispara 3 sinais (CNPJ + nome empresa + conta) então boost = 0.35.
     const sig = extractOwnSignals(
       'PIX 29756732000198 CACULA MIX para sicredi',
       refs,
     )
     expect(sig.signalCount).toBe(3)
-    expect(sig.scoreBoost).toBeCloseTo(MAX_OWN_SIGNAL_BOOST, 5)
+    expect(sig.scoreBoost).toBeCloseTo(0.35, 5)
+    // Sanity: max possivel cresceu pra 0.60 (todos 5 sinais)
+    expect(MAX_OWN_SIGNAL_BOOST).toBeCloseTo(0.60, 5)
   })
 
   it('refs sem CNPJ ou nomes (empresa não cadastrada) — não quebra', () => {
@@ -111,6 +116,8 @@ describe('extractOwnSignals — caso real Yussef', () => {
       cnpj: null,
       names: [],
       accountNames: [],
+      ownerCpfs: [],
+      ownerNames: [],
     })
     expect(sig.signalCount).toBe(0)
     expect(sig.scoreBoost).toBe(0)
@@ -122,6 +129,8 @@ describe('extractOwnSignals — caso real Yussef', () => {
       cnpj: null,
       names: ['AB'],
       accountNames: ['XY'],
+      ownerCpfs: [],
+      ownerNames: [],
     })
     expect(sig.hasOwnName).toBe(false)
     expect(sig.hasOwnAccountName).toBe(false)

@@ -13,10 +13,7 @@ import {
   type AccountTransactionsBundle,
   type OfxCandidateTransaction,
 } from '@/lib/ofx/detect-transfer'
-import {
-  normalizeCnpj,
-  type OwnEntityRefs,
-} from '@/lib/transfers/own-entity-signals'
+import { type OwnEntityRefs } from '@/lib/transfers/own-entity-signals'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -130,23 +127,19 @@ export async function POST(request: NextRequest, { params }: Params) {
       date: t.date,
     }))
 
-    // Sprint R1: passa refs da empresa pra preview ganhar own-entity-signals
-    // (CNPJ + nome + nome de outras contas). Sem refs, preview cai em fórmula
-    // crua (sem boosts de "tx é própria"). Carrega accountNames de TODAS as
-    // contas ativas (incluindo a importada — bancos gravam o nome próprio
-    // do destinatário às vezes).
+    // Sprint Owner Detection (28/06/2026): refs centralizadas via helper.
+    // Inclui CPFs + nomes dos sócios como sinais separados (CPF=FORTE +0.15,
+    // nome=MEDIO +0.10). Antes os nomes dos sócios eram misturados em
+    // `names` com peso de "nome empresa" — peso correto mas semântica errada.
+    // Sprint R1: também inclui accountNames de TODAS as contas ativas
+    // (bancos gravam nome próprio do destinatário às vezes).
+    const { loadOwnEntityRefs } = await import('@/lib/transfers/load-own-entity-refs')
+    const baseRefs = await loadOwnEntityRefs(prisma, conta.companyId)
     const todasContasNomes = [conta.name, ...outrasContas.map((c) => c.name)]
     const refs: OwnEntityRefs = {
-      cnpj: normalizeCnpj(conta.company.cnpj),
-      names: [
-        conta.company.tradeName,
-        conta.company.name,
-        // Sprint Transfer-Pairing-Retroativo: sócios PF (Yussef etc) viram
-        // own-entity name pra que "YUSSEF Transferência | Pix" no memo
-        // contribua com NAME_BOOST (+0.10) no score.
-        ...conta.company.sociosPF.map((s) => s.nome),
-      ].filter((n): n is string => n !== null && n !== ''),
-      accountNames: todasContasNomes,
+      ...baseRefs,
+      // Override accountNames pra incluir a conta importada
+      accountNames: Array.from(new Set([...baseRefs.accountNames, ...todasContasNomes])),
     }
 
     const result = detectarTransferenciasNoPreview(

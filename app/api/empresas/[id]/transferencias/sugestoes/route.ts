@@ -15,10 +15,7 @@ import {
   findRetroactivePairs,
   type TxForDetect,
 } from '@/lib/transfers/detect-retroactive'
-import {
-  normalizeCnpj,
-  type OwnEntityRefs,
-} from '@/lib/transfers/own-entity-signals'
+import { type OwnEntityRefs } from '@/lib/transfers/own-entity-signals'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -28,30 +25,11 @@ interface Params {
 const DEFAULT_MONTHS = 12
 
 async function runDetect(empresaId: string, months: number) {
-  // Carrega refs da empresa pra sinais "OWN ENTITY"
-  const empresa = await prisma.company.findUnique({
-    where: { id: empresaId },
-    select: {
-      cnpj: true,
-      name: true,
-      tradeName: true,
-    },
-  })
-  if (!empresa) {
+  // Sprint Owner Detection (28/06/2026): refs centralizadas via helper
+  const { loadOwnEntityRefs } = await import('@/lib/transfers/load-own-entity-refs')
+  const refs: OwnEntityRefs = await loadOwnEntityRefs(prisma, empresaId)
+  if (refs.cnpj === null && refs.names.length === 0 && refs.ownerNames.length === 0) {
     return { error: 'Empresa não encontrada', status: 404 }
-  }
-
-  const bankAccounts = await prisma.bankAccount.findMany({
-    where: { companyId: empresaId, isActive: true },
-    select: { id: true, name: true },
-  })
-
-  const refs: OwnEntityRefs = {
-    cnpj: normalizeCnpj(empresa.cnpj),
-    names: [empresa.tradeName, empresa.name].filter(
-      (n): n is string => n !== null && n !== '',
-    ),
-    accountNames: bankAccounts.map((a) => a.name),
   }
 
   // Janela de tempo

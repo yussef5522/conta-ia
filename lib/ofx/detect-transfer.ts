@@ -100,7 +100,7 @@ export function detectarTransferenciasNoPreview(
   transacoesNovas: OfxCandidateTransaction[],
   outrasContasDaEmpresa: AccountTransactionsBundle[],
   contaSendoImportada: { id: string; name: string },
-  refs: OwnEntityRefs = { cnpj: null, names: [], accountNames: [] },
+  refs: OwnEntityRefs = { cnpj: null, names: [], accountNames: [], ownerCpfs: [], ownerNames: [] },
 ): DetectTransferResult {
   const candidates: TransferCandidate[] = []
 

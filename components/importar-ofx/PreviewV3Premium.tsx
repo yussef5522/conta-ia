@@ -99,7 +99,7 @@ export function PreviewV3Premium({
 
   // Refs effective: usa o que veio do endpoint OU defaults (segurança)
   const effectiveRefs: OwnEntityRefs = useMemo(
-    () => ownEntityRefs ?? { cnpj: null, names: [], accountNames: [] },
+    () => ownEntityRefs ?? { cnpj: null, names: [], accountNames: [], ownerCpfs: [], ownerNames: [] },
     [ownEntityRefs],
   )
 

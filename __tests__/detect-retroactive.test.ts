@@ -10,6 +10,8 @@ const REFS = {
   cnpj: '29756732000198',
   names: ['caçula mix'],
   accountNames: ['sicredi', 'stone', 'banrisul'],
+  ownerCpfs: [] as string[],
+  ownerNames: [] as string[],
 }
 
 function tx(

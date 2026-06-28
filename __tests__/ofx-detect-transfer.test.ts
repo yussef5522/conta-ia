@@ -37,6 +37,8 @@ const EMPTY_REFS: OwnEntityRefs = {
   cnpj: null,
   names: [],
   accountNames: [],
+  ownerCpfs: [],
+  ownerNames: [],
 }
 
 // refs Cacula Mix real (caso PIX_DEB CNPJ 29756732000198)
@@ -44,6 +46,8 @@ const CACULA_REFS: OwnEntityRefs = {
   cnpj: '29756732000198',
   names: ['Cacula Mix', 'Cacula'],
   accountNames: ['banrisul', 'sicredi', 'stone'],
+  ownerCpfs: [],
+  ownerNames: [],
 }
 
 function tx(

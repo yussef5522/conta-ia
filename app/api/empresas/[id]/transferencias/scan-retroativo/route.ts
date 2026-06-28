@@ -32,7 +32,6 @@ import {
   type OrphanTxForScan,
 } from '@/lib/transfers/scan-retroativo'
 import {
-  normalizeCnpj,
   type OwnEntityRefs,
 } from '@/lib/transfers/own-entity-signals'
 
@@ -59,36 +58,22 @@ export async function POST(request: NextRequest, { params }: Params) {
     const sinceMs = Date.now() - input.dias * 24 * 60 * 60 * 1000
     const sinceDate = new Date(sinceMs)
 
-    // 1) Empresa + sócios PF (Yussef etc) — pra refs.names
-    const empresa = await prisma.company.findUnique({
-      where: { id: empresaId },
-      select: {
-        cnpj: true,
-        name: true,
-        tradeName: true,
-        bankAccounts: {
-          where: { isActive: true },
-          select: { id: true, name: true },
-        },
-        sociosPF: { select: { nome: true } },
-      },
+    // 1) Sprint Owner Detection (28/06/2026): refs centralizadas via helper.
+    // Inclui CPF + nome dos sócios como sinais separados (CPF=FORTE,
+    // nome=MEDIO). Antes o nome do dono entrava em `names` com peso
+    // errado (sinal de "nome empresa").
+    const { loadOwnEntityRefs } = await import('@/lib/transfers/load-own-entity-refs')
+    const refs: OwnEntityRefs = await loadOwnEntityRefs(prisma, empresaId)
+    const empresaAccounts = await prisma.bankAccount.findMany({
+      where: { companyId: empresaId, isActive: true },
+      select: { id: true },
     })
-    if (!empresa) {
+    if (refs.cnpj === null && refs.names.length === 0 && refs.ownerNames.length === 0) {
       return NextResponse.json({ erro: 'Empresa não encontrada' }, { status: 404 })
     }
 
-    const refs: OwnEntityRefs = {
-      cnpj: normalizeCnpj(empresa.cnpj),
-      names: [
-        empresa.name,
-        empresa.tradeName,
-        ...empresa.sociosPF.map((s) => s.nome),
-      ].filter((n): n is string => typeof n === 'string' && n.length > 0),
-      accountNames: empresa.bankAccounts.map((a) => a.name),
-    }
-
     // 2) Tx OFX órfãs da empresa dos últimos N dias
-    const accountIds = empresa.bankAccounts.map((a) => a.id)
+    const accountIds = empresaAccounts.map((a) => a.id)
     const orphanRows = await prisma.transaction.findMany({
       where: {
         bankAccountId: { in: accountIds },

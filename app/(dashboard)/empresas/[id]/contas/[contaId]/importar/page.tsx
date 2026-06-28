@@ -44,11 +44,14 @@ interface PreviewResult {
   // Sprint Import Categoria Editável (18/06/2026)
   categorySuggestions?: CategorySuggestion[]
   categoriesForUI?: CategoryOption[]
-  // Sprint OFX V3 R7 (27/06/2026) — refs da empresa pra detector de TRANSFER
+  // Sprint OFX V3 R7 (27/06/2026) — refs da empresa pra detector de TRANSFER.
+  // Sprint Owner Detection (28/06/2026): inclui CPFs + nomes dos sócios.
   ownEntityRefs?: {
     cnpj: string | null
     names: string[]
     accountNames: string[]
+    ownerCpfs: string[]
+    ownerNames: string[]
   }
 }
 

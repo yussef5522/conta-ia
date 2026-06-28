@@ -21,6 +21,8 @@ const refs = {
   cnpj: '29756732000198',
   names: ['cacula mix', 'yussef'],
   accountNames: ['banrisul', 'sicredi', 'stone'],
+  ownerCpfs: [] as string[],
+  ownerNames: [] as string[],
 }
 
 function tx(p: {

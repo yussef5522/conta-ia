@@ -336,30 +336,20 @@ export async function POST(request: NextRequest, { params }: Params) {
     // Sprint OFX V3 R7 (27/06/2026) — FIX 1: passa OwnEntityRefs pra UI
     // detectar transferência interna por sinal forte (CNPJ próprio +
     // nome empresa + nome de outra conta da mesma empresa).
-    let ownEntityRefs: { cnpj: string | null; names: string[]; accountNames: string[] } = {
+    //
+    // Sprint Owner Detection (28/06/2026): refs agora incluem CPFs + nomes
+    // dos sócios (SocioPF). Centralizado em loadOwnEntityRefs pra os 6
+    // callers usarem o mesmo conjunto sem divergência.
+    let ownEntityRefs: import('@/lib/transfers/own-entity-signals').OwnEntityRefs = {
       cnpj: null,
       names: [],
       accountNames: [],
+      ownerCpfs: [],
+      ownerNames: [],
     }
     try {
-      const { normalizeCnpj } = await import('@/lib/transfers/own-entity-signals')
-      const companyForRefs = await prisma.company.findUnique({
-        where: { id: conta.companyId },
-        select: {
-          cnpj: true,
-          name: true,
-          tradeName: true,
-          bankAccounts: { where: { isActive: true }, select: { name: true } },
-        },
-      })
-      if (companyForRefs) {
-        ownEntityRefs = {
-          cnpj: normalizeCnpj(companyForRefs.cnpj),
-          names: [companyForRefs.name, companyForRefs.tradeName]
-            .filter((n): n is string => typeof n === 'string' && n.length > 0),
-          accountNames: companyForRefs.bankAccounts.map((a) => a.name),
-        }
-      }
+      const { loadOwnEntityRefs } = await import('@/lib/transfers/load-own-entity-refs')
+      ownEntityRefs = await loadOwnEntityRefs(prisma, conta.companyId)
     } catch (e) {
       console.error('[importar-ofx preview] ownEntityRefs falhou:', e)
     }
@@ -719,30 +709,19 @@ export async function POST(request: NextRequest, { params }: Params) {
   let autoPairedCount = 0
   try {
     const { scanRetroativo } = await import('@/lib/transfers/scan-retroativo')
-    const { normalizeCnpj } = await import('@/lib/transfers/own-entity-signals')
+    const { loadOwnEntityRefs } = await import('@/lib/transfers/load-own-entity-refs')
     const crypto = await import('node:crypto')
 
-    const companyForRefs = await prisma.company.findUnique({
-      where: { id: conta.companyId },
-      select: {
-        cnpj: true,
-        name: true,
-        tradeName: true,
-        bankAccounts: { where: { isActive: true }, select: { id: true, name: true } },
-        sociosPF: { select: { nome: true } },
-      },
+    // Sprint Owner Detection (28/06/2026): refs centralizadas — incluem
+    // CPFs + nomes dos sócios (antes o nome do dono era misturado no array
+    // de "nome empresa" com peso de sinal errado).
+    const refs = await loadOwnEntityRefs(prisma, conta.companyId)
+    const allAccounts = await prisma.bankAccount.findMany({
+      where: { companyId: conta.companyId, isActive: true },
+      select: { id: true },
     })
-    if (companyForRefs) {
-      const refs = {
-        cnpj: normalizeCnpj(companyForRefs.cnpj),
-        names: [
-          companyForRefs.name,
-          companyForRefs.tradeName,
-          ...companyForRefs.sociosPF.map((s) => s.nome),
-        ].filter((n): n is string => typeof n === 'string' && n.length > 0),
-        accountNames: companyForRefs.bankAccounts.map((a) => a.name),
-      }
-      const accIds = companyForRefs.bankAccounts.map((a) => a.id)
+    if (refs.cnpj || refs.names.length > 0 || refs.ownerNames.length > 0) {
+      const accIds = allAccounts.map((a) => a.id)
       const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
       const orphans = await prisma.transaction.findMany({
         where: {
@@ -781,64 +760,142 @@ export async function POST(request: NextRequest, { params }: Params) {
       // /transferencias/scan-retroativo). MEDIUM fica como pendente — UI
       // futura (Fase 2) mostra como candidato pra user confirmar.
       const toApply = scan.pairs.filter((p) => p.level === 'HIGH' && p.nameMatchOk)
+
+      // Sprint Owner Detection (28/06/2026): carrega accountKind dos 2 lados
+      // pra classificar PJ+PJ (TRANSFER interna) vs PJ+PF (Aporte/Retirada).
+      // Antes auto-pair sempre virava TRANSFER — agora respeita o classificador.
+      const accountsKinds = await prisma.bankAccount.findMany({
+        where: { companyId: conta.companyId, isActive: true },
+        select: { id: true, accountKind: true },
+      })
+      const accKindById = new Map(accountsKinds.map((a) => [a.id, a.accountKind]))
+
+      // Pré-carrega categorias equity (1 query) — usadas só nas decisões PJ+PF.
+      const equityCats = await prisma.category.findMany({
+        where: {
+          companyId: conta.companyId,
+          isActive: true,
+          OR: [
+            { name: 'Aporte de Capital', dreGroup: 'APORTES_CAPITAL' },
+            { name: 'Retirada de Lucros / Pró-labore', dreGroup: 'DISTRIBUICAO_LUCROS' },
+          ],
+        },
+        select: { id: true, name: true, dreGroup: true },
+      })
+      const aporteId = equityCats.find((c) => c.dreGroup === 'APORTES_CAPITAL')?.id ?? null
+      const retiradaId = equityCats.find((c) => c.dreGroup === 'DISTRIBUICAO_LUCROS')?.id ?? null
+
+      const { classifyTransferPair, normalizeAccountKind } = await import('@/lib/accounts/kind')
+
       if (toApply.length > 0) {
         await prisma.$transaction(async (txp) => {
           for (const p of toApply) {
-            const groupId = crypto.randomUUID()
-            const r1 = await txp.transaction.updateMany({
-              where: { id: p.from.id, transferGroupId: null, type: 'DEBIT' },
-              data: {
-                type: 'TRANSFER',
-                transferGroupId: groupId,
-                transferDirection: 'OUT',
-                status: 'RECONCILED',
-                // Sprint Pending Transfer State (27/06/2026): quando o
-                // scanRetroativo casa o par, limpa flags de "aguardando par"
-                // se estava marcada como pendingTransfer.
-                pendingTransfer: false,
-                pendingTransferDirection: null,
-                pendingTransferSince: null,
-              },
-            })
-            const r2 = await txp.transaction.updateMany({
-              where: { id: p.to.id, transferGroupId: null, type: 'CREDIT' },
-              data: {
-                type: 'TRANSFER',
-                transferGroupId: groupId,
-                transferDirection: 'IN',
-                status: 'RECONCILED',
-                pendingTransfer: false,
-                pendingTransferDirection: null,
-                pendingTransferSince: null,
-              },
-            })
-            if (r1.count === 1 && r2.count === 1) {
-              autoPairedCount += 1
-            } else {
-              // Rollback do lado órfão se um pareou e outro não
-              if (r1.count === 1 && r2.count !== 1) {
-                await txp.transaction.update({
-                  where: { id: p.from.id },
-                  data: {
-                    type: 'DEBIT',
-                    transferGroupId: null,
-                    transferDirection: null,
-                    status: 'PENDING',
-                  },
-                })
+            // Classificar pelo accountKind do par
+            const fromKind = normalizeAccountKind(accKindById.get(p.from.bankAccountId) ?? 'PJ')
+            const toKind = normalizeAccountKind(accKindById.get(p.to.bankAccountId) ?? 'PJ')
+            // p.from é DEBIT (saiu), p.to é CREDIT (entrou) — pelo scanRetroativo
+            const classification = classifyTransferPair(fromKind, 'DEBIT', toKind)
+
+            if (classification.kind === 'OUT_OF_SCOPE') continue // PF↔PF não eh assunto
+
+            if (classification.kind === 'TRANSFER_INTERNAL') {
+              // PJ + PJ: caminho clássico (atual)
+              const groupId = crypto.randomUUID()
+              const r1 = await txp.transaction.updateMany({
+                where: { id: p.from.id, transferGroupId: null, type: 'DEBIT' },
+                data: {
+                  type: 'TRANSFER',
+                  transferGroupId: groupId,
+                  transferDirection: 'OUT',
+                  status: 'RECONCILED',
+                  // Sprint Pending Transfer State (27/06/2026): quando o
+                  // scanRetroativo casa o par, limpa flags de "aguardando par"
+                  // se estava marcada como pendingTransfer.
+                  pendingTransfer: false,
+                  pendingTransferDirection: null,
+                  pendingTransferSince: null,
+                },
+              })
+              const r2 = await txp.transaction.updateMany({
+                where: { id: p.to.id, transferGroupId: null, type: 'CREDIT' },
+                data: {
+                  type: 'TRANSFER',
+                  transferGroupId: groupId,
+                  transferDirection: 'IN',
+                  status: 'RECONCILED',
+                  pendingTransfer: false,
+                  pendingTransferDirection: null,
+                  pendingTransferSince: null,
+                },
+              })
+              if (r1.count === 1 && r2.count === 1) {
+                autoPairedCount += 1
+              } else {
+                // Rollback do lado órfão se um pareou e outro não
+                if (r1.count === 1 && r2.count !== 1) {
+                  await txp.transaction.update({
+                    where: { id: p.from.id },
+                    data: {
+                      type: 'DEBIT',
+                      transferGroupId: null,
+                      transferDirection: null,
+                      status: 'PENDING',
+                    },
+                  })
+                }
+                if (r2.count === 1 && r1.count !== 1) {
+                  await txp.transaction.update({
+                    where: { id: p.to.id },
+                    data: {
+                      type: 'CREDIT',
+                      transferGroupId: null,
+                      transferDirection: null,
+                      status: 'PENDING',
+                    },
+                  })
+                }
               }
-              if (r2.count === 1 && r1.count !== 1) {
-                await txp.transaction.update({
-                  where: { id: p.to.id },
-                  data: {
-                    type: 'CREDIT',
-                    transferGroupId: null,
-                    transferDirection: null,
-                    status: 'PENDING',
-                  },
-                })
-              }
+              continue
             }
+
+            // PJ + PF: APORTE_CAPITAL ou RETIRADA_LUCRO
+            // Categoriza ambos lados com a categoria de equity, MANTÉM
+            // type=DEBIT/CREDIT (não vira TRANSFER artificial). Sai do DRE
+            // pelo dreGroup (NonDREGroup).
+            const equityCatId =
+              classification.kind === 'APORTE_CAPITAL' ? aporteId : retiradaId
+            if (!equityCatId) {
+              // Categoria não cadastrada — não tenta classificar automatic,
+              // deixa pra UI 1-clique do aguardando-par.
+              continue
+            }
+            await txp.transaction.update({
+              where: { id: p.from.id },
+              data: {
+                categoryId: equityCatId,
+                status: 'RECONCILED',
+                cashCoded: true,
+                cashCodedAt: new Date(),
+                pendingTransfer: false,
+                pendingTransferDirection: null,
+                pendingTransferSince: null,
+                notes: `[PJ↔PF:${classification.kind}]`,
+              },
+            })
+            await txp.transaction.update({
+              where: { id: p.to.id },
+              data: {
+                categoryId: equityCatId,
+                status: 'RECONCILED',
+                cashCoded: true,
+                cashCodedAt: new Date(),
+                pendingTransfer: false,
+                pendingTransferDirection: null,
+                pendingTransferSince: null,
+                notes: `[PJ↔PF:${classification.kind}]`,
+              },
+            })
+            autoPairedCount += 1
           }
         })
       }

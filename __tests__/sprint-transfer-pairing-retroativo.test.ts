@@ -24,6 +24,8 @@ const refs = {
   cnpj: '29756732000198',
   names: ['caçula mix', 'yussef'],
   accountNames: ['banrisul', 'sicredi', 'stone'],
+  ownerCpfs: [] as string[],
+  ownerNames: [] as string[],
 }
 
 function tx(
@@ -184,9 +186,11 @@ describe('Sprint Transfer-Pairing-Retroativo — integração importer OFX', () 
     expect(code).toMatch(/import\(['"]@\/lib\/transfers\/scan-retroativo['"]\)/)
   })
 
-  it('inclui sociosPF nas refs.names (caso Yussef)', () => {
-    expect(code).toMatch(/sociosPF.*\{\s*select:\s*\{\s*nome:\s*true/)
-    expect(code).toMatch(/companyForRefs\.sociosPF\.map/)
+  it('inclui sociosPF nas refs (via loadOwnEntityRefs)', () => {
+    // Sprint Owner Detection (28/06/2026): refatorado pra usar helper
+    // centralizado loadOwnEntityRefs (que internamente faz select de
+    // sociosPF.nome e .cpf). Caller ficou DRY — assertion atualizada.
+    expect(code).toMatch(/loadOwnEntityRefs/)
   })
 
   it('gate: SOMENTE HIGH + nameMatchOk auto-pareia', () => {
@@ -218,8 +222,9 @@ describe('Sprint Transfer-Pairing-Retroativo — endpoint', () => {
     expect(code).toMatch(/dryRun:\s*z\.coerce\.boolean\(\)\.default\(true\)/)
   })
 
-  it('inclui SocioPF.nome em refs.names', () => {
-    expect(code).toMatch(/sociosPF:\s*\{\s*select:\s*\{\s*nome:\s*true/)
+  it('inclui SocioPF.nome via loadOwnEntityRefs (helper centralizado)', () => {
+    // Sprint Owner Detection (28/06/2026): refatorado pra usar helper.
+    expect(code).toMatch(/loadOwnEntityRefs/)
   })
 
   it('filtra transferGroupId NULL e reconciledWithId NULL', () => {
