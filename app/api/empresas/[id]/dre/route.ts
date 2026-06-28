@@ -148,6 +148,19 @@ export async function GET(request: NextRequest, { params }: Params) {
         // tx marcada como "transferência aguardando par" sai do DRE mesmo SEM
         // o par real. Limbo fora do P&L até o par chegar e virar type=TRANSFER.
         pendingTransfer: false,
+        // Sprint DRE Cleanup (28/06/2026, ACHADO #2): tx que eh pagamento de
+        // PARCELA de emprestimo (loanInstallmentPaid setado) NAO entra na query
+        // principal — o `amount` cobre principal + juros, e o principal NAO eh
+        // despesa (eh baixa de passivo). Os JUROS sao reinjetados separadamente
+        // via query auxiliar abaixo, categorizados como "Juros sobre Empréstimos"
+        // (DESPESAS_FINANCEIRAS). Antes essas tx caiam em "Sem categoria"
+        // inflando uncat (R$ 28.725,25 em Cacula).
+        loanInstallmentPaid: { is: null },
+        // Sprint DRE Cleanup (28/06/2026, ACHADO #1 defesa em profundidade):
+        // tx que eh liberacao de emprestimo (CREDIT entrada de passivo) NAO eh
+        // receita. Antes filtrava so no engine puro mas mapper nao populava o
+        // campo. Agora filtra direto no SQL pra ser consistente.
+        loanDisbursement: { is: null },
         // Sprint 4.0.1.a/b — REALIZADO = EFFECTED; PREVISTO = PAYABLE/RECEIVABLE.
         lifecycle: lifecycleFilter,
         // Anti-dupla-contagem (só no Realizado). Yussef 11/06/2026 (fix DRE):
@@ -196,6 +209,11 @@ export async function GET(request: NextRequest, { params }: Params) {
         competenceDate: true,
         paymentDate: true,
         categoryId: true,
+        // Sprint DRE Cleanup (28/06/2026, ACHADO #1): popular defesa em
+        // profundidade no engine. Se um dia o filtro SQL falhar, o engine puro
+        // ainda tem skips dedicados pra esses 3 campos.
+        isCardPayment: true,
+        pendingTransfer: true,
       },
     })
 
@@ -207,7 +225,91 @@ export async function GET(request: NextRequest, { params }: Params) {
       competenceDate: t.competenceDate,
       paymentDate: t.paymentDate,
       categoryId: t.categoryId,
+      // Sprint DRE Cleanup ACHADO #1: defesa em profundidade
+      isCardPayment: t.isCardPayment,
+      pendingTransfer: t.pendingTransfer,
     }))
+
+    // Sprint DRE Cleanup (28/06/2026, ACHADO #2): query auxiliar pra reinjetar
+    // parcelas de empréstimo casadas como JUROS (Despesas Financeiras), não
+    // como amount full. Engine puro usa `loanInterestSplit` em vez de
+    // `amount` quando setado.
+    //
+    // Resolve: tx de parcela casada (R$ 28.725,25 na Cacula hoje) que entrava
+    // como "Sem categoria" em uncategorized passa a entrar SÓ os juros em
+    // DESPESAS_FINANCEIRAS via categoria "Juros sobre Empréstimos". Principal
+    // sai do DRE (é baixa de passivo, vai pro balanço — sprint futuro).
+    const jurosCategory = await prisma.category.findFirst({
+      where: {
+        companyId,
+        name: 'Juros sobre Empréstimos',
+        isActive: true,
+      },
+      select: { id: true },
+    })
+
+    if (jurosCategory) {
+      const installmentTxsRaw = await prisma.transaction.findMany({
+        where: {
+          ...tenantFilter,
+          // Tem parcela casada apontando pra ela
+          loanInstallmentPaid: { isNot: null },
+          // Mesmos filtros qualitativos da query principal — exceto
+          // loanInstallmentPaid (que aqui exigimos NOT NULL).
+          type: { not: 'TRANSFER' },
+          isCardPayment: false,
+          pendingTransfer: false,
+          loanDisbursement: { is: null },
+          lifecycle: lifecycleFilter,
+          isInternalTransfer: false,
+          status: { not: 'IGNORED' },
+          ...(view === 'realizado'
+            ? {
+                NOT: {
+                  origin: 'OFX',
+                  reconciledWithId: null,
+                  reconciledFrom: { some: {} },
+                },
+              }
+            : {}),
+          OR: lifecycleDateClauses,
+        },
+        select: {
+          id: true,
+          type: true,
+          amount: true,
+          date: true,
+          competenceDate: true,
+          paymentDate: true,
+          isCardPayment: true,
+          pendingTransfer: true,
+          loanInstallmentPaid: {
+            select: { interest: true, amortization: true },
+          },
+        },
+      })
+
+      for (const t of installmentTxsRaw) {
+        const interest = t.loanInstallmentPaid?.interest ?? 0
+        // Se a parcela é 100% amortização (juros = 0), pula — engine também
+        // pula tx com loanInterestSplit === 0.
+        if (interest <= 0) continue
+        transactions.push({
+          id: t.id,
+          type: t.type as 'CREDIT' | 'DEBIT' | 'TRANSFER',
+          // amount é preservado pra audit; engine usa loanInterestSplit pra
+          // valor efetivo no DRE.
+          amount: t.amount,
+          date: t.date,
+          competenceDate: t.competenceDate,
+          paymentDate: t.paymentDate,
+          categoryId: jurosCategory.id,
+          isCardPayment: t.isCardPayment,
+          pendingTransfer: t.pendingTransfer,
+          loanInterestSplit: interest,
+        })
+      }
+    }
 
     const calcOptions: CalculateDREOptions = {
       period: { startDate, endDate, regime },

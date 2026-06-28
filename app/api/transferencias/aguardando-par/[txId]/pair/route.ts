@@ -202,15 +202,26 @@ export async function POST(request: NextRequest, { params }: Params) {
     // Cada lado MANTÉM o type original (DEBIT/CREDIT) — não vira TRANSFER —
     // e fica categorizado como "Aporte de Capital" (PF→PJ) ou "Retirada de
     // Lucros / Pró-labore" (PJ→PF). DRE pula via NonDREGroup.
+    //
+    // Sprint DRE Cleanup (28/06/2026, ACHADO #3): lookup DETERMINÍSTICO por
+    // name + dreGroup. Antes era só name → quando havia duplicação no plano
+    // de contas (caso Cacula: 2x "Aporte de Capital" — uma TRANSFERENCIA
+    // antiga, outra APORTES_CAPITAL nova), o findFirst pegava qualquer.
+    // Agora exige dreGroup correto (APORTES_CAPITAL ou DISTRIBUICAO_LUCROS).
     const targetCategoryName =
       classification.kind === 'APORTE_CAPITAL'
         ? 'Aporte de Capital'
         : 'Retirada de Lucros / Pró-labore'
+    const targetCategoryDreGroup =
+      classification.kind === 'APORTE_CAPITAL'
+        ? 'APORTES_CAPITAL'
+        : 'DISTRIBUICAO_LUCROS'
 
     const cat = await prisma.category.findFirst({
       where: {
         companyId: pending.bankAccount.companyId,
         name: targetCategoryName,
+        dreGroup: targetCategoryDreGroup,
         isActive: true,
       },
       select: { id: true, dreGroup: true },
@@ -218,7 +229,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     if (!cat) {
       return NextResponse.json(
         {
-          erro: `Categoria de patrimônio "${targetCategoryName}" não existe nesta empresa. Crie em /empresas/[id]/categorias antes de classificar pares PJ/PF.`,
+          erro: `Categoria de patrimônio "${targetCategoryName}" (dreGroup=${targetCategoryDreGroup}) não existe nesta empresa. Crie em /empresas/[id]/categorias antes de classificar pares PJ/PF.`,
           code: 'EQUITY_CATEGORY_MISSING',
         },
         { status: 422 },

@@ -57,13 +57,19 @@ export async function POST(request: NextRequest, { params }: Params) {
       )
     }
 
+    // Sprint DRE Cleanup (28/06/2026, ACHADO #3): lookup determinístico por
+    // name + dreGroup — antes era só name, pegando qualquer duplicata do
+    // plano de contas.
     const targetCategoryName =
       body.kind === 'APORTE_CAPITAL' ? 'Aporte de Capital' : 'Retirada de Lucros / Pró-labore'
+    const targetCategoryDreGroup =
+      body.kind === 'APORTE_CAPITAL' ? 'APORTES_CAPITAL' : 'DISTRIBUICAO_LUCROS'
 
     const cat = await prisma.category.findFirst({
       where: {
         companyId: tx.bankAccount.companyId,
         name: targetCategoryName,
+        dreGroup: targetCategoryDreGroup,
         isActive: true,
       },
       select: { id: true },
@@ -71,7 +77,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     if (!cat) {
       return NextResponse.json(
         {
-          erro: `Categoria "${targetCategoryName}" não cadastrada. Crie em /empresas/[id]/categorias.`,
+          erro: `Categoria "${targetCategoryName}" (dreGroup=${targetCategoryDreGroup}) não cadastrada. Crie em /empresas/[id]/categorias.`,
           code: 'EQUITY_CATEGORY_MISSING',
         },
         { status: 422 },
