@@ -7,6 +7,12 @@ export type TipoConta = (typeof TIPOS_CONTA)[number]
 export const TIPOS_CASH_KIND = ['MAIN', 'PETTY', 'PDV_TERMINAL'] as const
 export type TipoCashKind = (typeof TIPOS_CASH_KIND)[number]
 
+// Sprint Account Kind PJ/PF (27/06/2026) — PJ = empresa / PF = pessoal do dono.
+// Decisão de pareamento (transferência vs aporte/retirada) é pela accountKind
+// dos 2 lados, nunca pelo nome do banco.
+export const ACCOUNT_KINDS = ['PJ', 'PF'] as const
+export type AccountKindEnum = (typeof ACCOUNT_KINDS)[number]
+
 export const contaBancariaSchema = z.object({
   name: z
     .string({ required_error: 'Nome da conta é obrigatório' })
@@ -32,6 +38,8 @@ export const contaBancariaSchema = z.object({
     .min(0, 'Alerta deve ser >= 0')
     .optional()
     .nullable(),
+  // Sprint Account Kind PJ/PF (27/06/2026)
+  accountKind: z.enum(ACCOUNT_KINDS).optional().default('PJ'),
 })
 
 export type ContaBancariaInput = z.infer<typeof contaBancariaSchema>

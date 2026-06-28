@@ -37,6 +37,7 @@ interface ContaFormProps {
     allowNegativeBalance?: boolean
     creditLimit?: number
     lowBalanceThreshold?: number | null
+    accountKind?: string
   }
 }
 
@@ -54,6 +55,7 @@ export function ContaForm({ empresaId, conta }: ContaFormProps) {
     agency: conta?.agency ?? '',
     accountNumber: conta?.accountNumber ?? '',
     accountType: conta?.accountType ?? 'CHECKING',
+    accountKind: conta?.accountKind ?? 'PJ',
     balance: conta?.balance?.toString() ?? '0',
     allowNegativeBalance: conta?.allowNegativeBalance ?? true,
     creditLimit: conta?.creditLimit?.toString() ?? '0',
@@ -170,6 +172,29 @@ export function ContaForm({ empresaId, conta }: ContaFormProps) {
               </SelectContent>
             </Select>
             {errors.accountType && <p className="text-xs text-destructive">{errors.accountType}</p>}
+          </div>
+
+          {/* Sprint Account Kind PJ/PF (27/06/2026) — seletor empresa vs dono */}
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor="accountKind">
+              Esta conta é da empresa ou pessoal do dono?{' '}
+              <span className="text-destructive">*</span>
+            </Label>
+            <Select
+              value={form.accountKind}
+              onValueChange={(v) => set('accountKind', v)}
+            >
+              <SelectTrigger id="accountKind"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="PJ">PJ — Conta da empresa (operacional)</SelectItem>
+                <SelectItem value="PF">PF — Conta pessoal do dono (privada)</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-[11px] text-muted-foreground leading-snug">
+              Pares <strong>PJ ↔ PJ</strong> são transferências internas (fora do DRE).
+              Pares <strong>PJ ↔ PF</strong> viram Aporte (entra na PJ) ou Retirada / Pró-labore
+              (sai da PJ) — vão pro patrimônio, não pro resultado.
+            </p>
           </div>
 
           {/* Campos bancários: esconde em CASH (não tem banco) */}

@@ -135,6 +135,7 @@ export async function POST(request: NextRequest) {
         bankCode: safe.bankCode,
         agency: safe.agency,
         accountNumber: safe.accountNumber,
+        accountKind: data.accountKind ?? 'PJ',
       },
     })
 

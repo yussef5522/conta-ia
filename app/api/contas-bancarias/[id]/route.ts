@@ -65,6 +65,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
         bankCode: safe.bankCode,
         agency: safe.agency,
         accountNumber: safe.accountNumber,
+        accountKind: data.accountKind ?? 'PJ',
       },
     })
 
@@ -73,7 +74,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
       conta as unknown as Record<string, unknown>,
       [
         'name', 'bankName', 'bankCode', 'agency', 'accountNumber', 'accountType', 'isActive',
-        'allowNegativeBalance', 'creditLimit', 'lowBalanceThreshold',
+        'allowNegativeBalance', 'creditLimit', 'lowBalanceThreshold', 'accountKind',
       ],
     )
 

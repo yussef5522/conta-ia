@@ -7,17 +7,19 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { ArrowLeftRight, X, Check, Loader2, ChevronDown, ChevronRight } from 'lucide-react'
+import { ArrowLeftRight, X, Check, Loader2, ChevronDown, ChevronRight, ArrowDownToLine, ArrowUpFromLine } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
+import { AccountKindBadge } from '@/components/shared/AccountKindBadge'
 
 interface Sugestao {
   candidateId: string
   candidateDate: string
   candidateAccountId: string
   candidateAccountName: string
+  candidateAccountKind: 'PJ' | 'PF'
   candidateDescription: string
 }
 
@@ -29,7 +31,7 @@ interface Item {
   description: string
   direction: 'IN' | 'OUT' | null
   since: string | null
-  account: { id: string; name: string; bankName: string | null } | null
+  account: { id: string; name: string; bankName: string | null; accountKind: 'PJ' | 'PF' } | null
   sugestoes: Sugestao[]
 }
 
@@ -103,10 +105,44 @@ export function AguardandoParTab({ empresaId }: { empresaId: string }) {
         toast({ variant: 'destructive', title: 'Erro', description: d.erro ?? 'Falha ao parear' })
         return
       }
+      const d = await res.json().catch(() => ({} as { classification?: string }))
+      const label =
+        d.classification === 'TRANSFER_INTERNAL'
+          ? 'Transferência interna (PJ↔PJ)'
+          : d.classification === 'APORTE_CAPITAL'
+            ? 'Aporte de Capital (PF→PJ)'
+            : d.classification === 'RETIRADA_LUCRO'
+              ? 'Retirada de Lucros (PJ→PF)'
+              : 'Par casado'
       toast({
         variant: 'success',
-        title: 'Transferência casada',
-        description: 'Os 2 lados viraram TRANSFER. Fora do DRE.',
+        title: label,
+        description: 'Os 2 lados saíram da fila. Fora do DRE.',
+      })
+      await reload()
+    } finally {
+      setActing(null)
+    }
+  }
+
+  async function classifyEquity(itemId: string, kind: 'APORTE_CAPITAL' | 'RETIRADA_LUCRO') {
+    setActing(itemId)
+    try {
+      const res = await fetch(`/api/transferencias/aguardando-par/${itemId}/classify-equity`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        toast({ variant: 'destructive', title: 'Erro', description: d.erro ?? 'Falha ao classificar' })
+        return
+      }
+      toast({
+        variant: 'success',
+        title: kind === 'APORTE_CAPITAL' ? 'Aporte de Capital' : 'Retirada de Lucros',
+        description: 'Movimentação foi pro patrimônio. Fora do DRE.',
       })
       await reload()
     } finally {
@@ -185,9 +221,13 @@ export function AguardandoParTab({ empresaId }: { empresaId: string }) {
                       </span>
                       <span className="text-sm font-medium truncate">{item.description}</span>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {item.account?.name} {item.account?.bankName && `· ${item.account.bankName}`}
-                      {item.since && ` · aguardando desde ${fmtDateBR(item.since)}`}
+                    <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5 flex-wrap">
+                      <span>
+                        {item.account?.name}{' '}
+                        {item.account?.bankName && `· ${item.account.bankName}`}
+                      </span>
+                      {item.account?.accountKind && <AccountKindBadge kind={item.account.accountKind} />}
+                      {item.since && <span>· aguardando desde {fmtDateBR(item.since)}</span>}
                     </p>
                   </div>
                   <span className={`text-sm font-semibold tabular-nums ${directionTone}`}>
@@ -197,6 +237,34 @@ export function AguardandoParTab({ empresaId }: { empresaId: string }) {
                     <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold px-2 py-0.5">
                       {item.sugestoes.length} match
                     </span>
+                  )}
+                  {/* Sprint Account Kind PJ/PF (27/06/2026): Aporte/Retirada manual
+                      pra movimentação que veio/foi de PF não cadastrada */}
+                  {item.type === 'CREDIT' && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => classifyEquity(item.id, 'APORTE_CAPITAL')}
+                      disabled={acting === item.id}
+                      title="Foi aporte do dono"
+                      className="text-xs"
+                    >
+                      <ArrowDownToLine className="h-3.5 w-3.5 mr-1" />
+                      Aporte
+                    </Button>
+                  )}
+                  {item.type === 'DEBIT' && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => classifyEquity(item.id, 'RETIRADA_LUCRO')}
+                      disabled={acting === item.id}
+                      title="Foi retirada / pró-labore"
+                      className="text-xs"
+                    >
+                      <ArrowUpFromLine className="h-3.5 w-3.5 mr-1" />
+                      Retirada
+                    </Button>
                   )}
                   <Button
                     variant="ghost"
@@ -222,10 +290,11 @@ export function AguardandoParTab({ empresaId }: { empresaId: string }) {
                         className="flex items-center gap-3 bg-emerald-50/40 dark:bg-emerald-950/15 border border-emerald-200/40 dark:border-emerald-900/30 rounded p-2"
                       >
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs">
+                          <p className="text-xs flex items-center gap-1.5 flex-wrap">
                             <span className="text-muted-foreground tabular-nums">{fmtDateBR(s.candidateDate)}</span>
-                            {' · '}
+                            <span className="text-muted-foreground">·</span>
                             <span className="font-medium">{s.candidateAccountName}</span>
+                            <AccountKindBadge kind={s.candidateAccountKind} />
                           </p>
                           <p className="text-[11px] text-muted-foreground truncate mt-0.5">
                             {s.candidateDescription}

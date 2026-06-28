@@ -41,17 +41,17 @@ export async function GET(request: NextRequest, { params }: Params) {
         pendingTransferDirection: true,
         pendingTransferSince: true,
         bankAccountId: true,
-        bankAccount: { select: { id: true, name: true, bankName: true } },
+        bankAccount: { select: { id: true, name: true, bankName: true, accountKind: true } },
       },
       orderBy: { pendingTransferSince: 'desc' },
     })
 
     // Sugestões de par pra cada pendente: tx CREDIT/DEBIT órfã na empresa
     // com mesmo valor, conta DIFERENTE, dentro da janela ±3d, sinal oposto.
-    const accountsById = new Map<string, { id: string; name: string }>()
+    const accountsById = new Map<string, { id: string; name: string; accountKind: string }>()
     const accounts = await prisma.bankAccount.findMany({
       where: { companyId: empresaId, isActive: true },
-      select: { id: true, name: true },
+      select: { id: true, name: true, accountKind: true },
     })
     for (const a of accounts) accountsById.set(a.id, a)
 
@@ -117,6 +117,7 @@ export async function GET(request: NextRequest, { params }: Params) {
             candidateDate: c.date.toISOString(),
             candidateAccountId: acc.id,
             candidateAccountName: acc.name,
+            candidateAccountKind: acc.accountKind as 'PJ' | 'PF',
             candidateDescription: c.description,
           }
         })
@@ -133,7 +134,12 @@ export async function GET(request: NextRequest, { params }: Params) {
       direction: p.pendingTransferDirection as 'IN' | 'OUT' | null,
       since: p.pendingTransferSince?.toISOString() ?? null,
       account: p.bankAccount
-        ? { id: p.bankAccount.id, name: p.bankAccount.name, bankName: p.bankAccount.bankName }
+        ? {
+            id: p.bankAccount.id,
+            name: p.bankAccount.name,
+            bankName: p.bankAccount.bankName,
+            accountKind: (p.bankAccount.accountKind as 'PJ' | 'PF'),
+          }
         : null,
       sugestoes: sugestoesPorTxId.get(p.id) ?? [],
     }))

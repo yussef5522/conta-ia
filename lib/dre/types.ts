@@ -36,12 +36,17 @@ export type NonDREGroup =
   // do sistema bater com o extrato real do banco. NÃO é receita nem despesa —
   // só corrige o ponto de partida. Aparece como linha informativa no DRE.
   | 'AJUSTE_SALDO'
+  // Sprint Account Kind PJ/PF (27/06/2026). Aporte do dono na PJ: vira
+  // PATRIMÔNIO LÍQUIDO (capital social) — NÃO é receita. Saída no sentido
+  // contrário usa DISTRIBUICAO_LUCROS (já existente). Padrão Wave/QuickBooks.
+  | 'APORTES_CAPITAL'
 
 export const NON_DRE_GROUPS: NonDREGroup[] = [
   'DISTRIBUICAO_LUCROS',
   'INVESTIMENTOS',
   'TRANSFERENCIA',
   'AJUSTE_SALDO',
+  'APORTES_CAPITAL',
 ]
 
 // Set pra lookup O(1) — usado pelo calculator.
@@ -99,6 +104,7 @@ export const NON_DRE_GROUP_LABELS: Record<NonDREGroup, string> = {
   INVESTIMENTOS: 'Investimentos',
   TRANSFERENCIA: 'Transferências entre Contas',
   AJUSTE_SALDO: 'Ajustes Técnicos de Saldo',
+  APORTES_CAPITAL: 'Aportes de Capital (Patrimônio Líquido)',
 }
 
 // ============================================================

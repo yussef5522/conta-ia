@@ -21,6 +21,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
+import { classifyTransferPair, normalizeAccountKind } from '@/lib/accounts/kind'
 
 interface Params { params: Promise<{ txId: string }> }
 
@@ -49,7 +50,7 @@ export async function POST(request: NextRequest, { params }: Params) {
           transferGroupId: true,
           bankAccountId: true,
           notes: true,
-          bankAccount: { select: { companyId: true } },
+          bankAccount: { select: { companyId: true, accountKind: true } },
         },
       }),
       prisma.transaction.findUnique({
@@ -64,7 +65,7 @@ export async function POST(request: NextRequest, { params }: Params) {
           bankAccountId: true,
           categoryId: true,
           notes: true,
-          bankAccount: { select: { companyId: true } },
+          bankAccount: { select: { companyId: true, accountKind: true } },
         },
       }),
     ])
@@ -130,54 +131,141 @@ export async function POST(request: NextRequest, { params }: Params) {
       )
     }
 
-    // Direction por SINAL (não pelo direction antigo do pending — pode ter
-    // sido salvo errado): DEBIT = OUT, CREDIT = IN
-    const pendingDirection: 'IN' | 'OUT' = pending.type === 'DEBIT' ? 'OUT' : 'IN'
-    const pairDirection: 'IN' | 'OUT' = pair.type === 'DEBIT' ? 'OUT' : 'IN'
+    // Sprint Account Kind PJ/PF (27/06/2026): a CLASSIFICAÇÃO final depende
+    // do accountKind dos 2 lados — NUNCA do nome do banco/dono.
+    //   PJ + PJ → TRANSFER interna (sai do DRE)
+    //   PJ + PF → APORTE (entrou na PJ) ou RETIRADA (saiu da PJ): cada lado
+    //             vira tx categorizada como equity (NonDREGroup), preservando
+    //             type=DEBIT/CREDIT (não vira TRANSFER artificial). Vai pro
+    //             patrimônio, fora do DRE.
+    const pendingKind = normalizeAccountKind(pending.bankAccount.accountKind)
+    const pairKind = normalizeAccountKind(pair.bankAccount.accountKind)
+    const classification = classifyTransferPair(
+      pendingKind,
+      pending.type as 'DEBIT' | 'CREDIT',
+      pairKind,
+    )
 
-    const groupId = crypto.randomUUID()
+    if (classification.kind === 'TRANSFER_INTERNAL') {
+      // PJ + PJ: clássico — vira TRANSFER + transferGroupId compartilhado
+      const pendingDirection: 'IN' | 'OUT' = pending.type === 'DEBIT' ? 'OUT' : 'IN'
+      const pairDirection: 'IN' | 'OUT' = pair.type === 'DEBIT' ? 'OUT' : 'IN'
+      const groupId = crypto.randomUUID()
+
+      await prisma.$transaction(async (tx) => {
+        await tx.transaction.update({
+          where: { id: pending.id },
+          data: {
+            type: 'TRANSFER',
+            transferGroupId: groupId,
+            transferDirection: pendingDirection,
+            status: 'RECONCILED',
+            pendingTransfer: false,
+            pendingTransferDirection: null,
+            pendingTransferSince: null,
+            notes: pending.notes?.replace('[V3:AGUARDANDO_PAR_TRANSFERENCIA]', '').trim() || null,
+          },
+        })
+        await tx.transaction.update({
+          where: { id: pair.id },
+          data: {
+            type: 'TRANSFER',
+            transferGroupId: groupId,
+            transferDirection: pairDirection,
+            status: 'RECONCILED',
+            pendingTransfer: false,
+            pendingTransferDirection: null,
+            pendingTransferSince: null,
+            categoryId: null,
+            notes: pair.notes?.replace('[V3:AGUARDANDO_PAR_TRANSFERENCIA]', '').trim() || null,
+          },
+        })
+      })
+
+      return NextResponse.json({
+        ok: true,
+        classification: 'TRANSFER_INTERNAL',
+        transferGroupId: groupId,
+        pending: { id: pending.id, direction: pendingDirection },
+        pair: { id: pair.id, direction: pairDirection },
+      })
+    }
+
+    if (classification.kind === 'OUT_OF_SCOPE') {
+      return NextResponse.json(
+        { erro: 'Par PF↔PF não pertence a esta empresa', code: 'OUT_OF_SCOPE' },
+        { status: 400 },
+      )
+    }
+
+    // PJ + PF: aporte ou retirada — vai pro patrimônio (equity).
+    // Cada lado MANTÉM o type original (DEBIT/CREDIT) — não vira TRANSFER —
+    // e fica categorizado como "Aporte de Capital" (PF→PJ) ou "Retirada de
+    // Lucros / Pró-labore" (PJ→PF). DRE pula via NonDREGroup.
+    const targetCategoryName =
+      classification.kind === 'APORTE_CAPITAL'
+        ? 'Aporte de Capital'
+        : 'Retirada de Lucros / Pró-labore'
+
+    const cat = await prisma.category.findFirst({
+      where: {
+        companyId: pending.bankAccount.companyId,
+        name: targetCategoryName,
+        isActive: true,
+      },
+      select: { id: true, dreGroup: true },
+    })
+    if (!cat) {
+      return NextResponse.json(
+        {
+          erro: `Categoria de patrimônio "${targetCategoryName}" não existe nesta empresa. Crie em /empresas/[id]/categorias antes de classificar pares PJ/PF.`,
+          code: 'EQUITY_CATEGORY_MISSING',
+        },
+        { status: 422 },
+      )
+    }
 
     await prisma.$transaction(async (tx) => {
-      // Pending → TRANSFER, limpa pendingTransfer
+      // Pending: vira EQUITY classificada, sai de pendingTransfer
       await tx.transaction.update({
         where: { id: pending.id },
         data: {
-          type: 'TRANSFER',
-          transferGroupId: groupId,
-          transferDirection: pendingDirection,
+          categoryId: cat.id,
           status: 'RECONCILED',
+          cashCoded: true,
+          cashCodedAt: new Date(),
           pendingTransfer: false,
           pendingTransferDirection: null,
           pendingTransferSince: null,
           notes:
-            pending.notes?.replace('[V3:AGUARDANDO_PAR_TRANSFERENCIA]', '').trim() || null,
+            (pending.notes?.replace('[V3:AGUARDANDO_PAR_TRANSFERENCIA]', '').trim() ||
+              '') + ` [PJ↔PF:${classification.kind}]`,
         },
       })
-      // Pair → TRANSFER (mesmo grupo)
+      // Pair: também classificada (mesma categoria de equity), sai de pendingTransfer
       await tx.transaction.update({
         where: { id: pair.id },
         data: {
-          type: 'TRANSFER',
-          transferGroupId: groupId,
-          transferDirection: pairDirection,
+          categoryId: cat.id,
           status: 'RECONCILED',
-          // Pair também pode estar em pendingTransfer — limpa se for o caso
+          cashCoded: true,
+          cashCodedAt: new Date(),
           pendingTransfer: false,
           pendingTransferDirection: null,
           pendingTransferSince: null,
-          // Pair pode ter categoryId — se tinha, limpa (TRANSFER não é categoria)
-          categoryId: null,
           notes:
-            pair.notes?.replace('[V3:AGUARDANDO_PAR_TRANSFERENCIA]', '').trim() || null,
+            (pair.notes?.replace('[V3:AGUARDANDO_PAR_TRANSFERENCIA]', '').trim() ||
+              '') + ` [PJ↔PF:${classification.kind}]`,
         },
       })
     })
 
     return NextResponse.json({
       ok: true,
-      transferGroupId: groupId,
-      pending: { id: pending.id, direction: pendingDirection },
-      pair: { id: pair.id, direction: pairDirection },
+      classification: classification.kind,
+      pending: { id: pending.id },
+      pair: { id: pair.id },
+      categoryId: cat.id,
     })
   } catch (error) {
     return handleApiError(error)

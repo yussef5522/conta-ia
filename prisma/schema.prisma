@@ -248,6 +248,16 @@ model BankAccount {
   pluggyAccountId String?
   isActive        Boolean @default(true)
 
+  // Sprint Account Kind PJ/PF (27/06/2026, modelo QuickBooks/Wave/FreshBooks):
+  // tipo da conta SEPARADO do nome do banco / dono. Decisão de classificação
+  // de pares (transferência vs aporte/retirada) é SEMPRE pelo accountKind dos
+  // 2 lados — NUNCA pelo nome. Permite Banrisul PJ + Banrisul PF coexistirem
+  // sem confusão (mesmo banco, contas diferentes, tipos diferentes).
+  //   PJ = Conta da empresa (operacional, padrão).
+  //   PF = Conta pessoal do dono (private). Movimento PJ↔PF vai pro patrimônio,
+  //        não pro DRE de resultado.
+  accountKind     String  @default("PJ")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

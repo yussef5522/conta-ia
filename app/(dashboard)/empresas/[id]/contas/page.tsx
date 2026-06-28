@@ -13,6 +13,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Header } from '@/components/layout/header'
 import { DeleteDialog } from '@/components/empresas/delete-dialog'
+import { AccountKindBadge } from '@/components/shared/AccountKindBadge'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
 import { computeBalanceBadgeStatus, type BadgeVariant } from '@/lib/balance/badge-status'
@@ -38,6 +39,7 @@ interface Conta {
   agency: string | null
   accountNumber: string | null
   accountType: string
+  accountKind?: string
   cashKind: string | null
   balance: number
   isActive: boolean
@@ -189,7 +191,10 @@ export default function ContasPage() {
                         )}
                       </div>
                       <div className="min-w-0">
-                        <p className="font-semibold truncate">{conta.name}</p>
+                        <p className="font-semibold truncate flex items-center gap-2">
+                          {conta.name}
+                          <AccountKindBadge kind={conta.accountKind ?? 'PJ'} />
+                        </p>
                         <p className="text-xs text-muted-foreground">
                           {isCash
                             ? 'Dinheiro físico'
