@@ -792,6 +792,12 @@ export async function POST(request: NextRequest, { params }: Params) {
                 transferGroupId: groupId,
                 transferDirection: 'OUT',
                 status: 'RECONCILED',
+                // Sprint Pending Transfer State (27/06/2026): quando o
+                // scanRetroativo casa o par, limpa flags de "aguardando par"
+                // se estava marcada como pendingTransfer.
+                pendingTransfer: false,
+                pendingTransferDirection: null,
+                pendingTransferSince: null,
               },
             })
             const r2 = await txp.transaction.updateMany({
@@ -801,6 +807,9 @@ export async function POST(request: NextRequest, { params }: Params) {
                 transferGroupId: groupId,
                 transferDirection: 'IN',
                 status: 'RECONCILED',
+                pendingTransfer: false,
+                pendingTransferDirection: null,
+                pendingTransferSince: null,
               },
             })
             if (r1.count === 1 && r2.count === 1) {

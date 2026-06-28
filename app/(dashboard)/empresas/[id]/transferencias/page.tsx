@@ -36,6 +36,7 @@ import { formatBRL } from '@/lib/format/money'
 import { NovaTransferenciaModal } from '@/components/transferencias/NovaTransferenciaModal'
 import { DateRangeFilter } from '@/components/shared/DateRangeFilter'
 import { useDateRangeFilter } from '@/lib/hooks/use-date-range-filter'
+import { AguardandoParTab } from './_components/AguardandoParTab'
 
 interface Conta {
   id: string
@@ -127,8 +128,9 @@ export default function TransferenciasPage() {
   const [loading, setLoading] = useState(true)
   // Sprint Central de Transferências — Abas Sugeridas + Sozinhas
   // Sprint R1 (10/06/2026) — 4ª aba Duplicatas (Gap 2: órfã × pareada)
+  // Sprint Pending Transfer State (27/06/2026) — 5ª aba "Aguardando par"
   const [activeTab, setActiveTab] = useState<
-    'pareadas' | 'sugeridas' | 'sozinhas' | 'duplicatas'
+    'pareadas' | 'sugeridas' | 'sozinhas' | 'duplicatas' | 'aguardando-par'
   >('pareadas')
   const [sugestoes, setSugestoes] = useState<Sugestao[]>([])
   const [sozinhas, setSozinhas] = useState<Sozinha[]>([])
@@ -389,7 +391,7 @@ export default function TransferenciasPage() {
 
       {/* Sprint Central de Transferências — Tabs */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)} className="space-y-4">
-        <TabsList className="grid w-full max-w-3xl grid-cols-4">
+        <TabsList className="grid w-full max-w-4xl grid-cols-5">
           <TabsTrigger value="pareadas">
             Pareadas {paginacao && `(${paginacao.total})`}
           </TabsTrigger>
@@ -405,6 +407,9 @@ export default function TransferenciasPage() {
                 {duplicatas.length}
               </span>
             )}
+          </TabsTrigger>
+          <TabsTrigger value="aguardando-par">
+            Aguardando par
           </TabsTrigger>
         </TabsList>
 
@@ -878,6 +883,11 @@ export default function TransferenciasPage() {
               })}
             </div>
           )}
+        </TabsContent>
+
+        {/* Sprint Pending Transfer State (27/06/2026) — 5ª aba */}
+        <TabsContent value="aguardando-par" className="space-y-4">
+          <AguardandoParTab empresaId={empresaId} />
         </TabsContent>
       </Tabs>
 

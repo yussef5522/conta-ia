@@ -69,6 +69,9 @@ export async function GET(request: NextRequest) {
         // Sprint Pendentes Fix R2 (27/06/2026): pagamento de parcela
         // emprestimo casada — fora da bulk pre-classify.
         loanInstallmentPaid: { is: null },
+        // Sprint Pending Transfer State (27/06/2026): "aguardando par"
+        // não entra em pré-classificação.
+        pendingTransfer: false,
         bankAccount: { companyId: data.empresaId },
         ...tipoFilter,
       },

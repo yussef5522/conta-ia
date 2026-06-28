@@ -185,28 +185,26 @@ async function applyMark(
     }
 
     case 'TRANSFER': {
-      // Estratégia MVP: marca categoryId=null + nota informativa.
-      // O scanRetroativo já roda pos-import e tenta parear automaticamente
-      // contra tx do outro banco quando ele for importado (Sprint Transfer
-      // Pairing Retroativo). User vê em /transferencias > Sozinhas se
-      // ficar sem par.
-      // NAO mudar type=DEBIT->TRANSFER aqui pra preservar contentHash/sinal
-      // exato no seen-ledger (Sprint Import Idempotente). Conversão pra
-      // TRANSFER acontece quando o par real aparece e scanRetroativo pareia.
+      // Sprint Pending Transfer State (27/06/2026, modelo QuickBooks/Xero):
+      // marca pendingTransfer=true + direction inferida pelo type (DEBIT=OUT,
+      // CREDIT=IN). Isso TIRA a tx do DRE, das filas /pendentes e /conciliacao
+      // imediatamente — mesmo SEM o par real chegar. Quando o scanRetroativo
+      // casa (ou o user usa match 1-clique em /transferencias), ambas viram
+      // type='TRANSFER' e o filtro de type cobre a partir daí.
+      //
+      // NAO mudar type=DEBIT/CREDIT aqui — preserva contentHash/sinal exato
+      // no seen-ledger (Sprint Import Idempotente).
       if (tx.transferGroupId) return 'skipped' // já pareado
-      if (tx.categoryId === null && (tx.status === 'PENDING' || tx.status === 'RECONCILED')) {
-        // Apenas garante que está marcada como "aguardando" via notes
-        await prisma.transaction.update({
-          where: { id: tx.id },
-          data: { notes: '[V3:AGUARDANDO_PAR_TRANSFERENCIA]' },
-        })
-        return 'applied'
-      }
+      const direction: 'OUT' | 'IN' | null =
+        tx.type === 'DEBIT' ? 'OUT' : tx.type === 'CREDIT' ? 'IN' : null
       await prisma.transaction.update({
         where: { id: tx.id },
         data: {
           categoryId: null,
           notes: '[V3:AGUARDANDO_PAR_TRANSFERENCIA]',
+          pendingTransfer: true,
+          pendingTransferDirection: direction,
+          pendingTransferSince: new Date(),
         },
       })
       return 'applied'

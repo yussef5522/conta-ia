@@ -171,6 +171,14 @@ function calculateForPeriod(
     // despesa — a despesa real foi a COMPRA registrada com businessCreditCardId.
     if (tx.isCardPayment) continue
 
+    // Sprint Pending Transfer State (27/06/2026, modelo QuickBooks/Xero):
+    // tx marcada como TRANSFER no preview/UI fica num "limbo fora do P&L"
+    // mesmo SEM o par real. Sai do DRE imediatamente, mesma família dos
+    // filtros isCardPayment + isLoanDisbursement. Quando o par chega
+    // (scanRetroativo ou match 1-clique), vira type='TRANSFER' e o filtro
+    // acima de `type === 'TRANSFER'` cobre a partir daí.
+    if (tx.pendingTransfer) continue
+
     // Sprint Empréstimos Backend (17/06/2026):
     // (a) Liberação de empréstimo = entrada de PASSIVO, não receita. Pula.
     if (tx.isLoanDisbursement) continue

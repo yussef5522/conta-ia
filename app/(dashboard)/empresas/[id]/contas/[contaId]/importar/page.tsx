@@ -185,33 +185,77 @@ export default function ImportarOFXPage() {
     return () => { cancelled = true }
   }, [empresaId])
 
-  // Sprint OFX V3 — pós-import, aplica as marcações via /apply-marks
+  // Sprint OFX V3 — pós-import, aplica as marcações via /apply-marks.
+  // Sprint Pending Transfer State (27/06/2026): nao perder mark em silencio.
+  //   - Retry do map dedupHash->txId se vier incompleto (race pos-commit)
+  //   - Toast EXPLICITO com nao-aplicadas (ex: "3 nao aplicadas, revise")
   async function applyV3MarksAfterImport(importId: string, decisions: V3Decisions) {
     if (decisions.marks.size === 0) return
-    try {
-      // Busca tx criadas no import pra mapear dedupHash → transactionId
-      const txRes = await fetch(`/api/transacoes?empresaId=${empresaId}&importId=${importId}&limit=2000`, {
-        credentials: 'include',
-      })
-      if (!txRes.ok) return
-      const txData = await txRes.json()
-      // Map by dedupHash (V2NovaGenuinaItem.dedupHash bate com transaction.dedupHash)
-      const txByDedupHash = new Map<string, string>()
-      const novasGenuinas = (preview as unknown as { classificacao: { novasGenuinas: Array<{ ofxIndex: number; dedupHash: string }> } } | null)
-        ?.classificacao?.novasGenuinas ?? []
-      const hashByOfxIndex = new Map(novasGenuinas.map((n) => [n.ofxIndex, n.dedupHash]))
-      for (const tx of (txData.transacoes ?? []) as Array<{ id: string; dedupHash: string | null }>) {
-        if (tx.dedupHash) txByDedupHash.set(tx.dedupHash, tx.id)
+
+    const novasGenuinas = (preview as unknown as { classificacao: { novasGenuinas: Array<{ ofxIndex: number; dedupHash: string }> } } | null)
+      ?.classificacao?.novasGenuinas ?? []
+    const hashByOfxIndex = new Map(novasGenuinas.map((n) => [n.ofxIndex, n.dedupHash]))
+    const expectedHashes = new Set<string>()
+    decisions.marks.forEach((_mark, ofxIndex) => {
+      const h = hashByOfxIndex.get(ofxIndex)
+      if (h) expectedHashes.add(h)
+    })
+
+    // Retry pra resolver race: ledger pode estar commitando ainda.
+    // 3 tentativas com backoff 0/400/1200ms.
+    async function fetchTxMap(): Promise<Map<string, string>> {
+      const delays = [0, 400, 1200]
+      let lastMap = new Map<string, string>()
+      for (const d of delays) {
+        if (d > 0) await new Promise((r) => setTimeout(r, d))
+        try {
+          const txRes = await fetch(`/api/transacoes?empresaId=${empresaId}&importId=${importId}&limit=2000`, {
+            credentials: 'include',
+          })
+          if (!txRes.ok) continue
+          const txData = await txRes.json()
+          const m = new Map<string, string>()
+          for (const tx of (txData.transacoes ?? []) as Array<{ id: string; dedupHash: string | null }>) {
+            if (tx.dedupHash) m.set(tx.dedupHash, tx.id)
+          }
+          lastMap = m
+          // Map cobre todas as expectedHashes? entao pode usar.
+          let allFound = true
+          for (const h of expectedHashes) {
+            if (!m.has(h)) { allFound = false; break }
+          }
+          if (allFound) return m
+        } catch {
+          // continue retry
+        }
       }
+      return lastMap // melhor effort
+    }
+
+    try {
+      const txByDedupHash = await fetchTxMap()
+
       const marks: Array<{ transactionId: string; kind: string; params?: Record<string, unknown> }> = []
+      const notMappedCount = { value: 0 }
       decisions.marks.forEach((mark, ofxIndex) => {
         const dedupHash = hashByOfxIndex.get(ofxIndex)
-        if (!dedupHash) return
+        if (!dedupHash) { notMappedCount.value += 1; return }
         const txId = txByDedupHash.get(dedupHash)
-        if (!txId) return
+        if (!txId) { notMappedCount.value += 1; return }
         marks.push({ transactionId: txId, kind: mark.kind, params: mark.params as Record<string, unknown> | undefined })
       })
-      if (marks.length === 0) return
+
+      if (marks.length === 0) {
+        if (notMappedCount.value > 0) {
+          toast({
+            variant: 'destructive',
+            title: '⚠️ Marcações não aplicadas',
+            description: `${notMappedCount.value} marcação(ões) ficaram sem aplicar (tx não encontrada). Revise em /transacoes.`,
+          })
+        }
+        return
+      }
+
       const applyRes = await fetch(`/api/contas-bancarias/${contaId}/importar-ofx/apply-marks`, {
         method: 'POST',
         credentials: 'include',
@@ -220,13 +264,34 @@ export default function ImportarOFXPage() {
       })
       if (applyRes.ok) {
         const r = await applyRes.json()
+        const failed = r.failed?.length ?? 0
+        const totalNotApplied = failed + notMappedCount.value
+        if (totalNotApplied > 0) {
+          toast({
+            variant: 'destructive',
+            title: `⚠️ ${r.applied} aplicadas · ${totalNotApplied} não aplicadas`,
+            description: 'Revise as marcações na lista /transacoes ou em /transferencias > Aguardando par.',
+          })
+        } else {
+          toast({
+            title: `✨ ${r.applied} marcações aplicadas`,
+            description: 'Tudo certo!',
+          })
+        }
+      } else {
         toast({
-          title: `✨ ${r.applied} marcações aplicadas`,
-          description: r.failed?.length > 0 ? `${r.failed.length} falharam — revise em /transacoes` : 'Tudo certo!',
+          variant: 'destructive',
+          title: 'Falha ao aplicar marcações',
+          description: 'Verifique /transacoes — pode precisar marcar manualmente.',
         })
       }
     } catch (err) {
       console.error('[V3 apply-marks]', err)
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao aplicar marcações',
+        description: err instanceof Error ? err.message : 'Erro desconhecido — revise em /transacoes.',
+      })
     }
   }
 

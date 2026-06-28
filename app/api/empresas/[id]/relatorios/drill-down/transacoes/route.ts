@@ -102,6 +102,9 @@ export async function GET(request: NextRequest, { params }: Params) {
           // emprestimo NAO aparece em drill-down (DRE conta so juros via
           // loanInterestSplit). Mesmo padrao do R6.1.
           { loanInstallmentPaid: { is: null } },
+          // Sprint Pending Transfer State (27/06/2026): "aguardando par"
+          // não compõe nenhum bucket de DRE — fora do drill-down.
+          { pendingTransfer: false },
         ],
         status: { in: ['RECONCILED', 'PENDING'] },
       },

@@ -512,6 +512,27 @@ model Transaction {
   // 2025-12 pra parceladas antigas). Null pra tx pre-existentes.
   invoiceMonth       String?
 
+  // === Sprint Pending Transfer State (27/06/2026, modelo QuickBooks/Xero) ===
+  // Estado "transferência aguardando par" — usado quando o user marca uma tx
+  // como TRANSFER no preview OFX V3 (ou na UI) mas o par real do outro lado
+  // ainda não chegou (não foi importado / não foi categorizado).
+  //
+  // SEMÂNTICA: tx com pendingTransfer=true SAI do DRE, das filas /pendentes
+  // e /conciliacao — mesma família de filtros que `type='TRANSFER'`,
+  // `isCardPayment=true` e `loanInstallmentPaid IS NOT NULL`.
+  //
+  // QUANDO o par chega (scanRetroativo casa OU user clica "casar 1-clique"):
+  // viramos ambas pra type='TRANSFER' + transferGroupId + transferDirection
+  // e zeramos pendingTransfer (já filtrado pelo type novo).
+  //
+  // NÃO troca `type` (preserva contentHash/sinal exato no seen-ledger) —
+  // mantém Sprint Import Idempotente intacto.
+  pendingTransfer          Boolean   @default(false)
+  // 'OUT' = saída (esta conta) · 'IN' = entrada (esta conta) · NULL = não-pendingTransfer
+  pendingTransferDirection String?
+  // Quando o user marcou (auditoria + ordenação na fila "Aguardando par")
+  pendingTransferSince     DateTime?
+
   @@unique([bankAccountId, dedupHash])
   // Sprint 4.0.1.b — anti-dup: schedule X só gera 1 tx por dueDate
   @@unique([recurringScheduleId, dueDate])
@@ -539,6 +560,9 @@ model Transaction {
   @@index([installmentGroupId])
   // Sprint Cartao PJ R4 (25/06/2026)
   @@index([businessCreditCardId, invoiceMonth])
+  // Sprint Pending Transfer State (27/06/2026): fila "Aguardando par"
+  // filtra pendingTransfer=true escopo da empresa via bankAccount.
+  @@index([pendingTransfer])
   @@map("transactions")
 }
 

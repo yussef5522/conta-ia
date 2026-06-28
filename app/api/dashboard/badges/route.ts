@@ -87,6 +87,9 @@ export async function GET(request: NextRequest) {
           isCardPayment: false,
           // Sprint Pendentes Fix R2 (27/06/2026): bate com nova exclusao
           loanInstallmentPaid: { is: null },
+          // Sprint Pending Transfer State (27/06/2026): "aguardando par"
+          // tem fila própria — não conta no badge de Conciliação.
+          pendingTransfer: false,
           ...(tipoFilter.type
             ? { type: tipoFilter.type }
             : { type: { not: 'TRANSFER' } }),
@@ -117,6 +120,9 @@ export async function GET(request: NextRequest) {
           isCardPayment: false,
           // Sprint Pendentes Fix R2 (27/06/2026): mesmo critério
           loanInstallmentPaid: { is: null },
+          // Sprint Pending Transfer State (27/06/2026): "aguardando par"
+          // não é trabalho do badge Pendentes.
+          pendingTransfer: false,
         },
       }),
     ])

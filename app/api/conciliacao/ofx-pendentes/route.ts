@@ -73,6 +73,10 @@ export async function GET(request: NextRequest) {
         // juros via loanInterestSplit. Se aparecer aqui pedindo categoria,
         // user pode duplicar contagem.
         loanInstallmentPaid: { is: null },
+        // Sprint Pending Transfer State (27/06/2026): tx marcada como
+        // "transferência aguardando par" sai da fila de conciliação —
+        // mora na aba "Aguardando par" em /transferencias.
+        pendingTransfer: false,
         bankAccount: { companyId: data.empresaId },
         ...(Object.keys(dateFilter).length > 0 ? { date: dateFilter } : {}),
         ...tipoFilter,

@@ -151,6 +151,15 @@ export interface TransactionForDRE {
    */
   isCardPayment?: boolean
   /**
+   * Sprint Pending Transfer State (27/06/2026, modelo QuickBooks/Xero).
+   * True quando o user marcou a tx como "transferência aguardando par"
+   * (preview OFX V3 ou UI). Engine pula — sai do DRE imediatamente, mesmo
+   * sem o par. Quando o scanRetroativo casa o par (ou o user usa o match
+   * 1-clique), ambas viram type='TRANSFER' + transferGroupId e pendingTransfer
+   * volta pra false (filtrado dali em diante pelo type).
+   */
+  pendingTransfer?: boolean
+  /**
    * Quando setado, a tx é PAGAMENTO DE PARCELA de empréstimo. O engine usa
    * APENAS este valor (juros) no DRE, ignorando o amount original. A
    * amortização (= amount - loanInterestSplit) NÃO entra no DRE — é baixa

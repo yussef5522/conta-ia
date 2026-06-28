@@ -144,6 +144,10 @@ export async function GET(request: NextRequest, { params }: Params) {
         // de fatura (saída do banco) — a despesa real foi a COMPRA no cartão.
         // Filtrar pra não contar 2x.
         isCardPayment: false,
+        // Sprint Pending Transfer State (27/06/2026, modelo QuickBooks/Xero):
+        // tx marcada como "transferência aguardando par" sai do DRE mesmo SEM
+        // o par real. Limbo fora do P&L até o par chegar e virar type=TRANSFER.
+        pendingTransfer: false,
         // Sprint 4.0.1.a/b — REALIZADO = EFFECTED; PREVISTO = PAYABLE/RECEIVABLE.
         lifecycle: lifecycleFilter,
         // Anti-dupla-contagem (só no Realizado). Yussef 11/06/2026 (fix DRE):

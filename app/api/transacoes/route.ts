@@ -125,6 +125,9 @@ export async function GET(request: NextRequest) {
       // emprestimo casada nao precisa categoria (DRE engine ja conta o juros
       // via loanInterestSplit). Filtra similar ao R6.1.
       where.loanInstallmentPaid = { is: null }
+      // Sprint Pending Transfer State (27/06/2026): tx em "aguardando par"
+      // sai da fila de pendentes — mora em /transferencias aba dedicada.
+      where.pendingTransfer = false
     }
     // type: compõe AND com guard anti-TRANSFER quando semCategoria
     // (pra cobrir o caso da query `tipo` vir junto e sobrescrever).
