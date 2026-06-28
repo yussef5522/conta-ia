@@ -139,18 +139,33 @@ export default function ImportarOFXPage() {
           })),
         )
         // mapear loans: pegar parcelas OPEN futuras
+        // Sprint Fix Installments Path (27/06/2026): endpoint
+        // /api/empresas/[id]/emprestimos/[loanId] retorna installments NO
+        // TOP-LEVEL ({loan, agregados, installments, chartPoints}), NAO
+        // dentro de data.loan. O acesso antigo `data.loan?.installments`
+        // resolvia pra undefined em 100% dos casos -> pending=[] -> match
+        // de empréstimo no preview V3 NUNCA disparava (cosmético, mas
+        // tirava sugestão). Tipagem explícita do shape pra evitar regressão.
+        interface LoanDetailResponse {
+          loan: { id: string; lender: string; contractNumber: string | null }
+          installments: Array<{
+            number: number
+            dueDate: string
+            payment: number
+            status: 'OPEN' | 'LATE' | 'PAID'
+          }>
+        }
         const loansOut = await Promise.all(
           (loansR.loans ?? []).slice(0, 50).map(async (l: { id: string; lender: string; contractNumber: string | null }) => {
             try {
               const det = await fetch(`/api/empresas/${empresaId}/emprestimos/${l.id}`, { credentials: 'include' })
               if (!det.ok) return { id: l.id, lender: l.lender, contractNumber: l.contractNumber, pendingInstallments: [] }
-              const data = await det.json()
-              // Sprint OFX V3 R7 (27/06/2026): aumenta cap pra cobrir BNDES
-              // parcela #56 etc. Antes era 12 — invisível pra contratos longos.
-              const pending = (data.loan?.installments ?? [])
-                .filter((p: { status: string }) => p.status === 'OPEN' || p.status === 'LATE')
+              const data: LoanDetailResponse = await det.json()
+              // Cap 60 cobre BNDES parcela #56 etc (Sprint R7).
+              const pending = (data.installments ?? [])
+                .filter((p) => p.status === 'OPEN' || p.status === 'LATE')
                 .slice(0, 60)
-                .map((p: { number: number; dueDate: string; payment: number }) => ({
+                .map((p) => ({
                   number: p.number,
                   dueDate: p.dueDate,
                   payment: p.payment,
