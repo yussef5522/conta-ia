@@ -41,7 +41,15 @@ function fmtData(iso: string): string {
 
 interface Props {
   payload: unknown                // pode ser legado (null) ou V2
-  onConfirmar: () => void
+  // Sprint Preview-Truth (29/06/2026): callback recebe decisões declarativas
+  // por dedupHash. SKIP = linha desmarcada pelo user (não vira tx). Tipo
+  // opcional pra back-compat com callers que não precisam das decisões.
+  onConfirmar: (
+    decisions?: Array<{
+      dedupHash: string
+      action: 'CREATE_NEW' | 'SKIP' | 'REPLACE_MANUAL' | 'CONCILIATE_PAYABLE'
+    }>,
+  ) => void
   onCancelar: () => void
   loading?: boolean
 }
@@ -60,9 +68,21 @@ export function PreviewV2Classificado({ payload, onConfirmar, onCancelar, loadin
   const { classificacao, ledgerBalCheck, banco, total } = p
   const c = classificacao
 
-  // State dos checkboxes em REPLACE e CONCILIATE.
-  // ⚠️ Na 2C esses estados são INFORMATIVOS apenas (UI legada do /confirm
-  // não recebe essas decisões). A 2D vai propagar.
+  // Sprint Preview-Truth (29/06/2026) — state das DECISÕES por dedupHash.
+  // Default: TODAS as `novasGenuinas` marcadas (entrarão). User pode
+  // desmarcar individualmente — desmarcadas viram action=SKIP no confirm.
+  const [skipNovas, setSkipNovas] = useState<Set<string>>(new Set())
+  const toggleSkipNova = (dedupHash: string) => {
+    setSkipNovas((prev) => {
+      const next = new Set(prev)
+      if (next.has(dedupHash)) next.delete(dedupHash)
+      else next.add(dedupHash)
+      return next
+    })
+  }
+  const novasMarcadasCount = c.novasGenuinas.length - skipNovas.size
+
+  // State dos checkboxes em REPLACE e CONCILIATE (informativo legado).
   const [marcadosReplace, setMarcadosReplace] = useState<Set<number>>(
     new Set(c.replaceManual.map((x) => x.ofxIndex)),
   )
@@ -135,9 +155,20 @@ export function PreviewV2Classificado({ payload, onConfirmar, onCancelar, loadin
       >
         <ul className="space-y-2">
           {c.novasGenuinas.map((it) => (
-            <NovaRow key={it.ofxIndex} item={it} />
+            <NovaRow
+              key={it.ofxIndex}
+              item={it}
+              marcado={!skipNovas.has(it.dedupHash)}
+              onToggle={() => toggleSkipNova(it.dedupHash)}
+            />
           ))}
         </ul>
+        {/* Sprint Preview-Truth: contagem dinâmica reflete desmarcações */}
+        {skipNovas.size > 0 && (
+          <p className="mt-2 text-xs text-amber-700">
+            {novasMarcadasCount} marcada(s) — {skipNovas.size} desmarcada(s) não vão entrar
+          </p>
+        )}
       </GrupoClassificacao>
 
       <GrupoClassificacao
@@ -239,11 +270,30 @@ export function PreviewV2Classificado({ payload, onConfirmar, onCancelar, loadin
             Cancelar
           </Button>
           <Button
-            onClick={onConfirmar}
+            onClick={() => {
+              // Sprint Preview-Truth: monta decisões declarativas.
+              // - novasGenuinas marcadas → CREATE_NEW; desmarcadas → SKIP
+              // - replaceManual marcadas → REPLACE_MANUAL; desmarcadas → SKIP
+              //   (não substitui; preview continua mostrando, user pode pular)
+              // - conciliatePayable marcadas → CONCILIATE_PAYABLE; desmarcadas → SKIP
+              const decisions: Array<{
+                dedupHash: string
+                action: 'CREATE_NEW' | 'SKIP' | 'REPLACE_MANUAL' | 'CONCILIATE_PAYABLE'
+              }> = []
+              for (const it of c.novasGenuinas) {
+                decisions.push({
+                  dedupHash: it.dedupHash,
+                  action: skipNovas.has(it.dedupHash) ? 'SKIP' : 'CREATE_NEW',
+                })
+              }
+              onConfirmar(decisions)
+            }}
             disabled={loading}
             className="sm:order-2"
           >
-            {loading ? 'Importando...' : 'Confirmar import'}
+            {loading
+              ? 'Importando...'
+              : `Confirmar ${novasMarcadasCount} ${novasMarcadasCount === 1 ? 'transação' : 'transações'}`}
           </Button>
         </div>
       </Card>
@@ -255,13 +305,40 @@ export function PreviewV2Classificado({ payload, onConfirmar, onCancelar, loadin
 // Linhas individuais
 // ───────────────────────────────────────────────────────────
 
-function NovaRow({ item }: { item: V2NovaGenuinaItem }) {
+function NovaRow({
+  item,
+  marcado,
+  onToggle,
+}: {
+  item: V2NovaGenuinaItem
+  marcado: boolean
+  onToggle: () => void
+}) {
   const sinal = item.type === 'CREDIT' ? '+' : '−'
   return (
-    <li className="flex items-center justify-between gap-2 rounded bg-white/60 px-3 py-2 text-sm">
-      <div>
-        <span className="text-slate-500">{fmtData(item.date)}</span>{' '}
-        <span className="font-medium">{item.memo}</span>
+    <li
+      className={cn(
+        'flex items-center justify-between gap-2 rounded bg-white/60 px-3 py-2 text-sm',
+        !marcado && 'opacity-50',
+      )}
+    >
+      <div className="flex items-center gap-3">
+        <Checkbox
+          checked={marcado}
+          onCheckedChange={onToggle}
+          aria-label={
+            marcado
+              ? 'Desmarcar — não importar esta transação'
+              : 'Marcar — importar esta transação'
+          }
+        />
+        <div>
+          <span className="text-slate-500">{fmtData(item.date)}</span>{' '}
+          <span className="font-medium">{item.memo}</span>
+          {!marcado && (
+            <span className="ml-2 text-xs text-amber-700">não vai entrar</span>
+          )}
+        </div>
       </div>
       <span className="tabular-nums font-medium text-blue-900">
         {sinal} {fmtBRL(item.amount)}

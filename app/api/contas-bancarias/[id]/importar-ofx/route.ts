@@ -36,6 +36,12 @@ import {
 } from '@/lib/categorization/match-setor-pattern'
 import { isReconcileV2Enabled } from '@/lib/reconciliation/flag'
 import { runImportV2 } from '@/lib/reconciliation/import-orchestrator'
+import {
+  applyImportDecisions,
+  importDecisionsSchema,
+  type ImportDecision,
+} from '@/lib/ofx/decisions'
+import { lifecycleFromDate } from '@/lib/ofx/future-line'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -64,6 +70,10 @@ export async function POST(request: NextRequest, { params }: Params) {
   // (mapa dedupHash -> categoryId) + regras a persistir após sucesso.
   let categoryOverrides: CategoryOverride[] = []
   let newRules: NewRuleSpec[] = []
+  // Sprint Preview-Truth (29/06/2026): decisões declarativas por linha
+  // (dedupHash → action). SKIP = não cria a tx; CREATE_NEW (ou ausência)
+  // segue. Garante "o preview = o que entra".
+  let decisions: ImportDecision[] = []
   try {
     const formData = await request.formData()
     const file = formData.get('file')
@@ -84,6 +94,14 @@ export async function POST(request: NextRequest, { params }: Params) {
       try {
         const parsed = JSON.parse(rulesRaw)
         if (Array.isArray(parsed)) newRules = parsed
+      } catch {}
+    }
+    const decisionsRaw = formData.get('decisions')
+    if (typeof decisionsRaw === 'string' && decisionsRaw.trim()) {
+      try {
+        const parsed = JSON.parse(decisionsRaw)
+        const validated = importDecisionsSchema.safeParse(parsed)
+        if (validated.success) decisions = validated.data
       } catch {}
     }
   } catch {
@@ -276,13 +294,29 @@ export async function POST(request: NextRequest, { params }: Params) {
     existentes.map((e) => e.dedupHash).filter((h): h is string => h !== null),
   )
 
-  const { novas, duplicadasNoArquivo, duplicadasNoBanco } = filtrarNovasOFX(
-    gateResult.toInsert.map((i) => i.payload),
-    hashesExistentes,
-  )
-  // Duplicatas TOTAIS: o gate + legacy.
+  const { novas: novasPreDecisions, duplicadasNoArquivo, duplicadasNoBanco } =
+    filtrarNovasOFX(
+      gateResult.toInsert.map((i) => i.payload),
+      hashesExistentes,
+    )
+  // Sprint Preview-Truth (29/06/2026) — APLICA DECISÕES DECLARATIVAS.
+  // SO no caminho de confirm (não no preview — preview já filtra na UI).
+  // SKIP → linha removida; sem decisão → CREATE_NEW default (não perder tx).
+  const decisionResult = !isPreview
+    ? applyImportDecisions(novasPreDecisions, decisions)
+    : { filtered: novasPreDecisions, skipped: 0, implicit: novasPreDecisions.length, orphanDecisionHashes: [] }
+  const novas = decisionResult.filtered
+  if (!isPreview && (decisionResult.skipped > 0 || decisionResult.implicit > 0 || decisionResult.orphanDecisionHashes.length > 0)) {
+    console.log(
+      `[importar-ofx] decisions: skipped=${decisionResult.skipped} ` +
+        `implicit=${decisionResult.implicit} orphan=${decisionResult.orphanDecisionHashes.length} ` +
+        `kept=${novas.length}/${novasPreDecisions.length}`,
+    )
+  }
+  // Duplicatas TOTAIS: o gate + legacy + decisões SKIP (linha desmarcada
+  // pelo usuário no preview entra na contagem de "não criadas").
   const duplicadas =
-    duplicadasNoArquivo + duplicadasNoBanco + gateResult.skipped.length
+    duplicadasNoArquivo + duplicadasNoBanco + gateResult.skipped.length + decisionResult.skipped
 
   // Mapa pra recuperar a identidade canônica de cada `novas[]` (pra salvar
   // em Transaction + criar ImportedIdentity)
@@ -447,7 +481,27 @@ export async function POST(request: NextRequest, { params }: Params) {
     })
   }
 
+  // Sprint Preview-Truth (29/06/2026) — corte de linha futura.
+  // Pré-classifica cada `novas` por lifecycle:
+  //   EFFECTED → tx já realizada (entra no saldo, comportamento histórico)
+  //   PAYABLE → DEBIT futuro agendado (vira Conta a Pagar; NÃO entra no saldo)
+  //   RECEIVABLE → CREDIT futuro agendado (vira Conta a Receber; NÃO entra no saldo)
+  //
+  // Mantemos uma `Map<dedupHash, lifecycle>` pra usar na createMany abaixo.
+  const lifecycleByHash = new Map<string, 'EFFECTED' | 'PAYABLE' | 'RECEIVABLE'>()
+  const now = new Date()
+  for (const t of novas) {
+    lifecycleByHash.set(
+      t.dedupHash,
+      lifecycleFromDate(t.datePosted, t.type, now),
+    )
+  }
+  // ajusteSaldo: SO inclui linhas EFFECTED. Futuras não afetam o saldo do
+  // caixa (são previsões — viram payable/receivable e só impactam quando o
+  // débito/crédito real chegar no extrato e conciliar).
   const ajusteSaldo = novas.reduce((acc, t) => {
+    const lc = lifecycleByHash.get(t.dedupHash) ?? 'EFFECTED'
+    if (lc !== 'EFFECTED') return acc
     return acc + (t.type === 'CREDIT' ? t.amount : -t.amount)
   }, 0)
 
@@ -559,26 +613,40 @@ export async function POST(request: NextRequest, { params }: Params) {
         data: classified.map((t) => {
           // Sprint Import Idempotente: recupera identidade canônica via dedupHash
           const ident = t.dedupHash ? identityByDedupHash.get(t.dedupHash) : null
+          // Sprint Preview-Truth (29/06/2026): lifecycle resolvido por data.
+          // Tx futura agendada vira PAYABLE/RECEIVABLE em vez de EFFECTED.
+          const lifecycle = t.dedupHash
+            ? lifecycleByHash.get(t.dedupHash) ?? 'EFFECTED'
+            : 'EFFECTED'
+          // Linhas futuras: dueDate populado, paymentDate=null, status='PENDING'
+          // (não pode ficar RECONCILED com lifecycle PAYABLE/RECEIVABLE — escada).
+          const isFuture = lifecycle !== 'EFFECTED'
           return {
             bankAccountId: t.bankAccountId,
             date: t.date,
             description: t.description,
             amount: t.amount,
             type: t.type,
-            status: t.status,
+            // Linhas futuras nascem PENDING (sem categoria) mesmo se auto-classify
+            // sugeriu — não é "movimento realizado", é previsão. Yussef confirma
+            // a categoria quando o débito real chegar e conciliar.
+            status: isFuture ? 'PENDING' : t.status,
             origin: t.origin,
             externalId: t.externalId,
             dedupHash: t.dedupHash,
             // Onda 2 Sprint 2.3 — vincula ao registro de import (pra revert)
             importId: importRow.id,
             // Campos AI (preenchidos só quando t.status='RECONCILED')
-            categoryId: t.categoryId ?? null,
-            classificationSource: t.classificationSource ?? null,
-            classifiedByRuleId: t.classifiedByRuleId ?? null,
-            aiConfidence: t.aiConfidence ?? null,
+            categoryId: isFuture ? null : (t.categoryId ?? null),
+            classificationSource: isFuture ? null : (t.classificationSource ?? null),
+            classifiedByRuleId: isFuture ? null : (t.classifiedByRuleId ?? null),
+            aiConfidence: isFuture ? null : (t.aiConfidence ?? null),
             // Sprint Import Idempotente (18/06/2026)
             fitidKey: ident?.fitidKey ?? null,
             contentHash: ident?.contentHash ?? null,
+            // Sprint Preview-Truth (29/06/2026): lifecycle + dueDate.
+            lifecycle,
+            dueDate: isFuture ? t.date : null,
           }
         }),
       }),

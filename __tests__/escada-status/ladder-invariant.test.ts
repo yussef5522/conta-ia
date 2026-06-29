@@ -43,9 +43,9 @@ describe('Coerência: needsReview ↔ statusFromCategoryId', () => {
   const BASE = {
     transferGroupId: null,
     reconciledWithId: null,
-    reconciledFrom: [],
+    hasReconciledFrom: false,
     isCardPayment: false,
-    loanInstallmentPaid: null,
+    hasLoanInstallment: false,
     pendingTransfer: false,
     isInternalTransfer: false,
     ignoredAt: null,

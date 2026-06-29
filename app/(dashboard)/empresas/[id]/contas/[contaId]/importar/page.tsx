@@ -488,7 +488,12 @@ export default function ImportarOFXPage() {
     }
   }
 
-  async function handleImport() {
+  async function handleImport(
+    decisions?: Array<{
+      dedupHash: string
+      action: 'CREATE_NEW' | 'SKIP' | 'REPLACE_MANUAL' | 'CONCILIATE_PAYABLE'
+    }>,
+  ) {
     if (!arquivo) return
     setLoadingImport(true)
     try {
@@ -503,6 +508,12 @@ export default function ImportarOFXPage() {
       }
       if (newRules.length > 0) {
         fd.append('newRules', JSON.stringify(newRules))
+      }
+      // Sprint Preview-Truth (29/06/2026): envia decisões declarativas
+      // (SKIP/CREATE_NEW por dedupHash). Resolve "o que aparece no
+      // preview ≠ o que entra no DB".
+      if (decisions && decisions.length > 0) {
+        fd.append('decisions', JSON.stringify(decisions))
       }
       const res = await fetch(`/api/contas-bancarias/${contaId}/importar-ofx`, {
         method: 'POST',
@@ -996,7 +1007,7 @@ export default function ImportarOFXPage() {
 
               <div className="flex justify-end gap-3">
                 <Button variant="outline" onClick={() => { setArquivo(null); setPreview(null) }}>Cancelar</Button>
-                <Button onClick={handleImport} disabled={loadingImport}>
+                <Button onClick={() => handleImport()} disabled={loadingImport}>
                   {loadingImport ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Importando...</> : `Confirmar importação (${preview.novas})`}
                 </Button>
               </div>
