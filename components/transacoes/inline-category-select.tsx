@@ -1,52 +1,51 @@
 'use client'
 
 // Sprint 3.0.3 B1 — edição inline da categoria de uma transação.
-// Click na badge → abre dropdown shadcn → PATCH /api/transacoes/[id]
+// Click na badge → abre dropdown → PATCH /api/transacoes/[id]
 // → toast + atualiza estado local sem recarregar a página.
+//
+// Sprint Category-Combobox (29/06/2026): refatorado pra usar o
+// CategoryCombobox único (Ramp/Mercury-grade). Mantém a mesma API pública
+// (props transacaoId/current/categorias/onUpdated) pra não quebrar callers.
+// Agora ganha busca por texto sem acento, agrupamento por dreGroup,
+// navegação por teclado e (opcional) sugestão IA.
 
 import { useState } from 'react'
-import { ChevronDown, Loader2, Tag } from 'lucide-react'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { useToast } from '@/components/ui/use-toast'
+import { CategoryCombobox } from '@/components/transacoes/category-combobox'
 
 export interface InlineCategorySelectCategoria {
   id: string
   name: string
   color: string | null
+  dreGroup?: string | null
 }
 
 interface Props {
   transacaoId: string
   current: { id: string; name: string; color: string | null } | null
   categorias: InlineCategorySelectCategoria[]
+  /** Sugestão IA opcional (regra/heurística que já existe na tx). */
+  suggestedCategoryId?: string | null
   // Callback após PATCH OK — caller atualiza array de transações local
-  onUpdated: (catId: string | null, cat: InlineCategorySelectCategoria | null) => void
+  onUpdated: (
+    catId: string | null,
+    cat: InlineCategorySelectCategoria | null,
+  ) => void
 }
-
-const NO_CATEGORY = '__NONE__'
 
 export function InlineCategorySelect({
   transacaoId,
   current,
   categorias,
+  suggestedCategoryId,
   onUpdated,
 }: Props) {
   const { toast } = useToast()
-  const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  async function handleChange(value: string) {
-    const novoId = value === NO_CATEGORY ? null : value
-    if (novoId === (current?.id ?? null)) {
-      setOpen(false)
-      return
-    }
+  async function handleChange(novoId: string | null) {
+    if (novoId === (current?.id ?? null)) return
     setSaving(true)
     try {
       const res = await fetch(`/api/transacoes/${transacaoId}`, {
@@ -72,8 +71,9 @@ export function InlineCategorySelect({
 
       // Sprint 5.0.2.m — Vendor Memory: backend pode ter aprendido fornecedor
       // e aplicado retroativamente em outras pendentes. Mostra count no toast.
-      const vm: { anchor: string | null; retroactiveCount: number } | undefined =
-        data?.vendorMemory
+      const vm:
+        | { anchor: string | null; retroactiveCount: number }
+        | undefined = data?.vendorMemory
       let description = novaCat?.name ?? 'Sem categoria'
       if (vm?.anchor && vm.retroactiveCount > 0) {
         description = `+${vm.retroactiveCount} ${vm.anchor} categorizadas automaticamente`
@@ -86,7 +86,6 @@ export function InlineCategorySelect({
         description,
         duration: vm?.anchor ? 4500 : 2500,
       })
-      setOpen(false)
     } catch {
       toast({
         variant: 'destructive',
@@ -99,58 +98,14 @@ export function InlineCategorySelect({
   }
 
   return (
-    <Select
-      value={current?.id ?? NO_CATEGORY}
-      onValueChange={handleChange}
-      open={open}
-      onOpenChange={setOpen}
-      disabled={saving}
-    >
-      <SelectTrigger
-        className="h-6 px-2 py-0 text-xs gap-1 bg-transparent border-dashed border-transparent hover:border-border hover:bg-muted/40 w-auto min-w-[140px] max-w-[260px]"
-        onClick={(e) => e.stopPropagation()}
-        aria-label="Mudar categoria"
-      >
-        <SelectValue>
-          <span className="inline-flex items-center gap-1.5 text-xs">
-            {saving ? (
-              <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
-            ) : current?.color ? (
-              <span
-                className="h-2 w-2 rounded-full shrink-0"
-                style={{ backgroundColor: current.color }}
-              />
-            ) : (
-              <Tag className="h-3 w-3 text-muted-foreground" />
-            )}
-            <span className="truncate text-muted-foreground">
-              {current?.name ?? 'Sem categoria'}
-            </span>
-            <ChevronDown className="h-3 w-3 opacity-50 shrink-0" />
-          </span>
-        </SelectValue>
-      </SelectTrigger>
-      <SelectContent
-        className="max-h-[60vh]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <SelectItem value={NO_CATEGORY}>
-          <span className="text-muted-foreground italic">Sem categoria</span>
-        </SelectItem>
-        {categorias.map((c) => (
-          <SelectItem key={c.id} value={c.id}>
-            <span className="inline-flex items-center gap-2">
-              {c.color && (
-                <span
-                  className="h-2 w-2 rounded-full"
-                  style={{ background: c.color }}
-                />
-              )}
-              {c.name}
-            </span>
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <CategoryCombobox
+      value={current?.id ?? null}
+      categorias={categorias}
+      suggestedCategoryId={suggestedCategoryId}
+      onChange={handleChange}
+      saving={saving}
+      placeholder="Sem categoria"
+      ariaLabel="Mudar categoria"
+    />
   )
 }

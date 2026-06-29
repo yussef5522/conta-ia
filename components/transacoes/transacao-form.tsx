@@ -8,9 +8,10 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { CategoryCombobox } from '@/components/transacoes/category-combobox'
 import { useToast } from '@/components/ui/use-toast'
 
-interface Category { id: string; name: string; color: string; type: string }
+interface Category { id: string; name: string; color: string; type: string; dreGroup?: string | null }
 
 interface TransacaoFormProps {
   contaId: string
@@ -151,22 +152,23 @@ export function TransacaoForm({ contaId, empresaId, categories, transacao }: Tra
             {errors.amount && <p className="text-xs text-destructive">{errors.amount}</p>}
           </div>
 
-          {/* Categoria */}
+          {/* Categoria — Sprint Category-Combobox (29/06/2026):
+              CategoryCombobox único. Busca sem acento, agrupado dreGroup, teclado. */}
           <div className="space-y-2">
             <Label htmlFor="categoryId">Categoria</Label>
-            <Select value={form.categoryId} onValueChange={(v) => set('categoryId', v)}>
-              <SelectTrigger id="categoryId"><SelectValue placeholder="Sem categoria" /></SelectTrigger>
-              <SelectContent>
-                {catsFiltradas.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    <span className="flex items-center gap-2">
-                      <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: c.color }} />
-                      {c.name}
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <CategoryCombobox
+              value={form.categoryId || null}
+              categorias={catsFiltradas.map((c) => ({
+                id: c.id,
+                name: c.name,
+                color: c.color,
+                dreGroup: c.dreGroup ?? null,
+              }))}
+              onChange={(v) => set('categoryId', v ?? '')}
+              placeholder="Sem categoria"
+              ariaLabel="Categoria da transação"
+              className="h-9 w-full justify-between border-input"
+            />
           </div>
 
           {/* Status */}

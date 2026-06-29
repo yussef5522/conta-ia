@@ -1038,6 +1038,8 @@ function TransacoesPageInner() {
                         id: c.id,
                         name: c.name,
                         color: c.color ?? null,
+                        // Sprint Category-Combobox: dreGroup pro agrupamento visual
+                        dreGroup: c.dreGroup ?? null,
                       }))}
                       onUpdated={(catId, cat) => {
                         setTransacoes((prev) =>

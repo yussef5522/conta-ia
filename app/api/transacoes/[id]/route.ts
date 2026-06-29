@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { transacaoUpdateSchema } from '@/lib/validations/transacao'
 import { montarUpdateClassificacaoManual } from '@/lib/transacoes/classificar'
+import { enforceStatusLadder } from '@/lib/transacoes/needs-review'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { logAudit, diffFields } from '@/lib/audit'
 import { handleApiError } from '@/lib/api/handle-error'
@@ -63,6 +64,35 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
     const ajusteSaldo = calcularAjusteSaldo(antiga, data)
 
+    // Sprint Category-Combobox (29/06/2026) — DEFESA EM PROFUNDIDADE.
+    //
+    // Calcula status final via enforceStatusLadder ANTES do update:
+    // - categoryId resultante (data.categoryId se vier, senão atual da tx)
+    // - intendedStatus (data.status se vier, senão atual)
+    // - accountType da conta (CASH força RECONCILED)
+    //
+    // Helper aplica:
+    //   IGNORED via body → mantém (manual, independente)
+    //   CASH → RECONCILED
+    //   categoryId NOT NULL → RECONCILED
+    //   categoryId NULL → PENDING
+    //
+    // Impossível body { categoryId: X, status: 'PENDING' } criar estado
+    // invertido — o helper recalcula no fim.
+    const categoryIdFinal =
+      data.categoryId !== undefined ? data.categoryId ?? null : antiga.categoryId
+    const intendedStatus =
+      data.status !== undefined ? data.status : antiga.status
+    const accountTypeBucket = await prisma.bankAccount.findUnique({
+      where: { id: antiga.bankAccountId! },
+      select: { accountType: true },
+    })
+    const statusEnforced = enforceStatusLadder({
+      intendedStatus: intendedStatus as 'PENDING' | 'RECONCILED' | 'IGNORED',
+      categoryId: categoryIdFinal,
+      accountType: accountTypeBucket?.accountType ?? null,
+    })
+
     const transacao = await prisma.$transaction(async (tx) => {
       const updated = await tx.transaction.update({
         where: { id },
@@ -78,8 +108,10 @@ export async function PUT(request: NextRequest, { params }: Params) {
           ...(data.description !== undefined ? { description: data.description } : {}),
           ...(data.amount !== undefined ? { amount: data.amount } : {}),
           ...(data.type !== undefined ? { type: data.type } : {}),
-          ...(data.status !== undefined ? { status: data.status } : {}),
           ...(data.notes !== undefined ? { notes: data.notes ?? null } : {}),
+          // Sprint Category-Combobox: status enforced SEMPRE no fim,
+          // sobrescreve qualquer tentativa do body. SEM exceção.
+          status: statusEnforced,
         },
         include: { category: { select: { id: true, name: true, color: true, type: true } } },
       })

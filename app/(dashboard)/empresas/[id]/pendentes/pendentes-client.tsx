@@ -40,6 +40,7 @@ import { Input } from '@/components/ui/input'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
+import { CategoryCombobox } from '@/components/transacoes/category-combobox'
 import { Header } from '@/components/layout/header'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
@@ -53,6 +54,8 @@ interface Categoria {
   // INCOME | EXPENSE | TRANSFER
   type: string
   color: string
+  // Sprint Category-Combobox (29/06/2026): pro agrupamento visual
+  dreGroup?: string | null
 }
 
 interface Transacao {
@@ -923,36 +926,32 @@ export function PendentesClient({
                   </div>
                 </div>
 
-                {/* Select de categoria */}
+                {/* Sprint Category-Combobox (29/06/2026): seletor único
+                    Ramp/Mercury-grade. Busca sem acento, agrupado por dreGroup,
+                    teclado ↑↓Enter/Esc, sugestão Claude no topo se houver. */}
                 <div className="flex items-center gap-2 shrink-0">
-                  <Select
-                    value={selecionada ?? ''}
-                    onValueChange={(v) => setSelecaoPorLinha((prev) => ({ ...prev, [t.id]: v }))}
+                  <CategoryCombobox
+                    value={selecionada ?? null}
+                    categorias={cats.map((c) => ({
+                      id: c.id,
+                      name: c.name,
+                      color: c.color,
+                      dreGroup: c.dreGroup ?? null,
+                    }))}
+                    suggestedCategoryId={claudeHints[t.id]?.categoryId ?? null}
+                    onChange={(v) =>
+                      setSelecaoPorLinha((prev) => ({ ...prev, [t.id]: v ?? '' }))
+                    }
                     disabled={operando}
-                  >
-                    <SelectTrigger className="h-8 w-56 text-sm">
-                      <SelectValue placeholder="Escolher categoria..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {cats.length === 0 ? (
-                        <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                          Nenhuma categoria {t.type === 'CREDIT' ? 'de entrada' : 'de saída'} cadastrada.
-                        </div>
-                      ) : (
-                        cats.map((c) => (
-                          <SelectItem key={c.id} value={c.id}>
-                            <div className="flex items-center gap-2">
-                              <span
-                                className="inline-block h-2.5 w-2.5 rounded-full"
-                                style={{ backgroundColor: c.color }}
-                              />
-                              {c.name}
-                            </div>
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
+                    placeholder={
+                      cats.length === 0
+                        ? `Nenhuma categoria ${t.type === 'CREDIT' ? 'de entrada' : 'de saída'}`
+                        : 'Escolher categoria…'
+                    }
+                    allowClear={false}
+                    className="h-8 w-56 text-sm border-input"
+                    ariaLabel="Escolher categoria"
+                  />
 
                   {/* Fase 3 Etapa 3: botão "💭 IA" — só pra tx sem cobertura
                       Camadas 1+2 + Claude habilitado. Lazy load 3-5s. */}

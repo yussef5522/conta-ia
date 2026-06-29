@@ -94,3 +94,41 @@ export function statusFromCategoryId(
 ): 'PENDING' | 'RECONCILED' {
   return categoryId ? 'RECONCILED' : 'PENDING'
 }
+
+/**
+ * Sprint Category-Combobox (29/06/2026) — DEFESA EM PROFUNDIDADE.
+ *
+ * Recalcula status no FIM de qualquer create/update pra GARANTIR a invariante
+ * da escada, independente do que o caller mande no body. Resolve a armadilha
+ * lateral descoberta no diagnóstico: PUT /api/transacoes/[id] aceitava body
+ * `{ categoryId: X, status: 'PENDING' }` e o spread `data.status` sobrescrevia
+ * o status calculado pelo helper, recriando estado invertido.
+ *
+ * Política:
+ * - IGNORED é independente (estado manual, preservado).
+ * - CASH (conta caixa físico) é sempre RECONCILED (sem extrato pra conciliar).
+ * - Resto: deriva de categoryId via statusFromCategoryId (escada inviolável).
+ *
+ * Idempotente: chamar 2x retorna o mesmo valor.
+ */
+export interface StatusContext {
+  /** Status que o caller pretendia gravar (ou status atual da tx). */
+  intendedStatus?: 'PENDING' | 'RECONCILED' | 'IGNORED' | null
+  /** categoryId que vai entrar na tx (após o update). */
+  categoryId: string | null | undefined
+  /** accountType da bankAccount linkada. CASH → sempre RECONCILED. */
+  accountType?: string | null
+}
+
+export function enforceStatusLadder(
+  ctx: StatusContext,
+): 'PENDING' | 'RECONCILED' | 'IGNORED' {
+  // (0) IGNORED é manual, independe da escada.
+  if (ctx.intendedStatus === 'IGNORED') return 'IGNORED'
+
+  // (1) CASH não tem extrato OFX → nasce/permanece RECONCILED.
+  if (ctx.accountType === 'CASH') return 'RECONCILED'
+
+  // (2) Escada: categoria decide.
+  return statusFromCategoryId(ctx.categoryId)
+}

@@ -25,7 +25,8 @@ export default async function PendentesPage() {
       prisma.category.findMany({
         where: { companyId: access.empresaId, isActive: true },
         orderBy: { name: 'asc' },
-        select: { id: true, name: true, type: true, color: true },
+        // Sprint Category-Combobox (29/06/2026): dreGroup pro agrupamento visual
+        select: { id: true, name: true, type: true, color: true, dreGroup: true },
       }),
       prisma.transaction.count({
         where: {
