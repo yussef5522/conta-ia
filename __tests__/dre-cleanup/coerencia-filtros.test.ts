@@ -23,18 +23,22 @@ describe('Sprint DRE Cleanup — ACHADO #2 query principal filtra parcela casada
     expect(code).toMatch(/loanDisbursement:\s*\{\s*is:\s*null\s*\}/)
   })
 
-  it('query auxiliar busca parcelas casadas com interest', () => {
+  it('query auxiliar busca parcelas casadas com interest + correcao', () => {
     expect(code).toMatch(/loanInstallmentPaid:\s*\{\s*isNot:\s*null\s*\}/)
-    expect(code).toMatch(/loanInstallmentPaid:\s*\{\s*select:\s*\{\s*interest:\s*true/)
+    // Sprint Pagamento Parcela Redesign (28/06/2026) — select inclui correcao
+    expect(code).toMatch(/loanInstallmentPaid:[\s\S]*?select:[\s\S]*?interest:\s*true/)
+    expect(code).toMatch(/loanInstallmentPaid:[\s\S]*?select:[\s\S]*?correcao:\s*true/)
   })
 
-  it('reinjeta parcelas como tx categorizada com loanInterestSplit', () => {
-    expect(code).toMatch(/loanInterestSplit:\s*interest/)
+  it('reinjeta parcelas como tx categorizada com loanInterestSplit = juros + correcao', () => {
+    expect(code).toMatch(/loanInterestSplit:\s*jurosTotal/)
     expect(code).toMatch(/categoryId:\s*jurosCategory\.id/)
+    // Sprint Pagamento Parcela Redesign — soma juros + correcao
+    expect(code).toMatch(/const\s+jurosTotal\s*=\s*interest\s*\+\s*correcao/)
   })
 
-  it('pula parcela 100% amortizacao (interest <= 0)', () => {
-    expect(code).toMatch(/if\s*\(\s*interest\s*<=\s*0\s*\)\s*continue/)
+  it('pula parcela 100% amortizacao (jurosTotal <= 0)', () => {
+    expect(code).toMatch(/if\s*\(\s*jurosTotal\s*<=\s*0\s*\)\s*continue/)
   })
 
   it('busca categoria "Juros sobre Empréstimos" por nome (na empresa)', () => {

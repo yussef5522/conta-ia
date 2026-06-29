@@ -284,16 +284,24 @@ export async function GET(request: NextRequest, { params }: Params) {
           isCardPayment: true,
           pendingTransfer: true,
           loanInstallmentPaid: {
-            select: { interest: true, amortization: true },
+            // Sprint Pagamento Parcela Redesign (28/06/2026): inclui `correcao`
+            // (CDI/IPCA pós-fixado). DRE conta interest + correcao como Despesa
+            // Financeira (STJ: "CDI sobre empréstimo é juros na essência").
+            select: { interest: true, correcao: true, amortization: true },
           },
         },
       })
 
       for (const t of installmentTxsRaw) {
         const interest = t.loanInstallmentPaid?.interest ?? 0
-        // Se a parcela é 100% amortização (juros = 0), pula — engine também
-        // pula tx com loanInterestSplit === 0.
-        if (interest <= 0) continue
+        // Sprint Pagamento Parcela Redesign (28/06/2026): correção CDI/IPCA
+        // (pós-fixado) também entra como juros no DRE. STJ: "CDI sobre
+        // empréstimo é juros na essência". Pré-fixado tem correcao=0.
+        const correcao = t.loanInstallmentPaid?.correcao ?? 0
+        const jurosTotal = interest + correcao
+        // Se a parcela é 100% amortização (juros + correcao = 0), pula —
+        // engine também pula tx com loanInterestSplit === 0.
+        if (jurosTotal <= 0) continue
         transactions.push({
           id: t.id,
           type: t.type as 'CREDIT' | 'DEBIT' | 'TRANSFER',
@@ -306,7 +314,7 @@ export async function GET(request: NextRequest, { params }: Params) {
           categoryId: jurosCategory.id,
           isCardPayment: t.isCardPayment,
           pendingTransfer: t.pendingTransfer,
-          loanInterestSplit: interest,
+          loanInterestSplit: jurosTotal,
         })
       }
     }

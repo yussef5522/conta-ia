@@ -10,6 +10,11 @@ import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
+// Sprint Pagamento Parcela Redesign (28/06/2026) — split contábil pos-fixado.
+import {
+  computePosFixedSplit,
+  computePreFixedSplit,
+} from '@/lib/loans/installment-match'
 
 interface Params {
   params: Promise<{ id: string; loanId: string; number: string }>
@@ -35,7 +40,11 @@ export async function POST(request: NextRequest, { params }: Params) {
 
     const loan = await prisma.loan.findUnique({
       where: { id: loanId },
-      select: { companyId: true, bankAccountId: true },
+      select: {
+        companyId: true,
+        bankAccountId: true,
+        interestRateMonthly: true,
+      },
     })
     if (!loan) return NextResponse.json({ erro: 'Loan não encontrado' }, { status: 404 })
     if (loan.companyId !== empresaId) {
@@ -44,7 +53,16 @@ export async function POST(request: NextRequest, { params }: Params) {
 
     const installment = await prisma.loanInstallment.findFirst({
       where: { loanId, number },
-      select: { id: true, status: true, payment: true, reconciledTransactionId: true },
+      select: {
+        id: true,
+        status: true,
+        payment: true,
+        interest: true,
+        amortization: true,
+        openingBalance: true,
+        isEstimate: true,
+        reconciledTransactionId: true,
+      },
     })
     if (!installment) {
       return NextResponse.json({ erro: 'Parcela não encontrada' }, { status: 404 })
@@ -81,6 +99,28 @@ export async function POST(request: NextRequest, { params }: Params) {
       )
     }
 
+    // Sprint Pagamento Parcela Redesign (28/06/2026): recalcular split contábil.
+    // Pré-fixado: usa valores planejados, correcao=0.
+    // Pós-fixado (isEstimate=true): juros base = openingBalance × rateMonthly;
+    //                                correcao = realPayment − amortização − juros;
+    //                                payment = realPayment.
+    // Espelha lib/loans/auto-conciliacao.ts pra ter UM caminho contábil.
+    const split = installment.isEstimate
+      ? computePosFixedSplit(
+          {
+            amortization: installment.amortization,
+            openingBalance: installment.openingBalance,
+          },
+          tx.amount,
+          loan.interestRateMonthly,
+        )
+      : computePreFixedSplit({
+          interest: installment.interest,
+          amortization: installment.amortization,
+          payment: installment.payment,
+          openingBalance: installment.openingBalance,
+        })
+
     await prisma.$transaction(async (trx) => {
       await trx.loanInstallment.update({
         where: { id: installment.id },
@@ -88,6 +128,12 @@ export async function POST(request: NextRequest, { params }: Params) {
           status: 'PAID',
           paidDate: tx.date,
           reconciledTransactionId: tx.id,
+          // Recalculado pelo split (idêntico ao auto-conciliação)
+          realPayment: split.realPayment,
+          payment: split.realPayment,
+          interest: split.interest,
+          correcao: split.correcao,
+          closingBalance: split.closingBalance,
         },
       })
       // Se todas as parcelas estão PAID → marca Loan PAID_OFF
@@ -99,7 +145,16 @@ export async function POST(request: NextRequest, { params }: Params) {
       }
     })
 
-    return NextResponse.json({ ok: true })
+    return NextResponse.json({
+      ok: true,
+      split: {
+        realPayment: split.realPayment,
+        interest: split.interest,
+        correcao: split.correcao,
+        closingBalance: split.closingBalance,
+        totalDespesaFinanceira: split.totalDespesaFinanceira,
+      },
+    })
   } catch (error) {
     return handleApiError(error)
   }
