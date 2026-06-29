@@ -275,9 +275,19 @@ export async function reconcileTransactions(
     })
 
     if (Object.keys(ofxBackfill).length > 0) {
+      // Sprint Escada-Status (28/06/2026): se backfill setou categoryId,
+      // sobe status pra RECONCILED na mesma operação. OFX que ganha categoria
+      // do candidate Excel não pode ficar PENDING (badge "Pendente" enganador
+      // em /movimentacoes mesmo tendo "Matéria-Prima"/"Frete"/etc atribuído).
+      // 43 das 57 tx Cacula invertidas vinham deste fluxo.
+      // ofxBackfill só inclui supplierId (sem categoryId) → mantém status atual.
+      const ofxBackfillWithStatus =
+        'categoryId' in ofxBackfill
+          ? { ...ofxBackfill, status: 'RECONCILED' as const }
+          : ofxBackfill
       await trx.transaction.update({
         where: { id: ofx.id },
-        data: ofxBackfill,
+        data: ofxBackfillWithStatus,
       })
     }
 

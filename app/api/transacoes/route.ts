@@ -273,8 +273,23 @@ export async function POST(request: NextRequest) {
     // Sprint Caixa-Status (08/06/2026): tx vinculada a conta Caixa (dinheiro
     // físico) nasce RECONCILED. Caixa não tem extrato OFX pra esperar — saída
     // já é definitiva no momento do lançamento. Padrão QuickBooks/Xero/Conta Azul.
-    const statusEfetivo =
-      conta.accountType === 'CASH' ? 'RECONCILED' : data.status
+    //
+    // Sprint Escada-Status (28/06/2026): escada completa nos 2 sentidos.
+    // (0) IGNORED via body → mantém (estado manual, fora da escada).
+    // (1) CASH → sempre RECONCILED (já existia).
+    // (2) categoryId preenchido → RECONCILED (alinha com statusFromCategoryId
+    //     da Sprint Fundação Status). 2 das 57 tx Cacula ("receita de venda
+    //     em dinheiro") vinham daqui (entravam PENDING+categorizadas).
+    // (3) Sem categoria + sem CASH → PENDING (NÃO aceita RECONCILED via body
+    //     sem categoria — viola escada da Sprint Fundação Status).
+    const statusEfetivo: 'PENDING' | 'RECONCILED' | 'IGNORED' =
+      data.status === 'IGNORED'
+        ? 'IGNORED'
+        : conta.accountType === 'CASH'
+        ? 'RECONCILED'
+        : data.categoryId
+        ? 'RECONCILED'
+        : 'PENDING'
 
     // Cria transação e recalcula saldo em uma transaction
     const [transacao] = await prisma.$transaction([

@@ -235,6 +235,11 @@ export async function createBridge(
           data: {
             categoryId: resolvedCategoryId,
             classificationSource: 'BRIDGE',
+            // Sprint Escada-Status (28/06/2026): tx PJ ganhou categoria via
+            // bridge → escada sobe pra RECONCILED. Sem isso, ficava em
+            // estado invertido (badge "Pendente" enganador em /movimentacoes
+            // mesmo tendo Distribuição de Lucros/Pró-labore atribuído).
+            status: 'RECONCILED',
           },
         })
       }

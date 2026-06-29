@@ -200,7 +200,7 @@ describe('reconcileTransactions — ORPHAN (EFFECTED órfão → link + cooperat
     expect(candidateCall![0].data).not.toHaveProperty('bankAccountId')
   })
 
-  it('OFX sem categoryId/supplierId → BACKFILL cooperativo da Excel', async () => {
+  it('OFX sem categoryId/supplierId → BACKFILL cooperativo da Excel + sobe status (Sprint Escada-Status)', async () => {
     mockBothFinds(baseOFX, baseCandidateOrphan) // OFX null cat/sup; Excel com ambos
 
     await reconcileTransactions(
@@ -210,13 +210,17 @@ describe('reconcileTransactions — ORPHAN (EFFECTED órfão → link + cooperat
 
     const ofxCall = updateMock.mock.calls.find((c) => c[0].where.id === 'ofx-nestle')
     expect(ofxCall).toBeDefined()
+    // Sprint Escada-Status (28/06/2026): quando categoryId é backfilled,
+    // status sobe pra RECONCILED na mesma operação. Sem isso, OFX ficava
+    // PENDING com categoria (estado invertido) — 43 das 57 tx Cacula.
     expect(ofxCall![0].data).toEqual({
       categoryId: 'cat-alimentacao',
       supplierId: 'sup-nestle',
+      status: 'RECONCILED',
     })
   })
 
-  it('OFX JÁ TEM categoryId → NÃO sobrescreve (OFX é fonte de verdade)', async () => {
+  it('OFX JÁ TEM categoryId → NÃO sobrescreve + NÃO sobe status (só supplierId, escada permanece)', async () => {
     const ofxComCategoria = { ...baseOFX, categoryId: 'cat-existente' }
     mockBothFinds(ofxComCategoria, baseCandidateOrphan)
 
@@ -226,9 +230,11 @@ describe('reconcileTransactions — ORPHAN (EFFECTED órfão → link + cooperat
     )
 
     const ofxCall = updateMock.mock.calls.find((c) => c[0].where.id === 'ofx-nestle')
-    // Só backfilla supplier (categoria já existe no OFX)
+    // Só backfilla supplier (categoria já existe no OFX). Status só sobe
+    // quando ofxBackfill inclui categoryId — só supplierId mantém status atual.
     if (ofxCall) {
       expect(ofxCall[0].data).not.toHaveProperty('categoryId')
+      expect(ofxCall[0].data).not.toHaveProperty('status')
       expect(ofxCall[0].data).toEqual({ supplierId: 'sup-nestle' })
     }
   })
