@@ -93,15 +93,21 @@ describe('Sprint Filtro de Data Parte A — uso compartilhado nas 3 páginas', (
     expect(code).not.toMatch(/value="30d"/)
   })
 
-  it('/transferencias usa useDateRangeFilter + DateRangeFilter (não inputs soltos)', () => {
+  it('/transferencias (dashboard) NÃO precisa de filtro de data — mostra o mês corrente automaticamente via dashboard-summary', () => {
+    // Sprint Transferências Redesign (28/06/2026, Mercury/Ramp): a página
+    // /transferencias virou dashboard executivo mostrando o MÊS CORRENTE
+    // automaticamente. Filtro de data não aplicável aqui — endpoint
+    // dashboard-summary já agrega por mês. Páginas detalhadas
+    // (/conciliadas, /revisar) listam dados sem filtro de período, então
+    // tb não precisam. Sprint válido: as outras 2 páginas listadas neste
+    // arquivo (/pendentes, /conciliacao) continuam com o filtro.
     const code = readFileSync(
       join(ROOT, 'app/(dashboard)/empresas/[id]/transferencias/page.tsx'),
       'utf-8',
     )
-    expect(code).toMatch(/useDateRangeFilter/)
-    expect(code).toMatch(/DateRangeFilter/)
-    // O fetch deve enviar inicio/fim na query
-    expect(code).toMatch(/qs\.set\('inicio',\s*dataInicio\)/)
-    expect(code).toMatch(/qs\.set\('fim',\s*dataFim\)/)
+    // Confirma que é dashboard (KPICard + FluxoContas), não lista plana
+    expect(code).toMatch(/KPICard/)
+    expect(code).toMatch(/FluxoContas/)
+    expect(code).toMatch(/dashboard-summary/)
   })
 })
