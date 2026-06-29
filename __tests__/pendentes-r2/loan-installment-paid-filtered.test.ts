@@ -19,21 +19,32 @@ import { join } from 'path'
 
 const root = (p: string) => join(__dirname, '..', '..', p)
 
-describe('Sprint Pendentes R2 — loanInstallmentPaid: { is: null } em endpoints de pendencias', () => {
+// Sprint Fundação Status (28/06/2026): os 4 primeiros endpoints
+// consolidaram o filtro inline em NEEDS_REVIEW_WHERE_PRISMA (lib única).
+// Aceita ambos: filtro literal OU spread da fonte única.
+function temFiltroLoanInstallment(code: string): boolean {
+  const literal = /loanInstallmentPaid:\s*\{\s*is:\s*null\s*\}/.test(code)
+  const fonteUnica =
+    /\.\.\.NEEDS_REVIEW_WHERE_PRISMA/.test(code) ||
+    /Object\.assign\(where,\s*NEEDS_REVIEW_WHERE_PRISMA\)/.test(code)
+  return literal || fonteUnica
+}
+
+describe('Sprint Pendentes R2 — loanInstallmentPaid em endpoints de pendencias', () => {
   it('1) /api/conciliacao/ofx-pendentes exclui parcela casada', () => {
     const code = readFileSync(
       root('app/api/conciliacao/ofx-pendentes/route.ts'),
       'utf-8',
     )
-    expect(code).toMatch(/loanInstallmentPaid:\s*\{\s*is:\s*null\s*\}/)
+    expect(temFiltroLoanInstallment(code)).toBe(true)
   })
 
   it('2) /api/transacoes (semCategoria=true) exclui parcela casada', () => {
     const code = readFileSync(root('app/api/transacoes/route.ts'), 'utf-8')
-    // O fix esta dentro do bloco `if (semCategoria)` — exige que a
-    // assignment aparece junto com semCategoria
-    expect(code).toMatch(/where\.loanInstallmentPaid\s*=\s*\{\s*is:\s*null\s*\}/)
+    // Sprint Fundação Status: filtro vem do spread NEEDS_REVIEW_WHERE_PRISMA
+    // dentro do bloco if(semCategoria). Ambos devem aparecer.
     expect(code).toMatch(/semCategoria/)
+    expect(temFiltroLoanInstallment(code)).toBe(true)
   })
 
   it('3) /api/conciliacao/bulk-dry-run exclui parcela casada', () => {
@@ -41,14 +52,16 @@ describe('Sprint Pendentes R2 — loanInstallmentPaid: { is: null } em endpoints
       root('app/api/conciliacao/bulk-dry-run/route.ts'),
       'utf-8',
     )
-    expect(code).toMatch(/loanInstallmentPaid:\s*\{\s*is:\s*null\s*\}/)
+    expect(temFiltroLoanInstallment(code)).toBe(true)
   })
 
   it('4) /api/dashboard/badges exclui parcela casada (em AMBAS as 2 counts)', () => {
     const code = readFileSync(root('app/api/dashboard/badges/route.ts'), 'utf-8')
-    // 2 ocorrencias (1 por count: a conciliacao OFX + a pendentes)
-    const matches = code.match(/loanInstallmentPaid:\s*\{\s*is:\s*null\s*\}/g) ?? []
-    expect(matches.length).toBeGreaterThanOrEqual(2)
+    // Sprint Fundação Status: a fonte unica eh aplicada nas 2 contagens via
+    // spread. Em vez de contar literais, conferimos que o spread aparece >= 2x.
+    const spreads = code.match(/\.\.\.NEEDS_REVIEW_WHERE_PRISMA/g) ?? []
+    const literais = code.match(/loanInstallmentPaid:\s*\{\s*is:\s*null\s*\}/g) ?? []
+    expect(spreads.length + literais.length).toBeGreaterThanOrEqual(2)
   })
 
   it('5) /api/empresas/[id]/relatorios/drill-down/transacoes exclui parcela casada', () => {
@@ -56,6 +69,8 @@ describe('Sprint Pendentes R2 — loanInstallmentPaid: { is: null } em endpoints
       root('app/api/empresas/[id]/relatorios/drill-down/transacoes/route.ts'),
       'utf-8',
     )
+    // Drill-down não migrou pra fonte única (propósito diferente — lista
+    // tx de categoria, não fila pendentes). Mantém filtro literal.
     expect(code).toMatch(/loanInstallmentPaid:\s*\{\s*is:\s*null\s*\}/)
   })
 })
@@ -67,11 +82,12 @@ describe('Sprint Pendentes R2 — loanInstallmentPaid: { is: null } em endpoints
 describe('Sprint Pendentes R2 — telas legitimas mantem visibilidade', () => {
   it('extrato/lista geral de transacoes SEM filtro semCategoria nao exclui parcela casada', () => {
     const code = readFileSync(root('app/api/transacoes/route.ts'), 'utf-8')
-    // Confirma que loanInstallmentPaid so eh filtrado DENTRO do bloco semCategoria
-    // (pra lista geral, default, NAO deve esconder pagamentos de parcela)
-    const semCategoriaBlockMatch = code.match(/if \(semCategoria\) \{[\s\S]+?\n\s*\}/)
+    // Sprint Fundação Status: filtro vem do NEEDS_REVIEW_WHERE_PRISMA aplicado
+    // DENTRO do bloco if(semCategoria) via Object.assign. Lista geral fora do
+    // bloco mantém visibilidade dos pagamentos de parcela.
+    const semCategoriaBlockMatch = code.match(/if \(semCategoria\) \{[\s\S]+?\n\s{2,4}\}/)
     expect(semCategoriaBlockMatch).toBeTruthy()
-    expect(semCategoriaBlockMatch![0]).toMatch(/loanInstallmentPaid/)
+    expect(semCategoriaBlockMatch![0]).toMatch(/NEEDS_REVIEW_WHERE_PRISMA/)
     // Fora do bloco semCategoria nao deve ter where.loanInstallmentPaid seta
     // (extrato completo mantem visibilidade)
     const codeWithoutBlock = code.replace(semCategoriaBlockMatch![0], '')

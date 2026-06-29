@@ -18,6 +18,7 @@ import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { checkPdfBankStatementFlag } from '@/lib/pdf-bank-statement/feature-flag'
 import { computeIdentity } from '@/lib/import-identity/compute-identity'
+import { statusFromCategoryId } from '@/lib/transacoes/needs-review'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -160,6 +161,12 @@ export async function POST(request: NextRequest, { params }: Params) {
       duplicadas = linesWithIdentity.length - filtered.length
 
       // Cria transações
+      // Sprint Fundação Status (28/06/2026): aplica a escada de status.
+      // PDF não seta categoryId no momento do import (UI editável é
+      // sprint futura). Logo, todas as tx PDF entram em status='PENDING'
+      // automaticamente via statusFromCategoryId — coerente com OFX (que
+      // já faz certo via lib/ai-categorizer/apply.ts) e aparecem em
+      // /pendentes pra o user categorizar.
       if (filtered.length > 0) {
         await tx.transaction.createMany({
           data: filtered.map((li) => ({
@@ -168,7 +175,7 @@ export async function POST(request: NextRequest, { params }: Params) {
             description: li.line.description,
             amount: li.line.amount,
             type: li.line.type,
-            status: 'RECONCILED',
+            status: statusFromCategoryId(null),
             origin: 'PDF',
             externalId: null,
             dedupHash: li.identity.contentHash,

@@ -5,6 +5,7 @@ import { getAuthContext } from '@/lib/auth/rbac'
 import { logAudit } from '@/lib/audit'
 import { handleApiError } from '@/lib/api/handle-error'
 import { checkBalance, BalanceCheckError } from '@/lib/balance/check'
+import { NEEDS_REVIEW_WHERE_PRISMA } from '@/lib/transacoes/needs-review'
 
 export async function GET(request: NextRequest) {
   try {
@@ -101,33 +102,14 @@ export async function GET(request: NextRequest) {
     // lista da conta mostrar só EFFECTED (tx que JÁ saiu/entrou).
     if (lifecycle) where.lifecycle = lifecycle
     if (semCategoria) {
-      where.categoryId = null
-      // Sprint Fix-Pendentes-Transfer (08/06/2026): transferência entre
-      // contas próprias NÃO precisa de categoria (não é receita nem despesa
-      // — só dinheiro mudando de conta). Padrão QuickBooks/Xero/Conta Azul:
-      // tx marcada como Transfer sai automaticamente da fila "a categorizar".
-      // Defesa em profundidade: transferGroupId IS NULL.
-      where.transferGroupId = null
-      // B3 (09/06/2026): tx JÁ conciliada via Match NÃO aparece em Pendentes.
-      // Padrão Xero/Conta Azul: conciliada = classificada implicitamente
-      // (mesmo que categoryId ainda esteja NULL, porque o Match modo ORPHAN/
-      // CLASSIC pode deixar categoria vazia). Sintoma corrigido: 35 tx Stone
-      // (Marcyelle, Cristian, Mauricio) já conciliadas com Excel apareciam
-      // erroneamente em /pendentes.
-      // - reconciledWithId NOT NULL: ESTA tx aponta pra outra (lado Excel→OFX)
-      // - reconciledFrom: { some: {} }: OUTRA tx aponta pra ESTA (lado OFX←Excel)
-      where.reconciledWithId = null
-      where.reconciledFrom = { none: {} }
-      // Sprint Cartao PJ R6.1 (25/06/2026): pagamento de cartao casado eh
-      // TRANSFER logica banco->cartao. Filtra junto com transferGroupId.
-      where.isCardPayment = false
-      // Sprint Pendentes Fix R2 (27/06/2026): pagamento de parcela de
-      // emprestimo casada nao precisa categoria (DRE engine ja conta o juros
-      // via loanInterestSplit). Filtra similar ao R6.1.
-      where.loanInstallmentPaid = { is: null }
-      // Sprint Pending Transfer State (27/06/2026): tx em "aguardando par"
-      // sai da fila de pendentes — mora em /transferencias aba dedicada.
-      where.pendingTransfer = false
+      // Sprint Fundação Status (28/06/2026, modelo QuickBooks/Xero "For Review"):
+      // FONTE DE VERDADE ÚNICA via NEEDS_REVIEW_WHERE_PRISMA.
+      // Antes este bloco repetia os 10 guards inline (Sprint Fix-Pendentes-
+      // Transfer 08/06, B3 09/06, Cartao R6.1 25/06, Pendentes R2 27/06,
+      // Pending Transfer 27/06). Endpoints irmãos (ofx-pendentes,
+      // bulk-dry-run, dashboard/badges, drill-down) também migram. Pendência
+      // é sobre FALTA de classificação — `status` NÃO entra no filtro.
+      Object.assign(where, NEEDS_REVIEW_WHERE_PRISMA)
     }
     // type: compõe AND com guard anti-TRANSFER quando semCategoria
     // (pra cobrir o caso da query `tipo` vir junto e sobrescrever).

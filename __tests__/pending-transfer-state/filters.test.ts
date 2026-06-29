@@ -25,6 +25,17 @@ describe('Sprint Pending Transfer — DRE engine puro pula pendingTransfer', () 
   })
 })
 
+// Sprint Fundação Status (28/06/2026): filtro consolidado em
+// NEEDS_REVIEW_WHERE_PRISMA pra endpoints de "pra revisar". Aceita literal
+// OU spread da fonte única. DRE e drill-down não migraram (filtro literal).
+function temFiltroPendingTransfer(code: string): boolean {
+  const literal = /pendingTransfer/.test(code)
+  const fonteUnica =
+    /\.\.\.NEEDS_REVIEW_WHERE_PRISMA/.test(code) ||
+    /Object\.assign\(where,\s*NEEDS_REVIEW_WHERE_PRISMA\)/.test(code)
+  return literal || fonteUnica
+}
+
 describe('Sprint Pending Transfer — DRE SQL + filas filtram pendingTransfer', () => {
   const files = [
     'app/api/empresas/[id]/dre/route.ts',
@@ -36,13 +47,16 @@ describe('Sprint Pending Transfer — DRE SQL + filas filtram pendingTransfer', 
   for (const f of files) {
     it(`${f} exclui pendingTransfer`, () => {
       const code = readFileSync(root(f), 'utf-8')
-      expect(code).toMatch(/pendingTransfer/)
+      expect(temFiltroPendingTransfer(code)).toBe(true)
     })
   }
   it('dashboard/badges exclui pendingTransfer em AMBAS as 2 contagens', () => {
     const code = readFileSync(root('app/api/dashboard/badges/route.ts'), 'utf-8')
-    const matches = code.match(/pendingTransfer:\s*false/g) ?? []
-    expect(matches.length).toBeGreaterThanOrEqual(2)
+    // Sprint Fundação Status: filtro consolidado em NEEDS_REVIEW_WHERE_PRISMA.
+    // Aceita literais OU spreads — 2 das 2 contagens devem aplicar.
+    const literais = code.match(/pendingTransfer:\s*false/g) ?? []
+    const spreads = code.match(/\.\.\.NEEDS_REVIEW_WHERE_PRISMA/g) ?? []
+    expect(literais.length + spreads.length).toBeGreaterThanOrEqual(2)
   })
 })
 

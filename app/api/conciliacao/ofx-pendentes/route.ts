@@ -16,6 +16,7 @@ import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import { getTipoFilter, parseTipoParam } from '@/lib/conciliacao/tipo-filter'
+import { NEEDS_REVIEW_WHERE_PRISMA } from '@/lib/transacoes/needs-review'
 
 const querySchema = z.object({
   empresaId: z.string().cuid(),
@@ -43,40 +44,16 @@ export async function GET(request: NextRequest) {
 
     const transacoes = await prisma.transaction.findMany({
       where: {
+        // Sprint Fundação Status (28/06/2026): FONTE DE VERDADE ÚNICA.
+        // Antes este bloco repetia 8+ guards inline. Agora delega pra lib.
+        ...NEEDS_REVIEW_WHERE_PRISMA,
+        // Filtros específicos da fila /conciliacao (= subset de "pra revisar"
+        // só pra OFX/EFFECTED, com guard cashCoded extra):
         origin: 'OFX',
         lifecycle: 'EFFECTED',
-        reconciledWithId: null,
-        reconciledFrom: { none: {} }, // crítico: sem reverso
-        isInternalTransfer: false,
-        // Sprint A-effected Fase B — exclui ações terminais:
-        ignoredAt: null, // não ignorada manualmente
-        cashCoded: false, // não categorizada via CRIAR
-        // Sprint Sync-Pendentes-Conciliacao: OFX já categorizada (via Pendentes
-        // em lote, regra IA no import, etc) sai da Conciliação. Padrão Xero/
-        // QuickBooks: tx do extrato resolvida UMA vez. Reversível: descategorizar
-        // faz voltar. Não esconde pendente pura (categoryId NULL continua).
-        categoryId: null,
-        // Sprint Fix A2 (08/06/2026): transferência entre contas próprias já
-        // pareada (transferGroupId NOT NULL ou type='TRANSFER') NÃO entra na
-        // Conciliação. Não é despesa nem receita — só dinheiro mudando de conta.
-        // Mesma lógica do Fix A em /api/transacoes?semCategoria=true.
-        transferGroupId: null,
-        type: { not: 'TRANSFER' },
-        // Sprint Cartao PJ R6.1 (25/06/2026): pagamento de cartao casado
-        // (isCardPayment=true + cartao vinculado) eh TRANSFERENCIA logica
-        // banco->cartao — ja resolvido via casamento, NAO precisa categoria.
-        // Yussef desfaz pelo header verde do dashboard do cartao se quiser.
-        isCardPayment: false,
-        // Sprint Pendentes Fix R2 (27/06/2026): tx que eh pagamento de
-        // parcela de emprestimo casada (LoanInstallment.reconciledTransactionId
-        // = tx.id) NAO precisa categoria. O DRE engine ja contabiliza o
-        // juros via loanInterestSplit. Se aparecer aqui pedindo categoria,
-        // user pode duplicar contagem.
-        loanInstallmentPaid: { is: null },
-        // Sprint Pending Transfer State (27/06/2026): tx marcada como
-        // "transferência aguardando par" sai da fila de conciliação —
-        // mora na aba "Aguardando par" em /transferencias.
-        pendingTransfer: false,
+        // cashCoded=false: tx categorizada via CRIAR (Sprint A-effected Fase B)
+        // sai. Isso NÃO está em NEEDS_REVIEW porque é específico desta fila.
+        cashCoded: false,
         bankAccount: { companyId: data.empresaId },
         ...(Object.keys(dateFilter).length > 0 ? { date: dateFilter } : {}),
         ...tipoFilter,

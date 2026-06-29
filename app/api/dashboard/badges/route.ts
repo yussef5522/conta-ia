@@ -9,6 +9,7 @@ import {
   defaultTipoForCompany,
   getTipoFilter,
 } from '@/lib/conciliacao/tipo-filter'
+import { NEEDS_REVIEW_WHERE_PRISMA } from '@/lib/transacoes/needs-review'
 
 export async function GET(request: NextRequest) {
   try {
@@ -73,56 +74,26 @@ export async function GET(request: NextRequest) {
       //   estiver setado (DEBIT/CREDIT), já cobre "!= TRANSFER" naturalmente.
       prisma.transaction.count({
         where: {
+          // Sprint Fundação Status (28/06/2026): FONTE DE VERDADE ÚNICA.
+          ...NEEDS_REVIEW_WHERE_PRISMA,
           bankAccount: { companyId: empresaId },
           origin: 'OFX',
           lifecycle: 'EFFECTED',
-          reconciledWithId: null,
-          reconciledFrom: { none: {} },
-          isInternalTransfer: false,
-          ignoredAt: null,
           cashCoded: false,
-          categoryId: null,
-          transferGroupId: null,
-          // Sprint Cartao PJ R6.1 (25/06/2026): badge bate com a conciliacao
-          isCardPayment: false,
-          // Sprint Pendentes Fix R2 (27/06/2026): bate com nova exclusao
-          loanInstallmentPaid: { is: null },
-          // Sprint Pending Transfer State (27/06/2026): "aguardando par"
-          // tem fila própria — não conta no badge de Conciliação.
-          pendingTransfer: false,
           ...(tipoFilter.type
             ? { type: tipoFilter.type }
-            : { type: { not: 'TRANSFER' } }),
+            : {}),
         },
       }),
-      // Sprint Sync-Pendentes-Conciliacao: alinha filtro com a tela
-      // /empresas/[id]/pendentes (semCategoria=true + status=PENDING) + exclui
-      // tx já conciliadas via Match (reconciledFrom/reconciledWithId) cujo
-      // status ficou PENDING por flow ORPHAN. Sem isso o badge contava
-      // OFX conciliadas com backfill de categoria como se fossem trabalho.
+      // Badge "Pendentes" — alinha com /pendentes via fonte única.
+      // Sprint Fundação Status (28/06/2026): REMOVIDO status='PENDING' forçado
+      // — pendência é sobre FALTA de classificação, não sobre o nome do estado.
+      // Tx RECONCILED-sem-categoria (bug pré-backfill) também conta como trabalho.
       prisma.transaction.count({
         where: {
+          ...NEEDS_REVIEW_WHERE_PRISMA,
           bankAccount: { companyId: empresaId },
           lifecycle: 'EFFECTED',
-          status: 'PENDING',
-          categoryId: null,
-          reconciledWithId: null,
-          reconciledFrom: { none: {} },
-          // Fix Badge-Pendentes (11/06/2026): alinha com /api/transacoes?
-          // semCategoria=true que aplicou Fix B3 ontem mas o badge ficou
-          // pra trás. Sintoma: pareou 3 transferências hoje (R$ 20.300 +
-          // R$ 3.000), elas ficaram com type=TRANSFER + categoryId=null +
-          // status=PENDING; tela /pendentes esconde TRANSFER pareada, badge
-          // continuava contando como "trabalho a fazer".
-          transferGroupId: null,
-          type: { not: 'TRANSFER' },
-          // Sprint Cartao PJ R6.1 (25/06/2026): badge bate com /pendentes
-          isCardPayment: false,
-          // Sprint Pendentes Fix R2 (27/06/2026): mesmo critério
-          loanInstallmentPaid: { is: null },
-          // Sprint Pending Transfer State (27/06/2026): "aguardando par"
-          // não é trabalho do badge Pendentes.
-          pendingTransfer: false,
         },
       }),
     ])

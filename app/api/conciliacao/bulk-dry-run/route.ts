@@ -22,6 +22,7 @@ import { handleApiError } from '@/lib/api/handle-error'
 import { findReconciliationCandidates } from '@/lib/conciliacao/find-candidates'
 import { rankCandidates } from '@/lib/conciliacao/match'
 import { getTipoFilter, parseTipoParam } from '@/lib/conciliacao/tipo-filter'
+import { NEEDS_REVIEW_WHERE_PRISMA } from '@/lib/transacoes/needs-review'
 
 const querySchema = z.object({
   empresaId: z.string().cuid(),
@@ -52,26 +53,12 @@ export async function GET(request: NextRequest) {
 
     const ofxTxs = await prisma.transaction.findMany({
       where: {
+        // Sprint Fundação Status (28/06/2026): FONTE DE VERDADE ÚNICA.
+        ...NEEDS_REVIEW_WHERE_PRISMA,
+        // Filtros específicos do bulk-dry-run (OFX/EFFECTED + cashCoded):
         origin: 'OFX',
         lifecycle: 'EFFECTED',
-        reconciledWithId: null,
-        reconciledFrom: { none: {} },
-        isInternalTransfer: false,
-        // Sprint A-effected Fase B — exclui ações terminais (ignoradas, cash-coded)
-        ignoredAt: null,
         cashCoded: false,
-        // Sprint Sync-Pendentes-Conciliacao: mesma regra do /ofx-pendentes.
-        // OFX já categorizada não entra no pre-classify batch.
-        categoryId: null,
-        // Sprint Cartao PJ R6.1 (25/06/2026): pagamento de cartao casado
-        // eh TRANSFER logica resolvida — fora da bulk pre-classify.
-        isCardPayment: false,
-        // Sprint Pendentes Fix R2 (27/06/2026): pagamento de parcela
-        // emprestimo casada — fora da bulk pre-classify.
-        loanInstallmentPaid: { is: null },
-        // Sprint Pending Transfer State (27/06/2026): "aguardando par"
-        // não entra em pré-classificação.
-        pendingTransfer: false,
         bankAccount: { companyId: data.empresaId },
         ...tipoFilter,
       },

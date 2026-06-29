@@ -189,9 +189,13 @@ export function PendentesClient({
       if (inicio) qs.set('inicio', inicio)
       if (fim) qs.set('fim', fim)
       if (tipo !== 'TODOS') qs.set('tipo', tipo)
-      // Excluir transações já marcadas como ignoradas
-      // O endpoint aceita um único `status`, então buscamos só PENDING (default das importadas)
-      qs.set('status', 'PENDING')
+      // Sprint Fundação Status (28/06/2026, modelo QuickBooks/Xero):
+      // REMOVIDO o force `status=PENDING`. Agora /pendentes usa SÓ a
+      // fonte de verdade única (semCategoria=true → NEEDS_REVIEW_WHERE_PRISMA
+      // no backend). Pendência é sobre FALTA de classificação, não sobre o
+      // nome do estado. Tx RECONCILED-sem-categoria (bug pré-backfill 4 tx
+      // Cacula) agora também apareceriam aqui — backfill SQL coloca em
+      // PENDING coerente com a escada da fonte única.
 
       const res = await fetch(`/api/transacoes?${qs}`)
       if (!res.ok) {
