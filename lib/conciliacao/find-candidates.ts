@@ -1,26 +1,24 @@
-// Sprint 4.0.2 + Sprint A (03/06/2026) — busca candidatos compatíveis com uma tx OFX.
+// Sprint 4.0.2 + Sprint Conciliacao-Strict (30/06/2026) — busca candidatos
+// compatíveis com uma tx OFX.
 //
-// Filtros aplicados via SQL (pré-filtragem barata) — o ranking fino fica pra
-// scoreMatch em memória.
+// Regra Yussef (= padrão QuickBooks/Xero): o lado direito da conciliação só
+// mostra **Contas a Pagar/Receber EM ABERTO**. Nunca despesas já efetivadas,
+// nunca tx de outras contas, nunca órfãs Excel.
 //
-// Janela:
-//   - ±15 dias entre OFX.date e a "data alvo" do candidato
-//   - Valor candidate dentro ±20% do OFX.amount
-//   - Mesma empresa (multi-tenant via bankAccount/supplier/customer/category OR)
+// Histórico:
+//   - Sprint 4.0.2: RAMO 1 — PAYABLE/RECEIVABLE pendente (correto).
+//   - Sprint A (03/06): adicionou RAMO 2 (EFFECTED órfão MANUAL/IMPORT_EXCEL)
+//     pra resolver "tela Candidatos vazios" após hotfix lifecycle. **REMOVIDO
+//     em 30/06** — resolvia sintoma errado, criava 151 candidatos errados na
+//     Cacula (despesas em dinheiro caixa loja, transferências, órfãs Excel).
+//   - 30/06: RAMO 1 estrito — paymentDate IS NULL + type=ofx.type + bankAccountId
+//     na mesma conta (ou null pra PAYABLE sem banco) + multi-tenant via 4 OR.
 //
-// Universo de candidatos (RAMOS):
-//   RAMO 1 — clássico (Sprint 4.0.2):
-//     lifecycle ∈ {PAYABLE, RECEIVABLE} + status='PENDING' + reconciledWithId=NULL
-//     Data alvo = dueDate
-//
-//   RAMO 2 — Sprint A (HOTFIX órfãos):
-//     lifecycle='EFFECTED' + origin IN {IMPORT_EXCEL, MANUAL} + reconciledWithId=NULL
-//     Direção compatível com OFX (DEBIT↔DEBIT pra PAYABLE, CREDIT↔CREDIT pra RECEIVABLE)
-//     Data alvo = paymentDate || dueDate || date
-//   ↪ Razão: hotfix lifecycle de 28/05 + import Excel com isPaid=true geraram
-//     contas pagas como EFFECTED direto, sem link OFX. Antes da Sprint A o
-//     matcher procurava só PAYABLE → tela "Candidatos vazios" em todos os casos.
-//   ↪ NUNCA inclui OFX no ramo 2 (não faz sentido conciliar OFX-vs-OFX).
+// Mexer aqui NÃO afeta os outros 2 fluxos de pareamento:
+//   - Pareamento de transferência entre bancos: lib/transfers/scan-retroativo.ts
+//     (query própria, intocada)
+//   - Casamento de parcela de empréstimo: lib/loans/auto-conciliacao.ts
+//     (query própria, intocada)
 
 import { prisma } from '@/lib/db'
 import type { MatchCandidate, OFXTransaction } from './match'
@@ -42,9 +40,10 @@ type CandidateRow = {
 }
 
 export function resolveTargetDate(row: CandidateRow): Date {
-  // Pra PAYABLE/RECEIVABLE: dueDate é a verdade (vencimento).
-  // Pra EFFECTED órfão: paymentDate (quando foi pago) é o melhor sinal;
-  // fallback pra dueDate (se Excel preencheu) ou date contábil.
+  // PAYABLE/RECEIVABLE em aberto: dueDate é a verdade (vencimento).
+  // Fallbacks defensivos (não devem acontecer em estado normal):
+  //   paymentDate (não deveria — em aberto = paymentDate null)
+  //   date (último recurso)
   return row.dueDate ?? row.paymentDate ?? row.date
 }
 
@@ -53,7 +52,6 @@ export async function findReconciliationCandidates(
   companyId: string,
 ): Promise<MatchCandidate[]> {
   const targetLifecycle = ofx.type === 'DEBIT' ? 'PAYABLE' : 'RECEIVABLE'
-  const orphanType = ofx.type // EFFECTED órfão: mesma direção do OFX
 
   const windowMs = WINDOW_DAYS * 24 * 60 * 60 * 1000
   const minDate = new Date(ofx.date.getTime() - windowMs)
@@ -63,6 +61,9 @@ export async function findReconciliationCandidates(
   const maxAmount = ofx.amount * (1 + AMOUNT_TOLERANCE)
 
   // Multi-tenant: candidato precisa pertencer à empresa via 1 das 4 relações.
+  // PAYABLE/RECEIVABLE em aberto frequentemente NÃO tem bankAccount preenchido
+  // (foi criada via /contas-a-pagar sem escolher banco) — daí entra pelo
+  // supplier/customer/category.
   const companyScope = {
     OR: [
       { bankAccount: { companyId } },
@@ -72,44 +73,28 @@ export async function findReconciliationCandidates(
     ],
   }
 
+  // Filtro CONTA: aceita PAYABLE sem banco (será setado ao conciliar) OU da
+  // MESMA conta do extrato. Bloqueia PAYABLE de outra conta — sem isso o
+  // sistema oferecia conta a pagar do Banrisul como candidato pro extrato
+  // da Stone, criando casamentos errados.
+  const sameAccountOrNull = {
+    OR: [
+      { bankAccountId: null },
+      ...(ofx.bankAccountId ? [{ bankAccountId: ofx.bankAccountId }] : []),
+    ],
+  }
+
   const candidates = await prisma.transaction.findMany({
     where: {
+      // RAMO 1 ESTRITO — só Conta a Pagar/Receber EM ABERTO.
+      lifecycle: targetLifecycle,
+      status: 'PENDING',
+      type: ofx.type, // direção: DEBIT↔PAYABLE; CREDIT↔RECEIVABLE
       reconciledWithId: null,
+      paymentDate: null, // em aberto = nunca paga (defesa em profundidade)
       amount: { gte: minAmount, lte: maxAmount },
-      AND: [
-        companyScope,
-        {
-          OR: [
-            // RAMO 1 — clássico PAYABLE/RECEIVABLE pendente
-            {
-              lifecycle: targetLifecycle,
-              status: 'PENDING',
-              dueDate: { gte: minDate, lte: maxDate },
-            },
-            // RAMO 2 — EFFECTED órfão (Sprint A)
-            {
-              lifecycle: 'EFFECTED',
-              origin: { in: ['IMPORT_EXCEL', 'MANUAL'] },
-              type: orphanType,
-              OR: [
-                // a) paymentDate na janela (Excel/Manual com pagamento registrado)
-                { paymentDate: { gte: minDate, lte: maxDate } },
-                // b) sem paymentDate, fallback dueDate na janela
-                {
-                  paymentDate: null,
-                  dueDate: { gte: minDate, lte: maxDate },
-                },
-                // c) sem nada → date contábil
-                {
-                  paymentDate: null,
-                  dueDate: null,
-                  date: { gte: minDate, lte: maxDate },
-                },
-              ],
-            },
-          ],
-        },
-      ],
+      dueDate: { gte: minDate, lte: maxDate },
+      AND: [companyScope, sameAccountOrNull],
     },
     select: {
       id: true,
@@ -128,12 +113,7 @@ export async function findReconciliationCandidates(
 
   return candidates.map((c) => ({
     id: c.id,
-    // EFFECTED órfão entra no algoritmo como se fosse PAYABLE/RECEIVABLE pra
-    // efeito de scoring de direção. O scorer só precisa saber a direção esperada.
-    lifecycle:
-      c.lifecycle === 'EFFECTED'
-        ? targetLifecycle
-        : (c.lifecycle as 'PAYABLE' | 'RECEIVABLE'),
+    lifecycle: c.lifecycle as 'PAYABLE' | 'RECEIVABLE',
     description: c.description,
     amount: c.amount,
     dueDate: resolveTargetDate(c as CandidateRow),
