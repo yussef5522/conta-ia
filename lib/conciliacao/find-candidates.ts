@@ -22,6 +22,7 @@
 
 import { prisma } from '@/lib/db'
 import type { MatchCandidate, OFXTransaction } from './match'
+import { buildStrictReconciliationWhere } from './strict-where'
 
 const WINDOW_DAYS = 15
 const AMOUNT_TOLERANCE = 0.20
@@ -51,8 +52,6 @@ export async function findReconciliationCandidates(
   ofx: OFXTransaction,
   companyId: string,
 ): Promise<MatchCandidate[]> {
-  const targetLifecycle = ofx.type === 'DEBIT' ? 'PAYABLE' : 'RECEIVABLE'
-
   const windowMs = WINDOW_DAYS * 24 * 60 * 60 * 1000
   const minDate = new Date(ofx.date.getTime() - windowMs)
   const maxDate = new Date(ofx.date.getTime() + windowMs)
@@ -60,41 +59,22 @@ export async function findReconciliationCandidates(
   const minAmount = ofx.amount * (1 - AMOUNT_TOLERANCE)
   const maxAmount = ofx.amount * (1 + AMOUNT_TOLERANCE)
 
-  // Multi-tenant: candidato precisa pertencer à empresa via 1 das 4 relações.
-  // PAYABLE/RECEIVABLE em aberto frequentemente NÃO tem bankAccount preenchido
-  // (foi criada via /contas-a-pagar sem escolher banco) — daí entra pelo
-  // supplier/customer/category.
-  const companyScope = {
-    OR: [
-      { bankAccount: { companyId } },
-      { supplier: { companyId } },
-      { customer: { companyId } },
-      { category: { companyId } },
-    ],
-  }
-
-  // Filtro CONTA: aceita PAYABLE sem banco (será setado ao conciliar) OU da
-  // MESMA conta do extrato. Bloqueia PAYABLE de outra conta — sem isso o
-  // sistema oferecia conta a pagar do Banrisul como candidato pro extrato
-  // da Stone, criando casamentos errados.
-  const sameAccountOrNull = {
-    OR: [
-      { bankAccountId: null },
-      ...(ofx.bankAccountId ? [{ bankAccountId: ofx.bankAccountId }] : []),
-    ],
-  }
+  // Sprint Find-And-Match-Strict (30/06/2026): filtro de "candidato válido"
+  // vem do helper compartilhado. Mesma definição usada em /find-and-match
+  // (busca manual + ranking) — garante 0 drift.
+  const strictWhere = buildStrictReconciliationWhere(
+    { type: ofx.type, bankAccountId: ofx.bankAccountId },
+    companyId,
+    { gte: minDate, lte: maxDate },
+  )
 
   const candidates = await prisma.transaction.findMany({
     where: {
-      // RAMO 1 ESTRITO — só Conta a Pagar/Receber EM ABERTO.
-      lifecycle: targetLifecycle,
-      status: 'PENDING',
-      type: ofx.type, // direção: DEBIT↔PAYABLE; CREDIT↔RECEIVABLE
-      reconciledWithId: null,
-      paymentDate: null, // em aberto = nunca paga (defesa em profundidade)
+      ...strictWhere,
+      // Tolerância de valor ±20% é específica do AUTO-match (este caller).
+      // A tela Find & Match aceita "qualquer valor" (allowAnyAmount no
+      // ranker), então NÃO entra no helper compartilhado.
       amount: { gte: minAmount, lte: maxAmount },
-      dueDate: { gte: minDate, lte: maxDate },
-      AND: [companyScope, sameAccountOrNull],
     },
     select: {
       id: true,

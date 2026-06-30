@@ -266,14 +266,17 @@ describe('Sprint Find&Match World-Class — (d) filtro de janela de data', () =>
     expect(code).toMatch(/\.default\(15\)/)
   })
 
-  it('janela é aplicada em RAMO 1 (dueDate) e RAMO 2 (paymentDate||dueDate||date)', () => {
+  it('janela aplicada em dueDate (Sprint Find-And-Match-Strict: RAMO 2 removido)', () => {
     const code = readFileSync(
       join(__dirname, '..', 'app/api/conciliacao/find-and-match/route.ts'),
       'utf-8',
     )
-    expect(code).toMatch(/dateWindowRamo1/)
-    expect(code).toMatch(/dateWindowRamo2/)
+    // Sprint Find-And-Match-Strict (30/06/2026): janela agora é parâmetro
+    // do helper compartilhado buildStrictReconciliationWhere; ramo2 (e seu
+    // OR de paymentDate/dueDate/date) foram REMOVIDOS. Só dueDate fica.
+    expect(code).toMatch(/dueWindow/)
     expect(code).toMatch(/data\.windowDays !== 'all'/)
+    expect(code).toMatch(/buildStrictReconciliationWhere/)
   })
 
   it('windowDays="all" não monta filtro de data (passa universo inteiro pro ranking)', () => {
@@ -281,8 +284,15 @@ describe('Sprint Find&Match World-Class — (d) filtro de janela de data', () =>
       join(__dirname, '..', 'app/api/conciliacao/find-and-match/route.ts'),
       'utf-8',
     )
-    // Quando 'all': ramo1 NÃO recebe dueDate filter; ramo2 NÃO recebe OR de datas.
-    expect(code).toMatch(/dateWindowRamo1 \? \{ dueDate: dateWindowRamo1 \} : \{\}/)
+    // Sprint Find-And-Match-Strict: quando 'all', dueWindow fica undefined
+    // e o helper recebe `undefined` no 3o arg, omitindo dueDate do where.
+    const helperCode = readFileSync(
+      join(__dirname, '..', 'lib/conciliacao/strict-where.ts'),
+      'utf-8',
+    )
+    expect(helperCode).toMatch(/window\s*\?\s*\{\s*dueDate:\s*\{\s*gte:\s*window\.gte/)
+    // E o endpoint só constrói dueWindow se windowDays !== 'all'.
+    expect(code).toMatch(/let\s+dueWindow\s*:/)
   })
 })
 

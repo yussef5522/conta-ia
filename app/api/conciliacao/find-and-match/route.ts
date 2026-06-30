@@ -34,6 +34,7 @@ import {
   type MatchCandidate as MatchCandidateRanker,
   type OFXTransaction as OFXTransactionRanker,
 } from '@/lib/conciliacao/match'
+import { buildStrictReconciliationWhere } from '@/lib/conciliacao/strict-where'
 
 // Aceita número (1-365) OU 'all'. Default 15.
 const windowDaysSchema = z
@@ -95,9 +96,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ erro: 'OFX não pertence à empresa' }, { status: 403 })
     }
 
-    const targetLifecycle = ofx.type === 'DEBIT' ? 'PAYABLE' : 'RECEIVABLE'
-    const orphanType = ofx.type
-
     const excluirIds = data.excluirIds
       ? data.excluirIds.split(',').filter((s) => s.length > 0)
       : []
@@ -140,65 +138,34 @@ export async function GET(request: NextRequest) {
       buscaWhere = { OR: orFilters }
     }
 
-    // 3) Multi-tenant scope
-    const companyScope: Prisma.TransactionWhereInput = {
-      OR: [
-        { bankAccount: { companyId: data.empresaId } },
-        { supplier: { companyId: data.empresaId } },
-        { customer: { companyId: data.empresaId } },
-        { category: { companyId: data.empresaId } },
-      ],
-    }
-
-    // 4) Janela de data (Sprint Find&Match World-Class): default ±15d, 'all' = sem.
-    //    Aplicada à "data alvo" do candidato:
-    //      - RAMO 1 (PAYABLE/RECEIVABLE): dueDate
-    //      - RAMO 2 (EFFECTED órfão): paymentDate || dueDate || date
-    let dateWindowRamo1: Prisma.DateTimeFilter | undefined
-    let dateWindowRamo2:
-      | { OR: Prisma.TransactionWhereInput[] }
-      | undefined
-
+    // 3) Janela de data (default ±15d, 'all' = sem janela).
+    //    Helper recebe gte/lte de dueDate (PAYABLE/RECEIVABLE em aberto sempre
+    //    tem dueDate; RAMO 2 que usava paymentDate/date foi REMOVIDO).
+    let dueWindow: { gte: Date; lte: Date } | undefined
     if (data.windowDays !== 'all') {
       const ms = data.windowDays * 24 * 60 * 60 * 1000
-      const minDate = new Date(ofx.date.getTime() - ms)
-      const maxDate = new Date(ofx.date.getTime() + ms)
-      dateWindowRamo1 = { gte: minDate, lte: maxDate }
-      dateWindowRamo2 = {
-        OR: [
-          { paymentDate: { gte: minDate, lte: maxDate } },
-          { paymentDate: null, dueDate: { gte: minDate, lte: maxDate } },
-          { paymentDate: null, dueDate: null, date: { gte: minDate, lte: maxDate } },
-        ],
+      dueWindow = {
+        gte: new Date(ofx.date.getTime() - ms),
+        lte: new Date(ofx.date.getTime() + ms),
       }
     }
 
-    // 5) RAMOS 1 + 2 (com janela quando aplicável)
-    const ramo1: Prisma.TransactionWhereInput = {
-      lifecycle: targetLifecycle,
-      status: 'PENDING',
-      reconciledWithId: null,
-      reconciledFrom: { none: {} },
-      ...(dateWindowRamo1 ? { dueDate: dateWindowRamo1 } : {}),
-    }
-    const ramo2: Prisma.TransactionWhereInput = {
-      lifecycle: 'EFFECTED',
-      origin: { in: ['IMPORT_EXCEL', 'MANUAL'] },
-      type: orphanType,
-      reconciledWithId: null,
-      reconciledFrom: { none: {} },
-      ignoredAt: null,
-      cashCoded: false,
-      ...(dateWindowRamo2 ? dateWindowRamo2 : {}),
-    }
-    const universoRamos: Prisma.TransactionWhereInput = {
-      OR: [ramo1, ramo2],
-    }
+    // 4) Sprint Find-And-Match-Strict (30/06/2026) — FONTE DE VERDADE ÚNICA.
+    //    Helper compartilhado com lib/conciliacao/find-candidates.ts. RAMO 2
+    //    (EFFECTED MANUAL/IMPORT_EXCEL) REMOVIDO: nunca aparece despesa em
+    //    dinheiro caixa loja, nunca tx de outra conta, nunca órfã Excel.
+    const strictWhere = buildStrictReconciliationWhere(
+      {
+        type: ofx.type as 'CREDIT' | 'DEBIT',
+        bankAccountId: ofx.bankAccountId ?? '',
+      },
+      data.empresaId,
+      dueWindow,
+    )
 
     const where: Prisma.TransactionWhereInput = {
       AND: [
-        companyScope,
-        universoRamos,
+        strictWhere,
         ...(Object.keys(buscaWhere).length > 0 ? [buscaWhere] : []),
         ...(excluirIds.length > 0 ? [{ id: { notIn: excluirIds } }] : []),
         { id: { not: data.ofxTransactionId } },
@@ -249,15 +216,13 @@ export async function GET(request: NextRequest) {
     }
     const candidatesForRanker: MatchCandidateRanker[] = scanned.map((c) => ({
       id: c.id,
-      // EFFECTED órfão entra como se fosse o targetLifecycle pra direção bater
-      // no scorer (mesma lógica do find-candidates.ts auto-match).
-      lifecycle:
-        c.lifecycle === 'EFFECTED'
-          ? targetLifecycle
-          : (c.lifecycle as 'PAYABLE' | 'RECEIVABLE'),
+      // Sprint Find-And-Match-Strict: scan agora SÓ retorna PAYABLE/RECEIVABLE
+      // (helper estrito). Cast seguro — RAMO 2 (EFFECTED) foi removido.
+      lifecycle: c.lifecycle as 'PAYABLE' | 'RECEIVABLE',
       description: c.description,
       amount: c.amount,
-      // Data alvo: RAMO 1 usa dueDate; RAMO 2 (EFFECTED) pode usar paymentDate/dueDate/date.
+      // Data alvo: PAYABLE/RECEIVABLE em aberto sempre tem dueDate. Fallbacks
+      // mantidos pra robustez (caso histórico tenha PAYABLE sem dueDate).
       dueDate: c.dueDate ?? c.paymentDate ?? c.date,
       supplierId: c.supplierId,
       customerId: c.customerId,
