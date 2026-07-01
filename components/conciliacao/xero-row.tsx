@@ -279,7 +279,7 @@ export function XeroRow({ ofx, empresaId, suggestion, withdrawalSuggestion, onAc
                   onApplied={onAction}
                 />
               )}
-              {tab === 'TRANSFER' && <TransferPanel />}
+              {tab === 'TRANSFER' && <TransferPanel empresaId={empresaId} />}
               {tab === 'WITHDRAWAL' && (
                 ofx.type !== 'DEBIT' ? (
                   <div className="text-xs text-muted-foreground py-3 text-center">
@@ -597,15 +597,30 @@ function CreatePanel({
 }
 
 // ============================================================================
-// TRANSFER PANEL — placeholder Fase B.3
+// TRANSFER PANEL
 // ============================================================================
-function TransferPanel() {
+// Sprint Parear-Transferencias (01/07/2026): antes era placeholder puro "Fase
+// B.3". Agora aponta pra tela dedicada de parear (existente e funcional),
+// que expõe POST /api/transferencias/pair-pendentes (Sprint 1.7). A Fase B.3
+// completa (parear inline dentro da conciliação) fica pra sprint maior.
+function TransferPanel({ empresaId }: { empresaId: string }) {
   return (
-    <div className="text-sm text-muted-foreground py-4 text-center">
-      <p className="text-xs">
-        Vai reusar fluxo de Transferências (Sprint 0.5) — implementação
-        completa na Fase B.3.
-      </p>
+    <div className="py-4 space-y-3">
+      <div className="rounded-md border border-slate-200 bg-slate-50/60 p-3">
+        <p className="text-xs text-slate-700 leading-relaxed">
+          Pra <strong>casar essa saída/entrada</strong> com um lado equivalente
+          já importado em outra conta (par de transferência interna),
+          use a tela dedicada. Ela lista pares sugeridos e permite
+          seleção manual (não cria transações novas, só liga 2 existentes).
+        </p>
+      </div>
+      <a
+        href={`/empresas/${empresaId}/transferencias/parear`}
+        className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+      >
+        Ir para Parear transferências
+        <ArrowRight className="h-3 w-3" aria-hidden />
+      </a>
     </div>
   )
 }

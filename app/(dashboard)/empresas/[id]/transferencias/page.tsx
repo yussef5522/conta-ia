@@ -29,7 +29,15 @@ import { KPICard } from './_components/KPICard'
 import { FluxoContas } from './_components/FluxoContas'
 
 interface DashboardData {
-  periodo: { inicio: string; fim: string; rotulo: string }
+  periodo: {
+    inicio: string
+    fim: string
+    rotulo: string
+    // Sprint Parear-Transferencias (01/07/2026): mesParam retornado + flag
+    // de auto-detecção (quando mês atual vazio e endpoint caiu no anterior).
+    mesParam?: string
+    autoDetectado?: boolean
+  }
   kpis: {
     conciliado: { count: number; valor: number }
     revisar: { count: number; valor: number }
@@ -63,18 +71,33 @@ export default function TransferenciasDashboard() {
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [empresaNome, setEmpresaNome] = useState<string>('')
+  // Sprint Parear-Transferencias (01/07/2026): mês selecionado (YYYY-MM).
+  // null = "sem override" — endpoint decide (atual, ou auto-fallback pro
+  // último com dados).
+  const [mesSelecionado, setMesSelecionado] = useState<string | null>(null)
 
-  async function reload() {
+  async function reload(mesOverride?: string | null) {
     setLoading(true)
     try {
+      const mesAtual = mesOverride !== undefined ? mesOverride : mesSelecionado
+      const summaryUrl = mesAtual
+        ? `/api/empresas/${empresaId}/transferencias/dashboard-summary?mes=${mesAtual}`
+        : `/api/empresas/${empresaId}/transferencias/dashboard-summary`
       const [summaryRes, contasRes, empresaRes] = await Promise.all([
-        fetch(`/api/empresas/${empresaId}/transferencias/dashboard-summary`, {
+        fetch(summaryUrl, {
           credentials: 'include',
         }),
         fetch(`/api/contas-bancarias?empresaId=${empresaId}`, { credentials: 'include' }),
         fetch(`/api/empresas/${empresaId}`, { credentials: 'include' }),
       ])
-      if (summaryRes.ok) setData(await summaryRes.json())
+      if (summaryRes.ok) {
+        const d: DashboardData = await summaryRes.json()
+        setData(d)
+        // Sincroniza state com mês REALMENTE consultado (após auto-detect).
+        if (d.periodo.mesParam && mesSelecionado === null && d.periodo.autoDetectado) {
+          setMesSelecionado(d.periodo.mesParam)
+        }
+      }
       if (contasRes.ok) {
         const d = await contasRes.json()
         setContas(d.contas ?? [])
@@ -112,11 +135,49 @@ export default function TransferenciasDashboard() {
         <Button variant="outline" asChild>
           <Link href={`/empresas/${empresaId}`}>← Empresa</Link>
         </Button>
+        {/* Sprint Parear-Transferencias (01/07/2026): botão descoberta pra
+            UI de LIGAR 2 tx existentes. Diferente de "Nova transferência"
+            (que CRIA 2 novas). */}
+        <Button variant="outline" asChild>
+          <Link href={`/empresas/${empresaId}/transferencias/parear`}>
+            <ArrowLeftRight className="mr-2 h-4 w-4" />
+            Parear existentes
+          </Link>
+        </Button>
         <Button onClick={() => setModalOpen(true)} disabled={contas.length < 2}>
           <Plus className="mr-2 h-4 w-4" />
           Nova transferência
         </Button>
       </Header>
+
+      {/* Sprint Parear-Transferencias (01/07/2026): seletor de mês + banner
+          quando o endpoint auto-detectou o último mês com dados. */}
+      {data && (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <label htmlFor="mes-select" className="text-[10px] uppercase tracking-wide text-slate-500">
+              Mês
+            </label>
+            <input
+              id="mes-select"
+              type="month"
+              value={data.periodo.mesParam ?? ''}
+              onChange={(e) => {
+                const novo = e.target.value || null
+                setMesSelecionado(novo)
+                void reload(novo)
+              }}
+              className="h-7 rounded-md border border-input bg-white px-2 text-xs text-slate-900"
+            />
+          </div>
+          {data.periodo.autoDetectado && mesSelecionado !== null && (
+            <div className="rounded-md border border-blue-100 bg-blue-50/60 px-3 py-1.5 text-xs text-blue-800">
+              Mês atual sem transferências. Mostrando{' '}
+              <strong>{capitalize(data.periodo.rotulo)}</strong> (último com movimento).
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Sem 2 contas: aviso */}
       {contas.length < 2 && !loading && (

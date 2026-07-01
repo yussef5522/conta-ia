@@ -15,15 +15,81 @@ interface Params { params: Promise<{ id: string }> }
 
 export const runtime = 'nodejs'
 
+// Sprint Parear-Transferencias (01/07/2026): endpoint agora aceita `?mes=YYYY-MM`
+// pra o cliente trocar o mês. Sem param, tenta mês atual; se vazio E não veio
+// explicit request, cai automaticamente pro último mês COM DADOS (evita
+// "Julho vazio quando há 26 transferências em Junho").
+
+function parseMesParam(raw: string | null): { year: number; monthIdx: number } | null {
+  if (!raw) return null
+  const m = /^(\d{4})-(\d{2})$/.exec(raw.trim())
+  if (!m) return null
+  const year = parseInt(m[1])
+  const monthIdx = parseInt(m[2]) - 1
+  if (year < 2000 || year > 2100 || monthIdx < 0 || monthIdx > 11) return null
+  return { year, monthIdx }
+}
+
+function monthBounds(year: number, monthIdx: number) {
+  const inicio = new Date(Date.UTC(year, monthIdx, 1))
+  const fim = new Date(Date.UTC(year, monthIdx + 1, 0, 23, 59, 59))
+  return { inicio, fim }
+}
+
 export async function GET(request: NextRequest, { params }: Params) {
   try {
     const { id: empresaId } = await params
     const ctx = await getAuthContext(request, empresaId)
     ctx.requirePermission('transaction.view')
 
+    const url = new URL(request.url)
+    const mesParam = parseMesParam(url.searchParams.get('mes'))
+
     const now = new Date()
-    const inicioMes = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
-    const fimMes = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0, 23, 59, 59))
+    // Mês requisitado — usa param se veio, senão mês atual
+    let year = mesParam?.year ?? now.getUTCFullYear()
+    let monthIdx = mesParam?.monthIdx ?? now.getUTCMonth()
+    let { inicio: inicioMes, fim: fimMes } = monthBounds(year, monthIdx)
+
+    // Fallback: se NÃO veio param E o mês atual não tem nenhuma TRANSFER
+    // conciliada, procura o último mês com dados (até 12 meses pra trás).
+    // Evita o bug UX "Julho vazio quando há 26 em Junho".
+    let autoDetectado = false
+    if (!mesParam) {
+      const temEsteMs = await prisma.transaction.count({
+        where: {
+          bankAccount: { companyId: empresaId },
+          type: 'TRANSFER',
+          transferGroupId: { not: null },
+          transferDirection: 'OUT',
+          date: { gte: inicioMes, lte: fimMes },
+        },
+      })
+      if (temEsteMs === 0) {
+        // Procura último mês com transferências (12 meses pra trás no máximo).
+        const ultima = await prisma.transaction.findFirst({
+          where: {
+            bankAccount: { companyId: empresaId },
+            type: 'TRANSFER',
+            transferGroupId: { not: null },
+            transferDirection: 'OUT',
+            date: { lt: inicioMes },
+          },
+          orderBy: { date: 'desc' },
+          select: { date: true },
+        })
+        if (ultima) {
+          const y = ultima.date.getUTCFullYear()
+          const m = ultima.date.getUTCMonth()
+          const b = monthBounds(y, m)
+          year = y
+          monthIdx = m
+          inicioMes = b.inicio
+          fimMes = b.fim
+          autoDetectado = true
+        }
+      }
+    }
 
     // KPI 1 — Conciliado (transferências pareadas) NO MÊS
     const conciliadas = await prisma.transaction.findMany({
@@ -125,11 +191,20 @@ export async function GET(request: NextRequest, { params }: Params) {
       ? `${destinoPrincipal.name} é o destino principal — recebe ${origensPrincipais.length > 0 ? `de ${origensPrincipais.map((o) => o.name).join(' e ')}` : 'transferências internas'}`
       : 'Sem transferências este mês'
 
+    // Rotulo do mês exibido (usa inicioMes — o mês REALMENTE consultado,
+    // que pode ter sido auto-detectado).
+    const rotuloMes = new Date(Date.UTC(year, monthIdx, 15)).toLocaleDateString(
+      'pt-BR',
+      { month: 'long', year: 'numeric' },
+    )
+
     return NextResponse.json({
       periodo: {
         inicio: inicioMes.toISOString(),
         fim: fimMes.toISOString(),
-        rotulo: now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }),
+        rotulo: rotuloMes,
+        mesParam: `${year}-${String(monthIdx + 1).padStart(2, '0')}`,
+        autoDetectado,
       },
       kpis: {
         conciliado: { count: conciliadoCount, valor: conciliadoValor },
