@@ -27,6 +27,9 @@ export interface PjTx {
   description: string
   amount: number
   bankAccountName: string | null
+  /** Sprint Fix-NovaPonte (30/06/2026): dreGroup da categoria — usado pra
+   *  ordenar tx de Distribuição no topo do dropdown (kind típico). */
+  dreGroup?: string | null
 }
 export interface Profile {
   id: string
@@ -78,12 +81,76 @@ export function NovaPonteForm({
   const [categoryId, setCategoryId] = useState('')
   const [notes, setNotes] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  // Sprint Fix-NovaPonte (30/06/2026): estados dedicados pra loading + erro.
+  // Antes o .catch(() => {}) engolia qualquer falha silenciosamente e o
+  // dropdown mostrava "Nenhuma transação" mesmo quando o fetch tinha falhado.
+  const [pjTxsLoading, setPjTxsLoading] = useState(true)
+  const [pjTxsError, setPjTxsError] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch(`/api/empresas/${empresaId}/transacoes?type=DEBIT&pageSize=50`)
-      .then((r) => r.json())
-      .then((j) => setPjTxs(j.transacoes ?? []))
-      .catch(() => {})
+    // Sprint Fix-NovaPonte (30/06/2026): endpoint corrigido.
+    //   ANTES: /api/empresas/[id]/transacoes → não existia (404 HTML,
+    //          .json() falhava, .catch engolia, dropdown vazio pra qualquer empresa).
+    //   AGORA: endpoint global /api/transacoes existente aceita empresaId + type +
+    //          status + limit. Retorna { transacoes: [...] } com include.bridge.
+    setPjTxsLoading(true)
+    setPjTxsError(null)
+    const qs = new URLSearchParams({
+      empresaId,
+      type: 'DEBIT',
+      status: 'RECONCILED',
+      limit: '200',
+    })
+    fetch(`/api/transacoes?${qs.toString()}`, { credentials: 'include' })
+      .then(async (r) => {
+        if (!r.ok) {
+          throw new Error(`HTTP ${r.status}`)
+        }
+        return r.json()
+      })
+      .then((j) => {
+        // Shape do endpoint global: { transacoes: [{ id, date, description,
+        // amount, bankAccount: { name }, category: { dreGroup }, bridge: { id } }] }
+        // Mapeamos pro PjTx (shape do NovaPonteForm) e filtramos tx que JÁ
+        // têm ponte (não permitir criar ponte duplicada — @unique já garante
+        // no BD, mas UX melhor pré-filtrando).
+        type ApiTxLite = {
+          id: string
+          date: string
+          description: string
+          amount: number
+          bankAccount: { name: string | null } | null
+          category: { dreGroup: string | null } | null
+          bridge: { id: string } | null
+        }
+        const list: ApiTxLite[] = Array.isArray(j?.transacoes) ? j.transacoes : []
+        const withoutBridge = list.filter((tx) => !tx.bridge)
+        const mapped: PjTx[] = withoutBridge.map((tx) => ({
+          id: tx.id,
+          date: tx.date,
+          description: tx.description,
+          amount: tx.amount,
+          bankAccountName: tx.bankAccount?.name ?? null,
+          dreGroup: tx.category?.dreGroup ?? null,
+        }))
+        // Ordena: Distribuição de Lucros primeiro (kind típico), depois o resto
+        // por data desc (mais recentes primeiro).
+        mapped.sort((a, b) => {
+          const aDist = a.dreGroup === 'DISTRIBUICAO_LUCROS' ? 0 : 1
+          const bDist = b.dreGroup === 'DISTRIBUICAO_LUCROS' ? 0 : 1
+          if (aDist !== bDist) return aDist - bDist
+          return b.date.localeCompare(a.date)
+        })
+        setPjTxs(mapped)
+      })
+      .catch((err) => {
+        // Sprint Fix-NovaPonte (30/06/2026): erro visível, não engolido.
+        console.error('[NovaPonteForm] Falha ao carregar transações PJ:', err)
+        setPjTxsError(
+          err instanceof Error ? err.message : 'Falha ao carregar transações',
+        )
+      })
+      .finally(() => setPjTxsLoading(false))
   }, [empresaId])
 
   useEffect(() => {
@@ -168,8 +235,23 @@ export function NovaPonteForm({
             onChange={(e) => setPjTxQuery(e.target.value)}
           />
           <div className="max-h-64 overflow-y-auto rounded border border-slate-200">
-            {filteredTxs.length === 0 ? (
-              <p className="p-3 text-sm text-slate-500">Nenhuma transação encontrada</p>
+            {/* Sprint Fix-NovaPonte (30/06/2026): distingue loading / erro /
+                vazio-verdadeiro. Antes era só "Nenhuma transação encontrada"
+                em todos os 3 casos — enganava o user quando na verdade o fetch
+                tinha falhado (endpoint fantasma). */}
+            {pjTxsLoading ? (
+              <p className="p-3 text-sm text-slate-500">Carregando transações…</p>
+            ) : pjTxsError ? (
+              <p className="p-3 text-sm text-red-600">
+                Erro ao carregar transações ({pjTxsError}). Tente recarregar a página.
+              </p>
+            ) : filteredTxs.length === 0 ? (
+              <p className="p-3 text-sm text-slate-500">
+                Nenhuma transação encontrada
+                {pjTxs.length === 0
+                  ? ' — não há tx DEBIT já categorizada disponível pra virar ponte.'
+                  : ' pra este filtro.'}
+              </p>
             ) : (
               filteredTxs.map((tx) => (
                 <label
