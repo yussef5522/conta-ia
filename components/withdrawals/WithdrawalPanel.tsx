@@ -17,6 +17,8 @@ import { Loader2, Check, AlertTriangle, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
+import { CategoryCombobox } from '@/components/transacoes/category-combobox'
+import { createCategoryForPF } from '@/lib/transacoes/on-create-category'
 
 export type WithdrawalKind =
   | 'PRO_LABORE'
@@ -38,7 +40,7 @@ interface ProfileOption {
   cpf: string | null
   type: string
   accounts: { id: string; name: string; bankName: string | null }[]
-  incomeCategories: { id: string; name: string }[]
+  incomeCategories: { id: string; name: string; color?: string | null }[]
 }
 
 interface ContextResponse {
@@ -422,18 +424,48 @@ export function WithdrawalPanel({
                         <label className="text-[10px] uppercase font-semibold text-muted-foreground">
                           Categoria PF
                         </label>
-                        <select
-                          value={categoryId}
-                          onChange={(e) => setCategoryId(e.target.value)}
-                          className="w-full h-9 px-2 text-sm rounded border bg-background"
-                        >
-                          <option value="">Escolher...</option>
-                          {profile.incomeCategories.map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.name}
-                            </option>
-                          ))}
-                        </select>
+                        {/* Sprint Category-Combobox PF Batch (30/06/2026):
+                            trocado <select> HTML por CategoryCombobox.
+                            Withdrawal cria tx PF CREDIT (entrada) via bridge. */}
+                        <CategoryCombobox
+                          value={categoryId || null}
+                          categorias={profile.incomeCategories.map((c) => ({
+                            id: c.id,
+                            name: c.name,
+                            color: c.color ?? null,
+                            type: 'INCOME',
+                            dreGroup: null,
+                          }))}
+                          onChange={(v) => setCategoryId(v ?? '')}
+                          onCreate={async (name) => {
+                            const cat = await createCategoryForPF(profile.id, name, 'INCOME')
+                            if (cat) {
+                              // Atualiza incomeCategories do profile no ctx local
+                              setCtx((prev) =>
+                                prev
+                                  ? {
+                                      ...prev,
+                                      profiles: prev.profiles.map((p) =>
+                                        p.id === profile.id
+                                          ? {
+                                              ...p,
+                                              incomeCategories: [
+                                                ...p.incomeCategories,
+                                                { id: cat.id, name: cat.name, color: cat.color ?? null },
+                                              ],
+                                            }
+                                          : p,
+                                      ),
+                                    }
+                                  : prev,
+                              )
+                            }
+                            return cat
+                          }}
+                          placeholder="Escolher..."
+                          className="h-9 w-full justify-between border-input text-sm"
+                          ariaLabel="Categoria PF do withdrawal"
+                        />
                       </div>
                     </div>
                   )}

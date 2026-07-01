@@ -18,6 +18,8 @@ import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
 import { BridgeKindRadio } from '@/components/bridges/BridgeKindRadio'
 import type { BridgeKind } from '@/lib/bridges/types'
+import { CategoryCombobox } from '@/components/transacoes/category-combobox'
+import { createCategoryForPF } from '@/lib/transacoes/on-create-category'
 
 export interface PjTx {
   id: string
@@ -39,6 +41,8 @@ export interface Account {
 export interface Category {
   id: string
   name: string
+  color?: string | null
+  type?: string | null
 }
 
 export interface NovaPonteFormProps {
@@ -243,19 +247,38 @@ export function NovaPonteForm({
 
           <div>
             <Label>Categoria PF</Label>
-            <select
-              value={categoryId}
-              onChange={(e) => setCategoryId(e.target.value)}
+            {/* Sprint Category-Combobox PF Batch (30/06/2026): trocado
+                <select> HTML por CategoryCombobox unificado. Bridge PJ→PF
+                cria tx PF CREDIT (recebimento), categoria = INCOME. */}
+            <CategoryCombobox
+              value={categoryId || null}
+              categorias={categories.map((c) => ({
+                id: c.id,
+                name: c.name,
+                color: c.color ?? null,
+                type: c.type ?? 'INCOME',
+                dreGroup: null,
+              }))}
+              onChange={(v) => setCategoryId(v ?? '')}
+              onCreate={
+                profileId
+                  ? async (name) => {
+                      const cat = await createCategoryForPF(profileId, name, 'INCOME')
+                      if (cat) setCategories((prev) => [...prev, {
+                        id: cat.id,
+                        name: cat.name,
+                        color: cat.color ?? null,
+                        type: cat.type ?? 'INCOME',
+                      }])
+                      return cat
+                    }
+                  : undefined
+              }
               disabled={!profileId}
-              className="mt-1 w-full rounded border border-slate-200 bg-white px-3 py-2 text-sm"
-            >
-              <option value="">Selecione…</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+              placeholder="Selecione…"
+              className="mt-1 h-9 w-full justify-between border-input text-sm"
+              ariaLabel="Categoria PF da ponte"
+            />
           </div>
 
           <div>

@@ -19,11 +19,14 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { InstallmentPreview } from '@/components/credit-card/installment-preview'
+import { CategoryCombobox } from '@/components/transacoes/category-combobox'
+import { createCategoryForPF } from '@/lib/transacoes/on-create-category'
 
 interface CategoryMini {
   id: string
   name: string
   type: 'INCOME' | 'EXPENSE'
+  color?: string | null
 }
 
 const MAX_INSTALLMENTS = 24
@@ -154,16 +157,32 @@ export default function NovaCompraPage({
 
             <div className="sm:col-span-2">
               <Label>Categoria (opcional)</Label>
-              <Select value={categoryId} onValueChange={setCategoryId}>
-                <SelectTrigger className="mt-1">
-                  <SelectValue placeholder="—" />
-                </SelectTrigger>
-                <SelectContent>
-                  {categories.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {/* Sprint Category-Combobox PF Batch (30/06/2026): unificação. */}
+              <CategoryCombobox
+                value={categoryId || null}
+                categorias={categories.map((c) => ({
+                  id: c.id,
+                  name: c.name,
+                  color: c.color ?? null,
+                  type: c.type,
+                  dreGroup: null,
+                }))}
+                onChange={(v) => setCategoryId(v ?? '')}
+                onCreate={async (name) => {
+                  // Compra no cartão = despesa (EXPENSE).
+                  const cat = await createCategoryForPF(id, name, 'EXPENSE')
+                  if (cat) setCategories((prev) => [...prev, {
+                    id: cat.id,
+                    name: cat.name,
+                    type: 'EXPENSE',
+                    color: cat.color ?? null,
+                  }])
+                  return cat
+                }}
+                placeholder="—"
+                className="mt-1 h-9 w-full justify-between border-input"
+                ariaLabel="Categoria da compra"
+              />
             </div>
 
             <div className="sm:col-span-2">

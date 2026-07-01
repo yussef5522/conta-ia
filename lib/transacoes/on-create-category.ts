@@ -74,3 +74,80 @@ export function derivePjCategoryType(
   if (txType === 'TRANSFER') return 'TRANSFER'
   return 'EXPENSE'
 }
+
+// ────────────────────────────────────────────────────────────────
+// PF — Sprint Category-Combobox PF Batch (30/06/2026)
+// ────────────────────────────────────────────────────────────────
+
+/**
+ * Type requerido pelo endpoint POST /api/perfis/[id]/categorias.
+ * PF tem só INCOME/EXPENSE (não tem TRANSFER — transferência entre contas
+ * do mesmo perfil é Fatia futura).
+ */
+export type PfCategoryType = 'INCOME' | 'EXPENSE'
+
+/**
+ * Cria categoria PF inline (usado pelo onCreate do CategoryCombobox nas
+ * telas PF).
+ *
+ * Endpoint POST /api/perfis/[id]/categorias aceita name + type + kind
+ * opcional. Retorna null em qualquer falha; caller pode mostrar toast.
+ *
+ * PersonalCategory NÃO tem `dreGroup` (isso é PJ). Retornamos null pra esse
+ * campo no CategoryLite, o CategoryCombobox agrupa como "Outros" quando
+ * faltar dreGroup.
+ */
+export async function createCategoryForPF(
+  profileId: string,
+  name: string,
+  type: PfCategoryType,
+): Promise<CategoryLite | null> {
+  const trimmed = name.trim()
+  if (!trimmed) return null
+
+  try {
+    const res = await fetch(`/api/perfis/${profileId}/categorias`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: trimmed, type }),
+    })
+    if (!res.ok) return null
+    const data = await res.json().catch(() => null)
+    if (!data || typeof data !== 'object') return null
+    // API pode retornar direto OU wrap em { category }/{ categoria }.
+    const cat =
+      (data as { category?: unknown }).category ??
+      (data as { categoria?: unknown }).categoria ??
+      data
+    if (!cat || typeof cat !== 'object') return null
+    const c = cat as Record<string, unknown>
+    if (typeof c.id !== 'string' || typeof c.name !== 'string') return null
+    return {
+      id: c.id,
+      name: c.name,
+      color: (c.color as string | null) ?? null,
+      type: (c.type as string | null) ?? null,
+      // PersonalCategory não tem dreGroup — sempre null.
+      dreGroup: null,
+    }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Deriva o type PF do contexto operacional.
+ *
+ * DEBIT (saída) → EXPENSE
+ * CREDIT (entrada) → INCOME
+ *
+ * PF não tem TRANSFER — fica pra Fatia futura de transferência entre
+ * contas do mesmo perfil.
+ */
+export function derivePfCategoryType(
+  txType: 'CREDIT' | 'DEBIT' | string,
+): PfCategoryType {
+  if (txType === 'CREDIT') return 'INCOME'
+  return 'EXPENSE'
+}

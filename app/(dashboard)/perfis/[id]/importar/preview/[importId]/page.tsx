@@ -24,6 +24,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
+import { CategoryCombobox } from '@/components/transacoes/category-combobox'
+import { createCategoryForPF } from '@/lib/transacoes/on-create-category'
 
 interface PreviewLine {
   index: number
@@ -72,6 +74,7 @@ interface CategoryMini {
   id: string
   name: string
   type: 'INCOME' | 'EXPENSE'
+  color?: string | null
 }
 
 function formatBRL(n: number) {
@@ -497,28 +500,46 @@ export default function PreviewImportPage({
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-2">
-                        <Select
-                          value={d.categoryId ?? ''}
-                          onValueChange={(v) => {
+                        {/* Sprint Category-Combobox PF Batch (30/06/2026): trocado
+                            Select por CategoryCombobox. PRESERVA mapeamento por
+                            fitid — só o componente visual mudou. */}
+                        <CategoryCombobox
+                          value={d.categoryId ?? null}
+                          categorias={categories
+                            .filter((c) =>
+                              (l.type === 'CREDIT' && c.type === 'INCOME') ||
+                              (l.type === 'DEBIT' && c.type === 'EXPENSE'),
+                            )
+                            .map((c) => ({
+                              id: c.id,
+                              name: c.name,
+                              color: c.color ?? null,
+                              type: c.type,
+                              dreGroup: null,
+                            }))}
+                          onChange={(v) => {
                             const n = new Map(decisions)
-                            n.set(l.fitid, { ...d, categoryId: v || null })
+                            n.set(l.fitid, { ...d, categoryId: v ?? null })
                             setDecisions(n)
                           }}
-                        >
-                          <SelectTrigger className="h-8 text-xs flex-1">
-                            <SelectValue placeholder="—" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {categories
-                              .filter((c) =>
-                                (l.type === 'CREDIT' && c.type === 'INCOME') ||
-                                (l.type === 'DEBIT' && c.type === 'EXPENSE'),
-                              )
-                              .map((c) => (
-                                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                              ))}
-                          </SelectContent>
-                        </Select>
+                          onCreate={async (name) => {
+                            const cat = await createCategoryForPF(
+                              id,
+                              name,
+                              l.type === 'CREDIT' ? 'INCOME' : 'EXPENSE',
+                            )
+                            if (cat) setCategories((prev) => [...prev, {
+                              id: cat.id,
+                              name: cat.name,
+                              type: (cat.type as 'INCOME' | 'EXPENSE') ?? (l.type === 'CREDIT' ? 'INCOME' : 'EXPENSE'),
+                              color: cat.color ?? null,
+                            }])
+                            return cat
+                          }}
+                          placeholder="—"
+                          className="h-8 flex-1 justify-between border-input text-xs"
+                          ariaLabel={`Categoria de ${l.description}`}
+                        />
                         {l.confidence > 0 && (
                           <span
                             className={`text-[9px] uppercase font-semibold px-1.5 py-0.5 rounded ${confidenceBadge(l.confidence)}`}

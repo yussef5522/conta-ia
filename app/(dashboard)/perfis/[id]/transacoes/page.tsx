@@ -31,6 +31,8 @@ import {
   NovaCategoriaPFModal,
   type PersonalCategoryCreated,
 } from '@/components/categorias-pf/NovaCategoriaPFModal'
+import { CategoryCombobox } from '@/components/transacoes/category-combobox'
+import { createCategoryForPF } from '@/lib/transacoes/on-create-category'
 
 interface Tx {
   id: string
@@ -51,6 +53,7 @@ interface CategoryMini {
   id: string
   name: string
   type: 'INCOME' | 'EXPENSE'
+  color?: string | null
 }
 
 function formatBRL(n: number): string {
@@ -285,35 +288,39 @@ export default function TransacoesPFPage({
 
               <div className="sm:col-span-2">
                 <Label>Categoria</Label>
-                <Select
-                  value={categoryId}
-                  onValueChange={(v) => {
-                    // Sprint Categorias-PF-Nav: sentinel pra abrir modal
-                    if (v === '__create__') {
-                      setNovaCatOpen(true)
-                      return
-                    }
-                    setCategoryId(v)
+                {/* Sprint Category-Combobox PF Batch (30/06/2026): trocado
+                    Select shadcn por CategoryCombobox (unificação PJ+PF).
+                    onCreate liga em createCategoryForPF que deriva type do
+                    contexto (CREDIT→INCOME, DEBIT→EXPENSE). NovaCategoriaPFModal
+                    continua disponível como fallback pro fluxo antigo (linha 426). */}
+                <CategoryCombobox
+                  value={categoryId || null}
+                  categorias={filteredCategories.map((c) => ({
+                    id: c.id,
+                    name: c.name,
+                    color: c.color ?? null,
+                    type: c.type,
+                    dreGroup: null,
+                  }))}
+                  onChange={(v) => setCategoryId(v ?? '')}
+                  onCreate={async (name) => {
+                    const cat = await createCategoryForPF(
+                      id,
+                      name,
+                      type === 'CREDIT' ? 'INCOME' : 'EXPENSE',
+                    )
+                    if (cat) setCategories((prev) => [...prev, {
+                      id: cat.id,
+                      name: cat.name,
+                      type: (cat.type as 'INCOME' | 'EXPENSE') ?? (type === 'CREDIT' ? 'INCOME' : 'EXPENSE'),
+                      color: cat.color ?? null,
+                    }])
+                    return cat
                   }}
-                >
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Selecione (opcional)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {filteredCategories.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.name}
-                      </SelectItem>
-                    ))}
-                    {filteredCategories.length > 0 && <SelectSeparator />}
-                    {/* Sprint Categorias-PF-Nav (07/06/2026): atalho "+ criar"
-                        no fim do dropdown — abre modal pré-selecionando o
-                        tipo certo (despesa/receita conforme `type` do form). */}
-                    <SelectItem value="__create__" className="text-emerald-700 dark:text-emerald-400 font-medium">
-                      ✚ Criar nova categoria…
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
+                  placeholder="Selecione (opcional)"
+                  className="mt-1 h-9 w-full justify-between border-input"
+                  ariaLabel="Categoria da transação"
+                />
               </div>
 
               <div className="sm:col-span-2">
