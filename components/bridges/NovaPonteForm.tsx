@@ -289,7 +289,8 @@ export function NovaPonteForm({
         throw new Error(json.erro ?? 'Erro ao criar ponte')
       }
       const json = await res.json()
-      toast({ title: '🌉 Ponte criada', description: 'Redirecionando…' })
+      // Sprint Redesign-Socios (01/07/2026): nomenclatura "Retirada" no user-visible.
+      toast({ title: '🌉 Retirada enviada ao PF', description: 'Redirecionando…' })
       if (onCreated) onCreated(json.bridgeId)
       else router.push(redirectTo ?? `/pontes/${json.bridgeId}`)
     } catch (err) {

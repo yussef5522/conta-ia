@@ -1,17 +1,25 @@
 'use client'
 
 // Sprint Unificar Sócios — Cliente da tela /socios unificada.
+// Sprint Redesign-Socios (01/07/2026) — Mercury/Ramp/Linear consistente.
 //
-// Tabs:
-//  1. Sócios PF (cadastro + coluna "Suas pontes" filtrada por privacidade)
-//  2. Empresas do Grupo (CNPJs relacionados)
+// Tabs finais:
+//  1. Sócios PF (cadastro + coluna "Retiradas" filtrada por privacidade)
+//  2. Retiradas pendentes (fila da Sprint Fluxo-Unificado-Retirada 30/06)
 //
-// Reuso: endpoints /socios-pf + /empresas-relacionadas existentes (CRUD).
-// Privacidade: coluna "Suas pontes" chama agregador filtrado por userId.
+// Colapsados em blocos discretos (features dormentes, 0 uso em toda prod):
+//  - Empresas do Grupo (0/prod) → botão "Ver empresas do grupo"
+//  - Detecção automática de Pix → rodapé/config discreto
+//
+// Nomenclatura visível ao usuário: "Retirada" (não "Ponte") — model/URL
+// continuam como bridges/pontes.
+//
+// Reuso: endpoints /socios-pf + /empresas-relacionadas + /recategorize-pix
+// intactos. Privacidade Fatia 4 preservada.
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Users, Building2, Plus, Trash2, ArrowRight, Loader2, Wand2, X, Sparkles } from 'lucide-react'
+import { Users, Building2, Plus, Trash2, ArrowRight, Loader2, Wand2, ChevronDown } from 'lucide-react'
 import { RetiradasPendentesTab } from '@/components/bridges/RetiradasPendentesTab'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -93,20 +101,16 @@ export function SociosUnifiedClient({ empresaId, empresaNome }: Props) {
   const [showEmpresaForm, setShowEmpresaForm] = useState(false)
   const [recategorizing, setRecategorizing] = useState(false)
   const [activeTab, setActiveTab] = useState('socios-pf')
-  const [showMigrationToast, setShowMigrationToast] = useState(false)
   // Sprint Fluxo-Unificado-Retirada (30/06/2026): contador da fila usado
   // no badge da aba. Fetch leve, cache 60s no endpoint.
   const [retiradasCount, setRetiradasCount] = useState<number | null>(null)
+  // Sprint Redesign-Socios (01/07/2026): blocos discretos colapsáveis
+  // (features dormentes — Empresas do Grupo 0/prod, Detecção Pix 0/prod).
+  const [showEmpresasGrupo, setShowEmpresasGrupo] = useState(false)
+  const [showPixConfig, setShowPixConfig] = useState(false)
 
-  // Toast enxuto: aparece 1 vez por user via localStorage
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    const k = 'socios-unified-toast-seen-v1'
-    if (!localStorage.getItem(k)) {
-      setShowMigrationToast(true)
-      localStorage.setItem(k, '1')
-    }
-  }, [])
+  // Sprint Redesign-Socios (01/07/2026): toast "Unificação" removido (Sprint
+  // Unificar Sócios era 03/06 — 28 dias, 100% users já viram).
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -234,80 +238,26 @@ export function SociosUnifiedClient({ empresaId, empresaNome }: Props) {
     <>
       <Header title="Sócios" description={`${empresaNome}`} />
 
-      <div className="container mx-auto max-w-6xl px-4 py-6 space-y-6">
-        {/* Toast enxuto de migração (1 vez por user via localStorage) */}
-        {showMigrationToast && (
-          <div className="flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">
-            <span>
-              ✨ <strong>Novidade:</strong> &quot;Pessoas Vinculadas&quot; e
-              &quot;Pontes PJ→PF&quot; foram unificadas aqui em &quot;Sócios&quot;.
-            </span>
-            <button
-              onClick={() => setShowMigrationToast(false)}
-              className="text-amber-700 hover:text-amber-900"
-              aria-label="Fechar"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        )}
+      <div className="container mx-auto max-w-6xl px-4 py-6 space-y-5">
+        {/* Sprint Redesign-Socios (01/07/2026): banner Privacidade discreto —
+            info em 1 linha compacta com ícone pequeno. Antes era Card grande. */}
+        <div className="flex items-start gap-2 text-xs text-slate-500">
+          <Users className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />
+          <p className="leading-relaxed">
+            Cadastros (CPF, papel, chaves Pix) são visíveis a todos da empresa.
+            As <strong className="font-medium text-slate-700">retiradas</strong>{' '}
+            que cada sócio recebeu são privadas — você só vê as suas.
+          </p>
+        </div>
 
-        {/* Banner privacidade */}
-        <Card className="border-blue-200 bg-blue-50">
-          <CardContent className="flex items-start gap-3 p-4">
-            <Users className="mt-0.5 h-5 w-5 flex-shrink-0 text-blue-600" />
-            <div className="text-sm">
-              <p className="font-medium text-blue-900">Privacidade</p>
-              <p className="text-blue-800">
-                Os cadastros (CPF/CNPJ/papel) são visíveis a todos da empresa.
-                Os <strong>pagamentos (pontes)</strong> que cada sócio recebeu
-                são privados — você só vê os <strong>seus</strong>.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Card educativo sobre detecção (preservado da tela antiga) */}
-        {(socios.length > 0 || empresasRel.length > 0) && (
-          <Card className="bg-indigo-50/40 border-indigo-100">
-            <CardContent className="py-4">
-              <div className="flex items-center justify-between gap-3 flex-wrap">
-                <p className="text-xs text-indigo-900">
-                  💡 <strong>Detecção automática de Pix</strong> funciona com os cadastros
-                  atuais. Re-analisar aplica em transações antigas.
-                </p>
-                <Button size="sm" variant="default" onClick={recategorizePix} disabled={recategorizing}>
-                  {recategorizing ? (
-                    <>
-                      <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                      Analisando…
-                    </>
-                  ) : (
-                    <>
-                      <Wand2 className="h-3.5 w-3.5 mr-1.5" />
-                      Re-analisar Pix antigos
-                    </>
-                  )}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Tabs */}
+        {/* Tabs — 2 principais. "Empresas do Grupo" e "Detecção Pix" agora
+            ficam em blocos colapsáveis no rodapé. */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList>
             <TabsTrigger value="socios-pf">
               <Users className="mr-2 h-4 w-4" />
               Sócios PF ({socios.length})
             </TabsTrigger>
-            <TabsTrigger value="empresas-grupo">
-              <Building2 className="mr-2 h-4 w-4" />
-              Empresas do Grupo ({empresasRel.length})
-            </TabsTrigger>
-            {/* Sprint Fluxo-Unificado-Retirada (30/06/2026): aba nova.
-                Badge âmbar destaca quando há retiradas pendentes (call to action
-                sutil sem gritar). Neutro quando fila zerada. */}
             <TabsTrigger value="retiradas-pendentes">
               <span className="mr-2 text-sm" aria-hidden>🌉</span>
               Retiradas pendentes
@@ -349,37 +299,49 @@ export function SociosUnifiedClient({ empresaId, empresaNome }: Props) {
                   />
                 )}
 
+                {/* Sprint Redesign-Socios (01/07/2026): tabela premium
+                    (tabular-nums, hover suave, coluna "Retiradas" no lugar
+                    de "Suas pontes"). Nomenclatura visível ao usuário. */}
                 {loading ? (
-                  <p className="text-sm text-zinc-500">Carregando…</p>
+                  <div className="space-y-2 py-3">
+                    {[0, 1, 2].map((i) => (
+                      <div key={i} className="h-9 animate-pulse rounded bg-slate-50" />
+                    ))}
+                  </div>
                 ) : socios.length === 0 ? (
-                  <p className="text-sm text-zinc-500 text-center py-6">
+                  <p className="py-8 text-center text-sm text-slate-500">
                     Nenhum sócio cadastrado. Adicione seu próprio CPF e chaves Pix pra começar.
                   </p>
                 ) : (
                   <table className="w-full text-sm">
-                    <thead className="border-b border-slate-200 text-xs uppercase text-slate-500">
+                    <thead className="border-b border-slate-200 text-[10px] uppercase tracking-wide text-slate-500">
                       <tr>
-                        <th className="py-2 text-left">Nome</th>
-                        <th className="py-2 text-left">CPF</th>
-                        <th className="py-2 text-left">Papel</th>
-                        <th className="py-2 text-right">Suas pontes</th>
-                        <th className="py-2 text-right">Ações</th>
+                        <th className="py-2 text-left font-medium">Nome</th>
+                        <th className="py-2 text-left font-medium">CPF</th>
+                        <th className="py-2 text-left font-medium">Papel</th>
+                        <th className="py-2 text-right font-medium">Retiradas</th>
+                        <th className="py-2 text-right font-medium">Ações</th>
                       </tr>
                     </thead>
                     <tbody>
                       {socios.map((s) => (
-                        <tr key={s.id} className="border-b border-slate-100">
+                        <tr
+                          key={s.id}
+                          className="group border-b border-slate-100 transition-colors hover:bg-slate-50/60"
+                        >
                           <td className="py-3 font-medium text-slate-900">
                             <Link
                               href={`/empresas/${empresaId}/socios/${s.id}`}
-                              className="hover:text-primary hover:underline"
+                              className="transition-colors hover:text-primary"
                             >
                               {s.nome}
                             </Link>
                           </td>
-                          <td className="py-3 text-slate-700">{maskCpf(s.cpf)}</td>
+                          <td className="py-3 tabular-nums text-slate-600">
+                            {maskCpf(s.cpf)}
+                          </td>
                           <td className="py-3">
-                            <Badge variant="outline" className="text-[10px]">
+                            <Badge variant="outline" className="text-[10px] font-normal">
                               {PAPEL_LABELS[s.papel] ?? s.papel}
                             </Badge>
                           </td>
@@ -387,101 +349,34 @@ export function SociosUnifiedClient({ empresaId, empresaNome }: Props) {
                             {s.suasPontesCount === 0 ? (
                               <span className="text-slate-400">—</span>
                             ) : (
-                              <span className="font-medium text-emerald-600">
+                              <span className="tabular-nums font-medium text-emerald-600">
                                 {formatBRL(s.suasPontesAmount)}
-                                <span className="ml-1 text-xs text-slate-500">
+                                <span className="ml-1 text-xs font-normal text-slate-400">
                                   ({s.suasPontesCount})
                                 </span>
                               </span>
                             )}
                           </td>
                           <td className="py-3 text-right">
-                            <div className="flex items-center justify-end gap-1">
-                              <Link href={`/empresas/${empresaId}/socios/${s.id}`}>
-                                <Button variant="ghost" size="sm">
-                                  <ArrowRight className="h-4 w-4" />
+                            <div className="flex items-center justify-end gap-0.5 opacity-60 transition-opacity group-hover:opacity-100">
+                              <Link
+                                href={`/empresas/${empresaId}/socios/${s.id}`}
+                                aria-label={`Ver detalhes de ${s.nome}`}
+                              >
+                                <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                                  <ArrowRight className="h-3.5 w-3.5" />
                                 </Button>
                               </Link>
                               <Button
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => handleDeleteSocio(s.id)}
+                                aria-label={`Excluir ${s.nome}`}
+                                className="h-7 w-7 p-0 text-rose-500 hover:bg-rose-50 hover:text-rose-600"
                               >
-                                <Trash2 className="h-4 w-4 text-red-500" />
+                                <Trash2 className="h-3.5 w-3.5" />
                               </Button>
                             </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* === ABA EMPRESAS DO GRUPO === */}
-          <TabsContent value="empresas-grupo" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between gap-3">
-                  <CardTitle className="text-sm flex items-center gap-2">
-                    Empresas Relacionadas (Mesmo Grupo)
-                    <Badge variant="outline" className="text-[10px]">{empresasRel.length}</Badge>
-                  </CardTitle>
-                  <Button size="sm" onClick={() => setShowEmpresaForm(!showEmpresaForm)}>
-                    <Plus className="h-3.5 w-3.5 mr-1" />
-                    Adicionar
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {showEmpresaForm && (
-                  <EmpresaRelForm
-                    empresaId={empresaId}
-                    onCreated={() => {
-                      setShowEmpresaForm(false)
-                      load()
-                    }}
-                    onCancel={() => setShowEmpresaForm(false)}
-                  />
-                )}
-
-                {loading ? (
-                  <p className="text-sm text-zinc-500">Carregando…</p>
-                ) : empresasRel.length === 0 ? (
-                  <p className="text-sm text-zinc-500 text-center py-6">
-                    Nenhum CNPJ do grupo cadastrado. Adicione pra detectar transferências
-                    entre empresas e evitar dupla contagem no DRE.
-                  </p>
-                ) : (
-                  <table className="w-full text-sm">
-                    <thead className="border-b border-slate-200 text-xs uppercase text-slate-500">
-                      <tr>
-                        <th className="py-2 text-left">Nome Fantasia</th>
-                        <th className="py-2 text-left">CNPJ</th>
-                        <th className="py-2 text-left">Tipo Relação</th>
-                        <th className="py-2 text-right">Ações</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {empresasRel.map((e) => (
-                        <tr key={e.id} className="border-b border-slate-100">
-                          <td className="py-3 font-medium text-slate-900">{e.nomeFantasia}</td>
-                          <td className="py-3 text-slate-700">{maskCnpj(e.cnpjRelacionado)}</td>
-                          <td className="py-3">
-                            <Badge variant="outline" className="text-[10px]">
-                              {RELACAO_LABELS[e.relacao] ?? e.relacao}
-                            </Badge>
-                          </td>
-                          <td className="py-3 text-right">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDeleteEmpresa(e.id)}
-                            >
-                              <Trash2 className="h-4 w-4 text-red-500" />
-                            </Button>
                           </td>
                         </tr>
                       ))}
@@ -500,6 +395,167 @@ export function SociosUnifiedClient({ empresaId, empresaNome }: Props) {
             />
           </TabsContent>
         </Tabs>
+
+        {/* Sprint Redesign-Socios (01/07/2026): blocos colapsáveis pra features
+            dormentes (0 uso em toda prod, 01/07/2026). CRUD intacto,
+            só sai da entrada principal. Discreto no rodapé. */}
+        <div className="mt-8 space-y-2 border-t border-slate-100 pt-6">
+          {/* Empresas do Grupo — colapsável */}
+          <button
+            type="button"
+            onClick={() => setShowEmpresasGrupo((v) => !v)}
+            className="flex w-full items-center justify-between rounded-md px-2 py-2 text-left text-xs text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700"
+            aria-expanded={showEmpresasGrupo}
+          >
+            <span className="inline-flex items-center gap-2">
+              <Building2 className="h-3.5 w-3.5" aria-hidden />
+              Empresas do grupo ({empresasRel.length})
+            </span>
+            <ChevronDown
+              className={`h-3.5 w-3.5 transition-transform ${
+                showEmpresasGrupo ? 'rotate-180' : ''
+              }`}
+              aria-hidden
+            />
+          </button>
+          {showEmpresasGrupo && (
+            <Card className="border-slate-200">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between gap-3">
+                  <CardTitle className="text-sm font-medium text-slate-700">
+                    CNPJs do mesmo grupo
+                  </CardTitle>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setShowEmpresaForm(!showEmpresaForm)}
+                  >
+                    <Plus className="mr-1 h-3.5 w-3.5" />
+                    Adicionar
+                  </Button>
+                </div>
+                <p className="text-xs text-slate-500">
+                  Cadastre CNPJs do mesmo grupo pra detectar transferências
+                  automaticamente e evitar dupla contagem no DRE.
+                </p>
+              </CardHeader>
+              <CardContent>
+                {showEmpresaForm && (
+                  <EmpresaRelForm
+                    empresaId={empresaId}
+                    onCreated={() => {
+                      setShowEmpresaForm(false)
+                      load()
+                    }}
+                    onCancel={() => setShowEmpresaForm(false)}
+                  />
+                )}
+
+                {loading ? (
+                  <div className="space-y-2 py-2">
+                    {[0, 1].map((i) => (
+                      <div key={i} className="h-8 animate-pulse rounded bg-slate-50" />
+                    ))}
+                  </div>
+                ) : empresasRel.length === 0 ? (
+                  <p className="py-6 text-center text-sm text-slate-500">
+                    Nenhum CNPJ do grupo cadastrado.
+                  </p>
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead className="border-b border-slate-200 text-[10px] uppercase tracking-wide text-slate-500">
+                      <tr>
+                        <th className="py-2 text-left font-medium">Nome Fantasia</th>
+                        <th className="py-2 text-left font-medium">CNPJ</th>
+                        <th className="py-2 text-left font-medium">Relação</th>
+                        <th className="py-2 text-right font-medium">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {empresasRel.map((e) => (
+                        <tr
+                          key={e.id}
+                          className="group border-b border-slate-100 transition-colors hover:bg-slate-50/60"
+                        >
+                          <td className="py-3 font-medium text-slate-900">{e.nomeFantasia}</td>
+                          <td className="py-3 tabular-nums text-slate-600">
+                            {maskCnpj(e.cnpjRelacionado)}
+                          </td>
+                          <td className="py-3">
+                            <Badge variant="outline" className="text-[10px] font-normal">
+                              {RELACAO_LABELS[e.relacao] ?? e.relacao}
+                            </Badge>
+                          </td>
+                          <td className="py-3 text-right">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDeleteEmpresa(e.id)}
+                              aria-label={`Excluir ${e.nomeFantasia}`}
+                              className="h-7 w-7 p-0 text-rose-500 opacity-60 transition-opacity hover:bg-rose-50 hover:text-rose-600 group-hover:opacity-100"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Detecção Pix — colapsável */}
+          <button
+            type="button"
+            onClick={() => setShowPixConfig((v) => !v)}
+            className="flex w-full items-center justify-between rounded-md px-2 py-2 text-left text-xs text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700"
+            aria-expanded={showPixConfig}
+          >
+            <span className="inline-flex items-center gap-2">
+              <Wand2 className="h-3.5 w-3.5" aria-hidden />
+              Detecção automática de Pix
+            </span>
+            <ChevronDown
+              className={`h-3.5 w-3.5 transition-transform ${
+                showPixConfig ? 'rotate-180' : ''
+              }`}
+              aria-hidden
+            />
+          </button>
+          {showPixConfig && (
+            <Card className="border-slate-200">
+              <CardContent className="space-y-3 p-4">
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Depende dos cadastros de <strong>chaves Pix</strong> nos sócios
+                  (acima) e dos CNPJs do grupo. Quando ativa, categoriza
+                  transferências para o CPF/CNPJ do sócio como{' '}
+                  <em>Distribuição de Lucros</em> automaticamente. Rodar re-análise
+                  aplica em transações antigas.
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={recategorizePix}
+                  disabled={recategorizing}
+                >
+                  {recategorizing ? (
+                    <>
+                      <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                      Analisando…
+                    </>
+                  ) : (
+                    <>
+                      <Wand2 className="mr-1.5 h-3.5 w-3.5" />
+                      Re-analisar transações antigas
+                    </>
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+        </div>
       </div>
     </>
   )

@@ -1,15 +1,23 @@
 'use client'
 
-// Sprint Unificar Sócios — Detalhe do sócio com 3 abas.
+// Sprint Unificar Sócios — Detalhe do sócio.
+// Sprint Redesign-Socios (01/07/2026) — nível Mercury/Ramp/Linear:
+//   • Hero premium consolida os 3 stats cards antigos (1 número heroi)
+//   • Card "Dados do sócio" compacto colapsável (substitui aba Dados)
+//   • Aba "Retiradas realizadas" reestilizada (era "💸 Retiradas")
+//   • Botão "Criar retirada" no header (substitui aba "+ Nova ponte")
+//   • Detecção Pix agora banner condicional (só quando > 0)
+//   • Nomenclatura "Retirada" (nunca "Ponte") no que o user vê.
 //
 // 🔒 PRIVACIDADE:
-// - "Dados": público (todos da empresa)
-// - "Suas pontes": só aparece se user tem pontes deste sócio (privado)
-// - "Detecção Pix": público (mesma info que /transacoes mostra)
+// - Dados do sócio: público (todos da empresa)
+// - Retiradas realizadas: só aparece se user tem pontes deste sócio (privado)
+// - Detecção Pix: público (mesma info que /transacoes mostra)
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { motion } from 'framer-motion'
 import {
   ArrowLeft,
   Plus,
@@ -19,11 +27,20 @@ import {
   ArrowDownToLine,
   Check,
   Lightbulb,
+  ChevronDown,
+  Sparkles,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
 import { KIND_DEFAULTS } from '@/lib/bridges/kind-defaults'
@@ -31,6 +48,7 @@ import { suggestSpendCategory } from '@/lib/bridges/suggest-spend-category'
 import { BridgeBadge } from '@/components/bridges/BridgeBadge'
 import { BridgeDeleteModal } from '@/components/bridges/BridgeDeleteModal'
 import { NovaPonteForm } from '@/components/bridges/NovaPonteForm'
+import { CategoryCombobox } from '@/components/transacoes/category-combobox'
 import type { BridgeKind, BridgeListItem, BridgeDeleteMode } from '@/lib/bridges/types'
 
 const BRIDGE_KINDS_ORDER: BridgeKind[] = [
@@ -147,9 +165,14 @@ export function SocioDetailClient({ empresaId, empresaNome, socioId }: Props) {
   const [data, setData] = useState<AggregatedData | null>(null)
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
-  const [activeTab, setActiveTab] = useState(
-    searchParams.get('action') === 'nova-ponte' ? 'nova-ponte' : 'dados',
+  // Sprint Redesign-Socios (01/07/2026): aba "retiradas-realizadas" é única
+  // (antes tinha "dados", "suas-pontes", "deteccao", "nova-ponte"). Se
+  // ?action=nova-ponte vier na URL (legacy), abre modal em vez de aba.
+  const [activeTab, setActiveTab] = useState('retiradas-realizadas')
+  const [showCriarRetirada, setShowCriarRetirada] = useState(
+    searchParams.get('action') === 'nova-ponte',
   )
+  const [showDadosSocio, setShowDadosSocio] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<BridgeListItem | null>(null)
   // Sprint Tela-Retiradas: filtros
   const [filtroTipo, setFiltroTipo] = useState<BridgeKind | 'todos'>('todos')
@@ -250,138 +273,242 @@ export function SocioDetailClient({ empresaId, empresaNome, socioId }: Props) {
   const pixKeys = parsePixKeys(socio.pixKeys)
   const userTemPontes = agregados.totalCount > 0
 
+  // Sprint Redesign-Socios (01/07/2026): kind dominante — mostrado no hero
+  // como subtítulo ("Distribuição de Lucros" quando kind único; "Vários tipos"
+  // quando mais de um).
+  const kindsUsados = Object.entries(agregados.byKind).filter(([, v]) => v.count > 0)
+  const kindDominante =
+    kindsUsados.length === 1
+      ? KIND_DEFAULTS[kindsUsados[0][0] as BridgeKind]?.label ?? kindsUsados[0][0]
+      : kindsUsados.length > 1
+        ? `${kindsUsados.length} tipos`
+        : null
+
   return (
-    <main className="container mx-auto max-w-5xl px-4 py-6 space-y-6">
+    <main className="container mx-auto max-w-5xl px-4 py-6 space-y-5">
+      {/* Header — nome + meta compacta + botão "Criar retirada" (escape hatch) */}
       <div>
         <Link
           href={`/empresas/${empresaId}/socios`}
-          className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700"
+          className="inline-flex items-center gap-1 text-sm text-slate-500 transition-colors hover:text-slate-700"
         >
-          <ArrowLeft className="h-4 w-4" /> Voltar pra Sócios
+          <ArrowLeft className="h-3.5 w-3.5" /> Voltar pra Sócios
         </Link>
-        <div className="mt-2 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="text-3xl">👤</span>
-            <div>
-              <h1 className="text-2xl font-bold text-slate-900">{socio.nome}</h1>
-              <p className="text-sm text-slate-600">
-                {maskCpf(socio.cpf)} ·{' '}
-                <Badge variant="outline" className="text-[10px]">
-                  {PAPEL_LABELS[socio.papel] ?? socio.papel}
-                </Badge>{' '}
-                · {pixKeys.length} chave{pixKeys.length === 1 ? '' : 's'} Pix · {empresaNome}
+        <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="text-3xl" aria-hidden>👤</span>
+            <div className="min-w-0">
+              <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+                {socio.nome}
+              </h1>
+              <p className="mt-0.5 text-sm text-slate-500">
+                <span className="tabular-nums">{maskCpf(socio.cpf)}</span> ·{' '}
+                <span>{PAPEL_LABELS[socio.papel] ?? socio.papel}</span> ·{' '}
+                <span>{pixKeys.length} chave{pixKeys.length === 1 ? '' : 's'} Pix</span>{' '}
+                · <span>{empresaNome}</span>
               </p>
             </div>
           </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowCriarRetirada(true)}
+            className="shrink-0"
+          >
+            <Plus className="mr-1 h-3.5 w-3.5" />
+            Criar retirada
+          </Button>
         </div>
       </div>
 
-      {/* Stats (privadas — filtradas por user) */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs uppercase text-slate-500">Suas pontes</p>
-            <p className="mt-1 text-2xl font-bold text-slate-900">
-              {agregados.totalCount}
-            </p>
-            <p className="mt-0.5 text-xs text-slate-500">deste sócio</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs uppercase text-slate-500">Seu total</p>
-            <p className="mt-1 text-2xl font-bold text-emerald-600">
-              {agregados.totalCount > 0 ? formatBRL(agregados.totalAmount) : '—'}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs uppercase text-slate-500">Por tipo</p>
-            <div className="mt-1 space-y-0.5 text-xs">
-              {Object.entries(agregados.byKind).length === 0 ? (
-                <span className="text-slate-400">—</span>
-              ) : (
-                Object.entries(agregados.byKind).map(([k, v]) => (
-                  <div key={k} className="flex items-center justify-between">
-                    <span>{KIND_DEFAULTS[k as BridgeKind]?.label ?? k}</span>
-                    <span className="font-medium">{v.count}</span>
-                  </div>
-                ))
-              )}
+      {/* HERO PREMIUM — 1 número heroi (substitui os 3 stats cards) */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+      >
+        <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-[#185FA5] to-[#0F4A8C] text-white shadow-md">
+          <CardContent className="p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-white/80">
+                  Total recebido deste sócio
+                </p>
+                <p className="mt-2 text-4xl font-semibold tabular-nums tracking-tight sm:text-5xl">
+                  {userTemPontes ? formatBRL(agregados.totalAmount) : 'R$ 0,00'}
+                </p>
+                <p className="mt-1.5 text-sm text-white/80">
+                  {userTemPontes ? (
+                    <>
+                      <span className="tabular-nums">{agregados.totalCount}</span>{' '}
+                      {agregados.totalCount === 1 ? 'retirada realizada' : 'retiradas realizadas'}
+                      {kindDominante && <> · {kindDominante}</>}
+                    </>
+                  ) : (
+                    'Nenhuma retirada registrada'
+                  )}
+                </p>
+              </div>
+              <div className="hidden shrink-0 rounded-full bg-white/10 p-3 text-2xl sm:block" aria-hidden>
+                🌉
+              </div>
             </div>
           </CardContent>
         </Card>
-      </div>
+      </motion.div>
 
-      {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
-          <TabsTrigger value="dados">Dados</TabsTrigger>
-          <TabsTrigger value="suas-pontes">
-            💸 Retiradas ({agregados.totalCount})
-          </TabsTrigger>
-          <TabsTrigger value="deteccao">
-            Detecção Pix ({txPixDetected.length})
-          </TabsTrigger>
-          <TabsTrigger value="nova-ponte">
-            <Plus className="mr-1 h-3.5 w-3.5" />
-            Nova ponte
-          </TabsTrigger>
-        </TabsList>
+      {/* Banner condicional Detecção Pix — só aparece se > 0 */}
+      {txPixDetected.length > 0 && (
+        <div className="rounded-lg border border-sky-200 bg-sky-50/60 p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-2 text-xs text-sky-900">
+              <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+              <span>
+                <strong>{txPixDetected.length}</strong> transaç
+                {txPixDetected.length === 1 ? 'ão detectada' : 'ões detectadas'}{' '}
+                automaticamente como vindo pra este sócio.
+              </span>
+            </div>
+          </div>
+          <div className="mt-2 overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="text-[10px] uppercase tracking-wide text-sky-700">
+                <tr>
+                  <th className="pb-1 text-left font-medium">Data</th>
+                  <th className="pb-1 text-left font-medium">Descrição</th>
+                  <th className="pb-1 text-left font-medium">Conta</th>
+                  <th className="pb-1 text-right font-medium">Valor</th>
+                  <th className="pb-1 text-left font-medium">Retirada?</th>
+                </tr>
+              </thead>
+              <tbody>
+                {txPixDetected.map((t) => (
+                  <tr key={t.id} className="border-t border-sky-100">
+                    <td className="py-1.5 text-slate-700 tabular-nums">
+                      {new Date(t.date).toLocaleDateString('pt-BR')}
+                    </td>
+                    <td className="py-1.5 text-slate-900">{t.description}</td>
+                    <td className="py-1.5 text-slate-700">{t.bankAccountName ?? '—'}</td>
+                    <td className="py-1.5 text-right font-medium tabular-nums text-rose-600">
+                      −{formatBRL(t.amount)}
+                    </td>
+                    <td className="py-1.5">
+                      <BridgeBadge
+                        hasBridge={t.hasBridge}
+                        belongsToMe={false}
+                        bridgeId={null}
+                        compact
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
-        {/* ABA DADOS (público) */}
-        <TabsContent value="dados">
-          <Card>
-            <CardContent className="space-y-3 p-4 text-sm">
+      {/* Card "Dados do sócio" — colapsável compacto (substitui aba Dados) */}
+      <div>
+        <button
+          type="button"
+          onClick={() => setShowDadosSocio((v) => !v)}
+          className="flex w-full items-center justify-between rounded-md px-2 py-2 text-left text-xs text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700"
+          aria-expanded={showDadosSocio}
+        >
+          <span className="inline-flex items-center gap-2">
+            <span aria-hidden>ℹ️</span>
+            Dados do sócio
+          </span>
+          <ChevronDown
+            className={`h-3.5 w-3.5 transition-transform ${showDadosSocio ? 'rotate-180' : ''}`}
+            aria-hidden
+          />
+        </button>
+        {showDadosSocio && (
+          <Card className="mt-2 border-slate-200">
+            <CardContent className="grid grid-cols-1 gap-3 p-4 text-sm sm:grid-cols-2">
               <div>
-                <p className="text-xs uppercase text-slate-500">Nome</p>
-                <p className="font-medium text-slate-900">{socio.nome}</p>
+                <p className="text-[10px] uppercase tracking-wide text-slate-500">Nome</p>
+                <p className="mt-0.5 font-medium text-slate-900">{socio.nome}</p>
               </div>
               <div>
-                <p className="text-xs uppercase text-slate-500">CPF</p>
-                <p className="text-slate-700">{maskCpf(socio.cpf)}</p>
+                <p className="text-[10px] uppercase tracking-wide text-slate-500">CPF</p>
+                <p className="mt-0.5 tabular-nums text-slate-700">{maskCpf(socio.cpf)}</p>
               </div>
               <div>
-                <p className="text-xs uppercase text-slate-500">Papel</p>
-                <Badge variant="outline" className="text-[10px]">
+                <p className="text-[10px] uppercase tracking-wide text-slate-500">Papel</p>
+                <Badge variant="outline" className="mt-0.5 text-[10px] font-normal">
                   {PAPEL_LABELS[socio.papel] ?? socio.papel}
                 </Badge>
               </div>
               <div>
-                <p className="text-xs uppercase text-slate-500">Chaves Pix</p>
+                <p className="text-[10px] uppercase tracking-wide text-slate-500">Cadastrado em</p>
+                <p className="mt-0.5 tabular-nums text-slate-700">
+                  {new Date(socio.createdAt).toLocaleDateString('pt-BR')}
+                </p>
+              </div>
+              <div className="sm:col-span-2">
+                <p className="text-[10px] uppercase tracking-wide text-slate-500">Chaves Pix</p>
                 {pixKeys.length === 0 ? (
-                  <p className="text-slate-400">—</p>
+                  <p className="mt-0.5 text-slate-400">—</p>
                 ) : (
-                  <ul className="list-inside list-disc">
+                  <ul className="mt-1 flex flex-wrap gap-1.5">
                     {pixKeys.map((k, i) => (
-                      <li key={i} className="text-slate-700">{k}</li>
+                      <li
+                        key={i}
+                        className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs text-slate-700"
+                      >
+                        {k}
+                      </li>
                     ))}
                   </ul>
                 )}
               </div>
-              <div>
-                <p className="text-xs uppercase text-slate-500">Cadastrado em</p>
-                <p className="text-slate-700">
-                  {new Date(socio.createdAt).toLocaleString('pt-BR')}
-                </p>
-              </div>
             </CardContent>
           </Card>
-        </TabsContent>
+        )}
+      </div>
 
-        {/* ABA RETIRADAS (privado) — resumo no topo + lista 2-sided embaixo */}
-        <TabsContent value="suas-pontes">
+      {/* Sprint Redesign-Socios: aba única "Retiradas realizadas" — antes
+          "💸 Retiradas". Detecção Pix e Dados viraram banner/card colapsáveis;
+          "+ Nova ponte" virou botão no header (abre modal). */}
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList>
+          <TabsTrigger value="retiradas-realizadas">
+            💸 Retiradas realizadas
+            {agregados.totalCount > 0 && (
+              <Badge
+                variant="secondary"
+                className="ml-2 h-4 min-w-[18px] px-1 text-[10px]"
+              >
+                {agregados.totalCount}
+              </Badge>
+            )}
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="retiradas-realizadas">
           {!userTemPontes ? (
-            <Card>
-              <CardContent className="p-8 text-center">
-                <Lock className="mx-auto mb-3 h-8 w-8 text-slate-400" />
-                <p className="text-sm text-slate-600">
-                  Você não tem retiradas registradas com este sócio.
+            <Card className="border-slate-200">
+              <CardContent className="flex flex-col items-center gap-3 p-10 text-center">
+                <div className="rounded-full bg-slate-100 p-3">
+                  <Lock className="h-6 w-6 text-slate-500" aria-hidden />
+                </div>
+                <p className="text-base font-medium text-slate-900">
+                  Nenhuma retirada com este sócio
                 </p>
-                <p className="mt-1 text-xs text-slate-500">
-                  Se você é dono do perfil PF correspondente, crie uma na aba
-                  &quot;Nova ponte&quot;.
+                <p className="max-w-sm text-sm text-slate-500">
+                  Você ainda não registrou retiradas ligadas a este sócio no seu
+                  perfil pessoal. Se este é você, use{' '}
+                  <button
+                    type="button"
+                    onClick={() => setShowCriarRetirada(true)}
+                    className="font-medium text-primary underline decoration-primary/40 underline-offset-2 hover:decoration-primary"
+                  >
+                    Criar retirada
+                  </button>
+                  .
                 </p>
               </CardContent>
             </Card>
@@ -398,73 +525,33 @@ export function SocioDetailClient({ empresaId, empresaNome, socioId }: Props) {
             />
           )}
         </TabsContent>
+      </Tabs>
 
-        {/* ABA DETECÇÃO PIX (público) */}
-        <TabsContent value="deteccao">
-          <Card>
-            <CardContent className="space-y-2 p-4">
-              <p className="text-xs text-slate-600">
-                Transações PJ identificadas pela detecção automática (Sprint 5.0.2.h)
-                como vindo pra este sócio. Visíveis a todos da empresa (mesma info que
-                /movimentações mostra).
-              </p>
-              {txPixDetected.length === 0 ? (
-                <p className="py-6 text-center text-sm text-slate-500">
-                  Nenhuma transação detectada ainda.
-                </p>
-              ) : (
-                <table className="w-full text-sm">
-                  <thead className="border-b border-slate-200 text-xs uppercase text-slate-500">
-                    <tr>
-                      <th className="py-2 text-left">Data</th>
-                      <th className="py-2 text-left">Descrição</th>
-                      <th className="py-2 text-left">Conta</th>
-                      <th className="py-2 text-right">Valor</th>
-                      <th className="py-2 text-left">Ponte?</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {txPixDetected.map((t) => (
-                      <tr key={t.id} className="border-b border-slate-100">
-                        <td className="py-2 text-slate-700">
-                          {new Date(t.date).toLocaleDateString('pt-BR')}
-                        </td>
-                        <td className="py-2 text-slate-900">{t.description}</td>
-                        <td className="py-2 text-slate-700">{t.bankAccountName ?? '—'}</td>
-                        <td className="py-2 text-right font-medium text-red-600">
-                          −{formatBRL(t.amount)}
-                        </td>
-                        <td className="py-2">
-                          <BridgeBadge
-                            hasBridge={t.hasBridge}
-                            belongsToMe={false}
-                            bridgeId={null}
-                            compact
-                          />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* ABA NOVA PONTE */}
-        <TabsContent value="nova-ponte">
+      {/* Modal "Criar retirada" — substitui a aba "+ Nova ponte". Escape hatch
+          pra criar retirada manualmente (sem passar pela fila da lista). */}
+      <Dialog open={showCriarRetirada} onOpenChange={setShowCriarRetirada}>
+        <DialogContent className="max-h-[92vh] max-w-2xl w-[calc(100vw-2rem)] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span className="text-base" aria-hidden>🌉</span>
+              Criar retirada
+            </DialogTitle>
+            <DialogDescription>
+              Registra uma saída do PJ como entrada no seu perfil pessoal.
+              A tx PJ continua na mesma categoria (DRE não muda).
+            </DialogDescription>
+          </DialogHeader>
           <NovaPonteForm
             empresaId={empresaId}
             socioPFId={socioId}
-            redirectTo={`/empresas/${empresaId}/socios/${socioId}`}
-            cancelHref={`/empresas/${empresaId}/socios/${socioId}`}
+            onCancel={() => setShowCriarRetirada(false)}
             onCreated={() => {
-              setActiveTab('suas-pontes')
+              setShowCriarRetirada(false)
               load()
             }}
           />
-        </TabsContent>
-      </Tabs>
+        </DialogContent>
+      </Dialog>
 
       {deleteTarget && (
         <BridgeDeleteModal
@@ -553,67 +640,62 @@ function RetiradasTab({
 
   return (
     <div className="space-y-4">
-      {/* Filtros */}
-      <Card>
-        <CardContent className="flex flex-wrap items-center gap-3 p-4">
-          <div className="flex items-center gap-2">
-            <span className="text-xs uppercase text-slate-500">Tipo:</span>
-            <div className="flex flex-wrap gap-1">
-              <button
-                type="button"
-                onClick={() => setFiltroTipo('todos')}
-                className={`rounded-full px-3 py-1 text-xs ${
-                  filtroTipo === 'todos'
-                    ? 'bg-slate-900 text-white'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                }`}
-              >
-                Todos
-              </button>
-              {BRIDGE_KINDS_ORDER.map((k) => {
-                const d = KIND_DEFAULTS[k]
-                const active = filtroTipo === k
-                return (
-                  <button
-                    key={k}
-                    type="button"
-                    onClick={() => setFiltroTipo(k)}
-                    className={`rounded-full px-3 py-1 text-xs ${
-                      active
-                        ? 'bg-slate-900 text-white'
-                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                    }`}
-                  >
-                    {d.emoji} {d.label}
-                  </button>
-                )
-              })}
-            </div>
+      {/* Sprint Redesign-Socios (01/07/2026): filtros no visual novo —
+          Button outline/ghost consistente com o resto do produto (não pill
+          preto). Cabeça leve, whitespace generoso. */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] uppercase tracking-wide text-slate-500">Tipo</span>
+          <div className="flex flex-wrap gap-1">
+            <Button
+              type="button"
+              variant={filtroTipo === 'todos' ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => setFiltroTipo('todos')}
+              className="h-7 rounded-full px-3 text-xs"
+            >
+              Todos
+            </Button>
+            {BRIDGE_KINDS_ORDER.map((k) => {
+              const d = KIND_DEFAULTS[k]
+              const active = filtroTipo === k
+              return (
+                <Button
+                  key={k}
+                  type="button"
+                  variant={active ? 'secondary' : 'ghost'}
+                  size="sm"
+                  onClick={() => setFiltroTipo(k)}
+                  className="h-7 rounded-full px-3 text-xs"
+                >
+                  <span className="mr-1" aria-hidden>{d.emoji}</span>
+                  {d.label}
+                </Button>
+              )
+            })}
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs uppercase text-slate-500">Período:</span>
-            <div className="flex gap-1">
-              {PERIODOS.map((p) => {
-                const active = filtroPeriodo === p.value
-                return (
-                  <button
-                    key={p.value}
-                    type="button"
-                    onClick={() => setFiltroPeriodo(p.value)}
-                    className={`rounded-full px-3 py-1 text-xs ${
-                      active
-                        ? 'bg-slate-900 text-white'
-                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                    }`}
-                  >
-                    {p.label}
-                  </button>
-                )
-              })}
-            </div>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] uppercase tracking-wide text-slate-500">Período</span>
+          <div className="flex gap-1">
+            {PERIODOS.map((p) => {
+              const active = filtroPeriodo === p.value
+              return (
+                <Button
+                  key={p.value}
+                  type="button"
+                  variant={active ? 'secondary' : 'ghost'}
+                  size="sm"
+                  onClick={() => setFiltroPeriodo(p.value)}
+                  className="h-7 rounded-full px-3 text-xs"
+                >
+                  {p.label}
+                </Button>
+              )
+            })}
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {/* Resumo: total + 5 cards por kind */}
       <div>
@@ -731,32 +813,39 @@ function RetiradaCard({ bridge, spendOptions, onDelete, onUpdateBridge }: Retira
   const acknowledged = !!bridge.spendAcknowledged
 
   return (
-    <Card>
+    <Card className="group border-slate-200 bg-white transition-all hover:border-slate-300 hover:shadow-sm">
       <CardContent className="p-4">
-        {/* Header */}
+        {/* Header — kind + valor destacado */}
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <span className="text-lg">{d.emoji}</span>
-            <div>
-              <p className="text-sm font-semibold text-slate-900">{d.label}</p>
-              <p className="text-xs text-slate-500">{dateStr}</p>
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="text-lg" aria-hidden>{d.emoji}</span>
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-slate-900">{d.label}</p>
+              <p className="text-xs tabular-nums text-slate-500">{dateStr}</p>
             </div>
-            <Badge variant="outline" className="ml-1 text-[10px]">
+            <Badge variant="outline" className="ml-1 text-[10px] font-normal">
               {FISCAL_LABEL[bridge.kind]}
             </Badge>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-base font-bold tabular-nums text-emerald-700">
+          <div className="flex items-center gap-1">
+            <span className="whitespace-nowrap text-base font-semibold tabular-nums text-emerald-700">
               {formatBRL(bridge.amount)}
             </span>
             <Link
               href={`/pontes/${bridge.id}`}
-              className="rounded px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+              className="rounded px-2 py-1 text-xs text-slate-500 opacity-60 transition-all hover:bg-slate-50 hover:text-slate-700 group-hover:opacity-100"
+              aria-label="Ver detalhes da retirada"
             >
               Detalhes
             </Link>
-            <Button variant="ghost" size="sm" onClick={onDelete} title="Desfazer">
-              <Trash2 className="h-4 w-4 text-red-500" />
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onDelete}
+              title="Desfazer retirada"
+              className="h-7 w-7 p-0 text-rose-500 opacity-60 transition-all hover:bg-rose-50 hover:text-rose-600 group-hover:opacity-100"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
             </Button>
           </div>
         </div>
@@ -1083,27 +1172,37 @@ function SpendInviteForm({ bridge, spendOptions, onUpdateBridge }: SpendInviteFo
       )}
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <label className="block text-[10px] uppercase text-slate-600">
-          Categoria
-          <select
-            value={categoryId}
-            onChange={(e) => setCategoryId(e.target.value)}
-            className="mt-1 block w-full rounded border border-slate-300 bg-white p-1.5 text-xs"
-          >
-            <option value="">Escolha…</option>
-            {spendOptions.categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="block text-[10px] uppercase text-slate-600">
+        <div>
+          <p className="mb-1 text-[10px] uppercase tracking-wide text-slate-600">
+            Categoria
+          </p>
+          {/* Sprint Redesign-Socios (01/07/2026): CategoryCombobox unificado
+              (Ramp/Mercury) no lugar de <select> HTML. Busca sem acento,
+              agrupado por dreGroup, teclado. Como as categories aqui são só
+              EXPENSE do perfil PF, passamos dreGroup=null (Combobox agrupa
+              como "Outros"). */}
+          <CategoryCombobox
+            value={categoryId || null}
+            categorias={spendOptions.categories.map((c) => ({
+              id: c.id,
+              name: c.name,
+              color: c.color ?? null,
+              type: 'EXPENSE',
+              dreGroup: null,
+            }))}
+            onChange={(v) => setCategoryId(v ?? '')}
+            allowClear={false}
+            placeholder="Escolher categoria…"
+            className="h-8 w-full justify-between border-input text-xs"
+            ariaLabel="Categoria da despesa PF"
+          />
+        </div>
+        <label className="block text-[10px] uppercase tracking-wide text-slate-600">
           Conta PF
           <select
             value={bankAccountId}
             onChange={(e) => setBankAccountId(e.target.value)}
-            className="mt-1 block w-full rounded border border-slate-300 bg-white p-1.5 text-xs"
+            className="mt-1 block h-8 w-full rounded-md border border-input bg-white px-2 text-xs text-slate-900"
           >
             {spendOptions.accounts.map((a) => (
               <option key={a.id} value={a.id}>
