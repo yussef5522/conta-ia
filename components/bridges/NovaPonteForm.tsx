@@ -84,6 +84,20 @@ export interface NovaPonteFormProps {
   /** Texto do botão cancelar (override). */
   cancelHref?: string
   onCreated?: (bridgeId: string) => void
+  /** Sprint Fluxo-Unificado-Retirada (30/06/2026): pré-seleciona a tx PJ
+   *  (usado pela fila de "Retiradas pendentes" e pelo convite pós-categorização).
+   *  A tx passa a exibir "Selecionada da fila" no lugar da lista completa. */
+  initialPjTxId?: string | null
+  /** Pré-seleciona perfil PF (sugestão da última ponte do sócio). */
+  initialProfileId?: string | null
+  /** Pré-seleciona conta PF (sugestão da última ponte do sócio). */
+  initialAccountId?: string | null
+  /** Pré-seleciona categoria PF (sugestão da última ponte do sócio). */
+  initialCategoryId?: string | null
+  /** Callback de cancelar (usado em modal). Se ausente, faz router.push do cancelHref. */
+  onCancel?: () => void
+  /** Layout compacto (usado em modal — remove Cards internos e diminui gap). */
+  compact?: boolean
 }
 
 export function NovaPonteForm({
@@ -92,20 +106,28 @@ export function NovaPonteForm({
   redirectTo,
   cancelHref,
   onCreated,
+  initialPjTxId,
+  initialProfileId,
+  initialAccountId,
+  initialCategoryId,
+  onCancel,
+  compact = false,
 }: NovaPonteFormProps) {
   const router = useRouter()
   const { toast } = useToast()
 
   const [pjTxs, setPjTxs] = useState<PjTx[]>([])
   const [pjTxQuery, setPjTxQuery] = useState('')
-  const [selectedPjTxId, setSelectedPjTxId] = useState('')
+  // Sprint Fluxo-Unificado-Retirada (30/06/2026): 4 states aceitam initial* na
+  // primeira render — se caller passar, form nasce pré-preenchido.
+  const [selectedPjTxId, setSelectedPjTxId] = useState(initialPjTxId ?? '')
   const [kind, setKind] = useState<BridgeKind>('DISTRIBUICAO')
   const [profiles, setProfiles] = useState<Profile[]>([])
-  const [profileId, setProfileId] = useState('')
+  const [profileId, setProfileId] = useState(initialProfileId ?? '')
   const [accounts, setAccounts] = useState<Account[]>([])
-  const [accountId, setAccountId] = useState('')
+  const [accountId, setAccountId] = useState(initialAccountId ?? '')
   const [categories, setCategories] = useState<Category[]>([])
-  const [categoryId, setCategoryId] = useState('')
+  const [categoryId, setCategoryId] = useState(initialCategoryId ?? '')
   const [notes, setNotes] = useState('')
   const [submitting, setSubmitting] = useState(false)
   // Sprint Fix-NovaPonte (30/06/2026): estados dedicados pra loading + erro.
@@ -281,8 +303,32 @@ export function NovaPonteForm({
     }
   }
 
+  // Sprint Fluxo-Unificado-Retirada (30/06/2026): modo "retirada pré-selecionada".
+  // Quando o form é aberto pela fila ou pelo convite, a tx PJ já está definida —
+  // esconde a lista de busca e mostra um resumo dedicado no lugar. Reduz cognição.
+  const hasPreselected = !!initialPjTxId && !!selectedPjTx && compact
+
   return (
-    <div className="space-y-6">
+    <div className={compact ? 'space-y-4' : 'space-y-6'}>
+      {hasPreselected && selectedPjTx ? (
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+            Retirada selecionada
+          </p>
+          <p className="mt-1.5 truncate text-sm font-medium text-slate-900">
+            {selectedPjTx.description}
+          </p>
+          <div className="mt-1 flex items-center justify-between gap-2 text-xs text-slate-500">
+            <span>
+              {new Date(selectedPjTx.date).toLocaleDateString('pt-BR')} ·{' '}
+              {selectedPjTx.bankAccountName ?? '—'}
+            </span>
+            <span className="font-semibold tabular-nums text-slate-900">
+              {formatBRL(selectedPjTx.amount)}
+            </span>
+          </div>
+        </div>
+      ) : (
       <Card>
         <CardContent className="space-y-3 p-4">
           <h2 className="font-semibold text-slate-900">
@@ -371,6 +417,7 @@ export function NovaPonteForm({
           </div>
         </CardContent>
       </Card>
+      )}
 
       <Card>
         <CardContent className="space-y-3 p-4">
@@ -480,7 +527,12 @@ export function NovaPonteForm({
       <div className="flex justify-between">
         <Button
           variant="outline"
-          onClick={() => router.push(cancelHref ?? `/empresas/${empresaId}/socios`)}
+          onClick={() => {
+            // Sprint Fluxo-Unificado-Retirada (30/06/2026): onCancel
+            // toma precedência (usado em modal — fecha sem navegar).
+            if (onCancel) return onCancel()
+            router.push(cancelHref ?? `/empresas/${empresaId}/socios`)
+          }}
         >
           Cancelar
         </Button>

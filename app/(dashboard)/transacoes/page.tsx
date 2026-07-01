@@ -1056,6 +1056,17 @@ function TransacoesPageInner() {
                           ),
                         )
                       }}
+                      // Sprint Fluxo-Unificado-Retirada (30/06/2026): convite
+                      // pós-categorização quando dreGroup=DISTRIBUICAO_LUCROS
+                      // ou Pró-labore. defaultSocioPFId=null pra deixar o form
+                      // pedir (transações globais podem misturar empresas).
+                      bridgeContext={{
+                        empresaId: t.bankAccount.companyId,
+                        amount: t.amount,
+                        description: t.description,
+                        date: t.date,
+                        defaultSocioPFId: null,
+                      }}
                     />
                   ) : (
                     t.category && (

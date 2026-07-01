@@ -27,6 +27,10 @@ import {
   groupColor,
   normalizeText,
 } from '@/lib/transacoes/category-search'
+import {
+  BridgeConviteModal,
+  type BridgeConviteTxContext,
+} from '@/components/bridges/BridgeConviteModal'
 
 export interface CategoryComboboxProps {
   /** Categoria atualmente selecionada (null = nenhuma). */
@@ -54,6 +58,26 @@ export interface CategoryComboboxProps {
   className?: string
   /** Aria label customizado. */
   ariaLabel?: string
+  /**
+   * Sprint Fluxo-Unificado-Retirada (30/06/2026) — convite pós-categorização.
+   * Quando `askIfBridge=true` E o user escolhe uma categoria com
+   * `dreGroup==='DISTRIBUICAO_LUCROS'` (ou nome Pró-labore), abre um modal
+   * perguntando "Mandar pro PF?". Opt-in — telas que passam esse par de
+   * props funcionam idêntico ao antes.
+   */
+  askIfBridge?: boolean
+  /** Contexto da tx sendo categorizada — usado pelo modal do convite. */
+  bridgeContext?: {
+    txId: string
+    amount: number
+    description: string
+    date: string
+    empresaId: string
+    /** SocioPF sugerido (se empresa tem 1 só, passa direto). */
+    defaultSocioPFId?: string | null
+  }
+  /** Callback pós-criação da ponte no modal (refetch, etc). */
+  onBridgeCreated?: (bridgeId: string) => void
 }
 
 export function CategoryCombobox({
@@ -68,12 +92,17 @@ export function CategoryCombobox({
   allowClear = true,
   className,
   ariaLabel = 'Escolher categoria',
+  askIfBridge,
+  bridgeContext,
+  onBridgeCreated,
 }: CategoryComboboxProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [creating, setCreating] = useState(false)
   const [focusIdx, setFocusIdx] = useState(0)
   const inputRef = useRef<HTMLInputElement | null>(null)
+  // Sprint Fluxo-Unificado-Retirada (30/06/2026): convite pós-categorização.
+  const [conviteFor, setConviteFor] = useState<BridgeConviteTxContext | null>(null)
 
   const current = useMemo(
     () => categorias.find((c) => c.id === value) ?? null,
@@ -128,6 +157,26 @@ export function CategoryCombobox({
     setQuery('')
     if ((catId ?? null) === (current?.id ?? null)) return
     await onChange(catId)
+    // Sprint Fluxo-Unificado-Retirada (30/06/2026): após salvar, se opt-in
+    // e a categoria escolhida for DISTRIBUICAO_LUCROS ou Pró-labore, abre o
+    // convite. Detecção via dreGroup + name (mesmo critério da fila).
+    if (!askIfBridge || !catId || !bridgeContext) return
+    const chosen = categorias.find((c) => c.id === catId)
+    if (!chosen) return
+    const isRetirada =
+      chosen.dreGroup === 'DISTRIBUICAO_LUCROS' ||
+      (chosen.dreGroup === 'DESPESAS_PESSOAL' &&
+        /pro-labore|pro labore|prolabore/.test(
+          normalizeText(chosen.name),
+        ))
+    if (isRetirada) {
+      setConviteFor({
+        txId: bridgeContext.txId,
+        amount: bridgeContext.amount,
+        description: bridgeContext.description,
+        date: bridgeContext.date,
+      })
+    }
   }
 
   async function handleCreate() {
@@ -180,6 +229,7 @@ export function CategoryCombobox({
     )
 
   return (
+    <>
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
@@ -356,5 +406,17 @@ export function CategoryCombobox({
         </div>
       </PopoverContent>
     </Popover>
+    {/* Sprint Fluxo-Unificado-Retirada (30/06/2026): convite pós-categorização. */}
+    {conviteFor && bridgeContext && (
+      <BridgeConviteModal
+        open={!!conviteFor}
+        onClose={() => setConviteFor(null)}
+        empresaId={bridgeContext.empresaId}
+        defaultSocioPFId={bridgeContext.defaultSocioPFId ?? null}
+        txContext={conviteFor}
+        onBridgeCreated={onBridgeCreated}
+      />
+    )}
+    </>
   )
 }

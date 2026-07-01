@@ -9,6 +9,7 @@
 // 3. checkProfileAccess(OWNER) — feito dentro de createBridge
 
 import { NextRequest, NextResponse } from 'next/server'
+import { revalidateTag } from 'next/cache'
 import { z } from 'zod'
 import { getAuthContext, AuthenticationError, ForbiddenError } from '@/lib/auth/rbac'
 import { createBridge } from '@/lib/bridges/create'
@@ -93,6 +94,19 @@ export async function POST(request: NextRequest) {
       socioPFId: parsed.data.socioPFId ?? null,
       notes: parsed.data.notes ?? null,
     })
+
+    // Sprint Fluxo-Unificado-Retirada (30/06/2026): invalida a fila
+    // "retiradas pendentes" desta empresa. Tag definida no endpoint
+    // GET /api/empresas/[id]/retiradas-pendentes (cache 60s).
+    // Next.js 16: revalidateTag(tag, profile) — usa 'default' 1min.
+    // Fail-soft: em ambiente de teste (sem static generation store) o
+    // revalidateTag lança "Invariant". A invalidação é best-effort — se
+    // falhar, cache expira naturalmente em 60s.
+    try {
+      revalidateTag(`retiradas-pendentes:${parsed.data.companyId}`, 'default')
+    } catch {
+      /* test env — cache expira naturalmente */
+    }
 
     return NextResponse.json(result, { status: 201 })
   } catch (err) {

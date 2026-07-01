@@ -70,6 +70,33 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
   }, [currentEmpresaId, workspaceType])
 
   const badges = useSidebarBadges(empresaIdForBadges)
+
+  // Sprint Fluxo-Unificado-Retirada (30/06/2026): contador da fila de
+  // retiradas pendentes (badge no item Sócios). Fetch 1x por empresa
+  // (endpoint tem cache 60s). Silencioso — badges são best-effort.
+  const [retiradasPendentesCount, setRetiradasPendentesCount] = useState<number | null>(null)
+  useEffect(() => {
+    if (!empresaIdForBadges) {
+      setRetiradasPendentesCount(null)
+      return
+    }
+    let cancelled = false
+    fetch(`/api/empresas/${empresaIdForBadges}/retiradas-pendentes`, {
+      credentials: 'include',
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (!cancelled && j && typeof j.total === 'number') {
+          setRetiradasPendentesCount(j.total)
+        }
+      })
+      .catch(() => {
+        /* silent */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [empresaIdForBadges])
   const apBadge = badges?.contasAPagar
     ? badges.contasAPagar.vencidas + badges.contasAPagar.vencendoEm3Dias
     : 0
@@ -288,6 +315,14 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
               pathname.startsWith('/pontes/') ||
               pathname.startsWith('/pessoas-vinculadas')
             }
+            /* Sprint Fluxo-Unificado-Retirada (30/06/2026): badge âmbar
+               destaca fila de retiradas pendentes. Neutro/omitido quando 0. */
+            badge={
+              retiradasPendentesCount !== null && retiradasPendentesCount > 0
+                ? String(retiradasPendentesCount)
+                : undefined
+            }
+            badgeTone="amber"
             onClick={onNavigate}
           />
         )}

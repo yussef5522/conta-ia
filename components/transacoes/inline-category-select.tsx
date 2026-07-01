@@ -32,6 +32,20 @@ interface Props {
     catId: string | null,
     cat: InlineCategorySelectCategoria | null,
   ) => void
+  /**
+   * Sprint Fluxo-Unificado-Retirada (30/06/2026): quando passado, dispara o
+   * BridgeConviteModal se o user escolher categoria dreGroup=DISTRIBUICAO_LUCROS
+   * (ou Pró-labore). Callers que quiserem o convite passam esses 4 campos.
+   * Opt-in — quem não passar mantém comportamento antigo.
+   */
+  bridgeContext?: {
+    empresaId: string
+    amount: number
+    description: string
+    date: string
+    defaultSocioPFId?: string | null
+  }
+  onBridgeCreated?: (bridgeId: string) => void
 }
 
 export function InlineCategorySelect({
@@ -40,6 +54,8 @@ export function InlineCategorySelect({
   categorias,
   suggestedCategoryId,
   onUpdated,
+  bridgeContext,
+  onBridgeCreated,
 }: Props) {
   const { toast } = useToast()
   const [saving, setSaving] = useState(false)
@@ -106,6 +122,20 @@ export function InlineCategorySelect({
       saving={saving}
       placeholder="Sem categoria"
       ariaLabel="Mudar categoria"
+      askIfBridge={!!bridgeContext}
+      bridgeContext={
+        bridgeContext
+          ? {
+              txId: transacaoId,
+              empresaId: bridgeContext.empresaId,
+              amount: bridgeContext.amount,
+              description: bridgeContext.description,
+              date: bridgeContext.date,
+              defaultSocioPFId: bridgeContext.defaultSocioPFId ?? null,
+            }
+          : undefined
+      }
+      onBridgeCreated={onBridgeCreated}
     />
   )
 }
