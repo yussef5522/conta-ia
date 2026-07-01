@@ -23,11 +23,13 @@ describe('NovaPonteForm — endpoint corrigido', () => {
     expect(code).not.toMatch(/\/api\/empresas\/\$\{[^}]+\}\/transacoes/)
   })
 
-  it('chama endpoint GLOBAL /api/transacoes com empresaId + type', () => {
+  it('chama endpoint GLOBAL /api/transacoes com empresaId + tipo=DEBIT', () => {
     expect(code).toMatch(/\/api\/transacoes\?/)
     expect(code).toMatch(/empresaId/)
-    // Type=DEBIT (saída — só saídas do PJ viram ponte pro PF)
-    expect(code).toMatch(/type[^}]*DEBIT/)
+    // Sprint Fix-Tipo-Param (30/06/2026): endpoint /api/transacoes lê
+    // searchParams.get('tipo') (PT), NÃO 'type' (EN). Enviar 'type' era
+    // ignorado silenciosamente → vinham CREDIT + DEBIT + TRANSFER juntos.
+    expect(code).toMatch(/tipo:\s*['"]DEBIT['"]/)
   })
 
   it('filtra status=RECONCILED (tx categorizada, candidata legítima)', () => {
@@ -119,9 +121,9 @@ describe('NovaPonteForm — cenário Yussef LM TRANSP', () => {
     'utf-8',
   )
 
-  it('type=DEBIT + status=RECONCILED bate com LM TRANSP', () => {
+  it('tipo=DEBIT + status=RECONCILED bate com LM TRANSP', () => {
     // LM TRANSP -R$2.849 · Stone · DEBIT · categoryId=Distribuição de Lucros · RECONCILED
-    expect(code).toMatch(/DEBIT/)
+    expect(code).toMatch(/tipo:\s*['"]DEBIT['"]/)
     expect(code).toMatch(/RECONCILED/)
   })
 

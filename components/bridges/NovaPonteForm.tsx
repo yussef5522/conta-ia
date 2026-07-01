@@ -30,6 +30,33 @@ export interface PjTx {
   /** Sprint Fix-NovaPonte (30/06/2026): dreGroup da categoria — usado pra
    *  ordenar tx de Distribuição no topo do dropdown (kind típico). */
   dreGroup?: string | null
+  /** Sprint Fix-Tipo-Param (30/06/2026): nome da categoria — usado no filtro
+   *  por kind=PRO_LABORE (match por nome normalizado sem acento). */
+  categoryName?: string | null
+}
+
+// Sprint Fix-Tipo-Param (30/06/2026): normalizador pra match de Pró-labore.
+// Remove acentos + lowercase. "Pró-labore Sócios" → "pro-labore socios".
+function normalizeForProLabore(s: string | null | undefined): string {
+  return (s ?? '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+}
+
+// Sprint Fix-Tipo-Param (30/06/2026): filtro dinâmico por kind selecionado.
+// Diagnóstico READ-ONLY 30/06 confirmou os grupos "de retirada de sócio":
+//   DISTRIBUICAO/ADIANTAMENTO/RETIRADA_SOCIOS: dreGroup=DISTRIBUICAO_LUCROS
+//   PRO_LABORE: category.name normalizado casa "pro-labore" (+ variações)
+//   REEMBOLSO: user reembolsa QUALQUER despesa → não filtra por categoria
+function matchesKindFilter(tx: PjTx, kind: BridgeKind): boolean {
+  if (kind === 'REEMBOLSO') return true
+  if (kind === 'PRO_LABORE') {
+    const n = normalizeForProLabore(tx.categoryName)
+    return n.includes('pro-labore') || n.includes('pro labore') || n.includes('prolabore')
+  }
+  // DISTRIBUICAO, ADIANTAMENTO, RETIRADA_SOCIOS
+  return tx.dreGroup === 'DISTRIBUICAO_LUCROS'
 }
 export interface Profile {
   id: string
@@ -86,6 +113,9 @@ export function NovaPonteForm({
   // dropdown mostrava "Nenhuma transação" mesmo quando o fetch tinha falhado.
   const [pjTxsLoading, setPjTxsLoading] = useState(true)
   const [pjTxsError, setPjTxsError] = useState<string | null>(null)
+  // Sprint Fix-Tipo-Param (30/06/2026): escape hatch pra desligar o filtro
+  // dinâmico por kind (Yussef pode querer parear tx atípica). Default off.
+  const [showAllTx, setShowAllTx] = useState(false)
 
   useEffect(() => {
     // Sprint Fix-NovaPonte (30/06/2026): endpoint corrigido.
@@ -95,9 +125,14 @@ export function NovaPonteForm({
     //          status + limit. Retorna { transacoes: [...] } com include.bridge.
     setPjTxsLoading(true)
     setPjTxsError(null)
+    // Sprint Fix-Tipo-Param (30/06/2026): endpoint /api/transacoes lê
+    // searchParams.get('tipo') (PT), NÃO 'type' (EN). Antes desse fix o
+    // param era ignorado e vinham CREDIT + DEBIT + TRANSFER juntos, e o
+    // limit=200 corta os DEBIT antigos (LM TRANSP 22/06 ficava fora).
+    // Diagnóstico READ-ONLY 30/06 (HEAD 3a9415d) confirmou isso.
     const qs = new URLSearchParams({
       empresaId,
-      type: 'DEBIT',
+      tipo: 'DEBIT',
       status: 'RECONCILED',
       limit: '200',
     })
@@ -120,7 +155,7 @@ export function NovaPonteForm({
           description: string
           amount: number
           bankAccount: { name: string | null } | null
-          category: { dreGroup: string | null } | null
+          category: { name: string | null; dreGroup: string | null } | null
           bridge: { id: string } | null
         }
         const list: ApiTxLite[] = Array.isArray(j?.transacoes) ? j.transacoes : []
@@ -132,6 +167,7 @@ export function NovaPonteForm({
           amount: tx.amount,
           bankAccountName: tx.bankAccount?.name ?? null,
           dreGroup: tx.category?.dreGroup ?? null,
+          categoryName: tx.category?.name ?? null,
         }))
         // Ordena: Distribuição de Lucros primeiro (kind típico), depois o resto
         // por data desc (mais recentes primeiro).
@@ -172,10 +208,33 @@ export function NovaPonteForm({
       .catch(() => {})
   }, [profileId])
 
-  const filteredTxs = pjTxQuery
-    ? pjTxs.filter((tx) => tx.description.toLowerCase().includes(pjTxQuery.toLowerCase()))
-    : pjTxs.slice(0, 30)
+  // Sprint Fix-Tipo-Param (30/06/2026): pipeline de filtro em 3 passos.
+  // 1. Base: sem bridge (já feito no useEffect via `withoutBridge`).
+  // 2. Kind: só as categorias que fazem sentido pro kind escolhido
+  //    (escape hatch `showAllTx` bypass).
+  // 3. Busca por descrição (só quando digitar); senão slice(0, 30).
+  const kindFilteredTxs = showAllTx
+    ? pjTxs
+    : pjTxs.filter((tx) => matchesKindFilter(tx, kind))
+  const searchedTxs = pjTxQuery
+    ? kindFilteredTxs.filter((tx) =>
+        tx.description.toLowerCase().includes(pjTxQuery.toLowerCase()),
+      )
+    : kindFilteredTxs
+  const filteredTxs = pjTxQuery ? searchedTxs : searchedTxs.slice(0, 30)
   const selectedPjTx = pjTxs.find((tx) => tx.id === selectedPjTxId)
+
+  // Sprint Fix-Tipo-Param (30/06/2026): se o kind mudar e a tx selecionada
+  // não passar mais no filtro, limpar seleção — evita submeter ponte com tx
+  // que sumiu da lista.
+  useEffect(() => {
+    if (!selectedPjTxId) return
+    const stillVisible = pjTxs.some(
+      (tx) =>
+        tx.id === selectedPjTxId && (showAllTx || matchesKindFilter(tx, kind)),
+    )
+    if (!stillVisible) setSelectedPjTxId('')
+  }, [kind, showAllTx, pjTxs, selectedPjTxId])
 
   async function handleSubmit() {
     if (!selectedPjTxId || !profileId || !accountId || !categoryId) {
@@ -234,6 +293,33 @@ export function NovaPonteForm({
             value={pjTxQuery}
             onChange={(e) => setPjTxQuery(e.target.value)}
           />
+          {/* Sprint Fix-Tipo-Param (30/06/2026): contador + escape hatch.
+              Diagnóstico 30/06 confirmou: filtro fixo por kind reduz ~380
+              DEBIT RECONCILED da Cacula pras ~22 legítimas de retirada. */}
+          {!pjTxsLoading && !pjTxsError && (
+            <div className="flex items-center justify-between text-xs text-slate-600">
+              <span>
+                {showAllTx ? (
+                  <>Mostrando <strong>todas</strong> as {pjTxs.length} tx DEBIT categorizadas</>
+                ) : (
+                  <>
+                    {kindFilteredTxs.length} tx compatível com{' '}
+                    <strong>{kind === 'REEMBOLSO' ? 'reembolso (qualquer despesa)' : kind}</strong>{' '}
+                    (de {pjTxs.length} DEBIT)
+                  </>
+                )}
+              </span>
+              <label className="flex cursor-pointer items-center gap-1.5">
+                <input
+                  type="checkbox"
+                  checked={showAllTx}
+                  onChange={(e) => setShowAllTx(e.target.checked)}
+                  className="h-3.5 w-3.5"
+                />
+                Mostrar todas
+              </label>
+            </div>
+          )}
           <div className="max-h-64 overflow-y-auto rounded border border-slate-200">
             {/* Sprint Fix-NovaPonte (30/06/2026): distingue loading / erro /
                 vazio-verdadeiro. Antes era só "Nenhuma transação encontrada"
@@ -250,7 +336,11 @@ export function NovaPonteForm({
                 Nenhuma transação encontrada
                 {pjTxs.length === 0
                   ? ' — não há tx DEBIT já categorizada disponível pra virar ponte.'
-                  : ' pra este filtro.'}
+                  : pjTxQuery
+                    ? ' pra esta busca.'
+                    : !showAllTx && kindFilteredTxs.length === 0
+                      ? ` compatível com ${kind}. Marque "Mostrar todas" pra ver as ${pjTxs.length} tx DEBIT.`
+                      : ' pra este filtro.'}
               </p>
             ) : (
               filteredTxs.map((tx) => (
