@@ -497,6 +497,15 @@ export default function ImportarOFXPage() {
       dedupHash: string
       action: 'CREATE_NEW' | 'SKIP' | 'REPLACE_MANUAL' | 'CONCILIATE_PAYABLE'
     }>,
+    // Sprint Fix-V3-Overrides (01/07/2026): variante robusta pra V3.
+    // Quando explicitOverrides é passado, ele SOBRESCREVE o state 'overrides'
+    // (que só é populado pelo V2 legacy EditablePreviewTable). Evita race
+    // condition de setState React (setOverrides + POST no mesmo tick não
+    // funciona porque state React é assíncrono).
+    //
+    // V2 legacy continua usando o state 'overrides' normalmente (não passa
+    // explicitOverrides → cai no branch antigo).
+    explicitOverrides?: Record<string, string | null>,
   ) {
     if (!arquivo) return
     setLoadingImport(true)
@@ -504,8 +513,11 @@ export default function ImportarOFXPage() {
       const fd = new FormData()
       fd.append('file', arquivo)
       // Sprint Import Categoria Editável (18/06/2026): envia overrides + regras
-      const overridesArr = Object.entries(overrides)
-        .filter(([, v]) => v !== undefined)
+      // Sprint Fix-V3-Overrides (01/07/2026): fonte é explicitOverrides quando
+      // fornecido (V3), senão o state 'overrides' (V2).
+      const overridesSource = explicitOverrides ?? overrides
+      const overridesArr = Object.entries(overridesSource)
+        .filter(([, v]) => v !== undefined && v !== null)
         .map(([dedupHash, categoryId]) => ({ dedupHash, categoryId }))
       if (overridesArr.length > 0) {
         fd.append('categoryOverrides', JSON.stringify(overridesArr))
@@ -665,7 +677,23 @@ export default function ImportarOFXPage() {
           ownEntityRefs={preview.ownEntityRefs}
           onConfirmar={async (decisions) => {
             setV3PendingDecisions(decisions)
-            await handleImport()
+            // Sprint Fix-V3-Overrides (01/07/2026): bug pré-existente da Sprint
+            // OFX V3 — o CategoryCombobox por linha do V3 monta decisions.
+            // categoryOverrides corretamente, mas o onConfirmar chamava
+            // handleImport() sem propagar, e a categoryOverrides ficava
+            // apenas em v3PendingDecisions que era usado só pelas marks
+            // pós-import. Resultado: saídas sem regra automática entravam
+            // PENDING sem categoria (Cacula 01/07 · 6 tx).
+            //
+            // Fix: constrói o Record e passa EXPLICIT pra handleImport (via
+            // parâmetro, não via setState assíncrono). O POST leva os
+            // categoryOverrides e o backend applyCategoryOverrides sobrescreve
+            // como MANUAL/RECONCILED com a categoria escolhida.
+            const explicitOverrides: Record<string, string | null> = {}
+            for (const o of decisions.categoryOverrides) {
+              explicitOverrides[o.dedupHash] = o.categoryId
+            }
+            await handleImport(undefined, explicitOverrides)
           }}
           onCancelar={() => { setArquivo(null); setPreview(null); setV3PendingDecisions(null) }}
           loading={loadingImport}
