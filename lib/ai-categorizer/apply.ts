@@ -21,6 +21,13 @@ import { buildRuleIndex, predictCategory, type RuleIndex } from './predict'
 import { findSimilarTransactions } from './similar'
 import { classifyForImport } from './pipeline'
 import { resolveCategoryFromHint } from './pipeline'
+// Sprint Unificar-Pipelines-Import (01/07/2026): fonte única de verdade
+// compartilhada com predictSuggestionsForPreview. Antes essas 2 funções
+// tinham lógica duplicada e divergiam em edge cases.
+import {
+  classifyTransactionsShared,
+  type SharedClassifyContext,
+} from './classify-shared'
 import type { SetorPatternSnapshot } from '@/lib/categorization/match-setor-pattern'
 import { autoMemorizeVendor } from '@/lib/categorization/auto-memorize-vendor'
 import { invalidateCachedSuggestion } from './claude-cache'
@@ -495,6 +502,32 @@ export function autoClassifyTransactions(
   /** Sprint 5.0.2.l — resolver categoryName → categoryId pra Camada SETOR. */
   setorResolver?: (categoryName: string) => string | null,
 ): AutoClassifyResult {
+  // Sprint Unificar-Pipelines-Import (01/07/2026): delega classificação de
+  // cada tx pra função pura compartilhada `classifyTransactionsShared`.
+  // Aqui só agregamos rulesFired/autoCount/supplierSuggestions/counters e
+  // preservamos o shape de output original (AutoClassifyOutputTx).
+  //
+  // O caller (route.ts) continua fazendo os side-effects (prisma updates,
+  // persistSupplierSuggestions) exatamente como antes — mudou zero.
+  //
+  // Ganho: predictSuggestionsForPreview chama a mesma classifyShared
+  // com o mesmo ctx → preview mostra EXATAMENTE o que este confirm cria.
+  const sharedCtx: SharedClassifyContext = {
+    ruleIndex: index,
+    setorPatterns,
+    setorResolver,
+  }
+  const sharedMap = classifyTransactionsShared(
+    txs.map((t) => ({
+      dedupHash: t.dedupHash,
+      description: t.description,
+      type: t.type,
+      amount: t.amount,
+      bankAccountId: t.bankAccountId,
+    })),
+    sharedCtx,
+  )
+
   const classified: AutoClassifyOutputTx[] = []
   const rulesFired = new Map<string, number>()
   const supplierSuggestions: SupplierSuggestion[] = []
@@ -504,75 +537,62 @@ export function autoClassifyTransactions(
   let setorAutoCount = 0
 
   for (const tx of txs) {
-    const pipelineResult = classifyForImport(
-      { description: tx.description, type: tx.type },
-      index,
-      setorPatterns,
-    )
+    const shared = tx.dedupHash ? sharedMap.get(tx.dedupHash) : null
 
-    // CAMADA 1 — Regra com confiança AUTO (≥0.95) → aplica direto
-    if (
-      pipelineResult.layer === 'RULE' &&
-      pipelineResult.rulePrediction &&
-      pipelineResult.rulePrediction.confidence >= 0.95
-    ) {
-      const pred = pipelineResult.rulePrediction
+    if (!shared) {
+      // Sem dedupHash (edge case) — mantém PENDING puro.
+      classified.push({ ...tx, status: 'PENDING' })
+      continue
+    }
+
+    if (shared.source === 'RULE' && shared.categoryId && shared.ruleId) {
       classified.push({
         ...tx,
         status: 'RECONCILED',
-        categoryId: pred.categoryId,
+        categoryId: shared.categoryId,
         classificationSource: 'RULE',
-        classifiedByRuleId: pred.ruleId,
-        aiConfidence: pred.confidence,
+        classifiedByRuleId: shared.ruleId,
+        aiConfidence: shared.aiConfidence,
       })
-      rulesFired.set(pred.ruleId, (rulesFired.get(pred.ruleId) ?? 0) + 1)
+      rulesFired.set(
+        shared.ruleId,
+        (rulesFired.get(shared.ruleId) ?? 0) + 1,
+      )
       autoCount += 1
       continue
     }
 
-    // CAMADA 2A — Keyword detector: marca PENDING mas registra sugestão
-    // de fornecedor. Caller cria Supplier + linka transaction.supplierId.
-    if (pipelineResult.layer === 'KEYWORD' && pipelineResult.keywordMatch) {
-      const kw = pipelineResult.keywordMatch
+    if (shared.source === 'KEYWORD' && shared.supplierSuggestion) {
+      const sug = shared.supplierSuggestion
       classified.push({ ...tx, status: 'PENDING' })
       supplierSuggestions.push({
-        dedupHash: tx.dedupHash,
-        bankAccountId: tx.bankAccountId,
-        supplierName: kw.displayName,
+        dedupHash: sug.dedupHash,
+        bankAccountId: sug.bankAccountId ?? tx.bankAccountId,
+        supplierName: sug.supplierName,
         cnpj: null,
-        categoryNameHint: kw.categoryNameHint,
-        dreGroup: kw.dreGroup,
-        confidence: kw.confidence,
+        categoryNameHint: sug.categoryNameHint,
+        dreGroup: sug.dreGroup,
+        confidence: sug.confidence,
         fonte: 'KEYWORD',
       })
       keywordHits += 1
       continue
     }
 
-    // CAMADA 2C (Sprint 5.0.2.l) — SetorPattern KB (tier AUTO)
-    if (
-      pipelineResult.layer === 'SETOR' &&
-      pipelineResult.setorMatch &&
-      setorResolver
-    ) {
+    if (shared.source === 'SETOR_PATTERN' && shared.categoryId) {
       setorHits += 1
-      const s = pipelineResult.setorMatch
-      const categoryId = setorResolver(s.pattern.categoryName)
-      if (categoryId) {
-        classified.push({
-          ...tx,
-          status: 'RECONCILED',
-          categoryId,
-          classificationSource: 'SETOR_PATTERN',
-          aiConfidence: s.pattern.confidence,
-        })
-        setorAutoCount += 1
-        continue
-      }
-      // Não resolveu categoria — cai pra PENDING
+      classified.push({
+        ...tx,
+        status: 'RECONCILED',
+        categoryId: shared.categoryId,
+        classificationSource: 'SETOR_PATTERN',
+        aiConfidence: shared.aiConfidence,
+      })
+      setorAutoCount += 1
+      continue
     }
 
-    // Sem match nas camadas síncronas → PENDING puro
+    // Fallback: PENDING puro (sem categoria)
     classified.push({ ...tx, status: 'PENDING' })
   }
 

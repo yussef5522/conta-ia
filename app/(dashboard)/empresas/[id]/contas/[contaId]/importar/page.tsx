@@ -104,6 +104,10 @@ export default function ImportarOFXPage() {
   const [preview, setPreview] = useState<PreviewResult | null>(null)
   const [loadingPreview, setLoadingPreview] = useState(false)
   const [loadingImport, setLoadingImport] = useState(false)
+  // Sprint Unificar-Pipelines-Import (01/07/2026): modal de confirmação
+  // antes do POST. Força o user a ver o TOTAL exato ("39 tx") antes de
+  // commitar — contrato explícito. Contra-medida ao caso "vi 23, entraram 39".
+  const [showConfirmModal, setShowConfirmModal] = useState(false)
   // Sprint OFX V3 (27/06/2026)
   const [v3Enabled, setV3Enabled] = useState(false)
   const [v3Cards, setV3Cards] = useState<Array<{ id: string; name: string; lastDigits: string | null }>>([])
@@ -1007,7 +1011,13 @@ export default function ImportarOFXPage() {
 
               <div className="flex justify-end gap-3">
                 <Button variant="outline" onClick={() => { setArquivo(null); setPreview(null) }}>Cancelar</Button>
-                <Button onClick={() => handleImport()} disabled={loadingImport}>
+                {/* Sprint Unificar-Pipelines-Import (01/07/2026): abre modal
+                    de confirmação em vez de disparar POST direto. Contrato
+                    explícito do total. */}
+                <Button
+                  onClick={() => setShowConfirmModal(true)}
+                  disabled={loadingImport}
+                >
                   {loadingImport ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Importando...</> : `Confirmar importação (${preview.novas})`}
                 </Button>
               </div>
@@ -1015,6 +1025,40 @@ export default function ImportarOFXPage() {
           )}
         </>
       )}
+
+      {/* Sprint Unificar-Pipelines-Import (01/07/2026): modal de confirmação
+          do import. Mostra breakdown TOTAL antes do POST — user vê o número
+          exato do que vai entrar (contra o padrão "vi 23, entraram 39"). */}
+      <ConfirmDialog
+        open={showConfirmModal}
+        onOpenChange={setShowConfirmModal}
+        title={preview ? `Criar ${preview.novas} ${preview.novas === 1 ? 'transação' : 'transações'}?` : 'Confirmar'}
+        description={
+          preview ? (
+            <>
+              Você está prestes a criar{' '}
+              <strong className="tabular-nums">{preview.novas}</strong> transaç
+              {preview.novas === 1 ? 'ão' : 'ões'} no seu banco de dados. Elas
+              vão aparecer no extrato e no DRE.
+              <br />
+              <br />
+              <span className="text-sm text-slate-500">
+                Preview e confirm usam a MESMA função de classificação — o que
+                você viu na tela é exatamente o que vai entrar. Nenhuma
+                transação adicional.
+              </span>
+              <br />
+              <br />
+              Continuar?
+            </>
+          ) : ''
+        }
+        confirmLabel={preview ? `Sim, criar ${preview.novas}` : 'Sim'}
+        onConfirm={async () => {
+          setShowConfirmModal(false)
+          await handleImport()
+        }}
+      />
 
       <ConfirmDialog
         open={!!confirmReplace}

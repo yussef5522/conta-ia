@@ -32,7 +32,9 @@ export interface CategorySuggestion {
   dreGroup: string | null
   categoryName: string | null
   confidence: 'ALTA' | 'REVISAR'
-  source: 'RULE' | 'SETOR' | 'DEFAULT'
+  // Sprint Unificar-Pipelines-Import (01/07/2026): KEYWORD adicionada
+  // (agora preview mostra a mesma classificação que confirm cria).
+  source: 'RULE' | 'SETOR' | 'KEYWORD' | 'DEFAULT'
 }
 
 export interface PreviewLine {
@@ -152,8 +154,54 @@ export function EditablePreviewTable({
     setCreateRuleFor(null)
   }
 
+  // Sprint Unificar-Pipelines-Import (01/07/2026): breakdown TOTAL persistente.
+  // Antes o user olhava só a tab "Revisar" com badge amarelo e não via as
+  // ALTA-classificadas que também entrariam. Header conta TUDO, sempre.
+  const totalNovas = novas.length
+  const altas = novas.length - revisarLines.length
+  const revisar = revisarLines.length
+  const semCategoria = novas.filter((l) => {
+    const sug = suggestionMap.get(l.dedupHash)
+    return !sug || (sug.confidence === 'REVISAR' && !sug.categoryId)
+  }).length
+
   return (
     <div className="space-y-4">
+      {/* Sprint Unificar-Pipelines-Import (01/07/2026): header PERSISTENTE.
+          Antes o user podia clicar na tab "Revisar" e ver 23, mas o confirm
+          criava as 39 (16 auto-classificadas ALTA ficavam invisíveis). Agora
+          o total é SEMPRE visível — impossível o número surpreender. */}
+      <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <p className="text-sm font-medium text-slate-900">
+            <span className="tabular-nums text-base font-semibold">{totalNovas}</span>{' '}
+            {totalNovas === 1 ? 'transação será criada' : 'transações serão criadas'}
+          </p>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600">
+            <span className="inline-flex items-center gap-1">
+              <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" aria-hidden />
+              <span className="tabular-nums font-medium">{altas}</span>{' '}
+              auto-classificadas
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="inline-block h-2 w-2 rounded-full bg-amber-500" aria-hidden />
+              <span className="tabular-nums font-medium">{revisar}</span>{' '}
+              {revisar === 1 ? 'pra revisar' : 'pra revisar'}
+            </span>
+            {semCategoria > 0 && (
+              <span className="inline-flex items-center gap-1 text-slate-500">
+                <span className="inline-block h-2 w-2 rounded-full bg-slate-400" aria-hidden />
+                <span className="tabular-nums font-medium">{semCategoria}</span> sem categoria
+              </span>
+            )}
+          </div>
+        </div>
+        <p className="mt-1.5 text-[11px] text-slate-500">
+          Preview e confirm rodam a mesma função de classificação — o que você vê
+          é bit-a-bit o que vai entrar.
+        </p>
+      </div>
+
       {/* Abas */}
       <div className="flex items-center gap-1 border-b border-slate-200">
         <TabBtn

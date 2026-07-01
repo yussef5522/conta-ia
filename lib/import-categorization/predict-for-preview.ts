@@ -1,20 +1,28 @@
 // Sprint Import Categoria Editável (18/06/2026) — sugestão de categoria
 // no PREVIEW (read-only, não muta nada).
 //
-// Reusa pipeline existente:
-//   1. AiLearningRule (Camada 1) — RULE: EXACT > CNPJ > CONTAINS
-//   2. SetorPattern (Camada 2C)  — padrão setorial UNIVERSAL + setor empresa
-//   3. fallback: "A classificar" (confiança REVISAR)
+// Sprint Unificar-Pipelines-Import (01/07/2026):
+//   ANTES: função tinha lógica de classificação DUPLICADA (só camada 1 RULE
+//     + camada 2C SETOR inline), rodava predictCategory direto. Divergia de
+//     autoClassifyTransactions (confirm) em edge cases — user via 23 tx a
+//     revisar mas confirm criava 39 (16 auto-classificadas escondidas).
+//   AGORA: delega tudo pra `classifyTransactionsShared` (mesma função pura
+//     que autoClassifyTransactions usa). Preview e confirm rodam a MESMA
+//     função com o MESMO ctx → resultado idêntico bit-a-bit.
+//
+// GARANTIA ARQUITETURAL: o preview mostra EXATAMENTE o que o confirm vai
+// criar. Não é promessa — é construção. Se um dia divergir, é bug numa
+// única função (classify-shared), não em 2 pipelines paralelos.
 //
 // Transferência interna (detectada pelo detector) NUNCA recebe categoria —
-// caller deve filtrar antes de chamar esta função.
+// caller deve filtrar antes de chamar esta função (comportamento antigo
+// preservado).
 
-import { predictCategory } from '@/lib/ai-categorizer/predict'
 import type { RuleIndex } from '@/lib/ai-categorizer/predict'
-import { matchAgainstPatterns } from '@/lib/categorization/match-setor-pattern'
 import type { SetorPatternSnapshot } from '@/lib/categorization/match-setor-pattern'
+import { classifyTransactionsShared } from '@/lib/ai-categorizer/classify-shared'
 
-export type SuggestionSource = 'RULE' | 'SETOR' | 'DEFAULT'
+export type SuggestionSource = 'RULE' | 'SETOR' | 'KEYWORD' | 'DEFAULT'
 
 export type SuggestionConfidence = 'ALTA' | 'REVISAR'
 
@@ -27,7 +35,15 @@ export interface PreviewSuggestion {
   dreGroup: string | null
   /** Nome legível (pra UI mostrar inline na bolinha) */
   categoryName: string | null
-  /** ALTA = aplicar direto; REVISAR = bolinha amarela, aba Revisar */
+  /**
+   * ALTA = confirm vai marcar RECONCILED sem revisão manual;
+   * REVISAR = confirm vai marcar PENDING (user precisa categorizar).
+   *
+   * Mapeamento a partir do resultado do `classifyTransactionsShared`:
+   *   status='RECONCILED' → ALTA
+   *   status='PENDING'   → REVISAR (mesmo com sugestão KEYWORD — UI mostra
+   *                       na aba Revisar com badge do fornecedor sugerido)
+   */
   confidence: SuggestionConfidence
   /** Origem da sugestão (debug/explicabilidade) */
   source: SuggestionSource
@@ -52,60 +68,96 @@ export interface PreviewSuggestionContext {
 }
 
 /**
- * Sugere categoria pra cada tx — função PURA (não acessa DB).
- * Caller carrega `ctx` com snapshot de rules/setor/categorias.
+ * Sugere categoria pra cada tx delegando pra `classifyTransactionsShared`
+ * (fonte única de verdade). Retorno mantém o shape `PreviewSuggestion[]`
+ * que as UIs V2 (EditablePreviewTable) e V3 (PreviewV3Premium) esperam —
+ * ZERO mudança no cliente.
  *
- * Ordem de prioridade:
- *   1. AiLearningRule match (EXACT > CNPJ > CONTAINS) — ALTA, source=RULE
- *   2. SetorPattern match com confiança ≥ 0.90 — ALTA, source=SETOR
- *   3. SetorPattern match com confiança < 0.90 — REVISAR, source=SETOR
- *   4. Sem match — REVISAR, source=DEFAULT
+ * Função síncrona pura. Não acessa DB. Não muta ctx.
  */
 export function predictSuggestionsForPreview(
   txs: PreviewTx[],
   ctx: PreviewSuggestionContext,
 ): PreviewSuggestion[] {
-  const SETOR_AUTO_THRESHOLD = 0.9
-  const result: PreviewSuggestion[] = []
+  // 1. Constrói setorResolver a partir de setorCategoryByName (mesma
+  //    mecânica que route.ts usa no confirm).
+  const setorResolver = (categoryName: string): string | null => {
+    const cat = ctx.setorCategoryByName.get(categoryName)
+    return cat?.id ?? null
+  }
 
+  // 2. Roda a função pura compartilhada — MESMA que o confirm executa.
+  const sharedMap = classifyTransactionsShared(
+    txs.map((t) => ({
+      dedupHash: t.dedupHash,
+      description: t.description,
+      type: t.type,
+      amount: t.amount,
+    })),
+    {
+      ruleIndex: ctx.ruleIndex,
+      setorPatterns: ctx.setorPatterns,
+      setorResolver,
+    },
+  )
+
+  // 3. Converte pro shape que a UI espera (PreviewSuggestion[]).
+  //    ALTA quando o confirm vai criar RECONCILED; REVISAR quando PENDING.
+  const result: PreviewSuggestion[] = []
   for (const tx of txs) {
-    // Camada 1: AiLearningRule
-    const pred = predictCategory(
-      { description: tx.description },
-      ctx.ruleIndex,
-    )
-    if (pred && pred.categoryId && pred.confidence >= 0.95) {
-      const cat = ctx.categoryById.get(pred.categoryId)
+    const shared = sharedMap.get(tx.dedupHash)
+
+    if (!shared) {
       result.push({
         dedupHash: tx.dedupHash,
-        categoryId: pred.categoryId,
-        dreGroup: cat?.dreGroup ?? null,
-        categoryName: cat?.name ?? null,
-        confidence: 'ALTA',
-        source: 'RULE',
-        matchedRuleId: pred.ruleId,
+        categoryId: null,
+        dreGroup: null,
+        categoryName: null,
+        confidence: 'REVISAR',
+        source: 'DEFAULT',
       })
       continue
     }
 
-    // Camada 2C: SetorPattern
-    const setorMatch = matchAgainstPatterns(
-      { description: tx.description, type: tx.type as 'CREDIT' | 'DEBIT' },
-      ctx.setorPatterns,
-    )
-    if (setorMatch) {
-      const resolved = ctx.setorCategoryByName.get(setorMatch.pattern.categoryName)
-      if (resolved) {
-        result.push({
-          dedupHash: tx.dedupHash,
-          categoryId: resolved.id,
-          dreGroup: resolved.dreGroup,
-          categoryName: setorMatch.pattern.categoryName,
-          confidence: setorMatch.pattern.confidence >= SETOR_AUTO_THRESHOLD ? 'ALTA' : 'REVISAR',
-          source: 'SETOR',
-        })
-        continue
-      }
+    if (shared.source === 'RULE' && shared.categoryId) {
+      const catMeta = ctx.categoryById.get(shared.categoryId)
+      result.push({
+        dedupHash: tx.dedupHash,
+        categoryId: shared.categoryId,
+        dreGroup: catMeta?.dreGroup ?? null,
+        categoryName: catMeta?.name ?? null,
+        confidence: 'ALTA',
+        source: 'RULE',
+        matchedRuleId: shared.ruleId ?? undefined,
+      })
+      continue
+    }
+
+    if (shared.source === 'SETOR_PATTERN' && shared.categoryId) {
+      const catMeta = ctx.categoryById.get(shared.categoryId)
+      result.push({
+        dedupHash: tx.dedupHash,
+        categoryId: shared.categoryId,
+        dreGroup: catMeta?.dreGroup ?? null,
+        categoryName: catMeta?.name ?? null,
+        confidence: 'ALTA',
+        source: 'SETOR',
+      })
+      continue
+    }
+
+    if (shared.source === 'KEYWORD' && shared.supplierSuggestion) {
+      // KEYWORD marca PENDING (nem preview nem confirm categoriza automático)
+      // mas UI pode mostrar hint do fornecedor. Contrato preservado: REVISAR.
+      result.push({
+        dedupHash: tx.dedupHash,
+        categoryId: null,
+        dreGroup: shared.supplierSuggestion.dreGroup ?? null,
+        categoryName: shared.supplierSuggestion.categoryNameHint,
+        confidence: 'REVISAR',
+        source: 'KEYWORD',
+      })
+      continue
     }
 
     // Fallback: "A classificar"

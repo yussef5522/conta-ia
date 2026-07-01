@@ -69,8 +69,22 @@ describe('predictSuggestionsForPreview — pipeline', () => {
       dreGroup: 'RECEITA_BRUTA',
     })
 
+    // Sprint Unificar-Pipelines-Import (01/07/2026): usa descrição SEM
+    // keyword conhecida. STONE/CIELO/etc são keywords hardcoded (Camada 2A)
+    // e casariam antes do SETOR. Aqui um pattern setorial genérico.
+    ctx.setorPatterns = [
+      {
+        id: 'sp-genero',
+        setor: 'RESTAURANTE',
+        matchType: 'CONTAINS',
+        pattern: 'MERCADO CENTRAL',
+        categoryName: 'Receita de Vendas',
+        type: 'INCOME',
+        confidence: 0.95,
+      } as any,
+    ]
     const r = predictSuggestionsForPreview(
-      [{ dedupHash: 'h2', description: 'ANTECIP STONE', amount: 100, type: 'CREDIT' }],
+      [{ dedupHash: 'h2', description: 'CREDITO MERCADO CENTRAL', amount: 100, type: 'CREDIT' }],
       ctx,
     )
     expect(r[0].confidence).toBe('ALTA')
@@ -78,8 +92,14 @@ describe('predictSuggestionsForPreview — pipeline', () => {
     expect(r[0].categoryId).toBe('cat-vendas')
   })
 
-  it('SetorPattern com confiança <0.90 -> REVISAR + source=SETOR', () => {
+  // Sprint Unificar-Pipelines-Import (01/07/2026): a preview agora reflete
+  // a MESMA hierarquia do confirm — RULE > KEYWORD > SETOR. Por isso a
+  // camada KEYWORD (detector de "Stone" como PSP) casa ANTES do SETOR
+  // com pattern 'STONE'. Comportamento correto (bate 100% com o confirm).
+  it('KEYWORD casa antes de SETOR quando ambos veriam a descrição', () => {
     const ctx = ctxBase()
+    // Cenário: 'STONE PIX' — KEYWORD 'STONE' (Stone PSP) casa antes
+    // de qualquer SetorPattern com pattern 'STONE' ser avaliado.
     ctx.setorPatterns = [
       {
         id: 'sp2',
@@ -100,8 +120,10 @@ describe('predictSuggestionsForPreview — pipeline', () => {
       [{ dedupHash: 'h3', description: 'STONE PIX', amount: 100, type: 'CREDIT' }],
       ctx,
     )
+    // KEYWORD sempre marca REVISAR (categoria só quando user confirma o
+    // Supplier após import), mas fornece hint na UI.
     expect(r[0].confidence).toBe('REVISAR')
-    expect(r[0].source).toBe('SETOR')
+    expect(r[0].source).toBe('KEYWORD')
   })
 
   it('sem match -> DEFAULT + REVISAR + categoryId=null', () => {
