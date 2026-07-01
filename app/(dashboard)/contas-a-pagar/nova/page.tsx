@@ -14,10 +14,12 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { useToast } from '@/components/ui/use-toast'
+import { CategoryCombobox } from '@/components/transacoes/category-combobox'
+import { createCategoryForPJ } from '@/lib/transacoes/on-create-category'
 
 interface Empresa { id: string; name: string; tradeName: string | null }
 interface BankAccount { id: string; name: string; bankName: string | null; companyId: string }
-interface Category { id: string; name: string; type: string; color: string | null }
+interface Category { id: string; name: string; type: string; color: string | null; dreGroup?: string | null }
 interface Supplier { id: string; razaoSocial: string; nomeFantasia: string | null }
 
 export default function NovaContaAPagarPage() {
@@ -227,18 +229,27 @@ function NovaContaInner() {
                 (escolha 1: categoria, fornecedor ou conta)
               </span>
             </label>
-            <Select value={categoryId} onValueChange={setCategoryId} disabled={!empresaId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Sem categoria" />
-              </SelectTrigger>
-              <SelectContent>
-                {categories.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <CategoryCombobox
+              value={categoryId || null}
+              categorias={categories.map((c) => ({
+                id: c.id,
+                name: c.name,
+                color: c.color,
+                type: c.type,
+                dreGroup: c.dreGroup ?? null,
+              }))}
+              onChange={(v) => setCategoryId(v ?? '')}
+              onCreate={async (name) => {
+                if (!empresaId) return null
+                const cat = await createCategoryForPJ(empresaId, name, 'EXPENSE')
+                if (cat) setCategories((prev) => [...prev, { id: cat.id, name: cat.name, type: cat.type ?? 'EXPENSE', color: cat.color ?? null, dreGroup: cat.dreGroup ?? null }])
+                return cat
+              }}
+              disabled={!empresaId}
+              placeholder="Sem categoria"
+              className="h-9 w-full justify-between border-input"
+              ariaLabel="Categoria"
+            />
           </div>
 
           <div className="space-y-1.5">

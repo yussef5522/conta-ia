@@ -18,6 +18,7 @@ import {
   isCreateCategorySentinel,
   extractCategoryName,
 } from '@/lib/validations/saved-view'
+import { enforceStatusLadder } from '@/lib/transacoes/needs-review'
 
 interface Params {
   params: Promise<{ id: string; transactionId: string }>
@@ -140,6 +141,30 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           oldValue = antiga.categoryId
           newValue = resolvedCategoryId
           break
+      }
+
+      // Sprint Category-Combobox PJ Batch (30/06/2026) — DEFESA EM PROFUNDIDADE.
+      // Se o field editado é categoryId, aplica a escada:
+      //   categoryId NOT NULL → status='RECONCILED'
+      //   categoryId NULL → status='PENDING'
+      //   (IGNORED preservado; CASH → RECONCILED)
+      // Sem isso, editar categoria inline deixava tx em estado invertido
+      // (EFFECTED+categoria+PENDING).
+      if (input.field === 'categoryId') {
+        const acc = antiga.bankAccountId
+          ? await tx.bankAccount.findUnique({
+              where: { id: antiga.bankAccountId },
+              select: { accountType: true },
+            })
+          : null
+        const statusEnforced = enforceStatusLadder({
+          intendedStatus: antiga.status as 'PENDING' | 'RECONCILED' | 'IGNORED',
+          categoryId: resolvedCategoryId,
+          accountType: acc?.accountType ?? null,
+        })
+        if (statusEnforced !== antiga.status) {
+          data.status = statusEnforced
+        }
       }
 
       const result = await tx.transaction.update({

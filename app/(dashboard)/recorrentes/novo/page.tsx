@@ -15,9 +15,11 @@ import {
 } from '@/components/ui/select'
 import { useToast } from '@/components/ui/use-toast'
 import { calculateNextDueDates } from '@/lib/recurrence/next-date'
+import { CategoryCombobox } from '@/components/transacoes/category-combobox'
+import { createCategoryForPJ } from '@/lib/transacoes/on-create-category'
 
 interface Empresa { id: string; name: string; tradeName: string | null }
-interface Category { id: string; name: string; type: string; color: string | null }
+interface Category { id: string; name: string; type: string; color: string | null; dreGroup?: string | null }
 interface Supplier { id: string; razaoSocial: string; nomeFantasia: string | null }
 interface Customer { id: string; razaoSocial: string; nomeFantasia: string | null }
 
@@ -322,14 +324,28 @@ function NovoRecorrenteInner() {
 
           <div className="space-y-1.5">
             <label className="text-xs">Categoria (opcional)</label>
-            <Select value={categoryId} onValueChange={setCategoryId} disabled={!empresaId}>
-              <SelectTrigger><SelectValue placeholder="Sem categoria" /></SelectTrigger>
-              <SelectContent>
-                {categories.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <CategoryCombobox
+              value={categoryId || null}
+              categorias={categories.map((c) => ({
+                id: c.id,
+                name: c.name,
+                color: c.color,
+                type: c.type,
+                dreGroup: c.dreGroup ?? null,
+              }))}
+              onChange={(v) => setCategoryId(v ?? '')}
+              onCreate={async (name) => {
+                if (!empresaId) return null
+                const catType = type === 'PAYABLE' ? 'EXPENSE' : 'INCOME'
+                const cat = await createCategoryForPJ(empresaId, name, catType)
+                if (cat) setCategories((prev) => [...prev, { id: cat.id, name: cat.name, type: cat.type ?? catType, color: cat.color ?? null, dreGroup: cat.dreGroup ?? null }])
+                return cat
+              }}
+              disabled={!empresaId}
+              placeholder="Sem categoria"
+              className="h-9 w-full justify-between border-input"
+              ariaLabel="Categoria"
+            />
           </div>
 
           <div className="space-y-1.5">

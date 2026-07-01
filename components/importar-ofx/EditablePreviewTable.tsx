@@ -16,6 +16,7 @@ import { ArrowUpRight, ArrowDownRight, ArrowLeftRight, Sparkles, Plus, Check, X 
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { formatBRL } from '@/lib/format/money'
+import { CategoryCombobox } from '@/components/transacoes/category-combobox'
 
 export interface CategoryOption {
   id: string
@@ -191,11 +192,21 @@ export function EditablePreviewTable({
         <div className="flex flex-wrap items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 text-sm">
           <span className="font-medium">{selected.size} selecionada(s)</span>
           <span className="text-slate-500">→</span>
-          <CategorySelect
-            categories={categories}
+          <CategoryCombobox
             value={null}
-            onChange={(catId) => catId && applyBulkCategory(catId)}
+            categorias={categories.map((c) => ({
+              id: c.id,
+              name: c.name,
+              type: c.type,
+              dreGroup: c.dreGroup,
+            }))}
+            onChange={(v) => {
+              if (v) applyBulkCategory(v)
+            }}
             placeholder="Aplicar categoria em massa…"
+            allowClear={false}
+            className="h-9 w-64 justify-between border-input"
+            ariaLabel="Aplicar categoria em massa"
           />
           <Button variant="ghost" size="sm" onClick={clearSelection}>
             <X className="h-3.5 w-3.5 mr-1" /> Limpar
@@ -264,11 +275,18 @@ export function EditablePreviewTable({
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-2">
                           <ConfidenceDot confidence={conf} />
-                          <CategorySelect
-                            categories={categories}
+                          <CategoryCombobox
                             value={catId}
+                            categorias={categories.map((c) => ({
+                              id: c.id,
+                              name: c.name,
+                              type: c.type,
+                              dreGroup: c.dreGroup,
+                            }))}
                             onChange={(v) => applySingleCategory(line.dedupHash, v)}
                             placeholder="A classificar"
+                            className="h-8 w-56 justify-between border-input text-xs"
+                            ariaLabel="Categoria da linha"
                           />
                         </div>
                       </td>
@@ -407,55 +425,9 @@ function ConfidenceDot({ confidence }: { confidence: 'ALTA' | 'REVISAR' }) {
   )
 }
 
-function CategorySelect({
-  categories,
-  value,
-  onChange,
-  placeholder,
-}: {
-  categories: CategoryOption[]
-  value: string | null
-  onChange: (v: string | null) => void
-  placeholder: string
-}) {
-  const groups = useMemo(() => {
-    const by: Record<string, CategoryOption[]> = { INCOME: [], EXPENSE: [], TRANSFER: [], OTHER: [] }
-    for (const c of categories) {
-      const k = c.type === 'INCOME' || c.type === 'EXPENSE' || c.type === 'TRANSFER' ? c.type : 'OTHER'
-      by[k].push(c)
-    }
-    return by
-  }, [categories])
-  return (
-    <select
-      value={value ?? ''}
-      onChange={(e) => onChange(e.target.value || null)}
-      className="block w-full max-w-xs rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-primary/30"
-    >
-      <option value="">{placeholder}</option>
-      {groups.INCOME.length > 0 && (
-        <optgroup label="Receitas">
-          {groups.INCOME.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </optgroup>
-      )}
-      {groups.EXPENSE.length > 0 && (
-        <optgroup label="Despesas">
-          {groups.EXPENSE.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </optgroup>
-      )}
-      {groups.TRANSFER.length > 0 && (
-        <optgroup label="Transferências">
-          {groups.TRANSFER.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </optgroup>
-      )}
-      {groups.OTHER.length > 0 && (
-        <optgroup label="Outros">
-          {groups.OTHER.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </optgroup>
-      )}
-    </select>
-  )
-}
+// Sprint Category-Combobox PJ Batch (30/06/2026): CategorySelect local
+// substituído pelo CategoryCombobox único (Ramp/Mercury-grade).
+// Interface pública mantida via wrappers acima (bulk/linha/regra).
 
 function CreateRuleModal({
   line,
@@ -521,11 +493,19 @@ function CreateRuleModal({
           </div>
           <div>
             <label className="text-xs text-slate-600 mb-1 block">Categoria</label>
-            <CategorySelect
-              categories={categories}
+            <CategoryCombobox
               value={catId || null}
+              categorias={categories.map((c) => ({
+                id: c.id,
+                name: c.name,
+                type: c.type,
+                dreGroup: c.dreGroup,
+              }))}
               onChange={(v) => setCatId(v ?? '')}
               placeholder="Escolha…"
+              allowClear={false}
+              className="h-9 w-full justify-between border-input"
+              ariaLabel="Categoria da regra"
             />
           </div>
         </div>

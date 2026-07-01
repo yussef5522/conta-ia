@@ -9,8 +9,11 @@
 // - novaCategoriaId tem que ser categoria ativa da MESMA empresa.
 // - classificationSource = 'MANUAL' (ação humana explícita).
 // - classifiedByRuleId = null (rompe vínculo com qualquer regra anterior).
-// - NÃO mexe em amount/date/bankAccountId/lifecycle/status/transferGroupId —
-//   só categoria. Saldo intacto, conciliação intacta.
+// - NÃO mexe em amount/date/bankAccountId/lifecycle/transferGroupId — só
+//   categoria + status (via escada). Saldo intacto, conciliação intacta.
+// - Sprint Category-Combobox PJ Batch (30/06/2026): agora aplica a escada
+//   via enforceStatusLadder por tx (fetch categoryId+accountType, agrupa por
+//   status resultante, updateMany por grupo dentro de $transaction).
 // - Invalida cache via revalidateTag(`dashboard:${empresaId}`) → dashboard
 //   + /despesas + DRE refletem no próximo render.
 // - Idempotente: rodar 2x não muda nada além de updatedAt.
@@ -23,6 +26,7 @@ import { revalidateTag } from 'next/cache'
 import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
+import { enforceStatusLadder } from '@/lib/transacoes/needs-review'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -61,7 +65,9 @@ export async function POST(request: NextRequest, { params }: Params) {
       )
     }
 
-    // Filtra defensivamente: só tx que realmente pertencem à empresa
+    // Filtra defensivamente: só tx que realmente pertencem à empresa.
+    // Sprint Category-Combobox PJ Batch (30/06/2026): também carrega status
+    // atual + accountType pra aplicar enforceStatusLadder por tx.
     const ownedTx = await prisma.transaction.findMany({
       where: {
         id: { in: transactionIds },
@@ -73,6 +79,8 @@ export async function POST(request: NextRequest, { params }: Params) {
         amount: true,
         type: true,
         description: true,
+        status: true,
+        bankAccount: { select: { accountType: true } },
       },
     })
 
@@ -89,16 +97,44 @@ export async function POST(request: NextRequest, { params }: Params) {
       ownedTx.map((t) => [t.id, t.categoryId]),
     )
 
-    // Atomic updateMany
-    const result = await prisma.transaction.updateMany({
-      where: { id: { in: ownedIds } },
-      data: {
+    // Sprint Category-Combobox PJ Batch (30/06/2026) — aplica escada por tx.
+    // Como categoryId virá NOT NULL (novaCategoriaId) pra todas, o resultado
+    // é RECONCILED (exceto IGNORED que preserva). Agrupa por status resultante
+    // pra fazer updateMany por grupo (mantém performance de lote).
+    const groups = new Map<
+      'PENDING' | 'RECONCILED' | 'IGNORED',
+      string[]
+    >()
+    for (const t of ownedTx) {
+      const nextStatus = enforceStatusLadder({
+        intendedStatus: t.status as 'PENDING' | 'RECONCILED' | 'IGNORED',
         categoryId: novaCategoriaId,
-        classificationSource: 'MANUAL',
-        classifiedByRuleId: null,
-        // aiConfidence preservado (informativo só)
-      },
+        accountType: t.bankAccount?.accountType ?? null,
+      })
+      const arr = groups.get(nextStatus) ?? []
+      arr.push(t.id)
+      groups.set(nextStatus, arr)
+    }
+
+    // Atomic: updateMany por status resultante dentro de $transaction.
+    let totalUpdated = 0
+    await prisma.$transaction(async (tx) => {
+      for (const [statusFinal, ids] of groups) {
+        if (ids.length === 0) continue
+        const r = await tx.transaction.updateMany({
+          where: { id: { in: ids } },
+          data: {
+            categoryId: novaCategoriaId,
+            classificationSource: 'MANUAL',
+            classifiedByRuleId: null,
+            status: statusFinal,
+            // aiConfidence preservado (informativo só)
+          },
+        })
+        totalUpdated += r.count
+      }
     })
+    const result = { count: totalUpdated }
 
     // Invalida cache: dashboard, /despesas, Top5 — tudo no mesmo tag.
     // Next.js 16 mudou a assinatura: revalidateTag(tag, profile).

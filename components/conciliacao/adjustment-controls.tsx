@@ -44,6 +44,7 @@ import {
 } from '@/components/ui/dialog'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
+import { CategoryCombobox } from '@/components/transacoes/category-combobox'
 import {
   ADJUSTMENT_CATEGORY_TEMPLATES,
   applicableTemplates,
@@ -79,6 +80,7 @@ interface CompanyCategory {
   name: string
   type: string
   color: string | null
+  dreGroup?: string | null
 }
 
 // ============================================================================
@@ -297,29 +299,21 @@ export function AdjustmentForm({
           {loadingCats ? (
             <p className="text-xs text-muted-foreground py-1">Carregando…</p>
           ) : (
-            <Select value={categoryId} onValueChange={setCategoryId}>
-              <SelectTrigger className="h-8 text-sm">
-                <SelectValue placeholder="Selecione…" />
-              </SelectTrigger>
-              <SelectContent>
-                {filteredCategories.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    <span className="flex items-center gap-2">
-                      {c.color && (
-                        <span
-                          className="h-2 w-2 rounded-full"
-                          style={{ backgroundColor: c.color }}
-                        />
-                      )}
-                      {c.name}{' '}
-                      <span className="text-muted-foreground text-[10px]">
-                        ({c.type})
-                      </span>
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <CategoryCombobox
+              value={categoryId || null}
+              categorias={filteredCategories.map((c) => ({
+                id: c.id,
+                name: c.name,
+                color: c.color,
+                type: c.type,
+                dreGroup: c.dreGroup ?? null,
+              }))}
+              onChange={(v) => setCategoryId(v ?? '')}
+              placeholder="Selecione…"
+              allowClear={false}
+              className="h-8 w-full justify-between border-input text-sm"
+              ariaLabel="Categoria do ajuste"
+            />
           )}
         </div>
       )}

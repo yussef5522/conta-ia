@@ -35,6 +35,7 @@ import {
 import { useToast } from '@/components/ui/use-toast'
 import { AlertTriangle, ArrowRight, Loader2, Wand2 } from 'lucide-react'
 import { formatBRL } from '@/lib/format/money'
+import { CategoryCombobox } from '@/components/transacoes/category-combobox'
 
 interface Categoria {
   id: string
@@ -290,31 +291,21 @@ export function NovaRegraModal({
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Categoria</Label>
-              <Select value={categoryId} onValueChange={setCategoryId}>
-                <SelectTrigger className="h-9 text-sm">
-                  <SelectValue placeholder="Escolha uma categoria" />
-                </SelectTrigger>
-                <SelectContent className="max-h-72">
-                  {categorias.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      <span className="flex items-center gap-2">
-                        {c.color && (
-                          <span
-                            className="h-2 w-2 rounded-full"
-                            style={{ background: c.color }}
-                          />
-                        )}
-                        {c.name}
-                        {c.dreGroup && (
-                          <span className="text-[10px] text-muted-foreground ml-1">
-                            {c.dreGroup}
-                          </span>
-                        )}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <CategoryCombobox
+                value={categoryId || null}
+                categorias={categorias.map((c) => ({
+                  id: c.id,
+                  name: c.name,
+                  color: c.color,
+                  type: c.type,
+                  dreGroup: c.dreGroup,
+                }))}
+                onChange={(v) => setCategoryId(v ?? '')}
+                placeholder="Escolha uma categoria"
+                allowClear={false}
+                className="h-9 w-full justify-between border-input text-sm"
+                ariaLabel="Categoria da regra"
+              />
               {categoriaSelecionada?.dreGroup && (
                 <p className="text-[10px] text-muted-foreground">
                   Grupo DRE: {categoriaSelecionada.dreGroup}

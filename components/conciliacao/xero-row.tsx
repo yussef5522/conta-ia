@@ -47,6 +47,8 @@ import {
 } from '@/components/ui/select'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
+import { CategoryCombobox } from '@/components/transacoes/category-combobox'
+import { createCategoryForPJ } from '@/lib/transacoes/on-create-category'
 
 export interface OfxLine {
   id: string
@@ -76,6 +78,7 @@ interface Category {
   name: string
   type: string
   color: string | null
+  dreGroup?: string | null
 }
 
 interface Props {
@@ -525,28 +528,30 @@ function CreatePanel({
           <label className="text-[10px] uppercase font-semibold text-muted-foreground">
             Categoria <span className="text-red-500">*</span>
           </label>
-          <Select value={categoryId} onValueChange={setCategoryId}>
-            <SelectTrigger className="h-8 text-sm">
-              <SelectValue
-                placeholder={ofx.type === 'CREDIT' ? 'Receita…' : 'Despesa…'}
-              />
-            </SelectTrigger>
-            <SelectContent>
-              {categories.map((c) => (
-                <SelectItem key={c.id} value={c.id}>
-                  <span className="flex items-center gap-2">
-                    {c.color && (
-                      <span
-                        className="h-2 w-2 rounded-full"
-                        style={{ backgroundColor: c.color }}
-                      />
-                    )}
-                    {c.name}
-                  </span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <CategoryCombobox
+            value={categoryId || null}
+            categorias={categories.map((c) => ({
+              id: c.id,
+              name: c.name,
+              color: c.color,
+              type: c.type,
+              dreGroup: c.dreGroup ?? null,
+            }))}
+            onChange={(v) => setCategoryId(v ?? '')}
+            onCreate={async (name) => {
+              const cat = await createCategoryForPJ(
+                empresaId,
+                name,
+                ofx.type === 'CREDIT' ? 'INCOME' : 'EXPENSE',
+              )
+              if (cat) setCategories((prev) => [...prev, { id: cat.id, name: cat.name, type: cat.type ?? (ofx.type === 'CREDIT' ? 'INCOME' : 'EXPENSE'), color: cat.color ?? null, dreGroup: cat.dreGroup ?? null }])
+              return cat
+            }}
+            placeholder={ofx.type === 'CREDIT' ? 'Receita…' : 'Despesa…'}
+            allowClear={false}
+            className="h-8 w-full justify-between border-input text-sm"
+            ariaLabel="Categoria"
+          />
         </div>
         <div>
           <label className="text-[10px] uppercase font-semibold text-muted-foreground">

@@ -17,6 +17,7 @@ import { TransactionKindSelect } from '@/components/import-shared/TransactionKin
 import type { V2PreviewPayload, V2NovaGenuinaItem } from '@/lib/ofx/preview-v2'
 import type { OfxLineKind, AiSuggestion, OfxLineMark } from '@/lib/ofx-v3/types'
 import { suggestLineKind } from '@/lib/ofx-v3/suggest-line-kind'
+import { CategoryCombobox } from '@/components/transacoes/category-combobox'
 import { findLoanInstallmentForTransaction } from '@/lib/loans/match-contract-in-description'
 import { extractOwnSignals, type OwnEntityRefs } from '@/lib/transfers/own-entity-signals'
 import { detectTransferKeyword } from '@/lib/ofx-v3/transfer-keyword'
@@ -382,18 +383,20 @@ function PreviewRow({
       </td>
       <td className="py-2 pr-2">
         {state.kind === 'RECEITA' || state.kind === 'DESPESA' ? (
-          <select
-            value={state.categoryId ?? ''}
-            onChange={(e) => onUpdate({ categoryId: e.target.value || null })}
-            className={`text-xs border rounded h-8 px-1 w-full bg-background ${
+          <CategoryCombobox
+            value={state.categoryId}
+            categorias={cats.map((c) => ({
+              id: c.id,
+              name: c.name,
+              type: c.type,
+            }))}
+            onChange={(v) => onUpdate({ categoryId: v ?? null })}
+            placeholder="— escolher categoria —"
+            className={`h-8 w-full justify-between text-xs ${
               state.categoryId === null ? 'border-amber-400 bg-amber-50/30 dark:bg-amber-950/20' : 'border-border'
             }`}
-          >
-            <option value="">— escolher categoria —</option>
-            {cats.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
+            ariaLabel="Categoria da linha"
+          />
         ) : state.kind === 'PAGAMENTO_CARTAO' ? (
           <select
             value={state.cardId ?? ''}
