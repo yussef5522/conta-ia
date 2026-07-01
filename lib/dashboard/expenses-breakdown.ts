@@ -15,7 +15,13 @@
 // filtrar qualquer intervalo. Para "mês corrente", chamador passa periods
 // derivePeriods(refDate).currentMonth.
 
-import { unstable_cache } from 'next/cache'
+// Sprint Fix-Cache-Despesas (01/07/2026): removido `unstable_cache` de
+// `getExpenseBreakdown`. Antes o cabeçalho de cada categoria (`21 tx ·
+// R$41.968,75`) ficava travado 60s após recategorizar — `revalidateTag`
+// no route.ts recategorizar não invalidava no Next 16 em runtime prod.
+// Resultado: user via total STALE mesmo após reload (a lista já mostrava
+// atualizada porque não tinha cache). Fix: 1 query groupBy por render,
+// ~50-150ms, cabeçalho sempre real-time.
 import { prisma } from '@/lib/db'
 import { NON_DRE_GROUP_SET } from '@/lib/dre/types'
 import type { Regime } from './engine'
@@ -83,20 +89,19 @@ interface GetExpenseTransactionsInput extends GetExpenseBreakdownInput {
   offset?: number
 }
 
-const CACHE_TTL = 60
-
 export async function getExpenseBreakdown(
   input: GetExpenseBreakdownInput,
 ): Promise<ExpenseBreakdownResult> {
   if (!input.companyId) throw new Error('companyId obrigatório (multi-tenant)')
-  const startKey = input.periodStart.toISOString().slice(0, 10)
-  const endKey = input.periodEnd.toISOString().slice(0, 10)
-  const cached = unstable_cache(
-    async () => loadExpenseBreakdown(input),
-    [`dashboard:expenses:${input.companyId}:${input.regime}:${startKey}:${endKey}`],
-    { revalidate: CACHE_TTL, tags: [`dashboard:${input.companyId}`] },
-  )
-  return cached()
+  // Sprint Fix-Cache-Despesas (01/07/2026): consulta direta, SEM
+  // unstable_cache. Antes tinha TTL 60s + tag `dashboard:${companyId}`
+  // mas `revalidateTag` do route.ts recategorizar não invalidava no
+  // Next 16 (comportamento imprevisível de `unstable_cache` em route
+  // handlers). Total STALE após recategorizar. Custo agora: 1 groupBy
+  // Prisma por render, ~50-150ms — imperceptível. Cabeçalho SEMPRE
+  // bate com a lista (que também é real-time). Elimina toda a classe
+  // "recategorizei mas o total não atualizou".
+  return loadExpenseBreakdown(input)
 }
 
 export async function getExpenseTransactions(
