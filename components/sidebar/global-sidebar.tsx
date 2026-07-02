@@ -217,6 +217,19 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
             onClick={onNavigate}
           />
         )}
+        {/* Sprint Despesas-PF (02/07/2026): tela dedicada de despesas do
+            perfil pessoal. Antes o botão "Nova despesa" ficava enterrado
+            em /perfis/[id]/transacoes. Agora Despesas é lugar próprio no
+            workspace PF — visual Monarch/Copilot + marcador Retirada PJ. */}
+        {workspaceType === 'pf' && currentProfileId && (
+          <SidebarItem
+            icon={TrendingDown}
+            label="Despesas"
+            href={`/perfis/${currentProfileId}/despesas`}
+            isActive={/^\/perfis\/[^/]+\/despesas(\/|$)/.test(pathname)}
+            onClick={onNavigate}
+          />
+        )}
         {/* Hotfix 5.0.4.0a-fix — Relatórios substituiu DRE Gerencial.
             Index per-empresa contém DRE + Categorias + Comparativo. */}
         <SidebarItem
