@@ -230,6 +230,18 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
             onClick={onNavigate}
           />
         )}
+        {/* Sprint Receitas-PF (02/07/2026): irmã de Despesas. Visão
+            unificada do que entrou (retiradas PJ + rendas externas) com
+            selo de origem por empresa — diferencial único CAIXAOS. */}
+        {workspaceType === 'pf' && currentProfileId && (
+          <SidebarItem
+            icon={TrendingUp}
+            label="Receitas"
+            href={`/perfis/${currentProfileId}/receitas`}
+            isActive={/^\/perfis\/[^/]+\/receitas(\/|$)/.test(pathname)}
+            onClick={onNavigate}
+          />
+        )}
         {/* Hotfix 5.0.4.0a-fix — Relatórios substituiu DRE Gerencial.
             Index per-empresa contém DRE + Categorias + Comparativo. */}
         <SidebarItem
