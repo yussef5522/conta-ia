@@ -46,11 +46,29 @@ export async function GET(request: NextRequest) {
       ],
     }
 
-    const [vencidas, vencendoEm3, conciliacaoPendente, transacoesPendentes] = await Promise.all([
+    // Sprint Fix-Badge-Contas-Pagar (05/07/2026): as duas primeiras contagens
+    // eram `lifecycle: { in: ['PAYABLE', 'RECEIVABLE'] }` — incluíam contas a
+    // RECEBER no badge de "Contas a Pagar". Bug ficou latente até a Cacula ter
+    // 27 RECEIVABLE + PENDING (PIX D+1 do Sicredi agendados pra 06/07); a partir
+    // desses lançamentos o badge do menu "Contas a Pagar" mostrava 27 enquanto
+    // a tela `/contas-a-pagar` (que filtra corretamente `lifecycle='PAYABLE'`)
+    // mostrava 0 pendentes.
+    //
+    // Fix: filtrar SÓ `lifecycle: 'PAYABLE'` nos dois counts do apBadge.
+    // Bonus: adicionar contagens análogas pra RECEIVABLE — o menu "Contas a
+    // Receber" ganha badge próprio (as 27 aparecem no lugar certo).
+    const [
+      vencidas,
+      vencendoEm3,
+      conciliacaoPendente,
+      transacoesPendentes,
+      arVencidas,
+      arVencendoEm3,
+    ] = await Promise.all([
       prisma.transaction.count({
         where: {
           ...tenantOR,
-          lifecycle: { in: ['PAYABLE', 'RECEIVABLE'] },
+          lifecycle: 'PAYABLE',
           status: 'PENDING',
           dueDate: { lt: now },
         },
@@ -58,7 +76,7 @@ export async function GET(request: NextRequest) {
       prisma.transaction.count({
         where: {
           ...tenantOR,
-          lifecycle: { in: ['PAYABLE', 'RECEIVABLE'] },
+          lifecycle: 'PAYABLE',
           status: 'PENDING',
           dueDate: { gte: now, lte: in3Days },
         },
@@ -96,12 +114,34 @@ export async function GET(request: NextRequest) {
           lifecycle: 'EFFECTED',
         },
       }),
+      // Sprint Fix-Badge-Contas-Pagar (05/07/2026): counts RECEIVABLE análogos
+      // pro badge do menu "Contas a Receber". Mesmo tenant OR + status/dueDate.
+      prisma.transaction.count({
+        where: {
+          ...tenantOR,
+          lifecycle: 'RECEIVABLE',
+          status: 'PENDING',
+          dueDate: { lt: now },
+        },
+      }),
+      prisma.transaction.count({
+        where: {
+          ...tenantOR,
+          lifecycle: 'RECEIVABLE',
+          status: 'PENDING',
+          dueDate: { gte: now, lte: in3Days },
+        },
+      }),
     ])
 
     return NextResponse.json({
       contasAPagar: {
         vencidas,
         vencendoEm3Dias: vencendoEm3,
+      },
+      contasAReceber: {
+        vencidas: arVencidas,
+        vencendoEm3Dias: arVencendoEm3,
       },
       conciliacao: {
         pendentes: conciliacaoPendente,

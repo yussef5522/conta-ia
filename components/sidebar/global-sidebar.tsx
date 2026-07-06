@@ -105,6 +105,18 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
     : badges?.contasAPagar?.vencendoEm3Dias
       ? 'amber'
       : 'neutral'
+  // Sprint Fix-Badge-Contas-Pagar (05/07/2026): as tx RECEIVABLE ganham badge
+  // próprio no menu "Contas a Receber". Antes elas somavam no apBadge (bug).
+  // Same tone que ap — mas semanticamente é "aguardando dinheiro entrar",
+  // não urgência de saída. Mantemos red/amber pra padrão consistente.
+  const arBadge = badges?.contasAReceber
+    ? badges.contasAReceber.vencidas + badges.contasAReceber.vencendoEm3Dias
+    : 0
+  const arTone: 'red' | 'amber' | 'neutral' = badges?.contasAReceber?.vencidas
+    ? 'red'
+    : badges?.contasAReceber?.vencendoEm3Dias
+      ? 'amber'
+      : 'neutral'
   const conciliacaoBadge = badges?.conciliacao?.pendentes ?? 0
   const pendentesBadge = badges?.transacoesPendentes ?? 0
 
@@ -144,6 +156,8 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
           href={`/contas-a-receber${empresaQs}`}
           isActive={pathname.startsWith('/contas-a-receber')}
           onClick={onNavigate}
+          badge={arBadge > 0 ? String(arBadge) : undefined}
+          badgeTone={arTone}
         />
         <SidebarItem
           icon={Link2}
