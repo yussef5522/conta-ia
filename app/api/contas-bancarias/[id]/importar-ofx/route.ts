@@ -408,68 +408,119 @@ export async function POST(request: NextRequest, { params }: Params) {
       })
     }
 
-    // V2: busca candidatos do sistema (somente leitura) + classifica
-    const datesIncoming = novas.map((t) => t.datePosted.getTime())
-    const minDate = new Date(Math.min(...datesIncoming) - 5 * 86400_000)
-    const maxDate = new Date(Math.max(...datesIncoming) + 1 * 86400_000)
+    // Sprint Fix-Import-Vazio (05/07/2026): guard pra re-import.
+    //
+    // Se `novas.length === 0` (todas as tx do arquivo já foram importadas
+    // antes — gate de identidade filtrou tudo), o V2Preview abaixo fazia
+    // Math.min(...[]) = Infinity → new Date(Invalid) → o findMany do Prisma
+    // caía em PrismaClientValidationError com 500 sem body JSON limpo, e a
+    // UI mostrava a mensagem enganosa "Não foi possível ler o arquivo".
+    //
+    // Fix: retorna o payload legado com `preview=[]` — a UI já sabe processar
+    // (mesmo shape que quando IMPORT_PREVIEW_V2=false). O `duplicadas` conta
+    // corretamente o que ficou fora, e a mensagem explica o que aconteceu.
+    // Backward-compat total: se novas > 0, segue no V2Preview normalmente.
+    if (novas.length === 0) {
+      return NextResponse.json({
+        ...buildLegacyPreviewPayload({
+          novas: [],
+          totalArquivo: transactions.length,
+          duplicadas,
+          errosParser: errors,
+          banco,
+        }),
+        importIdentity: {
+          gate: gateResult.stats,
+          batchWarnings,
+        },
+        categorySuggestions,
+        categoriesForUI,
+        ownEntityRefs,
+        mensagem:
+          'Todas as transações deste arquivo já foram importadas anteriormente.',
+      })
+    }
 
-    const [candidatesMesmaConta, candidatesExcelPayable] = await Promise.all([
-      prisma.transaction.findMany({
-        where: {
-          bankAccountId: contaId,
-          lifecycle: 'EFFECTED',
-          origin: { in: ['OFX', 'MANUAL'] },
-          date: { gte: minDate, lte: maxDate },
-        },
-        select: {
-          id: true, bankAccountId: true, amount: true, date: true,
-          dueDate: true, description: true, type: true, origin: true,
-          lifecycle: true, reconciledWithId: true, transferGroupId: true,
-          category: { select: { name: true } },
-          supplier: { select: { razaoSocial: true } },
-        },
-      }),
-      prisma.transaction.findMany({
-        where: {
-          origin: 'IMPORT_EXCEL',
-          lifecycle: { in: ['PAYABLE', 'RECEIVABLE'] },
-          OR: [
-            { bankAccount: { companyId: conta.companyId } },
-            { supplier: { companyId: conta.companyId } },
-            { customer: { companyId: conta.companyId } },
-            { category: { companyId: conta.companyId } },
-          ],
-          dueDate: { gte: minDate, lte: maxDate },
-        },
-        select: {
-          id: true, bankAccountId: true, amount: true, date: true,
-          dueDate: true, description: true, type: true, origin: true,
-          lifecycle: true, reconciledWithId: true, transferGroupId: true,
-          category: { select: { name: true } },
-          supplier: { select: { razaoSocial: true } },
-        },
-      }),
-    ])
+    // Sprint Fix-Import-Vazio (05/07/2026): try/catch defensivo cobrindo
+    // todo o path V2Preview. Antes, qualquer exception aqui (Prisma inválido,
+    // dependência quebrada) virava 500 opaco → UI caía no catch genérico e
+    // mostrava "Não foi possível ler o arquivo". Agora qualquer falha retorna
+    // JSON com mensagem específica em `erro` — a UI (page.tsx:322-324) mostra
+    // via toast destrutivo com a descrição real.
+    try {
+      // V2: busca candidatos do sistema (somente leitura) + classifica
+      const datesIncoming = novas.map((t) => t.datePosted.getTime())
+      const minDate = new Date(Math.min(...datesIncoming) - 5 * 86400_000)
+      const maxDate = new Date(Math.max(...datesIncoming) + 1 * 86400_000)
 
-    return NextResponse.json({
-      ...buildV2PreviewPayload({
-        novas,
-        totalArquivo: transactions.length,
-        duplicadasHashLegado: duplicadas,
-        errosParser: errors,
-        banco,
-        contaId,
-        candidates: [...candidatesMesmaConta, ...candidatesExcelPayable],
-        // Sub-fase 2B: balance da conta + LEDGERBAL do arquivo (rede de
-        // segurança matemática estilo Conta Azul). Função pura calcula
-        // delta e detecta divergência.
-        contaBalance: conta.balance,
-        ledgerBalance,
-      }),
-      categorySuggestions,
-      categoriesForUI,
-      ownEntityRefs,
-    })
+      const [candidatesMesmaConta, candidatesExcelPayable] = await Promise.all([
+        prisma.transaction.findMany({
+          where: {
+            bankAccountId: contaId,
+            lifecycle: 'EFFECTED',
+            origin: { in: ['OFX', 'MANUAL'] },
+            date: { gte: minDate, lte: maxDate },
+          },
+          select: {
+            id: true, bankAccountId: true, amount: true, date: true,
+            dueDate: true, description: true, type: true, origin: true,
+            lifecycle: true, reconciledWithId: true, transferGroupId: true,
+            category: { select: { name: true } },
+            supplier: { select: { razaoSocial: true } },
+          },
+        }),
+        prisma.transaction.findMany({
+          where: {
+            origin: 'IMPORT_EXCEL',
+            lifecycle: { in: ['PAYABLE', 'RECEIVABLE'] },
+            OR: [
+              { bankAccount: { companyId: conta.companyId } },
+              { supplier: { companyId: conta.companyId } },
+              { customer: { companyId: conta.companyId } },
+              { category: { companyId: conta.companyId } },
+            ],
+            dueDate: { gte: minDate, lte: maxDate },
+          },
+          select: {
+            id: true, bankAccountId: true, amount: true, date: true,
+            dueDate: true, description: true, type: true, origin: true,
+            lifecycle: true, reconciledWithId: true, transferGroupId: true,
+            category: { select: { name: true } },
+            supplier: { select: { razaoSocial: true } },
+          },
+        }),
+      ])
+
+      return NextResponse.json({
+        ...buildV2PreviewPayload({
+          novas,
+          totalArquivo: transactions.length,
+          duplicadasHashLegado: duplicadas,
+          errosParser: errors,
+          banco,
+          contaId,
+          candidates: [...candidatesMesmaConta, ...candidatesExcelPayable],
+          // Sub-fase 2B: balance da conta + LEDGERBAL do arquivo (rede de
+          // segurança matemática estilo Conta Azul). Função pura calcula
+          // delta e detecta divergência.
+          contaBalance: conta.balance,
+          ledgerBalance,
+        }),
+        categorySuggestions,
+        categoriesForUI,
+        ownEntityRefs,
+      })
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      console.error('[importar-ofx preview V2] falhou:', msg)
+      return NextResponse.json(
+        {
+          erro: `Falha ao gerar preview: ${msg}`,
+          code: 'PREVIEW_V2_FAILED',
+        },
+        { status: 500 },
+      )
+    }
   }
 
   // Inserção em lote das transações novas + recalcula saldo

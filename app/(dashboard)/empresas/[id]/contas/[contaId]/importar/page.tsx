@@ -324,6 +324,13 @@ export default function ImportarOFXPage() {
         return
       }
       setPreview(data)
+      // Sprint Fix-Import-Vazio (05/07/2026): quando o backend detecta que
+      // todas as tx do arquivo já foram importadas antes (re-import), ele
+      // retorna preview=[] + mensagem informativa. Mostra toast neutro pra
+      // o user entender por que o preview está vazio.
+      if (data.mensagem && (!data.preview || data.preview.length === 0)) {
+        toast({ title: 'Nada novo pra importar', description: data.mensagem })
+      }
       // Dispara detecção de transferências em background (não bloqueia)
       detectarTransferencias(data.preview)
     } catch {
