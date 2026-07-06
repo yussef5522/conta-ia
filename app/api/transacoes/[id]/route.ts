@@ -112,6 +112,24 @@ export async function PUT(request: NextRequest, { params }: Params) {
           // Sprint Category-Combobox: status enforced SEMPRE no fim,
           // sobrescreve qualquer tentativa do body. SEM exceção.
           status: statusEnforced,
+          // Sprint Fix-IgnoredAt (06/07/2026): sincroniza `ignoredAt` com o
+          // `status` final. Antes, o PUT só setava `status='IGNORED'` mas
+          // deixava `ignoredAt=NULL` — o filtro NEEDS_REVIEW_WHERE_PRISMA
+          // usa `ignoredAt: null` (não `status`), então tx ignoradas voltavam
+          // pra tela de Pendentes intermitentemente ("sumiu e voltou").
+          //
+          // Sempre que o status FINAL é 'IGNORED' e ainda não tinha timestamp,
+          // seta agora (idempotente: não sobrescreve `ignoredAt` já existente,
+          // preservando o timestamp original quando o user re-ignora).
+          //
+          // Quando o status sai de IGNORED (ex: reativar via body {status:
+          // 'PENDING'}), zera `ignoredAt` — a tx volta a ser considerada
+          // "não ignorada" pelos filtros.
+          ...(statusEnforced === 'IGNORED'
+            ? antiga.ignoredAt
+              ? {}
+              : { ignoredAt: new Date() }
+            : { ignoredAt: null }),
         },
         include: { category: { select: { id: true, name: true, color: true, type: true } } },
       })
