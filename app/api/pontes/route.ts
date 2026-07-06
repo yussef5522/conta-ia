@@ -25,6 +25,19 @@ const schema = z.object({
   createdVia: z.enum(['CREATED_MANUAL', 'CREATED_FROM_DETECTION']).optional(),
   socioPFId: z.string().nullish(),
   notes: z.string().max(1000).nullish(),
+  // Sprint Fluxo-A/B-Ponte (05/07/2026): fluxo B ("já gastei esse dinheiro").
+  // Todos opcionais — ausentes = fluxo A (backward-compat). Se `spend` presente,
+  // exige spendCategoryId; demais têm defaults derivados da retirada PJ.
+  spend: z
+    .object({
+      categoryId: z.string().min(1),
+      amount: z.number().positive().optional(),
+      description: z.string().max(500).optional(),
+      date: z.string().datetime().optional(),
+      bankAccountId: z.string().min(1).optional(),
+      notes: z.string().max(1000).nullish(),
+    })
+    .optional(),
 })
 
 function errorResponse(err: unknown) {
@@ -93,6 +106,18 @@ export async function POST(request: NextRequest) {
       createdVia: parsed.data.createdVia,
       socioPFId: parsed.data.socioPFId ?? null,
       notes: parsed.data.notes ?? null,
+      // Sprint Fluxo-A/B-Ponte (05/07/2026): passa `spend` opcional pra
+      // create.ts. Se ausente, comportamento é idêntico ao anterior.
+      spend: parsed.data.spend
+        ? {
+            categoryId: parsed.data.spend.categoryId,
+            amount: parsed.data.spend.amount,
+            description: parsed.data.spend.description,
+            date: parsed.data.spend.date ? new Date(parsed.data.spend.date) : undefined,
+            bankAccountId: parsed.data.spend.bankAccountId,
+            notes: parsed.data.spend.notes ?? null,
+          }
+        : undefined,
     })
 
     // Sprint Fluxo-Unificado-Retirada (30/06/2026): invalida a fila

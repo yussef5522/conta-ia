@@ -23,11 +23,34 @@ export interface CreateBridgeInput {
   createdVia?: CreatedVia
   socioPFId?: string | null
   notes?: string | null
+  /**
+   * Sprint Fluxo-A/B-Ponte (05/07/2026): fluxo B ("já gastei esse dinheiro").
+   * Quando presente, dentro do MESMO $transaction cria também a PF DEBIT
+   * (despesa) e vincula via bridge.spendTransactionId. Saldo PF net zero
+   * (entra + sai = zero). Reusa a mesma conta PF da entrada.
+   *
+   * Fluxo A = spend ausente/undefined (comportamento original inalterado).
+   */
+  spend?: {
+    /** Categoria PF EXPENSE do mesmo perfil. */
+    categoryId: string
+    /** Default = amount da retirada PJ. */
+    amount?: number
+    /** Default = "<categoria> — <descrição PJ>". */
+    description?: string
+    /** Default = date da retirada PJ. */
+    date?: Date
+    /** Conta PF do lançamento da despesa. Default = pfBankAccountId da entrada. */
+    bankAccountId?: string
+    notes?: string | null
+  }
 }
 
 export interface CreateBridgeResult {
   bridgeId: string
   pfTransactionId: string
+  /** Sprint Fluxo-A/B-Ponte: presente quando fluxo B (input.spend passado). */
+  spendTransactionId?: string
 }
 
 /** Monta description da tx PF baseada no contexto. */
@@ -261,7 +284,99 @@ export async function createBridge(
         },
       })
 
-      // 6. Audit log scoped à empresa (1 entrada)
+      // 5b. Sprint Fluxo-A/B-Ponte (05/07/2026): fluxo B one-shot atomic.
+      //
+      // Se o caller passou `input.spend`, cria também a PersonalTransaction
+      // DEBIT (despesa) DENTRO deste $transaction e liga via
+      // bridge.spendTransactionId. Regras:
+      //   - Categoria precisa ser EXPENSE do mesmo perfil (ou global);
+      //   - Conta PF default = mesma da entrada (pfBankAccountId);
+      //   - Amount default = amount da retirada (net zero);
+      //   - Description default = "<categoria> — <descrição PJ>";
+      //   - Date default = date da retirada PJ.
+      //
+      // Se qualquer validação falha, ROLLBACK total (entrada + bridge tampouco
+      // são persistidas). É o que garante o one-shot atomic: sem meio-estado.
+      let spendTxId: string | undefined
+      if (input.spend) {
+        const spendCategoryId = input.spend.categoryId
+        const spendCategory = await tx.personalCategory.findUnique({
+          where: { id: spendCategoryId },
+        })
+        if (
+          !spendCategory ||
+          (spendCategory.profileId !== null &&
+            spendCategory.profileId !== input.profileId) ||
+          spendCategory.type !== 'EXPENSE'
+        ) {
+          throw new BridgeError(
+            'Categoria da despesa PF inválida (precisa ser EXPENSE do perfil)',
+            'PF_CATEGORY_INVALID',
+          )
+        }
+
+        // Conta PF do gasto: default = mesma da entrada. Se caller sobrescreve,
+        // valida pertencer ao perfil.
+        const spendAccountId = input.spend.bankAccountId ?? input.pfBankAccountId
+        if (spendAccountId !== input.pfBankAccountId) {
+          const acc = await tx.personalBankAccount.findUnique({
+            where: { id: spendAccountId },
+          })
+          if (!acc || acc.profileId !== input.profileId) {
+            throw new BridgeError(
+              'Conta PF da despesa inválida',
+              'PF_ACCOUNT_NOT_FOUND',
+            )
+          }
+        }
+
+        const spendAmount = input.spend.amount ?? pjTx.amount
+        if (spendAmount <= 0) {
+          throw new BridgeError(
+            'Valor da despesa deve ser positivo',
+            'PF_CATEGORY_INVALID',
+          )
+        }
+
+        const spendDescription =
+          input.spend.description?.trim() ||
+          `${spendCategory.name} — ${pjTx.description}`
+        const spendDate = input.spend.date ?? pjTx.date
+
+        const spendTx = await tx.personalTransaction.create({
+          data: {
+            profileId: input.profileId,
+            bankAccountId: spendAccountId,
+            categoryId: spendCategoryId,
+            date: spendDate,
+            description: spendDescription,
+            amount: Math.abs(spendAmount),
+            type: 'DEBIT',
+            status: 'RECONCILED',
+            origin: input.createdVia === 'CREATED_FROM_DETECTION' ? 'AI' : 'MANUAL',
+            notes: input.spend.notes ?? null,
+          },
+        })
+
+        // Ajusta saldo da conta PF (débito): decrementa. Como o mesmo balance
+        // já foi incrementado no passo 4 (entrada), o net final é zero quando
+        // spendAmount == pjTx.amount (caso típico "atravessou o PF").
+        await tx.personalBankAccount.update({
+          where: { id: spendAccountId },
+          data: { balance: { decrement: Math.abs(spendAmount) } },
+        })
+
+        // Liga bridge ↔ despesa. UNIQUE em spendTransactionId protege contra
+        // race duplicada (P2002 abaixo).
+        await tx.pJtoPFBridge.update({
+          where: { id: bridge.id },
+          data: { spendTransactionId: spendTx.id },
+        })
+
+        spendTxId = spendTx.id
+      }
+
+      // 6. Audit log scoped à empresa (1 entrada — cobre A e B)
       await tx.auditLog.create({
         data: {
           companyId: input.companyId,
@@ -277,11 +392,14 @@ export async function createBridge(
             kind: input.kind,
             amount: pjTx.amount,
             createdVia: input.createdVia ?? 'CREATED_MANUAL',
+            // Sprint Fluxo-A/B-Ponte: rastreia fluxo B pro audit.
+            spendTransactionId: spendTxId ?? null,
+            spendCategoryId: input.spend?.categoryId ?? null,
           }),
         },
       })
 
-      return { bridgeId: bridge.id, pfTransactionId: pfTx.id }
+      return { bridgeId: bridge.id, pfTransactionId: pfTx.id, spendTransactionId: spendTxId }
     })
   } catch (err) {
     // P2002 (UNIQUE constraint violation) — race condition
