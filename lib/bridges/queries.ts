@@ -156,6 +156,184 @@ export async function getBridgeDetail(
   }
 }
 
+/**
+ * Sprint Redesign-Ponte-Detalhe (06/07/2026): loader enriquecido pro
+ * detalhe da ponte (`/pontes/[id]` client redesenhado como "linha do
+ * tempo do dinheiro").
+ *
+ * Difere de `getBridgeDetail` (mantido intocado por backward-compat com
+ * callers antigos + testes) por trazer as relações que a nova tela usa:
+ *   - `pjTransaction.bankAccount.company` (empresa de origem — "Cacula")
+ *   - `pjTransaction.category` (dreGroup + nome — "Distribuição de Lucros")
+ *   - `pfTransaction.bankAccount` (conta de destino — "Banrisul PF")
+ *   - `pfTransaction.category` (categoria da entrada PF)
+ *   - `spendTransaction { category, bankAccount }` (fluxo B — se já gasto)
+ *   - `createdBy` (autor da ponte)
+ *
+ * Mesmo guard OWNER-ou-CREATOR do original — 404 anonimizado.
+ */
+export interface BridgeDetailForPage {
+  bridge: {
+    id: string
+    kind: string
+    amount: number
+    date: Date
+    createdAt: Date
+    createdVia: string
+    companyId: string
+    profileId: string
+    notes: string | null
+    socioPFId: string | null
+    spendTransactionId: string | null
+    spendAcknowledged: boolean
+    createdBy: { name: string; email: string } | null
+  }
+  pjTransaction: {
+    id: string
+    description: string
+    amount: number
+    date: Date
+    bankAccountId: string | null
+    bankAccount: {
+      id: string
+      name: string
+      company: { id: string; name: string; tradeName: string | null }
+    } | null
+    category: { id: string; name: string; dreGroup: string | null } | null
+  }
+  pfTransaction: {
+    id: string
+    description: string
+    amount: number
+    date: Date
+    bankAccountId: string | null
+    bankAccount: { id: string; name: string } | null
+    category: { id: string; name: string; color: string | null } | null
+  }
+  spendTransaction: {
+    id: string
+    description: string
+    amount: number
+    date: Date
+    bankAccount: { id: string; name: string } | null
+    category: { id: string; name: string; color: string | null } | null
+  } | null
+  socioPF: {
+    id: string
+    nome: string
+    cpf: string | null
+    papel: string
+  } | null
+}
+
+export async function getBridgeDetailForPage(
+  userId: string,
+  bridgeId: string,
+): Promise<BridgeDetailForPage> {
+  const bridge = await prisma.pJtoPFBridge.findUnique({
+    where: { id: bridgeId },
+    include: {
+      pjTransaction: {
+        include: {
+          bankAccount: {
+            include: {
+              company: { select: { id: true, name: true, tradeName: true } },
+            },
+          },
+          category: { select: { id: true, name: true, dreGroup: true } },
+        },
+      },
+      pfTransaction: {
+        include: {
+          bankAccount: { select: { id: true, name: true } },
+          category: { select: { id: true, name: true, color: true } },
+        },
+      },
+      spendTransaction: {
+        include: {
+          bankAccount: { select: { id: true, name: true } },
+          category: { select: { id: true, name: true, color: true } },
+        },
+      },
+      socioPF: true,
+      createdBy: { select: { name: true, email: true } },
+    },
+  })
+
+  if (!bridge) {
+    throw new BridgeError('Ponte não encontrada', 'BRIDGE_NOT_FOUND')
+  }
+
+  const isCreator = bridge.createdById === userId
+  let isOwner = false
+  try {
+    await checkProfileAccess(userId, bridge.profileId, 'OWNER')
+    isOwner = true
+  } catch (err) {
+    if (!(err instanceof ProfileAccessError)) throw err
+  }
+
+  if (!isOwner && !isCreator) {
+    // Mesma mensagem do "não existe" pra não revelar existência.
+    throw new BridgeError('Ponte não encontrada', 'BRIDGE_NOT_FOUND')
+  }
+
+  return {
+    bridge: {
+      id: bridge.id,
+      kind: bridge.kind,
+      amount: bridge.amount,
+      date: bridge.date,
+      createdAt: bridge.createdAt,
+      createdVia: bridge.createdVia,
+      companyId: bridge.companyId,
+      profileId: bridge.profileId,
+      notes: bridge.notes,
+      socioPFId: bridge.socioPFId,
+      spendTransactionId: bridge.spendTransactionId,
+      spendAcknowledged: bridge.spendAcknowledged,
+      createdBy: bridge.createdBy
+        ? { name: bridge.createdBy.name, email: bridge.createdBy.email }
+        : null,
+    },
+    pjTransaction: {
+      id: bridge.pjTransaction.id,
+      description: bridge.pjTransaction.description,
+      amount: bridge.pjTransaction.amount,
+      date: bridge.pjTransaction.date,
+      bankAccountId: bridge.pjTransaction.bankAccountId,
+      bankAccount: bridge.pjTransaction.bankAccount
+        ? {
+            id: bridge.pjTransaction.bankAccount.id,
+            name: bridge.pjTransaction.bankAccount.name,
+            company: bridge.pjTransaction.bankAccount.company,
+          }
+        : null,
+      category: bridge.pjTransaction.category,
+    },
+    pfTransaction: {
+      id: bridge.pfTransaction.id,
+      description: bridge.pfTransaction.description,
+      amount: bridge.pfTransaction.amount,
+      date: bridge.pfTransaction.date,
+      bankAccountId: bridge.pfTransaction.bankAccountId,
+      bankAccount: bridge.pfTransaction.bankAccount,
+      category: bridge.pfTransaction.category,
+    },
+    spendTransaction: bridge.spendTransaction
+      ? {
+          id: bridge.spendTransaction.id,
+          description: bridge.spendTransaction.description,
+          amount: bridge.spendTransaction.amount,
+          date: bridge.spendTransaction.date,
+          bankAccount: bridge.spendTransaction.bankAccount,
+          category: bridge.spendTransaction.category,
+        }
+      : null,
+    socioPF: bridge.socioPF,
+  }
+}
+
 /** Verifica se uma tx PJ específica tem ponte que PERTENCE ao user logado. */
 export async function checkPjTxBridgeForUser(
   userId: string,

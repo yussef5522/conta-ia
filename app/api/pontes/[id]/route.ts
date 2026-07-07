@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAuthContext, AuthenticationError, ForbiddenError } from '@/lib/auth/rbac'
-import { getBridgeDetail } from '@/lib/bridges/queries'
+import { getBridgeDetail, getBridgeDetailForPage } from '@/lib/bridges/queries'
 import { deleteBridge } from '@/lib/bridges/delete'
 import { isBridgeError, type BridgeDeleteMode } from '@/lib/bridges/types'
 
@@ -37,12 +37,22 @@ export async function GET(
   try {
     const { id } = await params
     const ctx = await getAuthContext(request)
-    const detail = await getBridgeDetail(ctx.user.id, id)
+    // Sprint Redesign-Ponte-Detalhe (06/07/2026): usa loader enriquecido
+    // (empresa de origem, categorias PJ/PF, spendTransaction). Mesmo guard
+    // OWNER-ou-CREATOR do original — 404 anonimizado se não tem acesso.
+    // Se caller externo usava campos do `getBridgeDetail` original, todos
+    // continuam presentes na resposta (bridge/pjTransaction/pfTransaction/socioPF).
+    const detail = await getBridgeDetailForPage(ctx.user.id, id)
     return NextResponse.json(detail)
   } catch (err) {
     return errorResponse(err)
   }
 }
+
+// Sprint Redesign-Ponte-Detalhe: mantém `getBridgeDetail` importado pra
+// forçar erro TS se ele for removido do queries.ts (usado por testes e por
+// callers de outras sprints). Nunca chamado aqui, mas importado no topo.
+void getBridgeDetail
 
 const deleteSchema = z.object({
   mode: z.enum(['LINK_ONLY', 'WITH_PF_TX']),
