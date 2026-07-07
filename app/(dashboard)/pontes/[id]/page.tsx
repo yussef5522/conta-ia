@@ -271,16 +271,19 @@ export default function PonteDetailPage() {
     [data, pfCategories, pfAccounts, toast, load],
   )
 
-  // ── Loading skeleton (não spinner cru — 3 blocos empilhados) ──
+  // ── Loading skeleton (não spinner cru — hero + grid 2 col) ──
   if (loading) {
     return (
-      <main className="mx-auto max-w-2xl px-4 py-8 sm:py-12">
+      <main className="mx-auto max-w-6xl px-4 py-8 sm:px-8 sm:py-10 lg:px-12">
         <div className="mb-6 h-4 w-24 animate-pulse rounded bg-slate-100" />
         <div className="mb-8 h-48 animate-pulse rounded-2xl bg-slate-100" />
-        <div className="space-y-4">
-          {[0, 1, 2].map((i) => (
-            <div key={i} className="h-24 animate-pulse rounded-xl bg-slate-50" />
-          ))}
+        <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
+          <div className="space-y-4">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="h-24 animate-pulse rounded-xl bg-slate-50" />
+            ))}
+          </div>
+          <div className="h-64 animate-pulse rounded-xl bg-slate-50" />
         </div>
       </main>
     )
@@ -320,8 +323,16 @@ export default function PonteDetailPage() {
   const hasSpend = !!data.spendTransaction
   const isDismissed = data.bridge.spendAcknowledged && !hasSpend
 
+  // Sprint Ponte-Detalhe-2Col (07/07/2026): dados derivados pro painel Resumo.
+  // Hoje spend é tudo-ou-nada (100% ou 0%). Preparado pra proporcional futuro
+  // (spend parcial — quando `spend.amount < bridge.amount`).
+  const gasto = hasSpend && data.spendTransaction ? data.spendTransaction.amount : 0
+  const total = data.bridge.amount
+  const pctUsado = total > 0 ? Math.min(100, Math.max(0, (gasto / total) * 100)) : 0
+  const naConta = Math.max(0, total - gasto)
+
   return (
-    <main className="mx-auto max-w-2xl px-4 py-6 sm:py-10">
+    <main className="mx-auto max-w-6xl px-4 py-6 sm:px-8 sm:py-10 lg:px-12">
       {/* Voltar discreto no topo */}
       <button
         onClick={() => router.back()}
@@ -372,137 +383,152 @@ export default function PonteDetailPage() {
         </div>
       </motion.section>
 
-      {/* ─────────────── TIMELINE 3 NÓS ─────────────── */}
-      <section aria-label="Linha do tempo do dinheiro" className="relative">
-        <TimelineNode
-          index={0}
-          icon={<Building2 className="h-5 w-5" aria-hidden />}
-          iconTone="slate"
-          pulse={cyclePulse}
-          title={`Saiu de ${empresaLabel}`}
-          subtitle={data.pjTransaction.description}
-          meta={
-            <>
-              {fmtDate(data.pjTransaction.date)} · {contaPjLabel}
-              {data.pjTransaction.category ? (
-                <>
-                  {' · '}
-                  <span className="text-slate-600">{data.pjTransaction.category.name}</span>
-                </>
-              ) : null}
-            </>
-          }
-          amount={-data.pjTransaction.amount}
-          link={{
-            href: `/empresas/${data.bridge.companyId}/transacoes/${data.pjTransaction.id}`,
-            label: 'Ver no PJ',
-          }}
-        />
+      {/* ─────────────── GRID 2 COLUNAS ─────────────── */}
+      {/* Sprint Ponte-Detalhe-2Col (07/07/2026):
+          Desktop (lg+): 1fr | 340px lado-a-lado, gap 24px.
+          Mobile/tablet: empilha (jornada em cima, resumo embaixo).
+          Aproveita a largura do container (max-w-6xl) — antes ficava vazio à
+          esquerda em monitores grandes.  */}
+      <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
+        {/* ─── COLUNA ESQUERDA: A JORNADA DO DINHEIRO ─── */}
+        <Card className="border-slate-200 bg-white shadow-sm">
+          <CardContent className="p-6 sm:p-8">
+            <div className="mb-6">
+              <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">
+                A jornada do dinheiro
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                Do PJ ao PF — e onde foi parar.
+              </p>
+            </div>
 
-        <TimelineNode
-          index={1}
-          icon={<Wallet className="h-5 w-5" aria-hidden />}
-          iconTone="emerald"
-          pulse={cyclePulse}
-          title={`Entrou em ${contaPfLabel}`}
-          subtitle={data.pfTransaction.description}
-          meta={
-            <>
-              {fmtDate(data.pfTransaction.date)}
-              {data.pfTransaction.category ? (
-                <>
-                  {' · '}
-                  <span className="text-slate-600">{data.pfTransaction.category.name}</span>
-                </>
-              ) : null}
-            </>
-          }
-          amount={data.pfTransaction.amount}
-          link={{
-            href: `/perfis/${data.bridge.profileId}/receitas`,
-            label: 'Ver em Receitas',
-          }}
-        />
-
-        <TimelineNode
-          index={2}
-          icon={
-            hasSpend ? (
-              <CheckCircle2 className="h-5 w-5" aria-hidden />
-            ) : (
-              <Sparkles className="h-5 w-5" aria-hidden />
-            )
-          }
-          iconTone={hasSpend ? 'emerald' : isDismissed ? 'slate' : 'amber'}
-          pulse={cyclePulse && hasSpend}
-          last
-          renderBody={() =>
-            hasSpend && data.spendTransaction ? (
-              <SpendRegisteredContent
-                spend={data.spendTransaction}
-                profileId={data.bridge.profileId}
+            <section aria-label="Linha do tempo do dinheiro" className="relative">
+              <TimelineNode
+                index={0}
+                icon={<Building2 className="h-5 w-5" aria-hidden />}
+                iconTone="slate"
+                pulse={cyclePulse}
+                title={`Saiu de ${empresaLabel}`}
+                subtitle={data.pjTransaction.description}
+                meta={
+                  <>
+                    {fmtDate(data.pjTransaction.date)} · {contaPjLabel}
+                    {data.pjTransaction.category ? (
+                      <>
+                        {' · '}
+                        <span className="text-slate-600">
+                          {data.pjTransaction.category.name}
+                        </span>
+                      </>
+                    ) : null}
+                  </>
+                }
+                amount={-data.pjTransaction.amount}
+                link={{
+                  href: `/empresas/${data.bridge.companyId}/transacoes/${data.pjTransaction.id}`,
+                  label: 'Ver no PJ',
+                }}
               />
-            ) : isDismissed ? (
-              <SpendDismissedContent bridgeId={data.bridge.id} onReactivate={load} />
-            ) : (
-              <SpendInvitePrompt
-                bridge={data}
-                open={spendPanelOpen}
-                setOpen={setSpendPanelOpen}
-                pfCategories={pfCategories}
-                pfAccounts={pfAccounts}
-                onCreated={handleSpendCreated}
-              />
-            )
-          }
-        />
-      </section>
 
-      {/* ─────────────── RODAPÉ ─────────────── */}
+              <TimelineNode
+                index={1}
+                icon={<Wallet className="h-5 w-5" aria-hidden />}
+                iconTone="emerald"
+                pulse={cyclePulse}
+                title={`Entrou em ${contaPfLabel}`}
+                subtitle={data.pfTransaction.description}
+                meta={
+                  <>
+                    {fmtDate(data.pfTransaction.date)}
+                    {data.pfTransaction.category ? (
+                      <>
+                        {' · '}
+                        <span className="text-slate-600">
+                          {data.pfTransaction.category.name}
+                        </span>
+                      </>
+                    ) : null}
+                  </>
+                }
+                amount={data.pfTransaction.amount}
+                link={{
+                  href: `/perfis/${data.bridge.profileId}/receitas`,
+                  label: 'Ver em Receitas',
+                }}
+              />
+
+              <TimelineNode
+                index={2}
+                icon={
+                  hasSpend ? (
+                    <CheckCircle2 className="h-5 w-5" aria-hidden />
+                  ) : (
+                    <Sparkles className="h-5 w-5" aria-hidden />
+                  )
+                }
+                iconTone={hasSpend ? 'emerald' : isDismissed ? 'slate' : 'amber'}
+                pulse={cyclePulse && hasSpend}
+                last
+                renderBody={() =>
+                  hasSpend && data.spendTransaction ? (
+                    <SpendRegisteredContent
+                      spend={data.spendTransaction}
+                      profileId={data.bridge.profileId}
+                    />
+                  ) : isDismissed ? (
+                    <SpendDismissedContent
+                      bridgeId={data.bridge.id}
+                      onReactivate={load}
+                    />
+                  ) : (
+                    <SpendInvitePrompt
+                      bridge={data}
+                      open={spendPanelOpen}
+                      setOpen={setSpendPanelOpen}
+                      pfCategories={pfCategories}
+                      pfAccounts={pfAccounts}
+                      onCreated={handleSpendCreated}
+                    />
+                  )
+                }
+              />
+            </section>
+
+            {/* Notas (se houver) — no rodapé do card jornada */}
+            {data.bridge.notes && (
+              <div className="mt-6 rounded-lg border border-slate-200 bg-slate-50/50 p-4">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                  Observações
+                </p>
+                <p className="mt-1.5 text-sm text-slate-800">{data.bridge.notes}</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* ─── COLUNA DIREITA: RESUMO (sticky no desktop) ─── */}
+        <div className="lg:sticky lg:top-6 lg:self-start">
+          <ResumoPanel
+            pctUsado={pctUsado}
+            gasto={gasto}
+            naConta={naConta}
+            total={total}
+            hasSpend={hasSpend}
+            socioPF={data.socioPF}
+          />
+        </div>
+      </div>
+
+      {/* ─────────────── RODAPÉ (abaixo do grid) ─────────────── */}
       <motion.section
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.4, duration: 0.4 }}
-        className="mt-10 space-y-6"
+        className="mt-10 space-y-4"
       >
-        {/* Sócio rastreado (informativo, discreto) */}
-        {data.socioPF && (
-          <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
-            <div className="flex items-start gap-3">
-              <div className="rounded-full bg-white p-2 shadow-sm">
-                <User className="h-4 w-4 text-slate-500" aria-hidden />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
-                  Sócio rastreado
-                </p>
-                <p className="mt-0.5 text-sm font-medium text-slate-900">
-                  {data.socioPF.nome}
-                </p>
-                <p className="text-xs text-slate-500">
-                  CPF {maskCpf(data.socioPF.cpf)} · {data.socioPF.papel.toLowerCase()}
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Notas */}
-        {data.bridge.notes && (
-          <div className="rounded-xl border border-slate-200 bg-white p-4">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
-              Observações
-            </p>
-            <p className="mt-1.5 text-sm text-slate-800">{data.bridge.notes}</p>
-          </div>
-        )}
-
-        {/* Metadata de criação */}
         <p className="text-center text-xs text-slate-400">
           Ponte criada em {fmtDateTime(data.bridge.createdAt)}
         </p>
-
-        {/* Excluir — link discreto, vermelho SÓ no modal */}
         <div className="flex justify-center">
           <button
             onClick={() => setShowDelete(true)}
@@ -523,6 +549,124 @@ export default function PonteDetailPage() {
         onConfirm={handleDelete}
       />
     </main>
+  )
+}
+
+// ─────────────────────────────────────────────
+// ResumoPanel — coluna direita (2 col layout)
+// ─────────────────────────────────────────────
+//
+// Mostra: (1) % usado grande verde/âmbar, (2) barra de progresso animada
+// preenchendo da esquerda, (3) legenda Gasto/Na conta, (4) sócio compacto.
+// Reage automaticamente ao `hasSpend` — quando registrar gasto na timeline,
+// pctUsado sobe pra 100% + barra anima (Framer Motion pega o novo width).
+
+interface ResumoPanelProps {
+  pctUsado: number
+  gasto: number
+  naConta: number
+  total: number
+  hasSpend: boolean
+  socioPF: BridgeDetailFull['socioPF']
+}
+
+function ResumoPanel({
+  pctUsado,
+  gasto,
+  naConta,
+  total,
+  hasSpend,
+  socioPF,
+}: ResumoPanelProps) {
+  const isComplete = pctUsado >= 100
+  const pctRounded = Math.round(pctUsado)
+
+  return (
+    <Card className="border-slate-200 bg-white shadow-sm">
+      <CardContent className="space-y-6 p-6">
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">
+            Resumo
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            Onde esse dinheiro está agora.
+          </p>
+        </div>
+
+        {/* Stat central: % usado */}
+        <div>
+          <p className="text-xs text-slate-500">
+            {hasSpend ? 'Deste dinheiro, você já usou' : 'Ainda na sua conta'}
+          </p>
+          <p
+            className={`mt-1.5 text-4xl font-semibold tabular-nums tracking-tight ${
+              isComplete ? 'text-emerald-600' : 'text-slate-900'
+            }`}
+          >
+            {pctRounded}%
+          </p>
+        </div>
+
+        {/* Barra de progresso animada */}
+        <div>
+          <div
+            className="h-2 w-full overflow-hidden rounded-full bg-slate-100"
+            role="progressbar"
+            aria-valuenow={pctRounded}
+            aria-valuemin={0}
+            aria-valuemax={100}
+          >
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{ width: `${pctUsado}%` }}
+              transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
+              className={`h-full rounded-full ${
+                isComplete ? 'bg-emerald-500' : 'bg-amber-400'
+              }`}
+            />
+          </div>
+          <div className="mt-3 flex items-start justify-between gap-4 text-xs">
+            <div>
+              <p className="text-slate-500">Gasto</p>
+              <p className="mt-0.5 font-medium tabular-nums text-slate-900">
+                {formatBRL(gasto)}
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-slate-500">Na conta</p>
+              <p className="mt-0.5 font-medium tabular-nums text-slate-900">
+                {formatBRL(naConta)}
+              </p>
+            </div>
+          </div>
+          <p className="mt-3 text-[11px] text-slate-400">
+            Total: <span className="tabular-nums">{formatBRL(total)}</span>
+          </p>
+        </div>
+
+        {/* Sócio rastreado (compacto) */}
+        {socioPF && (
+          <div className="border-t border-slate-100 pt-5">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+              Sócio rastreado
+            </p>
+            <div className="mt-2.5 flex items-start gap-3">
+              <div className="rounded-full bg-slate-100 p-2">
+                <User className="h-3.5 w-3.5 text-slate-500" aria-hidden />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-slate-900">
+                  {socioPF.nome}
+                </p>
+                <p className="text-xs text-slate-500">
+                  CPF {maskCpf(socioPF.cpf)} · {socioPF.papel.toLowerCase()}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 
