@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/dialog'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/components/ui/use-toast'
+import { readJsonResponse } from '@/lib/http/safe-json'
 import {
   importStatusLabel,
   importStatusColor,
@@ -104,12 +105,13 @@ export function ImportsClient({ empresaId, empresaNome, contas }: Props) {
         const res = await fetch(
           `/api/empresas/${empresaId}/imports?${params.toString()}`,
         )
-        const json = await res.json()
-        if (!res.ok) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { ok, data: json, message } = await readJsonResponse<any>(res)
+        if (!ok || !json) {
           toast({
             variant: 'destructive',
             title: 'Erro',
-            description: json.erro ?? 'Falha.',
+            description: message ?? 'Falha.',
           })
           return
         }
@@ -138,18 +140,20 @@ export function ImportsClient({ empresaId, empresaNome, contas }: Props) {
       `/api/empresas/${empresaId}/imports/${imp.id}/revert`,
       { method: 'POST' },
     )
-    const json = await res.json()
-    if (!res.ok) {
+    const { ok, data, message } = await readJsonResponse<{
+      transacoesDeletadas: number
+    }>(res)
+    if (!ok || !data) {
       toast({
         variant: 'destructive',
         title: 'Erro',
-        description: json.erro ?? 'Falha ao reverter.',
+        description: message ?? 'Falha ao reverter.',
       })
       return
     }
     toast({
       title: 'Import revertido',
-      description: `${json.transacoesDeletadas} transação${json.transacoesDeletadas === 1 ? '' : 'ões'} deletadas. Saldo ajustado.`,
+      description: `${data.transacoesDeletadas} transação${data.transacoesDeletadas === 1 ? '' : 'ões'} deletadas. Saldo ajustado.`,
     })
     setConfirmRevert(null)
     void fetchData(false)

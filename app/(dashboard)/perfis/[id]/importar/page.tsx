@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { readJsonResponse } from '@/lib/http/safe-json'
 
 interface CardItem {
   id: string
@@ -87,12 +88,14 @@ export default function ImportarPage({
           method: 'POST',
           body: form,
         })
-        if (!r.ok) {
-          const d = await r.json().catch(() => ({}))
-          setError(d.erro ?? 'Falha ao ler PDF')
+        const { ok, data, message } = await readJsonResponse<{ importId: string }>(r, {
+          timeoutHint:
+            'A leitura do PDF demorou mais que o esperado. Tente de novo ou use OFX.',
+        })
+        if (!ok || !data) {
+          setError(message ?? 'Falha ao ler PDF')
           return
         }
-        const data = await r.json()
         // Cache preview no sessionStorage (sem rawContent — PDF não re-parsea)
         try {
           sessionStorage.setItem(`pdf-preview:${data.importId}`, JSON.stringify(data))
@@ -112,12 +115,11 @@ export default function ImportarPage({
         method: 'POST',
         body: form,
       })
-      if (!r.ok) {
-        const d = await r.json().catch(() => ({}))
-        setError(d.erro ?? 'Falha no upload')
+      const { ok, data, message } = await readJsonResponse<{ importId: string }>(r)
+      if (!ok || !data) {
+        setError(message ?? 'Falha no upload')
         return
       }
-      const data = await r.json()
       try {
         sessionStorage.setItem(`ofx-content:${data.importId}`, rawContent)
       } catch {

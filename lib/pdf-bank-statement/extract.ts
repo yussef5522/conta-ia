@@ -16,7 +16,11 @@ import type { PdfBankStatementExtraction, PdfBankStatementLine } from './types'
 const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages'
 const ANTHROPIC_VERSION = '2023-06-01'
 const DEFAULT_MODEL = 'claude-sonnet-4-6'
-const DEFAULT_TIMEOUT_MS = 60_000
+// 240s: extratos densos geram muitos tokens de saída (a geração escala com o nº
+// de transações) e passavam do teto antigo de 60s. Tem que ficar ABAIXO do
+// proxy_read_timeout do nginx (300s) — senão o nginx responde HTML de 504 antes
+// do app montar o JSON de erro. Ver Sprint Correção Import PDF (30/07/2026).
+const DEFAULT_TIMEOUT_MS = 240_000
 const MAX_OUTPUT_TOKENS = 8_000
 const MAX_PDF_BYTES = 10 * 1024 * 1024
 
@@ -162,7 +166,10 @@ export async function extractBankStatement(
       pdfSize: input.pdfBytes.length,
     })
     if (err instanceof Error && err.name === 'AbortError') {
-      throw new BankStatementExtractError('CLAUDE_TIMEOUT', 'Timeout na API Claude Vision')
+      throw new BankStatementExtractError(
+        'CLAUDE_TIMEOUT',
+        'A leitura do PDF passou de 4 minutos e foi interrompida. Extratos muito grandes podem estourar o limite — tente um período menor ou use OFX.',
+      )
     }
     throw new BankStatementExtractError(
       'CLAUDE_API_ERROR',

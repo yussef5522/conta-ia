@@ -15,6 +15,11 @@ import {
 import { computeDedupForPreview } from '@/lib/pdf-bank-statement/dedup-preview'
 import { checkTotals } from '@/lib/pdf-bank-statement/totals-check'
 
+// Claude Vision pode levar minutos em extratos densos. Fixa runtime Node e
+// maxDuration acima do timeout do extractor (240s) — hierarquia app<nginx.
+export const runtime = 'nodejs'
+export const maxDuration = 300
+
 interface Params { params: Promise<{ id: string }> }
 
 export async function POST(request: NextRequest, { params }: Params) {

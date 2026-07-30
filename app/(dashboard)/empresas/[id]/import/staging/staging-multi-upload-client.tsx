@@ -24,6 +24,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
 import { ConfidenceSignal } from '@/components/pendentes/ConfidenceSignal'
+import { readJsonResponse } from '@/lib/http/safe-json'
 
 interface Conta {
   id: string
@@ -97,12 +98,15 @@ export function StagingMultiUploadClient({
         `/api/empresas/${empresaId}/import/staging/upload`,
         { method: 'POST', credentials: 'include', body: fd },
       )
-      const data = await res.json()
-      if (!res.ok) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { ok, data, message } = await readJsonResponse<any>(res, {
+        timeoutHint: 'O upload demorou mais que o esperado. Tente de novo.',
+      })
+      if (!ok || !data) {
         toast({
           variant: 'destructive',
           title: 'Falha no upload',
-          description: data.erro ?? `HTTP ${res.status}`,
+          description: message ?? `HTTP ${res.status}`,
         })
         return
       }
@@ -125,12 +129,15 @@ export function StagingMultiUploadClient({
         `/api/empresas/${empresaId}/import/staging/${batchId}/detect`,
         { method: 'POST', credentials: 'include' },
       )
-      const data = await res.json()
-      if (!res.ok) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { ok, data, message } = await readJsonResponse<any>(res, {
+        timeoutHint: 'A detecção demorou mais que o esperado. Tente de novo.',
+      })
+      if (!ok || !data) {
         toast({
           variant: 'destructive',
           title: 'Falha na detecção',
-          description: data.erro ?? `HTTP ${res.status}`,
+          description: message ?? `HTTP ${res.status}`,
         })
         return
       }
@@ -179,12 +186,15 @@ export function StagingMultiUploadClient({
           body: JSON.stringify({ transfersToKeep, transfersToReject }),
         },
       )
-      const data = await res.json()
-      if (!res.ok) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { ok, data, message } = await readJsonResponse<any>(res, {
+        timeoutHint: 'A confirmação demorou mais que o esperado. Confira antes de repetir.',
+      })
+      if (!ok || !data) {
         toast({
           variant: 'destructive',
           title: 'Falha ao confirmar',
-          description: data.erro ?? `HTTP ${res.status}`,
+          description: message ?? `HTTP ${res.status}`,
         })
         return
       }

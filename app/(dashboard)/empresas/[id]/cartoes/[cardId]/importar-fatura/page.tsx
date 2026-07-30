@@ -25,6 +25,7 @@ import { Input } from '@/components/ui/input'
 import { Header } from '@/components/layout/header'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
+import { readJsonResponse } from '@/lib/http/safe-json'
 
 type LineKind = 'COMPRA_AVISTA' | 'COMPRA_PARCELADA' | 'ENCARGO_FINANCEIRO' | 'IGNORAR'
 
@@ -143,13 +144,15 @@ export default function ImportarFaturaPage() {
         `/api/empresas/${params.id}/cartoes/${params.cardId}/importar-fatura/preview`,
         { method: 'POST', body: fd, credentials: 'include' },
       )
-      const json = await resp.json()
-      if (!resp.ok) {
-        setExtractError(json.erro || 'Erro na extração da fatura')
+      const { ok, data, message } = await readJsonResponse<PreviewResponse>(resp, {
+        timeoutHint:
+          'A leitura da fatura demorou mais que o esperado. Tente de novo ou use OFX.',
+      })
+      if (!ok || !data) {
+        setExtractError(message ?? 'Erro na extração da fatura')
         setStep('UPLOAD')
         return
       }
-      const data = json as PreviewResponse
       setPreviewData(data)
       setEditableLines(
         data.lines.map((l) => ({
@@ -230,11 +233,13 @@ export default function ImportarFaturaPage() {
           body: JSON.stringify({ txId }),
         },
       )
-      const json = await resp.json()
-      if (!resp.ok) {
+      const { ok, data, message } = await readJsonResponse<{
+        deltaDespesaRemovidoDoDRE: number
+      }>(resp)
+      if (!ok || !data) {
         toast({
           title: 'Erro ao casar pagamento',
-          description: json.erro || 'Tente novamente',
+          description: message ?? 'Tente novamente',
           variant: 'destructive',
         })
         return
@@ -242,7 +247,7 @@ export default function ImportarFaturaPage() {
       setCasadoImediatoId(txId)
       toast({
         title: '✓ Pagamento casado',
-        description: `R$ ${json.deltaDespesaRemovidoDoDRE.toFixed(2)} saiu do DRE como despesa.`,
+        description: `R$ ${data.deltaDespesaRemovidoDoDRE.toFixed(2)} saiu do DRE como despesa.`,
       })
       // Remove o candidato da lista local
       if (previewData) {
@@ -315,20 +320,27 @@ export default function ImportarFaturaPage() {
           }),
         },
       )
-      const json = await resp.json()
-      if (!resp.ok) {
+      const { ok, data, message } = await readJsonResponse<{
+        inseridas: number
+        duplicadas: number
+        reclassificadaTxId: string | null
+      }>(resp, {
+        timeoutHint:
+          'A importação demorou mais que o esperado. Confira a fatura antes de repetir.',
+      })
+      if (!ok || !data) {
         toast({
           title: 'Erro na importação',
-          description: json.erro || 'Tente novamente',
+          description: message ?? 'Tente novamente',
           variant: 'destructive',
         })
         setStep('PREVIEW')
         return
       }
       setImportResult({
-        inseridas: json.inseridas,
-        duplicadas: json.duplicadas,
-        reclassificadaTxId: json.reclassificadaTxId,
+        inseridas: data.inseridas,
+        duplicadas: data.duplicadas,
+        reclassificadaTxId: data.reclassificadaTxId,
       })
       setStep('DONE')
     } catch (err) {

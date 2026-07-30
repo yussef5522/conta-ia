@@ -16,6 +16,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import { formatFileSize } from '@/lib/ofx/format-imports'
+import { readJsonResponse } from '@/lib/http/safe-json'
 
 type FileStatus = 'pending' | 'uploading' | 'success' | 'failed' | 'empty'
 
@@ -103,18 +104,21 @@ export function MultiOfxDropZone({ bankAccountId, onComplete }: Props) {
         `/api/contas-bancarias/${bankAccountId}/importar-ofx-multiplos`,
         { method: 'POST', body: formData },
       )
-      const json = await res.json()
-      if (!res.ok) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { ok, data: json, message } = await readJsonResponse<any>(res, {
+        timeoutHint: 'A importação demorou mais que o esperado. Tente de novo.',
+      })
+      if (!ok || !json) {
         toast({
           variant: 'destructive',
           title: 'Erro',
-          description: json.erro ?? 'Falha ao importar.',
+          description: message ?? 'Falha ao importar.',
         })
         setFiles((prev) =>
           prev.map((f) => ({
             ...f,
             status: 'failed' as FileStatus,
-            erro: json.erro,
+            erro: message ?? undefined,
           })),
         )
         return

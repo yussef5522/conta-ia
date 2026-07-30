@@ -8,7 +8,7 @@
 
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -31,6 +31,7 @@ import { Input } from '@/components/ui/input'
 import { Header } from '@/components/layout/header'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
+import { readJsonResponse } from '@/lib/http/safe-json'
 
 interface PreviewLine {
   index: number
@@ -100,6 +101,23 @@ export default function ImportarPdfExtratoPage() {
   const [extractError, setExtractError] = useState<string | null>(null)
   const [progressLabel, setProgressLabel] = useState<string>('')
   const [result, setResult] = useState<{ inseridas: number; duplicadas: number; total: number } | null>(null)
+  const [importingKind, setImportingKind] = useState<'EXTRACT' | 'CONFIRM' | null>(null)
+
+  // UX: durante a EXTRAÇÃO a espera pode passar de 1 min (a IA lê o PDF inteiro).
+  // Rótulo evolui pra não parecer travado — benchmark Mercury/Ramp: nunca deixar
+  // o usuário no escuro. Não se aplica à confirmação (é rápida).
+  useEffect(() => {
+    if (step !== 'IMPORTING' || importingKind !== 'EXTRACT') return
+    const stages: Array<[number, string]> = [
+      [2500, 'A IA está lendo o extrato…'],
+      [20000, 'Quase lá, organizando as transações…'],
+      [75000, 'Ainda processando — extratos grandes podem levar alguns minutos…'],
+    ]
+    const timers = stages.map(([ms, label]) =>
+      setTimeout(() => setProgressLabel(label), ms),
+    )
+    return () => timers.forEach(clearTimeout)
+  }, [step, importingKind])
 
   // ──────────────────────────────────────────────────────────────
   // Step 1: Upload + chama Claude Vision
@@ -107,8 +125,9 @@ export default function ImportarPdfExtratoPage() {
   async function handleUpload(selectedFile: File) {
     setFile(selectedFile)
     setExtractError(null)
+    setImportingKind('EXTRACT')
     setStep('IMPORTING')
-    setProgressLabel('Lendo PDF com IA…')
+    setProgressLabel('Enviando PDF…')
 
     try {
       const formData = new FormData()
@@ -117,13 +136,15 @@ export default function ImportarPdfExtratoPage() {
         `/api/contas-bancarias/${params.contaId}/importar-pdf-extrato/preview`,
         { method: 'POST', body: formData, credentials: 'include' },
       )
-      const json = await resp.json()
-      if (!resp.ok) {
-        setExtractError(json.erro || 'Erro na extração')
+      const { ok, data, message } = await readJsonResponse<PreviewResponse>(resp, {
+        timeoutHint:
+          'A leitura do PDF demorou mais que o esperado. Tente de novo ou use OFX.',
+      })
+      if (!ok || !data) {
+        setExtractError(message ?? 'Erro na extração')
         setStep('UPLOAD')
         return
       }
-      const data = json as PreviewResponse
       setPreviewData(data)
       setEditableLines(
         data.lines.map((l) => ({
@@ -211,6 +232,7 @@ export default function ImportarPdfExtratoPage() {
       return
     }
 
+    setImportingKind('CONFIRM')
     setStep('IMPORTING')
     setProgressLabel(`Importando ${linesToImport.length} transações…`)
 
@@ -234,20 +256,27 @@ export default function ImportarPdfExtratoPage() {
           }),
         },
       )
-      const json = await resp.json()
-      if (!resp.ok) {
+      const { ok, data, message } = await readJsonResponse<{
+        inseridas: number
+        duplicadas: number
+        total: number
+      }>(resp, {
+        timeoutHint:
+          'A importação demorou mais que o esperado. Confira em Transações se entrou antes de repetir.',
+      })
+      if (!ok || !data) {
         toast({
           title: 'Erro na importação',
-          description: json.erro || 'Tente novamente',
+          description: message ?? 'Tente novamente',
           variant: 'destructive',
         })
         setStep('PREVIEW')
         return
       }
       setResult({
-        inseridas: json.inseridas,
-        duplicadas: json.duplicadas,
-        total: json.total,
+        inseridas: data.inseridas,
+        duplicadas: data.duplicadas,
+        total: data.total,
       })
       setStep('DONE')
     } catch (err) {
@@ -344,7 +373,8 @@ export default function ImportarPdfExtratoPage() {
             <Loader2 className="h-10 w-10 mx-auto text-primary animate-spin" />
             <p className="font-medium">{progressLabel}</p>
             <p className="text-xs text-muted-foreground">
-              Pode levar 30-60s pra extratos grandes
+              Extratos grandes podem levar alguns minutos — pode deixar a aba
+              aberta que a gente avisa quando terminar.
             </p>
           </CardContent>
         </Card>

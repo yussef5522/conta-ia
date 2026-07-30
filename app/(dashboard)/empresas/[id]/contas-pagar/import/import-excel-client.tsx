@@ -28,6 +28,7 @@ import { ConfidenceSignal } from '@/components/pendentes/ConfidenceSignal'
 import { uploadWithProgress } from '@/lib/excel-import/upload-with-progress'
 import { errorInfo } from '@/lib/excel-import/error-codes'
 import { detectExcelType } from '@/lib/excel-import/magic-bytes'
+import { readJsonResponse } from '@/lib/http/safe-json'
 
 interface Props {
   empresaId: string
@@ -272,12 +273,15 @@ export function ImportExcelClient({ empresaId }: Props) {
         `/api/empresas/${empresaId}/contas-pagar/import/${upload.batchId}/detect`,
         { method: 'POST', credentials: 'include' },
       )
-      const data = await res.json()
-      if (!res.ok) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { ok, data, message } = await readJsonResponse<any>(res, {
+        timeoutHint: 'A detecção demorou mais que o esperado. Tente de novo.',
+      })
+      if (!ok || !data) {
         toast({
           variant: 'destructive',
           title: 'Falha na detecção',
-          description: data.erro ?? `HTTP ${res.status}`,
+          description: message ?? `HTTP ${res.status}`,
         })
         return
       }
@@ -325,12 +329,15 @@ export function ImportExcelClient({ empresaId }: Props) {
           body: JSON.stringify({ rowOverrides: overrides }),
         },
       )
-      const data = await res.json()
-      if (!res.ok) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { ok, data, message } = await readJsonResponse<any>(res, {
+        timeoutHint: 'A confirmação demorou mais que o esperado. Confira antes de repetir.',
+      })
+      if (!ok || !data) {
         toast({
           variant: 'destructive',
           title: 'Falha ao confirmar',
-          description: data.erro ?? `HTTP ${res.status}`,
+          description: message ?? `HTTP ${res.status}`,
         })
         return
       }
@@ -971,12 +978,12 @@ function PendingRowsList({
           body: JSON.stringify({ rowId, action, overrides }),
         },
       )
-      const data = await res.json()
-      if (!res.ok) {
+      const { ok, message } = await readJsonResponse(res)
+      if (!ok) {
         toast({
           variant: 'destructive',
           title: 'Falha',
-          description: data.erro ?? `HTTP ${res.status}`,
+          description: message ?? `HTTP ${res.status}`,
         })
         return
       }
