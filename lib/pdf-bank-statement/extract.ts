@@ -49,6 +49,7 @@ export class BankStatementExtractError extends Error {
       | 'CLAUDE_TIMEOUT'
       | 'CLAUDE_API_ERROR'
       | 'CLAUDE_INVALID_JSON'
+      | 'CLAUDE_TRUNCATED'
       | 'VALIDATION_FAILED',
     message: string,
     public details?: unknown,
@@ -194,20 +195,48 @@ export async function extractBankStatement(
 
   const apiData = (await response.json()) as ClaudeApiResponse
   const text = apiData.content?.[0]?.text ?? ''
+  const stopReason = apiData.stop_reason
+  const outTokens = apiData.usage?.output_tokens ?? 0
+  const inTokens = apiData.usage?.input_tokens ?? 0
 
   let parsed: unknown
   try {
     const cleaned = extractJsonBlock(text)
     parsed = JSON.parse(cleaned)
   } catch {
+    // Instrumentação BUG B (30/07/2026): truncamento aparece no FIM da resposta,
+    // por isso logamos os ÚLTIMOS 300 chars (além dos primeiros) + stop_reason +
+    // tokens. Sem isso não dá pra provar truncamento vs JSON malformado.
     console.error('[pdf-bank-statement] invalid json', {
-      preview: text.slice(0, 200),
+      stopReason,
+      inputTokens: inTokens,
+      outputTokens: outTokens,
+      textLen: text.length,
+      head: text.slice(0, 300),
+      tail: text.slice(-300),
     })
+    // stop_reason === 'max_tokens' ⇒ a resposta veio CORTADA por atingir o teto.
+    // Mensagem ESPECÍFICA (não o genérico "JSON inválido").
+    if (stopReason === 'max_tokens') {
+      throw new BankStatementExtractError(
+        'CLAUDE_TRUNCATED',
+        'O extrato é grande demais pra uma leitura só: a IA atingiu o limite de tamanho e a resposta veio cortada. Tente um período menor (ex: uma quinzena por vez) ou use OFX.',
+      )
+    }
     throw new BankStatementExtractError(
       'CLAUDE_INVALID_JSON',
       'Claude retornou JSON inválido',
     )
   }
+
+  // Instrumentação BUG B: loga stop_reason/tokens também no SUCESSO (baseline pra
+  // saber quão perto do teto extratos densos chegam).
+  console.log('[pdf-bank-statement] extract ok', {
+    stopReason,
+    inputTokens: inTokens,
+    outputTokens: outTokens,
+    textLen: text.length,
+  })
 
   const extraction = coerceExtraction(parsed)
 

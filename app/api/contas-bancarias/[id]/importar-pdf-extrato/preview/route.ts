@@ -84,7 +84,8 @@ export async function POST(request: NextRequest, { params }: Params) {
         err.code === 'NOT_A_PDF' ||
         err.code === 'FILE_TOO_LARGE' ||
         err.code === 'NO_FILE' ||
-        err.code === 'ENCRYPTED_PDF'
+        err.code === 'ENCRYPTED_PDF' ||
+        err.code === 'CLAUDE_TRUNCATED'
           ? 400
           : err.code === 'CLAUDE_TIMEOUT'
             ? 504

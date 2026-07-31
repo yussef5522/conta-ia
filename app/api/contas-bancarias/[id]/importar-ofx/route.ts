@@ -36,6 +36,7 @@ import {
 } from '@/lib/categorization/match-setor-pattern'
 import { isReconcileV2Enabled } from '@/lib/reconciliation/flag'
 import { runImportV2 } from '@/lib/reconciliation/import-orchestrator'
+import { toFriendlyImportError } from '@/lib/ofx/import-error-message'
 import {
   applyImportDecisions,
   importDecisionsSchema,
@@ -163,10 +164,17 @@ export async function POST(request: NextRequest, { params }: Params) {
         ledgerBalance: result.ledgerBalance,
         errosParser: errors,
       })
-    } catch (e: any) {
-      console.error('[importar-ofx RECONCILE_V2] falhou:', e?.message)
+    } catch (e: unknown) {
+      // Loga o erro TÉCNICO completo no servidor (pm2) — nunca vai pro client.
+      const friendly = toFriendlyImportError(e)
+      console.error('[importar-ofx RECONCILE_V2] falhou:', {
+        code: friendly.code,
+        error: e instanceof Error ? e.message : String(e),
+        stack: e instanceof Error ? e.stack : undefined,
+      })
+      // Devolve SÓ a mensagem amigável (sem nome de tabela/coluna/stack).
       return NextResponse.json(
-        { erro: e?.message ?? 'Falha no import V2', code: 'RECONCILE_V2_FAILED' },
+        { erro: friendly.message, code: friendly.code },
         { status: 500 },
       )
     }

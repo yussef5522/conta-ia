@@ -18,6 +18,7 @@ import { prepareBalanceTransactions } from '@/lib/balance/prepare'
 import { parseStatementFromOFX } from './parse-statement-from-ofx'
 import { reconcileStatement } from './reconcile-statement'
 import { stableKey } from './stable-key'
+import { buildLineDedupHash, makeOccurrenceCounter } from './line-dedup-hash'
 import { isPreviewLine } from './is-preview'
 import { isReconcileV2Enabled } from './flag'
 import { dedupPreviewsAgainstDbPending } from './dedup-previews'
@@ -178,6 +179,10 @@ export async function runImportV2(
   }
 
   // 7. EFFECTED para missing (linhas reais novas — não previews)
+  // dedupHash = identidade de LINHA (stableKey + batch + ocorrência). NUNCA o
+  // stableKey puro: 2 linhas reais idênticas (mesmo stableKey) precisam virar 2
+  // transações — o stableKey puro colidiria no @@unique. Ver ./line-dedup-hash.
+  const nextOcc = makeOccurrenceCounter()
   const insertedTxIds: string[] = []
   for (const line of result.missing) {
     const sk = stableKey({ date: line.datePosted, signedAmount: line.signedAmount, memo: line.memo })
@@ -194,7 +199,7 @@ export async function runImportV2(
         externalId: line.fitid ?? null,
         importId: newImport.id,
         lifecycle: 'EFFECTED',
-        dedupHash: sk, // V2 usa stableKey como dedupHash → interopera com unique constraint existente
+        dedupHash: buildLineDedupHash(sk, newImport.id, nextOcc(sk)),
       },
       select: { id: true },
     })
@@ -228,7 +233,7 @@ export async function runImportV2(
         lifecycle,
         dueDate: line.datePosted, // invariante PAYABLE/RECEIVABLE: dueDate obrigatório
         // paymentDate NULL — invariante PAYABLE/RECEIVABLE
-        dedupHash: sk,
+        dedupHash: buildLineDedupHash(sk, newImport.id, nextOcc(sk)),
       },
       select: { id: true },
     })

@@ -11,6 +11,7 @@ import { Header } from '@/components/layout/header'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
+import { readJsonResponse } from '@/lib/http/safe-json'
 import { PreviewV2Classificado } from '@/components/importar-ofx/PreviewV2Classificado'
 import { PreviewV3Premium, type V3Decisions } from '@/components/importar-ofx/PreviewV3Premium'
 import {
@@ -318,9 +319,10 @@ export default function ImportarOFXPage() {
         method: 'POST',
         body: fd,
       })
-      const data = await res.json()
-      if (!res.ok) {
-        toast({ variant: 'destructive', title: 'Erro ao ler arquivo', description: data.erro })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { ok, data, message } = await readJsonResponse<any>(res)
+      if (!ok || !data) {
+        toast({ variant: 'destructive', title: 'Erro ao ler arquivo', description: message ?? 'Não foi possível ler o arquivo.' })
         return
       }
       setPreview(data)
@@ -542,9 +544,10 @@ export default function ImportarOFXPage() {
         method: 'POST',
         body: fd,
       })
-      const data = await res.json()
-      if (!res.ok) {
-        toast({ variant: 'destructive', title: 'Erro na importação', description: data.erro })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { ok, data, message } = await readJsonResponse<any>(res)
+      if (!ok || !data) {
+        toast({ variant: 'destructive', title: 'Erro na importação', description: message ?? 'Tente novamente' })
         return
       }
       toast({ variant: 'success', title: 'Importação concluída', description: data.mensagem })

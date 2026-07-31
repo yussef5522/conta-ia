@@ -18,6 +18,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Prisma, PrismaClient } from '@prisma/client'
 import { buildAdjustmentTxData } from '@/lib/conciliacao/create-adjustment'
+import { buildLineDedupHash, makeOccurrenceCounter } from '@/lib/reconciliation/line-dedup-hash'
 
 // ───────────────────────────────────────────────────────────────
 // Tipos públicos
@@ -443,6 +444,11 @@ export async function applyV2Confirm(
     }
 
     // ───── Aplica decisões
+    // dedupHash = identidade de LINHA (stableKey + token do lote + ocorrência).
+    // 2 linhas reais idênticas (mesmo stableKey) viram 2 transações sem colidir
+    // no @@unique — e nada é descartado. Ver lib/reconciliation/line-dedup-hash.
+    const dedupBatchToken = randomUUID()
+    const nextOcc = makeOccurrenceCounter()
     let deltaAplicado = 0
     const counts = {
       skip: 0, create: 0, replaceManual: 0, conciliatePayable: 0, adjustmentCreated: 0,
@@ -468,7 +474,7 @@ export async function applyV2Confirm(
             origin: 'OFX',
             lifecycle: 'EFFECTED',
             externalId: dec.rawTx.fitid,
-            dedupHash: dec.rawTx.dedupHash,
+            dedupHash: buildLineDedupHash(dec.rawTx.dedupHash, dedupBatchToken, nextOcc(dec.rawTx.dedupHash)),
             description: dec.rawTx.memo || `Transação ${dec.rawTx.fitid}`,
           },
         })
@@ -492,7 +498,7 @@ export async function applyV2Confirm(
             origin: 'OFX',
             lifecycle: 'EFFECTED',
             externalId: dec.rawTx.fitid,
-            dedupHash: dec.rawTx.dedupHash,
+            dedupHash: buildLineDedupHash(dec.rawTx.dedupHash, dedupBatchToken, nextOcc(dec.rawTx.dedupHash)),
             description: dec.rawTx.memo,
             transferGroupId: isTransfer ? manual.transferGroupId : null,
             categoryId: !isTransfer ? manual.categoryId : null,
@@ -556,7 +562,7 @@ export async function applyV2Confirm(
             origin: 'OFX',
             lifecycle: 'EFFECTED',
             externalId: dec.rawTx.fitid,
-            dedupHash: dec.rawTx.dedupHash,
+            dedupHash: buildLineDedupHash(dec.rawTx.dedupHash, dedupBatchToken, nextOcc(dec.rawTx.dedupHash)),
             description: dec.rawTx.memo,
             reconcileGroupId: groupId,
           },
