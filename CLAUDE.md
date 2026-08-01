@@ -138,6 +138,7 @@ pm2 list | grep conta-ia                    # confirma online
 - **NUNCA** `cat .env` nem echo credenciais em logs.
 - **NUNCA** confundir CAIXAOS vs AcadOS — confirmar IP + hostname antes de SSH/deploy.
 - **NUNCA** mexer em senha do admin em prod.
+- **Contraparte é dado pessoal de terceiro** (Sprint Contraparte PIX 31/07): `Transaction.counterpartyName` e `counterpartyDocument` (nome/CPF/CNPJ de favorecido/pagador do PIX) são DADO PESSOAL sob LGPD. Mesmo gate de permissão das transações; **NUNCA logar em log de aplicação** (nem em diagnóstico — mascarar sempre). Não alimentam `stableKey`/`computeCacheKey` (que usam `description`) — vivem só nessas colunas. Precedência de origem `MANUAL > OPEN_FINANCE > OFX > PDF_STATEMENT` centralizada em `lib/counterparty/precedence.ts`. Parser determinístico do PDF: `lib/bank-statement-pdf/banrisul-parser.ts` (texto, sem Vision). Join read-only: `lib/counterparty/join-pdf-statement.ts`.
 
 ## Pegadinhas Asaas (Sprint 3A/3B/3C — em uso ativo)
 

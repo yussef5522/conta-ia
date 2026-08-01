@@ -351,6 +351,19 @@ model Transaction {
   // Pluggy ainda não preenche este campo (NULLs não conflitam com a unique).
   dedupHash     String?
 
+  // ─── Contraparte (favorecido/pagador) — Sprint Contraparte PIX (31/07/2026) ───
+  // ⚠️ LGPD: counterpartyName/counterpartyDocument são DADO PESSOAL de terceiro.
+  //    Mesmo gate de permissão das transações. NUNCA logar em log de aplicação.
+  //    NÃO alimentam stableKey nem computeCacheKey (que usam `description`): a
+  //    contraparte vive SÓ nestas colunas, pra não quebrar reconciliação/cache.
+  counterpartyName       String?
+  counterpartyDocument   String?
+  // Origem do dado (precedência: MANUAL > OPEN_FINANCE > OFX > PDF_STATEMENT).
+  // Ver lib/counterparty/precedence.ts.
+  counterpartySource     String?
+  // EXACT (1 candidato) | AMBIGUOUS (vários com nomes divergentes — não atribuído auto).
+  counterpartyConfidence String?
+
   // Sprint Import Idempotente (18/06/2026) — IDENTIDADE CANÔNICA.
   // fitidKey: sha256(accountId|FITID) quando FITID é CONFIÁVEL (heurística
   //   em lib/import-identity/heuristic-fitid.ts). Banrisul fitid curto =

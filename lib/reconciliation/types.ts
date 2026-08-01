@@ -5,6 +5,8 @@ export interface StatementLine {
   signedAmount: number // CREDIT positivo, DEBIT negativo (sinal canônico do extrato)
   memo: string
   fitid?: string // dica de desempate apenas, NUNCA chave
+  // FASE 2.1 Contraparte: NAME do OFX quando difere do MEMO. NÃO entra no stableKey.
+  counterpartyName?: string
 }
 
 export interface DbBankTransaction {

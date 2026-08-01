@@ -4,6 +4,10 @@ export interface OFXTransaction {
   amount: number
   type: 'CREDIT' | 'DEBIT'
   memo: string
+  // FASE 2.1 Contraparte: NAME do OFX quando DIFERE do MEMO (bancos que trazem o
+  // favorecido separado). Banrisul manda NAME==MEMO → fica undefined. NUNCA entra
+  // no `memo`/description (não muda stableKey nem cache).
+  counterpartyName?: string
 }
 
 export interface OFXParseResult {
@@ -98,7 +102,14 @@ export function parseOFX(raw: string): OFXParseResult {
     const fitid = extractTag(block, 'FITID')
     const dateRaw = extractTag(block, 'DTPOSTED')
     const amountRaw = extractTag(block, 'TRNAMT')
-    const memo = extractTag(block, 'MEMO') ?? extractTag(block, 'NAME') ?? ''
+    const memoTag = extractTag(block, 'MEMO')
+    const nameTag = extractTag(block, 'NAME')
+    const memo = memoTag ?? nameTag ?? ''
+    // FASE 2.1: NAME vira contraparte SÓ quando existe MEMO e difere dele.
+    const counterpartyName =
+      nameTag && memoTag && nameTag.trim().toUpperCase() !== memoTag.trim().toUpperCase()
+        ? nameTag.trim()
+        : undefined
     const trntype = extractTag(block, 'TRNTYPE') ?? ''
 
     if (!fitid) { errors.push('Transação sem FITID — ignorada'); continue }
@@ -118,7 +129,7 @@ export function parseOFX(raw: string): OFXParseResult {
       rawAmount < 0 ? 'DEBIT' :
       trntype.toUpperCase() === 'CREDIT' ? 'CREDIT' : 'DEBIT'
 
-    transactions.push({ fitid, datePosted: date, amount, type, memo: memo || `Transação ${fitid}` })
+    transactions.push({ fitid, datePosted: date, amount, type, memo: memo || `Transação ${fitid}`, counterpartyName })
   }
 
   const ledgerBalance = extractLedgerBalance(content)

@@ -199,6 +199,8 @@ export async function runImportV2(
         externalId: line.fitid ?? null,
         importId: newImport.id,
         lifecycle: 'EFFECTED',
+        counterpartyName: line.counterpartyName ?? null,
+        counterpartySource: line.counterpartyName ? 'OFX' : null,
         dedupHash: buildLineDedupHash(sk, newImport.id, nextOcc(sk)),
       },
       select: { id: true },
@@ -233,6 +235,8 @@ export async function runImportV2(
         lifecycle,
         dueDate: line.datePosted, // invariante PAYABLE/RECEIVABLE: dueDate obrigatório
         // paymentDate NULL — invariante PAYABLE/RECEIVABLE
+        counterpartyName: line.counterpartyName ?? null,
+        counterpartySource: line.counterpartyName ? 'OFX' : null,
         dedupHash: buildLineDedupHash(sk, newImport.id, nextOcc(sk)),
       },
       select: { id: true },

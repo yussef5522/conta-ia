@@ -18,6 +18,7 @@ export function parseStatementFromOFX(parsed: OFXParseResult): {
     signedAmount: t.type === 'CREDIT' ? t.amount : -t.amount,
     memo: t.memo,
     fitid: t.fitid,
+    counterpartyName: t.counterpartyName,
   }))
   return {
     lines,
