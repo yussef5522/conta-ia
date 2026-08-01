@@ -115,6 +115,8 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ## Ordem de deploy (PJ + PF)
 
+**Dependência de SISTEMA (não-npm):** `poppler-utils` (binário `pdftotext`) — usado pelo enriquecimento de contraparte por PDF (`lib/bank-statement-pdf/extract-pdf-text.ts`, único ponto que invoca poppler). **Servidor novo nasce quebrado sem isso** — incluir no provisionamento: `apt-get install -y poppler-utils`. Validar com `which pdftotext`. Instalado no CAIXAOS em 31/07/2026.
+
 Sequência **crítica** (bug pego na Fatia 1 quando `npm ci` rodou `prisma generate` antes do swap):
 
 ```

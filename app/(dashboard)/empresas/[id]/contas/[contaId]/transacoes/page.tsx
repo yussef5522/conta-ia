@@ -51,6 +51,9 @@ interface Transacao {
   notes: string | null
   categoryId: string | null
   category: Category | null
+  // Sprint Contraparte PIX (31/07/2026) — favorecido/pagador (dado pessoal de terceiro)
+  counterpartyName?: string | null
+  counterpartySource?: string | null
   // Sprint Fluxo-Único-Retirada (08/06/2026) — campos pra detectar orfã
   lifecycle?: string | null
   isInternalTransfer?: boolean | null
@@ -147,11 +150,18 @@ export default function TransacoesPage() {
         </Button>
         {/* Sprint Caixa: Caixa não tem extrato OFX */}
         {conta?.accountType !== 'CASH' && (
-          <Button variant="outline" asChild>
-            <Link href={`/empresas/${empresaId}/contas/${contaId}/importar`}>
-              <Upload className="mr-2 h-4 w-4" />Importar OFX
-            </Link>
-          </Button>
+          <>
+            <Button variant="outline" asChild>
+              <Link href={`/empresas/${empresaId}/contas/${contaId}/importar`}>
+                <Upload className="mr-2 h-4 w-4" />Importar OFX
+              </Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link href={`/empresas/${empresaId}/contas/${contaId}/enriquecer-contraparte`}>
+                Enriquecer (PDF)
+              </Link>
+            </Button>
+          </>
         )}
         <Button asChild>
           <Link href={`/empresas/${empresaId}/contas/${contaId}/transacoes/nova`}>
@@ -267,6 +277,14 @@ export default function TransacoesPage() {
               {/* Descrição e categoria */}
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium truncate">{t.description}</p>
+                {t.counterpartyName && (
+                  <p className="text-xs truncate text-foreground/70">
+                    {t.counterpartyName}
+                    <span className="ml-1 text-[10px] text-muted-foreground/60">
+                      · {t.counterpartySource === 'MANUAL' ? 'você' : t.counterpartySource === 'PDF_STATEMENT' ? 'PDF' : t.counterpartySource === 'OFX' ? 'OFX' : 'auto'}
+                    </span>
+                  </p>
+                )}
                 <div className="flex items-center gap-2 mt-0.5">
                   <span className="text-xs text-muted-foreground">
                     {new Date(t.date).toLocaleDateString('pt-BR')}

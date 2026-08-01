@@ -106,6 +106,15 @@ export async function PUT(request: NextRequest, { params }: Params) {
             : {}),
           ...(data.date !== undefined ? { date: data.date } : {}),
           ...(data.description !== undefined ? { description: data.description } : {}),
+          // Contraparte editada à mão → origem MANUAL (precedência máxima; PDF/OFX
+          // nunca sobrescrevem). NÃO afeta saldo/valor/data/categoria.
+          ...(data.counterpartyName !== undefined
+            ? {
+                counterpartyName: data.counterpartyName?.trim() || null,
+                counterpartySource: data.counterpartyName?.trim() ? 'MANUAL' : null,
+                counterpartyConfidence: data.counterpartyName?.trim() ? 'EXACT' : null,
+              }
+            : {}),
           ...(data.amount !== undefined ? { amount: data.amount } : {}),
           ...(data.type !== undefined ? { type: data.type } : {}),
           ...(data.notes !== undefined ? { notes: data.notes ?? null } : {}),

@@ -12,6 +12,9 @@ export const transacaoSchema = z.object({
   type: z.enum(TIPOS_TRANSACAO),
   status: z.enum(STATUS_TRANSACAO).default('PENDING'),
   notes: z.string().max(1000).optional().nullable(),
+  // Sprint Contraparte PIX (31/07/2026) — edição manual do favorecido/pagador.
+  // Ao vir no PUT, a origem vira MANUAL (imune a sobrescrita por PDF/OFX).
+  counterpartyName: z.string().max(200).optional().nullable(),
 })
 
 export const transacaoUpdateSchema = transacaoSchema.partial().omit({ bankAccountId: true })

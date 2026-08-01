@@ -1,0 +1,117 @@
+// Sprint Tela Contraparte (31/07/2026) — monta o PREVIEW do enriquecimento a
+// partir do PDF parseado + transações JÁ EXISTENTES. FUNÇÃO PURA, read-only:
+// não grava, não cria, não altera valor/data/categoria. Só decide QUAL nome
+// atribuir a QUAL transação (via joinPdfStatement) e enriquece pra exibição.
+
+import type { ParsedBankStatement } from '@/lib/bank-statement-pdf/types'
+import { joinPdfStatement, type JoinTxInput } from './join-pdf-statement'
+
+export interface EnrichTx {
+  id: string
+  externalId: string | null
+  amount: number
+  date: Date
+  description: string
+  type: string
+  counterpartyName: string | null
+  counterpartySource: string | null
+}
+
+export interface PreviewTxView {
+  txId: string
+  date: string
+  description: string
+  amount: number
+  type: string
+  currentName: string | null
+}
+
+export interface EnrichmentPreview {
+  counts: {
+    exact: number
+    ambiguousKeys: number
+    ambiguousTx: number
+    noMatch: number
+    pdfLines: number
+    pdfWithName: number
+    manualProtected: number
+  }
+  exact: Array<PreviewTxView & { proposedName: string }>
+  ambiguous: Array<{
+    documento: string
+    amount: number
+    candidateNames: string[]
+    txs: PreviewTxView[]
+  }>
+}
+
+const onlyDigits = (s: string | null | undefined) => (s ?? '').replace(/\D/g, '')
+
+/** FASE 1.3a — cabeçalho do PDF (agência+conta) bate com a conta selecionada? */
+export function headerMatchesAccount(
+  header: { agencia: string | null; conta: string | null },
+  conta: { agency: string | null; accountNumber: string | null },
+): boolean {
+  const agA = onlyDigits(header.agencia)
+  const agB = onlyDigits(conta.agency)
+  const ccA = onlyDigits(header.conta)
+  const ccB = onlyDigits(conta.accountNumber)
+  // Se a conta não tem ag/cc cadastrada, não dá pra validar → não bloqueia por isso.
+  const agOk = !agA || !agB || agA === agB
+  const ccOk = !ccA || !ccB || ccA === ccB
+  return agOk && ccOk
+}
+
+function view(t: EnrichTx): PreviewTxView {
+  return {
+    txId: t.id,
+    date: t.date.toISOString().slice(0, 10),
+    description: t.description,
+    amount: t.amount,
+    type: t.type,
+    currentName: t.counterpartyName,
+  }
+}
+
+export function buildEnrichmentPreview(
+  parsed: ParsedBankStatement,
+  txs: EnrichTx[],
+): EnrichmentPreview {
+  const joinTx: JoinTxInput[] = txs.map((t) => ({
+    id: t.id,
+    externalId: t.externalId,
+    amount: t.amount,
+    description: t.description,
+    counterpartySource: t.counterpartySource,
+  }))
+  const r = joinPdfStatement(parsed.lines, joinTx)
+  const byId = new Map(txs.map((t) => [t.id, t]))
+
+  const exact = r.exact
+    .map((e) => {
+      const t = byId.get(e.txId)
+      return t ? { ...view(t), proposedName: e.counterpartyName } : null
+    })
+    .filter((x): x is PreviewTxView & { proposedName: string } => x !== null)
+
+  const ambiguous = r.ambiguous.map((a) => ({
+    documento: a.documento,
+    amount: a.amount,
+    candidateNames: a.candidateNames,
+    txs: a.txIds.map((id) => byId.get(id)).filter((t): t is EnrichTx => !!t).map(view),
+  }))
+
+  return {
+    counts: {
+      exact: r.stats.exactCount,
+      ambiguousKeys: r.stats.ambiguousKeys,
+      ambiguousTx: r.stats.ambiguousTxCount,
+      noMatch: r.stats.noMatchCount,
+      pdfLines: parsed.lines.length,
+      pdfWithName: parsed.lines.filter((l) => l.counterpartyName).length,
+      manualProtected: r.stats.manualProtected,
+    },
+    exact,
+    ambiguous,
+  }
+}
