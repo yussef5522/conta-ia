@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { VincularTransferenciaModal } from '@/components/pendentes/VincularTransferenciaModal'
 import { AprenderEAplicarModal } from '@/components/pendentes/AprenderEAplicarModal'
+import { normalizeCounterparty } from '@/lib/counterparty/normalize'
 // Sprint Retirada-1-Clique
 import { WithdrawalPanel } from '@/components/withdrawals/WithdrawalPanel'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -1149,6 +1150,16 @@ export function PendentesClient({
             ? {
                 id: aprenderState.tx.id,
                 description: aprenderState.tx.description,
+                counterpartyName: aprenderState.tx.counterpartyName ?? null,
+                sameCounterpartyPendingCount: aprenderState.tx.counterpartyName
+                  ? transacoes.filter(
+                      (t) =>
+                        t.id !== aprenderState.tx.id &&
+                        t.counterpartyName &&
+                        normalizeCounterparty(t.counterpartyName) ===
+                          normalizeCounterparty(aprenderState.tx.counterpartyName),
+                    ).length
+                  : 0,
               }
             : null
         }

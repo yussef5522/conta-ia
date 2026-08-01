@@ -45,6 +45,9 @@ interface SimilaresResponse {
 interface BaseSnapshot {
   id: string
   description: string
+  // Sprint Ciclo-Aprendizado (01/08) — contraparte + nº de pendentes iguais.
+  counterpartyName?: string | null
+  sameCounterpartyPendingCount?: number
 }
 
 interface CategoriaSnapshot {
@@ -80,6 +83,8 @@ export function AprenderEAplicarModal({
   const [submitting, setSubmitting] = useState(false)
   const [similares, setSimilares] = useState<SimilaresResponse | null>(null)
   const [learnPattern, setLearnPattern] = useState(true)
+  // Regra por CONTRAPARTE (default OFF — user escolhe ativamente, nunca silêncio).
+  const [createCpRule, setCreateCpRule] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [search, setSearch] = useState('')
@@ -88,7 +93,11 @@ export function AprenderEAplicarModal({
     if (!open || !base) return
     setErro(null)
     setSimilares(null)
-    setLearnPattern(true)
+    // FASE 1.3: pra tx COM contraparte, a regra por DESCRIÇÃO nasce DESMARCADA
+    // (descrição genérica "PIX ENVIADO" sobre-casaria). Sem contraparte → true,
+    // idêntico a hoje. A regra por contraparte é a oferta correta (createCpRule).
+    setLearnPattern(!base.counterpartyName)
+    setCreateCpRule(false)
     setSearch('')
     setSelectedIds(new Set())
     setLoadingPreview(true)
@@ -169,6 +178,7 @@ export function AprenderEAplicarModal({
           body: JSON.stringify({
             categoryId: categoria.id,
             learnPattern,
+            createCounterpartyRule: createCpRule,
             applyToSimilar,
             ...(explicitIds ? { similarTxIds: explicitIds } : {}),
             ...(claudeContext
@@ -201,13 +211,16 @@ export function AprenderEAplicarModal({
           ? 'Regra aprendida 🤖'
           : 'Regra reforçada 🤖'
         : ''
+      const cpMsg = data.counterpartyRuleCreated
+        ? `Regra criada: "${base.counterpartyName}" → ${categoria.name} 🤖`
+        : ''
       const vmMsg =
         vm && vm.anchor && vm.retroactiveCount > 0
           ? `+${vm.retroactiveCount} ${vm.anchor} categorizadas automaticamente`
           : vm && vm.anchor
             ? `Próximas com "${vm.anchor}" serão categorizadas automaticamente`
             : ''
-      const description = [ruleMsg, vmMsg].filter(Boolean).join(' · ')
+      const description = [cpMsg, ruleMsg, vmMsg].filter(Boolean).join(' · ')
 
       if (applyToSimilar && similarApplied > 0) {
         toast({
@@ -405,6 +418,29 @@ export function AprenderEAplicarModal({
             Nenhuma transação similar pendente. Só esta vai ser classificada.{' '}
             {learnPattern && 'Uma regra será criada pra próximos imports.'}
           </div>
+        )}
+
+        {/* FASE 2: regra por CONTRAPARTE — só aparece quando a tx tem contraparte.
+            Default OFF (user escolhe ativamente). Nunca em silêncio. */}
+        {!loadingPreview && !erro && base.counterpartyName && categoria && (
+          <label className="flex items-start gap-2.5 cursor-pointer rounded-md border border-purple-200 bg-purple-50/50 p-3 hover:bg-purple-50 transition-colors shrink-0 dark:border-purple-900 dark:bg-purple-950/30">
+            <Checkbox
+              checked={createCpRule}
+              onCheckedChange={(v) => setCreateCpRule(v === true)}
+              className="mt-0.5"
+            />
+            <div className="text-sm space-y-0.5">
+              <p className="font-medium">
+                Sempre categorizar de <strong>{base.counterpartyName}</strong> como {categoria.name}?
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Cria uma regra por contraparte (não pela descrição genérica).
+                {base.sameCounterpartyPendingCount && base.sameCounterpartyPendingCount > 0
+                  ? ` Isso vale pra mais ${base.sameCounterpartyPendingCount} pendente(s) da mesma contraparte — a aplicação em lote vem na próxima.`
+                  : ''}
+              </p>
+            </div>
+          </label>
         )}
 
         <DialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-end shrink-0">

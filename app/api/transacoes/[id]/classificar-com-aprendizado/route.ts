@@ -20,6 +20,7 @@ import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import { classifyWithLearning } from '@/lib/ai-categorizer/apply'
+import { counterpartyRulePattern, matchCounterpartyRule, CONTRAPARTE_TIPO_MATCH } from '@/lib/counterparty/rules'
 
 const schema = z.object({
   categoryId: z.string().cuid(),
@@ -34,6 +35,10 @@ const schema = z.object({
   // Quando passados, permite detectar override + invalidar cache do Claude.
   claudeCacheKey: z.string().optional(),
   claudeSuggestedCategoryId: z.string().nullable().optional(),
+  // Sprint Ciclo-Aprendizado (01/08) — cria regra "contraparte → categoria"
+  // (por empresa) quando o user escolhe ativamente. Convive com a regra por
+  // descrição (learnPattern); pra contraparte, a CONTRAPARTE tem precedência.
+  createCounterpartyRule: z.boolean().default(false),
 })
 
 interface Params {
@@ -47,6 +52,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       where: { id },
       select: {
         id: true,
+        counterpartyName: true,
         bankAccount: { select: { companyId: true } },
       },
     })
@@ -77,7 +83,38 @@ export async function POST(request: NextRequest, { params }: Params) {
       request,
     )
 
-    return NextResponse.json(result, { status: 200 })
+    // Ciclo de aprendizado por CONTRAPARTE (só quando a tx tem contraparte).
+    // NUNCA em silêncio: só cria se o user marcou. Por empresa, nunca global.
+    let counterpartyRuleCreated = false
+    const companyId = tx.bankAccount!.companyId
+    if (tx.counterpartyName) {
+      const padrao = counterpartyRulePattern(tx.counterpartyName)
+      if (padrao && input.createCounterpartyRule) {
+        await prisma.aiLearningRule
+          .upsert({
+            where: { companyId_tipoMatch_padrao: { companyId, tipoMatch: CONTRAPARTE_TIPO_MATCH, padrao } },
+            create: { companyId, tipoMatch: CONTRAPARTE_TIPO_MATCH, padrao, categoryId: input.categoryId, fonte: 'MANUAL', confianca: 1.0 },
+            update: { categoryId: input.categoryId, isActive: true },
+          })
+          .then(() => { counterpartyRuleCreated = true })
+          .catch((e) => console.error('[contraparte-rule] upsert falhou:', e?.message))
+      } else if (padrao) {
+        // 3.3: se já existia regra CONTRAPARTE que casa E o user seguiu a categoria
+        // dela, conta vezesAplicada (a regra foi "usada"). Alimenta a tela de gestão.
+        const existentes = await prisma.aiLearningRule.findMany({
+          where: { companyId, tipoMatch: CONTRAPARTE_TIPO_MATCH, isActive: true },
+          select: { id: true, padrao: true, categoryId: true },
+        })
+        const casou = matchCounterpartyRule(tx.counterpartyName, existentes)
+        if (casou && casou.categoryId === input.categoryId) {
+          await prisma.aiLearningRule
+            .update({ where: { id: casou.id }, data: { vezesAplicada: { increment: 1 } } })
+            .catch(() => null)
+        }
+      }
+    }
+
+    return NextResponse.json({ ...result, counterpartyRuleCreated }, { status: 200 })
   } catch (error) {
     return handleApiError(error)
   }
