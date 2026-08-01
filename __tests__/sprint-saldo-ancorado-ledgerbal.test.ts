@@ -133,6 +133,47 @@ describe('Sprint Saldo-Ancorado — recalcularSaldoConta (mock prisma)', () => {
       /bankAccountId obrigatório/,
     )
   })
+
+  // PROTEGE O ACHADO DO SPRINT SALDO-V2 (31/07): import V2 numa conta com abertura
+  // digitada NÃO pode zerar a abertura nem somar do zero. Com ledgerBal do OFX, o
+  // recalc ANCORA — abertura errada (8873.77) é ignorada, saldo = LEDGERBAL.
+  it('DEFEITO 1 (V2): abertura digitada + ledgerBal do OFX → ancora, NÃO zera nem soma do zero', async () => {
+    const { recalcularSaldoConta } = await import('@/lib/balance/recalcular')
+    const conta = {
+      id: 'ba-profit',
+      name: 'banrisul profit itaqui',
+      balance: 8873.77, // abertura digitada ERRADA (era saldo composto CC+CDB)
+      ledgerBal: 3984.64, // LEDGERBAL real declarado pelo OFX (29/07)
+      ledgerBalDate: D('2026-07-29'),
+    }
+    // todas as 495 tx são <= 29/07 → NENHUMA pós-âncora (mock recebe pré-filtrado)
+    const prisma = makePrismaMock(conta, [])
+    const r = await recalcularSaldoConta(prisma, 'ba-profit')
+    expect(r.modo).toBe('LEDGERBAL_ANCHOR')
+    expect(r.txCount).toBe(0)
+    expect(r.saldoDepois).toBe(3984.64) // = LEDGERBAL puro; NÃO 8873.77, NÃO soma-do-zero
+    expect(prisma.bankAccount.update).toHaveBeenCalledWith({
+      where: { id: 'ba-profit' },
+      data: { balance: 3984.64 },
+    })
+  })
+})
+
+// ============================================================================
+// 5) V2 orchestrator recalcula saldo (DEFEITO 1 fix) — static code guard
+// ============================================================================
+describe('Sprint Saldo-V2 — orchestrator V2 grava ledgerBal + recalcula', () => {
+  const code = readFileSync(
+    join(__dirname, '..', 'lib/reconciliation/import-orchestrator.ts'),
+    'utf-8',
+  )
+  it('grava ledgerBal + ledgerBalDate do OFX na conta', () => {
+    expect(code).toMatch(/ledgerBal:\s*ledgerBalance/)
+    expect(code).toMatch(/ledgerBalDate:\s*dtAsOf/)
+  })
+  it('chama recalcularSaldoConta DENTRO do $transaction (tx, não prisma global)', () => {
+    expect(code).toMatch(/recalcularSaldoConta\(tx,\s*input\.bankAccountId\)/)
+  })
 })
 
 // ============================================================================

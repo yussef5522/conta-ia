@@ -16,8 +16,12 @@
 // sinal de CREDIT/DEBIT/TRANSFER (incluindo TRANSFER com transferDirection
 // OUT/IN e fallback createdAt-ASC).
 
-import type { PrismaClient } from '@prisma/client'
+import type { PrismaClient, Prisma } from '@prisma/client'
 import { prepareBalanceTransactions, type RawBalanceTransaction } from './prepare'
+
+// Aceita tanto o client global quanto um TransactionClient — pra rodar DENTRO do
+// mesmo prisma.$transaction do import (saldo consistente com as tx no mesmo commit).
+type DbClient = PrismaClient | Prisma.TransactionClient
 
 export interface RecalcResult {
   bankAccountId: string
@@ -44,7 +48,7 @@ export interface RecalcResult {
  * à empresa autorizada (rota com getAuthContext). Função pura de DB-write.
  */
 export async function recalcularSaldoConta(
-  prisma: PrismaClient,
+  prisma: DbClient,
   bankAccountId: string,
 ): Promise<RecalcResult> {
   if (!bankAccountId) {

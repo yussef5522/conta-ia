@@ -21,6 +21,7 @@ import { stableKey } from './stable-key'
 import { buildLineDedupHash, makeOccurrenceCounter } from './line-dedup-hash'
 import { isPreviewLine } from './is-preview'
 import { isReconcileV2Enabled } from './flag'
+import { recalcularSaldoConta } from '@/lib/balance/recalcular'
 import { dedupPreviewsAgainstDbPending } from './dedup-previews'
 import type { DbBankTransaction } from './types'
 
@@ -292,6 +293,16 @@ export async function runImportV2(
       fitid: orf.fitid ?? null,
     })
   }
+
+  // 10. DEFEITO 1 fix (31/07): grava o LEDGERBAL declarado pelo OFX + recalcula o
+  // saldo da conta DENTRO deste mesmo $transaction (antes o V2 nunca recalculava
+  // → saldo ficava travado). recalcularSaldoConta ANCORA no ledgerBal, então
+  // NUNCA assume abertura 0 — respeita a abertura/histórico da conta.
+  await tx.bankAccount.update({
+    where: { id: input.bankAccountId },
+    data: { ledgerBal: ledgerBalance, ledgerBalDate: dtAsOf },
+  })
+  await recalcularSaldoConta(tx, input.bankAccountId)
 
   return {
     importId: newImport.id,
