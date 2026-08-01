@@ -74,7 +74,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     }
 
     // 3. Cache hit?
-    const cached = await getCachedSuggestion(companyId, tx.description)
+    const cached = await getCachedSuggestion(companyId, tx.description, tx.counterpartyName)
     if (cached) {
       // Log de cache hit (sem custo)
       await logUsage({
@@ -163,6 +163,9 @@ export async function POST(request: NextRequest, { params }: Params) {
       type: tx.type,
       date: tx.date,
       supplierRazaoSocial: tx.supplier?.razaoSocial ?? null,
+      // FASE 4 (01/08): favorecido/pagador como SINAL adicional. Aditivo — só
+      // aparece no prompt quando existe; não altera description.
+      counterpartyName: tx.counterpartyName ?? null,
     })
 
     if (result.kind === 'disabled') {
@@ -200,8 +203,8 @@ export async function POST(request: NextRequest, { params }: Params) {
     const { suggestion, inputTokens, outputTokens, costCents } = result
 
     // 7. Persiste cache + log
-    const cacheKey = computeCacheKey(tx.description)
-    await putCachedSuggestion(companyId, tx.description, suggestion)
+    const cacheKey = computeCacheKey(tx.description, tx.counterpartyName)
+    await putCachedSuggestion(companyId, tx.description, suggestion, tx.counterpartyName)
     await logUsage({
       companyId,
       userId: ctx.user.id,

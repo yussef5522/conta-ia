@@ -8,6 +8,7 @@ import { logAudit, diffFields } from '@/lib/audit'
 import { handleApiError } from '@/lib/api/handle-error'
 import { recordRuleOverride } from '@/lib/ai-categorizer/apply'
 import { autoMemorizeVendor } from '@/lib/categorization/auto-memorize-vendor'
+import { counterpartyRulePattern, CONTRAPARTE_TIPO_MATCH } from '@/lib/counterparty/rules'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -172,6 +173,41 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
       return updated
     })
+
+    // FASE 4 (01/08): user confirmou categoria numa tx com contraparte e pediu
+    // pra criar a regra "contraparte → categoria" (por empresa, nunca global).
+    // Upsert idempotente via @@unique([companyId, tipoMatch, padrao]). Fora da
+    // $transaction; falha aqui é silenciosa (a categorização já foi salva).
+    if (
+      data.createCounterpartyRule &&
+      categoryIdFinal &&
+      antiga.counterpartyName &&
+      antiga.bankAccount?.companyId
+    ) {
+      const padrao = counterpartyRulePattern(antiga.counterpartyName)
+      if (padrao) {
+        await prisma.aiLearningRule
+          .upsert({
+            where: {
+              companyId_tipoMatch_padrao: {
+                companyId: antiga.bankAccount.companyId,
+                tipoMatch: CONTRAPARTE_TIPO_MATCH,
+                padrao,
+              },
+            },
+            create: {
+              companyId: antiga.bankAccount.companyId,
+              tipoMatch: CONTRAPARTE_TIPO_MATCH,
+              padrao,
+              categoryId: categoryIdFinal,
+              fonte: 'MANUAL',
+              confianca: 1.0,
+            },
+            update: { categoryId: categoryIdFinal, isActive: true },
+          })
+          .catch((e) => console.error('[contraparte-rule] upsert falhou:', e?.message))
+      }
+    }
 
     // Fase 3 Etapa 1: se a tx ANTIGA foi classificada por regra E o user
     // MUDOU a categoria (override), penaliza a regra (cai confiança).

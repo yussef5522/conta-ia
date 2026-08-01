@@ -7,6 +7,7 @@
 import { createHash } from 'crypto'
 import { prisma } from '@/lib/db'
 import { normalizeDescription } from './normalize'
+import { normalizeCounterparty } from '@/lib/counterparty/normalize'
 
 export const CACHE_TTL_DAYS = 90
 const CACHE_TTL_MS = CACHE_TTL_DAYS * 24 * 60 * 60 * 1000
@@ -27,9 +28,15 @@ export interface CachedClaudeSuggestion {
 }
 
 // Função PURA: derive cache key sem precisar de Prisma.
-export function computeCacheKey(description: string): string {
+// FASE 4 (01/08): contraparte entra na chave SÓ quando existe — backward-compat.
+// Sem contraparte → chave ANTIGA idêntica (cache existente preservado, nada
+// invalidado). Com contraparte → chave própria, então 2 "PIX ENVIADO" com
+// favorecidos diferentes deixam de colidir na mesma sugestão.
+export function computeCacheKey(description: string, counterpartyName?: string | null): string {
   const normalized = normalizeDescription(description)
-  return createHash('sha256').update(normalized).digest('hex')
+  const cp = counterpartyName ? normalizeCounterparty(counterpartyName) : ''
+  const material = cp ? `${normalized}#cp#${cp}` : normalized
+  return createHash('sha256').update(material).digest('hex')
 }
 
 // Helper PURO: verifica se um timestamp já expirou contra o TTL.
@@ -42,11 +49,12 @@ export function isCacheStale(cachedAt: Date, now: Date = new Date()): boolean {
 export async function getCachedSuggestion(
   companyId: string,
   description: string,
+  counterpartyName?: string | null,
 ): Promise<CachedClaudeSuggestion | null> {
   if (!companyId) {
     throw new Error('companyId obrigatório (isolamento multi-tenant)')
   }
-  const cacheKey = computeCacheKey(description)
+  const cacheKey = computeCacheKey(description, counterpartyName)
 
   const row = await prisma.aiClaudeCache.findUnique({
     where: { companyId_cacheKey: { companyId, cacheKey } },
@@ -88,11 +96,12 @@ export async function putCachedSuggestion(
   companyId: string,
   description: string,
   suggestion: ClaudeSuggestion,
+  counterpartyName?: string | null,
 ): Promise<{ cacheKey: string }> {
   if (!companyId) {
     throw new Error('companyId obrigatório (isolamento multi-tenant)')
   }
-  const cacheKey = computeCacheKey(description)
+  const cacheKey = computeCacheKey(description, counterpartyName)
   const normalizedKey = normalizeDescription(description)
 
   await prisma.aiClaudeCache.upsert({

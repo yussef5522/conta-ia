@@ -80,6 +80,9 @@ export interface BuildUserMessageInput {
   date: Date
   // Supplier detectado (opcional — Camada 2 falhou se chegou aqui sem)
   supplierRazaoSocial?: string | null
+  // FASE 4 (01/08): favorecido/pagador do PIX (opcional). Sinal ADICIONAL — só
+  // entra no prompt quando existe (aditivo, não muda o comportamento sem ele).
+  counterpartyName?: string | null
 }
 
 // Limites pra controlar tokens (custo):
@@ -117,6 +120,9 @@ export function buildUserMessage(input: BuildUserMessageInput): string {
   lines.push(`  Valor: R$ ${input.amount.toFixed(2)}`)
   lines.push(`  Tipo: ${input.type === 'CREDIT' ? 'ENTRADA' : 'SAÍDA'}`)
   lines.push(`  Data: ${input.date.toISOString().slice(0, 10)}`)
+  if (input.counterpartyName) {
+    lines.push(`  Favorecido/pagador (contraparte): ${sanitize(input.counterpartyName)}`)
+  }
   if (input.supplierRazaoSocial) {
     lines.push(`  Fornecedor detectado: ${sanitize(input.supplierRazaoSocial)}`)
   }

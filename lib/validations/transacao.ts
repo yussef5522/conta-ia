@@ -15,6 +15,9 @@ export const transacaoSchema = z.object({
   // Sprint Contraparte PIX (31/07/2026) — edição manual do favorecido/pagador.
   // Ao vir no PUT, a origem vira MANUAL (imune a sobrescrita por PDF/OFX).
   counterpartyName: z.string().max(200).optional().nullable(),
+  // Sprint FASE 4 (01/08/2026) — quando true + categorizando uma tx com
+  // contraparte, cria/atualiza a regra "contraparte → categoria" (por empresa).
+  createCounterpartyRule: z.boolean().optional(),
 })
 
 export const transacaoUpdateSchema = transacaoSchema.partial().omit({ bankAccountId: true })

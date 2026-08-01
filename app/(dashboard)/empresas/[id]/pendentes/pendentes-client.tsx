@@ -77,6 +77,9 @@ interface Transacao {
     fonte: string
     category: { id: string; name: string } | null
   } | null
+  // Sprint FASE 4 (01/08/2026) — contraparte do PIX (favorecido/pagador).
+  counterpartyName?: string | null
+  counterpartySource?: string | null
 }
 
 interface Props {
@@ -131,6 +134,10 @@ export function PendentesClient({
   >(null)
   // Fase 3 Etapa 3: sugestões Claude carregadas lazy por linha
   const [claudeHints, setClaudeHints] = useState<Record<string, ClaudeHint>>({})
+  // FASE 4: sugestões por contraparte (regra do user / intra-grupo / própria empresa)
+  const [cpSuggestions, setCpSuggestions] = useState<
+    Record<string, { kind: 'RULE' | 'INTRA_GROUP' | 'OWN'; categoryId: string | null; reason: string }>
+  >({})
   const [solicitandoIa, setSolicitandoIa] = useState<Set<string>>(new Set())
   // Sprint 3.0.1 — banner persistente de falhas (Safari ITP cookie bug)
   const [falhasIgnorar, setFalhasIgnorar] = useState<
@@ -208,6 +215,21 @@ export function PendentesClient({
       const data = await res.json()
       const txs: Transacao[] = data.transacoes ?? []
       setTransacoes(txs)
+      // FASE 4: sugestões por contraparte (read-only, fire-and-forget). Pré-preenche
+      // só as de REGRA (têm categoria); intra-grupo/própria empresa são informativas.
+      fetch(`/api/empresas/${empresaId}/counterparty-suggestions`)
+        .then((r) => (r.ok ? r.json() : { suggestions: [] }))
+        .then((cp: { suggestions?: Array<{ txId: string; kind: 'RULE' | 'INTRA_GROUP' | 'OWN'; categoryId: string | null; reason: string }> }) => {
+          const map: Record<string, { kind: 'RULE' | 'INTRA_GROUP' | 'OWN'; categoryId: string | null; reason: string }> = {}
+          for (const s of cp.suggestions ?? []) map[s.txId] = { kind: s.kind, categoryId: s.categoryId, reason: s.reason }
+          setCpSuggestions(map)
+          setSelecaoPorLinha((prev) => {
+            const next = { ...prev }
+            for (const s of cp.suggestions ?? []) if (s.kind === 'RULE' && s.categoryId && !next[s.txId]) next[s.txId] = s.categoryId
+            return next
+          })
+        })
+        .catch(() => {})
       // Sprint Filtro de Data Parte A: guardar o total real pra UI mostrar
       // "Mostrando X de Y" e desambiguar quando há mais do que cabe na página.
       setTotalReal(data.paginacao?.total ?? txs.length)
@@ -870,6 +892,21 @@ export function PendentesClient({
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium truncate">{t.description}</p>
+                    {t.counterpartyName && (
+                      <p className="text-xs truncate text-foreground/70">
+                        {t.counterpartyName}
+                        <span className="ml-1 text-[10px] text-muted-foreground/60">
+                          · {t.counterpartySource === 'MANUAL' ? 'você' : t.counterpartySource === 'PDF_STATEMENT' ? 'PDF' : t.counterpartySource === 'OFX' ? 'OFX' : 'auto'}
+                        </span>
+                      </p>
+                    )}
+                    {/* FASE 4: sugestão por contraparte (regra/intra-grupo/própria empresa) */}
+                    {cpSuggestions[t.id] && (
+                      <span className="inline-flex items-center gap-1 mt-0.5 text-xs rounded px-1.5 py-0.5 border border-purple-200 bg-purple-50 text-purple-700 dark:border-purple-900 dark:bg-purple-950 dark:text-purple-200">
+                        <Sparkles className="h-3 w-3" />
+                        {cpSuggestions[t.id].reason}
+                      </span>
+                    )}
                     {/* Fase 3 Etapa 2: badge fornecedor (Camada 2A keyword / 2B BrasilAPI) */}
                     {t.supplier && (
                       <span
