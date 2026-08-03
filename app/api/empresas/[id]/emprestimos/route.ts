@@ -9,6 +9,7 @@ import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import { generateSchedule } from '@/lib/loans/amortization'
+import { validateSchedule, InvalidLoanScheduleError } from '@/lib/loans/validate-schedule'
 import { computeOutstandingBalance as compOut } from '@/lib/loans/auto-conciliacao'
 
 interface Params {
@@ -263,6 +264,22 @@ export async function POST(request: NextRequest, { params }: Params) {
         firstDueDate: d.firstDueDate,
       })
 
+      // GUARD (03/08/2026): agenda tem que fechar antes de gravar. O DRE divide
+      // juros × principal por aqui — agenda inconsistente = DRE errado com cara
+      // de certo. Ver lib/loans/validate-schedule.ts.
+      const vNovo = validateSchedule({
+        rows: schedule,
+        base: d.principal,
+        ratePositive: d.interestRateMonthly > 0,
+        isPostFixed: d.rateType === 'POS',
+      })
+      if (!vNovo.ok) {
+        return NextResponse.json(
+          { erro: 'A agenda gerada não fecha — revise principal, taxa ou prazo.', code: 'SCHEDULE_INVALID', detalhes: vNovo.errors },
+          { status: 422 },
+        )
+      }
+
       const loan = await prisma.loan.create({
         data: {
           companyId: empresaId,
@@ -319,6 +336,22 @@ export async function POST(request: NextRequest, { params }: Params) {
       fixedPayment: d.fixedPayment,
     })
 
+    // GUARD (03/08/2026): mesma trava do modo NOVO. Aqui a base é o SALDO
+    // DEVEDOR inicial (não o principal original). Para pós-fixado a agenda é
+    // estimativa, mas ainda tem que fechar (Σamort=saldo, final=0, identidade).
+    const vMid = validateSchedule({
+      rows: schedule,
+      base: d.outstandingBalanceInitial,
+      ratePositive: d.interestRateMonthly > 0,
+      isPostFixed: d.rateType === 'POS',
+    })
+    if (!vMid.ok) {
+      return NextResponse.json(
+        { erro: 'A agenda gerada não fecha — revise saldo devedor, parcela, taxa ou prazo.', code: 'SCHEDULE_INVALID', detalhes: vMid.errors },
+        { status: 422 },
+      )
+    }
+
     const loan = await prisma.loan.create({
       data: {
         companyId: empresaId,
@@ -364,6 +397,14 @@ export async function POST(request: NextRequest, { params }: Params) {
     })
     return NextResponse.json({ loan }, { status: 201 })
   } catch (error) {
+    // Gerador lança quando a parcela informada não resolve taxa efetiva que
+    // feche a agenda (parcela × prazo < saldo) — erro de cadastro, não 500.
+    if (error instanceof InvalidLoanScheduleError) {
+      return NextResponse.json(
+        { erro: 'A agenda gerada não fecha — revise parcela, prazo, taxa ou saldo devedor.', code: 'SCHEDULE_INVALID', detalhes: error.errors },
+        { status: 422 },
+      )
+    }
     return handleApiError(error)
   }
 }

@@ -14,6 +14,7 @@
 
 import { addMonths } from './amortization'
 import { solveEffectiveRate } from './effective-rate'
+import { InvalidLoanScheduleError } from './validate-schedule'
 
 export interface MidLifeScheduleInput {
   /** Saldo devedor atual (na entrada do sistema) */
@@ -107,15 +108,22 @@ export function generateMidLifeSchedule(input: MidLifeScheduleInput): MidLifeSch
     let scheduleRate: number
     if (hasFixedPayment) {
       pmt = input.fixedPayment!
+      // Fix (03/08/2026): o catch antigo caía pra taxa NOMINAL mantendo
+      // pmt=parcela — par (pagamento, taxa) INCONSISTENTE que não fecha o
+      // saldo → balão silencioso na última parcela (bug real nos 5 contratos
+      // Sicredi da caçula). Agora: se a parcela informada não resolve uma taxa
+      // efetiva que feche a agenda, é ERRO DE CADASTRO — lança pro caller
+      // (rota devolve 422; tela de correção pede revisar parcela/prazo).
       try {
         scheduleRate = solveEffectiveRate({
           outstandingBalance,
           fixedPayment: pmt,
           futureCount,
         })
-      } catch {
-        // Fallback: solver não conseguiu (parcela inviável) — usa nominal
-        scheduleRate = rateMonthly
+      } catch (err) {
+        throw new InvalidLoanScheduleError([
+          `parcela R$ ${pmt.toFixed(2)} não fecha o saldo R$ ${outstandingBalance.toFixed(2)} em ${futureCount} parcelas — confira o valor da parcela e o prazo no carnê (${err instanceof Error ? err.message : 'sem taxa efetiva possível'})`,
+        ])
       }
     } else {
       pmt =
