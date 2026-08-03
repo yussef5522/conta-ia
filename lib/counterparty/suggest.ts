@@ -44,7 +44,17 @@ export function buildCounterpartySuggestion(
 
   const comp = detectCounterpartyCompany(tx.counterpartyName, tx.counterpartyDocument, ctx.ownCompany, ctx.otherCompanies)
   if (comp?.kind === 'INTRA_GROUP') {
-    return { kind: 'INTRA_GROUP', categoryId: null, reason: `transferência entre empresas ↔ ${comp.company.name}`, intraGroupCompanyId: comp.company.id, source: 'CADASTRO' }
+    // CORREÇÃO (02/08): NÃO assumir transferência. Entre empresas do grupo a
+    // natureza varia — royalty (despesa/receita real), transferência (anula),
+    // aporte, distribuição — cada uma com tratamento contábil diferente. Sinaliza
+    // pro user ESCOLHER; nunca auto-classifica (categoryId null).
+    return {
+      kind: 'INTRA_GROUP',
+      categoryId: null,
+      reason: `empresa do grupo: ${comp.company.name} — escolha a natureza (royalty / transferência / aporte / distribuição)`,
+      intraGroupCompanyId: comp.company.id,
+      source: 'CADASTRO',
+    }
   }
   if (comp?.kind === 'OWN') {
     return { kind: 'OWN', categoryId: null, reason: 'recebimento próprio (sua empresa — maquininha/QR)', source: 'CADASTRO' }

@@ -161,6 +161,9 @@ export default function TransacoesPage() {
                 Enriquecer (PDF)
               </Link>
             </Button>
+            <Button variant="outline" asChild>
+              <Link href={`/empresas/${empresaId}/cdb-reclass`}>Reclassificar CDB</Link>
+            </Button>
           </>
         )}
         <Button asChild>

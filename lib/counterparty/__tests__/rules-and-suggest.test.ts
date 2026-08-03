@@ -59,10 +59,12 @@ describe('buildCounterpartySuggestion — prioridade + nada auto', () => {
     const s = buildCounterpartySuggestion({ counterpartyName: 'RECEITA FEDERAL', counterpartyDocument: null }, ctx([rule('RECEITA FEDERAL', 'impostos')]))
     expect(s).toMatchObject({ kind: 'RULE', categoryId: 'impostos', source: 'RULE' })
   })
-  it('intra-grupo sugere transferência (categoryId null — não é despesa auto)', () => {
+  it('intra-grupo NÃO assume transferência — pede a natureza, sem auto-categoria (correção royalties)', () => {
     const s = buildCounterpartySuggestion({ counterpartyName: 'PRO FIT ONE LTDA', counterpartyDocument: null }, ctx())
     expect(s).toMatchObject({ kind: 'INTRA_GROUP', categoryId: null })
-    expect(s?.reason).toMatch(/transferência/i)
+    expect(s?.reason).toMatch(/grupo/i)
+    expect(s?.reason).toMatch(/royalty/i) // oferece royalty como opção
+    expect(s?.reason).toMatch(/escolha/i) // pede pro user decidir
   })
   it('própria empresa → recebimento próprio, não cliente externo', () => {
     const s = buildCounterpartySuggestion({ counterpartyName: 'PRO FIT ITAQUI LTDA', counterpartyDocument: null }, ctx())
