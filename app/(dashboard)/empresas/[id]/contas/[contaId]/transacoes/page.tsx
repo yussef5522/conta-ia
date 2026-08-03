@@ -6,7 +6,7 @@ import { useParams } from 'next/navigation'
 import {
   Plus, ArrowUpRight, ArrowDownRight, MoreVertical,
   Pencil, Trash2, Filter, ChevronLeft, ChevronRight, Upload,
-  ArrowRight, ArrowLeft, ExternalLink,
+  ArrowRight, ArrowLeft, ExternalLink, UserSearch,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -81,6 +81,8 @@ export default function TransacoesPage() {
   const [loading, setLoading] = useState(true)
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; nome: string } | null>(null)
   const [deleting, setDeleting] = useState(false)
+  // Sprint Enriquecer entry (03/08): nº de PIX/TED sem contraparte identificada
+  const [cpGap, setCpGap] = useState(0)
 
   // Filtros
   const now = new Date()
@@ -119,6 +121,19 @@ export default function TransacoesPage() {
   }, [contaId, page, inicio, fim, tipo, status])
 
   useEffect(() => { fetchTransacoes() }, [fetchTransacoes])
+
+  // Gap de contraparte (nível conta, independente de filtro/página). Read-only:
+  // quantos PIX/TED ainda sem nome de quem recebeu/pagou → banner pra enriquecer.
+  useEffect(() => {
+    let cancelado = false
+    fetch(`/api/contas-bancarias/${contaId}/enriquecer-contraparte/gap`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { supported?: boolean; pixSemContraparte?: number } | null) => {
+        if (!cancelado) setCpGap(d?.supported ? (d.pixSemContraparte ?? 0) : 0)
+      })
+      .catch(() => {})
+    return () => { cancelado = true }
+  }, [contaId])
 
   async function handleDelete() {
     if (!deleteTarget) return
@@ -172,6 +187,26 @@ export default function TransacoesPage() {
           </Link>
         </Button>
       </Header>
+
+      {/* Sprint Enriquecer entry (03/08) — porta de entrada visível. Aparece SÓ
+          quando há PIX/TED sem contraparte (fluxo repetido todo mês no import). */}
+      {cpGap > 0 && (
+        <Link
+          href={`/empresas/${empresaId}/contas/${contaId}/enriquecer-contraparte`}
+          className="flex items-center gap-3 rounded-md border border-sky-300 bg-sky-50 px-4 py-3 hover:bg-sky-100 transition-colors"
+        >
+          <UserSearch className="h-5 w-5 text-sky-700 shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-sky-900">
+              {cpGap} PIX/TED sem identificação de quem recebeu
+            </p>
+            <p className="text-xs text-sky-800">
+              Anexe o PDF do extrato pra preencher os nomes (favorecido/pagador). Não altera valor, data nem saldo.
+            </p>
+          </div>
+          <span className="text-sm font-medium text-sky-800 shrink-0">Enriquecer (PDF) →</span>
+        </Link>
+      )}
 
       {/* Cards de resumo */}
       {conta && (
