@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState, useCallback } from 'react'
+import Link from 'next/link'
 import {
   ArrowUpRight,
   ArrowDownRight,
@@ -14,6 +15,7 @@ import {
   Sparkles,
   Wand2,
   MoreVertical,
+  PiggyBank,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -139,6 +141,8 @@ export function PendentesClient({
   const [cpSuggestions, setCpSuggestions] = useState<
     Record<string, { kind: 'RULE' | 'INTRA_GROUP' | 'OWN'; categoryId: string | null; reason: string }>
   >({})
+  // Sprint CDB entry (02/08): nº de aplicação/resgate automático a reclassificar
+  const [cdbReclassCount, setCdbReclassCount] = useState(0)
   const [solicitandoIa, setSolicitandoIa] = useState<Set<string>>(new Set())
   // Sprint 3.0.1 — banner persistente de falhas (Safari ITP cookie bug)
   const [falhasIgnorar, setFalhasIgnorar] = useState<
@@ -229,6 +233,17 @@ export function PendentesClient({
             for (const s of cp.suggestions ?? []) if (s.kind === 'RULE' && s.categoryId && !next[s.txId]) next[s.txId] = s.categoryId
             return next
           })
+        })
+        .catch(() => {})
+      // Sprint CDB entry (02/08): quantas aplicação/resgate automático de CDB ainda
+      // NÃO reclassificadas → banner com porta de entrada pra /cdb-reclass. Read-only.
+      fetch(`/api/empresas/${empresaId}/cdb-reclass/preview`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((pv: { items?: Array<{ nature: string; targetCategoryId: string | null; alreadyCategorized: boolean }> } | null) => {
+          const n = (pv?.items ?? []).filter(
+            (i) => (i.nature === 'APLICACAO' || i.nature === 'RESGATE') && i.targetCategoryId && !i.alreadyCategorized,
+          ).length
+          setCdbReclassCount(n)
         })
         .catch(() => {})
       // Sprint Filtro de Data Parte A: guardar o total real pra UI mostrar
@@ -615,6 +630,26 @@ export function PendentesClient({
           {autoCatLoading ? 'Categorizando...' : 'Auto-categorizar tudo'}
         </Button>
       </Header>
+
+      {/* Sprint CDB entry (02/08) — porta de entrada visível pra reclassificação.
+          Aparece SÓ quando há aplicação/resgate automático de CDB não classificado. */}
+      {cdbReclassCount > 0 && (
+        <Link
+          href={`/empresas/${empresaId}/cdb-reclass`}
+          className="flex items-center gap-3 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 hover:bg-amber-100 transition-colors"
+        >
+          <PiggyBank className="h-5 w-5 text-amber-700 shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-amber-900">
+              {cdbReclassCount} movimentação{cdbReclassCount > 1 ? 'ões' : ''} de aplicação automática (CDB) detectada{cdbReclassCount > 1 ? 's' : ''}
+            </p>
+            <p className="text-xs text-amber-800">
+              Aplicação/resgate são transferência — não são despesa/receita. Clique pra reclassificar (tira do DRE).
+            </p>
+          </div>
+          <span className="text-sm font-medium text-amber-800 shrink-0">Reclassificar →</span>
+        </Link>
+      )}
 
       {/* Sprint 5.0.2.n — resultado do Vendor Discovery batch */}
       {vendorDiscoveryStats && (
