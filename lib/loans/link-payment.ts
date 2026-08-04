@@ -6,9 +6,55 @@
 // Puro — sem DB.
 
 import { validateSchedule, type ScheduleRowForValidation } from './validate-schedule'
+import { descriptionMatchesContract } from './contract-core'
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
 const TOL = 0.02
+
+// Palavra-chave de empréstimo — lista candidatos ADICIONÁVEIS quando não há número
+// na descrição (Caixa/Banrisul). NÃO pré-seleciona (evita misturar contratos da
+// mesma conta).
+const LOAN_KW = /empr[eé]stimo|emprestimo|amortizac|liquidac|presta|contrato|financ|parcela|pronampe/i
+
+export interface GroupTx { id: string; description: string; amount: number; date: Date }
+export interface BuildLinkGroupInput {
+  /** pendentes DEBIT da conta na janela. */
+  pend: GroupTx[]
+  contractNumber: string | null
+  /** tx que originou o clique — SEMPRE pré-selecionada (BUG 1). */
+  originTxId?: string
+  /** seleção explícita do usuário (toggle). Sem isso, usa o grupo auto. */
+  transactionIds?: string[]
+}
+export interface LinkGroup {
+  candidates: Array<GroupTx & { selected: boolean }>
+  selectedIds: string[]
+  paidTotal: number
+}
+
+/**
+ * Monta o grupo do painel de vínculo. Regra:
+ *  - AUTO = lançamentos que batem o contrato (Sicredi) + SEMPRE a tx clicada.
+ *  - sem número (Caixa/Banrisul): grupo começa só com a tx clicada — NUNCA
+ *    auto-agrupa por palavra-chave (misturaria os 2 contratos da mesma conta).
+ *  - candidatos exibidos = grupo + demais lançamentos loan-ish (adicionáveis,
+ *    não pré-selecionados).
+ * Puro — sem DB.
+ */
+export function buildLinkGroup(input: BuildLinkGroupInput): LinkGroup {
+  const { pend, contractNumber, originTxId, transactionIds } = input
+  const contractHits = contractNumber ? pend.filter((t) => descriptionMatchesContract(t.description, contractNumber)) : []
+  const autoIds = new Set(contractHits.map((t) => t.id))
+  if (originTxId && pend.some((t) => t.id === originTxId)) autoIds.add(originTxId)
+  const selectedIds = new Set(transactionIds ?? [...autoIds])
+  const universe = pend.filter((t) => autoIds.has(t.id) || selectedIds.has(t.id) || LOAN_KW.test(t.description ?? ''))
+  const selected = universe.filter((t) => selectedIds.has(t.id))
+  return {
+    candidates: universe.map((t) => ({ ...t, selected: selectedIds.has(t.id) })),
+    selectedIds: [...selectedIds],
+    paidTotal: round2(selected.reduce((s, t) => s + t.amount, 0)),
+  }
+}
 
 export interface LinkSplitInput {
   installment: { amortization: number; openingBalance: number }

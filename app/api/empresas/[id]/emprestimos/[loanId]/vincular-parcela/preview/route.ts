@@ -8,8 +8,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
-import { descriptionMatchesContract } from '@/lib/loans/contract-core'
-import { computeLinkSplit, storedScheduleValid } from '@/lib/loans/link-payment'
+import { buildLinkGroup, computeLinkSplit, storedScheduleValid } from '@/lib/loans/link-payment'
 
 export const runtime = 'nodejs'
 interface Params { params: Promise<{ id: string; loanId: string }> }
@@ -20,6 +19,8 @@ const WINDOW_END = new Date('2026-08-31T23:59:59.999Z')
 const bodySchema = z.object({
   installmentNumber: z.number().int().positive().optional(),
   transactionIds: z.array(z.string()).optional(),
+  // tx que originou o clique — SEMPRE entra pré-selecionada no grupo (BUG 1).
+  originTxId: z.string().optional(),
 })
 
 export async function POST(request: NextRequest, { params }: Params) {
@@ -62,17 +63,10 @@ export async function POST(request: NextRequest, { params }: Params) {
       orderBy: { date: 'asc' },
       select: { id: true, description: true, amount: true, date: true },
     })
-    const contractHits = loan.contractNumber
-      ? pend.filter((t) => descriptionMatchesContract(t.description, loan.contractNumber!))
-      : []
-    // Grupo auto = os que batem o contrato (Sicredi). Sem contrato, começa vazio.
-    const autoIds = new Set(contractHits.map((t) => t.id))
-    const selectedIds = new Set(body.transactionIds ?? [...autoIds])
-
-    // universo do painel: contrato + já selecionados manualmente (caso keyword)
-    const universe = pend.filter((t) => autoIds.has(t.id) || selectedIds.has(t.id))
-    const selected = universe.filter((t) => selectedIds.has(t.id))
-    const paidTotal = selected.reduce((s, t) => s + t.amount, 0)
+    const group = buildLinkGroup({
+      pend, contractNumber: loan.contractNumber, originTxId: body.originTxId, transactionIds: body.transactionIds,
+    })
+    const paidTotal = group.paidTotal
 
     const split = computeLinkSplit({
       installment: { amortization: target.amortization, openingBalance: target.openingBalance },
@@ -88,7 +82,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       loan: { contractNumber: loan.contractNumber, lender: loan.lender, rateType: loan.rateType },
       installment: { number: target.number, dueDate: target.dueDate, amortization: target.amortization, openingBalance: target.openingBalance, status: target.status, isEstimate: target.isEstimate },
       openInstallments: openList.map((i) => ({ number: i.number, dueDate: i.dueDate, status: i.status })),
-      candidates: universe.map((t) => ({ id: t.id, description: t.description, amount: t.amount, date: t.date, selected: selectedIds.has(t.id) })),
+      candidates: group.candidates.map((t) => ({ id: t.id, description: t.description, amount: t.amount, date: t.date, selected: t.selected })),
       paidTotal,
       split,
       saldoAntes: target.openingBalance,

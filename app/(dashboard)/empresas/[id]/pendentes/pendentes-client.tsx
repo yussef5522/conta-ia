@@ -153,7 +153,7 @@ export function PendentesClient({
   const [cdbReclassCount, setCdbReclassCount] = useState(0)
   // Sprint Casar Pagamento (04/08): detecção de pagamento de empréstimo por tx
   const [emprestimoDet, setEmprestimoDet] = useState<Record<string, LoanPaymentDetection>>({})
-  const [linkModal, setLinkModal] = useState<{ loanId: string } | null>(null)
+  const [linkModal, setLinkModal] = useState<{ loanId: string; txId: string } | null>(null)
   const [solicitandoIa, setSolicitandoIa] = useState<Set<string>>(new Set())
   // Sprint 3.0.1 — banner persistente de falhas (Safari ITP cookie bug)
   const [falhasIgnorar, setFalhasIgnorar] = useState<
@@ -1044,7 +1044,7 @@ export function PendentesClient({
                     // Sprint Casar Pagamento — pagamento de empréstimo: NÃO oferece
                     // categoria; oferece vincular à parcela (o split é do empréstimo).
                     det.kind === 'CONTRACT' ? (
-                      <Button size="sm" variant="outline" onClick={() => setLinkModal({ loanId: det.loanId })} className="gap-1.5 border-indigo-300 text-indigo-700 hover:bg-indigo-50">
+                      <Button size="sm" variant="outline" onClick={() => setLinkModal({ loanId: det.loanId, txId: t.id })} className="gap-1.5 border-indigo-300 text-indigo-700 hover:bg-indigo-50">
                         <Landmark className="h-3.5 w-3.5" />
                         <span className="text-xs">🏦 {det.contractNumber} · {det.lender} — Vincular à parcela</span>
                       </Button>
@@ -1052,7 +1052,7 @@ export function PendentesClient({
                       <div className="flex items-center gap-1.5 flex-wrap justify-end max-w-sm">
                         <span className="text-xs text-muted-foreground">🏦 Empréstimo — escolha:</span>
                         {det.candidates.map((c) => (
-                          <Button key={c.loanId} size="sm" variant="outline" onClick={() => setLinkModal({ loanId: c.loanId })} className="gap-1 border-indigo-300 text-indigo-700 hover:bg-indigo-50">
+                          <Button key={c.loanId} size="sm" variant="outline" onClick={() => setLinkModal({ loanId: c.loanId, txId: t.id })} className="gap-1 border-indigo-300 text-indigo-700 hover:bg-indigo-50">
                             <span className="text-xs">{c.lender} {c.contractNumber ?? ''}</span>
                           </Button>
                         ))}
@@ -1312,6 +1312,7 @@ export function PendentesClient({
         <LinkPaymentModal
           empresaId={empresaId}
           loanId={linkModal.loanId}
+          txId={linkModal.txId}
           onClose={() => setLinkModal(null)}
           onDone={() => { setLinkModal(null); fetchTransacoes() }}
         />

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { regenerateSchedule, type RegenLoan, type RegenInstallment } from '../regenerate'
-import { computeLinkSplit } from '../link-payment'
+import { computeLinkSplit, buildLinkGroup, type GroupTx } from '../link-payment'
 import { detectLoanPayment, type DetectLoanLite } from '../detect-payment'
 
 // ===== FASE 2 — gerador SAC + valor financiado (caso C41022570) =====
@@ -47,6 +47,52 @@ describe('computeLinkSplit', () => {
     expect(s.isPartial).toBe(true)
     expect(s.encargos).toBe(0)
     expect(s.amortization).toBeCloseTo(3000, 2)
+  })
+})
+
+// ===== BUG 1/2 — agrupamento do painel (buildLinkGroup) =====
+describe('buildLinkGroup', () => {
+  const tx = (id: string, description: string, amount: number): GroupTx => ({ id, description, amount, date: new Date('2026-07-15') })
+
+  it('C41022570: os 21 lançamentos agrupam com total 5.951,33 (BUG 2)', () => {
+    const amorts = [1101.39, 35.61, 39.98, 46.0, 29.99, 222.92, 778.78, 959.63, 46.99, 45.99, 20.0, 132.95, 57.49, 167.47, 155.86, 32.99, 74.97, 51.98, 315.98, 491.83]
+    const pend = amorts.map((a, i) => tx(`a${i}`, 'AMORTIZACAO CONTRATO-C41022570', a))
+    pend.push(tx('liq', 'LIQUIDACAO DE PARCELA-C41022570', 1142.53))
+    const g = buildLinkGroup({ pend, contractNumber: 'C41022570-0' })
+    expect(g.candidates.length).toBe(21)
+    expect(g.selectedIds.length).toBe(21)
+    expect(g.paidTotal).toBeCloseTo(5951.33, 2)
+  })
+
+  it('tx clicada SEMPRE entra pré-selecionada — CONTRACT', () => {
+    const pend = [tx('t1', 'AMORTIZACAO CONTRATO-C41022570', 100), tx('t2', 'AMORTIZACAO CONTRATO-C41022570', 200)]
+    const g = buildLinkGroup({ pend, contractNumber: 'C41022570-0', originTxId: 't1' })
+    expect(g.selectedIds).toContain('t1')
+  })
+
+  it('empréstimo SEM número (Caixa): grupo abre com 1 (a tx clicada), não com 0 (BUG 1)', () => {
+    const pend = [tx('c1', 'DEBITO PRESTA SIEMP', 2927.02), tx('c2', 'DEBITO PRESTA SIEMP', 3100.0)]
+    const g = buildLinkGroup({ pend, contractNumber: '000000000001827478', originTxId: 'c1' })
+    // só a clicada pré-selecionada
+    expect(g.selectedIds).toEqual(['c1'])
+    expect(g.paidTotal).toBeCloseTo(2927.02, 2)
+    // a outra aparece como candidato ADICIONÁVEL, mas NÃO pré-selecionada
+    const c2 = g.candidates.find((c) => c.id === 'c2')
+    expect(c2?.selected).toBe(false)
+  })
+
+  it('2 contratos Caixa na mesma conta NÃO se misturam (só a clicada entra)', () => {
+    // ambos "DEBITO PRESTA SIEMP" na mesma conta — sem originTx do outro, não agrupa junto
+    const pend = [tx('L1p', 'DEBITO PRESTA SIEMP', 2927.02), tx('L2p', 'DEBITO PRESTA SIEMP', 1500.0)]
+    const g = buildLinkGroup({ pend, contractNumber: '000000000001827478', originTxId: 'L1p' })
+    expect(g.selectedIds).toEqual(['L1p'])
+    expect(g.selectedIds).not.toContain('L2p')
+  })
+
+  it('sem originTxId nem contrato → grupo vazio (não inventa)', () => {
+    const pend = [tx('x', 'DEBITO PRESTA SIEMP', 100)]
+    const g = buildLinkGroup({ pend, contractNumber: null })
+    expect(g.selectedIds.length).toBe(0)
   })
 })
 

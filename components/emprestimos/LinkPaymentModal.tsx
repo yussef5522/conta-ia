@@ -6,6 +6,7 @@
 // CONFERE e ajusta a seleção; UMA confirmação fecha tudo. Nunca vincula sozinho.
 
 import { useEffect, useState, useCallback } from 'react'
+import Link from 'next/link'
 import { Loader2, Landmark, CheckCircle2, AlertTriangle } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -18,6 +19,7 @@ interface Split { amortization: number; encargos: number; paidInterest: number; 
 interface Preview {
   loan: { contractNumber: string | null; lender: string; rateType: string | null }
   installment: { number: number; dueDate: string; amortization: number; openingBalance: number; status: string; isEstimate: boolean }
+  openInstallments: Array<{ number: number; dueDate: string; status: string }>
   candidates: Cand[]
   paidTotal: number
   split: Split
@@ -27,7 +29,7 @@ interface Preview {
 }
 const fmtD = (iso: string) => { const [y, m, d] = iso.slice(0, 10).split('-'); return `${d}/${m}/${y.slice(2)}` }
 
-export function LinkPaymentModal({ empresaId, loanId, onClose, onDone }: { empresaId: string; loanId: string; onClose: () => void; onDone: () => void }) {
+export function LinkPaymentModal({ empresaId, loanId, txId, onClose, onDone }: { empresaId: string; loanId: string; txId?: string; onClose: () => void; onDone: () => void }) {
   const { toast } = useToast()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -38,14 +40,15 @@ export function LinkPaymentModal({ empresaId, loanId, onClose, onDone }: { empre
     setLoading(true)
     const resp = await fetch(`/api/empresas/${empresaId}/emprestimos/${loanId}/vincular-parcela/preview`, {
       method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(ids ? { transactionIds: ids } : {}),
+      // originTxId SEMPRE — a tx clicada entra pré-selecionada (BUG 1).
+      body: JSON.stringify({ ...(ids ? { transactionIds: ids } : {}), originTxId: txId }),
     })
     const { ok, data, message } = await readJsonResponse<Preview>(resp)
     if (!ok || !data) { toast({ variant: 'destructive', title: 'Erro', description: message ?? 'Falha ao carregar' }); onClose(); return }
     setPv(data)
     if (!ids) setSel(new Set(data.candidates.filter((c) => c.selected).map((c) => c.id)))
     setLoading(false)
-  }, [empresaId, loanId, toast, onClose])
+  }, [empresaId, loanId, txId, toast, onClose])
 
   useEffect(() => { void load() }, [load])
 
@@ -83,19 +86,28 @@ export function LinkPaymentModal({ empresaId, loanId, onClose, onDone }: { empre
             {!pv.agendaValida && (
               <div className="rounded-md bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800 flex gap-2">
                 <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
-                A agenda deste empréstimo não fecha — dá pra vincular (o dinheiro saiu), mas o split juros/principal só entra no DRE depois de corrigir a agenda.
+                <span>
+                  A agenda deste empréstimo não fecha — dá pra vincular (o dinheiro saiu), mas o split juros/principal só entra no DRE depois de corrigir a agenda.{' '}
+                  <Link href={`/empresas/${empresaId}/emprestimos/${loanId}/corrigir-agenda`} className="font-semibold underline">Corrigir agenda →</Link>
+                </span>
               </div>
             )}
 
             <div className="rounded-md border p-3 text-sm">
               <p className="font-semibold">Parcela #{pv.installment.number} · vence {fmtD(pv.installment.dueDate)}</p>
+              {pv.openInstallments[0]?.number === pv.installment.number && pv.openInstallments.length > 0 && (
+                <p className="text-xs text-sky-700">Quitando a <strong>parcela em aberto mais antiga</strong> (#{pv.installment.number}, venc {fmtD(pv.installment.dueDate)}) — mesmo que o pagamento seja de outro mês.</p>
+              )}
               <p className="text-xs text-muted-foreground">Você <strong>confere</strong>, não digita — o CAIXAOS calcula a amortização pelo cronograma.</p>
             </div>
 
-            {/* Lançamentos do contrato (agrupados) */}
+            {/* Lançamentos agrupados — resumo SEMPRE visível + lista rolável */}
             <div>
-              <p className="text-xs text-muted-foreground mb-1">Lançamentos deste contrato no período (desmarque o que não entra):</p>
-              <div className="max-h-48 overflow-y-auto border rounded-md divide-y">
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-xs text-muted-foreground">Lançamentos do grupo (marque/desmarque o que entra):</p>
+                <p className="text-xs font-semibold">{sel.size} selecionado{sel.size !== 1 ? 's' : ''} · <span className="tabular-nums">{formatBRL(pv.paidTotal)}</span></p>
+              </div>
+              <div className="relative max-h-72 overflow-y-auto border rounded-md divide-y">
                 {pv.candidates.map((c) => (
                   <label key={c.id} className="flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer hover:bg-muted/50">
                     <input type="checkbox" checked={sel.has(c.id)} onChange={() => toggle(c.id)} />
@@ -106,6 +118,9 @@ export function LinkPaymentModal({ empresaId, loanId, onClose, onDone }: { empre
                 ))}
                 {pv.candidates.length === 0 && <p className="px-3 py-3 text-xs text-muted-foreground text-center">Nenhum lançamento candidato.</p>}
               </div>
+              {pv.candidates.length > 8 && (
+                <p className="text-[10px] text-muted-foreground mt-0.5 text-center">↕ {pv.candidates.length} lançamentos — role a lista pra ver todos</p>
+              )}
             </div>
 
             {/* Split */}
