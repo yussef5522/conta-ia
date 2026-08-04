@@ -48,8 +48,13 @@ export function detectLoanPayment(
         return { kind: 'CONTRACT', loanId: loan.id, contractNumber: loan.contractNumber, lender: loan.lender }
       }
     }
-    // (c) número apareceu mas não há empréstimo cadastrado com ele
-    return { kind: 'NOT_REGISTERED', contractNumber: extracted[0] }
+    // (c) número apareceu mas não há empréstimo cadastrado com ele.
+    // GUARD (04/08): só avisa "não cadastrado" se a descrição REALMENTE parece de
+    // empréstimo — o extrator tem fallback de "≥10 dígitos" que pega CPF de PIX
+    // (ex "PIX_DEB 60025889060 YUSS"). Exige nº C-prefixado (Sicredi) OU palavra
+    // -chave de empréstimo; senão cai fora (não é empréstimo).
+    const contractLike = extracted.some((c) => /^C\d/.test(c)) || LOAN_KEYWORD.test(desc)
+    if (contractLike) return { kind: 'NOT_REGISTERED', contractNumber: extracted[0] }
   }
 
   // (b) palavra-chave + a conta tem empréstimo ativo → candidatos (usuário escolhe)
