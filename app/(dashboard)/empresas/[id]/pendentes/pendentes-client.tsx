@@ -234,7 +234,9 @@ export function PendentesClient({
       // FASE 4: sugestões por contraparte (read-only, fire-and-forget). Pré-preenche
       // só as de REGRA (têm categoria); intra-grupo/própria empresa são informativas.
       fetch(`/api/empresas/${empresaId}/counterparty-suggestions`)
-        .then((r) => (r.ok ? r.json() : { suggestions: [] }))
+        // Higiene (04/08): NÃO engolir 403/500 em silêncio — loga o status. Um
+        // erro engolido (transaction.read) custou tempo nesta sessão.
+        .then((r) => { if (!r.ok) { console.warn(`[pendentes] counterparty-suggestions HTTP ${r.status}`); return { suggestions: [] } } return r.json() })
         .then((cp: { suggestions?: Array<{ txId: string; kind: 'RULE' | 'INTRA_GROUP' | 'OWN'; categoryId: string | null; reason: string }> }) => {
           const map: Record<string, { kind: 'RULE' | 'INTRA_GROUP' | 'OWN'; categoryId: string | null; reason: string }> = {}
           for (const s of cp.suggestions ?? []) map[s.txId] = { kind: s.kind, categoryId: s.categoryId, reason: s.reason }
@@ -245,26 +247,26 @@ export function PendentesClient({
             return next
           })
         })
-        .catch(() => {})
+        .catch((e) => console.warn('[pendentes] counterparty-suggestions falhou:', e))
       // Sprint CDB entry (02/08): quantas aplicação/resgate automático de CDB ainda
       // NÃO reclassificadas → banner com porta de entrada pra /cdb-reclass. Read-only.
       fetch(`/api/empresas/${empresaId}/cdb-reclass/preview`)
-        .then((r) => (r.ok ? r.json() : null))
+        .then((r) => { if (!r.ok) { console.warn(`[pendentes] cdb-reclass/preview HTTP ${r.status}`); return null } return r.json() })
         .then((pv: { items?: Array<{ nature: string; targetCategoryId: string | null; alreadyCategorized: boolean }> } | null) => {
           const n = (pv?.items ?? []).filter(
             (i) => (i.nature === 'APLICACAO' || i.nature === 'RESGATE') && i.targetCategoryId && !i.alreadyCategorized,
           ).length
           setCdbReclassCount(n)
         })
-        .catch(() => {})
+        .catch((e) => console.warn('[pendentes] cdb-reclass/preview falhou:', e))
       // Sprint Casar Pagamento (04/08): detecta pagamentos de empréstimo (JUL-AGO)
       // → linha "🏦 Empréstimo … Vincular" + banner. Read-only.
       fetch(`/api/empresas/${empresaId}/emprestimos/deteccao-pendentes`)
-        .then((r) => (r.ok ? r.json() : null))
+        .then((r) => { if (!r.ok) { console.warn(`[pendentes] deteccao-pendentes HTTP ${r.status}`); return null } return r.json() })
         .then((d: { detections?: Record<string, LoanPaymentDetection> } | null) => {
           setEmprestimoDet(d?.detections ?? {})
         })
-        .catch(() => {})
+        .catch((e) => console.warn('[pendentes] deteccao-pendentes falhou:', e))
       // Sprint Filtro de Data Parte A: guardar o total real pra UI mostrar
       // "Mostrando X de Y" e desambiguar quando há mais do que cabe na página.
       setTotalReal(data.paginacao?.total ?? txs.length)

@@ -19,7 +19,7 @@ export async function GET(request: NextRequest, { params }: Params) {
   try {
     const { id: empresaId } = await params
     const ctx = await getAuthContext(request, empresaId)
-    ctx.requirePermission('transaction.read')
+    ctx.requirePermission('transaction.view')
 
     // Empréstimos ativos por conta (dia de vencimento = dia do firstDueDate).
     const loans = await prisma.loan.findMany({

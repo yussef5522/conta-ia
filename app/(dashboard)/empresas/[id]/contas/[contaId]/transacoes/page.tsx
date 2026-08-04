@@ -127,11 +127,11 @@ export default function TransacoesPage() {
   useEffect(() => {
     let cancelado = false
     fetch(`/api/contas-bancarias/${contaId}/enriquecer-contraparte/gap`)
-      .then((r) => (r.ok ? r.json() : null))
+      .then((r) => { if (!r.ok) { console.warn(`[transacoes] enriquecer-contraparte/gap HTTP ${r.status}`); return null } return r.json() })
       .then((d: { supported?: boolean; pixSemContraparte?: number } | null) => {
         if (!cancelado) setCpGap(d?.supported ? (d.pixSemContraparte ?? 0) : 0)
       })
-      .catch(() => {})
+      .catch((e) => console.warn('[transacoes] enriquecer-contraparte/gap falhou:', e))
     return () => { cancelado = true }
   }, [contaId])
 
