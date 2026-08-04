@@ -10,6 +10,8 @@ import { generateMidLifeSchedule } from './mid-life-schedule'
 import { validateSchedule, InvalidLoanScheduleError } from './validate-schedule'
 import { computePosFixedSplit, computePreFixedSplit } from './installment-match'
 
+const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
+
 export interface RegenLoan {
   principal: number
   outstandingBalanceInitial: number | null
@@ -17,6 +19,7 @@ export interface RegenLoan {
   installmentsPaidBefore: number
   amortizationSystem: 'PRICE' | 'SAC'
   amortizationConstant: number | null
+  financedAmount: number | null
   firstDueDate: Date
 }
 
@@ -36,10 +39,14 @@ export interface RegenInstallment {
 }
 
 export interface RegenInput {
-  /** valor real da parcela (carnê). Usado no PRICE; ignorado no SAC. */
-  parcela: number
+  /** SAC (amortização constante) ou PRICE (parcela fixa). */
+  system: 'SAC' | 'PRICE'
   rateMonthly: number
   isPostFixed: boolean
+  /** PRICE: valor real da parcela (carnê). Ignorado no SAC. */
+  parcela?: number
+  /** SAC: valor FINANCIADO (base da amortização). amort = financedAmount / termMonths. */
+  financedAmount?: number
 }
 
 export interface RegenRow {
@@ -79,11 +86,29 @@ export function regenerateSchedule(
   installments: RegenInstallment[],
   input: RegenInput,
 ): RegenResult {
-  const base = loan.outstandingBalanceInitial ?? loan.principal
   const futureCount = loan.termMonths - loan.installmentsPaidBefore
   const startNumber = loan.installmentsPaidBefore + 1
   const firstFuture = installments.find((i) => i.number === startNumber)
   const firstDueDate = firstFuture?.dueDate ?? loan.firstDueDate
+
+  // Base da faixa rastreada + parâmetros do gerador, por sistema.
+  //   SAC:   amort constante = financedAmount / termMonths (regra validada nos 3
+  //          bancos). A base rastreada = financedAmount − amortizações já pagas
+  //          antes de entrar no sistema.
+  //   PRICE: base = saldo devedor inicial; parcela fixa do carnê fecha a agenda.
+  let base: number
+  let amortizationConstant: number | undefined
+  let fixedPayment: number | undefined
+  if (input.system === 'SAC') {
+    const financed = input.financedAmount ?? loan.financedAmount ?? loan.outstandingBalanceInitial ?? loan.principal
+    // Bancos TRUNCAM a amortização a centavos (150.000/36 = 4.166,66, não 4.166,67).
+    // O resíduo acumulado é absorvido pela última parcela (gerador zera o saldo).
+    amortizationConstant = Math.floor((financed / loan.termMonths) * 100) / 100
+    base = round2(financed - loan.installmentsPaidBefore * amortizationConstant)
+  } else {
+    base = loan.outstandingBalanceInitial ?? loan.principal
+    fixedPayment = input.parcela
+  }
 
   let rows: RegenRow[] = []
   let validation: { ok: boolean; errors: string[] }
@@ -94,14 +119,10 @@ export function regenerateSchedule(
       futureCount,
       startNumber,
       firstDueDate,
-      system: loan.amortizationSystem,
-      amortizationConstant:
-        loan.amortizationSystem === 'SAC'
-          ? loan.amortizationConstant ?? base / futureCount
-          : undefined,
+      system: input.system,
+      amortizationConstant,
       isPostFixed: input.isPostFixed,
-      // SAC tem parcela decrescente — sem parcela fixa. PRICE usa a parcela real.
-      fixedPayment: loan.amortizationSystem === 'PRICE' ? input.parcela : undefined,
+      fixedPayment,
     })
     rows = sched.map((r) => ({
       number: r.number,

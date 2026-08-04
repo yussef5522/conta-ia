@@ -31,9 +31,13 @@ const fmtD = (iso: string) => { const [y, m, d] = iso.slice(0, 10).split('-'); r
 export default function CorrigirAgendaPage() {
   const { id: empresaId, loanId } = useParams<{ id: string; loanId: string }>()
   const { toast } = useToast()
+  const [sistema, setSistema] = useState<'SAC' | 'PRICE'>('SAC')
   const [parcela, setParcela] = useState('')
+  const [financiado, setFinanciado] = useState('')
   const [taxa, setTaxa] = useState('') // % a.m.
   const [tipo, setTipo] = useState<'PRE' | 'POS'>('POS')
+  const [carencia, setCarencia] = useState('')
+  const [carenciaTipo, setCarenciaTipo] = useState<'JUROS' | 'JUROS_CAPITALIZADOS'>('JUROS_CAPITALIZADOS')
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [pv, setPv] = useState<Preview | null>(null)
@@ -41,27 +45,41 @@ export default function CorrigirAgendaPage() {
 
   const parseNum = (s: string) => Number(s.replace(/\./g, '').replace(',', '.'))
 
+  function buildBody(extra: Record<string, unknown> = {}) {
+    const t = parseNum(taxa) / 100
+    const gm = parseNum(carencia)
+    return {
+      system: sistema,
+      rateMonthly: t,
+      isPostFixed: tipo === 'POS',
+      ...(sistema === 'PRICE' ? { parcela: parseNum(parcela) } : { financedAmount: parseNum(financiado) }),
+      ...(gm > 0 ? { graceMonths: Math.round(gm), graceType: carenciaTipo } : {}),
+      ...extra,
+    }
+  }
+
   const gerarPreview = useCallback(async () => {
-    const p = parseNum(parcela), t = parseNum(taxa) / 100
-    if (!(p > 0) || !(t >= 0)) { toast({ variant: 'destructive', title: 'Preencha', description: 'Informe parcela e taxa válidas.' }); return }
+    const t = parseNum(taxa) / 100
+    const val = sistema === 'PRICE' ? parseNum(parcela) : parseNum(financiado)
+    if (!(val > 0) || !(t >= 0)) { toast({ variant: 'destructive', title: 'Preencha', description: sistema === 'PRICE' ? 'Informe parcela e taxa.' : 'Informe valor financiado e taxa.' }); return }
     setLoading(true); setPv(null)
     const resp = await fetch(`/api/empresas/${empresaId}/emprestimos/${loanId}/corrigir-agenda/preview`, {
       method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ parcela: p, rateMonthly: t, isPostFixed: tipo === 'POS' }),
+      body: JSON.stringify(buildBody()),
     })
     const { ok, data, message } = await readJsonResponse<Preview>(resp)
     if (!ok || !data) toast({ variant: 'destructive', title: 'Erro', description: message ?? 'Falha ao gerar preview' })
     else setPv(data)
     setLoading(false)
-  }, [parcela, taxa, tipo, empresaId, loanId, toast])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sistema, parcela, financiado, taxa, tipo, carencia, carenciaTipo, empresaId, loanId, toast])
 
   async function confirmar() {
     if (!pv || !pv.validation.ok || pv.blocked) return
-    const p = parseNum(parcela), t = parseNum(taxa) / 100
     setSaving(true)
     const resp = await fetch(`/api/empresas/${empresaId}/emprestimos/${loanId}/corrigir-agenda/confirm`, {
       method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ parcela: p, rateMonthly: t, isPostFixed: tipo === 'POS', confirm: true }),
+      body: JSON.stringify(buildBody({ confirm: true })),
     })
     const { ok, data, message } = await readJsonResponse<{ ok: boolean }>(resp)
     if (!ok || !data) { toast({ variant: 'destructive', title: 'Não gravei', description: message ?? 'Erro ao gravar' }); setSaving(false); return }
@@ -69,6 +87,7 @@ export default function CorrigirAgendaPage() {
   }
 
   const posFixado = tipo === 'POS'
+  const isSac = sistema === 'SAC'
 
   return (
     <div className="space-y-6">
@@ -88,22 +107,47 @@ export default function CorrigirAgendaPage() {
           <Card>
             <CardHeader><CardTitle className="text-base flex items-center gap-2"><Wrench className="h-4 w-4" />Valores do carnê</CardTitle></CardHeader>
             <CardContent className="space-y-4">
+              <div className="flex gap-2">
+                <Button type="button" variant={isSac ? 'default' : 'outline'} size="sm" onClick={() => setSistema('SAC')}>SAC (amortização constante)</Button>
+                <Button type="button" variant={!isSac ? 'default' : 'outline'} size="sm" onClick={() => setSistema('PRICE')}>PRICE (parcela fixa)</Button>
+              </div>
               <div className="grid gap-4 sm:grid-cols-3">
-                <div>
-                  <label className="text-xs text-muted-foreground">Valor real da parcela (R$)</label>
-                  <Input value={parcela} onChange={(e) => setParcela(e.target.value)} placeholder="4.166,66" inputMode="decimal" />
-                </div>
+                {isSac ? (
+                  <div>
+                    <label className="text-xs text-muted-foreground">Valor financiado (R$) — com IOF e tarifas</label>
+                    <Input value={financiado} onChange={(e) => setFinanciado(e.target.value)} placeholder="150.000,00" inputMode="decimal" />
+                    <p className="text-[10px] text-muted-foreground mt-0.5">A amortização = financiado ÷ nº de parcelas.</p>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="text-xs text-muted-foreground">Valor real da parcela (R$)</label>
+                    <Input value={parcela} onChange={(e) => setParcela(e.target.value)} placeholder="4.166,66" inputMode="decimal" />
+                  </div>
+                )}
                 <div>
                   <label className="text-xs text-muted-foreground">Taxa real mensal (%)</label>
-                  <Input value={taxa} onChange={(e) => setTaxa(e.target.value)} placeholder="1,95" inputMode="decimal" />
+                  <Input value={taxa} onChange={(e) => setTaxa(e.target.value)} placeholder="0,49" inputMode="decimal" />
                 </div>
                 <div>
-                  <label className="text-xs text-muted-foreground">Tipo</label>
+                  <label className="text-xs text-muted-foreground">Indexação</label>
                   <div className="flex gap-2 mt-1">
-                    <Button type="button" variant={tipo === 'PRE' ? 'default' : 'outline'} size="sm" onClick={() => setTipo('PRE')}>Pré-fixado</Button>
+                    <Button type="button" variant={tipo === 'PRE' ? 'default' : 'outline'} size="sm" onClick={() => setTipo('PRE')}>Pré</Button>
                     <Button type="button" variant={tipo === 'POS' ? 'default' : 'outline'} size="sm" onClick={() => setTipo('POS')}>Pós (SELIC/CDI)</Button>
                   </div>
                 </div>
+                <div>
+                  <label className="text-xs text-muted-foreground">Carência (meses)</label>
+                  <Input value={carencia} onChange={(e) => setCarencia(e.target.value)} placeholder="12" inputMode="numeric" />
+                </div>
+                {parseNum(carencia) > 0 && (
+                  <div className="sm:col-span-2">
+                    <label className="text-xs text-muted-foreground">Tipo de carência</label>
+                    <div className="flex gap-2 mt-1">
+                      <Button type="button" variant={carenciaTipo === 'JUROS' ? 'default' : 'outline'} size="sm" onClick={() => setCarenciaTipo('JUROS')}>Só juros (saldo constante)</Button>
+                      <Button type="button" variant={carenciaTipo === 'JUROS_CAPITALIZADOS' ? 'default' : 'outline'} size="sm" onClick={() => setCarenciaTipo('JUROS_CAPITALIZADOS')}>Juros capitalizados (saldo cresce)</Button>
+                    </div>
+                  </div>
+                )}
               </div>
               {posFixado && (
                 <div className="rounded-md bg-sky-50 border border-sky-200 p-3 text-xs text-sky-800">

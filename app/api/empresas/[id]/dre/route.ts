@@ -156,6 +156,10 @@ export async function GET(request: NextRequest, { params }: Params) {
         // (DESPESAS_FINANCEIRAS). Antes essas tx caiam em "Sem categoria"
         // inflando uncat (R$ 28.725,25 em Cacula).
         loanInstallmentPaid: { is: null },
+        // Sprint Casar Pagamento (04/08/2026): tx vinculada a parcela via ponte
+        // N:1 (débito parcial) sai da query principal — o principal é baixa de
+        // passivo; os encargos são reinjetados abaixo. Espelha loanInstallmentPaid.
+        loanInstallmentPayments: { none: {} },
         // Sprint DRE Cleanup (28/06/2026, ACHADO #1 defesa em profundidade):
         // tx que eh liberacao de emprestimo (CREDIT entrada de passivo) NAO eh
         // receita. Antes filtrava so no engine puro mas mapper nao populava o
@@ -315,6 +319,40 @@ export async function GET(request: NextRequest, { params }: Params) {
           isCardPayment: t.isCardPayment,
           pendingTransfer: t.pendingTransfer,
           loanInterestSplit: jurosTotal,
+        })
+      }
+    }
+
+    // Sprint Casar Pagamento (04/08/2026): parcelas pagas via ponte N:1 (débito
+    // parcial Sicredi). Reinjeta os ENCARGOS REAIS (juros+correção+mora) como
+    // Despesa Financeira. Amortização fica FORA (baixa de passivo). Só entra
+    // quando o split foi gravado (agenda válida) — se ficou "a definir" (agenda
+    // inválida), paidInterest é null e o pagamento NÃO afeta o resultado (FASE 5.3).
+    if (jurosCategory) {
+      const n1Paid = await prisma.loanInstallment.findMany({
+        where: {
+          loan: { companyId },
+          status: 'PAID',
+          payments: { some: {} },
+          paidInterest: { not: null },
+          paidDate: { gte: searchRange.start, lte: searchRange.end },
+        },
+        select: { id: true, paidDate: true, paidInterest: true, paidCorrection: true, paidPenalty: true },
+      })
+      for (const inst of n1Paid) {
+        const encargos = (inst.paidInterest ?? 0) + (inst.paidCorrection ?? 0) + (inst.paidPenalty ?? 0)
+        if (encargos <= 0 || !inst.paidDate) continue
+        transactions.push({
+          id: `loan-n1-${inst.id}`,
+          type: 'DEBIT',
+          amount: encargos,
+          date: inst.paidDate,
+          competenceDate: inst.paidDate,
+          paymentDate: inst.paidDate,
+          categoryId: jurosCategory.id,
+          isCardPayment: false,
+          pendingTransfer: false,
+          loanInterestSplit: encargos,
         })
       }
     }

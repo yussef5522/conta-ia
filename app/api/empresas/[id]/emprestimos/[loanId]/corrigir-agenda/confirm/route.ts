@@ -17,10 +17,16 @@ export const runtime = 'nodejs'
 interface Params { params: Promise<{ id: string; loanId: string }> }
 
 const bodySchema = z.object({
-  parcela: z.number().positive(),
+  system: z.enum(['SAC', 'PRICE']),
   rateMonthly: z.number().min(0).max(1),
   isPostFixed: z.boolean(),
+  parcela: z.number().positive().optional(),
+  financedAmount: z.number().positive().optional(),
+  graceMonths: z.number().int().min(0).max(60).optional(),
+  graceType: z.enum(['JUROS', 'JUROS_CAPITALIZADOS']).optional(),
   confirm: z.literal(true),
+}).refine((d) => d.system === 'PRICE' ? !!d.parcela : !!d.financedAmount, {
+  message: 'PRICE exige parcela; SAC exige valor financiado',
 })
 
 export async function POST(request: NextRequest, { params }: Params) {
@@ -35,7 +41,8 @@ export async function POST(request: NextRequest, { params }: Params) {
       where: { id: loanId },
       select: {
         companyId: true, principal: true, outstandingBalanceInitial: true, termMonths: true,
-        installmentsPaidBefore: true, amortizationSystem: true, amortizationConstant: true, firstDueDate: true,
+        installmentsPaidBefore: true, amortizationSystem: true, amortizationConstant: true,
+        financedAmount: true, firstDueDate: true,
       },
     })
     if (!loan) return NextResponse.json({ erro: 'Empréstimo não encontrado' }, { status: 404 })
@@ -56,10 +63,11 @@ export async function POST(request: NextRequest, { params }: Params) {
         principal: loan.principal, outstandingBalanceInitial: loan.outstandingBalanceInitial,
         termMonths: loan.termMonths, installmentsPaidBefore: loan.installmentsPaidBefore,
         amortizationSystem: loan.amortizationSystem as 'PRICE' | 'SAC',
-        amortizationConstant: loan.amortizationConstant, firstDueDate: loan.firstDueDate,
+        amortizationConstant: loan.amortizationConstant, financedAmount: loan.financedAmount,
+        firstDueDate: loan.firstDueDate,
       },
       installments,
-      { parcela: body.parcela, rateMonthly: body.rateMonthly, isPostFixed: body.isPostFixed },
+      { system: body.system, rateMonthly: body.rateMonthly, isPostFixed: body.isPostFixed, parcela: body.parcela, financedAmount: body.financedAmount },
     )
 
     // Gate duplo: nada grava se a agenda não fecha ou se perde reconciliação.
@@ -75,10 +83,20 @@ export async function POST(request: NextRequest, { params }: Params) {
     const newNumbers = new Set(result.rows.map((r) => r.number))
 
     await prisma.$transaction(async (trx) => {
-      // Taxa do cadastro passa a ser a real informada.
+      // Cadastro passa a refletir o carnê real.
       await trx.loan.update({
         where: { id: loanId },
-        data: { interestRateMonthly: body.rateMonthly, rateType: body.isPostFixed ? 'POS' : 'PRE' },
+        data: {
+          interestRateMonthly: body.rateMonthly,
+          rateType: body.isPostFixed ? 'POS' : 'PRE',
+          amortizationSystem: body.system,
+          ...(body.financedAmount !== undefined ? { financedAmount: body.financedAmount } : {}),
+          ...(body.system === 'SAC' && body.financedAmount !== undefined
+            ? { amortizationConstant: Math.floor((body.financedAmount / loan.termMonths) * 100) / 100 }
+            : {}),
+          ...(body.graceMonths !== undefined ? { carencia: body.graceMonths } : {}),
+          ...(body.graceType !== undefined ? { graceType: body.graceType } : {}),
+        },
       })
 
       for (const nr of result.rows) {

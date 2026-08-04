@@ -44,6 +44,14 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { CategoryCombobox } from '@/components/transacoes/category-combobox'
+import { LinkPaymentModal } from '@/components/emprestimos/LinkPaymentModal'
+import { Landmark } from 'lucide-react'
+
+// Sprint Casar Pagamento (04/08): detecção retornada por /emprestimos/deteccao-pendentes
+type LoanPaymentDetection =
+  | { kind: 'CONTRACT'; loanId: string; contractNumber: string; lender: string }
+  | { kind: 'CANDIDATES'; candidates: Array<{ loanId: string; contractNumber: string | null; lender: string; dueDay: number | null }> }
+  | { kind: 'NOT_REGISTERED'; contractNumber: string }
 import { Header } from '@/components/layout/header'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
@@ -143,6 +151,9 @@ export function PendentesClient({
   >({})
   // Sprint CDB entry (02/08): nº de aplicação/resgate automático a reclassificar
   const [cdbReclassCount, setCdbReclassCount] = useState(0)
+  // Sprint Casar Pagamento (04/08): detecção de pagamento de empréstimo por tx
+  const [emprestimoDet, setEmprestimoDet] = useState<Record<string, LoanPaymentDetection>>({})
+  const [linkModal, setLinkModal] = useState<{ loanId: string } | null>(null)
   const [solicitandoIa, setSolicitandoIa] = useState<Set<string>>(new Set())
   // Sprint 3.0.1 — banner persistente de falhas (Safari ITP cookie bug)
   const [falhasIgnorar, setFalhasIgnorar] = useState<
@@ -244,6 +255,14 @@ export function PendentesClient({
             (i) => (i.nature === 'APLICACAO' || i.nature === 'RESGATE') && i.targetCategoryId && !i.alreadyCategorized,
           ).length
           setCdbReclassCount(n)
+        })
+        .catch(() => {})
+      // Sprint Casar Pagamento (04/08): detecta pagamentos de empréstimo (JUL-AGO)
+      // → linha "🏦 Empréstimo … Vincular" + banner. Read-only.
+      fetch(`/api/empresas/${empresaId}/emprestimos/deteccao-pendentes`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d: { detections?: Record<string, LoanPaymentDetection> } | null) => {
+          setEmprestimoDet(d?.detections ?? {})
         })
         .catch(() => {})
       // Sprint Filtro de Data Parte A: guardar o total real pra UI mostrar
@@ -651,6 +670,21 @@ export function PendentesClient({
         </Link>
       )}
 
+      {/* Sprint Casar Pagamento (04/08) — banner: pagamentos de empréstimo detectados */}
+      {Object.keys(emprestimoDet).length > 0 && (
+        <div className="flex items-center gap-3 rounded-md border border-indigo-300 bg-indigo-50 px-4 py-3">
+          <Landmark className="h-5 w-5 text-indigo-700 shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-indigo-900">
+              {Object.keys(emprestimoDet).length} pagamento{Object.keys(emprestimoDet).length > 1 ? 's' : ''} de empréstimo detectado{Object.keys(emprestimoDet).length > 1 ? 's' : ''}
+            </p>
+            <p className="text-xs text-indigo-800">
+              Não são despesa comum — têm amortização (fora do DRE) + encargos. Clique em "Vincular à parcela" na linha pra conferir o split.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Sprint 5.0.2.n — resultado do Vendor Discovery batch */}
       {vendorDiscoveryStats && (
         <div className="rounded-md border border-purple-500/30 bg-purple-500/5 px-4 py-3">
@@ -911,6 +945,7 @@ export function PendentesClient({
             // Só oferece IA quando Camadas 1+2 falharam (sem supplier).
             // E só se Claude está habilitado no server.
             const podeIa = !t.supplier && stats?.claudeEnabled === true && !hint
+            const det = emprestimoDet[t.id] // Sprint Casar Pagamento
 
             return (
               <div
@@ -1003,6 +1038,30 @@ export function PendentesClient({
                     Ramp/Mercury-grade. Busca sem acento, agrupado por dreGroup,
                     teclado ↑↓Enter/Esc, sugestão Claude no topo se houver. */}
                 <div className="flex items-center gap-2 shrink-0">
+                  {det ? (
+                    // Sprint Casar Pagamento — pagamento de empréstimo: NÃO oferece
+                    // categoria; oferece vincular à parcela (o split é do empréstimo).
+                    det.kind === 'CONTRACT' ? (
+                      <Button size="sm" variant="outline" onClick={() => setLinkModal({ loanId: det.loanId })} className="gap-1.5 border-indigo-300 text-indigo-700 hover:bg-indigo-50">
+                        <Landmark className="h-3.5 w-3.5" />
+                        <span className="text-xs">🏦 {det.contractNumber} · {det.lender} — Vincular à parcela</span>
+                      </Button>
+                    ) : det.kind === 'CANDIDATES' ? (
+                      <div className="flex items-center gap-1.5 flex-wrap justify-end max-w-sm">
+                        <span className="text-xs text-muted-foreground">🏦 Empréstimo — escolha:</span>
+                        {det.candidates.map((c) => (
+                          <Button key={c.loanId} size="sm" variant="outline" onClick={() => setLinkModal({ loanId: c.loanId })} className="gap-1 border-indigo-300 text-indigo-700 hover:bg-indigo-50">
+                            <span className="text-xs">{c.lender} {c.contractNumber ?? ''}</span>
+                          </Button>
+                        ))}
+                      </div>
+                    ) : (
+                      <Link href={`/empresas/${empresaId}/emprestimos/novo`} className="text-xs text-indigo-700 underline">
+                        Empréstimo {det.contractNumber} não cadastrado — cadastrar
+                      </Link>
+                    )
+                  ) : (
+                  <>
                   <CategoryCombobox
                     value={selecionada ?? null}
                     categorias={cats.map((c) => ({
@@ -1056,6 +1115,8 @@ export function PendentesClient({
                   >
                     {operando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
                   </Button>
+                  </>
+                  )}
 
                   {/* Sprint 5.0.2.v/w — Botão "↔ É transferência" REMOVIDO inline.
                       Caso de uso atual = transferências detectadas no /import/staging
@@ -1243,6 +1304,16 @@ export function PendentesClient({
         data={previewData}
         onApplied={onPreviewApplied}
       />
+
+      {/* Sprint Casar Pagamento (04/08) — painel de vínculo N:1 */}
+      {linkModal && (
+        <LinkPaymentModal
+          empresaId={empresaId}
+          loanId={linkModal.loanId}
+          onClose={() => setLinkModal(null)}
+          onDone={() => { setLinkModal(null); fetchTransacoes() }}
+        />
+      )}
 
     </div>
   )

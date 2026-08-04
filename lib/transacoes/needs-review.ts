@@ -76,6 +76,10 @@ export const NEEDS_REVIEW_WHERE_PRISMA = {
   reconciledFrom: { none: {} },
   isCardPayment: false,
   loanInstallmentPaid: { is: null },
+  // Sprint Casar Pagamento (04/08/2026): tx vinculada a parcela via ponte N:1
+  // (débito parcial de empréstimo) SAI da fila — o split é do empréstimo, não
+  // categoria da tx. Espelha o loanInstallmentPaid (1:1).
+  loanInstallmentPayments: { none: {} },
   pendingTransfer: false,
   isInternalTransfer: false,
   ignoredAt: null,

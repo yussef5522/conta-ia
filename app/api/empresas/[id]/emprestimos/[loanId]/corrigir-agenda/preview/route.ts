@@ -13,9 +13,17 @@ export const runtime = 'nodejs'
 interface Params { params: Promise<{ id: string; loanId: string }> }
 
 const bodySchema = z.object({
-  parcela: z.number().positive(),
+  system: z.enum(['SAC', 'PRICE']),
   rateMonthly: z.number().min(0).max(1), // 0..100% a.m.
   isPostFixed: z.boolean(),
+  // PRICE: parcela fixa. SAC: valor financiado (base da amortização).
+  parcela: z.number().positive().optional(),
+  financedAmount: z.number().positive().optional(),
+  // metadados do carnê (gravados no confirm; informativos no preview)
+  graceMonths: z.number().int().min(0).max(60).optional(),
+  graceType: z.enum(['JUROS', 'JUROS_CAPITALIZADOS']).optional(),
+}).refine((d) => d.system === 'PRICE' ? !!d.parcela : !!d.financedAmount, {
+  message: 'PRICE exige parcela; SAC exige valor financiado',
 })
 
 export async function POST(request: NextRequest, { params }: Params) {
@@ -31,7 +39,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       select: {
         companyId: true, principal: true, outstandingBalanceInitial: true, termMonths: true,
         installmentsPaidBefore: true, amortizationSystem: true, amortizationConstant: true,
-        firstDueDate: true, contractNumber: true, lender: true,
+        financedAmount: true, firstDueDate: true, contractNumber: true, lender: true,
         interestRateMonthly: true, rateType: true,
       },
     })
@@ -53,10 +61,11 @@ export async function POST(request: NextRequest, { params }: Params) {
         principal: loan.principal, outstandingBalanceInitial: loan.outstandingBalanceInitial,
         termMonths: loan.termMonths, installmentsPaidBefore: loan.installmentsPaidBefore,
         amortizationSystem: loan.amortizationSystem as 'PRICE' | 'SAC',
-        amortizationConstant: loan.amortizationConstant, firstDueDate: loan.firstDueDate,
+        amortizationConstant: loan.amortizationConstant, financedAmount: loan.financedAmount,
+        firstDueDate: loan.firstDueDate,
       },
       installments,
-      { parcela: body.parcela, rateMonthly: body.rateMonthly, isPostFixed: body.isPostFixed },
+      { system: body.system, rateMonthly: body.rateMonthly, isPostFixed: body.isPostFixed, parcela: body.parcela, financedAmount: body.financedAmount },
     )
 
     // Antes = só a faixa RASTREADA (>= startNumber) pra comparar com o depois.
