@@ -15,7 +15,7 @@ describe('regenerateSchedule SAC (C41022570)', () => {
     for (let n = 11; n <= 36; n++) rows.push({
       number: n, dueDate: new Date(Date.UTC(2026, 5 + (n - 11), 15)), openingBalance: 0, interest: 0,
       amortization: 0, correcao: 0, payment: 0, closingBalance: 0, status: 'OPEN', isEstimate: true,
-      reconciledTransactionId: null, realPayment: null,
+      reconciledTransactionId: null, realPayment: null, reconciledTxAmount: null,
     })
     return rows
   }

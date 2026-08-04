@@ -55,8 +55,10 @@ export async function POST(request: NextRequest, { params }: Params) {
         id: true, number: true, dueDate: true, openingBalance: true, interest: true, amortization: true,
         correcao: true, payment: true, closingBalance: true, status: true, isEstimate: true, paidDate: true,
         reconciledTransactionId: true, realPayment: true,
+        reconciledTransaction: { select: { amount: true } },
       },
     })
+    const installmentsForRegen = installments.map((i) => ({ ...i, reconciledTxAmount: i.reconciledTransaction?.amount ?? null }))
 
     const result = regenerateSchedule(
       {
@@ -66,7 +68,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         amortizationConstant: loan.amortizationConstant, financedAmount: loan.financedAmount,
         firstDueDate: loan.firstDueDate,
       },
-      installments,
+      installmentsForRegen,
       { system: body.system, rateMonthly: body.rateMonthly, isPostFixed: body.isPostFixed, parcela: body.parcela, financedAmount: body.financedAmount },
     )
 
@@ -102,8 +104,9 @@ export async function POST(request: NextRequest, { params }: Params) {
       for (const nr of result.rows) {
         const ex = byNumber.get(nr.number)
         if (ex && ex.reconciledTransactionId) {
-          // Preserva o vínculo; recomputa o split com o valor REAL sobre a amort nova.
-          const realPayment = ex.realPayment ?? ex.payment
+          // Preserva o vínculo; recomputa o split com o valor REAL debitado (amount
+          // da tx reconciliada quando realPayment é null) sobre a amort nova.
+          const realPayment = ex.realPayment ?? ex.reconciledTransaction?.amount ?? ex.payment
           const split = body.isPostFixed
             ? computePosFixedSplit({ amortization: nr.amortization, openingBalance: nr.openingBalance }, realPayment, body.rateMonthly)
             : computePreFixedSplit({ interest: nr.interest, amortization: nr.amortization, payment: nr.payment, openingBalance: nr.openingBalance })
@@ -112,6 +115,8 @@ export async function POST(request: NextRequest, { params }: Params) {
             data: {
               dueDate: nr.dueDate, openingBalance: nr.openingBalance, amortization: nr.amortization,
               interest: split.interest, correcao: split.correcao, payment: split.realPayment,
+              // Persiste o valor REAL pra próximos recálculos não caírem no fallback.
+              realPayment: split.realPayment,
               closingBalance: split.closingBalance, isEstimate: false,
               // status/paidDate/reconciledTransactionId INTOCADOS (vínculo preservado).
             },

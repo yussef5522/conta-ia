@@ -36,6 +36,9 @@ export interface RegenInstallment {
   isEstimate: boolean
   reconciledTransactionId: string | null
   realPayment: number | null
+  /** valor REAL debitado (amount da tx reconciliada) — fonte de verdade quando
+   *  realPayment é null (parcela reconciliada por caminho antigo). */
+  reconciledTxAmount: number | null
 }
 
 export interface RegenInput {
@@ -153,7 +156,10 @@ export function regenerateSchedule(
     .filter((i) => i.reconciledTransactionId)
     .map((i) => {
       const nr = newByNumber.get(i.number)
-      const realPayment = i.realPayment ?? i.payment
+      // Valor REAL debitado: realPayment > amount da tx reconciliada > payment
+      // do cronograma. O fallback pro tx amount é crítico — parcelas reconciliadas
+      // por caminho antigo têm realPayment null e o payment é a estimativa velha.
+      const realPayment = i.realPayment ?? i.reconciledTxAmount ?? i.payment
       let depois: ReconciliationImpact['depois'] = null
       if (nr) {
         const split = input.isPostFixed

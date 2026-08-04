@@ -53,8 +53,10 @@ export async function POST(request: NextRequest, { params }: Params) {
         number: true, dueDate: true, openingBalance: true, interest: true, amortization: true,
         correcao: true, payment: true, closingBalance: true, status: true, isEstimate: true,
         reconciledTransactionId: true, realPayment: true,
+        reconciledTransaction: { select: { amount: true } },
       },
     })
+    const installmentsForRegen = installments.map((i) => ({ ...i, reconciledTxAmount: i.reconciledTransaction?.amount ?? null }))
 
     const result = regenerateSchedule(
       {
@@ -64,7 +66,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         amortizationConstant: loan.amortizationConstant, financedAmount: loan.financedAmount,
         firstDueDate: loan.firstDueDate,
       },
-      installments,
+      installmentsForRegen,
       { system: body.system, rateMonthly: body.rateMonthly, isPostFixed: body.isPostFixed, parcela: body.parcela, financedAmount: body.financedAmount },
     )
 
