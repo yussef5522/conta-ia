@@ -509,6 +509,9 @@ model Transaction {
   // SetNull no delete pra preservar histórico financeiro sem cascade nada.
   loanDisbursement      Loan?            @relation("LoanDisbursement")
   loanInstallmentPaid   LoanInstallment? @relation("LoanInstallmentReconcile")
+  // Sprint Casar Pagamento (03/08/2026) — N:1: esta tx faz parte do grupo que
+  // paga uma parcela (débito parcial). Aditivo ao loanInstallmentPaid (1:1).
+  loanInstallmentPayments LoanInstallmentPayment[] @relation("LoanInstallmentPaymentTx")
 
   // Sprint Import Idempotente (18/06/2026) — entries do seen-ledger
   // apontando pra essa tx. Delete da Tx -> SetNull (ledger vira tombstone).
@@ -2763,6 +2766,17 @@ model Loan {
   carencia                  Int        @default(0)
   tarifas                   Float      @default(0)
 
+  // Sprint Casar Pagamento (03/08/2026)
+  // valor FINANCIADO = principal + IOF + tarifas — base da amortização (SAC divide
+  // isto pelo nº de parcelas com amortização). Difere do LIBERADO (ex Banrisul
+  // 64956967 liberou 100.000, financiou 103.398,17). Nullable até o cadastro ser
+  // corrigido pela tela.
+  financedAmount            Float?
+  // Comportamento do saldo devedor durante a carência (Loan.carencia meses):
+  // JUROS = paga só juros, saldo constante · JUROS_CAPITALIZADOS = juros somam ao
+  // saldo (saldo CRESCE — é por isso que agendas com carência nunca fechavam).
+  graceType                 String?
+
   status    String   @default("ACTIVE") // ACTIVE | PAID_OFF | LATE
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2800,8 +2814,41 @@ model LoanInstallment {
   correcao    Float   @default(0)   // parte de indexação (CDI/SELIC/IPCA)
   realPayment Float?                 // valor REAL debitado quando PAID
 
+  // Sprint Casar Pagamento (03/08/2026) — valores REAIS da baixa (extrato), que
+  // podem divergir da estimativa (pós-fixado) ou incluir mora. Identidade:
+  // paidTotal = amortization + paidInterest + paidCorrection + paidPenalty.
+  // amortization (acima) é o valor DETERMINÍSTICO do cronograma (fora do DRE);
+  // paidInterest+paidCorrection+paidPenalty = despesa financeira REAL no DRE.
+  paidInterest   Float?
+  paidCorrection Float?
+  paidPenalty    Float?
+  paidTotal      Float?
+
+  // N:1 — parcela paga por vários lançamentos (débito parcial Sicredi). Aditivo
+  // ao reconciledTransactionId @unique (1:1 legado continua válido).
+  payments LoanInstallmentPayment[]
+
   @@unique([loanId, number])
   @@index([dueDate])
   @@index([status])
   @@map("loan_installments")
+}
+
+// Sprint Casar Pagamento (03/08/2026) — TABELA PONTE N:1 parcela ↔ transações.
+// Uma parcela do Sicredi é paga em N débitos parciais (20 amortizações + 1
+// liquidação). Esta ponte agrupa os lançamentos que quitam UMA parcela, sem
+// mexer no reconciledTransactionId @unique (que fica pro caminho 1:1 legado).
+model LoanInstallmentPayment {
+  id            String   @id @default(cuid())
+  installmentId String
+  installment   LoanInstallment @relation(fields: [installmentId], references: [id], onDelete: Cascade)
+  transactionId String
+  transaction   Transaction @relation("LoanInstallmentPaymentTx", fields: [transactionId], references: [id], onDelete: Cascade)
+  amount        Float
+  createdAt     DateTime @default(now())
+
+  @@unique([installmentId, transactionId])
+  @@index([installmentId])
+  @@index([transactionId])
+  @@map("loan_installment_payments")
 }
