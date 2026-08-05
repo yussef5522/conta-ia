@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
+import { saldoDevedorAtual } from '@/lib/loans/saldo'
 
 interface Params {
   params: Promise<{ id: string; loanId: string }>
@@ -50,7 +51,9 @@ export async function GET(request: NextRequest, { params }: Params) {
     // Agregados
     const paid = loan.installments.filter((i) => i.status === 'PAID')
     const paidAmort = paid.reduce((s, i) => s + i.amortization, 0)
-    const saldoDevedor = Math.round((loan.principal - paidAmort) * 100) / 100
+    // FIX saldo (04/08): agenda válida → closingBalance da última paga; inválida →
+    // fórmula conservadora. Fonte única em lib/loans/saldo.ts.
+    const saldoDevedor = saldoDevedorAtual(loan, loan.installments)
     const jurosTotalContrato = loan.installments.reduce((s, i) => s + i.interest, 0)
     const jurosPagos = paid.reduce((s, i) => s + i.interest, 0)
 

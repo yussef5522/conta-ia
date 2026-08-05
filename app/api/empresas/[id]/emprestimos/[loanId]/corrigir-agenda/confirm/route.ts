@@ -12,6 +12,7 @@ import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import { regenerateSchedule } from '@/lib/loans/regenerate'
 import { computePosFixedSplit, computePreFixedSplit } from '@/lib/loans/installment-match'
+import { computeLinkSplit } from '@/lib/loans/link-payment'
 
 export const runtime = 'nodejs'
 interface Params { params: Promise<{ id: string; loanId: string }> }
@@ -54,11 +55,20 @@ export async function POST(request: NextRequest, { params }: Params) {
       select: {
         id: true, number: true, dueDate: true, openingBalance: true, interest: true, amortization: true,
         correcao: true, payment: true, closingBalance: true, status: true, isEstimate: true, paidDate: true,
-        reconciledTransactionId: true, realPayment: true,
+        reconciledTransactionId: true, realPayment: true, paidInterest: true, paidCorrection: true,
         reconciledTransaction: { select: { amount: true } },
+        payments: { select: { amount: true } },
       },
     })
-    const installmentsForRegen = installments.map((i) => ({ ...i, reconciledTxAmount: i.reconciledTransaction?.amount ?? null }))
+    const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
+    const installmentsForRegen = installments.map((i) => {
+      const linked = i.payments.length > 0 ? r2(i.payments.reduce((s, p) => s + p.amount, 0)) : null
+      return {
+        ...i, reconciledTxAmount: i.reconciledTransaction?.amount ?? null,
+        linkedPaidTotal: linked,
+        linkedEncargosBefore: linked != null ? r2((i.paidInterest ?? 0) + (i.paidCorrection ?? 0)) : null,
+      }
+    })
 
     const result = regenerateSchedule(
       {
@@ -82,6 +92,8 @@ export async function POST(request: NextRequest, { params }: Params) {
 
     const startNumber = loan.installmentsPaidBefore + 1
     const byNumber = new Map(installments.map((i) => [i.number, i]))
+    // FIX 2: parcelas com vínculo N:1 → Σ pagamentos reais, pra recomputar o split.
+    const linkedByNumber = new Map(installmentsForRegen.filter((i) => i.linkedPaidTotal != null).map((i) => [i.number, i.linkedPaidTotal!]))
     const newNumbers = new Set(result.rows.map((r) => r.number))
 
     await prisma.$transaction(async (trx) => {
@@ -119,6 +131,23 @@ export async function POST(request: NextRequest, { params }: Params) {
               realPayment: split.realPayment,
               closingBalance: split.closingBalance, isEstimate: false,
               // status/paidDate/reconciledTransactionId INTOCADOS (vínculo preservado).
+            },
+          })
+        } else if (ex && linkedByNumber.has(nr.number)) {
+          // FIX 2: parcela paga por vínculo N:1 (débito parcial). Recomputa o split
+          // com a amort NOVA + o valor REAL pago (Σ LoanInstallmentPayment), pra o
+          // encargo passar a entrar no DRE. Não desvincula nada.
+          const paidTotal = linkedByNumber.get(nr.number)!
+          const split = computeLinkSplit({ installment: { amortization: nr.amortization, openingBalance: nr.openingBalance }, rateMonthly: body.rateMonthly, paidTotal })
+          await trx.loanInstallment.update({
+            where: { id: ex.id },
+            data: {
+              dueDate: nr.dueDate, openingBalance: nr.openingBalance, amortization: nr.amortization,
+              interest: split.paidInterest, correcao: split.paidCorrection, payment: split.paidTotal,
+              paidTotal: split.paidTotal, paidInterest: split.paidInterest, paidCorrection: split.paidCorrection, paidPenalty: split.paidPenalty,
+              closingBalance: split.closingBalance, isEstimate: false,
+              status: split.isPartial ? 'PARTIAL' : 'PAID',
+              // vínculos LoanInstallmentPayment INTOCADOS — só o split é recalculado.
             },
           })
         } else if (ex) {

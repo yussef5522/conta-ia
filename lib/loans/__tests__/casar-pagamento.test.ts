@@ -15,7 +15,7 @@ describe('regenerateSchedule SAC (C41022570)', () => {
     for (let n = 11; n <= 36; n++) rows.push({
       number: n, dueDate: new Date(Date.UTC(2026, 5 + (n - 11), 15)), openingBalance: 0, interest: 0,
       amortization: 0, correcao: 0, payment: 0, closingBalance: 0, status: 'OPEN', isEstimate: true,
-      reconciledTransactionId: null, realPayment: null, reconciledTxAmount: null,
+      reconciledTransactionId: null, realPayment: null, reconciledTxAmount: null, linkedPaidTotal: null, linkedEncargosBefore: null,
     })
     return rows
   }
@@ -27,6 +27,33 @@ describe('regenerateSchedule SAC (C41022570)', () => {
     // saldo devedor #12: abre 104.166,72 → fecha 100.000,06 (aceite 7.1)
     expect(p12.openingBalance).toBeCloseTo(104166.72, 1)
     expect(p12.closingBalance).toBeCloseTo(100000.06, 1)
+  })
+})
+
+// ===== FIX 2 — recalcular split de vínculo N:1 ao corrigir a agenda =====
+describe('regenerateSchedule — recalcula split de vínculo N:1 (FIX 2)', () => {
+  const loan: RegenLoan = {
+    principal: 104166.72, outstandingBalanceInitial: 104166.72, termMonths: 36,
+    installmentsPaidBefore: 10, amortizationSystem: 'SAC', amortizationConstant: null,
+    financedAmount: null, firstDueDate: new Date('2026-06-15'),
+  }
+  it('parcela #12 vinculada (5.951,33) → linkedPayments com encargos 1.784,67', () => {
+    const rows: RegenInstallment[] = []
+    for (let n = 11; n <= 36; n++) rows.push({
+      number: n, dueDate: new Date(Date.UTC(2026, 5 + (n - 11), 15)), openingBalance: 0, interest: 0,
+      amortization: 0, correcao: 0, payment: 0, closingBalance: 0, status: n === 12 ? 'PAID' : 'OPEN', isEstimate: true,
+      reconciledTransactionId: null, realPayment: null, reconciledTxAmount: null,
+      // #12 paga por vínculo N:1, mas com split "a definir" (agenda estava quebrada)
+      linkedPaidTotal: n === 12 ? 5951.33 : null, linkedEncargosBefore: n === 12 ? 0 : null,
+    })
+    const r = regenerateSchedule(loan, rows, { system: 'SAC', financedAmount: 150000, rateMonthly: 0.004868, isPostFixed: true })
+    expect(r.validation.ok).toBe(true)
+    const lp = r.linkedPayments.find((x) => x.number === 12)!
+    expect(lp).toBeTruthy()
+    expect(lp.encargosAntes).toBe(0) // estava fora do DRE
+    expect(lp.amortDepois).toBeCloseTo(4166.66, 2)
+    expect(lp.encargosDepois).toBeCloseTo(1784.67, 2) // agora entra no DRE
+    expect(lp.isPartial).toBe(false)
   })
 })
 

@@ -9,6 +9,7 @@
 import { generateMidLifeSchedule } from './mid-life-schedule'
 import { validateSchedule, InvalidLoanScheduleError } from './validate-schedule'
 import { computePosFixedSplit, computePreFixedSplit } from './installment-match'
+import { computeLinkSplit } from './link-payment'
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
 
@@ -39,6 +40,12 @@ export interface RegenInstallment {
   /** valor REAL debitado (amount da tx reconciliada) — fonte de verdade quando
    *  realPayment é null (parcela reconciliada por caminho antigo). */
   reconciledTxAmount: number | null
+  /** Σ dos LoanInstallmentPayment (N:1) — valor REAL pago no débito parcial.
+   *  null se a parcela não tem vínculo N:1. */
+  linkedPaidTotal: number | null
+  /** encargos (paidInterest+paidCorrection) atualmente gravados no vínculo N:1
+   *  — pra mostrar o "antes" no preview do recálculo. */
+  linkedEncargosBefore: number | null
 }
 
 export interface RegenInput {
@@ -74,12 +81,24 @@ export interface ReconciliationImpact {
   preserved: boolean
 }
 
+/** Impacto do recálculo do split de uma parcela paga por vínculo N:1 (FIX 2). */
+export interface LinkedPaymentImpact {
+  number: number
+  paidTotal: number
+  encargosAntes: number
+  amortDepois: number
+  encargosDepois: number
+  isPartial: boolean
+}
+
 export interface RegenResult {
   rows: RegenRow[]
   validation: { ok: boolean; errors: string[] }
   base: number
   ratePositive: boolean
   reconciled: ReconciliationImpact[]
+  /** parcelas vinculadas por N:1 que terão o split recalculado ao gravar. */
+  linkedPayments: LinkedPaymentImpact[]
   blocked: boolean
   blockReason: string | null
 }
@@ -183,5 +202,18 @@ export function regenerateSchedule(
     ? `${lost.length} parcela(s) reconciliada(s) (ex #${lost[0].number}) somem do novo cronograma — o vínculo com a transação bancária não pode ser preservado. Revise prazo/parcelas pagas antes.`
     : null
 
-  return { rows, validation, base, ratePositive: input.rateMonthly > 0, reconciled, blocked, blockReason }
+  // FIX 2 (04/08): parcelas pagas por vínculo N:1 (débito parcial) terão o split
+  // RECALCULADO com a amortização nova + o valor REAL pago (Σ LoanInstallmentPayment).
+  // Sem isso, corrigir a agenda não fazia o encargo entrar no DRE (ficava "a definir").
+  const linkedPayments: LinkedPaymentImpact[] = installments
+    .filter((i) => i.linkedPaidTotal != null && i.linkedPaidTotal > 0)
+    .map((i) => {
+      const nr = newByNumber.get(i.number)
+      const paidTotal = i.linkedPaidTotal!
+      if (!nr) return { number: i.number, paidTotal, encargosAntes: i.linkedEncargosBefore ?? 0, amortDepois: 0, encargosDepois: 0, isPartial: false }
+      const split = computeLinkSplit({ installment: { amortization: nr.amortization, openingBalance: nr.openingBalance }, rateMonthly: input.rateMonthly, paidTotal })
+      return { number: i.number, paidTotal, encargosAntes: i.linkedEncargosBefore ?? 0, amortDepois: split.amortization, encargosDepois: split.encargos, isPartial: split.isPartial }
+    })
+
+  return { rows, validation, base, ratePositive: input.rateMonthly > 0, reconciled, linkedPayments, blocked, blockReason }
 }

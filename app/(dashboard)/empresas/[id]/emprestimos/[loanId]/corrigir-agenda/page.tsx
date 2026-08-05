@@ -19,11 +19,13 @@ import { readJsonResponse } from '@/lib/http/safe-json'
 
 interface Row { number: number; dueDate: string; openingBalance: number; interest: number; amortization: number; correcao: number; payment: number; closingBalance: number; status?: string; isEstimate: boolean }
 interface Recon { number: number; realPayment: number; antes: { interest: number; amortization: number; correcao: number }; depois: { interest: number; amortization: number; correcao: number } | null; preserved: boolean }
+interface LinkedImpact { number: number; paidTotal: number; encargosAntes: number; amortDepois: number; encargosDepois: number; isPartial: boolean }
 interface Preview {
   loan: { contractNumber: string | null; lender: string; interestRateMonthly: number; rateType: string | null; amortizationSystem: string; base: number }
   antes: Row[]; depois: Row[]
   validation: { ok: boolean; errors: string[] }
   reconciled: Recon[]; reconciledCount: number
+  linkedPayments: LinkedImpact[]
   blocked: boolean; blockReason: string | null
 }
 const fmtD = (iso: string) => { const [y, m, d] = iso.slice(0, 10).split('-'); return `${d}/${m}/${y.slice(2)}` }
@@ -197,6 +199,27 @@ export default function CorrigirAgendaPage() {
                         </table>
                       </>
                     )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* FIX 2 — parcelas vinculadas por N:1 terão o split recalculado */}
+              {pv.linkedPayments.length > 0 && (
+                <Card className="border-emerald-300">
+                  <CardHeader><CardTitle className="text-base flex items-center gap-2"><Link2 className="h-4 w-4" />{pv.linkedPayments.length} parcela(s) já vinculada(s) terão o split recalculado</CardTitle></CardHeader>
+                  <CardContent>
+                    <p className="text-xs text-muted-foreground mb-2">Vínculos preservados. Ao gravar, os <strong>encargos</strong> (juros+correção+mora) passam a entrar no DRE com o valor REAL pago sobre a amortização nova:</p>
+                    <table className="w-full text-sm">
+                      <thead className="text-xs text-muted-foreground border-b"><tr><th className="text-left py-1">Parcela</th><th className="text-right py-1">Real pago</th><th className="text-right py-1">Amortização (fora do DRE)</th><th className="text-right py-1">Encargos no DRE antes→depois</th></tr></thead>
+                      <tbody>{pv.linkedPayments.map((l) => (
+                        <tr key={l.number} className="border-b last:border-0">
+                          <td className="py-1">#{l.number}{l.isPartial ? <span className="ml-1 text-[9px] text-amber-600">parcial</span> : null}</td>
+                          <td className="py-1 text-right tabular-nums">{formatBRL(l.paidTotal)}</td>
+                          <td className="py-1 text-right tabular-nums text-slate-600">{formatBRL(l.amortDepois)}</td>
+                          <td className="py-1 text-right tabular-nums">{formatBRL(l.encargosAntes)} → <strong className="text-red-700">{formatBRL(l.encargosDepois)}</strong></td>
+                        </tr>
+                      ))}</tbody>
+                    </table>
                   </CardContent>
                 </Card>
               )}

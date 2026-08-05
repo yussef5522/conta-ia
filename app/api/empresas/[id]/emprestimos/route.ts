@@ -9,6 +9,7 @@ import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import { generateSchedule } from '@/lib/loans/amortization'
+import { saldoDevedorAtual } from '@/lib/loans/saldo'
 import { validateSchedule, InvalidLoanScheduleError } from '@/lib/loans/validate-schedule'
 import { computeOutstandingBalance as compOut } from '@/lib/loans/auto-conciliacao'
 
@@ -35,6 +36,9 @@ export async function GET(request: NextRequest, { params }: Params) {
         interestRateMonthly: true,
         termMonths: true,
         amortizationSystem: true,
+        // FIX saldo (04/08): campos pra saldoDevedorAtual (agenda válida → closing).
+        rateType: true,
+        installmentsPaidBefore: true,
         firstDueDate: true,
         iof: true,
         status: true,
@@ -45,9 +49,12 @@ export async function GET(request: NextRequest, { params }: Params) {
           select: {
             number: true,
             dueDate: true,
+            openingBalance: true,
             amortization: true,
             interest: true,
+            correcao: true,
             payment: true,
+            closingBalance: true,
             status: true,
           },
           orderBy: { number: 'asc' },
@@ -68,10 +75,9 @@ export async function GET(request: NextRequest, { params }: Params) {
 
     const carteira = loans.map((l) => {
       const totalPaid = l.installments.filter((i) => i.status === 'PAID').length
-      const paidAmort = l.installments
-        .filter((i) => i.status === 'PAID')
-        .reduce((s, i) => s + i.amortization, 0)
-      const saldoDevedor = Math.round((l.principal - paidAmort) * 100) / 100
+      // FIX saldo (04/08): agenda válida → closingBalance da última paga (verdade);
+      // inválida → fórmula conservadora. Ver lib/loans/saldo.ts.
+      const saldoDevedor = saldoDevedorAtual(l, l.installments)
 
       const proximaOpen = l.installments.find((i) => i.status === 'OPEN')
 

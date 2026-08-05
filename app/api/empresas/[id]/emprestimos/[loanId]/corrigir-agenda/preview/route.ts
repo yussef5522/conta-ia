@@ -52,11 +52,20 @@ export async function POST(request: NextRequest, { params }: Params) {
       select: {
         number: true, dueDate: true, openingBalance: true, interest: true, amortization: true,
         correcao: true, payment: true, closingBalance: true, status: true, isEstimate: true,
-        reconciledTransactionId: true, realPayment: true,
+        reconciledTransactionId: true, realPayment: true, paidInterest: true, paidCorrection: true,
         reconciledTransaction: { select: { amount: true } },
+        payments: { select: { amount: true } },
       },
     })
-    const installmentsForRegen = installments.map((i) => ({ ...i, reconciledTxAmount: i.reconciledTransaction?.amount ?? null }))
+    const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
+    const installmentsForRegen = installments.map((i) => {
+      const linked = i.payments.length > 0 ? r2(i.payments.reduce((s, p) => s + p.amount, 0)) : null
+      return {
+        ...i, reconciledTxAmount: i.reconciledTransaction?.amount ?? null,
+        linkedPaidTotal: linked,
+        linkedEncargosBefore: linked != null ? r2((i.paidInterest ?? 0) + (i.paidCorrection ?? 0)) : null,
+      }
+    })
 
     const result = regenerateSchedule(
       {
@@ -91,6 +100,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       validation: result.validation,
       reconciled: result.reconciled,
       reconciledCount: result.reconciled.length,
+      linkedPayments: result.linkedPayments,
       blocked: result.blocked,
       blockReason: result.blockReason,
     })

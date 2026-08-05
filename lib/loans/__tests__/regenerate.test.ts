@@ -14,7 +14,7 @@ function seed(overrides: Partial<RegenInstallment>[] = []): RegenInstallment[] {
     rows.push({
       number: n, dueDate: new Date(Date.UTC(2026, n - 1, 15)), openingBalance: 0, interest: 0,
       amortization: 0, correcao: 0, payment: 0, closingBalance: 0, status: 'OPEN', isEstimate: true,
-      reconciledTransactionId: null, realPayment: null, reconciledTxAmount: null,
+      reconciledTransactionId: null, realPayment: null, reconciledTxAmount: null, linkedPaidTotal: null, linkedEncargosBefore: null,
     })
   }
   for (const o of overrides) { const i = rows.findIndex((r) => r.number === o.number); if (i >= 0) rows[i] = { ...rows[i], ...o } }
@@ -43,7 +43,7 @@ describe('regenerateSchedule', () => {
   it('reconciliada FORA do novo cronograma → blocked (não perde vínculo)', () => {
     // parcela #40 reconciliada mas termMonths=36 → some do novo cronograma
     const insts = seed()
-    insts.push({ number: 40, dueDate: new Date('2029-01-15'), openingBalance: 0, interest: 0, amortization: 0, correcao: 0, payment: 3800, closingBalance: 0, status: "PAID", isEstimate: false, reconciledTransactionId: "tx40", realPayment: 3800, reconciledTxAmount: null })
+    insts.push({ number: 40, dueDate: new Date('2029-01-15'), openingBalance: 0, interest: 0, amortization: 0, correcao: 0, payment: 3800, closingBalance: 0, status: "PAID", isEstimate: false, reconciledTransactionId: "tx40", realPayment: 3800, reconciledTxAmount: null, linkedPaidTotal: null, linkedEncargosBefore: null })
     const r = regenerateSchedule(loan, insts, { system: 'PRICE', parcela: 3800, rateMonthly: 0.017, isPostFixed: true })
     expect(r.blocked).toBe(true)
     expect(r.blockReason).toMatch(/#40|vínculo|somem/i)
