@@ -15,14 +15,20 @@ import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
 import { readJsonResponse } from '@/lib/http/safe-json'
 
-interface SplitItem { number: number; dueDate: string; encargos: number; amort: number }
+interface MonthImpact { month: string; antes: number; depois: number; parcelas: number }
 interface ContractPreview {
   contractNumber: string; matched: boolean; loanId?: string; lender?: string
   numParcelas: number; valorFinanciado: number
   saldoAntes?: number; saldoDepois?: number; pagasAntes?: number; pagasDepois?: number
-  novoSplitDRE?: SplitItem[]; blocked?: boolean; blockReason?: string | null
+  dreImpactByMonth?: MonthImpact[]; historicoSemVinculoCount?: number; historicoEncargos?: number
+  blocked?: boolean; blockReason?: string | null
 }
-interface Preview { contracts: ContractPreview[]; totalNovoEncargoDRE: number }
+interface Preview {
+  contracts: ContractPreview[]
+  impactoDRE: { total: number; porCompetencia: Array<{ month: string; encargos: number }> }
+  historicoReconstruido: { parcelas: number; encargos: number }
+}
+const fmtMes = (m: string) => { const [y, mo] = m.split('-'); const nomes = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez']; return `${nomes[+mo - 1]}/${y}` }
 const fmtD = (iso: string) => { const [y, m, d] = iso.slice(0, 10).split('-'); return `${d}/${m}/${y.slice(2)}` }
 
 export default function ImportarAgendaPage() {
@@ -84,9 +90,22 @@ export default function ImportarAgendaPage() {
 
           {pv && (
             <>
-              <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm">
-                <strong>Despesa financeira de encargos que passará a entrar no DRE: {formatBRL(pv.totalNovoEncargoDRE)}</strong>
-                <span className="text-xs text-muted-foreground"> (soma dos encargos das parcelas que ganham split)</span>
+              {/* IMPACTO NO DRE — só o que de fato afeta o resultado (parcelas vinculadas) */}
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm">
+                  <p className="font-semibold text-red-900">Impacto no DRE (despesa financeira): {formatBRL(pv.impactoDRE.total)}</p>
+                  <p className="text-xs text-red-800 mt-0.5">Só parcelas com transação bancária vinculada. Por competência:</p>
+                  <ul className="text-xs text-red-800 mt-1 space-y-0.5">
+                    {pv.impactoDRE.porCompetencia.map((c) => (
+                      <li key={c.month} className="flex justify-between"><span>{fmtMes(c.month)}</span><span className="tabular-nums font-semibold">{formatBRL(c.encargos)}</span></li>
+                    ))}
+                    {pv.impactoDRE.porCompetencia.length === 0 && <li className="text-muted-foreground">nenhuma (nada afeta o resultado)</li>}
+                  </ul>
+                </div>
+                <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
+                  <p className="font-semibold text-slate-700">Reconstrução de histórico (NÃO afeta o DRE)</p>
+                  <p className="text-xs text-slate-600 mt-0.5">{pv.historicoReconstruido.parcelas} parcelas antigas pagas SEM transação vinculada — ajustam só saldo devedor e agenda. Encargos históricos: {formatBRL(pv.historicoReconstruido.encargos)}, <strong>fora do resultado</strong> (competências fechadas de 2024/2025 não mudam).</p>
+                </div>
               </div>
 
               {pv.contracts.map((c) => (
@@ -103,16 +122,21 @@ export default function ImportarAgendaPage() {
                           <div className="rounded border p-2"><p className="text-[10px] text-muted-foreground">Saldo devedor</p><p className="tabular-nums">{formatBRL(c.saldoAntes ?? 0)} → <strong className="text-emerald-700">{formatBRL(c.saldoDepois ?? 0)}</strong></p></div>
                           <div className="rounded border p-2"><p className="text-[10px] text-muted-foreground">Parcelas pagas</p><p className="tabular-nums">{c.pagasAntes} → <strong>{c.pagasDepois}</strong></p></div>
                         </div>
-                        {c.novoSplitDRE && c.novoSplitDRE.length > 0 && (
+                        {c.dreImpactByMonth && c.dreImpactByMonth.length > 0 ? (
                           <div>
-                            <p className="text-xs text-muted-foreground mt-1">{c.novoSplitDRE.length} parcela(s) passam a ter split no DRE:</p>
+                            <p className="text-xs text-muted-foreground mt-1">Encargos que entram no DRE (parcelas vinculadas), por competência:</p>
                             <table className="w-full text-xs mt-1">
-                              <tbody className="divide-y">{c.novoSplitDRE.map((s) => (
-                                <tr key={s.number}><td className="py-0.5">#{s.number} · {fmtD(s.dueDate)}</td><td className="py-0.5 text-right tabular-nums text-slate-600">amort {formatBRL(s.amort)}</td><td className="py-0.5 text-right tabular-nums text-red-700">encargos {formatBRL(s.encargos)}</td></tr>
+                              <tbody className="divide-y">{c.dreImpactByMonth.map((m) => (
+                                <tr key={m.month}><td className="py-0.5">{fmtMes(m.month)} · {m.parcelas} parcela(s)</td><td className="py-0.5 text-right tabular-nums text-muted-foreground">{formatBRL(m.antes)} →</td><td className="py-0.5 text-right tabular-nums text-red-700 font-semibold">{formatBRL(m.depois)}</td></tr>
                               ))}</tbody>
                             </table>
+                            {(c.historicoSemVinculoCount ?? 0) > 0 && (
+                              <p className="text-[10px] text-slate-500 mt-1">+ {c.historicoSemVinculoCount} parcela(s) antiga(s) sem vínculo ({formatBRL(c.historicoEncargos ?? 0)} de encargos) — só reconstrução de saldo, fora do DRE.</p>
+                            )}
                           </div>
-                        )}
+                        ) : (c.historicoSemVinculoCount ?? 0) > 0 ? (
+                          <p className="text-[11px] text-slate-500">Nenhuma parcela vinculada — {c.historicoSemVinculoCount} pagas sem vínculo só reconstroem saldo/agenda, sem tocar o DRE.</p>
+                        ) : null}
                       </>
                     )}
                   </CardContent>

@@ -18,6 +18,12 @@ export interface ApplyImportInstallment {
   reconciledTransactionId: string | null
   hasNPayments: boolean
   paidInterest: number | null
+  /** mês de competência que o DRE atribui a esta parcela quando vinculada (data
+   *  da tx no 1:1, paidDate no N:1). null quando NÃO vinculada — nesse caso o
+   *  encargo NÃO entra no DRE (só reconstrói saldo/agenda). */
+  competenceMonth: string | null
+  /** encargo que HOJE está no DRE por esta parcela (0 se sem vínculo/sem split). */
+  currentEncargo: number
 }
 export interface ImportedRow {
   number: number
@@ -37,8 +43,13 @@ export interface ApplyImportResult {
   rows: ImportedRow[]
   saldoDepois: number
   pagasDepois: number
-  /** parcelas que passam a ter split no DRE (liquidadas sem split antes). */
-  novoSplitDRE: Array<{ number: number; dueDate: string; encargos: number; amort: number }>
+  // ── IMPACTO REAL NO DRE — SÓ parcelas VINCULADAS (1:1 ou N:1) por competência ──
+  dreImpactByMonth: Array<{ month: string; antes: number; depois: number; parcelas: number }>
+  dreImpactTotalAntes: number
+  dreImpactTotalDepois: number
+  // ── RECONSTRUÇÃO DE HISTÓRICO — liquidadas SEM vínculo: NÃO afetam o resultado ──
+  historicoSemVinculoCount: number
+  historicoEncargos: number
   blocked: boolean
   blockReason: string | null
 }
@@ -103,15 +114,31 @@ export function applyImportedSchedule(
   const byNumberExisting = new Map(installments.map((i) => [i.number, i]))
   const newNumbers = new Set(parsed.map((p) => p.number))
 
-  // Parcelas que GANHAM split no DRE: liquidadas no documento cujo split ainda não
-  // existia (não estavam pagas, ou estavam pagas mas com paidInterest null).
-  const novoSplitDRE = rows
-    .filter((r) => r.status === 'PAID' && r.paidInterest != null && r.paidInterest > 0)
-    .filter((r) => {
-      const ex = byNumberExisting.get(r.number)
-      return !ex || ex.status !== 'PAID' || ex.paidInterest == null
-    })
-    .map((r) => ({ number: r.number, dueDate: r.dueDate, encargos: r.paidInterest!, amort: r.amortization }))
+  // IMPACTO REAL NO DRE: o DRE só reinjeta encargo de parcela VINCULADA (1:1/N:1).
+  // Liquidada-pelo-documento SEM vínculo NÃO entra no resultado — é só reconstrução
+  // de saldo/agenda. Separa as duas coisas pra o preview não mentir.
+  const impactMap = new Map<string, { antes: number; depois: number; parcelas: number }>()
+  let historicoSemVinculoCount = 0
+  let historicoEncargos = 0
+  for (const r of rows) {
+    if (r.status !== 'PAID' || !(r.paidInterest != null && r.paidInterest > 0)) continue
+    const ex = byNumberExisting.get(r.number)
+    const linked = !!ex && (ex.reconciledTransactionId != null || ex.hasNPayments)
+    if (linked) {
+      const month = ex!.competenceMonth ?? r.dueDate.slice(0, 7)
+      const cur = impactMap.get(month) ?? { antes: 0, depois: 0, parcelas: 0 }
+      cur.antes = round2(cur.antes + (ex!.currentEncargo || 0))
+      cur.depois = round2(cur.depois + r.paidInterest!)
+      cur.parcelas += 1
+      impactMap.set(month, cur)
+    } else {
+      historicoSemVinculoCount += 1
+      historicoEncargos = round2(historicoEncargos + r.paidInterest!)
+    }
+  }
+  const dreImpactByMonth = [...impactMap.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([month, v]) => ({ month, ...v }))
+  const dreImpactTotalAntes = round2(dreImpactByMonth.reduce((s, m) => s + m.antes, 0))
+  const dreImpactTotalDepois = round2(dreImpactByMonth.reduce((s, m) => s + m.depois, 0))
 
   // Bloqueio: parcela JÁ VINCULADA (1:1 ou N:1) que some do documento (número
   // fora da nova agenda) → não pode perder o vínculo.
@@ -123,5 +150,9 @@ export function applyImportedSchedule(
     ? `${linkedLost.length} parcela(s) já vinculada(s) (ex #${linkedLost[0].number}) não existem na agenda do documento — o vínculo seria perdido. Confira se é o documento certo do contrato.`
     : null
 
-  return { rows, saldoDepois: round2(contract.saldoDevedor), pagasDepois: rows.filter((r) => r.status === 'PAID').length, novoSplitDRE, blocked, blockReason }
+  return {
+    rows, saldoDepois: round2(contract.saldoDevedor), pagasDepois: rows.filter((r) => r.status === 'PAID').length,
+    dreImpactByMonth, dreImpactTotalAntes, dreImpactTotalDepois, historicoSemVinculoCount, historicoEncargos,
+    blocked, blockReason,
+  }
 }

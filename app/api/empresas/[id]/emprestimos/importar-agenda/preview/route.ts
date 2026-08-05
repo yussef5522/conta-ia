@@ -56,8 +56,9 @@ export async function POST(request: NextRequest, { params }: Params) {
         installments: {
           orderBy: { number: 'asc' },
           select: {
-            number: true, status: true, reconciledTransactionId: true, paidInterest: true,
+            number: true, status: true, reconciledTransactionId: true, paidInterest: true, paidCorrection: true, paidDate: true,
             openingBalance: true, interest: true, amortization: true, correcao: true, payment: true, closingBalance: true,
+            reconciledTransaction: { select: { date: true } },
             _count: { select: { payments: true } },
           },
         },
@@ -73,7 +74,18 @@ export async function POST(request: NextRequest, { params }: Params) {
       const plan = applyImportedSchedule(
         c,
         { contractNumber: loan.contractNumber, rateType: loan.rateType },
-        loan.installments.map((i) => ({ number: i.number, status: i.status, reconciledTransactionId: i.reconciledTransactionId, hasNPayments: i._count.payments > 0, paidInterest: i.paidInterest })),
+        loan.installments.map((i) => {
+          const is11 = i.reconciledTransactionId != null
+          const isN1 = i._count.payments > 0
+          // competência que o DRE usa: 1:1 = data da tx; N:1 = paidDate
+          const compDate = is11 ? i.reconciledTransaction?.date : i.paidDate
+          return {
+            number: i.number, status: i.status, reconciledTransactionId: i.reconciledTransactionId,
+            hasNPayments: isN1, paidInterest: i.paidInterest,
+            competenceMonth: (is11 || isN1) && compDate ? compDate.toISOString().slice(0, 7) : null,
+            currentEncargo: is11 ? (i.interest || 0) + (i.correcao || 0) : isN1 ? (i.paidInterest || 0) + (i.paidCorrection || 0) : 0,
+          }
+        }),
       )
       const saldoAntes = saldoDevedorAtual(
         { principal: loan.principal, installmentsPaidBefore: loan.installmentsPaidBefore, interestRateMonthly: loan.interestRateMonthly, rateType: loan.rateType, scheduleSource: loan.scheduleSource },
@@ -84,12 +96,29 @@ export async function POST(request: NextRequest, { params }: Params) {
         contractNumber: c.contractNumber, matched: true, loanId: loan.id, lender: loan.lender,
         numParcelas: c.numParcelas, valorFinanciado: c.valorFinanciado,
         saldoAntes, saldoDepois: plan.saldoDepois, pagasAntes, pagasDepois: plan.pagasDepois,
-        novoSplitDRE: plan.novoSplitDRE, blocked: plan.blocked, blockReason: plan.blockReason,
+        dreImpactByMonth: plan.dreImpactByMonth, dreImpactTotalDepois: plan.dreImpactTotalDepois, dreImpactTotalAntes: plan.dreImpactTotalAntes,
+        historicoSemVinculoCount: plan.historicoSemVinculoCount, historicoEncargos: plan.historicoEncargos,
+        blocked: plan.blocked, blockReason: plan.blockReason,
       }
     })
 
-    const totalNovoEncargoDRE = result.reduce((s, r) => s + (r.matched ? r.novoSplitDRE!.reduce((a, x) => a + x.encargos, 0) : 0), 0)
-    return NextResponse.json({ contracts: result, totalNovoEncargoDRE: Math.round(totalNovoEncargoDRE * 100) / 100 })
+    // Agregados HONESTOS: impacto no DRE (só vinculadas) por competência + o
+    // histórico reconstruído (sem efeito no resultado).
+    const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
+    const dreByMonth: Record<string, number> = {}
+    let dreTotal = 0, historicoCount = 0, historicoTotal = 0
+    for (const r of result) {
+      if (!r.matched) continue
+      for (const m of r.dreImpactByMonth!) { dreByMonth[m.month] = r2((dreByMonth[m.month] ?? 0) + m.depois); dreTotal = r2(dreTotal + m.depois) }
+      historicoCount += r.historicoSemVinculoCount!
+      historicoTotal = r2(historicoTotal + r.historicoEncargos!)
+    }
+    const dreDistribuicao = Object.entries(dreByMonth).sort(([a], [b]) => a.localeCompare(b)).map(([month, encargos]) => ({ month, encargos }))
+    return NextResponse.json({
+      contracts: result,
+      impactoDRE: { total: dreTotal, porCompetencia: dreDistribuicao },
+      historicoReconstruido: { parcelas: historicoCount, encargos: historicoTotal },
+    })
   } catch (error) {
     return handleApiError(error)
   }

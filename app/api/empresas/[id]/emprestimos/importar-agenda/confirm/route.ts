@@ -48,7 +48,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       },
     })
 
-    const applied: Array<{ contractNumber: string; parcelasGravadas: number; novoSplit: number; saldo: number }> = []
+    const applied: Array<{ contractNumber: string; parcelasGravadas: number; saldo: number }> = []
     const skipped: Array<{ contractNumber: string; motivo: string }> = []
 
     for (const c of contracts) {
@@ -60,7 +60,9 @@ export async function POST(request: NextRequest, { params }: Params) {
       const plan = applyImportedSchedule(
         c,
         { contractNumber: loan.contractNumber, rateType: loan.rateType },
-        loan.installments.map((i) => ({ number: i.number, status: i.status, reconciledTransactionId: i.reconciledTransactionId, hasNPayments: i._count.payments > 0, paidInterest: i.paidInterest })),
+        // competenceMonth/currentEncargo não são usados na GRAVAÇÃO (só no preview
+        // pro cálculo do impacto no DRE) — o write depende só de rows + blocked.
+        loan.installments.map((i) => ({ number: i.number, status: i.status, reconciledTransactionId: i.reconciledTransactionId, hasNPayments: i._count.payments > 0, paidInterest: i.paidInterest, competenceMonth: null, currentEncargo: 0 })),
       )
       if (plan.blocked) { skipped.push({ contractNumber: c.contractNumber, motivo: plan.blockReason ?? 'bloqueado' }); continue }
 
@@ -94,7 +96,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         const toDelete = loan.installments.filter((i) => !newNumbers.has(i.number) && !i.reconciledTransactionId && i._count.payments === 0)
         if (toDelete.length > 0) await trx.loanInstallment.deleteMany({ where: { id: { in: toDelete.map((i) => i.id) } } })
       })
-      applied.push({ contractNumber: c.contractNumber, parcelasGravadas: plan.rows.length, novoSplit: plan.novoSplitDRE.length, saldo: plan.saldoDepois })
+      applied.push({ contractNumber: c.contractNumber, parcelasGravadas: plan.rows.length, saldo: plan.saldoDepois })
     }
 
     return NextResponse.json({ ok: true, applied, skipped })
