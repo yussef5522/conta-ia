@@ -15,6 +15,7 @@ import {
   Clock,
   ChevronRight,
   Loader2,
+  FileText,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -140,6 +141,12 @@ export default function CarteiraEmprestimosPage({
             <Button variant="outline">
               <Calendar className="h-4 w-4 mr-1" />
               Parcelas do mês
+            </Button>
+          </Link>
+          <Link href={`/empresas/${empresaId}/emprestimos/importar-agenda`}>
+            <Button variant="default" title="Lê o documento oficial do banco — sempre exato">
+              <FileText className="h-4 w-4 mr-1" />
+              Importar agenda do banco
             </Button>
           </Link>
           <Link href={`/empresas/${empresaId}/emprestimos/novo`}>

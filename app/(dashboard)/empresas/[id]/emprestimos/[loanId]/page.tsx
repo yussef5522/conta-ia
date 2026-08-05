@@ -17,6 +17,7 @@ import {
   Loader2,
   Trash2,
   Wrench,
+  FileText,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -217,10 +218,16 @@ export default function DetalheEmprestimoPage({
             Voltar
           </Button>
         </Link>
+        <Link href={`/empresas/${empresaId}/emprestimos/importar-agenda`}>
+          <Button variant="default" title="Lê o documento oficial do banco — sempre exato">
+            <FileText className="h-4 w-4 mr-1" />
+            Importar agenda do banco
+          </Button>
+        </Link>
         <Link href={`/empresas/${empresaId}/emprestimos/${loanId}/corrigir-agenda`}>
-          <Button variant="outline">
+          <Button variant="outline" title="Calcula por fórmula — prefira importar o documento">
             <Wrench className="h-4 w-4 mr-1" />
-            Corrigir agenda
+            Corrigir agenda (fórmula)
           </Button>
         </Link>
         <Button variant="ghost" onClick={() => setConfirmDel(true)} className="text-red-600 hover:text-red-700 hover:bg-red-50">

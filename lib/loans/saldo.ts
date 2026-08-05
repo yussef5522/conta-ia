@@ -21,6 +21,9 @@ export interface SaldoLoan {
   installmentsPaidBefore: number
   interestRateMonthly: number
   rateType: string | null
+  /** 'IMPORTED' → agenda do documento oficial: confia no closing sem revalidar
+   *  a fórmula (parcela NORMAL futura tem encargos 0, quebraria o guard). */
+  scheduleSource?: string | null
 }
 export interface SaldoInstallment {
   number: number
@@ -37,9 +40,12 @@ export function saldoDevedorAtual(loan: SaldoLoan, installments: SaldoInstallmen
   const sorted = [...installments].sort((a, b) => a.number - b.number)
   const tracked = sorted.filter((i) => i.number > loan.installmentsPaidBefore)
   const base = tracked[0]?.openingBalance ?? 0
+  // Agenda IMPORTADA do banco é verdade — confia no closing sem revalidar a
+  // fórmula. Gerada por fórmula → só confia se ela FECHA.
   const agendaFecha =
-    tracked.length > 0 &&
-    validateSchedule({ rows: tracked, base, ratePositive: loan.interestRateMonthly > 0, isPostFixed: loan.rateType === 'POS' }).ok
+    loan.scheduleSource === 'IMPORTED' ||
+    (tracked.length > 0 &&
+      validateSchedule({ rows: tracked, base, ratePositive: loan.interestRateMonthly > 0, isPostFixed: loan.rateType === 'POS' }).ok)
 
   if (agendaFecha) {
     // Verdade: fechamento da última parcela paga. Sem nenhuma paga → abertura

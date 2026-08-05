@@ -2776,6 +2776,11 @@ model Loan {
   // JUROS = paga só juros, saldo constante · JUROS_CAPITALIZADOS = juros somam ao
   // saldo (saldo CRESCE — é por isso que agendas com carência nunca fechavam).
   graceType                 String?
+  // Sprint Importar Agenda (04/08/2026): 'GENERATED' (fórmula) | 'IMPORTED' (lida
+  // do documento oficial do banco — verdade, não recalcular). Quando IMPORTED, o
+  // saldo devedor exibido usa o closing da última paga sem revalidar a fórmula
+  // (parcela NORMAL futura tem encargos 0, o que quebraria o guard de juros>0).
+  scheduleSource            String?
 
   status    String   @default("ACTIVE") // ACTIVE | PAID_OFF | LATE
   createdAt DateTime @default(now())

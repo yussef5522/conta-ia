@@ -39,6 +39,7 @@ export async function GET(request: NextRequest, { params }: Params) {
         // FIX saldo (04/08): campos pra saldoDevedorAtual (agenda válida → closing).
         rateType: true,
         installmentsPaidBefore: true,
+        scheduleSource: true,
         firstDueDate: true,
         iof: true,
         status: true,
