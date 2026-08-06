@@ -2780,7 +2780,13 @@ model Loan {
   // do documento oficial do banco — verdade, não recalcular). Quando IMPORTED, o
   // saldo devedor exibido usa o closing da última paga sem revalidar a fórmula
   // (parcela NORMAL futura tem encargos 0, o que quebraria o guard de juros>0).
+  // Sprint Dívida Arafat (05/08/2026): 'FLEXIBLE' = mútuo SEM prazo fixo — a
+  // agenda é só NOMINAL (referência); devolução conforme caixa. NUNCA marca
+  // "Atrasada" nem "Próxima a vencer" (não é financiamento bancário).
   scheduleSource            String?
+  // Observação livre exibida na tela — pra alguém daqui a 6 meses entender o
+  // contexto (ex: "saldo remanescente de mútuo de 340.000 iniciado em mai/2026").
+  notes                     String?
 
   status    String   @default("ACTIVE") // ACTIVE | PAID_OFF | LATE
   createdAt DateTime @default(now())

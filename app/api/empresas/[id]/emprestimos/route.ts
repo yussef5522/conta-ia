@@ -40,6 +40,7 @@ export async function GET(request: NextRequest, { params }: Params) {
         rateType: true,
         installmentsPaidBefore: true,
         scheduleSource: true,
+        notes: true,
         firstDueDate: true,
         iof: true,
         status: true,
@@ -82,15 +83,18 @@ export async function GET(request: NextRequest, { params }: Params) {
 
       const proximaOpen = l.installments.find((i) => i.status === 'OPEN')
 
+      // Mútuo FLEXIBLE (sem prazo fixo): NUNCA "Atrasada"/"Próxima" — a agenda é só
+      // nominal, a devolução é conforme caixa. Só EM_DIA ou QUITADO.
+      const flexible = l.scheduleSource === 'FLEXIBLE'
       // Vencidas (OPEN com dueDate < hoje) viram "LATE" visual
       const isAtrasada =
-        proximaOpen !== undefined && proximaOpen.dueDate.getTime() < now.getTime()
+        !flexible && proximaOpen !== undefined && proximaOpen.dueDate.getTime() < now.getTime()
       const statusVisual: 'EM_DIA' | 'PROXIMA_VENCER' | 'ATRASADA' | 'QUITADO' =
         l.status === 'PAID_OFF'
           ? 'QUITADO'
           : isAtrasada
             ? 'ATRASADA'
-            : proximaOpen &&
+            : !flexible && proximaOpen &&
                 proximaOpen.dueDate.getTime() - now.getTime() < 7 * 86400000
               ? 'PROXIMA_VENCER'
               : 'EM_DIA'
@@ -138,6 +142,8 @@ export async function GET(request: NextRequest, { params }: Params) {
         interestRateMonthly: l.interestRateMonthly,
         status: l.status,
         statusVisual,
+        flexible: l.scheduleSource === 'FLEXIBLE',
+        notes: l.notes,
         bankAccount: l.bankAccount,
         saldoDevedor,
         totalPaid,

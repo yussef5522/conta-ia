@@ -34,6 +34,8 @@ interface LoanRow {
   interestRateMonthly: number
   status: 'ACTIVE' | 'PAID_OFF' | 'LATE'
   statusVisual: 'EM_DIA' | 'PROXIMA_VENCER' | 'ATRASADA' | 'QUITADO'
+  flexible?: boolean
+  notes?: string | null
   bankAccount: { id: string; name: string; bankName: string | null }
   saldoDevedor: number
   totalPaid: number
@@ -253,7 +255,12 @@ export default function CarteiraEmprestimosPage({
                                     {l.amortizationSystem}
                                   </Badge>
                                   <StatusPill s={l.statusVisual} />
-                                  {!l.disbursementVinculada && (
+                                  {l.flexible && (
+                                    <Badge variant="outline" className="text-[10px] bg-sky-50 text-sky-700 border-sky-200">
+                                      Mútuo sem prazo fixo
+                                    </Badge>
+                                  )}
+                                  {!l.flexible && !l.disbursementVinculada && (
                                     <Badge
                                       variant="outline"
                                       className="text-[10px] bg-amber-50/50 text-amber-700 border-amber-200"
@@ -262,6 +269,9 @@ export default function CarteiraEmprestimosPage({
                                     </Badge>
                                   )}
                                 </div>
+                                {l.notes && (
+                                  <p className="text-[10px] text-sky-700/90 leading-snug">{l.notes}</p>
+                                )}
                                 <div className="flex items-center gap-3 text-xs text-muted-foreground">
                                   <span>
                                     {l.termMonths}× · {fmtRate(l.interestRateMonthly)}
