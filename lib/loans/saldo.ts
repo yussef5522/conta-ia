@@ -38,6 +38,16 @@ export interface SaldoInstallment {
 
 export function saldoDevedorAtual(loan: SaldoLoan, installments: SaldoInstallment[]): number {
   const sorted = [...installments].sort((a, b) => a.number - b.number)
+
+  // Mútuo FLEXIBLE (sem prazo fixo — Arafat): a agenda de 7x é apenas NOMINAL. O
+  // saldo real é a base ORIGINAL menos as devoluções (amortização das parcelas
+  // pagas, que no split 0% = valor devolvido inteiro). Não depende do fechamento
+  // do cronograma. Ver CLAUDE.md (mútuo Arafat).
+  if (loan.scheduleSource === 'FLEXIBLE') {
+    const devolvido = round2(sorted.filter((i) => i.status === 'PAID').reduce((s, i) => s + i.amortization, 0))
+    return round2(loan.principal - devolvido)
+  }
+
   const tracked = sorted.filter((i) => i.number > loan.installmentsPaidBefore)
   const base = tracked[0]?.openingBalance ?? 0
   // Agenda IMPORTADA do banco é verdade — confia no closing sem revalidar a

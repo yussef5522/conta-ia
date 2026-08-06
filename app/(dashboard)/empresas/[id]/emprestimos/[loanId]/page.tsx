@@ -54,6 +54,9 @@ interface LoanDetalhe {
     rateType: 'PRE' | 'POS' | null
     indexer: 'CDI' | 'SELIC' | 'IPCA' | null
     indexerPercent: number | null
+    scheduleSource: string | null
+    flexible: boolean
+    notes: string | null
     bankAccount: { id: string; name: string; bankName: string | null }
     disbursementTransaction: {
       id: string
@@ -69,6 +72,12 @@ interface LoanDetalhe {
     principalAmortizado: number
     parcelasPagas: number
     parcelasTotal: number
+    devolvido: number | null
+    valorBase: number | null
+    progressoValor: number | null
+    historicoDevolucoes:
+      | Array<{ number: number; date: string; valor: number }>
+      | null
     proximaParcela: {
       number: number
       dueDate: string
@@ -210,7 +219,11 @@ export default function DetalheEmprestimoPage({
     <div className="space-y-6">
       <Header
         title={`${loan.lender}${loan.contractNumber ? ` · ${loan.contractNumber}` : ''}`}
-        description={`${loan.bankAccount.name} · ${loan.termMonths}× ${loan.amortizationSystem} · ${fmtRate(loan.interestRateMonthly)}`}
+        description={
+          loan.flexible
+            ? `${loan.bankAccount.name} · Mútuo sem prazo fixo · sem juros`
+            : `${loan.bankAccount.name} · ${loan.termMonths}× ${loan.amortizationSystem} · ${fmtRate(loan.interestRateMonthly)}`
+        }
       >
         <Link href={`/empresas/${empresaId}/emprestimos`}>
           <Button variant="ghost">
@@ -248,6 +261,11 @@ export default function DetalheEmprestimoPage({
         >
           {loan.status === 'PAID_OFF' ? 'Quitado' : 'Ativo'}
         </Badge>
+        {loan.flexible && (
+          <Badge variant="outline" className="bg-slate-50 text-slate-700 border-slate-200">
+            Mútuo sem prazo fixo · devolução conforme caixa
+          </Badge>
+        )}
         {/* Fix badge EM_ANDAMENTO (17/06/2026):
             - Empréstimo EM ANDAMENTO (outstandingBalanceInitial setado): a
               liberação foi ANTES do período do CAIXAOS, NUNCA entrou como
@@ -263,6 +281,9 @@ export default function DetalheEmprestimoPage({
             Em andamento · liberação anterior ao período
           </Badge>
         ) : (
+          // FLEXIBLE nasce pelo saldo (não registra a entrada) — sem liberação por
+          // design, o badge alarmista de "receita fake" não se aplica.
+          !loan.flexible &&
           !loan.disbursementTransaction &&
           loan.status !== 'PAID_OFF' && (
             <Badge
@@ -275,6 +296,9 @@ export default function DetalheEmprestimoPage({
           )
         )}
       </div>
+      {loan.notes && (
+        <p className="text-sm text-muted-foreground -mt-3">{loan.notes}</p>
+      )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -282,7 +306,11 @@ export default function DetalheEmprestimoPage({
           icon={<Wallet className="h-4 w-4 text-primary" />}
           label="Saldo devedor"
           value={formatBRL(agregados.saldoDevedor)}
-          sub={`${agregados.parcelasPagas}/${agregados.parcelasTotal} parcelas pagas`}
+          sub={
+            loan.flexible
+              ? `${formatBRL(agregados.devolvido ?? 0)} devolvidos de ${formatBRL(agregados.valorBase ?? loan.principal)} (${agregados.progressoValor ?? 0}%)`
+              : `${agregados.parcelasPagas}/${agregados.parcelasTotal} parcelas pagas`
+          }
           tone="primary"
         />
         <KpiCard
@@ -299,25 +327,76 @@ export default function DetalheEmprestimoPage({
           sub={`${formatBRL(agregados.jurosPagos)} pagos`}
           tone="red"
         />
-        <KpiCard
-          icon={<Calendar className="h-4 w-4 text-amber-600" />}
-          label="Próxima parcela"
-          value={agregados.proximaParcela ? formatBRL(agregados.proximaParcela.payment) : '—'}
-          sub={
-            agregados.proximaParcela
-              ? `#${agregados.proximaParcela.number} · ${fmtDate(agregados.proximaParcela.dueDate)}${agregados.proximaParcela.isAtrasada ? ' (atrasada)' : ''}`
-              : 'Quitado'
-          }
-          tone={agregados.proximaParcela?.isAtrasada ? 'red' : 'amber'}
-        />
+        {loan.flexible ? (
+          <KpiCard
+            icon={<Calendar className="h-4 w-4 text-slate-600" />}
+            label="Próxima devolução"
+            value="Sem parcela fixa"
+            sub="Devolução conforme caixa"
+            tone="slate"
+          />
+        ) : (
+          <KpiCard
+            icon={<Calendar className="h-4 w-4 text-amber-600" />}
+            label="Próxima parcela"
+            value={agregados.proximaParcela ? formatBRL(agregados.proximaParcela.payment) : '—'}
+            sub={
+              agregados.proximaParcela
+                ? `#${agregados.proximaParcela.number} · ${fmtDate(agregados.proximaParcela.dueDate)}${agregados.proximaParcela.isAtrasada ? ' (atrasada)' : ''}`
+                : 'Quitado'
+            }
+            tone={agregados.proximaParcela?.isAtrasada ? 'red' : 'amber'}
+          />
+        )}
       </div>
+
+      {/* Histórico de devoluções (FLEXIBLE) — data + valor de cada devolução (2.5) */}
+      {loan.flexible && (
+        <Card>
+          <CardContent className="p-0 overflow-hidden">
+            <div className="px-5 py-3 border-b flex items-center justify-between">
+              <p className="text-sm font-medium">Histórico de devoluções</p>
+              <p className="text-xs text-muted-foreground">
+                {formatBRL(agregados.devolvido ?? 0)} devolvidos de{' '}
+                {formatBRL(agregados.valorBase ?? loan.principal)}
+              </p>
+            </div>
+            {agregados.historicoDevolucoes && agregados.historicoDevolucoes.length > 0 ? (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-muted-foreground border-b">
+                    <th className="px-5 py-2 font-medium">Data</th>
+                    <th className="px-5 py-2 font-medium text-right">Valor devolvido</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {agregados.historicoDevolucoes.map((h) => (
+                    <tr key={h.number} className="border-b last:border-0">
+                      <td className="px-5 py-2.5">{fmtDate(h.date)}</td>
+                      <td className="px-5 py-2.5 text-right tabular-nums font-medium text-emerald-700">
+                        {formatBRL(h.valor)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p className="px-5 py-6 text-sm text-muted-foreground">
+                Nenhuma devolução registrada ainda. Vincule um pagamento pra abater o saldo.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Gráfico saldo devedor */}
       <Card>
         <CardContent className="p-5 space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-sm font-medium">Saldo devedor ao longo do contrato</p>
-            <p className="text-xs text-muted-foreground">{loan.termMonths} parcelas</p>
+            <p className="text-xs text-muted-foreground">
+              {loan.flexible ? 'agenda nominal' : `${loan.termMonths} parcelas`}
+            </p>
           </div>
           <SaldoDevedorChart points={chartPoints} />
         </CardContent>
@@ -327,7 +406,9 @@ export default function DetalheEmprestimoPage({
       <Card>
         <CardContent className="p-0 overflow-hidden">
           <div className="px-5 py-3 border-b flex items-center justify-between">
-            <p className="text-sm font-medium">Cronograma de parcelas</p>
+            <p className="text-sm font-medium">
+              {loan.flexible ? 'Cronograma nominal (referência — sem parcela obrigatória)' : 'Cronograma de parcelas'}
+            </p>
             <p className="text-xs text-muted-foreground">
               IOF: {formatBRL(loan.iof)} · Liberação:{' '}
               {fmtDate(loan.disbursementDate)}

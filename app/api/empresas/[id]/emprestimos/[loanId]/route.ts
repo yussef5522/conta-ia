@@ -48,6 +48,10 @@ export async function GET(request: NextRequest, { params }: Params) {
 
     const now = new Date()
 
+    // Mútuo FLEXIBLE (sem prazo fixo — Arafat): agenda de 7x é NOMINAL. Sem
+    // próxima parcela, sem "atrasada", progresso em VALOR (devolvido/base).
+    const flexible = loan.scheduleSource === 'FLEXIBLE'
+
     // Agregados
     const paid = loan.installments.filter((i) => i.status === 'PAID')
     const paidAmort = paid.reduce((s, i) => s + i.amortization, 0)
@@ -57,18 +61,34 @@ export async function GET(request: NextRequest, { params }: Params) {
     const jurosTotalContrato = loan.installments.reduce((s, i) => s + i.interest, 0)
     const jurosPagos = paid.reduce((s, i) => s + i.interest, 0)
 
-    const proximaOpen = loan.installments.find((i) => i.status === 'OPEN')
+    // FLEXIBLE: quanto já foi devolvido = base original − saldo atual.
+    const devolvido = Math.round((loan.principal - saldoDevedor) * 100) / 100
+    const progressoValor = loan.principal > 0 ? Math.round((devolvido / loan.principal) * 100) : 0
+
+    // Histórico de devoluções (2.5): cada parcela paga com data + valor devolvido.
+    const historicoDevolucoes = paid
+      .filter((i) => i.paidDate)
+      .sort((a, b) => (a.paidDate!.getTime() - b.paidDate!.getTime()))
+      .map((i) => ({
+        number: i.number,
+        date: i.paidDate!.toISOString(),
+        valor: Math.round((i.paidTotal ?? i.amortization) * 100) / 100,
+      }))
+
+    const proximaOpen = flexible ? undefined : loan.installments.find((i) => i.status === 'OPEN')
     const isAtrasada =
       proximaOpen !== undefined && proximaOpen.dueDate.getTime() < now.getTime()
 
-    // Marca status visual de cada parcela (LATE pro front)
+    // Marca status visual de cada parcela (LATE pro front). FLEXIBLE nunca LATE.
     const installments = loan.installments.map((i) => {
       const statusUI: 'PAID' | 'OPEN' | 'LATE' =
         i.status === 'PAID'
           ? 'PAID'
-          : i.dueDate.getTime() < now.getTime()
-            ? 'LATE'
-            : 'OPEN'
+          : flexible
+            ? 'OPEN'
+            : i.dueDate.getTime() < now.getTime()
+              ? 'LATE'
+              : 'OPEN'
       return {
         number: i.number,
         dueDate: i.dueDate.toISOString(),
@@ -125,6 +145,9 @@ export async function GET(request: NextRequest, { params }: Params) {
         rateType: loan.rateType,
         indexer: loan.indexer,
         indexerPercent: loan.indexerPercent,
+        scheduleSource: loan.scheduleSource,
+        flexible,
+        notes: loan.notes,
         bankAccount: loan.bankAccount,
         disbursementTransaction: loan.disbursementTransaction
           ? {
@@ -142,6 +165,11 @@ export async function GET(request: NextRequest, { params }: Params) {
         principalAmortizado: Math.round(paidAmort * 100) / 100,
         parcelasPagas: paid.length,
         parcelasTotal: loan.installments.length,
+        // FLEXIBLE: progresso em VALOR (devolvido de base), não por parcela (2.2).
+        devolvido: flexible ? devolvido : null,
+        valorBase: flexible ? loan.principal : null,
+        progressoValor: flexible ? progressoValor : null,
+        historicoDevolucoes: flexible ? historicoDevolucoes : null,
         proximaParcela: proximaOpen
           ? {
               number: proximaOpen.number,

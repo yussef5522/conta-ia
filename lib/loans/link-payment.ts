@@ -82,6 +82,17 @@ export function computeLinkSplit(input: LinkSplitInput): LinkSplit {
   const paidTotal = round2(input.paidTotal)
   const opening = round2(input.installment.openingBalance)
 
+  // Empréstimo SEM JUROS (taxa 0% — mútuo Arafat / FLEXIBLE): NÃO há encargo. Todo
+  // valor pago é amortização, independente da parcela nominal. Sem isso, pagar
+  // R$ 45.000 numa parcela nominal de R$ 41.428 criaria R$ 3.571 de despesa
+  // financeira inexistente. Ver CLAUDE.md (gap Arafat).
+  if (input.rateMonthly === 0) {
+    return {
+      amortization: paidTotal, paidInterest: 0, paidCorrection: 0, paidPenalty: 0,
+      paidTotal, encargos: 0, closingBalance: round2(opening - paidTotal), isPartial: false,
+    }
+  }
+
   // Parcial: pagou menos que a amortização prevista → tudo vira principal, sem
   // encargos, e a parcela NÃO quita (FASE 4.4).
   if (paidTotal < amortSched - TOL) {

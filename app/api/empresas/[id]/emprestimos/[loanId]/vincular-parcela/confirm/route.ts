@@ -72,6 +72,13 @@ export async function POST(request: NextRequest, { params }: Params) {
     const paidDate = txs.reduce((max, t) => (t.date > max ? t.date : max), txs[0].date)
     const status = split.isPartial ? 'PARTIAL' : 'PAID'
 
+    // Empréstimo SEM JUROS (mútuo Arafat / FLEXIBLE): o split é determinístico
+    // (encargo 0, amortização = valor devolvido inteiro). A agenda nominal de 7x
+    // é irrelevante — SEMPRE grava o split e move a amortização pro valor pago,
+    // pra o saldo (principal − Σamort PAID) cair exatamente o que foi devolvido.
+    const isZeroRate = loan.interestRateMonthly === 0
+    const gravaSplit = isZeroRate || (agendaValida && !split.isPartial)
+
     await prisma.$transaction(async (trx) => {
       for (const t of txs) {
         await trx.loanInstallmentPayment.create({ data: { installmentId: target.id, transactionId: t.id, amount: t.amount } })
@@ -83,10 +90,13 @@ export async function POST(request: NextRequest, { params }: Params) {
           paidDate,
           paidTotal: split.paidTotal,
           // Split só quando a agenda fecha (FASE 5.3). Senão fica "a definir".
-          ...(agendaValida && !split.isPartial
+          // Zero-rate sempre grava (encargo 0, sem risco de despesa espúria).
+          ...(gravaSplit
             ? {
                 paidInterest: split.paidInterest, paidCorrection: split.paidCorrection, paidPenalty: split.paidPenalty,
                 closingBalance: split.closingBalance,
+                // 0%: amortização = valor devolvido (não a parcela nominal).
+                ...(isZeroRate ? { amortization: split.amortization } : {}),
               }
             : {}),
         },
@@ -95,7 +105,7 @@ export async function POST(request: NextRequest, { params }: Params) {
 
     return NextResponse.json({
       ok: true, linked: txs.length, status, paidTotal: split.paidTotal,
-      splitInjected: agendaValida && !split.isPartial, isPartial: split.isPartial, agendaValida,
+      splitInjected: gravaSplit, isPartial: split.isPartial, agendaValida,
     })
   } catch (error) {
     return handleApiError(error)

@@ -36,6 +36,8 @@ interface LoanRow {
   statusVisual: 'EM_DIA' | 'PROXIMA_VENCER' | 'ATRASADA' | 'QUITADO'
   flexible?: boolean
   notes?: string | null
+  devolvido?: number | null
+  valorBase?: number | null
   bankAccount: { id: string; name: string; bankName: string | null }
   saldoDevedor: number
   totalPaid: number
@@ -274,7 +276,7 @@ export default function CarteiraEmprestimosPage({
                                 )}
                                 <div className="flex items-center gap-3 text-xs text-muted-foreground">
                                   <span>
-                                    {l.termMonths}× · {fmtRate(l.interestRateMonthly)}
+                                    {l.flexible ? 'Sem parcela fixa' : `${l.termMonths}× · ${fmtRate(l.interestRateMonthly)}`}
                                   </span>
                                   <span>·</span>
                                   <span>{l.bankAccount.name}</span>
@@ -282,7 +284,9 @@ export default function CarteiraEmprestimosPage({
                                 <div className="space-y-1">
                                   <ProgressBar pct={l.progresso} />
                                   <p className="text-[10px] text-muted-foreground">
-                                    {l.totalPaid}/{l.termMonths} parcelas pagas ({l.progresso}%)
+                                    {l.flexible
+                                      ? `Devolvido ${formatBRL(l.devolvido ?? 0)} de ${formatBRL(l.valorBase ?? l.saldoDevedor)} (${l.progresso}%)`
+                                      : `${l.totalPaid}/${l.termMonths} parcelas pagas (${l.progresso}%)`}
                                   </p>
                                 </div>
                               </div>
@@ -295,17 +299,23 @@ export default function CarteiraEmprestimosPage({
                                 </p>
                               </div>
                               <div className="text-right hidden md:block min-w-[110px]">
-                                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                                  Próxima
-                                </p>
-                                <p className="text-sm font-medium tabular-nums">
-                                  {l.proximaParcelaValor !== null
-                                    ? formatBRL(l.proximaParcelaValor)
-                                    : '—'}
-                                </p>
-                                <p className="text-[10px] text-muted-foreground">
-                                  {l.proximaParcelaDate ? fmtDate(l.proximaParcelaDate) : '—'}
-                                </p>
+                                {l.flexible ? (
+                                  <p className="text-[10px] text-muted-foreground leading-snug">Devolução<br />conforme caixa</p>
+                                ) : (
+                                  <>
+                                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                                      Próxima
+                                    </p>
+                                    <p className="text-sm font-medium tabular-nums">
+                                      {l.proximaParcelaValor !== null
+                                        ? formatBRL(l.proximaParcelaValor)
+                                        : '—'}
+                                    </p>
+                                    <p className="text-[10px] text-muted-foreground">
+                                      {l.proximaParcelaDate ? fmtDate(l.proximaParcelaDate) : '—'}
+                                    </p>
+                                  </>
+                                )}
                               </div>
                               <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
                             </CardContent>

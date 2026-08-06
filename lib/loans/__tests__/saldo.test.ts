@@ -41,6 +41,23 @@ describe('saldoDevedorAtual', () => {
     expect(saldoDevedorAtual(l570, rows)).toBeCloseTo(100000.08, 1)
   })
 
+  // ── Mútuo FLEXIBLE (Arafat): saldo = base − Σdevoluções, agenda nominal ignorada ──
+  it('FLEXIBLE sem devolução → saldo = base (290.000)', () => {
+    const insts = validSchedule() // nominal, nenhuma paga
+    const arafat = { principal: 290000, installmentsPaidBefore: 0, interestRateMonthly: 0, rateType: 'PRE' as const, scheduleSource: 'FLEXIBLE' }
+    expect(saldoDevedorAtual(arafat, insts)).toBeCloseTo(290000, 2)
+  })
+
+  it('FLEXIBLE: devolução de 45.000 (amort=45.000) → saldo 245.000, não depende do cronograma nominal', () => {
+    // 1 parcela paga com amortização = valor devolvido (45.000), demais nominais abertas
+    const rows: SaldoInstallment[] = [
+      { number: 1, status: 'PAID', openingBalance: 290000, interest: 0, amortization: 45000, correcao: 0, payment: 45000, closingBalance: 245000 },
+      { number: 2, status: 'OPEN', openingBalance: 248571.43, interest: 0, amortization: 41428.57, correcao: 0, payment: 41428.57, closingBalance: 207142.86 },
+    ]
+    const arafat = { principal: 290000, installmentsPaidBefore: 0, interestRateMonthly: 0, rateType: 'PRE' as const, scheduleSource: 'FLEXIBLE' }
+    expect(saldoDevedorAtual(arafat, rows)).toBeCloseTo(245000, 2)
+  })
+
   it('agenda QUEBRADA (Σamort ≠ base) → fórmula conservadora principal−Σpaid (não muda)', () => {
     // balão: só 2 parcelas com amort inflada, resto 0 → não fecha
     const rows: SaldoInstallment[] = [

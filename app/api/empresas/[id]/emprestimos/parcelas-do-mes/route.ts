@@ -43,7 +43,8 @@ export async function GET(request: NextRequest, { params }: Params) {
 
   const installments = await prisma.loanInstallment.findMany({
     where: {
-      loan: { companyId },
+      // Mútuo FLEXIBLE (sem prazo fixo) NÃO tem parcela do mês — excluído (2.4).
+      loan: { companyId, scheduleSource: { not: 'FLEXIBLE' } },
       dueDate: { gte: startDate, lte: endDate },
     },
     select: {
@@ -115,9 +116,9 @@ export async function GET(request: NextRequest, { params }: Params) {
     jurosPago: round2(items.filter((i) => i.status === 'PAGA').reduce((s, i) => s + i.interest, 0)),
   }
 
-  // Lista de meses disponíveis (qualquer mês com ao menos 1 parcela)
+  // Lista de meses disponíveis (qualquer mês com ao menos 1 parcela). FLEXIBLE fora.
   const allLoans = await prisma.loan.findMany({
-    where: { companyId },
+    where: { companyId, scheduleSource: { not: 'FLEXIBLE' } },
     select: {
       installments: {
         select: { dueDate: true },

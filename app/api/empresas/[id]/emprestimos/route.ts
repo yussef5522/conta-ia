@@ -99,8 +99,9 @@ export async function GET(request: NextRequest, { params }: Params) {
               ? 'PROXIMA_VENCER'
               : 'EM_DIA'
 
-      // Soma parcelas do mês
-      const parcelasMes = l.installments.filter(
+      // Soma parcelas do mês. Mútuo FLEXIBLE NÃO é compromisso do mês (sem prazo
+      // fixo) — não entra em "Vence este mês" nem "Parcela mensal total" (2.4).
+      const parcelasMes = flexible ? [] : l.installments.filter(
         (i) =>
           i.dueDate.getTime() >= startOfMonth.getTime() &&
           i.dueDate.getTime() <= endOfMonth.getTime() &&
@@ -113,13 +114,12 @@ export async function GET(request: NextRequest, { params }: Params) {
       totalParcelaMes += compromissoMes
       totalJurosMes += jurosMes
       // Recorrência mensal: payment da PRÓXIMA OPEN de cada loan ainda ATIVO.
-      // Diferente de "vence este mês" (que depende da data) — representa o
-      // compromisso mensal típico do contrato.
-      if (l.status === 'ACTIVE' && proximaOpen) {
+      // FLEXIBLE fica fora (não há parcela recorrente).
+      if (!flexible && l.status === 'ACTIVE' && proximaOpen) {
         totalParcelaMensalRec += proximaOpen.payment
       }
 
-      if (proximaOpen) {
+      if (!flexible && proximaOpen) {
         if (
           !proximoVencimento ||
           proximaOpen.dueDate.getTime() < new Date(proximoVencimento.dueDate).getTime()
@@ -147,11 +147,15 @@ export async function GET(request: NextRequest, { params }: Params) {
         bankAccount: l.bankAccount,
         saldoDevedor,
         totalPaid,
-        proximaParcelaDate: proximaOpen?.dueDate.toISOString() ?? null,
-        proximaParcelaValor: proximaOpen?.payment ?? null,
-        progresso: l.installments.length
-          ? Math.round((totalPaid / l.installments.length) * 100)
-          : 0,
+        // FLEXIBLE: sem parcela fixa nem vencimento (2.1).
+        proximaParcelaDate: flexible ? null : (proximaOpen?.dueDate.toISOString() ?? null),
+        proximaParcelaValor: flexible ? null : (proximaOpen?.payment ?? null),
+        // FLEXIBLE: progresso por VALOR (devolvido do saldo-base), não por parcela (2.2).
+        devolvido: flexible ? Math.round((l.principal - saldoDevedor) * 100) / 100 : null,
+        valorBase: flexible ? l.principal : null,
+        progresso: flexible
+          ? (l.principal > 0 ? Math.round(((l.principal - saldoDevedor) / l.principal) * 100) : 0)
+          : (l.installments.length ? Math.round((totalPaid / l.installments.length) * 100) : 0),
         disbursementVinculada: !!l.disbursementTransactionId,
       }
     })

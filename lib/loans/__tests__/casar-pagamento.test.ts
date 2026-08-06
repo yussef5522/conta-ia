@@ -75,6 +75,27 @@ describe('computeLinkSplit', () => {
     expect(s.encargos).toBe(0)
     expect(s.amortization).toBeCloseTo(3000, 2)
   })
+
+  // ── Mútuo FLEXIBLE / taxa 0% (Arafat) — encargo SEMPRE zero ──
+  // Sem isso, devolver R$ 45.000 numa parcela nominal de R$ 41.428,57 criaria
+  // R$ 3.571,43 de despesa financeira inexistente.
+  it('taxa 0%: devolução 45.000 numa parcela nominal 41.428,57 → encargo 0, amort 45.000', () => {
+    const s = computeLinkSplit({ installment: { amortization: 41428.57, openingBalance: 290000 }, rateMonthly: 0, paidTotal: 45000 })
+    expect(s.encargos).toBe(0)
+    expect(s.paidInterest).toBe(0)
+    expect(s.paidCorrection).toBe(0)
+    expect(s.paidPenalty).toBe(0)
+    expect(s.amortization).toBeCloseTo(45000, 2)
+    expect(s.isPartial).toBe(false)
+    // saldo cai EXATAMENTE o valor devolvido: 290.000 − 45.000 = 245.000
+    expect(s.closingBalance).toBeCloseTo(245000, 2)
+  })
+  it('taxa 0%: devolução MENOR que a parcela nominal ainda é encargo 0 (não vira parcial com despesa)', () => {
+    const s = computeLinkSplit({ installment: { amortization: 41428.57, openingBalance: 290000 }, rateMonthly: 0, paidTotal: 30000 })
+    expect(s.encargos).toBe(0)
+    expect(s.amortization).toBeCloseTo(30000, 2)
+    expect(s.closingBalance).toBeCloseTo(260000, 2)
+  })
 })
 
 // ===== BUG 1/2 — agrupamento do painel (buildLinkGroup) =====
