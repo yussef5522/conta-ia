@@ -8,7 +8,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
-import { buildLinkGroup, computeLinkSplit, storedScheduleValid } from '@/lib/loans/link-payment'
+import { buildLinkGroup, computeLinkSplit, storedScheduleValid, pickTargetInstallment } from '@/lib/loans/link-payment'
 
 export const runtime = 'nodejs'
 interface Params { params: Promise<{ id: string; loanId: string }> }
@@ -46,10 +46,6 @@ export async function POST(request: NextRequest, { params }: Params) {
     })
     const startNumber = loan.installmentsPaidBefore + 1
     const openList = installments.filter((i) => i.number >= startNumber && i.status !== 'PAID')
-    const target = body.installmentNumber
-      ? installments.find((i) => i.number === body.installmentNumber)
-      : openList[0]
-    if (!target) return NextResponse.json({ erro: 'Nenhuma parcela em aberto pra vincular' }, { status: 400 })
 
     // Candidatos: DEBIT pendentes da conta, na janela, ainda não vinculados, que
     // batem com o contrato (Sicredi tem nº na descrição; outros bancos: sem nº,
@@ -63,6 +59,14 @@ export async function POST(request: NextRequest, { params }: Params) {
       orderBy: { date: 'asc' },
       select: { id: true, description: true, amount: true, date: true },
     })
+
+    // FIX matcher por data (05/08): casa a parcela pela DATA do débito, não pela
+    // mais antiga aberta. Alerta quando o valor não distingue (parcelas iguais).
+    const originTx = body.originTxId ? pend.find((t) => t.id === body.originTxId) : undefined
+    const pick = pickTargetInstallment(openList, originTx?.date ?? null, originTx?.amount ?? null)
+    const targetNumber = body.installmentNumber ?? pick.target?.number
+    const target = targetNumber != null ? installments.find((i) => i.number === targetNumber) : undefined
+    if (!target) return NextResponse.json({ erro: 'Nenhuma parcela em aberto pra vincular' }, { status: 400 })
     const group = buildLinkGroup({
       pend, contractNumber: loan.contractNumber, originTxId: body.originTxId, transactionIds: body.transactionIds,
     })
@@ -88,6 +92,12 @@ export async function POST(request: NextRequest, { params }: Params) {
       saldoAntes: target.openingBalance,
       saldoDepois: split.closingBalance,
       agendaValida,
+      // FIX matcher por data: como a parcela foi escolhida (alerta se ambíguo).
+      match: {
+        byDate: pick.byDate, valorAmbiguo: pick.valorAmbiguo, dateAmbiguo: pick.dateAmbiguo,
+        txDate: originTx?.date ?? null,
+        alternatives: pick.alternatives.slice(0, 6).map((i) => ({ number: i.number, dueDate: i.dueDate })),
+      },
     })
   } catch (error) {
     return handleApiError(error)

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { regenerateSchedule, type RegenLoan, type RegenInstallment } from '../regenerate'
-import { computeLinkSplit, buildLinkGroup, type GroupTx } from '../link-payment'
+import { computeLinkSplit, buildLinkGroup, pickTargetInstallment, type GroupTx, type OpenInstallment } from '../link-payment'
 import { detectLoanPayment, type DetectLoanLite } from '../detect-payment'
 
 // ===== FASE 2 — gerador SAC + valor financiado (caso C41022570) =====
@@ -120,6 +120,43 @@ describe('buildLinkGroup', () => {
     const pend = [tx('x', 'DEBITO PRESTA SIEMP', 100)]
     const g = buildLinkGroup({ pend, contractNumber: null })
     expect(g.selectedIds.length).toBe(0)
+  })
+})
+
+// ===== FIX matcher por data — parcela fixa PRICE não desloca mais =====
+describe('pickTargetInstallment', () => {
+  const open = (n: number, venc: string, payment = 10234.35): OpenInstallment => ({ number: n, dueDate: new Date(venc), payment, status: 'OPEN' })
+  const parcelas = [open(18, '2026-05-25'), open(19, '2026-06-25'), open(20, '2026-07-25')]
+
+  it('PRICE parcela fixa: cada pagamento casa pela DATA, não a mais antiga', () => {
+    // débito de 25/06 → #19 (venc 25/06), NÃO #18 (a mais antiga)
+    const jun = pickTargetInstallment(parcelas, new Date('2026-06-25'), 10234.35)
+    expect(jun.target!.number).toBe(19)
+    expect(jun.valorAmbiguo).toBe(true) // 3 parcelas de mesmo valor
+    expect(jun.byDate).toBe(true)
+    // débito de 27/07 (atrasado 2d) → #20 (venc 25/07)
+    expect(pickTargetInstallment(parcelas, new Date('2026-07-27'), 10234.35).target!.number).toBe(20)
+    // débito de 25/05 → #18
+    expect(pickTargetInstallment(parcelas, new Date('2026-05-25'), 10234.35).target!.number).toBe(18)
+  })
+
+  it('valor distingue (SAC parcelas diferentes) → não marca ambíguo', () => {
+    const sac = [open(1, '2026-06-15', 2777.77), open(2, '2026-07-15', 2760.10)]
+    const r = pickTargetInstallment(sac, new Date('2026-07-15'), 2760.10)
+    expect(r.target!.number).toBe(2)
+    expect(r.valorAmbiguo).toBe(false)
+  })
+
+  it('data também não distingue (empate) → sinaliza dateAmbiguo pra perguntar', () => {
+    // duas parcelas equidistantes do débito
+    const eq = [open(5, '2026-06-10', 500), open(6, '2026-06-20', 500)]
+    const r = pickTargetInstallment(eq, new Date('2026-06-15'), 500)
+    expect(r.valorAmbiguo).toBe(true)
+    expect(r.dateAmbiguo).toBe(true)
+  })
+
+  it('sem data de origem → cai na mais antiga (comportamento antigo, sem quebrar)', () => {
+    expect(pickTargetInstallment(parcelas, null, null).target!.number).toBe(18)
   })
 })
 

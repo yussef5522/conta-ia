@@ -102,6 +102,48 @@ export function computeLinkSplit(input: LinkSplitInput): LinkSplit {
   }
 }
 
+// ── FIX matcher por data (05/08/2026) ──
+// Antes o painel casava sempre com a parcela ABERTA mais antiga (openList[0]).
+// Em PRICE de parcela fixa o VALOR não distingue nada, então pagamentos
+// consecutivos ficavam cada um uma posição atrás. Agora casa pela DATA: a parcela
+// cujo dueDate está mais próximo da data do débito.
+export interface OpenInstallment { number: number; dueDate: Date; payment: number; status: string }
+export interface TargetPick {
+  target: OpenInstallment | null
+  /** escolheu pela data porque o valor não distinguia (várias parcelas iguais). */
+  byDate: boolean
+  /** 2+ parcelas abertas com o MESMO valor (o valor não decide). */
+  valorAmbiguo: boolean
+  /** 2+ parcelas igualmente próximas por data (nem a data decide → perguntar). */
+  dateAmbiguo: boolean
+  /** parcelas abertas ordenadas por proximidade de data (pro usuário escolher). */
+  alternatives: OpenInstallment[]
+}
+
+export function pickTargetInstallment(
+  openList: OpenInstallment[],
+  originDate: Date | null,
+  originAmount: number | null,
+): TargetPick {
+  if (openList.length === 0) return { target: null, byDate: false, valorAmbiguo: false, dateAmbiguo: false, alternatives: [] }
+  if (!originDate) return { target: openList[0], byDate: false, valorAmbiguo: false, dateAmbiguo: false, alternatives: openList }
+
+  // Tolerância APERTADA (0,5%): parcela decrescente de SAC com valores distintos
+  // é distinguida pelo VALOR; só PRICE fixo (ou SAC muito próximo) fica ambíguo.
+  const tol = originAmount ? Math.max(1, originAmount * 0.005) : 1
+  const valueMatches = originAmount != null ? openList.filter((i) => Math.abs(i.payment - originAmount) <= tol) : []
+  const valorAmbiguo = valueMatches.length > 1
+  // Se o valor distingue UMA parcela, usa ela. Senão (ambíguo ou nenhum bate),
+  // escolhe a mais próxima por DATA entre as candidatas.
+  const candidates = valueMatches.length > 0 ? valueMatches : openList
+
+  const dist = (i: OpenInstallment) => Math.abs(i.dueDate.getTime() - originDate.getTime())
+  const sorted = [...candidates].sort((a, b) => dist(a) - dist(b))
+  const target = sorted[0]
+  const dateAmbiguo = valorAmbiguo && sorted.length > 1 && dist(sorted[0]) === dist(sorted[1])
+  return { target, byDate: valorAmbiguo, valorAmbiguo, dateAmbiguo, alternatives: [...openList].sort((a, b) => dist(a) - dist(b)) }
+}
+
 /**
  * A agenda ARMAZENADA do empréstimo (faixa rastreada) fecha? Decide se o split
  * flui pro DRE (FASE 5.3): agenda inválida → vincula mas não injeta split.

@@ -26,6 +26,7 @@ interface Preview {
   saldoAntes: number
   saldoDepois: number
   agendaValida: boolean
+  match?: { byDate: boolean; valorAmbiguo: boolean; dateAmbiguo: boolean; txDate: string | null; alternatives: Array<{ number: number; dueDate: string }> }
 }
 const fmtD = (iso: string) => { const [y, m, d] = iso.slice(0, 10).split('-'); return `${d}/${m}/${y.slice(2)}` }
 
@@ -35,13 +36,15 @@ export function LinkPaymentModal({ empresaId, loanId, txId, onClose, onDone }: {
   const [saving, setSaving] = useState(false)
   const [pv, setPv] = useState<Preview | null>(null)
   const [sel, setSel] = useState<Set<string>>(new Set())
+  // FIX matcher: parcela escolhida manualmente (override do casamento por data)
+  const [chosenNumber, setChosenNumber] = useState<number | null>(null)
 
-  const load = useCallback(async (ids?: string[]) => {
+  const load = useCallback(async (ids?: string[], installmentNumber?: number) => {
     setLoading(true)
     const resp = await fetch(`/api/empresas/${empresaId}/emprestimos/${loanId}/vincular-parcela/preview`, {
       method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' },
       // originTxId SEMPRE — a tx clicada entra pré-selecionada (BUG 1).
-      body: JSON.stringify({ ...(ids ? { transactionIds: ids } : {}), originTxId: txId }),
+      body: JSON.stringify({ ...(ids ? { transactionIds: ids } : {}), originTxId: txId, ...(installmentNumber ? { installmentNumber } : {}) }),
     })
     const { ok, data, message } = await readJsonResponse<Preview>(resp)
     if (!ok || !data) { toast({ variant: 'destructive', title: 'Erro', description: message ?? 'Falha ao carregar' }); onClose(); return }
@@ -56,7 +59,12 @@ export function LinkPaymentModal({ empresaId, loanId, txId, onClose, onDone }: {
     const next = new Set(sel)
     next.has(id) ? next.delete(id) : next.add(id)
     setSel(next)
-    void load([...next])
+    void load([...next], chosenNumber ?? undefined)
+  }
+
+  function trocarParcela(number: number) {
+    setChosenNumber(number)
+    void load([...sel], number)
   }
 
   async function confirmar() {
@@ -94,11 +102,22 @@ export function LinkPaymentModal({ empresaId, loanId, txId, onClose, onDone }: {
             )}
 
             <div className="rounded-md border p-3 text-sm">
-              <p className="font-semibold">Parcela #{pv.installment.number} · vence {fmtD(pv.installment.dueDate)}</p>
-              {pv.openInstallments[0]?.number === pv.installment.number && pv.openInstallments.length > 0 && (
-                <p className="text-xs text-sky-700">Quitando a <strong>parcela em aberto mais antiga</strong> (#{pv.installment.number}, venc {fmtD(pv.installment.dueDate)}) — mesmo que o pagamento seja de outro mês.</p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="font-semibold">Parcela #{pv.installment.number} · vence {fmtD(pv.installment.dueDate)}</p>
+                {pv.openInstallments.length > 1 && (
+                  <select value={pv.installment.number} onChange={(e) => trocarParcela(Number(e.target.value))} className="text-xs border rounded px-1 py-0.5">
+                    {pv.openInstallments.map((o) => <option key={o.number} value={o.number}>#{o.number} · venc {fmtD(o.dueDate)}</option>)}
+                  </select>
+                )}
+              </div>
+              {/* FIX matcher por data: alerta quando o valor não distingue */}
+              {pv.match?.valorAmbiguo && (
+                <p className="text-xs text-amber-700 mt-1 flex items-start gap-1">
+                  <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
+                  <span>Várias parcelas de <strong>mesmo valor</strong> — casando pela <strong>data</strong>: #{pv.installment.number} (venc {fmtD(pv.installment.dueDate)}) é a mais próxima do débito{pv.match.txDate ? ` de ${fmtD(pv.match.txDate)}` : ''}. Confira ou troque acima.{pv.match.dateAmbiguo ? ' ⚠️ a data também não distingue — escolha manualmente.' : ''}</span>
+                </p>
               )}
-              <p className="text-xs text-muted-foreground">Você <strong>confere</strong>, não digita — o CAIXAOS calcula a amortização pelo cronograma.</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Você <strong>confere</strong>, não digita — o CAIXAOS calcula a amortização pelo cronograma.</p>
             </div>
 
             {/* Lançamentos agrupados — resumo SEMPRE visível + lista rolável */}
