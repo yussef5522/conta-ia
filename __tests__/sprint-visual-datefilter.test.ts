@@ -109,15 +109,22 @@ describe('Sprint Visual — calendar.tsx (shadcn) cores via tokens', () => {
 })
 
 describe('Sprint Visual — /pendentes usa ActiveFilterChips (substitui banner amarelo)', () => {
-  it('importa ActiveFilterChips + usa', () => {
+  // A decisão de design real: o INDICADOR DE FILTRO ATIVO em /pendentes é o
+  // ActiveFilterChips (chips roxos), NÃO um banner amarelo de estado de filtro.
+  // O teste original barrava `bg-amber-50` no arquivo inteiro como proxy de "o
+  // banner de filtro sumiu" — proxy ruim: quebra sempre que alguém adiciona um
+  // CTA âmbar legítimo e SEM relação com filtro (ex.: reclassificar CDB, Sprint
+  // 02/08). Não há regra de design reservando âmbar (é cor semântica de atenção,
+  // usada em vários CTAs). Então a proteção certa é afirmar o indicador de filtro,
+  // não caçar cor no arquivo todo.
+  it('indicador de filtro ativo = ActiveFilterChips com chips + count (não banner)', () => {
     const code = readFileSync(
       join(ROOT, 'app/(dashboard)/empresas/[id]/pendentes/pendentes-client.tsx'),
       'utf-8',
     )
-    expect(code).toMatch(/ActiveFilterChips/)
+    expect(code).toMatch(/import .*ActiveFilterChips.* from '@\/components\/shared\/ActiveFilterChips'/)
+    // renderizado com a API de chips de filtro (chips[] + contagem)
+    expect(code).toMatch(/<ActiveFilterChips[\s\S]*?chips=/)
     expect(code).toMatch(/<ActiveFilterChips[\s\S]*?count=/)
-    // banner antigo amber removido
-    expect(code).not.toMatch(/bg-amber-50/)
-    expect(code).not.toMatch(/border-amber-200/)
   })
 })
