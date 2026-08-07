@@ -36,6 +36,7 @@ export async function GET(request: NextRequest, { params }: Params) {
         interestRateMonthly: true,
         termMonths: true,
         amortizationSystem: true,
+        carencia: true,
         // FIX saldo (04/08): campos pra saldoDevedorAtual (agenda válida → closing).
         rateType: true,
         installmentsPaidBefore: true,
@@ -139,6 +140,7 @@ export async function GET(request: NextRequest, { params }: Params) {
         principal: l.principal,
         amortizationSystem: l.amortizationSystem,
         termMonths: l.termMonths,
+        carencia: l.carencia,
         interestRateMonthly: l.interestRateMonthly,
         status: l.status,
         statusVisual,

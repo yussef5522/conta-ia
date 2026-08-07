@@ -23,6 +23,7 @@ import {
   type ParsedCarencia,
   parseBRNumber,
   brDateToISO,
+  monthsBetweenISO,
 } from './bank-schedule-parser'
 
 const NUM = '[\\d.]+,\\d{2}'
@@ -37,6 +38,8 @@ const RE_SALDO = new RegExp(`Saldo Devedor Atualizado\\s+(${NUM})`)
 const RE_FINANC = new RegExp(`Total financiado\\s+(${NUM})`)
 const RE_CONTRAT_DATA = /Data de Contrata[çc][ãa]o\s+(\d{2}\/\d{2}\/\d{4})/
 const RE_PRAZO = /Prazo total \(Meses\)\s+(\d+)/
+const RE_REMANESCENTE = /Prazo Remanescente\s+(\d+)/
+const RE_ULTIMO_VENC = /Data [úu]ltimo vencimento\s+(\d{2}\/\d{2}\/\d{4})/
 const RE_JUROS_ANUAL = /Taxa de juros anual nominal\s+([\d.]+,\d{2,4})/
 const RE_TAXA_MENSAL = /Taxa de juros contratada\s+([\d.]+,\d{2,4})/
 const RE_SISTEMA = /Sistema de pagamento\s+(\w+)/i
@@ -55,23 +58,35 @@ const RE_CARENCIA = new RegExp(
 // sub-linha de encargo por atraso (pertence à parcela acima)
 const RE_ENC_ATRASO = new RegExp(`^\\s*ENC\\.?\\s*POR\\s+ATRASO\\s+(${NUM})\\s+(N PG|PG)\\s*$`)
 
-function parseHeader(text: string): Omit<ParsedScheduleContract, 'installments' | 'carencia'> | null {
+interface CaixaHeader {
+  base: Omit<ParsedScheduleContract, 'installments' | 'carencia' | 'numParcelas'>
+  prazoTotalMeses: number | null
+  prazoRemanescente: number | null
+  ultimoVencimento: string | null // ISO
+}
+
+function parseHeader(text: string): CaixaHeader | null {
   const contrato = text.match(RE_CONTRATO)?.[1]
   if (!contrato) return null
   const sistemaRaw = text.match(RE_SISTEMA)?.[1]?.toUpperCase()
   const sistema: 'PRICE' | 'SAC' | null =
     sistemaRaw === 'PRICE' ? 'PRICE' : sistemaRaw === 'SAC' ? 'SAC' : null
   const indexadorRaw = text.match(RE_INDEXADOR)?.[1]?.trim()
+  const ultimoVenc = text.match(RE_ULTIMO_VENC)?.[1]
   return {
-    contractNumber: contrato, // verbatim (zero-padded) → match exato com o Loan
-    numParcelas: text.match(RE_PRAZO)?.[1] ? parseInt(text.match(RE_PRAZO)![1], 10) : 0,
-    dataContratacao: text.match(RE_CONTRAT_DATA)?.[1] ? brDateToISO(text.match(RE_CONTRAT_DATA)![1]) : null,
-    saldoDevedor: text.match(RE_SALDO)?.[1] ? parseBRNumber(text.match(RE_SALDO)![1]) : 0,
-    valorFinanciado: text.match(RE_FINANC)?.[1] ? parseBRNumber(text.match(RE_FINANC)![1]) : 0,
-    jurosNormaisAnual: text.match(RE_JUROS_ANUAL)?.[1] ? parseBRNumber(text.match(RE_JUROS_ANUAL)![1]) : null,
-    sistemaAmortizacao: sistema,
-    taxaJurosMensal: text.match(RE_TAXA_MENSAL)?.[1] ? parseBRNumber(text.match(RE_TAXA_MENSAL)![1]) : null,
-    indexador: indexadorRaw ? indexadorRaw : null,
+    base: {
+      contractNumber: contrato, // verbatim (zero-padded) → match exato com o Loan
+      dataContratacao: text.match(RE_CONTRAT_DATA)?.[1] ? brDateToISO(text.match(RE_CONTRAT_DATA)![1]) : null,
+      saldoDevedor: text.match(RE_SALDO)?.[1] ? parseBRNumber(text.match(RE_SALDO)![1]) : 0,
+      valorFinanciado: text.match(RE_FINANC)?.[1] ? parseBRNumber(text.match(RE_FINANC)![1]) : 0,
+      jurosNormaisAnual: text.match(RE_JUROS_ANUAL)?.[1] ? parseBRNumber(text.match(RE_JUROS_ANUAL)![1]) : null,
+      sistemaAmortizacao: sistema,
+      taxaJurosMensal: text.match(RE_TAXA_MENSAL)?.[1] ? parseBRNumber(text.match(RE_TAXA_MENSAL)![1]) : null,
+      indexador: indexadorRaw ? indexadorRaw : null,
+    },
+    prazoTotalMeses: text.match(RE_PRAZO)?.[1] ? parseInt(text.match(RE_PRAZO)![1], 10) : null,
+    prazoRemanescente: text.match(RE_REMANESCENTE)?.[1] ? parseInt(text.match(RE_REMANESCENTE)![1], 10) : null,
+    ultimoVencimento: ultimoVenc ? brDateToISO(ultimoVenc) : null,
   }
 }
 
@@ -159,17 +174,59 @@ export const caixaScheduleParser: BankScheduleParser = {
       }
     }
 
+    installments.sort((a, b) => a.number - b.number)
+
+    // ── nº de PARCELAS derivado pelas DATAS, não pela contagem de linhas ──
+    // (a 1ª linha "CARÊNCIA" é a data de contratação, não capitalização; e a
+    //  última carência é implícita → contar linha dá 1 a menos). Confiável:
+    //  parcelas = meses da 1ª parcela ao último vencimento (inclusive).
+    if (installments.length === 0) {
+      throw new Error('Documento sem parcelas amortizantes reconhecidas — importação abortada.')
+    }
+    const prazoTotal = header.prazoTotalMeses
+    if (!prazoTotal) throw new Error('Documento sem "Prazo total (Meses)" — importação abortada.')
+    if (!header.ultimoVencimento) throw new Error('Documento sem "Data último vencimento" — importação abortada.')
+    const primeiraParcela = installments[0].dueDate
+    const numParcelas = monthsBetweenISO(primeiraParcela, header.ultimoVencimento) + 1
+    const carenciaMeses = prazoTotal - numParcelas
+
+    // VALIDAÇÃO 1 (obrigatória): carência + parcelas == prazo total.
+    if (carenciaMeses < 0 || carenciaMeses + numParcelas !== prazoTotal) {
+      throw new Error(
+        `Prazo inconsistente: ${numParcelas} parcelas + ${carenciaMeses} carência ≠ ${prazoTotal} (prazo total). Importação abortada.`,
+      )
+    }
+    // VALIDAÇÃO 2: pagas + remanescente ≈ nº de parcelas (tolerância 1, pois o
+    // remanescente conta a partir da data de emissão).
+    const pagas = installments.filter((i) => i.situacao === 'LIQUIDADO').length
+    if (header.prazoRemanescente != null) {
+      const somaCheck = pagas + header.prazoRemanescente
+      if (Math.abs(somaCheck - numParcelas) > 1) {
+        throw new Error(
+          `Contagem inconsistente: pagas (${pagas}) + remanescente (${header.prazoRemanescente}) = ${somaCheck}, esperado ~${numParcelas} parcelas. Importação abortada.`,
+        )
+      }
+    }
+
+    // carência: MESES derivados (não a contagem de linhas). Capitalização/saldo
+    // vêm das linhas parseadas (informativo).
     const carencia: ParsedCarencia | null =
-      carenciaSaldos.length > 0
+      carenciaMeses > 0
         ? {
-            count: carenciaSaldos.length,
+            count: carenciaMeses,
             jurosCapitalizadoTotal: carenciaJuros,
-            saldoInicial: carenciaSaldos[0],
-            saldoFinal: carenciaSaldos[carenciaSaldos.length - 1],
+            saldoInicial: carenciaSaldos[0] ?? 0,
+            saldoFinal: carenciaSaldos[carenciaSaldos.length - 1] ?? 0,
           }
         : null
 
-    installments.sort((a, b) => a.number - b.number)
-    return [{ ...header, installments, carencia }]
+    return [{
+      ...header.base,
+      numParcelas,
+      carenciaMeses,
+      prazoTotalMeses: prazoTotal,
+      installments,
+      carencia,
+    }]
   },
 }

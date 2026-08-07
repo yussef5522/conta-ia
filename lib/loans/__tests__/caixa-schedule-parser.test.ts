@@ -27,10 +27,16 @@ describe('cabeçalho', () => {
     expect(c.contractNumber).toBe('000000000001837311'))
   it('saldo = "Saldo Devedor Atualizado" do cabeçalho (NÃO o artefato 102.427,10)', () =>
     expect(c.saldoDevedor).toBe(14116.29))
-  it('financiado, data, prazo total', () => {
+  it('financiado, data', () => {
     expect(c.valorFinanciado).toBe(61000)
     expect(c.dataContratacao).toBe('2023-01-26')
-    expect(c.numParcelas).toBe(48)
+  })
+  it('nº de parcelas DERIVADO por data: 36 (não 48) + carência 12 = prazo total 48', () => {
+    // 1ª parcela 26/02/2024 → último venc 26/01/2027 = 36 parcelas. 48−36 = 12 carência.
+    expect(c.numParcelas).toBe(36)
+    expect(c.carenciaMeses).toBe(12)
+    expect(c.prazoTotalMeses).toBe(48)
+    expect(c.carenciaMeses! + c.numParcelas).toBe(c.prazoTotalMeses)
   })
   it('sistema PRICE, taxa mensal 1,87, juros anual 22,44, indexador VAZIO (pré)', () => {
     expect(c.sistemaAmortizacao).toBe('PRICE')
@@ -40,10 +46,10 @@ describe('cabeçalho', () => {
   })
 })
 
-describe('carência (11 meses) — capitalização, fora das parcelas/DRE', () => {
+describe('carência (12 meses, derivada) — capitalização, fora das parcelas/DRE', () => {
   const [c] = caixaScheduleParser.parse(TEXT)
-  it('11 linhas, saldo cresce 62.140,70 → 74.789,25', () => {
-    expect(c.carencia?.count).toBe(11)
+  it('count = 12 (derivado, NÃO as 11 linhas); saldo cresce 62.140,70 → 74.789,25', () => {
+    expect(c.carencia?.count).toBe(12)
     expect(c.carencia?.saldoInicial).toBe(62140.70)
     expect(c.carencia?.saldoFinal).toBe(74789.25)
   })
@@ -120,5 +126,18 @@ describe('validação — nunca gravar leitura errada', () => {
     const bad = TEXT.replace(/14\.029,38(\s+)2\.927,02/, '14.029,38$11.000,00')
     expect(bad).not.toBe(TEXT) // garante que o replace pegou
     expect(() => caixaScheduleParser.parse(bad)).toThrow(/res[íi]duo negativo|amortiza/i)
+  })
+
+  it('contagem inconsistente (pagas+remanescente longe do nº de parcelas) → aborta', () => {
+    const bad = TEXT.replace(/Prazo Remanescente\s+5/, 'Prazo Remanescente                20')
+    expect(bad).not.toBe(TEXT)
+    expect(() => caixaScheduleParser.parse(bad)).toThrow(/inconsistente|remanescente/i)
+  })
+
+  it('carência+parcelas ≠ prazo total (último venc esticado) → aborta', () => {
+    // último venc 26/01/2027 → 26/01/2028: parcelas viram 48, 48+? ≠ prazo 48 (carência −12<0)
+    const bad = TEXT.replace(/Data último vencimento\s+26\/01\/2027/, 'Data último vencimento            26/01/2028')
+    expect(bad).not.toBe(TEXT)
+    expect(() => caixaScheduleParser.parse(bad)).toThrow(/inconsistente|Prazo/i)
   })
 })

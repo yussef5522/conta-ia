@@ -31,6 +31,7 @@ interface LoanRow {
   principal: number
   amortizationSystem: 'PRICE' | 'SAC'
   termMonths: number
+  carencia: number
   interestRateMonthly: number
   status: 'ACTIVE' | 'PAID_OFF' | 'LATE'
   statusVisual: 'EM_DIA' | 'PROXIMA_VENCER' | 'ATRASADA' | 'QUITADO'
@@ -276,7 +277,9 @@ export default function CarteiraEmprestimosPage({
                                 )}
                                 <div className="flex items-center gap-3 text-xs text-muted-foreground">
                                   <span>
-                                    {l.flexible ? 'Sem parcela fixa' : `${l.termMonths}× · ${fmtRate(l.interestRateMonthly)}`}
+                                    {l.flexible
+                                      ? 'Sem parcela fixa'
+                                      : `${l.termMonths} parcelas${l.carencia ? ` (+ ${l.carencia} ${l.carencia > 1 ? 'meses' : 'mês'} de carência)` : ''} · ${fmtRate(l.interestRateMonthly)}`}
                                   </span>
                                   <span>·</span>
                                   <span>{l.bankAccount.name}</span>

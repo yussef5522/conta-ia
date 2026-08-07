@@ -82,7 +82,10 @@ export async function POST(request: NextRequest, { params }: Params) {
           data: {
             scheduleSource: 'IMPORTED',
             financedAmount: c.valorFinanciado,
+            // termMonths = nº de parcelas AMORTIZANTES (derivado por data), NÃO o
+            // prazo total. carência = meses de carência (prazoTotal − parcelas).
             ...(c.numParcelas > 0 && c.numParcelas !== loan.termMonths ? { termMonths: c.numParcelas } : {}),
+            ...(c.carenciaMeses != null ? { carencia: c.carenciaMeses } : {}),
           },
         })
         for (const r of plan.rows) {

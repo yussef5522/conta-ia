@@ -63,6 +63,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       select: {
         id: true, contractNumber: true, lender: true, principal: true, rateType: true,
         installmentsPaidBefore: true, interestRateMonthly: true, scheduleSource: true,
+        termMonths: true, carencia: true,
         installments: {
           orderBy: { number: 'asc' },
           select: {
@@ -119,6 +120,12 @@ export async function POST(request: NextRequest, { params }: Params) {
         indexador: c.indexador ?? null,
         carencia: c.carencia ?? null,
         residuoMoraTotal: residuoTotal,
+        // prazo/carência ANTES→DEPOIS (o usuário paga numParcelas, não o prazo total)
+        parcelasAntes: loan.termMonths,
+        parcelasDepois: c.numParcelas,
+        carenciaAntes: loan.carencia,
+        carenciaDepois: c.carenciaMeses ?? null,
+        prazoTotalMeses: c.prazoTotalMeses ?? null,
       }
     })
 

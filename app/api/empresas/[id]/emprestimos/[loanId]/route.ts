@@ -129,6 +129,7 @@ export async function GET(request: NextRequest, { params }: Params) {
         principal: loan.principal,
         interestRateMonthly: loan.interestRateMonthly,
         termMonths: loan.termMonths,
+        carencia: loan.carencia,
         amortizationSystem: loan.amortizationSystem,
         firstDueDate: loan.firstDueDate.toISOString(),
         iof: loan.iof,

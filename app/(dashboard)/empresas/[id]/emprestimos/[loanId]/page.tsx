@@ -42,6 +42,7 @@ interface LoanDetalhe {
     principal: number
     interestRateMonthly: number
     termMonths: number
+    carencia: number
     amortizationSystem: 'PRICE' | 'SAC'
     firstDueDate: string
     iof: number
@@ -222,7 +223,7 @@ export default function DetalheEmprestimoPage({
         description={
           loan.flexible
             ? `${loan.bankAccount.name} · Mútuo sem prazo fixo · sem juros`
-            : `${loan.bankAccount.name} · ${loan.termMonths}× ${loan.amortizationSystem} · ${fmtRate(loan.interestRateMonthly)}`
+            : `${loan.bankAccount.name} · ${loan.termMonths} parcelas${loan.carencia ? ` (+ ${loan.carencia} ${loan.carencia > 1 ? 'meses' : 'mês'} de carência)` : ''} · ${loan.amortizationSystem} · ${fmtRate(loan.interestRateMonthly)}`
         }
       >
         <Link href={`/empresas/${empresaId}/emprestimos`}>

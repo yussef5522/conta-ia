@@ -38,6 +38,8 @@ export interface ParsedCarencia {
 
 export interface ParsedScheduleContract {
   contractNumber: string
+  /** número de parcelas AMORTIZANTES (NÃO inclui carência). Na Caixa é derivado
+   *  pelas datas (1ª parcela → último vencimento), não pela contagem de linhas. */
   numParcelas: number
   dataContratacao: string | null // ISO
   saldoDevedor: number
@@ -50,6 +52,10 @@ export interface ParsedScheduleContract {
   /** indexador do pós-fixado (ex: 'SELIC'); null/undefined = pré-fixado. */
   indexador?: string | null
   carencia?: ParsedCarencia | null
+  /** meses de carência = prazoTotal − numParcelas (derivado, não contagem de linha). */
+  carenciaMeses?: number | null
+  /** prazo total do cabeçalho (parcelas + carência). */
+  prazoTotalMeses?: number | null
 }
 
 export interface BankScheduleParser {
@@ -67,4 +73,10 @@ export function parseBRNumber(s: string): number {
 export function brDateToISO(ddmmyyyy: string): string {
   const [d, m, y] = ddmmyyyy.split('/')
   return `${y}-${m}-${d}`
+}
+/** Meses entre duas datas ISO (YYYY-MM-DD) por ano+mês (dia ignorado). */
+export function monthsBetweenISO(aISO: string, bISO: string): number {
+  const [ay, am] = aISO.split('-').map(Number)
+  const [by, bm] = bISO.split('-').map(Number)
+  return (by - ay) * 12 + (bm - am)
 }
