@@ -82,7 +82,7 @@ export default function ImportarAgendaPage() {
           <Card>
             <CardHeader><CardTitle className="text-base flex items-center gap-2"><FileText className="h-4 w-4" />Documento do banco</CardTitle></CardHeader>
             <CardContent className="space-y-3">
-              <p className="text-xs text-muted-foreground">Sicredi: "Relação de Títulos Cadastrados". Um arquivo pode ter vários contratos — casamos cada um pelo número. O PDF é apagado após a leitura.</p>
+              <p className="text-xs text-muted-foreground">Bancos suportados: <strong>Sicredi</strong> ("Relação de Títulos Cadastrados" — um arquivo pode ter vários contratos) e <strong>Caixa</strong> ("Demonstrativo de Evolução Contratual" — um contrato por arquivo, PRÉ ou PÓS-fixado). Casamos cada contrato pelo número. O PDF é apagado após a leitura.</p>
               <input type="file" accept="application/pdf" onChange={(e) => { setFile(e.target.files?.[0] ?? null); setPv(null) }} className="text-sm" />
               <Button onClick={gerarPreview} disabled={!file || loading}>{loading && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}Ler documento e mostrar preview</Button>
             </CardContent>
