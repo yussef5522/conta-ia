@@ -384,12 +384,18 @@ export function validateTransferPair(input: ValidationInput): ValidationResult {
   }
 
   // CONFIDENCE (mesmo dia garantido daqui pra baixo)
+  const hasOwnCnpj = debitContainsOwnCnpj || creditContainsOwnCnpj
   let confidence = 0.85 // base (era 0.70; subiu pq same-day já é hard requirement)
-  if (debitContainsOwnCnpj || creditContainsOwnCnpj) {
+  if (hasOwnCnpj) {
     confidence = 0.99 // CNPJ próprio explícito = altíssima confiança
   }
-  // Sprint u: penalidade valor comum aumentada de -0.20 → -0.30
-  if (valorComum) {
+  // Penalidade de "valor comum" (mesmo valor aparece 3+ vezes em 60d) protege
+  // contra COINCIDÊNCIA de valores redondos. MAS o CNPJ próprio explícito na
+  // descrição NÃO é coincidência — é a conta da própria empresa na outra ponta.
+  // Fix 06/08: só penaliza valor comum quando NÃO há CNPJ próprio. Sem isto, um
+  // PIX interno de R$5.000 (valor que se repete no mês) caía de 0.99→0.69 e sumia
+  // do detector mesmo com o CNPJ próprio no memo.
+  if (valorComum && !hasOwnCnpj) {
     confidence = Math.max(0.5, confidence - 0.3)
   }
 
