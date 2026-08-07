@@ -349,19 +349,20 @@ export function validateTransferPair(input: ValidationInput): ValidationResult {
     }
   }
 
-  // REGRA 4: Anti-pessoa — Sprint 5.0.2.u (estrito): se QUALQUER perna
-  // mencionar nome de pessoa (CPF ou padrão de 2+ palavras), rejeita
-  // EXCETO se a outra perna tem CNPJ próprio (caso transferência feita
-  // pra/de "Yussef Pessoa" usando CNPJ Cacula como destino — raro mas
-  // possível). Por padrão, conservador: bloqueia.
-  if (debitHasPerson || creditHasPerson) {
-    // Permite APENAS quando NENHUMA outra perna tem nome de pessoa E
-    // a perna sem pessoa tem CNPJ próprio (improvável mas técnico).
-    // Aqui simplificamos: pessoa em qualquer perna → rejeita.
+  // REGRA 4: Anti-pessoa — nome de pessoa numa perna sinaliza pagamento a
+  // TERCEIRO. EXCEÇÃO (fix 06/08): quando a MESMA perna que tem a pessoa também
+  // traz o CNPJ PRÓPRIO da empresa, a "pessoa" é o sócio/titular movendo dinheiro
+  // da conta própria — NÃO é terceiro. Caso real: Sicredi anota
+  // "RECEBIMENTO PIX-PIX_CRED <CNPJ próprio> YUSSEF ABU ZAHRY MUSA" numa
+  // transferência interna. Só rejeita quando a pessoa está numa perna SEM o CNPJ
+  // próprio (aí sim é favorecido/pagador terceiro).
+  const debitPersonThirdParty = debitHasPerson && !debitContainsOwnCnpj
+  const creditPersonThirdParty = creditHasPerson && !creditContainsOwnCnpj
+  if (debitPersonThirdParty || creditPersonThirdParty) {
     return {
       valid: false,
-      reason: debitHasPerson && creditHasPerson
-        ? 'Ambas pernas mencionam pessoas (pagamentos distintos)'
+      reason: debitPersonThirdParty && creditPersonThirdParty
+        ? 'Ambas pernas mencionam pessoas terceiras (pagamentos distintos)'
         : 'Uma das pernas menciona pessoa terceira (não é transferência interna)',
       confidence: 0,
       signals,
@@ -625,6 +626,11 @@ export async function applyTransferCandidate(
 ): Promise<{ ok: true; transferGroupId: string }> {
   const transferGroupId = `tx_${candidate.debit.id}_${candidate.credit.id}`
 
+  // Vira TRANSFER + LIMPA a categoria (fix 06/08): o DRE já exclui por
+  // type=TRANSFER, mas uma perna que estava categorizada (ex: entrada como
+  // "Receita de Vendas") deixaria a tag colada e vazaria em relatórios por
+  // categoria. Zera categoryId dos dois lados pra não sobrar receita/despesa
+  // fantasma. Ver FASE 0 do sprint Detecção-Transferência.
   await prisma.$transaction([
     prisma.transaction.update({
       where: { id: candidate.debit.id },
@@ -632,6 +638,7 @@ export async function applyTransferCandidate(
         transferGroupId,
         type: 'TRANSFER',
         status: 'RECONCILED',
+        categoryId: null,
         classificationSource: 'AI',
         aiConfidence: candidate.confidence,
       },
@@ -642,6 +649,7 @@ export async function applyTransferCandidate(
         transferGroupId,
         type: 'TRANSFER',
         status: 'RECONCILED',
+        categoryId: null,
         classificationSource: 'AI',
         aiConfidence: candidate.confidence,
       },
