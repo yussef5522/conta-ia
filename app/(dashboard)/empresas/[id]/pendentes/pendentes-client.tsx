@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { VincularTransferenciaModal } from '@/components/pendentes/VincularTransferenciaModal'
 import { AprenderEAplicarModal } from '@/components/pendentes/AprenderEAplicarModal'
+import { DetectarTransferenciasModal, type TransferCandidateDTO } from '@/components/pendentes/DetectarTransferenciasModal'
 import { normalizeCounterparty } from '@/lib/counterparty/normalize'
 // Sprint Retirada-1-Clique
 import { WithdrawalPanel } from '@/components/withdrawals/WithdrawalPanel'
@@ -151,6 +152,8 @@ export function PendentesClient({
   >({})
   // Sprint CDB entry (02/08): nº de aplicação/resgate automático a reclassificar
   const [cdbReclassCount, setCdbReclassCount] = useState(0)
+  const [transferCandidates, setTransferCandidates] = useState<TransferCandidateDTO[] | null>(null)
+  const [transferModalOpen, setTransferModalOpen] = useState(false)
   // Sprint Casar Pagamento (04/08): detecção de pagamento de empréstimo por tx
   const [emprestimoDet, setEmprestimoDet] = useState<Record<string, LoanPaymentDetection>>({})
   const [linkModal, setLinkModal] = useState<{ loanId: string; txId: string } | null>(null)
@@ -267,6 +270,17 @@ export function PendentesClient({
           setEmprestimoDet(d?.detections ?? {})
         })
         .catch((e) => console.warn('[pendentes] deteccao-pendentes falhou:', e))
+      // Sprint Detecção-Transferência (06/08): pares de transferência entre contas
+      // PRÓPRIAS detectados cross-conta (mesmo valor, mesmo dia, PIX, CNPJ próprio).
+      // Read-only — só SUGERE; usuário confirma no modal, nunca aplica sozinho. É
+      // RETROATIVO: reavalia TODAS as tx EFFECTED (não só o arquivo importado), então
+      // pega o par mesmo quando os extratos entraram em momentos diferentes.
+      fetch(`/api/empresas/${empresaId}/conciliation/detect-active-transfers`, {
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: '{}',
+      })
+        .then((r) => { if (!r.ok) { console.warn(`[pendentes] detect-active-transfers HTTP ${r.status}`); return null } return r.json() })
+        .then((d: { candidates?: TransferCandidateDTO[] } | null) => setTransferCandidates(d?.candidates ?? []))
+        .catch((e) => console.warn('[pendentes] detect-active-transfers falhou:', e))
       // Sprint Filtro de Data Parte A: guardar o total real pra UI mostrar
       // "Mostrando X de Y" e desambiguar quando há mais do que cabe na página.
       setTotalReal(data.paginacao?.total ?? txs.length)
@@ -670,6 +684,28 @@ export function PendentesClient({
           </div>
           <span className="text-sm font-medium text-amber-800 shrink-0">Reclassificar →</span>
         </Link>
+      )}
+
+      {/* Sprint Detecção-Transferência (06/08) — porta de entrada pro detector
+          cross-conta. Aparece SÓ quando há candidatos. Abre modal de revisão
+          (sugestão; usuário confirma cada par, nunca automático). */}
+      {transferCandidates && transferCandidates.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setTransferModalOpen(true)}
+          className="flex w-full items-center gap-3 rounded-md border border-violet-300 bg-violet-50 px-4 py-3 text-left hover:bg-violet-100 transition-colors"
+        >
+          <ArrowLeftRight className="h-5 w-5 text-violet-700 shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-violet-900">
+              {transferCandidates.length} possível{transferCandidates.length > 1 ? 'is' : ''} transferência{transferCandidates.length > 1 ? 's' : ''} entre suas contas detectada{transferCandidates.length > 1 ? 's' : ''}
+            </p>
+            <p className="text-xs text-violet-800">
+              Mesmo valor entre duas contas suas — não é receita nem despesa. Clique pra revisar e confirmar (tira do DRE).
+            </p>
+          </div>
+          <span className="text-sm font-medium text-violet-800 shrink-0">Revisar →</span>
+        </button>
       )}
 
       {/* Sprint Casar Pagamento (04/08) — banner: pagamentos de empréstimo detectados */}
@@ -1317,6 +1353,23 @@ export function PendentesClient({
           onDone={() => { setLinkModal(null); fetchTransacoes() }}
         />
       )}
+
+      <DetectarTransferenciasModal
+        open={transferModalOpen}
+        onOpenChange={setTransferModalOpen}
+        empresaId={empresaId}
+        candidates={transferCandidates}
+        onApplied={() => {
+          fetchTransacoes()
+          // re-detecta pra atualizar o banner (some os pares já confirmados)
+          fetch(`/api/empresas/${empresaId}/conciliation/detect-active-transfers`, {
+            method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: '{}',
+          })
+            .then((r) => (r.ok ? r.json() : null))
+            .then((d: { candidates?: TransferCandidateDTO[] } | null) => setTransferCandidates(d?.candidates ?? []))
+            .catch(() => {})
+        }}
+      />
 
     </div>
   )

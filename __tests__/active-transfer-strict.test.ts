@@ -143,22 +143,54 @@ describe('ACCEPTS — transferência interna LEGÍTIMA', () => {
     expect(r.reason).toContain('instantâneo')
   })
 
-  it('valor comum aplica penalidade −0.30 (Sprint u apertado)', () => {
+  it('valor comum penaliza −0.30 QUANDO não há CNPJ próprio (coincidência de valor)', () => {
     const semPenalidade = validateTransferPair(
-      mkInput(
-        'PAGAMENTO PIX-PIX_DEB 29756732000198 CACULA',
-        'RECEBIMENTO PIX-PIX_CRED 29756732000198 CACULA',
-      ),
+      mkInput('PAGAMENTO PIX-PIX_DEB entre contas', 'RECEBIMENTO PIX-PIX_CRED entre contas'),
     )
     const comPenalidade = validateTransferPair(
-      mkInput(
-        'PAGAMENTO PIX-PIX_DEB 29756732000198 CACULA',
-        'RECEBIMENTO PIX-PIX_CRED 29756732000198 CACULA',
-        { valorComum: true },
-      ),
+      mkInput('PAGAMENTO PIX-PIX_DEB entre contas', 'RECEBIMENTO PIX-PIX_CRED entre contas', { valorComum: true }),
     )
+    expect(semPenalidade.confidence).toBeCloseTo(0.85, 2)
     expect(comPenalidade.confidence).toBeLessThan(semPenalidade.confidence)
     expect(semPenalidade.confidence - comPenalidade.confidence).toBeCloseTo(0.3, 1)
+  })
+
+  // Fix 06/08: CNPJ próprio explícito no memo NÃO é coincidência → a penalidade
+  // de valor comum não se aplica. Sem isto o par R$5.000 (valor que se repete no
+  // mês) caía de 0.99→0.69 e sumia do detector.
+  it('fix 06/08: CNPJ próprio IGNORA penalidade de valor comum (mantém 0.99)', () => {
+    const semPenalidade = validateTransferPair(
+      mkInput('PAGAMENTO PIX-PIX_DEB 29756732000198 CACULA', 'RECEBIMENTO PIX-PIX_CRED 29756732000198 CACULA'),
+    )
+    const comValorComum = validateTransferPair(
+      mkInput('PAGAMENTO PIX-PIX_DEB 29756732000198 CACULA', 'RECEBIMENTO PIX-PIX_CRED 29756732000198 CACULA', { valorComum: true }),
+    )
+    expect(semPenalidade.confidence).toBe(0.99)
+    expect(comValorComum.confidence).toBe(0.99) // penalidade NÃO aplicada
+  })
+})
+
+// Fix 06/08: o caso REAL da caçula — Banrisul "PIX ENVIADO" → Sicredi
+// "RECEBIMENTO PIX-PIX_CRED <CNPJ próprio> YUSSEF ABU ZAHRY MUSA". A perna do
+// crédito tem o CNPJ próprio E o nome do sócio; antes REGRA 4 rejeitava por
+// "pessoa" e a penalidade de valor comum derrubava a confiança.
+describe('Fix 06/08 — par R$5.000 real (pessoa + CNPJ próprio na mesma perna)', () => {
+  it('aceita com confiança 0.99 (mesmo com valor comum e nome de pessoa)', () => {
+    const r = validateTransferPair(
+      mkInput('PIX ENVIADO', 'RECEBIMENTO PIX-PIX_CRED  29756732000198 YUSSEF ABU ZAHRY MUSA', { valorComum: true }),
+    )
+    expect(r.valid).toBe(true)
+    expect(r.confidence).toBe(0.99)
+    expect(r.signals.creditContainsOwnCnpj).toBe(true)
+    expect(r.signals.creditHasPerson).toBe(true) // tem pessoa, mas com CNPJ próprio → não é terceiro
+  })
+
+  it('mas pessoa numa perna SEM CNPJ próprio continua REJEITADA (terceiro real)', () => {
+    const r = validateTransferPair(
+      mkInput('PIX ENVIADO', 'RECEBIMENTO PIX-PIX_CRED JOAO DA SILVA SANTOS'),
+    )
+    expect(r.valid).toBe(false)
+    expect(r.reason).toMatch(/pessoa/i)
   })
 })
 
