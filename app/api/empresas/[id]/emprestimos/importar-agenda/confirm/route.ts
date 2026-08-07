@@ -9,7 +9,7 @@ import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import { extractPdfText, PdfExtractError } from '@/lib/bank-statement-pdf/extract-pdf-text'
-import { sicrediScheduleParser } from '@/lib/loans/sicredi-schedule-parser'
+import { detectScheduleParser } from '@/lib/loans/bank-parsers'
 import { applyImportedSchedule } from '@/lib/loans/apply-imported-schedule'
 import { descriptionMatchesContract } from '@/lib/loans/contract-core'
 
@@ -37,8 +37,15 @@ export async function POST(request: NextRequest, { params }: Params) {
       return NextResponse.json({ erro: 'Não foi possível ler o PDF.' }, { status: 500 })
     }
 
-    const contracts = sicrediScheduleParser.parse(text)
-    if (contracts.length === 0) return NextResponse.json({ erro: 'Nenhum contrato reconhecido.', code: 'NO_CONTRACTS' }, { status: 422 })
+    const parser = detectScheduleParser(text)
+    if (!parser) return NextResponse.json({ erro: 'Documento não reconhecido (layouts suportados: Sicredi, Caixa).', code: 'BANK_NOT_SUPPORTED' }, { status: 422 })
+    let contracts
+    try {
+      contracts = parser.parse(text)
+    } catch (err) {
+      return NextResponse.json({ erro: err instanceof Error ? err.message : 'Documento inconsistente.', code: 'PARSE_INCONSISTENT' }, { status: 422 })
+    }
+    if (contracts.length === 0) return NextResponse.json({ erro: `Nenhum contrato reconhecido (${parser.bank}).`, code: 'NO_CONTRACTS' }, { status: 422 })
 
     const loans = await prisma.loan.findMany({
       where: { companyId: empresaId },

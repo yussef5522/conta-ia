@@ -7,7 +7,7 @@ import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import { extractPdfText, PdfExtractError } from '@/lib/bank-statement-pdf/extract-pdf-text'
-import { sicrediScheduleParser } from '@/lib/loans/sicredi-schedule-parser'
+import { detectScheduleParser } from '@/lib/loans/bank-parsers'
 import { applyImportedSchedule } from '@/lib/loans/apply-imported-schedule'
 import { descriptionMatchesContract } from '@/lib/loans/contract-core'
 import { saldoDevedorAtual } from '@/lib/loans/saldo'
@@ -43,9 +43,19 @@ export async function POST(request: NextRequest, { params }: Params) {
       return NextResponse.json({ erro: 'Não foi possível ler o PDF.' }, { status: 500 })
     }
 
-    const contracts = sicrediScheduleParser.parse(text)
+    const parser = detectScheduleParser(text)
+    if (!parser) {
+      return NextResponse.json({ erro: 'Documento não reconhecido. Layouts suportados hoje: Sicredi e Caixa (Demonstrativo de Evolução Contratual). Se for outro banco, ainda não é suportado.', code: 'BANK_NOT_SUPPORTED' }, { status: 422 })
+    }
+    let contracts
+    try {
+      contracts = parser.parse(text)
+    } catch (err) {
+      // parser aborta em leitura inconsistente (ex: resíduo negativo) — nunca grava.
+      return NextResponse.json({ erro: err instanceof Error ? err.message : 'Documento inconsistente.', code: 'PARSE_INCONSISTENT' }, { status: 422 })
+    }
     if (contracts.length === 0) {
-      return NextResponse.json({ erro: 'Nenhum contrato reconhecido no documento (layout Sicredi esperado).', code: 'NO_CONTRACTS' }, { status: 422 })
+      return NextResponse.json({ erro: `Nenhum contrato reconhecido no documento (${parser.bank}).`, code: 'NO_CONTRACTS' }, { status: 422 })
     }
 
     const loans = await prisma.loan.findMany({
@@ -92,6 +102,10 @@ export async function POST(request: NextRequest, { params }: Params) {
         loan.installments,
       )
       const pagasAntes = loan.installments.filter((i) => i.status === 'PAID').length
+      // Resíduo de mora (2º encargo não-listado) — mostrar honesto no preview.
+      const residuoTotal = Math.round(
+        c.installments.reduce((s, i) => s + (i.residuo ?? 0), 0) * 100,
+      ) / 100
       return {
         contractNumber: c.contractNumber, matched: true, loanId: loan.id, lender: loan.lender,
         numParcelas: c.numParcelas, valorFinanciado: c.valorFinanciado,
@@ -99,6 +113,12 @@ export async function POST(request: NextRequest, { params }: Params) {
         dreImpactByMonth: plan.dreImpactByMonth, dreImpactTotalDepois: plan.dreImpactTotalDepois, dreImpactTotalAntes: plan.dreImpactTotalAntes,
         historicoSemVinculoCount: plan.historicoSemVinculoCount, historicoEncargos: plan.historicoEncargos,
         blocked: plan.blocked, blockReason: plan.blockReason,
+        // ── informativos lidos do documento (Caixa) ──
+        sistemaAmortizacao: c.sistemaAmortizacao ?? null,
+        taxaJurosMensal: c.taxaJurosMensal ?? null,
+        indexador: c.indexador ?? null,
+        carencia: c.carencia ?? null,
+        residuoMoraTotal: residuoTotal,
       }
     })
 
@@ -115,6 +135,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     }
     const dreDistribuicao = Object.entries(dreByMonth).sort(([a], [b]) => a.localeCompare(b)).map(([month, encargos]) => ({ month, encargos }))
     return NextResponse.json({
+      bank: parser.bank,
       contracts: result,
       impactoDRE: { total: dreTotal, porCompetencia: dreDistribuicao },
       historicoReconstruido: { parcelas: historicoCount, encargos: historicoTotal },

@@ -71,6 +71,10 @@ function parseInstallments(block: string): ParsedScheduleInstallment[] {
 
 export const sicrediScheduleParser: BankScheduleParser = {
   bank: 'Sicredi',
+  detects(text: string): boolean {
+    // "Titulo ...: C4102..." + "Nro de Parcelas" são marcas do layout Sicredi.
+    return RE_TITULO.test(text) && /Nro de Parcelas/i.test(text)
+  },
   parse(text: string): ParsedScheduleContract[] {
     // Split em blocos por "Titulo" (o cabeçalho repete por página).
     const parts = text.split(/(?=T[íi]tulo\s*\.*\s*:)/)

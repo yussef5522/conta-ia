@@ -1,0 +1,113 @@
+Relatório - Evolução da Dívida                                             https://sifec.prd.caixa/fec-web/servicos/contrato/planilha/portabilidad...
+
+
+
+
+                              DEMOSTRATIVO DE EVOLUÇÃO CONTRATUAL
+
+
+
+            Nome: YUSSEF ABU ZAHRY MUSA LTDA                            CPF/CNPJ: 29.756.732/0001-98
+
+            Nr. Contrato: 000000000001837311                            Data de emissão: 06/08/2026 13:46
+
+
+
+
+          DADOS DO CONTRATO
+
+
+                                                                                        Taxa de juros contratada          1,8700
+            Produto/Modalidade               7605/0013                                  Taxa de juros anual nominal       22,4400
+            Nome                             7605-013 GiroFAMPE - PARCERIAS EPP         Prazo total (Meses)               48
+            Valor Contratado                 61.000,00                                  Prazo Remanescente                5
+            Data de Contratação              26/01/2023                                 Saldo Devedor Atualizado          14.116,29
+            Data base cálculo juro acerto    27/02/2023                                 Data último vencimento            26/01/2027
+            Total financiado                 61.000,00                                  CET Mensal                        2,18
+            Tipo correspondente                                                         CET Anual                         24,8980
+            Fluxo de pagamento               Mensal 00000009106239                      Indexador
+            Sistema de pagamento             Price                                      Pré/Pós
+                                                                                        Modalidade BACEN                  430
+
+
+
+          INFORMAÇÕES SOBRE A PARCELA
+
+
+                                                                  Movimentos da Parcela
+             Parc        Vencimento   Valor da Parcela                                              Saldo Devedor      Valor total pago
+                                                                 Tipo         Valor     Situação
+           CARÊNCIA                               0,00                           0,00   N PG              62.140,70                 0,00
+           CARÊNCIA                               0,00                       1.162,03   N PG              63.302,73                 0,00
+           CARÊNCIA                               0,00                       1.183,76   N PG              64.486,49                 0,00
+           CARÊNCIA                               0,00                       1.205,89   N PG              65.692,38                 0,00
+           CARÊNCIA                               0,00                       1.228,45   N PG              66.920,83                 0,00
+           CARÊNCIA                               0,00                       1.251,42   N PG              68.172,25                 0,00
+           CARÊNCIA                               0,00                       1.274,82   N PG              69.447,07                 0,00
+           CARÊNCIA                               0,00                       1.298,66   N PG              70.745,73                 0,00
+           CARÊNCIA                               0,00                       1.322,95   N PG              72.068,68                 0,00
+           CARÊNCIA                               0,00                       1.347,68   N PG              73.416,36                 0,00
+           CARÊNCIA                               0,00                       1.372,89   N PG              74.789,25                 0,00
+                    1    26/02/2024           1.528,46   Juros               1.398,56   PG                73.260,79             2.927,02
+                    2    26/03/2024           1.557,04   Juros               1.369,98   PG                71.703,75             2.927,02
+                    3    26/04/2024           1.586,16   Juros               1.340,86   PG                70.117,59             2.927,02
+                    4    27/05/2024           1.615,82   Juros               1.311,20   PG                68.501,77             2.927,02
+                    5    26/06/2024           1.646,04   Juros               1.280,98   PG                66.855,73             2.927,02
+                    6    26/07/2024           1.676,82   Juros               1.250,20   PG                65.178,91             2.927,02
+                    7    26/08/2024           1.708,17   Juros               1.218,85   PG                63.470,74             2.927,02
+                    8    26/09/2024           1.740,12   Juros               1.186,90   PG                61.730,62             2.927,02
+                    9    28/10/2024           1.772,66   Juros               1.154,36   PG                59.957,96             2.927,02
+                    10   26/11/2024           1.805,81   Juros               1.121,21   PG                58.152,15             2.927,02
+                    11   26/12/2024           1.839,57   Juros               1.087,45   PG                56.312,58             2.927,02
+                    12   27/01/2025           1.873,97   Juros               1.053,05   PG                54.438,61             2.927,02
+                    13   26/02/2025           1.909,02   Juros               1.018,00   PG                52.529,59             2.927,02
+                    14   26/03/2025           1.944,72   Juros                 982,30   PG                50.584,87             2.927,02
+                    15   28/04/2025           1.981,08   Juros                 945,94   PG                48.603,79             2.927,02
+                    16   26/05/2025           2.018,13   Juros                 908,89   PG                46.585,66             2.927,02
+                    17   26/06/2025           2.055,87   Juros                 871,15   PG                44.529,79             2.927,02
+                    18   28/07/2025           2.094,31   Juros                 832,71   PG                42.435,48             2.991,12
+                                                         ENC. POR ATRASO        60,48   PG
+                    19   26/08/2025           2.133,48   Juros                 793,54   PG                40.302,00             3.002,26
+                                                         ENC. POR ATRASO        64,37   PG
+                    20   26/09/2025           2.173,37   Juros                 753,65   PG                38.128,63             2.927,02
+                    21   27/10/2025           2.214,01   Juros                 713,01   PG                35.914,62             3.005,04
+                                                         ENC. POR ATRASO        65,34   PG
+
+
+
+
+1 of 2                                                                                                                           06/08/2026, 13:46
+Relatório - Evolução da Dívida                                              https://sifec.prd.caixa/fec-web/servicos/contrato/planilha/portabilidad...
+
+
+                                                                   Movimentos da Parcela
+             Parc        Vencimento   Valor da Parcela                                               Saldo Devedor      Valor total pago
+                                                                  Tipo         Valor     Situação
+                    22   26/11/2025            2.255,42   Juros                 671,60   PG                33.659,20             2.927,02
+                    23   26/12/2025            2.297,59   Juros                 629,43   PG                31.361,61             2.927,02
+                    24   26/01/2026            2.340,56   Juros                 586,46   PG                29.021,05             2.927,02
+                    25   26/02/2026            2.384,33   Juros                 542,69   PG                26.636,72             2.927,02
+                    26   26/03/2026            2.428,91   Juros                 498,11   PG                24.207,81             2.927,02
+                    27   27/04/2026            2.474,33   Juros                 452,69   PG                21.733,48             2.927,02
+                    28   26/05/2026            2.520,60   Juros                 406,42   PG                19.212,88             3.007,84
+                                                          ENC. POR ATRASO        66,32   PG
+                    29   26/06/2026            2.567,74   Juros                 359,28   PG                16.645,14             3.013,41
+                                                          ENC. POR ATRASO        68,26   PG
+                    30   27/07/2026            2.615,76   Juros                 311,26   PG                14.029,38             2.927,02
+                    31   26/08/2026            2.664,67   Juros                 262,35   N PG             102.427,10                 0,00
+
+
+
+          SAC CAIXA: 0800 726 0101 (informações, reclamações, sugestões e elogios)
+
+          Para pessoas com deficiência auditiva ou de fala: 0800 726 2492
+
+          Ouvidoria: 0800 725 7474
+
+          www.caixa.gov.br
+
+
+
+
+2 of 2                                                                                                                            06/08/2026, 13:46
+
