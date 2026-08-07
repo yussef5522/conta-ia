@@ -20,6 +20,7 @@ interface ContractPreview {
   contractNumber: string; matched: boolean; loanId?: string; lender?: string
   numParcelas: number; valorFinanciado: number
   saldoAntes?: number; saldoDepois?: number; pagasAntes?: number; pagasDepois?: number
+  parcelasAntes?: number; parcelasDepois?: number; carenciaAntes?: number; carenciaDepois?: number | null; prazoTotalMeses?: number | null
   dreImpactByMonth?: MonthImpact[]; historicoSemVinculoCount?: number; historicoEncargos?: number
   blocked?: boolean; blockReason?: string | null
 }
@@ -121,6 +122,18 @@ export default function ImportarAgendaPage() {
                         <div className="grid grid-cols-2 gap-2 text-center">
                           <div className="rounded border p-2"><p className="text-[10px] text-muted-foreground">Saldo devedor</p><p className="tabular-nums">{formatBRL(c.saldoAntes ?? 0)} → <strong className="text-emerald-700">{formatBRL(c.saldoDepois ?? 0)}</strong></p></div>
                           <div className="rounded border p-2"><p className="text-[10px] text-muted-foreground">Parcelas pagas</p><p className="tabular-nums">{c.pagasAntes} → <strong>{c.pagasDepois}</strong></p></div>
+                          {c.parcelasDepois != null && (
+                            <div className={`rounded border p-2 ${c.parcelasAntes !== c.parcelasDepois ? 'border-amber-300 bg-amber-50' : ''}`}>
+                              <p className="text-[10px] text-muted-foreground">Nº de parcelas</p>
+                              <p className="tabular-nums">{c.parcelasAntes} → <strong className={c.parcelasAntes !== c.parcelasDepois ? 'text-amber-800' : ''}>{c.parcelasDepois}</strong>{c.prazoTotalMeses ? <span className="text-[10px] text-muted-foreground"> (prazo total {c.prazoTotalMeses})</span> : null}</p>
+                            </div>
+                          )}
+                          {c.carenciaDepois != null && (
+                            <div className={`rounded border p-2 ${(c.carenciaAntes ?? 0) !== c.carenciaDepois ? 'border-amber-300 bg-amber-50' : ''}`}>
+                              <p className="text-[10px] text-muted-foreground">Carência</p>
+                              <p className="tabular-nums">{c.carenciaAntes ?? 0} → <strong className={(c.carenciaAntes ?? 0) !== c.carenciaDepois ? 'text-amber-800' : ''}>{c.carenciaDepois}</strong> {c.carenciaDepois === 1 ? 'mês' : 'meses'}</p>
+                            </div>
+                          )}
                         </div>
                         {c.dreImpactByMonth && c.dreImpactByMonth.length > 0 ? (
                           <div>
