@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Header } from '@/components/layout/header'
 import { useToast } from '@/components/ui/use-toast'
+import { fetchJson } from '@/lib/http/fetch-json'
 import { formatBRL } from '@/lib/format/money'
 import { parseTransacoesURLFilters, buildTransacoesURLParams } from '@/lib/transacoes/url-filters'
 import { AiSourceBadge } from '@/components/transacoes/ai-source-badge'
@@ -164,17 +165,22 @@ function TransacoesPageInner() {
     | null
   >(null)
 
-  // Carrega lista de contas para o filtro e para o botão Nova Transação
+  // Carrega lista de contas para o filtro e para o botão Nova Transação.
+  // Etapa 1 (06/08): NÃO marcar "pronto" se a carga falhar — antes
+  // `setContasReady(true)` rodava mesmo em erro e a tela afirmava estar pronta
+  // com contas vazias (features dependentes disparavam no vazio, sem aviso).
   useEffect(() => {
     async function fetchContas() {
-      const res = await fetch('/api/contas-bancarias')
-      if (res.ok) {
-        const data = await res.json()
-        setContas(data.contas)
+      const { ok, data, message } = await fetchJson<{ contas: typeof contas }>('/api/contas-bancarias')
+      if (!ok) {
+        toast({ variant: 'destructive', title: 'Erro ao carregar contas', description: message ?? 'Tenta recarregar a página.' })
+        return // contasReady FICA false → não finge que carregou
       }
+      setContas(data!.contas)
       setContasReady(true)
     }
     fetchContas()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Sprint 3.0.2 — carrega categorias da empresa (se houver empresaId no URL OU

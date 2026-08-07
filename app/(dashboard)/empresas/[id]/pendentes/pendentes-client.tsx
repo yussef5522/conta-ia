@@ -27,6 +27,7 @@ import { VincularTransferenciaModal } from '@/components/pendentes/VincularTrans
 import { AprenderEAplicarModal } from '@/components/pendentes/AprenderEAplicarModal'
 import { DetectarTransferenciasModal, type TransferCandidateDTO } from '@/components/pendentes/DetectarTransferenciasModal'
 import { normalizeCounterparty } from '@/lib/counterparty/normalize'
+import { fetchJson } from '@/lib/http/fetch-json'
 // Sprint Retirada-1-Clique
 import { WithdrawalPanel } from '@/components/withdrawals/WithdrawalPanel'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -1361,13 +1362,19 @@ export function PendentesClient({
         candidates={transferCandidates}
         onApplied={() => {
           fetchTransacoes()
-          // re-detecta pra atualizar o banner (some os pares já confirmados)
-          fetch(`/api/empresas/${empresaId}/conciliation/detect-active-transfers`, {
-            method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: '{}',
+          // re-detecta pra atualizar o banner (some os pares já confirmados).
+          // Etapa 1 (06/08): falha aqui vira toast — antes o .catch(()=>{}) engolia
+          // um eventual 403/erro (foi esse padrão que escondeu o bug do loan-detect).
+          fetchJson<{ candidates?: TransferCandidateDTO[] }>(
+            `/api/empresas/${empresaId}/conciliation/detect-active-transfers`,
+            { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' },
+          ).then(({ ok, data, message }) => {
+            if (!ok) {
+              toast({ variant: 'destructive', title: 'Não foi possível reavaliar transferências', description: message ?? '' })
+              return
+            }
+            setTransferCandidates(data?.candidates ?? [])
           })
-            .then((r) => (r.ok ? r.json() : null))
-            .then((d: { candidates?: TransferCandidateDTO[] } | null) => setTransferCandidates(d?.candidates ?? []))
-            .catch(() => {})
         }}
       />
 

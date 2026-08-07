@@ -38,7 +38,12 @@ import {
 const bodySchema = z.object({
   dias: z.coerce.number().int().min(1).max(90).default(7),
   dryRun: z.coerce.boolean().default(true),
-  minConfidence: z.coerce.number().min(0).max(1).default(0.7),
+  // Fix risco ativo (06/08): default subido 0.70→0.85 (alinha com o PAIR_THRESHOLD
+  // do detect-retroactive/active-transfer). O tier MEDIUM (0.70–0.84) sugeria 23
+  // pares FALSOS na caçula (valores redondos 49,99/99,99/100/1000 que coincidem
+  // entre contas). A/B/C rejeitam todos. Quem quiser MEDIUM passa minConfidence
+  // explícito — mas o default não oferece mais ruído. Ver PARTE 1 do diagnóstico.
+  minConfidence: z.coerce.number().min(0).max(1).default(0.85),
   applyLevel: z.enum(['HIGH', 'HIGH_AND_MEDIUM']).default('HIGH'),
 })
 

@@ -40,6 +40,8 @@ import {
 } from '@/lib/conciliacao/tipo-filter'
 import { DateRangeFilter } from '@/components/shared/DateRangeFilter'
 import { useDateRangeFilter } from '@/lib/hooks/use-date-range-filter'
+import { useToast } from '@/components/ui/use-toast'
+import { fetchJson } from '@/lib/http/fetch-json'
 
 // Score mínimo pra entrar na pré-classificação (esconde "TIELE/THIAGO").
 const DRY_RUN_MIN_SCORE = 70
@@ -84,6 +86,7 @@ export default function ConciliacaoPage() {
 }
 
 function ConciliacaoInner() {
+  const { toast } = useToast()
   const router = useRouter()
   const searchParams = useSearchParams()
   // Fonte única da empresa atual: WorkspaceSwitcher no topo (EmpresaContext).
@@ -217,28 +220,23 @@ function ConciliacaoInner() {
       const qs = new URLSearchParams({ empresaId, limit: '200', tipo })
       if (rangeInicio) qs.set('inicio', rangeInicio)
       if (rangeFim) qs.set('fim', rangeFim)
-      const res = await fetch(`/api/conciliacao/ofx-pendentes?${qs}`, {
-        credentials: 'include',
-        signal: controller.signal,
-      })
-      if (res.ok) {
-        const data = await res.json()
-        // Só aplica se ESTE controller ainda é o ativo (não foi sobrescrito)
-        if (ofxAbortRef.current === controller) {
-          setOfxTxs(data.transacoes)
-        }
+      const { ok, data, message, aborted } = await fetchJson<{ transacoes: OfxTx[] }>(
+        `/api/conciliacao/ofx-pendentes?${qs}`,
+        { signal: controller.signal },
+      )
+      // Aborted OU controller sobrescrito → ignora em silêncio (não é erro).
+      if (aborted || ofxAbortRef.current !== controller) return
+      if (!ok) {
+        toast({ variant: 'destructive', title: 'Erro ao carregar OFX pendentes', description: message ?? 'Tenta de novo.' })
+        return
       }
-    } catch (err) {
-      // Aborted: silencia. Outros erros propagam logs do navegador.
-      if ((err as Error)?.name !== 'AbortError') {
-        throw err
-      }
+      setOfxTxs(data!.transacoes)
     } finally {
       if (ofxAbortRef.current === controller) {
         setLoadingOfx(false)
       }
     }
-  }, [empresaId, rangeInicio, rangeFim, tipo])
+  }, [empresaId, rangeInicio, rangeFim, tipo, toast])
 
   const fetchDryRun = useCallback(async () => {
     if (!empresaId) return
@@ -254,26 +252,22 @@ function ConciliacaoInner() {
         minScore: String(DRY_RUN_MIN_SCORE),
         tipo,
       })
-      const res = await fetch(`/api/conciliacao/bulk-dry-run?${qs}`, {
-        credentials: 'include',
-        signal: controller.signal,
-      })
-      if (res.ok) {
-        const data = await res.json()
-        if (dryRunAbortRef.current === controller) {
-          setDryRunPairs(data.pairs as DryRunPair[])
-        }
+      const { ok, data, message, aborted } = await fetchJson<{ pairs: DryRunPair[] }>(
+        `/api/conciliacao/bulk-dry-run?${qs}`,
+        { signal: controller.signal },
+      )
+      if (aborted || dryRunAbortRef.current !== controller) return
+      if (!ok) {
+        toast({ variant: 'destructive', title: 'Erro na prévia de conciliação', description: message ?? 'Tenta de novo.' })
+        return
       }
-    } catch (err) {
-      if ((err as Error)?.name !== 'AbortError') {
-        throw err
-      }
+      setDryRunPairs(data!.pairs)
     } finally {
       if (dryRunAbortRef.current === controller) {
         setDryRunLoading(false)
       }
     }
-  }, [empresaId, tipo])
+  }, [empresaId, tipo, toast])
 
   useEffect(() => {
     fetchOfxTxs()

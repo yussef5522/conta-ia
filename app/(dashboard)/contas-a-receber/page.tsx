@@ -26,6 +26,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog'
 import { useToast } from '@/components/ui/use-toast'
+import { fetchJson } from '@/lib/http/fetch-json'
 import { formatBRL } from '@/lib/format/money'
 import { DateRangeFilter } from '@/components/shared/DateRangeFilter'
 import { useDateRangeFilter } from '@/lib/hooks/use-date-range-filter'
@@ -143,13 +144,16 @@ function ContasAReceberInner() {
       if (dateRangeInicio) qs.set('inicio', dateRangeInicio)
       if (dateRangeFim) qs.set('fim', dateRangeFim)
 
-      const res = await fetch(`/api/contas-a-receber?${qs}`, { credentials: 'include' })
-      if (res.ok) {
-        const data = await res.json()
-        setItems(data.items)
-        setKpis(data.kpis)
-        setPaginacao(data.paginacao)
+      const { ok, data, message } = await fetchJson<{ items: typeof items; kpis: typeof kpis; paginacao: typeof paginacao }>(
+        `/api/contas-a-receber?${qs}`,
+      )
+      if (!ok) {
+        toast({ variant: 'destructive', title: 'Erro ao carregar contas a receber', description: message ?? 'Tenta de novo.' })
+        return
       }
+      setItems(data!.items)
+      setKpis(data!.kpis)
+      setPaginacao(data!.paginacao)
     } finally {
       setLoading(false)
     }

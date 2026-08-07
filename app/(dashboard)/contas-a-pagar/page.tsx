@@ -57,6 +57,7 @@ import { EditarContaDialog } from '@/components/contas-pagar/EditarContaDialog'
 import { MarcarPagaDialog } from '@/components/contas-pagar/MarcarPagaDialog'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/components/ui/use-toast'
+import { fetchJson } from '@/lib/http/fetch-json'
 // Sprint 5.0.3.0b — Power features
 import { SavedViewTabs } from '@/components/contas-pagar/SavedViewTabs'
 import { BulkActionsBar } from '@/components/contas-pagar/BulkActionsBar'
@@ -399,14 +400,17 @@ function ContasAPagarInner() {
       return
     }
     setAgingLoading(true)
-    void fetch(`/api/empresas/${empresaId}/contas-pagar/aging`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
+    void fetchJson<{ aging: typeof aging }>(`/api/empresas/${empresaId}/contas-pagar/aging`)
+      .then(({ ok, data, message, aborted }) => {
+        if (aborted) return
+        if (!ok) {
+          toast({ variant: 'destructive', title: 'Erro no aging', description: message ?? 'Não foi possível carregar o vencimento.' })
+          return
+        }
         if (data?.aging) setAging(data.aging)
       })
-      .catch(() => {})
       .finally(() => setAgingLoading(false))
-  }, [empresaId])
+  }, [empresaId, toast])
 
   useEffect(() => {
     refetchAging()
@@ -568,15 +572,16 @@ function ContasAPagarInner() {
       if (filters.status !== 'TODOS') qs.set('status', filters.status)
       if (filters.vencidasOnly) qs.set('vencidasOnly', 'true')
 
-      const res = await fetch(`/api/contas-a-pagar?${qs}`, {
-        credentials: 'include',
-      })
-      if (res.ok) {
-        const data = await res.json()
-        setItems(data.items)
-        setKpis(data.kpis)
-        setPaginacao(data.paginacao)
+      const { ok, data, message } = await fetchJson<{ items: typeof items; kpis: typeof kpis; paginacao: typeof paginacao }>(
+        `/api/contas-a-pagar?${qs}`,
+      )
+      if (!ok) {
+        toast({ variant: 'destructive', title: 'Erro ao carregar contas a pagar', description: message ?? 'Tenta de novo.' })
+        return // não deixa lista/KPIs stale passarem por atuais
       }
+      setItems(data!.items)
+      setKpis(data!.kpis)
+      setPaginacao(data!.paginacao)
     } finally {
       setLoading(false)
     }
