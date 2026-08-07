@@ -140,6 +140,10 @@ export async function POST(request: NextRequest, { params }: Params) {
             fileName: uploadedFileName,
             ipAddress,
             userAgent,
+            // Fix regressão (06/08): repassa as categorias escolhidas no preview.
+            // Sem isto o V2 criava tudo PENDING/sem categoria (branch legado
+            // applyCategoryOverrides na L657 é inalcançável com a flag ON).
+            categoryOverrides,
           }),
         { timeout: 120000, maxWait: 10000 },
       )

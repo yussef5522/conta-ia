@@ -14,6 +14,8 @@
 
 import type { Prisma, PrismaClient } from '@prisma/client'
 import { parseOFX } from '@/lib/ofx/parser'
+import { dedupHashOFX } from '@/lib/ofx/dedup'
+import type { CategoryOverride } from '@/lib/import-categorization/apply-overrides'
 import { prepareBalanceTransactions } from '@/lib/balance/prepare'
 import { parseStatementFromOFX } from './parse-statement-from-ofx'
 import { reconcileStatement } from './reconcile-statement'
@@ -35,6 +37,12 @@ export interface ImportOrchestratorInput {
   // Override opcional pro corte min(DTASOF, today). Default = new Date().
   // Em testes ou simulações determinísticas é útil; em prod normal não passar.
   today?: Date
+  // Categorias escolhidas pelo usuário no preview (mapa dedupHash → categoryId).
+  // A CHAVE é o `dedupHashOFX` (sha256 fitid|date|valor|memo) — a MESMA que o
+  // client conhece do preview (`filtrarNovasOFX`), NÃO o stableKey nem o
+  // dedupHash de linha armazenado (stableKey#importId:occ). Recomputada por
+  // linha na criação. Espelha o applyCategoryOverrides do caminho V1.
+  categoryOverrides?: CategoryOverride[]
 }
 
 export interface ImportOrchestratorResult {
@@ -63,6 +71,32 @@ export interface ImportOrchestratorResult {
 }
 
 type Tx = Prisma.TransactionClient | PrismaClient
+
+/**
+ * Resolve a categoria de UMA linha EFFECTED nova a partir dos overrides do
+ * preview. A chave de casamento é o `dedupHashOFX` (fitid|date|valor|memo) —
+ * recomputado da linha, idêntico ao que o client enviou (`filtrarNovasOFX`).
+ * Espelha o applyCategoryOverrides do V1: categoria → RECONCILED/MANUAL/conf 1;
+ * sem override (ou override null = "A classificar") → PENDING/sem categoria.
+ * Puro — exportado só pra teste.
+ */
+export function resolveLineOverride(
+  overrideMap: Map<string, string | null>,
+  line: { datePosted: Date; signedAmount: number; memo: string; fitid?: string | null },
+): { categoryId: string | null; status: 'PENDING' | 'RECONCILED'; classificationSource: 'MANUAL' | null; aiConfidence: number | null } {
+  const type = line.signedAmount >= 0 ? 'CREDIT' : 'DEBIT'
+  const ofxHash = dedupHashOFX({
+    datePosted: line.datePosted,
+    type,
+    amount: Math.abs(line.signedAmount),
+    memo: line.memo,
+    fitid: line.fitid ?? '',
+  })
+  const cat = overrideMap.has(ofxHash) ? overrideMap.get(ofxHash) ?? null : undefined
+  return cat
+    ? { categoryId: cat, status: 'RECONCILED', classificationSource: 'MANUAL', aiConfidence: 1.0 }
+    : { categoryId: null, status: 'PENDING', classificationSource: null, aiConfidence: null }
+}
 
 export async function runImportV2(
   tx: Tx,
@@ -142,6 +176,13 @@ export async function runImportV2(
   // bancos que declaram DTASOF futuro (Sicredi: 30/06 num extrato de 13/06).
   const result = reconcileStatement(lines, dbBankTxs, dtAsOf, input.today)
 
+  // Overrides de categoria do preview, indexados por dedupHashOFX (a chave que
+  // o client envia). Só afeta linhas EFFECTED novas (previews PAYABLE/RECEIVABLE
+  // seguem sem categoria, igual ao V1). value null = "manter A classificar".
+  const overrideMap = new Map<string, string | null>()
+  for (const o of input.categoryOverrides ?? []) overrideMap.set(o.dedupHash, o.categoryId)
+  let overridesApplied = 0
+
   // 5. Criar OfxImport + rawOfxBlob
   const bankAcc = await tx.bankAccount.findUniqueOrThrow({
     where: { id: input.bankAccountId },
@@ -188,6 +229,9 @@ export async function runImportV2(
   for (const line of result.missing) {
     const sk = stableKey({ date: line.datePosted, signedAmount: line.signedAmount, memo: line.memo })
     const type = line.signedAmount >= 0 ? 'CREDIT' : 'DEBIT'
+    // Casa o override do preview pela MESMA chave que o client usou (dedupHashOFX).
+    const ov = resolveLineOverride(overrideMap, line)
+    if (ov.status === 'RECONCILED') overridesApplied += 1
     const created = await tx.transaction.create({
       data: {
         bankAccountId: input.bankAccountId,
@@ -195,7 +239,11 @@ export async function runImportV2(
         description: line.memo,
         amount: Math.abs(line.signedAmount),
         type,
-        status: 'PENDING',
+        // Categoria do usuário → RECONCILED (igual V1). Sem categoria → PENDING.
+        status: ov.status,
+        categoryId: ov.categoryId,
+        classificationSource: ov.classificationSource,
+        aiConfidence: ov.aiConfidence,
         origin: 'OFX',
         externalId: line.fitid ?? null,
         importId: newImport.id,
@@ -207,6 +255,10 @@ export async function runImportV2(
       select: { id: true },
     })
     insertedTxIds.push(created.id)
+  }
+  // Reflete no relatório do import quantas entraram já categorizadas.
+  if (overridesApplied > 0) {
+    await tx.ofxImport.update({ where: { id: newImport.id }, data: { autoClassified: overridesApplied } })
   }
 
   // 8. PAYABLE/RECEIVABLE para previews (NUNCA EFFECTED) — com dedup contra DB pending
