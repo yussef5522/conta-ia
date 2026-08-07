@@ -643,6 +643,12 @@ export async function applyTransferCandidate(
       data: {
         transferGroupId,
         type: 'TRANSFER',
+        // OBRIGATÓRIO: constraint `transfer_has_direction` exige transferDirection
+        // ('OUT'/'IN') sempre que type='TRANSFER'. Sem isto o apply falhava com
+        // 23514 e NENHUM par era conciliado (bug desde 14/06). Débito = saída = OUT
+        // (o balance engine usa isto: OUT = −valor, IN = +valor → saldo idêntico
+        // ao que o DEBIT/CREDIT já produziam).
+        transferDirection: 'OUT',
         status: 'RECONCILED',
         categoryId: null,
         classificationSource: 'AI',
@@ -654,6 +660,7 @@ export async function applyTransferCandidate(
       data: {
         transferGroupId,
         type: 'TRANSFER',
+        transferDirection: 'IN', // crédito = entrada = IN
         status: 'RECONCILED',
         categoryId: null,
         classificationSource: 'AI',
