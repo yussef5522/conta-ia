@@ -51,14 +51,7 @@ async function main() {
   console.log(`  → ImportedIdentity seedado: ${identityRows} linhas (V1 criaria ${afterFirst})`)
   console.log(`  → status das tx: ${rows.map((r) => r.status).join(', ')} (V1 auto-classificaria por regra/keyword)`)
 
-  // cleanup
-  await prisma.transaction.deleteMany({ where: { bankAccountId: acc.id } })
-  await prisma.importedIdentity.deleteMany({ where: { bankAccountId: acc.id } }).catch(() => {})
-  await prisma.statementLine.deleteMany({ where: { bankAccountId: acc.id } }).catch(() => {})
-  await prisma.ofxImport.deleteMany({ where: { bankAccountId: acc.id } })
-  await prisma.bankAccount.delete({ where: { id: acc.id } })
-  await prisma.company.delete({ where: { id: co.id } })
-  await prisma.user.delete({ where: { id: usr.id } })
+  // sem cleanup manual — o scratch DB é dropado inteiro pelo caller
   process.exit(0)
 }
 main().finally(() => prisma.$disconnect())
