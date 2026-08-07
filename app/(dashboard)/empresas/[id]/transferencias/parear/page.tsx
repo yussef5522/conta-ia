@@ -25,12 +25,14 @@ import {
   Link2,
   Loader2,
   Sparkles,
+  ArrowLeftRight,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Header } from '@/components/layout/header'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
+import { DetectarTransferenciasModal, type TransferCandidateDTO } from '@/components/pendentes/DetectarTransferenciasModal'
 import type {
   ParearSugestao,
   ParearSugestoesResponse,
@@ -67,6 +69,11 @@ export default function PearearTransferenciasPage() {
   const [debitId, setDebitId] = useState('')
   const [creditId, setCreditId] = useState('')
   const [manualBusy, setManualBusy] = useState(false)
+  // Detector cross-conta (MESMO do banner de Pendentes) — mais capaz que o
+  // parear-sugestoes (que só olha AS DUAS pernas PENDING). Enxerga entrada já
+  // categorizada, usa regras PIX/CNPJ/confiança. Some a contradição entre telas.
+  const [detectorCands, setDetectorCands] = useState<TransferCandidateDTO[] | null>(null)
+  const [detectorModalOpen, setDetectorModalOpen] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -84,6 +91,13 @@ export default function PearearTransferenciasPage() {
     } finally {
       setLoading(false)
     }
+    // Detector cross-conta em paralelo (não bloqueia a lista manual). Read-only.
+    fetch(`/api/empresas/${empresaId}/conciliation/detect-active-transfers`, {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: '{}',
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { candidates?: TransferCandidateDTO[] } | null) => setDetectorCands(d?.candidates ?? []))
+      .catch(() => setDetectorCands([]))
   }, [empresaId])
 
   useEffect(() => {
@@ -246,6 +260,30 @@ export default function PearearTransferenciasPage() {
         </Card>
       ) : (
         <>
+          {/* Transferências detectadas automaticamente (detector cross-conta —
+              MESMO do banner de Pendentes). Mais capaz: enxerga entrada já
+              categorizada, mesmo valor + mesmo dia + PIX + CNPJ próprio. */}
+          {detectorCands && detectorCands.length > 0 && (
+            <section className="space-y-3">
+              <button
+                type="button"
+                onClick={() => setDetectorModalOpen(true)}
+                className="flex w-full items-center gap-3 rounded-md border border-violet-300 bg-violet-50 px-4 py-3 text-left hover:bg-violet-100 transition-colors"
+              >
+                <ArrowLeftRight className="h-5 w-5 text-violet-700 shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-violet-900">
+                    {detectorCands.length} transferência{detectorCands.length > 1 ? 's' : ''} detectada{detectorCands.length > 1 ? 's' : ''} automaticamente
+                  </p>
+                  <p className="text-xs text-violet-800">
+                    Detecção avançada (inclui entradas já categorizadas). Clique pra revisar e confirmar.
+                  </p>
+                </div>
+                <span className="text-sm font-medium text-violet-800 shrink-0">Revisar →</span>
+              </button>
+            </section>
+          )}
+
           {/* Pares sugeridos */}
           <section className="space-y-3">
             <div className="flex items-baseline justify-between gap-2">
@@ -272,12 +310,25 @@ export default function PearearTransferenciasPage() {
                     <CheckCircle2 className="h-6 w-6 text-emerald-600" aria-hidden />
                   </div>
                   <p className="text-base font-medium text-slate-900">
-                    Nenhum par sugerido
+                    {detectorCands && detectorCands.length > 0
+                      ? 'Nenhum par entre pendentes — mas há transferências detectadas acima'
+                      : 'Nenhum par sugerido'}
                   </p>
                   <p className="max-w-sm text-sm text-slate-500">
-                    Nenhuma saída pendente casa com uma entrada pendente de outra
-                    conta com o mesmo valor e data próxima (±3 dias). Se você
-                    sabe que 2 tx são par, use a ferramenta manual abaixo.
+                    {detectorCands && detectorCands.length > 0 ? (
+                      <>
+                        A lista abaixo só casa saída <strong>e</strong> entrada ambas
+                        pendentes. A entrada deste par já foi categorizada, então ela
+                        aparece na <strong>detecção automática acima</strong> (mais
+                        capaz) — clique em Revisar pra confirmar.
+                      </>
+                    ) : (
+                      <>
+                        Nenhuma saída pendente casa com uma entrada pendente de outra
+                        conta com o mesmo valor e data próxima (±3 dias). Se você
+                        sabe que 2 tx são par, use a ferramenta manual abaixo.
+                      </>
+                    )}
                   </p>
                 </CardContent>
               </Card>
@@ -385,6 +436,14 @@ export default function PearearTransferenciasPage() {
           </section>
         </>
       )}
+
+      <DetectarTransferenciasModal
+        open={detectorModalOpen}
+        onOpenChange={setDetectorModalOpen}
+        empresaId={empresaId}
+        candidates={detectorCands}
+        onApplied={() => { load() }}
+      />
     </div>
   )
 }
