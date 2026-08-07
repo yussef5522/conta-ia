@@ -37,28 +37,27 @@ describe('Paridade V1/V2 — COBERTO (verde)', () => {
     const pendentes = readFileSync(join(ROOT, 'app/(dashboard)/empresas/[id]/pendentes/pendentes-client.tsx'), 'utf-8')
     expect(pendentes).toMatch(/detect-active-transfers/)
   })
+
+  // Etapa 3a (06/08) — GAP ALTO FECHADO: V2 agora recebe e aplica `decisions`.
+  it('V2 aplica decisions/SKIP do preview (Etapa 3a — preview = confirm)', () => {
+    // route passa decisions pro runImportV2:
+    const callBlock = v1route.slice(v1route.indexOf('runImportV2(tx'), v1route.indexOf('runImportV2(tx') + 1200)
+    expect(callBlock).toMatch(/decisions,/)
+    // input do orquestrador tem o campo:
+    const ifaceStart = orchestrator.indexOf('interface ImportOrchestratorInput')
+    const inputIface = orchestrator.slice(ifaceStart, orchestrator.indexOf('\n}', ifaceStart))
+    expect(inputIface).toMatch(/decisions\?:/)
+    // e aplica applyImportDecisions (mesma função pura do V1):
+    expect(orchestrator).toMatch(/applyImportDecisions/)
+  })
 })
 
-describe('Paridade V1/V2 — GAPS REAIS medidos (Etapa 3 trata)', () => {
-  // Prova estrutural do gap ALTO: o route parseia `decisions` (SKIP) mas o
-  // runImportV2 NEM ACEITA esse parâmetro → linha desmarcada no preview entra.
-  it('GAP ALTO confirmado: V2 não recebe `decisions` (SKIP do preview é ignorado)', () => {
-    expect(v1route).toMatch(/formData\.get\('decisions'\)/) // route ainda parseia
-    // ...mas a chamada do runImportV2 NÃO passa decisions:
-    const callBlock = v1route.slice(v1route.indexOf('runImportV2(tx'), v1route.indexOf('runImportV2(tx') + 400)
-    expect(callBlock).not.toMatch(/decisions/)
-    // ...e o input do orquestrador não tem o campo:
-    const inputIface = orchestrator.slice(orchestrator.indexOf('interface ImportOrchestratorInput'), orchestrator.indexOf('interface ImportOrchestratorInput') + 400)
-    expect(inputIface).not.toMatch(/decisions/)
-  })
-
+describe('Paridade V1/V2 — GAPS REAIS restantes (Etapa 3b+, registrados)', () => {
   it('GAP confirmado: V2 não seta fitidKey/contentHash nem seed ImportedIdentity (dedup mesmo assim OK)', () => {
     expect(orchestrator).not.toMatch(/fitidKey|contentHash|importedIdentity\.create/)
   })
 
-  // Gaps a fechar na Etapa 3 (medidos, não corrigidos agora):
-  it.todo('Etapa 3: V2 aplicar decisions/SKIP do preview (gap ALTO — preview ≠ confirm)')
-  it.todo('Etapa 3: V2 auto-classificar por regra/keyword no import (gap MÉDIO — hoje tudo PENDING)')
-  it.todo('Etapa 3: V2 popular fitidKey/contentHash + seed ImportedIdentity (gap BAIXO — audit/placeholder-reconcile)')
-  it.todo('Etapa 3: teste de paridade rodando MESMO OFX por V1 e V2 no CI (hoje só via scratch Postgres manual)')
+  // Gaps a fechar depois (medidos, fora do escopo da Etapa 3a):
+  it.todo('Etapa 3b: V2 auto-classificar por regra/keyword no import (gap MÉDIO — hoje tudo PENDING)')
+  it.todo('Etapa 3b: V2 popular fitidKey/contentHash + seed ImportedIdentity (gap BAIXO — audit/placeholder-reconcile)')
 })

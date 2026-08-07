@@ -16,6 +16,7 @@ import type { Prisma, PrismaClient } from '@prisma/client'
 import { parseOFX } from '@/lib/ofx/parser'
 import { dedupHashOFX } from '@/lib/ofx/dedup'
 import type { CategoryOverride } from '@/lib/import-categorization/apply-overrides'
+import { applyImportDecisions, type ImportDecision } from '@/lib/ofx/decisions'
 import { prepareBalanceTransactions } from '@/lib/balance/prepare'
 import { parseStatementFromOFX } from './parse-statement-from-ofx'
 import { reconcileStatement } from './reconcile-statement'
@@ -43,6 +44,10 @@ export interface ImportOrchestratorInput {
   // dedupHash de linha armazenado (stableKey#importId:occ). Recomputada por
   // linha na criação. Espelha o applyCategoryOverrides do caminho V1.
   categoryOverrides?: CategoryOverride[]
+  // Decisões declarativas do preview (dedupHash → CREATE_NEW/SKIP/…). Linha
+  // marcada SKIP NÃO vira tx (Etapa 3a — paridade com o V1). Mesma chave
+  // dedupHashOFX dos categoryOverrides. Sem isto, "preview ≠ confirm" no V2.
+  decisions?: ImportDecision[]
 }
 
 export interface ImportOrchestratorResult {
@@ -226,7 +231,23 @@ export async function runImportV2(
   // transações — o stableKey puro colidiria no @@unique. Ver ./line-dedup-hash.
   const nextOcc = makeOccurrenceCounter()
   const insertedTxIds: string[] = []
-  for (const line of result.missing) {
+  // Decisões do preview (SKIP não vira tx) — mesma chave dedupHashOFX dos
+  // categoryOverrides, mesma função pura do V1 (applyImportDecisions). Aplica
+  // ANTES de criar, tanto em EFFECTED (missing) quanto em previews.
+  const ofxHashOf = (line: { datePosted: Date; signedAmount: number; memo: string; fitid?: string | null }) =>
+    dedupHashOFX({
+      datePosted: line.datePosted,
+      type: line.signedAmount >= 0 ? 'CREDIT' : 'DEBIT',
+      amount: Math.abs(line.signedAmount),
+      memo: line.memo,
+      fitid: line.fitid ?? '',
+    })
+  const missingDecided = applyImportDecisions(
+    result.missing.map((l) => ({ line: l, dedupHash: ofxHashOf(l) })),
+    input.decisions,
+  )
+  let skippedByDecision = missingDecided.skipped
+  for (const { line } of missingDecided.filtered) {
     const sk = stableKey({ date: line.datePosted, signedAmount: line.signedAmount, memo: line.memo })
     const type = line.signedAmount >= 0 ? 'CREDIT' : 'DEBIT'
     // Casa o override do preview pela MESMA chave que o client usou (dedupHashOFX).
@@ -270,7 +291,13 @@ export async function runImportV2(
   }))
   const previewDedup = dedupPreviewsAgainstDbPending(result.previews, pendingForDedup)
 
-  for (const line of previewDedup.toCreate) {
+  // SKIP do preview também vale pras linhas futuras (PAYABLE/RECEIVABLE).
+  const previewsDecided = applyImportDecisions(
+    previewDedup.toCreate.map((l) => ({ line: l, dedupHash: ofxHashOf(l) })),
+    input.decisions,
+  )
+  skippedByDecision += previewsDecided.skipped
+  for (const { line } of previewsDecided.filtered) {
     const sk = stableKey({ date: line.datePosted, signedAmount: line.signedAmount, memo: line.memo })
     const type = line.signedAmount >= 0 ? 'CREDIT' : 'DEBIT'
     const lifecycle = line.signedAmount >= 0 ? 'RECEIVABLE' : 'PAYABLE'
@@ -316,6 +343,16 @@ export async function runImportV2(
         data: { isCardPayment: true },
       })
     }
+  }
+
+  // Corrige a contagem do import quando o usuário pediu SKIP no preview
+  // (newTransactions foi setado antes dos loops, com o total pré-skip).
+  if (skippedByDecision > 0) {
+    await tx.ofxImport.update({
+      where: { id: newImport.id },
+      data: { newTransactions: insertedTxIds.length },
+    })
+    console.log(`[RECONCILE_V2] ${skippedByDecision} linha(s) puladas por decisão SKIP do preview`)
   }
 
   // 9. Warnings para orphans (NUNCA delete automático)

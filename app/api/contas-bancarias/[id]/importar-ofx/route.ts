@@ -144,6 +144,9 @@ export async function POST(request: NextRequest, { params }: Params) {
             // Sem isto o V2 criava tudo PENDING/sem categoria (branch legado
             // applyCategoryOverrides na L657 é inalcançável com a flag ON).
             categoryOverrides,
+            // Etapa 3a (06/08): repassa as decisões declarativas (SKIP não vira
+            // tx). O route já parseava mas não passava — "preview ≠ confirm" no V2.
+            decisions,
           }),
         { timeout: 120000, maxWait: 10000 },
       )
