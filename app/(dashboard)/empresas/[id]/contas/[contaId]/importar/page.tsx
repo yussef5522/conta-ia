@@ -552,6 +552,27 @@ export default function ImportarOFXPage() {
       }
       toast({ variant: 'success', title: 'Importação concluída', description: data.mensagem })
 
+      // 2.4b — movimento futuro descartado: mostra a LISTA (nunca some em silêncio).
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const futuras: Array<{ date: string; signedAmount: number; memo: string }> = data.descartadasFuturas ?? []
+      if (futuras.length > 0) {
+        const lista = futuras
+          .map((f) => `${f.date.split('-').reverse().slice(0, 2).join('/')} ${f.memo} ${f.signedAmount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`)
+          .join(' · ')
+        toast({
+          title: `${futuras.length} lançamento${futuras.length !== 1 ? 's futuros não importados' : ' futuro não importado'} (agendados)`,
+          description: `Entram quando saírem de fato. ${lista}`,
+        })
+      }
+      // Validação de fechamento: saldo x LEDGERBAL não bateu → avisar (não silenciar).
+      if (data.ledgerMismatch) {
+        toast({
+          variant: 'destructive',
+          title: 'Saldo não fechou com o banco',
+          description: `Calculado ${data.ledgerMismatch.saldoCalculado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} vs LEDGERBAL ${data.ledgerMismatch.ledgerBal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}. Revise a classificação.`,
+        })
+      }
+
       // Sprint OFX V3 — após criar as tx, aplica marcações declarativas
       if (data.importId && v3PendingDecisions) {
         await applyV3MarksAfterImport(data.importId, v3PendingDecisions)

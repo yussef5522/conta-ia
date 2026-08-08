@@ -21,12 +21,12 @@ import { prepareBalanceTransactions } from '@/lib/balance/prepare'
 import { parseStatementFromOFX } from './parse-statement-from-ofx'
 import { reconcileStatement } from './reconcile-statement'
 import { buildReconcileUniverse } from './reconcile-universe'
+import { isFutureStatementLine } from '../ofx/future-line'
 import { stableKey } from './stable-key'
 import { buildLineDedupHash, makeOccurrenceCounter } from './line-dedup-hash'
-import { isPreviewLine } from './is-preview'
+import { fitidLooksLikeDate } from './is-preview'
 import { isReconcileV2Enabled } from './flag'
 import { recalcularSaldoConta } from '@/lib/balance/recalcular'
-import { dedupPreviewsAgainstDbPending } from './dedup-previews'
 import type { DbBankTransaction } from './types'
 
 export interface ImportOrchestratorInput {
@@ -63,7 +63,17 @@ export interface ImportOrchestratorResult {
     orphanWarnings: number
     promoted: number // previews (PAYABLE/RECEIVABLE) que realizaram → EFFECTED
     promotionSkippedConciliada: number // previews conciliadas preservadas (não promovidas)
+    discardedFuture: number // linhas futuras descartadas (agendado — não importado)
   }
+  // Linhas futuras descartadas no import (2.4b — mostrar na tela, nunca sumir).
+  discardedFuture: Array<{
+    date: string
+    signedAmount: number
+    memo: string
+    fitid: string | null
+  }>
+  // Validação de fechamento: saldo calculado x LEDGERBAL. null = fechou.
+  ledgerMismatch: { saldoCalculado: number; ledgerBal: number; diferenca: number } | null
   matchedExact: number
   matchedFuzzy: number
   warnings: Array<{
@@ -122,7 +132,23 @@ export async function runImportV2(
   const dtAsOf = dtAsOfMaybe
   if (lines.length === 0) throw new Error('OFX sem transações — abort')
 
-  // 2. Janela: minDate → dtAsOf
+  // 1.5 DESCARTE DE MOVIMENTO FUTURO (07/08): o extrato só registra o passado.
+  // Linha futura (data > DTASOF E > hoje BRT, ou FITID YYMMDD do Banrisul) NÃO
+  // vira transação — é descartada e reportada (nunca some em silêncio). Quando o
+  // extrato seguinte trouxer a linha já realizada, ela entra normal pela 1ª vez,
+  // sem casamento preview↔real. Ver lib/ofx/future-line.ts.
+  const realLines: typeof lines = []
+  const futureLines: typeof lines = []
+  for (const l of lines) {
+    const previewFitid = fitidLooksLikeDate(l.fitid, l.datePosted)
+    if (isFutureStatementLine(l.datePosted, dtAsOf, previewFitid, input.today)) futureLines.push(l)
+    else realLines.push(l)
+  }
+  if (futureLines.length > 0) {
+    console.log(`[RECONCILE_V2] ${futureLines.length} linha(s) futura(s) descartada(s) (agendado — não importado)`)
+  }
+
+  // 2. Janela: minDate → dtAsOf (usa todas as linhas p/ largura; futuras são +tarde)
   const minDate = lines.reduce((m, l) => (l.datePosted < m ? l.datePosted : m), lines[0].datePosted)
 
   // 3. Fetch tx EFFECTED da conta na janela (pra reconcile real_lines)
@@ -184,7 +210,8 @@ export async function runImportV2(
   // 4. Reconcile bidirecional (Tier 1 EXACT + Tier 2 FUZZY)
   // Passa `today` pro corte de preview ser min(DTASOF, today) — cobre
   // bancos que declaram DTASOF futuro (Sicredi: 30/06 num extrato de 13/06).
-  const result = reconcileStatement(lines, dbBankTxs, dtAsOf, input.today)
+  // Só as linhas REAIS entram no reconcile — as futuras foram descartadas acima.
+  const result = reconcileStatement(realLines, dbBankTxs, dtAsOf, input.today)
 
   // Overrides de categoria do preview, indexados por dedupHashOFX (a chave que
   // o client envia). Só afeta linhas EFFECTED novas (previews PAYABLE/RECEIVABLE
@@ -220,10 +247,14 @@ export async function runImportV2(
   // rawOfxBlob via raw porque schema.prisma do client ainda não conhece o campo
   await tx.$executeRaw`UPDATE ofx_imports SET "rawOfxBlob"=${input.rawOfx} WHERE id=${newImport.id}`
 
-  // 6. Persistir statement_lines (espelho cru, COM flag isPreview por linha)
+  // 6. Persistir statement_lines (espelho cru, COM flag isPreview por linha).
+  // Persiste TODAS as linhas (inclui as futuras descartadas) pra auditoria; a
+  // flag isPreview marca a linha futura que NÃO virou transação.
   for (const line of lines) {
     const sk = stableKey({ date: line.datePosted, signedAmount: line.signedAmount, memo: line.memo })
-    const isPrev = isPreviewLine({ datePosted: line.datePosted, fitid: line.fitid }, dtAsOf)
+    const isPrev = isFutureStatementLine(
+      line.datePosted, dtAsOf, fitidLooksLikeDate(line.fitid, line.datePosted), input.today,
+    )
     await tx.$executeRaw`
       INSERT INTO statement_lines (id, "importId", "bankAccountId", "datePosted", "signedAmount", memo, fitid, "stableKey", "isPreview")
       VALUES (gen_random_uuid()::text, ${newImport.id}, ${input.bankAccountId}, ${line.datePosted}, ${line.signedAmount}, ${line.memo}, ${line.fitid ?? null}, ${sk}, ${isPrev})
@@ -287,46 +318,22 @@ export async function runImportV2(
     await tx.ofxImport.update({ where: { id: newImport.id }, data: { autoClassified: overridesApplied } })
   }
 
-  // 8. PAYABLE/RECEIVABLE para previews (NUNCA EFFECTED) — com dedup contra DB pending
-  const pendingForDedup = dbPending.map((t) => ({
-    id: t.id,
-    date: t.date,
-    signedAmount: t.type === 'CREDIT' ? t.amount : -t.amount,
-    memo: t.description ?? '',
+  // 8. MOVIMENTO FUTURO — DESCARTADO (decisão de produto 07/08). NÃO cria mais
+  // PAYABLE/RECEIVABLE a partir do extrato (extrato = passado; previsão vem de
+  // Contas a Pagar cadastradas). As `futureLines` são só reportadas pra tela.
+  // `result.previews` deve vir vazio (as futuras já saíram antes do reconcile);
+  // se por acaso vier algo (YYMMDD residual), some ao descarte + loga.
+  const descartadasFuturas = [
+    ...futureLines,
+    ...result.previews, // rede: qualquer preview que escapou também é descartada
+  ].map((l) => ({
+    date: l.datePosted.toISOString().slice(0, 10),
+    signedAmount: l.signedAmount,
+    memo: l.memo,
+    fitid: l.fitid ?? null,
   }))
-  const previewDedup = dedupPreviewsAgainstDbPending(result.previews, pendingForDedup)
-
-  // SKIP do preview também vale pras linhas futuras (PAYABLE/RECEIVABLE).
-  const previewsDecided = applyImportDecisions(
-    previewDedup.toCreate.map((l) => ({ line: l, dedupHash: ofxHashOf(l) })),
-    input.decisions,
-  )
-  skippedByDecision += previewsDecided.skipped
-  for (const { line } of previewsDecided.filtered) {
-    const sk = stableKey({ date: line.datePosted, signedAmount: line.signedAmount, memo: line.memo })
-    const type = line.signedAmount >= 0 ? 'CREDIT' : 'DEBIT'
-    const lifecycle = line.signedAmount >= 0 ? 'RECEIVABLE' : 'PAYABLE'
-    const created = await tx.transaction.create({
-      data: {
-        bankAccountId: input.bankAccountId,
-        date: line.datePosted,
-        description: line.memo,
-        amount: Math.abs(line.signedAmount),
-        type,
-        status: 'PENDING',
-        origin: 'OFX',
-        externalId: line.fitid ?? null,
-        importId: newImport.id,
-        lifecycle,
-        dueDate: line.datePosted, // invariante PAYABLE/RECEIVABLE: dueDate obrigatório
-        // paymentDate NULL — invariante PAYABLE/RECEIVABLE
-        counterpartyName: line.counterpartyName ?? null,
-        counterpartySource: line.counterpartyName ? 'OFX' : null,
-        dedupHash: buildLineDedupHash(sk, newImport.id, nextOcc(sk)),
-      },
-      select: { id: true },
-    })
-    insertedTxIds.push(created.id)
+  if (result.previews.length > 0) {
+    console.log(`[RECONCILE_V2] ${result.previews.length} preview residual descartada (não deveria ocorrer pós-partição)`)
   }
 
   // 8.4. PROMOÇÃO (fix duplicata 07/08): linha REAL do extrato que casou com uma
@@ -427,7 +434,23 @@ export async function runImportV2(
     where: { id: input.bankAccountId },
     data: { ledgerBal: ledgerBalance, ledgerBalDate: dtAsOf },
   })
-  await recalcularSaldoConta(tx, input.bankAccountId)
+  const recalc = await recalcularSaldoConta(tx, input.bankAccountId)
+
+  // 11. VALIDAÇÃO DE FECHAMENTO (07/08): o saldo realizado (só EFFECTED, ancorado)
+  // TEM que bater com o LEDGERBAL declarado pelo banco. Se não bater, alguma linha
+  // foi classificada errado (real descartada como futura, ou vice-versa) — AVISA
+  // em vez de gravar calado. Vale pra QUALQUER banco. Tolerância R$ 0,02.
+  let ledgerMismatch: ImportOrchestratorResult['ledgerMismatch'] = null
+  if (ledgerBalance != null && Math.abs(recalc.saldoDepois - ledgerBalance) > 0.02) {
+    ledgerMismatch = {
+      saldoCalculado: recalc.saldoDepois,
+      ledgerBal: ledgerBalance,
+      diferenca: Math.round((recalc.saldoDepois - ledgerBalance) * 100) / 100,
+    }
+    console.warn(
+      `[RECONCILE_V2] LEDGERBAL NÃO FECHA: calculado ${recalc.saldoDepois} vs LEDGERBAL ${ledgerBalance} (dif ${ledgerMismatch.diferenca}) — revisar classificação`,
+    )
+  }
 
   return {
     importId: newImport.id,
@@ -435,13 +458,17 @@ export async function runImportV2(
     dtAsOf,
     classification: {
       effected: result.missing.length,
-      preview: previewDedup.toCreate.length,
-      previewAlreadyExisting: previewDedup.alreadyExisting.length,
+      // Movimento futuro NÃO é mais criado — é descartado. preview=0 sempre.
+      preview: 0,
+      previewAlreadyExisting: 0,
       skippedMatched: result.matched.length,
       orphanWarnings: result.orphans.length,
       promoted: promotedCount,
       promotionSkippedConciliada,
+      discardedFuture: descartadasFuturas.length,
     },
+    discardedFuture: descartadasFuturas,
+    ledgerMismatch,
     matchedExact: result.matched.filter((m) => m.confidence === 'EXACT').length,
     matchedFuzzy: result.matched.filter((m) => m.confidence === 'FUZZY').length,
     warnings: warningsOut,

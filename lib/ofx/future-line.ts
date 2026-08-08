@@ -49,6 +49,33 @@ export function isFutureLineBrazil(
 }
 
 /**
+ * DECISÃO DE PRODUTO (07/08): extrato bancário só registra o que JÁ aconteceu.
+ * Linha com data FUTURA é DESCARTADA no import (não vira transação) — igual
+ * Xero/QuickBooks/Mercury (extrato = passado; previsão vem de Contas a Pagar
+ * cadastradas). Evita o casamento preview↔real (fonte das 31 duplicatas).
+ *
+ * Critério CONSERVADOR (não descartar movimento real por engano): a linha só é
+ * futura se a data for posterior ao DTASOF do arquivo **E** posterior ao fim de
+ * hoje (BRT). As DUAS condições — assim um DTASOF curto/estranho sozinho não
+ * descarta o movimento real do dia. `fitidLooksLikePreview` é a rede secundária
+ * do Banrisul (FITID no formato YYMMDD marca preview interno — ver is-preview).
+ *
+ * Validação de fechamento (no import): Σ(EFFECTED) tem que bater com o LEDGERBAL;
+ * se descartar uma real por engano, o saldo não fecha e o import AVISA.
+ */
+export function isFutureStatementLine(
+  datePosted: Date,
+  dtAsOf: Date,
+  fitidLooksLikePreview: boolean,
+  now: Date = new Date(),
+): boolean {
+  const lineDay = datePosted.toISOString().slice(0, 10)
+  const dtAsOfDay = dtAsOf.toISOString().slice(0, 10)
+  const futuroPorData = lineDay > dtAsOfDay && isFutureLineBrazil(datePosted, now)
+  return futuroPorData || fitidLooksLikePreview
+}
+
+/**
  * Lifecycle resolvido pra uma linha do extrato.
  * - Tx futura DEBIT: PAYABLE (Conta a Pagar pendente)
  * - Tx futura CREDIT: RECEIVABLE (Conta a Receber pendente)

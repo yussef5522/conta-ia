@@ -23,6 +23,34 @@ import { prepareBalanceTransactions, type RawBalanceTransaction } from './prepar
 // mesmo prisma.$transaction do import (saldo consistente com as tx no mesmo commit).
 type DbClient = PrismaClient | Prisma.TransactionClient
 
+// FIX movimento futuro (07/08). No modo âncora, SÓ movimento EFETIVADO entra no
+// saldo realizado — agendado (PAYABLE/RECEIVABLE com date > âncora) NÃO é saldo,
+// senão o saldo infla (Banrisul caçula: -21.576,73 em vez do LEDGERBAL -6.178,45).
+export function contaNoSaldoRealizado(lifecycle: string | null | undefined): boolean {
+  // EFFECTED = realizou (entrou/saiu de fato). PAYABLE/RECEIVABLE = agendado.
+  // null/legado tratado como realizado (histórico antes do campo lifecycle).
+  return lifecycle == null || lifecycle === 'EFFECTED'
+}
+
+/**
+ * Núcleo PURO do cálculo de saldo — sem DB, testável direto no suite.
+ * ANCHOR: ledgerBal + Σ(signed de tx REALIZADAS após a âncora). Agendado fora.
+ * SUM_TODAS: Σ(signed de TODAS) — caixa físico/manual (sem âncora do banco).
+ */
+export function calcularSaldo(params: {
+  ledgerBal: number | null
+  usaAnchor: boolean
+  txs: Array<RawBalanceTransaction & { lifecycle?: string | null }>
+  bankAccountId: string
+}): { saldo: number; txConsideradas: number; somaTx: number } {
+  const { ledgerBal, usaAnchor, txs, bankAccountId } = params
+  const considerar = usaAnchor ? txs.filter((t) => contaNoSaldoRealizado(t.lifecycle)) : txs
+  const signed = prepareBalanceTransactions(considerar, bankAccountId)
+  const somaTx = roundCents(signed.reduce((s, t) => s + t.signedAmount, 0))
+  const saldo = usaAnchor ? roundCents((ledgerBal ?? 0) + somaTx) : somaTx
+  return { saldo, txConsideradas: signed.length, somaTx }
+}
+
 export interface RecalcResult {
   bankAccountId: string
   bankAccountName: string
@@ -92,6 +120,7 @@ export async function recalcularSaldoConta(
       bankAccountId: true,
       transferGroupId: true,
       transferDirection: true,
+      lifecycle: true,
     },
   })
 
@@ -101,7 +130,7 @@ export async function recalcularSaldoConta(
   // Como buscamos só txs da conta atual, o fallback createdAt-ASC pode falhar
   // pra pares cross-account com transferDirection NULL. Sprint Fase 2 já
   // populou transferDirection em massa, então esse risco é residual.
-  const rawTxs: RawBalanceTransaction[] = txs.map((t) => ({
+  const rawTxs: Array<RawBalanceTransaction & { lifecycle?: string | null }> = txs.map((t) => ({
     id: t.id,
     date: t.date,
     createdAt: t.createdAt,
@@ -110,14 +139,18 @@ export async function recalcularSaldoConta(
     bankAccountId: t.bankAccountId!,
     transferGroupId: t.transferGroupId,
     transferDirection: t.transferDirection as 'OUT' | 'IN' | null,
+    lifecycle: t.lifecycle,
   }))
 
-  const signed = prepareBalanceTransactions(rawTxs, bankAccountId)
-  const somaTx = signed.reduce((s, t) => s + t.signedAmount, 0)
-
-  const saldoDepois = usaAnchor
-    ? roundCents((conta.ledgerBal ?? 0) + somaTx)
-    : roundCents(somaTx)
+  // Cálculo puro (testável): no modo âncora filtra agendado (só EFFECTED soma).
+  const calc = calcularSaldo({
+    ledgerBal: conta.ledgerBal,
+    usaAnchor,
+    txs: rawTxs,
+    bankAccountId,
+  })
+  const somaTx = calc.somaTx
+  const saldoDepois = calc.saldo
 
   await prisma.bankAccount.update({
     where: { id: bankAccountId },
@@ -131,7 +164,7 @@ export async function recalcularSaldoConta(
     ledgerBal: conta.ledgerBal,
     ledgerBalDate: conta.ledgerBalDate,
     somaTxConsiderada: roundCents(somaTx),
-    txCount: signed.length,
+    txCount: calc.txConsideradas,
     saldoAntes: roundCents(conta.balance),
     saldoDepois,
     delta: roundCents(saldoDepois - conta.balance),

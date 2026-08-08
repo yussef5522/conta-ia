@@ -153,23 +153,30 @@ export async function POST(request: NextRequest, { params }: Params) {
       // Contrato: mantém os campos essenciais do legado (`mensagem`,
       // `inseridas`, `duplicadas`, `importId`, `errosParser`) + adiciona
       // métricas novas do V2 (preview/orphan/ledgerBalance).
-      const inseridas =
-        result.classification.effected + result.classification.preview
-      // Promovidas = agendados (PAYABLE/RECEIVABLE) que já existiam e realizaram
-      // com esta importação (fix duplicata 07/08) — antes viravam duplicata.
+      const inseridas = result.classification.effected
+      // Promovidas = agendados (PAYABLE/RECEIVABLE) legados que realizaram agora.
       const promovidas = result.classification.promoted
       const sufixoPromo = promovidas > 0
         ? ` ${promovidas} agendado${promovidas !== 1 ? 's realizados' : ' realizado'}.`
         : ''
+      // 2.4b — movimento futuro descartado (agendado): NUNCA some em silêncio.
+      const futuras = result.discardedFuture
+      const sufixoFuturas = futuras.length > 0
+        ? ` ${futuras.length} lançamento${futuras.length !== 1 ? 's futuros não foram importados' : ' futuro não foi importado'} (agendado — entra quando sair de fato).`
+        : ''
       return NextResponse.json({
         mode: 'RECONCILE_V2',
-        mensagem: `${inseridas} transaç${inseridas !== 1 ? 'ões importadas' : 'ão importada'} (${result.classification.effected} efetivadas, ${result.classification.preview} agendadas).${sufixoPromo}`,
+        mensagem: `${inseridas} transaç${inseridas !== 1 ? 'ões importadas' : 'ão importada'}.${sufixoPromo}${sufixoFuturas}`,
         inseridas,
         duplicadas: result.classification.skippedMatched,
         effected: result.classification.effected,
-        previewNovas: result.classification.preview,
-        previewJaExistia: result.classification.previewAlreadyExisting,
+        previewNovas: 0,
+        previewJaExistia: 0,
         promovidas,
+        // Lista dos futuros descartados (data, valor, descrição) — pra tela mostrar.
+        descartadasFuturas: futuras,
+        // Aviso de fechamento: saldo calculado x LEDGERBAL não bateu.
+        ledgerMismatch: result.ledgerMismatch,
         orphanWarnings: result.classification.orphanWarnings,
         matchedExact: result.matchedExact,
         matchedFuzzy: result.matchedFuzzy,
