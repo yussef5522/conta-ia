@@ -21,10 +21,9 @@ import { prepareBalanceTransactions } from '@/lib/balance/prepare'
 import { parseStatementFromOFX } from './parse-statement-from-ofx'
 import { reconcileStatement } from './reconcile-statement'
 import { buildReconcileUniverse } from './reconcile-universe'
-import { isFutureStatementLine } from '../ofx/future-line'
+import { partitionFutureLines } from '../ofx/future-line'
 import { stableKey } from './stable-key'
 import { buildLineDedupHash, makeOccurrenceCounter } from './line-dedup-hash'
-import { fitidLooksLikeDate } from './is-preview'
 import { isReconcileV2Enabled } from './flag'
 import { recalcularSaldoConta } from '@/lib/balance/recalcular'
 import type { DbBankTransaction } from './types'
@@ -137,13 +136,8 @@ export async function runImportV2(
   // vira transação — é descartada e reportada (nunca some em silêncio). Quando o
   // extrato seguinte trouxer a linha já realizada, ela entra normal pela 1ª vez,
   // sem casamento preview↔real. Ver lib/ofx/future-line.ts.
-  const realLines: typeof lines = []
-  const futureLines: typeof lines = []
-  for (const l of lines) {
-    const previewFitid = fitidLooksLikeDate(l.fitid, l.datePosted)
-    if (isFutureStatementLine(l.datePosted, dtAsOf, previewFitid, input.today)) futureLines.push(l)
-    else realLines.push(l)
-  }
+  const { realLines, futureLines } = partitionFutureLines(lines, dtAsOf, input.today)
+  const futureSet = new Set(futureLines)
   if (futureLines.length > 0) {
     console.log(`[RECONCILE_V2] ${futureLines.length} linha(s) futura(s) descartada(s) (agendado — não importado)`)
   }
@@ -252,9 +246,7 @@ export async function runImportV2(
   // flag isPreview marca a linha futura que NÃO virou transação.
   for (const line of lines) {
     const sk = stableKey({ date: line.datePosted, signedAmount: line.signedAmount, memo: line.memo })
-    const isPrev = isFutureStatementLine(
-      line.datePosted, dtAsOf, fitidLooksLikeDate(line.fitid, line.datePosted), input.today,
-    )
+    const isPrev = futureSet.has(line) // mesma partição do descarte (fonte única)
     await tx.$executeRaw`
       INSERT INTO statement_lines (id, "importId", "bankAccountId", "datePosted", "signedAmount", memo, fitid, "stableKey", "isPreview")
       VALUES (gen_random_uuid()::text, ${newImport.id}, ${input.bankAccountId}, ${line.datePosted}, ${line.signedAmount}, ${line.memo}, ${line.fitid ?? null}, ${sk}, ${isPrev})

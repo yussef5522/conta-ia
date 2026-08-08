@@ -27,7 +27,8 @@ interface FileSlot {
   resultado?: {
     novas: number
     duplicadas: number
-    autoClassificadas: number
+    descartadasFuturas: number
+    ledgerMismatch?: { saldoCalculado: number; ledgerBal: number; diferenca: number } | null
   }
   erro?: string
 }
@@ -146,16 +147,21 @@ export function MultiOfxDropZone({ bankAccountId, onComplete }: Props) {
             resultado: {
               novas: r.novas ?? 0,
               duplicadas: r.duplicadas ?? 0,
-              autoClassificadas: r.autoClassificadas ?? 0,
+              descartadasFuturas: r.descartadasFuturas ?? 0,
+              ledgerMismatch: r.ledgerMismatch ?? null,
             },
           }
         }),
       )
 
       const resumo = json.resumo
+      const futuras = resumo.totalDescartadasFuturas ?? 0
       toast({
         title: `${resumo.sucesso}/${resumo.totalArquivos} arquivos OK`,
-        description: `${resumo.totalNovas} nova${resumo.totalNovas === 1 ? '' : 's'} · ${resumo.totalDuplicadas} duplicada${resumo.totalDuplicadas === 1 ? '' : 's'} · ${resumo.totalAutoClassificadas} auto-classificada${resumo.totalAutoClassificadas === 1 ? '' : 's'}`,
+        description:
+          `${resumo.totalNovas} nova${resumo.totalNovas === 1 ? '' : 's'} · ${resumo.totalDuplicadas} duplicada${resumo.totalDuplicadas === 1 ? '' : 's'}` +
+          (futuras > 0 ? ` · ${futuras} futura${futuras === 1 ? '' : 's'} não importada${futuras === 1 ? '' : 's'} (agendado)` : '') +
+          `. Categorize as novas em Pendentes.`,
       })
 
       onComplete?.({
@@ -312,8 +318,19 @@ function FileItem({
           {slot.resultado && (
             <span className="ml-2 tabular-nums">
               · {slot.resultado.novas} nova
-              {slot.resultado.novas === 1 ? '' : 's'} · {slot.resultado.duplicadas}{' '}
-              dup · {slot.resultado.autoClassificadas} auto
+              {slot.resultado.novas === 1 ? '' : 's'} · {slot.resultado.duplicadas} dup
+              {slot.resultado.descartadasFuturas > 0 && (
+                <span className="text-amber-600 dark:text-amber-400">
+                  {' '}· {slot.resultado.descartadasFuturas} futura
+                  {slot.resultado.descartadasFuturas === 1 ? '' : 's'} não importada
+                  {slot.resultado.descartadasFuturas === 1 ? '' : 's'}
+                </span>
+              )}
+            </span>
+          )}
+          {slot.resultado?.ledgerMismatch && (
+            <span className="ml-2 text-rose-500">
+              · saldo não fechou com o banco (dif {slot.resultado.ledgerMismatch.diferenca})
             </span>
           )}
           {slot.erro && <span className="ml-2 text-rose-500">· {slot.erro}</span>}

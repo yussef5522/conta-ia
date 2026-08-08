@@ -13,6 +13,8 @@
 // UTC". Sem cuidado, o cálculo cego em UTC marca essa tx como "futura".
 // O diagnóstico achou 73 tx 29/06 sendo falsos positivos pra esse motivo.
 
+import { fitidLooksLikeDate } from '../reconciliation/is-preview'
+
 const SAO_PAULO_OFFSET_HOURS = -3 // BRT permanente (Lei 14.001/2020)
 const ONE_HOUR_MS = 60 * 60 * 1000
 
@@ -73,6 +75,27 @@ export function isFutureStatementLine(
   const dtAsOfDay = dtAsOf.toISOString().slice(0, 10)
   const futuroPorData = lineDay > dtAsOfDay && isFutureLineBrazil(datePosted, now)
   return futuroPorData || fitidLooksLikePreview
+}
+
+/**
+ * HELPER CENTRAL (#8) — separa linhas de extrato em REAIS vs FUTURAS.
+ * TODO caminho de import de extrato bancário DEVE usar este helper (ou passar
+ * pelo runImportV2, que o usa) — assim o descarte de futuro é UM lugar só e não
+ * volta a divergir entre telas. Guard em __tests__ garante que ninguém esquece.
+ */
+export function partitionFutureLines<T extends { datePosted: Date; fitid?: string | null }>(
+  lines: T[],
+  dtAsOf: Date,
+  now: Date = new Date(),
+): { realLines: T[]; futureLines: T[] } {
+  const realLines: T[] = []
+  const futureLines: T[] = []
+  for (const l of lines) {
+    const previewFitid = fitidLooksLikeDate(l.fitid ?? undefined, l.datePosted)
+    if (isFutureStatementLine(l.datePosted, dtAsOf, previewFitid, now)) futureLines.push(l)
+    else realLines.push(l)
+  }
+  return { realLines, futureLines }
 }
 
 /**

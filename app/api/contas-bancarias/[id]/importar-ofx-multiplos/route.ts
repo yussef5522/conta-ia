@@ -1,26 +1,18 @@
 // POST /api/contas-bancarias/[id]/importar-ofx-multiplos — Sprint 2.4 Onda 2.
 //
-// Recebe N arquivos via FormData (campo "files"). Processa SEQUENCIALMENTE
-// (evita race condition no dedupHash). Cada arquivo gera 1 OfxImport.
+// Recebe N arquivos via FormData (campo "files"). Processa SEQUENCIALMENTE.
 //
-// Retorna array de resultados — front mostra progress.
+// (07/08/2026) ROTEADO PELO runImportV2 — mesmo motor da página single. Antes
+// este caminho reimplementava o import do zero (dedup próprio, saldo increment,
+// tudo EFFECTED, SEM descarte de futuro) → comportava DIFERENTE da tela single.
+// Agora cada arquivo passa pelo V2: descarta movimento futuro, valida LEDGERBAL,
+// saldo ancorado, dedup/promoção. NÃO auto-classifica no import (igual V2) — a
+// categorização é feita depois em /pendentes. Zero lógica de import duplicada.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { parseOFX } from '@/lib/ofx/parser'
-import { dedupHashOFX, filtrarNovasOFX } from '@/lib/ofx/dedup'
-import {
-  autoClassifyTransactions,
-  buildRuleIndex,
-  loadActiveRules,
-  persistKeywordSuggestions,
-} from '@/lib/ai-categorizer/apply'
-import { ensureAllSystemCategories } from '@/lib/categorias/ensure-system-categories'
-import {
-  loadPatternsForSetor,
-  resolveSetorCategoryId,
-} from '@/lib/categorization/match-setor-pattern'
+import { runImportV2 } from '@/lib/reconciliation/import-orchestrator'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -32,8 +24,9 @@ interface FileResult {
   importId?: string
   novas?: number
   duplicadas?: number
-  autoClassificadas?: number
-  fornecedoresDetectados?: number
+  descartadasFuturas?: number
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ledgerMismatch?: any
   erro?: string
 }
 
@@ -65,10 +58,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ erro: 'Nenhum arquivo enviado' }, { status: 400 })
   }
   if (files.length > 20) {
-    return NextResponse.json(
-      { erro: 'Máximo 20 arquivos por vez' },
-      { status: 400 },
-    )
+    return NextResponse.json({ erro: 'Máximo 20 arquivos por vez' }, { status: 400 })
   }
 
   const ipAddress =
@@ -77,206 +67,56 @@ export async function POST(request: NextRequest, { params }: Params) {
     null
   const userAgent = request.headers.get('user-agent')?.slice(0, 500) ?? null
 
-  // Carrega regras 1 vez (reusa entre arquivos)
-  const activeRules = await loadActiveRules(conta.companyId)
-  const ruleIndex = buildRuleIndex(conta.companyId, activeRules)
-  // Sprint 5.0.2.l — Camada SETOR DB-backed
-  const empresa = await prisma.company.findUnique({
-    where: { id: conta.companyId },
-    select: { setor: true },
-  })
-  const setorEmpresa = empresa?.setor ?? null
-  const systemCats = await ensureAllSystemCategories(conta.companyId, setorEmpresa)
-  const setorPatterns = await loadPatternsForSetor(setorEmpresa)
-  const setorResolver = (name: string) =>
-    resolveSetorCategoryId(systemCats.list, name)
-  const categoriasEmpresa = systemCats.list
-
   const results: FileResult[] = []
   let totalNovas = 0
   let totalDup = 0
-  let totalAuto = 0
+  let totalFuturas = 0
 
-  // SEQUENCIAL: evita race no dedupHash entre arquivos do mesmo upload
+  // SEQUENCIAL: cada arquivo é 1 chamada do runImportV2 (evita race no dedup e
+  // mantém o saldo consistente arquivo a arquivo). Multi-arquivo PRESERVADO.
   for (const file of files) {
     const fileName = file.name || 'extrato.ofx'
     try {
       const rawContent = await file.text()
-      const { transactions } = parseOFX(rawContent)
-
-      if (transactions.length === 0) {
-        results.push({ fileName, status: 'EMPTY', erro: 'Arquivo vazio ou inválido' })
-        continue
-      }
-
-      // Dedup hash lookup (inclui imports anteriores)
-      const todosHashes = transactions.map((t) => dedupHashOFX(t))
-      const existentes = await prisma.transaction.findMany({
-        where: { bankAccountId: contaId, dedupHash: { in: todosHashes } },
-        select: { dedupHash: true },
-      })
-      const hashesExistentes = new Set(
-        existentes.map((e) => e.dedupHash).filter((h): h is string => h !== null),
-      )
-      const { novas, duplicadasNoArquivo, duplicadasNoBanco } = filtrarNovasOFX(
-        transactions,
-        hashesExistentes,
-      )
-      const duplicadas = duplicadasNoArquivo + duplicadasNoBanco
-
-      // Período pra import row
-      const datasNovas = novas.map((t) => t.datePosted.getTime())
-      const periodStart =
-        datasNovas.length > 0 ? new Date(Math.min(...datasNovas)) : null
-      const periodEnd =
-        datasNovas.length > 0 ? new Date(Math.max(...datasNovas)) : null
-
-      const importRow = await prisma.ofxImport.create({
-        data: {
-          bankAccountId: contaId,
-          userId: user.sub,
-          status: 'PROCESSING',
-          fileName,
-          fileSize: rawContent.length,
-          totalTransactions: transactions.length,
-          duplicates: duplicadas,
-          periodStart,
-          periodEnd,
-          ipAddress,
-          userAgent,
-        },
-      })
-
-      if (novas.length === 0) {
-        await prisma.ofxImport.update({
-          where: { id: importRow.id },
-          data: { status: 'SUCCESS', newTransactions: 0 },
-        })
-        results.push({
-          fileName,
-          status: 'SUCCESS',
-          importId: importRow.id,
-          novas: 0,
-          duplicadas,
-          autoClassificadas: 0,
-          fornecedoresDetectados: 0,
-        })
-        totalDup += duplicadas
-        continue
-      }
-
-      const ajusteSaldo = novas.reduce((acc, t) => {
-        return acc + (t.type === 'CREDIT' ? t.amount : -t.amount)
-      }, 0)
-
-      const {
-        classified,
-        rulesFired,
-        autoCount,
-        supplierSuggestions,
-      } = autoClassifyTransactions(
-        novas.map((t) => ({
-          bankAccountId: contaId,
-          date: t.datePosted,
-          description: t.memo,
-          amount: t.amount,
-          type: t.type,
-          externalId: t.fitid,
-          dedupHash: t.dedupHash,
-          origin: 'OFX',
-        })),
-        ruleIndex,
-        setorPatterns,
-        setorResolver,
-      )
-
-      try {
-        await prisma.$transaction([
-          prisma.transaction.createMany({
-            data: classified.map((t) => ({
-              bankAccountId: t.bankAccountId,
-              date: t.date,
-              description: t.description,
-              amount: t.amount,
-              type: t.type,
-              status: t.status,
-              origin: t.origin,
-              externalId: t.externalId,
-              dedupHash: t.dedupHash,
-              importId: importRow.id,
-              categoryId: t.categoryId ?? null,
-              classificationSource: t.classificationSource ?? null,
-              classifiedByRuleId: t.classifiedByRuleId ?? null,
-              aiConfidence: t.aiConfidence ?? null,
-            })),
+      const result = await prisma.$transaction(
+        (tx) =>
+          runImportV2(tx, {
+            bankAccountId: contaId,
+            rawOfx: rawContent,
+            userId: user.sub,
+            fileName,
+            ipAddress: ipAddress ?? undefined,
+            userAgent: userAgent ?? undefined,
           }),
-          prisma.bankAccount.update({
-            where: { id: contaId },
-            data: { balance: { increment: ajusteSaldo } },
-          }),
-          ...Array.from(rulesFired.entries()).map(([ruleId, count]) =>
-            prisma.aiLearningRule.update({
-              where: { id: ruleId },
-              data: { vezesAplicada: { increment: count } },
-            }),
-          ),
-        ])
-      } catch (txErr) {
-        await prisma.ofxImport.update({
-          where: { id: importRow.id },
-          data: {
-            status: 'FAILED',
-            errorMessage:
-              txErr instanceof Error ? txErr.message : String(txErr),
-          },
-        })
-        results.push({
-          fileName,
-          status: 'FAILED',
-          importId: importRow.id,
-          erro: 'Falha ao salvar transações',
-        })
-        continue
-      }
-
-      // Suppliers (keyword hits)
-      let supplierStats = { suppliersCreated: 0, transactionsLinked: 0 }
-      if (supplierSuggestions.length > 0) {
-        supplierStats = await persistKeywordSuggestions(
-          conta.companyId,
-          supplierSuggestions,
-          categoriasEmpresa,
-        )
-      }
-
-      await prisma.ofxImport.update({
-        where: { id: importRow.id },
-        data: {
-          status: 'SUCCESS',
-          newTransactions: novas.length,
-          autoClassified: autoCount,
-        },
-      })
-
+        { timeout: 30000 },
+      )
       results.push({
         fileName,
         status: 'SUCCESS',
-        importId: importRow.id,
-        novas: novas.length,
-        duplicadas,
-        autoClassificadas: autoCount,
-        fornecedoresDetectados: supplierStats.suppliersCreated,
+        importId: result.importId,
+        novas: result.classification.effected,
+        duplicadas: result.classification.skippedMatched,
+        descartadasFuturas: result.discardedFuture.length,
+        ledgerMismatch: result.ledgerMismatch,
       })
-
-      totalNovas += novas.length
-      totalDup += duplicadas
-      totalAuto += autoCount
+      totalNovas += result.classification.effected
+      totalDup += result.classification.skippedMatched
+      totalFuturas += result.discardedFuture.length
     } catch (err) {
-      results.push({
-        fileName,
-        status: 'FAILED',
-        erro: err instanceof Error ? err.message : String(err),
-      })
+      const raw = err instanceof Error ? err.message : String(err)
+      // Sem transações → EMPTY. Sem LEDGERBAL/DTASOF → mensagem CLARA (condição #3).
+      if (/sem transaç/i.test(raw)) {
+        results.push({ fileName, status: 'EMPTY', erro: 'Arquivo vazio ou inválido' })
+      } else if (/LEDGERBAL|DTASOF/i.test(raw)) {
+        results.push({
+          fileName,
+          status: 'FAILED',
+          erro: 'Este arquivo não traz o saldo declarado pelo banco (LEDGERBAL) — não dá pra validar o import. Gere um extrato OFX com saldo.',
+        })
+      } else {
+        console.error('[importar-ofx-multiplos] falhou:', { fileName, error: raw })
+        results.push({ fileName, status: 'FAILED', erro: 'Falha ao importar este arquivo.' })
+      }
     }
   }
 
@@ -290,7 +130,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       vazios: results.filter((r) => r.status === 'EMPTY').length,
       totalNovas,
       totalDuplicadas: totalDup,
-      totalAutoClassificadas: totalAuto,
+      totalDescartadasFuturas: totalFuturas,
     },
   })
 }
