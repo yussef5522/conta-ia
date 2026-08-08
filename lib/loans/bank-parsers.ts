@@ -6,10 +6,12 @@
 import type { BankScheduleParser } from './bank-schedule-parser'
 import { sicrediScheduleParser } from './sicredi-schedule-parser'
 import { caixaScheduleParser } from './caixa-schedule-parser'
+import { banrisulScheduleParser } from './banrisul-schedule-parser'
 
 export const SCHEDULE_PARSERS: BankScheduleParser[] = [
   sicrediScheduleParser,
   caixaScheduleParser,
+  banrisulScheduleParser,
 ]
 
 /** Primeiro parser cujo layout casa com o texto. null = nenhum reconhecido. */
