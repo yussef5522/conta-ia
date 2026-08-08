@@ -53,7 +53,13 @@ async function main() {
     console.log(`  Lucro Líquido:            ${brl(t.lucroLiquido)}`)
     const g = (d.groups as any[]).find((x) => x.group === 'DESPESAS_FINANCEIRAS')
     console.log(`  ── composição Despesas Financeiras (total ${brl(g?.total ?? 0)}) ──`)
-    for (const c of (g?.categories ?? [])) console.log(`      ${String(c.categoryName ?? c.label ?? c.name ?? '?').padEnd(30)} ${brl(c.total)}`)
+    const cats = g?.categories ?? []
+    if (cats.length === 0) console.log(`      [DEBUG g keys: ${Object.keys(g ?? {}).join(',')}] [total=${g?.total}]`)
+    for (const c of cats) console.log(`      ${String(c.categoryName ?? c.label ?? c.name ?? JSON.stringify(Object.keys(c))).padEnd(30)} ${brl(c.total)} ${c.children?.length ? '(+'+c.children.length+' filhos)' : ''}`)
+    // loan encargos reinjetados (não-categoria): diferença total − Σcategorias
+    const somaCats = cats.reduce((s: number, c: any) => s + (c.total ?? 0), 0)
+    const reinjetado = Math.round((g?.total - somaCats) * 100) / 100
+    if (Math.abs(reinjetado) > 0.01) console.log(`      → encargo de empréstimo reinjetado (vínculos): ${brl(reinjetado)}`)
   }
   process.exit(0)
 }
