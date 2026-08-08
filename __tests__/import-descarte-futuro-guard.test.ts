@@ -18,8 +18,9 @@ const CAMINHOS: Array<{ file: string; status: 'DONE' | 'TODO'; via: RegExp }> = 
   { file: 'app/api/contas-bancarias/[id]/importar-ofx/route.ts', status: 'DONE', via: /runImportV2/ },
   { file: 'app/api/contas-bancarias/[id]/importar-ofx-multiplos/route.ts', status: 'DONE', via: /runImportV2/ },
   { file: 'lib/reconciliation/import-orchestrator.ts', status: 'DONE', via: /partitionFutureLines/ },
-  // Migrados nas fases seguintes (5-7): viram DONE conforme forem fechados.
-  { file: 'app/api/contas-bancarias/[id]/importar-pdf-extrato/confirm/route.ts', status: 'TODO', via: /partitionFutureLines/ },
+  { file: 'app/api/contas-bancarias/[id]/importar-pdf-extrato/confirm/route.ts', status: 'DONE', via: /partitionFutureLines/ },
+  // PF (fase 7): TODO até o diagnóstico read-only ser revisado (caminho mais
+  // delicado — pontes PJ→PF). Vira DONE quando o fix PF for aplicado.
   { file: 'app/api/perfis/[id]/ofx-import/confirm/route.ts', status: 'TODO', via: /partitionFutureLines/ },
   { file: 'app/api/perfis/[id]/pdf-import/confirm/route.ts', status: 'TODO', via: /partitionFutureLines/ },
 ]

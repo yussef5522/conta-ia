@@ -42,7 +42,7 @@ import {
   importDecisionsSchema,
   type ImportDecision,
 } from '@/lib/ofx/decisions'
-import { lifecycleFromDate } from '@/lib/ofx/future-line'
+import { partitionFutureLines } from '@/lib/ofx/future-line'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -561,29 +561,20 @@ export async function POST(request: NextRequest, { params }: Params) {
     })
   }
 
-  // Sprint Preview-Truth (29/06/2026) — corte de linha futura.
-  // Pré-classifica cada `novas` por lifecycle:
-  //   EFFECTED → tx já realizada (entra no saldo, comportamento histórico)
-  //   PAYABLE → DEBIT futuro agendado (vira Conta a Pagar; NÃO entra no saldo)
-  //   RECEIVABLE → CREDIT futuro agendado (vira Conta a Receber; NÃO entra no saldo)
-  //
-  // Mantemos uma `Map<dedupHash, lifecycle>` pra usar na createMany abaixo.
-  const lifecycleByHash = new Map<string, 'EFFECTED' | 'PAYABLE' | 'RECEIVABLE'>()
+  // DESCARTE de movimento futuro (07/08) — paridade com o V2 via helper central.
+  // Antes o V1 criava a linha futura como PAYABLE/RECEIVABLE; agora DESCARTA
+  // (extrato = passado). Branch dormente sob RECONCILE_V2=true, mas é a rede de
+  // rollback e tem que se comportar IGUAL à tela single se a flag for desligada.
   const now = new Date()
-  for (const t of novas) {
-    lifecycleByHash.set(
-      t.dedupHash,
-      lifecycleFromDate(t.datePosted, t.type, now),
-    )
-  }
-  // ajusteSaldo: SO inclui linhas EFFECTED. Futuras não afetam o saldo do
-  // caixa (são previsões — viram payable/receivable e só impactam quando o
-  // débito/crédito real chegar no extrato e conciliar).
-  const ajusteSaldo = novas.reduce((acc, t) => {
-    const lc = lifecycleByHash.get(t.dedupHash) ?? 'EFFECTED'
-    if (lc !== 'EFFECTED') return acc
-    return acc + (t.type === 'CREDIT' ? t.amount : -t.amount)
-  }, 0)
+  const dtAsOfV1 = ledgerBalance?.asOfDate ?? now
+  const { futureLines: novasFuturas } = partitionFutureLines(novas, dtAsOfV1, now)
+  const futureHashesV1 = new Set(novasFuturas.map((t) => t.dedupHash))
+  const descartadasFuturasV1 = novasFuturas.map((t) => ({
+    date: t.datePosted.toISOString().slice(0, 10),
+    signedAmount: t.type === 'CREDIT' ? t.amount : -t.amount,
+    memo: t.memo,
+    fitid: t.fitid ?? null,
+  }))
 
   // Onda 2 Sprint 2.3 — registra OfxImport (status=PROCESSING).
   // Atualizado pra SUCCESS após o createMany abaixo.
@@ -690,45 +681,36 @@ export async function POST(request: NextRequest, { params }: Params) {
     // precisa LER as tx recém-criadas + ledgerBal recém-gravado.
     await prisma.$transaction([
       prisma.transaction.createMany({
-        data: classified.map((t) => {
-          // Sprint Import Idempotente: recupera identidade canônica via dedupHash
-          const ident = t.dedupHash ? identityByDedupHash.get(t.dedupHash) : null
-          // Sprint Preview-Truth (29/06/2026): lifecycle resolvido por data.
-          // Tx futura agendada vira PAYABLE/RECEIVABLE em vez de EFFECTED.
-          const lifecycle = t.dedupHash
-            ? lifecycleByHash.get(t.dedupHash) ?? 'EFFECTED'
-            : 'EFFECTED'
-          // Linhas futuras: dueDate populado, paymentDate=null, status='PENDING'
-          // (não pode ficar RECONCILED com lifecycle PAYABLE/RECEIVABLE — escada).
-          const isFuture = lifecycle !== 'EFFECTED'
-          return {
-            bankAccountId: t.bankAccountId,
-            date: t.date,
-            description: t.description,
-            amount: t.amount,
-            type: t.type,
-            // Linhas futuras nascem PENDING (sem categoria) mesmo se auto-classify
-            // sugeriu — não é "movimento realizado", é previsão. Yussef confirma
-            // a categoria quando o débito real chegar e conciliar.
-            status: isFuture ? 'PENDING' : t.status,
-            origin: t.origin,
-            externalId: t.externalId,
-            dedupHash: t.dedupHash,
-            // Onda 2 Sprint 2.3 — vincula ao registro de import (pra revert)
-            importId: importRow.id,
-            // Campos AI (preenchidos só quando t.status='RECONCILED')
-            categoryId: isFuture ? null : (t.categoryId ?? null),
-            classificationSource: isFuture ? null : (t.classificationSource ?? null),
-            classifiedByRuleId: isFuture ? null : (t.classifiedByRuleId ?? null),
-            aiConfidence: isFuture ? null : (t.aiConfidence ?? null),
-            // Sprint Import Idempotente (18/06/2026)
-            fitidKey: ident?.fitidKey ?? null,
-            contentHash: ident?.contentHash ?? null,
-            // Sprint Preview-Truth (29/06/2026): lifecycle + dueDate.
-            lifecycle,
-            dueDate: isFuture ? t.date : null,
-          }
-        }),
+        // Descarta as linhas futuras (não vira transação — paridade com V2).
+        data: classified
+          .filter((t) => !t.dedupHash || !futureHashesV1.has(t.dedupHash))
+          .map((t) => {
+            // Sprint Import Idempotente: recupera identidade canônica via dedupHash
+            const ident = t.dedupHash ? identityByDedupHash.get(t.dedupHash) : null
+            return {
+              bankAccountId: t.bankAccountId,
+              date: t.date,
+              description: t.description,
+              amount: t.amount,
+              type: t.type,
+              status: t.status,
+              origin: t.origin,
+              externalId: t.externalId,
+              dedupHash: t.dedupHash,
+              // Onda 2 Sprint 2.3 — vincula ao registro de import (pra revert)
+              importId: importRow.id,
+              categoryId: t.categoryId ?? null,
+              classificationSource: t.classificationSource ?? null,
+              classifiedByRuleId: t.classifiedByRuleId ?? null,
+              aiConfidence: t.aiConfidence ?? null,
+              // Sprint Import Idempotente (18/06/2026)
+              fitidKey: ident?.fitidKey ?? null,
+              contentHash: ident?.contentHash ?? null,
+              // Extrato = passado: tudo que entra é EFFECTED (futura foi descartada).
+              lifecycle: 'EFFECTED',
+              dueDate: null,
+            }
+          }),
       }),
       // Atualiza ledgerBal + ledgerBalDate quando OFX trouxe (substitui o
       // increment cumulativo que driftou; balance será recalculado depois).
@@ -797,7 +779,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     where: { id: importRow.id },
     data: {
       status: 'SUCCESS',
-      newTransactions: novas.length,
+      newTransactions: novas.length - novasFuturas.length,
       autoClassified: autoCount,
     },
   })
@@ -1076,9 +1058,11 @@ export async function POST(request: NextRequest, { params }: Params) {
     keywordPersistMs = Date.now() - t0Persist
   }
 
+  const inseridasReaisV1 = novas.length - novasFuturas.length
   return NextResponse.json({
-    mensagem: `${novas.length} transaç${novas.length !== 1 ? 'ões importadas' : 'ão importada'} com sucesso${reconciledCount > 0 ? ` (${reconciledCount} contrapartes reconciliadas)` : ''}${overridesApplied > 0 ? ` · ${overridesApplied} categoria(s) editada(s)` : ''}${rulesCreated + rulesUpdated > 0 ? ` · ${rulesCreated} regra(s) criada(s)${rulesUpdated > 0 ? ` (${rulesUpdated} atualizadas)` : ''}` : ''}.`,
-    inseridas: novas.length,
+    mensagem: `${inseridasReaisV1} transaç${inseridasReaisV1 !== 1 ? 'ões importadas' : 'ão importada'} com sucesso${descartadasFuturasV1.length > 0 ? ` · ${descartadasFuturasV1.length} futura(s) não importada(s) (agendado)` : ''}${reconciledCount > 0 ? ` (${reconciledCount} contrapartes reconciliadas)` : ''}${overridesApplied > 0 ? ` · ${overridesApplied} categoria(s) editada(s)` : ''}${rulesCreated + rulesUpdated > 0 ? ` · ${rulesCreated} regra(s) criada(s)${rulesUpdated > 0 ? ` (${rulesUpdated} atualizadas)` : ''}` : ''}.`,
+    inseridas: inseridasReaisV1,
+    descartadasFuturas: descartadasFuturasV1,
     duplicadas,
     reconciledTransferPlaceholders: reconciledCount,
     categoryOverridesApplied: overridesApplied,

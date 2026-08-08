@@ -19,6 +19,7 @@ import { prisma } from '@/lib/db'
 import { checkPdfBankStatementFlag } from '@/lib/pdf-bank-statement/feature-flag'
 import { computeIdentity } from '@/lib/import-identity/compute-identity'
 import { statusFromCategoryId } from '@/lib/transacoes/needs-review'
+import { partitionFutureLines } from '@/lib/ofx/future-line'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -82,7 +83,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
 
   // Calcula identidades pra todas as linhas (mesma fórmula do OFX → cross-format)
-  const linesWithIdentity = body.lines.map((line) => {
+  const linesWithIdentityAll = body.lines.map((line) => {
     const identity = computeIdentity({
       accountId: contaId,
       fitid: null,
@@ -92,8 +93,17 @@ export async function POST(request: NextRequest, { params }: Params) {
       name: null,
       memo: line.description,
     })
-    return { line, identity }
+    return { line, identity, datePosted: new Date(line.date), fitid: null as string | null }
   })
+
+  // DESCARTE de movimento futuro (07/08) — helper central, igual ao OFX. O PDF do
+  // Banrisul traz seção "MOVIMENTOS FUTUROS"; extrato = passado, então linha
+  // futura NÃO vira transação. PDF não declara LEDGERBAL → corte = hoje (linha
+  // com data > hoje é agendado). Reportado na resposta (nunca some em silêncio).
+  const nowPdf = new Date()
+  const { realLines: linesWithIdentity, futureLines: pdfFuturas } = partitionFutureLines(
+    linesWithIdentityAll, nowPdf, nowPdf,
+  )
 
   const ipAddress =
     request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
@@ -267,5 +277,11 @@ export async function POST(request: NextRequest, { params }: Params) {
     inseridas: updatedImport.newTransactions,
     duplicadas: updatedImport.duplicates,
     total: updatedImport.totalTransactions,
+    descartadasFuturas: pdfFuturas.map((f) => ({
+      date: f.datePosted.toISOString().slice(0, 10),
+      signedAmount: f.line.type === 'CREDIT' ? f.line.amount : -f.line.amount,
+      memo: f.line.description,
+      fitid: null,
+    })),
   })
 }
