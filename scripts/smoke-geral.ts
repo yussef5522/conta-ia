@@ -55,7 +55,7 @@ async function main() {
     console.log(`  ── composição Despesas Financeiras (total ${brl(g?.total ?? 0)}) ──`)
     const cats = g?.categories ?? []
     if (cats.length === 0) console.log(`      [DEBUG g keys: ${Object.keys(g ?? {}).join(',')}] [total=${g?.total}]`)
-    for (const c of cats) console.log(`      ${String(c.categoryName ?? c.label ?? c.name ?? JSON.stringify(Object.keys(c))).padEnd(30)} ${brl(c.total)} ${c.children?.length ? '(+'+c.children.length+' filhos)' : ''}`)
+    for (const c of cats) console.log(`      ${String(c.category?.name ?? c.category?.label ?? JSON.stringify(c.category)).padEnd(30)} ${brl(c.total)} ${c.children?.length ? '(+'+c.children.length+' filhos)' : ''}`)
     // loan encargos reinjetados (não-categoria): diferença total − Σcategorias
     const somaCats = cats.reduce((s: number, c: any) => s + (c.total ?? 0), 0)
     const reinjetado = Math.round((g?.total - somaCats) * 100) / 100
