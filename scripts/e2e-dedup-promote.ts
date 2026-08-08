@@ -41,6 +41,8 @@ async function main() {
     await prisma.ofxImport.deleteMany({ where: { bankAccountId: acc.id } })
     await seed()
     await prisma.$transaction((t) => runImportV2(t as any, { bankAccountId: acc.id, rawOfx: o, userId: usr.id, fileName: 'x.ofx' }))
+    const dump = await prisma.transaction.findMany({ where: { bankAccountId: acc.id }, select: { date: true, lifecycle: true, description: true, amount: true, type: true } })
+    for (const d of dump) console.log(`   [dump ${nome}] ${d.date.toISOString().slice(0, 10)} ${d.type} ${d.amount} ${d.lifecycle} "${d.description}"`)
     results.push(`${nome}: ${await check()}`)
   }
 
