@@ -45,7 +45,7 @@ export async function POST(request: NextRequest, { params }: Params) {
 
     const parser = detectScheduleParser(text)
     if (!parser) {
-      return NextResponse.json({ erro: 'Documento não reconhecido. Layouts suportados hoje: Sicredi e Caixa (Demonstrativo de Evolução Contratual). Se for outro banco, ainda não é suportado.', code: 'BANK_NOT_SUPPORTED' }, { status: 422 })
+      return NextResponse.json({ erro: 'Documento não reconhecido. Layouts suportados hoje: Sicredi ("Relação de Títulos Cadastrados"), Caixa ("Demonstrativo de Evolução Contratual") e Banrisul ("Extrato/Documento Descritivo de Crédito"). Se for outro banco, ainda não é suportado.', code: 'BANK_NOT_SUPPORTED' }, { status: 422 })
     }
     let contracts
     try {
