@@ -23,10 +23,11 @@ async function main() {
     { d: '2026-08-10', a: 70.02 }, { d: '2026-08-10', a: 70.02 },
     { d: '2026-08-11', a: 1478.51 }, { d: '2026-08-17', a: 13779.73 },
   ]
+  let i = 0
   for (const f of futuros) {
     await prisma.transaction.create({
       data: { bankAccountId: acc.id, date: D(f.d), amount: f.a, type: 'DEBIT', status: 'PENDING',
-        origin: 'OFX', lifecycle: 'PAYABLE', dueDate: D(f.d), description: 'AGENDADO', dedupHash: `pay-${f.d}-${f.a}-${stamp}` },
+        origin: 'OFX', lifecycle: 'PAYABLE', dueDate: D(f.d), description: 'AGENDADO', dedupHash: `pay-${stamp}-${i++}` },
     })
   }
   // 1 REAL após a âncora (EFFECTED) — DEVE contar
