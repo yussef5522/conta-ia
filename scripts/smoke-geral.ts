@@ -53,7 +53,7 @@ async function main() {
     console.log(`  Lucro Líquido:            ${brl(t.lucroLiquido)}`)
     const g = (d.groups as any[]).find((x) => x.group === 'DESPESAS_FINANCEIRAS')
     console.log(`  ── composição Despesas Financeiras (total ${brl(g?.total ?? 0)}) ──`)
-    for (const c of (g?.children ?? [])) console.log(`      ${String(c.label ?? c.name).padEnd(30)} ${brl(c.total)}`)
+    for (const c of (g?.categories ?? [])) console.log(`      ${String(c.categoryName ?? c.label ?? c.name ?? '?').padEnd(30)} ${brl(c.total)}`)
   }
   process.exit(0)
 }
