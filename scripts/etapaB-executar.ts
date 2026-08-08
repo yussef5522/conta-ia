@@ -9,6 +9,7 @@ import { PrismaClient, Prisma } from '@prisma/client'
 const prisma = new PrismaClient()
 const CO = 'cmq17yapb00gnrndlh33sctbo'
 const V1_GROUP = 'a79d2d5e-5f39-4b56-b7ee-12077838c3cf'
+const SICREDI = 'cmq180ksv0001aktni9wj64mq' // guard por ID (o name tem espaço à direita: 'sicredi ')
 
 async function snapshot() {
   const contas = await prisma.bankAccount.findMany({
@@ -32,8 +33,8 @@ async function snapshot() {
 
 async function main() {
   // ── Alvo A: RECEIVABLE/PAYABLE que têm gêmea EFFECTED (preview↔real) ──
-  const alvoA = await prisma.$queryRaw<Array<{ id: string; conta: string; lifecycle: string; amount: number }>>(Prisma.sql`
-    SELECT prev.id, ba.name AS conta, prev.lifecycle, prev.amount
+  const alvoA = await prisma.$queryRaw<Array<{ id: string; bankAccountId: string; lifecycle: string; amount: number }>>(Prisma.sql`
+    SELECT prev.id, prev."bankAccountId", prev.lifecycle, prev.amount
     FROM transactions prev JOIN bank_accounts ba ON ba.id = prev."bankAccountId"
     WHERE ba."companyId" = ${CO} AND prev.lifecycle IN ('PAYABLE','RECEIVABLE')
       AND prev."reconcileGroupId" IS NULL AND prev."reconciledWithId" IS NULL
@@ -52,7 +53,7 @@ async function main() {
   await prisma.$transaction(async (tx) => {
     // GUARDAS Alvo A
     if (alvoA.length !== 27) throw new Error(`Alvo A esperava 27, achou ${alvoA.length} — ABORTA`)
-    if (alvoA.some((a) => a.conta !== 'sicredi')) throw new Error('Alvo A tem conta != sicredi — ABORTA')
+    if (alvoA.some((a) => a.bankAccountId !== SICREDI)) throw new Error('Alvo A tem conta != Sicredi — ABORTA')
     if (alvoA.some((a) => a.lifecycle === 'EFFECTED')) throw new Error('Alvo A contém EFFECTED — ABORTA')
     // GUARDAS Alvo B
     if (alvoB.length !== 2) throw new Error(`Alvo B esperava 2, achou ${alvoB.length} — ABORTA`)
