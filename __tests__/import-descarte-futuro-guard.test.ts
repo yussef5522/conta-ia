@@ -7,7 +7,7 @@
 // Regra pra caminho NOVO: adicione aqui. TODO só é aceitável temporariamente.
 
 import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'fs'
+import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 
 const ROOT = join(__dirname, '..')
@@ -57,11 +57,17 @@ describe('#8 guard — caminhos de import de extrato descartam futuro', () => {
     expect(src).not.toMatch(/parseOFX\(/)
   })
 
-  it('v2-confirm segue código morto (nenhum client chama) — candidato a remoção', () => {
-    // Se ganhar caller, precisa entrar no descarte. Grep em app/ + components/.
-    // (documental: a ausência de caller é verificada manualmente; aqui só marcamos
-    // que o arquivo existe e NÃO é referenciado pelo fluxo vivo importar-ofx.)
+  it('v2-confirm REMOVIDO (código morto — sprint 08/08) — não pode voltar', () => {
+    // Removido: route + lib/ofx/v2-confirm.ts + run/detect órfãos. Guard: nem o
+    // arquivo volta, nem o fluxo vivo passa a referenciá-lo.
+    expect(existsSync(join(ROOT, 'app/api/contas-bancarias/[id]/importar-ofx/v2-confirm/route.ts'))).toBe(false)
+    expect(existsSync(join(ROOT, 'lib/ofx/v2-confirm.ts'))).toBe(false)
     const rota = readFileSync(join(ROOT, 'app/api/contas-bancarias/[id]/importar-ofx/route.ts'), 'utf8')
     expect(rota).not.toMatch(/v2-confirm/)
+  })
+
+  it('import/staging (OFX) REMOVIDO (código morto, 0 uso) — não pode voltar', () => {
+    expect(existsSync(join(ROOT, 'app/api/empresas/[id]/import/staging'))).toBe(false)
+    expect(existsSync(join(ROOT, 'app/(dashboard)/empresas/[id]/import/staging'))).toBe(false)
   })
 })
