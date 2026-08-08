@@ -47,4 +47,21 @@ describe('#8 guard — caminhos de import de extrato descartam futuro', () => {
     // Rota legada usava filtrarNovasOFX — não pode voltar (é sinal de motor paralelo).
     expect(multiplos).not.toMatch(/filtrarNovasOFX/)
   })
+
+  // FORA DE ESCOPO (documentado) — não são import de EXTRATO, então não descartam
+  // futuro. Se a premissa de cada um mudar, o teste abaixo quebra e força revisão.
+  it('from-ofx opera sobre tx JÁ importada (não sobre linha crua) — descarte já ocorreu no import', () => {
+    const src = readFileSync(join(ROOT, 'lib/transfers/from-ofx.ts'), 'utf8')
+    // Se um dia passar a parsear OFX cru aqui, esta premissa cai → revisar.
+    expect(src).toMatch(/transaction\.findUnique/)
+    expect(src).not.toMatch(/parseOFX\(/)
+  })
+
+  it('v2-confirm segue código morto (nenhum client chama) — candidato a remoção', () => {
+    // Se ganhar caller, precisa entrar no descarte. Grep em app/ + components/.
+    // (documental: a ausência de caller é verificada manualmente; aqui só marcamos
+    // que o arquivo existe e NÃO é referenciado pelo fluxo vivo importar-ofx.)
+    const rota = readFileSync(join(ROOT, 'app/api/contas-bancarias/[id]/importar-ofx/route.ts'), 'utf8')
+    expect(rota).not.toMatch(/v2-confirm/)
+  })
 })
