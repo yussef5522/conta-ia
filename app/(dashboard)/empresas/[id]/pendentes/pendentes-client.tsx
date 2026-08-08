@@ -47,6 +47,7 @@ import {
 } from '@/components/ui/select'
 import { CategoryCombobox } from '@/components/transacoes/category-combobox'
 import { LinkPaymentModal } from '@/components/emprestimos/LinkPaymentModal'
+import { pendenteRowActions } from '@/lib/pendentes/row-actions'
 import { Landmark } from 'lucide-react'
 
 // Sprint Casar Pagamento (04/08): detecção retornada por /emprestimos/deteccao-pendentes
@@ -985,6 +986,9 @@ export function PendentesClient({
             // E só se Claude está habilitado no server.
             const podeIa = !t.supplier && stats?.claudeEnabled === true && !hint
             const det = emprestimoDet[t.id] // Sprint Casar Pagamento
+            // Sprint Dropdown-não-trava (08/08): detecção = sugestão; NUNCA remove
+            // a categoria. rowActions.showCategoryDropdown gateia a saída padrão.
+            const rowActions = pendenteRowActions(det)
 
             return (
               <div
@@ -1076,10 +1080,12 @@ export function PendentesClient({
                 {/* Sprint Category-Combobox (29/06/2026): seletor único
                     Ramp/Mercury-grade. Busca sem acento, agrupado por dreGroup,
                     teclado ↑↓Enter/Esc, sugestão Claude no topo se houver. */}
-                <div className="flex items-center gap-2 shrink-0">
-                  {det ? (
-                    // Sprint Casar Pagamento — pagamento de empréstimo: NÃO oferece
-                    // categoria; oferece vincular à parcela (o split é do empréstimo).
+                <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                  {/* Sprint Dropdown-não-trava (08/08): detecção de empréstimo é
+                      SUGESTÃO — mostra vincular EM DESTAQUE, mas NUNCA remove a
+                      saída padrão (categoria). Vincular OU categorizar, o usuário
+                      decide (mesma regra do resto do sistema: IA sugere + selo). */}
+                  {det && (
                     det.kind === 'CONTRACT' ? (
                       <Button size="sm" variant="outline" onClick={() => setLinkModal({ loanId: det.loanId, txId: t.id })} className="gap-1.5 border-indigo-300 text-indigo-700 hover:bg-indigo-50">
                         <Landmark className="h-3.5 w-3.5" />
@@ -1095,11 +1101,18 @@ export function PendentesClient({
                         ))}
                       </div>
                     ) : (
-                      <Link href={`/empresas/${empresaId}/emprestimos/novo`} className="text-xs text-indigo-700 underline">
-                        Empréstimo {det.contractNumber} não cadastrado — cadastrar
+                      // NOT_REGISTERED: oferece cadastrar como SUGESTÃO — mas o
+                      // dropdown de categoria abaixo continua disponível (caso o
+                      // usuário não queira cadastrar, ex: contrato isolado).
+                      <Link href={`/empresas/${empresaId}/emprestimos/novo`} className="text-xs text-indigo-700 underline whitespace-nowrap">
+                        🏦 {det.contractNumber} não cadastrado — cadastrar
                       </Link>
                     )
-                  ) : (
+                  )}
+                  {/* Categoria SEMPRE disponível — a sugestão de empréstimo NÃO
+                      remove a saída padrão do usuário (era o bug que travava).
+                      Gateado por rowActions.showCategoryDropdown (=true sempre). */}
+                  {rowActions.showCategoryDropdown && (
                   <>
                   <CategoryCombobox
                     value={selecionada ?? null}
