@@ -19,10 +19,10 @@ const CAMINHOS: Array<{ file: string; status: 'DONE' | 'TODO'; via: RegExp }> = 
   { file: 'app/api/contas-bancarias/[id]/importar-ofx-multiplos/route.ts', status: 'DONE', via: /runImportV2/ },
   { file: 'lib/reconciliation/import-orchestrator.ts', status: 'DONE', via: /partitionFutureLines/ },
   { file: 'app/api/contas-bancarias/[id]/importar-pdf-extrato/confirm/route.ts', status: 'DONE', via: /partitionFutureLines/ },
-  // PF (fase 7): TODO até o diagnóstico read-only ser revisado (caminho mais
-  // delicado — pontes PJ→PF). Vira DONE quando o fix PF for aplicado.
-  { file: 'app/api/perfis/[id]/ofx-import/confirm/route.ts', status: 'TODO', via: /partitionFutureLines/ },
-  { file: 'app/api/perfis/[id]/pdf-import/confirm/route.ts', status: 'TODO', via: /partitionFutureLines/ },
+  // PF (fase 7): o descarte vive na LIB de cada import (a route é fina). Aponta
+  // pro arquivo que realmente cria a PersonalTransaction.
+  { file: 'lib/ofx-card/queries.ts', status: 'DONE', via: /partitionFutureLines/ },
+  { file: 'lib/pdf-import/confirm.ts', status: 'DONE', via: /isFutureStatementLine|partitionFutureLines/ },
 ]
 
 describe('#8 guard — caminhos de import de extrato descartam futuro', () => {

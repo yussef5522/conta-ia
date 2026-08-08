@@ -28,6 +28,7 @@ import {
 } from '@/lib/ai-categorizer/categorize-pf'
 import { dedupHashOFX } from '@/lib/ofx/dedup'
 import { getCardInProfile } from '@/lib/credit-card/queries'
+import { partitionFutureLines } from '@/lib/ofx/future-line'
 import { calculateInvoiceReference } from '@/lib/credit-card/calculate-invoice-reference'
 
 export class OfxCardError extends Error {
@@ -323,6 +324,8 @@ export interface ConfirmResult {
   imported: number
   skipped: number
   invoicesUpdated: number
+  // Descartadas por serem futuras (agendado — não importado). Ver #7 (PF).
+  descartadasFuturas: Array<{ date: string; signedAmount: number; memo: string; fitid: string | null }>
 }
 
 export async function confirmImport(input: ConfirmInput): Promise<ConfirmResult> {
@@ -365,8 +368,27 @@ export async function confirmImport(input: ConfirmInput): Promise<ConfirmResult>
   let skipped = 0
   const invoiceIdsUpdated = new Set<string>()
 
+  // DESCARTE de movimento futuro (07/08) — helper central, igual PJ. ATENÇÃO PF:
+  // PersonalTransaction NÃO tem lifecycle — nasce RECONCILED (realizada). Sem o
+  // descarte, uma linha futura entraria como realizada sem passar por lugar
+  // nenhum (mais frágil que o PJ). Corte = hoje (card OFX não declara LEDGERBAL).
+  const nowPf = new Date()
+  // Corte CONSERVADOR: DTASOF do arquivo quando houver (senão hoje). Assim uma
+  // compra dentro do período do extrato (ex: 12/08 num extrato com DTASOF 15/08)
+  // NÃO é tratada como futura — só descarta o que está além do DTASOF E de hoje.
+  const dtAsOfPf = parsed.ledgerBalance?.asOfDate ?? nowPf
+  const { realLines: txReais, futureLines: txFuturas } = partitionFutureLines(
+    parsed.transactions, dtAsOfPf, nowPf,
+  )
+  const descartadasFuturas = txFuturas.map((t) => ({
+    date: t.datePosted.toISOString().slice(0, 10),
+    signedAmount: t.type === 'CREDIT' ? t.amount : -t.amount,
+    memo: t.memo,
+    fitid: t.fitid ?? null,
+  }))
+
   await prisma.$transaction(async (tx) => {
-    for (const ofxTx of parsed.transactions) {
+    for (const ofxTx of txReais) {
       const decision = decisionMap.get(ofxTx.fitid)
       if (!decision || decision.skip) {
         skipped++
@@ -457,6 +479,7 @@ export async function confirmImport(input: ConfirmInput): Promise<ConfirmResult>
     imported,
     skipped,
     invoicesUpdated: invoiceIdsUpdated.size,
+    descartadasFuturas,
   }
 }
 

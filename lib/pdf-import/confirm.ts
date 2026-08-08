@@ -14,6 +14,7 @@ import { dedupHashOFX } from '@/lib/ofx/dedup'
 import { getCachedExtraction } from './cache'
 import { detectInstallment } from '@/lib/ofx-card/detect-installment'
 import { detectSpecialTx } from '@/lib/ofx-card/detect-special-tx'
+import { isFutureStatementLine } from '@/lib/ofx/future-line'
 
 export interface PdfConfirmDecision {
   fitid: string
@@ -33,6 +34,7 @@ export interface PdfConfirmResult {
   imported: number
   skipped: number
   invoicesUpdated: number
+  descartadasFuturas: Array<{ date: string; signedAmount: number; memo: string; fitid: string | null }>
 }
 
 export class PdfConfirmError extends Error {
@@ -97,6 +99,11 @@ export async function confirmPdfImport(
   let imported = 0
   let skipped = 0
   const invoiceIdsUpdated = new Set<string>()
+  // DESCARTE de movimento futuro (07/08) — ATENÇÃO PF: PersonalTransaction não tem
+  // lifecycle (nasce RECONCILED). Linha futura entraria como realizada sem preview.
+  // Corte = hoje (PDF não declara LEDGERBAL). Reportado (nunca some em silêncio).
+  const nowPf = new Date()
+  const descartadasFuturas: PdfConfirmResult['descartadasFuturas'] = []
 
   await prisma.$transaction(async (tx) => {
     for (const ext of extraction.transactions) {
@@ -108,6 +115,16 @@ export async function confirmPdfImport(
       const txDate = new Date(ext.date)
       if (!Number.isFinite(txDate.getTime())) {
         skipped++
+        continue
+      }
+      // Futura (data > hoje) → DESCARTA (não vira transação realizada).
+      if (isFutureStatementLine(txDate, nowPf, false, nowPf)) {
+        descartadasFuturas.push({
+          date: txDate.toISOString().slice(0, 10),
+          signedAmount: ext.type === 'CREDIT' ? ext.amount : -ext.amount,
+          memo: ext.memo,
+          fitid: ext.fitid ?? null,
+        })
         continue
       }
       const inst = detectInstallment(ext.memo)
@@ -195,6 +212,7 @@ export async function confirmPdfImport(
     imported,
     skipped,
     invoicesUpdated: invoiceIdsUpdated.size,
+    descartadasFuturas,
   }
 }
 
