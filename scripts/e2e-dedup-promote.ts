@@ -46,7 +46,10 @@ async function main() {
     results.push(`${nome}: ${await check()}`)
   }
 
-  const D = new Date('2026-07-15T00:00:00Z')
+  // Parser OFX materializa datePosted em T12:00:00Z (lib/ofx/parser.ts). A
+  // preview seedada tem que usar o MESMO instante, senão cai antes do minDate
+  // da janela e nem entra no universo de reconcile.
+  const D = new Date('2026-07-15T12:00:00Z')
 
   // S1 — PAYABLE existente + linha real → deve PROMOVER (1 tx EFFECTED), não duplicar
   await scenario('S1 PAYABLE→promove',
