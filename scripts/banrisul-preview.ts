@@ -26,7 +26,7 @@ async function main() {
           orderBy: { number: 'asc' },
           select: {
             number: true, status: true, reconciledTransactionId: true, paidInterest: true, paidCorrection: true, paidDate: true,
-            interest: true, correcao: true,
+            openingBalance: true, interest: true, amortization: true, correcao: true, payment: true, closingBalance: true,
             reconciledTransaction: { select: { date: true } },
             _count: { select: { payments: true } },
           },
