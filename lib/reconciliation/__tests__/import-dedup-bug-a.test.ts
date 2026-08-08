@@ -83,6 +83,69 @@ describe('BUG A — N linhas idênticas ⇒ N transações (nenhuma descartada)'
   })
 })
 
+// ─────────────────────────────────────────────────────────────────────────
+// BUG B (07/08) — duplicata PREVIEW↔REAL entre imports.
+// Causa: reconcileStatement recebia só tx EFFECTED. Uma linha REAL que casava
+// com uma PREVIEW (PAYABLE/RECEIVABLE) criada por outro import virava `missing`
+// e era RECRIADA → duplicata. Fix: pending entram no universo e o match vira
+// `promoted` (o caller promove lifecycle→EFFECTED em vez de recriar).
+// Estes testes ficam VERMELHOS no código pré-fix: `promoted` não existia e uma
+// PAYABLE sobrando caía em `orphans`.
+describe('BUG B — preview↔real: promove, não duplica', () => {
+  const realLine: StatementLine[] = [
+    { datePosted: D('2026-07-27'), signedAmount: -4092.02, memo: 'EMPRESTIMO PARCELA', fitid: 'REAL27' },
+  ]
+
+  it('B.1: linha real casa com PAYABLE existente ⇒ promoted=1, missing=0 (não recria)', () => {
+    const dbs: DbBankTransaction[] = [
+      dbTx({ id: 'pay', date: D('2026-07-27'), signedAmount: -4092.02, memo: 'EMPRESTIMO PARCELA', lifecycle: 'PAYABLE' }),
+    ]
+    const r = reconcileStatement(realLine, dbs, dtAsOf)
+    expect(r.missing).toHaveLength(0) // NÃO recria → não duplica
+    expect(r.matched).toHaveLength(1)
+    expect(r.promoted).toHaveLength(1)
+    expect(r.promoted[0].dbTx.id).toBe('pay')
+  })
+
+  it('B.2: linha real casa com RECEIVABLE ⇒ promoted (crédito)', () => {
+    const credit: StatementLine[] = [
+      { datePosted: D('2026-07-27'), signedAmount: 700, memo: 'RECEBIMENTO', fitid: 'REALC' },
+    ]
+    const dbs: DbBankTransaction[] = [
+      dbTx({ id: 'rec', date: D('2026-07-27'), signedAmount: 700, memo: 'RECEBIMENTO', lifecycle: 'RECEIVABLE' }),
+    ]
+    const r = reconcileStatement(credit, dbs, dtAsOf)
+    expect(r.missing).toHaveLength(0)
+    expect(r.promoted.map((m) => m.dbTx.id)).toEqual(['rec'])
+  })
+
+  it('B.3: match com EFFECTED NÃO entra em promoted (já materializada)', () => {
+    const dbs: DbBankTransaction[] = [
+      dbTx({ id: 'eff', date: D('2026-07-27'), signedAmount: -4092.02, memo: 'EMPRESTIMO PARCELA', lifecycle: 'EFFECTED' }),
+    ]
+    const r = reconcileStatement(realLine, dbs, dtAsOf)
+    expect(r.matched).toHaveLength(1)
+    expect(r.promoted).toHaveLength(0)
+  })
+
+  it('B.4: PAYABLE que sobrou (nenhuma linha real casou) NÃO vira órfão/fantasma', () => {
+    const dbs: DbBankTransaction[] = [
+      dbTx({ id: 'futuro', date: D('2026-07-28'), signedAmount: -999, memo: 'AGENDADO FUTURO', lifecycle: 'PAYABLE' }),
+    ]
+    // extrato sem essa linha → antes do fix a PAYABLE cairia em orphans (warning falso)
+    const r = reconcileStatement(realLine, dbs, dtAsOf)
+    expect(r.orphans).toHaveLength(0)
+  })
+
+  it('B.5: EFFECTED que sumiu do extrato CONTINUA sendo órfão (fantasma real)', () => {
+    const dbs: DbBankTransaction[] = [
+      dbTx({ id: 'fantasma', date: D('2026-07-20'), signedAmount: -55, memo: 'SUMIU DO EXTRATO', lifecycle: 'EFFECTED' }),
+    ]
+    const r = reconcileStatement(realLine, dbs, dtAsOf)
+    expect(r.orphans.map((o) => o.id)).toEqual(['fantasma'])
+  })
+})
+
 describe('line-dedup-hash — helper', () => {
   const sk = '2026-07-10|-12.50|tarifa pix compra'
 

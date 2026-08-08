@@ -20,6 +20,7 @@ import { applyImportDecisions, type ImportDecision } from '@/lib/ofx/decisions'
 import { prepareBalanceTransactions } from '@/lib/balance/prepare'
 import { parseStatementFromOFX } from './parse-statement-from-ofx'
 import { reconcileStatement } from './reconcile-statement'
+import { buildReconcileUniverse } from './reconcile-universe'
 import { stableKey } from './stable-key'
 import { buildLineDedupHash, makeOccurrenceCounter } from './line-dedup-hash'
 import { isPreviewLine } from './is-preview'
@@ -60,6 +61,8 @@ export interface ImportOrchestratorResult {
     previewAlreadyExisting: number // previews que já existem como PAYABLE no DB
     skippedMatched: number
     orphanWarnings: number
+    promoted: number // previews (PAYABLE/RECEIVABLE) que realizaram → EFFECTED
+    promotionSkippedConciliada: number // previews conciliadas preservadas (não promovidas)
   }
   matchedExact: number
   matchedFuzzy: number
@@ -146,7 +149,11 @@ export async function runImportV2(
       lifecycle: { in: ['PAYABLE', 'RECEIVABLE'] },
       date: { gte: minDate, lte: new Date(dtAsOf.getTime() + 365 * 24 * 60 * 60 * 1000) },
     },
-    select: { id: true, date: true, type: true, amount: true, description: true },
+    select: {
+      id: true, date: true, type: true, amount: true, description: true,
+      lifecycle: true, externalId: true, transferGroupId: true,
+      reconcileGroupId: true, reconciledWithId: true,
+    },
   })
 
   const groupIds = [
@@ -166,15 +173,13 @@ export async function runImportV2(
   const signedList = prepareBalanceTransactions(allForPrepare as any, input.bankAccountId)
   const signedById = new Map(signedList.map((s) => [s.id, s.signedAmount]))
 
-  const dbBankTxs: DbBankTransaction[] = dbEffected.map((t) => ({
-    id: t.id,
-    date: t.date,
-    signedAmount: signedById.get(t.id) ?? (t.type === 'CREDIT' ? t.amount : -t.amount),
-    memo: t.description ?? '',
-    fitid: t.externalId ?? undefined,
-    lifecycle: 'EFFECTED',
-    type: t.type,
-  }))
+  // Universo de reconcile = EFFECTED (linhas reais já materializadas) + PAYABLE/
+  // RECEIVABLE (previews já existentes). Incluir os pending é o FIX do bug de
+  // duplicata: sem eles, uma linha real que casa com uma preview criada por outro
+  // import virava `missing` e era RECRIADA (duplicata). Agora casa → PROMOVE.
+  // `buildReconcileUniverse` é pura e testada (guarda contra voltar a filtrar só
+  // EFFECTED). Ver reconcile-universe.test.ts.
+  const dbBankTxs: DbBankTransaction[] = buildReconcileUniverse(dbEffected, dbPending, signedById)
 
   // 4. Reconcile bidirecional (Tier 1 EXACT + Tier 2 FUZZY)
   // Passa `today` pro corte de preview ser min(DTASOF, today) — cobre
@@ -324,6 +329,37 @@ export async function runImportV2(
     insertedTxIds.push(created.id)
   }
 
+  // 8.4. PROMOÇÃO (fix duplicata 07/08): linha REAL do extrato que casou com uma
+  // PREVIEW (PAYABLE/RECEIVABLE) já existente → a preview realizou. Promove
+  // lifecycle→EFFECTED em vez de recriar (elimina a duplicata preview↔real entre
+  // imports). Só mexe no lifecycle → HERDA categoria, transferGroupId e vínculos.
+  // RISCO conciliada: se a preview já está conciliada (reconcileGroupId OU
+  // reconciledWithId), NÃO promove — mexer poderia quebrar a soma N:1 da
+  // conciliação. Deixa como está (o dedup já impede a duplicata) e sinaliza.
+  const conciliadaIds = new Set(
+    dbPending.filter((t) => t.reconcileGroupId || t.reconciledWithId).map((t) => t.id),
+  )
+  let promotedCount = 0
+  let promotionSkippedConciliada = 0
+  for (const m of result.promoted) {
+    if (conciliadaIds.has(m.dbTx.id)) {
+      promotionSkippedConciliada += 1
+      continue
+    }
+    // Só lifecycle. paymentDate segue NULL/como estava; a competência do DRE usa
+    // `date` (que == datePosted da linha real, pois casaram por stableKey=data).
+    await tx.transaction.update({
+      where: { id: m.dbTx.id },
+      data: { lifecycle: 'EFFECTED' },
+    })
+    promotedCount += 1
+  }
+  if (promotedCount > 0 || promotionSkippedConciliada > 0) {
+    console.log(
+      `[RECONCILE_V2] promoção: ${promotedCount} preview(s)→EFFECTED, ${promotionSkippedConciliada} conciliada(s) preservada(s)`,
+    )
+  }
+
   // 8.5. Sprint Cartao R2 (24/06/2026) — marca tx que parecem PAGAMENTO DE
   // CARTAO como isCardPayment=true (sem cartao vinculado ainda — fica
   // aguardando casar com fatura PDF). Filtro do DRE/cashflow ja pula
@@ -403,6 +439,8 @@ export async function runImportV2(
       previewAlreadyExisting: previewDedup.alreadyExisting.length,
       skippedMatched: result.matched.length,
       orphanWarnings: result.orphans.length,
+      promoted: promotedCount,
+      promotionSkippedConciliada,
     },
     matchedExact: result.matched.filter((m) => m.confidence === 'EXACT').length,
     matchedFuzzy: result.matched.filter((m) => m.confidence === 'FUZZY').length,

@@ -151,5 +151,17 @@ export function reconcileStatement(
     }
   }
 
-  return { matched, orphans, missing, previews }
+  // Matches onde a tx do DB é PREVIEW (PAYABLE/RECEIVABLE) e casou com linha REAL
+  // do extrato → a preview realizou. O caller PROMOVE (lifecycle→EFFECTED) em vez
+  // de recriar. Sem isto, a linha real virava `missing` e duplicava (bug: preview
+  // criada por um import + linha real de um import posterior).
+  const promoted = matched.filter((m) => m.dbTx.lifecycle !== 'EFFECTED')
+
+  // Órfão = tx REAL (EFFECTED) que sumiu do extrato → fantasma p/ revisão humana.
+  // Uma PAYABLE/RECEIVABLE que sobrou (nenhuma linha real casou ainda) NÃO é
+  // fantasma — é um agendado legítimo ainda por vir. Sem este filtro, incluir
+  // pending no universo de reconcile geraria warnings falsos de órfão.
+  const effectedOrphans = orphans.filter((o) => o.lifecycle === 'EFFECTED')
+
+  return { matched, orphans: effectedOrphans, missing, previews, promoted }
 }

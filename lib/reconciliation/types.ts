@@ -42,4 +42,8 @@ export interface ReconcileResult {
   // Linhas do extrato que são PREVIEW/AGENDADO (DTPOSTED>DTASOF ou FITID==YYMMDD)
   // → entram como PENDING/PAYABLE, NÃO EFFECTED
   previews: StatementLine[]
+  // Subconjunto de `matched` onde a tx do DB é PREVIEW (PAYABLE/RECEIVABLE) e a
+  // linha real do extrato casou → a preview REALIZOU. Deve ser PROMOVIDA a
+  // EFFECTED (não recriada). Fecha o bug de duplicata preview↔real entre imports.
+  promoted: MatchedPair[]
 }
