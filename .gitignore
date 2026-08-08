@@ -56,3 +56,8 @@ __tests__/fixtures/contas-pagar-*.csv
 
 # macOS
 .DS_Store
+
+# Dumps de banco (nunca versionar — dado real de cliente)
+*.dump
+*.sql.gz
+pg_dump*
