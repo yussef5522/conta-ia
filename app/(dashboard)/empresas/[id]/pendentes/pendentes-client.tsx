@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import {
   ArrowUpRight,
@@ -30,6 +30,8 @@ import { normalizeCounterparty } from '@/lib/counterparty/normalize'
 import { fetchJson } from '@/lib/http/fetch-json'
 // Sprint Retirada-1-Clique
 import { WithdrawalPanel } from '@/components/withdrawals/WithdrawalPanel'
+import { detectWithdrawalTrigger } from '@/lib/withdrawals/detect-trigger'
+import type { WithdrawalKind } from '@/lib/withdrawals/suggest-from-description'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
   VendorSuggestionBanner,
@@ -142,6 +144,15 @@ export function PendentesClient({
   const [vincularBase, setVincularBase] = useState<Transacao | null>(null)
   // Sprint Retirada-1-Clique
   const [retiradaTx, setRetiradaTx] = useState<Transacao | null>(null)
+  // Sprint Ponte-na-hora: quando o painel abre pela categoria do dropdown,
+  // guarda o tipo sugerido + a categoria escolhida (pra fechar-sem-criar aplicar
+  // a categoria mesmo assim → vira retirada órfã, nunca trava). null = veio do
+  // menu 3-pontinhos (fechar só fecha).
+  const [retiradaKind, setRetiradaKind] = useState<WithdrawalKind | null>(null)
+  const [retiradaCatId, setRetiradaCatId] = useState<string | null>(null)
+  // Ref (síncrono, sem race) — true quando a ponte foi criada, pra o close-handler
+  // NÃO re-categorizar (a createBridge já categorizou).
+  const bridgeCriadaRef = useRef(false)
   // Fase 3 Etapa 1: transação + categoria pra modal "Aprender e aplicar"
   const [aprenderState, setAprenderState] = useState<
     { tx: Transacao; categoria: Categoria } | null
@@ -532,6 +543,33 @@ export function PendentesClient({
     const categoria = categorias.find((c) => c.id === categoriaId)
     if (!tx || !categoria) return
     setAprenderState({ tx, categoria })
+  }
+
+  // Sprint Ponte-na-hora: fechar o painel de retirada SEM criar a ponte → aplica
+  // a categoria mesmo assim (PUT direto, sem o modal de aprender). A tx sai dos
+  // Pendentes categorizada e vira "retirada sem ponte" (órfã), pega pelo banner /
+  // OrphanWithdrawalCard nas outras telas. NUNCA trava (Fase 3.1/3.2).
+  async function categorizarSemPonte(transacaoId: string, categoriaId: string) {
+    marcarOperando(transacaoId, true)
+    try {
+      const res = await fetch(`/api/transacoes/${transacaoId}`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ categoryId: categoriaId }),
+      })
+      if (res.ok) {
+        setTransacoes((prev) => prev.filter((t) => t.id !== transacaoId))
+        toast({
+          title: 'Categorizado (sem ponte)',
+          description: 'Retirada sem entrada no PF — vai aparecer em "retiradas a enviar ao PF".',
+        })
+      } else {
+        toast({ variant: 'destructive', title: 'Erro ao categorizar', description: `HTTP ${res.status}` })
+      }
+    } finally {
+      marcarOperando(transacaoId, false)
+    }
   }
 
   async function ignorarTransacao(transacaoId: string) {
@@ -1123,9 +1161,23 @@ export function PendentesClient({
                       dreGroup: c.dreGroup ?? null,
                     }))}
                     suggestedCategoryId={claudeHints[t.id]?.categoryId ?? null}
-                    onChange={(v) =>
+                    onChange={(v) => {
                       setSelecaoPorLinha((prev) => ({ ...prev, [t.id]: v ?? '' }))
-                    }
+                      // Sprint Ponte-na-hora: se a categoria escolhida é de retirada,
+                      // abre o painel PJ→PF NA HORA (tx pré-preenchida). Sugestão,
+                      // não obrigação — fechar sem criar categoriza mesmo assim.
+                      if (v) {
+                        const cat = cats.find((c) => c.id === v)
+                        const trig = cat
+                          ? detectWithdrawalTrigger({ name: cat.name, dreGroup: cat.dreGroup ?? null })
+                          : null
+                        if (trig?.triggers) {
+                          setRetiradaKind(trig.suggestedKind)
+                          setRetiradaCatId(v)
+                          setRetiradaTx(t)
+                        }
+                      }
+                    }}
                     disabled={operando}
                     placeholder={
                       cats.length === 0
@@ -1265,13 +1317,28 @@ export function PendentesClient({
         }}
       />
 
-      {/* Sprint Retirada-1-Clique — modal pra marcar tx como retirada de sócio */}
-      <Dialog open={!!retiradaTx} onOpenChange={(o) => !o && setRetiradaTx(null)}>
+      {/* Sprint Retirada-1-Clique + Ponte-na-hora — painel de retirada PJ→PF.
+          Abre pelo menu 3-pontinhos OU pela categoria de retirada no dropdown. */}
+      <Dialog
+        open={!!retiradaTx}
+        onOpenChange={(o) => {
+          if (o) return
+          // Fase 3.1: fechar de QUALQUER jeito (X, Esc, overlay, Cancelar) sem
+          // criar ponte NÃO trava. Se abriu pela categoria do dropdown, aplica a
+          // categoria mesmo assim → vira retirada órfã (banner pega). Se a ponte
+          // foi criada, a createBridge já categorizou (ref evita re-categorizar).
+          if (!bridgeCriadaRef.current && retiradaTx && retiradaCatId) {
+            categorizarSemPonte(retiradaTx.id, retiradaCatId)
+          }
+          bridgeCriadaRef.current = false
+          setRetiradaTx(null); setRetiradaKind(null); setRetiradaCatId(null)
+        }}
+      >
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <span>💸</span>
-              Marcar como retirada de sócio
+              Enviar retirada ao PF do sócio
             </DialogTitle>
           </DialogHeader>
           {retiradaTx && (
@@ -1280,11 +1347,13 @@ export function PendentesClient({
               pjTransactionId={retiradaTx.id}
               pjAmount={Math.abs(retiradaTx.amount)}
               pjDescription={retiradaTx.description}
+              initialKind={retiradaKind}
               onConfirmed={() => {
+                bridgeCriadaRef.current = true // ponte criada → não re-categorizar
                 setTransacoes((prev) => prev.filter((t) => t.id !== retiradaTx.id))
-                setRetiradaTx(null)
+                setRetiradaTx(null); setRetiradaKind(null); setRetiradaCatId(null)
               }}
-              onCancel={() => setRetiradaTx(null)}
+              onCancel={() => setRetiradaTx(null)} // dispara onOpenChange → categoriza
             />
           )}
         </DialogContent>

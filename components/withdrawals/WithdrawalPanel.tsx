@@ -61,6 +61,9 @@ interface Props {
     socioId: string
     suggestedKind: WithdrawalKind
   } | null
+  /** Tipo pré-selecionado quando abre pela categoria do dropdown (Sprint Ponte-na-hora).
+   *  null/undefined = deixar o usuário escolher (categorias mistas/ambíguas). */
+  initialKind?: WithdrawalKind | null
   /** Callback após sucesso — UI deve remover a row da lista. */
   onConfirmed: () => void
   /** Callback de cancelar (volta pra Match/Create). */
@@ -114,6 +117,7 @@ export function WithdrawalPanel({
   pjAmount,
   pjDescription,
   initialSuggestion,
+  initialKind,
   onConfirmed,
   onCancel,
 }: Props) {
@@ -122,7 +126,9 @@ export function WithdrawalPanel({
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [socioId, setSocioId] = useState<string>('')
-  const [kind, setKind] = useState<WithdrawalKind | ''>('')
+  // initialKind (Sprint Ponte-na-hora): tipo pré-selecionado quando abre pela
+  // categoria escolhida no dropdown. null/undefined = usuário escolhe (mistas).
+  const [kind, setKind] = useState<WithdrawalKind | ''>(initialKind ?? '')
   const [profileId, setProfileId] = useState<string>('')
   const [accountId, setAccountId] = useState<string>('')
   const [categoryId, setCategoryId] = useState<string>('')
