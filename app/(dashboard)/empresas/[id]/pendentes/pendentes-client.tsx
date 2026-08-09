@@ -30,6 +30,7 @@ import { normalizeCounterparty } from '@/lib/counterparty/normalize'
 import { fetchJson } from '@/lib/http/fetch-json'
 // Sprint Retirada-1-Clique
 import { WithdrawalPanel } from '@/components/withdrawals/WithdrawalPanel'
+import { OrphanWithdrawalsActionBanner } from '@/components/withdrawals/OrphanWithdrawalsActionBanner'
 import { detectWithdrawalTrigger } from '@/lib/withdrawals/detect-trigger'
 import type { WithdrawalKind } from '@/lib/withdrawals/suggest-from-description'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -705,6 +706,10 @@ export function PendentesClient({
           {autoCatLoading ? 'Categorizando...' : 'Auto-categorizar tudo'}
         </Button>
       </Header>
+
+      {/* Sprint Fechar-Ponte (08/08) — FASE B. Retiradas órfãs (sem entrada PF).
+          Impossível de ignorar; link direto pro lote. */}
+      <OrphanWithdrawalsActionBanner empresaId={empresaId} />
 
       {/* Sprint CDB entry (02/08) — porta de entrada visível pra reclassificação.
           Aparece SÓ quando há aplicação/resgate automático de CDB não classificado. */}

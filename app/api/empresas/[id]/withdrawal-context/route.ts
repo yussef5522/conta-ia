@@ -16,6 +16,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
+import { computeLucroDisponivel } from '@/lib/withdrawals/lucro-disponivel'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -54,8 +55,8 @@ export async function GET(request: NextRequest, { params }: Params) {
               orderBy: { name: 'asc' },
             },
             categories: {
-              where: { isActive: true, type: 'INCOME' },
-              select: { id: true, name: true },
+              where: { isActive: true },
+              select: { id: true, name: true, type: true },
               orderBy: { name: 'asc' },
             },
           },
@@ -71,10 +72,27 @@ export async function GET(request: NextRequest, { params }: Params) {
         cpf: up.profile.cpf,
         type: up.profile.type,
         accounts: up.profile.bankAccounts,
-        incomeCategories: up.profile.categories,
+        incomeCategories: up.profile.categories
+          .filter((c) => c.type === 'INCOME')
+          .map((c) => ({ id: c.id, name: c.name })),
+        expenseCategories: up.profile.categories
+          .filter((c) => c.type === 'EXPENSE')
+          .map((c) => ({ id: c.id, name: c.name })),
       }))
 
+    // Sprint Fechar-Ponte (08/08/2026): lucro disponível pra tela da ponte.
+    // Fail-soft: se o cálculo der erro, a ponte continua criável (lucro é
+    // referência, nunca bloqueia). Cache curto interno evita recalcular a cada
+    // reabertura do painel.
+    let lucroContext: Awaited<ReturnType<typeof computeLucroDisponivel>> = null
+    try {
+      lucroContext = await computeLucroDisponivel(empresaId)
+    } catch {
+      lucroContext = null
+    }
+
     return NextResponse.json({
+      lucroContext,
       socios: socios.map((s) => ({
         id: s.id,
         nome: s.nome,

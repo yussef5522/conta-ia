@@ -43,9 +43,18 @@ interface ProfileOption {
   incomeCategories: { id: string; name: string; color?: string | null }[]
 }
 
+interface LucroContext {
+  desde: string
+  lucroApurado: number
+  distribuido: number
+  disponivel: number
+  negativo: boolean
+  naoClassificado: { count: number; valor: number }
+}
 interface ContextResponse {
   socios: SocioOption[]
   profiles: ProfileOption[]
+  lucroContext: LucroContext | null
 }
 
 interface Props {
@@ -109,6 +118,12 @@ const KIND_INFO: Record<
     fiscal:
       'Retirada sem classificação específica. NÃO afeta DRE por default. Reclassifique depois quando tiver a apuração contábil.',
   },
+}
+
+// '2026-05' → '05/2026'
+function formatPeriodo(yyyymm: string): string {
+  const [y, m] = yyyymm.split('-')
+  return m && y ? `${m}/${y}` : yyyymm
 }
 
 export function WithdrawalPanel({
@@ -255,6 +270,73 @@ export function WithdrawalPanel({
           como despesa operacional.
         </p>
       </div>
+
+      {/* Lucro disponível no período (Sprint Fechar-Ponte 08/08). Referência,
+          NUNCA bloqueia: tom neutro, sem cor de erro nem alerta. */}
+      {ctx.lucroContext && (
+        <div className="rounded-md border bg-muted/40 px-3 py-2 space-y-1.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] uppercase font-semibold text-muted-foreground">
+              Lucro no período
+            </span>
+            <span className="text-[10px] text-muted-foreground">
+              desde {formatPeriodo(ctx.lucroContext.desde)}
+            </span>
+          </div>
+          <div className="grid grid-cols-3 gap-2 tabular-nums">
+            <div>
+              <p className="text-[10px] text-muted-foreground">Apurado</p>
+              <p className="font-semibold">
+                {formatBRL(ctx.lucroContext.lucroApurado)}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] text-muted-foreground">Já distribuído</p>
+              <p className="font-semibold">
+                {formatBRL(ctx.lucroContext.distribuido)}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] text-muted-foreground">Disponível</p>
+              <p
+                className={`font-semibold ${
+                  ctx.lucroContext.negativo
+                    ? 'text-slate-600 dark:text-slate-300'
+                    : 'text-emerald-700 dark:text-emerald-400'
+                }`}
+              >
+                {formatBRL(ctx.lucroContext.disponivel)}
+              </p>
+            </div>
+          </div>
+          {ctx.lucroContext.negativo && (
+            <p className="text-[11px] leading-snug text-muted-foreground">
+              Distribuído além do lucro apurado no período:{' '}
+              {formatBRL(Math.abs(ctx.lucroContext.disponivel))}. Na prática isso
+              costuma ser tratado como adiantamento a sócio na apuração contábil.
+            </p>
+          )}
+          <p className="text-[10px] text-muted-foreground">
+            Referência — não impede o registro. O contador interpreta na
+            apuração.
+          </p>
+          {ctx.lucroContext.naoClassificado.count > 0 && (
+            <Link
+              href={`/empresas/${empresaId}/retiradas`}
+              className="flex items-center justify-between gap-2 rounded border border-amber-300 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-900 hover:bg-amber-100 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200"
+            >
+              <span>
+                {ctx.lucroContext.naoClassificado.count} retirada
+                {ctx.lucroContext.naoClassificado.count > 1 ? 's' : ''} não
+                classificada
+                {ctx.lucroContext.naoClassificado.count > 1 ? 's' : ''} (
+                {formatBRL(ctx.lucroContext.naoClassificado.valor)})
+              </span>
+              <span className="font-medium shrink-0">Resolver →</span>
+            </Link>
+          )}
+        </div>
+      )}
 
       {/* Sócio */}
       <div className="space-y-1">

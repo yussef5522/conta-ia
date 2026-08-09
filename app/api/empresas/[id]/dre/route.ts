@@ -52,14 +52,52 @@ export async function GET(request: NextRequest, { params }: Params) {
     //   'realizado' (default): só EFFECTED (caixa real / fato gerador efetivado)
     //   'previsto': só PAYABLE/RECEIVABLE (compromissos pendentes)
     const view = url.searchParams.get('view') === 'previsto' ? 'previsto' : 'realizado'
-    const lifecycleFilter: { in: string[] } | string =
-      view === 'previsto'
-        ? { in: ['PAYABLE', 'RECEIVABLE'] }
-        : 'EFFECTED'
 
     // Range de busca: cobre período atual + comparação (engine pura filtra fino)
     const searchRange = computeSearchRange(query, startDate, endDate)
 
+    // Sprint Fechar-Ponte (08/08/2026): a computação virou função exportada
+    // (computeDreResult) pra ser reusada pelo cálculo de "lucro disponível" da
+    // tela da ponte SEM duplicar a lógica (loan reinjection etc). O número tem
+    // que bater com o relatório — mesma fonte da verdade.
+    const result = await computeDreResult(companyId, {
+      startDate,
+      endDate,
+      regime,
+      view,
+      searchRange,
+      comparison: buildComparisonOptions(query, regime),
+    })
+
+    return NextResponse.json(result)
+  } catch (error) {
+    return handleApiError(error)
+  }
+}
+
+// ============================================================
+// Núcleo reutilizável: carrega tx + categorias e roda calculateDRE.
+// Exportado pra que o cálculo de lucro disponível (tela da ponte) use a
+// MESMA lógica do relatório DRE. Caller é responsável pela autorização.
+// ============================================================
+export interface ComputeDreParams {
+  startDate: Date
+  endDate: Date
+  regime: RegimeContabil
+  view: 'realizado' | 'previsto'
+  searchRange: { start: Date; end: Date }
+  comparison: CalculateDREOptions['comparison']
+}
+
+export async function computeDreResult(
+  companyId: string,
+  p: ComputeDreParams,
+) {
+  const { startDate, endDate, regime, view, searchRange } = p
+  const lifecycleFilter: { in: string[] } | string =
+    view === 'previsto' ? { in: ['PAYABLE', 'RECEIVABLE'] } : 'EFFECTED'
+
+  {
     // Categorias: TODAS da empresa (engine não pode pré-filtrar por isActive
     // porque transações antigas podem apontar pra categoria desativada).
     const categoriesRaw = await prisma.category.findMany({
@@ -359,14 +397,12 @@ export async function GET(request: NextRequest, { params }: Params) {
 
     const calcOptions: CalculateDREOptions = {
       period: { startDate, endDate, regime },
-      comparison: buildComparisonOptions(query, regime),
+      comparison: p.comparison,
     }
 
     const result = calculateDRE(transactions, categories, calcOptions)
 
-    return NextResponse.json(result)
-  } catch (error) {
-    return handleApiError(error)
+    return result
   }
 }
 

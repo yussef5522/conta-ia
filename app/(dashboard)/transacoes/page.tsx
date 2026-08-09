@@ -31,6 +31,7 @@ import { parseTransacoesURLFilters, buildTransacoesURLParams } from '@/lib/trans
 import { AiSourceBadge } from '@/components/transacoes/ai-source-badge'
 import { InlineCategorySelect } from '@/components/transacoes/inline-category-select'
 import { OrphanWithdrawalCard } from '@/components/withdrawals/OrphanWithdrawalCard'
+import { OrphanWithdrawalsActionBanner } from '@/components/withdrawals/OrphanWithdrawalsActionBanner'
 import { isOrphanWithdrawal } from '@/lib/withdrawals/is-orphan'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -768,6 +769,12 @@ function TransacoesPageInner() {
           </DropdownMenu>
         )}
       </Header>
+
+      {/* Sprint Fechar-Ponte (08/08) — FASE B. Banner de retiradas órfãs. É aqui
+          que o usuário cai após confirmar um import — não pode escapar. */}
+      {exportEmpresaId && (
+        <OrphanWithdrawalsActionBanner empresaId={exportEmpresaId} />
+      )}
 
       {/* Cards resumo */}
       <div className="grid gap-4 sm:grid-cols-2">
