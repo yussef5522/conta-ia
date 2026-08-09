@@ -1,5 +1,5 @@
 // READ-ONLY — diagnóstico das 3 tx PIX 15/06 categoria "Contabilidade"
-// R$ 25.000, R$ 9.000, R$ 5.000 desc PIX-PIX_DEB 60025889060 YUSSEF ABU ZAHRY MUSA
+// R$ 25.000, R$ 9.000, R$ 5.000 desc PIX-PIX_DEB 11144477735 YUSSEF ABU ZAHRY MUSA
 // Rastro: origin / FITID / import / dedup / pareamento / saldo do dia
 
 import { PrismaClient } from '@prisma/client'

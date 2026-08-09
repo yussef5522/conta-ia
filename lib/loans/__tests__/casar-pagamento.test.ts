@@ -208,8 +208,8 @@ describe('detectLoanPayment', () => {
     expect(detectLoanPayment({ description: 'PIX RECEBIDO', type: 'DEBIT', date: '2026-07-15' }, [sicredi])).toBeNull()
   })
   it('PIX pra CPF (11 dígitos) NÃO vira "empréstimo não cadastrado" (falso positivo)', () => {
-    // o extrator pega "60025889060" pelo fallback ≥10 dígitos, mas não é contrato
-    const d = detectLoanPayment({ description: 'PAGAMENTO PIX-PIX_DEB   60025889060 YUSS', type: 'DEBIT', date: '2026-07-13' }, [sicredi, banr1])
+    // o extrator pega "11144477735" pelo fallback ≥10 dígitos, mas não é contrato
+    const d = detectLoanPayment({ description: 'PAGAMENTO PIX-PIX_DEB   11144477735 YUSS', type: 'DEBIT', date: '2026-07-13' }, [sicredi, banr1])
     expect(d).toBeNull()
   })
 })

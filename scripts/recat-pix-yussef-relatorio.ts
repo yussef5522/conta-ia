@@ -15,7 +15,7 @@ const ALVOS: Alvo[] = [
 ]
 
 // CPF Yussef pessoa física
-const CPF_YUSSEF = '60025889060'
+const CPF_YUSSEF = '11144477735'
 
 const prisma = new PrismaClient()
 

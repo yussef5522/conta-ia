@@ -9,7 +9,7 @@ import {
 const YUSSEF: SocioRef = {
   id: 'socio-yussef',
   nome: 'YUSSEF MUSA',
-  cpf: '60025889060',
+  cpf: '11144477735',
   pixKeys: ['yussefmusa5522@gmail.com', '51999991234'],
   papel: 'ADMINISTRADOR',
 }
@@ -25,7 +25,7 @@ const NOURA: SocioRef = {
 describe('suggestWithdrawal — sinais FORTES (STRONG)', () => {
   it('descrição com CPF do sócio → STRONG + kind por papel', () => {
     const r = suggestWithdrawal(
-      'PAGAMENTO PIX 60025889060 YUSSEF MUSA',
+      'PAGAMENTO PIX 11144477735 YUSSEF MUSA',
       [YUSSEF],
     )
     expect(r).not.toBeNull()
@@ -55,7 +55,7 @@ describe('suggestWithdrawal — sinais FORTES (STRONG)', () => {
 
   it('multi-sócio: escolhe o que tem mais sinais', () => {
     const r = suggestWithdrawal(
-      'PIX 60025889060 YUSSEF MUSA yussefmusa5522@gmail.com',
+      'PIX 11144477735 YUSSEF MUSA yussefmusa5522@gmail.com',
       [YUSSEF, NOURA],
     )
     expect(r!.socioId).toBe('socio-yussef')

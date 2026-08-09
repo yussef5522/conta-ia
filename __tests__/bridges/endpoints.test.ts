@@ -68,7 +68,7 @@ beforeAll(async () => {
   bankAccountId = ba.id
 
   profileA = await createProfile({
-    userId: userA.id, name: 'A PF', cpf: '60025889060',
+    userId: userA.id, name: 'A PF', cpf: '11144477735',
   })
   const acc = await createAccount({
     userId: userA.id, profileId: profileA.id,

@@ -13,13 +13,13 @@ const CACULA_FULL_REFS: OwnEntityRefs = {
   cnpj: '29756732000198',
   names: ['caçula mix'],
   accountNames: ['banrisul', 'sicredi', 'stone'],
-  ownerCpfs: ['60025889060'],
+  ownerCpfs: ['11144477735'],
   ownerNames: ['YUSSEF ABU ZAHRY MUSA'],
 }
 
 describe('Sprint Owner Detection — extractCpfsFromDescription', () => {
   it('extrai CPF de 11 digitos', () => {
-    expect(extractCpfsFromDescription('PIX 60025889060 YUSSEF')).toEqual(['60025889060'])
+    expect(extractCpfsFromDescription('PIX 11144477735 YUSSEF')).toEqual(['11144477735'])
   })
   it('ignora sequencia de 14 digitos (eh CNPJ)', () => {
     expect(extractCpfsFromDescription('PIX 29756732000198 CACULA MIX')).toEqual([])
@@ -31,7 +31,7 @@ describe('Sprint Owner Detection — extractCpfsFromDescription', () => {
 
 describe('Sprint Owner Detection — normalizeCpf', () => {
   it('aceita 11 digitos', () => {
-    expect(normalizeCpf('600.258.890-60')).toBe('60025889060')
+    expect(normalizeCpf('111.444.777-35')).toBe('11144477735')
   })
   it('rejeita curto/longo', () => {
     expect(normalizeCpf('12345')).toBeNull()
@@ -44,8 +44,8 @@ describe('Sprint Owner Detection — normalizeCpf', () => {
 })
 
 describe('Sprint Owner Detection — sinais FORTES (CPF + CNPJ)', () => {
-  it('🎯 CASO REAL: "PIX 60025889060 YUSSEF" — CPF dono FORTE', () => {
-    const sig = extractOwnSignals('PIX 60025889060 YUSSEF', CACULA_FULL_REFS)
+  it('🎯 CASO REAL: "PIX 11144477735 YUSSEF" — CPF dono FORTE', () => {
+    const sig = extractOwnSignals('PIX 11144477735 YUSSEF', CACULA_FULL_REFS)
     expect(sig.hasOwnerCpf).toBe(true)
     // hasOwnerName precisa do NOME COMPLETO normalizado — "YUSSEF" sozinho
     // não bate "YUSSEF ABU ZAHRY MUSA" (proteção anti-prenome solto)

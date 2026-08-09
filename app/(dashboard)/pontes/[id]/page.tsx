@@ -124,7 +124,7 @@ interface PfAccount {
 // Utils
 // ─────────────────────────────────────────────
 
-/** Máscara de CPF: 60025889060 → ***.258.***-60 (só mostra 4 dígitos centrais). */
+/** Máscara de CPF: 11144477735 → ***.444.***-35 (só mostra 4 dígitos centrais). */
 function maskCpf(cpf: string | null): string {
   if (!cpf) return '—'
   const clean = cpf.replace(/\D/g, '')

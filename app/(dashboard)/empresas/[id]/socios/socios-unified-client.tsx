@@ -631,7 +631,7 @@ function SocioForm({ empresaId, onCreated, onCancel }: SocioFormProps) {
         </div>
         <div>
           <Label className="text-xs">CPF</Label>
-          <Input value={cpf} onChange={(e) => setCpf(e.target.value)} placeholder="600.258.890-60" />
+          <Input value={cpf} onChange={(e) => setCpf(e.target.value)} placeholder="111.444.777-35" />
           <p className="mt-1 text-[10px] text-slate-500 leading-snug">
             Sinal forte pra detectar transferências do dono (quando o banco
             inclui o CPF na descrição do PIX).

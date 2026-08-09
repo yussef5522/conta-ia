@@ -17,7 +17,7 @@ let userB: { id: string }  // João (sócio da mesma empresa, dono perfil B)
 let userC: { id: string }  // Outro user sem nenhum vínculo
 let companyId: string      // PROFIT (compartilhada A+B)
 let bankAccountId: string  // Conta PJ da PROFIT
-let socioA: { id: string }  // SocioPF Yussef (CPF 600.258.890-60)
+let socioA: { id: string }  // SocioPF Yussef (CPF 111.444.777-35)
 let socioB: { id: string }  // SocioPF João
 let profileA: { id: string }  // Perfil PF Yussef (CPF idêntico ao socioA)
 let profileB: { id: string }  // Perfil PF João (CPF idêntico ao socioB)
@@ -61,14 +61,14 @@ beforeAll(async () => {
   bankAccountId = bank.id
 
   socioA = await prisma.socioPF.create({
-    data: { companyId, nome: 'Yussef Sócio', cpf: '60025889060', papel: 'SOCIO' },
+    data: { companyId, nome: 'Yussef Sócio', cpf: '11144477735', papel: 'SOCIO' },
   })
   socioB = await prisma.socioPF.create({
     data: { companyId, nome: 'Joao Sócio', cpf: '11122233344', papel: 'ADMINISTRADOR' },
   })
 
   profileA = await createProfile({
-    userId: userA.id, name: 'Yussef', cpf: '60025889060',
+    userId: userA.id, name: 'Yussef', cpf: '11144477735',
   })
   profileB = await createProfile({
     userId: userB.id, name: 'Joao', cpf: '11122233344',
@@ -79,7 +79,7 @@ beforeAll(async () => {
     data: {
       bankAccountId,
       date: new Date('2026-05-28'),
-      description: 'Pix Yussef Musa CPF 600.258.890-60',
+      description: 'Pix Yussef Musa CPF 111.444.777-35',
       amount: 10000,
       type: 'DEBIT',
       lifecycle: 'EFFECTED',
@@ -156,16 +156,16 @@ afterAll(async () => {
 
 describe('normalizeCpf', () => {
   test('Remove pontos e traços', () => {
-    expect(normalizeCpf('600.258.890-60')).toBe('60025889060')
+    expect(normalizeCpf('111.444.777-35')).toBe('11144477735')
   })
   test('Mantém só dígitos', () => {
-    expect(normalizeCpf('60025889060')).toBe('60025889060')
+    expect(normalizeCpf('11144477735')).toBe('11144477735')
   })
   test('CPF inválido (<11 dígitos) → null', () => {
     expect(normalizeCpf('600258890')).toBeNull()
   })
   test('CPF >11 dígitos → null', () => {
-    expect(normalizeCpf('600258890601')).toBeNull()
+    expect(normalizeCpf('111444777351')).toBeNull()
   })
   test('null/undefined → null', () => {
     expect(normalizeCpf(null)).toBeNull()

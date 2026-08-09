@@ -62,11 +62,11 @@ beforeAll(async () => {
   bankAccountId2 = ba2.id
 
   socioA = await prisma.socioPF.create({
-    data: { companyId, nome: 'Yussef', cpf: '60025889060', papel: 'SOCIO' },
+    data: { companyId, nome: 'Yussef', cpf: '11144477735', papel: 'SOCIO' },
   })
 
   profileA = await createProfile({
-    userId: userA.id, name: 'Yussef PF', cpf: '60025889060',
+    userId: userA.id, name: 'Yussef PF', cpf: '11144477735',
   })
 
   const acc = await createAccount({
@@ -90,7 +90,7 @@ beforeAll(async () => {
   pjTx1 = await prisma.transaction.create({
     data: {
       bankAccountId, date: new Date('2026-05-28'),
-      description: 'Pix Yussef Musa CPF 600.258.890-60',
+      description: 'Pix Yussef Musa CPF 111.444.777-35',
       amount: 10000, type: 'DEBIT', lifecycle: 'EFFECTED',
       relatedPartyType: 'SOCIO_PF', relatedPartyId: socioA.id,
     },
