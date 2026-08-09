@@ -46,6 +46,7 @@ Contexto detalhado de qualquer sprint acima → `CLAUDE_HISTORY.md`.
 - **SocioPF Yussef (Cacula):** `cmq1cqrjk00cj50toproqbscy`
 - **PersonalProfile Yussef:** `cmq1crgsz00cn50toa9zty4uy`
 - **User admin:** `admin@contaia.com.br` (plano `inteligencia` GRANTED)
+- **Saldo caixa loja/cofre conferido pelo usuário contra o dinheiro físico em 08/08/2026: 4.988,82, confere.** A âncora "Ajuste de saldo inicial" de 8.946,25 (06/06) está correta. (O erro de julho era uma entrada manual de 7.000 "saque do banco" lançada por engano — apagada em 08/08; o saldo voltou ao valor real.)
 
 ## Modelo de dados (chaves críticas)
 
