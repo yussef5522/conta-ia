@@ -36,7 +36,7 @@ export interface EnrichmentPreview {
     pdfWithName: number
     manualProtected: number
   }
-  exact: Array<PreviewTxView & { proposedName: string }>
+  exact: Array<PreviewTxView & { proposedName: string; documento: string }>
   ambiguous: Array<{
     documento: string
     amount: number
@@ -90,9 +90,13 @@ export function buildEnrichmentPreview(
   const exact = r.exact
     .map((e) => {
       const t = byId.get(e.txId)
-      return t ? { ...view(t), proposedName: e.counterpartyName } : null
+      // FASE 4 (09/08): expõe o `documento` do PDF pra ser persistido em
+      // counterpartyDocument (distingue os 2 "EMPRESTIMO", capitalizações).
+      return t ? { ...view(t), proposedName: e.counterpartyName, documento: e.documento } : null
     })
-    .filter((x): x is PreviewTxView & { proposedName: string } => x !== null)
+    .filter(
+      (x): x is PreviewTxView & { proposedName: string; documento: string } => x !== null,
+    )
 
   const ambiguous = r.ambiguous.map((a) => ({
     documento: a.documento,

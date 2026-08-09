@@ -14,6 +14,7 @@ import { formatBRL } from '@/lib/format/money'
 import { readJsonResponse } from '@/lib/http/safe-json'
 import { PreviewV2Classificado } from '@/components/importar-ofx/PreviewV2Classificado'
 import { PreviewV3Premium, type V3Decisions } from '@/components/importar-ofx/PreviewV3Premium'
+import { EnrichContrapartePanel } from '@/components/counterparty/EnrichContrapartePanel'
 import {
   EditablePreviewTable,
   type CategoryOption,
@@ -123,6 +124,11 @@ export default function ImportarOFXPage() {
   const [ignorados, setIgnorados] = useState<Set<string>>(new Set())
   const [confirmReplace, setConfirmReplace] = useState<TransferCandidate | null>(null)
   // Sprint Import Categoria Editável (18/06/2026)
+  // Sprint PDF-no-Import (09/08): pós-import de conta Banrisul, oferece anexar o
+  // PDF pra completar nome/documento. O import JÁ foi confirmado (tx existem) —
+  // esta etapa é separada e opcional; se falhar/fechar, as tx ficam.
+  const [banrisulEnrich, setBanrisulEnrich] = useState(false)
+  const [pendingNavUrl, setPendingNavUrl] = useState<string | null>(null)
   const [overrides, setOverrides] = useState<Record<string, string | null>>({})
   const [newRules, setNewRules] = useState<Array<{ tipoMatch: 'EXACT' | 'CONTAINS' | 'CNPJ'; padrao: string; categoryId: string }>>([])
 
@@ -605,12 +611,17 @@ export default function ImportarOFXPage() {
           // scan é best-effort — se falhar, segue fluxo normal
         }
 
-        if (temSugestoes) {
-          router.push(`/conciliacao/wizard?importId=${data.importId}`)
+        const navUrl = temSugestoes
+          ? `/conciliacao/wizard?importId=${data.importId}`
+          : `/transacoes?empresaId=${empresaId}&importId=${data.importId}&conferencia=true`
+        // Sprint PDF-no-Import (09/08): conta Banrisul → NÃO navega ainda; oferece
+        // o PDF inline (import já commitado). Detecção pelo BANKID do OFX ('041').
+        // Outros bancos: caminho ATUAL, navega direto (isolamento por construção).
+        if (preview?.banco?.codigo === '041') {
+          setPendingNavUrl(navUrl)
+          setBanrisulEnrich(true)
         } else {
-          router.push(
-            `/transacoes?empresaId=${empresaId}&importId=${data.importId}&conferencia=true`,
-          )
+          router.push(navUrl)
         }
       } else {
         router.push(`/empresas/${empresaId}/contas/${contaId}/transacoes`)
@@ -620,6 +631,44 @@ export default function ImportarOFXPage() {
     } finally {
       setLoadingImport(false)
     }
+  }
+
+  // Sprint PDF-no-Import (09/08): tela inline pós-import do Banrisul. O import
+  // JÁ está gravado; esta etapa é opcional. "Continuar sem" ou fechar → segue.
+  if (banrisulEnrich) {
+    const nav = () =>
+      router.push(pendingNavUrl ?? `/empresas/${empresaId}/contas/${contaId}/transacoes`)
+    return (
+      <div className="space-y-6">
+        <Header
+          title="Extrato importado ✓ — complete os nomes (Banrisul)"
+          description="As transações já foram criadas a partir do OFX. Esta etapa é opcional e não altera valor, data nem saldo."
+        />
+        <Card className="border-blue-300 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30">
+          <CardContent className="py-4">
+            <div className="flex items-start gap-3">
+              <FileText className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-blue-900 dark:text-blue-100">
+                  O extrato OFX do Banrisul não traz o nome de quem recebeu os PIX.
+                </p>
+                <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+                  Anexe o PDF do <strong>mesmo período</strong> pra completar nome e documento de
+                  cada lançamento. O PDF só complementa — se você fechar ou pular, as transações
+                  ficam e você vê o selo “sem contraparte” pra resolver depois.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <EnrichContrapartePanel
+          contaId={contaId}
+          onDone={nav}
+          onCancel={nav}
+          doneLabel="Ir pras transações"
+        />
+      </div>
+    )
   }
 
   return (
