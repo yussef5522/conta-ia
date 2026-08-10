@@ -19,6 +19,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
 import { CategoryCombobox } from '@/components/transacoes/category-combobox'
 import { createCategoryForPF } from '@/lib/transacoes/on-create-category'
+import { buildPontePayload } from '@/lib/bridges/build-ponte-payload'
 
 export type WithdrawalKind =
   | 'PRO_LABORE'
@@ -41,6 +42,8 @@ interface ProfileOption {
   type: string
   accounts: { id: string; name: string; bankName: string | null }[]
   incomeCategories: { id: string; name: string; color?: string | null }[]
+  // Sprint A/B-no-Painel (10/08/2026): categorias EXPENSE pro fluxo B ("já gastei").
+  expenseCategories: { id: string; name: string; color?: string | null }[]
 }
 
 interface LucroContext {
@@ -148,6 +151,10 @@ export function WithdrawalPanel({
   const [accountId, setAccountId] = useState<string>('')
   const [categoryId, setCategoryId] = useState<string>('')
   const [createPfEntry, setCreatePfEntry] = useState(true)
+  // Sprint A/B-no-Painel (10/08/2026): fluxo B ("já gastei esse dinheiro") — cria
+  // entrada + despesa PF atomic (createBridge.spend). Saldo PF net zero.
+  const [spendChecked, setSpendChecked] = useState(false)
+  const [spendCategoryId, setSpendCategoryId] = useState<string>('')
 
   useEffect(() => {
     fetch(`/api/empresas/${empresaId}/withdrawal-context`, {
@@ -186,7 +193,9 @@ export function WithdrawalPanel({
     kind !== '' &&
     profileId !== '' &&
     accountId !== '' &&
-    categoryId !== ''
+    categoryId !== '' &&
+    // fluxo B exige a categoria do gasto
+    (!spendChecked || spendCategoryId !== '')
 
   async function confirmar() {
     if (!canSubmit || !kind) return
@@ -196,16 +205,20 @@ export function WithdrawalPanel({
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          companyId: empresaId,
-          pjTransactionId,
-          profileId,
-          pfBankAccountId: accountId,
-          pfCategoryId: categoryId,
-          kind,
-          createdVia: 'CREATED_MANUAL',
-          socioPFId: socioId,
-        }),
+        body: JSON.stringify(
+          buildPontePayload({
+            companyId: empresaId,
+            pjTransactionId,
+            profileId,
+            pfBankAccountId: accountId,
+            pfCategoryId: categoryId,
+            kind,
+            socioPFId: socioId,
+            // Sprint A/B-no-Painel (10/08): fluxo B — entrada + despesa atomic.
+            spendChecked,
+            spendCategoryId,
+          }),
+        ),
       })
       const body = await res.json().catch(() => ({}))
       if (!res.ok) {
@@ -217,12 +230,13 @@ export function WithdrawalPanel({
         return
       }
       const sName = ctx?.socios.find((s) => s.id === socioId)?.nome ?? 'sócio'
+      const spendOk = spendChecked && spendCategoryId && (body.spendTransactionId ?? true)
       toast({
         title: `Retirada confirmada — ${KIND_INFO[kind].label}`,
         description: `${formatBRL(pjAmount)} para ${sName}. ${
-          KIND_INFO[kind].affectsDre
-            ? 'Conta na DRE como Despesa de Pessoal.'
-            : 'NÃO afeta a DRE.'
+          spendOk
+            ? 'Entrada + despesa no PF (o dinheiro atravessou — saldo PF não muda).'
+            : 'Entrou no seu PF.'
         }`,
       })
       onConfirmed()
@@ -490,6 +504,7 @@ export function WithdrawalPanel({
                       </div>
                     </div>
                   ) : (
+                    <>
                     <div className="grid grid-cols-2 gap-2">
                       <div className="space-y-1">
                         <label className="text-[10px] uppercase font-semibold text-muted-foreground">
@@ -556,6 +571,71 @@ export function WithdrawalPanel({
                         />
                       </div>
                     </div>
+
+                    {/* Sprint A/B-no-Painel (10/08): "já gastei esse dinheiro" →
+                        fluxo B (entrada + despesa PF atomic). Saldo PF net zero.
+                        Ex.: paguei a escola pela PJ (1.500) — vira retirada, mas o
+                        dinheiro já saiu. Sem isto, o PF ficaria 1.500 inflado. */}
+                    <div className="space-y-2 rounded-md border bg-muted/30 px-3 py-2">
+                      <label className="flex items-center gap-2 text-xs font-medium cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={spendChecked}
+                          onChange={(e) => setSpendChecked(e.target.checked)}
+                          className="h-4 w-4"
+                        />
+                        Já gastei esse dinheiro
+                      </label>
+                      {spendChecked && (
+                        <div className="space-y-1">
+                          <label className="text-[10px] uppercase font-semibold text-muted-foreground">
+                            Categoria do gasto (PF)
+                          </label>
+                          <CategoryCombobox
+                            value={spendCategoryId || null}
+                            categorias={profile.expenseCategories.map((c) => ({
+                              id: c.id,
+                              name: c.name,
+                              color: c.color ?? null,
+                              type: 'EXPENSE',
+                              dreGroup: null,
+                            }))}
+                            onChange={(v) => setSpendCategoryId(v ?? '')}
+                            onCreate={async (name) => {
+                              const cat = await createCategoryForPF(profile.id, name, 'EXPENSE')
+                              if (cat) {
+                                setCtx((prev) =>
+                                  prev
+                                    ? {
+                                        ...prev,
+                                        profiles: prev.profiles.map((p) =>
+                                          p.id === profile.id
+                                            ? {
+                                                ...p,
+                                                expenseCategories: [
+                                                  ...p.expenseCategories,
+                                                  { id: cat.id, name: cat.name, color: cat.color ?? null },
+                                                ],
+                                              }
+                                            : p,
+                                        ),
+                                      }
+                                    : prev,
+                                )
+                              }
+                              return cat
+                            }}
+                            placeholder="Escolher categoria do gasto..."
+                            className="h-9 w-full justify-between border-input text-sm"
+                            ariaLabel="Categoria do gasto PF (fluxo B)"
+                          />
+                          <p className="text-[10px] text-muted-foreground">
+                            Cria a entrada e a saída no mesmo ato — o saldo do seu PF não muda.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                    </>
                   )}
                 </>
               )}
