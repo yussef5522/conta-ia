@@ -18,15 +18,21 @@ import { buildV2PreviewPayload } from '@/lib/ofx/preview-v2'
 import { dedupHashOFX } from '@/lib/ofx/dedup'
 
 const raw = readFileSync(join(__dirname, 'fixtures', 'Extrato_20260809.ofx'), 'utf8')
-const HOJE = new Date('2026-08-09T18:00:00Z') // DTSERVER do arquivo
 const signed = (t: OFXTransaction) => (t.type === 'CREDIT' ? t.amount : -t.amount)
 const r2 = (n: number) => Math.round(n * 100) / 100
+
+// ⚠️ CONDIÇÃO DE PRODUÇÃO (bug 09/08→10/08): o extrato é do dia 09/08 (DTASOF),
+// mas foi importado no dia SEGUINTE (10/08). O teste antigo fixava now=09/08
+// (= DTASOF) e por isso passava verde enquanto a produção quebrava. Agora o
+// `now` é o dia SEGUINTE — reproduz a condição real. (Com o fix o critério nem
+// olha `now`; ancora no DTASOF — mas mantemos now=dia+1 pra travar a regressão.)
+const IMPORTADO_DIA_SEGUINTE = new Date('2026-08-10T06:00:00Z')
 
 describe('#regressão preview descarta futuro (Extrato_20260809 REAL)', () => {
   const { transactions, ledgerBalance } = parseOFX(raw)
   const dtAsOf = ledgerBalance!.asOfDate
   const novas = transactions.map((t) => ({ ...t, dedupHash: dedupHashOFX(t) }))
-  const { realLines, futureLines } = partitionFutureLines(novas, dtAsOf, HOJE)
+  const { realLines, futureLines } = partitionFutureLines(novas, dtAsOf, IMPORTADO_DIA_SEGUINTE)
   const futurasSum = r2(futureLines.reduce((s, t) => s + signed(t), 0))
   // balance tal que as REAIS fecham exatamente no LEDGERBAL (−6.178,45)
   const balanceAtual = r2(ledgerBalance!.amount - realLines.reduce((s, t) => s + signed(t), 0))
@@ -46,6 +52,21 @@ describe('#regressão preview descarta futuro (Extrato_20260809 REAL)', () => {
     ])
     expect(futurasSum).toBe(-15398.28)
     expect(realLines.every((t) => t.datePosted.toISOString().slice(0, 10) <= '2026-08-09')).toBe(true)
+  })
+
+  it('as 4 saem INDEPENDENTE do dia do import (âncora=DTASOF, não relógio)', () => {
+    // O bug: importar no dia SEGUINTE fazia as de 10/08 deixarem de ser "> hoje"
+    // e serem ofertadas. Com o fix (âncora DTASOF) o resultado NÃO depende de now.
+    // Este caso FALHA com o critério antigo (now=10/08 → só 2 futuras).
+    for (const now of [
+      new Date('2026-08-09T18:00:00Z'), // mesmo dia (o que o teste antigo usava)
+      new Date('2026-08-10T06:00:00Z'), // dia seguinte (produção que quebrou)
+      new Date('2026-08-12T10:00:00Z'), // 3 dias depois
+      new Date('2026-08-25T10:00:00Z'), // 2 semanas depois
+    ]) {
+      const { futureLines: fut } = partitionFutureLines(novas, dtAsOf, now)
+      expect(fut, `now=${now.toISOString()}`).toHaveLength(4)
+    }
   })
 
   it('FIX: só com as reais o saldo previsto BATE com o LEDGERBAL', () => {

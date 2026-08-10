@@ -11,15 +11,19 @@ const dtAsOf = D('2026-08-07')
 const linha = (day: string, fitid?: string) => ({ datePosted: D(day), fitid, signedAmount: -1, memo: 'X' })
 
 describe('partitionFutureLines — separa real vs futuro (fonte única)', () => {
-  it('futuras (>DTASOF e >hoje) saem; reais ficam', () => {
+  it('futuras (> âncora) saem; reais ficam — independente de `hoje`', () => {
     const lines = [linha('2026-08-05'), linha('2026-08-10'), linha('2026-08-17')]
-    const { realLines, futureLines } = partitionFutureLines(lines, dtAsOf, hoje)
-    expect(realLines.map((l) => l.datePosted.toISOString().slice(0, 10))).toEqual(['2026-08-05'])
-    expect(futureLines).toHaveLength(2)
+    // âncora=07/08; `hoje` variado (inclusive DEPOIS das agendadas) não muda nada
+    for (const now of [hoje, D('2026-08-11'), D('2026-08-20')]) {
+      const { realLines, futureLines } = partitionFutureLines(lines, dtAsOf, now)
+      expect(realLines.map((l) => l.datePosted.toISOString().slice(0, 10))).toEqual(['2026-08-05'])
+      expect(futureLines).toHaveLength(2)
+    }
   })
 
-  it('data entre DTASOF-curto e hoje NÃO é descartada (protege real)', () => {
-    const { realLines, futureLines } = partitionFutureLines([linha('2026-08-06')], D('2026-08-05'), hoje)
+  it('data <= âncora NÃO é descartada (protege real; âncora=max(DTASOF,DTEND))', () => {
+    // O caller passa a âncora = max(DTASOF curto, DTEND real) = 06/08 → 06/08 é real.
+    const { realLines, futureLines } = partitionFutureLines([linha('2026-08-06')], D('2026-08-06'), hoje)
     expect(realLines).toHaveLength(1)
     expect(futureLines).toHaveLength(0)
   })

@@ -56,25 +56,54 @@ export function isFutureLineBrazil(
  * Xero/QuickBooks/Mercury (extrato = passado; previsão vem de Contas a Pagar
  * cadastradas). Evita o casamento preview↔real (fonte das 31 duplicatas).
  *
- * Critério CONSERVADOR (não descartar movimento real por engano): a linha só é
- * futura se a data for posterior ao DTASOF do arquivo **E** posterior ao fim de
- * hoje (BRT). As DUAS condições — assim um DTASOF curto/estranho sozinho não
- * descarta o movimento real do dia. `fitidLooksLikePreview` é a rede secundária
- * do Banrisul (FITID no formato YYMMDD marca preview interno — ver is-preview).
+ * Critério: a linha é FUTURA se a data for posterior ao **DTASOF** do arquivo
+ * (data em que o banco fechou o extrato). O DTASOF é a âncora correta — tudo que
+ * vem depois dele é AGENDADO por definição (o banco não o considerou liquidado).
+ * `fitidLooksLikePreview` é a rede secundária do Banrisul (FITID YYMMDD).
  *
- * Validação de fechamento (no import): Σ(EFFECTED) tem que bater com o LEDGERBAL;
- * se descartar uma real por engano, o saldo não fecha e o import AVISA.
+ * ⚠️ BUG CORRIGIDO (09/08/2026): o critério antigo era `> DTASOF **E** > fim de
+ * hoje (BRT)`. O `&& > hoje` (relógio de parede) deixava passar linhas agendadas
+ * quando o extrato era importado UM DIA DEPOIS: p/ o Extrato_20260809 (DTASOF
+ * 09/08, agendadas 10/11/17), importar em 10/08 fazia as de 10/08 deixarem de
+ * ser "> hoje" → ofertadas. O DTASOF não muda com o relógio; ele manda. E o pior:
+ * o TESTE fixava now=09/08 (= DTASOF) → passava verde enquanto a produção (que
+ * rodou em 10/08) quebrava. `now` foi removido do critério (mantido na assinatura
+ * só por compat com os callers).
+ *
+ * Consistência com o fechamento: DTASOF vem do LEDGERBAL (mesma fonte do saldo);
+ * descartar tudo > DTASOF faz Σ(EFFECTED) == LEDGERBAL por construção. Se o DTASOF
+ * viesse errado, a validação Σ(EFFECTED) x LEDGERBAL avisa.
  */
 export function isFutureStatementLine(
   datePosted: Date,
-  dtAsOf: Date,
+  /** Âncora "liquidado até aqui" = max(DTASOF, DTEND). Ver settledThroughDate. */
+  anchor: Date,
   fitidLooksLikePreview: boolean,
-  now: Date = new Date(),
+  _now: Date = new Date(), // não usado no critério (ver bug acima); mantido por compat
 ): boolean {
   const lineDay = datePosted.toISOString().slice(0, 10)
-  const dtAsOfDay = dtAsOf.toISOString().slice(0, 10)
-  const futuroPorData = lineDay > dtAsOfDay && isFutureLineBrazil(datePosted, now)
+  const anchorDay = anchor.toISOString().slice(0, 10)
+  const futuroPorData = lineDay > anchorDay
   return futuroPorData || fitidLooksLikePreview
+}
+
+/**
+ * Âncora de descarte = a MAIS TARDIA entre DTASOF (data do saldo) e DTEND (fim
+ * do período de transações). Usar as duas evita os dois erros opostos:
+ *  - só DTASOF: um DTASOF anterior à última linha real descartaria real (silêncio);
+ *  - só relógio (`now`): importar no dia seguinte deixava a agendada de +1 passar.
+ * max(DTASOF, DTEND) é now-independente E não descarta movimento dentro do período.
+ * Retorna null se ambos ausentes (caller decide o fallback).
+ */
+export function settledThroughDate(
+  asOfDate: Date | null | undefined,
+  statementEnd: Date | null | undefined,
+): Date | null {
+  const a = asOfDate ?? null
+  const b = statementEnd ?? null
+  if (!a) return b
+  if (!b) return a
+  return a.getTime() >= b.getTime() ? a : b
 }
 
 /**

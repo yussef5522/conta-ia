@@ -19,6 +19,8 @@ export interface OFXParseResult {
   /** Saldo final do extrato (BALAMT) + data (DTASOF) — Sub-fase 2B.
    *  null quando OFX não traz <LEDGERBAL> ou BALAMT é inválido. */
   ledgerBalance?: { amount: number; asOfDate: Date } | null
+  /** DTEND do BANKTRANLIST — fim do período de transações. null se ausente. */
+  statementEnd?: Date | null
 }
 
 function extractTag(content: string, tag: string): string | null {
@@ -134,5 +136,13 @@ export function parseOFX(raw: string): OFXParseResult {
 
   const ledgerBalance = extractLedgerBalance(content)
 
-  return { accountId, bankId, currency, transactions, errors, ledgerBalance }
+  // Sprint Preview-Futuro-Fix (09/08/2026): DTEND = fim do período de transações
+  // do extrato. Junto do DTASOF forma a âncora de "liquidado até aqui" (o descarte
+  // de futuro usa max(DTASOF, DTEND) — ver lib/ofx/future-line.ts). Sem ele, um
+  // DTASOF anterior à última linha real descartaria movimento real em silêncio.
+  const stmtListMatch = content.match(/<BANKTRANLIST>([\s\S]*?)<\/BANKTRANLIST>/i)
+  const stmtEndRaw = extractTag(stmtListMatch ? stmtListMatch[1] : content, 'DTEND')
+  const statementEnd = stmtEndRaw ? parseOFXDate(stmtEndRaw) : null
+
+  return { accountId, bankId, currency, transactions, errors, ledgerBalance, statementEnd }
 }

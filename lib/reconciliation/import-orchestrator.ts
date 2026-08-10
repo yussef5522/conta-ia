@@ -21,7 +21,7 @@ import { prepareBalanceTransactions } from '@/lib/balance/prepare'
 import { parseStatementFromOFX } from './parse-statement-from-ofx'
 import { reconcileStatement } from './reconcile-statement'
 import { buildReconcileUniverse } from './reconcile-universe'
-import { partitionFutureLines } from '../ofx/future-line'
+import { partitionFutureLines, settledThroughDate } from '../ofx/future-line'
 import { stableKey } from './stable-key'
 import { buildLineDedupHash, makeOccurrenceCounter } from './line-dedup-hash'
 import { isReconcileV2Enabled } from './flag'
@@ -131,12 +131,13 @@ export async function runImportV2(
   const dtAsOf = dtAsOfMaybe
   if (lines.length === 0) throw new Error('OFX sem transações — abort')
 
-  // 1.5 DESCARTE DE MOVIMENTO FUTURO (07/08): o extrato só registra o passado.
-  // Linha futura (data > DTASOF E > hoje BRT, ou FITID YYMMDD do Banrisul) NÃO
-  // vira transação — é descartada e reportada (nunca some em silêncio). Quando o
-  // extrato seguinte trouxer a linha já realizada, ela entra normal pela 1ª vez,
-  // sem casamento preview↔real. Ver lib/ofx/future-line.ts.
-  const { realLines, futureLines } = partitionFutureLines(lines, dtAsOf, input.today)
+  // 1.5 DESCARTE DE MOVIMENTO FUTURO (07/08; fix âncora 09/08): o extrato só
+  // registra o passado. Linha com data > max(DTASOF, DTEND) — o "liquidado até
+  // aqui" do extrato — NÃO vira transação (é descartada e reportada, nunca some
+  // em silêncio). Âncora now-INDEPENDENTE: importar no dia seguinte não faz a
+  // agendada de +1 passar (bug 09/08). Ver lib/ofx/future-line.ts.
+  const anchor = settledThroughDate(dtAsOf, parsed.statementEnd) ?? dtAsOf
+  const { realLines, futureLines } = partitionFutureLines(lines, anchor, input.today)
   const futureSet = new Set(futureLines)
   if (futureLines.length > 0) {
     console.log(`[RECONCILE_V2] ${futureLines.length} linha(s) futura(s) descartada(s) (agendado — não importado)`)

@@ -42,7 +42,7 @@ import {
   importDecisionsSchema,
   type ImportDecision,
 } from '@/lib/ofx/decisions'
-import { partitionFutureLines } from '@/lib/ofx/future-line'
+import { partitionFutureLines, settledThroughDate } from '@/lib/ofx/future-line'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -109,7 +109,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ erro: 'Erro ao ler arquivo' }, { status: 400 })
   }
 
-  const { transactions, errors, bankId, ledgerBalance } = parseOFX(rawContent)
+  const { transactions, errors, bankId, ledgerBalance, statementEnd } = parseOFX(rawContent)
 
   if (transactions.length === 0) {
     return NextResponse.json({
@@ -422,7 +422,10 @@ export async function POST(request: NextRequest, { params }: Params) {
     // ainda concluía "divergência histórica". Aqui particionamos TAMBÉM no
     // preview: as reais alimentam o payload; as futuras vão numa seção separada
     // (não-selecionável na UI) via `futuras`. dtAsOf = DTASOF do LEDGERBAL.
-    const dtAsOfPreview = ledgerBalance?.asOfDate ?? periodArquivoEnd ?? new Date()
+    // Âncora = max(DTASOF, DTEND) — now-independente e não descarta real dentro
+    // do período (ver settledThroughDate). Fallback só se o OFX não trouxer nenhum.
+    const dtAsOfPreview =
+      settledThroughDate(ledgerBalance?.asOfDate, statementEnd) ?? periodArquivoEnd ?? new Date()
     const { realLines: novasReais, futureLines: novasFuturas } = partitionFutureLines(
       novas,
       dtAsOfPreview,
@@ -593,7 +596,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   // (extrato = passado). Branch dormente sob RECONCILE_V2=true, mas é a rede de
   // rollback e tem que se comportar IGUAL à tela single se a flag for desligada.
   const now = new Date()
-  const dtAsOfV1 = ledgerBalance?.asOfDate ?? now
+  const dtAsOfV1 = settledThroughDate(ledgerBalance?.asOfDate, statementEnd) ?? now
   const { futureLines: novasFuturas } = partitionFutureLines(novas, dtAsOfV1, now)
   const futureHashesV1 = new Set(novasFuturas.map((t) => t.dedupHash))
   const descartadasFuturasV1 = novasFuturas.map((t) => ({
