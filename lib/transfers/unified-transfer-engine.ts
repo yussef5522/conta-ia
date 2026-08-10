@@ -97,7 +97,11 @@ const r2 = (n: number) => Math.round(n * 100) / 100
 const sameCalendarDay = (a: Date, b: Date) =>
   a.toISOString().slice(0, 10) === b.toISOString().slice(0, 10)
 const daysBetween = (a: Date, b: Date) => Math.abs(a.getTime() - b.getTime()) / MS_PER_DAY
-const defaultTarifa = (amount: number) => Math.max(CENT_TOLERANCE, Math.abs(amount) * 0.01)
+// Tarifa de PIX/TED é valor FIXO pequeno (poucos reais), não percentual — 1% de
+// R$20.000 = R$200 não é tarifa, é outro lançamento. Banda = MENOR entre 1% e
+// R$50 (decisão Yussef 10/08: prefere perder par ocasional a ter lista ignorada).
+const defaultTarifa = (amount: number) =>
+  Math.max(CENT_TOLERANCE, Math.min(Math.abs(amount) * 0.01, 50))
 
 function hasForeignCnpj(desc: string, refs: OwnEntityRefs): boolean {
   const own = refs.cnpj ? normalizeCnpj(refs.cnpj) : null
@@ -183,15 +187,18 @@ export function classifyTransferPair(
     return mk('STRONG', scoring.confidence, `Camada 2 (${r2(scoring.confidence)}): valor exato + D±${Math.round(delta)} + palavra de transferência, sem terceiro`)
   }
 
-  // ── CAMADA 3 — fraca: valor próximo/comum, janela maior. NUNCA sugere sozinha ──
-  if (scoring.confidence >= (opts.minWeak ?? 0.7)) {
-    const motivo = !exactValue
-      ? 'valor próximo (possível tarifa)'
-      : valorComum
-        ? 'valor comum (coincidência provável)'
-        : thirdPartyName
-          ? 'nome de terceiro numa perna'
-          : 'sinal fraco'
+  // ── CAMADA 3 — fraca: NUNCA sugere sozinha; só busca manual. Entra SÓ se tem
+  // SINAL de transferência (keyword forte OU entidade própria) e SEM terceiro —
+  // senão é coincidência de valor (escola/entregador/"chat gpt"/nome de pessoa) e
+  // vira ruído. Decisão Yussef 10/08: "prefiro perder par ocasional a lista
+  // ignorada". Par sem sinal ainda pode ser pareado pelo CAMINHO MANUAL (o
+  // usuário aponta os dois; o detector não precisa achar).
+  if (
+    !thirdPartyName &&
+    (transferKeyword || ownEntity) &&
+    scoring.confidence >= (opts.minWeak ?? 0.7)
+  ) {
+    const motivo = !exactValue ? 'valor próximo (possível tarifa)' : 'sinal de transferência sem confiança alta'
     return mk('WEAK', scoring.confidence, `Camada 3 (${r2(scoring.confidence)}, só busca manual): ${motivo}`)
   }
 
