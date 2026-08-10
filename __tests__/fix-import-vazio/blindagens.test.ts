@@ -19,8 +19,11 @@ describe('a) Guard novas.length === 0 no path V2Preview', () => {
     // O guard precisa vir DEPOIS do isV2PreviewEnabled legacy return e ANTES
     // do try/catch do V2Preview (que faz o Math.min/Math.max).
     // Match: `if (novas.length === 0)` seguido de return NextResponse.json
+    // Sprint Preview-Futuro (09/08): o preview passou a particionar futuro antes
+    // do guard → a var virou `novasReais`. (Este teste é grep de fonte — REGRA 3;
+    // a prova comportamental está em preview-futuro-extrato-real.test.ts.)
     expect(code).toMatch(
-      /if\s*\(\s*novas\.length\s*===\s*0\s*\)\s*\{[\s\S]{0,600}return\s+NextResponse\.json/,
+      /if\s*\(\s*novasReais\.length\s*===\s*0\s*\)\s*\{[\s\S]{0,600}return\s+NextResponse\.json/,
     )
   })
 
@@ -28,7 +31,7 @@ describe('a) Guard novas.length === 0 no path V2Preview', () => {
     // O shape deve ser IDÊNTICO ao que a UI recebe hoje quando IMPORT_PREVIEW_V2=false.
     // buildLegacyPreviewPayload({novas: [], ...}) retorna preview: [] + total + duplicadas.
     const guardBlock = code.match(
-      /if\s*\(\s*novas\.length\s*===\s*0\s*\)\s*\{[\s\S]+?\}\s*\)\s*\}/,
+      /if\s*\(\s*novasReais\.length\s*===\s*0\s*\)\s*\{[\s\S]+?\}\s*\)\s*\}/,
     )
     expect(guardBlock).toBeTruthy()
     expect(guardBlock![0]).toMatch(/buildLegacyPreviewPayload/)
@@ -41,7 +44,7 @@ describe('a) Guard novas.length === 0 no path V2Preview', () => {
 
   it('guard NÃO fica DEPOIS do try/catch V2 (senão nunca dispara)', () => {
     // Regex: posição do guard novas.length===0 deve vir ANTES do Math.min(...datesIncoming)
-    const guardPos = code.search(/if\s*\(\s*novas\.length\s*===\s*0\s*\)/)
+    const guardPos = code.search(/if\s*\(\s*novasReais\.length\s*===\s*0\s*\)/)
     const mathMinPos = code.search(/Math\.min\(\.\.\.datesIncoming\)/)
     expect(guardPos).toBeGreaterThan(0)
     expect(mathMinPos).toBeGreaterThan(0)

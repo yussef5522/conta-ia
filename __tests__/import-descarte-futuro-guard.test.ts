@@ -5,6 +5,16 @@
 // exige o símbolo no fonte; enquanto 'TODO', documenta a dívida (não falha).
 //
 // Regra pra caminho NOVO: adicione aqui. TODO só é aceitável temporariamente.
+//
+// ⚠️ LIÇÃO (09/08, REGRA 3): este registry é ESTRUTURAL (grep de símbolo no
+// fonte) e por isso deu FALSO NEGATIVO — passava verde enquanto o PREVIEW do
+// OFX/PDF oferecia linhas futuras (o helper existia no arquivo, mas só rodava no
+// CONFIRM). Grep de string NÃO prova comportamento. A prova COMPORTAMENTAL (roda
+// o pipeline do preview contra o Extrato_20260809.ofx REAL) vive em:
+//   - __tests__/preview-futuro-extrato-real.test.ts        (preview OFX)
+//   - lib/pdf-bank-statement/__tests__/partition-future.test.ts (preview PDF)
+// O registry abaixo fica como PISO (pega caminho novo que nem importa o helper);
+// a garantia real é o teste que EXECUTA.
 
 import { describe, it, expect } from 'vitest'
 import { readFileSync, existsSync } from 'fs'
@@ -19,6 +29,8 @@ const CAMINHOS: Array<{ file: string; status: 'DONE' | 'TODO'; via: RegExp }> = 
   { file: 'app/api/contas-bancarias/[id]/importar-ofx-multiplos/route.ts', status: 'DONE', via: /runImportV2/ },
   { file: 'lib/reconciliation/import-orchestrator.ts', status: 'DONE', via: /partitionFutureLines/ },
   { file: 'app/api/contas-bancarias/[id]/importar-pdf-extrato/confirm/route.ts', status: 'DONE', via: /partitionFutureLines/ },
+  // PREVIEW (09/08): regressão do sprint — o preview também tem que descartar.
+  { file: 'app/api/contas-bancarias/[id]/importar-pdf-extrato/preview/route.ts', status: 'DONE', via: /partitionFutureStatementLines/ },
   // PF (fase 7): o descarte vive na LIB de cada import (a route é fina). Aponta
   // pro arquivo que realmente cria a PersonalTransaction.
   { file: 'lib/ofx-card/queries.ts', status: 'DONE', via: /partitionFutureLines/ },

@@ -417,9 +417,28 @@ export async function POST(request: NextRequest, { params }: Params) {
       console.error('[importar-ofx preview] ownEntityRefs falhou:', e)
     }
 
+    // Sprint Preview-Futuro (09/08/2026) — REGRESSÃO: o descarte de futuro só
+    // rodava no CONFIRM; o PREVIEW oferecia as linhas agendadas (10/11/17/08) e
+    // ainda concluía "divergência histórica". Aqui particionamos TAMBÉM no
+    // preview: as reais alimentam o payload; as futuras vão numa seção separada
+    // (não-selecionável na UI) via `futuras`. dtAsOf = DTASOF do LEDGERBAL.
+    const dtAsOfPreview = ledgerBalance?.asOfDate ?? periodArquivoEnd ?? new Date()
+    const { realLines: novasReais, futureLines: novasFuturas } = partitionFutureLines(
+      novas,
+      dtAsOfPreview,
+      new Date(),
+    )
+    const futurasPayload = novasFuturas.map((t) => ({
+      date: t.datePosted.toISOString().slice(0, 10),
+      signedAmount: t.type === 'CREDIT' ? t.amount : -t.amount,
+      memo: t.memo,
+      fitid: t.fitid,
+    }))
+    const futurasSum = Math.round(futurasPayload.reduce((s, f) => s + f.signedAmount, 0) * 100) / 100
+
     if (!isV2PreviewEnabled()) {
       const payload = buildLegacyPreviewPayload({
-        novas,
+        novas: novasReais,
         totalArquivo: transactions.length,
         duplicadas,
         errosParser: errors,
@@ -427,6 +446,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       })
       return NextResponse.json({
         ...payload,
+        futuras: futurasPayload,
         importIdentity: {
           gate: gateResult.stats,
           batchWarnings,
@@ -449,7 +469,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     // (mesmo shape que quando IMPORT_PREVIEW_V2=false). O `duplicadas` conta
     // corretamente o que ficou fora, e a mensagem explica o que aconteceu.
     // Backward-compat total: se novas > 0, segue no V2Preview normalmente.
-    if (novas.length === 0) {
+    if (novasReais.length === 0) {
       return NextResponse.json({
         ...buildLegacyPreviewPayload({
           novas: [],
@@ -458,6 +478,7 @@ export async function POST(request: NextRequest, { params }: Params) {
           errosParser: errors,
           banco,
         }),
+        futuras: futurasPayload,
         importIdentity: {
           gate: gateResult.stats,
           batchWarnings,
@@ -466,7 +487,9 @@ export async function POST(request: NextRequest, { params }: Params) {
         categoriesForUI,
         ownEntityRefs,
         mensagem:
-          'Todas as transações deste arquivo já foram importadas anteriormente.',
+          futurasPayload.length > 0
+            ? `Nenhuma transação nova pra importar. ${futurasPayload.length} lançamento${futurasPayload.length !== 1 ? 's futuros (agendados)' : ' futuro (agendado)'} não ${futurasPayload.length !== 1 ? 'entram' : 'entra'} — o resto já existia.`
+            : 'Todas as transações deste arquivo já foram importadas anteriormente.',
       })
     }
 
@@ -478,7 +501,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     // via toast destrutivo com a descrição real.
     try {
       // V2: busca candidatos do sistema (somente leitura) + classifica
-      const datesIncoming = novas.map((t) => t.datePosted.getTime())
+      const datesIncoming = novasReais.map((t) => t.datePosted.getTime())
       const minDate = new Date(Math.min(...datesIncoming) - 5 * 86400_000)
       const maxDate = new Date(Math.max(...datesIncoming) + 1 * 86400_000)
 
@@ -522,7 +545,7 @@ export async function POST(request: NextRequest, { params }: Params) {
 
       return NextResponse.json({
         ...buildV2PreviewPayload({
-          novas,
+          novas: novasReais,
           totalArquivo: transactions.length,
           duplicadasHashLegado: duplicadas,
           errosParser: errors,
@@ -534,7 +557,11 @@ export async function POST(request: NextRequest, { params }: Params) {
           // delta e detecta divergência.
           contaBalance: conta.balance,
           ledgerBalance,
+          // Sprint Preview-Futuro (09/08): soma das futuras — se o diff bater
+          // com ela, o diagnóstico diz "= linhas futuras" (rede de segurança).
+          futurasSum,
         }),
+        futuras: futurasPayload,
         categorySuggestions,
         categoriesForUI,
         ownEntityRefs,

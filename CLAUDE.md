@@ -157,6 +157,12 @@ pm2 list | grep conta-ia                    # confirma online
 
 DoD que envolve **sidebar, rota, link, redirect, layout** exige validação em browser real (ou curl -i pra redirect, ou screenshot). **"Código escrito" ≠ "DoD cumprido"**. Se ambiente não permite browser: DECLARAR limitação e pedir smoke test do Yussef ANTES de fechar sprint. Nunca marcar DoD visual ✅ sem olhar com olhos humanos.
 
+## Regras do acordo (teste + tela + comportamento)
+
+- **REGRA 1** — todo bug corrigido ganha um teste que **falha antes** do fix e **passa depois**.
+- **REGRA 2** — feature só está pronta se **visível na tela** (validação em browser real; se o ambiente não permite, declarar limitação e pedir smoke do Yussef).
+- **REGRA 3** (09/08/2026) — **teste tem que EXECUTAR o comportamento, não procurar string no código.** Grep de símbolo, checagem de import, existência de arquivo, snapshot de fonte: **nenhum prova que a funcionalidade funciona.** Se o teste não roda o caminho real com dado real, **não é guard** — dá falsa segurança (já mordeu 2× em 09/08: o guard de descarte-futuro era grep de `partitionFutureLines`, verde com o preview 100% aberto; e o teste "sprint-visual" caçava `bg-amber-50` no arquivo). Todo guard novo roda o pipeline real contra fixture real (ex: `preview-futuro-extrato-real.test.ts`).
+
 ## Definição de Pronto (DoD) — regra crítica
 
 Sprint não é "entregue" sem TODOS: (1) unit/integration tests passando, (2) build sem erros, (3) TS strict 0, (4) teste E2E real no browser com fixture real + contagem numérica, (5) smoke test em prod pós-deploy (PM2 online, curl 200, fluxo crítico), (6) relatório com evidência numérica + PNGs + logs limpos, (7) `pg_dump` antes de deploy com mudança de schema/lógica financeira. Cenários E2E obrigatórios cobrem: upload (válido + limit + tipo errado + re-upload + retry), form multi-step (golden + voltar/avançar + validation), CRUD (criar/editar/deletar/filtros/paginação), conciliação (match 1-1 + split + ignore).

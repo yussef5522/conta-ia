@@ -14,6 +14,7 @@ import {
 } from '@/lib/pdf-bank-statement/extract'
 import { computeDedupForPreview } from '@/lib/pdf-bank-statement/dedup-preview'
 import { checkTotals } from '@/lib/pdf-bank-statement/totals-check'
+import { partitionFutureStatementLines } from '@/lib/pdf-bank-statement/partition-future'
 
 // Claude Vision pode levar minutos em extratos densos. Fixa runtime Node e
 // maxDuration acima do timeout do extractor (240s) — hierarquia app<nginx.
@@ -104,11 +105,25 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const { extraction, metrics } = extractionResult
 
-  // Dedup vs ledger existente
-  const dedup = await computeDedupForPreview(contaId, extraction.lines)
+  // Sprint Preview-Futuro (09/08/2026) — REGRESSÃO: o preview do PDF também
+  // oferecia linhas FUTURAS (agendadas) e o fechamento não batia por causa
+  // delas. Extrato = passado; linha com data > hoje (BRT) não entra. Separadas
+  // numa seção não-selecionável (`futuras`). Dedup e totais só sobre as reais.
+  const { real: realExtractionLines, future: futureExtractionLines } =
+    partitionFutureStatementLines(extraction.lines, new Date())
+  const futurasPayload = futureExtractionLines.map((l) => ({
+    date: l.date,
+    description: l.description,
+    amount: l.amount,
+    type: l.type,
+  }))
+  const extractionReais = { ...extraction, lines: realExtractionLines }
 
-  // Totais
-  const totals = checkTotals(extraction)
+  // Dedup vs ledger existente — SÓ nas reais
+  const dedup = await computeDedupForPreview(contaId, realExtractionLines)
+
+  // Totais — SÓ nas reais (as futuras não compõem o saldo)
+  const totals = checkTotals(extractionReais)
 
   // Log observabilidade (não vaza conteúdo)
   console.log('[pdf-bank-statement/preview]', {
@@ -165,11 +180,14 @@ export async function POST(request: NextRequest, { params }: Params) {
       duplicateReason: d.duplicateReason ?? null,
       contentHash: d.identity.contentHash,
     })),
+    // Seção separada não-selecionável: agendadas (data futura) — não importadas.
+    futuras: futurasPayload,
     counts: {
       total: extraction.lines.length,
       novas: dedup.newCount,
       duplicatas: dedup.duplicateCount,
-      precisaRevisar: extraction.lines.filter((l) => l.needsReview).length,
+      futuras: futurasPayload.length,
+      precisaRevisar: realExtractionLines.filter((l) => l.needsReview).length,
     },
     metrics: {
       durationMs: metrics.durationMs,

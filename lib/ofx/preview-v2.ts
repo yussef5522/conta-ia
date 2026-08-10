@@ -145,6 +145,7 @@ export type LedgerBalHipoteseTipo =
   | 'dup_marcada_nova'        // alguma nova é dup escondida
   | 'real_marcada_dup'        // alguma marcada como dup era real
   | 'historico_errado'        // balance pré-existente diverge do banco
+  | 'linhas_futuras'          // diff == soma das linhas futuras (agendadas)
 
 export interface LedgerBalHipotese {
   tipo: LedgerBalHipoteseTipo
@@ -217,6 +218,10 @@ export function buildLedgerBalCheck(input: {
   balanceAtual: number
   novasGenuinas: V2NovaGenuinaItem[]
   conciliatePayable: V2ConciliatePayableItem[]
+  /** Sprint Preview-Futuro (09/08): soma (signed) das linhas futuras já
+   *  removidas do preview. Se o diff residual bater com ela, o diagnóstico
+   *  aponta "linhas futuras" em vez de "histórico errado". */
+  futurasSum?: number
 }): LedgerBalCheckPayload {
   const deltaNovas = input.novasGenuinas.reduce((s, t) => s + signedAmount(t), 0)
   const deltaConcil = input.conciliatePayable.reduce((s, t) => s + signedAmount(t), 0)
@@ -271,12 +276,30 @@ export function buildLedgerBalCheck(input: {
   //   Se algum item nas novasGenuinas casa exato com |diff| → hipótese 1
   //   Caso contrário → hipótese 3 (histórico errado) é o palpite default
   const hasSuspeitoNova = suspeitosNovas.length > 0
+  // Sprint Preview-Futuro (09/08): cruzamento explícito. Se o diff residual bate
+  // com a SOMA das linhas futuras (agendadas), a causa é essa — NÃO "histórico
+  // errado". Se as futuras (DEBIT) entrassem no saldoPos, ele ficaria BAIXO por
+  // |futurasSum| → diff = −futurasSum. Logo o casamento é diff ≈ −futurasSum.
+  // Rede de segurança: com o particionamento no preview o diff já vira 0.
+  const futurasSum = input.futurasSum ?? 0
+  const isFuturas =
+    futurasSum !== 0 && Math.abs(diff + futurasSum) <= LEDGER_BAL_TOLERANCE
 
   const hipoteses: LedgerBalHipotese[] = [
+    ...(isFuturas
+      ? [
+          {
+            tipo: 'linhas_futuras' as const,
+            label:
+              'A diferença é exatamente a soma dos lançamentos futuros (agendados) — eles não entram no saldo. Nada errado.',
+            maisProvavel: true,
+          },
+        ]
+      : []),
     {
       tipo: 'dup_marcada_nova',
       label: 'Alguma transação marcada como nova é, na verdade, duplicata (vai contar 2×).',
-      maisProvavel: hasSuspeitoNova,
+      maisProvavel: !isFuturas && hasSuspeitoNova,
       suspeitos: hasSuspeitoNova ? suspeitosNovas : undefined,
     },
     {
@@ -287,7 +310,7 @@ export function buildLedgerBalCheck(input: {
     {
       tipo: 'historico_errado',
       label: 'Balance pré-existente diverge do banco (estrago histórico não relacionado a este import).',
-      maisProvavel: !hasSuspeitoNova,
+      maisProvavel: !isFuturas && !hasSuspeitoNova,
     },
   ]
 
@@ -316,6 +339,8 @@ export function buildV2PreviewPayload(input: {
   contaBalance?: number
   /** NOVO 2B — LEDGERBAL extraído do OFX (pode ser null) */
   ledgerBalance?: { amount: number; asOfDate: Date } | null
+  /** Sprint Preview-Futuro (09/08) — soma signed das linhas futuras removidas. */
+  futurasSum?: number
 }): V2PreviewPayload {
   // 1. Mapeia novas pra IncomingOfxTx
   const incoming: IncomingOfxTx[] = input.novas.map((t, index) => ({
@@ -429,6 +454,7 @@ export function buildV2PreviewPayload(input: {
     balanceAtual: input.contaBalance ?? 0,
     novasGenuinas,
     conciliatePayable,
+    futurasSum: input.futurasSum,
   })
 
   return {

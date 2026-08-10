@@ -43,6 +43,10 @@ interface PreviewResult {
   duplicadas: number
   errosParser: string[]
   banco: BancoDetectado | null
+  // Sprint Preview-Futuro (09/08/2026) — linhas agendadas (data futura) que NÃO
+  // serão importadas. Seção separada não-selecionável (o banco viu; o sistema
+  // decidiu não importar). NÃO some em silêncio.
+  futuras?: Array<{ date: string; signedAmount: number; memo: string; fitid: string }>
   // Sprint Import Categoria Editável (18/06/2026)
   categorySuggestions?: CategorySuggestion[]
   categoriesForUI?: CategoryOption[]
@@ -722,6 +726,35 @@ export default function ImportarOFXPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Sprint Preview-Futuro (09/08/2026) — agendadas (data futura): o banco
+          exportou, mas extrato = passado → NÃO importadas. Seção separada,
+          não-selecionável, com a lista (o sistema VIU e DECIDIU). */}
+      {preview?.futuras && preview.futuras.length > 0 && (
+        <Card className="border-slate-300 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/40">
+          <CardContent className="py-4">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="h-5 w-5 text-slate-500 mt-0.5 shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                  {preview.futuras.length} lançamento{preview.futuras.length !== 1 ? 's futuros' : ' futuro'} não {preview.futuras.length !== 1 ? 'serão importados' : 'será importado'} (agendados)
+                </p>
+                <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
+                  Extrato registra o passado. Estes têm data futura — entram quando saírem de fato (ou cadastre em Contas a Pagar). Não afetam o saldo.
+                </p>
+                <ul className="mt-2 space-y-0.5 text-xs tabular-nums">
+                  {preview.futuras.map((f, i) => (
+                    <li key={`${f.fitid}-${i}`} className="flex justify-between gap-3 text-slate-700 dark:text-slate-300">
+                      <span>{f.date.split('-').reverse().join('/')} · {f.memo}</span>
+                      <span className={f.signedAmount < 0 ? 'text-red-600' : 'text-emerald-700'}>{formatBRL(f.signedAmount)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Preview */}
       {/* Sub-fase 2C (Yussef 12/06/2026) — Tela V2 quando payload vem com `classificacao`.

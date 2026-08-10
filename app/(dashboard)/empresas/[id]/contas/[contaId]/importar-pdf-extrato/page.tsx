@@ -75,7 +75,9 @@ interface PreviewResponse {
     message: string
   }
   lines: PreviewLine[]
-  counts: { total: number; novas: number; duplicatas: number; precisaRevisar: number }
+  // Sprint Preview-Futuro (09/08/2026) — agendadas (data futura), não importadas.
+  futuras?: Array<{ date: string; description: string; amount: number; type: string }>
+  counts: { total: number; novas: number; duplicatas: number; futuras?: number; precisaRevisar: number }
   metrics: { durationMs: number; model: string; inputTokens: number; outputTokens: number }
 }
 
@@ -463,6 +465,25 @@ export default function ImportarPdfExtratoPage() {
               </CardContent>
             </Card>
           </div>
+
+          {previewData.futuras && previewData.futuras.length > 0 && (
+            <div className="rounded-md border border-slate-300 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/40 p-3">
+              <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                {previewData.futuras.length} lançamento{previewData.futuras.length !== 1 ? 's futuros' : ' futuro'} não {previewData.futuras.length !== 1 ? 'serão importados' : 'será importado'} (agendados)
+              </p>
+              <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
+                Data futura — extrato registra o passado. Não entram nem afetam o saldo.
+              </p>
+              <ul className="mt-2 space-y-0.5 text-xs tabular-nums">
+                {previewData.futuras.map((f, i) => (
+                  <li key={i} className="flex justify-between gap-3 text-slate-700 dark:text-slate-300">
+                    <span>{f.date} · {f.description}</span>
+                    <span className={f.type === 'DEBIT' ? 'text-red-600' : 'text-emerald-700'}>{formatBRL(f.amount)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {previewData.extraction.detectedBank && (
             <div className="text-xs text-muted-foreground">
