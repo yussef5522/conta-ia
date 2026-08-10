@@ -11,6 +11,8 @@ import {
   findActiveTransferCandidates,
   applyTransferCandidate,
 } from '@/lib/conciliation/active-transfer-detector'
+import { isUnifiedTransferEnabled } from '@/lib/transfers/unified-transfer-flag'
+import { detectTransfersForCompany } from '@/lib/transfers/detect-transfers-for-company'
 
 const schema = z.object({
   daysWindow: z.number().int().min(0).max(15).optional(),
@@ -32,6 +34,45 @@ export async function POST(request: NextRequest, { params }: Params) {
 
     const body = await request.json().catch(() => ({}))
     const input = schema.parse(body)
+
+    // ── FASE 4 (10/08): MOTOR ÚNICO atrás de flag. Tela 1 (banner Pendentes).
+    // Rollback = desligar UNIFIED_TRANSFER_ENGINE. Fonte única compartilhada
+    // com as próximas telas (detectTransfersForCompany) → não discordam.
+    if (isUnifiedTransferEnabled()) {
+      const { suggestions } = await detectTransfersForCompany(companyId)
+      let appliedU = 0
+      if (input.autoApply) {
+        const threshold = input.autoApplyMinConfidence ?? 0.85
+        for (const s of suggestions) {
+          if (s.confidence < threshold) continue
+          await applyTransferCandidate({
+            debit: { id: s.from.id, description: s.from.description, date: s.from.date, paymentDate: null, amount: s.from.amount, bankAccountId: s.from.bankAccountId },
+            credit: { id: s.to.id, description: s.to.description, date: s.to.date, paymentDate: null, amount: s.to.amount, bankAccountId: s.to.bankAccountId },
+            confidence: s.confidence,
+            matchType: 'EXACT_SAME_DAY',
+            daysApart: s.deltaDays,
+          })
+          appliedU++
+        }
+      }
+      console.log(`[DETECT-ACTIVE-TRANSFERS unified] company=${companyId} suggestions=${suggestions.length} applied=${appliedU}`)
+      return NextResponse.json({
+        engine: 'unified',
+        candidates: suggestions.map((s) => ({
+          debit: { id: s.from.id, description: s.from.description, date: s.from.date, amount: s.from.amount, bankAccountId: s.from.bankAccountId, bankAccountName: s.from.bankAccountName ?? null },
+          credit: { id: s.to.id, description: s.to.description, date: s.to.date, amount: s.to.amount, bankAccountId: s.to.bankAccountId, bankAccountName: s.to.bankAccountName ?? null },
+          confidence: s.confidence,
+          matchType: s.deltaDays === 0 ? 'EXACT_SAME_DAY' : s.deltaDays === 1 ? 'EXACT_ADJACENT' : 'WITHIN_3DAYS',
+          daysApart: s.deltaDays,
+          // Explicabilidade na TELA (não só log): por que foi sugerido.
+          layer: s.layer,
+          evidences: s.evidences,
+          signals: s.signals,
+        })),
+        total: suggestions.length,
+        applied: appliedU,
+      })
+    }
 
     const candidates = await findActiveTransferCandidates(companyId, {
       daysWindow: input.daysWindow,

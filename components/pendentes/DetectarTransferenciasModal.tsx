@@ -46,6 +46,17 @@ export interface TransferCandidateDTO {
   confidence: number
   matchType: 'EXACT_SAME_DAY' | 'EXACT_ADJACENT' | 'WITHIN_3DAYS'
   daysApart: number
+  // Sprint Motor-Único FASE 4 (10/08): explicabilidade — por que foi sugerido.
+  // Presentes só quando o motor único está ligado.
+  layer?: 'DETERMINISTIC' | 'STRONG' | 'WEAK'
+  evidences?: string[]
+  signals?: Record<string, boolean>
+}
+
+const LAYER_LABEL: Record<'DETERMINISTIC' | 'STRONG' | 'WEAK', string> = {
+  DETERMINISTIC: 'Camada 1 · determinística',
+  STRONG: 'Camada 2 · forte',
+  WEAK: 'Camada 3 · fraca',
 }
 
 const MATCH_LABEL: Record<TransferCandidateDTO['matchType'], string> = {
@@ -195,10 +206,27 @@ export function DetectarTransferenciasModal({
                       <span className="text-[10px] uppercase tracking-wide rounded bg-muted px-1.5 py-0.5">
                         {MATCH_LABEL[c.matchType]}
                       </span>
+                      {c.layer && (
+                        <span className="text-[10px] uppercase tracking-wide rounded bg-blue-100 px-1.5 py-0.5 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300">
+                          {LAYER_LABEL[c.layer]}
+                        </span>
+                      )}
                       <span className="text-xs text-muted-foreground tabular-nums ml-auto">
                         R$ {formatBRL(c.debit.amount)}
                       </span>
                     </div>
+
+                    {/* Explicabilidade na TELA (FASE 4): por que o sistema sugeriu. */}
+                    {c.evidences && c.evidences.length > 0 && (
+                      <ul className="mt-1 space-y-0.5 pl-8">
+                        {c.evidences.slice(0, 4).map((e, i) => (
+                          <li key={i} className="flex gap-1 text-[11px] text-muted-foreground">
+                            <span className="text-emerald-600">✓</span>
+                            {e}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                     <div className="grid grid-cols-2 gap-3 mt-2 pl-8 text-sm">
                       <div className="flex items-start gap-2 min-w-0">
                         <ArrowUpRight className="h-3.5 w-3.5 text-red-500 shrink-0 mt-0.5" />
