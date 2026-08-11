@@ -1302,6 +1302,7 @@ export function PendentesClient({
       <VincularTransferenciaModal
         open={!!vincularBase}
         onOpenChange={(o) => !o && setVincularBase(null)}
+        empresaId={empresaId}
         base={
           vincularBase
             ? {

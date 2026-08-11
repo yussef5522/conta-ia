@@ -35,14 +35,18 @@ describe('Sprint Owner Detection — loader centralizado', () => {
   })
 })
 
-describe('Sprint Owner Detection — 6 callers usam o helper (DRY)', () => {
+describe('Sprint Owner Detection — callers vivos usam o helper (DRY)', () => {
+  // Motor único (FASE 4, 11/08): scan-retroativo/sozinhas/sugestoes eram
+  // endpoints MORTOS → deletados na limpeza PARTE 1. As telas de par vivas
+  // agora usam o motor único; aguardando-par/candidatas carregam refs direto,
+  // parear-sugestoes/detect-active-transfers via detect-transfers-for-company.
   const callers = [
     'app/api/contas-bancarias/[id]/importar-ofx/route.ts',
-    'app/api/empresas/[id]/transferencias/scan-retroativo/route.ts',
-    'app/api/empresas/[id]/transferencias/sozinhas/route.ts',
-    'app/api/empresas/[id]/transferencias/sugestoes/route.ts',
     'app/api/empresas/[id]/transferencias/duplicatas/route.ts',
+    'app/api/empresas/[id]/transferencias/aguardando-par/route.ts',
+    'app/api/transferencias/candidatas/[id]/route.ts',
     'app/api/contas-bancarias/[id]/detectar-transferencias/route.ts',
+    'lib/transfers/detect-transfers-for-company.ts',
   ]
   for (const f of callers) {
     it(`${f.split('/').slice(-2).join('/')} importa loadOwnEntityRefs`, () => {

@@ -211,32 +211,10 @@ describe('Sprint Transfer-Pairing-Retroativo — integração importer OFX', () 
 })
 
 // ============================================================================
-// 5) Endpoint scan-retroativo — presença
+// 5) Endpoint scan-retroativo — REMOVIDO (11/08): endpoint morto deletado na
+// limpeza PARTE 1 do motor único. A LIB `lib/transfers/scan-retroativo` segue
+// viva (usada pelo import OFX — bloco 4 acima). Só a rota HTTP saiu.
 // ============================================================================
-describe('Sprint Transfer-Pairing-Retroativo — endpoint', () => {
-  const PATH = join(__dirname, '..', 'app/api/empresas/[id]/transferencias/scan-retroativo/route.ts')
-  const code = readFileSync(PATH, 'utf-8')
-
-  it('aceita params dias (1-90, default 7) e dryRun (default true)', () => {
-    expect(code).toMatch(/dias:\s*z\.coerce\.number\(\)\.int\(\)\.min\(1\)\.max\(90\)\.default\(7\)/)
-    expect(code).toMatch(/dryRun:\s*z\.coerce\.boolean\(\)\.default\(true\)/)
-  })
-
-  it('inclui SocioPF.nome via loadOwnEntityRefs (helper centralizado)', () => {
-    // Sprint Owner Detection (28/06/2026): refatorado pra usar helper.
-    expect(code).toMatch(/loadOwnEntityRefs/)
-  })
-
-  it('filtra transferGroupId NULL e reconciledWithId NULL', () => {
-    expect(code).toMatch(/transferGroupId:\s*null/)
-    expect(code).toMatch(/reconciledWithId:\s*null/)
-  })
-
-  it('aplica $transaction com anti-race (where transferGroupId null)', () => {
-    expect(code).toMatch(/prisma\.\$transaction/)
-    expect(code).toMatch(/transferGroupId:\s*null,\s+\/\/\s*anti-race/)
-  })
-})
 
 // ============================================================================
 // 6) DRE ignora TRANSFER — regressão (já existia antes mas reconfirmamos)
