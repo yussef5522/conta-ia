@@ -546,25 +546,38 @@ export async function POST(request: NextRequest, { params }: Params) {
         }),
       ])
 
+      const v2Payload = buildV2PreviewPayload({
+        novas: novasReais,
+        totalArquivo: transactions.length,
+        duplicadasHashLegado: duplicadas,
+        errosParser: errors,
+        banco,
+        contaId,
+        candidates: [...candidatesMesmaConta, ...candidatesExcelPayable],
+        // Sub-fase 2B: balance da conta + LEDGERBAL do arquivo (rede de
+        // segurança matemática estilo Conta Azul). Função pura calcula
+        // delta e detecta divergência.
+        contaBalance: conta.balance,
+        ledgerBalance,
+        // Sprint Preview-Futuro (09/08): soma das futuras — se o diff bater
+        // com ela, o diagnóstico diz "= linhas futuras" (rede de segurança).
+        futurasSum,
+        // CAMADA 2 (11/08): âncora max(DTASOF, DTEND) — pega a agendada do DIA
+        // da âncora que a CAMADA 1 (data) deixa passar.
+        anchor: dtAsOfPreview,
+      })
+      // CAMADA 2: as agendadas do dia da âncora entram na MESMA seção "agendadas
+      // — não serão importadas" que as futuras da CAMADA 1 (fonte única na UI).
+      const agendadasDia = v2Payload.agendadasDiaAncora.map((a) => ({
+        date: a.date.slice(0, 10),
+        signedAmount: a.signedAmount,
+        memo: a.memo,
+        fitid: a.fitid,
+      }))
+
       return NextResponse.json({
-        ...buildV2PreviewPayload({
-          novas: novasReais,
-          totalArquivo: transactions.length,
-          duplicadasHashLegado: duplicadas,
-          errosParser: errors,
-          banco,
-          contaId,
-          candidates: [...candidatesMesmaConta, ...candidatesExcelPayable],
-          // Sub-fase 2B: balance da conta + LEDGERBAL do arquivo (rede de
-          // segurança matemática estilo Conta Azul). Função pura calcula
-          // delta e detecta divergência.
-          contaBalance: conta.balance,
-          ledgerBalance,
-          // Sprint Preview-Futuro (09/08): soma das futuras — se o diff bater
-          // com ela, o diagnóstico diz "= linhas futuras" (rede de segurança).
-          futurasSum,
-        }),
-        futuras: futurasPayload,
+        ...v2Payload,
+        futuras: [...futurasPayload, ...agendadasDia],
         categorySuggestions,
         categoriesForUI,
         ownEntityRefs,

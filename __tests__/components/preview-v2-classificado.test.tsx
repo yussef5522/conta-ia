@@ -98,6 +98,7 @@ function payload(opts: {
       },
     },
     ledgerBalCheck: opts.ledger ?? ledger({ bate: true, available: true }),
+    agendadasDiaAncora: [],
   }
 }
 

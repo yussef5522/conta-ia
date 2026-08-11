@@ -18,6 +18,7 @@ import {
   type ExistingCandidate,
   type ClassifyResult,
 } from '@/lib/conciliacao/find-pre-existing-matches'
+import { reconcileLedgerAnchorDay, type LedgerReconcileLine } from './future-line'
 
 // ───────────────────────────────────────────────────────────────
 // Payload LEGADO (preservado bit-pra-bit)
@@ -140,12 +141,22 @@ export interface V2NovaGenuinaItem extends V2BaseItem {
   dedupHash: string
 }
 
+/** Linha do DIA DA ÂNCORA reclassificada como AGENDADA pela CAMADA 2 (o banco
+ *  listou mas o LEDGERBAL prova que ainda não liquidou). NÃO é importada. */
+export interface V2AgendadaDiaItem extends V2BaseItem {
+  fitid: string
+  dedupHash: string
+  /** signed (CREDIT +, DEBIT −) — pra somar no relatório de agendadas. */
+  signedAmount: number
+}
+
 /** Hipótese sobre causa de divergência LEDGERBAL ≠ saldoPos (Sub-fase 2B). */
 export type LedgerBalHipoteseTipo =
   | 'dup_marcada_nova'        // alguma nova é dup escondida
   | 'real_marcada_dup'        // alguma marcada como dup era real
   | 'historico_errado'        // balance pré-existente diverge do banco
   | 'linhas_futuras'          // diff == soma das linhas futuras (agendadas)
+  | 'agendada_dia_ancora'     // diff == linha(s) do DIA DA ÂNCORA ainda não liquidadas (CAMADA 2)
 
 export interface LedgerBalHipotese {
   tipo: LedgerBalHipoteseTipo
@@ -193,6 +204,8 @@ export interface V2PreviewPayload {
     }
   }
   ledgerBalCheck: LedgerBalCheckPayload
+  /** CAMADA 2 (11/08): linhas do dia da âncora agendadas (não importadas). */
+  agendadasDiaAncora: V2AgendadaDiaItem[]
 }
 
 // ───────────────────────────────────────────────────────────────
@@ -222,6 +235,10 @@ export function buildLedgerBalCheck(input: {
    *  removidas do preview. Se o diff residual bater com ela, o diagnóstico
    *  aponta "linhas futuras" em vez de "histórico errado". */
   futurasSum?: number
+  /** CAMADA 2 (11/08): resultado da reconciliação do dia da âncora quando NÃO
+   *  resolveu sozinha (ambíguo). ofxIndex das linhas do dia da âncora suspeitas.
+   *  Presente → o diagnóstico lidera com "agendada do dia", NÃO "duplicata". */
+  agendadaDiaAncora?: { ambiguous: boolean; suspeitos: number[] }
 }): LedgerBalCheckPayload {
   const deltaNovas = input.novasGenuinas.reduce((s, t) => s + signedAmount(t), 0)
   const deltaConcil = input.conciliatePayable.reduce((s, t) => s + signedAmount(t), 0)
@@ -285,6 +302,12 @@ export function buildLedgerBalCheck(input: {
   const isFuturas =
     futurasSum !== 0 && Math.abs(diff + futurasSum) <= LEDGER_BAL_TOLERANCE
 
+  // CAMADA 2 (11/08): quando a diferença bate com linha(s) do DIA DA ÂNCORA que
+  // ainda não liquidaram, a causa é ESSA — NÃO "duplicata" (o bug do diagnóstico
+  // de 11/08). Lidera a lista e demove a hipótese de duplicata.
+  const ancora = input.agendadaDiaAncora
+  const isAgendadaDia = !!ancora && ancora.suspeitos.length > 0
+
   const hipoteses: LedgerBalHipotese[] = [
     ...(isFuturas
       ? [
@@ -292,14 +315,26 @@ export function buildLedgerBalCheck(input: {
             tipo: 'linhas_futuras' as const,
             label:
               'A diferença é exatamente a soma dos lançamentos futuros (agendados) — eles não entram no saldo. Nada errado.',
+            maisProvavel: !isAgendadaDia,
+          },
+        ]
+      : []),
+    ...(isAgendadaDia
+      ? [
+          {
+            tipo: 'agendada_dia_ancora' as const,
+            label: ancora!.ambiguous
+              ? 'A diferença bate com lançamento(s) do dia — o banco listou mas ainda não debitou. Como há mais de um candidato, confirme qual não liquidou.'
+              : 'A diferença é exatamente um lançamento do dia — o banco listou mas ainda não debitou (agendado). Não é duplicata.',
             maisProvavel: true,
+            suspeitos: ancora!.suspeitos,
           },
         ]
       : []),
     {
       tipo: 'dup_marcada_nova',
       label: 'Alguma transação marcada como nova é, na verdade, duplicata (vai contar 2×).',
-      maisProvavel: !isFuturas && hasSuspeitoNova,
+      maisProvavel: !isFuturas && !isAgendadaDia && hasSuspeitoNova,
       suspeitos: hasSuspeitoNova ? suspeitosNovas : undefined,
     },
     {
@@ -310,7 +345,7 @@ export function buildLedgerBalCheck(input: {
     {
       tipo: 'historico_errado',
       label: 'Balance pré-existente diverge do banco (estrago histórico não relacionado a este import).',
-      maisProvavel: !isFuturas && !hasSuspeitoNova,
+      maisProvavel: !isFuturas && !isAgendadaDia && !hasSuspeitoNova,
     },
   ]
 
@@ -341,6 +376,8 @@ export function buildV2PreviewPayload(input: {
   ledgerBalance?: { amount: number; asOfDate: Date } | null
   /** Sprint Preview-Futuro (09/08) — soma signed das linhas futuras removidas. */
   futurasSum?: number
+  /** CAMADA 2 (11/08) — âncora = max(DTASOF, DTEND). Default = ledgerBalance.asOfDate. */
+  anchor?: Date
 }): V2PreviewPayload {
   // 1. Mapeia novas pra IncomingOfxTx
   const incoming: IncomingOfxTx[] = input.novas.map((t, index) => ({
@@ -449,12 +486,63 @@ export function buildV2PreviewPayload(input: {
     }
   }
 
+  // ── CAMADA 2 (11/08): reconcilia contra o LEDGERBAL. Se a diferença bate com
+  // linha(s) do DIA DA ÂNCORA que o banco listou mas ainda não debitou, elas
+  // saem das novasGenuinas → viram AGENDADAS (não importadas) e o saldo fecha.
+  // Ambíguo/sem casamento → não mexe (o diagnóstico avisa a causa certa).
+  const anchor = input.anchor ?? input.ledgerBalance?.asOfDate ?? null
+  const agendadasDiaAncora: V2AgendadaDiaItem[] = []
+  let novasFinais = novasGenuinas
+  let agendadaDiaInfo: { ambiguous: boolean; suspeitos: number[] } | undefined
+
+  if (input.ledgerBalance && anchor) {
+    const camada2 = reconcileLedgerAnchorDay({
+      newLines: novasGenuinas.map<LedgerReconcileLine>((n) => ({
+        key: n.dedupHash,
+        type: n.type,
+        amount: n.amount,
+        datePosted: new Date(n.date),
+      })),
+      balanceAtual: input.contaBalance ?? 0,
+      ledgerBalance: input.ledgerBalance.amount,
+      anchor,
+    })
+    if (camada2.resolved && camada2.scheduledKeys.length > 0) {
+      const sched = new Set(camada2.scheduledKeys)
+      novasFinais = []
+      for (const n of novasGenuinas) {
+        if (sched.has(n.dedupHash)) {
+          agendadasDiaAncora.push({
+            ofxIndex: n.ofxIndex,
+            amount: n.amount,
+            date: n.date,
+            memo: n.memo,
+            type: n.type,
+            fitid: n.fitid,
+            dedupHash: n.dedupHash,
+            signedAmount: n.type === 'CREDIT' ? n.amount : -n.amount,
+          })
+        } else {
+          novasFinais.push(n)
+        }
+      }
+    } else if (camada2.ambiguous || (!camada2.resolved && camada2.anchorDayKeys.length > 0)) {
+      // Não resolveu sozinha, mas há linha(s) do dia da âncora: alimenta o
+      // diagnóstico pra apontar "agendada do dia" em vez de "duplicata".
+      const suspeitos = novasGenuinas
+        .filter((n) => camada2.anchorDayKeys.includes(n.dedupHash))
+        .map((n) => n.ofxIndex)
+      if (suspeitos.length > 0) agendadaDiaInfo = { ambiguous: camada2.ambiguous, suspeitos }
+    }
+  }
+
   const ledgerBalCheck = buildLedgerBalCheck({
     ledgerBalance: input.ledgerBalance ?? null,
     balanceAtual: input.contaBalance ?? 0,
-    novasGenuinas,
+    novasGenuinas: novasFinais,
     conciliatePayable,
     futurasSum: input.futurasSum,
+    agendadaDiaAncora: agendadaDiaInfo,
   })
 
   return {
@@ -466,17 +554,18 @@ export function buildV2PreviewPayload(input: {
       skipDup,
       replaceManual,
       conciliatePayable,
-      novasGenuinas,
+      novasGenuinas: novasFinais,
       contagens: {
         total: input.totalArquivo,
         skipDup: skipDup.length,
         replaceManual: replaceManual.length,
         conciliatePayable: conciliatePayable.length,
-        novasGenuinas: novasGenuinas.length,
+        novasGenuinas: novasFinais.length,
         duplicadasHashLegado: input.duplicadasHashLegado,
       },
     },
     ledgerBalCheck,
+    agendadasDiaAncora,
   }
 }
 

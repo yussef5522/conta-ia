@@ -21,7 +21,7 @@ import { prepareBalanceTransactions } from '@/lib/balance/prepare'
 import { parseStatementFromOFX } from './parse-statement-from-ofx'
 import { reconcileStatement } from './reconcile-statement'
 import { buildReconcileUniverse } from './reconcile-universe'
-import { partitionFutureLines, settledThroughDate } from '../ofx/future-line'
+import { partitionFutureLines, settledThroughDate, reconcileLedgerAnchorDay } from '../ofx/future-line'
 import { stableKey } from './stable-key'
 import { buildLineDedupHash, makeOccurrenceCounter } from './line-dedup-hash'
 import { isReconcileV2Enabled } from './flag'
@@ -208,6 +208,56 @@ export async function runImportV2(
   // Só as linhas REAIS entram no reconcile — as futuras foram descartadas acima.
   const result = reconcileStatement(realLines, dbBankTxs, dtAsOf, input.today)
 
+  // 4.5 CAMADA 2 — DESCARTE DE AGENDADA DO DIA DA ÂNCORA (11/08/2026). A CAMADA 1
+  // (data) usa `> âncora`, então a linha com data IGUAL à âncora escapa. O banco
+  // emite o extrato às 01h já listando um débito que só liquida às ~9h — o
+  // LEDGERBAL NÃO o inclui. Se `saldoAntes + Σ(linhas novas efetivadas)` não fecha
+  // com o LEDGERBAL e a diferença bate EXATO com um subconjunto do dia da âncora,
+  // essas linhas são AGENDADAS (não importadas), igual às futuras. Fora do dia da
+  // âncora / ambíguo / sem casamento → NÃO mexe (só a CAMADA 1 + validação avisam).
+  // Ver lib/ofx/future-line.ts:reconcileLedgerAnchorDay.
+  let effectiveMissing = result.missing
+  if (ledgerBalance != null) {
+    const contaAntes = await tx.bankAccount.findUnique({
+      where: { id: input.bankAccountId },
+      select: { balance: true },
+    })
+    // Promovidas (PAYABLE/RECEIVABLE→EFFECTED) também entram no saldo projetado,
+    // mas NÃO são reagendáveis (já eram preview) → dobram na base, não em newLines.
+    const promotedSum = result.promoted.reduce((s, p) => s + p.statementLine.signedAmount, 0)
+    const camada2 = reconcileLedgerAnchorDay({
+      newLines: result.missing.map((l, i) => ({
+        key: String(i),
+        type: l.signedAmount >= 0 ? ('CREDIT' as const) : ('DEBIT' as const),
+        amount: Math.abs(l.signedAmount),
+        datePosted: l.datePosted,
+      })),
+      balanceAtual: (contaAntes?.balance ?? 0) + promotedSum,
+      ledgerBalance,
+      anchor,
+    })
+    if (camada2.resolved && camada2.scheduledKeys.length > 0) {
+      const schedIdx = new Set(camada2.scheduledKeys.map(Number))
+      const agendadas = result.missing.filter((_, i) => schedIdx.has(i))
+      effectiveMissing = result.missing.filter((_, i) => !schedIdx.has(i))
+      for (const a of agendadas) {
+        futureLines.push(a)
+        futureSet.add(a)
+      }
+      console.log(
+        `[RECONCILE_V2] CAMADA 2: ${agendadas.length} linha(s) do dia da âncora AGENDADA(s) (banco listou, não liquidou) — não importada(s): ${agendadas.map((a) => `${a.memo} ${a.signedAmount}`).join(' | ')}`,
+      )
+    } else if (camada2.ambiguous) {
+      console.warn(
+        `[RECONCILE_V2] CAMADA 2 AMBÍGUA: diferença ${camada2.residualDiff} bate com +1 subconjunto do dia da âncora — NÃO reclassificado (revisar manualmente)`,
+      )
+    } else if (!camada2.resolved && Math.abs(camada2.residualDiff) > 0.02) {
+      console.warn(
+        `[RECONCILE_V2] CAMADA 2: saldo não fecha (dif ${camada2.residualDiff}) e não bate com linha do dia da âncora — divergência histórica, nada reclassificado`,
+      )
+    }
+  }
+
   // Overrides de categoria do preview, indexados por dedupHashOFX (a chave que
   // o client envia). Só afeta linhas EFFECTED novas (previews PAYABLE/RECEIVABLE
   // seguem sem categoria, igual ao V1). value null = "manter A classificar".
@@ -229,7 +279,7 @@ export async function runImportV2(
       fileName: input.fileName,
       fileSize: input.rawOfx.length,
       totalTransactions: parsed.transactions.length,
-      newTransactions: result.missing.length + result.previews.length,
+      newTransactions: effectiveMissing.length + result.previews.length,
       duplicates: result.matched.length,
       autoClassified: 0,
       periodStart: minDate,
@@ -272,7 +322,7 @@ export async function runImportV2(
       fitid: line.fitid ?? '',
     })
   const missingDecided = applyImportDecisions(
-    result.missing.map((l) => ({ line: l, dedupHash: ofxHashOf(l) })),
+    effectiveMissing.map((l) => ({ line: l, dedupHash: ofxHashOf(l) })),
     input.decisions,
   )
   let skippedByDecision = missingDecided.skipped
@@ -450,7 +500,7 @@ export async function runImportV2(
     ledgerBalance,
     dtAsOf,
     classification: {
-      effected: result.missing.length,
+      effected: effectiveMissing.length,
       // Movimento futuro NÃO é mais criado — é descartado. preview=0 sempre.
       preview: 0,
       previewAlreadyExisting: 0,
