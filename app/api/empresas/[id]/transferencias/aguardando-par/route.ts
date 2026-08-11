@@ -10,6 +10,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
+import { isUnifiedTransferEnabled } from '@/lib/transfers/unified-transfer-flag'
+import { classifyTransferPair, type UnifiedTx } from '@/lib/transfers/unified-transfer-engine'
+import { loadOwnEntityRefs } from '@/lib/transfers/load-own-entity-refs'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -55,6 +58,20 @@ export async function GET(request: NextRequest, { params }: Params) {
     })
     for (const a of accounts) accountsById.set(a.id, a)
 
+    // Motor único (FASE 4, tela 3): classifica cada candidato pelas 3 camadas
+    // (mata o scoring inline). Carrega refs + valores comuns 1× fora do loop.
+    const unified = isUnifiedTransferEnabled()
+    const refs = unified ? await loadOwnEntityRefs(prisma, empresaId) : null
+    const valorComum = new Set<number>()
+    if (unified) {
+      const vc = await prisma.transaction.groupBy({
+        by: ['amount'],
+        where: { bankAccount: { companyId: empresaId }, date: { gte: new Date(Date.now() - 60 * 86400_000) } },
+        _count: { _all: true },
+      })
+      for (const v of vc) if (v._count._all >= 3) valorComum.add(Math.round(v.amount * 100) / 100)
+    }
+
     const sugestoesPorTxId = new Map<
       string,
       Array<{
@@ -63,6 +80,10 @@ export async function GET(request: NextRequest, { params }: Params) {
         candidateAccountId: string
         candidateAccountName: string
         candidateDescription: string
+        // Motor único: explicabilidade (presentes com a flag ON).
+        layer?: 'DETERMINISTIC' | 'STRONG' | 'WEAK'
+        confidence?: number
+        evidences?: string[]
       }>
     >()
 
@@ -103,8 +124,10 @@ export async function GET(request: NextRequest, { params }: Params) {
           date: true,
           description: true,
           bankAccountId: true,
+          amount: true,
+          type: true,
         },
-        take: 5, // ranking simples: limita pra não inundar UI
+        take: unified ? 20 : 5, // unified filtra por camada depois; pega mais pra classificar
         orderBy: { date: 'asc' },
       })
 
@@ -112,7 +135,7 @@ export async function GET(request: NextRequest, { params }: Params) {
         .map((c) => {
           const acc = accountsById.get(c.bankAccountId ?? '')
           if (!acc) return null
-          return {
+          const base = {
             candidateId: c.id,
             candidateDate: c.date.toISOString(),
             candidateAccountId: acc.id,
@@ -120,8 +143,23 @@ export async function GET(request: NextRequest, { params }: Params) {
             candidateAccountKind: acc.accountKind as 'PJ' | 'PF',
             candidateDescription: c.description,
           }
+          if (!unified || !refs) return base
+          // Classifica o par (débito = perna DEBIT). Só camadas 1+2 viram sugestão
+          // (mesma regra do banner/parear) — mata os falsos de valor redondo.
+          const pTx: UnifiedTx = { id: p.id, bankAccountId: p.bankAccountId ?? '', date: p.date, type: p.type, amount: p.amount, description: p.description }
+          const cTx: UnifiedTx = { id: c.id, bankAccountId: c.bankAccountId ?? '', date: c.date, type: c.type, amount: c.amount, description: c.description }
+          const debit = p.type === 'DEBIT' ? pTx : cTx
+          const credit = p.type === 'DEBIT' ? cTx : pTx
+          const cls = classifyTransferPair(debit, credit, { refs, valorComum })
+          if (!cls || !cls.autoSuggest) return null // fora = weak/rejeitado → não sugere
+          return { ...base, layer: cls.layer, confidence: cls.confidence, evidences: cls.evidences }
         })
         .filter((x): x is NonNullable<typeof x> => x !== null)
+        .sort((a, b) => {
+          const ca = 'confidence' in a ? (a.confidence ?? 0) : 0
+          const cb = 'confidence' in b ? (b.confidence ?? 0) : 0
+          return cb - ca
+        })
       if (out.length > 0) sugestoesPorTxId.set(p.id, out)
     }
 

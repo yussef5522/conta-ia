@@ -21,6 +21,10 @@ interface Sugestao {
   candidateAccountName: string
   candidateAccountKind: 'PJ' | 'PF'
   candidateDescription: string
+  // Motor único (FASE 4): explicabilidade — presentes com a flag ON.
+  layer?: 'DETERMINISTIC' | 'STRONG' | 'WEAK'
+  confidence?: number
+  evidences?: string[]
 }
 
 interface Item {
@@ -299,6 +303,18 @@ export function AguardandoParTab({ empresaId }: { empresaId: string }) {
                           <p className="text-[11px] text-muted-foreground truncate mt-0.5">
                             {s.candidateDescription}
                           </p>
+                          {/* Explicabilidade (FASE 4): camada + evidências pt-BR. */}
+                          {s.layer && (
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                              <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-blue-800">
+                                {s.layer === 'DETERMINISTIC' ? 'Camada 1' : s.layer === 'STRONG' ? 'Camada 2' : 'Camada 3'}
+                                {s.confidence != null ? ` · ${s.confidence}` : ''}
+                              </span>
+                              {s.evidences?.[0] && (
+                                <span className="text-[10px] text-muted-foreground">{s.evidences[0]}</span>
+                              )}
+                            </div>
+                          )}
                         </div>
                         <Button
                           size="sm"
