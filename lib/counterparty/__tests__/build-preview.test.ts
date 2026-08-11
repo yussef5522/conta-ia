@@ -23,6 +23,20 @@ describe('headerMatchesAccount (FASE 1.3a — rejeita PDF de outra conta)', () =
   it('conta diferente → NÃO bate', () => {
     expect(headerMatchesAccount({ agencia: '0230', conta: '0606342204' }, { agency: '0230', accountNumber: '0605534106' })).toBe(false)
   })
+  // BUG 11/08: PDF com conta FORMATADA no cabeçalho (06.055341.0-6) vs conta do
+  // sistema sem formatação (0605534106) — MESMA conta, tem que aceitar.
+  it('cabeçalho formatado (06.055341.0-6) vs sistema (0605534106) — MESMA conta, bate', () => {
+    expect(headerMatchesAccount({ agencia: '0230', conta: '06.055341.0-6' }, { agency: '0230', accountNumber: '0605534106' })).toBe(true)
+  })
+  it('formato inverso também bate (sistema formatado, PDF sem)', () => {
+    expect(headerMatchesAccount({ agencia: '0230', conta: '0605534106' }, { agency: '0230', accountNumber: '06.055341.0-6' })).toBe(true)
+  })
+  it('zeros à esquerda irrelevantes (605534106 == 0605534106)', () => {
+    expect(headerMatchesAccount({ agencia: '230', conta: '605534106' }, { agency: '0230', accountNumber: '0605534106' })).toBe(true)
+  })
+  it('conta REALMENTE diferente (mesmo formatada) → NÃO bate', () => {
+    expect(headerMatchesAccount({ agencia: '0230', conta: '06.055341.0-6' }, { agency: '0230', accountNumber: '06.063.422-04' })).toBe(false)
+  })
 })
 
 describe('buildEnrichmentPreview', () => {

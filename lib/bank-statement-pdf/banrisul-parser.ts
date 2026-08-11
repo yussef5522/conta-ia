@@ -61,8 +61,13 @@ export function parseBrlAmount(raw: string): { amount: number; signed: number } 
 }
 
 function extractHeader(text: string): BankStatementHeader {
-  const ag = text.match(/AG[EÊ]NCIA\.*\s*:\s*(\d+)/i)
-  const cc = text.match(/CONTA\.*\s*:\s*([\dXx-]+)/i)
+  const ag = text.match(/AG[EÊ]NCIA\.*\s*:\s*([\dXx.\-]+)/i)
+  // BUG 11/08: o Banrisul tem DOIS formatos de conta no cabeçalho —
+  //   "CONTA..: 0605534106"    (sem formatação, jul/2026)
+  //   "CONTA..: 06.055341.0-6" (com pontos/hífen, ago/2026)
+  // O char class antigo `[\dXx-]` NÃO incluía o ponto → parava no 1º ponto e
+  // pegava só "06". Inclui `.` no class; a comparação normaliza (só dígitos).
+  const cc = text.match(/CONTA\.*\s*:\s*([\dXx.\-]+)/i)
   const nome = text.match(/NOME\.{2,}\s*:\s*(.+)/i)
   return {
     agencia: ag ? ag[1].trim() : null,

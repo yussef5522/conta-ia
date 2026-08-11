@@ -46,16 +46,22 @@ export interface EnrichmentPreview {
 }
 
 const onlyDigits = (s: string | null | undefined) => (s ?? '').replace(/\D/g, '')
+// Normaliza número de conta/agência pra comparar: só dígitos + tira zeros à
+// esquerda (formatação irrelevante). "06.055341.0-6" e "0605534106" viram
+// "605534106"; "0230" e "230" viram "230". String vazia continua vazia.
+const normAccount = (s: string | null | undefined) => onlyDigits(s).replace(/^0+/, '')
 
-/** FASE 1.3a — cabeçalho do PDF (agência+conta) bate com a conta selecionada? */
+/** FASE 1.3a — cabeçalho do PDF (agência+conta) bate com a conta selecionada?
+ *  Normaliza os DOIS lados (só dígitos, sem zeros à esquerda) antes de comparar —
+ *  o Banrisul emite a conta ora formatada (06.055341.0-6) ora não (0605534106). */
 export function headerMatchesAccount(
   header: { agencia: string | null; conta: string | null },
   conta: { agency: string | null; accountNumber: string | null },
 ): boolean {
-  const agA = onlyDigits(header.agencia)
-  const agB = onlyDigits(conta.agency)
-  const ccA = onlyDigits(header.conta)
-  const ccB = onlyDigits(conta.accountNumber)
+  const agA = normAccount(header.agencia)
+  const agB = normAccount(conta.agency)
+  const ccA = normAccount(header.conta)
+  const ccB = normAccount(conta.accountNumber)
   // Se a conta não tem ag/cc cadastrada, não dá pra validar → não bloqueia por isso.
   const agOk = !agA || !agB || agA === agB
   const ccOk = !ccA || !ccB || ccA === ccB

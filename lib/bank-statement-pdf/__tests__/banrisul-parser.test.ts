@@ -63,6 +63,24 @@ describe('banrisulPdfParser', () => {
     expect(r.header).toEqual({ agencia: '0230', conta: '0606342204', titular: 'PRO FIT ITAQUI LTDA' })
   })
 
+  // BUG 11/08: conta FORMATADA no cabeçalho (Banrisul ago/2026). O parser parava
+  // no 1º ponto e pegava só "06". VERMELHO antes / VERDE depois.
+  it('cabeçalho: conta FORMATADA (06.055341.0-6) — captura o número inteiro', () => {
+    const formatado = [
+      'B A N R I S U L',
+      'AGENCIA: 0230',
+      'CONTA..: 06.055341.0-6',
+      'NOME...: CACULA MIX LTDA',
+      '',
+      'DIA HISTORICO           DOCUMENTO        V A L O R',
+      '01   PIX RECEBIDO        355540              129,90',
+    ].join('\n')
+    const rf = banrisulPdfParser.parse(formatado)
+    // só dígitos tem que ser a conta inteira, não "06"
+    expect((rf.header.conta ?? '').replace(/\D/g, '')).toBe('0605534106')
+    expect(rf.header.agencia).toBe('0230')
+  })
+
   it('conta o total de lançamentos (ignora SALDO/cabeçalho)', () => {
     expect(r.lines).toHaveLength(13)
     expect(r.lines.some((l) => /SALDO/i.test(l.historico))).toBe(false)
