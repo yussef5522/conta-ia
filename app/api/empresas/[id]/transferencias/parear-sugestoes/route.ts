@@ -17,36 +17,42 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
+import { isUnifiedTransferEnabled } from '@/lib/transfers/unified-transfer-flag'
+import { detectTransfersForCompany } from '@/lib/transfers/detect-transfers-for-company'
 
 export const runtime = 'nodejs'
+
+export interface PearTxOption {
+  id: string
+  date: string
+  amount: number
+  description: string
+  bankAccountId: string
+  bankAccountName: string
+}
 
 export interface ParearSugestao {
   /** id determinístico do par (debitId + creditId) — usado como key React. */
   key: string
-  debit: {
-    id: string
-    date: string
-    amount: number
-    description: string
-    bankAccountId: string
-    bankAccountName: string
-  }
-  credit: {
-    id: string
-    date: string
-    amount: number
-    description: string
-    bankAccountId: string
-    bankAccountName: string
-  }
+  debit: PearTxOption
+  credit: PearTxOption
   daysApart: number
   sameDay: boolean
+  // Motor único (FASE 4): explicabilidade + confiança. Presentes com a flag ON.
+  layer?: 'DETERMINISTIC' | 'STRONG' | 'WEAK'
+  confidence?: number
+  evidences?: string[]
 }
 
 export interface ParearSugestoesResponse {
   sugestoes: ParearSugestao[]
   totalDebitPending: number
   totalCreditPending: number
+  /** 'unified' quando o motor único está ligado (drop 2× PENDING). */
+  engine?: 'unified' | 'legacy'
+  /** Motor único: TODAS as órfãs pro CAMINHO MANUAL (incl. RECONCILED). */
+  manualDebits?: PearTxOption[]
+  manualCredits?: PearTxOption[]
 }
 
 const DAYS_WINDOW = 3
@@ -64,6 +70,53 @@ export async function GET(
     const { id: empresaId } = await params
     const ctx = await getAuthContext(request, empresaId)
     ctx.requirePermission('transaction.view')
+
+    // ── FASE 4 (10/08): MOTOR ÚNICO atrás de flag. Tela 2 (/parear).
+    // Fonte ÚNICA (detectTransfersForCompany) = MESMA do banner → concordam.
+    // Sugestões só das camadas 1+2. A regra "2× PENDING" SAI: as órfãs do
+    // manual incluem RECONCILED (o par com uma perna já reconciliada aparece).
+    if (isUnifiedTransferEnabled()) {
+      const MS_DAY = 86400000
+      const { suggestions } = await detectTransfersForCompany(empresaId)
+      // Órfãs pro CAMINHO MANUAL — recente (120d), incl. RECONCILED (não só PENDING).
+      const orfas = await prisma.transaction.findMany({
+        where: {
+          bankAccount: { companyId: empresaId, isActive: true },
+          type: { in: ['CREDIT', 'DEBIT'] },
+          lifecycle: 'EFFECTED',
+          transferGroupId: null,
+          transferDismissedAt: null,
+          isInternalTransfer: false,
+          date: { gte: new Date(Date.now() - 120 * MS_DAY) },
+        },
+        select: { id: true, date: true, amount: true, description: true, type: true, bankAccountId: true, bankAccount: { select: { name: true } } },
+        orderBy: { date: 'desc' },
+        take: 400,
+      })
+      const opt = (t: (typeof orfas)[number]): PearTxOption => ({
+        id: t.id, date: t.date.toISOString(), amount: t.amount, description: t.description,
+        bankAccountId: t.bankAccountId!, bankAccountName: t.bankAccount?.name ?? '—',
+      })
+      const manualDebits = orfas.filter((t) => t.type === 'DEBIT' && t.bankAccountId).map(opt)
+      const manualCredits = orfas.filter((t) => t.type === 'CREDIT' && t.bankAccountId).map(opt)
+      return NextResponse.json<ParearSugestoesResponse>({
+        engine: 'unified',
+        sugestoes: suggestions.map((s) => ({
+          key: `${s.from.id}_${s.to.id}`,
+          debit: { id: s.from.id, date: s.from.date.toISOString(), amount: s.from.amount, description: s.from.description, bankAccountId: s.from.bankAccountId, bankAccountName: s.from.bankAccountName ?? '—' },
+          credit: { id: s.to.id, date: s.to.date.toISOString(), amount: s.to.amount, description: s.to.description, bankAccountId: s.to.bankAccountId, bankAccountName: s.to.bankAccountName ?? '—' },
+          daysApart: s.deltaDays,
+          sameDay: s.deltaDays === 0,
+          layer: s.layer,
+          confidence: s.confidence,
+          evidences: s.evidences,
+        })),
+        totalDebitPending: manualDebits.length,
+        totalCreditPending: manualCredits.length,
+        manualDebits,
+        manualCredits,
+      })
+    }
 
     // 1. Todas PENDING DEBIT + CREDIT da empresa (não-TRANSFER, sem group)
     const [debits, credits] = await Promise.all([

@@ -104,23 +104,42 @@ export default function PearearTransferenciasPage() {
     load()
   }, [load])
 
+  // Sprint Motor-Único FASE 4: apply roteado por engine. Unified → apply-active-
+  // transfers (id-based, re-valida, SEM exigir PENDING — mata o "2× PENDING" do
+  // apply). Legacy → pair-pendentes (comportamento antigo, atrás da flag OFF).
+  const applyPairIds = useCallback(
+    async (dId: string, cId: string) => {
+      if (data?.engine === 'unified') {
+        const res = await fetch(`/api/empresas/${empresaId}/conciliation/apply-active-transfers`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pairs: [{ debitId: dId, creditId: cId }] }),
+        })
+        const body = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(body?.erro ?? `HTTP ${res.status}`)
+        if ((body.aplicadas ?? 0) === 0) throw new Error(body?.errors?.[0] ?? 'Par não pôde ser aplicado')
+        return
+      }
+      const res = await fetch('/api/transferencias/pair-pendentes', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transacaoIdA: dId, transacaoIdB: cId }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body?.erro ?? `HTTP ${res.status}`)
+      }
+    },
+    [data?.engine, empresaId],
+  )
+
   const handlePair = useCallback(
     async (sug: ParearSugestao) => {
       setPairing((prev) => new Set([...prev, sug.key]))
       try {
-        const res = await fetch('/api/transferencias/pair-pendentes', {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            transacaoIdA: sug.debit.id,
-            transacaoIdB: sug.credit.id,
-          }),
-        })
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({}))
-          throw new Error(body?.erro ?? `HTTP ${res.status}`)
-        }
+        await applyPairIds(sug.debit.id, sug.credit.id)
         toast({
           title: '🔗 Transferência casada',
           description: `${formatBRL(sug.debit.amount)} · ${sug.debit.bankAccountName} → ${sug.credit.bankAccountName}`,
@@ -157,13 +176,22 @@ export default function PearearTransferenciasPage() {
         })
       }
     },
-    [toast, load],
+    [toast, load, applyPairIds],
   )
 
   // ─────────── Manual mode ───────────
 
-  // Deriva lista de PENDING DEBIT/CREDIT únicos vindos das sugestões
+  // CAMINHO MANUAL (Xero-style): quando o motor único está ligado, os dropdowns
+  // vêm de TODAS as órfãs (manualDebits/manualCredits) — funciona mesmo com 0
+  // sugestões e inclui RECONCILED. Legacy: deriva das sugestões (comportamento
+  // antigo, atrás da flag OFF).
   const { debitOptions, creditOptions } = useMemo(() => {
+    if (data?.manualDebits || data?.manualCredits) {
+      return {
+        debitOptions: data.manualDebits ?? [],
+        creditOptions: data.manualCredits ?? [],
+      }
+    }
     const dMap = new Map<string, PendingTx>()
     const cMap = new Map<string, PendingTx>()
     for (const s of data?.sugestoes ?? []) {
@@ -174,7 +202,7 @@ export default function PearearTransferenciasPage() {
       debitOptions: Array.from(dMap.values()).sort((a, b) => b.date.localeCompare(a.date)),
       creditOptions: Array.from(cMap.values()).sort((a, b) => b.date.localeCompare(a.date)),
     }
-  }, [data?.sugestoes])
+  }, [data?.sugestoes, data?.manualDebits, data?.manualCredits])
 
   const handleManualPair = useCallback(async () => {
     if (!debitId || !creditId) {
@@ -183,19 +211,7 @@ export default function PearearTransferenciasPage() {
     }
     setManualBusy(true)
     try {
-      const res = await fetch('/api/transferencias/pair-pendentes', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          transacaoIdA: debitId,
-          transacaoIdB: creditId,
-        }),
-      })
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}))
-        throw new Error(body?.erro ?? `HTTP ${res.status}`)
-      }
+      await applyPairIds(debitId, creditId)
       toast({
         title: '🔗 Transferência casada manualmente',
       })
@@ -211,7 +227,7 @@ export default function PearearTransferenciasPage() {
     } finally {
       setManualBusy(false)
     }
-  }, [debitId, creditId, toast, load])
+  }, [debitId, creditId, toast, load, applyPairIds])
 
   // ─────────── Render ───────────
 
@@ -263,7 +279,10 @@ export default function PearearTransferenciasPage() {
           {/* Transferências detectadas automaticamente (detector cross-conta —
               MESMO do banner de Pendentes). Mais capaz: enxerga entrada já
               categorizada, mesmo valor + mesmo dia + PIX + CNPJ próprio. */}
-          {detectorCands && detectorCands.length > 0 && (
+          {/* Motor único (FASE 4): a lista principal abaixo JÁ enxerga par com
+              perna RECONCILED (drop 2× PENDING) = mesma coisa do banner. Então
+              este banner-detector redundante some quando unified. */}
+          {data?.engine !== 'unified' && detectorCands && detectorCands.length > 0 && (
             <section className="space-y-3">
               <button
                 type="button"
@@ -310,12 +329,12 @@ export default function PearearTransferenciasPage() {
                     <CheckCircle2 className="h-6 w-6 text-emerald-600" aria-hidden />
                   </div>
                   <p className="text-base font-medium text-slate-900">
-                    {detectorCands && detectorCands.length > 0
+                    {data?.engine !== 'unified' && detectorCands && detectorCands.length > 0
                       ? 'Nenhum par entre pendentes — mas há transferências detectadas acima'
                       : 'Nenhum par sugerido'}
                   </p>
                   <p className="max-w-sm text-sm text-slate-500">
-                    {detectorCands && detectorCands.length > 0 ? (
+                    {data?.engine !== 'unified' && detectorCands && detectorCands.length > 0 ? (
                       <>
                         A lista abaixo só casa saída <strong>e</strong> entrada ambas
                         pendentes. A entrada deste par já foi categorizada, então ela
@@ -525,6 +544,12 @@ function SugestaoCard({ sug, delayMs, busy, removing, onPair }: SugestaoCardProp
               <span className="text-[10px] uppercase tracking-wide text-slate-500">
                 {sug.sameDay ? 'Mesma data' : `${sug.daysApart}d de diferença`}
               </span>
+              {sug.layer && (
+                <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-blue-800">
+                  {sug.layer === 'DETERMINISTIC' ? 'Camada 1' : sug.layer === 'STRONG' ? 'Camada 2' : 'Camada 3'}
+                  {sug.confidence != null ? ` · ${sug.confidence}` : ''}
+                </span>
+              )}
               <Button
                 size="sm"
                 onClick={onPair}
@@ -545,6 +570,17 @@ function SugestaoCard({ sug, delayMs, busy, removing, onPair }: SugestaoCardProp
               </Button>
             </div>
           </div>
+          {/* Explicabilidade (FASE 4): por que o motor sugeriu — na tela, não só log. */}
+          {sug.evidences && sug.evidences.length > 0 && (
+            <ul className="mt-2 space-y-0.5 border-t border-slate-100 pt-2">
+              {sug.evidences.slice(0, 4).map((e, i) => (
+                <li key={i} className="flex gap-1 text-[11px] text-slate-500">
+                  <span className="text-emerald-600">✓</span>
+                  {e}
+                </li>
+              ))}
+            </ul>
+          )}
         </CardContent>
       </Card>
     </motion.div>
