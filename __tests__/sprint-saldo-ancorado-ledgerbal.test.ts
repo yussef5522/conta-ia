@@ -167,9 +167,12 @@ describe('Sprint Saldo-V2 — orchestrator V2 grava ledgerBal + recalcula', () =
     join(__dirname, '..', 'lib/reconciliation/import-orchestrator.ts'),
     'utf-8',
   )
-  it('grava ledgerBal + ledgerBalDate do OFX na conta', () => {
+  it('grava ledgerBal + ledgerBalDate = ÂNCORA do perfil (FASE 2 12/08: não mais dtAsOf cru)', () => {
     expect(code).toMatch(/ledgerBal:\s*ledgerBalance/)
-    expect(code).toMatch(/ledgerBalDate:\s*dtAsOf/)
+    // ledgerBalDate = anchor (resolvido pelo perfil do banco), NÃO o dtAsOf cru —
+    // conserta o dead-zone do Sicredi (DTASOF no fim do mês). Ver cross-bank.test.ts
+    // pra prova COMPORTAMENTAL da resolução da âncora por banco.
+    expect(code).toMatch(/ledgerBalDate:\s*anchor/)
   })
   it('chama recalcularSaldoConta DENTRO do $transaction (tx, não prisma global)', () => {
     expect(code).toMatch(/recalcularSaldoConta\(tx,\s*input\.bankAccountId\)/)

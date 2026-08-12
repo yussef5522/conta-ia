@@ -43,6 +43,7 @@ import {
   type ImportDecision,
 } from '@/lib/ofx/decisions'
 import { partitionFutureLines, settledThroughDate } from '@/lib/ofx/future-line'
+import { resolveBankProfile, resolveStatementAnchor, bankProfileWarning } from '@/lib/bank-profiles'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -421,11 +422,32 @@ export async function POST(request: NextRequest, { params }: Params) {
     // rodava no CONFIRM; o PREVIEW oferecia as linhas agendadas (10/11/17/08) e
     // ainda concluía "divergência histórica". Aqui particionamos TAMBÉM no
     // preview: as reais alimentam o payload; as futuras vão numa seção separada
-    // (não-selecionável na UI) via `futuras`. dtAsOf = DTASOF do LEDGERBAL.
-    // Âncora = max(DTASOF, DTEND) — now-independente e não descarta real dentro
-    // do período (ver settledThroughDate). Fallback só se o OFX não trouxer nenhum.
-    const dtAsOfPreview =
-      settledThroughDate(ledgerBalance?.asOfDate, statementEnd) ?? periodArquivoEnd ?? new Date()
+    // (não-selecionável na UI) via `futuras`.
+    //
+    // ÂNCORA DIRIGIDA PELO PERFIL DO BANCO (FASE 2, 12/08): resolve pelo BANKID.
+    // Banrisul/Stone: max(DTASOF, DTEND). Sicredi: DTASOF no fim do mês (futuro)
+    // → última tx real (senão a validação de saldo fica toothless). Banco
+    // desconhecido → conservador + WARNING pra tela (bankProfileWarning).
+    const bankProfile = resolveBankProfile(bankId)
+    const previewToday = new Date()
+    const lastRealTxMs = transactions.reduce<number | null>((m, t) => {
+      const ts = t.datePosted.getTime()
+      return ts <= previewToday.getTime() && (m === null || ts > m) ? ts : m
+    }, null)
+    const anchorRes = resolveStatementAnchor(bankProfile, {
+      dtAsOf: ledgerBalance?.asOfDate ?? null,
+      dtEnd: statementEnd ?? null,
+      lastRealTxDate: lastRealTxMs != null ? new Date(lastRealTxMs) : null,
+      today: previewToday,
+    })
+    const dtAsOfPreview = anchorRes.anchor ?? periodArquivoEnd ?? new Date()
+    const bankProfilePayload = {
+      id: bankProfile?.id ?? null,
+      displayName: bankProfile?.displayName ?? null,
+      anchorRule: anchorRes.rule,
+      anchorDate: dtAsOfPreview.toISOString(),
+      warning: bankProfileWarning(bankProfile, bankId ?? null),
+    }
     const { realLines: novasReais, futureLines: novasFuturas } = partitionFutureLines(
       novas,
       dtAsOfPreview,
@@ -457,6 +479,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         categorySuggestions,
         categoriesForUI,
         ownEntityRefs,
+        bankProfile: bankProfilePayload,
       })
     }
 
@@ -489,6 +512,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         categorySuggestions,
         categoriesForUI,
         ownEntityRefs,
+        bankProfile: bankProfilePayload,
         mensagem:
           futurasPayload.length > 0
             ? `Nenhuma transação nova pra importar. ${futurasPayload.length} lançamento${futurasPayload.length !== 1 ? 's futuros (agendados)' : ' futuro (agendado)'} não ${futurasPayload.length !== 1 ? 'entram' : 'entra'} — o resto já existia.`
@@ -581,6 +605,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         categorySuggestions,
         categoriesForUI,
         ownEntityRefs,
+        bankProfile: bankProfilePayload,
       })
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)

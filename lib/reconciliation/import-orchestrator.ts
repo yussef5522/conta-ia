@@ -21,7 +21,8 @@ import { prepareBalanceTransactions } from '@/lib/balance/prepare'
 import { parseStatementFromOFX } from './parse-statement-from-ofx'
 import { reconcileStatement } from './reconcile-statement'
 import { buildReconcileUniverse } from './reconcile-universe'
-import { partitionFutureLines, settledThroughDate, reconcileLedgerAnchorDay } from '../ofx/future-line'
+import { partitionFutureLines, reconcileLedgerAnchorDay } from '../ofx/future-line'
+import { resolveBankProfile, resolveStatementAnchor } from '../bank-profiles'
 import { stableKey } from './stable-key'
 import { buildLineDedupHash, makeOccurrenceCounter } from './line-dedup-hash'
 import { isReconcileV2Enabled } from './flag'
@@ -132,11 +133,28 @@ export async function runImportV2(
   if (lines.length === 0) throw new Error('OFX sem transações — abort')
 
   // 1.5 DESCARTE DE MOVIMENTO FUTURO (07/08; fix âncora 09/08): o extrato só
-  // registra o passado. Linha com data > max(DTASOF, DTEND) — o "liquidado até
-  // aqui" do extrato — NÃO vira transação (é descartada e reportada, nunca some
-  // em silêncio). Âncora now-INDEPENDENTE: importar no dia seguinte não faz a
-  // agendada de +1 passar (bug 09/08). Ver lib/ofx/future-line.ts.
-  const anchor = settledThroughDate(dtAsOf, parsed.statementEnd) ?? dtAsOf
+  // registra o passado. Linha com data > âncora — o "liquidado até aqui" — NÃO
+  // vira transação (é descartada e reportada, nunca some em silêncio).
+  //
+  // ÂNCORA DIRIGIDA PELO PERFIL DO BANCO (FASE 2, 12/08): resolve pelo BANKID do
+  // arquivo. Banrisul/Stone: max(DTASOF, DTEND) (DTASOF = dia da emissão). Sicredi:
+  // DTASOF vem no FIM DO MÊS (futuro) → âncora pela última tx real, senão a
+  // validação Σ×LEDGERBAL fica toothless e o `ledgerBalDate` no futuro engole tx
+  // reais no "dead-zone" última-tx→fim-do-mês. Regra dura: DTASOF>hoje → última tx.
+  const importToday = input.today ?? new Date()
+  const bankProfile = resolveBankProfile(parsed.bankId)
+  const lastRealTxMs = lines.reduce<number | null>((m, l) => {
+    const t = l.datePosted.getTime()
+    return t <= importToday.getTime() && (m === null || t > m) ? t : m
+  }, null)
+  const anchorRes = resolveStatementAnchor(bankProfile, {
+    dtAsOf,
+    dtEnd: parsed.statementEnd,
+    lastRealTxDate: lastRealTxMs != null ? new Date(lastRealTxMs) : null,
+    today: importToday,
+  })
+  const anchor = anchorRes.anchor ?? dtAsOf
+  console.log(`[RECONCILE_V2] banco=${bankProfile?.id ?? 'DESCONHECIDO'} âncora=${anchor.toISOString().slice(0, 10)} regra=${anchorRes.rule} — ${anchorRes.reason}`)
   const { realLines, futureLines } = partitionFutureLines(lines, anchor, input.today)
   const futureSet = new Set(futureLines)
   if (futureLines.length > 0) {
@@ -473,9 +491,15 @@ export async function runImportV2(
   // saldo da conta DENTRO deste mesmo $transaction (antes o V2 nunca recalculava
   // → saldo ficava travado). recalcularSaldoConta ANCORA no ledgerBal, então
   // NUNCA assume abertura 0 — respeita a abertura/histórico da conta.
+  //
+  // ledgerBalDate = ÂNCORA do perfil, NÃO o DTASOF cru (FASE 2, 12/08). Pro
+  // Banrisul/Stone é o mesmo (âncora==DTASOF). Pro Sicredi conserta o dead-zone:
+  // com DTASOF=31/08 (futuro), o recalc `Σ(EFFECTED > ledgerBalDate)` engolia tx
+  // reais entre a última tx e o fim do mês; com a âncora na última tx real, elas
+  // voltam a contar e a validação Σ×LEDGERBAL volta a ter dente.
   await tx.bankAccount.update({
     where: { id: input.bankAccountId },
-    data: { ledgerBal: ledgerBalance, ledgerBalDate: dtAsOf },
+    data: { ledgerBal: ledgerBalance, ledgerBalDate: anchor },
   })
   const recalc = await recalcularSaldoConta(tx, input.bankAccountId)
 

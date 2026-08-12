@@ -47,6 +47,15 @@ interface PreviewResult {
   // serão importadas. Seção separada não-selecionável (o banco viu; o sistema
   // decidiu não importar). NÃO some em silêncio.
   futuras?: Array<{ date: string; signedAmount: number; memo: string; fitid: string }>
+  // FASE 2 (12/08) — perfil do banco resolvido pelo BANKID + warning pra tela
+  // (banco desconhecido/ficha incompleta → o usuário VÊ na hora, não só no log).
+  bankProfile?: {
+    id: string | null
+    displayName: string | null
+    anchorRule: string
+    anchorDate: string
+    warning: { code: string; bankid: string | null; message: string } | null
+  }
   // Sprint Import Categoria Editável (18/06/2026)
   categorySuggestions?: CategorySuggestion[]
   categoriesForUI?: CategoryOption[]
@@ -726,6 +735,28 @@ export default function ImportarOFXPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* FASE 2 (12/08) — WARNING de banco desconhecido / ficha incompleta. Tem
+          que aparecer NA HORA do import, na tela, não só no log. */}
+      {preview?.bankProfile?.warning && (
+        <Card className="border-amber-400 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/40">
+          <CardContent className="py-4">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+                  {preview.bankProfile.warning.code === 'BANK_UNKNOWN'
+                    ? 'Banco não reconhecido'
+                    : 'Ficha do banco incompleta'}
+                </p>
+                <p className="text-xs text-amber-800 dark:text-amber-300 mt-0.5">
+                  {preview.bankProfile.warning.message}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Sprint Preview-Futuro (09/08/2026) — agendadas (data futura): o banco
           exportou, mas extrato = passado → NÃO importadas. Seção separada,
