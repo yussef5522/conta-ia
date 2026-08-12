@@ -14,7 +14,7 @@ const MS_DAY = 86400000
 
 export async function detectTransfersForCompany(
   companyId: string,
-  opts: { sinceDays?: number; cap?: number } = {},
+  opts: { sinceDays?: number; cap?: number; matchOwnerName?: boolean } = {},
 ): Promise<UnifiedDetectResult> {
   const since = new Date(Date.now() - (opts.sinceDays ?? 365) * MS_DAY)
 
@@ -69,5 +69,5 @@ export async function detectTransfersForCompany(
       status: t.status,
     }))
 
-  return detectTransfers(txs, { refs, valorComum })
+  return detectTransfers(txs, { refs, valorComum, matchOwnerName: opts.matchOwnerName })
 }

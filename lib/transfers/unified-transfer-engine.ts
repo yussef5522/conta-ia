@@ -84,6 +84,11 @@ export interface UnifiedDetectOptions {
   /** tolerância de "valor próximo" (tarifa) pra camada 3/busca manual. Default
    *  1% do valor (mín 1 centavo). Camadas 1/2 SEMPRE exigem valor exato. */
   tarifaTolerance?: (amount: number) => number
+  /** FASE 4 (12/08): reconhecer NOME de sócio cadastrado (refs.ownerNames) como
+   *  "próprio", não terceiro. NARROW — só com valor exato + MESMO DIA + keyword.
+   *  Camada 2 (0.85, não 0.99): nome é sinal forte mas NÃO prova (homônimo).
+   *  Default OFF (shadow-run antes de ligar). */
+  matchOwnerName?: boolean
 }
 
 export interface UnifiedDetectResult {
@@ -135,10 +140,19 @@ export function classifyTransferPair(
   const sigC = extractOwnSignals(c.description, opts.refs)
   const ownEntity =
     sigD.hasOwnCnpj || sigD.hasOwnerCpf || sigC.hasOwnCnpj || sigC.hasOwnerCpf
-  // Anti-pessoa (regra 4 do A): pessoa numa perna SEM CNPJ próprio = terceiro.
+  // FASE 4 (12/08): nome de sócio cadastrado (hasOwnerName = nome COMPLETO como
+  // substring, normalizado — homônimo "YUSSEF NEDAL..." NÃO casa "yussef abu
+  // zahry musa") reconhecido como próprio. Gated por opts.matchOwnerName. NÃO
+  // entra em `ownEntity` (camada 1 é reservada ao CNPJ documental).
+  const matchOwner = opts.matchOwnerName === true
+  const ownNameD = matchOwner && sigD.hasOwnerName
+  const ownNameC = matchOwner && sigC.hasOwnerName
+  const ownerNameSignal = ownNameD || ownNameC
+  // Anti-pessoa (regra 4 do A): pessoa numa perna SEM sinal próprio = terceiro.
+  // Sinal próprio = CNPJ/CPF próprio OU (com a flag) nome de sócio cadastrado.
   const thirdPartyName =
-    (hasPersonName(d.description) && !(sigD.hasOwnCnpj || sigD.hasOwnerCpf)) ||
-    (hasPersonName(c.description) && !(sigC.hasOwnCnpj || sigC.hasOwnerCpf))
+    (hasPersonName(d.description) && !(sigD.hasOwnCnpj || sigD.hasOwnerCpf || ownNameD)) ||
+    (hasPersonName(c.description) && !(sigC.hasOwnCnpj || sigC.hasOwnerCpf || ownNameC))
 
   const scoring: ScoringResult = scorePair(
     { description: d.description, amount: Math.abs(d.amount), type: 'DEBIT', date: d.date },
@@ -173,6 +187,15 @@ export function classifyTransferPair(
   // ── CAMADA 1 — determinística: CNPJ/CPF próprio + mesmo dia + valor exato ──
   if (ownEntity && sameDay && exactValue) {
     return mk('DETERMINISTIC', 0.99, 'Camada 1 (0.99): CNPJ/CPF próprio no memo + mesmo dia + valor exato')
+  }
+
+  // ── CAMADA 2 (nome do sócio) — FASE 4: nome de sócio cadastrado no memo (sinal
+  // FORTE, não prova → não é camada 1). NARROW: exige a combinação COMPLETA —
+  // nome exato de sócio + valor EXATO + MESMO DIA + keyword de transferência +
+  // sem terceiro. Sinal oposto e contas ≠ da mesma empresa o caller garante.
+  // Confiança 0.85 (honesta: pode haver homônimo, apesar do match de nome completo).
+  if (ownerNameSignal && !thirdPartyName && exactValue && sameDay && transferKeyword) {
+    return mk('STRONG', Math.max(0.85, scoring.confidence), 'Camada 2 (nome do sócio no memo + mesmo dia + valor exato + palavra de transferência)')
   }
 
   // ── CAMADA 2 — forte: valor exato + D±1..3 + keyword transfer + sem terceiro ──
