@@ -2,6 +2,19 @@
   "extends": ["next/core-web-vitals"],
   "rules": {
     "@typescript-eslint/no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }],
-    "@typescript-eslint/no-explicit-any": "warn"
-  }
+    "@typescript-eslint/no-explicit-any": "warn",
+    "no-restricted-syntax": [
+      "error",
+      {
+        "selector": "CallExpression[callee.property.name='create'][callee.object.property.name='ofxImport']",
+        "message": "Não crie OfxImport direto — use createOfxImportRecord (lib/ofx/persist-import.ts) pra SEMPRE gravar o rawOfxBlob (Sprint rawOfxBlob 13/08). Ponto obrigatório."
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["lib/ofx/persist-import.ts"],
+      "rules": { "no-restricted-syntax": "off" }
+    }
+  ]
 }

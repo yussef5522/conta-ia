@@ -9,6 +9,7 @@ import { z } from 'zod'
 import { createHash } from 'crypto'
 import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { createOfxImportRecord } from '@/lib/ofx/persist-import'
 import { checkCreditCardPjFlag } from '@/lib/credit-card-pj/feature-flag'
 import { computeIdentity } from '@/lib/import-identity/compute-identity'
 
@@ -150,22 +151,23 @@ export async function POST(request: NextRequest, { params }: Params) {
     placeholderBankAccountId = firstAcc.id
   }
 
-  const importRow = await prisma.ofxImport.create({
-    data: {
-      bankAccountId: placeholderBankAccountId,
-      userId: user.sub,
-      status: 'PROCESSING',
-      fileName: body.fileName,
-      fileSize: body.fileSizeBytes,
-      totalTransactions: body.lines.length,
-      duplicates: 0,
-      periodStart,
-      periodEnd,
-      ipAddress,
-      userAgent,
-      fileHash: createHash('sha256').update(JSON.stringify(body.lines)).digest('hex'),
-      source: 'CREDIT_CARD_PDF',
-    },
+  // Sprint rawOfxBlob (13/08): cartão também grava o cru. Aqui o "cru" é o JSON
+  // das linhas da fatura (o PDF já foi parseado no preview); é o que o sistema
+  // recebeu e decidiu importar. Mesmo ponto obrigatório (createOfxImportRecord).
+  const rawLines = JSON.stringify(body.lines)
+  const importRow = await createOfxImportRecord(prisma, {
+    bankAccountId: placeholderBankAccountId,
+    userId: user.sub,
+    fileName: body.fileName,
+    fileSize: body.fileSizeBytes,
+    rawOfx: rawLines,
+    fileHash: createHash('sha256').update(rawLines).digest('hex'),
+    source: 'CREDIT_CARD_PDF',
+    ipAddress,
+    userAgent,
+    totalTransactions: body.lines.length,
+    periodStart,
+    periodEnd,
   })
 
   // Computa identidades pra dedup

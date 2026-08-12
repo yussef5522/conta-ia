@@ -27,6 +27,7 @@ import { stableKey } from './stable-key'
 import { buildLineDedupHash, makeOccurrenceCounter } from './line-dedup-hash'
 import { isReconcileV2Enabled } from './flag'
 import { recalcularSaldoConta } from '@/lib/balance/recalcular'
+import { createOfxImportRecord, finalizeOfxImport } from '@/lib/ofx/persist-import'
 import type { DbBankTransaction } from './types'
 
 export interface ImportOrchestratorInput {
@@ -36,6 +37,10 @@ export interface ImportOrchestratorInput {
   fileName: string
   ipAddress?: string
   userAgent?: string
+  // Sprint rawOfxBlob (13/08): registro de import criado CEDO pelo caller (com o
+  // blob, status PROCESSING) — o orchestrator só ATUALIZA (finalize). Se ausente,
+  // cria via createOfxImportRecord (backward-compat). Ou seja: SEMPRE grava blob.
+  importId?: string
   // Override opcional pro corte min(DTASOF, today). Default = new Date().
   // Em testes ou simulações determinísticas é útil; em prod normal não passar.
   today?: Date
@@ -289,26 +294,22 @@ export async function runImportV2(
     select: { companyId: true },
   })
 
-  const newImport = await tx.ofxImport.create({
-    data: {
-      bankAccountId: input.bankAccountId,
-      userId: input.userId,
-      status: 'SUCCESS',
-      fileName: input.fileName,
-      fileSize: input.rawOfx.length,
-      totalTransactions: parsed.transactions.length,
-      newTransactions: effectiveMissing.length + result.previews.length,
-      duplicates: result.matched.length,
-      autoClassified: 0,
-      periodStart: minDate,
-      periodEnd: dtAsOf,
-      ipAddress: input.ipAddress ?? null,
-      userAgent: input.userAgent ?? null,
-    },
-  })
-
-  // rawOfxBlob via raw porque schema.prisma do client ainda não conhece o campo
-  await tx.$executeRaw`UPDATE ofx_imports SET "rawOfxBlob"=${input.rawOfx} WHERE id=${newImport.id}`
+  // Registro do import: se o caller já criou CEDO (com blob, PROCESSING), usa —
+  // e finaliza no fim. Senão cria via helper (SEMPRE grava o blob). Nunca mais
+  // um OfxImport sem o cru. Ver lib/ofx/persist-import.ts.
+  const newImport =
+    input.importId != null
+      ? { id: input.importId }
+      : await createOfxImportRecord(tx, {
+          bankAccountId: input.bankAccountId,
+          userId: input.userId,
+          fileName: input.fileName,
+          fileSize: input.rawOfx.length,
+          rawOfx: input.rawOfx,
+          ipAddress: input.ipAddress ?? null,
+          userAgent: input.userAgent ?? null,
+          totalTransactions: parsed.transactions.length,
+        })
 
   // 6. Persistir statement_lines (espelho cru, COM flag isPreview por linha).
   // Persiste TODAS as linhas (inclui as futuras descartadas) pra auditoria; a
@@ -518,6 +519,26 @@ export async function runImportV2(
       `[RECONCILE_V2] LEDGERBAL NÃO FECHA: calculado ${recalc.saldoDepois} vs LEDGERBAL ${ledgerBalance} (dif ${ledgerMismatch.diferenca}) — revisar classificação`,
     )
   }
+
+  // 12. FINALIZE (Sprint rawOfxBlob 2.4): fecha o registro com status + contadores
+  // + CONTEXTO DA DECISÃO (âncora, regra, perfil de banco, LEDGERBAL fechou?, dif).
+  // O blob já foi gravado na criação (cedo). Aqui vai o que o SISTEMA entendeu.
+  await finalizeOfxImport(tx, newImport.id, {
+    status: 'SUCCESS',
+    totalTransactions: parsed.transactions.length,
+    newTransactions: effectiveMissing.length + result.previews.length,
+    duplicates: result.matched.length,
+    autoClassified: overridesApplied,
+    futureDiscarded: descartadasFuturas.length,
+    periodStart: minDate,
+    periodEnd: dtAsOf,
+    anchorDate: anchor,
+    anchorRule: anchorRes.rule,
+    bankProfile: bankProfile?.id ?? null,
+    ledgerBalAmount: ledgerBalance,
+    ledgerBalMatched: ledgerBalance != null ? ledgerMismatch === null : null,
+    ledgerBalDiff: ledgerMismatch?.diferenca ?? null,
+  })
 
   return {
     importId: newImport.id,

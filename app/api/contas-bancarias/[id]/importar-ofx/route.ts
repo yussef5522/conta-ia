@@ -6,6 +6,7 @@ import { detectarBanco, bateComPerfilDaConta } from '@/lib/ofx/bancos'
 import { dedupHashOFX, filtrarNovasOFX } from '@/lib/ofx/dedup'
 import { computeIdentity } from '@/lib/import-identity/compute-identity'
 import { computeFileHash } from '@/lib/import-identity/file-hash'
+import { createOfxImportRecord, finalizeOfxImport } from '@/lib/ofx/persist-import'
 import { applyIdentityGate, type GateInput } from '@/lib/import-identity/apply-gate'
 import { loadLedgerState } from '@/lib/import-identity/ledger-queries'
 import { findBatchWarnings } from '@/lib/import-identity/batch-overlap'
@@ -144,6 +145,21 @@ export async function POST(request: NextRequest, { params }: Params) {
       undefined
     const userAgent = request.headers.get('user-agent')?.slice(0, 500) ?? undefined
 
+    // Sprint rawOfxBlob (13/08): cria o registro CEDO (com o blob, PROCESSING)
+    // ANTES da transação de import — o cru sobrevive mesmo se o import falhar ou
+    // criar 0 tx (é justo aí que se investiga). O orchestrator só ATUALIZA.
+    const preImport = await createOfxImportRecord(prisma, {
+      bankAccountId: contaId,
+      userId: user.sub,
+      fileName: uploadedFileName,
+      fileSize: rawContent.length,
+      rawOfx: rawContent,
+      fileHash: computeFileHash(new TextEncoder().encode(rawContent)),
+      source: 'OFX',
+      ipAddress: ipAddress ?? null,
+      userAgent: userAgent ?? null,
+      totalTransactions: transactions.length,
+    })
     try {
       const result = await prisma.$transaction(
         async (tx) =>
@@ -154,6 +170,8 @@ export async function POST(request: NextRequest, { params }: Params) {
             fileName: uploadedFileName,
             ipAddress,
             userAgent,
+            // registro já criado com o blob → orchestrator finaliza este id.
+            importId: preImport.id,
             // Fix regressão (06/08): repassa as categorias escolhidas no preview.
             // Sem isto o V2 criava tudo PENDING/sem categoria (branch legado
             // applyCategoryOverrides na L657 é inalcançável com a flag ON).
@@ -200,6 +218,12 @@ export async function POST(request: NextRequest, { params }: Params) {
         errosParser: errors,
       })
     } catch (e: unknown) {
+      // O blob JÁ está gravado (criado cedo). Marca o registro como FAILED pra
+      // ele não ficar PROCESSING pra sempre — mas o cru fica pra investigar.
+      await finalizeOfxImport(prisma, preImport.id, {
+        status: 'FAILED',
+        errorMessage: (e instanceof Error ? e.message : String(e)).slice(0, 500),
+      }).catch(() => {})
       // Loga o erro TÉCNICO completo no servidor (pm2) — nunca vai pro client.
       const friendly = toFriendlyImportError(e)
       console.error('[importar-ofx RECONCILE_V2] falhou:', {
@@ -248,23 +272,20 @@ export async function POST(request: NextRequest, { params }: Params) {
       datasArquivoEarly.length > 0 ? new Date(Math.min(...datasArquivoEarly)) : null
     const periodEndEarly =
       datasArquivoEarly.length > 0 ? new Date(Math.max(...datasArquivoEarly)) : null
-    importRowPre = await prisma.ofxImport.create({
-      data: {
-        bankAccountId: contaId,
-        userId: user.sub,
-        status: 'PROCESSING',
-        fileName: uploadedFileName,
-        fileSize: rawContent.length,
-        totalTransactions: transactions.length,
-        duplicates: 0,
-        periodStart: periodStartEarly,
-        periodEnd: periodEndEarly,
-        ipAddress: ipAddressEarly,
-        userAgent: userAgentEarly,
-        fileHash: fileHashEarly,
-        source: 'OFX',
-      },
-      select: { id: true },
+    // Sprint rawOfxBlob (13/08): caminho V1/legado também grava o cru (via helper).
+    importRowPre = await createOfxImportRecord(prisma, {
+      bankAccountId: contaId,
+      userId: user.sub,
+      fileName: uploadedFileName,
+      fileSize: rawContent.length,
+      rawOfx: rawContent,
+      fileHash: fileHashEarly,
+      source: 'OFX',
+      ipAddress: ipAddressEarly,
+      userAgent: userAgentEarly,
+      totalTransactions: transactions.length,
+      periodStart: periodStartEarly,
+      periodEnd: periodEndEarly,
     })
     try {
       const r = await reconcileTransferPlaceholders(prisma, transactions, {
@@ -683,22 +704,20 @@ export async function POST(request: NextRequest, { params }: Params) {
         where: { id: importRowPre.id },
         data: { duplicates: duplicadas + reconciledCount },
       })
-    : await prisma.ofxImport.create({
-        data: {
-          bankAccountId: contaId,
-          userId: user.sub,
-          status: 'PROCESSING',
-          fileName: uploadedFileName,
-          fileSize: rawContent.length,
-          totalTransactions: transactions.length,
-          duplicates: duplicadas,
-          periodStart,
-          periodEnd,
-          ipAddress,
-          userAgent,
-          fileHash: fileHashHex,
-          source: 'OFX',
-        },
+    : await createOfxImportRecord(prisma, {
+        bankAccountId: contaId,
+        userId: user.sub,
+        fileName: uploadedFileName,
+        fileSize: rawContent.length,
+        rawOfx: rawContent, // ← V1 fallback também grava o cru
+        fileHash: fileHashHex,
+        source: 'OFX',
+        ipAddress,
+        userAgent,
+        totalTransactions: transactions.length,
+        duplicates: duplicadas,
+        periodStart,
+        periodEnd,
       })
 
   // Fase 3 Etapa 1: AUTO-CLASSIFY via regras EXACT (≥0.95) ANTES do insert.

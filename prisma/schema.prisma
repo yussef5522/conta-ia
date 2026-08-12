@@ -1379,6 +1379,22 @@ model OfxImport {
   fileHash          String?
   // source = OFX | EXCEL | PDF | MANUAL — registra canal de origem do batch
   source            String    @default("OFX")
+  // Sprint rawOfxBlob (13/08/2026) — conteúdo CRU do arquivo aceito. Grava SEMPRE
+  // (todo caminho passa por createOfxImportRecord). Coluna já existia (migration
+  // 20260612210000) como raw; agora é campo de primeira classe. RETENÇÃO: expurgar
+  // o BLOB após 12 meses (LGPD — tem PII de terceiro), mantendo a metadata.
+  rawOfxBlob        String?
+  blobPurgedAt      DateTime? // quando o blob foi expurgado (metadata fica)
+  // Sprint rawOfxBlob 2.4 — CONTEXTO DA DECISÃO (o que o SISTEMA entendeu, não só
+  // o que o banco mandou). Vale mais que o blob pra investigar: mostra a decisão
+  // sem reprocessar. Preenchido no finalize do import.
+  futureDiscarded   Int       @default(0)  // nº de linhas futuras/agendadas descartadas
+  anchorDate        DateTime? // âncora "liquidado até aqui" usada no descarte
+  anchorRule        String?   // DTASOF | LAST_REAL_TX | FUTURE_FALLBACK | UNKNOWN_CONSERVATIVE
+  bankProfile       String?   // perfil resolvido: BANRISUL | SICREDI | STONE | CAIXA | null
+  ledgerBalAmount   Float?    // LEDGERBAL declarado pelo arquivo
+  ledgerBalMatched  Boolean?  // o saldo fechou com o LEDGERBAL?
+  ledgerBalDiff     Float?    // diferença quando não fechou
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 

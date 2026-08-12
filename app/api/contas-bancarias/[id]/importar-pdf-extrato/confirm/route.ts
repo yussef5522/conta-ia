@@ -16,6 +16,7 @@ import { z } from 'zod'
 import { createHash } from 'crypto'
 import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { createOfxImportRecord } from '@/lib/ofx/persist-import'
 import { checkPdfBankStatementFlag } from '@/lib/pdf-bank-statement/feature-flag'
 import { computeIdentity } from '@/lib/import-identity/compute-identity'
 import { statusFromCategoryId } from '@/lib/transacoes/needs-review'
@@ -116,25 +117,22 @@ export async function POST(request: NextRequest, { params }: Params) {
   const periodStart = dates.length > 0 ? new Date(Math.min(...dates)) : null
   const periodEnd = dates.length > 0 ? new Date(Math.max(...dates)) : null
 
-  // OfxImport (master record do batch — usa source='PDF')
-  const importRow = await prisma.ofxImport.create({
-    data: {
-      bankAccountId: contaId,
-      userId: user.sub,
-      status: 'PROCESSING',
-      fileName: body.fileName,
-      fileSize: body.fileSizeBytes,
-      totalTransactions: body.lines.length,
-      duplicates: 0,
-      periodStart,
-      periodEnd,
-      ipAddress,
-      userAgent,
-      fileHash:
-        body.fileSha256 ??
-        createHash('sha256').update(JSON.stringify(body.lines)).digest('hex'),
-      source: 'PDF',
-    },
+  // OfxImport (master record do batch — source='PDF'). Sprint rawOfxBlob (13/08):
+  // grava o cru (JSON das linhas extraídas do PDF) via ponto obrigatório.
+  const rawLines = JSON.stringify(body.lines)
+  const importRow = await createOfxImportRecord(prisma, {
+    bankAccountId: contaId,
+    userId: user.sub,
+    fileName: body.fileName,
+    fileSize: body.fileSizeBytes,
+    rawOfx: rawLines,
+    fileHash: body.fileSha256 ?? createHash('sha256').update(rawLines).digest('hex'),
+    source: 'PDF',
+    ipAddress,
+    userAgent,
+    totalTransactions: body.lines.length,
+    periodStart,
+    periodEnd,
   })
 
   // Atomic: filtra duplicatas explicitamente (em vez de skipDuplicates) +
