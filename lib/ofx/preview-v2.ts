@@ -157,6 +157,8 @@ export type LedgerBalHipoteseTipo =
   | 'historico_errado'        // balance pré-existente diverge do banco
   | 'linhas_futuras'          // diff == soma das linhas futuras (agendadas)
   | 'agendada_dia_ancora'     // diff == linha(s) do DIA DA ÂNCORA ainda não liquidadas (CAMADA 2)
+  | 'todas_novas_transferencia' // diff == Σ(novas) e LEDGERBAL==balanceAtual → transferências internas
+  | 'causa_desconhecida'      // NENHUMA hipótese explica a diferença — admitir em vez de chutar
 
 export interface LedgerBalHipotese {
   tipo: LedgerBalHipoteseTipo
@@ -303,38 +305,68 @@ export function buildLedgerBalCheck(input: {
     futurasSum !== 0 && Math.abs(diff + futurasSum) <= LEDGER_BAL_TOLERANCE
 
   // CAMADA 2 (11/08): quando a diferença bate com linha(s) do DIA DA ÂNCORA que
-  // ainda não liquidaram, a causa é ESSA — NÃO "duplicata" (o bug do diagnóstico
-  // de 11/08). Lidera a lista e demove a hipótese de duplicata.
+  // ainda não liquidaram, a causa é ESSA. `agendadaDiaAncora` só chega aqui quando
+  // o subconjunto do dia REALMENTE soma a diferença (ver buildV2PreviewPayload) —
+  // não basta EXISTIR linha do dia (foi o bug: acusava "agendada" no Stone 70k).
   const ancora = input.agendadaDiaAncora
   const isAgendadaDia = !!ancora && ancora.suspeitos.length > 0
 
+  // NOVO (12/08): a diferença é EXATAMENTE o delta proposto E o banco declara o
+  // MESMO saldo de antes (LEDGERBAL == balanceAtual) → as novas somam à diferença.
+  // Caso Stone 70k: 6 créditos "YUSSEF" (transferências internas) cujo OUTRO LADO
+  // já está no sistema. O sistema TINHA o dado (a soma bate) — agora usa.
+  // ≥2 novas: com UMA só, "dup_marcada_nova" (mais específico) explica melhor.
+  const isTodasNovas =
+    input.novasGenuinas.length >= 2 &&
+    Math.abs(input.ledgerBalance.amount - input.balanceAtual) <= LEDGER_BAL_TOLERANCE &&
+    Math.abs(deltaImportProposto) > LEDGER_BAL_TOLERANCE
+
+  // REGRA (12/08): só LIDERA com uma hipótese quando ela REALMENTE explica a
+  // diferença. Se NENHUMA explica → "não identifiquei a causa" (admitir é mais
+  // útil que apontar o lugar errado). Já chutou causa errada 4× (duplicata,
+  // histórico, agendada) — não pode mais.
+  // histórico errado EXPLICA quando o import não propôs delta (≈0 novas) mas o
+  // saldo não bate: o problema é PRÉ-EXISTENTE, não deste import (por eliminação).
+  const isHistorico = Math.abs(deltaImportProposto) <= LEDGER_BAL_TOLERANCE
+  const lider =
+    isAgendadaDia ? 'agendada_dia_ancora'
+    : isFuturas ? 'linhas_futuras'
+    : isTodasNovas ? 'todas_novas_transferencia'
+    : hasSuspeitoNova ? 'dup_marcada_nova'
+    : isHistorico ? 'historico_errado'
+    : 'causa_desconhecida'
+  const fmtDiff = `R$ ${Math.abs(diff).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+
   const hipoteses: LedgerBalHipotese[] = [
     ...(isFuturas
-      ? [
-          {
-            tipo: 'linhas_futuras' as const,
-            label:
-              'A diferença é exatamente a soma dos lançamentos futuros (agendados) — eles não entram no saldo. Nada errado.',
-            maisProvavel: !isAgendadaDia,
-          },
-        ]
+      ? [{
+          tipo: 'linhas_futuras' as const,
+          label: 'A diferença é exatamente a soma dos lançamentos futuros (agendados) — eles não entram no saldo. Nada errado.',
+          maisProvavel: lider === 'linhas_futuras',
+        }]
       : []),
     ...(isAgendadaDia
-      ? [
-          {
-            tipo: 'agendada_dia_ancora' as const,
-            label: ancora!.ambiguous
-              ? 'A diferença bate com lançamento(s) do dia — o banco listou mas ainda não debitou. Como há mais de um candidato, confirme qual não liquidou.'
-              : 'A diferença é exatamente um lançamento do dia — o banco listou mas ainda não debitou (agendado). Não é duplicata.',
-            maisProvavel: true,
-            suspeitos: ancora!.suspeitos,
-          },
-        ]
+      ? [{
+          tipo: 'agendada_dia_ancora' as const,
+          label: ancora!.ambiguous
+            ? 'A diferença bate com lançamento(s) do dia — o banco listou mas ainda não debitou. Como há mais de um candidato, confirme qual não liquidou.'
+            : 'A diferença é exatamente um lançamento do dia — o banco listou mas ainda não debitou (agendado). Não é duplicata.',
+          maisProvavel: lider === 'agendada_dia_ancora',
+          suspeitos: ancora!.suspeitos,
+        }]
+      : []),
+    ...(isTodasNovas
+      ? [{
+          tipo: 'todas_novas_transferencia' as const,
+          label: `A diferença (${fmtDiff}) é exatamente a soma das ${input.novasGenuinas.length} transações novas deste import. Provável que sejam transferências internas cujo outro lado já está no sistema (o banco não mudou o saldo). Confira antes de importar.`,
+          maisProvavel: lider === 'todas_novas_transferencia',
+          suspeitos: input.novasGenuinas.map((t) => t.ofxIndex),
+        }]
       : []),
     {
       tipo: 'dup_marcada_nova',
       label: 'Alguma transação marcada como nova é, na verdade, duplicata (vai contar 2×).',
-      maisProvavel: !isFuturas && !isAgendadaDia && hasSuspeitoNova,
+      maisProvavel: lider === 'dup_marcada_nova',
       suspeitos: hasSuspeitoNova ? suspeitosNovas : undefined,
     },
     {
@@ -342,11 +374,20 @@ export function buildLedgerBalCheck(input: {
       label: 'Alguma transação marcada como "já no sistema" era real (faltando no balance).',
       maisProvavel: false,
     },
+    // histórico errado é POSSIBILIDADE, nunca LÍDER — não é verificável. Fica
+    // listada, mas não "chuta". Quando nada explica, quem lidera é causa_desconhecida.
     {
       tipo: 'historico_errado',
       label: 'Balance pré-existente diverge do banco (estrago histórico não relacionado a este import).',
-      maisProvavel: !isFuturas && !isAgendadaDia && !hasSuspeitoNova,
+      maisProvavel: lider === 'historico_errado',
     },
+    ...(lider === 'causa_desconhecida'
+      ? [{
+          tipo: 'causa_desconhecida' as const,
+          label: `Não identifiquei a causa desta diferença de ${fmtDiff}. Ela não bate com lançamentos futuros, agendados do dia, com todas as novas somadas, nem com uma transação nova isolada. Confira transações recentes ou aguardando par antes de importar.`,
+          maisProvavel: true,
+        }]
+      : []),
   ]
 
   return {
@@ -526,13 +567,15 @@ export function buildV2PreviewPayload(input: {
           novasFinais.push(n)
         }
       }
-    } else if (camada2.ambiguous || (!camada2.resolved && camada2.anchorDayKeys.length > 0)) {
-      // Não resolveu sozinha, mas há linha(s) do dia da âncora: alimenta o
-      // diagnóstico pra apontar "agendada do dia" em vez de "duplicata".
+    } else if (camada2.ambiguous) {
+      // AMBÍGUO = 2+ subconjuntos do dia da âncora REALMENTE somam a diferença
+      // (só não dá pra escolher qual). Aí sim é "agendada do dia". Fix 12/08: NÃO
+      // acusar "agendada" só porque EXISTE linha do dia sem ela explicar a
+      // diferença (era o bug do Stone 70k — acusava agendada num 6.000 avulso).
       const suspeitos = novasGenuinas
         .filter((n) => camada2.anchorDayKeys.includes(n.dedupHash))
         .map((n) => n.ofxIndex)
-      if (suspeitos.length > 0) agendadaDiaInfo = { ambiguous: camada2.ambiguous, suspeitos }
+      if (suspeitos.length > 0) agendadaDiaInfo = { ambiguous: true, suspeitos }
     }
   }
 

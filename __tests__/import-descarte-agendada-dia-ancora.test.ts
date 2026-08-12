@@ -223,4 +223,43 @@ describe('Diagnóstico — anchor-day é "agendada do dia", NUNCA "duplicata"', 
     const dup = check.hipoteses.find((h) => h.tipo === 'dup_marcada_nova')
     expect(dup?.maisProvavel).toBe(false)
   })
+
+  // BUG 12/08 (4ª vez que o diagnóstico chuta): caso Stone 70k. 6 novas CREDIT
+  // somam +70000, LEDGERBAL == balanceAtual (banco não mudou) → diff = -70000.
+  // Não é agendada do dia (nenhuma linha de 70k). É "todas as novas somam a
+  // diferença" (transferências internas).
+  it('Stone 70k: diff == Σ(novas) e LEDGERBAL==balanceAtual → lidera todas_novas_transferencia, NÃO agendada', () => {
+    const seis = [6000, 1000, 41000, 10000, 6000, 6000].map((amt, i) =>
+      nova({ ofxIndex: i, amount: amt, type: 'CREDIT', memo: 'YUSSEF - Transferencia | Pix' }),
+    )
+    const check = buildLedgerBalCheck({
+      ledgerBalance: { amount: 105.5, asOfDate: asOf },
+      balanceAtual: 105.5,
+      novasGenuinas: seis,
+      conciliatePayable: [],
+      // NÃO passa agendadaDiaAncora (o fix upstream não seta quando não explica)
+    })
+    expect(check.bate).toBe(false)
+    expect(Math.round(check.diff)).toBe(-70000)
+    const lider = check.hipoteses.find((h) => h.maisProvavel)
+    expect(lider?.tipo).toBe('todas_novas_transferencia')
+    // NÃO pode acusar agendada nem duplicata
+    expect(check.hipoteses.find((h) => h.tipo === 'agendada_dia_ancora')).toBeUndefined()
+    expect(check.hipoteses.find((h) => h.tipo === 'dup_marcada_nova')?.maisProvavel).toBe(false)
+  })
+
+  it('quando NENHUMA hipótese explica → lidera causa_desconhecida (admite, não chuta)', () => {
+    // balanceAtual 1000 + Σnovas 200 = 1200; LEDGERBAL 1500 → diff +300.
+    // 300 não bate com nenhuma nova (200/... ), não é futura, LEDGERBAL≠balanceAtual.
+    const check = buildLedgerBalCheck({
+      ledgerBalance: { amount: 1500, asOfDate: asOf },
+      balanceAtual: 1000,
+      novasGenuinas: [nova({ ofxIndex: 0, amount: 200, type: 'CREDIT' })],
+      conciliatePayable: [],
+    })
+    expect(check.bate).toBe(false)
+    const lider = check.hipoteses.find((h) => h.maisProvavel)
+    expect(lider?.tipo).toBe('causa_desconhecida')
+    expect(lider?.label).toContain('Não identifiquei a causa')
+  })
 })
