@@ -39,7 +39,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     // Rollback = desligar UNIFIED_TRANSFER_ENGINE. Fonte única compartilhada
     // com as próximas telas (detectTransfersForCompany) → não discordam.
     if (isUnifiedTransferEnabled()) {
-      const { suggestions } = await detectTransfersForCompany(companyId, { matchOwnerName: true })
+      const { suggestions, coverage } = await detectTransfersForCompany(companyId, { matchOwnerName: true })
       let appliedU = 0
       if (input.autoApply) {
         const threshold = input.autoApplyMinConfidence ?? 0.85
@@ -71,6 +71,16 @@ export async function POST(request: NextRequest, { params }: Params) {
         })),
         total: suggestions.length,
         applied: appliedU,
+        // AVISO OBRIGATÓRIO (nunca silencioso): se o teto cortou órfãs, a tela diz
+        // "analisei X de N — pares mais antigos podem não aparecer". Proporcional:
+        // a UI decide o quão evidente pelo tamanho do corte (analyzed/total).
+        coverage: coverage.truncated
+          ? {
+              analyzed: coverage.analyzed,
+              total: coverage.total,
+              message: `Analisei as ${coverage.analyzed.toLocaleString('pt-BR')} transações mais recentes de ${coverage.total.toLocaleString('pt-BR')} sem par — transferências mais antigas podem não aparecer aqui.`,
+            }
+          : null,
       })
     }
 

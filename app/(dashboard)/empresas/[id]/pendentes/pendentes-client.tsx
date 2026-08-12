@@ -6,6 +6,7 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   ArrowLeftRight,
+  AlertTriangle,
   Check,
   X,
   Loader2,
@@ -99,6 +100,13 @@ interface Transacao {
   counterpartySource?: string | null
 }
 
+// Cobertura da detecção de transferência — aviso quando o teto cortou órfãs.
+interface TransferCoverage {
+  analyzed: number
+  total: number
+  message: string
+}
+
 interface Props {
   empresaId: string
   empresaNome: string
@@ -167,6 +175,7 @@ export function PendentesClient({
   // Sprint CDB entry (02/08): nº de aplicação/resgate automático a reclassificar
   const [cdbReclassCount, setCdbReclassCount] = useState(0)
   const [transferCandidates, setTransferCandidates] = useState<TransferCandidateDTO[] | null>(null)
+  const [transferCoverage, setTransferCoverage] = useState<TransferCoverage | null>(null)
   const [transferModalOpen, setTransferModalOpen] = useState(false)
   // Sprint Casar Pagamento (04/08): detecção de pagamento de empréstimo por tx
   const [emprestimoDet, setEmprestimoDet] = useState<Record<string, LoanPaymentDetection>>({})
@@ -293,7 +302,10 @@ export function PendentesClient({
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: '{}',
       })
         .then((r) => { if (!r.ok) { console.warn(`[pendentes] detect-active-transfers HTTP ${r.status}`); return null } return r.json() })
-        .then((d: { candidates?: TransferCandidateDTO[] } | null) => setTransferCandidates(d?.candidates ?? []))
+        .then((d: { candidates?: TransferCandidateDTO[]; coverage?: TransferCoverage | null } | null) => {
+          setTransferCandidates(d?.candidates ?? [])
+          setTransferCoverage(d?.coverage ?? null)
+        })
         .catch((e) => console.warn('[pendentes] detect-active-transfers falhou:', e))
       // Sprint Filtro de Data Parte A: guardar o total real pra UI mostrar
       // "Mostrando X de Y" e desambiguar quando há mais do que cabe na página.
@@ -730,6 +742,20 @@ export function PendentesClient({
           <span className="text-sm font-medium text-amber-800 shrink-0">Reclassificar →</span>
         </Link>
       )}
+
+      {/* Teto de órfãs (13/08) — AVISO OBRIGATÓRIO quando a detecção não olhou
+          tudo. Proporcional: se cortou pouco (>90% analisado) é discreto (slate);
+          se cortou muito (<70%) é evidente (amber). Nunca silencioso. */}
+      {transferCoverage && (() => {
+        const frac = transferCoverage.analyzed / transferCoverage.total
+        const evidente = frac < 0.7
+        return (
+          <div className={`flex items-start gap-2 rounded-md border px-4 py-2.5 text-xs ${evidente ? 'border-amber-400 bg-amber-50 text-amber-900' : 'border-slate-300 bg-slate-50 text-slate-700'}`}>
+            <AlertTriangle className={`h-4 w-4 mt-0.5 shrink-0 ${evidente ? 'text-amber-600' : 'text-slate-500'}`} />
+            <span>{transferCoverage.message}</span>
+          </div>
+        )
+      })()}
 
       {/* Sprint Detecção-Transferência (06/08) — porta de entrada pro detector
           cross-conta. Aparece SÓ quando há candidatos. Abre modal de revisão

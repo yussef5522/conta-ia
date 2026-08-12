@@ -239,19 +239,48 @@ export function detectTransfers(
 ): UnifiedDetectResult {
   const debits = txs.filter((t) => t.type === 'DEBIT')
   const credits = txs.filter((t) => t.type === 'CREDIT')
+
+  // JANELA POR VALOR (13/08): o par O(D×C) é quadrático (5M na caçula) e por isso
+  // tinha teto de 3.000 — que descartava SILENCIOSAMENTE os mais antigos. Mas
+  // classifyTransferPair rejeita qualquer par com |Δvalor| > tarifa (linha do
+  // `diff > tarifa`), então só vale a pena comparar créditos com |valor| DENTRO da
+  // banda [|d|−tarifa, |d|+tarifa]. Ordena os créditos por |valor| 1× e faz busca
+  // binária da banda por débito. RESULTADO IDÊNTICO ao O(D×C) (só pula os pares que
+  // o classify rejeitaria na hora) — provado em `detect-transfers-window.test.ts`.
+  // Reduz 5M→~700 candidatos → o teto vira desnecessário.
+  const creditsByAmount = [...credits].sort((a, b) => Math.abs(a.amount) - Math.abs(b.amount))
+  const creditAmts = creditsByAmount.map((c) => Math.abs(c.amount))
+  // menor índice i com creditAmts[i] >= target (lower bound).
+  const lowerBound = (target: number): number => {
+    let lo = 0, hi = creditAmts.length
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1
+      if (creditAmts[mid] < target) lo = mid + 1
+      else hi = mid
+    }
+    return lo
+  }
+
   const all: TransferSuggestion[] = []
   for (const d of debits) {
-    for (const c of credits) {
-      const res = classifyTransferPair(d, c, opts)
+    const da = Math.abs(d.amount)
+    const tarifa = (opts.tarifaTolerance ?? defaultTarifa)(d.amount)
+    const start = lowerBound(da - tarifa)
+    for (let i = start; i < creditsByAmount.length && creditAmts[i] <= da + tarifa; i++) {
+      const res = classifyTransferPair(d, creditsByAmount[i], opts)
       if (res) all.push(res)
     }
   }
-  // Ordena: sugestões antes (autoSuggest), depois por confiança, depois menor janela.
+  // Ordena: sugestões antes (autoSuggest), depois confiança, depois menor janela.
+  // Tie-break por id (determinístico) — assim o resultado NÃO depende da ordem de
+  // inserção, então a janela por valor dá o MESMO greedy que o O(D×C) bruto.
   all.sort(
     (a, b) =>
       Number(b.autoSuggest) - Number(a.autoSuggest) ||
       b.confidence - a.confidence ||
-      a.deltaDays - b.deltaDays,
+      a.deltaDays - b.deltaDays ||
+      a.from.id.localeCompare(b.from.id) ||
+      a.to.id.localeCompare(b.to.id),
   )
   const used = new Set<string>()
   const suggestions: TransferSuggestion[] = []

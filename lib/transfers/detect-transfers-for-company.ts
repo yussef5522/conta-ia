@@ -2,6 +2,7 @@
 // tx órfãs + refs + valores comuns e roda o motor único (3 camadas). TODAS as
 // telas migradas chamam ISTO — é o que garante que não discordem entre si.
 
+import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { loadOwnEntityRefs } from './load-own-entity-refs'
 import {
@@ -12,10 +13,30 @@ import {
 
 const MS_DAY = 86400000
 
+// Teto de carga. Com a JANELA POR VALOR no motor (detectTransfers), casar 6.5k
+// órfãs é ~1ms — o teto de 3.000 ficou obsoleto (descartava os mais ANTIGOS em
+// silêncio). Subido pra 20.000: cobre folgado qualquer empresa real e ainda
+// protege memória/query de conta patológica. Se BATER, o aviso é proporcional.
+const DEFAULT_CAP = 20000
+
+/** Cobertura da análise — pra AVISAR quando o teto corta (nunca silencioso). */
+export interface DetectCoverage {
+  /** órfãs efetivamente analisadas (o que entrou no motor). */
+  analyzed: number
+  /** total de órfãs no escopo (pode ser > analyzed se bateu o teto). */
+  total: number
+  /** o teto cortou? (total > analyzed). */
+  truncated: boolean
+  /** teto aplicado. */
+  cap: number
+}
+
+export type DetectForCompanyResult = UnifiedDetectResult & { coverage: DetectCoverage }
+
 export async function detectTransfersForCompany(
   companyId: string,
   opts: { sinceDays?: number; cap?: number; matchOwnerName?: boolean } = {},
-): Promise<UnifiedDetectResult> {
+): Promise<DetectForCompanyResult> {
   const since = new Date(Date.now() - (opts.sinceDays ?? 365) * MS_DAY)
 
   const refs = await loadOwnEntityRefs(prisma, companyId)
@@ -32,16 +53,20 @@ export async function detectTransfersForCompany(
 
   // Órfãs EFFECTED (realizadas), sem grupo, não-internas — NÃO exige PENDING
   // (a regra "2× PENDING" do motor B saiu). Ambos os tipos.
+  const orfaWhere: Prisma.TransactionWhereInput = {
+    bankAccount: { companyId },
+    type: { in: ['CREDIT', 'DEBIT'] },
+    lifecycle: 'EFFECTED',
+    transferGroupId: null,
+    transferDismissedAt: null,
+    isInternalTransfer: false,
+    date: { gte: since },
+  }
+  const cap = opts.cap ?? DEFAULT_CAP
+  // count pro AVISO: quantas órfãs existem no total (pra dizer "X de N").
+  const total = await prisma.transaction.count({ where: orfaWhere })
   const orfas = await prisma.transaction.findMany({
-    where: {
-      bankAccount: { companyId },
-      type: { in: ['CREDIT', 'DEBIT'] },
-      lifecycle: 'EFFECTED',
-      transferGroupId: null,
-      transferDismissedAt: null,
-      isInternalTransfer: false,
-      date: { gte: since },
-    },
+    where: orfaWhere,
     select: {
       id: true,
       bankAccountId: true,
@@ -53,7 +78,7 @@ export async function detectTransfersForCompany(
       bankAccount: { select: { name: true } },
     },
     orderBy: { date: 'desc' },
-    take: opts.cap ?? 3000,
+    take: cap,
   })
 
   const txs: UnifiedTx[] = orfas
@@ -69,5 +94,9 @@ export async function detectTransfersForCompany(
       status: t.status,
     }))
 
-  return detectTransfers(txs, { refs, valorComum, matchOwnerName: opts.matchOwnerName })
+  const result = detectTransfers(txs, { refs, valorComum, matchOwnerName: opts.matchOwnerName })
+  return {
+    ...result,
+    coverage: { analyzed: txs.length, total, truncated: total > txs.length, cap },
+  }
 }
