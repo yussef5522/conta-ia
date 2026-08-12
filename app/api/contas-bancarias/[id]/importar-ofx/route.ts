@@ -44,6 +44,7 @@ import {
 } from '@/lib/ofx/decisions'
 import { partitionFutureLines, settledThroughDate } from '@/lib/ofx/future-line'
 import { resolveBankProfile, resolveStatementAnchor, bankProfileWarning } from '@/lib/bank-profiles'
+import { verifyOfxMatchesAccount } from '@/lib/ofx/verify-account-match'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -110,13 +111,25 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ erro: 'Erro ao ler arquivo' }, { status: 400 })
   }
 
-  const { transactions, errors, bankId, ledgerBalance, statementEnd } = parseOFX(rawContent)
+  const { transactions, errors, bankId, accountId, ledgerBalance, statementEnd } = parseOFX(rawContent)
 
   if (transactions.length === 0) {
     return NextResponse.json({
       erro: 'Nenhuma transação encontrada no arquivo',
       errosParser: errors,
     }, { status: 400 })
+  }
+
+  // TRAVA ANTI "OFX NA CONTA ERRADA" (FASE 2.1, 12/08): confere BANKID×bankCode e
+  // ACCTID×número da conta. Diverge → RECUSA (preview E confirm), não oferece
+  // importar. Mesma proteção que o PDF já tinha. Se não dá pra conferir, vira
+  // aviso na tela (bankProfilePayload.accountMatchWarning), não bloqueia.
+  const accountMatch = verifyOfxMatchesAccount(
+    { bankId, accountId },
+    { bankCode: conta.bankCode, bankName: conta.bankName, accountNumber: conta.accountNumber, name: conta.name },
+  )
+  if (accountMatch.block) {
+    return NextResponse.json({ erro: accountMatch.error, code: accountMatch.code }, { status: 400 })
   }
 
   // ────────────────────────────────────────────────────────────────
@@ -447,6 +460,8 @@ export async function POST(request: NextRequest, { params }: Params) {
       anchorRule: anchorRes.rule,
       anchorDate: dtAsOfPreview.toISOString(),
       warning: bankProfileWarning(bankProfile, bankId ?? null),
+      // Aviso "não deu pra conferir a conta" (quando não bloqueou). Vai pro banner.
+      accountMatchWarning: accountMatch.warning ?? null,
     }
     const { realLines: novasReais, futureLines: novasFuturas } = partitionFutureLines(
       novas,

@@ -55,6 +55,8 @@ interface PreviewResult {
     anchorRule: string
     anchorDate: string
     warning: { code: string; bankid: string | null; message: string } | null
+    // FASE 2.1 — aviso "não deu pra conferir se o arquivo é desta conta".
+    accountMatchWarning?: string | null
   }
   // Sprint Import Categoria Editável (18/06/2026)
   categorySuggestions?: CategorySuggestion[]
@@ -736,24 +738,39 @@ export default function ImportarOFXPage() {
         </CardContent>
       </Card>
 
-      {/* FASE 2 (12/08) — WARNING de banco desconhecido / ficha incompleta. Tem
-          que aparecer NA HORA do import, na tela, não só no log. */}
-      {preview?.bankProfile?.warning && (
+      {/* FASE 2 (12/08) — WARNING de banco desconhecido / ficha incompleta +
+          aviso "não deu pra conferir a conta". NA HORA do import, na tela. */}
+      {(preview?.bankProfile?.warning || preview?.bankProfile?.accountMatchWarning) && (
         <Card className="border-amber-400 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/40">
-          <CardContent className="py-4">
-            <div className="flex items-start gap-3">
-              <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
-                  {preview.bankProfile.warning.code === 'BANK_UNKNOWN'
-                    ? 'Banco não reconhecido'
-                    : 'Ficha do banco incompleta'}
-                </p>
-                <p className="text-xs text-amber-800 dark:text-amber-300 mt-0.5">
-                  {preview.bankProfile.warning.message}
-                </p>
+          <CardContent className="py-4 space-y-2">
+            {preview.bankProfile.accountMatchWarning && (
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+                    Confira se é a conta certa
+                  </p>
+                  <p className="text-xs text-amber-800 dark:text-amber-300 mt-0.5">
+                    {preview.bankProfile.accountMatchWarning}
+                  </p>
+                </div>
               </div>
-            </div>
+            )}
+            {preview.bankProfile.warning && (
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+                    {preview.bankProfile.warning.code === 'BANK_UNKNOWN'
+                      ? 'Banco não reconhecido'
+                      : 'Ficha do banco incompleta'}
+                  </p>
+                  <p className="text-xs text-amber-800 dark:text-amber-300 mt-0.5">
+                    {preview.bankProfile.warning.message}
+                  </p>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
