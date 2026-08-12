@@ -39,7 +39,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     // Rollback = desligar UNIFIED_TRANSFER_ENGINE. Fonte única compartilhada
     // com as próximas telas (detectTransfersForCompany) → não discordam.
     if (isUnifiedTransferEnabled()) {
-      const { suggestions } = await detectTransfersForCompany(companyId)
+      const { suggestions } = await detectTransfersForCompany(companyId, { matchOwnerName: true })
       let appliedU = 0
       if (input.autoApply) {
         const threshold = input.autoApplyMinConfidence ?? 0.85

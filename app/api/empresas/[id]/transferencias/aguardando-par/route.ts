@@ -150,7 +150,7 @@ export async function GET(request: NextRequest, { params }: Params) {
           const cTx: UnifiedTx = { id: c.id, bankAccountId: c.bankAccountId ?? '', date: c.date, type: c.type, amount: c.amount, description: c.description }
           const debit = p.type === 'DEBIT' ? pTx : cTx
           const credit = p.type === 'DEBIT' ? cTx : pTx
-          const cls = classifyTransferPair(debit, credit, { refs, valorComum })
+          const cls = classifyTransferPair(debit, credit, { refs, valorComum, matchOwnerName: true })
           if (!cls || !cls.autoSuggest) return null // fora = weak/rejeitado → não sugere
           return { ...base, layer: cls.layer, confidence: cls.confidence, evidences: cls.evidences }
         })

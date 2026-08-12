@@ -77,7 +77,7 @@ export async function GET(
     // manual incluem RECONCILED (o par com uma perna já reconciliada aparece).
     if (isUnifiedTransferEnabled()) {
       const MS_DAY = 86400000
-      const { suggestions } = await detectTransfersForCompany(empresaId)
+      const { suggestions } = await detectTransfersForCompany(empresaId, { matchOwnerName: true })
       // Órfãs pro CAMINHO MANUAL — recente (120d), incl. RECONCILED (não só PENDING).
       const orfas = await prisma.transaction.findMany({
         where: {
