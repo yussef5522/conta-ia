@@ -20,6 +20,8 @@ const bodySchema = z.object({
         txId: z.string().min(1),
         counterpartyName: z.string().min(1).max(200),
         counterpartyDocument: z.string().max(30).nullable().optional(),
+        // FASE 4 (13/08): por onde o nome veio. Default FITID (compat).
+        matchKey: z.enum(['FITID', 'DATE_AMOUNT']).optional(),
       }),
     )
     .min(1)
@@ -75,6 +77,7 @@ export async function POST(request: NextRequest, { params }: Params) {
           counterpartyDocument: a.counterpartyDocument?.trim() || null,
           counterpartySource: 'PDF_STATEMENT',
           counterpartyConfidence: 'EXACT',
+          counterpartyMatchKey: a.matchKey ?? 'FITID',
         },
       })
       written++

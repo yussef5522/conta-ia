@@ -23,6 +23,7 @@ import type {
   BankStatementLine,
   BankStatementPdfParser,
   ParsedBankStatement,
+  StatementPeriod,
 } from './types'
 import { BankStatementParseError } from './types'
 
@@ -58,6 +59,64 @@ export function parseBrlAmount(raw: string): { amount: number; signed: number } 
   const num = parseFloat(s.replace(/-$/, '').replace(/\./g, '').replace(',', '.'))
   if (!Number.isFinite(num)) return null
   return { amount: Math.abs(num), signed: neg ? -Math.abs(num) : Math.abs(num) }
+}
+
+/** "03/08/2026" → "2026-08-03" (ISO). Null se inválida. */
+function brDateToIso(br: string): string | null {
+  const m = br.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
+  if (!m) return null
+  const [, dd, mm, yyyy] = m
+  const d = +dd, mo = +mm
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return null
+  return `${yyyy}-${mm}-${dd}`
+}
+
+/**
+ * Extrai o PERÍODO do extrato Banrisul. Necessário pro Nível 2 (chave data+valor)
+ * ser seguro: sem período, um "dia 05 + R$ 1.215" de agosto casaria com um de
+ * junho. Tenta o rótulo "PERÍODO ... a ..." e, como reforço, duas datas dd/mm/aaaa
+ * ligadas por "a"/"à"/"até"/"-". Se não achar, devolve null → o caller AVISA e
+ * NÃO liga o Nível 2 (conservador: melhor não enriquecer que casar mês errado).
+ */
+export function extractStatementPeriod(text: string): StatementPeriod | null {
+  const D = String.raw`(\d{2}\/\d{2}\/\d{4})`
+  const SEP = String.raw`\s*(?:a|à|até|ate|A|-|\/)\s*`
+  const patterns = [
+    new RegExp(String.raw`PER[IÍ]ODO[^\d]{0,40}${D}${SEP}${D}`, 'i'),
+    new RegExp(String.raw`(?:MOVIMENTA[ÇC][ÃA]O|EXTRATO|LAN[ÇC]AMENTOS?)[^\d]{0,40}${D}${SEP}${D}`, 'i'),
+    new RegExp(`${D}${SEP}${D}`),
+  ]
+  for (const re of patterns) {
+    const m = text.match(re)
+    if (m) {
+      const start = brDateToIso(m[1])
+      const end = brDateToIso(m[2])
+      if (start && end && start <= end) return { start, end }
+    }
+  }
+  return null
+}
+
+/**
+ * Resolve a data COMPLETA de cada linha a partir do período + dia. O Banrisul
+ * lista cronologicamente; quando o dia DECRESCE, virou o mês (cobre PDF de vários
+ * meses num upload só). Sem período → todas as datas ficam null (Nível 2 off).
+ */
+function resolveLineDates(lines: BankStatementLine[], period: StatementPeriod | null): void {
+  if (!period) return
+  const [sy, sm] = period.start.split('-').map(Number)
+  let year = sy
+  let month = sm
+  let prevDay = 0
+  for (const l of lines) {
+    if (l.day <= 0) continue
+    if (prevDay > 0 && l.day < prevDay) {
+      month++
+      if (month > 12) { month = 1; year++ }
+    }
+    prevDay = l.day
+    l.date = `${year}-${String(month).padStart(2, '0')}-${String(l.day).padStart(2, '0')}`
+  }
 }
 
 function extractHeader(text: string): BankStatementHeader {
@@ -134,10 +193,16 @@ class BanrisulPdfParser implements BankStatementPdfParser {
         amount: valor.amount,
         signed: valor.signed,
         counterpartyName: null,
+        date: null,
       })
     }
 
-    return { header, lines }
+    // Sprint Contraparte-Banrisul FASE 4 (13/08): período + data completa por
+    // linha (chave segura do Nível 2). Ambos podem faltar (período ilegível).
+    const period = extractStatementPeriod(norm)
+    resolveLineDates(lines, period)
+
+    return { header, lines, period }
   }
 }
 

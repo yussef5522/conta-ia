@@ -9,6 +9,7 @@ import { prisma } from '@/lib/db'
 import { extractPdfText, PdfExtractError } from '@/lib/bank-statement-pdf/extract-pdf-text'
 import { banrisulPdfParser } from '@/lib/bank-statement-pdf/banrisul-parser'
 import { buildEnrichmentPreview, headerMatchesAccount, type EnrichTx } from '@/lib/counterparty/build-preview'
+import { resolveBankProfile } from '@/lib/bank-profiles/registry'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -78,12 +79,23 @@ export async function POST(request: NextRequest, { params }: Params) {
     select: { id: true, externalId: true, amount: true, date: true, description: true, type: true, counterpartyName: true, counterpartySource: true },
   })
 
-  const preview = buildEnrichmentPreview(parsed, txs)
+  // FASE 4 (13/08): o Nível 2 (chave data+valor) é ESPECÍFICO do Banrisul —
+  // resolvido pelo perfil de banco (fitidStability='PER_DOWNLOAD'). Sicredi/Stone
+  // têm FITID estável (STABLE) → altKey=false → comportamento idêntico ao de hoje.
+  // A razão de existir o Nível 2 mora no perfil (registry.ts), não espalhada aqui.
+  const profile = resolveBankProfile(conta.bankCode)
+  const altKey = profile?.fitidStability === 'PER_DOWNLOAD'
+
+  const preview = buildEnrichmentPreview(parsed, txs, { altKey })
 
   // Observabilidade: SÓ metadados/contagens. NUNCA nome (LGPD).
   console.log('[enriquecer-contraparte/preview]', {
-    contaId, pdfLines: preview.counts.pdfLines, pdfWithName: preview.counts.pdfWithName,
-    exact: preview.counts.exact, ambiguousKeys: preview.counts.ambiguousKeys, noMatch: preview.counts.noMatch,
+    contaId, altKey, period: preview.period,
+    pdfLines: preview.counts.pdfLines, pdfWithName: preview.counts.pdfWithName,
+    willReceive: preview.counts.willReceive, byFitid: preview.counts.exactByFitid,
+    byDateAmount: preview.counts.exactByDateAmount, ambiguousTx: preview.counts.ambiguousTx,
+    outOfPeriod: preview.counts.outOfPeriod, notApplicable: preview.counts.notApplicable,
+    noPdfLine: preview.counts.noPdfLine,
   })
 
   return NextResponse.json({

@@ -364,6 +364,11 @@ model Transaction {
   counterpartySource     String?
   // EXACT (1 candidato) | AMBIGUOUS (vários com nomes divergentes — não atribuído auto).
   counterpartyConfidence String?
+  // Sprint Contraparte-Banrisul FASE 4 (13/08): POR ONDE o nome foi casado —
+  // 'FITID' (documento==FITID, preferencial) ou 'DATE_AMOUNT' (chave alternativa
+  // do Banrisul, quando o FITID renumera). Pra AUDITAR/REVERTER em lote se a
+  // chave alternativa errar: `WHERE counterpartyMatchKey='DATE_AMOUNT'`.
+  counterpartyMatchKey   String?
 
   // Sprint Import Idempotente (18/06/2026) — IDENTIDADE CANÔNICA.
   // fitidKey: sha256(accountId|FITID) quando FITID é CONFIÁVEL (heurística

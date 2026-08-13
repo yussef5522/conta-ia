@@ -24,26 +24,46 @@ interface PreviewTx {
   type: string
   currentName: string | null
 }
+type MatchKey = 'FITID' | 'DATE_AMOUNT'
 interface Preview {
   conta: { id: string; name: string; agency: string | null; accountNumber: string | null }
   header: { agencia: string | null; conta: string | null; titular: string | null }
+  period: { start: string; end: string } | null
+  altKeyUsed: boolean
   counts: {
-    exact: number
-    ambiguousKeys: number
+    willReceive: number
     ambiguousTx: number
-    noMatch: number
+    outOfPeriod: number
+    notApplicable: number
+    noPdfLine: number
+    exactByFitid: number
+    exactByDateAmount: number
+    ambiguousKeys: number
     pdfLines: number
     pdfWithName: number
     manualProtected: number
   }
-  exact: Array<PreviewTx & { proposedName: string; documento: string }>
-  ambiguous: Array<{ documento: string; amount: number; candidateNames: string[]; txs: PreviewTx[] }>
+  progress: { named: number; totalEligible: number }
+  outOfPeriodMonths: Array<{ month: string; count: number }>
+  exact: Array<PreviewTx & { proposedName: string; documento: string; matchKey: MatchKey }>
+  ambiguous: Array<{
+    documento: string
+    amount: number
+    candidateNames: string[]
+    via: MatchKey
+    txs: PreviewTx[]
+  }>
 }
 
 type Step = 'UPLOAD' | 'LOADING' | 'PREVIEW' | 'DONE'
 const fmtDate = (iso: string) => {
   const [y, m, d] = iso.split('-')
   return `${d}/${m}/${y}`
+}
+const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
+const fmtMonth = (ym: string) => {
+  const [y, m] = ym.split('-')
+  return `${MESES[+m - 1] ?? m}/${y}`
 }
 
 interface Props {
@@ -98,12 +118,20 @@ export function EnrichContrapartePanel({ contaId, onDone, onCancel, doneLabel }:
       ...preview.exact.map((e) => ({
         txId: e.txId,
         counterpartyName: e.proposedName,
-        counterpartyDocument: e.documento ?? undefined,
+        // Nível 2 casa por data+valor (documento = a data ISO); nesse caso não
+        // grava documento como "documento" (não é um doc do PDF).
+        counterpartyDocument: e.matchKey === 'FITID' ? e.documento ?? undefined : undefined,
+        matchKey: e.matchKey,
       })),
       ...preview.ambiguous.flatMap((g) =>
         g.txs
           .filter((t) => choices[t.txId])
-          .map((t) => ({ txId: t.txId, counterpartyName: choices[t.txId], counterpartyDocument: g.documento })),
+          .map((t) => ({
+            txId: t.txId,
+            counterpartyName: choices[t.txId],
+            counterpartyDocument: g.via === 'FITID' ? g.documento : undefined,
+            matchKey: g.via,
+          })),
       ),
     ]
     if (assignments.length === 0) {
@@ -205,32 +233,66 @@ export function EnrichContrapartePanel({ contaId, onDone, onCancel, doneLabel }:
 
       {step === 'PREVIEW' && preview && (
         <div className="space-y-4">
+          {/* Período + progresso */}
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-slate-50 px-3 py-2 text-sm">
+            <span className="text-slate-700">
+              {preview.period ? (
+                <>Este PDF cobre <strong className="tabular-nums">{fmtDate(preview.period.start)} a {fmtDate(preview.period.end)}</strong></>
+              ) : (
+                <span className="text-amber-700">Não consegui ler o período deste PDF — casei só pelo documento (Nível 1). Me manda o print do topo do PDF pra eu ajustar.</span>
+              )}
+            </span>
+            <span className="text-xs text-slate-500 tabular-nums">
+              Progresso da conta: <strong className="text-slate-700">{preview.progress.named} de {preview.progress.totalEligible}</strong> PIX/TED com nome
+            </span>
+          </div>
+
+          {/* Os 4 baldes */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Card>
               <CardContent className="py-3">
-                <p className="text-xs text-muted-foreground">Exatos (vão gravar)</p>
-                <p className="text-xl font-bold text-emerald-700">{preview.counts.exact}</p>
+                <p className="text-xs text-muted-foreground">Vão receber nome</p>
+                <p className="text-xl font-bold text-emerald-700">{preview.counts.willReceive}</p>
+                {preview.counts.exactByDateAmount > 0 && (
+                  <p className="text-[10px] text-slate-500">{preview.counts.exactByFitid} por documento · {preview.counts.exactByDateAmount} por data+valor</p>
+                )}
               </CardContent>
             </Card>
             <Card>
               <CardContent className="py-3">
-                <p className="text-xs text-muted-foreground">Ambíguos (você escolhe)</p>
+                <p className="text-xs text-muted-foreground">Ambíguas · você escolhe</p>
                 <p className="text-xl font-bold text-amber-700">{preview.counts.ambiguousTx}</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="py-3">
-                <p className="text-xs text-muted-foreground">Sem match no PDF</p>
-                <p className="text-xl font-bold text-slate-500">{preview.counts.noMatch}</p>
+                <p className="text-xs text-muted-foreground">Fora do período do PDF</p>
+                <p className="text-xl font-bold text-slate-500">{preview.counts.outOfPeriod}</p>
+                {preview.outOfPeriodMonths.length > 0 && (
+                  <p className="text-[10px] text-slate-500">anexe: {preview.outOfPeriodMonths.map((m) => `${fmtMonth(m.month)} (${m.count})`).join(' · ')}</p>
+                )}
               </CardContent>
             </Card>
             <Card>
               <CardContent className="py-3">
-                <p className="text-xs text-muted-foreground">Protegidos (manual/OFX)</p>
-                <p className="text-xl font-bold text-slate-500">{preview.counts.manualProtected}</p>
+                <p className="text-xs text-muted-foreground">Não se aplica · IOF/tarifa</p>
+                <p className="text-xl font-bold text-slate-400">{preview.counts.notApplicable}</p>
               </CardContent>
             </Card>
           </div>
+
+          {/* Nada a enriquecer neste PDF → diz claramente (não lista vazia) */}
+          {preview.counts.willReceive === 0 && preview.counts.ambiguousTx === 0 && (
+            <div className="rounded-md border border-sky-200 bg-sky-50/60 p-3 text-sm text-sky-900">
+              {preview.counts.outOfPeriod > 0 ? (
+                <>Este PDF não cobre nenhuma transação sem nome. As {preview.counts.outOfPeriod} pendentes são de outro período — anexe o PDF de {preview.outOfPeriodMonths.map((m) => fmtMonth(m.month)).join(', ')}.</>
+              ) : preview.counts.noPdfLine > 0 ? (
+                <>Há {preview.counts.noPdfLine} transação(ões) no período mas o PDF não trouxe o nome delas (ex: PIX sem favorecido no extrato).</>
+              ) : (
+                <>Tudo certo — nenhuma transação sem nome neste período.</>
+              )}
+            </div>
+          )}
 
           <Card>
             <CardHeader>
@@ -264,6 +326,9 @@ export function EnrichContrapartePanel({ contaId, onDone, onCancel, doneLabel }:
                         </td>
                         <td className="py-1.5 font-medium">
                           {e.proposedName}
+                          {e.matchKey === 'DATE_AMOUNT' && (
+                            <span className="text-[10px] text-sky-600 ml-1" title="Casado por data+valor (FITID do Banrisul renumera)">· data+valor</span>
+                          )}
                           {e.currentName && e.currentName !== e.proposedName && (
                             <span className="text-[10px] text-amber-600 ml-1">(substitui "{e.currentName}")</span>
                           )}
@@ -291,15 +356,20 @@ export function EnrichContrapartePanel({ contaId, onDone, onCancel, doneLabel }:
                   Ambíguos — escolha ou pule ({ambResolved} escolhidos)
                 </CardTitle>
                 <p className="text-xs text-muted-foreground">
-                  Mesmo documento e valor com pagadores diferentes (documento genérico 000000). Nunca
-                  preenchemos sozinhos.
+                  Mesma chave (documento+valor, ou data+valor no Banrisul) com nomes ou
+                  transações diferentes — não dá pra saber qual é qual. Nunca preenchemos sozinhos.
                 </p>
               </CardHeader>
               <CardContent className="space-y-4">
                 {preview.ambiguous.map((g) => (
                   <div key={g.documento + g.amount} className="rounded-md border p-3">
                     <p className="text-xs text-muted-foreground mb-2">
-                      doc <strong>{g.documento}</strong> · {formatBRL(g.amount)} · {g.txs.length} transação(ões)
+                      {g.via === 'DATE_AMOUNT' ? (
+                        <>data <strong>{fmtDate(g.documento)}</strong></>
+                      ) : (
+                        <>doc <strong>{g.documento}</strong></>
+                      )}{' '}
+                      · {formatBRL(g.amount)} · {g.txs.length} transação(ões)
                     </p>
                     {g.txs.map((t) => (
                       <div key={t.txId} className="flex items-center gap-2 py-1 flex-wrap">
@@ -330,7 +400,7 @@ export function EnrichContrapartePanel({ contaId, onDone, onCancel, doneLabel }:
             </Button>
             <Button onClick={handleConfirm}>
               <CheckCircle2 className="h-4 w-4 mr-1" />
-              Confirmar e gravar {preview.counts.exact + ambResolved} nomes
+              Confirmar e gravar {preview.counts.willReceive + ambResolved} nomes
             </Button>
           </div>
         </div>

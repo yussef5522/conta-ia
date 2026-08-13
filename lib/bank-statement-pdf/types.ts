@@ -20,11 +20,27 @@ export interface BankStatementLine {
   signed: number
   /** Nome do favorecido/pagador (linha "NOME:" logo abaixo), ou null. Dado pessoal. */
   counterpartyName: string | null
+  /**
+   * Sprint Contraparte-Banrisul FASE 4 (13/08): data COMPLETA do lançamento
+   * (YYYY-MM-DD), resolvida a partir do período + dia (caminhando o mês quando o
+   * dia decresce — cobre PDF de vários meses). `null` quando o período não foi
+   * lido do PDF. É a chave do Nível 2 (data+valor), segura contra colisão de
+   * dia entre meses diferentes. Opcional pra retrocompat de fixtures antigas.
+   */
+  date?: string | null
+}
+
+/** Período coberto pelo extrato (YYYY-MM-DD). `null` = não foi possível ler. */
+export interface StatementPeriod {
+  start: string
+  end: string
 }
 
 export interface ParsedBankStatement {
   header: BankStatementHeader
   lines: BankStatementLine[]
+  /** Sprint Contraparte-Banrisul FASE 4 (13/08): período do extrato, se legível. */
+  period: StatementPeriod | null
 }
 
 export class BankStatementParseError extends Error {

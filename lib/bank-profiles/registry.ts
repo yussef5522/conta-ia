@@ -22,7 +22,10 @@ const BANRISUL: BankProfile = {
     listsFutureMovements:
       'Lista movimento FUTURO junto com o realizado (ex: um extrato de 11/08 traz PAGAMENTO CARTAO de 17/08). Por isso precisa das duas camadas de descarte (data + LEDGERBAL).',
     fitidStability:
-      'FITID renumera os lançamentos recentes a cada download — provado comparando 2 downloads (dl07×dl11: 7 de 44 mudaram; dl09×dl11: 2 de 45). NÃO usar como chave estável.',
+      'FITID renumera os lançamentos recentes a cada download — provado comparando 2 downloads (dl07×dl11: 7 de 44 mudaram; dl09×dl11: 2 de 45). NÃO usar como chave estável. ' +
+      '➜ POR ISSO existe o NÍVEL 2 no enriquecimento de contraparte (chave alternativa data+valor em lib/counterparty/join-pdf-statement.ts): quando o documento==FITID não casa (OFX e PDF de downloads diferentes), casa por (data completa, valor). ' +
+      'Sicredi (MOSTLY_STABLE) e Stone (STABLE) têm FITID estável e NUNCA entram no Nível 2 — o gate é justamente `fitidStability === "PER_DOWNLOAD"`. ' +
+      'SE UM DIA O BANRISUL CONSERTAR ISSO: mude este campo pra STABLE e o Nível 2 se desliga sozinho (nenhuma outra mudança de código).',
     counterpartySource:
       'ÚNICO banco cujo OFX não traz favorecido: NAME==MEMO==histórico genérico ("PIX ENVIADO") em 45/45. Por isso existe o fluxo de enriquecimento por PDF. E como o FITID renumera, a chave documento==FITID só funciona quando OFX e PDF vêm do MESMO download.',
     ledgerBalReliable: 'LEDGERBAL = saldo liquidado (NÃO inclui as linhas futuras listadas). Confiável.',

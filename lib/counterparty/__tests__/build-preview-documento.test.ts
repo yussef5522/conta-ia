@@ -9,6 +9,7 @@ import type { ParsedBankStatement } from '@/lib/bank-statement-pdf/types'
 
 const parsed: ParsedBankStatement = {
   header: { agencia: '0230', conta: '0605534106', titular: 'CACULA MIX' },
+  period: null,
   lines: [
     { day: 6, historico: 'PIX ENVIADO', documento: '198074', amount: 1215, signed: -1215, counterpartyName: 'MARCOS ADRIEL LEAL KERNBAUM' },
   ],

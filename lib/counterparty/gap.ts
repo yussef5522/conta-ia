@@ -32,3 +32,19 @@ export function countCounterpartyGap(txs: GapTx[]): number {
   }
   return n
 }
+
+/**
+ * FASE 4 (13/08): progresso do enriquecimento — "named de totalEligible".
+ * totalEligible = todas as PIX/TED/DOC (não-tarifa); named = as que já têm nome.
+ * Pra a tela da conta mostrar "N de M com nome" e o usuário saber quanto falta.
+ */
+export function counterpartyProgress(txs: GapTx[]): { named: number; totalEligible: number } {
+  let named = 0
+  let totalEligible = 0
+  for (const t of txs) {
+    if (!isCounterpartyEligible(t.description)) continue
+    totalEligible++
+    if (t.counterpartyName) named++
+  }
+  return { named, totalEligible }
+}

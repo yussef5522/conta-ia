@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { countCounterpartyGap } from '@/lib/counterparty/gap'
+import { countCounterpartyGap, counterpartyProgress } from '@/lib/counterparty/gap'
 
 export const runtime = 'nodejs'
 
@@ -34,11 +34,14 @@ export async function GET(request: NextRequest, { params }: Params) {
   }
 
   // Só descrição + contraparte (bounded por conta). NUNCA logar nome.
+  // FASE 4 (13/08): busca TODAS (não só as sem nome) pra o progresso "N de M"
+  // conseguir contar as que JÁ têm nome. countCounterpartyGap ignora as nomeadas.
   const txs = await prisma.transaction.findMany({
-    where: { bankAccountId: contaId, counterpartyName: null },
+    where: { bankAccountId: contaId },
     select: { description: true, counterpartyName: true },
   })
   const pixSemContraparte = countCounterpartyGap(txs)
+  const progress = counterpartyProgress(txs)
 
-  return NextResponse.json({ supported: true, pixSemContraparte })
+  return NextResponse.json({ supported: true, pixSemContraparte, progress })
 }
