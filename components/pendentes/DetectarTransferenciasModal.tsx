@@ -4,6 +4,7 @@
 // detectados cross-conta (active-transfer-detector).
 
 import { useState } from 'react'
+import Link from 'next/link'
 import {
   Loader2,
   ArrowLeftRight,
@@ -106,6 +107,9 @@ export function DetectarTransferenciasModal({
   const acceptedCount = candidates
     ? candidates.filter((c) => !rejected.has(keyOf(c))).length
     : 0
+  const rejectedCount = candidates
+    ? candidates.filter((c) => rejected.has(keyOf(c))).length
+    : 0
 
   async function aplicar() {
     if (!candidates || applying) return
@@ -119,12 +123,17 @@ export function DetectarTransferenciasModal({
           confidence: c.confidence,
           matchType: c.matchType,
         }))
+      // Sprint TransferSuggestionEvent (13/08): os REJEITADOS viram IGNORED —
+      // persistem e NÃO voltam ao banner (era porta sem volta).
+      const ignored = candidates
+        .filter((c) => rejected.has(keyOf(c)))
+        .map((c) => ({ debitId: c.debit.id, creditId: c.credit.id }))
 
-      if (pairs.length === 0) {
+      if (pairs.length === 0 && ignored.length === 0) {
         toast({
           variant: 'destructive',
           title: 'Nenhuma seleção',
-          description: 'Aceite pelo menos uma transferência pra aplicar.',
+          description: 'Aceite ou ignore pelo menos uma transferência.',
         })
         return
       }
@@ -135,7 +144,7 @@ export function DetectarTransferenciasModal({
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ pairs }),
+          body: JSON.stringify({ pairs, ignored }),
         },
       )
       const data = await res.json()
@@ -258,11 +267,17 @@ export function DetectarTransferenciasModal({
           )}
         </div>
 
-        <DialogFooter className="border-t bg-background px-6 py-3 sm:flex-row sm:justify-between">
-          <p className="text-sm text-muted-foreground">
-            <strong className="text-foreground tabular-nums">{acceptedCount}</strong>{' '}
-            {acceptedCount === 1 ? 'transferência será marcada' : 'transferências serão marcadas'}
-          </p>
+        <DialogFooter className="border-t bg-background px-6 py-3 sm:flex-row sm:justify-between sm:items-center">
+          <div className="text-sm text-muted-foreground">
+            <span>
+              <strong className="text-foreground tabular-nums">{acceptedCount}</strong>{' '}
+              {acceptedCount === 1 ? 'será marcada' : 'serão marcadas'}
+              {rejectedCount > 0 && <> · <strong className="text-foreground tabular-nums">{rejectedCount}</strong> {rejectedCount === 1 ? 'ignorada' : 'ignoradas'}</>}
+            </span>
+            <Link href={`/empresas/${empresaId}/transferencias/ignoradas`} className="ml-3 text-xs text-primary underline">
+              ver ignoradas
+            </Link>
+          </div>
           <div className="flex gap-2">
             <Button
               variant="ghost"
@@ -272,13 +287,13 @@ export function DetectarTransferenciasModal({
               <X className="h-4 w-4 mr-1" />
               Cancelar
             </Button>
-            <Button onClick={aplicar} disabled={applying || acceptedCount === 0}>
+            <Button onClick={aplicar} disabled={applying || (acceptedCount === 0 && rejectedCount === 0)}>
               {applying ? (
                 <Loader2 className="h-4 w-4 animate-spin mr-1" />
               ) : (
                 <Check className="h-4 w-4 mr-1" />
               )}
-              Marcar {acceptedCount}
+              {acceptedCount > 0 ? `Marcar ${acceptedCount}` : `Ignorar ${rejectedCount}`}
             </Button>
           </div>
         </DialogFooter>

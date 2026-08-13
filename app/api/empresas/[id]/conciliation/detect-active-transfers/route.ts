@@ -11,8 +11,10 @@ import {
   findActiveTransferCandidates,
   applyTransferCandidate,
 } from '@/lib/conciliation/active-transfer-detector'
+import { prisma } from '@/lib/db'
 import { isUnifiedTransferEnabled } from '@/lib/transfers/unified-transfer-flag'
 import { detectTransfersForCompany } from '@/lib/transfers/detect-transfers-for-company'
+import { recordSuggested } from '@/lib/transfers/suggestion-events'
 
 const schema = z.object({
   daysWindow: z.number().int().min(0).max(15).optional(),
@@ -40,6 +42,13 @@ export async function POST(request: NextRequest, { params }: Params) {
     // com as próximas telas (detectTransfersForCompany) → não discordam.
     if (isUnifiedTransferEnabled()) {
       const { suggestions, coverage } = await detectTransfersForCompany(companyId, { matchOwnerName: true })
+      // Registra as sugestões (SUGGESTED, idempotente) — a base pra medir a taxa
+      // de confirmação do motor. Não duplica a cada load.
+      await recordSuggested(
+        prisma,
+        companyId,
+        suggestions.map((s) => ({ debitTxId: s.from.id, creditTxId: s.to.id, layer: s.layer, confidence: s.confidence, evidences: s.evidences })),
+      )
       let appliedU = 0
       if (input.autoApply) {
         const threshold = input.autoApplyMinConfidence ?? 0.85

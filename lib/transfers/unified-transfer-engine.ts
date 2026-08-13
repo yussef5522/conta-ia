@@ -89,6 +89,9 @@ export interface UnifiedDetectOptions {
    *  Camada 2 (0.85, não 0.99): nome é sinal forte mas NÃO prova (homônimo).
    *  Default OFF (shadow-run antes de ligar). */
   matchOwnerName?: boolean
+  /** Sprint TransferSuggestionEvent (13/08): pares IGNORADOS (chave `debitId|creditId`)
+   *  — pulados ANTES do greedy, então a tx ainda pode parear com OUTRA contraparte. */
+  ignoredKeys?: ReadonlySet<string>
 }
 
 export interface UnifiedDetectResult {
@@ -261,13 +264,18 @@ export function detectTransfers(
     return lo
   }
 
+  const ignored = opts.ignoredKeys
   const all: TransferSuggestion[] = []
   for (const d of debits) {
     const da = Math.abs(d.amount)
     const tarifa = (opts.tarifaTolerance ?? defaultTarifa)(d.amount)
     const start = lowerBound(da - tarifa)
     for (let i = start; i < creditsByAmount.length && creditAmts[i] <= da + tarifa; i++) {
-      const res = classifyTransferPair(d, creditsByAmount[i], opts)
+      const c = creditsByAmount[i]
+      // Par IGNORADO pelo usuário → não reaparece. Pula ANTES do greedy pra a tx
+      // ainda poder parear com outra contraparte.
+      if (ignored && ignored.has(`${d.id}|${c.id}`)) continue
+      const res = classifyTransferPair(d, c, opts)
       if (res) all.push(res)
     }
   }

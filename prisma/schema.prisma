@@ -146,6 +146,7 @@ model Company {
   recurringSchedules   RecurringSchedule[]
   rules                AiLearningRule[]
   costCenters          CostCenter[]
+  transferSuggestionEvents TransferSuggestionEvent[]
   categoryHistory      CategoryHistory[]
   restoreLogs          CategoryRestoreLog[]
   roles                Role[]
@@ -390,8 +391,11 @@ model Transaction {
 
   // Sprint Central de Transferências (Detecção Retroativa) — marcado quando
   // user clica "Não é transferência" num par sugerido pela varredura. A
-  // varredura filtra IS NULL pra não voltar a sugerir o mesmo par. Reversível
-  // via UPDATE direta no DB ou tela administrativa (futuro).
+  // ⚠️ DEPRECATED (13/08/2026): campo MORTO — nunca foi escrito, granularidade
+  // errada (per-TX, mas "ignorar" é per-PAR). Substituído por
+  // TransferSuggestionEvent.outcome='IGNORED' (per par). NÃO usar; os filtros
+  // `IS NULL` que restaram são no-ops (sempre null). Não removido só pra evitar
+  // DROP COLUMN em tabela com dados reais — deprecar em vez de dropar.
   transferDismissedAt DateTime?
 
   notes String?
@@ -1413,6 +1417,37 @@ model OfxImport {
   // Idempotência arquivo: lookup rápido por (conta, fileHash)
   @@index([bankAccountId, fileHash])
   @@map("ofx_imports")
+}
+
+// Sprint TransferSuggestionEvent (13/08/2026) — registro sugestão→desfecho do motor
+// de par de transferência. Resolve 2 coisas: (1) MEDIR se o motor acerta (taxa de
+// confirmação, pré-req pra aposentar o legado em ~19/08); (2) o "ignorar" que não
+// persistia — par ignorado NÃO volta a aparecer no banner (era porta sem volta).
+//
+// Chave por PAR (debitTxId, creditTxId). engine='unified' = o motor sugeriu;
+// 'manual' = o usuário achou sozinho no /parear (sem sugestão prévia) — é o que
+// distingue "o MOTOR acerta" de "o USUÁRIO acerta". Substitui o campo morto
+// `transferDismissedAt` (nunca escrito) — a exclusão de ignorados vem daqui,
+// por PAR (granularidade certa), não por tx.
+model TransferSuggestionEvent {
+  id         String    @id @default(cuid())
+  companyId  String
+  debitTxId  String
+  creditTxId String
+  layer      String?   // DETERMINISTIC | STRONG | WEAK
+  confidence Float?
+  evidences  String?   // JSON array de strings (pt-BR)
+  engine     String    @default("unified") // unified | manual
+  // SUGGESTED (motor sugeriu) | CONFIRMED (usuário aceitou) | IGNORED (usuário recusou)
+  outcome    String    @default("SUGGESTED")
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime? // quando virou CONFIRMED/IGNORED
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([debitTxId, creditTxId])
+  @@index([companyId, outcome])
+  @@map("transfer_suggestion_events")
 }
 
 // Sprint Import Idempotente (18/06/2026) — seen-ledger.

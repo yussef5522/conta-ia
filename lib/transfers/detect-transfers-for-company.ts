@@ -5,6 +5,7 @@
 import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { loadOwnEntityRefs } from './load-own-entity-refs'
+import { loadIgnoredKeys } from './suggestion-events'
 import {
   detectTransfers,
   type UnifiedTx,
@@ -94,7 +95,9 @@ export async function detectTransfersForCompany(
       status: t.status,
     }))
 
-  const result = detectTransfers(txs, { refs, valorComum, matchOwnerName: opts.matchOwnerName })
+  // Pares IGNORADOS pelo usuário — o motor não os re-sugere (não voltam ao banner).
+  const ignoredKeys = await loadIgnoredKeys(prisma, companyId)
+  const result = detectTransfers(txs, { refs, valorComum, matchOwnerName: opts.matchOwnerName, ignoredKeys })
   return {
     ...result,
     coverage: { analyzed: txs.length, total, truncated: total > txs.length, cap },
