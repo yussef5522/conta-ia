@@ -104,7 +104,9 @@ describe('c) Detalhe /socios/[socioId] — Hero premium substitui 3 stats cards'
 
   it('subtitle do hero mostra kindDominante quando único', () => {
     expect(code).toMatch(/kindDominante/)
-    expect(code).toMatch(/retirada realizada/)
+    // Sprint Jornada-do-Dinheiro (12/08): subtitle passou a "N retiradas · desde
+    // MM/AAAA" (o "realizada" saiu; o hero agora deixa claro que é acumulado).
+    expect(code).toMatch(/retirada'\s*:\s*'retiradas'/)
   })
 })
 

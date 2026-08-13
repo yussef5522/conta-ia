@@ -11,6 +11,7 @@ import { unstable_cache } from 'next/cache'
 import { prisma } from '@/lib/db'
 import { getAuthContext, AuthenticationError, ForbiddenError } from '@/lib/auth/rbac'
 import { getUserOwnedProfileIds } from '@/lib/bridges/queries'
+import { computeLucroDisponivel } from '@/lib/withdrawals/lucro-disponivel'
 import type { BridgeListItem } from '@/lib/bridges/types'
 
 function errorResponse(err: unknown) {
@@ -237,7 +238,21 @@ export async function GET(
     if (!data) {
       return NextResponse.json({ erro: 'Sócio não encontrado' }, { status: 404 })
     }
-    return NextResponse.json(data)
+
+    // Sprint Jornada-do-Dinheiro (12/08): o "topo da jornada" (de onde o dinheiro
+    // veio — lucro apurado − distribuído = disponível). REUSA computeLucroDisponivel
+    // (mesma fonte do WithdrawalPanel → números batem). Fica FORA do unstable_cache
+    // por-sócio porque é company-wide + tem cache próprio de 30s (compartilhado
+    // entre sócios da mesma empresa). Fail-soft: erro → null, nunca quebra a tela
+    // (lucro é referência, nunca bloqueia).
+    let lucroContext: Awaited<ReturnType<typeof computeLucroDisponivel>> = null
+    try {
+      lucroContext = await computeLucroDisponivel(companyId)
+    } catch {
+      lucroContext = null
+    }
+
+    return NextResponse.json({ ...data, lucroContext })
   } catch (err) {
     return errorResponse(err)
   }
@@ -260,4 +275,5 @@ export type SocioAggregatedResponse = {
     byKind: Record<string, { count: number; amount: number }>
   }
   txPixDetected: DetectedTx[]
+  lucroContext: Awaited<ReturnType<typeof computeLucroDisponivel>>
 }

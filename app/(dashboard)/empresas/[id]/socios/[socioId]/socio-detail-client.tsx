@@ -45,6 +45,10 @@ import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
 import { KIND_DEFAULTS } from '@/lib/bridges/kind-defaults'
 import { suggestSpendCategory } from '@/lib/bridges/suggest-spend-category'
+import {
+  aggregateDestinoPorCategoria,
+  computeJornadaSplit,
+} from '@/lib/bridges/socio-journey'
 import { BridgeBadge } from '@/components/bridges/BridgeBadge'
 import { BridgeDeleteModal } from '@/components/bridges/BridgeDeleteModal'
 import { NovaPonteForm } from '@/components/bridges/NovaPonteForm'
@@ -95,6 +99,29 @@ function startOfPeriod(periodo: PeriodoValue, now: Date): Date | null {
   }
 }
 
+// Sprint Jornada-do-Dinheiro (12/08): 'YYYY-MM' → 'MM/AAAA' (o "desde" do topo).
+function mesAnoLabel(desde: string): string {
+  const [y, m] = desde.split('-')
+  return y && m ? `${m}/${y}` : desde
+}
+
+// DD/MM curto (pro rótulo do período do Resumo).
+function ddmm(d: Date): string {
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+}
+
+// Rótulo do período filtrado COM as datas reais ("01/08 a 12/08"). Pro
+// filtro "tudo" mostra desde a 1ª retirada deste sócio (não "sempre").
+function periodoDatasLabel(
+  periodo: PeriodoValue,
+  now: Date,
+  primeiraRetirada: Date | null,
+): string {
+  const inicio = startOfPeriod(periodo, now) ?? primeiraRetirada
+  if (!inicio) return 'sem retiradas'
+  return `${ddmm(inicio)} a ${ddmm(now)}`
+}
+
 interface SocioData {
   id: string
   nome: string
@@ -118,6 +145,17 @@ interface SpendOption {
   categories: { id: string; name: string; color: string | null }[]
 }
 
+// Sprint Jornada-do-Dinheiro (12/08): topo da jornada (de onde o dinheiro veio).
+// Reusa o cálculo do WithdrawalPanel (computeLucroDisponivel) — pode vir null
+// (fail-soft) e pode ficar negativo (referência, nunca bloqueia).
+interface LucroContext {
+  desde: string
+  lucroApurado: number
+  distribuido: number
+  disponivel: number
+  negativo: boolean
+}
+
 interface AggregatedData {
   socio: SocioData
   suasPontes: BridgeListItem[]
@@ -128,6 +166,7 @@ interface AggregatedData {
   }
   txPixDetected: DetectedTx[]
   spendOptionsByProfile: Record<string, SpendOption>
+  lucroContext: LucroContext | null
 }
 
 interface Props {
@@ -269,9 +308,23 @@ export function SocioDetailClient({ empresaId, empresaNome, socioId }: Props) {
     )
   }
 
-  const { socio, suasPontes, agregados, txPixDetected } = data
+  const { socio, suasPontes, agregados, txPixDetected, lucroContext } = data
   const pixKeys = parsePixKeys(socio.pixKeys)
   const userTemPontes = agregados.totalCount > 0
+
+  // Sprint Jornada-do-Dinheiro (12/08): menor data de retirada deste sócio —
+  // o "desde MM/AAAA" do hero + fim do rótulo "tudo" no Resumo.
+  const primeiraRetirada =
+    suasPontes.length > 0
+      ? suasPontes.reduce(
+          (min, b) => (new Date(b.date) < min ? new Date(b.date) : min),
+          new Date(suasPontes[0].date),
+        )
+      : null
+
+  // Ponto 4 — de TUDO que o sócio tirou (all-time), quanto virou gasto (fluxo
+  // A/B) vs quanto ficou parado no PF. Answers "quanto do que tirei eu gastei".
+  const jornadaAllTime = computeJornadaSplit(suasPontes)
 
   // Sprint Redesign-Socios (01/07/2026): kind dominante — mostrado no hero
   // como subtítulo ("Distribuição de Lucros" quando kind único; "Vários tipos"
@@ -332,7 +385,7 @@ export function SocioDetailClient({ empresaId, empresaNome, socioId }: Props) {
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <p className="text-[11px] font-medium uppercase tracking-wide text-white/80">
-                  Total recebido deste sócio
+                  Total recebido deste sócio · desde o início
                 </p>
                 <p className="mt-2 text-4xl font-semibold tabular-nums tracking-tight sm:text-5xl">
                   {userTemPontes ? formatBRL(agregados.totalAmount) : 'R$ 0,00'}
@@ -341,8 +394,15 @@ export function SocioDetailClient({ empresaId, empresaNome, socioId }: Props) {
                   {userTemPontes ? (
                     <>
                       <span className="tabular-nums">{agregados.totalCount}</span>{' '}
-                      {agregados.totalCount === 1 ? 'retirada realizada' : 'retiradas realizadas'}
+                      {agregados.totalCount === 1 ? 'retirada' : 'retiradas'}
                       {kindDominante && <> · {kindDominante}</>}
+                      {primeiraRetirada && (
+                        <> · desde {mesAnoLabel(
+                          `${primeiraRetirada.getFullYear()}-${String(
+                            primeiraRetirada.getMonth() + 1,
+                          ).padStart(2, '0')}`,
+                        )}</>
+                      )}
                     </>
                   ) : (
                     'Nenhuma retirada registrada'
@@ -356,6 +416,94 @@ export function SocioDetailClient({ empresaId, empresaNome, socioId }: Props) {
           </CardContent>
         </Card>
       </motion.div>
+
+      {/* Ponto 3 — TOPO DA JORNADA: de onde o dinheiro veio (o lado da empresa).
+          Reusa lucroContext (mesma fonte do WithdrawalPanel). Tom REFERÊNCIA:
+          pode ficar negativo, sem cor de erro, sem alerta, nunca bloqueia. */}
+      {lucroContext && (
+        <Card className="border-slate-200">
+          <CardContent className="p-4">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+              De onde veio · a empresa
+              {lucroContext.desde && <> · desde {mesAnoLabel(lucroContext.desde)}</>}
+            </p>
+            <div className="mt-3 flex flex-wrap items-stretch gap-y-3">
+              <div className="min-w-[130px] flex-1">
+                <p className="text-[10px] uppercase tracking-wide text-slate-400">Lucro apurado</p>
+                <p className="mt-0.5 text-lg font-semibold tabular-nums text-slate-900">
+                  {formatBRL(lucroContext.lucroApurado)}
+                </p>
+              </div>
+              <div className="hidden self-center px-1 text-lg text-slate-300 sm:block" aria-hidden>−</div>
+              <div className="min-w-[130px] flex-1">
+                <p className="text-[10px] uppercase tracking-wide text-slate-400">
+                  Distribuído · todos os sócios
+                </p>
+                <p className="mt-0.5 text-lg font-semibold tabular-nums text-slate-700">
+                  {formatBRL(lucroContext.distribuido)}
+                </p>
+              </div>
+              <div className="hidden self-center px-1 text-lg text-slate-300 sm:block" aria-hidden>=</div>
+              <div className="min-w-[130px] flex-1">
+                <p className="text-[10px] uppercase tracking-wide text-slate-400">Disponível</p>
+                <p
+                  className={`mt-0.5 text-lg font-semibold tabular-nums ${
+                    lucroContext.negativo ? 'text-slate-500' : 'text-emerald-700'
+                  }`}
+                >
+                  {formatBRL(lucroContext.disponivel)}
+                </p>
+              </div>
+            </div>
+            <p className="mt-2 text-[11px] text-slate-400">
+              Referência pra você se situar — não é limite.
+              {lucroContext.negativo &&
+                ' Você distribuiu além do apurado (adiantamento sobre lucro futuro).'}
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Ponto 4 — de TUDO que o sócio tirou (all-time): quanto virou gasto
+          (fluxo A/B) vs quanto ficou parado no PF. Responde "quanto do que tirei
+          eu realmente gastei". */}
+      {userTemPontes && (
+        <Card className="border-slate-200">
+          <CardContent className="p-4">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+              Do que você tirou · desde o início
+            </p>
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <div className="flex items-center justify-between rounded-lg border border-emerald-100 bg-emerald-50/60 p-3">
+                <span className="flex items-center gap-1.5 text-sm text-emerald-800">
+                  <Check className="h-4 w-4" aria-hidden /> Você gastou
+                </span>
+                <span className="text-right">
+                  <span className="block font-semibold tabular-nums text-emerald-800">
+                    {formatBRL(jornadaAllTime.gastouAmount)}
+                  </span>
+                  <span className="block text-[11px] text-emerald-700/70">
+                    {jornadaAllTime.gastouCount} de {agregados.totalCount}
+                  </span>
+                </span>
+              </div>
+              <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <span className="flex items-center gap-1.5 text-sm text-slate-700">
+                  <span aria-hidden>👛</span> Ficou com você · no PF
+                </span>
+                <span className="text-right">
+                  <span className="block font-semibold tabular-nums text-slate-800">
+                    {formatBRL(jornadaAllTime.ficouAmount)}
+                  </span>
+                  <span className="block text-[11px] text-slate-500">
+                    {jornadaAllTime.ficouCount} de {agregados.totalCount}
+                  </span>
+                </span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Banner condicional Detecção Pix — só aparece se > 0 */}
       {txPixDetected.length > 0 && (
@@ -620,23 +768,28 @@ function RetiradasTab({
     return { byKind, total, count: filtered.length }
   }, [filtered])
 
-  // Sprint Retirada-Despesa-PF: estatística "destino" — quantas têm despesa PF
-  const destinoStats = useMemo(() => {
-    let catCount = 0
-    let catAmount = 0
-    let pendCount = 0
-    let pendAmount = 0
-    for (const b of filtered) {
-      if (b.spendTransactionId) {
-        catCount++
-        catAmount += b.spendAmount ?? b.amount
-      } else {
-        pendCount++
-        pendAmount += b.amount
-      }
-    }
-    return { catCount, catAmount, pendCount, pendAmount }
-  }, [filtered])
+  // Sprint Jornada-do-Dinheiro (12/08) — ponto 2: destino do dinheiro SOMADO
+  // por categoria da despesa PF (fluxo A/B). Cada retirada joga o valor TIRADO
+  // (amount) na categoria pra onde virou gasto; sem A/B cai em "ficou comigo".
+  // Usa amount (não spendAmount) pra a soma bater com a lista detalhada.
+  const destinoPorCategoria = useMemo(
+    () => aggregateDestinoPorCategoria(filtered),
+    [filtered],
+  )
+
+  // Ponto 1 — rótulo do período COM as datas reais ("Este mês · 01/08 a 12/08").
+  const periodoLabel = PERIODOS.find((p) => p.value === filtroPeriodo)?.label ?? 'Tudo'
+  const primeiraRetiradaTab = useMemo(
+    () =>
+      suasPontes.length > 0
+        ? suasPontes.reduce(
+            (min, b) => (new Date(b.date) < min ? new Date(b.date) : min),
+            new Date(suasPontes[0].date),
+          )
+        : null,
+    [suasPontes],
+  )
+  const datasLabel = periodoDatasLabel(filtroPeriodo, new Date(), primeiraRetiradaTab)
 
   return (
     <div className="space-y-4">
@@ -699,8 +852,11 @@ function RetiradasTab({
 
       {/* Resumo: total + 5 cards por kind */}
       <div>
-        <div className="mb-2 flex items-baseline justify-between">
-          <h3 className="text-xs uppercase text-slate-500">Resumo</h3>
+        <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-2">
+          <h3 className="text-xs uppercase text-slate-500">
+            Resumo — {periodoLabel}{' '}
+            <span className="tabular-nums normal-case text-slate-400">· {datasLabel}</span>
+          </h3>
           <span className="text-xs text-slate-500">
             {summary.count} retirada{summary.count === 1 ? '' : 's'} ·{' '}
             <strong className="text-emerald-700">{formatBRL(summary.total)}</strong>
@@ -735,33 +891,50 @@ function RetiradasTab({
           })}
         </div>
 
-        {/* Sprint Retirada-Despesa-PF: Destino do dinheiro */}
+        {/* Ponto 2 — Destino do dinheiro SOMADO por categoria (a jornada:
+            pra onde foi cada retirada). "Ficou comigo" = sem fluxo A/B. */}
         {summary.count > 0 && (
           <Card className="mt-3 border-slate-200 bg-gradient-to-br from-slate-50 to-white">
             <CardContent className="space-y-2 p-3">
-              <p className="flex items-center gap-1 text-xs uppercase text-slate-600">
-                📊 Destino dos {formatBRL(summary.total)} (despesa PF correspondente)
-              </p>
-              <div className="grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
-                <div className="flex items-center justify-between rounded border border-emerald-100 bg-emerald-50/60 p-2">
-                  <span className="flex items-center gap-1 text-emerald-700">
-                    <Check className="h-3 w-3" /> Categorizadas
-                  </span>
-                  <span className="font-semibold tabular-nums text-emerald-700">
-                    {formatBRL(destinoStats.catAmount)} ({destinoStats.catCount}/
-                    {summary.count})
-                  </span>
-                </div>
-                <div className="flex items-center justify-between rounded border border-amber-100 bg-amber-50/60 p-2">
-                  <span className="flex items-center gap-1 text-amber-700">
-                    <Lightbulb className="h-3 w-3" /> Pendentes
-                  </span>
-                  <span className="font-semibold tabular-nums text-amber-700">
-                    {formatBRL(destinoStats.pendAmount)} ({destinoStats.pendCount}/
-                    {summary.count})
-                  </span>
-                </div>
+              <div className="flex items-baseline justify-between">
+                <p className="flex items-center gap-1 text-xs uppercase text-slate-600">
+                  📊 Destino dos {formatBRL(summary.total)}
+                </p>
+                <span className="text-[10px] text-slate-400">no período · pra onde foi</span>
               </div>
+              <ul className="space-y-1">
+                {destinoPorCategoria.map((d, i) => {
+                  const pct =
+                    summary.total > 0 ? Math.round((d.amount / summary.total) * 100) : 0
+                  return (
+                    <li key={i} className="flex items-center gap-2 text-xs">
+                      <span
+                        className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={{ backgroundColor: d.ficou ? '#cbd5e1' : d.color ?? '#94a3b8' }}
+                        aria-hidden
+                      />
+                      <span
+                        className={`min-w-0 flex-1 truncate ${
+                          d.ficou ? 'italic text-slate-500' : 'text-slate-700'
+                        }`}
+                      >
+                        {d.label}
+                      </span>
+                      <span className="w-6 text-right text-[10px] text-slate-400">{d.count}×</span>
+                      <span className="w-9 text-right text-[10px] tabular-nums text-slate-400">
+                        {pct}%
+                      </span>
+                      <span
+                        className={`w-24 text-right font-semibold tabular-nums ${
+                          d.ficou ? 'text-slate-500' : 'text-slate-800'
+                        }`}
+                      >
+                        {formatBRL(d.amount)}
+                      </span>
+                    </li>
+                  )
+                })}
+              </ul>
             </CardContent>
           </Card>
         )}
