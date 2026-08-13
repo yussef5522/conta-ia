@@ -78,7 +78,11 @@ describe('c) NovaPonteForm — 4 props aditivas', () => {
     expect(code).toMatch(/useState\(initialPjTxId\s*\?\?\s*['"]{2}\)/)
     expect(code).toMatch(/useState\(initialProfileId\s*\?\?\s*['"]{2}\)/)
     expect(code).toMatch(/useState\(initialAccountId\s*\?\?\s*['"]{2}\)/)
-    expect(code).toMatch(/useState\(initialCategoryId\s*\?\?\s*['"]{2}\)/)
+    // Sprint Entrada-Fixa-Ponte (13/08): initialCategoryId NÃO vira mais estado —
+    // a categoria de entrada é fixa pelo sistema. A prop fica na interface (compat
+    // com BridgeConviteModal) mas é ignorada; o combobox de entrada saiu.
+    expect(code).not.toMatch(/useState\(initialCategoryId/)
+    expect(code).toMatch(/Retirada da empresa/)
   })
   it('prop onCancel opcional (modal fecha sem navegar)', () => {
     expect(code).toMatch(/onCancel\?:\s*\(\)\s*=>\s*void/)

@@ -108,7 +108,7 @@ beforeAll(async () => {
     pjTxIds.push(pjTx.id)
     const r = await createBridge({
       userId: userA.id, companyId, pjTransactionId: pjTx.id,
-      profileId: profileA.id, pfBankAccountId: pfAccount.id, pfCategoryId: pfCategory.id,
+      profileId: profileA.id, pfBankAccountId: pfAccount.id,
       kind: amt === 10000 ? 'DISTRIBUICAO' : 'PRO_LABORE',
       socioPFId: socioA.id,
     })

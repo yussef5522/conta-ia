@@ -11,7 +11,6 @@ const base: BuildPontePayloadInput = {
   pjTransactionId: 'tx',
   profileId: 'prof',
   pfBankAccountId: 'acc',
-  pfCategoryId: 'incomeCat',
   kind: 'DISTRIBUICAO',
   socioPFId: 'socio',
   spendChecked: false,
@@ -22,7 +21,8 @@ describe('buildPontePayload — fluxo A vs B', () => {
   it('fluxo A (não gastei): SEM spend → só entrada, saldo PF sobe', () => {
     const p = buildPontePayload(base)
     expect(p.spend).toBeUndefined()
-    expect(p.pfCategoryId).toBe('incomeCat')
+    // Sprint Entrada-Fixa-Ponte (13/08): payload não carrega mais pfCategoryId.
+    expect(p).not.toHaveProperty('pfCategoryId')
     expect(p.createdVia).toBe('CREATED_MANUAL')
   })
 

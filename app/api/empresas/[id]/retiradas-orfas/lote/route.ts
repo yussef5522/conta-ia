@@ -24,7 +24,9 @@ const schema = z.object({
   pjTransactionIds: z.array(z.string().min(1)).min(1).max(200),
   profileId: z.string().min(1),
   pfBankAccountId: z.string().min(1),
-  pfCategoryId: z.string().min(1),
+  // Sprint Entrada-Fixa-Ponte (13/08/2026): entrada resolvida no servidor.
+  // Aceito e ignorado se vier de client antigo.
+  pfCategoryId: z.string().optional(),
   kind: z.enum(['PRO_LABORE', 'DISTRIBUICAO', 'REEMBOLSO', 'ADIANTAMENTO', 'RETIRADA_SOCIOS']),
   socioPFId: z.string().nullish(),
   spendCategoryId: z.string().min(1).nullish(),
@@ -51,7 +53,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     const ctx = await getAuthContext(request, empresaId)
     ctx.requirePermission('transaction.create')
 
-    const { pjTransactionIds, profileId, pfBankAccountId, pfCategoryId, kind, socioPFId, spendCategoryId } =
+    const { pjTransactionIds, profileId, pfBankAccountId, kind, socioPFId, spendCategoryId } =
       parsed.data
 
     const results: Array<{ pjTransactionId: string; ok: boolean; erro?: string; code?: string }> = []
@@ -63,7 +65,6 @@ export async function POST(request: NextRequest, { params }: Params) {
           pjTransactionId,
           profileId,
           pfBankAccountId,
-          pfCategoryId,
           kind: kind as BridgeKind,
           createdVia: 'CREATED_MANUAL',
           socioPFId: socioPFId ?? null,

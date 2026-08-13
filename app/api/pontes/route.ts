@@ -20,7 +20,10 @@ const schema = z.object({
   pjTransactionId: z.string().min(1),
   profileId: z.string().min(1),
   pfBankAccountId: z.string().min(1),
-  pfCategoryId: z.string().min(1),
+  // Sprint Entrada-Fixa-Ponte (13/08/2026): pfCategoryId REMOVIDO — a categoria
+  // de entrada é resolvida no servidor (createBridge). Aceito e ignorado se vier
+  // de um client antigo (não quebra), mas nunca é usado.
+  pfCategoryId: z.string().optional(),
   kind: z.enum(['PRO_LABORE', 'DISTRIBUICAO', 'REEMBOLSO', 'ADIANTAMENTO', 'RETIRADA_SOCIOS']),
   createdVia: z.enum(['CREATED_MANUAL', 'CREATED_FROM_DETECTION']).optional(),
   socioPFId: z.string().nullish(),
@@ -101,7 +104,6 @@ export async function POST(request: NextRequest) {
       pjTransactionId: parsed.data.pjTransactionId,
       profileId: parsed.data.profileId,
       pfBankAccountId: parsed.data.pfBankAccountId,
-      pfCategoryId: parsed.data.pfCategoryId,
       kind: parsed.data.kind as BridgeKind,
       createdVia: parsed.data.createdVia,
       socioPFId: parsed.data.socioPFId ?? null,

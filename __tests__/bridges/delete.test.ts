@@ -80,7 +80,7 @@ async function createOneBridge() {
   })
   const res = await createBridge({
     userId: userA.id, companyId, pjTransactionId: pjTx.id,
-    profileId: profileA.id, pfBankAccountId: pfAccount.id, pfCategoryId: pfCategory.id,
+    profileId: profileA.id, pfBankAccountId: pfAccount.id,
     kind: 'DISTRIBUICAO',
   })
   return { ...res, pjTxId: pjTx.id }

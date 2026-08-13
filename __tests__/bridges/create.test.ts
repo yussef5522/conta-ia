@@ -19,7 +19,6 @@ let socioA: { id: string }
 let profileA: { id: string }
 let pfAccount: { id: string }
 let pfCategory: { id: string }
-let pfExpenseCat: { id: string } // category EXPENSE pra testar invalid
 let pjTx1: { id: string }
 let pjTx2: { id: string }
 let pjTx3PayableNot: { id: string }
@@ -80,12 +79,6 @@ beforeAll(async () => {
     take: 1,
   })
   pfCategory = { id: cats[0]!.id }
-
-  const expCats = await prisma.personalCategory.findMany({
-    where: { profileId: profileA.id, type: 'EXPENSE' },
-    take: 1,
-  })
-  pfExpenseCat = { id: expCats[0]!.id }
 
   pjTx1 = await prisma.transaction.create({
     data: {
@@ -162,7 +155,6 @@ describe('createBridge — caminho feliz', () => {
       pjTransactionId: pjTx1.id,
       profileId: profileA.id,
       pfBankAccountId: pfAccount.id,
-      pfCategoryId: pfCategory.id,
       kind: 'DISTRIBUICAO',
       createdVia: 'CREATED_FROM_DETECTION',
       socioPFId: socioA.id,
@@ -190,7 +182,13 @@ describe('createBridge — caminho feliz', () => {
     expect(pfTx!.amount).toBe(10000)
     expect(pfTx!.profileId).toBe(profileA.id)
     expect(pfTx!.bankAccountId).toBe(pfAccount.id)
-    expect(pfTx!.categoryId).toBe(pfCategory.id)
+    // Sprint Entrada-Fixa-Ponte (13/08): a categoria de entrada é resolvida no
+    // servidor = a canônica BRIDGE_ENTRY do perfil (não a que o caller passasse).
+    const entryCat = await prisma.personalCategory.findFirst({
+      where: { profileId: profileA.id, systemSlug: 'BRIDGE_ENTRY' },
+    })
+    expect(entryCat).not.toBeNull()
+    expect(pfTx!.categoryId).toBe(entryCat!.id)
     expect(pfTx!.origin).toBe('AI') // CREATED_FROM_DETECTION → AI
     expect(pfTx!.description).toContain('Distribuição de Lucros')
     expect(pfTx!.description).toContain(`${PREFIX}-profit`)
@@ -209,7 +207,7 @@ describe('createBridge — caminho feliz', () => {
   test('Cria com kind PRO_LABORE → origin MANUAL', async () => {
     const result = await createBridge({
       userId: userA.id, companyId, pjTransactionId: pjTx2.id,
-      profileId: profileA.id, pfBankAccountId: pfAccount.id, pfCategoryId: pfCategory.id,
+      profileId: profileA.id, pfBankAccountId: pfAccount.id,
       kind: 'PRO_LABORE',
     })
     const pfTx = await prisma.personalTransaction.findUnique({
@@ -229,7 +227,7 @@ describe('createBridge — bloqueios', () => {
       await createBridge({
         userId: userB.id, companyId, pjTransactionId: pjTx1.id,
         profileId: profileA.id,
-        pfBankAccountId: pfAccount.id, pfCategoryId: pfCategory.id,
+        pfBankAccountId: pfAccount.id,
         kind: 'DISTRIBUICAO',
       })
       throw new Error('Deveria ter lançado')
@@ -242,7 +240,7 @@ describe('createBridge — bloqueios', () => {
     try {
       await createBridge({
         userId: userA.id, companyId, pjTransactionId: pjTxCredit.id,
-        profileId: profileA.id, pfBankAccountId: pfAccount.id, pfCategoryId: pfCategory.id,
+        profileId: profileA.id, pfBankAccountId: pfAccount.id,
         kind: 'DISTRIBUICAO',
       })
       throw new Error('Deveria ter lançado')
@@ -255,7 +253,7 @@ describe('createBridge — bloqueios', () => {
     try {
       await createBridge({
         userId: userA.id, companyId, pjTransactionId: pjTx3PayableNot.id,
-        profileId: profileA.id, pfBankAccountId: pfAccount.id, pfCategoryId: pfCategory.id,
+        profileId: profileA.id, pfBankAccountId: pfAccount.id,
         kind: 'DISTRIBUICAO',
       })
       throw new Error('Deveria ter lançado')
@@ -269,7 +267,7 @@ describe('createBridge — bloqueios', () => {
       await createBridge({
         userId: userA.id, companyId, // companyId=PROFIT
         pjTransactionId: pjTxOtherCompany.id, // tx é da CACULA
-        profileId: profileA.id, pfBankAccountId: pfAccount.id, pfCategoryId: pfCategory.id,
+        profileId: profileA.id, pfBankAccountId: pfAccount.id,
         kind: 'DISTRIBUICAO',
       })
       throw new Error('Deveria ter lançado')
@@ -281,13 +279,13 @@ describe('createBridge — bloqueios', () => {
   test('Tx PJ já tem bridge → PJ_ALREADY_BRIDGED', async () => {
     const result = await createBridge({
       userId: userA.id, companyId, pjTransactionId: pjTx1.id,
-      profileId: profileA.id, pfBankAccountId: pfAccount.id, pfCategoryId: pfCategory.id,
+      profileId: profileA.id, pfBankAccountId: pfAccount.id,
       kind: 'DISTRIBUICAO',
     })
     try {
       await createBridge({
         userId: userA.id, companyId, pjTransactionId: pjTx1.id,
-        profileId: profileA.id, pfBankAccountId: pfAccount.id, pfCategoryId: pfCategory.id,
+        profileId: profileA.id, pfBankAccountId: pfAccount.id,
         kind: 'PRO_LABORE',
       })
       throw new Error('Deveria ter lançado')
@@ -298,13 +296,16 @@ describe('createBridge — bloqueios', () => {
     await prisma.personalTransaction.delete({ where: { id: result.pfTransactionId } })
   })
 
-  test('Categoria EXPENSE no PF → PF_CATEGORY_INVALID', async () => {
+  // Sprint Entrada-Fixa-Ponte (13/08): a categoria de ENTRADA não é mais input
+  // (servidor resolve), então "entrada inválida" deixou de existir. A validação
+  // que sobra é a do GASTO (fluxo B): categoria de despesa precisa ser EXPENSE.
+  test('spend com categoria INCOME (não EXPENSE) → PF_CATEGORY_INVALID', async () => {
     try {
       await createBridge({
         userId: userA.id, companyId, pjTransactionId: pjTx1.id,
         profileId: profileA.id, pfBankAccountId: pfAccount.id,
-        pfCategoryId: pfExpenseCat.id,
         kind: 'DISTRIBUICAO',
+        spend: { categoryId: pfCategory.id }, // pfCategory é INCOME → inválida pra gasto
       })
       throw new Error('Deveria ter lançado')
     } catch (err) {
@@ -316,7 +317,7 @@ describe('createBridge — bloqueios', () => {
     try {
       await createBridge({
         userId: userA.id, companyId, pjTransactionId: pjTx1.id,
-        profileId: profileA.id, pfBankAccountId: pfAccount.id, pfCategoryId: pfCategory.id,
+        profileId: profileA.id, pfBankAccountId: pfAccount.id,
         // @ts-expect-error testando runtime validation
         kind: 'NOT_A_KIND',
       })
@@ -333,7 +334,7 @@ describe('createBridge — bloqueios', () => {
     try {
       await createBridge({
         userId: userA.id, companyId, pjTransactionId: pjTx2.id,
-        profileId: profileA.id, pfBankAccountId: pfAccount.id, pfCategoryId: pfCategory.id,
+        profileId: profileA.id, pfBankAccountId: pfAccount.id,
         kind: 'DISTRIBUICAO',
         socioPFId: socioOther.id,
       })

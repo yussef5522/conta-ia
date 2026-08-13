@@ -110,7 +110,6 @@ export function NovaPonteForm({
   initialPjTxId,
   initialProfileId,
   initialAccountId,
-  initialCategoryId,
   onCancel,
   compact = false,
 }: NovaPonteFormProps) {
@@ -127,8 +126,9 @@ export function NovaPonteForm({
   const [profileId, setProfileId] = useState(initialProfileId ?? '')
   const [accounts, setAccounts] = useState<Account[]>([])
   const [accountId, setAccountId] = useState(initialAccountId ?? '')
-  const [categories, setCategories] = useState<Category[]>([])
-  const [categoryId, setCategoryId] = useState(initialCategoryId ?? '')
+  // Sprint Entrada-Fixa-Ponte (13/08/2026): categoria de entrada NÃO é mais
+  // estado da tela — o servidor resolve. `initialCategoryId` fica na interface
+  // por compat (BridgeConviteModal ainda passa), mas é ignorado.
   const [notes, setNotes] = useState('')
   const [submitting, setSubmitting] = useState(false)
   // Sprint Fix-NovaPonte (30/06/2026): estados dedicados pra loading + erro.
@@ -234,10 +234,8 @@ export function NovaPonteForm({
       .then((r) => r.json())
       .then((j) => setAccounts(j.accounts ?? []))
       .catch(() => {})
-    fetch(`/api/perfis/${profileId}/categorias?type=INCOME`)
-      .then((r) => r.json())
-      .then((j) => setCategories(j.categories ?? []))
-      .catch(() => {})
+    // Sprint Entrada-Fixa-Ponte (13/08/2026): não busca mais categorias INCOME
+    // pro campo de entrada (removido). Só as EXPENSE do card de gasto abaixo.
     // Sprint Fluxo-A/B-Ponte (05/07/2026): fetch categorias EXPENSE do perfil
     // pro card "Onde você gastou?". Mesmo pattern do INCOME acima.
     fetch(`/api/perfis/${profileId}/categorias?type=EXPENSE`)
@@ -356,10 +354,10 @@ export function NovaPonteForm({
   }, [spendChecked, selectedPjTx, spendCategories, spendSuggestionAppliedFor])
 
   async function handleSubmit() {
-    if (!selectedPjTxId || !profileId || !accountId || !categoryId) {
+    if (!selectedPjTxId || !profileId || !accountId) {
       toast({
         title: 'Preencha tudo',
-        description: 'Selecione tx PJ, tipo, perfil, conta e categoria.',
+        description: 'Selecione tx PJ, tipo, perfil e conta.',
         variant: 'destructive',
       })
       return
@@ -384,7 +382,7 @@ export function NovaPonteForm({
         pjTransactionId: selectedPjTxId,
         profileId,
         pfBankAccountId: accountId,
-        pfCategoryId: categoryId,
+        // Sprint Entrada-Fixa-Ponte (13/08): sem pfCategoryId — servidor resolve.
         kind,
         createdVia: 'CREATED_MANUAL',
         socioPFId: socioPFId ?? null,
@@ -584,40 +582,19 @@ export function NovaPonteForm({
             </select>
           </div>
 
+          {/* Sprint Entrada-Fixa-Ponte (13/08/2026): a categoria de ENTRADA
+              deixou de ser campo livre (era a raiz de "3 categorias pra mesma
+              coisa"). Agora é fixa pelo sistema — "Retirada da empresa". A
+              liberdade fica só no GASTO (card abaixo), onde há variação real. */}
           <div>
-            <Label>Categoria PF</Label>
-            {/* Sprint Category-Combobox PF Batch (30/06/2026): trocado
-                <select> HTML por CategoryCombobox unificado. Bridge PJ→PF
-                cria tx PF CREDIT (recebimento), categoria = INCOME. */}
-            <CategoryCombobox
-              value={categoryId || null}
-              categorias={categories.map((c) => ({
-                id: c.id,
-                name: c.name,
-                color: c.color ?? null,
-                type: c.type ?? 'INCOME',
-                dreGroup: null,
-              }))}
-              onChange={(v) => setCategoryId(v ?? '')}
-              onCreate={
-                profileId
-                  ? async (name) => {
-                      const cat = await createCategoryForPF(profileId, name, 'INCOME')
-                      if (cat) setCategories((prev) => [...prev, {
-                        id: cat.id,
-                        name: cat.name,
-                        color: cat.color ?? null,
-                        type: cat.type ?? 'INCOME',
-                      }])
-                      return cat
-                    }
-                  : undefined
-              }
-              disabled={!profileId}
-              placeholder="Selecione…"
-              className="mt-1 h-9 w-full justify-between border-input text-sm"
-              ariaLabel="Categoria PF da ponte"
-            />
+            <Label>Entrada no PF</Label>
+            <div className="mt-1 flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+              <span aria-hidden>🔒</span>
+              <span>
+                Registrada como <strong className="text-slate-800">Retirada da empresa</strong>{' '}
+                <span className="text-xs text-slate-400">· definido pelo sistema</span>
+              </span>
+            </div>
           </div>
 
           <div>

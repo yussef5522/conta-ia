@@ -5,19 +5,31 @@
 //
 // FUNÇÃO PURA: sem deps de Prisma/fetch. Testável.
 
+import { BRIDGE_ENTRY_SLUG, BRIDGE_ENTRY_DEFAULT_NAME } from '@/lib/bridges/entry-category-slug'
+
 export interface PersonalCategoryTemplate {
   name: string
   type: 'INCOME' | 'EXPENSE'
   color: string
   icon: string
+  /** Sprint Entrada-Fixa-Ponte (13/08): marcador estável (só a canônica tem). */
+  systemSlug?: string
 }
 
 export const PF_DEFAULT_CATEGORIES: readonly PersonalCategoryTemplate[] = [
   // Receitas
   { name: 'Salário', type: 'INCOME', color: '#10b981', icon: 'Wallet' },
-  // Pró-labore/Lucros é placeholder pra Fatia 4 (ponte PJ→PF).
-  // Pré-criar agora deixa pronto pra quando a ponte for ativada.
-  { name: 'Pró-labore / Lucros', type: 'INCOME', color: '#059669', icon: 'Briefcase' },
+  // Sprint Entrada-Fixa-Ponte (13/08): a categoria de ENTRADA da ponte PJ→PF é
+  // canônica e gerida pelo sistema (systemSlug BRIDGE_ENTRY). Substitui o antigo
+  // "Pró-labore / Lucros" (nome que misturava 2 conceitos e virava duplicata).
+  // Perfil novo já nasce com ela — o get-or-create nunca precisa criar.
+  {
+    name: BRIDGE_ENTRY_DEFAULT_NAME,
+    type: 'INCOME',
+    color: '#059669',
+    icon: 'Briefcase',
+    systemSlug: BRIDGE_ENTRY_SLUG,
+  },
   { name: 'Outros recebimentos', type: 'INCOME', color: '#34d399', icon: 'PlusCircle' },
 
   // Despesas

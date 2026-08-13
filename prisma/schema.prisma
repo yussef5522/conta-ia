@@ -2383,11 +2383,21 @@ model PersonalCategory {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Sprint Entrada-Fixa-Ponte (13/08/2026): marcador ESTÁVEL (rename-proof) de
+  // categoria gerida pelo sistema. `BRIDGE_ENTRY` = a categoria de ENTRADA da
+  // retirada PJ→PF ("dinheiro da empresa entrando no PF") — resolvida no
+  // servidor, nunca escolhida na tela. O usuário pode RENOMEAR a categoria; o
+  // slug garante que continua sendo a mesma (get-or-create nunca cria outra).
+  systemSlug String?
+
   profile         PersonalProfile?      @relation(fields: [profileId], references: [id], onDelete: Cascade)
   transactions    PersonalTransaction[]
   // Sprint PF Fatia 3
   aiLearningRules AiLearningRule[]
 
+  // No máximo UMA categoria por (perfil, slug). NULLs não conflitam (templates
+  // e categorias comuns ficam livres) → idempotência do get-or-create no DB.
+  @@unique([profileId, systemSlug])
   @@index([profileId])
   @@index([parentId])
   @@map("personal_categories")

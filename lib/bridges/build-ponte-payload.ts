@@ -4,12 +4,14 @@
 // ele o saldo do PF inflava. Aqui `spend` entra SÓ quando "já gastei" está
 // marcado E há categoria do gasto.
 
+// Sprint Entrada-Fixa-Ponte (13/08/2026): pfCategoryId SAIU — a categoria de
+// entrada é resolvida no servidor (createBridge), não vem mais do painel. A
+// liberdade continua só no GASTO (spend, EXPENSE), que é onde há variação real.
 export interface BuildPontePayloadInput {
   companyId: string
   pjTransactionId: string
   profileId: string
   pfBankAccountId: string
-  pfCategoryId: string
   kind: string
   socioPFId: string
   createdVia?: string
@@ -24,7 +26,6 @@ export interface PontePayload {
   pjTransactionId: string
   profileId: string
   pfBankAccountId: string
-  pfCategoryId: string
   kind: string
   createdVia: string
   socioPFId: string
@@ -37,7 +38,6 @@ export function buildPontePayload(i: BuildPontePayloadInput): PontePayload {
     pjTransactionId: i.pjTransactionId,
     profileId: i.profileId,
     pfBankAccountId: i.pfBankAccountId,
-    pfCategoryId: i.pfCategoryId,
     kind: i.kind,
     createdVia: i.createdVia ?? 'CREATED_MANUAL',
     socioPFId: i.socioPFId,

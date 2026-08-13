@@ -10,6 +10,7 @@ import { checkProfileAccess, ProfileAccessError } from '@/lib/personal-profile/q
 import { BridgeError, type BridgeKind, type CreatedVia, BRIDGE_KINDS, CREATED_VIA } from './types'
 import { getKindDefaults } from './kind-defaults'
 import { resolvePjCategoryForKind } from './resolve-pj-category'
+import { getOrCreateBridgeEntryCategory } from './entry-category'
 import { Prisma } from '@prisma/client'
 
 export interface CreateBridgeInput {
@@ -18,7 +19,10 @@ export interface CreateBridgeInput {
   pjTransactionId: string
   profileId: string
   pfBankAccountId: string
-  pfCategoryId: string
+  // Sprint Entrada-Fixa-Ponte (13/08/2026): a categoria de ENTRADA NÃO vem mais
+  // da tela — é resolvida no servidor (getOrCreateBridgeEntryCategory) pelo
+  // marcador estável. Campo removido do input de propósito: quem chama não
+  // decide mais a categoria de entrada.
   kind: BridgeKind
   createdVia?: CreatedVia
   socioPFId?: string | null
@@ -110,6 +114,11 @@ export async function createBridge(
       throw new BridgeError('Usuário não encontrado', 'PF_PROFILE_NOT_FOUND')
     }
 
+    // Sprint Entrada-Fixa-Ponte (13/08/2026): resolve a categoria de ENTRADA no
+    // SERVIDOR (não confia na tela). Roda FORA do $transaction (com retry no
+    // race) pra não envenenar a tx da ponte. Sempre a mesma categoria por perfil.
+    const pfCategoryId = await getOrCreateBridgeEntryCategory(input.profileId)
+
     return await prisma.$transaction(async (tx) => {
       // 1. Buscar tx PJ + checar companyId + estado
       const pjTx = await tx.transaction.findUnique({
@@ -176,19 +185,8 @@ export async function createBridge(
           'PF_ACCOUNT_NOT_FOUND',
         )
       }
-      const pfCategory = await tx.personalCategory.findUnique({
-        where: { id: input.pfCategoryId },
-      })
-      if (
-        !pfCategory ||
-        (pfCategory.profileId && pfCategory.profileId !== input.profileId) ||
-        pfCategory.type !== 'INCOME'
-      ) {
-        throw new BridgeError(
-          'Categoria PF inválida (precisa ser do perfil + tipo INCOME)',
-          'PF_CATEGORY_INVALID',
-        )
-      }
+      // Categoria de entrada já resolvida no servidor (pfCategoryId) —
+      // garantida INCOME + do perfil pelo helper. Sem validação de input aqui.
 
       // 3. SocioPF opcional — se passado, valida que pertence à mesma empresa
       if (input.socioPFId) {
@@ -217,7 +215,7 @@ export async function createBridge(
         data: {
           profileId: input.profileId,
           bankAccountId: input.pfBankAccountId,
-          categoryId: input.pfCategoryId,
+          categoryId: pfCategoryId,
           date: pjTx.date,
           description: buildPfDescription(
             input.kind,

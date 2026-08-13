@@ -25,10 +25,18 @@ describe('PF_DEFAULT_CATEGORIES', () => {
 
   test('inclui categorias placeholder pra fatias futuras', () => {
     const names = PF_DEFAULT_CATEGORIES.map((c) => c.name)
-    // Pró-labore/Lucros → Fatia 4 (ponte PJ→PF)
-    expect(names.some((n) => n.toLowerCase().includes('pró-labore'))).toBe(true)
     // Cartão de crédito → Fatia 2
     expect(names.some((n) => n.toLowerCase().includes('cartão'))).toBe(true)
+  })
+
+  test('Sprint Entrada-Fixa-Ponte (13/08): a canônica de entrada é semeada com o slug', () => {
+    // Substituiu o antigo "Pró-labore / Lucros" (nome que virava duplicata).
+    const canon = PF_DEFAULT_CATEGORIES.filter((c) => c.systemSlug === 'BRIDGE_ENTRY')
+    expect(canon).toHaveLength(1) // exatamente UMA marcada
+    expect(canon[0].type).toBe('INCOME')
+    expect(canon[0].name).toBe('Retirada da empresa')
+    // e nenhuma categoria mantém o nome antigo confuso
+    expect(PF_DEFAULT_CATEGORIES.some((c) => /pró-labore/i.test(c.name))).toBe(false)
   })
 
   test('inclui categorias essenciais pra cobrir vida cotidiana', () => {

@@ -113,7 +113,8 @@ export async function createProfile(
         isSelf,
       },
     })
-    // Aplica 15 categorias default
+    // Aplica categorias default (inclui a canônica de entrada da ponte com o
+    // systemSlug — Sprint Entrada-Fixa-Ponte 13/08: perfil novo nasce com ela).
     await tx.personalCategory.createMany({
       data: PF_DEFAULT_CATEGORIES.map((c) => ({
         profileId: profile.id,
@@ -122,6 +123,7 @@ export async function createProfile(
         color: c.color,
         icon: c.icon,
         isDefault: true,
+        systemSlug: c.systemSlug ?? null,
       })),
     })
     return profile

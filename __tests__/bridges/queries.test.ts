@@ -35,7 +35,9 @@ async function createBridgeFor(
   userId: string,
   profileId: string,
   pfAccountId: string,
-  pfCategoryId: string,
+  // Sprint Entrada-Fixa-Ponte (13/08): categoria de entrada resolvida no
+  // servidor — o param fica só pra não mexer nos call-sites, mas é ignorado.
+  _pfCategoryId: string,
   kind: 'PRO_LABORE' | 'DISTRIBUICAO' | 'REEMBOLSO' = 'DISTRIBUICAO',
   amount = 1000,
 ) {
@@ -47,7 +49,7 @@ async function createBridgeFor(
   })
   const r = await createBridge({
     userId, companyId, pjTransactionId: pjTx.id,
-    profileId, pfBankAccountId: pfAccountId, pfCategoryId, kind,
+    profileId, pfBankAccountId: pfAccountId, kind,
   })
   bridgeIdsCreated.push(r.bridgeId)
   pfTxIdsCreated.push(r.pfTransactionId)

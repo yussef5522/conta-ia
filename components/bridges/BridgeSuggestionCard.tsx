@@ -41,7 +41,10 @@ export function BridgeSuggestionCard({
   const { toast } = useToast()
   const defaults = KIND_DEFAULTS[suggestion.suggestedKind]
 
-  const canQuickConfirm = !!suggestion.suggestedAccountId && !!suggestion.suggestedCategoryId
+  // Sprint Entrada-Fixa-Ponte (13/08/2026): a categoria de entrada é resolvida
+  // no servidor — o quick-confirm não depende mais de suggestedCategoryId (só da
+  // conta). Antes, perfil sem categoria default travava o 1-clique à toa.
+  const canQuickConfirm = !!suggestion.suggestedAccountId
 
   async function handleQuickConfirm() {
     if (!canQuickConfirm) return
@@ -55,7 +58,7 @@ export function BridgeSuggestionCard({
           pjTransactionId: suggestion.pjTransactionId,
           profileId: suggestion.profileId,
           pfBankAccountId: suggestion.suggestedAccountId!,
-          pfCategoryId: suggestion.suggestedCategoryId!,
+          // Sem pfCategoryId — servidor resolve a categoria de entrada.
           kind: suggestion.suggestedKind,
           createdVia: 'CREATED_FROM_DETECTION',
           socioPFId: suggestion.socioPFId,
@@ -123,8 +126,7 @@ export function BridgeSuggestionCard({
       </div>
       {!canQuickConfirm && (
         <p className="mt-2 text-xs text-amber-700">
-          ⚠ Perfil PF sem conta/categoria default — clique &quot;Outro tipo&quot;
-          pra ajustar.
+          ⚠ Perfil PF sem conta default — clique &quot;Outro tipo&quot; pra ajustar.
         </p>
       )}
     </div>

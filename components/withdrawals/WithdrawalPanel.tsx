@@ -149,7 +149,8 @@ export function WithdrawalPanel({
   const [kind, setKind] = useState<WithdrawalKind | ''>(initialKind ?? '')
   const [profileId, setProfileId] = useState<string>('')
   const [accountId, setAccountId] = useState<string>('')
-  const [categoryId, setCategoryId] = useState<string>('')
+  // Sprint Entrada-Fixa-Ponte (13/08/2026): categoria de entrada saiu — servidor
+  // resolve ("Retirada da empresa"). Liberdade fica só no gasto (spend).
   const [createPfEntry, setCreatePfEntry] = useState(true)
   // Sprint A/B-no-Painel (10/08/2026): fluxo B ("já gastei esse dinheiro") — cria
   // entrada + despesa PF atomic (createBridge.spend). Saldo PF net zero.
@@ -169,18 +170,12 @@ export function WithdrawalPanel({
           setSocioId(initialSuggestion.socioId)
           setKind(initialSuggestion.suggestedKind)
         }
-        // Auto-pick perfil único + conta única
+        // Auto-pick perfil único + conta única (categoria de entrada é fixa
+        // pelo sistema — não pré-seleciona nada aqui).
         if (data.profiles.length === 1) {
           const p = data.profiles[0]
           setProfileId(p.id)
           if (p.accounts.length === 1) setAccountId(p.accounts[0].id)
-          // Categoria default pelo tipo (procura por nome)
-          const matchCat = data.profiles[0].incomeCategories.find((c) =>
-            /pr[oó].labore|lucros/i.test(c.name),
-          )
-          if (matchCat) setCategoryId(matchCat.id)
-          else if (p.incomeCategories.length > 0)
-            setCategoryId(p.incomeCategories[0].id)
         }
       })
       .finally(() => setLoading(false))
@@ -193,7 +188,6 @@ export function WithdrawalPanel({
     kind !== '' &&
     profileId !== '' &&
     accountId !== '' &&
-    categoryId !== '' &&
     // fluxo B exige a categoria do gasto
     (!spendChecked || spendCategoryId !== '')
 
@@ -211,7 +205,6 @@ export function WithdrawalPanel({
             pjTransactionId,
             profileId,
             pfBankAccountId: accountId,
-            pfCategoryId: categoryId,
             kind,
             socioPFId: socioId,
             // Sprint A/B-no-Painel (10/08): fluxo B — entrada + despesa atomic.
@@ -441,7 +434,6 @@ export function WithdrawalPanel({
               onChange={(e) => {
                 setProfileId(e.target.value)
                 setAccountId('')
-                setCategoryId('')
               }}
               className="w-full h-9 px-2 text-sm rounded border bg-background"
             >
@@ -523,52 +515,20 @@ export function WithdrawalPanel({
                           ))}
                         </select>
                       </div>
+                      {/* Sprint Entrada-Fixa-Ponte (13/08/2026): categoria de
+                          ENTRADA fixa pelo sistema — não é mais campo livre (era
+                          a raiz das duplicatas). Liberdade só no gasto (abaixo). */}
                       <div className="space-y-1">
                         <label className="text-[10px] uppercase font-semibold text-muted-foreground">
-                          Categoria PF
+                          Entrada no PF
                         </label>
-                        {/* Sprint Category-Combobox PF Batch (30/06/2026):
-                            trocado <select> HTML por CategoryCombobox.
-                            Withdrawal cria tx PF CREDIT (entrada) via bridge. */}
-                        <CategoryCombobox
-                          value={categoryId || null}
-                          categorias={profile.incomeCategories.map((c) => ({
-                            id: c.id,
-                            name: c.name,
-                            color: c.color ?? null,
-                            type: 'INCOME',
-                            dreGroup: null,
-                          }))}
-                          onChange={(v) => setCategoryId(v ?? '')}
-                          onCreate={async (name) => {
-                            const cat = await createCategoryForPF(profile.id, name, 'INCOME')
-                            if (cat) {
-                              // Atualiza incomeCategories do profile no ctx local
-                              setCtx((prev) =>
-                                prev
-                                  ? {
-                                      ...prev,
-                                      profiles: prev.profiles.map((p) =>
-                                        p.id === profile.id
-                                          ? {
-                                              ...p,
-                                              incomeCategories: [
-                                                ...p.incomeCategories,
-                                                { id: cat.id, name: cat.name, color: cat.color ?? null },
-                                              ],
-                                            }
-                                          : p,
-                                      ),
-                                    }
-                                  : prev,
-                              )
-                            }
-                            return cat
-                          }}
-                          placeholder="Escolher..."
-                          className="h-9 w-full justify-between border-input text-sm"
-                          ariaLabel="Categoria PF do withdrawal"
-                        />
+                        <div className="flex h-9 items-center gap-2 rounded-md border border-input bg-muted/40 px-3 text-sm text-muted-foreground">
+                          <span aria-hidden>🔒</span>
+                          <span className="truncate">
+                            Retirada da empresa{' '}
+                            <span className="text-[10px] text-muted-foreground/70">· definido pelo sistema</span>
+                          </span>
+                        </div>
                       </div>
                     </div>
 
@@ -682,7 +642,7 @@ export function WithdrawalPanel({
             submitting ||
             !socioId ||
             !kind ||
-            (createPfEntry && (!profileId || !accountId || !categoryId))
+            (createPfEntry && (!profileId || !accountId))
           }
           title={
             createPfEntry && profile && profile.accounts.length === 0
