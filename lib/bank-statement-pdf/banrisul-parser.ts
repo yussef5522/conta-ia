@@ -78,22 +78,56 @@ function brDateToIso(br: string): string | null {
  * ligadas por "a"/"à"/"até"/"-". Se não achar, devolve null → o caller AVISA e
  * NÃO liga o Nível 2 (conservador: melhor não enriquecer que casar mês errado).
  */
+const MESES_PT: Record<string, string> = {
+  JAN: '01', FEV: '02', MAR: '03', ABR: '04', MAI: '05', JUN: '06',
+  JUL: '07', AGO: '08', SET: '09', OUT: '10', NOV: '11', DEZ: '12',
+}
+
 export function extractStatementPeriod(text: string): StatementPeriod | null {
   const D = String.raw`(\d{2}\/\d{2}\/\d{4})`
-  const SEP = String.raw`\s*(?:a|à|até|ate|A|-|\/)\s*`
-  const patterns = [
+  const SEP = String.raw`\s*(?:a|à|até|ate|A|-)\s*` // NÃO inclui "/" (quebrava dd/mm/aaaa)
+
+  // 1. Rótulo explícito "PERÍODO ... a ..." (dois dd/mm/aaaa).
+  for (const re of [
     new RegExp(String.raw`PER[IÍ]ODO[^\d]{0,40}${D}${SEP}${D}`, 'i'),
-    new RegExp(String.raw`(?:MOVIMENTA[ÇC][ÃA]O|EXTRATO|LAN[ÇC]AMENTOS?)[^\d]{0,40}${D}${SEP}${D}`, 'i'),
-    new RegExp(`${D}${SEP}${D}`),
-  ]
-  for (const re of patterns) {
+    new RegExp(String.raw`(?:MOVIMENTA[ÇC][ÃA]O|LAN[ÇC]AMENTOS?)[^\d]{0,40}${D}${SEP}${D}`, 'i'),
+  ]) {
     const m = text.match(re)
-    if (m) {
-      const start = brDateToIso(m[1])
-      const end = brDateToIso(m[2])
-      if (start && end && start <= end) return { start, end }
+    const start = m && brDateToIso(m[1])
+    const end = m && brDateToIso(m[2])
+    if (start && end && start <= end) return { start, end }
+  }
+
+  // 2. BANRISUL (13/08): o cabeçalho NÃO traz "PERÍODO dd/mm a dd/mm". Traz:
+  //    "++ MOVIMENTOS AGO/2026"       → mês/ano (resolve o dia-só das linhas)
+  //    "SALDO ANT EM 31/07/2026"      → dia ANTERIOR ao início (start = +1)
+  //    "EXTRATO EMITIDO AS HH:MM DE 13/08/2026" → emissão (fim do período)
+  const mov = text.match(/MOVIMENTOS?\s+([A-Za-z]{3})\s*\/\s*(\d{4})/)
+  if (mov) {
+    const mm = MESES_PT[mov[1].toUpperCase()]
+    if (mm) {
+      const year = mov[2]
+      // início: dia seguinte ao "SALDO ANT EM"; senão 1º do mês.
+      let start = `${year}-${mm}-01`
+      const saldoAnt = text.match(/SALDO\s+ANT.*?(\d{2})\/(\d{2})\/(\d{4})/i)
+      if (saldoAnt) {
+        const d = new Date(`${saldoAnt[3]}-${saldoAnt[2]}-${saldoAnt[1]}T12:00:00Z`)
+        d.setUTCDate(d.getUTCDate() + 1)
+        start = d.toISOString().slice(0, 10)
+      }
+      // fim: data do "EXTRATO EMITIDO"; senão último dia do mês.
+      let end = new Date(Date.UTC(Number(year), Number(mm), 0)).toISOString().slice(0, 10)
+      const emit = text.match(/EXTRATO\s+EMITIDO.*?(\d{2})\/(\d{2})\/(\d{4})/i)
+      if (emit) end = `${emit[3]}-${emit[2]}-${emit[1]}`
+      if (start <= end) return { start, end }
     }
   }
+
+  // 3. Fallback genérico: dois dd/mm/aaaa adjacentes (menos confiável).
+  const g = text.match(new RegExp(`${D}${SEP}${D}`))
+  const gs = g && brDateToIso(g[1])
+  const ge = g && brDateToIso(g[2])
+  if (gs && ge && gs <= ge) return { start: gs, end: ge }
   return null
 }
 

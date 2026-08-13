@@ -27,6 +27,27 @@ describe('extractStatementPeriod', () => {
   it('sem período legível → null (Nível 2 fica desligado, conservador)', () => {
     expect(extractStatementPeriod('B A N R I S U L\nAGENCIA: 0230')).toBeNull()
   })
+
+  // 13/08: o cabeçalho REAL do Banrisul não traz "PERÍODO dd/mm a dd/mm" — traz
+  // "MOVIMENTOS AGO/2026" + "SALDO ANT EM" + "EXTRATO EMITIDO".
+  it('lê o cabeçalho REAL do Banrisul: MOVIMENTOS + SALDO ANT + EXTRATO EMITIDO', () => {
+    const real = [
+      'B A N R I S U L',
+      'AGENCIA: 0230   CONTA..: 0605534106',
+      'SALDO ANT EM 31/07/2026                    1.234,56',
+      '++ MOVIMENTOS AGO/2026',
+      'DIA HISTORICO           DOCUMENTO        V A L O R',
+      '03   PIX ENVIADO        198074            1.215,00-',
+      'EXTRATO EMITIDO AS 01:23 DE 13/08/2026',
+    ].join('\n')
+    expect(extractStatementPeriod(real)).toEqual({ start: '2026-08-01', end: '2026-08-13' })
+  })
+  it('MOVIMENTOS sem SALDO ANT/EMITIDO → 1º ao último dia do mês', () => {
+    expect(extractStatementPeriod('++ MOVIMENTOS JUN/2026\n01 PIX 1 100,00')).toEqual({
+      start: '2026-06-01',
+      end: '2026-06-30',
+    })
+  })
 })
 
 describe('resolução de data por linha (via parse)', () => {

@@ -233,13 +233,32 @@ export function EnrichContrapartePanel({ contaId, onDone, onCancel, doneLabel }:
 
       {step === 'PREVIEW' && preview && (
         <div className="space-y-4">
+          {/* AVISO FORTE quando não leu o período: sem ele, a chave data+valor
+              não funciona e o resultado fica parcial — não pode ser nota de
+              rodapé (o usuário não entenderia por que casou tão pouco). */}
+          {!preview.period && (
+            <div className="rounded-md border-2 border-amber-300 bg-amber-50 p-3">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+                <div className="text-sm text-amber-900">
+                  <p className="font-semibold">Só consegui casar por documento — resultado PARCIAL.</p>
+                  <p className="mt-0.5 text-amber-800">
+                    Não li o período deste PDF, então a chave por data+valor ficou
+                    desligada. Como o documento (FITID) do Banrisul muda a cada
+                    download, muita coisa não vai casar. <strong>Verifique se o PDF
+                    está completo</strong> (cabeçalho com o mês, ex.: “MOVIMENTOS AGO/2026”).
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
           {/* Período + progresso */}
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-slate-50 px-3 py-2 text-sm">
             <span className="text-slate-700">
               {preview.period ? (
                 <>Este PDF cobre <strong className="tabular-nums">{fmtDate(preview.period.start)} a {fmtDate(preview.period.end)}</strong></>
               ) : (
-                <span className="text-amber-700">Não consegui ler o período deste PDF — casei só pelo documento (Nível 1). Me manda o print do topo do PDF pra eu ajustar.</span>
+                <span className="text-amber-700">Período não identificado (ver aviso acima).</span>
               )}
             </span>
             <span className="text-xs text-slate-500 tabular-nums">
