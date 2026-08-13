@@ -48,6 +48,7 @@ import { suggestSpendCategory } from '@/lib/bridges/suggest-spend-category'
 import {
   aggregateDestinoPorCategoria,
   computeJornadaSplit,
+  isSemDestino,
 } from '@/lib/bridges/socio-journey'
 import { BridgeBadge } from '@/components/bridges/BridgeBadge'
 import { BridgeDeleteModal } from '@/components/bridges/BridgeDeleteModal'
@@ -216,6 +217,23 @@ export function SocioDetailClient({ empresaId, empresaNome, socioId }: Props) {
   // Sprint Tela-Retiradas: filtros
   const [filtroTipo, setFiltroTipo] = useState<BridgeKind | 'todos'>('todos')
   const [filtroPeriodo, setFiltroPeriodo] = useState<PeriodoValue>('tudo')
+  // Sprint Jornada-do-Dinheiro (13/08): filtro "só sem destino" — ligado pelo
+  // destaque do topo ("Resolver agora") pra levar direto às retiradas que ainda
+  // não contaram onde o dinheiro foi.
+  const [soSemDestino, setSoSemDestino] = useState(false)
+
+  // "Resolver agora" (ponto 2): abre TODAS as retiradas sem destino e rola pra
+  // lista, onde cada card tem o convite inline "esse dinheiro já foi gasto?".
+  const resolverSemDestino = useCallback(() => {
+    setSoSemDestino(true)
+    setFiltroTipo('todos')
+    setFiltroPeriodo('tudo')
+    requestAnimationFrame(() => {
+      document
+        .getElementById('lista-retiradas')
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }, [])
 
   // Sprint Retirada-Despesa-PF: update OTIMISTA — atualiza só o card no
   // estado local em vez de refazer fetch (evita scroll voltar pro topo).
@@ -487,15 +505,33 @@ export function SocioDetailClient({ empresaId, empresaNome, socioId }: Props) {
                   </span>
                 </span>
               </div>
-              <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 p-3">
-                <span className="flex items-center gap-1.5 text-sm text-slate-700">
+              <div
+                className={`flex items-center justify-between rounded-lg border p-3 ${
+                  jornadaAllTime.ficouCount > 0
+                    ? 'border-amber-200 bg-amber-50/70'
+                    : 'border-slate-200 bg-slate-50'
+                }`}
+              >
+                <span
+                  className={`flex items-center gap-1.5 text-sm ${
+                    jornadaAllTime.ficouCount > 0 ? 'text-amber-800' : 'text-slate-700'
+                  }`}
+                >
                   <span aria-hidden>👛</span> Ficou com você · no PF
                 </span>
                 <span className="text-right">
-                  <span className="block font-semibold tabular-nums text-slate-800">
+                  <span
+                    className={`block font-semibold tabular-nums ${
+                      jornadaAllTime.ficouCount > 0 ? 'text-amber-800' : 'text-slate-800'
+                    }`}
+                  >
                     {formatBRL(jornadaAllTime.ficouAmount)}
                   </span>
-                  <span className="block text-[11px] text-slate-500">
+                  <span
+                    className={`block text-[11px] ${
+                      jornadaAllTime.ficouCount > 0 ? 'text-amber-700/80' : 'text-slate-500'
+                    }`}
+                  >
                     {jornadaAllTime.ficouCount} de {agregados.totalCount}
                   </span>
                 </span>
@@ -503,6 +539,47 @@ export function SocioDetailClient({ empresaId, empresaNome, socioId }: Props) {
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {/* Ponto 2 — DESTAQUE: as retiradas que ainda não contaram a história
+          completa (sem despesa PF registrada). É a maior fatia e a mais
+          importante — merece um call-to-action, não só uma linha na lista.
+          "Resolver agora" abre todas na lista com o convite inline. */}
+      {userTemPontes && jornadaAllTime.ficouCount > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+        >
+          <Card className="border-amber-200 bg-gradient-to-br from-amber-50 to-white">
+            <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
+              <div className="flex items-start gap-3 min-w-0">
+                <div className="mt-0.5 shrink-0 rounded-full bg-amber-100 p-2 text-amber-700">
+                  <Lightbulb className="h-4 w-4" aria-hidden />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-amber-900">
+                    {jornadaAllTime.ficouCount}{' '}
+                    {jornadaAllTime.ficouCount === 1 ? 'retirada ainda sem' : 'retiradas ainda sem'}{' '}
+                    destino registrado ·{' '}
+                    <span className="tabular-nums">{formatBRL(jornadaAllTime.ficouAmount)}</span>
+                  </p>
+                  <p className="mt-0.5 text-xs text-amber-800/80">
+                    Esse dinheiro saiu da empresa e entrou no seu PF, mas ainda não
+                    contou onde foi gasto. Registrar completa a jornada.
+                  </p>
+                </div>
+              </div>
+              <Button
+                size="sm"
+                onClick={resolverSemDestino}
+                className="shrink-0 bg-amber-600 text-white hover:bg-amber-700"
+              >
+                Resolver agora →
+              </Button>
+            </CardContent>
+          </Card>
+        </motion.div>
       )}
 
       {/* Banner condicional Detecção Pix — só aparece se > 0 */}
@@ -668,6 +745,8 @@ export function SocioDetailClient({ empresaId, empresaNome, socioId }: Props) {
               setFiltroTipo={setFiltroTipo}
               filtroPeriodo={filtroPeriodo}
               setFiltroPeriodo={setFiltroPeriodo}
+              soSemDestino={soSemDestino}
+              setSoSemDestino={setSoSemDestino}
               onDelete={setDeleteTarget}
               onUpdateBridge={updateBridge}
             />
@@ -731,6 +810,8 @@ interface RetiradasTabProps {
   setFiltroTipo: (v: BridgeKind | 'todos') => void
   filtroPeriodo: PeriodoValue
   setFiltroPeriodo: (v: PeriodoValue) => void
+  soSemDestino: boolean
+  setSoSemDestino: (v: boolean) => void
   onDelete: (b: BridgeListItem) => void
   onUpdateBridge: (bridgeId: string, partial: Partial<BridgeListItem>) => void
 }
@@ -742,18 +823,23 @@ function RetiradasTab({
   setFiltroTipo,
   filtroPeriodo,
   setFiltroPeriodo,
+  soSemDestino,
+  setSoSemDestino,
   onDelete,
   onUpdateBridge,
 }: RetiradasTabProps) {
-  // Filtra por período + tipo (client-side — universo já é ≤100 itens)
+  // Filtra por período + tipo + "só sem destino" (client-side — ≤100 itens)
   const filtered = useMemo(() => {
     const startDate = startOfPeriod(filtroPeriodo, new Date())
     return suasPontes.filter((b) => {
       if (filtroTipo !== 'todos' && b.kind !== filtroTipo) return false
       if (startDate && new Date(b.date) < startDate) return false
+      // Sprint Jornada-do-Dinheiro (13/08): "sem destino" = sem despesa PF (A/B).
+      // Mesmo predicado do destaque do topo → o número do banner = o que mostra.
+      if (soSemDestino && !isSemDestino(b)) return false
       return true
     })
-  }, [suasPontes, filtroTipo, filtroPeriodo])
+  }, [suasPontes, filtroTipo, filtroPeriodo, soSemDestino])
 
   // Agrega filtered por kind pro resumo
   const summary = useMemo(() => {
@@ -848,6 +934,23 @@ function RetiradasTab({
             })}
           </div>
         </div>
+        {/* Sprint Jornada-do-Dinheiro (13/08): chip "só sem destino" — ligado
+            pelo destaque do topo, mas também toggável aqui (âmbar quando ativo). */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] uppercase tracking-wide text-slate-500">Destino</span>
+          <Button
+            type="button"
+            variant={soSemDestino ? 'secondary' : 'ghost'}
+            size="sm"
+            onClick={() => setSoSemDestino(!soSemDestino)}
+            className={`h-7 rounded-full px-3 text-xs ${
+              soSemDestino ? 'bg-amber-100 text-amber-800 hover:bg-amber-200' : ''
+            }`}
+          >
+            <Lightbulb className="mr-1 h-3 w-3" aria-hidden />
+            Só sem destino
+          </Button>
+        </div>
       </div>
 
       {/* Resumo: total + 5 cards por kind */}
@@ -941,12 +1044,33 @@ function RetiradasTab({
       </div>
 
       {/* Lista 2-sided */}
-      <div>
-        <h3 className="mb-2 text-xs uppercase text-slate-500">Detalhes</h3>
+      <div id="lista-retiradas" className="scroll-mt-4">
+        <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-2">
+          <h3 className="text-xs uppercase text-slate-500">
+            {soSemDestino ? 'Retiradas sem destino registrado' : 'Detalhes'}
+          </h3>
+          {soSemDestino && (
+            <button
+              type="button"
+              onClick={() => setSoSemDestino(false)}
+              className="text-[11px] text-slate-500 underline decoration-slate-300 underline-offset-2 hover:text-slate-700"
+            >
+              ver todas
+            </button>
+          )}
+        </div>
+        {soSemDestino && filtered.length > 0 && (
+          <p className="mb-2 text-xs text-amber-800/80">
+            Cada uma tem o convite “esse dinheiro já foi gasto?” — registre onde
+            foi pra completar a jornada.
+          </p>
+        )}
         {filtered.length === 0 ? (
           <Card>
             <CardContent className="p-8 text-center text-sm text-slate-500">
-              Nenhuma retirada nos filtros atuais.
+              {soSemDestino
+                ? 'Todas as retiradas do período já têm destino registrado. 🎉'
+                : 'Nenhuma retirada nos filtros atuais.'}
             </CardContent>
           </Card>
         ) : (

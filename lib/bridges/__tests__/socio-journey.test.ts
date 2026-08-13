@@ -10,6 +10,7 @@ import { describe, it, expect } from 'vitest'
 import {
   aggregateDestinoPorCategoria,
   computeJornadaSplit,
+  isSemDestino,
 } from '../socio-journey'
 import type { BridgeListItem } from '../types'
 
@@ -105,5 +106,22 @@ describe('computeJornadaSplit (ponto 4)', () => {
     expect(split.gastouAmount).toBe(0)
     expect(split.ficouCount).toBe(1)
     expect(split.ficouAmount).toBe(700)
+  })
+})
+
+describe('isSemDestino — destaque do topo == filtro "só sem destino" (ponto 2)', () => {
+  it('o número do banner é EXATAMENTE o que o filtro mostra', () => {
+    const split = computeJornadaSplit(bridges)
+    const semDestino = bridges.filter(isSemDestino)
+    // o banner mostra split.ficouCount / split.ficouAmount; o filtro mostra
+    // bridges.filter(isSemDestino) — têm que casar (mesmo predicado).
+    expect(semDestino.length).toBe(split.ficouCount)
+    expect(semDestino.reduce((s, b) => s + b.amount, 0)).toBe(split.ficouAmount)
+    expect(split.ficouCount).toBe(2) // ids 4 e 5 do cenário
+  })
+
+  it('retirada COM despesa A/B não é "sem destino"', () => {
+    expect(isSemDestino(bridge({ spendTransactionId: 's1' }))).toBe(false)
+    expect(isSemDestino(bridge({ spendTransactionId: null }))).toBe(true)
   })
 })

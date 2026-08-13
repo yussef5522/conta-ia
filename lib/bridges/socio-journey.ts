@@ -50,6 +50,16 @@ export function aggregateDestinoPorCategoria(bridges: BridgeListItem[]): Destino
   return Array.from(map.values()).sort((a, z) => z.amount - a.amount)
 }
 
+/**
+ * "Sem destino" = retirada que entrou no PF mas ainda não teve despesa PF
+ * registrada (fluxo A/B). Predicado ÚNICO usado tanto no destaque do topo
+ * ("N retiradas sem destino") quanto no filtro "só sem destino" da lista —
+ * assim o número do banner é exatamente o que o filtro mostra.
+ */
+export function isSemDestino(b: BridgeListItem): boolean {
+  return !b.spendTransactionId
+}
+
 export interface JornadaSplit {
   gastouCount: number
   gastouAmount: number
@@ -64,12 +74,12 @@ export interface JornadaSplit {
 export function computeJornadaSplit(bridges: BridgeListItem[]): JornadaSplit {
   return bridges.reduce<JornadaSplit>(
     (acc, b) => {
-      if (b.spendTransactionId) {
-        acc.gastouCount++
-        acc.gastouAmount += b.amount
-      } else {
+      if (isSemDestino(b)) {
         acc.ficouCount++
         acc.ficouAmount += b.amount
+      } else {
+        acc.gastouCount++
+        acc.gastouAmount += b.amount
       }
       return acc
     },
