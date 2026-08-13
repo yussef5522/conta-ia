@@ -22,6 +22,8 @@ import { parseStatementFromOFX } from './parse-statement-from-ofx'
 import { reconcileStatement } from './reconcile-statement'
 import { buildReconcileUniverse } from './reconcile-universe'
 import { partitionFutureLines, reconcileLedgerAnchorDay } from '../ofx/future-line'
+import { canonicalLineStatuses } from '../canonical/to-canonical'
+import { isCanonicalClassifyEnabled } from '../canonical/flag'
 import { resolveBankProfile, resolveStatementAnchor } from '../bank-profiles'
 import { stableKey } from './stable-key'
 import { buildLineDedupHash, makeOccurrenceCounter } from './line-dedup-hash'
@@ -160,7 +162,25 @@ export async function runImportV2(
   })
   const anchor = anchorRes.anchor ?? dtAsOf
   console.log(`[RECONCILE_V2] banco=${bankProfile?.id ?? 'DESCONHECIDO'} âncora=${anchor.toISOString().slice(0, 10)} regra=${anchorRes.rule} — ${anchorRes.reason}`)
-  const { realLines, futureLines } = partitionFutureLines(lines, anchor, input.today)
+  // CAMADA 1 CANÔNICA (FASE 4, flag): classifica pelo tradutor de banco — o FITID
+  // NÃO decide status, então a parcela JÁ PAGA (bug 13/08) não é mais descartada.
+  // Provado sem regressão no shadow-run (0 divergência em 24 blobs). Fallback pro
+  // legado se o alinhamento por índice quebrar (nunca grava errado em silêncio).
+  let realLines: typeof lines
+  let futureLines: typeof lines
+  if (isCanonicalClassifyEnabled()) {
+    const statuses = canonicalLineStatuses(parsed, input.rawOfx)
+    if (statuses.length === lines.length) {
+      realLines = lines.filter((_, i) => statuses[i] === 'EFETIVADA')
+      futureLines = lines.filter((_, i) => statuses[i] !== 'EFETIVADA')
+      console.log(`[CANONICAL_CLASSIFY] ON — ${realLines.length} efetivadas, ${futureLines.length} agendadas (tradutor de banco)`)
+    } else {
+      console.warn(`[CANONICAL_CLASSIFY] alinhamento quebrou (${statuses.length}≠${lines.length}) — fallback pro legado`)
+      ;({ realLines, futureLines } = partitionFutureLines(lines, anchor, input.today))
+    }
+  } else {
+    ;({ realLines, futureLines } = partitionFutureLines(lines, anchor, input.today))
+  }
   const futureSet = new Set(futureLines)
   if (futureLines.length > 0) {
     console.log(`[RECONCILE_V2] ${futureLines.length} linha(s) futura(s) descartada(s) (agendado — não importado)`)

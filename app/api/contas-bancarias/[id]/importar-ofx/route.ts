@@ -44,6 +44,8 @@ import {
   type ImportDecision,
 } from '@/lib/ofx/decisions'
 import { partitionFutureLines, settledThroughDate } from '@/lib/ofx/future-line'
+import { canonicalStatusMap, contentKey } from '@/lib/canonical/to-canonical'
+import { isCanonicalClassifyEnabled } from '@/lib/canonical/flag'
 import { resolveBankProfile, resolveStatementAnchor, bankProfileWarning } from '@/lib/bank-profiles'
 import { verifyOfxMatchesAccount } from '@/lib/ofx/verify-account-match'
 
@@ -484,11 +486,26 @@ export async function POST(request: NextRequest, { params }: Params) {
       // Aviso "não deu pra conferir a conta" (quando não bloqueou). Vai pro banner.
       accountMatchWarning: accountMatch.warning ?? null,
     }
-    const { realLines: novasReais, futureLines: novasFuturas } = partitionFutureLines(
-      novas,
-      dtAsOfPreview,
-      new Date(),
-    )
+    // CAMADA 1 CANÔNICA (FASE 4, flag): o PREVIEW tem que classificar IGUAL ao
+    // confirm (senão a tela mostra uma coisa e grava outra). Casa por conteúdo
+    // (status só depende de data×âncora). Fallback pro legado se algo faltar.
+    let novasReais: typeof novas
+    let novasFuturas: typeof novas
+    if (isCanonicalClassifyEnabled()) {
+      const smap = canonicalStatusMap(rawContent)
+      const effOf = (t: (typeof novas)[number]) =>
+        smap.get(contentKey(t.fitid, t.datePosted, t.type === 'CREDIT' ? t.amount : -t.amount, t.memo))
+      const allMapped = novas.every((t) => effOf(t) !== undefined)
+      if (allMapped) {
+        novasReais = novas.filter((t) => effOf(t) === 'EFETIVADA')
+        novasFuturas = novas.filter((t) => effOf(t) !== 'EFETIVADA')
+      } else {
+        console.warn('[CANONICAL_CLASSIFY] preview: linha sem status no mapa — fallback pro legado')
+        ;({ realLines: novasReais, futureLines: novasFuturas } = partitionFutureLines(novas, dtAsOfPreview, new Date()))
+      }
+    } else {
+      ;({ realLines: novasReais, futureLines: novasFuturas } = partitionFutureLines(novas, dtAsOfPreview, new Date()))
+    }
     const futurasPayload = novasFuturas.map((t) => ({
       date: t.datePosted.toISOString().slice(0, 10),
       signedAmount: t.type === 'CREDIT' ? t.amount : -t.amount,
