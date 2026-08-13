@@ -14,7 +14,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
-import { WITHDRAWAL_DRE_GROUPS } from '@/lib/withdrawals/is-orphan'
+import { orphanWithdrawalWhere } from '@/lib/withdrawals/orphan-query'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -30,21 +30,15 @@ export async function GET(request: NextRequest, { params }: Params) {
     const includeList = sp.get('includeList') === 'true'
     const limit = Math.max(1, Math.min(100, Number(sp.get('limit')) || 50))
 
-    const where = {
-      bankAccount: { companyId: empresaId },
-      type: 'DEBIT',
-      lifecycle: 'EFFECTED',
-      isInternalTransfer: false,
-      transferGroupId: null,
-      bridge: { is: null },
-      category: {
-        dreGroup: { in: Array.from(WITHDRAWAL_DRE_GROUPS) },
-      },
-    }
+    // FONTE ÚNICA (13/08): mesma consulta canônica que o sidebar e o empty state.
+    const where = orphanWithdrawalWhere(empresaId)
 
     if (!includeList) {
-      const count = await prisma.transaction.count({ where })
-      return NextResponse.json({ count })
+      const [count, agg] = await Promise.all([
+        prisma.transaction.count({ where }),
+        prisma.transaction.aggregate({ where, _sum: { amount: true } }),
+      ])
+      return NextResponse.json({ count, totalAmount: agg._sum.amount ?? 0 })
     }
 
     const [count, orfas] = await Promise.all([

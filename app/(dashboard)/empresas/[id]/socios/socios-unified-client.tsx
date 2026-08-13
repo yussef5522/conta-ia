@@ -20,13 +20,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Users, Building2, Plus, Trash2, ArrowRight, Loader2, Wand2, ChevronDown } from 'lucide-react'
-import { RetiradasPendentesTab } from '@/components/bridges/RetiradasPendentesTab'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Header } from '@/components/layout/header'
 import { useToast } from '@/components/ui/use-toast'
 import {
@@ -100,10 +98,6 @@ export function SociosUnifiedClient({ empresaId, empresaNome }: Props) {
   const [showSocioForm, setShowSocioForm] = useState(false)
   const [showEmpresaForm, setShowEmpresaForm] = useState(false)
   const [recategorizing, setRecategorizing] = useState(false)
-  const [activeTab, setActiveTab] = useState('socios-pf')
-  // Sprint Fluxo-Unificado-Retirada (30/06/2026): contador da fila usado
-  // no badge da aba. Fetch leve, cache 60s no endpoint.
-  const [retiradasCount, setRetiradasCount] = useState<number | null>(null)
   // Sprint Redesign-Socios (01/07/2026): blocos discretos colapsáveis
   // (features dormentes — Empresas do Grupo 0/prod, Detecção Pix 0/prod).
   const [showEmpresasGrupo, setShowEmpresasGrupo] = useState(false)
@@ -158,19 +152,6 @@ export function SociosUnifiedClient({ empresaId, empresaNome }: Props) {
   useEffect(() => {
     load()
   }, [load])
-
-  // Sprint Fluxo-Unificado-Retirada (30/06/2026): puxa contador da fila
-  // em paralelo (mesmo endpoint que a aba usa — cache 60s garante 1 hit).
-  useEffect(() => {
-    fetch(`/api/empresas/${empresaId}/retiradas-pendentes`, { credentials: 'include' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => {
-        if (j && typeof j.total === 'number') setRetiradasCount(j.total)
-      })
-      .catch(() => {
-        /* silent — contador é decorativo */
-      })
-  }, [empresaId])
 
   async function recategorizePix() {
     setRecategorizing(true)
@@ -252,28 +233,16 @@ export function SociosUnifiedClient({ empresaId, empresaNome }: Props) {
 
         {/* Tabs — 2 principais. "Empresas do Grupo" e "Detecção Pix" agora
             ficam em blocos colapsáveis no rodapé. */}
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList>
-            <TabsTrigger value="socios-pf">
-              <Users className="mr-2 h-4 w-4" />
-              Sócios PF ({socios.length})
-            </TabsTrigger>
-            <TabsTrigger value="retiradas-pendentes">
-              <span className="mr-2 text-sm" aria-hidden>🌉</span>
-              Retiradas pendentes
-              {retiradasCount !== null && retiradasCount > 0 && (
-                <Badge
-                  variant="secondary"
-                  className="ml-2 h-4 min-w-[18px] px-1 text-[10px] bg-amber-100 text-amber-800 border-amber-200"
-                >
-                  {retiradasCount}
-                </Badge>
-              )}
-            </TabsTrigger>
-          </TabsList>
+        {/* Sprint Unificar-Retirada-Órfã (13/08): a aba "Retiradas pendentes" SAIU
+            (era o 3º caminho duplicado pra mesma pergunta, discordava do banner).
+            O banner de Pendentes + /retiradas cobrem, na fonte única. Sobrou só o
+            CADASTRO de sócios — sem Tabs (uma coisa só). */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
+            <Users className="h-4 w-4" />
+            Sócios PF ({socios.length})
+          </div>
 
-          {/* === ABA SÓCIOS PF === */}
-          <TabsContent value="socios-pf" className="space-y-4">
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between gap-3">
@@ -385,16 +354,7 @@ export function SociosUnifiedClient({ empresaId, empresaNome }: Props) {
                 )}
               </CardContent>
             </Card>
-          </TabsContent>
-
-          {/* === ABA RETIRADAS PENDENTES === */}
-          <TabsContent value="retiradas-pendentes" className="space-y-4">
-            <RetiradasPendentesTab
-              empresaId={empresaId}
-              defaultSocioPFId={socios.length === 1 ? socios[0].id : null}
-            />
-          </TabsContent>
-        </Tabs>
+        </div>
 
         {/* Sprint Redesign-Socios (01/07/2026): blocos colapsáveis pra features
             dormentes (0 uso em toda prod, 01/07/2026). CRUD intacto,

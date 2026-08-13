@@ -22,20 +22,12 @@ describe('a) endpoint /retiradas-pendentes', () => {
     expect(existsSync(root(p))).toBe(true)
   })
   const code = read(p)
-  it('filtra por type=DEBIT + status=RECONCILED', () => {
-    expect(code).toMatch(/type:\s*['"]DEBIT['"]/)
-    expect(code).toMatch(/status:\s*['"]RECONCILED['"]/)
-  })
-  it('exige categoryId não null (só categorizadas)', () => {
-    expect(code).toMatch(/categoryId:\s*\{\s*not:\s*null\s*\}/)
-  })
-  it('filtra tx sem ponte (bridge: null)', () => {
-    expect(code).toMatch(/bridge:\s*null/)
-  })
-  it('inclui DISTRIBUICAO_LUCROS E Pró-labore (DESPESAS_PESSOAL + nome)', () => {
-    expect(code).toMatch(/DISTRIBUICAO_LUCROS/)
-    expect(code).toMatch(/DESPESAS_PESSOAL/)
-    expect(code).toMatch(/pro-labore/)
+  // Sprint Unificar-Retirada-Órfã (13/08): a lógica própria (status=RECONCILED +
+  // pró-labore por nome, sem excluir interna/agrupada) SAIU. Agora delega pra a
+  // FONTE ÚNICA `listOrphanWithdrawals` (mesma do banner) → não podem divergir.
+  it('usa a FONTE ÚNICA listOrphanWithdrawals (não tem mais WHERE próprio)', () => {
+    expect(code).toMatch(/listOrphanWithdrawals/)
+    expect(code).not.toMatch(/status:\s*['"]RECONCILED['"]/)
   })
   it('cache 60s com tag `retiradas-pendentes:${empresaId}`', () => {
     expect(code).toMatch(/unstable_cache/)
@@ -144,21 +136,17 @@ describe('e) CategoryCombobox — opt-in askIfBridge', () => {
   })
 })
 
-describe('f) Aba nova integrada em /empresas/[id]/socios', () => {
+// Sprint Unificar-Retirada-Órfã (13/08): a aba "Retiradas pendentes" do Sócios
+// SAIU (era o 3º caminho duplicado, discordava do banner). O contador vive na
+// fonte única (banner + sidebar). O cadastro de sócios ficou (sem Tabs).
+describe('f) Aba "Retiradas pendentes" REMOVIDA do /socios', () => {
   const code = read('app/(dashboard)/empresas/[id]/socios/socios-unified-client.tsx')
-  it('TabsTrigger value=retiradas-pendentes existe', () => {
-    expect(code).toMatch(/TabsTrigger\s+value=['"]retiradas-pendentes['"]/)
+  it('não há mais a aba nem o RetiradasPendentesTab', () => {
+    expect(code).not.toMatch(/RetiradasPendentesTab/)
+    expect(code).not.toMatch(/value=['"]retiradas-pendentes['"]/)
   })
-  it('TabsContent value=retiradas-pendentes renderiza RetiradasPendentesTab', () => {
-    expect(code).toMatch(/TabsContent\s+value=['"]retiradas-pendentes['"]/)
-    expect(code).toMatch(/<RetiradasPendentesTab/)
-  })
-  it('Badge com contador quando > 0 (pattern âmbar destacado)', () => {
-    expect(code).toMatch(/retiradasCount/)
-    expect(code).toMatch(/bg-amber-100/)
-  })
-  it('defaultSocioPFId auto-preenchido quando empresa tem 1 sócio', () => {
-    expect(code).toMatch(/socios\.length === 1\s*\?\s*socios\[0\]\.id/)
+  it('o cadastro de sócios continua (a razão da tela existir)', () => {
+    expect(code).toMatch(/Sócios PF/)
   })
 })
 

@@ -14,6 +14,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { unstable_cache } from 'next/cache'
 import { prisma } from '@/lib/db'
 import { getAuthContext, AuthenticationError, ForbiddenError } from '@/lib/auth/rbac'
+import { listOrphanWithdrawals } from '@/lib/withdrawals/orphan-query'
 
 export interface RetiradaPendente {
   id: string
@@ -43,59 +44,24 @@ function errorResponse(err: unknown) {
   throw err
 }
 
-function normalizeForProLabore(s: string): string {
-  return s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase()
-}
-
+// FONTE ÚNICA (13/08): usa a MESMA consulta canônica do banner (retiradas-orfas)
+// — `listOrphanWithdrawals`. Antes tinha lógica própria (status=RECONCILED +
+// pró-labore por nome, sem excluir interna/agrupada) que DISCORDAVA do banner.
+// Agora banner e sidebar leem a mesma fonte → impossível divergir.
 async function loadRetiradas(companyId: string): Promise<RetiradasPendentesResponse> {
-  // Universo: DEBIT + RECONCILED + categoria carregada + sem bridge.
-  // Filtro de dreGroup + nome pro-labore feito em JS (evita SQL complexo).
-  const raw = await prisma.transaction.findMany({
-    where: {
-      bankAccount: { companyId },
-      type: 'DEBIT',
-      status: 'RECONCILED',
-      categoryId: { not: null },
-      // Sem bridge (LEFT JOIN + IS NULL via `none`).
-      bridge: null,
-    },
-    select: {
-      id: true,
-      date: true,
-      amount: true,
-      description: true,
-      bankAccountId: true,
-      bankAccount: { select: { name: true } },
-      categoryId: true,
-      category: { select: { name: true, dreGroup: true } },
-    },
-    orderBy: { date: 'desc' },
-  })
-
-  const tx: RetiradaPendente[] = []
-  let totalAmount = 0
-  for (const r of raw) {
-    const dre = r.category?.dreGroup ?? null
-    const name = r.category?.name ?? ''
-    const isDistribuicao = dre === 'DISTRIBUICAO_LUCROS'
-    const isProLabore =
-      dre === 'DESPESAS_PESSOAL' &&
-      /pro-labore|pro labore|prolabore/.test(normalizeForProLabore(name))
-    if (!isDistribuicao && !isProLabore) continue
-    tx.push({
-      id: r.id,
-      date: r.date.toISOString(),
-      amount: r.amount,
-      description: r.description,
-      bankAccountId: r.bankAccountId!,
-      bankAccountName: r.bankAccount?.name ?? '—',
-      categoryId: r.categoryId!,
-      categoryName: name,
-      dreGroup: dre,
-    })
-    totalAmount += r.amount
-  }
-
+  const rows = await listOrphanWithdrawals(prisma, companyId)
+  const tx: RetiradaPendente[] = rows.map((r) => ({
+    id: r.id,
+    date: r.date,
+    amount: r.amount,
+    description: r.description,
+    bankAccountId: r.bankAccountId,
+    bankAccountName: r.bankAccountName,
+    categoryId: r.categoryId ?? '',
+    categoryName: r.categoryName ?? '',
+    dreGroup: 'DISTRIBUICAO_LUCROS',
+  }))
+  const totalAmount = tx.reduce((s, t) => s + t.amount, 0)
   return { tx, total: tx.length, totalAmount }
 }
 

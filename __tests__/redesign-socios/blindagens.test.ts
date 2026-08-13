@@ -31,10 +31,12 @@ describe('a) Nomenclatura user-visible — "Retirada" (nunca "Ponte")', () => {
 describe('b) Lista /socios — 2 abas principais', () => {
   const code = read('app/(dashboard)/empresas/[id]/socios/socios-unified-client.tsx')
 
-  it('TabsTrigger "Sócios PF" + "Retiradas pendentes" (2 abas)', () => {
-    // Contar abas visíveis (TabsTrigger não é uma tag simples — usamos regex)
+  it('Cadastro de sócios sem Tabs (13/08: a aba "Retiradas pendentes" saiu → 1 coisa só)', () => {
+    // A aba duplicada foi removida (fonte única no banner). Sobrou o cadastro.
     const triggerMatches = code.match(/<TabsTrigger\s+value=/g) ?? []
-    expect(triggerMatches.length).toBe(2)
+    expect(triggerMatches.length).toBe(0)
+    expect(code).not.toMatch(/RetiradasPendentesTab/)
+    expect(code).toMatch(/Sócios PF/)
   })
 
   it('SEM aba "Empresas do Grupo" nos Tabs (virou bloco colapsável)', () => {
@@ -259,10 +261,10 @@ describe('j) Preservado — logic bridges intacta', () => {
     expect(code).toMatch(/function SpendInviteForm/)
   })
 
-  it('Aba "Retiradas pendentes" (nova) preservada — não é essa sprint', () => {
+  it('Aba "Retiradas pendentes" REMOVIDA (13/08 — fonte única no banner)', () => {
     const listCode = read(
       'app/(dashboard)/empresas/[id]/socios/socios-unified-client.tsx',
     )
-    expect(listCode).toMatch(/<RetiradasPendentesTab/)
+    expect(listCode).not.toMatch(/<RetiradasPendentesTab/)
   })
 })

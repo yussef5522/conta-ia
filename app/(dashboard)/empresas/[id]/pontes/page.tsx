@@ -28,6 +28,9 @@ export default function EmpresaPontesPage() {
   const [empresaName, setEmpresaName] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<BridgeListItem | null>(null)
   const [filterKind, setFilterKind] = useState<BridgeKind | ''>('')
+  // Retiradas órfãs (fonte ÚNICA — mesma do banner de Pendentes): pra o empty
+  // state virar tela útil ("N retiradas esperando ir pro PF") em vez de genérica.
+  const [orfas, setOrfas] = useState<{ count: number; totalAmount: number } | null>(null)
 
   async function fetchBridges() {
     setLoading(true)
@@ -62,6 +65,11 @@ export default function EmpresaPontesPage() {
   useEffect(() => {
     fetchBridges()
     fetchEmpresa()
+    // órfãs (count + soma) da fonte única — silencioso, best-effort.
+    fetch(`/api/empresas/${empresaId}/retiradas-orfas`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (j && typeof j.count === 'number') setOrfas({ count: j.count, totalAmount: j.totalAmount ?? 0 }) })
+      .catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [empresaId, filterKind])
 
@@ -205,18 +213,56 @@ export default function EmpresaPontesPage() {
             {loading ? (
               <div className="p-8 text-center text-slate-500">Carregando…</div>
             ) : bridges.length === 0 ? (
-              <div className="p-12 text-center">
-                <div className="mb-3 text-4xl">🌉</div>
-                <h2 className="mb-2 text-lg font-semibold text-slate-900">
-                  Nenhuma ponte criada ainda
-                </h2>
-                <p className="mb-4 text-sm text-slate-600">
-                  Pontes conectam saídas da empresa (pró-labore, distribuição de
-                  lucros, reembolsos) com a entrada no seu perfil pessoal.
-                </p>
-                <Link href={`/empresas/${empresaId}/pontes/nova`}>
-                  <Button>+ Criar primeira ponte</Button>
-                </Link>
+              <div className="mx-auto max-w-xl px-6 py-12 space-y-6">
+                {/* (a) o que é uma ponte, em 1 frase pra quem nunca viu */}
+                <div className="space-y-2">
+                  <div className="text-3xl">🌉</div>
+                  <h2 className="text-lg font-semibold text-slate-900">
+                    O que é uma ponte
+                  </h2>
+                  <p className="text-sm leading-relaxed text-slate-600">
+                    Quando você tira dinheiro da empresa, a ponte registra os dois
+                    lados: a saída na PJ e a entrada no seu PF. Assim você sabe
+                    quanto tirou e pra onde foi — sem contar como despesa da empresa.
+                  </p>
+                </div>
+
+                {/* (c) se há órfãs esperando, a tela vira útil — mesmo dado da fonte única */}
+                {orfas && orfas.count > 0 ? (
+                  <Link
+                    href={`/empresas/${empresaId}/pendentes`}
+                    className="flex items-center justify-between gap-3 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 hover:bg-amber-100 transition-colors"
+                  >
+                    <div className="text-sm">
+                      <p className="font-medium text-amber-900">
+                        Você tem {orfas.count} {orfas.count === 1 ? 'retirada esperando' : 'retiradas esperando'} ir pro seu PF
+                      </p>
+                      <p className="text-xs text-amber-800">
+                        {formatBRL(orfas.totalAmount)} · categorizadas como retirada, ainda sem ponte
+                      </p>
+                    </div>
+                    <span className="text-sm font-medium text-amber-800 shrink-0">Resolver agora →</span>
+                  </Link>
+                ) : (
+                  // (d) estado calmo — nada esperando
+                  <p className="text-sm text-slate-500">
+                    Nenhuma retirada esperando no momento.
+                  </p>
+                )}
+
+                {/* (b) o caminho REAL: a ponte nasce ao categorizar uma retirada nos Pendentes */}
+                <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                  <p className="font-medium text-slate-700">Como uma ponte nasce</p>
+                  <p className="mt-1 leading-relaxed">
+                    O jeito normal é <strong>categorizar uma retirada</strong> (pró-labore
+                    ou distribuição de lucros) na tela de{' '}
+                    <Link href={`/empresas/${empresaId}/pendentes`} className="text-primary underline">
+                      Pendentes
+                    </Link>
+                    {' '}— aí o sistema oferece mandar pro seu PF na hora. Você também pode
+                    criar uma <Link href={`/empresas/${empresaId}/pontes/nova`} className="text-primary underline">ponte manual</Link>.
+                  </p>
+                </div>
               </div>
             ) : (
               <table className="w-full text-sm">
