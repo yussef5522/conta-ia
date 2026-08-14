@@ -84,8 +84,8 @@ describe('fixture REAL — as 7 armadilhas', () => {
     expect(iof?.description).toMatch(/iof/i)
   })
 
-  it('estorno negativo entra como IGNORAR', () => {
-    expect(byAmount(99.23)?.suggestedKind).toBe('IGNORAR')
+  it('estorno negativo entra como ESTORNO (crédito), NÃO IGNORAR', () => {
+    expect(byAmount(99.23)?.suggestedKind).toBe('ESTORNO')
   })
 })
 

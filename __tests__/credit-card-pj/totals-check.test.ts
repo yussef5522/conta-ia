@@ -34,7 +34,7 @@ describe('checkInvoiceTotals', () => {
     expect(r.matches).toBe(true)
     expect(r.totalCompras).toBe(900)
     expect(r.totalEncargos).toBe(100)
-    expect(r.totalCalculado).toBe(1000)
+    expect(r.totalCartao).toBe(1000)
   })
 
   it('IGNORAR não conta na soma', () => {
@@ -58,7 +58,7 @@ describe('checkInvoiceTotals', () => {
     }))
     expect(r.matches).toBe(false)
     expect(r.diferenca).toBe(200)
-    expect(r.message).toContain('Soma não fecha')
+    expect(r.message).toMatch(/não fecha/i)
   })
 
   it('insufficient quando totalDeclared é null', () => {

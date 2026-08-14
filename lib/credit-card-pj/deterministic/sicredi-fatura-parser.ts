@@ -78,10 +78,11 @@ function classifyKind(desc: string, value: number, parcela: { number: number; to
   isPayment: boolean
 } {
   const d = desc.toLowerCase()
-  // Trap 6: pagamento da fatura anterior — não importa.
+  // Trap 6: pagamento da fatura anterior — não importa (já está no extrato).
   if (/\bpagamento\b/.test(d) && value < 0) return { kind: 'IGNORAR', isPayment: true }
-  // Estorno / crédito (valor negativo que não é pagamento) — não entra como despesa.
-  if (value < 0) return { kind: 'IGNORAR', isPayment: false }
+  // Estorno / crédito (valor negativo que não é pagamento) — ENTRA como CREDIT e
+  // REDUZ a despesa (não é ignorado; sem ele o total não fecha com Total desta Fatura).
+  if (value < 0) return { kind: 'ESTORNO', isPayment: false }
   // Encargo financeiro (IOF, juros, multa, mora, anuidade).
   if (/\biof\b|juros|multa|\bmora\b|anuidade|encargo|rotativo/.test(d)) {
     return { kind: 'ENCARGO_FINANCEIRO', isPayment: false }

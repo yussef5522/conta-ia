@@ -157,6 +157,14 @@ export interface TransactionForDRE {
    */
   isCardPayment?: boolean
   /**
+   * Sprint Fatura-Estorno (14/08/2026). True quando a tx é um ESTORNO/devolução
+   * no cartão (CREDIT com businessCreditCardId, não-pagamento). O modelo do DRE usa
+   * amount POSITIVO + sinal pelo DREGroup, então um crédito no cartão precisa deste
+   * flag pra REDUZIR a despesa (−amount) em vez de somar. Sem ele, o estorno
+   * inflaria a categoria em vez de abatê-la.
+   */
+  isCardRefund?: boolean
+  /**
    * Sprint Pending Transfer State (27/06/2026, modelo QuickBooks/Xero).
    * True quando o user marcou a tx como "transferência aguardando par"
    * (preview OFX V3 ou UI). Engine pula — sai do DRE imediatamente, mesmo

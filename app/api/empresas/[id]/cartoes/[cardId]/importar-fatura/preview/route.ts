@@ -219,6 +219,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       compraAvista: extraction.lines.filter((l) => l.suggestedKind === 'COMPRA_AVISTA').length,
       compraParcelada: extraction.lines.filter((l) => l.suggestedKind === 'COMPRA_PARCELADA').length,
       encargo: extraction.lines.filter((l) => l.suggestedKind === 'ENCARGO_FINANCEIRO').length,
+      estorno: extraction.lines.filter((l) => l.suggestedKind === 'ESTORNO').length,
       ignorar: extraction.lines.filter((l) => l.suggestedKind === 'IGNORAR').length,
       duplicatas: existingHashes.size,
       precisaRevisar: extraction.lines.filter((l) => l.needsReview).length,

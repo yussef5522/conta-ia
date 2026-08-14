@@ -5,7 +5,8 @@ export type InvoiceLineKind =
   | 'COMPRA_AVISTA'           // FACEBK, NETFLIX, IFOOD -> DESPESA categorizada
   | 'COMPRA_PARCELADA'        // "MERCADOLIVRE 08/12" -> so parcela do mes (regime caixa)
   | 'ENCARGO_FINANCEIRO'      // JUROS ROTATIVO, MULTA, MORA, IOF -> Despesa Financeira
-  | 'IGNORAR'                 // FATURA ANTERIOR, OBRIGADO, CASHBACK, AJUSTE, estorno -> NAO entra
+  | 'ESTORNO'                 // devolução/crédito (valor negativo) -> entra como CREDIT, REDUZ a despesa
+  | 'IGNORAR'                 // FATURA ANTERIOR, OBRIGADO, CASHBACK, AJUSTE -> NAO entra
 
 export interface InvoiceLine {
   /** ISO date YYYY-MM-DD */

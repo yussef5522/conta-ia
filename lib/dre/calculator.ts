@@ -196,22 +196,26 @@ function calculateForPeriod(
       continue
     }
 
+    // Sprint Fatura-Estorno (14/08): estorno de cartão (CREDIT) REDUZ a despesa da
+    // categoria em que cai — o modelo soma amount positivo, então aqui inverte o sinal.
+    const effAmount = tx.isCardRefund ? -txAmount : txAmount
+
     if (!tx.categoryId) {
-      uncatTotal += txAmount
+      uncatTotal += effAmount
       uncatCount++
       continue
     }
 
     const cat = catById.get(tx.categoryId)
     if (!cat) {
-      uncatTotal += txAmount
+      uncatTotal += effAmount
       uncatCount++
       continue
     }
 
     const dreGroup = cat.dreGroup
     if (!dreGroup) {
-      uncatTotal += txAmount
+      uncatTotal += effAmount
       uncatCount++
       continue
     }
@@ -220,13 +224,13 @@ function calculateForPeriod(
       if (!byDreGroup.has(dreGroup)) byDreGroup.set(dreGroup, new Map())
       const groupMap = byDreGroup.get(dreGroup)!
       const existing = groupMap.get(tx.categoryId) ?? { total: 0, count: 0 }
-      existing.total += txAmount
+      existing.total += effAmount
       existing.count++
       groupMap.set(tx.categoryId, existing)
     } else if (NON_DRE_GROUP_SET.has(dreGroup)) {
       const key = dreGroup as NonDREGroup
       const existing = byNonDreGroup.get(key) ?? { total: 0, count: 0 }
-      existing.total += txAmount
+      existing.total += effAmount
       existing.count++
       byNonDreGroup.set(key, existing)
     } else {

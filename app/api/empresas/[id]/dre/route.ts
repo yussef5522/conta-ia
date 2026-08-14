@@ -256,6 +256,8 @@ export async function computeDreResult(
         // ainda tem skips dedicados pra esses 3 campos.
         isCardPayment: true,
         pendingTransfer: true,
+        // Sprint Fatura-Estorno (14/08): pra marcar estorno de cartão (CREDIT).
+        businessCreditCardId: true,
       },
     })
 
@@ -270,6 +272,8 @@ export async function computeDreResult(
       // Sprint DRE Cleanup ACHADO #1: defesa em profundidade
       isCardPayment: t.isCardPayment,
       pendingTransfer: t.pendingTransfer,
+      // Sprint Fatura-Estorno: crédito no cartão (não-pagamento) = estorno → reduz despesa.
+      isCardRefund: !!t.businessCreditCardId && t.type === 'CREDIT' && !t.isCardPayment,
     }))
 
     // Sprint DRE Cleanup (28/06/2026, ACHADO #2): query auxiliar pra reinjetar

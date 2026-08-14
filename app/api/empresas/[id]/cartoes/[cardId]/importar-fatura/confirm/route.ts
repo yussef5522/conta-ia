@@ -19,8 +19,8 @@ const lineSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   description: z.string().min(1).max(500),
   amount: z.number().positive(),
-  kind: z.enum(['COMPRA_AVISTA', 'COMPRA_PARCELADA', 'ENCARGO_FINANCEIRO']),
-  // IGNORAR nao chega aqui (UI filtra antes)
+  kind: z.enum(['COMPRA_AVISTA', 'COMPRA_PARCELADA', 'ENCARGO_FINANCEIRO', 'ESTORNO']),
+  // IGNORAR nao chega aqui (UI filtra antes). ESTORNO entra como CREDIT (reduz despesa).
   categoryId: z.string().cuid().nullable().optional(),
   installmentNumber: z.number().int().min(1).max(99).optional(),
   installmentTotal: z.number().int().min(1).max(99).optional(),
@@ -170,14 +170,39 @@ export async function POST(request: NextRequest, { params }: Params) {
     periodEnd,
   })
 
-  // Computa identidades pra dedup
+  // Sprint Fatura-Estorno (14/08): o import cobra a validação da FATURA (não só o
+  // Total cartão). compras+encargos − estornos TEM que fechar com "Total desta
+  // Fatura" (totalToPay). Se não fecha, NÃO grava (impossibilidade). Sem totalToPay
+  // (banco sem esse campo) pula — não bloqueia leitura legítima.
+  if (body.totalToPay != null) {
+    const compras = body.lines
+      .filter((l) => l.kind === 'COMPRA_AVISTA' || l.kind === 'COMPRA_PARCELADA' || l.kind === 'ENCARGO_FINANCEIRO')
+      .reduce((s, l) => s + l.amount, 0)
+    const estornos = body.lines.filter((l) => l.kind === 'ESTORNO').reduce((s, l) => s + l.amount, 0)
+    const netFatura = Math.round((compras - estornos) * 100) / 100
+    const diff = Math.round((body.totalToPay - netFatura) * 100) / 100
+    if (Math.abs(diff) > 0.02) {
+      return NextResponse.json(
+        {
+          erro:
+            `A soma das linhas (R$ ${netFatura.toFixed(2)}) não fecha com o Total desta Fatura ` +
+            `(R$ ${body.totalToPay.toFixed(2)}, diferença R$ ${diff.toFixed(2)}). ` +
+            `Confira se há estorno não marcado como Estorno, ou linha faltando/sobrando — não vou gravar sem fechar.`,
+          code: 'VALIDATION_FAILED',
+        },
+        { status: 422 },
+      )
+    }
+  }
+
+  // Computa identidades pra dedup. ESTORNO é CREDIT (não colide com um débito de mesmo valor).
   const linesWithIdentity = body.lines.map((line) => {
     const identity = computeIdentity({
       accountId: `card:${cardId}`,
       fitid: null,
       date: line.date,
       amount: line.amount,
-      type: 'DEBIT',
+      type: line.kind === 'ESTORNO' ? 'CREDIT' : 'DEBIT',
       memo: line.description,
     })
     return { line, identity }
@@ -245,7 +270,8 @@ export async function POST(request: NextRequest, { params }: Params) {
               date: new Date(line.date),
               description: line.description,
               amount: line.amount,
-              type: 'DEBIT',
+              // ESTORNO = crédito no cartão (devolução) → reduz a despesa; o resto é compra/encargo.
+              type: line.kind === 'ESTORNO' ? 'CREDIT' : 'DEBIT',
               status: 'RECONCILED',
               origin: 'CREDIT_CARD_PDF',
               externalId: null,

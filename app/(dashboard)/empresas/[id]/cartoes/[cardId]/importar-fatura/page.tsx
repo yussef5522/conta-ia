@@ -27,7 +27,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
 import { readJsonResponse } from '@/lib/http/safe-json'
 
-type LineKind = 'COMPRA_AVISTA' | 'COMPRA_PARCELADA' | 'ENCARGO_FINANCEIRO' | 'IGNORAR'
+type LineKind = 'COMPRA_AVISTA' | 'COMPRA_PARCELADA' | 'ENCARGO_FINANCEIRO' | 'ESTORNO' | 'IGNORAR'
 
 interface CategoryOption {
   id: string
@@ -85,9 +85,12 @@ interface PreviewResponse {
     insufficient: boolean
     totalCompras: number
     totalEncargos: number
+    totalEstornos: number
     totalIgnoradas: number
-    totalCalculado: number
-    totalDeclarado: number | null
+    totalCartao: number
+    totalFatura: number
+    totalDeclaradoCartao: number | null
+    totalDeclaradoFatura: number | null
     diferenca: number | null
     message: string
   }
@@ -111,6 +114,7 @@ const KIND_LABEL: Record<LineKind, { label: string; color: string }> = {
   COMPRA_AVISTA: { label: 'À vista', color: 'bg-blue-50 text-blue-700 border-blue-200' },
   COMPRA_PARCELADA: { label: 'Parcelada', color: 'bg-sky-50 text-sky-700 border-sky-200' },
   ENCARGO_FINANCEIRO: { label: 'Encargo', color: 'bg-red-50 text-red-700 border-red-200' },
+  ESTORNO: { label: 'Estorno', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
   IGNORAR: { label: 'Ignorar', color: 'bg-slate-50 text-slate-500 border-slate-200' },
 }
 
@@ -264,23 +268,30 @@ export default function ImportarFaturaPage() {
   const selectedLines = editableLines.filter((l) => l.selected && l.kind !== 'IGNORAR')
   const totalCompras = selectedLines.filter((l) => l.kind === 'COMPRA_AVISTA' || l.kind === 'COMPRA_PARCELADA').reduce((s, l) => s + l.amount, 0)
   const totalEncargos = selectedLines.filter((l) => l.kind === 'ENCARGO_FINANCEIRO').reduce((s, l) => s + l.amount, 0)
-  const totalConfirmar = totalCompras + totalEncargos
+  // Estorno REDUZ o total (crédito). O total a importar = compras + encargos − estornos
+  // = "Total desta Fatura" (o que sai do banco), NÃO o "Total cartão".
+  const totalEstornos = selectedLines.filter((l) => l.kind === 'ESTORNO').reduce((s, l) => s + l.amount, 0)
+  const totalCartao = totalCompras + totalEncargos
+  const totalConfirmar = totalCartao - totalEstornos
 
   async function handleConfirm() {
     if (!previewData) return
+    // Encargo e Estorno podem entrar sem categoria; compras exigem categoria.
+    const semCatRequired = (l: EditableLine) =>
+      l.kind !== 'ENCARGO_FINANCEIRO' && l.kind !== 'ESTORNO'
     const valid = selectedLines.filter(
-      (l) => l.description.trim() && l.amount > 0 && (l.kind === 'ENCARGO_FINANCEIRO' || l.categoryId !== null),
+      (l) => l.description.trim() && l.amount > 0 && (!semCatRequired(l) || l.categoryId !== null),
     )
     if (valid.length === 0) {
       toast({
         title: 'Nada pra importar',
-        description: 'Marque ao menos 1 linha com categoria (encargos podem ficar sem).',
+        description: 'Marque ao menos 1 linha com categoria (encargos e estornos podem ficar sem).',
         variant: 'destructive',
       })
       return
     }
-    // Avisar se há linhas selecionadas sem categoria
-    const semCat = selectedLines.filter((l) => l.kind !== 'ENCARGO_FINANCEIRO' && l.categoryId === null)
+    // Avisar se há compras selecionadas sem categoria (encargo/estorno isentos)
+    const semCat = selectedLines.filter((l) => semCatRequired(l) && l.categoryId === null)
     if (semCat.length > 0) {
       toast({
         title: 'Linhas sem categoria',
@@ -870,6 +881,7 @@ function EditableRow({
           <option value="COMPRA_AVISTA">À vista</option>
           <option value="COMPRA_PARCELADA">Parcelada</option>
           <option value="ENCARGO_FINANCEIRO">Encargo</option>
+          <option value="ESTORNO">Estorno (crédito)</option>
           <option value="IGNORAR">Ignorar</option>
         </select>
       </td>
