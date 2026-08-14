@@ -114,6 +114,67 @@ describe('6) EXTRATO ANTIGO importado DEPOIS de um novo — não bagunça o sald
   })
 })
 
+describe('5b) DTSERVER desempata + o mais antigo NÃO desfaz o mais novo', () => {
+  it('subir a MANHÃ depois da TARDE (já importada) → NÃO sobrescreve o saldo vivo', () => {
+    // atual = manhã (DTSERVER cedo). prior = tarde (mesmo asOf, DTSERVER tarde).
+    const r = deriveSaldoAntes(make({
+      current: {
+        periodStart: d('2026-08-03'), periodEnd: d('2026-08-13'), asOf: d('2026-08-13'),
+        dtServer: new Date('2026-08-13T09:00:00Z'), ledgerBalance: -8349.33, lines: [line('2026-08-11', -100)],
+      },
+      priorStatements: [
+        { asOf: d('2026-08-13'), ledgerBalance: -2644.08, dtServer: new Date('2026-08-13T17:00:00Z') }, // tarde
+        { asOf: d('2026-08-11'), ledgerBalance: -781.08 },
+      ],
+      existingLines: [line('2026-08-11', -100)],
+    }))
+    expect(r.shouldUpdateLiveBalance).toBe(false) // o mais antigo (manhã) não desfaz a tarde
+  })
+  it('subir a TARDE depois da manhã → SOBRESCREVE (é o mais recente)', () => {
+    const r = deriveSaldoAntes(make({
+      current: {
+        periodStart: d('2026-08-03'), periodEnd: d('2026-08-13'), asOf: d('2026-08-13'),
+        dtServer: new Date('2026-08-13T17:00:00Z'), ledgerBalance: -2644.08, lines: [line('2026-08-11', -100)],
+      },
+      priorStatements: [
+        { asOf: d('2026-08-13'), ledgerBalance: -8349.33, dtServer: new Date('2026-08-13T09:00:00Z') }, // manhã
+        { asOf: d('2026-08-11'), ledgerBalance: -781.08 },
+      ],
+      existingLines: [line('2026-08-11', -100)],
+    }))
+    expect(r.shouldUpdateLiveBalance).toBe(true)
+    expect(r.supersedesPriorSameDay).toBe(true)
+  })
+})
+
+describe('3b) ESCAPE da divergência — destrava e segue (registrado como forçado)', () => {
+  it('overrideDivergent → DERIVED_OVERLAP com forcedOverDivergence=true', () => {
+    const r = deriveSaldoAntes(make({
+      current: {
+        periodStart: d('2026-08-03'), periodEnd: d('2026-08-08'), asOf: d('2026-08-08'),
+        ledgerBalance: 900, lines: [line('2026-08-04', -100)],
+      },
+      priorStatements: [{ asOf: d('2026-08-05'), ledgerBalance: 1000 }],
+      existingLines: [line('2026-08-04', -999)], // diverge
+      overrideDivergent: true, // "é o banco que reemitiu, pode seguir"
+    }))
+    expect(r.outcome).toBe('DERIVED_OVERLAP')
+    expect(r.forcedOverDivergence).toBe(true)
+    expect(r.saldoAntes).toBe(1100)
+  })
+})
+
+describe('6b) histórico não atualiza o saldo vivo', () => {
+  it('junho depois de agosto → shouldUpdateLiveBalance=false', () => {
+    const r = deriveSaldoAntes(make({
+      current: { periodStart: d('2026-06-01'), periodEnd: d('2026-06-30'), asOf: d('2026-06-30'), ledgerBalance: 5000, lines: [line('2026-06-10', -200)] },
+      priorStatements: [{ asOf: d('2026-08-31'), ledgerBalance: 9000 }, { asOf: d('2026-05-31'), ledgerBalance: 5200 }],
+    }))
+    expect(r.isHistorical).toBe(true)
+    expect(r.shouldUpdateLiveBalance).toBe(false)
+  })
+})
+
 describe('extra — só há downloads do mesmo dia (sem anterior real)', () => {
   it('ancora + avisa que só há repetido do mesmo dia', () => {
     const r = deriveSaldoAntes(make({

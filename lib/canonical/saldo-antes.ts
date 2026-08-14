@@ -35,6 +35,8 @@ export type SaldoAntesOutcome =
 export interface PriorStatement {
   asOf: Date
   ledgerBalance: number
+  /** DTSERVER do OFX — desempata downloads do MESMO asOf (caso 5). Null = mais antigo. */
+  dtServer?: Date | null
 }
 
 export interface SaldoAntesLine {
@@ -48,6 +50,8 @@ export interface SaldoAntesInput {
     periodEnd: Date | null
     asOf: Date | null
     ledgerBalance: number | null
+    /** DTSERVER do OFX atual — desempata mesmo dia. */
+    dtServer?: Date | null
     /** Linhas EFETIVADAS do extrato atual. */
     lines: SaldoAntesLine[]
   }
@@ -56,6 +60,10 @@ export interface SaldoAntesInput {
   /** Tx JÁ no banco na janela do extrato atual (pra checar divergência da
    *  sobreposição). Se vazio, a checagem de divergência é pulada. */
   existingLines: SaldoAntesLine[]
+  /** ESCAPE (caso 3, decisão do Yussef): o usuário olhou e disse "é o banco que
+   *  reemitiu, pode seguir" → destrava a divergência (registrado como forçado).
+   *  Bloqueio sem saída vira paralisia. */
+  overrideDivergent?: boolean
   tolerance?: number
 }
 
@@ -65,11 +73,17 @@ export interface SaldoAntesResult {
   saldoAntes: number | null
   /** false → o juiz ANCORA em vez de validar contra o nada. */
   saldoAntesKnown: boolean
-  /** o extrato atual é mais ANTIGO que o mais novo já importado (caso 6) → o
-   *  saldo VIVO da conta NÃO deve ser sobrescrito. */
+  /** ⚠️ O FLAG QUE O PIPELINE USA: false = este extrato NÃO é o snapshot mais
+   *  recente (mais antigo por período OU download mais velho do mesmo dia) → o
+   *  saldo VIVO da conta NÃO pode ser sobrescrito. "O mais antigo não desfaz o
+   *  mais novo" (casos 5 e 6). */
+  shouldUpdateLiveBalance: boolean
+  /** o extrato atual é mais ANTIGO que o mais novo já importado (caso 6). */
   isHistorical: boolean
-  /** há um import do MESMO asOf (caso 5) → ele é superseded pelo atual. */
+  /** há um import do MESMO asOf (caso 5) — o mais recente (por DTSERVER) manda. */
   supersedesPriorSameDay: boolean
+  /** true = seguiu APESAR da divergência da sobreposição (escape do usuário). */
+  forcedOverDivergence: boolean
   /** asOf do prior usado na derivação (quando DERIVED). */
   fromPriorAsOf: Date | null
   /** aviso pra tela (buraco, divergência). */
@@ -86,14 +100,52 @@ function sameMultiset(a: string[], b: string[]): boolean {
   return true
 }
 
+const ms = (d: Date | null | undefined) => (d ? d.getTime() : -Infinity)
+
+/** a é MAIS RECENTE que b? Por asOf (dia); empate por DTSERVER (download). */
+function moreRecent(
+  a: { asOf: Date | null; dtServer?: Date | null },
+  b: { asOf: Date | null; dtServer?: Date | null },
+): boolean {
+  const da = a.asOf ? dayStart(a.asOf) : -Infinity
+  const db = b.asOf ? dayStart(b.asOf) : -Infinity
+  if (da !== db) return da > db
+  return ms(a.dtServer) > ms(b.dtServer)
+}
+
 export function deriveSaldoAntes(input: SaldoAntesInput): SaldoAntesResult {
-  const tol = input.tolerance ?? DEFAULT_TOL
+  void (input.tolerance ?? DEFAULT_TOL)
   const { current, priorStatements } = input
+  const curAsOf = current.asOf
+  const curStart = current.periodStart
+
+  // Caso 6 — o atual é mais ANTIGO que o mais novo já importado (backfill fora de
+  // ordem). Deriva de um prior anterior, NÃO do mais novo.
+  const newestPriorAsOf = priorStatements.reduce(
+    (m, p) => (m === null || p.asOf.getTime() > m.getTime() ? p.asOf : m),
+    null as Date | null,
+  )
+  const isHistorical = !!(curAsOf && newestPriorAsOf && curAsOf.getTime() < newestPriorAsOf.getTime())
+
+  // Caso 5 — há prior do MESMO dia (download repetido). O mais recente (por
+  // DTSERVER) manda.
+  const supersedesPriorSameDay =
+    !!curAsOf && priorStatements.some((p) => daysBetween(p.asOf, curAsOf) === 0)
+
+  // ⚠️ "O mais antigo NÃO desfaz o mais novo" (casos 5 e 6): o saldo VIVO só é
+  // sobrescrito se o extrato atual é o snapshot MAIS RECENTE (nenhum prior é mais
+  // recente que ele — por asOf, empate por DTSERVER). Subir o de manhã depois do
+  // de tarde NÃO faz o saldo voltar.
+  const anyPriorMoreRecent = priorStatements.some((p) => moreRecent(p, current))
+  const shouldUpdateLiveBalance = !anyPriorMoreRecent
+
   const base = {
     saldoAntes: null as number | null,
     saldoAntesKnown: false,
-    isHistorical: false,
-    supersedesPriorSameDay: false,
+    shouldUpdateLiveBalance,
+    isHistorical,
+    supersedesPriorSameDay,
+    forcedOverDivergence: false,
     fromPriorAsOf: null as Date | null,
     message: null as string | null,
   }
@@ -102,23 +154,6 @@ export function deriveSaldoAntes(input: SaldoAntesInput): SaldoAntesResult {
   if (priorStatements.length === 0) {
     return { ...base, outcome: 'ANCHOR_FIRST_IMPORT' }
   }
-
-  const curAsOf = current.asOf
-  const curStart = current.periodStart
-
-  // Caso 6 — o atual é mais ANTIGO que o mais novo já importado (backfill fora de
-  // ordem). Marca histórico (o saldo vivo não é do atual) e deriva de um prior
-  // anterior ao atual (não do mais novo).
-  const newestPriorAsOf = priorStatements.reduce(
-    (m, p) => (m === null || p.asOf.getTime() > m.getTime() ? p.asOf : m),
-    null as Date | null,
-  )
-  const isHistorical = !!(curAsOf && newestPriorAsOf && curAsOf.getTime() < newestPriorAsOf.getTime())
-
-  // Caso 5 — priors do MESMO asOf do atual são superseded (o atual é o download
-  // mais recente daquele dia). Não entram na derivação.
-  const supersedesPriorSameDay =
-    !!curAsOf && priorStatements.some((p) => daysBetween(p.asOf, curAsOf) === 0)
 
   // Seleciona o prior de derivação: o de asOf MAIS TARDIO que seja ESTRITAMENTE
   // anterior ao asOf do atual (pula mesmo-dia = caso 5, e mais-novos = caso 6).
@@ -136,8 +171,6 @@ export function deriveSaldoAntes(input: SaldoAntesInput): SaldoAntesResult {
     return {
       ...base,
       outcome: 'ANCHOR_FIRST_IMPORT',
-      isHistorical,
-      supersedesPriorSameDay,
       message: supersedesPriorSameDay
         ? 'Só há extrato(s) do mesmo dia (download repetido) — sem um anterior pra ancorar; usando âncora.'
         : null,
@@ -149,25 +182,26 @@ export function deriveSaldoAntes(input: SaldoAntesInput): SaldoAntesResult {
   const hasOverlap = overlapLines.length > 0 && !!curStart && daysBetween(curStart, prior.asOf) >= 0
 
   if (hasOverlap) {
-    // Caso 3 — a sobreposição tem que BATER com o que está no banco. Compara
-    // multiset (data,valor) das linhas do atual vs as do banco na mesma faixa.
+    // Caso 3 — a sobreposição tem que BATER com o que está no banco (multiset
+    // data,valor). Diverge → BLOQUEIA, a menos que o usuário destrave (override).
+    let divergent = false
     if (input.existingLines.length > 0) {
       const dbOverlap = input.existingLines.filter(
         (l) =>
           l.date.getTime() <= dayStart(prior.asOf) + DAY_MS - 1 &&
           (!curStart || l.date.getTime() >= dayStart(curStart)),
       )
-      if (!sameMultiset(multisetKey(overlapLines), multisetKey(dbOverlap))) {
-        return {
-          ...base,
-          outcome: 'BLOCKED_DIVERGENT',
-          isHistorical,
-          supersedesPriorSameDay,
-          fromPriorAsOf: prior.asOf,
-          message:
-            'As linhas sobrepostas não batem com o que já está no banco (valor ou data diferente). ' +
-            'Não vou ancorar em cima de dado divergente — confira se é a conta certa e o extrato certo.',
-        }
+      divergent = !sameMultiset(multisetKey(overlapLines), multisetKey(dbOverlap))
+    }
+    if (divergent && !input.overrideDivergent) {
+      return {
+        ...base,
+        outcome: 'BLOCKED_DIVERGENT',
+        fromPriorAsOf: prior.asOf,
+        message:
+          'As linhas sobrepostas não batem com o que já está no banco (valor ou data diferente). ' +
+          'Não vou ancorar em cima de dado divergente — confira se é a conta certa e o extrato certo. ' +
+          'Se for o banco que reemitiu, você pode destravar (segue registrado como forçado).',
       }
     }
     // Caso 1 — deriva: saldoAntes = LEDGERBAL_anterior − Σ(linhas do atual até o asOf anterior).
@@ -177,9 +211,11 @@ export function deriveSaldoAntes(input: SaldoAntesInput): SaldoAntesResult {
       outcome: 'DERIVED_OVERLAP',
       saldoAntes: round2(prior.ledgerBalance - somaOverlap),
       saldoAntesKnown: true,
-      isHistorical,
-      supersedesPriorSameDay,
+      forcedOverDivergence: divergent, // true = seguiu APESAR da divergência (escape do usuário)
       fromPriorAsOf: prior.asOf,
+      message: divergent
+        ? 'Sobreposição divergente — seguiu por decisão sua (registrado como forçado).'
+        : null,
     }
   }
 
@@ -191,8 +227,6 @@ export function deriveSaldoAntes(input: SaldoAntesInput): SaldoAntesResult {
       outcome: 'DERIVED_CONTIGUOUS',
       saldoAntes: round2(prior.ledgerBalance),
       saldoAntesKnown: true,
-      isHistorical,
-      supersedesPriorSameDay,
       fromPriorAsOf: prior.asOf,
     }
   }
@@ -204,8 +238,6 @@ export function deriveSaldoAntes(input: SaldoAntesInput): SaldoAntesResult {
   return {
     ...base,
     outcome: 'ANCHOR_GAP',
-    isHistorical,
-    supersedesPriorSameDay,
     fromPriorAsOf: prior.asOf,
     message:
       gapEnd != null
