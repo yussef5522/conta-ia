@@ -137,39 +137,68 @@ export interface SicrediFaturaParsed {
   }
 }
 
-/** Lê os totais declarados (uma vez — trap 3: repetem por página). */
+/** Número BR SEM exigir R$ (ex: "-2.404,06", "7.896,32"). */
+function parseBRNumber(raw: string): number | null {
+  const m = raw.match(/(-?)\s*([\d.]+),(\d{2})/)
+  if (!m) return null
+  const v = Number(`${m[2].replace(/\./g, '')}.${m[3]}`)
+  return isNaN(v) ? null : round2((m[1] === '-' ? -1 : 1) * v)
+}
+
+/**
+ * Lê os totais declarados. ARMADILHA CRÍTICA (o Yussef provou): na página 1 o
+ * "Resumo da fatura" e o quadro "Limite" ocupam AS MESMAS LINHAS. Uma regex que
+ * pega "Total" + R$ casa com o LIMITE (R$ 25.000,00), não com a fatura. Defesas:
+ *  - rótulos ANCORADOS no início da linha (^\s*<rótulo>);
+ *  - os valores do RESUMO NÃO têm "R$"; os do LIMITE têm → removo os "R$ X" da
+ *    linha antes de pegar o número (mata o limite);
+ *  - "Total cartão (final XXXX)" é o único que vem COM R$ e tem rótulo próprio.
+ */
 function readDeclaredTotals(text: string): SicrediFaturaParsed['declared'] {
-  const first = (re: RegExp): number | null => {
-    const m = text.match(re)
-    return m ? parseBRL(m[0]) : null
+  const lines = text.split(/\r?\n/)
+  // valor do RESUMO: 1ª ocorrência do rótulo (ancorado), 1º número SEM R$ na linha.
+  const resumo = (labelRe: RegExp): number | null => {
+    for (const line of lines) {
+      if (!labelRe.test(line)) continue
+      const semLimite = line.replace(/R\$\s*[\d.]+,\d{2}/g, '  ') // tira o quadro Limite
+      const n = parseBRNumber(semLimite)
+      if (n != null) return n
+    }
+    return null
   }
+  // "Total cartão (final XXXX) ... R$ 7.995,55" — rótulo COMPLETO + R$.
+  const totalCartaoM = text.match(/total\s+cart[aã]o\s*\(final\s*\w*\)\s*R\$\s*[\d.]+,\d{2}/i)
   return {
-    totalCartao: first(/total\s+cart[aã]o[^\n]*?-?R\$\s*[\d.]+,\d{2}/i),
-    totalFatura: first(/total\s+desta\s+fatura[^\n]*?-?R\$\s*[\d.]+,\d{2}/i),
-    // "total" no contexto pra NÃO casar a linha de IOF "Compra Internacional".
-    brasil: first(/total[^\n]*?\bbrasil\b[^\n]*?-?R\$\s*[\d.]+,\d{2}/i),
-    exterior: first(/total[^\n]*?(exterior|internacional)[^\n]*?-?R\$\s*[\d.]+,\d{2}/i),
-    pagamentosCreditos: first(/pagamentos?\s*[|/e]*\s*cr[eé]ditos[^\n]*?-?R\$\s*[\d.]+,\d{2}/i),
+    totalCartao: totalCartaoM ? parseBRL(totalCartaoM[0]) : null,
+    totalFatura: resumo(/^\s*Total\s+desta\s+Fatura\b/i),
+    brasil: resumo(/^\s*Despesas\s+atuais.*?\bBrasil\b/i),
+    exterior: resumo(/^\s*Despesas\s+atuais.*?\bExterior\b/i),
+    pagamentosCreditos: resumo(/^\s*Pagamentos\s*\|\s*Cr[eé]ditos\b/i),
   }
 }
 
-/** Fechamento/vencimento pra inferir o ano das datas sem ano (trap 4). */
+/**
+ * Mês/ano de FECHAMENTO pra inferir o ano das datas sem ano (trap 4). Âncora = o
+ * VENCIMENTO (13/08/2026), que vem com data completa e sem ambiguidade. O
+ * fechamento é o mês ANTERIOR ao vencimento (Sicredi: vence 13/08, fecha 28/07).
+ * ⚠️ NÃO usar a linha "Fechamento da próxima fatura 28/08/2026" (é a PRÓXIMA).
+ * ZERO relógio: se não achar vencimento, não inventa — usa o fim-de-mês do texto
+ * ("em 28/07") ou deixa o ano indefinido (a validação não depende de data).
+ */
 function readClosing(text: string): { month: number; year: number; closingDate: string | null; dueDate: string | null } {
-  const dateBR = (re: RegExp): string | null => {
-    const m = text.match(re)
-    if (!m) return null
-    const dm = m[0].match(/(\d{2})\/(\d{2})\/(\d{4})/)
-    return dm ? `${dm[3]}-${dm[2]}-${dm[1]}` : null
+  const venc = text.match(/vencimento\s+(\d{2})\/(\d{2})\/(\d{4})/i)
+  if (venc) {
+    const vm = Number(venc[2]), vy = Number(venc[3])
+    const month = vm === 1 ? 12 : vm - 1
+    const year = vm === 1 ? vy - 1 : vy
+    const dueDate = `${vy}-${venc[2]}-${venc[1]}`
+    const closingDate = `${year}-${String(month).padStart(2, '0')}-28` // aproximação (dia real varia)
+    return { month, year, closingDate, dueDate }
   }
-  const closingDate = dateBR(/(fechamento|apurado?\s+em|data\s+de\s+fechamento)[^\n]*?\d{2}\/\d{2}\/\d{4}/i)
-  const dueDate = dateBR(/(vencimento|vence\s+em)[^\n]*?\d{2}\/\d{2}\/\d{4}/i)
-  // âncora do ano = fechamento; senão vencimento; senão null → caller decide.
-  const anchor = closingDate ?? dueDate
-  if (anchor) {
-    const [y, mo] = anchor.split('-').map(Number)
-    return { month: mo, year: y, closingDate, dueDate }
-  }
-  return { month: 12, year: new Date().getUTCFullYear(), closingDate, dueDate }
+  // fallback: "em DD/MM" do resumo (sem ano) — usa só o mês.
+  const emMes = text.match(/\bem\s+(\d{2})\/(\d{2})\b/)
+  if (emMes) return { month: Number(emMes[2]), year: 0, closingDate: null, dueDate: null }
+  return { month: 12, year: 0, closingDate: null, dueDate: null }
 }
 
 /**
@@ -181,9 +210,18 @@ export function parseSicrediFatura(text: string): SicrediFaturaParsed {
   const closing = readClosing(text)
   const declared = readDeclaredTotals(text)
 
-  // 1ª passada: âncoras + fragmentos (trap 1). Um fragmento é linha não-vazia que
-  // NÃO é âncora e NÃO é linha de total/cabeçalho.
-  const isTotalLine = (l: string) => /total\s+(cart[aã]o|desta|nacional|internacional)|saldo|limite|dispon[ií]vel|vencimento|fechamento/i.test(l)
+  // 1ª passada: âncoras + fragmentos de descrição (trap 1).
+  // Fragmento = linha CURTA de texto que NÃO é âncora, não começa com data/número,
+  // não tem R$/Total/cabeçalho, < 40 chars (regra do Yussef contra o dado real —
+  // evita puxar "Total fatura de agosto"/"Visa Empresas"/nome do titular pro meio
+  // da descrição). Qualquer outra linha (total/header/ruído) QUEBRA o grupo (trap 3).
+  const isDescFragment = (l: string): boolean => {
+    const t = l.trim()
+    if (t.length === 0 || t.length > 40) return false
+    if (/^\d/.test(t)) return false
+    if (/R\$|US\$|total|vencimento|\bfinal\b|visa\s+empresas|d[eé]bito em conta|cart[aã]o\s*\(|transa[çc][õo]es|cidade\s+compra|\d\s+de\s+\d/i.test(t)) return false
+    return /[a-z]/i.test(t)
+  }
   const anchors: RawAnchor[] = []
   const pendingPrefix: string[] = []
   for (const raw of lines) {
@@ -195,18 +233,17 @@ export function parseSicrediFatura(text: string): SicrediFaturaParsed {
       if (value == null) { continue }
       anchors.push({ ddmmm: m[1], time: m[2], middle: m[3], value, prefix: [...pendingPrefix], suffix: [] })
       pendingPrefix.length = 0
-    } else {
-      if (isTotalLine(line)) { pendingPrefix.length = 0; continue } // trap 3: totais não são fragmento
-      // fragmento: candidato a sufixo da âncora anterior E prefixo da próxima.
+    } else if (isDescFragment(line)) {
+      // sufixo da âncora anterior SE ela é internacional (miolo sem descrição) e
+      // ainda não tem sufixo; senão segura como prefixo da próxima.
       const prev = anchors[anchors.length - 1]
-      // dono = a âncora cujo miolo NÃO tem descrição (internacional). Se a anterior
-      // precisa de descrição e ainda não tem sufixo forte, é dela (sufixo); senão
-      // segura como prefixo da próxima.
       if (prev && parseMiddle(prev.middle).description === '' && prev.suffix.length === 0) {
         prev.suffix.push(line.trim())
       } else {
         pendingPrefix.push(line.trim())
       }
+    } else {
+      pendingPrefix.length = 0 // total/header/ruído quebra o grupo
     }
   }
 
