@@ -71,6 +71,7 @@ export class CreditCardPjExtractError extends Error {
       | 'ENCRYPTED_PDF'
       | 'ANTHROPIC_API_KEY_MISSING'
       | 'CLAUDE_TIMEOUT'
+      | 'CLAUDE_TRUNCATED' // Vision cortou a resposta no max_tokens — fatura grande demais
       | 'CLAUDE_API_ERROR'
       | 'CLAUDE_INVALID_JSON'
       | 'VALIDATION_FAILED'

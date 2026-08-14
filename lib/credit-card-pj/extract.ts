@@ -124,7 +124,12 @@ export async function extractInvoice(
   } catch (err) {
     clearTimeout(timeoutHandle)
     if (err instanceof Error && err.name === 'AbortError')
-      throw new CreditCardPjExtractError('CLAUDE_TIMEOUT', 'Timeout Claude Vision')
+      throw new CreditCardPjExtractError(
+        'CLAUDE_TIMEOUT',
+        'A leitura por imagem demorou demais (a fatura é grande). Se o PDF tiver texto ' +
+          'selecionável, o sistema lê direto e rápido; se for escaneado, divida a fatura por ' +
+          'período e importe separado.',
+      )
     throw new CreditCardPjExtractError('CLAUDE_API_ERROR', 'Falha de rede Claude')
   }
   clearTimeout(timeoutHandle)
@@ -139,6 +144,20 @@ export async function extractInvoice(
   }
 
   const apiData = (await response.json()) as ClaudeApiResponse
+
+  // Step 0 (BUG B, 14/08): a resposta veio CORTADA no teto de tokens → a fatura é
+  // grande demais pro Vision. ANTES esse caso caía no parse de JSON truncado (erro
+  // genérico) OU pior, num JSON parcialmente válido com transações FALTANDO em
+  // silêncio. Agora falha ALTO e acionável. (O caminho determinístico por pdftotext
+  // — sem tokens — é o fix de raiz; isto protege o fallback Vision.)
+  if (apiData.stop_reason === 'max_tokens') {
+    throw new CreditCardPjExtractError(
+      'CLAUDE_TRUNCATED',
+      'Esta fatura é grande demais pra leitura automática por imagem (a resposta foi cortada no limite). ' +
+        'Se o PDF tiver texto selecionável, o sistema lê direto; senão, divida a fatura por período e importe separado.',
+    )
+  }
+
   const text = apiData.content?.[0]?.text ?? ''
 
   let parsed: unknown

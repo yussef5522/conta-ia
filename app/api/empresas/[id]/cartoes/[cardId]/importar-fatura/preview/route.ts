@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { checkCreditCardPjFlag } from '@/lib/credit-card-pj/feature-flag'
-import { extractInvoice } from '@/lib/credit-card-pj/extract'
+import { extractInvoiceSmart } from '@/lib/credit-card-pj/extract-invoice-smart'
 import { CreditCardPjExtractError } from '@/lib/credit-card-pj/types'
 import { checkInvoiceTotals } from '@/lib/credit-card-pj/totals-check'
 import { suggestCategoriesForInvoiceLines } from '@/lib/credit-card-pj/suggest-category'
@@ -68,23 +68,24 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ erro: 'Erro ao ler arquivo' }, { status: 400 })
   }
 
-  // Extracao Claude Vision
+  // Extração: pdftotext determinístico PRIMEIRO (Sicredi), Vision só como fallback.
   let result
   try {
-    result = await extractInvoice({ pdfBytes, fileName })
+    result = await extractInvoiceSmart({ pdfBytes, fileName })
   } catch (err: unknown) {
     if (err instanceof CreditCardPjExtractError) {
       const code = err.code
+      // Mensagens ACIONÁVEIS (BUG B): timeout/truncamento/validação não são "erro
+      // genérico" — dizem o que fazer. 422 = "li mas não fecha / grande demais".
       const status =
-        code === 'NOT_A_PDF' ||
-        code === 'FILE_TOO_LARGE' ||
-        code === 'NO_FILE' ||
-        code === 'ENCRYPTED_PDF'
+        code === 'NOT_A_PDF' || code === 'FILE_TOO_LARGE' || code === 'NO_FILE' || code === 'ENCRYPTED_PDF'
           ? 400
           : code === 'CLAUDE_TIMEOUT'
             ? 504
-            : 500
-      return NextResponse.json({ erro: err.message, code }, { status })
+            : code === 'VALIDATION_FAILED' || code === 'CLAUDE_TRUNCATED'
+              ? 422
+              : 500
+      return NextResponse.json({ erro: err.message, code, checks: (err.details ?? null) }, { status })
     }
     console.error('[credit-card-pj/preview] erro inesperado:', err)
     return NextResponse.json({ erro: 'Erro ao processar fatura' }, { status: 500 })
@@ -155,6 +156,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     companyId,
     cardId,
     fileName,
+    source: result.source, // PDFTEXT (determinístico) vs VISION (fallback)
     pdfSize: metrics.pdfSize,
     durationMs: metrics.durationMs,
     inputTokens: metrics.inputTokens,
