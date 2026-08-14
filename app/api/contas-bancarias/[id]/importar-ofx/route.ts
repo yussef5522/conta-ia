@@ -45,7 +45,7 @@ import {
 } from '@/lib/ofx/decisions'
 import { partitionFutureLines, settledThroughDate } from '@/lib/ofx/future-line'
 import { contentKey } from '@/lib/canonical/to-canonical'
-import { isCanonicalClassifyEnabled } from '@/lib/canonical/flag'
+import { isCanonicalClassifyEnabledForBank } from '@/lib/canonical/flag'
 import { resolveImportStatuses } from '@/lib/reconciliation/resolve-import-statuses'
 import { resolveBankProfile, resolveStatementAnchor, bankProfileWarning } from '@/lib/bank-profiles'
 import { verifyOfxMatchesAccount } from '@/lib/ofx/verify-account-match'
@@ -528,7 +528,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     let novasReais: typeof novas
     let novasFuturas: typeof novas
     let judgeBlockWarning: string | null = null
-    if (isCanonicalClassifyEnabled()) {
+    if (isCanonicalClassifyEnabledForBank(bankId)) {
       const { classify, importableByKey } = await resolveImportStatuses(prisma, {
         bankAccountId: contaId,
         parsed: parsedOfx,

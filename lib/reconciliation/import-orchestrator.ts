@@ -22,7 +22,7 @@ import { parseStatementFromOFX } from './parse-statement-from-ofx'
 import { reconcileStatement } from './reconcile-statement'
 import { buildReconcileUniverse } from './reconcile-universe'
 import { partitionFutureLines, reconcileLedgerAnchorDay } from '../ofx/future-line'
-import { isCanonicalClassifyEnabled } from '../canonical/flag'
+import { isCanonicalClassifyEnabledForBank } from '../canonical/flag'
 import { resolveImportStatuses } from './resolve-import-statuses'
 import { resolveBankProfile, resolveStatementAnchor } from '../bank-profiles'
 import { stableKey } from './stable-key'
@@ -173,7 +173,7 @@ export async function runImportV2(
   let realLines: typeof lines
   let futureLines: typeof lines
   let judgeRan = false
-  if (isCanonicalClassifyEnabled()) {
+  if (isCanonicalClassifyEnabledForBank(parsed.bankId)) {
     const { classify } = await resolveImportStatuses(tx, {
       bankAccountId: input.bankAccountId,
       parsed,
