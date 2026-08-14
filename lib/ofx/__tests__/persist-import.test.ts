@@ -87,3 +87,79 @@ describe('finalizeOfxImport — grava o CONTEXTO DA DECISÃO (2.4)', () => {
     expect('bankProfile' in d).toBe(false)
   })
 })
+
+// Sprint Blob-no-Preview (13/08) — REGRA 3: executa o reuso por fileHash contra
+// um mock STATEFUL (guarda os registros). Prova: preview salva o blob; previu 2× =
+// 1 registro; confirmar depois reaproveita o PREVIEW (não duplica); SUCCESS do
+// mesmo arquivo NÃO é reaproveitado (re-import ganha registro próprio).
+describe('createOfxImportRecord — blob-no-preview + reuso por fileHash', () => {
+  function statefulDb() {
+    const rows: any[] = []
+    let seq = 0
+    const db: any = {
+      ofxImport: {
+        findFirst: vi.fn(async ({ where }: any) =>
+          rows.find(
+            (r) =>
+              r.bankAccountId === where.bankAccountId &&
+              r.fileHash === where.fileHash &&
+              r.status === where.status,
+          ) ?? null,
+        ),
+        create: vi.fn(async ({ data }: any) => {
+          const row = { id: `imp_${++seq}`, ...data }
+          rows.push(row)
+          return { id: row.id }
+        }),
+        update: vi.fn(async ({ where, data }: any) => {
+          const row = rows.find((r) => r.id === where.id)
+          Object.assign(row, data)
+          return { id: row.id }
+        }),
+      },
+    }
+    return { db, rows }
+  }
+  const base = { bankAccountId: 'acc1', userId: 'u1', fileName: 'e.ofx', fileSize: 10, rawOfx: '<OFX/>', fileHash: 'H1' }
+
+  it('preview salva o blob com status PREVIEW', async () => {
+    const { db, rows } = statefulDb()
+    await createOfxImportRecord(db, { ...base, status: 'PREVIEW' })
+    expect(rows).toHaveLength(1)
+    expect(rows[0].status).toBe('PREVIEW')
+    expect(rows[0].rawOfxBlob).toBe('<OFX/>')
+  })
+
+  it('previu 2× (mesmo fileHash) → 1 registro só (reaproveita)', async () => {
+    const { db, rows } = statefulDb()
+    const a = await createOfxImportRecord(db, { ...base, status: 'PREVIEW' })
+    const b = await createOfxImportRecord(db, { ...base, status: 'PREVIEW' })
+    expect(rows).toHaveLength(1)
+    expect(a.id).toBe(b.id)
+  })
+
+  it('confirmar depois do preview REAPROVEITA (vira PROCESSING, não duplica)', async () => {
+    const { db, rows } = statefulDb()
+    const prev = await createOfxImportRecord(db, { ...base, status: 'PREVIEW' })
+    const conf = await createOfxImportRecord(db, { ...base }) // default PROCESSING
+    expect(rows).toHaveLength(1)
+    expect(conf.id).toBe(prev.id)
+    expect(rows[0].status).toBe('PROCESSING')
+  })
+
+  it('SUCCESS do mesmo arquivo NÃO é reaproveitado (re-import ganha registro novo)', async () => {
+    const { db, rows } = statefulDb()
+    await createOfxImportRecord(db, { ...base, status: 'PREVIEW' })
+    rows[0].status = 'SUCCESS' // simula import já concluído
+    const novo = await createOfxImportRecord(db, { ...base }) // re-import
+    expect(rows).toHaveLength(2)
+    expect(novo.id).not.toBe(rows[0].id)
+  })
+
+  it('sem fileHash → não tenta reaproveitar (cria direto)', async () => {
+    const { db, rows } = statefulDb()
+    await createOfxImportRecord(db, { bankAccountId: 'acc1', userId: 'u1', fileName: 'x', fileSize: 1, rawOfx: '<OFX/>' })
+    expect(db.ofxImport.findFirst).not.toHaveBeenCalled()
+    expect(rows).toHaveLength(1)
+  })
+})

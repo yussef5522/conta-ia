@@ -36,22 +36,62 @@ export interface CreateOfxImportInput {
   duplicates?: number
   periodStart?: Date | null
   periodEnd?: Date | null
+  /**
+   * Sprint Blob-no-Preview (13/08): 'PREVIEW' = o usuário só previu (ainda não
+   * confirmou) — o blob é salvo mesmo assim, pra investigar import cancelado (foi
+   * por não ter que não deu pra diagnosticar o 4.092,02). 'PROCESSING' (default)
+   * = confirm em curso. O reuso por fileHash abaixo evita duplicar registro.
+   */
+  status?: 'PREVIEW' | 'PROCESSING'
 }
 
 /**
- * Cria o registro de import JÁ com o blob (status PROCESSING). ÚNICO ponto de
- * criação de OfxImport — todos os caminhos passam por aqui. Retorna o id pra o
- * processamento atualizar depois (finalizeOfxImport).
+ * Cria o registro de import JÁ com o blob. ÚNICO ponto de criação de OfxImport —
+ * todos os caminhos passam por aqui.
+ *
+ * REUSO por fileHash: se já existe um registro de PREVIEW deste MESMO arquivo
+ * (mesma conta), REAPROVEITA em vez de criar outro — cobre "previu 2×" e
+ * "previu → confirmou" (o confirm atualiza o PREVIEW pra PROCESSING). NÃO
+ * reaproveita SUCCESS/FAILED: re-import legítimo do mesmo arquivo ganha registro
+ * próprio.
  */
 export async function createOfxImportRecord(
   db: Db,
   input: CreateOfxImportInput,
 ): Promise<{ id: string }> {
+  const status = input.status ?? 'PROCESSING'
+
+  if (input.fileHash) {
+    const prev = await db.ofxImport.findFirst({
+      where: {
+        bankAccountId: input.bankAccountId,
+        fileHash: input.fileHash,
+        status: 'PREVIEW',
+      },
+      select: { id: true },
+    })
+    if (prev) {
+      await db.ofxImport.update({
+        where: { id: prev.id },
+        data: {
+          status,
+          rawOfxBlob: input.rawOfx,
+          fileName: input.fileName,
+          fileSize: input.fileSize,
+          ...(input.totalTransactions !== undefined ? { totalTransactions: input.totalTransactions } : {}),
+          ...(input.periodStart !== undefined ? { periodStart: input.periodStart } : {}),
+          ...(input.periodEnd !== undefined ? { periodEnd: input.periodEnd } : {}),
+        },
+      })
+      return { id: prev.id }
+    }
+  }
+
   return db.ofxImport.create({
     data: {
       bankAccountId: input.bankAccountId,
       userId: input.userId,
-      status: 'PROCESSING',
+      status,
       fileName: input.fileName,
       fileSize: input.fileSize,
       rawOfxBlob: input.rawOfx, // ← SEMPRE grava o cru

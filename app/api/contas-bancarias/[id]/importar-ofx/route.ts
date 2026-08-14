@@ -391,6 +391,34 @@ export async function POST(request: NextRequest, { params }: Params) {
   )
 
   if (isPreview) {
+    // Sprint Blob-no-Preview (13/08): SALVA o blob JÁ no preview (status PREVIEW).
+    // Foi por NÃO ter isso que não deu pra diagnosticar o 4.092,02 quando o Yussef
+    // cancelou — e é justo no import cancelado que tem o que investigar. Reuso por
+    // fileHash não duplica (previu 2× = 1 registro; confirmar depois reaproveita).
+    // FAIL-SOFT: se falhar, o preview segue normal (não bloqueia o usuário).
+    try {
+      await createOfxImportRecord(prisma, {
+        bankAccountId: contaId,
+        userId: user.sub,
+        fileName: uploadedFileName,
+        fileSize: rawContent.length,
+        rawOfx: rawContent,
+        fileHash: fileHashHex,
+        source: 'OFX',
+        ipAddress:
+          request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+          request.headers.get('x-real-ip') ??
+          null,
+        userAgent: request.headers.get('user-agent')?.slice(0, 500) ?? null,
+        totalTransactions: transactions.length,
+        periodStart: periodArquivoStart,
+        periodEnd: periodArquivoEnd,
+        status: 'PREVIEW',
+      })
+    } catch (e) {
+      console.error('[blob-no-preview] falhou (não bloqueia o preview):', (e as Error).message)
+    }
+
     // Sprint 3-Bugs Fase 2A (Yussef 12/06/2026) — flag IMPORT_PREVIEW_V2
     //
     // Quando V2=true: payload enriquecido com classificação 4-grupos
