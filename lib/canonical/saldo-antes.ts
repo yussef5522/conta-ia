@@ -37,11 +37,34 @@ export interface PriorStatement {
   ledgerBalance: number
   /** DTSERVER do OFX — desempata downloads do MESMO asOf (caso 5). Null = mais antigo. */
   dtServer?: Date | null
+  /**
+   * (A) 14/08 — as linhas do extrato ANTERIOR (as que o banco listou nele). Permite
+   * a regra GERAL de não-liquidada persistente: uma linha do overlap ATUAL que NÃO
+   * estava no extrato anterior nunca entrou naquele LEDGERBAL → ainda não liquidou
+   * (o banco lista/re-lista mas não debitou — ex: parcela vencida sem saldo),
+   * INDEPENDENTE da data. Sem isto, a derivação subtraía essa linha como se tivesse
+   * liquidado e o saldoAntes saía errado. Ausente → fallback (subtrai todo o overlap).
+   */
+  lines?: SaldoAntesLine[]
 }
 
 export interface SaldoAntesLine {
   date: Date
   signedAmount: number
+}
+
+/**
+ * (A) 14/08 — linha do overlap atual que NÃO estava no extrato anterior e nunca
+ * entrou num LEDGERBAL → NÃO-LIQUIDADA. Regra geral (não é específica de empréstimo):
+ * o banco listou de novo mas não debitou. NÃO entra no Σ do saldoAntes; o juiz a
+ * trata como AGENDADA e confirma via LEDGERBAL. A MENSAGEM na tela (agendada futura
+ * vs vencida-em-atraso) é do caller — ele compara a data com HOJE (aqui é sem relógio).
+ */
+export interface PersistentUnsettledLine {
+  date: Date
+  signedAmount: number
+  /** asOf do extrato anterior que JÁ não a listava — "aparece desde depois disto". */
+  sinceAsOf: Date
 }
 
 export interface SaldoAntesInput {
@@ -86,6 +109,10 @@ export interface SaldoAntesResult {
   forcedOverDivergence: boolean
   /** asOf do prior usado na derivação (quando DERIVED). */
   fromPriorAsOf: Date | null
+  /** (A) 14/08 — linhas do overlap que o extrato anterior NÃO tinha e que nunca
+   *  entraram num LEDGERBAL → não-liquidadas. O juiz deve tratá-las como AGENDADA.
+   *  Vazio quando o prior não trouxe `lines` (fallback) ou quando tudo bate. */
+  persistentUnsettled: PersistentUnsettledLine[]
   /** aviso pra tela (buraco, divergência). */
   message: string | null
 }
@@ -101,6 +128,37 @@ function sameMultiset(a: string[], b: string[]): boolean {
 }
 
 const ms = (d: Date | null | undefined) => (d ? d.getTime() : -Infinity)
+
+/**
+ * (A) — separa o overlap atual em (i) linhas que ESTAVAM no extrato anterior
+ * (liquidaram, entram no Σ) e (ii) linhas que NÃO estavam (persistentes-não-liquidadas,
+ * ficam de fora e viram AGENDADA). Casamento por multiset (data|valor), consumindo
+ * cada linha do anterior 1×. Sem `priorLines` → tudo conta como matched (fallback).
+ */
+function partitionOverlapByPrior(
+  overlap: SaldoAntesLine[],
+  priorLines: SaldoAntesLine[] | undefined,
+): { matched: SaldoAntesLine[]; unmatched: SaldoAntesLine[] } {
+  if (!priorLines) return { matched: overlap, unmatched: [] }
+  const counts = new Map<string, number>()
+  for (const l of priorLines) {
+    const k = `${iso(l.date)}|${l.signedAmount.toFixed(2)}`
+    counts.set(k, (counts.get(k) ?? 0) + 1)
+  }
+  const matched: SaldoAntesLine[] = []
+  const unmatched: SaldoAntesLine[] = []
+  for (const l of overlap) {
+    const k = `${iso(l.date)}|${l.signedAmount.toFixed(2)}`
+    const n = counts.get(k) ?? 0
+    if (n > 0) {
+      counts.set(k, n - 1)
+      matched.push(l)
+    } else {
+      unmatched.push(l)
+    }
+  }
+  return { matched, unmatched }
+}
 
 /** a é MAIS RECENTE que b? Por asOf (dia); empate por DTSERVER (download). */
 function moreRecent(
@@ -147,6 +205,7 @@ export function deriveSaldoAntes(input: SaldoAntesInput): SaldoAntesResult {
     supersedesPriorSameDay,
     forcedOverDivergence: false,
     fromPriorAsOf: null as Date | null,
+    persistentUnsettled: [] as PersistentUnsettledLine[],
     message: null as string | null,
   }
 
@@ -182,8 +241,22 @@ export function deriveSaldoAntes(input: SaldoAntesInput): SaldoAntesResult {
   const hasOverlap = overlapLines.length > 0 && !!curStart && daysBetween(curStart, prior.asOf) >= 0
 
   if (hasOverlap) {
-    // Caso 3 — a sobreposição tem que BATER com o que está no banco (multiset
-    // data,valor). Diverge → BLOQUEIA, a menos que o usuário destrave (override).
+    // (A) 14/08 — separa o overlap ANTES da checagem de divergência: só as linhas que
+    // o extrato anterior LISTAVA entraram no LEDGERBAL dele; as que ele NÃO tinha
+    // (persistente-não-liquidada, ex: parcela vencida sem saldo) NÃO liquidaram → ficam
+    // FORA do Σ e são reportadas pro juiz tratar como AGENDADA. Sem prior.lines →
+    // matched = todo o overlap (fallback do comportamento antigo).
+    const { matched, unmatched } = partitionOverlapByPrior(overlapLines, prior.lines)
+    const persistentUnsettled: PersistentUnsettledLine[] = unmatched.map((l) => ({
+      date: l.date,
+      signedAmount: l.signedAmount,
+      sinceAsOf: prior.asOf,
+    }))
+
+    // Caso 3 — a sobreposição LIQUIDADA (matched) tem que BATER com o que está no banco
+    // (multiset data,valor). Diverge → BLOQUEIA, a menos que o usuário destrave.
+    // ⚠️ compara só `matched` (não o overlap todo): a linha persistente-não-liquidada
+    // legitimamente ainda NÃO está no DB — não é sinal de conta/extrato errado.
     let divergent = false
     if (input.existingLines.length > 0) {
       const dbOverlap = input.existingLines.filter(
@@ -191,21 +264,26 @@ export function deriveSaldoAntes(input: SaldoAntesInput): SaldoAntesResult {
           l.date.getTime() <= dayStart(prior.asOf) + DAY_MS - 1 &&
           (!curStart || l.date.getTime() >= dayStart(curStart)),
       )
-      divergent = !sameMultiset(multisetKey(overlapLines), multisetKey(dbOverlap))
+      divergent = !sameMultiset(multisetKey(matched), multisetKey(dbOverlap))
     }
     if (divergent && !input.overrideDivergent) {
       return {
         ...base,
         outcome: 'BLOCKED_DIVERGENT',
         fromPriorAsOf: prior.asOf,
+        persistentUnsettled,
         message:
           'As linhas sobrepostas não batem com o que já está no banco (valor ou data diferente). ' +
           'Não vou ancorar em cima de dado divergente — confira se é a conta certa e o extrato certo. ' +
           'Se for o banco que reemitiu, você pode destravar (segue registrado como forçado).',
       }
     }
-    // Caso 1 — deriva: saldoAntes = LEDGERBAL_anterior − Σ(linhas do atual até o asOf anterior).
-    const somaOverlap = round2(overlapLines.reduce((s, l) => s + l.signedAmount, 0))
+    // Caso 1 — deriva: saldoAntes = LEDGERBAL_anterior − Σ(matched).
+    const somaOverlap = round2(matched.reduce((s, l) => s + l.signedAmount, 0))
+    const persistMsg =
+      persistentUnsettled.length > 0
+        ? `${persistentUnsettled.length} linha(s) aparecem no extrato mas não estavam no anterior (${iso(prior.asOf)}) e nunca entraram no saldo declarado — o banco listou mas ainda NÃO debitou (ex: parcela vencida sem saldo). Tratando como agendada/não-liquidada.`
+        : null
     return {
       ...base,
       outcome: 'DERIVED_OVERLAP',
@@ -213,9 +291,10 @@ export function deriveSaldoAntes(input: SaldoAntesInput): SaldoAntesResult {
       saldoAntesKnown: true,
       forcedOverDivergence: divergent, // true = seguiu APESAR da divergência (escape do usuário)
       fromPriorAsOf: prior.asOf,
+      persistentUnsettled,
       message: divergent
         ? 'Sobreposição divergente — seguiu por decisão sua (registrado como forçado).'
-        : null,
+        : persistMsg,
     }
   }
 

@@ -58,6 +58,50 @@ describe('CLOSED_AFTER_RECLASS — o bug de 13/08 (numeros reais)', () => {
   })
 })
 
+describe('(A) CLOSED_AFTER_RECLASS — persistente-não-liquidada FORA do dia da âncora', () => {
+  it('parcela vencida (11/08) que o canônico marcou EFETIVADA e o LEDGERBAL não conta → down-flip via knownScheduled', () => {
+    // O caso real: âncora 13/08, mas a 4.092,02 é datada 11/08 (vencida). Sem o
+    // knownScheduled, o down-flip só alcança 13/08 e ela escaparia (BLOQUEIO no shadow).
+    const parcela = line(-4092.02, 'EFETIVADA', '2026-08-11', 'PRESTACAO EMPRESTIMO')
+    const c = stmt([line(-100, 'EFETIVADA', '2026-08-12'), parcela], -100) // LEDGERBAL só conta o -100
+    // saldoAntes 0. gap = -100 - (0 + (-100 -4092.02)) = -100 - (-4192.02) = 4092.02.
+    const r = judgeStatement({
+      canonical: c,
+      saldoAntes: 0,
+      knownScheduled: [{ date: new Date('2026-08-11T12:00:00Z'), signedAmount: -4092.02 }],
+    })
+    expect(r.outcome).toBe('CLOSED_AFTER_RECLASS')
+    expect(r.closes).toBe(true)
+    expect(r.reclassifications).toHaveLength(1)
+    expect(r.reclassifications[0]).toMatchObject({ stableId: parcela.stableId, from: 'EFETIVADA', to: 'AGENDADA' })
+    expect(r.reclassifications[0].reason).toMatch(/parcela vencida|nunca entrou/i)
+    expect(r.effectedIds).not.toContain(parcela.stableId)
+    expect(r.summary.reclassDownToScheduled).toBe(1)
+  })
+
+  it('SEM knownScheduled a mesma parcela BLOQUEIA (prova que o widening é o que resolve)', () => {
+    const parcela = line(-4092.02, 'EFETIVADA', '2026-08-11', 'PRESTACAO EMPRESTIMO')
+    const c = stmt([line(-100, 'EFETIVADA', '2026-08-12'), parcela], -100)
+    const r = judgeStatement({ canonical: c, saldoAntes: 0 }) // sem knownScheduled
+    expect(r.closes).toBe(false)
+    expect(r.outcome).toBe('BLOCKED_NO_EXPLANATION')
+  })
+
+  it('o LEDGERBAL ainda manda: se a persistente na verdade liquidou (LEDGERBAL a conta), NÃO rebaixa', () => {
+    // mesma linha marcada como candidata persistente, MAS o LEDGERBAL fecha COM ela dentro.
+    const parcela = line(-4092.02, 'EFETIVADA', '2026-08-11', 'PRESTACAO EMPRESTIMO')
+    const c = stmt([line(-100, 'EFETIVADA', '2026-08-12'), parcela], -4192.02) // conta com ela
+    const r = judgeStatement({
+      canonical: c,
+      saldoAntes: 0,
+      knownScheduled: [{ date: new Date('2026-08-11T12:00:00Z'), signedAmount: -4092.02 }],
+    })
+    expect(r.outcome).toBe('CLOSED') // fecha de primeira, não rebaixa
+    expect(r.effectedIds).toContain(parcela.stableId)
+    expect(r.reclassifications).toHaveLength(0)
+  })
+})
+
 describe('CLOSED_AFTER_RECLASS — sentido inverso (só dia da âncora)', () => {
   it('EFETIVADA do dia da âncora que o LEDGERBAL NÃO conta → vira AGENDADA', () => {
     // consorcio -1478.51 do DIA DA ÂNCORA (13/08); LEDGERBAL só conta o -100.

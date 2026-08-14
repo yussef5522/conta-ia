@@ -119,6 +119,13 @@ export interface JudgeInput {
   /** false = banco cujo LEDGERBAL não fecha por design (Stone varre o saldo
    *  intradiário) → não bloqueia, GRAVA avisando (WARN_UNRELIABLE_LEDGER). */
   ledgerBalReliable?: boolean
+  /** (A) 14/08 — linhas que o saldoAntes marcou persistente-não-liquidada (apareceram
+   *  no extrato mas NÃO estavam no anterior → nunca entraram num LEDGERBAL passado).
+   *  O juiz as adiciona às candidatas de rebaixamento (AGENDADA) INDEPENDENTE da data
+   *  da âncora — sem isto o down-flip só alcança o dia da âncora e a parcela vencida
+   *  (datada no passado) escapava. A REGRA SUPREMA continua: o LEDGERBAL confirma
+   *  (só rebaixa se fechar com ela fora); não é flip cego. Casa por (data,valor). */
+  knownScheduled?: { date: Date; signedAmount: number }[]
   tolerance?: number
 }
 
@@ -180,12 +187,34 @@ export function judgeStatement(input: JudgeInput): JudgeResult {
   //  - UP: AGENDADA/DESCONHECIDA (inerentemente incertas) → EFETIVADA (Σ += signed)
   //  - DOWN: EFETIVADA do DIA DA ÂNCORA (listada na emissão, pode não ter debitado)
   //          → AGENDADA (Σ -= signed). Fora do dia da âncora é histórico, não mexe.
+  // (A) 14/08 — casa as persistentes-não-liquidadas (do saldoAntes) às linhas EFETIVADAS
+  // por (data,valor), consumindo. Elas entram no down-flip MESMO fora do dia da âncora.
+  const ksCounts = new Map<string, number>()
+  for (const k of input.knownScheduled ?? []) {
+    const key = `${k.date.toISOString().slice(0, 10)}|${k.signedAmount.toFixed(2)}`
+    ksCounts.set(key, (ksCounts.get(key) ?? 0) + 1)
+  }
+  const persistentIds = new Set<string>()
+  for (const t of transactions) {
+    if (t.status !== 'EFETIVADA') continue
+    const key = `${t.datePosted.toISOString().slice(0, 10)}|${t.signedAmount.toFixed(2)}`
+    const n = ksCounts.get(key) ?? 0
+    if (n > 0) {
+      ksCounts.set(key, n - 1)
+      persistentIds.add(t.stableId)
+    }
+  }
+
   const upFlips = transactions
     .filter((t) => t.status === 'AGENDADA' || t.status === 'DESCONHECIDA')
-    .map((line) => ({ line, delta: line.signedAmount, dir: 'UP' as const }))
+    .map((line) => ({ line, delta: line.signedAmount, dir: 'UP' as const, persistent: false }))
   const downFlips = transactions
-    .filter((t) => t.status === 'EFETIVADA' && anchorDay && t.datePosted.toISOString().slice(0, 10) === anchorDay)
-    .map((line) => ({ line, delta: -line.signedAmount, dir: 'DOWN' as const }))
+    .filter(
+      (t) =>
+        t.status === 'EFETIVADA' &&
+        ((anchorDay && t.datePosted.toISOString().slice(0, 10) === anchorDay) || persistentIds.has(t.stableId)),
+    )
+    .map((line) => ({ line, delta: -line.signedAmount, dir: 'DOWN' as const, persistent: persistentIds.has(line.stableId) }))
   const flips = [...upFlips, ...downFlips]
 
   const { solutions, bounded } = minimalSolvingSubsets(flips.map((f) => f.delta), gap, tol)
@@ -236,8 +265,9 @@ export function judgeStatement(input: JudgeInput): JudgeResult {
       from: 'EFETIVADA',
       to: 'AGENDADA',
       signedAmount: f.line.signedAmount,
-      reason:
-        'O LEDGERBAL do banco NÃO conta com esta linha — ainda não liquidou (o banco listou mas não debitou).',
+      reason: f.persistent
+        ? 'Esta linha aparece no extrato mas nunca entrou em nenhum saldo declarado (LEDGERBAL) — o banco listou e ainda NÃO debitou. Datada no passado: provável parcela vencida que o banco tenta debitar e não consegue por falta de saldo.'
+        : 'O LEDGERBAL do banco NÃO conta com esta linha — ainda não liquidou (o banco listou mas não debitou).',
     }
   })
 

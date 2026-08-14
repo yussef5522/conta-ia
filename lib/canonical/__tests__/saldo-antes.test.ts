@@ -175,6 +175,64 @@ describe('6b) histórico não atualiza o saldo vivo', () => {
   })
 })
 
+describe('7) (A) LINHA PERSISTENTE-NÃO-LIQUIDADA — o banco lista mas não debitou', () => {
+  // caso real parcela 23 Banrisul: 4.092,02 vencida 11/08, aparece no extrato de
+  // 13/08 datada 11/08, mas NÃO estava no extrato de 11/08 (LEDGERBAL -781,08 não a
+  // inclui) e a conta está negativa (sem saldo). Regra GERAL, não específica de
+  // empréstimo: linha do overlap que o anterior não tinha e nunca entrou no LEDGERBAL.
+  it('linha do overlap ausente no anterior → persistentUnsettled + NÃO subtraída do saldoAntes', () => {
+    const r = deriveSaldoAntes(make({
+      current: {
+        periodStart: d('2026-08-03'), periodEnd: d('2026-08-13'), asOf: d('2026-08-13'),
+        ledgerBalance: -2644.08,
+        // overlap (<=11/08): uma linha que ESTAVA no anterior (-200 @10/08) e a
+        // persistente 4.092,02 @11/08 que NÃO estava. + movimento novo pós-11/08.
+        lines: [line('2026-08-10', -200), line('2026-08-11', -4092.02), line('2026-08-12', -50)],
+      },
+      priorStatements: [
+        { asOf: d('2026-08-11'), ledgerBalance: -781.08, lines: [line('2026-08-10', -200)] },
+      ],
+    }))
+    expect(r.outcome).toBe('DERIVED_OVERLAP')
+    // saldoAntes = -781.08 − Σ(matched=[-200]) = -581.08. A 4.092,02 NÃO é subtraída.
+    expect(r.saldoAntes).toBe(-581.08)
+    expect(r.persistentUnsettled).toHaveLength(1)
+    expect(r.persistentUnsettled[0].signedAmount).toBe(-4092.02)
+    expect(r.persistentUnsettled[0].sinceAsOf.toISOString().slice(0, 10)).toBe('2026-08-11')
+    expect(r.message).toMatch(/não debitou|não estavam no anterior/i)
+  })
+
+  it('SEM prior.lines (fallback) → subtrai todo o overlap, persistentUnsettled vazio', () => {
+    // garante retrocompatibilidade: sem as linhas do anterior, comportamento antigo.
+    const r = deriveSaldoAntes(make({
+      current: {
+        periodStart: d('2026-08-03'), periodEnd: d('2026-08-13'), asOf: d('2026-08-13'),
+        ledgerBalance: -2644.08, lines: [line('2026-08-10', -200), line('2026-08-11', -4092.02)],
+      },
+      priorStatements: [{ asOf: d('2026-08-11'), ledgerBalance: -781.08 }], // sem lines
+    }))
+    expect(r.outcome).toBe('DERIVED_OVERLAP')
+    // subtrai TUDO: -781.08 − (-200 -4092.02) = -781.08 + 4292.02 = 3510.94
+    expect(r.saldoAntes).toBe(3510.94)
+    expect(r.persistentUnsettled).toHaveLength(0)
+  })
+
+  it('a linha persistente NÃO dispara BLOCKED_DIVERGENT (ela não está no DB de propósito)', () => {
+    const r = deriveSaldoAntes(make({
+      current: {
+        periodStart: d('2026-08-03'), periodEnd: d('2026-08-13'), asOf: d('2026-08-13'),
+        ledgerBalance: -2644.08, lines: [line('2026-08-10', -200), line('2026-08-11', -4092.02)],
+      },
+      priorStatements: [
+        { asOf: d('2026-08-11'), ledgerBalance: -781.08, lines: [line('2026-08-10', -200)] },
+      ],
+      existingLines: [line('2026-08-10', -200)], // DB só tem a liquidada; a persistente não
+    }))
+    expect(r.outcome).toBe('DERIVED_OVERLAP') // NÃO bloqueia
+    expect(r.persistentUnsettled).toHaveLength(1)
+  })
+})
+
 describe('extra — só há downloads do mesmo dia (sem anterior real)', () => {
   it('ancora + avisa que só há repetido do mesmo dia', () => {
     const r = deriveSaldoAntes(make({
