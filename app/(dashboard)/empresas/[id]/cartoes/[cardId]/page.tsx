@@ -105,7 +105,8 @@ export default function CartaoDashboardPage() {
           method: 'POST',
           credentials: 'include',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ txId }),
+          // amarra o pagamento à fatura que está sendo vista (competência ativa)
+          body: JSON.stringify({ txId, invoiceMonth: data?.currentInvoiceMonth ?? undefined }),
         },
       )
       const json = await resp.json()

@@ -547,6 +547,17 @@ model Transaction {
   // 2025-12 pra parceladas antigas). Null pra tx pre-existentes.
   invoiceMonth       String?
 
+  // Sprint Fatura-Paga-Por-Competencia (14/08/2026): a competencia "YYYY-MM"
+  // que ESTE pagamento (isCardPayment=true) QUITA. É o que torna "paga" um FATO
+  // por fatura, não um chute por cartao. Antes o selo "Paga" olhava "o cartao tem
+  // algum pagamento?" (por cartao, pra sempre) → uma fatura nova nascia "paga" por
+  // causa do pagamento de um mes ANTERIOR. Agora "paga(competencia)" = existe
+  // pagamento com paidInvoiceMonth=competencia. Setado no casar-pagamento (o
+  // usuario confirma qual fatura), limpo no desfazer. Null = pagamento nao amarrado
+  // a nenhuma fatura ainda (nao quita nada). NÃO confundir com invoiceMonth (que é
+  // a competencia de uma COMPRA).
+  paidInvoiceMonth   String?
+
   // === Sprint Pending Transfer State (27/06/2026, modelo QuickBooks/Xero) ===
   // Estado "transferência aguardando par" — usado quando o user marca uma tx
   // como TRANSFER no preview OFX V3 (ou na UI) mas o par real do outro lado
@@ -595,6 +606,8 @@ model Transaction {
   @@index([installmentGroupId])
   // Sprint Cartao PJ R4 (25/06/2026)
   @@index([businessCreditCardId, invoiceMonth])
+  // Sprint Fatura-Paga-Por-Competencia (14/08/2026): "esta fatura foi paga?"
+  @@index([businessCreditCardId, paidInvoiceMonth])
   // Sprint Pending Transfer State (27/06/2026): fila "Aguardando par"
   // filtra pendingTransfer=true escopo da empresa via bankAccount.
   @@index([pendingTransfer])

@@ -24,6 +24,14 @@ async function ensureAccess(userId: string, companyId: string, cardId: string) {
 
 const casarSchema = z.object({
   txId: z.string().cuid(),
+  // Fatura-Paga-Por-Competencia (14/08/2026): QUAL fatura este pagamento quita
+  // (YYYY-MM). A tela manda a competência que o usuário está vendo. Ausente →
+  // usa a fatura mais recente do cartão (default seguro).
+  invoiceMonth: z
+    .string()
+    .regex(/^\d{4}-\d{2}$/, 'competência inválida (YYYY-MM)')
+    .optional()
+    .nullable(),
 })
 
 export async function POST(request: NextRequest, { params }: Params) {
@@ -83,13 +91,26 @@ export async function POST(request: NextRequest, { params }: Params) {
   const previousCategoryId = targetTx.categoryId
   const previousCategoryName = targetTx.category?.name ?? null
 
-  // Atomic: marca como pagamento de cartao + vincula ao cartao + zera categoria
-  // (pra DRE filtrar isCardPayment=true)
+  // Competência que este pagamento quita: a que a tela mandou OU a fatura mais
+  // recente do cartão (default). É o que faz "paga" ser um FATO por fatura.
+  let targetInvoiceMonth = body.invoiceMonth ?? null
+  if (!targetInvoiceMonth) {
+    const latest = await prisma.transaction.findFirst({
+      where: { businessCreditCardId: cardId, invoiceMonth: { not: null }, isCardPayment: false },
+      orderBy: { invoiceMonth: 'desc' },
+      select: { invoiceMonth: true },
+    })
+    targetInvoiceMonth = latest?.invoiceMonth ?? null
+  }
+
+  // Atomic: marca como pagamento de cartao + vincula ao cartao + amarra à
+  // competência que quita + zera categoria (pra DRE filtrar isCardPayment=true)
   const updated = await prisma.transaction.update({
     where: { id: targetTx.id },
     data: {
       isCardPayment: true,
       businessCreditCardId: cardId,
+      paidInvoiceMonth: targetInvoiceMonth,
       // Remove categoria de despesa (se tinha) — pagamento nao eh despesa
       categoryId: null,
     },
@@ -97,6 +118,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       id: true,
       isCardPayment: true,
       businessCreditCardId: true,
+      paidInvoiceMonth: true,
       categoryId: true,
     },
   })
@@ -104,6 +126,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   return NextResponse.json({
     casado: true,
     transactionId: updated.id,
+    paidInvoiceMonth: updated.paidInvoiceMonth,
     previousCategoryId,
     previousCategoryName,
     deltaDespesaRemovidoDoDRE: targetTx.amount,
@@ -147,10 +170,11 @@ export async function DELETE(request: NextRequest, { params }: Params) {
 
   // Desfaz vinculo (volta pra "aguardando casar"). Mantem isCardPayment=true.
   // Caller pode optar por unset isCardPayment via /api/transacoes/[id] PATCH
-  // se quiser reverter pra despesa normal (caso 100% manual).
+  // se quiser reverter pra despesa normal (caso 100% manual). Limpa também o
+  // paidInvoiceMonth — sem vínculo de cartão, não quita fatura nenhuma.
   const updated = await prisma.transaction.update({
     where: { id: targetTx.id },
-    data: { businessCreditCardId: null },
+    data: { businessCreditCardId: null, paidInvoiceMonth: null },
     select: { id: true, isCardPayment: true, businessCreditCardId: true },
   })
 

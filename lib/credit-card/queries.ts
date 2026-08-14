@@ -17,6 +17,7 @@ import {
   buildInstallments,
   type InstallmentRow,
 } from './build-installments'
+import { assertInvoicePaidConsistency } from './invoice-invariant'
 import {
   calculateInvoiceReference,
   type CardConfig,
@@ -492,6 +493,9 @@ export async function payInvoice(input: PayInvoiceInput): Promise<{
     const newPaid = invoice.paidAmount + input.amount
     const willBePaid = newPaid >= invoice.totalAmount - 0.001
     const newStatus = willBePaid ? 'PAID' : 'PARTIAL'
+    // REGRA 5 — impossível marcar paga sem dinheiro (o amount>0 acima já garante;
+    // esta barreira torna explícito e pega qualquer futuro setter que esqueça).
+    assertInvoicePaidConsistency({ status: newStatus, paidAmount: newPaid })
 
     let rotativeTx: PersonalTransaction | null = null
     let jurosTx: PersonalTransaction | null = null

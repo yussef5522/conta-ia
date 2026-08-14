@@ -1,6 +1,7 @@
 // Sprint Cartao Credito PJ (24/06/2026) — queries de cartao + agregados pra dashboard.
 
 import { prisma } from '@/lib/db'
+import { invoiceMonthIsPaid } from './invoice-paid'
 
 export interface CardCardSummary {
   id: string
@@ -77,21 +78,29 @@ export async function listCardsForCompany(
     })
   }
 
-  // R6: cartoes com algum pagamento casado (isCardPayment=true)
-  const paidCardIds = new Set(
-    (
-      await prisma.transaction.findMany({
-        where: {
-          businessCreditCardId: { in: cards.map((c) => c.id) },
-          isCardPayment: true,
-        },
-        distinct: ['businessCreditCardId'],
-        select: { businessCreditCardId: true },
-      })
-    )
-      .map((r) => r.businessCreditCardId)
-      .filter((id): id is string => !!id),
-  )
+  // Fatura-Paga-Por-Competencia (14/08/2026): "paga" é da fatura MAIS RECENTE
+  // especificamente — NÃO "o cartão tem algum pagamento" (que era por-cartão-pra-
+  // sempre e fazia uma fatura nova nascer paga por causa de um pagamento de mês
+  // ANTERIOR). `paidInvoiceMonth` = a competência que o pagamento QUITA. Uma fatura
+  // só é paga se existe pagamento amarrado à SUA competência.
+  const paidPairs = await prisma.transaction.findMany({
+    where: {
+      businessCreditCardId: { in: cards.map((c) => c.id) },
+      isCardPayment: true,
+      paidInvoiceMonth: { not: null },
+    },
+    distinct: ['businessCreditCardId', 'paidInvoiceMonth'],
+    select: { businessCreditCardId: true, paidInvoiceMonth: true },
+  })
+  const paidMonthsByCard = new Map<string, string[]>()
+  for (const p of paidPairs) {
+    if (!p.businessCreditCardId || !p.paidInvoiceMonth) continue
+    const arr = paidMonthsByCard.get(p.businessCreditCardId) ?? []
+    arr.push(p.paidInvoiceMonth)
+    paidMonthsByCard.set(p.businessCreditCardId, arr)
+  }
+  const isLatestInvoicePaid = (cardId: string): boolean =>
+    invoiceMonthIsPaid(paidMonthsByCard.get(cardId) ?? [], latestByCardId.get(cardId) ?? null)
 
   return cards.map((c) => {
     const t = totalsByCard.get(c.id) ?? { sum: 0, count: 0, invoiceMonth: null as string | null }
@@ -111,7 +120,7 @@ export async function listCardsForCompany(
       monthTxCount: t.count,
       utilizationPct: c.creditLimit > 0 ? Math.min(1, t.sum / c.creditLimit) : 0,
       latestInvoiceMonth: t.invoiceMonth,
-      isLatestInvoicePaid: paidCardIds.has(c.id),
+      isLatestInvoicePaid: isLatestInvoicePaid(c.id),
     }
   })
 }
@@ -242,14 +251,17 @@ export async function getCardDashboard(
       amount: round2(c.amount),
     }))
 
-  // Sprint R3 — pagamentos JA CASADOS com este cartao (180 dias)
-  const since180 = new Date()
-  since180.setDate(since180.getDate() - 180)
-  const matchedPaymentsRaw = await prisma.transaction.findMany({
+  // Fatura-Paga-Por-Competencia (14/08/2026): pagamentos que quitam ESTA fatura
+  // (a competência ativa), NÃO "qualquer pagamento do cartão nos últimos 180 dias".
+  // `paidInvoiceMonth = currentInvoiceMonth` amarra o pagamento à fatura certa — sem
+  // isso, o pagamento de junho fazia a fatura de setembro aparecer paga. Sem
+  // competência ativa (cartão sem fatura) → nenhum match.
+  const matchedPaymentsRaw = currentInvoiceMonth
+    ? await prisma.transaction.findMany({
     where: {
       isCardPayment: true,
       businessCreditCardId: cardId,
-      date: { gte: since180 },
+      paidInvoiceMonth: currentInvoiceMonth,
     },
     select: {
       id: true,
@@ -262,6 +274,7 @@ export async function getCardDashboard(
     orderBy: { date: 'desc' },
     take: 24,
   })
+    : []
 
   // R5: Detector forte por VALOR EXATO — usa os totals da ultima fatura
   // do cartao (R5 schema) pra achar candidatos legitimos.
