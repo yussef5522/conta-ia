@@ -44,8 +44,9 @@ import {
   type ImportDecision,
 } from '@/lib/ofx/decisions'
 import { partitionFutureLines, settledThroughDate } from '@/lib/ofx/future-line'
-import { canonicalStatusMap, contentKey } from '@/lib/canonical/to-canonical'
+import { contentKey } from '@/lib/canonical/to-canonical'
 import { isCanonicalClassifyEnabled } from '@/lib/canonical/flag'
+import { resolveImportStatuses } from '@/lib/reconciliation/resolve-import-statuses'
 import { resolveBankProfile, resolveStatementAnchor, bankProfileWarning } from '@/lib/bank-profiles'
 import { verifyOfxMatchesAccount } from '@/lib/ofx/verify-account-match'
 
@@ -114,7 +115,8 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ erro: 'Erro ao ler arquivo' }, { status: 400 })
   }
 
-  const { transactions, errors, bankId, accountId, ledgerBalance, statementEnd } = parseOFX(rawContent)
+  const parsedOfx = parseOFX(rawContent)
+  const { transactions, errors, bankId, accountId, ledgerBalance, statementEnd } = parsedOfx
 
   if (transactions.length === 0) {
     return NextResponse.json({
@@ -396,8 +398,9 @@ export async function POST(request: NextRequest, { params }: Params) {
     // cancelou — e é justo no import cancelado que tem o que investigar. Reuso por
     // fileHash não duplica (previu 2× = 1 registro; confirmar depois reaproveita).
     // FAIL-SOFT: se falhar, o preview segue normal (não bloqueia o usuário).
+    let previewImportId: string | null = null
     try {
-      await createOfxImportRecord(prisma, {
+      const rec = await createOfxImportRecord(prisma, {
         bankAccountId: contaId,
         userId: user.sub,
         fileName: uploadedFileName,
@@ -415,6 +418,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         periodEnd: periodArquivoEnd,
         status: 'PREVIEW',
       })
+      previewImportId = rec.id
     } catch (e) {
       console.error('[blob-no-preview] falhou (não bloqueia o preview):', (e as Error).message)
     }
@@ -513,27 +517,40 @@ export async function POST(request: NextRequest, { params }: Params) {
       warning: bankProfileWarning(bankProfile, bankId ?? null),
       // Aviso "não deu pra conferir a conta" (quando não bloqueou). Vai pro banner.
       accountMatchWarning: accountMatch.warning ?? null,
+      // Aviso do JUIZ: o saldo do banco não fecha → mostra na tela, preview não mente.
+      judgeBlockWarning: null as string | null,
     }
-    // CAMADA 1 CANÔNICA (FASE 4, flag): o PREVIEW tem que classificar IGUAL ao
-    // confirm (senão a tela mostra uma coisa e grava outra). Casa por conteúdo
-    // (status só depende de data×âncora). Fallback pro legado se algo faltar.
+    // O JUIZ NO PREVIEW (Wiring 14/08, flag): a MESMA função do confirm
+    // (`resolveImportStatuses`) — impossível a tela mostrar uma coisa e o confirm
+    // gravar outra. Casa por conteúdo (o preview só tem as `novas`). `blocked` = o
+    // saldo do banco não fecha → a tela AVISA (não mostra um preview mentiroso).
+    // Fallback pro legado se algo faltar. Flag OFF = comportamento legado (rollback).
     let novasReais: typeof novas
     let novasFuturas: typeof novas
+    let judgeBlockWarning: string | null = null
     if (isCanonicalClassifyEnabled()) {
-      const smap = canonicalStatusMap(rawContent)
-      const effOf = (t: (typeof novas)[number]) =>
-        smap.get(contentKey(t.fitid, t.datePosted, t.type === 'CREDIT' ? t.amount : -t.amount, t.memo))
-      const allMapped = novas.every((t) => effOf(t) !== undefined)
+      const { classify, importableByKey } = await resolveImportStatuses(prisma, {
+        bankAccountId: contaId,
+        parsed: parsedOfx,
+        rawOfx: rawContent,
+        dtServer: new Date(),
+        currentImportId: previewImportId,
+      })
+      const impOf = (t: (typeof novas)[number]) =>
+        importableByKey.get(contentKey(t.fitid, t.datePosted, t.type === 'CREDIT' ? t.amount : -t.amount, t.memo))
+      const allMapped = novas.every((t) => impOf(t) !== undefined)
       if (allMapped) {
-        novasReais = novas.filter((t) => effOf(t) === 'EFETIVADA')
-        novasFuturas = novas.filter((t) => effOf(t) !== 'EFETIVADA')
+        if (classify.blocked) judgeBlockWarning = classify.message
+        novasReais = novas.filter((t) => impOf(t) === true)
+        novasFuturas = novas.filter((t) => impOf(t) !== true)
       } else {
-        console.warn('[CANONICAL_CLASSIFY] preview: linha sem status no mapa — fallback pro legado')
+        console.warn('[JUIZ] preview: linha sem status no mapa — fallback pro legado')
         ;({ realLines: novasReais, futureLines: novasFuturas } = partitionFutureLines(novas, dtAsOfPreview, new Date()))
       }
     } else {
       ;({ realLines: novasReais, futureLines: novasFuturas } = partitionFutureLines(novas, dtAsOfPreview, new Date()))
     }
+    bankProfilePayload.judgeBlockWarning = judgeBlockWarning
     const futurasPayload = novasFuturas.map((t) => ({
       date: t.datePosted.toISOString().slice(0, 10),
       signedAmount: t.type === 'CREDIT' ? t.amount : -t.amount,

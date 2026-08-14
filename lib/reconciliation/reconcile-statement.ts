@@ -35,16 +35,26 @@ export function reconcileStatement(
   dbBankTxInWindow: DbBankTransaction[],
   dtAsOf: Date,
   today?: Date,
+  opts?: { skipPreviewSeparation?: boolean },
 ): ReconcileResult {
   // 1. Separa previews — não vão pra nenhum tier
   // Corte efetivo = min(DTASOF, HOJE): bancos como Sicredi declaram DTASOF no
   // fim do mês mesmo gerando o extrato hoje, então usar SÓ DTASOF deixa
   // passar linhas agendadas como reais.
+  //
+  // ⚠️ `skipPreviewSeparation` (Wiring-do-Juiz 14/08): quando O JUIZ já decidiu o
+  // status (só as importáveis chegam aqui), NÃO re-separa por FITID==YYMMDD — essa
+  // era a 2ª cópia da heurística que re-descartava a parcela paga (bug 13/08). O
+  // juiz decide pelo LEDGERBAL; aqui vira conciliação PURA. Flag OFF → legado.
   const previews: StatementLine[] = []
   const realLines: StatementLine[] = []
-  for (const line of statementLines) {
-    if (isPreviewLine(line, dtAsOf, today)) previews.push(line)
-    else realLines.push(line)
+  if (opts?.skipPreviewSeparation) {
+    realLines.push(...statementLines)
+  } else {
+    for (const line of statementLines) {
+      if (isPreviewLine(line, dtAsOf, today)) previews.push(line)
+      else realLines.push(line)
+    }
   }
 
   // Universo de FITIDs do extrato real (qualquer linha) → usado no desempate Tier 1

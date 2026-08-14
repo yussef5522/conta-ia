@@ -22,8 +22,8 @@ import { parseStatementFromOFX } from './parse-statement-from-ofx'
 import { reconcileStatement } from './reconcile-statement'
 import { buildReconcileUniverse } from './reconcile-universe'
 import { partitionFutureLines, reconcileLedgerAnchorDay } from '../ofx/future-line'
-import { canonicalLineStatuses } from '../canonical/to-canonical'
 import { isCanonicalClassifyEnabled } from '../canonical/flag'
+import { resolveImportStatuses } from './resolve-import-statuses'
 import { resolveBankProfile, resolveStatementAnchor } from '../bank-profiles'
 import { stableKey } from './stable-key'
 import { buildLineDedupHash, makeOccurrenceCounter } from './line-dedup-hash'
@@ -162,20 +162,38 @@ export async function runImportV2(
   })
   const anchor = anchorRes.anchor ?? dtAsOf
   console.log(`[RECONCILE_V2] banco=${bankProfile?.id ?? 'DESCONHECIDO'} âncora=${anchor.toISOString().slice(0, 10)} regra=${anchorRes.rule} — ${anchorRes.reason}`)
-  // CAMADA 1 CANÔNICA (FASE 4, flag): classifica pelo tradutor de banco — o FITID
-  // NÃO decide status, então a parcela JÁ PAGA (bug 13/08) não é mais descartada.
-  // Provado sem regressão no shadow-run (0 divergência em 24 blobs). Fallback pro
-  // legado se o alinhamento por índice quebrar (nunca grava errado em silêncio).
+  // O JUIZ (Wiring 14/08, flag CANONICAL_CLASSIFY_ENABLED) — a decisão ÚNICA do que
+  // importa: canônico (Camada 1) → saldoAntes encadeado dos extratos anteriores →
+  // LEDGERBAL (Camada 2). SUBSTITUI a partição por data, o descarte por FITID==YYMMDD
+  // (a 2ª cópia, ver skipPreviewSeparation abaixo) E o anchor-day — tudo pelo saldo
+  // que o banco declara. O PREVIEW chama a MESMA função (resolveImportStatuses) →
+  // impossível a tela mostrar uma coisa e o confirm gravar outra. `blocked` = o saldo
+  // não fecha e nada explica → NÃO grava (nunca em silêncio). Fallback pro legado se
+  // o alinhamento por índice quebrar. Flag OFF = rollback instantâneo pro legado.
   let realLines: typeof lines
   let futureLines: typeof lines
+  let judgeRan = false
   if (isCanonicalClassifyEnabled()) {
-    const statuses = canonicalLineStatuses(parsed, input.rawOfx)
-    if (statuses.length === lines.length) {
-      realLines = lines.filter((_, i) => statuses[i] === 'EFETIVADA')
-      futureLines = lines.filter((_, i) => statuses[i] !== 'EFETIVADA')
-      console.log(`[CANONICAL_CLASSIFY] ON — ${realLines.length} efetivadas, ${futureLines.length} agendadas (tradutor de banco)`)
+    const { classify } = await resolveImportStatuses(tx, {
+      bankAccountId: input.bankAccountId,
+      parsed,
+      rawOfx: input.rawOfx,
+      dtServer: input.today ?? new Date(),
+      currentImportId: input.importId ?? null,
+    })
+    if (classify.importable.length === lines.length) {
+      if (classify.blocked) {
+        // NÃO grava em silêncio — o transaction dá rollback e a msg vai pra tela.
+        throw new Error(`[JUIZ] ${classify.message ?? 'o saldo do banco não fecha — import não gravado.'}`)
+      }
+      realLines = lines.filter((_, i) => classify.importable[i])
+      futureLines = lines.filter((_, i) => !classify.importable[i])
+      judgeRan = true
+      console.log(
+        `[JUIZ] ${classify.judge.outcome} — ${realLines.length} importadas, ${futureLines.length} fora | ${classify.judge.reclassifications.length} reclass | saldoAntes ${classify.saldoAntes.outcome}=${classify.saldoAntes.saldoAntes}`,
+      )
     } else {
-      console.warn(`[CANONICAL_CLASSIFY] alinhamento quebrou (${statuses.length}≠${lines.length}) — fallback pro legado`)
+      console.warn(`[JUIZ] alinhamento quebrou (${classify.importable.length}≠${lines.length}) — fallback pro legado`)
       ;({ realLines, futureLines } = partitionFutureLines(lines, anchor, input.today))
     }
   } else {
@@ -249,7 +267,11 @@ export async function runImportV2(
   // Passa `today` pro corte de preview ser min(DTASOF, today) — cobre
   // bancos que declaram DTASOF futuro (Sicredi: 30/06 num extrato de 13/06).
   // Só as linhas REAIS entram no reconcile — as futuras foram descartadas acima.
-  const result = reconcileStatement(realLines, dbBankTxs, dtAsOf, input.today)
+  // Quando O JUIZ rodou, só as importáveis chegam aqui e a conciliação é PURA (não
+  // re-separa preview por FITID — a 2ª cópia da heurística que mordeu no 13/08).
+  const result = reconcileStatement(realLines, dbBankTxs, dtAsOf, input.today, {
+    skipPreviewSeparation: judgeRan,
+  })
 
   // 4.5 CAMADA 2 — DESCARTE DE AGENDADA DO DIA DA ÂNCORA (11/08/2026). A CAMADA 1
   // (data) usa `> âncora`, então a linha com data IGUAL à âncora escapa. O banco
@@ -259,8 +281,11 @@ export async function runImportV2(
   // essas linhas são AGENDADAS (não importadas), igual às futuras. Fora do dia da
   // âncora / ambíguo / sem casamento → NÃO mexe (só a CAMADA 1 + validação avisam).
   // Ver lib/ofx/future-line.ts:reconcileLedgerAnchorDay.
+  // ⚠️ Quando O JUIZ rodou (judgeRan), ele JÁ resolveu o anchor-day (e qualquer
+  // linha não-liquidada, via LEDGERBAL + saldoAntes) — a CAMADA 2 legada não roda
+  // (seria uma 2ª decisão sobre a mesma coisa). Flag OFF → CAMADA 2 legada segue.
   let effectiveMissing = result.missing
-  if (ledgerBalance != null) {
+  if (ledgerBalance != null && !judgeRan) {
     const contaAntes = await tx.bankAccount.findUnique({
       where: { id: input.bankAccountId },
       select: { balance: true },
