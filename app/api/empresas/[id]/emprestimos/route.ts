@@ -112,18 +112,29 @@ export async function GET(request: NextRequest, { params }: Params) {
       // Mútuo FLEXIBLE (sem prazo fixo): NUNCA "Atrasada"/"Próxima" — a agenda é só
       // nominal, a devolução é conforme caixa. Só EM_DIA ou QUITADO.
       const flexible = l.scheduleSource === 'FLEXIBLE'
-      // Vencidas (OPEN com dueDate < hoje) viram "LATE" visual
-      const isAtrasada =
-        !flexible && proximaOpen !== undefined && proximaOpen.dueDate.getTime() < now.getTime()
-      const statusVisual: 'EM_DIA' | 'PROXIMA_VENCER' | 'ATRASADA' | 'QUITADO' =
+      // Atrasada só DEPOIS do dia do vencimento — comparação por DIA (UTC), não
+      // por instante (parcela vencendo HOJE não está atrasada; o débito cai ao
+      // longo do dia). Hoje = "vence hoje"; ontem-pra-trás = "atrasada".
+      const diaHoje = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+      const diaVenc = proximaOpen
+        ? Date.UTC(
+            proximaOpen.dueDate.getUTCFullYear(),
+            proximaOpen.dueDate.getUTCMonth(),
+            proximaOpen.dueDate.getUTCDate(),
+          )
+        : null
+      const isAtrasada = !flexible && diaVenc != null && diaVenc < diaHoje
+      const isVenceHoje = !flexible && diaVenc != null && diaVenc === diaHoje
+      const statusVisual: 'EM_DIA' | 'PROXIMA_VENCER' | 'VENCE_HOJE' | 'ATRASADA' | 'QUITADO' =
         l.status === 'PAID_OFF'
           ? 'QUITADO'
           : isAtrasada
             ? 'ATRASADA'
-            : !flexible && proximaOpen &&
-                proximaOpen.dueDate.getTime() - now.getTime() < 7 * 86400000
-              ? 'PROXIMA_VENCER'
-              : 'EM_DIA'
+            : isVenceHoje
+              ? 'VENCE_HOJE'
+              : diaVenc != null && diaVenc - diaHoje < 7 * 86400000
+                ? 'PROXIMA_VENCER'
+                : 'EM_DIA'
 
       // Soma parcelas do mês. Mútuo FLEXIBLE NÃO é compromisso do mês (sem prazo
       // fixo) — não entra em "Vence este mês" nem "Parcela mensal total" (2.4).

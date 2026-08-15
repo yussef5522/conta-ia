@@ -37,7 +37,7 @@ interface LoanRow {
   carencia: number
   interestRateMonthly: number
   status: 'ACTIVE' | 'PAID_OFF' | 'LATE'
-  statusVisual: 'EM_DIA' | 'PROXIMA_VENCER' | 'ATRASADA' | 'QUITADO'
+  statusVisual: 'EM_DIA' | 'PROXIMA_VENCER' | 'VENCE_HOJE' | 'ATRASADA' | 'QUITADO'
   flexible?: boolean
   notes?: string | null
   devolvido?: number | null
@@ -101,6 +101,13 @@ function StatusPill({ s }: { s: LoanRow['statusVisual'] }) {
       <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
         <AlertTriangle className="h-3 w-3 mr-1" />
         Atrasada
+      </Badge>
+    )
+  if (s === 'VENCE_HOJE')
+    return (
+      <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-300">
+        <Clock className="h-3 w-3 mr-1" />
+        Vence hoje
       </Badge>
     )
   if (s === 'PROXIMA_VENCER')
