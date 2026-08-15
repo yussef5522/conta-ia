@@ -10,6 +10,7 @@ import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import { generateSchedule } from '@/lib/loans/amortization'
 import { saldoDevedorAtual } from '@/lib/loans/saldo'
+import { forecastProxima } from '@/lib/loans/forecast'
 import { validateSchedule, InvalidLoanScheduleError } from '@/lib/loans/validate-schedule'
 import { computeOutstandingBalance as compOut } from '@/lib/loans/auto-conciliacao'
 
@@ -39,6 +40,9 @@ export async function GET(request: NextRequest, { params }: Params) {
         carencia: true,
         // FIX saldo (04/08): campos pra saldoDevedorAtual (agenda válida → closing).
         rateType: true,
+        // Fase 2 (15/08): badge POS + taxa com indexador (SELIC/CDI).
+        indexer: true,
+        indexerPercent: true,
         installmentsPaidBefore: true,
         scheduleSource: true,
         notes: true,
@@ -59,6 +63,11 @@ export async function GET(request: NextRequest, { params }: Params) {
             payment: true,
             closingBalance: true,
             status: true,
+            // Fase 2 (15/08): previsão POS pela última CASADA (paidTotal real +
+            // as duas portas de vínculo). Ver lib/loans/forecast.ts.
+            paidTotal: true,
+            reconciledTransactionId: true,
+            _count: { select: { payments: true } },
           },
           orderBy: { number: 'asc' },
         },
@@ -83,6 +92,21 @@ export async function GET(request: NextRequest, { params }: Params) {
       const saldoDevedor = saldoDevedorAtual(l, l.installments)
 
       const proximaOpen = l.installments.find((i) => i.status === 'OPEN')
+
+      // Fase 2 (15/08): previsão da próxima parcela — POS pela última CASADA
+      // (valor real), PRE pela agenda (fato). Ver lib/loans/forecast.ts.
+      const forecast = forecastProxima(
+        { rateType: l.rateType },
+        l.installments.map((i) => ({
+          number: i.number,
+          dueDate: i.dueDate,
+          status: i.status,
+          payment: i.payment,
+          paidTotal: i.paidTotal,
+          reconciledTransactionId: i.reconciledTransactionId,
+          paymentsCount: i._count.payments,
+        })),
+      )
 
       // Mútuo FLEXIBLE (sem prazo fixo): NUNCA "Atrasada"/"Próxima" — a agenda é só
       // nominal, a devolução é conforme caixa. Só EM_DIA ou QUITADO.
@@ -139,6 +163,10 @@ export async function GET(request: NextRequest, { params }: Params) {
         contractNumber: l.contractNumber,
         principal: l.principal,
         amortizationSystem: l.amortizationSystem,
+        // Fase 2 (15/08): badge honesto (POS varia) + taxa com indexador.
+        rateType: l.rateType,
+        indexer: l.indexer,
+        indexerPercent: l.indexerPercent,
         termMonths: l.termMonths,
         carencia: l.carencia,
         interestRateMonthly: l.interestRateMonthly,
@@ -150,8 +178,15 @@ export async function GET(request: NextRequest, { params }: Params) {
         saldoDevedor,
         totalPaid,
         // FLEXIBLE: sem parcela fixa nem vencimento (2.1).
-        proximaParcelaDate: flexible ? null : (proximaOpen?.dueDate.toISOString() ?? null),
-        proximaParcelaValor: flexible ? null : (proximaOpen?.payment ?? null),
+        proximaParcelaDate: flexible ? null : (forecast.dueDate?.toISOString() ?? null),
+        // Fase 2: valor é PREVISÃO (POS, última casada) ou FATO (PRE/agenda);
+        // null = "a apurar". A tela marca "~previsto" quando isForecast.
+        proximaParcelaValor: flexible ? null : forecast.valor,
+        proximaParcelaIsForecast: flexible ? false : forecast.isForecast,
+        proximaParcelaBase:
+          forecast.baseNumber != null && forecast.baseDate != null
+            ? { number: forecast.baseNumber, date: forecast.baseDate.toISOString() }
+            : null,
         // FLEXIBLE: progresso por VALOR (devolvido do saldo-base), não por parcela (2.2).
         devolvido: flexible ? Math.round((l.principal - saldoDevedor) * 100) / 100 : null,
         valorBase: flexible ? l.principal : null,

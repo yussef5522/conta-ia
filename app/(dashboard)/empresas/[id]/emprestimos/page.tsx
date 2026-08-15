@@ -30,6 +30,9 @@ interface LoanRow {
   contractNumber: string | null
   principal: number
   amortizationSystem: 'PRICE' | 'SAC'
+  rateType: 'PRE' | 'POS' | null
+  indexer: 'CDI' | 'SELIC' | 'IPCA' | null
+  indexerPercent: number | null
   termMonths: number
   carencia: number
   interestRateMonthly: number
@@ -44,6 +47,8 @@ interface LoanRow {
   totalPaid: number
   proximaParcelaDate: string | null
   proximaParcelaValor: number | null
+  proximaParcelaIsForecast?: boolean
+  proximaParcelaBase?: { number: number; date: string } | null
   progresso: number
   disbursementVinculada: boolean
 }
@@ -62,10 +67,24 @@ interface CarteiraResponse {
   }
 }
 
+// Fase 2 (15/08): dueDate é UTC-midnight do dia de vencimento; sem timeZone:'UTC'
+// o toLocaleDateString em fuso BR (UTC-3) mostra o dia ANTERIOR (10/09 virava 09/set).
 const fmtDate = (iso: string) =>
-  new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })
+  new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', timeZone: 'UTC' })
 
 const fmtRate = fmtRateMonthly
+
+// Badge honesto: PRE = fixo; POS = pós-fixado (VARIA). Esconder o POS fez o dono
+// caçar "contrato fixo que varia". Ver CLAUDE.md (badge D4).
+function badgeLabel(l: { amortizationSystem: string; rateType: string | null }): string {
+  return l.rateType === 'POS' ? `${l.amortizationSystem} · pós-fixado` : l.amortizationSystem
+}
+// Taxa com indexador: "0,49% + SELIC" pra não parecer crédito barato quando é
+// spread sobre índice. PRE mostra só a taxa.
+function rateLabel(l: { interestRateMonthly: number; rateType: string | null; indexer: string | null }): string {
+  const base = fmtRate(l.interestRateMonthly)
+  return l.rateType === 'POS' && l.indexer ? `${base} + ${l.indexer}` : base
+}
 
 function StatusPill({ s }: { s: LoanRow['statusVisual'] }) {
   if (s === 'QUITADO')
@@ -255,7 +274,7 @@ export default function CarteiraEmprestimosPage({
                                     Contrato {l.contractNumber ?? '(sem nº)'}
                                   </span>
                                   <Badge variant="outline" className="text-[10px]">
-                                    {l.amortizationSystem}
+                                    {badgeLabel(l)}
                                   </Badge>
                                   <StatusPill s={l.statusVisual} />
                                   {l.flexible && (
@@ -279,7 +298,7 @@ export default function CarteiraEmprestimosPage({
                                   <span>
                                     {l.flexible
                                       ? 'Sem parcela fixa'
-                                      : `${l.termMonths} parcelas${l.carencia ? ` (+ ${l.carencia} ${l.carencia > 1 ? 'meses' : 'mês'} de carência)` : ''} · ${fmtRate(l.interestRateMonthly)}`}
+                                      : `${l.termMonths} parcelas${l.carencia ? ` (+ ${l.carencia} ${l.carencia > 1 ? 'meses' : 'mês'} de carência)` : ''} · ${rateLabel(l)}`}
                                   </span>
                                   <span>·</span>
                                   <span>{l.bankAccount.name}</span>
@@ -307,15 +326,26 @@ export default function CarteiraEmprestimosPage({
                                 ) : (
                                   <>
                                     <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                                      Próxima
+                                      Próxima{l.proximaParcelaIsForecast ? ' · previsto' : ''}
                                     </p>
-                                    <p className="text-sm font-medium tabular-nums">
+                                    {/* Fase 2 (15/08): POS mostra a PREVISÃO (~, cor amber) pela última
+                                        casada — NÃO a amort nominal que mente. REGRA 6: previsão ≠ fato. */}
+                                    <p
+                                      className={`text-sm font-medium tabular-nums ${
+                                        l.proximaParcelaIsForecast ? 'text-amber-600' : ''
+                                      }`}
+                                    >
                                       {l.proximaParcelaValor !== null
-                                        ? formatBRL(l.proximaParcelaValor)
-                                        : '—'}
+                                        ? `${l.proximaParcelaIsForecast ? '~' : ''}${formatBRL(l.proximaParcelaValor)}`
+                                        : l.proximaParcelaIsForecast
+                                          ? 'a apurar'
+                                          : '—'}
                                     </p>
                                     <p className="text-[10px] text-muted-foreground">
                                       {l.proximaParcelaDate ? fmtDate(l.proximaParcelaDate) : '—'}
+                                      {l.proximaParcelaBase
+                                        ? ` · base #${l.proximaParcelaBase.number}`
+                                        : ''}
                                     </p>
                                   </>
                                 )}
