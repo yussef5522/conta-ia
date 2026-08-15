@@ -9,8 +9,20 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'fs'
 import { join } from 'path'
+import { buildLoan1to1InterestTx, type Loan1to1Row } from '../../lib/loans/dre-interest'
 
 const root = (p: string) => join(__dirname, '..', '..', p)
+
+// Sprint DRE-Represado (14/08/2026): a construção da tx de juros saiu da rota
+// pra lib/loans/dre-interest.ts (dono único + respeita dreHeld). Os 2 testes
+// abaixo que eram grep-de-string viraram COMPORTAMENTAIS (REGRA 3).
+function row1to1(interest: number, correcao: number): Loan1to1Row {
+  return {
+    id: 't', type: 'DEBIT', amount: 100, date: new Date('2026-07-10T00:00:00Z'),
+    competenceDate: null, paymentDate: null, isCardPayment: false, pendingTransfer: false,
+    loanInstallmentPaid: { interest, correcao, dreHeld: false },
+  }
+}
 
 describe('Sprint DRE Cleanup — ACHADO #2 query principal filtra parcela casada', () => {
   const code = readFileSync(root('app/api/empresas/[id]/dre/route.ts'), 'utf-8')
@@ -30,15 +42,19 @@ describe('Sprint DRE Cleanup — ACHADO #2 query principal filtra parcela casada
     expect(code).toMatch(/loanInstallmentPaid:[\s\S]*?select:[\s\S]*?correcao:\s*true/)
   })
 
-  it('reinjeta parcelas como tx categorizada com loanInterestSplit = juros + correcao', () => {
-    expect(code).toMatch(/loanInterestSplit:\s*jurosTotal/)
-    expect(code).toMatch(/categoryId:\s*jurosCategory\.id/)
-    // Sprint Pagamento Parcela Redesign — soma juros + correcao
-    expect(code).toMatch(/const\s+jurosTotal\s*=\s*interest\s*\+\s*correcao/)
+  it('reinjeta parcela casada como juros = interest + correcao (COMPORTAMENTAL)', () => {
+    const out = buildLoan1to1InterestTx([row1to1(70, 30)], 'cat-juros')
+    expect(out).toHaveLength(1)
+    expect(out[0].loanInterestSplit).toBe(100) // 70 + 30
+    expect(out[0].categoryId).toBe('cat-juros')
+    // a rota DELEGA pra lib única
+    expect(code).toMatch(/buildLoan1to1InterestTx/)
+    expect(code).toMatch(/categoryId:\s*jurosCategory\.id|jurosCategory\.id/)
   })
 
-  it('pula parcela 100% amortizacao (jurosTotal <= 0)', () => {
-    expect(code).toMatch(/if\s*\(\s*jurosTotal\s*<=\s*0\s*\)\s*continue/)
+  it('pula parcela 100% amortizacao (jurosTotal <= 0) (COMPORTAMENTAL)', () => {
+    const out = buildLoan1to1InterestTx([row1to1(0, 0)], 'cat-juros')
+    expect(out).toHaveLength(0)
   })
 
   it('busca categoria "Juros sobre Empréstimos" por nome (na empresa)', () => {

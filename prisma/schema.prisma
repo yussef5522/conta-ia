@@ -2927,6 +2927,13 @@ model LoanInstallment {
   paidPenalty    Float?
   paidTotal      Float?
 
+  // Sprint DRE-Represado (14/08/2026): juros GRAVADO na parcela mas NÃO entra no
+  // DRE enquanto true (represado — mês fechado, até o contador liberar). O flag
+  // só liga/desliga a CONTAGEM; a competência segue a data da tx/paidDate.
+  // Soltar = flip pra false → juros reaparece na competência ORIGINAL, nunca no
+  // mês do flip. Os 2 caminhos do DRE (lib/loans/dre-interest.ts) respeitam.
+  dreHeld Boolean @default(false)
+
   // N:1 — parcela paga por vários lançamentos (débito parcial Sicredi). Aditivo
   // ao reconciledTransactionId @unique (1:1 legado continua válido).
   payments LoanInstallmentPayment[]

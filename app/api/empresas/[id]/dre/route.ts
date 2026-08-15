@@ -16,6 +16,12 @@ import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import { calculateDRE } from '@/lib/dre/calculator'
 import { dreQuerySchema } from '@/lib/dre/validation'
+import {
+  buildLoan1to1InterestTx,
+  buildLoanN1InterestTx,
+  type Loan1to1Row,
+  type LoanN1Row,
+} from '@/lib/loans/dre-interest'
 import type {
   TransactionForDRE,
   CategoryForDRE,
@@ -333,36 +339,19 @@ export async function computeDreResult(
             // Sprint Pagamento Parcela Redesign (28/06/2026): inclui `correcao`
             // (CDI/IPCA pós-fixado). DRE conta interest + correcao como Despesa
             // Financeira (STJ: "CDI sobre empréstimo é juros na essência").
-            select: { interest: true, correcao: true, amortization: true },
+            select: { interest: true, correcao: true, amortization: true, dreHeld: true },
           },
         },
       })
 
-      for (const t of installmentTxsRaw) {
-        const interest = t.loanInstallmentPaid?.interest ?? 0
-        // Sprint Pagamento Parcela Redesign (28/06/2026): correção CDI/IPCA
-        // (pós-fixado) também entra como juros no DRE. STJ: "CDI sobre
-        // empréstimo é juros na essência". Pré-fixado tem correcao=0.
-        const correcao = t.loanInstallmentPaid?.correcao ?? 0
-        const jurosTotal = interest + correcao
-        // Se a parcela é 100% amortização (juros + correcao = 0), pula —
-        // engine também pula tx com loanInterestSplit === 0.
-        if (jurosTotal <= 0) continue
-        transactions.push({
-          id: t.id,
-          type: t.type as 'CREDIT' | 'DEBIT' | 'TRANSFER',
-          // amount é preservado pra audit; engine usa loanInterestSplit pra
-          // valor efetivo no DRE.
-          amount: t.amount,
-          date: t.date,
-          competenceDate: t.competenceDate,
-          paymentDate: t.paymentDate,
-          categoryId: jurosCategory.id,
-          isCardPayment: t.isCardPayment,
-          pendingTransfer: t.pendingTransfer,
-          loanInterestSplit: jurosTotal,
-        })
-      }
+      // Sprint DRE-Represado (14/08/2026): construção via lib única (respeita
+      // dreHeld — parcela represada não entra no DRE). Ver lib/loans/dre-interest.ts.
+      transactions.push(
+        ...buildLoan1to1InterestTx(
+          installmentTxsRaw as unknown as Loan1to1Row[],
+          jurosCategory.id,
+        ),
+      )
     }
 
     // Sprint Casar Pagamento (04/08/2026): parcelas pagas via ponte N:1 (débito
@@ -379,24 +368,10 @@ export async function computeDreResult(
           paidInterest: { not: null },
           paidDate: { gte: searchRange.start, lte: searchRange.end },
         },
-        select: { id: true, paidDate: true, paidInterest: true, paidCorrection: true, paidPenalty: true },
+        select: { id: true, paidDate: true, paidInterest: true, paidCorrection: true, paidPenalty: true, dreHeld: true },
       })
-      for (const inst of n1Paid) {
-        const encargos = (inst.paidInterest ?? 0) + (inst.paidCorrection ?? 0) + (inst.paidPenalty ?? 0)
-        if (encargos <= 0 || !inst.paidDate) continue
-        transactions.push({
-          id: `loan-n1-${inst.id}`,
-          type: 'DEBIT',
-          amount: encargos,
-          date: inst.paidDate,
-          competenceDate: inst.paidDate,
-          paymentDate: inst.paidDate,
-          categoryId: jurosCategory.id,
-          isCardPayment: false,
-          pendingTransfer: false,
-          loanInterestSplit: encargos,
-        })
-      }
+      // Sprint DRE-Represado (14/08/2026): lib única (respeita dreHeld).
+      transactions.push(...buildLoanN1InterestTx(n1Paid as LoanN1Row[], jurosCategory.id))
     }
 
     const calcOptions: CalculateDREOptions = {
