@@ -25,6 +25,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/db'
+import { isCategoryLearnable } from '@/lib/ai-categorizer/is-learnable'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import { logAudit } from '@/lib/audit'
@@ -140,8 +141,9 @@ export async function POST(request: NextRequest) {
         trx,
       )
 
-      // Opcional: criar regra de aprendizado
-      if (data.criarRegra) {
+      // Opcional: criar regra de aprendizado. GUARD Cartao-A-Classificar: categoria-fila
+      // (A_CLASSIFICAR) não é aprendida.
+      if (data.criarRegra && (await isCategoryLearnable(trx, data.categoryId))) {
         const padrao = normalizeForMatch(ofxTx.description)
         if (padrao) {
           // upsert: se já existe regra exata, incrementa contagem

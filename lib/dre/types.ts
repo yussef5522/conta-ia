@@ -40,6 +40,12 @@ export type NonDREGroup =
   // PATRIMÔNIO LÍQUIDO (capital social) — NÃO é receita. Saída no sentido
   // contrário usa DISTRIBUICAO_LUCROS (já existente). Padrão Wave/QuickBooks.
   | 'APORTES_CAPITAL'
+  // Sprint Cartao-A-Classificar (14/08/2026). FILA DE REVISÃO, não categoria
+  // contábil de verdade. Compra de cartão parqueada até o usuário decidir (com o
+  // contador) se é despesa/retirada/investimento. NÃO afeta o lucro (não-DRE),
+  // NÃO é aprendida pela AiLearningRule (senão vira o próximo "EQUIPAMENTOS"
+  // catch-all), e a tela GRITA quantas estão paradas. O objetivo é ela ESVAZIAR.
+  | 'A_CLASSIFICAR'
 
 export const NON_DRE_GROUPS: NonDREGroup[] = [
   'DISTRIBUICAO_LUCROS',
@@ -47,6 +53,7 @@ export const NON_DRE_GROUPS: NonDREGroup[] = [
   'TRANSFERENCIA',
   'AJUSTE_SALDO',
   'APORTES_CAPITAL',
+  'A_CLASSIFICAR',
 ]
 
 // Set pra lookup O(1) — usado pelo calculator.
@@ -105,7 +112,11 @@ export const NON_DRE_GROUP_LABELS: Record<NonDREGroup, string> = {
   TRANSFERENCIA: 'Transferências entre Contas',
   AJUSTE_SALDO: 'Ajustes Técnicos de Saldo',
   APORTES_CAPITAL: 'Aportes de Capital (Patrimônio Líquido)',
+  A_CLASSIFICAR: 'A Classificar (fila de revisão — fora do resultado)',
 }
+
+/** Grupos que NÃO devem ser aprendidos pela AiLearningRule (senão viram catch-all). */
+export const NON_LEARNABLE_DRE_GROUPS: ReadonlySet<string> = new Set<string>(['A_CLASSIFICAR'])
 
 // ============================================================
 // Regime contábil

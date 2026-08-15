@@ -20,6 +20,7 @@ import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import { classifyWithLearning } from '@/lib/ai-categorizer/apply'
+import { isCategoryLearnable } from '@/lib/ai-categorizer/is-learnable'
 import { counterpartyRulePattern, matchCounterpartyRule, CONTRAPARTE_TIPO_MATCH } from '@/lib/counterparty/rules'
 
 const schema = z.object({
@@ -89,7 +90,8 @@ export async function POST(request: NextRequest, { params }: Params) {
     const companyId = tx.bankAccount!.companyId
     if (tx.counterpartyName) {
       const padrao = counterpartyRulePattern(tx.counterpartyName)
-      if (padrao && input.createCounterpartyRule) {
+      // GUARD Cartao-A-Classificar: não cria regra de contraparte pra categoria-fila.
+      if (padrao && input.createCounterpartyRule && (await isCategoryLearnable(prisma, input.categoryId))) {
         await prisma.aiLearningRule
           .upsert({
             where: { companyId_tipoMatch_padrao: { companyId, tipoMatch: CONTRAPARTE_TIPO_MATCH, padrao } },

@@ -9,7 +9,8 @@ describe('gatilho: regra CONTRAPARTE nunca nasce em silêncio (4.3)', () => {
   const endpoint = read('app/api/transacoes/[id]/classificar-com-aprendizado/route.ts')
   it('endpoint só faz upsert da regra quando input.createCounterpartyRule=true', () => {
     // o upsert tem que estar guardado pelo flag ativo do usuário
-    expect(endpoint).toMatch(/if\s*\(padrao\s*&&\s*input\.createCounterpartyRule\)/)
+    // (Sprint Cartao-A-Classificar: + guard de categoria aprendível no mesmo if)
+    expect(endpoint).toMatch(/if\s*\(padrao\s*&&\s*input\.createCounterpartyRule\s*&&/)
   })
   it('default do flag é false (schema)', () => {
     expect(endpoint).toMatch(/createCounterpartyRule:\s*z\.boolean\(\)\.default\(false\)/)

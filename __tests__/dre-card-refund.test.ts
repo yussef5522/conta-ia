@@ -50,3 +50,16 @@ describe('DRE — compra pessoal do cartão (Retirada/DISTRIBUICAO) NÃO entra n
     expect(r.totals.lucroLiquido).toBe(0) // a retirada não é despesa nem receita
   })
 })
+
+describe('DRE — fila "A CLASSIFICAR" (A_CLASSIFICAR) NÃO entra no P&L', () => {
+  const filaCat: CategoryForDRE = {
+    id: 'fila', name: 'A CLASSIFICAR — cartão', code: null, dreGroup: 'A_CLASSIFICAR',
+    parentId: null, isActive: true, type: 'EXPENSE',
+  }
+  it('compra parqueada → receita 0, despesa 0, lucro 0 (fora do resultado até classificar)', () => {
+    const txs = [base({ id: 'parqueada', type: 'DEBIT', amount: 500, categoryId: 'fila' })]
+    const r = calculateDRE(txs, [filaCat], { period })
+    expect(r.groups.find((g) => g.group === 'DESPESAS_ADMINISTRATIVAS')).toBeUndefined()
+    expect(r.totals.lucroLiquido).toBe(0)
+  })
+})

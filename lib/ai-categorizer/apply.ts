@@ -13,6 +13,7 @@
 
 import type { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
+import { isCategoryLearnable } from './is-learnable'
 import { logAudit } from '@/lib/audit'
 import type { AuthContext } from '@/lib/auth/rbac'
 import { buildNewRule, updateRuleOnOverride } from './learn'
@@ -139,7 +140,9 @@ export async function classifyWithLearning(
   let ruleCreated = false
   let ruleSnapshot: RuleSnapshot | null = null
 
-  if (effectiveLearnPattern && autoRuleGenOn) {
+  // GUARD Cartao-A-Classificar: NÃO aprende categoria-fila (A_CLASSIFICAR) — senão
+  // vira o próximo "EQUIPAMENTOS" catch-all.
+  if (effectiveLearnPattern && autoRuleGenOn && (await isCategoryLearnable(prisma, input.categoryId))) {
     const newRuleData = buildNewRule(
       ctx.company.id,
       base.description,

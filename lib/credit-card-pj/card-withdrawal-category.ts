@@ -1,33 +1,35 @@
-// Sprint Cartao-Uso-Pessoal (14/08/2026) — categoria de RETIRADA VIA CARTÃO.
+// Sprint Cartao-A-Classificar (14/08/2026) — categoria de PARQUEAMENTO das compras
+// de cartão pessoal.
 //
-// Cartão de uso pessoal do sócio: a compra é DISTRIBUIÇÃO EM ESPÉCIE (a empresa
-// pagou o gasto pessoal do sócio). NÃO é despesa operacional. Categoria com
-// dreGroup DISTRIBUICAO_LUCROS → sai do DRE automaticamente (grupo não-DRE).
-//
-// ⚠️ SEM ponte de cash (decisão 14/08): distribuição em espécie não gera entrada
-// de dinheiro na conta do sócio — forçar um PF CREDIT criaria dinheiro que não
-// existiu. Só a categoria. type=EXPENSE pra aparecer no dropdown do cartão.
+// NÃO é "Retirada"/"Distribuição" nem "Investimento" — é "AINDA NÃO SEI". Uma FILA
+// DE REVISÃO até o usuário decidir com o contador. dreGroup A_CLASSIFICAR:
+//   - NÃO-DRE (não vira despesa nem receita; não afeta o lucro);
+//   - NÃO aprendível (NON_LEARNABLE_DRE_GROUPS) → não vira o próximo "EQUIPAMENTOS";
+//   - a tela GRITA quantas estão paradas (contador). O objetivo é ESVAZIAR.
 
 import type { PrismaClient, Prisma } from '@prisma/client'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
-export const CARD_WITHDRAWAL_CATEGORY_NAME = 'Retirada via cartão'
+export const CARD_REVIEW_CATEGORY_NAME = 'A CLASSIFICAR — cartão'
+export const CARD_REVIEW_DRE_GROUP = 'A_CLASSIFICAR'
 
-/** Acha ou cria a categoria "Retirada via cartão" (DISTRIBUICAO_LUCROS) da empresa. */
+/** Acha ou cria a categoria-fila "A CLASSIFICAR — cartão" da empresa. */
 export async function getOrCreateCardWithdrawalCategory(db: Db, companyId: string): Promise<string> {
   const existing = await db.category.findFirst({
-    where: { companyId, dreGroup: 'DISTRIBUICAO_LUCROS', name: CARD_WITHDRAWAL_CATEGORY_NAME },
+    where: { companyId, dreGroup: CARD_REVIEW_DRE_GROUP, name: CARD_REVIEW_CATEGORY_NAME },
     select: { id: true },
   })
   if (existing) return existing.id
   const created = await db.category.create({
     data: {
       companyId,
-      name: CARD_WITHDRAWAL_CATEGORY_NAME,
-      type: 'EXPENSE',
-      dreGroup: 'DISTRIBUICAO_LUCROS',
-      description: 'Compras pessoais do sócio no cartão da empresa — distribuição em espécie, fora do DRE.',
+      name: CARD_REVIEW_CATEGORY_NAME,
+      type: 'EXPENSE', // pra aparecer no dropdown do cartão
+      dreGroup: CARD_REVIEW_DRE_GROUP,
+      color: '#a855f7',
+      description:
+        'Fila de revisão: compras de cartão pessoal parqueadas até decidir a categoria final (com o contador). Fora do DRE, não aprendida.',
     },
     select: { id: true },
   })

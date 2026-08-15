@@ -35,10 +35,13 @@ function fmtInvoiceLabel(ym: string | null): string {
   return `${MESES_PT[idx]}/${y}`
 }
 
+const MESES_LABEL = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
+
 export default function CartoesListaPage() {
   const params = useParams<{ id: string }>()
   const [cards, setCards] = useState<CardRow[] | null>(null)
   const [loading, setLoading] = useState(true)
+  const [reviewQueue, setReviewQueue] = useState<{ count: number; sum: number; oldestMonth: string | null } | null>(null)
 
   useEffect(() => {
     setLoading(true)
@@ -46,6 +49,10 @@ export default function CartoesListaPage() {
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => setCards(d?.cards ?? []))
       .finally(() => setLoading(false))
+    fetch(`/api/empresas/${params.id}/cartoes/review-queue`, { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((q) => setReviewQueue(q))
+      .catch(() => {})
   }, [params.id])
 
   return (
@@ -61,6 +68,23 @@ export default function CartoesListaPage() {
           </Button>
         </Link>
       </Header>
+
+      {/* Fila "A CLASSIFICAR" — GRITA (nunca silenciosa). O objetivo é ESVAZIAR. */}
+      {reviewQueue && reviewQueue.count > 0 && (
+        <Card className="border-purple-300 bg-purple-50/60">
+          <CardContent className="py-3 flex items-center gap-3">
+            <AlertCircle className="h-5 w-5 text-purple-600 flex-shrink-0" />
+            <p className="text-sm text-purple-900">
+              <strong>{reviewQueue.count} compras de cartão aguardando classificação</strong> ({formatBRL(reviewQueue.sum)})
+              {reviewQueue.oldestMonth && (() => {
+                const [y, m] = reviewQueue.oldestMonth.split('-')
+                return <> — a mais antiga desde <strong>{MESES_LABEL[parseInt(m, 10) - 1]}/{y}</strong></>
+              })()}
+              . Fora do DRE até você classificar. Abra o cartão pra mover em lote.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {loading && (
         <div className="flex items-center justify-center h-32 text-muted-foreground">

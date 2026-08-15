@@ -81,6 +81,53 @@ export default function CartaoDashboardPage() {
   const [selectedInvoice, setSelectedInvoice] = useState<string | null>(null)
   const [socios, setSocios] = useState<Array<{ id: string; nome: string }>>([])
   const [savingTreatment, setSavingTreatment] = useState(false)
+  const [reviewQueue, setReviewQueue] = useState<{ count: number; sum: number; ids: string[] } | null>(null)
+  const [expenseCats, setExpenseCats] = useState<Array<{ id: string; name: string }>>([])
+  const [batchTarget, setBatchTarget] = useState('')
+  const [movingBatch, setMovingBatch] = useState(false)
+
+  function loadReviewQueue() {
+    fetch(`/api/empresas/${params.id}/cartoes/review-queue?cardId=${params.cardId}`, { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((q) => setReviewQueue(q))
+      .catch(() => {})
+  }
+  useEffect(() => {
+    loadReviewQueue()
+    fetch(`/api/empresas/${params.id}/categorias`, { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((res) => {
+        const list = Array.isArray(res) ? res : (res?.categories ?? res?.categorias ?? [])
+        // exclui a própria fila "A CLASSIFICAR" como destino
+        setExpenseCats(list.filter((c: { dreGroup?: string }) => c.dreGroup !== 'A_CLASSIFICAR').map((c: { id: string; name: string }) => ({ id: c.id, name: c.name })))
+      })
+      .catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.id, params.cardId])
+
+  async function moverLote() {
+    if (!batchTarget || !reviewQueue?.ids.length) return
+    setMovingBatch(true)
+    try {
+      const resp = await fetch(`/api/empresas/${params.id}/despesas/recategorizar`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ transactionIds: reviewQueue.ids, novaCategoriaId: batchTarget }),
+      })
+      if (!resp.ok) {
+        const j = await resp.json().catch(() => ({}))
+        toast({ title: 'Erro', description: j.erro ?? 'Não deu pra mover', variant: 'destructive' })
+        return
+      }
+      toast({ title: 'Movidas em lote', description: `${reviewQueue.count} compras reclassificadas.` })
+      setBatchTarget('')
+      loadReviewQueue()
+      reload()
+    } finally {
+      setMovingBatch(false)
+    }
+  }
 
   useEffect(() => {
     fetch(`/api/empresas/${params.id}/socios-pf`, { credentials: 'include' })
@@ -419,11 +466,44 @@ export default function CartaoDashboardPage() {
           </div>
           <p className="text-xs text-muted-foreground">
             {data.card.defaultTreatment === 'PESSOAL_SOCIO'
-              ? 'As compras importadas nascem como Retirada via cartão (Distribuição, fora do DRE). O import avisa e você marca as operacionais.'
+              ? 'As compras importadas nascem em "A CLASSIFICAR — cartão" (fila de revisão, fora do DRE, não aprendida). Você classifica depois com o contador, em lote.'
               : 'As compras importadas são despesa da empresa (entram no DRE). Se este cartão é de uso pessoal do sócio, troque acima.'}
           </p>
         </CardContent>
       </Card>
+
+      {/* Fila "A CLASSIFICAR" deste cartão — reclassificação EM LOTE (esvaziar) */}
+      {reviewQueue && reviewQueue.count > 0 && (
+        <Card className="rounded-xl border-purple-300 bg-purple-50/40">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-purple-900">
+              {reviewQueue.count} compras aguardando classificação ({formatBRL(reviewQueue.sum)}) — fora do DRE
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 pt-0">
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="text-purple-800">Mover todas para:</span>
+              <select
+                value={batchTarget}
+                disabled={movingBatch}
+                onChange={(e) => setBatchTarget(e.target.value)}
+                className="border rounded h-9 px-2 text-sm min-w-[180px]"
+              >
+                <option value="">— categoria final —</option>
+                {expenseCats.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+              <Button size="sm" className="h-9" disabled={!batchTarget || movingBatch} onClick={moverLote}>
+                {movingBatch ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : `Mover ${reviewQueue.count}`}
+              </Button>
+            </div>
+            <p className="text-xs text-purple-700">
+              Decidiu com o contador? Escolha a categoria final (Distribuição, despesa real, etc.) e mova as {reviewQueue.count} de uma vez.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Candidatos extras (quando há > 1) — só lista se top já mostrado no header e ainda restam outros */}
       {data.paymentCandidates.length > 1 && (

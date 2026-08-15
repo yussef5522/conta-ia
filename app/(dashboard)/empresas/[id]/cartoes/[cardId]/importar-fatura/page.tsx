@@ -545,8 +545,8 @@ export default function ImportarFaturaPage() {
                   </p>
                   <p className="text-amber-800 mt-0.5">
                     As {selectedLines.filter((l) => l.categoryId === previewData.withdrawalCategoryId).length} compras nascem
-                    como <strong>Retirada via cartão</strong> e <strong>NÃO entram no DRE</strong>. Se alguma for despesa real
-                    da empresa, troque a categoria dela — ela vira a exceção.
+                    em <strong>A CLASSIFICAR — cartão</strong> (fila de revisão) e <strong>NÃO entram no DRE</strong>.
+                    Classifique depois com o contador (em lote), ou troque agora a categoria das que já souber.
                   </p>
                 </div>
               </CardContent>
@@ -563,7 +563,7 @@ export default function ImportarFaturaPage() {
             return (
               <div className="flex flex-wrap gap-3 text-sm">
                 <span className="px-3 py-1.5 rounded-lg bg-purple-50 border border-purple-200 text-purple-800">
-                  <strong>{ret.length}</strong> como Retirada · R$ {retSum.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} <span className="text-purple-600">(fora do DRE)</span>
+                  <strong>{ret.length}</strong> a classificar · R$ {retSum.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} <span className="text-purple-600">(fila, fora do DRE)</span>
                 </span>
                 <span className="px-3 py-1.5 rounded-lg bg-red-50 border border-red-200 text-red-800">
                   <strong>{oper.length}</strong> operacionais · R$ {operSum.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} <span className="text-red-600">(no DRE)</span>

@@ -4,6 +4,7 @@
 // Função PURA pra apply. Função DB pra createRules (atomic).
 
 import type { PrismaClient } from '@prisma/client'
+import { NON_LEARNABLE_DRE_GROUPS } from '@/lib/dre/types'
 
 /** Override por dedupHash (vindo da UI quando o user editou a categoria) */
 export interface CategoryOverride {
@@ -76,13 +77,16 @@ export async function persistNewRules(
   let updated = 0
   let skipped = 0
 
-  // Pré-valida categorias da empresa
+  // Pré-valida categorias da empresa. GUARD Cartao-A-Classificar: categoria-fila
+  // (A_CLASSIFICAR) NÃO gera regra — fica de fora do validCatSet (o loop pula).
   const catIds = Array.from(new Set(rules.map((r) => r.categoryId).filter(Boolean)))
   const validCats = await prisma.category.findMany({
     where: { id: { in: catIds }, companyId, isActive: true },
-    select: { id: true },
+    select: { id: true, dreGroup: true },
   })
-  const validCatSet = new Set(validCats.map((c) => c.id))
+  const validCatSet = new Set(
+    validCats.filter((c) => !(c.dreGroup != null && NON_LEARNABLE_DRE_GROUPS.has(c.dreGroup))).map((c) => c.id),
+  )
 
   for (const r of rules) {
     const padrao = r.padrao.trim()
