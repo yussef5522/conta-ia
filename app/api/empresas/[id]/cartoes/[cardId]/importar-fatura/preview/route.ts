@@ -223,9 +223,10 @@ export async function POST(request: NextRequest, { params }: Params) {
       // NÃO palpite de IA). Estorno fica crédito; IGNORAR não recebe. O usuário
       // reclassifica as operacionais (exceção). source CARD_DEFAULT deixa a tela
       // mostrar que veio da config do cartão, não de uma escolha automática duvidosa.
+      // Inclui ESTORNO: ele também vai pra fila A_CLASSIFICAR (categoria consistente,
+      // não "SEM CATEGORIA"). Como é CREDIT, subtrai no total/DRE. IGNORAR fica de fora.
       const applyWithdrawal =
-        isPersonalCard && withdrawalCategoryId != null &&
-        (line.suggestedKind === 'COMPRA_AVISTA' || line.suggestedKind === 'COMPRA_PARCELADA' || line.suggestedKind === 'ENCARGO_FINANCEIRO')
+        isPersonalCard && withdrawalCategoryId != null && line.suggestedKind !== 'IGNORAR'
       const effCategoryId = applyWithdrawal ? withdrawalCategoryId : sugg.categoryId
       const effSource = applyWithdrawal ? ('CARD_DEFAULT' as const) : sugg.source
       return {

@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { signedFaturaAmount, pickInvoiceMonthByValue } from '@/lib/credit-card-pj/fatura-net-total'
 
 interface Params { params: Promise<{ id: string; cardId: string }> }
 
@@ -91,16 +92,22 @@ export async function POST(request: NextRequest, { params }: Params) {
   const previousCategoryId = targetTx.categoryId
   const previousCategoryName = targetTx.category?.name ?? null
 
-  // Competência que este pagamento quita: a que a tela mandou OU a fatura mais
-  // recente do cartão (default). É o que faz "paga" ser um FATO por fatura.
+  // Competência que este pagamento quita: a que a tela mandou OU — no default — a
+  // fatura cujo TOTAL LÍQUIDO bate o valor pago. ⚠️ NÃO "a mais recente": esse era o
+  // bug sistêmico — pagamento casado antes da fatura existir ia pro mês errado
+  // (o 7.896,32 caiu em julho porque agosto ainda não tinha sido importada).
   let targetInvoiceMonth = body.invoiceMonth ?? null
   if (!targetInvoiceMonth) {
-    const latest = await prisma.transaction.findFirst({
+    const items = await prisma.transaction.findMany({
       where: { businessCreditCardId: cardId, invoiceMonth: { not: null }, isCardPayment: false },
-      orderBy: { invoiceMonth: 'desc' },
-      select: { invoiceMonth: true },
+      select: { invoiceMonth: true, type: true, amount: true },
     })
-    targetInvoiceMonth = latest?.invoiceMonth ?? null
+    const netByMonth = new Map<string, number>()
+    for (const it of items) {
+      const m = it.invoiceMonth as string
+      netByMonth.set(m, (netByMonth.get(m) ?? 0) + signedFaturaAmount(it))
+    }
+    targetInvoiceMonth = pickInvoiceMonthByValue(netByMonth, targetTx.amount)
   }
 
   // Atomic: marca como pagamento de cartao + vincula ao cartao + amarra à

@@ -6,6 +6,7 @@
 // razão do cartão não fechava. Agora confere as DUAS: Total cartão E Total desta Fatura.
 
 import type { InvoiceExtraction, InvoiceLine } from './types'
+import { faturaNetTotal } from './fatura-net-total'
 
 export interface InvoiceTotalsCheckResult {
   matches: boolean // fecha com Total desta Fatura (o que vale)
@@ -27,10 +28,16 @@ const TOLERANCE = 0.02
 export function checkInvoiceTotals(extraction: InvoiceExtraction): InvoiceTotalsCheckResult {
   const totalCompras = round2(sumByKinds(extraction.lines, ['COMPRA_AVISTA', 'COMPRA_PARCELADA']))
   const totalEncargos = round2(sumByKinds(extraction.lines, ['ENCARGO_FINANCEIRO']))
-  const totalEstornos = round2(sumByKinds(extraction.lines, ['ESTORNO']))
   const totalIgnoradas = round2(sumByKinds(extraction.lines, ['IGNORAR']))
-  const totalCartao = round2(totalCompras + totalEncargos)
-  const totalFatura = round2(totalCartao - totalEstornos)
+  // UMA fonte do net (mesma do display): ESTORNO = CREDIT, o resto = DEBIT.
+  const net = faturaNetTotal(
+    extraction.lines
+      .filter((l) => l.suggestedKind !== 'IGNORAR')
+      .map((l) => ({ type: l.suggestedKind === 'ESTORNO' ? 'CREDIT' : 'DEBIT', amount: l.amount })),
+  )
+  const totalEstornos = net.estornos
+  const totalCartao = net.compras // compras + encargos (DEBIT)
+  const totalFatura = net.net // − estornos
 
   const declaradoCartao = extraction.totalDeclared // "Total cartão"
   const declaradoFatura = extraction.totalToPay // "Total desta Fatura" (o que vale)

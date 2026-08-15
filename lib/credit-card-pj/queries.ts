@@ -2,6 +2,7 @@
 
 import { prisma } from '@/lib/db'
 import { invoiceMonthIsPaid } from './invoice-paid'
+import { faturaNetTotal, signedFaturaAmount } from './fatura-net-total'
 
 export interface CardCardSummary {
   id: string
@@ -59,24 +60,20 @@ export async function listCardsForCompany(
     ]),
   )
 
-  // Soma compras+encargos da fatura mais recente de cada cartao
+  // Total LÍQUIDO da fatura mais recente de cada cartão (compras+encargos − estornos).
+  // ⚠️ UMA fonte só: faturaNetTotal. Antes somava só type=DEBIT e o estorno (CREDIT)
+  // escapava → total inflado (7.995,55 em vez de 7.896,32) e o pagamento não fechava.
   const totalsByCard = new Map<string, { sum: number; count: number; invoiceMonth: string }>()
   for (const cardId of cards.map((c) => c.id)) {
     const inv = latestByCardId.get(cardId)
     if (!inv) continue
-    const agg = await prisma.transaction.aggregate({
-      where: {
-        businessCreditCardId: cardId,
-        invoiceMonth: inv,
-        isCardPayment: false,
-        type: 'DEBIT',
-      },
-      _sum: { amount: true },
-      _count: { _all: true },
+    const items = await prisma.transaction.findMany({
+      where: { businessCreditCardId: cardId, invoiceMonth: inv, isCardPayment: false },
+      select: { type: true, amount: true },
     })
     totalsByCard.set(cardId, {
-      sum: agg._sum.amount ?? 0,
-      count: agg._count._all,
+      sum: faturaNetTotal(items).net,
+      count: items.length,
       invoiceMonth: inv,
     })
   }
@@ -237,14 +234,15 @@ export async function getCardDashboard(
       })
     : []
 
-  // Por categoria
+  // Por categoria — COM SINAL (estorno CREDIT subtrai; antes somava positivo e
+  // inflava). Mesma fonte do total: signedFaturaAmount.
   const byCat = new Map<string, { categoryId: string | null; name: string; amount: number }>()
   for (const t of txs) {
     if (t.isCardPayment) continue
     const key = t.categoryId ?? 'sem-categoria'
     const name = t.category?.name ?? 'Sem categoria'
     const cur = byCat.get(key) ?? { categoryId: t.categoryId, name, amount: 0 }
-    cur.amount += t.amount
+    cur.amount += signedFaturaAmount(t)
     byCat.set(key, cur)
   }
   const spendByCategory = Array.from(byCat.values())
