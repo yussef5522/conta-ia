@@ -27,6 +27,8 @@ export interface CardCardSummary {
   /** Sprint Cartao-Uso-Pessoal: OPERACIONAL | PESSOAL_SOCIO (retirada default). */
   defaultTreatment: string
   socioPFId: string | null
+  /** Sprint Limite-do-PDF: disponível real (declarado na fatura) — conta futuras. */
+  availableLimit: number
 }
 
 /**
@@ -118,7 +120,13 @@ export async function listCardsForCompany(
       isActive: c.isActive,
       monthSpend: round2(t.sum),
       monthTxCount: t.count,
-      utilizationPct: c.creditLimit > 0 ? Math.min(1, t.sum / c.creditLimit) : 0,
+      // Limite do PDF (14/08): "utilizado" = creditLimit − disponível DECLARADO (já
+      // conta parcelas futuras). Sem o declarado, cai no cálculo antigo (fatura atual).
+      utilizationPct:
+        c.creditLimit > 0
+          ? Math.min(1, (c.lastInvoiceAvailableLimit != null ? Math.max(0, c.creditLimit - c.lastInvoiceAvailableLimit) : t.sum) / c.creditLimit)
+          : 0,
+      availableLimit: c.lastInvoiceAvailableLimit ?? round2(c.creditLimit - t.sum),
       latestInvoiceMonth: t.invoiceMonth,
       isLatestInvoicePaid: isLatestInvoicePaid(c.id),
       defaultTreatment: c.defaultTreatment,

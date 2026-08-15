@@ -320,6 +320,7 @@ export default function ImportarFaturaPage() {
             closingDate: previewData.extraction.closingDate,
             totalDeclared: previewData.extraction.totalDeclared,
             totalToPay: previewData.extraction.totalToPay,
+            availableLimit: previewData.extraction.availableLimit,
             detectedBank: previewData.extraction.detectedBank,
             lines: valid.map((l) => ({
               date: l.date,

@@ -29,6 +29,7 @@ interface DashboardData {
     latestInvoiceMonth: string | null
     defaultTreatment: string
     socioPFId: string | null
+    availableLimit: number
   }
   monthTransactions: Array<{
     id: string

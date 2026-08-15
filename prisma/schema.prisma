@@ -327,6 +327,10 @@ model BusinessCreditCard {
   lastInvoiceMonth          String?
   lastInvoiceTotalDeclared  Float?
   lastInvoiceTotalToPay     Float?
+  // Sprint Limite-do-PDF (14/08/2026): o "disponível" DECLARADO na fatura (o PDF já
+  // desconta parcelas futuras). A tela usava creditLimit − fatura_atual e ignorava as
+  // futuras (mostrava 17.004 quando o real era 13.351). null = usa o cálculo antigo.
+  lastInvoiceAvailableLimit Float?
 
   company                    Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
   defaultPaymentBankAccount  BankAccount?  @relation("CardDefaultPayment", fields: [defaultPaymentBankAccountId], references: [id], onDelete: SetNull)

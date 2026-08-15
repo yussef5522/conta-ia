@@ -25,6 +25,7 @@ interface CardRow {
   utilizationPct: number
   latestInvoiceMonth: string | null
   isLatestInvoicePaid: boolean
+  availableLimit: number
 }
 
 const MESES_PT = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
@@ -162,7 +163,7 @@ export default function CartoesListaPage() {
                       </div>
                       <p className="text-[10px] text-muted-foreground">
                         <span className="font-medium text-foreground">{Math.round(c.utilizationPct * 100)}%</span>{' '}
-                        de {formatBRL(c.creditLimit)} · vence dia {c.dueDay}
+                        de {formatBRL(c.creditLimit)} · <span className="font-medium text-foreground">{formatBRL(c.availableLimit)}</span> disponível · vence dia {c.dueDay}
                       </p>
                     </div>
                   </CardContent>

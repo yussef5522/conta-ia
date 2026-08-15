@@ -35,6 +35,7 @@ const bodySchema = z.object({
   closingDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   totalDeclared: z.number().nullable().optional(),
   totalToPay: z.number().nullable().optional(),
+  availableLimit: z.number().nullable().optional(),
   detectedBank: z.string().max(60).nullable().optional(),
   lines: z.array(lineSchema).min(1).max(1000),
   /**
@@ -322,6 +323,7 @@ export async function POST(request: NextRequest, { params }: Params) {
             lastInvoiceMonth: invoiceMonth,
             lastInvoiceTotalDeclared: body.totalDeclared ?? null,
             lastInvoiceTotalToPay: body.totalToPay ?? null,
+            lastInvoiceAvailableLimit: body.availableLimit ?? null,
           },
         })
       }
