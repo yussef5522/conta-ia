@@ -886,6 +886,11 @@ function EditableRow({
         ) : (
           <div className="flex items-center gap-1.5 flex-wrap">
             <span>{line.description}</span>
+            {line.kind === 'ESTORNO' && (
+              <Badge variant="outline" className="text-[9px] bg-emerald-50 text-emerald-700 border-emerald-200 py-0">
+                estorno (crédito)
+              </Badge>
+            )}
             {line.installmentNumber && line.installmentTotal && (
               <Badge variant="outline" className="text-[9px] bg-sky-50 text-sky-700 border-sky-200 py-0">
                 {line.installmentNumber}/{line.installmentTotal}
@@ -966,6 +971,9 @@ function EditableRow({
             onChange={(e) => onUpdate({ amount: parseFloat(e.target.value) || 0 })}
             className="h-8 text-xs text-right tabular-nums"
           />
+        ) : line.kind === 'ESTORNO' ? (
+          // Estorno = crédito: mostra sinal NEGATIVO e verde, pra não parecer compra.
+          <span className="tabular-nums font-medium text-emerald-700">−{formatBRL(line.amount)}</span>
         ) : (
           <span className="tabular-nums font-medium">{formatBRL(line.amount)}</span>
         )}
