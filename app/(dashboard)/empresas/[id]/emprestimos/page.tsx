@@ -59,7 +59,9 @@ interface CarteiraResponse {
     totalSaldoDevedor: number
     /** Parcelas vencendo no mês corrente (ainda não pagas) */
     compromissoMes: number
-    /** Soma da próxima OPEN de cada loan ativo — compromisso mensal recorrente */
+    /** Fase 2: card "Vence este mês" com PREVISÃO em 4 baldes */
+    venceMes: { previsto: number; debitado: number; vencida: number; aVencer: number }
+    /** Soma da PREVISÃO da próxima de cada loan ativo */
     parcelaMensalTotal: number
     jurosMes: number
     proximoVencimento: { dueDate: string; loanId: string; lender: string } | null
@@ -202,16 +204,21 @@ export default function CarteiraEmprestimosPage({
             />
             <KpiCard
               icon={<Calendar className="h-4 w-4 text-amber-600" />}
-              label="Vence este mês"
-              value={formatBRL(data.agregados.compromissoMes)}
-              sub="Parcelas com vencimento no mês corrente"
+              label="Vence este mês (previsto)"
+              value={formatBRL(data.agregados.venceMes.previsto)}
+              sub={
+                `${formatBRL(data.agregados.venceMes.debitado)} já debitado · ${formatBRL(data.agregados.venceMes.aVencer)} a vencer` +
+                (data.agregados.venceMes.vencida > 0
+                  ? ` · ${formatBRL(data.agregados.venceMes.vencida)} vencida aguardando`
+                  : '')
+              }
               tone="amber"
             />
             <KpiCard
               icon={<CreditCard className="h-4 w-4 text-red-600" />}
-              label="Parcela mensal total"
+              label="Próxima de cada contrato"
               value={formatBRL(data.agregados.parcelaMensalTotal)}
-              sub={`Compromisso mensal · juros ${formatBRL(data.agregados.jurosMes)}`}
+              sub="Soma da previsão da próxima parcela de cada contrato"
               tone="red"
             />
             <KpiCard

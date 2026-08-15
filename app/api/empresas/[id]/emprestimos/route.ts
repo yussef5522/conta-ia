@@ -11,6 +11,7 @@ import { handleApiError } from '@/lib/api/handle-error'
 import { generateSchedule } from '@/lib/loans/amortization'
 import { saldoDevedorAtual } from '@/lib/loans/saldo'
 import { forecastProxima } from '@/lib/loans/forecast'
+import { computeVenceMes } from '@/lib/loans/vence-mes'
 import { validateSchedule, InvalidLoanScheduleError } from '@/lib/loans/validate-schedule'
 import { computeOutstandingBalance as compOut } from '@/lib/loans/auto-conciliacao'
 
@@ -138,10 +139,10 @@ export async function GET(request: NextRequest, { params }: Params) {
       totalSaldoDevedor += saldoDevedor
       totalParcelaMes += compromissoMes
       totalJurosMes += jurosMes
-      // Recorrência mensal: payment da PRÓXIMA OPEN de cada loan ainda ATIVO.
-      // FLEXIBLE fica fora (não há parcela recorrente).
-      if (!flexible && l.status === 'ACTIVE' && proximaOpen) {
-        totalParcelaMensalRec += proximaOpen.payment
+      // Recorrência mensal ("próxima de cada contrato"): usa a PREVISÃO da
+      // próxima (POS = última casada; PRE = nominal), não a amort nominal (2.4).
+      if (!flexible && l.status === 'ACTIVE' && forecast.valor != null) {
+        totalParcelaMensalRec += forecast.valor
       }
 
       if (!flexible && proximaOpen) {
@@ -197,14 +198,38 @@ export async function GET(request: NextRequest, { params }: Params) {
       }
     })
 
+    // Fase 2 (15/08): card "Vence este mês" com PREVISÃO (não nominal) em 4
+    // baldes — inclui "vencida, aguardando débito/import". Ver lib/loans/vence-mes.ts.
+    const venceMes = computeVenceMes(
+      loans.map((l) => ({
+        rateType: l.rateType,
+        flexible: l.scheduleSource === 'FLEXIBLE',
+        installments: l.installments.map((i) => ({
+          number: i.number,
+          dueDate: i.dueDate,
+          status: i.status,
+          payment: i.payment,
+          paidTotal: i.paidTotal,
+          reconciledTransactionId: i.reconciledTransactionId,
+          paymentsCount: i._count.payments,
+        })),
+      })),
+      now,
+    )
+
     return NextResponse.json({
       loans: carteira,
       agregados: {
         totalSaldoDevedor: Math.round(totalSaldoDevedor * 100) / 100,
-        // "Vence este mês" — parcelas OPEN cujo dueDate cai no mês corrente
+        // "Vence este mês" (nominal legado — mantido) + venceMes (previsão, 4 baldes)
         compromissoMes: Math.round(totalParcelaMes * 100) / 100,
-        // "Parcela mensal total" — soma da próxima OPEN de cada loan ativo
-        // (representa o compromisso recorrente do contrato, independente do mês)
+        venceMes: {
+          previsto: venceMes.previsto,
+          debitado: venceMes.debitado,
+          vencida: venceMes.vencida,
+          aVencer: venceMes.aVencer,
+        },
+        // "Próxima de cada contrato" — soma da previsão da próxima de cada loan ativo
         parcelaMensalTotal: Math.round(totalParcelaMensalRec * 100) / 100,
         jurosMes: Math.round(totalJurosMes * 100) / 100,
         proximoVencimento,
