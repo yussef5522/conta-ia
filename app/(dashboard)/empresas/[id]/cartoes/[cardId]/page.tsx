@@ -27,6 +27,8 @@ interface DashboardData {
     monthTxCount: number
     utilizationPct: number
     latestInvoiceMonth: string | null
+    defaultTreatment: string
+    socioPFId: string | null
   }
   monthTransactions: Array<{
     id: string
@@ -77,6 +79,44 @@ export default function CartaoDashboardPage() {
   const [casandoId, setCasandoId] = useState<string | null>(null)
   const [desfazendoId, setDesfazendoId] = useState<string | null>(null)
   const [selectedInvoice, setSelectedInvoice] = useState<string | null>(null)
+  const [socios, setSocios] = useState<Array<{ id: string; nome: string }>>([])
+  const [savingTreatment, setSavingTreatment] = useState(false)
+
+  useEffect(() => {
+    fetch(`/api/empresas/${params.id}/socios-pf`, { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((res) => {
+        const list = Array.isArray(res) ? res : (res?.socios ?? res?.sociosPF ?? [])
+        setSocios(list.map((s: { id: string; nome: string }) => ({ id: s.id, nome: s.nome })))
+      })
+      .catch(() => {})
+  }, [params.id])
+
+  async function saveTreatment(defaultTreatment: string, socioPFId: string | null) {
+    setSavingTreatment(true)
+    try {
+      const resp = await fetch(`/api/empresas/${params.id}/cartoes/${params.cardId}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ defaultTreatment, socioPFId }),
+      })
+      if (!resp.ok) {
+        const j = await resp.json().catch(() => ({}))
+        toast({ title: 'Erro', description: j.erro ?? 'Não deu pra salvar', variant: 'destructive' })
+        return
+      }
+      toast({
+        title: 'Tratamento do cartão salvo',
+        description: defaultTreatment === 'PESSOAL_SOCIO'
+          ? 'Compras importadas nascem como Retirada (fora do DRE).'
+          : 'Compras importadas são despesa operacional.',
+      })
+      reload()
+    } finally {
+      setSavingTreatment(false)
+    }
+  }
 
   function reload() {
     setLoading(true)
@@ -345,6 +385,44 @@ export default function CartaoDashboardPage() {
             <span>Fatura em aberto. Quando o pagamento aparecer no extrato, dá pra casar aqui.</span>
           </div>
         )}
+      </Card>
+
+      {/* Sprint Cartao-Uso-Pessoal: tratamento padrão das compras no import */}
+      <Card className="rounded-xl border-border/60">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium text-muted-foreground">Tratamento das compras (no import)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2 pt-0">
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <select
+              value={data.card.defaultTreatment}
+              disabled={savingTreatment}
+              onChange={(e) => saveTreatment(e.target.value, e.target.value === 'PESSOAL_SOCIO' ? data.card.socioPFId : null)}
+              className="border rounded h-9 px-2 text-sm"
+            >
+              <option value="OPERACIONAL">Despesa operacional da empresa</option>
+              <option value="PESSOAL_SOCIO">Uso pessoal do sócio (retirada)</option>
+            </select>
+            {data.card.defaultTreatment === 'PESSOAL_SOCIO' && (
+              <select
+                value={data.card.socioPFId ?? ''}
+                disabled={savingTreatment}
+                onChange={(e) => saveTreatment('PESSOAL_SOCIO', e.target.value || null)}
+                className="border rounded h-9 px-2 text-sm"
+              >
+                <option value="">— qual sócio —</option>
+                {socios.map((s) => (
+                  <option key={s.id} value={s.id}>{s.nome}</option>
+                ))}
+              </select>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {data.card.defaultTreatment === 'PESSOAL_SOCIO'
+              ? 'As compras importadas nascem como Retirada via cartão (Distribuição, fora do DRE). O import avisa e você marca as operacionais.'
+              : 'As compras importadas são despesa da empresa (entram no DRE). Se este cartão é de uso pessoal do sócio, troque acima.'}
+          </p>
+        </CardContent>
       </Card>
 
       {/* Candidatos extras (quando há > 1) — só lista se top já mostrado no header e ainda restam outros */}

@@ -50,6 +50,9 @@ const patchSchema = z.object({
   closingDayRule: z.enum(['ATUAL', 'PROXIMA']).optional(),
   defaultPaymentBankAccountId: z.string().cuid().nullable().optional(),
   isActive: z.boolean().optional(),
+  // Sprint Cartao-Uso-Pessoal: OPERACIONAL (despesa) | PESSOAL_SOCIO (retirada default).
+  defaultTreatment: z.enum(['OPERACIONAL', 'PESSOAL_SOCIO']).optional(),
+  socioPFId: z.string().cuid().nullable().optional(),
 })
 
 export async function PATCH(request: NextRequest, { params }: Params) {
@@ -86,6 +89,17 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         { erro: 'Conta bancária padrão inválida' },
         { status: 400 },
       )
+    }
+  }
+
+  // socioPFId tem que ser da MESMA empresa (atribuição da retirada).
+  if (data.socioPFId) {
+    const socio = await prisma.socioPF.findFirst({
+      where: { id: data.socioPFId, companyId },
+      select: { id: true },
+    })
+    if (!socio) {
+      return NextResponse.json({ erro: 'Sócio inválido pra este cartão' }, { status: 400 })
     }
   }
 

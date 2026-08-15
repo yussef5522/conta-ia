@@ -36,3 +36,17 @@ describe('DRE — estorno de cartão reduz a despesa', () => {
     expect(grupo?.total).toBe(130) // soma (o comportamento do modelo por dreGroup)
   })
 })
+
+describe('DRE — compra pessoal do cartão (Retirada/DISTRIBUICAO) NÃO entra no DRE', () => {
+  const retCat: CategoryForDRE = {
+    id: 'ret', name: 'Retirada via cartão', code: null, dreGroup: 'DISTRIBUICAO_LUCROS',
+    parentId: null, isActive: true, type: 'EXPENSE',
+  }
+  it('R$ 100 de retirada → receita 0, despesa 0, lucro 0 (fora do P&L)', () => {
+    const txs = [base({ id: 'compra-pessoal', type: 'DEBIT', amount: 100, categoryId: 'ret' })]
+    const r = calculateDRE(txs, [retCat], { period })
+    expect(r.groups.find((g) => g.group === 'DESPESAS_ADMINISTRATIVAS')).toBeUndefined()
+    expect(r.totals.receitaBruta).toBe(0)
+    expect(r.totals.lucroLiquido).toBe(0) // a retirada não é despesa nem receita
+  })
+})

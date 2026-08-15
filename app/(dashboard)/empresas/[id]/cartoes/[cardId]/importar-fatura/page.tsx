@@ -68,6 +68,10 @@ interface PaymentCandidate {
 
 interface PreviewResponse {
   card: { id: string; name: string; bankName: string | null; lastDigits: string | null; creditLimit: number }
+  // Sprint Cartao-Uso-Pessoal: pra a tela GRITAR o default de retirada.
+  cardTreatment: 'OPERACIONAL' | 'PESSOAL_SOCIO'
+  withdrawalCategoryId: string | null
+  socioNome: string | null
   extraction: {
     dueDate: string | null
     closingDate: string | null
@@ -529,6 +533,44 @@ export default function ImportarFaturaPage() {
               </CardContent>
             </Card>
           )}
+
+          {/* Banner CARTÃO PESSOAL — grita o default de retirada (nunca silencioso) */}
+          {previewData.cardTreatment === 'PESSOAL_SOCIO' && (
+            <Card className="border-amber-300 bg-amber-50/60">
+              <CardContent className="py-4 flex items-start gap-3">
+                <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0 text-sm">
+                  <p className="font-medium text-amber-900">
+                    Este cartão está marcado como USO PESSOAL{previewData.socioNome ? ` de ${previewData.socioNome}` : ' do sócio'}.
+                  </p>
+                  <p className="text-amber-800 mt-0.5">
+                    As {selectedLines.filter((l) => l.categoryId === previewData.withdrawalCategoryId).length} compras nascem
+                    como <strong>Retirada via cartão</strong> e <strong>NÃO entram no DRE</strong>. Se alguma for despesa real
+                    da empresa, troque a categoria dela — ela vira a exceção.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Resumo Retirada vs Operacional (antes de confirmar) */}
+          {previewData.cardTreatment === 'PESSOAL_SOCIO' && (() => {
+            const wcat = previewData.withdrawalCategoryId
+            const ret = selectedLines.filter((l) => l.categoryId === wcat)
+            const retSum = ret.reduce((s, l) => s + (l.kind === 'ESTORNO' ? -l.amount : l.amount), 0)
+            const oper = selectedLines.filter((l) => l.kind !== 'ESTORNO' && l.categoryId !== wcat)
+            const operSum = oper.reduce((s, l) => s + l.amount, 0)
+            return (
+              <div className="flex flex-wrap gap-3 text-sm">
+                <span className="px-3 py-1.5 rounded-lg bg-purple-50 border border-purple-200 text-purple-800">
+                  <strong>{ret.length}</strong> como Retirada · R$ {retSum.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} <span className="text-purple-600">(fora do DRE)</span>
+                </span>
+                <span className="px-3 py-1.5 rounded-lg bg-red-50 border border-red-200 text-red-800">
+                  <strong>{oper.length}</strong> operacionais · R$ {operSum.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} <span className="text-red-600">(no DRE)</span>
+                </span>
+              </div>
+            )
+          })()}
 
           {/* Banner totais */}
           <Card

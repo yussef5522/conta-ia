@@ -11,6 +11,7 @@ import { extractInvoiceSmart } from '@/lib/credit-card-pj/extract-invoice-smart'
 import { CreditCardPjExtractError } from '@/lib/credit-card-pj/types'
 import { checkInvoiceTotals } from '@/lib/credit-card-pj/totals-check'
 import { suggestCategoriesForInvoiceLines } from '@/lib/credit-card-pj/suggest-category'
+import { getOrCreateCardWithdrawalCategory } from '@/lib/credit-card-pj/card-withdrawal-category'
 import { computeIdentity } from '@/lib/import-identity/compute-identity'
 import { findCardPaymentCandidatesInBank } from '@/lib/credit-card-pj/queries'
 
@@ -151,11 +152,32 @@ export async function POST(request: NextRequest, { params }: Params) {
     targetTotals,
   )
 
+  // Sprint Cartao-Uso-Pessoal: cartão marcado PESSOAL_SOCIO → as compras nascem como
+  // RETIRADA (Distribuição, fora do DRE). NUNCA silencioso — a tela grita (banner +
+  // categoria visível + resumo). Aqui só resolvemos a categoria e o nome do sócio.
+  const isPersonalCard = card.defaultTreatment === 'PESSOAL_SOCIO'
+  let withdrawalCategoryId: string | null = null
+  let socioNome: string | null = null
+  if (isPersonalCard) {
+    withdrawalCategoryId = await getOrCreateCardWithdrawalCategory(prisma, companyId)
+    if (card.socioPFId) {
+      const socio = await prisma.socioPF.findFirst({
+        where: { id: card.socioPFId, companyId },
+        select: { nome: true },
+      })
+      socioNome = socio?.nome ?? null
+    }
+    console.log('[credit-card-pj/preview] CARD_DEFAULT=PESSOAL_SOCIO aplicado', {
+      cardId, socioNome, withdrawalCategoryId, linhas: extraction.lines.length,
+    })
+  }
+
   // Log observabilidade
   console.log('[credit-card-pj/preview]', {
     companyId,
     cardId,
     fileName,
+    cardTreatment: card.defaultTreatment,
     source: result.source, // PDFTEXT (determinístico) vs VISION (fallback)
     pdfSize: metrics.pdfSize,
     durationMs: metrics.durationMs,
@@ -174,6 +196,10 @@ export async function POST(request: NextRequest, { params }: Params) {
       lastDigits: card.lastDigits,
       creditLimit: card.creditLimit,
     },
+    // Sprint Cartao-Uso-Pessoal: pra tela GRITAR o default (banner + resumo).
+    cardTreatment: card.defaultTreatment, // OPERACIONAL | PESSOAL_SOCIO
+    withdrawalCategoryId, // categoria "Retirada via cartão" quando pessoal
+    socioNome, // nome do sócio dono (pro banner)
     extraction: {
       dueDate: extraction.dueDate,
       closingDate: extraction.closingDate,
@@ -193,6 +219,15 @@ export async function POST(request: NextRequest, { params }: Params) {
         source: 'NONE' as const,
         confidence: 0,
       }
+      // Cartão pessoal: a compra/encargo nasce como RETIRADA (default por config,
+      // NÃO palpite de IA). Estorno fica crédito; IGNORAR não recebe. O usuário
+      // reclassifica as operacionais (exceção). source CARD_DEFAULT deixa a tela
+      // mostrar que veio da config do cartão, não de uma escolha automática duvidosa.
+      const applyWithdrawal =
+        isPersonalCard && withdrawalCategoryId != null &&
+        (line.suggestedKind === 'COMPRA_AVISTA' || line.suggestedKind === 'COMPRA_PARCELADA' || line.suggestedKind === 'ENCARGO_FINANCEIRO')
+      const effCategoryId = applyWithdrawal ? withdrawalCategoryId : sugg.categoryId
+      const effSource = applyWithdrawal ? ('CARD_DEFAULT' as const) : sugg.source
       return {
         index: idx,
         date: line.date,
@@ -207,10 +242,10 @@ export async function POST(request: NextRequest, { params }: Params) {
         // Dedup
         contentHash: lineHashes[idx],
         isDuplicate: existingHashes.has(lineHashes[idx]),
-        // Sugestao de categoria
-        suggestedCategoryId: sugg.categoryId,
-        suggestedCategorySource: sugg.source,
-        suggestedConfidence: sugg.confidence,
+        // Sugestao de categoria (CARD_DEFAULT quando cartão pessoal)
+        suggestedCategoryId: effCategoryId,
+        suggestedCategorySource: effSource,
+        suggestedConfidence: applyWithdrawal ? 1 : sugg.confidence,
       }
     }),
     categories,

@@ -307,6 +307,15 @@ model BusinessCreditCard {
   // null = usuario escolhe a cada pagamento.
   defaultPaymentBankAccountId String?
 
+  // Sprint Cartao-Uso-Pessoal (14/08/2026): tratamento padrao das compras no import.
+  //  - OPERACIONAL (default): compra nasce sem categoria, é despesa da empresa.
+  //  - PESSOAL_SOCIO: cartão de uso pessoal do sócio → cada compra nasce como
+  //    RETIRADA (Distribuição de Lucros, FORA do DRE); o operacional vira exceção
+  //    que o usuário marca. NUNCA silencioso — a tela grita o default.
+  defaultTreatment String @default("OPERACIONAL")
+  // Sócio dono do cartão pessoal (atribui a retirada). Só usado com PESSOAL_SOCIO.
+  socioPFId        String?
+
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

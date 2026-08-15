@@ -23,6 +23,9 @@ export interface CardCardSummary {
   latestInvoiceMonth: string | null
   /** R6: true se existe pagamento casado (isCardPayment=true) com este cartao */
   isLatestInvoicePaid: boolean
+  /** Sprint Cartao-Uso-Pessoal: OPERACIONAL | PESSOAL_SOCIO (retirada default). */
+  defaultTreatment: string
+  socioPFId: string | null
 }
 
 /**
@@ -121,6 +124,8 @@ export async function listCardsForCompany(
       utilizationPct: c.creditLimit > 0 ? Math.min(1, t.sum / c.creditLimit) : 0,
       latestInvoiceMonth: t.invoiceMonth,
       isLatestInvoicePaid: isLatestInvoicePaid(c.id),
+      defaultTreatment: c.defaultTreatment,
+      socioPFId: c.socioPFId,
     }
   })
 }
