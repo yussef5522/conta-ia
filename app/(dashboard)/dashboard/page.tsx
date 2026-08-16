@@ -23,6 +23,7 @@ import {
   parsePeriodoYM,
 } from '@/lib/dashboard/period-sp'
 import { PeriodSelector } from './_components/PeriodSelector'
+import { JuizSelo } from './_components/JuizSelo'
 import { MercuryDashboard } from './_components/MercuryDashboard'
 import {
   NoCompaniesEmpty,
@@ -151,6 +152,10 @@ export default async function DashboardPage({ searchParams }: PageProps) {
           <h1 className="text-xl font-medium">
             {empresaAtual.tradeName ?? empresaAtual.name}
           </h1>
+          {/* Fase 3 CAMADA 3: selo do juiz — verde/vermelho/amarelo(>24h) */}
+          <div className="pt-1">
+            <JuizSelo />
+          </div>
         </div>
         <PeriodSelector
           empresaId={empresaAtual.id}
