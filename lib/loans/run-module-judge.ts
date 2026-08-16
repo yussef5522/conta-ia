@@ -1,0 +1,115 @@
+// Sprint Fase 3 CAMADA 3 (15/08/2026) — O JUIZ NOTURNO. Roda os invariantes do
+// módulo contra o banco INTEIRO (todas as empresas) + o cache de saldo. Read-only
+// (o I9 usa recalcularSaldoConta numa transação com ROLLBACK — reusa a lógica
+// exata sem alterar o dado). Retorna o relatório; quem chama persiste + alerta.
+//
+// Cobre: I1,I3,I4,I5,I7,I8 (por contrato, via checkModuleInvariants) + I6 (tx
+// compartilhada entre parcelas) + I9 (balance == Σtx). I2 (companyId NOT NULL) é
+// constraint de schema — não precisa vigiar.
+
+import type { PrismaClient } from '@prisma/client'
+import { checkModuleInvariants, type InvLoan } from './module-invariants'
+import { recalcularSaldoConta } from '../balance/recalcular'
+
+export interface JudgeReport {
+  passed: boolean
+  totalContracts: number
+  totalFail: number
+  balanceIssues: number
+  durationMs: number
+  byCompany: { companyId: string; name: string; contracts: number; fails: { contract: string; fails: string[] }[] }[]
+  sharedTx: { txId: string; parcelas: string[] }[]
+  balanceChecks: { accountId: string; name: string; stored: number; recomputed: number; delta: number }[]
+}
+
+const r2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
+
+export async function runModuleJudge(prisma: PrismaClient): Promise<JudgeReport> {
+  const start = Date.now()
+
+  const companies = new Map<string, string>()
+  for (const c of await prisma.company.findMany({ select: { id: true, name: true } })) companies.set(c.id, c.name)
+
+  const loans = await prisma.loan.findMany({
+    select: {
+      contractNumber: true, companyId: true, rateType: true, scheduleSource: true, termMonths: true,
+      installmentsPaidBefore: true, interestRateMonthly: true, principal: true,
+      installments: {
+        select: {
+          number: true, dueDate: true, status: true, openingBalance: true, amortization: true, interest: true,
+          correcao: true, payment: true, closingBalance: true, paidTotal: true, paidInterest: true,
+          paidCorrection: true, paidPenalty: true, reconciledTransactionId: true,
+          payments: { select: { transactionId: true, amount: true } },
+        },
+      },
+    },
+  })
+
+  const byCompanyLoans = new Map<string, InvLoan[]>()
+  const linkOwners = new Map<string, string[]>() // txId → ["contrato#n", ...]  (I6)
+
+  for (const l of loans) {
+    const inv: InvLoan = {
+      contractNumber: l.contractNumber, rateType: l.rateType, scheduleSource: l.scheduleSource,
+      termMonths: l.termMonths, installmentsPaidBefore: l.installmentsPaidBefore,
+      interestRateMonthly: l.interestRateMonthly, principal: l.principal,
+      installments: l.installments.map((i) => ({
+        number: i.number, dueDate: i.dueDate.toISOString().slice(0, 10), status: i.status,
+        openingBalance: i.openingBalance, amortization: i.amortization, interest: i.interest, correcao: i.correcao,
+        payment: i.payment, closingBalance: i.closingBalance, paidTotal: i.paidTotal, paidInterest: i.paidInterest,
+        paidCorrection: i.paidCorrection, paidPenalty: i.paidPenalty,
+        hasReconciled: i.reconciledTransactionId !== null,
+        paymentsCount: i.payments.length,
+        paymentsSum: r2(i.payments.reduce((s, x) => s + x.amount, 0)),
+      })),
+    }
+    if (!byCompanyLoans.has(l.companyId)) byCompanyLoans.set(l.companyId, [])
+    byCompanyLoans.get(l.companyId)!.push(inv)
+
+    const label = (n: number) => `${l.contractNumber ?? 'FLEX'}#${n}`
+    for (const i of l.installments) {
+      if (i.reconciledTransactionId) {
+        const a = linkOwners.get(i.reconciledTransactionId) ?? []; a.push(label(i.number)); linkOwners.set(i.reconciledTransactionId, a)
+      }
+      for (const pay of i.payments) {
+        const a = linkOwners.get(pay.transactionId) ?? []; a.push(label(i.number)); linkOwners.set(pay.transactionId, a)
+      }
+    }
+  }
+
+  let totalFail = 0, totalContracts = 0
+  const byCompany: JudgeReport['byCompany'] = []
+  for (const [companyId, invLoans] of byCompanyLoans) {
+    const results = checkModuleInvariants(invLoans)
+    const fails = results.filter((r) => !r.pass).map((r) => ({ contract: r.contract, fails: r.fails }))
+    totalFail += fails.length
+    totalContracts += results.length
+    byCompany.push({ companyId, name: companies.get(companyId) ?? companyId, contracts: results.length, fails })
+  }
+
+  // I6 — tx linkada a 2+ parcelas (double-count entre contratos)
+  const sharedTx = [...linkOwners.entries()]
+    .filter(([, v]) => v.length > 1)
+    .map(([txId, parcelas]) => ({ txId, parcelas }))
+
+  // I9 — balance == Σtx (vigia o cache). recalcularSaldoConta em ROLLBACK.
+  const balanceChecks: JudgeReport['balanceChecks'] = []
+  const accounts = await prisma.bankAccount.findMany({ select: { id: true, name: true } })
+  for (const acc of accounts) {
+    try {
+      await prisma.$transaction(async (tx) => {
+        const r = await recalcularSaldoConta(tx as unknown as PrismaClient, acc.id)
+        if (Math.abs(r.delta) > 0.02) {
+          balanceChecks.push({ accountId: acc.id, name: acc.name, stored: r2(r.saldoAntes), recomputed: r2(r.saldoDepois), delta: r2(r.delta) })
+        }
+        throw new Error('__ROLLBACK__')
+      })
+    } catch (e) {
+      if ((e as Error).message !== '__ROLLBACK__') throw e
+    }
+  }
+
+  const balanceIssues = balanceChecks.length
+  const passed = totalFail === 0 && sharedTx.length === 0 && balanceIssues === 0
+  return { passed, totalContracts, totalFail, balanceIssues, durationMs: Date.now() - start, byCompany, sharedTx, balanceChecks }
+}

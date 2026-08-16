@@ -1175,6 +1175,24 @@ model AiUsageLog {
 // - Modelo diferente (Sonnet vs Haiku) → pricing diferente
 // - Feature diferente (insights vs classify) → métricas separadas
 // - Precisa cachear o responseJson (1h TTL — feature "Gerar novamente")
+// Sprint Fase 3 CAMADA 3 (15/08/2026): relatório do JUIZ NOTURNO. Roda os
+// invariantes do módulo contra o banco INTEIRO (todas as empresas) + o cache de
+// saldo (balance == Σtx). Grava histórico; falha = alerta (selo no dashboard +
+// e-mail). detail = { byCompany, balanceIssues } — o QUE falhou, onde.
+model LoanModuleJudgeReport {
+  id             String   @id @default(cuid())
+  runAt          DateTime @default(now())
+  passed         Boolean
+  totalContracts Int
+  totalFail      Int
+  balanceIssues  Int      @default(0)
+  detail         Json
+  durationMs     Int      @default(0)
+
+  @@index([runAt])
+  @@map("loan_module_judge_reports")
+}
+
 model AiInsightsLog {
   id               String   @id @default(cuid())
   companyId        String
