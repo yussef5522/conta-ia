@@ -8,7 +8,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
-import { buildLinkGroup, computeLinkSplit, storedScheduleValid, pickTargetInstallment } from '@/lib/loans/link-payment'
+import { buildLinkGroup, computeLinkSplit, storedScheduleValid, shouldWriteSplit, pickTargetInstallment } from '@/lib/loans/link-payment'
 
 export const runtime = 'nodejs'
 interface Params { params: Promise<{ id: string; loanId: string }> }
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       where: { id: loanId },
       select: {
         companyId: true, bankAccountId: true, contractNumber: true, lender: true,
-        interestRateMonthly: true, rateType: true, installmentsPaidBefore: true,
+        interestRateMonthly: true, rateType: true, installmentsPaidBefore: true, scheduleSource: true,
       },
     })
     if (!loan) return NextResponse.json({ erro: 'Empréstimo não encontrado' }, { status: 404 })
@@ -92,6 +92,14 @@ export async function POST(request: NextRequest, { params }: Params) {
       saldoAntes: target.openingBalance,
       saldoDepois: split.closingBalance,
       agendaValida,
+      // O split (juros) VAI ser gravado? IMPORTED confia no amort do banco mesmo
+      // com juros=0 nas OPEN (dono único shouldWriteSplit — igual ao confirm).
+      splitInjected: shouldWriteSplit({
+        scheduleSource: loan.scheduleSource,
+        isZeroRate: loan.interestRateMonthly === 0,
+        agendaValida,
+        isPartial: split.isPartial,
+      }),
       // FIX matcher por data: como a parcela foi escolhida (alerta se ambíguo).
       match: {
         byDate: pick.byDate, valorAmbiguo: pick.valorAmbiguo, dateAmbiguo: pick.dateAmbiguo,

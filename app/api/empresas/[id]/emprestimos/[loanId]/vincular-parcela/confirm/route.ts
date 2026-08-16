@@ -9,7 +9,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
-import { computeLinkSplit, storedScheduleValid } from '@/lib/loans/link-payment'
+import { computeLinkSplit, storedScheduleValid, shouldWriteSplit } from '@/lib/loans/link-payment'
 
 export const runtime = 'nodejs'
 interface Params { params: Promise<{ id: string; loanId: string }> }
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest, { params }: Params) {
 
     const loan = await prisma.loan.findUnique({
       where: { id: loanId },
-      select: { companyId: true, bankAccountId: true, interestRateMonthly: true, rateType: true, installmentsPaidBefore: true },
+      select: { companyId: true, bankAccountId: true, interestRateMonthly: true, rateType: true, installmentsPaidBefore: true, scheduleSource: true },
     })
     if (!loan) return NextResponse.json({ erro: 'Empréstimo não encontrado' }, { status: 404 })
     if (loan.companyId !== empresaId) return NextResponse.json({ erro: 'Outra empresa' }, { status: 403 })
@@ -77,7 +77,15 @@ export async function POST(request: NextRequest, { params }: Params) {
     // é irrelevante — SEMPRE grava o split e move a amortização pro valor pago,
     // pra o saldo (principal − Σamort PAID) cair exatamente o que foi devolvido.
     const isZeroRate = loan.interestRateMonthly === 0
-    const gravaSplit = isZeroRate || (agendaValida && !split.isPartial)
+    // FIX (15/08): IMPORTED confia no amort do banco → grava o split mesmo com
+    // juros=0 nas OPEN. Ver shouldWriteSplit (dono único). Sem isso, POS casada
+    // pela tela nasce com paidInterest=0 (bug da #2/#23).
+    const gravaSplit = shouldWriteSplit({
+      scheduleSource: loan.scheduleSource,
+      isZeroRate,
+      agendaValida,
+      isPartial: split.isPartial,
+    })
 
     await prisma.$transaction(async (trx) => {
       for (const t of txs) {

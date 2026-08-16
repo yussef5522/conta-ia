@@ -159,6 +159,27 @@ export function pickTargetInstallment(
  * A agenda ARMAZENADA do empréstimo (faixa rastreada) fecha? Decide se o split
  * flui pro DRE (FASE 5.3): agenda inválida → vincula mas não injeta split.
  */
+/**
+ * Decide se o SPLIT (juros/correção) é gravado ao vincular. FASE 5.3 travava por
+ * `agendaValida` (a agenda inteira fecha) — mas o split só precisa do AMORT da
+ * parcela, e em agenda IMPORTED o amort vem do PDF do banco (autoritativo). A
+ * `validateSchedule` reprova a agenda quando as OPEN têm juros=0 (POS /
+ * PRE-importado sem juros nas futuras), o que fazia TODA parcela POS casada pela
+ * tela nascer com `paidInterest=0` (juros escondido do DRE — bug da #2 e da #23).
+ * IMPORTED confia no amort; FÓRMULA mantém a trava. Função pura (dono único do
+ * confirm e do preview de vincular-parcela).
+ */
+export function shouldWriteSplit(opts: {
+  scheduleSource: string | null
+  isZeroRate: boolean
+  agendaValida: boolean
+  isPartial: boolean
+}): boolean {
+  if (opts.isZeroRate) return true // 0% (Arafat): split determinístico
+  if (opts.isPartial) return false // parcial não quita → não grava split
+  return opts.scheduleSource === 'IMPORTED' || opts.agendaValida
+}
+
 export function storedScheduleValid(
   trackedInstallments: ScheduleRowForValidation[],
   base: number,
