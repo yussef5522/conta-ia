@@ -1186,7 +1186,7 @@ model LoanModuleJudgeReport {
   totalContracts Int
   totalFail      Int
   balanceIssues  Int      @default(0)
-  detail         Json
+  detail         String   // JSON stringificado (String, não Json — portabilidade SQLite-dev/Postgres-prod)
   durationMs     Int      @default(0)
 
   @@index([runAt])
