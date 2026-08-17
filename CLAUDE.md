@@ -149,9 +149,12 @@ npx prisma migrate deploy                   # aplica
 npm run build
 pm2 reload conta-ia --update-env
 pm2 list | grep conta-ia                    # confirma online
+bash scripts/smoke-deploy.sh                 # ⚠️ OBRIGATÓRIO — home 200 NÃO basta
 ```
 
 `pg_dump -Fc` em `/var/backups/conta-ia/pre-<sprint>-YYYYMMDD-HHMMSS.dump` **antes** de toda migration.
+
+- **⚠️ "HOME 200" NÃO É SMOKE — a página pode responder 200 e renderizar SEM CSS (16/08).** Sintoma: HTML puro, links azuis sublinhados, header duplicado. Causa: após `rm -rf .next` + rebuild, o `pm2 reload` (graceful) deixa o processo **servindo o build VELHO** — o HTML aponta CSS com hash que o rebuild apagou → 404 → site sem estilo. **FIX: `pm2 restart` (full, NÃO reload) sempre que fizer `rm -rf .next`** — reload só troca env, restart recarrega o build. **SMOKE OBRIGATÓRIO** (`scripts/smoke-deploy.sh`): extrai o `<link>` CSS do HTML servido e verifica que retorna 200 (o CSS neste Next fica em `.next/static/chunks/*.css`, não `/css/`). "deploy ok" com site quebrado aconteceu porque o smoke era só `curl -w %{http_code} /` = 200. Agora o smoke morde.
 
 ## Segurança & LGPD
 
