@@ -30,7 +30,7 @@ export default function JuizPage() {
   const [running, setRunning] = useState(false)
 
   const load = useCallback(() => {
-    fetch('/api/admin/juiz', { credentials: 'include' })
+    fetch('/api/juiz', { credentials: 'include' })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => { setHistory(d?.history ?? []); setSel(d?.latest ?? null) })
       .catch(() => setHistory([]))
@@ -40,7 +40,7 @@ export default function JuizPage() {
   const rodar = async () => {
     setRunning(true)
     try {
-      await fetch('/api/admin/juiz', { method: 'POST', credentials: 'include' })
+      await fetch('/api/juiz', { method: 'POST', credentials: 'include' })
       load()
     } finally { setRunning(false) }
   }
