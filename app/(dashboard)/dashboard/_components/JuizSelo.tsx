@@ -10,25 +10,13 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { ShieldCheck, ShieldAlert, ShieldQuestion, Clock } from 'lucide-react'
-
-interface Report {
-  runAt: string
-  passed: boolean
-  totalContracts: number
-  totalFail: number
-  balanceIssues: number
-}
-
-const HH = (iso: string) =>
-  new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-const DIA = (iso: string) =>
-  new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+import { judgeSeloState, type SeloLatest } from '@/lib/loans/judge-selo-state'
 
 export function JuizSelo() {
-  const [latest, setLatest] = useState<Report | null | undefined>(undefined)
+  const [latest, setLatest] = useState<SeloLatest | null | undefined>(undefined)
 
   useEffect(() => {
-    fetch('/api/admin/juiz', { credentials: 'include' })
+    fetch('/api/juiz', { credentials: 'include' })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => setLatest(d?.latest ?? null))
       .catch(() => setLatest(null))
@@ -36,27 +24,20 @@ export function JuizSelo() {
 
   if (latest === undefined) return null // carregando — sem flash
 
-  let cls = '', Icon = ShieldQuestion, label = ''
-  if (!latest) {
-    cls = 'bg-slate-50 text-slate-600 border-slate-200'; Icon = ShieldQuestion; label = 'Juiz nunca rodou'
-  } else {
-    const ageH = (Date.now() - new Date(latest.runAt).getTime()) / 3_600_000
-    if (ageH > 24) {
-      cls = 'bg-amber-50 text-amber-800 border-amber-300'; Icon = Clock
-      label = `Juiz não rodou desde ${DIA(latest.runAt)}`
-    } else if (latest.passed) {
-      cls = 'bg-emerald-50 text-emerald-700 border-emerald-200'; Icon = ShieldCheck
-      label = `Juiz ${latest.totalContracts - latest.totalFail}/${latest.totalContracts} · ${HH(latest.runAt)}`
-    } else {
-      cls = 'bg-rose-50 text-rose-700 border-rose-300'; Icon = ShieldAlert
-      const n = latest.totalFail + latest.balanceIssues
-      label = `Juiz: ${n} falha${n === 1 ? '' : 's'}`
-    }
-  }
+  // Estado via função pura testada (4 estados distintos — ver judge-selo-state.ts).
+  const state = judgeSeloState(latest, Date.now())
+  const TONE = {
+    green: { cls: 'bg-emerald-50 text-emerald-700 border-emerald-200', Icon: ShieldCheck },
+    red: { cls: 'bg-rose-50 text-rose-700 border-rose-300', Icon: ShieldAlert },
+    yellow: { cls: 'bg-amber-50 text-amber-800 border-amber-300', Icon: Clock },
+    gray: { cls: 'bg-slate-50 text-slate-600 border-slate-200', Icon: ShieldQuestion },
+  } as const
+  const { cls, Icon } = TONE[state.tone]
+  const label = state.label
 
   return (
     <Link
-      href="/admin/juiz"
+      href="/juiz"
       className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors hover:brightness-95 ${cls}`}
       title="Juiz de módulo — invariantes do banco inteiro. Clique pro detalhe."
     >
