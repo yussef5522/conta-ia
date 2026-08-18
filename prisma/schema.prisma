@@ -138,41 +138,41 @@ model Company {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users                UserCompany[]
-  bankAccounts         BankAccount[]
-  categories           Category[]
-  suppliers            Supplier[]
-  customers            Customer[]
-  recurringSchedules   RecurringSchedule[]
-  rules                AiLearningRule[]
-  costCenters          CostCenter[]
+  users                    UserCompany[]
+  bankAccounts             BankAccount[]
+  categories               Category[]
+  suppliers                Supplier[]
+  customers                Customer[]
+  recurringSchedules       RecurringSchedule[]
+  rules                    AiLearningRule[]
+  costCenters              CostCenter[]
   transferSuggestionEvents TransferSuggestionEvent[]
-  categoryHistory      CategoryHistory[]
-  restoreLogs          CategoryRestoreLog[]
-  roles                Role[]
-  userCompanyRoles     UserCompanyRole[]
-  auditLogs            AuditLog[]
-  invites              CompanyInvite[]
+  categoryHistory          CategoryHistory[]
+  restoreLogs              CategoryRestoreLog[]
+  roles                    Role[]
+  userCompanyRoles         UserCompanyRole[]
+  auditLogs                AuditLog[]
+  invites                  CompanyInvite[]
   // Fase 3 Etapa 3 — Camada 3 do pipeline IA Contadora
-  aiClaudeCache        AiClaudeCache[]
-  aiUsageLogs          AiUsageLog[]
+  aiClaudeCache            AiClaudeCache[]
+  aiUsageLogs              AiUsageLog[]
   // Sprint 5.0.4.0c1 — Insights narrativos Sonnet 4.6
-  aiInsightsLogs       AiInsightsLog[]
+  aiInsightsLogs           AiInsightsLog[]
   // Sprint 5.0.1 — IA Tributária
-  taxProfile           CompanyTaxProfile?
-  taxCalculations      TaxCalculation[]
+  taxProfile               CompanyTaxProfile?
+  taxCalculations          TaxCalculation[]
   // Sprint 5.0.2.d — Claude analyzing real
-  aiAnalysisCache      AiAnalysisCache[]
+  aiAnalysisCache          AiAnalysisCache[]
   // Sprint 5.0.2.h — Detecção Pix PJ↔PF/PJ
-  sociosPF             SocioPF[]
-  empresasRelacionadas EmpresaRelacionada[]
+  sociosPF                 SocioPF[]
+  empresasRelacionadas     EmpresaRelacionada[]
   // Sprint 5.0.2.u — Multi-statement staging (Xero/QuickBooks pattern)
-  importStagings       ImportStaging[]
+  importStagings           ImportStaging[]
   // Sprint 5.0.2.0 — Importador Excel Contas a Pagar
-  employees            Employee[]
-  excelImportBatches   ExcelImportBatch[]
+  employees                Employee[]
+  excelImportBatches       ExcelImportBatch[]
   // Sprint PF Fatia 4 (03/06/2026) — Pontes desta empresa
-  pjToPfBridges        PJtoPFBridge[]
+  pjToPfBridges            PJtoPFBridge[]
 
   // Fase 4 (12/06/2026) — Warnings de duplicação pós-import
   importWarnings ImportWarning[]
@@ -182,7 +182,7 @@ model Company {
   monitorAlerts  MonitorAlert[]
 
   // Sprint Empréstimos (17/06/2026) — passivo financeiro
-  loans          Loan[]
+  loans Loan[]
 
   // Sprint Cartao de Credito PJ (24/06/2026)
   businessCreditCards BusinessCreditCard[]
@@ -257,7 +257,7 @@ model BankAccount {
   //   PJ = Conta da empresa (operacional, padrão).
   //   PF = Conta pessoal do dono (private). Movimento PJ↔PF vai pro patrimônio,
   //        não pro DRE de resultado.
-  accountKind     String  @default("PJ")
+  accountKind String @default("PJ")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -288,16 +288,16 @@ model BankAccount {
 // Compras viram Transaction com businessCreditCardId apontando pra essa
 // conta cartao. Pagamento da fatura aparece como TRANSFER bancário -> cartao.
 model BusinessCreditCard {
-  id          String  @id @default(cuid())
-  companyId   String
-  name        String  // "Sicredi Visa", "Caixa Mastercard 3883", etc
-  bankName    String? // emissor (Caixa, Banrisul, Sicredi, etc)
-  brand       String? // VISA | MASTERCARD | ELO | AMEX | HIPERCARD
-  lastDigits  String? // últimos 4 (auditoria; NUNCA o numero completo)
+  id         String  @id @default(cuid())
+  companyId  String
+  name       String // "Sicredi Visa", "Caixa Mastercard 3883", etc
+  bankName   String? // emissor (Caixa, Banrisul, Sicredi, etc)
+  brand      String? // VISA | MASTERCARD | ELO | AMEX | HIPERCARD
+  lastDigits String? // últimos 4 (auditoria; NUNCA o numero completo)
 
-  creditLimit Float   // limite total em R$
-  closingDay  Int     // dia do fechamento (1-31)
-  dueDay      Int     // dia do vencimento (1-31)
+  creditLimit Float // limite total em R$
+  closingDay  Int // dia do fechamento (1-31)
+  dueDay      Int // dia do vencimento (1-31)
 
   // ATUAL | PROXIMA — compras NO dia do fechamento entram na fatura ATUAL (default)
   // ou na PROXIMA. Padrao Caixa/Banrisul/Sicredi BR = ATUAL.
@@ -312,7 +312,7 @@ model BusinessCreditCard {
   //  - PESSOAL_SOCIO: cartão de uso pessoal do sócio → cada compra nasce como
   //    RETIRADA (Distribuição de Lucros, FORA do DRE); o operacional vira exceção
   //    que o usuário marca. NUNCA silencioso — a tela grita o default.
-  defaultTreatment String @default("OPERACIONAL")
+  defaultTreatment String  @default("OPERACIONAL")
   // Sócio dono do cartão pessoal (atribui a retirada). Só usado com PESSOAL_SOCIO.
   socioPFId        String?
 
@@ -332,9 +332,9 @@ model BusinessCreditCard {
   // futuras (mostrava 17.004 quando o real era 13.351). null = usa o cálculo antigo.
   lastInvoiceAvailableLimit Float?
 
-  company                    Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  defaultPaymentBankAccount  BankAccount?  @relation("CardDefaultPayment", fields: [defaultPaymentBankAccountId], references: [id], onDelete: SetNull)
-  transactions               Transaction[] @relation("CardTransactions")
+  company                   Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  defaultPaymentBankAccount BankAccount?  @relation("CardDefaultPayment", fields: [defaultPaymentBankAccountId], references: [id], onDelete: SetNull)
+  transactions              Transaction[] @relation("CardTransactions")
 
   @@index([companyId])
   @@index([companyId, isActive])
@@ -391,8 +391,8 @@ model Transaction {
   //   SEMPRE presente após Sprint Import Idempotente. Imutável a re-export
   //   do banco (ignora hora/tz, normaliza descrição).
   // Gate de import usa ambos via tabela ImportedIdentity (seen-ledger).
-  fitidKey      String?
-  contentHash   String?
+  fitidKey    String?
+  contentHash String?
 
   // Transferência entre contas DA MESMA empresa (Sprint 0.5).
   // Quando preenchido, é o ID que une as 2 pontas (saída na conta A + entrada na conta B).
@@ -529,15 +529,15 @@ model Transaction {
   // - loanDisbursement: tx é liberação de algum Loan (CREDIT entrada de passivo).
   // - loanInstallmentPaid: tx é pagamento de parcela de algum LoanInstallment.
   // SetNull no delete pra preservar histórico financeiro sem cascade nada.
-  loanDisbursement      Loan?            @relation("LoanDisbursement")
-  loanInstallmentPaid   LoanInstallment? @relation("LoanInstallmentReconcile")
+  loanDisbursement        Loan?                    @relation("LoanDisbursement")
+  loanInstallmentPaid     LoanInstallment?         @relation("LoanInstallmentReconcile")
   // Sprint Casar Pagamento (03/08/2026) — N:1: esta tx faz parte do grupo que
   // paga uma parcela (débito parcial). Aditivo ao loanInstallmentPaid (1:1).
   loanInstallmentPayments LoanInstallmentPayment[] @relation("LoanInstallmentPaymentTx")
 
   // Sprint Import Idempotente (18/06/2026) — entries do seen-ledger
   // apontando pra essa tx. Delete da Tx -> SetNull (ledger vira tombstone).
-  importedIdentities    ImportedIdentity[]
+  importedIdentities ImportedIdentity[]
 
   // === Sprint Cartao Credito PJ (24/06/2026) ===
   // Quando preenchido, esta tx eh compra/encargo de cartao (NAO entra em
@@ -547,18 +547,18 @@ model Transaction {
   // Parcelamento: compra "MERCADOLIVRE 08/12" gera 1 tx no mes da parcela
   // com installmentNumber=8, installmentTotal=12 e installmentGroupId
   // compartilhado entre as parcelas da mesma compra.
-  installmentNumber  Int?
-  installmentTotal   Int?
-  installmentGroupId String?
+  installmentNumber    Int?
+  installmentTotal     Int?
+  installmentGroupId   String?
   // True quando esta tx eh PAGAMENTO da fatura do cartao (par TRANSFER
   // banco -> cartao). Permite filtrar do DRE como nao-despesa.
-  isCardPayment      Boolean @default(false)
+  isCardPayment        Boolean             @default(false)
 
   // Sprint Cartao PJ R4 (25/06/2026): competencia da fatura "YYYY-MM"
   // capturada do vencimento da fatura no import. Permite agrupar dashboard
   // por FATURA (Caixa 2026-06) em vez de data da compra (que pode ser
   // 2025-12 pra parceladas antigas). Null pra tx pre-existentes.
-  invoiceMonth       String?
+  invoiceMonth String?
 
   // Sprint Fatura-Paga-Por-Competencia (14/08/2026): a competencia "YYYY-MM"
   // que ESTE pagamento (isCardPayment=true) QUITA. É o que torna "paga" um FATO
@@ -569,7 +569,7 @@ model Transaction {
   // usuario confirma qual fatura), limpo no desfazer. Null = pagamento nao amarrado
   // a nenhuma fatura ainda (nao quita nada). NÃO confundir com invoiceMonth (que é
   // a competencia de uma COMPRA).
-  paidInvoiceMonth   String?
+  paidInvoiceMonth String?
 
   // === Sprint Pending Transfer State (27/06/2026, modelo QuickBooks/Xero) ===
   // Estado "transferência aguardando par" — usado quando o user marca uma tx
@@ -1187,7 +1187,7 @@ model LoanModuleJudgeReport {
   totalFail      Int
   balanceIssues  Int      @default(0)
   dupIssues      Int      @default(0) // I10 (17/08) — duplicatas de tx (mesmo stableKey, imports diferentes)
-  detail         String   // JSON stringificado (String, não Json — portabilidade SQLite-dev/Postgres-prod)
+  detail         String // JSON stringificado (String, não Json — portabilidade SQLite-dev/Postgres-prod)
   durationMs     Int      @default(0)
 
   @@index([runAt])
@@ -1442,19 +1442,19 @@ model OfxImport {
   // Sprint rawOfxBlob 2.4 — CONTEXTO DA DECISÃO (o que o SISTEMA entendeu, não só
   // o que o banco mandou). Vale mais que o blob pra investigar: mostra a decisão
   // sem reprocessar. Preenchido no finalize do import.
-  futureDiscarded   Int       @default(0)  // nº de linhas futuras/agendadas descartadas
+  futureDiscarded   Int       @default(0) // nº de linhas futuras/agendadas descartadas
   anchorDate        DateTime? // âncora "liquidado até aqui" usada no descarte
-  anchorRule        String?   // DTASOF | LAST_REAL_TX | FUTURE_FALLBACK | UNKNOWN_CONSERVATIVE
-  bankProfile       String?   // perfil resolvido: BANRISUL | SICREDI | STONE | CAIXA | null
-  ledgerBalAmount   Float?    // LEDGERBAL declarado pelo arquivo
-  ledgerBalMatched  Boolean?  // o saldo fechou com o LEDGERBAL?
-  ledgerBalDiff     Float?    // diferença quando não fechou
+  anchorRule        String? // DTASOF | LAST_REAL_TX | FUTURE_FALLBACK | UNKNOWN_CONSERVATIVE
+  bankProfile       String? // perfil resolvido: BANRISUL | SICREDI | STONE | CAIXA | null
+  ledgerBalAmount   Float? // LEDGERBAL declarado pelo arquivo
+  ledgerBalMatched  Boolean? // o saldo fechou com o LEDGERBAL?
+  ledgerBalDiff     Float? // diferença quando não fechou
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  bankAccount    BankAccount     @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
-  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  revertedBy     User?           @relation("OfxImportReverter", fields: [revertedById], references: [id])
+  bankAccount    BankAccount        @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  revertedBy     User?              @relation("OfxImportReverter", fields: [revertedById], references: [id])
   transactions   Transaction[]
   // Fase 4 (12/06/2026) — Warnings de duplicação detectados neste import
   importWarnings ImportWarning[]
@@ -1484,9 +1484,9 @@ model TransferSuggestionEvent {
   companyId  String
   debitTxId  String
   creditTxId String
-  layer      String?   // DETERMINISTIC | STRONG | WEAK
+  layer      String? // DETERMINISTIC | STRONG | WEAK
   confidence Float?
-  evidences  String?   // JSON array de strings (pt-BR)
+  evidences  String? // JSON array de strings (pt-BR)
   engine     String    @default("unified") // unified | manual
   // SUGGESTED (motor sugeriu) | CONFIRMED (usuário aceitou) | IGNORED (usuário recusou)
   outcome    String    @default("SUGGESTED")
@@ -1509,21 +1509,21 @@ model TransferSuggestionEvent {
 //     inteiro, as entries do batch são DELETADAS (não viram tombstone)
 //     pra permitir reimport corrigido.
 model ImportedIdentity {
-  id              String   @id @default(cuid())
-  companyId       String
-  bankAccountId   String
-  importBatchId   String
+  id            String   @id @default(cuid())
+  companyId     String
+  bankAccountId String
+  importBatchId String
   // sha256(accountId|FITID) — null quando FITID não confiável
-  fitidKey        String?
+  fitidKey      String?
   // sha256(accountId|yyyymmdd|valorCentavos|descNormalizada) — sempre presente
-  contentHash     String
+  contentHash   String
   // FK SetNull pra Transaction. NULL quando a tx foi deletada (tombstone).
-  transactionId   String?
-  tombstone       Boolean  @default(false)
-  createdAt       DateTime @default(now())
+  transactionId String?
+  tombstone     Boolean  @default(false)
+  createdAt     DateTime @default(now())
 
-  bankAccount BankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
-  importBatch OfxImport   @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+  bankAccount BankAccount  @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+  importBatch OfxImport    @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
   transaction Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
 
   // Gates: lookup rápido (conta, fitidKey/contentHash)
@@ -2837,19 +2837,19 @@ model MonitorAlert {
 // ============================================================================
 
 model Loan {
-  id            String   @id @default(cuid())
+  id            String      @id @default(cuid())
   companyId     String
-  company       Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company       Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
   // Conta que recebe a liberação E paga as parcelas.
   bankAccountId String
   bankAccount   BankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
 
-  lender              String   // ex: "Banrisul", "Sicredi"
-  contractNumber      String?  // pode ser usado pra match forte na conciliação
-  principal           Float    // valor liberado (sem IOF)
-  interestRateMonthly Float    // taxa mensal (0.025 = 2.5% a.m.)
-  termMonths          Int      // total de parcelas
-  amortizationSystem  String   // 'PRICE' | 'SAC'
+  lender              String // ex: "Banrisul", "Sicredi"
+  contractNumber      String? // pode ser usado pra match forte na conciliação
+  principal           Float // valor liberado (sem IOF)
+  interestRateMonthly Float // taxa mensal (0.025 = 2.5% a.m.)
+  termMonths          Int // total de parcelas
+  amortizationSystem  String // 'PRICE' | 'SAC'
   firstDueDate        DateTime
   iof                 Float    @default(0)
   disbursementDate    DateTime
@@ -2861,32 +2861,32 @@ model Loan {
   // Sprint Empréstimos AI/Contrato (17/06/2026)
   // PRE = taxa fixa | POS = taxa fixa + indexação (CDI/SELIC/IPCA)
   rateType                  String?
-  indexer                   String?    // CDI | SELIC | IPCA
-  indexerPercent            Float?     // 100 = 100% CDI; 130 = 130% CDI
+  indexer                   String? // CDI | SELIC | IPCA
+  indexerPercent            Float? // 100 = 100% CDI; 130 = 130% CDI
   // Empréstimo já em andamento entra pelo SALDO DEVEDOR ATUAL, não pelo principal.
   // Quando setado, generateMidLifeSchedule usa esse saldo como base.
   outstandingBalanceInitial Float?
   // Data do corte: parcelas com dueDate >= trackingStartDate são tratáveis;
   // anteriores são SÓ histórico informativo (não viram tx).
   trackingStartDate         DateTime?
-  installmentsPaidBefore    Int        @default(0)
+  installmentsPaidBefore    Int       @default(0)
   // SAC: amortização constante. Permite reconstruir agenda futura quando
   // entramos em andamento.
   amortizationConstant      Float?
   // N primeiras parcelas SEM amortização (só juros/correção). 0 = sem carência.
-  carencia                  Int        @default(0)
-  tarifas                   Float      @default(0)
+  carencia                  Int       @default(0)
+  tarifas                   Float     @default(0)
 
   // Sprint Casar Pagamento (03/08/2026)
   // valor FINANCIADO = principal + IOF + tarifas — base da amortização (SAC divide
   // isto pelo nº de parcelas com amortização). Difere do LIBERADO (ex Banrisul
   // 64956967 liberou 100.000, financiou 103.398,17). Nullable até o cadastro ser
   // corrigido pela tela.
-  financedAmount            Float?
+  financedAmount Float?
   // Comportamento do saldo devedor durante a carência (Loan.carencia meses):
   // JUROS = paga só juros, saldo constante · JUROS_CAPITALIZADOS = juros somam ao
   // saldo (saldo CRESCE — é por isso que agendas com carência nunca fechavam).
-  graceType                 String?
+  graceType      String?
   // Sprint Importar Agenda (04/08/2026): 'GENERATED' (fórmula) | 'IMPORTED' (lida
   // do documento oficial do banco — verdade, não recalcular). Quando IMPORTED, o
   // saldo devedor exibido usa o closing da última paga sem revalidar a fórmula
@@ -2894,10 +2894,10 @@ model Loan {
   // Sprint Dívida Arafat (05/08/2026): 'FLEXIBLE' = mútuo SEM prazo fixo — a
   // agenda é só NOMINAL (referência); devolução conforme caixa. NUNCA marca
   // "Atrasada" nem "Próxima a vencer" (não é financiamento bancário).
-  scheduleSource            String?
+  scheduleSource String?
   // Observação livre exibida na tela — pra alguém daqui a 6 meses entender o
   // contexto (ex: "saldo remanescente de mútuo de 340.000 iniciado em mai/2026").
-  notes                     String?
+  notes          String?
 
   status    String   @default("ACTIVE") // ACTIVE | PAID_OFF | LATE
   createdAt DateTime @default(now())
@@ -2915,26 +2915,26 @@ model LoanInstallment {
   id             String   @id @default(cuid())
   loanId         String
   loan           Loan     @relation(fields: [loanId], references: [id], onDelete: Cascade)
-  number         Int      // 1, 2, 3, …, termMonths
+  number         Int // 1, 2, 3, …, termMonths
   dueDate        DateTime
-  openingBalance Float    // saldo devedor antes da parcela
-  interest       Float    // juros da parcela (saldo * i)
-  amortization   Float    // amortização (PMT - juros pra PRICE; P/n pra SAC)
-  payment        Float    // valor total da parcela (interest + amortization)
-  closingBalance Float    // saldo devedor após a parcela (== openingBalance - amortization)
+  openingBalance Float // saldo devedor antes da parcela
+  interest       Float // juros da parcela (saldo * i)
+  amortization   Float // amortização (PMT - juros pra PRICE; P/n pra SAC)
+  payment        Float // valor total da parcela (interest + amortization)
+  closingBalance Float // saldo devedor após a parcela (== openingBalance - amortization)
 
-  status                   String    @default("OPEN") // OPEN | PAID | LATE
-  paidDate                 DateTime?
-  reconciledTransactionId  String?   @unique
-  reconciledTransaction    Transaction? @relation("LoanInstallmentReconcile", fields: [reconciledTransactionId], references: [id], onDelete: SetNull)
-  createdAt                DateTime @default(now())
+  status                  String       @default("OPEN") // OPEN | PAID | LATE
+  paidDate                DateTime?
+  reconciledTransactionId String?      @unique
+  reconciledTransaction   Transaction? @relation("LoanInstallmentReconcile", fields: [reconciledTransactionId], references: [id], onDelete: SetNull)
+  createdAt               DateTime     @default(now())
 
   // Sprint Empréstimos AI/Contrato (17/06/2026)
   // isEstimate=true → parcela criada como ESTIMATIVA (pós-fixado);
   // ao conciliar, usa o valor REAL debitado e recalcula correção/juros.
   isEstimate  Boolean @default(false)
-  correcao    Float   @default(0)   // parte de indexação (CDI/SELIC/IPCA)
-  realPayment Float?                 // valor REAL debitado quando PAID
+  correcao    Float   @default(0) // parte de indexação (CDI/SELIC/IPCA)
+  realPayment Float? // valor REAL debitado quando PAID
 
   // Sprint Casar Pagamento (03/08/2026) — valores REAIS da baixa (extrato), que
   // podem divergir da estimativa (pós-fixado) ou incluir mora. Identidade:
@@ -2968,16 +2968,68 @@ model LoanInstallment {
 // liquidação). Esta ponte agrupa os lançamentos que quitam UMA parcela, sem
 // mexer no reconciledTransactionId @unique (que fica pro caminho 1:1 legado).
 model LoanInstallmentPayment {
-  id            String   @id @default(cuid())
+  id            String          @id @default(cuid())
   installmentId String
   installment   LoanInstallment @relation(fields: [installmentId], references: [id], onDelete: Cascade)
   transactionId String
-  transaction   Transaction @relation("LoanInstallmentPaymentTx", fields: [transactionId], references: [id], onDelete: Cascade)
+  transaction   Transaction     @relation("LoanInstallmentPaymentTx", fields: [transactionId], references: [id], onDelete: Cascade)
   amount        Float
-  createdAt     DateTime @default(now())
+  createdAt     DateTime        @default(now())
 
   @@unique([installmentId, transactionId])
   @@index([installmentId])
   @@index([transactionId])
   @@map("loan_installment_payments")
+}
+
+// ============================================================================
+// VENDAS — FASE 1 (17/08/2026). PerfilRecebimento = quando o dinheiro de cada
+// meio/conta chega (D+N útil, recebe fim de semana?), COM VIGÊNCIA (a Cacula
+// migrou o PIX pra Tuna em 12/08 — antes/depois são dois mundos). Tudo aditivo.
+// REGRA 8: companyId NOT NULL + indexado em toda tabela do módulo.
+// ============================================================================
+
+model PerfilRecebimento {
+  id             String   @id @default(cuid())
+  companyId      String   @unique // 1 perfil por empresa
+  semanaComecaEm String   @default("SEG") // SEG..DOM (default SEG)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  regras RegraRecebimento[]
+
+  @@map("perfil_recebimento")
+}
+
+model RegraRecebimento {
+  id                 String    @id @default(cuid())
+  perfilId           String
+  companyId          String // denormalizado (REGRA 8: query direta + isolamento)
+  bankAccountId      String // conta a que a regra se aplica (o cofre CASH é uma conta)
+  meio               String // PIX | CARTAO | DINHEIRO | OUTRO
+  diasUteisAtraso    Int       @default(1) // D+N útil (0 = D+0)
+  recebeSabDom       Boolean   @default(false)
+  vigenteDe          DateTime
+  vigenteAte         DateTime? // null = aberto
+  origemHint         String? // ex "TUNA PAGAMENTO", "Pix | Maquininha"
+  confirmadoPeloDono Boolean   @default(false) // false = default assumido → flag na tela
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  perfil PerfilRecebimento @relation(fields: [perfilId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, bankAccountId, meio, vigenteDe])
+  @@map("regra_recebimento")
+}
+
+model FeriadoMunicipal {
+  id        String   @id @default(cuid())
+  companyId String
+  data      DateTime // dia (00:00 UTC) — não é decisão de relógio, é dado
+  nome      String
+  createdAt DateTime @default(now())
+
+  @@unique([companyId, data])
+  @@index([companyId])
+  @@map("feriado_municipal")
 }
