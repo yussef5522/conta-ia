@@ -3033,3 +3033,48 @@ model FeriadoMunicipal {
   @@index([companyId])
   @@map("feriado_municipal")
 }
+
+// VENDAS FASE 1 item 3 (17/08) — VendaDiaria DERIVADA de Transaction (recomputável,
+// nunca fonte primária). Float (padrão do repo; Transaction.amount é Float).
+// anotacoes = JSON stringificado (Json não roda no SQLite dev). Aditivo.
+model VendaDiaria {
+  id                 String    @id @default(cuid())
+  companyId          String // REGRA 8: NOT NULL + indexado
+  dataCompetencia    DateTime // inicio do intervalo de competência
+  dataCompetenciaFim DateTime // fim (= inicio se dia único; bloco de fim de semana no cartão)
+  meio               String // PIX | CARTAO | DINHEIRO | OUTRO
+  tipo               String    @default("VENDA") // VENDA | ESTORNO
+  valorLiquido       Float
+  valorBruto         Float? // fase 2 (adquirente)
+  quantidade         Int? // fase 2
+  origem             String    @default("EXTRATO_INFERIDO") // EXTRATO_INFERIDO | AJUSTE_DONO | ADQUIRENTE(fase2)
+  status             String    @default("ESTIMADO") // ESTIMADO | CONFIRMADO | AGUARDANDO
+  isBloco            Boolean   @default(false)
+  confirmadoPerfil   Boolean   @default(false) // regra do perfil confirmada pelo dono
+  anotacoes          String? // JSON [{tipo:FERIADO|PROMOCAO|EVENTO|CLIMA|OUTRO, texto}]
+  criadoEm           DateTime  @default(now())
+  criadoPor          String?
+  confirmadoPor      String?
+  confirmadoEm       DateTime?
+  motivo             String?
+  updatedAt          DateTime  @updatedAt
+
+  origens VendaDiariaTransacao[]
+
+  @@index([companyId, dataCompetencia])
+  @@map("venda_diaria")
+}
+
+model VendaDiariaTransacao {
+  id            String      @id @default(cuid())
+  vendaId       String
+  transactionId String
+  valor         Float
+  createdAt     DateTime    @default(now())
+
+  venda VendaDiaria @relation(fields: [vendaId], references: [id], onDelete: Cascade)
+
+  @@unique([vendaId, transactionId])
+  @@index([transactionId])
+  @@map("venda_diaria_transacao")
+}
