@@ -15,6 +15,22 @@ interface Bloco { inicio: string; fim: string; total: number; porMeio: Record<st
 interface VendasData { mes: string; moduleInicio: string | null; hoje: string; dias: Record<string, DiaVenda>; blocos: Bloco[] }
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+
+// O card do fim de semana = o bloco (cartão) + os dias únicos que ele engloba
+// (PIX/dinheiro de 14,15,16). Total 62.090,93, não só o bloco 28.422,17.
+function fimDeSemanaAgg(data: VendasData, bloco: Bloco): { total: number; porMeio: Record<string, number> } {
+  const porMeio: Record<string, number> = { ...bloco.porMeio }
+  let total = bloco.total
+  let cur = parseDia(bloco.inicio)
+  const fim = parseDia(bloco.fim)
+  while (cur.getTime() <= fim.getTime()) {
+    const k = cur.toISOString().slice(0, 10)
+    const d = data.dias[k]
+    if (d) { total += d.total; for (const [m, v] of Object.entries(d.porMeio)) porMeio[m] = (porMeio[m] ?? 0) + v }
+    cur = new Date(cur.getTime() + 86400000)
+  }
+  return { total: Math.round((total + 1e-9) * 100) / 100, porMeio }
+}
 const DOW = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb']
 const MESNOME = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']
 const parseDia = (s: string) => new Date(s + 'T12:00:00Z')
@@ -41,12 +57,16 @@ export default function VendasPage({ params }: { params: Promise<{ id: string }>
       .catch((e) => setErro(e.message))
   }, [id, mes])
 
-  // Unidades de venda (dias únicos + blocos) com competência, pra Bloco 1.
+  // Unidades de EXIBIÇÃO: dias de semana avulsos + GRUPO de fim de semana (bloco +
+  // dias que ele engloba, merged). Sem double-count (bloco=cartão, dias=PIX/dinheiro,
+  // disjuntos). Usado pro toggle e é a mesma lógica do calendário.
   const unidades = useMemo(() => {
     if (!data) return []
+    const cobertos = new Set<string>()
+    for (const b of data.blocos) { let c = parseDia(b.inicio); const f = parseDia(b.fim); while (c.getTime() <= f.getTime()) { cobertos.add(c.toISOString().slice(0, 10)); c = new Date(c.getTime() + 86400000) } }
     const us: { inicio: string; fim: string; total: number; porMeio: Record<string, number>; isBloco: boolean }[] = []
-    for (const [d, v] of Object.entries(data.dias)) us.push({ inicio: d, fim: d, total: v.total, porMeio: v.porMeio, isBloco: false })
-    for (const b of data.blocos) us.push({ inicio: b.inicio, fim: b.fim, total: b.total, porMeio: b.porMeio, isBloco: true })
+    for (const [d, v] of Object.entries(data.dias)) if (!cobertos.has(d)) us.push({ inicio: d, fim: d, total: v.total, porMeio: v.porMeio, isBloco: false })
+    for (const b of data.blocos) { const ag = fimDeSemanaAgg(data, b); us.push({ inicio: b.inicio, fim: b.fim, total: ag.total, porMeio: ag.porMeio, isBloco: true }) }
     return us.sort((a, b) => (a.fim < b.fim ? -1 : 1))
   }, [data])
 
@@ -81,7 +101,9 @@ export default function VendasPage({ params }: { params: Promise<{ id: string }>
     if (!sel) return null
     if (sel.tipo === 'dia') { const v = data.dias[sel.key]; return v ? { total: v.total, porMeio: v.porMeio, titulo: fmtDiaCurto(sel.key) } : null }
     const b = data.blocos.find((x) => `${x.inicio}|${x.fim}` === sel.key)
-    return b ? { total: b.total, porMeio: b.porMeio, titulo: `Fim de semana ${fmtDiaCurto(b.inicio)} – ${fmtDiaCurto(b.fim)}` } : null
+    if (!b) return null
+    const ag = fimDeSemanaAgg(data, b)
+    return { total: ag.total, porMeio: ag.porMeio, titulo: `Fim de semana ${fmtDiaCurto(b.inicio)} – ${fmtDiaCurto(b.fim)}` }
   })()
 
   return (
@@ -216,11 +238,12 @@ function SemanaRow({ row, inicio, hoje, data, blocoDoDia, maxVenda, onSel, sel }
         if (blocoCobreFDS && ci === 4) {
           const selKey = `${bloco.inicio}|${bloco.fim}`
           const on = sel?.tipo === 'bloco' && sel.key === selKey
+          const ag = fimDeSemanaAgg(data, bloco)
           return (
             <button key={ci} onClick={() => onSel(on ? null : { tipo: 'bloco', key: selKey })}
               className={`col-span-3 rounded-md border p-2 text-left transition-colors bg-sky-100 border-sky-300 hover:bg-sky-200 ${on ? 'ring-2 ring-sky-500' : ''}`}>
-              <div className="text-[10px] text-sky-700">fim de semana {parseDia(bloco.inicio).getUTCDate()}–{parseDia(bloco.fim).getUTCDate()}</div>
-              <div className="text-sm font-semibold tabular-nums text-sky-800">~{brl(bloco.total)}</div>
+              <div className="text-[10px] text-sky-700">fim de semana {parseDia(bloco.inicio).getUTCDate()}–{parseDia(bloco.fim).getUTCDate()} · sex+sáb+dom</div>
+              <div className="text-sm font-semibold tabular-nums text-sky-800">~{brl(ag.total)}</div>
             </button>
           )
         }
