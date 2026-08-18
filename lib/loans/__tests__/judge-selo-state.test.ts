@@ -34,6 +34,12 @@ describe('judgeSeloState — 4 estados DISTINTOS (bug do amarelo, 16/08)', () =>
     expect(s.label).toContain('2 falhas')
   })
 
+  it('VERMELHO por I10: dupIssues>0 mesmo com totalFail/balance 0 → conta a duplicata', () => {
+    const s = judgeSeloState(rep({ passed: false, totalFail: 0, balanceIssues: 0, dupIssues: 1 }), NOW)
+    expect(s.tone).toBe('red')
+    expect(s.label).toContain('1 falha')
+  })
+
   it('a IDADE decide (não a existência): mesmo relatório, 23h=verde vs 25h=amarelo', () => {
     expect(judgeSeloState(rep({ runAt: new Date(NOW - 23 * 3.6e6).toISOString() }), NOW).tone).toBe('green')
     expect(judgeSeloState(rep({ runAt: new Date(NOW - 25 * 3.6e6).toISOString() }), NOW).tone).toBe('yellow')

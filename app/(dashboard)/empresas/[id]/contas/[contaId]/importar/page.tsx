@@ -47,6 +47,11 @@ interface PreviewResult {
   // serão importadas. Seção separada não-selecionável (o banco viu; o sistema
   // decidiu não importar). NÃO some em silêncio.
   futuras?: Array<{ date: string; signedAmount: number; memo: string; fitid: string }>
+  // Preview=Confirm (bug PIX 7.000, 17/08) — contagem pelo MESMO reconcile do confirm
+  // (reconcileStatement sobre TODAS as linhas do arquivo). `jaExistem` = quantas do
+  // arquivo já estão no sistema (overlap); `novas` = quantas o confirm criaria. É a
+  // verdade — o preview antigo dizia só "novas" pelo gate (cego pra tx do V2).
+  reconcileDedup?: { jaExistem: number; novas: number } | null
   // FASE 2 (12/08) — perfil do banco resolvido pelo BANKID + warning pra tela
   // (banco desconhecido/ficha incompleta → o usuário VÊ na hora, não só no log).
   bankProfile?: {
@@ -1145,6 +1150,22 @@ export default function ImportarOFXPage() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Preview=Confirm (bug PIX 7.000): a verdade do overlap pelo MESMO reconcile
+              do confirm. Se "já existem" > 0, o arquivo re-cobre um período já importado
+              — o confirm NÃO recria essas. É o número pra decidir importar com segurança. */}
+          {preview.reconcileDedup && (
+            <Card className="border-sky-300 bg-sky-50 dark:bg-sky-950/20">
+              <CardContent className="py-3">
+                <p className="text-sm text-sky-900 dark:text-sky-200">
+                  <span className="font-semibold">{preview.reconcileDedup.jaExistem}</span> já existe{preview.reconcileDedup.jaExistem !== 1 ? 'm' : ''} no sistema
+                  {' + '}
+                  <span className="font-semibold">{preview.reconcileDedup.novas}</span> nova{preview.reconcileDedup.novas !== 1 ? 's' : ''}
+                  <span className="text-sky-700 dark:text-sky-400"> — conferido pela mesma reconciliação que o confirm usa (não recria o que já existe).</span>
+                </p>
+              </CardContent>
+            </Card>
+          )}
 
           {preview.errosParser.length > 0 && (
             <Card className="border-yellow-300 bg-yellow-50 dark:bg-yellow-950/20">

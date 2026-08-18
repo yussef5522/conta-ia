@@ -21,7 +21,7 @@ function parseDetail(d: unknown): unknown {
   if (typeof d === 'string') {
     try { return JSON.parse(d) } catch { /* detail corrompido — cai no default */ }
   }
-  return { byCompany: [], sharedTx: [], balanceChecks: [] }
+  return { byCompany: [], sharedTx: [], balanceChecks: [], dupStableKey: [] }
 }
 
 export async function GET(request: NextRequest) {
@@ -45,8 +45,9 @@ export async function POST(request: NextRequest) {
         totalContracts: rep.totalContracts,
         totalFail: rep.totalFail,
         balanceIssues: rep.balanceIssues,
+        dupIssues: rep.dupIssues,
         durationMs: rep.durationMs,
-        detail: JSON.stringify({ byCompany: rep.byCompany, sharedTx: rep.sharedTx, balanceChecks: rep.balanceChecks }),
+        detail: JSON.stringify({ byCompany: rep.byCompany, sharedTx: rep.sharedTx, balanceChecks: rep.balanceChecks, dupStableKey: rep.dupStableKey }),
       },
     })
     return NextResponse.json({ ok: true, report: { ...saved, detail: parseDetail(saved.detail as unknown) } })

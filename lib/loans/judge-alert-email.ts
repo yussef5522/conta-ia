@@ -7,16 +7,18 @@ export interface JudgeAlertInput {
   totalContracts: number
   totalFail: number
   balanceIssues: number
+  dupIssues?: number
   byCompany: { name: string; contracts: number; fails: { contract: string; fails: string[] }[] }[]
   sharedTx: { txId: string; parcelas: string[] }[]
   balanceChecks: { name: string; stored: number; recomputed: number; delta: number }[]
+  dupStableKey?: { accountName: string; stableKey: string; txIds: string[]; date: string; amount: number; memo: string }[]
   juizUrl: string
 }
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
 export function buildJudgeAlertEmail(i: JudgeAlertInput): { subject: string; html: string } {
-  const nFalhas = i.totalFail + i.sharedTx.length + i.balanceIssues
+  const nFalhas = i.totalFail + i.sharedTx.length + i.balanceIssues + (i.dupIssues ?? 0)
   const subject = `🔴 Juiz de módulo: ${nFalhas} falha${nFalhas === 1 ? '' : 's'} (${i.runAt.toLocaleDateString('pt-BR')})`
 
   const linhas: string[] = []
@@ -30,6 +32,9 @@ export function buildJudgeAlertEmail(i: JudgeAlertInput): { subject: string; htm
   }
   for (const b of i.balanceChecks) {
     linhas.push(`<li><b>I9 saldo ≠ Σtx</b> · ${b.name} → gravado <b>${brl(b.stored)}</b> vs recalculado <b>${brl(b.recomputed)}</b> (diferença <b style="color:#b91c1c">${brl(b.delta)}</b>)</li>`)
+  }
+  for (const d of i.dupStableKey ?? []) {
+    linhas.push(`<li><b>I10 duplicata de tx</b> · ${d.accountName} → ${d.date} ${brl(d.amount)} <code>${d.memo}</code> criada ${d.txIds.length}× (mesma linha, imports diferentes): <code>${d.txIds.join(', ')}</code></li>`)
   }
   if (linhas.length === 0) linhas.push('<li>(sem detalhe — verifique o painel)</li>')
 

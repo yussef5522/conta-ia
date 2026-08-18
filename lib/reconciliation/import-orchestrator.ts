@@ -30,7 +30,7 @@ import { buildLineDedupHash, makeOccurrenceCounter } from './line-dedup-hash'
 import { isReconcileV2Enabled } from './flag'
 import { recalcularSaldoConta } from '@/lib/balance/recalcular'
 import { createOfxImportRecord, finalizeOfxImport } from '@/lib/ofx/persist-import'
-import type { DbBankTransaction } from './types'
+import type { DbBankTransaction, StatementLine, ReconcileResult } from './types'
 
 export interface ImportOrchestratorInput {
   bankAccountId: string
@@ -123,6 +123,84 @@ export function resolveLineOverride(
     : { categoryId: null, status: 'PENDING', classificationSource: null, aiConfidence: null }
 }
 
+/**
+ * DEDUP ÚNICO DO IMPORT (extraído 17/08, bug PIX 7.000). Monta o universo de tx
+ * existentes (EFFECTED + PAYABLE/RECEIVABLE, com SINAL correto via transferDirection)
+ * e roda o reconcileStatement. É a MESMA decisão de "o que já existe" no PREVIEW e
+ * no CONFIRM — os dois chamam esta função → NÃO TÊM COMO DIVERGIR (REGRA 5). O confirm
+ * insere `result.missing` (novas); o preview conta `result.matched` (já existem) vs
+ * `result.missing` (novas). Antes disso o preview deduplcava por gate/dedupHash (cego
+ * pra tx do V2) e dizia "N novas" enquanto o confirm deduplcava por stableKey — telas
+ * diferentes pro mesmo arquivo, e foi por aí que a duplicata passou no preview.
+ * `db` aceita PrismaClient (preview, read-only) OU TransactionClient (confirm).
+ */
+export async function reconcileImportLines(
+  db: PrismaClient | Prisma.TransactionClient,
+  args: {
+    bankAccountId: string
+    allLines: StatementLine[] // todas as linhas do arquivo (largura da janela)
+    realLines: StatementLine[] // só as reais (pós-juiz/partição) — entram no reconcile
+    dtAsOf: Date
+    today?: Date
+    judgeRan: boolean
+  },
+): Promise<{ result: ReconcileResult; dbPending: DbPendingRow[]; minDate: Date }> {
+  const { bankAccountId, allLines, realLines, dtAsOf, today, judgeRan } = args
+  const minDate = allLines.reduce((m, l) => (l.datePosted < m ? l.datePosted : m), allLines[0].datePosted)
+
+  const dbEffected = await db.transaction.findMany({
+    where: { bankAccountId, lifecycle: 'EFFECTED', date: { gte: minDate, lte: dtAsOf } },
+    select: {
+      id: true, date: true, createdAt: true, type: true, amount: true,
+      // ⚠️ transferDirection OBRIGATÓRIO (bug PIX 7.000): sem ele o sinal da TRANSFER
+      // sai do fallback createdAt e pode INVERTER → duplicata. NUNCA remover. (REGRA 4)
+      bankAccountId: true, transferGroupId: true, transferDirection: true,
+      externalId: true, description: true,
+    },
+  })
+
+  const dbPending = await db.transaction.findMany({
+    where: {
+      bankAccountId,
+      lifecycle: { in: ['PAYABLE', 'RECEIVABLE'] },
+      date: { gte: minDate, lte: new Date(dtAsOf.getTime() + 365 * 24 * 60 * 60 * 1000) },
+    },
+    select: {
+      id: true, date: true, type: true, amount: true, description: true,
+      lifecycle: true, externalId: true, transferGroupId: true,
+      reconcileGroupId: true, reconciledWithId: true,
+    },
+  })
+
+  const groupIds = [...new Set(dbEffected.filter((t) => t.transferGroupId).map((t) => t.transferGroupId!))]
+  const sisters = groupIds.length
+    ? await db.transaction.findMany({
+        where: { transferGroupId: { in: groupIds }, bankAccountId: { not: bankAccountId } },
+        select: {
+          id: true, date: true, createdAt: true, type: true, amount: true,
+          // transferDirection obrigatório aqui também (perna-irmã cross-account).
+          bankAccountId: true, transferGroupId: true, transferDirection: true,
+        },
+      })
+    : []
+
+  const allForPrepare: any[] = [...dbEffected, ...sisters]
+  const signedList = prepareBalanceTransactions(allForPrepare as any, bankAccountId)
+  const signedById = new Map(signedList.map((s) => [s.id, s.signedAmount]))
+  const dbBankTxs: DbBankTransaction[] = buildReconcileUniverse(dbEffected, dbPending, signedById)
+
+  const result = reconcileStatement(realLines, dbBankTxs, dtAsOf, today, {
+    skipPreviewSeparation: judgeRan,
+  })
+  return { result, dbPending, minDate }
+}
+
+type DbPendingRow = {
+  id: string; date: Date; type: string; amount: number; description: string | null
+  lifecycle: string; externalId: string | null; transferGroupId: string | null
+  reconcileGroupId: string | null; reconciledWithId: string | null
+}
+
 export async function runImportV2(
   tx: Tx,
   input: ImportOrchestratorInput,
@@ -204,73 +282,17 @@ export async function runImportV2(
     console.log(`[RECONCILE_V2] ${futureLines.length} linha(s) futura(s) descartada(s) (agendado — não importado)`)
   }
 
-  // 2. Janela: minDate → dtAsOf (usa todas as linhas p/ largura; futuras são +tarde)
-  const minDate = lines.reduce((m, l) => (l.datePosted < m ? l.datePosted : m), lines[0].datePosted)
-
-  // 3. Fetch tx EFFECTED da conta na janela (pra reconcile real_lines)
-  // + tx PAYABLE/RECEIVABLE da janela (pra deduplicar previews — evita recriar
-  // o agendado que já existe). Inclui também a janela > dtAsOf pq previews têm
-  // datePosted no FUTURO (ex: PAGAMENTO CARTAO 15/06 quando DTASOF=12/06).
-  const dbEffected = await tx.transaction.findMany({
-    where: {
-      bankAccountId: input.bankAccountId,
-      lifecycle: 'EFFECTED',
-      date: { gte: minDate, lte: dtAsOf },
-    },
-    select: {
-      id: true, date: true, createdAt: true, type: true, amount: true,
-      bankAccountId: true, transferGroupId: true, externalId: true, description: true,
-    },
-  })
-
-  // Pending (PAYABLE/RECEIVABLE) — janela ESTENDIDA pra cobrir previews futuros
-  // (ex: agendado 15/06 > DTASOF 12/06)
-  const dbPending = await tx.transaction.findMany({
-    where: {
-      bankAccountId: input.bankAccountId,
-      lifecycle: { in: ['PAYABLE', 'RECEIVABLE'] },
-      date: { gte: minDate, lte: new Date(dtAsOf.getTime() + 365 * 24 * 60 * 60 * 1000) },
-    },
-    select: {
-      id: true, date: true, type: true, amount: true, description: true,
-      lifecycle: true, externalId: true, transferGroupId: true,
-      reconcileGroupId: true, reconciledWithId: true,
-    },
-  })
-
-  const groupIds = [
-    ...new Set(dbEffected.filter((t) => t.transferGroupId).map((t) => t.transferGroupId!)),
-  ]
-  const sisters = groupIds.length
-    ? await tx.transaction.findMany({
-        where: { transferGroupId: { in: groupIds }, bankAccountId: { not: input.bankAccountId } },
-        select: {
-          id: true, date: true, createdAt: true, type: true, amount: true,
-          bankAccountId: true, transferGroupId: true,
-        },
-      })
-    : []
-
-  const allForPrepare: any[] = [...dbEffected, ...sisters]
-  const signedList = prepareBalanceTransactions(allForPrepare as any, input.bankAccountId)
-  const signedById = new Map(signedList.map((s) => [s.id, s.signedAmount]))
-
-  // Universo de reconcile = EFFECTED (linhas reais já materializadas) + PAYABLE/
-  // RECEIVABLE (previews já existentes). Incluir os pending é o FIX do bug de
-  // duplicata: sem eles, uma linha real que casa com uma preview criada por outro
-  // import virava `missing` e era RECRIADA (duplicata). Agora casa → PROMOVE.
-  // `buildReconcileUniverse` é pura e testada (guarda contra voltar a filtrar só
-  // EFFECTED). Ver reconcile-universe.test.ts.
-  const dbBankTxs: DbBankTransaction[] = buildReconcileUniverse(dbEffected, dbPending, signedById)
-
-  // 4. Reconcile bidirecional (Tier 1 EXACT + Tier 2 FUZZY)
-  // Passa `today` pro corte de preview ser min(DTASOF, today) — cobre
-  // bancos que declaram DTASOF futuro (Sicredi: 30/06 num extrato de 13/06).
-  // Só as linhas REAIS entram no reconcile — as futuras foram descartadas acima.
-  // Quando O JUIZ rodou, só as importáveis chegam aqui e a conciliação é PURA (não
-  // re-separa preview por FITID — a 2ª cópia da heurística que mordeu no 13/08).
-  const result = reconcileStatement(realLines, dbBankTxs, dtAsOf, input.today, {
-    skipPreviewSeparation: judgeRan,
+  // 2-4. DEDUP ÚNICO (universo EFFECTED+PENDING com sinal correto + reconcileStatement).
+  // Mesma função que o PREVIEW chama → preview e confirm não divergem (REGRA 5). O
+  // transferDirection entra no universo (bug PIX 7.000 — sem ele o sinal da TRANSFER
+  // invertia e a linha re-importava como duplicata).
+  const { result, dbPending, minDate } = await reconcileImportLines(tx, {
+    bankAccountId: input.bankAccountId,
+    allLines: lines,
+    realLines,
+    dtAsOf,
+    today: input.today,
+    judgeRan,
   })
 
   // 4.5 CAMADA 2 — DESCARTE DE AGENDADA DO DIA DA ÂNCORA (11/08/2026). A CAMADA 1

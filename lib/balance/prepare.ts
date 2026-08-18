@@ -99,7 +99,18 @@ export function prepareBalanceTransactions(
         result.push({ id: tx.id, date: tx.date, signedAmount: tx.amount, rawType: 'TRANSFER' })
         continue
       }
-      // FALLBACK: tx pré-Fase-2 (transferDirection NULL) — heurística createdAt-ASC
+      // FALLBACK: transferDirection NULL. A Fase 2 populou a direção em massa, então
+      // em prod NENHUMA transferência devia cair aqui. Se caiu, é sinal de um SELECT
+      // que esqueceu `transferDirection` (foi exatamente o bug do PIX 7.000: o dedup
+      // do import mascarava a inversão de sinal por ordem de createdAt). LOGA ALTO —
+      // este fallback é rede pra legado, não caminho normal. Se aparecer no import,
+      // procurar o select faltando (REGRA 4). A heurística createdAt-ASC pode INVERTER
+      // o sinal quando as pernas entram fora da ordem do dinheiro — por isso não dá
+      // pra confiar nela pra dedup.
+      console.warn(
+        `[prepareBalanceTransactions] FALLBACK createdAt pra TRANSFER ${tx.id} (grupo ${tx.transferGroupId}) — transferDirection NULL. ` +
+          `Em prod isso não deveria acontecer (Fase 2 backfillou). Provável SELECT sem transferDirection (ver bug PIX 7.000). O sinal pode sair INVERTIDO.`,
+      )
       const group = transferGroups.get(tx.transferGroupId)
       if (!group || group.length !== 2) {
         // Par corrompido: skip pra não inflar/deflar saldo errado.

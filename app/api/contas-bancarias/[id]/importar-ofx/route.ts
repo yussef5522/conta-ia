@@ -36,7 +36,8 @@ import {
   resolveSetorCategoryId,
 } from '@/lib/categorization/match-setor-pattern'
 import { isReconcileV2Enabled } from '@/lib/reconciliation/flag'
-import { runImportV2 } from '@/lib/reconciliation/import-orchestrator'
+import { runImportV2, reconcileImportLines } from '@/lib/reconciliation/import-orchestrator'
+import type { StatementLine } from '@/lib/reconciliation/types'
 import { toFriendlyImportError } from '@/lib/ofx/import-error-message'
 import {
   applyImportDecisions,
@@ -551,6 +552,39 @@ export async function POST(request: NextRequest, { params }: Params) {
       ;({ realLines: novasReais, futureLines: novasFuturas } = partitionFutureLines(novas, dtAsOfPreview, new Date()))
     }
     bankProfilePayload.judgeBlockWarning = judgeBlockWarning
+
+    // PREVIEW = CONFIRM (bug PIX 7.000, 17/08). O confirm (runImportV2) reconcilia
+    // TODAS as linhas do arquivo via reconcileStatement e IGNORA o gate; o preview
+    // usava gate/dedupHash (cego pra tx criadas pelo V2 — contentHash null, dedupHash
+    // no formato stableKey#import) e por isso dizia "N novas" sem ver o overlap. Aqui
+    // o preview roda o MESMO reconcileImportLines → "N novas + M já existem" batem com
+    // o que o confirm faria. Read-only (prisma, fora de $transaction). Fail-soft: se
+    // falhar, o preview segue sem o número (não bloqueia).
+    let reconcileCount: { jaExistem: number; novas: number } | null = null
+    try {
+      const allStmtLines: StatementLine[] = transactions.map((t) => ({
+        datePosted: t.datePosted,
+        signedAmount: t.type === 'CREDIT' ? t.amount : -t.amount,
+        memo: t.memo,
+        fitid: t.fitid ?? undefined,
+      }))
+      const { result: recon } = await reconcileImportLines(prisma, {
+        bankAccountId: contaId,
+        allLines: allStmtLines,
+        realLines: allStmtLines,
+        dtAsOf: dtAsOfPreview,
+        today: previewToday,
+        judgeRan: false,
+      })
+      reconcileCount = { jaExistem: recon.matched.length, novas: recon.missing.length }
+      console.log(
+        `[importar-ofx preview] reconcile: ${recon.matched.length} já existem + ${recon.missing.length} novas ` +
+          `(${recon.previews.length} futuras) — arquivo com ${allStmtLines.length} linhas`,
+      )
+    } catch (e) {
+      console.error('[importar-ofx preview] reconcileImportLines falhou (não bloqueia):', (e as Error).message)
+    }
+
     const futurasPayload = novasFuturas.map((t) => ({
       date: t.datePosted.toISOString().slice(0, 10),
       signedAmount: t.type === 'CREDIT' ? t.amount : -t.amount,
@@ -570,6 +604,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       return NextResponse.json({
         ...payload,
         futuras: futurasPayload,
+        reconcileDedup: reconcileCount,
         importIdentity: {
           gate: gateResult.stats,
           batchWarnings,
@@ -603,6 +638,7 @@ export async function POST(request: NextRequest, { params }: Params) {
           banco,
         }),
         futuras: futurasPayload,
+        reconcileDedup: reconcileCount,
         importIdentity: {
           gate: gateResult.stats,
           batchWarnings,
@@ -700,6 +736,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       return NextResponse.json({
         ...v2Payload,
         futuras: [...futurasPayload, ...agendadasDia],
+        reconcileDedup: reconcileCount,
         categorySuggestions,
         categoriesForUI,
         ownEntityRefs,

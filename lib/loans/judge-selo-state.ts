@@ -14,6 +14,9 @@ export interface SeloLatest {
   totalContracts: number
   totalFail: number
   balanceIssues: number
+  // I10 (17/08) — duplicatas de tx. Opcional pra compat com relatórios antigos
+  // (antes da coluna): ausente = 0.
+  dupIssues?: number
 }
 
 const hh = (iso: string) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
@@ -33,7 +36,7 @@ export function judgeSeloState(latest: SeloLatest | null, nowMs: number): SeloSt
   // VERDE — último < 24h e 0 falhas
   if (latest.passed) return { tone: 'green', label: `Juiz ${latest.totalContracts - latest.totalFail}/${latest.totalContracts} · ${hh(latest.runAt)}` }
 
-  // VERMELHO — último < 24h e N falhas
-  const n = latest.totalFail + latest.balanceIssues
+  // VERMELHO — último < 24h e N falhas (inclui I10 duplicatas)
+  const n = latest.totalFail + latest.balanceIssues + (latest.dupIssues ?? 0)
   return { tone: 'red', label: `Juiz: ${n} falha${n === 1 ? '' : 's'}` }
 }

@@ -10,16 +10,21 @@
 import type { PrismaClient } from '@prisma/client'
 import { checkModuleInvariants, type InvLoan } from './module-invariants'
 import { recalcularSaldoConta } from '../balance/recalcular'
+import { findDuplicateStableKeys } from './tx-duplicate-invariant'
 
 export interface JudgeReport {
   passed: boolean
   totalContracts: number
   totalFail: number
   balanceIssues: number
+  // I10 (17/08) — duplicata de tx (mesmo stableKey, imports diferentes). Contagem
+  // separada pra o selo/e-mail somarem no total de falhas.
+  dupIssues: number
   durationMs: number
   byCompany: { companyId: string; name: string; contracts: number; fails: { contract: string; fails: string[] }[] }[]
   sharedTx: { txId: string; parcelas: string[] }[]
   balanceChecks: { accountId: string; name: string; stored: number; recomputed: number; delta: number }[]
+  dupStableKey: { accountId: string; accountName: string; stableKey: string; txIds: string[]; date: string; amount: number; memo: string }[]
 }
 
 const r2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
@@ -110,6 +115,25 @@ export async function runModuleJudge(prisma: PrismaClient): Promise<JudgeReport>
   }
 
   const balanceIssues = balanceChecks.length
-  const passed = totalFail === 0 && sharedTx.length === 0 && balanceIssues === 0
-  return { passed, totalContracts, totalFail, balanceIssues, durationMs: Date.now() - start, byCompany, sharedTx, balanceChecks }
+
+  // I10 — DUPLICATA DE TX: 2+ tx EFFECTED com o MESMO stableKey vindas de imports
+  // DIFERENTES (a linha foi criada 2× em vez de deduplicada). Varre o HISTÓRICO
+  // INTEIRO, independente da âncora → fecha a lacuna do saldo/I9, que são cegos pra
+  // duplicata pré-anchor (bug PIX 7.000: a dup era 13/08, o anchor 17/08, ninguém via).
+  // dedupHash = `stableKey#batchId:occ`. Genuíno repeat na MESMA fatura compartilha o
+  // batchId (occ :0/:1); duplicata cross-import tem batchIds DIFERENTES pro mesmo
+  // stableKey. Legado sem esse formato (sha256/null) → não dá pra julgar, pula.
+  const accNames = new Map(accounts.map((a) => [a.id, a.name]))
+  const dupTx = await prisma.transaction.findMany({
+    where: { lifecycle: 'EFFECTED', dedupHash: { not: null }, bankAccountId: { not: null } },
+    select: { id: true, bankAccountId: true, dedupHash: true, date: true, amount: true, description: true },
+  })
+  const dupStableKey = findDuplicateStableKeys(dupTx, accNames)
+  const dupIssues = dupStableKey.length
+
+  const passed = totalFail === 0 && sharedTx.length === 0 && balanceIssues === 0 && dupIssues === 0
+  return {
+    passed, totalContracts, totalFail, balanceIssues, dupIssues,
+    durationMs: Date.now() - start, byCompany, sharedTx, balanceChecks, dupStableKey,
+  }
 }
