@@ -112,14 +112,16 @@ export async function checkCardInvariants(
     }
   }
 
-  // K5 — fila A_CLASSIFICAR (report + alerta por idade).
+  // K5 — fila A_CLASSIFICAR (report + alerta por idade). ⚠️ A idade é por `createdAt`
+  // (quando a linha ENTROU na fila), NÃO pela data da compra — uma parcelada tem data
+  // de compra de meses atrás mas só entrou agora; medir pela compra dá falso-alerta.
   const fila = await db.transaction.findMany({
     where: { category: { companyId, dreGroup: CARD_REVIEW_DRE_GROUP } },
-    select: { amount: true, type: true, date: true },
-    orderBy: { date: 'asc' },
+    select: { amount: true, type: true, createdAt: true },
+    orderBy: { createdAt: 'asc' },
   })
   const filaSoma = round2(fila.reduce((s, t) => s + (t.type === 'CREDIT' ? -t.amount : t.amount), 0))
-  const filaMaisAntigaDias = fila[0] ? Math.floor((now.getTime() - fila[0].date.getTime()) / 86400000) : null
+  const filaMaisAntigaDias = fila[0] ? Math.floor((now.getTime() - fila[0].createdAt.getTime()) / 86400000) : null
   if (filaMaisAntigaDias != null && filaMaisAntigaDias > FILA_ALERTA_DIAS) {
     F('K5', `fila A_CLASSIFICAR: ${fila.length} linhas / ${filaSoma.toFixed(2)} — a mais antiga tem ${filaMaisAntigaDias} dias (> ${FILA_ALERTA_DIAS}; tem que esvaziar)`)
   }
