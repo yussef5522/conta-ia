@@ -5,7 +5,7 @@
 // intocado). ⭐ Competência < moduleInicio (12/08) é descartada pela função pura.
 
 import type { PrismaClient, Prisma } from '@prisma/client'
-import { computeVendasDiarias, type VendaTxInput } from './compute-vendas-diarias'
+import { computeVendasDiarias, type VendaTxInput, type VendaDiariaComputada, type VendaOrigem } from './compute-vendas-diarias'
 import { feriadosNacionaisAnos } from './feriados-nacionais'
 import type { Meio, RegraRecebimento } from './perfil-recebimento'
 
@@ -19,11 +19,14 @@ export interface RecomputeResult {
 
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 
-export async function recomputeVendas(
+/** READ-ONLY: carrega perfil + tx de venda e computa a VendaDiaria esperada, SEM
+ *  persistir. Usado pelo recompute (antes de gravar) E pelos invariantes do juiz
+ *  (V1/V4) — mesma função, impossível a checagem divergir do que grava (REGRA 5). */
+export async function computeExpectedVendas(
   db: Db,
   companyId: string,
   moduleInicio: Date,
-): Promise<RecomputeResult> {
+): Promise<VendaDiariaComputada[]> {
   // 1. Perfil (regras) → meio por conta.
   const regrasDb = await db.regraRecebimento.findMany({ where: { companyId } })
   const regras: RegraRecebimento[] = regrasDb.map((r) => ({
@@ -34,7 +37,7 @@ export async function recomputeVendas(
   const meioPorConta = new Map<string, Meio>()
   for (const r of regras) meioPorConta.set(r.bankAccountId, r.meio as Meio)
   const contasVenda = [...meioPorConta.keys()]
-  if (contasVenda.length === 0) return { vendasCriadas: 0, origensLinkadas: 0, valorTotal: 0 }
+  if (contasVenda.length === 0) return []
 
   // 2. Categorias de venda (RECEITA_BRUTA) da empresa; estorno pelo NOME.
   const cats = await db.category.findMany({ where: { companyId, dreGroup: 'RECEITA_BRUTA' }, select: { id: true, name: true } })
@@ -67,9 +70,22 @@ export async function recomputeVendas(
   for (const t of txs) { anos.add(t.date.getUTCFullYear()); anos.add(t.date.getUTCFullYear() - 1) }
   const feriados = feriadosNacionaisAnos([...anos])
 
-  const computadas = computeVendasDiarias(inputs, regras, feriados, moduleInicio)
+  return computeVendasDiarias(inputs, regras, feriados, moduleInicio)
+}
 
-  // 5. Persistência: apaga só EXTRATO_INFERIDO >= moduleInicio (AJUSTE_DONO intocado),
+export async function recomputeVendas(
+  db: Db,
+  companyId: string,
+  moduleInicio: Date,
+): Promise<RecomputeResult> {
+  const computadas = await computeExpectedVendas(db, companyId, moduleInicio)
+  if (computadas.length === 0) {
+    // Ainda assim limpa EXTRATO_INFERIDO velho (se a empresa tinha perfil e zerou).
+    await db.vendaDiaria.deleteMany({ where: { companyId, origem: 'EXTRATO_INFERIDO', dataCompetencia: { gte: meiaNoite(moduleInicio) } } })
+    return { vendasCriadas: 0, origensLinkadas: 0, valorTotal: 0 }
+  }
+
+  // Persistência: apaga só EXTRATO_INFERIDO >= moduleInicio (AJUSTE_DONO intocado),
   //    insere as novas. Determinístico → idempotente.
   await db.vendaDiaria.deleteMany({
     where: { companyId, origem: 'EXTRATO_INFERIDO', dataCompetencia: { gte: meiaNoite(moduleInicio) } },
@@ -90,7 +106,7 @@ export async function recomputeVendas(
         status: v.status,
         isBloco: v.isBloco,
         confirmadoPerfil: v.confirmado,
-        origens: { create: v.origens.map((o) => ({ transactionId: o.transactionId, valor: o.valor })) },
+        origens: { create: v.origens.map((o: VendaOrigem) => ({ transactionId: o.transactionId, valor: o.valor })) },
       },
     })
     origensLinkadas += v.origens.length

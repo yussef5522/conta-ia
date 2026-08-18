@@ -11,6 +11,7 @@ import type { PrismaClient } from '@prisma/client'
 import { checkModuleInvariants, type InvLoan } from './module-invariants'
 import { recalcularSaldoConta } from '../balance/recalcular'
 import { findDuplicateStableKeys } from './tx-duplicate-invariant'
+import { checkVendasForCompany } from '../vendas/vendas-invariants'
 
 export interface JudgeReport {
   passed: boolean
@@ -25,6 +26,9 @@ export interface JudgeReport {
   sharedTx: { txId: string; parcelas: string[] }[]
   balanceChecks: { accountId: string; name: string; stored: number; recomputed: number; delta: number }[]
   dupStableKey: { accountId: string; accountName: string; stableKey: string; txIds: string[]; date: string; amount: number; memo: string }[]
+  // VENDAS V1-V4 (17/08) — invariantes da VendaDiaria (só competência >= 12/08).
+  vendaIssues: number
+  vendaChecks: { invariante: string; companyName: string; detalhe: string }[]
 }
 
 const r2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
@@ -131,9 +135,23 @@ export async function runModuleJudge(prisma: PrismaClient): Promise<JudgeReport>
   const dupStableKey = findDuplicateStableKeys(dupTx, accNames)
   const dupIssues = dupStableKey.length
 
-  const passed = totalFail === 0 && sharedTx.length === 0 && balanceIssues === 0 && dupIssues === 0
+  // VENDAS V1-V4 — só empresas com perfil de recebimento (módulo ligado); só
+  // competência >= início do módulo (min vigenteDe do perfil = 12/08 na Cacula).
+  const vendaChecks: JudgeReport['vendaChecks'] = []
+  const perfis = await prisma.perfilRecebimento.findMany({ select: { companyId: true } })
+  for (const perfil of perfis) {
+    const primeira = await prisma.regraRecebimento.findFirst({
+      where: { companyId: perfil.companyId }, orderBy: { vigenteDe: 'asc' }, select: { vigenteDe: true },
+    })
+    if (!primeira) continue
+    const fails = await checkVendasForCompany(prisma, perfil.companyId, companies.get(perfil.companyId) ?? perfil.companyId, primeira.vigenteDe)
+    for (const f of fails) vendaChecks.push({ invariante: f.invariante, companyName: f.companyName, detalhe: f.detalhe })
+  }
+  const vendaIssues = vendaChecks.length
+
+  const passed = totalFail === 0 && sharedTx.length === 0 && balanceIssues === 0 && dupIssues === 0 && vendaIssues === 0
   return {
-    passed, totalContracts, totalFail, balanceIssues, dupIssues,
-    durationMs: Date.now() - start, byCompany, sharedTx, balanceChecks, dupStableKey,
+    passed, totalContracts, totalFail, balanceIssues, dupIssues, vendaIssues,
+    durationMs: Date.now() - start, byCompany, sharedTx, balanceChecks, dupStableKey, vendaChecks,
   }
 }

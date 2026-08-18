@@ -23,12 +23,13 @@ async function main() {
       totalFail: rep.totalFail,
       balanceIssues: rep.balanceIssues,
       dupIssues: rep.dupIssues,
+      vendaIssues: rep.vendaIssues,
       durationMs: rep.durationMs,
-      detail: JSON.stringify({ byCompany: rep.byCompany, sharedTx: rep.sharedTx, balanceChecks: rep.balanceChecks, dupStableKey: rep.dupStableKey }),
+      detail: JSON.stringify({ byCompany: rep.byCompany, sharedTx: rep.sharedTx, balanceChecks: rep.balanceChecks, dupStableKey: rep.dupStableKey, vendaChecks: rep.vendaChecks }),
     },
   })
   const stamp = new Date().toISOString()
-  console.log(`[juiz ${stamp}] ${rep.passed ? '✓ OK' : '✗ FALHA'} · ${rep.totalContracts - rep.totalFail}/${rep.totalContracts} contratos · balance ${rep.balanceIssues} · dup ${rep.dupIssues} · ${rep.durationMs}ms`)
+  console.log(`[juiz ${stamp}] ${rep.passed ? '✓ OK' : '✗ FALHA'} · ${rep.totalContracts - rep.totalFail}/${rep.totalContracts} contratos · balance ${rep.balanceIssues} · dup ${rep.dupIssues} · venda ${rep.vendaIssues} · ${rep.durationMs}ms`)
 
   if (!rep.passed) {
     if (!ALERT_TO) {
@@ -44,6 +45,7 @@ async function main() {
         sharedTx: rep.sharedTx,
         balanceChecks: rep.balanceChecks,
         dupStableKey: rep.dupStableKey,
+        vendaChecks: rep.vendaChecks,
         juizUrl: `${BASE}/juiz`,
       })
       const r = await sendEmail({ to: ALERT_TO, subject, html, type: 'juiz-module-alert' })

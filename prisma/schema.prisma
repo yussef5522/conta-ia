@@ -1187,6 +1187,7 @@ model LoanModuleJudgeReport {
   totalFail      Int
   balanceIssues  Int      @default(0)
   dupIssues      Int      @default(0) // I10 (17/08) — duplicatas de tx (mesmo stableKey, imports diferentes)
+  vendaIssues    Int      @default(0) // V1-V4 (17/08) — invariantes da VendaDiaria
   detail         String // JSON stringificado (String, não Json — portabilidade SQLite-dev/Postgres-prod)
   durationMs     Int      @default(0)
 
