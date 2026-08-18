@@ -103,6 +103,17 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     }
   }
 
+  // C6: dueDay != closingDay. Valor EFETIVO (do body ou do cartão) — cobre editar
+  // só um dos dois. Mensagem acionável; o CHECK do banco é a última barreira.
+  const closingEff = data.closingDay ?? card.closingDay
+  const dueEff = data.dueDay ?? card.dueDay
+  if (closingEff === dueEff) {
+    return NextResponse.json(
+      { erro: 'O dia de vencimento não pode ser igual ao de fechamento.', code: 'VALIDATION_FAILED' },
+      { status: 400 },
+    )
+  }
+
   const updated = await prisma.businessCreditCard.update({
     where: { id: cardId },
     data,

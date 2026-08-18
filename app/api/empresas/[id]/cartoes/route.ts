@@ -45,6 +45,10 @@ const createSchema = z.object({
   dueDay: z.coerce.number().int().min(1).max(31),
   closingDayRule: z.enum(['ATUAL', 'PROXIMA']).default('ATUAL'),
   defaultPaymentBankAccountId: z.string().cuid().nullable().optional(),
+}).refine((d) => d.dueDay !== d.closingDay, {
+  // C6: mensagem ACIONÁVEL na app (o CHECK do banco é a última barreira).
+  message: 'O dia de vencimento não pode ser igual ao de fechamento.',
+  path: ['dueDay'],
 })
 
 export async function POST(request: NextRequest, { params }: Params) {
