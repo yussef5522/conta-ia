@@ -9,7 +9,7 @@ const INICIO = CACULA_PERFIL_VIGENTE_DE // 12/08
 const E = (iso: string) => new Date(iso + 'T12:00:00Z') // dataEntrada (dinheiro entrou)
 const comp = (dataIso: string, acc: string, meio: any, opts: any = {}) =>
   computeCompetencia(E(dataIso), acc, meio, REGRAS, F, { moduleInicio: INICIO, ...opts })
-const iv = (c: any) => `${diaUTC(c.inicio)}..${diaUTC(c.fim)}`
+const iv = (c: any) => `${diaUTC(c.inicio!)}..${diaUTC(c.fim!)}`
 
 describe('computeCompetencia — casos REAIS de agosto (uma função)', () => {
   it('cartão Banrisul 17/08 (seg) → bloco {14..16}', () => {
@@ -27,7 +27,7 @@ describe('computeCompetencia — casos REAIS de agosto (uma função)', () => {
   })
   it('Sicredi Tuna 17/08 x3 → 14, 15, 16 em ordem (split, cada um dia único)', () => {
     const dias = [0, 1, 2].map((ordinal) =>
-      diaUTC(comp('2026-08-17', CACULA_IDS.sicrediId, 'PIX', { ordinal, totalNoDia: 3 }).inicio),
+      diaUTC(comp('2026-08-17', CACULA_IDS.sicrediId, 'PIX', { ordinal, totalNoDia: 3 }).inicio!),
     )
     expect(dias).toEqual(['2026-08-14', '2026-08-15', '2026-08-16'])
     const c0 = comp('2026-08-17', CACULA_IDS.sicrediId, 'PIX', { ordinal: 0, totalNoDia: 3 })
@@ -59,7 +59,7 @@ describe('computeCompetencia — casos REAIS de agosto (uma função)', () => {
   it('data ANTES de 12/08 → fora (não computa)', () => {
     const c = comp('2026-08-10', CACULA_IDS.sicrediId, 'PIX')
     expect(c.fora).toBe(true)
-    expect(c.inicio).toBeNull()
+    expect(c.inicio).toBeNull() // fora
   })
   it('bônus — terça após feriado segunda → bloco {sex..seg} (generaliza o bloco)', () => {
     // Feriado fictício na segunda 04/05/2026? 01/05 (sex) já é feriado. Uso ter 05/05:
