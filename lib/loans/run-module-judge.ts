@@ -12,6 +12,7 @@ import { checkModuleInvariants, type InvLoan } from './module-invariants'
 import { recalcularSaldoConta } from '../balance/recalcular'
 import { findDuplicateStableKeys } from './tx-duplicate-invariant'
 import { checkVendasForCompany } from '../vendas/vendas-invariants'
+import { checkCardInvariants } from '../credit-card-pj/card-invariants'
 
 export interface JudgeReport {
   passed: boolean
@@ -29,6 +30,10 @@ export interface JudgeReport {
   // VENDAS V1-V4 (17/08) — invariantes da VendaDiaria (só competência >= 12/08).
   vendaIssues: number
   vendaChecks: { invariante: string; companyName: string; detalhe: string }[]
+  // CARTÃO K1-K7 (18/08)
+  cardIssues: number
+  cardChecks: { invariante: string; companyName: string; detalhe: string }[]
+  cardResumo: { companyName: string; filaCount: number; filaSoma: number; filaMaisAntigaDias: number | null; visionBancos: string[] }[]
 }
 
 const r2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
@@ -149,9 +154,22 @@ export async function runModuleJudge(prisma: PrismaClient): Promise<JudgeReport>
   }
   const vendaIssues = vendaChecks.length
 
-  const passed = totalFail === 0 && sharedTx.length === 0 && balanceIssues === 0 && dupIssues === 0 && vendaIssues === 0
+  // CARTÃO K1-K7 — todas as empresas com cartão. Só competência agosto+.
+  const nowJudge = new Date()
+  const cardChecks: JudgeReport['cardChecks'] = []
+  const cardResumo: JudgeReport['cardResumo'] = []
+  const empresasComCartao = await prisma.businessCreditCard.findMany({ select: { companyId: true }, distinct: ['companyId'] })
+  for (const e of empresasComCartao) {
+    const nome = companies.get(e.companyId) ?? e.companyId
+    const { fails, resumo } = await checkCardInvariants(prisma, e.companyId, nome, nowJudge)
+    for (const f of fails) cardChecks.push({ invariante: f.invariante, companyName: f.companyName, detalhe: f.detalhe })
+    cardResumo.push({ companyName: nome, filaCount: resumo.filaCount, filaSoma: resumo.filaSoma, filaMaisAntigaDias: resumo.filaMaisAntigaDias, visionBancos: resumo.visionBancos })
+  }
+  const cardIssues = cardChecks.length
+
+  const passed = totalFail === 0 && sharedTx.length === 0 && balanceIssues === 0 && dupIssues === 0 && vendaIssues === 0 && cardIssues === 0
   return {
-    passed, totalContracts, totalFail, balanceIssues, dupIssues, vendaIssues,
-    durationMs: Date.now() - start, byCompany, sharedTx, balanceChecks, dupStableKey, vendaChecks,
+    passed, totalContracts, totalFail, balanceIssues, dupIssues, vendaIssues, cardIssues,
+    durationMs: Date.now() - start, byCompany, sharedTx, balanceChecks, dupStableKey, vendaChecks, cardChecks, cardResumo,
   }
 }

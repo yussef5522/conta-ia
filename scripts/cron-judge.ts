@@ -24,12 +24,13 @@ async function main() {
       balanceIssues: rep.balanceIssues,
       dupIssues: rep.dupIssues,
       vendaIssues: rep.vendaIssues,
+      cardIssues: rep.cardIssues,
       durationMs: rep.durationMs,
-      detail: JSON.stringify({ byCompany: rep.byCompany, sharedTx: rep.sharedTx, balanceChecks: rep.balanceChecks, dupStableKey: rep.dupStableKey, vendaChecks: rep.vendaChecks }),
+      detail: JSON.stringify({ byCompany: rep.byCompany, sharedTx: rep.sharedTx, balanceChecks: rep.balanceChecks, dupStableKey: rep.dupStableKey, vendaChecks: rep.vendaChecks, cardChecks: rep.cardChecks, cardResumo: rep.cardResumo }),
     },
   })
   const stamp = new Date().toISOString()
-  console.log(`[juiz ${stamp}] ${rep.passed ? '✓ OK' : '✗ FALHA'} · ${rep.totalContracts - rep.totalFail}/${rep.totalContracts} contratos · balance ${rep.balanceIssues} · dup ${rep.dupIssues} · venda ${rep.vendaIssues} · ${rep.durationMs}ms`)
+  console.log(`[juiz ${stamp}] ${rep.passed ? '✓ OK' : '✗ FALHA'} · ${rep.totalContracts - rep.totalFail}/${rep.totalContracts} contratos · balance ${rep.balanceIssues} · dup ${rep.dupIssues} · venda ${rep.vendaIssues} · cartão ${rep.cardIssues} · ${rep.durationMs}ms`)
 
   if (!rep.passed) {
     if (!ALERT_TO) {
@@ -46,6 +47,7 @@ async function main() {
         balanceChecks: rep.balanceChecks,
         dupStableKey: rep.dupStableKey,
         vendaChecks: rep.vendaChecks,
+        cardChecks: rep.cardChecks,
         juizUrl: `${BASE}/juiz`,
       })
       const r = await sendEmail({ to: ALERT_TO, subject, html, type: 'juiz-module-alert' })

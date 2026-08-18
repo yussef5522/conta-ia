@@ -13,6 +13,8 @@ interface CompanyDetail { companyId: string; name: string; contracts: number; fa
 interface BalanceCheck { accountId: string; name: string; stored: number; recomputed: number; delta: number }
 interface DupCheck { accountName: string; stableKey: string; txIds: string[]; date: string; amount: number; memo: string }
 interface VendaCheck { invariante: string; companyName: string; detalhe: string }
+interface CardCheck { invariante: string; companyName: string; detalhe: string }
+interface CardResumo { companyName: string; filaCount: number; filaSoma: number; filaMaisAntigaDias: number | null; visionBancos: string[] }
 interface Report {
   id: string
   runAt: string
@@ -22,8 +24,9 @@ interface Report {
   balanceIssues: number
   dupIssues?: number
   vendaIssues?: number
+  cardIssues?: number
   durationMs: number
-  detail: { byCompany: CompanyDetail[]; sharedTx: { txId: string; parcelas: string[] }[]; balanceChecks: BalanceCheck[]; dupStableKey?: DupCheck[]; vendaChecks?: VendaCheck[] }
+  detail: { byCompany: CompanyDetail[]; sharedTx: { txId: string; parcelas: string[] }[]; balanceChecks: BalanceCheck[]; dupStableKey?: DupCheck[]; vendaChecks?: VendaCheck[]; cardChecks?: CardCheck[]; cardResumo?: CardResumo[] }
 }
 
 const dt = (iso: string) => new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
@@ -67,7 +70,7 @@ export default function JuizPage() {
           <CardContent className="py-4 space-y-3">
             <div className="flex items-center gap-2">
               {sel.passed ? <ShieldCheck className="h-5 w-5 text-emerald-600" /> : <ShieldAlert className="h-5 w-5 text-rose-600" />}
-              <span className="font-medium">{sel.passed ? 'Tudo OK' : `${sel.totalFail + sel.balanceIssues + (sel.dupIssues ?? 0) + (sel.vendaIssues ?? 0)} falha(s)`}</span>
+              <span className="font-medium">{sel.passed ? 'Tudo OK' : `${sel.totalFail + sel.balanceIssues + (sel.dupIssues ?? 0) + (sel.vendaIssues ?? 0) + (sel.cardIssues ?? 0)} falha(s)`}</span>
               <span className="text-sm text-muted-foreground">· {sel.totalContracts - sel.totalFail}/{sel.totalContracts} contratos · {dt(sel.runAt)} · {sel.durationMs}ms</span>
             </div>
 
@@ -123,8 +126,23 @@ export default function JuizPage() {
                 </ul>
               </div>
             )}
-            {sel.detail.balanceChecks.length === 0 && sel.detail.sharedTx.length === 0 && sel.totalFail === 0 && (sel.detail.dupStableKey?.length ?? 0) === 0 && (sel.detail.vendaChecks?.length ?? 0) === 0 && (
-              <p className="text-xs text-muted-foreground">I6, I9, I10 e Vendas V1-V4: limpos.</p>
+            {(sel.detail.cardChecks?.length ?? 0) > 0 && (
+              <div className="text-sm text-rose-700">
+                <span className="font-medium">Cartão K1-K7 — invariantes:</span>
+                <ul className="ml-4 list-disc">
+                  {sel.detail.cardChecks!.map((c, i) => (
+                    <li key={i}><span className="font-mono">{c.invariante}</span> · {c.companyName}: {c.detalhe}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {(sel.detail.cardResumo ?? []).filter((r) => r.filaCount > 0 || r.visionBancos.length > 0).map((r, i) => (
+              <div key={i} className="text-xs text-muted-foreground">
+                Cartão {r.companyName}: fila A_CLASSIFICAR {r.filaCount} linhas / {r.filaSoma.toFixed(2)}{r.filaMaisAntigaDias != null ? ` (mais antiga ${r.filaMaisAntigaDias}d)` : ''}{r.visionBancos.length ? ` · Vision: ${r.visionBancos.join(', ')}` : ''}
+              </div>
+            ))}
+            {sel.detail.balanceChecks.length === 0 && sel.detail.sharedTx.length === 0 && sel.totalFail === 0 && (sel.detail.dupStableKey?.length ?? 0) === 0 && (sel.detail.vendaChecks?.length ?? 0) === 0 && (sel.detail.cardChecks?.length ?? 0) === 0 && (
+              <p className="text-xs text-muted-foreground">I6, I9, I10, Vendas V1-V4 e Cartão K1-K7: limpos.</p>
             )}
           </CardContent>
         </Card>
@@ -145,7 +163,7 @@ export default function JuizPage() {
                   {dt(r.runAt)}
                 </span>
                 <span className="text-muted-foreground">
-                  {r.totalContracts - r.totalFail}/{r.totalContracts} · {r.passed ? 'ok' : `${r.totalFail + r.balanceIssues + (r.dupIssues ?? 0) + (r.vendaIssues ?? 0)} falha(s)`}
+                  {r.totalContracts - r.totalFail}/{r.totalContracts} · {r.passed ? 'ok' : `${r.totalFail + r.balanceIssues + (r.dupIssues ?? 0) + (r.vendaIssues ?? 0) + (r.cardIssues ?? 0)} falha(s)`}
                 </span>
               </button>
             ))}

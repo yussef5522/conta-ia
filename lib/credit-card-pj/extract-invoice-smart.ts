@@ -40,6 +40,13 @@ const DETERMINISTIC: DeterministicParser[] = [
   },
 ]
 
+/** Banco tem parser determinístico? (K7 do juiz: fatura de banco SEM parser entrou
+ *  por Vision — meta é zero). Casa pelo `match` do registry no nome do banco. */
+export function hasDeterministicParser(bankName: string | null | undefined): boolean {
+  if (!bankName) return false
+  return DETERMINISTIC.some((d) => d.match.test(bankName))
+}
+
 export async function extractInvoiceSmart(
   input: { pdfBytes: Uint8Array; fileName: string },
   deps: ExtractInvoiceDeps = {},
