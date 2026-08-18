@@ -11,6 +11,7 @@ import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { createOfxImportRecord } from '@/lib/ofx/persist-import'
 import { checkCreditCardPjFlag } from '@/lib/credit-card-pj/feature-flag'
+import { faturaNetTotal } from '@/lib/credit-card-pj/fatura-net-total'
 import { computeIdentity } from '@/lib/import-identity/compute-identity'
 
 interface Params { params: Promise<{ id: string; cardId: string }> }
@@ -176,11 +177,11 @@ export async function POST(request: NextRequest, { params }: Params) {
   // Fatura" (totalToPay). Se não fecha, NÃO grava (impossibilidade). Sem totalToPay
   // (banco sem esse campo) pula — não bloqueia leitura legítima.
   if (body.totalToPay != null) {
-    const compras = body.lines
-      .filter((l) => l.kind === 'COMPRA_AVISTA' || l.kind === 'COMPRA_PARCELADA' || l.kind === 'ENCARGO_FINANCEIRO')
-      .reduce((s, l) => s + l.amount, 0)
-    const estornos = body.lines.filter((l) => l.kind === 'ESTORNO').reduce((s, l) => s + l.amount, 0)
-    const netFatura = Math.round((compras - estornos) * 100) / 100
+    // Total pela fn ÚNICA (faturaNetTotal), não recalculando na mão (REGRA 4 —
+    // era o 6º lugar somando DEBIT−CREDIT). ESTORNO→CREDIT (subtrai); resto→DEBIT.
+    const netFatura = faturaNetTotal(
+      body.lines.map((l) => ({ type: l.kind === 'ESTORNO' ? 'CREDIT' : 'DEBIT', amount: l.amount, isCardPayment: false })),
+    ).net
     const diff = Math.round((body.totalToPay - netFatura) * 100) / 100
     if (Math.abs(diff) > 0.02) {
       return NextResponse.json(

@@ -8,7 +8,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { signedFaturaAmount, pickInvoiceMonthByValue } from '@/lib/credit-card-pj/fatura-net-total'
+import { resolvePaidInvoiceMonth } from '@/lib/credit-card-pj/resolve-paid-month'
 
 interface Params { params: Promise<{ id: string; cardId: string }> }
 
@@ -96,18 +96,11 @@ export async function POST(request: NextRequest, { params }: Params) {
   // fatura cujo TOTAL LÍQUIDO bate o valor pago. ⚠️ NÃO "a mais recente": esse era o
   // bug sistêmico — pagamento casado antes da fatura existir ia pro mês errado
   // (o 7.896,32 caiu em julho porque agosto ainda não tinha sido importada).
+  // Competência que quita: a que a tela mandou OU — no default — pela fn ÚNICA
+  // (resolve-paid-month), a MESMA que o import usa (REGRA 4/5).
   let targetInvoiceMonth = body.invoiceMonth ?? null
   if (!targetInvoiceMonth) {
-    const items = await prisma.transaction.findMany({
-      where: { businessCreditCardId: cardId, invoiceMonth: { not: null }, isCardPayment: false },
-      select: { invoiceMonth: true, type: true, amount: true },
-    })
-    const netByMonth = new Map<string, number>()
-    for (const it of items) {
-      const m = it.invoiceMonth as string
-      netByMonth.set(m, (netByMonth.get(m) ?? 0) + signedFaturaAmount(it))
-    }
-    targetInvoiceMonth = pickInvoiceMonthByValue(netByMonth, targetTx.amount)
+    targetInvoiceMonth = await resolvePaidInvoiceMonth(prisma, cardId, targetTx.amount)
   }
 
   // Atomic: marca como pagamento de cartao + vincula ao cartao + amarra à

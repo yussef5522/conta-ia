@@ -20,6 +20,7 @@ import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { isOfxImportV3Enabled } from '@/lib/ofx-v3/feature-flag'
 import type { OfxApplyMarksResult, OfxLineKind } from '@/lib/ofx-v3/types'
+import { resolvePaidInvoiceMonth } from '@/lib/credit-card-pj/resolve-paid-month'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -220,11 +221,17 @@ async function applyMark(
       })
       if (!card) throw new Error('cartão inválido')
       if (tx.type !== 'DEBIT') throw new Error('apenas DEBIT pode ser pagamento de cartão')
+      // ⚠️ FIX (17/08): o import marcava isCardPayment + cartão mas NUNCA setava o
+      // paidInvoiceMonth → a fatura ficava OPEN pra sempre (o Banrisul 13.779,73 de
+      // agosto). Agora casa a competência pela MESMA fn da tela (resolvePaidInvoiceMonth
+      // — por VALOR, não "a mais recente"). REGRA 4/5: um caminho só.
+      const paidInvoiceMonth = await resolvePaidInvoiceMonth(prisma, params.cardId, tx.amount)
       await prisma.transaction.update({
         where: { id: tx.id },
         data: {
           isCardPayment: true,
           businessCreditCardId: params.cardId,
+          paidInvoiceMonth,
           categoryId: null, // pagamento de cartão não é despesa direta
         },
       })
