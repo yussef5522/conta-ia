@@ -12,7 +12,19 @@ import { CalendarDays, Info } from 'lucide-react'
 
 interface DiaVenda { total: number; porMeio: Record<string, number>; estimado: boolean; confirmadoPerfil: boolean }
 interface Bloco { inicio: string; fim: string; total: number; porMeio: Record<string, number>; estimado: boolean; confirmadoPerfil: boolean }
-interface VendasData { mes: string; moduleInicio: string | null; hoje: string; dias: Record<string, DiaVenda>; blocos: Bloco[] }
+interface Balde { samples: number; total: number; media: number }
+interface PerfilSemana { SEG: Balde; TER: Balde; QUA: Balde; QUI: Balde; FDS: Balde }
+interface VendasData { mes: string; moduleInicio: string | null; hoje: string; dias: Record<string, DiaVenda>; blocos: Bloco[]; perfilSemana: PerfilSemana | null }
+
+// Ordem fixa do maior pro menor típico (como o dono pensa), não alfabética.
+const MEIO_ORDER = ['CARTAO', 'PIX', 'DINHEIRO', 'OUTRO']
+const ordenarMeios = (pm: Record<string, number>): [string, number][] =>
+  Object.entries(pm).sort((a, b) => {
+    const ia = MEIO_ORDER.indexOf(a[0]), ib = MEIO_ORDER.indexOf(b[0])
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib)
+  })
+const MIN_AMOSTRAS = 2 // < isso → "a apurar"
+const MEIO_COR: Record<string, string> = { CARTAO: 'bg-sky-500', PIX: 'bg-emerald-500', DINHEIRO: 'bg-amber-500', OUTRO: 'bg-slate-400' }
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
@@ -94,6 +106,17 @@ export default function VendasPage({ params }: { params: Promise<{ id: string }>
     return { label, total: u.total, porMeio: u.porMeio }
   }, [data, unidades, toggle, mes])
 
+  // Composição do MÊS por meio (bloco 4) — soma dias + blocos.
+  const composicaoMes = useMemo(() => {
+    if (!data) return { total: 0, porMeio: {} as Record<string, number> }
+    const pm: Record<string, number> = {}
+    const add = (o: Record<string, number>) => { for (const [m, v] of Object.entries(o)) pm[m] = (pm[m] ?? 0) + v }
+    for (const d of Object.values(data.dias)) add(d.porMeio)
+    for (const b of data.blocos) add(b.porMeio)
+    const total = Object.values(pm).reduce((s, v) => s + v, 0)
+    return { total: Math.round((total + 1e-9) * 100) / 100, porMeio: pm }
+  }, [data])
+
   if (erro) return <div className="p-6 text-sm text-rose-600">Erro: {erro}</div>
   if (!data) return <div className="p-6 text-sm text-muted-foreground">Carregando vendas…</div>
 
@@ -133,7 +156,7 @@ export default function VendasPage({ params }: { params: Promise<{ id: string }>
                 <span className="text-2xl align-top text-sky-400">~</span>{brl(bloco1.total)}
               </p>
               <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
-                {Object.entries(bloco1.porMeio).sort().map(([m, v]) => (
+                {ordenarMeios(bloco1.porMeio).map(([m, v]) => (
                   <span key={m}>{MEIO_LABEL[m] ?? m}: <span className="tabular-nums text-foreground">{brl(v)}</span></span>
                 ))}
               </div>
@@ -165,6 +188,63 @@ export default function VendasPage({ params }: { params: Promise<{ id: string }>
         </CardContent>
       </Card>
 
+      {/* BLOCO 3 — perfil da semana */}
+      <Card>
+        <CardContent className="py-5">
+          <h2 className="text-sm font-medium mb-1">Perfil da semana</h2>
+          <p className="text-xs text-muted-foreground mb-4">Quanto uma [dia] típica vende, na média. Precisa de pelo menos {MIN_AMOSTRAS} semanas por dia — até lá, <span className="italic">a apurar</span>.</p>
+          <PerfilSemanaBloco perfil={data.perfilSemana} />
+        </CardContent>
+      </Card>
+
+      {/* BLOCO 4 — composição por meio (do mês) */}
+      <Card>
+        <CardContent className="py-5">
+          <h2 className="text-sm font-medium mb-1">Composição por meio · {MESNOME[Number(mes.split('-')[1]) - 1]}</h2>
+          <p className="text-xs text-muted-foreground mb-3">Bruto, taxa e líquido por adquirente chegam na fase 2. Estornos aparecem como faixa negativa (0 por enquanto).</p>
+          {composicaoMes.total > 0 ? (
+            <>
+              <div className="flex h-4 w-full overflow-hidden rounded-full">
+                {ordenarMeios(composicaoMes.porMeio).map(([m, v]) => (
+                  <div key={m} className={MEIO_COR[m] ?? 'bg-slate-400'} style={{ width: `${(v / composicaoMes.total) * 100}%` }} title={`${MEIO_LABEL[m] ?? m}: ${brl(v)}`} />
+                ))}
+              </div>
+              <div className="mt-3 space-y-1.5">
+                {ordenarMeios(composicaoMes.porMeio).map(([m, v]) => (
+                  <div key={m} className="flex items-center gap-2 text-sm">
+                    <span className={`inline-block h-3 w-3 rounded-sm ${MEIO_COR[m] ?? 'bg-slate-400'}`} />
+                    <span className="text-muted-foreground w-24">{MEIO_LABEL[m] ?? m}</span>
+                    <span className="tabular-nums font-medium">{brl(v)}</span>
+                    <span className="text-xs text-muted-foreground">({Math.round((v / composicaoMes.total) * 100)}%)</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : <p className="text-sm text-muted-foreground">Sem vendas no mês.</p>}
+        </CardContent>
+      </Card>
+
+      {/* BLOCO 6 — período e comparação */}
+      <Card>
+        <CardContent className="py-5">
+          <h2 className="text-sm font-medium mb-1">Comparações</h2>
+          <p className="text-xs text-muted-foreground mb-3">Semana × semana passada, mês × mês anterior, trimestre, ano × ano. Ligam quando houver histórico suficiente.</p>
+          <div className="space-y-2 text-sm">
+            {[
+              ['Esta semana × semana passada (SDLW)', 'a apurar — 1ª semana'],
+              ['Este mês × mês anterior', 'a apurar — só agosto (desde 12/08)'],
+              ['Trimestre', 'a apurar'],
+              ['Este ano × ano passado (SWLY)', 'a apurar — precisa de 12 meses'],
+            ].map(([k, v]) => (
+              <div key={k} className="flex justify-between border-b pb-1.5 last:border-0">
+                <span className="text-muted-foreground">{k}</span>
+                <span className="italic text-slate-500">{v}</span>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Composição do dia/bloco selecionado */}
       {selData && (
         <Card className="border-sky-200 bg-sky-50/40">
@@ -175,7 +255,7 @@ export default function VendasPage({ params }: { params: Promise<{ id: string }>
             </div>
             <p className="text-2xl font-semibold tabular-nums text-sky-700 mt-1"><span className="text-lg align-top text-sky-400">~</span>{brl(selData.total)}</p>
             <div className="mt-2 space-y-1 text-sm">
-              {Object.entries(selData.porMeio).sort().map(([m, v]) => (
+              {ordenarMeios(selData.porMeio).map(([m, v]) => (
                 <div key={m} className="flex justify-between"><span className="text-muted-foreground">{MEIO_LABEL[m] ?? m}</span><span className="tabular-nums">{brl(v)}</span></div>
               ))}
             </div>
@@ -183,6 +263,34 @@ export default function VendasPage({ params }: { params: Promise<{ id: string }>
           </CardContent>
         </Card>
       )}
+    </div>
+  )
+}
+
+function PerfilSemanaBloco({ perfil }: { perfil: PerfilSemana | null }) {
+  if (!perfil) return <p className="text-sm text-muted-foreground">Perfil não configurado.</p>
+  const dias: [string, Balde][] = [
+    ['Seg', perfil.SEG], ['Ter', perfil.TER], ['Qua', perfil.QUA], ['Qui', perfil.QUI], ['Fim de semana', perfil.FDS],
+  ]
+  const maxMedia = Math.max(1, ...dias.filter(([, b]) => b.samples >= MIN_AMOSTRAS).map(([, b]) => b.media))
+  return (
+    <div className="space-y-2">
+      {dias.map(([label, b]) => {
+        const apurar = b.samples < MIN_AMOSTRAS
+        return (
+          <div key={label} className="flex items-center gap-3 text-sm">
+            <span className="w-28 text-muted-foreground shrink-0">{label}</span>
+            <div className="flex-1 h-6 rounded bg-slate-100 overflow-hidden relative">
+              {!apurar && <div className="h-full bg-sky-400/70" style={{ width: `${(b.media / maxMedia) * 100}%` }} />}
+              <span className="absolute inset-0 flex items-center px-2 text-xs">
+                {apurar
+                  ? <span className="italic text-slate-400">a apurar ({b.samples} de {MIN_AMOSTRAS} semana{b.samples === 1 ? '' : 's'})</span>
+                  : <span className="tabular-nums font-medium text-sky-900">~{brl(b.media)} <span className="text-[10px] text-muted-foreground font-normal">({b.samples} semanas)</span></span>}
+              </span>
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }

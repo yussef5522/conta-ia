@@ -13,6 +13,40 @@ interface Params {
 
 const dia = (d: Date) => d.toISOString().slice(0, 10)
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
+const segundaDaSemana = (d: Date) => { const off = (d.getUTCDay() + 6) % 7; return new Date(d.getTime() - off * 86400000).toISOString().slice(0, 10) }
+
+type Balde = { samples: number; total: number; media: number }
+const balde = (arr: number[]): Balde => {
+  const total = round2(arr.reduce((s, v) => s + v, 0))
+  return { samples: arr.length, total, media: arr.length ? round2(total / arr.length) : 0 }
+}
+
+// Perfil da semana: seg/ter/qua/qui (dias únicos) + FDS (fim de semana por semana:
+// blocos + dias únicos de sex/sáb/dom, somados por semana → 1 amostra por fim de semana).
+async function computePerfilSemana(companyId: string, inicio: Date) {
+  const todas = await prisma.vendaDiaria.findMany({
+    where: { companyId, dataCompetencia: { gte: new Date(Date.UTC(inicio.getUTCFullYear(), inicio.getUTCMonth(), inicio.getUTCDate())) } },
+    select: { dataCompetencia: true, dataCompetenciaFim: true, valorLiquido: true },
+  })
+  const semana: Record<string, number[]> = { SEG: [], TER: [], QUA: [], QUI: [] }
+  const fdsPorSemana: Record<string, number> = {}
+  for (const v of todas) {
+    const wd = v.dataCompetencia.getUTCDay() // 0=dom..6=sáb
+    const ehBloco = v.dataCompetencia.getTime() !== v.dataCompetenciaFim.getTime()
+    if (!ehBloco && wd >= 1 && wd <= 4) {
+      const balde = wd === 1 ? 'SEG' : wd === 2 ? 'TER' : wd === 3 ? 'QUA' : 'QUI'
+      semana[balde].push(v.valorLiquido)
+    } else {
+      // sex/sáb/dom (único) ou bloco → agrega por semana (fim de semana = 1 amostra)
+      const k = segundaDaSemana(v.dataCompetencia)
+      fdsPorSemana[k] = round2((fdsPorSemana[k] ?? 0) + v.valorLiquido)
+    }
+  }
+  return {
+    SEG: balde(semana.SEG), TER: balde(semana.TER), QUA: balde(semana.QUA), QUI: balde(semana.QUI),
+    FDS: balde(Object.values(fdsPorSemana)),
+  }
+}
 
 export async function GET(request: NextRequest, { params }: Params) {
   try {
@@ -61,12 +95,18 @@ export async function GET(request: NextRequest, { params }: Params) {
       }
     }
 
+    // PERFIL DA SEMANA (bloco 3): média por dia da semana sobre TODO o histórico
+    // (>= início do módulo). Baldes: seg/ter/qua/qui + FIM DE SEMANA (sex-dom, por
+    // semana). "a apurar" na tela quando amostras < 2 (histórico insuficiente).
+    const perfilSemana = primeira ? await computePerfilSemana(companyId, primeira.vigenteDe) : null
+
     return NextResponse.json({
       mes: `${ano}-${String(mes).padStart(2, '0')}`,
       moduleInicio: primeira ? dia(primeira.vigenteDe) : null,
       hoje: dia(now), // relógio só pra marcar AGUARDANDO na tela
       dias,
       blocos: Object.values(blocosMap),
+      perfilSemana,
     })
   } catch (e) {
     return handleApiError(e)
