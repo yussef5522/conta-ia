@@ -5,6 +5,7 @@
 // crescer. Fonte única da fila (dreGroup A_CLASSIFICAR) — count/soma/mais-antiga/ids.
 
 import type { PrismaClient, Prisma } from '@prisma/client'
+import { signedFaturaAmount } from './fatura-net-total'
 
 type Db = PrismaClient | Prisma.TransactionClient
 const round2 = (n: number) => Math.round(n * 100) / 100
@@ -26,7 +27,9 @@ export async function getReviewQueue(db: Db, companyId: string, cardId?: string)
     select: { id: true, amount: true, date: true, type: true },
     orderBy: { date: 'asc' },
   })
-  const sum = round2(tx.reduce((s, t) => s + (t.type === 'CREDIT' ? -t.amount : t.amount), 0))
+  // Sinal pela fn ÚNICA (signedFaturaAmount) — não inline (REGRA 4/6: CREDIT subtrai
+  // em TODO Σ, um lugar só define o sinal).
+  const sum = round2(tx.reduce((s, t) => s + signedFaturaAmount(t), 0))
   return {
     count: tx.length,
     sum,
