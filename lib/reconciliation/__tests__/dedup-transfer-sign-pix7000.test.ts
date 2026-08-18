@@ -105,6 +105,22 @@ describe('dedup do import — sinal de TRANSFER (bug PIX 7.000)', () => {
     expect(result.matched.length).toBe(0)
   })
 
+  it('CAMINHO IN (Stone): re-import da perna IN +7000 → casa, 0 novas (bug Stone 17/08)', async () => {
+    // A perna IN do Stone (+7000, dir IN). O select traz transferDirection → o sinal
+    // sai +7000 (não invertido) → o stableKey da linha nova (CREDIT +7000) bate.
+    const db = makeDb([banLeg, stoLeg])
+    const linhaStoneIN: StatementLine = {
+      datePosted: D('2026-08-13T12:00:00Z'), signedAmount: 7000, memo: 'YUSSEF - Transf', fitid: '888',
+    }
+    const { result } = await reconcileImportLines(db, {
+      bankAccountId: 'STO', // reconciliando a conta STONE
+      allLines: [linhaStoneIN], realLines: [linhaStoneIN],
+      dtAsOf: D('2026-08-17T12:00:00Z'), today: D('2026-08-17T12:00:00Z'), judgeRan: true,
+    })
+    expect(result.missing.length).toBe(0) // já existe — não recria (era o bug: virava nova)
+    expect(result.matched.length).toBe(1)
+  })
+
   it('linha genuinamente nova (valor diferente) continua sendo nova', async () => {
     const db = makeDb([banLeg, stoLeg])
     const nova: StatementLine = { datePosted: D('2026-08-16T12:00:00Z'), signedAmount: -1234.5, memo: 'PIX ENVIADO', fitid: '111' }

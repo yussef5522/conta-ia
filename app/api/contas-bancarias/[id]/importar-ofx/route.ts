@@ -38,6 +38,8 @@ import {
 import { isReconcileV2Enabled } from '@/lib/reconciliation/flag'
 import { runImportV2, reconcileImportLines } from '@/lib/reconciliation/import-orchestrator'
 import type { StatementLine } from '@/lib/reconciliation/types'
+import { stableKey } from '@/lib/reconciliation/stable-key'
+import { filterToReconcileMissing } from '@/lib/reconciliation/filter-new-by-reconcile'
 import { toFriendlyImportError } from '@/lib/ofx/import-error-message'
 import {
   applyImportDecisions,
@@ -383,8 +385,9 @@ export async function POST(request: NextRequest, { params }: Params) {
     )
   }
   // Duplicatas TOTAIS: o gate + legacy + decisões SKIP (linha desmarcada
-  // pelo usuário no preview entra na contagem de "não criadas").
-  const duplicadas =
+  // pelo usuário no preview entra na contagem de "não criadas"). `let` porque o
+  // filtro-verdade do reconcile (bug Stone) soma as que o gate não viu como dup.
+  let duplicadas =
     duplicadasNoArquivo + duplicadasNoBanco + gateResult.skipped.length + decisionResult.skipped
 
   // Mapa pra recuperar a identidade canônica de cada `novas[]` (pra salvar
@@ -561,6 +564,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     // o que o confirm faria. Read-only (prisma, fora de $transaction). Fail-soft: se
     // falhar, o preview segue sem o número (não bloqueia).
     let reconcileCount: { jaExistem: number; novas: number } | null = null
+    let reconMissingKeys: Map<string, number> | null = null
     try {
       const allStmtLines: StatementLine[] = transactions.map((t) => ({
         datePosted: t.datePosted,
@@ -577,12 +581,40 @@ export async function POST(request: NextRequest, { params }: Params) {
         judgeRan: false,
       })
       reconcileCount = { jaExistem: recon.matched.length, novas: recon.missing.length }
+      // Multiset dos stableKeys das linhas REALMENTE novas (o que o confirm cria).
+      // A MESMA função stableKey do reconcile (REGRA 4/5) → impossível divergir.
+      reconMissingKeys = new Map()
+      for (const m of recon.missing) {
+        const k = stableKey({ date: m.datePosted, signedAmount: m.signedAmount, memo: m.memo })
+        reconMissingKeys.set(k, (reconMissingKeys.get(k) ?? 0) + 1)
+      }
       console.log(
         `[importar-ofx preview] reconcile: ${recon.matched.length} já existem + ${recon.missing.length} novas ` +
           `(${recon.previews.length} futuras) — arquivo com ${allStmtLines.length} linhas`,
       )
     } catch (e) {
       console.error('[importar-ofx preview] reconcileImportLines falhou (não bloqueia):', (e as Error).message)
+    }
+
+    // FILTRO DA VERDADE (bug Stone 17/08): remove das "novas" as linhas que o
+    // reconcile (= o confirm) diz que JÁ EXISTEM. O gate (filtrarNovasOFX) é cego
+    // pra tx criadas pelo V2 (contentHash null, dedupHash no formato stableKey#import)
+    // → marcava as 11 transferências IN do Stone como novas (117.600 fantasma) e o
+    // juiz de saldo acusava. O confirm (runImportV2→reconcileImportLines) NUNCA as
+    // criaria (casa por stableKey), mas a TELA mentia. Agora a lista e o juiz de saldo
+    // usam a verdade do reconcile. Se o reconcile falhou (reconMissingKeys null),
+    // mantém o gate (fail-soft, não trava o import legítimo).
+    if (reconMissingKeys) {
+      const { kept, removed } = filterToReconcileMissing(
+        novasReais,
+        (t) => stableKey({ date: t.datePosted, signedAmount: t.type === 'CREDIT' ? t.amount : -t.amount, memo: t.memo }),
+        reconMissingKeys,
+      )
+      novasReais = kept
+      if (removed > 0) {
+        duplicadas += removed // as removidas são "já existem"
+        console.log(`[importar-ofx preview] filtro-verdade: ${removed} "novas" já existem (reconcile) → removidas da lista/juiz`)
+      }
     }
 
     const futurasPayload = novasFuturas.map((t) => ({
