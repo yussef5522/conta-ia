@@ -36,7 +36,6 @@ import {
   Sparkles,
   Landmark,
   HandCoins,
-  Store,
   CreditCard,
   Inbox,
   Workflow,
