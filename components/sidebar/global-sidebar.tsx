@@ -36,6 +36,7 @@ import {
   Sparkles,
   Landmark,
   HandCoins,
+  Store,
   CreditCard,
   Inbox,
   Workflow,
@@ -184,6 +185,15 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
             label="Transferências"
             href={`/empresas/${currentEmpresaId}/transferencias`}
             isActive={/^\/empresas\/[^/]+\/transferencias(\/|$)/.test(pathname) || pathname === '/transferencias'}
+            onClick={onNavigate}
+          />
+        )}
+        {currentEmpresaId && (
+          <SidebarItem
+            icon={Store}
+            label="Vendas"
+            href={`/empresas/${currentEmpresaId}/vendas`}
+            isActive={/^\/empresas\/[^/]+\/vendas(\/|$)/.test(pathname)}
             onClick={onNavigate}
           />
         )}
