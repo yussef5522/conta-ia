@@ -28,19 +28,26 @@ async function computePerfilSemana(companyId: string, inicio: Date) {
     where: { companyId, dataCompetencia: { gte: new Date(Date.UTC(inicio.getUTCFullYear(), inicio.getUTCMonth(), inicio.getUTCDate())) } },
     select: { dataCompetencia: true, dataCompetenciaFim: true, valorLiquido: true },
   })
-  const semana: Record<string, number[]> = { SEG: [], TER: [], QUA: [], QUI: [] }
-  const fdsPorSemana: Record<string, number> = {}
+  // 1 amostra = 1 DIA (soma dos meios), não 1 VendaDiaria por meio.
+  const porDiaUnico: Record<string, number> = {} // 'YYYY-MM-DD' → total do dia (seg-qui)
+  const fdsPorSemana: Record<string, number> = {} // segunda-da-semana → total do fim de semana
   for (const v of todas) {
     const wd = v.dataCompetencia.getUTCDay() // 0=dom..6=sáb
     const ehBloco = v.dataCompetencia.getTime() !== v.dataCompetenciaFim.getTime()
     if (!ehBloco && wd >= 1 && wd <= 4) {
-      const balde = wd === 1 ? 'SEG' : wd === 2 ? 'TER' : wd === 3 ? 'QUA' : 'QUI'
-      semana[balde].push(v.valorLiquido)
+      const k = dia(v.dataCompetencia)
+      porDiaUnico[k] = round2((porDiaUnico[k] ?? 0) + v.valorLiquido)
     } else {
       // sex/sáb/dom (único) ou bloco → agrega por semana (fim de semana = 1 amostra)
       const k = segundaDaSemana(v.dataCompetencia)
       fdsPorSemana[k] = round2((fdsPorSemana[k] ?? 0) + v.valorLiquido)
     }
+  }
+  const semana: Record<string, number[]> = { SEG: [], TER: [], QUA: [], QUI: [] }
+  for (const [k, total] of Object.entries(porDiaUnico)) {
+    const wd = new Date(k + 'T12:00:00Z').getUTCDay()
+    const b = wd === 1 ? 'SEG' : wd === 2 ? 'TER' : wd === 3 ? 'QUA' : 'QUI'
+    semana[b].push(total) // 1 amostra por dia
   }
   return {
     SEG: balde(semana.SEG), TER: balde(semana.TER), QUA: balde(semana.QUA), QUI: balde(semana.QUI),
