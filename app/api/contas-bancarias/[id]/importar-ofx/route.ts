@@ -40,6 +40,7 @@ import { runImportV2, reconcileImportLines } from '@/lib/reconciliation/import-o
 import type { StatementLine } from '@/lib/reconciliation/types'
 import { stableKey } from '@/lib/reconciliation/stable-key'
 import { filterToReconcileMissing } from '@/lib/reconciliation/filter-new-by-reconcile'
+import { recomputeVendasSafe } from '@/lib/vendas/recompute-hook'
 import { toFriendlyImportError } from '@/lib/ofx/import-error-message'
 import {
   applyImportDecisions,
@@ -189,6 +190,10 @@ export async function POST(request: NextRequest, { params }: Params) {
           }),
         { timeout: 120000, maxWait: 10000 },
       )
+      // GATILHO DE VENDAS (fail-soft, APÓS o commit): o import pode ter criado venda
+      // nova → recompute a VendaDiaria da empresa. NUNCA derruba o import — se falhar,
+      // loga e segue; o juiz noturno pega (V1 vermelho de manhã). Por companyId.
+      await recomputeVendasSafe(prisma, conta.companyId)
       // Contrato: mantém os campos essenciais do legado (`mensagem`,
       // `inseridas`, `duplicadas`, `importId`, `errosParser`) + adiciona
       // métricas novas do V2 (preview/orphan/ledgerBalance).

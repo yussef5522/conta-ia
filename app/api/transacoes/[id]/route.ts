@@ -9,6 +9,7 @@ import { handleApiError } from '@/lib/api/handle-error'
 import { recordRuleOverride } from '@/lib/ai-categorizer/apply'
 import { autoMemorizeVendor } from '@/lib/categorization/auto-memorize-vendor'
 import { counterpartyRulePattern, CONTRAPARTE_TIPO_MATCH } from '@/lib/counterparty/rules'
+import { recomputeVendasSeVenda } from '@/lib/vendas/recompute-hook'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -265,6 +266,13 @@ export async function PUT(request: NextRequest, { params }: Params) {
         // Silencioso — falha de memória não bloqueia categorização
         console.error('[AUTO_MEMORIZE] erro:', e)
       }
+    }
+
+    // GATILHO DE VENDAS (fail-soft): se a categoria (antiga OU nova) é venda, o
+    // recompute atualiza a VendaDiaria. Por companyId, nunca global; nunca derruba
+    // a resposta (o juiz noturno pega). recategorizar venda→não-venda também dispara.
+    if (antiga.bankAccount?.companyId) {
+      await recomputeVendasSeVenda(prisma, antiga.bankAccount.companyId, [antiga.categoryId, categoryIdFinal])
     }
 
     return NextResponse.json({ transacao, vendorMemory })

@@ -4,6 +4,7 @@ import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { transacaoLoteClassificacaoSchema } from '@/lib/validations/transacao-lote'
 import { montarUpdateClassificacaoManual } from '@/lib/transacoes/classificar'
+import { recomputeVendasSeVenda } from '@/lib/vendas/recompute-hook'
 
 // PATCH /api/transacoes/lote
 // Atualiza a categoria de várias transações em uma única chamada.
@@ -35,6 +36,12 @@ export async function PATCH(request: NextRequest) {
       if (!cat) return NextResponse.json({ erro: 'Categoria inválida' }, { status: 400 })
     }
 
+    // Categorias ANTES do update (pra o gatilho de venda pegar venda→não-venda).
+    const antes = await prisma.transaction.findMany({
+      where: { id: { in: data.transactionIds }, bankAccount: { company: { users: { some: { userId: user.sub } } } } },
+      select: { categoryId: true, bankAccount: { select: { companyId: true } } },
+    })
+
     const result = await prisma.transaction.updateMany({
       where: {
         id: { in: data.transactionIds },
@@ -42,6 +49,14 @@ export async function PATCH(request: NextRequest) {
       },
       data: montarUpdateClassificacaoManual(data.categoryId),
     })
+
+    // GATILHO DE VENDAS (fail-soft): por empresa afetada, recompute se a categoria
+    // (antiga ou nova) é venda. Nunca global, nunca derruba a resposta.
+    const empresas = new Set(antes.map((t) => t.bankAccount?.companyId).filter((c): c is string => !!c))
+    for (const companyId of empresas) {
+      const catsDaEmpresa = antes.filter((t) => t.bankAccount?.companyId === companyId).map((t) => t.categoryId)
+      await recomputeVendasSeVenda(prisma, companyId, [...catsDaEmpresa, data.categoryId])
+    }
 
     return NextResponse.json({
       atualizadas: result.count,
