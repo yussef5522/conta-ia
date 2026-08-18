@@ -65,4 +65,8 @@ describe('resolveRegraRecebimento — vigência (bug dos dois mundos Tuna)', () 
     const r = resolveRegraRecebimento(regras, CACULA_IDS.banrisulId, 'CARTAO', D('2026-08-17'))
     expect(r).toMatchObject({ diasUteisAtraso: 1, recebeSabDom: false, confirmado: true })
   })
+  it('Cofre DINHEIRO → D+1 mas recebeSabDom=true (dia corrido, sem bloco)', () => {
+    const r = resolveRegraRecebimento(regras, CACULA_IDS.cofreId, 'DINHEIRO', D('2026-08-16'))
+    expect(r).toMatchObject({ diasUteisAtraso: 1, recebeSabDom: true, confirmado: true })
+  })
 })

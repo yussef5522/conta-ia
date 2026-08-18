@@ -21,6 +21,11 @@ export interface RegraRecebimento {
   confirmadoPeloDono?: boolean
 }
 
+// ⚠️ INTERPRETAÇÃO do atraso (usada por computeCompetencia, item 2):
+//   recebeSabDom=false → o atraso conta em dias ÚTEIS (pula fim de semana/feriado);
+//     o dinheiro do fim de semana chega junto no 1º dia útil → BLOCO (seg = {sex..dom}).
+//   recebeSabDom=true  → o atraso conta em dias CORRIDOS (o meio opera todo dia);
+//     cada dia mapeia pra exatamente 1 dia anterior, SEM bloco (cofre: sáb=sex, dom=sáb).
 export interface RegraResolvida {
   diasUteisAtraso: number
   recebeSabDom: boolean

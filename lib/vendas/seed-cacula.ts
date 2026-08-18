@@ -7,7 +7,11 @@
 //   Banrisul CARTAO   D+1 útil, sem fim de semana (inclui OP.CREDITO C/GARANTIA)
 //   Sicredi  PIX      D+1 útil, sem fim de semana (TUNA PAGAMENTO, consolidado)
 //   Stone    PIX      D+0, recebe fim de semana (Pix|Maquininha residual)
-//   Cofre    DINHEIRO D+1 útil, sem fim de semana
+//   Cofre    DINHEIRO D+1 CORRIDO, recebe fim de semana (dono lança todo dia:
+//            sáb=venda de sex, dom=venda de sáb, seg=venda de dom — desloca 1 dia
+//            corrido, SEM bloco). recebeSabDom=true → o atraso conta dia CORRIDO,
+//            não dia útil (as 3 vias convergem no bloco sex-dom sozinhas; nenhum
+//            meio precisa saber do outro — a TELA agrupa e soma).
 
 import type { RegraRecebimento, Meio } from './perfil-recebimento'
 
@@ -37,7 +41,7 @@ export function buildCaculaDefaultRegras(
     mk(ids.banrisulId, 'CARTAO', 1, false, 'Cartão Banrisul (bandeiras + OP.CREDITO C/GARANTIA)'),
     mk(ids.sicrediId, 'PIX', 1, false, 'TUNA PAGAMENTO'),
     mk(ids.stoneId, 'PIX', 0, true, 'Pix | Maquininha (residual)'),
-    mk(ids.cofreId, 'DINHEIRO', 1, false, 'Caixa loja/cofre'),
+    mk(ids.cofreId, 'DINHEIRO', 1, true, 'Caixa loja/cofre (lançamento diário, desloca 1 dia)'),
   ]
 }
 

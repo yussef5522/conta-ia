@@ -33,7 +33,27 @@ async function main() {
       },
     })
     if (existe) {
-      console.log(`  = já existe: ${r.meio} @ ${r.bankAccountId} (${r.origemHint})`)
+      // Corrige DRIFT: se a regra existe mas os campos divergem do builder
+      // (ex: cofre recebeSabDom false→true, correção 17/08), ATUALIZA.
+      const precisaUpdate =
+        existe.diasUteisAtraso !== r.diasUteisAtraso ||
+        existe.recebeSabDom !== r.recebeSabDom ||
+        existe.origemHint !== r.origemHint ||
+        existe.confirmadoPeloDono !== (r.confirmadoPeloDono ?? true)
+      if (precisaUpdate) {
+        await prisma.regraRecebimento.update({
+          where: { id: existe.id },
+          data: {
+            diasUteisAtraso: r.diasUteisAtraso,
+            recebeSabDom: r.recebeSabDom,
+            origemHint: r.origemHint,
+            confirmadoPeloDono: r.confirmadoPeloDono ?? true,
+          },
+        })
+        console.log(`  ~ atualizada (drift): ${r.meio} @ ${r.bankAccountId} → D+${r.diasUteisAtraso} sabDom=${r.recebeSabDom}`)
+      } else {
+        console.log(`  = já existe (igual): ${r.meio} @ ${r.bankAccountId} (${r.origemHint})`)
+      }
       continue
     }
     await prisma.regraRecebimento.create({
