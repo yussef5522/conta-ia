@@ -14,6 +14,10 @@ import { extractPdfText, PdfExtractError } from '@/lib/bank-statement-pdf/extrac
 import { extractInvoice, type ExtractInvoiceDeps, type ExtractInvoiceResult } from './extract'
 import { parseSicrediFatura } from './deterministic/sicredi-fatura-parser'
 import { validateSicrediFatura, type FaturaValidation } from './deterministic/validate-fatura'
+import { parseBanrisulFatura } from './deterministic/banrisul-fatura-parser'
+import { validateBanrisulFatura } from './deterministic/validate-banrisul-fatura'
+import { parseCaixaFatura } from './deterministic/caixa-fatura-parser'
+import { validateCaixaFatura } from './deterministic/validate-caixa-fatura'
 import { CreditCardPjExtractError, type InvoiceExtraction } from './types'
 
 export interface SmartExtractResult extends ExtractInvoiceResult {
@@ -37,6 +41,18 @@ const DETERMINISTIC: DeterministicParser[] = [
     match: /sicredi/i,
     parse: parseSicrediFatura,
     validate: (p) => validateSicrediFatura(p as ReturnType<typeof parseSicrediFatura>),
+  },
+  {
+    bank: 'Banrisul',
+    match: /banrisul/i,
+    parse: parseBanrisulFatura,
+    validate: (p) => validateBanrisulFatura(p as ReturnType<typeof parseBanrisulFatura>),
+  },
+  {
+    bank: 'Caixa',
+    match: /caixa/i,
+    parse: parseCaixaFatura,
+    validate: (p) => validateCaixaFatura(p as ReturnType<typeof parseCaixaFatura>),
   },
 ]
 
