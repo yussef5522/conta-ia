@@ -9,6 +9,7 @@ import { pfxToPem } from '../certificate'
 import { buildDistDFeEnvelope, ufToCodigo, SEFAZ_DIST_URL_PROD, SEFAZ_DIST_URL_HOMOLOG } from './envelope'
 import { postDistDFe } from './client'
 import { parseSefazResponse, type SefazResponse } from './parse-response'
+import { statusForNfe } from './corte'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -86,9 +87,8 @@ export async function downloadSefaz(input: {
       if (doc.tipo === 'evento') { acc.eventos++; continue }
       if (!doc.chave) continue // sem chave não dá pra deduplicar; ignora (raro)
       const dataEmissao = doc.dataEmissao ? new Date(doc.dataEmissao) : null
-      const historica = dataEmissao ? dataEmissao < corte : false
-      const status = historica ? 'HISTORICA' : 'AGUARDANDO_MERCADORIA'
-      if (historica) acc.historicas++
+      const status = statusForNfe(dataEmissao, corte)
+      if (status === 'HISTORICA') acc.historicas++
       else acc.novas++
       await db.stockNfe.upsert({
         where: { companyId_chave: { companyId: input.companyId, chave: doc.chave } },
