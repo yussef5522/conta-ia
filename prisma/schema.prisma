@@ -3127,3 +3127,60 @@ model StockJudgeReport {
   @@index([runAt])
   @@map("stock_judge_report")
 }
+
+// ESTOQUE FASE 0 item 2 (19/08/2026) — download SEFAZ (NFeDistribuicaoDFe), só resumos.
+// Estado do NSU por empresa (respeita o bloqueio de "consumo indevido" 1h).
+model StockSefazState {
+  id           String    @id @default(cuid())
+  companyId    String    @unique // um estado por company (valor, sem @relation)
+  ultNSU       String    @default("000000000000000") // 15 dígitos zero-padded
+  maxNSU       String    @default("000000000000000")
+  dataCorte    DateTime // nota com dataEmissao < corte = HISTORICA
+  lastRunAt    DateTime?
+  blockedUntil DateTime? // não consultar antes disso (SEFAZ bloqueou 1h)
+  criadoEm     DateTime  @default(now())
+  atualizadoEm DateTime  @updatedAt
+
+  @@map("stock_sefaz_state")
+}
+
+// Log de cada chamada à SEFAZ (auditoria + o juiz E13/E14).
+model StockSefazLog {
+  id         String   @id @default(cuid())
+  companyId  String
+  nsuInicial String
+  nsuFinal   String
+  nDocs      Int      @default(0)
+  cStat      String?
+  xMotivo    String?
+  tempoMs    Int      @default(0)
+  criadoEm   DateTime @default(now())
+
+  @@index([companyId, criadoEm])
+  @@map("stock_sefaz_log")
+}
+
+// NF-e emitida contra o CNPJ da empresa (resumo; XML completo só com Ciência, item 3).
+model StockNfe {
+  id             String    @id @default(cuid())
+  companyId      String
+  chave          String // 44 dígitos
+  nsu            String
+  emitCnpj       String?
+  emitNome       String?
+  vNF            Float?
+  dataEmissao    DateTime?
+  cSitNFe        String? // 1 autorizada · 2 cancelada · 3 denegada
+  tpNF           String? // 0 entrada · 1 saída
+  status         String // HISTORICA | AGUARDANDO_MERCADORIA
+  temXmlCompleto Boolean   @default(false)
+  schema         String? // resNFe_v1.01.xsd | procNFe_v4.00.xsd
+  docXml         String? // o XML cru do docZip (resumo ou completo) — auditoria/legal
+  criadoEm       DateTime  @default(now())
+  atualizadoEm   DateTime  @updatedAt
+
+  @@unique([companyId, chave]) // idempotência: mesma nota não entra 2×
+  @@index([companyId, status])
+  @@index([companyId, dataEmissao])
+  @@map("stock_nfe")
+}
