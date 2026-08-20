@@ -10,6 +10,7 @@ import { buildDistDFeEnvelope, ufToCodigo, SEFAZ_DIST_URL_PROD, SEFAZ_DIST_URL_H
 import { postDistDFe } from './client'
 import { parseSefazResponse, type SefazResponse } from './parse-response'
 import { statusForNfe } from './corte'
+import { saveNfeCompleta } from './persist-nfe'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -90,7 +91,7 @@ export async function downloadSefaz(input: {
       const status = statusForNfe(dataEmissao, corte)
       if (status === 'HISTORICA') acc.historicas++
       else acc.novas++
-      await db.stockNfe.upsert({
+      const row = await db.stockNfe.upsert({
         where: { companyId_chave: { companyId: input.companyId, chave: doc.chave } },
         create: {
           companyId: input.companyId, chave: doc.chave, nsu: doc.nsu, emitCnpj: doc.emitCnpj ?? null, emitNome: doc.emitNome ?? null,
@@ -102,7 +103,16 @@ export async function downloadSefaz(input: {
           nsu: doc.nsu,
           ...(doc.tipo === 'completo' ? { temXmlCompleto: true, schema: doc.schema || null, docXml: doc.xml || null } : {}),
         },
+        select: { id: true },
       })
+      // NOVA com XML completo → parseia itens/duplicatas/emitente (histórica NÃO parseia)
+      if (status === 'AGUARDANDO_MERCADORIA' && doc.tipo === 'completo' && doc.xml) {
+        try {
+          await saveNfeCompleta({ nfeId: row.id, companyId: input.companyId, chave: doc.chave, xml: doc.xml, db })
+        } catch {
+          // parse falhou (XML atípico) — a nota fica na fila sem itens; não derruba o download.
+        }
+      }
     }
 
     // avança

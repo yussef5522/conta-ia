@@ -285,10 +285,17 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
           <>
             <SectionLabel>Estoque</SectionLabel>
             <SidebarItem
+              icon={Inbox}
+              label="Recebimentos"
+              href={`/empresas/${currentEmpresaId}/estoque/recebimentos`}
+              isActive={/^\/empresas\/[^/]+\/estoque\/recebimentos/.test(pathname)}
+              onClick={onNavigate}
+            />
+            <SidebarItem
               icon={ShieldCheck}
               label="Certificado"
               href={`/empresas/${currentEmpresaId}/estoque/certificado`}
-              isActive={/^\/empresas\/[^/]+\/estoque(\/|$)/.test(pathname)}
+              isActive={/^\/empresas\/[^/]+\/estoque\/certificado/.test(pathname)}
               onClick={onNavigate}
             />
           </>

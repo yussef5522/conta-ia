@@ -3184,3 +3184,62 @@ model StockNfe {
   @@index([companyId, dataEmissao])
   @@map("stock_nfe")
 }
+
+// ESTOQUE FASE 0 item 3 (19/08) — parse da NF-e completa (procNFe). Itens, duplicatas
+// e emitente. Só pra notas NOVAS (>= corte); históricas não parseiam. nfeId/companyId
+// como VALOR (sem @relation — migration não referencia tabela existente nem FK-ALTER).
+model StockNfeItem {
+  id       String   @id @default(cuid())
+  companyId String
+  nfeId    String
+  chave    String
+  nItem    Int
+  cProd    String?
+  cEAN     String?
+  xProd    String
+  ncm      String?
+  cest     String?
+  cfop     String?
+  uCom     String?
+  qCom     Float?
+  vUnCom   Float?
+  vProd    Float?
+  uTrib    String?
+  qTrib    Float?
+  criadoEm DateTime @default(now())
+
+  @@index([companyId, nfeId])
+  @@index([companyId, ncm])
+  @@map("stock_nfe_item")
+}
+
+model StockNfeDup {
+  id        String    @id @default(cuid())
+  companyId String
+  nfeId     String
+  nDup      String?
+  dVenc     DateTime?
+  vDup      Float
+  criadoEm  DateTime  @default(now())
+
+  @@index([companyId, nfeId])
+  @@map("stock_nfe_dup")
+}
+
+model StockNfeEmit {
+  id        String   @id @default(cuid())
+  companyId String
+  nfeId     String   @unique
+  cnpj      String?
+  cpf       String?
+  xNome     String
+  xFant     String?
+  ie        String?
+  uf        String?
+  xMun      String?
+  cMun      String?
+  criadoEm  DateTime @default(now())
+
+  @@index([companyId])
+  @@map("stock_nfe_emit")
+}
