@@ -23,29 +23,40 @@ export class SefazHttpError extends Error {
   }
 }
 
-/** POST do envelope SOAP 1.2 com mTLS (pfx). NÃO loga o pfx/senha nem o corpo. */
+/**
+ * POST do envelope SOAP 1.2 com mTLS. Recebe key+cert em PEM (extraídos do .pfx via
+ * node-forge) — NÃO passa o pfx cru, senão o Node 20/OpenSSL 3 recusa o A1 legado
+ * (ERR_CRYPTO_UNSUPPORTED_OPERATION). NÃO loga cert/key nem o corpo.
+ */
 export function postDistDFe(input: {
   url: string
   envelope: string
-  pfx: Buffer
-  senha: string
+  key: string
+  cert: string
+  ca?: string[]
   timeoutMs?: number
 }): Promise<SefazHttpResult> {
-  const { url, envelope, pfx, senha } = input
+  const { url, envelope, key, cert, ca } = input
   const timeoutMs = input.timeoutMs ?? 30_000
   const u = new URL(url)
   const started = Date.now()
 
   return new Promise<SefazHttpResult>((resolve, reject) => {
+    let settled = false
+    const done = (fn: () => void) => {
+      if (settled) return
+      settled = true
+      fn()
+    }
     const req = https.request(
       {
         method: 'POST',
         hostname: u.hostname,
         port: u.port || 443,
         path: u.pathname + u.search,
-        pfx,
-        passphrase: senha,
-        // AN exige TLS ≥1.2; deixa o Node negociar. minVersion trava o piso.
+        key,
+        cert,
+        ...(ca && ca.length ? { ca } : {}),
         minVersion: 'TLSv1.2',
         headers: {
           'Content-Type': `application/soap+xml; charset=utf-8; action="${SEFAZ_DIST_ACTION}"`,
@@ -55,15 +66,17 @@ export function postDistDFe(input: {
       (res) => {
         const chunks: Buffer[] = []
         res.on('data', (c) => chunks.push(c))
-        res.on('end', () => {
-          resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString('utf8'), tempoMs: Date.now() - started })
-        })
+        res.on('end', () => done(() => resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString('utf8'), tempoMs: Date.now() - started })))
       },
     )
-    req.on('error', (e) => reject(new SefazHttpError(`Falha na conexão com a SEFAZ: ${e.message}`)))
-    req.setTimeout(timeoutMs, () => {
-      req.destroy()
-      reject(new SefazHttpError(`Timeout (${timeoutMs}ms) falando com a SEFAZ.`))
+    req.on('error', (e) => done(() => reject(new SefazHttpError(`Falha na conexão com a SEFAZ: ${e.message}`))))
+    // timeout robusto no SOCKET (o req.setTimeout às vezes não morde no handshake).
+    req.on('socket', (socket) => {
+      socket.setTimeout(timeoutMs)
+      socket.on('timeout', () => {
+        req.destroy()
+        done(() => reject(new SefazHttpError(`Timeout (${timeoutMs}ms) falando com a SEFAZ.`)))
+      })
     })
     req.write(envelope)
     req.end()

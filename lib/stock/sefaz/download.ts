@@ -5,6 +5,7 @@
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { decryptSecret, decryptSecretToString } from '../crypto'
+import { pfxToPem } from '../certificate'
 import { buildDistDFeEnvelope, ufToCodigo, SEFAZ_DIST_URL_PROD, SEFAZ_DIST_URL_HOMOLOG } from './envelope'
 import { postDistDFe } from './client'
 import { parseSefazResponse, type SefazResponse } from './parse-response'
@@ -131,14 +132,16 @@ export async function runSefazDownload(input: { companyId: string; db?: Db; now?
     throw new Error(`Empresa sem CNPJ/UF válidos (UF="${company?.state ?? ''}") — não dá pra montar a consulta SEFAZ.`)
   }
 
+  // pfx → PEM (node-forge lê o A1 legado; o TLS recebe key+cert, nunca o pkcs12 cru).
   const pfx = decryptSecret(cert.pfxCipher)
   const senha = decryptSecretToString(cert.senhaCipher)
+  const pem = pfxToPem(pfx, senha)
   const url = process.env.SEFAZ_HOMOLOG === 'true' ? SEFAZ_DIST_URL_HOMOLOG : SEFAZ_DIST_URL_PROD
   const tpAmb = process.env.SEFAZ_HOMOLOG === 'true' ? '2' : '1'
 
   const pager: SefazPager = async (ultNSU) => {
     const envelope = buildDistDFeEnvelope({ cnpj: company.cnpj, cUFAutor: cUF, ultNSU, tpAmb })
-    const r = await postDistDFe({ url, envelope, pfx, senha })
+    const r = await postDistDFe({ url, envelope, key: pem.key, cert: pem.cert, ca: pem.ca })
     if (r.status !== 200) {
       // a SEFAZ às vezes devolve o SOAP fault com 500 + corpo útil; tenta parsear mesmo assim
       try { return parseSefazResponse(r.body) } catch { throw new Error(`SEFAZ HTTP ${r.status}`) }

@@ -3,7 +3,7 @@
 // (REGRA 3 — comportamento, não string). Anti-PII: CNPJ/nome sintéticos.
 
 import { describe, it, expect, beforeAll } from 'vitest'
-import { readPfx, StockCertificateError } from '../certificate'
+import { readPfx, pfxToPem, StockCertificateError } from '../certificate'
 import { encryptSecret, decryptSecret, decryptSecretToString, StockCryptoError } from '../crypto'
 import { makePfx } from './_make-pfx'
 
@@ -43,6 +43,13 @@ describe('readPfx — leitura do certificado A1', () => {
     } catch (e) {
       expect((e as StockCertificateError).code).toBe('PFX_INVALIDO')
     }
+  })
+
+  it('pfxToPem extrai key + cert PEM (fix do ERR_CRYPTO do A1 legado)', () => {
+    const pem = pfxToPem(pfx, SENHA)
+    expect(pem.key).toMatch(/-----BEGIN (RSA )?PRIVATE KEY-----/)
+    expect(pem.cert).toMatch(/-----BEGIN CERTIFICATE-----/)
+    expect(Array.isArray(pem.ca)).toBe(true)
   })
 
   it('cert de pessoa física (CN sem CNPJ) → SEM_CNPJ', () => {

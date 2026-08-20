@@ -91,3 +91,47 @@ export function readPfx(pfxBuffer: Buffer, senha: string): CertificateInfo {
     validadeAte: cert.validity.notAfter,
   }
 }
+
+export interface PemMaterial {
+  key: string // chave privada PEM
+  cert: string // cert do cliente (folha) PEM
+  ca: string[] // cadeia (intermediários) PEM
+}
+
+/**
+ * Converte o .pfx em key+cert PEM via node-forge. NECESSÁRIO porque o Node 20/OpenSSL 3
+ * RECUSA o PKCS#12 do A1 brasileiro (cifrado com RC2/3DES/SHA1 legados) →
+ * ERR_CRYPTO_UNSUPPORTED_OPERATION. Passando PEM pro TLS, o OpenSSL nunca abre o pkcs12.
+ * A folha (leaf) = o cert com CNPJ no CN (e-CNPJ); o resto é cadeia (CA).
+ */
+export function pfxToPem(pfxBuffer: Buffer, senha: string): PemMaterial {
+  let p12: forge.pkcs12.Pkcs12Pfx
+  try {
+    const p12Der = forge.util.createBuffer(pfxBuffer.toString('binary'))
+    p12 = forge.pkcs12.pkcs12FromAsn1(forge.asn1.fromDer(p12Der), false, senha)
+  } catch {
+    throw new StockCertificateError('SENHA_INVALIDA', 'Não consegui abrir o .pfx (senha incorreta ou arquivo corrompido).')
+  }
+
+  // chave privada (pkcs8ShroudedKeyBag no A1; keyBag como fallback)
+  const keyBag =
+    p12.getBags({ bagType: forge.pki.oids.pkcs8ShroudedKeyBag })[forge.pki.oids.pkcs8ShroudedKeyBag]?.[0] ??
+    p12.getBags({ bagType: forge.pki.oids.keyBag })[forge.pki.oids.keyBag]?.[0]
+  if (!keyBag?.key) throw new StockCertificateError('SEM_CERT', 'Não achei a chave privada no .pfx.')
+  const key = forge.pki.privateKeyToPem(keyBag.key)
+
+  const certBags = p12.getBags({ bagType: forge.pki.oids.certBag })[forge.pki.oids.certBag] ?? []
+  const certs = certBags.map((b) => b.cert!).filter(Boolean)
+  if (certs.length === 0) throw new StockCertificateError('SEM_CERT', 'Não achei certificado no .pfx.')
+
+  // folha = a que tem CNPJ (14 díg) no CN; senão a primeira.
+  const leafIdx = certs.findIndex((c) => cnpjFromCN((c.subject.getField('CN')?.value as string) ?? '') != null)
+  const leaf = certs[leafIdx >= 0 ? leafIdx : 0]
+  const chain = certs.filter((c) => c !== leaf)
+
+  return {
+    key,
+    cert: forge.pki.certificateToPem(leaf),
+    ca: chain.map((c) => forge.pki.certificateToPem(c)),
+  }
+}
