@@ -7,6 +7,7 @@
 
 import https from 'node:https'
 import { SEFAZ_DIST_ACTION } from './envelope'
+import { loadServerCa } from './server-ca'
 
 export interface SefazHttpResult {
   status: number
@@ -32,11 +33,10 @@ export function postDistDFe(input: {
   url: string
   envelope: string
   key: string
-  cert: string
-  ca?: string[]
+  cert: string // cert do CLIENTE (folha + intermediários concatenados)
   timeoutMs?: number
 }): Promise<SefazHttpResult> {
-  const { url, envelope, key, cert, ca } = input
+  const { url, envelope, key, cert } = input
   const timeoutMs = input.timeoutMs ?? 30_000
   const u = new URL(url)
   const started = Date.now()
@@ -55,8 +55,8 @@ export function postDistDFe(input: {
         port: u.port || 443,
         path: u.pathname + u.search,
         key,
-        cert,
-        ...(ca && ca.length ? { ca } : {}),
+        cert, // identidade do cliente (mTLS)
+        ca: loadServerCa(), // pra VERIFICAR o servidor da SEFAZ (roots Node + sistema)
         minVersion: 'TLSv1.2',
         headers: {
           'Content-Type': `application/soap+xml; charset=utf-8; action="${SEFAZ_DIST_ACTION}"`,

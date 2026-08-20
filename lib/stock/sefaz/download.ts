@@ -136,12 +136,13 @@ export async function runSefazDownload(input: { companyId: string; db?: Db; now?
   const pfx = decryptSecret(cert.pfxCipher)
   const senha = decryptSecretToString(cert.senhaCipher)
   const pem = pfxToPem(pfx, senha)
+  const clientCert = [pem.cert, ...pem.ca].join('\n') // folha + intermediários (o server monta a cadeia do cliente)
   const url = process.env.SEFAZ_HOMOLOG === 'true' ? SEFAZ_DIST_URL_HOMOLOG : SEFAZ_DIST_URL_PROD
   const tpAmb = process.env.SEFAZ_HOMOLOG === 'true' ? '2' : '1'
 
   const pager: SefazPager = async (ultNSU) => {
     const envelope = buildDistDFeEnvelope({ cnpj: company.cnpj, cUFAutor: cUF, ultNSU, tpAmb })
-    const r = await postDistDFe({ url, envelope, key: pem.key, cert: pem.cert, ca: pem.ca })
+    const r = await postDistDFe({ url, envelope, key: pem.key, cert: clientCert })
     if (r.status !== 200) {
       // a SEFAZ às vezes devolve o SOAP fault com 500 + corpo útil; tenta parsear mesmo assim
       try { return parseSefazResponse(r.body) } catch { throw new Error(`SEFAZ HTTP ${r.status}`) }
