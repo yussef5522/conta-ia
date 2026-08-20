@@ -3080,3 +3080,50 @@ model VendaDiariaTransacao {
   @@index([transactionId])
   @@map("venda_diaria_transacao")
 }
+
+// ============================================================================
+// MÓDULO ESTOQUE (FASE 0, 19/08/2026) — TOTALMENTE ISOLADO.
+// Regra dura: tabelas só stock_, migrations SÓ CRIAM, companyId como VALOR
+// (sem @relation às tabelas fechadas Company/User → a migration não referencia
+// nenhuma tabela existente; multi-tenant via app + juiz E11). FKs só ENTRE
+// tabelas stock_. Nunca escreve em Transaction/Category/Supplier/etc.
+// ============================================================================
+
+// Certificado digital A1 (.pfx) da empresa, cifrado. Usado pra falar com a SEFAZ
+// (mTLS no download, assinatura na Ciência). O .pfx e a senha NUNCA em texto,
+// NUNCA em log. Cifra AES-256-GCM com chave de STOCK_CERT_ENC_KEY (env).
+model StockCertificate {
+  id           String    @id @default(cuid())
+  companyId    String // REGRA 8 — valor, sem @relation (isolação)
+  pfxCipher    String // .pfx cifrado (iv:authTag:ciphertext base64)
+  senhaCipher  String // senha cifrada (mesmo formato)
+  cnpj         String // extraído do cert, validado == Company.cnpj
+  razaoSocial  String? // subject do cert (informativo)
+  validadeDe   DateTime // notBefore do X.509
+  validadeAte  DateTime // notAfter — o juiz E12 alerta < 30 dias
+  status       String    @default("ATIVO") // ATIVO | INATIVO | INVALIDO
+  criadoPorId  String? // User.id (valor, sem @relation)
+  criadoEm     DateTime  @default(now())
+  atualizadoEm DateTime  @updatedAt
+  ultimoUsoEm  DateTime?
+
+  @@index([companyId])
+  // "um ativo por company" vira índice único PARCIAL na migration (Postgres+SQLite):
+  //   CREATE UNIQUE INDEX ... ON stock_certificate(companyId) WHERE status='ATIVO'
+  @@map("stock_certificate")
+}
+
+// Relatório do juiz noturno do ESTOQUE — tabela PRÓPRIA (decisão 19/08): não altera
+// loan_module_judge_reports (regra dura). O selo/e-mail agregam lendo as duas.
+// Company-agnóstico (uma linha por rodada; agrega todas as empresas), igual o do juiz.
+model StockJudgeReport {
+  id          String   @id @default(cuid())
+  runAt       DateTime @default(now())
+  passed      Boolean
+  stockIssues Int      @default(0) // E10-E14 + isolamento
+  detail      String // JSON stringificado (portabilidade SQLite-dev/Postgres-prod)
+  durationMs  Int      @default(0)
+
+  @@index([runAt])
+  @@map("stock_judge_report")
+}

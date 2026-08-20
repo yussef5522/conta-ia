@@ -279,6 +279,21 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
           onClick={onNavigate}
         />
 
+        {/* Estoque — módulo NOVO, seção própria (não dentro de Financeiro). FASE 0:
+            só o Certificado. Cresce com Recebimentos/Estoque/Produção nas fases. */}
+        {currentEmpresaId && (
+          <>
+            <SectionLabel>Estoque</SectionLabel>
+            <SidebarItem
+              icon={ShieldCheck}
+              label="Certificado"
+              href={`/empresas/${currentEmpresaId}/estoque/certificado`}
+              isActive={/^\/empresas\/[^/]+\/estoque(\/|$)/.test(pathname)}
+              onClick={onNavigate}
+            />
+          </>
+        )}
+
         <SectionLabel>Tributário</SectionLabel>
         <SidebarItem
           icon={Receipt}
