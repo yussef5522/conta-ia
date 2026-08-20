@@ -144,6 +144,9 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 Sequência **crítica** (bug pego na Fatia 1 quando `npm ci` rodou `prisma generate` antes do swap):
 
 ```
+# ANTES do pull: descartar o swap-postgres local (senão o pull ABORTA calado).
+# ⚠️ O lock é prisma/migrations/migration_lock.toml (NÃO prisma/migration_lock.toml).
+git checkout -- prisma/schema.prisma prisma/migrations/migration_lock.toml
 git pull origin main
 ./scripts/swap-prisma-to-postgres.sh       # troca schema sqlite→postgres
 npm ci --legacy-peer-deps
