@@ -57,6 +57,7 @@ export function postDistDFe(input: {
         key,
         cert, // identidade do cliente (mTLS)
         ca: loadServerCa(), // pra VERIFICAR o servidor da SEFAZ (roots Node + sistema)
+        agent: false, // conexão nova por chamada (sem keep-alive → sem acúmulo de listeners)
         minVersion: 'TLSv1.2',
         headers: {
           'Content-Type': `application/soap+xml; charset=utf-8; action="${SEFAZ_DIST_ACTION}"`,
