@@ -193,6 +193,8 @@ function BuscaItem({ companyId, jaAdicionados, onAdd }: { companyId: string; jaA
   const [q, setQ] = useState('')
   const [res, setRes] = useState<ItemBusca[]>([])
   const [aberto, setAberto] = useState(false)
+  const [criando, setCriando] = useState(false)
+  const [novaUnidade, setNovaUnidade] = useState<'KG' | 'UN' | 'LT'>('KG')
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
@@ -203,14 +205,27 @@ function BuscaItem({ companyId, jaAdicionados, onAdd }: { companyId: string; jaA
     return () => { if (timer.current) clearTimeout(timer.current) }
   }, [q, companyId])
 
+  const termo = q.trim()
+  const existeExato = res.some((it) => it.nome.toLowerCase() === termo.toLowerCase())
+
+  const criarItem = async () => {
+    if (!termo || criando) return
+    setCriando(true)
+    try {
+      const r = await fetch(`/api/empresas/${companyId}/estoque/itens`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nome: termo, unidadeControle: novaUnidade }) })
+      const j = await r.json().catch(() => null)
+      if (r.ok && j?.item) { onAdd(j.item); setQ(''); setAberto(false) }
+    } finally { setCriando(false) }
+  }
+
   return (
     <div className="relative">
       <div className="relative">
         <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-        <input value={q} onFocus={() => setAberto(true)} onChange={(e) => { setQ(e.target.value); setAberto(true) }} placeholder="buscar insumo pra adicionar…" className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm" />
+        <input value={q} onFocus={() => setAberto(true)} onChange={(e) => { setQ(e.target.value); setAberto(true) }} placeholder="buscar insumo (ou criar um que nunca veio em nota)…" className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm" />
       </div>
-      {aberto && res.length > 0 && (
-        <div className="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg">
+      {aberto && (res.length > 0 || termo) && (
+        <div className="absolute z-10 mt-1 max-h-72 w-full overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg">
           {res.map((it) => {
             const dentro = jaAdicionados.includes(it.id)
             return (
@@ -220,6 +235,14 @@ function BuscaItem({ companyId, jaAdicionados, onAdd }: { companyId: string; jaA
               </button>
             )
           })}
+          {/* criar item novo — pro molho/sal que nunca vieram em nota */}
+          {termo && !existeExato && (
+            <div className="flex items-center gap-2 border-t border-slate-100 bg-emerald-50/40 px-3 py-2">
+              <span className="flex-1 text-sm text-slate-700">criar <b>“{termo}”</b> <span className="text-[11px] text-slate-400">(sem custo até a 1ª nota)</span></span>
+              <select value={novaUnidade} onChange={(e) => setNovaUnidade(e.target.value as 'KG' | 'UN' | 'LT')} className="rounded-md border border-slate-300 py-1 px-1.5 text-xs"><option>KG</option><option>UN</option><option>LT</option></select>
+              <button onClick={criarItem} disabled={criando} className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"><Plus className="h-3.5 w-3.5" /> criar</button>
+            </div>
+          )}
         </div>
       )}
     </div>
