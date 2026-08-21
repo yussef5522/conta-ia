@@ -27,6 +27,7 @@ import {
   BarChart3,
   Shield,
   ShieldCheck,
+  Boxes,
   FileText,
   Settings,
   Bell,
@@ -289,6 +290,13 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
               label="Recebimentos"
               href={`/empresas/${currentEmpresaId}/estoque/recebimentos`}
               isActive={/^\/empresas\/[^/]+\/estoque\/recebimentos/.test(pathname)}
+              onClick={onNavigate}
+            />
+            <SidebarItem
+              icon={Boxes}
+              label="Posição"
+              href={`/empresas/${currentEmpresaId}/estoque/posicao`}
+              isActive={/^\/empresas\/[^/]+\/estoque\/posicao/.test(pathname)}
               onClick={onNavigate}
             />
             <SidebarItem

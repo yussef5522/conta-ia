@@ -5,7 +5,7 @@
 // liga). Mobile-first + desktop. Foto por webcam (desktop) OU câmera (celular).
 
 import { useMemo, useState } from 'react'
-import { Check, Search, Camera, AlertTriangle, FlaskConical, Store, X, ChevronRight, Eye } from 'lucide-react'
+import { Check, Search, Camera, AlertTriangle, FlaskConical, Store, X, ChevronRight, Eye, Loader2, PackageCheck } from 'lucide-react'
 
 export type Unidade = 'KG' | 'UN' | 'LT'
 export type Categoria = 'MATERIA_PRIMA' | 'REVENDA' | 'EMBALAGEM' | 'LIMPEZA' | 'USO_INTERNO'
@@ -27,8 +27,10 @@ export interface ConferenciaData {
 }
 export interface ItemExistente { id: string; nome: string; unidadeControle: string; categoria: string }
 
+export interface MapeadoSel { itemId: string; nome: string; unidadeControle: Unidade; categoria?: Categoria; fatorConversao: number; novo: boolean }
+
 interface Estado {
-  mapeado: ConfItem['mapeado']
+  mapeado: MapeadoSel | null
   qtdRecebida: number
   motivo: Motivo | null
   fotoBase64: string | null
@@ -52,18 +54,44 @@ async function comprimirFoto(file: File): Promise<string> {
   return c.toDataURL('image/jpeg', 0.6)
 }
 
-export function ConferenciaView({ data, itensExistentes }: { data: ConferenciaData; itensExistentes: ItemExistente[] }) {
+export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeConfirmar }: {
+  data: ConferenciaData; itensExistentes: ItemExistente[]
+  companyId?: string; nfeId?: string; podeConfirmar?: boolean
+}) {
   const [fornCadastrado, setFornCadastrado] = useState(data.fornecedor.jaCadastrado)
   const [estado, setEstado] = useState<Record<string, Estado>>(() => {
     const init: Record<string, Estado> = {}
-    for (const it of data.itens) init[it.nfeItemId] = { mapeado: it.mapeado, qtdRecebida: it.qCom * (it.mapeado?.fatorConversao ?? 1), motivo: null, fotoBase64: null }
+    for (const it of data.itens) init[it.nfeItemId] = { mapeado: it.mapeado ? { ...it.mapeado, novo: false } : null, qtdRecebida: it.qCom * (it.mapeado?.fatorConversao ?? 1), motivo: null, fotoBase64: null }
     return init
   })
   const [sheetItem, setSheetItem] = useState<ConfItem | null>(null)
+  const [enviando, setEnviando] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+  const [recibo, setRecibo] = useState<any | null>(null)
 
   const totalMapeado = useMemo(() => data.itens.length > 0 && data.itens.every((it) => estado[it.nfeItemId]?.mapeado), [data.itens, estado])
   const divergencias = useMemo(() => data.itens.filter((it) => { const e = estado[it.nfeItemId]; return e && Math.abs(e.qtdRecebida - it.qCom * (e.mapeado?.fatorConversao ?? 1)) > 0.0001 }).length, [data.itens, estado])
   const setItem = (id_: string, patch: Partial<Estado>) => setEstado((s) => ({ ...s, [id_]: { ...s[id_], ...patch } }))
+
+  async function confirmar() {
+    if (!companyId || !nfeId) return
+    setEnviando(true); setErro(null)
+    try {
+      const itens = data.itens.map((it) => {
+        const e = estado[it.nfeItemId]!
+        return { nfeItemId: it.nfeItemId, cProd: it.cProd, xProd: it.xProd, uCom: it.uCom, qtdNota: it.qCom, vUnCom: it.vUnCom, qtdRecebida: e.qtdRecebida, motivo: e.motivo, fotoBase64: e.fotoBase64, mapeado: e.mapeado }
+      })
+      const r = await fetch(`/api/empresas/${companyId}/estoque/recebimentos/${nfeId}/confirmar`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fornecedor: { cnpj: data.fornecedor.cnpj, nome: data.fornecedor.nome, uf: data.fornecedor.uf }, itens }),
+      })
+      const j = await r.json().catch(() => ({ erro: 'Resposta inválida' }))
+      if (!r.ok) { setErro(j.erro ?? 'Erro ao confirmar'); return }
+      setRecibo(j.resultado)
+    } catch { setErro('Falha de rede ao confirmar.') } finally { setEnviando(false) }
+  }
+
+  if (recibo) return <Recibo recibo={recibo} companyId={companyId} />
 
   return (
     <div className="mx-auto max-w-md pb-28">
@@ -140,10 +168,18 @@ export function ConferenciaView({ data, itensExistentes }: { data: ConferenciaDa
           <span>{data.itens.filter((it) => estado[it.nfeItemId]?.mapeado).length}/{data.itens.length} itens mapeados</span>
           {divergencias > 0 && <span className="font-medium text-amber-600">{divergencias} divergência(s)</span>}
         </div>
-        <button disabled className="w-full cursor-not-allowed rounded-xl bg-slate-200 py-3.5 text-sm font-semibold text-slate-400">
-          {totalMapeado ? '✓ Pronto — o CONFIRMAR liga após você aprovar o fluxo' : 'Mapeie todos os itens pra confirmar'}
-        </button>
-        <p className="mt-2 text-center text-[11px] text-slate-400">No app real: gera os movimentos + contas a pagar sugerido + Confirmação na SEFAZ.</p>
+        {erro && <p className="mb-2 rounded-md bg-rose-50 p-2 text-xs text-rose-700">{erro}</p>}
+        {podeConfirmar ? (
+          <button onClick={confirmar} disabled={!totalMapeado || enviando}
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#185FA5] py-3.5 text-sm font-semibold text-white active:bg-[#0F4A8C] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400">
+            {enviando ? <><Loader2 className="h-4 w-4 animate-spin" /> Confirmando…</> : totalMapeado ? <><PackageCheck className="h-4 w-4" /> Confirmar recebimento</> : 'Mapeie todos os itens pra confirmar'}
+          </button>
+        ) : (
+          <button disabled className="w-full cursor-not-allowed rounded-xl bg-slate-200 py-3.5 text-sm font-semibold text-slate-400">
+            {totalMapeado ? '✓ Pronto — modo teste (não grava)' : 'Mapeie todos os itens'}
+          </button>
+        )}
+        <p className="mt-2 text-center text-[11px] text-slate-400">Gera os movimentos de estoque + contas a pagar sugerido + Confirmação na SEFAZ.</p>
       </div>
 
       {sheetItem && <MapearSheet item={sheetItem} existentes={itensExistentes} onClose={() => setSheetItem(null)}
@@ -154,7 +190,7 @@ export function ConferenciaView({ data, itensExistentes }: { data: ConferenciaDa
 
 function MapearSheet({ item, existentes, onClose, onEscolher }: {
   item: ConfItem; existentes: ItemExistente[]; onClose: () => void
-  onEscolher: (m: { itemId: string; nome: string; unidadeControle: Unidade; fatorConversao: number }) => void
+  onEscolher: (m: MapeadoSel) => void
 }) {
   const [busca, setBusca] = useState('')
   const [modo, setModo] = useState<'buscar' | 'criar'>(existentes.length > 0 ? 'buscar' : 'criar')
@@ -178,7 +214,7 @@ function MapearSheet({ item, existentes, onClose, onEscolher }: {
           <div className="space-y-2">
             <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="buscar no estoque…" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
             {filtrados.length === 0 && <p className="py-4 text-center text-xs text-slate-400">Nenhum item ainda. Use "Criar novo".</p>}
-            {filtrados.map((e) => <button key={e.id} onClick={() => onEscolher({ itemId: e.id, nome: e.nome, unidadeControle: e.unidadeControle as Unidade, fatorConversao: 1 })} className="flex w-full items-center justify-between rounded-lg border border-slate-200 px-3 py-2.5 text-sm active:bg-slate-50"><span className="font-medium text-slate-800">{e.nome}</span><span className="text-xs text-slate-400">{e.unidadeControle}</span></button>)}
+            {filtrados.map((e) => <button key={e.id} onClick={() => onEscolher({ itemId: e.id, nome: e.nome, unidadeControle: e.unidadeControle as Unidade, categoria: e.categoria as Categoria, fatorConversao: 1, novo: false })} className="flex w-full items-center justify-between rounded-lg border border-slate-200 px-3 py-2.5 text-sm active:bg-slate-50"><span className="font-medium text-slate-800">{e.nome}</span><span className="text-xs text-slate-400">{e.unidadeControle}</span></button>)}
           </div>
         ) : (
           <div className="space-y-3">
@@ -195,10 +231,40 @@ function MapearSheet({ item, existentes, onClose, onEscolher }: {
                 <p className="mt-1 text-[11px] text-sky-600">1 {item.uCom} = {fator} {unidade} · {item.qCom} {item.uCom} = {item.qCom * fator} {unidade}</p>
               </div>
             )}
-            <button onClick={() => onEscolher({ itemId: `novo-${item.nfeItemId}`, nome, unidadeControle: unidade, fatorConversao: difUnidade ? fator : 1 })} className="w-full rounded-xl bg-[#185FA5] py-3 text-sm font-semibold text-white active:bg-[#0F4A8C]">Usar este produto</button>
+            <button onClick={() => onEscolher({ itemId: `novo-${item.nfeItemId}`, nome, unidadeControle: unidade, categoria, fatorConversao: difUnidade ? fator : 1, novo: true })} className="w-full rounded-xl bg-[#185FA5] py-3 text-sm font-semibold text-white active:bg-[#0F4A8C]">Usar este produto</button>
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+function Recibo({ recibo, companyId }: { recibo: any; companyId?: string }) {
+  const brlL = (n: number) => (n ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  return (
+    <div className="mx-auto max-w-md p-6">
+      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 text-center">
+        <PackageCheck className="mx-auto h-12 w-12 text-emerald-600" />
+        <h2 className="mt-3 text-lg font-semibold text-slate-900">Recebimento confirmado</h2>
+        <p className="mt-1 text-sm text-slate-600">{recibo.movimentos} {recibo.movimentos === 1 ? 'item entrou' : 'itens entraram'} no estoque · {brlL(recibo.valorEntrada)}</p>
+      </div>
+      <div className="mt-4 space-y-2 text-sm">
+        <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3"><span className="text-slate-500">Movimentos gerados</span><span className="font-medium tabular-nums">{recibo.movimentos}</span></div>
+        {recibo.itensCadastrados > 0 && <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3"><span className="text-slate-500">Produtos cadastrados agora</span><span className="font-medium tabular-nums">{recibo.itensCadastrados}</span></div>}
+        <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3"><span className="text-slate-500">Contas a pagar sugeridas</span><span className="font-medium tabular-nums">{recibo.payableSugeridas} parcela(s)</span></div>
+        <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3">
+          <span className="text-slate-500">Confirmação na SEFAZ</span>
+          {recibo.sefaz?.ok ? <span className="font-medium text-emerald-600">✓ cStat {recibo.sefaz.cStat}</span>
+            : <span className="font-medium text-amber-600">{recibo.sefaz?.cStat ?? '—'} (o cron reenvia)</span>}
+        </div>
+        {recibo.divergente && <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-700">Conferência com divergência registrada — o estoque entrou pela quantidade RECEBIDA.</p>}
+      </div>
+      {companyId && (
+        <div className="mt-6 flex gap-2">
+          <a href={`/empresas/${companyId}/estoque/posicao`} className="flex-1 rounded-xl bg-[#185FA5] py-3 text-center text-sm font-semibold text-white">Ver posição de estoque</a>
+          <a href={`/empresas/${companyId}/estoque/recebimentos`} className="flex-1 rounded-xl border border-slate-300 py-3 text-center text-sm font-medium text-slate-700">Voltar pra fila</a>
+        </div>
+      )}
     </div>
   )
 }

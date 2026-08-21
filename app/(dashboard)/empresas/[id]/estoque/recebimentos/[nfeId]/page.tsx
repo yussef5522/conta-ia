@@ -23,7 +23,7 @@ export default function ConferenciaRealPage({ params }: { params: Promise<{ id: 
   return (
     <div>
       <a href={`/empresas/${id}/estoque/recebimentos`} className="mx-auto flex max-w-md items-center gap-1 px-4 pt-4 text-xs text-slate-500 hover:text-slate-700"><ArrowLeft className="h-3.5 w-3.5" /> voltar pra fila</a>
-      <ConferenciaView data={data.conference} itensExistentes={data.itensExistentes} />
+      <ConferenciaView data={data.conference} itensExistentes={data.itensExistentes} companyId={id} nfeId={nfeId} podeConfirmar />
     </div>
   )
 }
