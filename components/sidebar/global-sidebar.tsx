@@ -300,6 +300,13 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
               onClick={onNavigate}
             />
             <SidebarItem
+              icon={ArrowLeftRight}
+              label="Movimentos"
+              href={`/empresas/${currentEmpresaId}/estoque/movimentos`}
+              isActive={/^\/empresas\/[^/]+\/estoque\/movimentos/.test(pathname)}
+              onClick={onNavigate}
+            />
+            <SidebarItem
               icon={ShieldCheck}
               label="Certificado"
               href={`/empresas/${currentEmpresaId}/estoque/certificado`}
