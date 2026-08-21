@@ -3436,3 +3436,81 @@ model StockNfeAdiada {
   @@index([companyId])
   @@map("stock_nfe_adiada")
 }
+
+// ESTOQUE FASE 2 item 2.0 (21/08) — PRODUÇÃO (cadastros que a produção vai usar): setor,
+// colaborador e FICHA TÉCNICA versionada. SEM ordem de produção ainda (2.1). Isolado,
+// CREATE-only, companyId VALOR sem @relation.
+model StockSetor {
+  id        String   @id @default(cuid())
+  companyId String
+  nome      String
+  ativo     Boolean  @default(true)
+  criadoEm  DateTime @default(now())
+
+  @@unique([companyId, nome])
+  @@index([companyId, ativo])
+  @@map("stock_setor")
+}
+
+model StockColaborador {
+  id        String   @id @default(cuid())
+  companyId String
+  nome      String
+  ativo     Boolean  @default(true)
+  criadoEm  DateTime @default(now())
+
+  @@index([companyId, ativo])
+  @@map("stock_colaborador")
+}
+
+// Ficha técnica (Recipe) VERSIONADA. HEAD = identidade + item produzido + versão atual +
+// preço de venda (PRODUTO_FINAL). O CORPO (componentes, lote base, preparo) vive na VERSÃO
+// — mudou componente/qtd/lote → versão nova; ordens antigas apontam pra versão da época.
+model StockFicha {
+  id              String   @id @default(cuid())
+  companyId       String
+  itemProduzidoId String // stock_item que a ficha produz (INTERMEDIARIO|PRODUTO_FINAL)
+  tipoProduto     String // INTERMEDIARIO | PRODUTO_FINAL
+  setorId         String?
+  versaoAtual     Int      @default(1)
+  valorVenda      Float? // PRODUTO_FINAL: preço de cardápio; null = "a definir" (nunca 0,01)
+  ativo           Boolean  @default(true)
+  criadoPorId     String?
+  criadoEm        DateTime @default(now())
+  atualizadoEm    DateTime @updatedAt
+
+  @@unique([companyId, itemProduzidoId]) // 1 ficha por item produzido
+  @@index([companyId, ativo])
+  @@map("stock_ficha")
+}
+
+model StockFichaVersao {
+  id              String   @id @default(cuid())
+  companyId       String
+  fichaId         String
+  versao          Int
+  loteBase        Float // quantidade de referência (ex: "pra 5 KG de carne rende N pacotes")
+  unidadeLoteBase String // KG | UN | LT
+  modoPreparo     String?
+  tempoPreparoMin Int?
+  validadeDias    Int? // alimenta a etiqueta (2.3)
+  criadoPorId     String?
+  criadoEm        DateTime @default(now())
+
+  @@unique([companyId, fichaId, versao])
+  @@index([companyId, fichaId])
+  @@map("stock_ficha_versao")
+}
+
+model StockFichaComponente {
+  id           String @id @default(cuid())
+  companyId    String
+  versaoId     String // stock_ficha_versao
+  itemId       String // stock_item componente (matéria-prima OU outro intermediário)
+  qtdPlanejada Float
+  unidade      String
+  posicao      Int    @default(0)
+
+  @@index([companyId, versaoId])
+  @@map("stock_ficha_componente")
+}

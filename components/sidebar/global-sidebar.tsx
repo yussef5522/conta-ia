@@ -28,6 +28,7 @@ import {
   Shield,
   ShieldCheck,
   Boxes,
+  ClipboardList,
   FileText,
   Settings,
   Bell,
@@ -304,6 +305,13 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
               label="Movimentos"
               href={`/empresas/${currentEmpresaId}/estoque/movimentos`}
               isActive={/^\/empresas\/[^/]+\/estoque\/movimentos/.test(pathname)}
+              onClick={onNavigate}
+            />
+            <SidebarItem
+              icon={ClipboardList}
+              label="Fichas técnicas"
+              href={`/empresas/${currentEmpresaId}/estoque/fichas`}
+              isActive={/^\/empresas\/[^/]+\/estoque\/fichas/.test(pathname)}
               onClick={onNavigate}
             />
             <SidebarItem

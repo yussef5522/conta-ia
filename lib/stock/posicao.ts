@@ -9,7 +9,7 @@ import { statusEstoque, type StatusEstoqueResult } from './status-estoque'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
-const CAT_LABEL: Record<string, string> = { MATERIA_PRIMA: 'Matéria-prima', REVENDA: 'Revenda', EMBALAGEM: 'Embalagem', LIMPEZA: 'Limpeza', USO_INTERNO: 'Uso interno' }
+const CAT_LABEL: Record<string, string> = { MATERIA_PRIMA: 'Matéria-prima', REVENDA: 'Revenda', EMBALAGEM: 'Embalagem', LIMPEZA: 'Limpeza', USO_INTERNO: 'Uso interno', INTERMEDIARIO: 'Intermediário', PRODUTO_FINAL: 'Produto final' }
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 
 export interface PosicaoItem {
