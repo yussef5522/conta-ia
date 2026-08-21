@@ -6,7 +6,7 @@
 
 import { useEffect, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
-import { Inbox, PackageOpen, Archive, Info, Loader2, Clock } from 'lucide-react'
+import { Inbox, PackageOpen, Archive, Info, Loader2, Clock, FlaskConical } from 'lucide-react'
 
 interface Card_ {
   id: string
@@ -105,6 +105,10 @@ export default function RecebimentosPage({ params }: { params: Promise<{ id: str
                 {fmt(r.dataCorte)}, ela aparece aqui sozinha (o sistema consulta a SEFAZ de hora em hora).
                 Aí você confere a mercadoria e confirma.
               </p>
+              <a href={`/empresas/${id}/estoque/recebimentos/preview`}
+                className="mt-2 inline-flex items-center gap-2 rounded-lg border border-[#185FA5] px-4 py-2 text-sm font-medium text-[#185FA5] active:bg-slate-50">
+                <FlaskConical className="h-4 w-4" /> Testar a conferência (modo teste)
+              </a>
             </CardContent>
           </Card>
         ) : (
