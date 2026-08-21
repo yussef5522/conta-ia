@@ -32,8 +32,9 @@ export async function enviarEvento(
   const company = await db.company.findUnique({ where: { id: input.companyId }, select: { cnpj: true } })
   if (!company?.cnpj) throw new Error('Empresa sem CNPJ.')
 
-  // nSeqEvento = quantos deste tpEvento já foram enviados pra essa chave + 1
-  const jaEnviados = await db.stockSefazEvent.count({ where: { companyId: input.companyId, chave: input.chave, tpEvento: input.tpEvento } })
+  // nSeqEvento = quantos deste tpEvento já foram ENVIADOS COM SUCESSO + 1. Só ENVIADO
+  // (não ERRO) — senão tentativas falhas inflam a sequência e a SEFAZ rejeita (cStat 594).
+  const jaEnviados = await db.stockSefazEvent.count({ where: { companyId: input.companyId, chave: input.chave, tpEvento: input.tpEvento, status: 'ENVIADO' } })
   const nSeqEvento = jaEnviados + 1
 
   const pem = pfxToPem(decryptSecret(cert.pfxCipher), decryptSecretToString(cert.senhaCipher))
