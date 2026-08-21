@@ -43,7 +43,12 @@ export function sugerirUnidade(uCom?: string | null): UnidadeControle | null {
   return null
 }
 
-/** Nome sugerido: limpa o xProd (colapsa espaços, tira códigos redundantes no fim). */
+/** Nome sugerido: limpa o xProd. Tira o PREFIXO NUMÉRICO do código do fornecedor
+ *  ("5 COXAO MOLE..." → "COXAO MOLE...") — o número da linha/código não é nome. O dono
+ *  encurta pro nome final ("Coxão Mole") no renomear inline. Colapsa espaços. */
 export function sugerirNome(xProd: string): string {
-  return xProd.replace(/\s{2,}/g, ' ').trim()
+  return xProd
+    .replace(/^\s*\d{1,3}\s+(?=[A-Za-zÀ-ÿ])/, '') // prefixo numérico (só se sobrar letra)
+    .replace(/\s{2,}/g, ' ')
+    .trim()
 }

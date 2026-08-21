@@ -7,6 +7,7 @@ import { useEffect, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Package, Loader2, ArrowLeft, TrendingUp } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
+import { NomeEditavel } from '@/components/estoque/nome-editavel'
 
 interface Compra { movimentoId: string; data: string; tipo: string; estorno: boolean; fornecedor: string | null; nNF: string | null; quantidade: number; custoUnitario: number; custoTotal: number }
 interface Ficha {
@@ -37,9 +38,9 @@ export default function FichaItemPage({ params }: { params: Promise<{ id: string
       {/* cabeçalho */}
       <div>
         <div className="flex items-center gap-3">
-          <Package className="h-7 w-7 text-[#185FA5]" />
-          <div>
-            <h1 className="text-xl font-semibold text-slate-900">{ficha.item.nome}</h1>
+          <Package className="h-7 w-7 shrink-0 text-[#185FA5]" />
+          <div className="min-w-0">
+            <div className="text-xl"><NomeEditavel companyId={id} itemId={itemId} nome={ficha.item.nome} className="text-xl font-semibold" onSalvo={(n) => setFicha({ ...ficha, item: { ...ficha.item, nome: n } })} /></div>
             <p className="text-sm text-slate-500">{ficha.item.categoriaLabel} · controle em {ficha.item.unidadeControle}</p>
           </div>
         </div>
@@ -98,3 +99,4 @@ export default function FichaItemPage({ params }: { params: Promise<{ id: string
     </div>
   )
 }
+

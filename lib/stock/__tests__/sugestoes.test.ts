@@ -35,4 +35,12 @@ describe('sugerirNome', () => {
   it('colapsa espaços do xProd', () => {
     expect(sugerirNome('OLEO DE SOJA SOYA PET          UND 900ML')).toBe('OLEO DE SOJA SOYA PET UND 900ML')
   })
+  it('tira o prefixo numérico do código do fornecedor (bug do frigorífico)', () => {
+    expect(sugerirNome('5 COXAO MOLE RESF BOV S/O (S/CAPA)')).toBe('COXAO MOLE RESF BOV S/O (S/CAPA)')
+    expect(sugerirNome('4 ACEM C/PESC RESF BB BOV S/O (IND)')).toBe('ACEM C/PESC RESF BB BOV S/O (IND)')
+  })
+  it('NÃO tira número quando ele faz parte do nome (ex: sem letra depois)', () => {
+    expect(sugerirNome('900ML SUCO')).toBe('900ML SUCO') // "900ML" não é só dígitos+espaço
+    expect(sugerirNome('2 LITROS REFRIGERANTE')).toBe('LITROS REFRIGERANTE') // "2 " prefixo → tira (aceitável; dono renomeia)
+  })
 })

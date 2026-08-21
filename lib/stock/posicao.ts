@@ -1,5 +1,6 @@
-// ESTOQUE FASE 1 item 2 — POSIÇÃO de estoque. Saldo DERIVADO (Σ movimentos) por item,
-// com custo médio e valor. Nasce vazia; enche a cada conferência confirmada. Só LÊ.
+// ESTOQUE FASE 1 item 2 — POSIÇÃO de estoque (a tela de trabalho diária). Saldo DERIVADO
+// (Σ movimentos) por item, com custo médio, valor, ÚLTIMA ENTRADA (idade) e TENDÊNCIA
+// do custo (subiu/desceu vs a compra anterior). Nasce vazia; enche por conferência. Só LÊ.
 
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
@@ -20,6 +21,9 @@ export interface PosicaoItem {
   custoMedio: number | null
   valor: number
   negativo: boolean
+  ultimaEntrada: string | null // ISO
+  ultimaEntradaDias: number | null
+  custoTendencia: 'subiu' | 'desceu' | 'igual' | null // último preço de compra vs o anterior
 }
 export interface PosicaoData {
   itens: PosicaoItem[]
@@ -27,14 +31,30 @@ export interface PosicaoData {
   porCategoria: { categoria: string; label: string; valor: number; itens: number }[]
 }
 
-export async function listPosicao(companyId: string, db: Db = defaultPrisma): Promise<PosicaoData> {
-  const saldos = await saldosDaEmpresa(db, companyId)
-  const itemIds = saldos.map((s) => s.itemId)
-  const items = itemIds.length ? await db.stockItem.findMany({ where: { companyId, id: { in: itemIds } }, select: { id: true, nome: true, categoria: true, unidadeControle: true } }) : []
+export async function listPosicao(companyId: string, db: Db = defaultPrisma, agora = new Date()): Promise<PosicaoData> {
+  const [saldos, entradas, items] = await Promise.all([
+    saldosDaEmpresa(db, companyId),
+    db.stockMovement.findMany({ where: { companyId, tipo: 'ENTRADA_NF' }, select: { itemId: true, custoUnitario: true, dataMovimento: true }, orderBy: { dataMovimento: 'asc' } }),
+    db.stockItem.findMany({ where: { companyId }, select: { id: true, nome: true, categoria: true, unidadeControle: true } }),
+  ])
   const byId = new Map(items.map((i) => [i.id, i]))
+  // por item: última entrada + tendência (últimos 2 preços de compra)
+  const entradasPorItem = new Map<string, { data: Date; preco: number }[]>()
+  for (const e of entradas) {
+    const arr = entradasPorItem.get(e.itemId) ?? []
+    arr.push({ data: e.dataMovimento, preco: e.custoUnitario })
+    entradasPorItem.set(e.itemId, arr)
+  }
 
   const itens: PosicaoItem[] = saldos.map((s) => {
     const it = byId.get(s.itemId)
+    const ent = entradasPorItem.get(s.itemId) ?? []
+    const ultima = ent[ent.length - 1]
+    let tendencia: PosicaoItem['custoTendencia'] = null
+    if (ent.length >= 2) {
+      const dif = round2(ent[ent.length - 1].preco - ent[ent.length - 2].preco)
+      tendencia = dif > 0.001 ? 'subiu' : dif < -0.001 ? 'desceu' : 'igual'
+    }
     return {
       itemId: s.itemId,
       nome: it?.nome ?? '(item removido)',
@@ -45,6 +65,9 @@ export async function listPosicao(companyId: string, db: Db = defaultPrisma): Pr
       custoMedio: s.custoMedio,
       valor: s.valor,
       negativo: s.saldo < 0,
+      ultimaEntrada: ultima?.data.toISOString() ?? null,
+      ultimaEntradaDias: ultima ? Math.floor((agora.getTime() - ultima.data.getTime()) / 86_400_000) : null,
+      custoTendencia: tendencia,
     }
   }).sort((a, b) => b.valor - a.valor)
 
