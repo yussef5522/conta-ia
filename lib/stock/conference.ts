@@ -1,0 +1,82 @@
+// ESTOQUE FASE 1 item 2 — dados da conferência da NOTA REAL (mesma forma do preview,
+// pra a tela ser UMA só). Read-only: mostra itens, mapeamento existente e sugestões.
+// Enquanto o CONFIRMAR não liga, NÃO grava. Só LÊ.
+
+import type { PrismaClient, Prisma } from '@prisma/client'
+import { prisma as defaultPrisma } from '@/lib/db'
+import { sugerirCategoria, sugerirUnidade, sugerirNome, type CategoriaEstoque, type UnidadeControle } from './sugestoes'
+
+type Db = PrismaClient | Prisma.TransactionClient
+
+export interface ConfItem {
+  nfeItemId: string
+  xProd: string
+  cProd: string
+  ncm: string
+  uCom: string
+  qCom: number
+  vUnCom: number
+  vProd: number
+  mapeado: { itemId: string; nome: string; unidadeControle: UnidadeControle; fatorConversao: number } | null
+  sugestao: { nome: string; unidade: UnidadeControle | null; categoria: CategoriaEstoque }
+}
+export interface ConfView {
+  modoTeste: false
+  nfeId: string
+  fornecedor: { nome: string; cnpj: string; uf: string; jaCadastrado: boolean }
+  chave: string
+  dataEmissao: string | null
+  valorNota: number | null
+  temItens: boolean
+  itens: ConfItem[]
+}
+
+const r2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
+
+export async function buildConferenceView(companyId: string, nfeId: string, db: Db = defaultPrisma): Promise<ConfView | null> {
+  const nfe = await db.stockNfe.findFirst({ where: { id: nfeId, companyId }, select: { id: true, chave: true, emitCnpj: true, emitNome: true, vNF: true, dataEmissao: true } })
+  if (!nfe) return null
+
+  const [emit, itensNfe] = await Promise.all([
+    db.stockNfeEmit.findUnique({ where: { nfeId }, select: { cnpj: true, xNome: true, uf: true } }),
+    db.stockNfeItem.findMany({ where: { companyId, nfeId }, orderBy: { nItem: 'asc' } }),
+  ])
+  const cnpj = (emit?.cnpj ?? nfe.emitCnpj ?? '').replace(/\D/g, '')
+
+  const [fornecedor, mapeamentos] = await Promise.all([
+    cnpj ? db.stockSupplier.findFirst({ where: { companyId, cnpj }, select: { id: true } }) : Promise.resolve(null),
+    db.stockSupplierProduct.findMany({ where: { companyId, supplierCnpj: cnpj }, select: { cProd: true, itemId: true, fatorConversao: true } }),
+  ])
+  const mapaPorCProd = new Map(mapeamentos.map((m) => [m.cProd, m]))
+  const itemIds = [...new Set(mapeamentos.map((m) => m.itemId))]
+  const itensEstoque = itemIds.length ? await db.stockItem.findMany({ where: { companyId, id: { in: itemIds } }, select: { id: true, nome: true, unidadeControle: true } }) : []
+  const itemById = new Map(itensEstoque.map((i) => [i.id, i]))
+
+  const itens: ConfItem[] = itensNfe.map((it) => {
+    const m = it.cProd ? mapaPorCProd.get(it.cProd) : undefined
+    const estoque = m ? itemById.get(m.itemId) : undefined
+    return {
+      nfeItemId: it.id,
+      xProd: it.xProd,
+      cProd: it.cProd ?? '',
+      ncm: it.ncm ?? '',
+      uCom: it.uCom ?? '',
+      qCom: it.qCom ?? 0,
+      vUnCom: it.vUnCom ?? 0,
+      vProd: it.vProd ?? r2((it.qCom ?? 0) * (it.vUnCom ?? 0)),
+      mapeado: m && estoque ? { itemId: m.itemId, nome: estoque.nome, unidadeControle: estoque.unidadeControle as UnidadeControle, fatorConversao: m.fatorConversao } : null,
+      sugestao: { nome: sugerirNome(it.xProd), unidade: sugerirUnidade(it.uCom), categoria: sugerirCategoria(it.xProd, it.ncm) },
+    }
+  })
+
+  return {
+    modoTeste: false,
+    nfeId: nfe.id,
+    fornecedor: { nome: emit?.xNome ?? nfe.emitNome ?? '(sem nome)', cnpj, uf: emit?.uf ?? '', jaCadastrado: !!fornecedor },
+    chave: nfe.chave,
+    dataEmissao: nfe.dataEmissao?.toISOString() ?? null,
+    valorNota: nfe.vNF,
+    temItens: itens.length > 0,
+    itens,
+  }
+}

@@ -6,7 +6,7 @@
 
 import { useEffect, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
-import { Inbox, PackageOpen, Archive, Info, Loader2, Clock, FlaskConical } from 'lucide-react'
+import { Inbox, PackageOpen, Archive, Info, Loader2, Clock, FlaskConical, ChevronRight } from 'lucide-react'
 
 interface Card_ {
   id: string
@@ -34,7 +34,8 @@ interface Relatorio {
 }
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('pt-BR') : '—')
+// TZ-safe: formata do texto YYYY-MM-DD (sem new Date, que rolava 20/08 → 19/08 em -03:00)
+const fmt = (iso: string | null) => (iso ? iso.slice(0, 10).split('-').reverse().join('/') : '—')
 const fmtDataHora = (iso: string | null) => (iso ? new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—')
 const fmtCnpj = (c: string | null) => (c ? c.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5') : '—')
 
@@ -114,25 +115,28 @@ export default function RecebimentosPage({ params }: { params: Promise<{ id: str
         ) : (
           <div className="space-y-2">
             {r.fila.map((n) => (
-              <Card key={n.id}>
-                <CardContent className="flex items-center justify-between p-4">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-slate-900">{n.emitNome ?? '(sem nome)'}</p>
-                    <p className="text-xs text-slate-500">
-                      {fmtCnpj(n.emitCnpj)} · {fmt(n.dataEmissao)} · {n.nItens} {n.nItens === 1 ? 'item' : 'itens'}
-                      {n.cancelada && <span className="ml-1 font-semibold text-rose-600">· CANCELADA</span>}
-                    </p>
-                  </div>
-                  <div className="flex flex-col items-end gap-1">
-                    <span className="text-sm font-semibold tabular-nums text-slate-900">{n.vNF != null ? brl(n.vNF) : '—'}</span>
-                    {n.esperandoDias != null && n.esperandoDias > 0 && (
-                      <span className="inline-flex items-center gap-1 text-[11px] text-amber-600">
-                        <Clock className="h-3 w-3" /> {n.esperandoDias}d esperando
-                      </span>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
+              <a key={n.id} href={`/empresas/${id}/estoque/recebimentos/${n.id}`} className="block">
+                <Card className="transition hover:border-[#185FA5] hover:shadow-sm">
+                  <CardContent className="flex items-center justify-between p-4">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-slate-900">{n.emitNome ?? '(sem nome)'}</p>
+                      <p className="text-xs text-slate-500">
+                        {fmtCnpj(n.emitCnpj)} · {fmt(n.dataEmissao)} · {n.nItens} {n.nItens === 1 ? 'item' : 'itens'}
+                        {n.cancelada && <span className="ml-1 font-semibold text-rose-600">· CANCELADA</span>}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="flex flex-col items-end gap-1">
+                        <span className="text-sm font-semibold tabular-nums text-slate-900">{n.vNF != null ? brl(n.vNF) : '—'}</span>
+                        {n.esperandoDias != null && n.esperandoDias > 0 && (
+                          <span className="inline-flex items-center gap-1 text-[11px] text-amber-600"><Clock className="h-3 w-3" /> {n.esperandoDias}d esperando</span>
+                        )}
+                      </div>
+                      <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
+                    </div>
+                  </CardContent>
+                </Card>
+              </a>
             ))}
           </div>
         )}
