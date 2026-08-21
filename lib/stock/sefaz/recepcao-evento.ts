@@ -37,11 +37,8 @@ export async function enviarEnvEvento(input: { envEvento: string; key: string; c
 
 function parseRetEvento(xml: string): EventoResult {
   const root = parser.parse(xml)
-  const ret =
-    root?.Envelope?.Body?.nfeRecepcaoEventoResult?.retEnvEvento ??
-    root?.Body?.nfeRecepcaoEventoResult?.retEnvEvento ??
-    root?.nfeRecepcaoEventoResult?.retEnvEvento ??
-    root?.retEnvEvento
+  // acha retEnvEvento em qualquer wrapper (nfeRecepcaoEventoNFResult, etc.) — varre.
+  const ret = acharRetEnvEvento(root)
   if (!ret) throw new Error('Resposta da SEFAZ sem <retEnvEvento> — formato inesperado.')
 
   const loteCStat = String(ret.cStat ?? '')
@@ -56,4 +53,16 @@ function parseRetEvento(xml: string): EventoResult {
     nProt: inf?.nProt ? String(inf.nProt) : undefined,
     dhRegEvento: inf?.dhRegEvento ? String(inf.dhRegEvento) : undefined,
   }
+}
+
+/** Varre o objeto até achar um retEnvEvento (independe do nome do wrapper). */
+function acharRetEnvEvento(node: unknown): Record<string, unknown> | null {
+  if (!node || typeof node !== 'object') return null
+  const obj = node as Record<string, unknown>
+  if (obj.retEnvEvento && typeof obj.retEnvEvento === 'object') return obj.retEnvEvento as Record<string, unknown>
+  for (const v of Object.values(obj)) {
+    const achou = acharRetEnvEvento(v)
+    if (achou) return achou
+  }
+  return null
 }

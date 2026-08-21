@@ -37,9 +37,10 @@ export async function enviarEvento(
   const nSeqEvento = jaEnviados + 1
 
   const pem = pfxToPem(decryptSecret(cert.pfxCipher), decryptSecretToString(cert.senhaCipher))
-  const clientCert = [pem.cert, ...pem.ca].join('\n')
+  const clientCert = [pem.cert, ...pem.ca].join('\n') // cadeia só pro mTLS
   const { xml } = buildEvento({ chave: input.chave, cnpj: company.cnpj, tpEvento: input.tpEvento, nSeqEvento, justificativa: input.justificativa, now })
-  const assinado = assinarEvento(xml, pem.key, clientCert)
+  // assina com SÓ A FOLHA no KeyInfo (a cadeia inteira no X509Data pode falhar o schema)
+  const assinado = assinarEvento(xml, pem.key, pem.cert)
   const envEvento = buildEnvEvento([assinado])
 
   const registro = await db.stockSefazEvent.create({
