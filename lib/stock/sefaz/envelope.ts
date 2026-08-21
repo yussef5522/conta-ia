@@ -46,6 +46,36 @@ export function buildDistDFeEnvelope(input: {
   )
 }
 
+/** Envelope da consulta por CHAVE (consChNFe) — "chegou sem aparecer na fila". A SEFAZ
+ * devolve o doc da chave se a empresa é destinatária. tpAmb: '1' produção, '2' homolog. */
+export function buildDistDFeConsChNFeEnvelope(input: {
+  cnpj: string
+  cUFAutor: string
+  chave: string
+  tpAmb?: '1' | '2'
+}): string {
+  const cnpj = input.cnpj.replace(/\D/g, '')
+  const tpAmb = input.tpAmb ?? '1'
+  const chave = input.chave.replace(/\D/g, '')
+  return (
+    `<?xml version="1.0" encoding="UTF-8"?>` +
+    `<soap12:Envelope xmlns:soap12="http://www.w3.org/2003/05/soap-envelope">` +
+    `<soap12:Body>` +
+    `<nfeDistDFeInteresse xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeDistribuicaoDFe">` +
+    `<nfeDadosMsg>` +
+    `<distDFeInt versao="1.35" xmlns="http://www.portalfiscal.inf.br/nfe">` +
+    `<tpAmb>${tpAmb}</tpAmb>` +
+    `<cUFAutor>${input.cUFAutor}</cUFAutor>` +
+    `<CNPJ>${cnpj}</CNPJ>` +
+    `<consChNFe><chNFe>${chave}</chNFe></consChNFe>` +
+    `</distDFeInt>` +
+    `</nfeDadosMsg>` +
+    `</nfeDistDFeInteresse>` +
+    `</soap12:Body>` +
+    `</soap12:Envelope>`
+  )
+}
+
 // Ambiente Nacional (AN) — produção. Homologação via env se precisar testar assinatura.
 export const SEFAZ_DIST_URL_PROD = 'https://www1.nfe.fazenda.gov.br/NFeDistribuicaoDFe/NFeDistribuicaoDFe.asmx'
 export const SEFAZ_DIST_URL_HOMOLOG = 'https://hom1.nfe.fazenda.gov.br/NFeDistribuicaoDFe/NFeDistribuicaoDFe.asmx'

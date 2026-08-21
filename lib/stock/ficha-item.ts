@@ -22,6 +22,7 @@ export interface CompraLinha {
   fornecedor: string | null
   notaChave: string | null
   nNF: string | null
+  conferenceId: string | null // recibo daquela entrada (quando veio de conferência)
   quantidade: number
   custoUnitario: number
   custoTotal: number
@@ -42,7 +43,7 @@ export async function buildFichaItem(companyId: string, itemId: string, db: Db =
 
   const [saldo, movimentos] = await Promise.all([
     saldoItem(db, companyId, itemId),
-    db.stockMovement.findMany({ where: { companyId, itemId }, orderBy: { dataMovimento: 'desc' }, select: { id: true, tipo: true, quantidade: true, custoUnitario: true, custoTotal: true, nfeChave: true, dataMovimento: true } }),
+    db.stockMovement.findMany({ where: { companyId, itemId }, orderBy: { dataMovimento: 'desc' }, select: { id: true, tipo: true, quantidade: true, custoUnitario: true, custoTotal: true, nfeChave: true, receiptId: true, dataMovimento: true } }),
   ])
 
   // fornecedor por chave (uma consulta pra as chaves distintas)
@@ -58,6 +59,7 @@ export async function buildFichaItem(companyId: string, itemId: string, db: Db =
     fornecedor: m.nfeChave ? fornecedorPorChave.get(m.nfeChave) ?? null : null,
     notaChave: m.nfeChave,
     nNF: nNFdaChave(m.nfeChave),
+    conferenceId: m.receiptId,
     quantidade: m.quantidade,
     custoUnitario: m.custoUnitario,
     custoTotal: m.custoTotal,

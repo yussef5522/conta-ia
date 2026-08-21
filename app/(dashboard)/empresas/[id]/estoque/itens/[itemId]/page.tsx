@@ -11,7 +11,7 @@ import { NomeEditavel } from '@/components/estoque/nome-editavel'
 import { MinMaxEditor } from '@/components/estoque/min-max-editor'
 import { statusEstoque, type StatusEstoqueResult } from '@/lib/stock/status-estoque'
 
-interface Compra { movimentoId: string; data: string; tipo: string; estorno: boolean; fornecedor: string | null; nNF: string | null; quantidade: number; custoUnitario: number; custoTotal: number }
+interface Compra { movimentoId: string; data: string; tipo: string; estorno: boolean; fornecedor: string | null; nNF: string | null; conferenceId: string | null; quantidade: number; custoUnitario: number; custoTotal: number }
 interface Ficha {
   item: { id: string; nome: string; unidadeControle: string; categoriaLabel: string; ativo: boolean; estoqueMin: number | null; estoqueMax: number | null }
   saldo: number; custoMedio: number | null; valor: number; status: StatusEstoqueResult
@@ -94,7 +94,7 @@ export default function FichaItemPage({ params }: { params: Promise<{ id: string
                   <tr key={c.movimentoId} className={`border-b border-slate-50 last:border-0 ${c.estorno ? 'bg-rose-50/40' : ''}`}>
                     <td className="p-3 tabular-nums text-slate-700">{fmtDia(c.data)}</td>
                     <td className="p-3 text-slate-700">{c.fornecedor ?? '—'}{c.estorno && <span className="ml-1 text-xs font-semibold text-rose-600">(estorno)</span>}</td>
-                    <td className="p-3 text-slate-400">{c.nNF ? `nº ${c.nNF}` : '—'}</td>
+                    <td className="p-3 text-slate-400">{c.conferenceId ? <a href={`/empresas/${id}/estoque/recibos/${c.conferenceId}`} className="text-[#185FA5] hover:underline">{c.nNF ? `nº ${c.nNF}` : 'recibo'}</a> : c.nNF ? `nº ${c.nNF}` : '—'}</td>
                     <td className="p-3 text-right tabular-nums text-slate-700">{num(c.quantidade)} {ficha.item.unidadeControle}</td>
                     <td className="p-3 text-right tabular-nums text-slate-700">{brl(c.custoUnitario)}</td>
                     <td className={`p-3 text-right font-medium tabular-nums ${c.estorno ? 'text-rose-600' : 'text-slate-900'}`}>{brl(c.custoTotal)}</td>

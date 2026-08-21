@@ -9,8 +9,7 @@ import { pfxToPem } from '../certificate'
 import { buildDistDFeEnvelope, ufToCodigo, SEFAZ_DIST_URL_PROD, SEFAZ_DIST_URL_HOMOLOG, SEFAZ_DIST_ACTION } from './envelope'
 import { postSefazSoap } from './client'
 import { parseSefazResponse, type SefazResponse } from './parse-response'
-import { statusForNfe } from './corte'
-import { saveNfeCompleta } from './persist-nfe'
+import { persistSefazDoc } from './persist-doc'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -82,37 +81,13 @@ export async function downloadSefaz(input: {
       break
     }
 
-    // persiste os docs desta página
+    // persiste os docs desta página (helper ÚNICO — mesma porta da busca por chave)
     for (const doc of resp.docs) {
       acc.totalDocs++
       if (doc.tipo === 'evento') { acc.eventos++; continue }
-      if (!doc.chave) continue // sem chave não dá pra deduplicar; ignora (raro)
-      const dataEmissao = doc.dataEmissao ? new Date(doc.dataEmissao) : null
-      const status = statusForNfe(dataEmissao, corte)
-      if (status === 'HISTORICA') acc.historicas++
-      else acc.novas++
-      const row = await db.stockNfe.upsert({
-        where: { companyId_chave: { companyId: input.companyId, chave: doc.chave } },
-        create: {
-          companyId: input.companyId, chave: doc.chave, nsu: doc.nsu, emitCnpj: doc.emitCnpj ?? null, emitNome: doc.emitNome ?? null,
-          vNF: doc.vNF ?? null, dataEmissao, cSitNFe: doc.cSitNFe ?? null, tpNF: doc.tpNF ?? null, status,
-          temXmlCompleto: doc.tipo === 'completo', schema: doc.schema || null, docXml: doc.xml || null,
-        },
-        update: {
-          // idempotente: só evolui de resumo → completo; nunca reclassifica HISTORICA/nova
-          nsu: doc.nsu,
-          ...(doc.tipo === 'completo' ? { temXmlCompleto: true, schema: doc.schema || null, docXml: doc.xml || null } : {}),
-        },
-        select: { id: true },
-      })
-      // NOVA com XML completo → parseia itens/duplicatas/emitente (histórica NÃO parseia)
-      if (status === 'AGUARDANDO_MERCADORIA' && doc.tipo === 'completo' && doc.xml) {
-        try {
-          await saveNfeCompleta({ nfeId: row.id, companyId: input.companyId, chave: doc.chave, xml: doc.xml, db })
-        } catch {
-          // parse falhou (XML atípico) — a nota fica na fila sem itens; não derruba o download.
-        }
-      }
+      const res = await persistSefazDoc(db, input.companyId, doc, corte)
+      if (res.status === 'HISTORICA') acc.historicas++
+      else if (res.status === 'AGUARDANDO_MERCADORIA') acc.novas++
     }
 
     // avança

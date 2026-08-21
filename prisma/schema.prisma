@@ -3418,3 +3418,21 @@ model StockSaldoCache {
   @@unique([companyId, itemId])
   @@map("stock_saldo_cache")
 }
+
+// ESTOQUE FASE 1 item 4 (21/08) — "deixar pra depois": o dono adia uma nota da fila
+// (mercadoria vai ser consumida antes do módulo fechar → não dar entrada agora). A nota
+// FICA na fila, mas silencia o badge "aguardando há X dias" (cinza, sem alarme). Tabela
+// própria (CREATE-only, isolamento: sem ALTER em stock_nfe). Reversível (apaga a linha).
+model StockNfeAdiada {
+  id          String   @id @default(cuid())
+  companyId   String
+  nfeId       String
+  chave       String
+  motivo      String? // livre (ex: "esperando módulo fechar")
+  adiadaEm    DateTime @default(now())
+  adiadaPorId String?
+
+  @@unique([companyId, nfeId])
+  @@index([companyId])
+  @@map("stock_nfe_adiada")
+}
