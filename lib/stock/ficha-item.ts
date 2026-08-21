@@ -5,6 +5,7 @@
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { saldoItem } from './saldo'
+import { statusEstoque, type StatusEstoqueResult } from './status-estoque'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -26,16 +27,17 @@ export interface CompraLinha {
   custoTotal: number
 }
 export interface FichaItem {
-  item: { id: string; nome: string; unidadeControle: string; categoria: string; categoriaLabel: string; ativo: boolean }
+  item: { id: string; nome: string; unidadeControle: string; categoria: string; categoriaLabel: string; ativo: boolean; estoqueMin: number | null; estoqueMax: number | null }
   saldo: number
   custoMedio: number | null
   valor: number
+  status: StatusEstoqueResult
   compras: CompraLinha[]
   precoTempo: { data: string; preco: number }[] // só ENTRADA_NF (pra o gráfico)
 }
 
 export async function buildFichaItem(companyId: string, itemId: string, db: Db = defaultPrisma): Promise<FichaItem | null> {
-  const item = await db.stockItem.findFirst({ where: { id: itemId, companyId }, select: { id: true, nome: true, unidadeControle: true, categoria: true, ativo: true } })
+  const item = await db.stockItem.findFirst({ where: { id: itemId, companyId }, select: { id: true, nome: true, unidadeControle: true, categoria: true, ativo: true, estoqueMin: true, estoqueMax: true } })
   if (!item) return null
 
   const [saldo, movimentos] = await Promise.all([
@@ -71,6 +73,7 @@ export async function buildFichaItem(companyId: string, itemId: string, db: Db =
     saldo: saldo.saldo,
     custoMedio: saldo.custoMedio,
     valor: saldo.valor,
+    status: statusEstoque(saldo.saldo, item.estoqueMin, item.estoqueMax),
     compras,
     precoTempo,
   }

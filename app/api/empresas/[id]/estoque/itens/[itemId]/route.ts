@@ -31,6 +31,8 @@ const patchSchema = z.object({
   nome: z.string().min(1).max(120).optional(),
   categoria: z.enum(['MATERIA_PRIMA', 'REVENDA', 'EMBALAGEM', 'LIMPEZA', 'USO_INTERNO']).optional(),
   unidadeControle: z.enum(['KG', 'UN', 'LT']).optional(),
+  estoqueMin: z.number().nonnegative().nullable().optional(),
+  estoqueMax: z.number().positive().nullable().optional(),
 })
 export async function PATCH(request: NextRequest, { params }: Params) {
   const { id: companyId, itemId } = await params
@@ -38,8 +40,14 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   if (a.erro) return a.erro
   const parsed = patchSchema.safeParse(await request.json().catch(() => null))
   if (!parsed.success || Object.keys(parsed.data).length === 0) return NextResponse.json({ erro: 'Nada pra atualizar' }, { status: 400 })
-  const existe = await prisma.stockItem.findFirst({ where: { id: itemId, companyId }, select: { id: true } })
+  const existe = await prisma.stockItem.findFirst({ where: { id: itemId, companyId }, select: { id: true, estoqueMin: true, estoqueMax: true } })
   if (!existe) return NextResponse.json({ erro: 'Item não encontrado' }, { status: 404 })
-  const item = await prisma.stockItem.update({ where: { id: itemId }, data: parsed.data, select: { id: true, nome: true, categoria: true, unidadeControle: true } })
+  // validação min < max (app-level; stockItem já existe, não dá pra ALTER + CHECK sob o isolamento)
+  const novoMin = parsed.data.estoqueMin !== undefined ? parsed.data.estoqueMin : existe.estoqueMin
+  const novoMax = parsed.data.estoqueMax !== undefined ? parsed.data.estoqueMax : existe.estoqueMax
+  if (novoMin != null && novoMax != null && novoMin >= novoMax) {
+    return NextResponse.json({ erro: 'O mínimo tem que ser menor que o máximo.' }, { status: 400 })
+  }
+  const item = await prisma.stockItem.update({ where: { id: itemId }, data: parsed.data, select: { id: true, nome: true, categoria: true, unidadeControle: true, estoqueMin: true, estoqueMax: true } })
   return NextResponse.json({ ok: true, item })
 }

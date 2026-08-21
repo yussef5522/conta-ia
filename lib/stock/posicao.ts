@@ -5,6 +5,7 @@
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { saldosDaEmpresa } from './saldo'
+import { statusEstoque, type StatusEstoqueResult } from './status-estoque'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -24,6 +25,9 @@ export interface PosicaoItem {
   ultimaEntrada: string | null // ISO
   ultimaEntradaDias: number | null
   custoTendencia: 'subiu' | 'desceu' | 'igual' | null // último preço de compra vs o anterior
+  estoqueMin: number | null
+  estoqueMax: number | null
+  status: StatusEstoqueResult // fonte única (lib/stock/status-estoque)
 }
 export interface PosicaoData {
   itens: PosicaoItem[]
@@ -35,7 +39,7 @@ export async function listPosicao(companyId: string, db: Db = defaultPrisma, ago
   const [saldos, entradas, items] = await Promise.all([
     saldosDaEmpresa(db, companyId),
     db.stockMovement.findMany({ where: { companyId, tipo: 'ENTRADA_NF' }, select: { itemId: true, custoUnitario: true, dataMovimento: true }, orderBy: { dataMovimento: 'asc' } }),
-    db.stockItem.findMany({ where: { companyId }, select: { id: true, nome: true, categoria: true, unidadeControle: true } }),
+    db.stockItem.findMany({ where: { companyId }, select: { id: true, nome: true, categoria: true, unidadeControle: true, estoqueMin: true, estoqueMax: true } }),
   ])
   const byId = new Map(items.map((i) => [i.id, i]))
   // por item: última entrada + tendência (últimos 2 preços de compra)
@@ -68,6 +72,9 @@ export async function listPosicao(companyId: string, db: Db = defaultPrisma, ago
       ultimaEntrada: ultima?.data.toISOString() ?? null,
       ultimaEntradaDias: ultima ? Math.floor((agora.getTime() - ultima.data.getTime()) / 86_400_000) : null,
       custoTendencia: tendencia,
+      estoqueMin: it?.estoqueMin ?? null,
+      estoqueMax: it?.estoqueMax ?? null,
+      status: statusEstoque(s.saldo, it?.estoqueMin ?? null, it?.estoqueMax ?? null),
     }
   }).sort((a, b) => b.valor - a.valor)
 
@@ -83,4 +90,18 @@ export async function listPosicao(companyId: string, db: Db = defaultPrisma, ago
     valorTotal: round2(itens.reduce((s, i) => s + i.valor, 0)),
     porCategoria: [...catMap.entries()].map(([categoria, v]) => ({ categoria, label: CAT_LABEL[categoria] ?? categoria, valor: v.valor, itens: v.itens })).sort((a, b) => b.valor - a.valor),
   }
+}
+
+const STATUS_CSV: Record<string, string> = { ABAIXO: 'abaixo do mínimo', DENTRO: 'dentro da faixa', ACIMA: 'acima do máximo', SEM_MIN: 'sem mínimo' }
+
+/** CSV da posição (o dono exporta pra planilha). ; + vírgula decimal + BOM = Excel BR. */
+export function posicaoToCsv(data: PosicaoData): string {
+  const head = ['Item', 'Categoria', 'Unidade', 'Saldo', 'Mínimo', 'Máximo', 'Status', 'Custo médio', 'Valor']
+  const esc = (s: string | number) => `"${String(s).replace(/"/g, '""')}"`
+  const dec = (n: number | null) => (n == null ? '' : String(n).replace('.', ','))
+  const rows = data.itens.map((i) => [
+    i.nome, i.categoriaLabel, i.unidadeControle, dec(i.saldo), dec(i.estoqueMin), dec(i.estoqueMax),
+    STATUS_CSV[i.status.status] ?? i.status.status, i.custoMedio != null ? i.custoMedio.toFixed(2).replace('.', ',') : '', i.valor.toFixed(2).replace('.', ','),
+  ].map(esc).join(';'))
+  return [head.map(esc).join(';'), ...rows].join('\n')
 }

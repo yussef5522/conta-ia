@@ -8,11 +8,13 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Package, Loader2, ArrowLeft, TrendingUp } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { NomeEditavel } from '@/components/estoque/nome-editavel'
+import { MinMaxEditor } from '@/components/estoque/min-max-editor'
+import { statusEstoque, type StatusEstoqueResult } from '@/lib/stock/status-estoque'
 
 interface Compra { movimentoId: string; data: string; tipo: string; estorno: boolean; fornecedor: string | null; nNF: string | null; quantidade: number; custoUnitario: number; custoTotal: number }
 interface Ficha {
-  item: { id: string; nome: string; unidadeControle: string; categoriaLabel: string; ativo: boolean }
-  saldo: number; custoMedio: number | null; valor: number
+  item: { id: string; nome: string; unidadeControle: string; categoriaLabel: string; ativo: boolean; estoqueMin: number | null; estoqueMax: number | null }
+  saldo: number; custoMedio: number | null; valor: number; status: StatusEstoqueResult
   compras: Compra[]; precoTempo: { data: string; preco: number }[]
 }
 
@@ -50,6 +52,13 @@ export default function FichaItemPage({ params }: { params: Promise<{ id: string
           <Card><CardContent className="p-4"><p className="text-xs text-slate-500">Valor em estoque</p><p className="text-lg font-semibold tabular-nums text-slate-900">{brl(ficha.valor)}</p></CardContent></Card>
         </div>
       </div>
+
+      {/* faixa de estoque (mín/máx) + status */}
+      <MinMaxEditor
+        companyId={id} itemId={itemId} unidade={ficha.item.unidadeControle}
+        estoqueMin={ficha.item.estoqueMin} estoqueMax={ficha.item.estoqueMax} status={ficha.status}
+        onSalvo={(min, max) => setFicha({ ...ficha, item: { ...ficha.item, estoqueMin: min, estoqueMax: max }, status: statusEstoque(ficha.saldo, min, max) })}
+      />
 
       {/* gráfico de preço no tempo (2+ compras) */}
       {ficha.precoTempo.length >= 2 && (

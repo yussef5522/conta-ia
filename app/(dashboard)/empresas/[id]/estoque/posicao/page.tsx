@@ -7,13 +7,16 @@
 
 import { useEffect, useMemo, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
-import { Boxes, Loader2, AlertTriangle, Search, ArrowUp, ArrowDown, Minus, ChevronDown, ChevronRight } from 'lucide-react'
+import { Boxes, Loader2, AlertTriangle, Search, ArrowUp, ArrowDown, Minus, ChevronDown, ChevronRight, Download } from 'lucide-react'
 import { NomeEditavel } from '@/components/estoque/nome-editavel'
+import { StatusBar, StatusDot, STATUS_BORDA } from '@/components/estoque/status-bar'
+import type { StatusEstoqueResult } from '@/lib/stock/status-estoque'
 
 interface PosItem {
   itemId: string; nome: string; categoria: string; categoriaLabel: string; unidadeControle: string
   saldo: number; custoMedio: number | null; valor: number; negativo: boolean
   ultimaEntrada: string | null; ultimaEntradaDias: number | null; custoTendencia: 'subiu' | 'desceu' | 'igual' | null
+  estoqueMin: number | null; estoqueMax: number | null; status: StatusEstoqueResult
 }
 interface Posicao { itens: PosItem[]; valorTotal: number; porCategoria: { categoria: string; label: string; valor: number; itens: number }[] }
 
@@ -41,6 +44,7 @@ export default function PosicaoPage({ params }: { params: Promise<{ id: string }
   const [catFiltro, setCatFiltro] = useState<string | null>(null)
   const [ordem, setOrdem] = useState<Ordem>('valor')
   const [agrupar, setAgrupar] = useState(false)
+  const [soAbaixo, setSoAbaixo] = useState(false)
   const [colapsadas, setColapsadas] = useState<Set<string>>(new Set())
 
   useEffect(() => {
@@ -51,6 +55,7 @@ export default function PosicaoPage({ params }: { params: Promise<{ id: string }
     if (!data) return []
     let its = data.itens
     if (catFiltro) its = its.filter((i) => i.categoria === catFiltro)
+    if (soAbaixo) its = its.filter((i) => i.status.status === 'ABAIXO')
     if (busca.trim()) its = its.filter((i) => i.nome.toLowerCase().includes(busca.toLowerCase()))
     const cmp: Record<Ordem, (a: PosItem, b: PosItem) => number> = {
       valor: (a, b) => b.valor - a.valor,
@@ -58,7 +63,9 @@ export default function PosicaoPage({ params }: { params: Promise<{ id: string }
       idade: (a, b) => (b.ultimaEntradaDias ?? -1) - (a.ultimaEntradaDias ?? -1),
     }
     return [...its].sort(cmp[ordem])
-  }, [data, catFiltro, busca, ordem])
+  }, [data, catFiltro, busca, ordem, soAbaixo])
+
+  const nAbaixo = useMemo(() => (data?.itens.filter((i) => i.status.status === 'ABAIXO').length ?? 0), [data])
 
   const grupos = useMemo(() => {
     const m = new Map<string, PosItem[]>()
@@ -75,7 +82,8 @@ export default function PosicaoPage({ params }: { params: Promise<{ id: string }
     <div className="mx-auto max-w-4xl space-y-5 p-4 sm:p-6">
       <div className="flex items-center gap-3">
         <Boxes className="h-7 w-7 text-[#185FA5]" />
-        <div><h1 className="text-xl font-semibold text-slate-900">Posição de estoque</h1><p className="text-sm text-slate-500">Saldo derivado dos movimentos. Clique num item pra ver a ficha.</p></div>
+        <div className="flex-1"><h1 className="text-xl font-semibold text-slate-900">Posição de estoque</h1><p className="text-sm text-slate-500">Saldo derivado dos movimentos. Clique num item pra ver a ficha.</p></div>
+        {data.itens.length > 0 && <a href={`/api/empresas/${id}/estoque/posicao?formato=csv`} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"><Download className="h-4 w-4" /> CSV</a>}
       </div>
 
       {data.itens.length === 0 ? (
@@ -108,6 +116,7 @@ export default function PosicaoPage({ params }: { params: Promise<{ id: string }
               <option value="valor">Maior valor</option><option value="nome">Nome</option><option value="idade">Mais antigo</option>
             </select>
             <button onClick={() => setAgrupar((v) => !v)} className={`rounded-lg border px-3 py-2 text-sm ${agrupar ? 'border-[#185FA5] bg-[#185FA5]/5 text-[#185FA5]' : 'border-slate-300 text-slate-600'}`}>Agrupar</button>
+            {nAbaixo > 0 && <button onClick={() => setSoAbaixo((v) => !v)} className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm ${soAbaixo ? 'border-rose-400 bg-rose-50 text-rose-700' : 'border-slate-300 text-slate-600'}`}><AlertTriangle className="h-3.5 w-3.5" /> {nAbaixo} abaixo do mín.</button>}
           </div>
 
           {/* lista */}
@@ -143,15 +152,22 @@ function ListaItens({ itens, id, onRenomear }: { itens: PosItem[]; id: string; o
       <table className="hidden w-full text-sm sm:table">
         <thead><tr className="border-b border-slate-100 text-left text-xs text-slate-400">
           <th className="p-3 font-medium">Item</th><th className="p-3 font-medium">Categoria</th>
-          <th className="p-3 text-right font-medium">Saldo</th><th className="p-3 text-right font-medium">Custo médio</th>
+          <th className="p-3 text-right font-medium">Saldo</th><th className="p-3 font-medium">Faixa (mín–máx)</th>
+          <th className="p-3 text-right font-medium">Custo médio</th>
           <th className="p-3 text-right font-medium">Valor</th><th className="p-3 text-right font-medium">Última entrada</th>
         </tr></thead>
         <tbody>
           {itens.map((i) => (
-            <tr key={i.itemId} className="border-b border-slate-50 last:border-0 hover:bg-slate-50">
+            <tr key={i.itemId} className={`border-b border-l-2 border-slate-50 last:border-b-0 hover:bg-slate-50 ${STATUS_BORDA[i.status.cor]}`}>
               <td className="p-3"><NomeEditavel companyId={id} itemId={i.itemId} nome={i.nome} comLink onSalvo={(n) => onRenomear(i.itemId, n)} /></td>
               <td className="p-3 text-slate-500">{i.categoriaLabel}</td>
               <td className={`p-3 text-right tabular-nums ${i.negativo ? 'font-semibold text-rose-600' : 'text-slate-800'}`}>{i.negativo && <AlertTriangle className="mr-1 inline h-3 w-3" />}{num(i.saldo)} {i.unidadeControle}</td>
+              <td className="w-36 p-3">
+                {i.estoqueMin == null ? <span className="text-xs text-slate-300">—</span> : (<>
+                  <StatusBar status={i.status} />
+                  <div className="mt-1 flex items-center justify-between text-[10px] text-slate-400 tabular-nums"><span>{num(i.estoqueMin)}</span><span>{i.estoqueMax != null ? num(i.estoqueMax) : ''}</span></div>
+                </>)}
+              </td>
               <td className="p-3 text-right tabular-nums text-slate-600">{i.custoMedio != null ? brl(i.custoMedio) : '—'} <Tendencia t={i.custoTendencia} /></td>
               <td className="p-3 text-right font-medium tabular-nums text-slate-900">{brl(i.valor)}</td>
               <td className="p-3 text-right"><IdadeBadge dias={i.ultimaEntradaDias} /></td>
@@ -162,7 +178,7 @@ function ListaItens({ itens, id, onRenomear }: { itens: PosItem[]; id: string; o
       {/* mobile: cards */}
       <div className="divide-y divide-slate-50 sm:hidden">
         {itens.map((i) => (
-          <div key={i.itemId} className="p-4">
+          <div key={i.itemId} className={`border-l-2 p-4 ${STATUS_BORDA[i.status.cor]}`}>
             <div className="flex items-start justify-between gap-2">
               <NomeEditavel companyId={id} itemId={i.itemId} nome={i.nome} comLink onSalvo={(n) => onRenomear(i.itemId, n)} />
               <span className="shrink-0 text-sm font-semibold tabular-nums text-slate-900">{brl(i.valor)}</span>
@@ -171,6 +187,12 @@ function ListaItens({ itens, id, onRenomear }: { itens: PosItem[]; id: string; o
               <span className={i.negativo ? 'font-semibold text-rose-600' : ''}>{num(i.saldo)} {i.unidadeControle} · {i.custoMedio != null ? brl(i.custoMedio) : '—'} <Tendencia t={i.custoTendencia} /></span>
               <IdadeBadge dias={i.ultimaEntradaDias} />
             </div>
+            {i.estoqueMin != null && (
+              <div className="mt-2 flex items-center gap-2">
+                <StatusBar status={i.status} className="flex-1" />
+                <StatusDot status={i.status} />
+              </div>
+            )}
           </div>
         ))}
       </div>

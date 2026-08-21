@@ -3,7 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { listPosicao } from '@/lib/stock/posicao'
+import { listPosicao, posicaoToCsv } from '@/lib/stock/posicao'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -14,5 +14,11 @@ export async function GET(request: NextRequest, { params }: Params) {
   if (!(await prisma.userCompany.findFirst({ where: { userId: user.sub, companyId }, select: { companyId: true } }))) {
     return NextResponse.json({ erro: 'Empresa não encontrada' }, { status: 404 })
   }
-  return NextResponse.json({ posicao: await listPosicao(companyId) })
+  const posicao = await listPosicao(companyId)
+  if (request.nextUrl.searchParams.get('formato') === 'csv') {
+    return new NextResponse('﻿' + posicaoToCsv(posicao), {
+      headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="posicao-estoque.csv"` },
+    })
+  }
+  return NextResponse.json({ posicao })
 }
