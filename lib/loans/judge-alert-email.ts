@@ -14,13 +14,14 @@ export interface JudgeAlertInput {
   dupStableKey?: { accountName: string; stableKey: string; txIds: string[]; date: string; amount: number; memo: string }[]
   vendaChecks?: { invariante: string; companyName: string; detalhe: string }[]
   cardChecks?: { invariante: string; companyName: string; detalhe: string }[]
+  stockChecks?: { invariante: string; companyId: string | null; detalhe: string }[]
   juizUrl: string
 }
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
 export function buildJudgeAlertEmail(i: JudgeAlertInput): { subject: string; html: string } {
-  const nFalhas = i.totalFail + i.sharedTx.length + i.balanceIssues + (i.dupIssues ?? 0) + (i.vendaChecks?.length ?? 0) + (i.cardChecks?.length ?? 0)
+  const nFalhas = i.totalFail + i.sharedTx.length + i.balanceIssues + (i.dupIssues ?? 0) + (i.vendaChecks?.length ?? 0) + (i.cardChecks?.length ?? 0) + (i.stockChecks?.length ?? 0)
   const subject = `🔴 Juiz de módulo: ${nFalhas} falha${nFalhas === 1 ? '' : 's'} (${i.runAt.toLocaleDateString('pt-BR')})`
 
   const linhas: string[] = []
@@ -43,6 +44,9 @@ export function buildJudgeAlertEmail(i: JudgeAlertInput): { subject: string; htm
   }
   for (const c of i.cardChecks ?? []) {
     linhas.push(`<li><b>Cartão ${c.invariante}</b> · ${c.companyName} → ${c.detalhe}</li>`)
+  }
+  for (const s of i.stockChecks ?? []) {
+    linhas.push(`<li><b>Estoque ${s.invariante}</b> → ${s.detalhe}</li>`)
   }
   if (linhas.length === 0) linhas.push('<li>(sem detalhe — verifique o painel)</li>')
 

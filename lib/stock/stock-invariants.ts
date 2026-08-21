@@ -1,10 +1,13 @@
-// ESTOQUE FASE 0 — invariantes do juiz do estoque (tabela PRÓPRIA stock_judge_report).
-// Isolado: falha de estoque nunca mascara nem é mascarada por empréstimo/cartão/venda.
+// ESTOQUE — invariantes do juiz noturno (tabela PRÓPRIA stock_judge_report, isolada:
+// falha de estoque nunca mascara nem é mascarada por empréstimo/cartão/venda).
 //
-// FASE 0 entrega E12 (certificado) + o SNAPSHOT DE ISOLAMENTO. E10/E13/E14 (SEFAZ)
-// entram com o item 2; E11 (multi-tenant) quando houver dado stock_ com companyId.
+// FASE 0: E12 (certificado) + snapshot de isolamento.
+// FASE 1 (agora que há MOVIMENTO real): E1 (cache==Σ) · E2 (conferência confirmada tem
+// movimentos que somam os itens) · E3 (nota confirmada com duplicata tem payable) ·
+// E15 (evento SEFAZ pendente/erro > 24h).
 
 import type { PrismaClient, Prisma } from '@prisma/client'
+import { saldosDaEmpresa } from './saldo'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -15,33 +18,71 @@ export interface StockInvariantFail {
 }
 
 const E12_DIAS = 30
+const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 
-/** Roda os invariantes de estoque disponíveis na FASE 0. */
 export async function checkStockInvariants(db: Db, now: Date = new Date()): Promise<StockInvariantFail[]> {
   const fails: StockInvariantFail[] = []
+  const F = (invariante: string, companyId: string | null, detalhe: string) => fails.push({ invariante, companyId, detalhe })
 
-  // E12 — certificado ativo vence em < 30 dias (ou já venceu). O dono precisa renovar
-  // ANTES, senão o download da SEFAZ para. Alerta, nunca falha em silêncio.
-  const certs = await db.stockCertificate.findMany({
-    where: { status: 'ATIVO' },
-    select: { companyId: true, cnpj: true, validadeAte: true },
-  })
+  // E12 — certificado ativo vence em < 30 dias (ou já venceu).
+  const certs = await db.stockCertificate.findMany({ where: { status: 'ATIVO' }, select: { companyId: true, cnpj: true, validadeAte: true } })
   for (const c of certs) {
     const dias = Math.floor((c.validadeAte.getTime() - now.getTime()) / 86_400_000)
-    if (dias < 0) {
-      fails.push({ invariante: 'E12', companyId: c.companyId, detalhe: `certificado ${c.cnpj} VENCIDO há ${-dias} dia(s) — o download da SEFAZ está parado. Renove.` })
-    } else if (dias < E12_DIAS) {
-      fails.push({ invariante: 'E12', companyId: c.companyId, detalhe: `certificado ${c.cnpj} vence em ${dias} dia(s) — renove antes de vencer.` })
+    if (dias < 0) F('E12', c.companyId, `certificado ${c.cnpj} VENCIDO há ${-dias} dia(s) — o download da SEFAZ está parado. Renove.`)
+    else if (dias < E12_DIAS) F('E12', c.companyId, `certificado ${c.cnpj} vence em ${dias} dia(s) — renove antes de vencer.`)
+  }
+
+  // empresas com dado de estoque (movimento OU nota) — o universo do juiz.
+  const companiesComMov = await db.stockMovement.findMany({ distinct: ['companyId'], select: { companyId: true } })
+  const companyIds = [...new Set(companiesComMov.map((c) => c.companyId))]
+
+  // E1 — cache de saldo == Σ movimentos (por item).
+  for (const companyId of companyIds) {
+    const derivados = await saldosDaEmpresa(db, companyId)
+    const derivadoPorItem = new Map(derivados.map((d) => [d.itemId, d.saldo]))
+    const caches = await db.stockSaldoCache.findMany({ where: { companyId }, select: { itemId: true, saldo: true } })
+    for (const c of caches) {
+      const der = derivadoPorItem.get(c.itemId) ?? 0
+      if (Math.abs(round2(c.saldo) - round2(der)) > 0.001) {
+        F('E1', companyId, `item ${c.itemId}: cache de saldo ${round2(c.saldo)} ≠ Σ movimentos ${round2(der)} — recompute.`)
+      }
+    }
+    // cache faltando pra item com movimento (stale) — aviso brando
+    for (const d of derivados) {
+      if (!caches.find((c) => c.itemId === d.itemId)) F('E1', companyId, `item ${d.itemId}: tem movimento mas SEM cache de saldo (recompute pendente).`)
     }
   }
+
+  // E2 — toda conferência CONFIRMADA/DIVERGENTE_ACEITA tem movimentos que somam os itens.
+  const confs = await db.stockReceiptConference.findMany({ where: { status: { in: ['CONFIRMADA', 'DIVERGENTE_ACEITA'] } }, select: { id: true, companyId: true } })
+  for (const conf of confs) {
+    const [nItens, movs] = await Promise.all([
+      db.stockConferenceItem.count({ where: { conferenceId: conf.id } }),
+      db.stockMovement.count({ where: { companyId: conf.companyId, receiptId: conf.id, tipo: 'ENTRADA_NF' } }),
+    ])
+    if (movs !== nItens) F('E2', conf.companyId, `conferência ${conf.id}: ${nItens} itens conferidos vs ${movs} movimentos ENTRADA_NF (deveriam ser iguais).`)
+  }
+
+  // E3 — toda nota CONFIRMADA com duplicata tem contas a pagar sugerido.
+  const notasConf = await db.stockNfe.findMany({ where: { status: 'CONFIRMADA' }, select: { id: true, companyId: true } })
+  for (const n of notasConf) {
+    const dups = await db.stockNfeDup.count({ where: { companyId: n.companyId, nfeId: n.id } })
+    if (dups > 0) {
+      const pag = await db.stockPayableSuggestion.count({ where: { companyId: n.companyId, nfeId: n.id } })
+      if (pag < dups) F('E3', n.companyId, `nota ${n.id}: ${dups} duplicata(s) na nota mas ${pag} conta(s) a pagar sugerida(s).`)
+    }
+  }
+
+  // E15 — evento SEFAZ pendente/erro há > 24h (retry não pegou).
+  const limite = new Date(now.getTime() - 24 * 3600_000)
+  const eventosPend = await db.stockSefazEvent.findMany({ where: { status: { in: ['PENDENTE', 'ERRO'] }, criadoEm: { lt: limite } }, select: { companyId: true, chave: true, tpEvento: true, status: true } })
+  for (const e of eventosPend) F('E15', e.companyId, `evento ${e.tpEvento} da nota ${e.chave} está ${e.status} há > 24h — reenviar.`)
 
   return fails
 }
 
 // ---------------------------------------------------------------------------
-// SNAPSHOT DE ISOLAMENTO — a prova de que operação de estoque NÃO altera nenhum
-// módulo fechado. Contagem por tabela (soma quando faz sentido). O teste tira o
-// snapshot ANTES e DEPOIS de uma operação de estoque; tem que ser IDÊNTICO.
+// SNAPSHOT DE ISOLAMENTO (Fase 0) — operação de estoque NÃO altera módulo fechado.
 // ---------------------------------------------------------------------------
 
 const TABELAS_FECHADAS = [
@@ -49,23 +90,18 @@ const TABELAS_FECHADAS = [
   'businessCreditCard', 'bankAccount', 'aiLearningRule', 'supplier',
 ] as const
 
-export interface IsolationSnapshot {
-  [tabela: string]: number // contagem de linhas
-}
+export interface IsolationSnapshot { [tabela: string]: number }
 
-/** Conta as linhas de cada tabela dos módulos fechados. Usado no teste de isolamento
- *  (antes/depois) e no juiz (delta do dia). Só LÊ. */
 export async function snapshotClosedModules(db: Db): Promise<IsolationSnapshot> {
   const snap: IsolationSnapshot = {}
   for (const t of TABELAS_FECHADAS) {
-    // @ts-expect-error — acesso dinâmico ao delegate do Prisma (nomes conferidos acima)
+    // @ts-expect-error — acesso dinâmico ao delegate do Prisma
     const delegate = db[t]
     if (delegate?.count) snap[t] = await delegate.count()
   }
   return snap
 }
 
-/** true se os dois snapshots são idênticos (nenhuma tabela fechada mudou). */
 export function isolationHeld(antes: IsolationSnapshot, depois: IsolationSnapshot): boolean {
   const keys = new Set([...Object.keys(antes), ...Object.keys(depois)])
   for (const k of keys) if (antes[k] !== depois[k]) return false

@@ -7,6 +7,7 @@
 
 import { PrismaClient } from '@prisma/client'
 import { runModuleJudge } from '../lib/loans/run-module-judge'
+import { runAndPersistStockJudge } from '../lib/stock/run-stock-judge'
 import { buildJudgeAlertEmail } from '../lib/loans/judge-alert-email'
 import { sendEmail } from '../lib/email/send'
 
@@ -16,6 +17,7 @@ const ALERT_TO = process.env.JUDGE_ALERT_EMAIL
 
 async function main() {
   const rep = await runModuleJudge(prisma)
+  const stockRep = await runAndPersistStockJudge(prisma) // tabela isolada stock_judge_report
   await prisma.loanModuleJudgeReport.create({
     data: {
       passed: rep.passed,
@@ -30,9 +32,9 @@ async function main() {
     },
   })
   const stamp = new Date().toISOString()
-  console.log(`[juiz ${stamp}] ${rep.passed ? '✓ OK' : '✗ FALHA'} · ${rep.totalContracts - rep.totalFail}/${rep.totalContracts} contratos · balance ${rep.balanceIssues} · dup ${rep.dupIssues} · venda ${rep.vendaIssues} · cartão ${rep.cardIssues} · ${rep.durationMs}ms`)
+  console.log(`[juiz ${stamp}] ${rep.passed ? '✓ OK' : '✗ FALHA'} · ${rep.totalContracts - rep.totalFail}/${rep.totalContracts} contratos · balance ${rep.balanceIssues} · dup ${rep.dupIssues} · venda ${rep.vendaIssues} · cartão ${rep.cardIssues} · estoque ${stockRep.stockIssues} · ${rep.durationMs}ms`)
 
-  if (!rep.passed) {
+  if (!rep.passed || !stockRep.passed) {
     if (!ALERT_TO) {
       console.error(`[juiz ${stamp}] FALHA detectada mas JUDGE_ALERT_EMAIL não configurado — e-mail NÃO enviado`)
     } else {
@@ -48,6 +50,7 @@ async function main() {
         dupStableKey: rep.dupStableKey,
         vendaChecks: rep.vendaChecks,
         cardChecks: rep.cardChecks,
+        stockChecks: stockRep.fails,
         juizUrl: `${BASE}/juiz`,
       })
       const r = await sendEmail({ to: ALERT_TO, subject, html, type: 'juiz-module-alert' })

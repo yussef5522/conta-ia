@@ -10,6 +10,13 @@ import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import { runModuleJudge } from '@/lib/loans/run-module-judge'
+import { runAndPersistStockJudge } from '@/lib/stock/run-stock-judge'
+
+// Estoque vive em tabela PRÓPRIA (stock_judge_report, isolado) — o selo agrega lendo-a.
+async function ultimoStock() {
+  const s = await prisma.stockJudgeReport.findFirst({ orderBy: { runAt: 'desc' } })
+  return { stockIssues: s?.stockIssues ?? 0, stockDetail: s ? parseDetail(s.detail as unknown) : null, stockRunAt: s?.runAt ?? null }
+}
 
 // RESILIENTE (17/08) + AGNÓSTICO AO SCHEMA (String OU Json): 1 relatório com
 // detail ruim NÃO pode derrubar o GET (era o que fazia o selo cair no cinza
@@ -29,7 +36,9 @@ export async function GET(request: NextRequest) {
     await getAuthContext(request)
     const rows = await prisma.loanModuleJudgeReport.findMany({ orderBy: { runAt: 'desc' }, take: 30 })
     const history = rows.map((r) => ({ ...r, detail: parseDetail(r.detail as unknown) }))
-    return NextResponse.json({ latest: history[0] ?? null, history })
+    const stock = await ultimoStock()
+    const latest = history[0] ? { ...history[0], stockIssues: stock.stockIssues, stockDetail: stock.stockDetail } : null
+    return NextResponse.json({ latest, history, stock })
   } catch (e) {
     return handleApiError(e)
   }
@@ -38,7 +47,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     await getAuthContext(request)
-    const rep = await runModuleJudge(prisma)
+    const [rep, stockRep] = await Promise.all([runModuleJudge(prisma), runAndPersistStockJudge(prisma)])
     const saved = await prisma.loanModuleJudgeReport.create({
       data: {
         passed: rep.passed,
@@ -52,7 +61,7 @@ export async function POST(request: NextRequest) {
         detail: JSON.stringify({ byCompany: rep.byCompany, sharedTx: rep.sharedTx, balanceChecks: rep.balanceChecks, dupStableKey: rep.dupStableKey, vendaChecks: rep.vendaChecks, cardChecks: rep.cardChecks, cardResumo: rep.cardResumo }),
       },
     })
-    return NextResponse.json({ ok: true, report: { ...saved, detail: parseDetail(saved.detail as unknown) } })
+    return NextResponse.json({ ok: true, report: { ...saved, detail: parseDetail(saved.detail as unknown), stockIssues: stockRep.stockIssues }, stock: stockRep })
   } catch (e) {
     return handleApiError(e)
   }
