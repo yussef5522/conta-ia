@@ -6,7 +6,6 @@
 // Node `https` nativo — sem lib de SOAP, sem mandar o cert pra terceiro.
 
 import https from 'node:https'
-import { SEFAZ_DIST_ACTION } from './envelope'
 import { loadServerCa } from './server-ca'
 
 export interface SefazHttpResult {
@@ -29,14 +28,15 @@ export class SefazHttpError extends Error {
  * node-forge) — NÃO passa o pfx cru, senão o Node 20/OpenSSL 3 recusa o A1 legado
  * (ERR_CRYPTO_UNSUPPORTED_OPERATION). NÃO loga cert/key nem o corpo.
  */
-export function postDistDFe(input: {
+export function postSefazSoap(input: {
   url: string
+  action: string // SOAP action (dist / recepção de evento / consulta…)
   envelope: string
   key: string
   cert: string // cert do CLIENTE (folha + intermediários concatenados)
   timeoutMs?: number
 }): Promise<SefazHttpResult> {
-  const { url, envelope, key, cert } = input
+  const { url, action, envelope, key, cert } = input
   const timeoutMs = input.timeoutMs ?? 30_000
   const u = new URL(url)
   const started = Date.now()
@@ -60,7 +60,7 @@ export function postDistDFe(input: {
         agent: false, // conexão nova por chamada (sem keep-alive → sem acúmulo de listeners)
         minVersion: 'TLSv1.2',
         headers: {
-          'Content-Type': `application/soap+xml; charset=utf-8; action="${SEFAZ_DIST_ACTION}"`,
+          'Content-Type': `application/soap+xml; charset=utf-8; action="${action}"`,
           'Content-Length': Buffer.byteLength(envelope),
         },
       },

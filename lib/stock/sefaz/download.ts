@@ -6,8 +6,8 @@ import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { decryptSecret, decryptSecretToString } from '../crypto'
 import { pfxToPem } from '../certificate'
-import { buildDistDFeEnvelope, ufToCodigo, SEFAZ_DIST_URL_PROD, SEFAZ_DIST_URL_HOMOLOG } from './envelope'
-import { postDistDFe } from './client'
+import { buildDistDFeEnvelope, ufToCodigo, SEFAZ_DIST_URL_PROD, SEFAZ_DIST_URL_HOMOLOG, SEFAZ_DIST_ACTION } from './envelope'
+import { postSefazSoap } from './client'
 import { parseSefazResponse, type SefazResponse } from './parse-response'
 import { statusForNfe } from './corte'
 import { saveNfeCompleta } from './persist-nfe'
@@ -152,7 +152,7 @@ export async function runSefazDownload(input: { companyId: string; db?: Db; now?
 
   const pager: SefazPager = async (ultNSU) => {
     const envelope = buildDistDFeEnvelope({ cnpj: company.cnpj, cUFAutor: cUF, ultNSU, tpAmb })
-    const r = await postDistDFe({ url, envelope, key: pem.key, cert: clientCert })
+    const r = await postSefazSoap({ url, action: SEFAZ_DIST_ACTION, envelope, key: pem.key, cert: clientCert })
     if (r.status !== 200) {
       // a SEFAZ às vezes devolve o SOAP fault com 500 + corpo útil; tenta parsear mesmo assim
       try { return parseSefazResponse(r.body) } catch { throw new Error(`SEFAZ HTTP ${r.status}`) }
