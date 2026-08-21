@@ -59,8 +59,10 @@ export default function PosicaoPage({ params }: { params: Promise<{ id: string }
               </tr></thead>
               <tbody>
                 {data.itens.map((i) => (
-                  <tr key={i.itemId} className="border-b border-slate-50 last:border-0">
-                    <td className="p-3 font-medium text-slate-800">{i.nome}</td>
+                  <tr key={i.itemId} className="border-b border-slate-50 last:border-0 hover:bg-slate-50">
+                    <td className="p-3 font-medium text-slate-800">
+                      <a href={`/empresas/${id}/estoque/itens/${i.itemId}`} className="text-[#185FA5] hover:underline">{i.nome}</a>
+                    </td>
                     <td className="p-3 text-slate-500">{i.categoriaLabel}</td>
                     <td className={`p-3 text-right tabular-nums ${i.negativo ? 'font-semibold text-rose-600' : 'text-slate-800'}`}>
                       {i.negativo && <AlertTriangle className="mr-1 inline h-3 w-3" />}{num(i.saldo)} {i.unidadeControle}

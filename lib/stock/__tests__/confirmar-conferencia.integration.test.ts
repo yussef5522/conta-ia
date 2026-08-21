@@ -33,6 +33,10 @@ beforeEach(async () => {
   ] })
 })
 afterEach(async () => {
+  // dev.db compartilhado: dropa o trigger de imutabilidade (do teste do ledger) antes
+  // de limpar movimentos, senão o delete é bloqueado.
+  await prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS trg_stock_movement_no_update;`).catch(() => {})
+  await prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS trg_stock_movement_no_delete;`).catch(() => {})
   for (const t of ['stockMovement', 'stockConferenceItem', 'stockReceiptConference', 'stockPayableSuggestion', 'stockSupplierProduct', 'stockSaldoCache', 'stockNfeDup', 'stockNfeItem', 'stockNfe', 'stockItem', 'stockSupplier'] as const) {
     // @ts-expect-error acesso dinâmico
     await prisma[t].deleteMany({ where: { companyId } })
