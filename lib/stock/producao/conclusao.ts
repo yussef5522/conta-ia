@@ -7,7 +7,7 @@
 import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { criarMovimento } from '../movement'
-import { custoMedioPorItem } from '../saldo'
+import { custoMedioPorItem, recomputeSaldoCache } from '../saldo'
 import { separadoPorItem, TIPO_CONSUMO, TIPO_DEVOLUCAO, TIPO_GERACAO, OrdemError } from './ordens'
 
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
@@ -114,6 +114,7 @@ export async function concluir(input: ConcluirInput, db: PrismaClient = defaultP
     return conc.id
   })
 
+  await recomputeSaldoCache(db, input.companyId) // o cache segue os movimentos (juiz E1)
   return { conclusaoId, qtdGerada: input.qtdGerada, rendimento, escalaConsumida, custoLoteReal, custoUnitarioReal, validadeAte: validadeAte?.toISOString() ?? null, rendimentoMedioAnterior, desvio, foraDaFaixa, estado: input.parcial ? 'EM_PRODUCAO' : 'CONCLUIDA' }
 }
 

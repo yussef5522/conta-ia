@@ -8,6 +8,7 @@ import { criarFicha } from '../fichas'
 import { criarOrdem, confirmarSeparacao, iniciarProducao } from '../ordens'
 import { concluir } from '../conclusao'
 import { checkProducaoInvariants } from '../producao-invariants'
+import { saldosDaEmpresa } from '../../saldo'
 
 const CNPJ = '70707070000170'
 let companyId: string
@@ -56,6 +57,20 @@ describe('GOLDEN fluxo completo + juiz P1-P6', () => {
     // nenhum invariante de produção falha no fluxo correto
     const fails = soP(await checkProducaoInvariants(prisma, new Date('2026-08-21')))
     expect(fails).toHaveLength(0)
+  })
+
+  it('E1: separação/conclusão recomputam o cache — cache == Σ movimentos (não drifta)', async () => {
+    await produzir(100, 1, 1, 25)
+    const derivados = await saldosDaEmpresa(prisma, companyId)
+    const caches = await prisma.stockSaldoCache.findMany({ where: { companyId } })
+    // todo item com movimento tem cache, e o cache bate com o derivado (o que o juiz E1 exige)
+    for (const d of derivados) {
+      const c = caches.find((x) => x.itemId === d.itemId)
+      expect(c, `item ${d.itemId} sem cache`).toBeTruthy()
+      expect(Math.round(c!.saldo * 100) / 100).toBe(d.saldo)
+    }
+    // o produto produzido tem cache (era o que faltava)
+    expect(caches.find((c) => c.itemId === produtoId)?.saldo).toBe(25)
   })
 
   it('P4 (vazamento): ordem CONCLUIDA com em-produção preso → dispara', async () => {

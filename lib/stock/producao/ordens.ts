@@ -7,7 +7,7 @@
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { criarMovimento } from '../movement'
-import { saldoItem, custoMedioPorItem } from '../saldo'
+import { saldoItem, custoMedioPorItem, recomputeSaldoCache } from '../saldo'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -127,6 +127,7 @@ export async function confirmarSeparacao(companyId: string, ordemId: string, ite
     }
     await tx.stockProductionOrder.update({ where: { id: ordemId }, data: { estado: 'SEPARADA' } })
   })
+  await recomputeSaldoCache(db, companyId) // o cache segue os movimentos (juiz E1)
   return { movimentos: positivos.length }
 }
 
@@ -148,6 +149,7 @@ export async function devolverInsumo(companyId: string, ordemId: string, itemId:
   if (qtd > emProd + 0.001) throw new OrdemError(`Não dá pra devolver ${qtd} — só ${round2(emProd)} desse item está em produção.`)
   const custo = (await custoMedioPorItem(db, companyId)).get(itemId) ?? 0
   await criarMovimento(db, { companyId, itemId, tipo: TIPO_DEVOLUCAO, quantidade: qtd, custoUnitario: custo, custoTotal: round2(qtd * custo), receiptId: ordemId, origem: 'MANUAL', criadoPorId: userId ?? null })
+  await recomputeSaldoCache(db, companyId)
 }
 
 /** Cancela: devolve TUDO que está em produção pro estoque geral e marca CANCELADA. */
@@ -166,6 +168,7 @@ export async function cancelarOrdem(companyId: string, ordemId: string, db: Pris
     }
     await tx.stockProductionOrder.update({ where: { id: ordemId }, data: { estado: 'CANCELADA' } })
   })
+  await recomputeSaldoCache(db, companyId)
 }
 
 // ---- leitura ----
