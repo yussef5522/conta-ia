@@ -74,10 +74,20 @@ export async function checkStockInvariants(db: Db, now: Date = new Date()): Prom
     }
   }
 
-  // E15 — evento SEFAZ pendente/erro há > 24h (retry não pegou).
+  // E15 — evento SEFAZ pendente/erro há > 24h SEM manifestação registrada.
+  // Uma nota que JÁ tem um evento ENVIADO (Ciência 210210 OU Confirmação 210200 — a
+  // Confirmação é mais forte e supera a Ciência) está manifestada; tentativas ANTERIORES
+  // que falharam (parse ruim, seq 594) são ruído, não problema. Só flagra nota SEM sucesso.
   const limite = new Date(now.getTime() - 24 * 3600_000)
-  const eventosPend = await db.stockSefazEvent.findMany({ where: { status: { in: ['PENDENTE', 'ERRO'] }, criadoEm: { lt: limite } }, select: { companyId: true, chave: true, tpEvento: true, status: true } })
-  for (const e of eventosPend) F('E15', e.companyId, `evento ${e.tpEvento} da nota ${e.chave} está ${e.status} há > 24h — reenviar.`)
+  const [enviados, eventosPend] = await Promise.all([
+    db.stockSefazEvent.findMany({ where: { status: 'ENVIADO' }, select: { companyId: true, chave: true } }),
+    db.stockSefazEvent.findMany({ where: { status: { in: ['PENDENTE', 'ERRO'] }, criadoEm: { lt: limite } }, select: { companyId: true, chave: true, tpEvento: true, status: true } }),
+  ])
+  const manifestada = new Set(enviados.map((e) => `${e.companyId}|${e.chave}`))
+  for (const e of eventosPend) {
+    if (manifestada.has(`${e.companyId}|${e.chave}`)) continue // já manifestada com sucesso
+    F('E15', e.companyId, `evento ${e.tpEvento} da nota ${e.chave} está ${e.status} há > 24h SEM manifestação registrada — reenviar.`)
+  }
 
   // P1-P6 — invariantes de PRODUÇÃO (fase 2). Mesma tabela isolada, mesmo relatório.
   fails.push(...(await checkProducaoInvariants(db, now)))
