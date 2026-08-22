@@ -3565,3 +3565,41 @@ model StockProducaoConclusao {
   @@index([companyId, ordemId])
   @@map("stock_producao_conclusao")
 }
+
+// ESTOQUE FASE 3 (22/08) — mapa que APRENDE: nome do produto no Suitable → ficha (produto
+// final) OU item de revenda (bebida). Igual ao cProd dos fornecedores: 1ª vez pergunta,
+// depois automático. Duplicata de cadastro do PDV ("XIS COMPLETO" e "XIS - COMPLETO") →
+// duas linhas, mesma ficha. Renomeação no Suitable = nome novo, não mapeado, pergunta de
+// novo (sem drama). CREATE-only, isolado.
+model StockVendaProdutoMap {
+  id           String   @id @default(cuid())
+  companyId    String
+  nomeSuitable String // nome EXATO como vem no relatório
+  alvoTipo     String // FICHA | REVENDA
+  fichaId      String? // quando FICHA
+  itemId       String? // quando REVENDA (stock_item)
+  criadoPorId  String?
+  criadoEm     DateTime @default(now())
+
+  @@unique([companyId, nomeSuitable])
+  @@index([companyId])
+  @@map("stock_venda_produto_map")
+}
+
+// ESTOQUE FASE 3 — import diário de vendas (1 arquivo/dia). SEM data no arquivo → o import
+// PERGUNTA a data. Idempotente por dia: reimportar o mesmo dia SUBSTITUI (estorna as baixas
+// anteriores e refaz). As BAIXA_VENDA vivem no ledger (receiptId = id do import).
+model StockVendaImport {
+  id            String   @id @default(cuid())
+  companyId     String
+  data          DateTime // dia das vendas (o dono informa)
+  totalLinhas   Int
+  totalUnidades Int
+  status        String   @default("CONFIRMADO") // CONFIRMADO | ESTORNADO
+  criadoPorId   String?
+  criadoEm      DateTime @default(now())
+
+  @@unique([companyId, data])
+  @@index([companyId])
+  @@map("stock_venda_import")
+}

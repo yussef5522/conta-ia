@@ -30,6 +30,7 @@ import {
   Boxes,
   ClipboardList,
   Factory,
+  ShoppingCart,
   FileText,
   Settings,
   Bell,
@@ -320,6 +321,13 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
               label="Produção"
               href={`/empresas/${currentEmpresaId}/estoque/producao`}
               isActive={/^\/empresas\/[^/]+\/estoque\/producao(?!\/cadastros)/.test(pathname)}
+              onClick={onNavigate}
+            />
+            <SidebarItem
+              icon={ShoppingCart}
+              label="Vendas (Suitable)"
+              href={`/empresas/${currentEmpresaId}/estoque/vendas`}
+              isActive={/^\/empresas\/[^/]+\/estoque\/vendas/.test(pathname)}
               onClick={onNavigate}
             />
             <SidebarItem
