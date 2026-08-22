@@ -18,6 +18,7 @@ export interface ConfItem {
   nfeItemId: string; xProd: string; cProd: string; ncm: string; uCom: string; qCom: number; vUnCom: number; vProd: number
   mapeado: { itemId: string; nome: string; unidadeControle: Unidade; fatorConversao: number } | null
   sugestao: { nome: string; unidade: Unidade | null; categoria: Categoria }
+  uTrib?: string; fatorNota?: number | null // dupla unidade da NF-e (o fator vem da nota)
 }
 export interface ConferenciaData {
   modoTeste: boolean
@@ -126,9 +127,25 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
                 <p className="text-sm font-semibold text-slate-900">{it.xProd}</p>
                 <p className="text-xs text-slate-500">Nota: {it.qCom} {it.uCom} · {brl(it.vUnCom)}/{it.uCom}</p>
                 {e?.mapeado ? (
-                  <div className="mt-3 flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-                    <Check className="h-4 w-4 shrink-0" /> <span className="font-medium">{e.mapeado.nome}</span>
-                    {e.mapeado.fatorConversao !== 1 && <span className="text-xs text-emerald-600">(1 {it.uCom} = {e.mapeado.fatorConversao} {e.mapeado.unidadeControle})</span>}
+                  <div className="mt-3 space-y-1.5">
+                    <div className="flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                      <Check className="h-4 w-4 shrink-0" /> <span className="font-medium">{e.mapeado.nome}</span>
+                    </div>
+                    {/* fator SEMPRE visível e editável quando a unidade da nota difere da de controle */}
+                    {it.uCom.toUpperCase() !== e.mapeado.unidadeControle.toUpperCase() && (() => {
+                      const f = e.mapeado.fatorConversao
+                      const setF = (nf: number) => { if (nf > 0) setItem(it.nfeItemId, { mapeado: { ...e.mapeado!, fatorConversao: nf }, qtdRecebida: it.qCom * nf }) }
+                      return (
+                        <div className={`flex flex-wrap items-center gap-2 rounded-lg px-3 py-2 text-xs ${f <= 1 ? 'bg-amber-50 text-amber-800' : 'bg-slate-50 text-slate-600'}`}>
+                          <span>1 {it.uCom} =</span>
+                          <input type="number" inputMode="decimal" value={f} onChange={(ev) => setF(Number(ev.target.value))} className="w-16 rounded border border-slate-300 px-2 py-1 text-right tabular-nums" />
+                          <span>{e.mapeado.unidadeControle}</span>
+                          <span className="text-slate-400">→ {it.qCom} {it.uCom} = {it.qCom * f} {e.mapeado.unidadeControle} · {brl(it.vUnCom / (f || 1))}/{e.mapeado.unidadeControle}</span>
+                          {it.fatorNota && it.fatorNota !== f && <button onClick={() => setF(it.fatorNota!)} className="rounded-full border border-sky-300 bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700">a nota diz {it.fatorNota}</button>}
+                          {f <= 1 && <span className="flex items-center gap-1 font-medium"><AlertTriangle className="h-3 w-3" /> a nota veio em {it.uCom} — confira o fator</span>}
+                        </div>
+                      )
+                    })()}
                   </div>
                 ) : (
                   <button onClick={() => setSheetItem(it)} className="mt-3 flex w-full items-center justify-between rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm font-medium text-amber-800 active:bg-amber-100">
@@ -198,7 +215,8 @@ function MapearSheet({ item, existentes, onClose, onEscolher }: {
   const [nome, setNome] = useState(item.sugestao.nome)
   const [unidade, setUnidade] = useState<Unidade>(item.sugestao.unidade ?? 'UN')
   const [categoria, setCategoria] = useState<Categoria>(item.sugestao.categoria)
-  const fatorSugerido = sugerirFatorConversao(item.xProd) // "12UN"/"C/6" → sugere; senão null
+  // ORDEM: fator da NOTA (qTrib/uTrib) → sugestão pelo nome (12UN) → 1 (pergunta). Nunca assume em silêncio.
+  const fatorSugerido = item.fatorNota ?? sugerirFatorConversao(item.xProd)
   const [fator, setFator] = useState(fatorSugerido ?? 1)
   // item existente selecionado que precisa de conversão (unidade da nota ≠ unidade do item)
   const [selExistente, setSelExistente] = useState<ItemExistente | null>(null)

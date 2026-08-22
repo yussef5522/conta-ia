@@ -19,6 +19,8 @@ export interface ConfItem {
   vProd: number
   mapeado: { itemId: string; nome: string; unidadeControle: UnidadeControle; fatorConversao: number } | null
   sugestao: { nome: string; unidade: UnidadeControle | null; categoria: CategoriaEstoque }
+  uTrib: string // unidade de tributação da nota (às vezes já é a de controle: UN/KG)
+  fatorNota: number | null // qTrib/qCom quando uTrib é unidade de controle → o fator vem DA NOTA
 }
 export interface ConfView {
   modoTeste: false
@@ -32,6 +34,18 @@ export interface ConfView {
 }
 
 const r2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
+const CONTROLE = new Set(['KG', 'UN', 'LT'])
+
+/** Fator que a PRÓPRIA nota resolve: quando a unidade de tributação (uTrib) é a de controle
+ *  (UN/KG/LT), o fator = qTrib/qCom (ex: 1 CX comercial = 20 UN tributadas). A tela confirma,
+ *  não pergunta. null quando a nota não resolve (uTrib = a mesma comercial, ou não bate). */
+function fatorDaNota(uCom: string | null, qCom: number | null, uTrib: string | null, qTrib: number | null): number | null {
+  if (!uTrib || !CONTROLE.has(uTrib.toUpperCase())) return null
+  if (!qCom || !qTrib || qCom <= 0 || qTrib <= 0) return null
+  const f = r2(qTrib / qCom)
+  if (f < 1.5) return null // 1:1 (uCom já é a de controle) → não é conversão de embalagem
+  return f
+}
 
 export async function buildConferenceView(companyId: string, nfeId: string, db: Db = defaultPrisma): Promise<ConfView | null> {
   const nfe = await db.stockNfe.findFirst({ where: { id: nfeId, companyId }, select: { id: true, chave: true, emitCnpj: true, emitNome: true, vNF: true, dataEmissao: true } })
@@ -66,6 +80,8 @@ export async function buildConferenceView(companyId: string, nfeId: string, db: 
       vProd: it.vProd ?? r2((it.qCom ?? 0) * (it.vUnCom ?? 0)),
       mapeado: m && estoque ? { itemId: m.itemId, nome: estoque.nome, unidadeControle: estoque.unidadeControle as UnidadeControle, fatorConversao: m.fatorConversao } : null,
       sugestao: { nome: sugerirNome(it.xProd), unidade: sugerirUnidade(it.uCom), categoria: sugerirCategoria(it.xProd, it.ncm) },
+      uTrib: it.uTrib ?? '',
+      fatorNota: fatorDaNota(it.uCom, it.qCom, it.uTrib, it.qTrib),
     }
   })
 
