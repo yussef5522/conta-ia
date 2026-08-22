@@ -4,7 +4,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { prisma } from '@/lib/db'
 import { criarFicha } from '../../producao/fichas'
-import { montarPlanoVenda, processarVendas, vendasPendentesDeMapa } from '../baixa-venda'
+import { montarPlanoVenda, processarVendas, vendasPendentesDeMapa, reprocessarDia, listProcessados } from '../baixa-venda'
 import { upsertVendaMap } from '../venda-map'
 import { saldoItem } from '../../saldo'
 
@@ -92,5 +92,27 @@ describe('BAIXA_VENDA', () => {
     expect((await saldoItem(prisma, companyId, beefId)).saldo).toBe(45)
     await processarVendas(companyId, '2026-08-22', html([['XIS COMPLETO', 2]]), 'u', prisma)
     expect((await saldoItem(prisma, companyId, beefId)).saldo).toBe(48) // 50 − 2 (corrigiu de 5)
+  })
+
+  it('incluir (checkbox): produto mapeado NÃO marcado vai pra "fora", não baixa', async () => {
+    const arquivo = html([['XIS COMPLETO', 2], ['COCA COLA 2L', 3]])
+    const plano = await montarPlanoVenda(companyId, '2026-08-22', arquivo, prisma, ['XIS COMPLETO']) // só o Xis marcado
+    expect(plano.produtos.map((p) => p.nome)).toEqual(['XIS COMPLETO'])
+    expect(plano.fora.map((f) => f.nome)).toEqual(['COCA COLA 2L'])
+    await processarVendas(companyId, '2026-08-22', arquivo, 'u', prisma, ['XIS COMPLETO'])
+    expect((await saldoItem(prisma, companyId, cocaId)).saldo).toBe(100) // coca NÃO baixou (ficou fora)
+    expect((await saldoItem(prisma, companyId, beefId)).saldo).toBe(48) // xis baixou
+  })
+
+  it('reprocessarDia usa as linhas gravadas (sem re-upload) e o mapa atual', async () => {
+    await processarVendas(companyId, '2026-08-22', html([['XIS COMPLETO', 2], ['PRODUTO NOVO Y', 4]]), 'u', prisma)
+    expect((await vendasPendentesDeMapa(companyId, prisma)).some((p) => p.nome === 'PRODUTO NOVO Y')).toBe(true)
+    // mapeia o pendente e REPROCESSA o dia sem re-upload
+    await upsertVendaMap(companyId, 'PRODUTO NOVO Y', { tipo: 'REVENDA', itemId: cocaId }, 'u', prisma)
+    await reprocessarDia(companyId, '2026-08-22', 'u', prisma)
+    expect((await saldoItem(prisma, companyId, cocaId)).saldo).toBe(96) // 100 − 4 (agora entrou)
+    const proc = await listProcessados(companyId, prisma)
+    expect(proc[0].data).toBe('2026-08-22')
+    expect(proc[0].pendentes).toBe(0) // não há mais pendente
   })
 })

@@ -57,31 +57,37 @@ export interface PlanoVenda {
   data: string
   produtos: ProdutoBaixa[]
   pendentes: { nome: string; quantidade: number }[]
+  fora: { nome: string; quantidade: number }[] // mapeado, mas o dono NÃO marcou pra este processamento
   agregada: { itemId: string; nome: string; qtd: number; custoMedio: number | null; valor: number | null }[]
   totalUnidades: number
   totalMapeados: number
   totalPendentes: number
 }
 
-/** DRY-RUN: o que a venda vai baixar (por produto + agregado) + pendentes. Não grava. */
-export async function montarPlanoVenda(companyId: string, data: string, html: string, db: PrismaClient = defaultPrisma): Promise<PlanoVenda> {
-  const parsed = parseSuitable(html)
+export interface LinhaVenda { produto: string; quantidade: number; valorTotal: number }
+
+/** DRY-RUN a partir de LINHAS (parseadas ou do banco). incluir = nomes marcados pelo dono
+ *  (null = todos os mapeados). Mapeado não-marcado → "fora" (não baixa, não é pendente). */
+export async function montarPlanoDeLinhas(companyId: string, data: string, linhas: LinhaVenda[], incluir: string[] | null, db: PrismaClient = defaultPrisma): Promise<PlanoVenda> {
   const [mapa, ctx, custoMap] = await Promise.all([
     db.stockVendaProdutoMap.findMany({ where: { companyId }, select: { nomeSuitable: true, alvoTipo: true, fichaId: true, itemId: true } }),
     montarCtx(companyId, db),
     custoMedioPorItem(db, companyId),
   ])
   const mapaPorNome = new Map(mapa.map((m) => [m.nomeSuitable, m]))
+  const incluirSet = incluir ? new Set(incluir) : null
   const nomeAlvo = (m: { alvoTipo: string; fichaId: string | null; itemId: string | null }) =>
     m.alvoTipo === 'FICHA' ? ctx.nomeItem.get(ctx.fichaById.get(m.fichaId ?? '')?.itemProduzidoId ?? '') ?? '(ficha)' : ctx.nomeItem.get(m.itemId ?? '') ?? '(item)'
 
   const produtos: ProdutoBaixa[] = []
   const pendentes: { nome: string; quantidade: number }[] = []
+  const fora: { nome: string; quantidade: number }[] = []
   const agregada = new Map<string, number>()
 
-  for (const l of parsed.linhas) {
+  for (const l of linhas) {
     const m = mapaPorNome.get(l.produto)
     if (!m) { pendentes.push({ nome: l.produto, quantidade: l.quantidade }); continue }
+    if (incluirSet && !incluirSet.has(l.produto)) { fora.push({ nome: l.produto, quantidade: l.quantidade }); continue }
     const acc = new Map<string, number>()
     if (m.alvoTipo === 'FICHA' && m.fichaId) explodir({ tipo: 'FICHA', fichaId: m.fichaId }, l.quantidade, ctx, acc)
     else if (m.alvoTipo === 'REVENDA' && m.itemId) explodir({ tipo: 'REVENDA', itemId: m.itemId }, l.quantidade, ctx, acc)
@@ -91,31 +97,49 @@ export async function montarPlanoVenda(companyId: string, data: string, html: st
   }
 
   return {
-    data,
-    produtos,
-    pendentes,
+    data, produtos, pendentes, fora,
     agregada: [...agregada.entries()].map(([itemId, qtd]) => { const c = custoMap.get(itemId) ?? null; return { itemId, nome: ctx.nomeItem.get(itemId) ?? '(item)', qtd: round2(qtd), custoMedio: c, valor: c != null ? round2(qtd * c) : null } }),
-    totalUnidades: parsed.totalUnidades,
+    totalUnidades: linhas.reduce((s, l) => s + l.quantidade, 0),
     totalMapeados: produtos.length,
     totalPendentes: pendentes.length,
   }
 }
 
+/** DRY-RUN a partir do HTML do Suitable. */
+export async function montarPlanoVenda(companyId: string, data: string, html: string, db: PrismaClient = defaultPrisma, incluir: string[] | null = null): Promise<PlanoVenda> {
+  return montarPlanoDeLinhas(companyId, data, parseSuitable(html).linhas, incluir, db)
+}
+
 export interface ReciboVenda { importId: string; data: string; baixados: number; itensBaixados: number; pendentes: number; valorBaixado: number }
+
+/** EXECUTA a partir do HTML (import novo do dia). */
+export async function processarVendas(companyId: string, data: string, html: string, userId: string | undefined, db: PrismaClient = defaultPrisma, incluir: string[] | null = null): Promise<ReciboVenda> {
+  return gravarVenda(companyId, data, parseSuitable(html).linhas, incluir, userId, db)
+}
+
+/** REPROCESSA um dia já importado a partir das linhas GRAVADAS (sem re-upload) — quando o
+ *  dono mapeia mais fichas depois. incluir = null → todos os mapeados atuais. Idempotente. */
+export async function reprocessarDia(companyId: string, data: string, userId: string | undefined, db: PrismaClient = defaultPrisma): Promise<ReciboVenda> {
+  const dataDate = new Date(`${data}T12:00:00`)
+  const imp = await db.stockVendaImport.findUnique({ where: { companyId_data: { companyId, data: dataDate } }, select: { id: true } })
+  if (!imp) throw new Error('Não há import desse dia pra reprocessar.')
+  const linhas = await db.stockVendaLinha.findMany({ where: { companyId, importId: imp.id }, select: { nomeSuitable: true, quantidade: true, valorTotal: true } })
+  return gravarVenda(companyId, data, linhas.map((l) => ({ produto: l.nomeSuitable, quantidade: l.quantidade, valorTotal: l.valorTotal })), null, userId, db)
+}
 
 /** EXECUTA: cria/atualiza o import do dia (idempotente), estorna baixas anteriores e refaz,
  *  grava BAIXA_VENDA no ledger + as linhas (pra pendentes/reprocessar). */
-export async function processarVendas(companyId: string, data: string, html: string, userId: string | undefined, db: PrismaClient = defaultPrisma): Promise<ReciboVenda> {
-  const parsed = parseSuitable(html)
-  const plano = await montarPlanoVenda(companyId, data, html, db)
+async function gravarVenda(companyId: string, data: string, linhas: LinhaVenda[], incluir: string[] | null, userId: string | undefined, db: PrismaClient = defaultPrisma): Promise<ReciboVenda> {
+  const plano = await montarPlanoDeLinhas(companyId, data, linhas, incluir, db)
   const dataDate = new Date(`${data}T12:00:00`)
+  const totalUnidades = linhas.reduce((s, l) => s + l.quantidade, 0)
 
   const importId = await db.$transaction(async (tx) => {
     // import do dia (idempotente por data)
     const imp = await tx.stockVendaImport.upsert({
       where: { companyId_data: { companyId, data: dataDate } },
-      create: { companyId, data: dataDate, totalLinhas: parsed.totalProdutos, totalUnidades: parsed.totalUnidades, status: 'CONFIRMADO', criadoPorId: userId ?? null },
-      update: { totalLinhas: parsed.totalProdutos, totalUnidades: parsed.totalUnidades, status: 'CONFIRMADO' },
+      create: { companyId, data: dataDate, totalLinhas: linhas.length, totalUnidades, status: 'CONFIRMADO', criadoPorId: userId ?? null },
+      update: { totalLinhas: linhas.length, totalUnidades, status: 'CONFIRMADO' },
     })
     // REPROCESSO: estorna as BAIXA_VENDA ativas deste import (movimento imutável → estorno)
     const baixasAntigas = await tx.stockMovement.findMany({ where: { companyId, receiptId: imp.id, tipo: TIPO_BAIXA }, select: { id: true } })
@@ -134,7 +158,7 @@ export async function processarVendas(companyId: string, data: string, html: str
     // linhas (todas) pra pendentes/reprocessar — reescreve
     await tx.stockVendaLinha.deleteMany({ where: { companyId, importId: imp.id } })
     const mapaNomes = new Set((await tx.stockVendaProdutoMap.findMany({ where: { companyId }, select: { nomeSuitable: true } })).map((m) => m.nomeSuitable))
-    await tx.stockVendaLinha.createMany({ data: parsed.linhas.map((l) => ({ companyId, importId: imp.id, data: dataDate, nomeSuitable: l.produto, quantidade: l.quantidade, valorTotal: l.valorTotal, mapeadoNoImport: mapaNomes.has(l.produto) })) })
+    await tx.stockVendaLinha.createMany({ data: linhas.map((l) => ({ companyId, importId: imp.id, data: dataDate, nomeSuitable: l.produto, quantidade: l.quantidade, valorTotal: l.valorTotal, mapeadoNoImport: mapaNomes.has(l.produto) })) })
     return imp.id
   })
 
@@ -146,6 +170,32 @@ export async function processarVendas(companyId: string, data: string, html: str
     pendentes: plano.totalPendentes,
     valorBaixado: round2(plano.agregada.reduce((s, a) => s + (a.valor ?? 0), 0)),
   }
+}
+
+export interface DiaProcessado { data: string; totalLinhas: number; totalUnidades: number; baixados: number; itensBaixados: number; valorBaixado: number; pendentes: number; status: string }
+
+/** Histórico "Processados" — um dia por linha, com o que baixou e quantos pendentes. */
+export async function listProcessados(companyId: string, db: PrismaClient = defaultPrisma): Promise<DiaProcessado[]> {
+  const imports = await db.stockVendaImport.findMany({ where: { companyId }, orderBy: { data: 'desc' }, take: 90 })
+  const out: DiaProcessado[] = []
+  for (const imp of imports) {
+    const [movs, linhas, mapa] = await Promise.all([
+      db.stockMovement.findMany({ where: { companyId, receiptId: imp.id, tipo: 'BAIXA_VENDA' }, select: { id: true, itemId: true, custoTotal: true } }),
+      db.stockVendaLinha.findMany({ where: { companyId, importId: imp.id }, select: { nomeSuitable: true } }),
+      db.stockVendaProdutoMap.findMany({ where: { companyId }, select: { nomeSuitable: true } }),
+    ])
+    // baixas ATIVAS (sem estorno) — custo total baixado
+    const estornos = new Set((await db.stockMovement.findMany({ where: { companyId, tipo: 'ESTORNO', estornoDeId: { in: movs.map((m) => m.id) } }, select: { estornoDeId: true } })).map((e) => e.estornoDeId))
+    const ativas = movs.filter((m) => !estornos.has(m.id))
+    const mapeados = new Set(mapa.map((m) => m.nomeSuitable))
+    const pendentes = new Set(linhas.filter((l) => !mapeados.has(l.nomeSuitable)).map((l) => l.nomeSuitable)).size
+    out.push({
+      data: imp.data.toISOString().slice(0, 10), totalLinhas: imp.totalLinhas, totalUnidades: imp.totalUnidades,
+      baixados: linhas.length - pendentes, itensBaixados: new Set(ativas.map((m) => m.itemId)).size,
+      valorBaixado: round2(ativas.reduce((s, m) => s + Math.abs(m.custoTotal), 0)), pendentes, status: imp.status,
+    })
+  }
+  return out
 }
 
 /** Pendentes de mapa (linhas de qualquer dia cujo nome ainda não foi mapeado). */
