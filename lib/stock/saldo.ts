@@ -27,6 +27,13 @@ export async function saldosDaEmpresa(db: Db, companyId: string): Promise<SaldoI
   return grupos.map((g) => montar(g.itemId, g._sum.quantidade ?? 0, g._sum.custoTotal ?? 0))
 }
 
+/** Custo médio DERIVADO por item (mesma fonte da Posição — fonte ÚNICA, REGRA 4/5).
+ *  Item com ENTRADA_NF → custo real; item que nunca teve nota → não aparece (null no caller). */
+export async function custoMedioPorItem(db: Db, companyId: string): Promise<Map<string, number | null>> {
+  const saldos = await saldosDaEmpresa(db, companyId)
+  return new Map(saldos.map((s) => [s.itemId, s.custoMedio]))
+}
+
 function montar(itemId: string, qtd: number, valor: number): SaldoItem {
   const saldo = round2(qtd)
   const val = round2(valor)

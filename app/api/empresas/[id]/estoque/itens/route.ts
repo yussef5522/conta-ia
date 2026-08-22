@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { custoMedioPorItem } from '@/lib/stock/saldo'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -21,13 +22,17 @@ export async function GET(request: NextRequest, { params }: Params) {
   const a = await auth(request, companyId)
   if (a.erro) return a.erro
   const busca = request.nextUrl.searchParams.get('busca')?.trim() ?? ''
-  const itens = await prisma.stockItem.findMany({
-    where: { companyId, ativo: true, ...(busca ? { nome: { contains: busca } } : {}) },
-    orderBy: { nome: 'asc' },
-    take: 50,
-    select: { id: true, nome: true, unidadeControle: true, custoMedio: true, categoria: true },
-  })
-  return NextResponse.json({ itens })
+  const [itens, derivado] = await Promise.all([
+    prisma.stockItem.findMany({
+      where: { companyId, ativo: true, ...(busca ? { nome: { contains: busca } } : {}) },
+      orderBy: { nome: 'asc' },
+      take: 50,
+      select: { id: true, nome: true, unidadeControle: true, categoria: true },
+    }),
+    // custoMedio DERIVADO dos movimentos (mesma fonte da Posição) — não o campo stale
+    custoMedioPorItem(prisma, companyId),
+  ])
+  return NextResponse.json({ itens: itens.map((i) => ({ ...i, custoMedio: derivado.get(i.id) ?? null })) })
 }
 
 const criarSchema = z.object({

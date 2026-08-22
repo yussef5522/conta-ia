@@ -7,6 +7,7 @@ import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { detectaCicloFicha, type GrafoFichas } from './ciclo'
 import { calcularCustoTeorico, calcularMargem, type ComponenteCusto } from './custo-teorico'
+import { custoMedioPorItem } from '../saldo'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -149,10 +150,15 @@ export interface FichaView {
   margem: number | null
 }
 
+// custoMedio DERIVADO dos movimentos (mesma fonte da Posição), NÃO o campo stockItem.custoMedio
+// (que fica null — o confirm não popula). Item com ENTRADA_NF → custo real; sem nota → null.
 async function custoMedioDosItens(companyId: string, itemIds: string[], db: Db): Promise<Map<string, { custoMedio: number | null; nome: string; unidade: string }>> {
   if (!itemIds.length) return new Map()
-  const its = await db.stockItem.findMany({ where: { companyId, id: { in: itemIds } }, select: { id: true, custoMedio: true, nome: true, unidadeControle: true } })
-  return new Map(its.map((i) => [i.id, { custoMedio: i.custoMedio, nome: i.nome, unidade: i.unidadeControle }]))
+  const [its, derivado] = await Promise.all([
+    db.stockItem.findMany({ where: { companyId, id: { in: itemIds } }, select: { id: true, nome: true, unidadeControle: true } }),
+    custoMedioPorItem(db, companyId),
+  ])
+  return new Map(its.map((i) => [i.id, { custoMedio: derivado.get(i.id) ?? null, nome: i.nome, unidade: i.unidadeControle }]))
 }
 
 async function versaoView(companyId: string, ficha: { id: string; itemProduzidoId: string; tipoProduto: string; setorId: string | null; versaoAtual: number; valorVenda: number | null; ativo: boolean }, versao: number, db: Db): Promise<FichaView | null> {

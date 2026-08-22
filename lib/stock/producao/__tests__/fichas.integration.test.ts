@@ -15,12 +15,19 @@ beforeEach(async () => {
   await prisma.company.deleteMany({ where: { cnpj: CNPJ } })
   const c = await prisma.company.create({ data: { cnpj: CNPJ, name: 'EMPRESA FICHAS' } })
   companyId = c.id
-  const coxao = await prisma.stockItem.create({ data: { companyId, nome: 'Coxão Mole', unidadeControle: 'KG', categoria: 'MATERIA_PRIMA', criadoVia: 'CONFERENCIA', custoMedio: 40 } })
-  const gordura = await prisma.stockItem.create({ data: { companyId, nome: 'Gordura', unidadeControle: 'KG', categoria: 'MATERIA_PRIMA', criadoVia: 'CONFERENCIA', custoMedio: 8 } })
+  const coxao = await prisma.stockItem.create({ data: { companyId, nome: 'Coxão Mole', unidadeControle: 'KG', categoria: 'MATERIA_PRIMA', criadoVia: 'CONFERENCIA' } })
+  const gordura = await prisma.stockItem.create({ data: { companyId, nome: 'Gordura', unidadeControle: 'KG', categoria: 'MATERIA_PRIMA', criadoVia: 'CONFERENCIA' } })
   coxaoId = coxao.id; gorduraId = gordura.id
+  // custoMedio é DERIVADO do ledger (ENTRADA_NF), não do campo: coxão 40/kg, gordura 8/kg
+  await prisma.stockMovement.createMany({ data: [
+    { companyId, itemId: coxaoId, tipo: 'ENTRADA_NF', quantidade: 10, custoUnitario: 40, custoTotal: 400, origem: 'SEFAZ' },
+    { companyId, itemId: gorduraId, tipo: 'ENTRADA_NF', quantidade: 10, custoUnitario: 8, custoTotal: 80, origem: 'SEFAZ' },
+  ] })
 })
 afterEach(async () => {
-  for (const t of ['stockFichaComponente', 'stockFichaVersao', 'stockFicha', 'stockItem', 'stockSetor', 'stockColaborador'] as const) {
+  await prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS trg_stock_movement_no_update;`).catch(() => {})
+  await prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS trg_stock_movement_no_delete;`).catch(() => {})
+  for (const t of ['stockMovement', 'stockFichaComponente', 'stockFichaVersao', 'stockFicha', 'stockItem', 'stockSetor', 'stockColaborador'] as const) {
     // @ts-expect-error dinâmico
     await prisma[t].deleteMany({ where: { companyId } })
   }
@@ -90,5 +97,18 @@ describe('fichas item 2.0', () => {
   it('lista traz a versão atual de cada ficha', async () => {
     await criarFicha({ companyId, nomeProduzido: 'A', unidadeProduzido: 'UN', tipoProduto: 'INTERMEDIARIO', loteBase: 1, unidadeLoteBase: 'UN', componentes: [{ itemId: coxaoId, qtdPlanejada: 1, unidade: 'KG' }] })
     expect((await listFichas(companyId)).length).toBe(1)
+  })
+
+  it('custoMedio vem do LEDGER (movimento), não do campo stockItem.custoMedio (bug do editor)', async () => {
+    // item com ENTRADA_NF de 46,95/kg mas SEM o campo custoMedio populado (como em prod)
+    const acem = await prisma.stockItem.create({ data: { companyId, nome: 'Açém', unidadeControle: 'KG', categoria: 'MATERIA_PRIMA', criadoVia: 'CONFERENCIA' } }) // custoMedio field = null
+    await prisma.stockMovement.create({ data: { companyId, itemId: acem.id, tipo: 'ENTRADA_NF', quantidade: 10, custoUnitario: 33.95, custoTotal: 339.5, origem: 'SEFAZ' } })
+    expect(acem.custoMedio).toBeNull() // o campo está null (é isso que enganava o editor)
+
+    const { fichaId } = await criarFicha({ companyId, nomeProduzido: 'Porção', unidadeProduzido: 'UN', tipoProduto: 'INTERMEDIARIO', loteBase: 1, unidadeLoteBase: 'KG', componentes: [{ itemId: acem.id, qtdPlanejada: 1, unidade: 'KG' }] })
+    const got = await getFicha(companyId, fichaId)
+    expect(got!.ficha.componentes[0].custoMedio).toBe(33.95) // DERIVADO do movimento, não o campo null
+    expect(got!.ficha.custoLote).toBe(33.95)
+    expect(got!.ficha.custoADefinir).toBe(false)
   })
 })
