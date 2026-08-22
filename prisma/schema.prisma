@@ -3621,3 +3621,28 @@ model StockVendaLinha {
   @@index([companyId, data])
   @@map("stock_venda_linha")
 }
+
+// ESTOQUE PARTE C (22/08) — SAÍDA que não é venda (waste log dos líderes: MarketMan comps/
+// spills/staff-meals; Apicbase waste com motivo). O MOTIVO é obrigatório (impossível por
+// construção: CHECK + registrarSaida atômico). O movimento (PERDA|USO_INTERNO) baixa o
+// estoque; esta linha guarda o PORQUÊ + foto. É o insumo do Real vs Teórico (Fase 3).
+model StockSaida {
+  id            String   @id @default(cuid())
+  companyId     String
+  itemId        String
+  movementId    String // o StockMovement que baixou (PERDA|USO_INTERNO)
+  tipoMovimento String // PERDA | USO_INTERNO
+  motivo        String // VENCEU|ESTRAGOU|CAIU_QUEBROU|ERRO_PREPARO|CONSUMO_FUNCIONARIO|USO_INTERNO|CORTESIA|OUTRO
+  motivoTexto   String? // livre quando OUTRO
+  quantidade    Float // > 0 (o quanto saiu, unidade de controle)
+  custoUnitario Float
+  custoTotal    Float
+  fotoBase64    String?
+  data          DateTime
+  criadoPorId   String?
+  criadoEm      DateTime @default(now())
+
+  @@index([companyId, data])
+  @@index([companyId, motivo])
+  @@map("stock_saida")
+}

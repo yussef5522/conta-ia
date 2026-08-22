@@ -18,7 +18,7 @@ interface ItemOpt { id: string; nome: string }
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const num = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 3 })
 const fmtDia = (iso: string) => iso.slice(0, 10).split('-').reverse().join('/')
-const TIPO_LABEL: Record<string, string> = { ENTRADA_NF: 'Entrada (nota)', ESTORNO: 'Estorno', ENTRADA_MANUAL: 'Entrada manual', PRODUCAO_CONSUMO: 'Consumo produção', PRODUCAO_GERACAO: 'Geração produção', BAIXA_VENDA: 'Baixa venda', AJUSTE_CONTAGEM: 'Ajuste contagem', PERDA: 'Perda' }
+const TIPO_LABEL: Record<string, string> = { ENTRADA_NF: 'Entrada (nota)', ESTORNO: 'Estorno', ENTRADA_MANUAL: 'Entrada manual', PRODUCAO_CONSUMO: 'Consumo produção', PRODUCAO_GERACAO: 'Geração produção', BAIXA_VENDA: 'Baixa venda', AJUSTE_CONTAGEM: 'Ajuste contagem', PERDA: 'Perda', USO_INTERNO: 'Uso interno' }
 const tipoBadge = (t: string) => (t === 'ESTORNO' ? 'bg-rose-50 text-rose-700' : t === 'ENTRADA_NF' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600')
 
 export default function MovimentosPage({ params }: { params: Promise<{ id: string }> }) {

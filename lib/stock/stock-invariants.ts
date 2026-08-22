@@ -10,6 +10,7 @@ import type { PrismaClient, Prisma } from '@prisma/client'
 import { saldosDaEmpresa } from './saldo'
 import { checkProducaoInvariants } from './producao/producao-invariants'
 import { checkVendasInvariants } from './vendas/vendas-invariants'
+import { checkSaidaInvariants } from './saida-invariants'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -95,6 +96,8 @@ export async function checkStockInvariants(db: Db, now: Date = new Date()): Prom
   fails.push(...(await checkProducaoInvariants(db, now)))
   // V1 — invariantes de VENDA (fase 3). V1 é AVISO (não deixa o selo vermelho).
   fails.push(...(await checkVendasInvariants(db, now)))
+  // C1/C2 — invariantes de SAÍDA (perda/uso interno). C1 erro, C2 aviso.
+  fails.push(...(await checkSaidaInvariants(db, now)))
 
   return fails
 }

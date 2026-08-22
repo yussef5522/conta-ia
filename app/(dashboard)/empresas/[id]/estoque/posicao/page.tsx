@@ -7,8 +7,9 @@
 
 import { useEffect, useMemo, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
-import { Boxes, Loader2, AlertTriangle, Search, ArrowUp, ArrowDown, Minus, ChevronDown, ChevronRight, Download } from 'lucide-react'
+import { Boxes, Loader2, AlertTriangle, Search, ArrowUp, ArrowDown, Minus, ChevronDown, ChevronRight, Download, PackageMinus, TrendingDown } from 'lucide-react'
 import { NomeEditavel } from '@/components/estoque/nome-editavel'
+import { SaidaModal } from '@/components/estoque/saida-modal'
 import { StatusBar, StatusDot, STATUS_BORDA } from '@/components/estoque/status-bar'
 import type { StatusEstoqueResult } from '@/lib/stock/status-estoque'
 
@@ -46,6 +47,7 @@ export default function PosicaoPage({ params }: { params: Promise<{ id: string }
   const [agrupar, setAgrupar] = useState(false)
   const [soAbaixo, setSoAbaixo] = useState(false)
   const [colapsadas, setColapsadas] = useState<Set<string>>(new Set())
+  const [saida, setSaida] = useState<{ id: string; nome: string; unidadeControle: string; custoMedio: number | null } | 'novo' | null>(null)
 
   useEffect(() => {
     fetch(`/api/empresas/${id}/estoque/posicao`).then((r) => r.json()).then((j) => setData(j.posicao ?? null)).catch(() => setData(null))
@@ -83,8 +85,11 @@ export default function PosicaoPage({ params }: { params: Promise<{ id: string }
       <div className="flex items-center gap-3">
         <Boxes className="h-7 w-7 text-[#185FA5]" />
         <div className="flex-1"><h1 className="text-xl font-semibold text-slate-900">Posição de estoque</h1><p className="text-sm text-slate-500">Saldo derivado dos movimentos. Clique num item pra ver a ficha.</p></div>
+        <a href={`/empresas/${id}/estoque/perdas`} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"><TrendingDown className="h-4 w-4" /> Perdas</a>
+        <button onClick={() => setSaida('novo')} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"><PackageMinus className="h-4 w-4" /> Registrar saída</button>
         {data.itens.length > 0 && <a href={`/api/empresas/${id}/estoque/posicao?formato=csv`} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"><Download className="h-4 w-4" /> CSV</a>}
       </div>
+      {saida && <SaidaModal companyId={id} itemInicial={saida === 'novo' ? undefined : { id: saida.id, nome: saida.nome, unidadeControle: saida.unidadeControle, custoMedio: saida.custoMedio }} onClose={() => setSaida(null)} onSalvo={() => { setSaida(null); location.reload() }} />}
 
       {data.itens.length === 0 ? (
         <Card><CardContent className="flex flex-col items-center gap-2 p-10 text-center">
