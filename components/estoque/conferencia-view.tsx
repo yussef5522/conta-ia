@@ -6,6 +6,7 @@
 
 import { useMemo, useState } from 'react'
 import { Check, Search, Camera, AlertTriangle, FlaskConical, Store, X, ChevronRight, Eye, Loader2, PackageCheck } from 'lucide-react'
+import { sugerirFatorConversao } from '@/lib/stock/unidade-fator'
 
 export type Unidade = 'KG' | 'UN' | 'LT'
 export type Categoria = 'MATERIA_PRIMA' | 'REVENDA' | 'EMBALAGEM' | 'LIMPEZA' | 'USO_INTERNO'
@@ -197,7 +198,11 @@ function MapearSheet({ item, existentes, onClose, onEscolher }: {
   const [nome, setNome] = useState(item.sugestao.nome)
   const [unidade, setUnidade] = useState<Unidade>(item.sugestao.unidade ?? 'UN')
   const [categoria, setCategoria] = useState<Categoria>(item.sugestao.categoria)
-  const [fator, setFator] = useState(1)
+  const fatorSugerido = sugerirFatorConversao(item.xProd) // "12UN"/"C/6" → sugere; senão null
+  const [fator, setFator] = useState(fatorSugerido ?? 1)
+  // item existente selecionado que precisa de conversão (unidade da nota ≠ unidade do item)
+  const [selExistente, setSelExistente] = useState<ItemExistente | null>(null)
+  const [fatorExist, setFatorExist] = useState(fatorSugerido ?? 1)
   const filtrados = existentes.filter((e) => e.nome.toLowerCase().includes(busca.toLowerCase()))
   const difUnidade = item.uCom.toUpperCase() !== unidade
 
@@ -214,7 +219,28 @@ function MapearSheet({ item, existentes, onClose, onEscolher }: {
           <div className="space-y-2">
             <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="buscar no estoque…" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
             {filtrados.length === 0 && <p className="py-4 text-center text-xs text-slate-400">Nenhum item ainda. Use "Criar novo".</p>}
-            {filtrados.map((e) => <button key={e.id} onClick={() => onEscolher({ itemId: e.id, nome: e.nome, unidadeControle: e.unidadeControle as Unidade, categoria: e.categoria as Categoria, fatorConversao: 1, novo: false })} className="flex w-full items-center justify-between rounded-lg border border-slate-200 px-3 py-2.5 text-sm active:bg-slate-50"><span className="font-medium text-slate-800">{e.nome}</span><span className="text-xs text-slate-400">{e.unidadeControle}</span></button>)}
+            {!selExistente && filtrados.map((e) => {
+              const dif = item.uCom.toUpperCase() !== e.unidadeControle.toUpperCase()
+              return (
+                <button key={e.id} onClick={() => (dif ? (setSelExistente(e), setFatorExist(fatorSugerido ?? 1)) : onEscolher({ itemId: e.id, nome: e.nome, unidadeControle: e.unidadeControle as Unidade, categoria: e.categoria as Categoria, fatorConversao: 1, novo: false }))} className="flex w-full items-center justify-between rounded-lg border border-slate-200 px-3 py-2.5 text-sm active:bg-slate-50">
+                  <span className="font-medium text-slate-800">{e.nome}</span>
+                  <span className="text-xs text-slate-400">{e.unidadeControle}{dif && <span className="ml-1 text-amber-600">· converter de {item.uCom}</span>}</span>
+                </button>
+              )
+            })}
+            {/* item existente com unidade diferente da nota → pergunta o fator UMA vez */}
+            {selExistente && (
+              <div className="rounded-lg border border-sky-200 bg-sky-50 p-3">
+                <p className="mb-2 text-sm font-medium text-slate-800">{selExistente.nome} <span className="text-xs text-slate-400">({selExistente.unidadeControle})</span></p>
+                <label className="text-xs font-medium text-sky-800">A nota veio em <b>{item.uCom}</b>, você controla em <b>{selExistente.unidadeControle}</b>. Quantas {selExistente.unidadeControle} tem 1 {item.uCom}?</label>
+                <input type="number" inputMode="decimal" value={fatorExist} onChange={(ev) => setFatorExist(Number(ev.target.value))} className="mt-1 block w-28 rounded-lg border border-sky-300 px-3 py-2 text-base tabular-nums" />
+                <p className="mt-1 text-[11px] text-sky-600">1 {item.uCom} = {fatorExist} {selExistente.unidadeControle} · {item.qCom} {item.uCom} = {item.qCom * fatorExist} {selExistente.unidadeControle} · {brl(item.vUnCom / (fatorExist || 1))}/{selExistente.unidadeControle}</p>
+                <div className="mt-3 flex gap-2">
+                  <button onClick={() => setSelExistente(null)} className="rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-600">voltar</button>
+                  <button disabled={!(fatorExist > 0)} onClick={() => onEscolher({ itemId: selExistente.id, nome: selExistente.nome, unidadeControle: selExistente.unidadeControle as Unidade, categoria: selExistente.categoria as Categoria, fatorConversao: fatorExist, novo: false })} className="flex-1 rounded-lg bg-[#185FA5] py-2 text-sm font-semibold text-white disabled:opacity-50">Usar (1 {item.uCom} = {fatorExist} {selExistente.unidadeControle})</button>
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div className="space-y-3">

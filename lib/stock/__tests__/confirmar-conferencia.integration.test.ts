@@ -88,6 +88,24 @@ describe('confirmarConferencia', () => {
     expect(pag.map((p) => p.valor)).toEqual([744, 744])
   })
 
+  it('CONVERSÃO DE UNIDADE (Bortolazzo): 3 EB × R$45 com fator 12 → 36 UN a R$ 3,75/UN', async () => {
+    // simula a nota real: FRUKI GUARANA 12UN, uCom=EB (caixa), controle em UN (garrafa)
+    const it = (await prisma.stockNfeItem.findFirst({ where: { companyId, cProd: 'C2' } }))!
+    const r = await confirmarConferencia({
+      companyId, nfeId, userId: 'u', fornecedor: { cnpj: FORN, nome: 'BORTOLAZZO' },
+      itens: [{ nfeItemId: it.id, cProd: 'C2', xProd: 'FRUKI GUARANA 600ML 12UN', uCom: 'EB', qtdNota: 3, vUnCom: 45, qtdRecebida: 36, mapeado: { itemId: 'novo-fruki', nome: 'Fruki Guaraná 600ml', unidadeControle: 'UN', categoria: 'REVENDA', fatorConversao: 12, novo: true } }],
+    })
+    expect(r.movimentos).toBe(1)
+    expect(r.valorEntrada).toBe(135) // 36 × 3,75 = 3 EB × 45
+    const fruki = await prisma.stockItem.findFirst({ where: { companyId, nome: 'Fruki Guaraná 600ml' } })
+    const s = await saldoItem(prisma, companyId, fruki!.id)
+    expect(s.saldo).toBe(36) // 36 GARRAFAS, não 3 caixas
+    expect(s.custoMedio).toBe(3.75) // 45 / 12
+    // o fator ficou aprendido pro fornecedor+cProd → próxima nota converte sozinha
+    const mapa = await prisma.stockSupplierProduct.findFirst({ where: { companyId, supplierCnpj: FORN, cProd: 'C2' } })
+    expect(mapa?.fatorConversao).toBe(12)
+  })
+
   it('idempotente: confirmar 2× a mesma nota → erro (não duplica)', async () => {
     const item1 = (await prisma.stockNfeItem.findFirst({ where: { companyId, cProd: 'C2' } }))!
     const payload = { companyId, nfeId, userId: 'u', fornecedor: { cnpj: FORN, nome: 'X' }, itens: [{ nfeItemId: item1.id, cProd: 'C2', xProd: 'REFRI', uCom: 'UN', qtdNota: 24, vUnCom: 12, qtdRecebida: 24, mapeado: { itemId: itemExistenteId, nome: 'Refri', unidadeControle: 'UN' as const, fatorConversao: 1, novo: false } }] }
