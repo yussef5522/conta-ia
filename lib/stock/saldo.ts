@@ -15,15 +15,21 @@ export interface SaldoItem {
   custoMedio: number | null // valor / saldo (quando saldo > 0)
 }
 
-/** Saldo derivado de UM item (Σ movimentos). */
+// PRODUCAO_CONSUMO NÃO é evento de prateleira — é transferência interna da produção (o
+// insumo já saiu da prateleira no SEPARACAO_SAIDA). Contá-lo no saldo duplicaria a baixa.
+// SEPARACAO_SAIDA(−)/DEVOLUCAO_PRODUCAO(+) mexem na prateleira; PRODUCAO_GERACAO(+) é o
+// produto entrando. Excluir só o CONSUMO mantém saldo/cache/E1/posição coerentes (fonte única).
+const NAO_PRATELEIRA = { tipo: { not: 'PRODUCAO_CONSUMO' } } as const
+
+/** Saldo derivado de UM item (Σ movimentos de prateleira). */
 export async function saldoItem(db: Db, companyId: string, itemId: string): Promise<SaldoItem> {
-  const agg = await db.stockMovement.aggregate({ where: { companyId, itemId }, _sum: { quantidade: true, custoTotal: true } })
+  const agg = await db.stockMovement.aggregate({ where: { companyId, itemId, ...NAO_PRATELEIRA }, _sum: { quantidade: true, custoTotal: true } })
   return montar(itemId, agg._sum.quantidade ?? 0, agg._sum.custoTotal ?? 0)
 }
 
-/** Saldo de TODOS os itens da empresa (só os que têm movimento). */
+/** Saldo de TODOS os itens da empresa (só os que têm movimento de prateleira). */
 export async function saldosDaEmpresa(db: Db, companyId: string): Promise<SaldoItem[]> {
-  const grupos = await db.stockMovement.groupBy({ by: ['itemId'], where: { companyId }, _sum: { quantidade: true, custoTotal: true } })
+  const grupos = await db.stockMovement.groupBy({ by: ['itemId'], where: { companyId, ...NAO_PRATELEIRA }, _sum: { quantidade: true, custoTotal: true } })
   return grupos.map((g) => montar(g.itemId, g._sum.quantidade ?? 0, g._sum.custoTotal ?? 0))
 }
 

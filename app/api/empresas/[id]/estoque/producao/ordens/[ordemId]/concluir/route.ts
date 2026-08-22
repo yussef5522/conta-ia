@@ -1,0 +1,36 @@
+// ESTOQUE FASE 2 item 2.2 — POST concluir a ordem ("quantos saíram?"). Consumo real +
+// qtd gerada + colaborador (+ parcial). Gera CONSUMO/GERACAO no ledger e o rendimento.
+
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
+import { getAuthUser } from '@/lib/auth'
+import { prisma } from '@/lib/db'
+import { concluir } from '@/lib/stock/producao/conclusao'
+import { OrdemError } from '@/lib/stock/producao/ordens'
+
+interface Params { params: Promise<{ id: string; ordemId: string }> }
+
+const schema = z.object({
+  consumo: z.array(z.object({ itemId: z.string(), qtdConsumida: z.number().nonnegative() })).min(1),
+  qtdGerada: z.number().positive(),
+  colaboradorId: z.string().nullable().optional(),
+  parcial: z.boolean().optional(),
+})
+
+export async function POST(request: NextRequest, { params }: Params) {
+  const { id: companyId, ordemId } = await params
+  const user = await getAuthUser(request)
+  if (!user) return NextResponse.json({ erro: 'Sessão expirada', code: 'AUTH_REQUIRED' }, { status: 401 })
+  if (!(await prisma.userCompany.findFirst({ where: { userId: user.sub, companyId }, select: { companyId: true } }))) {
+    return NextResponse.json({ erro: 'Empresa não encontrada' }, { status: 404 })
+  }
+  const parsed = schema.safeParse(await request.json().catch(() => null))
+  if (!parsed.success) return NextResponse.json({ erro: 'Dados da conclusão inválidos.' }, { status: 400 })
+  try {
+    const r = await concluir({ companyId, ordemId, userId: user.sub, ...parsed.data })
+    return NextResponse.json({ ok: true, ...r })
+  } catch (e) {
+    if (e instanceof OrdemError) return NextResponse.json({ erro: e.message }, { status: 422 })
+    throw e
+  }
+}

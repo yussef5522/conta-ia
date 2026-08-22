@@ -3541,3 +3541,27 @@ model StockProductionOrder {
   @@index([companyId, dataProducao])
   @@map("stock_production_order")
 }
+
+// ESTOQUE FASE 2 item 2.2 (21/08) — CONCLUSÃO da ordem ("quantos saíram?"). Suporta
+// PARCIAL (300 hoje, 200 amanhã → várias conclusões na mesma ordem). Rendimento MEDIDO
+// contra o consumo REAL (nunca a escala planejada). Custo real do lote = Σ consumido ×
+// custoMedio. Os movimentos (PRODUCAO_CONSUMO/GERACAO) vivem no ledger; aqui é o registro
+// + os números derivados (rendimento, custo unit, validade da etiqueta). CREATE-only.
+model StockProducaoConclusao {
+  id                String   @id @default(cuid())
+  companyId         String
+  ordemId           String
+  qtdGerada         Float // unidades do produto que saíram
+  colaboradorId     String?
+  escalaConsumida   Float // receitas-base realmente consumidas (base do rendimento)
+  custoLoteReal     Float // Σ consumido × custoMedio
+  custoUnitarioReal Float? // custoLoteReal / qtdGerada
+  rendimento        Float // qtdGerada / escalaConsumida (unidades por receita base)
+  validadeAte       DateTime? // dataProducao + validadeDias (etiqueta)
+  parcial           Boolean  @default(false)
+  criadoPorId       String?
+  criadoEm          DateTime @default(now())
+
+  @@index([companyId, ordemId])
+  @@map("stock_producao_conclusao")
+}

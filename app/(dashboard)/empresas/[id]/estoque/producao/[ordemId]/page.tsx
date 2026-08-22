@@ -6,10 +6,12 @@
 
 import { useEffect, useMemo, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
-import { ArrowLeft, Loader2, Factory, Printer, AlertTriangle, Check, Undo2, X } from 'lucide-react'
+import { ArrowLeft, Loader2, Factory, Printer, AlertTriangle, Check, Undo2, X, Tag, TrendingUp } from 'lucide-react'
 
 interface Linha { itemId: string; nome: string; unidade: string; unidadeControle: string; qtdPlanejada: number; qtdSeparada: number; saldoDisponivel: number; custoMedio: number | null }
-interface Ordem { id: string; nomeProduzido: string; unidadeProduzido: string; escalaReceitas: number; estado: string; dataProducao: string; setorNome: string | null; versaoFicha: number }
+interface Ordem { id: string; nomeProduzido: string; unidadeProduzido: string; escalaReceitas: number; estado: string; dataProducao: string; setorNome: string | null; versaoFicha: number; fichaId: string }
+interface Conclusao { id: string; qtdGerada: number; colaboradorNome: string | null; rendimento: number; custoLoteReal: number; custoUnitarioReal: number | null; validadeAte: string | null; parcial: boolean; criadoEm: string }
+interface Colaborador { id: string; nome: string }
 
 const brl = (n: number | null) => (n == null ? '—' : n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }))
 const num = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 3 })
@@ -25,10 +27,14 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
   const [busy, setBusy] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   const [devolver, setDevolver] = useState<Record<string, string>>({})
+  const [conclusoes, setConclusoes] = useState<Conclusao[]>([])
+  const [colaboradores, setColaboradores] = useState<Colaborador[]>([])
+  const [rendimentoMedio, setRendimentoMedio] = useState<number | null>(null)
 
   const carregar = () => fetch(`/api/empresas/${id}/estoque/producao/ordens/${ordemId}`).then((r) => r.json()).then((j) => {
     if (!j.ordem) { setOrdem(null); return }
     setOrdem(j.ordem); setLinhas(j.linhas ?? [])
+    setConclusoes(j.conclusoes ?? []); setColaboradores(j.colaboradores ?? []); setRendimentoMedio(j.rendimentoMedio ?? null)
     if (j.ordem.estado === 'PLANEJADA') setSep(Object.fromEntries((j.linhas ?? []).map((l: Linha) => [l.itemId, String(l.qtdPlanejada)])))
   }).catch(() => setOrdem(null))
   useEffect(() => { carregar() }, [id, ordemId]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -164,10 +170,103 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
         <div className="flex flex-wrap items-center gap-3 print:hidden">
           {planejada && <button onClick={confirmarSeparacao} disabled={busy} className="inline-flex items-center gap-2 rounded-lg bg-[#185FA5] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#0F4A8C] disabled:opacity-60">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Confirmar separação</button>}
           {separada && <button onClick={() => acao({ acao: 'iniciar' })} disabled={busy} className="inline-flex items-center gap-2 rounded-lg bg-[#185FA5] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#0F4A8C] disabled:opacity-60">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Factory className="h-4 w-4" />} Iniciar produção</button>}
-          {emProducao && <div className="flex items-center gap-2 rounded-lg bg-sky-50 px-4 py-2.5 text-sm text-sky-700"><AlertTriangle className="h-4 w-4" /> Conclusão ("quantos saíram?") entra no próximo passo (2.2).</div>}
           <button onClick={() => { if (confirm('Cancelar a ordem? Os insumos separados voltam pro estoque.')) acao({ acao: 'cancelar' }) }} disabled={busy} className="text-sm text-rose-500 hover:text-rose-700">Cancelar ordem</button>
         </div>
       )}
+
+      {/* conclusão ("quantos saíram?") */}
+      {emProducao && <ConclusaoForm id={id} ordemId={ordemId} linhas={linhas} colaboradores={colaboradores} rendimentoMedio={rendimentoMedio} unidadeProduzido={ordem.unidadeProduzido} onConcluida={carregar} />}
+
+      {/* histórico de conclusões + etiquetas */}
+      {conclusoes.length > 0 && (
+        <div>
+          <h2 className="mb-2 text-sm font-semibold text-slate-900">Conclusões ({conclusoes.length})</h2>
+          <div className="space-y-2">
+            {conclusoes.map((c) => (
+              <Card key={c.id}><CardContent className="flex items-center justify-between gap-3 p-4">
+                <div>
+                  <p className="text-sm font-medium text-slate-900">{num(c.qtdGerada)} {ordem.unidadeProduzido} {c.parcial && <span className="text-[11px] font-normal text-amber-600">(parcial)</span>}</p>
+                  <p className="text-xs text-slate-500">rendimento {num(c.rendimento)}/receita · custo {brl(c.custoUnitarioReal)}/un{c.colaboradorNome ? ` · ${c.colaboradorNome}` : ''}{c.validadeAte ? ` · val ${fmtDia(c.validadeAte)}` : ''}</p>
+                </div>
+                <a href={`/empresas/${id}/estoque/producao/conclusoes/${c.id}/etiqueta`} className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50"><Tag className="h-3.5 w-3.5" /> etiqueta</a>
+              </CardContent></Card>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
+  )
+}
+
+function ConclusaoForm({ id, ordemId, linhas, colaboradores, rendimentoMedio, unidadeProduzido, onConcluida }: { id: string; ordemId: string; linhas: Linha[]; colaboradores: Colaborador[]; rendimentoMedio: number | null; unidadeProduzido: string; onConcluida: () => void }) {
+  const emProd = linhas.filter((l) => l.qtdSeparada > 0)
+  const [consumo, setConsumo] = useState<Record<string, string>>(Object.fromEntries(emProd.map((l) => [l.itemId, String(l.qtdSeparada)])))
+  const [qtdGerada, setQtdGerada] = useState('')
+  const [colaboradorId, setColaboradorId] = useState('')
+  const [parcial, setParcial] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+  const parseNum = (s: string) => { const n = Number((s ?? '').replace(',', '.')); return Number.isFinite(n) ? n : 0 }
+
+  const custoLote = useMemo(() => emProd.reduce((s, l) => s + parseNum(consumo[l.itemId]) * (l.custoMedio ?? 0), 0), [consumo, emProd])
+  const qg = parseNum(qtdGerada)
+  const rendimento = qg > 0 ? qg : null // rendimento por receita = qg/escala; a escala aparece após concluir
+  const custoUnit = qg > 0 ? custoLote / qg : null
+
+  const concluir = async () => {
+    setErro(null)
+    if (!(qg > 0)) return setErro('Diga quantos saíram.')
+    setBusy(true)
+    try {
+      const r = await fetch(`/api/empresas/${id}/estoque/producao/ordens/${ordemId}/concluir`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ consumo: emProd.map((l) => ({ itemId: l.itemId, qtdConsumida: parseNum(consumo[l.itemId]) })).filter((c) => c.qtdConsumida > 0), qtdGerada: qg, colaboradorId: colaboradorId || null, parcial }),
+      })
+      const j = await r.json().catch(() => null)
+      if (!r.ok) { setErro(j?.erro ?? 'Não consegui concluir.'); return }
+      onConcluida()
+    } catch { setErro('Falha de conexão.') } finally { setBusy(false) }
+  }
+
+  return (
+    <Card className="border-[#185FA5]/30"><CardContent className="space-y-3 p-4">
+      <p className="flex items-center gap-2 text-sm font-semibold text-slate-900"><Check className="h-4 w-4 text-[#185FA5]" /> Concluir — quantos saíram?</p>
+
+      {/* consumo real (pré = em-produção) */}
+      <div>
+        <p className="mb-1 text-xs text-slate-500">Confirme o que foi consumido de verdade (sobra volta pro estoque):</p>
+        <div className="divide-y divide-slate-50">
+          {emProd.map((l) => (
+            <div key={l.itemId} className="flex items-center gap-2 py-1.5 text-sm">
+              <span className="flex-1 text-slate-700">{l.nome}</span>
+              <span className="text-[11px] text-slate-400">em produção {num(l.qtdSeparada)}</span>
+              <input value={consumo[l.itemId] ?? ''} onChange={(e) => setConsumo((c) => ({ ...c, [l.itemId]: e.target.value }))} inputMode="decimal" className="w-20 rounded-lg border border-slate-300 py-1.5 px-2 text-right text-sm tabular-nums" />
+              <span className="w-6 text-xs text-slate-400">{l.unidade}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* quantos saíram + colaborador */}
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="text-xs text-slate-500">Quantos saíram?
+          <div className="mt-1 flex items-center gap-1"><input value={qtdGerada} onChange={(e) => setQtdGerada(e.target.value)} inputMode="decimal" placeholder="ex: 17" className="w-28 rounded-lg border border-slate-300 py-2 px-3 text-sm tabular-nums" /><span className="text-xs text-slate-400">{unidadeProduzido}</span></div>
+        </label>
+        <label className="text-xs text-slate-500">Quem produziu
+          <select value={colaboradorId} onChange={(e) => setColaboradorId(e.target.value)} className="mt-1 block rounded-lg border border-slate-300 py-2 px-3 text-sm"><option value="">—</option>{colaboradores.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}</select>
+        </label>
+        <label className="flex items-center gap-1.5 pb-2 text-xs text-slate-500"><input type="checkbox" checked={parcial} onChange={(e) => setParcial(e.target.checked)} /> produção parcial (concluo o resto depois)</label>
+      </div>
+
+      {/* prévia custo + rendimento */}
+      <div className="flex flex-wrap gap-4 rounded-lg bg-slate-50 p-3 text-xs">
+        <div><span className="text-slate-400">Custo do lote</span><p className="font-semibold tabular-nums text-slate-800">{brl(custoLote)}</p></div>
+        <div><span className="text-slate-400">Custo por {unidadeProduzido}</span><p className="font-semibold tabular-nums text-slate-800">{custoUnit != null ? brl(custoUnit) : '—'}</p></div>
+        <div><span className="flex items-center gap-1 text-slate-400"><TrendingUp className="h-3 w-3" /> rendimento médio</span><p className="font-semibold tabular-nums text-slate-800">{rendimentoMedio != null ? `${num(rendimentoMedio)}/receita` : 'a apurar'}</p></div>
+      </div>
+
+      {erro && <p className="text-sm text-rose-600">{erro}</p>}
+      <button onClick={concluir} disabled={busy} className="inline-flex items-center gap-2 rounded-lg bg-[#185FA5] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#0F4A8C] disabled:opacity-60">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Concluir e gerar etiqueta</button>
+    </CardContent></Card>
   )
 }

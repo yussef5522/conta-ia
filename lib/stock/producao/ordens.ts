@@ -17,6 +17,8 @@ const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 
 export const TIPO_SEPARACAO = 'SEPARACAO_SAIDA'
 export const TIPO_DEVOLUCAO = 'DEVOLUCAO_PRODUCAO'
+export const TIPO_CONSUMO = 'PRODUCAO_CONSUMO'
+export const TIPO_GERACAO = 'PRODUCAO_GERACAO'
 
 // ---- criar ----
 
@@ -67,14 +69,14 @@ async function componentesDaVersao(companyId: string, fichaId: string, versao: n
   return db.stockFichaComponente.findMany({ where: { companyId, versaoId: v.id }, orderBy: { posicao: 'asc' } })
 }
 
-/** em-produção por item DESTA ordem = Σ|SEPARACAO_SAIDA| − Σ DEVOLUCAO (receiptId=ordemId). */
-async function separadoPorItem(companyId: string, ordemId: string, db: Db): Promise<Map<string, number>> {
-  const movs = await db.stockMovement.findMany({ where: { companyId, receiptId: ordemId, tipo: { in: [TIPO_SEPARACAO, TIPO_DEVOLUCAO] } }, select: { itemId: true, tipo: true, quantidade: true } })
+/** em-produção por item DESTA ordem = Σ|SEPARACAO| − Σ DEVOLUCAO − Σ CONSUMO (receiptId=ordemId). */
+export async function separadoPorItem(companyId: string, ordemId: string, db: Db): Promise<Map<string, number>> {
+  const movs = await db.stockMovement.findMany({ where: { companyId, receiptId: ordemId, tipo: { in: [TIPO_SEPARACAO, TIPO_DEVOLUCAO, TIPO_CONSUMO] } }, select: { itemId: true, tipo: true, quantidade: true } })
   const m = new Map<string, number>()
   for (const mv of movs) {
-    // SEPARACAO_SAIDA tem quantidade NEGATIVA (saiu do estoque); DEVOLUCAO positiva (voltou).
-    // em-produção = Σ|SEPARACAO| − Σ DEVOLUCAO = Σ(−quantidade) sobre os dois tipos.
-    m.set(mv.itemId, round2((m.get(mv.itemId) ?? 0) - mv.quantidade))
+    const abs = Math.abs(mv.quantidade)
+    const delta = mv.tipo === TIPO_SEPARACAO ? abs : -abs // separou entra; devolveu/consumiu sai
+    m.set(mv.itemId, round2((m.get(mv.itemId) ?? 0) + delta))
   }
   return m
 }

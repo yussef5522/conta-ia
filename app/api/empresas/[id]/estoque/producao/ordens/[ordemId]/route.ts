@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { explodirSeparacao, OrdemError } from '@/lib/stock/producao/ordens'
+import { listConclusoes, rendimentoMedioDaFicha } from '@/lib/stock/producao/conclusao'
 
 interface Params { params: Promise<{ id: string; ordemId: string }> }
 
@@ -16,7 +17,12 @@ export async function GET(request: NextRequest, { params }: Params) {
   }
   try {
     const { ordem, linhas } = await explodirSeparacao(companyId, ordemId)
-    return NextResponse.json({ ordem, linhas })
+    const [conclusoes, colaboradores, rendimentoMedio] = await Promise.all([
+      listConclusoes(companyId, ordemId),
+      prisma.stockColaborador.findMany({ where: { companyId, ativo: true }, orderBy: { nome: 'asc' }, select: { id: true, nome: true } }),
+      rendimentoMedioDaFicha(companyId, ordem.fichaId),
+    ])
+    return NextResponse.json({ ordem, linhas, conclusoes, colaboradores, rendimentoMedio })
   } catch (e) {
     if (e instanceof OrdemError) return NextResponse.json({ erro: e.message }, { status: 404 })
     throw e
