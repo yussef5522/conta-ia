@@ -3514,3 +3514,30 @@ model StockFichaComponente {
   @@index([companyId, versaoId])
   @@map("stock_ficha_componente")
 }
+
+// ESTOQUE FASE 2 item 2.1 (21/08) — ORDEM DE PRODUÇÃO. 5 estados. Escala = múltiplo do
+// lote base da ficha (unidades de saída dependem do rendimento, que é MEDIDO na conclusão
+// — 2.2). Snapshot da versão da ficha na criação (ordem antiga aponta pra receita da época).
+// A separação/devolução são MOVIMENTOS no ledger (receiptId = id da ordem). CHECK de estado
+// inline (CREATE-only). Isolado.
+model StockProductionOrder {
+  id              String   @id @default(cuid())
+  companyId       String
+  fichaId         String
+  versaoFicha     Int // snapshot da versão usada
+  itemProduzidoId String
+  setorId         String?
+  colaboradorId   String?
+  dataProducao    DateTime
+  escalaReceitas  Float    @default(1) // múltiplo do lote base
+  origem          String   @default("MANUAL") // MANUAL | SUGESTAO
+  estado          String   @default("PLANEJADA") // PLANEJADA | SEPARADA | EM_PRODUCAO | CONCLUIDA | CANCELADA
+  observacao      String?
+  criadoPorId     String?
+  criadoEm        DateTime @default(now())
+  atualizadoEm    DateTime @updatedAt
+
+  @@index([companyId, estado])
+  @@index([companyId, dataProducao])
+  @@map("stock_production_order")
+}
