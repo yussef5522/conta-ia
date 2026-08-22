@@ -6,19 +6,42 @@
 
 import { useEffect, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
-import { ArrowLeft, Loader2, Printer, Download, Tag } from 'lucide-react'
+import { ArrowLeft, Loader2, Printer, Download, Tag, Usb, Check, AlertTriangle } from 'lucide-react'
 
 interface Etq { conclusaoId: string; produto: string; lote: string; manipulacao: string; validade: string; qtdGerada: number; unidade: string; colaborador: string | null }
+
+const AGENTE_KEY = 'zebra_agente_url'
 
 export default function EtiquetaPage({ params }: { params: Promise<{ id: string; conclusaoId: string }> }) {
   const { id, conclusaoId } = use(params)
   const [e, setE] = useState<Etq | null | undefined>(undefined)
   const [copias, setCopias] = useState(1)
+  const [zpl, setZpl] = useState('')
   const [modo, setModo] = useState<'lote' | 'unidade'>('lote')
+  const [zebra, setZebra] = useState<{ estado: 'idle' | 'enviando' | 'ok' | 'erro'; msg?: string }>({ estado: 'idle' })
+  const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
 
   useEffect(() => {
-    fetch(`/api/empresas/${id}/estoque/producao/conclusoes/${conclusaoId}/etiqueta?modo=${modo}`).then((r) => r.json()).then((j) => { setE(j.etiqueta ?? null); setCopias(j.copias ?? 1) }).catch(() => setE(null))
+    fetch(`/api/empresas/${id}/estoque/producao/conclusoes/${conclusaoId}/etiqueta?modo=${modo}`).then((r) => r.json()).then((j) => { setE(j.etiqueta ?? null); setCopias(j.copias ?? 1); setZpl(j.zpl ?? '') }).catch(() => setE(null))
   }, [id, conclusaoId, modo])
+
+  const imprimirZebra = async (zplAtual: string) => {
+    const url = (typeof window !== 'undefined' && localStorage.getItem(AGENTE_KEY)) || 'http://localhost:9100'
+    setZebra({ estado: 'enviando' })
+    try {
+      const r = await fetch(`${url}/print`, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: zplAtual })
+      if (r.ok) setZebra({ estado: 'ok', msg: 'Etiqueta enviada pra Zebra.' })
+      else setZebra({ estado: 'erro', msg: (await r.json().catch(() => null))?.erro ?? 'A Zebra recusou.' })
+    } catch {
+      setZebra({ estado: 'erro', msg: 'Agente da Zebra offline. Rode `node scripts/zebra-agent.mjs` no PC do estoque.' })
+    }
+  }
+
+  // auto-imprime na Zebra se veio da conclusão com ?print=zebra e o zpl carregou
+  useEffect(() => {
+    if (searchParams?.get('print') === 'zebra' && zpl && zebra.estado === 'idle') imprimirZebra(zpl)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zpl])
 
   if (e === undefined) return <div className="p-6"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
   if (!e) return <div className="p-6 text-sm text-slate-500">Etiqueta não encontrada.</div>
@@ -51,11 +74,14 @@ export default function EtiquetaPage({ params }: { params: Promise<{ id: string;
         </div>
       </div>
 
-      <div className="flex items-center justify-center gap-3 print:hidden">
-        <button onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-white hover:bg-[#0F4A8C]"><Printer className="h-4 w-4" /> Imprimir</button>
-        <a href={`/api/empresas/${id}/estoque/producao/conclusoes/${conclusaoId}/etiqueta?modo=${modo}&formato=zpl`} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"><Download className="h-4 w-4" /> Baixar ZPL (Zebra)</a>
+      <div className="flex flex-wrap items-center justify-center gap-3 print:hidden">
+        <button onClick={() => imprimirZebra(zpl)} disabled={zebra.estado === 'enviando' || !zpl} className="inline-flex items-center gap-2 rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-white hover:bg-[#0F4A8C] disabled:opacity-60">{zebra.estado === 'enviando' ? <Loader2 className="h-4 w-4 animate-spin" /> : zebra.estado === 'ok' ? <Check className="h-4 w-4" /> : <Usb className="h-4 w-4" />} Imprimir na Zebra</button>
+        <button onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"><Printer className="h-4 w-4" /> Imprimir (papel)</button>
+        <a href={`/api/empresas/${id}/estoque/producao/conclusoes/${conclusaoId}/etiqueta?modo=${modo}&formato=zpl`} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"><Download className="h-4 w-4" /> Baixar ZPL</a>
       </div>
-      <p className="text-center text-[11px] text-slate-400 print:hidden">O ZPL sai no formato da Zebra 60×60. Imprimir manda pro papel/impressora do navegador.</p>
+      {zebra.estado === 'ok' && <p className="flex items-center justify-center gap-1 text-center text-xs text-emerald-600 print:hidden"><Check className="h-3.5 w-3.5" /> {zebra.msg}</p>}
+      {zebra.estado === 'erro' && <p className="flex items-center justify-center gap-1 text-center text-xs text-rose-600 print:hidden"><AlertTriangle className="h-3.5 w-3.5" /> {zebra.msg}</p>}
+      <p className="text-center text-[11px] text-slate-400 print:hidden">"Imprimir na Zebra" fala com o agente local (`node scripts/zebra-agent.mjs` no PC do estoque). <button onClick={() => { const u = prompt('Endereço do agente da Zebra:', localStorage.getItem(AGENTE_KEY) || 'http://localhost:9100'); if (u) localStorage.setItem(AGENTE_KEY, u) }} className="underline hover:text-slate-600">configurar agente</button></p>
 
       <Card className="print:hidden"><CardContent className="p-4 text-xs text-slate-500">
         <p><b>Rastro:</b> essa etiqueta carrega o LOTE ({e.lote}) — o mesmo id da ordem de produção. Da etiqueta no freezer até a nota do fornecedor, o caminho está no ledger.</p>

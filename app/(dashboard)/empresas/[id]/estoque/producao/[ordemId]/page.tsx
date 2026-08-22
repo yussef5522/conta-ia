@@ -224,6 +224,8 @@ function ConclusaoForm({ id, ordemId, linhas, colaboradores, rendimentoMedio, un
       })
       const j = await r.json().catch(() => null)
       if (!r.ok) { setErro(j?.erro ?? 'Não consegui concluir.'); return }
+      // vai pra etiqueta e já manda pra Zebra (agente local) — a etiqueta sai na conclusão
+      if (j?.conclusaoId) { window.location.href = `/empresas/${id}/estoque/producao/conclusoes/${j.conclusaoId}/etiqueta?print=zebra`; return }
       onConcluida()
     } catch { setErro('Falha de conexão.') } finally { setBusy(false) }
   }
