@@ -52,6 +52,18 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
   const parseNum = (s: string) => { const n = Number((s ?? '').replace(',', '.')); return Number.isFinite(n) ? n : 0 }
   const custoSeparado = useMemo(() => linhas.reduce((s, l) => { const q = ordem?.estado === 'PLANEJADA' ? parseNum(sep[l.itemId]) : l.qtdSeparada; return s + q * (l.custoMedio ?? 0) }, 0), [linhas, sep, ordem])
 
+  // aviso LEVE se o separado destoa do planejado da escala (não trava — o rendimento vai
+  // contra o REAL). TEM que ficar ANTES do early-return (Regra dos Hooks: nº de hooks fixo).
+  const escalaAviso = useMemo(() => {
+    if (ordem?.estado !== 'PLANEJADA') return null
+    const razoes = linhas.filter((l) => l.qtdPlanejada > 0).map((l) => parseNum(sep[l.itemId]) / l.qtdPlanejada)
+    if (!razoes.length) return null
+    const media = razoes.reduce((a, b) => a + b, 0) / razoes.length
+    if (media < 0.9 || media > 1.1) return { media }
+    return null
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linhas, sep, ordem])
+
   if (ordem === undefined) return <div className="p-6"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
   if (ordem === null) return <div className="p-6 text-sm text-slate-500">Ordem não encontrada.</div>
 
@@ -62,18 +74,6 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
   const passoAtual = PASSOS.indexOf(ordem.estado === 'CANCELADA' ? 'PLANEJADA' : ordem.estado)
 
   const confirmarSeparacao = () => acao({ acao: 'separar', itens: linhas.map((l) => ({ itemId: l.itemId, qtdSeparada: parseNum(sep[l.itemId]) })).filter((i) => i.qtdSeparada > 0) })
-
-  // aviso LEVE se o separado destoa do planejado da escala (não trava — o rendimento vai
-  // contra o REAL). Razão média separado/planejado; longe de 1 → avisa.
-  const escalaAviso = useMemo(() => {
-    if (!planejada) return null
-    const razoes = linhas.filter((l) => l.qtdPlanejada > 0).map((l) => parseNum(sep[l.itemId]) / l.qtdPlanejada)
-    if (!razoes.length) return null
-    const media = razoes.reduce((a, b) => a + b, 0) / razoes.length
-    if (media < 0.9 || media > 1.1) return { media }
-    return null
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [linhas, sep, planejada])
 
   return (
     <div className="mx-auto max-w-3xl space-y-5 p-4 sm:p-6">
