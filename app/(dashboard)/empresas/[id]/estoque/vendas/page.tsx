@@ -7,7 +7,7 @@
 
 import { useEffect, useMemo, useRef, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
-import { ShoppingCart, Loader2, Upload, Check, Pencil, Search, Play, X, Receipt, AlertTriangle, Package, History, RefreshCw } from 'lucide-react'
+import { ShoppingCart, Loader2, Upload, Check, Pencil, Search, Play, X, Receipt, AlertTriangle, History, RefreshCw, Info } from 'lucide-react'
 
 interface Linha { produto: string; quantidade: number; valorTotal: number; mapeado: boolean; alvoTipo: string | null; alvoId: string | null; alvoNome: string | null }
 interface Preview { linhas: Linha[]; totalUnidades: number; totalProdutos: number; naoMapeados: number; opcoes: { fichas: { id: string; nome: string; tipo: string }[]; itens: { id: string; nome: string }[] } }
@@ -32,6 +32,10 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
   const [data, setData] = useState('')
   const [erroProc, setErroProc] = useState<string | null>(null)
   const [plano, setPlano] = useState<Plano | null>(null)
+  const [modoReprocesso, setModoReprocesso] = useState<string | null>(null) // data sendo reprocessada
+  const [estornaItens, setEstornaItens] = useState(0)
+  const [verLista, setVerLista] = useState(false)
+  const [erroModal, setErroModal] = useState<string | null>(null)
   const [recibo, setRecibo] = useState<Recibo | null>(null)
   const [processando, setProcessando] = useState(false)
   const [processados, setProcessados] = useState<Dia[]>([])
@@ -70,6 +74,8 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
   // nomes marcados = mapeados − desmarcados
   const marcados = useMemo(() => (preview ? preview.linhas.filter((l) => l.mapeado && !desmarcados.has(l.produto)).map((l) => l.produto) : []), [preview, desmarcados])
 
+  const abrirModal = (p: Plano, reprocessoDia: string | null, estorna: number) => { setPlano(p); setModoReprocesso(reprocessoDia); setEstornaItens(estorna); setVerLista(false); setErroModal(null) }
+
   const abrirPreview = async () => {
     setErroProc(null)
     if (!data) { setErroProc('Escolha a data das vendas antes de processar.'); return }
@@ -79,21 +85,29 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
       const r = await fetch(`/api/empresas/${id}/estoque/vendas/processar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ html, data, confirmar: false, incluir: marcados }) })
       const j = await r.json().catch(() => null)
       if (!r.ok) { setErroProc(j?.erro ?? 'Não consegui montar o preview.'); return }
-      setPlano(j.plano)
+      abrirModal(j.plano, null, 0)
     } catch { setErroProc('Falha de conexão ao processar.') } finally { setProcessando(false) }
   }
-  const confirmar = async () => {
+  const reprocessar = async (dia: string) => {
     setProcessando(true)
     try {
-      const r = await fetch(`/api/empresas/${id}/estoque/vendas/processar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ html, data, confirmar: true, incluir: marcados }) })
+      const r = await fetch(`/api/empresas/${id}/estoque/vendas/processar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: dia, reprocessar: true, confirmar: false }) })
       const j = await r.json().catch(() => null)
-      if (r.ok) { setRecibo(j.recibo); setPlano(null); carregarProcessados() } else setErroProc(j?.erro ?? 'Não consegui processar.')
-    } finally { setProcessando(false) }
+      if (!r.ok) { alert(j?.erro ?? 'Não consegui montar o reprocesso.'); return }
+      abrirModal(j.plano, dia, j.estornaItens ?? 0)
+    } catch { alert('Falha de conexão ao reprocessar.') } finally { setProcessando(false) }
   }
-  const reprocessar = async (dia: string) => {
-    if (!confirm(`Reprocessar as vendas de ${fmtDia(dia)}? Estorna as baixas antigas e refaz com o mapa atual.`)) return
-    const r = await fetch(`/api/empresas/${id}/estoque/vendas/processar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: dia, reprocessar: true }) })
-    if (r.ok) carregarProcessados()
+  const confirmar = async () => {
+    setProcessando(true); setErroModal(null)
+    try {
+      const body = modoReprocesso
+        ? { data: modoReprocesso, reprocessar: true, confirmar: true }
+        : { html, data, confirmar: true, incluir: marcados }
+      const r = await fetch(`/api/empresas/${id}/estoque/vendas/processar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      const j = await r.json().catch(() => null)
+      if (r.ok) { setRecibo(j.recibo); setPlano(null); setModoReprocesso(null); carregarProcessados(); if (modoReprocesso) setAba('processados') }
+      else setErroModal(j?.erro ?? 'Não consegui processar.')
+    } catch { setErroModal('Falha de conexão.') } finally { setProcessando(false) }
   }
 
   const linhasFiltradas = useMemo(() => {
@@ -223,25 +237,49 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
         </>
       )}
 
-      {/* modal do preview do processamento */}
-      {plano && (
-        <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 sm:items-center" onClick={() => setPlano(null)}>
-          <div className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-t-2xl bg-white p-5 sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 flex items-center justify-between"><h3 className="text-base font-semibold text-slate-900">Confirmar baixa de {fmtDia(data)}</h3><button onClick={() => setPlano(null)}><X className="h-5 w-5 text-slate-400" /></button></div>
-            <p className="mb-3 text-xs text-slate-500">{plano.produtos.length} produtos vão baixar · {plano.fora.length} deixados de fora · {plano.pendentes.length} pendentes.</p>
-            <p className="mb-1 text-xs font-semibold text-slate-700">Vai baixar do estoque:</p>
-            <div className="mb-3 max-h-48 overflow-y-auto rounded-lg border border-slate-100">
-              {plano.agregada.map((a) => <div key={a.nome} className="flex items-center justify-between border-b border-slate-50 px-3 py-1.5 text-sm last:border-0"><span className="text-slate-700">{a.nome}</span><span className="tabular-nums text-slate-500">−{a.qtd} · {brl(a.valor)}</span></div>)}
-            </div>
-            {plano.pendentes.length > 0 && <p className="mb-2 rounded-lg bg-amber-50/60 px-3 py-2 text-xs text-amber-800"><b>Pendentes</b> (mapeie e reprocesse): {plano.pendentes.map((p) => `${p.nome} (${p.quantidade})`).join(' · ')}</p>}
-            {plano.fora.length > 0 && <p className="mb-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500"><b>Fora deste processamento</b>: {plano.fora.map((p) => p.nome).join(' · ')}</p>}
-            <div className="flex items-center gap-3">
-              <button onClick={confirmar} disabled={processando} className="inline-flex items-center gap-2 rounded-lg bg-[#185FA5] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#0F4A8C] disabled:opacity-60">{processando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Confirmar e baixar</button>
-              <button onClick={() => setPlano(null)} className="text-sm text-slate-500">cancelar</button>
+      {/* modal ÚNICO de confirmação (processar E reprocessar). Responde "o que acontece se eu confirmar?" */}
+      {plano && (() => {
+        const total = plano.agregada.reduce((s, a) => s + (a.valor ?? 0), 0)
+        const unPend = plano.pendentes.reduce((s, p) => s + p.quantidade, 0)
+        return (
+          <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 sm:items-center" onClick={() => setPlano(null)}>
+            <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white p-5 sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
+              <div className="mb-1 flex items-center justify-between"><h3 className="text-base font-semibold text-slate-900">{modoReprocesso ? 'Reprocessar' : 'Confirmar baixa'} de {fmtDia(modoReprocesso ?? data)}</h3><button onClick={() => setPlano(null)}><X className="h-5 w-5 text-slate-400" /></button></div>
+              {modoReprocesso && estornaItens > 0 && <p className="mb-3 text-xs text-slate-500">Estorna {estornaItens} baixa(s) anterior(es) e refaz com o mapa atual.</p>}
+
+              <p className="mb-1 mt-2 text-xs font-semibold text-slate-700">Vai baixar ({plano.agregada.length}):</p>
+              {plano.agregada.length === 0 ? <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-500">Nada a baixar (nenhum marcado com estoque).</p> : (
+                <div className="rounded-lg border border-slate-100">
+                  {plano.agregada.map((a) => <div key={a.nome} className="flex items-center justify-between border-b border-slate-50 px-3 py-2 text-sm last:border-0"><span className="text-slate-700">{a.nome}</span><span className="tabular-nums text-slate-600">−{a.qtd} · {brl(a.valor)}</span></div>)}
+                  <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold"><span className="text-slate-600">custo total baixado</span><span className="tabular-nums text-slate-900">{brl(total)}</span></div>
+                </div>
+              )}
+
+              {/* pendentes — UMA linha neutra, colapsada */}
+              {plano.pendentes.length > 0 && (
+                <div className="mt-3 rounded-lg border border-slate-100">
+                  <button onClick={() => setVerLista((v) => !v)} className="flex w-full items-center justify-between px-3 py-2 text-xs text-slate-500">
+                    <span className="flex items-center gap-1.5"><Info className="h-3.5 w-3.5" /> {plano.pendentes.length} pendentes de mapa ({unPend} un) · não baixam</span>
+                    <span className="text-[#185FA5]">{verLista ? 'ocultar' : 'ver lista'}</span>
+                  </button>
+                  {verLista && (
+                    <table className="w-full border-t border-slate-100 text-xs">
+                      <tbody>{plano.pendentes.map((p) => <tr key={p.nome} className="border-b border-slate-50 last:border-0"><td className="px-3 py-1.5 text-slate-600">{p.nome}</td><td className="px-3 py-1.5 text-right tabular-nums text-slate-400">{p.quantidade}</td></tr>)}</tbody>
+                    </table>
+                  )}
+                </div>
+              )}
+              {plano.fora.length > 0 && <p className="mt-2 flex items-center gap-1.5 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500"><Info className="h-3.5 w-3.5" /> {plano.fora.length} deixado(s) de fora deste processamento (desmarcado)</p>}
+
+              {erroModal && <p className="mt-3 flex items-center gap-1 text-sm text-rose-600"><AlertTriangle className="h-3.5 w-3.5" /> {erroModal}</p>}
+              <div className="mt-4 flex items-center gap-3">
+                <button onClick={confirmar} disabled={processando || plano.agregada.length === 0} className="inline-flex items-center gap-2 rounded-lg bg-[#185FA5] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#0F4A8C] disabled:opacity-60">{processando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Confirmar e baixar</button>
+                <button onClick={() => setPlano(null)} className="text-sm text-slate-500">cancelar</button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
     </div>
   )
 }

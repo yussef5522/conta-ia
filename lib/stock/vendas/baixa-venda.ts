@@ -117,6 +117,19 @@ export async function processarVendas(companyId: string, data: string, html: str
   return gravarVenda(companyId, data, parseSuitable(html).linhas, incluir, userId, db)
 }
 
+/** DRY-RUN do reprocesso: o que vai acontecer se refizer um dia já importado (com o mapa
+ *  ATUAL) + quantas baixas ativas serão estornadas. Não grava. */
+export async function montarPlanoReprocesso(companyId: string, data: string, db: PrismaClient = defaultPrisma): Promise<{ plano: PlanoVenda; estornaItens: number } | null> {
+  const dataDate = new Date(`${data}T12:00:00`)
+  const imp = await db.stockVendaImport.findUnique({ where: { companyId_data: { companyId, data: dataDate } }, select: { id: true } })
+  if (!imp) return null
+  const linhas = await db.stockVendaLinha.findMany({ where: { companyId, importId: imp.id }, select: { nomeSuitable: true, quantidade: true, valorTotal: true } })
+  const plano = await montarPlanoDeLinhas(companyId, data, linhas.map((l) => ({ produto: l.nomeSuitable, quantidade: l.quantidade, valorTotal: l.valorTotal })), null, db)
+  const baixas = await db.stockMovement.findMany({ where: { companyId, receiptId: imp.id, tipo: 'BAIXA_VENDA' }, select: { id: true } })
+  const estornos = new Set((await db.stockMovement.findMany({ where: { companyId, tipo: 'ESTORNO', estornoDeId: { in: baixas.map((b) => b.id) } }, select: { estornoDeId: true } })).map((e) => e.estornoDeId))
+  return { plano, estornaItens: baixas.filter((b) => !estornos.has(b.id)).length }
+}
+
 /** REPROCESSA um dia já importado a partir das linhas GRAVADAS (sem re-upload) — quando o
  *  dono mapeia mais fichas depois. incluir = null → todos os mapeados atuais. Idempotente. */
 export async function reprocessarDia(companyId: string, data: string, userId: string | undefined, db: PrismaClient = defaultPrisma): Promise<ReciboVenda> {

@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { montarPlanoVenda, processarVendas, reprocessarDia } from '@/lib/stock/vendas/baixa-venda'
+import { montarPlanoVenda, processarVendas, reprocessarDia, montarPlanoReprocesso } from '@/lib/stock/vendas/baixa-venda'
 import { SuitableParseError } from '@/lib/stock/vendas/parse-suitable'
 
 interface Params { params: Promise<{ id: string }> }
@@ -30,7 +30,12 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (!parsed.success) return NextResponse.json({ erro: parsed.error.issues[0]?.message ?? 'Dados inválidos.' }, { status: 400 })
   const { data, html, confirmar, reprocessar, incluir } = parsed.data
   try {
-    if (reprocessar) return NextResponse.json({ ok: true, recibo: await reprocessarDia(companyId, data, user.sub, prisma) })
+    if (reprocessar) {
+      if (confirmar) return NextResponse.json({ ok: true, recibo: await reprocessarDia(companyId, data, user.sub, prisma) })
+      const r = await montarPlanoReprocesso(companyId, data, prisma)
+      if (!r) return NextResponse.json({ erro: 'Não há import desse dia pra reprocessar.' }, { status: 404 })
+      return NextResponse.json({ plano: r.plano, reprocesso: true, estornaItens: r.estornaItens })
+    }
     if (!html) return NextResponse.json({ erro: 'Envie o arquivo do dia.' }, { status: 400 })
     if (confirmar) return NextResponse.json({ ok: true, recibo: await processarVendas(companyId, data, html, user.sub, prisma, incluir ?? null) })
     return NextResponse.json({ plano: await montarPlanoVenda(companyId, data, html, prisma, incluir ?? null) })
