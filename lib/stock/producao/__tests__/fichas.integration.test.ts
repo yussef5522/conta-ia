@@ -99,6 +99,19 @@ describe('fichas item 2.0', () => {
     expect((await listFichas(companyId)).length).toBe(1)
   })
 
+  it('3 NÍVEIS: ficha de PRODUTO_FINAL aceita intermediário E outra ficha final como componente (Combo)', async () => {
+    // intermediário: porção de carne (usa coxão)
+    const carne = await criarFicha({ companyId, nomeProduzido: 'Porção de carne', unidadeProduzido: 'UN', tipoProduto: 'INTERMEDIARIO', loteBase: 1, unidadeLoteBase: 'KG', componentes: [{ itemId: coxaoId, qtdPlanejada: 1, unidade: 'KG' }] })
+    // produto final Xis: usa o INTERMEDIÁRIO (porção de carne) + insumo
+    const xis = await criarFicha({ companyId, nomeProduzido: 'Xis', unidadeProduzido: 'UN', tipoProduto: 'PRODUTO_FINAL', loteBase: 1, unidadeLoteBase: 'UN', componentes: [{ itemId: carne.itemProduzidoId, qtdPlanejada: 1, unidade: 'UN' }, { itemId: gorduraId, qtdPlanejada: 0.05, unidade: 'KG' }] })
+    // Combo (PRODUTO_FINAL) usa OUTRA ficha final (o Xis) como componente — recursão dos 3 níveis
+    const combo = await criarFicha({ companyId, nomeProduzido: 'Combo', unidadeProduzido: 'UN', tipoProduto: 'PRODUTO_FINAL', loteBase: 1, unidadeLoteBase: 'UN', componentes: [{ itemId: xis.itemProduzidoId, qtdPlanejada: 1, unidade: 'UN' }] })
+    const got = await getFicha(companyId, combo.fichaId)
+    expect(got!.ficha.componentes[0].itemId).toBe(xis.itemProduzidoId) // Combo contém o Xis (outra ficha final)
+    const gotXis = await getFicha(companyId, xis.fichaId)
+    expect(gotXis!.ficha.componentes.some((c) => c.itemId === carne.itemProduzidoId)).toBe(true) // Xis contém o intermediário
+  })
+
   it('custoMedio vem do LEDGER (movimento), não do campo stockItem.custoMedio (bug do editor)', async () => {
     // item com ENTRADA_NF de 46,95/kg mas SEM o campo custoMedio populado (como em prod)
     const acem = await prisma.stockItem.create({ data: { companyId, nome: 'Açém', unidadeControle: 'KG', categoria: 'MATERIA_PRIMA', criadoVia: 'CONFERENCIA' } }) // custoMedio field = null

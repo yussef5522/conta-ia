@@ -1,28 +1,35 @@
-// ESTOQUE FASE 3 — mapa que aprende + preview. As 2 duplicatas do PDV apontam pra MESMA
-// ficha; nome não mapeado fica pendente; mapear resolve na próxima. Contra o arquivo real.
+// ESTOQUE FASE 3 — mapa que aprende + GUARD dos 3 níveis. Destino de venda SÓ pode ser
+// PRODUTO_FINAL (ficha) ou item REVENDA. Matéria-prima e intermediário são RECUSADOS na
+// FONTE (não só escondidos na tela) — REGRA 1. Contra o arquivo real.
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import { prisma } from '@/lib/db'
 import { criarFicha } from '../../producao/fichas'
-import { previewImportSuitable, upsertVendaMap } from '../venda-map'
+import { previewImportSuitable, upsertVendaMap, VendaMapError } from '../venda-map'
 
 const HTML = readFileSync(join(__dirname, 'fixtures/suitable-produtos-agrupado.xls'), 'utf-8')
 const CNPJ = '90909090000190'
 let companyId: string
-let insumoId: string
-let xisFichaId: string
+let materiaPrimaId: string // Coxão Mole (cru) — NUNCA destino de venda
+let cocaId: string // REVENDA — destino válido
+let xisFichaId: string // PRODUTO_FINAL — destino válido
+let intermFichaId: string // INTERMEDIARIO — NUNCA destino direto
 
 beforeEach(async () => {
   await prisma.company.deleteMany({ where: { cnpj: CNPJ } })
   const c = await prisma.company.create({ data: { cnpj: CNPJ, name: 'VENDAS MAP' } })
   companyId = c.id
-  const insumo = await prisma.stockItem.create({ data: { companyId, nome: 'Pão', unidadeControle: 'UN', categoria: 'MATERIA_PRIMA', criadoVia: 'CONFERENCIA' } })
-  insumoId = insumo.id
-  await prisma.stockMovement.create({ data: { companyId, itemId: insumoId, tipo: 'ENTRADA_NF', quantidade: 100, custoUnitario: 1, custoTotal: 100, origem: 'SEFAZ' } })
-  const f = await criarFicha({ companyId, nomeProduzido: 'Xis Completo', unidadeProduzido: 'UN', tipoProduto: 'PRODUTO_FINAL', loteBase: 1, unidadeLoteBase: 'UN', componentes: [{ itemId: insumoId, qtdPlanejada: 1, unidade: 'UN' }] }, prisma)
-  xisFichaId = f.fichaId
+  const mp = await prisma.stockItem.create({ data: { companyId, nome: 'Coxão Mole', unidadeControle: 'KG', categoria: 'MATERIA_PRIMA', criadoVia: 'CONFERENCIA' } })
+  materiaPrimaId = mp.id
+  await prisma.stockMovement.create({ data: { companyId, itemId: mp.id, tipo: 'ENTRADA_NF', quantidade: 100, custoUnitario: 40, custoTotal: 4000, origem: 'SEFAZ' } })
+  const coca = await prisma.stockItem.create({ data: { companyId, nome: 'Coca 2L', unidadeControle: 'UN', categoria: 'REVENDA', criadoVia: 'MANUAL' } })
+  cocaId = coca.id
+  const xis = await criarFicha({ companyId, nomeProduzido: 'Xis Completo', unidadeProduzido: 'UN', tipoProduto: 'PRODUTO_FINAL', loteBase: 1, unidadeLoteBase: 'UN', componentes: [{ itemId: mp.id, qtdPlanejada: 0.2, unidade: 'KG' }] }, prisma)
+  xisFichaId = xis.fichaId
+  const interm = await criarFicha({ companyId, nomeProduzido: 'Porção de carne 100g', unidadeProduzido: 'UN', tipoProduto: 'INTERMEDIARIO', loteBase: 1, unidadeLoteBase: 'KG', componentes: [{ itemId: mp.id, qtdPlanejada: 1, unidade: 'KG' }] }, prisma)
+  intermFichaId = interm.fichaId
 })
 afterEach(async () => {
   await prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS trg_stock_movement_no_update;`).catch(() => {})
@@ -34,33 +41,33 @@ afterEach(async () => {
   await prisma.company.deleteMany({ where: { id: companyId } })
 })
 
-describe('preview + mapa que aprende', () => {
-  it('sem mapa → tudo pendente (80 não mapeados)', async () => {
+describe('preview — só PRODUTO_FINAL e REVENDA como destino', () => {
+  it('opções NÃO listam matéria-prima nem intermediário', async () => {
     const p = await previewImportSuitable(companyId, HTML, prisma)
-    expect(p.totalProdutos).toBe(80)
-    expect(p.naoMapeados).toBe(80)
-    expect(p.opcoes.fichas.some((f) => f.nome === 'Xis Completo')).toBe(true)
+    expect(p.opcoes.fichas.map((f) => f.nome)).toEqual(['Xis Completo']) // só o PRODUTO_FINAL
+    expect(p.opcoes.fichas.some((f) => f.nome === 'Porção de carne 100g')).toBe(false) // intermediário fora
+    expect(p.opcoes.itens.map((i) => i.nome)).toEqual(['Coca 2L']) // só REVENDA
+    expect(p.opcoes.itens.some((i) => i.nome === 'Coxão Mole')).toBe(false) // matéria-prima fora
   })
+})
 
-  it('mapear resolve; as 2 duplicatas do PDV → mesma ficha; revenda → item', async () => {
+describe('mapa que aprende + GUARD na fonte', () => {
+  it('mapear pra PRODUTO_FINAL e REVENDA funciona; dupes do PDV → mesma ficha', async () => {
     await upsertVendaMap(companyId, 'XIS COMPLETO', { tipo: 'FICHA', fichaId: xisFichaId }, 'u', prisma)
-    await upsertVendaMap(companyId, 'XIS - COMPLETO', { tipo: 'FICHA', fichaId: xisFichaId }, 'u', prisma) // duplicata → mesma ficha
-    await upsertVendaMap(companyId, 'COCA COLA 2L', { tipo: 'REVENDA', itemId: insumoId }, 'u', prisma)
+    await upsertVendaMap(companyId, 'XIS - COMPLETO', { tipo: 'FICHA', fichaId: xisFichaId }, 'u', prisma)
+    await upsertVendaMap(companyId, 'COCA COLA 2L', { tipo: 'REVENDA', itemId: cocaId }, 'u', prisma)
     const p = await previewImportSuitable(companyId, HTML, prisma)
     expect(p.naoMapeados).toBe(77)
-    const xis1 = p.linhas.find((l) => l.produto === 'XIS COMPLETO')!
-    const xis2 = p.linhas.find((l) => l.produto === 'XIS - COMPLETO')!
-    expect(xis1.alvoId).toBe(xisFichaId)
-    expect(xis2.alvoId).toBe(xisFichaId) // as duas → a mesma ficha
-    expect(xis1.mapeado).toBe(true)
-    const coca = p.linhas.find((l) => l.produto === 'COCA COLA 2L')!
-    expect(coca.alvoTipo).toBe('REVENDA')
+    expect(p.linhas.find((l) => l.produto === 'XIS COMPLETO')!.alvoId).toBe(xisFichaId)
+    expect(p.linhas.find((l) => l.produto === 'XIS - COMPLETO')!.alvoId).toBe(xisFichaId)
+    expect(p.linhas.find((l) => l.produto === 'COCA COLA 2L')!.alvoTipo).toBe('REVENDA')
   })
 
-  it('re-mapear troca o alvo (renomeação no Suitable = nome novo, pergunta de novo)', async () => {
-    await upsertVendaMap(companyId, 'XIS COMPLETO', { tipo: 'FICHA', fichaId: xisFichaId }, 'u', prisma)
-    await upsertVendaMap(companyId, 'XIS COMPLETO', { tipo: 'REVENDA', itemId: insumoId }, 'u', prisma) // troca
-    const p = await previewImportSuitable(companyId, HTML, prisma)
-    expect(p.linhas.find((l) => l.produto === 'XIS COMPLETO')!.alvoTipo).toBe('REVENDA')
+  it('RECUSA venda mapeada em MATÉRIA-PRIMA (Coxão cru) — REGRA 1', async () => {
+    await expect(upsertVendaMap(companyId, 'XIS - COXAO MOLE', { tipo: 'REVENDA', itemId: materiaPrimaId }, 'u', prisma)).rejects.toThrow(VendaMapError)
+  })
+
+  it('RECUSA venda mapeada em INTERMEDIÁRIO (porção de carne) — consumido via ficha', async () => {
+    await expect(upsertVendaMap(companyId, 'XIS COMPLETO', { tipo: 'FICHA', fichaId: intermFichaId }, 'u', prisma)).rejects.toThrow(VendaMapError)
   })
 })

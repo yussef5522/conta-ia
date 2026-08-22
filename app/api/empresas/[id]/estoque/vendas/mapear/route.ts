@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { upsertVendaMap, removerVendaMap } from '@/lib/stock/vendas/venda-map'
+import { upsertVendaMap, removerVendaMap, VendaMapError } from '@/lib/stock/vendas/venda-map'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -26,6 +26,11 @@ export async function POST(request: NextRequest, { params }: Params) {
   const d = parsed.data
   if (d.alvoTipo === 'REMOVER') { await removerVendaMap(companyId, d.nomeSuitable, prisma); return NextResponse.json({ ok: true }) }
   const alvo = d.alvoTipo === 'FICHA' ? { tipo: 'FICHA' as const, fichaId: d.fichaId } : { tipo: 'REVENDA' as const, itemId: d.itemId }
-  await upsertVendaMap(companyId, d.nomeSuitable, alvo, user.sub, prisma)
-  return NextResponse.json({ ok: true })
+  try {
+    await upsertVendaMap(companyId, d.nomeSuitable, alvo, user.sub, prisma)
+    return NextResponse.json({ ok: true })
+  } catch (e) {
+    if (e instanceof VendaMapError) return NextResponse.json({ erro: e.message }, { status: 422 })
+    throw e
+  }
 }

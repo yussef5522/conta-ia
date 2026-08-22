@@ -40,10 +40,25 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
   }
 
   const mapear = async (nomeSuitable: string, valor: string) => {
-    // valor = "FICHA:<id>" | "REVENDA:<id>" | "REMOVER"
+    // valor = "FICHA:<id>" | "REVENDA:<id>" | "REMOVER" | "CRIAR_FICHA" | "CRIAR_REVENDA"
+    if (valor === 'CRIAR_FICHA') {
+      // abre o editor de ficha JÁ no tipo PRODUTO_FINAL com o nome pré-preenchido
+      window.location.href = `/empresas/${id}/estoque/fichas/nova?nome=${encodeURIComponent(nomeSuitable)}&tipo=PRODUTO_FINAL`
+      return
+    }
+    if (valor === 'CRIAR_REVENDA') {
+      // cria o item de revenda (UN, categoria REVENDA) e já mapeia
+      const r = await fetch(`/api/empresas/${id}/estoque/itens`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nome: nomeSuitable, unidadeControle: 'UN', categoria: 'REVENDA' }) })
+      const j = await r.json().catch(() => null)
+      if (r.ok && j?.item?.id) await fetch(`/api/empresas/${id}/estoque/vendas/mapear`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nomeSuitable, alvoTipo: 'REVENDA', itemId: j.item.id }) })
+      if (html) enviar(html)
+      return
+    }
     const [tipo, alvoId] = valor.split(':')
     const body = tipo === 'REMOVER' ? { nomeSuitable, alvoTipo: 'REMOVER' } : tipo === 'FICHA' ? { nomeSuitable, alvoTipo: 'FICHA', fichaId: alvoId } : { nomeSuitable, alvoTipo: 'REVENDA', itemId: alvoId }
-    await fetch(`/api/empresas/${id}/estoque/vendas/mapear`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    const r = await fetch(`/api/empresas/${id}/estoque/vendas/mapear`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    if (!r.ok) { const j = await r.json().catch(() => null); setErro(j?.erro ?? 'Não consegui mapear.'); return }
+    setErro(null)
     if (html) enviar(html) // re-preview pra refletir
   }
 
@@ -87,12 +102,20 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
                       <select value={l.mapeado ? `${l.alvoTipo}:${l.alvoId}` : ''} onChange={(e) => e.target.value && mapear(l.produto, e.target.value)} className={`w-full max-w-xs rounded-lg border py-1.5 px-2 text-sm ${l.mapeado ? 'border-slate-200 text-slate-700' : 'border-amber-300 text-amber-700'}`}>
                         <option value="">— escolher —</option>
                         {l.mapeado && <option value="REMOVER">✕ desmapear</option>}
-                        <optgroup label="Fichas (produtos que você faz)">
-                          {preview.opcoes.fichas.map((f) => <option key={f.id} value={`FICHA:${f.id}`}>{f.nome}{f.tipo === 'PRODUTO_FINAL' ? '' : ' (interm.)'}</option>)}
+                        <optgroup label="Criar novo">
+                          <option value="CRIAR_FICHA">＋ criar ficha de produto final…</option>
+                          <option value="CRIAR_REVENDA">＋ criar item de revenda (bebida)</option>
                         </optgroup>
-                        <optgroup label="Revenda (bebida etc.)">
-                          {preview.opcoes.itens.map((i) => <option key={i.id} value={`REVENDA:${i.id}`}>{i.nome}</option>)}
-                        </optgroup>
+                        {preview.opcoes.fichas.length > 0 && (
+                          <optgroup label="Produtos finais (ficha)">
+                            {preview.opcoes.fichas.map((f) => <option key={f.id} value={`FICHA:${f.id}`}>{f.nome}</option>)}
+                          </optgroup>
+                        )}
+                        {preview.opcoes.itens.length > 0 && (
+                          <optgroup label="Revenda (bebida etc.)">
+                            {preview.opcoes.itens.map((i) => <option key={i.id} value={`REVENDA:${i.id}`}>{i.nome}</option>)}
+                          </optgroup>
+                        )}
                       </select>
                     </td>
                   </tr>

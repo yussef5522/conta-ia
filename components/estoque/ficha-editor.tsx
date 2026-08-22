@@ -19,10 +19,12 @@ const parseNum = (s: string) => { const t = s.trim().replace(',', '.'); const n 
 
 export function FichaEditor({ companyId, fichaId }: { companyId: string; fichaId?: string }) {
   const editando = !!fichaId
+  // pré-preenche nome/tipo quando vem do mapeamento de vendas (?nome=&tipo=PRODUTO_FINAL)
+  const qp = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
   const [carregando, setCarregando] = useState(editando)
-  const [nomeProduzido, setNomeProduzido] = useState('')
+  const [nomeProduzido, setNomeProduzido] = useState(!editando ? qp?.get('nome') ?? '' : '')
   const [unidadeProduzido, setUnidadeProduzido] = useState<'KG' | 'UN' | 'LT'>('UN')
-  const [tipoProduto, setTipoProduto] = useState<'INTERMEDIARIO' | 'PRODUTO_FINAL'>('INTERMEDIARIO')
+  const [tipoProduto, setTipoProduto] = useState<'INTERMEDIARIO' | 'PRODUTO_FINAL'>(!editando && qp?.get('tipo') === 'PRODUTO_FINAL' ? 'PRODUTO_FINAL' : 'INTERMEDIARIO')
   const [setorId, setSetorId] = useState<string>('')
   const [valorVenda, setValorVenda] = useState('')
   const [loteBase, setLoteBase] = useState('1')
