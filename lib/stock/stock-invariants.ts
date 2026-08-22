@@ -9,6 +9,7 @@
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { saldosDaEmpresa } from './saldo'
 import { checkProducaoInvariants } from './producao/producao-invariants'
+import { checkVendasInvariants } from './vendas/vendas-invariants'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -16,6 +17,7 @@ export interface StockInvariantFail {
   invariante: string
   companyId: string | null
   detalhe: string
+  nivel?: 'erro' | 'aviso' // 'aviso' aparece no relatório mas NÃO deixa o selo vermelho (default 'erro')
 }
 
 const E12_DIAS = 30
@@ -91,6 +93,8 @@ export async function checkStockInvariants(db: Db, now: Date = new Date()): Prom
 
   // P1-P6 — invariantes de PRODUÇÃO (fase 2). Mesma tabela isolada, mesmo relatório.
   fails.push(...(await checkProducaoInvariants(db, now)))
+  // V1 — invariantes de VENDA (fase 3). V1 é AVISO (não deixa o selo vermelho).
+  fails.push(...(await checkVendasInvariants(db, now)))
 
   return fails
 }

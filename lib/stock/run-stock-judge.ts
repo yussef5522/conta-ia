@@ -18,7 +18,9 @@ export interface StockJudgeReport {
 export async function runStockJudge(db: Db, now: Date = new Date()): Promise<StockJudgeReport> {
   const t0 = Date.now()
   const fails = await checkStockInvariants(db, now)
-  return { passed: fails.length === 0, stockIssues: fails.length, fails, durationMs: Date.now() - t0 }
+  // 'aviso' (ex: V1 venda sem mapa) aparece no relatório mas NÃO conta como issue do selo.
+  const stockIssues = fails.filter((f) => f.nivel !== 'aviso').length
+  return { passed: stockIssues === 0, stockIssues, fails, durationMs: Date.now() - t0 }
 }
 
 /** Roda + persiste a linha em stock_judge_report. Retorna o relatório. */

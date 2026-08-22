@@ -3603,3 +3603,21 @@ model StockVendaImport {
   @@index([companyId])
   @@map("stock_venda_import")
 }
+
+// ESTOQUE FASE 3 — linhas do import (todas: mapeadas e pendentes). Guarda pra REPROCESSAR
+// o dia sem re-upload e pra a aba "pendentes de mapa" + o juiz V (pendente > 7d). CREATE-only.
+model StockVendaLinha {
+  id           String   @id @default(cuid())
+  companyId    String
+  importId     String
+  data         DateTime // dia (redundante do import, facilita o juiz)
+  nomeSuitable String
+  quantidade   Int
+  valorTotal   Float
+  mapeadoNoImport Boolean @default(false) // tinha destino na hora do processamento
+  criadoEm     DateTime @default(now())
+
+  @@index([companyId, importId])
+  @@index([companyId, data])
+  @@map("stock_venda_linha")
+}
