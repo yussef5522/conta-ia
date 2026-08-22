@@ -57,6 +57,18 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
 
   const confirmarSeparacao = () => acao({ acao: 'separar', itens: linhas.map((l) => ({ itemId: l.itemId, qtdSeparada: parseNum(sep[l.itemId]) })).filter((i) => i.qtdSeparada > 0) })
 
+  // aviso LEVE se o separado destoa do planejado da escala (não trava — o rendimento vai
+  // contra o REAL). Razão média separado/planejado; longe de 1 → avisa.
+  const escalaAviso = useMemo(() => {
+    if (!planejada) return null
+    const razoes = linhas.filter((l) => l.qtdPlanejada > 0).map((l) => parseNum(sep[l.itemId]) / l.qtdPlanejada)
+    if (!razoes.length) return null
+    const media = razoes.reduce((a, b) => a + b, 0) / razoes.length
+    if (media < 0.9 || media > 1.1) return { media }
+    return null
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linhas, sep, planejada])
+
   return (
     <div className="mx-auto max-w-3xl space-y-5 p-4 sm:p-6">
       <a href={`/empresas/${id}/estoque/producao`} className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 print:hidden"><ArrowLeft className="h-3.5 w-3.5" /> voltar pra produção</a>
@@ -136,6 +148,14 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
           <span className="font-semibold tabular-nums text-slate-900">{brl(custoSeparado)}</span>
         </div>
       </CardContent></Card>
+
+      {/* aviso leve: separado ≠ escala planejada (não trava) */}
+      {escalaAviso && (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50/60 p-3 text-xs text-amber-700 print:hidden">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>Você está separando ~{escalaAviso.media.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}× a receita, mas a ordem foi criada com escala {ordem.escalaReceitas}×. Tudo bem — o rendimento na conclusão vai contra o que você separou de verdade, não contra a escala.</span>
+        </div>
+      )}
 
       {erro && <p className="text-sm text-rose-600">{erro}</p>}
 
