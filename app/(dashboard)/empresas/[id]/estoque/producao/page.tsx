@@ -6,9 +6,10 @@
 
 import { useEffect, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
-import { Factory, Loader2, Plus, ChevronRight, ClipboardList, Settings } from 'lucide-react'
+import { Factory, Loader2, Plus, ChevronRight, ClipboardList, Settings, TrendingDown, UtensilsCrossed } from 'lucide-react'
 
 interface Ordem { id: string; nomeProduzido: string; unidadeProduzido: string; escalaReceitas: number; estado: string; dataProducao: string; setorNome: string | null }
+interface Sugestao { fichaId: string; itemProduzidoId: string; nome: string; unidade: string; saldo: number; estoqueMin: number; estoqueMax: number | null; faltam: number; escalaSugerida: number | null; rendimentoMedio: number | null }
 interface FichaOpt { id: string; nomeProduzido: string }
 interface Setor { id: string; nome: string; ativo: boolean }
 
@@ -24,10 +25,22 @@ const fmtDia = (iso: string) => iso.slice(0, 10).split('-').reverse().join('/')
 export default function ProducaoPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const [ordens, setOrdens] = useState<Ordem[] | null | undefined>(undefined)
+  const [sugestoes, setSugestoes] = useState<Sugestao[]>([])
   const [novo, setNovo] = useState(false)
+  const [criando, setCriando] = useState<string | null>(null)
 
-  const carregar = () => fetch(`/api/empresas/${id}/estoque/producao/ordens`).then((r) => r.json()).then((j) => setOrdens(j.ordens ?? [])).catch(() => setOrdens(null))
+  const carregar = () => fetch(`/api/empresas/${id}/estoque/producao/ordens`).then((r) => r.json()).then((j) => { setOrdens(j.ordens ?? []); setSugestoes(j.sugestoes ?? []) }).catch(() => setOrdens(null))
   useEffect(() => { carregar() }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const produzirSugestao = async (s: Sugestao) => {
+    setCriando(s.fichaId)
+    try {
+      const hoje = new Date().toISOString().slice(0, 10)
+      const r = await fetch(`/api/empresas/${id}/estoque/producao/ordens`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fichaId: s.fichaId, escalaReceitas: s.escalaSugerida ?? 1, dataProducao: hoje }) })
+      const j = await r.json().catch(() => null)
+      if (r.ok && j?.ordemId) window.location.href = `/empresas/${id}/estoque/producao/${j.ordemId}`
+    } finally { setCriando(null) }
+  }
 
   if (ordens === undefined) return <div className="p-6"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
   if (ordens === null) return <div className="p-6 text-sm text-slate-500">Não consegui carregar a produção.</div>
@@ -40,11 +53,30 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
       <div className="flex items-center gap-3">
         <Factory className="h-7 w-7 text-[#185FA5]" />
         <div className="flex-1"><h1 className="text-xl font-semibold text-slate-900">Produção</h1><p className="text-sm text-slate-500">Cria a ordem, separa da câmara e produz. A ficha diz a receita; aqui você faz.</p></div>
+        <a href={`/empresas/${id}/estoque/cardapio`} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"><UtensilsCrossed className="h-4 w-4" /> Cardápio</a>
         <a href={`/empresas/${id}/estoque/fichas`} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"><ClipboardList className="h-4 w-4" /> Fichas</a>
         <button onClick={() => setNovo((v) => !v)} className="inline-flex items-center gap-1.5 rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-white hover:bg-[#0F4A8C]"><Plus className="h-4 w-4" /> Nova ordem</button>
       </div>
 
       {novo && <NovaOrdem id={id} onCriada={(ordemId) => { window.location.href = `/empresas/${id}/estoque/producao/${ordemId}` }} onFechar={() => setNovo(false)} />}
+
+      {/* sugestão de produção (min/max) */}
+      {sugestoes.length > 0 && (
+        <div>
+          <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-amber-700"><TrendingDown className="h-4 w-4" /> Sugestão de produção ({sugestoes.length})</h2>
+          <div className="space-y-2">
+            {sugestoes.map((s) => (
+              <Card key={s.fichaId} className="border-amber-200"><CardContent className="flex items-center justify-between gap-3 p-4">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-slate-900">{s.nome}</p>
+                  <p className="text-xs text-slate-500">saldo {s.saldo.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} {s.unidade} · abaixo do mínimo {s.estoqueMin} · faltam ~{s.faltam.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} {s.unidade}{s.rendimentoMedio == null && ' · rendimento a apurar'}</p>
+                </div>
+                <button onClick={() => produzirSugestao(s)} disabled={criando === s.fichaId} className="inline-flex items-center gap-1.5 rounded-lg border border-amber-400 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50 disabled:opacity-50">{criando === s.fichaId ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Factory className="h-3.5 w-3.5" />} produzir{s.escalaSugerida ? ` ${s.escalaSugerida}×` : ''}</button>
+              </CardContent></Card>
+            ))}
+          </div>
+        </div>
+      )}
 
       {ordens.length === 0 && !novo ? (
         <Card><CardContent className="flex flex-col items-center gap-2 p-10 text-center">

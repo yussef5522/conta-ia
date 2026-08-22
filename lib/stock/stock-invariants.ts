@@ -8,6 +8,7 @@
 
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { saldosDaEmpresa } from './saldo'
+import { checkProducaoInvariants } from './producao/producao-invariants'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -77,6 +78,9 @@ export async function checkStockInvariants(db: Db, now: Date = new Date()): Prom
   const limite = new Date(now.getTime() - 24 * 3600_000)
   const eventosPend = await db.stockSefazEvent.findMany({ where: { status: { in: ['PENDENTE', 'ERRO'] }, criadoEm: { lt: limite } }, select: { companyId: true, chave: true, tpEvento: true, status: true } })
   for (const e of eventosPend) F('E15', e.companyId, `evento ${e.tpEvento} da nota ${e.chave} está ${e.status} há > 24h — reenviar.`)
+
+  // P1-P6 — invariantes de PRODUÇÃO (fase 2). Mesma tabela isolada, mesmo relatório.
+  fails.push(...(await checkProducaoInvariants(db, now)))
 
   return fails
 }

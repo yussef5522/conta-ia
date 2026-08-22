@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { listOrdens, criarOrdem, OrdemError } from '@/lib/stock/producao/ordens'
+import { sugestoesDeProducao } from '@/lib/stock/producao/sugestao-cardapio'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -19,7 +20,8 @@ export async function GET(request: NextRequest, { params }: Params) {
   const { id: companyId } = await params
   const a = await auth(request, companyId)
   if (a.erro) return a.erro
-  return NextResponse.json({ ordens: await listOrdens(companyId) })
+  const [ordens, sugestoes] = await Promise.all([listOrdens(companyId), sugestoesDeProducao(companyId, prisma)])
+  return NextResponse.json({ ordens, sugestoes })
 }
 
 const criarSchema = z.object({
