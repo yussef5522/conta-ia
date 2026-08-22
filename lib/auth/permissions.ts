@@ -56,6 +56,11 @@ export const PERMISSIONS: PermissionDef[] = [
   { key: 'dre.export',    name: 'Exportar DRE',           description: 'Exportar DRE em PDF/Excel',        group: 'Relatórios' },
   { key: 'report.view',   name: 'Visualizar relatórios',  description: 'Ver outros relatórios',            group: 'Relatórios' },
   { key: 'report.export', name: 'Exportar relatórios',    description: 'Exportar relatórios em PDF/Excel', group: 'Relatórios' },
+
+  // Estoque (Fase 3, 22/08) — 3 níveis: ver / operar (dia a dia) / mexer nos números.
+  { key: 'stock.view',    name: 'Ver estoque',       description: 'Ver posição, catálogo, movimentos, recebimentos, produção, vendas, perdas, contagem', group: 'Estoque' },
+  { key: 'stock.operate', name: 'Operar estoque',    description: 'Contar, conferir, produzir, registrar saída, lançar venda',                          group: 'Estoque' },
+  { key: 'stock.manage',  name: 'Gerenciar estoque', description: 'Editar ficha, mín/máx, catálogo e mapeamento de vendas',                             group: 'Estoque' },
 ]
 
 // Roles padrão com suas permissions (wildcards permitidos)
@@ -72,7 +77,7 @@ export const DEFAULT_ROLES = {
       'category.*', 'transaction.*', 'bank_account.*',
       'company.view', 'company.update',
       'user.*', 'role.*',
-      'audit.*', 'dre.*', 'report.*',
+      'audit.*', 'dre.*', 'report.*', 'stock.*',
     ],
   },
   ACCOUNTANT: {
@@ -100,6 +105,17 @@ export const DEFAULT_ROLES = {
     name: 'VIEWER',
     description: 'Consulta: apenas leitura.',
     permissions: ['*.view'],
+  },
+  // Estoque (Fase 3) — equipe de loja, SEM financeiro.
+  OPERADOR_ESTOQUE: {
+    name: 'OPERADOR_ESTOQUE',
+    description: 'Equipe de estoque: conta, confere, produz, registra saída e lança venda. Não edita ficha/mín-máx/mapa nem vê o financeiro.',
+    permissions: ['stock.view', 'stock.operate'],
+  },
+  LEITURA_ESTOQUE: {
+    name: 'LEITURA_ESTOQUE',
+    description: 'Consulta do estoque: vê, não mexe. Não vê o financeiro.',
+    permissions: ['stock.view'],
   },
 } as const
 
