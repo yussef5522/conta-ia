@@ -8,7 +8,7 @@ import { useEffect, useMemo, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { ArrowLeft, Loader2, Factory, Printer, AlertTriangle, Check, Undo2, X, Tag, TrendingUp } from 'lucide-react'
 
-interface Linha { itemId: string; nome: string; unidade: string; unidadeControle: string; qtdPlanejada: number; qtdSeparada: number; saldoDisponivel: number; custoMedio: number | null }
+interface Linha { itemId: string; nome: string; unidade: string; unidadeControle: string; qtdPlanejada: number; qtdSeparada: number; saldoDisponivel: number; custoMedio: number | null; fichaIdComponente: string | null }
 interface Ordem { id: string; nomeProduzido: string; unidadeProduzido: string; escalaReceitas: number; estado: string; dataProducao: string; setorNome: string | null; versaoFicha: number; fichaId: string }
 interface Conclusao { id: string; qtdGerada: number; colaboradorNome: string | null; rendimento: number; custoLoteReal: number; custoUnitarioReal: number | null; validadeAte: string | null; parcial: boolean; criadoEm: string }
 interface Colaborador { id: string; nome: string }
@@ -74,6 +74,18 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
   const passoAtual = PASSOS.indexOf(ordem.estado === 'CANCELADA' ? 'PLANEJADA' : ordem.estado)
 
   const confirmarSeparacao = () => acao({ acao: 'separar', itens: linhas.map((l) => ({ itemId: l.itemId, qtdSeparada: parseNum(sep[l.itemId]) })).filter((i) => i.qtdSeparada > 0) })
+
+  // dependência entre ordens: cria a ordem do componente que falta e navega (sem orquestração automática)
+  const produzirAntes = async (fichaIdComp: string) => {
+    setBusy(true); setErro(null)
+    try {
+      const hoje = new Date().toISOString().slice(0, 10)
+      const r = await fetch(`/api/empresas/${id}/estoque/producao/ordens`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fichaId: fichaIdComp, escalaReceitas: 1, dataProducao: hoje }) })
+      const j = await r.json().catch(() => null)
+      if (r.ok && j?.ordemId) window.location.href = `/empresas/${id}/estoque/producao/${j.ordemId}`
+      else setErro(j?.erro ?? 'Não consegui criar a ordem do componente.')
+    } finally { setBusy(false) }
+  }
 
   return (
     <div className="mx-auto max-w-3xl space-y-5 p-4 sm:p-6">
@@ -154,6 +166,23 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
           <span className="font-semibold tabular-nums text-slate-900">{brl(custoSeparado)}</span>
         </div>
       </CardContent></Card>
+
+      {/* dependência entre ordens: componente PRODUZIDO faltando → "produzir antes" (aviso + link, sem orquestração automática) */}
+      {planejada && (() => {
+        const faltas = linhas.filter((l) => l.fichaIdComponente && l.saldoDisponivel < parseNum(sep[l.itemId] ?? String(l.qtdPlanejada)) - 0.001)
+        if (!faltas.length) return null
+        return (
+          <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-3 text-xs text-amber-800 print:hidden">
+            <p className="mb-1 flex items-center gap-1 font-medium"><AlertTriangle className="h-3.5 w-3.5" /> Falta insumo produzido pra esta ordem:</p>
+            {faltas.map((l) => (
+              <div key={l.itemId} className="flex items-center justify-between py-0.5">
+                <span>{l.nome}: tem {num(l.saldoDisponivel)}, precisa {num(parseNum(sep[l.itemId] ?? String(l.qtdPlanejada)))} {l.unidade}</span>
+                <button onClick={() => produzirAntes(l.fichaIdComponente!)} disabled={busy} className="ml-2 inline-flex items-center gap-1 rounded border border-amber-400 px-2 py-0.5 text-[11px] font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-50"><Factory className="h-3 w-3" /> produzir antes</button>
+              </div>
+            ))}
+          </div>
+        )
+      })()}
 
       {/* aviso leve: separado ≠ escala planejada (não trava) */}
       {escalaAviso && (

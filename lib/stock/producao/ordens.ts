@@ -61,6 +61,7 @@ export interface SeparacaoLinha {
   qtdSeparada: number // já separado (Σ SEPARACAO_SAIDA − DEVOLUCAO), 0 antes de separar
   saldoDisponivel: number // saldo atual no estoque geral
   custoMedio: number | null
+  fichaIdComponente: string | null // se o componente é PRODUZIDO (tem ficha) → dá pra "produzir antes"
 }
 
 async function componentesDaVersao(companyId: string, fichaId: string, versao: number, db: Db) {
@@ -87,8 +88,13 @@ export async function explodirSeparacao(companyId: string, ordemId: string, db: 
   const comps = await componentesDaVersao(companyId, ordem.fichaId, ordem.versaoFicha, db)
   const [custoMap, separado] = await Promise.all([custoMedioPorItem(db, companyId), separadoPorItem(companyId, ordemId, db)])
   const itemIds = comps.map((c) => c.itemId)
-  const its = itemIds.length ? await db.stockItem.findMany({ where: { companyId, id: { in: itemIds } }, select: { id: true, nome: true, unidadeControle: true } }) : []
+  const [its, fichasComp] = await Promise.all([
+    itemIds.length ? db.stockItem.findMany({ where: { companyId, id: { in: itemIds } }, select: { id: true, nome: true, unidadeControle: true } }) : Promise.resolve([]),
+    // componente que é PRODUZIDO (tem ficha ativa) → dá pra "produzir antes" quando faltar
+    itemIds.length ? db.stockFicha.findMany({ where: { companyId, ativo: true, itemProduzidoId: { in: itemIds } }, select: { id: true, itemProduzidoId: true } }) : Promise.resolve([]),
+  ])
   const meta = new Map(its.map((i) => [i.id, i]))
+  const fichaDoItem = new Map(fichasComp.map((f) => [f.itemProduzidoId, f.id]))
 
   const linhas: SeparacaoLinha[] = []
   for (const c of comps) {
@@ -102,6 +108,7 @@ export async function explodirSeparacao(companyId: string, ordemId: string, db: 
       qtdSeparada: round2(separado.get(c.itemId) ?? 0),
       saldoDisponivel: saldo.saldo,
       custoMedio: custoMap.get(c.itemId) ?? null,
+      fichaIdComponente: fichaDoItem.get(c.itemId) ?? null,
     })
   }
   return { ordem, linhas }
