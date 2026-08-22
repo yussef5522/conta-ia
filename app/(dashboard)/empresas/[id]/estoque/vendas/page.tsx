@@ -7,7 +7,8 @@
 
 import { useEffect, useMemo, useRef, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
-import { ShoppingCart, Loader2, Upload, Check, Pencil, Search, Play, X, Receipt, AlertTriangle, History, RefreshCw, Info } from 'lucide-react'
+import { ShoppingCart, Loader2, Upload, Check, Pencil, Search, Play, Receipt, AlertTriangle, History, RefreshCw, Store } from 'lucide-react'
+import { PlanoVendaModal } from '@/components/estoque/plano-venda-modal'
 
 interface Linha { produto: string; quantidade: number; valorTotal: number; mapeado: boolean; alvoTipo: string | null; alvoId: string | null; alvoNome: string | null }
 interface Preview { linhas: Linha[]; totalUnidades: number; totalProdutos: number; naoMapeados: number; opcoes: { fichas: { id: string; nome: string; tipo: string }[]; itens: { id: string; nome: string }[] } }
@@ -20,7 +21,7 @@ const fmtDia = (d: string) => d.split('-').reverse().join('/')
 
 export default function VendasImportPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
-  const [aba, setAba] = useState<'importar' | 'processados'>('importar')
+  const [aba, setAba] = useState<'importar' | 'manual' | 'processados'>('importar')
   const [preview, setPreview] = useState<Preview | null>(null)
   const [html, setHtml] = useState('')
   const [carregando, setCarregando] = useState(false)
@@ -128,6 +129,7 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
       {/* abas */}
       <div className="flex gap-2 border-b border-slate-200">
         <button onClick={() => setAba('importar')} className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${aba === 'importar' ? 'border-[#185FA5] text-[#185FA5]' : 'border-transparent text-slate-500'}`}>Importar dia</button>
+        <button onClick={() => setAba('manual')} className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${aba === 'manual' ? 'border-[#185FA5] text-[#185FA5]' : 'border-transparent text-slate-500'}`}><Store className="mr-1 inline h-3.5 w-3.5" />Lançamento manual</button>
         <button onClick={() => setAba('processados')} className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${aba === 'processados' ? 'border-[#185FA5] text-[#185FA5]' : 'border-transparent text-slate-500'}`}><History className="mr-1 inline h-3.5 w-3.5" />Processados ({processados.length})</button>
       </div>
 
@@ -148,6 +150,8 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
             </table>
           )}
         </CardContent></Card>
+      ) : aba === 'manual' ? (
+        <LancamentoManual id={id} onProcessado={() => { carregarProcessados(); setAba('processados') }} />
       ) : (
         <>
           <Card><CardContent className="p-4">
@@ -237,49 +241,75 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
         </>
       )}
 
-      {/* modal ÚNICO de confirmação (processar E reprocessar). Responde "o que acontece se eu confirmar?" */}
-      {plano && (() => {
-        const total = plano.agregada.reduce((s, a) => s + (a.valor ?? 0), 0)
-        const unPend = plano.pendentes.reduce((s, p) => s + p.quantidade, 0)
-        return (
-          <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 sm:items-center" onClick={() => setPlano(null)}>
-            <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white p-5 sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
-              <div className="mb-1 flex items-center justify-between"><h3 className="text-base font-semibold text-slate-900">{modoReprocesso ? 'Reprocessar' : 'Confirmar baixa'} de {fmtDia(modoReprocesso ?? data)}</h3><button onClick={() => setPlano(null)}><X className="h-5 w-5 text-slate-400" /></button></div>
-              {modoReprocesso && estornaItens > 0 && <p className="mb-3 text-xs text-slate-500">Estorna {estornaItens} baixa(s) anterior(es) e refaz com o mapa atual.</p>}
+      {/* modal ÚNICO de confirmação (import + reprocesso) */}
+      {plano && <PlanoVendaModal plano={plano} data={modoReprocesso ?? data} titulo={modoReprocesso ? 'Reprocessar' : 'Confirmar baixa'} subtitulo={modoReprocesso && estornaItens > 0 ? `Estorna ${estornaItens} baixa(s) anterior(es) e refaz com o mapa atual.` : undefined} processando={processando} erro={erroModal} onConfirmar={confirmar} onClose={() => setPlano(null)} />}
+    </div>
+  )
+}
 
-              <p className="mb-1 mt-2 text-xs font-semibold text-slate-700">Vai baixar ({plano.agregada.length}):</p>
-              {plano.agregada.length === 0 ? <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-500">Nada a baixar (nenhum marcado com estoque).</p> : (
-                <div className="rounded-lg border border-slate-100">
-                  {plano.agregada.map((a) => <div key={a.nome} className="flex items-center justify-between border-b border-slate-50 px-3 py-2 text-sm last:border-0"><span className="text-slate-700">{a.nome}</span><span className="tabular-nums text-slate-600">−{a.qtd} · {brl(a.valor)}</span></div>)}
-                  <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold"><span className="text-slate-600">custo total baixado</span><span className="tabular-nums text-slate-900">{brl(total)}</span></div>
-                </div>
-              )}
+// aba PDV manual: escolhe vendável + quantidade → mesmo modal preview/confirmar/recibo
+function LancamentoManual({ id, onProcessado }: { id: string; onProcessado: () => void }) {
+  const hoje = new Date().toISOString().slice(0, 10)
+  const [vend, setVend] = useState<{ alvoTipo: 'FICHA' | 'REVENDA'; alvoId: string; nome: string }[]>([])
+  const [data, setDataM] = useState(hoje)
+  const [qtd, setQtd] = useState<Record<string, string>>({})
+  const [busca, setBusca] = useState('')
+  const [plano, setPlano] = useState<any>(null) // eslint-disable-line @typescript-eslint/no-explicit-any
+  const [recibo, setRecibo] = useState<{ data: string; baixados: number; valorBaixado: number; pendentes: number } | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+  const dRef = useRef<HTMLInputElement>(null)
 
-              {/* pendentes — UMA linha neutra, colapsada */}
-              {plano.pendentes.length > 0 && (
-                <div className="mt-3 rounded-lg border border-slate-100">
-                  <button onClick={() => setVerLista((v) => !v)} className="flex w-full items-center justify-between px-3 py-2 text-xs text-slate-500">
-                    <span className="flex items-center gap-1.5"><Info className="h-3.5 w-3.5" /> {plano.pendentes.length} pendentes de mapa ({unPend} un) · não baixam</span>
-                    <span className="text-[#185FA5]">{verLista ? 'ocultar' : 'ver lista'}</span>
-                  </button>
-                  {verLista && (
-                    <table className="w-full border-t border-slate-100 text-xs">
-                      <tbody>{plano.pendentes.map((p) => <tr key={p.nome} className="border-b border-slate-50 last:border-0"><td className="px-3 py-1.5 text-slate-600">{p.nome}</td><td className="px-3 py-1.5 text-right tabular-nums text-slate-400">{p.quantidade}</td></tr>)}</tbody>
-                    </table>
-                  )}
-                </div>
-              )}
-              {plano.fora.length > 0 && <p className="mt-2 flex items-center gap-1.5 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500"><Info className="h-3.5 w-3.5" /> {plano.fora.length} deixado(s) de fora deste processamento (desmarcado)</p>}
+  useEffect(() => { fetch(`/api/empresas/${id}/estoque/vendas/vendaveis`).then((r) => r.json()).then((j) => setVend([...(j.vendaveis?.fichas ?? []), ...(j.vendaveis?.itens ?? [])])).catch(() => {}) }, [id])
 
-              {erroModal && <p className="mt-3 flex items-center gap-1 text-sm text-rose-600"><AlertTriangle className="h-3.5 w-3.5" /> {erroModal}</p>}
-              <div className="mt-4 flex items-center gap-3">
-                <button onClick={confirmar} disabled={processando || plano.agregada.length === 0} className="inline-flex items-center gap-2 rounded-lg bg-[#185FA5] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#0F4A8C] disabled:opacity-60">{processando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Confirmar e baixar</button>
-                <button onClick={() => setPlano(null)} className="text-sm text-slate-500">cancelar</button>
-              </div>
-            </div>
-          </div>
-        )
-      })()}
+  const parse = (s: string) => { const n = Number((s ?? '').replace(',', '.')); return Number.isFinite(n) ? n : 0 }
+  const entradas = vend.map((v) => ({ ...v, quantidade: parse(qtd[v.alvoId]) })).filter((e) => e.quantidade > 0)
+  const filtrados = vend.filter((v) => !busca.trim() || v.nome.toLowerCase().includes(busca.toLowerCase()))
+
+  const preview = async () => {
+    setErro(null)
+    if (!data) { setErro('Escolha a data.'); return }
+    if (entradas.length === 0) { setErro('Ponha ao menos uma quantidade.'); return }
+    setBusy(true)
+    try {
+      const r = await fetch(`/api/empresas/${id}/estoque/vendas/manual`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data, entradas: entradas.map((e) => ({ alvoTipo: e.alvoTipo, alvoId: e.alvoId, quantidade: e.quantidade })) }) })
+      const j = await r.json().catch(() => null)
+      if (!r.ok) { setErro(j?.erro ?? 'Não consegui montar o preview.'); return }
+      setPlano(j.plano)
+    } catch { setErro('Falha de conexão.') } finally { setBusy(false) }
+  }
+  const confirmar = async () => {
+    setBusy(true)
+    try {
+      const r = await fetch(`/api/empresas/${id}/estoque/vendas/manual`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data, confirmar: true, entradas: entradas.map((e) => ({ alvoTipo: e.alvoTipo, alvoId: e.alvoId, quantidade: e.quantidade })) }) })
+      const j = await r.json().catch(() => null)
+      if (r.ok) { setRecibo(j.recibo); setPlano(null); setQtd({}); onProcessado() } else setErro(j?.erro ?? 'Não consegui processar.')
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-slate-500">Pros dias sem o arquivo do Suitable (ou pra complementar). Escolha data, ponha as quantidades e confirme — mesmo fluxo do import. Convive com o import do dia.</p>
+      {recibo && <Card className="border-emerald-300"><CardContent className="p-4 text-sm"><span className="font-semibold text-emerald-700">Lançado {fmtDia(recibo.data)}:</span> {recibo.baixados} baixados · custo {recibo.valorBaixado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</CardContent></Card>}
+      <Card><CardContent className="flex flex-wrap items-end gap-3 p-4">
+        <label className="text-xs text-slate-500">Data<input ref={dRef} type="date" value={data} onChange={(e) => setDataM(e.target.value)} onClick={() => { try { dRef.current?.showPicker?.() } catch { /* nativo */ } }} className="mt-1 block w-44 cursor-pointer rounded-lg border border-slate-300 py-2 px-3 text-sm" /></label>
+        <button onClick={preview} disabled={busy} className="inline-flex items-center gap-2 rounded-lg bg-[#185FA5] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#0F4A8C] disabled:opacity-60">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />} Lançar {entradas.length} produto{entradas.length === 1 ? '' : 's'}</button>
+        {erro && <p className="flex items-center gap-1 text-sm text-rose-600"><AlertTriangle className="h-3.5 w-3.5" /> {erro}</p>}
+      </CardContent></Card>
+      <div className="relative"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="buscar produto vendável…" className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm" /></div>
+      <Card><CardContent className="p-0">
+        {vend.length === 0 ? <p className="p-6 text-center text-sm text-slate-500">Nenhum vendável ainda. Crie fichas de produto final ou itens de revenda.</p> : (
+          <table className="w-full text-sm"><tbody>
+            {filtrados.map((v) => (
+              <tr key={v.alvoId} className="border-b border-slate-50 last:border-0">
+                <td className="p-3 text-slate-800">{v.nome} <span className="text-[11px] text-slate-400">{v.alvoTipo === 'FICHA' ? 'produto final' : 'revenda'}</span></td>
+                <td className="p-3 text-right"><input value={qtd[v.alvoId] ?? ''} onChange={(e) => setQtd((q) => ({ ...q, [v.alvoId]: e.target.value }))} inputMode="decimal" placeholder="0" className="w-20 rounded-lg border border-slate-300 py-1.5 px-2 text-right text-sm tabular-nums" /></td>
+              </tr>
+            ))}
+          </tbody></table>
+        )}
+      </CardContent></Card>
+      {plano && <PlanoVendaModal plano={plano} data={data} titulo="Confirmar lançamento" processando={busy} erro={erro} onConfirmar={confirmar} onClose={() => setPlano(null)} />}
     </div>
   )
 }

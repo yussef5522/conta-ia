@@ -33,6 +33,7 @@ const patchSchema = z.object({
   unidadeControle: z.enum(['KG', 'UN', 'LT']).optional(),
   estoqueMin: z.number().nonnegative().nullable().optional(),
   estoqueMax: z.number().positive().nullable().optional(),
+  ativo: z.boolean().optional(),
 })
 export async function PATCH(request: NextRequest, { params }: Params) {
   const { id: companyId, itemId } = await params

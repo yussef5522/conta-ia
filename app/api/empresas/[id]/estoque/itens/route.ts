@@ -39,6 +39,8 @@ const criarSchema = z.object({
   nome: z.string().min(1).max(120),
   unidadeControle: z.enum(['KG', 'UN', 'LT']),
   categoria: z.enum(['MATERIA_PRIMA', 'REVENDA', 'EMBALAGEM', 'LIMPEZA', 'USO_INTERNO']).default('MATERIA_PRIMA'),
+  estoqueMin: z.number().nonnegative().nullable().optional(),
+  estoqueMax: z.number().positive().nullable().optional(),
 })
 
 export async function POST(request: NextRequest, { params }: Params) {
@@ -48,12 +50,14 @@ export async function POST(request: NextRequest, { params }: Params) {
   const parsed = criarSchema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ erro: 'Informe nome e unidade do item.' }, { status: 400 })
   const nome = parsed.data.nome.trim()
+  const { estoqueMin, estoqueMax } = parsed.data
+  if (estoqueMin != null && estoqueMax != null && estoqueMin >= estoqueMax) return NextResponse.json({ erro: 'O mínimo tem que ser menor que o máximo.' }, { status: 400 })
   // se já existe um item com o mesmo nome, devolve ele (não duplica)
   const existente = await prisma.stockItem.findFirst({ where: { companyId, nome }, select: { id: true, nome: true, unidadeControle: true, custoMedio: true, categoria: true } })
   if (existente) return NextResponse.json({ item: existente, jaExistia: true })
   // nasce SEM custo (custoMedio null → "a definir") e SEM movimento — o custo vem da 1ª nota
   const item = await prisma.stockItem.create({
-    data: { companyId, nome, unidadeControle: parsed.data.unidadeControle, categoria: parsed.data.categoria, criadoVia: 'MANUAL', criadoPorId: a.user!.sub },
+    data: { companyId, nome, unidadeControle: parsed.data.unidadeControle, categoria: parsed.data.categoria, estoqueMin: estoqueMin ?? null, estoqueMax: estoqueMax ?? null, criadoVia: 'MANUAL', criadoPorId: a.user!.sub },
     select: { id: true, nome: true, unidadeControle: true, custoMedio: true, categoria: true },
   })
   return NextResponse.json({ item })
