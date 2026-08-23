@@ -106,19 +106,22 @@ export default function PosicaoPage({ params }: { params: Promise<{ id: string }
         </CardContent></Card>
       ) : (
         <>
-          {/* FAIXA horizontal fina por categoria (era tijolo de 3 linhas × N).
-           * Rótulo e valor na MESMA linha; a faixa rola no eixo x se não couber,
-           * então nunca quebra em 2ª fileira e come altura da lista. */}
-          <div className="-mx-1 flex items-center gap-1.5 overflow-x-auto px-1 pb-0.5">
-            <button onClick={() => setCatFiltro(null)} className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border px-3 text-xs transition ${!catFiltro ? 'border-[#185FA5] bg-[#185FA5]/5' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
-              <span className="text-slate-500">Total</span>
-              <span className="font-semibold tabular-nums text-slate-900">{brl(data.valorTotal)}</span>
+          {/* FAIXA horizontal por categoria (era tijolo de 3 linhas × N, que
+           * quebrava em 2ª fileira e comia a altura da lista).
+           * Retoque 23/08: a 1ª versão apertou DEMAIS (virou texto espremido).
+           * Agora rótulo 10px caixa-alta EM CIMA e valor 15px bold embaixo —
+           * continua faixa (rola no eixo x, nunca 2ª fileira), só legível. */}
+          <div className="-mx-1 flex items-stretch gap-2 overflow-x-auto px-1 pb-1">
+            <button onClick={() => setCatFiltro(null)} className={`flex shrink-0 flex-col items-start gap-0.5 rounded-lg border px-3.5 py-2 text-left transition ${!catFiltro ? 'border-[#185FA5] bg-[#185FA5]/5 ring-1 ring-[#185FA5]/20' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Total</span>
+              <span className="text-[15px] font-bold tabular-nums leading-none text-slate-900">{brl(data.valorTotal)}</span>
             </button>
             {data.porCategoria.map((c) => (
-              <button key={c.categoria} onClick={() => setCatFiltro(catFiltro === c.categoria ? null : c.categoria)} className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border px-3 text-xs transition ${catFiltro === c.categoria ? 'border-[#185FA5] bg-[#185FA5]/5' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
-                <span className="text-slate-500">{c.label}</span>
-                <span className="font-semibold tabular-nums text-slate-900">{brl(c.valor)}</span>
-                <span className="tabular-nums text-slate-400">{c.itens}</span>
+              <button key={c.categoria} onClick={() => setCatFiltro(catFiltro === c.categoria ? null : c.categoria)} className={`flex shrink-0 flex-col items-start gap-0.5 rounded-lg border px-3.5 py-2 text-left transition ${catFiltro === c.categoria ? 'border-[#185FA5] bg-[#185FA5]/5 ring-1 ring-[#185FA5]/20' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
+                <span className="flex items-baseline gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                  {c.label} <span className="font-normal normal-case tracking-normal text-slate-300">{c.itens}</span>
+                </span>
+                <span className="text-[15px] font-bold tabular-nums leading-none text-slate-900">{brl(c.valor)}</span>
               </button>
             ))}
           </div>

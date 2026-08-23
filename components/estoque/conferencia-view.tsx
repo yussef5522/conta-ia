@@ -4,7 +4,7 @@
 // (modo teste, dado ilustrativo) E a nota real (read-only enquanto o CONFIRMAR não
 // liga). Mobile-first + desktop. Foto por webcam (desktop) OU câmera (celular).
 
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { Check, Search, Camera, AlertTriangle, FlaskConical, Store, X, ChevronRight, Eye, Loader2, PackageCheck } from 'lucide-react'
 import { sugerirFatorConversao } from '@/lib/stock/unidade-fator'
 
@@ -95,29 +95,138 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
 
   if (recibo) return <Recibo recibo={recibo} companyId={companyId} />
 
+  const nMapeados = data.itens.filter((it) => estado[it.nfeItemId]?.mapeado).length
+
   return (
-    <div className="mx-auto max-w-md pb-28">
-      <div className={`sticky top-0 z-10 flex items-center gap-2 px-4 py-2 text-xs font-medium ${data.modoTeste ? 'bg-amber-100 text-amber-800' : 'bg-sky-100 text-sky-800'}`}>
+    // Passe de densidade (23/08/2026): era `mx-auto max-w-md` — a tela inteira
+    // (mobile-first) espremida em 448px centralizados, com o rodapé fixo TAMBÉM
+    // em max-w-md. No desktop virava cabeçalho à esquerda, rodapé deslocado e
+    // cards soltos cada um com sua largura. Agora: largura total + TABELA de
+    // recebimento no desktop (padrão MarketMan/Apicbase), cards no mobile.
+    <div className="space-y-3 pb-24">
+      <div className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium ${data.modoTeste ? 'bg-amber-100 text-amber-800' : 'bg-sky-100 text-sky-800'}`}>
         {data.modoTeste ? <><FlaskConical className="h-4 w-4 shrink-0" /> Modo teste — nada é gravado. Experimente à vontade.</>
           : <><Eye className="h-4 w-4 shrink-0" /> Visualização da nota real — o CONFIRMAR liga em breve. Nada é gravado ainda.</>}
       </div>
 
-      <div className="space-y-4 p-4">
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <div className="flex items-center gap-2 text-sm font-semibold text-slate-900"><Store className="h-4 w-4 text-[#185FA5]" /> {data.fornecedor.nome}</div>
-          <p className="mt-0.5 text-xs text-slate-500">{fmtCnpj(data.fornecedor.cnpj)}{data.fornecedor.uf ? ` · ${data.fornecedor.uf}` : ''} · {data.itens.length} itens{data.valorNota != null ? ` · ${brl(data.valorNota)}` : ''} · emitida {fmtDia(data.dataEmissao)}</p>
-          {!fornCadastrado ? (
-            <button onClick={() => setFornCadastrado(true)} className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-[#185FA5] py-2.5 text-sm font-semibold text-white active:bg-[#0F4A8C]">Cadastrar fornecedor (1 toque)</button>
-          ) : <p className="mt-2 flex items-center gap-1 text-xs font-medium text-emerald-600"><Check className="h-3.5 w-3.5" /> Fornecedor cadastrado</p>}
-        </div>
+      {/* CABEÇALHO DA NOTA — uma linha só (era card de 3 blocos empilhados) */}
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 rounded-lg border border-slate-200 bg-white px-3 py-2">
+        <Store className="h-4 w-4 shrink-0 text-[#185FA5]" />
+        <span className="text-sm font-semibold text-slate-900">{data.fornecedor.nome}</span>
+        <span className="text-xs tabular-nums text-slate-400">
+          {fmtCnpj(data.fornecedor.cnpj)}{data.fornecedor.uf ? ` · ${data.fornecedor.uf}` : ''} · {data.itens.length} {data.itens.length === 1 ? 'item' : 'itens'}{data.valorNota != null ? ` · ${brl(data.valorNota)}` : ''} · emitida {fmtDia(data.dataEmissao)}
+        </span>
+        {!fornCadastrado ? (
+          <button onClick={() => setFornCadastrado(true)} className="ml-auto inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-[#185FA5] px-3 text-xs font-semibold text-white hover:bg-[#0F4A8C]">Cadastrar fornecedor</button>
+        ) : <span className="ml-auto inline-flex shrink-0 items-center gap-1 text-xs font-medium text-emerald-600"><Check className="h-3.5 w-3.5" /> Fornecedor cadastrado</span>}
+      </div>
 
-        {data.itens.length === 0 && (
-          <div className="rounded-xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-500">
-            Essa nota veio só resumo (sem itens ainda). A Ciência libera o detalhe na próxima consulta à SEFAZ.
+      {/* NOTA SÓ-RESUMO: banner limpo NO LUGAR da tabela (era card perdido no meio) */}
+      {data.itens.length === 0 ? (
+        <div className="flex items-start gap-3 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3">
+          <Eye className="mt-0.5 h-4 w-4 shrink-0 text-sky-600" />
+          <div>
+            <p className="text-sm font-medium text-sky-900">Essa nota veio só como resumo — o detalhe dos itens ainda não.</p>
+            <p className="mt-0.5 text-xs text-sky-700">A Ciência da operação já foi enviada à SEFAZ; o XML completo chega na próxima consulta e os itens aparecem aqui pra conferir. Nada a fazer agora.</p>
           </div>
-        )}
+        </div>
+      ) : (
+      <>
+      {/* ===== DESKTOP: tabela de recebimento ===== */}
+      <div className="hidden overflow-hidden rounded-lg border border-slate-200 bg-white sm:block">
+        <table className="density-normal w-full">
+          <thead><tr className="border-b border-slate-100 text-left text-[11px] uppercase tracking-wide text-slate-400">
+            <th className="px-3 py-2 font-medium">Item da nota</th>
+            <th className="px-3 py-2 text-right font-medium">Qtd nota</th>
+            <th className="px-3 py-2 font-medium">Destino no estoque</th>
+            <th className="px-3 py-2 text-right font-medium">Qtd recebida</th>
+            <th className="px-3 py-2 text-right font-medium">Divergência</th>
+            <th className="px-3 py-2 font-medium">Status</th>
+          </tr></thead>
+          <tbody>
+            {data.itens.map((it) => {
+              const e = estado[it.nfeItemId]
+              const esperada = it.qCom * (e?.mapeado?.fatorConversao ?? 1)
+              const diverge = !!e && Math.abs(e.qtdRecebida - esperada) > 0.0001
+              const delta = e ? e.qtdRecebida - esperada : 0
+              const precisaFator = !!e?.mapeado && it.uCom.toUpperCase() !== e.mapeado.unidadeControle.toUpperCase()
+              const setF = (nf: number) => { if (nf > 0 && e?.mapeado) setItem(it.nfeItemId, { mapeado: { ...e.mapeado, fatorConversao: nf }, qtdRecebida: it.qCom * nf }) }
+              return (
+                <Fragment key={it.nfeItemId}>
+                  <tr className={`border-b border-slate-50 ${diverge ? 'bg-amber-50/40' : ''} ${!e?.mapeado ? 'bg-amber-50/60' : ''}`}>
+                    <td className="px-3 py-1 text-[13px]">
+                      <p className="font-medium text-slate-800">{it.xProd}</p>
+                      <p className="text-[11px] text-slate-400">cód. {it.cProd} · {brl(it.vUnCom)}/{it.uCom}</p>
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-1 text-right text-[13px] tabular-nums text-slate-600">{it.qCom} {it.uCom}</td>
+                    <td className="px-3 py-1 text-[13px]">
+                      {e?.mapeado ? (
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <button onClick={() => setSheetItem(it)} className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[12px] font-medium text-emerald-700 hover:bg-emerald-100">
+                            <Check className="h-3 w-3" /> {e.mapeado.nome}
+                          </button>
+                          {/* fator inline — só quando a unidade da nota difere da de controle */}
+                          {precisaFator && (
+                            <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] ${e.mapeado.fatorConversao <= 1 ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-500'}`}>
+                              1 {it.uCom} =
+                              <input type="number" inputMode="decimal" value={e.mapeado.fatorConversao} onChange={(ev) => setF(Number(ev.target.value))} className="w-12 rounded border border-slate-300 px-1 py-0 text-right tabular-nums" />
+                              {e.mapeado.unidadeControle}
+                              {it.fatorNota && it.fatorNota !== e.mapeado.fatorConversao && (
+                                <button onClick={() => setF(it.fatorNota!)} className="rounded-full border border-sky-300 bg-sky-50 px-1.5 text-[10px] font-medium text-sky-700">nota diz {it.fatorNota}</button>
+                              )}
+                              {e.mapeado.fatorConversao <= 1 && <AlertTriangle className="h-3 w-3" />}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <button onClick={() => setSheetItem(it)} className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-2.5 py-1 text-[12px] font-medium text-amber-800 hover:bg-amber-100">
+                          <Search className="h-3.5 w-3.5" /> Que produto é este?
+                        </button>
+                      )}
+                    </td>
+                    <td className="px-3 py-1 text-right">
+                      {e?.mapeado ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          <input type="number" inputMode="decimal" value={e.qtdRecebida} onChange={(ev) => setItem(it.nfeItemId, { qtdRecebida: Number(ev.target.value) })}
+                            className={`h-8 w-24 rounded-lg border px-2 text-right text-[13px] tabular-nums ${diverge ? 'border-amber-400 bg-amber-50' : 'border-slate-300'}`} />
+                          <span className="text-[11px] text-slate-400">{e.mapeado.unidadeControle}</span>
+                        </span>
+                      ) : <span className="text-xs text-slate-300">—</span>}
+                    </td>
+                    <td className={`whitespace-nowrap px-3 py-1 text-right text-[13px] tabular-nums ${diverge ? 'font-semibold text-amber-700' : 'text-slate-300'}`}>
+                      {diverge ? `${delta > 0 ? '+' : ''}${Number(delta.toFixed(3))}` : '—'}
+                    </td>
+                    <td className="px-3 py-1">
+                      {!e?.mapeado ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800">mapear</span>
+                        : diverge ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800">divergência</span>
+                        : <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-700">confere</span>}
+                    </td>
+                  </tr>
+                  {/* a divergência EXPANDE a linha — só quando existe */}
+                  {diverge && (
+                    <tr className="border-b border-slate-50 bg-amber-50/60">
+                      <td colSpan={6} className="px-3 py-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="flex items-center gap-1 text-[11px] font-semibold text-amber-800"><AlertTriangle className="h-3.5 w-3.5" /> Veio diferente da nota — por quê?</span>
+                          {MOTIVOS.map((m) => <button key={m} onClick={() => setItem(it.nfeItemId, { motivo: m })} className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium ${e!.motivo === m ? 'bg-amber-600 text-white' : 'border border-amber-300 bg-white text-amber-700'}`}>{m}</button>)}
+                          <label className="inline-flex cursor-pointer items-center gap-1 rounded-full border border-amber-300 bg-white px-2.5 py-0.5 text-[11px] font-medium text-amber-700">
+                            <Camera className="h-3 w-3" /> {e!.fotoBase64 ? 'trocar foto' : 'foto'}
+                            <input type="file" accept="image/*" capture="environment" className="hidden" onChange={async (ev) => { const f = ev.target.files?.[0]; if (f) setItem(it.nfeItemId, { fotoBase64: await comprimirFoto(f) }) }} />
+                          </label>
+                          {e!.fotoBase64 && <img src={e!.fotoBase64} alt="foto da divergência" className="h-10 rounded object-cover" />}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
 
-        <div className="space-y-3">
+      {/* ===== MOBILE: cards empilhados (INTOCADO — o dono confere no celular) ===== */}
+      <div className="space-y-3 sm:hidden">
           {data.itens.map((it) => {
             const e = estado[it.nfeItemId]
             const esperada = it.qCom * (e?.mapeado?.fatorConversao ?? 1)
@@ -178,26 +287,31 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
               </div>
             )
           })}
-        </div>
       </div>
+      </>
+      )}
 
-      <div className="fixed inset-x-0 bottom-0 mx-auto max-w-md border-t border-slate-200 bg-white p-4">
-        <div className="mb-2 flex items-center justify-between text-xs text-slate-500">
-          <span>{data.itens.filter((it) => estado[it.nfeItemId]?.mapeado).length}/{data.itens.length} itens mapeados</span>
-          {divergencias > 0 && <span className="font-medium text-amber-600">{divergencias} divergência(s)</span>}
+      {/* BARRA FIXA de largura total (era bloco `mx-auto max-w-md` = solto no meio
+       * da tela no desktop). `md:left-60` = largura da sidebar (w-60). */}
+      <div className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white/95 px-4 py-2.5 backdrop-blur md:left-60">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <span className="text-xs tabular-nums text-slate-500"><b className="text-slate-800">{nMapeados}/{data.itens.length}</b> mapeados</span>
+          {divergencias > 0 && <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-600"><AlertTriangle className="h-3.5 w-3.5" /> {divergencias} divergência{divergencias > 1 ? 's' : ''}</span>}
+          <span className="hidden text-[11px] text-slate-400 lg:block">Gera os movimentos de estoque + contas a pagar sugerido + Confirmação na SEFAZ.</span>
+          {erro && <span className="rounded-md bg-rose-50 px-2 py-1 text-xs text-rose-700">{erro}</span>}
+          <div className="ml-auto">
+            {podeConfirmar ? (
+              <button onClick={confirmar} disabled={!totalMapeado || enviando}
+                className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#185FA5] px-5 text-sm font-semibold text-white hover:bg-[#0F4A8C] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 sm:w-auto">
+                {enviando ? <><Loader2 className="h-4 w-4 animate-spin" /> Confirmando…</> : totalMapeado ? <><PackageCheck className="h-4 w-4" /> Confirmar recebimento</> : 'Mapeie todos os itens pra confirmar'}
+              </button>
+            ) : (
+              <button disabled className="h-10 w-full cursor-not-allowed rounded-xl bg-slate-200 px-5 text-sm font-semibold text-slate-400 sm:w-auto">
+                {totalMapeado ? '✓ Pronto — modo teste (não grava)' : 'Mapeie todos os itens'}
+              </button>
+            )}
+          </div>
         </div>
-        {erro && <p className="mb-2 rounded-md bg-rose-50 p-2 text-xs text-rose-700">{erro}</p>}
-        {podeConfirmar ? (
-          <button onClick={confirmar} disabled={!totalMapeado || enviando}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#185FA5] py-3.5 text-sm font-semibold text-white active:bg-[#0F4A8C] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400">
-            {enviando ? <><Loader2 className="h-4 w-4 animate-spin" /> Confirmando…</> : totalMapeado ? <><PackageCheck className="h-4 w-4" /> Confirmar recebimento</> : 'Mapeie todos os itens pra confirmar'}
-          </button>
-        ) : (
-          <button disabled className="w-full cursor-not-allowed rounded-xl bg-slate-200 py-3.5 text-sm font-semibold text-slate-400">
-            {totalMapeado ? '✓ Pronto — modo teste (não grava)' : 'Mapeie todos os itens'}
-          </button>
-        )}
-        <p className="mt-2 text-center text-[11px] text-slate-400">Gera os movimentos de estoque + contas a pagar sugerido + Confirmação na SEFAZ.</p>
       </div>
 
       {sheetItem && <MapearSheet item={sheetItem} existentes={itensExistentes} onClose={() => setSheetItem(null)}

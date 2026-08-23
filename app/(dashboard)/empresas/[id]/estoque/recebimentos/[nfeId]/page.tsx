@@ -21,8 +21,10 @@ export default function ConferenciaRealPage({ params }: { params: Promise<{ id: 
   if (data === undefined) return <div className="p-6"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
   if (!data) return <div className="p-6 text-sm text-slate-500">Nota não encontrada.</div>
   return (
-    <div>
-      <a href={`/empresas/${id}/estoque/recebimentos`} className="mx-auto flex max-w-md items-center gap-1 px-4 pt-4 text-xs text-slate-500 hover:text-slate-700"><ArrowLeft className="h-3.5 w-3.5" /> voltar pra fila</a>
+    <div className="space-y-2">
+      {/* passe de densidade: o link era `mx-auto max-w-md` — ficava boiando no
+       * meio da tela agora que a conferência é largura total */}
+      <a href={`/empresas/${id}/estoque/recebimentos`} className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700"><ArrowLeft className="h-3.5 w-3.5" /> voltar pra fila</a>
       <ConferenciaView data={data.conference} itensExistentes={data.itensExistentes} companyId={id} nfeId={nfeId} podeConfirmar />
     </div>
   )
