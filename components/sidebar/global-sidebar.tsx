@@ -44,6 +44,7 @@ import {
   CreditCard,
   Inbox,
   Workflow,
+  ListChecks,
 } from 'lucide-react'
 import { SidebarItem } from './sidebar-item'
 import { useSidebarBadges } from '@/lib/hooks/use-sidebar-badges'
@@ -315,6 +316,13 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
               label="Movimentos"
               href={`/empresas/${currentEmpresaId}/estoque/movimentos`}
               isActive={/^\/empresas\/[^/]+\/estoque\/movimentos/.test(pathname)}
+              onClick={onNavigate}
+            />
+            <SidebarItem
+              icon={ListChecks}
+              label="Contagem"
+              href={`/empresas/${currentEmpresaId}/estoque/contagem`}
+              isActive={/^\/empresas\/[^/]+\/estoque\/contag/.test(pathname)}
               onClick={onNavigate}
             />
             <SidebarItem

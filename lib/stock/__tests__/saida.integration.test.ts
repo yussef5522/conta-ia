@@ -50,9 +50,9 @@ describe('registrarSaida', () => {
     await expect(registrarSaida({ companyId, itemId, quantidade: 1, motivo: '' }, prisma)).rejects.toThrow(SaidaError)
   })
   it('ISOLAMENTO: registrar saída não muda módulo fechado', async () => {
-    const antes = await snapshotClosedModules(prisma)
+    const antes = await snapshotClosedModules(prisma, companyId)
     await registrarSaida({ companyId, itemId, quantidade: 1, motivo: 'ESTRAGOU' }, prisma)
-    expect(isolationHeld(antes, await snapshotClosedModules(prisma))).toBe(true)
+    expect(isolationHeld(antes, await snapshotClosedModules(prisma, companyId))).toBe(true)
   })
 })
 

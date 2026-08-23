@@ -11,6 +11,7 @@ import { saldosDaEmpresa } from './saldo'
 import { checkProducaoInvariants } from './producao/producao-invariants'
 import { checkVendasInvariants } from './vendas/vendas-invariants'
 import { checkSaidaInvariants } from './saida-invariants'
+import { checkContagemInvariants } from './contagem-invariants'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -98,6 +99,9 @@ export async function checkStockInvariants(db: Db, now: Date = new Date()): Prom
   fails.push(...(await checkVendasInvariants(db, now)))
   // C1/C2 — invariantes de SAÍDA (perda/uso interno). C1 erro, C2 aviso.
   fails.push(...(await checkSaidaInvariants(db, now)))
+  // E7/E8 — invariantes da CONTAGEM (fase 3 parte 2). E8 erro (ajuste bate com o ledger),
+  // E7 aviso (item com saldo sem contagem há > 30 dias).
+  fails.push(...(await checkContagemInvariants(db, now)))
 
   return fails
 }
@@ -106,6 +110,9 @@ export async function checkStockInvariants(db: Db, now: Date = new Date()): Prom
 // SNAPSHOT DE ISOLAMENTO (Fase 0) — operação de estoque NÃO altera módulo fechado.
 // ---------------------------------------------------------------------------
 
+// ⚠️ `accountsPayable` NÃO é delegate do Prisma (contas a pagar são `Transaction` com
+// lifecycle=PAYABLE) — fica na lista por documentação, o `if (delegate?.count)` pula.
+// A cobertura real de contas a pagar vem de `transaction`.
 const TABELAS_FECHADAS = [
   'transaction', 'category', 'accountsPayable', 'vendaDiaria', 'loan',
   'businessCreditCard', 'bankAccount', 'aiLearningRule', 'supplier',
@@ -113,12 +120,29 @@ const TABELAS_FECHADAS = [
 
 export interface IsolationSnapshot { [tabela: string]: number }
 
-export async function snapshotClosedModules(db: Db): Promise<IsolationSnapshot> {
+// Transaction não tem `companyId` direto (JOIN via bankAccount) — as demais têm.
+const ESCOPO_EMPRESA: Record<string, (companyId: string) => object> = {
+  transaction: (companyId) => ({ bankAccount: { companyId } }),
+}
+const escopoDe = (t: string, companyId: string) => (ESCOPO_EMPRESA[t] ?? ((c: string) => ({ companyId: c })))(companyId)
+
+/**
+ * Conta as linhas dos módulos FECHADOS. Sem `companyId` conta tudo (uso do juiz noturno).
+ *
+ * COM `companyId` conta só as linhas daquela empresa — é o que os testes devem usar:
+ * a suíte roda arquivos em PARALELO contra o mesmo banco, e qualquer outro teste criando
+ * ou apagando empresa (cascade → bankAccount/transaction) mudava a contagem GLOBAL entre
+ * dois snapshots e pintava de vermelho um isolamento que estava intacto. Escopar por
+ * empresa não afrouxa a regra — deixa a pergunta exata: "a operação de estoque DESTA
+ * empresa criou linha em módulo fechado DESTA empresa?".
+ */
+export async function snapshotClosedModules(db: Db, companyId?: string): Promise<IsolationSnapshot> {
   const snap: IsolationSnapshot = {}
   for (const t of TABELAS_FECHADAS) {
     // @ts-expect-error — acesso dinâmico ao delegate do Prisma
     const delegate = db[t]
-    if (delegate?.count) snap[t] = await delegate.count()
+    if (!delegate?.count) continue
+    snap[t] = companyId ? await delegate.count({ where: escopoDe(t, companyId) }) : await delegate.count()
   }
   return snap
 }

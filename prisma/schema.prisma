@@ -3646,3 +3646,53 @@ model StockSaida {
   @@index([companyId, motivo])
   @@map("stock_saida")
 }
+
+// ESTOQUE FASE 3 PARTE 2 (23/08) — CONTAGEM (template Vuca: lista única, divergência na
+// hora, ação por linha). Decisões do dono: (a) 1 sessão ABERTA por vez — índice único
+// PARCIAL na migration, impossível por construção; (b) ajuste na hora, POR LINHA (o
+// AJUSTE_CONTAGEM entra no ledger ao confirmar a linha, o saldo bate andando); (c) a
+// CONTAGEM INICIAL é a mesma tela no 1º uso, só marcada tipo=INICIAL.
+// Isolamento mantido: só stock_, companyId é VALOR sem @relation, migration só CRIA.
+model StockContagem {
+  id            String    @id @default(cuid())
+  companyId     String // REGRA 8 — valor, sem @relation
+  tipo          String // INICIAL | ROTINA
+  status        String    @default("ABERTA") // ABERTA | FINALIZADA | CANCELADA
+  observacao    String?
+  iniciadaEm    DateTime  @default(now())
+  finalizadaEm  DateTime?
+  criadoPorId   String?
+  criadoPorNome String? // desnormalizado: quem contou tem que aparecer sem join em User
+  atualizadoEm  DateTime  @updatedAt
+
+  @@index([companyId, status])
+  @@index([companyId, iniciadaEm])
+  // "uma sessão ABERTA por company" vira índice único PARCIAL na migration:
+  //   CREATE UNIQUE INDEX ... ON stock_contagem(companyId) WHERE status='ABERTA'
+  @@map("stock_contagem")
+}
+
+// Uma linha por item contado na sessão. `saldoSistema` é SNAPSHOT do instante da contagem
+// (o teórico que o contador viu) — nunca recalculado depois, senão a divergência histórica
+// muda sozinha. `movementId` aponta o AJUSTE_CONTAGEM gerado (null quando não houve
+// divergência: contou e bateu = linha registrada, ledger intocado).
+model StockContagemItem {
+  id               String   @id @default(cuid())
+  companyId        String
+  contagemId       String
+  itemId           String
+  saldoSistema     Float // snapshot do saldo derivado no instante
+  qtdContada       Float
+  divergencia      Float // qtdContada − saldoSistema
+  custoUnitario    Float
+  valorDivergencia Float // divergencia × custoUnitario
+  movementId       String? // AJUSTE_CONTAGEM; null quando divergencia == 0
+  freioConfirmado  Boolean  @default(false) // divergência grande passou pela 2ª confirmação
+  contadoPorId     String?
+  contadoPorNome   String? // "quem contou" no tap da tela
+  contadoEm        DateTime @default(now())
+
+  @@unique([contagemId, itemId])
+  @@index([companyId, itemId])
+  @@map("stock_contagem_item")
+}

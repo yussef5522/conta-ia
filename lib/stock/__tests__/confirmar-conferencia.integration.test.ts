@@ -114,9 +114,9 @@ describe('confirmarConferencia', () => {
   })
 
   it('ISOLAMENTO: confirmar não muda nenhum módulo fechado', async () => {
-    const antes = await snapshotClosedModules(prisma)
+    const antes = await snapshotClosedModules(prisma, companyId)
     const item1 = (await prisma.stockNfeItem.findFirst({ where: { companyId, cProd: 'C2' } }))!
     await confirmarConferencia({ companyId, nfeId, userId: 'u', fornecedor: { cnpj: FORN, nome: 'X' }, itens: [{ nfeItemId: item1.id, cProd: 'C2', xProd: 'REFRI', uCom: 'UN', qtdNota: 24, vUnCom: 12, qtdRecebida: 24, mapeado: { itemId: itemExistenteId, nome: 'Refri', unidadeControle: 'UN', fatorConversao: 1, novo: false } }] })
-    expect(isolationHeld(antes, await snapshotClosedModules(prisma))).toBe(true)
+    expect(isolationHeld(antes, await snapshotClosedModules(prisma, companyId))).toBe(true)
   })
 })

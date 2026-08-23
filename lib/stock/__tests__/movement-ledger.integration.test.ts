@@ -95,9 +95,9 @@ describe('saldo derivado + isolamento', () => {
   })
 
   it('ISOLAMENTO: mexer no ledger não muda nenhum módulo fechado', async () => {
-    const antes = await snapshotClosedModules(prisma)
+    const antes = await snapshotClosedModules(prisma, companyId)
     const item = await prisma.stockItem.create({ data: { companyId, nome: 'ITEM ISO', unidadeControle: 'UN', categoria: 'REVENDA', criadoVia: 'MANUAL' } })
     await criarMovimento(prisma, { companyId, itemId: item.id, tipo: 'ENTRADA_NF', quantidade: 1, custoUnitario: 1, origem: 'MANUAL' })
-    expect(isolationHeld(antes, await snapshotClosedModules(prisma))).toBe(true)
+    expect(isolationHeld(antes, await snapshotClosedModules(prisma, companyId))).toBe(true)
   })
 })

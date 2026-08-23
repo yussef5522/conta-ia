@@ -74,10 +74,10 @@ describe('saveCertificate — integração', () => {
 
 describe('ISOLAMENTO — subir certificado não muda nenhum módulo fechado', () => {
   it('snapshot das tabelas fechadas idêntico antes/depois', async () => {
-    const antes = await snapshotClosedModules(prisma)
+    const antes = await snapshotClosedModules(prisma, companyId)
     const pfx = makePfx(`EMPRESA TESTE LTDA:${CNPJ}`, SENHA, daqui(-5), daqui(200))
     await saveCertificate({ companyId, userId: 'u', pfxBuffer: pfx, senha: SENHA })
-    const depois = await snapshotClosedModules(prisma)
+    const depois = await snapshotClosedModules(prisma, companyId)
     expect(isolationHeld(antes, depois)).toBe(true)
     expect(depois).toEqual(antes) // transaction/category/loan/... inalterados
   })
