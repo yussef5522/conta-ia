@@ -12,6 +12,7 @@ import { checkProducaoInvariants } from './producao/producao-invariants'
 import { checkVendasInvariants } from './vendas/vendas-invariants'
 import { checkSaidaInvariants } from './saida-invariants'
 import { checkContagemInvariants } from './contagem-invariants'
+import { checkNfeInvariants } from './nfe-invariants'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -102,6 +103,9 @@ export async function checkStockInvariants(db: Db, now: Date = new Date()): Prom
   // E7/E8 — invariantes da CONTAGEM (fase 3 parte 2). E8 erro (ajuste bate com o ledger),
   // E7 aviso (item com saldo sem contagem há > 30 dias).
   fails.push(...(await checkContagemInvariants(db, now)))
+  // E10 — nota na fila sem XML completo há > 24h. Olha a tabela do FATO (a nota), não a
+  // do PROCESSO (o evento) — foi exatamente o que deixou a Focatto passar 2 dias invisível.
+  fails.push(...(await checkNfeInvariants(db, now)))
 
   return fails
 }

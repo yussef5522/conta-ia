@@ -4,32 +4,28 @@
 // USO: npx tsx scripts/sefaz-ciencia.ts <companyId> [chave1 chave2 ...]
 
 import { PrismaClient } from '@prisma/client'
-import { enviarEvento } from '../lib/stock/sefaz/ciencia'
-import { TP_EVENTO } from '../lib/stock/sefaz/evento'
+import { garantirCienciaPendentes } from '../lib/stock/sefaz/garantir-ciencia'
 import { runSefazDownload } from '../lib/stock/sefaz/download'
 
 const prisma = new PrismaClient()
 const CACULA = 'cmq17yapb00gnrndlh33sctbo'
 const companyId = process.argv[2] || CACULA
-const chavesArg = process.argv.slice(3)
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 async function main() {
+  // REGRA 4: o script e o CRON usam a MESMA função. Antes o script tinha a lógica dele e
+  // o cron não tinha nenhuma — foi assim que as 7 notas ficaram presas esperando alguém
+  // lembrar de rodar isto na mão.
   const resumoOnly = await prisma.stockNfe.findMany({
-    where: { companyId, status: 'AGUARDANDO_MERCADORIA', temXmlCompleto: false, ...(chavesArg.length ? { chave: { in: chavesArg } } : {}) },
+    where: { companyId, status: 'AGUARDANDO_MERCADORIA', temXmlCompleto: false },
     select: { chave: true, emitNome: true, vNF: true },
   })
   if (resumoOnly.length === 0) { console.log('Nenhuma nota nova resumo-only pendente de Ciência.'); await prisma.$disconnect(); return }
 
   console.log(`=== CIÊNCIA (210210) em ${resumoOnly.length} nota(s) resumo-only ===`)
-  for (const n of resumoOnly) {
-    try {
-      const r = await enviarEvento({ companyId, chave: n.chave, tpEvento: TP_EVENTO.CIENCIA })
-      console.log(`  ${r.ok ? '✅' : '❌'} ${n.emitNome} (${n.vNF}): cStat ${r.cStat} · ${r.xMotivo}${r.nProt ? ` · prot ${r.nProt}` : ''}`)
-    } catch (e) {
-      console.log(`  ❌ ${n.emitNome}: ERRO ${(e as Error).message}`)
-    }
-  }
+  const c = await garantirCienciaPendentes({ companyId, db: prisma })
+  console.log(`  ${c.enviadas} enviada(s) · ${c.jaManifestadas} já manifestada(s) · ${c.desistidas} desistida(s) · ${c.erros.length} erro(s)`)
+  for (const e of c.erros) console.log(`  ❌ ${e.emitNome ?? e.chave}: ${e.cStat ?? ''} ${e.motivo}`)
 
   console.log('\naguardando a SEFAZ processar + rebaixando pra puxar o XML completo...')
   await sleep(8000)
