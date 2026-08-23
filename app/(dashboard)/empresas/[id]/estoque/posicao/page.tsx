@@ -25,11 +25,13 @@ const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', curren
 const num = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 3 })
 type Ordem = 'valor' | 'nome' | 'idade'
 
+// Passe de densidade: texto CURTO ("hoje" · "2d" · "23d") — a coluna deixa de
+// carregar "23 dias" e a linha ganha largura útil pro que importa.
 function IdadeBadge({ dias }: { dias: number | null }) {
   if (dias == null) return <span className="text-xs text-slate-400">—</span>
-  const txt = dias === 0 ? 'hoje' : dias === 1 ? 'ontem' : `${dias} dias`
+  const txt = dias === 0 ? 'hoje' : `${dias}d`
   const cor = dias > 14 ? 'bg-rose-50 text-rose-700' : dias > 7 ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-500'
-  return <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${cor}`}>{txt}</span>
+  return <span className={`inline-block rounded px-1.5 py-0.5 text-[11px] font-medium tabular-nums ${cor}`}>{txt}</span>
 }
 function Tendencia({ t }: { t: PosItem['custoTendencia'] }) {
   if (t === 'subiu') return <ArrowUp className="inline h-3.5 w-3.5 text-rose-500" />
@@ -81,13 +83,18 @@ export default function PosicaoPage({ params }: { params: Promise<{ id: string }
   const renomeado = (itemId: string, n: string) => setData({ ...data, itens: data.itens.map((i) => (i.itemId === itemId ? { ...i, nome: n } : i)) })
 
   return (
-    <div className="mx-auto max-w-4xl space-y-5 p-4 sm:p-6">
-      <div className="flex items-center gap-3">
-        <Boxes className="h-7 w-7 text-[#185FA5]" />
-        <div className="flex-1"><h1 className="text-xl font-semibold text-slate-900">Posição de estoque</h1><p className="text-sm text-slate-500">Saldo derivado dos movimentos. Clique num item pra ver a ficha.</p></div>
-        <a href={`/empresas/${id}/estoque/perdas`} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"><TrendingDown className="h-4 w-4" /> Perdas</a>
-        <button onClick={() => setSaida('novo')} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"><PackageMinus className="h-4 w-4" /> Registrar saída</button>
-        {data.itens.length > 0 && <a href={`/api/empresas/${id}/estoque/posicao?formato=csv`} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"><Download className="h-4 w-4" /> CSV</a>}
+    <div className="space-y-3">
+      {/* Cabeçalho de UMA linha: título + subtítulo lado a lado, botões h-8.
+       * Era ícone 28px + 2 linhas de texto + botões py-2 = ~76px só de topo. */}
+      <div className="flex items-center gap-2.5">
+        <Boxes className="h-5 w-5 shrink-0 text-[#185FA5]" />
+        <h1 className="text-base font-semibold text-slate-900">Posição de estoque</h1>
+        <p className="hidden flex-1 truncate text-xs text-slate-400 lg:block">Saldo derivado dos movimentos · clique num item pra ver a ficha</p>
+        <div className="flex flex-1 items-center justify-end gap-1.5 lg:flex-none">
+          <a href={`/empresas/${id}/estoque/perdas`} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50"><TrendingDown className="h-3.5 w-3.5" /> Perdas</a>
+          <button onClick={() => setSaida('novo')} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50"><PackageMinus className="h-3.5 w-3.5" /> Registrar saída</button>
+          {data.itens.length > 0 && <a href={`/api/empresas/${id}/estoque/posicao?formato=csv`} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50"><Download className="h-3.5 w-3.5" /> CSV</a>}
+        </div>
       </div>
       {saida && <SaidaModal companyId={id} itemInicial={saida === 'novo' ? undefined : { id: saida.id, nome: saida.nome, unidadeControle: saida.unidadeControle, custoMedio: saida.custoMedio }} onClose={() => setSaida(null)} onSalvo={() => { setSaida(null); location.reload() }} />}
 
@@ -99,41 +106,48 @@ export default function PosicaoPage({ params }: { params: Promise<{ id: string }
         </CardContent></Card>
       ) : (
         <>
-          {/* cards de valor por categoria + total */}
-          <div className="flex flex-wrap gap-2">
-            <button onClick={() => setCatFiltro(null)} className={`rounded-xl border px-4 py-3 text-left transition ${!catFiltro ? 'border-[#185FA5] bg-[#185FA5]/5' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
-              <p className="text-xs text-slate-500">Total</p><p className="text-base font-semibold tabular-nums text-slate-900">{brl(data.valorTotal)}</p>
+          {/* FAIXA horizontal fina por categoria (era tijolo de 3 linhas × N).
+           * Rótulo e valor na MESMA linha; a faixa rola no eixo x se não couber,
+           * então nunca quebra em 2ª fileira e come altura da lista. */}
+          <div className="-mx-1 flex items-center gap-1.5 overflow-x-auto px-1 pb-0.5">
+            <button onClick={() => setCatFiltro(null)} className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border px-3 text-xs transition ${!catFiltro ? 'border-[#185FA5] bg-[#185FA5]/5' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
+              <span className="text-slate-500">Total</span>
+              <span className="font-semibold tabular-nums text-slate-900">{brl(data.valorTotal)}</span>
             </button>
             {data.porCategoria.map((c) => (
-              <button key={c.categoria} onClick={() => setCatFiltro(catFiltro === c.categoria ? null : c.categoria)} className={`rounded-xl border px-4 py-3 text-left transition ${catFiltro === c.categoria ? 'border-[#185FA5] bg-[#185FA5]/5' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
-                <p className="text-xs text-slate-500">{c.label}</p><p className="text-base font-semibold tabular-nums text-slate-900">{brl(c.valor)}</p><p className="text-[11px] text-slate-400">{c.itens} {c.itens === 1 ? 'item' : 'itens'}</p>
+              <button key={c.categoria} onClick={() => setCatFiltro(catFiltro === c.categoria ? null : c.categoria)} className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border px-3 text-xs transition ${catFiltro === c.categoria ? 'border-[#185FA5] bg-[#185FA5]/5' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
+                <span className="text-slate-500">{c.label}</span>
+                <span className="font-semibold tabular-nums text-slate-900">{brl(c.valor)}</span>
+                <span className="tabular-nums text-slate-400">{c.itens}</span>
               </button>
             ))}
           </div>
 
-          {/* busca + ordenação + agrupar */}
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative flex-1 min-w-[180px]">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-              <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="buscar item…" className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm" />
+          {/* Filtros em UMA linha (h-9). A busca não estica mais o fim da tela:
+           * teto de 320px, o resto do espaço vai pra lista. */}
+          <div className="flex items-center gap-1.5">
+            <div className="relative w-full max-w-[320px]">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+              <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="buscar item…" className="h-9 w-full rounded-lg border border-slate-300 pl-8 pr-3 text-sm" />
             </div>
-            <select value={ordem} onChange={(e) => setOrdem(e.target.value as Ordem)} className="rounded-lg border border-slate-300 py-2 px-3 text-sm text-slate-600">
+            <select value={ordem} onChange={(e) => setOrdem(e.target.value as Ordem)} className="h-9 shrink-0 rounded-lg border border-slate-300 px-2 text-xs text-slate-600">
               <option value="valor">Maior valor</option><option value="nome">Nome</option><option value="idade">Mais antigo</option>
             </select>
-            <button onClick={() => setAgrupar((v) => !v)} className={`rounded-lg border px-3 py-2 text-sm ${agrupar ? 'border-[#185FA5] bg-[#185FA5]/5 text-[#185FA5]' : 'border-slate-300 text-slate-600'}`}>Agrupar</button>
-            {nAbaixo > 0 && <button onClick={() => setSoAbaixo((v) => !v)} className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm ${soAbaixo ? 'border-rose-400 bg-rose-50 text-rose-700' : 'border-slate-300 text-slate-600'}`}><AlertTriangle className="h-3.5 w-3.5" /> {nAbaixo} abaixo do mín.</button>}
+            <button onClick={() => setAgrupar((v) => !v)} className={`h-9 shrink-0 rounded-lg border px-2.5 text-xs ${agrupar ? 'border-[#185FA5] bg-[#185FA5]/5 text-[#185FA5]' : 'border-slate-300 text-slate-600'}`}>Agrupar</button>
+            {nAbaixo > 0 && <button onClick={() => setSoAbaixo((v) => !v)} className={`inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-xs ${soAbaixo ? 'border-rose-400 bg-rose-50 text-rose-700' : 'border-slate-300 text-slate-600'}`}><AlertTriangle className="h-3.5 w-3.5" /> {nAbaixo} abaixo do mín.</button>}
+            <span className="ml-auto hidden shrink-0 text-xs tabular-nums text-slate-400 sm:block">{filtrados.length} {filtrados.length === 1 ? 'item' : 'itens'}</span>
           </div>
 
           {/* lista */}
           {filtrados.length === 0 ? (
             <Card><CardContent className="p-6 text-center text-sm text-slate-500">Nenhum item com esse filtro.</CardContent></Card>
           ) : agrupar ? (
-            <div className="space-y-3">
+            <div className="space-y-2">
               {grupos.map(([label, its]) => {
                 const col = colapsadas.has(label)
                 return (
                   <div key={label}>
-                    <button onClick={() => setColapsadas((s) => { const n = new Set(s); n.has(label) ? n.delete(label) : n.add(label); return n })} className="flex w-full items-center gap-2 py-2 text-sm font-semibold text-slate-700">
+                    <button onClick={() => setColapsadas((s) => { const n = new Set(s); n.has(label) ? n.delete(label) : n.add(label); return n })} className="flex w-full items-center gap-1.5 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600">
                       {col ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />} {label} <span className="text-xs font-normal text-slate-400">({its.length} · {brl(its.reduce((s, i) => s + i.valor, 0))})</span>
                     </button>
                     {!col && <ListaItens itens={its} id={id} onRenomear={renomeado} />}
@@ -153,29 +167,36 @@ export default function PosicaoPage({ params }: { params: Promise<{ id: string }
 function ListaItens({ itens, id, onRenomear }: { itens: PosItem[]; id: string; onRenomear: (itemId: string, n: string) => void }) {
   return (
     <Card><CardContent className="p-0">
-      {/* desktop: tabela */}
-      <table className="hidden w-full text-sm sm:table">
-        <thead><tr className="border-b border-slate-100 text-left text-xs text-slate-400">
-          <th className="p-3 font-medium">Item</th><th className="p-3 font-medium">Categoria</th>
-          <th className="p-3 text-right font-medium">Saldo</th><th className="p-3 font-medium">Faixa (mín–máx)</th>
-          <th className="p-3 text-right font-medium">Custo médio</th>
-          <th className="p-3 text-right font-medium">Valor</th><th className="p-3 text-right font-medium">Última entrada</th>
+      {/* desktop: tabela.
+       * Passe de densidade — REUSA o `density-normal` que já existe em globals.css
+       * (linha de 48px), em vez de inventar uma segunda escala de altura só pro
+       * estoque. Um sistema de densidade no projeto, não dois (REGRA 4).
+       * Padding vertical sai (py-0): quem manda na altura é a classe. */}
+      <table className="density-normal hidden w-full sm:table">
+        <thead><tr className="border-b border-slate-100 text-left text-[11px] uppercase tracking-wide text-slate-400">
+          <th className="px-3 py-2 font-medium">Item</th><th className="px-3 py-2 font-medium">Categoria</th>
+          <th className="px-3 py-2 text-right font-medium">Saldo</th><th className="px-3 py-2 font-medium">Faixa</th>
+          <th className="px-3 py-2 text-right font-medium">Custo médio</th>
+          <th className="px-3 py-2 text-right font-medium">Valor</th><th className="px-3 py-2 text-right font-medium">Entrada</th>
         </tr></thead>
         <tbody>
           {itens.map((i) => (
             <tr key={i.itemId} className={`border-b border-l-2 border-slate-50 last:border-b-0 hover:bg-slate-50 ${STATUS_BORDA[i.status.cor]}`}>
-              <td className="p-3"><NomeEditavel companyId={id} itemId={i.itemId} nome={i.nome} comLink onSalvo={(n) => onRenomear(i.itemId, n)} /></td>
-              <td className="p-3 text-slate-500">{i.categoriaLabel}</td>
-              <td className={`p-3 text-right tabular-nums ${i.negativo ? 'font-semibold text-rose-600' : 'text-slate-800'}`}>{i.negativo && <AlertTriangle className="mr-1 inline h-3 w-3" />}{num(i.saldo)} {i.unidadeControle}</td>
-              <td className="w-36 p-3">
-                {i.estoqueMin == null ? <span className="text-xs text-slate-300">—</span> : (<>
-                  <StatusBar status={i.status} />
-                  <div className="mt-1 flex items-center justify-between text-[10px] text-slate-400 tabular-nums"><span>{num(i.estoqueMin)}</span><span>{i.estoqueMax != null ? num(i.estoqueMax) : ''}</span></div>
-                </>)}
+              <td className="px-3 py-0 text-[13px]"><NomeEditavel companyId={id} itemId={i.itemId} nome={i.nome} comLink onSalvo={(n) => onRenomear(i.itemId, n)} /></td>
+              <td className="px-3 py-0 text-[13px] text-slate-500">{i.categoriaLabel}</td>
+              <td className={`whitespace-nowrap px-3 py-0 text-right text-[13px] tabular-nums ${i.negativo ? 'font-semibold text-rose-600' : 'text-slate-800'}`}>{i.negativo && <AlertTriangle className="mr-1 inline h-3 w-3" />}{num(i.saldo)} {i.unidadeControle}</td>
+              {/* faixa numa LINHA só: barra + mín–máx ao lado (era barra + rodapé embaixo = 2 linhas) */}
+              <td className="w-32 px-3 py-0">
+                {i.estoqueMin == null ? <span className="text-xs text-slate-300">—</span> : (
+                  <div className="flex items-center gap-1.5">
+                    <StatusBar status={i.status} className="flex-1" />
+                    <span className="shrink-0 text-[10px] tabular-nums text-slate-400">{num(i.estoqueMin)}{i.estoqueMax != null ? `–${num(i.estoqueMax)}` : ''}</span>
+                  </div>
+                )}
               </td>
-              <td className="p-3 text-right tabular-nums text-slate-600">{i.custoMedio != null ? brl(i.custoMedio) : '—'} <Tendencia t={i.custoTendencia} /></td>
-              <td className="p-3 text-right font-medium tabular-nums text-slate-900">{brl(i.valor)}</td>
-              <td className="p-3 text-right"><IdadeBadge dias={i.ultimaEntradaDias} /></td>
+              <td className="whitespace-nowrap px-3 py-0 text-right text-[13px] tabular-nums text-slate-600">{i.custoMedio != null ? brl(i.custoMedio) : '—'} <Tendencia t={i.custoTendencia} /></td>
+              <td className="whitespace-nowrap px-3 py-0 text-right text-[13px] font-medium tabular-nums text-slate-900">{brl(i.valor)}</td>
+              <td className="px-3 py-0 text-right"><IdadeBadge dias={i.ultimaEntradaDias} /></td>
             </tr>
           ))}
         </tbody>

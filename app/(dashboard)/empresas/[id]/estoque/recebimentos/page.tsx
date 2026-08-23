@@ -38,19 +38,19 @@ export default function RecebimentosPage({ params }: { params: Promise<{ id: str
   const recarregar = () => fetch(`/api/empresas/${id}/estoque/recebimentos`).then((r) => r.json()).then((j) => setData(j.recebimentos ? j : null)).catch(() => setData(null))
   useEffect(() => { recarregar() }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (data === undefined) return <div className="mx-auto max-w-3xl p-6"><Card><CardContent className="flex items-center gap-2 p-6 text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Carregando…</CardContent></Card></div>
-  if (data === null) return <div className="mx-auto max-w-3xl p-6"><Card><CardContent className="p-6 text-sm text-slate-500">Não consegui carregar os recebimentos.</CardContent></Card></div>
+  if (data === undefined) return <div className="p-0"><Card><CardContent className="flex items-center gap-2 p-6 text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Carregando…</CardContent></Card></div>
+  if (data === null) return <div className="p-0"><Card><CardContent className="p-6 text-sm text-slate-500">Não consegui carregar os recebimentos.</CardContent></Card></div>
 
   const { recebimentos: r, relatorio: rel } = data
   const filaAtiva = r.fila.filter((n) => !n.adiada)
   const filaAdiada = r.fila.filter((n) => n.adiada)
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6 p-6">
+    <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <Inbox className="h-7 w-7 text-[#185FA5]" />
+        <Inbox className="h-5 w-5 text-[#185FA5]" />
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Recebimentos</h1>
+          <h1 className="text-base font-semibold text-slate-900">Recebimentos</h1>
           <p className="text-sm text-slate-500">Notas fiscais emitidas contra o CNPJ da empresa, direto da SEFAZ. A fila nasce vazia e enche sozinha quando um fornecedor emitir a partir de {fmt(r.dataCorte)}.</p>
         </div>
       </div>

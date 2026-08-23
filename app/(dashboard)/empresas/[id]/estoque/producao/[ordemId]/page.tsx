@@ -88,14 +88,14 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-5 p-4 sm:p-6">
+    <div className="space-y-5">
       <a href={`/empresas/${id}/estoque/producao`} className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 print:hidden"><ArrowLeft className="h-3.5 w-3.5" /> voltar pra produção</a>
 
       {/* cabeçalho */}
       <div className="flex items-start gap-3">
-        <Factory className="h-7 w-7 shrink-0 text-[#185FA5]" />
+        <Factory className="h-5 w-5 shrink-0 text-[#185FA5]" />
         <div className="flex-1">
-          <h1 className="text-xl font-semibold text-slate-900">{ordem.nomeProduzido}</h1>
+          <h1 className="text-base font-semibold text-slate-900">{ordem.nomeProduzido}</h1>
           <p className="text-sm text-slate-500">{ordem.escalaReceitas}× a receita (v{ordem.versaoFicha}) · {fmtDia(ordem.dataProducao)}{ordem.setorNome ? ` · ${ordem.setorNome}` : ''}</p>
         </div>
         {ordem.estado === 'CANCELADA' && <span className="rounded-full bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-600">Cancelada</span>}
@@ -119,12 +119,12 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
           <p className="text-sm font-semibold text-slate-900">{planejada ? 'Separação (ajuste o que tirou da câmara)' : 'Separado'}</p>
           <button onClick={() => window.print()} className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 print:hidden"><Printer className="h-3.5 w-3.5" /> imprimir</button>
         </div>
-        <table className="w-full text-sm">
-          <thead><tr className="text-left text-xs text-slate-400">
-            <th className="p-3 font-medium">Insumo</th><th className="p-3 text-right font-medium">Planejado</th>
-            <th className="p-3 text-right font-medium">{planejada ? 'Separar' : 'Em produção'}</th>
-            <th className="p-3 text-right font-medium">Estoque</th>
-            {!planejada && !encerrada && <th className="p-3 print:hidden"></th>}
+        <table className="density-normal w-full">
+          <thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-400">
+            <th className="px-3 py-2 font-medium">Insumo</th><th className="px-3 py-2 text-right font-medium">Planejado</th>
+            <th className="px-3 py-2 text-right font-medium">{planejada ? 'Separar' : 'Em produção'}</th>
+            <th className="px-3 py-2 text-right font-medium">Estoque</th>
+            {!planejada && !encerrada && <th className="px-3 py-2 print:hidden"></th>}
           </tr></thead>
           <tbody>
             {linhas.map((l) => {
@@ -132,9 +132,9 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
               const faltou = planejada && sepQtd > l.saldoDisponivel + 0.001
               return (
                 <tr key={l.itemId} className="border-t border-slate-50">
-                  <td className="p-3"><p className="font-medium text-slate-800">{l.nome}</p><p className="text-[11px] text-slate-400">{l.custoMedio != null ? `${brl(l.custoMedio)}/${l.unidadeControle}` : 'sem custo (a definir)'}</p></td>
-                  <td className="p-3 text-right tabular-nums text-slate-500">{num(l.qtdPlanejada)} {l.unidade}</td>
-                  <td className="p-3 text-right">
+                  <td className="px-3 py-0 text-[13px]"><p className="font-medium text-slate-800">{l.nome}</p><p className="text-[11px] text-slate-400">{l.custoMedio != null ? `${brl(l.custoMedio)}/${l.unidadeControle}` : 'sem custo (a definir)'}</p></td>
+                  <td className="px-3 py-0 text-[13px] text-right tabular-nums text-slate-500">{num(l.qtdPlanejada)} {l.unidade}</td>
+                  <td className="px-3 py-0 text-[13px] text-right">
                     {planejada ? (
                       <div className="flex items-center justify-end gap-1">
                         <input value={sep[l.itemId] ?? ''} onChange={(e) => setSep((s) => ({ ...s, [l.itemId]: e.target.value }))} inputMode="decimal" className={`w-20 rounded-lg border py-1.5 px-2 text-right text-sm tabular-nums ${faltou ? 'border-rose-300 bg-rose-50' : 'border-slate-300'}`} />
@@ -142,9 +142,9 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
                       </div>
                     ) : <span className="tabular-nums font-medium text-slate-800">{num(l.qtdSeparada)} {l.unidade}</span>}
                   </td>
-                  <td className={`p-3 text-right tabular-nums ${l.saldoDisponivel < 0 ? 'text-rose-600' : 'text-slate-500'}`}>{num(l.saldoDisponivel)}</td>
+                  <td className={`px-3 py-0 text-[13px] text-right tabular-nums ${l.saldoDisponivel < 0 ? 'text-rose-600' : 'text-slate-500'}`}>{num(l.saldoDisponivel)}</td>
                   {!planejada && !encerrada && (
-                    <td className="p-3 print:hidden">
+                    <td className="px-3 py-0 text-[13px] print:hidden">
                       {l.qtdSeparada > 0 && (
                         devolver[l.itemId] !== undefined ? (
                           <div className="flex items-center gap-1">

@@ -49,10 +49,10 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
   const encerradas = ordens.filter((o) => ['CONCLUIDA', 'CANCELADA'].includes(o.estado))
 
   return (
-    <div className="mx-auto max-w-4xl space-y-5 p-4 sm:p-6">
+    <div className="space-y-5">
       <div className="flex items-center gap-3">
-        <Factory className="h-7 w-7 text-[#185FA5]" />
-        <div className="flex-1"><h1 className="text-xl font-semibold text-slate-900">Produção</h1><p className="text-sm text-slate-500">Cria a ordem, separa da câmara e produz. A ficha diz a receita; aqui você faz.</p></div>
+        <Factory className="h-5 w-5 text-[#185FA5]" />
+        <div className="flex-1"><h1 className="text-base font-semibold text-slate-900">Produção</h1><p className="text-xs text-slate-400">Cria a ordem, separa da câmara e produz. A ficha diz a receita; aqui você faz.</p></div>
         <a href={`/empresas/${id}/estoque/cardapio`} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"><UtensilsCrossed className="h-4 w-4" /> Cardápio</a>
         <a href={`/empresas/${id}/estoque/fichas`} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"><ClipboardList className="h-4 w-4" /> Fichas</a>
         <button onClick={() => setNovo((v) => !v)} className="inline-flex items-center gap-1.5 rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-white hover:bg-[#0F4A8C]"><Plus className="h-4 w-4" /> Nova ordem</button>

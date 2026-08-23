@@ -30,8 +30,13 @@ describe('PERMISSIONS canonical list', () => {
 })
 
 describe('DEFAULT_ROLES', () => {
-  it('tem 5 roles padrão', () => {
-    expect(Object.keys(DEFAULT_ROLES).length).toBe(5)
+  // Fase 3 Parte 1 (22/08/2026): +OPERADOR_ESTOQUE e +LEITURA_ESTOQUE.
+  // Assere os SLUGS, não só a contagem — role nova entra de propósito
+  // (o teste trinca e alguém decide), role sumida não passa despercebida.
+  it('tem os 7 roles padrão (5 financeiro + 2 estoque)', () => {
+    expect(Object.keys(DEFAULT_ROLES).sort()).toEqual([
+      'ACCOUNTANT', 'ADMIN', 'FINANCIAL', 'LEITURA_ESTOQUE', 'OPERADOR_ESTOQUE', 'OWNER', 'VIEWER',
+    ])
   })
 
   it('OWNER tem permission "*"', () => {

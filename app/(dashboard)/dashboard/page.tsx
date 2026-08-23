@@ -142,7 +142,7 @@ export default async function DashboardPage({ searchParams }: PageProps) {
 
   // ====== Render ======
   return (
-    <div className="space-y-8 max-w-5xl mx-auto">
+    <div className="space-y-6">
       {/* Header sutil */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="space-y-0.5">

@@ -44,7 +44,7 @@ export default function IgnoradasPage() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto py-6 space-y-4">
+    <div className="space-y-4">
       <div className="flex items-center gap-2">
         <ArrowLeftRight className="h-5 w-5 text-primary" />
         <h1 className="text-lg font-semibold">Transferências ignoradas</h1>

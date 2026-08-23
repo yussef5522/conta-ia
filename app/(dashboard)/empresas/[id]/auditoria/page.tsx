@@ -44,7 +44,7 @@ export default async function AuditoriaPage({ params }: PageProps) {
 
   if (!hasAuditView) {
     return (
-      <div className="container max-w-4xl py-8">
+      <div className="py-8">
         <div className="rounded-lg border border-orange-200 bg-orange-50 p-6 dark:border-orange-900/50 dark:bg-orange-950/30">
           <h1 className="text-lg font-semibold text-orange-900 dark:text-orange-100">
             🔒 Acesso restrito

@@ -120,10 +120,10 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
   }, [preview, soPendentes, busca])
 
   return (
-    <div className="mx-auto max-w-4xl space-y-5 p-4 sm:p-6">
+    <div className="space-y-5">
       <div className="flex items-center gap-3">
-        <ShoppingCart className="h-7 w-7 text-[#185FA5]" />
-        <div className="flex-1"><h1 className="text-xl font-semibold text-slate-900">Vendas (Suitable)</h1><p className="text-sm text-slate-500">Mapeia uma vez (vale sempre); processa o dia; a venda baixa o estoque.</p></div>
+        <ShoppingCart className="h-5 w-5 text-[#185FA5]" />
+        <div className="flex-1"><h1 className="text-base font-semibold text-slate-900">Vendas (Suitable)</h1><p className="text-xs text-slate-400">Mapeia uma vez (vale sempre); processa o dia; a venda baixa o estoque.</p></div>
       </div>
 
       {/* abas */}
@@ -136,15 +136,15 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
       {aba === 'processados' ? (
         <Card><CardContent className="p-0">
           {processados.length === 0 ? <p className="p-6 text-center text-sm text-slate-500">Nenhum dia processado ainda.</p> : (
-            <table className="w-full text-sm">
-              <thead><tr className="border-b border-slate-100 text-left text-xs text-slate-400"><th className="p-3 font-medium">Dia</th><th className="p-3 text-right font-medium">Baixados</th><th className="p-3 text-right font-medium">Valor</th><th className="p-3 text-right font-medium">Pendentes</th><th className="p-3"></th></tr></thead>
+            <table className="density-normal w-full">
+              <thead><tr className="border-b border-slate-100 text-left text-[11px] uppercase tracking-wide text-slate-400"><th className="px-3 py-2 font-medium">Dia</th><th className="px-3 py-2 text-right font-medium">Baixados</th><th className="px-3 py-2 text-right font-medium">Valor</th><th className="px-3 py-2 text-right font-medium">Pendentes</th><th className="px-3 py-2"></th></tr></thead>
               <tbody>{processados.map((d) => (
                 <tr key={d.data} className="border-b border-slate-50 last:border-0">
-                  <td className="p-3 font-medium text-slate-800">{fmtDia(d.data)}</td>
-                  <td className="p-3 text-right tabular-nums text-slate-700">{d.baixados}</td>
-                  <td className="p-3 text-right tabular-nums text-slate-900">{brl(d.valorBaixado)}</td>
-                  <td className={`p-3 text-right tabular-nums ${d.pendentes > 0 ? 'text-amber-600' : 'text-slate-400'}`}>{d.pendentes}</td>
-                  <td className="p-3 text-right"><button onClick={() => reprocessar(d.data)} className="inline-flex items-center gap-1 text-xs text-[#185FA5] hover:underline"><RefreshCw className="h-3 w-3" /> reprocessar</button></td>
+                  <td className="px-3 py-0 text-[13px] font-medium text-slate-800">{fmtDia(d.data)}</td>
+                  <td className="px-3 py-0 text-[13px] text-right tabular-nums text-slate-700">{d.baixados}</td>
+                  <td className="px-3 py-0 text-[13px] text-right tabular-nums text-slate-900">{brl(d.valorBaixado)}</td>
+                  <td className={`px-3 py-0 text-[13px] text-right tabular-nums ${d.pendentes > 0 ? 'text-amber-600' : 'text-slate-400'}`}>{d.pendentes}</td>
+                  <td className="px-3 py-0 text-[13px] text-right"><button onClick={() => reprocessar(d.data)} className="inline-flex items-center gap-1 text-xs text-[#185FA5] hover:underline"><RefreshCw className="h-3 w-3" /> reprocessar</button></td>
                 </tr>
               ))}</tbody>
             </table>
@@ -200,18 +200,18 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
               </div>
 
               <Card><CardContent className="p-0">
-                <table className="w-full text-sm">
-                  <thead><tr className="border-b border-slate-100 text-left text-xs text-slate-400"><th className="w-8 p-3"></th><th className="p-3 font-medium">Produto (Suitable)</th><th className="p-3 text-right font-medium">Qtd</th><th className="p-3 font-medium">Destino no estoque</th></tr></thead>
+                <table className="density-normal w-full">
+                  <thead><tr className="border-b border-slate-100 text-left text-[11px] uppercase tracking-wide text-slate-400"><th className="w-8 px-3 py-2"></th><th className="px-3 py-2 font-medium">Produto (Suitable)</th><th className="px-3 py-2 text-right font-medium">Qtd</th><th className="px-3 py-2 font-medium">Destino no estoque</th></tr></thead>
                   <tbody>
                     {linhasFiltradas.map((l) => {
                       const emEdicao = editando.has(l.produto)
                       const marcado = l.mapeado && !desmarcados.has(l.produto)
                       return (
                         <tr key={l.produto} className={`border-b border-slate-50 last:border-0 ${!l.mapeado ? 'bg-amber-50/30' : ''}`}>
-                          <td className="p-3">{l.mapeado ? <input type="checkbox" checked={marcado} onChange={() => setDesmarcados((s) => { const n = new Set(s); n.has(l.produto) ? n.delete(l.produto) : n.add(l.produto); return n })} className="h-4 w-4 accent-[#185FA5]" /> : null}</td>
-                          <td className="p-3 font-medium text-slate-800">{l.produto}</td>
-                          <td className="p-3 text-right tabular-nums text-slate-600">{l.quantidade}</td>
-                          <td className="p-3">
+                          <td className="px-3 py-0 text-[13px]">{l.mapeado ? <input type="checkbox" checked={marcado} onChange={() => setDesmarcados((s) => { const n = new Set(s); n.has(l.produto) ? n.delete(l.produto) : n.add(l.produto); return n })} className="h-4 w-4 accent-[#185FA5]" /> : null}</td>
+                          <td className="px-3 py-0 text-[13px] font-medium text-slate-800">{l.produto}</td>
+                          <td className="px-3 py-0 text-[13px] text-right tabular-nums text-slate-600">{l.quantidade}</td>
+                          <td className="px-3 py-0 text-[13px]">
                             {l.mapeado && !emEdicao ? (
                               <div className="flex items-center gap-2">
                                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700"><Check className="h-3.5 w-3.5" /> {l.alvoNome}</span>
@@ -299,11 +299,11 @@ function LancamentoManual({ id, onProcessado }: { id: string; onProcessado: () =
       <div className="relative"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="buscar produto vendável…" className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm" /></div>
       <Card><CardContent className="p-0">
         {vend.length === 0 ? <p className="p-6 text-center text-sm text-slate-500">Nenhum vendável ainda. Crie fichas de produto final ou itens de revenda.</p> : (
-          <table className="w-full text-sm"><tbody>
+          <table className="density-normal w-full"><tbody>
             {filtrados.map((v) => (
               <tr key={v.alvoId} className="border-b border-slate-50 last:border-0">
-                <td className="p-3 text-slate-800">{v.nome} <span className="text-[11px] text-slate-400">{v.alvoTipo === 'FICHA' ? 'produto final' : 'revenda'}</span></td>
-                <td className="p-3 text-right"><input value={qtd[v.alvoId] ?? ''} onChange={(e) => setQtd((q) => ({ ...q, [v.alvoId]: e.target.value }))} inputMode="decimal" placeholder="0" className="w-20 rounded-lg border border-slate-300 py-1.5 px-2 text-right text-sm tabular-nums" /></td>
+                <td className="px-3 py-0 text-[13px] text-slate-800">{v.nome} <span className="text-[11px] text-slate-400">{v.alvoTipo === 'FICHA' ? 'produto final' : 'revenda'}</span></td>
+                <td className="px-3 py-0 text-[13px] text-right"><input value={qtd[v.alvoId] ?? ''} onChange={(e) => setQtd((q) => ({ ...q, [v.alvoId]: e.target.value }))} inputMode="decimal" placeholder="0" className="w-20 rounded-lg border border-slate-300 py-1.5 px-2 text-right text-sm tabular-nums" /></td>
               </tr>
             ))}
           </tbody></table>

@@ -38,10 +38,10 @@ export default function CatalogoPage({ params }: { params: Promise<{ id: string 
   if (itens === null) return <div className="p-6 text-sm text-slate-500">Não consegui carregar o catálogo.</div>
 
   return (
-    <div className="mx-auto max-w-4xl space-y-5 p-4 sm:p-6">
+    <div className="space-y-5">
       <div className="flex items-center gap-3">
-        <Package className="h-7 w-7 text-[#185FA5]" />
-        <div className="flex-1"><h1 className="text-xl font-semibold text-slate-900">Catálogo de itens</h1><p className="text-sm text-slate-500">Todos os itens do estoque (inclusive os zerados). Item novo nasce sem saldo — o saldo vem de nota, produção ou contagem.</p></div>
+        <Package className="h-5 w-5 text-[#185FA5]" />
+        <div className="flex-1"><h1 className="text-base font-semibold text-slate-900">Catálogo de itens</h1><p className="text-xs text-slate-400">Todos os itens do estoque (inclusive os zerados). Item novo nasce sem saldo — o saldo vem de nota, produção ou contagem.</p></div>
         <button onClick={() => setNovo((v) => !v)} className="inline-flex items-center gap-1.5 rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-white hover:bg-[#0F4A8C]"><Plus className="h-4 w-4" /> Novo item</button>
       </div>
 
@@ -54,20 +54,20 @@ export default function CatalogoPage({ params }: { params: Promise<{ id: string 
       </div>
 
       <Card><CardContent className="p-0">
-        <table className="w-full text-sm">
-          <thead><tr className="border-b border-slate-100 text-left text-xs text-slate-400">
-            <th className="p-3 font-medium">Item</th><th className="p-3 font-medium">Categoria</th>
-            <th className="p-3 text-right font-medium">Saldo</th><th className="p-3 text-right font-medium">Custo médio</th><th className="p-3 text-right font-medium">Mín/Máx</th><th className="p-3"></th>
+        <table className="density-normal w-full">
+          <thead><tr className="border-b border-slate-100 text-left text-[11px] uppercase tracking-wide text-slate-400">
+            <th className="px-3 py-2 font-medium">Item</th><th className="px-3 py-2 font-medium">Categoria</th>
+            <th className="px-3 py-2 text-right font-medium">Saldo</th><th className="px-3 py-2 text-right font-medium">Custo médio</th><th className="px-3 py-2 text-right font-medium">Mín/Máx</th><th className="px-3 py-2"></th>
           </tr></thead>
           <tbody>
             {filtrados.map((i) => (
               <tr key={i.id} className={`border-b border-slate-50 last:border-0 ${!i.ativo ? 'opacity-50' : ''}`}>
-                <td className="p-3">{i.produzido ? <span className="font-medium text-slate-800">{i.nome}</span> : <NomeEditavel companyId={id} itemId={i.id} nome={i.nome} comLink onSalvo={carregar} />}</td>
-                <td className="p-3 text-slate-500">{i.categoriaLabel}{i.produzido && <span className="ml-1 text-[10px] text-slate-400">via ficha</span>}</td>
-                <td className={`p-3 text-right tabular-nums ${i.saldo < 0 ? 'text-rose-600' : i.saldo === 0 ? 'text-slate-400' : 'text-slate-800'}`}>{num(i.saldo)} {i.unidadeControle}</td>
-                <td className="p-3 text-right tabular-nums text-slate-600">{brl(i.custoMedio)}</td>
-                <td className="p-3 text-right tabular-nums text-slate-400">{i.estoqueMin != null ? `${num(i.estoqueMin)}${i.estoqueMax != null ? '–' + num(i.estoqueMax) : ''}` : '—'}</td>
-                <td className="p-3 text-right">
+                <td className="px-3 py-0 text-[13px]">{i.produzido ? <span className="font-medium text-slate-800">{i.nome}</span> : <NomeEditavel companyId={id} itemId={i.id} nome={i.nome} comLink onSalvo={carregar} />}</td>
+                <td className="px-3 py-0 text-[13px] text-slate-500">{i.categoriaLabel}{i.produzido && <span className="ml-1 text-[10px] text-slate-400">via ficha</span>}</td>
+                <td className={`px-3 py-0 text-[13px] text-right tabular-nums ${i.saldo < 0 ? 'text-rose-600' : i.saldo === 0 ? 'text-slate-400' : 'text-slate-800'}`}>{num(i.saldo)} {i.unidadeControle}</td>
+                <td className="px-3 py-0 text-[13px] text-right tabular-nums text-slate-600">{brl(i.custoMedio)}</td>
+                <td className="px-3 py-0 text-[13px] text-right tabular-nums text-slate-400">{i.estoqueMin != null ? `${num(i.estoqueMin)}${i.estoqueMax != null ? '–' + num(i.estoqueMax) : ''}` : '—'}</td>
+                <td className="px-3 py-0 text-[13px] text-right">
                   {i.ativo ? <button onClick={() => setAtivo(i.id, false)} className="inline-flex items-center gap-1 text-xs text-slate-400 hover:text-rose-500" title="desativar"><Ban className="h-3.5 w-3.5" /></button>
                     : <button onClick={() => setAtivo(i.id, true)} className="inline-flex items-center gap-1 text-xs text-[#185FA5] hover:underline"><RotateCcw className="h-3.5 w-3.5" /> reativar</button>}
                 </td>

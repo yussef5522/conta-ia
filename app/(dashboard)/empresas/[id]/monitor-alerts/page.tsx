@@ -66,7 +66,7 @@ export default function MonitorAlertsPage() {
   }
 
   return (
-    <div className="container mx-auto max-w-3xl space-y-4 px-4 py-6">
+    <div className="space-y-4">
       <Link href={`/empresas/${empresaId}`} className="flex items-center gap-2 text-sm text-slate-600 hover:text-slate-900">
         <ArrowLeft className="h-4 w-4" /> Voltar
       </Link>

@@ -25,11 +25,11 @@ export default function PerdasPage({ params }: { params: Promise<{ id: string }>
   useEffect(() => { carregar() }, [id, de, ate]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="mx-auto max-w-3xl space-y-5 p-4 sm:p-6">
+    <div className="space-y-5">
       <a href={`/empresas/${id}/estoque/posicao`} className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700"><ArrowLeft className="h-3.5 w-3.5" /> voltar pra posição</a>
       <div className="flex items-center gap-3">
-        <TrendingDown className="h-7 w-7 text-[#185FA5]" />
-        <div className="flex-1"><h1 className="text-xl font-semibold text-slate-900">Perdas & saídas</h1><p className="text-sm text-slate-500">O que saiu sem ser venda — por motivo e por item. Alimenta o Real vs Teórico.</p></div>
+        <TrendingDown className="h-5 w-5 text-[#185FA5]" />
+        <div className="flex-1"><h1 className="text-base font-semibold text-slate-900">Perdas & saídas</h1><p className="text-xs text-slate-400">O que saiu sem ser venda — por motivo e por item. Alimenta o Real vs Teórico.</p></div>
         <button onClick={() => setSaida(true)} className="inline-flex items-center gap-2 rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-white hover:bg-[#0F4A8C]"><PackageMinus className="h-4 w-4" /> Registrar saída</button>
       </div>
       {saida && <SaidaModal companyId={id} onClose={() => setSaida(false)} onSalvo={() => { setSaida(false); carregar() }} />}
@@ -51,12 +51,12 @@ export default function PerdasPage({ params }: { params: Promise<{ id: string }>
 
             <div>
               <h2 className="mb-2 text-sm font-semibold text-slate-900">Por motivo</h2>
-              <Card><CardContent className="p-0"><table className="w-full text-sm"><tbody>
+              <Card><CardContent className="p-0"><table className="density-normal w-full"><tbody>
                 {rel.porMotivo.map((m) => (
                   <tr key={m.motivo} className="border-b border-slate-50 last:border-0">
-                    <td className="p-3"><span className="font-medium text-slate-800">{m.label}</span> <span className="text-[11px] text-slate-400">{m.tipo === 'PERDA' ? 'perda' : 'uso interno'}</span></td>
-                    <td className="p-3 text-right tabular-nums text-slate-500">{num(m.quantidade)} · {m.n}×</td>
-                    <td className="p-3 text-right font-medium tabular-nums text-rose-600">{brl(m.valor)}</td>
+                    <td className="px-3 py-0 text-[13px]"><span className="font-medium text-slate-800">{m.label}</span> <span className="text-[11px] text-slate-400">{m.tipo === 'PERDA' ? 'perda' : 'uso interno'}</span></td>
+                    <td className="px-3 py-0 text-[13px] text-right tabular-nums text-slate-500">{num(m.quantidade)} · {m.n}×</td>
+                    <td className="px-3 py-0 text-[13px] text-right font-medium tabular-nums text-rose-600">{brl(m.valor)}</td>
                   </tr>
                 ))}
               </tbody></table></CardContent></Card>
@@ -64,12 +64,12 @@ export default function PerdasPage({ params }: { params: Promise<{ id: string }>
 
             <div>
               <h2 className="mb-2 text-sm font-semibold text-slate-900">Por item</h2>
-              <Card><CardContent className="p-0"><table className="w-full text-sm"><tbody>
+              <Card><CardContent className="p-0"><table className="density-normal w-full"><tbody>
                 {rel.porItem.map((i) => (
                   <tr key={i.itemId} className="border-b border-slate-50 last:border-0">
-                    <td className="p-3 font-medium text-slate-800">{i.nome}</td>
-                    <td className="p-3 text-right tabular-nums text-slate-500">{num(i.quantidade)} · {i.n}×</td>
-                    <td className="p-3 text-right font-medium tabular-nums text-rose-600">{brl(i.valor)}</td>
+                    <td className="px-3 py-0 text-[13px] font-medium text-slate-800">{i.nome}</td>
+                    <td className="px-3 py-0 text-[13px] text-right tabular-nums text-slate-500">{num(i.quantidade)} · {i.n}×</td>
+                    <td className="px-3 py-0 text-[13px] text-right font-medium tabular-nums text-rose-600">{brl(i.valor)}</td>
                   </tr>
                 ))}
               </tbody></table></CardContent></Card>

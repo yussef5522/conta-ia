@@ -26,10 +26,10 @@ export default function FichasPage({ params }: { params: Promise<{ id: string }>
   if (fichas === null) return <div className="p-6 text-sm text-slate-500">Não consegui carregar as fichas.</div>
 
   return (
-    <div className="mx-auto max-w-4xl space-y-5 p-4 sm:p-6">
+    <div className="space-y-5">
       <div className="flex items-center gap-3">
-        <ClipboardList className="h-7 w-7 text-[#185FA5]" />
-        <div className="flex-1"><h1 className="text-xl font-semibold text-slate-900">Fichas técnicas</h1><p className="text-sm text-slate-500">A receita de cada produto: componentes, lote base e custo. A produção (em breve) usa isto.</p></div>
+        <ClipboardList className="h-5 w-5 text-[#185FA5]" />
+        <div className="flex-1"><h1 className="text-base font-semibold text-slate-900">Fichas técnicas</h1><p className="text-xs text-slate-400">A receita de cada produto: componentes, lote base e custo. A produção (em breve) usa isto.</p></div>
         <a href={`/empresas/${id}/estoque/producao/cadastros`} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"><Settings className="h-4 w-4" /> Setores e colaboradores</a>
         <a href={`/empresas/${id}/estoque/fichas/nova`} className="inline-flex items-center gap-1.5 rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-white hover:bg-[#0F4A8C]"><Plus className="h-4 w-4" /> Nova ficha</a>
       </div>

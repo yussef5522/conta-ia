@@ -130,7 +130,7 @@ export default function VendasPage({ params }: { params: Promise<{ id: string }>
   })()
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto p-4">
+    <div className="space-y-6">
       <div>
         <h1 className="text-xl font-medium">Vendas</h1>
         <p className="text-sm text-muted-foreground">Quando a venda aconteceu (não quando o dinheiro chegou). Tudo <span className="text-sky-600">~estimado</span> pelo extrato por enquanto.</p>

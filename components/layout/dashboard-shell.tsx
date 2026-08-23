@@ -70,8 +70,15 @@ export function DashboardShell({ userName, userEmail, devToolsEnabled = false, c
           </Sheet>
 
           {/* CONTEÚDO */}
+          {/* Passe de densidade (23/08/2026) — o molde. Era max-w-6xl (1152px),
+           * que somado ao max-w próprio das telas dava 60-70% de aproveitamento
+           * no notebook. Agora largura total com teto ALTO (1600px): no notebook
+           * é largura total de fato; o teto só morde em monitor ultrawide, pra
+           * tabela não esticar a 2500px e virar linha ilegível.
+           * TELA DE DADOS = largura total; formulário/documento mantém max-w
+           * próprio (certificado, ficha nova, recibo, etiqueta Zebra). */}
           <main className="flex-1 overflow-y-auto bg-zinc-50">
-            <div className="mx-auto max-w-6xl px-4 py-6 lg:px-6 lg:py-8">{children}</div>
+            <div className="mx-auto max-w-[1600px] px-4 py-6 lg:px-6 lg:py-8">{children}</div>
           </main>
         </div>
       </div>
