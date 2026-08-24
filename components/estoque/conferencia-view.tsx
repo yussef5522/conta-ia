@@ -4,9 +4,9 @@
 // (modo teste, dado ilustrativo) E a nota real (read-only enquanto o CONFIRMAR não
 // liga). Mobile-first + desktop. Foto por webcam (desktop) OU câmera (celular).
 
-import { Fragment, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { Check, Search, Camera, AlertTriangle, FlaskConical, Store, X, ChevronRight, Eye, Loader2, PackageCheck, Keyboard } from 'lucide-react'
-import { sugerirFatorConversao } from '@/lib/stock/unidade-fator'
+import { sugerirFator, placeholderFator } from '@/lib/stock/unidade-fator'
 import { ItensManuaisEditor } from './itens-manuais-editor'
 
 export type Unidade = 'KG' | 'UN' | 'LT'
@@ -185,17 +185,27 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
                             <Check className="h-3 w-3" /> {e.mapeado.nome}
                           </button>
                           {/* fator inline — só quando a unidade da nota difere da de controle */}
-                          {precisaFator && (
-                            <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] ${e.mapeado.fatorConversao <= 1 ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-500'}`}>
-                              1 {it.uCom} =
-                              <input type="number" inputMode="decimal" value={e.mapeado.fatorConversao} onChange={(ev) => setF(Number(ev.target.value))} className="w-12 rounded border border-slate-300 px-1 py-0 text-right tabular-nums" />
-                              {e.mapeado.unidadeControle}
-                              {it.fatorNota && it.fatorNota !== e.mapeado.fatorConversao && (
-                                <button onClick={() => setF(it.fatorNota!)} className="rounded-full border border-sky-300 bg-sky-50 px-1.5 text-[10px] font-medium text-sky-700">nota diz {it.fatorNota}</button>
-                              )}
-                              {e.mapeado.fatorConversao <= 1 && <AlertTriangle className="h-3 w-3" />}
-                            </span>
-                          )}
+                          {precisaFator && (() => {
+                            // a sugestão é da unidade DESTE item (cheddar em KG = 18,16; em UN = 8)
+                            const sug = sugerirFator({ xProd: it.xProd, unidadeControle: e.mapeado!.unidadeControle, uCom: it.uCom, fatorNota: it.fatorNota, vUnCom: it.vUnCom })
+                            const difere = sug.fator != null && Math.abs(sug.fator - e.mapeado!.fatorConversao) > 0.0001
+                            return (
+                              <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] ${e.mapeado!.fatorConversao <= 1 ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-500'}`}>
+                                1 {it.uCom} =
+                                <input type="number" inputMode="decimal" value={e.mapeado!.fatorConversao || ''} placeholder={placeholderFator(e.mapeado!.unidadeControle, it.uCom)}
+                                  onChange={(ev) => setF(Number(ev.target.value))} className="w-16 rounded border border-slate-300 px-1 py-0 text-right tabular-nums" />
+                                {e.mapeado!.unidadeControle}
+                                {difere && (
+                                  <button onClick={() => setF(sug.fator!)} title={sug.explicacao ?? ''}
+                                    className="rounded-full border border-sky-300 bg-sky-50 px-1.5 text-[10px] font-medium text-sky-700">
+                                    {sug.origem === 'nota' ? 'nota diz' : 'sugestão'} {sug.fator}
+                                  </button>
+                                )}
+                                {sug.explicacao && <span className="text-slate-400">{sug.explicacao}</span>}
+                                {e.mapeado!.fatorConversao <= 1 && <AlertTriangle className="h-3 w-3" />}
+                              </span>
+                            )
+                          })()}
                         </div>
                       ) : (
                         <button onClick={() => setSheetItem(it)} className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-2.5 py-1 text-[12px] font-medium text-amber-800 hover:bg-amber-100">
@@ -348,12 +358,19 @@ function MapearSheet({ item, existentes, onClose, onEscolher }: {
   const [nome, setNome] = useState(item.sugestao.nome)
   const [unidade, setUnidade] = useState<Unidade>(item.sugestao.unidade ?? 'UN')
   const [categoria, setCategoria] = useState<Categoria>(item.sugestao.categoria)
-  // ORDEM: fator da NOTA (qTrib/uTrib) → sugestão pelo nome (12UN) → 1 (pergunta). Nunca assume em silêncio.
-  const fatorSugerido = item.fatorNota ?? sugerirFatorConversao(item.xProd)
-  const [fator, setFator] = useState(fatorSugerido ?? 1)
+  // ORDEM: qTrib/uTrib da nota → COMPOSTO ("2,27 KG CX/08 PC") → pack simples ("12UN") →
+  // perguntar. A sugestão DEPENDE da unidade de controle: a mesma caixa de cheddar vale
+  // 18,16 se o controle é KG e 8 se é UN — por isso ela é recalculada quando a unidade
+  // muda, e nunca é decidida em silêncio.
+  const sugestaoPara = (un: string) => sugerirFator({ xProd: item.xProd, unidadeControle: un, uCom: item.uCom, fatorNota: item.fatorNota, vUnCom: item.vUnCom })
+  const sugestao = useMemo(() => sugestaoPara(unidade), [unidade]) // eslint-disable-line react-hooks/exhaustive-deps
+  const [fator, setFator] = useState(sugestao.fator ?? 1)
+  // trocar a unidade re-decide a conversão (é outra pergunta, outra resposta)
+  useEffect(() => { setFator(sugestaoPara(unidade).fator ?? 1) }, [unidade]) // eslint-disable-line react-hooks/exhaustive-deps
   // item existente selecionado que precisa de conversão (unidade da nota ≠ unidade do item)
   const [selExistente, setSelExistente] = useState<ItemExistente | null>(null)
-  const [fatorExist, setFatorExist] = useState(fatorSugerido ?? 1)
+  const [sugExist, setSugExist] = useState<ReturnType<typeof sugerirFator> | null>(null)
+  const [fatorExist, setFatorExist] = useState(1)
   const filtrados = existentes.filter((e) => e.nome.toLowerCase().includes(busca.toLowerCase()))
   const difUnidade = item.uCom.toUpperCase() !== unidade
 
@@ -373,7 +390,7 @@ function MapearSheet({ item, existentes, onClose, onEscolher }: {
             {!selExistente && filtrados.map((e) => {
               const dif = item.uCom.toUpperCase() !== e.unidadeControle.toUpperCase()
               return (
-                <button key={e.id} onClick={() => (dif ? (setSelExistente(e), setFatorExist(fatorSugerido ?? 1)) : onEscolher({ itemId: e.id, nome: e.nome, unidadeControle: e.unidadeControle as Unidade, categoria: e.categoria as Categoria, fatorConversao: 1, novo: false }))} className="flex w-full items-center justify-between rounded-lg border border-slate-200 px-3 py-2.5 text-sm active:bg-slate-50">
+                <button key={e.id} onClick={() => (dif ? (setSelExistente(e), (() => { const sg = sugestaoPara(e.unidadeControle); setSugExist(sg); setFatorExist(sg.fator ?? 1) })()) : onEscolher({ itemId: e.id, nome: e.nome, unidadeControle: e.unidadeControle as Unidade, categoria: e.categoria as Categoria, fatorConversao: 1, novo: false }))} className="flex w-full items-center justify-between rounded-lg border border-slate-200 px-3 py-2.5 text-sm active:bg-slate-50">
                   <span className="font-medium text-slate-800">{e.nome}</span>
                   <span className="text-xs text-slate-400">{e.unidadeControle}{dif && <span className="ml-1 text-amber-600">· converter de {item.uCom}</span>}</span>
                 </button>
@@ -384,7 +401,8 @@ function MapearSheet({ item, existentes, onClose, onEscolher }: {
               <div className="rounded-lg border border-sky-200 bg-sky-50 p-3">
                 <p className="mb-2 text-sm font-medium text-slate-800">{selExistente.nome} <span className="text-xs text-slate-400">({selExistente.unidadeControle})</span></p>
                 <label className="text-xs font-medium text-sky-800">A nota veio em <b>{item.uCom}</b>, você controla em <b>{selExistente.unidadeControle}</b>. Quantas {selExistente.unidadeControle} tem 1 {item.uCom}?</label>
-                <input type="number" inputMode="decimal" value={fatorExist} onChange={(ev) => setFatorExist(Number(ev.target.value))} className="mt-1 block w-28 rounded-lg border border-sky-300 px-3 py-2 text-base tabular-nums" />
+                <input type="number" inputMode="decimal" value={fatorExist || ''} placeholder={placeholderFator(selExistente.unidadeControle, item.uCom)} onChange={(ev) => setFatorExist(Number(ev.target.value))} className="mt-1 block w-full rounded-lg border border-sky-300 px-3 py-2 text-base tabular-nums" />
+                {sugExist?.explicacao && <p className="mt-1 rounded bg-white/70 px-2 py-1 text-[11px] font-medium text-sky-800">sugestão: {sugExist.explicacao}</p>}
                 <p className="mt-1 text-[11px] text-sky-600">1 {item.uCom} = {fatorExist} {selExistente.unidadeControle} · {item.qCom} {item.uCom} = {item.qCom * fatorExist} {selExistente.unidadeControle} · {brl(item.vUnCom / (fatorExist || 1))}/{selExistente.unidadeControle}</p>
                 <div className="mt-3 flex gap-2">
                   <button onClick={() => setSelExistente(null)} className="rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-600">voltar</button>
@@ -404,7 +422,8 @@ function MapearSheet({ item, existentes, onClose, onEscolher }: {
             {difUnidade && (
               <div className="rounded-lg bg-sky-50 p-3">
                 <label className="text-xs font-medium text-sky-800">A nota veio em <b>{item.uCom}</b>, você controla em <b>{unidade}</b>. Quantas {unidade} tem 1 {item.uCom}?</label>
-                <input type="number" inputMode="decimal" value={fator} onChange={(e) => setFator(Number(e.target.value))} className="mt-1 w-28 rounded-lg border border-sky-300 px-3 py-2 text-base tabular-nums" />
+                <input type="number" inputMode="decimal" value={fator || ''} placeholder={placeholderFator(unidade, item.uCom)} onChange={(e) => setFator(Number(e.target.value))} className="mt-1 w-full rounded-lg border border-sky-300 px-3 py-2 text-base tabular-nums" />
+                {sugestao.explicacao && <p className="mt-1 rounded bg-white/70 px-2 py-1 text-[11px] font-medium text-sky-800">sugestão: {sugestao.explicacao}</p>}
                 <p className="mt-1 text-[11px] text-sky-600">1 {item.uCom} = {fator} {unidade} · {item.qCom} {item.uCom} = {item.qCom * fator} {unidade}</p>
               </div>
             )}
