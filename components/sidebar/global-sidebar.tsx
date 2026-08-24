@@ -326,6 +326,13 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
               onClick={onNavigate}
             />
             <SidebarItem
+              icon={Scale}
+              label="Real vs Teórico"
+              href={`/empresas/${currentEmpresaId}/estoque/real-vs-teorico`}
+              isActive={/^\/empresas\/[^/]+\/estoque\/real-vs-teorico/.test(pathname)}
+              onClick={onNavigate}
+            />
+            <SidebarItem
               icon={ClipboardList}
               label="Fichas técnicas"
               href={`/empresas/${currentEmpresaId}/estoque/fichas`}
