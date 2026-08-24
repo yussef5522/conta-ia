@@ -10,7 +10,7 @@ import { ConferenciaView, type ConferenciaData, type ItemExistente } from '@/com
 
 export default function ConferenciaRealPage({ params }: { params: Promise<{ id: string; nfeId: string }> }) {
   const { id, nfeId } = use(params)
-  const [data, setData] = useState<{ conference: ConferenciaData; itensExistentes: ItemExistente[] } | null | undefined>(undefined)
+  const [data, setData] = useState<{ conference: ConferenciaData; itensExistentes: ItemExistente[]; podeEnviarBoletos?: boolean } | null | undefined>(undefined)
 
   useEffect(() => {
     fetch(`/api/empresas/${id}/estoque/recebimentos/${nfeId}`).then((r) => r.json())
@@ -25,7 +25,7 @@ export default function ConferenciaRealPage({ params }: { params: Promise<{ id: 
       {/* passe de densidade: o link era `mx-auto max-w-md` — ficava boiando no
        * meio da tela agora que a conferência é largura total */}
       <a href={`/empresas/${id}/estoque/recebimentos`} className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700"><ArrowLeft className="h-3.5 w-3.5" /> voltar pra fila</a>
-      <ConferenciaView data={data.conference} itensExistentes={data.itensExistentes} companyId={id} nfeId={nfeId} podeConfirmar />
+      <ConferenciaView data={{ ...data.conference, podeEnviarBoletos: data.podeEnviarBoletos }} itensExistentes={data.itensExistentes} companyId={id} nfeId={nfeId} podeConfirmar />
     </div>
   )
 }

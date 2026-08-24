@@ -333,6 +333,13 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
               onClick={onNavigate}
             />
             <SidebarItem
+              icon={Receipt}
+              label="Boletos p/ pagar"
+              href={`/empresas/${currentEmpresaId}/estoque/contas-a-pagar`}
+              isActive={/^\/empresas\/[^/]+\/estoque\/contas-a-pagar/.test(pathname)}
+              onClick={onNavigate}
+            />
+            <SidebarItem
               icon={ClipboardList}
               label="Fichas técnicas"
               href={`/empresas/${currentEmpresaId}/estoque/fichas`}

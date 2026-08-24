@@ -5,7 +5,7 @@
 // liga). Mobile-first + desktop. Foto por webcam (desktop) OU câmera (celular).
 
 import { Fragment, useEffect, useMemo, useState } from 'react'
-import { Check, Search, Camera, AlertTriangle, FlaskConical, Store, X, ChevronRight, Eye, Loader2, PackageCheck, Keyboard } from 'lucide-react'
+import { Check, Search, Camera, AlertTriangle, FlaskConical, Store, X, ChevronRight, Eye, Loader2, PackageCheck, Keyboard, Receipt } from 'lucide-react'
 import { sugerirFator, placeholderFator } from '@/lib/stock/unidade-fator'
 import { ItensManuaisEditor } from './itens-manuais-editor'
 
@@ -21,12 +21,19 @@ export interface ConfItem {
   sugestao: { nome: string; unidade: Unidade | null; categoria: Categoria }
   uTrib?: string; fatorNota?: number | null // dupla unidade da NF-e (o fator vem da nota)
 }
+export interface Duplicata { nDup: string | null; valor: number; dVenc: string | null; jaEnviada: boolean }
 export interface ConferenciaData {
   modoTeste: boolean
   fornecedor: { nome: string; cnpj: string; uf: string; jaCadastrado: boolean }
   dataEmissao: string | null
   valorNota: number | null
   itens: ConfItem[]
+  /** PONTE 1 — boletos da nota (podem não existir: nota sem duplicata é compra à vista) */
+  duplicatas?: Duplicata[]
+  /** o fornecedor já existe no FINANCEIRO? (o do estoque é `fornecedor.jaCadastrado`) */
+  fornecedorNoFinanceiro?: boolean
+  /** o usuário pode criar conta a pagar? (stock.manage) */
+  podeEnviarBoletos?: boolean
 }
 export interface ItemExistente { id: string; nome: string; unidadeControle: string; categoria: string }
 
@@ -73,6 +80,10 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
   const [recibo, setRecibo] = useState<any | null>(null)
   // nota só-resumo: o dono opta por digitar os itens do DANFE de papel
   const [digitando, setDigitando] = useState(false)
+  // PONTE 1 — boletos: marcados por default (o dono VÊ e confirma; nada entra às cegas)
+  const dupsPendentes = (data.duplicatas ?? []).filter((d) => !d.jaEnviada)
+  const [boletos, setBoletos] = useState<string[]>(() => dupsPendentes.map((d) => d.nDup ?? ''))
+  const [cadastrarForn, setCadastrarForn] = useState(true)
 
   const totalMapeado = useMemo(() => data.itens.length > 0 && data.itens.every((it) => estado[it.nfeItemId]?.mapeado), [data.itens, estado])
   const divergencias = useMemo(() => data.itens.filter((it) => { const e = estado[it.nfeItemId]; return e && Math.abs(e.qtdRecebida - it.qCom * (e.mapeado?.fatorConversao ?? 1)) > 0.0001 }).length, [data.itens, estado])
@@ -88,7 +99,13 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
       })
       const r = await fetch(`/api/empresas/${companyId}/estoque/recebimentos/${nfeId}/confirmar`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fornecedor: { cnpj: data.fornecedor.cnpj, nome: data.fornecedor.nome, uf: data.fornecedor.uf }, itens }),
+        body: JSON.stringify({
+          fornecedor: { cnpj: data.fornecedor.cnpj, nome: data.fornecedor.nome, uf: data.fornecedor.uf },
+          itens,
+          enviarBoletos: boletos.length > 0,
+          boletosSelecionados: boletos,
+          cadastrarFornecedor: cadastrarForn,
+        }),
       })
       const j = await r.json().catch(() => ({ erro: 'Resposta inválida' }))
       if (!r.ok) { setErro(j.erro ?? 'Erro ao confirmar'); return }
@@ -318,6 +335,78 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
           })}
       </div>
       </>
+      )}
+
+      {/* ===== PONTE 1 — BOLETOS DA NOTA ===== */}
+      {data.itens.length > 0 && dupsPendentes.length > 0 && (
+        <div className="rounded-lg border border-slate-200 bg-white">
+          <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-3 py-2">
+            <Receipt className="h-4 w-4 shrink-0 text-[#185FA5]" />
+            <h3 className="text-sm font-semibold text-slate-900">Boletos da nota ({dupsPendentes.length} {dupsPendentes.length === 1 ? 'parcela' : 'parcelas'})</h3>
+            <p className="hidden flex-1 text-xs text-slate-400 lg:block">
+              {data.podeEnviarBoletos === false
+                ? 'Ficam esperando aprovação de quem cuida do financeiro'
+                : 'Enviar pro Contas a Pagar? Você confirma; nada entra às cegas'}
+            </p>
+          </div>
+
+          {data.podeEnviarBoletos === false ? (
+            <p className="px-3 py-2 text-xs text-slate-500">
+              Você confere a nota e o estoque entra normal — mas criar conta a pagar é do dono.
+              Estas {dupsPendentes.length} parcelas ficam esperando em <b>Estoque → Contas a pagar</b>.
+            </p>
+          ) : (
+            <>
+              <table className="density-normal hidden w-full sm:table">
+                <tbody>
+                  {dupsPendentes.map((d) => {
+                    const k = d.nDup ?? ''
+                    const marcado = boletos.includes(k)
+                    return (
+                      <tr key={k} className="border-b border-slate-50 last:border-b-0">
+                        <td className="w-10 px-3 py-1">
+                          <input type="checkbox" checked={marcado} onChange={() => setBoletos((b) => marcado ? b.filter((x) => x !== k) : [...b, k])} className="h-4 w-4" />
+                        </td>
+                        <td className="px-3 py-1 text-[13px] text-slate-600">parcela {d.nDup ?? '—'}</td>
+                        <td className="px-3 py-1 text-right text-[13px] font-medium tabular-nums text-slate-900">{brl(d.valor)}</td>
+                        <td className="px-3 py-1 text-right text-[13px] tabular-nums text-slate-500">vence {fmtDia(d.dVenc)}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+              <div className="divide-y divide-slate-50 sm:hidden">
+                {dupsPendentes.map((d) => {
+                  const k = d.nDup ?? ''
+                  const marcado = boletos.includes(k)
+                  return (
+                    <label key={k} className="flex items-center gap-3 p-3">
+                      <input type="checkbox" checked={marcado} onChange={() => setBoletos((b) => marcado ? b.filter((x) => x !== k) : [...b, k])} className="h-5 w-5" />
+                      <span className="flex-1 text-sm text-slate-700">parcela {d.nDup ?? '—'} · vence {fmtDia(d.dVenc)}</span>
+                      <span className="text-sm font-semibold tabular-nums text-slate-900">{brl(d.valor)}</span>
+                    </label>
+                  )
+                })}
+              </div>
+
+              {/* fornecedor: o dado vem do XML, assinado pela SEFAZ — cadastro mais limpo que digitação */}
+              {data.fornecedorNoFinanceiro === false && boletos.length > 0 && (
+                <label className="flex items-start gap-2 border-t border-slate-100 bg-amber-50/60 px-3 py-2">
+                  <input type="checkbox" checked={cadastrarForn} onChange={(e) => setCadastrarForn(e.target.checked)} className="mt-0.5 h-4 w-4" />
+                  <span className="text-xs text-amber-900">
+                    <b>{data.fornecedor.nome}</b> ainda não existe no financeiro — cadastrar como fornecedor também?
+                    <span className="block text-[11px] text-amber-700">CNPJ e razão social vêm do XML da nota (dado da SEFAZ). Sem isso a conta a pagar não pode ser criada.</span>
+                  </span>
+                </label>
+              )}
+              <p className="border-t border-slate-100 px-3 py-1.5 text-[11px] text-slate-400">
+                {boletos.length === 0
+                  ? 'Nenhum boleto marcado — nada vai pro Contas a Pagar.'
+                  : `${boletos.length} de ${dupsPendentes.length} marcados · ${brl(dupsPendentes.filter((d) => boletos.includes(d.nDup ?? '')).reduce((s2, d) => s2 + d.valor, 0))} irão pro Contas a Pagar ao confirmar.`}
+              </p>
+            </>
+          )}
+        </div>
       )}
 
       {/* BARRA FIXA de largura total (era bloco `mx-auto max-w-md` = solto no meio

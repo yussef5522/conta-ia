@@ -6,6 +6,8 @@ import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { guardStock } from '@/lib/stock/require-stock'
 import { confirmarConferencia } from '@/lib/stock/confirmar-conferencia'
+import { getAuthContext } from '@/lib/auth/rbac'
+import { enviarParaContasPagar } from '@/lib/stock/ponte-contas-pagar'
 
 interface Params { params: Promise<{ id: string; nfeId: string }> }
 
@@ -31,6 +33,12 @@ const itemSchema = z.object({
 const bodySchema = z.object({
   fornecedor: z.object({ cnpj: z.string(), nome: z.string(), uf: z.string().nullable().optional() }),
   itens: z.array(itemSchema).min(1),
+  // PONTE 1 — bloco "BOLETOS DA NOTA": nada vai pro financeiro sem estes campos.
+  enviarBoletos: z.boolean().optional(),
+  /** nº das duplicatas marcadas (as sugestões só nascem no confirmar); vazio = todas */
+  boletosSelecionados: z.array(z.string()).optional(),
+  /** aceite pra cadastrar o fornecedor no financeiro com o dado do XML */
+  cadastrarFornecedor: z.boolean().optional(),
 })
 
 export async function POST(request: NextRequest, { params }: Params) {
@@ -44,7 +52,31 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   try {
     const r = await confirmarConferencia({ companyId, nfeId, userId: user.sub, fornecedor: parsed.data.fornecedor, itens: parsed.data.itens })
-    return NextResponse.json({ ok: true, resultado: r })
+
+    // PONTE 1 — os boletos que o dono marcou no bloco "BOLETOS DA NOTA" viram conta a
+    // pagar de verdade. Só acontece com aceite EXPLÍCITO e só pra quem tem stock.manage:
+    // o operador de loja confere a nota (o estoque entra normal) mas NÃO cria obrigação
+    // financeira — as parcelas ficam esperando o dono aprovar em /estoque/contas-a-pagar.
+    let ponte: Awaited<ReturnType<typeof enviarParaContasPagar>> | null = null
+    if (parsed.data.enviarBoletos) {
+      const ctx = await getAuthContext(request, companyId)
+      if (ctx.hasPermission('stock.manage')) {
+        // as sugestões acabaram de nascer no confirmarConferencia; a tela marcou por nDup
+        const sugestoes = await prisma.stockPayableSuggestion.findMany({ where: { companyId, nfeId }, select: { id: true, nDup: true } })
+        const marcados = parsed.data.boletosSelecionados
+        const escolhidas = marcados?.length
+          ? sugestoes.filter((x) => marcados.includes(x.nDup ?? '')).map((x) => x.id)
+          : sugestoes.map((x) => x.id)
+        if (escolhidas.length) {
+          ponte = await enviarParaContasPagar({
+            companyId, suggestionIds: escolhidas,
+            cadastrarFornecedores: parsed.data.cadastrarFornecedor ?? true,
+            ctx, userId: user.sub,
+          }, prisma)
+        }
+      }
+    }
+    return NextResponse.json({ ok: true, resultado: r, ponte })
   } catch (e) {
     return NextResponse.json({ erro: (e as Error).message }, { status: 422 })
   }

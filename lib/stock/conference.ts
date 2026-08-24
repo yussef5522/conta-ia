@@ -31,6 +31,13 @@ export interface ConfView {
   valorNota: number | null
   temItens: boolean
   itens: ConfItem[]
+  /** PONTE 1 — as duplicatas (boletos) da nota, pro bloco "BOLETOS DA NOTA".
+   *  Vêm de `stock_nfe_dup` (o dado CRU da NF-e): na hora da conferência as sugestões
+   *  ainda não existem — elas nascem no CONFIRMAR. Por isso a seleção é por `nDup`.
+   *  `jaEnviada` = essa parcela já virou conta a pagar (idempotência à vista). */
+  duplicatas: { nDup: string | null; valor: number; dVenc: string | null; jaEnviada: boolean }[]
+  /** o fornecedor da nota já existe no FINANCEIRO? (≠ `fornecedor.jaCadastrado`, que é o estoque) */
+  fornecedorNoFinanceiro: boolean
 }
 
 const r2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
@@ -85,6 +92,16 @@ export async function buildConferenceView(companyId: string, nfeId: string, db: 
     }
   })
 
+  // duplicatas da nota + se já foram enviadas pro contas a pagar
+  const dups = await db.stockNfeDup.findMany({ where: { companyId, nfeId }, orderBy: { dVenc: 'asc' } })
+  const enviadas = new Set((await db.stockPayableLink.findMany({
+    where: { companyId, origem: 'NFE', refId: nfeId }, select: { nDup: true },
+  })).map((l) => l.nDup))
+  const soDigitos = (x: string | null | undefined) => (x ?? '').replace(/\D/g, '')
+  const fornFin = soDigitos(cnpj)
+    ? (await db.supplier.findMany({ where: { companyId }, select: { cnpj: true } })).some((f) => soDigitos(f.cnpj) === soDigitos(cnpj))
+    : false
+
   return {
     modoTeste: false,
     nfeId: nfe.id,
@@ -94,5 +111,11 @@ export async function buildConferenceView(companyId: string, nfeId: string, db: 
     valorNota: nfe.vNF,
     temItens: itens.length > 0,
     itens,
+    duplicatas: dups.map((d) => ({
+      nDup: d.nDup, valor: d.vDup,
+      dVenc: d.dVenc ? d.dVenc.toISOString() : null,
+      jaEnviada: enviadas.has(d.nDup),
+    })),
+    fornecedorNoFinanceiro: fornFin,
   }
 }

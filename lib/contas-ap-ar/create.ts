@@ -30,6 +30,11 @@ export interface CreateContaInput {
    *  bankAccountId. Se ausente, comportamento clássico: PAYABLE futura
    *  SEM vínculo de conta (bankAccountId zerado pra não criar estado órfão). */
   paymentDate?: Date | null
+  /** Marca de ORIGEM da conta. Default 'MANUAL' (o form do financeiro).
+   *  A ponte do estoque passa 'ESTOQUE_NF' — é o que permite auditar e provar,
+   *  depois, que só aquele fluxo escreveu aqui (juiz F1). Campo já era String
+   *  livre no schema; nenhum ALTER. */
+  origin?: string
 }
 
 export class ContaCreateError extends Error {
@@ -127,7 +132,7 @@ export async function createContaPendente(
         type,
         // Estados
         status: statusEfetivo,
-        origin: 'MANUAL',
+        origin: input.origin ?? 'MANUAL',
         // FKs — bankAccountId só preenchido se lança-já-paga
         bankAccountId: bankAccountIdEfetivo,
         categoryId: input.categoryId ?? null,

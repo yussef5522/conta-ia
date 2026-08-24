@@ -13,6 +13,7 @@ import { checkVendasInvariants } from './vendas/vendas-invariants'
 import { checkSaidaInvariants } from './saida-invariants'
 import { checkContagemInvariants } from './contagem-invariants'
 import { checkNfeInvariants } from './nfe-invariants'
+import { checkPonteInvariants } from './ponte-invariants'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -106,6 +107,9 @@ export async function checkStockInvariants(db: Db, now: Date = new Date()): Prom
   // E10 — nota na fila sem XML completo há > 24h. Olha a tabela do FATO (a nota), não a
   // do PROCESSO (o evento) — foi exatamente o que deixou a Focatto passar 2 dias invisível.
   fails.push(...(await checkNfeInvariants(db, now)))
+  // F1/F2/F3 — a PONTE pro financeiro. O estoque ganhou permissão de escrever em
+  // `transactions`/`suppliers`; o juiz confere TODA linha que ele escreveu lá.
+  fails.push(...(await checkPonteInvariants(db, now)))
 
   return fails
 }

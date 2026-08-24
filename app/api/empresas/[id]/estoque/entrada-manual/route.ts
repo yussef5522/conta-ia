@@ -6,6 +6,8 @@ import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { requireStock } from '@/lib/stock/require-stock'
 import { registrarEntradaManual, listarEntradasManuais, EntradaManualError } from '@/lib/stock/entrada-manual'
+import { getAuthContext } from '@/lib/auth/rbac'
+import { enviarEntradaManual } from '@/lib/stock/ponte-contas-pagar'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -48,7 +50,17 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (!parsed.success) return NextResponse.json({ erro: 'Informe fornecedor, data e ao menos um item.' }, { status: 400 })
   try {
     const r = await registrarEntradaManual({ companyId, userId: auth.userId, userName: auth.userName, ...parsed.data }, prisma)
-    return NextResponse.json({ ok: true, ...r })
+
+    // PONTE 1 — a parcela marcada em "gera parcela?" vira conta a pagar de verdade.
+    // Mesma fronteira da nota: só quem tem stock.manage cria obrigação financeira.
+    let ponte: Awaited<ReturnType<typeof enviarEntradaManual>> | null = null
+    if (parsed.data.payable) {
+      const ctx = await getAuthContext(request, companyId)
+      if (ctx.hasPermission('stock.manage')) {
+        ponte = await enviarEntradaManual({ companyId, entradaId: r.entradaId, cadastrarFornecedor: true, ctx, userId: auth.userId }, prisma)
+      }
+    }
+    return NextResponse.json({ ok: true, ...r, ponte })
   } catch (e) {
     if (e instanceof EntradaManualError) return NextResponse.json({ erro: e.message }, { status: 422 })
     throw e

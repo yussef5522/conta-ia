@@ -3738,3 +3738,37 @@ model StockEntradaManualItem {
   @@index([companyId, entradaId])
   @@map("stock_entrada_manual_item")
 }
+
+// ESTOQUE ↔ FINANCEIRO — PONTE 1 (24/08): boleto da nota vira conta a pagar de verdade.
+//
+// ⚠️ ESTA É A EXCEÇÃO DESENHADA AO ISOLAMENTO, e ela tem NOME e TAMANHO: o estoque passa
+// a escrever em DUAS tabelas fechadas — `transactions` (a conta) e `suppliers` (o
+// fornecedor, quando o dono confirma) — E SÓ NESTE FLUXO. Marcas de origem:
+// `Transaction.origin='ESTOQUE_NF'` e `Supplier.fonte='ESTOQUE_NF'` (os dois campos já
+// eram String livre — nenhum ALTER). O guard `ponte-isolamento` prova que NENHUM outro
+// caminho do estoque escreve lá, e o juiz F1 confere que toda conta com essa origem tem
+// nota-mãe válida e valor batendo com a duplicata.
+//
+// Esta tabela é a AMARRA (fica do lado do estoque, CREATE-only): liga a duplicata/entrada
+// à conta criada, nos dois sentidos. É ela que dá idempotência (UNIQUE) e é ela que vai
+// permitir responder "o que fazer com as contas?" quando existir estorno de conferência
+// — hoje esse fluxo NÃO existe.
+model StockPayableLink {
+  id            String   @id @default(cuid())
+  companyId     String
+  origem        String // NFE | ENTRADA_MANUAL
+  refId         String // stock_nfe.id  OU  stock_entrada_manual.id
+  suggestionId  String? // stock_payable_suggestion.id (caminho NFE)
+  nDup          String? // nº da duplicata (nulo na entrada manual)
+  chave         String? // chave da NF-e, pra rastrear sem join
+  transactionId String // a conta criada em `transactions` (lifecycle=PAYABLE)
+  supplierId    String? // Supplier do financeiro vinculado/criado
+  valor         Float
+  dVenc         DateTime
+  criadoPorId   String?
+  criadoEm      DateTime @default(now())
+
+  @@unique([companyId, origem, refId, nDup]) // mesma parcela NUNCA vira 2 contas
+  @@index([companyId, transactionId])
+  @@map("stock_payable_link")
+}
