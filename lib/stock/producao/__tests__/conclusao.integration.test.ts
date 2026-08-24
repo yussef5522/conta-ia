@@ -102,8 +102,8 @@ describe('conclusão 2.2', () => {
 
   it('ISOLAMENTO: conclusão não muda módulo fechado', async () => {
     const ordemId = await ordemSeparada(1, 1)
-    const antes = await snapshotClosedModules(prisma)
+    const antes = await snapshotClosedModules(prisma, companyId)
     await concluir({ companyId, ordemId, consumo: COMPS.map((k) => ({ itemId: ids[k.nome], qtdConsumida: 1 })), qtdGerada: 17 }, prisma)
-    expect(isolationHeld(antes, await snapshotClosedModules(prisma))).toBe(true)
+    expect(isolationHeld(antes, await snapshotClosedModules(prisma, companyId))).toBe(true)
   })
 })

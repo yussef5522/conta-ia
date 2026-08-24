@@ -89,9 +89,9 @@ describe('fichas item 2.0', () => {
   })
 
   it('ISOLAMENTO: criar/editar ficha não muda módulo fechado', async () => {
-    const antes = await snapshotClosedModules(prisma)
+    const antes = await snapshotClosedModules(prisma, companyId)
     await criarFicha({ companyId, nomeProduzido: 'Y', unidadeProduzido: 'UN', tipoProduto: 'INTERMEDIARIO', loteBase: 1, unidadeLoteBase: 'UN', componentes: [{ itemId: coxaoId, qtdPlanejada: 1, unidade: 'KG' }] })
-    expect(isolationHeld(antes, await snapshotClosedModules(prisma))).toBe(true)
+    expect(isolationHeld(antes, await snapshotClosedModules(prisma, companyId))).toBe(true)
   })
 
   it('lista traz a versão atual de cada ficha', async () => {

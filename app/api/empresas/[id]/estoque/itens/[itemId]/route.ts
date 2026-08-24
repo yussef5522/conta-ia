@@ -2,24 +2,16 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { guardStock } from '@/lib/stock/require-stock'
 import { buildFichaItem } from '@/lib/stock/ficha-item'
 
 interface Params { params: Promise<{ id: string; itemId: string }> }
 
-async function auth(request: NextRequest, companyId: string) {
-  const user = await getAuthUser(request)
-  if (!user) return { erro: NextResponse.json({ erro: 'Sessão expirada', code: 'AUTH_REQUIRED' }, { status: 401 }) }
-  if (!(await prisma.userCompany.findFirst({ where: { userId: user.sub, companyId }, select: { companyId: true } }))) {
-    return { erro: NextResponse.json({ erro: 'Empresa não encontrada' }, { status: 404 }) }
-  }
-  return { user }
-}
 
 export async function GET(request: NextRequest, { params }: Params) {
   const { id: companyId, itemId } = await params
-  const a = await auth(request, companyId)
+  const a = await guardStock(request, companyId, 'stock.view')
   if (a.erro) return a.erro
   const ficha = await buildFichaItem(companyId, itemId)
   if (!ficha) return NextResponse.json({ erro: 'Item não encontrado' }, { status: 404 })
@@ -37,7 +29,7 @@ const patchSchema = z.object({
 })
 export async function PATCH(request: NextRequest, { params }: Params) {
   const { id: companyId, itemId } = await params
-  const a = await auth(request, companyId)
+  const a = await guardStock(request, companyId, 'stock.manage')
   if (a.erro) return a.erro
   const parsed = patchSchema.safeParse(await request.json().catch(() => null))
   if (!parsed.success || Object.keys(parsed.data).length === 0) return NextResponse.json({ erro: 'Nada pra atualizar' }, { status: 400 })

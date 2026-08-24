@@ -2,18 +2,12 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { guardStock } from '@/lib/stock/require-stock'
 import { listFichas, criarFicha, FichaError } from '@/lib/stock/producao/fichas'
 
 interface Params { params: Promise<{ id: string }> }
 
-async function auth(request: NextRequest, companyId: string) {
-  const user = await getAuthUser(request)
-  if (!user) return { erro: NextResponse.json({ erro: 'Sessão expirada', code: 'AUTH_REQUIRED' }, { status: 401 }) }
-  if (!(await prisma.userCompany.findFirst({ where: { userId: user.sub, companyId }, select: { companyId: true } }))) return { erro: NextResponse.json({ erro: 'Empresa não encontrada' }, { status: 404 }) }
-  return { user }
-}
 
 const componenteSchema = z.object({ itemId: z.string().min(1), qtdPlanejada: z.number().positive(), unidade: z.string().min(1).max(6), posicao: z.number().int().optional() })
 const criarSchema = z.object({
@@ -32,14 +26,14 @@ const criarSchema = z.object({
 
 export async function GET(request: NextRequest, { params }: Params) {
   const { id: companyId } = await params
-  const a = await auth(request, companyId)
+  const a = await guardStock(request, companyId, 'stock.view')
   if (a.erro) return a.erro
   return NextResponse.json({ fichas: await listFichas(companyId) })
 }
 
 export async function POST(request: NextRequest, { params }: Params) {
   const { id: companyId } = await params
-  const a = await auth(request, companyId)
+  const a = await guardStock(request, companyId, 'stock.manage')
   if (a.erro) return a.erro
   const parsed = criarSchema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ erro: 'Dados da ficha inválidos.', detalhe: parsed.error.issues[0]?.message }, { status: 400 })

@@ -89,10 +89,10 @@ describe('downloadSefaz — LOOP', () => {
   })
 
   it('ISOLAMENTO: baixar da SEFAZ não muda nenhum módulo fechado', async () => {
-    const antes = await snapshotClosedModules(prisma)
+    const antes = await snapshotClosedModules(prisma, companyId)
     const pager: SefazPager = async () => ({ cStat: '138', xMotivo: 'ok', ultNSU: '000000000000001', maxNSU: '000000000000001', docs: [doc('43260800000000000000000000000000000000000030', '2026-08-19T09:00:00-03:00')] })
     await downloadSefaz({ companyId, pager, now: new Date() })
-    const depois = await snapshotClosedModules(prisma)
+    const depois = await snapshotClosedModules(prisma, companyId)
     expect(isolationHeld(antes, depois)).toBe(true)
   })
 

@@ -50,8 +50,8 @@ describe('saveNfeCompleta — persist', () => {
   })
 
   it('ISOLAMENTO: parsear não muda módulo fechado', async () => {
-    const antes = await snapshotClosedModules(prisma)
+    const antes = await snapshotClosedModules(prisma, companyId)
     await saveNfeCompleta({ nfeId, companyId, chave: '42260511222333000181550020063812691168173940', xml, db: prisma })
-    expect(isolationHeld(antes, await snapshotClosedModules(prisma))).toBe(true)
+    expect(isolationHeld(antes, await snapshotClosedModules(prisma, companyId))).toBe(true)
   })
 })

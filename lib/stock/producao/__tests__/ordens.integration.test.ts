@@ -94,9 +94,9 @@ describe('ordens de produção 2.1', () => {
   })
 
   it('ISOLAMENTO: ordem/separação não muda módulo fechado', async () => {
-    const antes = await snapshotClosedModules(prisma)
+    const antes = await snapshotClosedModules(prisma, companyId)
     const { ordemId } = await criarOrdem({ companyId, fichaId, escalaReceitas: 2, dataProducao: new Date('2026-08-21') }, prisma)
     await confirmarSeparacao(companyId, ordemId, [{ itemId: coxaoId, qtdSeparada: 2 }], prisma)
-    expect(isolationHeld(antes, await snapshotClosedModules(prisma))).toBe(true)
+    expect(isolationHeld(antes, await snapshotClosedModules(prisma, companyId))).toBe(true)
   })
 })

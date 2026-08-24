@@ -2,23 +2,17 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { guardStock } from '@/lib/stock/require-stock'
 import { listOrdens, criarOrdem, OrdemError } from '@/lib/stock/producao/ordens'
 import { sugestoesDeProducao } from '@/lib/stock/producao/sugestao-cardapio'
 
 interface Params { params: Promise<{ id: string }> }
 
-async function auth(request: NextRequest, companyId: string) {
-  const user = await getAuthUser(request)
-  if (!user) return { erro: NextResponse.json({ erro: 'Sessão expirada', code: 'AUTH_REQUIRED' }, { status: 401 }) }
-  if (!(await prisma.userCompany.findFirst({ where: { userId: user.sub, companyId }, select: { companyId: true } }))) return { erro: NextResponse.json({ erro: 'Empresa não encontrada' }, { status: 404 }) }
-  return { user }
-}
 
 export async function GET(request: NextRequest, { params }: Params) {
   const { id: companyId } = await params
-  const a = await auth(request, companyId)
+  const a = await guardStock(request, companyId, 'stock.view')
   if (a.erro) return a.erro
   const [ordens, sugestoes] = await Promise.all([listOrdens(companyId), sugestoesDeProducao(companyId, prisma)])
   return NextResponse.json({ ordens, sugestoes })
@@ -34,7 +28,7 @@ const criarSchema = z.object({
 
 export async function POST(request: NextRequest, { params }: Params) {
   const { id: companyId } = await params
-  const a = await auth(request, companyId)
+  const a = await guardStock(request, companyId, 'stock.operate')
   if (a.erro) return a.erro
   const parsed = criarSchema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ erro: 'Dados da ordem inválidos.' }, { status: 400 })

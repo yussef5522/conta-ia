@@ -2,18 +2,12 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { guardStock } from '@/lib/stock/require-stock'
 import { getFicha, atualizarFicha, FichaError } from '@/lib/stock/producao/fichas'
 
 interface Params { params: Promise<{ id: string; fichaId: string }> }
 
-async function auth(request: NextRequest, companyId: string) {
-  const user = await getAuthUser(request)
-  if (!user) return { erro: NextResponse.json({ erro: 'Sessão expirada', code: 'AUTH_REQUIRED' }, { status: 401 }) }
-  if (!(await prisma.userCompany.findFirst({ where: { userId: user.sub, companyId }, select: { companyId: true } }))) return { erro: NextResponse.json({ erro: 'Empresa não encontrada' }, { status: 404 }) }
-  return { user }
-}
 
 const componenteSchema = z.object({ itemId: z.string().min(1), qtdPlanejada: z.number().positive(), unidade: z.string().min(1).max(6), posicao: z.number().int().optional() })
 const patchSchema = z.object({
@@ -31,7 +25,7 @@ const patchSchema = z.object({
 
 export async function GET(request: NextRequest, { params }: Params) {
   const { id: companyId, fichaId } = await params
-  const a = await auth(request, companyId)
+  const a = await guardStock(request, companyId, 'stock.view')
   if (a.erro) return a.erro
   const r = await getFicha(companyId, fichaId)
   if (!r) return NextResponse.json({ erro: 'Ficha não encontrada' }, { status: 404 })
@@ -40,7 +34,7 @@ export async function GET(request: NextRequest, { params }: Params) {
 
 export async function PATCH(request: NextRequest, { params }: Params) {
   const { id: companyId, fichaId } = await params
-  const a = await auth(request, companyId)
+  const a = await guardStock(request, companyId, 'stock.manage')
   if (a.erro) return a.erro
   const parsed = patchSchema.safeParse(await request.json().catch(() => null))
   if (!parsed.success || Object.keys(parsed.data).length === 0) return NextResponse.json({ erro: 'Nada pra atualizar' }, { status: 400 })
