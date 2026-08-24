@@ -3696,3 +3696,45 @@ model StockContagemItem {
   @@index([companyId, itemId])
   @@map("stock_contagem_item")
 }
+
+// ESTOQUE — ENTRADA MANUAL (23/08): compra SEM nota nenhuma (produtor rural que não
+// emite, compra avulsa no mercado). NÃO dá pra reusar `stock_receipt_conference` nem
+// `stock_payable_suggestion`: as duas exigem `nfeId` NOT NULL e o isolamento proíbe ALTER
+// em tabela existente. Então a entrada manual tem cabeçalho próprio — CREATE-only.
+// A parcela (contas a pagar) mora AQUI porque a `stock_payable_suggestion` também é
+// amarrada em nota. ⚠️ DÉBITO: quando a ponte pro contas-a-pagar for LIGADA, ela precisa
+// ler as DUAS fontes (nota e entrada manual) — hoje a ponte está OFF nas duas.
+model StockEntradaManual {
+  id              String   @id @default(cuid())
+  companyId       String
+  supplierId      String
+  fornecedorNome  String // desnormalizado: o recibo mostra sem join
+  data            DateTime
+  valorTotal      Float
+  observacao      String?
+  geraPayable     Boolean  @default(false)
+  payableVenc     DateTime?
+  payableValor    Float?
+  criadoPorId     String?
+  criadoPorNome   String?
+  criadoEm        DateTime @default(now())
+
+  @@index([companyId, data])
+  @@map("stock_entrada_manual")
+}
+
+model StockEntradaManualItem {
+  id            String   @id @default(cuid())
+  companyId     String
+  entradaId     String
+  itemId        String
+  nome          String // desnormalizado pro recibo
+  quantidade    Float
+  custoUnitario Float
+  custoTotal    Float
+  movementId    String // o ENTRADA_MANUAL que subiu o estoque
+  criadoEm      DateTime @default(now())
+
+  @@index([companyId, entradaId])
+  @@map("stock_entrada_manual_item")
+}

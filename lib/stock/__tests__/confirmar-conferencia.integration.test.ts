@@ -106,6 +106,26 @@ describe('confirmarConferencia', () => {
     expect(mapa?.fatorConversao).toBe(12)
   })
 
+  // ORIGEM no ledger: distingue "a SEFAZ me disse" de "eu li do DANFE de papel".
+  // A nota do setup tem temXmlCompleto=true → SEFAZ; virando false → DANFE_MANUAL.
+  it('movimento nasce origem=SEFAZ quando a nota tem XML completo', async () => {
+    const item1 = (await prisma.stockNfeItem.findFirst({ where: { companyId, cProd: 'C2' } }))!
+    await confirmarConferencia({ companyId, nfeId, userId: 'u', fornecedor: { cnpj: FORN, nome: 'X' }, itens: [{ nfeItemId: item1.id, cProd: 'C2', xProd: 'REFRI', uCom: 'UN', qtdNota: 24, vUnCom: 12, qtdRecebida: 24, mapeado: { itemId: itemExistenteId, nome: 'Refri', unidadeControle: 'UN', fatorConversao: 1, novo: false } }] })
+    const movs = await prisma.stockMovement.findMany({ where: { companyId, tipo: 'ENTRADA_NF' } })
+    expect(movs.length).toBeGreaterThan(0)
+    expect(movs.every((m) => m.origem === 'SEFAZ')).toBe(true)
+  })
+
+  it('movimento nasce origem=DANFE_MANUAL quando os itens foram digitados do papel', async () => {
+    // nota SEM XML completo = os itens vieram do DANFE digitado (feature 23/08)
+    await prisma.stockNfe.update({ where: { id: nfeId }, data: { temXmlCompleto: false } })
+    const item1 = (await prisma.stockNfeItem.findFirst({ where: { companyId, cProd: 'C2' } }))!
+    await confirmarConferencia({ companyId, nfeId, userId: 'u', fornecedor: { cnpj: FORN, nome: 'X' }, itens: [{ nfeItemId: item1.id, cProd: 'C2', xProd: 'REFRI', uCom: 'UN', qtdNota: 24, vUnCom: 12, qtdRecebida: 24, mapeado: { itemId: itemExistenteId, nome: 'Refri', unidadeControle: 'UN', fatorConversao: 1, novo: false } }] })
+    const movs = await prisma.stockMovement.findMany({ where: { companyId, tipo: 'ENTRADA_NF' } })
+    expect(movs.length).toBeGreaterThan(0)
+    expect(movs.every((m) => m.origem === 'DANFE_MANUAL')).toBe(true)
+  })
+
   it('idempotente: confirmar 2× a mesma nota → erro (não duplica)', async () => {
     const item1 = (await prisma.stockNfeItem.findFirst({ where: { companyId, cProd: 'C2' } }))!
     const payload = { companyId, nfeId, userId: 'u', fornecedor: { cnpj: FORN, nome: 'X' }, itens: [{ nfeItemId: item1.id, cProd: 'C2', xProd: 'REFRI', uCom: 'UN', qtdNota: 24, vUnCom: 12, qtdRecebida: 24, mapeado: { itemId: itemExistenteId, nome: 'Refri', unidadeControle: 'UN' as const, fatorConversao: 1, novo: false } }] }

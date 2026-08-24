@@ -11,6 +11,18 @@ export async function saveNfeCompleta(input: { nfeId: string; companyId: string;
   const { nfeId, companyId, chave, xml, db } = input
   const nfe = parseNfeCompleta(xml)
 
+  // ⚠️ NOTA JÁ CONFERIDA: o XML chegou DEPOIS de o dono digitar os itens do DANFE de papel
+  // e confirmar o recebimento. Aqui o XML só ENRIQUECE (fica guardado pra auditoria) —
+  // reescrever os itens agora quebraria a conferência já feita: os movimentos do ledger
+  // (imutáveis) apontam pro que foi CONFERIDO, e o E2 confere item×movimento. Este
+  // deleteMany/createMany apagaria os itens digitados e recriaria os do XML, deixando a
+  // conferência órfã. O emitente segue sendo atualizado (dado do fornecedor, inofensivo).
+  const nota = await db.stockNfe.findFirst({ where: { id: nfeId, companyId }, select: { status: true } })
+  if (nota?.status === 'CONFIRMADA') {
+    await upsertEmit(db, { nfeId, companyId, nfe })
+    return nfe
+  }
+
   // idempotente: limpa o que já havia desta nota antes de recriar
   await db.stockNfeItem.deleteMany({ where: { companyId, nfeId } })
   await db.stockNfeDup.deleteMany({ where: { companyId, nfeId } })
@@ -29,11 +41,15 @@ export async function saveNfeCompleta(input: { nfeId: string; companyId: string;
       data: nfe.duplicatas.map((d) => ({ companyId, nfeId, nDup: d.nDup ?? null, dVenc: d.dVenc ? new Date(d.dVenc) : null, vDup: d.vDup })),
     })
   }
+  await upsertEmit(db, { nfeId, companyId, nfe })
+
+  return nfe
+}
+
+async function upsertEmit(db: Db, { nfeId, companyId, nfe }: { nfeId: string; companyId: string; nfe: NfeCompleta }) {
   await db.stockNfeEmit.upsert({
     where: { nfeId },
     create: { companyId, nfeId, cnpj: nfe.emit.cnpj ?? null, cpf: nfe.emit.cpf ?? null, xNome: nfe.emit.xNome, xFant: nfe.emit.xFant ?? null, ie: nfe.emit.ie ?? null, uf: nfe.emit.uf ?? null, xMun: nfe.emit.xMun ?? null, cMun: nfe.emit.cMun ?? null },
     update: { xNome: nfe.emit.xNome, xFant: nfe.emit.xFant ?? null, ie: nfe.emit.ie ?? null, uf: nfe.emit.uf ?? null },
   })
-
-  return nfe
 }

@@ -23,6 +23,7 @@ interface Recebimentos {
   fila: FilaCard[]; recebidas: Recebida[]
   historicasCount: number; historicasPeriodo: { de: string | null; ate: string | null }
 }
+interface EntradaManual { id: string; fornecedorNome: string; data: string; valorTotal: number; geraPayable: boolean; criadoPorNome: string | null }
 interface Relatorio { total: number; historicas: number; novas: number; fornecedoresDistintos: number; valorTotalNovas: number }
 
 const brl = (n: number | null) => (n == null ? '—' : n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }))
@@ -34,9 +35,14 @@ export default function RecebimentosPage({ params }: { params: Promise<{ id: str
   const { id } = use(params)
   const [data, setData] = useState<{ recebimentos: Recebimentos; relatorio: Relatorio } | null | undefined>(undefined)
   const [verHistoricas, setVerHistoricas] = useState(false)
+  // entradas manuais (compra sem nota) entram na MESMA seção "Recebidas", marcadas MANUAL
+  const [manuais, setManuais] = useState<EntradaManual[]>([])
 
   const recarregar = () => fetch(`/api/empresas/${id}/estoque/recebimentos`).then((r) => r.json()).then((j) => setData(j.recebimentos ? j : null)).catch(() => setData(null))
   useEffect(() => { recarregar() }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    fetch(`/api/empresas/${id}/estoque/entrada-manual`).then((x) => x.json()).then((j) => setManuais(j.entradas ?? [])).catch(() => {})
+  }, [id])
 
   if (data === undefined) return <div className="p-0"><Card><CardContent className="flex items-center gap-2 p-6 text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Carregando…</CardContent></Card></div>
   if (data === null) return <div className="p-0"><Card><CardContent className="p-6 text-sm text-slate-500">Não consegui carregar os recebimentos.</CardContent></Card></div>
@@ -47,12 +53,15 @@ export default function RecebimentosPage({ params }: { params: Promise<{ id: str
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <Inbox className="h-5 w-5 text-[#185FA5]" />
-        <div>
-          <h1 className="text-base font-semibold text-slate-900">Recebimentos</h1>
-          <p className="text-sm text-slate-500">Notas fiscais emitidas contra o CNPJ da empresa, direto da SEFAZ. A fila nasce vazia e enche sozinha quando um fornecedor emitir a partir de {fmt(r.dataCorte)}.</p>
-        </div>
+      <div className="flex flex-wrap items-center gap-2.5">
+        <Inbox className="h-5 w-5 shrink-0 text-[#185FA5]" />
+        <h1 className="text-base font-semibold text-slate-900">Recebimentos</h1>
+        <p className="hidden min-w-[20rem] flex-1 truncate text-xs text-slate-400 lg:block">Notas emitidas contra o CNPJ da empresa, direto da SEFAZ — a fila enche sozinha a partir de {fmt(r.dataCorte)}</p>
+        {/* Fornecedor que NÃO emite nota (produtor rural, compra avulsa no mercado) não
+         * pode ficar fora do estoque só porque não tem XML — entra por aqui. */}
+        <a href={`/empresas/${id}/estoque/entrada-manual`} className="ml-auto inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50">
+          <PackageOpen className="h-3.5 w-3.5" /> Entrada manual (sem nota)
+        </a>
       </div>
 
       <Card>
@@ -92,10 +101,27 @@ export default function RecebimentosPage({ params }: { params: Promise<{ id: str
       )}
 
       {/* RECEBIDAS — confirmadas, com recibo */}
-      {r.recebidas.length > 0 && (
+      {(r.recebidas.length > 0 || manuais.length > 0) && (
         <div>
-          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-900"><CheckCircle2 className="h-4 w-4 text-emerald-600" /> Recebidas ({r.recebidas.length})</h2>
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-900"><CheckCircle2 className="h-4 w-4 text-emerald-600" /> Recebidas ({r.recebidas.length + manuais.length})</h2>
           <div className="space-y-2">
+            {manuais.map((m) => (
+              <Card key={m.id} className="transition hover:border-emerald-400 hover:shadow-sm">
+                <CardContent className="flex items-center justify-between p-4">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-slate-900">
+                      {m.fornecedorNome}
+                      <span className="ml-2 rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">manual</span>
+                    </p>
+                    <p className="text-xs text-slate-500">sem nota · compra em {fmt(m.data)}{m.criadoPorNome ? ` · por ${m.criadoPorNome}` : ''}{m.geraPayable ? ' · gera parcela' : ''}</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-semibold tabular-nums text-slate-900">{brl(m.valorTotal)}</span>
+                    <a href={`/empresas/${id}/estoque/entradas/${m.id}`} className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50"><Receipt className="h-3.5 w-3.5" /> recibo</a>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
             {r.recebidas.map((n) => (
               <Card key={n.nfeId} className={n.conferenceId ? 'transition hover:border-emerald-400 hover:shadow-sm' : ''}>
                 <CardContent className="flex items-center justify-between p-4">

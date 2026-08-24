@@ -1,0 +1,130 @@
+'use client'
+
+// ESTOQUE — digitar os itens do DANFE de PAPEL quando o XML ainda não veio.
+// O caminhão não espera a SEFAZ. Depois de salvar, a tela de conferência roda o fluxo
+// NORMAL em cima destes itens (mapear, fator, divergência, confirmar).
+//
+// A soma é conferida contra o vNF que a SEFAZ já confirmou — AVISA, nunca trava: a
+// diferença costuma ser ICMS-ST/frete/IPI (entram no total e não no preço do item).
+
+import { useMemo, useState } from 'react'
+import { Plus, Trash2, Loader2, Check, AlertTriangle, X } from 'lucide-react'
+
+interface Linha { xProd: string; qCom: string; uCom: string; vUnCom: string }
+
+const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+const num = (s: string) => Number(String(s).replace(',', '.'))
+const vazia = (): Linha => ({ xProd: '', qCom: '', uCom: '', vUnCom: '' })
+
+export function ItensManuaisEditor({ companyId, nfeId, valorNota, onSalvo, onCancelar }: {
+  companyId: string; nfeId: string; valorNota: number | null
+  onSalvo: () => void; onCancelar: () => void
+}) {
+  const [linhas, setLinhas] = useState<Linha[]>([vazia(), vazia(), vazia()])
+  const [salvando, setSalvando] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+
+  const preenchidas = useMemo(() => linhas.filter((l) => l.xProd.trim() !== ''), [linhas])
+  const soma = useMemo(() => preenchidas.reduce((s, l) => s + (num(l.qCom) || 0) * (num(l.vUnCom) || 0), 0), [preenchidas])
+  const dif = valorNota != null ? soma - valorNota : null
+  // mesma tolerância do back (1 centavo por item + 1) — a tela não pode discordar do servidor
+  const bate = dif == null || Math.abs(dif) <= 0.01 * preenchidas.length + 0.01
+
+  const set = (i: number, patch: Partial<Linha>) => setLinhas((ls) => ls.map((l, idx) => (idx === i ? { ...l, ...patch } : l)))
+
+  async function salvar() {
+    setErro(null)
+    const itens = preenchidas.map((l) => ({ xProd: l.xProd.trim(), qCom: num(l.qCom), uCom: l.uCom.trim(), vUnCom: num(l.vUnCom) }))
+    if (itens.length === 0) { setErro('Digite ao menos um item da nota.'); return }
+    const ruim = itens.find((i) => !(i.qCom > 0) || !i.uCom || !(i.vUnCom >= 0))
+    if (ruim) { setErro(`Confira "${ruim.xProd}": quantidade, unidade e preço unitário são obrigatórios.`); return }
+    setSalvando(true)
+    try {
+      const r = await fetch(`/api/empresas/${companyId}/estoque/recebimentos/${nfeId}/itens-manuais`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ itens }),
+      })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { setErro(j.erro ?? 'Não consegui salvar os itens.'); return }
+      onSalvo()
+    } catch { setErro('Falha de rede ao salvar os itens.') } finally { setSalvando(false) }
+  }
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white">
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-3 py-2">
+        <h3 className="text-sm font-semibold text-slate-900">Itens do DANFE (papel)</h3>
+        <p className="hidden flex-1 text-xs text-slate-400 lg:block">Copie do papel: descrição, quantidade, unidade e preço unitário. O resto do fluxo é o mesmo.</p>
+        <button onClick={onCancelar} className="ml-auto inline-flex h-8 items-center gap-1 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50"><X className="h-3.5 w-3.5" /> cancelar</button>
+      </div>
+
+      <table className="density-normal hidden w-full sm:table">
+        <thead><tr className="border-b border-slate-100 text-left text-[11px] uppercase tracking-wide text-slate-400">
+          <th className="px-3 py-2 font-medium">Descrição (do DANFE)</th>
+          <th className="px-3 py-2 text-right font-medium">Qtd</th>
+          <th className="px-3 py-2 font-medium">Un.</th>
+          <th className="px-3 py-2 text-right font-medium">Preço unit.</th>
+          <th className="px-3 py-2 text-right font-medium">Total</th>
+          <th className="px-3 py-2 w-10"></th>
+        </tr></thead>
+        <tbody>
+          {linhas.map((l, i) => {
+            const total = (num(l.qCom) || 0) * (num(l.vUnCom) || 0)
+            return (
+              <tr key={i} className="border-b border-slate-50 last:border-b-0">
+                <td className="px-3 py-1"><input value={l.xProd} onChange={(e) => set(i, { xProd: e.target.value })} placeholder="ex: OLEO DE SOJA 900ML" className="h-8 w-full rounded-lg border border-slate-300 px-2 text-[13px]" /></td>
+                <td className="px-3 py-1"><input value={l.qCom} onChange={(e) => set(i, { qCom: e.target.value })} inputMode="decimal" placeholder="0" className="h-8 w-20 rounded-lg border border-slate-300 px-2 text-right text-[13px] tabular-nums" /></td>
+                <td className="px-3 py-1"><input value={l.uCom} onChange={(e) => set(i, { uCom: e.target.value })} placeholder="CX" className="h-8 w-16 rounded-lg border border-slate-300 px-2 text-[13px] uppercase" /></td>
+                <td className="px-3 py-1"><input value={l.vUnCom} onChange={(e) => set(i, { vUnCom: e.target.value })} inputMode="decimal" placeholder="0,00" className="h-8 w-24 rounded-lg border border-slate-300 px-2 text-right text-[13px] tabular-nums" /></td>
+                <td className="px-3 py-1 text-right text-[13px] tabular-nums text-slate-600">{total > 0 ? brl(total) : <span className="text-slate-300">—</span>}</td>
+                <td className="px-3 py-1 text-center">
+                  {linhas.length > 1 && <button onClick={() => setLinhas((ls) => ls.filter((_, idx) => idx !== i))} className="text-slate-300 hover:text-rose-500"><Trash2 className="h-3.5 w-3.5" /></button>}
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+
+      {/* mobile: um bloco por item */}
+      <div className="divide-y divide-slate-50 sm:hidden">
+        {linhas.map((l, i) => (
+          <div key={i} className="space-y-2 p-3">
+            <input value={l.xProd} onChange={(e) => set(i, { xProd: e.target.value })} placeholder="descrição do DANFE" className="h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
+            <div className="flex items-center gap-2">
+              <input value={l.qCom} onChange={(e) => set(i, { qCom: e.target.value })} inputMode="decimal" placeholder="qtd" className="h-11 w-20 rounded-lg border border-slate-300 px-2 text-right text-sm tabular-nums" />
+              <input value={l.uCom} onChange={(e) => set(i, { uCom: e.target.value })} placeholder="un" className="h-11 w-16 rounded-lg border border-slate-300 px-2 text-sm uppercase" />
+              <input value={l.vUnCom} onChange={(e) => set(i, { vUnCom: e.target.value })} inputMode="decimal" placeholder="preço" className="h-11 flex-1 rounded-lg border border-slate-300 px-2 text-right text-sm tabular-nums" />
+              {linhas.length > 1 && <button onClick={() => setLinhas((ls) => ls.filter((_, idx) => idx !== i))} className="shrink-0 text-slate-300"><Trash2 className="h-4 w-4" /></button>}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="space-y-2 border-t border-slate-100 px-3 py-2">
+        <button onClick={() => setLinhas((ls) => [...ls, vazia()])} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50"><Plus className="h-3.5 w-3.5" /> mais um item</button>
+
+        {/* conferência contra o total que a SEFAZ já confirmou */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+          <span className="tabular-nums text-slate-500">soma dos itens <b className="text-slate-800">{brl(soma)}</b></span>
+          {valorNota != null && <span className="tabular-nums text-slate-500">total da nota (SEFAZ) <b className="text-slate-800">{brl(valorNota)}</b></span>}
+          {valorNota != null && (bate
+            ? <span className="inline-flex items-center gap-1 font-medium text-emerald-600"><Check className="h-3.5 w-3.5" /> bate</span>
+            : <span className="inline-flex items-center gap-1 font-medium text-amber-600"><AlertTriangle className="h-3.5 w-3.5" /> {dif! < 0 ? 'faltam' : 'sobram'} {brl(Math.abs(dif!))}</span>)}
+        </div>
+        {valorNota != null && !bate && preenchidas.length > 0 && (
+          <p className="rounded-md bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-800">
+            {dif! < 0
+              ? 'Pode ser ICMS-ST, frete ou IPI — entram no total da nota e não no preço dos itens — ou pode faltar item. Dá pra seguir assim mesmo.'
+              : 'Provavelmente há desconto na nota, item repetido ou preço digitado errado. Dá pra seguir assim mesmo.'}
+          </p>
+        )}
+        {erro && <p className="rounded-md bg-rose-50 px-2.5 py-1.5 text-xs text-rose-700">{erro}</p>}
+
+        <button onClick={salvar} disabled={salvando || preenchidas.length === 0}
+          className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#185FA5] px-5 text-sm font-semibold text-white hover:bg-[#0F4A8C] disabled:bg-slate-200 disabled:text-slate-400">
+          {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Usar estes {preenchidas.length} {preenchidas.length === 1 ? 'item' : 'itens'} e conferir
+        </button>
+      </div>
+    </div>
+  )
+}

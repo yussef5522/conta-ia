@@ -5,8 +5,9 @@
 // liga). Mobile-first + desktop. Foto por webcam (desktop) OU câmera (celular).
 
 import { Fragment, useMemo, useState } from 'react'
-import { Check, Search, Camera, AlertTriangle, FlaskConical, Store, X, ChevronRight, Eye, Loader2, PackageCheck } from 'lucide-react'
+import { Check, Search, Camera, AlertTriangle, FlaskConical, Store, X, ChevronRight, Eye, Loader2, PackageCheck, Keyboard } from 'lucide-react'
 import { sugerirFatorConversao } from '@/lib/stock/unidade-fator'
+import { ItensManuaisEditor } from './itens-manuais-editor'
 
 export type Unidade = 'KG' | 'UN' | 'LT'
 export type Categoria = 'MATERIA_PRIMA' | 'REVENDA' | 'EMBALAGEM' | 'LIMPEZA' | 'USO_INTERNO'
@@ -70,6 +71,8 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
   const [enviando, setEnviando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   const [recibo, setRecibo] = useState<any | null>(null)
+  // nota só-resumo: o dono opta por digitar os itens do DANFE de papel
+  const [digitando, setDigitando] = useState(false)
 
   const totalMapeado = useMemo(() => data.itens.length > 0 && data.itens.every((it) => estado[it.nfeItemId]?.mapeado), [data.itens, estado])
   const divergencias = useMemo(() => data.itens.filter((it) => { const e = estado[it.nfeItemId]; return e && Math.abs(e.qtdRecebida - it.qCom * (e.mapeado?.fatorConversao ?? 1)) > 0.0001 }).length, [data.itens, estado])
@@ -121,15 +124,31 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
         ) : <span className="ml-auto inline-flex shrink-0 items-center gap-1 text-xs font-medium text-emerald-600"><Check className="h-3.5 w-3.5" /> Fornecedor cadastrado</span>}
       </div>
 
-      {/* NOTA SÓ-RESUMO: banner limpo NO LUGAR da tabela (era card perdido no meio) */}
+      {/* NOTA SÓ-RESUMO. ⚠️ O texto anterior afirmava "a Ciência já foi enviada; o XML chega
+       * na próxima consulta" — MENTIRA que custou 2 dias de nota presa (23/08): nada
+       * disparava a Ciência, então o XML não vinha nunca. Agora o cron horário manda a
+       * Ciência sozinho, e o dono NÃO fica refém disso: digita do papel e segue. */}
       {data.itens.length === 0 ? (
-        <div className="flex items-start gap-3 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3">
-          <Eye className="mt-0.5 h-4 w-4 shrink-0 text-sky-600" />
-          <div>
-            <p className="text-sm font-medium text-sky-900">Essa nota veio só como resumo — o detalhe dos itens ainda não.</p>
-            <p className="mt-0.5 text-xs text-sky-700">A Ciência da operação já foi enviada à SEFAZ; o XML completo chega na próxima consulta e os itens aparecem aqui pra conferir. Nada a fazer agora.</p>
+        digitando && companyId && nfeId ? (
+          <ItensManuaisEditor companyId={companyId} nfeId={nfeId} valorNota={data.valorNota}
+            onCancelar={() => setDigitando(false)} onSalvo={() => location.reload()} />
+        ) : (
+          <div className="flex flex-wrap items-start gap-3 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3">
+            <Eye className="mt-0.5 h-4 w-4 shrink-0 text-sky-600" />
+            <div className="min-w-[16rem] flex-1">
+              <p className="text-sm font-medium text-sky-900">Essa nota veio só como resumo — a SEFAZ ainda não liberou os itens.</p>
+              <p className="mt-0.5 text-xs text-sky-700">
+                A Ciência da operação é o que destrava o XML completo, e ela vai automaticamente na consulta de hora em hora — normalmente o detalhe aparece aqui em pouco tempo.
+                <b> Se o caminhão já chegou, não espere:</b> digite os itens do DANFE de papel e confira agora. Quando o XML vier, ele só é guardado pra auditoria — não refaz nem duplica o que você conferiu.
+              </p>
+            </div>
+            {companyId && nfeId && (
+              <button onClick={() => setDigitando(true)} className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-[#185FA5] px-3 text-xs font-semibold text-white hover:bg-[#0F4A8C]">
+                <Keyboard className="h-4 w-4" /> Digitar itens da nota (do papel)
+              </button>
+            )}
           </div>
-        </div>
+        )
       ) : (
       <>
       {/* ===== DESKTOP: tabela de recebimento ===== */}

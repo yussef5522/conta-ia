@@ -48,8 +48,12 @@ export interface ConfirmResult {
 export async function confirmarConferencia(input: ConfirmInput): Promise<ConfirmResult> {
   const { companyId, nfeId, userId } = input
 
-  const nfe = await prisma.stockNfe.findFirst({ where: { id: nfeId, companyId }, select: { id: true, chave: true, status: true } })
+  const nfe = await prisma.stockNfe.findFirst({ where: { id: nfeId, companyId }, select: { id: true, chave: true, status: true, temXmlCompleto: true } })
   if (!nfe) throw new Error('Nota não encontrada.')
+  // De onde veio o QUE está sendo conferido: XML da SEFAZ, ou os itens que o dono digitou
+  // do DANFE de papel porque o XML não tinha chegado. Fica no ledger pra auditoria — é a
+  // diferença entre "a SEFAZ me disse" e "eu li do papel".
+  const origem = nfe.temXmlCompleto ? 'SEFAZ' : 'DANFE_MANUAL'
   const jaConf = await prisma.stockReceiptConference.findFirst({ where: { companyId, nfeId }, select: { id: true, status: true } })
   if (jaConf && jaConf.status !== 'EM_CONFERENCIA') throw new Error('Essa nota já foi conferida.')
 
@@ -103,7 +107,7 @@ export async function confirmarConferencia(input: ConfirmInput): Promise<Confirm
       await criarMovimento(tx, {
         companyId, itemId: itemIdReal.get(it.nfeItemId)!, tipo: 'ENTRADA_NF',
         quantidade: it.qtdRecebida, custoUnitario, custoTotal,
-        receiptId: conference.id, nfeChave: nfe.chave, nItem: null, origem: 'SEFAZ', criadoPorId: userId,
+        receiptId: conference.id, nfeChave: nfe.chave, nItem: null, origem, criadoPorId: userId,
       })
     }
 
