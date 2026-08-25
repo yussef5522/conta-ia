@@ -6,6 +6,7 @@
 
 import { prisma } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
+import { recomputeVendasSeVenda } from '@/lib/vendas/recompute-hook'
 import type { AuthContext } from '@/lib/auth/rbac'
 import {
   validateLifecycleState,
@@ -171,6 +172,13 @@ export async function createContaPendente(
       lifecycle: transaction.lifecycle,
     },
   })
+
+  // GATILHO DO MOTOR DE VENDAS (25/08) — aqui, e não em cada rota: este é o criador
+  // ÚNICO de PAYABLE/RECEIVABLE (contas a pagar, contas a receber, duplicar e a ponte
+  // do estoque passam todos por aqui). Só morde no "lança já paga" com categoria de
+  // venda numa conta com regra — nos outros casos a tx nasce sem bankAccountId e o
+  // motor nem enxerga. fail-soft: nunca derruba a criação da conta.
+  await recomputeVendasSeVenda(prisma, input.companyId, [input.categoryId])
 
   return transaction
 }

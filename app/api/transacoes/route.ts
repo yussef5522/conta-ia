@@ -4,6 +4,7 @@ import { transacaoSchema } from '@/lib/validations/transacao'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { logAudit } from '@/lib/audit'
 import { handleApiError } from '@/lib/api/handle-error'
+import { recomputeVendasSeVenda } from '@/lib/vendas/recompute-hook'
 import { checkBalance, BalanceCheckError } from '@/lib/balance/check'
 import { NEEDS_REVIEW_WHERE_PRISMA } from '@/lib/transacoes/needs-review'
 
@@ -330,6 +331,14 @@ export async function POST(request: NextRequest) {
       },
       request,
     })
+
+    // ⚠️ GATILHO DO MOTOR DE VENDAS (25/08). Faltava AQUI: o hook existia no import
+    // OFX, na categorização em lote e na edição de transação — mas NÃO na criação
+    // manual. Resultado real: o dono lançou a venda em dinheiro do cofre à mão, a
+    // transação nasceu categorizada como Receita de Vendas, e o calendário de vendas
+    // NUNCA soube dela (3.135 de 24/08 e 942 de 25/08 ficaram órfãos).
+    // fail-soft e só recomputa se a categoria for de venda — no-op nos outros casos.
+    await recomputeVendasSeVenda(prisma, conta.companyId, [transacao.categoryId])
 
     return NextResponse.json({ transacao }, { status: 201 })
   } catch (error) {
