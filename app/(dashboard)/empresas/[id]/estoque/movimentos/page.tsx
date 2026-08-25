@@ -6,6 +6,8 @@
 
 import { useEffect, useMemo, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
+import { TotalsBar, type TotalItem } from '@/components/ui/totals-bar'
+import { SortableTh, useSort } from '@/components/ui/sortable-th'
 import { ArrowLeftRight, Loader2, Download, FileText } from 'lucide-react'
 
 interface Mov {
@@ -14,6 +16,7 @@ interface Mov {
   referencia: { tipo: 'nota' | 'conferencia' | null; label: string; nfeId: string | null }; quem: string
 }
 interface ItemOpt { id: string; nome: string }
+type Campo = 'data' | 'tipo' | 'item' | 'qtd' | 'total'
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const num = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 3 })
@@ -29,6 +32,7 @@ export default function MovimentosPage({ params }: { params: Promise<{ id: strin
   const [fTipo, setFTipo] = useState('')
   const [fDe, setFDe] = useState('')
   const [fAte, setFAte] = useState('')
+  const { col, dir, alternar, ordenar } = useSort<Campo>('data', 'desc')
 
   const qs = useMemo(() => {
     const p = new URLSearchParams()
@@ -41,20 +45,32 @@ export default function MovimentosPage({ params }: { params: Promise<{ id: strin
     fetch(`/api/empresas/${id}/estoque/movimentos?${qs}`).then((r) => r.json()).then((j) => { setMovs(j.movimentos ?? []); if (j.itens) setItens(j.itens) }).catch(() => setMovs([]))
   }, [id, qs])
 
+  // ordenação é do que ESTÁ NA TELA (o CSV do servidor traz até 5.000 linhas — outra coisa)
+  const lista = useMemo(() => ordenar(movs ?? [], (m, c) => (
+    c === 'data' ? m.data : c === 'tipo' ? m.tipo : c === 'item' ? m.itemNome
+      : c === 'qtd' ? m.quantidade : m.custoTotal
+  )), [movs, ordenar])
+
+  const entradas = (movs ?? []).filter((m) => m.custoTotal > 0).reduce((s2, m) => s2 + m.custoTotal, 0)
+  const saidas = (movs ?? []).filter((m) => m.custoTotal < 0).reduce((s2, m) => s2 + m.custoTotal, 0)
+
   return (
-    <div className="space-y-5">
-      <div className="flex items-center gap-3">
-        <ArrowLeftRight className="h-5 w-5 text-[#185FA5]" />
-        <div><h1 className="text-base font-semibold text-slate-900">Movimentação de estoque</h1><p className="text-xs text-slate-400">O extrato do estoque — cada entrada, estorno e (em breve) baixa, com rastro.</p></div>
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2.5">
+        <ArrowLeftRight className="h-5 w-5 shrink-0 text-[#185FA5]" />
+        <h1 className="text-base font-semibold text-slate-900">Movimentação de estoque</h1>
+        <p className="hidden flex-1 truncate text-xs text-slate-400 lg:block">O extrato do estoque — cada entrada, estorno e baixa, com rastro</p>
+        <a href={`/api/empresas/${id}/estoque/movimentos?${qs}&formato=csv`} className="ml-auto inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50"><Download className="h-3.5 w-3.5" /> CSV</a>
       </div>
 
-      {/* filtros */}
-      <div className="flex flex-wrap items-end gap-2">
-        <label className="text-xs text-slate-500">Item<select value={fItem} onChange={(e) => setFItem(e.target.value)} className="mt-1 block rounded-lg border border-slate-300 py-2 px-3 text-sm"><option value="">todos</option>{itens.map((i) => <option key={i.id} value={i.id}>{i.nome}</option>)}</select></label>
-        <label className="text-xs text-slate-500">Tipo<select value={fTipo} onChange={(e) => setFTipo(e.target.value)} className="mt-1 block rounded-lg border border-slate-300 py-2 px-3 text-sm"><option value="">todos</option><option value="ENTRADA_NF">Entrada (nota)</option><option value="ESTORNO">Estorno</option></select></label>
-        <label className="text-xs text-slate-500">De<input type="date" value={fDe} onChange={(e) => setFDe(e.target.value)} className="mt-1 block rounded-lg border border-slate-300 py-2 px-3 text-sm" /></label>
-        <label className="text-xs text-slate-500">Até<input type="date" value={fAte} onChange={(e) => setFAte(e.target.value)} className="mt-1 block rounded-lg border border-slate-300 py-2 px-3 text-sm" /></label>
-        <a href={`/api/empresas/${id}/estoque/movimentos?${qs}&formato=csv`} className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50"><Download className="h-4 w-4" /> CSV</a>
+      {/* FILTROS numa linha (anatomia oficial) */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <select value={fItem} onChange={(e) => setFItem(e.target.value)} className="h-9 rounded-lg border border-slate-300 px-2 text-xs text-slate-600"><option value="">todos os itens</option>{itens.map((i) => <option key={i.id} value={i.id}>{i.nome}</option>)}</select>
+        <select value={fTipo} onChange={(e) => setFTipo(e.target.value)} className="h-9 rounded-lg border border-slate-300 px-2 text-xs text-slate-600"><option value="">todos os tipos</option><option value="ENTRADA_NF">Entrada (nota)</option><option value="ENTRADA_MANUAL">Entrada manual</option><option value="BAIXA_VENDA">Baixa de venda</option><option value="AJUSTE_CONTAGEM">Ajuste de contagem</option><option value="PERDA">Perda</option><option value="ESTORNO">Estorno</option></select>
+        <input type="date" value={fDe} onChange={(e) => setFDe(e.target.value)} className="h-9 rounded-lg border border-slate-300 px-2 text-xs" />
+        <span className="text-xs text-slate-400">a</span>
+        <input type="date" value={fAte} onChange={(e) => setFAte(e.target.value)} className="h-9 rounded-lg border border-slate-300 px-2 text-xs" />
+        <span className="ml-auto text-xs tabular-nums text-slate-400">{lista.length} {lista.length === 1 ? 'movimento' : 'movimentos'}</span>
       </div>
 
       {movs === undefined ? <div className="p-6"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
@@ -63,13 +79,17 @@ export default function MovimentosPage({ params }: { params: Promise<{ id: strin
           <Card><CardContent className="p-0">
             {/* desktop */}
             <table className="density-normal hidden w-full sm:table">
-              <thead><tr className="border-b border-slate-100 text-left text-[11px] uppercase tracking-wide text-slate-400">
-                <th className="px-3 py-2 font-medium">Data</th><th className="px-3 py-2 font-medium">Tipo</th><th className="px-3 py-2 font-medium">Item</th>
-                <th className="px-3 py-2 text-right font-medium">Qtd</th><th className="px-3 py-2 text-right font-medium">Custo un.</th><th className="px-3 py-2 text-right font-medium">Custo total</th>
+              <thead className="group/thead"><tr className="border-b border-slate-100 text-left text-[11px] uppercase tracking-wide text-slate-400">
+                <SortableTh campo="data" col={col} dir={dir} onSort={alternar}>Data</SortableTh>
+                <SortableTh campo="tipo" col={col} dir={dir} onSort={alternar}>Tipo</SortableTh>
+                <SortableTh campo="item" col={col} dir={dir} onSort={alternar}>Item</SortableTh>
+                <SortableTh campo="qtd" col={col} dir={dir} onSort={alternar} align="right">Qtd</SortableTh>
+                <th className="px-3 py-2 text-right font-medium">Custo un.</th>
+                <SortableTh campo="total" col={col} dir={dir} onSort={alternar} align="right">Custo total</SortableTh>
                 <th className="px-3 py-2 font-medium">Referência</th><th className="px-3 py-2 font-medium">Quem</th>
               </tr></thead>
               <tbody>
-                {movs.map((m) => (
+                {lista.map((m) => (
                   <tr key={m.id} className={`border-b border-slate-50 last:border-0 ${m.estorno ? 'bg-rose-50/40' : ''}`}>
                     <td className="px-3 py-0 text-[13px] tabular-nums text-slate-700">{fmtDia(m.data)}</td>
                     <td className="px-3 py-0 text-[13px]"><span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${tipoBadge(m.tipo)}`}>{TIPO_LABEL[m.tipo] ?? m.tipo}</span></td>
@@ -85,7 +105,7 @@ export default function MovimentosPage({ params }: { params: Promise<{ id: strin
             </table>
             {/* mobile */}
             <div className="divide-y divide-slate-50 sm:hidden">
-              {movs.map((m) => (
+              {lista.map((m) => (
                 <div key={m.id} className={`p-4 ${m.estorno ? 'bg-rose-50/40' : ''}`}>
                   <div className="flex items-center justify-between">
                     <span className="font-medium text-slate-800">{m.itemNome}</span>
@@ -101,6 +121,18 @@ export default function MovimentosPage({ params }: { params: Promise<{ id: strin
             </div>
           </CardContent></Card>
         )}
+
+      {/* RÉGUA — o que entrou × o que saiu no período filtrado */}
+      {(movs?.length ?? 0) > 0 && (
+        <TotalsBar
+          itens={[
+            { chave: 'entradas', label: 'Entrou', tone: 'emerald', valor: entradas },
+            { chave: 'saidas', label: 'Saiu', tone: 'rose', valor: saidas },
+          ]}
+          total={entradas + saidas}
+          totalLabel="Líquido"
+        />
+      )}
     </div>
   )
 }

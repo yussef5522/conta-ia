@@ -22,9 +22,10 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { StatCard } from '@/components/ui/stat-card'
 import { TotalsBar, type TotalItem } from '@/components/ui/totals-bar'
 import { SortableTh, useSort } from '@/components/ui/sortable-th'
+import { baixarCsv, hojeArquivo } from '@/lib/format/csv-cliente'
 import {
   Inbox, PackageOpen, Archive, Info, Loader2, FlaskConical, MoonStar, Search, Loader,
-  CheckCircle2, Receipt, AlertTriangle, MoreHorizontal, ChevronRight, X,
+  CheckCircle2, Receipt, AlertTriangle, MoreHorizontal, ChevronRight, X, Download,
 } from 'lucide-react'
 
 interface FilaCard {
@@ -169,6 +170,15 @@ export default function RecebimentosPage({ params }: { params: Promise<{ id: str
         <h1 className="text-base font-semibold text-slate-900">Recebimentos</h1>
         <p className="hidden min-w-[16rem] flex-1 truncate text-xs text-slate-400 lg:block">Notas emitidas contra o CNPJ da empresa, direto da SEFAZ — a fila enche sozinha a partir de {fmt(r.dataCorte)}</p>
         <div className="ml-auto flex items-center gap-1.5">
+          {/* CSV do que está NA TELA (já filtrado/ordenado) — sem rota nova */}
+          <button
+            onClick={() => baixarCsv(`recebimentos-${hojeArquivo()}`,
+              ['Fornecedor', 'CNPJ', 'Data', 'Itens', 'Valor', 'Esperando (dias)', 'Status'],
+              filtradas.map((l) => [l.fornecedor, l.cnpj ?? '', fmt(l.data), l.nItens, l.valor, l.esperandoDias, CHIP[l.estado].label]))}
+            disabled={filtradas.length === 0}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-40">
+            <Download className="h-3.5 w-3.5" /> CSV
+          </button>
           <button onClick={() => setBuscarAberto((v) => !v)} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50">
             <Search className="h-3.5 w-3.5" /> Buscar pela chave
           </button>

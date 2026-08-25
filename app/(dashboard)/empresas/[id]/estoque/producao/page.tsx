@@ -6,7 +6,11 @@
 
 import { useEffect, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
-import { Factory, Loader2, Plus, ChevronRight, ClipboardList, Settings, TrendingDown, UtensilsCrossed } from 'lucide-react'
+import { StatCard } from '@/components/ui/stat-card'
+import { TotalsBar } from '@/components/ui/totals-bar'
+import { SortableTh, useSort } from '@/components/ui/sortable-th'
+import { baixarCsv, hojeArquivo } from '@/lib/format/csv-cliente'
+import { Factory, Loader2, Plus, ChevronRight, ClipboardList, Settings, TrendingDown, UtensilsCrossed, Download, PlayCircle, CheckCircle2 } from 'lucide-react'
 
 interface Ordem { id: string; nomeProduzido: string; unidadeProduzido: string; escalaReceitas: number; estado: string; dataProducao: string; setorNome: string | null }
 interface Sugestao { fichaId: string; itemProduzidoId: string; nome: string; unidade: string; saldo: number; estoqueMin: number; estoqueMax: number | null; faltam: number; escalaSugerida: number | null; rendimentoMedio: number | null }
@@ -47,16 +51,33 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
 
   const abertas = ordens.filter((o) => ['PLANEJADA', 'SEPARADA', 'EM_PRODUCAO'].includes(o.estado))
   const encerradas = ordens.filter((o) => ['CONCLUIDA', 'CANCELADA'].includes(o.estado))
+  const concluidas = ordens.filter((o) => o.estado === 'CONCLUIDA')
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center gap-3">
-        <Factory className="h-5 w-5 text-[#185FA5]" />
-        <div className="flex-1"><h1 className="text-base font-semibold text-slate-900">Produção</h1><p className="text-xs text-slate-400">Cria a ordem, separa da câmara e produz. A ficha diz a receita; aqui você faz.</p></div>
-        <a href={`/empresas/${id}/estoque/cardapio`} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"><UtensilsCrossed className="h-4 w-4" /> Cardápio</a>
-        <a href={`/empresas/${id}/estoque/fichas`} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"><ClipboardList className="h-4 w-4" /> Fichas</a>
-        <button onClick={() => setNovo((v) => !v)} className="inline-flex items-center gap-1.5 rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-white hover:bg-[#0F4A8C]"><Plus className="h-4 w-4" /> Nova ordem</button>
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2.5">
+        <Factory className="h-5 w-5 shrink-0 text-[#185FA5]" />
+        <h1 className="text-base font-semibold text-slate-900">Produção</h1>
+        <p className="hidden flex-1 truncate text-xs text-slate-400 lg:block">Cria a ordem, separa da câmara e produz — a ficha diz a receita, aqui você faz</p>
+        <div className="ml-auto flex items-center gap-1.5">
+          <button onClick={() => baixarCsv(`ordens-producao-${hojeArquivo()}`,
+            ['Produto', 'Escala', 'Data', 'Setor', 'Estado'],
+            ordens.map((o) => [o.nomeProduzido, o.escalaReceitas, fmtDia(o.dataProducao), o.setorNome ?? '', o.estado]))}
+            disabled={ordens.length === 0}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-40"><Download className="h-3.5 w-3.5" /> CSV</button>
+          <a href={`/empresas/${id}/estoque/cardapio`} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50"><UtensilsCrossed className="h-3.5 w-3.5" /> Cardápio</a>
+          <a href={`/empresas/${id}/estoque/fichas`} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50"><ClipboardList className="h-3.5 w-3.5" /> Fichas</a>
+          <button onClick={() => setNovo((v) => !v)} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#185FA5] px-3 text-xs font-semibold text-white hover:bg-[#0F4A8C]"><Plus className="h-3.5 w-3.5" /> Nova ordem</button>
+        </div>
       </div>
+
+      {ordens.length > 0 && (
+        <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+          <StatCard tone="sky" label="Em aberto" value={String(abertas.length)} sub="ordens andando" icon={PlayCircle} />
+          <StatCard tone="emerald" label="Concluídas" value={String(concluidas.length)} sub="produzidas" icon={CheckCircle2} />
+          <StatCard tone="amber" label="Sugestões" value={String(sugestoes.length)} sub="abaixo do mínimo" icon={TrendingDown} />
+        </div>
+      )}
 
       {novo && <NovaOrdem id={id} onCriada={(ordemId) => { window.location.href = `/empresas/${id}/estoque/producao/${ordemId}` }} onFechar={() => setNovo(false)} />}
 
@@ -94,29 +115,57 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
   )
 }
 
+type CampoO = 'produto' | 'escala' | 'data' | 'setor' | 'estado'
 function Secao({ titulo, ordens, id }: { titulo: string; ordens: Ordem[]; id: string }) {
+  const { col, dir, alternar, ordenar } = useSort<CampoO>('data', 'desc')
+  const lista = ordenar(ordens, (o, c) => (
+    c === 'produto' ? o.nomeProduzido : c === 'escala' ? o.escalaReceitas : c === 'data' ? o.dataProducao
+      : c === 'setor' ? (o.setorNome ?? '') : o.estado
+  ))
   return (
     <div>
-      <h2 className="mb-2 text-sm font-semibold text-slate-700">{titulo} ({ordens.length})</h2>
-      <div className="space-y-2">
-        {ordens.map((o) => {
-          const e = ESTADO[o.estado] ?? { label: o.estado, cls: 'bg-slate-100 text-slate-600' }
-          return (
-            <a key={o.id} href={`/empresas/${id}/estoque/producao/${o.id}`} className="block">
-              <Card className="transition hover:border-[#185FA5] hover:shadow-sm"><CardContent className="flex items-center justify-between gap-3 p-4">
-                <div className="min-w-0">
+      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600">{titulo} ({ordens.length})</h2>
+      <Card><CardContent className="p-0">
+        <table className="density-normal hidden w-full sm:table">
+          <thead className="group/thead"><tr className="border-b border-slate-100 text-left text-[11px] uppercase tracking-wide text-slate-400">
+            <SortableTh campo="produto" col={col} dir={dir} onSort={alternar}>Produto</SortableTh>
+            <SortableTh campo="escala" col={col} dir={dir} onSort={alternar} align="right">Escala</SortableTh>
+            <SortableTh campo="data" col={col} dir={dir} onSort={alternar}>Data</SortableTh>
+            <SortableTh campo="setor" col={col} dir={dir} onSort={alternar}>Setor</SortableTh>
+            <SortableTh campo="estado" col={col} dir={dir} onSort={alternar}>Estado</SortableTh>
+            <th className="w-10 px-3 py-2" />
+          </tr></thead>
+          <tbody>
+            {lista.map((o) => {
+              const e = ESTADO[o.estado] ?? { label: o.estado, cls: 'bg-slate-100 text-slate-600' }
+              return (
+                <tr key={o.id} className="border-b border-slate-50 last:border-b-0 hover:bg-slate-50">
+                  <td className="px-3 py-0 text-[13px]"><a href={`/empresas/${id}/estoque/producao/${o.id}`} className="font-medium text-slate-800 hover:text-[#185FA5]">{o.nomeProduzido}</a></td>
+                  <td className="px-3 py-0 text-right text-[13px] tabular-nums text-slate-500">{o.escalaReceitas}×</td>
+                  <td className="whitespace-nowrap px-3 py-0 text-[13px] tabular-nums text-slate-500">{fmtDia(o.dataProducao)}</td>
+                  <td className="px-3 py-0 text-[13px] text-slate-500">{o.setorNome ?? '—'}</td>
+                  <td className="px-3 py-0"><span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${e.cls}`}>{e.label}</span></td>
+                  <td className="px-3 py-0 text-right"><a href={`/empresas/${id}/estoque/producao/${o.id}`}><ChevronRight className="h-4 w-4 text-slate-300" /></a></td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+        <div className="divide-y divide-slate-50 sm:hidden">
+          {lista.map((o) => {
+            const e = ESTADO[o.estado] ?? { label: o.estado, cls: 'bg-slate-100 text-slate-600' }
+            return (
+              <a key={o.id} href={`/empresas/${id}/estoque/producao/${o.id}`} className="block p-4">
+                <div className="flex items-start justify-between gap-2">
                   <p className="truncate text-sm font-medium text-slate-900">{o.nomeProduzido}</p>
-                  <p className="text-xs text-slate-500">{o.escalaReceitas}× a receita · {fmtDia(o.dataProducao)}{o.setorNome ? ` · ${o.setorNome}` : ''}</p>
+                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${e.cls}`}>{e.label}</span>
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${e.cls}`}>{e.label}</span>
-                  <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
-                </div>
-              </CardContent></Card>
-            </a>
-          )
-        })}
-      </div>
+                <p className="mt-1 text-xs text-slate-500">{o.escalaReceitas}× a receita · {fmtDia(o.dataProducao)}{o.setorNome ? ` · ${o.setorNome}` : ''}</p>
+              </a>
+            )
+          })}
+        </div>
+      </CardContent></Card>
     </div>
   )
 }

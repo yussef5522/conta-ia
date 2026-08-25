@@ -7,7 +7,11 @@
 
 import { useEffect, useMemo, useRef, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
-import { ShoppingCart, Loader2, Upload, Check, Pencil, Search, Play, Receipt, AlertTriangle, History, RefreshCw, Store } from 'lucide-react'
+import { StatCard } from '@/components/ui/stat-card'
+import { TotalsBar } from '@/components/ui/totals-bar'
+import { SortableTh, useSort } from '@/components/ui/sortable-th'
+import { baixarCsv, hojeArquivo } from '@/lib/format/csv-cliente'
+import { ShoppingCart, Loader2, Upload, Check, Pencil, Search, Play, Receipt, AlertTriangle, History, RefreshCw, Store, Download, CheckCircle2 } from 'lucide-react'
 import { PlanoVendaModal } from '@/components/estoque/plano-venda-modal'
 
 interface Linha { produto: string; quantidade: number; valorTotal: number; mapeado: boolean; alvoTipo: string | null; alvoId: string | null; alvoNome: string | null }
@@ -118,13 +122,28 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
     if (busca.trim()) ls = ls.filter((l) => l.produto.toLowerCase().includes(busca.toLowerCase()))
     return ls
   }, [preview, soPendentes, busca])
+  const sp = useSort<'data' | 'baixados' | 'valor' | 'pendentes'>('data', 'desc')
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center gap-3">
-        <ShoppingCart className="h-5 w-5 text-[#185FA5]" />
-        <div className="flex-1"><h1 className="text-base font-semibold text-slate-900">Vendas (Suitable)</h1><p className="text-xs text-slate-400">Mapeia uma vez (vale sempre); processa o dia; a venda baixa o estoque.</p></div>
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2.5">
+        <ShoppingCart className="h-5 w-5 shrink-0 text-[#185FA5]" />
+        <h1 className="text-base font-semibold text-slate-900">Vendas (Suitable)</h1>
+        <p className="hidden flex-1 truncate text-xs text-slate-400 lg:block">Mapeia uma vez (vale sempre) · processa o dia · a venda baixa o estoque</p>
+        <button onClick={() => baixarCsv(`vendas-processadas-${hojeArquivo()}`,
+          ['Dia', 'Produtos baixados', 'Valor baixado', 'Pendentes'],
+          processados.map((d) => [fmtDia(d.data), d.baixados, d.valorBaixado, d.pendentes]))}
+          disabled={processados.length === 0}
+          className="ml-auto inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-40"><Download className="h-3.5 w-3.5" /> CSV</button>
       </div>
+
+      {processados.length > 0 && (
+        <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+          <StatCard tone="emerald" label="Baixado" value={brl(processados.reduce((a, d) => a + d.valorBaixado, 0))} sub={`${processados.reduce((a, d) => a + d.baixados, 0)} produtos`} icon={CheckCircle2} />
+          <StatCard tone="sky" label="Dias processados" value={String(processados.length)} sub="com venda baixada" icon={History} />
+          <StatCard tone="amber" label="Pendentes" value={String(processados.reduce((a, d) => a + d.pendentes, 0))} sub="sem destino no estoque" icon={AlertTriangle} />
+        </div>
+      )}
 
       {/* abas */}
       <div className="flex gap-2 border-b border-slate-200">
@@ -137,8 +156,14 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
         <Card><CardContent className="p-0">
           {processados.length === 0 ? <p className="p-6 text-center text-sm text-slate-500">Nenhum dia processado ainda.</p> : (
             <table className="density-normal w-full">
-              <thead><tr className="border-b border-slate-100 text-left text-[11px] uppercase tracking-wide text-slate-400"><th className="px-3 py-2 font-medium">Dia</th><th className="px-3 py-2 text-right font-medium">Baixados</th><th className="px-3 py-2 text-right font-medium">Valor</th><th className="px-3 py-2 text-right font-medium">Pendentes</th><th className="px-3 py-2"></th></tr></thead>
-              <tbody>{processados.map((d) => (
+              <thead className="group/thead"><tr className="border-b border-slate-100 text-left text-[11px] uppercase tracking-wide text-slate-400">
+                <SortableTh campo="data" col={sp.col} dir={sp.dir} onSort={sp.alternar}>Dia</SortableTh>
+                <SortableTh campo="baixados" col={sp.col} dir={sp.dir} onSort={sp.alternar} align="right">Baixados</SortableTh>
+                <SortableTh campo="valor" col={sp.col} dir={sp.dir} onSort={sp.alternar} align="right">Valor</SortableTh>
+                <SortableTh campo="pendentes" col={sp.col} dir={sp.dir} onSort={sp.alternar} align="right">Pendentes</SortableTh>
+                <th className="w-10 px-3 py-2"></th>
+              </tr></thead>
+              <tbody>{sp.ordenar(processados, (d, c) => (c === 'data' ? d.data : c === 'baixados' ? d.baixados : c === 'valor' ? d.valorBaixado : d.pendentes)).map((d) => (
                 <tr key={d.data} className="border-b border-slate-50 last:border-0">
                   <td className="px-3 py-0 text-[13px] font-medium text-slate-800">{fmtDia(d.data)}</td>
                   <td className="px-3 py-0 text-[13px] text-right tabular-nums text-slate-700">{d.baixados}</td>

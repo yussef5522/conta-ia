@@ -7,13 +7,19 @@
 
 import { useEffect, useMemo, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
-import { Package, Loader2, Plus, Search, Ban, RotateCcw } from 'lucide-react'
+import { Package, Loader2, Plus, Search, Ban, RotateCcw, Download, MoreHorizontal, FileText, Boxes } from 'lucide-react'
+import { StatCard } from '@/components/ui/stat-card'
+import { TotalsBar, type TotalItem } from '@/components/ui/totals-bar'
+import { SortableTh, useSort } from '@/components/ui/sortable-th'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { baixarCsv, hojeArquivo } from '@/lib/format/csv-cliente'
 import { NomeEditavel } from '@/components/estoque/nome-editavel'
 
 interface Item { id: string; nome: string; unidadeControle: string; categoria: string; categoriaLabel: string; produzido: boolean; ativo: boolean; saldo: number; custoMedio: number | null; estoqueMin: number | null; estoqueMax: number | null; criadoVia: string }
 const CATS = [{ v: 'MATERIA_PRIMA', l: 'Matéria-prima' }, { v: 'REVENDA', l: 'Revenda' }, { v: 'EMBALAGEM', l: 'Embalagem' }, { v: 'LIMPEZA', l: 'Limpeza' }, { v: 'USO_INTERNO', l: 'Uso interno' }]
 const brl = (n: number | null) => (n == null ? 'a definir' : n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }))
 const num = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 3 })
+type Campo = 'nome' | 'categoria' | 'saldo' | 'custo' | 'minmax'
 const parseNum = (s: string) => { const n = Number((s ?? '').replace(',', '.')); return s.trim() === '' || !Number.isFinite(n) ? null : n }
 
 export default function CatalogoPage({ params }: { params: Promise<{ id: string }> }) {
@@ -23,6 +29,7 @@ export default function CatalogoPage({ params }: { params: Promise<{ id: string 
   const [catFiltro, setCatFiltro] = useState('')
   const [verInativos, setVerInativos] = useState(false)
   const [novo, setNovo] = useState(false)
+  const { col, dir, alternar, ordenar } = useSort<Campo>('nome', 'asc')
 
   const carregar = () => fetch(`/api/empresas/${id}/estoque/catalogo`).then((r) => r.json()).then((j) => setItens(j.itens ?? [])).catch(() => setItens(null))
   useEffect(() => { carregar() }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -31,8 +38,12 @@ export default function CatalogoPage({ params }: { params: Promise<{ id: string 
 
   const filtrados = useMemo(() => {
     if (!itens) return []
-    return itens.filter((i) => (verInativos || i.ativo) && (!catFiltro || i.categoria === catFiltro) && (!busca.trim() || i.nome.toLowerCase().includes(busca.toLowerCase())))
-  }, [itens, busca, catFiltro, verInativos])
+    const ls = itens.filter((i) => (verInativos || i.ativo) && (!catFiltro || i.categoria === catFiltro) && (!busca.trim() || i.nome.toLowerCase().includes(busca.toLowerCase())))
+    return ordenar(ls, (i, c) => (
+      c === 'nome' ? i.nome : c === 'categoria' ? i.categoriaLabel : c === 'saldo' ? i.saldo
+        : c === 'custo' ? i.custoMedio : i.estoqueMin
+    ))
+  }, [itens, busca, catFiltro, verInativos, ordenar])
 
   if (itens === undefined) return <div className="p-6"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
   if (itens === null) return <div className="p-6 text-sm text-slate-500">Não consegui carregar o catálogo.</div>
@@ -42,22 +53,36 @@ export default function CatalogoPage({ params }: { params: Promise<{ id: string 
       <div className="flex items-center gap-3">
         <Package className="h-5 w-5 text-[#185FA5]" />
         <div className="flex-1"><h1 className="text-base font-semibold text-slate-900">Catálogo de itens</h1><p className="text-xs text-slate-400">Todos os itens do estoque (inclusive os zerados). Item novo nasce sem saldo — o saldo vem de nota, produção ou contagem.</p></div>
-        <button onClick={() => setNovo((v) => !v)} className="inline-flex items-center gap-1.5 rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-white hover:bg-[#0F4A8C]"><Plus className="h-4 w-4" /> Novo item</button>
+        <div className="flex items-center gap-1.5">
+          <button onClick={() => baixarCsv(`catalogo-${hojeArquivo()}`,
+            ['Item', 'Categoria', 'Unidade', 'Saldo', 'Custo médio', 'Mínimo', 'Máximo', 'Ativo'],
+            filtrados.map((i) => [i.nome, i.categoriaLabel, i.unidadeControle, i.saldo, i.custoMedio, i.estoqueMin, i.estoqueMax, i.ativo ? 'sim' : 'não']))}
+            disabled={filtrados.length === 0}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-40">
+            <Download className="h-3.5 w-3.5" /> CSV
+          </button>
+          <button onClick={() => setNovo((v) => !v)} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#185FA5] px-3 text-xs font-semibold text-white hover:bg-[#0F4A8C]"><Plus className="h-3.5 w-3.5" /> Novo item</button>
+        </div>
       </div>
 
       {novo && <NovoItem id={id} onCriado={() => { setNovo(false); carregar() }} onFechar={() => setNovo(false)} />}
 
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-[160px]"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="buscar item…" className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm" /></div>
-        <select value={catFiltro} onChange={(e) => setCatFiltro(e.target.value)} className="rounded-lg border border-slate-300 py-2 px-3 text-sm text-slate-600"><option value="">todas categorias</option>{CATS.map((c) => <option key={c.v} value={c.v}>{c.l}</option>)}<option value="INTERMEDIARIO">Intermediário</option><option value="PRODUTO_FINAL">Produto final</option></select>
-        <button onClick={() => setVerInativos((v) => !v)} className={`rounded-lg border px-3 py-2 text-sm ${verInativos ? 'border-[#185FA5] bg-[#185FA5]/5 text-[#185FA5]' : 'border-slate-300 text-slate-600'}`}>inativos</button>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <div className="relative w-full max-w-[320px]"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" /><input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="buscar item…" className="h-9 w-full rounded-lg border border-slate-300 pl-8 pr-3 text-sm" /></div>
+        <select value={catFiltro} onChange={(e) => setCatFiltro(e.target.value)} className="h-9 shrink-0 rounded-lg border border-slate-300 px-2 text-xs text-slate-600"><option value="">todas categorias</option>{CATS.map((c) => <option key={c.v} value={c.v}>{c.l}</option>)}<option value="INTERMEDIARIO">Intermediário</option><option value="PRODUTO_FINAL">Produto final</option></select>
+        <button onClick={() => setVerInativos((v) => !v)} className={`h-9 shrink-0 rounded-lg border px-2.5 text-xs ${verInativos ? 'border-[#185FA5] bg-[#185FA5]/5 text-[#185FA5]' : 'border-slate-300 text-slate-600'}`}>inativos</button>
+        <span className="ml-auto text-xs tabular-nums text-slate-400">{filtrados.length} de {itens.length}</span>
       </div>
 
       <Card><CardContent className="p-0">
         <table className="density-normal w-full">
-          <thead><tr className="border-b border-slate-100 text-left text-[11px] uppercase tracking-wide text-slate-400">
-            <th className="px-3 py-2 font-medium">Item</th><th className="px-3 py-2 font-medium">Categoria</th>
-            <th className="px-3 py-2 text-right font-medium">Saldo</th><th className="px-3 py-2 text-right font-medium">Custo médio</th><th className="px-3 py-2 text-right font-medium">Mín/Máx</th><th className="px-3 py-2"></th>
+          <thead className="group/thead"><tr className="border-b border-slate-100 text-left text-[11px] uppercase tracking-wide text-slate-400">
+            <SortableTh campo="nome" col={col} dir={dir} onSort={alternar}>Item</SortableTh>
+            <SortableTh campo="categoria" col={col} dir={dir} onSort={alternar}>Categoria</SortableTh>
+            <SortableTh campo="saldo" col={col} dir={dir} onSort={alternar} align="right">Saldo</SortableTh>
+            <SortableTh campo="custo" col={col} dir={dir} onSort={alternar} align="right">Custo médio</SortableTh>
+            <SortableTh campo="minmax" col={col} dir={dir} onSort={alternar} align="right">Mín/Máx</SortableTh>
+            <th className="w-10 px-3 py-2"></th>
           </tr></thead>
           <tbody>
             {filtrados.map((i) => (
@@ -77,6 +102,22 @@ export default function CatalogoPage({ params }: { params: Promise<{ id: string 
           </tbody>
         </table>
       </CardContent></Card>
+
+      {/* RÉGUA — valor em estoque por categoria + total (anatomia oficial) */}
+      {filtrados.length > 0 && (
+        <TotalsBar
+          itens={[...new Map(filtrados.map((i) => [i.categoria, i.categoriaLabel])).entries()]
+            .map(([cat, label]): TotalItem => {
+              const doGrupo = filtrados.filter((i) => i.categoria === cat)
+              return {
+                chave: cat, label, tone: 'slate', n: doGrupo.length,
+                valor: doGrupo.reduce((s2, i) => s2 + (i.custoMedio ?? 0) * i.saldo, 0),
+                onClick: () => setCatFiltro(catFiltro === cat ? '' : cat),
+              }
+            })}
+          totalLabel="Valor em estoque"
+        />
+      )}
     </div>
   )
 }
