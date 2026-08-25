@@ -11,7 +11,11 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import { TotalsBar, type TotalItem } from '@/components/ui/totals-bar'
 import { SortableTh, useSort } from '@/components/ui/sortable-th'
-import { Boxes, Loader2, AlertTriangle, Search, ArrowUp, ArrowDown, Minus, ChevronDown, ChevronRight, Download, PackageMinus, TrendingDown, MoreHorizontal, SlidersHorizontal, FileText } from 'lucide-react'
+import { StatCard } from '@/components/ui/stat-card'
+import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
+import { corDaCategoria, STRIPE_FAIXA } from '@/lib/stock/categoria-cores'
+import { Boxes, Loader2, AlertTriangle, Search, ArrowUp, ArrowDown, Minus, ChevronDown, ChevronRight, Download, PackageMinus, TrendingDown, MoreHorizontal, SlidersHorizontal, FileText, Layers } from 'lucide-react'
 import { NomeEditavel } from '@/components/estoque/nome-editavel'
 import { SaidaModal } from '@/components/estoque/saida-modal'
 import { StatusBar, StatusDot, STATUS_BORDA } from '@/components/estoque/status-bar'
@@ -90,11 +94,13 @@ export default function PosicaoPage({ params }: { params: Promise<{ id: string }
     <div className="space-y-3">
       {/* Cabeçalho de UMA linha: título + subtítulo lado a lado, botões h-8.
        * Era ícone 28px + 2 linhas de texto + botões py-2 = ~76px só de topo. */}
-      <div className="flex items-center gap-2.5">
+      <div className="flex items-center gap-3">
         <Boxes className="h-5 w-5 shrink-0 text-[#185FA5]" />
-        <h1 className="text-base font-semibold text-slate-900">Posição de estoque</h1>
-        <p className="hidden flex-1 truncate text-xs text-slate-400 lg:block">Saldo derivado dos movimentos · clique num item pra ver a ficha</p>
-        <div className="flex flex-1 items-center justify-end gap-1.5 lg:flex-none">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-lg font-semibold tracking-tight">Posição de estoque</h1>
+          <p className="text-sm text-muted-foreground">{filtrados.length} {filtrados.length === 1 ? 'item no filtro' : 'itens no filtro'}</p>
+        </div>
+        <div className="flex items-center gap-2">
           <a href={`/empresas/${id}/estoque/perdas`} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50"><TrendingDown className="h-3.5 w-3.5" /> Perdas</a>
           <button onClick={() => setSaida('novo')} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50"><PackageMinus className="h-3.5 w-3.5" /> Registrar saída</button>
           {data.itens.length > 0 && <a href={`/api/empresas/${id}/estoque/posicao?formato=csv`} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50"><Download className="h-3.5 w-3.5" /> CSV</a>}
@@ -110,36 +116,41 @@ export default function PosicaoPage({ params }: { params: Promise<{ id: string }
         </CardContent></Card>
       ) : (
         <>
-          {/* FAIXA horizontal por categoria (era tijolo de 3 linhas × N, que
-           * quebrava em 2ª fileira e comia a altura da lista).
-           * Retoque 23/08: a 1ª versão apertou DEMAIS (virou texto espremido).
-           * Agora rótulo 10px caixa-alta EM CIMA e valor 15px bold embaixo —
-           * continua faixa (rola no eixo x, nunca 2ª fileira), só legível. */}
-          <div className="-mx-1 flex items-stretch gap-2 overflow-x-auto px-1 pb-1">
-            <button onClick={() => setCatFiltro(null)} className={`flex shrink-0 flex-col items-start gap-0.5 rounded-lg border px-3.5 py-2 text-left transition ${!catFiltro ? 'border-[#185FA5] bg-[#185FA5]/5 ring-1 ring-[#185FA5]/20' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Total</span>
-              <span className="text-[15px] font-bold tabular-nums leading-none text-slate-900">{brl(data.valorTotal)}</span>
-            </button>
+          {/* CARDS DE RESUMO — mesma grade e mesmo componente da Contas a Pagar.
+           * Total em destaque + um card POR CATEGORIA, cada um na sua cor. */}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard tone="slate" label="Total em estoque" value={brl(data.valorTotal)}
+              sub={`${data.itens.length} ${data.itens.length === 1 ? 'item' : 'itens'}`} icon={Boxes}
+              onClick={() => setCatFiltro(null)} active={!catFiltro} />
             {data.porCategoria.map((c) => (
-              <button key={c.categoria} onClick={() => setCatFiltro(catFiltro === c.categoria ? null : c.categoria)} className={`flex shrink-0 flex-col items-start gap-0.5 rounded-lg border px-3.5 py-2 text-left transition ${catFiltro === c.categoria ? 'border-[#185FA5] bg-[#185FA5]/5 ring-1 ring-[#185FA5]/20' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
-                <span className="flex items-baseline gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                  {c.label} <span className="font-normal normal-case tracking-normal text-slate-300">{c.itens}</span>
-                </span>
-                <span className="text-[15px] font-bold tabular-nums leading-none text-slate-900">{brl(c.valor)}</span>
-              </button>
+              <StatCard key={c.categoria} tone={corDaCategoria(c.categoria).tone} label={c.label}
+                value={brl(c.valor)} sub={`${c.itens} ${c.itens === 1 ? 'item' : 'itens'}`} icon={Layers}
+                onClick={() => setCatFiltro(catFiltro === c.categoria ? null : c.categoria)}
+                active={catFiltro === c.categoria} />
             ))}
           </div>
 
-          {/* Filtros em UMA linha (h-9). A busca não estica mais o fim da tela:
-           * teto de 320px, o resto do espaço vai pra lista. */}
-          <div className="flex items-center gap-1.5">
-            <div className="relative w-full max-w-[320px]">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
-              <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="buscar item…" className="h-9 w-full rounded-lg border border-slate-300 pl-8 pr-3 text-sm" />
+          {/* BARRA DE FILTROS — mesmas medidas da Contas a Pagar (h-9, gap-2,
+           * busca flex-1 min-w-[200px] max-w-md) */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative min-w-[200px] max-w-md flex-1">
+              <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input type="search" value={busca} onChange={(e) => setBusca(e.target.value)}
+                placeholder="Buscar item…" className="h-9 pl-7 text-sm" aria-label="Busca textual" />
             </div>
-            <button onClick={() => setAgrupar((v) => !v)} className={`h-9 shrink-0 rounded-lg border px-2.5 text-xs ${agrupar ? 'border-[#185FA5] bg-[#185FA5]/5 text-[#185FA5]' : 'border-slate-300 text-slate-600'}`}>Agrupar</button>
-            {nAbaixo > 0 && <button onClick={() => setSoAbaixo((v) => !v)} className={`inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-xs ${soAbaixo ? 'border-rose-400 bg-rose-50 text-rose-700' : 'border-slate-300 text-slate-600'}`}><AlertTriangle className="h-3.5 w-3.5" /> {nAbaixo} abaixo do mín.</button>}
-            <span className="ml-auto hidden shrink-0 text-xs tabular-nums text-slate-400 sm:block">{filtrados.length} {filtrados.length === 1 ? 'item' : 'itens'}</span>
+            <select value={catFiltro ?? ''} onChange={(e) => setCatFiltro(e.target.value || null)}
+              className="h-9 min-w-[140px] rounded-md border bg-background px-2 text-sm">
+              <option value="">Todas as categorias</option>
+              {data.porCategoria.map((c) => <option key={c.categoria} value={c.categoria}>{c.label}</option>)}
+            </select>
+            <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-md border px-3 text-sm">
+              <Checkbox checked={soAbaixo} onCheckedChange={(v) => setSoAbaixo(!!v)} />
+              Só abaixo do mínimo{nAbaixo > 0 ? ` (${nAbaixo})` : ''}
+            </label>
+            <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-md border px-3 text-sm">
+              <Checkbox checked={agrupar} onCheckedChange={(v) => setAgrupar(!!v)} /> Agrupar
+            </label>
+            <span className="ml-auto text-sm text-muted-foreground">{filtrados.length} de {data.itens.length}</span>
           </div>
 
           {/* lista */}
@@ -202,6 +213,7 @@ function ListaItens({ itens, id, onRenomear, sort, sel, setSel, onSaida }: {
        * Padding vertical sai (py-0): quem manda na altura é a classe. */}
       <table className="density-normal hidden w-full sm:table">
         <thead className="group/thead"><tr className="border-b border-slate-100 text-left text-[11px] uppercase tracking-wide text-slate-400">
+          <th className="w-1 p-0" aria-hidden="true" />
           <th className="w-10 px-3 py-2">
             <Checkbox checked={todosMarcados} onCheckedChange={(v) => setSel((s) => v ? [...new Set([...s, ...itens.map((i) => i.itemId)])] : s.filter((x) => !itens.some((i) => i.itemId === x)))} aria-label="selecionar todos" />
           </th>
@@ -215,13 +227,19 @@ function ListaItens({ itens, id, onRenomear, sort, sel, setSel, onSaida }: {
           <th className="w-10 px-3 py-2" />
         </tr></thead>
         <tbody>
-          {itens.map((i) => (
-            <tr key={i.itemId} className={`border-b border-l-2 border-slate-50 last:border-b-0 hover:bg-slate-50 ${STATUS_BORDA[i.status.cor]} ${sel.includes(i.itemId) ? 'bg-[#185FA5]/5' : ''}`}>
+          {itens.map((i, idx) => (
+            <tr key={i.itemId} className={`group border-b last:border-0 transition-colors hover:bg-muted/30 ${sel.includes(i.itemId) ? 'bg-primary/5' : idx % 2 === 1 ? 'bg-muted/10' : ''}`}>
+              {/* Tarja lateral (mesmo padrão da Contas a Pagar): com mín/máx a cor conta
+                  o ESTADO DO SALDO — a informação mais urgente da linha; sem mín/máx,
+                  cai na cor da categoria. */}
+              <td className={`w-1 p-0 ${i.estoqueMin != null ? (STRIPE_FAIXA[i.status.cor] ?? 'bg-slate-300') : corDaCategoria(i.categoria).stripe}`} aria-hidden="true" />
               <td className="px-3 py-0">
                 <Checkbox checked={sel.includes(i.itemId)} onCheckedChange={() => setSel((s) => s.includes(i.itemId) ? s.filter((x) => x !== i.itemId) : [...s, i.itemId])} aria-label={`selecionar ${i.nome}`} />
               </td>
               <td className="px-3 py-0 text-[13px]"><NomeEditavel companyId={id} itemId={i.itemId} nome={i.nome} comLink onSalvo={(n) => onRenomear(i.itemId, n)} /></td>
-              <td className="px-3 py-0 text-[13px] text-slate-500">{i.categoriaLabel}</td>
+              <td className="px-3 py-0">
+                <Badge variant="outline" className={`border-0 text-[10px] uppercase tracking-wide ${corDaCategoria(i.categoria).badgeBg} ${corDaCategoria(i.categoria).badgeText}`}>{i.categoriaLabel}</Badge>
+              </td>
               <td className={`whitespace-nowrap px-3 py-0 text-right text-[13px] tabular-nums ${i.negativo ? 'font-semibold text-rose-600' : 'text-slate-800'}`}>{i.negativo && <AlertTriangle className="mr-1 inline h-3 w-3" />}{num(i.saldo)} {i.unidadeControle}</td>
               {/* faixa numa LINHA só: barra + mín–máx ao lado (era barra + rodapé embaixo = 2 linhas) */}
               <td className="w-32 px-3 py-0">

@@ -20,13 +20,16 @@ const VALUE_COLOR: Record<StatTone, string> = {
   slate: 'text-slate-900 dark:text-slate-100',
   violet: 'text-violet-600 dark:text-violet-400',
 }
-const ICON_COLOR: Record<StatTone, string> = {
-  emerald: 'text-emerald-400/40',
-  sky: 'text-sky-400/40',
-  amber: 'text-amber-400/40',
-  rose: 'text-rose-300',
-  slate: 'text-slate-300',
-  violet: 'text-violet-400/40',
+// ícone em CÍRCULO (24/08) — fundo suave + ícone no tom. Vale pra TODOS os cards do
+// sistema, inclusive os da Contas a Pagar (que consome este mesmo componente): mudar aqui
+// mantém as telas irmãs em vez de criar dois visuais.
+const ICON_WRAP: Record<StatTone, string> = {
+  emerald: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400',
+  sky: 'bg-sky-100 text-sky-600 dark:bg-sky-950/40 dark:text-sky-400',
+  amber: 'bg-amber-100 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400',
+  rose: 'bg-rose-100 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400',
+  slate: 'bg-slate-100 text-slate-600 dark:bg-slate-800/40 dark:text-slate-300',
+  violet: 'bg-violet-100 text-violet-600 dark:bg-violet-950/40 dark:text-violet-400',
 }
 const RING: Record<StatTone, string> = {
   emerald: 'ring-emerald-400/50', sky: 'ring-sky-400/50', amber: 'ring-amber-400/50',
@@ -65,7 +68,9 @@ export function StatCard({ tone, label, value, sub, icon: Icon, onClick, active,
             <p className={`mt-1 truncate text-2xl font-semibold tabular-nums ${VALUE_COLOR[tone]}`}>{value}</p>
             {sub && <p className="mt-0.5 text-xs text-muted-foreground">{sub}</p>}
           </div>
-          <Icon className={`h-8 w-8 shrink-0 ${ICON_COLOR[tone]}`} />
+          <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${ICON_WRAP[tone]}`}>
+            <Icon className="h-5 w-5" />
+          </span>
         </div>
       </CardContent>
     </Card>

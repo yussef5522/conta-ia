@@ -7,12 +7,16 @@
 
 import { useEffect, useMemo, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
-import { Package, Loader2, Plus, Search, Ban, RotateCcw, Download, MoreHorizontal, FileText, Boxes } from 'lucide-react'
+import { Package, Loader2, Plus, Search, Ban, RotateCcw, Download, MoreHorizontal, FileText, Boxes, Layers, HelpCircle, CircleSlash } from 'lucide-react'
 import { StatCard } from '@/components/ui/stat-card'
 import { TotalsBar, type TotalItem } from '@/components/ui/totals-bar'
 import { SortableTh, useSort } from '@/components/ui/sortable-th'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { baixarCsv, hojeArquivo } from '@/lib/format/csv-cliente'
+import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
+import { corDaCategoria } from '@/lib/stock/categoria-cores'
 import { NomeEditavel } from '@/components/estoque/nome-editavel'
 
 interface Item { id: string; nome: string; unidadeControle: string; categoria: string; categoriaLabel: string; produzido: boolean; ativo: boolean; saldo: number; custoMedio: number | null; estoqueMin: number | null; estoqueMax: number | null; criadoVia: string }
@@ -30,6 +34,8 @@ export default function CatalogoPage({ params }: { params: Promise<{ id: string 
   const [verInativos, setVerInativos] = useState(false)
   const [novo, setNovo] = useState(false)
   const { col, dir, alternar, ordenar } = useSort<Campo>('nome', 'asc')
+  const [soSemCusto, setSoSemCusto] = useState(false)
+  const [sel, setSel] = useState<string[]>([])
 
   const carregar = () => fetch(`/api/empresas/${id}/estoque/catalogo`).then((r) => r.json()).then((j) => setItens(j.itens ?? [])).catch(() => setItens(null))
   useEffect(() => { carregar() }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -38,12 +44,12 @@ export default function CatalogoPage({ params }: { params: Promise<{ id: string 
 
   const filtrados = useMemo(() => {
     if (!itens) return []
-    const ls = itens.filter((i) => (verInativos || i.ativo) && (!catFiltro || i.categoria === catFiltro) && (!busca.trim() || i.nome.toLowerCase().includes(busca.toLowerCase())))
+    const ls = itens.filter((i) => (verInativos || i.ativo) && (!catFiltro || i.categoria === catFiltro) && (!soSemCusto || i.custoMedio == null) && (!busca.trim() || i.nome.toLowerCase().includes(busca.toLowerCase())))
     return ordenar(ls, (i, c) => (
       c === 'nome' ? i.nome : c === 'categoria' ? i.categoriaLabel : c === 'saldo' ? i.saldo
         : c === 'custo' ? i.custoMedio : i.estoqueMin
     ))
-  }, [itens, busca, catFiltro, verInativos, ordenar])
+  }, [itens, busca, catFiltro, verInativos, soSemCusto, ordenar])
 
   if (itens === undefined) return <div className="p-6"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
   if (itens === null) return <div className="p-6 text-sm text-slate-500">Não consegui carregar o catálogo.</div>
@@ -51,8 +57,11 @@ export default function CatalogoPage({ params }: { params: Promise<{ id: string 
   return (
     <div className="space-y-5">
       <div className="flex items-center gap-3">
-        <Package className="h-5 w-5 text-[#185FA5]" />
-        <div className="flex-1"><h1 className="text-base font-semibold text-slate-900">Catálogo de itens</h1><p className="text-xs text-slate-400">Todos os itens do estoque (inclusive os zerados). Item novo nasce sem saldo — o saldo vem de nota, produção ou contagem.</p></div>
+        <Package className="h-5 w-5 shrink-0 text-[#185FA5]" />
+        <div className="min-w-0 flex-1">
+          <h1 className="text-lg font-semibold tracking-tight">Catálogo de itens</h1>
+          <p className="text-sm text-muted-foreground">{filtrados.length} {filtrados.length === 1 ? 'item no filtro' : 'itens no filtro'}</p>
+        </div>
         <div className="flex items-center gap-1.5">
           <button onClick={() => baixarCsv(`catalogo-${hojeArquivo()}`,
             ['Item', 'Categoria', 'Unidade', 'Saldo', 'Custo médio', 'Mínimo', 'Máximo', 'Ativo'],
@@ -67,16 +76,60 @@ export default function CatalogoPage({ params }: { params: Promise<{ id: string 
 
       {novo && <NovoItem id={id} onCriado={() => { setNovo(false); carregar() }} onFechar={() => setNovo(false)} />}
 
-      <div className="flex flex-wrap items-center gap-1.5">
-        <div className="relative w-full max-w-[320px]"><Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" /><input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="buscar item…" className="h-9 w-full rounded-lg border border-slate-300 pl-8 pr-3 text-sm" /></div>
-        <select value={catFiltro} onChange={(e) => setCatFiltro(e.target.value)} className="h-9 shrink-0 rounded-lg border border-slate-300 px-2 text-xs text-slate-600"><option value="">todas categorias</option>{CATS.map((c) => <option key={c.v} value={c.v}>{c.l}</option>)}<option value="INTERMEDIARIO">Intermediário</option><option value="PRODUTO_FINAL">Produto final</option></select>
-        <button onClick={() => setVerInativos((v) => !v)} className={`h-9 shrink-0 rounded-lg border px-2.5 text-xs ${verInativos ? 'border-[#185FA5] bg-[#185FA5]/5 text-[#185FA5]' : 'border-slate-300 text-slate-600'}`}>inativos</button>
-        <span className="ml-auto text-xs tabular-nums text-slate-400">{filtrados.length} de {itens.length}</span>
+      {/* CARDS DE RESUMO — não existiam. Mesma grade e componente da Contas a Pagar. */}
+      {itens.length > 0 && (() => {
+        const ativos = itens.filter((i) => i.ativo)
+        const porCat = [...new Map(ativos.map((i) => [i.categoria, i.categoriaLabel])).entries()]
+        const semCusto = ativos.filter((i) => i.custoMedio == null)
+        const zerados = ativos.filter((i) => i.saldo === 0)
+        const valorDe = (ls: Item[]) => ls.reduce((a, i) => a + (i.custoMedio ?? 0) * i.saldo, 0)
+        return (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard tone="slate" label="Itens no catálogo" value={String(ativos.length)}
+              sub={`${itens.length - ativos.length} inativos`} icon={Package}
+              onClick={() => { setCatFiltro(''); setSoSemCusto(false) }} active={!catFiltro && !soSemCusto} />
+            {porCat.map(([cat, label]) => {
+              const ls = ativos.filter((i) => i.categoria === cat)
+              return (
+                <StatCard key={cat} tone={corDaCategoria(cat).tone} label={label}
+                  value={String(ls.length)} sub={brl(valorDe(ls))} icon={Layers}
+                  onClick={() => setCatFiltro(catFiltro === cat ? '' : cat)} active={catFiltro === cat} />
+              )
+            })}
+            <StatCard tone="amber" label="Sem custo (a definir)" value={String(semCusto.length)}
+              sub="esperando a 1ª nota" icon={HelpCircle}
+              onClick={() => setSoSemCusto((v) => !v)} active={soSemCusto} />
+            <StatCard tone="sky" label="Zerados" value={String(zerados.length)}
+              sub="sem saldo hoje" icon={CircleSlash} />
+          </div>
+        )
+      })()}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[200px] max-w-md flex-1">
+          <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input type="search" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar item…" className="h-9 pl-7 text-sm" aria-label="Busca textual" />
+        </div>
+        <select value={catFiltro} onChange={(e) => setCatFiltro(e.target.value)} className="h-9 min-w-[140px] rounded-md border bg-background px-2 text-sm">
+          <option value="">Todas as categorias</option>{CATS.map((c) => <option key={c.v} value={c.v}>{c.l}</option>)}<option value="INTERMEDIARIO">Intermediário</option><option value="PRODUTO_FINAL">Produto final</option>
+        </select>
+        <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-md border px-3 text-sm">
+          <Checkbox checked={soSemCusto} onCheckedChange={(v) => setSoSemCusto(!!v)} /> Só sem custo
+        </label>
+        <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-md border px-3 text-sm">
+          <Checkbox checked={verInativos} onCheckedChange={(v) => setVerInativos(!!v)} /> Ver inativos
+        </label>
+        <span className="ml-auto text-sm text-muted-foreground">{filtrados.length} de {itens.length}</span>
       </div>
 
       <Card><CardContent className="p-0">
         <table className="density-normal w-full">
           <thead className="group/thead"><tr className="border-b border-slate-100 text-left text-[11px] uppercase tracking-wide text-slate-400">
+            <th className="w-1 p-0" aria-hidden="true" />
+            <th className="w-10 px-3 py-2">
+              <Checkbox checked={filtrados.length > 0 && filtrados.every((i) => sel.includes(i.id))}
+                onCheckedChange={(v) => setSel(v ? filtrados.map((i) => i.id) : [])} aria-label="selecionar todos" />
+            </th>
             <SortableTh campo="nome" col={col} dir={dir} onSort={alternar}>Item</SortableTh>
             <SortableTh campo="categoria" col={col} dir={dir} onSort={alternar}>Categoria</SortableTh>
             <SortableTh campo="saldo" col={col} dir={dir} onSort={alternar} align="right">Saldo</SortableTh>
@@ -85,20 +138,44 @@ export default function CatalogoPage({ params }: { params: Promise<{ id: string 
             <th className="w-10 px-3 py-2"></th>
           </tr></thead>
           <tbody>
-            {filtrados.map((i) => (
-              <tr key={i.id} className={`border-b border-slate-50 last:border-0 ${!i.ativo ? 'opacity-50' : ''}`}>
+            {filtrados.map((i, idx) => (
+              <tr key={i.id} className={`group border-b last:border-0 transition-colors hover:bg-muted/30 ${!i.ativo ? 'opacity-50' : ''} ${sel.includes(i.id) ? 'bg-primary/5' : idx % 2 === 1 ? 'bg-muted/10' : ''}`}>
+                {/* tarja lateral na cor da categoria (mesmo padrão da Contas a Pagar) */}
+                <td className={`w-1 p-0 ${corDaCategoria(i.categoria).stripe}`} aria-hidden="true" />
+                <td className="px-3 py-0">
+                  <Checkbox checked={sel.includes(i.id)} onCheckedChange={() => setSel((x) => x.includes(i.id) ? x.filter((y) => y !== i.id) : [...x, i.id])} aria-label={`selecionar ${i.nome}`} />
+                </td>
                 <td className="px-3 py-0 text-[13px]">{i.produzido ? <span className="font-medium text-slate-800">{i.nome}</span> : <NomeEditavel companyId={id} itemId={i.id} nome={i.nome} comLink onSalvo={carregar} />}</td>
-                <td className="px-3 py-0 text-[13px] text-slate-500">{i.categoriaLabel}{i.produzido && <span className="ml-1 text-[10px] text-slate-400">via ficha</span>}</td>
+                <td className="px-3 py-0">
+                  <Badge variant="outline" className={`border-0 text-[10px] uppercase tracking-wide ${corDaCategoria(i.categoria).badgeBg} ${corDaCategoria(i.categoria).badgeText}`}>{i.categoriaLabel}</Badge>
+                  {i.produzido && <span className="ml-1 text-[10px] text-slate-400">via ficha</span>}
+                </td>
                 <td className={`px-3 py-0 text-[13px] text-right tabular-nums ${i.saldo < 0 ? 'text-rose-600' : i.saldo === 0 ? 'text-slate-400' : 'text-slate-800'}`}>{num(i.saldo)} {i.unidadeControle}</td>
                 <td className="px-3 py-0 text-[13px] text-right tabular-nums text-slate-600">{brl(i.custoMedio)}</td>
                 <td className="px-3 py-0 text-[13px] text-right tabular-nums text-slate-400">{i.estoqueMin != null ? `${num(i.estoqueMin)}${i.estoqueMax != null ? '–' + num(i.estoqueMax) : ''}` : '—'}</td>
-                <td className="px-3 py-0 text-[13px] text-right">
-                  {i.ativo ? <button onClick={() => setAtivo(i.id, false)} className="inline-flex items-center gap-1 text-xs text-slate-400 hover:text-rose-500" title="desativar"><Ban className="h-3.5 w-3.5" /></button>
-                    : <button onClick={() => setAtivo(i.id, true)} className="inline-flex items-center gap-1 text-xs text-[#185FA5] hover:underline"><RotateCcw className="h-3.5 w-3.5" /> reativar</button>}
+                <td className="px-3 py-0 text-right">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600" aria-label={`ações de ${i.nome}`}>
+                        <MoreHorizontal className="h-4 w-4" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-48">
+                      <DropdownMenuItem asChild>
+                        <a href={`/empresas/${id}/estoque/itens/${i.id}`} className="cursor-pointer"><FileText className="mr-2 h-3.5 w-3.5" /> Ver ficha</a>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <a href={`/empresas/${id}/estoque/itens/${i.id}`} className="cursor-pointer"><Boxes className="mr-2 h-3.5 w-3.5" /> Editar mín/máx</a>
+                      </DropdownMenuItem>
+                      {i.ativo
+                        ? <DropdownMenuItem onClick={() => setAtivo(i.id, false)}><Ban className="mr-2 h-3.5 w-3.5" /> Desativar</DropdownMenuItem>
+                        : <DropdownMenuItem onClick={() => setAtivo(i.id, true)}><RotateCcw className="mr-2 h-3.5 w-3.5" /> Reativar</DropdownMenuItem>}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </td>
               </tr>
             ))}
-            {filtrados.length === 0 && <tr><td colSpan={6} className="p-6 text-center text-sm text-slate-500">Nenhum item{busca || catFiltro ? ' com esse filtro' : ' ainda'}.</td></tr>}
+            {filtrados.length === 0 && <tr><td colSpan={8} className="p-6 text-center text-sm text-slate-500">Nenhum item{busca || catFiltro ? ' com esse filtro' : ' ainda'}.</td></tr>}
           </tbody>
         </table>
       </CardContent></Card>
@@ -110,7 +187,7 @@ export default function CatalogoPage({ params }: { params: Promise<{ id: string 
             .map(([cat, label]): TotalItem => {
               const doGrupo = filtrados.filter((i) => i.categoria === cat)
               return {
-                chave: cat, label, tone: 'slate', n: doGrupo.length,
+                chave: cat, label, tone: corDaCategoria(cat).tone, n: doGrupo.length,
                 valor: doGrupo.reduce((s2, i) => s2 + (i.custoMedio ?? 0) * i.saldo, 0),
                 onClick: () => setCatFiltro(catFiltro === cat ? '' : cat),
               }
