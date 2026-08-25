@@ -139,6 +139,8 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ## Ordem de deploy (PJ + PF)
 
+**⚠️ SWAP DE 2GB É OBRIGATÓRIO NO SERVIDOR (25/08).** O `npm run build` do Next roda o type-check num worker que chega a **~1,9 GB de RSS**; o servidor tem 3,9 GB e estava **sem swap nenhum** → o OOM killer matava o worker (`signal: SIGKILL`) e o `.next` ficava **sem `BUILD_ID`**, deixando o pm2 em loop de erro. **Não adianta mexer no `--max-old-space-size`:** teto alto (2560) o kernel mata igual; teto baixo (1400) o próprio V8 aborta por heap insuficiente (`SIGABRT`) — o type-check PRECISA de ~2 GB. Criado em 25/08: `fallocate -l 2G /swapfile && chmod 600 && mkswap && swapon` + linha no `/etc/fstab` (persiste no reboot). Build voltou a passar de primeira. **Servidor novo nasce quebrado sem isso** — incluir no provisionamento junto com o poppler. Pra desfazer: `swapoff /swapfile && rm /swapfile` + tirar a linha do fstab.
+
 **Dependência de SISTEMA (não-npm):** `poppler-utils` (binário `pdftotext`) — usado pelo enriquecimento de contraparte por PDF (`lib/bank-statement-pdf/extract-pdf-text.ts`, único ponto que invoca poppler). **Servidor novo nasce quebrado sem isso** — incluir no provisionamento: `apt-get install -y poppler-utils`. Validar com `which pdftotext`. Instalado no CAIXAOS em 31/07/2026.
 
 Sequência **crítica** (bug pego na Fatia 1 quando `npm ci` rodou `prisma generate` antes do swap):
