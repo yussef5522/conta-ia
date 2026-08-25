@@ -119,9 +119,11 @@ export default function VendasPage({ params }: { params: Promise<{ id: string }>
     return { total: Math.round((total + 1e-9) * 100) / 100, porMeio: pm }
   }, [data])
 
-  if (erro) return <div className="p-6 text-sm text-rose-600">Erro: {erro}</div>
-  if (!data) return <div className="p-6 text-sm text-muted-foreground">Carregando vendas…</div>
-
+  // ⚠️ HOOKS FICAM AQUI, ANTES DOS EARLY RETURNS ABAIXO.
+  // Em 25/08 estes 4 nasceram DEPOIS do `if (!data) return` e derrubaram a tela:
+  // na 1ª renderização o componente retornava cedo e registrava N hooks; quando o
+  // fetch voltava, passava dos returns e registrava N+4 → "Rendered more hooks than
+  // during the previous render". É o MESMO bug da ordem de produção (21/08).
   const [meioAberto, setMeioAberto] = useState<string | null>(null)
   const [detalhe, setDetalhe] = useState<DetalheDia | null>(null)
   const [carregandoDet, setCarregandoDet] = useState(false)
@@ -138,6 +140,9 @@ export default function VendasPage({ params }: { params: Promise<{ id: string }>
       .catch(() => setDetalhe(null))
       .finally(() => setCarregandoDet(false))
   }, [sel, id])
+
+  if (erro) return <div className="p-6 text-sm text-rose-600">Erro: {erro}</div>
+  if (!data) return <div className="p-6 text-sm text-muted-foreground">Carregando vendas…</div>
 
   const selData: { total: number; porMeio: Record<string, number>; titulo: string } | null = (() => {
     if (!sel) return null
