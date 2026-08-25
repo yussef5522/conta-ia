@@ -8,12 +8,14 @@
 
 import { useEffect, useState, useMemo, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
-import { CalendarDays, Info } from 'lucide-react'
+import { CalendarDays, Info, ChevronDown, ChevronRight, ExternalLink } from 'lucide-react'
 
 interface DiaVenda { total: number; porMeio: Record<string, number>; estimado: boolean; confirmadoPerfil: boolean }
 interface Bloco { inicio: string; fim: string; total: number; porMeio: Record<string, number>; estimado: boolean; confirmadoPerfil: boolean }
 interface Balde { samples: number; total: number; media: number }
 interface PerfilSemana { SEG: Balde; TER: Balde; QUA: Balde; QUI: Balde; FDS: Balde }
+interface LancamentoOrigem { transactionId: string; dataEntrada: string; contaId: string; contaNome: string; descricao: string; valor: number; motivo: string }
+interface DetalheDia { de: string; ate: string; total: number; meios: { meio: string; valor: number; lancamentos: LancamentoOrigem[] }[]; aguardando: { meio: string; contaNome: string; chegaEm: string; frase: string }[] }
 interface VendasData { mes: string; moduleInicio: string | null; hoje: string; dias: Record<string, DiaVenda>; blocos: Bloco[]; perfilSemana: PerfilSemana | null }
 
 // Ordem fixa do maior pro menor típico (como o dono pensa), não alfabética.
@@ -119,6 +121,23 @@ export default function VendasPage({ params }: { params: Promise<{ id: string }>
 
   if (erro) return <div className="p-6 text-sm text-rose-600">Erro: {erro}</div>
   if (!data) return <div className="p-6 text-sm text-muted-foreground">Carregando vendas…</div>
+
+  const [meioAberto, setMeioAberto] = useState<string | null>(null)
+  const [detalhe, setDetalhe] = useState<DetalheDia | null>(null)
+  const [carregandoDet, setCarregandoDet] = useState(false)
+
+  // troca de dia fecha o meio aberto e recarrega o rastro
+  useEffect(() => {
+    setMeioAberto(null)
+    setDetalhe(null)
+    if (!sel) return
+    const [de, ate] = sel.tipo === 'dia' ? [sel.key, sel.key] : sel.key.split('|')
+    setCarregandoDet(true)
+    fetch(`/api/empresas/${id}/vendas/dia?de=${de}&ate=${ate}`)
+      .then((r) => r.json()).then((j) => setDetalhe(j.detalhe ?? null))
+      .catch(() => setDetalhe(null))
+      .finally(() => setCarregandoDet(false))
+  }, [sel, id])
 
   const selData: { total: number; porMeio: Record<string, number>; titulo: string } | null = (() => {
     if (!sel) return null
@@ -254,12 +273,69 @@ export default function VendasPage({ params }: { params: Promise<{ id: string }>
               <button onClick={() => setSel(null)} className="text-xs text-muted-foreground hover:text-foreground">fechar ✕</button>
             </div>
             <p className="text-2xl font-semibold tabular-nums text-sky-700 mt-1"><span className="text-lg align-top text-sky-400">~</span>{brl(selData.total)}</p>
+            {/* Cada meio ABRE nos lançamentos que o compõem — dia → lançamento → extrato.
+                Somado não se audita: quando o número parece errado, o dono desce até a
+                origem, igual ao estoque faz de movimento → nota. */}
             <div className="mt-2 space-y-1 text-sm">
-              {ordenarMeios(selData.porMeio).map(([m, v]) => (
-                <div key={m} className="flex justify-between"><span className="text-muted-foreground">{MEIO_LABEL[m] ?? m}</span><span className="tabular-nums">{brl(v)}</span></div>
-              ))}
+              {ordenarMeios(selData.porMeio).map(([m, v]) => {
+                const aberto = meioAberto === m
+                const det = detalhe?.meios.find((x) => x.meio === m)
+                return (
+                  <div key={m} className="rounded-md border border-transparent hover:border-sky-200">
+                    <button onClick={() => setMeioAberto(aberto ? null : m)}
+                      className="flex w-full items-center justify-between px-1 py-0.5 text-left">
+                      <span className="flex items-center gap-1 text-muted-foreground">
+                        {aberto ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                        {MEIO_LABEL[m] ?? m}
+                      </span>
+                      <span className="tabular-nums">{brl(v)}</span>
+                    </button>
+
+                    {aberto && (
+                      <div className="space-y-1.5 border-t border-sky-100 px-2 py-2">
+                        {carregandoDet && <p className="text-xs text-muted-foreground">carregando lançamentos…</p>}
+                        {!carregandoDet && (det?.lancamentos.length ?? 0) === 0 && (
+                          <p className="text-xs text-muted-foreground">Sem lançamento vinculado — este valor não tem origem rastreada no extrato.</p>
+                        )}
+                        {det?.lancamentos.map((l) => (
+                          <div key={l.transactionId} className="rounded bg-white/70 px-2 py-1.5">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="truncate text-xs font-medium">{l.descricao}</p>
+                                <p className="text-[11px] text-muted-foreground">
+                                  entrou {fmtDiaCurto(l.dataEntrada)} · {l.contaNome}
+                                </p>
+                              </div>
+                              <span className="shrink-0 text-xs font-medium tabular-nums">{brl(l.valor)}</span>
+                            </div>
+                            <p className="mt-0.5 text-[11px] italic text-sky-700">{l.motivo}</p>
+                            {l.contaId && (
+                              <a href={`/empresas/${id}/contas/${l.contaId}/transacoes?tx=${l.transactionId}`}
+                                className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-sky-600 hover:underline">
+                                ver no extrato <ExternalLink className="h-3 w-3" />
+                              </a>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
-            <p className="mt-2 text-[11px] text-muted-foreground italic">Composição estimada pelo extrato. "Ver operações do dia" e contagem chegam na fase 2 (adquirente).</p>
+
+            {/* Regra do fim de semana: o que AINDA não caiu */}
+            {(detalhe?.aguardando.length ?? 0) > 0 && (
+              <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5">
+                {detalhe!.aguardando.map((a) => (
+                  <p key={a.meio} className="text-[11px] text-amber-900">
+                    <b>{MEIO_LABEL[a.meio] ?? a.meio} aguardando:</b> {a.frase}
+                  </p>
+                ))}
+              </div>
+            )}
+
+            <p className="mt-2 text-[11px] text-muted-foreground italic">Composição estimada pelo extrato. Contagem por operação chega na fase 2 (adquirente).</p>
           </CardContent>
         </Card>
       )}
