@@ -141,6 +141,8 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 **⚠️ SWAP DE 2GB É OBRIGATÓRIO NO SERVIDOR (25/08).** O `npm run build` do Next roda o type-check num worker que chega a **~1,9 GB de RSS**; o servidor tem 3,9 GB e estava **sem swap nenhum** → o OOM killer matava o worker (`signal: SIGKILL`) e o `.next` ficava **sem `BUILD_ID`**, deixando o pm2 em loop de erro. **Não adianta mexer no `--max-old-space-size`:** teto alto (2560) o kernel mata igual; teto baixo (1400) o próprio V8 aborta por heap insuficiente (`SIGABRT`) — o type-check PRECISA de ~2 GB. Criado em 25/08: `fallocate -l 2G /swapfile && chmod 600 && mkswap && swapon` + linha no `/etc/fstab` (persiste no reboot). Build voltou a passar de primeira. **Servidor novo nasce quebrado sem isso** — incluir no provisionamento junto com o poppler. Pra desfazer: `swapoff /swapfile && rm /swapfile` + tirar a linha do fstab.
 
+**⭐ GATILHO DO UPGRADE 4 → 8 GB (combinado com o dono em 25/08).** Hoje o droplet é **DigitalOcean `s-2vcpu-4gb` em nyc1** (2 vCPU · 3,9 GB RAM · 116 GB disco) + 2 GB de swap. Fica assim **enquanto é fase de teste**. **Sobe pra 8 GB quando o PRIMEIRO destes disparar:** **(a)** a rotina real começar (Cristian operando + contagem inicial feita + notas entrando todo dia); **(b)** o **swap for usado em operação normal, fora do build** — é o invariante **N1** do juiz, que avisa por e-mail sozinho; **(c)** entrar o **segundo cliente**. **PASSO-A-PASSO (DigitalOcean):** painel → o droplet `contaia-prod` → **Resize** → escolher **"CPU and RAM only"** (⚠️ NÃO "Disk, CPU and RAM": a que mexe em disco é **irreversível**, não dá pra voltar; a de CPU/RAM é reversível) → escolher o plano de 8 GB → o painel **exige desligar o droplet antes** (Power Off) → Resize → Power On. **DOWNTIME estimado: 2 a 5 minutos** (desligar + redimensionar + bootar), mais ~15s de boot do pm2 — o pm2 sobe sozinho no reboot. É janela curta, mas é queda: **combinar horário com o dono**, nunca em horário de recebimento de nota. **Depois do upgrade:** conferir `free -m` (tem que dizer ~8 GB), rodar `npx tsx scripts/cron-judge.ts` e ver o N1/N2 verdes, e **manter o swap** (ele deixa de ser muleta e vira rede).
+
 **Dependência de SISTEMA (não-npm):** `poppler-utils` (binário `pdftotext`) — usado pelo enriquecimento de contraparte por PDF (`lib/bank-statement-pdf/extract-pdf-text.ts`, único ponto que invoca poppler). **Servidor novo nasce quebrado sem isso** — incluir no provisionamento: `apt-get install -y poppler-utils`. Validar com `which pdftotext`. Instalado no CAIXAOS em 31/07/2026.
 
 Sequência **crítica** (bug pego na Fatia 1 quando `npm ci` rodou `prisma generate` antes do swap):
@@ -188,6 +190,18 @@ bash scripts/smoke-deploy.sh                 # ⚠️ OBRIGATÓRIO — home 200 
 ## Anti-padrão: validação visual obrigatória (Sprint 5.0.4.0a)
 
 DoD que envolve **sidebar, rota, link, redirect, layout** exige validação em browser real (ou curl -i pra redirect, ou screenshot). **"Código escrito" ≠ "DoD cumprido"**. Se ambiente não permite browser: DECLARAR limitação e pedir smoke test do Yussef ANTES de fechar sprint. Nunca marcar DoD visual ✅ sem olhar com olhos humanos.
+
+## ⭐ INVARIANTES DE INFRA — o juiz olha a máquina também (25/08)
+
+Nasceu do episódio de 24-25/08: o `next build` foi morto pelo OOM killer **três vezes**, o `.next` ficou sem `BUILD_ID`, o pm2 entrou em loop — e **nada no sistema avisou**. O juiz olhava dinheiro e estoque; a máquina embaixo deles era ponto cego. Decisão do dono: *"infra também merece invariante"*.
+
+`lib/infra/health.ts` (motor PURO + leitura do `/proc/meminfo`), rodado pelo **cron das 3h** (`cron-judge.ts`) e incluído no **e-mail de alerta** — e o e-mail passa a ser disparado por infra sozinha, mesmo com dinheiro e estoque verdes.
+
+- **N3 (erro)** — servidor com menos de 1 GB de swap. É o estado exato que derrubou prod: sem folga, o type-check do build é morto pelo OOM e o `.next` fica sem `BUILD_ID`.
+- **N1 (erro)** — mais de 256 MB de swap em uso. ⚠️ **O horário é o que dá sentido ao número:** às 3h NÃO há build rodando, então swap em uso ali não é o build respirando — é a operação normal já não cabendo na RAM. **É o gatilho (b) do upgrade pra 8 GB.**
+- **N2 (aviso)** — menos de 15% da memória disponível. Avisa, não deixa vermelho.
+
+**N1 não acumula sobre N3:** máquina sem swap dispara só o N3 — uma causa, um alerta (senão o e-mail vira ruído e o dono para de ler). 8 testes, incluindo a leitura REAL do servidor antes e depois do swap.
 
 ## Regras do acordo (teste + tela + comportamento)
 

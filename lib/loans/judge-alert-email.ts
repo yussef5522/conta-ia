@@ -3,6 +3,9 @@
 // direto pra /juiz — não "houve uma falha, veja o painel". Função pura (testável).
 
 export interface JudgeAlertInput {
+  /** INFRA (25/08) — checks de máquina (swap/memória). O juiz olhava dinheiro e estoque;
+   *  a máquina embaixo deles era ponto cego até o OOM derrubar o build. */
+  infraChecks?: { invariante: string; nivel: string; detalhe: string }[]
   runAt: Date
   totalContracts: number
   totalFail: number
@@ -21,7 +24,7 @@ export interface JudgeAlertInput {
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
 export function buildJudgeAlertEmail(i: JudgeAlertInput): { subject: string; html: string } {
-  const nFalhas = i.totalFail + i.sharedTx.length + i.balanceIssues + (i.dupIssues ?? 0) + (i.vendaChecks?.length ?? 0) + (i.cardChecks?.length ?? 0) + (i.stockChecks?.length ?? 0)
+  const nFalhas = i.totalFail + i.sharedTx.length + i.balanceIssues + (i.dupIssues ?? 0) + (i.vendaChecks?.length ?? 0) + (i.cardChecks?.length ?? 0) + (i.stockChecks?.length ?? 0) + (i.infraChecks?.length ?? 0)
   const subject = `🔴 Juiz de módulo: ${nFalhas} falha${nFalhas === 1 ? '' : 's'} (${i.runAt.toLocaleDateString('pt-BR')})`
 
   const linhas: string[] = []
@@ -29,6 +32,10 @@ export function buildJudgeAlertEmail(i: JudgeAlertInput): { subject: string; htm
     for (const f of c.fails) {
       linhas.push(`<li><b>${c.name}</b> · contrato <code>${f.contract}</code> → <b style="color:#b91c1c">${f.fails.join(', ')}</b></li>`)
     }
+  }
+  for (const n of i.infraChecks ?? []) {
+    const cor = n.nivel === 'aviso' ? '#b45309' : '#b91c1c'
+    linhas.push(`<li><b>🖥️ ${n.invariante} servidor</b> → <span style="color:${cor}">${n.detalhe}</span></li>`)
   }
   for (const s of i.sharedTx) {
     linhas.push(`<li><b>I6 tx compartilhada</b> → ${s.parcelas.join(' + ')} (juros contado 2×)</li>`)
