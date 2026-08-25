@@ -49,8 +49,10 @@ export function StickyFooter({ totals, onClickFilter }: Props) {
               <span className="text-muted-foreground text-xs uppercase tracking-wide">
                 {item.label}:
               </span>
+              {/* ⚠️ 24/08: era `R$ {formatBRL(value)}` e o formatBRL JÁ inclui o "R$"
+                  (Intl style:'currency') — saía "R$ R$ 1.234,56". */}
               <span className={`font-medium tabular-nums ${item.tone}`}>
-                R$ {formatBRL(value)}
+                {formatBRL(value)}
               </span>
               <span className="text-[10px] text-muted-foreground/60 group-hover:text-muted-foreground transition-colors">
                 ↑
@@ -61,7 +63,7 @@ export function StickyFooter({ totals, onClickFilter }: Props) {
         <div className="flex-1" />
         <div className="text-sm font-medium tabular-nums">
           Total:{' '}
-          <span className="text-foreground">R$ {formatBRL(total)}</span>
+          <span className="text-foreground">{formatBRL(total)}</span>
         </div>
       </div>
     </div>
