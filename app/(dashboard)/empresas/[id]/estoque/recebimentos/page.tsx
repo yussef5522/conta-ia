@@ -19,7 +19,7 @@ import { useEffect, useMemo, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
-import { StatCard } from '@/components/ui/stat-card'
+import { StatCard, StatCardGrid } from '@/components/ui/stat-card'
 import { TotalsBar, type TotalItem } from '@/components/ui/totals-bar'
 import { SortableTh, useSort } from '@/components/ui/sortable-th'
 import { baixarCsv, hojeArquivo } from '@/lib/format/csv-cliente'
@@ -191,7 +191,7 @@ export default function RecebimentosPage({ params }: { params: Promise<{ id: str
       {buscarAberto && <BuscarChave id={id} onAchou={() => { setBuscarAberto(false); recarregar() }} onFechar={() => setBuscarAberto(false)} />}
 
       {/* ── 1. CARDS DE RESUMO ── */}
-      <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+      <StatCardGrid>
         <StatCard tone="sky" label="Na fila" value={brl(soma(naFila))} sub={`${naFila.length} ${naFila.length === 1 ? 'nota' : 'notas'}`} icon={PackageOpen}
           onClick={() => setFiltro(filtro === 'aguardando' ? 'todas' : 'aguardando')} active={filtro === 'aguardando'} />
         <StatCard tone="slate" label="Pra depois" value={brl(soma(praDepois))} sub={`${praDepois.length} ${praDepois.length === 1 ? 'nota' : 'notas'}`} icon={MoonStar}
@@ -199,7 +199,7 @@ export default function RecebimentosPage({ params }: { params: Promise<{ id: str
         <StatCard tone="emerald" label="Recebidas" value={brl(soma(recebidas))} sub={`${recebidas.length} ${recebidas.length === 1 ? 'entrada' : 'entradas'}`} icon={CheckCircle2}
           onClick={() => setFiltro(filtro === 'recebida' ? 'todas' : 'recebida')} active={filtro === 'recebida'} />
         <StatCard tone="violet" label="Último download" value={fmtDataHora(r.ultimoDownload)} sub={`${r.historicasCount} históricas`} icon={Archive} />
-      </div>
+      </StatCardGrid>
 
       {/* ── 3. BARRA DE FILTROS numa linha ── */}
       <div className="flex flex-wrap items-center gap-1.5">

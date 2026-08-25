@@ -61,18 +61,29 @@ export function StatCard({ tone, label, value, sub, icon: Icon, onClick, active,
       onKeyDown={clicavel ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick?.() } } : undefined}
       data-testid={testId}
     >
-      <CardContent className="py-4">
+      <CardContent className="px-4 py-3">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
-            <p className={`mt-1 truncate text-2xl font-semibold tabular-nums ${VALUE_COLOR[tone]}`}>{value}</p>
-            {sub && <p className="mt-0.5 text-xs text-muted-foreground">{sub}</p>}
+            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</p>
+            <p className={`mt-0.5 truncate text-xl font-semibold tabular-nums ${VALUE_COLOR[tone]}`}>{value}</p>
+            {sub && <p className="mt-0.5 text-[11px] text-muted-foreground">{sub}</p>}
           </div>
-          <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${ICON_WRAP[tone]}`}>
-            <Icon className="h-5 w-5" />
+          <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${ICON_WRAP[tone]}`}>
+            <Icon className="h-4 w-4" />
           </span>
         </div>
       </CardContent>
     </Card>
   )
+}
+
+/**
+ * A GRADE dos cards. Existe como componente porque a divergência que apareceu em 24/08
+ * não foi no card e sim AQUI: metade das telas usava `grid-cols-2 gap-2 lg:grid-cols-4`
+ * e a outra metade `gap-4 sm:grid-cols-2 lg:grid-cols-4` — que abaixo de `sm` vira UMA
+ * coluna e o card ocupa a largura inteira (foi o "cards maiores" que o dono viu).
+ * Uma grade só, como o card é um só.
+ */
+export function StatCardGrid({ children }: { children: React.ReactNode }) {
+  return <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">{children}</div>
 }

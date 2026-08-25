@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Package, Loader2, Plus, Search, Ban, RotateCcw, Download, MoreHorizontal, FileText, Boxes, Layers, HelpCircle, CircleSlash } from 'lucide-react'
-import { StatCard } from '@/components/ui/stat-card'
+import { StatCard, StatCardGrid } from '@/components/ui/stat-card'
 import { TotalsBar, type TotalItem } from '@/components/ui/totals-bar'
 import { SortableTh, useSort } from '@/components/ui/sortable-th'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -84,7 +84,7 @@ export default function CatalogoPage({ params }: { params: Promise<{ id: string 
         const zerados = ativos.filter((i) => i.saldo === 0)
         const valorDe = (ls: Item[]) => ls.reduce((a, i) => a + (i.custoMedio ?? 0) * i.saldo, 0)
         return (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCardGrid>
             <StatCard tone="slate" label="Itens no catálogo" value={String(ativos.length)}
               sub={`${itens.length - ativos.length} inativos`} icon={Package}
               onClick={() => { setCatFiltro(''); setSoSemCusto(false) }} active={!catFiltro && !soSemCusto} />
@@ -101,7 +101,7 @@ export default function CatalogoPage({ params }: { params: Promise<{ id: string 
               onClick={() => setSoSemCusto((v) => !v)} active={soSemCusto} />
             <StatCard tone="sky" label="Zerados" value={String(zerados.length)}
               sub="sem saldo hoje" icon={CircleSlash} />
-          </div>
+          </StatCardGrid>
         )
       })()}
 

@@ -10,7 +10,7 @@
 import { useEffect, useMemo, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Receipt, Loader2, Check, AlertTriangle, ArrowRight, Download, Clock, CalendarClock } from 'lucide-react'
-import { StatCard } from '@/components/ui/stat-card'
+import { StatCard, StatCardGrid } from '@/components/ui/stat-card'
 import { TotalsBar, type TotalItem } from '@/components/ui/totals-bar'
 import { SortableTh, useSort } from '@/components/ui/sortable-th'
 import { baixarCsv, hojeArquivo } from '@/lib/format/csv-cliente'
@@ -107,12 +107,12 @@ export default function PonteContasPagarPage({ params }: { params: Promise<{ id:
         const resto = ps.filter((p) => (venceEm(p.dVenc) ?? 99) > 3)
         const som = (l: Pendente[]) => l.reduce((s2, p) => s2 + p.valor, 0)
         return (
-          <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+          <StatCardGrid>
             <StatCard tone="rose" label="Vencidos" value={brl(som(venc))} sub={`${venc.length} ${venc.length === 1 ? 'boleto' : 'boletos'}`} icon={AlertTriangle} />
             <StatCard tone="amber" label="Vence em 3 dias" value={brl(som(perto))} sub={`${perto.length} ${perto.length === 1 ? 'boleto' : 'boletos'}`} icon={Clock} />
             <StatCard tone="sky" label="A vencer" value={brl(som(resto))} sub={`${resto.length} ${resto.length === 1 ? 'boleto' : 'boletos'}`} icon={CalendarClock} />
             <StatCard tone="slate" label="Esperando aprovação" value={brl(som(ps))} sub={`${ps.length} no total`} icon={Receipt} />
-          </div>
+          </StatCardGrid>
         )
       })()}
 

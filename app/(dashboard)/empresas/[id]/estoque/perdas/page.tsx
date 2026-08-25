@@ -5,7 +5,7 @@
 
 import { useEffect, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
-import { StatCard } from '@/components/ui/stat-card'
+import { StatCard, StatCardGrid } from '@/components/ui/stat-card'
 import { TotalsBar, type TotalItem } from '@/components/ui/totals-bar'
 import { SortableTh, useSort } from '@/components/ui/sortable-th'
 import { baixarCsv, hojeArquivo } from '@/lib/format/csv-cliente'
@@ -61,11 +61,11 @@ export default function PerdasPage({ params }: { params: Promise<{ id: string }>
         : rel.totalItens === 0 ? <Card><CardContent className="p-8 text-center text-sm text-slate-500">Nenhuma saída registrada no período. Registre perdas/uso interno pra o Real vs Teórico fechar.</CardContent></Card>
         : (
           <>
-            <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+            <StatCardGrid>
               <StatCard tone="rose" label="Perdido / usado" value={brl(rel.totalValor)} sub={`${rel.totalItens} ${rel.totalItens === 1 ? 'registro' : 'registros'}`} icon={TrendingDown} />
               <StatCard tone="amber" label="Motivos distintos" value={String(rel.porMotivo.length)} sub="tipos de saída" icon={Layers} />
               <StatCard tone="slate" label="Itens afetados" value={String(rel.porItem.length)} sub="produtos" icon={Hash} />
-            </div>
+            </StatCardGrid>
 
             <div>
               <h2 className="mb-2 text-sm font-semibold text-slate-900">Por motivo</h2>

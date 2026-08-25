@@ -35,6 +35,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { StatsCard } from '@/components/contas-pagar/StatsCard'
+import { StatCardGrid } from '@/components/ui/stat-card'
 import { PayableSkeleton } from '@/components/contas-pagar/PayableSkeleton'
 import { PayableEmptyState } from '@/components/contas-pagar/PayableEmptyState'
 import { StickyFooter } from '@/components/contas-pagar/StickyFooter'
@@ -958,7 +959,7 @@ function ContasAPagarInner() {
       {empresaId && !loading && (
         <>
           {/* 4 stats — Sprint 5.0.3.0a */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCardGrid>
             <StatsCard
               variant="paid"
               label="Pagas"
@@ -991,7 +992,7 @@ function ContasAPagarInner() {
               icon={AlertCircle}
               onClick={() => applyFilterPreset('overdue')}
             />
-          </div>
+          </StatCardGrid>
 
           {/* Filtros */}
           <Card>

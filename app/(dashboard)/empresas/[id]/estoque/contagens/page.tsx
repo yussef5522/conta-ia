@@ -6,7 +6,7 @@
 import { useEffect, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { ClipboardList, Loader2, Play, ArrowRight, Download, ListChecks, AlertTriangle } from 'lucide-react'
-import { StatCard } from '@/components/ui/stat-card'
+import { StatCard, StatCardGrid } from '@/components/ui/stat-card'
 import { TotalsBar } from '@/components/ui/totals-bar'
 import { SortableTh, useSort } from '@/components/ui/sortable-th'
 import { baixarCsv, hojeArquivo } from '@/lib/format/csv-cliente'
@@ -68,11 +68,11 @@ export default function ContagensPage({ params }: { params: Promise<{ id: string
       </div>
 
       {cs.length > 0 && (
-        <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+        <StatCardGrid>
           <StatCard tone="sky" label="Sessões" value={String(cs.length)} sub={`${finalizadas.length} finalizadas`} icon={ClipboardList} />
           <StatCard tone="slate" label="Itens contados" value={String(cs.reduce((s2, c) => s2 + c.itensContados, 0))} sub="no histórico" icon={ListChecks} />
           <StatCard tone={ajusteTotal < 0 ? 'rose' : 'emerald'} label="Ajuste acumulado" value={brl(ajusteTotal)} sub={`${cs.reduce((s2, c) => s2 + c.itensComDivergencia, 0)} divergências`} icon={AlertTriangle} />
-        </div>
+        </StatCardGrid>
       )}
 
       {cs.length === 0 ? (

@@ -7,7 +7,7 @@
 
 import { useEffect, useMemo, useRef, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
-import { StatCard } from '@/components/ui/stat-card'
+import { StatCard, StatCardGrid } from '@/components/ui/stat-card'
 import { TotalsBar } from '@/components/ui/totals-bar'
 import { SortableTh, useSort } from '@/components/ui/sortable-th'
 import { baixarCsv, hojeArquivo } from '@/lib/format/csv-cliente'
@@ -138,11 +138,11 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
       </div>
 
       {processados.length > 0 && (
-        <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+        <StatCardGrid>
           <StatCard tone="emerald" label="Baixado" value={brl(processados.reduce((a, d) => a + d.valorBaixado, 0))} sub={`${processados.reduce((a, d) => a + d.baixados, 0)} produtos`} icon={CheckCircle2} />
           <StatCard tone="sky" label="Dias processados" value={String(processados.length)} sub="com venda baixada" icon={History} />
           <StatCard tone="amber" label="Pendentes" value={String(processados.reduce((a, d) => a + d.pendentes, 0))} sub="sem destino no estoque" icon={AlertTriangle} />
-        </div>
+        </StatCardGrid>
       )}
 
       {/* abas */}

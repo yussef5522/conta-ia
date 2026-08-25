@@ -11,7 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import { TotalsBar, type TotalItem } from '@/components/ui/totals-bar'
 import { SortableTh, useSort } from '@/components/ui/sortable-th'
-import { StatCard } from '@/components/ui/stat-card'
+import { StatCard, StatCardGrid } from '@/components/ui/stat-card'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { corDaCategoria, STRIPE_FAIXA } from '@/lib/stock/categoria-cores'
@@ -118,7 +118,7 @@ export default function PosicaoPage({ params }: { params: Promise<{ id: string }
         <>
           {/* CARDS DE RESUMO — mesma grade e mesmo componente da Contas a Pagar.
            * Total em destaque + um card POR CATEGORIA, cada um na sua cor. */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCardGrid>
             <StatCard tone="slate" label="Total em estoque" value={brl(data.valorTotal)}
               sub={`${data.itens.length} ${data.itens.length === 1 ? 'item' : 'itens'}`} icon={Boxes}
               onClick={() => setCatFiltro(null)} active={!catFiltro} />
@@ -128,7 +128,7 @@ export default function PosicaoPage({ params }: { params: Promise<{ id: string }
                 onClick={() => setCatFiltro(catFiltro === c.categoria ? null : c.categoria)}
                 active={catFiltro === c.categoria} />
             ))}
-          </div>
+          </StatCardGrid>
 
           {/* BARRA DE FILTROS — mesmas medidas da Contas a Pagar (h-9, gap-2,
            * busca flex-1 min-w-[200px] max-w-md) */}

@@ -6,7 +6,7 @@
 
 import { useEffect, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
-import { StatCard } from '@/components/ui/stat-card'
+import { StatCard, StatCardGrid } from '@/components/ui/stat-card'
 import { TotalsBar } from '@/components/ui/totals-bar'
 import { SortableTh, useSort } from '@/components/ui/sortable-th'
 import { baixarCsv, hojeArquivo } from '@/lib/format/csv-cliente'
@@ -72,11 +72,11 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
       </div>
 
       {ordens.length > 0 && (
-        <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+        <StatCardGrid>
           <StatCard tone="sky" label="Em aberto" value={String(abertas.length)} sub="ordens andando" icon={PlayCircle} />
           <StatCard tone="emerald" label="Concluídas" value={String(concluidas.length)} sub="produzidas" icon={CheckCircle2} />
           <StatCard tone="amber" label="Sugestões" value={String(sugestoes.length)} sub="abaixo do mínimo" icon={TrendingDown} />
-        </div>
+        </StatCardGrid>
       )}
 
       {novo && <NovaOrdem id={id} onCriada={(ordemId) => { window.location.href = `/empresas/${id}/estoque/producao/${ordemId}` }} onFechar={() => setNovo(false)} />}
