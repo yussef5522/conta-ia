@@ -11,7 +11,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { CalendarDays, Info, ChevronDown, ChevronRight, ExternalLink } from 'lucide-react'
 
 interface DiaVenda { total: number; porMeio: Record<string, number>; estimado: boolean; confirmadoPerfil: boolean }
-interface Bloco { inicio: string; fim: string; total: number; porMeio: Record<string, number>; estimado: boolean; confirmadoPerfil: boolean }
+interface Bloco { inicio: string; fim: string; total: number; porMeio: Record<string, number>; estimado: boolean; confirmadoPerfil: boolean; incluiMesAnterior?: boolean }
 interface Balde { samples: number; total: number; media: number }
 interface PerfilSemana { SEG: Balde; TER: Balde; QUA: Balde; QUI: Balde; FDS: Balde }
 interface LancamentoOrigem { transactionId: string; dataEntrada: string; contaId: string; contaNome: string; descricao: string; valor: number; motivo: string }
@@ -49,6 +49,9 @@ const DOW = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb']
 const MESNOME = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']
 const parseDia = (s: string) => new Date(s + 'T12:00:00Z')
 const fmtDiaCurto = (s: string) => { const d = parseDia(s); return `${DOW[d.getUTCDay()]} ${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}` }
+// dd/MM do início do módulo — NUNCA literal na tela: a janela mudou de 12/08 pra
+// 01/08 em 25/08 e cinco textos ficaram mentindo. A fonte é o `moduleInicio` da API.
+const fmtDDMM = (s: string | null) => { if (!s) return '—'; const d = parseDia(s); return `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}` }
 
 type Toggle = 'DIA' | 'SEMANA' | 'MES'
 const MEIO_LABEL: Record<string, string> = { CARTAO: 'Cartão', PIX: 'PIX', DINHEIRO: 'Dinheiro', OUTRO: 'Outro' }
@@ -89,7 +92,7 @@ export default function VendasPage({ params }: { params: Promise<{ id: string }>
     const somaMeio = (us: typeof unidades) => us.reduce((acc, u) => { for (const [m, v] of Object.entries(u.porMeio)) acc[m] = (acc[m] ?? 0) + v; return acc }, {} as Record<string, number>)
     if (toggle === 'MES') {
       const tot = unidades.reduce((s, u) => s + u.total, 0)
-      return { label: `${MESNOME[Number(mes.split('-')[1]) - 1]} (a partir de 12/08)`, total: tot, porMeio: somaMeio(unidades) }
+      return { label: `${MESNOME[Number(mes.split('-')[1]) - 1]} (a partir de ${fmtDDMM(data.moduleInicio)})`, total: tot, porMeio: somaMeio(unidades) }
     }
     if (toggle === 'SEMANA') {
       // Semana (seg-dom) que contém a última competência.
@@ -188,7 +191,7 @@ export default function VendasPage({ params }: { params: Promise<{ id: string }>
           ) : (
             <p className="text-2xl font-medium text-muted-foreground">Sem vendas no período</p>
           )}
-          <p className="mt-3 text-xs text-muted-foreground">Comparação semana passada / ano passado: <span className="italic">a apurar</span> (só há 6 dias de histórico desde 12/08).</p>
+          <p className="mt-3 text-xs text-muted-foreground">Comparação semana passada / ano passado: <span className="italic">a apurar</span> (histórico desde {fmtDDMM(data.moduleInicio)}).</p>
         </CardContent>
       </Card>
 
@@ -200,14 +203,31 @@ export default function VendasPage({ params }: { params: Promise<{ id: string }>
             <h2 className="text-sm font-medium">{MESNOME[Number(mes.split('-')[1]) - 1]} de {mes.split('-')[0]}</h2>
           </div>
           <p className="text-xs text-muted-foreground mb-3 flex items-center gap-1">
-            <Info className="h-3 w-3" /> O sistema de vendas começou em <b className="mx-1">12/08</b> — dias antes disso não têm dado de venda (não é loja fechada).
+            <Info className="h-3 w-3" /> O sistema de vendas começou em <b className="mx-1">{fmtDDMM(data.moduleInicio)}</b> — dias antes disso não têm dado de venda (não é loja fechada).
           </p>
+          {/* ⚠️ BLOCO QUE COMEÇA NO MÊS ANTERIOR — a sexta cai fora da grade, então o
+              card não cabe numa célula. Fica aqui em cima, com o aviso: o depósito de
+              segunda junta sexta+sábado+domingo e o banco NÃO diz qual real é de qual
+              dia — não dá pra separar a parte que é do mês passado. */}
+          {data.blocos.filter((b) => b.incluiMesAnterior).map((b) => {
+            const selKey = `${b.inicio}|${b.fim}`
+            const on = sel?.tipo === 'bloco' && sel.key === selKey
+            const mesAnt = MESNOME[parseDia(b.inicio).getUTCMonth()]
+            return (
+              <button key={selKey} onClick={() => setSel(on ? null : { tipo: 'bloco', key: selKey })}
+                className={`mb-3 w-full rounded-md border border-amber-300 bg-amber-50 p-2 text-left transition-colors hover:bg-amber-100 ${on ? 'ring-2 ring-amber-500' : ''}`}>
+                <div className="text-[10px] text-amber-800">fim de semana {fmtDDMM(b.inicio)}–{fmtDDMM(b.fim)} · sex+sáb+dom</div>
+                <div className="text-sm font-semibold tabular-nums text-amber-900">~{brl(b.total)}</div>
+                <div className="mt-0.5 text-[10px] text-amber-700">inclui venda de fim de {mesAnt} — não separável (cai tudo no mesmo depósito de segunda)</div>
+              </button>
+            )
+          })}
           <Calendario data={data} onSel={setSel} sel={sel} />
           <div className="mt-3 flex flex-wrap gap-3 text-[11px] text-muted-foreground">
             <Legenda cls="bg-sky-100 border-sky-300" txt="~venda estimada" />
             <Legenda cls="bg-emerald-500/80 border-emerald-600" txt="venda confirmada (fase 2)" />
             <Legenda cls="bg-slate-100 border-slate-200 border-dashed" txt="aguardando (dinheiro não chegou)" />
-            <Legenda cls="bg-slate-50 border-slate-200 opacity-50" txt="antes do início (12/08)" />
+            <Legenda cls="bg-slate-50 border-slate-200 opacity-50" txt={`antes do início (${fmtDDMM(data.moduleInicio)})`} />
           </div>
         </CardContent>
       </Card>
@@ -256,7 +276,7 @@ export default function VendasPage({ params }: { params: Promise<{ id: string }>
           <div className="space-y-2 text-sm">
             {[
               ['Esta semana × semana passada (SDLW)', 'a apurar — 1ª semana'],
-              ['Este mês × mês anterior', 'a apurar — só agosto (desde 12/08)'],
+              ['Este mês × mês anterior', `a apurar — só agosto (desde ${fmtDDMM(data.moduleInicio)})`],
               ['Trimestre', 'a apurar'],
               ['Este ano × ano passado (SWLY)', 'a apurar — precisa de 12 meses'],
             ].map(([k, v]) => (

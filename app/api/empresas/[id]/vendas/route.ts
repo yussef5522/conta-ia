@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
+import { incluiMesAnterior } from '@/lib/vendas/janela-mes'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -73,15 +74,19 @@ export async function GET(request: NextRequest, { params }: Params) {
       where: { companyId }, orderBy: { vigenteDe: 'asc' }, select: { vigenteDe: true },
     })
 
+    // ⚠️ SOBREPOSIÇÃO, não pertencimento (25/08): o bloco de fim de semana começa na
+    // SEXTA — se a sexta cai no mês anterior (31/07 → 01-02/08), filtrar por
+    // `dataCompetencia` dentro do mês esconde o bloco INTEIRO da tela. Ver
+    // `lib/vendas/janela-mes.ts`.
     const vs = await prisma.vendaDiaria.findMany({
-      where: { companyId, dataCompetencia: { gte: inicioMes, lt: fimMes } },
+      where: { companyId, dataCompetenciaFim: { gte: inicioMes }, dataCompetencia: { lt: fimMes } },
       orderBy: { dataCompetencia: 'asc' },
     })
 
     // Dias únicos (competência inicio == fim) agregados por dia + meio.
     const dias: Record<string, { total: number; porMeio: Record<string, number>; estimado: boolean; confirmadoPerfil: boolean }> = {}
     // Blocos (fim de semana) agregados por intervalo + meio.
-    const blocosMap: Record<string, { inicio: string; fim: string; total: number; porMeio: Record<string, number>; estimado: boolean; confirmadoPerfil: boolean }> = {}
+    const blocosMap: Record<string, { inicio: string; fim: string; total: number; porMeio: Record<string, number>; estimado: boolean; confirmadoPerfil: boolean; incluiMesAnterior: boolean }> = {}
 
     for (const v of vs) {
       const di = dia(v.dataCompetencia)
@@ -94,7 +99,7 @@ export async function GET(request: NextRequest, { params }: Params) {
         d.confirmadoPerfil = d.confirmadoPerfil && v.confirmadoPerfil
       } else {
         const k = `${di}|${df}`
-        const b = (blocosMap[k] ??= { inicio: di, fim: df, total: 0, porMeio: {}, estimado: false, confirmadoPerfil: true })
+        const b = (blocosMap[k] ??= { inicio: di, fim: df, total: 0, porMeio: {}, estimado: false, confirmadoPerfil: true, incluiMesAnterior: incluiMesAnterior(v, inicioMes) })
         b.total = round2(b.total + v.valorLiquido)
         b.porMeio[v.meio] = round2((b.porMeio[v.meio] ?? 0) + v.valorLiquido)
         if (v.status === 'ESTIMADO') b.estimado = true
