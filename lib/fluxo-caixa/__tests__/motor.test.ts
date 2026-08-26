@@ -254,3 +254,50 @@ describe('empréstimo NÃO é entrada — junho com e sem a liberação', () => 
     expect(agruparFluxo([saida]).saiu).toBe(10)
   })
 })
+
+
+// ⭐ INVARIANTE DA AUDITORIA (26/08) — nasceu da revisão conta-a-conta de agosto que o
+// dono pediu: "extrato bruto = ENTROU + excluídos explicados; se sobrar linha
+// inexplicada, ela aparece". Nenhum real pode evaporar entre a entrada e os baldes.
+describe('nenhuma linha some em silêncio', () => {
+  it('Σ(entradas) + Σ(saídas) + Σ(informativas) == Σ de tudo que entrou no motor', () => {
+    const linhas = [
+      linha({ type: 'CREDIT', amount: 372089.71, categoriaNome: 'Receita de Vendas' }),
+      linha({ type: 'CREDIT', amount: 50203.35, categoriaNome: 'Venda em dinheiro' }),
+      linha({ type: 'CREDIT', amount: 41000, descricao: 'PIX sem categoria' }), // A CLASSIFICAR
+      linha({ type: 'CREDIT', amount: 100000, ehLiberacaoEmprestimo: true }),   // informativa
+      linha({ type: 'DEBIT', amount: 139487.5, categoriaNome: 'Matéria-Prima - Alimentos' }),
+      linha({ type: 'DEBIT', amount: 54981.84 }),                               // A CLASSIFICAR
+      linha({ type: 'DEBIT', amount: 28956.44, isCardPayment: true }),          // sintética
+      linha({ type: 'DEBIT', amount: 31926.73, ehParcelaEmprestimo: true }),    // sintética
+    ]
+    const r = agruparFluxo(linhas)
+    const nosBaldes = [...r.entradas, ...r.saidas, ...r.informativas].reduce((s, g) => s + g.total, 0)
+    const entrouNoMotor = linhas.reduce((s, l) => s + l.amount, 0)
+    expect(Math.round(nosBaldes * 100) / 100).toBe(Math.round(entrouNoMotor * 100) / 100)
+  })
+
+  it('e a contagem de LANÇAMENTOS também fecha (nenhum rastro perdido)', () => {
+    const linhas = [
+      linha({ type: 'CREDIT', amount: 10, categoriaNome: 'Vendas' }),
+      linha({ type: 'CREDIT', amount: 20, ehLiberacaoEmprestimo: true }),
+      linha({ type: 'DEBIT', amount: 30 }),
+      linha({ type: 'DEBIT', amount: 40, isCardPayment: true }),
+    ]
+    const r = agruparFluxo(linhas)
+    const n = [...r.entradas, ...r.saidas, ...r.informativas].reduce((s, g) => s + g.n, 0)
+    expect(n).toBe(linhas.length)
+    const rastros = [...r.entradas, ...r.saidas, ...r.informativas].reduce((s, g) => s + g.lancamentos.length, 0)
+    expect(rastros).toBe(linhas.length)
+  })
+
+  it('TODA categoria aparece — nunca existe balde "outros" agrupando cauda longa', () => {
+    // 34 categorias distintas (o agosto real tem exatamente isso do lado das saídas)
+    const linhas = Array.from({ length: 34 }, (_, i) =>
+      linha({ type: 'DEBIT', amount: 1000 - i, categoriaNome: `Categoria ${i}` }))
+    const r = agruparFluxo(linhas)
+    expect(r.saidas).toHaveLength(34)
+    expect(r.saidas.map((g) => g.rotulo)).not.toContain('Outros')
+    expect(Math.round(r.saidas.reduce((s, g) => s + g.total, 0) * 100) / 100).toBe(r.saiu)
+  })
+})

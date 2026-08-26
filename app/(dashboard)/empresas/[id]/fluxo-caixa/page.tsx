@@ -51,6 +51,7 @@ export default function FluxoDeCaixaPage({ params }: { params: Promise<{ id: str
   const [data, setData] = useState<FluxoData | null>(null)
   const [erro, setErro] = useState<string | null>(null)
   const [aberto, setAberto] = useState<string | null>(null)
+  const [destaque, setDestaque] = useState<'entradas' | 'saidas' | null>(null)
   const { col, dir, alternar, ordenar } = useSort<Campo>('total', 'desc')
 
   useEffect(() => {
@@ -84,6 +85,14 @@ export default function FluxoDeCaixaPage({ params }: { params: Promise<{ id: str
     }
     return out
   }, [hojeMes])
+
+  // ⭐ O CARD É A PORTA (26/08, pedido do dono): clicar em SAIU leva ao resumo completo
+  // — todas as categorias, nada agrupado em "outros", cada uma expandindo nos
+  // pagamentos com data, conta de onde saiu, descrição, valor e link pro extrato.
+  function irPara(secao: 'entradas' | 'saidas') {
+    setDestaque(secao)
+    document.getElementById(`secao-${secao}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 
   function exportar() {
     if (!data) return
@@ -128,10 +137,13 @@ export default function FluxoDeCaixaPage({ params }: { params: Promise<{ id: str
 
       {/* ── 1. CARDS DO TOPO ── */}
       <StatCardGrid>
+        {/* clicar leva pro detalhe — o card é a porta, a tabela é o resumo completo */}
         <StatCard tone="emerald" icon={TrendingUp} label="Entrou" value={brl(data.entrou)}
-          sub={`${data.entradas.reduce((s, g) => s + g.n, 0)} lançamentos`} />
+          sub={`${data.entradas.reduce((s, g) => s + g.n, 0)} lançamentos · ver detalhe`}
+          onClick={() => irPara('entradas')} />
         <StatCard tone="rose" icon={TrendingDown} label="Saiu" value={brl(data.saiu)}
-          sub={`${data.saidas.reduce((s, g) => s + g.n, 0)} lançamentos`} />
+          sub={`${data.saidas.length} categorias · ${data.saidas.reduce((s, g) => s + g.n, 0)} pagamentos · ver detalhe`}
+          onClick={() => irPara('saidas')} />
         <StatCard tone={sobrou ? 'emerald' : 'rose'} icon={Wallet}
           label={sobrou ? 'Sobrou' : 'Faltou'} value={brl(Math.abs(data.resultado))}
           sub={sobrou ? 'entrou mais do que saiu' : 'saiu mais do que entrou'} />
@@ -161,11 +173,14 @@ export default function FluxoDeCaixaPage({ params }: { params: Promise<{ id: str
 
       {/* ── 2. SAÍDAS POR CATEGORIA ── */}
       <TabelaCategorias titulo="Saídas por categoria" tom="rose" grupos={saidasOrd} total={data.saiu}
-        col={col} dir={dir} alternar={alternar} aberto={aberto} setAberto={setAberto} prefixo="s" />
+        col={col} dir={dir} alternar={alternar} aberto={aberto} setAberto={setAberto} prefixo="s"
+        ancora="secao-saidas" destacado={destaque === 'saidas'}
+        legenda={`Todas as ${data.saidas.length} categorias — nada agrupado em "outros". Clique numa linha pra ver cada pagamento (data, conta de onde saiu, descrição e link pro extrato).`} />
 
       {/* ── 3. ENTRADAS POR CATEGORIA ── */}
       <TabelaCategorias titulo="Entradas por categoria" tom="emerald" grupos={entradasOrd} total={data.entrou}
-        col={col} dir={dir} alternar={alternar} aberto={aberto} setAberto={setAberto} prefixo="e" />
+        col={col} dir={dir} alternar={alternar} aberto={aberto} setAberto={setAberto} prefixo="e"
+        ancora="secao-entradas" destacado={destaque === 'entradas'} />
 
       {/* ── 4. GRÁFICO 6 MESES ── */}
       <Card>
@@ -246,18 +261,21 @@ export default function FluxoDeCaixaPage({ params }: { params: Promise<{ id: str
   )
 }
 
-function TabelaCategorias({ titulo, tom, grupos, total, col, dir, alternar, aberto, setAberto, prefixo }: {
+function TabelaCategorias({ titulo, tom, grupos, total, col, dir, alternar, aberto, setAberto, prefixo, ancora, destacado, legenda }: {
   titulo: string; tom: 'rose' | 'emerald'; grupos: Grupo[]; total: number
   col: Campo; dir: 'asc' | 'desc'; alternar: (c: Campo) => void
   aberto: string | null; setAberto: (s: string | null) => void; prefixo: string
+  ancora?: string; destacado?: boolean; legenda?: string
 }) {
   const listra = tom === 'rose' ? 'bg-rose-400' : 'bg-emerald-400'
   const valor = tom === 'rose' ? 'text-rose-600' : 'text-emerald-600'
 
   return (
-    <Card>
+    <Card id={ancora} className={destacado ? 'ring-1 ring-sky-400 transition-shadow' : undefined}>
       <CardContent className="py-4">
-        <h2 className="mb-3 text-sm font-medium">{titulo}</h2>
+        <h2 className="mb-1 text-sm font-medium">{titulo}</h2>
+        {legenda && <p className="mb-3 text-[11px] text-muted-foreground">{legenda}</p>}
+        {!legenda && <div className="mb-3" />}
         {grupos.length === 0 ? (
           <p className="text-sm text-muted-foreground">Nada no período.</p>
         ) : (
