@@ -96,7 +96,16 @@ mkdir -p "$BUILD_WS"
 rsync -a --delete \
   --exclude 'node_modules' --exclude '.next' --exclude '.next-*' --exclude '.git' \
   "$APP_DIR/" "$BUILD_WS/"
-[[ -e "$BUILD_WS/node_modules" ]] || ln -s "$APP_DIR/node_modules" "$BUILD_WS/node_modules"
+# ⚠️ node_modules por HARD LINK, não symlink (26/08): o Turbopack recusa symlink que
+# aponta pra fora da raiz do projeto — "Symlink [project]/node_modules is invalid, it
+# points out of the filesystem root". `cp -al` cria um diretório DE VERDADE com os
+# arquivos hard-linkados: instantâneo, sem custo de disco (mesmo inode), e o build só
+# lê. Refaz só quando o package-lock muda.
+if [[ ! -d "$BUILD_WS/node_modules" ]] || [[ "$APP_DIR/package-lock.json" -nt "$BUILD_WS/node_modules" ]]; then
+  rm -rf "$BUILD_WS/node_modules"
+  cp -al "$APP_DIR/node_modules" "$BUILD_WS/node_modules"
+  ok "node_modules espelhado (hard links)"
+fi
 rm -rf "$BUILD_WS/.next"
 ok "workspace pronto (node_modules compartilhado)"
 
