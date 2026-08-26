@@ -204,6 +204,15 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
         )}
         {currentEmpresaId && (
           <SidebarItem
+            icon={Wallet}
+            label="Fluxo de caixa"
+            href={`/empresas/${currentEmpresaId}/fluxo-caixa`}
+            isActive={/^\/empresas\/[^/]+\/fluxo-caixa(\/|$)/.test(pathname)}
+            onClick={onNavigate}
+          />
+        )}
+        {currentEmpresaId && (
+          <SidebarItem
             icon={HandCoins}
             label="Empréstimos"
             href={`/empresas/${currentEmpresaId}/emprestimos`}

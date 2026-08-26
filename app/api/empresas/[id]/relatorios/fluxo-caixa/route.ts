@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
+import { whereFluxoCaixa } from '@/lib/fluxo-caixa/motor'
 import {
   calculateConsolidatedCashflow,
   type CashflowTransaction,
@@ -49,12 +50,11 @@ export async function GET(request: NextRequest, { params }: Params) {
     const [txRealizadoRaw, txPrevistoRaw, accounts] = await Promise.all([
       // Realizado: EFFECTED no range, multi-tenant via bankAccount
       prisma.transaction.findMany({
-        where: {
-          bankAccount: { companyId: empresaId },
-          lifecycle: 'EFFECTED',
-          reconciledWithId: null,
-          date: { gte: startMonth, lte: currentMonthEnd },
-        },
+        // ⚠️ REGRA 4 (25/08) — o "realizado" daqui e a tela /fluxo-de-caixa somam o
+        // MESMO número. Antes este where era uma segunda cópia, e faltavam nele as
+        // travas de `isInternalTransfer`, `pendingTransfer` e o tratamento do cartão:
+        // as duas telas dariam totais diferentes pro mesmo mês. Agora é um where só.
+        where: whereFluxoCaixa(empresaId, { de: startMonth, ate: currentMonthEnd }),
         select: {
           id: true,
           type: true,
