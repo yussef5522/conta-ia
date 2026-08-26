@@ -13,7 +13,7 @@ set -euo pipefail
 APP_DIR="${APP_DIR:-/opt/conta-ia}"
 PM2_APP="${PM2_APP:-conta-ia}"
 PORT="${PORT:-3001}"
-BUILDS_DIR="$APP_DIR/.next-builds"
+PREFIXO=".next-build-"
 
 cd "$APP_DIR"
 ok()   { printf '  \033[32m✓\033[0m %s\n' "$*"; }
@@ -24,7 +24,7 @@ ATUAL=""
 
 if [[ "${1:-}" == "--lista" ]]; then
   printf '\nBuilds disponíveis (mais novo primeiro):\n'
-  ls -1dt "$BUILDS_DIR"/* 2>/dev/null | while read -r b; do
+  ls -1dt "$APP_DIR/${PREFIXO}"* 2>/dev/null | while read -r b; do
     n=$(basename "$b")
     id=$([[ -f "$b/BUILD_ID" ]] && cat "$b/BUILD_ID" || echo '(sem BUILD_ID)')
     marca=$([[ "$n" == "$ATUAL" ]] && echo '  ← EM USO' || echo '')
@@ -34,10 +34,10 @@ if [[ "${1:-}" == "--lista" ]]; then
 fi
 
 if [[ -n "${1:-}" ]]; then
-  ALVO="$BUILDS_DIR/$1"
+  ALVO="$APP_DIR/$1"
 else
   # o primeiro da lista que NÃO é o atual
-  ALVO=$(ls -1dt "$BUILDS_DIR"/* 2>/dev/null | grep -v "/${ATUAL}\$" | head -1 || true)
+  ALVO=$(ls -1dt "$APP_DIR/${PREFIXO}"* 2>/dev/null | grep -v "/${ATUAL}\$" | head -1 || true)
 fi
 
 [[ -n "${ALVO:-}" && -d "$ALVO" ]] || fail "não achei build anterior. Veja: bash scripts/rollback.sh --lista"

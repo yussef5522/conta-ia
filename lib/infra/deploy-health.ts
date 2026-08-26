@@ -54,14 +54,15 @@ export function lerDeploy(appDir = '/opt/conta-ia'): LeituraDeploy | null {
     if (existsSync(dir)) cssCount = readdirSync(dir).filter((f) => f.endsWith('.css')).length
   } catch { /* ignora */ }
 
+  // ⚠️ os builds ficam com nome PLANO na raiz (`.next-build-<stamp>-<sha>`), não
+  // aninhados: o Next gera os arquivos de tipo com caminho relativo de 3 níveis e
+  // assume que o `distDir` tem profundidade 1. Aninhar quebrava o build.
   let buildsGuardados = 0
   try {
-    const b = join(appDir, '.next-builds')
-    if (existsSync(b)) {
-      buildsGuardados = readdirSync(b).filter((f) => {
-        try { return statSync(join(b, f)).isDirectory() } catch { return false }
-      }).length
-    }
+    buildsGuardados = readdirSync(appDir).filter((f) => {
+      if (!f.startsWith('.next-build-')) return false
+      try { return statSync(join(appDir, f)).isDirectory() } catch { return false }
+    }).length
   } catch { /* ignora */ }
 
   return { ehSymlink, alvo, buildIdOk, cssCount, buildsGuardados }

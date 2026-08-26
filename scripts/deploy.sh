@@ -16,8 +16,8 @@
 # mexe. Se o build falhar por qualquer motivo, o symlink não anda e prod continua
 # servindo o build anterior INTACTO — falha de build vira não-evento pro cliente.
 #
-#   .next            → SYMLINK
-#   .next-builds/<sha>  → onde cada build mora (mantém os 3 últimos)
+#   .next                       → SYMLINK
+#   .next-build-<stamp>-<sha>   → onde cada build mora (mantém os 3 últimos)
 #
 # Uso:  bash scripts/deploy.sh          (build + troca + gate)
 #       bash scripts/deploy.sh --dry    (só o gate de saúde e o diagnóstico)
@@ -27,7 +27,12 @@ set -euo pipefail
 APP_DIR="${APP_DIR:-/opt/conta-ia}"
 PM2_APP="${PM2_APP:-conta-ia}"
 PORT="${PORT:-3001}"
-BUILDS_DIR="$APP_DIR/.next-builds"
+# ⚠️ NOME PLANO NA RAIZ, não `.next-builds/<sha>` (26/08): o Next gera os arquivos de
+# tipo com caminho RELATIVO de três níveis (`../../../app/...`), assumindo que o
+# `distDir` tem profundidade 1 — como o `.next`. Com um nível a mais o build morre com
+# "Cannot find module '../../../app/(auth)/cadastro/page.js'". Descoberto no 2º deploy;
+# **o symlink não moveu e prod não sentiu** (era exatamente pra isso que o gate existe).
+PREFIXO=".next-build-"
 MANTER=3
 # Memória livre mínima (MB) pra sequer TENTAR: o type-check do Next chega a ~1,9 GB.
 MIN_MB=2200
@@ -60,14 +65,13 @@ if (( DRY )); then
   log "Estado atual"
   if [[ -L .next ]]; then ok "symlink → $(readlink .next)"; else echo "  ⚠️  .next ainda é diretório real (a 1ª troca converte)"; fi
   [[ -f .next/BUILD_ID ]] && ok "BUILD_ID atual: $(cat .next/BUILD_ID)" || echo "  ✗ sem BUILD_ID"
-  ls -1dt "$BUILDS_DIR"/* 2>/dev/null | head -5 | sed 's/^/  build: /' || true
+  ls -1dt "$APP_DIR/${PREFIXO}"* 2>/dev/null | head -5 | sed 's/^/  build: /' || true
   exit 0
 fi
 
 SHA=$(git rev-parse --short HEAD)
 STAMP=$(date +%Y%m%d-%H%M%S)
-ALVO="$BUILDS_DIR/${STAMP}-${SHA}"
-mkdir -p "$BUILDS_DIR"
+ALVO="$APP_DIR/${PREFIXO}${STAMP}-${SHA}"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # BUILD — em diretório SEPARADO, log em ARQUIVO
@@ -145,11 +149,11 @@ ok "3/3 home 200 · $(wc -w <<<"$CSS_LINKS") CSS servindo do build novo"
 # ─────────────────────────────────────────────────────────────────────────────
 # LIMPEZA — mantém os últimos $MANTER (rollback precisa deles)
 # ─────────────────────────────────────────────────────────────────────────────
-ls -1dt "$BUILDS_DIR"/* 2>/dev/null | tail -n +$((MANTER + 1)) | while read -r velho; do
+ls -1dt "$APP_DIR/${PREFIXO}"* 2>/dev/null | tail -n +$((MANTER + 1)) | while read -r velho; do
   [[ "$velho" == "$ALVO" ]] && continue
   rm -rf "$velho" && echo "  removido build antigo: $(basename "$velho")"
 done
 
 printf '\n\033[32m✓ DEPLOY OK\033[0m  %s\n' "$NOVO_ID"
 [[ -n "$ANTERIOR" ]] && printf '  rollback:  bash scripts/rollback.sh\n'
-printf '  builds:    %s\n' "$(ls -1dt "$BUILDS_DIR"/* 2>/dev/null | wc -l)"
+printf '  builds:    %s\n' "$(ls -1dt "$APP_DIR/${PREFIXO}"* 2>/dev/null | wc -l)"
