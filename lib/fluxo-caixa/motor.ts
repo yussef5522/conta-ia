@@ -26,6 +26,17 @@ export const CAT_FATURA = 'Fatura de cartão (paga)'
 export const CAT_PARCELA = 'Parcela de empréstimo'
 export const CAT_SEM = 'A CLASSIFICAR'
 
+// ⭐ ENTRADAS QUE NÃO SÃO ENTRADA (26/08, regra do dono, vale pra sempre):
+// "ENTROU = só o que realmente entrou DE VENDA (+ outras receitas reais). Dinheiro de
+// empréstimo não é venda, não é receita — é DÍVIDA entrando."
+// Elas aparecem numa linha PRÓPRIA, informativa, FORA da soma — mesmo tratamento das
+// transferências internas: visível, excluído, explicado. Somar 100 mil de empréstimo no
+// "entrou" de junho faria o mês parecer o melhor do ano por causa de uma dívida.
+export const CAT_LIBERACAO = 'Liberação de empréstimo'
+export const CAT_APORTE = 'Aporte de capital'
+/** dreGroup do aporte de sócio — dinheiro que entra e NÃO é receita. */
+export const DRE_APORTE = 'APORTES_CAPITAL'
+
 export interface LinhaFluxo {
   id: string
   date: Date
@@ -35,6 +46,9 @@ export interface LinhaFluxo {
   isCardPayment: boolean
   /** vínculo com parcela de empréstimo por QUALQUER das 2 portas (1:1 ou N:1) */
   ehParcelaEmprestimo: boolean
+  /** esta tx É a liberação de um empréstimo (vínculo ESTRUTURAL, não categoria) */
+  ehLiberacaoEmprestimo: boolean
+  dreGroup: string | null
   contaNome: string
   descricao: string
 }
@@ -63,6 +77,10 @@ export interface ResultadoFluxo {
   entradas: GrupoCategoria[]
   saidas: GrupoCategoria[]
   aClassificar: { n: number; entrada: number; saida: number }
+  /** dinheiro que ENTROU na conta mas NÃO é receita — visível, fora da soma */
+  informativas: GrupoCategoria[]
+  /** soma das informativas (só pra tela dizer o tamanho do que ficou de fora) */
+  totalInformativo: number
 }
 
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
@@ -112,8 +130,13 @@ export const SELECT_FLUXO = {
   type: true,
   description: true,
   isCardPayment: true,
-  category: { select: { name: true } },
+  category: { select: { name: true, dreGroup: true } },
   bankAccount: { select: { name: true } },
+  // ⚠️ MARCADOR ESTRUTURAL, não categoria: `Loan.disbursementTransactionId` é a
+  // MESMA fonte que o DRE usa pra não tratar liberação como receita. Categoria é
+  // decisão do dono e pode estar errada (a do C61021346 estava em "Aporte de
+  // Capital"); o vínculo com o contrato não mente.
+  loanDisbursement: { select: { id: true } },
   // ⚠️ AS DUAS PORTAS. Checar só `loanInstallmentPaid` foi o bug documentado no
   // CLAUDE.md (14/08): "linked" tem 1:1 E N:1, e na Cacula as 4 parcelas de agosto
   // estão TODAS pela porta N:1 — só a primeira porta acharia zero.
@@ -125,10 +148,11 @@ export const SELECT_FLUXO = {
 export function paraLinha(t: {
   id: string; date: Date; amount: number; type: string; description: string
   isCardPayment: boolean
-  category: { name: string } | null
+  category: { name: string; dreGroup: string | null } | null
   bankAccount: { name: string } | null
   loanInstallmentPaid: { id: string } | null
   loanInstallmentPayments: { id: string }[]
+  loanDisbursement?: { id: string } | null
 }): LinhaFluxo {
   return {
     id: t.id,
@@ -138,6 +162,8 @@ export function paraLinha(t: {
     categoriaNome: t.category?.name ?? null,
     isCardPayment: t.isCardPayment,
     ehParcelaEmprestimo: !!t.loanInstallmentPaid || t.loanInstallmentPayments.length > 0,
+    ehLiberacaoEmprestimo: !!t.loanDisbursement,
+    dreGroup: t.category?.dreGroup ?? null,
     contaNome: t.bankAccount?.name?.trim() || '(sem conta)',
     descricao: t.description,
   }
@@ -155,6 +181,21 @@ export function rotularLinha(l: LinhaFluxo): { rotulo: string; sintetico: boolea
 }
 
 /**
+ * Uma ENTRADA de dinheiro que NÃO é receita? Devolve o rótulo informativo; null = é
+ * entrada de verdade e soma no ENTROU.
+ *
+ * ⚠️ ORDEM IMPORTA: o vínculo ESTRUTURAL com o contrato vem primeiro. A liberação do
+ * C61021346 estava categorizada como "Aporte de Capital" — se a categoria mandasse, a
+ * tela chamaria uma DÍVIDA de aporte de sócio. O vínculo com o Loan não mente.
+ */
+export function entradaInformativa(l: LinhaFluxo): string | null {
+  if (l.type !== 'CREDIT') return null
+  if (l.ehLiberacaoEmprestimo) return CAT_LIBERACAO
+  if (l.dreGroup === DRE_APORTE) return CAT_APORTE
+  return null
+}
+
+/**
  * Agrupa por categoria, dos dois lados, com os lançamentos que compõem cada linha.
  *
  * INVARIANTE (travado em teste): Σ entradas == entrou e Σ saídas == saiu — inclusive o
@@ -164,14 +205,28 @@ export function rotularLinha(l: LinhaFluxo): { rotulo: string; sintetico: boolea
 export function agruparFluxo(linhas: LinhaFluxo[]): ResultadoFluxo {
   const ent = new Map<string, GrupoCategoria>()
   const sai = new Map<string, GrupoCategoria>()
+  const info = new Map<string, GrupoCategoria>()
   let entrou = 0
   let saiu = 0
+  let totalInformativo = 0
   const aClassificar = { n: 0, entrada: 0, saida: 0 }
 
   for (const l of linhas) {
     const credito = l.type === 'CREDIT'
     const debito = l.type === 'DEBIT'
     if (!credito && !debito) continue // TRANSFER já saiu no where; defesa em profundidade
+
+    // ⭐ entrada que não é receita: sai da soma, NÃO some da tela.
+    const rotuloInfo = entradaInformativa(l)
+    if (rotuloInfo) {
+      const g = info.get(rotuloInfo) ?? { rotulo: rotuloInfo, total: 0, n: 0, sintetico: true, lancamentos: [] }
+      g.total = round2(g.total + l.amount)
+      g.n++
+      g.lancamentos.push({ id: l.id, data: iso(l.date), conta: l.contaNome, descricao: l.descricao, valor: round2(l.amount) })
+      info.set(rotuloInfo, g)
+      totalInformativo = round2(totalInformativo + l.amount)
+      continue
+    }
 
     const { rotulo, sintetico } = rotularLinha(l)
     const alvo = credito ? ent : sai
@@ -200,7 +255,11 @@ export function agruparFluxo(linhas: LinhaFluxo[]): ResultadoFluxo {
 
   entrou = round2(entrou)
   saiu = round2(saiu)
-  return { entrou, saiu, resultado: round2(entrou - saiu), entradas: ordenar(ent), saidas: ordenar(sai), aClassificar }
+  return {
+    entrou, saiu, resultado: round2(entrou - saiu),
+    entradas: ordenar(ent), saidas: ordenar(sai), aClassificar,
+    informativas: ordenar(info), totalInformativo,
+  }
 }
 
 export interface MesSerie {
@@ -221,6 +280,9 @@ export interface MesSerie {
 export function serieMensal(linhas: LinhaFluxo[], meses: string[], hoje: Date): MesSerie[] {
   const porMes = new Map<string, { e: number; s: number }>()
   for (const l of linhas) {
+    // o gráfico usa a MESMA regra dos cards: liberação/aporte não é "entrou".
+    // Sem isto, junho apareceria como o melhor mês do ano por causa de uma dívida.
+    if (entradaInformativa(l)) continue
     const k = iso(l.date).slice(0, 7)
     const a = porMes.get(k) ?? { e: 0, s: 0 }
     if (l.type === 'CREDIT') a.e += l.amount

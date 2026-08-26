@@ -4,14 +4,16 @@
 import { describe, it, expect } from 'vitest'
 import {
   whereFluxoCaixa, agruparFluxo, rotularLinha, serieMensal, ultimosMeses, paraLinha,
-  CAT_FATURA, CAT_PARCELA, CAT_SEM, type LinhaFluxo,
+  entradaInformativa, CAT_FATURA, CAT_PARCELA, CAT_SEM, CAT_LIBERACAO, CAT_APORTE,
+  DRE_APORTE, type LinhaFluxo,
 } from '../motor'
 
 const d = (s: string) => new Date(`${s}T12:00:00.000Z`)
 let seq = 0
 const linha = (p: Partial<LinhaFluxo> & { type: string; amount: number }): LinhaFluxo => ({
   id: `t${++seq}`, date: d('2026-08-10'), categoriaNome: null, isCardPayment: false,
-  ehParcelaEmprestimo: false, contaNome: 'banrisul', descricao: 'x', ...p,
+  ehParcelaEmprestimo: false, ehLiberacaoEmprestimo: false, dreGroup: null,
+  contaNome: 'banrisul', descricao: 'x', ...p,
 })
 
 describe('whereFluxoCaixa — as travas do dinheiro vivo', () => {
@@ -178,5 +180,77 @@ describe('ultimosMeses', () => {
   it('6 meses terminando no informado, virando o ano', () => {
     expect(ultimosMeses('2026-08', 6)).toEqual(['2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08'])
     expect(ultimosMeses('2026-02', 4)).toEqual(['2025-11', '2025-12', '2026-01', '2026-02'])
+  })
+})
+
+
+// ⭐ REGRA DO DONO (26/08): "ENTROU = só o que realmente entrou DE VENDA. Dinheiro de
+// empréstimo não é venda, não é receita — é dívida entrando."
+// O caso real: R$ 100.000 do C61021346 liberados em 12/06/2026, que estavam
+// categorizados como "Aporte de Capital" e somariam no ENTROU de junho.
+describe('empréstimo NÃO é entrada — junho com e sem a liberação', () => {
+  const VENDAS_JUNHO = [
+    linha({ type: 'CREDIT', amount: 299520.45, categoriaNome: 'Receita de Vendas', date: d('2026-06-15') }),
+    linha({ type: 'CREDIT', amount: 54462.81, categoriaNome: 'Venda em dinheiro', date: d('2026-06-20') }),
+    linha({ type: 'CREDIT', amount: 861.70, categoriaNome: 'Receita Delivery (iFood)', date: d('2026-06-10') }),
+    linha({ type: 'DEBIT', amount: 1000, categoriaNome: 'Aluguel', date: d('2026-06-05') }),
+  ]
+  // a liberação REAL: vínculo estrutural com o contrato + categoria (errada) de aporte
+  const LIBERACAO = linha({
+    type: 'CREDIT', amount: 100000, date: d('2026-06-12'),
+    categoriaNome: 'Aporte de Capital', dreGroup: DRE_APORTE,
+    ehLiberacaoEmprestimo: true, descricao: 'LIBERACAO CREDITO-C61021346', contaNome: 'sicredi',
+  })
+
+  it('⭐ ENTROU é IDÊNTICO com e sem a liberação', () => {
+    const sem = agruparFluxo(VENDAS_JUNHO)
+    const com = agruparFluxo([...VENDAS_JUNHO, LIBERACAO])
+    expect(com.entrou).toBe(sem.entrou)
+    expect(com.resultado).toBe(sem.resultado)
+    expect(com.entrou).toBe(354844.96) // 299520.45 + 54462.81 + 861.70
+  })
+
+  it('a liberação NÃO some: vira linha própria, informativa, com o valor à vista', () => {
+    const com = agruparFluxo([...VENDAS_JUNHO, LIBERACAO])
+    expect(com.informativas).toHaveLength(1)
+    expect(com.informativas[0]).toMatchObject({ rotulo: CAT_LIBERACAO, total: 100000, n: 1 })
+    expect(com.totalInformativo).toBe(100000)
+    expect(com.informativas[0].lancamentos[0].descricao).toContain('C61021346')
+  })
+
+  it('o VÍNCULO manda sobre a categoria — dívida não vira "aporte de sócio" na tela', () => {
+    // a categoria diz aporte; o vínculo com o contrato diz empréstimo. Ganha o vínculo.
+    expect(entradaInformativa(LIBERACAO)).toBe(CAT_LIBERACAO)
+  })
+
+  it('APORTE DE VERDADE (sem vínculo de contrato) também fica fora do ENTROU', () => {
+    const aporte = linha({ type: 'CREDIT', amount: 50000, categoriaNome: 'Aporte de Capital', dreGroup: DRE_APORTE })
+    const r = agruparFluxo([...VENDAS_JUNHO, aporte])
+    expect(r.entrou).toBe(354844.96)
+    expect(r.informativas[0]).toMatchObject({ rotulo: CAT_APORTE, total: 50000 })
+  })
+
+  it('a liberação NÃO entra em "entradas por categoria" (senão apareceria somada)', () => {
+    const com = agruparFluxo([...VENDAS_JUNHO, LIBERACAO])
+    expect(com.entradas.map((g) => g.rotulo)).not.toContain('Aporte de Capital')
+    expect(com.entradas.reduce((s, g) => s + g.total, 0)).toBe(com.entrou)
+  })
+
+  it('a SAÍDA não muda: pagar continua pagar, não importa o quê', () => {
+    const com = agruparFluxo([...VENDAS_JUNHO, LIBERACAO])
+    expect(com.saiu).toBe(1000)
+  })
+
+  it('o GRÁFICO de 6 meses usa a mesma regra — junho não incha por dívida', () => {
+    const semLib = serieMensal(VENDAS_JUNHO, ['2026-06'], d('2026-08-26'))
+    const comLib = serieMensal([...VENDAS_JUNHO, LIBERACAO], ['2026-06'], d('2026-08-26'))
+    expect(comLib[0].entrou).toBe(semLib[0].entrou)
+    expect(comLib[0].resultado).toBe(semLib[0].resultado)
+  })
+
+  it('DEBIT com dreGroup de aporte não é tratado como informativo (só entrada é)', () => {
+    const saida = linha({ type: 'DEBIT', amount: 10, categoriaNome: 'Devolução de aporte', dreGroup: DRE_APORTE })
+    expect(entradaInformativa(saida)).toBeNull()
+    expect(agruparFluxo([saida]).saiu).toBe(10)
   })
 })

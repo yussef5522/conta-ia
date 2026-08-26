@@ -28,6 +28,8 @@ interface FluxoData {
   entrou: number; saiu: number; resultado: number
   entradas: Grupo[]; saidas: Grupo[]
   aClassificar: { n: number; entrada: number; saida: number }
+  informativas: Grupo[]
+  totalInformativo: number
   saldoContas: number; contas: Conta[]
   serie: MesSerie[]
   transferenciasExcluidas: { n: number; total: number }
@@ -196,7 +198,35 @@ export default function FluxoDeCaixaPage({ params }: { params: Promise<{ id: str
       <Card>
         <CardContent className="py-4">
           <h2 className="mb-1 text-sm font-medium">O que ficou de fora, de propósito</h2>
+          {/* ⭐ ENTRADA QUE NÃO É RECEITA (26/08) — dinheiro que caiu na conta e NÃO
+              soma no ENTROU: liberação de empréstimo é DÍVIDA entrando, aporte é
+              capital do sócio. Ficam aqui, com valor à vista e o motivo escrito. */}
+          {data.informativas.length > 0 && (
+            <div className="mb-3 space-y-1.5 rounded-md border border-sky-200 bg-sky-50/50 px-3 py-2">
+              {data.informativas.map((g) => (
+                <div key={g.rotulo}>
+                  <div className="flex flex-wrap items-baseline gap-x-2 text-xs">
+                    <span className="font-medium text-sky-900">+ {g.rotulo}:</span>
+                    <span className="font-semibold tabular-nums text-sky-900">{brl(g.total)}</span>
+                    <span className="text-sky-700">
+                      (não somado — {g.rotulo === 'Liberação de empréstimo' ? 'é dívida' : 'não é venda'})
+                    </span>
+                  </div>
+                  {g.lancamentos.map((l) => (
+                    <div key={l.id} className="pl-3 text-[11px] text-sky-800/80">
+                      {dia(l.data)} · {l.conta} · {l.descricao} · <span className="tabular-nums">{brl(l.valor)}</span>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
           <ul className="space-y-1 text-xs text-muted-foreground">
+            <li>
+              <b className="text-foreground">Empréstimo e aporte não são receita:</b> dinheiro de empréstimo
+              é dívida entrando e aporte é capital do sócio — nenhum dos dois é venda, então ficam fora
+              do <b>Entrou</b> (e do gráfico), visíveis na faixa acima.
+            </li>
             <li>
               <b className="text-foreground">Transferências entre contas próprias:</b>{' '}
               {data.transferenciasExcluidas.n} lançamento(s), {brl(data.transferenciasExcluidas.total)} movimentados.
