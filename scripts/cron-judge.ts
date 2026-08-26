@@ -11,6 +11,7 @@ import { runAndPersistStockJudge } from '../lib/stock/run-stock-judge'
 import { buildJudgeAlertEmail } from '../lib/loans/judge-alert-email'
 import { sendEmail } from '../lib/email/send'
 import { checkInfra } from '../lib/infra/health'
+import { checkDeploy } from '../lib/infra/deploy-health'
 
 const prisma = new PrismaClient()
 const BASE = process.env.APP_BASE_URL ?? 'https://app.caixaos.com.br'
@@ -39,9 +40,18 @@ async function main() {
   if (leitura) {
     console.log(`[juiz ${stamp}] infra: RAM ${leitura.memDisponivelMb}/${leitura.memTotalMb} MB livres · swap ${leitura.swapUsadoMb}/${leitura.swapTotalMb} MB em uso${infraChecks.length ? ` · ${infraChecks.length} alerta(s)` : ''}`)
   }
+  // DEPLOY — o artefato servido está são? (symlink íntegro, BUILD_ID, CSS, rollback
+  // disponível). Pega o que o smoke não pega: `.next` que voltou a ser diretório real
+  // responde 200 e mesmo assim jogou fora a troca atômica e o rollback em segundos.
+  const { leitura: dep, checks: deployChecks } = checkDeploy()
+  if (dep) {
+    console.log(`[juiz ${stamp}] deploy: ${dep.ehSymlink ? `symlink → ${dep.alvo}` : '⚠️ .next é diretório real'} · BUILD_ID ${dep.buildIdOk ? 'ok' : 'AUSENTE'} · ${dep.cssCount} css · ${dep.buildsGuardados} build(s) guardado(s)${deployChecks.length ? ` · ${deployChecks.length} alerta(s)` : ''}`)
+    for (const c of deployChecks) console.log(`[juiz ${stamp}]   ${c.invariante} (${c.nivel}): ${c.detalhe}`)
+  }
+
   console.log(`[juiz ${stamp}] ${rep.passed ? '✓ OK' : '✗ FALHA'} · ${rep.totalContracts - rep.totalFail}/${rep.totalContracts} contratos · balance ${rep.balanceIssues} · dup ${rep.dupIssues} · venda ${rep.vendaIssues} · cartão ${rep.cardIssues} · estoque ${stockRep.stockIssues} · ${rep.durationMs}ms`)
 
-  if (!rep.passed || !stockRep.passed || infraChecks.length > 0) {
+  if (!rep.passed || !stockRep.passed || infraChecks.length > 0 || deployChecks.length > 0) {
     if (!ALERT_TO) {
       console.error(`[juiz ${stamp}] FALHA detectada mas JUDGE_ALERT_EMAIL não configurado — e-mail NÃO enviado`)
     } else {
@@ -58,7 +68,7 @@ async function main() {
         vendaChecks: rep.vendaChecks,
         cardChecks: rep.cardChecks,
         stockChecks: stockRep.fails,
-        infraChecks,
+        infraChecks: [...infraChecks, ...deployChecks],
         juizUrl: `${BASE}/juiz`,
       })
       const r = await sendEmail({ to: ALERT_TO, subject, html, type: 'juiz-module-alert' })

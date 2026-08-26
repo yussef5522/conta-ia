@@ -1,5 +1,15 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // ⛔ DEPLOY BLUE-GREEN (26/08) — o build NUNCA escreve por cima do `.next` que o
+  // pm2 está servindo. `scripts/deploy.sh` passa `NEXT_DIST_DIR=.next-builds/<sha>`,
+  // o build cai lá, e só depois de PROVADO pronto o `.next` (um SYMLINK) passa a
+  // apontar pra ele — troca atômica.
+  //
+  // A causa do incidente de 26/08: o build escreveu em `.next` enquanto o processo
+  // velho servia; quem acessou naqueles segundos recebeu HTML apontando pra chunks
+  // que ainda não existiam (CSS 404 às 16:35:00, 200 às 16:36:56). Com `next start`
+  // sem a env, `distDir` continua `.next` — que agora é o symlink.
+  distDir: process.env.NEXT_DIST_DIR || '.next',
   // Hotfix Export CSV+PDF (29/05/2026): MANTIDO serverExternalPackages
   // pra @react-pdf/renderer (necessário pra evitar bundling do Yoga
   // WASM). Outros sub-pacotes saem implícitos via deps tree.
