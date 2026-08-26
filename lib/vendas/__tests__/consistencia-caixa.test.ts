@@ -95,3 +95,35 @@ describe('V6 — a ponte Vendas × Caixa', () => {
     expect(r).toMatchObject({ vendasDoMes: 0, caixaDoMes: 0, inexplicado: 0, fecha: true })
   })
 })
+
+
+// A 3ª BORDA (26/08): receita que entrou no caixa do mês mas cuja VENDA é anterior ao
+// início do módulo. Caso real: 2 vendas em dinheiro que caíram no cofre em 01/08 —
+// o cofre é D+1 corrido, então são venda de 31/07, e julho não é computado.
+// R$ 2.966,35 que o Fluxo via e a ponte ignorava.
+describe('3ª borda — receita no caixa sem VendaDiaria (venda antes do módulo)', () => {
+  it('sem informar o caixa do Fluxo, a ponte fecha só sobre o que foi atribuído', () => {
+    const r = conferirConsistencia([linha('2026-08-05', '2026-08-05', 1000, [['2026-08-06', 1000]])], AGO_INI, AGO_FIM)
+    expect(r.bordaForaDoModulo).toBe(0)
+    expect(r.fecha).toBe(true)
+  })
+
+  it('⭐ informando o caixa do Fluxo, a sobra vira borda NOMEADA e a ponte fecha', () => {
+    // Fluxo viu 3.966,35 de venda; o motor atribuiu 1.000 → 2.966,35 é venda de julho
+    const r = conferirConsistencia(
+      [linha('2026-08-05', '2026-08-05', 1000, [['2026-08-06', 1000]])],
+      AGO_INI, AGO_FIM, 3966.35)
+    expect(r.bordaForaDoModulo).toBe(2966.35)
+    expect(r.caixaDoMes).toBe(3966.35)
+    expect(r.inexplicado).toBe(0)
+    expect(r.fecha).toBe(true)
+    expect(explicarConsistencia(r, 'agosto/2026')).toMatch(/anterior ao módulo/)
+  })
+
+  it('a borda nomeada NÃO vira desculpa: duplicata ainda quebra a ponte', () => {
+    const dup = linha('2026-08-05', '2026-08-05', 1000, [['2026-08-06', 1000]])
+    const r = conferirConsistencia([dup, { ...dup, entradas: [] }], AGO_INI, AGO_FIM, 1000)
+    expect(r.vendasDoMes).toBe(2000)
+    expect(r.fecha).toBe(false)
+  })
+})

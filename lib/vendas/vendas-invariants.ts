@@ -12,6 +12,7 @@ import type { PrismaClient, Prisma } from '@prisma/client'
 import { computeExpectedVendas } from './recompute-vendas'
 import { diaUTC } from './feriados-nacionais'
 import { conferirConsistencia, explicarConsistencia, type LinhaVendaComOrigem } from './consistencia-caixa'
+import { whereFluxoCaixa, SELECT_FLUXO, paraLinha, agruparFluxo } from '../fluxo-caixa/motor'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -180,7 +181,20 @@ async function checkConsistenciaCaixa(
   while (cur.getTime() <= hoje.getTime()) {
     const mesIni = new Date(cur.getTime())
     const mesFim = new Date(Date.UTC(cur.getUTCFullYear(), cur.getUTCMonth() + 1, 1))
-    const r = conferirConsistencia(linhas, mesIni, mesFim)
+    // ⚠️ O caixa vem do MESMO motor que a tela de Fluxo usa (REGRA 4) — se viesse de
+    // uma soma própria aqui, o juiz poderia "fechar" contra um número que a tela não
+    // mostra, que é exatamente a doença que ele existe pra curar.
+    const fimInclusivo = new Date(mesFim.getTime() - 1)
+    const cruas = await db.transaction.findMany({
+      where: whereFluxoCaixa(companyId, { de: mesIni, ate: fimInclusivo }),
+      select: SELECT_FLUXO, take: 200_000,
+    })
+    const fluxo = agruparFluxo((cruas as never[]).map(paraLinha))
+    const caixaDeVenda = fluxo.entradas
+      .filter((g) => /venda|ifood|delivery|receita/i.test(g.rotulo))
+      .reduce((acc, g) => acc + g.total, 0)
+
+    const r = conferirConsistencia(linhas, mesIni, mesFim, Math.round(caixaDeVenda * 100) / 100)
     if (!r.fecha) {
       const rot = `${String(mesIni.getUTCMonth() + 1).padStart(2, '0')}/${mesIni.getUTCFullYear()}`
       out.push({ invariante: 'V6', companyId, companyName, detalhe: explicarConsistencia(r, rot) })

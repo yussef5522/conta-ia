@@ -44,6 +44,10 @@ export interface ConsistenciaResultado {
   bordaRecebidaDeAntes: number
   /** venda DESTE mês cujo dinheiro ainda não entrou (cai depois) */
   bordaAReceber: number
+  /** receita que entrou no caixa do mês SEM VendaDiaria: a venda é anterior ao início
+   *  do módulo (ex.: dinheiro do cofre que entrou 01/08 é venda de 31/07, e julho não
+   *  é computado). É a 3ª borda — legítima, mas tem que ser NOMEADA. */
+  bordaForaDoModulo: number
   /** o que sobra depois de descontar as bordas — tem que ser ~0 */
   inexplicado: number
   fecha: boolean
@@ -60,6 +64,10 @@ export function conferirConsistencia(
   linhas: LinhaVendaComOrigem[],
   mesInicio: Date,
   mesFim: Date,
+  /** total que o FLUXO DE CAIXA conta como entrada de venda no mês. Quando informado,
+   *  o que sobra vira `bordaForaDoModulo` — receita recebida no mês cuja venda é
+   *  anterior ao módulo. Sem isso a ponte "fecharia" ignorando esse dinheiro. */
+  caixaDeVendaNoFluxo?: number,
 ): ConsistenciaResultado {
   const dentro = (d: Date) => d.getTime() >= mesInicio.getTime() && d.getTime() < mesFim.getTime()
 
@@ -87,16 +95,21 @@ export function conferirConsistencia(
     }
   }
 
-  // Caixa − Vendas deve ser exatamente (recebido de antes) − (a receber).
-  const diferenca = round2(caixaDoMes - vendasDoMes)
-  const explicado = round2(bordaRecebidaDeAntes - bordaAReceber)
+  // Receita que o Fluxo viu e o motor de vendas não atribuiu a nenhuma VendaDiaria.
+  const bordaForaDoModulo = caixaDeVendaNoFluxo != null ? round2(caixaDeVendaNoFluxo - caixaDoMes) : 0
+  const caixaTotal = caixaDeVendaNoFluxo ?? caixaDoMes
+
+  // Caixa − Vendas deve ser exatamente a soma das 3 bordas.
+  const diferenca = round2(caixaTotal - vendasDoMes)
+  const explicado = round2(bordaRecebidaDeAntes - bordaAReceber + bordaForaDoModulo)
   const inexplicado = round2(diferenca - explicado)
 
   return {
     vendasDoMes,
-    caixaDoMes,
+    caixaDoMes: caixaTotal,
     bordaRecebidaDeAntes,
     bordaAReceber,
+    bordaForaDoModulo,
     inexplicado,
     fecha: Math.abs(inexplicado) <= TOLERANCIA,
   }
@@ -106,7 +119,8 @@ export function conferirConsistencia(
 export function explicarConsistencia(r: ConsistenciaResultado, mes: string): string {
   const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
   if (r.fecha) {
-    return `${mes}: Vendas ${brl(r.vendasDoMes)} × Caixa ${brl(r.caixaDoMes)} — diferença explicada pelas bordas (recebido de antes ${brl(r.bordaRecebidaDeAntes)}, a receber ${brl(r.bordaAReceber)}).`
+    const fora = r.bordaForaDoModulo ? `, venda anterior ao módulo ${brl(r.bordaForaDoModulo)}` : ''
+    return `${mes}: Vendas ${brl(r.vendasDoMes)} × Caixa ${brl(r.caixaDoMes)} — diferença explicada pelas bordas (recebido de antes ${brl(r.bordaRecebidaDeAntes)}, a receber ${brl(r.bordaAReceber)}${fora}).`
   }
   return `${mes}: a tela de Vendas diz ${brl(r.vendasDoMes)} e o Fluxo de Caixa diz ${brl(r.caixaDoMes)}, e ${brl(Math.abs(r.inexplicado))} dessa diferença NÃO é borda de D+N (recebido de antes ${brl(r.bordaRecebidaDeAntes)}, a receber ${brl(r.bordaAReceber)}). Duas telas contando histórias diferentes — suspeitar de VendaDiaria duplicada, órfã ou recompute pela metade.`
 }
