@@ -16,8 +16,19 @@
 # mexe. Se o build falhar por qualquer motivo, o symlink não anda e prod continua
 # servindo o build anterior INTACTO — falha de build vira não-evento pro cliente.
 #
-#   .next                       → SYMLINK
+#   /opt/conta-ia-build/        → WORKSPACE de build (cópia do repo, node_modules
+#                                  compartilhado por symlink). O Next builda ali no
+#                                  `.next` padrão dele.
+#   /opt/conta-ia/.next         → SYMLINK
 #   .next-build-<stamp>-<sha>   → onde cada build mora (mantém os 3 últimos)
+#
+# ⚠️ POR QUE UM WORKSPACE E NÃO `distDir` CUSTOMIZADO (tentado e descartado em 26/08):
+# o `tsconfig.json` inclui `.next/types/**/*.ts`. Buildando com `distDir` diferente, o
+# Next escreve os tipos no diretório novo mas o TypeScript continua lendo o
+# `.next/types/validator.ts` **VELHO** do build anterior — e o build morre com
+# "Cannot find module '../../../app/(auth)/cadastro/page.js'". Duas tentativas
+# falharam assim (aninhado e plano). **Nas duas o symlink não moveu e prod não sentiu.**
+# Buildar numa cópia do repo deixa o layout que o Next espera e resolve na raiz.
 #
 # Uso:  bash scripts/deploy.sh          (build + troca + gate)
 #       bash scripts/deploy.sh --dry    (só o gate de saúde e o diagnóstico)
@@ -33,6 +44,7 @@ PORT="${PORT:-3001}"
 # "Cannot find module '../../../app/(auth)/cadastro/page.js'". Descoberto no 2º deploy;
 # **o symlink não moveu e prod não sentiu** (era exatamente pra isso que o gate existe).
 PREFIXO=".next-build-"
+BUILD_WS="${BUILD_WS:-/opt/conta-ia-build}"
 MANTER=3
 # Memória livre mínima (MB) pra sequer TENTAR: o type-check do Next chega a ~1,9 GB.
 MIN_MB=2200
@@ -78,13 +90,26 @@ ALVO="$APP_DIR/${PREFIXO}${STAMP}-${SHA}"
 # ⚠️ NUNCA canalizar pra head/grep: o `head` fecha o pipe, o build leva SIGPIPE e
 # morre no meio (foi assim em 24/08, e o terminal ainda dizia "Compiled successfully").
 # ─────────────────────────────────────────────────────────────────────────────
-log "Build em $ALVO (prod segue servindo o build atual)"
+log "Preparando o workspace de build"
+mkdir -p "$BUILD_WS"
+# espelha o código (sem node_modules nem builds); o node_modules é compartilhado
+rsync -a --delete \
+  --exclude 'node_modules' --exclude '.next' --exclude '.next-*' --exclude '.git' \
+  "$APP_DIR/" "$BUILD_WS/"
+[[ -e "$BUILD_WS/node_modules" ]] || ln -s "$APP_DIR/node_modules" "$BUILD_WS/node_modules"
+rm -rf "$BUILD_WS/.next"
+ok "workspace pronto (node_modules compartilhado)"
+
+log "Build em $BUILD_WS (prod segue servindo o build atual)"
 LOG="/tmp/build-${STAMP}.log"
-if ! NEXT_DIST_DIR="${ALVO#$APP_DIR/}" npm run build > "$LOG" 2>&1; then
+if ! (cd "$BUILD_WS" && npm run build > "$LOG" 2>&1); then
   tail -25 "$LOG"
-  rm -rf "$ALVO"
   fail "build FALHOU — o symlink não moveu, prod continua no build anterior. Log: $LOG"
 fi
+
+# traz o artefato pronto pro lado do app (mesmo filesystem → rename, instantâneo)
+[[ -d "$BUILD_WS/.next" ]] || fail "build não produziu .next — prod intacto. Log: $LOG"
+mv "$BUILD_WS/.next" "$ALVO"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # VERIFICAÇÃO DO ARTEFATO — antes de encostar no processo vivo

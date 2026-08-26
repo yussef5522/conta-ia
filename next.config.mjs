@@ -1,14 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // ⛔ DEPLOY BLUE-GREEN (26/08) — o build NUNCA escreve por cima do `.next` que o
-  // pm2 está servindo. `scripts/deploy.sh` passa `NEXT_DIST_DIR=.next-builds/<sha>`,
-  // o build cai lá, e só depois de PROVADO pronto o `.next` (um SYMLINK) passa a
-  // apontar pra ele — troca atômica.
-  //
-  // A causa do incidente de 26/08: o build escreveu em `.next` enquanto o processo
-  // velho servia; quem acessou naqueles segundos recebeu HTML apontando pra chunks
-  // que ainda não existiam (CSS 404 às 16:35:00, 200 às 16:36:56). Com `next start`
-  // sem a env, `distDir` continua `.next` — que agora é o symlink.
+  // ⚠️ `NEXT_DIST_DIR` fica como escape hatch, mas o deploy NÃO o usa (26/08).
+  // Tentei buildar com distDir customizado pra não tocar no `.next` vivo e não
+  // funciona: o `tsconfig.json` inclui `.next/types/**/*.ts`, então o TypeScript lê o
+  // `validator.ts` VELHO do build anterior e o build morre. O deploy blue-green
+  // resolve buildando numa CÓPIA do repo (`/opt/conta-ia-build`), onde o `.next`
+  // padrão é o certo — ver `scripts/deploy.sh`.
   distDir: process.env.NEXT_DIST_DIR || '.next',
   // Hotfix Export CSV+PDF (29/05/2026): MANTIDO serverExternalPackages
   // pra @react-pdf/renderer (necessário pra evitar bundling do Yoga
