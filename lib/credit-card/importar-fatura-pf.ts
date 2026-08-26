@@ -265,8 +265,19 @@ export async function confirmarFaturaPF(input: {
       const hashEnc = hashLinha(input.cardId, {
         data: prev.vencimento!, valor: enc, descricao: 'ENCARGOS SOBRE ROTATIVO', parcelaNumero: null,
       })
+      // ⚠️ dedup por HASH **ou** por (fatura + descrição + valor): o encargo pode ter
+      // sido lançado à mão (foi o que aconteceu na correção da fatura de 26/08 — a
+      // linha nasceu sem `dedupHash` e o reimport criou uma segunda, 182 → 183).
+      // Procurar só pelo hash confia que todo mundo passou por aqui; não passou.
       const jaTem = await tx.personalTransaction.findFirst({
-        where: { creditCardId: input.cardId, dedupHash: hashEnc }, select: { id: true },
+        where: {
+          creditCardId: input.cardId,
+          OR: [
+            { dedupHash: hashEnc },
+            { creditCardInvoiceId: invoice.id, description: 'Encargos sobre rotativo', amount: enc },
+          ],
+        },
+        select: { id: true },
       })
       if (!jaTem) {
         await tx.personalTransaction.create({
