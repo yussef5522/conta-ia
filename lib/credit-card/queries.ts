@@ -621,6 +621,10 @@ export async function getCardSummary(
     } catch { /* JSON torto não derruba o resumo */ }
   }
 
+  // ⭐ o parcelado A VENCER que o banco declara — a parte do limite que segue
+  // comprometida mesmo depois de pagar a fatura.
+  const parceladoAVencer = proximasDeclaradas?.total ?? null
+
   const base = calculateCardSummary(
     {
       cardId: card.id,
@@ -635,6 +639,7 @@ export async function getCardSummary(
         status: i.status,
       })),
       futureParcelasNotInvoiced: [],
+      parceladoAVencer,
     },
     now,
   )

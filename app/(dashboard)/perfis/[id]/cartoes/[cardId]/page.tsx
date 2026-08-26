@@ -32,6 +32,11 @@ interface Summary {
   limitUsed: number
   limitAvailable: number
   limitUsedPercent: number
+  limitBreakdown?: {
+    faturasNaoPagas: number
+    parceladoAVencer: number
+    cicloAtualDesconhecido: boolean
+  }
   currentInvoice: {
     id: string
     reference: string
@@ -172,13 +177,21 @@ export default function CartaoDashboardPage({
               <div className="text-lg font-bold tabular-nums">{formatBRL(summary.creditLimit)}</div>
             </div>
             <div>
-              <div className="text-xs text-zinc-500">Usado</div>
+              {/* ⚠️ "pelo menos" (26/08): as compras do ciclo ATUAL só aparecem na
+                  próxima fatura, então o usado é um PISO. Antes o cartão dizia
+                  18.348,72 com ~40 mil comprometidos no banco — e pior, ao pagar a
+                  fatura o usado ZERARIA, com 28.989,62 de parcelado pendurado. */}
+              <div className="text-xs text-zinc-500">
+                Usado {summary.limitBreakdown?.cicloAtualDesconhecido && '(pelo menos)'}
+              </div>
               <div className="text-lg font-bold tabular-nums text-red-700">
                 {formatBRL(summary.limitUsed)}
               </div>
             </div>
             <div>
-              <div className="text-xs text-zinc-500">Disponível</div>
+              <div className="text-xs text-zinc-500">
+                Disponível {summary.limitBreakdown?.cicloAtualDesconhecido && '(no máximo)'}
+              </div>
               <div className="text-lg font-bold tabular-nums text-emerald-700">
                 {formatBRL(summary.limitAvailable)}
               </div>
@@ -190,6 +203,30 @@ export default function CartaoDashboardPage({
               style={{ width: `${summary.limitUsedPercent}%` }}
             />
           </div>
+          {summary.limitBreakdown && (
+            <div className="mt-3 space-y-1 border-t pt-2 text-[11px] text-zinc-600">
+              <div className="flex justify-between">
+                <span>faturas não pagas</span>
+                <span className="tabular-nums">{formatBRL(summary.limitBreakdown.faturasNaoPagas)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>parcelado a vencer (declarado pelo banco)</span>
+                <span className="tabular-nums">{formatBRL(summary.limitBreakdown.parceladoAVencer)}</span>
+              </div>
+              {summary.limitBreakdown.cicloAtualDesconhecido && (
+                <div className="flex justify-between text-amber-700">
+                  <span>compras do ciclo atual</span>
+                  <span className="italic">a apurar — chegam na próxima fatura</span>
+                </div>
+              )}
+              {summary.limitBreakdown.parceladoAVencer > 0 && (
+                <p className="pt-1 text-[10px] text-zinc-500">
+                  Pagar a fatura libera só a parte dela — o parcelado segue comprometendo
+                  o limite até ser cobrado nas próximas faturas.
+                </p>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 

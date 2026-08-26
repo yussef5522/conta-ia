@@ -19,6 +19,9 @@ export interface CardSummaryInput {
   }>
   /** Parcelas futuras não-faturadas (já estão em invoice mas precisa filtrar) */
   futureParcelasNotInvoiced: Array<{ amount: number; reference: string }>
+  /** ⭐ "Despesas parceladas a vencer" declarado pelo BANCO no PDF (26/08).
+   *  É a parte do limite que segue COMPROMETIDA mesmo depois de pagar a fatura. */
+  parceladoAVencer?: number | null
 }
 
 export interface CardSummaryResult {
@@ -27,6 +30,13 @@ export interface CardSummaryResult {
   limitUsed: number
   limitAvailable: number
   limitUsedPercent: number   // 0..100 (clamp)
+  /** ⭐ de onde vem o usado — a tela precisa explicar, não só mostrar o número */
+  limitBreakdown: {
+    faturasNaoPagas: number
+    parceladoAVencer: number
+    /** true = o ciclo atual é DESCONHECIDO (só aparece na próxima fatura) */
+    cicloAtualDesconhecido: boolean
+  }
   currentInvoice: {
     id: string
     reference: string
@@ -47,9 +57,27 @@ export interface CardSummaryResult {
 }
 
 /**
- * Limite usado = soma dos saldos não pagos das invoices em
- * (OPEN, CLOSED, PARTIAL, OVERDUE) + parcelas futuras não-faturadas.
- * PAID não conta no limite usado.
+ * ⭐⭐ LIMITE USADO — o conceito, corrigido em 26/08.
+ *
+ * ⚠️ O BUG: contava SÓ as faturas não pagas. Na fatura real dava R$ 18.348,72 enquanto
+ * o banco tinha ~40 mil comprometidos. E pior: **quando o pagamento casasse, o usado
+ * ZERARIA** — o sistema diria que o limite inteiro está livre com R$ 28.989,62 de
+ * parcelado pendurado. A própria fatura avisa: *"o valor total do parcelamento
+ * COMPROMETERÁ o limite de crédito do seu cartão e será recomposto à medida que as
+ * parcelas forem pagas."*
+ *
+ * USADO = faturas não pagas + PARCELADO A VENCER + compras do ciclo atual
+ *
+ * ⚠️ O TERCEIRO TERMO É DESCONHECIDO até a próxima fatura chegar — compras feitas
+ * depois do fechamento (29/07 em diante) só aparecem no PDF seguinte. Por isso o
+ * resultado é um **PISO**, não um valor exato, e a tela DIZ isso ("pelo menos X").
+ * Afirmar limite livre que pode não existir é pior que dizer "a apurar" — é a mesma
+ * regra do "sem contagem" do estoque e do "a apurar" das vendas.
+ *
+ * ⚠️ Pagar a fatura libera SÓ a parte dela. O parcelado continua comprometendo até
+ * ser cobrado nas próximas faturas — e aí ele sai do "a vencer" e entra na fatura.
+ * Contar os dois ao mesmo tempo seria dobrar; o `parceladoAVencer` declarado pelo
+ * banco já EXCLUI o que está na fatura corrente (é "a vencer", não "faturado").
  */
 export function calculateCardSummary(input: CardSummaryInput, now: Date): CardSummaryResult {
   const ACTIVE_STATUSES = new Set(['OPEN', 'CLOSED', 'PARTIAL', 'OVERDUE'])
@@ -65,8 +93,11 @@ export function calculateCardSummary(input: CardSummaryInput, now: Date): CardSu
     (s, p) => s + p.amount,
     0,
   )
+  // o declarado pelo banco manda; o `futureParcelasNotInvoiced` é o caminho antigo
+  // (sempre vazio hoje) e fica como fallback pra cartão sem PDF importado.
+  const parcelado = input.parceladoAVencer ?? limitUsedFromFuture
 
-  const limitUsed = limitUsedFromInvoices + limitUsedFromFuture
+  const limitUsed = limitUsedFromInvoices + parcelado
   const limitAvailable = Math.max(0, input.creditLimit - limitUsed)
   const limitUsedPercent =
     input.creditLimit > 0 ? Math.min(100, (limitUsed / input.creditLimit) * 100) : 0
@@ -118,6 +149,13 @@ export function calculateCardSummary(input: CardSummaryInput, now: Date): CardSu
     limitUsed,
     limitAvailable,
     limitUsedPercent,
+    limitBreakdown: {
+      faturasNaoPagas: Math.round((limitUsedFromInvoices + 1e-9) * 100) / 100,
+      parceladoAVencer: Math.round((parcelado + 1e-9) * 100) / 100,
+      // ⚠️ sempre true enquanto o ciclo corrente não vira fatura: o sistema NUNCA
+      // conhece as compras de hoje. Deixar false seria afirmar o que não se sabe.
+      cicloAtualDesconhecido: true,
+    },
     currentInvoice,
     nextInvoicePreview,
   }
