@@ -89,14 +89,28 @@ export default function VendasPage({ params }: { params: Promise<{ id: string }>
   // Unidades de EXIBIÇÃO: dias de semana avulsos + GRUPO de fim de semana (bloco +
   // dias que ele engloba, merged). Sem double-count (bloco=cartão, dias=PIX/dinheiro,
   // disjuntos). Usado pro toggle e é a mesma lógica do calendário.
+  // ⚠️⚠️ O SOMATÓRIO É SÓ AGOSTO PURO (26/08). O bloco que COMEÇA no mês anterior
+  // (31/07–02/08) é exibido — isso está certo —, mas NÃO PODE ENTRAR NA SOMA: ele
+  // contém venda de julho e não é separável. Somá-lo fez a tela mostrar 595 mil num
+  // mês de 380 mil. O fix da sobreposição resolveu a EXIBIÇÃO e vazou pro TOTAL.
+  // Mesmo padrão das exclusões do Fluxo de Caixa: visível, fora da soma, explicado.
   const unidades = useMemo(() => {
     if (!data) return []
+    const blocosDoMes = data.blocos.filter((b) => !b.incluiMesAnterior)
+    // só os blocos DO MÊS "cobrem" dias — o bloco de borda não engole 01 e 02/08,
+    // que são dias de agosto de pleno direito (dinheiro e PIX do mesmo dia).
     const cobertos = new Set<string>()
-    for (const b of data.blocos) { let c = parseDia(b.inicio); const f = parseDia(b.fim); while (c.getTime() <= f.getTime()) { cobertos.add(c.toISOString().slice(0, 10)); c = new Date(c.getTime() + 86400000) } }
+    for (const b of blocosDoMes) { let c = parseDia(b.inicio); const f = parseDia(b.fim); while (c.getTime() <= f.getTime()) { cobertos.add(c.toISOString().slice(0, 10)); c = new Date(c.getTime() + 86400000) } }
     const us: { inicio: string; fim: string; total: number; porMeio: Record<string, number>; isBloco: boolean }[] = []
     for (const [d, v] of Object.entries(data.dias)) if (!cobertos.has(d)) us.push({ inicio: d, fim: d, total: v.total, porMeio: v.porMeio, isBloco: false })
-    for (const b of data.blocos) { const ag = fimDeSemanaAgg(data, b); us.push({ inicio: b.inicio, fim: b.fim, total: ag.total, porMeio: ag.porMeio, isBloco: true }) }
+    for (const b of blocosDoMes) { const ag = fimDeSemanaAgg(data, b); us.push({ inicio: b.inicio, fim: b.fim, total: ag.total, porMeio: ag.porMeio, isBloco: true }) }
     return us.sort((a, b) => (a.fim < b.fim ? -1 : 1))
+  }, [data])
+
+  /** O bloco de borda, à parte — exibido, nunca somado. */
+  const bordaJulho = useMemo(() => {
+    const b = (data?.blocos ?? []).filter((x) => x.incluiMesAnterior)
+    return b.length ? { total: b.reduce((s, x) => s + x.total, 0), blocos: b } : null
   }, [data])
 
   const bloco1 = useMemo(() => {
@@ -115,7 +129,8 @@ export default function VendasPage({ params }: { params: Promise<{ id: string }>
     const pm: Record<string, number> = {}
     const add = (o: Record<string, number>) => { for (const [m, v] of Object.entries(o)) pm[m] = (pm[m] ?? 0) + v }
     for (const d of Object.values(data.dias)) add(d.porMeio)
-    for (const b of data.blocos) add(b.porMeio)
+    // ⚠️ sem o bloco de borda — ver `unidades` acima (só agosto puro entra na soma)
+    for (const b of data.blocos.filter((x) => !x.incluiMesAnterior)) add(b.porMeio)
     const total = Object.values(pm).reduce((s, v) => s + v, 0)
     return { total: Math.round((total + 1e-9) * 100) / 100, porMeio: pm }
   }, [data])
@@ -236,6 +251,12 @@ export default function VendasPage({ params }: { params: Promise<{ id: string }>
           ) : (
             <p className="text-xl font-medium text-muted-foreground">Sem vendas no período</p>
           )}
+          {bordaJulho && (
+            <p className="mt-2 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
+              Fora deste total: <b>{brl(bordaJulho.total)}</b> do fim de semana que começa em julho —
+              inclui venda de julho e não é separável (aparece no calendário, marcado).
+            </p>
+          )}
           <p className="mt-3 text-[11px] text-muted-foreground">Comparação semana passada / ano passado: <span className="italic">a apurar</span> (histórico desde {fmtDDMM(data.moduleInicio)}).</p>
         </CardContent>
       </Card>
@@ -263,7 +284,10 @@ export default function VendasPage({ params }: { params: Promise<{ id: string }>
                 className={`mb-3 w-full rounded-md border border-amber-300 bg-amber-50 p-2 text-left transition-colors hover:bg-amber-100 ${on ? 'ring-2 ring-amber-500' : ''}`}>
                 <div className="text-[10px] text-amber-800">fim de semana {fmtDDMM(b.inicio)}–{fmtDDMM(b.fim)} · sex+sáb+dom</div>
                 <div className="text-sm font-semibold tabular-nums text-amber-900">~{brl(b.total)}</div>
-                <div className="mt-0.5 text-[10px] text-amber-700">inclui venda de fim de {mesAnt} — não separável (cai tudo no mesmo depósito de segunda)</div>
+                <div className="mt-0.5 text-[10px] text-amber-700">
+                  inclui venda de fim de {mesAnt} — <b>não somado no total do mês</b>. O depósito de
+                  segunda junta sexta+sábado+domingo e o banco não diz qual real é de qual dia.
+                </div>
               </button>
             )
           })}

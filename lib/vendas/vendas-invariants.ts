@@ -11,11 +11,12 @@
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { computeExpectedVendas } from './recompute-vendas'
 import { diaUTC } from './feriados-nacionais'
+import { conferirConsistencia, explicarConsistencia, type LinhaVendaComOrigem } from './consistencia-caixa'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
 export interface VendaInvariantFail {
-  invariante: 'V1' | 'V2' | 'V3' | 'V4'
+  invariante: 'V1' | 'V2' | 'V3' | 'V4' | 'V5' | 'V6'
   companyId: string
   companyName: string
   detalhe: string
@@ -58,8 +59,21 @@ export function diffVendas(
   // V1 — valor por chave
   const mapExp = new Map<string, number>()
   for (const v of expected) mapExp.set(chave(v.dataCompetencia, v.dataCompetenciaFim, v.meio, v.tipo), round2(v.valorLiquido))
+  // ⚠️ SOMA, não SET (26/08). Com `set`, N linhas de mesma chave sobrescreviam umas às
+  // outras e sobrava UMA — que batia com o esperado. Foi por isso que o V1 ficou VERDE
+  // enquanto o bloco 31/07 tinha 5 cópias em prod (215.530,15 em vez de 43.106,03):
+  // o invariante era CEGO PRA DUPLICATA por construção. Somando, 5 cópias viram 5× o
+  // esperado e o V1 grita. Duplicata também é reportada à parte (V5), com a contagem.
   const mapSto = new Map<string, number>()
-  for (const v of stored) mapSto.set(chave(v.dataCompetencia, v.dataCompetenciaFim, v.meio, v.tipo), round2(v.valorLiquido))
+  const contagemSto = new Map<string, number>()
+  for (const v of stored) {
+    const k = chave(v.dataCompetencia, v.dataCompetenciaFim, v.meio, v.tipo)
+    mapSto.set(k, round2((mapSto.get(k) ?? 0) + v.valorLiquido))
+    contagemSto.set(k, (contagemSto.get(k) ?? 0) + 1)
+  }
+  for (const [k, n] of contagemSto) {
+    if (n > 1) F('V5', `chave ${k}: ${n} linhas de VendaDiaria para a MESMA competência/meio — duplicata (recompute não-idempotente?)`)
+  }
   for (const k of new Set([...mapExp.keys(), ...mapSto.keys()])) {
     const e = mapExp.get(k) ?? 0
     const s = mapSto.get(k) ?? 0
@@ -119,7 +133,59 @@ export async function checkVendasForCompany(
     for (const t of txs) if (t.bankAccount?.companyId) txCompany.set(t.id, t.bankAccount.companyId)
   }
 
-  // V1/V2/V3 — comparação PURA (testável)
+  // V1/V2/V3/V5 — comparação PURA (testável)
   fails.push(...diffVendas(companyId, companyName, stored, expected, txCompany))
+
+  // ⭐ V6 — A PONTE ENTRE AS DUAS TELAS. Vendas (competência) e Fluxo (caixa) medem
+  // coisas diferentes do MESMO dinheiro; a diferença só pode ser borda de D+N. Se
+  // sobrar valor inexplicado, é porque uma tela vê dado que a outra não vê.
+  fails.push(...(await checkConsistenciaCaixa(db, companyId, companyName, inicio)))
   return fails
+}
+
+/** Roda a ponte Vendas × Caixa mês a mês, do início do módulo até hoje. */
+async function checkConsistenciaCaixa(
+  db: Db,
+  companyId: string,
+  companyName: string,
+  inicio: Date,
+): Promise<VendaInvariantFail[]> {
+  const out: VendaInvariantFail[] = []
+  const linhasDb = await db.vendaDiaria.findMany({
+    where: { companyId, dataCompetenciaFim: { gte: inicio } },
+    include: { origens: { select: { transactionId: true, valor: true } } },
+  })
+  if (linhasDb.length === 0) return out
+
+  type LinhaDb = { dataCompetencia: Date; dataCompetenciaFim: Date; valorLiquido: number; origens: { transactionId: string; valor: number }[] }
+  const linhasTip = linhasDb as unknown as LinhaDb[]
+  const txIds = [...new Set(linhasTip.flatMap((v) => v.origens.map((o) => o.transactionId)))]
+  const txs = txIds.length
+    ? await db.transaction.findMany({ where: { id: { in: txIds } }, select: { id: true, date: true } })
+    : []
+  const dataDaTx = new Map((txs as { id: string; date: Date }[]).map((t) => [t.id, t.date]))
+
+  const linhas: LinhaVendaComOrigem[] = linhasTip.map((v) => ({
+    dataCompetencia: v.dataCompetencia,
+    dataCompetenciaFim: v.dataCompetenciaFim,
+    valorLiquido: v.valorLiquido,
+    entradas: v.origens
+      .map((o) => ({ data: dataDaTx.get(o.transactionId), valor: o.valor }))
+      .filter((e: { data?: Date; valor: number }): e is { data: Date; valor: number } => !!e.data),
+  }))
+
+  // meses do início do módulo até o mês corrente
+  const hoje = new Date()
+  const cur = new Date(Date.UTC(inicio.getUTCFullYear(), inicio.getUTCMonth(), 1))
+  while (cur.getTime() <= hoje.getTime()) {
+    const mesIni = new Date(cur.getTime())
+    const mesFim = new Date(Date.UTC(cur.getUTCFullYear(), cur.getUTCMonth() + 1, 1))
+    const r = conferirConsistencia(linhas, mesIni, mesFim)
+    if (!r.fecha) {
+      const rot = `${String(mesIni.getUTCMonth() + 1).padStart(2, '0')}/${mesIni.getUTCFullYear()}`
+      out.push({ invariante: 'V6', companyId, companyName, detalhe: explicarConsistencia(r, rot) })
+    }
+    cur.setUTCMonth(cur.getUTCMonth() + 1)
+  }
+  return out
 }

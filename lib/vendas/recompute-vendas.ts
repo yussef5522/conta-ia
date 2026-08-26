@@ -81,14 +81,27 @@ export async function recomputeVendas(
   const computadas = await computeExpectedVendas(db, companyId, moduleInicio)
   if (computadas.length === 0) {
     // Ainda assim limpa EXTRATO_INFERIDO velho (se a empresa tinha perfil e zerou).
-    await db.vendaDiaria.deleteMany({ where: { companyId, origem: 'EXTRATO_INFERIDO', dataCompetencia: { gte: meiaNoite(moduleInicio) } } })
+    await db.vendaDiaria.deleteMany({ where: { companyId, origem: 'EXTRATO_INFERIDO', dataCompetenciaFim: { gte: meiaNoite(moduleInicio) } } })
     return { vendasCriadas: 0, origensLinkadas: 0, valorTotal: 0 }
   }
 
   // Persistência: apaga só EXTRATO_INFERIDO >= moduleInicio (AJUSTE_DONO intocado),
   //    insere as novas. Determinístico → idempotente.
+  //
+  // ⚠️⚠️ SOBREPOSIÇÃO, NÃO PERTENCIMENTO (26/08) — o bug mais caro desta série.
+  // O filtro era `dataCompetencia >= inicio`. O BLOCO de fim de semana tem competência
+  // na SEXTA, que pode cair ANTES do corte (o 31/07–02/08, quando a janela abriu em
+  // 01/08). Resultado: o DELETE nunca alcançava o bloco, mas o CREATE abaixo o inseria
+  // DE NOVO a cada recompute → **1 cópia por import**. Em prod chegou a 5 cópias e
+  // inflou o mês de 43.106,03 pra 215.530,15 (5×), fazendo a tela de Vendas mostrar
+  // 595 mil num mês de 380 mil. O recompute deixou de ser idempotente em silêncio.
+  //
+  // ⚠️ TERCEIRA CÓPIA DA MESMA DECISÃO: a regra "o bloco atravessa o corte" vive na
+  // TELA (lib/vendas/janela-mes.ts), no JUIZ (vendas-invariants.ts) e AQUI. As duas
+  // primeiras foram corrigidas em 25 e 26/08; esta — a que GRAVA — ficou pra trás.
+  // Se aparecer um 4º lugar que filtre competência, ele usa `dataCompetenciaFim`.
   await db.vendaDiaria.deleteMany({
-    where: { companyId, origem: 'EXTRATO_INFERIDO', dataCompetencia: { gte: meiaNoite(moduleInicio) } },
+    where: { companyId, origem: 'EXTRATO_INFERIDO', dataCompetenciaFim: { gte: meiaNoite(moduleInicio) } },
   })
 
   let origensLinkadas = 0
