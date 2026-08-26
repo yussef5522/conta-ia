@@ -97,8 +97,17 @@ export async function checkVendasForCompany(
     fails.push({ invariante: 'V4', companyId, companyName, detalhe: 'recompute 2× deu resultado DIFERENTE (não-determinístico)' })
   }
 
+  // ⚠️ SOBREPOSIÇÃO, não pertencimento (26/08). O filtro era `dataCompetencia >= inicio`
+  // e escondia do juiz o BLOCO de fim de semana que COMEÇA antes do início do módulo —
+  // ele tem competência na sexta, e a sexta pode cair no mês/dia anterior ao corte.
+  // O `computeExpectedVendas` COMPUTA esse bloco (o dinheiro entrou depois do corte),
+  // mas o `stored` não o buscava → V1 "gravado 0.00 vs esperado X" e V2 "tx não está em
+  // nenhuma VendaDiaria", 111 alarmes FALSOS na extensão pra 01/08 (o bloco 31/07–02/08,
+  // R$ 43.106,03, existia gravado o tempo todo).
+  // É a MESMA decisão que a tela de vendas usa (`lib/vendas/janela-mes.ts`); estava em
+  // dois lugares e só um foi corrigido — REGRA 4.
   const stored = await db.vendaDiaria.findMany({
-    where: { companyId, origem: 'EXTRATO_INFERIDO', dataCompetencia: { gte: inicio } },
+    where: { companyId, origem: 'EXTRATO_INFERIDO', dataCompetenciaFim: { gte: inicio } },
     include: { origens: { select: { transactionId: true } } },
   })
 

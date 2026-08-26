@@ -35,6 +35,21 @@ export async function GET(request: NextRequest, { params }: Params) {
                 bankAccount: { select: { name: true } },
               },
             },
+            // ⚠️ A SEGUNDA PORTA (26/08). "Pago" tem DOIS mecanismos: 1:1
+            // (reconciledTransactionId) e N:1 (LoanInstallmentPayment, débito parcial).
+            // A tela lia só a primeira → parcela paga em 3 mordidas aparecia como um
+            // "pago" SECO, sem dizer quando nem quanto entrou em cada uma. É a mesma
+            // omissão que em 14/08 fez 8 parcelas passarem por "órfãs" sendo linkadas.
+            payments: {
+              orderBy: { createdAt: 'asc' },
+              select: {
+                id: true,
+                amount: true,
+                transaction: {
+                  select: { id: true, date: true, description: true, bankAccount: { select: { name: true } } },
+                },
+              },
+            },
           },
         },
       },
@@ -99,6 +114,15 @@ export async function GET(request: NextRequest, { params }: Params) {
         closingBalance: i.closingBalance,
         status: statusUI,
         paidDate: i.paidDate?.toISOString() ?? null,
+        // mordidas do débito parcial (N:1), ordenadas por entrada
+        pagamentos: i.payments.map((pg) => ({
+          id: pg.id,
+          amount: pg.amount,
+          date: pg.transaction?.date.toISOString() ?? null,
+          description: pg.transaction?.description ?? null,
+          accountName: pg.transaction?.bankAccount?.name?.trim() ?? null,
+          transactionId: pg.transaction?.id ?? null,
+        })),
         reconciledTransaction: i.reconciledTransaction
           ? {
               id: i.reconciledTransaction.id,

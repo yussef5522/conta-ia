@@ -2,7 +2,7 @@
 
 'use client'
 
-import { useEffect, useState, use } from 'react'
+import { useEffect, useState, use, Fragment } from 'react'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import {
@@ -98,6 +98,8 @@ interface LoanDetalhe {
     closingBalance: number
     status: 'PAID' | 'OPEN' | 'LATE'
     paidDate: string | null
+    /** mordidas do débito parcial (N:1) — parcela paga em partes */
+    pagamentos: Array<{ id: string; amount: number; date: string | null; description: string | null; accountName: string | null; transactionId: string | null }>
     reconciledTransaction: {
       id: string
       date: string
@@ -431,8 +433,8 @@ export default function DetalheEmprestimoPage({
               </thead>
               <tbody>
                 {installments.map((i) => (
+                  <Fragment key={i.number}>
                   <tr
-                    key={i.number}
                     className={`border-t hover:bg-muted/20 ${i.status === 'PAID' ? 'bg-emerald-50/20' : ''}`}
                   >
                     <td className="p-3 tabular-nums font-medium">{i.number}</td>
@@ -478,6 +480,44 @@ export default function DetalheEmprestimoPage({
                       </div>
                     </td>
                   </tr>
+                  {/* ⚠️ MORDIDAS (26/08) — parcela paga em PARTES (conta sem saldo; o
+                      banco debita conforme o dinheiro entra). Caso real: a #21 do
+                      C41033828 saiu em 3 débitos no mesmo dia (4.923,71 + 3.224,94 +
+                      2.085,70 = 10.234,35). Um "pago" seco esconderia isso — cada
+                      mordida tem data, valor, conta e link pro extrato. */}
+                  {i.pagamentos.length > 1 && (
+                    <tr className="border-t border-dashed bg-emerald-50/10">
+                      <td />
+                      <td colSpan={7} className="px-3 py-2">
+                        <p className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                          pago em {i.pagamentos.length} parcelas parciais
+                        </p>
+                        <div className="space-y-0.5">
+                          {i.pagamentos.map((pg) => (
+                            <div key={pg.id} className="flex items-center gap-2 text-[11px]">
+                              <span className="tabular-nums text-muted-foreground">{pg.date ? fmtDate(pg.date) : '—'}</span>
+                              <span className="w-24 text-right font-medium tabular-nums text-emerald-700">{formatBRL(pg.amount)}</span>
+                              <span className="text-muted-foreground">{pg.accountName ?? ''}</span>
+                              <span className="truncate text-muted-foreground">{pg.description ?? ''}</span>
+                              {pg.transactionId && (
+                                <Link href={`/transacoes?tx=${pg.transactionId}`} className="ml-auto shrink-0 text-primary hover:underline">
+                                  ver no extrato
+                                </Link>
+                              )}
+                            </div>
+                          ))}
+                          <div className="mt-1 flex items-center gap-2 border-t pt-1 text-[11px]">
+                            <span className="text-muted-foreground">soma</span>
+                            <span className="w-24 text-right font-semibold tabular-nums">
+                              {formatBRL(i.pagamentos.reduce((s, pg) => s + pg.amount, 0))}
+                            </span>
+                            <span className="text-muted-foreground">= parcela {formatBRL(i.payment)}</span>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
