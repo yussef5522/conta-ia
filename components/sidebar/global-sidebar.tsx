@@ -126,7 +126,19 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
   const conciliacaoBadge = badges?.conciliacao?.pendentes ?? 0
   const pendentesBadge = badges?.transacoesPendentes ?? 0
 
-  const empresaQs = currentEmpresaId ? `?empresaId=${currentEmpresaId}` : ''
+  // ⛔ CHOKE-POINT (26/08) — em modo PF NÃO existe empresa ativa.
+  //
+  // O bug: ao trocar pro PF, `currentEmpresaId` continuava apontando pra última PJ, e
+  // como TODO item de empresa é gated por `currentEmpresaId &&`, o menu inteiro da PJ
+  // seguia visível e clicável. Clicar em "Cartões" dentro do PF levava à tela de
+  // cartões da CAÇULA — cadastrar ali criaria um BusinessCreditCard na empresa errada.
+  // O módulo de cartão PF nunca esteve quebrado: só não havia como chegar nele.
+  //
+  // ⚠️ Já sabiam disso: o efeito acima zera `empresaIdForBadges` no PF pelo MESMO
+  // motivo ("badges mostravam dados de empresa que o user nem está visualizando") —
+  // corrigiram os badges e deixaram os 30 itens do menu. Uma variável, não 30 ifs.
+  const empresaAtiva = workspaceType === 'pf' ? null : currentEmpresaId
+  const empresaQs = empresaAtiva ? `?empresaId=${empresaAtiva}` : ''
 
   return (
     <aside className="w-60 border-r bg-white flex flex-col h-full overflow-y-auto">
@@ -147,6 +159,11 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
             cadastrar contas → conciliar → categorizar → conferir relatório.
             Bancos virou Cadastro (configura uma vez); Relatórios por último. */}
         <SectionLabel>Financeiro</SectionLabel>
+        {/* ⚠️ PJ-only: estes 4 leem a EMPRESA (contas a pagar/receber, conciliação e a
+            fila de pendentes são do CNPJ). No PF eles apareciam apontando pra última
+            empresa — agora somem, e a seção PF abaixo toma o lugar. */}
+        {workspaceType !== 'pf' && (
+        <>
         <SidebarItem
           icon={Clock}
           label="Contas a Pagar"
@@ -183,48 +200,50 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
           badge={pendentesBadge > 0 ? String(pendentesBadge) : undefined}
           badgeTone="amber"
         />
+        </>
+        )}
         {/* Sprint Central de Transferências — sidebar item dedicado */}
-        {currentEmpresaId && (
+        {empresaAtiva && (
           <SidebarItem
             icon={ArrowLeftRight}
             label="Transferências"
-            href={`/empresas/${currentEmpresaId}/transferencias`}
+            href={`/empresas/${empresaAtiva}/transferencias`}
             isActive={/^\/empresas\/[^/]+\/transferencias(\/|$)/.test(pathname) || pathname === '/transferencias'}
             onClick={onNavigate}
           />
         )}
-        {currentEmpresaId && (
+        {empresaAtiva && (
           <SidebarItem
             icon={Store}
             label="Vendas"
-            href={`/empresas/${currentEmpresaId}/vendas`}
+            href={`/empresas/${empresaAtiva}/vendas`}
             isActive={/^\/empresas\/[^/]+\/vendas(\/|$)/.test(pathname)}
             onClick={onNavigate}
           />
         )}
-        {currentEmpresaId && (
+        {empresaAtiva && (
           <SidebarItem
             icon={Wallet}
             label="Fluxo de caixa"
-            href={`/empresas/${currentEmpresaId}/fluxo-caixa`}
+            href={`/empresas/${empresaAtiva}/fluxo-caixa`}
             isActive={/^\/empresas\/[^/]+\/fluxo-caixa(\/|$)/.test(pathname)}
             onClick={onNavigate}
           />
         )}
-        {currentEmpresaId && (
+        {empresaAtiva && (
           <SidebarItem
             icon={HandCoins}
             label="Empréstimos"
-            href={`/empresas/${currentEmpresaId}/emprestimos`}
+            href={`/empresas/${empresaAtiva}/emprestimos`}
             isActive={/^\/empresas\/[^/]+\/emprestimos(\/|$)/.test(pathname)}
             onClick={onNavigate}
           />
         )}
-        {currentEmpresaId && (
+        {empresaAtiva && (
           <SidebarItem
             icon={CreditCard}
             label="Cartões"
-            href={`/empresas/${currentEmpresaId}/cartoes`}
+            href={`/empresas/${empresaAtiva}/cartoes`}
             isActive={/^\/empresas\/[^/]+\/cartoes(\/|$)/.test(pathname)}
             onClick={onNavigate}
           />
@@ -246,11 +265,11 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
         {/* Sprint 6 — Despesas (drill-down do Top 5 do dashboard). Mesma
             fonte do motor único; total bate com despesaOperacional do
             dashboard ao centavo. */}
-        {currentEmpresaId && (
+        {empresaAtiva && (
           <SidebarItem
             icon={TrendingDown}
             label="Despesas"
-            href={`/empresas/${currentEmpresaId}/despesas`}
+            href={`/empresas/${empresaAtiva}/despesas`}
             isActive={/^\/empresas\/[^/]+\/despesas(\/|$)/.test(pathname)}
             onClick={onNavigate}
           />
@@ -280,12 +299,61 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
             onClick={onNavigate}
           />
         )}
+        {/* ⭐ CARTÕES DO PF (26/08) — o item que FALTAVA. O módulo existe desde a
+            Fatia 2 (`CreditCard` + `CreditCardInvoice`, com status de fatura de
+            verdade) e estava 100% funcional, mas NENHUMA entrada de menu levava a
+            ele: no PF o menu mostrava o "Cartões" da EMPRESA. */}
+        {workspaceType === 'pf' && currentProfileId && (
+          <SidebarItem
+            icon={CreditCard}
+            label="Cartões"
+            href={`/perfis/${currentProfileId}/cartoes`}
+            isActive={/^\/perfis\/[^/]+\/cartoes(\/|$)/.test(pathname)}
+            onClick={onNavigate}
+          />
+        )}
+        {workspaceType === 'pf' && currentProfileId && (
+          <SidebarItem
+            icon={Landmark}
+            label="Contas"
+            href={`/perfis/${currentProfileId}/contas`}
+            isActive={/^\/perfis\/[^/]+\/contas(\/|$)/.test(pathname)}
+            onClick={onNavigate}
+          />
+        )}
+        {workspaceType === 'pf' && currentProfileId && (
+          <SidebarItem
+            icon={ArrowLeftRight}
+            label="Movimentações"
+            href={`/perfis/${currentProfileId}/transacoes`}
+            isActive={/^\/perfis\/[^/]+\/transacoes(\/|$)/.test(pathname)}
+            onClick={onNavigate}
+          />
+        )}
+        {workspaceType === 'pf' && currentProfileId && (
+          <SidebarItem
+            icon={Sparkles}
+            label="Insights"
+            href={`/perfis/${currentProfileId}/insights`}
+            isActive={/^\/perfis\/[^/]+\/insights(\/|$)/.test(pathname)}
+            onClick={onNavigate}
+          />
+        )}
+        {workspaceType === 'pf' && currentProfileId && (
+          <SidebarItem
+            icon={History}
+            label="Importar extrato"
+            href={`/perfis/${currentProfileId}/importar`}
+            isActive={/^\/perfis\/[^/]+\/(importar|imports)(\/|$)/.test(pathname)}
+            onClick={onNavigate}
+          />
+        )}
         {/* Hotfix 5.0.4.0a-fix — Relatórios substituiu DRE Gerencial.
             Index per-empresa contém DRE + Categorias + Comparativo. */}
         <SidebarItem
           icon={BarChart3}
           label="Relatórios"
-          href={currentEmpresaId ? `/empresas/${currentEmpresaId}/relatorios` : '/relatorios'}
+          href={empresaAtiva ? `/empresas/${empresaAtiva}/relatorios` : '/relatorios'}
           isActive={
             pathname === '/relatorios' ||
             pathname.startsWith('/relatorios/') ||
@@ -296,83 +364,83 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
 
         {/* Estoque — módulo NOVO, seção própria (não dentro de Financeiro). FASE 0:
             só o Certificado. Cresce com Recebimentos/Estoque/Produção nas fases. */}
-        {currentEmpresaId && (
+        {empresaAtiva && (
           <>
             <SectionLabel>Estoque</SectionLabel>
             <SidebarItem
               icon={Inbox}
               label="Recebimentos"
-              href={`/empresas/${currentEmpresaId}/estoque/recebimentos`}
+              href={`/empresas/${empresaAtiva}/estoque/recebimentos`}
               isActive={/^\/empresas\/[^/]+\/estoque\/recebimentos/.test(pathname)}
               onClick={onNavigate}
             />
             <SidebarItem
               icon={Boxes}
               label="Posição"
-              href={`/empresas/${currentEmpresaId}/estoque/posicao`}
+              href={`/empresas/${empresaAtiva}/estoque/posicao`}
               isActive={/^\/empresas\/[^/]+\/estoque\/posicao/.test(pathname)}
               onClick={onNavigate}
             />
             <SidebarItem
               icon={Package}
               label="Catálogo"
-              href={`/empresas/${currentEmpresaId}/estoque/itens`}
+              href={`/empresas/${empresaAtiva}/estoque/itens`}
               isActive={/^\/empresas\/[^/]+\/estoque\/itens$/.test(pathname)}
               onClick={onNavigate}
             />
             <SidebarItem
               icon={ArrowLeftRight}
               label="Movimentos"
-              href={`/empresas/${currentEmpresaId}/estoque/movimentos`}
+              href={`/empresas/${empresaAtiva}/estoque/movimentos`}
               isActive={/^\/empresas\/[^/]+\/estoque\/movimentos/.test(pathname)}
               onClick={onNavigate}
             />
             <SidebarItem
               icon={ListChecks}
               label="Contagem"
-              href={`/empresas/${currentEmpresaId}/estoque/contagem`}
+              href={`/empresas/${empresaAtiva}/estoque/contagem`}
               isActive={/^\/empresas\/[^/]+\/estoque\/contag/.test(pathname)}
               onClick={onNavigate}
             />
             <SidebarItem
               icon={Scale}
               label="Real vs Teórico"
-              href={`/empresas/${currentEmpresaId}/estoque/real-vs-teorico`}
+              href={`/empresas/${empresaAtiva}/estoque/real-vs-teorico`}
               isActive={/^\/empresas\/[^/]+\/estoque\/real-vs-teorico/.test(pathname)}
               onClick={onNavigate}
             />
             <SidebarItem
               icon={Receipt}
               label="Boletos p/ pagar"
-              href={`/empresas/${currentEmpresaId}/estoque/contas-a-pagar`}
+              href={`/empresas/${empresaAtiva}/estoque/contas-a-pagar`}
               isActive={/^\/empresas\/[^/]+\/estoque\/contas-a-pagar/.test(pathname)}
               onClick={onNavigate}
             />
             <SidebarItem
               icon={ClipboardList}
               label="Fichas técnicas"
-              href={`/empresas/${currentEmpresaId}/estoque/fichas`}
+              href={`/empresas/${empresaAtiva}/estoque/fichas`}
               isActive={/^\/empresas\/[^/]+\/estoque\/fichas/.test(pathname)}
               onClick={onNavigate}
             />
             <SidebarItem
               icon={Factory}
               label="Produção"
-              href={`/empresas/${currentEmpresaId}/estoque/producao`}
+              href={`/empresas/${empresaAtiva}/estoque/producao`}
               isActive={/^\/empresas\/[^/]+\/estoque\/producao(?!\/cadastros)/.test(pathname)}
               onClick={onNavigate}
             />
             <SidebarItem
               icon={ShoppingCart}
               label="Vendas (Suitable)"
-              href={`/empresas/${currentEmpresaId}/estoque/vendas`}
+              href={`/empresas/${empresaAtiva}/estoque/vendas`}
               isActive={/^\/empresas\/[^/]+\/estoque\/vendas/.test(pathname)}
               onClick={onNavigate}
             />
             <SidebarItem
               icon={ShieldCheck}
               label="Certificado"
-              href={`/empresas/${currentEmpresaId}/estoque/certificado`}
+              href={`/empresas/${empresaAtiva}/estoque/certificado`}
               isActive={/^\/empresas\/[^/]+\/estoque\/certificado/.test(pathname)}
               onClick={onNavigate}
             />
@@ -404,8 +472,8 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
           icon={Landmark}
           label="Bancos"
           href={
-            currentEmpresaId
-              ? `/empresas/${currentEmpresaId}/contas`
+            empresaAtiva
+              ? `/empresas/${empresaAtiva}/contas`
               : '/empresas'
           }
           isActive={
@@ -452,11 +520,11 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
             + "Pontes PJ→PF". 1 item só com 2 abas: Sócios PF | Empresas do Grupo.
             Privacidade Fatia 4 mantida (queries filtradas por user).
             Sprint Sidebar-Reorder — movido de Financeiro pra Cadastros. */}
-        {currentEmpresaId && (
+        {empresaAtiva && (
           <SidebarItem
             icon={Users}
             label="Sócios"
-            href={`/empresas/${currentEmpresaId}/socios`}
+            href={`/empresas/${empresaAtiva}/socios`}
             isActive={
               /^\/empresas\/[^/]+\/socios(\/|$)/.test(pathname) ||
               /^\/empresas\/[^/]+\/pontes(\/|$)/.test(pathname) ||

@@ -145,6 +145,10 @@ describe('Sprint Empréstimos UI — sidebar', () => {
     const code = readFileSync(join(ROOT, 'components/sidebar/global-sidebar.tsx'), 'utf-8')
     expect(code).toMatch(/HandCoins/)
     expect(code).toMatch(/label="Empréstimos"/)
-    expect(code).toMatch(/\/empresas\/\$\{currentEmpresaId\}\/emprestimos/)
+    // 26/08: o href passou a usar o choke-point `empresaAtiva` (null no workspace PF)
+    // — o item continua o mesmo, com o mesmo destino; só a fonte do id mudou. Ver
+    // __tests__/sidebar/pf-nao-ve-menu-da-empresa.test.ts, que trava a invariante REAL
+    // (nenhum destino de /empresas/ pode escapar do choke-point).
+    expect(code).toMatch(/\/empresas\/\$\{empresaAtiva\}\/emprestimos/)
   })
 })
