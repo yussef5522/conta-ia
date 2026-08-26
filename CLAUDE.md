@@ -140,6 +140,38 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 - **Cache 1h no DB** (não Redis — projeto não tem). Tabela dedicada `AiInsightsLog` (separada de `AiUsageLog`).
 - **PDF Vision GATED** em prod: `PDF_IMPORT_ENABLED=false` + `PDF_IMPORT_ZDR_CONFIRMED=false` explicit. Só liga com **AMBAS true** após ZDR assinado com Anthropic. Doc: `docs/sprints/pf-fatia-3.5-LIGAR-PDF.md`.
 
+## ⛔⛔ DEPLOY QUE NUNCA DERRUBA PROD (26/08/2026) — USE `scripts/deploy.sh`
+
+**Regra do dono:** com cliente pagando, *"deploy quebrou o site" NÃO PODE EXISTIR como categoria de evento.*
+
+**A CAUSA COMUM DOS 3 INCIDENTES ERA UMA SÓ: o build mexia no diretório VIVO.**
+| quando | o que matou o build | o que o cliente viu |
+|---|---|---|
+| 24/08 | `npm run build \| grep \| head` → **SIGPIPE** no meio da escrita do `.next` | pm2 em loop, site fora |
+| 24/08 | **OOM killer** no type-check (servidor sem swap) | idem |
+| 26/08 | build escreveu **por cima do `.next` que o pm2 servia** | **página sem CSS** por segundos |
+
+⚠️ O incidente de 26/08 tem o log exato: `CSS 404 às 16:35:00` → `200 às 16:36:56`. Janela de troca. **Não foi OOM** (build completou, swap em 68 MB) e **não foi build parcial** — o build estava íntegro. Foi o instante da substituição. E o navegador do dono guardou a página quebrada em cache; um hard-reload já resolvia.
+
+**O DESENHO NOVO — o build não encosta no que está no ar:**
+```
+.next                       → SYMLINK
+.next-builds/<stamp>-<sha>  → onde cada build mora (mantém os 3 últimos, 155 MB cada)
+```
+`next.config.mjs` ganhou `distDir: process.env.NEXT_DIST_DIR || '.next'`. O build vai pro diretório novo; **só depois de PROVADO pronto** o symlink troca (`mv -T` de symlink é `rename(2)` — não existe instante "meio trocado"). **Build que falha por qualquer motivo não move o symlink: prod continua no build anterior INTACTO.** Falha de build virou não-evento pro cliente.
+
+**GATE ANTES:** memória disponível ≥ 2200 MB, swap ≥ 1 GB, disco ≥ 2 GB. **Abortar cedo é melhor que deixar o kernel matar no meio** — build morto pela metade foi o que quebrou prod em 24/08.
+**VERIFICAÇÃO DO ARTEFATO:** BUILD_ID existe + tem CSS + tem `server/`. Sem os três, apaga o build e nem troca.
+**GATE DEPOIS — O TRIO (só declara sucesso com os três):** (1) BUILD_ID servido == o buildado; (2) pm2 `online` **e o MESMO processo depois de 10s** — ⚠️ em 24/08 o smoke passou VERDE com o processo em loop, porque o nginx ainda servia a resposta do processo anterior; uptime crescendo é o que distingue "no ar" de "reiniciando sem parar"; (3) **TODOS** os CSS que o HTML referencia respondendo 200 **e vindos do build novo** — o smoke antigo checava só o primeiro que achava, e a home pede dois.
+
+**⏪ ROLLBACK EM UM COMANDO — `bash scripts/rollback.sh`** (segundos, sem rebuild). `--lista` mostra os builds; `<nome>` volta pra um específico. Roda o mesmo gate depois.
+
+**JUIZ D1/D2/D3 (`lib/infra/deploy-health.ts`)** no cron das 3h: **D1 (erro)** `.next` sem BUILD_ID ou sem CSS — os dois estados que derrubaram prod; **D2 (aviso)** `.next` virou diretório real (alguém buildou por cima do vivo) — ⚠️ **isso o smoke NUNCA pegaria**: responde 200 normalmente e mesmo assim jogou fora a troca atômica e o rollback; **D3 (aviso)** menos de 2 builds guardados = rollback exigiria rebuild. D1 não empilha com "sem CSS" (uma causa, um alerta — mesma disciplina do N1/N3).
+
+**⚠️ NÃO rodar `npm run build` na mão no servidor** — volta a escrever no diretório vivo e o D2 vai acusar. Use sempre `bash scripts/deploy.sh`.
+
+**MEMÓRIA — leitura DURANTE o build de 26/08 (o gatilho (b) NÃO disparou):** memória disponível no pico **431 MB** de 3.915 · swap **68 MB** de 2.047 · **zero OOM kills**. O build come ~3,5 GB e sobrevive, mas com ~11% de folga. O gatilho (b) do upgrade 4→8 GB é *"swap usado em operação normal, FORA de build"* — swap está em 68 MB, bem abaixo dos 256 MB do N1. **Não disparou.** ⚠️ E com o deploy em diretório separado, um OOM durante o build passou a ser **inofensivo** (o symlink não move): a urgência do resize CAIU. O gatilho que continua valendo é o **(a)** — a rotina real começar.
+
 ## Ordem de deploy (PJ + PF)
 
 **⚠️ SWAP DE 2GB É OBRIGATÓRIO NO SERVIDOR (25/08).** O `npm run build` do Next roda o type-check num worker que chega a **~1,9 GB de RSS**; o servidor tem 3,9 GB e estava **sem swap nenhum** → o OOM killer matava o worker (`signal: SIGKILL`) e o `.next` ficava **sem `BUILD_ID`**, deixando o pm2 em loop de erro. **Não adianta mexer no `--max-old-space-size`:** teto alto (2560) o kernel mata igual; teto baixo (1400) o próprio V8 aborta por heap insuficiente (`SIGABRT`) — o type-check PRECISA de ~2 GB. Criado em 25/08: `fallocate -l 2G /swapfile && chmod 600 && mkswap && swapon` + linha no `/etc/fstab` (persiste no reboot). Build voltou a passar de primeira. **Servidor novo nasce quebrado sem isso** — incluir no provisionamento junto com o poppler. Pra desfazer: `swapoff /swapfile && rm /swapfile` + tirar a linha do fstab.
@@ -457,6 +489,8 @@ Comparação do dono com o Vuca: "eles usam cada canto; as nossas têm coluna es
 TypeScript strict em tudo · commits semânticos (feat/fix/refactor/docs/test/chore) · Zod em toda rota API · textos UI pt-BR · logs de erro em pt-BR · comentários em pt-BR quando explicam regra de negócio · shadcn/ui · path alias `@/*`. Design system atual: cards limpos, `tabular-nums`, Framer Motion `stagger 30ms` `easeOutExpo`, gradient hero `#185FA5→#0F4A8C`, semântica de cor (emerald/rose/amber/slate), radius consistente.
 
 ## Pendências / débitos técnicos
+
+- **⚠️ GATILHO DO MOTOR DE VENDAS NÃO DISPAROU numa criação manual (26/08) — porta não identificada.** O juiz pegou (`V1` + `V2`, R$ 2.041,00 de venda em dinheiro do cofre de 25/08) e o self-heal (`recomputeVendas`) resolveu — a defesa em camadas funcionou. **O QUE SE SABE:** a tx foi criada às 20:06, DEPOIS do restart do deploy (o log do gatilho tem a última linha imediatamente antes de `> conta-ia@0.1.0 start:prod`), e **NÃO há nenhuma linha `[vendas-hook]` após o restart** — o gatilho não rodou. A tx tem a impressão digital do FORMULÁRIO (`origin: MANUAL`, `lifecycle: EFFECTED`, sem `dedupHash`/`externalId`/`recurringScheduleId`/`classificationSource`), e `POST /api/transacoes` **TEM** o gatilho na linha 341. Também não é recorrente nem import. **Não consegui cravar a porta nesta passada.** **VARREDURA REGRA 4 (registrada pra continuar):** criam transação SEM o gatilho — `app/api/contas-a-pagar/[id]/duplicar`, `cartoes/[cardId]/importar-fatura/confirm`, `contas-pagar/import/[batchId]/{confirm,resolve-row}`, `pluggy/sincronizar`, `contas-bancarias/[id]/ajustar-saldo`, `importar-pdf-extrato/confirm`; e nas libs — `reconciliation/import-orchestrator`, `recurrence/generator`, `transfers/{create,from-ofx,pair-pendentes}`, `bridges/create`. ⚠️ Várias dessas são chamadas por rotas que TÊM o gatilho (o import é o caso), então a lista é ponto de partida, não veredito. **Hipóteses a testar:** (a) o hook é fail-soft e engoliu erro sem logar; (b) `recomputeVendasSeVenda` decidiu que a categoria não era de venda e virou no-op silencioso; (c) existe uma Server Action criando transação (o log tem vários `Failed to find Server Action` do mesmo período). **A instrumentação que fecharia isso: logar SEMPRE que o hook é chamado — inclusive o no-op — com o motivo.** Hoje ele só loga quando recomputa, e "não logou" é ambíguo entre "não foi chamado" e "foi chamado e não fez nada".
 
 - **CÓDIGO MORTO — `buildConsolidatedCashflowWhere` (`lib/cashflow/query.ts`) tem ZERO callers** (achado 25/08 ao construir o fluxo de caixa; só aparece citado num comentário de `consolidated.ts`). Sobrou de algum refactor. Remover numa limpeza — antes, re-confirmar 0 caller por grep. `calculateConsolidatedCashflow` e `bucketFor` (mesma pasta) CONTINUAM VIVOS (o relatório usa).
 
