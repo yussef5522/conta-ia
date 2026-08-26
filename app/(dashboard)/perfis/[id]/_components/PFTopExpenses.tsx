@@ -190,7 +190,7 @@ function EmptyExpenses({ profileId }: { profileId: string }) {
         <Link href={`/perfis/${profileId}/importar`}>
           <Button size="sm">
             <ArrowRight className="mr-1 h-3.5 w-3.5" />
-            Importar fatura OFX
+            Importar fatura PDF
           </Button>
         </Link>
         <Link href={`/perfis/${profileId}/transacoes`}>

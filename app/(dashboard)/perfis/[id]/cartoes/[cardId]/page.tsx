@@ -234,9 +234,12 @@ export default function CartaoDashboardPage({
           </Link>
         </Button>
         <Button asChild variant="outline" className="border-emerald-200 text-emerald-700 hover:bg-emerald-50">
-          <Link href={`/perfis/${id}/importar?cartao=${cardId}`}>
+          {/* ⚠️ 26/08: apontava pro import de EXTRATO (OFX) e dizia "fatura OFX".
+              No Brasil fatura de cartão vem em PDF — o Banrisul não emite OFX de
+              cartão. Agora leva pra tela própria de import de fatura. */}
+          <Link href={`/perfis/${id}/cartoes/${cardId}/importar-fatura`}>
             <Upload className="h-4 w-4 mr-1" />
-            Importar fatura OFX
+            Importar fatura PDF
           </Link>
         </Button>
       </div>

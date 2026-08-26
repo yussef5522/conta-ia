@@ -13,6 +13,7 @@ import { recalcularSaldoConta } from '../balance/recalcular'
 import { findDuplicateStableKeys } from './tx-duplicate-invariant'
 import { checkVendasForCompany } from '../vendas/vendas-invariants'
 import { checkCardInvariants } from '../credit-card-pj/card-invariants'
+import { checkCardInvariantsPF } from '../credit-card/card-invariants-pf'
 
 export interface JudgeReport {
   passed: boolean
@@ -165,6 +166,18 @@ export async function runModuleJudge(prisma: PrismaClient): Promise<JudgeReport>
     for (const f of fails) cardChecks.push({ invariante: f.invariante, companyName: f.companyName, detalhe: f.detalhe })
     cardResumo.push({ companyName: nome, filaCount: resumo.filaCount, filaSoma: resumo.filaSoma, filaMaisAntigaDias: resumo.filaMaisAntigaDias, visionBancos: resumo.visionBancos })
   }
+  // ⭐ CARTÃO **PF** KP1-KP6 (26/08) — até hoje o cartão do perfil pessoal tinha ZERO
+  // invariante: o K-series só olhava `businessCreditCard`. Módulo de dinheiro sem juiz
+  // erra em silêncio. Entra no MESMO contador (`cardIssues`), então uma fatura PF
+  // incoerente deixa o selo vermelho e dispara o e-mail igual à PJ.
+  const perfisComCartao = await prisma.creditCard.findMany({ select: { profileId: true }, distinct: ['profileId'] })
+  for (const p of perfisComCartao) {
+    const perfil = await prisma.personalProfile.findUnique({ where: { id: p.profileId }, select: { name: true } })
+    const nome = perfil?.name ?? p.profileId
+    const fails = await checkCardInvariantsPF(prisma, p.profileId, nome, nowJudge)
+    for (const f of fails) cardChecks.push({ invariante: f.invariante, companyName: `PF · ${f.profileName}`, detalhe: f.detalhe })
+  }
+
   const cardIssues = cardChecks.length
 
   const passed = totalFail === 0 && sharedTx.length === 0 && balanceIssues === 0 && dupIssues === 0 && vendaIssues === 0 && cardIssues === 0
