@@ -38,6 +38,12 @@ export interface CardSummaryResult {
     daysUntilDue: number       // negativo se já venceu
   } | null
   nextInvoicePreview: number    // valor previsto da próxima fatura
+  /** ⭐ o que o BANCO declara sobre as próximas faturas (do PDF importado).
+   *  null = nenhuma fatura veio de PDF ainda — a tela diz "a apurar", nunca 0,00. */
+  proximasDeclaradas?: {
+    proxima: number | null; seguinte: number | null; demais: number | null; total: number | null
+    rotuloProxima: string | null; rotuloSeguinte: string | null
+  } | null
 }
 
 /**

@@ -14,6 +14,16 @@ import {
   Upload,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
+import { estadoDaFatura } from '@/lib/credit-card/estado-fatura'
+
+// mesma paleta semântica do resto do sistema (Contas a Pagar)
+const TOM_BADGE: Record<string, string> = {
+  emerald: 'bg-emerald-100 text-emerald-800',
+  amber: 'bg-amber-100 text-amber-800',
+  rose: 'bg-rose-100 text-rose-800',
+  sky: 'bg-sky-100 text-sky-800',
+  slate: 'bg-slate-100 text-slate-700',
+}
 import { Button } from '@/components/ui/button'
 
 interface Summary {
@@ -33,6 +43,10 @@ interface Summary {
     daysUntilDue: number
   } | null
   nextInvoicePreview: number
+  proximasDeclaradas?: {
+    proxima: number | null; seguinte: number | null; demais: number | null; total: number | null
+    rotuloProxima: string | null; rotuloSeguinte: string | null
+  } | null
 }
 
 interface CardData {
@@ -196,18 +210,47 @@ export default function CartaoDashboardPage({
             </div>
             {summary.currentInvoice ? (
               <>
-                <div className="text-xs text-zinc-500">
-                  {formatRef(summary.currentInvoice.reference)} · fecha em{' '}
-                  {summary.currentInvoice.daysUntilClosing} dias
-                </div>
-                <div className="text-2xl font-bold tabular-nums text-zinc-900 mt-1">
-                  {formatBRL(summary.currentInvoice.totalAmount)}
-                </div>
-                {summary.currentInvoice.paidAmount > 0 && (
-                  <div className="text-xs text-emerald-700 mt-1">
-                    Já pago: {formatBRL(summary.currentInvoice.paidAmount)}
-                  </div>
-                )}
+                {/* ⚠️ 26/08: aqui saía "fecha em −29 dias" numa fatura que fechou em
+                    29/07 — dia negativo é o sistema pedindo pro dono fazer a conta. E
+                    não dizia que estava VENCIDA: R$ 18 mil em atraso sem cor na tela.
+                    O estado vem de `estadoDaFatura` (decisão única, derivada da data e
+                    do pago — o `status` gravado nunca transiciona sozinho). */}
+                {(() => {
+                  const e = estadoDaFatura(
+                    {
+                      closingDate: new Date(summary.currentInvoice!.closingDate),
+                      dueDate: new Date(summary.currentInvoice!.dueDate),
+                      totalAmount: summary.currentInvoice!.totalAmount,
+                      paidAmount: summary.currentInvoice!.paidAmount,
+                    },
+                    new Date(),
+                  )
+                  return (
+                    <>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${TOM_BADGE[e.tom]}`}>
+                          {e.rotulo}
+                        </span>
+                        <span className="text-xs text-zinc-500">
+                          {formatRef(summary.currentInvoice!.reference)} · {e.detalhe}
+                        </span>
+                      </div>
+                      <div className={`mt-1 text-2xl font-bold tabular-nums ${e.estado === 'VENCIDA' ? 'text-rose-700' : 'text-zinc-900'}`}>
+                        {formatBRL(summary.currentInvoice!.totalAmount)}
+                      </div>
+                      {summary.currentInvoice!.paidAmount > 0 && (
+                        <div className="mt-1 text-xs text-emerald-700">
+                          Já pago: {formatBRL(summary.currentInvoice!.paidAmount)} · falta {formatBRL(e.devido)}
+                        </div>
+                      )}
+                      {e.estado === 'VENCIDA' && (
+                        <p className="mt-2 rounded border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] text-rose-800">
+                          Pagou? Importe o extrato e case o débito — a fatura vira <b>Paga</b>.
+                        </p>
+                      )}
+                    </>
+                  )
+                })()}
               </>
             ) : (
               <p className="text-sm text-zinc-500">Nenhuma fatura ainda</p>
@@ -217,11 +260,47 @@ export default function CartaoDashboardPage({
 
         <Card>
           <CardContent className="p-5">
-            <h2 className="font-semibold text-zinc-900 mb-3">Próxima fatura (preview)</h2>
-            <div className="text-2xl font-bold tabular-nums text-zinc-900">
-              {formatBRL(summary.nextInvoicePreview)}
-            </div>
-            <div className="text-xs text-zinc-500 mt-1">Considera parcelas conhecidas</div>
+            <h2 className="font-semibold text-zinc-900 mb-3">Próximas faturas</h2>
+            {/* ⚠️ 26/08: mostrava R$ 0,00 enquanto o PDF declarava "Agosto 10.747,10 ·
+                Setembro 5.012,90 · Demais 13.229,62". Agora usa o que o BANCO declara.
+                A projeção a partir das nossas linhas ficou só como conferência: na
+                fatura real ela dá 71.733,16 contra 28.989,62, porque uma compra grande
+                tem 4 parcelas na MESMA fatura + estorno de −20.954,54 (antecipação). */}
+            {summary.proximasDeclaradas?.total != null ? (
+              <>
+                <div className="text-2xl font-bold tabular-nums text-zinc-900">
+                  {formatBRL(summary.proximasDeclaradas.proxima ?? 0)}
+                </div>
+                <div className="mt-1 text-xs text-zinc-500">
+                  {summary.proximasDeclaradas.rotuloProxima ?? 'próxima'} · declarado pelo banco na fatura
+                </div>
+                <div className="mt-2 space-y-0.5 border-t pt-2 text-[11px] text-zinc-600">
+                  {summary.proximasDeclaradas.seguinte != null && (
+                    <div className="flex justify-between">
+                      <span>{summary.proximasDeclaradas.rotuloSeguinte ?? 'seguinte'}</span>
+                      <span className="tabular-nums">{formatBRL(summary.proximasDeclaradas.seguinte)}</span>
+                    </div>
+                  )}
+                  {summary.proximasDeclaradas.demais != null && (
+                    <div className="flex justify-between">
+                      <span>demais faturas</span>
+                      <span className="tabular-nums">{formatBRL(summary.proximasDeclaradas.demais)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between border-t pt-0.5 font-medium">
+                    <span>total a vencer</span>
+                    <span className="tabular-nums">{formatBRL(summary.proximasDeclaradas.total)}</span>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="text-2xl font-bold tabular-nums text-zinc-400">a apurar</div>
+                <div className="mt-1 text-xs text-zinc-500">
+                  Importe a fatura em PDF — o banco declara as próximas nela.
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>

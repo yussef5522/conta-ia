@@ -603,7 +603,25 @@ export async function getCardSummary(
   // já contam via totalAmount; não duplicamos aqui).
   // Pra MVP, futureParcelasNotInvoiced fica vazio — toda compra cria sua
   // invoice no mesmo $transaction da compra. Mantido por compatibilidade.
-  return calculateCardSummary(
+  // ⭐ o que o BANCO declarou sobre as próximas faturas, da fatura mais recente que
+  // veio de PDF. Fatura lançada à mão não tem — a tela mostra "a apurar" em vez de 0,00.
+  const comDeclarado = invoices.find((i) => i.declaredUpcoming)
+  let proximasDeclaradas: CardSummaryResult['proximasDeclaradas'] = null
+  if (comDeclarado?.declaredUpcoming) {
+    try {
+      const d = JSON.parse(comDeclarado.declaredUpcoming) as Record<string, unknown>
+      proximasDeclaradas = {
+        proxima: (d.proxima as number) ?? null,
+        seguinte: (d.seguinte as number) ?? null,
+        demais: (d.demais as number) ?? null,
+        total: (d.total as number) ?? null,
+        rotuloProxima: (d.rotuloProxima as string) ?? null,
+        rotuloSeguinte: (d.rotuloSeguinte as string) ?? null,
+      }
+    } catch { /* JSON torto não derruba o resumo */ }
+  }
+
+  const base = calculateCardSummary(
     {
       cardId: card.id,
       creditLimit: card.creditLimit,
@@ -620,6 +638,7 @@ export async function getCardSummary(
     },
     now,
   )
+  return { ...base, proximasDeclaradas }
 }
 
 export async function getProfileCreditSummary(

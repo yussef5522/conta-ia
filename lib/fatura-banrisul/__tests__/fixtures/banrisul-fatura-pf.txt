@@ -10,7 +10,7 @@
                                               PADARIA RESTA 9113.                                                        *LOJALOJA no Limite Total do CAFECA
 
 
-                                                            CAFECA de FARMACIAFARM da Fatura:                                CAFECA. O RESTA total do FARMACIAFARM FARMACIAFARM o
+                                                            CAFECA de FARMACIAFARM da Fatura:                                vencer. O RESTA total do FARMACIAFARM FARMACIAFARM o
 CAFECA de pagamento:                                                                                                         limite de PADARIA do HOT CAFECA e FARM POSTOPOSTO à CAFECA
                                                 PADARIA R$ LOJALOJA RESTA da PADARIA R$              Total MERCADOME R$      HOT as LOJALOJA RESTA RESTA.
  RESTA TOTAL                                      9.614,22        01              9.614,22                19.228,44          LOJALOJA CAFECA CAFECA de FARMACIAFARM no HOT LOJALOJA
@@ -46,12 +46,12 @@ CAFECA DA FATURA                                               R$               
 (+) Encargos sobre rotativo                                      0,62           IOF MERCADOME 0,38% / IOF CAFECA 0,0082% / IOF exterior 3,5%
 (+) Encargos sobre RESTA                                         0,00
 (+) Encargos sobre pagamento de CAFECA                           0,00
-(+) Encargos sobre FARMACIAFARM PADARIA                          0,00           Despesas POSTOPOSTO - LOJALOJA PADARIA                                                                               R$
+(+) Encargos sobre FARMACIAFARM PADARIA                          0,00           Despesas parceladas - Próximas Faturas                                                                               R$
 (+) Encargos sobre FARMACIAFARM de fatura                        0,00
-(+) Encargos sobre FARMACIAFARM de rotativo                      0,00           CAFECA                                                                                                        10.747,10
-(+) IOF sobre MERCADOME de PADARIA                               0,00           LOJALOJA                                                                                                       5.012,90
-(+) IOF sobre transações no exterior                           271,63           CAFECA PADARIA                                                                                                13.229,62
-(=) Saldo da fatura atual                                   18.348,72           Total de despesas POSTOPOSTO a CAFECA                                                                         28.989,62
+(+) Encargos sobre FARMACIAFARM de rotativo                      0,00           Agosto                                                                                                        10.747,10
+(+) IOF sobre MERCADOME de PADARIA                               0,00           Setembro                                                                                                       5.012,90
+(+) IOF sobre transações no exterior                           271,63           Demais Faturas                                                                                                13.229,62
+(=) Saldo da fatura atual                                   18.348,72           Total de despesas parceladas a vencer                                                                         28.989,62
 
 LOJALOJA:
 
@@ -337,7 +337,7 @@ LOJALOJA:
   Pagamento CAFECA                R$ 2.753,40    Encargos LOJALOJA RESTA fatura:
   I - Rotativo                         R$ 0,62   Rotativo                                   R$ 0,62
   II - FARMACIAFARM de rotativo        R$ 0,00   RESTA                                      R$ 0,00
-  HOT - RESTA HOTELHOTELH          R$ 2.752,78   PADARIA POSTOPOSTO                         R$ 0,00
+  HOT - RESTA HOTELHOTELH          R$ 2.752,78   PADARIA parceladas                         R$ 0,00
                                                  FARMACIAFARM de Fatura                     R$ 0,00
                                                  FARMACIAFARM Rotativo                      R$ 0,00
                                                  Pagamento de CAFECA                        R$ 0,00
@@ -345,7 +345,7 @@ LOJALOJA:
   PADARIA de PADARIA                             RESTA CAFECA
   Limite total                    R$ 76.150,00   Rotativo                                  702,36%
   MERCADOME                       R$ 47.337,32   RESTA                                     702,36%
-  POSTOPOSTO                      R$ 25.270,14   PADARIA POSTOPOSTO                        200,41%
+  POSTOPOSTO                      R$ 25.270,14   PADARIA parceladas                        200,41%
                                                  FARMACIAFARM de Fatura                    207,06%
   Limite de RESTA                 R$ 15.230,00   FARMACIAFARM Rotativo                     666,69%
   MERCADOME                            R$ 0,00   Pagamento de CAFECA                        50,93%

@@ -30,6 +30,8 @@ import {
   montarResultado,
   readDeclared,
   readVenc,
+  readProximasFaturas,
+  type ProximasFaturas,
   type Bucketed,
   type BanrisulFaturaParsed,
 } from './nucleo'
@@ -111,7 +113,11 @@ export function paginasDeTransacao(text: string): string[][] {
     .map((pg) => pg.split(/\r?\n/))
 }
 
-export function parseBanrisulFaturaPF(text: string): BanrisulFaturaParsed {
+export interface FaturaPFParsed extends BanrisulFaturaParsed {
+  proximas: ProximasFaturas
+}
+
+export function parseBanrisulFaturaPF(text: string): FaturaPFParsed {
   const declared = readDeclared(text)
   const venc = readVenc(text)
 
@@ -135,5 +141,5 @@ export function parseBanrisulFaturaPF(text: string): BanrisulFaturaParsed {
     }
   }
 
-  return montarResultado(bucketed, declared, venc, cardFinals)
+  return { ...montarResultado(bucketed, declared, venc, cardFinals), proximas: readProximasFaturas(text) }
 }

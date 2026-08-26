@@ -111,6 +111,47 @@ export function readDeclared(text: string): BanrisulFaturaParsed['declared'] {
   }
 }
 
+/**
+ * ⭐ "Despesas parceladas - Próximas Faturas" — o BANCO já projeta as próximas faturas
+ * e imprime no resumo. Todo PDF do Banrisul traz.
+ *
+ * ⚠️ ISTO É FATO, e a projeção calculada a partir das linhas NÃO É. Medido na fatura
+ * real: projetar "restam N parcelas × valor" dá **R$ 71.733,16** contra **28.989,62**
+ * declarados — porque uma compra grande aparece com 4 parcelas cobradas na MESMA
+ * fatura E um estorno de −20.954,54 (parcelamento antecipado/cancelado). Projetar dali
+ * inventaria 47 mil de cobranças que nunca virão. Mesma regra do resto do sistema:
+ * quando o arquivo TRAZ o dado, usa o dado; a conta própria vira só conferência.
+ */
+export interface ProximasFaturas {
+  proxima: number | null      // o mês seguinte
+  seguinte: number | null     // o mês depois desse
+  demais: number | null       // todas as outras somadas
+  total: number | null        // "Total de despesas parceladas a vencer"
+  rotuloProxima: string | null
+  rotuloSeguinte: string | null
+}
+
+const MESES_PT = 'Janeiro|Fevereiro|Março|Marco|Abril|Maio|Junho|Julho|Agosto|Setembro|Outubro|Novembro|Dezembro'
+
+export function readProximasFaturas(text: string): ProximasFaturas {
+  const vazio: ProximasFaturas = { proxima: null, seguinte: null, demais: null, total: null, rotuloProxima: null, rotuloSeguinte: null }
+  const i = text.search(/Despesas parceladas\s*-\s*Pr[óo]ximas Faturas/i)
+  if (i < 0) return vazio
+  // a seção fica na coluna direita do resumo; pega dali até o fim do bloco
+  const trecho = text.slice(i, i + 1200)
+  const meses = [...trecho.matchAll(new RegExp(`\\b(${MESES_PT})\\b\\s+([\\d.]+,\\d{2})`, 'gi'))]
+  const demaisM = trecho.match(/Demais Faturas\s+([\d.]+,\d{2})/i)
+  const totalM = trecho.match(/Total de despesas parceladas a vencer\s+([\d.]+,\d{2})/i)
+  return {
+    proxima: meses[0] ? parseBRNumber(meses[0][2]) : null,
+    seguinte: meses[1] ? parseBRNumber(meses[1][2]) : null,
+    demais: demaisM ? parseBRNumber(demaisM[1]) : null,
+    total: totalM ? parseBRNumber(totalM[1]) : null,
+    rotuloProxima: meses[0] ? meses[0][1] : null,
+    rotuloSeguinte: meses[1] ? meses[1][1] : null,
+  }
+}
+
 export function readVenc(text: string): { month: number; year: number; dueDate: string | null } {
   const m = text.match(/Vencimento:?\s+(\d{2})\/(\d{2})\/(\d{4})/i)
   if (m) return { month: Number(m[2]), year: Number(m[3]), dueDate: `${m[3]}-${m[2]}-${m[1]}` }

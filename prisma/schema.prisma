@@ -2525,6 +2525,14 @@ model CreditCardInvoice {
   // carry-over de uma anterior parcial, aponta pra ela. Normal = null.
   carryoverFromInvoiceId String?
 
+  // ⭐ "Despesas parceladas - Próximas Faturas" (26/08) — o BANCO projeta as próximas
+  // faturas e imprime no resumo do PDF. É FATO, e a projeção calculada a partir das
+  // nossas linhas NÃO é: na fatura real ela dá 71.733,16 contra 28.989,62 declarados,
+  // porque uma compra grande tem 4 parcelas na MESMA fatura + estorno de −20.954,54
+  // (parcelamento antecipado). JSON: {proxima, seguinte, demais, total, rótulos}.
+  // Null = fatura que não veio de PDF (lançada à mão) — a tela mostra "a apurar".
+  declaredUpcoming String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -3068,11 +3076,11 @@ model VendaDiaria {
 }
 
 model VendaDiariaTransacao {
-  id            String      @id @default(cuid())
+  id            String   @id @default(cuid())
   vendaId       String
   transactionId String
   valor         Float
-  createdAt     DateTime    @default(now())
+  createdAt     DateTime @default(now())
 
   venda VendaDiaria @relation(fields: [vendaId], references: [id], onDelete: Cascade)
 
@@ -3189,24 +3197,24 @@ model StockNfe {
 // e emitente. Só pra notas NOVAS (>= corte); históricas não parseiam. nfeId/companyId
 // como VALOR (sem @relation — migration não referencia tabela existente nem FK-ALTER).
 model StockNfeItem {
-  id       String   @id @default(cuid())
+  id        String   @id @default(cuid())
   companyId String
-  nfeId    String
-  chave    String
-  nItem    Int
-  cProd    String?
-  cEAN     String?
-  xProd    String
-  ncm      String?
-  cest     String?
-  cfop     String?
-  uCom     String?
-  qCom     Float?
-  vUnCom   Float?
-  vProd    Float?
-  uTrib    String?
-  qTrib    Float?
-  criadoEm DateTime @default(now())
+  nfeId     String
+  chave     String
+  nItem     Int
+  cProd     String?
+  cEAN      String?
+  xProd     String
+  ncm       String?
+  cest      String?
+  cfop      String?
+  uCom      String?
+  qCom      Float?
+  vUnCom    Float?
+  vProd     Float?
+  uTrib     String?
+  qTrib     Float?
+  criadoEm  DateTime @default(now())
 
   @@index([companyId, nfeId])
   @@index([companyId, ncm])
@@ -3289,15 +3297,15 @@ model StockSupplier {
 
 // Mapa que APRENDE: (fornecedor, código do produto na nota) → item do estoque.
 model StockSupplierProduct {
-  id            String   @id @default(cuid())
-  companyId     String
-  supplierCnpj  String
-  cProd         String
-  xProd         String?
-  itemId        String
-  fatorConversao Float   @default(1) // unidadeNota → unidadeControle
-  unidadeNota   String?
-  criadoEm      DateTime @default(now())
+  id             String   @id @default(cuid())
+  companyId      String
+  supplierCnpj   String
+  cProd          String
+  xProd          String?
+  itemId         String
+  fatorConversao Float    @default(1) // unidadeNota → unidadeControle
+  unidadeNota    String?
+  criadoEm       DateTime @default(now())
 
   @@unique([companyId, supplierCnpj, cProd])
   @@index([companyId, itemId])
@@ -3548,7 +3556,7 @@ model StockProductionOrder {
 // custoMedio. Os movimentos (PRODUCAO_CONSUMO/GERACAO) vivem no ledger; aqui é o registro
 // + os números derivados (rendimento, custo unit, validade da etiqueta). CREATE-only.
 model StockProducaoConclusao {
-  id                String   @id @default(cuid())
+  id                String    @id @default(cuid())
   companyId         String
   ordemId           String
   qtdGerada         Float // unidades do produto que saíram
@@ -3558,9 +3566,9 @@ model StockProducaoConclusao {
   custoUnitarioReal Float? // custoLoteReal / qtdGerada
   rendimento        Float // qtdGerada / escalaConsumida (unidades por receita base)
   validadeAte       DateTime? // dataProducao + validadeDias (etiqueta)
-  parcial           Boolean  @default(false)
+  parcial           Boolean   @default(false)
   criadoPorId       String?
-  criadoEm          DateTime @default(now())
+  criadoEm          DateTime  @default(now())
 
   @@index([companyId, ordemId])
   @@map("stock_producao_conclusao")
@@ -3607,15 +3615,15 @@ model StockVendaImport {
 // ESTOQUE FASE 3 — linhas do import (todas: mapeadas e pendentes). Guarda pra REPROCESSAR
 // o dia sem re-upload e pra a aba "pendentes de mapa" + o juiz V (pendente > 7d). CREATE-only.
 model StockVendaLinha {
-  id           String   @id @default(cuid())
-  companyId    String
-  importId     String
-  data         DateTime // dia (redundante do import, facilita o juiz)
-  nomeSuitable String
-  quantidade   Int
-  valorTotal   Float
-  mapeadoNoImport Boolean @default(false) // tinha destino na hora do processamento
-  criadoEm     DateTime @default(now())
+  id              String   @id @default(cuid())
+  companyId       String
+  importId        String
+  data            DateTime // dia (redundante do import, facilita o juiz)
+  nomeSuitable    String
+  quantidade      Int
+  valorTotal      Float
+  mapeadoNoImport Boolean  @default(false) // tinha destino na hora do processamento
+  criadoEm        DateTime @default(now())
 
   @@index([companyId, importId])
   @@index([companyId, data])
@@ -3705,19 +3713,19 @@ model StockContagemItem {
 // amarrada em nota. ⚠️ DÉBITO: quando a ponte pro contas-a-pagar for LIGADA, ela precisa
 // ler as DUAS fontes (nota e entrada manual) — hoje a ponte está OFF nas duas.
 model StockEntradaManual {
-  id              String   @id @default(cuid())
-  companyId       String
-  supplierId      String
-  fornecedorNome  String // desnormalizado: o recibo mostra sem join
-  data            DateTime
-  valorTotal      Float
-  observacao      String?
-  geraPayable     Boolean  @default(false)
-  payableVenc     DateTime?
-  payableValor    Float?
-  criadoPorId     String?
-  criadoPorNome   String?
-  criadoEm        DateTime @default(now())
+  id             String    @id @default(cuid())
+  companyId      String
+  supplierId     String
+  fornecedorNome String // desnormalizado: o recibo mostra sem join
+  data           DateTime
+  valorTotal     Float
+  observacao     String?
+  geraPayable    Boolean   @default(false)
+  payableVenc    DateTime?
+  payableValor   Float?
+  criadoPorId    String?
+  criadoPorNome  String?
+  criadoEm       DateTime  @default(now())
 
   @@index([companyId, data])
   @@map("stock_entrada_manual")
