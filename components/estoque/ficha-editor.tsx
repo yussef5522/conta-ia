@@ -55,6 +55,17 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, nomeI
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
 
+  // ⭐ PRÉ-PREENCHIMENTO ROBUSTO (27/08) — o `useState` só lê o valor inicial NA MONTAGEM.
+  // Se o editor montar antes de a tela de trás ter os dados (ou remontar), nome e preço
+  // ficam vazios e o dono redigita o que a própria tela mostra logo acima. Este efeito
+  // aplica os valores QUANDO ELES CHEGAM, e só enquanto o campo está intocado — nunca
+  // sobrescreve o que o dono digitou.
+  useEffect(() => {
+    if (editando) return
+    if (nomeInicial) setNomeProduzido((v) => (v.trim() === '' ? nomeInicial : v))
+    if (precoInicial != null) setValorVenda((v) => (v.trim() === '' ? String(precoInicial) : v))
+  }, [editando, nomeInicial, precoInicial])
+
   useEffect(() => {
     fetch(`/api/empresas/${companyId}/estoque/setores`).then((r) => r.json()).then((j) => setSetores(j.setores ?? [])).catch(() => {})
     if (fichaId) {

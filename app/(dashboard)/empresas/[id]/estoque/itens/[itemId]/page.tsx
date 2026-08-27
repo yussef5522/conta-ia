@@ -53,6 +53,9 @@ export default function FichaItemPage({ params }: { params: Promise<{ id: string
         </div>
       </div>
 
+      {/* trocar a régua do item (unidade de compra → unidade de consumo) */}
+      <ReunitizarBloco companyId={id} itemId={itemId} nome={ficha.item.nome} unidade={ficha.item.unidadeControle} saldo={ficha.saldo} custoMedio={ficha.custoMedio} />
+
       {/* faixa de estoque (mín/máx) + status */}
       <MinMaxEditor
         companyId={id} itemId={itemId} unidade={ficha.item.unidadeControle}
@@ -109,3 +112,118 @@ export default function FichaItemPage({ params }: { params: Promise<{ id: string
   )
 }
 
+
+// ⭐ TROCAR A RÉGUA DO ITEM (27/08) — unidade de COMPRA → unidade de CONSUMO.
+//
+// O caso que pediu isto: o pão entrou controlado em PACOTE (12 pães, R$ 27,75) e a receita
+// usa 1 PÃO (R$ 2,31). Pôr `1` na ficha baixaria um pacote inteiro por lanche — 12× a mais.
+// Fica AQUI porque é aqui que o dono percebe (olhando saldo e custo médio do item).
+//
+// A prévia é obrigatória de propósito: mexe no ledger (estorno + movimento novo) e no fator
+// aprendido das notas. Ver os dois lados antes de confirmar é o padrão do módulo.
+function ReunitizarBloco({ companyId, itemId, nome, unidade, saldo, custoMedio }: {
+  companyId: string; itemId: string; nome: string; unidade: string; saldo: number; custoMedio: number | null
+}) {
+  const [aberto, setAberto] = useState(false)
+  const [fator, setFator] = useState('')
+  const [novoNome, setNovoNome] = useState(nome)
+  const [prev, setPrev] = useState<{ antes: { saldo: number; custoMedio: number | null; valor: number }; depois: { saldo: number; custoMedio: number | null; valor: number }; movimentos: number; mapas: { cProd: string; xProd: string | null; unidadeNota: string | null; fatorAntes: number; fatorDepois: number }[] } | null>(null)
+  const [erro, setErro] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  const f = Number((fator || '').replace(',', '.'))
+  const valido = Number.isFinite(f) && f > 1
+
+  const verPrevia = async () => {
+    setBusy(true); setErro(null); setPrev(null)
+    try {
+      const r = await fetch(`/api/empresas/${companyId}/estoque/itens/${itemId}/reunitizar?fator=${f}`)
+      const j = await r.json().catch(() => null)
+      if (!r.ok) { setErro(j?.erro ?? 'Não consegui calcular a prévia.'); return }
+      setPrev(j)
+    } finally { setBusy(false) }
+  }
+
+  const aplicar = async () => {
+    setBusy(true); setErro(null)
+    try {
+      const r = await fetch(`/api/empresas/${companyId}/estoque/itens/${itemId}/reunitizar`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fator: f, novoNome: novoNome.trim() !== nome ? novoNome.trim() : undefined }),
+      })
+      const j = await r.json().catch(() => null)
+      if (!r.ok) { setErro(j?.erro ?? 'Não consegui trocar a unidade.'); return }
+      window.location.reload()
+    } finally { setBusy(false) }
+  }
+
+  if (!aberto) {
+    return (
+      <button onClick={() => setAberto(true)} className="text-xs text-slate-400 underline-offset-2 hover:text-slate-600 hover:underline">
+        A unidade está errada? (ex: está em pacote e você usa por unidade)
+      </button>
+    )
+  }
+
+  return (
+    <Card className="border-amber-200"><CardContent className="space-y-3 p-4">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-sm font-semibold text-slate-900">Trocar a unidade de controle</p>
+          <p className="text-xs text-slate-500">
+            Hoje: <b>{num(saldo)} {unidade}</b> a {custoMedio != null ? brl(custoMedio) : '—'} cada.
+            Se 1 {unidade} na verdade contém várias unidades de uso, informe quantas.
+          </p>
+        </div>
+        <button onClick={() => { setAberto(false); setPrev(null); setErro(null) }} className="text-xs text-slate-400 hover:text-slate-600">fechar</button>
+      </div>
+
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="text-xs text-slate-500">1 {unidade} contém
+          <input value={fator} onChange={(e) => { setFator(e.target.value); setPrev(null) }} inputMode="decimal" placeholder="ex: 12"
+            className="mt-1 block w-24 rounded-lg border border-slate-300 py-2 px-3 text-sm tabular-nums" />
+        </label>
+        <label className="min-w-[220px] flex-1 text-xs text-slate-500">Novo nome (o antigo passa a mentir)
+          <input value={novoNome} onChange={(e) => setNovoNome(e.target.value)} className="mt-1 block w-full rounded-lg border border-slate-300 py-2 px-3 text-sm" />
+        </label>
+        <button onClick={verPrevia} disabled={!valido || busy}
+          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-300 px-3 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-40">
+          {busy && !prev ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null} ver a prévia
+        </button>
+      </div>
+
+      {prev && (
+        <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/60 p-3">
+          <div className="grid grid-cols-2 gap-3 text-xs">
+            <div>
+              <p className="text-slate-400">Hoje</p>
+              <p className="tabular-nums text-slate-700">{num(prev.antes.saldo)} {unidade} × {prev.antes.custoMedio != null ? brl(prev.antes.custoMedio) : '—'}</p>
+            </div>
+            <div>
+              <p className="text-slate-400">Depois</p>
+              <p className="font-medium tabular-nums text-slate-900">{num(prev.depois.saldo)} × {prev.depois.custoMedio != null ? brl(prev.depois.custoMedio) : '—'}</p>
+            </div>
+          </div>
+          {/* a âncora que prova que a conta só mudou de régua */}
+          <p className="text-[11px] text-emerald-700">
+            ✓ O valor em estoque não muda: <b>{brl(prev.antes.valor)}</b> antes e depois.
+          </p>
+          <p className="text-[11px] text-slate-500">
+            {prev.movimentos} movimento(s) do histórico são reescritos na régua nova (estorno + linha nova — o ledger não se apaga).
+          </p>
+          {prev.mapas.map((m) => (
+            <p key={m.cProd} className="text-[11px] text-slate-500">
+              Fator da nota “{m.xProd ?? m.cProd}” ({m.unidadeNota}): <b>{m.fatorAntes} → {m.fatorDepois}</b> — a próxima nota já entra convertida.
+            </p>
+          ))}
+          <button onClick={aplicar} disabled={busy}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-amber-600 px-3 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50">
+            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null} confirmar a troca
+          </button>
+        </div>
+      )}
+
+      {erro && <p className="text-xs text-rose-600">{erro}</p>}
+    </CardContent></Card>
+  )
+}
