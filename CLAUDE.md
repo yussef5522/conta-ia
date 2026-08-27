@@ -372,6 +372,32 @@ Alinhados com padrão de mercado (Modern Treasury / Fintech Engineering Handbook
 **BANRISUL "OP.CREDITO C/GARANTIA" CONFERIDO LINHA A LINHA:** 16 lançamentos em agosto (R$ 200.232,00), **todos** Receita de Vendas e **todos** atribuídos à competência certa — D+1 útil nos dias de semana, bloco de fim de semana na segunda (03/08 → 31/07-02/08 · 10/08 → 07-09/08 · 17/08 → 14-16/08 · 24/08 → 21-23/08). Padrão perfeito de depósito de maquininha. ⚠️ Eram 15 numa contagem anterior do mesmo dia: a 16ª foi **gravada às 04:47 enquanto a auditoria rodava** — o dono importava em paralelo.
 **LIÇÃO GERAL:** quando uma decisão de fronteira (pertencimento × sobreposição) existe em N lugares, corrigir N−1 é pior que não corrigir nenhum — o sistema fica com metade das telas certas e nenhum alarme. E **invariante que agrega com `set` é cego pra duplicata**: ao escrever comparação por chave, SOMAR é o default seguro.
 
+## ⭐⭐ ESTOQUE "CARDÁPIO-PRIMEIRO" (27/08/2026) — o hub do dono. UX pura: motor, ledger e golden INTOCADOS.
+
+**O PROBLEMA:** o dono começou a usar de verdade e o caminho estava espalhado em 4 telas (Fichas, Produção, Vendas Suitable, Catálogo). Estudo dos líderes (MarketMan/Apicbase): são **MENU-FIRST** — a lista dos produtos QUE SE VENDE é o hub, a receita se anexa DENTRO do produto, e receita de PRODUÇÃO (sub-recipe/prep) vive SEPARADA da ficha do produto vendido. Mesmo motor, lugares distintos, porque respondem perguntas de pessoas diferentes (cozinha vs dono).
+
+**⭐ A DECISÃO QUE SEGURA O RESTO — O CUSTO SAI DA MESMA EXPLOSÃO QUE A VENDA USA PRA BAIXAR (REGRA 4).** `lib/stock/cardapio/hub.ts` reusa o `explodir` de `baixa-venda.ts` com `qtd=1`: as folhas que saem são exatamente as que o ledger vai baixar quando 1 unidade for vendida; somar o custo médio delas É o custo do produto, **por construção**. Uma fórmula própria divergiria no 1º caso de borda (componente que é outro produto final, intermediário que baixa o pack) e a tela mostraria margem sobre um custo que não acontece — a doença dos 7 detectores de par. O teste-estrela compara o custo do hub com o **plano REAL de venda**, ao centavo, nos 3 níveis (Combo → Xis → beef + pão).
+
+**⚠️ POR QUE NÃO USEI O `calcularCustoTeorico` QUE JÁ EXISTIA:** ele divide pelo **rendimento MEDIDO**, que só existe depois de uma produção em lote. Produto montado na venda (xis, combo) **nunca** é produzido em lote → ficaria "a apurar" para sempre, justamente nos produtos que interessam. O intermediário (beef, gessado) continua no mundo da produção com rendimento medido, intocado.
+
+**⛔ CÓDIGO MORTO REMOVIDO NO MESMO GESTO:** `cardapio()` e `cardapioToCsv()` (de `sugestao-cardapio.ts`) ficariam com **zero caller** e seriam um **SEGUNDO custo/margem pro mesmo produto**, por outra regra. Removidos. `sugestoesDeProducao` (min/máx) fica — responde outra pergunta ("o que preciso produzir?").
+
+**A LINHA NASCE DA VENDA, NÃO DO CADASTRO.** Produto que vendeu 57× e não tem ficha aparece **em vermelho no topo** — é o trabalho a fazer, não uma ausência a esconder. Banner de onboarding aponta o campeão por VOLUME: o dono monta o cardápio na ordem que importa pro bolso dele.
+
+**PREÇO — o PRATICADO manda sobre o cadastrado.** `valorTotal ÷ quantidade` do próprio relatório do PDV é o que o cliente pagou de fato (mesma regra do resto do sistema: quando o arquivo TRAZ o dado, usa o dado). O `valorVenda` da ficha fica como preço de cardápio e a tela **avisa quando os dois divergem**. Sem nenhum dos dois → "a definir", nunca 0,01.
+
+**APELIDOS DO PDV:** nomes que apontam pro MESMO destino viram UMA linha com as vendas somadas ("XIS COMPLETO" + "XIS - COMPLETO"). Nomes parecidos **SEM** o mesmo destino ficam separados — casar por semelhança seria adivinhar.
+
+**DENTRO DO PRODUTO (`/estoque/cardapio/[chave]`):** cards (vendas/custo/preço/margem) · preço inline · a **receita se cria/edita ALI** · cada componente com saldo, tipo (insumo/produzido) e **[produzir agora]** quando falta, que cria a ordem e navega. **Fluxo encadeado completo: cardápio → produto → componente → produção → etiqueta.** Mostra também "dá pra fazer N" com o **gargalo nomeado**.
+
+**DOIS MUNDOS SEPARADOS, EDITOR ÚNICO (REGRA 4):** `/estoque/cardapio` = a casa do DONO (só o que se vende) · `/estoque/producao/receitas` = a casa da COZINHA (só INTERMEDIÁRIO: lote base, validade, botão produzir). O **mesmo `FichaEditor`** serve os dois, aberto com `tipoTravado` e `voltarPara` — um segundo editor divergiria na 1ª regra nova. **"Fichas técnicas" (lista mista) SAIU da sidebar**; a rota fica viva com placa apontando os dois caminhos, pra link antigo não quebrar.
+
+**SIDEBAR do estoque:** Cardápio (topo) · Recebimentos · Posição · Catálogo · Movimentos · Contagem · Real vs Teórico · Boletos · Produção (com Receitas) · Vendas (Suitable) · Certificado.
+
+**PROVADO EM PROD com o dado real (commit `1e8521d`, deploy trio verde):** 80 produtos do Suitable (21/08, 494 un, **R$ 18.521,10** — coerente com os ~380k/mês do motor de vendas) · banner **"Combo Caçula (57 vendas) sem ficha"** · **78 dos 80 sem ficha** (o hub é hoje uma lista de trabalho, que é o estado honesto) · as 2 revendas mapeadas fecham sozinhas (**Skol custo 8,46 / preço 18,00** e **Fruki 3,75 / 11,00**) — custo da nota + preço do PDV = margem real sem cadastrar nada. Todas as telas novas **200**. 15 testes novos; o guard estrutural de rota subiu **54 → 58** (a rota nova nasceu travada). TS 0; suíte com os mesmos 3 vermelhos documentados.
+
+**PENDENTE (REGRA 2):** o dono validar no notebook e no celular.
+
 ## 🗺️ O QUE FALTA PRO MÓDULO DE ESTOQUE FECHAR (atualizado 24/08/2026)
 
 **FEITO e em prod:** Fase 0 (SEFAZ) · Fase 1 (ledger + conferência) · Fase 2 (produção) · Fase 3 (vendas, saídas, catálogo, **contagem**, **Real vs Teórico**, **entrada manual**, **itens do DANFE**) · **Fase 3 Parte 1 — ENFORCEMENT (as 31 rotas no RBAC + papéis semeados, 24/08)** · **PONTE 1 (contas a pagar, 24/08)**.
