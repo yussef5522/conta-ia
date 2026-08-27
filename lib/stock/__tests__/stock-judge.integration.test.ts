@@ -50,6 +50,31 @@ describe('juiz do estoque', () => {
     expect(f.some((x) => x.invariante === 'E2')).toBe(true)
   })
 
+  // ⚠️ REGRA 1 (27/08) — o E2 era INCOMPATÍVEL com a disciplina de correção do próprio
+  // módulo. Ele contava ENTRADA_NF cru; correção aqui é sempre **ESTORNO + movimento novo**
+  // (o ledger é imutável), então bastava corrigir um item de nota pra o juiz acusar um rombo
+  // que não existe — 1 item, 2 ENTRADA_NF. Achado ao reunitizar o pão (pacote → unidade).
+  // Este teste falha com o `count` antigo e passa com a contagem LÍQUIDA.
+  it('⭐ E2: correção (estorno + movimento novo) NÃO é rombo — o juiz conta o que vale', async () => {
+    const orig = await prisma.stockMovement.findFirstOrThrow({ where: { companyId, tipo: 'ENTRADA_NF' } })
+    // a correção documentada do módulo: estorna e recria (nunca edita)
+    await prisma.stockMovement.create({ data: { companyId, itemId: orig.itemId, tipo: 'ESTORNO', quantidade: -orig.quantidade, custoUnitario: orig.custoUnitario, custoTotal: -orig.custoTotal, receiptId: orig.receiptId, estornoDeId: orig.id, origem: orig.origem } })
+    await prisma.stockMovement.create({ data: { companyId, itemId: orig.itemId, tipo: 'ENTRADA_NF', quantidade: orig.quantidade * 12, custoUnitario: orig.custoUnitario / 12, custoTotal: orig.custoTotal, receiptId: orig.receiptId, origem: orig.origem } })
+    const { recomputeSaldoCache } = await import('../saldo')
+    await recomputeSaldoCache(prisma, companyId)
+
+    const f = await failsDaEmpresa()
+    expect(f.filter((x) => x.invariante === 'E2')).toHaveLength(0) // 3 movimentos, mas só 2 valem
+  })
+
+  it('E2 continua mordendo quando falta movimento de verdade (o estorno não vira desculpa)', async () => {
+    const orig = await prisma.stockMovement.findFirstOrThrow({ where: { companyId, tipo: 'ENTRADA_NF' } })
+    // estorna e NÃO recria → a conferência fica sem entrada vigente
+    await prisma.stockMovement.create({ data: { companyId, itemId: orig.itemId, tipo: 'ESTORNO', quantidade: -orig.quantidade, custoUnitario: orig.custoUnitario, custoTotal: -orig.custoTotal, receiptId: orig.receiptId, estornoDeId: orig.id, origem: orig.origem } })
+    const f = await failsDaEmpresa()
+    expect(f.some((x) => x.invariante === 'E2')).toBe(true)
+  })
+
   it('E3: nota confirmada com duplicata sem payable → pega', async () => {
     await prisma.stockPayableSuggestion.deleteMany({ where: { companyId } })
     const f = await failsDaEmpresa()

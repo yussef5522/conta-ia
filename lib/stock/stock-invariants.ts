@@ -63,11 +63,21 @@ export async function checkStockInvariants(db: Db, now: Date = new Date()): Prom
   // E2 — toda conferência CONFIRMADA/DIVERGENTE_ACEITA tem movimentos que somam os itens.
   const confs = await db.stockReceiptConference.findMany({ where: { status: { in: ['CONFIRMADA', 'DIVERGENTE_ACEITA'] } }, select: { id: true, companyId: true } })
   for (const conf of confs) {
-    const [nItens, movs] = await Promise.all([
+    // ⚠️ CONTA LÍQUIDO, não bruto (27/08). Antes isto era um `count` cru de ENTRADA_NF e
+    // ficava VERMELHO em qualquer correção — e correção pelo caminho documentado do módulo
+    // é justamente **ESTORNO + movimento novo** (o ledger é imutável, não se edita linha).
+    // Ou seja, o invariante era incompatível com a própria disciplina de correção do
+    // estoque: bastava corrigir um item de nota pra o juiz acusar rombo que não existe.
+    // Achado ao reunitizar o pão (pacote → unidade), que faz exatamente esse par.
+    // A pergunta certa é "quantas entradas VALENDO existem", e entrada estornada não vale.
+    const [nItens, entradas, estornos] = await Promise.all([
       db.stockConferenceItem.count({ where: { conferenceId: conf.id } }),
-      db.stockMovement.count({ where: { companyId: conf.companyId, receiptId: conf.id, tipo: 'ENTRADA_NF' } }),
+      db.stockMovement.findMany({ where: { companyId: conf.companyId, receiptId: conf.id, tipo: 'ENTRADA_NF' }, select: { id: true } }),
+      db.stockMovement.findMany({ where: { companyId: conf.companyId, receiptId: conf.id, tipo: 'ESTORNO' }, select: { estornoDeId: true } }),
     ])
-    if (movs !== nItens) F('E2', conf.companyId, `conferência ${conf.id}: ${nItens} itens conferidos vs ${movs} movimentos ENTRADA_NF (deveriam ser iguais).`)
+    const estornados = new Set(estornos.map((e) => e.estornoDeId).filter((x): x is string => !!x))
+    const movs = entradas.filter((m) => !estornados.has(m.id)).length
+    if (movs !== nItens) F('E2', conf.companyId, `conferência ${conf.id}: ${nItens} itens conferidos vs ${movs} movimentos ENTRADA_NF vigentes (deveriam ser iguais).`)
   }
 
   // E3 — toda nota CONFIRMADA com duplicata tem contas a pagar sugerido.
