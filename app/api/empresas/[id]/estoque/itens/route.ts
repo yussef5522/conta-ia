@@ -16,9 +16,26 @@ export async function GET(request: NextRequest, { params }: Params) {
   const a = await guardStock(request, companyId, 'stock.view')
   if (a.erro) return a.erro
   const busca = request.nextUrl.searchParams.get('busca')?.trim() ?? ''
+
+  // ⭐ ESCOPO=RECEITA (27/08) — o editor de ficha estava oferecendo DESENGRAXANTE, SACO DE
+  // LIXO e JAPONA DE CÂMARA como ingrediente de lanche. Ingrediente é matéria-prima,
+  // intermediário produzido ou revenda (combo leva refri); LIMPEZA/USO_INTERNO/EMBALAGEM
+  // não entram em receita. ⚠️ O filtro é NO SERVIDOR de propósito: com `take: 50`, filtrar
+  // no cliente deixaria itens bons de fora quando o material de limpeza ocupa as 50 vagas.
+  const escopoReceita = request.nextUrl.searchParams.get('escopo') === 'receita'
+  const CATS_RECEITA = ['MATERIA_PRIMA', 'INTERMEDIARIO', 'PRODUTO_FINAL', 'REVENDA']
+
+  // filtro por categoria — usado pelo hub pra listar SÓ revenda ao mapear bebida inline.
+  // Também no servidor: com `take: 50` o filtro no cliente perderia itens.
+  const categoria = request.nextUrl.searchParams.get('categoria')?.trim() || null
+
   const [itens, derivado] = await Promise.all([
     prisma.stockItem.findMany({
-      where: { companyId, ativo: true, ...(busca ? { nome: { contains: busca } } : {}) },
+      where: {
+        companyId, ativo: true,
+        ...(busca ? { nome: { contains: busca } } : {}),
+        ...(categoria ? { categoria } : escopoReceita ? { categoria: { in: CATS_RECEITA } } : {}),
+      },
       orderBy: { nome: 'asc' },
       take: 50,
       select: { id: true, nome: true, unidadeControle: true, categoria: true },
@@ -26,7 +43,14 @@ export async function GET(request: NextRequest, { params }: Params) {
     // custoMedio DERIVADO dos movimentos (mesma fonte da Posição) — não o campo stale
     custoMedioPorItem(prisma, companyId),
   ])
-  return NextResponse.json({ itens: itens.map((i) => ({ ...i, custoMedio: derivado.get(i.id) ?? null })) })
+
+  // ordem de RELEVÂNCIA pra receita: o que a cozinha usa primeiro aparece primeiro.
+  const PESO: Record<string, number> = { INTERMEDIARIO: 0, MATERIA_PRIMA: 1, REVENDA: 2, PRODUTO_FINAL: 3 }
+  const ordenados = escopoReceita
+    ? [...itens].sort((a, b) => (PESO[a.categoria] ?? 9) - (PESO[b.categoria] ?? 9) || a.nome.localeCompare(b.nome, 'pt-BR'))
+    : itens
+
+  return NextResponse.json({ itens: ordenados.map((i) => ({ ...i, custoMedio: derivado.get(i.id) ?? null })) })
 }
 
 const criarSchema = z.object({

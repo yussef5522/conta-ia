@@ -20,7 +20,7 @@ const parseNum = (s: string) => { const t = s.trim().replace(',', '.'); const n 
 // ⭐ EDITOR ÚNICO, DOIS MUNDOS (27/08 — REGRA 4). O cardápio (casa do dono) e as receitas de
 // produção (casa da cozinha) abrem ESTE MESMO editor, cada um com o tipo TRAVADO e o
 // "voltar" apontando pro seu lugar. Um segundo editor divergiria na primeira regra nova.
-export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, nomeInicial }: {
+export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, nomeInicial, precoInicial }: {
   companyId: string
   fichaId?: string
   /** trava o tipo do produto (o mundo de onde o editor foi aberto) */
@@ -29,6 +29,8 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, nomeI
   voltarPara?: string
   /** nome pré-preenchido (vem do PDV quando o dono monta a ficha de um produto vendido) */
   nomeInicial?: string
+  /** preço pré-preenchido: o PRATICADO no PDV, pra a margem nascer calculada (editável) */
+  precoInicial?: number | null
 }) {
   const editando = !!fichaId
   // pré-preenche nome/tipo quando vem do mapeamento de vendas (?nome=&tipo=PRODUTO_FINAL)
@@ -40,9 +42,11 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, nomeI
   const [tipoProduto, setTipoProduto] = useState<'INTERMEDIARIO' | 'PRODUTO_FINAL'>(
     tipoTravado ?? (!editando && qp?.get('tipo') === 'PRODUTO_FINAL' ? 'PRODUTO_FINAL' : 'INTERMEDIARIO'))
   const [setorId, setSetorId] = useState<string>('')
-  const [valorVenda, setValorVenda] = useState('')
+  const [valorVenda, setValorVenda] = useState(!editando && precoInicial != null ? String(precoInicial) : '')
   const [loteBase, setLoteBase] = useState('1')
-  const [unidadeLoteBase, setUnidadeLoteBase] = useState<'KG' | 'UN' | 'LT'>('KG')
+  // ⚠️ default do lote POR MUNDO: produto final é per-serving (1 xis = 1 receita → 1 UN);
+  // intermediário nasce em KG porque a cozinha pesa a matéria-prima do lote.
+  const [unidadeLoteBase, setUnidadeLoteBase] = useState<'KG' | 'UN' | 'LT'>(tipoTravado === 'PRODUTO_FINAL' ? 'UN' : 'KG')
   const [validadeDias, setValidadeDias] = useState('')
   const [tempoPreparoMin, setTempoPreparoMin] = useState('')
   const [modoPreparo, setModoPreparo] = useState('')
@@ -67,12 +71,32 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, nomeI
     }
   }, [companyId, fichaId])
 
-  // custo ao vivo
+  // ⭐ CUSTO AO VIVO — e o conceito MUDA com o mundo (27/08):
+  //
+  // INTERMEDIÁRIO é produzido em LOTE e o rendimento é MEDIDO na conclusão (5 kg de carne
+  // rendem quantos pacotes? só a produção diz) → custo por unidade fica "a apurar" até a 1ª.
+  //
+  // PRODUTO FINAL se MONTA NA VENDA: 1 xis = 1 receita, não existe lote nem rendimento a
+  // medir → o custo por unidade é Σ dos componentes AO VIVO, agora. Herdar o "a apurar" do
+  // intermediário (o que a tela fazia) escondia o custo justamente no produto que interessa.
+  // É o mesmo per-serving dos líderes pra menu item.
+  const finalMontadoNaVenda = tipoProduto === 'PRODUTO_FINAL'
   const custo = useMemo(() => {
     const semCusto = comps.filter((c) => c.custoMedio == null).length
     const custoLote = semCusto > 0 ? null : round2(comps.reduce((s, c) => s + (c.custoMedio ?? 0) * c.qtdPlanejada, 0))
-    return { custoLote, custoADefinir: semCusto > 0, semCusto }
-  }, [comps])
+    const lote = parseNum(loteBase)
+    const custoPorUnidade = finalMontadoNaVenda && custoLote != null && lote != null && lote > 0
+      ? round2(custoLote / lote)
+      : null
+    return { custoLote, custoPorUnidade, custoADefinir: semCusto > 0, semCusto }
+  }, [comps, loteBase, finalMontadoNaVenda])
+
+  // margem prévia: com o preço praticado no PDV já pré-preenchido, ela nasce calculada
+  const margemPrevia = useMemo(() => {
+    const p = parseNum(valorVenda)
+    if (!finalMontadoNaVenda || p == null || p <= 0 || custo.custoPorUnidade == null) return null
+    return round2((p - custo.custoPorUnidade) / p)
+  }, [valorVenda, custo.custoPorUnidade, finalMontadoNaVenda])
 
   const addComp = (it: ItemBusca) => {
     if (comps.some((c) => c.itemId === it.id)) return
@@ -124,9 +148,14 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, nomeI
           <label className="text-xs text-slate-500">Unidade
             <select value={unidadeProduzido} onChange={(e) => setUnidadeProduzido(e.target.value as 'KG' | 'UN' | 'LT')} disabled={editando} className="mt-1 block rounded-lg border border-slate-300 py-2 px-3 text-sm disabled:bg-slate-50"><option>UN</option><option>KG</option><option>LT</option></select>
           </label>
-          <label className="text-xs text-slate-500">Tipo
-            <select value={tipoProduto} onChange={(e) => setTipoProduto(e.target.value as 'INTERMEDIARIO' | 'PRODUTO_FINAL')} disabled={editando || !!tipoTravado} className="mt-1 block rounded-lg border border-slate-300 py-2 px-3 text-sm disabled:bg-slate-50"><option value="INTERMEDIARIO">Intermediário</option><option value="PRODUTO_FINAL">Produto final</option></select>
-          </label>
+          {/* ⭐ o TIPO some quando o mundo de origem já respondeu (cardápio = produto final,
+              produção = intermediário). Perguntar de novo é dar chance de errar numa decisão
+              que a tela já tomou — e tipo errado desloca o produto pro mundo errado. */}
+          {!tipoTravado && (
+            <label className="text-xs text-slate-500">Tipo
+              <select value={tipoProduto} onChange={(e) => setTipoProduto(e.target.value as 'INTERMEDIARIO' | 'PRODUTO_FINAL')} disabled={editando} className="mt-1 block rounded-lg border border-slate-300 py-2 px-3 text-sm disabled:bg-slate-50"><option value="INTERMEDIARIO">Intermediário</option><option value="PRODUTO_FINAL">Produto final</option></select>
+            </label>
+          )}
         </div>
         <div className="flex flex-wrap gap-3">
           <label className="text-xs text-slate-500">Setor
@@ -143,9 +172,10 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, nomeI
 
       {/* lote base + preparo */}
       <Card><CardContent className="space-y-3 p-4">
-        <p className="text-sm font-semibold text-slate-900">Lote base (a receita de referência)</p>
+        <p className="text-sm font-semibold text-slate-900">{finalMontadoNaVenda ? 'A receita' : 'Lote base (a receita de referência)'}</p>
+        {finalMontadoNaVenda && <p className="-mt-1 text-[11px] text-slate-400">Deixe em <b>1 UN</b> se a receita abaixo é de UMA unidade vendida (o normal). Só mude se ela rende várias porções.</p>}
         <div className="flex flex-wrap items-end gap-3">
-          <label className="text-xs text-slate-500">Rende a partir de
+          <label className="text-xs text-slate-500">{finalMontadoNaVenda ? 'A receita rende' : 'Rende a partir de'}
             <div className="mt-1 flex items-center gap-1">
               <input value={loteBase} onChange={(e) => setLoteBase(e.target.value)} inputMode="decimal" className="w-24 rounded-lg border border-slate-300 py-2 px-3 text-sm tabular-nums" />
               <select value={unidadeLoteBase} onChange={(e) => setUnidadeLoteBase(e.target.value as 'KG' | 'UN' | 'LT')} className="rounded-lg border border-slate-300 py-2 px-2 text-sm"><option>KG</option><option>UN</option><option>LT</option></select>
@@ -168,12 +198,27 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, nomeI
         <div className="flex items-center justify-between">
           <p className="text-sm font-semibold text-slate-900">Componentes</p>
           <div className="text-right">
-            <p className="text-xs text-slate-500">Custo do lote</p>
-            {custo.custoADefinir ? <p className="text-sm font-semibold text-amber-600">a definir</p> : <p className="text-lg font-semibold tabular-nums text-slate-900">{brl(custo.custoLote)}</p>}
+            <p className="text-xs text-slate-500">{finalMontadoNaVenda ? 'Custo por unidade' : 'Custo do lote'}</p>
+            {custo.custoADefinir ? (
+              <p className="text-sm font-semibold text-amber-600">a definir</p>
+            ) : (
+              <p className="text-lg font-semibold tabular-nums text-slate-900">{brl(finalMontadoNaVenda ? custo.custoPorUnidade : custo.custoLote)}</p>
+            )}
+            {finalMontadoNaVenda && margemPrevia != null && (
+              <p className={`text-[11px] font-medium ${margemPrevia < 0.15 ? 'text-rose-600' : margemPrevia < 0.3 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                margem {Math.round(margemPrevia * 100)}%
+              </p>
+            )}
           </div>
         </div>
         {custo.custoADefinir && <p className="flex items-center gap-1 text-[11px] text-amber-600"><AlertTriangle className="h-3 w-3" /> {custo.semCusto} componente(s) sem custo médio ainda — o custo do produto fica "a definir" (nunca chutamos).</p>}
-        <p className="text-[11px] text-slate-400">Custo por unidade só depois da 1ª produção (o rendimento é medido, não chutado) — hoje: <b>a apurar</b>.</p>
+        {finalMontadoNaVenda ? (
+          <p className="text-[11px] text-slate-400">
+            Produto final <b>monta na venda</b>: o custo por unidade é a soma dos componentes, agora — sem esperar produção.
+          </p>
+        ) : (
+          <p className="text-[11px] text-slate-400">Custo por unidade só depois da 1ª produção (o rendimento é medido, não chutado) — hoje: <b>a apurar</b>.</p>
+        )}
 
         <BuscaItem companyId={companyId} jaAdicionados={comps.map((c) => c.itemId)} onAdd={addComp} />
 
@@ -205,21 +250,29 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, nomeI
   )
 }
 
+// ⭐ BUSCA DE INGREDIENTE (27/08) — por default só o que É ingrediente.
+// A tela estava oferecendo DESENGRAXANTE, SACO DE LIXO e JAPONA DE CÂMARA como componente
+// de lanche: o catálogo inteiro entrava na busca. Agora o servidor filtra (escopo=receita)
+// e ordena intermediário/matéria-prima primeiro. O toggle "mostrar tudo" existe pro caso
+// legítimo raro (embalagem que entra no custo do delivery, por exemplo) — some por default,
+// não desaparece.
 function BuscaItem({ companyId, jaAdicionados, onAdd }: { companyId: string; jaAdicionados: string[]; onAdd: (it: ItemBusca) => void }) {
   const [q, setQ] = useState('')
   const [res, setRes] = useState<ItemBusca[]>([])
   const [aberto, setAberto] = useState(false)
   const [criando, setCriando] = useState(false)
+  const [tudo, setTudo] = useState(false)
   const [novaUnidade, setNovaUnidade] = useState<'KG' | 'UN' | 'LT'>('KG')
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     if (timer.current) clearTimeout(timer.current)
     timer.current = setTimeout(() => {
-      fetch(`/api/empresas/${companyId}/estoque/itens?busca=${encodeURIComponent(q)}`).then((r) => r.json()).then((j) => setRes(j.itens ?? [])).catch(() => setRes([]))
+      const escopo = tudo ? '' : '&escopo=receita'
+      fetch(`/api/empresas/${companyId}/estoque/itens?busca=${encodeURIComponent(q)}${escopo}`).then((r) => r.json()).then((j) => setRes(j.itens ?? [])).catch(() => setRes([]))
     }, 200)
     return () => { if (timer.current) clearTimeout(timer.current) }
-  }, [q, companyId])
+  }, [q, companyId, tudo])
 
   const termo = q.trim()
   const existeExato = res.some((it) => it.nome.toLowerCase() === termo.toLowerCase())
@@ -238,7 +291,12 @@ function BuscaItem({ companyId, jaAdicionados, onAdd }: { companyId: string; jaA
     <div className="relative">
       <div className="relative">
         <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-        <input value={q} onFocus={() => setAberto(true)} onChange={(e) => { setQ(e.target.value); setAberto(true) }} placeholder="buscar insumo (ou criar um que nunca veio em nota)…" className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm" />
+        <input value={q} onFocus={() => setAberto(true)} onChange={(e) => { setQ(e.target.value); setAberto(true) }} placeholder="buscar ingrediente (ou criar um que nunca veio em nota)…" className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-20 text-sm" />
+        <button type="button" onClick={() => setTudo((v) => !v)}
+          className={`absolute right-2 top-1.5 rounded px-1.5 py-1 text-[10px] ${tudo ? 'bg-slate-200 text-slate-700' : 'text-slate-400 hover:text-slate-600'}`}
+          title={tudo ? 'mostrando o catálogo inteiro' : 'mostrando só ingredientes (matéria-prima, produzidos, revenda)'}>
+          {tudo ? 'tudo' : 'só ingredientes'}
+        </button>
       </div>
       {aberto && (res.length > 0 || termo) && (
         <div className="absolute z-10 mt-1 max-h-72 w-full overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg">
@@ -246,7 +304,7 @@ function BuscaItem({ companyId, jaAdicionados, onAdd }: { companyId: string; jaA
             const dentro = jaAdicionados.includes(it.id)
             return (
               <button key={it.id} disabled={dentro} onClick={() => { onAdd(it); setQ(''); setAberto(false) }} className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-slate-50 disabled:opacity-40">
-                <span className="text-slate-700">{it.nome}</span>
+                <span className="text-slate-700">{it.nome}{(it.categoria === 'INTERMEDIARIO' || it.categoria === 'PRODUTO_FINAL') && <span className="ml-1.5 rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] text-violet-700">produzido</span>}{it.categoria === 'REVENDA' && <span className="ml-1.5 rounded-full bg-sky-50 px-1.5 py-0.5 text-[10px] text-sky-700">revenda</span>}</span>
                 <span className="flex items-center gap-2 text-xs text-slate-400">{it.custoMedio != null ? `${brl(it.custoMedio)}/${it.unidadeControle}` : 'sem custo'}{!dentro && <Plus className="h-3.5 w-3.5" />}</span>
               </button>
             )

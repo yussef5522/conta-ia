@@ -149,24 +149,39 @@ export default function ProdutoCardapioPage({ params }: { params: Promise<{ id: 
         </CardContent></Card>
       )}
 
-      {/* SEM FICHA — o caminho de montar, com o nome do PDV já preenchido */}
+      {/* SEM FICHA — os DOIS caminhos resolvem AQUI, com o produto que a tela já conhece */}
       {semFicha && !editandoFicha && (
-        <Card className="border-rose-200"><CardContent className="space-y-2 p-4">
-          <p className="flex items-center gap-1.5 text-sm font-medium text-rose-700"><AlertTriangle className="h-4 w-4" /> Este produto ainda não tem receita.</p>
-          <p className="text-xs text-slate-600">
-            Sem receita a venda dele <b>não baixa estoque</b> e a margem fica desconhecida.
-            {l.vendasQtd > 0 && <> Já foram <b>{l.vendasQtd}</b> unidades vendidas assim.</>}
-          </p>
-          <div className="flex flex-wrap gap-2 pt-1">
-            <button onClick={() => setEditandoFicha(true)}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#185FA5] px-3 text-xs font-semibold text-white hover:bg-[#0F4A8C]">
-              <UtensilsCrossed className="h-3.5 w-3.5" /> Montar a receita
-            </button>
-            <a href={`/empresas/${id}/estoque/vendas`}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-3 text-xs text-slate-600 hover:bg-slate-50">
-              <PackageSearch className="h-3.5 w-3.5" /> É bebida/revenda? mapear lá
-            </a>
+        <Card className="border-rose-200"><CardContent className="space-y-3 p-4">
+          <div>
+            <p className="flex items-center gap-1.5 text-sm font-medium text-rose-700"><AlertTriangle className="h-4 w-4" /> Este produto ainda não tem receita.</p>
+            <p className="mt-1 text-xs text-slate-600">
+              Sem receita a venda dele <b>não baixa estoque</b> e a margem fica desconhecida.
+              {l.vendasQtd > 0 && <> Já foram <b>{l.vendasQtd}</b> unidades vendidas assim.</>}
+            </p>
           </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            {/* caminho A: é feito na casa → receita */}
+            <div className="rounded-lg border border-slate-200 p-3">
+              <p className="text-xs font-medium text-slate-800">É feito aqui (lanche, pizza, porção)</p>
+              <p className="mt-0.5 text-[11px] text-slate-500">Monte a receita: a venda passa a baixar cada ingrediente.</p>
+              <button onClick={() => setEditandoFicha(true)}
+                className="mt-2 inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#185FA5] px-3 text-xs font-semibold text-white hover:bg-[#0F4A8C]">
+                <UtensilsCrossed className="h-3.5 w-3.5" /> Montar a receita
+              </button>
+            </div>
+
+            {/* caminho B: revenda — INLINE, sem sair (o hub já sabe qual é o produto) */}
+            <div className="rounded-lg border border-slate-200 p-3">
+              <p className="text-xs font-medium text-slate-800">É revenda (bebida, água, cerveja)</p>
+              <p className="mt-0.5 text-[11px] text-slate-500">Aponte o item do estoque: o custo vem da nota e a margem sai na hora.</p>
+              <MapearRevenda companyId={id} chave={chave} onMapeado={(nova) => { window.location.href = `/empresas/${id}/estoque/cardapio/${encodeURIComponent(nova)}` }} />
+            </div>
+          </div>
+
+          <a href={`/empresas/${id}/estoque/vendas`} className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-slate-600">
+            <PackageSearch className="h-3 w-3" /> ver todos os mapeamentos do PDV
+          </a>
         </CardContent></Card>
       )}
 
@@ -177,8 +192,10 @@ export default function ProdutoCardapioPage({ params }: { params: Promise<{ id: 
             <p className="text-sm font-semibold text-slate-900">{l.fichaId ? 'Editar a receita' : 'Montar a receita'}</p>
             <button onClick={() => setEditandoFicha(false)} className="text-xs text-slate-400 hover:text-slate-600">fechar</button>
           </div>
+          {/* ⭐ preço PRÉ-PREENCHIDO com o praticado no PDV: a margem já nasce calculada em
+              vez de o dono ter que digitar um número que o sistema já sabe. Editável. */}
           <FichaEditor companyId={id} fichaId={l.fichaId ?? undefined} tipoTravado="PRODUTO_FINAL"
-            nomeInicial={l.nomesSuitable[0] ?? l.nome} voltarPara={voltar} />
+            nomeInicial={l.nomesSuitable[0] ?? l.nome} precoInicial={l.precoPraticado} voltarPara={voltar} />
         </CardContent></Card>
       )}
 
@@ -256,13 +273,72 @@ export default function ProdutoCardapioPage({ params }: { params: Promise<{ id: 
         </Card>
       )}
 
-      {/* revenda: não tem receita e está tudo certo assim */}
+      {/* revenda: não tem receita e está tudo certo assim.
+          ⚠️ o preço PRATICADO já vem do PDV e o custo vem da nota — por isso a margem fecha
+          sozinha assim que o item é apontado: não há nada pra cadastrar. */}
       {!editandoFicha && l.status === 'REVENDA' && (
         <Card><CardContent className="space-y-1 p-4">
           <p className="text-sm font-medium text-slate-800">Revenda — não precisa de receita.</p>
           <p className="text-xs text-slate-500">O custo vem direto da nota de compra e a venda baixa a unidade do estoque.</p>
         </CardContent></Card>
       )}
+    </div>
+  )
+}
+
+// ⭐ MAPEAR REVENDA SEM SAIR DO HUB (27/08). O caminho antigo ("é bebida? mapear lá") jogava
+// na tela genérica do Suitable e o dono tinha que ACHAR o produto de novo numa lista de 80 —
+// o hub já sabia qual era. Aqui a lista é SÓ de itens categoria REVENDA (o guard dos 3
+// níveis vive no servidor, em `upsertVendaMap`; isto é a comodidade, não a regra).
+function MapearRevenda({ companyId, chave, onMapeado }: { companyId: string; chave: string; onMapeado: (novaChave: string) => void }) {
+  const [itens, setItens] = useState<{ id: string; nome: string; custoMedio: number | null }[] | null>(null)
+  const [sel, setSel] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch(`/api/empresas/${companyId}/estoque/itens?categoria=REVENDA`)
+      .then((r) => r.json()).then((j) => setItens(j.itens ?? [])).catch(() => setItens([]))
+  }, [companyId])
+
+  const salvar = async () => {
+    if (!sel) return
+    setBusy(true); setErro(null)
+    try {
+      const r = await fetch(`/api/empresas/${companyId}/estoque/cardapio/${chave}/mapear`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ itemId: sel }),
+      })
+      const j = await r.json().catch(() => null)
+      if (!r.ok) { setErro(j?.erro ?? 'Não consegui mapear.'); return }
+      onMapeado(j.chave)
+    } finally { setBusy(false) }
+  }
+
+  if (itens === null) return <p className="mt-2 text-[11px] text-slate-400">carregando itens…</p>
+  if (itens.length === 0) return (
+    <p className="mt-2 text-[11px] text-amber-600">
+      Nenhum item de revenda no catálogo ainda — ele nasce quando a bebida entra por nota (ou pelo Catálogo).
+    </p>
+  )
+
+  const escolhido = itens.find((i) => i.id === sel)
+  return (
+    <div className="mt-2 space-y-1.5">
+      <div className="flex items-center gap-1.5">
+        <select value={sel} onChange={(e) => setSel(e.target.value)}
+          className="h-8 min-w-0 flex-1 rounded-lg border border-slate-300 px-2 text-xs">
+          <option value="">escolha o item…</option>
+          {itens.map((i) => <option key={i.id} value={i.id}>{i.nome}{i.custoMedio != null ? ` — ${brl(i.custoMedio)}` : ' — sem custo'}</option>)}
+        </select>
+        <button onClick={salvar} disabled={!sel || busy}
+          className="inline-flex h-8 shrink-0 items-center gap-1 rounded-lg bg-[#185FA5] px-2.5 text-xs font-semibold text-white disabled:opacity-40">
+          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} mapear
+        </button>
+      </div>
+      {escolhido && escolhido.custoMedio == null && (
+        <p className="text-[11px] text-amber-600">Este item ainda não tem custo (nunca veio em nota) — a margem fica "a definir" até a 1ª compra.</p>
+      )}
+      {erro && <p className="text-[11px] text-rose-600">{erro}</p>}
     </div>
   )
 }
