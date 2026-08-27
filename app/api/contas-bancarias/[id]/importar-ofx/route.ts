@@ -193,7 +193,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       // GATILHO DE VENDAS (fail-soft, APÓS o commit): o import pode ter criado venda
       // nova → recompute a VendaDiaria da empresa. NUNCA derruba o import — se falhar,
       // loga e segue; o juiz noturno pega (V1 vermelho de manhã). Por companyId.
-      await recomputeVendasSafe(prisma, conta.companyId)
+      await recomputeVendasSafe(prisma, conta.companyId, 'import-ofx/confirm')
       // Contrato: mantém os campos essenciais do legado (`mensagem`,
       // `inseridas`, `duplicadas`, `importId`, `errosParser`) + adiciona
       // métricas novas do V2 (preview/orphan/ledgerBalance).

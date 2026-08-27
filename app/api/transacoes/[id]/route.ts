@@ -272,7 +272,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
     // recompute atualiza a VendaDiaria. Por companyId, nunca global; nunca derruba
     // a resposta (o juiz noturno pega). recategorizar venda→não-venda também dispara.
     if (antiga.bankAccount?.companyId) {
-      await recomputeVendasSeVenda(prisma, antiga.bankAccount.companyId, [antiga.categoryId, categoryIdFinal])
+      await recomputeVendasSeVenda(prisma, antiga.bankAccount.companyId, [antiga.categoryId, categoryIdFinal], 'PATCH /api/transacoes/[id]')
     }
 
     return NextResponse.json({ transacao, vendorMemory })

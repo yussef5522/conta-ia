@@ -178,7 +178,7 @@ export async function createContaPendente(
   // do estoque passam todos por aqui). Só morde no "lança já paga" com categoria de
   // venda numa conta com regra — nos outros casos a tx nasce sem bankAccountId e o
   // motor nem enxerga. fail-soft: nunca derruba a criação da conta.
-  await recomputeVendasSeVenda(prisma, input.companyId, [input.categoryId])
+  await recomputeVendasSeVenda(prisma, input.companyId, [input.categoryId], 'createContaPendente')
 
   return transaction
 }

@@ -288,7 +288,7 @@ export async function POST(request: NextRequest) {
     // GATILHO DO MOTOR DE VENDAS (25/08): conciliar ATRIBUI categoria a transação do
     // extrato — é caminho de categorização como qualquer outro. fail-soft e no-op
     // quando nenhuma das categorias é de venda.
-    await recomputeVendasSeVenda(prisma, companyId, adjustments.map((a) => a.categoryId))
+    await recomputeVendasSeVenda(prisma, companyId, adjustments.map((a) => a.categoryId), 'conciliacao/reconcile')
 
     return NextResponse.json({
       ok: true,

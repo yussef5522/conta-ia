@@ -167,8 +167,14 @@ export default function PerfilPage({
         if (rec) setRecurring(rec)
         if (bs) setBridgesSummary(bs)
         if (evo?.months) setEvolution(evo.months)
-        if (txs?.transactions) {
-          const allTxs = txs.transactions as RecentTxJson[]
+        // ⚠️ CONTRATO (27/08): o endpoint devolve `items`, não `transactions`. A home
+        // lia a chave errada, o `if` nunca entrava e a lista de movimentações ficava
+        // vazia — SEM ERRO NENHUM. Mesmo bug do "Nenhum cartão cadastrado": o `?.`
+        // engole a ausência e o empty state parece resposta legítima.
+        // Aceita as duas por segurança (endpoints antigos podem devolver a outra).
+        const listaTx = (txs?.items ?? txs?.transactions) as RecentTxJson[] | undefined
+        if (listaTx) {
+          const allTxs = listaTx
           setRecentTxs(allTxs.slice(0, 20))
           setPendingCount(allTxs.filter((t) => t.status === 'PENDING').length)
         }

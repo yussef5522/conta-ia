@@ -55,7 +55,7 @@ export async function PATCH(request: NextRequest) {
     const empresas = new Set(antes.map((t) => t.bankAccount?.companyId).filter((c): c is string => !!c))
     for (const companyId of empresas) {
       const catsDaEmpresa = antes.filter((t) => t.bankAccount?.companyId === companyId).map((t) => t.categoryId)
-      await recomputeVendasSeVenda(prisma, companyId, [...catsDaEmpresa, data.categoryId])
+      await recomputeVendasSeVenda(prisma, companyId, [...catsDaEmpresa, data.categoryId], 'POST /api/transacoes/lote')
     }
 
     return NextResponse.json({

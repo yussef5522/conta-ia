@@ -38,6 +38,11 @@ export async function GET(
   const { id } = await params
   try {
     const summary = await getProfileCreditSummary(user.sub, id)
+    const doPerfil = await prisma.creditCard.findMany({
+      where: { profileId: id }, select: { id: true, name: true, lastDigits: true, brand: true },
+    })
+    const nomePorCartao = new Map(doPerfil.map((c) => [c.id, c.lastDigits ? `${c.name} ****${c.lastDigits}` : c.name]))
+    const brandPorCartao = new Map(doPerfil.map((c) => [c.id, c.brand]))
 
     // Top categorias EM compras de cartão (últimos 90 dias)
     const since = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)
@@ -95,8 +100,28 @@ export async function GET(
       .sort((a, b) => a.reference.localeCompare(b.reference))
       .slice(-12) // últimos 12 meses
 
+    // ⚠️ CONTRATO QUEBRADO (27/08): a home do PF lia `cards` e `summary.totalDue`, e
+    // este endpoint devolvia `summary.byCard` sem `totalDue`. Resultado: `cards ?? []`
+    // virava lista vazia e a tela dizia **"Nenhum cartão cadastrado"** enquanto a tela
+    // de Cartões mostrava o banrisul PF normalmente — duas telas, mesma fonte, uma
+    // cega. ⚠️ O empty state MENTIU com cara de verdade: "nenhum cartão" é uma resposta
+    // plausível, então ninguém desconfia. Bug de contrato não dá erro — dá silêncio.
+    const cards = summary.byCard.map((c) => ({
+      id: c.cardId,
+      name: nomePorCartao.get(c.cardId) ?? '',
+      brand: brandPorCartao.get(c.cardId) ?? null,
+      creditLimit: c.creditLimit,
+      used: c.limitUsed,
+      usedPercent: c.limitUsedPercent,
+      invoiceOpenAmount: c.currentInvoice
+        ? Math.max(0, c.currentInvoice.totalAmount - c.currentInvoice.paidAmount)
+        : 0,
+    }))
+    const totalDue = cards.reduce((s, c) => s + c.invoiceOpenAmount, 0)
+
     return NextResponse.json({
-      summary,
+      summary: { ...summary, totalDue: Math.round((totalDue + 1e-9) * 100) / 100 },
+      cards,
       topCategoriesOnCards,
       invoiceHistory,
     })

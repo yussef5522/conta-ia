@@ -338,7 +338,7 @@ export async function POST(request: NextRequest) {
     // transação nasceu categorizada como Receita de Vendas, e o calendário de vendas
     // NUNCA soube dela (3.135 de 24/08 e 942 de 25/08 ficaram órfãos).
     // fail-soft e só recomputa se a categoria for de venda — no-op nos outros casos.
-    await recomputeVendasSeVenda(prisma, conta.companyId, [transacao.categoryId])
+    await recomputeVendasSeVenda(prisma, conta.companyId, [transacao.categoryId], 'POST /api/transacoes')
 
     return NextResponse.json({ transacao }, { status: 201 })
   } catch (error) {
