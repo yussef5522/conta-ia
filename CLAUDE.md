@@ -408,7 +408,29 @@ Alinhados com padrão de mercado (Modern Treasury / Fintech Engineering Handbook
 
 **REGRA 1 provada** no filtro (o único dos 4 que é comportamento de servidor): **sem o fix 2 vermelhos, com o fix 6 verdes**. **PROVADO EM PROD:** busca de ingrediente **47 → 40 itens, ZERO de limpeza/uso interno**, com a "porção de carne 100g" (R$ 3,62, custo real da 1ª produção) no topo · dropdown de revenda com **21 itens** · Xis com preço praticado **23,37** e Coca **17,00** prontos pra pré-preencher. 14 testes novos (29 no módulo).
 
-**PENDENTE (REGRA 2):** o dono validar no notebook e no celular.
+**⭐⭐ UNIDADE DE CONSUMO ≠ UNIDADE DE COMPRA (27/08, commits `850e5b9` + `7752acc`) — o caso do PÃO.**
+
+**O CASO:** o dono foi montar a ficha do xis e o `PAO TRADICIONAL GERGELIM CT PC/12 UN (900G) CX/16 PC` estava controlado em **PACOTE** (64 PC a R$ 27,75), mas a receita usa **1 PÃO** (R$ 2,31). Pôr `1` na ficha baixaria **um pacote inteiro por lanche — 12× a mais** — e o Real vs Teórico apontaria um rombo que não existe. É a família do fator da Skol, com uma diferença: lá a conversão acontece na conferência; aqui **o item já nasceu na régua errada**.
+
+**`lib/stock/reunitizar-item.ts`** (caminho (a), o que o dono escolheu): troca a unidade de controle do item existente.
+- **⭐ A INVARIANTE QUE TRAVA TUDO: o VALOR em R$ não muda.** Quantidade × fator · custo ÷ fator · **valor idêntico ao centavo** — checado em RUNTIME (lança se divergir) e em teste. Se o dinheiro mudasse, a reunitização estaria inventando ou destruindo valor.
+- **O LEDGER CONTINUA IMUTÁVEL:** correção = **ESTORNO + movimento novo**, nunca UPDATE. O original fica e o histórico de compras segue legível (data/nota/fornecedor pelo `receiptId`).
+- **⚠️ CUSTO EM PRECISÃO CHEIA:** 27,75 ÷ 12 = **2,3125** no ledger. Arredondar pra 2,31 faria 768 × 2,31 = 1.774,08 ≠ 1.776,00 e **o CHECK do banco recusaria** (o mesmo que mordeu na conclusão de produção). **Quem arredonda é a LEITURA** — o custo médio derivado mostra 2,31, o número que o dono citou.
+- **VÃO JUNTO ou o bug volta sozinho:** o **fator APRENDIDO** da nota (**16 CX→PC vira 192 CX→pães**; sem isso a próxima nota reentra na régua antiga) e o **mín/máx** (escritos na régua antiga, virariam alarme falso).
+- **RECUSA item já usado em ficha:** a receita foi escrita na régua antiga e passaria a significar outra coisa em silêncio. Instrui em vez de converter por debaixo.
+- **UI:** bloco discreto na ficha do item ("A unidade está errada?") com **prévia obrigatória** mostrando antes/depois e a âncora *"o valor em estoque não muda"*.
+
+**EXECUTADO EM PROD** (`pg_dump pre-reunitizar-pao-20260827-163634`, 4.8M): **64 PC → 768 pães · R$ 2,31 · valor 1.776,00 idêntico · fator 16 → 192**. Ledger com as 3 linhas (original + estorno + nova a 2,3125).
+
+**⚠️⚠️ E O JUIZ PEGOU UM BUG MAIOR QUE A MINHA MUDANÇA — o E2 era INCOMPATÍVEL COM A CORREÇÃO DO PRÓPRIO MÓDULO.** Depois da conversão o juiz ficou 🔴: *"2 itens conferidos vs 3 movimentos ENTRADA_NF"*. **A causa não foi a reunitização:** o E2 contava `ENTRADA_NF` **CRU** por `receiptId`, e correção neste módulo é **sempre** estorno + novo (ledger imutável). Ou seja, **bastava corrigir um item de nota, por qualquer caminho, pra o juiz acusar um rombo que não existe** — o invariante contradizia a disciplina que o próprio módulo documenta. **Fix:** conta **LÍQUIDO** (entrada estornada não vale). REGRA 1 nos dois sentidos: com o `count` antigo os 2 testes novos ficam vermelhos, **e o E2 continua mordendo quando falta movimento de verdade** (estornar sem recriar) — o estorno não virou desculpa universal. **Juiz em prod depois: 🟢 0 issues.** **LIÇÃO: invariante que conta LINHA em ledger imutável envelhece mal — toda correção legítima vira alarme falso, e alarme falso é pior que alarme nenhum.**
+
+**QUEIJO: nada a fazer** — `MUSSARELA EM PECA 02 KG` já está em **KG (31,90)** e a ficha aceita decimal. Teste trava **0,080 KG × 31,90 = subtotal 2,55**.
+
+**PREFILL (nome + preço do PDV):** os props existiam e estavam no bundle servido, mas o dono viu campos vazios — **não reproduzi a causa**. Tornei robusto: agora também se aplicam **quando chegam** (`useEffect`), não só na montagem, e **só em campo intocado** (nunca sobrescreve o que o dono digitou).
+
+⚠️ **O guard estrutural pegou um erro MEU no caminho:** o GET da prévia pedia `stock.manage` e a regra é *"ler nunca exige gerenciar"*. **Corrigi a ROTA, não o guard.**
+
+**PENDENTE (REGRA 2):** o dono validar no notebook e no celular, e montar o Xis Completo inteiro.
 
 ## 🗺️ O QUE FALTA PRO MÓDULO DE ESTOQUE FECHAR (atualizado 24/08/2026)
 
