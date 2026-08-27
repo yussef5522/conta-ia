@@ -1,9 +1,10 @@
-// ESTOQUE FASE 2 item 2.4 — sugestão (min/max) + cardápio/margem. Executa a lógica real.
+// ESTOQUE FASE 2 item 2.4 — sugestão de produção (min/max). Executa a lógica real.
+// (o cardápio/margem saiu daqui em 27/08 → lib/stock/cardapio/__tests__/hub.integration)
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { prisma } from '@/lib/db'
 import { criarFicha } from '../fichas'
-import { sugestoesDeProducao, cardapio, cardapioToCsv } from '../sugestao-cardapio'
+import { sugestoesDeProducao } from '../sugestao-cardapio'
 
 const CNPJ = '60606060000160'
 let companyId: string
@@ -39,24 +40,5 @@ describe('sugestão de produção (min/max)', () => {
     expect(sug[0].saldo).toBe(0)
     expect(sug[0].faltam).toBe(50) // até o máximo
     expect(sug[0].escalaSugerida).toBeNull() // sem rendimento ainda → a apurar
-  })
-})
-
-describe('cardápio/margem', () => {
-  it('produto final sem preço → "a definir" (margem null), no topo; com preço → margem', async () => {
-    // A: sem preço
-    await criarFicha({ companyId, nomeProduzido: 'Prato A', unidadeProduzido: 'UN', tipoProduto: 'PRODUTO_FINAL', loteBase: 1, unidadeLoteBase: 'UN', componentes: [{ itemId: insumoId, qtdPlanejada: 1, unidade: 'KG' }] }, prisma)
-    // B: com preço 20 e custo real 8 (via movimento no produzido)
-    const b = await criarFicha({ companyId, nomeProduzido: 'Prato B', unidadeProduzido: 'UN', tipoProduto: 'PRODUTO_FINAL', valorVenda: 20, loteBase: 1, unidadeLoteBase: 'UN', componentes: [{ itemId: insumoId, qtdPlanejada: 1, unidade: 'KG' }] }, prisma)
-    await prisma.stockMovement.create({ data: { companyId, itemId: b.itemProduzidoId, tipo: 'PRODUCAO_GERACAO', quantidade: 10, custoUnitario: 8, custoTotal: 80, origem: 'MANUAL' } })
-
-    const c = await cardapio(companyId, prisma)
-    expect(c).toHaveLength(2)
-    expect(c[0].valorVenda).toBeNull() // "a definir" primeiro
-    expect(c[0].margem).toBeNull()
-    const pratoB = c.find((x) => x.nome === 'Prato B')!
-    expect(pratoB.custoUnitario).toBe(8) // real do ledger
-    expect(pratoB.margem).toBe(0.6) // (20 − 8) / 20
-    expect(cardapioToCsv(c)).toContain('a definir')
   })
 })

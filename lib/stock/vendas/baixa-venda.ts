@@ -12,14 +12,18 @@ import { custoMedioPorItem, recomputeSaldoCache } from '../saldo'
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 const TIPO_BAIXA = 'BAIXA_VENDA'
 
-interface Ctx {
+// ⭐ EXPORTADOS (27/08) pro hub do cardápio calcular o custo do produto pela MESMA explosão
+// que a venda usa pra BAIXAR. Se o cardápio tivesse fórmula própria, o custo da tela e o
+// custo que sai do estoque divergiriam no 1º caso de borda — a doença dos 7 detectores de
+// par. Nenhuma linha de lógica mudou aqui: só a visibilidade.
+export interface Ctx {
   componentesByFicha: Map<string, { itemId: string; qtdPlanejada: number }[]>
   fichaByItemProduzido: Map<string, { id: string; tipoProduto: string }>
   fichaById: Map<string, { id: string; tipoProduto: string; itemProduzidoId: string }>
   nomeItem: Map<string, string>
 }
 
-async function montarCtx(companyId: string, db: PrismaClient): Promise<Ctx> {
+export async function montarCtx(companyId: string, db: PrismaClient): Promise<Ctx> {
   const fichas = await db.stockFicha.findMany({ where: { companyId, ativo: true }, select: { id: true, tipoProduto: true, itemProduzidoId: true, versaoAtual: true } })
   const componentesByFicha = new Map<string, { itemId: string; qtdPlanejada: number }[]>()
   for (const f of fichas) {
@@ -38,7 +42,7 @@ async function montarCtx(companyId: string, db: PrismaClient): Promise<Ctx> {
 
 /** Explode um alvo (ficha ou item) × qtd em baixas por item (LEAF). PRODUTO_FINAL explode;
  *  intermediário/raw/revenda baixa direto. Recursão limitada (o ciclo já é bloqueado na ficha). */
-function explodir(alvo: { tipo: 'REVENDA'; itemId: string } | { tipo: 'FICHA'; fichaId: string }, qtd: number, ctx: Ctx, acc: Map<string, number>, depth = 0): void {
+export function explodir(alvo: { tipo: 'REVENDA'; itemId: string } | { tipo: 'FICHA'; fichaId: string }, qtd: number, ctx: Ctx, acc: Map<string, number>, depth = 0): void {
   if (depth > 12) throw new Error('Explosão de venda muito profunda (ciclo?).')
   if (alvo.tipo === 'REVENDA') { acc.set(alvo.itemId, round2((acc.get(alvo.itemId) ?? 0) + qtd)); return }
   const comps = ctx.componentesByFicha.get(alvo.fichaId) ?? []

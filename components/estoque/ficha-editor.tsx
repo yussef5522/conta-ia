@@ -17,14 +17,28 @@ const brl = (n: number | null) => (n == null ? '—' : n.toLocaleString('pt-BR',
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 const parseNum = (s: string) => { const t = s.trim().replace(',', '.'); const n = Number(t); return t === '' || !Number.isFinite(n) ? null : n }
 
-export function FichaEditor({ companyId, fichaId }: { companyId: string; fichaId?: string }) {
+// ⭐ EDITOR ÚNICO, DOIS MUNDOS (27/08 — REGRA 4). O cardápio (casa do dono) e as receitas de
+// produção (casa da cozinha) abrem ESTE MESMO editor, cada um com o tipo TRAVADO e o
+// "voltar" apontando pro seu lugar. Um segundo editor divergiria na primeira regra nova.
+export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, nomeInicial }: {
+  companyId: string
+  fichaId?: string
+  /** trava o tipo do produto (o mundo de onde o editor foi aberto) */
+  tipoTravado?: 'INTERMEDIARIO' | 'PRODUTO_FINAL'
+  /** pra onde voltar ao salvar/cancelar (default: a lista de fichas) */
+  voltarPara?: string
+  /** nome pré-preenchido (vem do PDV quando o dono monta a ficha de um produto vendido) */
+  nomeInicial?: string
+}) {
   const editando = !!fichaId
   // pré-preenche nome/tipo quando vem do mapeamento de vendas (?nome=&tipo=PRODUTO_FINAL)
   const qp = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
+  const voltar = voltarPara ?? `/empresas/${companyId}/estoque/fichas`
   const [carregando, setCarregando] = useState(editando)
-  const [nomeProduzido, setNomeProduzido] = useState(!editando ? qp?.get('nome') ?? '' : '')
+  const [nomeProduzido, setNomeProduzido] = useState(!editando ? nomeInicial ?? qp?.get('nome') ?? '' : '')
   const [unidadeProduzido, setUnidadeProduzido] = useState<'KG' | 'UN' | 'LT'>('UN')
-  const [tipoProduto, setTipoProduto] = useState<'INTERMEDIARIO' | 'PRODUTO_FINAL'>(!editando && qp?.get('tipo') === 'PRODUTO_FINAL' ? 'PRODUTO_FINAL' : 'INTERMEDIARIO')
+  const [tipoProduto, setTipoProduto] = useState<'INTERMEDIARIO' | 'PRODUTO_FINAL'>(
+    tipoTravado ?? (!editando && qp?.get('tipo') === 'PRODUTO_FINAL' ? 'PRODUTO_FINAL' : 'INTERMEDIARIO'))
   const [setorId, setSetorId] = useState<string>('')
   const [valorVenda, setValorVenda] = useState('')
   const [loteBase, setLoteBase] = useState('1')
@@ -92,7 +106,7 @@ export function FichaEditor({ companyId, fichaId }: { companyId: string; fichaId
       }
       const j = await r.json().catch(() => null)
       if (!r.ok) { setErro(j?.erro ?? 'Não consegui salvar.'); return }
-      window.location.href = `/empresas/${companyId}/estoque/fichas`
+      window.location.href = voltar
     } catch { setErro('Falha de conexão.') } finally { setSalvando(false) }
   }
 
@@ -111,7 +125,7 @@ export function FichaEditor({ companyId, fichaId }: { companyId: string; fichaId
             <select value={unidadeProduzido} onChange={(e) => setUnidadeProduzido(e.target.value as 'KG' | 'UN' | 'LT')} disabled={editando} className="mt-1 block rounded-lg border border-slate-300 py-2 px-3 text-sm disabled:bg-slate-50"><option>UN</option><option>KG</option><option>LT</option></select>
           </label>
           <label className="text-xs text-slate-500">Tipo
-            <select value={tipoProduto} onChange={(e) => setTipoProduto(e.target.value as 'INTERMEDIARIO' | 'PRODUTO_FINAL')} disabled={editando} className="mt-1 block rounded-lg border border-slate-300 py-2 px-3 text-sm disabled:bg-slate-50"><option value="INTERMEDIARIO">Intermediário</option><option value="PRODUTO_FINAL">Produto final</option></select>
+            <select value={tipoProduto} onChange={(e) => setTipoProduto(e.target.value as 'INTERMEDIARIO' | 'PRODUTO_FINAL')} disabled={editando || !!tipoTravado} className="mt-1 block rounded-lg border border-slate-300 py-2 px-3 text-sm disabled:bg-slate-50"><option value="INTERMEDIARIO">Intermediário</option><option value="PRODUTO_FINAL">Produto final</option></select>
           </label>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -185,7 +199,7 @@ export function FichaEditor({ companyId, fichaId }: { companyId: string; fichaId
       {erro && <p className="text-sm text-rose-600">{erro}</p>}
       <div className="flex items-center gap-3">
         <button onClick={salvar} disabled={salvando} className="inline-flex items-center gap-2 rounded-lg bg-[#185FA5] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#0F4A8C] disabled:opacity-60">{salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}{editando ? 'Salvar (cria versão nova se mudou o corpo)' : 'Criar ficha'}</button>
-        <a href={`/empresas/${companyId}/estoque/fichas`} className="text-sm text-slate-500 hover:text-slate-700">cancelar</a>
+        <a href={voltar} className="text-sm text-slate-500 hover:text-slate-700">cancelar</a>
       </div>
     </div>
   )

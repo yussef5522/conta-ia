@@ -1,100 +1,250 @@
 'use client'
 
-// ESTOQUE FASE 2 item 2.4 — CARDÁPIO/MARGEM (PRODUTO_FINAL). Custo (real do ledger) ·
-// preço de venda (editável inline, salva no valorVenda da ficha) · margem ao vivo. "a
-// definir" agrupado no topo cobrando preenchimento — NUNCA 0,01, NUNCA -99% eterno. CSV.
+// ESTOQUE — HUB DO CARDÁPIO (27/08). A CASA DO DONO: a lista do que se VENDE.
+//
+// Padrão dos líderes (MarketMan/Apicbase): MENU-FIRST. A lista não é de fichas — é dos
+// PRODUTOS VENDIDOS, e a ficha é um atributo ("tem receita? está completa?"). Por isso o
+// produto que vendeu 57× e não tem ficha aparece em VERMELHO no topo: é o trabalho a fazer,
+// não uma ausência a esconder.
+//
+// Onboarding pelo VOLUME: o banner aponta o campeão de vendas sem ficha. O dono monta o
+// cardápio na ordem que importa pro bolso dele, não na ordem alfabética.
+//
+// Anatomia da família: StatCards clicáveis (filtram) · cabeçalho de 1 linha · filtros h-9 ·
+// tabela density-normal · régua de totais · mobile em cards.
 
-import { useEffect, useState, use } from 'react'
+import { useEffect, useMemo, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
-import { UtensilsCrossed, Loader2, Download, Check } from 'lucide-react'
+import { StatCard, StatCardGrid } from '@/components/ui/stat-card'
+import { TotalsBar } from '@/components/ui/totals-bar'
+import { SortableTh, useSort } from '@/components/ui/sortable-th'
+import { UtensilsCrossed, Loader2, Download, Search, AlertTriangle, ChevronRight, Sparkles, CircleDollarSign, PackageCheck, HelpCircle } from 'lucide-react'
 
-interface Item { fichaId: string; itemProduzidoId: string; nome: string; unidade: string; custoUnitario: number | null; custoOrigem: string | null; valorVenda: number | null; margem: number | null }
+type Status = 'SEM_DESTINO' | 'SEM_FICHA' | 'REVENDA' | 'FICHA_INCOMPLETA' | 'FICHA_OK'
+interface Linha {
+  chave: string; nome: string; nomesSuitable: string[]
+  destinoTipo: 'FICHA' | 'REVENDA' | null; fichaId: string | null; itemId: string | null
+  status: Status; vendasQtd: number; vendasValor: number
+  custoUnitario: number | null; componentesSemCusto: number
+  precoCardapio: number | null; precoPraticado: number | null
+  precoUsado: number | null; precoOrigem: 'praticado' | 'cardapio' | null; margem: number | null
+}
+interface Hub {
+  linhas: Linha[]
+  periodo: { desde: string | null; ate: string | null; dias: number | null }
+  campeaoSemFicha: { nome: string; vendasQtd: number } | null
+  totais: { produtos: number; vendasQtd: number; vendasValor: number; semDestino: number; semCusto: number }
+}
 
 const brl = (n: number | null) => (n == null ? '—' : n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }))
-const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
-const parseNum = (s: string) => { const n = Number((s ?? '').replace(',', '.')); return s.trim() === '' || !Number.isFinite(n) ? null : n }
+const fmtDia = (iso: string | null) => (iso ? iso.split('-').reverse().join('/') : '—')
 
-export default function CardapioPage({ params }: { params: Promise<{ id: string }> }) {
+const BADGE: Record<Status, { txt: string; cls: string }> = {
+  SEM_DESTINO: { txt: 'sem ficha', cls: 'bg-rose-50 text-rose-700 ring-rose-200' },
+  SEM_FICHA: { txt: 'ficha removida', cls: 'bg-rose-50 text-rose-700 ring-rose-200' },
+  FICHA_INCOMPLETA: { txt: 'ficha incompleta', cls: 'bg-amber-50 text-amber-700 ring-amber-200' },
+  REVENDA: { txt: 'revenda', cls: 'bg-sky-50 text-sky-700 ring-sky-200' },
+  FICHA_OK: { txt: 'completa', cls: 'bg-emerald-50 text-emerald-700 ring-emerald-200' },
+}
+type Filtro = 'todos' | 'semficha' | 'semcusto' | 'ok'
+type Col = 'nome' | 'vendas' | 'custo' | 'preco' | 'margem'
+
+export default function CardapioHubPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
-  const [itens, setItens] = useState<Item[] | null | undefined>(undefined)
+  const [hub, setHub] = useState<Hub | null | undefined>(undefined)
+  const [busca, setBusca] = useState('')
+  const [filtro, setFiltro] = useState<Filtro>('todos')
+  const { col, dir, alternar, ordenar } = useSort<Col>('vendas', 'desc')
 
-  const carregar = () => fetch(`/api/empresas/${id}/estoque/cardapio`).then((r) => r.json()).then((j) => setItens(j.itens ?? [])).catch(() => setItens(null))
-  useEffect(() => { carregar() }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    fetch(`/api/empresas/${id}/estoque/cardapio`)
+      .then((r) => r.json()).then(setHub).catch(() => setHub(null))
+  }, [id])
 
-  if (itens === undefined) return <div className="p-6"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
-  if (itens === null) return <div className="p-6 text-sm text-slate-500">Não consegui carregar o cardápio.</div>
+  const linhas = useMemo(() => {
+    if (!hub) return []
+    const q = busca.trim().toLowerCase()
+    const filtradas = hub.linhas.filter((l) => {
+      if (filtro === 'semficha' && l.status !== 'SEM_DESTINO' && l.status !== 'SEM_FICHA') return false
+      if (filtro === 'semcusto' && l.custoUnitario != null) return false
+      if (filtro === 'ok' && l.status !== 'FICHA_OK' && l.status !== 'REVENDA') return false
+      if (q && !l.nome.toLowerCase().includes(q) && !l.nomesSuitable.some((n) => n.toLowerCase().includes(q))) return false
+      return true
+    })
+    return ordenar(filtradas, (l, c) =>
+      c === 'nome' ? l.nome : c === 'vendas' ? l.vendasQtd : c === 'custo' ? l.custoUnitario
+      : c === 'preco' ? l.precoUsado : l.margem)
+  }, [hub, busca, filtro, ordenar])
 
-  const semPreco = itens.filter((i) => i.valorVenda == null).length
+  if (hub === undefined) return <div className="p-6"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
+  if (hub === null) return <div className="p-6 text-sm text-slate-500">Não consegui carregar o cardápio.</div>
+
+  const t = hub.totais
+  const abrir = (l: Linha) => { window.location.href = `/empresas/${id}/estoque/cardapio/${encodeURIComponent(l.chave)}` }
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center gap-3">
-        <UtensilsCrossed className="h-5 w-5 text-[#185FA5]" />
-        <div className="flex-1"><h1 className="text-base font-semibold text-slate-900">Cardápio & margem</h1><p className="text-xs text-slate-400">Produtos finais: custo real, preço e margem ao vivo. Sem preço = "a definir" (nunca chutamos).</p></div>
-        {itens.length > 0 && <a href={`/api/empresas/${id}/estoque/cardapio?formato=csv`} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50"><Download className="h-4 w-4" /> CSV</a>}
+    <div className="space-y-3">
+      {/* cabeçalho de UMA linha (molde) */}
+      <div className="flex flex-wrap items-center gap-2.5">
+        <UtensilsCrossed className="h-5 w-5 shrink-0 text-[#185FA5]" />
+        <h1 className="text-base font-semibold text-slate-900">Cardápio</h1>
+        <p className="hidden flex-1 truncate text-xs text-slate-400 lg:block">
+          O que você vende: receita, custo e margem por produto
+          {hub.periodo.desde && ` · vendas de ${fmtDia(hub.periodo.desde)} a ${fmtDia(hub.periodo.ate)}`}
+        </p>
+        <div className="ml-auto flex items-center gap-1.5">
+          <a href={`/api/empresas/${id}/estoque/cardapio?formato=csv`}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50">
+            <Download className="h-3.5 w-3.5" /> CSV
+          </a>
+          <a href={`/empresas/${id}/estoque/vendas`}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50">
+            Vendas do dia
+          </a>
+        </div>
       </div>
 
-      {itens.length === 0 ? (
+      {/* ONBOARDING — o campeão de venda sem ficha. Some sozinho quando não houver. */}
+      {hub.campeaoSemFicha && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2.5">
+          <Sparkles className="h-4 w-4 shrink-0 text-amber-600" />
+          <p className="flex-1 text-xs text-amber-900">
+            <b>{hub.campeaoSemFicha.nome}</b> vendeu <b>{hub.campeaoSemFicha.vendasQtd}</b> e ainda não tem ficha
+            {t.semDestino > 1 && <span className="text-amber-700"> — e outros {t.semDestino - 1} produto(s) também</span>}.
+            <span className="hidden sm:inline"> Sem ficha, a venda não baixa estoque nem calcula margem.</span>
+          </p>
+          <button onClick={() => setFiltro('semficha')}
+            className="inline-flex h-7 items-center gap-1 rounded-lg bg-amber-600 px-2.5 text-xs font-semibold text-white hover:bg-amber-700">
+            montar agora <ChevronRight className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* cards clicáveis = filtro */}
+      <StatCardGrid>
+        <StatCard tone="slate" label="Produtos" value={String(t.produtos)} sub={`${t.vendasQtd} un vendidas`} icon={UtensilsCrossed}
+          onClick={() => setFiltro('todos')} active={filtro === 'todos'} />
+        <StatCard tone="rose" label="Sem ficha" value={String(t.semDestino)} sub="não baixam estoque" icon={AlertTriangle}
+          onClick={() => setFiltro('semficha')} active={filtro === 'semficha'} />
+        <StatCard tone="amber" label="Custo a definir" value={String(t.semCusto)} sub="sem margem confiável" icon={HelpCircle}
+          onClick={() => setFiltro('semcusto')} active={filtro === 'semcusto'} />
+        <StatCard tone="emerald" label="Prontos" value={String(t.produtos - t.semDestino - t.semCusto)} sub="custo e margem ok" icon={PackageCheck}
+          onClick={() => setFiltro('ok')} active={filtro === 'ok'} />
+      </StatCardGrid>
+
+      {/* filtros numa linha */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative max-w-[320px] flex-1">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+          <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="buscar produto…"
+            className="h-9 w-full rounded-lg border border-slate-300 pl-8 pr-3 text-sm" />
+        </div>
+        {filtro !== 'todos' && (
+          <button onClick={() => setFiltro('todos')} className="h-9 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50">
+            limpar filtro
+          </button>
+        )}
+        <span className="text-xs text-slate-400">{linhas.length} de {hub.linhas.length}</span>
+      </div>
+
+      {hub.linhas.length === 0 ? (
         <Card><CardContent className="flex flex-col items-center gap-2 p-10 text-center">
           <UtensilsCrossed className="h-10 w-10 text-slate-300" />
-          <p className="text-sm font-medium text-slate-700">Nenhum produto final ainda.</p>
-          <p className="max-w-md text-xs text-slate-500">Crie uma ficha do tipo "Produto final" (ex: um prato) que o cardápio calcula a margem sozinho.</p>
+          <p className="text-sm font-medium text-slate-700">Nenhum produto ainda.</p>
+          <p className="max-w-md text-xs text-slate-500">Importe um dia de vendas do Suitable — os produtos vendidos aparecem aqui pra você montar as fichas.</p>
+          <a href={`/empresas/${id}/estoque/vendas`} className="mt-2 inline-flex h-8 items-center rounded-lg bg-[#185FA5] px-3 text-xs font-semibold text-white">Importar vendas</a>
         </CardContent></Card>
       ) : (
         <>
-          {semPreco > 0 && <p className="rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2 text-xs text-amber-700">{semPreco} produto(s) sem preço — defina pra ver a margem. (a definir ≠ 0,01)</p>}
-          <div className="space-y-2">
-            {itens.map((i) => <LinhaCardapio key={i.fichaId} id={id} item={i} onSalvo={carregar} />)}
+          {/* DESKTOP */}
+          <Card className="hidden overflow-hidden sm:block">
+            <div className="overflow-x-auto">
+              <table className="density-normal w-full">
+                <thead className="border-b bg-slate-50/60 text-[11px] uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <SortableTh campo="nome" col={col} dir={dir} onSort={alternar}>Produto</SortableTh>
+                    <th className="px-3 py-2 text-left font-medium">Situação</th>
+                    <SortableTh campo="vendas" col={col} dir={dir} onSort={alternar} align="right">Vendas</SortableTh>
+                    <SortableTh campo="custo" col={col} dir={dir} onSort={alternar} align="right">Custo</SortableTh>
+                    <SortableTh campo="preco" col={col} dir={dir} onSort={alternar} align="right">Preço</SortableTh>
+                    <SortableTh campo="margem" col={col} dir={dir} onSort={alternar} align="right">Margem</SortableTh>
+                    <th className="w-8" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {linhas.map((l) => (
+                    <tr key={l.chave} onClick={() => abrir(l)} className="cursor-pointer hover:bg-slate-50/70">
+                      <td className="px-3 py-0 text-[13px]">
+                        <span className="font-medium text-slate-900">{l.nome}</span>
+                        {l.nomesSuitable.length > 1 && <span className="ml-1.5 text-[11px] text-slate-400">({l.nomesSuitable.length} nomes no PDV)</span>}
+                      </td>
+                      <td className="px-3 py-0">
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] ring-1 ${BADGE[l.status].cls}`}>{BADGE[l.status].txt}</span>
+                      </td>
+                      <td className="px-3 py-0 text-right text-[13px] tabular-nums text-slate-700">
+                        {l.vendasQtd > 0 ? l.vendasQtd : <span className="text-slate-300">—</span>}
+                      </td>
+                      <td className="px-3 py-0 text-right text-[13px] tabular-nums">
+                        {l.custoUnitario != null ? <span className="text-slate-700">{brl(l.custoUnitario)}</span> : <span className="text-amber-600">a definir</span>}
+                      </td>
+                      <td className="px-3 py-0 text-right text-[13px] tabular-nums">
+                        {l.precoUsado != null ? (
+                          <span className="text-slate-700">{brl(l.precoUsado)}{l.precoOrigem === 'praticado' && <span className="ml-1 text-[10px] text-slate-400">PDV</span>}</span>
+                        ) : <span className="text-slate-400">a definir</span>}
+                      </td>
+                      <td className={`px-3 py-0 text-right text-[13px] font-semibold tabular-nums ${
+                        l.margem == null ? 'text-slate-400' : l.margem < 0.15 ? 'text-rose-600' : l.margem < 0.3 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                        {l.margem != null ? `${Math.round(l.margem * 100)}%` : '—'}
+                      </td>
+                      <td className="px-1 py-0 text-slate-300"><ChevronRight className="h-4 w-4" /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+
+          {/* MOBILE */}
+          <div className="space-y-2 sm:hidden">
+            {linhas.map((l) => (
+              <Card key={l.chave} onClick={() => abrir(l)} className="cursor-pointer">
+                <CardContent className="space-y-1.5 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="min-w-0 flex-1 text-sm font-medium text-slate-900">{l.nome}</p>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] ring-1 ${BADGE[l.status].cls}`}>{BADGE[l.status].txt}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-500">{l.vendasQtd > 0 ? `${l.vendasQtd} vendidas` : 'sem venda no período'}</span>
+                    <span className={`font-semibold tabular-nums ${l.margem == null ? 'text-slate-400' : l.margem < 0.15 ? 'text-rose-600' : l.margem < 0.3 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                      {l.margem != null ? `margem ${Math.round(l.margem * 100)}%` : 'margem a definir'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] text-slate-400">
+                    <span>custo {l.custoUnitario != null ? brl(l.custoUnitario) : 'a definir'}</span>
+                    <span>preço {l.precoUsado != null ? brl(l.precoUsado) : 'a definir'}</span>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
           </div>
+
+          <TotalsBar
+            itens={[
+              { chave: 'vendido', label: 'Vendido', tone: 'emerald', valor: linhas.reduce((s, l) => s + l.vendasValor, 0), n: linhas.reduce((s, l) => s + l.vendasQtd, 0) },
+              { chave: 'custo', label: 'Custo das vendas', tone: 'slate', valor: linhas.reduce((s, l) => s + (l.custoUnitario ?? 0) * l.vendasQtd, 0) },
+            ]}
+            total={linhas.reduce((s, l) => s + l.vendasValor - (l.custoUnitario ?? 0) * l.vendasQtd, 0)}
+            totalLabel="Margem bruta (do que tem custo)"
+          />
+          {/* honestidade: a régua só soma o que TEM custo — dizer o contrário seria margem inflada */}
+          {linhas.some((l) => l.custoUnitario == null && l.vendasQtd > 0) && (
+            <p className="flex items-center gap-1.5 px-1 text-[11px] text-amber-600">
+              <CircleDollarSign className="h-3.5 w-3.5" />
+              A margem bruta acima ignora {linhas.filter((l) => l.custoUnitario == null && l.vendasQtd > 0).length} produto(s) sem custo — o número real é menor.
+            </p>
+          )}
         </>
       )}
     </div>
-  )
-}
-
-function LinhaCardapio({ id, item, onSalvo }: { id: string; item: Item; onSalvo: () => void }) {
-  const [editando, setEditando] = useState(false)
-  const [preco, setPreco] = useState(item.valorVenda != null ? String(item.valorVenda) : '')
-  const [busy, setBusy] = useState(false)
-
-  // margem prévia ao vivo enquanto edita
-  const precoNum = parseNum(preco)
-  const margemPrevia = precoNum != null && precoNum > 0 && item.custoUnitario != null ? round2((precoNum - item.custoUnitario) / precoNum) : null
-
-  const salvar = async () => {
-    setBusy(true)
-    try {
-      const r = await fetch(`/api/empresas/${id}/estoque/fichas/${item.fichaId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ valorVenda: parseNum(preco) }) })
-      if (r.ok) { setEditando(false); onSalvo() }
-    } finally { setBusy(false) }
-  }
-
-  const margem = editando ? margemPrevia : item.margem
-  const corMargem = margem == null ? 'text-slate-400' : margem < 0.15 ? 'text-rose-600' : margem < 0.3 ? 'text-amber-600' : 'text-emerald-600'
-
-  return (
-    <Card className={item.valorVenda == null ? 'border-amber-200' : ''}><CardContent className="flex items-center justify-between gap-3 p-4">
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-slate-900">{item.nome}</p>
-        <p className="text-xs text-slate-500">custo {brl(item.custoUnitario)}{item.custoOrigem === 'real' ? ' (real)' : item.custoUnitario == null ? ' (a apurar)' : ''}</p>
-      </div>
-      {/* preço */}
-      <div className="text-right">
-        <p className="text-[11px] text-slate-400">Preço</p>
-        {editando ? (
-          <div className="flex items-center gap-1">
-            <input value={preco} onChange={(e) => setPreco(e.target.value)} inputMode="decimal" placeholder="a definir" className="w-24 rounded-lg border border-slate-300 py-1.5 px-2 text-right text-sm tabular-nums" autoFocus />
-            <button onClick={salvar} disabled={busy} className="rounded bg-[#185FA5] p-1.5 text-white disabled:opacity-50">{busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}</button>
-          </div>
-        ) : (
-          <button onClick={() => setEditando(true)} className="text-sm font-medium tabular-nums text-slate-800 hover:text-[#185FA5]">{item.valorVenda != null ? brl(item.valorVenda) : <span className="text-amber-600">a definir</span>}</button>
-        )}
-      </div>
-      {/* margem */}
-      <div className="w-20 text-right">
-        <p className="text-[11px] text-slate-400">Margem</p>
-        <p className={`text-sm font-semibold tabular-nums ${corMargem}`}>{margem != null ? `${Math.round(margem * 100)}%` : 'a definir'}</p>
-      </div>
-    </CardContent></Card>
   )
 }

@@ -28,7 +28,7 @@ import {
   Shield,
   ShieldCheck,
   Boxes,
-  ClipboardList,
+  UtensilsCrossed,
   Factory,
   ShoppingCart,
   Package,
@@ -367,6 +367,16 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
         {empresaAtiva && (
           <>
             <SectionLabel>Estoque</SectionLabel>
+            {/* ⭐ CARDÁPIO NO TOPO (27/08) — é o hub do dono: a lista do que se VENDE, com
+                receita, custo e margem. Ponto de partida de tudo (padrão menu-first dos
+                líderes), por isso vem antes das telas de operação. */}
+            <SidebarItem
+              icon={UtensilsCrossed}
+              label="Cardápio"
+              href={`/empresas/${empresaAtiva}/estoque/cardapio`}
+              isActive={/^\/empresas\/[^/]+\/estoque\/cardapio/.test(pathname)}
+              onClick={onNavigate}
+            />
             <SidebarItem
               icon={Inbox}
               label="Recebimentos"
@@ -416,13 +426,10 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
               isActive={/^\/empresas\/[^/]+\/estoque\/contas-a-pagar/.test(pathname)}
               onClick={onNavigate}
             />
-            <SidebarItem
-              icon={ClipboardList}
-              label="Fichas técnicas"
-              href={`/empresas/${empresaAtiva}/estoque/fichas`}
-              isActive={/^\/empresas\/[^/]+\/estoque\/fichas/.test(pathname)}
-              onClick={onNavigate}
-            />
+            {/* ⚠️ "Fichas técnicas" SAIU da sidebar (27/08) — era uma lista MISTA (produto
+                vendido + intermediário de cozinha) que atendia mal os dois. Cada mundo abre
+                a sua: o dono pelo Cardápio, a cozinha por Produção → Receitas. A rota
+                /estoque/fichas continua viva pra links antigos não quebrarem. */}
             <SidebarItem
               icon={Factory}
               label="Produção"
