@@ -452,6 +452,23 @@ Entra **depois** que o dono validar o cartão PF em prod (importar a fatura + ca
 
 ⚠️ **ESTADO REAL DOS "TRÊS BUGS":** o CÓDIGO deles **já está em prod desde 26/08** (commits `2e4cb24` recompute duplicando, `0cdafdb` ponte V6, `c111ea9` docs) — conferido no servidor: **0 chaves duplicadas** e **agosto puro R$ 379.637,26**. O que resta dali são os itens **2, 3 e 4** acima, que são **validação sua na tela**, não código. O item **1 é o único desenvolvimento novo** do sprint.
 
+### ✅ SPRINT DA VITRINE ENCERRADO (27/08) — 5 itens, commit `22eea0d`
+
+**1-3 conferidos vivos com o dado de hoje:** agosto puro **R$ 381.678,26** · bloco de borda **43.106,03 fora da soma** e marcado · **0 VendaDiaria duplicada** · **V6 `inexplicado 0,00`**.
+
+**Os 16 OP.CREDITO C/GARANTIA de agosto (R$ 200.232,00) batidos linha a linha:** **0 duplicata** (nenhum par mesma-data+mesmo-valor) e cada um atribuído à competência certa. **⭐ E o LEDGERBAL FECHA EXATO — saldo calculado −9.434,99 == LEDGERBAL −9.434,99.** Ou seja: o import do Banrisul estava limpo o tempo todo; o inchaço de 43.106 → 215.530 foi **VendaDiaria duplicada, nunca transação duplicada**. A hipótese de "import sujo" morre aqui, com número.
+
+**ITEM 4 — o hook de vendas agora LOGA SEMPRE, inclusive no no-op, dizendo de QUAL PORTA veio.** `OrigemHook` é parâmetro obrigatório na prática (default `'desconhecida'` só pra não quebrar chamada nova em silêncio) e as **6 portas se identificam**: `POST /api/transacoes` · `PATCH /api/transacoes/[id]` · `POST /api/transacoes/lote` · `import-ofx/confirm` · `conciliacao/reconcile` · `createContaPendente`. Os no-ops legítimos passaram a ter MOTIVO escrito ("empresa sem perfil de recebimento" · "transação SEM categoria" · "categoria não é de venda (N id(s), nenhum RECEITA_BRUTA)"). ⚠️ **Isto é diagnóstico, não fix** — a venda-fantasma de R$ 2.041,00 só se explica na PRÓXIMA ocorrência; a diferença é que agora "não logou" passa a significar **uma coisa só** (não foi chamado), em vez de quatro.
+
+**ITEM 5 — o Dashboard PF NÃO estava lendo fonte PJ. Era CONTRATO, que é pior: não dá erro, dá SILÊNCIO.**
+- **A varredura (REGRA 4) saiu limpa do que o dono suspeitava:** todo `fetch` da home do PF aponta pra `/api/perfis/...`; **nenhum widget lê fonte de empresa** (nem saldo, nem faturas, nem empréstimos).
+- **O bug real:** a rota devolvia `{summary, topCategoriesOnCards, invoiceHistory}` e a home lia **`cards`** e **`summary.totalDue`** — que não existiam. `cards ?? []` virava lista vazia e a tela dizia **"Nenhum cartão cadastrado"** com o cartão lá. ⚠️ **O empty state MENTE com cara de verdade:** "nenhum cartão" é uma resposta plausível, então ninguém desconfia — diferente de um 500, que grita.
+- **⭐ O teste de contrato ao vivo achou um SEGUNDO, que ninguém tinha reportado:** `/api/perfis/[id]/transacoes` devolve **`items`** e a home lia **`transactions`** → a lista de movimentações da home estava vazia pelo mesmo motivo, em silêncio.
+- **PROVADO EM PROD** (handler real, sessão assinada do dono): `dashboard-summary` **200 · cards: 1 · "banrisul ****9113 · 62,2% · fatura em aberto 18.348,72" · summary.totalDue 18.348,72**; `transacoes` **200 · items: 50**.
+- **GUARD (`__tests__/perfis/contrato-home-pf.test.ts`):** casa as chaves que a home LÊ com as que a rota DEVOLVE, mantém o `items ?? transactions` como fallback, e trava que nenhum `fetch` da home vá pra `/empresas/`.
+- **LIÇÃO (família do "duas fontes", mas um degrau mais traiçoeira):** contrato quebrado entre rota e tela **não aparece em nenhum log** — o servidor responde 200 e a tela renderiza o vazio. Fetch novo em tela ganha teste de contrato, senão a próxima chave renomeada esvazia um widget sem ninguém saber.
+- ⚠️ Débito menor achado no caminho: `/api/perfis/[id]/transacoes` **ignora `?limit=`** (respondeu 50 com `limit=5`; o parâmetro é `pageSize`). Não morde a home (que lê tudo e corta), mas é contrato torto.
+
 
 **⭐ 4 BUGS DA FATURA PF, PROVADOS PELO DONO COMPARANDO A TELA COM O PDF (26/08):**
 1. **FALTAVAM R$ 0,62** — a tela dizia 18.348,10 e o boleto cobra 18.348,72. Os **encargos sobre rotativo** são declarados no RESUMO e **não viram linha de transação**, então a Σ ficava curta. ⚠️ **A correção é criar a LINHA do encargo, não somar "por fora"**: assim o invariante KP1 (`totalAmount == Σ das linhas`) continua valendo e o dono VÊ a cobrança na lista em vez de um total que não fecha com o que ele soma na mão. ⚠️ **Armadilha:** existe uma linha de **0,62 que é IOF** de uma compra pequena (uma das 60 que somam 271,63) — coincidência de valor; o teste checa por DESCRIÇÃO, não por valor. **Fatura já gravada corrigida em prod** (`pg_dump pre-fatura-pf-4bugs-20260826-200500`): 182 linhas, total **18.348,72 = boleto ao centavo**.
