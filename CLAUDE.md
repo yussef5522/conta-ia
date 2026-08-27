@@ -396,6 +396,18 @@ Alinhados com padrão de mercado (Modern Treasury / Fintech Engineering Handbook
 
 **PROVADO EM PROD com o dado real (commit `1e8521d`, deploy trio verde):** 80 produtos do Suitable (21/08, 494 un, **R$ 18.521,10** — coerente com os ~380k/mês do motor de vendas) · banner **"Combo Caçula (57 vendas) sem ficha"** · **78 dos 80 sem ficha** (o hub é hoje uma lista de trabalho, que é o estado honesto) · as 2 revendas mapeadas fecham sozinhas (**Skol custo 8,46 / preço 18,00** e **Fruki 3,75 / 11,00**) — custo da nota + preço do PDV = margem real sem cadastrar nada. Todas as telas novas **200**. 15 testes novos; o guard estrutural de rota subiu **54 → 58** (a rota nova nasceu travada). TS 0; suíte com os mesmos 3 vermelhos documentados.
 
+**⭐ 2 AJUSTES DO USO REAL (27/08, commit `3b5d614`) — o dono usou e os dois apareceram na hora:**
+
+**(1) REVENDA MAPEIA NO PRÓPRIO HUB.** O link *"é bebida? mapear lá"* jogava na tela genérica do Suitable e o dono tinha que **achar o produto de novo numa lista de 80** — o hub já sabia qual era. **Perder no caminho a informação que o sistema acabou de mostrar é obrigar o usuário a repetir.** Agora o card do produto sem ficha tem os dois caminhos lado a lado: *"é feito aqui"* → monta receita; *"é revenda"* → dropdown **só de itens REVENDA**, escolheu e a margem fecha na hora. O link do Suitable vira secundário ("ver todos os mapeamentos"). **REGRA 4:** delega pro MESMO `upsertVendaMap` — o guard dos 3 níveis segue num lugar só (teste prova que material de limpeza é RECUSADO). ⚠️ **E o dropdown é decisão do DONO por um motivo real:** o catálogo tem **"COCA-COLA ORIGINAL PET 2L" (8,08) E "CC Zero PET 2L" (8,11)** — "COCA COLA 2L" do PDV pode ser qualquer uma. O sistema **não adivinha**; sugere a lista, o dono aponta.
+
+**(2) O EDITOR HERDAVA 3 CONCEITOS DE INTERMEDIÁRIO ao ser aberto pelo hub:**
+- **TIPO** — o seletor Intermediário/Final agora **some** quando o mundo já respondeu (era só `disabled`). Perguntar de novo é dar chance de errar numa decisão que a tela já tomou.
+- **CUSTO** — *"por unidade só depois da 1ª produção — a apurar"* é conceito de **INTERMEDIÁRIO**, onde o rendimento é MEDIDO. **Produto final MONTA na venda**: 1 xis = 1 receita, custo = **Σ componentes AO VIVO**. Herdar aquele texto **escondia o custo justamente no produto que interessa**. Corrigidos cálculo, rótulo ("Custo por unidade"), texto e o lote base nasce **1 UN** (per-serving, como os líderes tratam menu item). O "a apurar" **continua valendo no mundo da cozinha** — teste trava os dois.
+- **BUSCA** — oferecia **DESENGRAXANTE, SACO DE LIXO e JAPONA DE CÂMARA** como ingrediente de lanche: pedia o catálogo inteiro. Agora `escopo=receita` (matéria-prima + produzidos + revenda), intermediário/matéria-prima primeiro, com toggle *"mostrar tudo"* pro caso raro. ⚠️ **O filtro é no SERVIDOR:** com `take: 50`, filtrar no cliente perderia itens bons sempre que a limpeza ocupasse as vagas — o bug mudaria de cara em vez de sumir.
+- **BÔNUS** — o preço de venda nasce **pré-preenchido com o praticado no PDV** (23,37 no Xis), pra a margem nascer calculada.
+
+**REGRA 1 provada** no filtro (o único dos 4 que é comportamento de servidor): **sem o fix 2 vermelhos, com o fix 6 verdes**. **PROVADO EM PROD:** busca de ingrediente **47 → 40 itens, ZERO de limpeza/uso interno**, com a "porção de carne 100g" (R$ 3,62, custo real da 1ª produção) no topo · dropdown de revenda com **21 itens** · Xis com preço praticado **23,37** e Coca **17,00** prontos pra pré-preencher. 14 testes novos (29 no módulo).
+
 **PENDENTE (REGRA 2):** o dono validar no notebook e no celular.
 
 ## 🗺️ O QUE FALTA PRO MÓDULO DE ESTOQUE FECHAR (atualizado 24/08/2026)
