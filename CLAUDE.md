@@ -467,6 +467,25 @@ Alinhados com padrão de mercado (Modern Treasury / Fintech Engineering Handbook
 1. **ALERTA DE MARGEM** (padrão MarketMan) — nota nova muda o custo de um insumo e derruba a margem de um produto abaixo de X% → aviso no juiz/e-mail: *"o queijo subiu e o Xis caiu pra 12%"*. ⚠️ A base já existe: o custo é derivado do ledger e recalcula sozinho; falta o **limiar por empresa** e o disparo. Cuidado conhecido: alarme por produto sem custo completo seria ruído — só entra produto com custo fechado.
 2. **MENU ENGINEERING** — quadrante margem × popularidade (**Estrela / Burro-de-carga / Enigma / Cão**). Já temos os dois eixos (vendas do Suitable + margem do hub); é relatório barato de alto valor. ⚠️ Só fica honesto depois que a maioria dos 80 produtos tiver ficha — hoje 78 estão sem, e o quadrante mostraria um canto vazio.
 
+**⭐⭐ O CAMPO DE QUANTIDADE NÃO ACEITAVA DECIMAL (28/08) — `value={numero}` mata a digitação.**
+
+**O dono pegou no Acém (33,95/KG):** *"o campo só aceita 1, 5, 10 — não consigo digitar 0,050 (50 gramas) nem 0,10. Receita de lanche É feita de fração de KG; sem decimal o modal é inútil."*
+
+**A CAUSA, exata:** o input era `value={c.qtdPlanejada}` (**NÚMERO**) com `onChange` convertendo na hora. No instante em que a vírgula é digitada, `"0,"` vira o número `0` e **a vírgula some da tela** — estado intermediário não é representável como número. Só inteiro passava, **e não por regra: por efeito colateral**.
+
+**A CURA É ESTRUTURAL:** o que se **DIGITA é TEXTO** e fica texto enquanto se digita; o número é **DERIVADO**. `lib/stock/quantidade.ts` (puro) sanitiza, converte e valida:
+- vírgula **e** ponto aceitos; ponto vira vírgula na tela (padrão BR) · até **3 casas** em KG/LT (grama/ml é o menor que a cozinha usa)
+- **UN continua INTEIRO**, e a recusa **ENSINA**: *"se você usa meia unidade, o item precisa ser cadastrado numa unidade menor"* — que é exatamente a reunitização feita no pão
+- `inputMode="decimal"` (teclado numérico com vírgula no celular, onde ele monta as fichas)
+- **conversão amigável ao lado: "0,050 KG = 50 g"** — existe pra não errar **UM ZERO** (0,05 e 0,005 são visualmente parecidos e **10× diferentes** no custo)
+- **vazio NUNCA vira 0** — ausência não é zero (a mesma regra do "sem contagem" do estoque)
+
+**19 testes** com os números reais (0,050 × 33,95 = **1,70** · 0,080 × 31,90 = **2,55**) e — o que importa — com os **ESTADOS INTERMEDIÁRIOS** (`"0"` → `"0,"` → `"0,0"` → `"0,05"`), que são precisamente o que o campo antigo destruía.
+
+**REGRA 4:** vale pros dois mundos **de graça** — cardápio e receita de produção abrem o MESMO `FichaEditor` (conferido nos 3 call-sites).
+
+⚠️ **A VARREDURA ACHOU O MESMO PADRÃO EM OUTRO LUGAR:** `components/estoque/conferencia-view.tsx` (linhas 236 e 314) usa `value={e.qtdRecebida}` **numérico**. Lá tem `type="number"`, que delega o parsing ao browser e **vem funcionando nas conferências reais** — então é **RISCO, não bug provado**. **NÃO mexi:** é fluxo diário e não estava no escopo. Decisão do dono se ataca agora ou fica registrado.
+
 **PENDENTE (REGRA 2):** o dono validar no notebook e no celular, e montar o Xis Completo inteiro (pão 2,31 + porção de carne 3,62 + queijo 0,080 KG + o resto).
 
 ## 🗺️ O QUE FALTA PRO MÓDULO DE ESTOQUE FECHAR (atualizado 24/08/2026)
