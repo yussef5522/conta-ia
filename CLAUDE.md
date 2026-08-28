@@ -486,6 +486,14 @@ Alinhados com padrão de mercado (Modern Treasury / Fintech Engineering Handbook
 
 ⚠️ **A VARREDURA ACHOU O MESMO PADRÃO EM OUTRO LUGAR:** `components/estoque/conferencia-view.tsx` (linhas 236 e 314) usa `value={e.qtdRecebida}` **numérico**. Lá tem `type="number"`, que delega o parsing ao browser e **vem funcionando nas conferências reais** — então é **RISCO, não bug provado**. **NÃO mexi:** é fluxo diário e não estava no escopo. Decisão do dono se ataca agora ou fica registrado.
 
+**⭐ O DROPDOWN DE INGREDIENTES NÃO FECHAVA SEM ESCOLHER (28/08).** *"abro a busca, a lista abre (Acém, Coxão...), mas se eu DESISTO de escolher não tem como sair."* Era verdade: o `aberto` só virava `false` ao **escolher** ou **criar** item — quem desistia ficava com a lista pendurada, e no celular pior.
+
+⚠️ **NÃO EXISTIA NENHUM utilitário de clique-fora no projeto** — cada dropdown novo ia reinventar (ou esquecer, como este esqueceu). Virou **um lugar** (`lib/hooks/use-dismissivel.ts`, REGRA 4/5): dropdown novo chama o hook e **nasce dispensável**. Clique/toque fora · **ESC** · escolher (já fechava). **`mousedown`/`touchstart`, NÃO `click`** — com `click` o alvo de fora pode re-renderizar entre press e release e o evento se perde; e `touchstart` é o que faz funcionar no celular. Sem container montado **não fecha** (fechar por ausência de referência derrubaria o painel no 1º render).
+
+**VARREDURA (REGRA 4):** o `BuscaItem` é o único dropdown flutuante de verdade e serve os **dois mundos** (cardápio e receita de produção usam o mesmo `FichaEditor`) — um fix, os dois. O mapeamento do Suitable usa **`<select>` nativo**, que o browser já dispensa; os outros `aberto` do app são acordeão, não dropdown. ⚠️ **Achado no caminho:** o sheet *"Que produto é este?"* da conferência fechava no backdrop e no X mas **ESC não fazia nada** — ganhou `useEscape` (hook irmão, só a tecla; clique-fora lá seria redundante).
+
+⚠️ **7 testes com a decisão PURA e duck-typed** (`cliqueFoiFora` aceita qualquer coisa com `contains`), porque o projeto roda em `environment: node`. **Não puxei jsdom só pra isso** — trocaria um risco pequeno por um custo permanente de manutenção.
+
 **PENDENTE (REGRA 2):** o dono validar no notebook e no celular, e montar o Xis Completo inteiro (pão 2,31 + porção de carne 3,62 + queijo 0,080 KG + o resto).
 
 ## 🗺️ O QUE FALTA PRO MÓDULO DE ESTOQUE FECHAR (atualizado 24/08/2026)
