@@ -11,11 +11,11 @@
 // (alguém rodou `npm run build` na mão) responde 200 e mesmo assim jogou fora a rede
 // de rollback. Isso o smoke nunca veria.
 
-import { existsSync, lstatSync, readlinkSync, readdirSync, statSync } from 'fs'
+import { existsSync, lstatSync, readlinkSync, readdirSync, statSync, readFileSync } from 'fs'
 import { join } from 'path'
 
 export interface CheckDeploy {
-  invariante: 'D1' | 'D2' | 'D3'
+  invariante: 'D1' | 'D2' | 'D3' | 'D4'
   nivel: 'erro' | 'aviso'
   detalhe: string
 }
@@ -26,6 +26,18 @@ export interface LeituraDeploy {
   buildIdOk: boolean
   cssCount: number
   buildsGuardados: number
+  /** datasource do schema do repo (o que o app DEVERIA falar) */
+  providerSchema: string | null
+  /** datasource embutido no client GERADO em node_modules (o que ele REALMENTE fala) */
+  providerClient: string | null
+}
+
+/** Lê `datasource db { provider = "..." }` — o do DATASOURCE, não o do generator. */
+export function extrairProviderDatasource(schema: string): string | null {
+  const bloco = schema.match(/datasource\s+\w+\s*\{[\s\S]*?\}/)
+  if (!bloco) return null
+  const m = bloco[0].match(/provider\s*=\s*"([^"]+)"/)
+  return m ? m[1] : null
 }
 
 /** Mínimo de builds guardados pra existir rollback de verdade. */
@@ -65,7 +77,16 @@ export function lerDeploy(appDir = '/opt/conta-ia'): LeituraDeploy | null {
     }).length
   } catch { /* ignora */ }
 
-  return { ehSymlink, alvo, buildIdOk, cssCount, buildsGuardados }
+  // ⭐ D4 (28/08) — o provider do client GERADO vs o do schema do repo.
+  // O `node_modules` é COMPARTILHADO com o workspace de build (hard link), então um
+  // `prisma generate` rodado com o schema errado contamina o que o app carrega.
+  const ler = (caminho: string): string | null => {
+    try { return existsSync(caminho) ? extrairProviderDatasource(readFileSync(caminho, 'utf-8')) : null } catch { return null }
+  }
+  const providerSchema = ler(join(appDir, 'prisma', 'schema.prisma'))
+  const providerClient = ler(join(appDir, 'node_modules', '.prisma', 'client', 'schema.prisma'))
+
+  return { ehSymlink, alvo, buildIdOk, cssCount, buildsGuardados, providerSchema, providerClient }
 }
 
 /** PURA — a decisão, testável sem servidor. Lista vazia = deploy são. */
@@ -99,6 +120,25 @@ export function avaliarDeploy(l: LeituraDeploy): CheckDeploy[] {
     out.push({
       invariante: 'D3', nivel: 'aviso',
       detalhe: `só ${l.buildsGuardados} build guardado — sem um anterior no disco, o rollback exigiria rebuild (minutos em vez de segundos).`,
+    })
+  }
+
+  // ⭐⭐ D4 (erro) — O CLIENT DO PRISMA FALA O MESMO BANCO QUE O SCHEMA?
+  //
+  // ⚠️ O INCIDENTE QUE PEDIU ISTO (28/08, login 500 por 8 HORAS): um `prisma generate`
+  // rodou com o schema revertido pra `sqlite` (o `git reset --hard` do deploy desfaz o
+  // swap-postgres, que é passo MANUAL do runbook). Como o `node_modules` é compartilhado
+  // por hard link com o workspace de build, o client gerado virou SQLite, o app subiu com
+  // ele e todo acesso ao banco morria com *"the URL must start with the protocol file:"*.
+  //
+  // ⚠️⚠️ E O TRIO FICOU VERDE O TEMPO TODO: BUILD_ID ok, pm2 online sem loop, CSS
+  // servindo. **O gate provava que o site era SERVIDO, nunca que ele FALAVA COM O
+  // BANCO.** Home é estática e respondia 200 enquanto o login dava 500. Um gate que não
+  // enxerga banco fora do ar não é gate de saúde — é gate de presença.
+  if (l.providerSchema && l.providerClient && l.providerSchema !== l.providerClient) {
+    out.push({
+      invariante: 'D4', nivel: 'erro',
+      detalhe: `o Prisma Client gerado fala "${l.providerClient}" mas o schema do repo é "${l.providerSchema}" — TODA query ao banco falha (login, tudo). Rode \`bash scripts/swap-prisma-to-postgres.sh && npx prisma generate\` e \`pm2 restart conta-ia\`. ⚠️ rollback NÃO resolve: o client é compartilhado por todos os builds.`,
     })
   }
 

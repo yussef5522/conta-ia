@@ -59,4 +59,16 @@ for c in $(grep -o '/_next/static/[^"]*\.css' <<<"$HTML" | sort -u); do
   [[ "$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:${PORT}${c}")" == "200" ]] || fail "CSS $c falhou"
 done
 ok "home + CSS servindo"
+
+# ⚠️ E O BANCO? (28/08) — o rollback herda a mesma cegueira do trio se parar no CSS.
+# Em 28/08 o login ficou 500 por 8h com home e CSS perfeitos. Aqui isso importa DOBRADO:
+# se a causa for o Prisma Client (gerado em node_modules, COMPARTILHADO por todos os
+# builds), **voltar de build não conserta** — e um "ROLLBACK OK" mentiria pro dono no
+# pior momento possível.
+LOGIN_CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST "http://localhost:${PORT}/api/auth/login" \
+  -H 'Content-Type: application/json' -d '{"email":"__probe-rollback__@invalido.local","password":"x"}')
+if [[ "$LOGIN_CODE" != "401" ]]; then
+  fail "o login respondeu $LOGIN_CODE (esperado 401): o build voltou, mas o app NÃO fala com o banco — o problema NÃO era o build. Cheque o Prisma Client: \`bash scripts/swap-prisma-to-postgres.sh && npx prisma generate && pm2 restart ${PM2_APP}\`"
+fi
+ok "banco respondendo (login devolve 401)"
 printf '\n\033[32m✓ ROLLBACK OK\033[0m  %s\n' "$(cat .next/BUILD_ID)"

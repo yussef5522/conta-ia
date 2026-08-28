@@ -73,6 +73,28 @@ DISCO=$(df -Pm "$APP_DIR" | awk 'NR==2 {print $4}')
 (( DISCO >= 2000 )) || fail "só ${DISCO} MB de disco livre"
 ok "há folga pra buildar"
 
+# ⭐⭐ PRISMA: O SWAP DEIXA DE DEPENDER DE LEMBRAR (28/08 — REGRA 5).
+#
+# ⚠️ O INCIDENTE: login em 500 por 8 HORAS. Um `git reset --hard` antes do deploy
+# reverteu `prisma/schema.prisma` pra `sqlite` (o swap-postgres é passo MANUAL do
+# runbook) e o `prisma generate` seguinte gerou o client em SQLite. Como o
+# `node_modules` é COMPARTILHADO por hard link com o workspace de build, o app subiu
+# com esse client e TODA query morria: "the URL must start with the protocol file:".
+#
+# ⚠️⚠️ E O TRIO FICOU VERDE O TEMPO TODO — a home é estática e respondia 200.
+#
+# Aqui o deploy CORRIGE sozinho antes de buildar. Combinado que não se faz vira
+# impossibilidade: não há mais como buildar com o client falando o banco errado.
+PROV_SCHEMA=$(awk '/^datasource/,/}/' prisma/schema.prisma | grep -o 'provider *= *"[^"]*"' | head -1 | cut -d\" -f2)
+if [[ "$PROV_SCHEMA" != "postgresql" ]]; then
+  echo "  schema em '$PROV_SCHEMA' — rodando o swap pra postgres"
+  bash scripts/swap-prisma-to-postgres.sh >/dev/null || fail "o swap-prisma-to-postgres falhou"
+fi
+npx prisma generate >/dev/null 2>&1 || fail "prisma generate falhou"
+PROV_CLIENT=$(awk '/^datasource/,/}/' node_modules/.prisma/client/schema.prisma 2>/dev/null | grep -o 'provider *= *"[^"]*"' | head -1 | cut -d\" -f2)
+[[ "$PROV_CLIENT" == "postgresql" ]] || fail "o Prisma Client gerado fala '$PROV_CLIENT', não postgresql — TODA query ao banco falharia. Prod segue no ar; nada foi trocado."
+ok "prisma client em postgresql (schema e client conferem)"
+
 if (( DRY )); then
   log "Estado atual"
   if [[ -L .next ]]; then ok "symlink → $(readlink .next)"; else echo "  ⚠️  .next ainda é diretório real (a 1ª troca converte)"; fi
@@ -156,29 +178,44 @@ sleep 12
 # nginx ainda servia a resposta do processo anterior. Uptime crescendo é o que
 # distingue "no ar" de "reiniciando sem parar".
 # ─────────────────────────────────────────────────────────────────────────────
-log "Gate de saúde (depois) — o trio"
+log "Gate de saúde (depois) — o trio + o banco"
 
-[[ "$(cat .next/BUILD_ID)" == "$NOVO_ID" ]] || fail "1/3 BUILD_ID servido ≠ o que buildei"
-ok "1/3 BUILD_ID: $NOVO_ID"
+[[ "$(cat .next/BUILD_ID)" == "$NOVO_ID" ]] || fail "1/4 BUILD_ID servido ≠ o que buildei"
+ok "1/4 BUILD_ID: $NOVO_ID"
 
 U1=$(pm2 jlist | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const a=JSON.parse(s).find(x=>x.name===process.argv[1]);console.log(a?a.pm2_env.pm_uptime:0)})' "$PM2_APP")
 STATUS=$(pm2 jlist | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const a=JSON.parse(s).find(x=>x.name===process.argv[1]);console.log(a?a.pm2_env.status:"?")})' "$PM2_APP")
-[[ "$STATUS" == "online" ]] || fail "2/3 pm2 em '$STATUS'"
+[[ "$STATUS" == "online" ]] || fail "2/4 pm2 em '$STATUS'"
 sleep 10
 U2=$(pm2 jlist | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const a=JSON.parse(s).find(x=>x.name===process.argv[1]);console.log(a?a.pm2_env.pm_uptime:0)})' "$PM2_APP")
-[[ "$U1" == "$U2" ]] || fail "2/3 o processo REINICIOU no meio do gate (loop de restart)"
-ok "2/3 pm2 online, mesmo processo por 10s"
+[[ "$U1" == "$U2" ]] || fail "2/4 o processo REINICIOU no meio do gate (loop de restart)"
+ok "2/4 pm2 online, mesmo processo por 10s"
 
 # smoke: home + TODOS os CSS que o HTML pede, e o hash tem que ser do build NOVO
-HTML=$(curl -sf "http://localhost:${PORT}/" ) || fail "3/3 home não respondeu"
+HTML=$(curl -sf "http://localhost:${PORT}/" ) || fail "3/4 home não respondeu"
 CSS_LINKS=$(grep -o '/_next/static/[^"]*\.css' <<<"$HTML" | sort -u)
-[[ -n "$CSS_LINKS" ]] || fail "3/3 o HTML não referencia CSS nenhum"
+[[ -n "$CSS_LINKS" ]] || fail "3/4 o HTML não referencia CSS nenhum"
 for c in $CSS_LINKS; do
   CODE=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:${PORT}${c}")
-  [[ "$CODE" == "200" ]] || fail "3/3 CSS $c respondeu $CODE — página sem estilo (o incidente de 26/08)"
-  [[ -f "$ALVO/static/${c#/_next/static/}" ]] || fail "3/3 CSS $c não é do build novo"
+  [[ "$CODE" == "200" ]] || fail "3/4 CSS $c respondeu $CODE — página sem estilo (o incidente de 26/08)"
+  [[ -f "$ALVO/static/${c#/_next/static/}" ]] || fail "3/4 CSS $c não é do build novo"
 done
-ok "3/3 home 200 · $(wc -w <<<"$CSS_LINKS") CSS servindo do build novo"
+ok "3/4 home 200 · $(wc -w <<<"$CSS_LINKS") CSS servindo do build novo"
+
+# ⭐⭐ 4/4 — O APP FALA COM O BANCO? (28/08)
+#
+# ⚠️ POR QUE ISTO EXISTE: em 28/08 o login ficou 500 por 8 horas com o trio TODO VERDE.
+# BUILD_ID ok, pm2 online sem loop, CSS servindo — e o banco inalcançável. O gate
+# provava que o site era SERVIDO, nunca que ele FUNCIONAVA. Home é estática.
+#
+# A sonda é o login com credencial proposital INVÁLIDA: exercita Prisma de ponta a
+# ponta, tem que devolver 401. 500 = o banco não responde. Sem senha real, sem efeito
+# colateral, sem criar nada.
+LOGIN_CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST "http://localhost:${PORT}/api/auth/login" \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"__probe-deploy__@invalido.local","password":"x"}')
+[[ "$LOGIN_CODE" == "401" ]] || fail "4/4 o login respondeu $LOGIN_CODE (esperado 401) — o app NÃO está falando com o banco. Rollback: \`bash scripts/rollback.sh\`"
+ok "4/4 banco respondendo (login devolve 401, não 500)"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # LIMPEZA — mantém os últimos $MANTER (rollback precisa deles)

@@ -1,7 +1,7 @@
 // REGRA 1/3 — o invariante do deploy. Cada caso aqui é um incidente REAL de prod.
 
 import { describe, it, expect } from 'vitest'
-import { avaliarDeploy, MIN_BUILDS_ROLLBACK, type LeituraDeploy } from '../deploy-health'
+import { avaliarDeploy, extrairProviderDatasource, MIN_BUILDS_ROLLBACK, type LeituraDeploy } from '../deploy-health'
 
 const sao: LeituraDeploy = {
   ehSymlink: true,
@@ -9,6 +9,8 @@ const sao: LeituraDeploy = {
   buildIdOk: true,
   cssCount: 2,
   buildsGuardados: 3,
+  providerSchema: 'postgresql',
+  providerClient: 'postgresql',
 }
 
 describe('deploy são não acusa nada', () => {
@@ -72,5 +74,73 @@ describe('D3 — rollback precisa de pra onde voltar', () => {
 
   it(`${MIN_BUILDS_ROLLBACK} já basta`, () => {
     expect(avaliarDeploy({ ...sao, buildsGuardados: MIN_BUILDS_ROLLBACK })).toEqual([])
+  })
+})
+
+// ⭐⭐ REGRA 1 — O LOGIN FICOU 500 POR 8 HORAS E O TRIO ESTAVA VERDE (28/08).
+//
+// O que aconteceu: um `prisma generate` rodou com o schema revertido pra `sqlite` (o
+// `git reset --hard` do deploy desfaz o swap-postgres, que é passo MANUAL do runbook).
+// O `node_modules` é COMPARTILHADO por hard link com o workspace de build → o client
+// gerado virou SQLite, o app subiu com ele, e toda query morria com "the URL must start
+// with the protocol file:".
+//
+// ⚠️ E O TRIO NÃO VIU NADA: BUILD_ID ok, pm2 online sem loop, CSS servindo. O gate
+// provava que o site era SERVIDO, nunca que ele FALAVA COM O BANCO — a home é estática
+// e devolvia 200 enquanto o login dava 500.
+describe('D4 — o client do Prisma fala o mesmo banco que o schema?', () => {
+  it('⭐⭐ client sqlite com schema postgres → ERRO (o estado exato do incidente)', () => {
+    const r = avaliarDeploy({ ...sao, providerClient: 'sqlite' })
+    expect(r).toHaveLength(1)
+    expect(r[0].invariante).toBe('D4')
+    expect(r[0].nivel).toBe('erro')
+    expect(r[0].detalhe).toContain('sqlite')
+    expect(r[0].detalhe).toContain('postgresql')
+  })
+
+  it('⚠️ diz que ROLLBACK não resolve — o client é compartilhado por todos os builds', () => {
+    const r = avaliarDeploy({ ...sao, providerClient: 'sqlite' })
+    expect(r[0].detalhe).toMatch(/rollback NÃO resolve/i)
+    expect(r[0].detalhe).toContain('prisma generate') // e diz o que RESOLVE
+  })
+
+  it('iguais → silêncio (dev com sqlite dos dois lados é legítimo)', () => {
+    expect(avaliarDeploy({ ...sao, providerSchema: 'sqlite', providerClient: 'sqlite' })).toEqual([])
+  })
+
+  it('não dá palpite quando não consegue ler um dos lados', () => {
+    expect(avaliarDeploy({ ...sao, providerClient: null })).toEqual([])
+    expect(avaliarDeploy({ ...sao, providerSchema: null })).toEqual([])
+  })
+
+  it('D4 não some no meio de outro problema (empilha com o D1)', () => {
+    const r = avaliarDeploy({ ...sao, buildIdOk: false, providerClient: 'sqlite' })
+    expect(r.map((x) => x.invariante).sort()).toEqual(['D1', 'D4'])
+  })
+})
+
+describe('extrairProviderDatasource — lê o DATASOURCE, não o generator', () => {
+  const schema = `
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+`
+  it('⭐ pega o do datasource mesmo com o generator antes (a pegadinha)', () => {
+    // ⚠️ um grep ingênuo por `provider =` devolveria "prisma-client-js" — foi o que me
+    // enganou na primeira leitura do incidente.
+    expect(extrairProviderDatasource(schema)).toBe('postgresql')
+  })
+
+  it('lê sqlite igual', () => {
+    expect(extrairProviderDatasource(schema.replace('postgresql', 'sqlite'))).toBe('sqlite')
+  })
+
+  it('schema sem datasource → null (não inventa)', () => {
+    expect(extrairProviderDatasource('generator client { provider = "prisma-client-js" }')).toBeNull()
   })
 })
