@@ -140,6 +140,25 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 - **Cache 1h no DB** (não Redis — projeto não tem). Tabela dedicada `AiInsightsLog` (separada de `AiUsageLog`).
 - **PDF Vision GATED** em prod: `PDF_IMPORT_ENABLED=false` + `PDF_IMPORT_ZDR_CONFIRMED=false` explicit. Só liga com **AMBAS true** após ZDR assinado com Anthropic. Doc: `docs/sprints/pf-fatia-3.5-LIGAR-PDF.md`.
 
+## ⛔⛔⛔ INCIDENTE 28/08 — LOGIN 500 POR 8 HORAS COM O TRIO VERDE. O GATE PROVAVA PRESENÇA, NÃO SAÚDE.
+
+**O ERRO FOI MEU, e a lição vale mais que ele.** No comando de deploy da rodada anterior rodei `git reset --hard` (que **reverte `prisma/schema.prisma` pra `sqlite`** — o swap-postgres é passo MANUAL do runbook) e em seguida `npx prisma generate` **sem o swap**. Como o **`node_modules` é COMPARTILHADO por hard link** com o workspace de build, o client gerado virou SQLite; o app subiu com ele e **toda query ao banco morria**: *"the URL must start with the protocol `file:`"*. Log real: `[LOGIN] Erro interno: PrismaClientInitializationError`.
+
+**⚠️⚠️ O PIOR NÃO FOI O ERRO — FOI O TRIO FICAR VERDE 8 HORAS.** BUILD_ID ok · pm2 online, uptime 28.557s, sem loop · CSS servindo do build novo. **A home é ESTÁTICA e respondia 200 enquanto o login dava 500.** O gate provava que o site era **SERVIDO**, nunca que ele **FALAVA COM O BANCO**. *Gate que não enxerga banco fora do ar não é gate de saúde — é gate de presença.*
+
+**⚠️ E O ROLLBACK NÃO RESOLVERIA** (o dono pediu "rollback imediato", e a resposta certa era outra): o build estava **íntegro**; o quebrado era o **client gerado, compartilhado por TODOS os builds**. Voltar de build daria um `✓ ROLLBACK OK` com o site ainda quebrado — mentira no pior momento possível. **Fix real:** `swap-prisma-to-postgres.sh` + `prisma generate` + `pm2 restart` (o client em disco já estava certo desde a correção anterior; era o PROCESSO que segurava o antigo em memória).
+
+**AS 3 CAMADAS PRA NUNCA VOLTAR:**
+1. **IMPOSSÍVEL POR CONSTRUÇÃO (REGRA 5)** — o `deploy.sh` confere o provider do schema, **roda o swap sozinho** se preciso, gera e **ABORTA** se o client não ficar `postgresql`. O swap deixou de depender de alguém lembrar. **PROVADO:** deployei de propósito **sem** o swap manual e o log disse *"schema em 'sqlite' — rodando o swap pra postgres → ✓ prisma client em postgresql"*.
+2. **PROVADO EM RUNTIME** — o trio virou **4/4**: sonda que faz **POST no login com credencial proposital inválida e exige 401**. 500 = banco inalcançável. Sem senha real, sem efeito colateral, sem criar nada. **O `rollback.sh` ganhou a mesma sonda** e, se o login seguir quebrado depois de voltar, ele **diz que a causa não era o build** e aponta o Prisma.
+3. **AUDITADO POST-FACTUM** — **D4** no juiz noturno: provider do client gerado ≠ provider do schema = **erro**, com o comando que resolve **e** o aviso de que rollback não adianta.
+
+⚠️ **PEGADINHA que me enganou na 1ª leitura:** `grep "provider ="` no schema devolve **`prisma-client-js`** (do bloco `generator`), não o do `datasource`. `extrairProviderDatasource` lê o bloco certo — e tem teste pra isso.
+
+**PROVA DE VOLTA (28/08):** login **401** com a mensagem correta (local e pelo IP público) · home 200 · deploy **4/4 verde** · juiz **D1-D4 🟢 0 achados**. 9 testes novos.
+
+⚠️ **ACHADO À PARTE (pré-existente, NÃO é a queda):** `contaia.com.br` **não tem registro DNS** (`dig` vazio) — prod é acessado por **`http://198.211.103.10`**. O `smoke` que testa o domínio sempre devolveu 000. Resolver quando for publicar o domínio.
+
 ## ⛔⛔ DEPLOY QUE NUNCA DERRUBA PROD (26/08/2026) — USE `scripts/deploy.sh`
 
 **Regra do dono:** com cliente pagando, *"deploy quebrou o site" NÃO PODE EXISTIR como categoria de evento.*
