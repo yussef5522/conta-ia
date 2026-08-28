@@ -192,10 +192,12 @@ export default function ProdutoCardapioPage({ params }: { params: Promise<{ id: 
             <p className="text-sm font-semibold text-slate-900">{l.fichaId ? 'Editar a receita' : 'Montar a receita'}</p>
             <button onClick={() => setEditandoFicha(false)} className="text-xs text-slate-400 hover:text-slate-600">fechar</button>
           </div>
-          {/* ⭐ preço PRÉ-PREENCHIDO com o praticado no PDV: a margem já nasce calculada em
-              vez de o dono ter que digitar um número que o sistema já sabe. Editável. */}
+          {/* ⭐ passa a LINHA INTEIRA: o prefill (nome do PDV + preço praticado) é decidido
+              pela lib pura `valoresIniciaisDaFicha`, testada pelo caminho real. Antes eram
+              dois props soltos lidos no `useState` — e abria vazio. */}
           <FichaEditor companyId={id} fichaId={l.fichaId ?? undefined} tipoTravado="PRODUTO_FINAL"
-            nomeInicial={l.nomesSuitable[0] ?? l.nome} precoInicial={l.precoPraticado} voltarPara={voltar} />
+            linha={l} voltarPara={voltar}
+            aoSalvar={() => { setEditandoFicha(false); carregar() }} />
         </CardContent></Card>
       )}
 

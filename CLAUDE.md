@@ -449,7 +449,25 @@ Alinhados com padrão de mercado (Modern Treasury / Fintech Engineering Handbook
 
 ⚠️ **O guard estrutural pegou um erro MEU no caminho:** o GET da prévia pedia `stock.manage` e a regra é *"ler nunca exige gerenciar"*. **Corrigi a ROTA, não o guard.**
 
-**PENDENTE (REGRA 2):** o dono validar no notebook e no celular, e montar o Xis Completo inteiro.
+**⭐⭐ MODAL DA RECEITA — REDESENHO "PLATE COST" + O PREFILL QUE ABRIA VAZIO (28/08).**
+
+**O BUG (reportado 2×):** `/estoque/cardapio` → card XIS COMPLETO → painel (vendas 53 · preço 23,37 **visíveis**) → "Montar a receita" → **modal com nome e preço VAZIOS**. Conferido contra o servidor: a rota devolvia `nomesSuitable: ["XIS COMPLETO"]` e `precoPraticado: 23.37` — **os dados sempre chegaram certos**; quem perdia era a camada React.
+
+**⚠️ A CORREÇÃO DE FUNDO, e é a lição:** o prefill vivia como **valor inicial de `useState`** dentro do componente. Duas tentativas de conserto (valor inicial, depois `useEffect` de sincronização) não resolveram, e **nenhuma das duas podia virar teste vermelho** — o projeto não tem jsdom/RTL, então regra que mora dentro de `useState` é regra que ninguém consegue provar. **A decisão saiu pra `lib/stock/cardapio/valores-iniciais.ts` (função PURA)** e o componente virou casca que só ecoa. Agora o teste percorre o caminho real (hub → `detalheProduto` → `valoresIniciaisDaFicha`) e afirma `nome: 'XIS COMPLETO'` e `preco: '23,37'`. **Regra que não dá pra testar é regra que volta a quebrar.**
+
+**REDESENHO — UM EDITOR, DOIS MUNDOS** (anatomia do MarketMan):
+- **PRODUTO FINAL = PLATE COST.** 1 ficha = **1 porção vendida**. **SUMIRAM** "A receita rende N" + unidade e "Validade" — são conceitos de quem produz em LOTE, e a tela dizia o contrário do que o produto é. **Cabeçalho:** nome (prefill) · `no PDV: X` · preço (prefill do PDV, editável, com "pode editar") · setor. **Corpo = INGREDIENTES**, com **custo por unidade e MARGEM ao vivo no topo** (verde/âmbar/vermelho na MESMA régua da tela do cardápio — `faixaMargem`, uma decisão num lugar só), subtotal por linha, e intermediário com chip **"produzido"** linkando pra receita de produção dele. **Rodapé sticky** com [Criar ficha] primário.
+- **INTERMEDIÁRIO** mantém rende/validade/preparo e ganha o mesmo padrão visual.
+- **"Livro de receitas" (o Cookbook)** — seção **COLAPSADA e opcional**: tempo de preparo + modo de preparo, com a frase *"nada aqui entra no custo"*. Abre sozinha quando a ficha já tem conteúdo.
+- Preço em **pt-BR** (`23,37`, não `23.37`) — o dono digita com vírgula.
+
+⚠️ **A FOTO do cookbook NÃO ENTROU** e o motivo é estrutural: `StockFichaVersao` não tem campo de foto e **o isolamento do módulo proíbe ALTER** (migrations de estoque são CREATE-only, com guard de CI). Guardar exigiria tabela nova (`stock_ficha_foto`) — registrado como débito pequeno, não construído no meio de um sprint de UX.
+
+**📋 ROADMAP REGISTRADO (decisão do dono: registrar, NÃO construir agora):**
+1. **ALERTA DE MARGEM** (padrão MarketMan) — nota nova muda o custo de um insumo e derruba a margem de um produto abaixo de X% → aviso no juiz/e-mail: *"o queijo subiu e o Xis caiu pra 12%"*. ⚠️ A base já existe: o custo é derivado do ledger e recalcula sozinho; falta o **limiar por empresa** e o disparo. Cuidado conhecido: alarme por produto sem custo completo seria ruído — só entra produto com custo fechado.
+2. **MENU ENGINEERING** — quadrante margem × popularidade (**Estrela / Burro-de-carga / Enigma / Cão**). Já temos os dois eixos (vendas do Suitable + margem do hub); é relatório barato de alto valor. ⚠️ Só fica honesto depois que a maioria dos 80 produtos tiver ficha — hoje 78 estão sem, e o quadrante mostraria um canto vazio.
+
+**PENDENTE (REGRA 2):** o dono validar no notebook e no celular, e montar o Xis Completo inteiro (pão 2,31 + porção de carne 3,62 + queijo 0,080 KG + o resto).
 
 ## 🗺️ O QUE FALTA PRO MÓDULO DE ESTOQUE FECHAR (atualizado 24/08/2026)
 
