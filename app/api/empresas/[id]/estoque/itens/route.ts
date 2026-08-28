@@ -7,6 +7,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { guardStock } from '@/lib/stock/require-stock'
 import { custoMedioPorItem } from '@/lib/stock/saldo'
+import { filtrarPorBusca } from '@/lib/busca-texto'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -29,20 +30,36 @@ export async function GET(request: NextRequest, { params }: Params) {
   // Também no servidor: com `take: 50` o filtro no cliente perderia itens.
   const categoria = request.nextUrl.searchParams.get('categoria')?.trim() || null
 
-  const [itens, derivado] = await Promise.all([
+  // ⭐⭐ A BUSCA É FILTRADA NO APP, SOBRE A MESMA LISTA QUE A TELA MOSTRA (28/08 — REGRA 4).
+  //
+  // ⚠️ ANTES era `nome: { contains: busca }` no Prisma, e isso ESCONDIA o item em prod: o
+  // `contains` é case-SENSITIVE no PostgreSQL e case-INSENSITIVE no SQLite. Medido no banco
+  // real: contains("xis") → 0 e contains("XIS") → 1 ("PAO DE XIS"). Funcionava em DEV e
+  // falhava CALADO em PROD — o dono via o item rolando a lista e não achava digitando.
+  //
+  // ⚠️ E `mode: 'insensitive'` não resolveria sozinho: conserta caixa, não ACENTO. No mesmo
+  // banco, insensitive("pao") acha "PAO DE XIS" mas NÃO acha "Pão tradicional". Num catálogo
+  // onde a nota escreve "PAO" e o dono escreve "Pão", isso é o mesmo bug com outra cara.
+  //
+  // Filtrando aqui, o critério é UM só (`casaBusca`) e a lista e o filtro não têm como
+  // discordar. Também resolve a truncagem: o `take` passa a valer DEPOIS de filtrar — antes,
+  // 50 itens eram lidos e só então a busca acontecia, então item fora das 50 sumia.
+  const LIMITE_LEITURA = 2000 // catálogo de estoque não chega perto disso (Caçula: 54)
+  const [todos, derivado] = await Promise.all([
     prisma.stockItem.findMany({
       where: {
         companyId, ativo: true,
-        ...(busca ? { nome: { contains: busca } } : {}),
         ...(categoria ? { categoria } : escopoReceita ? { categoria: { in: CATS_RECEITA } } : {}),
       },
       orderBy: { nome: 'asc' },
-      take: 50,
+      take: LIMITE_LEITURA,
       select: { id: true, nome: true, unidadeControle: true, categoria: true },
     }),
     // custoMedio DERIVADO dos movimentos (mesma fonte da Posição) — não o campo stale
     custoMedioPorItem(prisma, companyId),
   ])
+
+  const itens = filtrarPorBusca(todos, busca, (i) => i.nome).slice(0, 50)
 
   // ordem de RELEVÂNCIA pra receita: o que a cozinha usa primeiro aparece primeiro.
   const PESO: Record<string, number> = { INTERMEDIARIO: 0, MATERIA_PRIMA: 1, REVENDA: 2, PRODUTO_FINAL: 3 }
