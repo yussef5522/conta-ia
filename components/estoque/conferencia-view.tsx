@@ -5,6 +5,7 @@
 // liga). Mobile-first + desktop. Foto por webcam (desktop) OU câmera (celular).
 
 import { Fragment, useEffect, useMemo, useState } from 'react'
+import { useEscape } from '@/lib/hooks/use-dismissivel'
 import { Check, Search, Camera, AlertTriangle, FlaskConical, Store, X, ChevronRight, Eye, Loader2, PackageCheck, Keyboard, Receipt } from 'lucide-react'
 import { sugerirFator, placeholderFator } from '@/lib/stock/unidade-fator'
 import { ItensManuaisEditor } from './itens-manuais-editor'
@@ -462,6 +463,8 @@ function MapearSheet({ item, existentes, onClose, onEscolher }: {
   const [fatorExist, setFatorExist] = useState(1)
   const filtrados = existentes.filter((e) => e.nome.toLowerCase().includes(busca.toLowerCase()))
   const difUnidade = item.uCom.toUpperCase() !== unidade
+  // fecha no ESC (o backdrop e o X já fechavam). Mesma família do dropdown de ingredientes.
+  useEscape(true, onClose)
 
   return (
     <div className="fixed inset-0 z-30 flex items-end bg-black/40" onClick={onClose}>

@@ -24,6 +24,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Loader2, Plus, Trash2, Search, Save, AlertTriangle, ChevronDown, ChevronRight, BookOpen, ExternalLink } from 'lucide-react'
 import { valoresIniciaisDaFicha, paraCampo, faixaMargem, type LinhaParaFicha } from '@/lib/stock/cardapio/valores-iniciais'
 import { sanitizarQtd, valorQtd, textoQtd, descreverQtd, validarQtd } from '@/lib/stock/quantidade'
+import { useDismissivel } from '@/lib/hooks/use-dismissivel'
 
 interface ItemBusca { id: string; nome: string; unidadeControle: string; custoMedio: number | null; categoria: string }
 // ⚠️ `qtdTexto` é a FONTE DA VERDADE do campo, não um número (28/08). O input era
@@ -349,6 +350,9 @@ function BuscaItem({ companyId, jaAdicionados, onAdd }: { companyId: string; jaA
   const [tudo, setTudo] = useState(false)
   const [novaUnidade, setNovaUnidade] = useState<'KG' | 'UN' | 'LT'>('KG')
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // ⭐ clique fora + ESC fecham a lista (28/08). Antes só dava pra sair ESCOLHENDO — quem
+  // desistia ficava com o dropdown pendurado na tela, e no celular era pior.
+  const caixa = useDismissivel<HTMLDivElement>(aberto, () => setAberto(false))
 
   useEffect(() => {
     if (timer.current) clearTimeout(timer.current)
@@ -374,7 +378,7 @@ function BuscaItem({ companyId, jaAdicionados, onAdd }: { companyId: string; jaA
   }
 
   return (
-    <div className="relative">
+    <div className="relative" ref={caixa}>
       <div className="relative">
         <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
         <input value={q} onFocus={() => setAberto(true)} onChange={(e) => { setQ(e.target.value); setAberto(true) }}
