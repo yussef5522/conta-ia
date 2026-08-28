@@ -23,9 +23,13 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Loader2, Plus, Trash2, Search, Save, AlertTriangle, ChevronDown, ChevronRight, BookOpen, ExternalLink } from 'lucide-react'
 import { valoresIniciaisDaFicha, paraCampo, faixaMargem, type LinhaParaFicha } from '@/lib/stock/cardapio/valores-iniciais'
+import { sanitizarQtd, valorQtd, textoQtd, descreverQtd, validarQtd } from '@/lib/stock/quantidade'
 
 interface ItemBusca { id: string; nome: string; unidadeControle: string; custoMedio: number | null; categoria: string }
-interface Comp { itemId: string; nome: string; unidade: string; qtdPlanejada: number; custoMedio: number | null; unidadeControle: string; categoria?: string; fichaIdComponente?: string | null }
+// ⚠️ `qtdTexto` é a FONTE DA VERDADE do campo, não um número (28/08). O input era
+// `value={numero}` e digitar "0,050" era impossível: a vírgula virava 0 e sumia da tela.
+// O que o dono digita fica TEXTO enquanto ele digita; o número é derivado.
+interface Comp { itemId: string; nome: string; unidade: string; qtdTexto: string; custoMedio: number | null; unidadeControle: string; categoria?: string; fichaIdComponente?: string | null }
 interface Setor { id: string; nome: string; ativo: boolean }
 
 const brl = (n: number | null) => (n == null ? '—' : n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }))
@@ -101,7 +105,7 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
         setValidadeDias(f.validadeDias != null ? String(f.validadeDias) : ''); setTempoPreparoMin(f.tempoPreparoMin != null ? String(f.tempoPreparoMin) : '')
         setModoPreparo(f.modoPreparo ?? '')
         if (f.modoPreparo || f.tempoPreparoMin != null) setCookbookAberto(true)
-        setComps(f.componentes.map((c: { itemId: string; nome: string; unidade: string; qtdPlanejada: number; custoMedio: number | null; unidadeControle: string }) => ({ itemId: c.itemId, nome: c.nome, unidade: c.unidade, qtdPlanejada: c.qtdPlanejada, custoMedio: c.custoMedio, unidadeControle: c.unidadeControle })))
+        setComps(f.componentes.map((c: { itemId: string; nome: string; unidade: string; qtdPlanejada: number; custoMedio: number | null; unidadeControle: string }) => ({ itemId: c.itemId, nome: c.nome, unidade: c.unidade, qtdTexto: textoQtd(c.qtdPlanejada), custoMedio: c.custoMedio, unidadeControle: c.unidadeControle })))
       }).finally(() => setCarregando(false))
     }
   }, [companyId, fichaId])
@@ -110,7 +114,7 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
   // (que é 1). Intermediário rende em lote e o rendimento é MEDIDO → por-unidade "a apurar".
   const custo = useMemo(() => {
     const semCusto = comps.filter((c) => c.custoMedio == null).length
-    const custoLote = semCusto > 0 ? null : round2(comps.reduce((s, c) => s + (c.custoMedio ?? 0) * c.qtdPlanejada, 0))
+    const custoLote = semCusto > 0 ? null : round2(comps.reduce((s, c) => s + (c.custoMedio ?? 0) * (valorQtd(c.qtdTexto) ?? 0), 0))
     const lote = parseNum(loteBase)
     const porUnidade = produtoFinal && custoLote != null && lote != null && lote > 0 ? round2(custoLote / lote) : null
     return { custoLote, porUnidade, custoADefinir: semCusto > 0, semCusto }
@@ -123,9 +127,10 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
 
   const addComp = (it: ItemBusca) => {
     if (comps.some((c) => c.itemId === it.id)) return
-    setComps((cs) => [...cs, { itemId: it.id, nome: it.nome, unidade: it.unidadeControle, qtdPlanejada: 1, custoMedio: it.custoMedio, unidadeControle: it.unidadeControle, categoria: it.categoria }])
+    setComps((cs) => [...cs, { itemId: it.id, nome: it.nome, unidade: it.unidadeControle, qtdTexto: '', custoMedio: it.custoMedio, unidadeControle: it.unidadeControle, categoria: it.categoria }])
   }
-  const setQtd = (itemId: string, q: number) => setComps((cs) => cs.map((c) => (c.itemId === itemId ? { ...c, qtdPlanejada: q } : c)))
+  // sanitiza a DIGITAÇÃO (preserva "0," e "0,0" — os estados que o campo antigo destruía)
+  const setQtd = (itemId: string, texto: string) => setComps((cs) => cs.map((c) => (c.itemId === itemId ? { ...c, qtdTexto: sanitizarQtd(texto, c.unidadeControle) } : c)))
   const rmComp = (itemId: string) => setComps((cs) => cs.filter((c) => c.itemId !== itemId))
 
   const salvar = async () => {
@@ -134,9 +139,12 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
     if (!nomeProduzido.trim()) return setErro('Dê um nome ao produto.')
     if (lb == null || lb <= 0) return setErro('A receita tem que render mais que zero.')
     if (!comps.length) return setErro('Adicione ao menos um ingrediente.')
-    if (comps.some((c) => !(c.qtdPlanejada > 0))) return setErro('Toda quantidade tem que ser maior que zero.')
+    for (const c of comps) {
+      const e = validarQtd(c.qtdTexto, c.unidadeControle, c.nome)
+      if (e) return setErro(e)
+    }
     const vv = produtoFinal ? parseNum(valorVenda) : null
-    const componentes = comps.map((c, i) => ({ itemId: c.itemId, qtdPlanejada: c.qtdPlanejada, unidade: c.unidade, posicao: i }))
+    const componentes = comps.map((c, i) => ({ itemId: c.itemId, qtdPlanejada: valorQtd(c.qtdTexto) ?? 0, unidade: c.unidade, posicao: i }))
     const body = {
       loteBase: lb, unidadeLoteBase, componentes,
       modoPreparo: modoPreparo.trim() || null,
@@ -247,31 +255,43 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
           </p>
         ) : (
           <div className="divide-y divide-slate-50">
-            {comps.map((c) => (
-              <div key={c.itemId} className="flex items-center gap-2 py-1.5">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13px] text-slate-800">
-                    {c.nome}
-                    {(c.categoria === 'INTERMEDIARIO' || c.categoria === 'PRODUTO_FINAL') && (
-                      <a href={`/empresas/${companyId}/estoque/producao/receitas`} target="_blank" rel="noreferrer"
-                        className="ml-1.5 inline-flex items-center gap-0.5 rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] text-violet-700 hover:bg-violet-100">
-                        produzido <ExternalLink className="h-2.5 w-2.5" />
-                      </a>
-                    )}
-                  </p>
-                  <p className="text-[11px] text-slate-400">
-                    {c.custoMedio != null ? `${brl(c.custoMedio)}/${c.unidadeControle}` : 'sem custo ainda'}
-                  </p>
+            {comps.map((c) => {
+              const qtd = valorQtd(c.qtdTexto)
+              const emGramas = descreverQtd(qtd, c.unidadeControle)
+              return (
+                <div key={c.itemId} className="flex items-center gap-2 py-1.5">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[13px] text-slate-800">
+                      {c.nome}
+                      {(c.categoria === 'INTERMEDIARIO' || c.categoria === 'PRODUTO_FINAL') && (
+                        <a href={`/empresas/${companyId}/estoque/producao/receitas`} target="_blank" rel="noreferrer"
+                          className="ml-1.5 inline-flex items-center gap-0.5 rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] text-violet-700 hover:bg-violet-100">
+                          produzido <ExternalLink className="h-2.5 w-2.5" />
+                        </a>
+                      )}
+                    </p>
+                    <p className="text-[11px] text-slate-400">
+                      {c.custoMedio != null ? `${brl(c.custoMedio)}/${c.unidadeControle}` : 'sem custo ainda'}
+                    </p>
+                  </div>
+                  {/* ⭐ o campo é TEXTO: "0,050" sobrevive letra a letra. inputMode decimal
+                      abre o teclado numérico com vírgula no celular, que é onde ele monta. */}
+                  <input value={c.qtdTexto} onChange={(e) => setQtd(c.itemId, e.target.value)}
+                    inputMode="decimal" placeholder={c.unidadeControle === 'UN' ? '1' : '0,000'}
+                    aria-label={`Quantidade de ${c.nome} em ${c.unidadeControle}`}
+                    className="h-9 w-24 rounded-lg border border-slate-300 px-2 text-right text-sm tabular-nums" />
+                  <span className="w-16 text-[11px] text-slate-400">
+                    {c.unidade}
+                    {/* confirmação visual: 0,05 e 0,005 são parecidos e 10× diferentes */}
+                    {emGramas && <span className="block text-[10px] text-slate-400">= {emGramas}</span>}
+                  </span>
+                  <span className="w-20 text-right text-[13px] tabular-nums text-slate-600">
+                    {c.custoMedio != null && qtd != null ? brl(round2(c.custoMedio * qtd)) : <span className="text-amber-500">—</span>}
+                  </span>
+                  <button onClick={() => rmComp(c.itemId)} className="text-slate-300 hover:text-rose-500"><Trash2 className="h-4 w-4" /></button>
                 </div>
-                <input value={c.qtdPlanejada} onChange={(e) => setQtd(c.itemId, parseNum(e.target.value) ?? 0)} inputMode="decimal"
-                  className="h-8 w-20 rounded-lg border border-slate-300 px-2 text-right text-sm tabular-nums" />
-                <span className="w-7 text-[11px] text-slate-400">{c.unidade}</span>
-                <span className="w-20 text-right text-[13px] tabular-nums text-slate-600">
-                  {c.custoMedio != null ? brl(round2(c.custoMedio * c.qtdPlanejada)) : <span className="text-amber-500">—</span>}
-                </span>
-                <button onClick={() => rmComp(c.itemId)} className="text-slate-300 hover:text-rose-500"><Trash2 className="h-4 w-4" /></button>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </CardContent></Card>
