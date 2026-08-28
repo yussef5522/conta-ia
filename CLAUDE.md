@@ -494,6 +494,23 @@ Alinhados com padrão de mercado (Modern Treasury / Fintech Engineering Handbook
 
 ⚠️ **7 testes com a decisão PURA e duck-typed** (`cliqueFoiFora` aceita qualquer coisa com `contains`), porque o projeto roda em `environment: node`. **Não puxei jsdom só pra isso** — trocaria um risco pequeno por um custo permanente de manutenção.
 
+**⭐⭐ A BUSCA NÃO ACHAVA O ITEM (28/08) — `contains` do Prisma é CASE-SENSITIVE no Postgres.**
+
+O dono: *"o PAO DE XIS aparece rolando a lista completa, mas a busca não acha de jeito nenhum: 'pao de xis' nada, 'pao' nada, **'xis' nada**"* — e o "xis" (sem acento) foi o dado que matou a hipótese de acento.
+
+**CAUSA MEDIDA no banco de prod (não deduzida):**
+```
+contains("xis") → 0      contains("XIS") → 1   ("PAO DE XIS")
+contains("pao") → 0      contains("PAO") → 1
+```
+**`contains` é case-SENSITIVE no PostgreSQL e case-INSENSITIVE no SQLite.** Funcionava em DEV e falhava CALADO em PROD — **a pior classe de bug, porque o dev nunca vê**. ⚠️ Nenhuma das 3 hipóteses levantadas: era a MESMA fonte, era CONTÉM (não prefixo), e não era cache.
+
+⚠️ **E `mode: 'insensitive'` NÃO bastaria:** conserta caixa, **não ACENTO**. Medido no mesmo banco: `insensitive("pao")` acha "PAO DE XIS" mas **não** acha "Pão tradicional". Num catálogo onde a NOTA escreve "PAO" e o DONO escreve "Pão", é o mesmo bug com outra cara.
+
+**FIX — `lib/busca-texto.ts`** (`normalizarBusca`/`casaBusca`/`filtrarPorBusca`): o filtro roda **NO APP, sobre a MESMA lista que a tela renderiza** (REGRA 4 — filtro e lista não têm como discordar), casando por **palavra em qualquer ordem** ("xis pao" acha "PAO DE XIS", porque o nome vem da nota e não da cabeça do dono). **BÔNUS: mata a truncagem** — o `take: 50` valia ANTES do filtro, então item fora das 50 primeiras sumia da busca mesmo casando; agora vale depois. **PROVADO EM PROD:** `xis`→1 · `pao`→2 · `PAO`→2 · `pão`→2 · `xis pao`→1 · `coxao`→"Coxão Mole" · `acem`→"Acém". 15 testes.
+
+⚠️⚠️ **DÉBITO REGISTRADO — a classe existe em ~10 outras buscas, e há uma RESTRIÇÃO REAL que impede o fix óbvio:** `mode: 'insensitive'` **não existe no SQLite**, e o dev roda SQLite → a correção quebra o `tsc --noEmit` local, que é parte do DoD. Os **20 usos que já existem** no código precisam de um *cast* pra compilar (ver `conciliacao/find-and-match`, que monta `{ mode: 'insensitive' as const } as {...}`). Cheguei a corrigir 4 e **reverti**. **As afetadas (texto que o DONO digita):** `fornecedores` (razaoSocial/nomeFantasia) · `regras` (padrao) · `personal-profile/queries` (description — busca de movimentações do PF) · `audit-log` + export (userName/entityId) · `admin/coupons`. **Não são busca** (constante do sistema, sem problema): `recategorize-pix`, `suggest-category`, `auto-memorize-vendor`, `find-similar-pending`, `find-and-match` (cnpjDigits). ⚠️ **Evidência de que a classe já era conhecida e contornada na unha:** `lib/credit-card-pj/queries.ts` enumera à mão `'CARTAO','cartao','CARTÃO','cartão','CARTOES',…` — 12 variantes de caixa e acento da mesma palavra. **Caminhos possíveis:** (a) app-side como no estoque (só onde a lista é pequena — não serve pra audit-log/transações PF, que paginam milhares); (b) extensão `unaccent` no Postgres + raw SQL; (c) migrar o dev pra Postgres e usar `mode` sem cast — o mais definitivo, e o que também mataria a divergência dev/prod que causou este bug.
+
 **PENDENTE (REGRA 2):** o dono validar no notebook e no celular, e montar o Xis Completo inteiro (pão 2,31 + porção de carne 3,62 + queijo 0,080 KG + o resto).
 
 ## 🗺️ O QUE FALTA PRO MÓDULO DE ESTOQUE FECHAR (atualizado 24/08/2026)
