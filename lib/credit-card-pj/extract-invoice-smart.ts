@@ -67,6 +67,36 @@ const DETERMINISTIC: DeterministicParser[] = [
   },
 ]
 
+/**
+ * ⭐⭐ O ROTEADOR — escolhe por FORÇA DE EVIDÊNCIA, não por ordem (29/08/2026).
+ *
+ * ⚠️ O BUG QUE ISTO CONSERTA, pego na validação ponta a ponta do Mercado Pago: o roteador
+ * fazia `DETERMINISTIC.find(d => d.match.test(text))` — **o PRIMEIRO que casa**. O texto da
+ * fatura do MP diz *"saque no CAIXA eletrônico"*, o match da Caixa é `/caixa/i`, e a Caixa
+ * vem antes no array. Resultado: a fatura do Mercado Pago era roteada pro parser da CAIXA,
+ * que falhava com *"não encontrei o Valor total desta fatura da Caixa"* — uma recusa que
+ * culpava o PDF do cliente por um erro de roteamento nosso.
+ *
+ * ⚠️ E "só reordenar o array" resolveria por ACIDENTE: o próximo banco cujo texto contenha
+ * "sicredi" ou "banrisul" de passagem quebraria de novo. Palavra comum não identifica
+ * emissor — QUANTIDADE de evidência identifica.
+ *
+ * Conta as ocorrências do padrão e fica com o maior. No caso real: MP 8 × Caixa 2.
+ * Empate (ou zero) → nenhum parser dedicado, e a decisão sobe pra camada de cima.
+ */
+export function escolherParser(text: string): DeterministicParser | undefined {
+  const pontuados = DETERMINISTIC.map((d) => {
+    const re = new RegExp(d.match.source, d.match.flags.includes('g') ? d.match.flags : d.match.flags + 'g')
+    return { d, score: (text.match(re) ?? []).length }
+  }).filter((x) => x.score > 0)
+  if (pontuados.length === 0) return undefined
+  pontuados.sort((a, b) => b.score - a.score)
+  // ⚠️ empate técnico: não adivinha. Melhor subir pra camada de cima do que rotear errado —
+  // rotear errado devolve "seu PDF está errado" pra um PDF que está certo.
+  if (pontuados.length > 1 && pontuados[0].score === pontuados[1].score) return undefined
+  return pontuados[0].d
+}
+
 /** Banco tem parser determinístico? (K7 do juiz: fatura de banco SEM parser entrou
  *  por Vision — meta é zero). Casa pelo `match` do registry no nome do banco. */
 export function hasDeterministicParser(bankName: string | null | undefined): boolean {
@@ -95,7 +125,7 @@ export async function extractInvoiceSmart(
   }
 
   if (text) {
-    const det = DETERMINISTIC.find((d) => d.match.test(text as string))
+    const det = escolherParser(text)
     if (det) {
       const parsed = det.parse(text)
       const validation = det.validate(parsed)
