@@ -140,6 +140,22 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 - **Cache 1h no DB** (não Redis — projeto não tem). Tabela dedicada `AiInsightsLog` (separada de `AiUsageLog`).
 - **PDF Vision GATED** em prod: `PDF_IMPORT_ENABLED=false` + `PDF_IMPORT_ZDR_CONFIRMED=false` explicit. Só liga com **AMBAS true** após ZDR assinado com Anthropic. Doc: `docs/sprints/pf-fatia-3.5-LIGAR-PDF.md`.
 
+## ⭐⭐⭐ OS R$ 2.444,62 DO BANRISUL (28/08) — NÃO ERA DIVERGÊNCIA ANTERIOR; ERA LINHA DESCARTADA
+
+**A premissa estava errada, e o dado corrigiu.** O gate travou com *previsto 1.177,59 vs banco −1.267,03*, e a leitura foi "o buraco é anterior a este import". **Não era:** o sistema estava 100% correto até 25/08 — **todos** os imports com `ledgerBalMatched=SIM`, **zero** linha do arquivo faltando, `balance == LEDGERBAL` (−9.434,99), **zero** tx depois da âncora. O buraco era **deste import**.
+
+**A linha existe no arquivo e foi DESCARTADA:**
+```
+26/08   −R$ 2.444,62   EMPRESTIMO   fitid 260826
+```
+`FITID 260826` == **YYMMDD da própria data** → a heurística *"FITID == YYMMDD ⇒ preview do Banrisul"* a mandou pra "futuras". A aritmética fecha ao centavo com ela dentro: **−9.434,99 + 8.167,96 = −1.267,03 = LEDGERBAL**. Sem ela: 1.177,59 → **a diferença é exatamente ela**. ⚠️ A pista estava na contagem: o arquivo tinha **14** linhas novas e o gate ofereceu **12** — duas descartadas (a de 09/09, correta, e esta).
+
+**⛔ A REGRA CAIU POR EVIDÊNCIA.** Nasceu de UM caso (11/06) e produziu **DOIS falsos positivos provados**, os dois escondendo débito REAL de empréstimo: **4.092,02** (13/08, o PDF provou) e **2.444,62** (28/08, o LEDGERBAL provou). **E o arquivo real explica a causa:** todo FITID do Banrisul tem 6 dígitos, e nas linhas de empréstimo o banco usa a **DATA como identificador** — é **convenção de ID, não marcador de previsão**. A heurística lia *formato de identificador* como se fosse *estado do lançamento*. **Quem decide se liquidou é o SALDO.** Ficam de pé a defesa por DATA (camada 1 — segue descartando o CONSÓRCIO de 09/09) e a por LEDGERBAL (camada 2); sem correspondência de saldo o gate **bloqueia e pergunta**, que é o certo: avisar em vez de descartar em silêncio. Os 3 testes que afirmavam a regra antiga foram **invertidos com o motivo escrito**, não apagados.
+
+**⚠️ NÃO HOUVE CIRURGIA DE DADOS** — o banco estava correto; o defeito era de código. **PROVADO com o arquivo real: gate agora abre VERDE** (previsto −1.267,03 == banco −1.267,03), 13 linhas contadas, 1 descartada por data.
+
+**ITEM 4 — grafia alternada:** o banco escreve **"OP. CREDITO C/GARANTIA" (24×)** e **"OP.CREDITO C/GARANTIA" (30×)** — **no MESMO arquivo** (25-27/08 com espaço, 28/08 sem). A regra aprendida casava uma e ignorava a outra, e o dono chegou a criar uma **2ª regra na mão** ("OP CREDITO C/GARANTIA", **0 aplicações**) — sintoma clássico de match frágil. A normalização passa a **remover o espaço depois do ponto**. ⚠️ **Estreitei depois de quebrar:** a 1ª versão trocava o ponto POR espaço e **quebrou o detector de keyword do cartão** (`"Apple.Com/Bill"` → `"apple com"`); o teste pegou. As duas grafias reais diferem só pelo espaço. **Não afeta dedup** — a identidade de linha usa `normalizeMemo`, outra função (conferido antes de mexer).
+
 ## ⛔⛔⛔ INCIDENTE 28/08 — LOGIN 500 POR 8 HORAS COM O TRIO VERDE. O GATE PROVAVA PRESENÇA, NÃO SAÚDE.
 
 **O ERRO FOI MEU, e a lição vale mais que ele.** No comando de deploy da rodada anterior rodei `git reset --hard` (que **reverte `prisma/schema.prisma` pra `sqlite`** — o swap-postgres é passo MANUAL do runbook) e em seguida `npx prisma generate` **sem o swap**. Como o **`node_modules` é COMPARTILHADO por hard link** com o workspace de build, o client gerado virou SQLite; o app subiu com ele e **toda query ao banco morria**: *"the URL must start with the protocol `file:`"*. Log real: `[LOGIN] Erro interno: PrismaClientInitializationError`.
