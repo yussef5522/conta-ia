@@ -140,6 +140,30 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 - **Cache 1h no DB** (não Redis — projeto não tem). Tabela dedicada `AiInsightsLog` (separada de `AiUsageLog`).
 - **PDF Vision GATED** em prod: `PDF_IMPORT_ENABLED=false` + `PDF_IMPORT_ZDR_CONFIRMED=false` explicit. Só liga com **AMBAS true** após ZDR assinado com Anthropic. Doc: `docs/sprints/pf-fatia-3.5-LIGAR-PDF.md`.
 
+## ⭐⭐⭐ SÉRIE B — DIVERGÊNCIA DE SALDO BANCÁRIO NUNCA MAIS VIVE EM SILÊNCIO (28/08/2026)
+
+**A lição do episódio dos 2.444,62 não é o bug — é que a divergência só apareceu porque o dono REIMPORTOU.** Com cliente, um buraco desses viveria semanas mudo.
+
+**⚠️⚠️ A ARMADILHA QUE QUASE VIROU UM INVARIANTE INÚTIL:** o `balance` da conta é **ancorado no próprio LEDGERBAL** (`recalcularSaldoConta` = `ledgerBal + Σ(tx pós-âncora)`). Então *"saldo na data do LEDGERBAL == LEDGERBAL"* é **CIRCULAR — daria verde sempre**, inclusive com o buraco aberto. **Invariante que não pode falhar é pior que nenhum: dá selo verde de graça.** Há um teste só pra provar isso.
+
+**⭐ O QUE MORDE:** **dois LEDGERBAL consecutivos têm que ser reconciliados pelas transações do intervalo.** O banco declarou X no dia 25 e Y no dia 28 → a diferença TEM que ser explicada pelas linhas de 26 a 28. Independente da âncora; pega linha faltando, duplicada ou com sinal trocado. **B1** (erro, intervalo não fecha) · **B2** (erro, o cache `balance` driftou) · **B3** (aviso, conta sem conferência >10d ou nunca conferida). Só ERRO conta no selo — B3 é aviso, porque conta parada não é defeito e alarme falso faz o dono parar de ler o e-mail.
+
+**⭐ AS ÂNCORAS JÁ EXISTIAM — não precisou de tabela nova.** Todo import grava `ledgerBalAmount` + `anchorDate` em `OfxImport` desde 12/08; o histórico de saldos declarados já estava no banco, **só não era usado por ninguém**.
+
+**⚠️ A MENSAGEM NÃO CHUTA A CAUSA:** o sinal diz de que LADO sobra, mas cada direção tem DUAS explicações (falta entrada **ou** sobra saída duplicada). A 1ª versão afirmava uma só — mandaria o dono procurar no lugar errado.
+
+**⚠️ BUG MEU, PEGO NA 1ª RODADA EM PROD:** o juiz acusou dois erros de ±3.026,31 no Banrisul **que se cancelavam entre intervalos vizinhos** — assinatura de âncora errada, não de transação faltando. Causa: 26/08 teve DOIS imports ancorados em 25/08 (LEDGERBAL −6.408,68 e −9.434,99) e ordenar só por `anchorDate` deixava o desempate arbitrário. Agora ordena também por `createdAt`. **Lição: erro que se cancela em intervalos vizinhos é dado meu, não buraco do cliente.**
+
+**📋 ACHADOS REAIS DA 1ª RODADA (não corrigidos — decisão do dono):**
+- **Banrisul 11→13/08: R$ 1.463,71** e **13→14/08: R$ 7.000,00** — o 7.000 é a família do "bug PIX 7.000" documentado; o intervalo ainda não fecha. Período que o marco declara 100%.
+- **Stone 19→21 (−2.178,67) e 21→23 (+2.178,67) — SE CANCELAM** → assinatura de **fronteira de data** (o banco lançou num dia, o OFX datou noutro), **não de dinheiro faltando**. **Stone 13→17: R$ 122,37** não cancela → esse é real.
+- **Banrisul 14/08→28/08: TODOS os intervalos ✓**, inclusive 25→28 (8.167,96 = 8.167,96), confirmando o fix do FITID.
+- **B3:** cofre, banco caixa e a conta teste **nunca foram conferidos com o banco** — o saldo lá é o que foi digitado. Agora isso é visível em vez de presumido.
+
+**ITEM 4 — O SELF-HEAL VIROU COMPORTAMENTO TRAVADO:** import incompleto → juiz vermelho → re-import com a linha → verde **sem duplicar**, com os números reais. 28 testes.
+
+**⚠️ O QUE NÃO ENTROU NESTA LEVA (registrado, não feito):** a **tela** de Contas mostrando "conferido ✓ / divergente" (o motor `conferenciaDasContas` está pronto e testado, falta o componente); o **banner de export de mesmo dia** no import; e o **diagnóstico guiado ligado na tela** do import (a função `ondeDescolou` existe e funciona — provada em prod: *"o descolamento começou entre 11/08 e 13/08 (R$ 1.463,71)"* — falta plugar no payload do preview).
+
 ## ⭐⭐⭐ OS R$ 2.444,62 DO BANRISUL (28/08) — NÃO ERA DIVERGÊNCIA ANTERIOR; ERA LINHA DESCARTADA
 
 **A premissa estava errada, e o dado corrigiu.** O gate travou com *previsto 1.177,59 vs banco −1.267,03*, e a leitura foi "o buraco é anterior a este import". **Não era:** o sistema estava 100% correto até 25/08 — **todos** os imports com `ledgerBalMatched=SIM`, **zero** linha do arquivo faltando, `balance == LEDGERBAL` (−9.434,99), **zero** tx depois da âncora. O buraco era **deste import**.
