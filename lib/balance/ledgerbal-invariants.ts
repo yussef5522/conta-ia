@@ -1,0 +1,185 @@
+// ⭐⭐ SÉRIE B — O SALDO DO BANCO CONFERE COM O NOSSO? (28/08/2026)
+//
+// NASCEU DO EPISÓDIO DOS R$ 2.444,62: o extrato do Banrisul foi exportado NO MESMO DIA e
+// veio sem uma transação que ainda não tinha liquidado. O sistema e o banco ficaram
+// diferentes — e isso só apareceu porque o dono **importou de novo**. Com cliente, um
+// buraco desses viveria SEMANAS mudo.
+//
+// ⚠️⚠️ A ARMADILHA QUE QUASE ME FEZ ESCREVER UM INVARIANTE INÚTIL:
+// o `balance` da conta é ANCORADO no próprio LEDGERBAL (`recalcularSaldoConta` faz
+// `ledgerBal + Σ(tx depois da âncora)`). Então "saldo na data do LEDGERBAL == LEDGERBAL"
+// é **CIRCULAR — daria verde sempre**, inclusive hoje, com o buraco aberto. Um invariante
+// que não pode falhar é pior que nenhum: dá selo verde de graça.
+//
+// ⭐ O QUE MORDE DE VERDADE: **dois LEDGERBAL consecutivos têm que ser reconciliados pelas
+// transações do intervalo.** O banco declarou X no dia 25 e Y no dia 28 — a diferença
+// Y − X TEM que ser explicada pelas linhas de 26 a 28. Isso é independente da âncora e
+// pega linha faltando, duplicada ou com sinal trocado.
+//
+// PROVA no caso real: LEDGERBAL 25/08 = −9.434,99 · 28/08 = −1.267,03 → o intervalo tem
+// que somar 8.167,96. Sem a linha de EMPRESTIMO (−2.444,62) somaria 10.612,58 → **B1
+// VERMELHO na MESMA noite**, sem depender de ninguém reimportar.
+
+const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
+
+/** ±1 centavo: a mesma tolerância que o resto do módulo usa pra dinheiro. */
+export const TOLERANCIA_CENTAVO = 0.01
+
+/** Dias sem conferir com o banco antes de avisar (B3). */
+export const DIAS_SEM_CONFERIR = 10
+
+export interface CheckSaldo {
+  invariante: 'B1' | 'B2' | 'B3'
+  nivel: 'erro' | 'aviso'
+  companyId: string | null
+  bankAccountId: string
+  contaNome: string
+  detalhe: string
+  /** quanto falta explicar, quando aplicável (pro e-mail dizer o número) */
+  diferenca?: number
+}
+
+/** Uma declaração de saldo do banco (vem de um import de OFX). */
+export interface AncoraDeclarada {
+  data: Date
+  valor: number
+}
+
+export interface LeituraConta {
+  bankAccountId: string
+  contaNome: string
+  companyId: string | null
+  /** LEDGERBALs declarados pelo banco, do mais antigo pro mais novo */
+  ancoras: AncoraDeclarada[]
+  /** soma com sinal das tx EFFECTED num intervalo (exclusivo→inclusivo) */
+  somaNoIntervalo: (depoisDe: Date, ate: Date) => number
+  /** saldo gravado hoje na conta + a âncora vigente (pra B2) */
+  balanceGravado: number
+  ledgerBalVigente: number | null
+  ledgerBalDataVigente: Date | null
+  /** soma das tx EFFECTED depois da âncora vigente */
+  somaPosAncora: number
+}
+
+const dia = (d: Date) => d.toISOString().slice(0, 10)
+const br = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+const fmtDia = (d: Date) => dia(d).split('-').reverse().join('/')
+
+/**
+ * PURA — a decisão. Lista vazia = conta conferindo com o banco.
+ * `hoje` é parâmetro pra o teste ser determinístico (o relógio nunca decide sozinho).
+ */
+export function avaliarConta(l: LeituraConta, hoje: Date): CheckSaldo[] {
+  const out: CheckSaldo[] = []
+  const base = { companyId: l.companyId, bankAccountId: l.bankAccountId, contaNome: l.contaNome }
+
+  // ── B1 (erro) — dois LEDGERBAL consecutivos reconciliam pelas tx do intervalo?
+  const ancoras = [...l.ancoras].sort((a, b) => a.data.getTime() - b.data.getTime())
+  for (let i = 1; i < ancoras.length; i++) {
+    const de = ancoras[i - 1]
+    const ate = ancoras[i]
+    if (dia(de.data) === dia(ate.data)) continue // mesmo dia: o banco re-declara, não é intervalo
+    const esperado = round2(ate.valor - de.valor)
+    const real = round2(l.somaNoIntervalo(de.data, ate.data))
+    const dif = round2(real - esperado)
+    if (Math.abs(dif) > TOLERANCIA_CENTAVO) {
+      out.push({
+        ...base, invariante: 'B1', nivel: 'erro', diferenca: dif,
+        // ⚠️ O SINAL DIZ DE QUE LADO SOBRA, NÃO QUAL É A CAUSA: cada direção tem DUAS
+        // explicações possíveis, e afirmar uma só mandaria o dono procurar no lugar errado.
+        //   sistema soma MENOS → falta uma ENTRADA  ou  há uma SAÍDA duplicada
+        //   sistema soma MAIS  → falta uma SAÍDA    ou  há uma ENTRADA duplicada
+        detalhe:
+          `entre ${fmtDia(de.data)} e ${fmtDia(ate.data)} o banco variou ${br(esperado)}, ` +
+          `mas as transações do período somam ${br(real)} — sobram ${br(Math.abs(dif))} ` +
+          `${dif > 0 ? 'no sistema: pode faltar uma SAÍDA do banco, ou ter uma ENTRADA duplicada' : 'no banco: pode faltar uma ENTRADA do banco, ou ter uma SAÍDA duplicada'}. ` +
+          `Re-exporte o extrato cobrindo ${fmtDia(de.data)}–${fmtDia(ate.data)} e importe de novo — ` +
+          `linha que ainda não tinha liquidado costuma vir no re-export e fechar sozinha.`,
+      })
+    }
+  }
+
+  // ── B2 (erro) — o saldo GRAVADO bate com âncora + movimento posterior?
+  // ⚠️ Isto NÃO é circular: compara o CACHE (`balance`) com a reconstrução. Pega cache
+  // velho/driftado, que é outra falha — não a de linha faltando (essa é o B1).
+  if (l.ledgerBalVigente != null) {
+    const reconstruido = round2(l.ledgerBalVigente + l.somaPosAncora)
+    const dif = round2(l.balanceGravado - reconstruido)
+    if (Math.abs(dif) > TOLERANCIA_CENTAVO) {
+      out.push({
+        ...base, invariante: 'B2', nivel: 'erro', diferenca: dif,
+        detalhe:
+          `saldo gravado ${br(l.balanceGravado)} ≠ âncora ${br(l.ledgerBalVigente)} + movimento posterior ` +
+          `${br(l.somaPosAncora)} = ${br(reconstruido)} (${br(dif)} de diferença). Recalcule o saldo da conta.`,
+      })
+    }
+  }
+
+  // ── B3 (aviso) — faz quanto tempo que ninguém confere esta conta com o banco?
+  // ⚠️ AVISO, não erro: conta parada (ou manual, tipo cofre) não é defeito. O que é ruim
+  // é ninguém SABER que ela está sem conferência.
+  if (l.ledgerBalDataVigente) {
+    const dias = Math.floor((hoje.getTime() - l.ledgerBalDataVigente.getTime()) / 86400000)
+    if (dias > DIAS_SEM_CONFERIR) {
+      out.push({
+        ...base, invariante: 'B3', nivel: 'aviso',
+        detalhe: `sem conferência com o banco há ${dias} dias (último saldo declarado em ${fmtDia(l.ledgerBalDataVigente)}). Importe o extrato pra fechar.`,
+      })
+    }
+  } else if (l.ancoras.length === 0) {
+    out.push({
+      ...base, invariante: 'B3', nivel: 'aviso',
+      detalhe: 'nunca foi conferida com o banco (nenhum extrato com saldo declarado). O saldo aqui é o que foi digitado, não o que o banco diz.',
+    })
+  }
+
+  return out
+}
+
+/** Estado por conta pra a TELA — "conferido ✓" ou "divergente desde DD/MM". */
+export interface EstadoConferencia {
+  bankAccountId: string
+  conferido: boolean
+  /** data do último saldo declarado pelo banco */
+  em: Date | null
+  diferenca: number | null
+  /** frase pronta, em pt-BR, pro dono ler sem interpretar número solto */
+  rotulo: string
+}
+
+export function estadoDaConferencia(l: LeituraConta, hoje: Date): EstadoConferencia {
+  const checks = avaliarConta(l, hoje)
+  const erro = checks.find((c) => c.nivel === 'erro')
+  const base = { bankAccountId: l.bankAccountId, em: l.ledgerBalDataVigente }
+  if (erro) {
+    return { ...base, conferido: false, diferenca: erro.diferenca ?? null, rotulo: `divergente em ${br(Math.abs(erro.diferenca ?? 0))}${l.ledgerBalDataVigente ? ` desde ${fmtDia(l.ledgerBalDataVigente)}` : ''}` }
+  }
+  if (!l.ledgerBalDataVigente) {
+    return { ...base, conferido: false, diferenca: null, rotulo: 'nunca conferida com o banco' }
+  }
+  return { ...base, conferido: true, diferenca: 0, rotulo: `conferido com o banco em ${fmtDia(l.ledgerBalDataVigente)}` }
+}
+
+/**
+ * ⭐ DIAGNÓSTICO GUIADO (item 3) — quando o gate do import não bate, dizer ONDE começou o
+ * descolamento em vez de devolver um enigma. Caminha as âncoras e aponta o PRIMEIRO
+ * intervalo que não fecha.
+ */
+export function ondeDescolou(l: LeituraConta): { de: Date; ate: Date; diferenca: number; instrucao: string } | null {
+  const ancoras = [...l.ancoras].sort((a, b) => a.data.getTime() - b.data.getTime())
+  for (let i = 1; i < ancoras.length; i++) {
+    const de = ancoras[i - 1]
+    const ate = ancoras[i]
+    if (dia(de.data) === dia(ate.data)) continue
+    const dif = round2(round2(l.somaNoIntervalo(de.data, ate.data)) - round2(ate.valor - de.valor))
+    if (Math.abs(dif) > TOLERANCIA_CENTAVO) {
+      return {
+        de: de.data, ate: ate.data, diferenca: dif,
+        instrucao:
+          `O descolamento começou entre ${fmtDia(de.data)} e ${fmtDia(ate.data)} (${br(Math.abs(dif))}). ` +
+          `Provavelmente falta transação nesse período — re-exporte o extrato do banco cobrindo essas datas e importe de novo.`,
+      }
+    }
+  }
+  return null
+}

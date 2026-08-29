@@ -14,6 +14,7 @@ import { findDuplicateStableKeys } from './tx-duplicate-invariant'
 import { checkVendasForCompany } from '../vendas/vendas-invariants'
 import { checkCardInvariants } from '../credit-card-pj/card-invariants'
 import { checkCardInvariantsPF } from '../credit-card/card-invariants-pf'
+import { checkSaldosBancarios } from '../balance/ler-conferencia'
 
 export interface JudgeReport {
   passed: boolean
@@ -35,6 +36,15 @@ export interface JudgeReport {
   cardIssues: number
   cardChecks: { invariante: string; companyName: string; detalhe: string }[]
   cardResumo: { companyName: string; filaCount: number; filaSoma: number; filaMaisAntigaDias: number | null; visionBancos: string[] }[]
+  // ⭐ SÉRIE B (28/08) — o saldo do banco confere com o nosso?
+  //
+  // Nasceu do episódio dos R$ 2.444,62: um extrato exportado no MESMO DIA veio sem uma
+  // transação que ainda não tinha liquidado, e a divergência só apareceu porque o dono
+  // reimportou. Com cliente, viveria semanas muda. B1 (dois LEDGERBAL consecutivos
+  // reconciliam pelas tx do intervalo) · B2 (cache do saldo não driftou) · B3 (aviso: conta
+  // sem conferência). Só ERRO conta no selo — B3 é aviso e não deixa vermelho.
+  saldoIssues: number
+  saldoChecks: { invariante: string; nivel: string; conta: string; detalhe: string }[]
 }
 
 const r2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
@@ -180,9 +190,16 @@ export async function runModuleJudge(prisma: PrismaClient): Promise<JudgeReport>
 
   const cardIssues = cardChecks.length
 
-  const passed = totalFail === 0 && sharedTx.length === 0 && balanceIssues === 0 && dupIssues === 0 && vendaIssues === 0 && cardIssues === 0
+  // SÉRIE B — saldo bancário × o que o banco declarou.
+  const saldoFails = await checkSaldosBancarios(prisma, nowJudge)
+  const saldoChecks = saldoFails.map((f) => ({ invariante: f.invariante, nivel: f.nivel, conta: f.contaNome, detalhe: f.detalhe }))
+  // ⚠️ só ERRO entra no contador do selo: B3 ("conta sem conferência há N dias") é aviso —
+  // conta parada não é defeito, e alarme falso faz o dono parar de ler o e-mail.
+  const saldoIssues = saldoFails.filter((f) => f.nivel === 'erro').length
+
+  const passed = totalFail === 0 && sharedTx.length === 0 && balanceIssues === 0 && dupIssues === 0 && vendaIssues === 0 && cardIssues === 0 && saldoIssues === 0
   return {
-    passed, totalContracts, totalFail, balanceIssues, dupIssues, vendaIssues, cardIssues,
-    durationMs: Date.now() - start, byCompany, sharedTx, balanceChecks, dupStableKey, vendaChecks, cardChecks, cardResumo,
+    passed, totalContracts, totalFail, balanceIssues, dupIssues, vendaIssues, cardIssues, saldoIssues,
+    durationMs: Date.now() - start, byCompany, sharedTx, balanceChecks, dupStableKey, vendaChecks, cardChecks, cardResumo, saldoChecks,
   }
 }
