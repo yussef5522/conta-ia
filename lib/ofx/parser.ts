@@ -21,6 +21,11 @@ export interface OFXParseResult {
   ledgerBalance?: { amount: number; asOfDate: Date } | null
   /** DTEND do BANKTRANLIST — fim do período de transações. null se ausente. */
   statementEnd?: Date | null
+  /** ⭐ Quantos blocos <STMTTRN> o ARQUIVO tinha, antes de qualquer validação (29/08).
+   *  `totalBlocos == transactions.length + linhas derrubadas por erro`. É o que permite a
+   *  conciliação de destinos enxergar a linha que morre no parser — sem ele, ela some
+   *  antes de existir e nenhuma contagem posterior a vê. */
+  totalBlocos: number
 }
 
 function extractTag(content: string, tag: string): string | null {
@@ -144,5 +149,9 @@ export function parseOFX(raw: string): OFXParseResult {
   const stmtEndRaw = extractTag(stmtListMatch ? stmtListMatch[1] : content, 'DTEND')
   const statementEnd = stmtEndRaw ? parseOFXDate(stmtEndRaw) : null
 
-  return { accountId, bankId, currency, transactions, errors, ledgerBalance, statementEnd }
+  // ⭐ `totalBlocos` (29/08) — quantos <STMTTRN> o ARQUIVO tinha, antes de qualquer
+  // validação. Sem isto a conciliação de destinos conta linhas PARSEADAS e fica cega pra
+  // linha derrubada aqui (sem FITID/data/valor): ela some antes de existir. Com isto,
+  // `blocos == parseadas + ilegíveis` e o buraco fecha na borda do parser também.
+  return { accountId, bankId, currency, transactions, errors, ledgerBalance, statementEnd, totalBlocos: blocks.length }
 }

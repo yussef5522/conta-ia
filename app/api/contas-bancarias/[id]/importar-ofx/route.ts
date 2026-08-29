@@ -642,12 +642,16 @@ export async function POST(request: NextRequest, { params }: Params) {
     // Contar LINHAS é mais forte que conferir SALDO: linha perdida cujo valor empata com
     // outra coisa (ou período em que o LEDGERBAL não é confiável — Banrisul embute
     // bloqueado) some sem alarme nenhum no gate de saldo. Aqui não some.
+    // ⚠️ o total vem do ARQUIVO (blocos <STMTTRN>), não do que o parser conseguiu ler:
+    // usar `transactions.length` deixaria a conta cega pra linha derrubada no parser — ela
+    // sumiria antes de existir. `errors` é o balde nomeado dessas (aparece na tela).
     const conciliacao = conciliarDestinos({
-      totalNoArquivo: transactions.length,
+      totalNoArquivo: parsedOfx.totalBlocos ?? transactions.length,
       novas: novasReais.length,
       jaExistem: duplicadas,
       futuras: novasFuturas.length,
       ignoradas: 0, // no preview o usuário ainda não marcou nada
+      ilegiveis: errors.length,
     })
     if (!conciliacao.fecha) {
       console.error(`[importar-ofx preview] CONCILIAÇÃO NÃO FECHA: ${conciliacao.resumo} · sem destino: ${conciliacao.semDestino}`)

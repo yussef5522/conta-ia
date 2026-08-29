@@ -6,7 +6,7 @@
 // sido jogada fora. O gate travou por causa do SALDO, e a linha sumida era invisível: o
 // dono ficou com um enigma de R$ 2.444,62 em vez de uma linha marcada "descartada porque X".
 //
-// ⭐ A REGRA: `total do arquivo == novas + já existem + futuras + ignoradas pelo usuário`.
+// ⭐ A REGRA: `blocos do arquivo == novas + já existem + futuras + ignoradas + ilegíveis`.
 // Linha que não cai em nenhum balde é **sumida**, e sumida é IMPOSSÍVEL por construção:
 // a conta não fecha → o import NÃO ABRE.
 //
@@ -17,16 +17,22 @@
 //
 // Função PURA: a decisão testável sem banco nem arquivo.
 
-export type DestinoLinha = 'nova' | 'ja_existe' | 'futura' | 'ignorada'
+export type DestinoLinha = 'nova' | 'ja_existe' | 'futura' | 'ignorada' | 'ilegivel'
 
 export interface ContagemDestinos {
-  /** quantas linhas o parser leu do arquivo */
+  /** ⚠️ quantos blocos <STMTTRN> o ARQUIVO tem — NÃO o que o parser conseguiu ler.
+   *  Usar o número parseado deixaria a conta cega justamente pra linha que morre no parser
+   *  (é o `totalBlocos` do OFXParseResult). */
   totalNoArquivo: number
   novas: number
   jaExistem: number
   futuras: number
   /** descartadas por decisão EXPLÍCITA do usuário (marcação no preview) */
   ignoradas: number
+  /** ⚠️ derrubadas pelo PARSER (sem FITID/data/valor). Balde separado de propósito: é
+   *  defeito de ARQUIVO, não decisão nossa — e antes de existir este balde a linha morria
+   *  antes de ser contada, invisível pra qualquer conferência posterior. */
+  ilegiveis: number
 }
 
 export interface ResultadoConciliacao {
@@ -43,7 +49,7 @@ export interface ResultadoConciliacao {
 const plural = (n: number, um: string, muitos: string) => `${n} ${n === 1 ? um : muitos}`
 
 export function conciliarDestinos(c: ContagemDestinos): ResultadoConciliacao {
-  const somaDestinos = c.novas + c.jaExistem + c.futuras + c.ignoradas
+  const somaDestinos = c.novas + c.jaExistem + c.futuras + c.ignoradas + c.ilegiveis
   const semDestino = c.totalNoArquivo - somaDestinos
 
   const partes = [
@@ -52,6 +58,7 @@ export function conciliarDestinos(c: ContagemDestinos): ResultadoConciliacao {
     plural(c.futuras, 'futura', 'futuras'),
   ]
   if (c.ignoradas > 0) partes.push(plural(c.ignoradas, 'ignorada por você', 'ignoradas por você'))
+  if (c.ilegiveis > 0) partes.push(plural(c.ilegiveis, 'ilegível no arquivo', 'ilegíveis no arquivo'))
   const resumo = `${plural(c.totalNoArquivo, 'linha no arquivo', 'linhas no arquivo')} = ${partes.join(' + ')}`
 
   if (semDestino === 0) return { fecha: true, somaDestinos, semDestino, resumo, erro: null }
@@ -78,6 +85,7 @@ export function contarDestinos(destinos: DestinoLinha[], totalNoArquivo: number)
   return {
     totalNoArquivo,
     novas: destinos.filter((d) => d === 'nova').length,
+    ilegiveis: destinos.filter((d) => d === 'ilegivel').length,
     jaExistem: destinos.filter((d) => d === 'ja_existe').length,
     futuras: destinos.filter((d) => d === 'futura').length,
     ignoradas: destinos.filter((d) => d === 'ignorada').length,
