@@ -92,6 +92,10 @@ export interface ImportOrchestratorResult {
     fitid: string | null
   }>
   insertedTxIds: string[]
+  /** ⭐ ofxHash (a chave do PREVIEW) → id da transação gravada. É o que permite a tela
+   *  aplicar as marcações sem cruzar hashes de formatos diferentes — ver o comentário
+   *  longo na construção do mapa. */
+  txIdByOfxHash: Record<string, string>
   insertedWarningIds: string[]
 }
 
@@ -396,6 +400,20 @@ export async function runImportV2(
   // transações — o stableKey puro colidiria no @@unique. Ver ./line-dedup-hash.
   const nextOcc = makeOccurrenceCounter()
   const insertedTxIds: string[] = []
+  // ⭐⭐ MAPA ofxHash → txId — a PONTE entre o preview e o que foi gravado (29/08/2026).
+  //
+  // ⚠️ O BUG QUE ISTO CONSERTA: a tela aplicava as marcações do preview (pagamento de
+  // cartão, receita/despesa, transferência, ignorar) DEPOIS do import, cruzando o
+  // `dedupHash` do preview com o `dedupHash` gravado na transação. **São formatos
+  // DIFERENTES**: o preview usa `ofxHashOf` (fitid|data|valor|memo) e a gravação usa
+  // `stableKey#importId:occ` — e o `importId` **só existe depois** do import, então o
+  // preview não teria como conhecê-lo. O cruzamento NUNCA casava e as marcações caíam
+  // em silêncio: o dono escolhia o cartão na revisão e a transação nascia crua, indo
+  // parar na fila de pendentes.
+  //
+  // Aqui os dois hashes estão na MESMA mão, no mesmo laço. Devolver o mapa elimina a
+  // adivinhação — e de quebra mata a race que a tela tentava contornar com 3 retries.
+  const txIdByOfxHash: Record<string, string> = {}
   // Decisões do preview (SKIP não vira tx) — mesma chave dedupHashOFX dos
   // categoryOverrides, mesma função pura do V1 (applyImportDecisions). Aplica
   // ANTES de criar, tanto em EFFECTED (missing) quanto em previews.
@@ -418,6 +436,8 @@ export async function runImportV2(
     // Casa o override do preview pela MESMA chave que o client usou (dedupHashOFX).
     const ov = resolveLineOverride(overrideMap, line)
     if (ov.status === 'RECONCILED') overridesApplied += 1
+    // ⭐⭐ O MAPA ofxHash → txId (29/08/2026). Ver o porquê no bloco do `txIdByOfxHash`.
+    const hashDoPreview = ofxHashOf(line)
     const created = await tx.transaction.create({
       data: {
         bankAccountId: input.bankAccountId,
@@ -441,6 +461,7 @@ export async function runImportV2(
       select: { id: true },
     })
     insertedTxIds.push(created.id)
+    txIdByOfxHash[hashDoPreview] = created.id
   }
   // Reflete no relatório do import quantas entraram já categorizadas.
   if (overridesApplied > 0) {
@@ -628,6 +649,8 @@ export async function runImportV2(
     matchedFuzzy: result.matched.filter((m) => m.confidence === 'FUZZY').length,
     warnings: warningsOut,
     insertedTxIds,
+    // a ponte preview → gravado, pra a tela aplicar as marcações sem adivinhar
+    txIdByOfxHash,
     insertedWarningIds,
   }
 }

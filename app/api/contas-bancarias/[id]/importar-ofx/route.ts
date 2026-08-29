@@ -227,6 +227,11 @@ export async function POST(request: NextRequest, { params }: Params) {
         matchedFuzzy: result.matchedFuzzy,
         warnings: result.warnings,
         importId: result.importId,
+        // ⭐⭐ A PONTE preview → gravado (29/08). Sem isto a tela cruzava o `dedupHash` do
+        // preview com o gravado — formatos DIFERENTES (o gravado embute o importId, que só
+        // existe depois) — e TODA marcação caía em silêncio: o dono escolhia "pagamento de
+        // cartão" na revisão e a transação nascia crua, indo pra fila de pendentes.
+        txIdByOfxHash: result.txIdByOfxHash,
         ledgerBalance: result.ledgerBalance,
         errosParser: errors,
       })

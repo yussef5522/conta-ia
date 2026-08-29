@@ -223,7 +223,15 @@ export default function ImportarOFXPage() {
   // Sprint Pending Transfer State (27/06/2026): nao perder mark em silencio.
   //   - Retry do map dedupHash->txId se vier incompleto (race pos-commit)
   //   - Toast EXPLICITO com nao-aplicadas (ex: "3 nao aplicadas, revise")
-  async function applyV3MarksAfterImport(importId: string, decisions: V3Decisions) {
+  // ⭐⭐ `txIdByOfxHash` vem do CONFIRM (29/08) — a ponte que faltava.
+  //
+  // ⚠️ Antes esta função cruzava o `dedupHash` do preview com o gravado na transação. São
+  // formatos DIFERENTES: o preview usa `ofxHashOf` (fitid|data|valor|memo) e a gravação usa
+  // `stableKey#importId:occ` — e o `importId` só existe DEPOIS do import. O cruzamento
+  // nunca casava, e TODA marcação (cartão, receita/despesa, transferência, ignorar) caía em
+  // silêncio. Os 3 retries com backoff existiam pra contornar uma "race" que nem era race:
+  // era hash incompatível. Com o mapa vindo pronto do servidor, não há o que adivinhar.
+  async function applyV3MarksAfterImport(importId: string, decisions: V3Decisions, txIdByOfxHash?: Record<string, string>) {
     if (decisions.marks.size === 0) return
 
     const novasGenuinas = (preview as unknown as { classificacao: { novasGenuinas: Array<{ ofxIndex: number; dedupHash: string }> } } | null)
@@ -267,7 +275,10 @@ export default function ImportarOFXPage() {
     }
 
     try {
-      const txByDedupHash = await fetchTxMap()
+      // o mapa do servidor manda; o fetch antigo fica só de rede pra import legado
+      const txByDedupHash = txIdByOfxHash && Object.keys(txIdByOfxHash).length > 0
+        ? new Map(Object.entries(txIdByOfxHash))
+        : await fetchTxMap()
 
       const marks: Array<{ transactionId: string; kind: string; params?: Record<string, unknown> }> = []
       const notMappedCount = { value: 0 }
@@ -601,7 +612,7 @@ export default function ImportarOFXPage() {
 
       // Sprint OFX V3 — após criar as tx, aplica marcações declarativas
       if (data.importId && v3PendingDecisions) {
-        await applyV3MarksAfterImport(data.importId, v3PendingDecisions)
+        await applyV3MarksAfterImport(data.importId, v3PendingDecisions, data.txIdByOfxHash)
         setV3PendingDecisions(null)
       }
 
