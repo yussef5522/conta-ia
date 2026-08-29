@@ -18,6 +18,8 @@ import { parseBanrisulFatura } from './deterministic/banrisul-fatura-parser'
 import { validateBanrisulFatura } from './deterministic/validate-banrisul-fatura'
 import { parseCaixaFatura } from './deterministic/caixa-fatura-parser'
 import { validateCaixaFatura } from './deterministic/validate-caixa-fatura'
+import { parseMercadoPagoFatura } from './deterministic/mercadopago-fatura-parser'
+import { validateMercadoPagoFatura } from './deterministic/validate-mercadopago-fatura'
 import { CreditCardPjExtractError, type InvoiceExtraction } from './types'
 
 export interface SmartExtractResult extends ExtractInvoiceResult {
@@ -53,6 +55,15 @@ const DETERMINISTIC: DeterministicParser[] = [
     match: /caixa/i,
     parse: parseCaixaFatura,
     validate: (p) => validateCaixaFatura(p as ReturnType<typeof parseCaixaFatura>),
+  },
+  {
+    // ⚠️ o match casa no CONTEÚDO do PDF, não no nome cadastrado da conta. "Mercado Pago"
+    // aparece no rodapé e "MERCADOPAGO*" no prefixo dos estabelecimentos — os dois servem,
+    // e exigir os dois seria frágil (o banco pode mudar o rodapé).
+    bank: 'Mercado Pago',
+    match: /mercado\s*pago|MERCADOPAGO\*/i,
+    parse: (text) => ({ extraction: parseMercadoPagoFatura(text) }),
+    validate: (p) => validateMercadoPagoFatura((p as { extraction: unknown }).extraction as ReturnType<typeof parseMercadoPagoFatura>),
   },
 ]
 
