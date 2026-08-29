@@ -48,6 +48,8 @@ interface Conta {
   lowBalanceThreshold: number | null
   // Sprint Unificar-Contas (08/06/2026) — herdado do endpoint
   lastSuccessfulImportAt: string | null
+  // ⭐ Série B (29/08/2026) — o saldo bate com o que o banco declarou?
+  conferencia: { conferido: boolean; em: string | null; diferenca: number | null; rotulo: string } | null
 }
 
 const VARIANT_STYLES: Record<BadgeVariant, { dot: string; label: string; text: string; percent: string }> = {
@@ -291,8 +293,15 @@ export default function ContasPage() {
                         ? new Date(conta.lastSuccessfulImportAt)
                         : null,
                     )
+                    // ⭐ SELO DE CONFERÊNCIA (29/08/2026) — o saldo bate com o que o
+                    // BANCO declarou? Três estados, e nenhum deles é silêncio:
+                    //   ✓ conferido · ⚠ divergente em R$ X · ○ nunca conferida
+                    // ⚠️ "nunca conferida" NÃO é defeito (cofre e banco caixa são
+                    // manuais) — é informação que antes ficava presumida.
+                    const conf = conta.conferencia
                     return (
-                      <div className="mt-3 flex items-center justify-between gap-2 pt-3 border-t">
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 pt-3 border-t">
+                        <div className="flex flex-wrap items-center gap-1.5">
                         <span
                           className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${FRESHNESS_TONE_CLASSES[fresh.tone]}`}
                           title="Última importação OFX bem-sucedida"
@@ -300,6 +309,27 @@ export default function ContasPage() {
                           <Upload className="h-2.5 w-2.5" />
                           {fresh.label}
                         </span>
+                        {conf && (
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${
+                              conf.conferido
+                                ? 'bg-emerald-50 text-emerald-700 ring-emerald-200 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300'
+                                : conf.diferenca != null
+                                  ? 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950 dark:text-rose-300'
+                                  : 'bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-900 dark:text-slate-400'
+                            }`}
+                            title={
+                              conf.conferido
+                                ? 'O saldo aqui fecha com o saldo que o banco declarou no último extrato importado.'
+                                : conf.diferenca != null
+                                  ? 'O saldo aqui NÃO fecha com o que o banco declarou. Abra o import e veja o diagnóstico.'
+                                  : 'Esta conta nunca teve saldo declarado por um banco — o valor é o que foi digitado.'
+                            }
+                          >
+                            {conf.conferido ? '✓' : conf.diferenca != null ? '⚠' : '○'} {conf.rotulo}
+                          </span>
+                        )}
+                        </div>
                         <Button asChild variant="outline" size="sm" className="h-7">
                           <Link
                             href={`/empresas/${empresaId}/contas/${conta.id}/importar`}

@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Upload, FileText, AlertCircle, Check, ArrowUpRight, ArrowDownRight, Loader2, Landmark, AlertTriangle, ArrowLeftRight, Sparkles } from 'lucide-react'
+import { Upload, FileText, AlertCircle, Check, ArrowUpRight, ArrowDownRight, Loader2, Landmark, AlertTriangle, ArrowLeftRight, Sparkles, Clock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -63,6 +63,10 @@ interface PreviewResult {
     // FASE 2.1 — aviso "não deu pra conferir se o arquivo é desta conta".
     accountMatchWarning?: string | null
   }
+  // ⚠️ Export de mesmo dia (29/08/2026) — o extrato termina hoje, o dia não fechou.
+  avisoExportMesmoDia?: { mesmoDia: boolean; linhasDoDiaAberto: number; aviso: string } | null
+  // ⭐ Diagnóstico guiado (29/08/2026) — quando o saldo não fecha, DESDE QUANDO.
+  diagnostico?: { de: string; ate: string; diferenca: number; instrucao: string } | null
   // Sprint Import Categoria Editável (18/06/2026)
   categorySuggestions?: CategorySuggestion[]
   categoriesForUI?: CategoryOption[]
@@ -803,6 +807,55 @@ export default function ImportarOFXPage() {
                 </div>
               </div>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ⚠️ EXPORT DE MESMO DIA (29/08/2026) — mania nº 6 do catálogo. O extrato termina
+          HOJE e o dia ainda não fechou. Fica AQUI, na página, e não dentro do V2/V3, pra
+          valer nos dois previews de uma vez (REGRA 4).
+          ⚠️ Tom deliberadamente NEUTRO (slate, não vermelho): não é erro nem motivo pra
+          parar — é contexto pro caso do saldo não fechar. Aviso que manda parar sem
+          motivo vira aviso que o dono aprende a ignorar. */}
+      {preview?.avisoExportMesmoDia && (
+        <Card className="border-slate-300 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/40">
+          <CardContent className="py-3">
+            <div className="flex items-start gap-3">
+              <Clock className="h-4 w-4 text-slate-500 mt-0.5 shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                  O dia deste extrato ainda não fechou
+                </p>
+                <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
+                  {preview.avisoExportMesmoDia.aviso}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ⭐ DIAGNÓSTICO GUIADO (29/08/2026) — o saldo não fechou; aqui vai DESDE QUANDO e
+          o que fazer. O gate já dizia "não bate, dif X"; o que faltava era a pergunta
+          seguinte, que é a única acionável: *desde quando?* */}
+      {preview?.diagnostico && (
+        <Card className="border-amber-400 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/40">
+          <CardContent className="py-4">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+                  Onde a conta começou a descolar
+                </p>
+                <p className="text-xs text-amber-800 dark:text-amber-300 mt-0.5">
+                  {preview.diagnostico.instrucao}
+                </p>
+                <p className="text-[11px] text-amber-700/80 dark:text-amber-400/80 mt-1">
+                  ⚠️ A divergência é ANTERIOR a este arquivo — importar agora não piora nada,
+                  e o que faltar entra sem duplicar quando você trouxer o extrato do período.
+                </p>
+              </div>
+            </div>
           </CardContent>
         </Card>
       )}

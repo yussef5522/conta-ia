@@ -52,6 +52,7 @@ import { contentKey } from '@/lib/canonical/to-canonical'
 import { isCanonicalClassifyEnabledForBank } from '@/lib/canonical/flag'
 import { resolveImportStatuses } from '@/lib/reconciliation/resolve-import-statuses'
 import { resolveBankProfile, resolveStatementAnchor, bankProfileWarning } from '@/lib/bank-profiles'
+import { avisoExportMesmoDia } from '@/lib/ofx/export-mesmo-dia'
 import { verifyOfxMatchesAccount } from '@/lib/ofx/verify-account-match'
 import { conciliarDestinos } from '@/lib/ofx/conciliar-destinos'
 
@@ -828,6 +829,44 @@ export async function POST(request: NextRequest, { params }: Params) {
         fitid: a.fitid,
       }))
 
+      // ⚠️ AVISO DE EXPORT DE MESMO DIA (29/08/2026) — o extrato termina hoje e o dia
+      // ainda não fechou. É AVISO DE TELA, não decisão: nada é descartado por causa dele.
+      const avisoMesmoDia = avisoExportMesmoDia(
+        dtAsOfPreview ?? null,
+        transactions.map((t) => t.datePosted),
+        new Date(),
+      )
+
+      // ⭐ DIAGNÓSTICO GUIADO (29/08/2026) — quando o saldo NÃO fecha, dizer ONDE começou.
+      //
+      // ⚠️ O que faltava não era detectar: o gate já dizia "não bate, dif X". Faltava a
+      // pergunta seguinte — *desde quando?* — que é a única que leva a uma AÇÃO ("re-exporte
+      // o extrato de tal a tal data"). Sem ela o dono olha um número e não tem o que fazer.
+      // `ondeDescolou` varre os LEDGERBAL consecutivos já gravados e aponta o 1º intervalo
+      // que não fecha. Roda SÓ quando o gate acusou (é caro e seria ruído quando está tudo
+      // verde) e é FAIL-SOFT: diagnóstico nunca derruba o preview.
+      let diagnostico: { de: string; ate: string; diferenca: number; instrucao: string } | null = null
+      if (v2Payload.ledgerBalCheck.available && !v2Payload.ledgerBalCheck.bate) {
+        try {
+          const [{ lerConta }, { ondeDescolou }] = await Promise.all([
+            import('@/lib/balance/ler-conferencia'),
+            import('@/lib/balance/ledgerbal-invariants'),
+          ])
+          const leitura = await lerConta(contaId, prisma)
+          const d = leitura ? ondeDescolou(leitura) : null
+          if (d) {
+            diagnostico = {
+              de: d.de.toISOString().slice(0, 10),
+              ate: d.ate.toISOString().slice(0, 10),
+              diferenca: d.diferenca,
+              instrucao: d.instrucao,
+            }
+          }
+        } catch (e) {
+          console.error('[importar-ofx preview] diagnóstico guiado falhou (preview segue):', e)
+        }
+      }
+
       return NextResponse.json({
         ...v2Payload,
         futuras: [...futurasPayload, ...agendadasDia],
@@ -836,6 +875,8 @@ export async function POST(request: NextRequest, { params }: Params) {
         categoriesForUI,
         ownEntityRefs,
         bankProfile: bankProfilePayload,
+        avisoExportMesmoDia: avisoMesmoDia.mesmoDia ? avisoMesmoDia : null,
+        diagnostico,
       })
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)

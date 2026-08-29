@@ -8,6 +8,7 @@ import {
 import { getAuthContext } from '@/lib/auth/rbac'
 import { logAudit } from '@/lib/audit'
 import { handleApiError } from '@/lib/api/handle-error'
+import type { EstadoConferencia } from '@/lib/balance/ledgerbal-invariants'
 
 export async function GET(request: NextRequest) {
   try {
@@ -38,10 +39,29 @@ export async function GET(request: NextRequest) {
         lastImports.map((i) => [i.bankAccountId, i._max.createdAt]),
       )
 
+      // ⭐ SÉRIE B NA TELA (29/08/2026) — "conferido ✓ / divergente / nunca conferida".
+      //
+      // ⚠️ O motor (`conferenciaDasContas`) existia e estava testado desde 28/08, mas
+      // vivia SÓ no juiz noturno: o dono só sabia da divergência por e-mail, e a tela
+      // onde ele olha o saldo todo dia não dizia nada. Saldo sem procedência parece
+      // conferido — que é justamente como um buraco vive semanas em silêncio.
+      //
+      // ⚠️ FALHA MACIA de propósito: se a conferência estourar, a lista de contas
+      // continua abrindo (sem selo). Diagnóstico nunca pode derrubar a tela principal.
+      let conferenciaMap = new Map<string, EstadoConferencia>()
+      try {
+        const { conferenciaDasContas } = await import('@/lib/balance/ler-conferencia')
+        const estados = await conferenciaDasContas(empresaId, prisma)
+        conferenciaMap = new Map(estados.map((e) => [e.bankAccountId, e]))
+      } catch (e) {
+        console.error('[contas] conferência falhou (a lista segue sem selo):', e)
+      }
+
       return NextResponse.json({
         contas: contas.map((c) => ({
           ...c,
           lastSuccessfulImportAt: lastMap.get(c.id) ?? null,
+          conferencia: conferenciaMap.get(c.id) ?? null,
         })),
       })
     }
