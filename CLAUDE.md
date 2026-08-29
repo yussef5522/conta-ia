@@ -216,6 +216,44 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 **RESULTADO EM PROD: série B com 0 ERROS.** Os 5 vermelhos viraram avisos explicados — 2 do Banrisul e 3 do Stone, todos com a mesma assinatura (nosso sistema == linhas do banco ≠ saldo declarado). ⚠️ Isso inclui o par ±2.178,67 do Stone, que eu já suspeitava ser fronteira de data: agora está **nomeado**, não suposto. O B3 segue avisando as contas nunca conferidas (cofre, banco caixa), que é informação, não defeito.
 
+## ⭐⭐⭐ AS MARCAÇÕES DO IMPORT VIRARAM ATÔMICAS — "OU GRAVA TUDO, OU NADA GRAVA" (29/08/2026)
+
+**A escolha do dono, e ela é mais forte que a minha:** eu tinha consertado o **mecanismo** (a ponte `ofxHash → txId`, que era impossível por construção) e ia deixar a aplicação numa 2ª fase com toast em caso de erro. O dono cortou: *"marcação dentro do confirm, na mesma transação que cria as linhas — melhor que mecanismo consertado + toast que pode passar"*. **Está certo:** mecanismo consertado ainda perde a marca quando a rede cai, o servidor devolve 500 ou a aba fecha; e o dono fica com transação crua **sem saber**.
+
+**O DESENHO:** o confirm recebe `marks` junto do arquivo e aplica no passo 8.5, **dentro da mesma `$transaction`** que cria as transações — resolvendo cada marca pelo mapa `txIdByOfxHash` montado no mesmo laço que insere. **SEM try/catch, de propósito:** marcação inválida (cartão inexistente, categoria de outra empresa, parcela já conciliada) **derruba o import inteiro**.
+
+- **`lib/ofx-v3/aplicar-marcacao.ts`** — a lógica saiu da rota e passou a aceitar o client **transacional** (`PrismaClient | Prisma.TransactionClient`). ⚠️ A `$transaction` aninhada do `PAGAMENTO_EMPRESTIMO` teve que sair (Prisma não aninha) — e como agora tudo roda numa transação só, **a atomicidade ficou mais forte, não mais fraca**. A rota `/apply-marks` continua viva como **casca fina** sobre ela (import legado, retry manual) — REGRA 4: uma lógica, dois chamadores.
+- **Marcação cuja linha NÃO virou transação** (foi duplicata, futura ou SKIP) **não derruba nada** — é o preview e o confirm discordando sobre o destino, coisa que a conciliação de destinos já mostra. Conta como `pulada` e segue.
+
+**⚠️ POR QUE A PROVA É UM SCRIPT E NÃO UM TESTE DA SUÍTE:** o `runImportV2` grava `statement_lines` por **SQL cru com `gen_random_uuid()`** — tabela que **nem está no schema Prisma** — então ele **não roda no SQLite do dev**, em nenhuma circunstância. Mesmo padrão dos outros E2E do import (`e2e-skip-decisions.ts`) e da camada 1 do estoque: **`scripts/e2e-marcacoes-atomicas.ts` contra Postgres SCRATCH**. O script **recusa subir** se o banco não tiver `scratch`/`test` no nome (a suíte já rodou contra produção uma vez, em 08/08 — não roda de novo).
+
+**PROVADO (Postgres real, `conta_ia_scratch` no servidor, prod intocado):**
+| cenário | resultado |
+|---|---|
+| **A.** confirm com 2 marcações | 2 aplicadas · linha do cartão já **vinculada** · despesa **RECONCILED + cashCoded**, sem 2ª fase |
+| **B.** marcação inválida no meio | **0 transações · 0 statement_lines · 0 registros de import** — nem a linha da 1ª marcação, que era VÁLIDA, sobrou |
+| **C.** o mundo ANTIGO (2 fases) | as 3 linhas **FICAM** gravadas e a do cartão **SEM VÍNCULO** — o estado pela metade que o fix elimina |
+| **D.** marcação órfã | pulada, import segue normal |
+| **E.** reimport pós-falha | aplica a marcação, sem duplicata do arquivo abortado |
+
+⚠️ **O cenário C é o red-then-green sobre COMPORTAMENTO** (não sobre código): ele executa o caminho antigo de verdade e mostra o estado pela metade que o novo torna impossível.
+
+⚠️ **BUG MEU NA ASSERÇÃO, e ele ensina algo:** eu esperava a linha órfã com `isCardPayment=false`. Ela vem **true** — o passo 8.5 do import marca a flag por **heurística de descrição** (`detectCardPayment`). Mas **sem `businessCreditCardId` a fatura fica aberta pra sempre**: a flag não quita nada. **O que importa é o VÍNCULO, não a flag** — e era exatamente o estado do caso real (PIX MERCADO PAGO −2.666,44).
+
+⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
+
+## ⭐⭐ CATÁLOGO DE MANIAS DO STONE (29/08/2026) — abre com "MEMO DE BANCO MENTE"
+
+`lib/ofx/__tests__/catalogo-manias-stone.test.ts`, irmão do catálogo do Banrisul: **mexeu no import, roda tudo de novo.**
+
+**⭐⭐ MANIA 1 — o memo diz `"<NOME> - Transferência|Pix"` em TODO PIX**, seja transferência entre contas próprias ou **pagamento a uma pessoa**. A palavra "Transferência" ali é o **nome do produto do banco**, não a natureza do lançamento.
+
+⚠️ **E quem caiu nessa fui EU:** na auditoria das marcações perdidas rotulei **3 PIX do Stone como "transferência"** porque o memo dizia isso — eram pagamentos a pessoas físicas. O dono corrigiu. **É a mesma família do que já está registrado aqui em outro lugar** (*"descrição livre não é fonte de verdade, a categoria é"*, *"OP.CREDITO C/GARANTIA não é empréstimo"*) e do princípio duro do import: **heurística sobre texto livre pode SUGERIR, nunca DECIDIR**.
+
+**O que decide é ESTRUTURA** — e o motor único já faz certo, o que o catálogo trava: CNPJ próprio no memo → **camada 1 (0.99)**; nome de sócio cadastrado → **camada 2 (STRONG)**, nunca promove a camada 1; nome de terceiro sem sinal próprio → **não sugere**. O teste inclui o **contrafactual**: `/transfer/i` sobre a descrição dá `true` pros DOIS casos — a palavra não carrega a informação.
+
+**As outras (todas executando comportamento, não grep):** favorecido vem no MEMO (não precisa de PDF) · **homônimo não passa por sócio** (o nome tem que ser o completo cadastrado) · FITID é **UUID estável** — o oposto do Banrisul — e mesmo assim a identidade da linha é data+valor+memo, sem FITID · ACCTID vem **formatado com hífen** · não lista futuro (nada descartado por data) · **dois downloads do mesmo dia divergem** no LEDGERBAL (o "70k" aberto desde 12/08): a linha repetida dá a **mesma stableKey** e não duplica; o desempate do saldo é do juiz, não do parser — o parser reporta o declarado sem escolher.
+
 ## ⛔⛔⛔ PRINCÍPIO — HEURÍSTICA NUNCA DECIDE DESCARTE EM SILÊNCIO (29/08/2026)
 
 > **HEURÍSTICA PODE SUGERIR** (na tela, pro humano confirmar).
