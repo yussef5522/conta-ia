@@ -5,6 +5,7 @@
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { sugerirCategoria, sugerirUnidade, sugerirNome, type CategoriaEstoque, type UnidadeControle } from './sugestoes'
+import { combinadoDaNota } from './ponte/combinado'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -36,6 +37,11 @@ export interface ConfView {
    *  ainda não existem — elas nascem no CONFIRMAR. Por isso a seleção é por `nDup`.
    *  `jaEnviada` = essa parcela já virou conta a pagar (idempotência à vista). */
   duplicatas: { nDup: string | null; valor: number; dVenc: string | null; jaEnviada: boolean }[]
+  /** houve renegociação? (o combinado ≠ as duplicatas do XML) */
+  renegociada: boolean
+  motivoRenegociacao: string | null
+  /** o que a NOTA diz — referência, nunca editável (dado da SEFAZ) */
+  duplicatasXml: { nDup: string | null; valor: number; dVenc: string | null }[]
   /** o fornecedor da nota já existe no FINANCEIRO? (≠ `fornecedor.jaCadastrado`, que é o estoque) */
   fornecedorNoFinanceiro: boolean
 }
@@ -92,8 +98,16 @@ export async function buildConferenceView(companyId: string, nfeId: string, db: 
     }
   })
 
-  // duplicatas da nota + se já foram enviadas pro contas a pagar
-  const dups = await db.stockNfeDup.findMany({ where: { companyId, nfeId }, orderBy: { dVenc: 'asc' } })
+  // ⭐⭐ AS PARCELAS QUE VALEM HOJE — o COMBINADO, não a duplicata crua (29/08/2026).
+  //
+  // ⚠️⚠️ BUG QUE ISTO CONSERTA, e ele foi MEU: eu criei `combinadoDaNota` justamente pra
+  // ser o resolvedor ÚNICO, liguei no confirmar e na tela de boletos... e deixei ESTA
+  // leitura no `stock_nfe_dup`. Resultado no uso real: o dono ajustou as parcelas, o
+  // combinado GRAVOU (5 linhas em prod, 18:29), ele voltou pra tela e viu as 3 do XML —
+  // **falha em silêncio**, a classe proibida. Segundo leitor da mesma pergunta = tela e
+  // gravação discordando, exatamente a doença dos 7 detectores de par.
+  const combinado = await combinadoDaNota(companyId, nfeId, db)
+  const dups = (combinado?.parcelas ?? []).map((p) => ({ nDup: p.numero, vDup: p.valor, dVenc: p.dVenc }))
   const enviadas = new Set((await db.stockPayableLink.findMany({
     where: { companyId, origem: 'NFE', refId: nfeId }, select: { nDup: true },
   })).map((l) => l.nDup))
@@ -115,6 +129,13 @@ export async function buildConferenceView(companyId: string, nfeId: string, db: 
       nDup: d.nDup, valor: d.vDup,
       dVenc: d.dVenc ? d.dVenc.toISOString() : null,
       jaEnviada: enviadas.has(d.nDup),
+    })),
+    // ⭐ o que a NOTA diz fica visível como REFERÊNCIA quando o combinado difere — os
+    // dois na tela, nenhum sobrescrevendo o outro (a regra do módulo).
+    renegociada: combinado?.renegociado ?? false,
+    motivoRenegociacao: combinado?.motivo ?? null,
+    duplicatasXml: (combinado?.xml ?? []).map((x) => ({
+      nDup: x.numero, valor: x.valor, dVenc: x.dVenc ? x.dVenc.toISOString() : null,
     })),
     fornecedorNoFinanceiro: fornFin,
   }

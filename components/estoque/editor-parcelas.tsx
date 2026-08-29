@@ -12,6 +12,7 @@
 
 import { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { adicionarParcela, removerParcela } from '@/lib/stock/ponte/dividir-parcelas'
 import { Plus, Trash2, X } from 'lucide-react'
 
 export interface ParcelaEditavel {
@@ -103,15 +104,22 @@ export function EditorParcelas(p: Props) {
                   />
                 </div>
                 <button
-                  onClick={() => setLinhas((ls) => ls.filter((_, j) => j !== i))}
+                  onClick={() => setLinhas((ls) => removerParcela(ls, i, p.totalNota))}
                   className="p-2 text-slate-400 hover:text-rose-600"
                   title="remover parcela"
                 ><Trash2 className="h-4 w-4" /></button>
               </div>
             ))}
-            <Button variant="outline" size="sm" className="h-8" onClick={() => setLinhas((ls) => [...ls, { valor: '', dVenc: '' }])}>
-              <Plus className="h-3 w-3 mr-1" /> Adicionar parcela
-            </Button>
+            {/* ⭐ ADICIONAR/REMOVER REDISTRIBUEM O TOTAL (29/08) — o sistema trabalha, o
+                dono ajusta por cima. Resto de centavos na última, como toda nota faz.
+                ⚠️ Editar UM valor NÃO redistribui os outros: senão "entrada maior" seria
+                impossível de digitar (cada número corrigiria o anterior). */}
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" className="h-8" onClick={() => setLinhas((ls) => adicionarParcela(ls, p.totalNota))}>
+                <Plus className="h-3 w-3 mr-1" /> Adicionar parcela
+              </Button>
+              <span className="text-[11px] text-slate-400">divide o total em partes iguais · vencimento +30 dias</span>
+            </div>
           </div>
 
           {/* A CONTA, ao vivo */}

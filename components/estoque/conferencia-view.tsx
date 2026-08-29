@@ -32,6 +32,11 @@ export interface ConferenciaData {
   itens: ConfItem[]
   /** PONTE 1 — boletos da nota (podem não existir: nota sem duplicata é compra à vista) */
   duplicatas?: Duplicata[]
+  /** ⭐ o combinado difere da nota? (renegociação pós-nota, 29/08) */
+  renegociada?: boolean
+  motivoRenegociacao?: string | null
+  /** o que a NOTA diz — referência ao lado do combinado, nunca editável */
+  duplicatasXml?: Array<{ nDup: string | null; valor: number; dVenc: string | null }>
   /** o fornecedor já existe no FINANCEIRO? (o do estoque é `fornecedor.jaCadastrado`) */
   fornecedorNoFinanceiro?: boolean
   /** o usuário pode criar conta a pagar? (stock.manage) */
@@ -348,6 +353,13 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
           <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-3 py-2">
             <Receipt className="h-4 w-4 shrink-0 text-[#185FA5]" />
             <h3 className="text-sm font-semibold text-slate-900">Boletos da nota ({dupsPendentes.length} {dupsPendentes.length === 1 ? 'parcela' : 'parcelas'})</h3>
+            {/* ⭐ SELO — o combinado ≠ a nota. Sem ele, o dono ajusta as parcelas, volta e
+                não tem como saber se pegou (foi exatamente o que aconteceu). */}
+            {data.renegociada && (
+              <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700 ring-1 ring-sky-200" title={data.motivoRenegociacao ?? 'combinado ajustado com o fornecedor'}>
+                renegociado
+              </span>
+            )}
             <p className="hidden flex-1 text-xs text-slate-400 lg:block">
               {data.podeEnviarBoletos === false
                 ? 'Ficam esperando aprovação de quem cuida do financeiro'
@@ -414,6 +426,15 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
                     <span className="block text-[11px] text-amber-700">CNPJ e razão social vêm do XML da nota (dado da SEFAZ). Sem isso a conta a pagar não pode ser criada.</span>
                   </span>
                 </label>
+              )}
+              {/* ⚠️ a NOTA continua visível como referência — os dois na tela, nenhum
+                  sobrescrevendo o outro (a nota é da SEFAZ e não muda). */}
+              {data.renegociada && (data.duplicatasXml?.length ?? 0) > 0 && (
+                <p className="border-t border-slate-100 bg-slate-50/60 px-3 py-1.5 text-[11px] text-slate-500">
+                  A <b>nota</b> diz {data.duplicatasXml!.length} {data.duplicatasXml!.length === 1 ? 'parcela' : 'parcelas'}:{' '}
+                  {data.duplicatasXml!.map((d) => `${brl(d.valor)} (${fmtDia(d.dVenc)})`).join(' · ')}
+                  {data.motivoRenegociacao ? ` — motivo do ajuste: ${data.motivoRenegociacao}` : ''}
+                </p>
               )}
               <p className="border-t border-slate-100 px-3 py-1.5 text-[11px] text-slate-400">
                 {boletos.length === 0

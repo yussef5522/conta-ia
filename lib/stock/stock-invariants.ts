@@ -80,13 +80,23 @@ export async function checkStockInvariants(db: Db, now: Date = new Date()): Prom
     if (movs !== nItens) F('E2', conf.companyId, `conferência ${conf.id}: ${nItens} itens conferidos vs ${movs} movimentos ENTRADA_NF vigentes (deveriam ser iguais).`)
   }
 
-  // E3 — toda nota CONFIRMADA com duplicata tem contas a pagar sugerido.
+  // E3 — toda nota CONFIRMADA com parcela tem contas a pagar sugerido.
+  //
+  // ⚠️ A RÉGUA É O COMBINADO, não a duplicata crua (29/08/2026 — mesma correção do F4).
+  // Renegociar 3 parcelas do XML em 2 é legítimo; medir contra o XML faria o juiz gritar
+  // "3 duplicatas mas 2 sugeridas" toda noite. Alarme falso é como um alarme morre.
   const notasConf = await db.stockNfe.findMany({ where: { status: 'CONFIRMADA' }, select: { id: true, companyId: true } })
   for (const n of notasConf) {
-    const dups = await db.stockNfeDup.count({ where: { companyId: n.companyId, nfeId: n.id } })
-    if (dups > 0) {
+    const renegociadas = await db.stockParcelaCombinada.count({
+      where: { companyId: n.companyId, origemDoc: 'NFE', refId: n.id, ativo: true },
+    })
+    const esperadas = renegociadas > 0
+      ? renegociadas
+      : await db.stockNfeDup.count({ where: { companyId: n.companyId, nfeId: n.id } })
+    if (esperadas > 0) {
       const pag = await db.stockPayableSuggestion.count({ where: { companyId: n.companyId, nfeId: n.id } })
-      if (pag < dups) F('E3', n.companyId, `nota ${n.id}: ${dups} duplicata(s) na nota mas ${pag} conta(s) a pagar sugerida(s).`)
+      const fonte = renegociadas > 0 ? 'parcela(s) combinada(s)' : 'duplicata(s) na nota'
+      if (pag < esperadas) F('E3', n.companyId, `nota ${n.id}: ${esperadas} ${fonte} mas ${pag} conta(s) a pagar sugerida(s).`)
     }
   }
 

@@ -12,6 +12,7 @@ import { buildAuthContextForTest } from '@/lib/auth/rbac'
 import { combinadoDaNota, salvarCombinado, CombinadoError } from '../combinado'
 import { renegociarParcelasDaNota } from '../renegociar-enviadas'
 import { enviarParaContasPagar } from '../../ponte-contas-pagar'
+import { buildConferenceView } from '../../conference'
 
 const CNPJ = '41414141000141'
 const TOTAL = 10400.66
@@ -189,5 +190,69 @@ describe('⛔ 4 — a linha vermelha: conta já paga não se reescreve', () => {
     await expect(
       renegociarParcelasDaNota({ companyId, nfeId, parcelas: NOVAS, ctx: ctx(), userId }, prisma),
     ).rejects.toThrow(/JÁ PAGA|conciliada/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// ⭐⭐ REGRA 1 — O FLUXO REAL DA TELA (o teste que teria pego o bug de 29/08)
+// ---------------------------------------------------------------------------
+//
+// ⚠️⚠️ O BUG: o dono ajustou as parcelas, o combinado GRAVOU (5 linhas em prod, 18:29),
+// ele voltou pra tela da nota e viu **as 3 do XML** — sem erro, sem aviso. A classe
+// proibida ("nunca falha em silêncio"), pela segunda vez.
+//
+// A CAUSA foi minha e é a REGRA 4 de novo: `buildConferenceView` lia `stock_nfe_dup` DIRETO,
+// virando um SEGUNDO leitor de "quais parcelas valem". Os testes anteriores passavam
+// porque conferiam a GRAVAÇÃO (combinadoDaNota), nunca o que a TELA carrega.
+//
+// Este roda o caminho da tela: buildConferenceView → salvar → buildConferenceView.
+describe('⭐⭐ REGRA 1 — a TELA reflete o combinado depois de salvar', () => {
+  it('⭐⭐ antes: 3 do XML · depois de salvar 4: a tela mostra 4, com selo', async () => {
+    const antes = await buildConferenceView(companyId, nfeId, prisma)
+    expect(antes!.duplicatas).toHaveLength(3)
+    expect(antes!.renegociada).toBe(false)
+
+    await salvarCombinado({ companyId, nfeId, parcelas: NOVAS, userId }, prisma)
+
+    // ⚠️ COM O BUG (buildConferenceView lendo stock_nfe_dup) esta linha volta 3 e o teste cai
+    const depois = await buildConferenceView(companyId, nfeId, prisma)
+    expect(depois!.duplicatas).toHaveLength(4)
+    expect(depois!.duplicatas.map((d) => d.nDup)).toEqual(['R01', 'R02', 'R03', 'R04'])
+    expect(depois!.duplicatas.reduce((s, d) => s + d.valor, 0)).toBeCloseTo(TOTAL, 2)
+
+    // o selo e a referência do XML — pra o dono VER que pegou
+    expect(depois!.renegociada).toBe(true)
+    expect(depois!.duplicatasXml).toHaveLength(3)
+    expect(depois!.duplicatasXml.reduce((s, d) => s + d.valor, 0)).toBeCloseTo(TOTAL, 2)
+  })
+
+  it('⭐ o motivo do ajuste chega na tela (não fica só no banco)', async () => {
+    await salvarCombinado(
+      { companyId, nfeId, parcelas: [{ valor: 9000, dVenc: '2026-09-15' }], motivo: 'desconto à vista', userId },
+      prisma,
+    )
+    const t = await buildConferenceView(companyId, nfeId, prisma)
+    expect(t!.motivoRenegociacao).toBe('desconto à vista')
+  })
+
+  it('⚠️ nota SEM renegociação continua mostrando o XML (o caminho comum não mudou)', async () => {
+    const t = await buildConferenceView(companyId, nfeId, prisma)
+    expect(t!.duplicatas.map((d) => d.nDup)).toEqual(['001', '002', '003'])
+    expect(t!.renegociada).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// ⚠️ E3 — a MESMA correção de régua do F4 (senão o juiz grita por renegociação legítima)
+// ---------------------------------------------------------------------------
+describe('⚠️ E3 mede contra o COMBINADO, não contra as duplicatas cruas', () => {
+  it('renegociar 3 → 2 não vira alarme falso do E3', async () => {
+    const { checkStockInvariants } = await import('../../stock-invariants')
+    await salvarCombinado(
+      { companyId, nfeId, parcelas: [{ valor: 5200.33, dVenc: '2026-09-15' }, { valor: 5200.33, dVenc: '2026-10-15' }], userId },
+      prisma,
+    )
+    const e3 = (await checkStockInvariants(prisma)).filter((f) => f.companyId === companyId && f.invariante === 'E3')
+    expect(e3).toHaveLength(0) // ⚠️ com a régua velha: "3 duplicatas mas 2 sugeridas"
   })
 })
