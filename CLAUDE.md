@@ -238,9 +238,23 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **O cenário C é o red-then-green sobre COMPORTAMENTO** (não sobre código): ele executa o caminho antigo de verdade e mostra o estado pela metade que o novo torna impossível.
 
-⚠️ **BUG MEU NA ASSERÇÃO, e ele ensina algo:** eu esperava a linha órfã com `isCardPayment=false`. Ela vem **true** — o passo 8.5 do import marca a flag por **heurística de descrição** (`detectCardPayment`). Mas **sem `businessCreditCardId` a fatura fica aberta pra sempre**: a flag não quita nada. **O que importa é o VÍNCULO, não a flag** — e era exatamente o estado do caso real (PIX MERCADO PAGO −2.666,44).
+⚠️⚠️ **"O QUE IMPORTA É O VÍNCULO, NÃO A FLAG" — bug meu na asserção, e a lição fica.** Eu esperava a linha órfã com `isCardPayment=false`. Ela vem **true** — o passo 8.5 do import marca a flag por **heurística de descrição** (`detectCardPayment`). Mas **sem `businessCreditCardId` a fatura fica aberta pra sempre**: a flag não quita nada, só tira da fila. Era exatamente o estado do caso real (PIX MERCADO PAGO −2.666,44), e é a regra geral do módulo: **a flag diz "parece"; o vínculo diz "é"** — ao conferir se um pagamento de cartão/empréstimo está resolvido, olhar o **vínculo** (`businessCreditCardId`/`paidInvoiceMonth`, `reconciledTransactionId`/`LoanInstallmentPayment`), nunca a flag nem o status.
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
+
+## ⭐⭐ AS TRÊS TELAS — O IMPORT FECHOU (29/08/2026)
+
+Os motores estavam prontos e testados desde 28/08, mas viviam **só no juiz noturno**: o dono só sabia por e-mail. **Saldo sem procedência parece conferido** — que é exatamente como um buraco vive semanas em silêncio.
+
+**1. SELO DE CONFERÊNCIA nas Contas** (`conferenciaDasContas` no `GET /api/contas-bancarias`, badge no card). Três estados, nenhum deles silêncio: **✓ conferido com o banco em DD/MM** · **⚠ divergente em R$ X desde DD/MM** · **○ nunca conferida**. ⚠️ *"Nunca conferida" NÃO é defeito* — cofre e banco caixa são manuais; é informação que antes ficava **presumida**. **Falha macia**: se a conferência estourar, a lista de contas abre sem selo — diagnóstico não pode derrubar a tela principal. **PROVADO EM PROD** (handler real, sessão do dono): banrisul −6.267,03 ✓ · sicredi −79.768,15 ✓ · stone 860,57 ✓ (os três conferidos em 28/08) · caixa loja/cofre 39.714,73 ○ · banco caixa −3.248,46 ○.
+
+**2. AVISO DE EXPORT DE MESMO DIA** (`lib/ofx/export-mesmo-dia.ts`, pura, 9 testes) — o caso de 28/08 15:09. **Tom NEUTRO de propósito** (slate, não vermelho): não manda parar, e diz explicitamente que **importar agora é seguro** — o que faltar entra no próximo extrato **sem duplicar** (a dedup é data+valor+memo). *Aviso que manda parar sem motivo vira aviso que o dono aprende a ignorar.* ⚠️ **É AVISO DE TELA, nunca decisão** — por isso ele PODE olhar o relógio (o princípio é *"o relógio serve pra exibir 'hoje' na tela, nunca pra decidir"*). Se um dia virar critério de descarte, tem que sair de lá.
+
+**3. DIAGNÓSTICO GUIADO no preview** (`ondeDescolou` ligado no payload). O gate já dizia *"não bate, dif X"*; **faltava a pergunta que leva a uma AÇÃO: desde quando.** Roda **só quando o gate acusa** (no verde seria ruído e custo) e é fail-soft. A frase diz o intervalo, o valor e o que fazer — e acrescenta que **a divergência é anterior ao arquivo, então importar agora não piora nada**.
+
+Os dois banners ficam **na PÁGINA**, acima dos previews V2 e V3 — um lugar, não um por componente (REGRA 4).
+
+**⚠️⚠️ BUG MEU, ACHADO NA PROVA EM PROD E NÃO NO CÓDIGO — "N caminhos, 1 esquecido", 15 minutos depois de eu escrever o código.** O preview tem **TRÊS returns** (legado · **re-import vazio** · V2) e eu devolvi o aviso só no do V2. O re-import vazio é justamente o caso em que o dono vê *"nenhuma transação nova pra importar"* — e a pergunta dele é **"é porque o dia não fechou?"**. Sem o aviso ali, a tela cala na hora em que mais precisa falar. Agora é calculado **uma vez** logo após a âncora e devolvido nos três. **Guard estrutural** (`preview-avisa-em-todo-caminho.test.ts`): quem devolve `bankProfile` devolve o aviso — caminho novo sem ele fica vermelho. ⚠️ **E notei porque a prova em prod foi ATRÁS DO PAYLOAD REAL, não do meu raciocínio**: o campo veio `null` e eu ia escrever "o gate fechou"; era o gate nem ter rodado.
 
 ## ⭐⭐ CATÁLOGO DE MANIAS DO STONE (29/08/2026) — abre com "MEMO DE BANCO MENTE"
 
@@ -251,6 +265,8 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 ⚠️ **E quem caiu nessa fui EU:** na auditoria das marcações perdidas rotulei **3 PIX do Stone como "transferência"** porque o memo dizia isso — eram pagamentos a pessoas físicas. O dono corrigiu. **É a mesma família do que já está registrado aqui em outro lugar** (*"descrição livre não é fonte de verdade, a categoria é"*, *"OP.CREDITO C/GARANTIA não é empréstimo"*) e do princípio duro do import: **heurística sobre texto livre pode SUGERIR, nunca DECIDIR**.
 
 **O que decide é ESTRUTURA** — e o motor único já faz certo, o que o catálogo trava: CNPJ próprio no memo → **camada 1 (0.99)**; nome de sócio cadastrado → **camada 2 (STRONG)**, nunca promove a camada 1; nome de terceiro sem sinal próprio → **não sugere**. O teste inclui o **contrafactual**: `/transfer/i` sobre a descrição dá `true` pros DOIS casos — a palavra não carrega a informação.
+
+**⭐ E A LIÇÃO GERAL, que vale pra qualquer banco:** o memo é **texto de produto**, não classificação. Ele pode SUGERIR (na tela, pro dono confirmar) e nunca DECIDIR — mesma regra do FITID, da categoria e da descrição livre.
 
 **As outras (todas executando comportamento, não grep):** favorecido vem no MEMO (não precisa de PDF) · **homônimo não passa por sócio** (o nome tem que ser o completo cadastrado) · FITID é **UUID estável** — o oposto do Banrisul — e mesmo assim a identidade da linha é data+valor+memo, sem FITID · ACCTID vem **formatado com hífen** · não lista futuro (nada descartado por data) · **dois downloads do mesmo dia divergem** no LEDGERBAL (o "70k" aberto desde 12/08): a linha repetida dá a **mesma stableKey** e não duplica; o desempate do saldo é do juiz, não do parser — o parser reporta o declarado sem escolher.
 
