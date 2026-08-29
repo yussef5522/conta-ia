@@ -128,6 +128,24 @@ if [[ ! -d "$BUILD_WS/node_modules" ]] || [[ "$APP_DIR/package-lock.json" -nt "$
   cp -al "$APP_DIR/node_modules" "$BUILD_WS/node_modules"
   ok "node_modules espelhado (hard links)"
 fi
+# ⚠️⚠️ O CLIENT GERADO PRECISA SER RE-LINKADO SEMPRE (29/08/2026).
+#
+# O `cp -al` acima só refaz quando o package-lock muda — mas o `prisma generate` que
+# roda no gate SUBSTITUI os arquivos de `node_modules/.prisma` (inodes NOVOS). Os hard
+# links do workspace continuam apontando pros inodes VELHOS, então o build compila
+# contra um Prisma Client desatualizado.
+#
+# MORDEU DE VERDADE: a migration que criou `stock_parcela_combinada` passou no banco, o
+# client do app ganhou o modelo, e o BUILD falhou com "Property 'stockParcelaCombinada'
+# does not exist on type 'PrismaClient'" — o app tinha 380 referências ao modelo novo e o
+# workspace, ZERO. Isso quebraria TODA migration com modelo novo daqui pra frente.
+#
+# ⭐ O DESENHO SEGUROU: build falhou → symlink não moveu → prod seguiu no ar intacto.
+rm -rf "$BUILD_WS/node_modules/.prisma" "$BUILD_WS/node_modules/@prisma/client"
+cp -al "$APP_DIR/node_modules/.prisma" "$BUILD_WS/node_modules/.prisma"
+cp -al "$APP_DIR/node_modules/@prisma/client" "$BUILD_WS/node_modules/@prisma/client"
+ok "prisma client re-linkado (o generate troca os inodes)"
+
 rm -rf "$BUILD_WS/.next"
 ok "workspace pronto (node_modules compartilhado)"
 
