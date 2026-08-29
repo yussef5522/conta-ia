@@ -539,6 +539,17 @@ export async function POST(request: NextRequest, { params }: Params) {
       today: previewToday,
     })
     const dtAsOfPreview = anchorRes.anchor ?? periodArquivoEnd ?? new Date()
+
+    // ⚠️ EXPORT DE MESMO DIA (29/08/2026) — calculado UMA vez e devolvido em TODOS os
+    // returns do preview (legado, re-import vazio e V2). REGRA 4: a 1ª versão só ligou
+    // no return do V2 e o re-import — justamente o caso em que o dono vê "nada novo" e
+    // fica na dúvida se é o dia aberto — não recebia o aviso. É AVISO, nunca decisão.
+    const avisoMesmoDiaCalc = avisoExportMesmoDia(
+      dtAsOfPreview ?? null,
+      transactions.map((t) => t.datePosted),
+      new Date(),
+    )
+    const avisoMesmoDiaPayload = avisoMesmoDiaCalc.mesmoDia ? avisoMesmoDiaCalc : null
     const bankProfilePayload = {
       id: bankProfile?.id ?? null,
       displayName: bankProfile?.displayName ?? null,
@@ -709,6 +720,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         categoriesForUI,
         ownEntityRefs,
         bankProfile: bankProfilePayload,
+        avisoExportMesmoDia: avisoMesmoDiaPayload,
       })
     }
 
@@ -743,6 +755,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         categoriesForUI,
         ownEntityRefs,
         bankProfile: bankProfilePayload,
+        avisoExportMesmoDia: avisoMesmoDiaPayload,
         mensagem:
           futurasPayload.length > 0
             ? `Nenhuma transação nova pra importar. ${futurasPayload.length} lançamento${futurasPayload.length !== 1 ? 's futuros (agendados)' : ' futuro (agendado)'} não ${futurasPayload.length !== 1 ? 'entram' : 'entra'} — o resto já existia.`
@@ -829,14 +842,6 @@ export async function POST(request: NextRequest, { params }: Params) {
         fitid: a.fitid,
       }))
 
-      // ⚠️ AVISO DE EXPORT DE MESMO DIA (29/08/2026) — o extrato termina hoje e o dia
-      // ainda não fechou. É AVISO DE TELA, não decisão: nada é descartado por causa dele.
-      const avisoMesmoDia = avisoExportMesmoDia(
-        dtAsOfPreview ?? null,
-        transactions.map((t) => t.datePosted),
-        new Date(),
-      )
-
       // ⭐ DIAGNÓSTICO GUIADO (29/08/2026) — quando o saldo NÃO fecha, dizer ONDE começou.
       //
       // ⚠️ O que faltava não era detectar: o gate já dizia "não bate, dif X". Faltava a
@@ -875,7 +880,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         categoriesForUI,
         ownEntityRefs,
         bankProfile: bankProfilePayload,
-        avisoExportMesmoDia: avisoMesmoDia.mesmoDia ? avisoMesmoDia : null,
+        avisoExportMesmoDia: avisoMesmoDiaPayload,
         diagnostico,
       })
     } catch (e: unknown) {
