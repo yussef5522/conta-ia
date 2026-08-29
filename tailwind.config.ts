@@ -7,6 +7,18 @@ const config: Config = {
     './components/**/*.{ts,tsx}',
     './app/**/*.{ts,tsx}',
     './lib/**/*.ts',
+    // ⛔ ARQUIVO DE TESTE NÃO ALIMENTA O SCAN (29/08/2026).
+    //
+    // ⚠️ O QUE ACONTECEU: uma fixture de OFX continha o timestamp real do Banrisul
+    // `120000[-3:BRT]`. O Tailwind leu `[-3:BRT]` como CLASSE ARBITRÁRIA e gerou
+    // `.\[-3\:BRT\] { -3: BRT; }` no globals.css → **o build inteiro morreu** com
+    // "Parsing CSS source code failed". Prod não sentiu (o symlink não move em build que
+    // falha), mas o deploy travou por causa de uma string dentro de um teste.
+    //
+    // Teste não renderiza UI, então não tem classe pra descobrir aqui — e deixar o scan
+    // entrar neles faz qualquer fixture futura com colchetes virar CSS quebrado.
+    '!./**/__tests__/**',
+    '!./**/*.test.{ts,tsx}',
   ],
   theme: {
     container: {
