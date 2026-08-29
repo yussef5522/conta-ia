@@ -92,8 +92,13 @@ export async function lerConta(bankAccountId: string, db: PrismaClient = default
   const somaDoArquivoNoIntervalo = (depoisDe: Date, ate: Date): number | null => {
     const a = depoisDe.toISOString().slice(0, 10)
     const b = ate.toISOString().slice(0, 10)
-    // o arquivo mais ANTIGO que já cobre o fim do intervalo (mais próximo da época)
-    const cobre = arquivos.filter((f) => f.ate >= b).sort((x, y) => x.ate.localeCompare(y.ate))[0]
+    // ⚠️ O ARQUIVO TEM QUE TERMINAR DEPOIS DO FIM DO INTERVALO, não NO fim (29/08).
+    // Export de mesmo dia NÃO fecha o próprio dia — o banco ainda lança ao longo dele
+    // (é a mania nº 6 do catálogo do Banrisul, e foi o que travou o import de 28/08).
+    // Usar `>= b` pegava justamente o extrato emitido no último dia do intervalo, com o
+    // dia ainda pela metade, e a soma vinha curta — o invariante culpava a gente por isso.
+    // Entre os que servem, o mais ANTIGO é o mais próximo da época (menos re-escrita).
+    const cobre = arquivos.filter((f) => f.ate > b).sort((x, y) => x.ate.localeCompare(y.ate))[0]
     if (!cobre) return null
     return round2(cobre.linhas.filter((l) => l.dia > a && l.dia <= b).reduce((s, l) => s + l.valor, 0))
   }
