@@ -571,6 +571,22 @@ export default function ImportarOFXPage() {
       if (newRules.length > 0) {
         fd.append('newRules', JSON.stringify(newRules))
       }
+      // ⭐⭐ AS MARCAÇÕES VÃO NO MESMO POST (29/08) — aplicadas DENTRO da transação do
+      // import. Antes iam numa 2ª chamada (`/apply-marks`) DEPOIS do import, cruzando
+      // hashes de formatos incompatíveis: nunca casavam, e a marcação sumia em silêncio
+      // (o dono escolhia o cartão e a tx nascia crua, indo pra pendentes). Aqui é "ou
+      // grava tudo, ou nada grava" — não existe mais um "depois" pra falhar.
+      if (v3PendingDecisions && v3PendingDecisions.marks.size > 0) {
+        const novasGenuinas = (preview as unknown as { classificacao?: { novasGenuinas?: Array<{ ofxIndex: number; dedupHash: string }> } } | null)
+          ?.classificacao?.novasGenuinas ?? []
+        const hashByOfxIndex = new Map(novasGenuinas.map((n) => [n.ofxIndex, n.dedupHash]))
+        const marksArr: Array<{ ofxHash: string; kind: string; params?: unknown }> = []
+        v3PendingDecisions.marks.forEach((mark, ofxIndex) => {
+          const ofxHash = hashByOfxIndex.get(ofxIndex)
+          if (ofxHash) marksArr.push({ ofxHash, kind: mark.kind, params: mark.params })
+        })
+        if (marksArr.length > 0) fd.append('marks', JSON.stringify(marksArr))
+      }
       // Sprint Preview-Truth (29/06/2026): envia decisões declarativas
       // (SKIP/CREATE_NEW por dedupHash). Resolve "o que aparece no
       // preview ≠ o que entra no DB".

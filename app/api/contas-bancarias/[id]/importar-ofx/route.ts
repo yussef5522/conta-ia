@@ -81,6 +81,10 @@ export async function POST(request: NextRequest, { params }: Params) {
   // Sprint Import Categoria Editável (18/06/2026): overrides do usuário
   // (mapa dedupHash -> categoryId) + regras a persistir após sucesso.
   let categoryOverrides: CategoryOverride[] = []
+  // ⭐⭐ MARCAÇÕES DA REVISÃO (29/08) — vêm no MESMO payload do confirm, como os
+  // categoryOverrides e as decisions, e são aplicadas DENTRO da transação do import.
+  // Antes iam numa 2ª chamada (`/apply-marks`) que falhava em silêncio.
+  let marksDoPreview: Array<{ ofxHash: string; kind: string; params?: Record<string, unknown> }> = []
   let newRules: NewRuleSpec[] = []
   // Sprint Preview-Truth (29/06/2026): decisões declarativas por linha
   // (dedupHash → action). SKIP = não cria a tx; CREATE_NEW (ou ausência)
@@ -95,6 +99,13 @@ export async function POST(request: NextRequest, { params }: Params) {
     uploadedFileName = (file as File).name || 'extrato.ofx'
     rawContent = await (file as File).text()
     const overridesRaw = formData.get('categoryOverrides')
+    const marksRaw = formData.get('marks')
+    if (typeof marksRaw === 'string' && marksRaw) {
+      try {
+        const parsedMarks = JSON.parse(marksRaw)
+        if (Array.isArray(parsedMarks)) marksDoPreview = parsedMarks
+      } catch { /* payload torto não derruba o import */ }
+    }
     if (typeof overridesRaw === 'string' && overridesRaw.trim()) {
       try {
         const parsed = JSON.parse(overridesRaw)
@@ -176,6 +187,8 @@ export async function POST(request: NextRequest, { params }: Params) {
             bankAccountId: contaId,
             rawOfx: rawContent,
             userId: user.sub,
+            // ⭐ as marcações da revisão vão JUNTO — aplicadas na mesma transação
+            marks: marksDoPreview,
             fileName: uploadedFileName,
             ipAddress,
             userAgent,
@@ -232,6 +245,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         // existe depois) — e TODA marcação caía em silêncio: o dono escolhia "pagamento de
         // cartão" na revisão e a transação nascia crua, indo pra fila de pendentes.
         txIdByOfxHash: result.txIdByOfxHash,
+        marcacoes: result.marcacoesAplicadas,
         ledgerBalance: result.ledgerBalance,
         errosParser: errors,
       })

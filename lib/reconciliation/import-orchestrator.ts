@@ -33,6 +33,19 @@ import { createOfxImportRecord, finalizeOfxImport } from '@/lib/ofx/persist-impo
 import type { DbBankTransaction, StatementLine, ReconcileResult } from './types'
 
 export interface ImportOrchestratorInput {
+  /**
+   * ⭐⭐ MARCAÇÕES DA REVISÃO, aplicadas DENTRO desta transação (29/08/2026).
+   *
+   * ⚠️ Antes elas eram aplicadas numa SEGUNDA fase, pela tela, depois do import — e essa
+   * segunda fase falhava em silêncio (os hashes não casavam). Consertar o cruzamento não
+   * bastava: se o `apply-marks` falhasse por rede/500/aba fechada, a marca sumia do mesmo
+   * jeito e sobrava um toast que podia passar.
+   *
+   * Aqui não existe "depois": ou o import grava as linhas COM as marcações, ou não grava
+   * nada. A chave é o `ofxHash` do PREVIEW — a mesma que a tela já usa pra marcar.
+   */
+  marks?: Array<{ ofxHash: string; kind: string; params?: Record<string, unknown> }>
+
   bankAccountId: string
   rawOfx: string
   userId: string
@@ -96,6 +109,8 @@ export interface ImportOrchestratorResult {
    *  aplicar as marcações sem cruzar hashes de formatos diferentes — ver o comentário
    *  longo na construção do mapa. */
   txIdByOfxHash: Record<string, string>
+  /** quantas marcações da revisão foram aplicadas dentro desta transação */
+  marcacoesAplicadas: { aplicadas: number; puladas: number; falhas: Array<{ ofxHash: string; erro: string }> }
   insertedWarningIds: string[]
 }
 
@@ -548,6 +563,49 @@ export async function runImportV2(
     console.log(`[RECONCILE_V2] ${skippedByDecision} linha(s) puladas por decisão SKIP do preview`)
   }
 
+  // ── 8.5 ⭐⭐ AS MARCAÇÕES DA REVISÃO, AQUI DENTRO (29/08/2026).
+  //
+  // ⚠️ É o que fecha a classe: até ontem elas eram aplicadas numa SEGUNDA fase, pela tela,
+  // depois do import — e essa fase falhava em silêncio. Consertar o cruzamento de hashes
+  // (que era impossível por construção) não bastava: rede caindo, 500 ou aba fechada e a
+  // marca sumia igual, sobrando um toast que podia passar.
+  //
+  // Aqui não existe "depois": qualquer falha derruba a transação inteira e NADA fica
+  // gravado — nem linhas soltas sem marcação. "Ou grava tudo, ou nada grava."
+  const marcacoesAplicadas: { aplicadas: number; puladas: number; falhas: Array<{ ofxHash: string; erro: string }> } =
+    { aplicadas: 0, puladas: 0, falhas: [] }
+  if (input.marks?.length) {
+    const { aplicarMarcacao } = await import('@/lib/ofx-v3/aplicar-marcacao')
+    for (const mark of input.marks) {
+      const txId = txIdByOfxHash[mark.ofxHash]
+      if (!txId) {
+        // ⚠️ linha marcada que não virou transação (foi duplicata, futura ou SKIP). Não é
+        // erro: é o preview e o confirm discordando sobre o destino dela, e o dono já vê
+        // isso na conciliação de destinos. Registra e segue.
+        marcacoesAplicadas.puladas += 1
+        continue
+      }
+      const alvo = await tx.transaction.findUniqueOrThrow({
+        where: { id: txId },
+        select: {
+          id: true, type: true, amount: true, description: true, date: true, categoryId: true,
+          isCardPayment: true, businessCreditCardId: true, transferGroupId: true, status: true,
+          ignoredAt: true, cashCoded: true,
+        },
+      })
+      // ⚠️ SEM try/catch de propósito: marcação inválida (categoria de outra empresa,
+      // cartão inexistente, parcela já conciliada) DERRUBA o import inteiro. É o contrato
+      // que o dono pediu — melhor não gravar nada do que gravar linha sem a marca dela.
+      const r = await aplicarMarcacao(
+        alvo, mark.kind as never, (mark.params ?? {}) as never,
+        bankAcc.companyId, input.userId, tx,
+      )
+      if (r === 'applied') marcacoesAplicadas.aplicadas += 1
+      else marcacoesAplicadas.puladas += 1
+    }
+    console.log(`[RECONCILE_V2] marcações: ${marcacoesAplicadas.aplicadas} aplicadas · ${marcacoesAplicadas.puladas} puladas (na MESMA transação do import)`)
+  }
+
   // 9. Warnings para orphans (NUNCA delete automático)
   const insertedWarningIds: string[] = []
   const warningsOut: ImportOrchestratorResult['warnings'] = []
@@ -649,8 +707,10 @@ export async function runImportV2(
     matchedFuzzy: result.matched.filter((m) => m.confidence === 'FUZZY').length,
     warnings: warningsOut,
     insertedTxIds,
-    // a ponte preview → gravado, pra a tela aplicar as marcações sem adivinhar
+    // a ponte preview → gravado (a tela não precisa mais dela pro caminho novo, mas o
+    // import legado e o retry manual do /apply-marks continuam usando)
     txIdByOfxHash,
+    marcacoesAplicadas,
     insertedWarningIds,
   }
 }

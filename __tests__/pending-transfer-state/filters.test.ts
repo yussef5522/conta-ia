@@ -60,20 +60,60 @@ describe('Sprint Pending Transfer — DRE SQL + filas filtram pendingTransfer', 
   })
 })
 
-describe('Sprint Pending Transfer — apply-marks seta pendingTransfer no TRANSFER', () => {
-  const code = readFileSync(
-    root('app/api/contas-bancarias/[id]/importar-ofx/apply-marks/route.ts'),
-    'utf-8',
-  )
-  it('TRANSFER case seta pendingTransfer=true', () => {
-    expect(code).toMatch(/pendingTransfer:\s*true/)
+// ⚠️ REESCRITO EM 29/08/2026 — estes 3 eram GREP na rota `/apply-marks` (REGRA 3) e
+// ficaram VERMELHOS quando a lógica saiu de lá pra `lib/ofx-v3/aplicar-marcacao.ts` (as
+// marcações passaram a rodar DENTRO da transação do import). O comportamento nunca mudou
+// — só o arquivo. **Foi exatamente o falso vermelho que a REGRA 3 existe pra evitar:** o
+// grep não distingue "refatorei" de "quebrei". Agora o teste EXECUTA a função.
+describe('Sprint Pending Transfer — a marcação TRANSFER seta o estado pendente', () => {
+  /** db duck-typed: captura o update em vez de ir ao banco (a suíte roda em node puro). */
+  function dbFalso() {
+    const updates: Array<{ where: unknown; data: Record<string, unknown> }> = []
+    return {
+      updates,
+      db: { transaction: { update: async (args: never) => { updates.push(args as never); return {} } } },
+    }
+  }
+  const alvo = (over: Record<string, unknown> = {}) => ({
+    id: 'tx1', type: 'DEBIT', amount: 7000, description: 'PIX ENVIADO', date: new Date('2026-08-13'),
+    categoryId: null, isCardPayment: false, businessCreditCardId: null, transferGroupId: null,
+    status: 'PENDING', ignoredAt: null, cashCoded: false, ...over,
   })
-  it('TRANSFER case seta pendingTransferDirection (OUT/IN por type)', () => {
-    expect(code).toMatch(/pendingTransferDirection/)
-    expect(code).toMatch(/'OUT'|'IN'/)
+
+  it('DEBIT → pendingTransfer=true, direção OUT, com o carimbo de quando', async () => {
+    const { aplicarMarcacao } = await import('@/lib/ofx-v3/aplicar-marcacao')
+    const { updates, db } = dbFalso()
+    const r = await aplicarMarcacao(alvo() as never, 'TRANSFER' as never, {}, 'co1', 'u1', db as never)
+    expect(r).toBe('applied')
+    expect(updates).toHaveLength(1)
+    expect(updates[0].data.pendingTransfer).toBe(true)
+    expect(updates[0].data.pendingTransferDirection).toBe('OUT')
+    expect(updates[0].data.pendingTransferSince).toBeInstanceOf(Date)
+    // e sai do DRE/filas na hora: sem categoria, marcada como aguardando par
+    expect(updates[0].data.categoryId).toBeNull()
   })
-  it('TRANSFER case seta pendingTransferSince', () => {
-    expect(code).toMatch(/pendingTransferSince:\s*new Date\(\)/)
+
+  it('CREDIT → direção IN (a direção vem do TYPE, não de adivinhação)', async () => {
+    const { aplicarMarcacao } = await import('@/lib/ofx-v3/aplicar-marcacao')
+    const { updates, db } = dbFalso()
+    await aplicarMarcacao(alvo({ type: 'CREDIT' }) as never, 'TRANSFER' as never, {}, 'co1', 'u1', db as never)
+    expect(updates[0].data.pendingTransferDirection).toBe('IN')
+  })
+
+  it('⚠️ tx JÁ pareada não é remarcada — pula sem tocar no banco', async () => {
+    const { aplicarMarcacao } = await import('@/lib/ofx-v3/aplicar-marcacao')
+    const { updates, db } = dbFalso()
+    const r = await aplicarMarcacao(alvo({ transferGroupId: 'g1' }) as never, 'TRANSFER' as never, {}, 'co1', 'u1', db as never)
+    expect(r).toBe('skipped')
+    expect(updates).toHaveLength(0)
+  })
+
+  it('a rota /apply-marks continua existindo como casca fina (import legado / retry)', () => {
+    const code = readFileSync(
+      root('app/api/contas-bancarias/[id]/importar-ofx/apply-marks/route.ts'),
+      'utf-8',
+    )
+    expect(code).toMatch(/aplicarMarcacao/)
   })
 })
 
