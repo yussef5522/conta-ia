@@ -55,6 +55,17 @@ export interface LeituraConta {
   ancoras: AncoraDeclarada[]
   /** soma com sinal das tx EFFECTED num intervalo (exclusivo→inclusivo) */
   somaNoIntervalo: (depoisDe: Date, ate: Date) => number
+  /**
+   * ⭐ O TERCEIRO DADO (29/08) — a soma das LINHAS DO PRÓPRIO ARQUIVO do banco no intervalo,
+   * lida do blob guardado. `null` quando não há blob que cubra o período.
+   *
+   * ⚠️ POR QUE ELE EXISTE: sem ele, o B1 só sabia comparar "nós" contra "o LEDGERBAL", e
+   * qualquer divergência virava culpa nossa. Com ele dá pra separar as duas causas — e no
+   * Banrisul isso é decisivo, porque o **LEDGERBAL dele embute valor BLOQUEADO** (mania
+   * documentada desde 15/08: só vem `<LEDGERBAL>`, sem `<AVAILBAL>`) e não fecha nem com
+   * as linhas que o próprio banco listou.
+   */
+  somaDoArquivoNoIntervalo?: (depoisDe: Date, ate: Date) => number | null
   /** saldo gravado hoje na conta + a âncora vigente (pra B2) */
   balanceGravado: number
   ledgerBalVigente: number | null
@@ -85,6 +96,24 @@ export function avaliarConta(l: LeituraConta, hoje: Date): CheckSaldo[] {
     const real = round2(l.somaNoIntervalo(de.data, ate.data))
     const dif = round2(real - esperado)
     if (Math.abs(dif) > TOLERANCIA_CENTAVO) {
+      // ⭐ TRÊS CASOS, não dois (29/08) — o arquivo do banco desempata a culpa:
+      //   sistema == arquivo == LEDGERBAL  → verde
+      //   sistema == arquivo ≠  LEDGERBAL  → AVISO: o BANCO se contradiz (não é nosso)
+      //   sistema ≠  arquivo               → ERRO: falta/sobra linha AQUI (é nosso)
+      const doArquivo = l.somaDoArquivoNoIntervalo?.(de.data, ate.data) ?? null
+      const batemosComOArquivo = doArquivo != null && Math.abs(round2(real - doArquivo)) <= TOLERANCIA_CENTAVO
+      if (batemosComOArquivo) {
+        out.push({
+          ...base, invariante: 'B1', nivel: 'aviso', diferenca: dif,
+          detalhe:
+            `entre ${fmtDia(de.data)} e ${fmtDia(ate.data)} o saldo declarado pelo banco (${br(esperado)}) ` +
+            `não fecha com as LINHAS QUE O PRÓPRIO BANCO listou (${br(doArquivo!)}) — e o nosso sistema ` +
+            `bate com as linhas ao centavo. **A inconsistência é do banco, não nossa** ` +
+            `(no Banrisul o saldo declarado embute valor BLOQUEADO, que ele não manda no arquivo). ` +
+            `Nada a corrigir aqui; a verdade das transações é o extrato, não o saldo declarado.`,
+        })
+        continue
+      }
       out.push({
         ...base, invariante: 'B1', nivel: 'erro', diferenca: dif,
         // ⚠️ O SINAL DIZ DE QUE LADO SOBRA, NÃO QUAL É A CAUSA: cada direção tem DUAS

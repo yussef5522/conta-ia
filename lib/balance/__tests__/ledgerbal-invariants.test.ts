@@ -160,3 +160,55 @@ describe('⭐ diagnóstico guiado do import (item 3)', () => {
     expect(ondeDescolou(conta())).toBeNull()
   })
 })
+
+// ⭐⭐ O TERCEIRO DADO (29/08) — o arquivo do banco desempata a culpa.
+//
+// ⚠️ O CASO REAL que pediu isto: nos intervalos 11→13/08 e 13→14/08 do Banrisul o B1 acusou
+// ERRO. A perícia mostrou que o SISTEMA bate EXATO com as linhas do arquivo (13 linhas,
+// −3.326,71 · 5 linhas, +3.730,67) — não falta transação nenhuma. Quem não fecha é o
+// LEDGERBAL contra as PRÓPRIAS linhas do banco, porque o Banrisul **embute valor BLOQUEADO
+// no saldo declarado** (só manda <LEDGERBAL>, sem <AVAILBAL> — documentado desde 15/08).
+//
+// Sem este desempate, o invariante culparia a gente por uma contradição do banco — e alarme
+// falso repetido faz o dono parar de ler o e-mail, que é como um alarme morre.
+describe('⭐⭐ três casos, não dois: quem está errado, nós ou o banco?', () => {
+  const ANCORA_11 = { data: D('2026-08-11'), valor: -781.08 }
+  const ANCORA_13 = { data: D('2026-08-13'), valor: -2644.08 }
+  const LINHAS_DO_BANCO = -3326.71 // o que o arquivo do Banrisul lista em 12–13/08
+
+  const banrisul = (over: Partial<LeituraConta> = {}): LeituraConta => ({
+    ...conta({ ancoras: [ANCORA_11, ANCORA_13], ledgerBalVigente: -2644.08, ledgerBalDataVigente: D('2026-08-13'), balanceGravado: -2644.08 }),
+    somaNoIntervalo: () => LINHAS_DO_BANCO,
+    somaDoArquivoNoIntervalo: () => LINHAS_DO_BANCO,
+    ...over,
+  })
+
+  it('⭐⭐ batemos com o ARQUIVO mas não com o LEDGERBAL → AVISO, e diz que é do banco', () => {
+    const r = avaliarConta(banrisul(), D('2026-08-13'))
+    const b1 = r.find((c) => c.invariante === 'B1')!
+    expect(b1.nivel).toBe('aviso') // NÃO erro — não é culpa nossa
+    expect(b1.detalhe).toContain('não fecha com as LINHAS QUE O PRÓPRIO BANCO listou')
+    expect(b1.detalhe).toContain('BLOQUEADO')
+    expect(b1.detalhe).toContain('Nada a corrigir aqui')
+  })
+
+  it('⭐ NÃO batemos com o arquivo → ERRO (aí é nosso mesmo)', () => {
+    const r = avaliarConta(banrisul({ somaNoIntervalo: () => LINHAS_DO_BANCO + 2444.62 }), D('2026-08-13'))
+    const b1 = r.find((c) => c.invariante === 'B1')!
+    expect(b1.nivel).toBe('erro')
+    expect(b1.detalhe).toContain('Re-exporte')
+  })
+
+  it('⚠️ SEM blob que cubra o período, volta a ser ERRO (o conservador)', () => {
+    const r = avaliarConta(banrisul({ somaDoArquivoNoIntervalo: () => null }), D('2026-08-13'))
+    expect(r.find((c) => c.invariante === 'B1')!.nivel).toBe('erro')
+  })
+
+  it('tudo batendo (arquivo E LEDGERBAL) → silêncio', () => {
+    const r = avaliarConta(banrisul({
+      ancoras: [ANCORA_11, { data: D('2026-08-13'), valor: -781.08 + LINHAS_DO_BANCO }],
+      ledgerBalVigente: -781.08 + LINHAS_DO_BANCO, balanceGravado: -781.08 + LINHAS_DO_BANCO,
+    }), D('2026-08-13'))
+    expect(r.filter((c) => c.invariante === 'B1')).toEqual([])
+  })
+})

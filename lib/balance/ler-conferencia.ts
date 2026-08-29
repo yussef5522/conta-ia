@@ -10,6 +10,7 @@
 import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { avaliarConta, estadoDaConferencia, type CheckSaldo, type LeituraConta, type EstadoConferencia } from './ledgerbal-invariants'
+import { parseOFX } from '@/lib/ofx/parser'
 
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 
@@ -61,6 +62,42 @@ export async function lerConta(bankAccountId: string, db: PrismaClient = default
       .reduce((s, t) => s + sinal(t) * t.amount, 0))
   }
 
+  // ⭐ AS LINHAS DO PRÓPRIO BANCO, lidas dos blobs guardados (29/08). É o terceiro dado que
+  // separa "falta linha AQUI" de "o banco se contradiz" — sem ele toda divergência virava
+  // culpa nossa, e no Banrisul (cujo saldo declarado embute BLOQUEADO) isso dava alarme
+  // falso em série. Usa o blob que COBRE o intervalo; sem blob, devolve null e o B1 volta
+  // ao comportamento antigo (erro), que é o conservador.
+  const blobs = await db.ofxImport.findMany({
+    where: { bankAccountId, rawOfxBlob: { not: null } },
+    orderBy: { createdAt: 'desc' },
+    select: { rawOfxBlob: true },
+    take: 40,
+  })
+  type LinhaArquivo = { dia: string; valor: number }
+  const arquivos: { ate: string; linhas: LinhaArquivo[] }[] = []
+  for (const b of blobs) {
+    try {
+      const p = parseOFX(b.rawOfxBlob!)
+      const fim = p.statementEnd ?? p.ledgerBalance?.asOfDate ?? null
+      if (!fim) continue
+      arquivos.push({
+        ate: fim.toISOString().slice(0, 10),
+        linhas: p.transactions.map((t) => ({
+          dia: t.datePosted.toISOString().slice(0, 10),
+          valor: t.type === 'CREDIT' ? t.amount : -t.amount,
+        })),
+      })
+    } catch { /* blob ilegível não invalida a leitura */ }
+  }
+  const somaDoArquivoNoIntervalo = (depoisDe: Date, ate: Date): number | null => {
+    const a = depoisDe.toISOString().slice(0, 10)
+    const b = ate.toISOString().slice(0, 10)
+    // o arquivo mais ANTIGO que já cobre o fim do intervalo (mais próximo da época)
+    const cobre = arquivos.filter((f) => f.ate >= b).sort((x, y) => x.ate.localeCompare(y.ate))[0]
+    if (!cobre) return null
+    return round2(cobre.linhas.filter((l) => l.dia > a && l.dia <= b).reduce((s, l) => s + l.valor, 0))
+  }
+
   const somaPosAncora = conta.ledgerBalDate
     ? round2(txs
         .filter((t) => t.date.toISOString().slice(0, 10) > conta.ledgerBalDate!.toISOString().slice(0, 10))
@@ -73,6 +110,7 @@ export async function lerConta(bankAccountId: string, db: PrismaClient = default
     companyId: conta.companyId,
     ancoras,
     somaNoIntervalo,
+    somaDoArquivoNoIntervalo,
     balanceGravado: conta.balance,
     ledgerBalVigente: conta.ledgerBal ?? null,
     ledgerBalDataVigente: conta.ledgerBalDate ?? null,
