@@ -1,6 +1,6 @@
 // ⭐⭐ O COMBINADO ≠ A NOTA — caso real BOX PAPER (29/08/2026).
 //
-// A NF-e traz 3 duplicatas de R$ 3.466,89 (total 10.400,66). O dono falou com o
+// A NF-e traz 3 duplicatas (3.466,88 · 3.466,88 · 3.466,90 = 10.400,66). O dono falou com o
 // fornecedor: os 3 boletos foram CANCELADOS e vieram 4 novos. A nota não muda; o
 // combinado mudou. Estes testes travam a REGRA — a prova end-to-end contra o banco está
 // em `renegociacao.integration.test.ts`.
@@ -10,12 +10,15 @@ import { validarCombinado, numeroRenegociado } from '../combinado'
 
 // ── o caso real ──
 const TOTAL_NOTA = 10400.66
+// ⭐ os valores REAIS lidos de prod (nota cmtan0d65…, emitida 26/08/2026)
 const XML = [
-  { numero: '001', valor: 3466.89, dVenc: '2026-09-10' },
-  { numero: '002', valor: 3466.89, dVenc: '2026-10-10' },
-  { numero: '003', valor: 3466.88, dVenc: '2026-11-10' }, // o centavo mora na última
+  { numero: '001', valor: 3466.88, dVenc: '2026-09-10' },
+  { numero: '002', valor: 3466.88, dVenc: '2026-09-25' },
+  { numero: '003', valor: 3466.90, dVenc: '2026-10-10' }, // o centavo mora na última
 ]
-/** o que o fornecedor passou: 4 parcelas iguais que somam a mesma coisa */
+/** ⚠️ FICTÍCIO por enquanto: o dono ainda não passou os valores dos 4 boletos novos.
+ *  4 parcelas que somam o MESMO total — é a forma mais comum e serve pra travar a regra.
+ *  Quando os valores reais chegarem, TROCAR AQUI e rodar contra a nota de prod. */
 const RENEGOCIADO = [
   { numero: 'R01', valor: 2600.17, dVenc: '2026-09-15' },
   { numero: 'R02', valor: 2600.17, dVenc: '2026-10-15' },

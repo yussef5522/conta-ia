@@ -242,6 +242,34 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⭐⭐⭐ O COMBINADO ≠ A NOTA — RENEGOCIAÇÃO PÓS-NOTA (29/08/2026)
+
+**CASO REAL BOX PAPER (R$ 10.400,66).** A NF-e traz **3 duplicatas** (3.466,88 · 3.466,88 · 3.466,90). O dono falou com o fornecedor: os 3 boletos foram **cancelados** e vieram **4 novos**. **A nota não muda — é da SEFAZ, assinada. O que mudou foi o combinado.** A conferência só sabia COPIAR as duplicatas do XML, então o financeiro ficaria cobrando um acordo que não existe mais.
+
+**⚠️ NENHUM DOS DOIS SOBRESCREVE O OUTRO** — é a mesma regra do "itens digitados do DANFE não apagam o XML" e do "categoria é decisão do dono":
+- `stock_nfe_dup` → **o que a NOTA diz** (3 parcelas, imutável, da SEFAZ)
+- `stock_parcela_combinada` → **o que foi COMBINADO** (4 parcelas, decisão do dono, com `origem` XML|RENEGOCIADO + motivo + quem + quando)
+
+Os dois ficam visíveis na tela. Inventar que a nota tem 4 duplicatas seria mentir sobre um documento fiscal assinado.
+
+**⭐ VALIDAÇÃO AVISA, NÃO TRAVA:** desconto e juros de renegociação são o mundo real, não erro de digitação. Quando a soma diverge do total da nota, o sistema exige um **motivo curto** e segue — travar empurraria o dono a lançar por fora, o pior dos mundos. **Trava só o que impede a conta a pagar de existir**: valor ≤ 0, vencimento ausente, número repetido, lista vazia. ⚠️ **Vencimento no passado é AVISO** — renegociação de boleto atrasado é justamente o caso mais urgente.
+
+**RESOLVEDOR ÚNICO (REGRA 4):** `combinadoDaNota()` é a única função que responde *"quais parcelas valem hoje?"* — conferência, ponte, tela de boletos e juiz chamam ELA. Sem renegociação ela devolve as próprias duplicatas do XML, então o caminho comum não muda. **E a fila de trabalho (`stock_payable_suggestion`) anda na MESMA transação**: sem isso a tela mostraria 4 e mandaria 3 — dois lugares respondendo a mesma pergunta, a doença que este módulo mais paga.
+
+**DEPOIS DE ENVIADO** (`renegociarParcelasDaNota`): cancela as contas **pendentes** daquela nota e recria com o combinado novo, **tudo numa transação só** (em duas, uma falha no meio deixaria o dono sem as velhas e sem as novas). Apaga a amarra junto com a conta — deixar o link criaria alerta F2 falso todo dia; o rastro do combinado anterior vive nas linhas **inativas**. **⛔ CONTA JÁ PAGA OU CONCILIADA BLOQUEIA**, nomeando qual: dinheiro que já saiu não se reescreve.
+
+**⭐ NUMERAÇÃO `R01..Rnn`** — nunca colide com `001..003` do XML, que é o que mantém o `@@unique(companyId, origem, refId, nDup)` do `stock_payable_link` funcionando quando a mesma nota mandou parcelas antes e manda de novo agora.
+
+**JUIZ F4 — A RÉGUA MUDOU:** mede contra o **COMBINADO vigente**, não contra as duplicatas cruas. ⚠️ A régua velha acusaria **toda renegociação legítima** como erro — e alarme falso repetido é como um alarme morre (a lição dos 111 alarmes de vendas). F4 **erro** = combinado × financeiro discordam; F4 **aviso** = soma difere da NOTA **sem motivo escrito** (o número sem o porquê vira mistério pro contador em três meses).
+
+**⚠️ ERRO MEU, PEGO ANTES DE COMMITAR:** eu tinha deixado `reenviar: true` fixo, o que faria **editar parcelas de uma nota ainda não enviada CRIAR conta a pagar sozinho** — furando a fronteira de papel do módulo (*"enviar boleto é obrigação financeira, é decisão do dono"*). Agora só recria o que foi cancelado.
+
+**⚠️⚠️ E O DEPLOY QUEBROU POR UMA LACUNA REAL DO GATE — que teria mordido em TODA migration futura.** O build falhou com *"Property 'stockParcelaCombinada' does not exist on type 'PrismaClient'"*. **A causa:** o `node_modules` do workspace de build é hard-linkado e **só é refeito quando o `package-lock` muda** — mas o `prisma generate` **substitui os arquivos de `.prisma` (inodes NOVOS)**, então os hard links do workspace seguiam apontando pro client **velho**. Medido: o app tinha **380** referências ao modelo novo, o workspace **ZERO**. O gate garantia o *provider* do client, nunca que ele tivesse os *modelos* do schema. Fix: re-linkar `.prisma` e `@prisma/client` a cada deploy. **⭐ O DESENHO BLUE-GREEN SEGUROU: build falhou, symlink não moveu, prod seguiu no ar intacto** — falha de build continua sendo não-evento pro cliente.
+
+**PROVADO EM PROD** (handler real, nota `cmtan0d65…`): GET devolve *"a nota diz 3"* e *"o combinado hoje: 3 [XML], soma 10.400,66, fecha SIM, renegociado: não"*. **29 testes** (13 puros + 8 de integração ponta a ponta + 4 de F4 red-then-green), 486 stock verdes, migration CREATE-only com 3 CHECKs + índice único parcial, `pg_dump pre-combinado-renegociacao-20260829-150818` antes.
+
+**PENDENTE (REGRA 2):** o dono passar os **valores e vencimentos dos 4 boletos novos** — enquanto não vierem, a nota real em prod **não foi tocada** (gravar parcela inventada seria exatamente o que o módulo proíbe). A fixture do teste está marcada como fictícia até lá.
+
 ## ⭐⭐ AS TRÊS TELAS — O IMPORT FECHOU (29/08/2026)
 
 Os motores estavam prontos e testados desde 28/08, mas viviam **só no juiz noturno**: o dono só sabia por e-mail. **Saldo sem procedência parece conferido** — que é exatamente como um buraco vive semanas em silêncio.

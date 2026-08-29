@@ -15,10 +15,11 @@ import { enviarParaContasPagar } from '../../ponte-contas-pagar'
 
 const CNPJ = '41414141000141'
 const TOTAL = 10400.66
+// ⭐ os valores REAIS lidos de prod (nota cmtan0d65…, emitida 26/08/2026)
 const XML = [
-  { nDup: '001', vDup: 3466.89, dVenc: new Date('2026-09-10T00:00:00.000Z') },
-  { nDup: '002', vDup: 3466.89, dVenc: new Date('2026-10-10T00:00:00.000Z') },
-  { nDup: '003', vDup: 3466.88, dVenc: new Date('2026-11-10T00:00:00.000Z') },
+  { nDup: '001', vDup: 3466.88, dVenc: new Date('2026-09-10T00:00:00.000Z') },
+  { nDup: '002', vDup: 3466.88, dVenc: new Date('2026-09-25T00:00:00.000Z') },
+  { nDup: '003', vDup: 3466.90, dVenc: new Date('2026-10-10T00:00:00.000Z') },
 ]
 const NOVAS = [
   { valor: 2600.17, dVenc: '2026-09-15' },
