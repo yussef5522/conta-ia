@@ -173,9 +173,14 @@ async function cenarioC() {
   const c = await contarTudo(conta.id)
   const depois = await prisma.transaction.findFirstOrThrow({ where: { id: alvo.id } })
   linha(estourou, 'a 2ª fase falha igual')
+  // ⚠️ O QUE FALTA É O VÍNCULO COM O CARTÃO — e é isso que deixa a fatura ABERTA pra
+  // sempre. A flag `isCardPayment` até vem true, mas por HEURÍSTICA de descrição
+  // (`detectCardPayment`, passo 8.5 do import), não pela escolha do dono na revisão:
+  // sem `businessCreditCardId` ela não quita fatura nenhuma. Foi exatamente o estado do
+  // caso real (PIX MERCADO PAGO −2.666,44).
   linha(
-    c.tx === 3 && depois.isCardPayment === false && depois.businessCreditCardId === null,
-    `⚠️ e as 3 linhas FICAM gravadas, a do cartão CRUA (tx=${c.tx}, cartão=${depois.businessCreditCardId ?? 'null'}) — o estado pela metade que o fix elimina`,
+    c.tx === 3 && depois.businessCreditCardId === null,
+    `⚠️ e as 3 linhas FICAM gravadas, a do cartão SEM VÍNCULO (tx=${c.tx}, cartão=${depois.businessCreditCardId ?? 'null'}, flag=${depois.isCardPayment}) — o estado pela metade que o fix elimina`,
   )
 }
 
