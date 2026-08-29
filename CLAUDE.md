@@ -192,6 +192,30 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 **ITEM 4 — grafia alternada:** o banco escreve **"OP. CREDITO C/GARANTIA" (24×)** e **"OP.CREDITO C/GARANTIA" (30×)** — **no MESMO arquivo** (25-27/08 com espaço, 28/08 sem). A regra aprendida casava uma e ignorava a outra, e o dono chegou a criar uma **2ª regra na mão** ("OP CREDITO C/GARANTIA", **0 aplicações**) — sintoma clássico de match frágil. A normalização passa a **remover o espaço depois do ponto**. ⚠️ **Estreitei depois de quebrar:** a 1ª versão trocava o ponto POR espaço e **quebrou o detector de keyword do cartão** (`"Apple.Com/Bill"` → `"apple com"`); o teste pegou. As duas grafias reais diferem só pelo espaço. **Não afeta dedup** — a identidade de linha usa `normalizeMemo`, outra função (conferido antes de mexer).
 
+## ⭐⭐⭐ OS INTERVALOS ANTIGOS FECHARAM — E A CULPA NÃO ERA NOSSA (29/08/2026)
+
+**A perícia com os blobs deu um resultado que eu não esperava: o sistema bate AO CENTAVO com as linhas de TODOS os arquivos.** Nos dois intervalos do Banrisul que o B1 acusava:
+
+| intervalo | linhas do arquivo | nosso sistema | bate? |
+|---|---|---|---|
+| 11→13/08 | 13 linhas · −3.326,71 | 13 linhas · −3.326,71 | **✓ exato** |
+| 13→14/08 | 5 linhas · +3.730,67 | 5 linhas · +3.730,67 | **✓ exato** |
+
+**Não falta transação nenhuma.** Quem não fecha é o **LEDGERBAL contra as próprias linhas que o banco listou no mesmo arquivo** (−1.863,00 declarado × −3.326,71 em linhas). É a mania documentada desde 15/08: **o Banrisul embute VALOR BLOQUEADO no saldo declarado** — manda só `<LEDGERBAL>`, sem `<AVAILBAL>`, então não há como separar.
+
+**⛔ E a ficha do banco dizia `ledgerBalReliable: true`** — o débito estava registrado desde 15/08 e **nunca foi aplicado**. Corrigido, com a prova medida escrita no `rationale`.
+
+**⭐ O FIX QUE IMPORTA — o B1 ganhou o TERCEIRO DADO (as linhas do próprio arquivo, lidas dos blobs).** Agora são três casos, não dois:
+- sistema == arquivo == LEDGERBAL → **verde**
+- sistema == arquivo ≠ LEDGERBAL → **AVISO**: *"o banco declarou um saldo que não fecha com as próprias linhas dele; nada a corrigir aqui"*
+- sistema ≠ arquivo → **ERRO**: falta/sobra linha AQUI, é nosso
+
+⚠️ **Sem esse desempate o invariante culpava a gente por uma contradição do banco** — e alarme falso repetido é como um alarme morre. Sem blob que cubra o período, volta a ser ERRO (o conservador).
+
+**⚠️ BUG MEU NO CAMINHO, e a lição é a mania nº 6 do catálogo:** eu escolhia o arquivo de referência com `ate >= fimDoIntervalo` — pegando justamente o extrato **emitido no último dia do intervalo**, com o dia ainda pela metade. A soma vinha curta e o invariante continuava culpando a gente. **Export de mesmo dia não fecha o próprio dia**: o arquivo de referência tem que terminar **DEPOIS** do intervalo.
+
+**RESULTADO EM PROD: série B com 0 ERROS.** Os 5 vermelhos viraram avisos explicados — 2 do Banrisul e 3 do Stone, todos com a mesma assinatura (nosso sistema == linhas do banco ≠ saldo declarado). ⚠️ Isso inclui o par ±2.178,67 do Stone, que eu já suspeitava ser fronteira de data: agora está **nomeado**, não suposto. O B3 segue avisando as contas nunca conferidas (cofre, banco caixa), que é informação, não defeito.
+
 ## ⛔⛔⛔ PRINCÍPIO — HEURÍSTICA NUNCA DECIDE DESCARTE EM SILÊNCIO (29/08/2026)
 
 > **HEURÍSTICA PODE SUGERIR** (na tela, pro humano confirmar).

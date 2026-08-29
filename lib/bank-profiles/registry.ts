@@ -15,7 +15,8 @@ const BANRISUL: BankProfile = {
   listsFutureMovements: true,
   fitidStability: 'PER_DOWNLOAD',
   counterpartySource: 'PDF_ONLY',
-  ledgerBalReliable: true,
+  // ⛔ FALSE desde 29/08/2026 — o débito estava registrado desde 15/08 e nunca foi aplicado.
+  ledgerBalReliable: false,
   acctIdFormat: 'PLAIN',
   rationale: {
     dateAnchor: 'DTASOF = dia da emissão do extrato (09/08, 11/08…), confiável. Âncora = max(DTASOF, DTEND).',
@@ -28,7 +29,16 @@ const BANRISUL: BankProfile = {
       'SE UM DIA O BANRISUL CONSERTAR ISSO: mude este campo pra STABLE e o Nível 2 se desliga sozinho (nenhuma outra mudança de código).',
     counterpartySource:
       'ÚNICO banco cujo OFX não traz favorecido: NAME==MEMO==histórico genérico ("PIX ENVIADO") em 45/45. Por isso existe o fluxo de enriquecimento por PDF. E como o FITID renumera, a chave documento==FITID só funciona quando OFX e PDF vêm do MESMO download.',
-    ledgerBalReliable: 'LEDGERBAL = saldo liquidado (NÃO inclui as linhas futuras listadas). Confiável.',
+    ledgerBalReliable:
+      '⛔ NÃO CONFIÁVEL (corrigido em 29/08/2026 — dizia `true` e o débito estava aberto desde 15/08). ' +
+      'O LEDGERBAL do Banrisul EMBUTE VALOR BLOQUEADO: ele manda só <LEDGERBAL>, SEM <AVAILBAL>, então ' +
+      'não há como separar o bloqueado do liquidado. PROVA MEDIDA (29/08): nos intervalos 11→13/08 e ' +
+      '13→14/08 o saldo declarado não fecha nem com as LINHAS QUE O PRÓPRIO BANCO listou no mesmo ' +
+      'arquivo (−1.863,00 declarado × −3.326,71 em linhas; −3.269,33 × +3.730,67) — e o nosso sistema ' +
+      'bate com as linhas AO CENTAVO nos dois. Ou seja: a contradição é do banco. ' +
+      '⚠️ CONSEQUÊNCIA: invariante de saldo NUNCA pode culpar o sistema por divergência contra o ' +
+      'LEDGERBAL deste banco sem antes conferir contra as linhas do arquivo (é o que a série B faz). ' +
+      'A verdade das transações é o EXTRATO; a do saldo final é o "SALDO NA DATA" do PDF.',
     acctIdFormat: 'ACCTID puro, 14 dígitos = agência+conta concatenados (02300605534106). Mas o cabeçalho do PDF vem formatado (06.055341.0-6) — a validação de conta normaliza os dois lados.',
     geral: 'Especificidade Banrisul: o enriquecimento por PDF existe SÓ por causa deste banco.',
   },
