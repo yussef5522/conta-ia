@@ -1,9 +1,11 @@
 // ⭐⭐ SÉRIE B — O SALDO DO BANCO CONFERE COM O NOSSO? (28/08/2026)
 //
-// NASCEU DO EPISÓDIO DOS R$ 2.444,62: o extrato do Banrisul foi exportado NO MESMO DIA e
-// veio sem uma transação que ainda não tinha liquidado. O sistema e o banco ficaram
-// diferentes — e isso só apareceu porque o dono **importou de novo**. Com cliente, um
-// buraco desses viveria SEMANAS mudo.
+// NASCEU DO EPISÓDIO DOS R$ 2.444,62: o SISTEMA descartou em silêncio uma linha válida do
+// extrato (heurística de FITID), e o saldo ficou 2.444,62 diferente do banco.
+// ⚠️ Registro anterior dizia "o arquivo do banco veio incompleto" — ERRADO: a linha estava
+// no arquivo, e a perícia por horário provou (preview 15:09 descarta · fix 21:05 · confirm
+// 21:20 do MESMO arquivo entra). O que importa aqui é o que a divergência revelou:
+// **ela só apareceu porque o dono importou de novo.** Com cliente, viveria SEMANAS muda.
 //
 // ⚠️⚠️ A ARMADILHA QUE QUASE ME FEZ ESCREVER UM INVARIANTE INÚTIL:
 // o `balance` da conta é ANCORADO no próprio LEDGERBAL (`recalcularSaldoConta` faz

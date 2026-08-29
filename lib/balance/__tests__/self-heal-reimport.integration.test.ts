@@ -1,8 +1,10 @@
 // ITEM 4 — O SELF-HEAL VIRA COMPORTAMENTO DOCUMENTADO, NÃO SORTE (28/08).
 //
-// O que houve de verdade: o extrato foi exportado no MESMO DIA e veio sem uma transação que
-// ainda não tinha liquidado. No re-export do dia seguinte a linha veio, entrou pelo dedup
-// normal e o buraco fechou sozinho — sem duplicar nada.
+// ⚠️ O CENÁRIO É REAL, mas NÃO foi o que houve nos 2.444,62: lá a linha estava no arquivo e
+// o SISTEMA a descartou (ver fitid-nao-descarta-emprestimo.test.ts). Extrato incompleto
+// acontece de verdade — o banco lança ao longo do dia — então o ciclo abaixo precisa estar
+// travado do mesmo jeito: linha atrasada chega num re-export, entra pelo dedup e fecha o
+// buraco sozinha, sem duplicar.
 //
 // ⚠️ Isso funcionou por DESENHO (dedup por `stableKey`), mas nunca esteve travado por
 // teste. Este arquivo trava o ciclo inteiro contra o banco real:

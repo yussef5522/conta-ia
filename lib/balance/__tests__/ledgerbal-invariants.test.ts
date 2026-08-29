@@ -1,8 +1,9 @@
 // REGRA 1 — O BURACO DOS R$ 2.444,62 TERIA ACORDADO VERMELHO ÀS 3H DA MESMA NOITE.
 //
-// O que houve: o extrato do Banrisul foi exportado NO MESMO DIA e veio sem uma transação
-// que ainda não tinha liquidado. Sistema e banco ficaram diferentes — e só apareceu porque
-// o dono importou de novo. Com cliente, viveria semanas mudo.
+// O que houve: o SISTEMA descartou em silêncio uma linha válida do extrato e o saldo ficou
+// 2.444,62 diferente do banco. Isso só apareceu porque o dono importou de novo — com
+// cliente, viveria semanas mudo. (⚠️ registro anterior culpava o arquivo do banco; era o
+// nosso import — ver fitid-nao-descarta-emprestimo.test.ts.)
 //
 // ⚠️⚠️ O INVARIANTE ÓBVIO SERIA INÚTIL: o `balance` da conta é ANCORADO no LEDGERBAL, então
 // "saldo na data da âncora == LEDGERBAL" é CIRCULAR e daria verde inclusive com o buraco

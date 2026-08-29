@@ -142,7 +142,19 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ## ⭐⭐⭐ SÉRIE B — DIVERGÊNCIA DE SALDO BANCÁRIO NUNCA MAIS VIVE EM SILÊNCIO (28/08/2026)
 
-**A lição do episódio dos 2.444,62 não é o bug — é que a divergência só apareceu porque o dono REIMPORTOU.** Com cliente, um buraco desses viveria semanas mudo.
+**⚠️⚠️ CORREÇÃO DE DIAGNÓSTICO (29/08) — E O ERRO FOI MEU, DUAS VEZES.** Numa rodada eu registrei que "a linha faltava no arquivo do banco (export de mesmo dia)". **É FALSO, e eu já tinha provado o contrário antes de escrever isso:** o dono ofereceu essa explicação, eu a adotei e **sobrescrevi minha própria evidência**. A perícia fecha a questão pelos horários:
+
+| momento (local) | o quê |
+|---|---|
+| 28/08 **15:09** | o dono sobe o arquivo → preview → **a linha é descartada** → gate trava em 2.444,62 |
+| 28/08 **21:05** | **eu deployo o fix do FITID** (`4ab0c42`) |
+| 28/08 **21:20** | o dono confirma o **MESMO** arquivo (mesmo registro `…a9acn346`, mesmo hash `bb97a440`) → a linha entra · 13 novas · LEDGERBAL bate |
+
+**A linha estava nos DOIS blobs guardados** (27/08 e 28/08) desde sempre. **Não era o banco: era o sistema descartando uma linha válida em silêncio** — a categoria mais grave do módulo. A causa é a que eu tinha provado na primeira investigação (heurística `FITID == YYMMDD`), e o fix dela é o que fez a linha reaparecer 15 minutos depois.
+
+**⚠️ LIÇÃO SOBRE MIM, não sobre o código:** quando o dono propôs uma explicação alternativa, eu troquei uma conclusão **medida contra o blob** por uma **plausível** — e a escrevi no doc e nos comentários dos testes. Evidência medida não se abandona por hipótese confortável; se as duas discordam, é a hipótese que tem que ser testada.
+
+**A lição do episódio, essa continua valendo:** a divergência só apareceu porque o dono REIMPORTOU. Com cliente, um buraco desses viveria semanas mudo.
 
 **⚠️⚠️ A ARMADILHA QUE QUASE VIROU UM INVARIANTE INÚTIL:** o `balance` da conta é **ancorado no próprio LEDGERBAL** (`recalcularSaldoConta` = `ledgerBal + Σ(tx pós-âncora)`). Então *"saldo na data do LEDGERBAL == LEDGERBAL"* é **CIRCULAR — daria verde sempre**, inclusive com o buraco aberto. **Invariante que não pode falhar é pior que nenhum: dá selo verde de graça.** Há um teste só pra provar isso.
 
@@ -160,7 +172,7 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 - **Banrisul 14/08→28/08: TODOS os intervalos ✓**, inclusive 25→28 (8.167,96 = 8.167,96), confirmando o fix do FITID.
 - **B3:** cofre, banco caixa e a conta teste **nunca foram conferidos com o banco** — o saldo lá é o que foi digitado. Agora isso é visível em vez de presumido.
 
-**ITEM 4 — O SELF-HEAL VIROU COMPORTAMENTO TRAVADO:** import incompleto → juiz vermelho → re-import com a linha → verde **sem duplicar**, com os números reais. 28 testes.
+**ITEM 4 — O CICLO VIROU COMPORTAMENTO TRAVADO:** import incompleto → juiz vermelho → re-import com a linha → verde **sem duplicar**, com os números reais. 28 testes. ⚠️ O cenário do teste continua válido (extrato pode mesmo vir incompleto), mas **não foi o que houve aqui** — ver a correção de diagnóstico acima.
 
 **⚠️ O QUE NÃO ENTROU NESTA LEVA (registrado, não feito):** a **tela** de Contas mostrando "conferido ✓ / divergente" (o motor `conferenciaDasContas` está pronto e testado, falta o componente); o **banner de export de mesmo dia** no import; e o **diagnóstico guiado ligado na tela** do import (a função `ondeDescolou` existe e funciona — provada em prod: *"o descolamento começou entre 11/08 e 13/08 (R$ 1.463,71)"* — falta plugar no payload do preview).
 

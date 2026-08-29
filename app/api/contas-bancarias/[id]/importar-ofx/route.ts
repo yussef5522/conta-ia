@@ -53,6 +53,7 @@ import { isCanonicalClassifyEnabledForBank } from '@/lib/canonical/flag'
 import { resolveImportStatuses } from '@/lib/reconciliation/resolve-import-statuses'
 import { resolveBankProfile, resolveStatementAnchor, bankProfileWarning } from '@/lib/bank-profiles'
 import { verifyOfxMatchesAccount } from '@/lib/ofx/verify-account-match'
+import { conciliarDestinos } from '@/lib/ofx/conciliar-destinos'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -630,6 +631,39 @@ export async function POST(request: NextRequest, { params }: Params) {
     }))
     const futurasSum = Math.round(futurasPayload.reduce((s, f) => s + f.signedAmount, 0) * 100) / 100
 
+    // ⭐⭐ TODA LINHA DO ARQUIVO TEM QUE TER UM DESTINO NOMEADO (29/08/2026).
+    //
+    // ⚠️ O QUE ISTO IMPEDE, com nome e data: em 28/08 o preview leu 129 linhas e mostrou 12
+    // novas — a 13ª ("26/08 EMPRESTIMO −2.444,62") tinha sido descartada por uma heurística
+    // e **não aparecia em lugar nenhum**: nem na revisão, nem num balde de descartadas, nem
+    // no log. O gate travou pelo SALDO, e o dono ficou com um enigma de R$ 2.444,62 em vez
+    // de uma linha marcada com o motivo.
+    //
+    // Contar LINHAS é mais forte que conferir SALDO: linha perdida cujo valor empata com
+    // outra coisa (ou período em que o LEDGERBAL não é confiável — Banrisul embute
+    // bloqueado) some sem alarme nenhum no gate de saldo. Aqui não some.
+    const conciliacao = conciliarDestinos({
+      totalNoArquivo: transactions.length,
+      novas: novasReais.length,
+      jaExistem: duplicadas,
+      futuras: novasFuturas.length,
+      ignoradas: 0, // no preview o usuário ainda não marcou nada
+    })
+    if (!conciliacao.fecha) {
+      console.error(`[importar-ofx preview] CONCILIAÇÃO NÃO FECHA: ${conciliacao.resumo} · sem destino: ${conciliacao.semDestino}`)
+    }
+    // ⚠️ BLOQUEIA só na direção PERIGOSA (linha do arquivo sem destino = linha sumindo).
+    // Contagem a MAIOR é artefato de exibição (uma linha contada em dois baldes) — avisa,
+    // mas não impede o dono de importar: travar por defeito de contagem nossa seria trocar
+    // um problema por outro.
+    if (conciliacao.semDestino > 0) {
+      return NextResponse.json({
+        erro: conciliacao.erro,
+        code: 'LINHA_SEM_DESTINO',
+        conciliacao,
+      }, { status: 422 })
+    }
+
     if (!isV2PreviewEnabled()) {
       const payload = buildLegacyPreviewPayload({
         novas: novasReais,
@@ -641,6 +675,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       return NextResponse.json({
         ...payload,
         futuras: futurasPayload,
+        conciliacao, // "N linhas no arquivo = A novas + B já no sistema + C futuras"
         reconcileDedup: reconcileCount,
         importIdentity: {
           gate: gateResult.stats,
