@@ -268,7 +268,19 @@ Os dois ficam visíveis na tela. Inventar que a nota tem 4 duplicatas seria ment
 
 **PROVADO EM PROD** (handler real, nota `cmtan0d65…`): GET devolve *"a nota diz 3"* e *"o combinado hoje: 3 [XML], soma 10.400,66, fecha SIM, renegociado: não"*. **29 testes** (13 puros + 8 de integração ponta a ponta + 4 de F4 red-then-green), 486 stock verdes, migration CREATE-only com 3 CHECKs + índice único parcial, `pg_dump pre-combinado-renegociacao-20260829-150818` antes.
 
-**PENDENTE (REGRA 2):** o dono passar os **valores e vencimentos dos 4 boletos novos** — enquanto não vierem, a nota real em prod **não foi tocada** (gravar parcela inventada seria exatamente o que o módulo proíbe). A fixture do teste está marcada como fictícia até lá.
+**⚠️⚠️ E O USO REAL PEGOU O BUG QUE OS TESTES NÃO PEGARAM — REGRA 4, DE NOVO, NO MESMO SPRINT.** O dono ajustou as parcelas, confirmou, voltou pra tela da nota e viu **as 3 do XML**: *"sem erro, sem aviso"*. **A classe proibida ("nunca falha em silêncio"), pela segunda vez.**
+
+**A perícia foi curta e o dado respondeu:** o combinado **GRAVOU** — 5 linhas `RENEGOCIADO` de 2.080,13 em prod, 18:29:10. **A falha era de LEITURA.** `buildConferenceView` lia **`stock_nfe_dup` DIRETO**, virando um **SEGUNDO leitor** de *"quais parcelas valem"* — bem depois de eu ter criado `combinadoDaNota` justamente pra ser o resolvedor único e tê-lo ligado no confirmar e na tela de boletos. **⚠️ E os meus testes passavam porque conferiam a GRAVAÇÃO, nunca o que a TELA carrega** — a lição do contrato quebrado do Dashboard PF, na mesma semana.
+
+**A varredura achou uma SEGUNDA vítima da mesma régua:** o **E3** do juiz contava as duplicatas cruas, então renegociar 3 → 2 viraria *"3 duplicatas mas 2 sugeridas"* **toda noite**. Corrigido junto (mesma correção do F4).
+
+**O teste que faltava roda o CAMINHO DA TELA** (`buildConferenceView → salvar → buildConferenceView`), com red-then-green medido: com o bug de volta, *"expected length 4 but got 3"*. E a tela ganhou o **selo "renegociado"** + a linha *"A nota diz 3 parcelas: …"* — sem isso o dono ajusta, volta e **não tem como saber se pegou**.
+
+**⭐ UX — O SISTEMA DIVIDE, O DONO AJUSTA** (`dividir-parcelas.ts`, 15 testes): adicionar/remover **redistribui o total em partes iguais com o resto de centavos na ÚLTIMA** — exatamente como a nota real faz (3.466,88 + 3.466,88 + **3.466,90**). Não é estética: espalhar o centavo de outro jeito faria a soma não fechar e a validação cobraria motivo **por arredondamento nosso**. Data nova = **+30 dias** da anterior. ⚠️ **Editar UM valor NÃO redistribui os outros** — senão "entrada maior" seria impossível de digitar (cada número corrigiria o anterior). ⚠️ **Sem nenhuma data, não inventa a primeira**: a 1ª é a do boleto, e chutar "hoje+30" criaria vencimento falso com cara de combinado.
+
+**PROVADO EM PROD depois do fix** (`buildConferenceView` contra a nota real): selo **renegociado SIM** · combinado **5 × 2.080,13 = 10.400,65** · referência **"a nota diz 3: 3.466,88 · 3.466,88 · 3.466,90 = 10.400,66"**. 505 stock verdes.
+
+**PENDENTE (REGRA 2):** o dono refazer o combinado na tela com os valores reais dos boletos novos e enviar pro Contas a Pagar. As 5 parcelas de 2.080,13 são a gravação do teste dele — ficam até ele refazer (renegociar de novo substitui e guarda o histórico).
 
 ## ⭐⭐ AS TRÊS TELAS — O IMPORT FECHOU (29/08/2026)
 
