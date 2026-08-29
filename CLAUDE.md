@@ -192,6 +192,32 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 **ITEM 4 — grafia alternada:** o banco escreve **"OP. CREDITO C/GARANTIA" (24×)** e **"OP.CREDITO C/GARANTIA" (30×)** — **no MESMO arquivo** (25-27/08 com espaço, 28/08 sem). A regra aprendida casava uma e ignorava a outra, e o dono chegou a criar uma **2ª regra na mão** ("OP CREDITO C/GARANTIA", **0 aplicações**) — sintoma clássico de match frágil. A normalização passa a **remover o espaço depois do ponto**. ⚠️ **Estreitei depois de quebrar:** a 1ª versão trocava o ponto POR espaço e **quebrou o detector de keyword do cartão** (`"Apple.Com/Bill"` → `"apple com"`); o teste pegou. As duas grafias reais diferem só pelo espaço. **Não afeta dedup** — a identidade de linha usa `normalizeMemo`, outra função (conferido antes de mexer).
 
+## ⛔⛔⛔ PRINCÍPIO — HEURÍSTICA NUNCA DECIDE DESCARTE EM SILÊNCIO (29/08/2026)
+
+> **HEURÍSTICA PODE SUGERIR** (na tela, pro humano confirmar).
+> **HEURÍSTICA NUNCA DECIDE DESCARTE/DESTINO EM SILÊNCIO.**
+> **Descarte só por REGRA DETERMINÍSTICA sobre campo DECLARADO.**
+
+Nasceu do `FITID == YYMMDD`: a regra funcionou nos arquivos da época, **armou**, e explodiu num débito real de R$ 2.444,62. Heurística que decide sozinha não falha no dia em que nasce — falha no dia em que o banco muda de humor.
+
+**REGRA ÚNICA DO FUTURO:** `futura ⟺ DTPOSTED > âncora`, com âncora = `max(DTASOF, DTEND)`. **Nada mais.** O `fitidLooksLikePreview` continua na assinatura por compat e é **ignorado** (`void`).
+
+**VARREDURA (o que achei além do FITID):**
+| onde | o que faz | veredito |
+|---|---|---|
+| `is-preview` / `future-line` | FITID==YYMMDD | ⛔ **era descarte silencioso — DESLIGADO** |
+| `opening-balance.isOpeningBalanceMemo` | filtra tx NOSSAS de "SALDO INICIAL/ABERTURA" do pool de conciliação | ⚠️ heurística de memo, mas **só sobre tx do banco de dados, nunca sobre linha do arquivo** — não some linha. Registrado |
+| `import-orchestrator` → `detectCardPayment` | marca `isCardPayment` por descrição | ✅ **classifica, não descarta** — reversível pelo dono |
+| `parser.ts` | derruba linha sem FITID/data/valor | ✅ **determinístico sobre campo declarado E reportado** (`errors[]` vai pra tela) |
+
+**⭐ BURACO FECHADO NA BORDA DO PARSER (achado nesta varredura):** a conciliação de destinos que eu tinha feito contava linhas **PARSEADAS** — linha derrubada no parser **morria antes de ser contada**, invisível pra qualquer conferência posterior. Agora o parser devolve **`totalBlocos`** (quantos `<STMTTRN>` o ARQUIVO tinha) e a conta é `blocos == novas + já existem + futuras + ignoradas + **ilegíveis**`.
+
+**CICLO DO AGENDADO (o CONSÓRCIO de 09/09):** sai do import listado com o motivo (data > âncora) e, quando POSTAR num export seguinte — **possivelmente com FITID renumerado, mania conhecida do Banrisul** — entra **uma vez**, porque o `stableKey` é data+valor+memo e **não usa FITID**. Travado por teste, inclusive o contrafactual ("se a dedup usasse FITID, entraria duas vezes"). ⚠️ E a decisão é **now-independente**: o mesmo arquivo importado hoje, amanhã ou em 2027 dá o mesmo resultado.
+
+**⭐ CATÁLOGO DE MANIAS DO BANRISUL** (`lib/ofx/__tests__/catalogo-manias-banrisul.test.ts`) — **mexeu no import, roda tudo de novo.** 6 manias + o invariante do parser: FITID no formato da data · grafia dupla `OP.CREDITO`/`OP. CREDITO` no mesmo arquivo · FITID renumerado entre downloads · agendado no meio do extrato · LEDGERBAL como âncora (com DTASOF curto) · export de mesmo dia incompleto. ⚠️ Fixtures **derivadas dos blobs reais mas escritas à mão**, com os valores reais e memos genéricos — nome de pessoa não entra (LGPD, e nenhuma decisão depende dele).
+
+**BLOBS (a matéria-prima da perícia — foi o blob que provou a verdade):** **0 purgados** · **todo import de OFX desde 13/08 tem blob** (a coluna nasceu naquela data; os 82 sem blob são anteriores, o mais recente de 26/07) · **12 de 12 re-parseiam batendo exato** contra o parser atual, com `blocos == parseadas + erros` em todos.
+
 ## ⛔⛔⛔ INCIDENTE 28/08 — LOGIN 500 POR 8 HORAS COM O TRIO VERDE. O GATE PROVAVA PRESENÇA, NÃO SAÚDE.
 
 **O ERRO FOI MEU, e a lição vale mais que ele.** No comando de deploy da rodada anterior rodei `git reset --hard` (que **reverte `prisma/schema.prisma` pra `sqlite`** — o swap-postgres é passo MANUAL do runbook) e em seguida `npx prisma generate` **sem o swap**. Como o **`node_modules` é COMPARTILHADO por hard link** com o workspace de build, o client gerado virou SQLite; o app subiu com ele e **toda query ao banco morria**: *"the URL must start with the protocol `file:`"*. Log real: `[LOGIN] Erro interno: PrismaClientInitializationError`.
