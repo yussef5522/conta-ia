@@ -29,12 +29,17 @@ export async function lerConta(bankAccountId: string, db: PrismaClient = default
 
   const imports = await db.ofxImport.findMany({
     where: { bankAccountId, status: 'SUCCESS', ledgerBalAmount: { not: null }, anchorDate: { not: null } },
-    orderBy: { anchorDate: 'asc' },
+    // ⚠️⚠️ ORDENAR TAMBÉM POR `createdAt` É OBRIGATÓRIO, e isso me mordeu na 1ª rodada:
+    // com dois imports do MESMO dia (26/08 teve dois, ambos ancorados em 25/08, com
+    // LEDGERBAL −6.408,68 e −9.434,99), ordenar só por `anchorDate` deixa o desempate
+    // ARBITRÁRIO — o mapa abaixo ficou com a declaração ANTIGA e o juiz acusou DOIS erros
+    // de ±3.026,31 que se cancelavam. Erro que se cancela em intervalos vizinhos é a
+    // assinatura de âncora errada, não de transação faltando.
+    orderBy: [{ anchorDate: 'asc' }, { createdAt: 'asc' }],
     select: { anchorDate: true, ledgerBalAmount: true },
   })
-  // ⚠️ mesma data importada 2× (aconteceu em 26/08): fica a ÚLTIMA declaração do dia — é a
-  // que o banco considerou final. Guardar as duas faria o invariante comparar o banco com
-  // ele mesmo e acusar diferença que não existe.
+  // mesma data importada 2×: fica a declaração do import MAIS RECENTE — é a que o banco
+  // considerou final. Guardar as duas faria o invariante comparar o banco com ele mesmo.
   const porDia = new Map<string, { data: Date; valor: number }>()
   for (const i of imports) {
     porDia.set(i.anchorDate!.toISOString().slice(0, 10), { data: i.anchorDate!, valor: i.ledgerBalAmount! })
