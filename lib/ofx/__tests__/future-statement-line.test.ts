@@ -30,8 +30,20 @@ describe('isFutureStatementLine — âncora = max(DTASOF, DTEND), now-independen
     expect(isFutureStatementLine(D('2026-08-05'), D('2026-08-09'), false)).toBe(false)
   })
 
-  it('FITID YYMMDD (preview interno Banrisul) → futura mesmo com data passada', () => {
-    expect(isFutureStatementLine(D('2026-08-05'), D('2026-08-09'), true)).toBe(true)
+  // ⛔ REGRA DERRUBADA POR EVIDÊNCIA (28/08/2026). Antes este teste afirmava que FITID
+  // YYMMDD tornava a linha FUTURA mesmo com data passada. A regra escondeu DÉBITO REAL de
+  // empréstimo duas vezes (4.092,02 em 13/08 · 2.444,62 em 28/08) e nas duas o saldo
+  // declarado pelo banco provou que a linha tinha liquidado. Todo FITID do Banrisul tem 6
+  // dígitos e o banco usa a DATA como id nas linhas de empréstimo: é convenção de
+  // IDENTIFICADOR, não estado do lançamento. Quem decide é o SALDO.
+  // Detalhe do incidente em lib/ofx/__tests__/fitid-nao-descarta-emprestimo.test.ts.
+  it('FITID YYMMDD com data passada NÃO é futura — o formato do id não decide', () => {
+    expect(isFutureStatementLine(D('2026-08-05'), D('2026-08-09'), true)).toBe(false)
+  })
+
+  it('⚠️ mas data futura continua futura, com ou sem o fitid de data', () => {
+    expect(isFutureStatementLine(D('2026-08-10'), D('2026-08-09'), true)).toBe(true)
+    expect(isFutureStatementLine(D('2026-08-10'), D('2026-08-09'), false)).toBe(true)
   })
 })
 

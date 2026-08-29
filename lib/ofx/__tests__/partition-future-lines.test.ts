@@ -28,9 +28,17 @@ describe('partitionFutureLines — separa real vs futuro (fonte única)', () => 
     expect(futureLines).toHaveLength(0)
   })
 
-  it('FITID YYMMDD (preview Banrisul) vai pra futuras mesmo com data passada', () => {
-    const { futureLines } = partitionFutureLines([linha('2026-08-05', '260805')], dtAsOf, hoje)
-    expect(futureLines).toHaveLength(1)
+  // ⛔ REGRA DERRUBADA POR EVIDÊNCIA (28/08/2026). Antes este teste afirmava que FITID
+  // YYMMDD tornava a linha FUTURA mesmo com data passada. A regra escondeu DÉBITO REAL de
+  // empréstimo duas vezes (4.092,02 em 13/08 · 2.444,62 em 28/08) e nas duas o saldo
+  // declarado pelo banco provou que a linha tinha liquidado. Todo FITID do Banrisul tem 6
+  // dígitos e o banco usa a DATA como id nas linhas de empréstimo: é convenção de
+  // IDENTIFICADOR, não estado do lançamento. Quem decide é o SALDO.
+  // Detalhe do incidente em lib/ofx/__tests__/fitid-nao-descarta-emprestimo.test.ts.
+  it('FITID YYMMDD com data passada fica em REAIS (não vai mais pra futuras)', () => {
+    const { realLines, futureLines } = partitionFutureLines([linha('2026-08-05', '260805')], dtAsOf, hoje)
+    expect(realLines).toHaveLength(1)
+    expect(futureLines).toHaveLength(0)
   })
 
   it('tudo real → futureLines vazio (caminho comum não quebra)', () => {

@@ -41,10 +41,21 @@ describe('isPreviewLine', () => {
     expect(isPreviewLine(line, D('2026-06-12'))).toBe(false)
   })
 
-  it('FITID == YYMMDD da própria data é preview MESMO COM DTPOSTED <= DTASOF', () => {
-    // T1 caso real EMPRESTIMO: DTPOSTED 11/06, FITID 260611, DTASOF 12/06
+  // ⛔ REGRA DERRUBADA POR EVIDÊNCIA (28/08/2026). Este teste afirmava que FITID YYMMDD
+  // tornava a linha PREVIEW mesmo com DTPOSTED <= DTASOF. A regra nasceu deste caso de
+  // 11/06 e depois escondeu DÉBITO REAL de empréstimo DUAS vezes (4.092,02 em 13/08 ·
+  // 2.444,62 em 28/08); nas duas o saldo declarado pelo banco provou que tinha liquidado.
+  // Todo FITID do Banrisul tem 6 dígitos e nas linhas de empréstimo o banco usa a DATA
+  // como id: convenção de IDENTIFICADOR, não estado do lançamento. Quem decide é o SALDO.
+  // Detalhe em lib/ofx/__tests__/fitid-nao-descarta-emprestimo.test.ts.
+  it('FITID == YYMMDD com DTPOSTED <= DTASOF NÃO é preview (o formato do id não decide)', () => {
     const line = { datePosted: D('2026-06-11'), fitid: '260611' }
-    expect(isPreviewLine(line, D('2026-06-12'))).toBe(true)
+    expect(isPreviewLine(line, D('2026-06-12'))).toBe(false)
+  })
+
+  it('⚠️ e a DATA continua mandando: depois do corte é preview, com fitid ou sem', () => {
+    expect(isPreviewLine({ datePosted: D('2026-06-13'), fitid: '260613' }, D('2026-06-12'))).toBe(true)
+    expect(isPreviewLine({ datePosted: D('2026-06-13'), fitid: '999888' }, D('2026-06-12'))).toBe(true)
   })
 
   it('mesma data e sem FITID suspeito NÃO é preview', () => {

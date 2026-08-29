@@ -43,6 +43,11 @@ export function isPreviewLine(
   const lineDay = line.datePosted.toISOString().slice(0, 10)
   const effectiveDay = effective.toISOString().slice(0, 10)
   if (lineDay > effectiveDay) return true
-  if (fitidLooksLikeDate(line.fitid, line.datePosted)) return true
+  // ⛔ FITID SAIU DO CRITÉRIO (28/08) — mesma decisão do `isFutureStatementLine`, e pelo
+  // mesmo motivo: a regra escondeu débito REAL de empréstimo duas vezes (4.092,02 em 13/08
+  // e 2.444,62 em 28/08), e nas duas o LEDGERBAL do próprio arquivo provou que a linha
+  // tinha liquidado. Formato de identificador não diz estado do lançamento — saldo diz.
+  // `fitidLooksLikeDate` continua EXPORTADA porque outros lugares a usam como SINAL
+  // (diagnóstico), o que é legítimo; o que saiu é ela DECIDIR descarte sozinha.
   return false
 }

@@ -25,6 +25,28 @@ const DATE_SUFFIX_REGEX =
 // Combining Diacritical Marks (U+0300 a U+036F) — acentos após NFD decompose.
 const DIACRITICS_REGEX = /[̀-ͯ]/g
 
+// ⭐⭐ PONTO ENTRE LETRAS VIRA ESPAÇO (28/08/2026) — o Banrisul ALTERNA a grafia.
+//
+// ⚠️ O CASO REAL: a mesma rubrica aparece como "OP. CREDITO C/GARANTIA" (24×, com espaço)
+// e "OP.CREDITO C/GARANTIA" (30×, sem) — **no MESMO arquivo**: dias 25-27/08 com espaço,
+// dia 28/08 sem. A regra aprendida casava uma e ignorava a outra, e o dono chegou a criar
+// uma SEGUNDA regra na mão ("OP CREDITO C/GARANTIA", 0 aplicações) tentando cobrir a
+// variante — sintoma clássico de match frágil.
+//
+// O que se remove é o ESPAÇO DEPOIS do ponto — o ponto FICA:
+//     "OP. CREDITO"  →  "op.credito"        "OP.CREDITO"  →  "op.credito"   (casam)
+//
+// ⚠️ ESTREITEI DE PROPÓSITO. A 1ª tentativa trocava o ponto POR espaço, o que colapsava
+// também "OP CREDITO" (sem ponto) — mas QUEBROU o detector de keyword do cartão:
+// "Apple.Com/Bill" virava "apple com/bill" e a regra que procura "apple.com" parava de
+// casar. O teste pegou. As duas grafias REAIS do banco diferem só pelo espaço, então
+// remover o espaço resolve o caso sem tocar em domínio.
+//
+// ⚠️ Só entre LETRAS: não toca em decimal ("1.234,56"). E não afeta identidade de linha —
+// o dedup do import usa `normalizeMemo` (`lib/reconciliation/normalize.ts`); aqui é só
+// casamento de REGRA.
+const PONTO_ENTRE_LETRAS = /(?<=\p{L})\.\s+(?=\p{L})/gu
+
 export function normalizeDescription(raw: string): string {
   if (!raw) return ''
 
@@ -38,6 +60,9 @@ export function normalizeDescription(raw: string): string {
 
   // 3. Lowercase + remove acentos
   s = s.toLowerCase().normalize('NFD').replace(DIACRITICS_REGEX, '')
+
+  // 3b. Tira o espaço depois do ponto (o banco alterna "OP. CREDITO"/"OP.CREDITO")
+  s = s.replace(PONTO_ENTRE_LETRAS, '.')
 
   // 4. Colapsa múltiplos espaços + trim
   s = s.replace(/\s+/g, ' ').trim()
@@ -54,6 +79,7 @@ export function normalizeExact(raw: string): string {
     .toLowerCase()
     .normalize('NFD')
     .replace(DIACRITICS_REGEX, '')
+    .replace(PONTO_ENTRE_LETRAS, '.') // "OP. CREDITO" == "OP.CREDITO"
     .replace(/\s+/g, ' ')
     .trim()
 }

@@ -59,7 +59,26 @@ export function isFutureLineBrazil(
  * Critério: a linha é FUTURA se a data for posterior ao **DTASOF** do arquivo
  * (data em que o banco fechou o extrato). O DTASOF é a âncora correta — tudo que
  * vem depois dele é AGENDADO por definição (o banco não o considerou liquidado).
- * `fitidLooksLikePreview` é a rede secundária do Banrisul (FITID YYMMDD).
+ * ⛔⛔ `fitidLooksLikePreview` FOI DESLIGADO COMO MOTIVO DE DESCARTE (28/08/2026).
+ *
+ * A regra "FITID == YYMMDD da própria data ⇒ preview do Banrisul" nasceu de UM caso
+ * (EMPRESTIMO 4.092,02, 11/06) e depois produziu DOIS FALSOS POSITIVOS PROVADOS, os dois
+ * escondendo débito REAL de empréstimo:
+ *   · 13/08  EMPRESTIMO 4.092,02  FITID 260811  → tinha DEBITADO (o PDF provou)
+ *   · 28/08  EMPRESTIMO 2.444,62  FITID 260826  → tinha DEBITADO; o LEDGERBAL do próprio
+ *            arquivo (-1.267,03) só fecha COM ela dentro, ao centavo.
+ *
+ * ⚠️ E o dado do arquivo real explica por quê: **todo FITID do Banrisul tem 6 dígitos**
+ * (000013, 242038, 928419…), e nas linhas de empréstimo o banco usa a DATA como
+ * identificador. Isso é CONVENÇÃO DE ID do banco, não marcador de previsão — a heurística
+ * lia um formato de identificador como se fosse um estado do lançamento.
+ *
+ * Quem decide se liquidou é o SALDO, não o formato do ID: a CAMADA 1 (data > âncora) e a
+ * CAMADA 2 (`reconcileLedgerAnchorDay`, que confronta o LEDGERBAL) continuam de pé, e são
+ * baseadas em evidência do banco. Sem correspondência de saldo o gate BLOQUEIA e pergunta —
+ * que é o comportamento certo: **avisar em vez de descartar em silêncio**.
+ *
+ * O parâmetro segue na assinatura (compat com os callers) e é IGNORADO no critério.
  *
  * ⚠️ BUG CORRIGIDO (09/08/2026): o critério antigo era `> DTASOF **E** > fim de
  * hoje (BRT)`. O `&& > hoje` (relógio de parede) deixava passar linhas agendadas
@@ -83,8 +102,10 @@ export function isFutureStatementLine(
 ): boolean {
   const lineDay = datePosted.toISOString().slice(0, 10)
   const anchorDay = anchor.toISOString().slice(0, 10)
-  const futuroPorData = lineDay > anchorDay
-  return futuroPorData || fitidLooksLikePreview
+  // ⛔ SÓ A DATA decide aqui. O FITID saiu do critério (ver o bloco acima): duas vezes ele
+  // escondeu débito real de empréstimo, e o saldo declarado provou as duas.
+  void fitidLooksLikePreview
+  return lineDay > anchorDay
 }
 
 /**

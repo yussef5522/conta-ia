@@ -28,9 +28,11 @@ describe('normalizeDescription — strip prefix nome próprio + data + acentos',
 
   it('descrição SEM " - " fica como está (só lower + remove acentos)', () => {
     expect(normalizeDescription('PAGAMENTO TITULO')).toBe('pagamento titulo')
-    expect(normalizeDescription('OP. CREDITO C/GARANTIA')).toBe(
-      'op. credito c/garantia',
-    )
+    // ⚠️ ATUALIZADO 28/08: o espaço depois do ponto é REMOVIDO, porque o Banrisul alterna
+    // "OP. CREDITO" e "OP.CREDITO" (24× e 30×, no MESMO arquivo) e a regra aprendida só
+    // casava uma das duas. O ponto FICA (domínio tipo "apple.com" não pode ser tocado).
+    expect(normalizeDescription('OP. CREDITO C/GARANTIA')).toBe('op.credito c/garantia')
+    expect(normalizeDescription('OP.CREDITO C/GARANTIA')).toBe('op.credito c/garantia')
     expect(normalizeDescription('PIX ENVIADO')).toBe('pix enviado')
   })
 
@@ -61,9 +63,9 @@ describe('normalizeDescription — strip prefix nome próprio + data + acentos',
 
   it('preserva separadores semânticos | e /', () => {
     expect(normalizeDescription('PIX | MAQUININHA')).toBe('pix | maquininha')
-    expect(normalizeDescription('OP. CREDITO C/GARANTIA')).toBe(
-      'op. credito c/garantia',
-    )
+    // ⚠️ ATUALIZADO 28/08 (ver acima): "/" segue preservado; o que mudou é o espaço
+    // depois do ponto, pra as duas grafias do banco casarem na mesma regra.
+    expect(normalizeDescription('OP. CREDITO C/GARANTIA')).toBe('op.credito c/garantia')
   })
 
   it('descrição vazia retorna string vazia', () => {
