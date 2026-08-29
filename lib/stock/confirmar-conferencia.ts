@@ -13,6 +13,7 @@ import { criarMovimento } from './movement'
 import { recomputeSaldoCache } from './saldo'
 import { enviarEvento } from './sefaz/ciencia'
 import { TP_EVENTO } from './sefaz/evento'
+import { combinadoDaNota } from './ponte/combinado'
 
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 
@@ -57,7 +58,13 @@ export async function confirmarConferencia(input: ConfirmInput): Promise<Confirm
   const jaConf = await prisma.stockReceiptConference.findFirst({ where: { companyId, nfeId }, select: { id: true, status: true } })
   if (jaConf && jaConf.status !== 'EM_CONFERENCIA') throw new Error('Essa nota já foi conferida.')
 
-  const dups = await prisma.stockNfeDup.findMany({ where: { companyId, nfeId }, select: { nDup: true, dVenc: true, vDup: true } })
+  // ⭐ O COMBINADO manda, não a duplicata crua (29/08/2026 — caso BOX PAPER).
+  // Se o dono já ajustou as parcelas antes de confirmar (o fornecedor cancelou os 3
+  // boletos da nota e mandou 4), é o COMBINADO que vira sugestão de conta a pagar.
+  // Sem renegociação, `combinadoDaNota` devolve as próprias duplicatas do XML — mesmo
+  // resultado de antes. Resolvedor ÚNICO (REGRA 4): a tela e a gravação leem a mesma fonte.
+  const combinado = await combinadoDaNota(companyId, nfeId, prisma)
+  const dups = (combinado?.parcelas ?? []).map((p) => ({ nDup: p.numero, dVenc: p.dVenc, vDup: p.valor }))
   const divergente = input.itens.some((i) => i.motivo)
   let itensCadastrados = 0
 

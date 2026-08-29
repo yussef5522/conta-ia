@@ -14,11 +14,19 @@ import { StatCard, StatCardGrid } from '@/components/ui/stat-card'
 import { TotalsBar, type TotalItem } from '@/components/ui/totals-bar'
 import { SortableTh, useSort } from '@/components/ui/sortable-th'
 import { baixarCsv, hojeArquivo } from '@/lib/format/csv-cliente'
+import { EditorParcelas, type ParcelaEditavel } from '@/components/estoque/editor-parcelas'
 
 interface Pendente {
   suggestionId: string; nfeId: string; chave: string; nDup: string | null
   fornecedorNome: string; fornecedorCnpj: string | null; fornecedorNoFinanceiro: boolean
   valor: number; dVenc: string | null; nNF: string | null
+}
+
+/** ⭐ nota que JÁ mandou parcelas — é por onde se renegocia depois do envio (29/08) */
+interface NotaEnviada {
+  nfeId: string; fornecedor: string; total: number; renegociada: boolean
+  somaEnviada: number; temIntocavel: boolean
+  parcelas: Array<{ numero: string | null; valor: number; dVenc: string; existe: boolean; intocavel: boolean }>
 }
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -33,6 +41,11 @@ const venceEm = (iso: string | null) => {
 export default function PonteContasPagarPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const [ps, setPs] = useState<Pendente[] | null | undefined>(undefined)
+  // ⭐ renegociação pós-envio (REGRA 9: hooks no topo)
+  const [enviadas, setEnviadas] = useState<NotaEnviada[]>([])
+  const [editando, setEditando] = useState<NotaEnviada | null>(null)
+  const [xmlDaNota, setXmlDaNota] = useState<Array<{ numero: string; valor: number; dVenc: string | null }>>([])
+  const [salvandoParcelas, setSalvandoParcelas] = useState(false)
   const [marcados, setMarcados] = useState<string[]>([])
   const [cadastrar, setCadastrar] = useState(true)
   const [enviando, setEnviando] = useState(false)
@@ -41,7 +54,11 @@ export default function PonteContasPagarPage({ params }: { params: Promise<{ id:
   const [resultado, setResultado] = useState<{ criadas: number; valorTotal: number; fornecedoresCadastrados: number; erros: { motivo: string }[] } | null>(null)
 
   const carregar = () => fetch(`/api/empresas/${id}/estoque/contas-a-pagar`)
-    .then((r) => r.json()).then((j) => { setPs(j.pendentes ?? null); setMarcados((j.pendentes ?? []).map((p: Pendente) => p.suggestionId)) })
+    .then((r) => r.json()).then((j) => {
+      setPs(j.pendentes ?? null)
+      setMarcados((j.pendentes ?? []).map((p: Pendente) => p.suggestionId))
+      setEnviadas(j.enviadas ?? [])
+    })
     .catch(() => setPs(null))
   useEffect(() => { carregar() }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -201,6 +218,76 @@ export default function PonteContasPagarPage({ params }: { params: Promise<{ id:
             { chave: 'resto', label: 'A vencer', tone: 'sky', valor: ps.filter((p) => (venceEm(p.dVenc) ?? 99) > 3).reduce((s2, p) => s2 + p.valor, 0), n: ps.filter((p) => (venceEm(p.dVenc) ?? 99) > 3).length },
           ]}
           totalLabel="Esperando aprovação"
+        />
+      )}
+
+      {/* ⭐ JÁ ENVIADAS — renegociar depois que a conta a pagar já existe (29/08) */}
+      {enviadas.length > 0 && (
+        <Card>
+          <CardContent className="py-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Receipt className="h-4 w-4 text-slate-400" />
+              <h3 className="text-sm font-semibold">Já no Contas a Pagar ({enviadas.length} {enviadas.length === 1 ? 'nota' : 'notas'})</h3>
+              <p className="hidden lg:block text-xs text-slate-400">O fornecedor renegociou? Ajuste aqui — as contas pendentes são canceladas e recriadas.</p>
+            </div>
+            <div className="divide-y divide-slate-100">
+              {enviadas.map((n) => (
+                <div key={n.nfeId} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-[13px]">
+                  <span className="font-medium text-slate-800">{n.fornecedor}</span>
+                  <span className="text-slate-500 tabular-nums">{n.parcelas.length} parcela(s) · {brl(n.somaEnviada)}</span>
+                  {n.renegociada && (
+                    <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[11px] text-sky-700 ring-1 ring-sky-200">renegociada</span>
+                  )}
+                  {n.temIntocavel && (
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600" title="Parcela já paga ou conciliada não pode ser reescrita">
+                      tem parcela paga
+                    </span>
+                  )}
+                  <button
+                    onClick={async () => {
+                      const r = await fetch(`/api/empresas/${id}/estoque/notas/${n.nfeId}/parcelas`)
+                      const j = await r.json().catch(() => null)
+                      setXmlDaNota(j?.xml ?? [])
+                      setEditando(n)
+                    }}
+                    className="ml-auto rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+                  >
+                    ajustar parcelas
+                  </button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {editando && (
+        <EditorParcelas
+          aberto
+          onFechar={() => setEditando(null)}
+          xml={xmlDaNota}
+          totalNota={editando.total}
+          inicial={editando.parcelas.map((x) => ({ valor: String(x.valor).replace('.', ','), dVenc: x.dVenc.slice(0, 10) }))}
+          contasQueSeraoCanceladas={editando.parcelas.filter((x) => x.existe && !x.intocavel).length}
+          salvando={salvandoParcelas}
+          onSalvar={async (parcelas: ParcelaEditavel[], motivo: string | null) => {
+            setSalvandoParcelas(true)
+            setErro(null)
+            try {
+              const res = await fetch(`/api/empresas/${id}/estoque/notas/${editando.nfeId}/parcelas`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  parcelas: parcelas.map((x) => ({ valor: Number(x.valor.replace(/\./g, '').replace(',', '.')), dVenc: x.dVenc })),
+                  motivo,
+                }),
+              })
+              const j = await res.json().catch(() => null)
+              if (!res.ok) { setErro(j?.erro ?? 'Não foi possível salvar as parcelas.'); return }
+              setEditando(null)
+              await carregar()
+            } finally { setSalvandoParcelas(false) }
+          }}
         />
       )}
 

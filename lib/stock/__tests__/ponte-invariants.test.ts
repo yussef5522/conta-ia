@@ -28,7 +28,7 @@ beforeEach(async () => {
 afterEach(async () => {
   await prisma.transaction.deleteMany({ where: { supplier: { companyId } } })
   await prisma.supplier.deleteMany({ where: { companyId } })
-  for (const t of ['stockPayableLink', 'stockPayableSuggestion', 'stockNfe'] as const) {
+  for (const t of ['stockPayableLink', 'stockPayableSuggestion', 'stockParcelaCombinada', 'stockNfe'] as const) {
     // @ts-expect-error acesso dinâmico
     await prisma[t].deleteMany({ where: { companyId } })
   }
@@ -98,5 +98,62 @@ describe('F3 (aviso) — boleto esquecido no estoque', () => {
     // enviar pro contas a pagar SILENCIA o aviso
     await enviarParaContasPagar({ companyId, suggestionIds: [nova.id], cadastrarFornecedores: true, ctx: buildAuthContextForTest({ user: { id: userId }, company: { id: companyId }, permissions: ['*'] }) }, prisma)
     expect(soDesta(await checkPonteInvariants(prisma), 'F3')).toHaveLength(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// F4 (29/08/2026) — a régua mudou: o COMBINADO, não a duplicata crua do XML
+// ---------------------------------------------------------------------------
+describe('⭐⭐ F4 — o combinado vigente fecha com o que o financeiro vai cobrar', () => {
+  /** renegocia a nota do fixture (1 parcela de 500 já enviada) pra 2 de 250 */
+  const renegociar = async (parcelas: Array<{ valor: number; dVenc: string }>, motivo?: string) => {
+    const { renegociarParcelasDaNota } = await import('../ponte/renegociar-enviadas')
+    return renegociarParcelasDaNota(
+      { companyId, nfeId, parcelas, motivo, ctx: buildAuthContextForTest({ user: { id: userId }, company: { id: companyId }, permissions: ['*'] }), userId },
+      prisma,
+    )
+  }
+
+  it('⭐⭐ renegociação BEM-FEITA é VERDE — a régua velha (contra o XML) acusaria erro aqui', async () => {
+    // ⚠️ ESTE é o teste que justifica a mudança: a nota tem UMA duplicata de 500; o
+    // combinado passa a ter DUAS de 250. Medir contra o XML chamaria isso de defeito, e o
+    // dono receberia e-mail de erro toda vez que renegociasse — alarme falso é como um
+    // alarme morre.
+    const r = await renegociar([{ valor: 250, dVenc: '2026-09-10' }, { valor: 250, dVenc: '2026-10-10' }])
+    expect(r.contasCanceladas).toBe(1)
+    expect(r.contasCriadas).toBe(2)
+    expect(soDesta(await checkPonteInvariants(prisma), 'F4')).toHaveLength(0)
+    expect(soDesta(await checkPonteInvariants(prisma), 'F1')).toHaveLength(0)
+  })
+
+  it('⭐⭐ PEGA o combinado discordando do financeiro (alguém mexeu na conta por fora)', async () => {
+    await renegociar([{ valor: 250, dVenc: '2026-09-10' }, { valor: 250, dVenc: '2026-10-10' }])
+    // o financeiro passa a cobrar 400 numa das contas — o combinado diz 250
+    const conta = await prisma.transaction.findFirstOrThrow({ where: { supplier: { companyId }, origin: ORIGEM_PONTE } })
+    await prisma.transaction.update({ where: { id: conta.id }, data: { amount: 400 } })
+    // (F1 pega o valor da conta × amarra; F4 pega o TOTAL combinado × total do financeiro)
+    const link = await prisma.stockPayableLink.findFirstOrThrow({ where: { transactionId: conta.id } })
+    await prisma.stockPayableLink.update({ where: { id: link.id }, data: { valor: 400 } })
+
+    const f4 = soDesta(await checkPonteInvariants(prisma), 'F4')
+    expect(f4).toHaveLength(1)
+    expect(f4[0].detalhe).toContain('discordam')
+  })
+
+  it('⚠️ soma diferente da NOTA sem motivo é AVISO — não erro (desconto/juros existem)', async () => {
+    await renegociar([{ valor: 200, dVenc: '2026-09-10' }, { valor: 200, dVenc: '2026-10-10' }], 'desconto negociado')
+    const comMotivo = soDesta(await checkPonteInvariants(prisma), 'F4')
+    expect(comMotivo).toHaveLength(0) // motivo escrito → nada a cobrar
+
+    // apaga o motivo: o juiz passa a pedir o porquê, como AVISO
+    await prisma.stockParcelaCombinada.updateMany({ where: { companyId, refId: nfeId, ativo: true }, data: { motivo: null } })
+    const semMotivo = soDesta(await checkPonteInvariants(prisma), 'F4')
+    expect(semMotivo).toHaveLength(1)
+    expect(semMotivo[0].nivel).toBe('aviso')
+    expect(semMotivo[0].detalhe).toMatch(/motivo/)
+  })
+
+  it('nota SEM renegociação nem entra na conta do F4 (custo zero pro caso comum)', async () => {
+    expect(soDesta(await checkPonteInvariants(prisma), 'F4')).toHaveLength(0)
   })
 })

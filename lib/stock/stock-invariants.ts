@@ -117,8 +117,10 @@ export async function checkStockInvariants(db: Db, now: Date = new Date()): Prom
   // E10 — nota na fila sem XML completo há > 24h. Olha a tabela do FATO (a nota), não a
   // do PROCESSO (o evento) — foi exatamente o que deixou a Focatto passar 2 dias invisível.
   fails.push(...(await checkNfeInvariants(db, now)))
-  // F1/F2/F3 — a PONTE pro financeiro. O estoque ganhou permissão de escrever em
+  // F1/F2/F3/F4 — a PONTE pro financeiro. O estoque ganhou permissão de escrever em
   // `transactions`/`suppliers`; o juiz confere TODA linha que ele escreveu lá.
+  // F4 (29/08) mede contra o COMBINADO vigente, não contra as duplicatas cruas do XML —
+  // renegociação pós-nota é legítima, e a régua velha acusaria toda uma como erro.
   fails.push(...(await checkPonteInvariants(db, now)))
 
   return fails

@@ -9,6 +9,7 @@ import { useEscape } from '@/lib/hooks/use-dismissivel'
 import { Check, Search, Camera, AlertTriangle, FlaskConical, Store, X, ChevronRight, Eye, Loader2, PackageCheck, Keyboard, Receipt } from 'lucide-react'
 import { sugerirFator, placeholderFator } from '@/lib/stock/unidade-fator'
 import { ItensManuaisEditor } from './itens-manuais-editor'
+import { EditorParcelas, type ParcelaEditavel } from './editor-parcelas'
 
 export type Unidade = 'KG' | 'UN' | 'LT'
 export type Categoria = 'MATERIA_PRIMA' | 'REVENDA' | 'EMBALAGEM' | 'LIMPEZA' | 'USO_INTERNO'
@@ -84,6 +85,9 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
   // PONTE 1 — boletos: marcados por default (o dono VÊ e confirma; nada entra às cegas)
   const dupsPendentes = (data.duplicatas ?? []).filter((d) => !d.jaEnviada)
   const [boletos, setBoletos] = useState<string[]>(() => dupsPendentes.map((d) => d.nDup ?? ''))
+  // ⭐ ajustar parcelas (renegociação pós-nota) — REGRA 9: hook no topo, longe do JSX
+  const [editandoParcelas, setEditandoParcelas] = useState(false)
+  const [salvandoParcelas, setSalvandoParcelas] = useState(false)
   const [cadastrarForn, setCadastrarForn] = useState(true)
 
   const totalMapeado = useMemo(() => data.itens.length > 0 && data.itens.every((it) => estado[it.nfeItemId]?.mapeado), [data.itens, estado])
@@ -349,6 +353,17 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
                 ? 'Ficam esperando aprovação de quem cuida do financeiro'
                 : 'Enviar pro Contas a Pagar? Você confirma; nada entra às cegas'}
             </p>
+            {/* ⭐ O COMBINADO ≠ A NOTA (29/08) — o fornecedor cancelou os boletos da nota e
+                mandou outros. A lista do XML é a SUGESTÃO; quem manda é o combinado. */}
+            {data.podeEnviarBoletos !== false && (
+              <button
+                type="button"
+                onClick={() => setEditandoParcelas(true)}
+                className="ml-auto rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+              >
+                ajustar parcelas
+              </button>
+            )}
           </div>
 
           {data.podeEnviarBoletos === false ? (
@@ -406,6 +421,46 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
                   : `${boletos.length} de ${dupsPendentes.length} marcados · ${brl(dupsPendentes.filter((d) => boletos.includes(d.nDup ?? '')).reduce((s2, d) => s2 + d.valor, 0))} irão pro Contas a Pagar ao confirmar.`}
               </p>
             </>
+          )}
+
+          {/* ⭐ EDITOR DO COMBINADO — mesmo componente da tela de boletos (REGRA 4) */}
+          {companyId && nfeId && (
+            <EditorParcelas
+              aberto={editandoParcelas}
+              onFechar={() => setEditandoParcelas(false)}
+              xml={(data.duplicatas ?? []).map((d) => ({ numero: d.nDup ?? '—', valor: d.valor, dVenc: d.dVenc ?? null }))}
+              totalNota={data.valorNota ?? 0}
+              inicial={dupsPendentes.map((d) => ({
+                valor: String(d.valor).replace('.', ','),
+                dVenc: (d.dVenc ?? '').slice(0, 10),
+              }))}
+              salvando={salvandoParcelas}
+              onSalvar={async (parcelas: ParcelaEditavel[], motivo: string | null) => {
+                setSalvandoParcelas(true)
+                try {
+                  const res = await fetch(`/api/empresas/${companyId}/estoque/notas/${nfeId}/parcelas`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      parcelas: parcelas.map((p: ParcelaEditavel) => ({
+                        valor: Number(p.valor.replace(/\./g, '').replace(',', '.')),
+                        dVenc: p.dVenc,
+                      })),
+                      motivo,
+                    }),
+                  })
+                  const j = await res.json().catch(() => null)
+                  if (!res.ok) {
+                    alert(j?.erro ?? 'Não foi possível salvar as parcelas.')
+                    return
+                  }
+                  setEditandoParcelas(false)
+                  window.location.reload() // recarrega com o combinado novo
+                } finally {
+                  setSalvandoParcelas(false)
+                }
+              }}
+            />
           )}
         </div>
       )}

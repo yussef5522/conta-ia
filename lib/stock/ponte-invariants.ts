@@ -50,7 +50,10 @@ export async function checkPonteInvariants(db: Db, now: Date = new Date()): Prom
         continue
       }
       if (Math.abs(round2(c.amount) - round2(link.valor)) > CENTAVO) {
-        fails.push({ invariante: 'F1', companyId: link.companyId, detalhe: `conta ${c.id} vale R$ ${round2(c.amount).toFixed(2)} mas a duplicata da nota diz R$ ${round2(link.valor).toFixed(2)} — a ponte inflaria o contas a pagar.` })
+        // ⚠️ o link guarda o valor do COMBINADO no momento do envio — que pode ser a
+        // duplicata do XML ou a parcela renegociada. A frase não diz mais "a duplicata da
+        // nota", porque desde 29/08 os dois podem legitimamente divergir.
+        fails.push({ invariante: 'F1', companyId: link.companyId, detalhe: `conta ${c.id} vale R$ ${round2(c.amount).toFixed(2)} mas a parcela combinada diz R$ ${round2(link.valor).toFixed(2)} — a ponte inflaria o contas a pagar.` })
       }
       if (link.origem === 'NFE') {
         const nota = await db.stockNfe.findFirst({ where: { id: link.refId, companyId: link.companyId }, select: { id: true } })
@@ -89,6 +92,74 @@ export async function checkPonteInvariants(db: Db, now: Date = new Date()): Prom
       if (enviadas.has(s.id)) continue
       const venc = s.dVenc ? ` (vence ${s.dVenc.toISOString().slice(0, 10)})` : ''
       fails.push({ invariante: 'F3', companyId: s.companyId, nivel: 'aviso', detalhe: `boleto de "${s.supplierNome}" R$ ${round2(s.valor).toFixed(2)}${venc} está conferido há mais de ${F3_DIAS} dias e ainda NÃO foi pro contas a pagar — vence sem aparecer no fluxo de caixa.` })
+    }
+  }
+
+  // ---- F4: o COMBINADO vigente fecha com o que o financeiro vai cobrar ----
+  //
+  // ⭐ MUDANÇA DE RÉGUA (29/08/2026 — caso BOX PAPER). Antes a amarra era contra as
+  // duplicatas CRUAS do XML. Isso deixou de valer no dia em que renegociação virou um
+  // caminho de primeira classe: a nota diz 3 parcelas, o combinado diz 4, e **os dois
+  // estão certos**. Validar contra o XML acusaria toda renegociação legítima como erro —
+  // e alarme falso repetido é como um alarme morre (a lição dos 111 alarmes de vendas).
+  //
+  // A régua nova: Σ das parcelas ATIVAS == Σ do que o financeiro tem pra essa nota
+  // (contas criadas + sugestões ainda na fila). Se divergir, o combinado e o financeiro
+  // discordam — que é o defeito real, independente do que a nota diz.
+  const renegociadas = await db.stockParcelaCombinada.findMany({
+    where: { ativo: true, origem: 'RENEGOCIADO', origemDoc: 'NFE' },
+    select: { companyId: true, refId: true, numero: true, valor: true, motivo: true },
+  })
+  if (renegociadas.length) {
+    const porNota = new Map<string, typeof renegociadas>()
+    for (const r of renegociadas) {
+      const k = `${r.companyId}|${r.refId}`
+      const lista = porNota.get(k) ?? []
+      lista.push(r)
+      porNota.set(k, lista)
+    }
+    for (const [k, parcelas] of porNota) {
+      const [companyId, refId] = k.split('|')
+      const somaCombinado = round2(parcelas.reduce((s, p) => s + p.valor, 0))
+
+      const linksDaNota = await db.stockPayableLink.findMany({
+        where: { companyId, origem: 'NFE', refId }, select: { transactionId: true, valor: true, nDup: true },
+      })
+      const idsVivos = new Set(
+        (await db.transaction.findMany({ where: { id: { in: linksDaNota.map((l) => l.transactionId) } }, select: { id: true } })).map((t) => t.id),
+      )
+      const enviadas = linksDaNota.filter((l) => idsVivos.has(l.transactionId))
+      const numerosEnviados = new Set(enviadas.map((l) => l.nDup))
+      const naFila = await db.stockPayableSuggestion.findMany({
+        where: { companyId, nfeId: refId }, select: { nDup: true, valor: true },
+      })
+      const somaFinanceiro = round2(
+        enviadas.reduce((s, l) => s + l.valor, 0) +
+          naFila.filter((s2) => !numerosEnviados.has(s2.nDup)).reduce((s2, x) => s2 + x.valor, 0),
+      )
+
+      if (Math.abs(round2(somaCombinado - somaFinanceiro)) > CENTAVO) {
+        fails.push({
+          invariante: 'F4',
+          companyId,
+          detalhe:
+            `o combinado da nota ${refId} soma R$ ${somaCombinado.toFixed(2)} em ${parcelas.length} parcela(s), ` +
+            `mas o financeiro tem R$ ${somaFinanceiro.toFixed(2)} entre contas criadas e fila — ` +
+            `o que foi acertado com o fornecedor e o que vai ser cobrado discordam.`,
+        })
+      }
+
+      // ⚠️ AVISO, não erro: divergir da NOTA é legítimo (desconto/juros de renegociação).
+      // O que o juiz cobra é que o PORQUÊ esteja escrito — número sem motivo vira mistério
+      // pro contador daqui a três meses.
+      const nota = await db.stockNfe.findFirst({ where: { id: refId, companyId }, select: { vNF: true } })
+      const totalNota = round2(nota?.vNF ?? 0)
+      if (totalNota > 0 && Math.abs(round2(somaCombinado - totalNota)) > CENTAVO && !parcelas.some((p) => p.motivo)) {
+        fails.push({
+          invariante: 'F4', companyId, nivel: 'aviso',
+          detalhe: `a nota ${refId} vale R$ ${totalNota.toFixed(2)} e o combinado soma R$ ${somaCombinado.toFixed(2)}, sem motivo registrado — anote o porquê (desconto, juros da renegociação).`,
+        })
+      }
     }
   }
 
