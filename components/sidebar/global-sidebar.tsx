@@ -46,6 +46,7 @@ import {
   Workflow,
   ListChecks,
   Printer,
+  Tag,
 } from 'lucide-react'
 import { SidebarItem } from './sidebar-item'
 import { useSidebarBadges } from '@/lib/hooks/use-sidebar-badges'
@@ -443,6 +444,13 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
               label="Vendas (Suitable)"
               href={`/empresas/${empresaAtiva}/estoque/vendas`}
               isActive={/^\/empresas\/[^/]+\/estoque\/vendas/.test(pathname)}
+              onClick={onNavigate}
+            />
+            <SidebarItem
+              icon={Tag}
+              label="Etiquetas"
+              href={`/empresas/${empresaAtiva}/estoque/etiquetas`}
+              isActive={/^\/empresas\/[^/]+\/estoque\/etiquetas/.test(pathname)}
               onClick={onNavigate}
             />
             <SidebarItem
