@@ -79,7 +79,7 @@ describe('⭐⭐ o que o OPERADOR_ESTOQUE enxerga', () => {
     // toda label visível tem que ser do grupo Estoque
     const ESTOQUE = [
       'Cardápio', 'Recebimentos', 'Posição', 'Catálogo', 'Movimentos', 'Contagem',
-      'Real vs Teórico', 'Boletos p/ pagar', 'Produção', 'Vendas (Suitable)',
+      'Real vs Teórico', 'Produção', 'Vendas (Suitable)',
       'Etiquetas', 'Impressão', 'Certificado', 'Fichas técnicas', 'Receitas', 'Perdas', 'Entrada manual',
     ]
     const forintrusos = daEmpresa.filter((l) => !ESTOQUE.includes(l))
@@ -135,6 +135,21 @@ describe('⭐⭐ o que o OPERADOR_ESTOQUE enxerga', () => {
       const perm = /perm="([^"]+)"/.exec(corpo)?.[1] ?? ''
       expect(perm, `${href} devia ser @sempre`).toBe('@sempre')
     }
+  })
+
+  it('⛔⛔ DÍVIDA MORA NUM LUGAR SÓ — o menu não leva a uma 2ª lista de boletos', () => {
+    // ⚠️ 30/08: depois da ponte, o boleto enviado vira conta a pagar do FINANCEIRO. O item
+    // "Boletos p/ pagar" do estoque virou duplicata da mesma dívida — e duas listas do
+    // mesmo dinheiro é a doença que este sistema mais paga. Saiu da sidebar; o que sobrou
+    // vivo (a FILA DE ENVIO) é um card em Recebimentos, que some quando a fila esvazia.
+    //
+    // ⚠️ A ROTA continua viva de propósito: é pra onde o card leva. O que não pode voltar
+    // é a PORTA no menu — item de menu é o que faz a tela virar destino de novo.
+    const src = readFileSync(join(process.cwd(), 'components/sidebar/global-sidebar.tsx'), 'utf-8')
+    const hrefs = [...src.matchAll(/<SidebarItem\b([\s\S]*?)\/>/g)]
+      .map((m) => /href=\{?[`"]([^`"]+)/.exec(m[1])?.[1] ?? '')
+    const duplicatas = hrefs.filter((h) => /\/estoque\/contas-a-pagar/.test(h))
+    expect(duplicatas, 'a lista de boletos do estoque voltou pro menu').toEqual([])
   })
 
   it('⭐ mas o workspace PESSOAL dela continua visível (as despesas dela são dela)', () => {

@@ -94,6 +94,31 @@ export interface PayableRow {
   } | null
   employee: { id: string; nome: string } | null
   bankAccount: { id: string; name: string; bankName: string | null } | null
+  /** ⭐ veio da ponte do estoque? então dá pra abrir a NOTA que gerou esta conta (30/08) */
+  notaOrigem?: { nfeId: string; nNF: string | null; href: string } | null
+}
+
+/**
+ * ⭐ "VER NOTA DE ORIGEM" (30/08/2026) — o caminho de volta da ponte estoque→financeiro.
+ *
+ * A dívida mora aqui, num lugar só; a MERCADORIA mora no estoque. Este link é o que
+ * permite as duas coisas serem verdade ao mesmo tempo: o dono vê o boleto e, num toque,
+ * o que veio no caminhão — sem decorar número de nota nem caçar na tela de Recebimentos.
+ *
+ * ⚠️ `stopPropagation` porque a linha inteira é clicável (abre o painel da conta): sem
+ * isso o clique no link abriria as duas coisas ao mesmo tempo.
+ */
+function LinkNotaOrigem({ nota }: { nota: NonNullable<PayableRow['notaOrigem']> }) {
+  return (
+    <a
+      href={nota.href}
+      onClick={(e) => e.stopPropagation()}
+      title="Ver a nota que gerou esta conta"
+      className="ml-1.5 inline-flex shrink-0 items-center gap-0.5 rounded border border-sky-200 bg-sky-50 px-1.5 py-px text-[10px] font-medium text-sky-700 hover:bg-sky-100"
+    >
+      {nota.nNF ? `NF ${nota.nNF}` : 'nota'} ↗
+    </a>
+  )
 }
 
 interface Props {
@@ -301,12 +326,14 @@ export function PayableTable({
                 onCancel={editCell.cancel}
                 aria={`Editar descrição de ${favorecidoLabel(r)}`}
               />
+              {r.notaOrigem && <LinkNotaOrigem nota={r.notaOrigem} />}
             </span>
           )
         }
         return (
-          <span className="max-w-[250px] truncate inline-block text-muted-foreground">
-            {r.description}
+          <span className="max-w-[280px] inline-flex items-center text-muted-foreground">
+            <span className="truncate">{r.description}</span>
+            {r.notaOrigem && <LinkNotaOrigem nota={r.notaOrigem} />}
           </span>
         )
       },

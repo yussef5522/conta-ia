@@ -469,14 +469,13 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
               isActive={/^\/empresas\/[^/]+\/estoque\/real-vs-teorico/.test(pathname)}
               onClick={onNavigate}
             />
-            <SidebarItem
-          perm="stock.view"
-              icon={Receipt}
-              label="Boletos p/ pagar"
-              href={`/empresas/${empresaAtiva}/estoque/contas-a-pagar`}
-              isActive={/^\/empresas\/[^/]+\/estoque\/contas-a-pagar/.test(pathname)}
-              onClick={onNavigate}
-            />
+            {/* ⛔ "Boletos p/ pagar" SAIU da sidebar (30/08) — DÍVIDA MORA NUM LUGAR SÓ.
+                Depois da ponte, o boleto enviado vira conta a pagar do FINANCEIRO; a tela
+                do estoque virava uma 2ª lista da mesma dívida, e duas listas do mesmo
+                dinheiro é a doença que este sistema mais paga. O que sobrou vivo dela — a
+                FILA DE ENVIO, que é trabalho do estoque — virou um CARD em Recebimentos
+                (`CardFilaBoletos`), que some sozinho quando a fila está vazia.
+                A rota `/estoque/contas-a-pagar` continua viva: é pra onde o card leva. */}
             {/* ⚠️ "Fichas técnicas" SAIU da sidebar (27/08) — era uma lista MISTA (produto
                 vendido + intermediário de cozinha) que atendia mal os dois. Cada mundo abre
                 a sua: o dono pelo Cardápio, a cozinha por Produção → Receitas. A rota

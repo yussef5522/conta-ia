@@ -15,6 +15,7 @@ import {
   buildPayableOrderBy,
   listPayableSchema,
 } from '@/lib/contas-pagar/list-filters'
+import { notasDeOrigem, type NotaDeOrigem } from '@/lib/stock/ponte/nota-de-origem'
 
 export async function POST(request: NextRequest) {
   try {
@@ -136,8 +137,17 @@ export async function GET(request: NextRequest) {
         }),
       ])
 
+    // ⭐ "VER NOTA DE ORIGEM" (30/08) — a seta de volta da ponte. Só as linhas desta
+    // página, e FAIL-SOFT: se o estoque estiver indisponível a lista abre sem o link.
+    // Diagnóstico não derruba a tela de dinheiro (a mesma régua do selo de conferência).
+    let notas = new Map<string, NotaDeOrigem>()
+    try {
+      const idsDoEstoque = items.filter((t) => t.origin === 'ESTOQUE_NF').map((t) => t.id)
+      if (idsDoEstoque.length) notas = await notasDeOrigem(empresaId, idsDoEstoque, prisma)
+    } catch { /* sem link, nunca sem lista */ }
+
     return NextResponse.json({
-      items,
+      items: items.map((t) => ({ ...t, notaOrigem: notas.get(t.id) ?? null })),
       paginacao: {
         total,
         page: input.page,

@@ -23,6 +23,8 @@ import { StatCard, StatCardGrid } from '@/components/ui/stat-card'
 import { TotalsBar, type TotalItem } from '@/components/ui/totals-bar'
 import { SortableTh, useSort } from '@/components/ui/sortable-th'
 import { baixarCsv, hojeArquivo } from '@/lib/format/csv-cliente'
+import { CardFilaBoletos } from '@/components/estoque/card-fila-boletos'
+import { AjustarParcelasDaNota } from '@/components/estoque/ajustar-parcelas-da-nota'
 import {
   Inbox, PackageOpen, Archive, Info, Loader2, FlaskConical, MoonStar, Search, Loader,
   CheckCircle2, Receipt, AlertTriangle, MoreHorizontal, ChevronRight, X, Download,
@@ -190,6 +192,9 @@ export default function RecebimentosPage({ params }: { params: Promise<{ id: str
 
       {buscarAberto && <BuscarChave id={id} onAchou={() => { setBuscarAberto(false); recarregar() }} onFechar={() => setBuscarAberto(false)} />}
 
+      {/* ⭐ A FILA DE ENVIO (30/08) — some sozinho quando está vazia; a operadora não vê */}
+      <CardFilaBoletos empresaId={id} />
+
       {/* ── 1. CARDS DE RESUMO ── */}
       <StatCardGrid>
         <StatCard tone="sky" label="Na fila" value={brl(soma(naFila))} sub={`${naFila.length} ${naFila.length === 1 ? 'nota' : 'notas'}`} icon={PackageOpen}
@@ -337,6 +342,9 @@ export default function RecebimentosPage({ params }: { params: Promise<{ id: str
 /** menu "..." por linha — as MESMAS ações que existiam, agora agrupadas */
 function AcoesLinha({ l, id, onMudou }: { l: Linha; id: string; onMudou: () => void }) {
   const [busy, setBusy] = useState(false)
+  // ⭐ renegociar mudou de casa (30/08): saiu da tela de boletos — que era uma 2ª lista de
+  // dívida — e passou a abrir da própria NOTA, que é o documento que se renegocia.
+  const [ajustando, setAjustando] = useState(false)
   const adiar = async (v: boolean) => {
     if (!l.nfeId) return
     setBusy(true)
@@ -346,6 +354,10 @@ function AcoesLinha({ l, id, onMudou }: { l: Linha; id: string; onMudou: () => v
     } finally { setBusy(false) }
   }
   return (
+    <>
+    {ajustando && l.nfeId && (
+      <AjustarParcelasDaNota empresaId={id} nfeId={l.nfeId} onFechar={() => setAjustando(false)} onSalvo={onMudou} />
+    )}
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600" aria-label={`ações de ${l.fornecedor}`}>
@@ -355,6 +367,11 @@ function AcoesLinha({ l, id, onMudou }: { l: Linha; id: string; onMudou: () => v
       <DropdownMenuContent align="end" className="w-52">
         {l.href && <DropdownMenuItem asChild><a href={l.href} className="cursor-pointer"><ChevronRight className="mr-2 h-3.5 w-3.5" /> Conferir mercadoria</a></DropdownMenuItem>}
         {l.reciboHref && <DropdownMenuItem asChild><a href={l.reciboHref} className="cursor-pointer"><Receipt className="mr-2 h-3.5 w-3.5" /> Ver recibo</a></DropdownMenuItem>}
+        {l.nfeId && l.estado === 'recebida' && (
+          <DropdownMenuItem onClick={() => setAjustando(true)}>
+            <Receipt className="mr-2 h-3.5 w-3.5" /> Ajustar parcelas (renegociou?)
+          </DropdownMenuItem>
+        )}
         {l.nfeId && (l.estado === 'aguardando' || l.estado === 'depois') && (<>
           <DropdownMenuSeparator />
           {l.estado === 'aguardando'
@@ -363,6 +380,7 @@ function AcoesLinha({ l, id, onMudou }: { l: Linha; id: string; onMudou: () => v
         </>)}
       </DropdownMenuContent>
     </DropdownMenu>
+    </>
   )
 }
 
