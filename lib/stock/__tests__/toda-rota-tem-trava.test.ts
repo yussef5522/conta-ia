@@ -70,3 +70,46 @@ describe('toda rota de estoque tem trava', () => {
     expect(errados.map((h) => `${h.arquivo} ${h.verbo} → ${h.perms.join(',')}`)).toEqual([])
   })
 })
+
+// ---------------------------------------------------------------------------
+// ⚠️ AS ROTAS DE ESTOQUE QUE VIVEM FORA DE /empresas/[id]/estoque (30/08/2026)
+// ---------------------------------------------------------------------------
+//
+// O guard acima varre só `app/api/empresas/[id]/estoque`. Ao criar a rota do AGENTE de
+// impressão (`app/api/estoque/agente-impressao`) percebi que ela ficaria **invisível** pra
+// ele — e uma rota de estoque sem RBAC que nenhum guard enxerga é exatamente o buraco que
+// o guard existe pra fechar.
+//
+// Aqui a exceção é ALLOWLIST com motivo escrito: o agente roda num PC de cozinha, não tem
+// sessão de navegador, e se autentica por TOKEN próprio. Rota nova nesse diretório sem
+// entrar na lista quebra o teste — que é o ponto.
+describe('⭐ rotas de estoque FORA do caminho padrão são exceção nomeada', () => {
+  const RAIZ_FORA = join(process.cwd(), 'app', 'api', 'estoque')
+  /** caminho → por que não usa RBAC de sessão */
+  const EXCECOES: Record<string, string> = {
+    'agente-impressao/route.ts':
+      'o agente da impressora roda numa máquina da cozinha, sem cookie de login; autentica por token por impressora, com escopo mínimo (só pega ZPL da fila e diz se imprimiu)',
+  }
+
+  const achadas = rotas(RAIZ_FORA).map((f) => f.slice(RAIZ_FORA.length + 1))
+
+  it('⭐⭐ toda rota fora do padrão está na allowlist com motivo', () => {
+    for (const r of achadas) {
+      expect(EXCECOES[r], `rota de estoque sem trava e sem exceção nomeada: ${r}`).toBeTruthy()
+    }
+  })
+
+  it('⭐ a do agente autentica por TOKEN (não fica aberta)', () => {
+    const src = readFileSync(join(RAIZ_FORA, 'agente-impressao', 'route.ts'), 'utf-8')
+    expect(src).toMatch(/impressoraPorToken/)
+    // ⚠️ e responde 401 seco — sem diferenciar "token inexistente" de "impressora inativa"
+    expect((src.match(/status: 401/g) ?? []).length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('⚠️ o escopo é mínimo: o agente não lê estoque, nota nem dinheiro', () => {
+    const src = readFileSync(join(RAIZ_FORA, 'agente-impressao', 'route.ts'), 'utf-8')
+    for (const proibido of ['stockMovement', 'stockNfe', 'transaction.', 'stockItem']) {
+      expect(src).not.toContain(proibido)
+    }
+  })
+})

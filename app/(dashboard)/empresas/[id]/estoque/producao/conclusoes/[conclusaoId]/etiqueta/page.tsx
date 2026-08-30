@@ -19,6 +19,9 @@ export default function EtiquetaPage({ params }: { params: Promise<{ id: string;
   const [zpl, setZpl] = useState('')
   const [modo, setModo] = useState<'lote' | 'unidade'>('lote')
   const [zebra, setZebra] = useState<{ estado: 'idle' | 'enviando' | 'ok' | 'erro'; msg?: string }>({ estado: 'idle' })
+  // ⭐ fila de impressão (30/08) — REGRA 9: hook no topo
+  const [fila, setFila] = useState<'idle' | 'enviando' | 'ok' | 'erro'>('idle')
+  const [filaMsg, setFilaMsg] = useState<string | null>(null)
   const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
 
   useEffect(() => {
@@ -34,6 +37,21 @@ export default function EtiquetaPage({ params }: { params: Promise<{ id: string;
       else setZebra({ estado: 'erro', msg: (await r.json().catch(() => null))?.erro ?? 'A Zebra recusou.' })
     } catch {
       setZebra({ estado: 'erro', msg: 'Agente da Zebra offline. Rode `node scripts/zebra-agent.mjs` no PC do estoque.' })
+    }
+  }
+
+  const enfileirar = async () => {
+    setFila('enviando'); setFilaMsg(null)
+    try {
+      const r = await fetch(`/api/empresas/${id}/estoque/impressao`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ zpl, descricao: `etiqueta do lote ${conclusaoId.slice(-6)}` }),
+      })
+      const j = await r.json().catch(() => null)
+      if (!r.ok) { setFila('erro'); setFilaMsg(j?.erro ?? 'Não consegui enfileirar.'); return }
+      setFila('ok'); setFilaMsg('Na fila — o agente imprime em segundos.')
+    } catch {
+      setFila('erro'); setFilaMsg('Sem conexão com o servidor.')
     }
   }
 
@@ -75,13 +93,19 @@ export default function EtiquetaPage({ params }: { params: Promise<{ id: string;
       </div>
 
       <div className="flex flex-wrap items-center justify-center gap-3 print:hidden">
-        <button onClick={() => imprimirZebra(zpl)} disabled={zebra.estado === 'enviando' || !zpl} className="inline-flex items-center gap-2 rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-white hover:bg-[#0F4A8C] disabled:opacity-60">{zebra.estado === 'enviando' ? <Loader2 className="h-4 w-4 animate-spin" /> : zebra.estado === 'ok' ? <Check className="h-4 w-4" /> : <Usb className="h-4 w-4" />} Imprimir na Zebra</button>
+        {/* ⭐⭐ ENFILEIRA (30/08) — é o que faz o CELULAR imprimir. O agente puxa da fila e
+            manda pra Zebra; se a impressora estiver ocupada ou sem papel, a etiqueta
+            espera em vez de sumir. O caminho antigo (agente em localhost) só funcionava no
+            PC com o cabo — do celular, nunca. */}
+        <button onClick={enfileirar} disabled={fila === 'enviando' || !zpl} className="inline-flex items-center gap-2 rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-white hover:bg-[#0F4A8C] disabled:opacity-60">{fila === 'enviando' ? <Loader2 className="h-4 w-4 animate-spin" /> : fila === 'ok' ? <Check className="h-4 w-4" /> : <Printer className="h-4 w-4" />} Imprimir na Zebra</button>
         <button onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"><Printer className="h-4 w-4" /> Imprimir (papel)</button>
         <a href={`/api/empresas/${id}/estoque/producao/conclusoes/${conclusaoId}/etiqueta?modo=${modo}&formato=zpl`} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"><Download className="h-4 w-4" /> Baixar ZPL</a>
       </div>
+      {fila === 'ok' && <p className="flex items-center justify-center gap-1 text-center text-xs text-emerald-600 print:hidden"><Check className="h-3.5 w-3.5" /> {filaMsg}</p>}
+      {fila === 'erro' && <p className="flex items-center justify-center gap-1 text-center text-xs text-rose-600 print:hidden"><AlertTriangle className="h-3.5 w-3.5" /> {filaMsg}</p>}
       {zebra.estado === 'ok' && <p className="flex items-center justify-center gap-1 text-center text-xs text-emerald-600 print:hidden"><Check className="h-3.5 w-3.5" /> {zebra.msg}</p>}
       {zebra.estado === 'erro' && <p className="flex items-center justify-center gap-1 text-center text-xs text-rose-600 print:hidden"><AlertTriangle className="h-3.5 w-3.5" /> {zebra.msg}</p>}
-      <p className="text-center text-[11px] text-slate-400 print:hidden">"Imprimir na Zebra" fala com o agente local (`node scripts/zebra-agent.mjs` no PC do estoque). <button onClick={() => { const u = prompt('Endereço do agente da Zebra:', localStorage.getItem(AGENTE_KEY) || 'http://localhost:9100'); if (u) localStorage.setItem(AGENTE_KEY, u) }} className="underline hover:text-slate-600">configurar agente</button></p>
+      <p className="text-center text-[11px] text-slate-400 print:hidden">A etiqueta vai pra <a href={`/empresas/${id}/estoque/impressao`} className="underline hover:text-slate-600">fila de impressão</a> — funciona do celular. (modo antigo: o agente local (`node scripts/zebra-agent.mjs` no PC do estoque). <button onClick={() => { const u = prompt('Endereço do agente da Zebra:', localStorage.getItem(AGENTE_KEY) || 'http://localhost:9100'); if (u) localStorage.setItem(AGENTE_KEY, u) }} className="underline hover:text-slate-600">configurar agente</button></p>
 
       <Card className="print:hidden"><CardContent className="p-4 text-xs text-slate-500">
         <p><b>Rastro:</b> essa etiqueta carrega o LOTE ({e.lote}) — o mesmo id da ordem de produção. Da etiqueta no freezer até a nota do fornecedor, o caminho está no ledger.</p>

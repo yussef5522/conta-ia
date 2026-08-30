@@ -45,6 +45,7 @@ import {
   Inbox,
   Workflow,
   ListChecks,
+  Printer,
 } from 'lucide-react'
 import { SidebarItem } from './sidebar-item'
 import { useSidebarBadges } from '@/lib/hooks/use-sidebar-badges'
@@ -442,6 +443,13 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
               label="Vendas (Suitable)"
               href={`/empresas/${empresaAtiva}/estoque/vendas`}
               isActive={/^\/empresas\/[^/]+\/estoque\/vendas/.test(pathname)}
+              onClick={onNavigate}
+            />
+            <SidebarItem
+              icon={Printer}
+              label="Impressão"
+              href={`/empresas/${empresaAtiva}/estoque/impressao`}
+              isActive={/^\/empresas\/[^/]+\/estoque\/impressao/.test(pathname)}
               onClick={onNavigate}
             />
             <SidebarItem

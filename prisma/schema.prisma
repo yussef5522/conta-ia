@@ -3433,6 +3433,45 @@ model StockItemMesclado {
   @@map("stock_item_mesclado")
 }
 
+// ⭐⭐ IMPRESSÃO DE ETIQUETA (30/08) — fila + agente que PUXA.
+// O servidor está num datacenter e não alcança a LAN da cozinha; o agente faz só conexão
+// de SAÍDA. A fila garante que etiqueta não se perde com a impressora ocupada/sem papel.
+model StockImpressora {
+  id          String    @id @default(cuid())
+  companyId   String
+  nome        String
+  tipo        String // REDE | USB
+  host        String?
+  porta       Int       @default(9100)
+  filaUsb     String?
+  tokenHash   String    @unique // ⚠️ HASH — o token só aparece uma vez, na criação
+  ativa       Boolean   @default(true)
+  ultimoPing  DateTime?
+  criadoPorId String?
+  criadoEm    DateTime  @default(now())
+
+  @@index([companyId, ativa])
+  @@map("stock_impressora")
+}
+
+model StockImpressaoJob {
+  id           String   @id @default(cuid())
+  companyId    String
+  impressoraId String?
+  descricao    String
+  zpl          String
+  copias       Int      @default(1)
+  status       String   @default("PENDENTE") // PENDENTE|IMPRIMINDO|IMPRESSA|ERRO|CANCELADA
+  tentativas   Int      @default(0)
+  ultimoErro   String?
+  criadoPorId  String?
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  @@index([companyId, status, criadoEm])
+  @@map("stock_impressao_job")
+}
+
 // Eventos SEFAZ (Confirmação 210200 | Op não Realizada 210240 | Ciência 210210).
 model StockSefazEvent {
   id           String    @id @default(cuid())
