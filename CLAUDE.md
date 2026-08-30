@@ -242,6 +242,25 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⭐⭐⭐ A TORNEIRA — TELA DE ETIQUETAS COM PRÉVIA EM TAMANHO REAL (30/08/2026)
+
+A fila e o agente eram o **cano**. `/estoque/etiquetas` é a **torneira**: **3 toques** — produto → confere a prévia → imprimir. É a tela que o Cristian abre no celular.
+
+**⭐⭐ UM LAYOUT, DOIS RENDERIZADORES (`lib/stock/etiquetas/modelo.ts`).** O navegador **não renderiza ZPL**, então prévia e impressão são dois renderizadores **por necessidade**. O que dá pra garantir — e é o que o arquivo garante — é que os dois leem o **MESMO layout declarativo** (posição em dots, tamanho, ordem, quais campos entram). Uma segunda lista de campos "igualzinha" divergiria na primeira mudança e **a prévia passaria a mentir sobre o que sai da Zebra**. Testes travam: campo desligado **some dos dois**; a posição da prévia é a **mesma** do ZPL (em % de 480 dots, então é fiel em qualquer tela).
+
+**⭐ A VALIDADE EM DESTAQUE, LOGO ABAIXO DO NOME** — vídeo invertido no ZPL (`^GB` + `^FR`), caixa preta na prévia. **Numa câmara fria, com pressa, ninguém lê a 5ª linha** — e validade lida errado vira comida estragada servida. Lote e colaborador são **rastro** (importam depois, quando alguém investiga); validade é **decisão do momento**.
+
+**⭐ VALIDADE POR ESTADO DE CONSERVAÇÃO** (`stock_item_validade`, CREATE-only, CHECK 1..3650): a mesma carne dura **90 dias congelada, 3 resfriada, 1 em ambiente**. Trocar o estado na tela **recalcula a validade na hora, na prévia**. ⚠️ **Sem dias cadastrados a etiqueta diz "A DEFINIR"** — número inventado numa etiqueta de alimento é o pior lugar possível pra um palpite, **porque a data errada é OBEDECIDA**. A sugestão aparece **marcada como sugestão**, e quantos dias um produto dura é `stock.manage` (decisão de segurança alimentar do dono, não do operador).
+
+**⭐ TODA IMPRESSÃO VIRA REGISTRO** (`stock_etiqueta`: produto, lote, validade, estado, quem, quando). É o que vai **fazer o painel "vence hoje" (2c) e o ciclo de vida (2d) existirem** — sem isso a etiqueta sai e o sistema não sabe que ela existe.
+
+⚠️ **O lote da manipulação nasce do INSTANTE, não do dia:** descongelou de manhã ≠ descongelou à tarde, e o QR precisa distinguir os dois pacotes.
+⚠️ **O grid não é o catálogo inteiro** (produzidos + matéria-prima que se manipula): oferecer material de limpeza transformaria a tela de 3 toques num catálogo de 90 linhas.
+
+**PROVADO EM PROD** com a porção de carne real: 49 produtos etiquetáveis, prévia e ZPL saindo da mesma fonte, validade `02/09/2026` marcada como **sugestão** (o dono ainda não definiu os dias dela). ⚠️ **Achado pra afinar:** o grid está **48 matéria-prima × 1 intermediário** — ordenar por "mais etiquetado" faria a tela de 3 toques valer no dia a dia.
+
+**FALTA DESTE SPRINT (não feito, registrado):** a tela `/estoque/etiquetas/modelo` (ligar/desligar campos + teste do modelo — o layout já é declarativo e aceita `desligados`, falta a tela), o override por item de por-pacote/por-lote, e a subida de nível da `/estoque/impressao` (item 4). Depois: **2b** (manipulação avulsa), **2c** (painel vence-hoje) e **2d** (ciclo de vida + QR).
+
 ## ⭐⭐⭐ IMPRESSÃO DE ETIQUETA POR FILA — O CELULAR DA COZINHA IMPRIME (30/08/2026)
 
 **⚠️ O PEDIDO ERA "o servidor manda ZPL pro IP da impressora, sem agente preso num computador". ISSO NÃO É REALIZÁVEL, e a razão importa mais que o não:** o servidor roda num **datacenter** e a impressora está na **LAN da cozinha** — conferido no servidor, **não há rota** pra `192.168.x.x`. Fazer o servidor alcançá-la exigiria **expor a porta 9100 na internet**, e **9100 não tem autenticação nenhuma**: qualquer um imprimiria, ou entupiria a bobina de propósito. Pelo navegador também não sai: JS não abre socket TCP, e HTTPS→HTTP local é bloqueado por *mixed content* fora de `localhost` (que é o motivo de o agente antigo só funcionar no PC com o cabo — **do celular, nunca funcionou**).
