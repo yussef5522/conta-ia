@@ -242,6 +242,33 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⛔⛔⛔ O CONVIDADO NÃO ENTRAVA NA EMPRESA — E 3 VAZAMENTOS DE FINANCEIRO NO CAMINHO (30/08/2026)
+
+**CASO REAL:** a Marcyelle foi convidada como `OPERADOR_ESTOQUE` da Caçula, criou a conta pelo link e **caiu num workspace vazio**. Perícia: conta existia, **zero vínculo, zero papel**, convite com `acceptedAt` **NULL** e **não expirado**.
+
+**⚠️ DUAS CAUSAS INDEPENDENTES, e a segunda ninguém veria:**
+1. **cadastro e login faziam `router.push('/dashboard')` FIXO**, jogando fora o `redirect` do convite. Ela criou a conta e **nunca voltou pra aceitar**. ⚠️ O aceite **em si já era atômico** (`$transaction` com UCR + `acceptedAt`) — **ele nunca foi alcançado**. O bug não estava onde a hipótese apontava.
+2. **⭐⭐ `/api/empresas` listava só por `UserCompany`** (o modelo ANTIGO) e o aceite grava **`UserCompanyRole`** (o do RBAC). **Mesmo aceitando certo, a empresa não apareceria no seletor** — acesso funcionando por baixo (rotas de estoque respondendo 200) e **workspace vazio na cara dela**. É o *"linked tem DUAS portas"* de 14/08 **outra vez**: checar UMA é o bug.
+
+**⛔⛔ E A INVESTIGAÇÃO ACHOU VAZAMENTO DE FINANCEIRO** (medido em prod, com a sessão real dela):
+| rota | o que devolvia |
+|---|---|
+| `/fluxo-caixa` | **200** com *"entrou: 475.739,55"* |
+| `/vendas` | **200** com o faturamento diário |
+| `/juiz` | **200** com o relatório de **TODAS as empresas** — chamava `getAuthContext` **sem companyId**: bastava estar logado |
+
+**A lição em uma frase:** `getAuthContext(request, companyId)` **só prova que a pessoa É DA EMPRESA — não que ela pode ver AQUILO.** Faltava `requirePermission`. ⚠️ O juiz não dava pra escopar por empresa (o relatório é global), então a régua virou *"precisa de `transaction.view` em ALGUMA empresa"*.
+
+**⭐ E O MENU NÃO RESPEITAVA O PAPEL:** `/api/empresas/[id]/me` existia **com o comentário "usado pela sidebar contextual para filtrar menu por permissions"** — e **nunca foi consumido por ninguém**. Ela veria Transações, DRE, Conciliação, e **cada clique bateria num 403**. *Menu que oferece o que a pessoa não pode fazer ensina que o sistema está quebrado.* ⚠️ Enquanto as permissões carregam, o menu aparece **inteiro** — filtro que chega depois **pisca e some item na cara do usuário**; e a trava de verdade são as ROTAS, isto é UX.
+
+**⚠️ O `redirect` só aceita caminho INTERNO** — mandar usuário recém-cadastrado pra domínio arbitrário é open redirect de manual.
+
+**CONTA DELA CONSERTADA pelo ENDPOINT REAL do aceite** (nunca script replicando a lógica): `caçula mix` como `OPERADOR_ESTOQUE`, convite marcado aceito. **PROVADO EM PROD depois:** seletor mostra a Caçula · permissões `stock.view, stock.operate` · estoque **200** (posição, etiquetas, contagem) · financeiro **403** nos cinco (fluxo de caixa, vendas, juiz, DRE, transações).
+
+**⚠️ ITEM 7 — não havia workspace fantasma pra limpar:** ela não tinha `PersonalProfile` nem empresa própria; o "workspace vazio" era o empty state de quem não está em lugar nenhum. Nada a apagar.
+
+**⚠️ E O GUARD DE SIDEBAR DE 26/08 REPROVOU O APERTO:** o regex exigia `workspaceType !== 'pf' && (` e o gate virou `… && !soEstoque && (`. Afrouxei **só pra aceitar um gate MAIS restritivo** — *guard que impede endurecer é guard que envelheceu*.
+
 ## ⭐⭐⭐ EDITOR DE MODELO DE ETIQUETA — O DONO DESENHA (30/08/2026)
 
 **VEREDITO DO ESTUDO, registrado:** o **conteúdo** nosso já era **≥ SuFlex** — lote com **custo real** e QR com **rastro até a nota da SEFAZ**, que eles não têm. **A flexibilidade do modelo era o gap** — e morre aqui. Eles deixam **configurar** (ligar/desligar campo); aqui o dono **DESENHA**: renomeia rótulo (`FAB` → `FABRICAÇÃO`), reordena, muda fonte, põe negrito/destaque, adiciona **linha de texto livre** ("Mantenha congelado", CNPJ, telefone) e cria **vários modelos**, com escolha por item.
