@@ -106,7 +106,15 @@ export async function podeGerenciarPlano(userId: string, db: PrismaClient = defa
   if (chaves.some((k) => k === '*' || k === 'company.update')) return true
   // legado: quem tem UserCompany OWNER/ADMIN
   const legado = await db.userCompany.count({ where: { userId, role: { in: ['OWNER', 'ADMIN'] } } })
-  return legado > 0
+  if (legado > 0) return true
+
+  // ⚠️ QUEM JÁ TEM ASSINATURA PRÓPRIA É TITULAR — mesmo sem empresa cadastrada.
+  // Pego pelos testes do Asaas: contas que contrataram plano antes de abrir empresa (o
+  // admin da plataforma, contas de avaliação) seriam bloqueadas do próprio checkout. Quem
+  // paga pode mexer no que paga; a regra é sobre FUNCIONÁRIO não pagar, não sobre impedir
+  // cliente de gerenciar o dele.
+  const propria = await db.subscription.findUnique({ where: { userId }, select: { id: true } })
+  return propria != null
 }
 
 /**

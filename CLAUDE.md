@@ -242,6 +242,34 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⭐⭐⭐ REGRA DE PRODUTO — ASSINATURA É POR EMPRESA; CONVIDADO HERDA; FUNCIONÁRIO NUNCA PAGA (30/08/2026)
+
+**Vale pra CADA cliente que entrar daqui pra frente:**
+- **QUEM ASSINA É A EMPRESA.** O plano e o trial pertencem ao **CNPJ**, pagos pelo dono/admin.
+- **FUNCIONÁRIO CONVIDADO HERDA** o acesso da empresa: **nunca** tem trial próprio, **nunca** vê banner de plano, **nunca** vê "assinar".
+- **Empresa inadimplente é problema do DONO.** O funcionário vê, no máximo, *"acesso suspenso — fale com o responsável"*.
+- **Ver/gerenciar plano é de dono/admin** — é a mesma fronteira de papel dos boletos: *decisão que gasta dinheiro da empresa é do dono*.
+
+**O QUE ACONTECEU:** a Marcyelle, convidada como `OPERADOR_ESTOQUE`, logou e viu **"TRIAL 14 dias restantes · Ver planos"**. O sistema criou uma assinatura **pra ela**.
+
+**⚠️ ERAM TRÊS PORTAS criando assinatura, e fechar uma só seria enxugar gelo:** o **cadastro**, o **LOGIN** (`getOrCreateSubscription` cria "por defesa" **a cada acesso** — apagar a dela sem isso seria inútil) e o **`/api/subscription/me`**. As três agora resolvem por empresa e **não criam nada**.
+
+**⚠️ MIGRATION ADITIVA PURA e o `userId @unique` FICA:** `ADD COLUMN` nullable `companyId` em `subscriptions` (8 linhas). O Asaas (customer, checkout, webhook) resolve **por usuário** — reescrever a integração de **pagamento** no mesmo passo trocaria um problema de **regra** por um risco de **cobrança**. **A regra nova mora na LEITURA** (`assinaturaEfetiva`); o `userId` vira o portador histórico de quem contratou. Rollback: `DROP COLUMN`.
+
+**A cascata, cada degrau com motivo:** assinatura da EMPRESA → a do DONO da empresa (cobre o histórico sem `companyId`) → a própria, se ele for dono → **null**. ⚠️ **E `null` nunca vira "EXPIRADO"**: convidado não tem o que expirar, e marcar expirado o jogaria em `/assinar` — a tela que ele nunca deveria ver.
+
+**⚠️⚠️ E O DRY-RUN DO BACKFILL ME SALVOU DE UM ESTRAGO:** a 1ª régua era *"não é dono de nenhuma empresa → apaga a assinatura"*, e ela marcou **5** — incluindo o **admin da plataforma** (GRANTED), uma conta de teste e um **segundo email do dono**. **"Não é dono" ≠ "é funcionário":** funcionário é quem **ESTÁ numa empresa** e não é dono dela; conta **sem vínculo nenhum** não se toca. Régua apertada → **1 removida** (a certa), **4 intocadas**.
+
+**⚠️ E OS TESTES DO ASAAS PEGARAM O EXCESSO SEGUINTE:** meu guard de checkout bloqueou contas que **têm assinatura própria mas não têm empresa** (o admin, contas de avaliação) — clientes legítimos sendo barrados do próprio checkout. **Quem paga pode mexer no que paga**; a regra é sobre funcionário não pagar, não sobre impedir cliente de gerenciar o dele.
+
+**PROVADO EM PROD (as duas sessões):**
+| | assinatura efetiva | titular? | pode gerenciar? | assinatura pessoal |
+|---|---|---|---|---|
+| **operadora** | `inteligencia/GRANTED` da Caçula | **não (herda)** | **não** | **nenhuma** ✅ |
+| **dono** | `inteligencia/GRANTED` | sim | sim | GRANTED, amarrada à Caçula |
+
+Backfill em prod: **3 amarradas · 1 removida · 4 intocadas**. `pg_dump pre-billing-empresa` antes.
+
 ## ⛔⛔ BLOCKLIST NÃO SEGURA MENU — A ALLOWLIST DO SIDEBAR (30/08/2026)
 
 **⚠️ MINHA 1ª TENTATIVA FOI BLOCKLIST e falhou exatamente como blocklist falha:** escondi à mão os itens que EU lembrei. **O dono mediu na tela dela** e listou o que sobrou — **Dashboard COM O FATURAMENTO**, Recorrentes, Relatórios, **Tributário inteiro**, Cadastros (Empresas, Bancos, Clientes, Fornecedores, Categorias, Sócios), Inteligência, **Usuários, Permissões, Auditoria, Alertas** e "Em breve". Tudo que eu não lembrei.

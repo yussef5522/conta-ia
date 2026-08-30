@@ -34,6 +34,11 @@ export default async function AssinarPage() {
   }
 
   // 🚨 GRANTED + ACTIVE não passam por aqui
+  // ⛔ A TELA DE ASSINAR É DO DONO (30/08/2026) — funcionário convidado não contrata
+  // plano. Se ele cair aqui por link, volta pro trabalho dele em vez de ver preço.
+  const { podeGerenciarPlano } = await import('@/lib/subscription/por-empresa')
+  if (!(await podeGerenciarPlano(payload.sub))) redirect('/dashboard')
+
   const status = await getEffectiveStatusByUserId(payload.sub)
   if (status) {
     if (status.rawStatus === 'GRANTED') redirect('/dashboard')

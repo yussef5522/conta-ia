@@ -67,6 +67,16 @@ export async function POST(request: NextRequest) {
   }
 
   // 🚨 Bloqueio GRANTED
+  // ⛔ QUEM ASSINA É A EMPRESA (30/08/2026). `getOrCreateSubscription` CRIARIA uma
+  // assinatura pra quem não tem — inclusive pra um funcionário convidado que caísse aqui
+  // por um link. Checkout é gesto de DONO.
+  const { podeGerenciarPlano } = await import('@/lib/subscription/por-empresa')
+  if (!(await podeGerenciarPlano(sessionUser.sub))) {
+    return NextResponse.json(
+      { erro: 'Só o responsável pela empresa pode contratar ou mudar o plano.', code: 'FORBIDDEN' },
+      { status: 403 },
+    )
+  }
   const sub = await getOrCreateSubscription(sessionUser.sub)
   if (sub.status === 'GRANTED') {
     return NextResponse.json(

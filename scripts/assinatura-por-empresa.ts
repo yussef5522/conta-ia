@@ -27,6 +27,8 @@ async function main() {
 
   const paraAmarrar: Array<{ id: string; email: string; companyId: string }> = []
   const paraRemover: Array<{ id: string; email: string; status: string }> = []
+  /** contas sem empresa nenhuma — NÃO se toca (ver o comentário no laço) */
+  const semVinculo: Array<{ email: string; status: string }> = []
 
   for (const s of subs) {
     // é dono/admin de alguma empresa?
@@ -39,16 +41,31 @@ async function main() {
     if (empresaDele) {
       if (!s.companyId) paraAmarrar.push({ id: s.id, email: email.get(s.userId) ?? '?', companyId: empresaDele })
     } else {
-      // ⭐ não é dono de NADA → é funcionário (ou conta sem empresa). Não devia ter plano.
-      paraRemover.push({ id: s.id, email: email.get(s.userId) ?? '?', status: s.status })
+      // ⚠️⚠️ "NÃO É DONO" ≠ "É FUNCIONÁRIO", e o dry-run provou: a régua antiga marcava 5
+      // pra remoção — incluindo o **admin da plataforma** (GRANTED), uma conta de teste e
+      // um segundo email do dono. Nenhum deles é funcionário: são contas SEM empresa
+      // nenhuma, e apagar a assinatura delas não tem nada a ver com a regra pedida.
+      //
+      // Funcionário é quem ESTÁ numa empresa E não é dono dela. Conta sem vínculo fica
+      // como está — mexer nela seria dano colateral de um script de limpeza.
+      const membroDe = await db.userCompanyRole.count({ where: { userId: s.userId } })
+      const membroLegado = await db.userCompany.count({ where: { userId: s.userId } })
+      if (membroDe + membroLegado > 0) {
+        paraRemover.push({ id: s.id, email: email.get(s.userId) ?? '?', status: s.status })
+      } else {
+        semVinculo.push({ email: email.get(s.userId) ?? '?', status: s.status })
+      }
     }
   }
 
   console.log(`=== AMARRAR À EMPRESA (${paraAmarrar.length}) ===`)
   for (const a of paraAmarrar) console.log(`  ${a.email.padEnd(36)} → empresa ${a.companyId.slice(-8)}`)
 
-  console.log(`\n=== REMOVER (funcionário/conta sem empresa própria) (${paraRemover.length}) ===`)
+  console.log(`\n=== REMOVER — FUNCIONÁRIO (está numa empresa, não é dono) (${paraRemover.length}) ===`)
   for (const r of paraRemover) console.log(`  ${r.email.padEnd(36)} · ${r.status}`)
+
+  console.log(`\n=== NÃO SE TOCA — conta sem empresa nenhuma (${semVinculo.length}) ===`)
+  for (const r of semVinculo) console.log(`  ${r.email.padEnd(36)} · ${r.status}`)
 
   if (!APLICAR) {
     console.log('\n  (dry-run — rode com --aplicar)\n')
