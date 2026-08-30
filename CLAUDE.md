@@ -242,6 +242,28 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⛔⛔ BLOCKLIST NÃO SEGURA MENU — A ALLOWLIST DO SIDEBAR (30/08/2026)
+
+**⚠️ MINHA 1ª TENTATIVA FOI BLOCKLIST e falhou exatamente como blocklist falha:** escondi à mão os itens que EU lembrei. **O dono mediu na tela dela** e listou o que sobrou — **Dashboard COM O FATURAMENTO**, Recorrentes, Relatórios, **Tributário inteiro**, Cadastros (Empresas, Bancos, Clientes, Fornecedores, Categorias, Sócios), Inteligência, **Usuários, Permissões, Auditoria, Alertas** e "Em breve". Tudo que eu não lembrei.
+
+**⭐⭐ AGORA É ESTRUTURAL: `perm` É OBRIGATÓRIA NO TIPO do `SidebarItem` — item novo sem mapeamento NÃO COMPILA** — e o componente **some sozinho** quando o papel não tem a chave. **Default é ESCONDER.** Os 50 itens mapeados pras **36 chaves REAIS** do RBAC. É a REGRA 5 aplicada a menu: o erro deixou de ser improvável e passou a ser impossível.
+
+**⚠️ E CHAVE INVENTADA ESCONDERIA O ITEM ATÉ DO DONO** — o OWNER tem lista **concreta** de 36 chaves, **não `*`** (a lição de 24/08). Por isso o guard confere cada `perm` contra a lista real; erro de digitação aqui seria bug de tela pra todo mundo.
+
+**⭐ O DASHBOARD TAMBÉM LIA SÓ `UserCompany`** (a 2ª porta de novo, agora em server component): a convidada caía no empty state *"você não está em nenhuma empresa"* **sendo membro de verdade**.
+
+**⭐ E O LOGIN DELA CAI DIRETO NA POSIÇÃO:** o dashboard mostra faturamento — pra quem só opera estoque não é só inútil, **é o número que ela não deveria ver, na primeira tela**.
+
+**PROVADO EM PROD com a sessão real dela:**
+- **menu: 16 de 50 itens** · **itens da empresa fora do estoque: NENHUM**
+- as **17 rotas** por trás de cada item que vazou: **ZERO devolvem 200** (403 nomeando a permissão que falta, ou 404). **O menu esconde e a rota nega — os dois.**
+
+**⚠️⚠️ E A AUDITORIA DO MAPA PEGOU DOIS ERROS MEUS**, os dois da mesma família ("o mapa é lido de cima pra baixo"):
+1. **`/empresas/<id>/despesas`** (tela **financeira**) casou com o fragmento genérico `/empresas` **antes** do específico e virou `company.view` — quem tivesse `company.view` sem `transaction.view` veria tela de dinheiro.
+2. Itens do **workspace PESSOAL** (`/perfis/`) mapeados em `transaction.view`/`report.view` — **as despesas dela são dela**, não são governadas pelo papel na empresa. Viraram `@sempre`.
+
+Os dois viraram guard. ⚠️ E **o guard da tela financeira pegou um falso positivo dele mesmo**: `/estoque/vendas` (Suitable) casa com `/vendas` e é tela de estoque — regex de guard também precisa de teste.
+
 ## ⛔⛔⛔ O CONVIDADO NÃO ENTRAVA NA EMPRESA — E 3 VAZAMENTOS DE FINANCEIRO NO CAMINHO (30/08/2026)
 
 **CASO REAL:** a Marcyelle foi convidada como `OPERADOR_ESTOQUE` da Caçula, criou a conta pelo link e **caiu num workspace vazio**. Perícia: conta existia, **zero vínculo, zero papel**, convite com `acceptedAt` **NULL** e **não expirado**.
