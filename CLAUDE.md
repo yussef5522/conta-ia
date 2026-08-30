@@ -242,6 +242,30 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⭐⭐⭐ IMPRESSÃO DE ETIQUETA POR FILA — O CELULAR DA COZINHA IMPRIME (30/08/2026)
+
+**⚠️ O PEDIDO ERA "o servidor manda ZPL pro IP da impressora, sem agente preso num computador". ISSO NÃO É REALIZÁVEL, e a razão importa mais que o não:** o servidor roda num **datacenter** e a impressora está na **LAN da cozinha** — conferido no servidor, **não há rota** pra `192.168.x.x`. Fazer o servidor alcançá-la exigiria **expor a porta 9100 na internet**, e **9100 não tem autenticação nenhuma**: qualquer um imprimiria, ou entupiria a bobina de propósito. Pelo navegador também não sai: JS não abre socket TCP, e HTTPS→HTTP local é bloqueado por *mixed content* fora de `localhost` (que é o motivo de o agente antigo só funcionar no PC com o cabo — **do celular, nunca funcionou**).
+
+**⭐ O DESENHO QUE ENTREGA O OBJETIVO DE VERDADE:**
+```
+celular → app (HTTPS) → FILA no servidor → agente PUXA (conexão de SAÍDA) → impressora
+```
+- o agente **só faz conexão de saída**: sem abrir porta no roteador, sem IP fixo, sem VPN
+- a **FILA** é o que faz a etiqueta **não se perder**: impressora ocupada, sem papel ou desligada → o job **espera e sai depois**, com retry contado
+- e com impressora de **REDE** o agente roda em **qualquer máquina da LAN** — deixa de morar no PC com o cabo USB (um Raspberry de ~R$ 150 na tomada serve)
+
+**⛔⛔ DOIS AGENTES NÃO IMPRIMEM A MESMA ETIQUETA.** A trava é `updateMany` com `status: 'PENDENTE'` no WHERE: quem atualiza 0 linhas perdeu a corrida e pega o próximo. **Sem ela, agente no PC + no Raspberry dobrariam cada etiqueta e ninguém descobriria até faltar bobina.** Teste com corrida real (`Promise.all` de dois agentes → exatamente 1 leva).
+
+**SEGURANÇA DO TOKEN:** guardado como **hash** (o segredo mora num PC de cozinha, lugar exposto), aparece **uma única vez** na criação, e o **escopo é mínimo de propósito** — pega ZPL da fila e diz se imprimiu; **não lê estoque, nota nem dinheiro**. Se vazar, o estrago é imprimir etiqueta. Guard de teste trava esse escopo por nome de model.
+
+**⚠️⚠️ ACHADO NA PROVA EM PROD (e teria custado dias):** o **proxy matava a rota do agente antes dela rodar** — `{"erro":"Sessão expirada ou não autenticado"}`, 401. **E o 401 do proxy é indistinguível do 401 de token errado**: dava pra ficar trocando token achando que era credencial. Entrou no `PUBLIC_API` (mesmo padrão do webhook do Asaas, que também valida o próprio segredo). **Guard novo trava a DUPLA dependência**: pública no proxy **+** sem validar token = rota aberta — o teste exige as duas juntas.
+
+**⚠️ E O GUARD DE ROTAS TINHA UM PONTO CEGO:** ele varria só `app/api/empresas/[id]/estoque`, então a rota do agente (que vive em `app/api/estoque/`) seria **invisível** pra ele. Estendido com **allowlist e motivo escrito** — rota nova ali sem entrar na lista quebra o teste.
+
+**PROVADO EM PROD, ciclo inteiro:** cadastro → token gerado → celular enfileira → **agente puxa só com o token** (HTTP 200, sem cookie) → token errado dá **401 seco** (`{"erro":"token inválido"}`) → agente avisa → tela mostra **agente ONLINE** e job **IMPRESSA**. 77 testes no guard de rotas, 601 stock verdes.
+
+**PENDENTE (é do dono):** o **modelo exato da Zebra** — se tem Ethernet/WiFi, o agente sai do PC; se é USB-only (ZD220 base), o print-server de ~R$100 resolve. E o **teste físico**: `node scripts/zebra-agente.mjs --teste`.
+
 ## ⚠️⚠️ CONTROLE QUE NINGUÉM RECONHECE COMO CONTROLE É CONTROLE MORTO (30/08/2026)
 
 **O dono não conseguia converter as 36 cartelas de ovo em 1.080 ovos:** *"o título aparece mas não é clicável — não tem botão, não expande. Só o texto solto entre o saldo e a faixa de mín/máx."*
