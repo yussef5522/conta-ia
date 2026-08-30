@@ -31,9 +31,35 @@ function parseDetail(d: unknown): unknown {
   return { byCompany: [], sharedTx: [], balanceChecks: [], dupStableKey: [], vendaChecks: [], cardChecks: [], cardResumo: [] }
 }
 
+/**
+ * ⛔ VAZAMENTO FECHADO (30/08/2026): este endpoint chamava `getAuthContext(request)` **sem
+ * empresa** — ou seja, bastava estar LOGADO pra ler o relatório do juiz de TODAS as
+ * empresas (invariantes de empréstimo, cartão, vendas e estoque, com valores). Uma
+ * operadora de estoque recém-convidada lia tudo.
+ *
+ * ⚠️ Não dá pra usar `ctx.requirePermission` aqui: o relatório é GLOBAL (roda pra todas as
+ * empresas), e `requirePermission` é escopado por empresa. Então a régua é: **a pessoa
+ * precisa ter `transaction.view` em ALGUMA empresa** — quem cuida do financeiro em algum
+ * lugar pode ler o selo; quem só opera estoque, não.
+ */
+async function podeVerOJuiz(userId: string): Promise<boolean> {
+  const papeis = await prisma.userCompanyRole.findMany({
+    where: { userId },
+    include: { role: { include: { permissions: { include: { permission: true } } } } },
+  })
+  const chaves = papeis.flatMap((p) => p.role.permissions.map((rp) => rp.permission.key))
+  return chaves.some((k) => k === 'transaction.view' || k === '*' || k === '*.view')
+}
+
+const NEGADO = NextResponse.json(
+  { erro: 'Só quem tem acesso ao financeiro pode ver o relatório do juiz.', code: 'FORBIDDEN' },
+  { status: 403 },
+)
+
 export async function GET(request: NextRequest) {
   try {
-    await getAuthContext(request)
+    const ctx = await getAuthContext(request)
+    if (!(await podeVerOJuiz(ctx.user.id))) return NEGADO
     const rows = await prisma.loanModuleJudgeReport.findMany({ orderBy: { runAt: 'desc' }, take: 30 })
     const history = rows.map((r) => ({ ...r, detail: parseDetail(r.detail as unknown) }))
     const stock = await ultimoStock()
@@ -46,7 +72,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    await getAuthContext(request)
+    const ctx = await getAuthContext(request)
+    if (!(await podeVerOJuiz(ctx.user.id))) return NEGADO
     const [rep, stockRep] = await Promise.all([runModuleJudge(prisma), runAndPersistStockJudge(prisma)])
     const saved = await prisma.loanModuleJudgeReport.create({
       data: {

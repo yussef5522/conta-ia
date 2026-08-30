@@ -71,7 +71,12 @@ export function LoginForm() {
 
       // Sucesso: zera contador + redirect pra dashboard (rota raiz autenticada)
       setFailedAttempts(0)
-      router.push('/dashboard')
+      // ⭐⭐ HONRA O `redirect` (30/08/2026) — mesmo defeito do cadastro: era `/dashboard`
+      // FIXO, então quem clicava "Fazer login" a partir de um convite perdia o convite no
+      // caminho. ⚠️ Só caminho INTERNO (redirect de fora é open redirect).
+      const destino = new URLSearchParams(window.location.search).get('redirect')
+      const seguro = destino && destino.startsWith('/') && !destino.startsWith('//') ? destino : '/dashboard'
+      router.push(seguro)
       router.refresh()
     } catch {
       toast({

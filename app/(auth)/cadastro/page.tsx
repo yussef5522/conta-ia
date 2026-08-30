@@ -38,6 +38,10 @@ function CadastroPageInner() {
 
   // Auto-aplica cupom da query string `?cupom=XXX` (link compartilhado)
   useEffect(() => {
+    // ⭐ o convite manda o email — pré-preenche, senão a pessoa cadastra com outro e o
+    // aceite nunca casa ("este convite é pra X, você está logado como Y").
+    const emailConvite = searchParams.get('email')
+    if (emailConvite) setForm((f) => (f.email ? f : { ...f, email: emailConvite }))
     const raw = searchParams.get('cupom') ?? searchParams.get('cupon') ?? searchParams.get('coupon')
     if (raw && !autoApplied) {
       const trimmed = raw.trim().toUpperCase()
@@ -119,7 +123,16 @@ function CadastroPageInner() {
         return
       }
 
-      router.push('/dashboard')
+      // ⭐⭐ HONRA O `redirect` DO CONVITE (30/08/2026) — era `/dashboard` FIXO, e foi o
+      // que quebrou o convite da Marcyelle: ela criou a conta pelo link, foi jogada no
+      // dashboard e **nunca voltou pra aceitar**. O convite ficou pendente e ela caiu num
+      // workspace vazio, sem empresa e sem papel.
+      //
+      // ⚠️ Só aceita caminho INTERNO: `redirect` vindo da URL é entrada de fora, e mandar
+      // o usuário recém-cadastrado pra um domínio arbitrário é open redirect de manual.
+      const destino = searchParams.get('redirect')
+      const seguro = destino && destino.startsWith('/') && !destino.startsWith('//') ? destino : '/dashboard'
+      router.push(seguro)
       router.refresh()
     } catch {
       toast({

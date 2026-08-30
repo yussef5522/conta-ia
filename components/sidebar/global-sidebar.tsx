@@ -50,6 +50,7 @@ import {
 } from 'lucide-react'
 import { SidebarItem } from './sidebar-item'
 import { useSidebarBadges } from '@/lib/hooks/use-sidebar-badges'
+import { usePermissoes } from '@/lib/hooks/use-permissoes'
 import { useEmpresa } from '@/lib/contexts/empresa-context'
 import { useWorkspace } from '@/lib/contexts/workspace-context'
 
@@ -142,6 +143,16 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
   const empresaAtiva = workspaceType === 'pf' ? null : currentEmpresaId
   const empresaQs = empresaAtiva ? `?empresaId=${empresaAtiva}` : ''
 
+  // ⭐⭐ O MENU RESPEITA O PAPEL (30/08/2026). O endpoint `/api/empresas/[id]/me` existia
+  // com o comentário "usado pela sidebar pra filtrar menu por permissions" — e **ninguém
+  // consumia**. Uma operadora de estoque via Transações, DRE e Conciliação no menu, e cada
+  // clique batia num 403. Menu que oferece o que a pessoa não pode fazer ensina que o
+  // sistema está quebrado.
+  // ⚠️ Isto é UX, não segurança: a trava de verdade são as ROTAS (403). E enquanto carrega
+  // mostra tudo, porque filtro que aparece depois pisca e some item na cara do usuário.
+  const { pode } = usePermissoes(empresaAtiva)
+  const soEstoque = !pode('transaction.view') && pode('stock.view')
+
   return (
     <aside className="w-60 border-r bg-white flex flex-col h-full overflow-y-auto">
       {/* Hotfix sidebar-remove-logo (29/05/2026): bloco do logo do header
@@ -160,11 +171,11 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
         {/* Sprint Sidebar-Reorder — ordem segue fluxo de trabalho real:
             cadastrar contas → conciliar → categorizar → conferir relatório.
             Bancos virou Cadastro (configura uma vez); Relatórios por último. */}
-        <SectionLabel>Financeiro</SectionLabel>
+        {!soEstoque && <SectionLabel>Financeiro</SectionLabel>}
         {/* ⚠️ PJ-only: estes 4 leem a EMPRESA (contas a pagar/receber, conciliação e a
             fila de pendentes são do CNPJ). No PF eles apareciam apontando pra última
             empresa — agora somem, e a seção PF abaixo toma o lugar. */}
-        {workspaceType !== 'pf' && (
+        {workspaceType !== 'pf' && !soEstoque && (
         <>
         <SidebarItem
           icon={Clock}
@@ -193,6 +204,7 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
           badge={conciliacaoBadge > 0 ? String(conciliacaoBadge) : undefined}
           badgeTone="neutral"
         />
+        {!soEstoque && (
         <SidebarItem
           icon={Inbox}
           label="Pendentes"
@@ -202,10 +214,11 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
           badge={pendentesBadge > 0 ? String(pendentesBadge) : undefined}
           badgeTone="amber"
         />
+        )}
         </>
         )}
         {/* Sprint Central de Transferências — sidebar item dedicado */}
-        {empresaAtiva && (
+        {empresaAtiva && !soEstoque && (
           <SidebarItem
             icon={ArrowLeftRight}
             label="Transferências"
@@ -214,7 +227,7 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
             onClick={onNavigate}
           />
         )}
-        {empresaAtiva && (
+        {empresaAtiva && !soEstoque && (
           <SidebarItem
             icon={Store}
             label="Vendas"
@@ -223,7 +236,7 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
             onClick={onNavigate}
           />
         )}
-        {empresaAtiva && (
+        {empresaAtiva && !soEstoque && (
           <SidebarItem
             icon={Wallet}
             label="Fluxo de caixa"
@@ -232,7 +245,7 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
             onClick={onNavigate}
           />
         )}
-        {empresaAtiva && (
+        {empresaAtiva && !soEstoque && (
           <SidebarItem
             icon={HandCoins}
             label="Empréstimos"
@@ -241,7 +254,7 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
             onClick={onNavigate}
           />
         )}
-        {empresaAtiva && (
+        {empresaAtiva && !soEstoque && (
           <SidebarItem
             icon={CreditCard}
             label="Cartões"
@@ -257,6 +270,7 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
           isActive={pathname.startsWith('/recorrentes')}
           onClick={onNavigate}
         />
+        {!soEstoque && (
         <SidebarItem
           icon={ArrowLeftRight}
           label="Movimentações"
@@ -264,10 +278,11 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
           isActive={pathname.startsWith('/transacoes')}
           onClick={onNavigate}
         />
+        )}
         {/* Sprint 6 — Despesas (drill-down do Top 5 do dashboard). Mesma
             fonte do motor único; total bate com despesaOperacional do
             dashboard ao centavo. */}
-        {empresaAtiva && (
+        {empresaAtiva && !soEstoque && (
           <SidebarItem
             icon={TrendingDown}
             label="Despesas"
@@ -506,6 +521,7 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
           }
           onClick={onNavigate}
         />
+        {!soEstoque && (
         <SidebarItem
           icon={Users}
           label="Clientes"
@@ -513,6 +529,7 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
           isActive={pathname.startsWith('/clientes')}
           onClick={onNavigate}
         />
+        )}
         <SidebarItem
           icon={Store}
           label="Fornecedores"
@@ -543,7 +560,7 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
             + "Pontes PJ→PF". 1 item só com 2 abas: Sócios PF | Empresas do Grupo.
             Privacidade Fatia 4 mantida (queries filtradas por user).
             Sprint Sidebar-Reorder — movido de Financeiro pra Cadastros. */}
-        {empresaAtiva && (
+        {empresaAtiva && !soEstoque && (
           <SidebarItem
             icon={Users}
             label="Sócios"

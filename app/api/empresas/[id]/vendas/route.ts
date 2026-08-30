@@ -59,7 +59,13 @@ async function computePerfilSemana(companyId: string, inicio: Date) {
 export async function GET(request: NextRequest, { params }: Params) {
   try {
     const { id: companyId } = await params
-    await getAuthContext(request, companyId)
+    // ⛔ VAZAMENTO FECHADO (30/08/2026): `getAuthContext` só prova que a pessoa É DA
+
+    // EMPRESA — não que ela pode ver ISTO. Faltava a permissão, e o faturamento diário é dado financeiro: quanto a loja vendeu, por dia, por meio.
+
+    const ctx = await getAuthContext(request, companyId)
+
+    ctx.requirePermission('transaction.view')
 
     const mesParam = request.nextUrl.searchParams.get('mes') // 'YYYY-MM'
     const now = new Date()

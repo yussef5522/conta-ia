@@ -19,7 +19,14 @@ const MESES_GRAFICO = 6
 export async function GET(request: NextRequest, { params }: Params) {
   try {
     const { id: companyId } = await params
-    await getAuthContext(request, companyId)
+    // ⛔ VAZAMENTO FECHADO (30/08/2026): `getAuthContext` só prova que a pessoa É DA
+
+    // EMPRESA — não que ela pode ver ISTO. Faltava a permissão, e o fluxo de caixa É o dinheiro da empresa — entrou/saiu/sobrou. Uma operadora de estoque
+    // via R$ 475 mil por aqui (medido em prod, 30/08).
+
+    const ctx = await getAuthContext(request, companyId)
+
+    ctx.requirePermission('transaction.view')
 
     const agora = new Date()
     const mesParam = request.nextUrl.searchParams.get('mes')

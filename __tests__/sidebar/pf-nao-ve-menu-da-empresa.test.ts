@@ -68,7 +68,12 @@ describe('os itens PJ que não têm gate de empresa somem no PF', () => {
     const i = src.indexOf("<SectionLabel>Financeiro</SectionLabel>")
     const j = src.indexOf('label="Transferências"')
     const bloco = src.slice(i, j)
-    expect(bloco).toMatch(/workspaceType !== 'pf' && \(/)
+    expect(bloco).toMatch(// ⚠️ REGEX AFROUXADO EM 30/08 — e SÓ pra aceitar um gate MAIS restritivo, nunca menos:
+    // o bloco virou `workspaceType !== 'pf' && !soEstoque && (` quando o menu passou a
+    // respeitar o papel (operadora de estoque não vê financeiro). Exigir o `(` colado
+    // fazia o guard reprovar um aperto de segurança — guard que impede endurecer é guard
+    // que envelheceu.
+    /workspaceType !== 'pf' &&/)
     // e os 4 estão DENTRO desse bloco
     for (const l of ['Contas a Pagar', 'Contas a Receber', 'Conciliação', 'Pendentes']) {
       expect(bloco).toContain(`label="${l}"`)

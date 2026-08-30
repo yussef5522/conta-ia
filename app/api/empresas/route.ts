@@ -9,28 +9,40 @@ export async function GET(request: NextRequest) {
   const user = await getAuthUser(request)
   if (!user) return NextResponse.json({ erro: 'Não autenticado' }, { status: 401 })
 
-  const userCompanies = await prisma.userCompany.findMany({
-    where: { userId: user.sub },
-    include: {
-      company: {
-        select: {
-          id: true,
-          cnpj: true,
-          name: true,
-          tradeName: true,
-          type: true,
-          taxRegime: true,
-          isActive: true,
-          createdAt: true,
-        },
-      },
-    },
-    orderBy: { createdAt: 'desc' },
-  })
+  // ⭐⭐ AS DUAS PORTAS DE VÍNCULO (30/08/2026) — foi o que deixou a convidada sem empresa.
+  //
+  // ⚠️ O BUG REAL, e ele é estrutural: existir vínculo em `UserCompany` (o modelo ANTIGO)
+  // e em `UserCompanyRole` (o do RBAC) não é novidade — o próprio CLAUDE.md registra que
+  // "linked tem DUAS portas" no caso das parcelas de empréstimo. **Aqui a listagem lia só
+  // a porta antiga**, e o convite grava só a nova. Resultado: a pessoa aceita o convite,
+  // vira membro de verdade (as rotas de estoque a reconhecem, 200) e **a empresa não
+  // aparece no seletor dela** — workspace vazio com acesso funcionando por baixo.
+  //
+  // Lê as DUAS e deduplica. Enquanto as duas tabelas existirem, quem responde "de quais
+  // empresas eu sou?" tem que olhar as duas — checar UMA foi o bug de 14/08 outra vez.
+  const SELECT = {
+    id: true, cnpj: true, name: true, tradeName: true,
+    type: true, taxRegime: true, isActive: true, createdAt: true,
+  } as const
 
-  const empresas = userCompanies.map((uc) => uc.company)
+  const [legado, porPapel] = await Promise.all([
+    prisma.userCompany.findMany({
+      where: { userId: user.sub },
+      include: { company: { select: SELECT } },
+      orderBy: { createdAt: 'desc' },
+    }),
+    prisma.userCompanyRole.findMany({
+      where: { userId: user.sub },
+      include: { company: { select: SELECT } },
+      orderBy: { createdAt: 'desc' },
+    }),
+  ])
 
-  return NextResponse.json({ empresas })
+  const porId = new Map<string, (typeof legado)[number]['company']>()
+  for (const uc of legado) porId.set(uc.company.id, uc.company)
+  for (const ucr of porPapel) porId.set(ucr.company.id, ucr.company)
+
+  return NextResponse.json({ empresas: [...porId.values()] })
 }
 
 export async function POST(request: NextRequest) {
