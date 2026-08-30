@@ -242,6 +242,20 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⚠️⚠️ CONTROLE QUE NINGUÉM RECONHECE COMO CONTROLE É CONTROLE MORTO (30/08/2026)
+
+**O dono não conseguia converter as 36 cartelas de ovo em 1.080 ovos:** *"o título aparece mas não é clicável — não tem botão, não expande. Só o texto solto entre o saldo e a faixa de mín/máx."*
+
+**⚠️ A PERÍCIA DEU UM RESULTADO DESCONFORTÁVEL, e vale registrar exatamente assim:** não havia handler perdido nem componente sem render. O `onClick` **sempre esteve no bundle servido** (`onClick:()=>m(!0)`, lido direto do chunk em prod) e a **API sempre respondeu certo** (36 × 18 → 1.080 × 0,60, valor 648,00 intacto, medido contra o item real). Duas hipóteses do próprio dono — "componente não renderiza" e "colapsável perdeu o handler no deploy" — foram **descartadas por evidência**, não por opinião.
+
+**O defeito era de AFORDÂNCIA:** o gatilho era `text-xs text-slate-400`, **sem borda, sem ícone, com sublinhado só no `hover`** — e **no celular não existe hover**. Ele leu como legenda, e está certo. **O efeito pra quem usa é idêntico ao de um botão quebrado**, e por isso isto conta como bug, não como "questão de estilo". Agora é linha com borda, ícone, **chevron**, verbo no rótulo (*"Converter a unidade"*) e `aria-expanded`.
+
+**⭐ LIÇÃO PRA TODA TELA NOVA:** ação escondida atrás de texto cinza sem afordância **não existe** — principalmente no celular, que é onde o dono opera. Se é clicável, tem que parecer clicável **sem hover**.
+
+**⭐ E A BARRA DE AÇÕES DA POSIÇÃO NÃO ERA FANTASMA — provado pelo dado:** o dono **já tinha mesclado as 2 BOBINAs** às 00:48 (o absorvido está `ativo=false`, marcado "(mesclado)", com o registro em `stock_item_mesclado`, e a Posição mostra **uma linha só: 1,86 UN / R$ 71,27** = a soma exata das duas). A pergunta "está renderizando de verdade?" foi respondida pelo banco, não por suposição.
+
+**7 testes** rodando o caminho que a tela chama (prévia → aplicar) com os números de prod: ledger sem perder linha (3 originais + 3 estornos + 3 novas), procedência por nota preservada (o **E16 segue fechando**) e o fator da nota atualizado. + guard de afordância — **estrutural e assumido como tal**: sem jsdom não dá pra clicar no teste, então ele trava o que quebrou de fato (o gatilho virar texto).
+
 ## ⭐⭐ AJUSTE DE QUANTIDADE PERGUNTA · MESCLADO ≠ ARQUIVADO (30/08/2026)
 
 **A ORIGEM DO FANTASMA DO OVO ERA AJUSTE MANUAL, e o dono contou:** *"fui eu: ajustei manual a quantidade pra 360 (12 cartelas × 30 ovos, a conta certa) — e o sistema manteve o custo POR CARTELA (18,00) em cada OVO"*.
