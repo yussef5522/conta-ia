@@ -301,7 +301,7 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
             dashboard ao centavo. */}
         {empresaAtiva && !soEstoque && (
           <SidebarItem
-          perm="company.view"
+          perm="transaction.view"
             icon={TrendingDown}
             label="Despesas"
             href={`/empresas/${empresaAtiva}/despesas`}
@@ -342,7 +342,7 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
             ele: no PF o menu mostrava o "Cartões" da EMPRESA. */}
         {workspaceType === 'pf' && currentProfileId && (
           <SidebarItem
-          perm="transaction.view"
+          perm="@sempre"
             icon={CreditCard}
             label="Cartões"
             href={`/perfis/${currentProfileId}/cartoes`}
@@ -362,7 +362,7 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
         )}
         {workspaceType === 'pf' && currentProfileId && (
           <SidebarItem
-          perm="transaction.view"
+          perm="@sempre"
             icon={ArrowLeftRight}
             label="Movimentações"
             href={`/perfis/${currentProfileId}/transacoes`}
@@ -372,7 +372,7 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
         )}
         {workspaceType === 'pf' && currentProfileId && (
           <SidebarItem
-          perm="report.view"
+          perm="@sempre"
             icon={Sparkles}
             label="Insights"
             href={`/perfis/${currentProfileId}/insights`}
@@ -382,7 +382,7 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
         )}
         {workspaceType === 'pf' && currentProfileId && (
           <SidebarItem
-          perm="transaction.import_ofx"
+          perm="@sempre"
             icon={History}
             label="Importar extrato"
             href={`/perfis/${currentProfileId}/importar`}

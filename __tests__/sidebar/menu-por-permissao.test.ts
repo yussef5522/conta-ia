@@ -104,6 +104,39 @@ describe('⭐⭐ o que o OPERADOR_ESTOQUE enxerga', () => {
     }
   })
 
+  it('⚠️ tela FINANCEIRA da empresa não pode estar mapeada em company.view', () => {
+    // ⚠️ ERRO MEU pego na auditoria do mapa: `/empresas/<id>/despesas` casou com o
+    // fragmento genérico "/empresas" antes do específico e virou `company.view`. Quem
+    // tivesse company.view sem transaction.view veria tela de dinheiro. O mapa é lido de
+    // cima pra baixo, então fragmento genérico ANTES do específico é armadilha.
+    const src = readFileSync(join(process.cwd(), 'components/sidebar/global-sidebar.tsx'), 'utf-8')
+    for (const m of src.matchAll(/<SidebarItem\b([\s\S]*?)\/>/g)) {
+      const corpo = m[1]
+      const href = /href=\{?[`"]([^`"]+)/.exec(corpo)?.[1] ?? ''
+      const perm = /perm="([^"]+)"/.exec(corpo)?.[1] ?? ''
+      // ⚠️ o próprio teste pegou um falso positivo dele: "/estoque/vendas" (Suitable) casa
+      // com /vendas e é tela de ESTOQUE, mapeada certo em stock.view.
+      const financeira =
+        /\/(despesas|receitas|transacoes|fluxo-caixa|vendas|cartoes|emprestimos)/.test(href) &&
+        !href.includes('/perfis/') &&
+        !href.includes('/estoque/')
+      if (financeira) {
+        expect(['transaction.view', 'dre.view', 'report.view'], `${href} → ${perm}`).toContain(perm)
+      }
+    }
+  })
+
+  it('⚠️ item do workspace PESSOAL (/perfis/) é @sempre — não é governado pelo papel na empresa', () => {
+    const src = readFileSync(join(process.cwd(), 'components/sidebar/global-sidebar.tsx'), 'utf-8')
+    for (const m of src.matchAll(/<SidebarItem\b([\s\S]*?)\/>/g)) {
+      const corpo = m[1]
+      const href = /href=\{?[`"]([^`"]+)/.exec(corpo)?.[1] ?? ''
+      if (!href.includes('/perfis/')) continue
+      const perm = /perm="([^"]+)"/.exec(corpo)?.[1] ?? ''
+      expect(perm, `${href} devia ser @sempre`).toBe('@sempre')
+    }
+  })
+
   it('⭐ mas o workspace PESSOAL dela continua visível (as despesas dela são dela)', () => {
     const pessoais = itensDoMenu().filter((i) => i.perm === '@sempre')
     expect(pessoais.length).toBeGreaterThan(0)
