@@ -9,9 +9,10 @@ import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { enfileirar } from '../impressao/fila'
 import {
-  montarZpl, calcularValidade, SUGESTAO_DIAS, MODELO_PADRAO,
-  type EstadoConservacao, type DadosEtiqueta, type CampoId,
+  calcularValidade, SUGESTAO_DIAS,
+  type EstadoConservacao, type DadosEtiqueta,
 } from './modelo'
+import { zplDosBlocos, lerBlocos, BLOCOS_PADRAO, type Bloco } from './blocos'
 
 export class EtiquetaError extends Error {}
 
@@ -101,7 +102,8 @@ export interface ImprimirInput {
   /** lote de uma produção existente; sem isso, gera um lote da manipulação */
   lote?: string | null
   origem?: 'PRODUCAO' | 'MANIPULACAO' | 'AVULSA'
-  camposDesligados?: CampoId[]
+  /** modelo a usar; sem isto: o do item → o padrão da empresa → BLOCOS_PADRAO */
+  modeloId?: string | null
   userId?: string | null
   agora?: Date
 }
@@ -134,7 +136,8 @@ export async function imprimirEtiqueta(input: ImprimirInput, db: PrismaClient = 
     empresa: empresa?.tradeName ?? empresa?.name ?? null,
   }
 
-  const zplUnit = montarZpl(dados, MODELO_PADRAO, input.camposDesligados ?? [])
+  const blocos = await blocosDoItem(input.companyId, item.id, input.modeloId ?? null, db)
+  const zplUnit = zplDosBlocos(blocos, dados)
   const job = await enfileirar(
     {
       companyId: input.companyId,
@@ -177,4 +180,29 @@ export async function definirValidade(
     create: { companyId: input.companyId, itemId: input.itemId, estado: input.estado, dias: input.dias, criadoPorId: input.userId ?? null },
     update: { dias: input.dias },
   })
+}
+
+
+// ---------------------------------------------------------------------------
+// QUAL MODELO ESTE ITEM USA — o resolvedor ÚNICO (REGRA 4)
+// ---------------------------------------------------------------------------
+//
+// ⚠️ A cascata é: modelo pedido na chamada → o escolhido PRA ESTE ITEM → o padrão da
+// empresa → os blocos de fábrica. Uma segunda resolução (ex: a tela decidindo por conta
+// própria) faria a prévia usar um modelo e a impressão usar outro — o pior tipo de bug
+// desta tela, porque só aparece com a etiqueta já colada no pacote.
+export async function blocosDoItem(
+  companyId: string, itemId: string, modeloId: string | null, db: PrismaClient = defaultPrisma,
+): Promise<Bloco[]> {
+  if (modeloId) {
+    const m = await db.stockEtiquetaModelo.findFirst({ where: { id: modeloId, companyId } })
+    if (m) return lerBlocos(m.blocos)
+  }
+  const doItem = await db.stockItemEtiquetaModelo.findFirst({ where: { companyId, itemId } })
+  if (doItem) {
+    const m = await db.stockEtiquetaModelo.findFirst({ where: { id: doItem.modeloId, companyId } })
+    if (m) return lerBlocos(m.blocos)
+  }
+  const padrao = await db.stockEtiquetaModelo.findFirst({ where: { companyId, padrao: true } })
+  return padrao ? lerBlocos(padrao.blocos) : BLOCOS_PADRAO
 }

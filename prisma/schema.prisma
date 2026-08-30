@@ -3514,6 +3514,35 @@ model StockEtiqueta {
   @@map("stock_etiqueta")
 }
 
+// ⭐⭐ MODELO DE ETIQUETA EDITÁVEL (30/08) — o dono DESENHA a etiqueta dele.
+// `blocos` é JSON: lista ORDENADA de coisas heterogêneas (campo, texto livre, QR) que só
+// o render entende. Ninguém consulta bloco isolado — tabela relacional só daria junta.
+model StockEtiquetaModelo {
+  id           String   @id @default(cuid())
+  companyId    String
+  nome         String
+  blocos       String // JSON: Bloco[]
+  padrao       Boolean  @default(false)
+  criadoPorId  String?
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  @@index([companyId])
+  @@map("stock_etiqueta_modelo")
+}
+
+// qual modelo cada item usa (sem linha = herda o padrão da empresa)
+model StockItemEtiquetaModelo {
+  id        String   @id @default(cuid())
+  companyId String
+  itemId    String
+  modeloId  String
+  criadoEm  DateTime @default(now())
+
+  @@unique([companyId, itemId])
+  @@map("stock_item_etiqueta_modelo")
+}
+
 // Eventos SEFAZ (Confirmação 210200 | Op não Realizada 210240 | Ciência 210210).
 model StockSefazEvent {
   id           String    @id @default(cuid())

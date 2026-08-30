@@ -2,41 +2,44 @@
 
 // ⭐⭐ A PRÉVIA DA ETIQUETA EM TAMANHO REAL (30/08/2026).
 //
-// ⚠️ ESTE COMPONENTE NÃO DECIDE NADA sobre o layout — ele DESENHA o que
-// `camposParaPrevia` devolve, que é a MESMA função que alimenta o ZPL. Se ele tivesse a
-// própria lista de campos (mesmo "igualzinha"), divergiria na primeira mudança e a prévia
-// passaria a mentir sobre o que sai da Zebra. Um layout, dois renderizadores.
+// ⚠️ ESTE COMPONENTE NÃO DECIDE NADA sobre o layout — ele DESENHA o que `previaDosBlocos`
+// devolve, que é a MESMA função de layout que alimenta o ZPL. Por isso a prévia do EDITOR,
+// a prévia da tela de IMPRIMIR e o que sai da ZEBRA são a mesma coisa nos três lugares.
+// Se ele tivesse a própria lista de campos, divergiria na primeira mudança — e o erro só
+// apareceria com a etiqueta já colada no pacote, dentro da câmara.
 //
-// As posições vêm em % do lado da etiqueta, então a prévia é FIEL em qualquer tamanho —
-// no celular do Cristian ou num monitor.
+// As posições vêm em % do lado (480 dots), então a prévia é fiel em qualquer tamanho de
+// tela: no celular do Cristian ou num monitor.
 
-import { camposParaPrevia, MODELO_PADRAO, type DadosEtiqueta, type CampoId, type CampoLayout } from '@/lib/stock/etiquetas/modelo'
+import { previaDosBlocos, type Bloco } from '@/lib/stock/etiquetas/blocos'
+import type { DadosEtiqueta } from '@/lib/stock/etiquetas/modelo'
 
-export function PreviaEtiqueta({ dados, layout = MODELO_PADRAO, desligados = [], lado = 260 }: {
+export function PreviaEtiqueta({ dados, blocos, lado = 260, semLegenda }: {
   dados: DadosEtiqueta
-  layout?: CampoLayout[]
-  desligados?: CampoId[]
+  blocos: Bloco[]
   /** lado em px na tela (a etiqueta real é 60×60 mm) */
   lado?: number
+  semLegenda?: boolean
 }) {
-  const campos = camposParaPrevia(dados, layout, desligados)
+  const { campos, estourou } = previaDosBlocos(blocos, dados)
+  const px = (pct: number) => (pct / 100) * lado
+
   return (
     <div className="inline-block">
       <div
-        className="relative border border-slate-300 bg-white shadow-sm"
+        className={`relative bg-white shadow-sm ${estourou ? 'border-2 border-rose-400' : 'border border-slate-300'}`}
         style={{ width: lado, height: lado }}
         aria-label="prévia da etiqueta em tamanho real"
       >
         {campos.map((c) => {
-          const px = (pct: number) => (pct / 100) * lado
           if (c.tipo === 'qr') {
-            // ⚠️ o QR real é gerado PELA IMPRESSORA (^BQN) — aqui é só a marca de onde ele
-            // fica e quanto ocupa. Desenhar um QR "de mentira" na prévia sugeriria que o
-            // conteúdo dele foi conferido; ele não foi (quem o gera é a Zebra).
+            // ⚠️ o QR real é gerado PELA IMPRESSORA (^BQN). Aqui é a marca de onde ele fica
+            // e quanto ocupa — desenhar um QR "de mentira" sugeriria que o conteúdo dele
+            // foi conferido na tela, e não foi.
             return (
               <div key={c.id}
                 className="absolute flex items-center justify-center border border-dashed border-slate-400 bg-slate-50 text-[8px] text-slate-400"
-                style={{ left: px(c.esquerda), top: px(c.topo), width: px(c.qrPct), height: px(c.qrPct) }}>
+                style={{ left: px(c.esquerda), top: px(c.topo), width: px(c.alturaPct), height: px(c.alturaPct) }}>
                 QR
               </div>
             )
@@ -48,22 +51,27 @@ export function PreviaEtiqueta({ dados, layout = MODELO_PADRAO, desligados = [],
                 className="absolute flex items-center bg-slate-900 px-1 font-bold text-white"
                 style={{
                   left: px(c.esquerda) - px(1.6), top: px(c.topo) - px(1.4),
-                  height: tamanho * 1.35, fontSize: tamanho, lineHeight: 1,
+                  height: px(c.alturaPct), fontSize: tamanho, lineHeight: 1,
                   width: lado - px(c.esquerda) - px(2.5),
                 }}>
-                {c.texto}
+                <span className="truncate">{c.texto}</span>
               </div>
             )
           }
           return (
-            <div key={c.id} className="absolute whitespace-nowrap font-semibold text-slate-900"
+            <div key={c.id}
+              className={`absolute whitespace-nowrap text-slate-900 ${c.negrito ? 'font-bold' : 'font-medium'}`}
               style={{ left: px(c.esquerda), top: px(c.topo), fontSize: tamanho, lineHeight: 1 }}>
               {c.texto}
             </div>
           )
         })}
       </div>
-      <p className="mt-1 text-center text-[10px] text-slate-400">60 × 60 mm — como sai na Zebra</p>
+      {!semLegenda && (
+        <p className={`mt-1 text-center text-[10px] ${estourou ? 'text-rose-600' : 'text-slate-400'}`}>
+          {estourou ? '⚠️ não cabe em 60 × 60 mm — tire uma linha ou diminua a fonte' : '60 × 60 mm — como sai na Zebra'}
+        </p>
+      )}
     </div>
   )
 }

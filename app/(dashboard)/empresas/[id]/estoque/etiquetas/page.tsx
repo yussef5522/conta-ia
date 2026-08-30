@@ -15,7 +15,10 @@ import { Button } from '@/components/ui/button'
 import { Tag, Loader2, Search, Printer, Check, AlertTriangle, X } from 'lucide-react'
 import { PreviaEtiqueta } from '@/components/estoque/previa-etiqueta'
 import { ESTADOS, calcularValidade, diasAte, type EstadoConservacao } from '@/lib/stock/etiquetas/modelo'
+import { BLOCOS_PADRAO, type Bloco } from '@/lib/stock/etiquetas/blocos'
 import { filtrarPorBusca } from '@/lib/busca-texto'
+
+interface Modelo { id: string; nome: string; padrao: boolean; blocos: Bloco[] }
 
 interface Produto {
   itemId: string; nome: string; categoria: string; unidade: string
@@ -40,9 +43,18 @@ export default function EtiquetasPage({ params }: { params: Promise<{ id: string
   const [enviando, setEnviando] = useState(false)
   const [feito, setFeito] = useState<{ lote: string } | null>(null)
   const [erro, setErro] = useState<string | null>(null)
+  // ⭐ os blocos do modelo VIGENTE — a prévia aqui tem que ser a mesma do editor e a do ZPL
+  const [blocos, setBlocos] = useState<Bloco[]>(BLOCOS_PADRAO)
 
   useEffect(() => {
     fetch(`/api/empresas/${id}/estoque/etiquetas`).then((r) => r.json()).then(setDados).catch(() => setDados(null))
+    fetch(`/api/empresas/${id}/estoque/etiquetas/modelos`)
+      .then((r) => r.json())
+      .then((j: { modelos: Modelo[] }) => {
+        const padrao = (j.modelos ?? []).find((m) => m.padrao) ?? (j.modelos ?? [])[0]
+        if (padrao) setBlocos(padrao.blocos)
+      })
+      .catch(() => {})
   }, [id])
 
   // ⚠️ busca no APP, sobre a mesma lista que a tela mostra (a lição do "PAO DE XIS":
@@ -86,6 +98,10 @@ export default function EtiquetasPage({ params }: { params: Promise<{ id: string
         <Tag className="h-5 w-5 text-[#185FA5]" />
         <h1 className="text-base font-semibold">Etiquetas</h1>
         <p className="hidden lg:block text-xs text-slate-400">escolha o produto, confira e imprima</p>
+        <a href={`/empresas/${id}/estoque/etiquetas/modelo`}
+          className="ml-auto rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50">
+          desenhar o modelo
+        </a>
       </div>
 
       {/* BUSCA GRANDE — é a primeira coisa que a mão encontra no celular */}
@@ -144,6 +160,7 @@ export default function EtiquetasPage({ params }: { params: Promise<{ id: string
                     colaborador: colaborador || null,
                     empresa: null,
                   }}
+                  blocos={blocos}
                   lado={240}
                 />
               </div>
