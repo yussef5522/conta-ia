@@ -242,6 +242,36 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⛔⛔⛔ R$ 12.528 DE ESTOQUE FANTASMA NO OVO — E O INVARIANTE QUE FALTAVA (E16, 29/08/2026)
+
+**O dono pediu três coisas de gestão de itens; a varredura achou dois bugs maiores que o pedido.**
+
+**⛔ ACHADO 1 — o OVO.** O XML das **TRÊS** notas da CIA DA FRUTA diz `12 UN × R$ 18,00 = R$ 216,00`. O ledger tem:
+
+| movimento | qtd | custo unit | total | bate? |
+|---|---|---|---|---|
+| 28/08 | **360** | 18,00 | **6.480,00** | ❌ 30× |
+| 28/08 | **360** | 18,00 | **6.480,00** | ❌ 30× |
+| 29/08 | 12 | 18,00 | 216,00 | ✓ |
+
+A quantidade foi convertida (12 cartelas × 30) e **o custo não acompanhou** — em vez de converter (**valor intacto**), multiplicou o valor por 30. **R$ 12.528,00 de estoque que não existe.** ⚠️ **NÃO corrigido**: investigação read-only, correção é decisão do dono — e é por isso que a resposta ao pedido "reunitizar o ovo com fator 30" foi **não faça ainda**: converter agora transformaria 732 em 21.960 ovos e o fantasma junto.
+
+**⛔ ACHADO 2 — o custo unitário era ARREDONDADO antes de multiplicar.** `round2(vUnCom/fator)` × quantidade: com **6.313 caixas de pizza**, 2,74 no lugar de 2,742145… = **R$ 12,63 a menos** que a nota, numa linha só; o mesmo padrão em 8 notas. **É a regra que o módulo já tinha aprendido DUAS vezes** (conclusão de produção; reunitização do pão, 2,3125): **o ledger guarda precisão cheia, quem arredonda é a leitura.** Corrigido na fonte — agora `qtdRecebida × (vUnCom/fator) == qCom × vUnCom == vProd` **exato**.
+
+**⭐⭐ E16 — O INVARIANTE QUE NÃO EXISTIA:** `Σ(ENTRADA_NF + ESTORNO) da nota == Σ(vProd) dos itens`. **O E2 conta LINHAS; VALOR ninguém olhava** — foi o buraco por onde os 12,5 mil passaram.
+- ⚠️ **Conta o LÍQUIDO, e o ESTORNO tem tipo próprio.** Esquecer isso acusa toda correção legítima: na minha 1ª varredura a reunitização do pão apareceu como *"+1.775,96"* e era o **método do módulo funcionando**. Foi o terceiro rodeio da mesma query até acertar — a lição do E2 ("invariante que conta linha em ledger imutável envelhece mal") vale igual pra quem soma VALOR.
+- ⚠️ **A tolerância é o LIMITE MATEMÁTICO do arredondamento** (`0,005 × Σ|quantidade|`, piso de 5 centavos), não um número escolhido a dedo: meio centavo por unidade é o pior caso do custo a 2 casas. Régua fixa em centavos alarmaria o **0,07 da Cancian** e o **0,09 da Menon** toda noite. **Troca consciente registrada:** os R$ 12,63 da BOX PAPER cabem na folga — quem fecha esse flanco é a **fonte** (precisão cheia), não a régua; e 6.264 em 12 unidades **não escapa** (folga de 1,80).
+- **PROVADO EM PROD:** o juiz nomeou as duas notas da CIA DA FRUTA com o valor e a explicação.
+
+**⭐ 1 — MESCLAR DUPLICADOS (as 2 BOBINAS).** A mesma nota trouxe o produto em duas linhas e **cada uma criou seu item** (0,93 e 0,926 UN). Mesclar: saldo soma, **valor soma AO CENTAVO** (conferido em runtime, não prometido), custo médio ponderado. **Ledger imutável**: estorno no absorvido + movimento igual no sobrevivente **preservando `nfeChave`** → o **E16 continua fechando** (mesclar não vira alarme). Mapas de nota/venda e fichas migram. ⛔ **Unidade diferente NÃO mescla** (somar KG com UN inventa número) — a saída é reunitizar antes.
+**A PREVENÇÃO É NA FONTE:** a conferência criava um item por linha **sem olhar se outra linha da MESMA nota já tinha criado aquele nome** (o `POST /itens` já deduplicava, mas a conferência não passa por ele). Agora um nome vira UM item e as duas linhas viram dois **movimentos** — o saldo soma, que é o certo.
+
+**⭐ 2 — ARQUIVAR / EXCLUIR.** Sem movimento nenhum → **exclui de verdade**; com histórico → **arquiva** (some da Posição e da busca de receita; ledger intacto). ⚠️ **Arquivar não é zerar**: item com saldo ≠ 0 ou em ficha ATIVA exige confirmação, com o valor e o nome da ficha na mensagem (**409 "confirmar", não 500 "erro"**). A Posição passou a filtrar arquivados — e os **checkboxes que já existiam e não faziam nada** ganharam a barra de ações (mesclar 2 · arquivar N), com prévia obrigatória do antes/depois.
+
+**⚠️ DEBATE DE RÉGUA que virou comentário no código:** o saldo do módulo anda em **2 casas** (`saldoItem`), então 0,93 + 0,926 = **1,86**. Eu tinha "melhorado" a prévia pra 1,856 — e isso faria a prévia dizer um número e a Posição outro. **A prévia fala a MESMA língua da tela que ela prevê.** O custo médio derivado desliza 8 centavos por causa do denominador arredondado (71,27 ÷ 1,86 = 38,32): **a garantia é o VALOR**, e ela vale.
+
+**33 testes novos · 533 stock verdes.** ⚠️ Achado no caminho: um arquivo de teste **vazio** que eu tinha criado por engano numa exploração (`nfe-invariants.test.ts`) estava fazendo a suíte do estoque falhar — removido.
+
 ## ⭐⭐⭐ O COMBINADO ≠ A NOTA — RENEGOCIAÇÃO PÓS-NOTA (29/08/2026)
 
 **CASO REAL BOX PAPER (R$ 10.400,66).** A NF-e traz **3 duplicatas** (3.466,88 · 3.466,88 · 3.466,90). O dono falou com o fornecedor: os 3 boletos foram **cancelados** e vieram **4 novos**. **A nota não muda — é da SEFAZ, assinada. O que mudou foi o combinado.** A conferência só sabia COPIAR as duplicatas do XML, então o financeiro ficaria cobrando um acordo que não existe mais.
