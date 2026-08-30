@@ -100,6 +100,55 @@ export async function checkStockInvariants(db: Db, now: Date = new Date()): Prom
     }
   }
 
+  // ⭐⭐ E16 — O QUE ENTROU NO ESTOQUE BATE COM O QUE A NOTA DIZ (29/08/2026).
+  //
+  // ⚠️ ESTE INVARIANTE NÃO EXISTIA, e é o buraco que deixou passar R$ 12.528 de estoque
+  // fantasma. O E2 conta LINHAS (itens conferidos × movimentos); ninguém olhava VALOR.
+  // Caso real: OVO BRANCO, três notas idênticas de "12 UN × R$ 18 = R$ 216". Em duas
+  // delas a quantidade foi convertida à mão pra 360 (12 cartelas × 30 ovos) **e o custo
+  // ficou em 18** — em vez de converter (valor intacto), multiplicou o valor por 30:
+  // 6.480 no lugar de 216, duas vezes.
+  //
+  // A régua: Σ(ENTRADA_NF + ESTORNO) da chave  ==  Σ(vProd) dos itens da nota.
+  // ⚠️ O ESTORNO ENTRA NA CONTA e o tipo dele é 'ESTORNO', não 'ENTRADA_NF' — esquecer
+  // isso acusa toda correção legítima (a reunitização do pão apareceu como "+1.775,96"
+  // na minha primeira varredura, e era o método do módulo funcionando). Mesma lição do
+  // E2: invariante que soma em ledger imutável tem que contar o LÍQUIDO.
+  //
+  // ⚠️ TOLERÂNCIA: 1 centavo por LINHA de movimento (arredondamento honesto de conversão
+  // de fator), com piso de 5 centavos. NÃO é frouxa por conveniência — o custo unitário
+  // passou a ser gravado em precisão cheia justamente pra essa diferença tender a zero.
+  const notasComEntrada = await db.stockMovement.groupBy({
+    by: ['companyId', 'nfeChave'],
+    where: { tipo: { in: ['ENTRADA_NF', 'ESTORNO'] }, nfeChave: { not: null } },
+    _sum: { custoTotal: true },
+    _count: { _all: true },
+  })
+  for (const g of notasComEntrada) {
+    if (!g.nfeChave) continue
+    const nota = await db.stockNfe.findFirst({
+      where: { companyId: g.companyId, chave: g.nfeChave },
+      select: { id: true, emitNome: true },
+    })
+    if (!nota) continue // nota apagada: outro problema, não este
+    const itens = await db.stockNfeItem.aggregate({
+      where: { companyId: g.companyId, nfeId: nota.id }, _sum: { vProd: true }, _count: { _all: true },
+    })
+    const declarado = round2(itens._sum.vProd ?? 0)
+    if (declarado <= 0) continue // nota sem itens parseados (só resumo) — nada a comparar
+    const entrou = round2(g._sum.custoTotal ?? 0)
+    const tolerancia = Math.max(0.05, 0.01 * g._count._all)
+    const dif = round2(entrou - declarado)
+    if (Math.abs(dif) > tolerancia) {
+      F(
+        'E16', g.companyId,
+        `nota ${g.nfeChave.slice(25, 34)} (${nota.emitNome ?? 'fornecedor'}): entrou R$ ${entrou.toFixed(2)} no estoque, ` +
+        `mas a nota declara R$ ${declarado.toFixed(2)} nos itens — diferença de R$ ${Math.abs(dif).toFixed(2)} ` +
+        `${dif > 0 ? 'A MAIS' : 'A MENOS'}. Costuma ser quantidade convertida sem o custo acompanhar (o valor tem que ficar intacto).`,
+      )
+    }
+  }
+
   // E15 — evento SEFAZ pendente/erro há > 24h SEM manifestação registrada.
   // Uma nota que JÁ tem um evento ENVIADO (Ciência 210210 OU Confirmação 210200 — a
   // Confirmação é mais forte e supera a Ciência) está manifestada; tentativas ANTERIORES

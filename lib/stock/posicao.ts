@@ -39,7 +39,7 @@ export async function listPosicao(companyId: string, db: Db = defaultPrisma, ago
   const [saldos, entradas, items] = await Promise.all([
     saldosDaEmpresa(db, companyId),
     db.stockMovement.findMany({ where: { companyId, tipo: 'ENTRADA_NF' }, select: { itemId: true, custoUnitario: true, dataMovimento: true }, orderBy: { dataMovimento: 'asc' } }),
-    db.stockItem.findMany({ where: { companyId }, select: { id: true, nome: true, categoria: true, unidadeControle: true, estoqueMin: true, estoqueMax: true } }),
+    db.stockItem.findMany({ where: { companyId }, select: { id: true, nome: true, categoria: true, unidadeControle: true, estoqueMin: true, estoqueMax: true, ativo: true } }),
   ])
   const byId = new Map(items.map((i) => [i.id, i]))
   // por item: última entrada + tendência (últimos 2 preços de compra)
@@ -76,7 +76,13 @@ export async function listPosicao(companyId: string, db: Db = defaultPrisma, ago
       estoqueMax: it?.estoqueMax ?? null,
       status: statusEstoque(s.saldo, it?.estoqueMin ?? null, it?.estoqueMax ?? null),
     }
-  }).sort((a, b) => b.valor - a.valor)
+  })
+    // ⭐ ITEM ARQUIVADO SAI DA POSIÇÃO (29/08/2026) — pedido do dono: a peça comprada uma
+    // vez (manutenção, equipamento) poluía a lista pra sempre. O saldo e o histórico
+    // continuam no ledger; some só da VISTA. Item que sumiu do cadastro (`ativo` ausente)
+    // continua aparecendo — sumir por ausência de dado esconderia saldo de verdade.
+    .filter((i) => byId.get(i.itemId)?.ativo !== false)
+    .sort((a, b) => b.valor - a.valor)
 
   const catMap = new Map<string, { valor: number; itens: number }>()
   for (const i of itens) {

@@ -8,6 +8,7 @@
 import { useEffect, useMemo, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
+import { AcoesItens } from '@/components/estoque/acoes-itens'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import { TotalsBar, type TotalItem } from '@/components/ui/totals-bar'
 import { SortableTh, useSort } from '@/components/ui/sortable-th'
@@ -61,9 +62,14 @@ export default function PosicaoPage({ params }: { params: Promise<{ id: string }
   const [colapsadas, setColapsadas] = useState<Set<string>>(new Set())
   const [saida, setSaida] = useState<{ id: string; nome: string; unidadeControle: string; custoMedio: number | null } | 'novo' | null>(null)
 
-  useEffect(() => {
+  // ⚠️ REGRA 9: `carregar` fica aqui no topo, junto dos hooks — mesclar/arquivar precisam
+  // recarregar a lista depois de mexer no ledger.
+  const carregar = () =>
     fetch(`/api/empresas/${id}/estoque/posicao`).then((r) => r.json()).then((j) => setData(j.posicao ?? null)).catch(() => setData(null))
-  }, [id])
+
+  useEffect(() => {
+    carregar()
+  }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const filtrados = useMemo(() => {
     if (!data) return []
@@ -173,6 +179,17 @@ export default function PosicaoPage({ params }: { params: Promise<{ id: string }
           ) : (
             <ListaItens itens={filtrados} id={id} onRenomear={renomeado} sort={{ col: ordCol, dir: ordDir, alternar }} sel={sel} setSel={setSel} onSaida={setSaida} />
           )}
+          {/* ⭐ AÇÕES EM MASSA (29/08) — os checkboxes já existiam e não faziam nada:
+              mesclar duplicados (2 selecionados) · arquivar (N). */}
+          <AcoesItens
+            companyId={id}
+            selecionados={(data.itens ?? []).filter((i) => sel.includes(i.itemId)).map((i) => ({
+              itemId: i.itemId, nome: i.nome, saldo: i.saldo, valor: i.valor, unidadeControle: i.unidadeControle,
+            }))}
+            onLimpar={() => setSel(() => [])}
+            onFeito={() => carregar()}
+          />
+
           {/* RÉGUA DE TOTAIS — soma por categoria + total geral (anatomia oficial) */}
           <TotalsBar
             itens={data.porCategoria.map((c): TotalItem => ({

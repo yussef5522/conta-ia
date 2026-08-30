@@ -78,12 +78,33 @@ export async function confirmarConferencia(input: ConfirmInput): Promise<Confirm
 
     // (a) itens novos + mapeamento aprendido
     const itemIdReal = new Map<string, string>() // nfeItemId → stock_item.id
+    // ⭐⭐ PREVENÇÃO DO DUPLICADO (29/08/2026) — o caso das 2 BOBINAS.
+    //
+    // ⚠️ A MESMA nota trouxe o produto em DUAS linhas e cada uma criou seu item: dois
+    // "BOBINA 02 LITROS 21X31CM LINHA LEVE 2.8", 0,93 e 0,926 UN. O `POST /itens` já
+    // deduplicava por nome exato — mas a conferência **não passa por ele**, cria direto.
+    // Agora um nome só vira UM item, mesmo repetido na nota (as duas linhas viram dois
+    // MOVIMENTOS no mesmo item, que é o certo: o saldo soma).
+    const criadosNestaNota = new Map<string, string>() // nome normalizado → itemId
+    const chaveNome = (n: string) => n.trim().toLowerCase().replace(/\s+/g, ' ')
     for (const it of input.itens) {
       let itemId = it.mapeado.itemId
       if (it.mapeado.novo) {
-        const novo = await tx.stockItem.create({ data: { companyId, nome: it.mapeado.nome, unidadeControle: it.mapeado.unidadeControle, categoria: it.mapeado.categoria ?? 'USO_INTERNO', criadoVia: 'CONFERENCIA', criadoPorId: userId } })
-        itemId = novo.id
-        itensCadastrados++
+        const k = chaveNome(it.mapeado.nome)
+        const jaCriado = criadosNestaNota.get(k)
+        // ⚠️ e confere também no CADASTRO: item com o mesmo nome que já existe no catálogo
+        // é reusado em vez de duplicado (o dono pode ter criado antes, por outro caminho).
+        const jaNoCatalogo = jaCriado
+          ? null
+          : await tx.stockItem.findFirst({ where: { companyId, nome: it.mapeado.nome.trim() }, select: { id: true } })
+        if (jaCriado || jaNoCatalogo) {
+          itemId = jaCriado ?? jaNoCatalogo!.id
+        } else {
+          const novo = await tx.stockItem.create({ data: { companyId, nome: it.mapeado.nome, unidadeControle: it.mapeado.unidadeControle, categoria: it.mapeado.categoria ?? 'USO_INTERNO', criadoVia: 'CONFERENCIA', criadoPorId: userId } })
+          itemId = novo.id
+          criadosNestaNota.set(k, novo.id)
+          itensCadastrados++
+        }
       }
       itemIdReal.set(it.nfeItemId, itemId)
       if (cnpj && it.cProd) {
@@ -108,7 +129,18 @@ export async function confirmarConferencia(input: ConfirmInput): Promise<Confirm
     // (c) movimentos ENTRADA_NF (qtd RECEBIDA; custo por unidade de controle = vUnCom/fator)
     let valorEntrada = 0
     for (const it of input.itens) {
-      const custoUnitario = round2(it.vUnCom / (it.mapeado.fatorConversao || 1))
+      // ⚠️⚠️ CUSTO EM PRECISÃO CHEIA — arredondar AQUI perde dinheiro proporcional à
+      // QUANTIDADE (29/08/2026). Caso real: BOX PAPER, 6.313 caixas de pizza. O custo
+      // certo é 17.310,25 / 6.313 = 2,742145…; arredondado pra 2,74 e multiplicado dá
+      // 17.297,62 — **R$ 12,63 a menos** do que a nota diz, num item só. A varredura
+      // achou o mesmo padrão em 8 notas (SPAL, Menon, Dalmolin, Cancian: centavos).
+      //
+      // É a MESMA regra que o módulo já tinha aprendido duas vezes — na conclusão de
+      // produção e na reunitização do pão (2,3125): **o ledger guarda precisão cheia;
+      // quem arredonda é a LEITURA**. E não é só estética: com o fator certo,
+      // qtdRecebida × (vUnCom/fator) == qCom × vUnCom == vProd **exato**, então o que
+      // entra no estoque passa a bater ao centavo com o que a nota declara.
+      const custoUnitario = it.vUnCom / (it.mapeado.fatorConversao || 1)
       const custoTotal = round2(it.qtdRecebida * custoUnitario)
       valorEntrada = round2(valorEntrada + custoTotal)
       await criarMovimento(tx, {
