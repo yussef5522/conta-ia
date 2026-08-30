@@ -5,6 +5,7 @@
 import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { custoMedioPorItem, saldosDaEmpresa } from './saldo'
+import { idsMesclados } from './itens/mesclar'
 
 const CAT_LABEL: Record<string, string> = { MATERIA_PRIMA: 'Matéria-prima', REVENDA: 'Revenda', EMBALAGEM: 'Embalagem', LIMPEZA: 'Limpeza', USO_INTERNO: 'Uso interno', INTERMEDIARIO: 'Intermediário', PRODUTO_FINAL: 'Produto final' }
 
@@ -24,13 +25,18 @@ export interface CatalogoItem {
 }
 
 export async function listCatalogo(companyId: string, db: PrismaClient = defaultPrisma): Promise<CatalogoItem[]> {
-  const [itens, saldos, custoMap] = await Promise.all([
+  const [itens, saldos, custoMap, mesclados] = await Promise.all([
     db.stockItem.findMany({ where: { companyId }, orderBy: [{ ativo: 'desc' }, { nome: 'asc' }], select: { id: true, nome: true, unidadeControle: true, categoria: true, ativo: true, estoqueMin: true, estoqueMax: true, criadoVia: true } }),
     saldosDaEmpresa(db, companyId),
     custoMedioPorItem(db, companyId),
+    // ⭐⭐ ITEM MESCLADO NÃO É ITEM (30/08/2026) — some daqui TAMBÉM com "mostrar
+    // inativos" ligado. Era o único vazamento da varredura: arquivado volta em
+    // "mostrar arquivados"; mesclado virou parte de outro e não volta em lugar nenhum.
+    // A auditoria "absorveu X" vive na ficha do SOBREVIVENTE, que é onde se procura.
+    idsMesclados(companyId, db),
   ])
   const saldoDe = new Map(saldos.map((s) => [s.itemId, s.saldo]))
-  return itens.map((i) => ({
+  return itens.filter((i) => !mesclados.has(i.id)).map((i) => ({
     id: i.id, nome: i.nome, unidadeControle: i.unidadeControle, categoria: i.categoria,
     categoriaLabel: CAT_LABEL[i.categoria] ?? i.categoria,
     produzido: i.categoria === 'INTERMEDIARIO' || i.categoria === 'PRODUTO_FINAL',

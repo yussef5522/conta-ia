@@ -77,10 +77,12 @@ export async function listPosicao(companyId: string, db: Db = defaultPrisma, ago
       status: statusEstoque(s.saldo, it?.estoqueMin ?? null, it?.estoqueMax ?? null),
     }
   })
-    // ⭐ ITEM ARQUIVADO SAI DA POSIÇÃO (29/08/2026) — pedido do dono: a peça comprada uma
-    // vez (manutenção, equipamento) poluía a lista pra sempre. O saldo e o histórico
-    // continuam no ledger; some só da VISTA. Item que sumiu do cadastro (`ativo` ausente)
-    // continua aparecendo — sumir por ausência de dado esconderia saldo de verdade.
+    // ⭐ ITEM ARQUIVADO (e o MESCLADO) SAEM DA POSIÇÃO — pedido do dono: a peça comprada
+    // uma vez poluía a lista pra sempre. O saldo e o histórico continuam no ledger; some
+    // só da VISTA. Item que sumiu do cadastro (`ativo` ausente) continua aparecendo —
+    // sumir por ausência de dado esconderia saldo de verdade.
+    // ⚠️ o mesclado já sai por `ativo=false`; o filtro do Catálogo é que precisava do
+    // registro próprio, porque lá o dono LIGA "mostrar inativos".
     .filter((i) => byId.get(i.itemId)?.ativo !== false)
     .sort((a, b) => b.valor - a.valor)
 

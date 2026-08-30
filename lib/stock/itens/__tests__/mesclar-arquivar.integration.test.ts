@@ -9,6 +9,8 @@ import { criarMovimento } from '../../movement'
 import { previewMesclagem, mesclarItens, MesclarError } from '../mesclar'
 import { situacaoDoItem, arquivarItem, excluirItem, ArquivarError } from '../arquivar'
 import { listPosicao } from '../../posicao'
+import { listCatalogo } from '../../catalogo'
+import { absorvidosPor, idsMesclados } from '../mesclar'
 import { saldoItem } from '../../saldo'
 
 const CNPJ = '53535353000153'
@@ -42,6 +44,7 @@ afterEach(async () => {
   await prisma.stockFichaComponente.deleteMany({ where: { companyId } }).catch(() => {})
   await prisma.stockFichaVersao.deleteMany({ where: { companyId } }).catch(() => {})
   await prisma.stockFicha.deleteMany({ where: { companyId } }).catch(() => {})
+  await prisma.stockItemMesclado.deleteMany({ where: { companyId } }).catch(() => {})
   await prisma.stockItem.deleteMany({ where: { companyId } })
   await prisma.company.deleteMany({ where: { id: companyId } })
 })
@@ -162,5 +165,77 @@ describe('⭐⭐ 2 — arquivar / excluir', () => {
     expect(sit.fichas).toHaveLength(1)
     expect(sit.fichas[0].nome).toBe('XIS')
     expect(sit.avisos.join(' ')).toMatch(/XIS/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// ⭐⭐ O ABSORVIDO DEIXA DE EXISTIR (30/08/2026 — pedido do dono depois de usar)
+// ---------------------------------------------------------------------------
+//
+// "quando o item é DUPLICADO COM MOVIMENTO, o caminho é MESCLAR — e aí o duplicado SOME
+// das listas pra sempre (não é 'arquivar e juntar lixo')".
+//
+// ⚠️ ARQUIVADO ≠ MESCLADO: o arquivado é um item de verdade que saiu de uso e VOLTA em
+// "mostrar arquivados"; o mesclado virou parte de outro e não volta em lugar nenhum.
+// Sem essa distinção os dois seriam o mesmo `ativo=false` — e o Catálogo, que mostra
+// inativos, traria o duplicado de volta.
+describe('⭐⭐ pós-mescla: o absorvido não é mais um item', () => {
+  beforeEach(async () => {
+    await mesclarItens({ companyId, sobreviventeId: bobA, absorvidoId: bobB }, prisma)
+  })
+
+  it('⭐⭐ some do CATÁLOGO — inclusive com "mostrar inativos" (era o único vazamento)', async () => {
+    const cat = await listCatalogo(companyId, prisma)
+    // o catálogo devolve ativos E inativos; a tela é que filtra. Nenhum dos dois traz o mesclado.
+    expect(cat.find((i) => i.id === bobB)).toBeUndefined()
+    expect(cat.find((i) => i.id === bobA)).toBeDefined()
+  })
+
+  it('⭐⭐ some da POSIÇÃO', async () => {
+    const pos = await listPosicao(companyId, prisma)
+    expect(pos.itens.find((i) => i.itemId === bobB)).toBeUndefined()
+  })
+
+  it('⭐ some da BUSCA de ingredientes e dos dropdowns (todos filtram ativo)', async () => {
+    const ativos = await prisma.stockItem.findMany({ where: { companyId, ativo: true }, select: { id: true } })
+    expect(ativos.map((i) => i.id)).not.toContain(bobB)
+  })
+
+  it('⭐⭐ mas o RASTRO responde "onde foi parar?" — na ficha do sobrevivente', async () => {
+    const abs = await absorvidosPor(companyId, bobA, prisma)
+    expect(abs).toHaveLength(1)
+    expect(abs[0].nomeOriginal).toBe('BOBINA 02 LITROS 21X31CM LINHA LEVE 2.8')
+    expect(abs[0].valorNaEpoca).toBe(35.56)
+  })
+
+  it('⭐ o resolvedor único conhece o mesclado (REGRA 4 — uma leitura pra todas as listas)', async () => {
+    const ids = await idsMesclados(companyId, prisma)
+    expect(ids.has(bobB)).toBe(true)
+    expect(ids.has(bobA)).toBe(false)
+  })
+
+  it('⚠️ e o LEDGER não perdeu nada — o extrato ainda mostra as linhas dele', async () => {
+    const movs = await prisma.stockMovement.findMany({ where: { companyId, itemId: bobB } })
+    expect(movs).toHaveLength(2) // a entrada original + o estorno
+    expect(Math.round(movs.reduce((s2, m) => s2 + m.custoTotal, 0) * 100)).toBe(0)
+  })
+
+  it('⛔ mesclar o mesmo item 2× é impossível (o registro é único por item)', async () => {
+    const terceiro = (await criarItem('BOBINA 02 LITROS 21X31CM LINHA LEVE 2.8')).id
+    await entrada(terceiro, 1, 10)
+    await expect(mesclarItens({ companyId, sobreviventeId: terceiro, absorvidoId: bobB }, prisma)).rejects.toThrow()
+  })
+})
+
+describe('⭐ a recusa do EXCLUIR oferece o caminho (não só nega)', () => {
+  it('⭐⭐ item com movimento: a mensagem ensina MESCLAR (duplicado) e ARQUIVAR (parou de comprar)', async () => {
+    await expect(excluirItem({ companyId, itemId: bobA }, prisma)).rejects.toThrow(/MESCLAR/)
+    await expect(excluirItem({ companyId, itemId: bobA }, prisma)).rejects.toThrow(/ARQUIVAR/)
+  })
+
+  it('⭐ e a situação já diz qual caminho a tela deve oferecer', async () => {
+    expect((await situacaoDoItem(companyId, bobA, prisma)).caminho).toBe('MESCLAR_OU_ARQUIVAR')
+    const limpo = (await criarItem('NUNCA USADO')).id
+    expect((await situacaoDoItem(companyId, limpo, prisma)).caminho).toBe('EXCLUIR')
   })
 })

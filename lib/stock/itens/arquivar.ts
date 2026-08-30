@@ -31,6 +31,8 @@ export interface SituacaoItem {
   valor: number
   /** dá pra EXCLUIR de verdade? (nunca teve movimento e ninguém aponta pra ele) */
   podeExcluir: boolean
+  /** o que a tela deve OFERECER: excluir de vez, ou a bifurcação mesclar/arquivar */
+  caminho: 'EXCLUIR' | 'MESCLAR_OU_ARQUIVAR'
   /** onde o item está sendo usado — o dono precisa saber ANTES */
   fichas: { fichaId: string; nome: string; ativa: boolean }[]
   mapasDeNota: number
@@ -80,9 +82,13 @@ export async function situacaoDoItem(
     avisos.push(`O item tem saldo de ${s.saldo} (${brl(s.valor)}) — arquivar tira ele da Posição, mas o estoque continua existindo.`)
   }
 
+  const podeExcluir = movimentos === 0 && comps.length === 0 && mapasDeNota === 0 && mapasDeVenda === 0
   return {
     itemId, nome: item.nome, movimentos, saldo: s.saldo, valor: s.valor,
-    podeExcluir: movimentos === 0 && comps.length === 0 && mapasDeNota === 0 && mapasDeVenda === 0,
+    podeExcluir,
+    // ⭐ o caminho que a TELA deve oferecer — decidido aqui, uma vez (REGRA 4), pra o
+    // botão e a mensagem de erro nunca dizerem coisas diferentes.
+    caminho: podeExcluir ? ('EXCLUIR' as const) : ('MESCLAR_OU_ARQUIVAR' as const),
     fichas, mapasDeNota, mapasDeVenda, avisos,
   }
 }
@@ -118,9 +124,17 @@ export async function excluirItem(
       sit.mapasDeNota ? `${sit.mapasDeNota} mapeamento(s) de nota` : null,
       sit.mapasDeVenda ? `${sit.mapasDeVenda} mapeamento(s) de venda` : null,
     ].filter(Boolean).join(' · ')
+    // ⭐ A MENSAGEM OFERECE O CAMINHO, não só recusa (30/08/2026, pedido do dono).
+    //
+    // ⚠️ "Não pode excluir" sem saída deixa o dono preso com a lista suja — e ele tinha
+    // razão: pra DUPLICADO o caminho certo nem é excluir, é MESCLAR (aí o item some das
+    // listas de verdade, sem perder o ledger). A recusa vira bifurcação: duplicado →
+    // mesclar; acabou o uso → arquivar.
     throw new ArquivarError(
-      `"${sit.nome}" não pode ser excluído porque tem histórico (${motivos}). ` +
-        `Use ARQUIVAR: ele some das listas e o histórico fica — apagar reescreveria o passado.`,
+      `"${sit.nome}" tem histórico (${motivos}), então apagar reescreveria o passado. ` +
+        `Dois caminhos: se for DUPLICADO de outro item, use MESCLAR — o duplicado some das listas pra sempre ` +
+        `e o saldo vai pro que fica. Se é um item de verdade que você não compra mais, use ARQUIVAR — ` +
+        `some da Posição e do catálogo, e o histórico fica.`,
     )
   }
   await db.stockItem.delete({ where: { id: input.itemId } })

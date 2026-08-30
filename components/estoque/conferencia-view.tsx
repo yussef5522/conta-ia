@@ -8,6 +8,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useEscape } from '@/lib/hooks/use-dismissivel'
 import { Check, Search, Camera, AlertTriangle, FlaskConical, Store, X, ChevronRight, Eye, Loader2, PackageCheck, Keyboard, Receipt } from 'lucide-react'
 import { sugerirFator, placeholderFator } from '@/lib/stock/unidade-fator'
+import { interpretarAjusteQtd } from '@/lib/stock/ajuste-quantidade'
 import { ItensManuaisEditor } from './itens-manuais-editor'
 import { EditorParcelas, type ParcelaEditavel } from './editor-parcelas'
 
@@ -263,6 +264,10 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
                     <tr className="border-b border-slate-50 bg-amber-50/60">
                       <td colSpan={6} className="px-3 py-2">
                         <div className="flex flex-wrap items-center gap-2">
+                          <PerguntaAjusteQtd
+                            ajuste={interpretarAjusteQtd({ qtdNota: it.qCom, qtdRecebida: e!.qtdRecebida, vUnCom: it.vUnCom, fatorAtual: e!.mapeado?.fatorConversao ?? 1 })}
+                            onConversao={(f) => setItem(it.nfeItemId, { mapeado: { ...e!.mapeado!, fatorConversao: f }, motivo: null })}
+                          />
                           <span className="flex items-center gap-1 text-[11px] font-semibold text-amber-800"><AlertTriangle className="h-3.5 w-3.5" /> Veio diferente da nota — por quê?</span>
                           {MOTIVOS.map((m) => <button key={m} onClick={() => setItem(it.nfeItemId, { motivo: m })} className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium ${e!.motivo === m ? 'bg-amber-600 text-white' : 'border border-amber-300 bg-white text-amber-700'}`}>{m}</button>)}
                           <label className="inline-flex cursor-pointer items-center gap-1 rounded-full border border-amber-300 bg-white px-2.5 py-0.5 text-[11px] font-medium text-amber-700">
@@ -327,6 +332,11 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
                     </div>
                     {diverge && (
                       <div className="mt-3 space-y-2 rounded-lg bg-amber-50 p-3">
+                        {/* ⭐ a mesma pergunta no CELULAR — é onde o dono confere de verdade */}
+                        <PerguntaAjusteQtd
+                          ajuste={interpretarAjusteQtd({ qtdNota: it.qCom, qtdRecebida: e.qtdRecebida, vUnCom: it.vUnCom, fatorAtual: e.mapeado?.fatorConversao ?? 1 })}
+                          onConversao={(f) => setItem(it.nfeItemId, { mapeado: { ...e.mapeado!, fatorConversao: f }, motivo: null })}
+                        />
                         <p className="flex items-center gap-1 text-xs font-semibold text-amber-800"><AlertTriangle className="h-3.5 w-3.5" /> Veio diferente da nota — por quê?</p>
                         <div className="flex flex-wrap gap-1.5">
                           {MOTIVOS.map((m) => <button key={m} onClick={() => setItem(it.nfeItemId, { motivo: m })} className={`rounded-full px-3 py-1 text-xs font-medium ${e.motivo === m ? 'bg-amber-600 text-white' : 'border border-amber-300 bg-white text-amber-700'}`}>{m}</button>)}
@@ -629,6 +639,47 @@ function Recibo({ recibo, companyId }: { recibo: any; companyId?: string }) {
           <a href={`/empresas/${companyId}/estoque/recebimentos`} className="flex-1 rounded-xl border border-slate-300 py-3 text-center text-sm font-medium text-slate-700">Voltar pra fila</a>
         </div>
       )}
+    </div>
+  )
+}
+
+/** ⭐⭐ AS DUAS LEITURAS DE UM AJUSTE DE QUANTIDADE (30/08/2026) — o caso do OVO.
+ *
+ * O dono mudou 12 → 360 (12 cartelas × 30 ovos) e o sistema manteve o custo por CARTELA
+ * em cada OVO: R$ 6.480 no lugar de R$ 216, em duas notas. As duas leituras são legítimas
+ * e só ele sabe qual é — então o sistema mostra o NÚMERO das duas e pergunta.
+ *
+ * ⚠️ Escolher CONVERSÃO zera a divergência de propósito: não é mercadoria a mais, é a
+ * mesma mercadoria noutra régua. O motivo só é cobrado na outra leitura. */
+function PerguntaAjusteQtd({ ajuste, onConversao }: {
+  ajuste: ReturnType<typeof interpretarAjusteQtd>
+  onConversao: (fator: number) => void
+}) {
+  if (!ajuste.conversao) return null
+  return (
+    <div className="w-full rounded-lg border border-sky-300 bg-sky-50 p-2">
+      <p className="text-[11px] font-semibold text-sky-900">
+        Mudando {Number(ajuste.qtdNota.toFixed(3))} → {Number(ajuste.qtdRecebida.toFixed(3))}: o que aconteceu?
+      </p>
+      <div className="mt-1.5 grid gap-1.5 sm:grid-cols-2">
+        <button
+          onClick={() => onConversao(ajuste.conversao!.fatorConversao)}
+          className="rounded-md border border-sky-300 bg-white p-2 text-left hover:bg-sky-100"
+        >
+          <span className="block text-[11px] font-semibold text-sky-900">É a mesma mercadoria em outra unidade</span>
+          <span className="block text-[11px] text-sky-700 tabular-nums">
+            valor fica {brl(ajuste.conversao.valorTotal)} · custo {brl(ajuste.conversao.custoUnitario)}/un
+          </span>
+          <span className="block text-[10px] text-sky-600">o valor da nota não muda — ex: 1 cartela = 30 ovos</span>
+        </button>
+        <div className="rounded-md border border-slate-200 bg-white p-2">
+          <span className="block text-[11px] font-semibold text-slate-700">Recebi uma quantidade diferente</span>
+          <span className="block text-[11px] text-slate-600 tabular-nums">
+            valor vai pra {brl(ajuste.quantidadeReal.valorTotal)} · custo {brl(ajuste.quantidadeReal.custoUnitario)}/un
+          </span>
+          <span className="block text-[10px] text-slate-500">é o que está selecionado — diga o motivo abaixo</span>
+        </div>
+      </div>
     </div>
   )
 }

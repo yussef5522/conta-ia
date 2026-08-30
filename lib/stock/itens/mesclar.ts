@@ -16,10 +16,12 @@
 // ⚠️ UNIDADE DIFERENTE NÃO MESCLA: somar 5 KG com 3 UN é inventar número. A saída é
 // reunitizar um dos dois primeiro, e a mensagem diz isso.
 
-import type { PrismaClient } from '@prisma/client'
+import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { criarMovimento, estornarMovimento } from '../movement'
 import { saldoItem, recomputeSaldoCache } from '../saldo'
+
+type Db = PrismaClient | Prisma.TransactionClient
 
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -175,10 +177,25 @@ export async function mesclarItens(
     })
 
     // ⚠️ o absorvido NÃO é apagado: os movimentos dele (agora zerados pelos estornos) são
-    // o rastro da mescla, e o ledger não perde linha. Ele sai das listas por ARQUIVAMENTO.
+    // o rastro da mescla, e o ledger não perde linha.
+    //
+    // ⭐⭐ MAS ELE DEIXA DE SER UM ITEM (30/08/2026, pedido do dono). ARQUIVADO ≠ MESCLADO:
+    // o arquivado é um item de verdade que saiu de uso e volta em "mostrar arquivados"; o
+    // mesclado **virou parte de outro** e some de toda lista, busca e dropdown. Sem o
+    // registro abaixo os dois seriam o mesmo `ativo=false`, e o absorvido reapareceria no
+    // Catálogo com "mostrar inativos" ligado — que é exatamente o "juntar lixo" que o dono
+    // não quer.
     await tx.stockItem.update({
       where: { id: absorvidoId },
       data: { ativo: false, nome: `${previa.absorvido.nome} (mesclado)` },
+    })
+    await tx.stockItemMesclado.create({
+      data: {
+        companyId, itemId: absorvidoId, mescladoEmId: sobreviventeId,
+        nomeOriginal: previa.absorvido.nome,
+        saldoNaEpoca: previa.absorvido.saldo, valorNaEpoca: previa.absorvido.valor,
+        criadoPorId: input.userId ?? null,
+      },
     })
 
     void mapasMigrados; void vendas; void fichas
@@ -204,4 +221,32 @@ export async function mesclarItens(
     antes,
     depois: { saldo: depoisS.saldo, valor: depoisS.valor, custoMedio: depoisS.custoMedio },
   }
+}
+
+
+// ---------------------------------------------------------------------------
+// QUEM SUMIU POR MESCLA — o resolvedor ÚNICO (REGRA 4)
+// ---------------------------------------------------------------------------
+//
+// ⚠️ Toda lista/busca/dropdown de item chama ESTE helper pra excluir os mesclados. Uma
+// segunda leitura ("filtra ativo=false") confundiria arquivado com mesclado e o duplicado
+// voltaria a aparecer em algum canto — que é justamente o que o dono pediu pra nunca
+// acontecer.
+export async function idsMesclados(companyId: string, db: Db = defaultPrisma): Promise<Set<string>> {
+  const rows = await db.stockItemMesclado.findMany({ where: { companyId }, select: { itemId: true } })
+  return new Set(rows.map((r) => r.itemId))
+}
+
+/** "este item absorveu quais?" — a auditoria fica na ficha do SOBREVIVENTE, que é onde
+ *  alguém procura por ela ("cadê a outra bobina?"). */
+export async function absorvidosPor(
+  companyId: string, itemId: string, db: Db = defaultPrisma,
+): Promise<Array<{ nomeOriginal: string; saldoNaEpoca: number; valorNaEpoca: number; quando: string }>> {
+  const rows = await db.stockItemMesclado.findMany({
+    where: { companyId, mescladoEmId: itemId }, orderBy: { criadoEm: 'asc' },
+  })
+  return rows.map((r) => ({
+    nomeOriginal: r.nomeOriginal, saldoNaEpoca: r.saldoNaEpoca, valorNaEpoca: r.valorNaEpoca,
+    quando: r.criadoEm.toISOString(),
+  }))
 }
