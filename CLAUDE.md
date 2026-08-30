@@ -242,6 +242,28 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⭐⭐⭐ EDITOR DE MODELO DE ETIQUETA — O DONO DESENHA (30/08/2026)
+
+**VEREDITO DO ESTUDO, registrado:** o **conteúdo** nosso já era **≥ SuFlex** — lote com **custo real** e QR com **rastro até a nota da SEFAZ**, que eles não têm. **A flexibilidade do modelo era o gap** — e morre aqui. Eles deixam **configurar** (ligar/desligar campo); aqui o dono **DESENHA**: renomeia rótulo (`FAB` → `FABRICAÇÃO`), reordena, muda fonte, põe negrito/destaque, adiciona **linha de texto livre** ("Mantenha congelado", CNPJ, telefone) e cria **vários modelos**, com escolha por item.
+
+**⚠️ TROQUEI COORDENADA FIXA POR FLUXO DE BLOCOS, e a razão é estrutural:** "arrastar pra reordenar" e "adicionar linha" são **impossíveis** com x/y cravados — mover um campo exigiria recalcular o y de todos os outros na mão, e uma linha nova empurraria tudo. **Com fluxo, a ORDEM DA LISTA É O LAYOUT**: o dono arrasta, o sistema calcula.
+
+**⭐ E A FONTE CONTINUA ÚNICA:** `blocosParaLayout` vira posições, e **ZPL e prévia consomem essa saída**. **Prévia do editor == prévia da tela de imprimir == o que sai da Zebra**, nos três lugares, porque os três chamam a mesma função. Testes travam: **reordenar muda os dois na mesma medida**; **desligar tira dos dois**.
+
+**⚠️ AVISA QUANDO NÃO CABE:** com texto livre o dono vai estourar os 480 dots. A prévia ganha borda vermelha e diz o que fazer — **cortar em silêncio seria descobrir só com a etiqueta na mão**.
+
+**⚠️ O MÍNIMO SANITÁRIO AVISA E NÃO TRAVA** (a regra de sempre): desligar a VALIDADE diz *"não atende a Vigilância Sanitária"* e **salva assim mesmo**. **Travar empurraria o dono a escrever a validade à mão numa fita crepe — que é pior, porque sai do sistema.** Sem lote **e** sem QR avisa de rastro; **com QR só, não avisa** (o QR carrega o lote).
+
+**⚠️ SETINHAS ↑↓ EM VEZ DE ARRASTAR:** no celular — onde o dono vai mexer — arrastar dentro de lista que rola **briga com o scroll** e vira frustração. Mesma função, no dedo frio, sem biblioteca.
+
+**⚠️ E LÊ O JSON DO BANCO COM DESCONFIANÇA:** bloco inválido é **descartado** e o resto imprime — melhor etiqueta sem uma linha que produto sem etiqueta.
+
+**⭐ DETALHE DE ZPL que virou teste:** "negrito" **não é uma flag** — é o texto impresso **2× com 1 dot de deslocamento** (o truque padrão da Zebra pra fonte escalável).
+
+**PROVADO EM PROD** com um modelo customizado (texto livre no topo, `MANIP.` no lugar de `FAB`, quantidade desligada, nome maior): os 9 blocos viraram 10, **todo texto da prévia está no ZPL**, cabe na etiqueta, e a tela de imprimir passou a usar o modelo salvo. ⚠️ O modelo da prova foi **removido** depois — o dono cria o dele do zero (REGRA 2).
+
+**32 testes do modelo · 628 stock verdes.**
+
 ## ⭐⭐⭐ A TORNEIRA — TELA DE ETIQUETAS COM PRÉVIA EM TAMANHO REAL (30/08/2026)
 
 A fila e o agente eram o **cano**. `/estoque/etiquetas` é a **torneira**: **3 toques** — produto → confere a prévia → imprimir. É a tela que o Cristian abre no celular.
