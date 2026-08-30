@@ -62,12 +62,33 @@ export default async function DashboardPage({ searchParams }: PageProps) {
   const user = await verifyToken(token)
   const sp = await searchParams
 
-  const userCompanies = await prisma.userCompany.findMany({
-    where: { userId: user.sub },
-    include: { company: true },
-    orderBy: { createdAt: 'asc' },
-  })
-  const empresas = userCompanies.map((uc) => uc.company)
+  // ⭐⭐ AS DUAS PORTAS DE VÍNCULO (30/08/2026) — mesma correção de `/api/empresas`.
+  // Esta página lia só `UserCompany` (o modelo ANTIGO), e o convite grava
+  // `UserCompanyRole` (RBAC): a convidada caía no empty state "você não está em nenhuma
+  // empresa" mesmo sendo membro de verdade.
+  const [porLegado, porPapel] = await Promise.all([
+    prisma.userCompany.findMany({ where: { userId: user.sub }, include: { company: true }, orderBy: { createdAt: 'asc' } }),
+    prisma.userCompanyRole.findMany({
+      where: { userId: user.sub },
+      include: { company: true, role: { include: { permissions: { include: { permission: true } } } } },
+      orderBy: { createdAt: 'asc' },
+    }),
+  ])
+  const porId = new Map<string, (typeof porLegado)[number]['company']>()
+  for (const uc of porLegado) porId.set(uc.company.id, uc.company)
+  for (const ucr of porPapel) porId.set(ucr.company.id, ucr.company)
+  const empresas = [...porId.values()]
+
+  // ⭐⭐ QUEM SÓ OPERA ESTOQUE NÃO PASSA PELO DASHBOARD (pedido do dono, 30/08).
+  //
+  // ⚠️ O dashboard mostra FATURAMENTO. Pra uma operadora de estoque ele não é só inútil —
+  // é o número que ela não deveria ver, na primeira tela do login. Enquanto não existir um
+  // "dashboard do estoque", o login dela cai direto na Posição.
+  const chaves = new Set(porPapel.flatMap((p) => p.role.permissions.map((rp) => rp.permission.key)))
+  const soEstoque = !chaves.has('transaction.view') && !chaves.has('*') && chaves.has('stock.view')
+  if (soEstoque && empresas.length > 0) {
+    redirect(`/empresas/${porPapel[0].companyId}/estoque/posicao`)
+  }
 
   // ====== Empty state — sem empresas ======
   if (empresas.length === 0) {

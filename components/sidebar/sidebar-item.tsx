@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import type { LucideIcon } from 'lucide-react'
+import { usePermissaoMenu } from './permissoes-menu'
 
 interface SidebarItemProps {
   icon: LucideIcon
@@ -13,6 +14,16 @@ interface SidebarItemProps {
   badgeTone?: 'red' | 'amber' | 'neutral'
   isComingSoon?: boolean
   onClick?: () => void
+  /**
+   * ⭐⭐ A PERMISSÃO QUE ESTE ITEM EXIGE (30/08/2026) — obrigatória.
+   *
+   * ⚠️ DEFAULT É ESCONDER. A 1ª tentativa filtrou por BLOCKLIST (escondi os itens que eu
+   * lembrei) e o resultado foi o esperado de toda blocklist: **Dashboard com faturamento,
+   * Tributário, Cadastros, Auditoria e Usuários continuaram visíveis** pra uma operadora
+   * de estoque. Agora o item só aparece se o papel tem a chave — e **item novo sem `perm`
+   * some pra quem não é dono**, em vez de vazar por esquecimento.
+   */
+  perm: string
 }
 
 export function SidebarItem({
@@ -24,7 +35,12 @@ export function SidebarItem({
   badgeTone = 'neutral',
   isComingSoon,
   onClick,
+  perm,
 }: SidebarItemProps) {
+  // ⚠️ o hook vem ANTES de qualquer return (REGRA 9) — este componente tem 2 saídas
+  const permitido = usePermissaoMenu(perm)
+  if (!permitido) return null
+
   const baseClasses = 'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors'
 
   if (isComingSoon) {
