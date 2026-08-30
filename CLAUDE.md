@@ -242,6 +242,28 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⭐⭐ AJUSTE DE QUANTIDADE PERGUNTA · MESCLADO ≠ ARQUIVADO (30/08/2026)
+
+**A ORIGEM DO FANTASMA DO OVO ERA AJUSTE MANUAL, e o dono contou:** *"fui eu: ajustei manual a quantidade pra 360 (12 cartelas × 30 ovos, a conta certa) — e o sistema manteve o custo POR CARTELA (18,00) em cada OVO"*.
+
+**⚠️ A RAIZ É MAIS SUTIL QUE "FALTOU PERGUNTAR", e essa é a lição:** o campo de FATOR de conversão só aparecia quando `uCom` ≠ unidade de controle. No ovo as duas são **"UN"** — cartela UN e ovo UN — então **o caminho certo estava INVISÍVEL** e só sobrou o campo de quantidade. Por isso o gatilho novo é a **RAZÃO entre as quantidades**, não a diferença de unidade.
+
+**O FIX DA CLASSE** (`lib/stock/ajuste-quantidade.ts`, puro, 12 testes): mudou a quantidade → a tela mostra **as DUAS leituras com o número feito**, e pergunta:
+- **(a) mesma mercadoria em outra unidade** → valor **INTACTO** (216,00), custo vira **0,60**
+- **(b) recebi quantidade diferente** → valor **MUDA** (6.480,00), custo fica 18,00
+
+⭐ Escolher **(a) ZERA a divergência** de propósito — não é mercadoria a mais, é outra régua; o motivo só é cobrado em (b). E **ensina o fator pro mapa**: a próxima nota do fornecedor já entra convertida. Custo em **precisão cheia** (o pão dá 2,3125, que não cabe em 2 casas). Desktop **e celular**, que é onde ele confere.
+
+**⛔ CIRURGIA FEITA (autorizada, `pg_dump pre-cirurgia-ovo-20260830-003415`):** as 2 entradas de `360 × 18` estornadas e relançadas como `12 × 18` — **estorno + novo, nunca UPDATE**. Prod: **732 UN / R$ 13.176,00 → 36 UN / R$ 648,00**, saiu **R$ 12.528,00** de fantasma, e o **E16 foi de 2 achados pra 0**. ⚠️ A cirurgia **NÃO converte pra ovo** — isso o dono faz pela ficha (fator 30) com o custo certo por baixo; misturar "consertar o erro" com "mudar a régua" no mesmo gesto esconderia qual das duas falhou.
+
+**⭐⭐ MESCLADO ≠ ARQUIVADO** (`stock_item_mesclado`, CREATE-only, UNIQUE por item + CHECK anti auto-mescla). O dono: *"o duplicado SOME das listas pra sempre — não é 'arquivar e juntar lixo'"*. **Ele tem razão e são estados diferentes:** o **arquivado** é um item de verdade que saiu de uso e **volta** em "mostrar arquivados"; o **mesclado virou parte de outro** e não volta em lugar nenhum.
+
+⚠️ **A varredura achou o vazamento ANTES de ele mesclar:** com os dois estados sendo o mesmo `ativo=false`, o **Catálogo** (que mostra inativos) traria o absorvido de volta como item normal. `idsMesclados` é o **resolvedor único** que as listas consultam (REGRA 4). A auditoria *"absorveu X"* fica na ficha do **SOBREVIVENTE** — é onde alguém procura ("cadê a outra bobina?"). O **extrato de Movimentos continua mostrando** as linhas do absorvido, e isso é o certo: é o rastro contábil.
+
+**E A RECUSA DO EXCLUIR VIROU BIFURCAÇÃO:** *"tem histórico; se é DUPLICADO use MESCLAR (some das listas); se não se compra mais, ARQUIVAR"* — em vez de só negar e deixar o dono preso com a lista suja.
+
+**555 stock verdes.** PENDENTE (REGRA 2): o dono mesclar as 2 BOBINAs na tela e confirmar que o absorvido sumiu; depois converter o ovo pela ficha.
+
 ## ⛔⛔⛔ R$ 12.528 DE ESTOQUE FANTASMA NO OVO — E O INVARIANTE QUE FALTAVA (E16, 29/08/2026)
 
 **O dono pediu três coisas de gestão de itens; a varredura achou dois bugs maiores que o pedido.**
