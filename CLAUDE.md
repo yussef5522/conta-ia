@@ -242,6 +242,35 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⛔⛔⛔ DÍVIDA MORA NUM LUGAR SÓ — E A VARREDURA DE ÓRFÃOS ACHOU R$ 21.968,02 PARADOS (30/08/2026)
+
+**O PEDIDO ERA UMA LIMPEZA DE TELA; O ITEM 5 DELE ACHOU DINHEIRO.** O dono mandou tirar a duplicata (*"depois da ponte, os boletos vão direto pro Contas a Pagar — a tela do estoque virou DUPLICATA"*) **e** exigiu: *"confere órfãos ANTES de remover: não pode sumir dívida no apagar da tela"*. A varredura:
+
+| | qtd | valor |
+|---|---|---|
+| fila de envio (sugestão sem link) | **8** | **R$ 21.968,02** |
+| já enviadas (tem link) | 37 | 67.073,19 |
+| **órfão** (link sem conta no financeiro) | **0** | — |
+| **duplicada** (na fila E enviada) | **0** | — |
+
+**Zero órfão e zero duplicata — mas os 8 da fila são exatamente o lote que este doc registrou como ENVIADO em 24/08.** Conferido conta a conta no financeiro: **não estão lá** (a única linha de 230,81 é de OUTRA nota do Cancian, enviada em 29/08). **A dívida não estava em dois lugares; estava em NENHUM.** E vencendo: **R$ 6.237,26 já vencidos** (Frigorífico 27/08, Cancian 29/08) e **R$ 2.537,29 vencendo no dia** (Dalmolin).
+
+**⛔⛔ E O JUIZ AVISAVA — 5 achados F3, com a frase certa** (*"conferido há mais de 7 dias e ainda NÃO foi pro contas a pagar — vence sem aparecer no fluxo de caixa"*). **O alarme funcionou; o canal não.** É a lição que fecha a série dos alarmes: **e-mail noturno não é lugar de dívida vencendo — o dono lê TELA.** Por isso o card não é conveniência: é o canal que faltava.
+
+⚠️ **E é por isso que a ordem do dono estava certa:** apagar a tela primeiro teria tornado esses R$ 21.968,02 invisíveis — o F3 seguiria gritando no vazio.
+
+**O QUE FICOU:**
+- **A sidebar perdeu "Boletos p/ pagar".** A rota continua viva — é pra onde o card leva. Guard novo (red-then-green provado): **item de menu apontando pra `/estoque/contas-a-pagar` quebra o teste**. Item de menu é o que faz uma tela voltar a ser destino.
+- **A FILA DE ENVIO virou CARD em Recebimentos** — *"N boletos aguardando envio ao financeiro · R$ X"*, **vermelho com a contagem de vencidos/vence-hoje**, e **some sozinho quando a fila esvazia** (zero boletos = zero tela). Leva pro mesmo fluxo de envio de sempre (checkbox por parcela).
+- **⭐ A RÉGUA DO CARD É FUNÇÃO PURA** (`lib/stock/ponte/fila-envio.ts`), não lógica dentro do componente — a lição do prefill do cardápio: *regra que mora num `useState` é regra que ninguém prova* (o projeto roda em `environment: node`, sem jsdom). Ela roda contra **os 8 boletos reais**, com o total ao centavo. ⚠️ **`hoje` é PARÂMETRO**: o relógio só rotula a tela, nunca decide — e a comparação é DIA×DIA em UTC, senão o boleto de hoje viraria "vencido" dependendo da hora em que o dono abre.
+- ⚠️ **Sem vencimento NÃO é urgente** — entra no total, fica fora do vermelho. Inventar urgência a partir de ausência é como se treina o dono a ignorar alarme (a lição dos 111 falsos).
+- **A OPERADORA NÃO VÊ O CARD** (`stock.manage` — a fronteira de papel de sempre). ⚠️ E aqui, **diferente da sidebar**, ele espera as permissões carregarem: menu que some item na cara de quem já está lendo é pior que menu que demora; **card que aparece e some parece defeito**.
+- **⛔ O BLOCO "JÁ NO CONTAS A PAGAR" SAIU — e o payload `enviadas` saiu junto.** Era uma SEGUNDA lista do mesmo dinheiro. **Deixar o dado na rota manteria a segunda fonte esperando alguém desenhar a tela de novo.**
+- **⭐ RENEGOCIAR NÃO MORREU — MUDOU DE CASA.** Listar dívida é uma coisa; mexer no combinado do DOCUMENTO é outra. Agora abre da própria NOTA: **Recebimentos → Recebidas → "Ajustar parcelas (renegociou?)"**, por um componente único (`AjustarParcelasDaNota`) que carrega XML + combinado + quantas contas serão canceladas sozinho — qualquer tela com uma nota na mão oferece o gesto sem repetir o fetch (REGRA 4).
+- **⭐ E A SETA DE VOLTA: "ver nota de origem" no Contas a Pagar do financeiro** (`lib/stock/ponte/nota-de-origem.ts`). Chip `NF 2407777 ↗` na linha → abre o **RECIBO** se a nota já foi conferida, a **fila** se não. ⚠️ **A função mora no módulo de ESTOQUE**: quem conhece `stock_payable_link`/`stock_receipt_conference` é ele; a rota do financeiro recebe `{ transactionId → href }` pronto e não aprende o esquema do estoque. **É leitura pura** — a exceção desenhada ao isolamento (estoque escrevendo em `transactions`/`suppliers`) continua sendo só a ponte de criação. **Fail-soft**: estoque fora do ar = lista sem link, nunca lista sem abrir.
+
+**14 testes novos · 642 stock verdes · TS 0.** ⚠️ **PENDENTE E URGENTE (é do dono):** os 8 boletos continuam parados — **enviar é gesto dele** (`stock.manage`), e 2 já venceram. O card agora mostra isso toda vez que ele abre Recebimentos.
+
 ## ⭐⭐⭐ REGRA DE PRODUTO — ASSINATURA É POR EMPRESA; CONVIDADO HERDA; FUNCIONÁRIO NUNCA PAGA (30/08/2026)
 
 **Vale pra CADA cliente que entrar daqui pra frente:**
