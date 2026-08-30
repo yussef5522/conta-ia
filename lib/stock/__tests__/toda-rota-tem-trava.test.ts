@@ -106,6 +106,23 @@ describe('⭐ rotas de estoque FORA do caminho padrão são exceção nomeada', 
     expect((src.match(/status: 401/g) ?? []).length).toBeGreaterThanOrEqual(2)
   })
 
+  it('⭐⭐ está no PUBLIC_API do proxy — senão o gate de sessão a mata antes de chegar', () => {
+    // ⚠️ ACHADO NA PROVA EM PROD: sem isto o proxy devolvia "Sessão expirada" (401) antes
+    // de a rota rodar, e o agente NUNCA conseguiria puxar trabalho. O 401 do proxy é
+    // idêntico ao 401 de token errado — dava pra passar semanas achando que era o token.
+    const proxy = readFileSync(join(process.cwd(), 'proxy.ts'), 'utf-8')
+    expect(proxy).toMatch(/'\/api\/estoque\/agente-impressao'/)
+  })
+
+  it('⛔⛔ e por estar no PUBLIC_API, ela É obrigada a validar o token', () => {
+    // a dupla dependência: pública no proxy + sem validação própria = rota ABERTA.
+    const proxy = readFileSync(join(process.cwd(), 'proxy.ts'), 'utf-8')
+    const src = readFileSync(join(RAIZ_FORA, 'agente-impressao', 'route.ts'), 'utf-8')
+    const ehPublica = /'\/api\/estoque\/agente-impressao'/.test(proxy)
+    const validaToken = /impressoraPorToken/.test(src)
+    expect(ehPublica && validaToken).toBe(true)
+  })
+
   it('⚠️ o escopo é mínimo: o agente não lê estoque, nota nem dinheiro', () => {
     const src = readFileSync(join(RAIZ_FORA, 'agente-impressao', 'route.ts'), 'utf-8')
     for (const proibido of ['stockMovement', 'stockNfe', 'transaction.', 'stockItem']) {

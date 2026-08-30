@@ -49,6 +49,12 @@ const PUBLIC_API = [
   // SEM auth (queremos capturar erros mesmo se sessao expirou).
   // Protegido por body limit 8KB + cap implicito do nginx.
   '/api/client-error-report',
+  // ⭐ AGENTE DE IMPRESSÃO (30/08/2026) — autenticado por TOKEN próprio, não por JWT de
+  // sessão: ele roda num PC/Raspberry da cozinha e não tem cookie de navegador. Mesmo
+  // padrão do webhook do Asaas (que também é "público" aqui e valida o próprio segredo).
+  // ⚠️ A rota valida o token na 1ª linha e devolve 401 seco; e o escopo dela é mínimo de
+  // propósito (pega ZPL da fila e diz se imprimiu — não lê estoque, nota nem dinheiro).
+  '/api/estoque/agente-impressao',
 ]
 
 // Rotas /admin/* que NÃO exigem admin_session:
