@@ -101,13 +101,34 @@ describe('a tolerância é de arredondamento, não de conveniência', () => {
     expect(await e16()).toHaveLength(0)
   })
 
-  it('⚠️ R$ 12,63 numa linha só NÃO passa — foi a perda real da BOX PAPER', async () => {
-    // 6.313 caixas: custo certo 2,742145…; arredondado pra 2,74 perde 12,63 no total.
+  it('⚠️ os R$ 12,63 da BOX PAPER PASSAM — e está certo assim (decisão registrada)', async () => {
+    // 6.313 caixas: o custo certo é 2,742145…; arredondado pra 2,74 perde 12,63 no total.
+    // Com meio centavo por unidade a folga é 31,56, então isto NÃO alarma.
+    //
+    // ⚠️ É TROCA CONSCIENTE, não descuido: essa diferença é o pior caso ARITMÉTICO do
+    // código antigo, e o E16 existe pra pegar a classe dos R$ 6.264 (quantidade convertida
+    // sem o custo), não meio centavo por caixa. Alarmar aqui traria junto o 0,07 da Cancian
+    // e o 0,09 da Menon toda noite — e alarme falso repetido mata o alarme.
+    //
+    // ⭐ O QUE FECHA ESSE FLANCO É A FONTE, não a régua: desde 29/08 o custo é gravado em
+    // precisão cheia (`vUnCom / fator`, sem round2), então qtd × custo == vProd EXATO e a
+    // diferença das entradas novas é zero.
     await prisma.stockNfeItem.updateMany({ where: { companyId, nfeId }, data: { qCom: 6313, vUnCom: 2.742145, vProd: 17310.25 } })
     await entrada(6313, 2.74)
-    const f = await e16()
-    expect(f).toHaveLength(1)
-    expect(f[0].detalhe).toContain('12.63')
+    expect(await e16()).toHaveLength(0)
+  })
+
+  it('⭐ e com o custo em PRECISÃO CHEIA a mesma nota fecha exato (o fix na fonte)', async () => {
+    await prisma.stockNfeItem.updateMany({ where: { companyId, nfeId }, data: { qCom: 6313, vUnCom: 2.742145, vProd: 17310.25 } })
+    await entrada(6313, 17310.25 / 6313) // é o que `confirmarConferencia` grava agora
+    expect(await e16()).toHaveLength(0)
+    const m = await prisma.stockMovement.findFirstOrThrow({ where: { companyId } })
+    expect(Math.round(m.custoTotal * 100) / 100).toBe(17310.25) // ao centavo
+  })
+
+  it('⚠️ mas 6.264 em 12 unidades NÃO escapa pela folga (a folga é por UNIDADE)', async () => {
+    await entrada(360, 18)
+    expect(await e16()).toHaveLength(1) // folga de 360×0,005 = 1,80 · diferença 6.264
   })
 
   it('nota sem itens parseados (só resumo) não é comparada — não inventa alarme', async () => {

@@ -115,9 +115,16 @@ export async function checkStockInvariants(db: Db, now: Date = new Date()): Prom
   // na minha primeira varredura, e era o método do módulo funcionando). Mesma lição do
   // E2: invariante que soma em ledger imutável tem que contar o LÍQUIDO.
   //
-  // ⚠️ TOLERÂNCIA: 1 centavo por LINHA de movimento (arredondamento honesto de conversão
-  // de fator), com piso de 5 centavos. NÃO é frouxa por conveniência — o custo unitário
-  // passou a ser gravado em precisão cheia justamente pra essa diferença tender a zero.
+  // ⚠️ TOLERÂNCIA = O LIMITE MATEMÁTICO DO ARREDONDAMENTO, não um número escolhido a dedo:
+  // meio centavo por UNIDADE movimentada (0,005 × Σ|quantidade|), com piso de 5 centavos.
+  //
+  // É o pior caso do custo unitário arredondado a 2 casas — e explica exatamente o que a
+  // varredura viu em prod: R$ 0,07 numa nota de 2 caixas é arredondamento; R$ 6.264,00 em
+  // 12 unidades é erro. Uma régua fixa em centavos alarmaria as duas, e alarme falso
+  // repetido é como um alarme morre (a lição dos 111 de vendas).
+  //
+  // ⚠️ ISSO NÃO É AFROUXAR: desde 29/08 o custo é gravado em precisão cheia, então a
+  // diferença de arredondamento das entradas NOVAS tende a zero. A folga cobre o histórico.
   const notasComEntrada = await db.stockMovement.groupBy({
     by: ['companyId', 'nfeChave'],
     where: { tipo: { in: ['ENTRADA_NF', 'ESTORNO'] }, nfeChave: { not: null } },
@@ -137,7 +144,12 @@ export async function checkStockInvariants(db: Db, now: Date = new Date()): Prom
     const declarado = round2(itens._sum.vProd ?? 0)
     if (declarado <= 0) continue // nota sem itens parseados (só resumo) — nada a comparar
     const entrou = round2(g._sum.custoTotal ?? 0)
-    const tolerancia = Math.max(0.05, 0.01 * g._count._all)
+    const qtds = await db.stockMovement.findMany({
+      where: { companyId: g.companyId, nfeChave: g.nfeChave, tipo: { in: ['ENTRADA_NF', 'ESTORNO'] } },
+      select: { quantidade: true },
+    })
+    const unidadesMovimentadas = qtds.reduce((acc, m) => acc + Math.abs(m.quantidade), 0)
+    const tolerancia = Math.max(0.05, 0.005 * unidadesMovimentadas)
     const dif = round2(entrou - declarado)
     if (Math.abs(dif) > tolerancia) {
       F(
