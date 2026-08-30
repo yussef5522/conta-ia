@@ -101,6 +101,11 @@ function CadastroPageInner() {
     try {
       const payload: Record<string, unknown> = { ...form }
       if (appliedCoupon) payload.couponCode = appliedCoupon.code
+      // ⭐ quem chega pelo link do convite não abre empresa: entra na de outro. O token
+      // avisa o servidor pra NÃO criar trial pessoal (a assinatura é da empresa).
+      const destinoConvite = searchParams.get('redirect') ?? ''
+      const tokenConvite = /\/aceitar-convite\?token=([^&]+)/.exec(destinoConvite)?.[1]
+      if (tokenConvite) payload.conviteToken = decodeURIComponent(tokenConvite)
 
       const res = await fetch('/api/auth/cadastro', {
         method: 'POST',

@@ -5,7 +5,8 @@
 import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { verifyToken, COOKIE_NAME } from '@/lib/auth'
-import { getEffectiveStatusByUserId } from '@/lib/subscription/queries'
+import { assinaturaEfetiva, podeGerenciarPlano } from '@/lib/subscription/por-empresa'
+import { getEffectiveSubscriptionStatus } from '@/lib/subscription/access'
 
 export async function TrialBanner() {
   const store = await cookies()
@@ -20,8 +21,23 @@ export async function TrialBanner() {
     return null
   }
 
-  const status = await getEffectiveStatusByUserId(userId)
-  if (!status) return null
+  // ⭐⭐ A ASSINATURA É DA EMPRESA (30/08/2026) — funcionário convidado NÃO vê banner.
+  //
+  // ⚠️ Era `getEffectiveStatusByUserId(userId)`: lia a assinatura PESSOAL, e como o
+  // sistema criava uma pra todo mundo, a operadora de estoque via "TRIAL 14 dias · Ver
+  // planos". Ela não é a cliente — quem paga é a Caçula.
+  const assinatura = await assinaturaEfetiva(userId)
+  if (!assinatura) return null
+
+  // ⚠️ e mesmo com assinatura, só quem PODE GERENCIAR vê o banner: pro funcionário o
+  // aviso de trial é ruído sobre uma decisão que não é dele.
+  if (!(await podeGerenciarPlano(userId))) return null
+
+  const status = getEffectiveSubscriptionStatus({
+    status: assinatura.status,
+    planId: assinatura.planId,
+    trialEndsAt: assinatura.trialEndsAt,
+  })
 
   // Mostra SÓ se TRIAL ativo
   if (status.effectiveStatus !== 'TRIAL') return null

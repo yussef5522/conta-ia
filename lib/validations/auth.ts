@@ -27,6 +27,9 @@ export const cadastroSchema = z
       .regex(/[0-9]/, 'Senha deve conter pelo menos um número'),
     confirmPassword: z.string({ required_error: 'Confirmação de senha é obrigatória' }),
     // Sprint 1.7 — cupom opcional. Validação/aplicação no endpoint.
+    // ⭐ marca que o cadastro veio de um CONVITE — quem entra na empresa de outro não
+    // ganha trial próprio (a assinatura é da empresa, 30/08/2026).
+    conviteToken: z.string().max(200).optional(),
     couponCode: z
       .string()
       .trim()

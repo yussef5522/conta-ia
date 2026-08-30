@@ -101,16 +101,24 @@ export async function POST(request: NextRequest) {
 
     // Sprint Gestão de Conta (31/05/2026) — força troca de senha no 1º login
     // após reset pelo admin.
-    const { getOrCreateSubscription } = await import(
-      '@/lib/subscription/queries'
-    )
+    // ⭐⭐ ASSINATURA É DA EMPRESA (30/08/2026). Era `getOrCreateSubscription(user.id)`, que
+    // **criava um trial pessoal no login** — foi como a Marcyelle, convidada como
+    // operadora de estoque, ganhou "TRIAL 14 dias restantes · Ver planos".
+    //
+    // ⚠️ Fechar só o cadastro não bastava: o login recriava. As duas portas juntas, ou
+    // enxuga-se gelo.
+    const { assinaturaEfetiva } = await import('@/lib/subscription/por-empresa')
     const { computeEffectiveStatus } = await import('@/lib/subscription/access')
-    const subscription = await getOrCreateSubscription(user.id)
-    const effectiveStatus = computeEffectiveStatus({
-      status: subscription.status,
-      planId: subscription.planId,
-      trialEndsAt: subscription.trialEndsAt,
-    })
+    const assinatura = await assinaturaEfetiva(user.id)
+    const effectiveStatus = assinatura
+      ? computeEffectiveStatus({
+          status: assinatura.status,
+          planId: assinatura.planId,
+          trialEndsAt: assinatura.trialEndsAt,
+        })
+      : null
+    // ⚠️ SEM assinatura ≠ EXPIRADO. Convidado não tem o que expirar — marcar expirado o
+    // jogaria em /assinar, que é a tela que ele nunca deveria ver.
     const subscriptionExpired = effectiveStatus === 'EXPIRED'
 
     const token = await signToken({

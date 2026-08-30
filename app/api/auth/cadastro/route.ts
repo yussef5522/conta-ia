@@ -72,6 +72,19 @@ export async function POST(request: NextRequest) {
         )
       }
     }
+    // ⭐⭐ TRIAL SÓ PRA QUEM VAI SER DONO (30/08/2026). Quem chega por CONVITE não assina
+
+    // nada — herda o plano da empresa. Criar trial aqui foi o que deu à Marcyelle um
+
+    // "TRIAL 14 dias · Ver planos" que não era dela.
+
+    // ⚠️ O sinal é o `redirect` pro aceite de convite: quem veio pelo link do convite
+
+    // está entrando NA empresa de outro, não abrindo a sua.
+
+    const veioDeConvite = data.conviteToken != null
+
+    if (!veioDeConvite)
     await createTrialSubscription(prisma, {
       userId: user.id,
       bonusDays,

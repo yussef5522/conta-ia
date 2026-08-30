@@ -2137,6 +2137,11 @@ model Subscription {
   id     String @id @default(cuid())
   userId String @unique
 
+  // ⭐⭐ A ASSINATURA É DA EMPRESA (30/08/2026). O `userId` continua sendo a chave que a
+  // integração do Asaas usa (customer, checkout, webhook); `companyId` é QUEM DE FATO
+  // assina. Funcionário convidado NÃO tem assinatura — ele herda a da empresa.
+  companyId String?
+
   // Plano contratado (id de lib/planos/config.ts):
   // 'inicio' | 'controle' | 'inteligencia' | 'performance'
   planId String
