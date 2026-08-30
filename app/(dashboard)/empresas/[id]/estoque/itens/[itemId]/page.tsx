@@ -5,7 +5,7 @@
 
 import { useEffect, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
-import { Package, Loader2, ArrowLeft, TrendingUp } from 'lucide-react'
+import { Package, Loader2, ArrowLeft, TrendingUp, ChevronDown, Ruler } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { NomeEditavel } from '@/components/estoque/nome-editavel'
 import { MinMaxEditor } from '@/components/estoque/min-max-editor'
@@ -158,9 +158,29 @@ function ReunitizarBloco({ companyId, itemId, nome, unidade, saldo, custoMedio }
   }
 
   if (!aberto) {
+    // ⚠️⚠️ ISTO ERA TEXTO MORTO NA PRÁTICA (30/08/2026). O `onClick` sempre esteve aqui e
+    // a API sempre respondeu — mas o gatilho era `text-xs text-slate-400` sem borda, sem
+    // ícone, com sublinhado só no `hover` (que no CELULAR não existe). O dono olhou e leu
+    // como legenda: *"aparece mas não é clicável, não tem botão"*. E ele está certo:
+    // **controle que ninguém reconhece como controle é controle morto** — o defeito é de
+    // afordância, não de código, e o efeito pro dono é o mesmo (não consegue converter).
+    //
+    // Agora é uma linha com borda, chevron e verbo no rótulo. `aria-expanded` porque isto
+    // é um disclosure de verdade, não um link decorativo.
     return (
-      <button onClick={() => setAberto(true)} className="text-xs text-slate-400 underline-offset-2 hover:text-slate-600 hover:underline">
-        A unidade está errada? (ex: está em pacote e você usa por unidade)
+      <button
+        onClick={() => setAberto(true)}
+        aria-expanded={false}
+        className="flex w-full items-center gap-2 rounded-lg border border-dashed border-slate-300 px-3 py-2 text-left text-xs text-slate-600 hover:border-slate-400 hover:bg-slate-50"
+      >
+        <Ruler className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+        <span className="flex-1">
+          <b className="font-medium">Converter a unidade</b>
+          <span className="block text-[11px] text-slate-400">
+            está em {unidade} de compra e você usa por unidade menor? (ex: 1 cartela = 30 ovos)
+          </span>
+        </span>
+        <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
       </button>
     )
   }
