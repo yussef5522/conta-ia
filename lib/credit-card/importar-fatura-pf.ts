@@ -19,6 +19,8 @@
 import { createHash } from 'node:crypto'
 import { prisma } from '@/lib/db'
 import { parseBanrisulFaturaPF } from '@/lib/fatura-banrisul/banrisul-fatura-pf'
+import { reconhecerBancoPF, diagnosticarFalha } from './registry-fatura-pf'
+import { resolverTotalDeclarado, conferirTotal, type OrigemTotal } from './total-declarado'
 import { getCardInProfile, getOrCreateInvoice, CreditCardError } from './queries'
 import { checkProfileAccess } from '@/lib/personal-profile/queries'
 import { calculateInvoiceReference, type CardConfig } from './calculate-invoice-reference'
@@ -68,6 +70,35 @@ export interface PreviewFaturaPF {
     projetadoProxima: number
     bate: boolean
   }
+  /** ⭐ qual das quatro falhas foi — a tela decide o que OFERECER a partir disto
+   *  (banco desconhecido não tem saída manual; documento sem totais tem). */
+  causa?: 'BANCO_NAO_RECONHECIDO' | 'SEM_TOTAIS_DECLARADOS' | 'LINHAS_NAO_LIDAS' | 'NAO_FECHA'
+  /** de onde veio o total declarado que foi conferido */
+  origemTotal?: OrigemTotal
+}
+
+/**
+ * Resposta quando nem dá pra tentar ler (banco desconhecido).
+ * ⚠️ Devolve a MESMA forma do preview, com zero linha — a tela não precisa de um segundo
+ * caminho de erro, e o `ok:false` já a impede de oferecer o confirmar.
+ */
+function semLeitura(
+  card: { id: string }, mensagem: string, causa: NonNullable<PreviewFaturaPF['causa']>,
+): PreviewFaturaPF {
+  void card
+  return {
+    ok: false, erro: mensagem, causa,
+    banco: 'desconhecido', vencimento: null, referencia: null, totalDeclarado: null,
+    conferencia: {
+      despesasCalculado: 0, despesasDeclarado: null,
+      saldoCalculado: 0, saldoDeclarado: null, fecha: false, encargosDeclarados: 0,
+    },
+    portadores: [], linhas: [], novas: 0, jaExistem: 0,
+    proximasFaturas: {
+      proxima: null, seguinte: null, demais: null, total: null,
+      rotuloProxima: null, rotuloSeguinte: null, projetadoProxima: 0, bate: false,
+    },
+  }
 }
 
 /** Identidade da linha — o que a torna a MESMA em dois uploads do mesmo PDF. */
@@ -99,12 +130,28 @@ export async function previewFaturaPF(input: {
   profileId: string
   cardId: string
   texto: string
+  /** ⭐ o dono digitou o total olhando a fatura em papel? (só vale quando o PDF não declara) */
+  totalDigitado?: number | null
 }): Promise<PreviewFaturaPF> {
   // ⚠️ `getCardInProfile` só confere que o CARTÃO é do PERFIL — não que o USUÁRIO é
   // dono do perfil. Todo write deste módulo passa por aqui antes; sem isto, bastaria
   // trocar o id na URL pra importar fatura no perfil de outra pessoa.
   await checkProfileAccess(input.userId, input.profileId, 'OWNER')
   const card = await getCardInProfile(input.profileId, input.cardId)
+
+  // ⛔⛔ A PORTA QUE FALTAVA (31/08/2026). Isto aqui chamava `parseBanrisulFaturaPF` DIRETO,
+  // sem perguntar de que banco era o PDF — e o `?? 'Banrisul'` lá embaixo maquiava o
+  // resultado. O dono subiu uma fatura do NUBANK, o Banrisul foi aplicado por cima, e a
+  // falha saiu como *"o PDF não declarou o total (layout inesperado)"*: **"banco não
+  // reconhecido" vestido de "o layout mudou"**. Ele foi caçar mudança que não existia.
+  //
+  // ⚠️ Banco não reconhecido agora PARA AQUI, com a frase certa e a lista do que eu leio.
+  const parser = reconhecerBancoPF(input.texto)
+  if (!parser) {
+    const d = diagnosticarFalha({ banco: null, linhas: 0, temTotalDeclarado: false, fecha: false })!
+    return semLeitura(card, d.mensagem, d.causa)
+  }
+
   const r = parseBanrisulFaturaPF(input.texto)
   const enc = encargosDeclarados(input.texto)
 
@@ -163,25 +210,38 @@ export async function previewFaturaPF(input: {
   const pf = r.proximas
   const bateProjecao = pf.proxima != null && Math.abs(projetadoProxima - pf.proxima) <= 1
 
-  const erro = fecha
-    ? null
-    : [
-        'A fatura NÃO fecha com os totais declarados no PDF — nada será importado.',
-        r.declared.brasil != null
-          ? `   despesas: lido R$ ${despesasCalculado.toFixed(2)} · declarado R$ ${r.declared.brasil.toFixed(2)}`
-          : '   despesas: o PDF não declarou o total (layout inesperado)',
-        r.declared.saldoAtual != null
-          ? `   saldo da fatura: lido R$ ${saldoCalculado.toFixed(2)} · declarado R$ ${r.declared.saldoAtual.toFixed(2)}`
-          : '   saldo da fatura: o PDF não declarou o total',
-      ].join('\n')
+  // ⭐ O TOTAL DECLARADO — do PDF, ou digitado pelo dono olhando a fatura. A conferência
+  // é a MESMA nos dois casos; o que muda é só de onde o número veio (e isso fica gravado).
+  const total = resolverTotalDeclarado({ doPdf: r.declared.saldoAtual, digitado: input.totalDigitado })
+  const conf = total ? conferirTotal(saldoCalculado, total) : null
+
+  // ⭐ UMA decisão, um lugar: preview e confirm dizem a MESMA coisa da MESMA falha.
+  const diag = diagnosticarFalha({
+    banco: parser.banco,
+    linhas: linhas.length,
+    temTotalDeclarado: total != null,
+    fecha,
+    detalhe: [
+      r.declared.brasil != null
+        ? `   despesas: lido R$ ${despesasCalculado.toFixed(2)} · declarado R$ ${r.declared.brasil.toFixed(2)}`
+        : null,
+      conf?.detalhe ?? null,
+    ].filter(Boolean).join('\n'),
+  })
+  const erro = fecha ? null : diag?.mensagem ?? null
 
   return {
     ok: fecha,
     erro,
-    banco: r.extraction.detectedBank ?? 'Banrisul',
+    // ⭐ o banco vem do RECONHECIMENTO, não de um default: `detectedBank` era 'Banrisul'
+    // cravado no parser, então o `??` nunca podia ajudar.
+    banco: parser.banco,
+    causa: fecha ? undefined : diag?.causa,
+    origemTotal: total?.origem,
     vencimento: r.extraction.dueDate,
     referencia,
-    totalDeclarado: r.declared.saldoAtual,
+    // ⭐ o total que VALEU na conferência — pode ter vindo do PDF ou do dono
+    totalDeclarado: total?.valor ?? null,
     conferencia: {
       despesasCalculado,
       despesasDeclarado: r.declared.brasil,
