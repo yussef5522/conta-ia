@@ -1,43 +1,40 @@
 'use client'
 
-// ⭐⭐ EDITOR DE MODELO DE ETIQUETA (30/08/2026) — o dono DESENHA, não só configura.
+// ⭐⭐ EDITOR DE MODELO DE ETIQUETA — A ETIQUETA É A TELA (31/08/2026).
 //
-// A SuFlex deixa ligar/desligar campo. Aqui dá pra renomear o rótulo, reordenar, mudar
-// fonte, pôr negrito, adicionar linha de texto livre e ter vários modelos.
+// ⛔ POR QUE A VERSÃO ANTERIOR FOI REFEITA, e a lição é sobre ENSINO, não sobre lógica: o
+// comportamento estava CERTO (rótulo + valor concatenavam direito), mas a tela tinha DOIS
+// blocos de inputs visualmente idênticos em lados opostos — configuração de um lado, dados
+// de exemplo do outro — e **nada mostrando que "Rótulo" e o valor formam UMA linha da
+// etiqueta**. O dono, dono do produto, olhou e concluiu que os dois lados faziam a mesma
+// coisa. *Se o dono lê errado, a régua está errada — não o leitor.*
 //
-// ⚠️ A PRÉVIA AO LADO É A MESMA da tela de imprimir e do ZPL (`previaDosBlocos` /
-// `zplDosBlocos` sobre os MESMOS blocos). Mexeu, viu — e o que se vê é o que sai.
+// ⭐ O DESENHO NOVO segue as ferramentas de etiqueta de verdade (ZebraDesigner, BarTender,
+// Canva): a etiqueta é o elemento principal e a edição acontece NO elemento. Clicar numa
+// linha seleciona ela; o inspetor mostra AQUELA linha, montada, com as duas partes
+// pintadas — e as caixas de edição repetem as mesmas cores.
 //
-// ⚠️⚠️ DUAS ÁREAS, DOIS PAPÉIS (31/08/2026): à ESQUERDA a CONFIGURAÇÃO do modelo (é
-// salva e vale pra toda etiqueta); à DIREITA, embaixo da prévia, os DADOS DE PRÉVIA (não
-// são salvos — servem pra visualizar). Estavam misturados, e o efeito foi o previsível: o
-// dono digitou "queijo" no campo Rótulo achando que trocava o CONTEÚDO e levou
-// "queijoPorção de carne 100g". Os dados de exemplo eram fixos no código, sem como trocar.
+// TRÊS COLUNAS: camadas (liga/desliga + ordem) · etiqueta (o centro) · inspetor da linha.
+// No celular vira uma coluna, com a etiqueta em cima (`order-1`).
 //
-// ⚠️ SETINHAS EM VEZ DE ARRASTAR: no celular — que é onde o dono vai mexer — arrastar
-// dentro de uma lista que rola briga com o scroll da página e vira frustração. ↑↓ faz a
-// mesma coisa, funciona no dedo frio e não depende de biblioteca.
+// ⚠️ O MOTOR NÃO MUDOU. `blocosParaLayout`, `zplDosBlocos` e `previaDosBlocos` são os
+// mesmos — isto é UI sobre motor intacto, e os testes de etiqueta seguem valendo de rede.
 
 import { useEffect, useMemo, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { LayoutTemplate, Loader2, Printer, Check, AlertTriangle, Star, RotateCcw, MousePointerClick } from 'lucide-react'
+import { PreviaEtiqueta, type ParteDaLinha } from '@/components/estoque/previa-etiqueta'
+import { CamadasEtiqueta } from '@/components/estoque/camadas-etiqueta'
+import { InspetorLinha } from '@/components/estoque/inspetor-linha'
 import {
-  LayoutTemplate, Loader2, Plus, Trash2, ChevronUp, ChevronDown, Printer, Check, AlertTriangle, Star, Settings2,
-} from 'lucide-react'
-import { PreviaEtiqueta } from '@/components/estoque/previa-etiqueta'
-import { DadosDePrevia, exemploDeEtiqueta } from '@/components/estoque/dados-de-previa'
-import {
-  BLOCOS_PADRAO, novoBlocoTexto, avisosDoModelo, type Bloco,
+  BLOCOS_PADRAO, novoBlocoTexto, avisosDoModelo, moverBloco, blocosParaLayout,
+  LADO_DOTS_USAVEL, type Bloco,
 } from '@/lib/stock/etiquetas/blocos'
-import type { DadosEtiqueta } from '@/lib/stock/etiquetas/modelo'
+import { exemploDeEtiqueta } from '@/lib/stock/etiquetas/exemplo'
+import type { CampoId, DadosEtiqueta } from '@/lib/stock/etiquetas/modelo'
 
 interface Modelo { id: string; nome: string; padrao: boolean; blocos: Bloco[] }
-
-const NOME_BLOCO: Record<string, string> = {
-  produto: 'Nome do produto', validade: 'Validade', estado: 'Estado de conservação',
-  fabricacao: 'Fabricação / manipulação', quantidade: 'Quantidade', lote: 'Lote',
-  colaborador: 'Quem manipulou', empresa: 'Nome da empresa',
-}
 
 export default function ModeloEtiquetaPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
@@ -45,13 +42,20 @@ export default function ModeloEtiquetaPage({ params }: { params: Promise<{ id: s
   const [modeloId, setModeloId] = useState<string | null>(null)
   const [nome, setNome] = useState('Padrão')
   const [blocos, setBlocos] = useState<Bloco[]>(BLOCOS_PADRAO)
-  // ⚠️ dados da PRÉVIA — não vão no `salvar()`, e não persistem nem no navegador
-  const [previa, setPrevia] = useState<DadosEtiqueta>(exemploDeEtiqueta)
   const [padrao, setPadrao] = useState(true)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<{ tom: 'ok' | 'erro'; texto: string } | null>(null)
+  // ⚠️ dados da PRÉVIA — não vão no `salvar()` e não persistem nem no navegador
+  const [previa, setPrevia] = useState<DadosEtiqueta>(exemploDeEtiqueta)
+  const [selecionadoId, setSelecionadoId] = useState<string | null>(null)
+  const [realce, setRealce] = useState<{ id: string; parte: ParteDaLinha } | null>(null)
 
   const avisos = useMemo(() => avisosDoModelo(blocos), [blocos])
+  const layout = useMemo(() => blocosParaLayout(blocos, previa), [blocos, previa])
+  const indiceSel = blocos.findIndex((b) => b.id === selecionadoId)
+  const selecionado = indiceSel >= 0 ? blocos[indiceSel] : null
+  /** o conteúdo que a linha selecionada mostra hoje — resolvido pelo MESMO layout */
+  const conteudoSel = layout.blocos.find((p) => p.bloco.id === selecionadoId)?.partes.conteudo ?? ''
 
   const carregar = () =>
     fetch(`/api/empresas/${id}/estoque/etiquetas/modelos`).then((r) => r.json()).then((j) => {
@@ -65,14 +69,13 @@ export default function ModeloEtiquetaPage({ params }: { params: Promise<{ id: s
   const mexer = (i: number, patch: Partial<Bloco>) =>
     setBlocos((bs) => bs.map((b, j) => (j === i ? { ...b, ...patch } : b)))
 
-  const mover = (i: number, dir: -1 | 1) =>
-    setBlocos((bs) => {
-      const j = i + dir
-      if (j < 0 || j >= bs.length) return bs
-      const copia = [...bs]
-      ;[copia[i], copia[j]] = [copia[j], copia[i]]
-      return copia
-    })
+  // ⭐ arrastar e setas chamam a MESMA função (REGRA 4)
+  const mover = (de: number, para: number) => setBlocos((bs) => moverBloco(bs, de, para))
+
+  const selecionarCampo = (campo: CampoId) => {
+    const alvo = blocos.find((b) => b.tipo === 'campo' && b.campo === campo)
+    if (alvo) setSelecionadoId(alvo.id)
+  }
 
   async function salvar() {
     setBusy(true); setMsg(null)
@@ -94,7 +97,7 @@ export default function ModeloEtiquetaPage({ params }: { params: Promise<{ id: s
     try {
       const r = await fetch(`/api/empresas/${id}/estoque/etiquetas/modelos`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        // ⭐ o teste imprime O QUE ESTÁ NA PRÉVIA — senão ele testaria outro dado
+        // ⭐ o teste imprime O QUE ESTÁ NA PRÉVIA — senão testaria outro dado
         body: JSON.stringify({ blocos, dados: {
           produto: previa.produto,
           lote: previa.lote,
@@ -115,26 +118,32 @@ export default function ModeloEtiquetaPage({ params }: { params: Promise<{ id: s
   }
 
   function novoModelo() {
-    setModeloId(null); setNome('Novo modelo'); setBlocos(BLOCOS_PADRAO); setPadrao(false); setMsg(null)
+    setModeloId(null); setNome('Novo modelo'); setBlocos(BLOCOS_PADRAO); setPadrao(false)
+    setMsg(null); setSelecionadoId(null)
   }
 
   if (modelos === undefined) return <div className="p-6"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
 
+  const usadoPct = Math.min(100, Math.round((layout.alturaUsada / LADO_DOTS_USAVEL) * 100))
+
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <LayoutTemplate className="h-5 w-5 text-[#185FA5]" />
-        <h1 className="text-base font-semibold">Modelo de etiqueta</h1>
-        <p className="hidden lg:block text-xs text-slate-400">mexeu, viu — é exatamente o que sai na Zebra</p>
-        <div className="ml-auto flex items-center gap-2">
+    <div className="space-y-3 pb-6">
+      {/* ── TÍTULO + AÇÕES (anatomia da casa) ── */}
+      <div className="flex flex-wrap items-center gap-2.5">
+        <LayoutTemplate className="h-5 w-5 shrink-0 text-[#185FA5]" />
+        <div className="min-w-0">
+          <h1 className="text-base font-semibold text-slate-900">Modelo de etiqueta</h1>
+          <p className="text-xs text-slate-400">clique numa linha da etiqueta pra editar ela</p>
+        </div>
+        <div className="ml-auto flex flex-wrap items-center gap-1.5">
           <select
             value={modeloId ?? 'novo'}
             onChange={(e) => {
               if (e.target.value === 'novo') return novoModelo()
               const m = (modelos ?? []).find((x) => x.id === e.target.value)
-              if (m) { setModeloId(m.id); setNome(m.nome); setBlocos(m.blocos); setPadrao(m.padrao) }
+              if (m) { setModeloId(m.id); setNome(m.nome); setBlocos(m.blocos); setPadrao(m.padrao); setSelecionadoId(null) }
             }}
-            className="h-8 rounded-md border px-2 text-xs"
+            className="h-8 rounded-md border border-slate-300 px-2 text-xs"
           >
             {(modelos ?? []).map((m) => <option key={m.id} value={m.id}>{m.nome}{m.padrao ? ' ★' : ''}</option>)}
             <option value="novo">+ novo modelo</option>
@@ -158,7 +167,7 @@ export default function ModeloEtiquetaPage({ params }: { params: Promise<{ id: s
           validade à mão numa fita crepe, que é pior: sai do sistema. */}
       {avisos.length > 0 && (
         <Card className="border-amber-300 bg-amber-50">
-          <CardContent className="py-3">
+          <CardContent className="py-2.5">
             {avisos.map((a, i) => (
               <p key={i} className="flex items-start gap-1.5 text-xs text-amber-900">
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {a}
@@ -169,106 +178,99 @@ export default function ModeloEtiquetaPage({ params }: { params: Promise<{ id: s
         </Card>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_auto]">
-        {/* OS BLOCOS */}
-        <Card>
-          <CardContent className="py-4">
-            <div className="mb-2 flex items-center gap-1.5 border-b border-slate-100 pb-2">
-              <Settings2 className="h-3.5 w-3.5 text-slate-400" />
-              <h3 className="text-[13px] font-semibold text-slate-700">Configuração do modelo</h3>
-              <span className="text-[11px] text-slate-400">— é salva e vale pra toda etiqueta</span>
-            </div>
-
-            <div className="mb-3 flex flex-wrap items-center gap-2">
-              <label className="text-xs text-slate-500">Nome do modelo
-                <input value={nome} onChange={(e) => setNome(e.target.value)}
-                  className="ml-2 h-8 w-48 rounded-md border px-2 text-sm" />
-              </label>
-              <label className="flex items-center gap-1 text-xs text-slate-600">
-                <input type="checkbox" checked={padrao} onChange={(e) => setPadrao(e.target.checked)} className="h-4 w-4" />
-                <Star className="h-3 w-3" /> usar como padrão da empresa
+      <div className="grid gap-3 lg:grid-cols-[210px_minmax(0,1fr)_320px]">
+        {/* ── CAMADAS ── */}
+        <Card className="order-2 lg:order-1">
+          <CardContent className="p-2.5">
+            <div className="mb-2.5 space-y-1.5 border-b border-slate-100 pb-2.5">
+              <input value={nome} onChange={(e) => setNome(e.target.value)}
+                aria-label="nome do modelo"
+                className="h-8 w-full rounded-md border border-slate-300 px-2 text-sm font-medium" />
+              <label className="flex items-center gap-1 text-[11px] text-slate-600">
+                <input type="checkbox" checked={padrao} onChange={(e) => setPadrao(e.target.checked)} className="h-3.5 w-3.5" />
+                <Star className="h-3 w-3" /> padrão da empresa
               </label>
             </div>
-
-            <div className="space-y-2">
-              {blocos.map((b, i) => (
-                <div key={b.id} className={`rounded-lg border p-2 ${b.ativo ? 'border-slate-200' : 'border-dashed border-slate-200 bg-slate-50/60 opacity-60'}`}>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <input type="checkbox" checked={b.ativo} onChange={(e) => mexer(i, { ativo: e.target.checked })} className="h-4 w-4" />
-                    <span className="text-[13px] font-medium">
-                      {b.tipo === 'qr' ? 'QR do lote' : b.tipo === 'texto' ? 'Texto livre' : NOME_BLOCO[b.campo ?? ''] ?? b.campo}
-                    </span>
-                    <div className="ml-auto flex items-center gap-1">
-                      <button onClick={() => mover(i, -1)} disabled={i === 0} className="rounded p-1 text-slate-400 hover:bg-slate-100 disabled:opacity-30"><ChevronUp className="h-4 w-4" /></button>
-                      <button onClick={() => mover(i, 1)} disabled={i === blocos.length - 1} className="rounded p-1 text-slate-400 hover:bg-slate-100 disabled:opacity-30"><ChevronDown className="h-4 w-4" /></button>
-                      {b.tipo === 'texto' && (
-                        <button onClick={() => setBlocos((bs) => bs.filter((_, j) => j !== i))} className="rounded p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600"><Trash2 className="h-4 w-4" /></button>
-                      )}
-                    </div>
-                  </div>
-
-                  {b.ativo && b.tipo !== 'qr' && (
-                    <div className="mt-2 flex flex-wrap items-end gap-2">
-                      {b.tipo === 'texto' ? (
-                        <label className="min-w-[200px] flex-1 text-[11px] text-slate-500">Texto
-                          <input value={b.texto ?? ''} onChange={(e) => mexer(i, { texto: e.target.value })}
-                            className="mt-0.5 block h-8 w-full rounded-md border px-2 text-sm" />
-                        </label>
-                      ) : (
-                        <label className="text-[11px] text-slate-500" title="O rótulo vem ANTES do valor, ex.: VAL 03/09/2026. Pra trocar o conteúdo, use os Dados de prévia.">
-                          Rótulo <span className="text-slate-300">(vem antes do valor)</span>
-                          <input value={b.rotulo} onChange={(e) => mexer(i, { rotulo: e.target.value })}
-                            placeholder="(sem rótulo)"
-                            className="mt-0.5 block h-8 w-32 rounded-md border px-2 text-sm" />
-                        </label>
-                      )}
-                      <label className="text-[11px] text-slate-500">Tamanho
-                        <input type="range" min={14} max={72} value={b.fonte}
-                          onChange={(e) => mexer(i, { fonte: Number(e.target.value) })}
-                          className="mt-0.5 block w-28" />
-                      </label>
-                      <span className="text-[11px] tabular-nums text-slate-400">{b.fonte}</span>
-                      <label className="flex items-center gap-1 text-[11px] text-slate-600">
-                        <input type="checkbox" checked={!!b.negrito} onChange={(e) => mexer(i, { negrito: e.target.checked })} className="h-3.5 w-3.5" /> negrito
-                      </label>
-                      <label className="flex items-center gap-1 text-[11px] text-slate-600">
-                        <input type="checkbox" checked={!!b.destaque} onChange={(e) => mexer(i, { destaque: e.target.checked })} className="h-3.5 w-3.5" /> destaque
-                      </label>
-                    </div>
-                  )}
-                  {b.ativo && b.tipo === 'qr' && (
-                    <p className="mt-1 text-[11px] text-slate-400">
-                      Fica ancorado no canto inferior direito — não entra na ordem das linhas (ocuparia 1/5 da etiqueta).
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            <Button variant="outline" size="sm" className="mt-3 h-8"
-              onClick={() => setBlocos((bs) => [...bs, novoBlocoTexto()])}>
-              <Plus className="h-3 w-3 mr-1" /> adicionar linha de texto
-            </Button>
-            <p className="mt-1 text-[11px] text-slate-400">
-              ex: “Mantenha congelado”, telefone da loja, CNPJ — o que você quiser, onde quiser na ordem.
-            </p>
+            <CamadasEtiqueta
+              blocos={blocos}
+              selecionadoId={selecionadoId}
+              onSelecionar={setSelecionadoId}
+              onAlternarAtivo={(i, ativo) => mexer(i, { ativo })}
+              onMover={mover}
+              onRemover={(i) => {
+                if (blocos[i].id === selecionadoId) setSelecionadoId(null)
+                setBlocos((bs) => bs.filter((_, j) => j !== i))
+              }}
+              onAdicionarTexto={() => {
+                const novo = novoBlocoTexto()
+                setBlocos((bs) => [...bs, novo])
+                setSelecionadoId(novo.id)
+              }}
+            />
           </CardContent>
         </Card>
 
-        {/* A PRÉVIA — grudada no topo pra acompanhar a edição */}
-        <div className="space-y-3 lg:sticky lg:top-4 lg:self-start lg:w-[330px]">
-          <Card>
-            <CardContent className="flex flex-col items-center py-4">
-              <PreviaEtiqueta dados={previa} blocos={blocos} lado={280} />
-            </CardContent>
-          </Card>
+        {/* ── A ETIQUETA: o centro da tela ── */}
+        <Card className="order-1 lg:order-2">
+          <CardContent className="flex flex-col items-center gap-2.5 py-5">
+            <PreviaEtiqueta
+              dados={previa}
+              blocos={blocos}
+              lado={400}
+              selecionadoId={selecionadoId}
+              onSelecionar={(bid, parte) => { setSelecionadoId(bid); setRealce({ id: bid, parte }) }}
+              realce={realce}
+            />
 
-          <DadosDePrevia
-            dados={previa}
-            onMudar={(patch) => setPrevia((d) => ({ ...d, ...patch }))}
-            onRestaurar={() => setPrevia(exemploDeEtiqueta())}
-          />
-        </div>
+            {/* ⭐ O ÚNICO CARD QUE SOBROU (decisão do dono): "linhas ativas" e "avisos"
+                repetiam o que já está a dois centímetros — os checkboxes da coluna de
+                camadas e o aviso vermelho embaixo da etiqueta — e roubavam espaço dela.
+                Este responde o que nada mais responde: cabe mais uma linha? */}
+            <div className="flex w-full max-w-[400px] items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-1.5">
+              <span className="shrink-0 text-[11px] text-slate-500">Espaço usado</span>
+              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+                <div className={`h-full rounded-full ${layout.estourou ? 'bg-rose-500' : usadoPct > 85 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                  style={{ width: `${usadoPct}%` }} />
+              </div>
+              <span className="shrink-0 tabular-nums text-[11px] font-medium text-slate-600">
+                {Math.round(layout.alturaUsada)}/{LADO_DOTS_USAVEL} dots
+              </span>
+            </div>
+
+            <button type="button" onClick={() => setPrevia(exemploDeEtiqueta())}
+              className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-slate-600">
+              <RotateCcw className="h-3 w-3" /> restaurar dados de exemplo
+            </button>
+          </CardContent>
+        </Card>
+
+        {/* ── INSPETOR ── */}
+        <Card className="order-3">
+          <CardContent className="p-3">
+            {selecionado ? (
+              <InspetorLinha
+                bloco={selecionado}
+                indice={indiceSel}
+                dados={previa}
+                valorNaEtiqueta={conteudoSel}
+                onMexer={mexer}
+                onMudarDados={(patch) => setPrevia((d) => ({ ...d, ...patch }))}
+                onFoco={(parte) => setRealce(parte && selecionadoId ? { id: selecionadoId, parte } : null)}
+                onIrParaLinha={selecionarCampo}
+              />
+            ) : (
+              <div className="py-6 text-center">
+                <MousePointerClick className="mx-auto h-6 w-6 text-slate-300" />
+                <p className="mt-2 text-[13px] font-medium text-slate-600">Clique numa linha da etiqueta</p>
+                <p className="mx-auto mt-1 max-w-[240px] text-[11px] leading-snug text-slate-400">
+                  Ou escolha na lista à esquerda. Aqui você edita o <b>rótulo</b> daquela
+                  linha, o tamanho e o destaque — e o <b>conteúdo de exemplo</b>, que serve
+                  só pra visualizar.
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   )

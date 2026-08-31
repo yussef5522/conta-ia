@@ -39,6 +39,16 @@ export const MARGEM = 18
 /** respiro entre blocos, em dots */
 export const ESPACO = 12
 
+/**
+ * ⭐ Quanta ALTURA o fluxo de texto tem de verdade.
+ *
+ * ⚠️ É derivado do MESMO limite que decide o `estourou` (`y > LADO_DOTS`, com `y`
+ * começando na margem e cada bloco somando `altura + ESPACO`). Se a barra "espaço usado"
+ * da tela tivesse um denominador próprio, ela mostraria 92% numa etiqueta que já
+ * estourou — dois números para a mesma pergunta, que é a doença que este módulo mais paga.
+ */
+export const LADO_DOTS_USAVEL = LADO_DOTS - MARGEM - ESPACO
+
 /** ⭐ o modelo que toda empresa começa — a ordem é a da leitura da cozinha:
  *  o que é → quando vence → o resto. */
 export const BLOCOS_PADRAO: Bloco[] = [
@@ -131,6 +141,10 @@ export interface BlocoPosicionado {
   bloco: Bloco
   /** texto final já com rótulo (vazio = não desenha) */
   valor: string
+  /** ⭐ as DUAS PARTES, separadas — é o que deixa a etiqueta ser clicável por parte
+   *  ("VAL" leva ao rótulo, "03/09/2026" leva ao dado de exemplo). O texto desenhado
+   *  continua sendo `valor`; estas são a mesma coisa, antes de juntar. */
+  partes: { rotulo: string; conteudo: string }
   x: number
   y: number
   /** altura ocupada em dots */
@@ -174,6 +188,7 @@ export function blocosParaLayout(blocos: Bloco[], dados: DadosEtiqueta): LayoutC
     qr = {
       bloco: b, valor: valores.qr,
       x: LADO_DOTS - lado - MARGEM, y: LADO_DOTS - lado - MARGEM, altura: lado,
+      partes: { rotulo: '', conteudo: valores.qr },
       larguraDisponivel: lado, podeCortar: false,
     }
   }
@@ -195,7 +210,8 @@ export function blocosParaLayout(blocos: Bloco[], dados: DadosEtiqueta): LayoutC
     const larguraDisponivel = Math.max(0, limiteDireito - MARGEM)
 
     out.push({
-      bloco: b, valor, x: MARGEM, y, altura, larguraDisponivel,
+      bloco: b, valor, partes: { rotulo: (b.rotulo ?? '').trim(), conteudo: bruto },
+      x: MARGEM, y, altura, larguraDisponivel,
       podeCortar: larguraEstimadaDots(valor, b.fonte) > larguraDisponivel,
     })
     y += altura + ESPACO
@@ -208,6 +224,28 @@ export function blocosParaLayout(blocos: Bloco[], dados: DadosEtiqueta): LayoutC
     podeCortar: out.some((p) => p.podeCortar),
     qr,
   }
+}
+
+// ---------------------------------------------------------------------------
+// ⭐ REORDENAR — UMA FUNÇÃO, DOIS GESTOS (31/08/2026)
+// ---------------------------------------------------------------------------
+//
+// ⚠️ REGRA DO DONO: arrastar e as setas ↑↓ existem nos DOIS (desktop e celular) e mexem
+// na MESMA lista. Ter arrastar só no desktop e setas só no celular seria dois
+// comportamentos pra uma decisão — o "N caminhos, 1 esquecido" que já mordeu este
+// sistema mais de cinco vezes. Aqui os dois gestos chamam ESTA função; o teclado ganha
+// de brinde (as setas são botões de verdade).
+
+export function moverBloco(blocos: Bloco[], de: number, para: number): Bloco[] {
+  if (de === para) return blocos
+  if (de < 0 || de >= blocos.length) return blocos
+  // ⚠️ fora da lista não move — arrastar pra fora da área é gesto de desistência,
+  // não de "põe no fim". Silenciosamente ignorar é o certo aqui.
+  if (para < 0 || para >= blocos.length) return blocos
+  const copia = [...blocos]
+  const [movido] = copia.splice(de, 1)
+  copia.splice(para, 0, movido)
+  return copia
 }
 
 // ---------------------------------------------------------------------------
@@ -249,6 +287,10 @@ export interface PreviaBloco {
   destaque: boolean
   negrito: boolean
   tipo: TipoBloco
+  /** as duas partes da linha, pra o clique saber onde caiu */
+  partes: { rotulo: string; conteudo: string }
+  /** faixa vertical da linha em % — a área de clique cobre a LARGURA INTEIRA da etiqueta */
+  topoPct: number
   /** % da largura da etiqueta que esta linha pode ocupar antes de a Zebra cortar */
   larguraPct: number
   /** ⚠️ estimativa — ver LARGURA_CALIBRADA */
@@ -263,12 +305,14 @@ export function previaDosBlocos(blocos: Bloco[], dados: DadosEtiqueta): { campos
     esquerda: pct(p.x), topo: pct(p.y),
     fontePct: pct(p.bloco.fonte), alturaPct: pct(p.altura),
     destaque: !!p.bloco.destaque, negrito: !!p.bloco.negrito, tipo: p.bloco.tipo,
+    partes: p.partes, topoPct: pct(p.y),
     larguraPct: pct(p.larguraDisponivel), podeCortar: p.podeCortar,
   }))
   if (l.qr) {
     campos.push({
       id: 'qr', texto: l.qr.valor, esquerda: pct(l.qr.x), topo: pct(l.qr.y),
       fontePct: 0, alturaPct: pct(l.qr.altura), destaque: false, negrito: false, tipo: 'qr',
+      partes: l.qr.partes, topoPct: pct(l.qr.y),
       larguraPct: pct(l.qr.altura), podeCortar: false,
     })
   }
