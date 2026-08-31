@@ -281,6 +281,10 @@ export const config = {
   //   - Extensões binárias (imagens, fontes, txt/xml)
   matcher: [
     // Sprint 4.0.5.c — incluído manifest.json (PWA) + json na lista de exts ignoradas
-    '/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|manifest.json|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|xml|json|woff|woff2|ttf|otf)$).*)',
+    // ⭐ `zip` entrou em 30/08: o pacote do agente da Zebra (`public/agente-zebra-windows.zip`)
+    // é baixado NO PC DA COZINHA, que não tem sessão do Conta IA — sem isto o download
+    // cai em /login e quem está com a impressora na mão trava. É arquivo estático como os
+    // outros da lista; não há nada sob autenticação servido com esta extensão.
+    '/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|manifest.json|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|xml|json|zip|woff|woff2|ttf|otf)$).*)',
   ],
 }

@@ -1,0 +1,118 @@
+========================================================
+ CONTA IA — AGENTE DE ETIQUETAS (Zebra por USB, Windows)
+========================================================
+
+O QUE ISTO FAZ
+--------------
+Deixa o CELULAR da cozinha mandar etiqueta pra Zebra que esta
+plugada NESTE computador.
+
+O app poe a etiqueta numa fila no servidor. Este agente pergunta
+de 3 em 3 segundos "tem algo pra imprimir?" e imprime. Ele so faz
+conexao de SAIDA — nao precisa abrir porta no roteador, nao precisa
+IP fixo, nao precisa VPN.
+
+Enquanto este PC estiver ligado com o agente aberto, a cozinha
+imprime do celular.
+
+
+ANTES DE COMECAR
+----------------
+[ ] Node instalado (ja esta: v24)
+[ ] Driver da Zebra instalado (ZDesigner) — passo 1 abaixo
+[ ] Zebra ligada e com bobina
+
+
+PASSO 1 — DRIVER DA ZEBRA
+-------------------------
+Rode:  listar-impressoras.bat
+
+  - Se aparecer algo como "ZDesigner ZD220-203dpi ZPL",
+    o driver ja esta instalado. Pule pro passo 2.
+
+  - Se NAO aparecer nenhuma Zebra, instale o driver:
+    Zebra Setup Utilities / ZDesigner —
+    https://www.zebra.com/us/en/support-downloads.html
+    (escolha o modelo da sua impressora, baixe "Windows Driver")
+    Depois rode o listar-impressoras.bat de novo.
+
+
+PASSO 2 — COMPARTILHAR A IMPRESSORA
+-----------------------------------
+Clique com o botao DIREITO em:  compartilhar-impressora.bat
+e escolha "Executar como administrador".
+
+POR QUE ISSO: no Windows nao da pra falar com o USB direto —
+quem conversa com a Zebra e o spooler. O unico jeito de mandar o
+ZPL CRU (sem o driver "desenhar" a etiqueta como se fosse texto)
+e copiar os bytes pro compartilhamento da impressora.
+E so uma vez.
+
+Da pra fazer na mao tambem:
+  Configuracoes > Impressoras > (a Zebra) > Propriedades da
+  impressora > aba Compartilhamento > marcar "Compartilhar" >
+  nome do compartilhamento: Zebra
+
+
+PASSO 3 — TESTE FISICO
+----------------------
+Duplo clique em:  teste.bat
+
+Tem que sair uma etiqueta escrita "Conta IA / Teste de impressao"
+com a data e um QR code.
+
+  - Saiu papel: perfeito, va pro passo 4.
+  - Deu erro: a mensagem diz o que fazer. Os dois mais comuns:
+      "nao esta compartilhada"  -> refaca o passo 2
+      "nenhuma Zebra"           -> refaca o passo 1
+
+
+PASSO 4 — TOKEN
+---------------
+No Conta IA (pode ser no celular ou aqui no PC):
+
+  Estoque > Impressao > "+ nova impressora"
+     nome:  Zebra da cozinha
+     tipo:  USB (presa no computador)
+     salvar
+
+Vai aparecer uma TARJA AMARELA com o token (comeca com zeb_).
+Ele aparece UMA VEZ SO — copie na hora.
+
+Agora duplo clique em:  agente.bat
+Ele vai pedir o token. Cole e tecle Enter.
+
+O token fica guardado no arquivo config.bat — voce so faz isso
+uma vez. Se errar, apague o config.bat e rode o agente.bat de novo.
+
+A janela tem que ficar ABERTA. Fechar a janela = parar de imprimir.
+
+
+PASSO 5 — LIGAR SOZINHO COM O WINDOWS
+-------------------------------------
+Duplo clique em:  instalar-inicializacao.bat
+
+Pronto: toda vez que este PC ligar, o agente sobe sozinho,
+minimizado na barra de tarefas.
+
+Pra desfazer:  desinstalar-inicializacao.bat
+
+
+NO DIA A DIA
+------------
+- A janela "Conta IA - Agente de Etiquetas" fica minimizada.
+  Se quiser conferir, abra: ela mostra cada etiqueta impressa.
+- Impressora sem papel ou desligada NAO perde a etiqueta:
+  o trabalho volta pra fila e sai quando resolver.
+- Pra ver se o agente esta vivo, o app mostra "agente ONLINE"
+  em Estoque > Impressao.
+
+
+SE DER PROBLEMA
+---------------
+listar-impressoras.bat   mostra o que o Windows enxerga
+teste.bat                imprime sem passar pelo app
+config.bat               onde mora o token e o endereco do servidor
+
+O agente NAO le estoque, NAO le nota e NAO le dinheiro. O token
+dele so serve pra pegar etiqueta da fila e dizer se imprimiu.

@@ -20,9 +20,14 @@
 //
 // TESTE FÍSICO (imprime uma etiqueta de teste sem passar pelo app):
 //   node scripts/zebra-agente.mjs --teste
+//
+// VER AS IMPRESSORAS QUE O WINDOWS ENXERGA (e se estão compartilhadas):
+//   node scripts/zebra-agente.mjs --impressoras
 
 import net from 'node:net'
-import { spawn } from 'node:child_process'
+import fs from 'node:fs'
+import path from 'node:path'
+import { spawn, execFileSync } from 'node:child_process'
 import os from 'node:os'
 
 const URL_BASE = (process.env.CONTA_IA_URL || 'http://198.211.103.10').replace(/\/+$/, '')
@@ -30,6 +35,7 @@ const TOKEN = process.env.AGENTE_TOKEN || ''
 const INTERVALO = Number(process.env.INTERVALO_MS || 3000)
 const PRINTER_ENV = process.env.ZEBRA_PRINTER || ''
 const TESTE = process.argv.includes('--teste')
+const LISTAR = process.argv.includes('--impressoras')
 const plataforma = os.platform()
 
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a)
@@ -66,24 +72,105 @@ function imprimirRede(zpl, host, porta) {
   })
 }
 
+// ---------------------------------------------------------------------------
+// WINDOWS — achar a impressora e mandar RAW
+// ---------------------------------------------------------------------------
+//
+// ⚠️ NO WINDOWS NÃO DÁ PRA FALAR COM O USB DIRETO. Quem conversa com a Zebra é o SPOOLER
+// do Windows; o agente entrega o ZPL pra ele. O único caminho que passa o ZPL **cru**
+// (sem o driver "desenhar" a etiqueta como se fosse texto) é copiar os bytes pra um
+// COMPARTILHAMENTO da impressora — `copy /B arquivo \\localhost\Zebra`. Por isso a
+// impressora precisa estar **compartilhada**; é o `compartilhar-impressora.bat` do pacote.
+//
+// ⚠️ E O ARQUIVO TEMPORÁRIO É ESCRITO PELO NODE, não pelo PowerShell. A versão anterior
+// mandava o ZPL pelo stdin do PowerShell e gravava com `Set-Content`, que **escolhe a
+// codificação sozinho** (ANSI no PowerShell 5.1, UTF-8 no 7) — e o ZPL declara `^CI28`
+// (UTF-8). Numa etiqueta com "MANIPULAÇÃO" ou "VALIDADE" acentuada, isso sai como lixo na
+// bobina. Escrevendo os bytes aqui, a codificação é nossa e não do shell de quem rodou.
+
+let destinoCache = null
+
+/** o que o Windows enxerga: nome, se está compartilhada e com que nome */
+function impressorasWindows() {
+  try {
+    const out = execFileSync('powershell', [
+      '-NoProfile', '-Command',
+      'Get-Printer | Select-Object Name,ShareName,Shared | ConvertTo-Json -Compress',
+    ], { encoding: 'utf8', timeout: 15000 })
+    const j = JSON.parse(out || 'null')
+    return (Array.isArray(j) ? j : j ? [j] : []).map((p) => ({
+      nome: p.Name, share: p.ShareName || null, compartilhada: !!p.Shared,
+    }))
+  } catch {
+    return [] // sem PowerShell / sem permissão: cai no palpite padrão, com mensagem clara
+  }
+}
+
+const PARECE_ZEBRA = /zebra|zdesigner|zpl|\bzd\d|gk\d|gc\d|tlp/i
+
+/**
+ * Pra onde mandar os bytes no Windows.
+ * Ordem: o que o dono configurou → a Zebra compartilhada que o Windows tem → erro que ENSINA.
+ */
+function destinoWindows(fila) {
+  const escolhido = PRINTER_ENV || fila || ''
+  // já veio um caminho de rede pronto (\\PC\FILA)
+  if (escolhido.startsWith('\\\\')) return escolhido
+  if (escolhido) return `\\\\localhost\\${escolhido}`
+  if (destinoCache) return destinoCache
+
+  const ims = impressorasWindows()
+  const zebras = ims.filter((i) => PARECE_ZEBRA.test(i.nome))
+  const pronta = zebras.find((i) => i.compartilhada && i.share)
+  if (pronta) {
+    destinoCache = `\\\\localhost\\${pronta.share}`
+    log(`impressora: "${pronta.nome}" → ${destinoCache}`)
+    return destinoCache
+  }
+  // ⚠️ NUNCA falhar com "erro genérico": a mensagem diz exatamente o que fazer.
+  if (zebras.length) {
+    throw new Error(
+      `achei a impressora "${zebras[0].nome}" mas ela NÃO está compartilhada — ` +
+      'rode o "compartilhar-impressora.bat" como administrador (ou compartilhe à mão com o nome Zebra)',
+    )
+  }
+  throw new Error(
+    ims.length
+      ? `nenhuma Zebra entre as impressoras do Windows (${ims.map((i) => i.nome).join(', ')}) — instale o driver ZDesigner`
+      : 'não consegui listar as impressoras do Windows — rode "listar-impressoras.bat" pra ver o erro',
+  )
+}
+
 /** USB: pela fila do sistema operacional, em modo RAW. */
 function imprimirUsb(zpl, fila) {
+  if (plataforma === 'win32') {
+    return new Promise((resolve, reject) => {
+      let destino
+      try { destino = destinoWindows(fila) } catch (e) { return reject(e) }
+      const tmp = path.join(os.tmpdir(), `conta-ia-etq-${Date.now()}.zpl`)
+      try { fs.writeFileSync(tmp, zpl, 'utf8') } catch (e) { return reject(new Error(`não consegui gravar o arquivo temporário: ${e.message}`)) }
+      const p = spawn('cmd', ['/c', 'copy', '/B', tmp, destino], { windowsVerbatimArguments: false })
+      let err = ''
+      p.stderr.on('data', (d) => { err += d })
+      p.stdout.on('data', (d) => { err += d }) // o `copy` fala pelo stdout mesmo quando falha
+      p.on('error', (e) => { fs.unlinkSync(tmp); reject(new Error(`não consegui chamar o copy: ${e.message}`)) })
+      p.on('close', (code) => {
+        try { fs.unlinkSync(tmp) } catch { /* temp fica pra trás, não é motivo pra falhar */ }
+        if (code === 0) return resolve()
+        destinoCache = null // ⚠️ zera o palpite: se o share sumiu, procura de novo no próximo job
+        reject(new Error(`copy pra ${destino} falhou: ${err.trim() || `código ${code}`}`))
+      })
+    })
+  }
+
   return new Promise((resolve, reject) => {
     const alvo = PRINTER_ENV || fila || ''
-    let cmd, args
-    if (plataforma === 'win32') {
-      cmd = 'powershell'
-      const destino = alvo || '\\\\localhost\\Zebra'
-      args = ['-Command', `$in=[Console]::In.ReadToEnd(); Set-Content -Path $env:TEMP\\etq.zpl -Value $in -NoNewline; cmd /c "copy /B $env:TEMP\\etq.zpl \\"${destino}\\""`]
-    } else {
-      cmd = 'lp'
-      args = alvo ? ['-d', alvo, '-o', 'raw'] : ['-o', 'raw']
-    }
-    const p = spawn(cmd, args)
+    const args = alvo ? ['-d', alvo, '-o', 'raw'] : ['-o', 'raw']
+    const p = spawn('lp', args)
     let err = ''
     p.stderr.on('data', (d) => { err += d })
-    p.on('error', (e) => reject(new Error(`não consegui chamar "${cmd}": ${e.message}`)))
-    p.on('close', (code) => (code === 0 ? resolve() : reject(new Error(err.trim() || `${cmd} saiu com código ${code}`))))
+    p.on('error', (e) => reject(new Error(`não consegui chamar "lp": ${e.message}`)))
+    p.on('close', (code) => (code === 0 ? resolve() : reject(new Error(err.trim() || `lp saiu com código ${code}`))))
     p.stdin.end(zpl)
   })
 }
@@ -115,6 +202,20 @@ async function avisar(jobId, ok, erro) {
 }
 
 async function main() {
+  if (LISTAR) {
+    if (plataforma !== 'win32') { console.log('--impressoras é do Windows. No Mac/Linux use: lpstat -p'); return }
+    const ims = impressorasWindows()
+    if (!ims.length) { console.log('Não consegui listar as impressoras (PowerShell bloqueado?).'); return }
+    console.log('\nImpressoras que o Windows enxerga:\n')
+    for (const i of ims) {
+      const zebra = PARECE_ZEBRA.test(i.nome) ? '  << parece a Zebra' : ''
+      console.log(`  ${i.nome}`)
+      console.log(`     compartilhada: ${i.compartilhada ? `SIM (nome: ${i.share})` : 'NÃO'}${zebra}`)
+    }
+    console.log('\nO agente precisa da Zebra COMPARTILHADA — é o compartilhar-impressora.bat.\n')
+    return
+  }
+
   if (TESTE) {
     // teste físico direto: usa as variáveis de ambiente, sem servidor
     const host = process.env.ZEBRA_HOST
