@@ -348,6 +348,50 @@ Os dois viraram guard. ⚠️ E **o guard da tela financeira pegou um falso posi
 
 **⚠️ E O GUARD DE SIDEBAR DE 26/08 REPROVOU O APERTO:** o regex exigia `workspaceType !== 'pf' && (` e o gate virou `… && !soEstoque && (`. Afrouxei **só pra aceitar um gate MAIS restritivo** — *guard que impede endurecer é guard que envelheceu*.
 
+## ⭐⭐⭐ A ETIQUETA VIROU A TELA — E A LIÇÃO É SOBRE ENSINO, NÃO SOBRE LÓGICA (31/08/2026)
+
+**⛔⛔ O RELATO DO DONO É O ACHADO:** *"o comportamento está CORRETO, mas a tela FALHOU no teste de uso: eu mesmo, dono do produto, olhei e conclui que os dois lados faziam a mesma coisa. Se eu me confundo, a Marcyelle se confunde."*
+
+Ele digitou **"queijo"** no campo Rótulo do nome do produto achando que trocava o CONTEÚDO, e a prévia mostrou **"queijoPorção de carne 100g"**. **Nada estava quebrado** — dois blocos de inputs visualmente idênticos, um em cada lado da tela, e **nada mostrando que "Rótulo" e o valor formam UMA linha da etiqueta**. **Se o dono lê errado, a régua está errada — não o leitor.**
+
+**⭐ O DESENHO NOVO (padrão ZebraDesigner/BarTender/Canva): a etiqueta é o elemento principal e a edição acontece NO elemento.** Três colunas — camadas · etiqueta (400px, o centro) · inspetor da linha. Sumiram os 9 cards empilhados **e** o card "Dados de prévia": cada dado de exemplo passou a morar **na linha a que pertence**.
+
+**⭐⭐ O QUE ENSINA SÃO TRÊS COISAS AMARRADAS**, não um texto explicativo: (1) a tira *"como sai na etiqueta"* mostra a linha **montada**, com as partes pintadas — `VAL` em chip azul, `03/09/2026` em chip âmbar tracejado; (2) as caixas de edição repetem **exatamente** as mesmas cores (🔒 azul = salvo · 👁 âmbar = só prévia); (3) focar um campo **acende** a parte correspondente na etiqueta, e clicar numa parte leva o cursor ao campo dela. O mapeamento vira literal.
+
+⚠️ **A LINHA DE TEXTO LIVRE tem só a caixa azul** (o texto dela É salvo) — a ausência da caixa âmbar ensina o contraste de graça, sem mais uma legenda.
+
+**⭐ A INTERAÇÃO ENTROU NO `PreviaEtiqueta` QUE JÁ EXISTIA, e não num "canvas editável" novo:** um segundo renderizador faria o que se **edita** divergir do que se **imprime** na primeira mudança de layout. Sem `onSelecionar` o componente é o mesmo de antes — a tela `/estoque/etiquetas` não mudou em nada. As partes (`{rotulo, conteudo}`) viraram **dado do layout**, com teste provando que **recompõem exatamente** o texto desenhado (não são um 2º cálculo).
+
+**⚠️ DECISÕES DO DONO no desenho:** (a) **um card só** no topo — "Espaço usado"; "linhas ativas" e "avisos" repetiam o que já está a dois centímetros e roubavam espaço da etiqueta. **E o denominador é derivado do MESMO limite do `estourou`** (`LADO_DOTS_USAVEL`), senão a barra diria 92% numa etiqueta já estourada; (b) **arrastar E setas ↑↓ nos DOIS** (desktop e celular), uma lista só, os dois gestos chamando `moverBloco` — *"dois comportamentos diferentes pra mesma lista é fonte única quebrada"*; o teclado vem de brinde; (c) **faixa de clique da largura inteira** — clicar no vazio à direita de "25 UN" seleciona a linha da Quantidade.
+
+**⭐⭐ O TESTE QUE MATA A CLASSE, não a instância:** *"nenhum campo do modelo fica sem jeito de ser previsto"* (`ENTRADAS_PREVIA`). Campo novo sem entrada = campo que o dono não consegue prever — e aí ele tenta trocar pelo Rótulo de novo, que foi exatamente o que aconteceu.
+
+## ⛔⛔ "RÓTULO SOZINHO NÃO VIRA LINHA" ERA REGRA ERRADA — E O ASSASSINO NÃO ERA O SUSPEITO (31/08/2026)
+
+**CASO REAL, achado pelo dono no browser:** rótulo **"carne 100 grama"** no Nome do produto + conteúdo de prévia vazio → **a linha sumia inteira**. Bastava digitar uma letra pra voltar. **Isso quebrava a promessa que a própria tela faz:** a caixa azul do inspetor diz *"SAI EM TODA ETIQUETA — É SALVO"*, e não saía.
+
+**⚠️⚠️ ERAM DOIS GUARDS, e o apontado nem chegava a rodar:**
+```
+201:  if (!bruto.trim()) continue     ← MATAVA AQUI (guard de 30/08, decide pelo CONTEÚDO)
+204:  if (!valor) continue            ← o suspeito; inalcançável
+```
+**Corrigir só o `juntarRotuloValor` teria deixado o bug vivo** e o dono reabriria o chamado. **Guard que decide por UMA das partes não pode existir num lugar onde a linha é a SOMA das duas.** Os dois viraram **um só**, sobre o valor que vai ser desenhado.
+
+**⭐ E A SUSPEITA DO DONO ESTAVA CERTA — eram duas réguas pro mesmo caso.** A regra velha nasceu pra evitar imprimir **"VAL" solto sem data**; mas `valoresDaEtiqueta` devolve **"A DEFINIR"** quando não há validade, **nunca string vazia**. Ela guardava um estado **inalcançável** e cobrava um bug real por um problema que a outra régua já resolvia.
+
+**A REGRA ÚNICA: a linha existe se há algo pra imprimir — rótulo OU conteúdo.**
+
+| rótulo | conteúdo | sai |
+|---|---|---|
+| `"VAL"` | vazio | **não acontece** (vem "A DEFINIR") |
+| `"carne 100 grama"` | vazio | **`carne 100 grama`** |
+| vazio | vazio | nada — linha em branco vira buraco |
+| vazio | `"X"` | `X` |
+
+⚠️ **O teste que afirmava a regra errada foi INVERTIDO com o motivo escrito, não apagado** — o mesmo tratamento que a heurística do FITID recebeu quando caiu por evidência. **Red-then-green:** com os dois guards de volta, **4 testes acusam**, incluindo *"a linha sumiu — é o bug de 31/08"*. **67 testes de etiqueta** (era 45 antes deste ciclo) · 676 stock verdes · TS 0.
+
+⚠️ **PENDÊNCIA REGISTRADA:** a **régua de calibração da largura** (`LARGURA_CALIBRADA=false`, aviso diz *"pode sair cortada"* e nunca "corta"; um teste trava a hedge). O dono decidiu não rodar a régua ainda — **lembrar quando ele falar da Zebra de novo**. ⚠️ E um **4º teste vermelho** além dos 3 documentados: `producao-invariants > P2` (ordem parada > 24h), **provado pré-existente** com `git stash` contra o HEAD limpo.
+
 ## ⭐⭐⭐ EDITOR DE MODELO DE ETIQUETA — O DONO DESENHA (30/08/2026)
 
 **VEREDITO DO ESTUDO, registrado:** o **conteúdo** nosso já era **≥ SuFlex** — lote com **custo real** e QR com **rastro até a nota da SEFAZ**, que eles não têm. **A flexibilidade do modelo era o gap** — e morre aqui. Eles deixam **configurar** (ligar/desligar campo); aqui o dono **DESENHA**: renomeia rótulo (`FAB` → `FABRICAÇÃO`), reordena, muda fonte, põe negrito/destaque, adiciona **linha de texto livre** ("Mantenha congelado", CNPJ, telefone) e cria **vários modelos**, com escolha por item.
