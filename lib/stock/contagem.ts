@@ -14,6 +14,9 @@ import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { criarMovimento } from './movement'
 import { recomputeSaldoCache, saldosDaEmpresa } from './saldo'
+import { partirNome } from './contagem/nome-produto'
+import { avisoUnidadeSuspeita } from './contagem/unidade-suspeita'
+import { ordenarFila } from './contagem/ordem-fila'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -157,6 +160,16 @@ export interface LinhaQuadro {
   ultimaContagemEm: string | null
   ultimaContagemPor: string | null
   diasSemContagem: number | null
+  /** ⭐ o nome partido pro modo contar: "o que é" grande, "qual é" pequeno */
+  titulo: string
+  especificacao: string
+  /** ⚠️ item contável com saldo fracionado — a divergência pode ser do CADASTRO */
+  avisoUnidade: string | null
+  /** ⭐ estado NESTA sessão: CONTADO tem número; NAO_SEI/PULADO não (e não são "branco") */
+  estado: 'CONTADO' | 'NAO_SEI' | 'PULADO' | null
+  /** ⭐ ela viu o número do sistema antes de digitar? (contagem cega com rastro) */
+  viuSistema: boolean
+  observacao: string | null
   /** preenchido quando o item JÁ foi contado NESTA sessão */
   contado: { qtdContada: number; divergencia: number; valorDivergencia: number; contadoPorNome: string | null; contadoEm: string } | null
 }
@@ -171,7 +184,11 @@ export interface Quadro {
   linhas: LinhaQuadro[]
   totalItens: number
   totalContados: number
+  /** ⭐ "não sei" NÃO conta como contado nem como pendente mudo — é a apurar */
+  totalAApurar: number
   divergenciaValor: number
+  /** ⚠️ sessão aberta há mais de 24h — AVISA, nunca fecha sozinha */
+  avisoSessao: string | null
 }
 
 export async function getQuadro(companyId: string, now: Date = new Date(), db: PrismaClient = defaultPrisma): Promise<Quadro> {
@@ -194,6 +211,20 @@ export async function getQuadro(companyId: string, now: Date = new Date(), db: P
   const desta = sessao ? await db.stockContagemItem.findMany({ where: { contagemId: sessao.id } }) : []
   const destaPorItem = new Map(desta.map((d) => [d.itemId, d]))
 
+  // ⭐ o ESTADO vem das VERSÕES (é lá que "não sei" existe — a cabeça só guarda número).
+  // A versão mais nova de cada item manda.
+  const versoes = sessao
+    ? await db.stockContagemVersao.findMany({ where: { contagemId: sessao.id }, orderBy: { versao: 'desc' } })
+    : []
+  const estadoPorItem = new Map<string, { estado: string; viuSistema: boolean; observacao: string | null }>()
+  for (const v of versoes) {
+    if (!estadoPorItem.has(v.itemId)) estadoPorItem.set(v.itemId, { estado: v.estado, viuSistema: v.viuSistema, observacao: v.observacao })
+  }
+
+  // ⭐ o caminho físico do estoque (vazio = ninguém arrastou nada ainda)
+  const ordens = await db.stockContagemOrdem.findMany({ where: { companyId }, select: { itemId: true, ordem: true } })
+  const caminho = new Map(ordens.map((o) => [o.itemId, o.ordem]))
+
   const linhas: LinhaQuadro[] = itens.map((i) => {
     const s = saldoPorItem.get(i.id)
     const u = ultimaPorItem.get(i.id)
@@ -207,16 +238,32 @@ export async function getQuadro(companyId: string, now: Date = new Date(), db: P
       ultimaContagemEm: u ? u.contadoEm.toISOString() : null,
       ultimaContagemPor: u?.contadoPorNome ?? null,
       diasSemContagem: u ? Math.floor((now.getTime() - u.contadoEm.getTime()) / 86_400_000) : null,
+      titulo: partirNome(i.nome).titulo,
+      especificacao: partirNome(i.nome).especificacao,
+      avisoUnidade: avisoUnidadeSuspeita(i.unidadeControle, s?.saldo ?? 0),
+      estado: (estadoPorItem.get(i.id)?.estado as LinhaQuadro['estado']) ?? (destaPorItem.get(i.id) ? 'CONTADO' : null),
+      viuSistema: estadoPorItem.get(i.id)?.viuSistema ?? false,
+      observacao: estadoPorItem.get(i.id)?.observacao ?? null,
       contado: d ? { qtdContada: d.qtdContada, divergencia: d.divergencia, valorDivergencia: d.valorDivergencia, contadoPorNome: d.contadoPorNome, contadoEm: d.contadoEm.toISOString() } : null,
     }
   })
 
+  // ⭐ a fila sai na ordem do CAMINHO quando ele existe; senão, categoria + nome (hoje)
+  const ordenadas = ordenarFila(
+    linhas.map((l) => ({ itemId: l.itemId, nome: l.nome, categoria: l.categoria })),
+    caminho,
+  )
+  const porId = new Map(linhas.map((l) => [l.itemId, l]))
+  const linhasNaOrdem = ordenadas.map((o) => porId.get(o.itemId)!).filter(Boolean)
+
   return {
     contagem: sessao ? { id: sessao.id, tipo: sessao.tipo, status: sessao.status, iniciadaEm: sessao.iniciadaEm.toISOString(), criadoPorNome: sessao.criadoPorNome } : null,
-    linhas,
-    totalItens: linhas.length,
+    linhas: linhasNaOrdem,
+    totalItens: linhasNaOrdem.length,
     totalContados: desta.length,
+    totalAApurar: linhasNaOrdem.filter((l) => l.estado === 'NAO_SEI').length,
     divergenciaValor: round2(desta.reduce((s, d) => s + d.valorDivergencia, 0)),
+    avisoSessao: sessao ? avisoSessaoVelha(sessao.iniciadaEm, now) : null,
   }
 }
 
@@ -231,6 +278,10 @@ export interface ContarLinhaInput {
   qtdContada: number
   /** aceite explícito da 2ª confirmação — sem ele o servidor RECUSA divergência grande */
   confirmarFreio?: boolean
+  /** ⭐ CONTAGEM CEGA: ela apertou "ver o que o sistema diz" antes de digitar? */
+  viuSistema?: boolean
+  /** ⭐ observação de quem VIU ("estava molhado", "achei em dois lugares") */
+  observacao?: string | null
   userId?: string
   userName?: string
 }
@@ -303,6 +354,16 @@ export async function contarLinha(input: ContarLinhaInput, db: PrismaClient = de
         contadoPorId: input.userId ?? null, contadoPorNome: input.userName ?? null, contadoEm: new Date(),
       },
     })
+
+    // ⭐⭐ O RASTRO, na MESMA transação (31/08): recontar EMPILHA, não sobrescreve.
+    // A cabeça (`stock_contagem_item`) fica com o valor atual — é o que o E8 e o ledger
+    // leem, e por isso não se toca nela. Aqui fica o que aconteceu no caminho.
+    await gravarVersaoNaTx(tx, {
+      companyId: input.companyId, contagemId: input.contagemId, itemId: input.itemId,
+      estado: 'CONTADO', qtdContada: input.qtdContada, saldoSistema,
+      viuSistema: !!input.viuSistema, observacao: input.observacao ?? null,
+      userId: input.userId, userName: input.userName,
+    })
     return { movementId }
   })
 
@@ -311,6 +372,143 @@ export async function contarLinha(input: ContarLinhaInput, db: PrismaClient = de
     ok: true, divergencia, valorDivergencia, saldoSistema,
     saldoDepois: round3(input.qtdContada), movementId: r.movementId, freio,
   }
+}
+
+// ---------------------------------------------------------------------------
+// ⭐⭐ O RASTRO — APPEND-ONLY (31/08/2026)
+// ---------------------------------------------------------------------------
+//
+// ⚠️ "Mudou depois? Guarda as duas versões, não sobrescreve" (regra do dono). Cada
+// gravação empilha uma versão nova, com o valor ANTERIOR desnormalizado — a revisão mostra
+// "era 1,86" sem reler a versão de trás.
+//
+// ⚠️⚠️ E O RASTRO DIZ **QUEM CONTOU**, NÃO QUEM É CULPADO. Quem descobre a falta não é quem
+// causou; se contar virar risco, ninguém conta direito. Por isso o nome fica DENTRO do
+// histórico da linha, e a tela nunca o cola no número da divergência.
+
+type TxLike = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0]
+
+interface VersaoInput {
+  companyId: string
+  contagemId: string
+  itemId: string
+  estado: 'CONTADO' | 'NAO_SEI' | 'PULADO'
+  qtdContada?: number | null
+  saldoSistema: number
+  viuSistema?: boolean
+  observacao?: string | null
+  userId?: string
+  userName?: string
+}
+
+async function gravarVersaoNaTx(tx: TxLike, v: VersaoInput) {
+  const anterior = await tx.stockContagemVersao.findFirst({
+    where: { contagemId: v.contagemId, itemId: v.itemId },
+    orderBy: { versao: 'desc' },
+    select: { versao: true, qtdContada: true },
+  })
+  return tx.stockContagemVersao.create({
+    data: {
+      companyId: v.companyId, contagemId: v.contagemId, itemId: v.itemId,
+      versao: (anterior?.versao ?? 0) + 1,
+      estado: v.estado,
+      // ⛔ CHECK no banco: CONTADO exige número; NAO_SEI/PULADO exigem null.
+      qtdContada: v.estado === 'CONTADO' ? (v.qtdContada ?? 0) : null,
+      qtdAnterior: anterior?.qtdContada ?? null,
+      saldoSistema: v.saldoSistema,
+      viuSistema: !!v.viuSistema,
+      observacao: v.observacao?.trim() || null,
+      contadoPorId: v.userId ?? null, contadoPorNome: v.userName ?? null,
+    },
+  })
+}
+
+export interface MarcarLinhaInput {
+  companyId: string
+  contagemId: string
+  itemId: string
+  /** ⭐ "não sei / conferir depois" é ESTADO DE PRIMEIRA CLASSE — branco é ambíguo */
+  estado: 'NAO_SEI' | 'PULADO'
+  observacao?: string | null
+  userId?: string
+  userName?: string
+}
+
+/**
+ * ⭐⭐ "NÃO SEI" e "PULAR" — a apurar > número inventado.
+ *
+ * ⚠️ NÃO MEXE NO LEDGER, e é o ponto: linha sem número não pode virar ajuste. Antes, deixar
+ * em branco era ambíguo — "não contei" e "contei e deu zero" eram a mesma coisa na tela.
+ * Agora "não sei" é um fato registrado, com quem e quando, e entra na revisão como
+ * **a apurar**, nunca como divergência.
+ */
+export async function marcarLinha(input: MarcarLinhaInput, db: PrismaClient = defaultPrisma) {
+  const sessao = await db.stockContagem.findFirst({ where: { id: input.contagemId, companyId: input.companyId } })
+  if (!sessao) throw new ContagemError('Contagem não encontrada.')
+  if (sessao.status !== 'ABERTA') throw new ContagemError('Essa contagem já foi encerrada — abra uma nova pra contar.')
+
+  const saldos = await saldosDaEmpresa(db, input.companyId)
+  const saldoSistema = saldos.find((x) => x.itemId === input.itemId)?.saldo ?? 0
+
+  await db.$transaction(async (tx) => {
+    await gravarVersaoNaTx(tx, {
+      companyId: input.companyId, contagemId: input.contagemId, itemId: input.itemId,
+      estado: input.estado, saldoSistema, observacao: input.observacao ?? null,
+      userId: input.userId, userName: input.userName,
+    })
+  })
+  return { ok: true as const, estado: input.estado }
+}
+
+export interface VersaoDaLinha {
+  versao: number
+  estado: string
+  qtdContada: number | null
+  qtdAnterior: number | null
+  viuSistema: boolean
+  observacao: string | null
+  contadoPorNome: string | null
+  contadoEm: string
+}
+
+/** o histórico de uma sessão, por item — alimenta o "expandir e ver as versões" */
+export async function historicoDaContagem(
+  companyId: string, contagemId: string, db: PrismaClient = defaultPrisma,
+): Promise<Map<string, VersaoDaLinha[]>> {
+  const vs = await db.stockContagemVersao.findMany({
+    where: { companyId, contagemId },
+    orderBy: [{ itemId: 'asc' }, { versao: 'desc' }],
+  })
+  const out = new Map<string, VersaoDaLinha[]>()
+  for (const v of vs) {
+    const lista = out.get(v.itemId) ?? []
+    lista.push({
+      versao: v.versao, estado: v.estado, qtdContada: v.qtdContada, qtdAnterior: v.qtdAnterior,
+      viuSistema: v.viuSistema, observacao: v.observacao,
+      contadoPorNome: v.contadoPorNome, contadoEm: v.contadoEm.toISOString(),
+    })
+    out.set(v.itemId, lista)
+  }
+  return out
+}
+
+// ---------------------------------------------------------------------------
+// ⚠️ SESSÃO VELHA — AVISA, NUNCA FECHA SOZINHA
+// ---------------------------------------------------------------------------
+//
+// ⚠️ Fechar sozinho jogaria fora o trabalho de quem está no meio do estoque com o celular
+// na mão — e é justamente quem mais precisa que o sistema não atrapalhe. Só avisa, com o
+// atalho pra recontar o que ficou velho. É a mesma régua do mínimo sanitário.
+
+export const HORAS_SESSAO_VELHA = 24
+
+export function avisoSessaoVelha(iniciadaEm: Date, agora: Date): string | null {
+  const horas = (agora.getTime() - iniciadaEm.getTime()) / 3_600_000
+  if (horas < HORAS_SESSAO_VELHA) return null
+  const dias = Math.floor(horas / 24)
+  const quanto = dias >= 1 ? `${dias} ${dias === 1 ? 'dia' : 'dias'}` : `${Math.floor(horas)} horas`
+  return `Esta contagem está aberta há ${quanto} — o que foi contado antes pode não valer mais ` +
+    '(entrou e saiu mercadoria no meio). Vale recontar as linhas mais antigas antes de finalizar.'
 }
 
 // ---------------------------------------------------------------------------

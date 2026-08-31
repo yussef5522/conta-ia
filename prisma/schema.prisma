@@ -3860,6 +3860,65 @@ model StockContagemItem {
   @@map("stock_contagem_item")
 }
 
+// ⭐⭐ CONTAGEM — O RASTRO (31/08/2026). APPEND-ONLY: recontar EMPILHA, não sobrescreve.
+// `stock_contagem_item` continua sendo a CABEÇA (o valor atual, que o E8 e o ledger leem);
+// aqui mora o histórico. Cabeça + histórico é o mesmo desenho do ledger.
+// ⚠️ O rastro diz QUEM CONTOU, não quem é culpado — quem descobre a falta não é quem
+// causou. Na tela o nome vive DENTRO do histórico, nunca colado no número da divergência.
+model StockContagemVersao {
+  id             String   @id @default(cuid())
+  companyId      String
+  contagemId     String
+  itemId         String
+  versao         Int
+  estado         String // CONTADO | NAO_SEI | PULADO
+  qtdContada     Float? // só em CONTADO — CHECK no banco
+  qtdAnterior    Float? // "era 1,86", sem reler a versão anterior
+  saldoSistema   Float // snapshot DESTE instante
+  viuSistema     Boolean  @default(false) // ⭐ a contagem cega: escolha com rastro
+  observacao     String? // ⭐ de quem VIU ("estava molhado") — não é decisão
+  contadoPorId   String?
+  contadoPorNome String?
+  contadoEm      DateTime @default(now())
+
+  @@unique([contagemId, itemId, versao])
+  @@index([companyId, contagemId])
+  @@index([companyId, itemId])
+  @@map("stock_contagem_versao")
+}
+
+// ⚠️ "CONFERIDO" não aplica nada: o ajuste já foi na hora da contagem. O nome diz a
+// verdade sobre o que o clique faz — "aceitar" faria o botão mentir.
+model StockContagemRevisao {
+  id              String   @id @default(cuid())
+  companyId       String
+  contagemId      String
+  itemId          String
+  decisao         String // CONFERIDO | RECONTAR | INVESTIGAR
+  motivo          String?
+  decididoPorId   String?
+  decididoPorNome String?
+  decididoEm      DateTime @default(now())
+
+  @@index([companyId, contagemId])
+  @@map("stock_contagem_revisao")
+}
+
+// ⭐ O CAMINHO FÍSICO (câmara → freezer → seco). Nasce vazio: a ordem é ARRASTÁVEL na fila
+// e o sistema guarda — ninguém preenche 91 campos à mão. Item sem linha vai pro fim.
+model StockContagemOrdem {
+  id            String   @id @default(cuid())
+  companyId     String
+  itemId        String
+  ordem         Int
+  definidoPorId String?
+  atualizadoEm  DateTime @updatedAt
+
+  @@unique([companyId, itemId])
+  @@index([companyId, ordem])
+  @@map("stock_contagem_ordem")
+}
+
 // ESTOQUE — ENTRADA MANUAL (23/08): compra SEM nota nenhuma (produtor rural que não
 // emite, compra avulsa no mercado). NÃO dá pra reusar `stock_receipt_conference` nem
 // `stock_payable_suggestion`: as duas exigem `nfeId` NOT NULL e o isolamento proíbe ALTER

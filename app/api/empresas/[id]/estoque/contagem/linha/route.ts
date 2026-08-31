@@ -15,6 +15,11 @@ const schema = z.object({
   itemId: z.string().min(1),
   qtdContada: z.number().min(0),
   confirmarFreio: z.boolean().optional(),
+  // ⭐ CONTAGEM CEGA: ela apertou "ver o que o sistema diz"? Não é proibição, é rastro.
+  viuSistema: z.boolean().optional(),
+  // ⭐ observação de QUEM VIU ("estava molhado") — não é decisão, é o que faz o dono
+  // investigar certo depois. Por isso a operadora pode escrever (é `stock.operate`).
+  observacao: z.string().max(300).nullish(),
 })
 
 export async function POST(request: NextRequest, { params }: Params) {
