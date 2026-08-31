@@ -11,7 +11,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   juntarRotuloValor, larguraEstimadaDots, LARGURA_CALIBRADA,
-  blocosParaLayout, previaDosBlocos, lerBlocos, gravarBlocos,
+  blocosParaLayout, previaDosBlocos, zplDosBlocos, lerBlocos, gravarBlocos,
   BLOCOS_PADRAO, MARGEM, type Bloco,
 } from '../blocos'
 import { LADO_DOTS, type DadosEtiqueta } from '../modelo'
@@ -47,6 +47,14 @@ describe('⭐⭐ o separador é UMA regra, não um hábito de digitação', () =
     expect(juntarRotuloValor('   ', 'A1B2C3D4')).toBe('A1B2C3D4')
   })
 
+  it('⭐⭐ a TABELA das 4 combinações (a regra: sai se há algo pra imprimir)', () => {
+    expect(juntarRotuloValor('carne 100 grama', '')).toBe('carne 100 grama') // rótulo só
+    expect(juntarRotuloValor('', 'X')).toBe('X')                             // conteúdo só
+    expect(juntarRotuloValor('VAL', '03/09/2026')).toBe('VAL 03/09/2026')    // os dois
+    expect(juntarRotuloValor('', '')).toBe('')                               // nada
+    expect(juntarRotuloValor('  ', '  ')).toBe('')                           // nada, com espaços
+  })
+
   it('⚠️⚠️ o que já está no banco tem espaço no fim — e NÃO vira espaço dobrado', () => {
     // os modelos salvos antes de 31/08 gravaram 'VAL ', 'FAB ', 'LOTE '. Sem o trim o bug
     // trocaria de cara em vez de sumir: "VAL  03/09/2026".
@@ -72,17 +80,67 @@ describe('⭐⭐ o separador é UMA regra, não um hábito de digitação', () =
     expect(texto('validade')).toBe('VAL 03/09/2026')      // com rótulo → um espaço
   })
 
-  it('⚠️ rótulo sem valor não vira linha (o rótulo sozinho não diz nada)', () => {
-    const semColab: Bloco[] = BLOCOS_PADRAO.map((b) =>
+  // ⛔⛔ ESTE TESTE FOI INVERTIDO EM 31/08 — ele afirmava a regra ERRADA.
+  // Dizia "rótulo sozinho não vira linha", e foi essa regra que sumiu com a linha do
+  // dono. Invertido com o motivo escrito, não apagado (o mesmo tratamento que a
+  // heurística do FITID recebeu quando caiu por evidência).
+  it('⭐⭐ RÓTULO SOZINHO SAI — ele é o que está SALVO no modelo', () => {
+    const comRotulo: Bloco[] = BLOCOS_PADRAO.map((b) =>
       b.campo === 'colaborador' ? { ...b, rotulo: 'POR' } : b)
-    const l = blocosParaLayout(semColab, { ...CARNE, colaborador: null })
-    expect(l.blocos.some((b) => b.valor.includes('POR'))).toBe(false)
+    const l = blocosParaLayout(comRotulo, { ...CARNE, colaborador: null })
+    const linha = l.blocos.find((b) => b.bloco.campo === 'colaborador')
+    expect(linha, 'a linha some quando o dono escreveu um rótulo pra ela').toBeTruthy()
+    expect(linha!.valor).toBe('POR')
   })
 
   it('⭐ e o ZPL e a prévia recebem o MESMO texto (uma junção, dois consumidores)', () => {
     const { campos } = previaDosBlocos(BLOCOS_PADRAO, CARNE)
     const naPrevia = campos.find((c) => c.id === 'produto')!.texto
     expect(naPrevia).toBe('Porção de carne 100g')
+  })
+})
+
+describe('⛔⛔ O CASO REAL: rótulo preenchido + conteúdo VAZIO (31/08/2026)', () => {
+  // O dono pôs "carne 100 grama" no rótulo do Nome do produto e deixou o conteúdo de
+  // prévia vazio: a LINHA SUMIU INTEIRA. Bastava digitar uma letra pra ela voltar.
+  // A caixa azul do inspetor promete "SAI EM TODA ETIQUETA — É SALVO", e não saía.
+  const SO_ROTULO: Bloco[] = BLOCOS_PADRAO.map((b) =>
+    b.campo === 'produto' ? { ...b, rotulo: 'carne 100 grama' } : b)
+  const SEM_NOME: DadosEtiqueta = { ...CARNE, produto: '' }
+
+  it('⛔⛔ a linha SAI, com o rótulo, mesmo sem conteúdo nenhum', () => {
+    const linha = blocosParaLayout(SO_ROTULO, SEM_NOME).blocos.find((b) => b.bloco.campo === 'produto')
+    expect(linha, 'a linha sumiu — é o bug de 31/08').toBeTruthy()
+    expect(linha!.valor).toBe('carne 100 grama')
+    expect(linha!.partes).toEqual({ rotulo: 'carne 100 grama', conteudo: '' })
+  })
+
+  it('⭐ e ela chega igual na PRÉVIA e no ZPL (não é conserto só de tela)', () => {
+    expect(previaDosBlocos(SO_ROTULO, SEM_NOME).campos.find((c) => c.id === 'produto')!.texto)
+      .toBe('carne 100 grama')
+    expect(zplDosBlocos(SO_ROTULO, SEM_NOME)).toContain('carne 100 grama')
+  })
+
+  it('⭐ digitar uma letra continua funcionando (o comportamento que ele já via)', () => {
+    const l = blocosParaLayout(SO_ROTULO, { ...CARNE, produto: 'a' }).blocos
+      .find((b) => b.bloco.campo === 'produto')!
+    expect(l.valor).toBe('carne 100 grama a')
+  })
+
+  it('⭐ vazio nos DOIS continua sumindo — linha em branco vira buraco', () => {
+    const semNada = BLOCOS_PADRAO.map((b) => (b.campo === 'produto' ? { ...b, rotulo: '' } : b))
+    expect(blocosParaLayout(semNada, SEM_NOME).blocos.find((b) => b.bloco.campo === 'produto'))
+      .toBeUndefined()
+  })
+
+  it('⚠️ e o "VAL sem data" que a regra velha queria evitar NÃO EXISTE', () => {
+    // ⭐ a suspeita do dono, confirmada: `valoresDaEtiqueta` devolve "A DEFINIR" quando
+    // não há validade — nunca string vazia. Eram DUAS RÉGUAS pro mesmo caso, e a segunda
+    // cobrava um bug real por um problema que a primeira já resolvia.
+    const l = blocosParaLayout(BLOCOS_PADRAO, { ...CARNE, validadeAte: null }).blocos
+      .find((b) => b.bloco.campo === 'validade')!
+    expect(l.valor).toBe('VAL A DEFINIR')
+    expect(l.partes.conteudo).toBe('A DEFINIR')
   })
 })
 

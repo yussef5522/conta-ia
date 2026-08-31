@@ -89,11 +89,34 @@ export const novoBlocoTexto = (texto = 'Texto novo'): Bloco => ({
 
 export function juntarRotuloValor(rotulo: string | null | undefined, valor: string): string {
   const r = (rotulo ?? '').trim()
-  const v = valor ?? ''
-  if (!r) return v          // ⭐ rótulo vazio é estado VÁLIDO — e não deixa espaço na frente
-  if (!v.trim()) return ''  // sem valor não há linha (nem o rótulo sozinho)
+  const v = (valor ?? '').trim()
+  if (!r) return v   // ⭐ rótulo vazio é estado VÁLIDO — e não deixa espaço na frente
+  if (!v) return r   // ⭐⭐ RÓTULO SOZINHO SAI (ver o bloco abaixo)
   return `${r} ${v}`
 }
+
+// ⛔⛔ "RÓTULO SOZINHO NÃO VIRA LINHA" ERA REGRA ERRADA — caso real de 31/08/2026.
+//
+// O dono pôs o rótulo **"carne 100 grama"** no Nome do produto e deixou o conteúdo de
+// prévia vazio: a linha SUMIU inteira. Bastava digitar uma letra pra ela voltar.
+// Isso quebra a promessa que a própria tela faz — a caixa azul do inspetor diz
+// **"SAI EM TODA ETIQUETA — É SALVO"**, e não saía.
+//
+// ⚠️ O RÓTULO É CONTEÚDO DO MODELO, não enfeite de um valor variável. Quem escreve
+// "carne 100 grama" ali está usando o rótulo como TEXTO FIXO da etiqueta, e essa é uma
+// decisão do dono como qualquer outra deste módulo.
+//
+// ⚠️⚠️ E A REGRA VELHA GUARDAVA UM ESTADO QUE NÃO EXISTE: ela nasceu pra evitar imprimir
+// "VAL" solto sem data — mas `valoresDaEtiqueta` devolve **"A DEFINIR"** quando não há
+// validade, nunca string vazia. **Eram duas réguas pro mesmo caso**, e a segunda cobrava
+// um preço real (o bug acima) por um problema que a primeira já resolvia. Campos que
+// PODEM vir vazios são produto, quantidade, lote, colaborador e empresa — em nenhum deles
+// existe um "rótulo solto perigoso": ou o dono escreveu o rótulo de propósito, ou não
+// escreveu nenhum e a linha some sozinha.
+//
+// A REGRA ÚNICA passou a ser: **a linha existe se há algo pra imprimir** — rótulo OU
+// conteúdo. Vazio nos dois = nada a desenhar, e aí a linha some mesmo (linha em branco
+// vira buraco no meio da etiqueta).
 
 // ---------------------------------------------------------------------------
 // ⚠️ CABE NA LARGURA? — ESTIMATIVA DECLARADA, NUNCA UMA AFIRMAÇÃO
@@ -196,11 +219,12 @@ export function blocosParaLayout(blocos: Bloco[], dados: DadosEtiqueta): LayoutC
   for (const b of blocos) {
     if (!b.ativo || b.tipo === 'qr') continue
     const bruto = b.tipo === 'texto' ? (b.texto ?? '') : (valores[b.campo as CampoId] ?? '')
-    // ⚠️ campo sem valor não ocupa linha — senão a etiqueta ganharia buracos quando o
-    // produto não tem colaborador ou quantidade.
-    if (!bruto.trim()) continue
     // ⭐ o separador sai de UMA função (ver o bloco no topo), nunca de espaço no dado
     const valor = juntarRotuloValor(b.rotulo, bruto)
+    // ⚠️⚠️ UM GUARD SÓ, e ele olha o que VAI SER DESENHADO (31/08). Antes eram dois: este
+    // e um `if (!bruto.trim()) continue` duas linhas acima, que matava a linha ANTES de o
+    // rótulo ser considerado — era ELE que sumia com o "carne 100 grama". Guard que decide
+    // por uma das partes não pode existir num lugar onde a linha é a soma das duas.
     if (!valor) continue
     const altura = b.destaque ? b.fonte + 14 : b.fonte
 
