@@ -43,11 +43,11 @@ export const ESPACO = 12
  *  o que é → quando vence → o resto. */
 export const BLOCOS_PADRAO: Bloco[] = [
   { id: 'produto', tipo: 'campo', campo: 'produto', rotulo: '', fonte: 40, negrito: true, ativo: true },
-  { id: 'validade', tipo: 'campo', campo: 'validade', rotulo: 'VAL ', fonte: 44, destaque: true, ativo: true },
+  { id: 'validade', tipo: 'campo', campo: 'validade', rotulo: 'VAL', fonte: 44, destaque: true, ativo: true },
   { id: 'estado', tipo: 'campo', campo: 'estado', rotulo: '', fonte: 24, ativo: true },
-  { id: 'fabricacao', tipo: 'campo', campo: 'fabricacao', rotulo: 'FAB ', fonte: 24, ativo: true },
+  { id: 'fabricacao', tipo: 'campo', campo: 'fabricacao', rotulo: 'FAB', fonte: 24, ativo: true },
   { id: 'quantidade', tipo: 'campo', campo: 'quantidade', rotulo: '', fonte: 24, ativo: true },
-  { id: 'lote', tipo: 'campo', campo: 'lote', rotulo: 'LOTE ', fonte: 24, ativo: true },
+  { id: 'lote', tipo: 'campo', campo: 'lote', rotulo: 'LOTE', fonte: 24, ativo: true },
   { id: 'colaborador', tipo: 'campo', campo: 'colaborador', rotulo: '', fonte: 22, ativo: true },
   { id: 'empresa', tipo: 'campo', campo: 'empresa', rotulo: '', fonte: 20, ativo: true },
   { id: 'qr', tipo: 'qr', rotulo: '', fonte: 0, qrTamanho: 5, ativo: true },
@@ -57,6 +57,71 @@ export const novoBlocoTexto = (texto = 'Texto novo'): Bloco => ({
   id: `texto-${Math.random().toString(36).slice(2, 9)}`,
   tipo: 'texto', texto, rotulo: '', fonte: 22, ativo: true,
 })
+
+// ---------------------------------------------------------------------------
+// ⭐⭐ A REGRA DO SEPARADOR — UMA SÓ, E ELA NÃO MORA NO DADO (31/08/2026)
+// ---------------------------------------------------------------------------
+//
+// ⛔ O QUE ACONTECIA: o layout fazia `${rotulo}${valor}` e o separador estava EMBUTIDO
+// NO DADO, campo a campo — `BLOCOS_PADRAO` gravava `'VAL '`, `'FAB '`, `'LOTE '` **com
+// espaço no fim** e o produto gravava `''`. Não era uma regra, era um hábito de digitação.
+// Resultado medido em prod: o dono escreveu "queijo" no rótulo do nome do produto e a
+// prévia mostrou **"queijoPorção de carne 100g"**, enquanto a validade saía "VAL 03/09"
+// certinha. Dois campos, dois comportamentos, nenhuma regra.
+//
+// ⭐ AGORA O RÓTULO GUARDA SÓ O TEXTO e quem junta é esta função. Isso resolve os três de
+// uma vez: o grudado, o inconsistente e o espaço sobrando quando o rótulo é vazio.
+//
+// ⚠️ E ELA NORMALIZA O QUE JÁ ESTÁ NO BANCO: os modelos salvos têm `'VAL '` com o espaço.
+// Sem o `trim` viraria "VAL  03/09" (dois espaços) — o bug trocaria de cara em vez de
+// sumir. Por isso a normalização é na LEITURA e não numa migration: modelo salvo continua
+// válido, e quem grava daqui pra frente grava limpo.
+
+export function juntarRotuloValor(rotulo: string | null | undefined, valor: string): string {
+  const r = (rotulo ?? '').trim()
+  const v = valor ?? ''
+  if (!r) return v          // ⭐ rótulo vazio é estado VÁLIDO — e não deixa espaço na frente
+  if (!v.trim()) return ''  // sem valor não há linha (nem o rótulo sozinho)
+  return `${r} ${v}`
+}
+
+// ---------------------------------------------------------------------------
+// ⚠️ CABE NA LARGURA? — ESTIMATIVA DECLARADA, NUNCA UMA AFIRMAÇÃO
+// ---------------------------------------------------------------------------
+//
+// ⛔ O PROBLEMA REAL: o ZPL usa `^FD` com `^A0N` e **sem `^FB`** — ou seja, a Zebra NÃO
+// quebra linha: ela CORTA no fim da etiqueta. Hoje a prévia falha de três jeitos
+// diferentes do que a impressora faz (linha normal VAZA pra fora da borda; linha em
+// destaque corta com "…"; a Zebra corta seco nos 480 dots). Com dado de exemplo curto
+// ninguém via; com nome de produto real, some texto sem ninguém saber.
+//
+// ⚠️⚠️ A MEDIDA **NÃO** PODE VIR DO NAVEGADOR, e a razão é a regra dos alarmes deste
+// sistema: fonte de tela e fonte de impressora têm métricas diferentes, então um aviso
+// tirado de `canvas.measureText` erraria nos DOIS sentidos — avisaria em nome que cabe e
+// deixaria passar nome que corta. Alarme falso repetido é como um alarme morre.
+//
+// ⚠️ POR ISSO ESTA CONSTANTE ESTÁ MARCADA COMO **NÃO MEDIDA**. A fonte 0 do ZPL é
+// proporcional e a razão largura/altura real só se sabe imprimindo. Enquanto ela não for
+// calibrada contra a Zebra física, o aviso diz **"pode cortar"** e nunca "vai cortar" —
+// a apurar é melhor que número inventado com cara de fato.
+//
+// COMO CALIBRAR (o dono tem a impressora): imprimir a régua abaixo e ver em qual coluna
+// o texto some. `LARGURA_POR_ALTURA = (nº de caracteres que couberam) ↦ 460 / (n × 24)`.
+//   ^XA^CI28^PW480^LL480
+//   ^FO10,40^A0N,24,24^FD00000000010000000002000000000300000000^FS
+//   ^FO10,100^A0N,40,40^FDMMMMMMMMMMMMMMMMMMMM^FS
+//   ^FO10,160^A0N,40,40^FDiiiiiiiiiiiiiiiiiiii^FS
+//   ^XZ
+// (os "M" e os "i" dão o pior e o melhor caso — a razão real fica no meio)
+
+/** ⚠️ NÃO MEDIDO — ver o bloco acima. Trocar por medida real calibra o aviso. */
+export const LARGURA_POR_ALTURA = 0.55
+export const LARGURA_CALIBRADA = false
+
+/** largura ESTIMADA do texto em dots, pela métrica da fonte ZPL (nunca a do navegador) */
+export function larguraEstimadaDots(texto: string, fonte: number): number {
+  return texto.length * fonte * LARGURA_POR_ALTURA
+}
 
 // ---------------------------------------------------------------------------
 // O LAYOUT CALCULADO — a fonte única
@@ -70,6 +135,10 @@ export interface BlocoPosicionado {
   y: number
   /** altura ocupada em dots */
   altura: number
+  /** quanto sobra de largura nesta linha (já descontando o QR, quando ele estorva) */
+  larguraDisponivel: number
+  /** ⚠️ ESTIMATIVA (ver LARGURA_CALIBRADA) — a Zebra corta, não quebra linha */
+  podeCortar: boolean
 }
 
 export interface LayoutCalculado {
@@ -78,6 +147,8 @@ export interface LayoutCalculado {
   alturaUsada: number
   /** ⚠️ passou dos 480 dots — não cabe na etiqueta */
   estourou: boolean
+  /** ⚠️ alguma linha pode sair cortada na largura (estimativa) */
+  podeCortar: boolean
   qr: BlocoPosicionado | null
 }
 
@@ -95,24 +166,48 @@ export function blocosParaLayout(blocos: Bloco[], dados: DadosEtiqueta): LayoutC
   let y = MARGEM
   let qr: BlocoPosicionado | null = null
 
+  // 1ª passada: o QR primeiro, porque ele é âncora e as linhas de baixo disputam largura
+  // com ele. Sem isto, a última linha ("Caçula Mix") "caberia" por cima do QR.
   for (const b of blocos) {
-    if (!b.ativo) continue
-    if (b.tipo === 'qr') {
-      const lado = (b.qrTamanho ?? 5) * 21
-      qr = { bloco: b, valor: valores.qr, x: LADO_DOTS - lado - MARGEM, y: LADO_DOTS - lado - MARGEM, altura: lado }
-      continue
+    if (!b.ativo || b.tipo !== 'qr') continue
+    const lado = (b.qrTamanho ?? 5) * 21
+    qr = {
+      bloco: b, valor: valores.qr,
+      x: LADO_DOTS - lado - MARGEM, y: LADO_DOTS - lado - MARGEM, altura: lado,
+      larguraDisponivel: lado, podeCortar: false,
     }
+  }
+
+  for (const b of blocos) {
+    if (!b.ativo || b.tipo === 'qr') continue
     const bruto = b.tipo === 'texto' ? (b.texto ?? '') : (valores[b.campo as CampoId] ?? '')
     // ⚠️ campo sem valor não ocupa linha — senão a etiqueta ganharia buracos quando o
     // produto não tem colaborador ou quantidade.
     if (!bruto.trim()) continue
-    const valor = `${b.rotulo ?? ''}${bruto}`
+    // ⭐ o separador sai de UMA função (ver o bloco no topo), nunca de espaço no dado
+    const valor = juntarRotuloValor(b.rotulo, bruto)
+    if (!valor) continue
     const altura = b.destaque ? b.fonte + 14 : b.fonte
-    out.push({ bloco: b, valor, x: MARGEM, y, altura })
+
+    // largura útil: até a margem direita — a não ser que o QR ocupe a mesma faixa de altura
+    const estorvaQr = qr != null && y + altura > qr.y
+    const limiteDireito = estorvaQr ? (qr as BlocoPosicionado).x - ESPACO : LADO_DOTS - MARGEM
+    const larguraDisponivel = Math.max(0, limiteDireito - MARGEM)
+
+    out.push({
+      bloco: b, valor, x: MARGEM, y, altura, larguraDisponivel,
+      podeCortar: larguraEstimadaDots(valor, b.fonte) > larguraDisponivel,
+    })
     y += altura + ESPACO
   }
 
-  return { blocos: out, alturaUsada: y - ESPACO - MARGEM, estourou: y > LADO_DOTS, qr }
+  return {
+    blocos: out,
+    alturaUsada: y - ESPACO - MARGEM,
+    estourou: y > LADO_DOTS,
+    podeCortar: out.some((p) => p.podeCortar),
+    qr,
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -154,9 +249,13 @@ export interface PreviaBloco {
   destaque: boolean
   negrito: boolean
   tipo: TipoBloco
+  /** % da largura da etiqueta que esta linha pode ocupar antes de a Zebra cortar */
+  larguraPct: number
+  /** ⚠️ estimativa — ver LARGURA_CALIBRADA */
+  podeCortar: boolean
 }
 
-export function previaDosBlocos(blocos: Bloco[], dados: DadosEtiqueta): { campos: PreviaBloco[]; estourou: boolean } {
+export function previaDosBlocos(blocos: Bloco[], dados: DadosEtiqueta): { campos: PreviaBloco[]; estourou: boolean; podeCortar: boolean } {
   const l = blocosParaLayout(blocos, dados)
   const pct = (n: number) => (n / LADO_DOTS) * 100
   const campos: PreviaBloco[] = l.blocos.map((p) => ({
@@ -164,14 +263,16 @@ export function previaDosBlocos(blocos: Bloco[], dados: DadosEtiqueta): { campos
     esquerda: pct(p.x), topo: pct(p.y),
     fontePct: pct(p.bloco.fonte), alturaPct: pct(p.altura),
     destaque: !!p.bloco.destaque, negrito: !!p.bloco.negrito, tipo: p.bloco.tipo,
+    larguraPct: pct(p.larguraDisponivel), podeCortar: p.podeCortar,
   }))
   if (l.qr) {
     campos.push({
       id: 'qr', texto: l.qr.valor, esquerda: pct(l.qr.x), topo: pct(l.qr.y),
       fontePct: 0, alturaPct: pct(l.qr.altura), destaque: false, negrito: false, tipo: 'qr',
+      larguraPct: pct(l.qr.altura), podeCortar: false,
     })
   }
-  return { campos, estourou: l.estourou }
+  return { campos, estourou: l.estourou, podeCortar: l.podeCortar }
 }
 
 // ---------------------------------------------------------------------------

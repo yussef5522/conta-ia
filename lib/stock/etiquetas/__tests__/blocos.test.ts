@@ -154,6 +154,39 @@ describe('⚠️⚠️ o mínimo sanitário AVISA e não trava', () => {
   })
 })
 
+// ⬇️ MIGRADOS de `modelo.test.ts` em 31/08, quando o renderizador morto foi apagado.
+// Eram garantias que só existiam contra o `montarZpl`; agora valem contra o que IMPRIME.
+describe('⭐ o ZPL sai válido pra a Zebra', () => {
+  const zpl = zplDosBlocos(BLOCOS_PADRAO, CARNE)
+
+  it('abre e fecha o formato, com UTF-8 e o tamanho 60×60', () => {
+    expect(zpl.startsWith('^XA')).toBe(true)
+    expect(zpl.trim().endsWith('^XZ')).toBe(true)
+    expect(zpl).toContain('^CI28') // acentos ("Porção")
+    expect(zpl).toContain('^PW480')
+    expect(zpl).toContain('^LL480')
+  })
+
+  it('o QR carrega o LOTE (é o que o celular escaneia)', () => {
+    expect(zpl).toContain('^BQN,2,5^FDLA,A1B2C3D4')
+  })
+
+  it('⭐⭐ sem validade o ZPL diz "A DEFINIR" — nunca uma data chutada', () => {
+    expect(zplDosBlocos(BLOCOS_PADRAO, { ...CARNE, validadeAte: null })).toContain('A DEFINIR')
+  })
+
+  it('o estado de conservação sai escrito (a pessoa vê onde guardar)', () => {
+    expect(zplDosBlocos(BLOCOS_PADRAO, { ...CARNE, estado: 'CONGELADO' })).toContain('CONGELADO')
+  })
+
+  it('⚠️ nome com caractere de controle do ZPL não quebra o comando', () => {
+    const z = zplDosBlocos(BLOCOS_PADRAO, { ...CARNE, produto: 'Molho ^especial~ da casa' })
+    expect(z).toContain('Molho  especial  da casa')
+    expect((z.match(/\^XA/g) ?? []).length).toBe(1)
+    expect((z.match(/\^XZ/g) ?? []).length).toBe(1)
+  })
+})
+
 describe('⚠️ ler do banco com desconfiança', () => {
   it('JSON válido volta igual', () => {
     const meu = [...BLOCOS_PADRAO, novoBlocoTexto('oi')]

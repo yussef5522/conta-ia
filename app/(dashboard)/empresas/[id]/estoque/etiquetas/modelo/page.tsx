@@ -8,6 +8,12 @@
 // ⚠️ A PRÉVIA AO LADO É A MESMA da tela de imprimir e do ZPL (`previaDosBlocos` /
 // `zplDosBlocos` sobre os MESMOS blocos). Mexeu, viu — e o que se vê é o que sai.
 //
+// ⚠️⚠️ DUAS ÁREAS, DOIS PAPÉIS (31/08/2026): à ESQUERDA a CONFIGURAÇÃO do modelo (é
+// salva e vale pra toda etiqueta); à DIREITA, embaixo da prévia, os DADOS DE PRÉVIA (não
+// são salvos — servem pra visualizar). Estavam misturados, e o efeito foi o previsível: o
+// dono digitou "queijo" no campo Rótulo achando que trocava o CONTEÚDO e levou
+// "queijoPorção de carne 100g". Os dados de exemplo eram fixos no código, sem como trocar.
+//
 // ⚠️ SETINHAS EM VEZ DE ARRASTAR: no celular — que é onde o dono vai mexer — arrastar
 // dentro de uma lista que rola briga com o scroll da página e vira frustração. ↑↓ faz a
 // mesma coisa, funciona no dedo frio e não depende de biblioteca.
@@ -16,9 +22,10 @@ import { useEffect, useMemo, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import {
-  LayoutTemplate, Loader2, Plus, Trash2, ChevronUp, ChevronDown, Printer, Check, AlertTriangle, Star,
+  LayoutTemplate, Loader2, Plus, Trash2, ChevronUp, ChevronDown, Printer, Check, AlertTriangle, Star, Settings2,
 } from 'lucide-react'
 import { PreviaEtiqueta } from '@/components/estoque/previa-etiqueta'
+import { DadosDePrevia, exemploDeEtiqueta } from '@/components/estoque/dados-de-previa'
 import {
   BLOCOS_PADRAO, novoBlocoTexto, avisosDoModelo, type Bloco,
 } from '@/lib/stock/etiquetas/blocos'
@@ -32,25 +39,14 @@ const NOME_BLOCO: Record<string, string> = {
   colaborador: 'Quem manipulou', empresa: 'Nome da empresa',
 }
 
-/** dados de exemplo — a prévia precisa de conteúdo pra mostrar o desenho */
-const EXEMPLO: DadosEtiqueta = {
-  produto: 'Porção de carne 100g',
-  lote: 'A1B2C3D4',
-  fabricacao: new Date(),
-  validadeAte: new Date(Date.now() + 3 * 86_400_000),
-  estado: 'RESFRIADO',
-  quantidade: 25,
-  unidade: 'UN',
-  colaborador: 'Cristian',
-  empresa: 'Caçula Mix',
-}
-
 export default function ModeloEtiquetaPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const [modelos, setModelos] = useState<Modelo[] | null | undefined>(undefined)
   const [modeloId, setModeloId] = useState<string | null>(null)
   const [nome, setNome] = useState('Padrão')
   const [blocos, setBlocos] = useState<Bloco[]>(BLOCOS_PADRAO)
+  // ⚠️ dados da PRÉVIA — não vão no `salvar()`, e não persistem nem no navegador
+  const [previa, setPrevia] = useState<DadosEtiqueta>(exemploDeEtiqueta)
   const [padrao, setPadrao] = useState(true)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<{ tom: 'ok' | 'erro'; texto: string } | null>(null)
@@ -98,7 +94,18 @@ export default function ModeloEtiquetaPage({ params }: { params: Promise<{ id: s
     try {
       const r = await fetch(`/api/empresas/${id}/estoque/etiquetas/modelos`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ blocos }),
+        // ⭐ o teste imprime O QUE ESTÁ NA PRÉVIA — senão ele testaria outro dado
+        body: JSON.stringify({ blocos, dados: {
+          produto: previa.produto,
+          lote: previa.lote,
+          fabricacao: previa.fabricacao.toISOString(),
+          validadeAte: previa.validadeAte ? previa.validadeAte.toISOString() : null,
+          estado: previa.estado,
+          quantidade: previa.quantidade ?? null,
+          unidade: previa.unidade ?? '',
+          colaborador: previa.colaborador ?? '',
+          empresa: previa.empresa ?? '',
+        } }),
       })
       const j = await r.json().catch(() => null)
       setMsg(r.ok
@@ -166,6 +173,12 @@ export default function ModeloEtiquetaPage({ params }: { params: Promise<{ id: s
         {/* OS BLOCOS */}
         <Card>
           <CardContent className="py-4">
+            <div className="mb-2 flex items-center gap-1.5 border-b border-slate-100 pb-2">
+              <Settings2 className="h-3.5 w-3.5 text-slate-400" />
+              <h3 className="text-[13px] font-semibold text-slate-700">Configuração do modelo</h3>
+              <span className="text-[11px] text-slate-400">— é salva e vale pra toda etiqueta</span>
+            </div>
+
             <div className="mb-3 flex flex-wrap items-center gap-2">
               <label className="text-xs text-slate-500">Nome do modelo
                 <input value={nome} onChange={(e) => setNome(e.target.value)}
@@ -202,7 +215,8 @@ export default function ModeloEtiquetaPage({ params }: { params: Promise<{ id: s
                             className="mt-0.5 block h-8 w-full rounded-md border px-2 text-sm" />
                         </label>
                       ) : (
-                        <label className="text-[11px] text-slate-500">Rótulo
+                        <label className="text-[11px] text-slate-500" title="O rótulo vem ANTES do valor, ex.: VAL 03/09/2026. Pra trocar o conteúdo, use os Dados de prévia.">
+                          Rótulo <span className="text-slate-300">(vem antes do valor)</span>
                           <input value={b.rotulo} onChange={(e) => mexer(i, { rotulo: e.target.value })}
                             placeholder="(sem rótulo)"
                             className="mt-0.5 block h-8 w-32 rounded-md border px-2 text-sm" />
@@ -242,15 +256,18 @@ export default function ModeloEtiquetaPage({ params }: { params: Promise<{ id: s
         </Card>
 
         {/* A PRÉVIA — grudada no topo pra acompanhar a edição */}
-        <div className="lg:sticky lg:top-4 lg:self-start">
+        <div className="space-y-3 lg:sticky lg:top-4 lg:self-start lg:w-[330px]">
           <Card>
             <CardContent className="flex flex-col items-center py-4">
-              <PreviaEtiqueta dados={EXEMPLO} blocos={blocos} lado={280} />
-              <p className="mt-2 max-w-[280px] text-center text-[11px] text-slate-400">
-                Dados de exemplo. O que muda aqui é exatamente o que muda na etiqueta impressa.
-              </p>
+              <PreviaEtiqueta dados={previa} blocos={blocos} lado={280} />
             </CardContent>
           </Card>
+
+          <DadosDePrevia
+            dados={previa}
+            onMudar={(patch) => setPrevia((d) => ({ ...d, ...patch }))}
+            onRestaurar={() => setPrevia(exemploDeEtiqueta())}
+          />
         </div>
       </div>
     </div>

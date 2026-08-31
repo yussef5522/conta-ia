@@ -71,9 +71,32 @@ export async function POST(request: NextRequest, { params }: Params) {
   return NextResponse.json({ ok: true, modeloId: salvo.id, avisos: avisosDoModelo(blocos as never) })
 }
 
-const testeSchema = z.object({ blocos: z.array(blocoSchema).min(1).max(40) })
+// ⚠️ O TESTE IMPRIME O QUE ESTÁ NA PRÉVIA (31/08/2026). Antes ele mandava
+// 'PRODUTO DE TESTE' cravado aqui — ou seja, o dono ajustava a prévia com o nome real,
+// mandava imprimir e saía outra coisa. **Prévia e teste têm que ser o mesmo dado**, senão
+// a etiqueta de teste não testa o caso que ele quer ver (justamente o nome comprido).
+//
+// ⚠️ Os limites de tamanho são de SANIDADE, não de regra de negócio: o texto vira ZPL e um
+// campo de 10 mil caracteres viraria um job gigante na fila da cozinha. Quem corta de
+// verdade é a impressora, e a tela já avisa disso.
+const dadosPreviaSchema = z.object({
+  produto: z.string().max(120).optional(),
+  lote: z.string().max(60).optional(),
+  fabricacao: z.string().datetime().optional(),
+  validadeAte: z.string().datetime().nullable().optional(),
+  estado: z.enum(['CONGELADO', 'RESFRIADO', 'AMBIENTE']).optional(),
+  quantidade: z.number().finite().nullable().optional(),
+  unidade: z.string().max(12).optional(),
+  colaborador: z.string().max(60).optional(),
+  empresa: z.string().max(80).optional(),
+}).optional()
 
-/** PUT = imprimir uma etiqueta de TESTE do modelo, com dados de exemplo. */
+const testeSchema = z.object({
+  blocos: z.array(blocoSchema).min(1).max(40),
+  dados: dadosPreviaSchema,
+})
+
+/** PUT = imprimir uma etiqueta de TESTE do modelo, com os dados que estão na prévia. */
 export async function PUT(request: NextRequest, { params }: Params) {
   const { id: companyId } = await params
   const a = await guardStock(request, companyId, 'stock.manage')
@@ -82,16 +105,21 @@ export async function PUT(request: NextRequest, { params }: Params) {
   if (!parsed.success) return NextResponse.json({ erro: 'Modelo inválido.' }, { status: 400 })
   const empresa = await prisma.company.findFirst({ where: { id: companyId }, select: { tradeName: true, name: true } })
   const agora = new Date()
+  const d = parsed.data.dados
+  // ⚠️ campo AUSENTE cai no exemplo; campo VAZIO fica vazio de propósito — esvaziar é uma
+  // decisão do dono ("quero ver a etiqueta sem o responsável"), não falta de dado.
   const zpl = zplDosBlocos(parsed.data.blocos as never, {
-    produto: 'PRODUTO DE TESTE',
-    lote: 'TESTE123',
-    fabricacao: agora,
-    validadeAte: new Date(agora.getTime() + 3 * 86_400_000),
-    estado: 'RESFRIADO',
-    quantidade: 10,
-    unidade: 'UN',
-    colaborador: 'teste',
-    empresa: empresa?.tradeName ?? empresa?.name ?? null,
+    produto: d?.produto ?? 'PRODUTO DE TESTE',
+    lote: d?.lote ?? 'TESTE123',
+    fabricacao: d?.fabricacao ? new Date(d.fabricacao) : agora,
+    validadeAte: d && 'validadeAte' in d
+      ? (d.validadeAte ? new Date(d.validadeAte) : null)
+      : new Date(agora.getTime() + 3 * 86_400_000),
+    estado: d?.estado ?? 'RESFRIADO',
+    quantidade: d && 'quantidade' in d ? d.quantidade : 10,
+    unidade: d?.unidade ?? 'UN',
+    colaborador: d?.colaborador ?? 'teste',
+    empresa: d?.empresa ?? empresa?.tradeName ?? empresa?.name ?? null,
   })
   try {
     const job = await enfileirar({ companyId, zpl, descricao: 'teste do modelo de etiqueta', userId: a.user?.sub ?? null }, prisma)
