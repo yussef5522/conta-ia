@@ -242,6 +242,59 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⛔⛔⛔ NÚMERO DE PROPAGANDA PARECE NÚMERO DE CONFERÊNCIA (31/08/2026)
+
+**A REGRA, e vale pra TODO parser de documento daqui pra frente:**
+
+> **Todo valor DECLARADO tem que vir ancorado no BLOCO a que pertence — nunca de regex solto sobre o documento inteiro.**
+
+**O CASO:** a fatura do Nubank tem `Total a pagar` **duas vezes**. Uma no bloco *"Parcele a sua fatura"* (**R$ 3.634,43** — quanto se pagaria financiando em 3×) e outra no RESUMO (**R$ 3.053,32** — o que se deve). O parser lia a PRIMEIRA. **Ele conferia a fatura contra um número de SIMULAÇÃO.**
+
+⚠️⚠️ **E o perigo não é o erro — é o acerto por acaso.** Uma fatura que não fechasse mandaria o dono investigar; mas no dia em que os dois números coincidissem, o gate daria **verde sobre a régua errada** e o selo viraria enfeite sem ninguém notar. *"A conta fecha" NÃO prova classificação certa* — a mesma lição do `ledgerBalMatched` de 13/08.
+
+⚠️ **O FIX É ESTRUTURAL, NÃO "REGEX MAIS ESPERTO":** lê-se dentro do trecho do resumo, ancorado no rótulo que só ele tem (`"Total de compras de todos os cartões"`). Regex mais específico continuaria dependendo de a propaganda não mudar de texto.
+
+**⭐⭐ A CLASSE JÁ TINHA MORDIDO ANTES, EM OUTRO PARSER, E NINGUÉM GENERALIZOU.** O `mercadopago-fatura-parser.ts` tem, desde 29/08, este comentário: *"NÃO pode cair no 'Total a pagar: até R$ 4.966,40' da seção de parcelamento, que é uma OFERTA, não a fatura (foi o que aconteceu na 1ª rodada)"*. Dois parsers, o mesmo defeito, dois meses de distância — porque na primeira vez virou comentário local em vez de regra do módulo.
+
+**AUDITORIA DOS 6 LAYOUTS (feita, medida nas fixtures REAIS):**
+
+| parser | frase-âncora duplicada? | usa no gate? | veredito |
+|---|---|---|---|
+| **Nubank PF** | `Total a pagar` **2×** (3.634,43 × 3.053,32) | sim | ⛔ **era LIVE — corrigido 31/08** |
+| **Mercado Pago PJ** | `Total a pagar` 3× | sim | ⭐ já ancorado em 29/08 (`^[ \t]*Total[ \t]{2,}` + janela) |
+| **Sicredi PJ** | `Total cartão (final …)` **4×** | **sim** (`validate-fatura` usa em 4 checagens) | ⚠️ **LATENTE** — as 4 ocorrências trazem **o mesmo valor** (7.995,55, repetido no cabeçalho de página). Seguro **por coincidência do documento**, não por construção: fatura com 2 cartões de totais diferentes conferiria contra o 1º |
+| **Banrisul PF** | `TOTAL DE GASTOS` **2×** (23.648,03 × 15.654,61 — os dois portadores) | **não** (o gate usa `brasil` e `saldoAtual`, 1× cada) | ⚠️ **LATENTE** — lê o 1º portador como se fosse total; inofensivo só porque ninguém confere com ele |
+| **Banrisul PJ** | não | — | ✅ |
+| **Caixa PJ** | `Total final` 2× | sim, mas por **`matchAll` chaveado pelos 4 dígitos do cartão** | ✅ seguro **por construção** |
+
+**⭐ O PADRÃO QUE SEPARA SEGURO DE SORTUDO:** o Caixa está seguro porque **coleta todas as ocorrências e as indexa**, em vez de pegar a primeira. Quem faz `text.match()` num rótulo que se repete está apostando no layout.
+
+**DÉBITOS ABERTOS (não corrigidos — decisão do dono):** ancorar o `totalCartao` do Sicredi (ou exigir que as N ocorrências concordem, senão `null`) e o `totalGastos` do Banrisul PF. Nenhum dos dois está errado hoje.
+
+**⚠️ TAREFA PRÓPRIA REGISTRADA (não feita):** o **anonimizador de fixture precisa de um teste** que prove que as palavras da lista de decisão sobrevivem. Hoje a lista vive no gerador e nada impede alguém de mexer e descobrir três meses depois. **Já mordeu duas vezes:** 26/08 (comeu `"PAGAMENTO"` e os nomes dos meses → o parser PJ divergiu em 8.736,17 e a seção "Próximas Faturas" sumiu) e 31/08 (comeu `"Banrisul"` → 12 testes do ciclo PF vermelhos). **Palavra que decide não se anonimiza.**
+
+## ⭐⭐ O CAMINHO PF GANHOU UMA PORTA — E O 2º LAYOUT (31/08/2026)
+
+**CASO:** o dono criou um cartão Nubank, subiu a fatura do Nubank, e o sistema aplicou **os regex do Banrisul**. A falha saiu como *"o PDF não declarou o total (layout inesperado)"* — **"banco não reconhecido" vestido de "o layout mudou"**, e ele foi caçar uma mudança que não existia.
+
+⚠️ **NÃO FOI UM `??` MAL COLOCADO.** `importar-fatura-pf.ts` chamava `parseBanrisulFaturaPF(texto)` **direto** e maquiava com `detectedBank ?? 'Banrisul'` — que nunca poderia ajudar, porque `nucleo.ts` cravava `detectedBank: 'Banrisul'`. **O PJ tem registry com `match` por banco desde sempre; o PF nasceu com um banco só e nunca ganhou a porta.**
+
+**⭐ AS QUATRO FALHAS TÊM NOME PRÓPRIO** (`diagnosticarFalha`, pura): banco não reconhecido · documento sem os totais · totais presentes mas 0 linhas · não fecha. Um teste garante que **as quatro mensagens são diferentes entre si** — *"se toda falha diz a mesma coisa, eu paro de ler"* (dono). E a de banco desconhecido **não pode conter a palavra "layout"**, que foi a que mandou ele pro lugar errado.
+
+**⭐ O TOTAL DECLARADO TEM DUAS FONTES: o PDF, ou o DONO digitando** olhando a fatura em papel. **A conferência roda IDÊNTICA nos dois casos** — é isso que impede a saída manual de virar afrouxamento. Sem total de nenhuma das duas = **não importa**. Digitado que não fecha = **não importa**, com a diferença ao centavo. A **origem fica gravada** (`PDF` | `DIGITADO`).
+
+**⚠️ O MATCH DO BANRISUL TEM DOIS SINAIS, e o 2º não é preguiça:** a fixture anonimizada tem **ZERO ocorrências de "banrisul"**. Casar só pela marca derrubou 12 testes do ciclo PF na hora — e, pior, arriscaria o único import que funciona em prod, porque **não dá pra provar do repo que o PDF real traz a palavra**. O 2º sinal é o rótulo estrutural que o parser já depende pra ler.
+
+**GOLDEN NUBANK, contra o `pdftotext` REAL** (venc 17/08/2026): `compras 2.692,12 + IOF 33,91 + outros 327,29 = 3.053,32` = declarado, **diferença 0**.
+- ⚠️ **A conferência é pela COMPOSIÇÃO declarada, NUNCA pela soma bruta:** somar todas as linhas dá **negativo**, porque o Nubank mistura pagamento, crédito e saldo em atraso no mesmo bloco. Uma régua inventada reprovaria fatura correta.
+- ⚠️ **1 centavo de folga NO SUBTOTAL:** o próprio PDF declara `Pagamentos e Financiamentos −5.066,39` pra linhas que somam **−5.066,40**. É divergência do banco. O total principal continua exigindo **exato**.
+- **Manias travadas:** IOF é lançamento próprio e vem **sem** os 4 dígitos · as 2 linhas de conversão internacional não são lançamento · `−` U+2212 nas linhas **e** `-` ASCII nos subtotais, no mesmo documento · parcela sai do nome pra estrutura · 3 finais de cartão · **o ano vem do período** (mês > o do vencimento ⇒ ano anterior).
+- **Blocos-fantasma:** `Saque no crédito`, `Pix no crédito` e até `"nem multa. R$ 3.053,32"` (parágrafo quebrado pelo `-layout`) viravam bloco. Só conta depois de `TRANSAÇÕES DE …`.
+
+**⚠️ CORREÇÃO HONESTA sobre um "achado" meu:** o bug do `"Pagamento recebido"` filtrado por FRASE **não teria mordido no arquivo real** — lá a linha se chama `"Pagamento em 22 JUL"`. Ele apareceu contra a minha fixture inventada. A regra que ficou no código vale igual: **a frase é a flag, TER DATA é o vínculo** — e por isso a lista de frases **não pode** ser movida pro laço de transação "pra simplificar".
+
+**ESTADO DOS PARSERS DE FATURA (6 layouts provados):** **PJ** — Sicredi 7.896,32 · Banrisul 13.779,73 · Caixa 7.280,39 · Mercado Pago, todos com fixture real e golden. **PF** — Banrisul 18.348,72 · Nubank 3.053,32. Itaú, BB, Santander, Inter, C6, XP: **nenhum**.
+
 ## ⛔⛔⛔ DÍVIDA MORA NUM LUGAR SÓ — E A VARREDURA DE ÓRFÃOS ACHOU R$ 21.968,02 PARADOS (30/08/2026)
 
 **O PEDIDO ERA UMA LIMPEZA DE TELA; O ITEM 5 DELE ACHOU DINHEIRO.** O dono mandou tirar a duplicata (*"depois da ponte, os boletos vão direto pro Contas a Pagar — a tela do estoque virou DUPLICATA"*) **e** exigiu: *"confere órfãos ANTES de remover: não pode sumir dívida no apagar da tela"*. A varredura:
