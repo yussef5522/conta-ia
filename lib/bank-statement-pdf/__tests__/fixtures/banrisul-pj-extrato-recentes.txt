@@ -1,0 +1,86 @@
+B A N R I S U L                                                         01/09/2026
+AGENCIA: 0230 - ITAQUI
+CONTA..: 06.000000.0-0
+NOME...: TITULAR DE TESTE FULA
+IDENTIFICACAO: 01202600000000000000
+
+-----------------------        PARA SIMPLES CONFERENCIA    -----------------------
+
+SALDO DEVEDOR..............R$                                            4.925,96-
+
+SALDO INICIAL E MOVIMENTOS DO DIA
+      TOTAL................R$                                            4.925,96-
+  (+) BLOQUEADO + 24 HS....R$                                            1.700,00
+
+LIMITE DA CONTA............R$                                           10.000,00
+LIMITE DA CONTA DISPONIVEL.R$                                            5.074,04
+
+--------------------------------------------------------------------------------
+
+ENCARGOS FINANCEIROS DO LIMITE DA CONTA
+
+TAXA DE JUROS DO MES:                                                  15,95% A.M.
+TAXA DE JUROS AO ANO:                                                 490,54% A.A.
+CUSTO EFETIVO TOTAL:                                                  546,31% A.A.
+
+Para garantir que debitos agendados no ultimo dia util do mes ocorram
+efetivamente, o saldo devedor + Juros/Iof/Iof Adicional do periodo + debitos
+agendados, nao podem exceder o limite.
+
+  PREZADO CLIENTE: O BANRISUL INFORMA QUE OS JUROS DE SUA CONTA CORRENTE SERAO
+                      DEBITADOS NO ULTIMO DIA UTIL DO MES.
+--------------------------------------------------------------------------------
+
+BANRICOMPRAS A PRAZO EM                                                01/09/2026
+             LIMITE........R$                                           13.000,00
+             UTILIZADO.....R$                                                0,00
+             DISPONIVEL....R$                                           13.000,00
+VALORES DISPONIVEIS SUJEITOS A VARIACAO
+
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+
+ -------------------------     TARIFA ECONOMICA BANRISUL ------------------------
+PACOTE CONTR.                   VL.CONTR.            DT.CONTR.            CARENCIA
+TEB PJ2                           121,50             16/03/18              2 meses
+
+BENEFICIOS ADICIONAIS -    DESCONTO                                             0%
+
+-+----------------------------------------------------------------------------+-
+DIA HISTORICO                                          DOCUMENTO       V A L O R
+-+----------------------------------------------------------------------------+-
+------------------------- MOVIMENTOS DA CONTA CORRENTE -------------------------
+
+     SALDO ANT EM 28/08/2026                                             4.567,03-
+++   MOVIMENTOS AGO/2026
+31   OP. CREDITO C/GARANTIA                               000037        31.195,54
+     ANTECIP STONE                                        011735         2.074,14
+     DEBITO STONE                                         912510         1.443,69
+     PIX ENVIADO                                          060993         1.000,00-
+      NOME: CACULA MIX
+     PIX ENVIADO                                          619679        35.000,00-
+      NOME: CACULA MIX
+     PIX ENVIADO                                          796274         1.000,00-
+      NOME: CACULA MIX
+     PIX ENVIADO                                        819416           500,00-
+      NOME: CACULA MIX
+     SALDO NA DATA                                                     7.353,66-
+++   MOVIMENTOS SET/2026
+01   CAPITALIZACAO RG                                   590244           297,84-
+     CAPITALIZACAO RG                                   590245           297,84-
+     OP.CREDITO C/GARANTIA                              012070         4.250,99
+     DEBITO STONE                                       009871           260,36
+     ANTECIP STONE                                      009573            73,68
+     ANTECIP STONE                                      009572           138,35
+     SALDO NA DATA                                                     3.225,96-
+
+--------------------- MOVIMENTOS FUTUROS DA CONTA CORRENTE ---------------------
+++ MOVIMENTOS SET/2026
+09 PAGAMENTO CONSORCIO                                  150023         1.478,51-
+-------------------- EXTRATO EMITIDO AS 14:01 DE 01/09/2026 --------------------
+--------------------------------------------------------------------------------
+                                SAC 0800 646 1515
+                             OUVIDORIA 0800 644 2200
+--------------------------------------------------------------------------------
+

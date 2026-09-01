@@ -23,6 +23,8 @@ import type {
   BankStatementLine,
   BankStatementPdfParser,
   ParsedBankStatement,
+  SaldoDoDia,
+  SaldoSnapshot,
   StatementPeriod,
 } from './types'
 import { BankStatementParseError } from './types'
@@ -187,8 +189,59 @@ class BanrisulPdfParser implements BankStatementPdfParser {
     const lines: BankStatementLine[] = []
     let currentDay: number | null = null
 
+    // ⭐⭐ A RÉGUA (01/09/2026). O PDF do Banrisul é a única fonte do saldo CONTÁBIL —
+    // o LEDGERBAL do OFX vem DISPONÍVEL, já descontando o bloqueado de 24h, e por isso
+    // o saldo da conta carregava um −1.700 fantasma com o ledger 100% correto.
+    const saldosDiarios: SaldoDoDia[] = []
+    const futuros: BankStatementLine[] = []
+    let saldoAnterior: SaldoSnapshot | null = null
+    let bloqueado: number | null = null
+    let saldoDisponivel: number | null = null
+    let emitidoEm: string | null = null
+    // mês/ano vêm dos marcadores EXPLÍCITOS "++ MOVIMENTOS AGO/2026" — mais confiável
+    // que deduzir pela virada do dia, e o arquivo sempre os traz.
+    let mesAtual: string | null = null
+    let anoAtual: string | null = null
+    // ⚠️ depois de "MOVIMENTOS FUTUROS" nada é lançamento realizado. Antes deste flag o
+    // parser lia o consórcio agendado de 09/09 como se fosse do dia 01/09 — e ele iria
+    // parar na conferência de saldo como movimento que nunca aconteceu.
+    let emFuturos = false
+
     for (const raw of rawLines) {
       if (!raw.trim()) continue
+
+      const u = raw.trim().toUpperCase()
+      if (u.includes('MOVIMENTOS FUTUROS')) { emFuturos = true; currentDay = null; continue }
+      let mm: RegExpMatchArray | null
+      if ((mm = raw.match(/\+\+\s*MOVIMENTOS\s+([A-Za-z]{3})\s*\/\s*(\d{4})/))) {
+        mesAtual = MESES_PT[mm[1].toUpperCase()] ?? null
+        anoAtual = mm[2]
+        continue
+      }
+      if ((mm = raw.match(/SALDO\s+ANT\s+EM\s+(\d{2})\/(\d{2})\/(\d{4})\s+(\S+)\s*$/i))) {
+        const v = parseBrlAmount(mm[4])
+        if (v) saldoAnterior = { data: `${mm[3]}-${mm[2]}-${mm[1]}`, valor: v.signed }
+        continue
+      }
+      if ((mm = raw.match(/^\s*SALDO\s+NA\s+DATA\s+(\S+)\s*$/i))) {
+        const v = parseBrlAmount(mm[1])
+        if (v && currentDay && mesAtual && anoAtual) {
+          saldosDiarios.push({ data: `${anoAtual}-${mesAtual}-${String(currentDay).padStart(2, '0')}`, valor: v.signed })
+        }
+        continue
+      }
+      if ((mm = raw.match(/\(\+\)\s*BLOQUEADO[^R]*R\$\s+(\S+)/i))) {
+        const v = parseBrlAmount(mm[1]); if (v) bloqueado = v.signed
+        continue
+      }
+      if ((mm = raw.match(/SALDO\s+DEVEDOR\.*\s*R\$\s+(\S+)/i))) {
+        const v = parseBrlAmount(mm[1]); if (v) saldoDisponivel = v.signed
+        continue
+      }
+      if ((mm = raw.match(/EXTRATO\s+EMITIDO\s+AS\s+(\d{2}:\d{2})\s+DE\s+(\d{2})\/(\d{2})\/(\d{4})/i))) {
+        emitidoEm = `${mm[4]}-${mm[3]}-${mm[2]}T${mm[1]}`
+        continue
+      }
 
       // NOME: (sem pontos) → pertence ao ÚLTIMO lançamento
       const nameM = raw.match(/^\s*NOME\s*:\s*(.+?)\s*$/i)
@@ -202,7 +255,9 @@ class BanrisulPdfParser implements BankStatementPdfParser {
 
       // Dia no começo? (DD seguido de 2+ espaços, sem indentação)
       let body = raw
-      const dayM = raw.match(/^(\d{2})\s{2,}(.+)$/)
+      // ⚠️ no bloco de FUTUROS o Banrisul não indenta e usa UM espaço depois do dia
+      // ("09 PAGAMENTO CONSORCIO"), então lá a régua de 2+ espaços não serve.
+      const dayM = raw.match(emFuturos ? /^(\d{2})\s+(.+)$/ : /^(\d{2})\s{2,}(.+)$/)
       if (dayM && +dayM[1] >= 1 && +dayM[1] <= 31) {
         currentDay = +dayM[1]
         body = dayM[2]
@@ -220,14 +275,21 @@ class BanrisulPdfParser implements BankStatementPdfParser {
       if (!valor || !DOC_RE.test(documento)) continue // não é lançamento padrão
 
       const historico = parts.slice(0, parts.length - 2).join(' ').trim()
-      lines.push({
+      // ⚠️ O FUTURO TEM MÊS PRÓPRIO: o bloco vem com "++ MOVIMENTOS SET/2026" depois do
+      // corpo de agosto. Resolver a data pelo PERÍODO do extrato (que termina em agosto)
+      // datava o consórcio de 09/09 como 09/08 — um mês no passado, dentro da janela que
+      // a conferência confere. Aqui o mês vem do marcador EXPLÍCITO.
+      const dataFutura = emFuturos && currentDay && mesAtual && anoAtual
+        ? `${anoAtual}-${mesAtual}-${String(currentDay).padStart(2, '0')}`
+        : null
+      ;(emFuturos ? futuros : lines).push({
         day: currentDay ?? 0,
         historico,
         documento,
         amount: valor.amount,
         signed: valor.signed,
         counterpartyName: null,
-        date: null,
+        date: dataFutura,
       })
     }
 
@@ -236,7 +298,10 @@ class BanrisulPdfParser implements BankStatementPdfParser {
     const period = extractStatementPeriod(norm)
     resolveLineDates(lines, period)
 
-    return { header, lines, period }
+    return {
+      header, lines, period,
+      saldoAnterior, saldosDiarios, bloqueado, saldoDisponivel, emitidoEm, futuros,
+    }
   }
 }
 

@@ -54,7 +54,7 @@ export function calcularSaldo(params: {
 export interface RecalcResult {
   bankAccountId: string
   bankAccountName: string
-  modo: 'LEDGERBAL_ANCHOR' | 'SUM_TODAS'
+  modo: 'ABERTURA_CONFERIDA' | 'LEDGERBAL_ANCHOR' | 'SUM_TODAS'
   ledgerBal: number | null
   ledgerBalDate: Date | null
   /** Soma dos signed amounts considerados (pós-ledgerBalDate ou total) */
@@ -91,13 +91,36 @@ export async function recalcularSaldoConta(
       balance: true,
       ledgerBal: true,
       ledgerBalDate: true,
+      openingBalance: true,
+      openingDate: true,
     },
   })
   if (!conta) {
     throw new Error(`Conta ${bankAccountId} não encontrada`)
   }
 
+  // ⭐⭐ ÂNCORA DE ABERTURA (01/09/2026) — "saldo declarado pelo banco é CONFERÊNCIA, não
+  // fonte" (dono). Quando a conta tem `openingBalance`, o saldo passa a ser derivado do
+  // NOSSO ledger a partir dela, e o LEDGERBAL do extrato deixa de mandar.
+  //
+  // ⚠️⚠️ POR QUE O CAMINHO É CONDICIONAL, e não uma troca geral: **`Σ(ledger)` puro NÃO
+  // serve pra toda conta.** Medido no Banrisul da Caçula em 01/09: Σ(482 tx) = −134.769,26
+  // contra o contábil real de −4.567,03 — **erro de −130.202,23, inteiro em jun/jul**
+  // (a conta provavelmente nasceu sem abertura). Derivar tudo do ledger deixaria a conta
+  // 130 mil PIOR que o modo âncora. Por isso a abertura é uma decisão DELIBERADA por
+  // conta, conferida contra o extrato, e quem não tem segue exatamente como antes —
+  // cofre e banco caixa não sentem nada.
+  //
+  // ⛔ E dia que não fecha NUNCA move a âncora: ela só muda por decisão do dono, com
+  // evento em `BankAccountOpeningEvent`.
+  const usaAbertura =
+    conta.openingBalance !== null &&
+    conta.openingBalance !== undefined &&
+    conta.openingDate !== null &&
+    conta.openingDate !== undefined
+
   const usaAnchor =
+    !usaAbertura &&
     conta.ledgerBal !== null &&
     conta.ledgerBal !== undefined &&
     conta.ledgerBalDate !== null &&
@@ -109,7 +132,11 @@ export async function recalcularSaldoConta(
   const txs = await prisma.transaction.findMany({
     where: {
       bankAccountId,
-      ...(usaAnchor ? { date: { gt: conta.ledgerBalDate! } } : {}),
+      ...(usaAbertura
+        ? { date: { gt: conta.openingDate! } }
+        : usaAnchor
+          ? { date: { gt: conta.ledgerBalDate! } }
+          : {}),
     },
     select: {
       id: true,
@@ -144,8 +171,8 @@ export async function recalcularSaldoConta(
 
   // Cálculo puro (testável): no modo âncora filtra agendado (só EFFECTED soma).
   const calc = calcularSaldo({
-    ledgerBal: conta.ledgerBal,
-    usaAnchor,
+    ledgerBal: usaAbertura ? conta.openingBalance : conta.ledgerBal,
+    usaAnchor: usaAbertura || usaAnchor,
     txs: rawTxs,
     bankAccountId,
   })
@@ -160,7 +187,7 @@ export async function recalcularSaldoConta(
   return {
     bankAccountId: conta.id,
     bankAccountName: conta.name,
-    modo: usaAnchor ? 'LEDGERBAL_ANCHOR' : 'SUM_TODAS',
+    modo: usaAbertura ? 'ABERTURA_CONFERIDA' : usaAnchor ? 'LEDGERBAL_ANCHOR' : 'SUM_TODAS',
     ledgerBal: conta.ledgerBal,
     ledgerBalDate: conta.ledgerBalDate,
     somaTxConsiderada: roundCents(somaTx),

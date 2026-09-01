@@ -1,0 +1,250 @@
+B A N R I S U L                                                       01/09/2026
+AGENCIA: 0230 - ITAQUI
+CONTA..: 06.000000.0-0
+NOME...: TITULAR DE TESTE FULA
+IDENTIFICACAO: 01202600000000000000
+
+-----------------------      PARA SIMPLES CONFERENCIA    -----------------------
+
+SALDO DEVEDOR..............R$                                          4.925,96-
+
+SALDO INICIAL E MOVIMENTOS DO DIA
+      TOTAL................R$                                          4.925,96-
+  (+) BLOQUEADO + 24 HS....R$                                          1.700,00
+
+LIMITE DA CONTA............R$                                         10.000,00
+LIMITE DA CONTA DISPONIVEL.R$                                          5.074,04
+
+--------------------------------------------------------------------------------
+
+ENCARGOS FINANCEIROS DO LIMITE DA CONTA
+
+TAXA DE JUROS DO MES:                                                15,95% A.M.
+TAXA DE JUROS AO ANO:                                               490,54% A.A.
+CUSTO EFETIVO TOTAL:                                                546,31% A.A.
+
+Para garantir que debitos agendados no ultimo dia util do mes ocorram
+efetivamente, o saldo devedor + Juros/Iof/Iof Adicional do periodo + debitos
+agendados, nao podem exceder o limite.
+
+  PREZADO CLIENTE: O BANRISUL INFORMA QUE OS JUROS DE SUA CONTA CORRENTE SERAO
+                      DEBITADOS NO ULTIMO DIA UTIL DO MES.
+--------------------------------------------------------------------------------
+
+BANRICOMPRAS A PRAZO EM                                              01/09/2026
+             LIMITE........R$                                         13.000,00
+             UTILIZADO.....R$                                              0,00
+             DISPONIVEL....R$                                         13.000,00
+VALORES DISPONIVEIS SUJEITOS A VARIACAO
+
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+
+ -------------------------   TARIFA ECONOMICA BANRISUL ------------------------
+PACOTE CONTR.                 VL.CONTR.            DT.CONTR.            CARENCIA
+TEB PJ2                         121,50             16/03/18              2 meses
+
+BENEFICIOS ADICIONAIS -    DESCONTO                                            0%
+
+-+----------------------------------------------------------------------------+-
+DIA HISTORICO                                          DOCUMENTO       V A L O R
+-+----------------------------------------------------------------------------+-
+------------------------- MOVIMENTOS DA CONTA CORRENTE -------------------------
+
+     SALDO ANT EM 31/07/2026                                          22.188,17-
+++   MOVIMENTOS AGO/2026
+03   OP. CREDITO C/GARANTIA                             000006        27.000,00
+     ANTECIPACAO BANRICOMPRAS                           351577         1.359,80
+     ANTECIP STONE                                      565963            28,71
+     ANTECIP STONE                                      565964           867,23
+     VERO ANTECIPACAO BANRICARD                         368175           404,81
+     BANRI A VISTA                                      289170         2.732,08
+     DEBITO STONE                                       460289         2.631,45
+     PIX RECEBIDO                                       422398            89,74
+      NOME: EMPRESA TESTE COMERCIO LTD
+     PIX ENVIADO                         542272    6.000,00-
+      NOME: CACULA MIX
+     CAPITALIZACAO RG                    590240      297,84-
+     CAPITALIZACAO RG                    590241      297,84-
+     IOF                                 000000       10,30-
+     IOF ADICIONAL                       000000      115,91-
+     TRANSF. ENCARGOS CTA UNICA          000000    1.685,52-
+     SALDO NA DATA                                 4.518,24
+04   ANTECIPACAO BANRICOMPRAS            775279       59,61
+     ANTECIP STONE                       911881      126,41
+     BANRI A VISTA                       732416      135,89
+     DEBITO STONE                        841381      430,96
+     PIX ENVIADO                         166501    5.000,00-
+      NOME: TITULAR DE TESTE FULA
+     PIX ENVIADO                         170906    7.000,00-
+      NOME: CACULA MIX
+     PIX ENVIADO                         484100    1.000,00-
+      NOME: CACULA MIX
+     PACOTE SERVICOS                     008100      121,50-
+     SALDO NA DATA                                 7.850,39-
+05   OP. CREDITO C/GARANTIA              000001   42.225,00
+     ANTECIP STONE                       283513       96,17
+     VERO ANTECIPACAO BANRICARD          144554      124,18
+     BANRI A VISTA                       091114      405,59
+     DEBITO STONE                        207926      237,70
+     PIX ENVIADO                         578086   41.000,00-
+      NOME: CACULA MIX
+     SALDO NA DATA                                 5.761,75-
+06   OP. CREDITO C/GARANTIA              000026    6.975,00
+     ANTECIPACAO BANRICOMPRAS            543274      125,97
+     ANTECIP STONE                       690925      282,68
+     VERO ANTECIPACAO BANRICARD          552512       44,27
+     BANRI A VISTA                       497473      480,54
+     DEBITO STONE                        613948       85,81
+     PIX ENVIADO                         063555   10.000,00-
+      NOME: CACULA MIX
+     SALDO NA DATA                                 7.767,48-
+07   OP. CREDITO C/GARANTIA              000034    8.474,00
+     ANTECIPACAO BANRICOMPRAS            939074       27,80
+     ANTECIP STONE                       084444      358,92
+     BANRI A VISTA                       892590      110,75
+     DEBITO STONE                        010828      317,56
+     PIX ENVIADO                         000006    6.000,00-
+      NOME: CACULA MIX
+     SALDO NA DATA                                 4.478,45-
+10   JUROS                               000000      196,39-
+     IOF                                 000000        4,14-
+     IOF ADICIONAL                       000000       37,45-
+     OP. CREDITO C/GARANTIA              000031   27.929,29
+     ANTECIPACAO BANRICOMPRAS            291353      680,15
+     ANTECIP STONE                       505574      126,30
+     ANTECIP STONE                       505575      564,47
+     ANTECIP STONE                       506201      267,34
+     ANTECIP STONE                       506202      116,71
+     ANTECIP STONE                       506613       17,26
+     VERO ANTECIPACAO BANRICARD          305821      236,75
+     BANRI A VISTA                       232095    2.171,72
+     DEBITO STONE                        400028    1.427,42
+     PIX ENVIADO                         098858    3.000,00-
+      NOME: PESSOA DE TESTE SOBRENOME
+     PIX ENVIADO                         171546   25.000,00-
+      NOME: CACULA MIX
+     CAPITALIZACAO RG                    590242       70,02-
+     CAPITALIZACAO RG              590243       70,02-
+     SALDO NA DATA                             680,94
+11   ANTECIP STONE                 826606       87,78
+     BANRI A VISTA                 654404       59,10
+     DEBITO STONE                  758727      185,34
+     EMPRESTIMO                    260811    4.092,02-
+     RENOVACAO DE CADASTRO         008100       60,00-
+     PAGAMENTO CONSORCIO           150022    1.478,51-
+     SALDO NA DATA                           4.617,37-
+12   OP. CREDITO C/GARANTIA        000025    7.403,00
+     ANTECIPACAO BANRICOMPRAS      007866       33,63
+     ANTECIP STONE                 147745      127,65
+     BANRI A VISTA                 965104      184,80
+     DEBITO STONE                  077069      218,96
+     PIX ENVIADO                   260709   10.000,00-
+      NOME: CACULA MIX
+     SALDO NA DATA                           6.649,33-
+13   OP. CREDITO C/GARANTIA        000024    5.028,00
+     OP. CREDITO C/GARANTIA        000025        0,58
+     ANTECIPACAO BANRICOMPRAS      290947       56,72
+     ANTECIP STONE                 423643      393,26
+     BANRI A VISTA                 250236       29,54
+     DEBITO STONE                  355406      197,15
+     PIX ENVIADO                   717765    7.000,00-
+      NOME: CACULA MIX
+     SALDO NA DATA                           7.944,08-
+14   OP. CREDITO C/GARANTIA        000012    3.654,88
+     ANTECIP STONE                 736488      369,84
+     BANRI A VISTA                 549886      102,41
+     DEBITO STONE                  668007      103,54
+     PIX ENVIADO                   848154      500,00-
+      NOME: CACULA MIX
+     SALDO NA DATA                           4.213,41-
+17   OP. CREDITO C/GARANTIA        000029   24.431,87
+     ANTECIP STONE                 133462    2.173,65
+     BANRI A VISTA                 865729      170,36
+     DEBITO STONE                  031245    1.646,29
+     PIX ENVIADO                   900151   17.000,00-
+      NOME: CACULA MIX
+     PAGAMENTO CARTAO DE CREDITO   100050   13.779,73-
+     SALDO NA DATA                           6.570,97-
+18   OP. CREDITO C/GARANTIA        000003    3.788,46
+     ANTECIP STONE                 560590       78,84
+     PIX ENVIADO                   743488    5.500,00-
+      NOME: CACULA MIX
+     SALDO NA DATA                           8.203,67-
+19   OP. CREDITO C/GARANTIA        000024    4.439,46
+     ANTECIP STONE                 884954      240,37
+     DEBITO STONE                  813583       76,92
+     PIX ENVIADO                   326234      917,20-
+      NOME: SPAL IND B BEBIDAS
+     PIX ENVIADO                   065498    2.700,00-
+      NOME: CACULA MIX
+     SALDO NA DATA                           7.064,12-
+20   OP. CREDITO C/GARANTIA        000029    4.606,69
+     ANTECIP STONE                 180907       95,21
+     DEBITO STONE                  110092      297,77
+     PIX ENVIADO                   748848    6.000,00-
+      NOME: CACULA MIX
+     SEGURO RIOGRANDE              320067       86,32-
+     SALDO NA DATA                           8.150,77-
+21   OP. CREDITO C/GARANTIA        000011    5.706,45
+     ANTECIP STONE                 507254      167,14
+     DEBITO STONE                  435981      325,42
+     PIX ENVIADO                                        371476         6.000,00-
+      NOME: CACULA MIX
+     SALDO NA DATA                                                     7.951,76-
+24   OP. CREDITO C/GARANTIA                             000038        25.595,63
+     ANTECIP STONE                                      911085            99,53
+     ANTECIP STONE                                      911086         1.022,41
+     DEBITO STONE                                       808180         1.156,87
+     PIX ENVIADO                                        205441        25.000,00-
+      NOME: CACULA MIX
+     SALDO NA DATA                                                     5.077,32-
+25   OP. CREDITO C/GARANTIA                             000013         2.973,69
+     ANTECIP STONE                                      242038           105,74
+     DEBITO STONE                                       173843           362,90
+     PIX ENVIADO                                        928419           100,00-
+      NOME: TITULAR DE TESTE FULA
+     PIX ENVIADO                                        995649         6.000,00-
+      NOME: CACULA MIX
+     SALDO NA DATA                                                     7.734,99-
+26   OP. CREDITO C/GARANTIA                             000001         3.965,48
+     ANTECIP STONE                                      576308           336,32
+     DEBITO STONE                                       503997           244,59
+     PIX ENVIADO                                        433538         2.500,00-
+      NOME: CACULA MIX
+     EMPRESTIMO                                         260826         2.444,62-
+     SALDO NA DATA                                                     8.133,22-
+27   OP. CREDITO C/GARANTIA                             000032         6.976,93
+     ANTECIP STONE                                      190257           386,54
+     DEBITO STONE                                       117758           261,35
+     PIX ENVIADO                                        953621           500,00-
+      NOME: TITULAR DE TESTE FULA
+     PIX ENVIADO                                        992550         7.000,00-
+      NOME: CACULA MIX
+     SALDO NA DATA                                                     8.008,40-
+28   OP. CREDITO C/GARANTIA                             000027         7.549,18
+     ANTECIP STONE                                      561651           417,82
+     DEBITO STONE                                       487271           474,37
+     PIX ENVIADO                                        344676         5.000,00-
+      NOME: TITULAR DE TESTE FULA
+     SALDO NA DATA                                                     4.567,03-
+31   OP. CREDITO C/GARANTIA                             000037        31.195,54
+     ANTECIP STONE                                      011735         2.074,14
+     DEBITO STONE                                       912510         1.443,69
+     PIX ENVIADO                                        060993         1.000,00-
+      NOME: CACULA MIX
+     PIX ENVIADO                                        619679        35.000,00-
+      NOME: CACULA MIX
+     PIX ENVIADO                                        796274         1.000,00-
+      NOME: CACULA MIX
+     PIX ENVIADO                                        819416           500,00-
+      NOME: CACULA MIX
+     SALDO NA DATA                                                     7.353,66-
+
+-------------------- EXTRATO EMITIDO AS 13:55 DE 01/09/2026 --------------------
+--------------------------------------------------------------------------------
+                                SAC 0800 646 1515
+                             OUVIDORIA 0800 644 2200
+--------------------------------------------------------------------------------
+

@@ -682,7 +682,17 @@ export async function runImportV2(
     anchorRule: anchorRes.rule,
     bankProfile: bankProfile?.id ?? null,
     ledgerBalAmount: ledgerBalance,
-    ledgerBalMatched: ledgerBalance != null ? ledgerMismatch === null : null,
+    // ⛔⛔ BANCO COM LEDGERBAL NÃO CONFIÁVEL NÃO GANHA SELO (01/09/2026, decisão do dono:
+    // *"o gate 'fechou: true' contra LEDGERBAL: some pro Banrisul"*).
+    // O LEDGERBAL do Banrisul é o saldo DISPONÍVEL, já descontando o "(+) BLOQUEADO + 24 HS":
+    // o import de 29/08 02:52 gravou `ledgerBalMatched=true` contra −6.267,03 enquanto o
+    // contábil do banco era −4.567,03 — **selo verde contra o número errado**, e foi ele que
+    // deixou o fantasma de R$ 1.700 passar por dias com o ledger 100% correto.
+    // `null` = "não dá pra dizer por aqui"; quem diz é a conferência DIA A DIA contra o PDF.
+    ledgerBalMatched:
+      ledgerBalance != null && (bankProfile?.ledgerBalReliable ?? true)
+        ? ledgerMismatch === null
+        : null,
     ledgerBalDiff: ledgerMismatch?.diferenca ?? null,
   })
 

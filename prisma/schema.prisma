@@ -234,6 +234,25 @@ model BankAccount {
   ledgerBal     Float?
   ledgerBalDate DateTime?
 
+  // ⭐⭐ ÂNCORA DE ABERTURA (01/09/2026) — "saldo declarado pelo banco é CONFERÊNCIA,
+  // não fonte" (dono). Quando preenchida, o saldo passa a ser
+  //     openingBalance + Σ(ledger com date > openingDate)
+  // e o LEDGERBAL deixa de sobrescrever o saldo a cada import. NULL = comportamento
+  // ANTIGO intacto (cofre e banco caixa não sentem nada) — o caminho é CONDICIONAL.
+  // ⚠️ Só muda por decisão do dono, com evento em BankAccountOpeningEvent.
+  openingBalance Float?
+  openingDate    DateTime?
+  /// de onde a âncora veio, pra tela mostrar: "SALDO ANT 31/07 do PDF emitido 01/09 13:55"
+  openingSource  String?
+
+  // ⭐ BLOQUEIO: retido pelo banco, NUNCA transação. Datado porque muda todo dia e só
+  // vale no instante do PDF (o "(+) BLOQUEADO + 24 HS" do Banrisul).
+  blockedAmount  Float?
+  blockedAt      DateTime?
+
+  saldosDeclarados BankAccountSaldoDeclarado[]
+  openingEvents    BankAccountOpeningEvent[]
+
   // Saldo negativo / cheque especial (Sprint 0.5).
   // allowNegativeBalance: se false, lançamentos/transferências que deixariam
   //   saldo < -creditLimit são bloqueados na app-layer.
@@ -4036,4 +4055,42 @@ model StockPayableLink {
   @@unique([companyId, origem, refId, nDup]) // mesma parcela NUNCA vira 2 contas
   @@index([companyId, transactionId])
   @@map("stock_payable_link")
+}
+
+// ⭐ A RÉGUA do PDF: saldo CONTÁBIL declarado por dia. O selo "conferido" é DERIVADO
+// daqui contra o ledger — nunca gravado, porque selo gravado envelhece e mente.
+model BankAccountSaldoDeclarado {
+  id            String   @id @default(cuid())
+  bankAccountId String
+  /// ⚠️ o dia, SEMPRE em meia-noite UTC. `@db.Date` não existe no SQLite do dev, então a
+  /// normalização é do código (`diaUtc`), não do banco — e tem teste.
+  data          DateTime
+  saldoContabil Float
+  /// PDF_BANRISUL | ... — de onde saiu
+  origem        String
+  /// instante de emissão do extrato (o retrato tem hora)
+  emitidoEm     DateTime?
+  criadoEm      DateTime @default(now())
+  bankAccount   BankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([bankAccountId, data])
+  @@map("bank_account_saldo_declarado")
+}
+
+// ⭐⭐ Toda mudança de âncora vira evento (quem, quando, valor anterior). Exigência do
+// dono: "se um dia alguém importar jun/jul certo e mover a âncora pra trás, o rastro fica".
+model BankAccountOpeningEvent {
+  id            String   @id @default(cuid())
+  bankAccountId String
+  valorAnterior Float?
+  dataAnterior  DateTime?
+  valorNovo     Float
+  dataNova      DateTime
+  origem        String
+  userId        String?
+  criadoEm      DateTime @default(now())
+  bankAccount   BankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+
+  @@index([bankAccountId, criadoEm])
+  @@map("bank_account_opening_event")
 }

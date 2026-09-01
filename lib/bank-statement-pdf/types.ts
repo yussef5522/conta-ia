@@ -36,11 +36,40 @@ export interface StatementPeriod {
   end: string
 }
 
+/** Saldo CONTÁBIL declarado pelo banco no fim de um dia ("SALDO NA DATA"). */
+export interface SaldoDoDia {
+  /** YYYY-MM-DD */
+  data: string
+  /** contábil, com sinal (negativo = devedor) */
+  valor: number
+}
+
 export interface ParsedBankStatement {
   header: BankStatementHeader
   lines: BankStatementLine[]
   /** Sprint Contraparte-Banrisul FASE 4 (13/08): período do extrato, se legível. */
   period: StatementPeriod | null
+
+  // ⭐⭐ A RÉGUA (01/09/2026) — o PDF deixou de ser só fonte de NOME e passou a ser a
+  // referência de SALDO. Campos OPCIONAIS: fixture antiga sem eles continua válida.
+  /** "SALDO ANT EM dd/mm/aaaa" — a abertura do período. É a âncora da conferência. */
+  saldoAnterior?: SaldoSnapshot | null
+  /** um "SALDO NA DATA" por dia, em ordem — a régua dia a dia. */
+  saldosDiarios?: SaldoDoDia[]
+  /** "(+) BLOQUEADO + 24 HS" — valor retido, NÃO é lançamento. */
+  bloqueado?: number | null
+  /** "SALDO DEVEDOR" do cabeçalho = saldo DISPONÍVEL (já descontado o bloqueio). */
+  saldoDisponivel?: number | null
+  /** "EXTRATO EMITIDO AS HH:MM DE dd/mm/aaaa" — o instante do retrato. */
+  emitidoEm?: string | null
+  /** bloco "MOVIMENTOS FUTUROS": agendado, NUNCA lançamento realizado. */
+  futuros?: BankStatementLine[]
+}
+
+/** Saldo declarado numa data específica. */
+export interface SaldoSnapshot {
+  data: string
+  valor: number
 }
 
 export class BankStatementParseError extends Error {

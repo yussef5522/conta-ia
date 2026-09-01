@@ -242,6 +242,30 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⛔⛔⛔ SALDO DECLARADO PODE SER DISPONÍVEL, NÃO CONTÁBIL (01/09/2026)
+
+**A REGRA, ditada pelo dono, e vale pra todo banco daqui pra frente:**
+
+> **Saldo declarado pelo banco pode ser DISPONÍVEL, não contábil. Âncora de conciliação é o saldo contábil DIA A DIA, nunca um único saldo final.**
+
+**O CASO:** o `<LEDGERBAL>` do OFX do Banrisul é o saldo **disponível**, já descontando o `(+) BLOQUEADO + 24 HS`. O sistema ancorava nele → a conta mostrava **−6.267,03** enquanto o banco declarava **−4.567,03** de contábil em 28/08. **Fantasma de exatamente R$ 1.700,00 — com o ledger 100% correto o mês inteiro.**
+
+**⭐ E O PDF FECHOU A QUESTÃO AO CENTAVO:** `SALDO DEVEDOR −4.925,96` **+** `(+) BLOQUEADO 1.700,00` = `SALDO NA DATA −3.225,96`. Os **21 dias** de agosto do PDF fecham um a um, e o ledger do sistema bate com **os 20** que ele tem (129 tx = 136 do PDF − as 7 de 31/08, ainda não importadas).
+
+**⛔⛔ NÃO HAVIA TRANSAÇÃO FANTASMA PRA ESTORNAR** — e essa foi a correção mais importante do diagnóstico. Existem **0 transações de R$ 1.700,00** na conta. O −1.700 vivia só em `bankAccount.balance`/`ledgerBal`, gravados pelo import de **29/08 02:52** a partir do LEDGERBAL, com `ledgerBalMatched=true`. ⚠️ **O gate deu VERDE contra o número errado** — circular, a mesma doença do invariante de saldo que virou selo de graça em 28/08.
+
+**⚠️⚠️ E O LEDGER NÃO SE SUSTENTA SOZINHO — medido antes de "derivar do ledger":** `Σ(482 tx EFFECTED) = −134.769,26` contra o contábil `−4.567,03`. O erro (**−130.202,23**) é **inteiro em jun/jul** e constante; agosto é perfeito. Trocar o saldo por `Σ(ledger)` deixaria a conta **130 mil pior**. É a mina registrada em "Modelo de saldo não separa ABERTURA de MOVIMENTO", e ela é REAL nesta conta. **O caminho é âncora de ABERTURA nossa, conferida uma vez contra o `SALDO ANT` do PDF (31/07 = −22.188,17), com o ledger mandando de lá pra frente** — o declarado vira conferência, não fonte.
+
+**⭐ TERCEIRO PARSER DA MESMA FAMÍLIA:** Nubank (o `Total a pagar` da propaganda), Sicredi (rótulo repetido 4×), Banrisul (bloqueio embutido). **Todo número declarado tem que ser lido junto com o que ele EXCLUI.**
+
+**⚠️ A CURA DOS PARSERS DE CARTÃO NÃO SERVE AQUI.** Lá o remédio foi cortar por posição de coluna; neste extrato as colunas **oscilam dentro do mesmo dia** (duas `PIX ENVIADO` de 31/08 em posições diferentes). A régua que fecha os 23 dias é **relativa**: valor = último token, sinal pelo `-` final, documento = os 6 dígitos anteriores. Teste trava as duas linhas reais.
+
+**⭐ REGRA 4 RESPEITADA:** já existia parser deste layout (`banrisul-parser.ts`, de 31/07, pra contraparte). Foi **estendido**, não duplicado — ganhou `saldoAnterior`, `saldosDiarios`, `bloqueado`, `saldoDisponivel`, `futuros`, todos opcionais (fixture antiga segue válida).
+
+**⛔ BUG ACHADO NA EXTENSÃO:** o bloco `MOVIMENTOS FUTUROS` era lido como lançamento realizado — o **consórcio de 09/09** entrava como transação de **01/09**. Pior: a data saía do PERÍODO do extrato (que acaba em agosto), datando-o **09/08**, um mês no passado, dentro da janela conferida. Agora o mês vem do marcador `++ MOVIMENTOS SET/2026`. ⚠️ E o consórcio de **11/08 é REAL** (documento 150022 × 150023) — só o DOCUMENTO separa os dois; filtrar por descrição mataria o lançamento verdadeiro.
+
+**⚠️ O SELO É POR DIA, NUNCA PELA CONTA** (decisão do dono): agosto verde e setembro sem selo é o honesto. Sem PDF, importa **sem selo**, com aviso de que o OFX do Banrisul desconta bloqueio.
+
 ## ⛔⛔⛔ NÚMERO DE PROPAGANDA PARECE NÚMERO DE CONFERÊNCIA (31/08/2026)
 
 **A REGRA, e vale pra TODO parser de documento daqui pra frente:**

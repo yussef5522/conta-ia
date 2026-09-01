@@ -57,11 +57,23 @@ export async function GET(request: NextRequest) {
         console.error('[contas] conferência falhou (a lista segue sem selo):', e)
       }
 
+      // ⭐⭐ SELO POR DIA (01/09/2026) — o único que vale pro Banrisul, cujo LEDGERBAL é o
+      // saldo DISPONÍVEL (desconta o bloqueado) e por isso não serve de régua. Mesma falha
+      // macia: se estourar, a lista abre sem o selo diário.
+      const seloMap = new Map<string, unknown>()
+      try {
+        const { seloPorDiaDaConta } = await import('@/lib/balance/selo-por-dia')
+        for (const c of contas) seloMap.set(c.id, await seloPorDiaDaConta(c.id, prisma))
+      } catch (e) {
+        console.error('[contas] selo por dia falhou (a lista segue sem ele):', e)
+      }
+
       return NextResponse.json({
         contas: contas.map((c) => ({
           ...c,
           lastSuccessfulImportAt: lastMap.get(c.id) ?? null,
           conferencia: conferenciaMap.get(c.id) ?? null,
+          seloDiario: seloMap.get(c.id) ?? null,
         })),
       })
     }
