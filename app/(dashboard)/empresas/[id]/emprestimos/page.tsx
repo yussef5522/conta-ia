@@ -23,6 +23,7 @@ import { Badge } from '@/components/ui/badge'
 import { Header } from '@/components/layout/header'
 import { formatBRL } from '@/lib/format/money'
 import { fmtRateMonthly } from '@/lib/loans/format'
+import { rotuloDaConta } from '@/lib/loans/rotulo-conta'
 
 interface LoanRow {
   id: string
@@ -42,7 +43,9 @@ interface LoanRow {
   notes?: string | null
   devolvido?: number | null
   valorBase?: number | null
-  bankAccount: { id: string; name: string; bankName: string | null }
+  // ⚠️ NULLABLE desde 01/09: mútuo sem trânsito por conta. Era esta interface escrita à
+  // mão, sem `| null`, que deixou o TypeScript aprovar o `.name` que quebrou a tela.
+  bankAccount: { id: string; name: string; bankName: string | null } | null
   saldoDevedor: number
   totalPaid: number
   proximaParcelaDate: string | null
@@ -315,7 +318,7 @@ export default function CarteiraEmprestimosPage({
                                       : `${l.termMonths} parcelas${l.carencia ? ` (+ ${l.carencia} ${l.carencia > 1 ? 'meses' : 'mês'} de carência)` : ''} · ${rateLabel(l)}`}
                                   </span>
                                   <span>·</span>
-                                  <span>{l.bankAccount.name}</span>
+                                  <span>{rotuloDaConta(l)}</span>
                                 </div>
                                 <div className="space-y-1">
                                   <ProgressBar pct={l.progresso} />

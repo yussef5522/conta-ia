@@ -28,6 +28,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { formatBRL } from '@/lib/format/money'
 import { fmtRateMonthly } from '@/lib/loans/format'
 import { CandidatosDialog } from './_components/candidatos-dialog'
+import { rotuloDaConta } from '@/lib/loans/rotulo-conta'
 
 const SaldoDevedorChart = dynamic(
   () => import('./_components/saldo-devedor-chart').then((m) => m.SaldoDevedorChart),
@@ -58,7 +59,8 @@ interface LoanDetalhe {
     scheduleSource: string | null
     flexible: boolean
     notes: string | null
-    bankAccount: { id: string; name: string; bankName: string | null }
+    // ⚠️ NULLABLE desde 01/09 — ver lib/loans/rotulo-conta.ts
+    bankAccount: { id: string; name: string; bankName: string | null } | null
     disbursementTransaction: {
       id: string
       date: string
@@ -224,8 +226,8 @@ export default function DetalheEmprestimoPage({
         title={`${loan.lender}${loan.contractNumber ? ` · ${loan.contractNumber}` : ''}`}
         description={
           loan.flexible
-            ? `${loan.bankAccount.name} · Mútuo sem prazo fixo · sem juros`
-            : `${loan.bankAccount.name} · ${loan.termMonths} parcelas${loan.carencia ? ` (+ ${loan.carencia} ${loan.carencia > 1 ? 'meses' : 'mês'} de carência)` : ''} · ${loan.amortizationSystem} · ${fmtRate(loan.interestRateMonthly)}`
+            ? `${rotuloDaConta(loan)} · Mútuo sem prazo fixo · sem juros`
+            : `${rotuloDaConta(loan)} · ${loan.termMonths} parcelas${loan.carencia ? ` (+ ${loan.carencia} ${loan.carencia > 1 ? 'meses' : 'mês'} de carência)` : ''} · ${loan.amortizationSystem} · ${fmtRate(loan.interestRateMonthly)}`
         }
       >
         <Link href={`/empresas/${empresaId}/emprestimos`}>
