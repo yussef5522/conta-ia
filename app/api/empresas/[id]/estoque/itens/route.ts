@@ -24,7 +24,15 @@ export async function GET(request: NextRequest, { params }: Params) {
   // não entram em receita. ⚠️ O filtro é NO SERVIDOR de propósito: com `take: 50`, filtrar
   // no cliente deixaria itens bons de fora quando o material de limpeza ocupa as 50 vagas.
   const escopoReceita = request.nextUrl.searchParams.get('escopo') === 'receita'
-  const CATS_RECEITA = ['MATERIA_PRIMA', 'INTERMEDIARIO', 'PRODUTO_FINAL', 'REVENDA']
+  // ⭐⭐ EMBALAGEM ENTRA NA BUSCA DA FICHA (01/09/2026) — e a ausência dela era ERRO MEU.
+  //
+  // Em 27/08 o dono reclamou que a busca oferecia "DESENGRAXANTE, SACO DE LIXO e JAPONA DE
+  // CÂMARA" como ingrediente de lanche, e eu cortei EMBALAGEM junto com limpeza. Mas as
+  // duas não são a mesma coisa: **toda pizza sai com caixa** — embalagem CUSTA, BAIXA do
+  // estoque e entra no CMV. Sem ela na ficha, o CMV mente pra baixo.
+  //
+  // ⚠️ LIMPEZA e USO_INTERNO continuam de fora: pano de chão não vai em receita.
+  const CATS_RECEITA = ['MATERIA_PRIMA', 'INTERMEDIARIO', 'PRODUTO_FINAL', 'REVENDA', 'EMBALAGEM']
 
   // filtro por categoria — usado pelo hub pra listar SÓ revenda ao mapear bebida inline.
   // Também no servidor: com `take: 50` o filtro no cliente perderia itens.

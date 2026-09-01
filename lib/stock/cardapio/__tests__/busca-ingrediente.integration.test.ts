@@ -73,7 +73,21 @@ describe('busca de ingrediente (escopo=receita)', () => {
     expect(r).not.toContain('DESENGRAXANTE')
     expect(r).not.toContain('SACO DE LIXO')
     expect(r).not.toContain('JAPONA DE CAMARA')
-    expect(r).not.toContain('EMBALAGEM DELIVERY')
+  })
+
+  // ⛔⛔ ESTA ASSERÇÃO FOI INVERTIDA EM 01/09, com o motivo escrito — não apagada.
+  //
+  // Ela nasceu em 27/08 junto com as três de cima, quando o dono reclamou que a busca
+  // oferecia material de limpeza como ingrediente. Eu cortei EMBALAGEM **junto com**
+  // limpeza, e travei isso aqui. **Erro meu:** as duas não são a mesma coisa.
+  //
+  // Montando a ficha da pizza (01/09) ele bateu na consequência: as caixas de pizza não
+  // apareciam. **Toda pizza sai com caixa** — embalagem custa, baixa do estoque e entra no
+  // CMV; sem ela na ficha o CMV mente pra baixo. Pano de chão continua fora, que era o
+  // pedido de verdade.
+  it('⭐⭐ EMBALAGEM APARECE — ela é componente, ao contrário da limpeza', async () => {
+    const r = (await nomes('?escopo=receita')).map((i) => i.nome)
+    expect(r, 'a caixa de pizza precisa entrar na ficha').toContain('EMBALAGEM DELIVERY')
   })
 
   it('⭐ e o que É ingrediente continua aparecendo', async () => {

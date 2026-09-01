@@ -115,11 +115,20 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
   // (que é 1). Intermediário rende em lote e o rendimento é MEDIDO → por-unidade "a apurar".
   const custo = useMemo(() => {
     const semCusto = comps.filter((c) => c.custoMedio == null).length
-    const custoLote = semCusto > 0 ? null : round2(comps.reduce((s, c) => s + (c.custoMedio ?? 0) * (valorQtd(c.qtdTexto) ?? 0), 0))
+    const soma = (ls: Comp[]) => round2(ls.reduce((s, c) => s + (c.custoMedio ?? 0) * (valorQtd(c.qtdTexto) ?? 0), 0))
+    const custoLote = semCusto > 0 ? null : soma(comps)
     const lote = parseNum(loteBase)
     const porUnidade = produtoFinal && custoLote != null && lote != null && lote > 0 ? round2(custoLote / lote) : null
-    return { custoLote, porUnidade, custoADefinir: semCusto > 0, semCusto }
+    // ⭐ EMBALAGEM À PARTE — pedido do dono (01/09): "pra eu enxergar o custo de caixa
+    // separado do custo de comida". ⚠️ É separação VISUAL: os dois entram no custo total
+    // e na baixa igual, porque embalagem é componente como qualquer outro.
+    const daEmbalagem = semCusto > 0 ? null : soma(comps.filter((c) => c.categoria === 'EMBALAGEM'))
+    return { custoLote, porUnidade, custoADefinir: semCusto > 0, semCusto, daEmbalagem }
   }, [comps, loteBase, produtoFinal])
+
+  // ⭐ duas listas, a MESMA fonte — a ordem de gravação (`comps`) não muda
+  const compsComida = useMemo(() => comps.filter((c) => c.categoria !== 'EMBALAGEM'), [comps])
+  const compsEmbalagem = useMemo(() => comps.filter((c) => c.categoria === 'EMBALAGEM'), [comps])
 
   const preco = parseNum(valorVenda)
   const margem = produtoFinal && preco != null && preco > 0 && custo.porUnidade != null
@@ -256,44 +265,18 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
             Busque e adicione os ingredientes {produtoFinal ? 'de UMA unidade vendida' : 'do lote'}.
           </p>
         ) : (
-          <div className="divide-y divide-slate-50">
-            {comps.map((c) => {
-              const qtd = valorQtd(c.qtdTexto)
-              const emGramas = descreverQtd(qtd, c.unidadeControle)
-              return (
-                <div key={c.itemId} className="flex items-center gap-2 py-1.5">
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[13px] text-slate-800">
-                      {c.nome}
-                      {(c.categoria === 'INTERMEDIARIO' || c.categoria === 'PRODUTO_FINAL') && (
-                        <a href={`/empresas/${companyId}/estoque/producao/receitas`} target="_blank" rel="noreferrer"
-                          className="ml-1.5 inline-flex items-center gap-0.5 rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] text-violet-700 hover:bg-violet-100">
-                          produzido <ExternalLink className="h-2.5 w-2.5" />
-                        </a>
-                      )}
-                    </p>
-                    <p className="text-[11px] text-slate-400">
-                      {c.custoMedio != null ? `${brl(c.custoMedio)}/${c.unidadeControle}` : 'sem custo ainda'}
-                    </p>
-                  </div>
-                  {/* ⭐ o campo é TEXTO: "0,050" sobrevive letra a letra. inputMode decimal
-                      abre o teclado numérico com vírgula no celular, que é onde ele monta. */}
-                  <input value={c.qtdTexto} onChange={(e) => setQtd(c.itemId, e.target.value)}
-                    inputMode="decimal" placeholder={c.unidadeControle === 'UN' ? '1' : '0,000'}
-                    aria-label={`Quantidade de ${c.nome} em ${c.unidadeControle}`}
-                    className="h-9 w-24 rounded-lg border border-slate-300 px-2 text-right text-sm tabular-nums" />
-                  <span className="w-16 text-[11px] text-slate-400">
-                    {c.unidade}
-                    {/* confirmação visual: 0,05 e 0,005 são parecidos e 10× diferentes */}
-                    {emGramas && <span className="block text-[10px] text-slate-400">= {emGramas}</span>}
-                  </span>
-                  <span className="w-20 text-right text-[13px] tabular-nums text-slate-600">
-                    {c.custoMedio != null && qtd != null ? brl(round2(c.custoMedio * qtd)) : <span className="text-amber-500">—</span>}
-                  </span>
-                  <button onClick={() => rmComp(c.itemId)} className="text-slate-300 hover:text-rose-500"><Trash2 className="h-4 w-4" /></button>
-                </div>
-              )
-            })}
+          <div className="space-y-2">
+            {/* ⭐ DUAS SEÇÕES, UMA LISTA (01/09): embalagem separada só pra o dono enxergar
+                o custo de caixa por produto. ⚠️ É separação VISUAL — na baixa e no custo
+                total, embalagem é componente como qualquer outro. */}
+            <SecaoComps titulo={compsEmbalagem.length ? 'Ingredientes' : null} lista={compsComida}
+              companyId={companyId} setQtd={setQtd} rmComp={rmComp} />
+            {compsEmbalagem.length > 0 && (
+              <SecaoComps
+                titulo="Embalagem"
+                subtitulo={custo.daEmbalagem != null ? `${brl(custo.daEmbalagem)} por ${produtoFinal ? 'unidade' : 'lote'}` : null}
+                lista={compsEmbalagem} companyId={companyId} setQtd={setQtd} rmComp={rmComp} />
+            )}
           </div>
         )}
       </CardContent></Card>
@@ -343,3 +326,73 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
 // A tela oferecia DESENGRAXANTE, SACO DE LIXO e JAPONA DE CÂMARA como componente de lanche:
 // pedia o catálogo inteiro. O servidor filtra (escopo=receita) e ordena intermediário/
 // matéria-prima primeiro. O toggle "tudo" cobre o caso raro (embalagem no custo do delivery).
+
+/**
+ * ⭐ UMA SEÇÃO DE COMPONENTES — a linha é a MESMA nas duas (ingredientes e embalagem).
+ *
+ * ⚠️ Extraído em 01/09 pra separar embalagem VISUALMENTE sem duplicar a linha. Duas cópias
+ * do mesmo campo de quantidade seria onde as duas seções começariam a divergir — e o campo
+ * de quantidade é justamente o que já teve o bug do `value={numero}` (28/08).
+ */
+function SecaoComps({ titulo, subtitulo, lista, companyId, setQtd, rmComp }: {
+  titulo: string | null
+  subtitulo?: string | null
+  lista: Comp[]
+  companyId: string
+  setQtd: (itemId: string, texto: string) => void
+  rmComp: (itemId: string) => void
+}) {
+  if (lista.length === 0) return null
+  return (
+    <div>
+      {titulo && (
+        <div className="mb-0.5 flex items-baseline gap-2 border-b border-slate-100 pb-1">
+          <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400">{titulo}</span>
+          {subtitulo && <span className="text-[11px] tabular-nums text-slate-500">{subtitulo}</span>}
+        </div>
+      )}
+      <div className="divide-y divide-slate-50">
+        {lista.map((c) => {
+          const qtd = valorQtd(c.qtdTexto)
+          const emGramas = descreverQtd(qtd, c.unidadeControle)
+          return (
+            <div key={c.itemId} className="flex items-center gap-2 py-1.5">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[13px] text-slate-800">
+                  {c.nome}
+                  {(c.categoria === 'INTERMEDIARIO' || c.categoria === 'PRODUTO_FINAL') && (
+                    <a href={`/empresas/${companyId}/estoque/producao/receitas`} target="_blank" rel="noreferrer"
+                      className="ml-1.5 inline-flex items-center gap-0.5 rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] text-violet-700 hover:bg-violet-100">
+                      produzido <ExternalLink className="h-2.5 w-2.5" />
+                    </a>
+                  )}
+                  {c.categoria === 'EMBALAGEM' && (
+                    <span className="ml-1.5 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-700">embalagem</span>
+                  )}
+                </p>
+                <p className="text-[11px] text-slate-400">
+                  {c.custoMedio != null ? `${brl(c.custoMedio)}/${c.unidadeControle}` : 'sem custo ainda'}
+                </p>
+              </div>
+              {/* ⭐ o campo é TEXTO: "0,050" sobrevive letra a letra. inputMode decimal
+                  abre o teclado numérico com vírgula no celular, que é onde ele monta. */}
+              <input value={c.qtdTexto} onChange={(e) => setQtd(c.itemId, e.target.value)}
+                inputMode="decimal" placeholder={c.unidadeControle === 'UN' ? '1' : '0,000'}
+                aria-label={`Quantidade de ${c.nome} em ${c.unidadeControle}`}
+                className="h-9 w-24 rounded-lg border border-slate-300 px-2 text-right text-sm tabular-nums" />
+              <span className="w-16 text-[11px] text-slate-400">
+                {c.unidade}
+                {/* confirmação visual: 0,05 e 0,005 são parecidos e 10× diferentes */}
+                {emGramas && <span className="block text-[10px] text-slate-400">= {emGramas}</span>}
+              </span>
+              <span className="w-20 text-right text-[13px] tabular-nums text-slate-600">
+                {c.custoMedio != null && qtd != null ? brl(round2(c.custoMedio * qtd)) : <span className="text-amber-500">—</span>}
+              </span>
+              <button onClick={() => rmComp(c.itemId)} className="text-slate-300 hover:text-rose-500"><Trash2 className="h-4 w-4" /></button>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}

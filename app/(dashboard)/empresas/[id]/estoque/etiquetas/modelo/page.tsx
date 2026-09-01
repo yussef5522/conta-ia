@@ -32,6 +32,7 @@ import {
   LADO_DOTS_USAVEL, type Bloco,
 } from '@/lib/stock/etiquetas/blocos'
 import { exemploDeEtiqueta } from '@/lib/stock/etiquetas/exemplo'
+import { aoAbrir, aposSalvar } from '@/lib/stock/etiquetas/estado-editor'
 import type { CampoId, DadosEtiqueta } from '@/lib/stock/etiquetas/modelo'
 
 interface Modelo { id: string; nome: string; padrao: boolean; blocos: Bloco[] }
@@ -57,11 +58,29 @@ export default function ModeloEtiquetaPage({ params }: { params: Promise<{ id: s
   /** o conteúdo que a linha selecionada mostra hoje — resolvido pelo MESMO layout */
   const conteudoSel = layout.blocos.find((p) => p.bloco.id === selecionadoId)?.partes.conteudo ?? ''
 
-  const carregar = () =>
+  /**
+   * ⚠️⚠️ `manterFormulario` NÃO é conveniência — é o fix de uma PERDA DE DADO (01/09).
+   *
+   * Antes, `carregar()` reescrevia o formulário INTEIRO com o modelo padrão, e era chamado
+   * no fim de `salvar()`. Efeito: o dono salvava um modelo novo, a tela pulava de volta
+   * pro "Padrão" **em silêncio** mostrando "Modelo salvo", ele seguia editando achando que
+   * era o dele, e o próximo salvar escrevia POR CIMA do padrão da empresa. Foi assim que a
+   * QUANTIDADE ficou desligada no modelo de todo mundo.
+   *
+   * ⭐ A régua, que vale pra toda tela: **refetch depois de salvar atualiza a LISTA, nunca
+   * o FORMULÁRIO que a pessoa está editando.** (2ª ocorrência da família — a 1ª foi o
+   * prefill do cardápio, 28/08.)
+   */
+  const carregar = (manterFormulario = false) =>
     fetch(`/api/empresas/${id}/estoque/etiquetas/modelos`).then((r) => r.json()).then((j) => {
-      setModelos(j.modelos ?? [])
-      const atual = (j.modelos ?? []).find((m: Modelo) => m.padrao) ?? (j.modelos ?? [])[0]
-      if (atual) { setModeloId(atual.id); setNome(atual.nome); setBlocos(atual.blocos); setPadrao(atual.padrao) }
+      const lista: Modelo[] = j.modelos ?? []
+      setModelos(lista)
+      if (manterFormulario) return
+      const inicial = aoAbrir(lista as never)
+      if (inicial) {
+        setModeloId(inicial.modeloId); setNome(inicial.nome)
+        setBlocos(inicial.blocos as Bloco[]); setPadrao(inicial.padrao)
+      }
     }).catch(() => setModelos(null))
 
   useEffect(() => { carregar() }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -86,9 +105,13 @@ export default function ModeloEtiquetaPage({ params }: { params: Promise<{ id: s
       })
       const j = await r.json().catch(() => null)
       if (!r.ok) { setMsg({ tom: 'erro', texto: j?.erro ?? 'Não consegui salvar.' }); return }
-      setModeloId(j.modeloId)
-      setMsg({ tom: 'ok', texto: 'Modelo salvo.' })
-      await carregar()
+      // ⭐ a tela FICA no que foi salvo. `aposSalvar` só troca o id (é o servidor que diz
+      // qual linha nasceu); nome, blocos e padrão continuam sendo os que ele digitou.
+      const depois = aposSalvar({ modeloId, nome, blocos, padrao }, j.modeloId)
+      setModeloId(depois.modeloId)
+      setMsg({ tom: 'ok', texto: modeloId ? 'Modelo salvo.' : `Modelo "${nome}" criado.` })
+      // ⚠️ só a LISTA é recarregada — o formulário não se mexe
+      await carregar(true)
     } finally { setBusy(false) }
   }
 
