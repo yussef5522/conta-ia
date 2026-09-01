@@ -22,11 +22,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Loader2, Plus, Trash2, Search, Save, AlertTriangle, ChevronDown, ChevronRight, BookOpen, ExternalLink } from 'lucide-react'
+import { BuscaItem, type ItemBusca } from './busca-item'
 import { valoresIniciaisDaFicha, paraCampo, faixaMargem, type LinhaParaFicha } from '@/lib/stock/cardapio/valores-iniciais'
 import { sanitizarQtd, valorQtd, textoQtd, descreverQtd, validarQtd } from '@/lib/stock/quantidade'
 import { useDismissivel } from '@/lib/hooks/use-dismissivel'
 
-interface ItemBusca { id: string; nome: string; unidadeControle: string; custoMedio: number | null; categoria: string }
 // ⚠️ `qtdTexto` é a FONTE DA VERDADE do campo, não um número (28/08). O input era
 // `value={numero}` e digitar "0,050" era impossível: a vírgula virava 0 e sumia da tela.
 // O que o dono digita fica TEXTO enquanto ele digita; o número é derivado.
@@ -248,7 +248,8 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
           </p>
         )}
 
-        <BuscaItem companyId={companyId} jaAdicionados={comps.map((c) => c.itemId)} onAdd={addComp} />
+        <BuscaItem companyId={companyId} jaAdicionados={comps.map((c) => c.itemId)} onEscolher={addComp}
+          placeholder="buscar ingrediente (ou criar um que nunca veio em nota)…" />
 
         {comps.length === 0 ? (
           <p className="rounded-lg border border-dashed border-slate-200 p-4 text-center text-xs text-slate-400">
@@ -342,81 +343,3 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
 // A tela oferecia DESENGRAXANTE, SACO DE LIXO e JAPONA DE CÂMARA como componente de lanche:
 // pedia o catálogo inteiro. O servidor filtra (escopo=receita) e ordena intermediário/
 // matéria-prima primeiro. O toggle "tudo" cobre o caso raro (embalagem no custo do delivery).
-function BuscaItem({ companyId, jaAdicionados, onAdd }: { companyId: string; jaAdicionados: string[]; onAdd: (it: ItemBusca) => void }) {
-  const [q, setQ] = useState('')
-  const [res, setRes] = useState<ItemBusca[]>([])
-  const [aberto, setAberto] = useState(false)
-  const [criando, setCriando] = useState(false)
-  const [tudo, setTudo] = useState(false)
-  const [novaUnidade, setNovaUnidade] = useState<'KG' | 'UN' | 'LT'>('KG')
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // ⭐ clique fora + ESC fecham a lista (28/08). Antes só dava pra sair ESCOLHENDO — quem
-  // desistia ficava com o dropdown pendurado na tela, e no celular era pior.
-  const caixa = useDismissivel<HTMLDivElement>(aberto, () => setAberto(false))
-
-  useEffect(() => {
-    if (timer.current) clearTimeout(timer.current)
-    timer.current = setTimeout(() => {
-      const escopo = tudo ? '' : '&escopo=receita'
-      fetch(`/api/empresas/${companyId}/estoque/itens?busca=${encodeURIComponent(q)}${escopo}`)
-        .then((r) => r.json()).then((j) => setRes(j.itens ?? [])).catch(() => setRes([]))
-    }, 200)
-    return () => { if (timer.current) clearTimeout(timer.current) }
-  }, [q, companyId, tudo])
-
-  const termo = q.trim()
-  const existeExato = res.some((it) => it.nome.toLowerCase() === termo.toLowerCase())
-
-  const criarItem = async () => {
-    if (!termo || criando) return
-    setCriando(true)
-    try {
-      const r = await fetch(`/api/empresas/${companyId}/estoque/itens`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nome: termo, unidadeControle: novaUnidade }) })
-      const j = await r.json().catch(() => null)
-      if (r.ok && j?.item) { onAdd(j.item); setQ(''); setAberto(false) }
-    } finally { setCriando(false) }
-  }
-
-  return (
-    <div className="relative" ref={caixa}>
-      <div className="relative">
-        <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-        <input value={q} onFocus={() => setAberto(true)} onChange={(e) => { setQ(e.target.value); setAberto(true) }}
-          placeholder="buscar ingrediente (ou criar um que nunca veio em nota)…"
-          className="h-9 w-full rounded-lg border border-slate-300 pl-9 pr-24 text-sm" />
-        <button type="button" onClick={() => setTudo((v) => !v)}
-          className={`absolute right-2 top-1.5 rounded px-1.5 py-1 text-[10px] ${tudo ? 'bg-slate-200 text-slate-700' : 'text-slate-400 hover:text-slate-600'}`}
-          title={tudo ? 'mostrando o catálogo inteiro' : 'mostrando só ingredientes'}>
-          {tudo ? 'tudo' : 'só ingredientes'}
-        </button>
-      </div>
-      {aberto && (res.length > 0 || termo) && (
-        <div className="absolute z-10 mt-1 max-h-72 w-full overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg">
-          {res.map((it) => {
-            const dentro = jaAdicionados.includes(it.id)
-            return (
-              <button key={it.id} disabled={dentro} onClick={() => { onAdd(it); setQ(''); setAberto(false) }}
-                className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-slate-50 disabled:opacity-40">
-                <span className="text-slate-700">
-                  {it.nome}
-                  {(it.categoria === 'INTERMEDIARIO' || it.categoria === 'PRODUTO_FINAL') && <span className="ml-1.5 rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] text-violet-700">produzido</span>}
-                  {it.categoria === 'REVENDA' && <span className="ml-1.5 rounded-full bg-sky-50 px-1.5 py-0.5 text-[10px] text-sky-700">revenda</span>}
-                </span>
-                <span className="flex items-center gap-2 text-xs text-slate-400">
-                  {it.custoMedio != null ? `${brl(it.custoMedio)}/${it.unidadeControle}` : 'sem custo'}{!dentro && <Plus className="h-3.5 w-3.5" />}
-                </span>
-              </button>
-            )
-          })}
-          {termo && !existeExato && (
-            <div className="flex items-center gap-2 border-t border-slate-100 bg-emerald-50/40 px-3 py-2">
-              <span className="flex-1 text-sm text-slate-700">criar <b>“{termo}”</b> <span className="text-[11px] text-slate-400">(sem custo até a 1ª nota)</span></span>
-              <select value={novaUnidade} onChange={(e) => setNovaUnidade(e.target.value as 'KG' | 'UN' | 'LT')} className="rounded-md border border-slate-300 px-1.5 py-1 text-xs"><option>KG</option><option>UN</option><option>LT</option></select>
-              <button onClick={criarItem} disabled={criando} className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"><Plus className="h-3.5 w-3.5" /> criar</button>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}

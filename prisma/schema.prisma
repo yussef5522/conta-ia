@@ -3317,6 +3317,30 @@ model StockSupplierProduct {
   @@map("stock_supplier_product")
 }
 
+// ⭐⭐ O MAPA APRENDIDO POR NOME (31/08/2026) — irmão do `StockSupplierProduct`.
+// O mapa por CÓDIGO só serve pro XML (`cProd`); item digitado do DANFE de papel tem
+// `cProd: null` e não cabe naquela chave. Aqui a chave é o NOME NORMALIZADO INTEIRO —
+// nunca "parecido", que seria o sistema adivinhando mercadoria.
+// ⚠️ `origem` existe pra o dono AUDITAR: casou pelo código do fornecedor ou por um nome
+// que ele digitou? Heurística sugere; o que ela sugeriu tem que ser rastreável.
+model StockSupplierProdutoNome {
+  id               String   @id @default(cuid())
+  companyId        String
+  supplierCnpj     String
+  xProd            String // como veio do papel — preservado
+  xProdNormalizado String // a chave de casamento
+  itemId           String
+  fatorConversao   Float    @default(1)
+  unidadeNota      String?
+  origem           String   @default("NOME") // CODIGO | NOME
+  criadoPorId      String?
+  criadoEm         DateTime @default(now())
+
+  @@unique([companyId, supplierCnpj, xProdNormalizado])
+  @@index([companyId, itemId])
+  @@map("stock_supplier_produto_nome")
+}
+
 // O LEDGER. IMUTÁVEL (trigger recusa UPDATE/DELETE). Correção = ESTORNO + novo.
 // CHECK (na migration): quantidade <> 0 e custoTotal == quantidade*custoUnitario (±0,01/linha).
 model StockMovement {

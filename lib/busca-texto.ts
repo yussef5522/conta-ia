@@ -44,6 +44,30 @@ export function casaBusca(texto: string, termo: string): boolean {
   return t.split(' ').every((palavra) => alvo.includes(palavra))
 }
 
+/**
+ * ⛔⛔ TERMO **TRANSFORMADO** QUE ESVAZIA É FILTRO QUE NÃO FILTRA (31/08/2026).
+ *
+ * CASO REAL, na busca de Recebimentos:
+ *     `(l.cnpj ?? '').includes(q.replace(/\D/g, ''))`
+ * Buscar por LETRAS faz o `replace` devolver `''`, e **`includes('')` é sempre true** —
+ * então a cláusula do CNPJ ficava verdadeira pra TODA linha e a busca por fornecedor
+ * mostrava a lista inteira, sem filtrar nada.
+ *
+ * ⚠️ A RÉGUA QUE SEPARA O BUG DO COMPORTAMENTO CERTO: termo **cru** vazio significa "sem
+ * filtro" e devolver tudo é o esperado (é o que `casaBusca` faz de propósito). O defeito
+ * aparece quando o termo é **transformado** e a transformação pode esvaziá-lo — aí "vazio"
+ * deixa de significar "não digitei" e passa a significar "casa com tudo".
+ *
+ * ⭐ Por isso a comparação por DÍGITOS mora aqui, com a guarda embutida: sem dígito no
+ * termo, ela simplesmente não opina. Varredura de 31/08: era a ÚNICA ocorrência da classe
+ * no código (os outros 8 `includes` usam o termo cru, com guarda de `busca.trim()`).
+ */
+export function casaDigitos(alvo: string | null | undefined, termo: string): boolean {
+  const d = (termo ?? '').replace(/\D/g, '')
+  if (d === '') return false // ⛔ termo sem dígito NÃO casa — nunca "casa com tudo"
+  return (alvo ?? '').replace(/\D/g, '').includes(d)
+}
+
 /** Filtra uma lista pelo termo, usando o campo que `extrair` apontar. */
 export function filtrarPorBusca<T>(itens: T[], termo: string, extrair: (i: T) => string): T[] {
   const t = normalizarBusca(termo)

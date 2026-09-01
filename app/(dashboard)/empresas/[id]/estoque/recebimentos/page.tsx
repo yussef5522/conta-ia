@@ -23,6 +23,7 @@ import { StatCard, StatCardGrid } from '@/components/ui/stat-card'
 import { TotalsBar, type TotalItem } from '@/components/ui/totals-bar'
 import { SortableTh, useSort } from '@/components/ui/sortable-th'
 import { baixarCsv, hojeArquivo } from '@/lib/format/csv-cliente'
+import { casaBusca, casaDigitos } from '@/lib/busca-texto'
 import { CardFilaBoletos } from '@/components/estoque/card-fila-boletos'
 import { AjustarParcelasDaNota } from '@/components/estoque/ajustar-parcelas-da-nota'
 import {
@@ -123,8 +124,14 @@ export default function RecebimentosPage({ params }: { params: Promise<{ id: str
     let ls = todas
     if (filtro !== 'todas') ls = ls.filter((l) => l.estado === filtro)
     if (soAtrasadas) ls = ls.filter((l) => (l.esperandoDias ?? 0) > 2)
-    const q = busca.trim().toLowerCase()
-    if (q) ls = ls.filter((l) => l.fornecedor.toLowerCase().includes(q) || (l.cnpj ?? '').includes(q.replace(/\D/g, '')))
+    // ⛔⛔ A BUSCA NÃO FILTRAVA NADA (31/08): a cláusula do CNPJ era
+    // `(l.cnpj ?? '').includes(q.replace(/\D/g,''))` — termo de letras virava `''` e
+    // `includes('')` é sempre true, então TODA linha passava. Agora o nome usa a busca
+    // normalizada (sem acento, sem caixa, por palavra em qualquer ordem — a mesma de
+    // `lib/busca-texto.ts`, feita pro bug do "PAO DE XIS") e os dígitos só opinam quando
+    // o termo TEM dígito.
+    const q = busca.trim()
+    if (q) ls = ls.filter((l) => casaBusca(l.fornecedor, q) || casaDigitos(l.cnpj, q))
     return ordenar(ls, (l, c) => (
       c === 'fornecedor' ? l.fornecedor : c === 'data' ? l.data : c === 'nItens' ? l.nItens
         : c === 'valor' ? l.valor : c === 'espera' ? l.esperandoDias : l.estado
@@ -410,6 +417,14 @@ function BuscarChave({ id, onAchou, onFechar }: { id: string; onAchou: () => voi
         <button onClick={buscar} disabled={busy || digitos.length !== 44} className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#185FA5] px-4 text-sm font-medium text-white hover:bg-[#0F4A8C] disabled:opacity-50">{busy ? <Loader className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />} Buscar</button>
         <button onClick={onFechar} className="text-xs text-slate-400 hover:text-slate-600">fechar</button>
       </div>
+      {/* ⚠️ RECUSA EM SILÊNCIO, NÃO (a família do "não declarou o total" que dizia três
+          coisas diferentes): digitar NOME aqui deixava o botão inerte sem explicar. */}
+      {digitos.length === 0 && chave.trim() !== '' && (
+        <p className="text-xs text-amber-700">
+          Aqui vão os <b>44 dígitos</b> da chave de acesso. Pra achar por <b>fornecedor</b>,
+          use a busca da lista, logo abaixo.
+        </p>
+      )}
       {msg && <p className={`text-xs ${msg.ok ? 'text-emerald-600' : 'text-rose-600'}`}>{msg.texto}</p>}
     </CardContent></Card>
   )

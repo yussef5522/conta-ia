@@ -9,6 +9,7 @@
 // Isolado: só escreve stock_*. Idempotente: nota já confirmada não duplica.
 
 import { prisma } from '@/lib/db'
+import { normalizarBusca } from '@/lib/busca-texto'
 import { criarMovimento } from './movement'
 import { recomputeSaldoCache } from './saldo'
 import { enviarEvento } from './sefaz/ciencia'
@@ -111,6 +112,28 @@ export async function confirmarConferencia(input: ConfirmInput): Promise<Confirm
         await tx.stockSupplierProduct.upsert({
           where: { companyId_supplierCnpj_cProd: { companyId, supplierCnpj: cnpj, cProd: it.cProd } },
           create: { companyId, supplierCnpj: cnpj, cProd: it.cProd, xProd: it.xProd, itemId, fatorConversao: it.mapeado.fatorConversao, unidadeNota: it.uCom },
+          update: { itemId, fatorConversao: it.mapeado.fatorConversao, unidadeNota: it.uCom },
+        })
+      }
+
+      // ⭐⭐ O MAPA POR NOME (31/08) — é o que faz o trabalho de digitar o DANFE valer pra
+      // próxima nota. Sem isto o dono digitava os itens, mapeava um a um, e na nota
+      // seguinte do MESMO fornecedor recomeçava do zero ("0/0 mapeados").
+      //
+      // ⚠️ GRAVA NOS DOIS CASOS, com a ORIGEM diferente: nota com XML aprende
+      // `origem: 'CODIGO'` (o vínculo nasceu de um identificador do fornecedor); nota
+      // digitada aprende `origem: 'NOME'` (nasceu de um texto que alguém leu no papel).
+      // O dono pediu essa distinção pra poder AUDITAR depois — se um dia der problema, ele
+      // precisa saber por qual das duas réguas aquele item foi casado.
+      const nomeNorm = normalizarBusca(it.xProd ?? '')
+      if (cnpj && nomeNorm) {
+        await tx.stockSupplierProdutoNome.upsert({
+          where: { companyId_supplierCnpj_xProdNormalizado: { companyId, supplierCnpj: cnpj, xProdNormalizado: nomeNorm } },
+          create: {
+            companyId, supplierCnpj: cnpj, xProd: it.xProd ?? '', xProdNormalizado: nomeNorm,
+            itemId, fatorConversao: it.mapeado.fatorConversao, unidadeNota: it.uCom,
+            origem: it.cProd ? 'CODIGO' : 'NOME', criadoPorId: userId ?? null,
+          },
           update: { itemId, fatorConversao: it.mapeado.fatorConversao, unidadeNota: it.uCom },
         })
       }

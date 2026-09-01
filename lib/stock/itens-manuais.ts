@@ -13,6 +13,7 @@
 
 import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
+import { normalizarBusca } from '@/lib/busca-texto'
 
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 
@@ -23,6 +24,10 @@ export interface ItemManualInput {
   qCom: number
   uCom: string
   vUnCom: number
+  /** ⭐ vínculo com o catálogo, escolhido na hora de digitar (null = texto livre) */
+  itemId?: string | null
+  /** ⛔ `null` = fator ainda desconhecido → a linha com unidade diferente é RECUSADA */
+  fatorConversao?: number | null
 }
 
 export interface ConferenciaSoma {
@@ -65,6 +70,12 @@ export function validarItens(itens: ItemManualInput[]): void {
     if (!(i.qCom > 0)) throw new ItensManuaisError(`Item ${n} ("${i.xProd}"): a quantidade tem que ser maior que zero.`)
     if (!i.uCom?.trim()) throw new ItensManuaisError(`Item ${n} ("${i.xProd}"): falta a unidade da nota (CX, KG, UN…).`)
     if (!(i.vUnCom >= 0)) throw new ItensManuaisError(`Item ${n} ("${i.xProd}"): preço unitário inválido.`)
+    // ⛔⛔ VÍNCULO COM UNIDADE DIFERENTE EXIGE FATOR — nunca 1 por omissão. Foi o bug da
+    // Skol (22/08): a caixa de 20 garrafas entrou no ledger como 1 unidade porque o fator
+    // foi assumido em silêncio. O servidor recusa; a tela só pergunta antes.
+    if (i.itemId && i.fatorConversao != null && !(i.fatorConversao > 0)) {
+      throw new ItensManuaisError(`Item ${n} ("${i.xProd}"): fator de conversão inválido.`)
+    }
   })
 }
 
@@ -80,14 +91,14 @@ export interface SalvarResult extends ConferenciaSoma { itensGravados: number }
  * conferida). Depois de CONFIRMADA, recusa — o ledger já se moveu.
  */
 export async function salvarItensManuais(
-  input: { companyId: string; nfeId: string; itens: ItemManualInput[] },
+  input: { companyId: string; nfeId: string; itens: ItemManualInput[]; userId?: string | null },
   db: PrismaClient = defaultPrisma,
 ): Promise<SalvarResult> {
   validarItens(input.itens)
 
   const nota = await db.stockNfe.findFirst({
     where: { id: input.nfeId, companyId: input.companyId },
-    select: { id: true, chave: true, status: true, vNF: true, temXmlCompleto: true },
+    select: { id: true, chave: true, status: true, vNF: true, temXmlCompleto: true, emitCnpj: true },
   })
   if (!nota) throw new ItensManuaisError('Nota não encontrada.')
   if (nota.status === 'CONFIRMADA') throw new ItensManuaisError('Essa nota já foi conferida — o estoque já entrou. Para corrigir, estorne os movimentos.')
@@ -106,6 +117,36 @@ export async function salvarItensManuais(
         vProd: round2(i.qCom * i.vUnCom), uTrib: null, qTrib: null,
       })),
     })
+
+    // ⭐⭐ O VÍNCULO VIRA MAPA APRENDIDO (31/08) — é o que faz o trabalho de digitar valer
+    // pra próxima nota. Sem isto o dono digitava, mapeava um a um, e na nota seguinte do
+    // MESMO fornecedor recomeçava do zero ("0/0 mapeados"): dois trabalhos onde deveria
+    // ser um.
+    //
+    // ⚠️ VAI PRO MAPA POR **NOME**, não pro por código: item digitado do papel não tem
+    // `cProd` (é o código do produto no XML), e o mapa antigo é chaveado por ele.
+    //
+    // ⚠️ `origem: 'NOME'` fica gravado pra o dono AUDITAR depois — se um dia der problema,
+    // ele precisa saber se aquele item foi casado pelo código do fornecedor ou por um nome
+    // que alguém leu no papel. Heurística sugere; o que ela sugeriu tem que ser rastreável.
+    const cnpj = (nota.emitCnpj ?? '').replace(/\D/g, '')
+    if (cnpj) {
+      for (const i of input.itens) {
+        if (!i.itemId) continue
+        const chave = normalizarBusca(i.xProd)
+        if (!chave) continue
+        await tx.stockSupplierProdutoNome.upsert({
+          where: { companyId_supplierCnpj_xProdNormalizado: { companyId: input.companyId, supplierCnpj: cnpj, xProdNormalizado: chave } },
+          create: {
+            companyId: input.companyId, supplierCnpj: cnpj,
+            xProd: i.xProd.trim(), xProdNormalizado: chave, itemId: i.itemId,
+            fatorConversao: i.fatorConversao ?? 1, unidadeNota: i.uCom.trim().toUpperCase(),
+            origem: 'NOME', criadoPorId: input.userId ?? null,
+          },
+          update: { itemId: i.itemId, fatorConversao: i.fatorConversao ?? 1, unidadeNota: i.uCom.trim().toUpperCase() },
+        })
+      }
+    }
   })
 
   return { ...soma, itensGravados: input.itens.length }

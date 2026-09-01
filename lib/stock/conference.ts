@@ -4,6 +4,7 @@
 
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
+import { normalizarBusca } from '@/lib/busca-texto'
 import { sugerirCategoria, sugerirUnidade, sugerirNome, type CategoriaEstoque, type UnidadeControle } from './sugestoes'
 import { combinadoDaNota } from './ponte/combinado'
 
@@ -70,17 +71,26 @@ export async function buildConferenceView(companyId: string, nfeId: string, db: 
   ])
   const cnpj = (emit?.cnpj ?? nfe.emitCnpj ?? '').replace(/\D/g, '')
 
-  const [fornecedor, mapeamentos] = await Promise.all([
+  const [fornecedor, mapeamentos, porNome] = await Promise.all([
     cnpj ? db.stockSupplier.findFirst({ where: { companyId, cnpj }, select: { id: true } }) : Promise.resolve(null),
     db.stockSupplierProduct.findMany({ where: { companyId, supplierCnpj: cnpj }, select: { cProd: true, itemId: true, fatorConversao: true } }),
+    // ⭐ 2º DEGRAU: o mapa por NOME. Item digitado do DANFE não tem `cProd`, então o
+    // vínculo que o dono criou digitando morreria com a nota. Agora ele vale pras
+    // próximas — inclusive pras que vierem COM XML, que é o caso que o mapa por código
+    // sozinho não cobre (o XML traz um cProd que o manual nunca teve).
+    cnpj ? db.stockSupplierProdutoNome.findMany({ where: { companyId, supplierCnpj: cnpj }, select: { xProdNormalizado: true, itemId: true, fatorConversao: true, origem: true } }) : Promise.resolve([]),
   ])
   const mapaPorCProd = new Map(mapeamentos.map((m) => [m.cProd, m]))
-  const itemIds = [...new Set(mapeamentos.map((m) => m.itemId))]
+  const mapaPorNome = new Map(porNome.map((m) => [m.xProdNormalizado, m]))
+  const itemIds = [...new Set([...mapeamentos.map((m) => m.itemId), ...porNome.map((m) => m.itemId)])]
   const itensEstoque = itemIds.length ? await db.stockItem.findMany({ where: { companyId, id: { in: itemIds } }, select: { id: true, nome: true, unidadeControle: true } }) : []
   const itemById = new Map(itensEstoque.map((i) => [i.id, i]))
 
   const itens: ConfItem[] = itensNfe.map((it) => {
-    const m = it.cProd ? mapaPorCProd.get(it.cProd) : undefined
+    // ⚠️ ORDEM DE RESOLUÇÃO — o CÓDIGO manda; o NOME é o 2º degrau, nunca o 1º. Código é
+    // identificador do fornecedor; nome é texto que ele pode reescrever a qualquer nota.
+    const porCodigo = it.cProd ? mapaPorCProd.get(it.cProd) : undefined
+    const m = porCodigo ?? mapaPorNome.get(normalizarBusca(it.xProd ?? ''))
     const estoque = m ? itemById.get(m.itemId) : undefined
     return {
       nfeItemId: it.id,
