@@ -70,15 +70,13 @@ describe('DRE — query auxiliar soma correcao + interest', () => {
     expect(code).toMatch(/select:\s*\{\s*interest:\s*true,\s*correcao:\s*true,\s*amortization:\s*true/)
   })
 
-  it('jurosTotal = interest + correcao (não so interest)', () => {
-    expect(code).toMatch(/const\s+correcao\s*=\s*t\.loanInstallmentPaid\?\.correcao\s*\?\?\s*0/)
-    expect(code).toMatch(/const\s+jurosTotal\s*=\s*interest\s*\+\s*correcao/)
-    expect(code).toMatch(/loanInterestSplit:\s*jurosTotal/)
-  })
-
-  it('preserva guard de 100% amortização (jurosTotal === 0 → pula)', () => {
-    expect(code).toMatch(/if\s*\(\s*jurosTotal\s*<=\s*0\s*\)\s*continue/)
-  })
+  // ⛔ AQUI VIVIAM DOIS GREPS DE FONTE — `const jurosTotal = interest + correcao` e
+  // `if (jurosTotal <= 0) continue` DENTRO da rota do DRE. Ficaram VERMELHOS por dias e
+  // **não era regressão: a lógica mudou de arquivo** (extraída pra `lib/loans/dre-interest.ts`
+  // em 14/08, dono único). O grep não distingue "refatorei" de "quebrei" — REGRA 3.
+  // Substituídos por `dre-juros-pipeline.test.ts`, que MONTA as transações pelo caminho
+  // real, roda o `calculateDRE` e confere o NÚMERO (445,67), inclusive o contrafactual do
+  // juros derivado NEGATIVO (o −3.024 real do C41022570) que viraria lucro inventado.
 })
 
 describe('UI — modal CandidatosDialog tem confirmação premium', () => {

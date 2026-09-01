@@ -79,7 +79,10 @@ describe('Sprint Empréstimos UI — telas', () => {
     // KPI top revisado: Vence este mês + Parcela mensal total (substitui
     // Compromisso do mês + Juros do mês)
     expect(code).toMatch(/Vence este mês/)
-    expect(code).toMatch(/Parcela mensal total/)
+    // ⛔ AQUI HAVIA UM GREP DE `/Parcela mensal total/` — vermelho por dias sem saber
+    // dizer se era o RÓTULO que mudou ou a SOMA que quebrou. A régua saiu do laço da rota
+    // pra `lib/loans/parcela-mensal-total.ts` e agora tem teste que confere o NÚMERO
+    // (R$ 26.471,06 da carteira real, com o mútuo FLEXIBLE de fora). REGRA 3.
     expect(code).toMatch(/Próximo vencimento/)
   })
 

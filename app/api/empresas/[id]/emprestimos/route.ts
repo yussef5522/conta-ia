@@ -11,6 +11,7 @@ import { handleApiError } from '@/lib/api/handle-error'
 import { generateSchedule } from '@/lib/loans/amortization'
 import { saldoDevedorAtual } from '@/lib/loans/saldo'
 import { forecastProxima } from '@/lib/loans/forecast'
+import { parcelaMensalTotal, type LinhaParcelaMensal } from '@/lib/loans/parcela-mensal-total'
 import { computeVenceMes } from '@/lib/loans/vence-mes'
 import { validateSchedule, InvalidLoanScheduleError } from '@/lib/loans/validate-schedule'
 import { computeOutstandingBalance as compOut } from '@/lib/loans/auto-conciliacao'
@@ -83,7 +84,9 @@ export async function GET(request: NextRequest, { params }: Params) {
     let totalSaldoDevedor = 0
     let totalParcelaMes = 0
     let totalJurosMes = 0
-    let totalParcelaMensalRec = 0
+    // ⭐ a régua da soma mora em `lib/loans/parcela-mensal-total.ts` (dono único, testável):
+    // aqui só se COLETA a linha; quem decide o que entra é a função.
+    const linhasParcelaMensal: LinhaParcelaMensal[] = []
     let proximoVencimento: { dueDate: string; loanId: string; lender: string } | null = null
 
     const carteira = loans.map((l) => {
@@ -152,9 +155,7 @@ export async function GET(request: NextRequest, { params }: Params) {
       totalJurosMes += jurosMes
       // Recorrência mensal ("próxima de cada contrato"): usa a PREVISÃO da
       // próxima (POS = última casada; PRE = nominal), não a amort nominal (2.4).
-      if (!flexible && l.status === 'ACTIVE' && forecast.valor != null) {
-        totalParcelaMensalRec += forecast.valor
-      }
+      linhasParcelaMensal.push({ status: l.status, flexible, forecastValor: forecast.valor ?? null })
 
       if (!flexible && proximaOpen) {
         if (
@@ -241,7 +242,7 @@ export async function GET(request: NextRequest, { params }: Params) {
           aVencer: venceMes.aVencer,
         },
         // "Próxima de cada contrato" — soma da previsão da próxima de cada loan ativo
-        parcelaMensalTotal: Math.round(totalParcelaMensalRec * 100) / 100,
+        parcelaMensalTotal: parcelaMensalTotal(linhasParcelaMensal).total,
         jurosMes: Math.round(totalJurosMes * 100) / 100,
         proximoVencimento,
         contratosAtivos: carteira.filter((l) => l.status === 'ACTIVE').length,
