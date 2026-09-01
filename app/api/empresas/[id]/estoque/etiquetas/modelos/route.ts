@@ -8,6 +8,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { guardStock } from '@/lib/stock/require-stock'
 import { BLOCOS_PADRAO, lerBlocos, gravarBlocos, avisosDoModelo, zplDosBlocos } from '@/lib/stock/etiquetas/blocos'
+import { motivoParaNaoExcluir, mensagemDeRecusa } from '@/lib/stock/etiquetas/excluir-modelo'
 import { enfileirar, ImpressaoError } from '@/lib/stock/impressao/fila'
 
 interface Params { params: Promise<{ id: string }> }
@@ -128,4 +129,35 @@ export async function PUT(request: NextRequest, { params }: Params) {
     if (e instanceof ImpressaoError) return NextResponse.json({ erro: e.message }, { status: 422 })
     throw e
   }
+}
+
+// ---------------------------------------------------------------------------
+// ⭐ EXCLUIR — com as duas recusas que impedem a empresa de ficar sem etiqueta
+// ---------------------------------------------------------------------------
+//
+// ⚠️ A DECISÃO É PURA (`excluir-modelo.ts`) e o SERVIDOR é quem recusa. Se a trava
+// morasse só na tela, bastaria um clique fora dela pra a empresa perder o padrão — e a
+// etiqueta passaria a sair com o desenho de fábrica sem ninguém saber.
+
+export async function DELETE(request: NextRequest, { params }: Params) {
+  const { id: companyId } = await params
+  const a = await guardStock(request, companyId, 'stock.manage')
+  if (a.erro) return a.erro
+  const modeloId = request.nextUrl.searchParams.get('modeloId') ?? ''
+  if (!modeloId) return NextResponse.json({ erro: 'Informe o modelo.' }, { status: 400 })
+
+  const [alvo, total] = await Promise.all([
+    prisma.stockEtiquetaModelo.findFirst({ where: { id: modeloId, companyId }, select: { id: true, nome: true, padrao: true } }),
+    prisma.stockEtiquetaModelo.count({ where: { companyId } }),
+  ])
+  if (!alvo) return NextResponse.json({ erro: 'Modelo não encontrado.' }, { status: 404 })
+
+  const motivo = motivoParaNaoExcluir(alvo, total)
+  if (motivo) {
+    // ⚠️ 422 com a frase que ENSINA — nunca um botão cinza mudo
+    return NextResponse.json({ erro: mensagemDeRecusa(motivo, alvo), code: motivo }, { status: 422 })
+  }
+
+  await prisma.stockEtiquetaModelo.delete({ where: { id: modeloId } })
+  return NextResponse.json({ ok: true })
 }

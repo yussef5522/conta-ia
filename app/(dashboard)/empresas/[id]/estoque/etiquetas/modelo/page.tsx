@@ -23,7 +23,7 @@
 import { useEffect, useMemo, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { LayoutTemplate, Loader2, Printer, Check, AlertTriangle, Star, RotateCcw, MousePointerClick } from 'lucide-react'
+import { LayoutTemplate, Loader2, Printer, Check, AlertTriangle, Star, RotateCcw, MousePointerClick, Copy, Trash2, Plus } from 'lucide-react'
 import { PreviaEtiqueta, type ParteDaLinha } from '@/components/estoque/previa-etiqueta'
 import { CamadasEtiqueta, nomeDoBloco } from '@/components/estoque/camadas-etiqueta'
 import { InspetorLinha } from '@/components/estoque/inspetor-linha'
@@ -144,6 +144,29 @@ export default function ModeloEtiquetaPage({ params }: { params: Promise<{ id: s
     } finally { setBusy(false) }
   }
 
+  /** ⭐ duplicar = criar um modelo NOVO com os blocos deste. Nada é sobrescrito. */
+  function duplicar(m: Modelo) {
+    setModeloId(null)
+    setNome(`${m.nome} (cópia)`)
+    setBlocos(m.blocos)
+    setPadrao(false) // ⚠️ cópia NUNCA nasce padrão — trocar o padrão é gesto explícito
+    setSelecionadoId(null)
+    setMsg({ tom: 'ok', texto: 'Cópia pronta pra editar — salve pra criar de verdade.' })
+  }
+
+  async function excluir(m: Modelo) {
+    // ⚠️ a recusa é do SERVIDOR (`motivoParaNaoExcluir`); a tela só mostra o motivo.
+    setBusy(true); setMsg(null)
+    try {
+      const r = await fetch(`/api/empresas/${id}/estoque/etiquetas/modelos?modeloId=${m.id}`, { method: 'DELETE' })
+      const j = await r.json().catch(() => null)
+      if (!r.ok) { setMsg({ tom: 'erro', texto: j?.erro ?? 'Não consegui excluir.' }); return }
+      if (m.id === modeloId) { setModeloId(null); setSelecionadoId(null) }
+      setMsg({ tom: 'ok', texto: `Modelo "${m.nome}" excluído.` })
+      await carregar(m.id !== modeloId)
+    } finally { setBusy(false) }
+  }
+
   function novoModelo() {
     setModeloId(null); setNome('Novo modelo'); setBlocos(BLOCOS_PADRAO); setPadrao(false)
     setMsg(null); setSelecionadoId(null)
@@ -231,18 +254,6 @@ export default function ModeloEtiquetaPage({ params }: { params: Promise<{ id: s
           <p className="text-xs text-slate-400">clique numa linha da etiqueta pra editar ela</p>
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-1.5">
-          <select
-            value={modeloId ?? 'novo'}
-            onChange={(e) => {
-              if (e.target.value === 'novo') return novoModelo()
-              const m = (modelos ?? []).find((x) => x.id === e.target.value)
-              if (m) { setModeloId(m.id); setNome(m.nome); setBlocos(m.blocos); setPadrao(m.padrao); setSelecionadoId(null) }
-            }}
-            className="h-8 rounded-md border border-slate-300 px-2 text-xs"
-          >
-            {(modelos ?? []).map((m) => <option key={m.id} value={m.id}>{m.nome}{m.padrao ? ' ★' : ''}</option>)}
-            <option value="novo">+ novo modelo</option>
-          </select>
           <Button size="sm" variant="outline" className="h-8" onClick={testar} disabled={busy}>
             <Printer className="h-3 w-3 mr-1" /> imprimir teste
           </Button>
@@ -272,6 +283,42 @@ export default function ModeloEtiquetaPage({ params }: { params: Promise<{ id: s
           </CardContent>
         </Card>
       )}
+
+      {/* ⭐⭐ A LISTA DOS MODELOS (01/09) — no lugar do dropdown do canto.
+          ⚠️ Pedido do dono: *"se for só o dropdown 'Padrão ★' do canto, isso é invisível
+          demais"*. E ele tinha razão pelo pior motivo: foi olhando esse dropdown que ele
+          não achou o modelo que tinha criado — e o que estava escondido ali era a
+          sobrescrita do padrão. Lista visível é o que faz um modelo a mais ser um FATO na
+          tela, não uma linha a rolar num seletor. */}
+      <Card>
+        <CardContent className="flex flex-wrap items-center gap-1.5 py-2">
+          <span className="mr-1 text-[11px] font-medium uppercase tracking-wide text-slate-400">Modelos</span>
+          {(modelos ?? []).map((m) => {
+            const ativo = m.id === modeloId
+            return (
+              <span key={m.id}
+                className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs ${
+                  ativo ? 'border-[#185FA5] bg-[#185FA5]/5 text-[#185FA5]' : 'border-slate-200 text-slate-600'
+                }`}>
+                <button type="button" title="editar este modelo"
+                  onClick={() => { setModeloId(m.id); setNome(m.nome); setBlocos(m.blocos); setPadrao(m.padrao); setSelecionadoId(null); setMsg(null) }}>
+                  {m.nome}
+                </button>
+                {m.padrao && <span title="é o que sai quando ninguém escolhe outro" className="text-amber-500">★</span>}
+                <button type="button" onClick={() => duplicar(m)} title="duplicar" className="text-slate-300 hover:text-slate-600"><Copy className="h-3 w-3" /></button>
+                <button type="button" onClick={() => excluir(m)} disabled={busy} title="excluir"
+                  className="text-slate-300 hover:text-rose-600 disabled:opacity-40"><Trash2 className="h-3 w-3" /></button>
+              </span>
+            )
+          })}
+          <button type="button" onClick={novoModelo}
+            className={`inline-flex items-center gap-1 rounded-lg border border-dashed px-2 py-1 text-xs ${
+              modeloId === null ? 'border-[#185FA5] text-[#185FA5]' : 'border-slate-300 text-slate-500'
+            }`}>
+            <Plus className="h-3 w-3" /> novo modelo
+          </button>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-3 lg:grid-cols-[210px_minmax(0,1fr)_320px]">
         {/* ── CAMADAS ── */}
