@@ -85,6 +85,25 @@ export function diaUtc(iso: string): Date {
   return new Date(`${iso.slice(0, 10)}T00:00:00.000Z`)
 }
 
+/**
+ * ⛔⛔ O DIA DA ÂNCORA INTEIRO FICA DE FORA — e isto é bug pego EM PRODUÇÃO (01/09/2026).
+ *
+ * "SALDO ANT EM 31/07" já contém **tudo até o fim de 31/07**. O filtro era
+ * `date > openingDate`, com a âncora em `31/07 00:00Z` — e o sistema grava as transações
+ * ao **MEIO-DIA UTC** (convenção do projeto pra não virar o dia por fuso). Resultado: as
+ * **10 tx de 31/07 12:00 entravam de novo**, e o saldo saiu −4.662,10 em vez de −4.567,03,
+ * errado em exatamente **−95,07** = a soma delas.
+ *
+ * ⚠️ E o teste não pegou porque usava meia-noite — fixture idealizada escondendo a
+ * convenção real do banco de dados. Quem pegou foi o dado de produção.
+ */
+export function depoisDaAncora(openingDate: Date): Date {
+  const d = new Date(openingDate)
+  d.setUTCHours(0, 0, 0, 0)
+  d.setUTCDate(d.getUTCDate() + 1)
+  return d
+}
+
 export interface GravarReguaInput {
   bankAccountId: string
   origem: string

@@ -18,6 +18,7 @@
 
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { prepareBalanceTransactions, type RawBalanceTransaction } from './prepare'
+import { depoisDaAncora } from './ancora-abertura'
 
 // Aceita tanto o client global quanto um TransactionClient — pra rodar DENTRO do
 // mesmo prisma.$transaction do import (saldo consistente com as tx no mesmo commit).
@@ -133,7 +134,9 @@ export async function recalcularSaldoConta(
     where: {
       bankAccountId,
       ...(usaAbertura
-        ? { date: { gt: conta.openingDate! } }
+        // ⛔ `gte` no DIA SEGUINTE, não `gt` na âncora: o dia da âncora inteiro já está
+        // dentro do saldo declarado (ver `depoisDaAncora`).
+        ? { date: { gte: depoisDaAncora(conta.openingDate!) } }
         : usaAnchor
           ? { date: { gt: conta.ledgerBalDate! } }
           : {}),

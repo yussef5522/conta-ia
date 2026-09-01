@@ -14,6 +14,7 @@ import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { prepareBalanceTransactions } from './prepare'
 import { contaNoSaldoRealizado } from './recalcular'
+import { depoisDaAncora } from './ancora-abertura'
 import { conferirDiaADia, type LancamentoSistema, type ResultadoConferencia } from '../bank-statement-pdf/conferencia-diaria'
 
 export interface SeloDaConta {
@@ -73,7 +74,7 @@ export async function seloPorDiaDaConta(
   }
 
   const txs = await db.transaction.findMany({
-    where: { bankAccountId, date: { gt: conta.openingDate } },
+    where: { bankAccountId, date: { gte: depoisDaAncora(conta.openingDate) } },
     select: { id: true, date: true, createdAt: true, type: true, amount: true, bankAccountId: true,
       transferGroupId: true, transferDirection: true, lifecycle: true, description: true },
   })

@@ -58,12 +58,21 @@ describe('⭐⭐ o saldo deixa de ser cópia do LEDGERBAL', () => {
     expect(c?.ledgerBal).toBe(-6267.03)
   })
 
-  it('⚠️ a abertura NÃO entra duas vezes: tx no DIA da âncora fica fora', async () => {
-    // o "SALDO ANT EM 31/07" já contém tudo até 31/07 — somar o dia 31 de novo dobraria
+  it('⛔⛔ a abertura NÃO entra duas vezes — nem com a tx ao MEIO-DIA do dia da âncora', async () => {
+    // ⚠️⚠️ ESTE É O BUG QUE A PRODUÇÃO PEGOU (01/09) e o teste antigo escondia: ele usava
+    // meia-noite, mas o sistema grava as transações ao **MEIO-DIA UTC** (convenção do
+    // projeto contra virada de fuso). Com `date > openingDate` as 10 tx de 31/07 12:00
+    // entravam de novo e o saldo saiu −4.662,10 em vez de −4.567,03 — errado em −95,07,
+    // exatamente a soma delas. Fixture idealizada escondendo a convenção real do banco.
     await definirAncoraDeAbertura(prisma, { bankAccountId: contaId, valor: -100, data: diaUtc('2026-07-31'), origem: 'teste' })
-    await prisma.transaction.createMany({ data: [tx('2026-07-31', -50, 'já está na abertura'), tx('2026-08-01', -10, 'depois')] as never })
+    await prisma.transaction.createMany({ data: [
+      { ...tx('2026-07-31', -50, 'já está na abertura'), date: new Date('2026-07-31T12:00:00.000Z') },
+      { ...tx('2026-07-31', -7, 'idem, fim do dia'), date: new Date('2026-07-31T23:59:59.000Z') },
+      tx('2026-08-01', -10, 'depois'),
+    ] as never })
     const r = await recalcularSaldoConta(prisma, contaId)
-    expect(r.saldoDepois).toBe(-110) // -100 - 10, sem o -50
+    expect(r.saldoDepois).toBe(-110) // -100 - 10, sem o -50 nem o -7
+    expect(r.txCount).toBe(1)
   })
 })
 
