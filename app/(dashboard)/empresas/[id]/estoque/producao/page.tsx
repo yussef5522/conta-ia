@@ -6,15 +6,18 @@
 
 import { useEffect, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
+// ⚠️ "×" SAIU DA TELA (01/09, decisão do dono): *"a pessoa fala em porções e em kg, nunca
+// em '×'"*. O `escalaReceitas` continua no banco e no motor — só não aparece mais.
+import { escalaParaSaida, reguaDoRendimento } from '@/lib/stock/producao/previsao-rendimento'
 import { StatCard, StatCardGrid } from '@/components/ui/stat-card'
 import { TotalsBar } from '@/components/ui/totals-bar'
 import { SortableTh, useSort } from '@/components/ui/sortable-th'
 import { baixarCsv, hojeArquivo } from '@/lib/format/csv-cliente'
 import { Factory, Loader2, Plus, ChevronRight, ClipboardList, Settings, TrendingDown, UtensilsCrossed, Download, PlayCircle, CheckCircle2 } from 'lucide-react'
 
-interface Ordem { id: string; nomeProduzido: string; unidadeProduzido: string; escalaReceitas: number; estado: string; dataProducao: string; setorNome: string | null }
+interface Ordem { id: string; nomeProduzido: string; unidadeProduzido: string; escalaReceitas: number; loteBase: number; estado: string; dataProducao: string; setorNome: string | null }
 interface Sugestao { fichaId: string; itemProduzidoId: string; nome: string; unidade: string; saldo: number; estoqueMin: number; estoqueMax: number | null; faltam: number; escalaSugerida: number | null; rendimentoMedio: number | null }
-interface FichaOpt { id: string; nomeProduzido: string }
+interface FichaOpt { id: string; nomeProduzido: string; unidadeProduzido: string; loteBase: number; rendimentoMedio: number | null; rendimentoLotes: number }
 interface Setor { id: string; nome: string; ativo: boolean }
 
 const ESTADO: Record<string, { label: string; cls: string }> = {
@@ -24,6 +27,7 @@ const ESTADO: Record<string, { label: string; cls: string }> = {
   CONCLUIDA: { label: 'Concluída', cls: 'bg-emerald-50 text-emerald-700' },
   CANCELADA: { label: 'Cancelada', cls: 'bg-rose-50 text-rose-600' },
 }
+const fmtQtd = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 3 })
 const fmtDia = (iso: string) => iso.slice(0, 10).split('-').reverse().join('/')
 
 export default function ProducaoPage({ params }: { params: Promise<{ id: string }> }) {
@@ -61,8 +65,8 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
         <p className="hidden flex-1 truncate text-xs text-slate-400 lg:block">Cria a ordem, separa da câmara e produz — a ficha diz a receita, aqui você faz</p>
         <div className="ml-auto flex items-center gap-1.5">
           <button onClick={() => baixarCsv(`ordens-producao-${hojeArquivo()}`,
-            ['Produto', 'Escala', 'Data', 'Setor', 'Estado'],
-            ordens.map((o) => [o.nomeProduzido, o.escalaReceitas, fmtDia(o.dataProducao), o.setorNome ?? '', o.estado]))}
+            ['Produto', 'Quanto', 'Data', 'Setor', 'Estado'],
+            ordens.map((o) => [o.nomeProduzido, `${o.escalaReceitas * o.loteBase} ${o.unidadeProduzido}`, fmtDia(o.dataProducao), o.setorNome ?? '', o.estado]))}
             disabled={ordens.length === 0}
             className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-40"><Download className="h-3.5 w-3.5" /> CSV</button>
           <a href={`/empresas/${id}/estoque/cardapio`} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50"><UtensilsCrossed className="h-3.5 w-3.5" /> Cardápio</a>
@@ -92,7 +96,7 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
                   <p className="truncate text-sm font-medium text-slate-900">{s.nome}</p>
                   <p className="text-xs text-slate-500">saldo {s.saldo.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} {s.unidade} · abaixo do mínimo {s.estoqueMin} · faltam ~{s.faltam.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} {s.unidade}{s.rendimentoMedio == null && ' · rendimento a apurar'}</p>
                 </div>
-                <button onClick={() => produzirSugestao(s)} disabled={criando === s.fichaId} className="inline-flex items-center gap-1.5 rounded-lg border border-amber-400 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50 disabled:opacity-50">{criando === s.fichaId ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Factory className="h-3.5 w-3.5" />} produzir{s.escalaSugerida ? ` ${s.escalaSugerida}×` : ''}</button>
+                <button onClick={() => produzirSugestao(s)} disabled={criando === s.fichaId} className="inline-flex items-center gap-1.5 rounded-lg border border-amber-400 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50 disabled:opacity-50">{criando === s.fichaId ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Factory className="h-3.5 w-3.5" />} produzir {fmtQtd(s.faltam)} {s.unidade}</button>
               </CardContent></Card>
             ))}
           </div>
@@ -103,7 +107,7 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
         <Card><CardContent className="flex flex-col items-center gap-2 p-10 text-center">
           <Factory className="h-10 w-10 text-slate-300" />
           <p className="text-sm font-medium text-slate-700">Nenhuma ordem de produção ainda.</p>
-          <p className="max-w-md text-xs text-slate-500">Crie uma ordem a partir de uma ficha (ex: 5× a receita da porção de carne). O sistema já pré-preenche a separação com os insumos e as quantidades.</p>
+          <p className="max-w-md text-xs text-slate-500">Crie uma ordem a partir de uma ficha (ex: 200 porções de carne). O sistema já pré-preenche a separação com os insumos e as quantidades.</p>
         </CardContent></Card>
       ) : (
         <>
@@ -119,7 +123,7 @@ type CampoO = 'produto' | 'escala' | 'data' | 'setor' | 'estado'
 function Secao({ titulo, ordens, id }: { titulo: string; ordens: Ordem[]; id: string }) {
   const { col, dir, alternar, ordenar } = useSort<CampoO>('data', 'desc')
   const lista = ordenar(ordens, (o, c) => (
-    c === 'produto' ? o.nomeProduzido : c === 'escala' ? o.escalaReceitas : c === 'data' ? o.dataProducao
+    c === 'produto' ? o.nomeProduzido : c === 'escala' ? o.escalaReceitas * o.loteBase : c === 'data' ? o.dataProducao
       : c === 'setor' ? (o.setorNome ?? '') : o.estado
   ))
   return (
@@ -129,7 +133,7 @@ function Secao({ titulo, ordens, id }: { titulo: string; ordens: Ordem[]; id: st
         <table className="density-normal hidden w-full sm:table">
           <thead className="group/thead"><tr className="border-b border-slate-100 text-left text-[11px] uppercase tracking-wide text-slate-400">
             <SortableTh campo="produto" col={col} dir={dir} onSort={alternar}>Produto</SortableTh>
-            <SortableTh campo="escala" col={col} dir={dir} onSort={alternar} align="right">Escala</SortableTh>
+            <SortableTh campo="escala" col={col} dir={dir} onSort={alternar} align="right">Quanto</SortableTh>
             <SortableTh campo="data" col={col} dir={dir} onSort={alternar}>Data</SortableTh>
             <SortableTh campo="setor" col={col} dir={dir} onSort={alternar}>Setor</SortableTh>
             <SortableTh campo="estado" col={col} dir={dir} onSort={alternar}>Estado</SortableTh>
@@ -141,7 +145,7 @@ function Secao({ titulo, ordens, id }: { titulo: string; ordens: Ordem[]; id: st
               return (
                 <tr key={o.id} className="border-b border-slate-50 last:border-b-0 hover:bg-slate-50">
                   <td className="px-3 py-0 text-[13px]"><a href={`/empresas/${id}/estoque/producao/${o.id}`} className="font-medium text-slate-800 hover:text-[#185FA5]">{o.nomeProduzido}</a></td>
-                  <td className="px-3 py-0 text-right text-[13px] tabular-nums text-slate-500">{o.escalaReceitas}×</td>
+                  <td className="px-3 py-0 text-right text-[13px] tabular-nums text-slate-500">{fmtQtd(o.escalaReceitas * o.loteBase)} {o.unidadeProduzido}</td>
                   <td className="whitespace-nowrap px-3 py-0 text-[13px] tabular-nums text-slate-500">{fmtDia(o.dataProducao)}</td>
                   <td className="px-3 py-0 text-[13px] text-slate-500">{o.setorNome ?? '—'}</td>
                   <td className="px-3 py-0"><span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${e.cls}`}>{e.label}</span></td>
@@ -160,7 +164,7 @@ function Secao({ titulo, ordens, id }: { titulo: string; ordens: Ordem[]; id: st
                   <p className="truncate text-sm font-medium text-slate-900">{o.nomeProduzido}</p>
                   <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${e.cls}`}>{e.label}</span>
                 </div>
-                <p className="mt-1 text-xs text-slate-500">{o.escalaReceitas}× a receita · {fmtDia(o.dataProducao)}{o.setorNome ? ` · ${o.setorNome}` : ''}</p>
+                <p className="mt-1 text-xs text-slate-500">{fmtQtd(o.escalaReceitas * o.loteBase)} {o.unidadeProduzido} · {fmtDia(o.dataProducao)}{o.setorNome ? ` · ${o.setorNome}` : ''}</p>
               </a>
             )
           })}
@@ -174,7 +178,8 @@ function NovaOrdem({ id, onCriada, onFechar }: { id: string; onCriada: (ordemId:
   const [fichas, setFichas] = useState<FichaOpt[]>([])
   const [setores, setSetores] = useState<Setor[]>([])
   const [fichaId, setFichaId] = useState('')
-  const [escala, setEscala] = useState('1')
+  // ⭐ o dono pensa em UNIDADES ("faz 200 porções"); a escala é derivada na hora de gravar.
+  const [quanto, setQuanto] = useState('')
   const [data, setData] = useState('')
   const [setorId, setSetorId] = useState('')
   const [busy, setBusy] = useState(false)
@@ -185,11 +190,18 @@ function NovaOrdem({ id, onCriada, onFechar }: { id: string; onCriada: (ordemId:
     fetch(`/api/empresas/${id}/estoque/setores`).then((r) => r.json()).then((j) => setSetores(j.setores ?? [])).catch(() => {})
   }, [id])
 
+  const ficha = fichas.find((f) => f.id === fichaId) ?? null
+  const rend = ficha ? { teorico: ficha.loteBase, medido: ficha.rendimentoMedio, lotes: ficha.rendimentoLotes } : null
+  const regua = rend ? reguaDoRendimento(rend) : null
+
   const criar = async () => {
     setErro(null)
-    const esc = Number(escala.replace(',', '.'))
-    if (!fichaId) return setErro('Escolha a ficha.')
-    if (!(esc > 0)) return setErro('Escala tem que ser maior que zero.')
+    const alvo = Number(quanto.replace(',', '.'))
+    if (!fichaId || !rend) return setErro('Escolha a ficha.')
+    if (!(alvo > 0)) return setErro('Diga quanto você quer produzir.')
+    // a escala continua sendo o que o banco guarda — só não é mais o que se digita
+    const esc = escalaParaSaida(alvo, rend)
+    if (esc == null || !(esc > 0)) return setErro('Não consegui converter — confira o lote base da ficha.')
     if (!data) return setErro('Informe a data de produção.')
     setBusy(true)
     try {
@@ -211,8 +223,16 @@ function NovaOrdem({ id, onCriada, onFechar }: { id: string; onCriada: (ordemId:
             <label className="flex-1 min-w-[200px] text-xs text-slate-500">Ficha (o que produzir)
               <select value={fichaId} onChange={(e) => setFichaId(e.target.value)} className="mt-1 block w-full rounded-lg border border-slate-300 py-2 px-3 text-sm"><option value="">escolher…</option>{fichas.map((f) => <option key={f.id} value={f.id}>{f.nomeProduzido}</option>)}</select>
             </label>
-            <label className="text-xs text-slate-500">Escala (× lote base)
-              <input value={escala} onChange={(e) => setEscala(e.target.value)} inputMode="decimal" className="mt-1 block w-24 rounded-lg border border-slate-300 py-2 px-3 text-sm tabular-nums" />
+            <label className="text-xs text-slate-500">Quantas unidades quer produzir?
+              <div className="mt-1 flex items-center gap-1.5">
+                <input value={quanto} onChange={(e) => setQuanto(e.target.value)} inputMode="decimal" placeholder="200" className="block w-28 rounded-lg border border-slate-300 py-2 px-3 text-sm tabular-nums" />
+                <span className="text-xs text-slate-400">{ficha?.unidadeProduzido ?? ''}</span>
+              </div>
+              {regua && (
+                <span className="mt-1 block text-[11px] font-normal text-slate-400">
+                  {regua.daMedia ? `pela sua média de ${regua.lotes} lotes` : 'pelo teórico da ficha · sua média: a apurar'}
+                </span>
+              )}
             </label>
           </div>
           <div className="flex flex-wrap items-end gap-3">

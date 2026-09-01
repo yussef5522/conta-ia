@@ -14,6 +14,9 @@ const schema = z.object({
   consumo: z.array(z.object({ itemId: z.string(), qtdConsumida: z.number().nonnegative() })).min(1),
   qtdGerada: z.number().positive(),
   colaboradorId: z.string().nullable().optional(),
+  // ⚠️ OPCIONAL de propósito: cobrar motivo em produção normal treina a pessoa a escrever
+  // qualquer coisa, e aí o campo deixa de valer quando o desvio for de verdade.
+  motivoDesvio: z.string().max(500).nullable().optional(),
   parcial: z.boolean().optional(),
 })
 

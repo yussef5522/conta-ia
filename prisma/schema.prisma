@@ -3753,6 +3753,25 @@ model StockProducaoConclusao {
   @@map("stock_producao_conclusao")
 }
 
+// ESTOQUE (01/09) — DESVIO de rendimento da conclusão + o MOTIVO escrito pelo dono.
+// "queijo veio com muita casca", "mudou fornecedor": é o que transforma variância em causa.
+// Tabela própria (migration do módulo é CREATE-only, não dá pra ALTER a conclusão).
+model StockProducaoDesvio {
+  id           String   @id @default(cuid())
+  companyId    String
+  conclusaoId  String   @unique // uma conclusão, um desvio (recontar = nova conclusão)
+  ordemId      String
+  pctTeorico   Float // saiu ÷ esperado pela FICHA
+  pctMedia     Float? // saiu ÷ esperado pela MÉDIA MEDIDA (null sem histórico)
+  lotesNaMedia Int      @default(0)
+  motivo       String?
+  criadoPorId  String?
+  criadoEm     DateTime @default(now())
+
+  @@index([companyId, ordemId])
+  @@map("stock_producao_desvio")
+}
+
 // ESTOQUE FASE 3 (22/08) — mapa que APRENDE: nome do produto no Suitable → ficha (produto
 // final) OU item de revenda (bebida). Igual ao cProd dos fornecedores: 1ª vez pergunta,
 // depois automático. Duplicata de cadastro do PDV ("XIS COMPLETO" e "XIS - COMPLETO") →

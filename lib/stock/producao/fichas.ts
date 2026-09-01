@@ -8,6 +8,7 @@ import { prisma as defaultPrisma } from '@/lib/db'
 import { detectaCicloFicha, type GrafoFichas } from './ciclo'
 import { calcularCustoTeorico, calcularMargem, type ComponenteCusto } from './custo-teorico'
 import { custoMedioPorItem } from '../saldo'
+import { rendimentoMedidoDaFicha } from './conclusao'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -146,7 +147,8 @@ export interface FichaView {
   custoLote: number | null
   custoPorUnidade: number | null
   custoADefinir: boolean
-  rendimentoMedio: number | null // 2.0: sempre null (a apurar; 2.2 deriva das produções)
+  rendimentoMedio: number | null // MEDIDO: média das últimas 5 conclusões desta ficha
+  rendimentoLotes: number // quantas conclusões compõem a média (0 = nunca produziu)
   margem: number | null
 }
 
@@ -174,13 +176,19 @@ async function versaoView(companyId: string, ficha: { id: string; itemProduzidoI
     return { itemId: c.itemId, nome: meta?.nome ?? '(item removido)', unidade: c.unidade, qtdPlanejada: c.qtdPlanejada, custoMedio, subtotal: custoMedio != null ? round2(custoMedio * c.qtdPlanejada) : null, unidadeControle: meta?.unidade ?? '—' }
   })
 
-  const rendimentoMedio: number | null = null // 2.0: a apurar
+  // ⭐ LIGADO EM 01/09 — aqui havia `const rendimentoMedio = null // 2.0: a apurar`, cravado
+  // desde a Fase 2.0. A função que mede já existia (`rendimentoMedidoDaFicha`) e **nada a
+  // chamava daqui**: era o "tem o dado e não usa" que fez o dono ver "a apurar" numa ficha
+  // com produção concluída. ⚠️ O CUSTO usa a medida desde o 1º lote (decisão do dono):
+  // *"uma medição real é melhor que 'a definir'"* — o piso de 2 lotes vale só pra PREVISÃO.
+  const medido = await rendimentoMedidoDaFicha(companyId, ficha.id, db as PrismaClient)
+  const rendimentoMedio = medido.media
   const custo = calcularCustoTeorico(componentes.map<ComponenteCusto>((c) => ({ custoMedio: c.custoMedio, qtdPlanejada: c.qtdPlanejada })), rendimentoMedio)
   return {
     id: ficha.id, itemProduzidoId: ficha.itemProduzidoId, nomeProduzido: produzido?.nome ?? '(item removido)', unidadeProduzido: produzido?.unidadeControle ?? '—',
     tipoProduto: ficha.tipoProduto, setorId: ficha.setorId, versaoAtual: ficha.versaoAtual, valorVenda: ficha.valorVenda, ativo: ficha.ativo,
     loteBase: v.loteBase, unidadeLoteBase: v.unidadeLoteBase, modoPreparo: v.modoPreparo, tempoPreparoMin: v.tempoPreparoMin, validadeDias: v.validadeDias,
-    componentes, custoLote: custo.custoLote, custoPorUnidade: custo.custoPorUnidade, custoADefinir: custo.custoADefinir, rendimentoMedio,
+    componentes, custoLote: custo.custoLote, custoPorUnidade: custo.custoPorUnidade, custoADefinir: custo.custoADefinir, rendimentoMedio, rendimentoLotes: medido.lotes,
     margem: ficha.tipoProduto === 'PRODUTO_FINAL' ? calcularMargem(ficha.valorVenda, custo.custoPorUnidade) : null,
   }
 }

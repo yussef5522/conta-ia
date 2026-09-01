@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { guardStock } from '@/lib/stock/require-stock'
 import { explodirSeparacao, OrdemError } from '@/lib/stock/producao/ordens'
-import { listConclusoes, rendimentoMedioDaFicha } from '@/lib/stock/producao/conclusao'
+import { listConclusoes, rendimentoMedidoDaFicha } from '@/lib/stock/producao/conclusao'
 
 interface Params { params: Promise<{ id: string; ordemId: string }> }
 
@@ -15,12 +15,13 @@ export async function GET(request: NextRequest, { params }: Params) {
   const user = a.user
   try {
     const { ordem, linhas } = await explodirSeparacao(companyId, ordemId)
-    const [conclusoes, colaboradores, rendimentoMedio] = await Promise.all([
+    const [conclusoes, colaboradores, medido] = await Promise.all([
       listConclusoes(companyId, ordemId),
       prisma.stockColaborador.findMany({ where: { companyId, ativo: true }, orderBy: { nome: 'asc' }, select: { id: true, nome: true } }),
-      rendimentoMedioDaFicha(companyId, ordem.fichaId),
+      rendimentoMedidoDaFicha(companyId, ordem.fichaId),
     ])
-    return NextResponse.json({ ordem, linhas, conclusoes, colaboradores, rendimentoMedio })
+    // `lotes` vai junto: a tela precisa dizer "média de 4 lotes" e só adota a medida com 2+
+    return NextResponse.json({ ordem, linhas, conclusoes, colaboradores, rendimentoMedio: medido.media, rendimentoLotes: medido.lotes })
   } catch (e) {
     if (e instanceof OrdemError) return NextResponse.json({ erro: e.message }, { status: 404 })
     throw e

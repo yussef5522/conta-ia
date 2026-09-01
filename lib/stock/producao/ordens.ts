@@ -13,6 +13,7 @@ type Db = PrismaClient | Prisma.TransactionClient
 
 export class OrdemError extends Error {}
 
+const round4 = (n: number) => Math.round((n + 1e-9) * 10000) / 10000
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 
 export const TIPO_SEPARACAO = 'SEPARACAO_SAIDA'
@@ -35,7 +36,7 @@ export interface CriarOrdemInput {
 }
 
 export async function criarOrdem(input: CriarOrdemInput, db: Db = defaultPrisma): Promise<{ ordemId: string }> {
-  if (!(input.escalaReceitas > 0)) throw new OrdemError('A escala (múltiplo do lote base) tem que ser maior que zero.')
+  if (!(input.escalaReceitas > 0)) throw new OrdemError('Diga quanto você quer produzir (maior que zero).')
   const ficha = await db.stockFicha.findFirst({ where: { id: input.fichaId, companyId: input.companyId }, select: { id: true, itemProduzidoId: true, versaoAtual: true, ativo: true } })
   if (!ficha) throw new OrdemError('Ficha não encontrada.')
   if (!ficha.ativo) throw new OrdemError('Essa ficha está inativa.')
@@ -57,6 +58,9 @@ export interface SeparacaoLinha {
   nome: string
   unidade: string
   unidadeControle: string
+  porLote: number // ⭐ o que a FICHA pede por 1× a receita (0,135 KG) — é a régua que a
+  //                  tela usa pra converter "quero fazer N" ↔ "preciso tirar X". Sem ele a
+  //                  tela teria que dividir qtdPlanejada pela escala e reinventar a conta.
   qtdPlanejada: number // ficha × escala
   qtdSeparada: number // já separado (Σ SEPARACAO_SAIDA − DEVOLUCAO), 0 antes de separar
   saldoDisponivel: number // saldo atual no estoque geral
@@ -104,7 +108,14 @@ export async function explodirSeparacao(companyId: string, ordemId: string, db: 
       nome: meta.get(c.itemId)?.nome ?? '(item removido)',
       unidade: c.unidade,
       unidadeControle: meta.get(c.itemId)?.unidadeControle ?? '—',
-      qtdPlanejada: round2(c.qtdPlanejada * ordem.escalaReceitas),
+      // ⛔ NÃO ARREDONDAR (01/09): aqui havia `round2`, e a porção de 0,135 KG virava
+      // **0,14** na tela. O dono: *"em 1 porção é nada; em 370 porções é 1,85 kg de
+      // diferença"*. Era perda de dado no SERVIDOR, antes de a tela poder escolher como
+      // mostrar. Conferido que não contamina gravação: `confirmarSeparacao` grava o que a
+      // pessoa digitou (`qtdSeparada`), nunca este planejado. Quem formata é a tela, com a
+      // precisão da ficha.
+      porLote: c.qtdPlanejada,
+      qtdPlanejada: round4(c.qtdPlanejada * ordem.escalaReceitas),
       qtdSeparada: round2(separado.get(c.itemId) ?? 0),
       saldoDisponivel: saldo.saldo,
       custoMedio: custoMap.get(c.itemId) ?? null,
@@ -190,7 +201,8 @@ export interface OrdemView {
   setorId: string | null
   setorNome: string | null
   dataProducao: string
-  escalaReceitas: number
+  escalaReceitas: number // ⚠️ fica no MOTOR e no banco; a TELA fala em unidades, nunca em "×"
+  loteBase: number // ⭐ o rendimento TEÓRICO da ficha: quantas unidades por 1× a receita
   estado: string
   origem: string
   observacao: string | null
@@ -199,15 +211,17 @@ export interface OrdemView {
 export async function getOrdem(companyId: string, ordemId: string, db: Db = defaultPrisma): Promise<OrdemView | null> {
   const o = await db.stockProductionOrder.findFirst({ where: { id: ordemId, companyId } })
   if (!o) return null
-  const [prod, setor] = await Promise.all([
+  const [prod, setor, versao] = await Promise.all([
     db.stockItem.findFirst({ where: { companyId, id: o.itemProduzidoId }, select: { nome: true, unidadeControle: true } }),
     o.setorId ? db.stockSetor.findFirst({ where: { companyId, id: o.setorId }, select: { nome: true } }) : Promise.resolve(null),
+    // a versão TRAVADA na ordem — o teórico tem que ser o da época, não o da ficha de hoje
+    db.stockFichaVersao.findFirst({ where: { companyId, fichaId: o.fichaId, versao: o.versaoFicha }, select: { loteBase: true } }),
   ])
   return {
     id: o.id, fichaId: o.fichaId, versaoFicha: o.versaoFicha, itemProduzidoId: o.itemProduzidoId,
     nomeProduzido: prod?.nome ?? '(item removido)', unidadeProduzido: prod?.unidadeControle ?? '—',
     setorId: o.setorId, setorNome: setor?.nome ?? null, dataProducao: o.dataProducao.toISOString(),
-    escalaReceitas: o.escalaReceitas, estado: o.estado, origem: o.origem, observacao: o.observacao,
+    escalaReceitas: o.escalaReceitas, loteBase: versao?.loteBase ?? 1, estado: o.estado, origem: o.origem, observacao: o.observacao,
   }
 }
 

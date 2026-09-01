@@ -9,6 +9,7 @@ import { prisma as defaultPrisma } from '@/lib/db'
 import { criarMovimento } from '../movement'
 import { custoMedioPorItem, recomputeSaldoCache } from '../saldo'
 import { separadoPorItem, TIPO_CONSUMO, TIPO_DEVOLUCAO, TIPO_GERACAO, OrdemError } from './ordens'
+import { escalaDoConsumo, avaliarVariacao, type Variacao } from './previsao-rendimento'
 
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 const round4 = (n: number) => Math.round((n + 1e-9) * 10000) / 10000
@@ -21,6 +22,8 @@ export interface ConcluirInput {
   consumo: ConsumoInput[]
   qtdGerada: number
   colaboradorId?: string | null
+  /** o que o dono escreveu quando o rendimento destoou — opcional, nunca cobrado */
+  motivoDesvio?: string | null
   parcial?: boolean
   userId?: string
 }
@@ -35,17 +38,29 @@ export interface ConcluirResult {
   rendimentoMedioAnterior: number | null // média das conclusões anteriores da ficha
   desvio: number | null // (rendimento − média) / média
   foraDaFaixa: boolean // |desvio| > 15%
+  variacao: Variacao // ⭐ o MESMO julgamento que a tela mostrou antes de confirmar
   estado: string
 }
 
-/** Média móvel das últimas 5 conclusões da MESMA ficha (rendimento por receita base). */
-export async function rendimentoMedioDaFicha(companyId: string, fichaId: string, db: PrismaClient = defaultPrisma, exceptConclusaoId?: string): Promise<number | null> {
+/** Média móvel das últimas 5 conclusões da MESMA ficha + QUANTAS a compõem.
+ *
+ * ⭐ O `lotes` existe porque *"uma produção só não é média"* (dono, 01/09): a previsão e o
+ * aviso só adotam a medida a partir de 2 lotes (`MIN_LOTES_PARA_MEDIA`), e a tela precisa
+ * dizer de quantos lotes ela vem. ⚠️ O CUSTO continua usando desde o 1º — são perguntas
+ * diferentes: *"custo é 'quanto custou', previsão é 'quanto vai sair'"*.
+ */
+export async function rendimentoMedidoDaFicha(companyId: string, fichaId: string, db: PrismaClient = defaultPrisma, exceptConclusaoId?: string): Promise<{ media: number | null; lotes: number }> {
   const ordens = await db.stockProductionOrder.findMany({ where: { companyId, fichaId }, select: { id: true } })
   const ids = ordens.map((o) => o.id)
-  if (!ids.length) return null
+  if (!ids.length) return { media: null, lotes: 0 }
   const cs = await db.stockProducaoConclusao.findMany({ where: { companyId, ordemId: { in: ids }, ...(exceptConclusaoId ? { id: { not: exceptConclusaoId } } : {}) }, orderBy: { criadoEm: 'desc' }, take: 5, select: { rendimento: true } })
-  if (!cs.length) return null
-  return round4(cs.reduce((s, c) => s + c.rendimento, 0) / cs.length)
+  if (!cs.length) return { media: null, lotes: 0 }
+  return { media: round4(cs.reduce((s, c) => s + c.rendimento, 0) / cs.length), lotes: cs.length }
+}
+
+/** casca fina histórica — só a média, pros callers que não precisam da contagem. */
+export async function rendimentoMedioDaFicha(companyId: string, fichaId: string, db: PrismaClient = defaultPrisma, exceptConclusaoId?: string): Promise<number | null> {
+  return (await rendimentoMedidoDaFicha(companyId, fichaId, db, exceptConclusaoId)).media
 }
 
 export async function concluir(input: ConcluirInput, db: PrismaClient = defaultPrisma): Promise<ConcluirResult> {
@@ -71,15 +86,25 @@ export async function concluir(input: ConcluirInput, db: PrismaClient = defaultP
   // componentes da versão (qtd por lote base) → escala consumida = média de (consumido / porLote)
   const comps = versao ? await db.stockFichaComponente.findMany({ where: { companyId: input.companyId, versaoId: versao.id }, select: { itemId: true, qtdPlanejada: true } }) : []
   const porLote = new Map(comps.map((c) => [c.itemId, c.qtdPlanejada]))
-  const razoes = consumoPos.map((c) => (porLote.get(c.itemId) ? c.qtdConsumida / (porLote.get(c.itemId) as number) : null)).filter((r): r is number => r != null && r > 0)
-  const escalaConsumida = razoes.length ? round4(razoes.reduce((a, b) => a + b, 0) / razoes.length) : 1
+  // ⭐ FONTE ÚNICA (01/09): esta média de razões É a régua que a tela de separar usa pra
+  // prever. Enquanto vivia aqui solta, a tela tinha uma 2ª cópia dela (o "~154× a receita")
+  // e a previsão podia divergir do rendimento que este mesmo método grava.
+  const escalaDaLib = escalaDoConsumo(consumoPos.map((c) => ({ qtd: c.qtdConsumida, porLote: porLote.get(c.itemId) ?? 0 })))
+  const escalaConsumida = escalaDaLib ?? 1
 
   const custoLoteReal = round2(consumoPos.reduce((s, c) => s + c.qtdConsumida * (custoMap.get(c.itemId) ?? 0), 0))
   const custoUnitarioReal = input.qtdGerada > 0 ? round2(custoLoteReal / input.qtdGerada) : null
   const rendimento = round4(input.qtdGerada / (escalaConsumida || 1))
   const validadeAte = versao?.validadeDias ? new Date(ordem.dataProducao.getTime() + versao.validadeDias * 86_400_000) : null
 
-  const rendimentoMedioAnterior = await rendimentoMedioDaFicha(input.companyId, ordem.fichaId, db)
+  const medidoAnterior = await rendimentoMedidoDaFicha(input.companyId, ordem.fichaId, db)
+  const rendimentoMedioAnterior = medidoAnterior.media
+  // ⭐ FONTE ÚNICA DO JULGAMENTO: é a mesma função que a tela chamou pra mostrar
+  // "78% do teórico · sua média é 92%" ANTES de confirmar. Se aqui fosse outra conta, o
+  // aviso da tela e o desvio gravado poderiam discordar sobre a mesma produção.
+  const variacao = avaliarVariacao(input.qtdGerada, escalaConsumida, {
+    teorico: versao?.loteBase ?? 1, medido: medidoAnterior.media, lotes: medidoAnterior.lotes,
+  })
   const desvio = rendimentoMedioAnterior && rendimentoMedioAnterior > 0 ? round4((rendimento - rendimentoMedioAnterior) / rendimentoMedioAnterior) : null
   const foraDaFaixa = desvio != null && Math.abs(desvio) > RENDIMENTO_DESVIO
 
@@ -110,12 +135,24 @@ export async function concluir(input: ConcluirInput, db: PrismaClient = defaultP
     const conc = await tx.stockProducaoConclusao.create({
       data: { companyId: input.companyId, ordemId: input.ordemId, qtdGerada: input.qtdGerada, colaboradorId: input.colaboradorId ?? null, escalaConsumida, custoLoteReal, custoUnitarioReal, rendimento, validadeAte, parcial: !!input.parcial, criadoPorId: input.userId ?? null },
     })
+    // ⚠️ O DESVIO É GRAVADO SEMPRE, o motivo só se o dono escreveu. Guardar só quando
+    // destoa perderia a linha de base — sem os lotes normais não dá pra dizer o que é
+    // "normal" depois. E o motivo fica ao lado do número: número sem porquê vira mistério.
+    await tx.stockProducaoDesvio.create({
+      data: {
+        companyId: input.companyId, conclusaoId: conc.id, ordemId: input.ordemId,
+        pctTeorico: variacao.pctTeorico ?? 0, pctMedia: variacao.pctMedia,
+        lotesNaMedia: medidoAnterior.lotes,
+        motivo: input.motivoDesvio?.trim() ? input.motivoDesvio.trim() : null,
+        criadoPorId: input.userId ?? null,
+      },
+    })
     await tx.stockProductionOrder.update({ where: { id: input.ordemId }, data: { estado: input.parcial ? 'EM_PRODUCAO' : 'CONCLUIDA' } })
     return conc.id
   })
 
   await recomputeSaldoCache(db, input.companyId) // o cache segue os movimentos (juiz E1)
-  return { conclusaoId, qtdGerada: input.qtdGerada, rendimento, escalaConsumida, custoLoteReal, custoUnitarioReal, validadeAte: validadeAte?.toISOString() ?? null, rendimentoMedioAnterior, desvio, foraDaFaixa, estado: input.parcial ? 'EM_PRODUCAO' : 'CONCLUIDA' }
+  return { conclusaoId, qtdGerada: input.qtdGerada, rendimento, escalaConsumida, custoLoteReal, custoUnitarioReal, validadeAte: validadeAte?.toISOString() ?? null, rendimentoMedioAnterior, desvio, foraDaFaixa, variacao, estado: input.parcial ? 'EM_PRODUCAO' : 'CONCLUIDA' }
 }
 
 export interface ConclusaoView {
