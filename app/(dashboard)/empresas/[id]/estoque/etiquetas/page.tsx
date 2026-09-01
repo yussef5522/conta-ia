@@ -13,6 +13,7 @@ import { useEffect, useMemo, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tag, Loader2, Search, Printer, Check, AlertTriangle, X } from 'lucide-react'
+import { usePermissoes } from '@/lib/hooks/use-permissoes'
 import { PreviaEtiqueta } from '@/components/estoque/previa-etiqueta'
 import { ESTADOS, calcularValidade, diasAte, type EstadoConservacao } from '@/lib/stock/etiquetas/modelo'
 import { BLOCOS_PADRAO, type Bloco } from '@/lib/stock/etiquetas/blocos'
@@ -34,6 +35,10 @@ const CAT_LABEL: Record<string, string> = {
 
 export default function EtiquetasPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
+  // ⚠️ REGRA 9: hook no topo. E o gate espera carregar — botão que aparece e some é pior
+  // que botão que demora (a mesma escolha do card da fila de boletos).
+  const { pode, carregando: carregandoPerm } = usePermissoes(id)
+  const podeConfigurar = !carregandoPerm && pode('stock.manage')
   const [dados, setDados] = useState<{ produtos: Produto[]; colaboradores: { id: string; nome: string }[] } | null | undefined>(undefined)
   const [busca, setBusca] = useState('')
   const [sel, setSel] = useState<Produto | null>(null)
@@ -98,10 +103,18 @@ export default function EtiquetasPage({ params }: { params: Promise<{ id: string
         <Tag className="h-5 w-5 text-[#185FA5]" />
         <h1 className="text-base font-semibold">Etiquetas</h1>
         <p className="hidden lg:block text-xs text-slate-400">escolha o produto, confira e imprima</p>
-        <a href={`/empresas/${id}/estoque/etiquetas/modelo`}
-          className="ml-auto rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50">
-          desenhar o modelo
-        </a>
+        {/* ⛔ ESTE BOTÃO ERA O ÚNICO CAMINHO PRO EDITOR (a sidebar não leva lá) — e foi por
+            ele que a operadora entrou achando que ia preparar a etiqueta da calabresa.
+            ⚠️ Duas mudanças, e as duas importam: o nome dizia "desenhar o modelo", que soa
+            como "montar a etiqueta"; e ele aparecia pra todo mundo. Mudar o FORMATO da
+            etiqueta é `stock.manage` — quem opera imprime, quem configura desenha. */}
+        {podeConfigurar && (
+          <a href={`/empresas/${id}/estoque/etiquetas/modelo`}
+            title="o formato que vale pra TODAS as etiquetas"
+            className="ml-auto rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50">
+            formato da etiqueta
+          </a>
+        )}
       </div>
 
       {/* BUSCA GRANDE — é a primeira coisa que a mão encontra no celular */}

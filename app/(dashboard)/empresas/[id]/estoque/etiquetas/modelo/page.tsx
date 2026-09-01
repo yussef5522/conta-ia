@@ -25,7 +25,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { LayoutTemplate, Loader2, Printer, Check, AlertTriangle, Star, RotateCcw, MousePointerClick } from 'lucide-react'
 import { PreviaEtiqueta, type ParteDaLinha } from '@/components/estoque/previa-etiqueta'
-import { CamadasEtiqueta } from '@/components/estoque/camadas-etiqueta'
+import { CamadasEtiqueta, nomeDoBloco } from '@/components/estoque/camadas-etiqueta'
 import { InspetorLinha } from '@/components/estoque/inspetor-linha'
 import {
   BLOCOS_PADRAO, novoBlocoTexto, avisosDoModelo, moverBloco, blocosParaLayout,
@@ -33,12 +33,16 @@ import {
 } from '@/lib/stock/etiquetas/blocos'
 import { exemploDeEtiqueta } from '@/lib/stock/etiquetas/exemplo'
 import { aoAbrir, aposSalvar } from '@/lib/stock/etiquetas/estado-editor'
+import { usePermissoes } from '@/lib/hooks/use-permissoes'
+import { Eye, ArrowRight } from 'lucide-react'
 import type { CampoId, DadosEtiqueta } from '@/lib/stock/etiquetas/modelo'
 
 interface Modelo { id: string; nome: string; padrao: boolean; blocos: Bloco[] }
 
 export default function ModeloEtiquetaPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
+  // ⚠️ REGRA 9: hook no TOPO, antes de qualquer return
+  const { pode, carregando: carregandoPerm } = usePermissoes(id)
   const [modelos, setModelos] = useState<Modelo[] | null | undefined>(undefined)
   const [modeloId, setModeloId] = useState<string | null>(null)
   const [nome, setNome] = useState('Padrão')
@@ -145,9 +149,77 @@ export default function ModeloEtiquetaPage({ params }: { params: Promise<{ id: s
     setMsg(null); setSelecionadoId(null)
   }
 
-  if (modelos === undefined) return <div className="p-6"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
+  if (modelos === undefined || carregandoPerm) return <div className="p-6"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
 
   const usadoPct = Math.min(100, Math.round((layout.alturaUsada / LADO_DOTS_USAVEL) * 100))
+  const podeEditar = pode('stock.manage')
+
+  // ⛔⛔ MODO LEITURA — a tela não pode PARECER que serve pra imprimir produto (01/09).
+  //
+  // CASO REAL: a operadora de estoque entrou AQUI pra imprimir a etiqueta de uma calabresa.
+  // Faz sentido do ponto de vista dela: a tela tem exatamente os campos que ela esperava
+  // (nome do produto, FAB, validade) e um botão "imprimir teste". Ela digitou "calabresa",
+  // ajustou a data, clicou imprimir — e levou **"Permissão necessária: stock.manage"**.
+  //
+  // ⚠️ Descobrir a regra no ERRO é o defeito. E o risco de deixar como estava é maior que
+  // o incômodo: se ela desligar a VALIDADE do modelo sem querer, TODA etiqueta da empresa
+  // passa a sair errada — é o mesmo acidente que desligou a quantidade ontem.
+  //
+  // ⚠️ Aqui não há trava de segurança nova: as rotas de gravar já exigem `stock.manage`
+  // desde sempre. Isto é a tela contando a verdade ANTES do clique.
+  if (!podeEditar) {
+    return (
+      <div className="space-y-3 pb-6">
+        <div className="flex items-center gap-2.5">
+          <LayoutTemplate className="h-5 w-5 shrink-0 text-[#185FA5]" />
+          <h1 className="text-base font-semibold text-slate-900">Formato da etiqueta</h1>
+          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">
+            <Eye className="mr-1 inline h-3 w-3" />só leitura
+          </span>
+        </div>
+
+        <Card className="border-sky-200 bg-sky-50">
+          <CardContent className="flex flex-wrap items-center gap-3 py-3">
+            <div className="min-w-[240px] flex-1">
+              <p className="text-[13px] font-medium text-sky-900">
+                Aqui se desenha o <b>formato</b> da etiqueta — o que aparece em todas elas.
+              </p>
+              <p className="mt-0.5 text-[12px] leading-snug text-sky-800">
+                Pra <b>imprimir a etiqueta de um produto</b>, é na tela de Etiquetas.
+                Mudar o formato é com o dono.
+              </p>
+            </div>
+            <a href={`/empresas/${id}/estoque/etiquetas`}
+              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-[#185FA5] px-4 text-sm font-semibold text-white hover:bg-[#0F4A8C]">
+              Ir pra Etiquetas <ArrowRight className="h-4 w-4" />
+            </a>
+          </CardContent>
+        </Card>
+
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_260px]">
+          <Card><CardContent className="flex flex-col items-center gap-2 py-5">
+            {/* ⚠️ sem `onSelecionar`: a etiqueta é só desenho aqui, não é clicável */}
+            <PreviaEtiqueta dados={previa} blocos={blocos} lado={340} />
+            <p className="text-[11px] text-slate-400">modelo “{nome}”{padrao ? ' · padrão da empresa' : ''}</p>
+          </CardContent></Card>
+
+          <Card><CardContent className="p-2.5">
+            <p className="mb-1.5 px-1 text-[11px] font-medium uppercase tracking-wide text-slate-400">
+              Linhas da etiqueta
+            </p>
+            <ul className="space-y-px">
+              {blocos.map((b) => (
+                <li key={b.id} className={`flex h-7 items-center gap-1.5 rounded-md px-1 text-[12px] ${b.ativo ? 'text-slate-700' : 'text-slate-400 line-through decoration-slate-300'}`}>
+                  <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${b.ativo ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                  <span className="truncate">{nomeDoBloco(b)}</span>
+                </li>
+              ))}
+            </ul>
+          </CardContent></Card>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-3 pb-6">
