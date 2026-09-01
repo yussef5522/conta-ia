@@ -47,10 +47,36 @@ export interface AncoraDeclarada {
   valor: number
 }
 
+/** ⭐ O resultado da conferência DIA A DIA contra o PDF — quando existe, é ELA que decide. */
+export interface ConferenciaDiariaResumo {
+  conferivel: boolean
+  diasConferidos: number
+  diasQueFecham: number
+  /** o primeiro dia que não fecha, se houver */
+  primeiroQueNaoFecha: { data: string; diferenca: number } | null
+  /** último dia coberto pela régua (YYYY-MM-DD) */
+  ate: string | null
+}
+
 export interface LeituraConta {
   bankAccountId: string
   contaNome: string
   companyId: string | null
+  /**
+   * ⭐⭐ FONTE ÚNICA DO SELO (01/09/2026). Quando a conta tem âncora de abertura + régua do
+   * PDF, o veredito vem DAQUI — a MESMA conferência que o import usa — e as checagens
+   * contra LEDGERBAL são puladas.
+   *
+   * ⛔ POR QUE: o LEDGERBAL do Banrisul é o saldo DISPONÍVEL (desconta o bloqueado de 24h).
+   * Com o saldo já derivado do ledger (−3.225,96, o contábil), o **B2 passou a acusar
+   * "divergente em R$ 1.700,00" e a mandar "recalcule o saldo"** — alarme falso sobre um
+   * saldo CERTO, e o juiz das 3h mandaria isso por e-mail toda noite. O card tinha caminho
+   * PRÓPRIO pro mesmo número que já havia saído do gate do import: a mesma decisão em dois
+   * lugares, um corrigido e o outro não — a doença que este projeto mais paga.
+   */
+  conferenciaDiaria?: ConferenciaDiariaResumo | null
+  /** o bloqueio DATADO — informação ao lado do saldo, NUNCA divergência */
+  bloqueio?: { valor: number; em: Date } | null
   /** LEDGERBALs declarados pelo banco, do mais antigo pro mais novo */
   ancoras: AncoraDeclarada[]
   /** soma com sinal das tx EFFECTED num intervalo (exclusivo→inclusivo) */
@@ -85,6 +111,34 @@ const fmtDia = (d: Date) => dia(d).split('-').reverse().join('/')
 export function avaliarConta(l: LeituraConta, hoje: Date): CheckSaldo[] {
   const out: CheckSaldo[] = []
   const base = { companyId: l.companyId, bankAccountId: l.bankAccountId, contaNome: l.contaNome }
+
+  // ⭐⭐ CONFERÊNCIA DIÁRIA MANDA (01/09/2026). Comparar contra o LEDGERBAL numa conta cujo
+  // saldo declarado é o DISPONÍVEL só produz o fantasma do bloqueio. Aqui o veredito é dia
+  // a dia contra o contábil do PDF — e um dia que não fecha diz QUAL dia e QUANTO, que é o
+  // que leva a uma ação, em vez de um total sem endereço.
+  if (l.conferenciaDiaria?.conferivel) {
+    const c = l.conferenciaDiaria
+    if (c.primeiroQueNaoFecha) {
+      out.push({
+        ...base, invariante: 'B1', nivel: 'erro', diferenca: c.primeiroQueNaoFecha.diferenca,
+        detalhe:
+          `o dia ${fmtDia(new Date(c.primeiroQueNaoFecha.data + 'T12:00:00Z'))} não fecha com o extrato do banco ` +
+          `(${br(Math.abs(c.primeiroQueNaoFecha.diferenca))} de diferença). ${c.diasQueFecham} de ${c.diasConferidos} dias conferidos batem. ` +
+          `Abra a conta pra ver os lançamentos desse dia nos dois lados.`,
+      })
+    }
+    // ⚠️ B3 segue valendo, mas contra a COBERTURA da régua (não contra o LEDGERBAL)
+    if (c.ate) {
+      const dias = Math.floor((hoje.getTime() - new Date(c.ate + 'T12:00:00Z').getTime()) / 86400000)
+      if (dias > DIAS_SEM_CONFERIR) {
+        out.push({
+          ...base, invariante: 'B3', nivel: 'aviso',
+          detalhe: `sem conferência com o banco há ${dias} dias (a régua do extrato vai até ${c.ate}). Suba o extrato novo pra fechar.`,
+        })
+      }
+    }
+    return out
+  }
 
   // ── B1 (erro) — dois LEDGERBAL consecutivos reconciliam pelas tx do intervalo?
   const ancoras = [...l.ancoras].sort((a, b) => a.data.getTime() - b.data.getTime())
@@ -176,12 +230,40 @@ export interface EstadoConferencia {
   diferenca: number | null
   /** frase pronta, em pt-BR, pro dono ler sem interpretar número solto */
   rotulo: string
+  /** ⭐ o bloqueio, DATADO — informação ao lado do saldo, nunca divergência */
+  bloqueio?: { valor: number; em: Date } | null
+  /** ⭐ quantos dias a régua cobre e quantos fecham, pra tela poder detalhar */
+  dias?: { conferidos: number; fecham: number } | null
 }
 
 export function estadoDaConferencia(l: LeituraConta, hoje: Date): EstadoConferencia {
   const checks = avaliarConta(l, hoje)
   const erro = checks.find((c) => c.nivel === 'erro')
-  const base = { bankAccountId: l.bankAccountId, em: l.ledgerBalDataVigente }
+  const bloqueio = l.bloqueio ?? null
+
+  // ⭐⭐ MESMA FONTE DO IMPORT (01/09/2026): com a conferência diária disponível, o selo do
+  // card sai DELA. Antes o card tinha caminho próprio e comparava o contábil (−3.225,96)
+  // contra o LEDGERBAL (−4.925,96), anunciando "divergente em R$ 1.700,00" — que é o
+  // BLOQUEIO, não divergência. O bloqueio passa a aparecer AO LADO, como informação.
+  const c = l.conferenciaDiaria
+  if (c?.conferivel) {
+    const ate = c.ate ? new Date(c.ate + 'T12:00:00Z') : null
+    const dias = { conferidos: c.diasConferidos, fecham: c.diasQueFecham }
+    if (c.primeiroQueNaoFecha) {
+      const d = new Date(c.primeiroQueNaoFecha.data + 'T12:00:00Z')
+      return {
+        bankAccountId: l.bankAccountId, em: ate, conferido: false, bloqueio, dias,
+        diferenca: c.primeiroQueNaoFecha.diferenca,
+        rotulo: `${fmtDia(d)} não fecha (${br(Math.abs(c.primeiroQueNaoFecha.diferenca))}) — ${c.diasQueFecham} de ${c.diasConferidos} dias conferidos`,
+      }
+    }
+    return {
+      bankAccountId: l.bankAccountId, em: ate, conferido: true, bloqueio, dias, diferenca: 0,
+      rotulo: `conferido com o banco em ${ate ? fmtDia(ate) : '—'}`,
+    }
+  }
+
+  const base = { bankAccountId: l.bankAccountId, em: l.ledgerBalDataVigente, bloqueio, dias: null }
   if (erro) {
     return { ...base, conferido: false, diferenca: erro.diferenca ?? null, rotulo: `divergente em ${br(Math.abs(erro.diferenca ?? 0))}${l.ledgerBalDataVigente ? ` desde ${fmtDia(l.ledgerBalDataVigente)}` : ''}` }
   }

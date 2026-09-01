@@ -65,6 +65,8 @@ export interface DashboardData {
     name: string
     balance: number
     ledgerBal: number | null
+    /** ⭐ conta com ÂNCORA DE ABERTURA: o LEDGERBAL dela NÃO é régua (ver saldosPorConta) */
+    temAncoraDeAbertura?: boolean
   }>
 
   // ───────── DRE realizado mês atual ─────────
@@ -171,6 +173,7 @@ export async function loadDashboardData(
         name: true,
         balance: true,
         ledgerBal: true,
+        openingBalance: true,
       },
     }),
 
@@ -321,6 +324,12 @@ export async function loadDashboardData(
       name: a.name,
       balance: a.balance,
       ledgerBal: a.ledgerBal,
+      // ⭐⭐ FONTE ÚNICA DO SELO (01/09/2026): conta com âncora de abertura tem o saldo
+      // derivado do NOSSO ledger e conferido DIA A DIA contra o extrato. Comparar o saldo
+      // dela com o LEDGERBAL é comparar contábil × DISPONÍVEL — no Banrisul dá exatamente
+      // o bloqueio (1.700) e o selo do dashboard cairia sem nada estar errado. Era o
+      // TERCEIRO lugar com a mesma decisão (card, juiz, dashboard).
+      temAncoraDeAbertura: a.openingBalance != null,
     })),
 
     receitaBruta: totalsCurrent.receitaBruta,

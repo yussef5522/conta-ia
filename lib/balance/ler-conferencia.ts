@@ -24,7 +24,7 @@ function sinal(t: { type: string; transferDirection: string | null }): 1 | -1 {
 export async function lerConta(bankAccountId: string, db: PrismaClient = defaultPrisma): Promise<LeituraConta | null> {
   const conta = await db.bankAccount.findUnique({
     where: { id: bankAccountId },
-    select: { id: true, name: true, companyId: true, balance: true, ledgerBal: true, ledgerBalDate: true },
+    select: { id: true, name: true, companyId: true, balance: true, ledgerBal: true, ledgerBalDate: true, blockedAmount: true, blockedAt: true },
   })
   if (!conta) return null
 
@@ -109,9 +109,28 @@ export async function lerConta(bankAccountId: string, db: PrismaClient = default
         .reduce((s, t) => s + sinal(t) * t.amount, 0))
     : 0
 
+  // ⭐⭐ FONTE ÚNICA: o selo do card e o juiz noturno passam a ler a MESMA conferência
+  // diária que o import usa. Falha macia — se estourar, cai no caminho antigo (LEDGERBAL)
+  // em vez de derrubar a tela de Contas.
+  let conferenciaDiaria = null
+  try {
+    const { seloPorDiaDaConta } = await import('./selo-por-dia')
+    const sel = await seloPorDiaDaConta(conta.id, db)
+    if (sel.conferivel) {
+      conferenciaDiaria = {
+        conferivel: true, diasConferidos: sel.diasConferidos, diasQueFecham: sel.diasQueFecham,
+        primeiroQueNaoFecha: sel.primeiroQueNaoFecha, ate: sel.cobertura?.ate ?? null,
+      }
+    }
+  } catch (e) {
+    console.error('[conferencia] selo diário falhou (segue no caminho antigo):', e)
+  }
+
   return {
     bankAccountId: conta.id,
     contaNome: conta.name,
+    conferenciaDiaria,
+    bloqueio: conta.blockedAmount != null && conta.blockedAt ? { valor: conta.blockedAmount, em: conta.blockedAt } : null,
     companyId: conta.companyId,
     ancoras,
     somaNoIntervalo,

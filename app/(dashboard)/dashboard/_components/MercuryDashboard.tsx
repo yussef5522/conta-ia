@@ -45,8 +45,12 @@ export async function MercuryDashboard(props: MercuryDashboardProps) {
     props.customPeriod,
   )
 
-  // Selo "conciliado": só quando TODAS as contas com ledgerBal batem
-  const contasConciliadas = data.saldosPorConta.filter((c) => c.ledgerBal !== null)
+  // Selo "conciliado": só quando TODAS as contas com ledgerBal batem.
+  // ⚠️ Conta com ÂNCORA DE ABERTURA fica FORA desta comparação: o saldo dela é o CONTÁBIL
+  // derivado do nosso ledger, e o LEDGERBAL do banco pode ser o DISPONÍVEL (o Banrisul
+  // desconta bloqueio). Comparar os dois acusaria o bloqueio como divergência — quem
+  // confere essas contas é a conferência DIA A DIA, na tela de Contas.
+  const contasConciliadas = data.saldosPorConta.filter((c) => c.ledgerBal !== null && !c.temAncoraDeAbertura)
   const todasBatem = contasConciliadas.length > 0 &&
     contasConciliadas.every((c) => Math.abs(c.balance - (c.ledgerBal ?? 0)) <= 0.01)
 
