@@ -12,7 +12,27 @@ import { iniciarContagem, contarLinha } from '../contagem'
 
 const CNPJ = '50607080000199'
 const DE = '2026-08-12'
-const ATE = '2026-08-31'
+
+/**
+ * ⛔⛔ BOMBA-RELÓGIO QUE EXPLODIU (01/09/2026). Este `ATE` era **`'2026-08-31'` fixo**, e o
+ * teste passou verde durante todo agosto — porque o `AJUSTE_CONTAGEM` é carimbado com
+ * **AGORA** (é o certo: em produção o ajuste acontece no instante da contagem), e "agora"
+ * caía dentro da janela. **Virou o dia 01/09 e os 5 testes ficaram vermelhos de uma vez**,
+ * sem ninguém ter mexido em nada.
+ *
+ * ⚠️ E o pior não foi quebrar: foi eu ter olhado 5 vermelhos e concluído "poluição do
+ * dev.db" duas vezes, sem medir. A causa apareceu em 30 segundos quando eu finalmente
+ * imprimi a data do movimento:
+ *     ENTRADA_NF 20 data=2026-08-13 | AJUSTE_CONTAGEM -2 data=2026-09-01
+ *
+ * ⭐ É a MESMA classe da janela fixa `01/07–31/08` da detecção de empréstimo (26/08), que
+ * ia parar de funcionar em silêncio. **Teste que fixa data de fim e depende de "hoje"
+ * estar dentro dela não é determinístico — é um relógio esperando.**
+ *
+ * ⚠️ A TELA DO PRODUTO SEMPRE ESTEVE CERTA: ela usa `ate = hoje()`. Quem dependia do
+ * calendário era só o teste.
+ */
+const ATE = new Date().toISOString().slice(0, 10)
 const dia = (d: string) => new Date(`${d}T10:00:00`)
 
 let companyId: string

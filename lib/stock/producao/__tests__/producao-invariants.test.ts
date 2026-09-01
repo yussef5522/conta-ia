@@ -99,7 +99,17 @@ describe('GOLDEN fluxo completo + juiz P1-P6', () => {
   it('P2: ordem em aberto parada > 24h → dispara (now no futuro)', async () => {
     const { ordemId } = await criarOrdem({ companyId, fichaId, escalaReceitas: 1, dataProducao: new Date('2026-08-21') }, prisma)
     expect(ordemId).toBeTruthy()
-    const p = soP(await checkProducaoInvariants(prisma, new Date('2026-09-01'))) // 11 dias depois
+    // ⛔⛔ BOMBA-RELÓGIO QUE EXPLODIU (01/09/2026): aqui era `new Date('2026-09-01')` fixo,
+    // com o comentário "11 dias depois". Mas o P2 mede `now − atualizadoEm`, e
+    // `atualizadoEm` é o relógio REAL de quando a linha nasceu (Prisma `@updatedAt`).
+    // Enquanto o calendário estava em agosto, 01/09 era futuro e o teste passava. **No dia
+    // 01/09 a diferença virou ZERO** e o teste ficou vermelho sozinho.
+    //
+    // ⚠️ 3ª ocorrência da mesma classe em um dia (real-vs-teorico, e a janela fixa da
+    // detecção de empréstimo em 26/08). **"Futuro" tem que ser relativo ao relógio de
+    // quem roda — data fixa não é futuro, é uma data que o calendário alcança.**
+    const daquiA11Dias = new Date(Date.now() + 11 * 86_400_000)
+    const p = soP(await checkProducaoInvariants(prisma, daquiA11Dias))
     expect(p.some((f) => f.invariante === 'P2')).toBe(true)
   })
 
@@ -109,7 +119,9 @@ describe('GOLDEN fluxo completo + juiz P1-P6', () => {
     // ficha com componente sem custo (item sem ENTRADA_NF)
     const semCusto = await prisma.stockItem.create({ data: { companyId, nome: 'Sal', unidadeControle: 'KG', categoria: 'MATERIA_PRIMA', criadoVia: 'MANUAL' } })
     await criarFicha({ companyId, nomeProduzido: 'Tempero', unidadeProduzido: 'LT', tipoProduto: 'INTERMEDIARIO', loteBase: 1, unidadeLoteBase: 'LT', componentes: [{ itemId: semCusto.id, qtdPlanejada: 1, unidade: 'KG' }] }, prisma)
-    const p = soP(await checkProducaoInvariants(prisma, new Date('2026-09-30'))) // > 14 dias depois
+    // ⚠️ relativo ao relógio, pelo mesmo motivo do P2 acima — este aqui ainda não tinha
+    // explodido, mas explodiria em 30/09. Bomba desarmada antes de tocar.
+    const p = soP(await checkProducaoInvariants(prisma, new Date(Date.now() + 20 * 86_400_000)))
     expect(p.some((f) => f.invariante === 'P5')).toBe(true)
     expect(p.some((f) => f.invariante === 'P6')).toBe(true)
   })

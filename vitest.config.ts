@@ -10,6 +10,8 @@ export default defineConfig({
     // ⛔ TRAVA: recusa rodar se o DATABASE_URL não for de um banco de teste.
     // Ver lib/testing/guard-banco-de-teste.ts (incidente de 08/08/2026).
     setupFiles: ['./vitest.setup.ts'],
+    // ⭐ limpa o resíduo da rodada no fim (01/09) — o dev.db chegou a 663 empresas de teste
+    globalSetup: ['./vitest.global-setup.ts'],
     // Ignora imports de CSS nos testes (não são necessários para lógica de negócio)
     css: false,
   },
