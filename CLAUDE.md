@@ -266,6 +266,16 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 **⚠️ O SELO É POR DIA, NUNCA PELA CONTA** (decisão do dono): agosto verde e setembro sem selo é o honesto. Sem PDF, importa **sem selo**, com aviso de que o OFX do Banrisul desconta bloqueio.
 
+**⭐⭐⭐ RESULTADO EM PROD (01/09): 22 DE 22 DIAS FECHAM.** Âncora `31/07 = −22.188,17` (do `SALDO ANT` do PDF, com a origem escrita e evento de auditoria) · régua de 23 dias gravada · 31/08 e 01/09 importados pelo endpoint REAL (13 linhas, **1 futuro descartado** = o consórcio de 09/09) · os 2 nomes de 25/08 preenchidos pelo PDF · **saldo −3.225,96 = o contábil do banco ao centavo**, com o disponível (−4.925,96) e o bloqueio (1.700 em 01/09 14:01) ao lado, datados.
+
+**⛔⛔ BUG PEGO PELO DADO REAL, que o teste escondia:** o filtro era `date > openingDate` com a âncora em `31/07 00:00Z` — e **o sistema grava as transações ao MEIO-DIA UTC**. As **10 tx de 31/07 12:00** entravam de novo e o saldo saiu **−4.662,10** em vez de −4.567,03, errado em **−95,07** = a soma exata delas. O teste passava porque usava meia-noite: **fixture idealizada escondendo a convenção real do banco de dados**. Régua nova: o DIA da âncora inteiro fica fora (`depoisDaAncora`).
+
+**⛔ AS 4 "CACULA MIX" DE 31/08 NÃO FORAM MARCADAS COMO TRANSFERÊNCIA — e o motivo é estrutural:** `prepareBalanceTransactions` **descarta TRANSFER sem `transferGroupId`** (as 19 de agosto têm par). Marcar as 4 sem a perna do destino tiraria **R$ 37.500** do saldo e quebraria 31/08 e 01/09 — desfazendo o 22/22. O caminho é o pareamento de sempre (sugere, o dono confirma) **depois** que a perna do destino for importada.
+
+**⚠️ ACHADO NO IMPORT NOVO — O BANRISUL INVERTEU OS CAMPOS DO OFX:** neste download `description` = `"CACULA MIX"` (o favorecido!) e `counterpartyName` = `"PIX ENVIADO"` (o histórico genérico). Ou seja, **o OFX passou a trazer o favorecido**, mas no campo errado pro nosso mapeamento — e o `counterpartyName` está sendo poluído com texto genérico. A ficha do banco diz `counterpartySource: 'PDF_ONLY'`, o que **deixou de ser verdade**. Tarefa própria: reconferir o mapeamento NAME/MEMO do Banrisul contra dois downloads.
+
+**📋 TAREFA PRÓPRIA REGISTRADA — os R$ 130.202,23 de jun/jul:** `Σ(482 tx)` diverge do contábil por um valor **constante** desde antes de agosto. **Hipótese: a conta nasceu sem lançamento de abertura** (offset constante tem essa cara). **NÃO mexer agora** (decisão do dono). Quando o PDF de junho existir, **a mesma conferência diária resolve** — e mover a âncora pra trás já é seguro, porque toda mudança deixa evento.
+
 ## ⛔⛔⛔ NÚMERO DE PROPAGANDA PARECE NÚMERO DE CONFERÊNCIA (31/08/2026)
 
 **A REGRA, e vale pra TODO parser de documento daqui pra frente:**
