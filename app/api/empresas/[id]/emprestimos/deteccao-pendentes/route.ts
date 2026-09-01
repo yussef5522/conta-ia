@@ -36,6 +36,9 @@ export async function GET(request: NextRequest, { params }: Params) {
     const byAccount = new Map<string, DetectLoanLite[]>()
     for (const l of loans) {
       const lite: DetectLoanLite = { id: l.id, contractNumber: l.contractNumber, lender: l.lender, status: l.status, dueDay: l.firstDueDate.getUTCDate() }
+      // ⛔ contrato SEM conta não entra no agrupamento: um `null` na lista do `in` faria a
+      // busca casar com transações órfãs de conta e sugerir vínculo que não existe.
+      if (!l.bankAccountId) continue
       const arr = byAccount.get(l.bankAccountId) ?? []
       arr.push(lite)
       byAccount.set(l.bankAccountId, arr)

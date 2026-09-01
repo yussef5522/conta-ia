@@ -1,0 +1,17 @@
+-- ⭐⭐ MÚTUO SEM TRÂNSITO POR CONTA (01/09/2026) — `loans.bankAccountId` vira nullable.
+--
+-- CASO REAL: o mutuante (Arafat) pagou o fornecedor do forno DIRETO, em espécie. O dinheiro
+-- nunca passou por conta da empresa nem pelo cofre. Com a coluna NOT NULL, a única saída
+-- era apontar pro cofre — **fingir um trânsito que não houve**, que é o que o dono recusou.
+--
+-- ⭐ PRECEDENTE NO PRÓPRIO SCHEMA: `transactions.bankAccountId` já é nullable desde o
+-- Sprint 4.0.1.a ("criados sem conta definida"). O `Loan` só nunca ganhou.
+--
+-- ⚠️ ALTERs em tabela com DADOS REAIS (loans, 10 linhas):
+--   tabela | operação              | risco  | mitigação
+--   loans  | ALTER COLUMN DROP NOT NULL | BAIXO | não destrutivo, não reescreve linha, e
+--          |                       |        | NENHUMA linha existente vira null. Rollback =
+--          |                       |        | `SET NOT NULL` (só volta porque nenhuma das
+--          |                       |        | 10 é null; a nova tranche é a 1ª)
+-- Rollback: ALTER TABLE "loans" ALTER COLUMN "bankAccountId" SET NOT NULL;
+ALTER TABLE "loans" ALTER COLUMN "bankAccountId" DROP NOT NULL;

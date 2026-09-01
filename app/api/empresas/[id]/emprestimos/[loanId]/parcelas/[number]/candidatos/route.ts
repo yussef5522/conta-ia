@@ -18,6 +18,7 @@ import {
   POS_FIXED_AMOUNT_TOL_PCT,
   PRE_FIXED_AMOUNT_TOL_ABS,
 } from '@/lib/loans/installment-match'
+import { exigeContaDoEmprestimo, MutuoSemContaError } from '@/lib/loans/exige-conta'
 
 interface Params {
   params: Promise<{ id: string; loanId: string; number: string }>
@@ -68,7 +69,7 @@ export async function GET(request: NextRequest, { params }: Params) {
     const ms = DATE_WINDOW_DAYS * 86400_000
     const candidatesRaw = await prisma.transaction.findMany({
       where: {
-        bankAccountId: loan.bankAccountId,
+        bankAccountId: exigeContaDoEmprestimo(loan, 'procurar candidatos'),
         type: 'DEBIT',
         origin: { in: ['OFX', 'PDF', 'MANUAL'] },
         loanInstallmentPaid: null,

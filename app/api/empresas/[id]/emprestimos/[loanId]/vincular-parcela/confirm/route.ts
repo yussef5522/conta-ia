@@ -10,6 +10,7 @@ import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import { computeLinkSplit, storedScheduleValid, shouldWriteSplit } from '@/lib/loans/link-payment'
+import { exigeContaDoEmprestimo, MutuoSemContaError } from '@/lib/loans/exige-conta'
 
 export const runtime = 'nodejs'
 interface Params { params: Promise<{ id: string; loanId: string }> }
@@ -46,7 +47,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     // não vinculadas a nenhuma parcela (1:1 nem N:1).
     const txs = await prisma.transaction.findMany({
       where: {
-        id: { in: body.transactionIds }, bankAccountId: loan.bankAccountId, type: 'DEBIT', lifecycle: 'EFFECTED',
+        id: { in: body.transactionIds }, bankAccountId: exigeContaDoEmprestimo(loan, 'vincular a parcela'), type: 'DEBIT', lifecycle: 'EFFECTED',
         loanInstallmentPaid: { is: null }, loanInstallmentPayments: { none: {} },
       },
       select: { id: true, amount: true, date: true },

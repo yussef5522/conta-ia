@@ -264,7 +264,9 @@ export async function GET(request: NextRequest, { params }: Params) {
 // ============================================================================
 const createNovoSchema = z.object({
   modo: z.literal('NOVO').optional().default('NOVO'),
-  bankAccountId: z.string().cuid(),
+  // ⭐ `null` = mútuo SEM TRÂNSITO por conta (pago direto ao fornecedor pelo mutuante).
+  // Estado de primeira classe, não dado faltando — ver lib/loans/exige-conta.ts.
+  bankAccountId: z.string().cuid().nullable(),
   lender: z.string().min(1).max(80),
   contractNumber: z.string().min(1).max(40).optional().nullable(),
   principal: z.coerce.number().positive(),
@@ -336,12 +338,17 @@ export async function POST(request: NextRequest, { params }: Params) {
     const body = await request.json()
     const data = createSchema.parse(body)
 
-    const conta = await prisma.bankAccount.findUnique({
-      where: { id: data.bankAccountId },
-      select: { id: true, companyId: true },
-    })
-    if (!conta || conta.companyId !== empresaId) {
-      return NextResponse.json({ erro: 'Conta bancária inválida' }, { status: 400 })
+    // ⭐ SEM CONTA é válido (mútuo pago direto pelo mutuante). Com conta, ela tem que ser
+    // DESTA empresa — ⚠️ e o `findUnique` com id null devolveria null, caindo no mesmo
+    // "inválida": por isso a checagem só roda quando há id.
+    if (data.bankAccountId) {
+      const conta = await prisma.bankAccount.findUnique({
+        where: { id: data.bankAccountId },
+        select: { id: true, companyId: true },
+      })
+      if (!conta || conta.companyId !== empresaId) {
+        return NextResponse.json({ erro: 'Conta bancária inválida' }, { status: 400 })
+      }
     }
 
     // ====== Modo NOVO (padrão) ======

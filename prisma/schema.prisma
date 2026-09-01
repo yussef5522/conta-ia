@@ -2875,8 +2875,13 @@ model Loan {
   companyId     String
   company       Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
   // Conta que recebe a liberação E paga as parcelas.
-  bankAccountId String
-  bankAccount   BankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
+  // ⭐⭐ NULLABLE desde 01/09/2026 — mútuo pago DIRETO ao fornecedor pelo mutuante nunca
+  // transita por conta da empresa. `null` = **sem trânsito por conta**, e é um estado de
+  // primeira classe, não um dado faltando. Mesmo padrão de `Transaction.bankAccountId`.
+  // ⚠️ Contrato sem conta NÃO tem transação bancária pra casar: todo caminho de
+  // conciliação RECUSA cedo (ver `lib/loans/exige-conta.ts`), nunca filtra por null.
+  bankAccountId String?
+  bankAccount   BankAccount? @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
 
   lender              String // ex: "Banrisul", "Sicredi"
   contractNumber      String? // pode ser usado pra match forte na conciliação

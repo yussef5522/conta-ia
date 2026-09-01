@@ -83,7 +83,8 @@ export async function POST(request: NextRequest, { params }: Params) {
       },
     })
     if (!tx) return NextResponse.json({ erro: 'Tx não encontrada' }, { status: 404 })
-    if (tx.bankAccountId !== loan.bankAccountId) {
+    // ⛔ os dois null dariam `false` e APROVARIAM o vínculo (ver lib/loans/exige-conta.ts)
+    if (!loan.bankAccountId || !tx.bankAccountId || tx.bankAccountId !== loan.bankAccountId) {
       return NextResponse.json(
         { erro: 'Tx deve ser da mesma conta do empréstimo' },
         { status: 400 },

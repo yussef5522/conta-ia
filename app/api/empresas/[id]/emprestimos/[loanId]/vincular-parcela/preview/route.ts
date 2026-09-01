@@ -9,6 +9,7 @@ import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import { buildLinkGroup, computeLinkSplit, storedScheduleValid, shouldWriteSplit, pickTargetInstallment } from '@/lib/loans/link-payment'
+import { exigeContaDoEmprestimo, MutuoSemContaError } from '@/lib/loans/exige-conta'
 
 export const runtime = 'nodejs'
 interface Params { params: Promise<{ id: string; loanId: string }> }
@@ -52,7 +53,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     // caem aqui só se o nº bater — pra keyword-only o painel é aberto manualmente).
     const pend = await prisma.transaction.findMany({
       where: {
-        bankAccountId: loan.bankAccountId, type: 'DEBIT', lifecycle: 'EFFECTED',
+        bankAccountId: exigeContaDoEmprestimo(loan, 'pré-visualizar o vínculo'), type: 'DEBIT', lifecycle: 'EFFECTED',
         date: { gte: WINDOW_START, lte: WINDOW_END },
         loanInstallmentPaid: { is: null }, loanInstallmentPayments: { none: {} },
       },

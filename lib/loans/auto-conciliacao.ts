@@ -23,6 +23,7 @@ import {
   descriptionMatchesContract,
   normalizeForContractMatch as normalizeForContractMatchShared,
 } from './contract-core'
+import { exigeContaDoEmprestimo, MutuoSemContaError } from './exige-conta'
 
 export interface AutoConciliacaoResult {
   matched: Array<{
@@ -125,7 +126,9 @@ export async function autoConciliarParcelas(
     // disponíveis (não pareadas a nada).
     const candidates = await prisma.transaction.findMany({
       where: {
-        bankAccountId: loan.bankAccountId,
+        // ⛔ NUNCA `loan.bankAccountId` cru: com null vira `IS NULL` e casa com as
+        // transações órfãs de conta. Mútuo sem trânsito não tem o que conciliar.
+        bankAccountId: exigeContaDoEmprestimo(loan, 'conciliar automaticamente'),
         type: 'DEBIT',
         origin: 'OFX',
         lifecycle: 'EFFECTED',

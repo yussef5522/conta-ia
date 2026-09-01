@@ -8,6 +8,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
+import { exigeContaDoEmprestimo, MutuoSemContaError } from '@/lib/loans/exige-conta'
 
 interface Params {
   params: Promise<{ id: string; loanId: string }>
@@ -48,7 +49,7 @@ export async function GET(request: NextRequest, { params }: Params) {
 
     const candidates = await prisma.transaction.findMany({
       where: {
-        bankAccountId: loan.bankAccountId,
+        bankAccountId: exigeContaDoEmprestimo(loan, 'vincular a liberação'),
         type: 'CREDIT',
         origin: 'OFX',
         amount: { gte: minAmt, lte: maxAmt },
@@ -117,7 +118,9 @@ export async function POST(request: NextRequest, { params }: Params) {
       select: { id: true, type: true, bankAccountId: true, loanDisbursement: { select: { id: true } } },
     })
     if (!tx) return NextResponse.json({ erro: 'Tx não encontrada' }, { status: 404 })
-    if (tx.bankAccountId !== loan.bankAccountId) {
+    // ⛔ `null !== null` é FALSE — sem este guard, uma transação SEM conta seria aprovada
+    // como se fosse do contrato. O guard que protegia viraria porta aberta, em silêncio.
+    if (!loan.bankAccountId || !tx.bankAccountId || tx.bankAccountId !== loan.bankAccountId) {
       return NextResponse.json(
         { erro: 'Tx deve ser da mesma conta do empréstimo' },
         { status: 400 },
