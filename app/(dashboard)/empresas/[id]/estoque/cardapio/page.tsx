@@ -325,7 +325,7 @@ function PrateleiraComplementos({ id, linhas, onMapear, onRecarregar }: {
           Suba o <strong>Relatório de Complementos</strong> do PDV em Vendas do dia. É dele que saem
           os sabores — sem ele o estoque não baixa sabor nenhum.
         </p>
-        <a href={`/empresas/${id}/estoque/vendas`} className="mt-1 text-xs text-[#185FA5] hover:underline">ir pra Vendas do dia →</a>
+        <a href={`/empresas/${id}/estoque/vendas`} className="mt-1 text-xs text-[#185FA5] hover:underline">ir pra Vendas → aba <b>Complementos</b> →</a>
       </CardContent></Card>
     )
   }

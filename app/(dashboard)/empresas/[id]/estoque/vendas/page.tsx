@@ -11,7 +11,7 @@ import { StatCard, StatCardGrid } from '@/components/ui/stat-card'
 import { TotalsBar } from '@/components/ui/totals-bar'
 import { SortableTh, useSort } from '@/components/ui/sortable-th'
 import { baixarCsv, hojeArquivo } from '@/lib/format/csv-cliente'
-import { ShoppingCart, Loader2, Upload, Check, Pencil, Search, Play, Receipt, AlertTriangle, History, RefreshCw, Store, Download, CheckCircle2 } from 'lucide-react'
+import { ShoppingCart, Loader2, Upload, Check, Layers, Pencil, Search, Play, Receipt, AlertTriangle, History, RefreshCw, Store, Download, CheckCircle2 } from 'lucide-react'
 import { PlanoVendaModal } from '@/components/estoque/plano-venda-modal'
 
 interface Linha { produto: string; quantidade: number; valorTotal: number; mapeado: boolean; alvoTipo: string | null; alvoId: string | null; alvoNome: string | null }
@@ -25,7 +25,7 @@ const fmtDia = (d: string) => d.split('-').reverse().join('/')
 
 export default function VendasImportPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
-  const [aba, setAba] = useState<'importar' | 'manual' | 'processados'>('importar')
+  const [aba, setAba] = useState<'importar' | 'complementos' | 'manual' | 'processados'>('importar')
   const [preview, setPreview] = useState<Preview | null>(null)
   const [html, setHtml] = useState('')
   const [carregando, setCarregando] = useState(false)
@@ -148,6 +148,7 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
       {/* abas */}
       <div className="flex gap-2 border-b border-slate-200">
         <button onClick={() => setAba('importar')} className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${aba === 'importar' ? 'border-[#185FA5] text-[#185FA5]' : 'border-transparent text-slate-500'}`}>Importar dia</button>
+        <button onClick={() => setAba('complementos')} className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${aba === 'complementos' ? 'border-[#185FA5] text-[#185FA5]' : 'border-transparent text-slate-500'}`}><Layers className="mr-1 inline h-3.5 w-3.5" />Complementos</button>
         <button onClick={() => setAba('manual')} className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${aba === 'manual' ? 'border-[#185FA5] text-[#185FA5]' : 'border-transparent text-slate-500'}`}><Store className="mr-1 inline h-3.5 w-3.5" />Lançamento manual</button>
         <button onClick={() => setAba('processados')} className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${aba === 'processados' ? 'border-[#185FA5] text-[#185FA5]' : 'border-transparent text-slate-500'}`}><History className="mr-1 inline h-3.5 w-3.5" />Processados ({processados.length})</button>
       </div>
@@ -175,6 +176,8 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
             </table>
           )}
         </CardContent></Card>
+      ) : aba === 'complementos' ? (
+        <ImportComplementos id={id} />
       ) : aba === 'manual' ? (
         <LancamentoManual id={id} onProcessado={() => { carregarProcessados(); setAba('processados') }} />
       ) : (
@@ -335,6 +338,154 @@ function LancamentoManual({ id, onProcessado }: { id: string; onProcessado: () =
         )}
       </CardContent></Card>
       {plano && <PlanoVendaModal plano={plano} data={data} titulo="Confirmar lançamento" processando={busy} erro={erro} onConfirmar={confirmar} onClose={() => setPlano(null)} />}
+    </div>
+  )
+}
+
+/**
+ * ⭐⭐ IMPORT DO RELATÓRIO DE COMPLEMENTOS (02/09) — a porta que faltava.
+ *
+ * ⚠️ SEM ELA A PRATELEIRA DO CARDÁPIO NASCERIA VAZIA PARA SEMPRE e o vazio dela mandava
+ * pra cá, prometendo um caminho que não existia. Tela que promete caminho inexistente é a
+ * mesma classe do menu que oferece o que a pessoa não pode fazer.
+ *
+ * ⭐ MESMO GESTO do import de produtos: escolhe a DATA (o arquivo NÃO traz — o período fica
+ * na tela do Suitable) → arquivo → PREVIEW → confirmar. Nunca grava sem mostrar antes.
+ *
+ * ⛔ E NÃO BAIXA NADA: importar é trazer o que o PDV vendeu; a baixa é gesto separado.
+ * A tela diz isso, pra ninguém achar que o estoque já mexeu.
+ */
+function ImportComplementos({ id }: { id: string }) {
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [data, setData] = useState('')
+  const [html, setHtml] = useState('')
+  const [prev, setPrev] = useState<{
+    totalLinhas: number; totalOcorrencias: number; comDestino: number; pendentes: number
+    nosDoisRelatorios: number; jaImportado: boolean
+    prateleira: { nomeSuitable: string; ocorrencias: number; destino: string; nomeFicha: string | null; tambemProduto: boolean }[]
+  } | null>(null)
+  const [ok, setOk] = useState<{ linhas: number; ocorrencias: number; substituiu: boolean } | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+
+  const chamar = async (confirmar: boolean, conteudo?: string) => {
+    const corpo = conteudo ?? html
+    if (!data) { setErro('Escolha a data do relatório — o arquivo do Suitable não traz o período.'); return }
+    if (!corpo) { setErro('Escolha o arquivo do relatório de complementos.'); return }
+    setBusy(true); setErro(null)
+    try {
+      const r = await fetch(`/api/empresas/${id}/estoque/vendas/complementos`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data, html: corpo, confirmar }),
+      })
+      const j = await r.json().catch(() => null)
+      if (!r.ok) { setErro(j?.erro ?? 'Não consegui ler o arquivo.'); return }
+      if (confirmar) { setOk(j); setPrev(null) } else { setPrev(j); setOk(null) }
+    } catch { setErro('Não consegui falar com o servidor.') } finally { setBusy(false) }
+  }
+
+  const onFile = (f: File) => {
+    const reader = new FileReader()
+    reader.onload = () => { const t = String(reader.result ?? ''); setHtml(t); chamar(false, t) }
+    reader.readAsText(f, 'utf-8')
+  }
+
+  return (
+    <div className="space-y-3">
+      <Card><CardContent className="space-y-3 p-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="text-xs text-slate-500">
+            Data do relatório
+            <input type="date" value={data} onChange={(e) => { setData(e.target.value); setPrev(null); setOk(null) }}
+              className="mt-1 block h-9 rounded-lg border border-slate-300 px-2 text-sm" />
+          </label>
+          <p className="flex-1 text-[11px] text-slate-400">
+            O arquivo do Suitable não traz o período — quem sabe o dia é você, na tela dele.
+          </p>
+        </div>
+        <input ref={fileRef} type="file" accept=".xls,.html,.htm" className="hidden" onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])} />
+        <button onClick={() => fileRef.current?.click()} disabled={busy}
+          className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-300 py-6 text-sm text-slate-500 hover:border-[#185FA5] hover:text-[#185FA5] disabled:opacity-50">
+          {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <Upload className="h-5 w-5" />}
+          {busy ? 'Lendo…' : prev ? 'Trocar arquivo' : 'Escolher o Relatório de Complementos (.xls)'}
+        </button>
+        {erro && <p className="text-sm text-rose-600">{erro}</p>}
+      </CardContent></Card>
+
+      {prev && (
+        <Card><CardContent className="space-y-3 p-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div><p className="text-xs text-slate-500">Complementos</p><p className="text-lg font-semibold text-slate-900">{prev.totalLinhas}</p></div>
+            <div><p className="text-xs text-slate-500">Ocorrências</p><p className="text-lg font-semibold text-slate-900">{prev.totalOcorrencias}</p></div>
+            <div><p className="text-xs text-slate-500">Com destino</p><p className="text-lg font-semibold text-emerald-600">{prev.comDestino}</p></div>
+            <div><p className="text-xs text-slate-500">Sem destino</p><p className={`text-lg font-semibold ${prev.pendentes > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>{prev.pendentes}</p></div>
+          </div>
+
+          {/* ⚠️ pendente NÃO trava o import — mapear a cauda longa é decisão do dono, e o
+              nome só aparece na prateleira depois de importado. */}
+          {prev.pendentes > 0 && (
+            <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              {prev.pendentes} sem destino ainda — eles entram assim mesmo e ficam
+              <b> visíveis na prateleira</b> do Cardápio pra você apontar um a um. Nada baixa estoque agora.
+            </p>
+          )}
+          {prev.nosDoisRelatorios > 0 && (
+            <p className="rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2 text-xs text-amber-900">
+              <AlertTriangle className="mr-1 inline h-3.5 w-3.5" />
+              <b>{prev.nosDoisRelatorios} nome(s) estão nos DOIS relatórios</b> (produto e complemento).
+              Cada um tem destino próprio — se os dois baixarem, o estoque sai duas vezes.
+            </p>
+          )}
+          {prev.jaImportado && (
+            <p className="rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-600">
+              Já existe import deste dia — confirmar <b>substitui</b> as linhas dele.
+            </p>
+          )}
+
+          <div className="max-h-72 overflow-auto rounded-lg border border-slate-200">
+            <table className="density-normal w-full">
+              <thead className="sticky top-0 bg-slate-50"><tr>
+                <th className="px-3 py-2 text-left text-[11px] uppercase tracking-wide text-slate-500">Complemento</th>
+                <th className="px-3 py-2 text-right text-[11px] uppercase tracking-wide text-slate-500">Ocorr.</th>
+                <th className="px-3 py-2 text-left text-[11px] uppercase tracking-wide text-slate-500">Destino</th>
+              </tr></thead>
+              <tbody>{prev.prateleira.map((l) => (
+                <tr key={l.nomeSuitable} className="border-b border-slate-50 last:border-0">
+                  <td className="px-3 py-0 text-[13px] text-slate-800">
+                    {l.nomeSuitable}
+                    {l.tambemProduto && <span className="ml-1.5 rounded bg-amber-100 px-1 text-[10px] text-amber-800">também produto</span>}
+                  </td>
+                  <td className="px-3 py-0 text-right text-[13px] tabular-nums text-slate-700">{l.ocorrencias}</td>
+                  <td className="px-3 py-0 text-[13px]">
+                    {l.destino === 'FICHA' ? <span className="text-emerald-700">{l.nomeFicha ?? 'ficha'}</span>
+                      : l.destino === 'IGNORAR' ? <span className="text-slate-400">ignorado</span>
+                        : <span className="text-amber-600">sem destino</span>}
+                  </td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+
+          <button onClick={() => chamar(true)} disabled={busy}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#185FA5] px-3 text-sm font-semibold text-white hover:bg-[#0F4A8C] disabled:opacity-50">
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            Confirmar import de {prev.totalLinhas} complementos
+          </button>
+        </CardContent></Card>
+      )}
+
+      {ok && (
+        <Card className="border-emerald-300"><CardContent className="p-4">
+          <p className="flex items-center gap-2 text-sm font-semibold text-emerald-700">
+            <Receipt className="h-4 w-4" /> {ok.linhas} complementos importados ({ok.ocorrencias} ocorrências)
+            {ok.substituiu && <span className="text-xs font-normal text-slate-500">— substituiu o import anterior deste dia</span>}
+          </p>
+          <p className="mt-1 text-xs text-slate-500">Nada baixou estoque — o destino de cada sabor é você quem aponta.</p>
+          <a href={`/empresas/${id}/estoque/cardapio`} className="mt-2 inline-block text-xs text-[#185FA5] hover:underline">
+            ir pra prateleira de complementos no Cardápio →
+          </a>
+        </CardContent></Card>
+      )}
     </div>
   )
 }
