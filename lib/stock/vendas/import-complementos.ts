@@ -126,12 +126,48 @@ export async function confirmarComplementos(
   })
 }
 
-/** A prateleira a partir do que já está GRAVADO (a aba abre sem precisar de upload). */
+export interface PrateleiraCompleta {
+  prateleira: LinhaPrateleira[]
+  /** o período que a prateleira cobre — o DELA, não o do relatório de produtos */
+  periodo: { de: string; ate: string; dias: number } | null
+}
+
+/**
+ * A prateleira a partir do que já está GRAVADO (a aba abre sem precisar de upload).
+ *
+ * ⭐⭐ MAPEAR É TRABALHO INDEPENDENTE DE PERÍODO (regra do dono, 02/09): **nome conhecido
+ * nunca some por causa de data.** Por isso a lista é a UNIÃO de (nomes com linha importada)
+ * ∪ (nomes que já têm destino no mapa).
+ *
+ * ⛔ SEM A UNIÃO HÁ UM SUMIÇO SILENCIOSO REAL: reimportar um dia SUBSTITUI as linhas dele
+ * (`deleteMany` + `createMany`). Um nome que só existia na versão antiga sai da tabela — e,
+ * se ele já estava mapeado, o mapeamento continua no banco mas **desaparece da tela**, com
+ * a ocorrência zerada e nenhum aviso. É a mesma família do "estoque invisível": some da
+ * vista, continua valendo na hora da baixa.
+ *
+ * ⚠️ As OCORRÊNCIAS seguem sendo a soma do que foi importado (número informativo); o nome
+ * mapeado sem linha aparece com 0 e no fim da lista, que é o lugar honesto dele.
+ */
 export async function prateleiraGravada(
   companyId: string, db: PrismaClient = defaultPrisma,
-): Promise<LinhaPrateleira[]> {
-  const linhas = await db.stockVendaComplementoLinha.findMany({
-    where: { companyId }, select: { nomeSuitable: true, ocorrencias: true },
-  })
-  return prateleiraDeComplementos(companyId, linhas, db)
+): Promise<PrateleiraCompleta> {
+  const [linhas, mapeados] = await Promise.all([
+    db.stockVendaComplementoLinha.findMany({
+      where: { companyId }, select: { nomeSuitable: true, ocorrencias: true, data: true },
+    }),
+    db.stockVendaComplementoMap.findMany({ where: { companyId }, select: { nomeSuitable: true } }),
+  ])
+
+  const comLinha = new Set(linhas.map((l) => l.nomeSuitable))
+  const entradas = [
+    ...linhas.map((l) => ({ nomeSuitable: l.nomeSuitable, ocorrencias: l.ocorrencias })),
+    // ⭐ o nome mapeado que perdeu a linha entra com 0 — visível, nunca sumido
+    ...mapeados.filter((m) => !comLinha.has(m.nomeSuitable)).map((m) => ({ nomeSuitable: m.nomeSuitable, ocorrencias: 0 })),
+  ]
+
+  const dias = [...new Set(linhas.map((l) => l.data.toISOString().slice(0, 10)))].sort()
+  return {
+    prateleira: await prateleiraDeComplementos(companyId, entradas, db),
+    periodo: dias.length ? { de: dias[0], ate: dias[dias.length - 1], dias: dias.length } : null,
+  }
 }

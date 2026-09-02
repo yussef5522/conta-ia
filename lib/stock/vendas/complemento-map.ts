@@ -25,6 +25,7 @@
 
 import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
+import { gruposVigentes, type GrupoComplemento } from './grupo-complemento'
 
 export class ComplementoMapError extends Error {}
 
@@ -108,6 +109,10 @@ export interface LinhaPrateleira {
   tambemProduto: boolean
   /** o que o mapa de PRODUTOS faz com ele, quando existe nos dois */
   destinoComoProduto: string | null
+  /** ⭐ SABOR (está no cardápio) ou OUTRO (borda, adicional, tamanho, combo) */
+  grupo: GrupoComplemento
+  /** o dono MOVEU este nome de grupo (a régua do cardápio foi sobrescrita) */
+  grupoDoDono: boolean
 }
 
 /**
@@ -122,6 +127,7 @@ export async function prateleiraDeComplementos(
   db: PrismaClient = defaultPrisma,
 ): Promise<LinhaPrateleira[]> {
   const nomes = [...new Set(linhas.map((l) => l.nomeSuitable))]
+  const grupos = await gruposVigentes(companyId, nomes, db)
   const [maps, mapsProduto] = await Promise.all([
     db.stockVendaComplementoMap.findMany({ where: { companyId, nomeSuitable: { in: nomes } } }),
     // ⚠️ o AVISO dos 25: mostra os DOIS destinos, e a decisão de cada nome é do dono —
@@ -156,6 +162,8 @@ export async function prateleiraDeComplementos(
         nomeFicha: m?.fichaId ? nomeDaFicha.get(m.fichaId) ?? null : null,
         tambemProduto: comoProduto.has(nomeSuitable),
         destinoComoProduto: comoProduto.get(nomeSuitable) ?? null,
+        grupo: grupos.get(nomeSuitable)?.grupo ?? 'OUTRO',
+        grupoDoDono: grupos.get(nomeSuitable)?.doDono ?? false,
       }
     })
     .sort((a, b) => b.ocorrencias - a.ocorrencias)

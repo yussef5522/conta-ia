@@ -27,7 +27,8 @@ export async function GET(request: NextRequest, { params }: Params) {
   const { id: companyId } = await params
   const a = await guardStock(request, companyId, 'stock.view')
   if (a.erro) return a.erro
-  return NextResponse.json({ prateleira: await prateleiraGravada(companyId, prisma) })
+  // devolve { prateleira, periodo } — o período é o DESTE relatório, nunca o de produtos
+  return NextResponse.json(await prateleiraGravada(companyId, prisma))
 }
 
 export async function POST(request: NextRequest, { params }: Params) {

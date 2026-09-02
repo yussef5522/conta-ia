@@ -46,9 +46,10 @@ async function main() {
   for (const [n, o] of [...soma.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8)) console.log(`  ${o.toString().padStart(5)}  ${n}`)
 
   // 2. o que a PRATELEIRA devolve (o que a tela mostra)
-  const p = await prateleiraGravada(COMPANY, prisma)
+  const { prateleira: p, periodo } = await prateleiraGravada(COMPANY, prisma)
   console.log(`\n=== 2. prateleiraGravada (o que a aba mostra) ===`)
   console.log(`linhas: ${p.length} · Σ ocorrências: ${p.reduce((s, x) => s + x.ocorrencias, 0)}`)
+  console.log(`período: ${periodo ? `${periodo.de} a ${periodo.ate} (${periodo.dias} dia(s))` : 'sem import'}`)
   console.log(`topo: ${p.slice(0, 3).map((x) => `${x.nomeSuitable}=${x.ocorrencias}`).join(' · ')}`)
 
   // 3. o MAPA — nome que já tem destino mas cuja linha não existe mais some da prateleira?

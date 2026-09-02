@@ -4136,3 +4136,17 @@ model StockVendaComplementoMap {
   @@unique([companyId, nomeSuitable])
   @@map("stock_venda_complemento_map")
 }
+
+model StockVendaComplementoGrupo {
+  id           String   @id @default(cuid())
+  companyId    String
+  nomeSuitable String
+  grupo        String
+  criadoPorId  String?
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @default(now()) @updatedAt
+
+  @@unique([companyId, nomeSuitable])
+  @@index([companyId])
+  @@map("stock_venda_complemento_grupo")
+}

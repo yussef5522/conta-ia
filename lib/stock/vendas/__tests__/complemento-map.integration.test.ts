@@ -7,6 +7,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { prisma } from '@/lib/db'
 import { upsertComplementoMap, limparComplementoMap, prateleiraDeComplementos, ComplementoMapError } from '../complemento-map'
+import { prateleiraGravada, confirmarComplementos } from '../import-complementos'
 import { criarFicha } from '../../producao/fichas'
 
 const CNPJ = '50505050000277'
@@ -27,7 +28,7 @@ beforeEach(async () => {
   fichaProduto = (await criarFicha({ companyId, nomeProduzido: 'XIS - CALABRESA', unidadeProduzido: 'UN', tipoProduto: 'PRODUTO_FINAL', loteBase: 1, unidadeLoteBase: 'UN', valorVenda: 20, componentes: comp }, prisma)).fichaId
 })
 afterEach(async () => {
-  for (const t of ['stockVendaComplementoMap', 'stockVendaComplementoLinha', 'stockVendaProdutoMap',
+  for (const t of ['stockVendaComplementoMap', 'stockVendaComplementoLinha', 'stockVendaComplementoGrupo', 'stockVendaProdutoMap',
     'stockFichaComponente', 'stockFichaVersao', 'stockFicha', 'stockItem'] as const) {
     // @ts-expect-error dinâmico
     await prisma[t].deleteMany({ where: { companyId } })
@@ -182,5 +183,39 @@ describe('⭐⭐ criar ficha PELA prateleira já nasce vinculada', () => {
       componentes: [{ itemId: insumoId, qtdPlanejada: 0.1, unidade: 'KG', posicao: 0 }],
       mapearNomeSuitable: 'X', mapearComplemento: 'Y',
     }, prisma)).rejects.toThrow(/produto e como complemento/)
+  })
+})
+
+describe('⛔⛔ NOME CONHECIDO NÃO SOME POR CAUSA DE DATA (02/09)', () => {
+  // regra do dono: "mapear é trabalho independente de período — a prateleira mostra TODOS
+  // os nomes conhecidos sempre".
+  const html = (nome: string, qtd: number) =>
+    `<table><tr><td>Descrição</td><td>Valor médio</td><td>Quantidade</td><td>Valor Total</td></tr>` +
+    `<tr><td>${nome}</td><td>R$ 0,00</td><td>${qtd}</td><td>R$ 0,00</td></tr></table>`
+
+  it('⛔⛔ o mapeado que perdeu a linha no REIMPORT continua visível, com 0', async () => {
+    await confirmarComplementos(companyId, '2026-08-29', html('CALABRESA', 115), undefined, prisma)
+    await upsertComplementoMap(companyId, 'CALABRESA', { tipo: 'FICHA', fichaId: fichaSabor }, undefined, prisma)
+
+    // reimporta o MESMO dia sem a CALABRESA (o PDV corrigiu o dia) → a linha dela some
+    await confirmarComplementos(companyId, '2026-08-29', html('FRANGO', 30), undefined, prisma)
+    expect(await prisma.stockVendaComplementoLinha.count({ where: { companyId, nomeSuitable: 'CALABRESA' } })).toBe(0)
+
+    const { prateleira } = await prateleiraGravada(companyId, prisma)
+    const cal = prateleira.find((l) => l.nomeSuitable === 'CALABRESA')
+    // ⚠️ sem a união ela sumiria da tela com o mapeamento VIVO no banco — invisível e valendo
+    expect(cal, 'CALABRESA sumiu da prateleira com o mapeamento vivo').toBeTruthy()
+    expect(cal!.destino).toBe('FICHA')
+    expect(cal!.ocorrencias).toBe(0)
+  })
+
+  it('⭐ e a prateleira diz o PERÍODO dela, não o do relatório de produtos', async () => {
+    await confirmarComplementos(companyId, '2026-08-29', html('CALABRESA', 115), undefined, prisma)
+    const { periodo } = await prateleiraGravada(companyId, prisma)
+    expect(periodo).toEqual({ de: '2026-08-29', ate: '2026-08-29', dias: 1 })
+  })
+
+  it('⭐ sem import nenhum, o período é null (não inventa data)', async () => {
+    expect((await prateleiraGravada(companyId, prisma)).periodo).toBeNull()
   })
 })

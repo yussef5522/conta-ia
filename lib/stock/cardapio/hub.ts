@@ -60,7 +60,7 @@ export interface HubCardapio {
   periodo: { desde: string | null; ate: string | null; dias: number | null }
   /** o campeão de vendas ainda sem destino — o banner de onboarding. */
   campeaoSemFicha: { nome: string; vendasQtd: number } | null
-  totais: { produtos: number; vendasQtd: number; vendasValor: number; semDestino: number; semCusto: number }
+  totais: { produtos: number; vendasQtd: number; vendasValor: number; semDestino: number; semCusto: number; prontos: number }
 }
 
 /** Custo de 1 unidade vendida = Σ (qtd que sai do estoque × custo médio do insumo).
@@ -204,8 +204,23 @@ export async function hubCardapio(
       vendasValor: round2(linhas.reduce((s, l) => s + l.vendasValor, 0)),
       semDestino: semDestino.length,
       semCusto: linhas.filter((l) => l.custoUnitario == null).length,
+      prontos: linhas.filter(ehProntoNoCardapio).length,
     },
   }
+}
+
+/**
+ * ⭐⭐ PRONTO = tem destino **E** tem custo. Uma régua só, consumida pelo CARD e pelo FILTRO
+ * da tela (REGRA 4) — se cada um tivesse a sua, o card diria um número e a lista mostraria
+ * outro.
+ *
+ * ⛔ BUG QUE ISTO MATA (02/09, o dono viu "PRONTOS −72"): a tela calculava
+ * `produtos − semDestino − semCusto`. Produto sem ficha é **as duas coisas** — sem destino e
+ * sem custo — então ele era subtraído DUAS VEZES: 80 − 76 − 76 = −72. Contagem de conjuntos
+ * que se sobrepõem NÃO se faz por subtração; conta-se quem cumpre a condição.
+ */
+export function ehProntoNoCardapio(l: Pick<LinhaCardapio, 'status' | 'custoUnitario'>): boolean {
+  return (l.status === 'FICHA_OK' || l.status === 'REVENDA') && l.custoUnitario != null
 }
 
 export function hubToCsv(linhas: LinhaCardapio[]): string {

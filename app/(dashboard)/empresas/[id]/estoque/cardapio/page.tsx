@@ -18,7 +18,10 @@ import { Card, CardContent } from '@/components/ui/card'
 import { StatCard, StatCardGrid } from '@/components/ui/stat-card'
 import { TotalsBar } from '@/components/ui/totals-bar'
 import { SortableTh, useSort } from '@/components/ui/sortable-th'
-import { UtensilsCrossed, Loader2, Download, Search, AlertTriangle, ChevronRight, Sparkles, CircleDollarSign, PackageCheck, HelpCircle } from 'lucide-react'
+import { ehProntoNoCardapio } from '@/lib/stock/cardapio/hub'
+import type { LinhaPrateleira } from '@/lib/stock/vendas/complemento-map'
+import { cardsDaPrateleira, secoesDaPrateleira } from '@/lib/stock/vendas/painel-complementos'
+import { UtensilsCrossed, Loader2, Download, Search, AlertTriangle, ChevronRight, ChevronDown, Sparkles, CircleDollarSign, PackageCheck, HelpCircle } from 'lucide-react'
 
 type Status = 'SEM_DESTINO' | 'SEM_FICHA' | 'REVENDA' | 'FICHA_INCOMPLETA' | 'FICHA_OK'
 interface Linha {
@@ -30,18 +33,17 @@ interface Linha {
   precoUsado: number | null; precoOrigem: 'praticado' | 'cardapio' | null; margem: number | null
 }
 /** uma linha da prateleira de complementos */
-interface Comp {
-  nomeSuitable: string; ocorrencias: number
-  destino: 'SEM_FICHA' | 'FICHA' | 'IGNORAR'
-  fichaId: string | null; nomeFicha: string | null
-  tambemProduto: boolean; destinoComoProduto: string | null
-}
+// ⭐ O TIPO VEM DA LIB QUE MONTA O PAYLOAD, não é reescrito à mão aqui.
+// ⚠️ É a dívida registrada em 01/09: interface escrita à mão sobre resposta de API é
+// PROMESSA, não prova — o `tsc` valida a tela contra o que o autor ACHA que a rota devolve
+// (foi assim que um `bankAccount` sem `| null` derrubou a carteira com a suíte verde).
+type Comp = LinhaPrateleira
 
 interface Hub {
   linhas: Linha[]
   periodo: { desde: string | null; ate: string | null; dias: number | null }
   campeaoSemFicha: { nome: string; vendasQtd: number } | null
-  totais: { produtos: number; vendasQtd: number; vendasValor: number; semDestino: number; semCusto: number }
+  totais: { produtos: number; vendasQtd: number; vendasValor: number; semDestino: number; semCusto: number; prontos: number }
 }
 
 const brl = (n: number | null) => (n == null ? '—' : n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }))
@@ -66,10 +68,21 @@ export default function CardapioHubPage({ params }: { params: Promise<{ id: stri
   const [aba, setAba] = useState<'produtos' | 'complementos'>('produtos')
   const [prateleira, setPrateleira] = useState<Comp[] | null>(null)
 
+  const [periodoComp, setPeriodoComp] = useState<{ de: string; ate: string; dias: number } | null>(null)
   const carregarPrateleira = () =>
     fetch(`/api/empresas/${id}/estoque/vendas/complementos`)
-      .then((r) => r.json()).then((j) => setPrateleira(j.prateleira ?? []))
+      .then((r) => r.json()).then((j) => { setPrateleira(j.prateleira ?? []); setPeriodoComp(j.periodo ?? null) })
       .catch(() => setPrateleira([]))
+
+  /** ⭐ mover de grupo é decisão do dono (a régua do cardápio é só o padrão) — stock.manage */
+  const moverGrupo = async (nome: string, grupo: 'SABOR' | 'OUTRO' | 'SEGUIR_CARDAPIO') => {
+    const r = await fetch(`/api/empresas/${id}/estoque/vendas/complementos/grupo`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nomeSuitable: nome, grupo }),
+    })
+    if (r.ok) carregarPrateleira()
+    return r.ok
+  }
 
   /** ⚠️ mapear é `stock.manage` — a operadora vê a aba, mas o destino é decisão do dono. */
   const mapear = async (nome: string, destino: 'IGNORAR' | 'LIMPAR' | 'FICHA', fichaId?: string) => {
@@ -95,7 +108,7 @@ export default function CardapioHubPage({ params }: { params: Promise<{ id: stri
     const filtradas = hub.linhas.filter((l) => {
       if (filtro === 'semficha' && l.status !== 'SEM_DESTINO' && l.status !== 'SEM_FICHA') return false
       if (filtro === 'semcusto' && l.custoUnitario != null) return false
-      if (filtro === 'ok' && l.status !== 'FICHA_OK' && l.status !== 'REVENDA') return false
+      if (filtro === 'ok' && !ehProntoNoCardapio(l)) return false
       if (q && !l.nome.toLowerCase().includes(q) && !l.nomesSuitable.some((n) => n.toLowerCase().includes(q))) return false
       return true
     })
@@ -117,8 +130,13 @@ export default function CardapioHubPage({ params }: { params: Promise<{ id: stri
         <UtensilsCrossed className="h-5 w-5 shrink-0 text-[#185FA5]" />
         <h1 className="text-base font-semibold text-slate-900">Cardápio</h1>
         <p className="hidden flex-1 truncate text-xs text-slate-400 lg:block">
-          O que você vende: receita, custo e margem por produto
-          {hub.periodo.desde && ` · vendas de ${fmtDia(hub.periodo.desde)} a ${fmtDia(hub.periodo.ate)}`}
+          {/* ⚠️ O PERÍODO É DO RELATÓRIO DE PRODUTOS e só aparece na aba dele. Os dois
+              relatórios são importados em dias diferentes (21/08 produtos × 29/08
+              complementos, medido em prod) — um cabeçalho só falando pelos dois faz
+              parecer que a outra aba está filtrada por data, e ela não está. */}
+          {aba === 'produtos'
+            ? <>O que você vende: receita, custo e margem por produto{hub.periodo.desde && ` · vendas de ${fmtDia(hub.periodo.desde)} a ${fmtDia(hub.periodo.ate)}`}</>
+            : <>Os sabores e adicionais do PDV: cada um precisa de um destino pra baixar estoque</>}
         </p>
         <div className="ml-auto flex items-center gap-1.5">
           <a href={`/api/empresas/${id}/estoque/cardapio?formato=csv`}
@@ -145,7 +163,7 @@ export default function CardapioHubPage({ params }: { params: Promise<{ id: stri
       </div>
 
       {aba === 'complementos' && (
-        <PrateleiraComplementos id={id} linhas={prateleira} onMapear={mapear} onRecarregar={carregarPrateleira} />
+        <PrateleiraComplementos id={id} linhas={prateleira} periodo={periodoComp} onMapear={mapear} onMoverGrupo={moverGrupo} onRecarregar={carregarPrateleira} />
       )}
 
       {aba === 'produtos' && <>
@@ -174,7 +192,7 @@ export default function CardapioHubPage({ params }: { params: Promise<{ id: stri
           onClick={() => setFiltro('semficha')} active={filtro === 'semficha'} />
         <StatCard tone="amber" label="Custo a definir" value={String(t.semCusto)} sub="sem margem confiável" icon={HelpCircle}
           onClick={() => setFiltro('semcusto')} active={filtro === 'semcusto'} />
-        <StatCard tone="emerald" label="Prontos" value={String(t.produtos - t.semDestino - t.semCusto)} sub="custo e margem ok" icon={PackageCheck}
+        <StatCard tone="emerald" label="Prontos" value={String(t.prontos)} sub="custo e margem ok" icon={PackageCheck}
           onClick={() => setFiltro('ok')} active={filtro === 'ok'} />
       </StatCardGrid>
 
@@ -306,14 +324,18 @@ export default function CardapioHubPage({ params }: { params: Promise<{ id: stri
  * ocorrências e carregam 7.269 das 7.648** (95%). CALABRESA (1.220) primeiro faz o dono
  * mapear o que importa antes da cauda longa.
  */
-function PrateleiraComplementos({ id, linhas, onMapear, onRecarregar }: {
+function PrateleiraComplementos({ id, linhas, periodo, onMapear, onMoverGrupo, onRecarregar }: {
   id: string
   linhas: Comp[] | null
+  periodo: { de: string; ate: string; dias: number } | null
   onMapear: (nome: string, destino: 'IGNORAR' | 'LIMPAR' | 'FICHA', fichaId?: string) => Promise<boolean>
+  onMoverGrupo: (nome: string, grupo: 'SABOR' | 'OUTRO' | 'SEGUIR_CARDAPIO') => Promise<boolean>
   onRecarregar: () => void
 }) {
   const [busca, setBusca] = useState('')
   const [soPendentes, setSoPendentes] = useState(false)
+  // ⭐ IGNORADOS nasce COLAPSADO: decisão já tomada não disputa espaço com trabalho pendente.
+  const [aberta, setAberta] = useState<Record<string, boolean>>({ SABORES: true, OUTROS: true, IGNORADOS: false })
 
   if (linhas === null) return <div className="p-6"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
   if (!linhas.length) {
@@ -330,26 +352,42 @@ function PrateleiraComplementos({ id, linhas, onMapear, onRecarregar }: {
     )
   }
 
-  const visiveis = linhas
-    .filter((l) => !soPendentes || l.destino === 'SEM_FICHA')
-    .filter((l) => !busca.trim() || l.nomeSuitable.toLowerCase().includes(busca.trim().toLowerCase()))
-  const pendentes = linhas.filter((l) => l.destino === 'SEM_FICHA').length
+  const t = cardsDaPrateleira(linhas)
   const nosDois = linhas.filter((l) => l.tambemProduto).length
+  const q = busca.trim().toLowerCase()
+  const passa = (l: Comp) => (!soPendentes || l.destino === 'SEM_FICHA') && (!q || l.nomeSuitable.toLowerCase().includes(q))
+  const secoes = secoesDaPrateleira(linhas).map((sec) => ({ ...sec, visiveis: sec.linhas.filter(passa) }))
 
   return (
-    <div className="space-y-2.5">
+    <div className="space-y-3">
+      {/* ⭐ CARDS — a anatomia da casa (mesma do painel de Produtos) */}
+      <StatCardGrid>
+        <StatCard tone="rose" label="Pendentes" value={String(t.pendentes)} sub="sem destino, não baixam" icon={AlertTriangle} />
+        <StatCard tone="emerald" label="Com ficha" value={String(t.comFicha)} sub="baixam o sabor produzido" icon={PackageCheck} />
+        <StatCard tone="slate" label="Ignorados" value={String(t.ignorados)} sub="decisão reversível" icon={HelpCircle} />
+        {/* ⭐⭐ o número que responde "quanto da venda já baixa estoque" — por OCORRÊNCIA,
+            nunca por nome: CALABRESA sozinha é 18% das ocorrências e 0,8% dos nomes. */}
+        <StatCard tone="sky" label="Ocorrências cobertas"
+          value={t.pctCoberto == null ? 'a apurar' : `${t.pctCoberto.toLocaleString('pt-BR')}%`}
+          sub={`${t.ocorrenciasCobertas.toLocaleString('pt-BR')} de ${t.ocorrenciasTotal.toLocaleString('pt-BR')}`}
+          icon={CircleDollarSign} />
+      </StatCardGrid>
+
       <div className="flex flex-wrap items-center gap-2">
-        <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="buscar sabor…"
+        <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="buscar complemento…"
           className="h-8 w-[220px] rounded-lg border border-slate-300 px-2.5 text-xs" />
         <button onClick={() => setSoPendentes((v) => !v)}
           className={`h-8 rounded-lg px-3 text-xs ${soPendentes ? 'bg-amber-100 font-medium text-amber-800' : 'border border-slate-300 text-slate-600'}`}>
-          só pendentes ({pendentes})
+          só pendentes ({t.pendentes})
         </button>
-        <span className="text-xs text-slate-400">{linhas.length} complementos</span>
+        <span className="text-xs text-slate-400">
+          {linhas.length} complementos
+          {/* ⚠️ o período é o DESTE relatório. O cabeçalho da tela fala do de PRODUTOS, que
+              costuma ser outro dia — sem esta linha, um vira explicação do outro. */}
+          {periodo && ` · importado de ${fmtDia(periodo.de)}${periodo.de !== periodo.ate ? ` a ${fmtDia(periodo.ate)}` : ''}`}
+        </span>
       </div>
 
-      {/* ⚠️ O AVISO DOS NOMES NOS DOIS RELATÓRIOS. O risco é baixar DUAS vezes; a decisão de
-          cada nome é do dono — o sistema mostra, não escolhe nem bloqueia. */}
       {nosDois > 0 && (
         <div className="rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2 text-xs text-amber-800">
           <strong>{nosDois} nome(s)</strong> existem também no relatório de <strong>Produtos</strong> (ex: COCA COLA 2L).
@@ -357,60 +395,97 @@ function PrateleiraComplementos({ id, linhas, onMapear, onRecarregar }: {
         </div>
       )}
 
-      <Card><CardContent className="p-0">
-        <table className="density-normal w-full">
-          <thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-400">
-            <th className="px-3 py-2 font-medium">Complemento (nome do PDV)</th>
-            <th className="px-3 py-2 text-right font-medium">Ocorrências</th>
-            <th className="px-3 py-2 font-medium">Destino</th>
-            <th className="px-3 py-2 font-medium"></th>
-          </tr></thead>
-          <tbody>
-            {visiveis.map((l) => (
-              <tr key={l.nomeSuitable} className="border-t border-slate-50">
-                <td className="px-3 py-0 text-[13px]">
-                  <p className="font-medium text-slate-800">{l.nomeSuitable}</p>
-                  {l.tambemProduto && (
-                    <p className="text-[11px] text-amber-700">
-                      ⚠️ também é PRODUTO{l.destinoComoProduto ? ` (lá: ${l.destinoComoProduto})` : ''}
-                    </p>
-                  )}
-                </td>
-                <td className="px-3 py-0 text-right text-[13px] tabular-nums text-slate-600">{l.ocorrencias.toLocaleString('pt-BR')}</td>
-                <td className="px-3 py-0 text-[13px]">
-                  {l.destino === 'FICHA' ? (
-                    <a href={`/empresas/${id}/estoque/fichas/${l.fichaId}`} className="text-[#185FA5] hover:underline">
-                      {l.nomeFicha ?? 'ficha'} ↗
-                    </a>
-                  ) : l.destino === 'IGNORAR' ? (
-                    <span className="rounded px-1.5 py-0.5 text-[11px] text-slate-500 bg-slate-100">ignorado</span>
-                  ) : (
-                    <span className="rounded px-1.5 py-0.5 text-[11px] text-amber-800 bg-amber-50">sem ficha</span>
-                  )}
-                </td>
-                <td className="px-3 py-0 text-[13px]">
-                  <div className="flex items-center justify-end gap-1.5">
-                    {l.destino !== 'IGNORAR' && (
-                      <button onClick={() => onMapear(l.nomeSuitable, 'IGNORAR')}
-                        className="text-[11px] text-slate-400 hover:text-slate-700">ignorar</button>
-                    )}
-                    {l.destino !== 'SEM_FICHA' && (
-                      <button onClick={() => onMapear(l.nomeSuitable, 'LIMPAR')}
-                        className="text-[11px] text-slate-400 hover:text-slate-700">desfazer</button>
-                    )}
-                    {/* ⚠️ criar a ficha do sabor é gesto do DONO: abre o editor com o nome
-                        pré-preenchido, e ele monta os componentes. Nada nasce montado. */}
-                    {l.destino === 'SEM_FICHA' && (
-                      <a href={`/empresas/${id}/estoque/fichas/nova?tipo=INTERMEDIARIO&nome=${encodeURIComponent(l.nomeSuitable)}&complemento=${encodeURIComponent(l.nomeSuitable)}`}
-                        className="rounded border border-[#185FA5] px-2 py-0.5 text-[11px] text-[#185FA5] hover:bg-blue-50">criar ficha</a>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </CardContent></Card>
+      {secoes.map((sec) => (
+        <Card key={sec.chave}><CardContent className="p-0">
+          <button onClick={() => setAberta((a) => ({ ...a, [sec.chave]: !a[sec.chave] }))}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-slate-50">
+            {aberta[sec.chave] ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+            <span className="text-sm font-semibold text-slate-800">{sec.titulo}</span>
+            <span className="text-[11px] text-slate-400">{sec.explica}</span>
+            <span className="ml-auto text-[11px] text-slate-500">
+              {sec.linhas.length} nome(s) · {sec.ocorrencias.toLocaleString('pt-BR')} ocorrências
+              {sec.pendentes > 0 && <span className="ml-1.5 rounded bg-amber-50 px-1.5 py-0.5 text-amber-800">{sec.pendentes} pendente(s)</span>}
+            </span>
+          </button>
+
+          {aberta[sec.chave] && (
+            sec.visiveis.length === 0 ? (
+              <p className="px-3 pb-3 text-xs text-slate-400">
+                {sec.linhas.length === 0 ? 'nada aqui ainda.' : 'nada nesta seção com o filtro atual.'}
+              </p>
+            ) : (
+              <table className="density-normal w-full">
+                <thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-400">
+                  <th className="px-3 py-2 font-medium">Complemento (nome do PDV)</th>
+                  <th className="px-3 py-2 text-right font-medium">Ocorrências</th>
+                  <th className="px-3 py-2 font-medium">Destino</th>
+                  <th className="px-3 py-2 font-medium"></th>
+                </tr></thead>
+                <tbody>
+                  {sec.visiveis.map((l) => (
+                    <tr key={l.nomeSuitable} className="border-t border-slate-50">
+                      <td className="px-3 py-0 text-[13px]">
+                        <p className="font-medium text-slate-800">
+                          {l.nomeSuitable}
+                          {/* ⭐ marca o que o DONO moveu: a régua do cardápio foi sobrescrita aqui */}
+                          {l.grupoDoDono && <span className="ml-1.5 text-[10px] text-slate-400">movido por você</span>}
+                        </p>
+                        {l.tambemProduto && (
+                          <p className="text-[11px] text-amber-700">
+                            ⚠️ também é PRODUTO{l.destinoComoProduto ? ` (lá: ${l.destinoComoProduto})` : ''}
+                          </p>
+                        )}
+                      </td>
+                      <td className="px-3 py-0 text-right text-[13px] tabular-nums text-slate-600">{l.ocorrencias.toLocaleString('pt-BR')}</td>
+                      <td className="px-3 py-0 text-[13px]">
+                        {l.destino === 'FICHA' ? (
+                          <a href={`/empresas/${id}/estoque/fichas/${l.fichaId}`} className="text-[#185FA5] hover:underline">
+                            {l.nomeFicha ?? 'ficha'} ↗
+                          </a>
+                        ) : l.destino === 'IGNORAR' ? (
+                          <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-500">ignorado</span>
+                        ) : (
+                          <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-800">sem ficha</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-0 text-[13px]">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {/* ⭐ mover de grupo: a régua do cardápio é o padrão, o dono manda */}
+                          {sec.chave !== 'IGNORADOS' && (
+                            <button onClick={() => onMoverGrupo(l.nomeSuitable, l.grupo === 'SABOR' ? 'OUTRO' : 'SABOR')}
+                              title={l.grupo === 'SABOR' ? 'mover para Outros complementos' : 'mover para Sabores de pizza'}
+                              className="text-[11px] text-slate-400 hover:text-slate-700">
+                              {l.grupo === 'SABOR' ? 'não é sabor' : 'é sabor'}
+                            </button>
+                          )}
+                          {l.grupoDoDono && (
+                            <button onClick={() => onMoverGrupo(l.nomeSuitable, 'SEGUIR_CARDAPIO')}
+                              title="voltar a seguir o cardápio"
+                              className="text-[11px] text-slate-300 hover:text-slate-600">seguir cardápio</button>
+                          )}
+                          {l.destino !== 'IGNORAR' && (
+                            <button onClick={() => onMapear(l.nomeSuitable, 'IGNORAR')}
+                              className="text-[11px] text-slate-400 hover:text-slate-700">ignorar</button>
+                          )}
+                          {l.destino !== 'SEM_FICHA' && (
+                            <button onClick={() => onMapear(l.nomeSuitable, 'LIMPAR')}
+                              className="text-[11px] text-slate-400 hover:text-slate-700">desfazer</button>
+                          )}
+                          {l.destino === 'SEM_FICHA' && (
+                            <a href={`/empresas/${id}/estoque/fichas/nova?tipo=INTERMEDIARIO&nome=${encodeURIComponent(l.nomeSuitable)}&complemento=${encodeURIComponent(l.nomeSuitable)}`}
+                              className="rounded border border-[#185FA5] px-2 py-0.5 text-[11px] text-[#185FA5] hover:bg-blue-50">criar ficha</a>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )
+          )}
+        </CardContent></Card>
+      ))}
+
       <button onClick={onRecarregar} className="text-[11px] text-slate-400 hover:text-slate-600">recarregar</button>
     </div>
   )

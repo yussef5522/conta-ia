@@ -13,7 +13,7 @@ import { prisma } from '@/lib/db'
 import { criarFicha } from '../../producao/fichas'
 import { montarPlanoVenda } from '../../vendas/baixa-venda'
 import { upsertVendaMap } from '../../vendas/venda-map'
-import { hubCardapio } from '../hub'
+import { hubCardapio, ehProntoNoCardapio } from '../hub'
 
 // ⚠️ CNPJ ÚNICO na suíte: os arquivos rodam em PARALELO contra o mesmo banco, então dois
 // testes com o mesmo CNPJ derrubam um ao outro no `create` (colidiu com saida.integration).
@@ -205,6 +205,30 @@ describe('honestidade: "a definir" nunca vira número', () => {
     expect(hub.totais.vendasQtd).toBe(hub.linhas.reduce((s, l) => s + l.vendasQtd, 0))
     expect(hub.totais.semDestino).toBe(1)
     expect(hub.totais.produtos).toBe(hub.linhas.length)
+  })
+
+  /**
+   * ⛔⛔ O CARD "PRONTOS" NÃO PODE SER SUBTRAÇÃO — o dono viu **−72** na tela
+   * (80 produtos · 76 sem ficha · 76 sem custo → 80 − 76 − 76). Produto sem ficha é as DUAS
+   * coisas, e conjuntos que se sobrepõem não se contam subtraindo.
+   *
+   * ⚠️ ESTE TESTE RODA O PIPELINE REAL (`hubCardapio`), de propósito: o primeiro guard que
+   * escrevi conferia só o predicado puro e **passava verde com a subtração de volta no
+   * `totais`** — guard que não pega o caso que o motivou dá selo verde de graça.
+   */
+  it('⛔⛔ PRONTOS sai do pipeline real, nunca negativo e igual ao filtro da tela', async () => {
+    const hub = await hubCardapio(companyId, {}, prisma)
+    const { produtos, semDestino, semCusto, prontos } = hub.totais
+
+    // o cenário tem sobreposição de verdade (quem não tem destino também não tem custo)
+    expect(semDestino + semCusto).toBeGreaterThan(produtos - prontos)
+    expect(produtos - semDestino - semCusto).toBeLessThan(prontos) // a conta antiga erra pra baixo
+
+    expect(prontos).toBeGreaterThanOrEqual(0)
+    expect(prontos).toBeLessThanOrEqual(produtos)
+    // ⭐ o número do CARD é exatamente o tamanho da lista que o filtro "prontos" mostra
+    expect(prontos).toBe(hub.linhas.filter(ehProntoNoCardapio).length)
+    expect(prontos).toBe(hub.linhas.filter((l) => (l.status === 'FICHA_OK' || l.status === 'REVENDA') && l.custoUnitario != null).length)
   })
 })
 
