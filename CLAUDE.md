@@ -242,6 +242,30 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⭐⭐⭐ A PRATELEIRA DOS COMPLEMENTOS — O CICLO FECHA NUM GESTO SÓ (02/09/2026)
+
+**O QUE ISTO RESOLVE:** o relatório de PRODUTOS diz que saíram N pizzas grandes e **não diz de que SABOR**. Quem sabe é o Relatório de Complementos — `CALABRESA 1.220` é a maior linha dele. Sem este módulo o estoque não baixa sabor nenhum.
+
+**⭐ A REGRA DE NEGÓCIO (do dono):** **1 ocorrência = 1 explosão da ficha, SEMPRE**, independente do tamanho. Quem garante é o CARDÁPIO — pizza pequena obriga 2 sabores, grande 4 → uma grande inteira de calabresa chega como **4 ocorrências**. ⚠️ NADA de fração por tamanho: o PDV já entregou a conta feita, e refazê-la seria refazer errado.
+
+**⛔ DOIS MAPAS, E NÃO É DUPLICAÇÃO — 25 nomes estão nos DOIS relatórios:** COCA COLA 2L (337 produto · 134 complemento), MAIONESE CASEIRA (283 · 240), MAIONESE C/ ALHO (31 · **78**, o complemento é o dobro), XIS - CALABRESA (32 · 21). Com um mapa só (`@@unique(companyId, nomeSuitable)`) cada nome teria UM destino e **baixaria duas vezes**. ⚠️ E não deu pra pôr `origem` na chave da tabela existente: seria ALTER, e migration de estoque é CREATE-only. Tabela espelho resolve sem ALTER e sem backfill.
+
+**⛔⛔ OS DOIS GUARDS SÃO OPOSTOS DE PROPÓSITO — quem "unificar" quebra um dos dois** (o comentário está nos dois arquivos): o mapa de PRODUTOS **recusa** INTERMEDIARIO (lá o destino é o que o cliente compra; apontar venda pra intermediário faria o xis baixar **carne crua** — bug real de 22/08); o mapa de COMPLEMENTOS **aceita**, porque sabor É intermediário e **baixa o pack pronto**, nunca explode a receita. Saldo negativo sem porção produzida é o comportamento CERTO: é o sinal de "vendeu sem produzir".
+
+**⭐⭐ O CICLO FECHA NA MESMA TRANSAÇÃO — e o motivo é um bug real.** Criar a ficha do sabor PELA prateleira grava o vínculo nome→ficha **dentro do mesmo `$transaction`** (`criarFicha({ mapearComplemento })`). Em 01/09 o gesto era "cria a ficha → volta na aba → aponta à mão" e o passo 2 ficou de fora **3 vezes** — e é um gesto que se repete ~50 vezes. Mandar os dois mapeamentos juntos (produto E complemento) é recusado: sinal de chamada errada.
+
+**⭐ DUPLICAR (padrão do modelo de etiqueta): "cria um NOVO com o conteúdo deste. Nada é sobrescrito."** Os ~50 sabores são FAMÍLIAS (14 variações de FILE, 8 de FRANGO) — do zero são 50 montagens; duplicando, 8 montagens e 42 ajustes. **⛔ A CÓPIA NUNCA NASCE MAPEADA:** o mapa é `@@unique` com UPSERT, então herdar faria a cópia **roubar as baixas da original em silêncio**, sem erro na tela. ⚠️ A decisão mora em **lib pura** (`camposDaCopia`), não num `useState` — a lição do prefill do cardápio: *regra que mora num `useState` é regra que ninguém prova*.
+
+**⚠️ A PORTA DE IMPORT FALTAVA E A TELA PROMETIA ELA:** o vazio da prateleira mandava pra Vendas, e Vendas **não tinha upload de complementos** — a prateleira nasceria vazia pra sempre. Agora é aba própria: **data** (o arquivo NÃO traz o período — quem sabe é o dono na tela do Suitable) → arquivo → **PREVIEW** → confirmar. Pendente **não trava** o import (entra e fica visível pra mapear) e a tela diz que **nada baixou estoque**.
+
+**⚠️ A CONFERÊNCIA É POR CONTAGEM, NUNCA POR DINHEIRO:** 73 das 215 linhas valem **R$ 0,00** (34%) — mas carregam **3.660 das 7.648 ocorrências (48%)**, porque são os sabores inclusos no preço. Um gate por valor descartaria quase METADE das baixas, e justamente as que este import existe pra capturar.
+
+**⛔⛔⛔ LEIA ANTES DE LIGAR A BAIXA** (levantado pelo dono antes de o problema existir, anotado em `import-complementos.ts`): **reimportar um dia JÁ BAIXADO com números diferentes.** Hoje reimport SUBSTITUI e é seguro porque nenhum movimento nasce da linha. Depois da baixa, substituir deixaria **linha nova + movimento velho convivendo em silêncio**. As duas saídas aceitas: **estorno-e-refaz na hora** (o que `montarPlanoReprocesso` já faz pros produtos) **ou** marcar o dia como **"precisa reprocessar" VISÍVEL**. Substituir calado não é opção.
+
+**TESTES:** 22 novos cobrindo o código novo — três destinos, ficha arquivada recusada, LIMPAR reversível, aviso dos 25, ordenação por ocorrências, ficha+vínculo na mesma transação, e a duplicação. ⚠️ Nasceram porque **8.110 verdes sem nenhum cobrindo o código novo é verde dos outros** (palavras do dono). Red-then-green medido nos dois pontos críticos: sem o vínculo na transação e sem o LIMPAR, 1 vermelho em cada.
+
+**EM PROD (deploy 4/4 verde, `fc0c018`):** rotas novas respondendo 401 sem sessão (existem e estão travadas), telas 307. ⚠️ **PENDENTE (é do dono):** importar os dois relatórios pela tela com a DATA real — eu **não invento a data**, e o arquivo não a traz. Depois: apontar os sabores um a um (o conteúdo das fichas é dele; **o sistema não cria ficha de sabor nenhuma automaticamente**).
+
 ## ⛔⛔⛔ SALDO DECLARADO PODE SER DISPONÍVEL, NÃO CONTÁBIL (01/09/2026)
 
 **A REGRA, ditada pelo dono, e vale pra todo banco daqui pra frente:**
@@ -1117,6 +1141,7 @@ contains("pao") → 0      contains("PAO") → 1
 - **Estorno de conferência NÃO EXISTE** — por isso o item "estorno pergunta o que fazer com as contas" da Ponte 1 ficou só com a amarra pronta (`stock_payable_link` responde quando o fluxo existir).
 - ~~3 testes vermelhos de grep~~ **RESOLVIDOS em 01/09** — substituídos por testes que rodam o pipeline e conferem o número (ver a entrada em Pendências). A suíte não tem mais vermelho esperado.
 - EAN cross-fornecedor · `STOCK_CERT_ENC_KEY` no `.env` (→ cofre com mais clientes) · sem cron de retry de evento SEFAZ · recibo sem PDF.
+- **A BAIXA DOS COMPLEMENTOS não está ligada** (02/09) — a prateleira, os dois mapas e o import estão em prod; o que falta é o gesto que gera `BAIXA_VENDA` a partir das ocorrências. ⛔ Antes de ligar, ler o bloco "LEIA ANTES DE LIGAR A BAIXA" em `lib/stock/vendas/import-complementos.ts` (reimport de dia já baixado) e travar o red-then-green combinado com o dono: **1 ocorrência de CALABRESA → CONSUMO de 1 UN de "porção de calabresa" e ZERO movimento na calabresa CRUA**.
 
 ## ⭐⭐⭐ MARCO — FLUXO DE CAIXA: A PERGUNTA DE DONO RESPONDIDA COM RASTRO (25/08/2026)
 
