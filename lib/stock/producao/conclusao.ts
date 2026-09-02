@@ -169,14 +169,37 @@ export interface ConclusaoView {
   criadoEm: string
 }
 
-export async function listConclusoes(companyId: string, ordemId: string, db: PrismaClient = defaultPrisma): Promise<ConclusaoView[]> {
-  const cs = await db.stockProducaoConclusao.findMany({ where: { companyId, ordemId }, orderBy: { criadoEm: 'asc' } })
+/**
+ * As conclusões de um PERÍODO (o painel), com a MESMA projeção do `listConclusoes`.
+ *
+ * ⚠️ EXTRAÇÃO, não conta nova: `listConclusoes` respondia só "as conclusões desta ORDEM".
+ * O painel precisa de "as do período" — mesmo select, mesmo mapeamento, só o `where` muda.
+ * Escrever uma segunda projeção faria a lista da ordem e a do painel divergirem no primeiro
+ * campo novo.
+ */
+export async function conclusoesNoPeriodo(companyId: string, de: Date, ate: Date, db: PrismaClient = defaultPrisma): Promise<(ConclusaoView & { ordemId: string })[]> {
+  const cs = await db.stockProducaoConclusao.findMany({
+    where: { companyId, criadoEm: { gte: de, lte: ate } },
+    orderBy: { criadoEm: 'desc' },
+  })
+  return projetarConclusoes(companyId, cs, db)
+}
+
+/** a projeção COMPARTILHADA (o corpo que era do listConclusoes) */
+async function projetarConclusoes(companyId: string, cs: { id: string; ordemId: string; qtdGerada: number; colaboradorId: string | null; escalaConsumida: number; custoLoteReal: number; custoUnitarioReal: number | null; rendimento: number; validadeAte: Date | null; parcial: boolean; criadoEm: Date }[], db: PrismaClient) {
   const colabIds = [...new Set(cs.map((c) => c.colaboradorId).filter((x): x is string => !!x))]
   const colabs = colabIds.length ? await db.stockColaborador.findMany({ where: { companyId, id: { in: colabIds } }, select: { id: true, nome: true } }) : []
   const nome = new Map(colabs.map((c) => [c.id, c.nome]))
   return cs.map((c) => ({
-    id: c.id, qtdGerada: c.qtdGerada, colaboradorId: c.colaboradorId, colaboradorNome: c.colaboradorId ? nome.get(c.colaboradorId) ?? null : null,
-    escalaConsumida: c.escalaConsumida, custoLoteReal: c.custoLoteReal, custoUnitarioReal: c.custoUnitarioReal, rendimento: c.rendimento,
-    validadeAte: c.validadeAte?.toISOString() ?? null, parcial: c.parcial, criadoEm: c.criadoEm.toISOString(),
+    id: c.id, ordemId: c.ordemId, qtdGerada: c.qtdGerada, colaboradorId: c.colaboradorId,
+    colaboradorNome: c.colaboradorId ? nome.get(c.colaboradorId) ?? null : null,
+    escalaConsumida: c.escalaConsumida, custoLoteReal: c.custoLoteReal, custoUnitarioReal: c.custoUnitarioReal,
+    rendimento: c.rendimento, validadeAte: c.validadeAte?.toISOString() ?? null,
+    parcial: c.parcial, criadoEm: c.criadoEm.toISOString(),
   }))
+}
+
+export async function listConclusoes(companyId: string, ordemId: string, db: PrismaClient = defaultPrisma): Promise<ConclusaoView[]> {
+  const cs = await db.stockProducaoConclusao.findMany({ where: { companyId, ordemId }, orderBy: { criadoEm: 'asc' } })
+  return projetarConclusoes(companyId, cs, db)
 }

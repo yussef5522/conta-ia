@@ -19,6 +19,33 @@ interface Ordem { id: string; nomeProduzido: string; unidadeProduzido: string; e
 interface Sugestao { fichaId: string; itemProduzidoId: string; nome: string; unidade: string; saldo: number; estoqueMin: number; estoqueMax: number | null; faltam: number; escalaSugerida: number | null; rendimentoMedio: number | null }
 interface FichaOpt { id: string; nomeProduzido: string; unidadeProduzido: string; loteBase: number; rendimentoMedio: number | null; rendimentoLotes: number }
 interface Setor { id: string; nome: string; ativo: boolean }
+interface Painel { emAberto: number; valorEmProducao: number; concluidasNoPeriodo: number; valorProduzidoNoPeriodo: number; rendimentoPeriodo: number | null; lotesNaMedia: number; faixaRendimento: string; abertasDeOntem: number }
+type Aberta = Ordem & { deOntem?: boolean }
+interface Conclusao { id: string; ordemId: string; qtdGerada: number; custoUnitarioReal: number | null; custoLoteReal: number; colaboradorNome: string | null; rendimento: number; criadoEm: string }
+
+// ⭐ PALETA APROVADA NO MOCKUP (01/09/2026). Cor SÓ com significado — status, desvio,
+// dinheiro parado. Texto sobre fundo colorido usa o tom escuro da MESMA família, nunca
+// preto puro. Flat: sem sombra, sem gradiente, pesos 400/500.
+const C = {
+  fundo: '#F5F4EF', card: '#FFFFFF', borda: 'rgba(0,0,0,0.08)',
+  primario: '#534AB7', primarioTexto: '#EEEDFE',
+  ambarBg: '#FAEEDA', ambarTx: '#633806', ambarAc: '#854F0B',
+  verdeBg: '#EAF3DE', verdeTx: '#27500A', verdeAc: '#3B6D11',
+  azulBg: '#E6F1FB', azulTx: '#0C447C',
+  coralBg: '#FAECE7', coralTx: '#993C1D',
+  cinzaBg: '#F1EFE8', cinzaTx: '#5F5E5A',
+  vermelhoBg: '#FCEBEB', vermelhoTx: '#791F1F',
+  txt2: '#5F5E5A', txt3: '#888780',
+}
+const PILL: Record<string, { bg: string; tx: string }> = {
+  PLANEJADA: { bg: C.cinzaBg, tx: C.cinzaTx },
+  SEPARADA: { bg: C.azulBg, tx: C.azulTx },
+  EM_PRODUCAO: { bg: C.ambarBg, tx: C.ambarTx },
+  CONCLUIDA: { bg: C.verdeBg, tx: C.verdeTx },
+  CANCELADA: { bg: C.vermelhoBg, tx: C.vermelhoTx },
+}
+const brl = (n: number | null) => (n == null ? '—' : n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }))
+const hhmm = (iso: string) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
 
 const ESTADO: Record<string, { label: string; cls: string }> = {
   PLANEJADA: { label: 'Planejada', cls: 'bg-slate-100 text-slate-600' },
@@ -36,9 +63,27 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
   const [sugestoes, setSugestoes] = useState<Sugestao[]>([])
   const [novo, setNovo] = useState(false)
   const [criando, setCriando] = useState<string | null>(null)
+  const [painel, setPainel] = useState<Painel | null>(null)
+  const [abertas, setAbertas] = useState<Aberta[]>([])
+  const [concluidas, setConcluidas] = useState<Conclusao[]>([])
+  const [periodo, setPeriodo] = useState<'hoje' | 'semana' | 'mes'>('hoje')
+  const [busca, setBusca] = useState('')
+  const [soDeOntem, setSoDeOntem] = useState(false)
 
-  const carregar = () => fetch(`/api/empresas/${id}/estoque/producao/ordens`).then((r) => r.json()).then((j) => { setOrdens(j.ordens ?? []); setSugestoes(j.sugestoes ?? []) }).catch(() => setOrdens(null))
-  useEffect(() => { carregar() }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
+  const janela = (p: typeof periodo) => {
+    const h = new Date(); const d = new Date(h)
+    if (p === 'semana') d.setDate(h.getDate() - 6)
+    if (p === 'mes') d.setDate(h.getDate() - 29)
+    return { de: d.toISOString().slice(0, 10), ate: h.toISOString().slice(0, 10) }
+  }
+  const carregar = () => {
+    const { de, ate } = janela(periodo)
+    return fetch(`/api/empresas/${id}/estoque/producao/ordens?de=${de}&ate=${ate}`).then((r) => r.json()).then((j) => {
+      setOrdens(j.ordens ?? []); setSugestoes(j.sugestoes ?? [])
+      setPainel(j.painel ?? null); setAbertas(j.abertas ?? []); setConcluidas(j.concluidas ?? [])
+    }).catch(() => setOrdens(null))
+  }
+  useEffect(() => { carregar() }, [id, periodo]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const produzirSugestao = async (s: Sugestao) => {
     setCriando(s.fichaId)
@@ -53,12 +98,9 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
   if (ordens === undefined) return <div className="p-6"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
   if (ordens === null) return <div className="p-6 text-sm text-slate-500">Não consegui carregar a produção.</div>
 
-  const abertas = ordens.filter((o) => ['PLANEJADA', 'SEPARADA', 'EM_PRODUCAO'].includes(o.estado))
-  const encerradas = ordens.filter((o) => ['CONCLUIDA', 'CANCELADA'].includes(o.estado))
-  const concluidas = ordens.filter((o) => o.estado === 'CONCLUIDA')
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 -m-4 p-4 lg:-m-6 lg:p-6" style={{ background: C.fundo, minHeight: '100%' }}>
       <div className="flex flex-wrap items-center gap-2.5">
         <Factory className="h-5 w-5 shrink-0 text-[#185FA5]" />
         <h1 className="text-base font-semibold text-slate-900">Produção</h1>
@@ -75,13 +117,49 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
         </div>
       </div>
 
-      {ordens.length > 0 && (
-        <StatCardGrid>
-          <StatCard tone="sky" label="Em aberto" value={String(abertas.length)} sub="ordens andando" icon={PlayCircle} />
-          <StatCard tone="emerald" label="Concluídas" value={String(concluidas.length)} sub="produzidas" icon={CheckCircle2} />
-          <StatCard tone="amber" label="Sugestões" value={String(sugestoes.length)} sub="abaixo do mínimo" icon={TrendingDown} />
-        </StatCardGrid>
+      {/* ⭐ 2. QUATRO CARDS clicáveis (anatomia da Contas a Pagar). Cor só onde significa:
+          âmbar = dinheiro parado; verde/âmbar no rendimento = desvio. */}
+      {painel && (
+        <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+          <CardPainel rotulo="Em aberto" valor={String(painel.emAberto)} sub="ordens andando"
+            ativo={!soDeOntem} onClick={() => setSoDeOntem(false)} />
+          <CardPainel rotulo="Em produção" valor={brl(painel.valorEmProducao)} sub="insumo fora da prateleira"
+            bg={C.ambarBg} tx={C.ambarTx} acento={C.ambarAc} />
+          <CardPainel rotulo="Concluídas" valor={String(painel.concluidasNoPeriodo)}
+            sub={`${brl(painel.valorProduzidoNoPeriodo)} produzidos`} />
+          <CardPainel rotulo="Rendimento"
+            valor={painel.rendimentoPeriodo == null ? 'a apurar' : `${Math.round(painel.rendimentoPeriodo * 100)}%`}
+            sub={painel.lotesNaMedia > 0 ? `de ${painel.lotesNaMedia} ${painel.lotesNaMedia === 1 ? 'lote' : 'lotes'}` : 'nada concluído'}
+            bg={painel.faixaRendimento === 'ABAIXO' ? C.ambarBg : painel.faixaRendimento === 'NORMAL' ? C.verdeBg : undefined}
+            tx={painel.faixaRendimento === 'ABAIXO' ? C.ambarTx : painel.faixaRendimento === 'NORMAL' ? C.verdeTx : undefined} />
+        </div>
       )}
+
+      {/* ⭐ 3. FAIXA condicional — dinheiro que atravessou o dia sem virar produto */}
+      {painel && painel.abertasDeOntem > 0 && (
+        <button onClick={() => setSoDeOntem((v) => !v)}
+          className="flex w-full items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-xs"
+          style={{ background: C.ambarBg, color: C.ambarTx, borderColor: C.borda }}>
+          <span className="font-medium">{painel.abertasDeOntem} ordem{painel.abertasDeOntem > 1 ? 'ns' : ''} de ontem ainda em produção</span>
+          <span style={{ color: C.ambarAc }}>— o insumo saiu da prateleira e não virou produto</span>
+          <span className="ml-auto underline">{soDeOntem ? 'ver todas' : `ver as ${painel.abertasDeOntem}`}</span>
+        </button>
+      )}
+
+      {/* ⭐ 4. CHIPS de período + busca. Período governa SÓ as concluídas. */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        {(['hoje', 'semana', 'mes'] as const).map((p) => (
+          <button key={p} onClick={() => setPeriodo(p)}
+            className="h-8 rounded-full px-3 text-xs"
+            style={periodo === p
+              ? { background: C.primario, color: C.primarioTexto }
+              : { border: `1px solid ${C.borda}`, color: C.txt2, background: C.card }}>
+            {p === 'hoje' ? 'hoje' : p === 'semana' ? 'semana' : 'mês'}
+          </button>
+        ))}
+        <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="buscar receita…"
+          className="h-8 w-[200px] rounded-lg px-2.5 text-xs" style={{ border: `1px solid ${C.borda}`, background: C.card }} />
+      </div>
 
       {novo && <NovaOrdem id={id} onCriada={(ordemId) => { window.location.href = `/empresas/${id}/estoque/producao/${ordemId}` }} onFechar={() => setNovo(false)} />}
 
@@ -111,8 +189,23 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
         </CardContent></Card>
       ) : (
         <>
-          {abertas.length > 0 && <Secao titulo="Em aberto" ordens={abertas} id={id} />}
-          {encerradas.length > 0 && <Secao titulo="Encerradas" ordens={encerradas} id={id} />}
+          {/* ⭐⭐ 5. ABERTAS — A REGRA CENTRAL: ordem aberta NUNCA obedece o período.
+              Planejada/Separada/Em produção aparecem SEMPRE, em qualquer filtro.
+              Trabalho aberto não é histórico — some do filtro e o dono perde o insumo
+              parado de vista. Só a busca e o clique na faixa de ontem as filtram. */}
+          <ListaAbertas id={id}
+            ordens={abertas
+              .filter((o) => !soDeOntem || o.deOntem)
+              .filter((o) => !busca.trim() || o.nomeProduzido.toLowerCase().includes(busca.trim().toLowerCase()))} />
+
+          {/* 6. CONCLUÍDAS — essas SIM obedecem os chips */}
+          <ListaConcluidas id={id} periodo={periodo}
+            itens={concluidas.filter((c) => {
+              if (!busca.trim()) return true
+              const o = ordens.find((x) => x.id === c.ordemId)
+              return (o?.nomeProduzido ?? '').toLowerCase().includes(busca.trim().toLowerCase())
+            })}
+            nomePorOrdem={new Map(ordens.map((o) => [o.id, o.nomeProduzido]))} />
         </>
       )}
     </div>
@@ -249,5 +342,89 @@ function NovaOrdem({ id, onCriada, onFechar }: { id: string; onCriada: (ordemId:
         </>
       )}
     </CardContent></Card>
+  )
+}
+
+/** Card do painel. Flat, cantos 12px, cor só quando significa. */
+function CardPainel({ rotulo, valor, sub, bg, tx, acento, ativo, onClick }: {
+  rotulo: string; valor: string; sub?: string; bg?: string; tx?: string; acento?: string
+  ativo?: boolean; onClick?: () => void
+}) {
+  const Tag = onClick ? 'button' : 'div'
+  return (
+    <Tag onClick={onClick}
+      className={`rounded-xl px-3.5 py-3 text-left ${onClick ? 'transition-colors hover:brightness-[0.99]' : ''}`}
+      style={{ background: bg ?? C.card, border: `1px solid ${ativo === false ? C.borda : C.borda}` }}>
+      <p className="text-[11px]" style={{ color: tx ? acento ?? tx : C.txt3 }}>{rotulo}</p>
+      <p className="mt-0.5 text-lg tabular-nums" style={{ color: tx ?? undefined, fontWeight: 500 }}>{valor}</p>
+      {sub && <p className="mt-0.5 text-[11px]" style={{ color: tx ? acento ?? tx : C.txt2 }}>{sub}</p>}
+    </Tag>
+  )
+}
+
+/** ⭐ ABERTAS — sempre visíveis, com a previsão de saída e a etiqueta coral de ontem. */
+function ListaAbertas({ id, ordens }: { id: string; ordens: Aberta[] }) {
+  if (!ordens.length) return null
+  return (
+    <section>
+      <h2 className="mb-1.5 text-xs" style={{ color: C.txt2, fontWeight: 500 }}>Abertas ({ordens.length})</h2>
+      <div className="overflow-hidden rounded-xl" style={{ background: C.card, border: `1px solid ${C.borda}` }}>
+        {ordens.map((o, i) => {
+          const p = PILL[o.estado] ?? PILL.PLANEJADA
+          return (
+            <a key={o.id} href={`/empresas/${id}/estoque/producao/${o.id}`}
+              className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3.5 py-3 hover:bg-black/[0.02]"
+              style={i > 0 ? { borderTop: `1px solid ${C.borda}` } : undefined}>
+              <span className="rounded-xl px-2 py-0.5 text-[11px]" style={{ background: p.bg, color: p.tx }}>
+                {ESTADO[o.estado]?.label ?? o.estado}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-sm">{o.nomeProduzido}</span>
+              <span className="text-xs tabular-nums" style={{ color: C.txt2 }}>
+                ~{fmtQtd(o.escalaReceitas * o.loteBase)} {o.unidadeProduzido} esperadas
+              </span>
+              {o.deOntem && (
+                <span className="rounded-xl px-2 py-0.5 text-[11px]" style={{ background: C.coralBg, color: C.coralTx }}>
+                  desde ontem {fmtDia(o.dataProducao)}
+                </span>
+              )}
+              <ChevronRight className="h-3.5 w-3.5 shrink-0" style={{ color: C.txt3 }} />
+            </a>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
+/** CONCLUÍDAS do período — % do rendimento colorido pelas faixas do avaliarVariacao. */
+function ListaConcluidas({ id, itens, periodo, nomePorOrdem }: {
+  id: string; itens: Conclusao[]; periodo: string; nomePorOrdem: Map<string, string>
+}) {
+  const rotulo = periodo === 'hoje' ? 'hoje' : periodo === 'semana' ? 'últimos 7 dias' : 'últimos 30 dias'
+  return (
+    <section>
+      <h2 className="mb-1.5 text-xs" style={{ color: C.txt2, fontWeight: 500 }}>Concluídas · {rotulo} ({itens.length})</h2>
+      {itens.length === 0 ? (
+        <div className="rounded-xl px-3.5 py-6 text-center text-xs" style={{ background: C.card, border: `1px solid ${C.borda}`, color: C.txt3 }}>
+          Nada concluído {rotulo}. As ordens abertas continuam acima.
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-xl" style={{ background: C.card, border: `1px solid ${C.borda}` }}>
+          {itens.map((c, i) => (
+            <a key={c.id} href={`/empresas/${id}/estoque/producao/${c.ordemId}`}
+              className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3.5 py-3 hover:bg-black/[0.02]"
+              style={i > 0 ? { borderTop: `1px solid ${C.borda}` } : undefined}>
+              <span className="rounded-xl px-2 py-0.5 text-[11px]" style={{ background: C.verdeBg, color: C.verdeTx }}>Concluída</span>
+              <span className="min-w-0 flex-1 truncate text-sm">{nomePorOrdem.get(c.ordemId) ?? '—'}</span>
+              <span className="text-xs tabular-nums" style={{ color: C.txt2 }}>{fmtQtd(c.qtdGerada)} un</span>
+              <span className="text-xs tabular-nums" style={{ color: C.txt2 }}>{brl(c.custoUnitarioReal)}/un</span>
+              {c.colaboradorNome && <span className="text-xs" style={{ color: C.txt3 }}>{c.colaboradorNome}</span>}
+              <span className="text-xs tabular-nums" style={{ color: C.txt3 }}>{hhmm(c.criadoEm)}</span>
+              <ChevronRight className="h-3.5 w-3.5 shrink-0" style={{ color: C.txt3 }} />
+            </a>
+          ))}
+        </div>
+      )}
+    </section>
   )
 }

@@ -6,6 +6,8 @@ import { prisma } from '@/lib/db'
 import { guardStock } from '@/lib/stock/require-stock'
 import { listOrdens, criarOrdem, OrdemError } from '@/lib/stock/producao/ordens'
 import { sugestoesDeProducao } from '@/lib/stock/producao/sugestao-cardapio'
+import { cardsDoPainel, ESTADOS_ABERTOS, ehDeOntem } from '@/lib/stock/producao/painel-producao'
+import { conclusoesNoPeriodo } from '@/lib/stock/producao/conclusao'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -14,8 +16,28 @@ export async function GET(request: NextRequest, { params }: Params) {
   const { id: companyId } = await params
   const a = await guardStock(request, companyId, 'stock.view')
   if (a.erro) return a.erro
-  const [ordens, sugestoes] = await Promise.all([listOrdens(companyId), sugestoesDeProducao(companyId, prisma)])
-  return NextResponse.json({ ordens, sugestoes })
+  // ⭐ PERÍODO só governa as CONCLUÍDAS. Ordem aberta aparece SEMPRE — trabalho aberto
+  // não é histórico (a regra central do redesenho).
+  const sp = request.nextUrl.searchParams
+  const agora = new Date()
+  const hoje0 = new Date(Date.UTC(agora.getUTCFullYear(), agora.getUTCMonth(), agora.getUTCDate()))
+  const de = sp.get('de') ? new Date(`${sp.get('de')}T00:00:00.000Z`) : hoje0
+  const ate = sp.get('ate') ? new Date(`${sp.get('ate')}T23:59:59.999Z`) : new Date(hoje0.getTime() + 86_399_999)
+
+  const [ordens, sugestoes, painel, concluidas] = await Promise.all([
+    listOrdens(companyId),
+    sugestoesDeProducao(companyId, prisma),
+    cardsDoPainel(companyId, { de, ate }, agora, prisma),
+    conclusoesNoPeriodo(companyId, de, ate, prisma),
+  ])
+  const abertas = ordens
+    .filter((o) => (ESTADOS_ABERTOS as readonly string[]).includes(o.estado))
+    .map((o) => ({ ...o, deOntem: ehDeOntem(new Date(o.dataProducao), agora) }))
+
+  return NextResponse.json({
+    ordens, sugestoes, painel, abertas, concluidas,
+    periodo: { de: de.toISOString().slice(0, 10), ate: ate.toISOString().slice(0, 10) },
+  })
 }
 
 const criarSchema = z.object({

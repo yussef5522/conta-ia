@@ -5,6 +5,7 @@
 import type { PrismaClient, Prisma } from '@prisma/client'
 import type { StockInvariantFail } from '../stock-invariants'
 import { rendimentoMedioDaFicha } from './conclusao'
+import { emProducaoPorOrdem } from './em-producao'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -34,6 +35,9 @@ export async function checkProducaoInvariants(db: Db, now: Date = new Date()): P
       oi.set(m.itemId, cur); porOrdemItem.set(m.receiptId!, oi)
     }
 
+    // ⭐ fonte única do em-produção (a mesma que a tela usa)
+    const emProducao = emProducaoPorOrdem(movs as never)
+
     for (const o of ordens) {
       const itens = porOrdemItem.get(o.id)
       // P1 — ordem CONCLUIDA: Σ|SEPARACAO| == Σ|CONSUMO| + Σ|DEVOLUCAO| por item
@@ -45,9 +49,12 @@ export async function checkProducaoInvariants(db: Db, now: Date = new Date()): P
         }
       }
       // P4 — ordem ENCERRADA com em-produção sobrando (vazamento)
-      if ((o.estado === 'CONCLUIDA' || o.estado === 'CANCELADA') && itens) {
-        for (const [itemId, v] of itens) {
-          const emProd = round2(v.sep - v.con - v.dev)
+      // ⭐ A CONTA SAIU DAQUI (01/09): `sep − con − dev` estava escrita inline e também em
+      // `separadoPorItem`. Agora as duas — e o card "Em produção" do painel — leem
+      // `emProducaoPorOrdem`. O juiz e a tela não têm como discordar sobre o que está
+      // parado na produção.
+      if ((o.estado === 'CONCLUIDA' || o.estado === 'CANCELADA')) {
+        for (const [itemId, emProd] of emProducao.get(o.id) ?? new Map<string, number>()) {
           if (emProd > 0.01) F('P4', o.companyId, `ordem ${o.id} (${o.estado}) tem ${emProd} do item ${itemId} preso em-produção — não devolvido nem consumido.`)
         }
       }
