@@ -43,6 +43,20 @@ export interface CriarFichaInput extends FichaBodyInput {
    * DUPLICADA no mesmo minuto** — a assinatura de "não apareceu, tentei de novo".
    */
   mapearNomeSuitable?: string | null
+  /**
+   * ⭐⭐ O NOME DO COMPLEMENTO que esta ficha atende (02/09/2026) — mesmo mecanismo do
+   * `mapearNomeSuitable`, no mapa dos COMPLEMENTOS.
+   *
+   * ⛔ EXISTE PORQUE O BUG JÁ ACONTECEU, no mesmo lugar: em 01/09 o dono montou 3 fichas
+   * pelo cardápio e as 3 ficaram ÓRFÃS — gravaram completas e nada as ligava ao nome do
+   * PDV, então a tela voltava "sem ficha" e ele achava que não tinha salvo (e a PIZZA saiu
+   * DUPLICADA). Aqui o gesto vai se repetir **~50 vezes** (um sabor por vez): sem o vínculo
+   * na mesma transação, seriam ~50 chances do mesmo erro.
+   *
+   * ⚠️ MUTUAMENTE EXCLUSIVO com `mapearNomeSuitable`: produto aponta pra PRODUTO_FINAL,
+   * complemento pra INTERMEDIARIO. Mandar os dois é sinal de chamada errada.
+   */
+  mapearComplemento?: string | null
 }
 
 export class FichaError extends Error {}
@@ -101,6 +115,18 @@ export async function criarFicha(input: CriarFichaInput, db: PrismaClient = defa
     // é a regra do módulo (a mesma das marcações do import: "ou grava tudo, ou nada grava").
     // ⚠️ `upsertVendaMap` não serve aqui porque abre transação própria; a validação dos 3
     // níveis que ele faz é redundante neste caminho (a ficha é PRODUTO_FINAL por construção).
+    if (input.mapearNomeSuitable && input.mapearComplemento) {
+      throw new FichaError('Uma ficha não pode ser mapeada como produto e como complemento no mesmo gesto.')
+    }
+    // ⭐ o vínculo do COMPLEMENTO, na MESMA transação — ficha e vínculo entram juntos ou
+    // não entram. É a correção do bug das 3 fichas órfãs, aplicada antes de ele repetir.
+    if (input.mapearComplemento) {
+      await tx.stockVendaComplementoMap.upsert({
+        where: { companyId_nomeSuitable: { companyId: input.companyId, nomeSuitable: input.mapearComplemento } },
+        create: { companyId: input.companyId, nomeSuitable: input.mapearComplemento, alvoTipo: 'FICHA', fichaId: ficha.id, criadoPorId: input.userId ?? null },
+        update: { alvoTipo: 'FICHA', fichaId: ficha.id },
+      })
+    }
     if (input.mapearNomeSuitable && input.tipoProduto === 'PRODUTO_FINAL') {
       await tx.stockVendaProdutoMap.upsert({
         where: { companyId_nomeSuitable: { companyId: input.companyId, nomeSuitable: input.mapearNomeSuitable } },
@@ -109,7 +135,7 @@ export async function criarFicha(input: CriarFichaInput, db: PrismaClient = defa
       })
     }
 
-    return { fichaId: ficha.id, itemProduzidoId: produzido.id, vinculadoAoPdv: !!input.mapearNomeSuitable }
+    return { fichaId: ficha.id, itemProduzidoId: produzido.id, vinculadoAoPdv: !!input.mapearNomeSuitable || !!input.mapearComplemento }
   })
 }
 

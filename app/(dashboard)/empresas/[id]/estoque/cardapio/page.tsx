@@ -29,6 +29,14 @@ interface Linha {
   precoCardapio: number | null; precoPraticado: number | null
   precoUsado: number | null; precoOrigem: 'praticado' | 'cardapio' | null; margem: number | null
 }
+/** uma linha da prateleira de complementos */
+interface Comp {
+  nomeSuitable: string; ocorrencias: number
+  destino: 'SEM_FICHA' | 'FICHA' | 'IGNORAR'
+  fichaId: string | null; nomeFicha: string | null
+  tambemProduto: boolean; destinoComoProduto: string | null
+}
+
 interface Hub {
   linhas: Linha[]
   periodo: { desde: string | null; ate: string | null; dias: number | null }
@@ -52,6 +60,26 @@ type Col = 'nome' | 'vendas' | 'custo' | 'preco' | 'margem'
 export default function CardapioHubPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const [hub, setHub] = useState<Hub | null | undefined>(undefined)
+  // ⭐ ABA COMPLEMENTOS (02/09): os sabores vivem em OUTRO relatório do PDV. Sem eles o
+  // estoque não baixa sabor nenhum — o relatório de produtos diz que saíram N pizzas
+  // grandes, mas não diz de QUE sabor.
+  const [aba, setAba] = useState<'produtos' | 'complementos'>('produtos')
+  const [prateleira, setPrateleira] = useState<Comp[] | null>(null)
+
+  const carregarPrateleira = () =>
+    fetch(`/api/empresas/${id}/estoque/vendas/complementos`)
+      .then((r) => r.json()).then((j) => setPrateleira(j.prateleira ?? []))
+      .catch(() => setPrateleira([]))
+
+  /** ⚠️ mapear é `stock.manage` — a operadora vê a aba, mas o destino é decisão do dono. */
+  const mapear = async (nome: string, destino: 'IGNORAR' | 'LIMPAR' | 'FICHA', fichaId?: string) => {
+    const r = await fetch(`/api/empresas/${id}/estoque/vendas/complementos/mapear`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nomeSuitable: nome, destino, fichaId: fichaId ?? null }),
+    })
+    if (r.ok) carregarPrateleira()
+    return r.ok
+  }
   const [busca, setBusca] = useState('')
   const [filtro, setFiltro] = useState<Filtro>('todos')
   const { col, dir, alternar, ordenar } = useSort<Col>('vendas', 'desc')
@@ -103,6 +131,24 @@ export default function CardapioHubPage({ params }: { params: Promise<{ id: stri
           </a>
         </div>
       </div>
+
+      {/* ⭐ AS DUAS ABAS. Produtos = o que o cliente compra; Complementos = os sabores que
+          ele escolhe dentro do produto. Relatórios diferentes do PDV, mapeamentos
+          separados (25 nomes aparecem nos dois — com um mapa só, baixariam 2×). */}
+      <div className="flex items-center gap-1.5">
+        {(['produtos', 'complementos'] as const).map((t) => (
+          <button key={t} onClick={() => { setAba(t); if (t === 'complementos' && prateleira === null) carregarPrateleira() }}
+            className={`h-8 rounded-lg px-3 text-xs ${aba === t ? 'bg-[#185FA5] font-medium text-white' : 'border border-slate-300 text-slate-600 hover:bg-slate-50'}`}>
+            {t === 'produtos' ? 'Produtos' : 'Complementos (sabores)'}
+          </button>
+        ))}
+      </div>
+
+      {aba === 'complementos' && (
+        <PrateleiraComplementos id={id} linhas={prateleira} onMapear={mapear} onRecarregar={carregarPrateleira} />
+      )}
+
+      {aba === 'produtos' && <>
 
       {/* ONBOARDING — o campeão de venda sem ficha. Some sozinho quando não houver. */}
       {hub.campeaoSemFicha && (
@@ -245,6 +291,127 @@ export default function CardapioHubPage({ params }: { params: Promise<{ id: stri
           )}
         </>
       )}
+      </>}
+    </div>
+  )
+}
+
+/**
+ * ⭐⭐ A PRATELEIRA DOS COMPLEMENTOS — o dono preenche, o sistema não inventa.
+ *
+ * ⚠️ REGRA DELE, e ela governa esta tela: *"você constrói a prateleira; o conteúdo é meu"*.
+ * Nenhuma ficha de sabor nasce automaticamente — ficha vazia/pendente, nunca inventada.
+ *
+ * ⭐ Ordenada por OCORRÊNCIAS DESC e isso não é estética: das 215 linhas, **100 têm 10+
+ * ocorrências e carregam 7.269 das 7.648** (95%). CALABRESA (1.220) primeiro faz o dono
+ * mapear o que importa antes da cauda longa.
+ */
+function PrateleiraComplementos({ id, linhas, onMapear, onRecarregar }: {
+  id: string
+  linhas: Comp[] | null
+  onMapear: (nome: string, destino: 'IGNORAR' | 'LIMPAR' | 'FICHA', fichaId?: string) => Promise<boolean>
+  onRecarregar: () => void
+}) {
+  const [busca, setBusca] = useState('')
+  const [soPendentes, setSoPendentes] = useState(false)
+
+  if (linhas === null) return <div className="p-6"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
+  if (!linhas.length) {
+    return (
+      <Card><CardContent className="flex flex-col items-center gap-2 p-10 text-center">
+        <UtensilsCrossed className="h-10 w-10 text-slate-300" />
+        <p className="text-sm font-medium text-slate-700">Nenhum complemento importado ainda.</p>
+        <p className="max-w-md text-xs text-slate-500">
+          Suba o <strong>Relatório de Complementos</strong> do PDV em Vendas do dia. É dele que saem
+          os sabores — sem ele o estoque não baixa sabor nenhum.
+        </p>
+        <a href={`/empresas/${id}/estoque/vendas`} className="mt-1 text-xs text-[#185FA5] hover:underline">ir pra Vendas do dia →</a>
+      </CardContent></Card>
+    )
+  }
+
+  const visiveis = linhas
+    .filter((l) => !soPendentes || l.destino === 'SEM_FICHA')
+    .filter((l) => !busca.trim() || l.nomeSuitable.toLowerCase().includes(busca.trim().toLowerCase()))
+  const pendentes = linhas.filter((l) => l.destino === 'SEM_FICHA').length
+  const nosDois = linhas.filter((l) => l.tambemProduto).length
+
+  return (
+    <div className="space-y-2.5">
+      <div className="flex flex-wrap items-center gap-2">
+        <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="buscar sabor…"
+          className="h-8 w-[220px] rounded-lg border border-slate-300 px-2.5 text-xs" />
+        <button onClick={() => setSoPendentes((v) => !v)}
+          className={`h-8 rounded-lg px-3 text-xs ${soPendentes ? 'bg-amber-100 font-medium text-amber-800' : 'border border-slate-300 text-slate-600'}`}>
+          só pendentes ({pendentes})
+        </button>
+        <span className="text-xs text-slate-400">{linhas.length} complementos</span>
+      </div>
+
+      {/* ⚠️ O AVISO DOS NOMES NOS DOIS RELATÓRIOS. O risco é baixar DUAS vezes; a decisão de
+          cada nome é do dono — o sistema mostra, não escolhe nem bloqueia. */}
+      {nosDois > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2 text-xs text-amber-800">
+          <strong>{nosDois} nome(s)</strong> existem também no relatório de <strong>Produtos</strong> (ex: COCA COLA 2L).
+          Cada relatório tem destino próprio — se os dois baixarem, o estoque sai duas vezes. Confira linha a linha abaixo.
+        </div>
+      )}
+
+      <Card><CardContent className="p-0">
+        <table className="density-normal w-full">
+          <thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-400">
+            <th className="px-3 py-2 font-medium">Complemento (nome do PDV)</th>
+            <th className="px-3 py-2 text-right font-medium">Ocorrências</th>
+            <th className="px-3 py-2 font-medium">Destino</th>
+            <th className="px-3 py-2 font-medium"></th>
+          </tr></thead>
+          <tbody>
+            {visiveis.map((l) => (
+              <tr key={l.nomeSuitable} className="border-t border-slate-50">
+                <td className="px-3 py-0 text-[13px]">
+                  <p className="font-medium text-slate-800">{l.nomeSuitable}</p>
+                  {l.tambemProduto && (
+                    <p className="text-[11px] text-amber-700">
+                      ⚠️ também é PRODUTO{l.destinoComoProduto ? ` (lá: ${l.destinoComoProduto})` : ''}
+                    </p>
+                  )}
+                </td>
+                <td className="px-3 py-0 text-right text-[13px] tabular-nums text-slate-600">{l.ocorrencias.toLocaleString('pt-BR')}</td>
+                <td className="px-3 py-0 text-[13px]">
+                  {l.destino === 'FICHA' ? (
+                    <a href={`/empresas/${id}/estoque/fichas/${l.fichaId}`} className="text-[#185FA5] hover:underline">
+                      {l.nomeFicha ?? 'ficha'} ↗
+                    </a>
+                  ) : l.destino === 'IGNORAR' ? (
+                    <span className="rounded px-1.5 py-0.5 text-[11px] text-slate-500 bg-slate-100">ignorado</span>
+                  ) : (
+                    <span className="rounded px-1.5 py-0.5 text-[11px] text-amber-800 bg-amber-50">sem ficha</span>
+                  )}
+                </td>
+                <td className="px-3 py-0 text-[13px]">
+                  <div className="flex items-center justify-end gap-1.5">
+                    {l.destino !== 'IGNORAR' && (
+                      <button onClick={() => onMapear(l.nomeSuitable, 'IGNORAR')}
+                        className="text-[11px] text-slate-400 hover:text-slate-700">ignorar</button>
+                    )}
+                    {l.destino !== 'SEM_FICHA' && (
+                      <button onClick={() => onMapear(l.nomeSuitable, 'LIMPAR')}
+                        className="text-[11px] text-slate-400 hover:text-slate-700">desfazer</button>
+                    )}
+                    {/* ⚠️ criar a ficha do sabor é gesto do DONO: abre o editor com o nome
+                        pré-preenchido, e ele monta os componentes. Nada nasce montado. */}
+                    {l.destino === 'SEM_FICHA' && (
+                      <a href={`/empresas/${id}/estoque/fichas/nova?tipo=INTERMEDIARIO&nome=${encodeURIComponent(l.nomeSuitable)}&complemento=${encodeURIComponent(l.nomeSuitable)}`}
+                        className="rounded border border-[#185FA5] px-2 py-0.5 text-[11px] text-[#185FA5] hover:bg-blue-50">criar ficha</a>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </CardContent></Card>
+      <button onClick={onRecarregar} className="text-[11px] text-slate-400 hover:text-slate-600">recarregar</button>
     </div>
   )
 }

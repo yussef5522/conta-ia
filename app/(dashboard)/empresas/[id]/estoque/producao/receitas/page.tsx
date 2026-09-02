@@ -10,7 +10,7 @@
 
 import { useEffect, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
-import { ChefHat, Loader2, Plus, Factory, ChevronRight, ArrowLeft } from 'lucide-react'
+import { ChefHat, Loader2, Plus, Factory, ChevronRight, ArrowLeft, Copy } from 'lucide-react'
 import { ehReceitaDeProducao } from '@/lib/stock/producao/tipo-receita'
 
 interface Ficha {
@@ -93,6 +93,14 @@ export default function ReceitasProducaoPage({ params }: { params: Promise<{ id:
                 className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50">
                 <Factory className="h-3.5 w-3.5" /> produzir
               </button>
+              {/* ⭐ DUPLICAR — o gesto das FAMÍLIAS de sabor (14 variações de FILE, 8 de FRANGO).
+                  ⛔ a cópia vem com os componentes e SEM o vínculo com o PDV: herdar o
+                  mapeamento faria a ficha nova roubar as baixas da original, em silêncio. */}
+              <a href={`/empresas/${id}/estoque/producao/receitas/nova?duplicarDe=${f.id}`}
+                title="criar uma nova receita com o conteúdo desta"
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50">
+                <Copy className="h-3.5 w-3.5" /> duplicar
+              </a>
               <a href={`/empresas/${id}/estoque/producao/receitas/${f.id}`} className="text-slate-300 hover:text-slate-500"><ChevronRight className="h-4 w-4" /></a>
             </CardContent></Card>
           ))}

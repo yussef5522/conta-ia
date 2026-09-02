@@ -24,6 +24,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Loader2, Plus, Trash2, Search, Save, AlertTriangle, ChevronDown, ChevronRight, BookOpen, ExternalLink } from 'lucide-react'
 import { BuscaItem, type ItemBusca } from './busca-item'
 import { valoresIniciaisDaFicha, paraCampo, faixaMargem, type LinhaParaFicha } from '@/lib/stock/cardapio/valores-iniciais'
+import { camposDaCopia } from '@/lib/stock/producao/duplicar-ficha'
 import { sanitizarQtd, valorQtd, textoQtd, descreverQtd, validarQtd } from '@/lib/stock/quantidade'
 import { useDismissivel } from '@/lib/hooks/use-dismissivel'
 
@@ -39,7 +40,7 @@ const parseNum = (s: string) => { const t = (s ?? '').trim().replace(',', '.'); 
 
 const CORES_MARGEM = { ruim: 'text-rose-600', atencao: 'text-amber-600', boa: 'text-emerald-600', indefinida: 'text-slate-400' } as const
 
-export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha, aoSalvar, mapearNomeSuitable}: {
+export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha, aoSalvar, mapearNomeSuitable, mapearComplemento, duplicarDe}: {
   companyId: string
   fichaId?: string
   /** o mundo de origem trava o tipo: cardápio = PRODUTO_FINAL, produção = INTERMEDIARIO */
@@ -50,10 +51,31 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
   linha?: LinhaParaFicha | null
   /** chamado depois de salvar (a tela do produto recarrega em vez de navegar) */
   aoSalvar?: () => void
-; mapearNomeSuitable?: string}) {
+; mapearNomeSuitable?: string; mapearComplemento?: string; duplicarDe?: string}) {
   const editando = !!fichaId
   const qp = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
   const voltar = voltarPara ?? `/empresas/${companyId}/estoque/fichas`
+
+  // ⭐ O CICLO DO COMPLEMENTO FECHA AQUI (02/09): a prateleira manda
+  // `?complemento=CALABRESA`, e o vínculo nome→ficha entra na MESMA transação da criação.
+  // ⚠️ Sem isto o gesto seria: cria a ficha → volta na aba → aponta à mão. Dois passos,
+  // ~50 vezes, e o passo 2 é justamente o que ficou de fora nas 3 fichas órfãs de 01/09.
+  const complementoDaUrl = mapearComplemento ?? qp?.get('complemento') ?? undefined
+  /**
+   * ⭐⭐ DUPLICAR (02/09) — padrão do modelo de etiqueta: *"criar um NOVO com o conteúdo
+   * deste. Nada é sobrescrito."*
+   *
+   * ⚠️ POR QUE ISTO EXISTE: os ~50 sabores se agrupam em FAMÍLIAS (14 variações de FILE,
+   * 8 de FRANGO), onde cada variação é "a mesma porção + um acabamento diferente". Montar
+   * 50 fichas do zero seria 50 montagens; duplicando, é 8 montagens + 42 ajustes de um
+   * componente.
+   *
+   * ⛔ E A CÓPIA NUNCA NASCE MAPEADA (regra do dono): ela vem com os componentes, sem o
+   * vínculo com o PDV. Herdar o mapeamento faria a ficha nova roubar as baixas da original
+   * — em silêncio, porque o mapa é `@@unique(companyId, nomeSuitable)` e o upsert
+   * sobrescreveria.
+   */
+  const duplicarDaUrl = duplicarDe ?? qp?.get('duplicarDe') ?? undefined
 
   const tipoInicial: 'INTERMEDIARIO' | 'PRODUTO_FINAL' =
     tipoTravado ?? (!editando && qp?.get('tipo') === 'PRODUTO_FINAL' ? 'PRODUTO_FINAL' : 'INTERMEDIARIO')
@@ -64,7 +86,7 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
     : null)
   const ini = valoresIniciaisDaFicha(tipoInicial, editando ? null : linhaPrefill)
 
-  const [carregando, setCarregando] = useState(editando)
+  const [carregando, setCarregando] = useState(editando || !!duplicarDaUrl)
   const [nomeProduzido, setNomeProduzido] = useState(ini.nome)
   const [unidadeProduzido, setUnidadeProduzido] = useState<'KG' | 'UN' | 'LT'>('UN')
   const [tipoProduto, setTipoProduto] = useState(tipoInicial)
@@ -96,20 +118,27 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
 
   useEffect(() => {
     fetch(`/api/empresas/${companyId}/estoque/setores`).then((r) => r.json()).then((j) => setSetores(j.setores ?? [])).catch(() => {})
-    if (fichaId) {
-      fetch(`/api/empresas/${companyId}/estoque/fichas/${fichaId}`).then((r) => r.json()).then((j) => {
+    // ⚠️ EDITAR e DUPLICAR carregam a MESMA ficha pelo MESMO caminho — o que muda é o que
+    // se ADOTA dela. Dois fetchs separados divergiriam no dia em que a ficha ganhar um campo.
+    const origem = fichaId ?? duplicarDaUrl
+    if (origem) {
+      const copia = !fichaId
+      fetch(`/api/empresas/${companyId}/estoque/fichas/${origem}`).then((r) => r.json()).then((j) => {
         const f = j.ficha
-        if (!f) { setErro('Ficha não encontrada.'); return }
-        setNomeProduzido(f.nomeProduzido); setUnidadeProduzido(f.unidadeProduzido); setTipoProduto(f.tipoProduto)
-        setSetorId(f.setorId ?? ''); setValorVenda(paraCampo(f.valorVenda))
-        setLoteBase(String(f.loteBase)); setUnidadeLoteBase(f.unidadeLoteBase)
-        setValidadeDias(f.validadeDias != null ? String(f.validadeDias) : ''); setTempoPreparoMin(f.tempoPreparoMin != null ? String(f.tempoPreparoMin) : '')
-        setModoPreparo(f.modoPreparo ?? '')
+        if (!f) { setErro(copia ? 'A ficha que você quer duplicar não foi encontrada.' : 'Ficha não encontrada.'); return }
+        // ⭐ a decisão do que a cópia herda vem PRONTA da lib pura (testada) — o componente ecoa.
+        const v = copia ? camposDaCopia(f, nomeProduzido) : f
+        setNomeProduzido(v.nomeProduzido)
+        setUnidadeProduzido(v.unidadeProduzido); setTipoProduto(v.tipoProduto)
+        setSetorId(v.setorId ?? ''); setValorVenda(paraCampo(v.valorVenda))
+        setLoteBase(String(v.loteBase)); setUnidadeLoteBase(v.unidadeLoteBase)
+        setValidadeDias(v.validadeDias != null ? String(v.validadeDias) : ''); setTempoPreparoMin(v.tempoPreparoMin != null ? String(v.tempoPreparoMin) : '')
+        setModoPreparo(v.modoPreparo ?? '')
         if (f.modoPreparo || f.tempoPreparoMin != null) setCookbookAberto(true)
         setComps(f.componentes.map((c: { itemId: string; nome: string; unidade: string; qtdPlanejada: number; custoMedio: number | null; unidadeControle: string }) => ({ itemId: c.itemId, nome: c.nome, unidade: c.unidade, qtdTexto: textoQtd(c.qtdPlanejada), custoMedio: c.custoMedio, unidadeControle: c.unidadeControle })))
       }).finally(() => setCarregando(false))
     }
-  }, [companyId, fichaId])
+  }, [companyId, fichaId, duplicarDaUrl])
 
   // ⭐ CUSTO AO VIVO. Produto final MONTA na venda → custo por unidade = Σ componentes ÷ lote
   // (que é 1). Intermediário rende em lote e o rendimento é MEDIDO → por-unidade "a apurar".
@@ -166,14 +195,14 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
     try {
       const r = editando
         ? await fetch(`/api/empresas/${companyId}/estoque/fichas/${fichaId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, nomeProduzido: nomeProduzido.trim(), setorId: setorId || null, valorVenda: vv }) })
-        : await fetch(`/api/empresas/${companyId}/estoque/fichas`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, nomeProduzido: nomeProduzido.trim(), unidadeProduzido, tipoProduto, setorId: setorId || null, valorVenda: vv, mapearNomeSuitable: mapearNomeSuitable ?? null }) })
+        : await fetch(`/api/empresas/${companyId}/estoque/fichas`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, nomeProduzido: nomeProduzido.trim(), unidadeProduzido, tipoProduto, setorId: setorId || null, valorVenda: vv, mapearNomeSuitable: duplicarDaUrl ? null : (mapearNomeSuitable ?? null), mapearComplemento: duplicarDaUrl ? null : (complementoDaUrl ?? null) }) })
       const j = await r.json().catch(() => null)
       if (!r.ok) { setErro(j?.erro ?? 'Não consegui salvar.'); return }
       // ⭐ ITEM 5 (01/09): gravação INCOMPLETA nunca mais volta calada. Se a tela pediu o
       // vínculo com o PDV e ele não veio, o dono fica sabendo NA HORA — foi o silêncio que
       // fez ele salvar de novo e duplicar a PIZZA.
-      if (mapearNomeSuitable && !editando && j?.vinculadoAoPdv === false) {
-        setErro(`Ficha salva, mas NÃO foi vinculada ao produto “${mapearNomeSuitable}” do PDV. ` +
+      if (!duplicarDaUrl && (mapearNomeSuitable || complementoDaUrl) && !editando && j?.vinculadoAoPdv === false) {
+        setErro(`Ficha salva, mas NÃO foi vinculada a “${mapearNomeSuitable ?? complementoDaUrl}” do PDV. ` +
           'Ela existe em Fichas técnicas; vincule pelo cardápio antes de vender.')
         return
       }
