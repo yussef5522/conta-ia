@@ -89,16 +89,38 @@ export async function GET(_request: NextRequest, { params }: Params) {
           const debit = base.type === 'DEBIT' ? baseTx : cTx
           const credit = base.type === 'DEBIT' ? cTx : baseTx
           const cls = classifyTransferPair(debit, credit, { refs, valorComum, matchOwnerName: true })
-          if (!cls || !cls.autoSuggest) return null
-          return { id: c.id, description: c.description, amount: c.amount, type: c.type, date: c.date, bankAccount: c.bankAccount, layer: cls.layer, confidence: cls.confidence, evidences: cls.evidences }
+          if (!cls) return null
+          return { id: c.id, description: c.description, amount: c.amount, type: c.type, date: c.date, bankAccount: c.bankAccount, layer: cls.layer, confidence: cls.confidence, evidences: cls.evidences, autoSuggest: cls.autoSuggest }
         })
         .filter((x): x is NonNullable<typeof x> => x !== null)
         .sort((a, b) => b.confidence - a.confidence)
-        .slice(0, RESULT_LIMIT)
+
+      // ⭐⭐ A CAMADA 3 SÓ APARECE QUANDO NÃO HÁ CANDIDATA BOA (01/09/2026).
+      //
+      // ⛔ O QUE MOTIVOU: as 3 transferências Banrisul→Stone de 31/08 (500, 1.000, 1.000)
+      // ficaram penduradas em Pendentes. O detector **ACHAVA o par** — medido no
+      // classificador real: **WEAK 0,70, "Camada 3, só busca manual"** — mas esta rota
+      // tinha `if (!cls.autoSuggest) return null`, que descartava exatamente essa camada.
+      // O modal abria VAZIO e não havia caminho nenhum pro dono casar à mão.
+      //
+      // ⚠️ E o contraste prova que a janela de datas NÃO era o problema: o par de **35.000
+      // do MESMO dia pareou sozinho** (camada 2), enquanto os de D+2 caíram um degrau. A
+      // camada 2 exige mesmo-dia de propósito (cicatriz dos 23 pares falsos de 06/08) e
+      // **não foi afrouxada** — o par não precisa virar automático, precisa APARECER.
+      //
+      // ⭐ VARIANTE ESCOLHIDA PELO DONO: quando existe candidata 1/2, a fraca só
+      // atrapalharia — *"quando a boa existir ela é a resposta"*. Então a 3 entra só no
+      // vazio, separada, rotulada e NUNCA pré-selecionada (o `autoSuggest` vai no payload
+      // pra tela saber quem é quem).
+      const boas = classified.filter((c) => c.autoSuggest)
+      const exibidas = (boas.length > 0 ? boas : classified).slice(0, RESULT_LIMIT)
       return NextResponse.json({
         engine: 'unified',
         base: { id: base.id, description: base.description, amount: base.amount, type: base.type, date: base.date },
-        candidatas: classified,
+        candidatas: exibidas,
+        // ⚠️ a tela precisa saber que está mostrando o degrau de baixo, pra rotular
+        // "provável par — confirme" em vez de oferecer como se fosse certeza.
+        somenteFracas: boas.length === 0 && exibidas.length > 0,
       })
     }
 

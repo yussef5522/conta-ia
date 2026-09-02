@@ -25,6 +25,10 @@ import {
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu'
 import { VincularTransferenciaModal } from '@/components/pendentes/VincularTransferenciaModal'
+// ⭐ O MESMO seletor do import (fonte única, REGRA 4). Se precisar adaptar, adapta o
+// componente — não copia. Os 6 tipos e a régua de CREDIT/DEBIT vêm dele.
+import { TransactionKindSelect } from '@/components/import-shared/TransactionKindSelect'
+import type { OfxLineKind } from '@/lib/ofx-v3/types'
 import { AprenderEAplicarModal } from '@/components/pendentes/AprenderEAplicarModal'
 import { DetectarTransferenciasModal, type TransferCandidateDTO } from '@/components/pendentes/DetectarTransferenciasModal'
 import { normalizeCounterparty } from '@/lib/counterparty/normalize'
@@ -151,6 +155,8 @@ export function PendentesClient({
   const [operandoIds, setOperandoIds] = useState<Set<string>>(new Set())
   // Transação selecionada pra modal "Vincular como transferência" (Sprint 1.7)
   const [vincularBase, setVincularBase] = useState<Transacao | null>(null)
+  // o tipo escolhido por linha (só UI — o efeito é disparar a ação que já existe)
+  const [kindPorTx, setKindPorTx] = useState<Record<string, OfxLineKind>>({})
   // Sprint Retirada-1-Clique
   const [retiradaTx, setRetiradaTx] = useState<Transacao | null>(null)
   // Sprint Ponte-na-hora: quando o painel abre pela categoria do dropdown,
@@ -1253,9 +1259,24 @@ export function PendentesClient({
                   </>
                   )}
 
-                  {/* Sprint 5.0.2.v/w — Botão "↔ É transferência" REMOVIDO inline.
-                      Caso de uso atual = transferências detectadas no /import/staging
-                      (Sprint u). Marcação manual via menu 3 pontinhos abaixo. */}
+                  {/* ⭐⭐ O QUE ESTA LINHA É (01/09/2026) — o MESMO seletor do import.
+                      ⛔ Aqui havia um comentário dizendo que o botão "↔ É transferência" foi
+                      REMOVIDO inline e que a marcação manual ficaria "via menu 3 pontinhos".
+                      Foi exatamente isso que escondeu o caminho: o dono viu 3 transferências
+                      Banrisul→Stone paradas e concluiu que a tela **só** deixava escolher
+                      categoria. Ação atrás de ícone sem rótulo não existe — a lição de 30/08,
+                      de novo. O seletor volta pra linha, visível, com os 6 tipos. */}
+                  <TransactionKindSelect
+                    value={(kindPorTx[t.id] ?? (t.type === 'CREDIT' ? 'RECEITA' : 'DESPESA')) as OfxLineKind}
+                    type={t.type === 'CREDIT' ? 'CREDIT' : 'DEBIT'}
+                    className="text-xs border border-border bg-background rounded h-8 px-2 w-[140px] hover:border-foreground/30 transition-colors"
+                    onChange={(k) => {
+                      setKindPorTx((m) => ({ ...m, [t.id]: k }))
+                      // ⚠️ cada tipo cai no caminho que JÁ existe — nenhum backend novo.
+                      if (k === 'TRANSFER') setVincularBase(t)
+                      else if (k === 'IGNORAR') ignorarTransacao(t.id)
+                    }}
+                  />
 
                   {/* Botão "Ignorar" */}
                   <Button
