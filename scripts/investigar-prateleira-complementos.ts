@@ -13,7 +13,7 @@ import { prateleiraGravada } from '@/lib/stock/vendas/import-complementos'
 const COMPANY = 'cmq17yapb00gnrndlh33sctbo' // Cacula Mix
 
 async function main() {
-  await exigirEmpresaNesteBanco(COMPANY, prisma)
+  await exigirEmpresaNesteBanco(prisma, COMPANY)
 
   // 1. o que está GRAVADO na tabela de linhas de complemento
   const linhas = await prisma.stockVendaComplementoLinha.findMany({
