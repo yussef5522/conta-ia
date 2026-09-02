@@ -48,7 +48,7 @@ export async function GET(request: NextRequest, { params }: Params) {
     ordens, sugestoes, painel, abertas,
     concluidas: concluidas.map((c) => {
       const s = seloPorConclusao.get(c.id)
-      return { ...c, pct: s?.pct ?? null, faixa: s?.faixa ?? 'SEM_REGUA', motivo: s?.motivo ?? null }
+      return { ...c, pct: s?.pct ?? null, faixa: s?.faixa ?? 'SEM_REGUA', motivo: s?.motivo ?? null, selo: s?.selo ?? 'SEM_DADO' }
     }),
     periodo: { de: de.toISOString().slice(0, 10), ate: ate.toISOString().slice(0, 10) },
   })

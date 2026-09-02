@@ -22,7 +22,7 @@ interface FichaOpt { id: string; nomeProduzido: string; unidadeProduzido: string
 interface Setor { id: string; nome: string; ativo: boolean }
 interface Painel { emAberto: number; valorEmProducao: number; concluidasNoPeriodo: number; valorProduzidoNoPeriodo: number; rendimentoPeriodo: number | null; lotesNaMedia: number; faixaRendimento: string; abertasDeOntem: number }
 type Aberta = Ordem & { deOntem?: boolean }
-interface Conclusao { id: string; ordemId: string; qtdGerada: number; custoUnitarioReal: number | null; custoLoteReal: number; colaboradorNome: string | null; rendimento: number; criadoEm: string; pct: number | null; faixa: string; motivo: string | null }
+interface Conclusao { id: string; ordemId: string; qtdGerada: number; custoUnitarioReal: number | null; custoLoteReal: number; colaboradorNome: string | null; rendimento: number; criadoEm: string; pct: number | null; faixa: string; motivo: string | null; selo: 'MEDIDA' | 'TEORICO' | 'SEM_DADO' }
 
 // ⭐ PALETA APROVADA NO MOCKUP (01/09/2026). Cor SÓ com significado — status, desvio,
 // dinheiro parado. Texto sobre fundo colorido usa o tom escuro da MESMA família, nunca
@@ -484,12 +484,24 @@ function ListaConcluidas({ id, itens, periodo, nomePorOrdem, mostrar, onMais }: 
               <span className={`${T.custo} tabular-nums`} style={{ color: C.nomeTx, fontWeight: 500 }}>{brl(c.custoUnitarioReal)}/un</span>
               {/* ⭐ ITEM 3: o selo de % por linha — faixas do `avaliarVariacao`, a MESMA
                   régua do card e do aviso que o operador viu ao concluir. */}
-              {c.pct != null && c.faixa !== 'SEM_REGUA' && (
+              {/* ⭐⭐ TRÊS ESTADOS, TRÊS APARÊNCIAS — e nenhuma promoção silenciosa:
+                  MEDIDA  → % colorido (cor é JULGAMENTO, e só a régua medida julga)
+                  TEORICO → "≈N% do teórico" em CINZA (referência, não julgamento)
+                  SEM_DADO→ nada (lote anterior ao sprint; recalcular daria ficção — o
+                            fóssil de 21/08 daria 2500% por causa da ficha da época) */}
+              {c.selo === 'MEDIDA' && c.pct != null && (
                 <span className={`rounded-xl px-2 py-0.5 ${T.pill} tabular-nums`} style={
                   c.faixa === 'ABAIXO' ? { background: C.ambarBg, color: C.ambarTx }
                     : c.faixa === 'ACIMA' ? { background: C.azulBg, color: C.azulTx }
-                      : { background: C.verdeBg, color: C.verdeTx }}>
+                      : { background: C.verdeBg, color: C.verdeTx }} title="rendimento contra a sua média medida">
                   {Math.round(c.pct * 100)}%
+                </span>
+              )}
+              {c.selo === 'TEORICO' && c.pct != null && (
+                <span className={`rounded-xl px-2 py-0.5 ${T.pill} tabular-nums`}
+                  style={{ background: C.cinzaBg, color: C.cinzaTx }}
+                  title="ainda não há média medida (precisa de 2 lotes) — este é o teórico da ficha">
+                  ≈{Math.round(c.pct * 100)}% do teórico
                 </span>
               )}
               {c.motivo && <span className={`${T.quem} italic`} style={{ color: C.txt3 }}>{c.motivo}</span>}
