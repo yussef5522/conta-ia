@@ -21,7 +21,18 @@ export const TIPO_RECEITA_PRODUCAO = 'INTERMEDIARIO' as const
  *
  * ⚠️ `PRODUTO_FINAL` **não** — é montado na venda, e quem o "produz" é a baixa por venda
  * explodindo a ficha. Ver `lib/stock/vendas/baixa-venda.ts`.
+ *
+ * ⛔⛔ E **ARQUIVADA também não** — isto quase virou teste-ficção (01/09): eu escrevi o
+ * guard "ficha arquivada não aparece na busca" e ele passou VERDE, mas nenhuma das duas
+ * telas filtrava por `ativo` (`listFichas` devolve as inativas e as telas só olhavam o
+ * tipo). O teste estava certo e a TELA errada; a arquivada continuaria aparecendo.
+ * A régua entra AQUI pra as duas herdarem — em vez de dois `.filter(f => f.ativo)`
+ * espalhados que a próxima tela esqueceria de novo.
+ *
+ * ⚠️ `ativo` opcional pra retrocompat: quem não informa é tratado como ATIVO (era o
+ * comportamento até agora, e mudar isso em silêncio esconderia fichas boas).
  */
-export function ehReceitaDeProducao(f: { tipoProduto: string }): boolean {
+export function ehReceitaDeProducao(f: { tipoProduto: string; ativo?: boolean }): boolean {
+  if (f.ativo === false) return false
   return f.tipoProduto === TIPO_RECEITA_PRODUCAO
 }
