@@ -242,6 +242,18 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⛔⛔ PERÍODO ENTRANDO COMO DIA É BOMBA PRA BAIXA (02/09/2026)
+
+**O relatório do Suitable não traz data NENHUMA** (conferido no arquivo: zero ocorrência de data ou "período"), e o dono pode exportar **um dia** ou **um período inteiro**. Os dois caem na mesma tabela, que é indexada por `data`.
+
+**⛔⛔ SE UM PERÍODO ENTRAR COMO DIA:** quando a baixa for ligada, *"processar o dia X"* baixaria as **7.648 ocorrências do mês inteiro** de uma vez, **com cara de operação de rotina**. Por isso o import ganhou `modo: 'DIA' | 'PERIODO'`, o período é marcado no `importId` (`comp-periodo-…`) e existe `ehLinhaDePeriodo` **para a baixa RECUSAR essas linhas**. ⚠️ A decisão fica registrada AGORA, no código que grava, e não na memória de quem for ligar a baixa daqui a um mês — é a mesma disciplina do bloco "LEIA ANTES DE LIGAR A BAIXA".
+
+**⚠️ E A DATA DO SEED É RÓTULO, NÃO FATO:** como o arquivo não declara período, a data de um import de PERÍODO é só a chave da linha. O modo PERÍODO é o que impede esse rótulo de ser lido como "as vendas aconteceram neste dia".
+
+**⭐⭐ O SABOR QUE AINDA NÃO VENDEU APARECE COM 0** — pedido do dono: *"não quero descobrir na primeira venda deles que não tinham ficha"*. Um dia de relatório não contém o cardápio inteiro (em 29/08, 5 dos 52 sabores não venderam). Sem isso eles só apareceriam **no dia em que fossem vendidos**, que é quando já é tarde.
+
+**⛔⛔ E ISSO É GATEADO POR EVIDÊNCIA, senão vira dado inventado em outro cliente:** a lista dos 52 é o cardápio da **Caçula**, escrito em código. Injetar em toda empresa encheria a prateleira de um cliente qualquer com nomes de pizza que ele nunca vendeu — **dado inventado com cara de dado real**, e multi-tenant é onde isso dói mais. Só injeta onde o próprio relatório **já provou** que o cardápio é aquele (**10+ sabores casando exato**; a Caçula casa 51 de 52). Cliente que vende "BACON" e "FRANGO" sem ser pizzaria não herda nada.
+
 ## ⛔⛔ DOIS RELATÓRIOS, DOIS DIAS, UM CABEÇALHO SÓ — E O CARD QUE DEU −72 (02/09/2026)
 
 **⭐ O MÉTODO SALVOU O DIA: a hipótese do dono era razoável e o dado a REFUTOU.** Ele viu *"121 complementos · CALABRESA 115"* onde a fixture tem 215 e 1.220, com o cabeçalho dizendo *"vendas de 21/08 a 21/08"*, e levantou: *"a aba herda o filtro de período do Cardápio"*. **Medido em prod (read-only, REGRA 8b):** a tabela tem **121 linhas · 121 nomes · 651 ocorrências, todas do dia 29/08**, e a prateleira devolve exatamente isso. **Não há filtro de período em lugar nenhum do caminho.** O arquivo que entrou foi **um dia real (29/08)**, não a fixture de período longo — CALABRESA 115 num dia é coerente com 1.220 num período.
