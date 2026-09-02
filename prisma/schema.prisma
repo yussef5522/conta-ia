@@ -4099,3 +4099,40 @@ model BankAccountOpeningEvent {
   @@index([bankAccountId, criadoEm])
   @@map("bank_account_opening_event")
 }
+
+// ⭐ Linha do Relatório de COMPLEMENTOS do PDV. OCORRÊNCIAS, não unidades vendidas:
+// 1 ocorrência = 1 explosão da ficha do sabor, sempre (o cardápio garante — pizza pequena
+// obriga 2 sabores, grande 4). Tabela própria porque ocorrência ≠ unidade: misturar na
+// stock_venda_linha faria toda query existente ter que lembrar de filtrar.
+model StockVendaComplementoLinha {
+  id              String   @id @default(cuid())
+  companyId       String
+  importId        String
+  data            DateTime
+  nomeSuitable    String
+  ocorrencias     Int
+  valorTotal      Float    @default(0)
+  mapeadoNoImport Boolean  @default(false)
+  criadoEm        DateTime @default(now())
+
+  @@index([companyId, importId])
+  @@index([companyId, data])
+  @@map("stock_venda_complemento_linha")
+}
+
+// ⭐ Mapa nome-do-PDV → destino, SEPARADO do de produtos. 25 nomes aparecem nos DOIS
+// relatórios (COCA COLA 2L: 337 produto / 134 complemento) — com um mapa só, cada um
+// baixaria duas vezes. `alvoTipo`: FICHA | IGNORAR (reversível).
+model StockVendaComplementoMap {
+  id           String   @id @default(cuid())
+  companyId    String
+  nomeSuitable String
+  alvoTipo     String
+  fichaId      String?
+  criadoPorId  String?
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @default(now()) @updatedAt
+
+  @@unique([companyId, nomeSuitable])
+  @@map("stock_venda_complemento_map")
+}

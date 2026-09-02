@@ -1,0 +1,437 @@
+
+        <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+        <meta http-equiv="content-type" content="application/vnd.ms-excel; charset=UTF-8"/>
+        <head><!--[if gte mso 9]><xml>
+        <x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>Relatório</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml>
+        <![endif]--></head>
+        <body><table><tr><td>Descrição</td><td>Valor médio por unidade</td><td>Quantidade</td><td>Valor Total</td></tr><tr>
+                <td>CALABRESA</td><td>R$ 0,00</td><td>1220</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>FRANGO</td><td>R$ 0,00</td><td>371</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>BACON</td><td>R$ 0,00</td><td>328</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>PAULISTA</td><td>R$ 0,00</td><td>254</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>4 QUEIJOS</td><td>R$ 3,01</td><td>243</td><td>R$ 730,78</td>
+            </tr><tr>
+                <td>MAIONESE CASEIRA</td><td>R$ 1,99</td><td>240</td><td>R$ 477,60</td>
+            </tr><tr>
+                <td>CALABRESA BLACK FRIDAY</td><td>R$ 0,00</td><td>194</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>MUSSARELA</td><td>R$ 0,00</td><td>194</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>5 QUEIJOS</td><td>R$ 2,90</td><td>166</td><td>R$ 481,33</td>
+            </tr><tr>
+                <td>PORTUGUESA</td><td>R$ 3,00</td><td>160</td><td>R$ 479,52</td>
+            </tr><tr>
+                <td>GRANDE</td><td>R$ 21,31</td><td>146</td><td>R$ 3111,00</td>
+            </tr><tr>
+                <td>MARGHERITA</td><td>R$ 0,00</td><td>145</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>COCA COLA 2L</td><td>R$ 8,50</td><td>134</td><td>R$ 1139,24</td>
+            </tr><tr>
+                <td>NAPOLITANA</td><td>R$ 0,00</td><td>127</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>FRANGO COM CATUPIRY</td><td>R$ 2,98</td><td>110</td><td>R$ 327,59</td>
+            </tr><tr>
+                <td>FILE DA CASA</td><td>R$ 2,93</td><td>110</td><td>R$ 321,77</td>
+            </tr><tr>
+                <td>COCA LATA MAIS MINI FRITAS</td><td>R$ 11,99</td><td>107</td><td>R$ 1282,93</td>
+            </tr><tr>
+                <td>STROGONOFF DE CARNE</td><td>R$ 1,72</td><td>106</td><td>R$ 181,87</td>
+            </tr><tr>
+                <td>MEDIO</td><td>R$ 20,33</td><td>97</td><td>R$ 1972,00</td>
+            </tr><tr>
+                <td>STROGONOFF DE CARNE FAMILIA</td><td>R$ 0,00</td><td>90</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>ENTREVERO</td><td>R$ 1,09</td><td>90</td><td>R$ 97,93</td>
+            </tr><tr>
+                <td>PEQUENO</td><td>R$ 19,35</td><td>89</td><td>R$ 1722,00</td>
+            </tr><tr>
+                <td>STROGONOFF DE FRANGO</td><td>R$ 3,60</td><td>85</td><td>R$ 305,66</td>
+            </tr><tr>
+                <td>FRANGO BLACK FRIDAY</td><td>R$ 0,00</td><td>85</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>BROCOLIS</td><td>R$ 0,00</td><td>84</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>MAIONESE CASEIRA COM ALHO</td><td>R$ 1,99</td><td>78</td><td>R$ 155,22</td>
+            </tr><tr>
+                <td>FILE MOSTARDA E MEL</td><td>R$ 3,27</td><td>78</td><td>R$ 254,83</td>
+            </tr><tr>
+                <td>FILE COM BACON</td><td>R$ 2,48</td><td>68</td><td>R$ 168,87</td>
+            </tr><tr>
+                <td>FILE MIGNON</td><td>R$ 3,97</td><td>67</td><td>R$ 265,81</td>
+            </tr><tr>
+                <td>CREME DE AVELA</td><td>R$ 0,00</td><td>65</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>LEITE EM PO</td><td>R$ 0,00</td><td>63</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>FILE CRISPY</td><td>R$ 4,92</td><td>62</td><td>R$ 304,79</td>
+            </tr><tr>
+                <td>LEITE CONDENSADO</td><td>R$ 0,00</td><td>61</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>CALABRESA ACEBOLADA</td><td>R$ 1,14</td><td>58</td><td>R$ 65,89</td>
+            </tr><tr>
+                <td>FILE ALHO E OLEO</td><td>R$ 3,62</td><td>58</td><td>R$ 209,85</td>
+            </tr><tr>
+                <td>FILE AOS 3 MOLHOS</td><td>R$ 4,91</td><td>57</td><td>R$ 279,80</td>
+            </tr><tr>
+                <td>MUSSARELA BLACK FRIDAY</td><td>R$ 0,00</td><td>54</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>COCA ZERO 2L</td><td>R$ 8,36</td><td>52</td><td>R$ 434,71</td>
+            </tr><tr>
+                <td>FILE COM CHEDDAR</td><td>R$ 3,71</td><td>49</td><td>R$ 181,87</td>
+            </tr><tr>
+                <td>FEIJAO</td><td>R$ 6,99</td><td>48</td><td>R$ 335,52</td>
+            </tr><tr>
+                <td>FILE ACEBOLADO</td><td>R$ 6,25</td><td>47</td><td>R$ 293,79</td>
+            </tr><tr>
+                <td>CHOCOLATE PRETO</td><td>R$ 0,55</td><td>44</td><td>R$ 23,99</td>
+            </tr><tr>
+                <td>MILHO</td><td>R$ 0,00</td><td>42</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>OURO BRANCO</td><td>R$ 1,33</td><td>42</td><td>R$ 55,93</td>
+            </tr><tr>
+                <td>BROCOLIS COM CATUPIRY</td><td>R$ 0,76</td><td>42</td><td>R$ 31,96</td>
+            </tr><tr>
+                <td>FILE COM PALHA</td><td>R$ 4,33</td><td>42</td><td>R$ 181,87</td>
+            </tr><tr>
+                <td>ADICIONE ANEIS DE CEBOLA</td><td>R$ 9,01</td><td>41</td><td>R$ 369,59</td>
+            </tr><tr>
+                <td>BARBECUE</td><td>R$ 1,99</td><td>39</td><td>R$ 77,61</td>
+            </tr><tr>
+                <td>BROCOLIS COM BACON</td><td>R$ 3,21</td><td>38</td><td>R$ 121,84</td>
+            </tr><tr>
+                <td>FILE BACONNAISE</td><td>R$ 2,08</td><td>36</td><td>R$ 74,95</td>
+            </tr><tr>
+                <td>FRANGO COM BARBECUE</td><td>R$ 1,83</td><td>35</td><td>R$ 63,92</td>
+            </tr><tr>
+                <td>COCA COLA ZERO LATA  MAIS MINI FRITAS</td><td>R$ 11,99</td><td>35</td><td>R$ 419,65</td>
+            </tr><tr>
+                <td>FILE CATUPIRY</td><td>R$ 2,12</td><td>33</td><td>R$ 69,95</td>
+            </tr><tr>
+                <td>FRANGO AOS 3 MOLHOS</td><td>R$ 3,93</td><td>32</td><td>R$ 125,79</td>
+            </tr><tr>
+                <td>FILE ESPECIAL</td><td>R$ 5,15</td><td>32</td><td>R$ 164,89</td>
+            </tr><tr>
+                <td>BATATA FRITA EM CIMA DA PIZZA</td><td>R$ 9,90</td><td>30</td><td>R$ 297,00</td>
+            </tr><tr>
+                <td>BASCA</td><td>R$ 3,20</td><td>30</td><td>R$ 95,88</td>
+            </tr><tr>
+                <td>FRANGO COM CHEDDAR</td><td>R$ 2,93</td><td>30</td><td>R$ 87,89</td>
+            </tr><tr>
+                <td>BORDA CATUPIRY</td><td>R$ 19,17</td><td>29</td><td>R$ 555,79</td>
+            </tr><tr>
+                <td>CHEF</td><td>R$ 2,07</td><td>27</td><td>R$ 55,96</td>
+            </tr><tr>
+                <td>ADICIONE CEBOLA</td><td>R$ 2,34</td><td>26</td><td>R$ 60,74</td>
+            </tr><tr>
+                <td>MAIONESE DE CASA</td><td>R$ 1,99</td><td>26</td><td>R$ 51,74</td>
+            </tr><tr>
+                <td>PIZZA - FILE COM BROCOLIS</td><td>R$ 3,23</td><td>26</td><td>R$ 83,94</td>
+            </tr><tr>
+                <td>MILHO COM BACON</td><td>R$ 3,66</td><td>24</td><td>R$ 87,89</td>
+            </tr><tr>
+                <td>MOLHO MOSTARDA E MEL</td><td>R$ 3,99</td><td>24</td><td>R$ 95,76</td>
+            </tr><tr>
+                <td>BORDA CHOCOLATE PRETO</td><td>R$ 19,04</td><td>23</td><td>R$ 437,81</td>
+            </tr><tr>
+                <td>ADICIONE CEBOLA CARAMELIZADA</td><td>R$ 5,99</td><td>23</td><td>R$ 137,77</td>
+            </tr><tr>
+                <td>PAÇOCA</td><td>R$ 0,00</td><td>23</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>STROGONOFF DE CARNEE</td><td>R$ 13,99</td><td>22</td><td>R$ 307,78</td>
+            </tr><tr>
+                <td>XIS - CALABRESA</td><td>R$ 0,00</td><td>21</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>ITALIANINHA</td><td>R$ 2,62</td><td>21</td><td>R$ 54,95</td>
+            </tr><tr>
+                <td>FANTA LARANJA 2L</td><td>R$ 8,99</td><td>20</td><td>R$ 179,88</td>
+            </tr><tr>
+                <td>SABOR CREME DE AVELA PROMO</td><td>R$ 19,99</td><td>18</td><td>R$ 359,82</td>
+            </tr><tr>
+                <td>BACON ACEBOLADO</td><td>R$ 1,78</td><td>18</td><td>R$ 31,96</td>
+            </tr><tr>
+                <td>FILE</td><td>R$ 0,00</td><td>17</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>XIS - BACON</td><td>R$ 0,00</td><td>17</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>BIS</td><td>R$ 0,00</td><td>16</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>XIS - FRANGO</td><td>R$ 0,00</td><td>16</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>ADICIONE BACON</td><td>R$ 7,99</td><td>16</td><td>R$ 127,84</td>
+            </tr><tr>
+                <td>OREO</td><td>R$ 0,00</td><td>15</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>MAIONESE PICANTE</td><td>R$ 1,99</td><td>15</td><td>R$ 29,85</td>
+            </tr><tr>
+                <td>PIZZA PEQUENA CHOCOLATE BRANCO</td><td>R$ 19,99</td><td>15</td><td>R$ 299,85</td>
+            </tr><tr>
+                <td>FRANGO COM BACON</td><td>R$ 0,64</td><td>14</td><td>R$ 8,99</td>
+            </tr><tr>
+                <td>padrão</td><td>R$ 0,00</td><td>14</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>FANTA UVA 2L</td><td>R$ 10,71</td><td>14</td><td>R$ 149,90</td>
+            </tr><tr>
+                <td>MOLHO BACONNESE</td><td>R$ 3,99</td><td>14</td><td>R$ 55,86</td>
+            </tr><tr>
+                <td>ADICIONE FILE DE FRANGO</td><td>R$ 12,99</td><td>12</td><td>R$ 155,88</td>
+            </tr><tr>
+                <td>COCA COLA LATA</td><td>R$ 6,99</td><td>12</td><td>R$ 83,88</td>
+            </tr><tr>
+                <td>CHARGE</td><td>R$ 2,83</td><td>12</td><td>R$ 33,95</td>
+            </tr><tr>
+                <td>KETCHUP</td><td>R$ 1,99</td><td>11</td><td>R$ 21,89</td>
+            </tr><tr>
+                <td>FRANGO CHINES</td><td>R$ 5,08</td><td>11</td><td>R$ 55,93</td>
+            </tr><tr>
+                <td>pao de xis </td><td>R$ 0,00</td><td>11</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>ADICIONE ISQUINHAS DE FRANGO</td><td>R$ 14,99</td><td>11</td><td>R$ 164,89</td>
+            </tr><tr>
+                <td>ADICIONE ARROZ</td><td>R$ 7,99</td><td>11</td><td>R$ 87,89</td>
+            </tr><tr>
+                <td>ovo</td><td>R$ 0,00</td><td>11</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>CONFETE</td><td>R$ 0,00</td><td>10</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>GRANULADO</td><td>R$ 0,00</td><td>10</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>CAIPIRA MIX</td><td>R$ 0,00</td><td>10</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>ADICIONE QUEIJO CHEDDAR</td><td>R$ 4,99</td><td>10</td><td>R$ 49,90</td>
+            </tr><tr>
+                <td>PIZZA PEQUENA CHOCOLATE PRETO</td><td>R$ 19,99</td><td>10</td><td>R$ 199,90</td>
+            </tr><tr>
+                <td>KINDER</td><td>R$ 16,88</td><td>9</td><td>R$ 151,92</td>
+            </tr><tr>
+                <td>GUARANA FRUKI ZERO LATA</td><td>R$ 6,99</td><td>9</td><td>R$ 62,91</td>
+            </tr><tr>
+                <td>ADICIONAL DE OVO</td><td>R$ 2,99</td><td>9</td><td>R$ 26,91</td>
+            </tr><tr>
+                <td>MUSSARELA ACEBOLADA</td><td>R$ 1,77</td><td>9</td><td>R$ 15,96</td>
+            </tr><tr>
+                <td>STROGONOFF</td><td>R$ 0,00</td><td>9</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>ADICIONE BURGER CARNE 180G</td><td>R$ 13,99</td><td>9</td><td>R$ 125,91</td>
+            </tr><tr>
+                <td>BORDA CHEDDAR</td><td>R$ 20,88</td><td>9</td><td>R$ 187,95</td>
+            </tr><tr>
+                <td>COCA COLA ZERO LATA</td><td>R$ 6,99</td><td>9</td><td>R$ 62,91</td>
+            </tr><tr>
+                <td>FRUKI 2L</td><td>R$ 11,66</td><td>9</td><td>R$ 104,93</td>
+            </tr><tr>
+                <td>ADICIONE MUSSARELA EMPANADO</td><td>R$ 12,99</td><td>9</td><td>R$ 116,91</td>
+            </tr><tr>
+                <td>BORDA NUTELLA</td><td>R$ 24,24</td><td>8</td><td>R$ 193,93</td>
+            </tr><tr>
+                <td>PIZZA PEQUENA OURO BRANCO</td><td>R$ 34,99</td><td>8</td><td>R$ 279,92</td>
+            </tr><tr>
+                <td>CHOCOLATE BRANCO</td><td>R$ 2,25</td><td>8</td><td>R$ 17,97</td>
+            </tr><tr>
+                <td>BORDA CHOCOLATE BRANCO</td><td>R$ 19,87</td><td>8</td><td>R$ 158,94</td>
+            </tr><tr>
+                <td>PRESTIGO</td><td>R$ 4,24</td><td>8</td><td>R$ 33,92</td>
+            </tr><tr>
+                <td>ADICIONE FILE DE PARMEGIANA</td><td>R$ 17,99</td><td>8</td><td>R$ 143,92</td>
+            </tr><tr>
+                <td>FRUKI LATA  MAIS MINI FRITAS</td><td>R$ 11,99</td><td>7</td><td>R$ 83,93</td>
+            </tr><tr>
+                <td>MMS</td><td>R$ 10,56</td><td>7</td><td>R$ 73,93</td>
+            </tr><tr>
+                <td>ADICIONE FRANGO EMPANADO</td><td>R$ 11,99</td><td>7</td><td>R$ 83,93</td>
+            </tr><tr>
+                <td>SPRITE LATA  MAIS MINI FRITAS</td><td>R$ 11,99</td><td>6</td><td>R$ 71,94</td>
+            </tr><tr>
+                <td>XIS - COXAO MOLE</td><td>R$ 0,00</td><td>6</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>FANTA LARANJA LATA  MAIS MINI FRITAS</td><td>R$ 11,99</td><td>6</td><td>R$ 71,94</td>
+            </tr><tr>
+                <td>OVOMALTINE</td><td>R$ 0,00</td><td>6</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>TURBINE SEU QUEIJO</td><td>R$ 11,90</td><td>6</td><td>R$ 71,40</td>
+            </tr><tr>
+                <td>não desejo refrigerante</td><td>R$ 0,00</td><td>6</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>ADICIONE BIFE DE ALAMINUTA</td><td>R$ 14,99</td><td>6</td><td>R$ 89,94</td>
+            </tr><tr>
+                <td>MOLHO BACONNAISE</td><td>R$ 3,99</td><td>6</td><td>R$ 23,94</td>
+            </tr><tr>
+                <td>BORDA MUSSARELA</td><td>R$ 16,99</td><td>5</td><td>R$ 84,95</td>
+            </tr><tr>
+                <td>ADICIONE OVO FRITO</td><td>R$ 2,99</td><td>5</td><td>R$ 14,95</td>
+            </tr><tr>
+                <td>NUTELLA</td><td>R$ 14,99</td><td>5</td><td>R$ 74,95</td>
+            </tr><tr>
+                <td>MEXICANA</td><td>R$ 0,00</td><td>5</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>MILHO ESPECIAL</td><td>R$ 2,39</td><td>5</td><td>R$ 11,97</td>
+            </tr><tr>
+                <td>FANTA LARANJA LATA</td><td>R$ 6,99</td><td>4</td><td>R$ 27,96</td>
+            </tr><tr>
+                <td>VEGETARIANA</td><td>R$ 3,00</td><td>4</td><td>R$ 11,98</td>
+            </tr><tr>
+                <td>MOLHO CHEDDAR</td><td>R$ 3,99</td><td>4</td><td>R$ 15,96</td>
+            </tr><tr>
+                <td>SPRITE 2L</td><td>R$ 0,00</td><td>4</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>não desejo adicionais</td><td>R$ 0,00</td><td>4</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>não desejo borda recheada</td><td>R$ 0,00</td><td>3</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>BORDA MUSSARELA COM CATUPIRY GRANDE</td><td>R$ 19,99</td><td>3</td><td>R$ 59,97</td>
+            </tr><tr>
+                <td>BORDA MUSSARELA COM ALHO GRANDE</td><td>R$ 19,99</td><td>3</td><td>R$ 59,97</td>
+            </tr><tr>
+                <td>BORDA KITKAT</td><td>R$ 24,66</td><td>3</td><td>R$ 73,98</td>
+            </tr><tr>
+                <td>Creme de Avelã</td><td>R$ 0,00</td><td>3</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>MOLHO DO CHEFE</td><td>R$ 3,99</td><td>3</td><td>R$ 11,97</td>
+            </tr><tr>
+                <td>BORDA BACON COM CHEDDAR</td><td>R$ 22,99</td><td>3</td><td>R$ 68,98</td>
+            </tr><tr>
+                <td>PIZZA ATUM</td><td>R$ 10,99</td><td>3</td><td>R$ 32,97</td>
+            </tr><tr>
+                <td>BORDA MUSSARELA COM CATUPIRY</td><td>R$ 14,99</td><td>3</td><td>R$ 44,97</td>
+            </tr><tr>
+                <td>ADICIONE FATIA ABACAXI</td><td>R$ 4,99</td><td>3</td><td>R$ 14,97</td>
+            </tr><tr>
+                <td>HOT DOG</td><td>R$ 2,00</td><td>3</td><td>R$ 5,99</td>
+            </tr><tr>
+                <td>4 Queijos</td><td>R$ 0,00</td><td>3</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>FRUKI ZERO LATA  MAIS MINI FRITAS</td><td>R$ 11,99</td><td>3</td><td>R$ 35,97</td>
+            </tr><tr>
+                <td>BORDA MUSSARELA COM ALHO</td><td>R$ 16,66</td><td>3</td><td>R$ 49,97</td>
+            </tr><tr>
+                <td>BORDA MUSSARELA GRANDE</td><td>R$ 19,99</td><td>3</td><td>R$ 59,97</td>
+            </tr><tr>
+                <td>KIT KAT</td><td>R$ 18,99</td><td>2</td><td>R$ 37,98</td>
+            </tr><tr>
+                <td>PIZZA PEQUENA NUTELLA</td><td>R$ 44,99</td><td>2</td><td>R$ 89,98</td>
+            </tr><tr>
+                <td>BORDA FRANGO CATUPIRY</td><td>R$ 22,49</td><td>2</td><td>R$ 44,98</td>
+            </tr><tr>
+                <td>Leite em Pó</td><td>R$ 0,00</td><td>2</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>BORDA MUSSARELA COM ALHO FAMILIA</td><td>R$ 25,99</td><td>2</td><td>R$ 51,98</td>
+            </tr><tr>
+                <td>PIZZA PEQUENA KITKAT</td><td>R$ 39,99</td><td>2</td><td>R$ 79,98</td>
+            </tr><tr>
+                <td>Bacon</td><td>R$ 0,00</td><td>2</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>ADICIONE QUEIJO MUSSARELA</td><td>R$ 4,99</td><td>2</td><td>R$ 9,98</td>
+            </tr><tr>
+                <td>ovomaltine</td><td>R$ 0,00</td><td>2</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>ADICIONE CHULETA</td><td>R$ 19,99</td><td>2</td><td>R$ 39,98</td>
+            </tr><tr>
+                <td>pizza pequena (25cm)</td><td>R$ 0,00</td><td>2</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>Ovomaltine</td><td>R$ 0,00</td><td>2</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>BORDA MUSSARELA COM CATUPIRY FAMILIA</td><td>R$ 22,00</td><td>2</td><td>R$ 44,00</td>
+            </tr><tr>
+                <td>BORDA 6 QUIEJOS</td><td>R$ 27,00</td><td>2</td><td>R$ 53,99</td>
+            </tr><tr>
+                <td>GRANOLA</td><td>R$ 0,00</td><td>2</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>oreo</td><td>R$ 0,00</td><td>2</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>FANTA UVA LATA  MAIS MINI FRITAS</td><td>R$ 11,99</td><td>2</td><td>R$ 23,98</td>
+            </tr><tr>
+                <td>bacon</td><td>R$ 0,00</td><td>2</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>leite em pó</td><td>R$ 0,00</td><td>2</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>ADICIONE TOMATE</td><td>R$ 1,99</td><td>1</td><td>R$ 1,99</td>
+            </tr><tr>
+                <td>milho especial</td><td>R$ 0,00</td><td>1</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>Leite Condensado</td><td>R$ 0,00</td><td>1</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>Strogonoff de Carne</td><td>R$ 0,00</td><td>1</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>ATUM</td><td>R$ 0,00</td><td>1</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>Chef</td><td>R$ 0,00</td><td>1</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>NEGRESCO</td><td>R$ 0,00</td><td>1</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>borda cheddar</td><td>R$ 34,99</td><td>1</td><td>R$ 34,99</td>
+            </tr><tr>
+                <td>brócolis com catupiry</td><td>R$ 0,00</td><td>1</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>Charge</td><td>R$ 0,00</td><td>1</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>barbecue</td><td>R$ 4,99</td><td>1</td><td>R$ 4,99</td>
+            </tr><tr>
+                <td>5 queijos</td><td>R$ 0,00</td><td>1</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>filé alho e óleo</td><td>R$ 0,00</td><td>1</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>filé com cheddar</td><td>R$ 0,00</td><td>1</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>frango com bacon</td><td>R$ 0,00</td><td>1</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>SABOR CREME DE MORANGO PROMO</td><td>R$ 9,99</td><td>1</td><td>R$ 9,99</td>
+            </tr><tr>
+                <td>strogonoff de carne</td><td>R$ 0,00</td><td>1</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>Portuguesa</td><td>R$ 0,00</td><td>1</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>Calabresa</td><td>R$ 0,00</td><td>1</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>calabresa</td><td>R$ 0,00</td><td>1</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>Bis</td><td>R$ 0,00</td><td>1</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>Oreo</td><td>R$ 0,00</td><td>1</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>SPRITE LATA</td><td>R$ 6,99</td><td>1</td><td>R$ 6,99</td>
+            </tr><tr>
+                <td>Calabresa Acebolada</td><td>R$ 0,00</td><td>1</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>Maionese Caseira com Alho</td><td>R$ 5,99</td><td>1</td><td>R$ 5,99</td>
+            </tr><tr>
+                <td>Paçoca</td><td>R$ 0,00</td><td>1</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>STIKADINHO</td><td>R$ 7,99</td><td>1</td><td>R$ 7,99</td>
+            </tr><tr>
+                <td>Coca Lata + Mini Fritas</td><td>R$ 16,99</td><td>1</td><td>R$ 16,99</td>
+            </tr><tr>
+                <td>BORDA MUSSARELA FAMILIA</td><td>R$ 22,99</td><td>1</td><td>R$ 22,99</td>
+            </tr><tr>
+                <td>filé acebolado</td><td>R$ 0,00</td><td>1</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>Kit Kat</td><td>R$ 12,99</td><td>1</td><td>R$ 12,99</td>
+            </tr><tr>
+                <td>maionese picante</td><td>R$ 4,99</td><td>1</td><td>R$ 4,99</td>
+            </tr><tr>
+                <td>ADICIONE ALFACE</td><td>R$ 1,99</td><td>1</td><td>R$ 1,99</td>
+            </tr><tr>
+                <td>FANTA UVA LATA</td><td>R$ 6,99</td><td>1</td><td>R$ 6,99</td>
+            </tr><tr>
+                <td>caipira mix</td><td>R$ 0,00</td><td>1</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>pizza família (45cm)</td><td>R$ 0,00</td><td>1</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>BORDA NEGRESCO</td><td>R$ 19,99</td><td>1</td><td>R$ 19,99</td>
+            </tr><tr>
+                <td>STROGONOF DE FRANGO</td><td>R$ 0,00</td><td>1</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>coca cola 2l</td><td>R$ 25,00</td><td>1</td><td>R$ 25,00</td>
+            </tr><tr>
+                <td>SABOR LIMAO PROMO</td><td>R$ 9,99</td><td>1</td><td>R$ 9,99</td>
+            </tr><tr>
+                <td>pizza grande (35cm)</td><td>R$ 0,00</td><td>1</td><td>R$ 0,00</td>
+            </tr><tr>
+                <td>Coca Cola Lata</td><td>R$ 11,99</td><td>1</td><td>R$ 11,99</td>
+            </tr><tr>
+                <td>FRUKI LATA</td><td>R$ 6,99</td><td>1</td><td>R$ 6,99</td>
+            </tr><tr>
+                <td>maionese caseira</td><td>R$ 4,99</td><td>1</td><td>R$ 4,99</td>
+            </tr></table></body></html>

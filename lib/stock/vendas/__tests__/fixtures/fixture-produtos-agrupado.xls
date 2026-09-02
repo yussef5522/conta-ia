@@ -1,0 +1,397 @@
+
+        <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+        <meta http-equiv="content-type" content="application/vnd.ms-excel; charset=UTF-8"/>
+        <head><!--[if gte mso 9]><xml>
+        <x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>Relatório</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml>
+        <![endif]--></head>
+        <body><table><tr><td>Produto</td><td>Quantidade</td><td>Valor Extra</td><td>Valor total</td></tr><tr>
+                <td>XIS - COMPLETO</td><td>1699</td><td>R$ 1806,23</td><td>R$ 36614,24</td>
+            </tr><tr>
+                <td>GRANDE PRECINHO</td><td>741</td><td>R$ 6118,57</td><td>R$ 41131,16</td>
+            </tr><tr>
+                <td>MINI FRITAS</td><td>575</td><td>R$ 0,00</td><td>R$ 5744,25</td>
+            </tr><tr>
+                <td>XIS COMPLETO</td><td>527</td><td>R$ 190,63</td><td>R$ 14189,36</td>
+            </tr><tr>
+                <td>PIZZA GRANDE CALABRESA OU MUSSARELA OU FRANGO BLACK FRIDAY</td><td>340</td><td>R$ 254,83</td><td>R$ 10451,43</td>
+            </tr><tr>
+                <td>COCA COLA 2L</td><td>337</td><td>R$ 0,00</td><td>R$ 5729,00</td>
+            </tr><tr>
+                <td>COCA COLA 600ML</td><td>295</td><td>R$ 0,00</td><td>R$ 3245,00</td>
+            </tr><tr>
+                <td>MAIONESE CASEIRA</td><td>283</td><td>R$ 0,00</td><td>R$ 563,17</td>
+            </tr><tr>
+                <td>PRATO ALAMINUTA</td><td>259</td><td>R$ 354,55</td><td>R$ 7862,96</td>
+            </tr><tr>
+                <td>PIZZA FAMILIA 45CM</td><td>240</td><td>R$ 1210,78</td><td>R$ 28808,38</td>
+            </tr><tr>
+                <td>PROMO 2 PIZZAS GRANDES</td><td>239</td><td>R$ 2267,99</td><td>R$ 23235,60</td>
+            </tr><tr>
+                <td>PIZZA PEQUENA 25CM</td><td>194</td><td>R$ 842,91</td><td>R$ 10540,97</td>
+            </tr><tr>
+                <td>AGUA MINERAL SEM GAS</td><td>185</td><td>R$ 0,00</td><td>R$ 925,00</td>
+            </tr><tr>
+                <td>PIZZA GRANDE 35CM</td><td>180</td><td>R$ 704,65</td><td>R$ 18702,85</td>
+            </tr><tr>
+                <td>AGUA MINERAL COM GAS</td><td>177</td><td>R$ 0,00</td><td>R$ 885,00</td>
+            </tr><tr>
+                <td>PRATO PARMEGIANA</td><td>175</td><td>R$ 164,87</td><td>R$ 5938,12</td>
+            </tr><tr>
+                <td>BURGER TRADICIONAL</td><td>166</td><td>R$ 480,53</td><td>R$ 4303,87</td>
+            </tr><tr>
+                <td>PRATO ISQUINHAS</td><td>133</td><td>R$ 128,88</td><td>R$ 3174,58</td>
+            </tr><tr>
+                <td>PIZZA FAMILIA PRECINHO</td><td>132</td><td>R$ 2038,26</td><td>R$ 13256,94</td>
+            </tr><tr>
+                <td>ORIGINAL</td><td>131</td><td>R$ 0,00</td><td>R$ 2751,00</td>
+            </tr><tr>
+                <td>BURGER ONION SMOKED</td><td>98</td><td>R$ 381,52</td><td>R$ 3060,54</td>
+            </tr><tr>
+                <td>CACHORRO QUENTE</td><td>94</td><td>R$ 0,00</td><td>R$ 1879,06</td>
+            </tr><tr>
+                <td>PRATO PARMEGIANA DE FRANGO</td><td>86</td><td>R$ 124,88</td><td>R$ 2704,02</td>
+            </tr><tr>
+                <td>BRAHMA</td><td>82</td><td>R$ 0,00</td><td>R$ 1476,00</td>
+            </tr><tr>
+                <td>SKOL</td><td>82</td><td>R$ 0,00</td><td>R$ 1476,00</td>
+            </tr><tr>
+                <td>COCA LATA</td><td>81</td><td>R$ 0,00</td><td>R$ 729,00</td>
+            </tr><tr>
+                <td>FEIJAO</td><td>81</td><td>R$ 0,00</td><td>R$ 566,19</td>
+            </tr><tr>
+                <td>Frango P</td><td>80</td><td>R$ 0,00</td><td>R$ 5039,20</td>
+            </tr><tr>
+                <td>COCA ZERO 600ML</td><td>76</td><td>R$ 0,00</td><td>R$ 836,00</td>
+            </tr><tr>
+                <td>CACHORRO QUENTE DUPLO</td><td>68</td><td>R$ 20,97</td><td>R$ 1516,29</td>
+            </tr><tr>
+                <td>CASQUINHA BAUNILHA</td><td>68</td><td>R$ 0,00</td><td>R$ 476,00</td>
+            </tr><tr>
+                <td>casquinha mista</td><td>67</td><td>R$ 0,00</td><td>R$ 469,00</td>
+            </tr><tr>
+                <td>COCA ZERO 2L</td><td>62</td><td>R$ 0,00</td><td>R$ 1054,00</td>
+            </tr><tr>
+                <td>XIS - FILE</td><td>62</td><td>R$ 70,87</td><td>R$ 2860,25</td>
+            </tr><tr>
+                <td>MILKSHAKE SABOR CHOCOLATE</td><td>60</td><td>R$ 1155,00</td><td>R$ 1155,00</td>
+            </tr><tr>
+                <td>HAMBURGUER  TRADICIONAL</td><td>59</td><td>R$ 17,96</td><td>R$ 1964,37</td>
+            </tr><tr>
+                <td>Combo Caçula</td><td>58</td><td>R$ 373,54</td><td>R$ 4432,96</td>
+            </tr><tr>
+                <td>PRENSADO COMPLETO</td><td>56</td><td>R$ 16,98</td><td>R$ 1416,42</td>
+            </tr><tr>
+                <td>SUCO DELL VALE</td><td>52</td><td>R$ 0,00</td><td>R$ 364,00</td>
+            </tr><tr>
+                <td>ADICIONE ANEIS DE CEBOLA</td><td>49</td><td>R$ 0,00</td><td>R$ 489,51</td>
+            </tr><tr>
+                <td>Frango G</td><td>48</td><td>R$ 0,00</td><td>R$ 4223,52</td>
+            </tr><tr>
+                <td>Frango M</td><td>46</td><td>R$ 0,00</td><td>R$ 3541,54</td>
+            </tr><tr>
+                <td>COCA ZERO LATA</td><td>45</td><td>R$ 0,00</td><td>R$ 405,00</td>
+            </tr><tr>
+                <td>PURE DE BATATA + CARNE MOIDA + LEGUMES</td><td>45</td><td>R$ 0,00</td><td>R$ 809,55</td>
+            </tr><tr>
+                <td>AÇAÍ 250ML</td><td>44</td><td>R$ 0,00</td><td>R$ 923,56</td>
+            </tr><tr>
+                <td>PIZZA CALABRESA CONGELADA</td><td>44</td><td>R$ 0,00</td><td>R$ 1099,56</td>
+            </tr><tr>
+                <td>PIZZA FRANGO COM CATUPIRY CONGELADA</td><td>44</td><td>R$ 0,00</td><td>R$ 1099,56</td>
+            </tr><tr>
+                <td>PRATO STROGONOFF</td><td>44</td><td>R$ 269,67</td><td>R$ 1897,23</td>
+            </tr><tr>
+                <td>PROMO 2 PIZZAS GRANDE+ COCA 2LT</td><td>42</td><td>R$ 282,74</td><td>R$ 4062,32</td>
+            </tr><tr>
+                <td>HEINEKEN</td><td>41</td><td>R$ 0,00</td><td>R$ 943,00</td>
+            </tr><tr>
+                <td>AÇAÍ 400ML</td><td>40</td><td>R$ 0,00</td><td>R$ 1039,60</td>
+            </tr><tr>
+                <td>PRATO CHULETA</td><td>40</td><td>R$ 76,90</td><td>R$ 1276,50</td>
+            </tr><tr>
+                <td>XIS ACEBOLADO</td><td>38</td><td>R$ 35,93</td><td>R$ 1213,55</td>
+            </tr><tr>
+                <td>SUCO DE  PESSEGO</td><td>37</td><td>R$ 0,00</td><td>R$ 259,00</td>
+            </tr><tr>
+                <td>CASCAO MISTO</td><td>32</td><td>R$ 0,00</td><td>R$ 352,00</td>
+            </tr><tr>
+                <td>PRATO ALMONDEGAS</td><td>32</td><td>R$ 13,98</td><td>R$ 941,66</td>
+            </tr><tr>
+                <td>XIS - CALABRESA</td><td>32</td><td>R$ 13,98</td><td>R$ 1133,66</td>
+            </tr><tr>
+                <td>MAIONESE CASEIRA COM ALHO</td><td>31</td><td>R$ 0,00</td><td>R$ 61,69</td>
+            </tr><tr>
+                <td>BARBECUE</td><td>30</td><td>R$ 0,00</td><td>R$ 59,70</td>
+            </tr><tr>
+                <td>XIS - COMPLETO DUPLO</td><td>30</td><td>R$ 48,94</td><td>R$ 1278,64</td>
+            </tr><tr>
+                <td>FRUKI 600ML</td><td>29</td><td>R$ 0,00</td><td>R$ 319,00</td>
+            </tr><tr>
+                <td>MASSA +CARNE MOIDA + BRÓCOLIS</td><td>29</td><td>R$ 0,00</td><td>R$ 521,71</td>
+            </tr><tr>
+                <td>XIS TRI</td><td>29</td><td>R$ 25,97</td><td>R$ 1330,68</td>
+            </tr><tr>
+                <td>MILKSHAKE OVONINHO</td><td>27</td><td>R$ 599,00</td><td>R$ 599,00</td>
+            </tr><tr>
+                <td>PORCAO FRITAS - M</td><td>27</td><td>R$ 0,00</td><td>R$ 1241,73</td>
+            </tr><tr>
+                <td>MILKSHAKE NUTELLA</td><td>26</td><td>R$ 571,00</td><td>R$ 571,00</td>
+            </tr><tr>
+                <td>PORCAO FRITAS - P</td><td>26</td><td>R$ 0,00</td><td>R$ 987,74</td>
+            </tr><tr>
+                <td>FRANGO+ MASSA AO MOLHO BRANCO +BRÓCOLIS</td><td>25</td><td>R$ 0,00</td><td>R$ 449,75</td>
+            </tr><tr>
+                <td>MILKSHAKE SABOR MORANGO</td><td>25</td><td>R$ 470,00</td><td>R$ 470,00</td>
+            </tr><tr>
+                <td>SPRITE ZERO 600</td><td>25</td><td>R$ 0,00</td><td>R$ 275,00</td>
+            </tr><tr>
+                <td>XIS - BACON</td><td>25</td><td>R$ 54,91</td><td>R$ 929,66</td>
+            </tr><tr>
+                <td>XIS - COXAO MOLE</td><td>25</td><td>R$ 78,87</td><td>R$ 1053,62</td>
+            </tr><tr>
+                <td>PRATO COXAO MOLE</td><td>24</td><td>R$ 26,97</td><td>R$ 914,73</td>
+            </tr><tr>
+                <td>BURGER DA CASA</td><td>23</td><td>R$ 49,93</td><td>R$ 969,70</td>
+            </tr><tr>
+                <td>MIX KITKAT</td><td>23</td><td>R$ 0,00</td><td>R$ 408,00</td>
+            </tr><tr>
+                <td>FANTA LARANJA 2L</td><td>22</td><td>R$ 0,00</td><td>R$ 374,00</td>
+            </tr><tr>
+                <td>SPRITE 2L</td><td>22</td><td>R$ 0,00</td><td>R$ 374,00</td>
+            </tr><tr>
+                <td>BURGER DUPLO</td><td>21</td><td>R$ 119,86</td><td>R$ 1085,65</td>
+            </tr><tr>
+                <td>CASCAO DE BAUNILHA</td><td>21</td><td>R$ 0,00</td><td>R$ 231,00</td>
+            </tr><tr>
+                <td>PRATO STROGONOFF DE FRANGO</td><td>21</td><td>R$ 71,91</td><td>R$ 785,70</td>
+            </tr><tr>
+                <td>MILKSHAKE SONHO DE VALSA</td><td>19</td><td>R$ 442,00</td><td>R$ 442,00</td>
+            </tr><tr>
+                <td>PRATO FILE DE FRANGO</td><td>19</td><td>R$ 6,99</td><td>R$ 614,80</td>
+            </tr><tr>
+                <td>KETCHUP</td><td>17</td><td>R$ 0,00</td><td>R$ 33,83</td>
+            </tr><tr>
+                <td>AÇAÍ 500ML</td><td>16</td><td>R$ 0,00</td><td>R$ 495,84</td>
+            </tr><tr>
+                <td>CASQUINHA CHOCOLATE</td><td>15</td><td>R$ 0,00</td><td>R$ 105,00</td>
+            </tr><tr>
+                <td>MILKSHAKE DIAMANTE NEGRO</td><td>15</td><td>R$ 347,00</td><td>R$ 347,00</td>
+            </tr><tr>
+                <td>MILKSHAKE SABOR FLOCOS</td><td>15</td><td>R$ 290,00</td><td>R$ 290,00</td>
+            </tr><tr>
+                <td>BURGER BACON</td><td>14</td><td>R$ 67,93</td><td>R$ 599,79</td>
+            </tr><tr>
+                <td>BURGER SUPER SMASH</td><td>14</td><td>R$ 0,00</td><td>R$ 615,86</td>
+            </tr><tr>
+                <td>FANTA UVA LATA</td><td>14</td><td>R$ 0,00</td><td>R$ 126,00</td>
+            </tr><tr>
+                <td>FRUKI ZERO 600ML</td><td>14</td><td>R$ 0,00</td><td>R$ 154,00</td>
+            </tr><tr>
+                <td>SPRITE LATA</td><td>14</td><td>R$ 0,00</td><td>R$ 126,00</td>
+            </tr><tr>
+                <td>FANTA UVA 2L</td><td>13</td><td>R$ 0,00</td><td>R$ 221,00</td>
+            </tr><tr>
+                <td>FRUKI 2L</td><td>13</td><td>R$ 0,00</td><td>R$ 221,00</td>
+            </tr><tr>
+                <td>HEINEKEN LONG ZERO</td><td>13</td><td>R$ 0,00</td><td>R$ 143,00</td>
+            </tr><tr>
+                <td>XIS - FRANGO</td><td>13</td><td>R$ 1,99</td><td>R$ 456,86</td>
+            </tr><tr>
+                <td>BURGER CHEDDAR</td><td>12</td><td>R$ 0,00</td><td>R$ 455,88</td>
+            </tr><tr>
+                <td>BURGER SMASH</td><td>12</td><td>R$ 19,98</td><td>R$ 487,86</td>
+            </tr><tr>
+                <td>FANTA LARANJA LATA</td><td>12</td><td>R$ 0,00</td><td>R$ 108,00</td>
+            </tr><tr>
+                <td>MILKSHAKE SABOR KINDER OVO</td><td>12</td><td>R$ 235,00</td><td>R$ 235,00</td>
+            </tr><tr>
+                <td>MIX DE SUFLER</td><td>12</td><td>R$ 0,00</td><td>R$ 212,00</td>
+            </tr><tr>
+                <td>AQUARIUS</td><td>11</td><td>R$ 0,00</td><td>R$ 88,00</td>
+            </tr><tr>
+                <td>MILKSHAKE SABOR BRIGADEIRO</td><td>11</td><td>R$ 212,00</td><td>R$ 212,00</td>
+            </tr><tr>
+                <td>BURGER FRANGO FRITO</td><td>9</td><td>R$ 19,98</td><td>R$ 352,89</td>
+            </tr><tr>
+                <td>MILKSHAKE LEITE NINHO</td><td>9</td><td>R$ 199,00</td><td>R$ 199,00</td>
+            </tr><tr>
+                <td>MILKSHAKE SABOR CHOCOLATE BRANCO</td><td>9</td><td>R$ 170,00</td><td>R$ 170,00</td>
+            </tr><tr>
+                <td>MILKSHAKE SABOR NEGRESCO</td><td>9</td><td>R$ 178,00</td><td>R$ 178,00</td>
+            </tr><tr>
+                <td>MIX OVOMALTINE</td><td>9</td><td>R$ 0,00</td><td>R$ 159,00</td>
+            </tr><tr>
+                <td>XIS - STROGONOFF</td><td>9</td><td>R$ 12,99</td><td>R$ 390,90</td>
+            </tr><tr>
+                <td>CASCAO DE CHOCOLATE</td><td>8</td><td>R$ 0,00</td><td>R$ 88,00</td>
+            </tr><tr>
+                <td>FRITAS CHEDDAR E BACON - P</td><td>8</td><td>R$ 0,00</td><td>R$ 383,92</td>
+            </tr><tr>
+                <td>MAIONESE PICANTE</td><td>8</td><td>R$ 0,00</td><td>R$ 15,92</td>
+            </tr><tr>
+                <td>MIX DE MARACUJA</td><td>8</td><td>R$ 0,00</td><td>R$ 136,00</td>
+            </tr><tr>
+                <td>MIX DE MORANGO</td><td>8</td><td>R$ 0,00</td><td>R$ 136,00</td>
+            </tr><tr>
+                <td>MOLHO DO CHEFE</td><td>8</td><td>R$ 0,00</td><td>R$ 31,92</td>
+            </tr><tr>
+                <td>SPRITE ZERO 2 LITROS</td><td>8</td><td>R$ 0,00</td><td>R$ 119,00</td>
+            </tr><tr>
+                <td>CAÇULA FIT PURE DE BATATA + CARNE MOIDA + LEGUMES</td><td>7</td><td>R$ 0,00</td><td>R$ 125,93</td>
+            </tr><tr>
+                <td>MILKSHAKE FRUTAS VERMELHAS</td><td>7</td><td>R$ 151,00</td><td>R$ 151,00</td>
+            </tr><tr>
+                <td>MILKSHAKE SABOR CHOCOMENTA</td><td>7</td><td>R$ 133,00</td><td>R$ 133,00</td>
+            </tr><tr>
+                <td>MILKSHAKE SABOR DANONINHO</td><td>7</td><td>R$ 132,00</td><td>R$ 132,00</td>
+            </tr><tr>
+                <td>PORCAO FRITAS - G</td><td>7</td><td>R$ 0,00</td><td>R$ 538,93</td>
+            </tr><tr>
+                <td>BURGER EXPLOSAO DE QUEIJO</td><td>6</td><td>R$ 0,00</td><td>R$ 239,94</td>
+            </tr><tr>
+                <td>CAÇULA FIT MASSA +CARNE MOIDA + BRÓCOLIS</td><td>6</td><td>R$ 0,00</td><td>R$ 107,94</td>
+            </tr><tr>
+                <td>FRUKI LATA</td><td>6</td><td>R$ 0,00</td><td>R$ 54,00</td>
+            </tr><tr>
+                <td>MILKSHAKE LAKA OREO</td><td>6</td><td>R$ 137,00</td><td>R$ 137,00</td>
+            </tr><tr>
+                <td>MILKSHAKE OURO BRANCO</td><td>6</td><td>R$ 143,00</td><td>R$ 143,00</td>
+            </tr><tr>
+                <td>MILKSHAKE SABOR MARACUJA</td><td>6</td><td>R$ 114,00</td><td>R$ 114,00</td>
+            </tr><tr>
+                <td>MILKSHAKE SABOR PACOCA</td><td>6</td><td>R$ 116,00</td><td>R$ 116,00</td>
+            </tr><tr>
+                <td>tele entrega</td><td>6</td><td>R$ 0,00</td><td>R$ 0,06</td>
+            </tr><tr>
+                <td>XIS - STROGONOFF DE FRANGO</td><td>6</td><td>R$ 0,00</td><td>R$ 221,94</td>
+            </tr><tr>
+                <td>FANTA LARANJA ZERO 2L</td><td>5</td><td>R$ 0,00</td><td>R$ 85,00</td>
+            </tr><tr>
+                <td>FRUKI LATA ZERO</td><td>5</td><td>R$ 0,00</td><td>R$ 45,00</td>
+            </tr><tr>
+                <td>MILKSHAKE SABOR ALGODAO DOCE</td><td>5</td><td>R$ 94,00</td><td>R$ 94,00</td>
+            </tr><tr>
+                <td>MILKSHAKE SABOR CREME</td><td>5</td><td>R$ 98,00</td><td>R$ 98,00</td>
+            </tr><tr>
+                <td>MILKSHAKE SABOR MILHO</td><td>5</td><td>R$ 97,00</td><td>R$ 97,00</td>
+            </tr><tr>
+                <td>SUNDAE BRIGADEIRO</td><td>5</td><td>R$ 0,00</td><td>R$ 65,00</td>
+            </tr><tr>
+                <td>XIS CATUPIRY</td><td>5</td><td>R$ 1,99</td><td>R$ 191,94</td>
+            </tr><tr>
+                <td>BIG SUNDAE DE MORANGO </td><td>4</td><td>R$ 0,00</td><td>R$ 68,00</td>
+            </tr><tr>
+                <td>BILLY JACK</td><td>4</td><td>R$ 0,00</td><td>R$ 7,96</td>
+            </tr><tr>
+                <td>MILKSHAKE FERRERO ROCHER</td><td>4</td><td>R$ 89,00</td><td>R$ 89,00</td>
+            </tr><tr>
+                <td>MILKSHAKE FLORESTA NEGRA</td><td>4</td><td>R$ 92,00</td><td>R$ 92,00</td>
+            </tr><tr>
+                <td>MILKSHAKE LAKA</td><td>4</td><td>R$ 92,00</td><td>R$ 92,00</td>
+            </tr><tr>
+                <td>MILKSHAKE SABOR LEITE CONDENSADO</td><td>4</td><td>R$ 78,00</td><td>R$ 78,00</td>
+            </tr><tr>
+                <td>Pizza (Aiq)</td><td>4</td><td>R$ 34,99</td><td>R$ 432,91</td>
+            </tr><tr>
+                <td>PRATO FILE MIGNON</td><td>4</td><td>R$ 0,00</td><td>R$ 215,96</td>
+            </tr><tr>
+                <td>SUNDAE ABACAXI</td><td>4</td><td>R$ 0,00</td><td>R$ 52,00</td>
+            </tr><tr>
+                <td>SUNDAE DE CONFETE</td><td>4</td><td>R$ 0,00</td><td>R$ 52,00</td>
+            </tr><tr>
+                <td>XIS AZEITONA</td><td>4</td><td>R$ 4,99</td><td>R$ 120,95</td>
+            </tr><tr>
+                <td>XIS CHEDDAR</td><td>4</td><td>R$ 18,98</td><td>R$ 170,94</td>
+            </tr><tr>
+                <td>FRITAS CHEDDAR E BACON - M</td><td>3</td><td>R$ 0,00</td><td>R$ 167,97</td>
+            </tr><tr>
+                <td>MILKSHAKE BROWNIE</td><td>3</td><td>R$ 67,00</td><td>R$ 67,00</td>
+            </tr><tr>
+                <td>MILKSHAKE SABOR CHICLETE</td><td>3</td><td>R$ 56,00</td><td>R$ 56,00</td>
+            </tr><tr>
+                <td>MILKSHAKE TRUFADO</td><td>3</td><td>R$ 65,00</td><td>R$ 65,00</td>
+            </tr><tr>
+                <td>MOLHO BACONNESE</td><td>3</td><td>R$ 0,00</td><td>R$ 11,97</td>
+            </tr><tr>
+                <td>SUNDAE CHOCO BOLL</td><td>3</td><td>R$ 0,00</td><td>R$ 39,00</td>
+            </tr><tr>
+                <td>Açaí 250ml</td><td>2</td><td>R$ 0,00</td><td>R$ 60,00</td>
+            </tr><tr>
+                <td>Açaí 500ml</td><td>2</td><td>R$ 0,00</td><td>R$ 84,00</td>
+            </tr><tr>
+                <td>BIG SUNDAE DE CHOCOLATE </td><td>2</td><td>R$ 0,00</td><td>R$ 34,00</td>
+            </tr><tr>
+                <td>caçula (açaí 500ml)</td><td>2</td><td>R$ 0,00</td><td>R$ 84,00</td>
+            </tr><tr>
+                <td>frango (filezinho de frango - p)</td><td>2</td><td>R$ 0,00</td><td>R$ 161,96</td>
+            </tr><tr>
+                <td>MILKSHAKE COOKIES</td><td>2</td><td>R$ 45,00</td><td>R$ 45,00</td>
+            </tr><tr>
+                <td>MILKSHAKE FARINHA LACTEA</td><td>2</td><td>R$ 42,00</td><td>R$ 42,00</td>
+            </tr><tr>
+                <td>MILKSHAKE SABOR ABACAXI AO VINHO</td><td>2</td><td>R$ 38,00</td><td>R$ 38,00</td>
+            </tr><tr>
+                <td>MILKSHAKE SABOR ABACAXI C/ HORTELA</td><td>2</td><td>R$ 36,00</td><td>R$ 36,00</td>
+            </tr><tr>
+                <td>MILKSHAKE SABOR AMORA</td><td>2</td><td>R$ 38,00</td><td>R$ 38,00</td>
+            </tr><tr>
+                <td>MILKSHAKE SABOR MILK BOLL</td><td>2</td><td>R$ 40,00</td><td>R$ 40,00</td>
+            </tr><tr>
+                <td>MOLHO MOSTARDA E MEL</td><td>2</td><td>R$ 0,00</td><td>R$ 7,98</td>
+            </tr><tr>
+                <td>molhos (maionese picante)</td><td>2</td><td>R$ 0,00</td><td>R$ 9,98</td>
+            </tr><tr>
+                <td>MOSTARDA</td><td>2</td><td>R$ 0,00</td><td>R$ 3,98</td>
+            </tr><tr>
+                <td>Pizza Grande (35cm)</td><td>2</td><td>R$ 17,98</td><td>R$ 267,94</td>
+            </tr><tr>
+                <td>BIG SUNDAE DE ABACAXI AO VINHO</td><td>1</td><td>R$ 0,00</td><td>R$ 17,00</td>
+            </tr><tr>
+                <td>BIG SUNDAE DE BRIGADEIRO</td><td>1</td><td>R$ 0,00</td><td>R$ 17,00</td>
+            </tr><tr>
+                <td>BROCOLIS +CARME MOIDA + MASSA</td><td>1</td><td>R$ 0,00</td><td>R$ 18,00</td>
+            </tr><tr>
+                <td>Burguer Bacon</td><td>1</td><td>R$ 16,99</td><td>R$ 67,98</td>
+            </tr><tr>
+                <td>Burguer Cheddar</td><td>1</td><td>R$ 0,00</td><td>R$ 50,99</td>
+            </tr><tr>
+                <td>caçula (burguer duplo)</td><td>1</td><td>R$ 0,00</td><td>R$ 72,99</td>
+            </tr><tr>
+                <td>caçula (fritas cheddar e bacon - p)</td><td>1</td><td>R$ 0,00</td><td>R$ 62,99</td>
+            </tr><tr>
+                <td>caçula (xis completo)</td><td>1</td><td>R$ 0,00</td><td>R$ 45,98</td>
+            </tr><tr>
+                <td>caçula (xis coxão mole)</td><td>1</td><td>R$ 0,00</td><td>R$ 51,78</td>
+            </tr><tr>
+                <td>caçula (xis filé)</td><td>1</td><td>R$ 0,00</td><td>R$ 58,98</td>
+            </tr><tr>
+                <td>Filezinho de Frango - M</td><td>1</td><td>R$ 0,00</td><td>R$ 97,98</td>
+            </tr><tr>
+                <td>frango (filezinho de frango - g)</td><td>1</td><td>R$ 39,97</td><td>R$ 150,55</td>
+            </tr><tr>
+                <td>FRITAS CHEDDAR E BACON - G</td><td>1</td><td>R$ 0,00</td><td>R$ 86,99</td>
+            </tr><tr>
+                <td>FRUKI ZERO 2L</td><td>1</td><td>R$ 0,00</td><td>R$ 17,00</td>
+            </tr><tr>
+                <td>MILKSHAKE BANOFFE</td><td>1</td><td>R$ 21,00</td><td>R$ 21,00</td>
+            </tr><tr>
+                <td>MILKSHAKE SABOR AMENDOIM</td><td>1</td><td>R$ 18,00</td><td>R$ 18,00</td>
+            </tr><tr>
+                <td>MILKSHAKE SABOR CAPPUCINO</td><td>1</td><td>R$ 20,00</td><td>R$ 20,00</td>
+            </tr><tr>
+                <td>MILKSHAKE SABOR CHOQUITO</td><td>1</td><td>R$ 20,00</td><td>R$ 20,00</td>
+            </tr><tr>
+                <td>MILKSHAKE SABOR CONFETI</td><td>1</td><td>R$ 19,00</td><td>R$ 19,00</td>
+            </tr><tr>
+                <td>MILKSHAKE SABOR FRAMBOESA</td><td>1</td><td>R$ 18,00</td><td>R$ 18,00</td>
+            </tr><tr>
+                <td>MILKSHAKE SABOR NAPOLITANO</td><td>1</td><td>R$ 20,00</td><td>R$ 20,00</td>
+            </tr><tr>
+                <td>Mini Fritas</td><td>1</td><td>R$ 0,00</td><td>R$ 16,99</td>
+            </tr><tr>
+                <td>MOLHO CHEDDAR</td><td>1</td><td>R$ 0,00</td><td>R$ 3,99</td>
+            </tr><tr>
+                <td>Pizza Família (45cm)</td><td>1</td><td>R$ 12,99</td><td>R$ 155,97</td>
+            </tr><tr>
+                <td>Xis Completo</td><td>1</td><td>R$ 0,00</td><td>R$ 45,98</td>
+            </tr></table></body></html>

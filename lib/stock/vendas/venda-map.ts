@@ -64,6 +64,13 @@ export async function previewImportSuitable(companyId: string, html: string, db:
 export async function upsertVendaMap(companyId: string, nomeSuitable: string, alvo: { tipo: 'FICHA'; fichaId: string } | { tipo: 'REVENDA'; itemId: string }, userId?: string, db: PrismaClient = defaultPrisma) {
   // GUARD dos 3 níveis (na FONTE, não só na tela): venda só casa com PRODUTO_FINAL (ficha)
   // ou item REVENDA. Matéria-prima/intermediário NUNCA — senão cada venda baixaria insumo cru.
+  //
+  // ⛔⛔ NÃO UNIFIQUE COM O GUARD DE `complemento-map.ts` (02/09). Lá INTERMEDIARIO é
+  // ACEITO, e não é inconsistência: complemento aponta pra ficha de SABOR (intermediário
+  // por natureza, consumido pela pizza, nunca vendido solto), e a baixa de intermediário
+  // consome o PACK PRONTO — não explode a receita. Aqui, aceitar intermediário faria cada
+  // xis baixar carne CRUA em vez do beef pronto (o bug real de 22/08).
+  // Mesma pergunta, respostas legitimamente diferentes. Unificar quebra um dos dois.
   if (alvo.tipo === 'FICHA') {
     const f = await db.stockFicha.findFirst({ where: { id: alvo.fichaId, companyId }, select: { tipoProduto: true } })
     if (!f) throw new VendaMapError('Ficha não encontrada.')
