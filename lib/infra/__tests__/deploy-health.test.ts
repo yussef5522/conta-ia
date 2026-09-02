@@ -144,3 +144,30 @@ datasource db {
     expect(extrairProviderDatasource('generator client { provider = "prisma-client-js" }')).toBeNull()
   })
 })
+
+describe('⛔⛔ D5 — migration pendente com o trio VERDE (incidente de 02/09)', () => {
+  it('⛔⛔ o deploy passou 4/4 e o app lia tabela que não existia → ERRO', () => {
+    const r = avaliarDeploy({ ...sao, migrationsPendentes: ['20260902050000_stock_venda_complemento_grupo'] })
+    expect(r).toHaveLength(1)
+    expect(r[0]).toMatchObject({ invariante: 'D5', nivel: 'erro' })
+    // o alerta NOMEIA a migration e ENSINA a saída
+    expect(r[0].detalhe).toMatch(/20260902050000/)
+    expect(r[0].detalhe).toMatch(/migrate deploy/)
+    // ⚠️ e avisa que rollback NÃO resolve — foi o erro de leitura do incidente de 28/08
+    expect(r[0].detalhe).toMatch(/rollback.*NÃO resolve/)
+  })
+
+  it('⭐ banco em dia não acusa nada', () => {
+    expect(avaliarDeploy({ ...sao, migrationsPendentes: [] })).toEqual([])
+  })
+
+  it('⚠️ NÃO MEDIDO (undefined) não vira alarme — ausência de medição ≠ problema', () => {
+    // sem banco na mão o juiz cala sobre schema, em vez de chutar que está quebrado
+    expect(avaliarDeploy({ ...sao, migrationsPendentes: undefined })).toEqual([])
+  })
+
+  it('⭐ empilha com o D1: são causas diferentes, dois alertas', () => {
+    const r = avaliarDeploy({ ...sao, buildIdOk: false, migrationsPendentes: ['20260902050000_x'] })
+    expect(r.map((x) => x.invariante).sort()).toEqual(['D1', 'D5'])
+  })
+})

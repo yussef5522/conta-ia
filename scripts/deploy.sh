@@ -95,6 +95,27 @@ PROV_CLIENT=$(awk '/^datasource/,/}/' node_modules/.prisma/client/schema.prisma 
 [[ "$PROV_CLIENT" == "postgresql" ]] || fail "o Prisma Client gerado fala '$PROV_CLIENT', não postgresql — TODA query ao banco falharia. Prod segue no ar; nada foi trocado."
 ok "prisma client em postgresql (schema e client conferem)"
 
+# ⛔⛔ MIGRATION PENDENTE É DEPLOY QUEBRADO COM GATE VERDE (02/09/2026).
+#
+# O que aconteceu: subiu código que lê `stock_venda_complemento_grupo` e a migration
+# NÃO estava aplicada — o deploy declarou **4/4 VERDE** e a tela que usa a tabela
+# respondia 500. O trio prova que o site é SERVIDO; ele não sabe nada do schema.
+# É a mesma família do incidente de 28/08 (login 500 por 8 horas com o trio verde):
+# **gate que não enxerga o banco é gate de presença, não de saúde.**
+#
+# ⚠️ Aplicar ANTES de trocar o symlink, de propósito: a migration deste módulo é
+# CREATE-only (guard de CI), então ela é compatível com o build ANTIGO — tabela nova que
+# ninguém lê ainda não quebra nada. Se um dia uma migration NÃO for aditiva, ela não pode
+# entrar por aqui sem plano próprio (expand/contract), e é isso que o comentário registra.
+log "Migrations do banco"
+if npx prisma migrate status 2>/dev/null | grep -q "have not yet been applied"; then
+  echo "  há migration pendente — aplicando antes de trocar o symlink"
+  npx prisma migrate deploy 2>&1 | tail -3 || fail "prisma migrate deploy falhou — prod segue no build anterior, nada foi trocado"
+fi
+npx prisma migrate status 2>/dev/null | grep -q "have not yet been applied" \
+  && fail "ainda há migration pendente depois do deploy — NÃO troco o symlink (o app leria tabela que não existe)"
+ok "schema do banco em dia"
+
 if (( DRY )); then
   log "Estado atual"
   if [[ -L .next ]]; then ok "symlink → $(readlink .next)"; else echo "  ⚠️  .next ainda é diretório real (a 1ª troca converte)"; fi

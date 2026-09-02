@@ -11,7 +11,7 @@ import { runAndPersistStockJudge } from '../lib/stock/run-stock-judge'
 import { buildJudgeAlertEmail } from '../lib/loans/judge-alert-email'
 import { sendEmail } from '../lib/email/send'
 import { checkInfra } from '../lib/infra/health'
-import { checkDeploy } from '../lib/infra/deploy-health'
+import { checkDeploy, migrationsPendentes, avaliarDeploy } from '../lib/infra/deploy-health'
 
 const prisma = new PrismaClient()
 const BASE = process.env.APP_BASE_URL ?? 'https://app.caixaos.com.br'
@@ -43,7 +43,10 @@ async function main() {
   // DEPLOY — o artefato servido está são? (symlink íntegro, BUILD_ID, CSS, rollback
   // disponível). Pega o que o smoke não pega: `.next` que voltou a ser diretório real
   // responde 200 e mesmo assim jogou fora a troca atômica e o rollback em segundos.
-  const { leitura: dep, checks: deployChecks } = checkDeploy()
+  const { leitura: dep0 } = checkDeploy()
+  // ⭐ D5 precisa do BANCO (a leitura de arquivo não sabe o que foi aplicado)
+  const dep = dep0 ? { ...dep0, migrationsPendentes: await migrationsPendentes(prisma) } : null
+  const deployChecks = dep ? avaliarDeploy(dep) : []
   if (dep) {
     console.log(`[juiz ${stamp}] deploy: ${dep.ehSymlink ? `symlink → ${dep.alvo}` : '⚠️ .next é diretório real'} · BUILD_ID ${dep.buildIdOk ? 'ok' : 'AUSENTE'} · ${dep.cssCount} css · ${dep.buildsGuardados} build(s) guardado(s)${deployChecks.length ? ` · ${deployChecks.length} alerta(s)` : ''}`)
     for (const c of deployChecks) console.log(`[juiz ${stamp}]   ${c.invariante} (${c.nivel}): ${c.detalhe}`)

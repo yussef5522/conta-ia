@@ -15,7 +15,7 @@ import { existsSync, lstatSync, readlinkSync, readdirSync, statSync, readFileSyn
 import { join } from 'path'
 
 export interface CheckDeploy {
-  invariante: 'D1' | 'D2' | 'D3' | 'D4'
+  invariante: 'D1' | 'D2' | 'D3' | 'D4' | 'D5'
   nivel: 'erro' | 'aviso'
   detalhe: string
 }
@@ -30,6 +30,11 @@ export interface LeituraDeploy {
   providerSchema: string | null
   /** datasource embutido no client GERADO em node_modules (o que ele REALMENTE fala) */
   providerClient: string | null
+  /**
+   * ⭐ D5 (02/09) — migrations do repo que o BANCO ainda não aplicou.
+   * `undefined` = não deu pra medir (sem banco na mão); lista vazia = em dia.
+   */
+  migrationsPendentes?: string[]
 }
 
 /** Lê `datasource db { provider = "..." }` — o do DATASOURCE, não o do generator. */
@@ -142,7 +147,49 @@ export function avaliarDeploy(l: LeituraDeploy): CheckDeploy[] {
     })
   }
 
+  // ⛔⛔ D5 (erro) — MIGRATION PENDENTE É DEPLOY QUEBRADO COM GATE VERDE.
+  //
+  // Caso real (02/09): subiu código que lê `stock_venda_complemento_grupo` sem a tabela
+  // existir. O trio deu **4/4 VERDE** — ele prova que o site é SERVIDO, não que o schema
+  // do banco combina com o código. Mesma família do login 500 de 28/08.
+  //
+  // ⚠️ O detalhe NOMEIA a migration e o comando: alerta que não diz o que fazer vira ruído.
+  if (l.migrationsPendentes && l.migrationsPendentes.length > 0) {
+    out.push({
+      invariante: 'D5', nivel: 'erro',
+      detalhe: `${l.migrationsPendentes.length} migration(s) do repo NÃO aplicada(s) no banco: ${l.migrationsPendentes.join(', ')}. `
+        + 'O código no ar pode estar lendo tabela/coluna que não existe. Rodar `npx prisma migrate deploy` em /opt/conta-ia. '
+        + '⚠️ rollback de build NÃO resolve: o que falta é schema, não artefato.',
+    })
+  }
+
   return out
+}
+
+/**
+ * Quais migrations do repo o banco ainda não aplicou.
+ *
+ * ⚠️ Lê `_prisma_migrations` (a tabela do próprio Prisma) em vez de rodar o CLI: o juiz roda
+ * no cron, e disparar um processo que pode ESCREVER no banco a partir de um alerta noturno
+ * seria trocar diagnóstico por cirurgia automática.
+ */
+export async function migrationsPendentes(
+  db: { $queryRawUnsafe: (q: string) => Promise<unknown> },
+  appDir = '/opt/conta-ia',
+): Promise<string[] | undefined> {
+  let noRepo: string[]
+  try {
+    noRepo = readdirSync(join(appDir, 'prisma', 'migrations'))
+      .filter((f) => /^\d{14}_/.test(f))
+      .sort()
+  } catch { return undefined }
+  try {
+    const rows = (await db.$queryRawUnsafe(
+      'SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL',
+    )) as { migration_name: string }[]
+    const aplicadas = new Set(rows.map((r) => r.migration_name))
+    return noRepo.filter((m) => !aplicadas.has(m))
+  } catch { return undefined }
 }
 
 /** Atalho pro cron: lê + avalia. */
