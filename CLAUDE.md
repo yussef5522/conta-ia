@@ -242,6 +242,26 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⛔⛔ DOIS RELATÓRIOS, DOIS DIAS, UM CABEÇALHO SÓ — E O CARD QUE DEU −72 (02/09/2026)
+
+**⭐ O MÉTODO SALVOU O DIA: a hipótese do dono era razoável e o dado a REFUTOU.** Ele viu *"121 complementos · CALABRESA 115"* onde a fixture tem 215 e 1.220, com o cabeçalho dizendo *"vendas de 21/08 a 21/08"*, e levantou: *"a aba herda o filtro de período do Cardápio"*. **Medido em prod (read-only, REGRA 8b):** a tabela tem **121 linhas · 121 nomes · 651 ocorrências, todas do dia 29/08**, e a prateleira devolve exatamente isso. **Não há filtro de período em lugar nenhum do caminho.** O arquivo que entrou foi **um dia real (29/08)**, não a fixture de período longo — CALABRESA 115 num dia é coerente com 1.220 num período.
+
+**⚠️ A CONFUSÃO ERA DE TELA, E ELA É REAL:** o cabeçalho do Cardápio falava *"vendas de 21/08 a 21/08"* (o relatório de **PRODUTOS**) enquanto a aba mostrava **complementos de 29/08**. Dois relatórios, dois dias, um cabeçalho só — parece filtro, e não é. Agora **cada aba fala do período DELA** e a prateleira imprime o dela junto da contagem.
+
+**⛔ MAS A INVESTIGAÇÃO ACHOU UM SUMIÇO SILENCIOSO DE VERDADE, que ninguém tinha visto:** a prateleira nascia **só das LINHAS**, e reimportar um dia **SUBSTITUI** as linhas dele. Um nome que só existia na versão antiga sai da tabela — e, **se já estava mapeado, o mapeamento continua vivo no banco e o nome DESAPARECE da tela**. Invisível na vista, valendo na hora da baixa: a família do "estoque invisível". **Fix: a prateleira é a UNIÃO de (nomes com linha) ∪ (nomes no mapa)**, e o mapeado sem linha aparece com **0 ocorrências**, no fim — que é o lugar honesto dele. Regra do dono que virou desenho: ***"mapear é trabalho independente de período — nome conhecido nunca some por causa de data"***.
+
+**⛔⛔ O CARD "PRONTOS −72" — CONJUNTO QUE SE SOBREPÕE NÃO SE CONTA SUBTRAINDO.** A tela fazia `produtos − semDestino − semCusto`; **produto sem ficha é as DUAS coisas**, então era subtraído duas vezes: **80 − 76 − 76 = −72**, o número exato do print. Virou uma régua só (`ehProntoNoCardapio` = tem destino **E** tem custo) consumida pelo **card E pelo filtro** — senão o card diz um número e a lista mostra outro.
+
+**⚠️⚠️ E O PRIMEIRO GUARD QUE ESCREVI NÃO MORDIA.** Ele testava o predicado puro; eu repus a subtração no `totais` e **os 46 testes passaram verdes**. *Guard que não pega o caso que o motivou dá selo verde de graça* — a mesma lição de 01/09. O que ficou **roda o pipeline real** (`hubCardapio`) e exige `card == tamanho da lista filtrada`; com a subtração de volta, vermelho na hora.
+
+**⭐ AGRUPAMENTO SABOR × OUTRO — a régua é o CARDÁPIO, e ela é EDITÁVEL.** Os 52 sabores do cardápio real vivem em `lib/stock/vendas/grupo-complemento.ts` (seed em CÓDIGO: cardápio novo se resolve editando a lista, **sem backfill**); a tabela `stock_venda_complemento_grupo` (CREATE-only, CHECK no grupo) guarda **só o que o dono MOVEU**. Seções: **Sabores** (o trabalho que faz o estoque baixar) → **Outros** (borda, adicional, tamanho, combo) → **Ignorados** (colapsado; decisão tomada não disputa espaço com trabalho pendente). ⚠️ **Ignorado sai das duas primeiras seções**, senão vira trabalho que se refaz toda vez que a tela abre.
+
+**⭐⭐ O CARD QUE RESPONDE A PERGUNTA DO DONO ("quanto da venda já baixa estoque") É POR OCORRÊNCIA, NUNCA POR NOME:** CALABRESA sozinha é **115 de 651 ocorrências (18%)** e **1 de 121 nomes (0,8%)**. Contar nome faria a barra andar devagar justamente quando ele mapeia o que mais importa. ⚠️ **IGNORAR não conta como coberto** (ignorar é decidir que NÃO baixa) e **sem ocorrência é "a apurar", nunca 0%**.
+
+**⛔ E O SISTEMA NÃO CASA POR SEMELHANÇA.** `variacoesDeSabor` **lista** ("STROGONOFF DE CARNE FAMILIA parece STROGONOFF DE CARNE") e para aí — o vínculo N:1 é do dono. Casar sozinho faria a promo baixar a ficha de outro sabor sem ninguém mandar; é a mesma classe do *"o memo diz Transferência"*.
+
+**CONFERÊNCIA DO CARDÁPIO (52 sabores × os 121 nomes de 29/08):** **51 dos 121 nomes são sabor**; **5 sabores nunca venderam como complemento** — PIZZA ATUM · MEXICANA · HOT DOG · CHOCOLATE PRETO · KIT KAT (não precisam de ficha agora, mas ficam **nomeados**: ausência silenciosa é a doença que este módulo mais paga). ⚠️ **`STROGONOFF DE CARNEE` (cardápio) × `STROGONOFF DE CARNE` (PDV)**: as duas grafias existem em fontes reais, então **as duas entram na régua** — registrar o que cada documento diz não é adivinhar.
+
 ## ⭐⭐⭐ A PRATELEIRA DOS COMPLEMENTOS — O CICLO FECHA NUM GESTO SÓ (02/09/2026)
 
 **O QUE ISTO RESOLVE:** o relatório de PRODUTOS diz que saíram N pizzas grandes e **não diz de que SABOR**. Quem sabe é o Relatório de Complementos — `CALABRESA 1.220` é a maior linha dele. Sem este módulo o estoque não baixa sabor nenhum.
