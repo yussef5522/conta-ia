@@ -20,6 +20,8 @@ const importSchema = z.object({
   data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Escolha a data (AAAA-MM-DD).'),
   html: z.string().max(5_000_000),
   confirmar: z.boolean().optional(),
+  // ⛔ PERÍODO semeia a prateleira e NUNCA baixa estoque (ver import-complementos.ts)
+  modo: z.enum(['DIA', 'PERIODO']).optional(),
 })
 
 /** A prateleira, sem precisar de upload — abre do que já está gravado. */
@@ -37,10 +39,10 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (a.erro) return a.erro
   const parsed = importSchema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ erro: parsed.error.issues[0]?.message ?? 'Dados inválidos.' }, { status: 400 })
-  const { data, html, confirmar } = parsed.data
+  const { data, html, confirmar, modo } = parsed.data
   try {
     if (!confirmar) return NextResponse.json(await previewComplementos(companyId, data, html, prisma))
-    return NextResponse.json(await confirmarComplementos(companyId, data, html, a.user!.sub, prisma))
+    return NextResponse.json(await confirmarComplementos(companyId, data, html, a.user!.sub, prisma, modo ?? 'DIA'))
   } catch (e) {
     if (e instanceof ImportComplementoError) return NextResponse.json({ erro: e.message }, { status: 422 })
     throw e

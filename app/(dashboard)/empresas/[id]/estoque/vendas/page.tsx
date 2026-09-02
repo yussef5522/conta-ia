@@ -364,7 +364,9 @@ function ImportComplementos({ id }: { id: string }) {
     nosDoisRelatorios: number; jaImportado: boolean
     prateleira: { nomeSuitable: string; ocorrencias: number; destino: string; nomeFicha: string | null; tambemProduto: boolean }[]
   } | null>(null)
-  const [ok, setOk] = useState<{ linhas: number; ocorrencias: number; substituiu: boolean } | null>(null)
+  const [ok, setOk] = useState<{ linhas: number; ocorrencias: number; substituiu: boolean; modo?: string } | null>(null)
+  // ⛔ PERÍODO semeia a prateleira e NUNCA vira dia de baixa (a linha fica marcada)
+  const [modo, setModo] = useState<'DIA' | 'PERIODO'>('DIA')
   const [busy, setBusy] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
 
@@ -376,7 +378,7 @@ function ImportComplementos({ id }: { id: string }) {
     try {
       const r = await fetch(`/api/empresas/${id}/estoque/vendas/complementos`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data, html: corpo, confirmar }),
+        body: JSON.stringify({ data, html: corpo, confirmar, modo }),
       })
       const j = await r.json().catch(() => null)
       if (!r.ok) { setErro(j?.erro ?? 'Não consegui ler o arquivo.'); return }
@@ -399,8 +401,17 @@ function ImportComplementos({ id }: { id: string }) {
             <input type="date" value={data} onChange={(e) => { setData(e.target.value); setPrev(null); setOk(null) }}
               className="mt-1 block h-9 rounded-lg border border-slate-300 px-2 text-sm" />
           </label>
+          <label className="text-xs text-slate-500">
+            O arquivo é de…
+            <select value={modo} onChange={(e) => { setModo(e.target.value as 'DIA' | 'PERIODO'); setPrev(null); setOk(null) }}
+              className="mt-1 block h-9 rounded-lg border border-slate-300 px-2 text-sm">
+              <option value="DIA">um DIA de vendas</option>
+              <option value="PERIODO">um PERÍODO (só pra montar a lista)</option>
+            </select>
+          </label>
           <p className="flex-1 text-[11px] text-slate-400">
-            O arquivo do Suitable não traz o período — quem sabe o dia é você, na tela dele.
+            O arquivo do Suitable não traz o período — quem sabe é você, na tela dele.
+            {modo === 'PERIODO' && <><br /><b>Período</b> entra pra você mapear os nomes e priorizar por ocorrência; <b>não</b> vira dia de baixa de estoque.</>}
           </p>
         </div>
         <input ref={fileRef} type="file" accept=".xls,.html,.htm" className="hidden" onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])} />
@@ -478,6 +489,7 @@ function ImportComplementos({ id }: { id: string }) {
         <Card className="border-emerald-300"><CardContent className="p-4">
           <p className="flex items-center gap-2 text-sm font-semibold text-emerald-700">
             <Receipt className="h-4 w-4" /> {ok.linhas} complementos importados ({ok.ocorrencias} ocorrências)
+            {ok.modo === 'PERIODO' && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-normal text-slate-600">período — não baixa estoque</span>}
             {ok.substituiu && <span className="text-xs font-normal text-slate-500">— substituiu o import anterior deste dia</span>}
           </p>
           <p className="mt-1 text-xs text-slate-500">Nada baixou estoque — o destino de cada sabor é você quem aponta.</p>

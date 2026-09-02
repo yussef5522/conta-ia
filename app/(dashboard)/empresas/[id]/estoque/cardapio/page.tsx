@@ -436,7 +436,13 @@ function PrateleiraComplementos({ id, linhas, periodo, onMapear, onMoverGrupo, o
                           </p>
                         )}
                       </td>
-                      <td className="px-3 py-0 text-right text-[13px] tabular-nums text-slate-600">{l.ocorrencias.toLocaleString('pt-BR')}</td>
+                      <td className="px-3 py-0 text-right text-[13px] tabular-nums text-slate-600">
+                        {/* ⚠️ 0 aqui não é "vendeu zero": é sabor do cardápio (ou nome já
+                            mapeado) que não apareceu no que foi importado. Dizer "—" e o
+                            porquê evita ler ausência como número. */}
+                        {l.ocorrencias > 0 ? l.ocorrencias.toLocaleString('pt-BR')
+                          : <span className="text-slate-400" title="não apareceu no período importado">— não vendeu</span>}
+                      </td>
                       <td className="px-3 py-0 text-[13px]">
                         {l.destino === 'FICHA' ? (
                           <a href={`/empresas/${id}/estoque/fichas/${l.fichaId}`} className="text-[#185FA5] hover:underline">

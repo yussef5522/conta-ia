@@ -15,6 +15,7 @@ import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { parseSuitable, COLUNAS_COMPLEMENTOS } from './parse-suitable'
 import { prateleiraDeComplementos, type LinhaPrateleira } from './complemento-map'
+import { SABORES_DO_CARDAPIO, grupoPeloCardapio } from './grupo-complemento'
 
 export class ImportComplementoError extends Error {}
 
@@ -32,6 +33,37 @@ export interface PrevisaoComplementos {
   /** já existe import deste dia? (reimportar SUBSTITUI) */
   jaImportado: boolean
 }
+
+/**
+ * Quantos sabores do cardápio precisam casar pra o sistema aceitar que o cardápio é AQUELE.
+ * 10 é folgado pra baixo (a Caçula casa 51) e alto o bastante pra um cliente que vende
+ * "BACON" e "FRANGO" sem ser pizzaria não herdar 52 nomes que não são dele.
+ */
+const MIN_EVIDENCIA_CARDAPIO = 10
+
+/**
+ * ⭐⭐ DIA × PERÍODO — e a diferença é uma ARMADILHA DE LEDGER, não organização.
+ *
+ * O relatório do Suitable **não traz data nenhuma** (conferido no arquivo: zero ocorrência de
+ * data). Quem escolhe o dia é o dono. Só que ele pode exportar um DIA ou um PERÍODO INTEIRO,
+ * e os dois caem na mesma tabela, que é indexada por `data`.
+ *
+ * ⛔⛔ SE UM PERÍODO ENTRAR COMO DIA, ele vira uma bomba pra quando a BAIXA for ligada:
+ * "processar o dia X" baixaria as **7.648 ocorrências do mês inteiro** de uma vez, com cara
+ * de operação normal. Por isso o período é marcado no `importId` (`comp-periodo-…`) e
+ * **`ehLinhaDePeriodo` existe pra a baixa RECUSAR essas linhas** — a decisão fica registrada
+ * aqui, hoje, e não na memória de quem for ligar a baixa daqui a um mês.
+ *
+ * ⚠️ Período serve pra SEMEAR a prateleira (o dono precisa da lista completa de nomes pra
+ * montar as fichas) e pra priorizar por ocorrência. Não serve pra baixar estoque.
+ */
+export type ModoImportComplemento = 'DIA' | 'PERIODO'
+
+export const importIdDe = (companyId: string, data: string, modo: ModoImportComplemento) =>
+  modo === 'PERIODO' ? `comp-periodo-${companyId}-${data}` : `comp-${companyId}-${data}`
+
+/** ⛔ a baixa TEM que chamar isto e pular: linha de período não é venda de um dia. */
+export const ehLinhaDePeriodo = (importId: string) => importId.startsWith('comp-periodo-')
 
 const diaUtc = (s: string) => new Date(`${s.slice(0, 10)}T00:00:00.000Z`)
 
@@ -90,7 +122,8 @@ export async function previewComplementos(
  */
 export async function confirmarComplementos(
   companyId: string, data: string, html: string, userId?: string, db: PrismaClient = defaultPrisma,
-): Promise<{ importId: string; linhas: number; ocorrencias: number; substituiu: boolean }> {
+  modo: ModoImportComplemento = 'DIA',
+): Promise<{ importId: string; linhas: number; ocorrencias: number; substituiu: boolean; modo: ModoImportComplemento }> {
   const p = parseSuitable(html, COLUNAS_COMPLEMENTOS)
   if (!p.linhas.length) throw new ImportComplementoError('Nenhum complemento encontrado no arquivo.')
   const dia = diaUtc(data)
@@ -106,7 +139,7 @@ export async function confirmarComplementos(
     await tx.stockVendaComplementoLinha.deleteMany({ where: { companyId, data: dia } })
     // ⚠️ `importId` é o dia: reimportar o mesmo dia reaproveita a chave, e a baixa
     // (`receiptId`) continua encontrando as linhas certas depois do reimport.
-    const importId = `comp-${companyId}-${data}`
+    const importId = importIdDe(companyId, data, modo)
     await tx.stockVendaComplementoLinha.createMany({
       data: p.linhas.map((l) => ({
         companyId, importId, data: dia,
@@ -122,6 +155,7 @@ export async function confirmarComplementos(
       linhas: p.linhas.length,
       ocorrencias: p.linhas.reduce((s, l) => s + l.quantidade, 0),
       substituiu: antes > 0,
+      modo,
     }
   })
 }
@@ -164,6 +198,28 @@ export async function prateleiraGravada(
     // ⭐ o nome mapeado que perdeu a linha entra com 0 — visível, nunca sumido
     ...mapeados.filter((m) => !comLinha.has(m.nomeSuitable)).map((m) => ({ nomeSuitable: m.nomeSuitable, ocorrencias: 0 })),
   ]
+
+  /**
+   * ⭐⭐ O SABOR DO CARDÁPIO QUE AINDA NÃO VENDEU TAMBÉM APARECE, com 0 ocorrências.
+   *
+   * ⚠️ PEDIDO DO DONO, e o motivo é operacional: *"não quero descobrir na primeira venda
+   * deles que não tinham ficha"*. Um dia de relatório não contém o cardápio inteiro — em
+   * 29/08, 5 dos 52 sabores não venderam (PIZZA ATUM, MEXICANA, HOT DOG, CHOCOLATE PRETO,
+   * KIT KAT). Sem isto eles só apareceriam **no dia em que fossem vendidos**, justamente
+   * quando já é tarde.
+   *
+   * ⛔⛔ E POR QUE ISTO É GATEADO POR EVIDÊNCIA, NÃO SOLTO: a lista de sabores é o cardápio
+   * da **Caçula**, escrito em código. Injetar os 52 em TODA empresa encheria a prateleira de
+   * um cliente qualquer com nomes de pizza que ele nunca vendeu — dado inventado com cara de
+   * dado real, e multi-tenant é onde isso dói mais. Então só injeta onde o próprio relatório
+   * JÁ PROVOU que o cardápio é este (10+ sabores casando exato; a Caçula casa 51 de 52).
+   */
+  const conhecidos = new Set(entradas.map((e) => e.nomeSuitable))
+  const casaram = [...conhecidos].filter((n) => grupoPeloCardapio(n) === 'SABOR').length
+  if (casaram >= MIN_EVIDENCIA_CARDAPIO) {
+    const jaTem = new Set([...conhecidos].map((n) => n.toUpperCase()))
+    for (const s of SABORES_DO_CARDAPIO) if (!jaTem.has(s.toUpperCase())) entradas.push({ nomeSuitable: s, ocorrencias: 0 })
+  }
 
   const dias = [...new Set(linhas.map((l) => l.data.toISOString().slice(0, 10)))].sort()
   return {

@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { prisma } from '@/lib/db'
 import { upsertComplementoMap, limparComplementoMap, prateleiraDeComplementos, ComplementoMapError } from '../complemento-map'
-import { prateleiraGravada, confirmarComplementos } from '../import-complementos'
+import { prateleiraGravada, confirmarComplementos, ehLinhaDePeriodo, importIdDe } from '../import-complementos'
 import { criarFicha } from '../../producao/fichas'
 
 const CNPJ = '50505050000277'
@@ -217,5 +217,67 @@ describe('⛔⛔ NOME CONHECIDO NÃO SOME POR CAUSA DE DATA (02/09)', () => {
 
   it('⭐ sem import nenhum, o período é null (não inventa data)', async () => {
     expect((await prateleiraGravada(companyId, prisma)).periodo).toBeNull()
+  })
+})
+
+describe('⭐⭐ o sabor do cardápio que ainda NÃO vendeu aparece com 0', () => {
+  // ⚠️ pedido do dono: "não quero descobrir na primeira venda deles que não tinham ficha"
+  const htmlCardapio = (nomes: string[]) =>
+    `<table><tr><td>Descrição</td><td>Valor médio</td><td>Quantidade</td><td>Valor Total</td></tr>` +
+    nomes.map((n, i) => `<tr><td>${n}</td><td>R$ 0,00</td><td>${i + 1}</td><td>R$ 0,00</td></tr>`).join('') +
+    `</table>`
+
+  it('⭐⭐ com o cardápio PROVADO pelo relatório, os 5 que não venderam entram com 0', async () => {
+    // 12 sabores do cardápio real → passa do mínimo de evidência
+    await confirmarComplementos(companyId, '2026-08-29', htmlCardapio([
+      'CALABRESA', 'FRANGO', 'BACON', 'PAULISTA', 'MUSSARELA', 'PORTUGUESA',
+      'MARGHERITA', 'NAPOLITANA', '4 QUEIJOS', '5 QUEIJOS', 'ENTREVERO', 'BASCA',
+    ]), undefined, prisma)
+
+    const { prateleira } = await prateleiraGravada(companyId, prisma)
+    const nomes = prateleira.map((l) => l.nomeSuitable)
+    for (const s of ['PIZZA ATUM', 'MEXICANA', 'HOT DOG', 'CHOCOLATE PRETO', 'KIT KAT']) {
+      expect(nomes, s).toContain(s)
+      const l = prateleira.find((x) => x.nomeSuitable === s)!
+      expect(l.ocorrencias).toBe(0)
+      expect(l.destino).toBe('SEM_FICHA')
+      expect(l.grupo).toBe('SABOR') // cai na seção de sabores, mapeável hoje
+    }
+  })
+
+  it('⛔⛔ SEM evidência do cardápio, NÃO injeta nada — outra empresa não herda pizza', async () => {
+    // uma lanchonete que vende BACON e FRANGO não é a Caçula
+    await confirmarComplementos(companyId, '2026-08-29', htmlCardapio(['BACON', 'FRANGO']), undefined, prisma)
+    const { prateleira } = await prateleiraGravada(companyId, prisma)
+    expect(prateleira.map((l) => l.nomeSuitable).sort()).toEqual(['BACON', 'FRANGO'])
+  })
+})
+
+describe('⛔⛔ PERÍODO não é um dia de venda', () => {
+  const html = `<table><tr><td>Descrição</td><td>Valor médio</td><td>Quantidade</td><td>Valor Total</td></tr>` +
+    `<tr><td>CALABRESA</td><td>R$ 0,00</td><td>1220</td><td>R$ 0,00</td></tr></table>`
+
+  it('⛔⛔ a linha de período é RECONHECÍVEL — a baixa tem como recusar', async () => {
+    const r = await confirmarComplementos(companyId, '2026-08-31', html, undefined, prisma, 'PERIODO')
+    expect(r.modo).toBe('PERIODO')
+    expect(ehLinhaDePeriodo(r.importId)).toBe(true)
+    const linha = await prisma.stockVendaComplementoLinha.findFirst({ where: { companyId, nomeSuitable: 'CALABRESA' } })
+    // ⚠️ sem esta marca, "processar o dia 31/08" baixaria o MÊS INTEIRO com cara de rotina
+    expect(ehLinhaDePeriodo(linha!.importId)).toBe(true)
+  })
+
+  it('⭐ o import de DIA continua sendo dia (o caminho normal não muda)', async () => {
+    const r = await confirmarComplementos(companyId, '2026-08-29', html, undefined, prisma)
+    expect(r.modo).toBe('DIA')
+    expect(ehLinhaDePeriodo(r.importId)).toBe(false)
+    expect(importIdDe(companyId, '2026-08-29', 'DIA')).toBe(`comp-${companyId}-2026-08-29`)
+  })
+
+  it('⭐ e período e dia CONVIVEM: são chaves diferentes, um não apaga o outro', async () => {
+    await confirmarComplementos(companyId, '2026-08-29', html, undefined, prisma)
+    await confirmarComplementos(companyId, '2026-08-31', html, undefined, prisma, 'PERIODO')
+    const ids = (await prisma.stockVendaComplementoLinha.findMany({ where: { companyId }, select: { importId: true } })).map((l) => l.importId)
+    expect(new Set(ids).size).toBe(2)
+    expect(ids.filter(ehLinhaDePeriodo)).toHaveLength(1)
   })
 })
