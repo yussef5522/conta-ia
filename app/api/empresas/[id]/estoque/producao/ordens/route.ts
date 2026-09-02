@@ -6,7 +6,7 @@ import { prisma } from '@/lib/db'
 import { guardStock } from '@/lib/stock/require-stock'
 import { listOrdens, criarOrdem, OrdemError } from '@/lib/stock/producao/ordens'
 import { sugestoesDeProducao } from '@/lib/stock/producao/sugestao-cardapio'
-import { cardsDoPainel, ESTADOS_ABERTOS, ehDeOntem } from '@/lib/stock/producao/painel-producao'
+import { cardsDoPainel, lotesDoPeriodo, ESTADOS_ABERTOS, ehDeOntem } from '@/lib/stock/producao/painel-producao'
 import { conclusoesNoPeriodo } from '@/lib/stock/producao/conclusao'
 
 interface Params { params: Promise<{ id: string }> }
@@ -37,12 +37,19 @@ export async function GET(request: NextRequest, { params }: Params) {
     cardsDoPainel(companyId, { de, ate }, agora, prisma),
     conclusoesNoPeriodo(companyId, de, ate, prisma),
   ])
+  // ⭐ o selo de % por linha — MESMA fonte do card "Rendimento"
+  const lotes = await lotesDoPeriodo(companyId, { de, ate }, prisma)
+  const seloPorConclusao = new Map(lotes.map((l) => [l.conclusaoId, l]))
   const abertas = ordens
     .filter((o) => (ESTADOS_ABERTOS as readonly string[]).includes(o.estado))
     .map((o) => ({ ...o, deOntem: ehDeOntem(new Date(o.dataProducao), agora) }))
 
   return NextResponse.json({
-    ordens, sugestoes, painel, abertas, concluidas,
+    ordens, sugestoes, painel, abertas,
+    concluidas: concluidas.map((c) => {
+      const s = seloPorConclusao.get(c.id)
+      return { ...c, pct: s?.pct ?? null, faixa: s?.faixa ?? 'SEM_REGUA', motivo: s?.motivo ?? null }
+    }),
     periodo: { de: de.toISOString().slice(0, 10), ate: ate.toISOString().slice(0, 10) },
   })
 }

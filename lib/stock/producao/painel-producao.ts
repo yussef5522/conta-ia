@@ -89,6 +89,68 @@ export interface OrdemAberta {
   loteBase: number
 }
 
+export interface LoteDoPeriodo {
+  conclusaoId: string
+  ordemId: string
+  qtdGerada: number
+  esperado: number | null
+  /** saiu ÷ esperado — o selo da linha */
+  pct: number | null
+  faixa: FaixaVariacao
+  motivo: string | null
+}
+
+/**
+ * ⭐ Os lotes do período COM o julgamento por linha. É a MESMA lista que alimenta o card
+ * "Rendimento" — o selo da linha e a média do card não têm como discordar.
+ *
+ * ⚠️ Isto nasceu de uma falha minha: o selo de % por linha estava no desenho aprovado e
+ * ficou de fora do 1º deploy. O dado não faltava — a rota devolvia `rendimento` cru, mas
+ * ninguém calculava o "% do esperado" nem lia o motivo do desvio. Em vez de calcular na
+ * tela (uma 2ª régua), a conta sai daqui e serve os dois.
+ */
+export async function lotesDoPeriodo(
+  companyId: string,
+  periodo: { de: Date; ate: Date },
+  db: PrismaClient = defaultPrisma,
+): Promise<LoteDoPeriodo[]> {
+  const conclusoes = await conclusoesNoPeriodo(companyId, periodo.de, periodo.ate, db)
+  if (!conclusoes.length) return []
+  const ordens = await db.stockProductionOrder.findMany({
+    where: { companyId, id: { in: conclusoes.map((c) => c.ordemId) } },
+    select: { id: true, fichaId: true, versaoFicha: true },
+  })
+  const porOrdem = new Map(ordens.map((o) => [o.id, o]))
+  const desvios = await db.stockProducaoDesvio.findMany({
+    where: { companyId, conclusaoId: { in: conclusoes.map((c) => c.id) } },
+    select: { conclusaoId: true, motivo: true },
+  })
+  const motivoPorConclusao = new Map(desvios.map((d) => [d.conclusaoId, d.motivo]))
+
+  const out: LoteDoPeriodo[] = []
+  for (const c of conclusoes) {
+    const o = porOrdem.get(c.ordemId)
+    if (!o) continue
+    const versao = await db.stockFichaVersao.findFirst({
+      where: { companyId, fichaId: o.fichaId, versao: o.versaoFicha }, select: { loteBase: true },
+    })
+    const medido = await rendimentoMedidoDaFicha(companyId, o.fichaId, db, c.id)
+    const regua = { teorico: versao?.loteBase ?? 1, medido: medido.media, lotes: medido.lotes }
+    const p = preverSaida(c.escalaConsumida, regua)
+    const v = avaliarVariacao(c.qtdGerada, c.escalaConsumida, regua)
+    out.push({
+      conclusaoId: c.id, ordemId: c.ordemId, qtdGerada: c.qtdGerada,
+      esperado: p.esperado > 0 ? p.esperado : null,
+      // ⚠️ o selo mostra o % contra a régua VIGENTE (a média quando existe, a ficha
+      // enquanto não). É o mesmo número que o aviso da conclusão mostrou pro operador.
+      pct: v.pctMedia ?? v.pctTeorico,
+      faixa: v.faixa,
+      motivo: motivoPorConclusao.get(c.id) ?? null,
+    })
+  }
+  return out
+}
+
 /** Monta os 4 cards. Nenhuma query de movimento fora de `lerEmProducao`. */
 export async function cardsDoPainel(
   companyId: string,
@@ -102,44 +164,38 @@ export async function cardsDoPainel(
   })
   const abertas = ordens.filter((o) => (ESTADOS_ABERTOS as readonly string[]).includes(o.estado))
 
-  const [mapa, custo, conclusoes] = await Promise.all([
+  const [mapa, custo, lotes] = await Promise.all([
     lerEmProducao(companyId, db, abertas.map((o) => o.id)),
     custoMedioPorItem(db, companyId),
-    conclusoesNoPeriodo(companyId, periodo.de, periodo.ate, db),
+    // ⭐ A MESMA lista que a tela usa por linha — o card e o selo não podem discordar.
+    lotesDoPeriodo(companyId, periodo, db),
   ])
-
-  // ⭐ o esperado de cada lote sai de `preverSaida` — a MESMA função da tela de separar e
-  // da de concluir. A régua (teórico vs média medida) é da ficha do lote.
-  const fichaDaOrdem = new Map(ordens.map((o) => [o.id, { fichaId: o.fichaId, versao: o.versaoFicha }]))
-  const lotes: { qtdGerada: number; esperado: number | null }[] = []
-  for (const c of conclusoes) {
-    const f = fichaDaOrdem.get(c.ordemId)
-    if (!f) continue
-    const versao = await db.stockFichaVersao.findFirst({
-      where: { companyId, fichaId: f.fichaId, versao: f.versao }, select: { loteBase: true },
-    })
-    const medido = await rendimentoMedidoDaFicha(companyId, f.fichaId, db, c.id)
-    const p = preverSaida(c.escalaConsumida, { teorico: versao?.loteBase ?? 1, medido: medido.media, lotes: medido.lotes })
-    lotes.push({ qtdGerada: c.qtdGerada, esperado: p.esperado })
-  }
   const pond = rendimentoPonderado(lotes)
 
-  // ⭐ a FAIXA (cor do card) vem do mesmo `avaliarVariacao` que julga o lote na conclusão —
-  // um segundo limiar aqui faria o card e o aviso da tela discordarem sobre o mesmo dia.
+  // ⭐ a FAIXA (cor do card) vem do mesmo `avaliarVariacao` que julga o lote na conclusão.
   const totalSaiu = lotes.reduce((s, l) => s + l.qtdGerada, 0)
   const totalEsp = lotes.reduce((s, l) => s + (l.esperado ?? 0), 0)
   const faixa = pond.pct == null
-    ? 'SEM_REGUA' as const
+    ? ('SEM_REGUA' as const)
     : avaliarVariacao(totalSaiu, 1, { teorico: totalEsp, medido: totalEsp, lotes: pond.lotes }).faixa
 
   return {
     emAberto: abertas.length,
     valorEmProducao: valorEmProducao(mapa, custo),
-    concluidasNoPeriodo: conclusoes.length,
-    valorProduzidoNoPeriodo: round2(conclusoes.reduce((s, c) => s + c.custoLoteReal, 0)),
+    concluidasNoPeriodo: lotes.length,
+    valorProduzidoNoPeriodo: round2(await valorProduzido(companyId, periodo, db)),
     rendimentoPeriodo: pond.pct,
     lotesNaMedia: pond.lotes,
     faixaRendimento: faixa,
     abertasDeOntem: abertas.filter((o) => ehDeOntem(o.atualizadoEm, agora)).length,
   }
+}
+
+/** Σ do custo real dos lotes do período — coluna gravada pelo `concluir()`, não conta nova. */
+async function valorProduzido(companyId: string, periodo: { de: Date; ate: Date }, db: PrismaClient): Promise<number> {
+  const r = await db.stockProducaoConclusao.aggregate({
+    where: { companyId, criadoEm: { gte: periodo.de, lte: periodo.ate } },
+    _sum: { custoLoteReal: true },
+  })
+  return r._sum.custoLoteReal ?? 0
 }

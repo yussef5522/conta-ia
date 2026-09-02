@@ -14,14 +14,15 @@ import { TotalsBar } from '@/components/ui/totals-bar'
 import { SortableTh, useSort } from '@/components/ui/sortable-th'
 import { baixarCsv, hojeArquivo } from '@/lib/format/csv-cliente'
 import { Factory, Loader2, Plus, ChevronRight, ClipboardList, Settings, TrendingDown, UtensilsCrossed, Download, PlayCircle, CheckCircle2 } from 'lucide-react'
+import { ehReceitaDeProducao } from '@/lib/stock/producao/tipo-receita'
 
 interface Ordem { id: string; nomeProduzido: string; unidadeProduzido: string; escalaReceitas: number; loteBase: number; estado: string; dataProducao: string; setorNome: string | null }
 interface Sugestao { fichaId: string; itemProduzidoId: string; nome: string; unidade: string; saldo: number; estoqueMin: number; estoqueMax: number | null; faltam: number; escalaSugerida: number | null; rendimentoMedio: number | null }
-interface FichaOpt { id: string; nomeProduzido: string; unidadeProduzido: string; loteBase: number; rendimentoMedio: number | null; rendimentoLotes: number }
+interface FichaOpt { id: string; nomeProduzido: string; unidadeProduzido: string; loteBase: number; rendimentoMedio: number | null; rendimentoLotes: number; tipoProduto: string }
 interface Setor { id: string; nome: string; ativo: boolean }
 interface Painel { emAberto: number; valorEmProducao: number; concluidasNoPeriodo: number; valorProduzidoNoPeriodo: number; rendimentoPeriodo: number | null; lotesNaMedia: number; faixaRendimento: string; abertasDeOntem: number }
 type Aberta = Ordem & { deOntem?: boolean }
-interface Conclusao { id: string; ordemId: string; qtdGerada: number; custoUnitarioReal: number | null; custoLoteReal: number; colaboradorNome: string | null; rendimento: number; criadoEm: string }
+interface Conclusao { id: string; ordemId: string; qtdGerada: number; custoUnitarioReal: number | null; custoLoteReal: number; colaboradorNome: string | null; rendimento: number; criadoEm: string; pct: number | null; faixa: string; motivo: string | null }
 
 // ⭐ PALETA APROVADA NO MOCKUP (01/09/2026). Cor SÓ com significado — status, desvio,
 // dinheiro parado. Texto sobre fundo colorido usa o tom escuro da MESMA família, nunca
@@ -36,6 +37,16 @@ const C = {
   cinzaBg: '#F1EFE8', cinzaTx: '#5F5E5A',
   vermelhoBg: '#FCEBEB', vermelhoTx: '#791F1F',
   txt2: '#5F5E5A', txt3: '#888780',
+  // ⭐ ESCALA TIPOGRÁFICA aprovada em mockup (01/09). REGRA: no máximo DUAS coisas em
+  // peso 500 escuro por linha (o nome e o custo). O resto desce um degrau por vez —
+  // é o que faz a linha ter hierarquia em vez de virar um bloco cinza uniforme.
+  // ⚠️ Mobile usa os MESMOS tamanhos: encolher texto em tela pequena é onde a leitura morre.
+  nomeTx: '#2C2C2A', qtdTx: '#444441', tituloTx: '#444441',
+}
+const T = {
+  nome: 'text-[15px]', custo: 'text-[14px]', qtd: 'text-[14px]',
+  quem: 'text-[13px]', hora: 'text-[13px]', pill: 'text-[12px]',
+  cardNum: 'text-[25px]', cardRot: 'text-[12px]', titulo: 'text-[14px]',
 }
 const PILL: Record<string, { bg: string; tx: string }> = {
   PLANEJADA: { bg: C.cinzaBg, tx: C.cinzaTx },
@@ -54,6 +65,7 @@ const ESTADO: Record<string, { label: string; cls: string }> = {
   CONCLUIDA: { label: 'Concluída', cls: 'bg-emerald-50 text-emerald-700' },
   CANCELADA: { label: 'Cancelada', cls: 'bg-rose-50 text-rose-600' },
 }
+const PAGINA = 25
 const fmtQtd = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 3 })
 const fmtDia = (iso: string) => iso.slice(0, 10).split('-').reverse().join('/')
 
@@ -69,8 +81,15 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
   const [periodo, setPeriodo] = useState<'hoje' | 'semana' | 'mes'>('hoje')
   const [busca, setBusca] = useState('')
   const [soDeOntem, setSoDeOntem] = useState(false)
+  // ⭐ ITEM 4 — período livre + paginação. São a MESMA feature (decisão do dono): período
+  // grande sem "carregar mais" vira lista infinita, e paginação sem calendário não tem o
+  // que paginar.
+  const [custom, setCustom] = useState<{ de: string; ate: string } | null>(null)
+  const [abrirCal, setAbrirCal] = useState(false)
+  const [mostrar, setMostrar] = useState(PAGINA)
 
   const janela = (p: typeof periodo) => {
+    if (custom) return custom
     const h = new Date(); const d = new Date(h)
     if (p === 'semana') d.setDate(h.getDate() - 6)
     if (p === 'mes') d.setDate(h.getDate() - 29)
@@ -83,7 +102,7 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
       setPainel(j.painel ?? null); setAbertas(j.abertas ?? []); setConcluidas(j.concluidas ?? [])
     }).catch(() => setOrdens(null))
   }
-  useEffect(() => { carregar() }, [id, periodo]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setMostrar(PAGINA); carregar() }, [id, periodo, custom]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const produzirSugestao = async (s: Sugestao) => {
     setCriando(s.fichaId)
@@ -123,8 +142,14 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
         <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
           <CardPainel rotulo="Em aberto" valor={String(painel.emAberto)} sub="ordens andando"
             ativo={!soDeOntem} onClick={() => setSoDeOntem(false)} />
-          <CardPainel rotulo="Em produção" valor={brl(painel.valorEmProducao)} sub="insumo fora da prateleira"
-            bg={C.ambarBg} tx={C.ambarTx} acento={C.ambarAc} />
+          {/* ⭐ ITEM 2: âmbar SÓ com valor > 0. Zerado = branco, "nada parado agora".
+              Alarme aceso sem motivo vira paisagem — a mesma razão do B3 ser aviso. */}
+          <CardPainel rotulo="Em produção"
+            valor={painel.valorEmProducao > 0 ? brl(painel.valorEmProducao) : 'R$ 0,00'}
+            sub={painel.valorEmProducao > 0 ? 'insumo fora da prateleira' : 'nada parado agora'}
+            bg={painel.valorEmProducao > 0 ? C.ambarBg : undefined}
+            tx={painel.valorEmProducao > 0 ? C.ambarTx : undefined}
+            acento={painel.valorEmProducao > 0 ? C.ambarAc : undefined} />
           <CardPainel rotulo="Concluídas" valor={String(painel.concluidasNoPeriodo)}
             sub={`${brl(painel.valorProduzidoNoPeriodo)} produzidos`} />
           <CardPainel rotulo="Rendimento"
@@ -149,17 +174,45 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
       {/* ⭐ 4. CHIPS de período + busca. Período governa SÓ as concluídas. */}
       <div className="flex flex-wrap items-center gap-1.5">
         {(['hoje', 'semana', 'mes'] as const).map((p) => (
-          <button key={p} onClick={() => setPeriodo(p)}
+          <button key={p} onClick={() => { setCustom(null); setPeriodo(p) }}
             className="h-8 rounded-full px-3 text-xs"
-            style={periodo === p
+            style={!custom && periodo === p
               ? { background: C.primario, color: C.primarioTexto }
               : { border: `1px solid ${C.borda}`, color: C.txt2, background: C.card }}>
             {p === 'hoje' ? 'hoje' : p === 'semana' ? 'semana' : 'mês'}
           </button>
         ))}
+        <button onClick={() => setAbrirCal((v) => !v)} className="h-8 rounded-full px-3 text-xs"
+          style={custom
+            ? { background: C.primario, color: C.primarioTexto }
+            : { border: `1px solid ${C.borda}`, color: C.txt2, background: C.card }}>
+          {custom ? `${fmtDia(custom.de)} – ${fmtDia(custom.ate)}` : 'período…'}
+        </button>
         <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="buscar receita…"
           className="h-8 w-[200px] rounded-lg px-2.5 text-xs" style={{ border: `1px solid ${C.borda}`, background: C.card }} />
       </div>
+
+      {abrirCal && (
+        <div className="flex flex-wrap items-end gap-2 rounded-xl p-3" style={{ background: C.card, border: `1px solid ${C.borda}` }}>
+          <label className="text-[11px]" style={{ color: C.txt2 }}>de
+            <input type="date" defaultValue={custom?.de ?? janela(periodo).de} id="pdDe"
+              className="mt-1 block h-8 rounded-lg px-2 text-xs" style={{ border: `1px solid ${C.borda}` }} />
+          </label>
+          <label className="text-[11px]" style={{ color: C.txt2 }}>até
+            <input type="date" defaultValue={custom?.ate ?? janela(periodo).ate} id="pdAte"
+              className="mt-1 block h-8 rounded-lg px-2 text-xs" style={{ border: `1px solid ${C.borda}` }} />
+          </label>
+          <button onClick={() => {
+            const de = (document.getElementById('pdDe') as HTMLInputElement)?.value
+            const ate = (document.getElementById('pdAte') as HTMLInputElement)?.value
+            // ⚠️ intervalo invertido não vira query: a rota devolveria vazio e pareceria
+            // "não produziu nada", que é a mentira mais fácil de acreditar.
+            if (!de || !ate || de > ate) return
+            setCustom({ de, ate }); setAbrirCal(false)
+          }} className="h-8 rounded-lg px-3 text-xs" style={{ background: C.primario, color: C.primarioTexto }}>aplicar</button>
+          {custom && <button onClick={() => { setCustom(null); setAbrirCal(false) }} className="h-8 rounded-lg px-3 text-xs" style={{ border: `1px solid ${C.borda}`, color: C.txt2 }}>limpar</button>}
+        </div>
+      )}
 
       {novo && <NovaOrdem id={id} onCriada={(ordemId) => { window.location.href = `/empresas/${id}/estoque/producao/${ordemId}` }} onFechar={() => setNovo(false)} />}
 
@@ -199,7 +252,8 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
               .filter((o) => !busca.trim() || o.nomeProduzido.toLowerCase().includes(busca.trim().toLowerCase()))} />
 
           {/* 6. CONCLUÍDAS — essas SIM obedecem os chips */}
-          <ListaConcluidas id={id} periodo={periodo}
+          <ListaConcluidas id={id} periodo={custom ? `${fmtDia(custom.de)} – ${fmtDia(custom.ate)}` : periodo}
+            mostrar={mostrar} onMais={() => setMostrar((m) => m + PAGINA)}
             itens={concluidas.filter((c) => {
               if (!busca.trim()) return true
               const o = ordens.find((x) => x.id === c.ordemId)
@@ -279,7 +333,11 @@ function NovaOrdem({ id, onCriada, onFechar }: { id: string; onCriada: (ordemId:
   const [erro, setErro] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch(`/api/empresas/${id}/estoque/fichas`).then((r) => r.json()).then((j) => setFichas(j.fichas ?? [])).catch(() => {})
+    fetch(`/api/empresas/${id}/estoque/fichas`).then((r) => r.json())
+      // ⛔ SÓ RECEITA DE PRODUÇÃO. Sem isto a busca listava XIS COMPLETO e PIZZA — produto
+      // de VENDA, montado na hora, que não se produz em lote. Régua compartilhada com a
+      // tela de Receitas (fonte única, não uma 2ª lista de tipos aqui).
+      .then((j) => setFichas((j.fichas ?? []).filter(ehReceitaDeProducao))).catch(() => {})
     fetch(`/api/empresas/${id}/estoque/setores`).then((r) => r.json()).then((j) => setSetores(j.setores ?? [])).catch(() => {})
   }, [id])
 
@@ -355,9 +413,9 @@ function CardPainel({ rotulo, valor, sub, bg, tx, acento, ativo, onClick }: {
     <Tag onClick={onClick}
       className={`rounded-xl px-3.5 py-3 text-left ${onClick ? 'transition-colors hover:brightness-[0.99]' : ''}`}
       style={{ background: bg ?? C.card, border: `1px solid ${ativo === false ? C.borda : C.borda}` }}>
-      <p className="text-[11px]" style={{ color: tx ? acento ?? tx : C.txt3 }}>{rotulo}</p>
-      <p className="mt-0.5 text-lg tabular-nums" style={{ color: tx ?? undefined, fontWeight: 500 }}>{valor}</p>
-      {sub && <p className="mt-0.5 text-[11px]" style={{ color: tx ? acento ?? tx : C.txt2 }}>{sub}</p>}
+      <p className={T.cardRot} style={{ color: tx ? acento ?? tx : C.txt2, fontWeight: 500 }}>{rotulo}</p>
+      <p className={`mt-0.5 ${T.cardNum} tabular-nums`} style={{ color: tx ?? C.nomeTx, fontWeight: 500 }}>{valor}</p>
+      {sub && <p className="mt-0.5 text-[12px]" style={{ color: tx ? acento ?? tx : C.txt3 }}>{sub}</p>}
     </Tag>
   )
 }
@@ -367,7 +425,7 @@ function ListaAbertas({ id, ordens }: { id: string; ordens: Aberta[] }) {
   if (!ordens.length) return null
   return (
     <section>
-      <h2 className="mb-1.5 text-xs" style={{ color: C.txt2, fontWeight: 500 }}>Abertas ({ordens.length})</h2>
+      <h2 className={`mb-1.5 ${T.titulo}`} style={{ color: C.tituloTx, fontWeight: 500 }}>Abertas ({ordens.length})</h2>
       <div className="overflow-hidden rounded-xl" style={{ background: C.card, border: `1px solid ${C.borda}` }}>
         {ordens.map((o, i) => {
           const p = PILL[o.estado] ?? PILL.PLANEJADA
@@ -375,15 +433,15 @@ function ListaAbertas({ id, ordens }: { id: string; ordens: Aberta[] }) {
             <a key={o.id} href={`/empresas/${id}/estoque/producao/${o.id}`}
               className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3.5 py-3 hover:bg-black/[0.02]"
               style={i > 0 ? { borderTop: `1px solid ${C.borda}` } : undefined}>
-              <span className="rounded-xl px-2 py-0.5 text-[11px]" style={{ background: p.bg, color: p.tx }}>
+              <span className={`rounded-xl px-2 py-0.5 ${T.pill}`} style={{ background: p.bg, color: p.tx, fontWeight: 500 }}>
                 {ESTADO[o.estado]?.label ?? o.estado}
               </span>
-              <span className="min-w-0 flex-1 truncate text-sm">{o.nomeProduzido}</span>
-              <span className="text-xs tabular-nums" style={{ color: C.txt2 }}>
+              <span className={`min-w-0 flex-1 truncate ${T.nome}`} style={{ color: C.nomeTx, fontWeight: 500 }}>{o.nomeProduzido}</span>
+              <span className={`${T.qtd} tabular-nums`} style={{ color: C.qtdTx }}>
                 ~{fmtQtd(o.escalaReceitas * o.loteBase)} {o.unidadeProduzido} esperadas
               </span>
               {o.deOntem && (
-                <span className="rounded-xl px-2 py-0.5 text-[11px]" style={{ background: C.coralBg, color: C.coralTx }}>
+                <span className={`rounded-xl px-2 py-0.5 ${T.pill}`} style={{ background: C.coralBg, color: C.coralTx }}>
                   desde ontem {fmtDia(o.dataProducao)}
                 </span>
               )}
@@ -397,32 +455,55 @@ function ListaAbertas({ id, ordens }: { id: string; ordens: Aberta[] }) {
 }
 
 /** CONCLUÍDAS do período — % do rendimento colorido pelas faixas do avaliarVariacao. */
-function ListaConcluidas({ id, itens, periodo, nomePorOrdem }: {
+function ListaConcluidas({ id, itens, periodo, nomePorOrdem, mostrar, onMais }: {
   id: string; itens: Conclusao[]; periodo: string; nomePorOrdem: Map<string, string>
+  mostrar: number; onMais: () => void
 }) {
-  const rotulo = periodo === 'hoje' ? 'hoje' : periodo === 'semana' ? 'últimos 7 dias' : 'últimos 30 dias'
+  const rotulo = periodo === 'hoje' ? 'hoje' : periodo === 'semana' ? 'últimos 7 dias' : periodo === 'mes' ? 'últimos 30 dias' : periodo
+  // ⚠️ PAGINAÇÃO: período grande não pode travar a tela. E o "carregar mais" DIZ quantos
+  // faltam — botão que só some quando acaba deixa a pessoa sem saber se viu tudo.
+  const visiveis = itens.slice(0, mostrar)
+  const faltam = itens.length - visiveis.length
   return (
     <section>
-      <h2 className="mb-1.5 text-xs" style={{ color: C.txt2, fontWeight: 500 }}>Concluídas · {rotulo} ({itens.length})</h2>
+      <h2 className={`mb-1.5 ${T.titulo}`} style={{ color: C.tituloTx, fontWeight: 500 }}>Concluídas · {rotulo} ({itens.length})</h2>
       {itens.length === 0 ? (
         <div className="rounded-xl px-3.5 py-6 text-center text-xs" style={{ background: C.card, border: `1px solid ${C.borda}`, color: C.txt3 }}>
           Nada concluído {rotulo}. As ordens abertas continuam acima.
         </div>
       ) : (
         <div className="overflow-hidden rounded-xl" style={{ background: C.card, border: `1px solid ${C.borda}` }}>
-          {itens.map((c, i) => (
+          {visiveis.map((c, i) => (
             <a key={c.id} href={`/empresas/${id}/estoque/producao/${c.ordemId}`}
               className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3.5 py-3 hover:bg-black/[0.02]"
               style={i > 0 ? { borderTop: `1px solid ${C.borda}` } : undefined}>
-              <span className="rounded-xl px-2 py-0.5 text-[11px]" style={{ background: C.verdeBg, color: C.verdeTx }}>Concluída</span>
-              <span className="min-w-0 flex-1 truncate text-sm">{nomePorOrdem.get(c.ordemId) ?? '—'}</span>
-              <span className="text-xs tabular-nums" style={{ color: C.txt2 }}>{fmtQtd(c.qtdGerada)} un</span>
-              <span className="text-xs tabular-nums" style={{ color: C.txt2 }}>{brl(c.custoUnitarioReal)}/un</span>
-              {c.colaboradorNome && <span className="text-xs" style={{ color: C.txt3 }}>{c.colaboradorNome}</span>}
-              <span className="text-xs tabular-nums" style={{ color: C.txt3 }}>{hhmm(c.criadoEm)}</span>
+              <span className={`rounded-xl px-2 py-0.5 ${T.pill}`} style={{ background: C.verdeBg, color: C.verdeTx, fontWeight: 500 }}>Concluída</span>
+              {/* ⭐ peso 500 escuro SÓ aqui e no custo — as duas coisas da regra */}
+              <span className={`min-w-0 flex-1 truncate ${T.nome}`} style={{ color: C.nomeTx, fontWeight: 500 }}>{nomePorOrdem.get(c.ordemId) ?? '—'}</span>
+              <span className={`${T.qtd} tabular-nums`} style={{ color: C.qtdTx }}>{fmtQtd(c.qtdGerada)} un</span>
+              <span className={`${T.custo} tabular-nums`} style={{ color: C.nomeTx, fontWeight: 500 }}>{brl(c.custoUnitarioReal)}/un</span>
+              {/* ⭐ ITEM 3: o selo de % por linha — faixas do `avaliarVariacao`, a MESMA
+                  régua do card e do aviso que o operador viu ao concluir. */}
+              {c.pct != null && c.faixa !== 'SEM_REGUA' && (
+                <span className={`rounded-xl px-2 py-0.5 ${T.pill} tabular-nums`} style={
+                  c.faixa === 'ABAIXO' ? { background: C.ambarBg, color: C.ambarTx }
+                    : c.faixa === 'ACIMA' ? { background: C.azulBg, color: C.azulTx }
+                      : { background: C.verdeBg, color: C.verdeTx }}>
+                  {Math.round(c.pct * 100)}%
+                </span>
+              )}
+              {c.motivo && <span className={`${T.quem} italic`} style={{ color: C.txt3 }}>{c.motivo}</span>}
+              {c.colaboradorNome && <span className={T.quem} style={{ color: C.txt3 }}>{c.colaboradorNome}</span>}
+              <span className={`${T.hora} tabular-nums`} style={{ color: C.txt2 }}>{hhmm(c.criadoEm)}</span>
               <ChevronRight className="h-3.5 w-3.5 shrink-0" style={{ color: C.txt3 }} />
             </a>
           ))}
+          {faltam > 0 && (
+            <button onClick={onMais} className="w-full py-2.5 text-xs hover:bg-black/[0.02]"
+              style={{ borderTop: `1px solid ${C.borda}`, color: C.txt2 }}>
+              carregar mais ({faltam} restante{faltam > 1 ? 's' : ''})
+            </button>
+          )}
         </div>
       )}
     </section>

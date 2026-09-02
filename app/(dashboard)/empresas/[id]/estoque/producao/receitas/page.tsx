@@ -11,6 +11,7 @@
 import { useEffect, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { ChefHat, Loader2, Plus, Factory, ChevronRight, ArrowLeft } from 'lucide-react'
+import { ehReceitaDeProducao } from '@/lib/stock/producao/tipo-receita'
 
 interface Ficha {
   id: string; nomeProduzido: string; unidadeProduzido: string; tipoProduto: string
@@ -28,7 +29,7 @@ export default function ReceitasProducaoPage({ params }: { params: Promise<{ id:
 
   useEffect(() => {
     fetch(`/api/empresas/${id}/estoque/fichas`).then((r) => r.json())
-      .then((j) => setFichas((j.fichas ?? []).filter((f: Ficha) => f.tipoProduto === 'INTERMEDIARIO')))
+      .then((j) => setFichas((j.fichas ?? []).filter(ehReceitaDeProducao)))
       .catch(() => setFichas(null))
   }, [id])
 
