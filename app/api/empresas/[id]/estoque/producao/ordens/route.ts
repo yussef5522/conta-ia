@@ -20,7 +20,14 @@ export async function GET(request: NextRequest, { params }: Params) {
   // não é histórico (a regra central do redesenho).
   const sp = request.nextUrl.searchParams
   const agora = new Date()
-  const hoje0 = new Date(Date.UTC(agora.getUTCFullYear(), agora.getUTCMonth(), agora.getUTCDate()))
+  // ⚠️⚠️ O DIA É O DE QUEM OPERA (BRT), NUNCA UTC — pego em prod antes do dono abrir a tela.
+  // Às 22:34 de 01/09 no servidor (UTC−3) as 7 conclusões da noite já tinham `criadoEm` em
+  // 02/09 UTC. Com o recorte em `Date.UTC` a tela abria em "hoje" com TUDO ZERADO, minutos
+  // depois de ele produzir 7 lotes — o tipo de zero que faz alguém achar que quebrou.
+  // É a mesma família do `fmt` da conferência (20/08) e da âncora de 31/07 12:00 UTC.
+  const BRT = -3
+  const local = new Date(agora.getTime() + BRT * 3_600_000)
+  const hoje0 = new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate()) - BRT * 3_600_000)
   const de = sp.get('de') ? new Date(`${sp.get('de')}T00:00:00.000Z`) : hoje0
   const ate = sp.get('ate') ? new Date(`${sp.get('ate')}T23:59:59.999Z`) : new Date(hoje0.getTime() + 86_399_999)
 
