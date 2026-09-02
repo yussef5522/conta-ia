@@ -46,6 +46,7 @@ export default function ProdutoCardapioPage({ params }: { params: Promise<{ id: 
   const { id, chave } = use(params)
   const [det, setDet] = useState<Detalhe | null | undefined>(undefined)
   const [editandoFicha, setEditandoFicha] = useState(false)
+  const [avisoVinculo, setAvisoVinculo] = useState<string | null>(null)
   const [preco, setPreco] = useState('')
   const [editandoPreco, setEditandoPreco] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -186,6 +187,11 @@ export default function ProdutoCardapioPage({ params }: { params: Promise<{ id: 
       )}
 
       {/* EDITOR — o MESMO componente do mundo da produção, tipo travado em PRODUTO_FINAL */}
+      {avisoVinculo && (
+        <div className="mb-3 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
+          <span>⚠️ {avisoVinculo}</span>
+        </div>
+      )}
       {editandoFicha && (
         <Card><CardContent className="space-y-3 p-4">
           <div className="flex items-center justify-between">
@@ -197,7 +203,17 @@ export default function ProdutoCardapioPage({ params }: { params: Promise<{ id: 
               dois props soltos lidos no `useState` — e abria vazio. */}
           <FichaEditor companyId={id} fichaId={l.fichaId ?? undefined} tipoTravado="PRODUTO_FINAL"
             linha={l} voltarPara={voltar}
-            aoSalvar={() => { setEditandoFicha(false); carregar() }} />
+            mapearNomeSuitable={decodeURIComponent(chave)}
+            aoSalvar={async () => {
+              setEditandoFicha(false)
+              await carregar()
+              // ⭐ ITEM 5: confere que a linha VOLTOU com ficha. Se não voltou, a tela DIZ —
+              // em vez de mostrar "sem ficha" como se nada tivesse sido salvo (o que levou o
+              // dono a salvar de novo e duplicar a PIZZA PEQUENA às 23:22).
+              const v = await fetch(`/api/empresas/${id}/estoque/cardapio/${chave}`).then((x) => x.json()).catch(() => null)
+              if (v && !v.linha?.fichaId) setAvisoVinculo('A ficha foi salva, mas este produto continua sem vínculo com ela. Ela está em Fichas técnicas — não vincule criando outra.')
+              else setAvisoVinculo(null)
+            }} />
         </CardContent></Card>
       )}
 

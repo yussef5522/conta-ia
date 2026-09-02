@@ -9,7 +9,8 @@ import { listFichas, criarFicha, FichaError } from '@/lib/stock/producao/fichas'
 interface Params { params: Promise<{ id: string }> }
 
 
-const componenteSchema = z.object({ itemId: z.string().min(1), qtdPlanejada: z.number().positive(), unidade: z.string().min(1).max(6), posicao: z.number().int().optional() })
+const componenteSchema = z.object({
+  itemId: z.string().min(1), qtdPlanejada: z.number().positive(), unidade: z.string().min(1).max(6), posicao: z.number().int().optional() })
 const criarSchema = z.object({
   nomeProduzido: z.string().min(1).max(120),
   unidadeProduzido: z.enum(['KG', 'UN', 'LT']),
@@ -22,6 +23,9 @@ const criarSchema = z.object({
   tempoPreparoMin: z.number().int().positive().nullable().optional(),
   validadeDias: z.number().int().positive().nullable().optional(),
   componentes: z.array(componenteSchema).min(1),
+  // ⭐ o nome do PDV que esta ficha atende. Quando vem, o vínculo nome→ficha é criado na
+  // MESMA transação — foi a ausência dele que deixou 3 fichas órfãs em 01/09.
+  mapearNomeSuitable: z.string().min(1).max(200).nullable().optional(),
 })
 
 export async function GET(request: NextRequest, { params }: Params) {
@@ -39,6 +43,8 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (!parsed.success) return NextResponse.json({ erro: 'Dados da ficha inválidos.', detalhe: parsed.error.issues[0]?.message }, { status: 400 })
   try {
     const r = await criarFicha({ companyId, userId: a.user!.sub, ...parsed.data })
+    // ⭐ ITEM 5 do dono: a resposta DIZ se o vínculo foi feito. "salvou mas não vinculou" é
+    // infinitamente melhor que voltar em silêncio — foi o silêncio que gerou a duplicata.
     return NextResponse.json({ ok: true, ...r })
   } catch (e) {
     if (e instanceof FichaError) return NextResponse.json({ erro: e.message }, { status: 422 })

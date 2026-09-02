@@ -8,6 +8,7 @@ import { prisma as defaultPrisma } from '@/lib/db'
 import { detectaCicloFicha, type GrafoFichas } from './ciclo'
 import { calcularCustoTeorico, calcularMargem, type ComponenteCusto } from './custo-teorico'
 import { custoMedioPorItem } from '../saldo'
+import { normalizarBusca } from '@/lib/busca-texto'
 import { rendimentoMedidoDaFicha } from './conclusao'
 
 type Db = PrismaClient | Prisma.TransactionClient
@@ -29,6 +30,19 @@ export interface CriarFichaInput extends FichaBodyInput {
   tipoProduto: 'INTERMEDIARIO' | 'PRODUTO_FINAL'
   setorId?: string | null
   valorVenda?: number | null
+  /**
+   * ⭐⭐ O NOME DO PDV QUE ESTA FICHA ATENDE (01/09/2026). Quando vem preenchido, o vínculo
+   * `nome do Suitable → ficha` é criado **NA MESMA TRANSAÇÃO** — ficha e vínculo entram
+   * juntos ou não entram.
+   *
+   * ⛔ INCIDENTE QUE CRIOU ISTO: o dono montou a ficha do XIS COMPLETO e de duas PIZZAS
+   * pelo cardápio. As **três gravaram** — completas, com componentes e preço — e as três
+   * ficaram **ÓRFÃS**: `criarFicha` criava a ficha e **nada** chamava `upsertVendaMap`, que
+   * é quem liga o nome do PDV. O cardápio monta a linha por esse vínculo, então a tela
+   * voltava dizendo "sem ficha" e o dono concluía que não tinha salvo. **A PIZZA saiu
+   * DUPLICADA no mesmo minuto** — a assinatura de "não apareceu, tentei de novo".
+   */
+  mapearNomeSuitable?: string | null
 }
 
 export class FichaError extends Error {}
@@ -47,9 +61,22 @@ export async function buildGrafoFichas(companyId: string, db: Db, exceptFichaId?
   return g
 }
 
-export async function criarFicha(input: CriarFichaInput, db: PrismaClient = defaultPrisma): Promise<{ fichaId: string; itemProduzidoId: string }> {
+export async function criarFicha(input: CriarFichaInput, db: PrismaClient = defaultPrisma): Promise<{ fichaId: string; itemProduzidoId: string; vinculadoAoPdv: boolean }> {
   if (!input.componentes.length) throw new FichaError('A ficha precisa de ao menos um componente.')
   if (input.tipoProduto !== 'INTERMEDIARIO' && input.tipoProduto !== 'PRODUTO_FINAL') throw new FichaError('Tipo de produto inválido.')
+
+  // ⛔⛔ SEGUNDA FICHA PRO MESMO PRODUTO É RECUSADA (01/09/2026). `criarFicha` cria um
+  // stock_item NOVO a cada chamada, então "salvar de novo" não colidia com nada e nascia um
+  // segundo produto com o mesmo nome e ficha própria — foi assim que a PIZZA PEQUENA 25CM
+  // ficou duplicada às 23:22. A comparação é por nome NORMALIZADO (sem caixa/acento), a
+  // mesma régua da busca do catálogo.
+  const jaExiste = await fichaAtivaComNome(input.companyId, input.nomeProduzido, db)
+  if (jaExiste) {
+    throw new FichaError(
+      `Já existe uma ficha para “${jaExiste.nome}”. Edite a ficha existente em vez de criar outra — ` +
+      'duas fichas do mesmo produto brigam pelo vínculo com o PDV e pelo custo.',
+    )
+  }
 
   return db.$transaction(async (tx) => {
     // item produzido (novo stock_item; INTERMEDIARIO/PRODUTO_FINAL como categoria)
@@ -70,8 +97,43 @@ export async function criarFicha(input: CriarFichaInput, db: PrismaClient = defa
     })
     await tx.stockFichaComponente.createMany({ data: input.componentes.map((c, i) => ({ companyId: input.companyId, versaoId: versao.id, itemId: c.itemId, qtdPlanejada: c.qtdPlanejada, unidade: c.unidade, posicao: c.posicao ?? i })) })
 
-    return { fichaId: ficha.id, itemProduzidoId: produzido.id }
+    // ⭐ O VÍNCULO COM O PDV, NA MESMA TRANSAÇÃO. Se ele falhar, a ficha também não entra —
+    // é a regra do módulo (a mesma das marcações do import: "ou grava tudo, ou nada grava").
+    // ⚠️ `upsertVendaMap` não serve aqui porque abre transação própria; a validação dos 3
+    // níveis que ele faz é redundante neste caminho (a ficha é PRODUTO_FINAL por construção).
+    if (input.mapearNomeSuitable && input.tipoProduto === 'PRODUTO_FINAL') {
+      await tx.stockVendaProdutoMap.upsert({
+        where: { companyId_nomeSuitable: { companyId: input.companyId, nomeSuitable: input.mapearNomeSuitable } },
+        create: { companyId: input.companyId, nomeSuitable: input.mapearNomeSuitable, alvoTipo: 'FICHA', fichaId: ficha.id, itemId: null, criadoPorId: input.userId ?? null },
+        update: { alvoTipo: 'FICHA', fichaId: ficha.id, itemId: null },
+      })
+    }
+
+    return { fichaId: ficha.id, itemProduzidoId: produzido.id, vinculadoAoPdv: !!input.mapearNomeSuitable }
   })
+}
+
+/** Ficha ATIVA cujo produto tem o mesmo nome (normalizado). `null` = pode criar. */
+export async function fichaAtivaComNome(
+  companyId: string, nome: string, db: Db = defaultPrisma,
+): Promise<{ fichaId: string; nome: string } | null> {
+  const alvo = normalizarBusca(nome)
+  if (!alvo) return null
+  const fichas = await db.stockFicha.findMany({
+    where: { companyId, ativo: true },
+    select: { id: true, itemProduzidoId: true },
+  })
+  if (!fichas.length) return null
+  const itens = await db.stockItem.findMany({
+    where: { companyId, id: { in: fichas.map((f) => f.itemProduzidoId) } },
+    select: { id: true, nome: true },
+  })
+  const porItem = new Map(itens.map((i) => [i.id, i.nome]))
+  for (const f of fichas) {
+    const n = porItem.get(f.itemProduzidoId)
+    if (n && normalizarBusca(n) === alvo) return { fichaId: f.id, nome: n }
+  }
+  return null
 }
 
 /** Atualiza a ficha. Corpo (componentes/lote/preparo) mudou → versão NOVA. Head → in place. */

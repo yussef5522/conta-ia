@@ -39,7 +39,7 @@ const parseNum = (s: string) => { const t = (s ?? '').trim().replace(',', '.'); 
 
 const CORES_MARGEM = { ruim: 'text-rose-600', atencao: 'text-amber-600', boa: 'text-emerald-600', indefinida: 'text-slate-400' } as const
 
-export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha, aoSalvar }: {
+export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha, aoSalvar, mapearNomeSuitable}: {
   companyId: string
   fichaId?: string
   /** o mundo de origem trava o tipo: cardápio = PRODUTO_FINAL, produção = INTERMEDIARIO */
@@ -50,7 +50,7 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
   linha?: LinhaParaFicha | null
   /** chamado depois de salvar (a tela do produto recarrega em vez de navegar) */
   aoSalvar?: () => void
-}) {
+; mapearNomeSuitable?: string}) {
   const editando = !!fichaId
   const qp = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
   const voltar = voltarPara ?? `/empresas/${companyId}/estoque/fichas`
@@ -166,9 +166,17 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
     try {
       const r = editando
         ? await fetch(`/api/empresas/${companyId}/estoque/fichas/${fichaId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, nomeProduzido: nomeProduzido.trim(), setorId: setorId || null, valorVenda: vv }) })
-        : await fetch(`/api/empresas/${companyId}/estoque/fichas`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, nomeProduzido: nomeProduzido.trim(), unidadeProduzido, tipoProduto, setorId: setorId || null, valorVenda: vv }) })
+        : await fetch(`/api/empresas/${companyId}/estoque/fichas`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, nomeProduzido: nomeProduzido.trim(), unidadeProduzido, tipoProduto, setorId: setorId || null, valorVenda: vv, mapearNomeSuitable: mapearNomeSuitable ?? null }) })
       const j = await r.json().catch(() => null)
       if (!r.ok) { setErro(j?.erro ?? 'Não consegui salvar.'); return }
+      // ⭐ ITEM 5 (01/09): gravação INCOMPLETA nunca mais volta calada. Se a tela pediu o
+      // vínculo com o PDV e ele não veio, o dono fica sabendo NA HORA — foi o silêncio que
+      // fez ele salvar de novo e duplicar a PIZZA.
+      if (mapearNomeSuitable && !editando && j?.vinculadoAoPdv === false) {
+        setErro(`Ficha salva, mas NÃO foi vinculada ao produto “${mapearNomeSuitable}” do PDV. ` +
+          'Ela existe em Fichas técnicas; vincule pelo cardápio antes de vender.')
+        return
+      }
       if (aoSalvar) aoSalvar()
       else window.location.href = voltar
     } catch { setErro('Falha de conexão.') } finally { setSalvando(false) }
