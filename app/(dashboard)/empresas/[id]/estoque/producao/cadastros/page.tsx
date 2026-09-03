@@ -13,7 +13,7 @@ export default function CadastrosPage({ params }: { params: Promise<{ id: string
   const { id } = use(params)
   return (
     <div className="mx-auto max-w-2xl space-y-5 p-4 sm:p-6">
-      <a href={`/empresas/${id}/estoque/fichas`} className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700"><ArrowLeft className="h-3.5 w-3.5" /> voltar pras fichas</a>
+      <a href={`/empresas/${id}/estoque/producao`} className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700"><ArrowLeft className="h-3.5 w-3.5" /> voltar pra Produção</a>
       <h1 className="text-xl font-semibold text-slate-900">Setores e colaboradores</h1>
       <p className="text-sm text-slate-500">Cadastros mínimos que a produção vai usar. Comece só com a Cozinha e os nomes de quem produz.</p>
       <Cadastro companyId={id} titulo="Setores de produção" icone={<Factory className="h-4 w-4" />} rota="setores" chave="setores" chaveItem="setor" placeholder="ex: Cozinha" sugestao="Cozinha" />

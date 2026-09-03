@@ -65,7 +65,10 @@ export default function CardapioHubPage({ params }: { params: Promise<{ id: stri
   // ⭐ ABA COMPLEMENTOS (02/09): os sabores vivem em OUTRO relatório do PDV. Sem eles o
   // estoque não baixa sabor nenhum — o relatório de produtos diz que saíram N pizzas
   // grandes, mas não diz de QUE sabor.
-  const [aba, setAba] = useState<'produtos' | 'complementos'>('produtos')
+  // ⭐ a aba vem da URL (`?aba=complementos`): sem isto, voltar do editor cairia na aba de
+  // produtos e o dono teria que clicar de novo — 50 vezes numa tarde de fichas.
+  const abaDaUrl = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('aba') : null
+  const [aba, setAba] = useState<'produtos' | 'complementos'>(abaDaUrl === 'complementos' ? 'complementos' : 'produtos')
   const [prateleira, setPrateleira] = useState<Comp[] | null>(null)
 
   const [periodoComp, setPeriodoComp] = useState<{ de: string; ate: string; dias: number } | null>(null)
@@ -445,7 +448,7 @@ function PrateleiraComplementos({ id, linhas, periodo, onMapear, onMoverGrupo, o
                       </td>
                       <td className="px-3 py-0 text-[13px]">
                         {l.destino === 'FICHA' ? (
-                          <a href={`/empresas/${id}/estoque/fichas/${l.fichaId}`} className="text-[#185FA5] hover:underline">
+                          <a href={`/empresas/${id}/estoque/fichas/${l.fichaId}?voltar=${encodeURIComponent(`/empresas/${id}/estoque/cardapio?aba=complementos`)}`} className="text-[#185FA5] hover:underline">
                             {l.nomeFicha ?? 'ficha'} ↗
                           </a>
                         ) : l.destino === 'IGNORAR' ? (
@@ -478,7 +481,7 @@ function PrateleiraComplementos({ id, linhas, periodo, onMapear, onMoverGrupo, o
                               className="text-[11px] text-slate-400 hover:text-slate-700">desfazer</button>
                           )}
                           {l.destino === 'SEM_FICHA' && (
-                            <a href={`/empresas/${id}/estoque/fichas/nova?tipo=SABOR&nome=${encodeURIComponent(l.nomeSuitable)}&complemento=${encodeURIComponent(l.nomeSuitable)}`}
+                            <a href={`/empresas/${id}/estoque/fichas/nova?tipo=SABOR&nome=${encodeURIComponent(l.nomeSuitable)}&complemento=${encodeURIComponent(l.nomeSuitable)}&voltar=${encodeURIComponent(`/empresas/${id}/estoque/cardapio?aba=complementos`)}`}
                               className="rounded border border-[#185FA5] px-2 py-0.5 text-[11px] text-[#185FA5] hover:bg-blue-50">criar ficha</a>
                           )}
                         </div>
