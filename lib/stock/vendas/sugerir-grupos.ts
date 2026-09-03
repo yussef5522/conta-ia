@@ -66,6 +66,32 @@ export function difereSoEmDigito(a: string, b: string): boolean {
   return soLetras(a) === soLetras(b) && digitos(a) !== digitos(b)
 }
 
+/**
+ * ⛔⛔ "COMEÇA IGUAL" APERTADO — medido contra os 183 pendentes reais (03/09).
+ *
+ * A 1ª versão casava PREFIXO **ou SUFIXO** e virou enxurrada: `frango com bacon` e
+ * `XIS - BACON` apareciam como "parecidas" de `bacon` (sufixo), e `BORDA MUSSARELA` juntava
+ * **8 candidatas** (`COM ALHO`, `COM CATUPIRY`, `FAMILIA`, `GRANDE`…). Nome de complemento
+ * se COMPÕE — sufixo não diz parentesco, e "X COM Y" é outro produto, não outra grafia de X.
+ *
+ * ⚠️ Alarme falso repetido mata o alarme: 24 grupos com sugestão errada ensinariam o dono a
+ * ignorar a faixa inteira já no primeiro uso.
+ *
+ * O que sobra é o caso que o dono citou — **sufixo de promoção**: `CALABRESA BLACK FRIDAY`.
+ * Regra: começa com a base + ATÉ 2 palavras a mais, e a 1ª delas **não é conector**
+ * (`COM`, `DE`, `C/`, `E`, `SEM`) nem palavra de TAMANHO — as duas famílias que significam
+ * "produto diferente", não "mesmo nome escrito de outro jeito".
+ */
+const CONECTOR = new Set(['COM', 'DE', 'DA', 'DO', 'E', 'SEM', 'C/', 'NO', 'NA'])
+const TAMANHO = new Set(['FAMILIA', 'GRANDE', 'PEQUENA', 'PEQUENO', 'MEDIA', 'MEDIO', 'BROTO', 'GG', 'G', 'P', 'M'])
+
+export function comecaIgual(base: string, outra: string): boolean {
+  if (!outra.startsWith(`${base} `)) return false
+  const extra = outra.slice(base.length + 1).split(' ').filter(Boolean)
+  if (extra.length === 0 || extra.length > 2) return false
+  return !CONECTOR.has(extra[0]) && !TAMANHO.has(extra[0]) && !TAMANHO.has(extra[extra.length - 1])
+}
+
 const MAX_DISTANCIA = 2
 const MIN_TAMANHO_PARA_DISTANCIA = 6
 
@@ -96,7 +122,7 @@ export function sugerirGruposDeGrafia(pendentes: readonly NomePendente[]): Grupo
       if (volumeDela > volumeDaqui || (volumeDela === volumeDaqui && outraChave < chave)) continue
 
       let motivo: Parecida['motivo'] | null = null
-      if (outraChave.startsWith(`${chave} `) || outraChave.endsWith(` ${chave}`)) motivo = 'começa igual'
+      if (comecaIgual(chave, outraChave)) motivo = 'começa igual'
       else if (
         chave.length >= MIN_TAMANHO_PARA_DISTANCIA && outraChave.length >= MIN_TAMANHO_PARA_DISTANCIA
         && !difereSoEmDigito(chave, outraChave)

@@ -8,7 +8,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { prisma } from '@/lib/db'
-import { sugerirGruposDeGrafia, difereSoEmDigito, distancia } from '../sugerir-grupos'
+import { sugerirGruposDeGrafia, difereSoEmDigito, distancia, comecaIgual } from '../sugerir-grupos'
 import { criarFicha } from '../../producao/fichas'
 import { prateleiraDeComplementos } from '../complemento-map'
 import { agruparPorDestino } from '../painel-complementos'
@@ -64,6 +64,28 @@ describe('⛔⛔ o que NÃO entra sozinho', () => {
   it('⛔ e tamanho também não: PIZZA PEQUENA 25CM × 45CM', () => {
     const g = sugerirGruposDeGrafia([n('PIZZA PEQUENA 25CM', 20), n('PIZZA PEQUENA 45CM', 18)])
     expect(g.every((x) => x.parecidas.length === 0)).toBe(true)
+  })
+
+  it('⛔⛔ SUFIXO não é parentesco — "frango com bacon" NÃO é grafia de "bacon"', () => {
+    // ⚠️ medido nos 183 pendentes reais: a régua com sufixo trazia `frango com bacon` e
+    // `XIS - BACON` como parecidas de `bacon`. Nome de complemento se COMPÕE.
+    const g = sugerirGruposDeGrafia([n('BACON', 328), n('FRANGO COM BACON', 14), n('XIS - BACON', 21)])
+    expect(g.find((x) => x.titulo === 'BACON')!.parecidas).toEqual([])
+  })
+
+  it('⛔⛔ "X COM Y" é outro produto — BORDA MUSSARELA não puxa 8 candidatas', () => {
+    const g = sugerirGruposDeGrafia([
+      n('BORDA MUSSARELA', 5), n('BORDA MUSSARELA COM ALHO', 3), n('BORDA MUSSARELA COM CATUPIRY', 2),
+      n('BORDA MUSSARELA FAMILIA', 1), n('BORDA MUSSARELA GRANDE', 1),
+    ])
+    expect(g.find((x) => x.titulo === 'BORDA MUSSARELA')!.parecidas).toEqual([])
+  })
+
+  it('⭐ mas o sufixo de PROMOÇÃO continua sendo oferecido (o caso do dono)', () => {
+    expect(comecaIgual('CALABRESA', 'CALABRESA BLACK FRIDAY')).toBe(true)
+    expect(comecaIgual('BORDA MUSSARELA', 'BORDA MUSSARELA COM ALHO')).toBe(false)
+    expect(comecaIgual('BORDA MUSSARELA', 'BORDA MUSSARELA FAMILIA')).toBe(false)
+    expect(comecaIgual('BACON', 'FRANGO COM BACON')).toBe(false)
   })
 
   it('⚠️ a candidata aparece UMA vez só, no grupo de maior volume', () => {
