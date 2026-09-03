@@ -75,3 +75,21 @@ export function secoesDaPrateleira(linhas: readonly LinhaPrateleira[]): Secao[] 
     monta('IGNORADOS', 'Ignorados', 'não baixam estoque — decisão reversível', ignorados),
   ]
 }
+
+/**
+ * ⛔⛔ A CARGA DA PRATELEIRA É DO ESTADO, NÃO DO GESTO (03/09/2026).
+ *
+ * REGRESSÃO REAL, minha, no mesmo dia: eu fiz a aba abrir por `?aba=complementos` na URL,
+ * mas o `carregarPrateleira()` só era chamado no **onClick da aba**. Entrando pela URL — que
+ * é justamente pra onde o "voltar" do editor passou a mandar — a aba abria e **o fetch nunca
+ * acontecia**: `prateleira` ficava `null` e o componente girava o spinner pra sempre.
+ * ⚠️ Sem erro nenhum: nada quebrou, nada estourou no log. Foi requisição que **não começou**,
+ * que é pior de achar que requisição que falha.
+ *
+ * ⭐ A cura é amarrar a carga ao ESTADO ("a aba está aberta e o dado não está aqui"), não ao
+ * GESTO ("alguém clicou"). É a família do "N caminhos, 1 esquecido": toda porta nova pra
+ * essa aba — URL, clique, link de fora — passa a carregar de graça.
+ */
+export function precisaCarregarPrateleira(aba: string, prateleira: unknown | null): boolean {
+  return aba === 'complementos' && prateleira === null
+}

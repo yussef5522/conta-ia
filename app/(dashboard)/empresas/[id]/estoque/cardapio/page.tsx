@@ -20,7 +20,7 @@ import { TotalsBar } from '@/components/ui/totals-bar'
 import { SortableTh, useSort } from '@/components/ui/sortable-th'
 import { ehProntoNoCardapio } from '@/lib/stock/cardapio/hub'
 import type { LinhaPrateleira } from '@/lib/stock/vendas/complemento-map'
-import { cardsDaPrateleira, secoesDaPrateleira } from '@/lib/stock/vendas/painel-complementos'
+import { cardsDaPrateleira, secoesDaPrateleira, precisaCarregarPrateleira } from '@/lib/stock/vendas/painel-complementos'
 import { UtensilsCrossed, Loader2, Download, Search, AlertTriangle, ChevronRight, ChevronDown, Sparkles, CircleDollarSign, PackageCheck, HelpCircle } from 'lucide-react'
 
 type Status = 'SEM_DESTINO' | 'SEM_FICHA' | 'REVENDA' | 'FICHA_INCOMPLETA' | 'FICHA_OK'
@@ -105,6 +105,14 @@ export default function CardapioHubPage({ params }: { params: Promise<{ id: stri
       .then((r) => r.json()).then(setHub).catch(() => setHub(null))
   }, [id])
 
+  // ⭐⭐ A PRATELEIRA CARREGA POR ESTADO, NÃO POR CLIQUE — ver `precisaCarregarPrateleira`.
+  // ⚠️ Hook no TOPO (REGRA 9): abaixo há early-returns, e hook depois deles muda a contagem
+  // entre renders e derruba a tela inteira.
+  useEffect(() => {
+    if (precisaCarregarPrateleira(aba, prateleira)) carregarPrateleira()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aba, prateleira, id])
+
   const linhas = useMemo(() => {
     if (!hub) return []
     const q = busca.trim().toLowerCase()
@@ -158,7 +166,7 @@ export default function CardapioHubPage({ params }: { params: Promise<{ id: stri
           separados (25 nomes aparecem nos dois — com um mapa só, baixariam 2×). */}
       <div className="flex items-center gap-1.5">
         {(['produtos', 'complementos'] as const).map((t) => (
-          <button key={t} onClick={() => { setAba(t); if (t === 'complementos' && prateleira === null) carregarPrateleira() }}
+          <button key={t} onClick={() => setAba(t)}
             className={`h-8 rounded-lg px-3 text-xs ${aba === t ? 'bg-[#185FA5] font-medium text-white' : 'border border-slate-300 text-slate-600 hover:bg-slate-50'}`}>
             {t === 'produtos' ? 'Produtos' : 'Complementos (sabores)'}
           </button>
