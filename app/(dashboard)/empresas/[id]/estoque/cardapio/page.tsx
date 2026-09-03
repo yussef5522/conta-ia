@@ -349,9 +349,21 @@ function PrateleiraComplementos({ id, linhas, periodo, onMapear, onMoverGrupo, o
   // ⭐ IGNORADOS nasce COLAPSADO: decisão já tomada não disputa espaço com trabalho pendente.
   const [aberta, setAberta] = useState<Record<string, boolean>>({ SABORES: true, OUTROS: true, IGNORADOS: false })
   const [apelidosAbertos, setApelidosAbertos] = useState<Record<string, boolean>>({})
+  const [ocupadoLinha, setOcupadoLinha] = useState(false)
   // ⭐ o dono INCLUI a parecida por clique — o sistema nunca a inclui sozinho
   const [incluidas, setIncluidas] = useState<Record<string, string[]>>({})
   const [ocupado, setOcupado] = useState(false)
+  // ⭐ as fichas existentes, pro "apontar a que existe" na LINHA (o dropdown da faixa amarela
+  // dos produtos, agora aqui). Carrega junto com a prateleira, uma vez.
+  const [fichasExistentes, setFichasExistentes] = useState<{ id: string; nomeProduzido: string; tipoProduto: string }[]>([])
+  // ⚠️ hook no TOPO (REGRA 9): abaixo há early-returns. E o fetch mora AQUI porque este
+  // componente só existe quando a aba está aberta — carregar na página traria a lista
+  // mesmo pra quem nunca abre Complementos.
+  useEffect(() => {
+    fetch(`/api/empresas/${id}/estoque/fichas`).then((r) => r.json())
+      .then((j) => setFichasExistentes((j.fichas ?? []).filter((f: { ativo?: boolean }) => f.ativo !== false)))
+      .catch(() => {})
+  }, [id])
 
   /** link do editor com UM `complemento=` por grafia: uma ficha, uma viagem */
   const linkCriarFicha = (nomes: string[]) =>
@@ -549,8 +561,17 @@ function PrateleiraComplementos({ id, linhas, periodo, onMapear, onMoverGrupo, o
                               className="text-[11px] text-slate-400 hover:text-slate-700">desfazer</button>
                           )}
                           {l.destino === 'SEM_FICHA' && (
-                            <a href={linkCriarFicha([l.nomeSuitable])}
-                              className="rounded border border-[#185FA5] px-2 py-0.5 text-[11px] text-[#185FA5] hover:bg-blue-50">criar ficha</a>
+                            <>
+                              {/* ⛔⛔ SEM ISTO, a grafia órfã cujo grupo já fechou só tinha
+                                  "criar ficha" — e criar pelo TYPO (`STROGONOFF DE CARNEE`)
+                                  faz uma SEGUNDA ficha de strogonoff: o nome difere, então o
+                                  guard de duplicata não barra. É a duplicata voltando pela
+                                  porta do erro de digitação. */}
+                              <ApontarFicha fichas={fichasExistentes} disabled={ocupadoLinha}
+                                onEscolher={async (fichaId) => { setOcupadoLinha(true); try { await onMapear(l.nomeSuitable, 'FICHA', fichaId) } finally { setOcupadoLinha(false) } }} />
+                              <a href={linkCriarFicha([l.nomeSuitable])}
+                                className="rounded border border-[#185FA5] px-2 py-0.5 text-[11px] text-[#185FA5] hover:bg-blue-50">criar ficha</a>
+                            </>
                           )}
                         </div>
                       </td>
@@ -591,7 +612,10 @@ function GruposSugeridos({ linhas, incluidas, ocupado, onIncluir, onIgnorarTodas
   // ⚠️ as já mapeadas entram como CONTEXTO (não como membros): é o que faz o grupo saber
   // que a ficha dele já existe, em vez de mandar criar uma segunda e morrer no erro.
   const grupos = sugerirGruposDeGrafia(pendentes, jaMapeadas)
-    .filter((g) => g.nomes.length > 1 || g.parecidas.length > 0 || g.fichaIrma)
+    // ⭐ inclui o grupo de UM só quando há candidata que JÁ TEM FICHA: é o typo órfão
+    // (STROGONOFF DE CARNEE) cujo grupo já fechou — sem isto, a única ação dele seria
+    // "criar ficha", que faria a segunda ficha de strogonoff.
+    .filter((g) => g.nomes.length > 1 || g.parecidas.length > 0 || g.fichaIrma || g.parecidasComFicha.length > 0)
   if (!grupos.length) return null
 
   return (
@@ -632,6 +656,15 @@ function GruposSugeridos({ linhas, incluidas, ocupado, onIncluir, onIgnorarTodas
             </p>
             {/* ⛔ PARECIDA NÃO ENTRA SOZINHA: typo, promoção e tamanho exigem julgamento.
                 O motivo aparece pro dono julgar em vez de confiar. */}
+            {/* ⭐⭐ CANDIDATA QUE JÁ TEM FICHA: um clique mapeia, sem escolher na lista.
+                É o caminho curto do typo órfão — o dropdown da linha continua lá pro resto. */}
+            {g.parecidasComFicha.map((p) => (
+              <p key={`f-${p.fichaId}`} className="mt-1 text-[11px] text-slate-600">
+                parece <b>{p.nomeSuitable}</b> ({p.motivo}), que já tem a ficha <b>{p.nomeFicha}</b> —{' '}
+                <button onClick={() => onMapearTodas(nomes, p.fichaId)} disabled={ocupado}
+                  className="text-[#185FA5] hover:underline disabled:opacity-40">mapear nessa ficha</button>
+              </p>
+            ))}
             {g.parecidas.filter((p) => !extras.includes(p.nomeSuitable)).map((p) => (
               <p key={p.nomeSuitable} className="mt-1 text-[11px] text-slate-500">
                 parecida ({p.motivo}): <b>{p.nomeSuitable}</b> ({p.ocorrencias}) —{' '}
@@ -642,5 +675,31 @@ function GruposSugeridos({ linhas, incluidas, ocupado, onIncluir, onIgnorarTodas
         )
       })}
     </div>
+  )
+}
+
+/**
+ * ⭐ APONTAR UMA FICHA QUE JÁ EXISTE, na linha do complemento.
+ *
+ * ⚠️ Agrupado por tipo porque a lista mistura três mundos e sem rótulo o dono escolheria no
+ * escuro: SABOR é o caso normal; INTERMEDIÁRIO existe pra quando o complemento aponta direto
+ * na porção produzida; PRODUTO FINAL pro nome que também é item de combo.
+ */
+function ApontarFicha({ fichas, disabled, onEscolher }: {
+  fichas: { id: string; nomeProduzido: string; tipoProduto: string }[]
+  disabled: boolean
+  onEscolher: (fichaId: string) => void | Promise<void>
+}) {
+  if (!fichas.length) return null
+  const por = (t: string) => fichas.filter((f) => f.tipoProduto === t)
+  return (
+    <select defaultValue="" disabled={disabled}
+      onChange={(e) => { if (e.target.value) { onEscolher(e.target.value); e.target.value = '' } }}
+      className="h-6 max-w-[150px] rounded border border-slate-300 px-1 text-[11px] text-slate-600 disabled:opacity-40">
+      <option value="">apontar ficha…</option>
+      <optgroup label="Sabores">{por('SABOR').map((f) => <option key={f.id} value={f.id}>{f.nomeProduzido}</option>)}</optgroup>
+      <optgroup label="Receitas de produção">{por('INTERMEDIARIO').map((f) => <option key={f.id} value={f.id}>{f.nomeProduzido}</option>)}</optgroup>
+      <optgroup label="Produtos">{por('PRODUTO_FINAL').map((f) => <option key={f.id} value={f.id}>{f.nomeProduzido}</option>)}</optgroup>
+    </select>
   )
 }

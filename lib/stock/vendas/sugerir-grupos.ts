@@ -54,6 +54,18 @@ export interface GrupoSugerido {
    * Nenhuma ficha órfã — só trabalho parado.
    */
   fichaIrma: FichaIrma | null
+  /**
+   * ⭐⭐ CANDIDATA QUE JÁ TEM FICHA (03/09) — o caso do typo órfão.
+   *
+   * ⛔ `STROGONOFF DE CARNEE` ficou pendente SOZINHO depois que o grupo do
+   * `STROGONOFF DE CARNE` inteiro foi mapeado: sem grupo pra entrar, a única ação na linha
+   * era "criar ficha" — que criaria uma **SEGUNDA ficha de strogonoff**, porque o nome
+   * difere e o guard de duplicata (que compara nome) não barra. **A duplicata voltando pelo
+   * typo.**
+   *
+   * ⚠️ Continua sendo SUGESTÃO com motivo à vista: um clique mapeia, nada acontece sozinho.
+   */
+  parecidasComFicha: (Parecida & FichaIrma)[]
 }
 
 /** distância de edição clássica, iterativa (nomes são curtos; sem dependência nova) */
@@ -176,6 +188,19 @@ export function sugerirGruposDeGrafia(
       ocorrencias: nomes.reduce((s, x) => s + x.ocorrencias, 0),
       parecidas: parecidas.sort((a, b) => b.ocorrencias - a.ocorrencias),
       fichaIrma: irmaPorNorm.get(chave) ?? null,
+      // ⭐ as MESMAS réguas, agora contra quem já tem ficha: é o que salva a grafia órfã
+      // cujo grupo já fechou (o typo que sobrou sozinho).
+      parecidasComFicha: jaMapeadas
+        .map((m) => ({ m, k: normalizarNome(m.nomeSuitable) }))
+        .filter(({ k }) => k !== chave && (comecaIgual(chave, k) || comecaIgual(k, chave) || (
+          chave.length >= MIN_TAMANHO_PARA_DISTANCIA && k.length >= MIN_TAMANHO_PARA_DISTANCIA
+          && !difereSoEmDigito(chave, k) && distancia(chave, k) <= MAX_DISTANCIA
+        )))
+        .map(({ m, k }) => ({
+          nomeSuitable: m.nomeSuitable, ocorrencias: 0,
+          motivo: (comecaIgual(chave, k) || comecaIgual(k, chave) ? 'começa igual' : 'quase igual') as Parecida['motivo'],
+          fichaId: m.fichaId, nomeFicha: m.nomeFicha, viaGrafia: m.nomeSuitable,
+        })),
     })
   }
 

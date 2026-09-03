@@ -270,3 +270,45 @@ describe('⭐⭐ o fluxo que morria no erro, agora termina', () => {
     expect(await prisma.stockFicha.count({ where: { companyId } }), 'criou ficha duplicada').toBe(1)
   })
 })
+
+describe('⛔⛔ o TYPO ÓRFÃO — a duplicata voltando pela porta do erro de digitação', () => {
+  // CASO REAL (03/09): o grupo do STROGONOFF DE CARNE ficou todo mapeado, e o
+  // `STROGONOFF DE CARNEE` sobrou SOZINHO. Sem grupo pra entrar, a única ação na linha era
+  // "criar ficha" — e criar pelo typo faz uma **SEGUNDA ficha de strogonoff**, porque o nome
+  // difere e o guard de duplicata (que compara NOME) não barra.
+
+  it('⛔⛔ a grafia órfã enxerga a ficha da parecida JÁ MAPEADA', () => {
+    const g = sugerirGruposDeGrafia(
+      [n('STROGONOFF DE CARNEE', 1)],
+      [{ nomeSuitable: 'STROGONOFF DE CARNE', fichaId: 'f-strog', nomeFicha: 'sabor strogonoff de carne' }],
+    )
+    expect(g).toHaveLength(1)
+    expect(g[0].fichaIrma, 'não é a MESMA grafia — é parecida').toBeNull()
+    expect(g[0].parecidasComFicha).toHaveLength(1)
+    expect(g[0].parecidasComFicha[0]).toMatchObject({
+      nomeSuitable: 'STROGONOFF DE CARNE', fichaId: 'f-strog', nomeFicha: 'sabor strogonoff de carne', motivo: 'quase igual',
+    })
+  })
+
+  it('⭐ e a promoção também: CALABRESA BLACK FRIDAY acha a ficha da CALABRESA', () => {
+    const g = sugerirGruposDeGrafia(
+      [n('CALABRESA BLACK FRIDAY', 194)],
+      [{ nomeSuitable: 'CALABRESA', fichaId: 'f-cal', nomeFicha: 'sabor calabresa' }],
+    )
+    expect(g[0].parecidasComFicha[0]).toMatchObject({ fichaId: 'f-cal', motivo: 'começa igual' })
+  })
+
+  it('⛔⛔ mas as travas continuam: dígito e "X COM Y" não viram sugestão', () => {
+    expect(sugerirGruposDeGrafia([n('5 QUEIJOS', 166)],
+      [{ nomeSuitable: '4 QUEIJOS', fichaId: 'f4', nomeFicha: 'sabor 4 queijos' }])[0].parecidasComFicha).toEqual([])
+    expect(sugerirGruposDeGrafia([n('BORDA MUSSARELA COM ALHO', 3)],
+      [{ nomeSuitable: 'BORDA MUSSARELA', fichaId: 'fb', nomeFicha: 'borda mussarela' }])[0].parecidasComFicha).toEqual([])
+  })
+
+  it('⛔ e nada é decidido sozinho: sem o clique, a grafia continua pendente', async () => {
+    const g = sugerirGruposDeGrafia([n('STROGONOFF DE CARNEE', 1)],
+      [{ nomeSuitable: 'STROGONOFF DE CARNE', fichaId: 'f-strog', nomeFicha: 'x' }])
+    // a sugestão NÃO entra na lista de membros — quem mapeia é o dono
+    expect(g[0].nomes.map((x) => x.nomeSuitable)).toEqual(['STROGONOFF DE CARNEE'])
+  })
+})
