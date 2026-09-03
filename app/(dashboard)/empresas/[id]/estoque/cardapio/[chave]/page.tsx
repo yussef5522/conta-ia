@@ -15,6 +15,7 @@ import { useEffect, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { StatCard, StatCardGrid } from '@/components/ui/stat-card'
 import { FichaEditor } from '@/components/estoque/ficha-editor'
+import { podeAtenderProdutoDoPdv } from '@/lib/stock/tipos-ficha'
 import { ArrowLeft, Loader2, UtensilsCrossed, TrendingUp, CircleDollarSign, Percent, Factory, AlertTriangle, Check, Pencil, PackageSearch, ChevronRight } from 'lucide-react'
 
 type Status = 'SEM_DESTINO' | 'SEM_FICHA' | 'REVENDA' | 'FICHA_INCOMPLETA' | 'FICHA_OK'
@@ -187,9 +188,14 @@ export default function ProdutoCardapioPage({ params }: { params: Promise<{ id: 
       )}
 
       {/* EDITOR — o MESMO componente do mundo da produção, tipo travado em PRODUTO_FINAL */}
+      {/* ⛔⛔ A FAIXA DIZIA "não vincule criando outra" E NÃO OFERECIA COMO APONTAR A QUE
+          EXISTE (03/09) — o dono ficava preso com a ficha órfã, e a única saída era criar a
+          duplicada que a própria faixa proibia. Alerta que proíbe sem dar caminho vira
+          alerta que se ignora. Agora ela vem COM o caminho. */}
       {avisoVinculo && (
-        <div className="mb-3 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
-          <span>⚠️ {avisoVinculo}</span>
+        <div className="mb-3 space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
+          <p>⚠️ {avisoVinculo}</p>
+          <ApontarFichaExistente id={id} chave={chave} aoVincular={carregar} />
         </div>
       )}
       {editandoFicha && (
@@ -201,9 +207,13 @@ export default function ProdutoCardapioPage({ params }: { params: Promise<{ id: 
           {/* ⭐ passa a LINHA INTEIRA: o prefill (nome do PDV + preço praticado) é decidido
               pela lib pura `valoresIniciaisDaFicha`, testada pelo caminho real. Antes eram
               dois props soltos lidos no `useState` — e abria vazio. */}
+          {/* ⛔⛔ ANTES IA A CHAVE DO HUB no `mapearNomeSuitable` (`nome:GRANDE PRECINHO`):
+              o sistema gravava um mapeamento com um nome que não existe em relatório nenhum
+              e o produto continuava órfão. O que vale é como o PDV escreve — e são TODOS os
+              apelidos ("XIS COMPLETO" e "XIS - COMPLETO" apontam pra mesma ficha). */}
           <FichaEditor companyId={id} fichaId={l.fichaId ?? undefined} tipoTravado="PRODUTO_FINAL"
             linha={l} voltarPara={voltar}
-            mapearNomeSuitable={decodeURIComponent(chave)}
+            mapearNomeSuitable={l.nomesSuitable.length ? l.nomesSuitable : (l.status === 'SEM_DESTINO' ? [l.nome] : [])}
             aoSalvar={async () => {
               setEditandoFicha(false)
               await carregar()
@@ -357,6 +367,58 @@ function MapearRevenda({ companyId, chave, onMapeado }: { companyId: string; cha
         <p className="text-[11px] text-amber-600">Este item ainda não tem custo (nunca veio em nota) — a margem fica "a definir" até a 1ª compra.</p>
       )}
       {erro && <p className="text-[11px] text-rose-600">{erro}</p>}
+    </div>
+  )
+}
+
+/**
+ * ⭐ APONTAR UMA FICHA QUE JÁ EXISTE — o caminho que faltava.
+ *
+ * ⚠️ Só oferece o que o servidor aceita (`podeAtenderProdutoDoPdv` espelha o guard do
+ * `upsertVendaMap`): oferecer e depois recusar é como se ensina o dono a desconfiar da tela.
+ * A recusa de verdade continua sendo do servidor.
+ */
+function ApontarFichaExistente({ id, chave, aoVincular }: { id: string; chave: string; aoVincular: () => Promise<void> | void }) {
+  const [fichas, setFichas] = useState<{ id: string; nomeProduzido: string; tipoProduto: string }[]>([])
+  const [sel, setSel] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch(`/api/empresas/${id}/estoque/fichas`).then((r) => r.json())
+      .then((j) => setFichas((j.fichas ?? []).filter((f: { tipoProduto: string }) => podeAtenderProdutoDoPdv(f.tipoProduto))))
+      .catch(() => setFichas([]))
+  }, [id])
+
+  const vincular = async () => {
+    if (!sel) return
+    setBusy(true); setErro(null)
+    try {
+      const r = await fetch(`/api/empresas/${id}/estoque/cardapio/${chave}/mapear`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fichaId: sel }),
+      })
+      const j = await r.json().catch(() => null)
+      if (!r.ok) { setErro(j?.erro ?? 'Não consegui vincular.'); return }
+      await aoVincular()
+    } finally { setBusy(false) }
+  }
+
+  if (!fichas.length) return null
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center gap-1.5">
+        <select value={sel} onChange={(e) => setSel(e.target.value)}
+          className="h-8 min-w-0 flex-1 rounded-lg border border-amber-300 bg-white px-2 text-xs text-slate-700">
+          <option value="">apontar a ficha que já existe…</option>
+          {fichas.map((f) => <option key={f.id} value={f.id}>{f.nomeProduzido}</option>)}
+        </select>
+        <button onClick={vincular} disabled={!sel || busy}
+          className="inline-flex h-8 shrink-0 items-center gap-1 rounded-lg bg-amber-600 px-2.5 text-xs font-semibold text-white disabled:opacity-40">
+          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} vincular
+        </button>
+      </div>
+      {erro && <p className="text-[11px] text-rose-700">{erro}</p>}
     </div>
   )
 }

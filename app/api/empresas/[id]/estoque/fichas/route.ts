@@ -25,7 +25,8 @@ const criarSchema = z.object({
   componentes: z.array(componenteSchema).min(1),
   // ⭐ o nome do PDV que esta ficha atende. Quando vem, o vínculo nome→ficha é criado na
   // MESMA transação — foi a ausência dele que deixou 3 fichas órfãs em 01/09.
-  mapearNomeSuitable: z.string().min(1).max(200).nullable().optional(),
+  // ⭐ 1 nome ou VÁRIOS: o PDV escreve o mesmo produto de vários jeitos (apelidos)
+  mapearNomeSuitable: z.union([z.string().min(1).max(200), z.array(z.string().min(1).max(200)).max(20)]).nullable().optional(),
   // ⭐ o mesmo, no mapa dos COMPLEMENTOS (sabores). Mutuamente exclusivo com o de cima.
   mapearComplemento: z.string().min(1).max(200).nullable().optional(),
 })

@@ -18,7 +18,14 @@ import { parseChave } from '@/lib/stock/cardapio/detalhe'
 
 interface Params { params: Promise<{ id: string; chave: string }> }
 
-const schema = z.object({ itemId: z.string().min(1) })
+// ⭐ DOIS destinos possíveis, e a tela precisa dos dois: item de REVENDA (bebida) ou uma
+// FICHA QUE JÁ EXISTE. ⚠️ O segundo nasceu de um aperto real (03/09): a faixa dizia "não
+// vincule criando outra" e **não havia como apontar a que existe** — o dono ficava preso
+// com a ficha órfã, e a única saída era criar a duplicada que a própria faixa proibia.
+const schema = z.union([
+  z.object({ itemId: z.string().min(1) }),
+  z.object({ fichaId: z.string().min(1) }),
+])
 
 export async function POST(request: NextRequest, { params }: Params) {
   const { id: companyId, chave } = await params
@@ -27,7 +34,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (a.erro) return a.erro
 
   const body = schema.safeParse(await request.json().catch(() => null))
-  if (!body.success) return NextResponse.json({ erro: 'Escolha o item de revenda.' }, { status: 400 })
+  if (!body.success) return NextResponse.json({ erro: 'Escolha o item de revenda ou a ficha.' }, { status: 400 })
 
   const alvo = parseChave(decodeURIComponent(chave))
   // só produto AINDA sem destino entra por aqui: a chave carrega o nome exato do PDV.
@@ -36,10 +43,14 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
 
   try {
-    await upsertVendaMap(companyId, alvo.valor, { tipo: 'REVENDA', itemId: body.data.itemId }, a.user.sub, prisma)
+    // REGRA 4: os dois destinos passam pelo MESMO `upsertVendaMap`, que carrega o guard
+    // dos 3 níveis (nada de matéria-prima, nada de intermediário).
+    await upsertVendaMap(companyId, alvo.valor,
+      'fichaId' in body.data ? { tipo: 'FICHA', fichaId: body.data.fichaId } : { tipo: 'REVENDA', itemId: body.data.itemId },
+      a.user.sub, prisma)
   } catch (e) {
     if (e instanceof VendaMapError) return NextResponse.json({ erro: e.message }, { status: 422 })
     throw e
   }
-  return NextResponse.json({ ok: true, chave: `item:${body.data.itemId}` })
+  return NextResponse.json({ ok: true, chave: 'fichaId' in body.data ? `ficha:${body.data.fichaId}` : `item:${body.data.itemId}` })
 }

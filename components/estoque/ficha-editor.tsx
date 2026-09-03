@@ -52,7 +52,7 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
   linha?: LinhaParaFicha | null
   /** chamado depois de salvar (a tela do produto recarrega em vez de navegar) */
   aoSalvar?: () => void
-; mapearNomeSuitable?: string; mapearComplemento?: string; duplicarDe?: string}) {
+; mapearNomeSuitable?: string | string[]; mapearComplemento?: string; duplicarDe?: string}) {
   const editando = !!fichaId
   const qp = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
   const voltar = voltarPara ?? `/empresas/${companyId}/estoque/fichas`
@@ -62,6 +62,9 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
   // ⚠️ Sem isto o gesto seria: cria a ficha → volta na aba → aponta à mão. Dois passos,
   // ~50 vezes, e o passo 2 é justamente o que ficou de fora nas 3 fichas órfãs de 01/09.
   const complementoDaUrl = mapearComplemento ?? qp?.get('complemento') ?? undefined
+  // ⭐ o irmão do `?complemento=` pro mundo dos PRODUTOS (porta da tela de Vendas):
+  // sem ele a ficha nascia órfã ali também — a MESMA classe das 3 órfãs de 01/09.
+  const mapearDaUrl = mapearNomeSuitable ?? qp?.get('mapear') ?? undefined
   /**
    * ⭐⭐ DUPLICAR (02/09) — padrão do modelo de etiqueta: *"criar um NOVO com o conteúdo
    * deste. Nada é sobrescrito."*
@@ -115,6 +118,8 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
   //   produtoFinal → tem PREÇO próprio e margem. **Sabor não tem preço**: quem tem é a pizza.
   const monta = montaNaVenda(tipoProduto)
   const produtoFinal = tipoProduto === 'PRODUTO_FINAL'
+  // ⚠️ lista OU string: a tela do produto manda todos os apelidos do PDV
+  const temNomePdv = Array.isArray(mapearDaUrl) ? mapearDaUrl.length > 0 : !!mapearDaUrl
 
   // ⚠️ REDE do prefill: se a linha chegar DEPOIS da montagem (fetch da tela de trás), aplica
   // aqui. Só em campo intocado — o dono manda sempre.
@@ -204,13 +209,13 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
     try {
       const r = editando
         ? await fetch(`/api/empresas/${companyId}/estoque/fichas/${fichaId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, nomeProduzido: nomeProduzido.trim(), setorId: setorId || null, valorVenda: vv }) })
-        : await fetch(`/api/empresas/${companyId}/estoque/fichas`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, nomeProduzido: nomeProduzido.trim(), unidadeProduzido, tipoProduto, setorId: setorId || null, valorVenda: vv, mapearNomeSuitable: duplicarDaUrl ? null : (mapearNomeSuitable ?? null), mapearComplemento: duplicarDaUrl ? null : (complementoDaUrl ?? null) }) })
+        : await fetch(`/api/empresas/${companyId}/estoque/fichas`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, nomeProduzido: nomeProduzido.trim(), unidadeProduzido, tipoProduto, setorId: setorId || null, valorVenda: vv, mapearNomeSuitable: duplicarDaUrl || !temNomePdv ? null : mapearDaUrl, mapearComplemento: duplicarDaUrl ? null : (complementoDaUrl ?? null) }) })
       const j = await r.json().catch(() => null)
       if (!r.ok) { setErro(j?.erro ?? 'Não consegui salvar.'); return }
       // ⭐ ITEM 5 (01/09): gravação INCOMPLETA nunca mais volta calada. Se a tela pediu o
       // vínculo com o PDV e ele não veio, o dono fica sabendo NA HORA — foi o silêncio que
       // fez ele salvar de novo e duplicar a PIZZA.
-      if (!duplicarDaUrl && (mapearNomeSuitable || complementoDaUrl) && !editando && j?.vinculadoAoPdv === false) {
+      if (!duplicarDaUrl && (temNomePdv || complementoDaUrl) && !editando && j?.vinculadoAoPdv === false) {
         setErro(`Ficha salva, mas NÃO foi vinculada a “${mapearNomeSuitable ?? complementoDaUrl}” do PDV. ` +
           'Ela existe em Fichas técnicas; vincule pelo cardápio antes de vender.')
         return

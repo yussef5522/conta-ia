@@ -70,3 +70,14 @@ export function rotuloTipoFicha(tipoProduto: string): string {
 export function seContaFisicamente(categoria: string): boolean {
   return categoria !== TIPO_SABOR
 }
+
+/**
+ * ⭐ Quem pode ATENDER um nome do relatório de PRODUTOS.
+ *
+ * ⚠️ Espelha o guard de `upsertVendaMap` (que é quem RECUSA na gravação) pra a tela não
+ * oferecer o que o servidor vai negar — oferecer e depois recusar é como se ensina o
+ * usuário a desconfiar do sistema. A recusa continua sendo do servidor; isto é só a lista.
+ */
+export function podeAtenderProdutoDoPdv(tipoProduto: string): boolean {
+  return tipoProduto === TIPO_PRODUTO_FINAL
+}

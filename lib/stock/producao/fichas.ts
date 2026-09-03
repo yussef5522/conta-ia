@@ -43,7 +43,12 @@ export interface CriarFichaInput extends FichaBodyInput {
    * voltava dizendo "sem ficha" e o dono concluía que não tinha salvo. **A PIZZA saiu
    * DUPLICADA no mesmo minuto** — a assinatura de "não apareceu, tentei de novo".
    */
-  mapearNomeSuitable?: string | null
+  /**
+   * ⭐ O NOME (ou NOMES) do PDV que esta ficha atende.
+   * ⚠️ ACEITA LISTA porque o PDV escreve o mesmo produto de vários jeitos
+   * ("XIS COMPLETO" e "XIS - COMPLETO"): mapear só um deixaria metade das vendas sem baixar.
+   */
+  mapearNomeSuitable?: string | string[] | null
   /**
    * ⭐⭐ O NOME DO COMPLEMENTO que esta ficha atende (02/09/2026) — mesmo mecanismo do
    * `mapearNomeSuitable`, no mapa dos COMPLEMENTOS.
@@ -116,27 +121,51 @@ export async function criarFicha(input: CriarFichaInput, db: PrismaClient = defa
     // é a regra do módulo (a mesma das marcações do import: "ou grava tudo, ou nada grava").
     // ⚠️ `upsertVendaMap` não serve aqui porque abre transação própria; a validação dos 3
     // níveis que ele faz é redundante neste caminho (a ficha é PRODUTO_FINAL por construção).
+    // ⭐ conta o que REALMENTE entrou no banco. ⚠️ Antes era `!!input.mapearNomeSuitable`:
+    // a flag afirmava vínculo que podia nunca ter sido gravado — "a flag diz PARECE, o
+    // vínculo diz É" (lição de 29/08, na marcação de cartão).
+    let vinculos = 0
     if (input.mapearNomeSuitable && input.mapearComplemento) {
       throw new FichaError('Uma ficha não pode ser mapeada como produto e como complemento no mesmo gesto.')
     }
     // ⭐ o vínculo do COMPLEMENTO, na MESMA transação — ficha e vínculo entram juntos ou
     // não entram. É a correção do bug das 3 fichas órfãs, aplicada antes de ele repetir.
     if (input.mapearComplemento) {
+      vinculos++
       await tx.stockVendaComplementoMap.upsert({
         where: { companyId_nomeSuitable: { companyId: input.companyId, nomeSuitable: input.mapearComplemento } },
         create: { companyId: input.companyId, nomeSuitable: input.mapearComplemento, alvoTipo: 'FICHA', fichaId: ficha.id, criadoPorId: input.userId ?? null },
         update: { alvoTipo: 'FICHA', fichaId: ficha.id },
       })
     }
-    if (input.mapearNomeSuitable && input.tipoProduto === 'PRODUTO_FINAL') {
+    // ⛔⛔ NOME PREFIXADO NUNCA VIRA MAPEAMENTO (03/09): a tela do produto mandava a CHAVE
+    // do hub (`nome:GRANDE PRECINHO`, `ficha:<id>`) no lugar do nome do PDV, e o sistema
+    // gravava alegremente um mapeamento com um nome que **não existe em relatório nenhum** —
+    // a ficha nascia órfã E o banco ficava com lixo. A trava é aqui, na FONTE: quem grava
+    // recusa a chave interna, então nenhuma tela futura consegue repetir isso.
+    const nomesPdv = (Array.isArray(input.mapearNomeSuitable) ? input.mapearNomeSuitable
+      : input.mapearNomeSuitable ? [input.mapearNomeSuitable] : [])
+      .map((n) => n.trim()).filter(Boolean)
+    for (const n of nomesPdv) {
+      if (/^(nome|ficha|item):/.test(n)) {
+        throw new FichaError(`"${n}" é chave interna da tela, não o nome do PDV. Mande o nome como o PDV escreve.`)
+      }
+    }
+    if (nomesPdv.length && input.tipoProduto !== 'PRODUTO_FINAL') {
+      // ⚠️ recusa BARULHENTA em vez de pular calado: pular é o que fazia o
+      // `vinculadoAoPdv` dizer "vinculei" sem ter gravado nada.
+      throw new FichaError('Só ficha de PRODUTO FINAL pode atender um nome do relatório de produtos.')
+    }
+    for (const nomeSuitable of nomesPdv) {
       await tx.stockVendaProdutoMap.upsert({
-        where: { companyId_nomeSuitable: { companyId: input.companyId, nomeSuitable: input.mapearNomeSuitable } },
-        create: { companyId: input.companyId, nomeSuitable: input.mapearNomeSuitable, alvoTipo: 'FICHA', fichaId: ficha.id, itemId: null, criadoPorId: input.userId ?? null },
+        where: { companyId_nomeSuitable: { companyId: input.companyId, nomeSuitable } },
+        create: { companyId: input.companyId, nomeSuitable, alvoTipo: 'FICHA', fichaId: ficha.id, itemId: null, criadoPorId: input.userId ?? null },
         update: { alvoTipo: 'FICHA', fichaId: ficha.id, itemId: null },
       })
+      vinculos++
     }
 
-    return { fichaId: ficha.id, itemProduzidoId: produzido.id, vinculadoAoPdv: !!input.mapearNomeSuitable || !!input.mapearComplemento }
+    return { fichaId: ficha.id, itemProduzidoId: produzido.id, vinculadoAoPdv: vinculos > 0 }
   })
 }
 

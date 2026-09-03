@@ -62,7 +62,7 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
   const onFile = (f: File) => { const reader = new FileReader(); reader.onload = () => { const t = String(reader.result ?? ''); setHtml(t); enviar(t) }; reader.readAsText(f, 'utf-8') }
 
   const mapear = async (nomeSuitable: string, valor: string) => {
-    if (valor === 'CRIAR_FICHA') { window.location.href = `/empresas/${id}/estoque/fichas/nova?nome=${encodeURIComponent(nomeSuitable)}&tipo=PRODUTO_FINAL&voltar=${encodeURIComponent(`/empresas/${id}/estoque/vendas`)}`; return }
+    if (valor === 'CRIAR_FICHA') { window.location.href = `/empresas/${id}/estoque/fichas/nova?nome=${encodeURIComponent(nomeSuitable)}&mapear=${encodeURIComponent(nomeSuitable)}&tipo=PRODUTO_FINAL&voltar=${encodeURIComponent(`/empresas/${id}/estoque/vendas`)}`; return }
     if (valor === 'CRIAR_REVENDA') {
       const r = await fetch(`/api/empresas/${id}/estoque/itens`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nome: nomeSuitable, unidadeControle: 'UN', categoria: 'REVENDA' }) })
       const j = await r.json().catch(() => null)
