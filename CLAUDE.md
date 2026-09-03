@@ -242,6 +242,20 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⭐⭐ A LISTA MISTA MORREU E O "VOLTAR" APRENDEU DE ONDE VOCÊ VEIO (03/09/2026)
+
+**O dono caiu na lista mista DEPOIS de salvar uma ficha de sabor** — e ia repetir esse gesto **~50 vezes** na mesma tarde. A causa, achada na leitura: `/estoque/fichas/nova` montava o editor **sem `voltarPara`**, então o destino caía no default `/estoque/fichas`. ⚠️ **A mesma porta atingia o `+ criar ficha` da tela de Vendas**; só o Cardápio escapava, porque lá o editor abre DENTRO da tela (`aoSalvar`), sem navegar.
+
+**⭐ QUEM CHAMA É QUEM SABE:** o destino passou a vir **explícito** (`?voltar=`), nunca adivinhado pelo `tipo` — heurística erraria no dia em que uma quarta tela abrisse o editor, e erraria **em silêncio**. Duas peças pequenas junto: a aba do Cardápio aceita **`?aba=complementos`** (sem isso a volta cai na aba errada e a linha verde não aparece) e o destino externo é **recusado** (`//evil.com` é host pro browser — mesma trava do `redirect` do convite).
+
+**⚠️ E OS RÓTULOS MENTIAM NOS TRÊS MUNDOS:** a página dizia sempre *"Nova ficha técnica"* e *"voltar pras fichas"*, inclusive criando SABOR pela prateleira. Agora acompanham a origem.
+
+**⛔⛔ `/estoque/fichas` DEIXOU DE LISTAR.** A investigação de quem chegava lá deu quase ninguém: **não está na sidebar** (saiu em 27/08), e o único link humano era o breadcrumb de `/producao/cadastros` — o resto era **o próprio bug do `voltar`**. Como lista ela é **redundante** (Cardápio cobre PRODUTO_FINAL, Receitas cobre INTERMEDIARIO, a prateleira cobre SABOR).
+
+**⛔ E NÃO VIROU `redirect` SECO** — a decisão que o dono confirmou: **ali chegam DOIS PAPÉIS** (o dono, que quer o cardápio; a cozinha, que quer as receitas). Redirect escolheria por quem chega e mandaria metade das visitas pro lugar errado. Virou **PLACA**: três destinos rotulados + *Setores e colaboradores*. ⚠️ **`/fichas/nova` e `/fichas/[id]` continuam vivas** — são as portas que as outras telas usam; só a LISTA morreu.
+
+**⭐ O TESTE QUE IMPEDE O LIXÃO DE RESSUSCITAR** é estrutural e assumido como tal (sem jsdom não dá pra renderizar): ele prova que a rota **não busca a lista de fichas** — era o `fetch` daquela API que alimentava a mistura. **E o detector tem AUTO-TESTE contra o código velho** (REGRA 11): sem isso ele passaria verde por cegueira, que é exatamente como três guards deste projeto já nasceram mentindo.
+
 ## ⭐⭐ SABOR VIROU TIPO PRÓPRIO — A FRONTEIRA ENTRE A VENDA E A COZINHA (03/09/2026)
 
 **CASO REAL:** o dono criou a ficha do sabor **CALABRESA** pela aba Complementos e ela apareceu em **Produção › Receitas**, no meio das **20 receitas de verdade**. Diagnóstico dele, certo: ***`tipoProduto` estava respondendo DUAS perguntas*** — *"como isto baixa na venda?"* e *"isto aparece na cozinha?"*. Com **~50 sabores** a caminho, seriam 50 intrusos na tela de quem cozinha.
