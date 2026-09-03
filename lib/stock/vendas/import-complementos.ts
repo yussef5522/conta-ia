@@ -140,6 +140,32 @@ export async function confirmarComplementos(
     // ⚠️ `importId` é o dia: reimportar o mesmo dia reaproveita a chave, e a baixa
     // (`receiptId`) continua encontrando as linhas certas depois do reimport.
     const importId = importIdDe(companyId, data, modo)
+    // ⭐⭐ O CATÁLOGO ANDA JUNTO, NA MESMA TRANSAÇÃO. Nome visto num relatório é nome que
+    // EXISTE no PDV — e isso não envelhece. Sem isto, apagar venda velha (ou reimportar um
+    // dia menor) apagaria a LISTA DE TRABALHO do dono junto com o dado de venda.
+    // ⚠️ Fora da transação, um import que falhasse no meio deixaria o catálogo dizendo que
+    // conhece nomes que nenhuma linha sustenta.
+    const nomes = [...new Set(p.linhas.map((l) => l.produto))]
+    // ⚠️ 4 queries, não 3 POR NOME: com 215 nomes o laço com upsert seriam 645 idas ao banco
+    // dentro de uma transação — lento e travando linha por linha.
+    // ⚠️ E sem `skipDuplicates`: ele não existe no SQLite do dev, e a suíte roda lá.
+    const jaNoCatalogo = new Set((await tx.stockVendaComplementoNome.findMany({
+      where: { companyId, nomeSuitable: { in: nomes } }, select: { nomeSuitable: true },
+    })).map((c) => c.nomeSuitable))
+    const novos = nomes.filter((n) => !jaNoCatalogo.has(n))
+    if (novos.length) {
+      await tx.stockVendaComplementoNome.createMany({
+        data: novos.map((nomeSuitable) => ({ companyId, nomeSuitable, primeiroEm: dia, ultimoEm: dia })),
+      })
+    }
+    // ⚠️ as datas só andam pro lado certo: importar um dia ANTIGO não pode fazer o nome
+    // parecer recém-visto, nem um dia novo reescrever a primeira aparição.
+    await tx.stockVendaComplementoNome.updateMany({
+      where: { companyId, nomeSuitable: { in: nomes }, ultimoEm: { lt: dia } }, data: { ultimoEm: dia },
+    })
+    await tx.stockVendaComplementoNome.updateMany({
+      where: { companyId, nomeSuitable: { in: nomes }, primeiroEm: { gt: dia } }, data: { primeiroEm: dia },
+    })
     await tx.stockVendaComplementoLinha.createMany({
       data: p.linhas.map((l) => ({
         companyId, importId, data: dia,
@@ -185,11 +211,13 @@ export interface PrateleiraCompleta {
 export async function prateleiraGravada(
   companyId: string, db: PrismaClient = defaultPrisma,
 ): Promise<PrateleiraCompleta> {
-  const [linhas, mapeados] = await Promise.all([
+  const [linhas, mapeados, catalogo] = await Promise.all([
     db.stockVendaComplementoLinha.findMany({
       where: { companyId }, select: { nomeSuitable: true, ocorrencias: true, data: true },
     }),
     db.stockVendaComplementoMap.findMany({ where: { companyId }, select: { nomeSuitable: true } }),
+    // ⭐ o CATÁLOGO é a lista de trabalho: nome conhecido não depende de existir venda
+    db.stockVendaComplementoNome.findMany({ where: { companyId }, select: { nomeSuitable: true } }),
   ])
 
   const comLinha = new Set(linhas.map((l) => l.nomeSuitable))
@@ -197,6 +225,8 @@ export async function prateleiraGravada(
     ...linhas.map((l) => ({ nomeSuitable: l.nomeSuitable, ocorrencias: l.ocorrencias })),
     // ⭐ o nome mapeado que perdeu a linha entra com 0 — visível, nunca sumido
     ...mapeados.filter((m) => !comLinha.has(m.nomeSuitable)).map((m) => ({ nomeSuitable: m.nomeSuitable, ocorrencias: 0 })),
+    // ⭐⭐ e o nome do CATÁLOGO que hoje não tem venda nenhuma — com 0, nunca ausente
+    ...catalogo.filter((c) => !comLinha.has(c.nomeSuitable)).map((c) => ({ nomeSuitable: c.nomeSuitable, ocorrencias: 0 })),
   ]
 
   /**

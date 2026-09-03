@@ -4150,3 +4150,16 @@ model StockVendaComplementoGrupo {
   @@index([companyId])
   @@map("stock_venda_complemento_grupo")
 }
+
+model StockVendaComplementoNome {
+  id           String   @id @default(cuid())
+  companyId    String
+  nomeSuitable String
+  primeiroEm   DateTime
+  ultimoEm     DateTime
+  criadoEm     DateTime @default(now())
+
+  @@unique([companyId, nomeSuitable])
+  @@index([companyId])
+  @@map("stock_venda_complemento_nome")
+}

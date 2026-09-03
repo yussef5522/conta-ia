@@ -28,7 +28,7 @@ beforeEach(async () => {
   fichaProduto = (await criarFicha({ companyId, nomeProduzido: 'XIS - CALABRESA', unidadeProduzido: 'UN', tipoProduto: 'PRODUTO_FINAL', loteBase: 1, unidadeLoteBase: 'UN', valorVenda: 20, componentes: comp }, prisma)).fichaId
 })
 afterEach(async () => {
-  for (const t of ['stockVendaComplementoMap', 'stockVendaComplementoLinha', 'stockVendaComplementoGrupo', 'stockVendaProdutoMap',
+  for (const t of ['stockVendaComplementoMap', 'stockVendaComplementoLinha', 'stockVendaComplementoGrupo', 'stockVendaComplementoNome', 'stockVendaProdutoMap',
     'stockFichaComponente', 'stockFichaVersao', 'stockFicha', 'stockItem'] as const) {
     // @ts-expect-error dinâmico
     await prisma[t].deleteMany({ where: { companyId } })
@@ -279,5 +279,50 @@ describe('⛔⛔ PERÍODO não é um dia de venda', () => {
     const ids = (await prisma.stockVendaComplementoLinha.findMany({ where: { companyId }, select: { importId: true } })).map((l) => l.importId)
     expect(new Set(ids).size).toBe(2)
     expect(ids.filter(ehLinhaDePeriodo)).toHaveLength(1)
+  })
+})
+
+describe('⭐⭐ O CATÁLOGO — apagar venda velha NÃO apaga a lista de trabalho', () => {
+  // ⛔ o dono, antes de mandar apagar: "os nomes são minha lista de trabalho".
+  // Medido em prod ANTES desta tabela: apagar os imports deixaria a aba com 1 nome de 215.
+  const html = (linhas: [string, number][]) =>
+    `<table><tr><td>Descrição</td><td>Valor médio</td><td>Quantidade</td><td>Valor Total</td></tr>` +
+    linhas.map(([n, q]) => `<tr><td>${n}</td><td>R$ 0,00</td><td>${q}</td><td>R$ 0,00</td></tr>`).join('') + `</table>`
+
+  it('⭐⭐ apagadas TODAS as linhas, os nomes continuam na prateleira com 0', async () => {
+    await confirmarComplementos(companyId, '2026-08-29', html([['CALABRESA', 115], ['GRANDE', 3], ['OREO', 2]]), undefined, prisma)
+    await prisma.stockVendaComplementoLinha.deleteMany({ where: { companyId } })
+
+    const { prateleira, periodo } = await prateleiraGravada(companyId, prisma)
+    expect(prateleira.map((l) => l.nomeSuitable).sort()).toEqual(['CALABRESA', 'GRANDE', 'OREO'])
+    expect(prateleira.every((l) => l.ocorrencias === 0)).toBe(true)
+    // ⚠️ sem venda nenhuma, o período é null — não inventa data
+    expect(periodo).toBeNull()
+  })
+
+  it('⭐ e o mapeamento feito sobre um nome apagado continua valendo', async () => {
+    await confirmarComplementos(companyId, '2026-08-29', html([['CALABRESA', 115]]), undefined, prisma)
+    await upsertComplementoMap(companyId, 'CALABRESA', { tipo: 'FICHA', fichaId: fichaSabor }, undefined, prisma)
+    await prisma.stockVendaComplementoLinha.deleteMany({ where: { companyId } })
+
+    const { prateleira } = await prateleiraGravada(companyId, prisma)
+    expect(prateleira).toHaveLength(1)
+    expect(prateleira[0]).toMatchObject({ nomeSuitable: 'CALABRESA', destino: 'FICHA', ocorrencias: 0 })
+  })
+
+  it('⭐ o catálogo guarda 1ª e última aparição, e as datas só andam pro lado certo', async () => {
+    await confirmarComplementos(companyId, '2026-08-29', html([['CALABRESA', 10]]), undefined, prisma)
+    await confirmarComplementos(companyId, '2026-09-01', html([['CALABRESA', 20]]), undefined, prisma)
+    await confirmarComplementos(companyId, '2026-08-20', html([['CALABRESA', 5]]), undefined, prisma) // dia ANTIGO depois
+
+    const c = await prisma.stockVendaComplementoNome.findFirst({ where: { companyId, nomeSuitable: 'CALABRESA' } })
+    expect(c!.primeiroEm.toISOString().slice(0, 10)).toBe('2026-08-20')
+    expect(c!.ultimoEm.toISOString().slice(0, 10)).toBe('2026-09-01') // o dia antigo NÃO puxou pra trás
+  })
+
+  it('⭐ nome novo num dia novo entra no catálogo sem duplicar o que já existia', async () => {
+    await confirmarComplementos(companyId, '2026-08-29', html([['CALABRESA', 10]]), undefined, prisma)
+    await confirmarComplementos(companyId, '2026-08-30', html([['CALABRESA', 10], ['BACON', 4]]), undefined, prisma)
+    expect(await prisma.stockVendaComplementoNome.count({ where: { companyId } })).toBe(2)
   })
 })
