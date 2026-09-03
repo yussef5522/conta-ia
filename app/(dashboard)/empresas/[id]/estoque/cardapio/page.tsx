@@ -20,7 +20,7 @@ import { TotalsBar } from '@/components/ui/totals-bar'
 import { SortableTh, useSort } from '@/components/ui/sortable-th'
 import { ehProntoNoCardapio } from '@/lib/stock/cardapio/hub'
 import type { LinhaPrateleira } from '@/lib/stock/vendas/complemento-map'
-import { cardsDaPrateleira, secoesDaPrateleira, precisaCarregarPrateleira } from '@/lib/stock/vendas/painel-complementos'
+import { cardsDaPrateleira, secoesDaPrateleira, precisaCarregarPrateleira, agruparPorDestino } from '@/lib/stock/vendas/painel-complementos'
 import { UtensilsCrossed, Loader2, Download, Search, AlertTriangle, ChevronRight, ChevronDown, Sparkles, CircleDollarSign, PackageCheck, HelpCircle } from 'lucide-react'
 
 type Status = 'SEM_DESTINO' | 'SEM_FICHA' | 'REVENDA' | 'FICHA_INCOMPLETA' | 'FICHA_OK'
@@ -347,6 +347,7 @@ function PrateleiraComplementos({ id, linhas, periodo, onMapear, onMoverGrupo, o
   const [soPendentes, setSoPendentes] = useState(false)
   // ⭐ IGNORADOS nasce COLAPSADO: decisão já tomada não disputa espaço com trabalho pendente.
   const [aberta, setAberta] = useState<Record<string, boolean>>({ SABORES: true, OUTROS: true, IGNORADOS: false })
+  const [apelidosAbertos, setApelidosAbertos] = useState<Record<string, boolean>>({})
 
   if (linhas === null) return <div className="p-6"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
   if (!linhas.length) {
@@ -366,8 +367,14 @@ function PrateleiraComplementos({ id, linhas, periodo, onMapear, onMoverGrupo, o
   const t = cardsDaPrateleira(linhas)
   const nosDois = linhas.filter((l) => l.tambemProduto).length
   const q = busca.trim().toLowerCase()
-  const passa = (l: Comp) => (!soPendentes || l.destino === 'SEM_FICHA') && (!q || l.nomeSuitable.toLowerCase().includes(q))
-  const secoes = secoesDaPrateleira(linhas).map((sec) => ({ ...sec, visiveis: sec.linhas.filter(passa) }))
+  // ⚠️ a busca olha o título E os apelidos: procurar "frango com bacon" tem que achar a
+  // linha mesmo quando o título virou o nome da ficha.
+  const passa = (l: { destino: string; titulo: string; apelidos: { nomeSuitable: string }[] }) =>
+    (!soPendentes || l.destino === 'SEM_FICHA')
+    && (!q || l.titulo.toLowerCase().includes(q) || l.apelidos.some((a) => a.nomeSuitable.toLowerCase().includes(q)))
+  // ⭐ AGRUPA NA APRESENTAÇÃO: nomes na mesma ficha viram UMA linha com a soma. O dado
+  // continua por nome cru (é ele que casa com o relatório de amanhã).
+  const secoes = secoesDaPrateleira(agruparPorDestino(linhas)).map((sec) => ({ ...sec, visiveis: sec.linhas.filter(passa) }))
 
   return (
     <div className="space-y-3">
@@ -434,13 +441,35 @@ function PrateleiraComplementos({ id, linhas, periodo, onMapear, onMoverGrupo, o
                 </tr></thead>
                 <tbody>
                   {sec.visiveis.map((l) => (
-                    <tr key={l.nomeSuitable} className="border-t border-slate-50">
+                    <tr key={l.titulo} className="border-t border-slate-50">
                       <td className="px-3 py-0 text-[13px]">
                         <p className="font-medium text-slate-800">
-                          {l.nomeSuitable}
+                          {l.titulo}
                           {/* ⭐ marca o que o DONO moveu: a régua do cardápio foi sobrescrita aqui */}
                           {l.grupoDoDono && <span className="ml-1.5 text-[10px] text-slate-400">movido por você</span>}
                         </p>
+                        {/* ⭐⭐ OS APELIDOS DO PDV, expansíveis: o dado continua por nome cru
+                            (é ele que casa com o relatório de amanhã); a linha única é a tela. */}
+                        {l.apelidos.length > 1 && (
+                          <button onClick={() => setApelidosAbertos((a) => ({ ...a, [l.titulo]: !a[l.titulo] }))}
+                            className="text-[11px] text-slate-400 hover:text-slate-600">
+                            {apelidosAbertos[l.titulo] ? '▾' : '▸'} {l.apelidos.length} nomes no PDV
+                          </button>
+                        )}
+                        {l.apelidos.length > 1 && apelidosAbertos[l.titulo] && (
+                          <ul className="mt-0.5 space-y-0.5">
+                            {l.apelidos.map((a) => (
+                              <li key={a.nomeSuitable} className="flex items-center gap-1.5 text-[11px] text-slate-500">
+                                <span className="tabular-nums text-slate-400">{a.ocorrencias}×</span>
+                                <span className="truncate">{a.nomeSuitable}</span>
+                                {/* ⚠️ a ação é POR NOME, sempre: desfazer um apelido devolve
+                                    ELE pra fila de pendentes, sem mexer nos outros. */}
+                                <button onClick={() => onMapear(a.nomeSuitable, 'LIMPAR')}
+                                  className="text-slate-300 hover:text-slate-600">desfazer</button>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
                         {l.tambemProduto && (
                           <p className="text-[11px] text-amber-700">
                             ⚠️ também é PRODUTO{l.destinoComoProduto ? ` (lá: ${l.destinoComoProduto})` : ''}
