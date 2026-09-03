@@ -298,6 +298,27 @@ describe('⛔⛔ o TYPO ÓRFÃO — a duplicata voltando pela porta do erro de d
     expect(g[0].parecidasComFicha[0]).toMatchObject({ fichaId: 'f-cal', motivo: 'começa igual' })
   })
 
+  it('⛔⛔ NOME BASE não pertence ao mais específico — FILE não puxa 7 fichas', () => {
+    // ⚠️ medido em prod na 2ª rodada: `FILE` sugeria FILE CRISPY, FILE MIGNON, FILE ESPECIAL,
+    // FILE BACONNAISE, FILE ACEBOLADO, FILE CATUPIRY… e `MILHO` sugeria `MILHO ESPECIAL`.
+    const g = sugerirGruposDeGrafia([n('FILE', 3)], [
+      { nomeSuitable: 'FILE CRISPY', fichaId: 'f1', nomeFicha: 'FILE CRISPY' },
+      { nomeSuitable: 'FILE MIGNON', fichaId: 'f2', nomeFicha: 'FILE MIGNON' },
+    ])
+    expect(g[0].parecidasComFicha).toEqual([])
+    expect(sugerirGruposDeGrafia([n('MILHO', 2)],
+      [{ nomeSuitable: 'MILHO ESPECIAL', fichaId: 'f3', nomeFicha: 'MILHO ESPECIAL' }])[0].parecidasComFicha).toEqual([])
+  })
+
+  it('⚠️ e a MESMA ficha aparece UMA vez, mesmo com 3 grafias dela mapeadas', () => {
+    const g = sugerirGruposDeGrafia([n('STROGONOFF DE CARNEE', 1)], [
+      { nomeSuitable: 'STROGONOFF DE CARNE', fichaId: 'f-s', nomeFicha: 'sabor strog' },
+      { nomeSuitable: 'strogonoff de carne', fichaId: 'f-s', nomeFicha: 'sabor strog' },
+      { nomeSuitable: 'Strogonoff de Carne', fichaId: 'f-s', nomeFicha: 'sabor strog' },
+    ])
+    expect(g[0].parecidasComFicha).toHaveLength(1)
+  })
+
   it('⛔⛔ mas as travas continuam: dígito e "X COM Y" não viram sugestão', () => {
     expect(sugerirGruposDeGrafia([n('5 QUEIJOS', 166)],
       [{ nomeSuitable: '4 QUEIJOS', fichaId: 'f4', nomeFicha: 'sabor 4 queijos' }])[0].parecidasComFicha).toEqual([])

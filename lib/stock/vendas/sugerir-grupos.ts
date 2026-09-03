@@ -124,6 +124,16 @@ export function comecaIgual(base: string, outra: string): boolean {
   return !CONECTOR.has(extra[0]) && !TAMANHO.has(extra[0]) && !TAMANHO.has(extra[extra.length - 1])
 }
 
+/**
+ * ⚠️ UMA FICHA APARECE UMA VEZ (medido em prod): `STROGONOFF DE CARNEE` mostrava a MESMA
+ * ficha 3× porque 3 grafias dela estão mapeadas. Três botões idênticos numa linha é ruído
+ * que faz o dono desconfiar de qual é qual.
+ */
+function dedupPorFicha<T extends { fichaId: string }>(ls: T[]): T[] {
+  const vistas = new Set<string>()
+  return ls.filter((x) => (vistas.has(x.fichaId) ? false : (vistas.add(x.fichaId), true)))
+}
+
 const MAX_DISTANCIA = 2
 const MIN_TAMANHO_PARA_DISTANCIA = 6
 
@@ -190,17 +200,23 @@ export function sugerirGruposDeGrafia(
       fichaIrma: irmaPorNorm.get(chave) ?? null,
       // ⭐ as MESMAS réguas, agora contra quem já tem ficha: é o que salva a grafia órfã
       // cujo grupo já fechou (o typo que sobrou sozinho).
-      parecidasComFicha: jaMapeadas
+      parecidasComFicha: dedupPorFicha(jaMapeadas
         .map((m) => ({ m, k: normalizarNome(m.nomeSuitable) }))
-        .filter(({ k }) => k !== chave && (comecaIgual(chave, k) || comecaIgual(k, chave) || (
+        // ⛔⛔ SÓ NO SENTIDO "o pendente é a versão MAIS LONGA" (medido em prod, 2ª rodada):
+        // `CALABRESA BLACK FRIDAY` ⊃ `CALABRESA` faz sentido — é promoção do mesmo sabor.
+        // O contrário NÃO: `FILE` puxava **7 fichas** (FILE CRISPY, FILE MIGNON, FILE
+        // ESPECIAL…) e `MILHO` puxava `MILHO ESPECIAL`. **Nome base é um prato próprio**,
+        // não "a mesma coisa" que sete pratos mais específicos — e sete sugestões numa linha
+        // é o alarme falso que faz o dono parar de ler a faixa.
+        .filter(({ k }) => k !== chave && (comecaIgual(k, chave) || (
           chave.length >= MIN_TAMANHO_PARA_DISTANCIA && k.length >= MIN_TAMANHO_PARA_DISTANCIA
           && !difereSoEmDigito(chave, k) && distancia(chave, k) <= MAX_DISTANCIA
         )))
         .map(({ m, k }) => ({
           nomeSuitable: m.nomeSuitable, ocorrencias: 0,
-          motivo: (comecaIgual(chave, k) || comecaIgual(k, chave) ? 'começa igual' : 'quase igual') as Parecida['motivo'],
+          motivo: (comecaIgual(k, chave) ? 'começa igual' : 'quase igual') as Parecida['motivo'],
           fichaId: m.fichaId, nomeFicha: m.nomeFicha, viaGrafia: m.nomeSuitable,
-        })),
+        }))),
     })
   }
 
