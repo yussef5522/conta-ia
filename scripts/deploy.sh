@@ -108,12 +108,9 @@ ok "prisma client em postgresql (schema e client conferem)"
 # ninguém lê ainda não quebra nada. Se um dia uma migration NÃO for aditiva, ela não pode
 # entrar por aqui sem plano próprio (expand/contract), e é isso que o comentário registra.
 log "Migrations do banco"
-if npx prisma migrate status 2>/dev/null | grep -q "have not yet been applied"; then
-  echo "  há migration pendente — aplicando antes de trocar o symlink"
-  npx prisma migrate deploy 2>&1 | tail -3 || fail "prisma migrate deploy falhou — prod segue no build anterior, nada foi trocado"
-fi
-npx prisma migrate status 2>/dev/null | grep -q "have not yet been applied" \
-  && fail "ainda há migration pendente depois do deploy — NÃO troco o symlink (o app leria tabela que não existe)"
+# ⚠️ o gate mora num script PRÓPRIO porque ele tem TESTE que o executa (a 1ª versão vivia
+# aqui, inline, e mentiu por causa do `pipefail` — ver o comentário em gate-migrations.sh).
+bash scripts/gate-migrations.sh "$APP_DIR" || fail "gate de migrations reprovou — prod segue no build anterior, intacto"
 ok "schema do banco em dia"
 
 if (( DRY )); then

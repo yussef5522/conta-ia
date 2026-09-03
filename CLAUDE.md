@@ -242,6 +242,23 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⛔⛔⛔ O GATE QUE EU ESCREVI PRA MATAR A CLASSE MENTIU NA MESMA CLASSE (02/09/2026)
+
+**Na mesma tarde eu (a) achei que o deploy declarava 4/4 verde com migration pendente, (b) escrevi um gate pra impedir isso, e (c) o gate deixou passar exatamente o mesmo caso — duas vezes, com o app no ar lendo tabela inexistente.**
+
+**A CAUSA É DE SHELL, NÃO DE PRISMA:**
+```bash
+set -euo pipefail
+if npx prisma migrate status 2>/dev/null | grep -q "have not yet been applied"; then …
+```
+Com migration pendente o `prisma migrate status` **sai com código 1** (medido: pendente → texto no *stdout* e exit 1; em dia → exit 0). Com `pipefail`, o pipeline vale o exit do **prisma**, não o do grep — então **o grep casava e o `if` lia FALSO**. O gate anunciava *"schema do banco em dia"* com a tabela faltando. Prova reproduzida em uma linha: `if (exit 1) | grep -q ""; then … ` → cai no `else`.
+
+**⭐ A CURA É NÃO DEPENDER DE TEXTO NEM DE PIPE:** `migrate deploy` roda sempre (é idempotente) e a verificação passou a ser o **exit code** do `migrate status`. Código de saída não muda de idioma entre versões do Prisma e não atravessa pipe.
+
+**⭐⭐ E O GATE GANHOU TESTE QUE O EXECUTA** (`__tests__/infra/gate-migrations.test.ts`): um `npx` **falso** no PATH imita os dois estados reais do Prisma e o teste roda `scripts/gate-migrations.sh` de verdade — pendente reprova, em dia passa, `deploy` que falha derruba. **O quarto teste roda a linha ANTIGA e prova que ela responde "em dia" com pendente**: é o red-then-green sobre comportamento de shell. ⚠️ Grep no fonte do `deploy.sh` **não distinguiria** a versão que funciona da que mente — as duas contêm a mesma frase.
+
+**⚠️ A LIÇÃO, e ela é sobre mim:** *"escrevi um guard"* não é o mesmo que *"o guard morde"*. É a terceira vez no projeto que um guard nasce verde por construção (o de data fixa em 01/09, o do `PRONTOS` hoje de manhã, e este). **Guard novo só conta depois de rodar contra o defeito que o motivou** — e, quando o guard é shell, o defeito pode estar no shell, não na lógica.
+
 ## ⛔⛔ PERÍODO ENTRANDO COMO DIA É BOMBA PRA BAIXA (02/09/2026)
 
 **O relatório do Suitable não traz data NENHUMA** (conferido no arquivo: zero ocorrência de data ou "período"), e o dono pode exportar **um dia** ou **um período inteiro**. Os dois caem na mesma tabela, que é indexada por `data`.
