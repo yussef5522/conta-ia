@@ -53,13 +53,48 @@ export function parseChave(chave: string): { tipo: 'ficha' | 'item' | 'nome'; va
   return { tipo, valor }
 }
 
+
+/**
+ * ⛔⛔ A CHAVE É UM LINK — E LINK NÃO PODE APODRECER (03/09/2026).
+ *
+ * CASO REAL: o dono montou a receita da **PIZZA FAMILIA 45CM** pela tela do produto. A
+ * gravação deu certo (o produto voltou vinculado), mas no meio do caminho a tela abriu
+ * **"Produto não encontrado no cardápio"**. Motivo: a chave do hub **MUDA quando o produto
+ * ganha destino** — `nome:PIZZA FAMILIA 45CM` vira `ficha:<id>` — e a página recarregava
+ * com a chave VELHA, que não casava mais em `l.chave === chave`.
+ *
+ * ⚠️ SUCESSO DISFARÇADO DE ERRO é irmão do "salvo" que mentia, e é pior de conviver:
+ * *se toda gravação mostra um erro falso, a pessoa para de acreditar nos erros de verdade.*
+ *
+ * ⭐ A CURA É RESOLVER POR IDENTIDADE, NÃO POR IGUALDADE DE STRING: `nome:X` acha a linha
+ * que atende X **seja qual for o destino dela hoje**. Isso conserta junto o link salvo nos
+ * favoritos, o F5 depois de mapear uma bebida (`nome:` → `item:`) e qualquer outro caminho
+ * em que o destino do produto mude entre uma visita e outra.
+ */
+export function acharLinhaPorChave<T extends { chave: string; nome: string; nomesSuitable: string[]; fichaId: string | null; itemId: string | null }>(
+  linhas: T[], chave: string,
+): T | undefined {
+  const exata = linhas.find((l) => l.chave === chave)
+  if (exata) return exata
+
+  const alvo = parseChave(chave)
+  if (!alvo) return undefined
+  if (alvo.tipo === 'nome') {
+    // ⚠️ compara com os nomes do PDV **e** com o nome exibido: a linha pode ter virado
+    // `ficha:`/`item:` desde que o link foi criado.
+    return linhas.find((l) => l.nomesSuitable.includes(alvo.valor) || l.nome === alvo.valor)
+  }
+  if (alvo.tipo === 'ficha') return linhas.find((l) => l.fichaId === alvo.valor)
+  return linhas.find((l) => l.itemId === alvo.valor)
+}
+
 export async function detalheProduto(
   companyId: string,
   chave: string,
   db: PrismaClient = defaultPrisma,
 ): Promise<DetalheProduto | null> {
   const hub = await hubCardapio(companyId, {}, db)
-  const linha = hub.linhas.find((l) => l.chave === chave)
+  const linha = acharLinhaPorChave(hub.linhas, chave)
   if (!linha) return null
 
   if (linha.destinoTipo !== 'FICHA' || !linha.fichaId) {
