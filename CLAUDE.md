@@ -242,6 +242,31 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⭐⭐ SABOR VIROU TIPO PRÓPRIO — A FRONTEIRA ENTRE A VENDA E A COZINHA (03/09/2026)
+
+**CASO REAL:** o dono criou a ficha do sabor **CALABRESA** pela aba Complementos e ela apareceu em **Produção › Receitas**, no meio das **20 receitas de verdade**. Diagnóstico dele, certo: ***`tipoProduto` estava respondendo DUAS perguntas*** — *"como isto baixa na venda?"* e *"isto aparece na cozinha?"*. Com **~50 sabores** a caminho, seriam 50 intrusos na tela de quem cozinha.
+
+**⭐ O QUE A MEDIÇÃO MOSTROU ANTES DE EU PROPOR QUALQUER COISA:** `explodir()` **sempre explode a ficha-alvo do mapa** — a decisão *pack × explodir* é por **COMPONENTE** (`fichaComp.tipoProduto`), não pelo alvo. Ou seja, **trocar o tipo do sabor é de graça pra mecânica da baixa**. Sem esse dado eu teria proposto algo mais caro.
+
+**AS TRÊS COISAS DO DOMÍNIO** (`lib/stock/tipos-ficha.ts`, o vocabulário num lugar só):
+| tipo | quem faz | exemplo |
+|---|---|---|
+| `INTERMEDIARIO` | a cozinha FAZ em lote, rendimento MEDIDO | porção de calabresa 120g |
+| `PRODUTO_FINAL` | o cliente COMPRA, monta no pedido | XIS COMPLETO |
+| **`SABOR`** | escolha DENTRO de um produto, monta no pedido | CALABRESA (a pizza) |
+
+**⭐⭐ E A SEPARAÇÃO SAIU SEM UM `if` NOVO EM TELA NENHUMA:** cada régua já era **ALLOWLIST** (`=== INTERMEDIARIO` na produção, `=== PRODUTO_FINAL` no cardápio e no mapa de produtos), então o tipo novo fica de fora **por construção**. *Tipo que se acrescenta sem precisar caçar filtro é o sinal de que o vocabulário estava faltando, não o filtro.* A exigência do dono (*"fonte única, nada de segundo filtro por tela"*) foi cumprida sem a régua mudar.
+
+**⛔ O QUE FOI DESCARTADO E POR QUÊ:** derivar de *"é alvo de mapeamento de complemento"* parecia mais barato (zero estado novo) e tem **falha real**: o dia em que ele mapear `MOLHO → ficha "molho especial"` (uma receita de verdade, caminho que o guard do mapa documenta como legítimo), essa receita **sumiria da cozinha**. Trocaria um intruso por um **sumiço** — e sumiço é a classe que este módulo mais paga.
+
+**⭐ MUDANÇA DELIBERADA, APROVADA:** `SABOR` **explode** junto com `PRODUTO_FINAL` quando usado como componente (`montaNaVenda`). Sem isso, um sabor dentro de outra ficha baixaria o **item-invólucro**, que **ninguém produz** → saldo negativo eterno num item fantasma.
+
+**⛔ E O INVÓLUCRO NÃO ENTRA NA CONTAGEM:** ninguém pesa "CALABRESA" na câmara — o que existe lá é a *porção*. Sem essa régua a contagem inicial nasceria com ~50 linhas impossíveis de contar, e **linha que não dá pra contar vira linha que se ignora**. ⚠️ **Dívida registrada (pré-existente, não mexida):** item de `PRODUTO_FINAL` (XIS COMPLETO, PIZZA PEQUENA 25CM) **também** aparece na contagem hoje — 2 linhas, decisão do dono.
+
+**⚠️ E EXISTEM DOIS ITENS "CALABRESA" EM PROD, os dois legítimos:** a **matéria-prima** (`criadoVia CONFERENCIA`, 7 movimentos, veio de nota — **entra na contagem, se pesa**) e o **invólucro de sabor** (`criadoVia MANUAL`, `categoria SABOR` — fora da contagem). Conferi por ID, não por nome: foi a REGRA 8 evitando eu "consertar" um falso positivo meu.
+
+**PROVADO EM PROD:** receitas na cozinha **19 → 18**, CALABRESA **fora** de Produção, `tipo=SABOR` e `categoria=SABOR`, contagem **sem** o invólucro **e com** a matéria-prima, e a baixa de 1 CALABRESA → **1 UN da porção pronta** (zero na crua). Conserto por script com preview, **sem recriar ficha** e sem tocar no mapeamento. Red-then-green (REGRA 11) nos **três** defeitos repostos.
+
 ## ⛔⛔⛔ O GATE QUE EU ESCREVI PRA MATAR A CLASSE MENTIU NA MESMA CLASSE (02/09/2026)
 
 **Na mesma tarde eu (a) achei que o deploy declarava 4/4 verde com migration pendente, (b) escrevi um gate pra impedir isso, e (c) o gate deixou passar exatamente o mesmo caso — duas vezes, com o app no ar lendo tabela inexistente.**
