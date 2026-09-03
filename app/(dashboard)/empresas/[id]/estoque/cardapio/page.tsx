@@ -443,6 +443,12 @@ function PrateleiraComplementos({ id, linhas, periodo, onMapear, onMoverGrupo, o
           {aberta[sec.chave] && sec.chave !== 'IGNORADOS' && (
             <GruposSugeridos
               linhas={sec.visiveis} incluidas={incluidas} ocupado={ocupado}
+              jaMapeadas={linhas.filter((l) => l.destino === 'FICHA' && l.fichaId)
+                .map((l) => ({ nomeSuitable: l.nomeSuitable, fichaId: l.fichaId!, nomeFicha: l.nomeFicha ?? l.nomeSuitable }))}
+              onMapearTodas={async (nomes, fichaId) => {
+                setOcupado(true)
+                try { for (const n of nomes) await onMapear(n, 'FICHA', fichaId) } finally { setOcupado(false) }
+              }}
               onIncluir={(chave, nome) => setIncluidas((a) => ({ ...a, [chave]: [...(a[chave] ?? []), nome] }))}
               linkCriarFicha={linkCriarFicha}
               onIgnorarTodas={async (nomes) => {
@@ -568,19 +574,24 @@ function PrateleiraComplementos({ id, linhas, periodo, onMapear, onMoverGrupo, o
  * ⚠️ SÓ PENDENTES entram: nome já mapeado tem destino, e destino é o que agrupa de verdade
  * (`agruparPorDestino`). Sugerir grupo pra quem já foi decidido seria reabrir decisão pronta.
  */
-function GruposSugeridos({ linhas, incluidas, ocupado, onIncluir, onIgnorarTodas, linkCriarFicha }: {
+function GruposSugeridos({ linhas, incluidas, ocupado, onIncluir, onIgnorarTodas, onMapearTodas, jaMapeadas, linkCriarFicha }: {
   linhas: { destino: string; titulo: string; apelidos: { nomeSuitable: string; ocorrencias: number }[] }[]
   incluidas: Record<string, string[]>
   ocupado: boolean
   onIncluir: (chave: string, nome: string) => void
   onIgnorarTodas: (nomes: string[]) => void | Promise<void>
+  onMapearTodas: (nomes: string[], fichaId: string) => void | Promise<void>
+  jaMapeadas: { nomeSuitable: string; fichaId: string; nomeFicha: string }[]
   linkCriarFicha: (nomes: string[]) => string
 }) {
   const pendentes = linhas
     .filter((l) => l.destino === 'SEM_FICHA')
     .flatMap((l) => l.apelidos.map((a) => ({ nomeSuitable: a.nomeSuitable, ocorrencias: a.ocorrencias })))
   // ⚠️ só vale a pena mostrar o grupo quando ele RESOLVE algo: 2+ grafias, ou 1 com candidata
-  const grupos = sugerirGruposDeGrafia(pendentes).filter((g) => g.nomes.length > 1 || g.parecidas.length > 0)
+  // ⚠️ as já mapeadas entram como CONTEXTO (não como membros): é o que faz o grupo saber
+  // que a ficha dele já existe, em vez de mandar criar uma segunda e morrer no erro.
+  const grupos = sugerirGruposDeGrafia(pendentes, jaMapeadas)
+    .filter((g) => g.nomes.length > 1 || g.parecidas.length > 0 || g.fichaIrma)
   if (!grupos.length) return null
 
   return (
@@ -595,16 +606,27 @@ function GruposSugeridos({ linhas, incluidas, ocupado, onIncluir, onIgnorarTodas
               <span className="text-xs font-medium text-sky-900">
                 ≈ {nomes.length} grafias do mesmo nome · <b>{g.titulo}</b> · {total.toLocaleString('pt-BR')} ocorrências
               </span>
-              <a href={linkCriarFicha(nomes)}
-                className="ml-auto inline-flex h-7 items-center rounded-lg bg-[#185FA5] px-2.5 text-[11px] font-semibold text-white hover:bg-[#0F4A8C]">
-                criar ficha pra todas
-              </a>
+              {/* ⭐⭐ FICHA JÁ EXISTE NÃO É BECO (03/09): quando uma grafia irmã já aponta
+                  pra uma ficha, o gesto vira MAPEAR nela. A recusa de duplicata continua
+                  certa; o que muda é o botão terminar o trabalho em vez de morrer no erro. */}
+              {g.fichaIrma ? (
+                <button onClick={() => onMapearTodas(nomes, g.fichaIrma!.fichaId)} disabled={ocupado}
+                  className="ml-auto inline-flex h-7 items-center rounded-lg bg-[#185FA5] px-2.5 text-[11px] font-semibold text-white hover:bg-[#0F4A8C] disabled:opacity-40">
+                  mapear na ficha “{g.fichaIrma.nomeFicha}”
+                </button>
+              ) : (
+                <a href={linkCriarFicha(nomes)}
+                  className="ml-auto inline-flex h-7 items-center rounded-lg bg-[#185FA5] px-2.5 text-[11px] font-semibold text-white hover:bg-[#0F4A8C]">
+                  criar ficha pra todas
+                </a>
+              )}
               <button onClick={() => onIgnorarTodas(nomes)} disabled={ocupado}
                 className="inline-flex h-7 items-center rounded-lg border border-slate-300 bg-white px-2.5 text-[11px] text-slate-600 hover:bg-slate-50 disabled:opacity-40">
                 ignorar todas
               </button>
             </div>
             <p className="mt-1 text-[11px] text-sky-800">
+              {g.fichaIrma && <span className="text-sky-900">já existe ficha (via “{g.fichaIrma.viaGrafia}”) · falta: </span>}
               {g.nomes.map((n) => `${n.nomeSuitable} (${n.ocorrencias})`).join(' · ')}
               {extras.length > 0 && <span className="text-sky-900"> · + {extras.join(' · ')}</span>}
             </p>

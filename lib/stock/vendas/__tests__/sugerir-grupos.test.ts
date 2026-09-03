@@ -10,7 +10,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { prisma } from '@/lib/db'
 import { sugerirGruposDeGrafia, difereSoEmDigito, distancia, comecaIgual } from '../sugerir-grupos'
 import { criarFicha } from '../../producao/fichas'
-import { prateleiraDeComplementos } from '../complemento-map'
+import { prateleiraDeComplementos, upsertComplementoMap } from '../complemento-map'
 import { agruparPorDestino } from '../painel-complementos'
 
 const n = (nomeSuitable: string, ocorrencias: number) => ({ nomeSuitable, ocorrencias })
@@ -95,6 +95,47 @@ describe('⛔⛔ o que NÃO entra sozinho', () => {
   })
 })
 
+describe('⛔⛔ 3+ grafias e a FICHA QUE JÁ EXISTE (o beco de 03/09)', () => {
+  it('⭐⭐ 3 grafias do mesmo nome → UM grupo com as 3', () => {
+    const g = sugerirGruposDeGrafia([n('bacon', 2), n('Bacon', 2), n('BACON', 328)])
+    expect(g).toHaveLength(1)
+    expect(g[0].nomes).toHaveLength(3)
+    expect(g[0].ocorrencias).toBe(332)
+  })
+
+  it('⭐ e 4 também (não há limite de membros)', () => {
+    const g = sugerirGruposDeGrafia([n('bacon', 1), n('Bacon', 1), n('BACON', 1), n('  bacon  ', 1)])
+    expect(g[0].nomes).toHaveLength(4)
+  })
+
+  it('⛔⛔ com uma IRMÃ já mapeada, o grupo aponta a ficha em vez de mandar criar outra', () => {
+    // ⚠️ ERA O BUG REAL: `BACON` já estava numa ficha de uma tentativa anterior; sobravam
+    // `bacon` e `Bacon` pendentes. O botão dizia "criar ficha pra todas" e o salvar recusava
+    // com "já existe essa ficha" — recusa CERTA, botão errado.
+    const g = sugerirGruposDeGrafia(
+      [n('bacon', 2), n('Bacon', 2)],
+      [{ nomeSuitable: 'BACON', fichaId: 'f-bacon', nomeFicha: 'sabor bacon' }],
+    )
+    expect(g).toHaveLength(1)
+    expect(g[0].fichaIrma).toEqual({ fichaId: 'f-bacon', nomeFicha: 'sabor bacon', viaGrafia: 'BACON' })
+    // as pendentes continuam sendo o trabalho; a irmã é CONTEXTO, não membro
+    expect(g[0].nomes.map((x) => x.nomeSuitable)).toEqual(['bacon', 'Bacon'])
+  })
+
+  it('⭐ sem irmã mapeada, segue sendo "criar ficha"', () => {
+    const g = sugerirGruposDeGrafia([n('bacon', 2), n('Bacon', 2)], [])
+    expect(g[0].fichaIrma).toBeNull()
+  })
+
+  it('⚠️ irmã de OUTRO nome não conta (não é a mesma grafia)', () => {
+    const g = sugerirGruposDeGrafia(
+      [n('bacon', 2), n('Bacon', 2)],
+      [{ nomeSuitable: 'BACON ACEBOLADO', fichaId: 'f-outro', nomeFicha: 'outro' }],
+    )
+    expect(g[0].fichaIrma).toBeNull()
+  })
+})
+
 describe('⭐⭐ o ciclo: um grupo → uma ficha → uma linha', () => {
   const CNPJ = '22334455000166'
   let companyId = ''
@@ -167,5 +208,65 @@ describe('⭐⭐ o ciclo: um grupo → uma ficha → uma linha', () => {
     const agrupado = agruparPorDestino(await prateleiraDeComplementos(companyId, comTypo, prisma))
     expect(agrupado).toHaveLength(2)
     expect(agrupado.find((x) => x.destino === 'SEM_FICHA')!.titulo).toBe('STROGONOFF DE CARNEE')
+  })
+})
+
+describe('⭐⭐ o fluxo que morria no erro, agora termina', () => {
+  const CNPJ = '33445566000177'
+  let companyId = ''
+  let insumo = ''
+
+  beforeEach(async () => {
+    await prisma.company.deleteMany({ where: { cnpj: CNPJ } })
+    companyId = (await prisma.company.create({ data: { cnpj: CNPJ, name: 'BECO' } })).id
+    insumo = (await prisma.stockItem.create({ data: { companyId, nome: 'BACON CRU', unidadeControle: 'KG', categoria: 'MATERIA_PRIMA', criadoVia: 'MANUAL' } })).id
+  })
+  afterEach(async () => {
+    for (const t of ['stockVendaComplementoMap', 'stockVendaComplementoGrupo', 'stockFichaComponente',
+      'stockFichaVersao', 'stockFicha', 'stockItem'] as const) {
+      // @ts-expect-error dinâmico
+      await prisma[t].deleteMany({ where: { companyId } })
+    }
+    await prisma.company.deleteMany({ where: { id: companyId } })
+  })
+
+  const entradas = [n('BACON', 328), n('bacon', 2), n('Bacon', 2)]
+
+  it('⛔⛔ criar a 2ª ficha do mesmo nome continua RECUSADO (a trava está certa)', async () => {
+    await criarFicha({
+      companyId, nomeProduzido: 'sabor bacon', unidadeProduzido: 'UN', tipoProduto: 'SABOR',
+      loteBase: 1, unidadeLoteBase: 'UN', componentes: [{ itemId: insumo, qtdPlanejada: 0.08, unidade: 'KG', posicao: 0 }],
+      mapearComplemento: ['BACON'],
+    }, prisma)
+    await expect(criarFicha({
+      companyId, nomeProduzido: 'sabor bacon', unidadeProduzido: 'UN', tipoProduto: 'SABOR',
+      loteBase: 1, unidadeLoteBase: 'UN', componentes: [{ itemId: insumo, qtdPlanejada: 0.08, unidade: 'KG', posicao: 0 }],
+      mapearComplemento: ['bacon', 'Bacon'],
+    }, prisma)).rejects.toThrow()
+  })
+
+  it('⭐⭐ e o caminho novo TERMINA o trabalho: as 3 grafias na MESMA ficha', async () => {
+    const r = await criarFicha({
+      companyId, nomeProduzido: 'sabor bacon', unidadeProduzido: 'UN', tipoProduto: 'SABOR',
+      loteBase: 1, unidadeLoteBase: 'UN', componentes: [{ itemId: insumo, qtdPlanejada: 0.08, unidade: 'KG', posicao: 0 }],
+      mapearComplemento: ['BACON'],
+    }, prisma)
+
+    // a tela vê a irmã e oferece mapear nela
+    const prateleira = await prateleiraDeComplementos(companyId, entradas, prisma)
+    const pendentes = prateleira.filter((l) => l.destino === 'SEM_FICHA').map((l) => ({ nomeSuitable: l.nomeSuitable, ocorrencias: l.ocorrencias }))
+    const mapeadas = prateleira.filter((l) => l.destino === 'FICHA' && l.fichaId)
+      .map((l) => ({ nomeSuitable: l.nomeSuitable, fichaId: l.fichaId!, nomeFicha: l.nomeFicha ?? l.nomeSuitable }))
+    const grupo = sugerirGruposDeGrafia(pendentes, mapeadas)[0]
+    expect(grupo.fichaIrma?.fichaId).toBe(r.fichaId)
+
+    // o clique: mapeia as pendentes na ficha existente
+    for (const x of grupo.nomes) await upsertComplementoMap(companyId, x.nomeSuitable, { tipo: 'FICHA', fichaId: grupo.fichaIrma!.fichaId }, undefined, prisma)
+
+    const agrupado = agruparPorDestino(await prateleiraDeComplementos(companyId, entradas, prisma))
+    expect(agrupado).toHaveLength(1)
+    expect(agrupado[0].ocorrencias).toBe(332)
+    expect(agrupado[0].apelidos).toHaveLength(3)
+    expect(await prisma.stockFicha.count({ where: { companyId } }), 'criou ficha duplicada').toBe(1)
   })
 })

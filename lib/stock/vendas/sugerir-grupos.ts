@@ -24,6 +24,13 @@ export interface Parecida extends NomePendente {
   motivo: 'quase igual' | 'começa igual'
 }
 
+export interface FichaIrma {
+  fichaId: string
+  nomeFicha: string
+  /** a grafia que já está apontando pra ela — a prova de que a ficha é DESTE nome */
+  viaGrafia: string
+}
+
 export interface GrupoSugerido {
   /** a forma normalizada que uniu as grafias (uso interno/estável pra key de lista) */
   chave: string
@@ -34,6 +41,19 @@ export interface GrupoSugerido {
   ocorrencias: number
   /** candidatas que **não** entram sozinhas: o dono inclui por clique */
   parecidas: Parecida[]
+  /**
+   * ⭐⭐ A FICHA QUE JÁ EXISTE PRA ESTE MESMO NOME (03/09).
+   *
+   * ⛔ BUG REAL: o dono clicou "criar ficha pra todas" no grupo do BACON e o salvar recusou
+   * com *"já existe essa ficha"*. **A recusa estava certa** (nunca criar segunda ficha do
+   * mesmo nome) — errado era o BOTÃO: uma grafia irmã (`BACON`) já estava mapeada numa ficha
+   * de uma tentativa anterior, e o grupo não olhava pra isso. O gesto morria no erro em vez
+   * de terminar o trabalho.
+   *
+   * ⚠️ MEDIDO: 14 grafias ficaram penduradas assim (bacon/Bacon, strogonoff, filé acebolado…).
+   * Nenhuma ficha órfã — só trabalho parado.
+   */
+  fichaIrma: FichaIrma | null
 }
 
 /** distância de edição clássica, iterativa (nomes são curtos; sem dependência nova) */
@@ -102,11 +122,29 @@ const MIN_TAMANHO_PARA_DISTANCIA = 6
  * há julgamento a fazer: `strogonoff de carne` e `STROGONOFF DE CARNE` são o mesmo texto.
  * Tudo que exige julgamento (typo, promoção, tamanho) fica em `parecidas`, pro dono clicar.
  */
-export function sugerirGruposDeGrafia(pendentes: readonly NomePendente[]): GrupoSugerido[] {
+export interface GrafiaMapeada {
+  nomeSuitable: string
+  fichaId: string
+  nomeFicha: string
+}
+
+export function sugerirGruposDeGrafia(
+  pendentes: readonly NomePendente[],
+  /** as grafias que JÁ apontam pra alguma ficha — é o que evita o beco do "já existe" */
+  jaMapeadas: readonly GrafiaMapeada[] = [],
+): GrupoSugerido[] {
   const porNorm = new Map<string, NomePendente[]>()
   for (const p of pendentes) {
     const k = normalizarNome(p.nomeSuitable)
     porNorm.set(k, [...(porNorm.get(k) ?? []), p])
+  }
+
+  // ⭐ índice das grafias já resolvidas, pela MESMA normalização: se uma irmã do grupo já
+  // tem ficha, o grupo inteiro pertence a ela.
+  const irmaPorNorm = new Map<string, FichaIrma>()
+  for (const m of jaMapeadas) {
+    const k = normalizarNome(m.nomeSuitable)
+    if (!irmaPorNorm.has(k)) irmaPorNorm.set(k, { fichaId: m.fichaId, nomeFicha: m.nomeFicha, viaGrafia: m.nomeSuitable })
   }
 
   const grupos: GrupoSugerido[] = []
@@ -137,6 +175,7 @@ export function sugerirGruposDeGrafia(pendentes: readonly NomePendente[]): Grupo
       nomes: ordenados,
       ocorrencias: nomes.reduce((s, x) => s + x.ocorrencias, 0),
       parecidas: parecidas.sort((a, b) => b.ocorrencias - a.ocorrencias),
+      fichaIrma: irmaPorNorm.get(chave) ?? null,
     })
   }
 
