@@ -28,7 +28,8 @@ const criarSchema = z.object({
   // ⭐ 1 nome ou VÁRIOS: o PDV escreve o mesmo produto de vários jeitos (apelidos)
   mapearNomeSuitable: z.union([z.string().min(1).max(200), z.array(z.string().min(1).max(200)).max(20)]).nullable().optional(),
   // ⭐ o mesmo, no mapa dos COMPLEMENTOS (sabores). Mutuamente exclusivo com o de cima.
-  mapearComplemento: z.string().min(1).max(200).nullable().optional(),
+  // ⭐ 1 grafia ou o GRUPO inteiro confirmado pelo dono
+  mapearComplemento: z.union([z.string().min(1).max(200), z.array(z.string().min(1).max(200)).max(30)]).nullable().optional(),
 })
 
 export async function GET(request: NextRequest, { params }: Params) {

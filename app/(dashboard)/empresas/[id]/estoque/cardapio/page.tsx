@@ -21,6 +21,7 @@ import { SortableTh, useSort } from '@/components/ui/sortable-th'
 import { ehProntoNoCardapio } from '@/lib/stock/cardapio/hub'
 import type { LinhaPrateleira } from '@/lib/stock/vendas/complemento-map'
 import { cardsDaPrateleira, secoesDaPrateleira, precisaCarregarPrateleira, agruparPorDestino } from '@/lib/stock/vendas/painel-complementos'
+import { sugerirGruposDeGrafia } from '@/lib/stock/vendas/sugerir-grupos'
 import { UtensilsCrossed, Loader2, Download, Search, AlertTriangle, ChevronRight, ChevronDown, Sparkles, CircleDollarSign, PackageCheck, HelpCircle } from 'lucide-react'
 
 type Status = 'SEM_DESTINO' | 'SEM_FICHA' | 'REVENDA' | 'FICHA_INCOMPLETA' | 'FICHA_OK'
@@ -348,6 +349,15 @@ function PrateleiraComplementos({ id, linhas, periodo, onMapear, onMoverGrupo, o
   // ⭐ IGNORADOS nasce COLAPSADO: decisão já tomada não disputa espaço com trabalho pendente.
   const [aberta, setAberta] = useState<Record<string, boolean>>({ SABORES: true, OUTROS: true, IGNORADOS: false })
   const [apelidosAbertos, setApelidosAbertos] = useState<Record<string, boolean>>({})
+  // ⭐ o dono INCLUI a parecida por clique — o sistema nunca a inclui sozinho
+  const [incluidas, setIncluidas] = useState<Record<string, string[]>>({})
+  const [ocupado, setOcupado] = useState(false)
+
+  /** link do editor com UM `complemento=` por grafia: uma ficha, uma viagem */
+  const linkCriarFicha = (nomes: string[]) =>
+    `/empresas/${id}/estoque/fichas/nova?tipo=SABOR&nome=${encodeURIComponent(nomes[0])}`
+    + nomes.map((n) => `&complemento=${encodeURIComponent(n)}`).join('')
+    + `&voltar=${encodeURIComponent(`/empresas/${id}/estoque/cardapio?aba=complementos`)}`
 
   if (linhas === null) return <div className="p-6"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
   if (!linhas.length) {
@@ -426,6 +436,21 @@ function PrateleiraComplementos({ id, linhas, periodo, onMapear, onMoverGrupo, o
             </span>
           </button>
 
+          {/* ⭐⭐ GRUPOS DE GRAFIA SUGERIDOS (03/09): o PDV manda o mesmo sabor escrito de
+              vários jeitos (31 grupos no relatório real). Sem isto, limpar a tela exigiria
+              mapear grafia por grafia. ⛔ O sistema SUGERE e o dono confirma — fundir
+              sozinho apontaria dois sabores diferentes pra mesma ficha, em silêncio. */}
+          {aberta[sec.chave] && sec.chave !== 'IGNORADOS' && (
+            <GruposSugeridos
+              linhas={sec.visiveis} incluidas={incluidas} ocupado={ocupado}
+              onIncluir={(chave, nome) => setIncluidas((a) => ({ ...a, [chave]: [...(a[chave] ?? []), nome] }))}
+              linkCriarFicha={linkCriarFicha}
+              onIgnorarTodas={async (nomes) => {
+                setOcupado(true)
+                try { for (const n of nomes) await onMapear(n, 'IGNORAR') } finally { setOcupado(false) }
+              }}
+            />
+          )}
           {aberta[sec.chave] && (
             sec.visiveis.length === 0 ? (
               <p className="px-3 pb-3 text-xs text-slate-400">
@@ -518,7 +543,7 @@ function PrateleiraComplementos({ id, linhas, periodo, onMapear, onMoverGrupo, o
                               className="text-[11px] text-slate-400 hover:text-slate-700">desfazer</button>
                           )}
                           {l.destino === 'SEM_FICHA' && (
-                            <a href={`/empresas/${id}/estoque/fichas/nova?tipo=SABOR&nome=${encodeURIComponent(l.nomeSuitable)}&complemento=${encodeURIComponent(l.nomeSuitable)}&voltar=${encodeURIComponent(`/empresas/${id}/estoque/cardapio?aba=complementos`)}`}
+                            <a href={linkCriarFicha([l.nomeSuitable])}
                               className="rounded border border-[#185FA5] px-2 py-0.5 text-[11px] text-[#185FA5] hover:bg-blue-50">criar ficha</a>
                           )}
                         </div>
@@ -533,6 +558,67 @@ function PrateleiraComplementos({ id, linhas, periodo, onMapear, onMoverGrupo, o
       ))}
 
       <button onClick={onRecarregar} className="text-[11px] text-slate-400 hover:text-slate-600">recarregar</button>
+    </div>
+  )
+}
+
+/**
+ * ⭐ A faixa de grupos sugeridos de uma seção.
+ *
+ * ⚠️ SÓ PENDENTES entram: nome já mapeado tem destino, e destino é o que agrupa de verdade
+ * (`agruparPorDestino`). Sugerir grupo pra quem já foi decidido seria reabrir decisão pronta.
+ */
+function GruposSugeridos({ linhas, incluidas, ocupado, onIncluir, onIgnorarTodas, linkCriarFicha }: {
+  linhas: { destino: string; titulo: string; apelidos: { nomeSuitable: string; ocorrencias: number }[] }[]
+  incluidas: Record<string, string[]>
+  ocupado: boolean
+  onIncluir: (chave: string, nome: string) => void
+  onIgnorarTodas: (nomes: string[]) => void | Promise<void>
+  linkCriarFicha: (nomes: string[]) => string
+}) {
+  const pendentes = linhas
+    .filter((l) => l.destino === 'SEM_FICHA')
+    .flatMap((l) => l.apelidos.map((a) => ({ nomeSuitable: a.nomeSuitable, ocorrencias: a.ocorrencias })))
+  // ⚠️ só vale a pena mostrar o grupo quando ele RESOLVE algo: 2+ grafias, ou 1 com candidata
+  const grupos = sugerirGruposDeGrafia(pendentes).filter((g) => g.nomes.length > 1 || g.parecidas.length > 0)
+  if (!grupos.length) return null
+
+  return (
+    <div className="space-y-1.5 border-b border-slate-100 px-3 py-2">
+      {grupos.map((g) => {
+        const extras = incluidas[g.chave] ?? []
+        const nomes = [...g.nomes.map((n) => n.nomeSuitable), ...extras]
+        const total = g.ocorrencias + g.parecidas.filter((p) => extras.includes(p.nomeSuitable)).reduce((s, p) => s + p.ocorrencias, 0)
+        return (
+          <div key={g.chave} className="rounded-lg border border-sky-200 bg-sky-50/60 px-2.5 py-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-medium text-sky-900">
+                ≈ {nomes.length} grafias do mesmo nome · <b>{g.titulo}</b> · {total.toLocaleString('pt-BR')} ocorrências
+              </span>
+              <a href={linkCriarFicha(nomes)}
+                className="ml-auto inline-flex h-7 items-center rounded-lg bg-[#185FA5] px-2.5 text-[11px] font-semibold text-white hover:bg-[#0F4A8C]">
+                criar ficha pra todas
+              </a>
+              <button onClick={() => onIgnorarTodas(nomes)} disabled={ocupado}
+                className="inline-flex h-7 items-center rounded-lg border border-slate-300 bg-white px-2.5 text-[11px] text-slate-600 hover:bg-slate-50 disabled:opacity-40">
+                ignorar todas
+              </button>
+            </div>
+            <p className="mt-1 text-[11px] text-sky-800">
+              {g.nomes.map((n) => `${n.nomeSuitable} (${n.ocorrencias})`).join(' · ')}
+              {extras.length > 0 && <span className="text-sky-900"> · + {extras.join(' · ')}</span>}
+            </p>
+            {/* ⛔ PARECIDA NÃO ENTRA SOZINHA: typo, promoção e tamanho exigem julgamento.
+                O motivo aparece pro dono julgar em vez de confiar. */}
+            {g.parecidas.filter((p) => !extras.includes(p.nomeSuitable)).map((p) => (
+              <p key={p.nomeSuitable} className="mt-1 text-[11px] text-slate-500">
+                parecida ({p.motivo}): <b>{p.nomeSuitable}</b> ({p.ocorrencias}) —{' '}
+                <button onClick={() => onIncluir(g.chave, p.nomeSuitable)} className="text-[#185FA5] hover:underline">incluir no grupo</button>
+              </p>
+            ))}
+          </div>
+        )
+      })}
     </div>
   )
 }

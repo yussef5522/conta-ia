@@ -52,7 +52,7 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
   linha?: LinhaParaFicha | null
   /** chamado depois de salvar (a tela do produto recarrega em vez de navegar) */
   aoSalvar?: () => void
-; mapearNomeSuitable?: string | string[]; mapearComplemento?: string; duplicarDe?: string}) {
+; mapearNomeSuitable?: string | string[]; mapearComplemento?: string | string[]; duplicarDe?: string}) {
   const editando = !!fichaId
   const qp = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
   const voltar = voltarPara ?? `/empresas/${companyId}/estoque/fichas`
@@ -61,7 +61,10 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
   // `?complemento=CALABRESA`, e o vínculo nome→ficha entra na MESMA transação da criação.
   // ⚠️ Sem isto o gesto seria: cria a ficha → volta na aba → aponta à mão. Dois passos,
   // ~50 vezes, e o passo 2 é justamente o que ficou de fora nas 3 fichas órfãs de 01/09.
-  const complementoDaUrl = mapearComplemento ?? qp?.get('complemento') ?? undefined
+  // ⭐ `getAll`: o link do grupo manda um `complemento=` por grafia, e o salvar mapeia todas
+  // na MESMA transação — uma ficha, uma viagem.
+  const complementosDaUrl = qp?.getAll('complemento') ?? []
+  const complementoDaUrl = mapearComplemento ?? (complementosDaUrl.length ? complementosDaUrl : undefined)
   // ⭐ o irmão do `?complemento=` pro mundo dos PRODUTOS (porta da tela de Vendas):
   // sem ele a ficha nascia órfã ali também — a MESMA classe das 3 órfãs de 01/09.
   const mapearDaUrl = mapearNomeSuitable ?? qp?.get('mapear') ?? undefined
@@ -120,6 +123,7 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
   const produtoFinal = tipoProduto === 'PRODUTO_FINAL'
   // ⚠️ lista OU string: a tela do produto manda todos os apelidos do PDV
   const temNomePdv = Array.isArray(mapearDaUrl) ? mapearDaUrl.length > 0 : !!mapearDaUrl
+  const temComplemento = Array.isArray(complementoDaUrl) ? complementoDaUrl.length > 0 : !!complementoDaUrl
 
   // ⚠️ REDE do prefill: se a linha chegar DEPOIS da montagem (fetch da tela de trás), aplica
   // aqui. Só em campo intocado — o dono manda sempre.
@@ -215,8 +219,8 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
       // ⭐ ITEM 5 (01/09): gravação INCOMPLETA nunca mais volta calada. Se a tela pediu o
       // vínculo com o PDV e ele não veio, o dono fica sabendo NA HORA — foi o silêncio que
       // fez ele salvar de novo e duplicar a PIZZA.
-      if (!duplicarDaUrl && (temNomePdv || complementoDaUrl) && !editando && j?.vinculadoAoPdv === false) {
-        setErro(`Ficha salva, mas NÃO foi vinculada a “${mapearNomeSuitable ?? complementoDaUrl}” do PDV. ` +
+      if (!duplicarDaUrl && (temNomePdv || temComplemento) && !editando && j?.vinculadoAoPdv === false) {
+        setErro(`Ficha salva, mas NÃO foi vinculada a “${[mapearDaUrl, complementoDaUrl].flat().filter(Boolean).join('”, “')}” do PDV. ` +
           'Ela existe em Fichas técnicas; vincule pelo cardápio antes de vender.')
         return
       }

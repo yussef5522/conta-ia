@@ -62,7 +62,12 @@ export interface CriarFichaInput extends FichaBodyInput {
    * ⚠️ MUTUAMENTE EXCLUSIVO com `mapearNomeSuitable`: produto aponta pra PRODUTO_FINAL,
    * complemento pra INTERMEDIARIO. Mandar os dois é sinal de chamada errada.
    */
-  mapearComplemento?: string | null
+  /**
+   * ⭐ ACEITA LISTA (03/09): o PDV manda o mesmo sabor em várias grafias, e o dono confirma
+   * o grupo de uma vez. Sem isso ele faria uma viagem ao editor **por grafia** — ~31 vezes
+   * pra dizer 31 vezes a mesma coisa.
+   */
+  mapearComplemento?: string | string[] | null
 }
 
 export class FichaError extends Error {}
@@ -130,11 +135,13 @@ export async function criarFicha(input: CriarFichaInput, db: PrismaClient = defa
     }
     // ⭐ o vínculo do COMPLEMENTO, na MESMA transação — ficha e vínculo entram juntos ou
     // não entram. É a correção do bug das 3 fichas órfãs, aplicada antes de ele repetir.
-    if (input.mapearComplemento) {
+    const complementos = (Array.isArray(input.mapearComplemento) ? input.mapearComplemento
+      : input.mapearComplemento ? [input.mapearComplemento] : []).map((n) => n.trim()).filter(Boolean)
+    for (const nomeSuitable of complementos) {
       vinculos++
       await tx.stockVendaComplementoMap.upsert({
-        where: { companyId_nomeSuitable: { companyId: input.companyId, nomeSuitable: input.mapearComplemento } },
-        create: { companyId: input.companyId, nomeSuitable: input.mapearComplemento, alvoTipo: 'FICHA', fichaId: ficha.id, criadoPorId: input.userId ?? null },
+        where: { companyId_nomeSuitable: { companyId: input.companyId, nomeSuitable } },
+        create: { companyId: input.companyId, nomeSuitable, alvoTipo: 'FICHA', fichaId: ficha.id, criadoPorId: input.userId ?? null },
         update: { alvoTipo: 'FICHA', fichaId: ficha.id },
       })
     }
