@@ -25,6 +25,7 @@ import { Loader2, Plus, Trash2, Search, Save, AlertTriangle, ChevronDown, Chevro
 import { BuscaItem, type ItemBusca } from './busca-item'
 import { valoresIniciaisDaFicha, paraCampo, faixaMargem, type LinhaParaFicha } from '@/lib/stock/cardapio/valores-iniciais'
 import { camposDaCopia } from '@/lib/stock/producao/duplicar-ficha'
+import { montaNaVenda, ehTipoDeFicha, TIPO_INTERMEDIARIO, type TipoFicha } from '@/lib/stock/tipos-ficha'
 import { sanitizarQtd, valorQtd, textoQtd, descreverQtd, validarQtd } from '@/lib/stock/quantidade'
 import { useDismissivel } from '@/lib/hooks/use-dismissivel'
 
@@ -44,7 +45,7 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
   companyId: string
   fichaId?: string
   /** o mundo de origem trava o tipo: cardápio = PRODUTO_FINAL, produção = INTERMEDIARIO */
-  tipoTravado?: 'INTERMEDIARIO' | 'PRODUTO_FINAL'
+  tipoTravado?: TipoFicha
   /** pra onde voltar ao salvar/cancelar (default: a lista de fichas) */
   voltarPara?: string
   /** a linha do hub, quando o editor foi aberto de um produto do cardápio (dá o prefill) */
@@ -77,8 +78,11 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
    */
   const duplicarDaUrl = duplicarDe ?? qp?.get('duplicarDe') ?? undefined
 
-  const tipoInicial: 'INTERMEDIARIO' | 'PRODUTO_FINAL' =
-    tipoTravado ?? (!editando && qp?.get('tipo') === 'PRODUTO_FINAL' ? 'PRODUTO_FINAL' : 'INTERMEDIARIO')
+  // ⭐ o tipo pode vir travado pelo mundo de origem (cardápio=final, produção=intermediário,
+  // prateleira de complementos=SABOR) ou pela URL; o default segue INTERMEDIÁRIO.
+  const tipoDaUrl = qp?.get('tipo')
+  const tipoInicial: TipoFicha =
+    tipoTravado ?? (!editando && tipoDaUrl && ehTipoDeFicha(tipoDaUrl) ? tipoDaUrl : TIPO_INTERMEDIARIO)
 
   // ⭐ a decisão de prefill vem PRONTA da lib (pura e testada) — o componente só ecoa.
   const linhaPrefill: LinhaParaFicha | null = linha ?? (qp?.get('nome')
@@ -105,6 +109,11 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
   // guarda o que o dono TOCOU, pra o prefill nunca sobrescrever digitação
   const tocou = useRef({ nome: false, preco: false })
 
+  // ⚠️ DUAS perguntas diferentes (03/09) — misturá-las foi o que fez o `tipoProduto`
+  // acumular papel e o sabor cair na tela da cozinha:
+  //   monta   → plate cost: custo por unidade direto, sem rendimento e sem validade
+  //   produtoFinal → tem PREÇO próprio e margem. **Sabor não tem preço**: quem tem é a pizza.
+  const monta = montaNaVenda(tipoProduto)
   const produtoFinal = tipoProduto === 'PRODUTO_FINAL'
 
   // ⚠️ REDE do prefill: se a linha chegar DEPOIS da montagem (fetch da tela de trás), aplica
@@ -147,13 +156,13 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
     const soma = (ls: Comp[]) => round2(ls.reduce((s, c) => s + (c.custoMedio ?? 0) * (valorQtd(c.qtdTexto) ?? 0), 0))
     const custoLote = semCusto > 0 ? null : soma(comps)
     const lote = parseNum(loteBase)
-    const porUnidade = produtoFinal && custoLote != null && lote != null && lote > 0 ? round2(custoLote / lote) : null
+    const porUnidade = monta && custoLote != null && lote != null && lote > 0 ? round2(custoLote / lote) : null
     // ⭐ EMBALAGEM À PARTE — pedido do dono (01/09): "pra eu enxergar o custo de caixa
     // separado do custo de comida". ⚠️ É separação VISUAL: os dois entram no custo total
     // e na baixa igual, porque embalagem é componente como qualquer outro.
     const daEmbalagem = semCusto > 0 ? null : soma(comps.filter((c) => c.categoria === 'EMBALAGEM'))
     return { custoLote, porUnidade, custoADefinir: semCusto > 0, semCusto, daEmbalagem }
-  }, [comps, loteBase, produtoFinal])
+  }, [comps, loteBase, monta])
 
   // ⭐ duas listas, a MESMA fonte — a ordem de gravação (`comps`) não muda
   const compsComida = useMemo(() => comps.filter((c) => c.categoria !== 'EMBALAGEM'), [comps])
@@ -189,7 +198,7 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
       modoPreparo: modoPreparo.trim() || null,
       tempoPreparoMin: parseNum(tempoPreparoMin) ?? null,
       // ⚠️ produto final não tem validade — o campo nem aparece; mandar null é explícito.
-      validadeDias: produtoFinal ? null : parseNum(validadeDias) ?? null,
+      validadeDias: monta ? null : parseNum(validadeDias) ?? null,
     }
     setSalvando(true)
     try {
@@ -222,7 +231,7 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
         <div className="flex flex-wrap items-end gap-2.5">
           <label className="min-w-[200px] flex-1 text-[11px] text-slate-500">Produto
             <input value={nomeProduzido} onChange={(e) => { tocou.current.nome = true; setNomeProduzido(e.target.value) }}
-              placeholder={produtoFinal ? 'ex: Xis Completo' : 'ex: Beef de xis'}
+              placeholder={tipoProduto === 'SABOR' ? 'ex: CALABRESA' : produtoFinal ? 'ex: Xis Completo' : 'ex: Beef de xis'}
               className="mt-1 block h-9 w-full rounded-lg border border-slate-300 px-3 text-sm" />
           </label>
           {produtoFinal && (
@@ -232,7 +241,7 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
                 className="mt-1 block h-9 w-28 rounded-lg border border-slate-300 px-3 text-right text-sm tabular-nums" />
             </label>
           )}
-          {!produtoFinal && (
+          {!monta && (
             <label className="text-[11px] text-slate-500">Unidade
               <select value={unidadeProduzido} onChange={(e) => setUnidadeProduzido(e.target.value as 'KG' | 'UN' | 'LT')} disabled={editando}
                 className="mt-1 block h-9 rounded-lg border border-slate-300 px-2 text-sm disabled:bg-slate-50"><option>UN</option><option>KG</option><option>LT</option></select>
@@ -247,7 +256,8 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-400">
           {nomesPdv.length > 0 && <span>no PDV: <b className="text-slate-500">{nomesPdv.join(' · ')}</b></span>}
           {produtoFinal && ini.precoOrigem === 'praticado' && <span>preço do que o PDV cobrou — pode editar</span>}
-          {produtoFinal && <span>1 ficha = 1 unidade vendida</span>}
+          {monta && <span>1 ficha = 1 unidade vendida</span>}
+          {tipoProduto === 'SABOR' && <span>sabor: consome a porção pronta que a cozinha produziu</span>}
         </div>
 
         {/* rendimento: SÓ no mundo da produção (produto final é per-serving) */}

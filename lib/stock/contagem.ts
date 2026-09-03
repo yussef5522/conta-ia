@@ -12,6 +12,7 @@
 
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
+import { TIPO_SABOR } from '@/lib/stock/tipos-ficha'
 import { criarMovimento } from './movement'
 import { recomputeSaldoCache, saldosDaEmpresa } from './saldo'
 import { partirNome } from './contagem/nome-produto'
@@ -176,7 +177,7 @@ export interface LinhaQuadro {
 
 export const CATEGORIA_LABEL: Record<string, string> = {
   MATERIA_PRIMA: 'Matéria-prima', REVENDA: 'Revenda', EMBALAGEM: 'Embalagem',
-  LIMPEZA: 'Limpeza', USO_INTERNO: 'Uso interno', INTERMEDIARIO: 'Intermediário', PRODUTO_FINAL: 'Produto final',
+  LIMPEZA: 'Limpeza', USO_INTERNO: 'Uso interno', INTERMEDIARIO: 'Intermediário', PRODUTO_FINAL: 'Produto final', SABOR: 'Sabor',
 }
 
 export interface Quadro {
@@ -194,7 +195,12 @@ export interface Quadro {
 export async function getQuadro(companyId: string, now: Date = new Date(), db: PrismaClient = defaultPrisma): Promise<Quadro> {
   const [sessao, itens, saldos] = await Promise.all([
     contagemAberta(companyId, db),
-    db.stockItem.findMany({ where: { companyId, ativo: true }, select: { id: true, nome: true, categoria: true, unidadeControle: true }, orderBy: { nome: 'asc' } }),
+    db.stockItem.findMany({
+      // ⛔ invólucro de SABOR fica FORA: ninguém pesa "CALABRESA" na câmara — o que existe
+      // lá é a porção. Ver `seContaFisicamente` em lib/stock/tipos-ficha.ts.
+      where: { companyId, ativo: true, categoria: { not: TIPO_SABOR } },
+      select: { id: true, nome: true, categoria: true, unidadeControle: true }, orderBy: { nome: 'asc' },
+    }),
     saldosDaEmpresa(db, companyId),
   ])
   const saldoPorItem = new Map(saldos.map((s) => [s.itemId, s]))

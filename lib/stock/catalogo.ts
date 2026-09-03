@@ -7,7 +7,7 @@ import { prisma as defaultPrisma } from '@/lib/db'
 import { custoMedioPorItem, saldosDaEmpresa } from './saldo'
 import { idsMesclados } from './itens/mesclar'
 
-const CAT_LABEL: Record<string, string> = { MATERIA_PRIMA: 'Matéria-prima', REVENDA: 'Revenda', EMBALAGEM: 'Embalagem', LIMPEZA: 'Limpeza', USO_INTERNO: 'Uso interno', INTERMEDIARIO: 'Intermediário', PRODUTO_FINAL: 'Produto final' }
+const CAT_LABEL: Record<string, string> = { MATERIA_PRIMA: 'Matéria-prima', REVENDA: 'Revenda', EMBALAGEM: 'Embalagem', LIMPEZA: 'Limpeza', USO_INTERNO: 'Uso interno', INTERMEDIARIO: 'Intermediário', PRODUTO_FINAL: 'Produto final', SABOR: 'Sabor' }
 
 export interface CatalogoItem {
   id: string
@@ -39,7 +39,8 @@ export async function listCatalogo(companyId: string, db: PrismaClient = default
   return itens.filter((i) => !mesclados.has(i.id)).map((i) => ({
     id: i.id, nome: i.nome, unidadeControle: i.unidadeControle, categoria: i.categoria,
     categoriaLabel: CAT_LABEL[i.categoria] ?? i.categoria,
-    produzido: i.categoria === 'INTERMEDIARIO' || i.categoria === 'PRODUTO_FINAL',
+    // ⭐ SABOR também nasce de ficha → não é item manual editável no catálogo
+    produzido: i.categoria === 'INTERMEDIARIO' || i.categoria === 'PRODUTO_FINAL' || i.categoria === 'SABOR',
     ativo: i.ativo, saldo: saldoDe.get(i.id) ?? 0, custoMedio: custoMap.get(i.id) ?? null,
     estoqueMin: i.estoqueMin, estoqueMax: i.estoqueMax, criadoVia: i.criadoVia,
   }))

@@ -8,6 +8,7 @@
 //   · receita de produção   → /estoque/producao/receitas (a casa da cozinha)
 // A rota continua viva pra link antigo não quebrar, com a placa apontando os dois caminhos.
 
+import { rotuloTipoFicha } from '@/lib/stock/tipos-ficha'
 import { useEffect, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { ClipboardList, Loader2, Plus, Settings, ChevronRight } from 'lucide-react'
@@ -62,7 +63,7 @@ export default function FichasPage({ params }: { params: Promise<{ id: string }>
               <Card className="transition hover:border-[#185FA5] hover:shadow-sm"><CardContent className="flex items-center justify-between gap-3 p-4">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-slate-900">{f.nomeProduzido}</p>
-                  <p className="text-xs text-slate-500">{f.tipoProduto === 'PRODUTO_FINAL' ? 'Produto final' : 'Intermediário'} · v{f.versaoAtual} · rende em {f.unidadeProduzido}</p>
+                  <p className="text-xs text-slate-500">{rotuloTipoFicha(f.tipoProduto)} · v{f.versaoAtual} · rende em {f.unidadeProduzido}</p>
                 </div>
                 <div className="flex items-center gap-4 text-right">
                   <div>

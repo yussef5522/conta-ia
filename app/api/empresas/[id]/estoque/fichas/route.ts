@@ -14,7 +14,7 @@ const componenteSchema = z.object({
 const criarSchema = z.object({
   nomeProduzido: z.string().min(1).max(120),
   unidadeProduzido: z.enum(['KG', 'UN', 'LT']),
-  tipoProduto: z.enum(['INTERMEDIARIO', 'PRODUTO_FINAL']),
+  tipoProduto: z.enum(['INTERMEDIARIO', 'PRODUTO_FINAL', 'SABOR']),
   setorId: z.string().nullable().optional(),
   valorVenda: z.number().positive().nullable().optional(),
   loteBase: z.number().positive(),

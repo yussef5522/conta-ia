@@ -13,8 +13,10 @@
 // simplesmente não filtrava. Duas telas, a mesma pergunta, uma resposta só implementada.
 // Aqui é a resposta; as duas passam a chamá-la.
 
+import { TIPO_INTERMEDIARIO } from '@/lib/stock/tipos-ficha'
+
 /** o tipo de ficha que se PRODUZ em lote (o resto é montado na venda) */
-export const TIPO_RECEITA_PRODUCAO = 'INTERMEDIARIO' as const
+export const TIPO_RECEITA_PRODUCAO = TIPO_INTERMEDIARIO
 
 /**
  * PURA. Esta ficha pode virar ordem de produção?
@@ -28,6 +30,14 @@ export const TIPO_RECEITA_PRODUCAO = 'INTERMEDIARIO' as const
  * tipo). O teste estava certo e a TELA errada; a arquivada continuaria aparecendo.
  * A régua entra AQUI pra as duas herdarem — em vez de dois `.filter(f => f.ativo)`
  * espalhados que a próxima tela esqueceria de novo.
+ *
+ * ⛔⛔ E **SABOR também não** (03/09): a ficha de sabor (CALABRESA) nasceu INTERMEDIARIO
+ * pela mecânica da baixa e apareceu em Produção › Receitas, no meio das 20 receitas reais —
+ * com ~50 sabores a caminho, 50 intrusos na tela de quem cozinha. **Sabor não se produz**:
+ * ele monta no pedido, consumindo a porção que a cozinha produziu.
+ * ⭐ E note que esta função NÃO precisou de `if` novo: ela é ALLOWLIST (`=== INTERMEDIARIO`),
+ * então tipo novo fica de fora **por construção**. Era o vocabulário que faltava, não o
+ * filtro. Ver `lib/stock/tipos-ficha.ts`.
  *
  * ⚠️ `ativo` opcional pra retrocompat: quem não informa é tratado como ATIVO (era o
  * comportamento até agora, e mudar isso em silêncio esconderia fichas boas).

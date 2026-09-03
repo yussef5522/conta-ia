@@ -5,6 +5,7 @@
 
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
+import { ehTipoDeFicha, type TipoFicha } from '@/lib/stock/tipos-ficha'
 import { detectaCicloFicha, type GrafoFichas } from './ciclo'
 import { calcularCustoTeorico, calcularMargem, type ComponenteCusto } from './custo-teorico'
 import { custoMedioPorItem } from '../saldo'
@@ -27,7 +28,7 @@ export interface CriarFichaInput extends FichaBodyInput {
   userId?: string
   nomeProduzido: string
   unidadeProduzido: string // KG | UN | LT
-  tipoProduto: 'INTERMEDIARIO' | 'PRODUTO_FINAL'
+  tipoProduto: TipoFicha
   setorId?: string | null
   valorVenda?: number | null
   /**
@@ -77,7 +78,7 @@ export async function buildGrafoFichas(companyId: string, db: Db, exceptFichaId?
 
 export async function criarFicha(input: CriarFichaInput, db: PrismaClient = defaultPrisma): Promise<{ fichaId: string; itemProduzidoId: string; vinculadoAoPdv: boolean }> {
   if (!input.componentes.length) throw new FichaError('A ficha precisa de ao menos um componente.')
-  if (input.tipoProduto !== 'INTERMEDIARIO' && input.tipoProduto !== 'PRODUTO_FINAL') throw new FichaError('Tipo de produto inválido.')
+  if (!ehTipoDeFicha(input.tipoProduto)) throw new FichaError('Tipo de produto inválido.')
 
   // ⛔⛔ SEGUNDA FICHA PRO MESMO PRODUTO É RECUSADA (01/09/2026). `criarFicha` cria um
   // stock_item NOVO a cada chamada, então "salvar de novo" não colidia com nada e nascia um

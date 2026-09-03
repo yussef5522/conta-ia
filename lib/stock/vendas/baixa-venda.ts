@@ -5,6 +5,7 @@
 
 import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
+import { montaNaVenda } from '@/lib/stock/tipos-ficha'
 import { parseSuitable } from './parse-suitable'
 import { criarMovimento, estornarMovimento } from '../movement'
 import { custoMedioPorItem, recomputeSaldoCache } from '../saldo'
@@ -48,7 +49,10 @@ export function explodir(alvo: { tipo: 'REVENDA'; itemId: string } | { tipo: 'FI
   const comps = ctx.componentesByFicha.get(alvo.fichaId) ?? []
   for (const c of comps) {
     const fichaComp = ctx.fichaByItemProduzido.get(c.itemId)
-    if (fichaComp && fichaComp.tipoProduto === 'PRODUTO_FINAL') {
+    // ⭐ "MONTA NA VENDA" cobre PRODUTO_FINAL **e** SABOR (03/09). Sem o sabor aqui, um
+    // sabor usado como componente baixaria o item-invólucro — que ninguém produz — e o
+    // saldo dele ficaria negativo pra sempre num item fantasma.
+    if (fichaComp && montaNaVenda(fichaComp.tipoProduto)) {
       explodir({ tipo: 'FICHA', fichaId: fichaComp.id }, round2(qtd * c.qtdPlanejada), ctx, acc, depth + 1) // monta na venda → explode
     } else {
       acc.set(c.itemId, round2((acc.get(c.itemId) ?? 0) + qtd * c.qtdPlanejada)) // pack/raw/revenda → baixa direto

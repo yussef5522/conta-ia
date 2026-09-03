@@ -478,7 +478,7 @@ function PrateleiraComplementos({ id, linhas, periodo, onMapear, onMoverGrupo, o
                               className="text-[11px] text-slate-400 hover:text-slate-700">desfazer</button>
                           )}
                           {l.destino === 'SEM_FICHA' && (
-                            <a href={`/empresas/${id}/estoque/fichas/nova?tipo=INTERMEDIARIO&nome=${encodeURIComponent(l.nomeSuitable)}&complemento=${encodeURIComponent(l.nomeSuitable)}`}
+                            <a href={`/empresas/${id}/estoque/fichas/nova?tipo=SABOR&nome=${encodeURIComponent(l.nomeSuitable)}&complemento=${encodeURIComponent(l.nomeSuitable)}`}
                               className="rounded border border-[#185FA5] px-2 py-0.5 text-[11px] text-[#185FA5] hover:bg-blue-50">criar ficha</a>
                           )}
                         </div>

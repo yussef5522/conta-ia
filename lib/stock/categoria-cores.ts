@@ -22,6 +22,15 @@ const CINZA: CategoriaCor = {
 }
 
 export const CATEGORIA_COR: Record<string, CategoriaCor> = {
+  // ⭐ SABOR (03/09): o item produzido nasce com `categoria = tipoProduto`, então os ~50
+  // invólucros de sabor aparecem no Catálogo etiquetados — decisão do dono: **visível**,
+  // pra ele conferir que nasceram certos. Esconder cadastro é decisão de outro dia.
+  SABOR: {
+    stripe: 'bg-fuchsia-500',
+    badgeBg: 'bg-fuchsia-100 dark:bg-fuchsia-950/40',
+    badgeText: 'text-fuchsia-700 dark:text-fuchsia-300',
+    tone: 'slate',
+  },
   MATERIA_PRIMA: {
     stripe: 'bg-rose-500',
     badgeBg: 'bg-rose-100 dark:bg-rose-950/40',

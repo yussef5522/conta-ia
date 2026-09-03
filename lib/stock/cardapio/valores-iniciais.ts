@@ -16,7 +16,9 @@
 //   validade — isso é do mundo de quem produz em lote.
 //   INTERMEDIÁRIO = sub-receita: rende em lote, tem validade, rendimento é MEDIDO.
 
-export type ModoFicha = 'PRODUTO_FINAL' | 'INTERMEDIARIO'
+// ⭐ SABOR entra aqui como irmão do PRODUTO_FINAL (03/09): os dois MONTAM no pedido, então
+// os dois têm plate cost e nenhum dos dois tem "rende N" nem validade de lote.
+export type ModoFicha = 'PRODUTO_FINAL' | 'INTERMEDIARIO' | 'SABOR'
 
 /** O recorte da linha do hub que a ficha precisa (nada além disto). */
 export interface LinhaParaFicha {
@@ -41,6 +43,8 @@ export interface ValoresIniciais {
 }
 
 /** Número pro input em pt-BR: 23.37 → "23,37" (o dono digita com vírgula). */
+import { montaNaVenda } from '@/lib/stock/tipos-ficha'
+
 export function paraCampo(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return ''
   return String(n).replace('.', ',')
@@ -51,7 +55,11 @@ export function paraCampo(n: number | null | undefined): string {
  * ficha nova pelo mundo da produção abre sem ela.
  */
 export function valoresIniciaisDaFicha(modo: ModoFicha, linha?: LinhaParaFicha | null): ValoresIniciais {
-  const produtoFinal = modo === 'PRODUTO_FINAL'
+  // ⭐ DUAS perguntas, não uma (a mesma armadilha que fez o `tipoProduto` acumular papel):
+  //   montaNaVenda → plate cost: lote 1 UN, sem rendimento e sem validade (final E sabor)
+  //   temPrecoProprio → só o PRODUTO FINAL. **Sabor não tem preço**: quem tem é a pizza.
+  const monta = montaNaVenda(modo)
+  const temPrecoProprio = modo === 'PRODUTO_FINAL'
 
   // ⭐ o nome que o PDV usa vem primeiro: é por ele que a venda vai casar com a ficha.
   const nome = linha ? (linha.nomesSuitable[0] ?? linha.nome) : ''
@@ -59,9 +67,9 @@ export function valoresIniciaisDaFicha(modo: ModoFicha, linha?: LinhaParaFicha |
   // preço PRATICADO manda sobre o cadastrado (quando o arquivo traz o dado, usa o dado)
   const praticado = linha?.precoPraticado ?? null
   const cardapio = linha?.precoCardapio ?? null
-  const preco = produtoFinal ? paraCampo(praticado ?? cardapio) : ''
+  const preco = temPrecoProprio ? paraCampo(praticado ?? cardapio) : ''
   const precoOrigem: ValoresIniciais['precoOrigem'] =
-    !produtoFinal ? null : praticado != null ? 'praticado' : cardapio != null ? 'cardapio' : null
+    !temPrecoProprio ? null : praticado != null ? 'praticado' : cardapio != null ? 'cardapio' : null
 
   return {
     nome,
@@ -69,9 +77,9 @@ export function valoresIniciaisDaFicha(modo: ModoFicha, linha?: LinhaParaFicha |
     precoOrigem,
     // ⚠️ produto final é SEMPRE 1 porção vendida — não se pergunta o que a tela já sabe.
     loteBase: '1',
-    unidadeLoteBase: produtoFinal ? 'UN' : 'KG',
-    mostraRendimento: !produtoFinal,
-    mostraValidade: !produtoFinal,
+    unidadeLoteBase: monta ? 'UN' : 'KG',
+    mostraRendimento: !monta,
+    mostraValidade: !monta,
   }
 }
 
