@@ -12,8 +12,8 @@
 
 import { prisma } from '@/lib/db'
 import { exigirEmpresaNesteBanco } from '@/lib/scripts/prova-banco'
-import { listarPendentes, enviarParaContasPagar } from '@/lib/stock/ponte-contas-pagar'
-import { getAuthContext } from '@/lib/auth/rbac'
+import { listarPendentes } from '@/lib/stock/ponte-contas-pagar'
+import { signToken } from '@/lib/auth'
 
 const COMPANY = 'cmq17yapb00gnrndlh33sctbo' // Cacula Mix
 const EMAIL = 'yussefmusa5522@gmail.com'
@@ -36,14 +36,18 @@ async function main() {
   console.log(`  (${semData} sem data continuam esperando você combinar o vencimento — não entram aqui)`)
   if (!comData.length || !APLICAR) { console.log(APLICAR ? '' : '\n(sem --aplicar: NADA foi enviado)'); return }
 
-  const user = await prisma.user.findUniqueOrThrow({ where: { email: EMAIL }, select: { id: true } })
-  const ctx = await getAuthContext({ cookies: { get: () => undefined } } as never, COMPANY).catch(() => null)
-  if (!ctx) throw new Error('não consegui montar o contexto de auth — rode pela tela')
-
-  const r = await enviarParaContasPagar({
-    companyId: COMPANY, suggestionIds: comData.map((p) => p.suggestionId),
-    cadastrarFornecedores: true, ctx, userId: user.id,
-  }, prisma)
+  // ⭐ pelo ENDPOINT REAL (mesma rota que a tela usava), com sessão assinada: o contexto de
+  // permissão só existe dentro de um request, e replicar a lógica aqui provaria o script,
+  // não o sistema.
+  const user = await prisma.user.findUniqueOrThrow({ where: { email: EMAIL }, select: { id: true, email: true, name: true, role: true } })
+  const token = await signToken({ sub: user.id, email: user.email, name: user.name, role: user.role })
+  const res = await fetch(`http://127.0.0.1:3001/api/empresas/${COMPANY}/estoque/contas-a-pagar`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: `auth_token=${token}` },
+    body: JSON.stringify({ suggestionIds: comData.map((p) => p.suggestionId), cadastrarFornecedores: true }),
+  })
+  const r = await res.json()
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${JSON.stringify(r)}`)
   console.log(`\n=== FEITO === criadas ${r.criadas} · puladas ${r.puladas} · fornecedores cadastrados ${r.fornecedoresCadastrados} · R$ ${r2(r.valorTotal).toFixed(2)}`)
   if (r.erros.length) console.log('erros:', r.erros.join(' | '))
 }
