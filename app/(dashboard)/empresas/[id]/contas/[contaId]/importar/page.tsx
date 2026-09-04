@@ -67,6 +67,18 @@ interface PreviewResult {
   avisoExportMesmoDia?: { mesmoDia: boolean; linhasDoDiaAberto: number; aviso: string } | null
   // ⭐ Diagnóstico guiado (29/08/2026) — quando o saldo não fecha, DESDE QUANDO.
   diagnostico?: { de: string; ate: string; diferenca: number; instrucao: string } | null
+  /** ⭐ 04/09: como este banco pode ser conferido (ver lib/ofx/selo-do-import.ts) */
+  selo?: {
+    modo: 'LEDGERBAL' | 'PDF_DIARIO' | 'SEM_CONFERENCIA'
+    aviso: string | null
+    pedePdf: boolean
+    diario: {
+      diasConferidos: number; diasQueFecham: number; todosFecham: boolean
+      primeiroQueNaoFecha: { data: string; diferenca: number; lancamentos: { data: string; valor: number; descricao: string }[] } | null
+      bloqueado: number | null; saldoDisponivel: number | null; saldoContabil: number | null
+      frase: string
+    } | null
+  }
   // Sprint Import Categoria Editável (18/06/2026)
   categorySuggestions?: CategorySuggestion[]
   categoriesForUI?: CategoryOption[]
@@ -127,6 +139,9 @@ export default function ImportarOFXPage() {
   const fileRef = useRef<HTMLInputElement>(null)
 
   const [arquivo, setArquivo] = useState<File | null>(null)
+  // ⭐⭐ O PDF DO MESMO PERÍODO (04/09) — a RÉGUA do saldo. Opcional: sem ele o import roda,
+  // só não sela. É a mania do Banrisul tratada na ficha do Banrisul, sem afetar outros bancos.
+  const [pdfDaRegua, setPdfDaRegua] = useState<File | null>(null)
   const [preview, setPreview] = useState<PreviewResult | null>(null)
   const [loadingPreview, setLoadingPreview] = useState(false)
   const [loadingImport, setLoadingImport] = useState(false)
@@ -356,6 +371,8 @@ export default function ImportarOFXPage() {
     try {
       const fd = new FormData()
       fd.append('file', file)
+      // ⭐⭐ o PDF do mesmo período vai NO MESMO GESTO: o OFX dá as linhas, o PDF dá a régua
+      if (pdfDaRegua) fd.append('filePdf', pdfDaRegua)
       const res = await fetch(`/api/contas-bancarias/${contaId}/importar-ofx?preview=true`, {
         method: 'POST',
         body: fd,
@@ -562,6 +579,7 @@ export default function ImportarOFXPage() {
     try {
       const fd = new FormData()
       fd.append('file', arquivo)
+      if (pdfDaRegua) fd.append('filePdf', pdfDaRegua)
       // Sprint Import Categoria Editável (18/06/2026): envia overrides + regras
       // Sprint Fix-V3-Overrides (01/07/2026): fonte é explicitOverrides quando
       // fornecido (V3), senão o state 'overrides' (V2).
@@ -831,6 +849,49 @@ export default function ImportarOFXPage() {
                 </p>
               </div>
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ⭐⭐⭐ O SELO DO SALDO (04/09/2026) — o desenho de 01/09 aplicado ao import.
+          ⛔ Onde o LEDGERBAL mente (Banrisul), a tela não mostra caixa vermelha nem
+          "não identifiquei a causa": ela DIZ que sem o PDF não dá pra conferir. */}
+      {preview?.selo?.diario && (
+        <Card className={preview.selo.diario.todosFecham
+          ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30'
+          : 'border-amber-400 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/40'}>
+          <CardContent className="py-3">
+            <p className={`text-sm font-medium ${preview.selo.diario.todosFecham ? 'text-emerald-800 dark:text-emerald-300' : 'text-amber-900 dark:text-amber-200'}`}>
+              {preview.selo.diario.todosFecham ? '✓ ' : '⚠️ '}{preview.selo.diario.frase}
+            </p>
+            {/* ⚠️ quando não fecha, as LINHAS do dia — a diferença deixa de ser um número solto */}
+            {preview.selo.diario.primeiroQueNaoFecha && (
+              <ul className="mt-1.5 space-y-0.5">
+                {preview.selo.diario.primeiroQueNaoFecha.lancamentos.map((l, i) => (
+                  <li key={i} className="text-[11px] text-amber-900 dark:text-amber-200">
+                    {l.data.split('-').reverse().join('/')} · {l.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} · {l.descricao}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {preview?.selo?.aviso && (
+        <Card className="border-slate-300 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/40">
+          <CardContent className="py-3">
+            {/* ⚠️ TOM NEUTRO de propósito: não é erro, é ausência de régua. Vermelho aqui
+                seria o susto fabricado que este sprint veio matar. */}
+            <p className="text-xs text-slate-600 dark:text-slate-300">{preview.selo.aviso}</p>
+            {preview.selo.pedePdf && (
+              <label className="mt-2 inline-flex cursor-pointer items-center gap-2 text-xs text-[#185FA5]">
+                <input type="file" accept=".pdf" className="hidden"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) { setPdfDaRegua(f); setPreview(null) } }} />
+                <span className="rounded-lg border border-[#185FA5] px-2.5 py-1 font-medium">anexar o PDF do extrato</span>
+                {pdfDaRegua && <span className="text-slate-500">{pdfDaRegua.name}</span>}
+              </label>
+            )}
           </CardContent>
         </Card>
       )}

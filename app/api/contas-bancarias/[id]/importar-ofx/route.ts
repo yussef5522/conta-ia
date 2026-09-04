@@ -52,6 +52,8 @@ import { contentKey } from '@/lib/canonical/to-canonical'
 import { isCanonicalClassifyEnabledForBank } from '@/lib/canonical/flag'
 import { resolveImportStatuses } from '@/lib/reconciliation/resolve-import-statuses'
 import { resolveBankProfile, resolveStatementAnchor, bankProfileWarning } from '@/lib/bank-profiles'
+import { decidirSelo } from '@/lib/ofx/selo-do-import'
+import { conferirComPdf } from '@/lib/ofx/conferir-com-pdf'
 import { avisoExportMesmoDia } from '@/lib/ofx/export-mesmo-dia'
 import { verifyOfxMatchesAccount } from '@/lib/ofx/verify-account-match'
 import { conciliarDestinos } from '@/lib/ofx/conciliar-destinos'
@@ -91,9 +93,15 @@ export async function POST(request: NextRequest, { params }: Params) {
   // (dedupHash → action). SKIP = não cria a tx; CREATE_NEW (ou ausência)
   // segue. Garante "o preview = o que entra".
   let decisions: ImportDecision[] = []
+  // ⭐⭐ O PDF do mesmo período, opcional — a RÉGUA do saldo (ver `conferir-com-pdf.ts`)
+  let pdfBytes: Uint8Array | null = null
   try {
     const formData = await request.formData()
     const file = formData.get('file')
+    // ⭐⭐ OS DOIS ARQUIVOS NUM GESTO SÓ (04/09): o OFX dá as LINHAS (FITID/dedupe), o PDF dá
+    // a RÉGUA (SALDO NA DATA por dia + bloqueio). Sem o PDF o import segue — só não sela.
+    const filePdf = formData.get('filePdf')
+    if (filePdf instanceof File && filePdf.size > 0) pdfBytes = new Uint8Array(await filePdf.arrayBuffer())
     if (!file || typeof file === 'string') {
       return NextResponse.json({ erro: 'Arquivo OFX não enviado' }, { status: 400 })
     }
@@ -850,8 +858,29 @@ export async function POST(request: NextRequest, { params }: Params) {
       // `ondeDescolou` varre os LEDGERBAL consecutivos já gravados e aponta o 1º intervalo
       // que não fecha. Roda SÓ quando o gate acusou (é caro e seria ruído quando está tudo
       // verde) e é FAIL-SOFT: diagnóstico nunca derruba o preview.
+      // ⭐⭐⭐ A FICHA DO BANCO MANDA (04/09/2026). O `ledgerBalReliable: false` do Banrisul
+      // está escrito desde 29/08 e este caminho **nunca leu** — por isso a tela seguia
+      // comparando contra o saldo DISPONÍVEL (que desconta bloqueio) e cuspindo
+      // *"não identifiquei a causa"* + o aviso fóssil do descolamento 11–13/08, os dois
+      // mortos em 01/09 com a conferência dia-a-dia (22/22 fecham).
+      //
+      // ⚠️ Perfil que existe e não é consultado é documentação, não regra.
+      // ⭐⭐⭐ COM O PDF, A RÉGUA É O SALDO NA DATA, DIA A DIA (o desenho de 01/09 aplicado ao
+      // import). O resultado é "22/22 dias fecham" ou "o dia X não fecha por R$ Y, eis as
+      // linhas" — nunca mais "não identifiquei a causa".
+      let seloDiario: Awaited<ReturnType<typeof conferirComPdf>> = null
+      if (pdfBytes) {
+        try {
+          seloDiario = await conferirComPdf(contaId, pdfBytes, prisma)
+        } catch (e) {
+          // ⚠️ FAIL-SOFT: PDF ilegível não derruba o import — as linhas do OFX entram igual.
+          console.error('[importar-ofx preview] conferência pelo PDF falhou (import segue):', e)
+        }
+      }
+      const selo = decidirSelo(bankProfile, !!seloDiario)
+
       let diagnostico: { de: string; ate: string; diferenca: number; instrucao: string } | null = null
-      if (v2Payload.ledgerBalCheck.available && !v2Payload.ledgerBalCheck.bate) {
+      if (selo.rodaDiagnosticoLedgerBal && v2Payload.ledgerBalCheck.available && !v2Payload.ledgerBalCheck.bate) {
         try {
           const [{ lerConta }, { ondeDescolou }] = await Promise.all([
             import('@/lib/balance/ler-conferencia'),
@@ -874,6 +903,12 @@ export async function POST(request: NextRequest, { params }: Params) {
 
       return NextResponse.json({
         ...v2Payload,
+        // ⛔ onde o LEDGERBAL mente, a caixa de "saldo não bate" não aparece: comparar
+        // contra número que a gente já provou que mente é FABRICAR SUSTO.
+        ledgerBalCheck: selo.mostraGateLedgerBal
+          ? v2Payload.ledgerBalCheck
+          : { ...v2Payload.ledgerBalCheck, available: false },
+        selo: { modo: selo.modo, aviso: selo.aviso, pedePdf: selo.pedePdf, diario: seloDiario },
         futuras: [...futurasPayload, ...agendadasDia],
         reconcileDedup: reconcileCount,
         categorySuggestions,
