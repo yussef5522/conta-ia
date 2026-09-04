@@ -3446,6 +3446,21 @@ model StockPayableSuggestion {
   @@map("stock_payable_suggestion")
 }
 
+model StockVencimentoDefinido {
+  id            String   @id @default(cuid())
+  companyId     String
+  suggestionId  String
+  dVencAnterior DateTime?
+  dVencNovo     DateTime
+  origem        String
+  criadoPorId   String?
+  criadoEm      DateTime @default(now())
+
+  @@index([companyId])
+  @@index([companyId, suggestionId])
+  @@map("stock_vencimento_definido")
+}
+
 // ⭐ O COMBINADO (29/08/2026) — o que o FINANCEIRO vai cobrar, que pode diferir da nota.
 // `stock_nfe_dup` = o que a NOTA diz (SEFAZ, imutável). Esta = o que foi COMBINADO com o
 // fornecedor. Renegociação pós-nota é normal; sobrescrever o dado da SEFAZ não é.

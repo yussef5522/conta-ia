@@ -10,6 +10,11 @@
 //
 // F3 (AVISO): parcela conferida há mais de 7 dias e ainda não enviada pro contas a pagar —
 //   boleto esquecido no estoque é boleto que vence sem aparecer no fluxo de caixa.
+//   ⚠️ EXCLUI as "A DEFINIR" (sem data): elas são cobradas pelo F5, e o mesmo caso em dois
+//   alarmes é como se ensina o dono a ignorar os dois.
+// F5 (AVISO, 03/09): nota confirmada cuja parcela está SEM DATA de vencimento — "combinar o
+//   vencimento com o fornecedor" é trabalho pendente, e é categoria PRÓPRIA: não é atraso
+//   (não há data pra ter passado) nem esquecimento de envio.
 
 import type { PrismaClient, Prisma } from '@prisma/client'
 import type { StockInvariantFail } from './stock-invariants'
@@ -90,6 +95,9 @@ export async function checkPonteInvariants(db: Db, now: Date = new Date()): Prom
     })).map((l) => l.suggestionId))
     for (const s of sugestoes) {
       if (enviadas.has(s.id)) continue
+      // ⛔ SEM DATA é assunto do F5, não do F3: o mesmo caso em dois alarmes ensina o dono a
+      // ignorar os dois (a lição dos 111 alarmes falsos de venda).
+      if (!s.dVenc) continue
       const venc = s.dVenc ? ` (vence ${s.dVenc.toISOString().slice(0, 10)})` : ''
       fails.push({ invariante: 'F3', companyId: s.companyId, nivel: 'aviso', detalhe: `boleto de "${s.supplierNome}" R$ ${round2(s.valor).toFixed(2)}${venc} está conferido há mais de ${F3_DIAS} dias e ainda NÃO foi pro contas a pagar — vence sem aparecer no fluxo de caixa.` })
     }
@@ -160,6 +168,38 @@ export async function checkPonteInvariants(db: Db, now: Date = new Date()): Prom
           detalhe: `a nota ${refId} vale R$ ${totalNota.toFixed(2)} e o combinado soma R$ ${somaCombinado.toFixed(2)}, sem motivo registrado — anote o porquê (desconto, juros da renegociação).`,
         })
       }
+    }
+  }
+
+  // ---- F5 (aviso, 03/09): parcela SEM DATA — "combinar o vencimento" é trabalho pendente ----
+  //
+  // ⛔ ELE EXISTE PORQUE O F3 ERA CEGO PRA ISSO: nota sem boleto não gerava sugestão nenhuma,
+  // e o F3 vigia sugestão parada — **sugestão que não nasce não pára**. Foi assim que
+  // R$ 8.588,75 em 21 notas ficaram fora do fluxo de caixa sem nenhum alarme.
+  //
+  // ⚠️ CATEGORIA PRÓPRIA, nunca "atrasado": não há data pra ter passado. O texto diz o que
+  // fazer — combinar a data — em vez de mandar procurar um atraso que não existe.
+  const semData = await db.stockPayableSuggestion.findMany({
+    where: { dVenc: null },
+    select: { id: true, companyId: true, supplierNome: true, valor: true, chave: true },
+  })
+  if (semData.length) {
+    const enviadasSemData = new Set((await db.stockPayableLink.findMany({
+      where: { suggestionId: { in: semData.map((s) => s.id) } }, select: { suggestionId: true },
+    })).map((l) => l.suggestionId))
+    const porEmpresa = new Map<string, { n: number; total: number }>()
+    for (const s of semData) {
+      if (enviadasSemData.has(s.id)) continue
+      const a = porEmpresa.get(s.companyId) ?? { n: 0, total: 0 }
+      a.n++; a.total = round2(a.total + s.valor)
+      porEmpresa.set(s.companyId, a)
+    }
+    for (const [companyId, a] of porEmpresa) {
+      fails.push({
+        invariante: 'F5', companyId, nivel: 'aviso',
+        detalhe: `${a.n} nota(s) sem data de pagamento (R$ ${a.total.toFixed(2)}) — combine o vencimento com o fornecedor e defina a data. `
+          + 'Sem data elas não viram conta a pagar e não aparecem no fluxo de caixa.',
+      })
     }
   }
 

@@ -121,7 +121,8 @@ export default function PonteContasPagarPage({ params }: { params: Promise<{ id:
             <StatCard tone="rose" label="Vencidos" value={brl(som(venc))} sub={`${venc.length} ${venc.length === 1 ? 'boleto' : 'boletos'}`} icon={AlertTriangle} />
             <StatCard tone="amber" label="Vence em 3 dias" value={brl(som(perto))} sub={`${perto.length} ${perto.length === 1 ? 'boleto' : 'boletos'}`} icon={Clock} />
             <StatCard tone="sky" label="A vencer" value={brl(som(resto))} sub={`${resto.length} ${resto.length === 1 ? 'boleto' : 'boletos'}`} icon={CalendarClock} />
-            <StatCard tone="slate" label="Esperando aprovação" value={brl(som(ps))} sub={`${ps.length} no total`} icon={Receipt} />
+            {/* ⚠️ categoria PRÓPRIA: "sem data" não é atraso nem "a vencer" — é combinar */}
+            <StatCard tone="slate" label="Sem data" value={brl(som(ps.filter((p) => !p.dVenc)))} sub={`${ps.filter((p) => !p.dVenc).length} a combinar`} icon={CalendarClock} />
           </StatCardGrid>
         )
       })()}
@@ -162,8 +163,13 @@ export default function PonteContasPagarPage({ params }: { params: Promise<{ id:
                       <td className="px-3 py-1 text-[13px] tabular-nums text-slate-500">{p.nNF ? `nº ${p.nNF}` : '—'}</td>
                       <td className="px-3 py-1 text-[13px] text-slate-500">{p.nDup ?? '—'}</td>
                       <td className="px-3 py-1 text-right text-[13px] font-medium tabular-nums text-slate-900">{brl(p.valor)}</td>
+                      {/* ⭐⭐ SEM DATA é estado PRÓPRIO (03/09): chip CINZA, nunca o vermelho de
+                          vencido — não há data pra ter passado — e fora do "vence em N dias".
+                          A conta no financeiro só nasce quando o dono definir. */}
                       <td className={`whitespace-nowrap px-3 py-1 text-right text-[13px] tabular-nums ${d != null && d < 0 ? 'font-semibold text-rose-600' : d != null && d <= 3 ? 'text-amber-600' : 'text-slate-500'}`}>
-                        {dia(p.dVenc)}{d != null && d < 0 ? ' (vencido)' : d != null && d <= 3 ? ` (${d}d)` : ''}
+                        {p.dVenc
+                          ? <>{dia(p.dVenc)}{d != null && d < 0 ? ' (vencido)' : d != null && d <= 3 ? ` (${d}d)` : ''}</>
+                          : <DefinirVencimento empresaId={id} suggestionId={p.suggestionId} aoDefinir={carregar} />}
                       </td>
                     </tr>
                   )
@@ -232,6 +238,48 @@ export default function PonteContasPagarPage({ params }: { params: Promise<{ id:
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * ⭐⭐ DEFINIR O VENCIMENTO — "a definir" vira data, com rastro.
+ *
+ * ⚠️ Vencimento é COMBINADO, não fato: por isso ele é editável e guarda **quem definiu e
+ * quando** (`stock_vencimento_definido`). A NOTA é que é imutável — a separação de 29/08
+ * entre a duplicata do XML e a parcela combinada, aplicada à data.
+ */
+function DefinirVencimento({ empresaId, suggestionId, aoDefinir }: {
+  empresaId: string; suggestionId: string; aoDefinir: () => void
+}) {
+  const [data, setData] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+
+  const salvar = async () => {
+    if (!data) return
+    setBusy(true); setErro(null)
+    try {
+      const r = await fetch(`/api/empresas/${empresaId}/estoque/vencimento`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ suggestionId, dVenc: data, origem: 'DONO' }),
+      })
+      const j = await r.json().catch(() => null)
+      if (!r.ok) { setErro(j?.erro ?? 'Não consegui gravar.'); return }
+      aoDefinir()
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="flex items-center justify-end gap-1.5">
+      <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">sem data</span>
+      <input type="date" value={data} onChange={(e) => setData(e.target.value)}
+        className="h-6 rounded border border-slate-300 px-1 text-[11px]" />
+      <button onClick={salvar} disabled={!data || busy}
+        className="text-[11px] text-[#185FA5] hover:underline disabled:opacity-40">
+        {busy ? '…' : 'definir'}
+      </button>
+      {erro && <span className="text-[10px] text-rose-600">{erro}</span>}
     </div>
   )
 }

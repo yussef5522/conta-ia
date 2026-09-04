@@ -50,7 +50,7 @@ export interface ConfirmResult {
 export async function confirmarConferencia(input: ConfirmInput): Promise<ConfirmResult> {
   const { companyId, nfeId, userId } = input
 
-  const nfe = await prisma.stockNfe.findFirst({ where: { id: nfeId, companyId }, select: { id: true, chave: true, status: true, temXmlCompleto: true } })
+  const nfe = await prisma.stockNfe.findFirst({ where: { id: nfeId, companyId }, select: { id: true, chave: true, status: true, temXmlCompleto: true, vNF: true } })
   if (!nfe) throw new Error('Nota não encontrada.')
   // De onde veio o QUE está sendo conferido: XML da SEFAZ, ou os itens que o dono digitou
   // do DANFE de papel porque o XML não tinha chegado. Fica no ledger pra auditoria — é a
@@ -176,6 +176,23 @@ export async function confirmarConferencia(input: ConfirmInput): Promise<Confirm
     // (d) contas a pagar SUGERIDO (ponte OFF)
     for (const d of dups) {
       await tx.stockPayableSuggestion.create({ data: { companyId, nfeId, chave: nfe.chave, supplierCnpj: cnpj || null, supplierNome: input.fornecedor.nome, nDup: d.nDup, dVenc: d.dVenc, valor: d.vDup } })
+    }
+    // ⭐⭐ NOTA SEM BOLETO TAMBÉM VIRA SUGESTÃO — com `dVenc = null` ("A DEFINIR").
+    //
+    // ⛔ MEDIDO EM PROD (03/09): **21 notas · R$ 8.588,75** passaram por aqui sem gerar
+    // sugestão nenhuma, porque o laço acima roda sobre as DUPLICATAS e elas não têm. Pix e
+    // dinheiro combinados com o fornecedor viravam dívida invisível: o dinheiro sai e nunca
+    // aparece no fluxo de caixa. ⚠️ E o juiz também não via — o F3 vigia sugestão parada, e
+    // sugestão que não nasce não pára (a cegueira do E15).
+    if (!dups.length) {
+      await tx.stockPayableSuggestion.create({
+        data: {
+          companyId, nfeId, chave: nfe.chave, supplierCnpj: cnpj || null,
+          supplierNome: input.fornecedor.nome, nDup: null,
+          dVenc: null, // ⚠️ NUNCA uma data inventada: sem documento, quem sabe é o dono
+          valor: round2(nfe.vNF ?? 0),
+        },
+      })
     }
 
     // (e) tira da fila
