@@ -16,6 +16,7 @@
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { enviarEvento } from './ciencia'
+import { idsRecusados } from '../recusa-nota'
 import { TP_EVENTO } from './evento'
 
 type Db = PrismaClient | Prisma.TransactionClient
@@ -47,7 +48,10 @@ export async function garantirCienciaPendentes(input: {
   const limite = input.limite ?? 25
 
   const resumoOnly = await db.stockNfe.findMany({
-    where: { companyId: input.companyId, status: 'AGUARDANDO_MERCADORIA', temXmlCompleto: false },
+    // ⛔⛔ NOTA RECUSADA NÃO RECEBE CIÊNCIA AUTOMÁTICA. Ciência é a manifestação mais fraca,
+    // mas É manifestação: continuar mandando sozinho numa nota que o dono está contestando
+    // seria o sistema se manifestando por conta própria sobre um documento em disputa.
+    where: { companyId: input.companyId, status: 'AGUARDANDO_MERCADORIA', temXmlCompleto: false, id: { notIn: [...(await idsRecusados(db, input.companyId))] } },
     select: { chave: true, emitNome: true },
     take: limite,
   })

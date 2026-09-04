@@ -2,6 +2,7 @@
 // que nasce vazia e enche sozinha; históricas num filtro à parte (visíveis, sem ação).
 // Só LÊ.
 
+import { idsRecusados } from '../recusa-nota'
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 
@@ -48,7 +49,9 @@ export async function listRecebimentos(companyId: string, db: Db = defaultPrisma
     db.stockSefazState.findUnique({ where: { companyId }, select: { dataCorte: true } }),
     db.stockSefazLog.findFirst({ where: { companyId }, orderBy: { criadoEm: 'desc' }, select: { criadoEm: true } }),
     db.stockNfe.findMany({
-      where: { companyId, status: 'AGUARDANDO_MERCADORIA' },
+      // ⛔ nota RECUSADA sai da fila ativa — a régua é uma só (`idsRecusados`), pra a
+      // próxima tela não esquecer de filtrar (a lição da ficha arquivada, 01/09).
+      where: { companyId, status: 'AGUARDANDO_MERCADORIA', id: { notIn: [...(await idsRecusados(db, companyId))] } },
       orderBy: { dataEmissao: 'asc' },
       select: { id: true, chave: true, emitNome: true, emitCnpj: true, vNF: true, dataEmissao: true, cSitNFe: true },
     }),

@@ -3478,6 +3478,25 @@ model StockVencimentoEvento {
   @@map("stock_vencimento_evento")
 }
 
+model StockNfeRecusa {
+  id               String    @id @default(cuid())
+  companyId        String
+  nfeId            String
+  chave            String
+  motivo           String
+  observacao       String?
+  tpEventoSugerido String?
+  criadoPorId      String?
+  criadoEm         DateTime  @default(now())
+  reabertaEm       DateTime?
+  reabertaPorId    String?
+  reaberturaMotivo String?
+
+  @@index([companyId])
+  @@index([companyId, nfeId])
+  @@map("stock_nfe_recusa")
+}
+
 // ⭐ O COMBINADO (29/08/2026) — o que o FINANCEIRO vai cobrar, que pode diferir da nota.
 // `stock_nfe_dup` = o que a NOTA diz (SEFAZ, imutável). Esta = o que foi COMBINADO com o
 // fornecedor. Renegociação pós-nota é normal; sobrescrever o dado da SEFAZ não é.

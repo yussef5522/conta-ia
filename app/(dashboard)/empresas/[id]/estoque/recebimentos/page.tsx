@@ -29,6 +29,7 @@ import { AjustarParcelasDaNota } from '@/components/estoque/ajustar-parcelas-da-
 import {
   Inbox, PackageOpen, Archive, Info, Loader2, FlaskConical, MoonStar, Search, Loader,
   CheckCircle2, Receipt, AlertTriangle, MoreHorizontal, ChevronRight, X, Download,
+  Ban,
 } from 'lucide-react'
 
 interface FilaCard {
@@ -352,6 +353,8 @@ function AcoesLinha({ l, id, onMudou }: { l: Linha; id: string; onMudou: () => v
   // ⭐ renegociar mudou de casa (30/08): saiu da tela de boletos — que era uma 2ª lista de
   // dívida — e passou a abrir da própria NOTA, que é o documento que se renegocia.
   const [ajustando, setAjustando] = useState(false)
+  const [recusando, setRecusando] = useState(false)
+
   const adiar = async (v: boolean) => {
     if (!l.nfeId) return
     setBusy(true)
@@ -384,10 +387,108 @@ function AcoesLinha({ l, id, onMudou }: { l: Linha; id: string; onMudou: () => v
           {l.estado === 'aguardando'
             ? <DropdownMenuItem onClick={() => adiar(true)}><MoonStar className="mr-2 h-3.5 w-3.5" /> Deixar pra depois</DropdownMenuItem>
             : <DropdownMenuItem onClick={() => adiar(false)}><PackageOpen className="mr-2 h-3.5 w-3.5" /> Trazer de volta pra fila</DropdownMenuItem>}
+          {/* ⛔⛔ RECUSAR ≠ EXCLUIR: a nota existe na SEFAZ contra o CNPJ do dono. Sai da fila
+              ativa, vai pra "Recusadas" com motivo e rastro, e volta se a mercadoria aparecer. */}
+          <DropdownMenuItem onClick={() => setRecusando(true)} className="text-rose-600">
+            <Ban className="mr-2 h-3.5 w-3.5" /> Recusar nota
+          </DropdownMenuItem>
         </>)}
       </DropdownMenuContent>
     </DropdownMenu>
+    {recusando && l.nfeId && (
+      <ModalRecusa empresaId={id} nfeId={l.nfeId} fornecedor={l.fornecedor} onFechar={() => setRecusando(false)} />
+    )}
     </>
+  )
+}
+
+/**
+ * ⭐⭐ RECUSAR — motivo de lista FECHADA + observação livre, com preview do que será desfeito.
+ *
+ * ⚠️ A lista é fechada de propósito: são os 3 casos reais do negócio, e cada um mapeia numa
+ * manifestação fiscal diferente. Texto livre viraria 20 jeitos de escrever a mesma coisa e o
+ * dia da manifestação seria arqueologia.
+ *
+ * ⛔ E RECUSAR NÃO MANDA NADA PRA SEFAZ — a tela DIZ isso, pra ninguém achar que manifestou.
+ */
+function ModalRecusa({ empresaId, nfeId, fornecedor, onFechar }: {
+  empresaId: string; nfeId: string; fornecedor: string; onFechar: () => void
+}) {
+  const [motivo, setMotivo] = useState('')
+  const [obs, setObs] = useState('')
+  const [prev, setPrev] = useState<{ sugestoes: number; movimentos: number; bloqueio: string | null } | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch(`/api/empresas/${empresaId}/estoque/recebimentos/${nfeId}/recusar`)
+      .then((r) => r.json()).then((j) => setPrev(j.preview ?? null)).catch(() => {})
+  }, [empresaId, nfeId])
+
+  const recusar = async () => {
+    if (!motivo) return
+    setBusy(true); setErro(null)
+    try {
+      const r = await fetch(`/api/empresas/${empresaId}/estoque/recebimentos/${nfeId}/recusar`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ acao: 'RECUSAR', motivo, observacao: obs || undefined }),
+      })
+      const j = await r.json().catch(() => null)
+      if (!r.ok) { setErro(j?.erro ?? 'Não consegui recusar.'); return }
+      window.location.reload()
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onFechar}>
+      <div className="w-full max-w-md rounded-xl bg-white p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <p className="text-sm font-semibold text-slate-900">Recusar a nota de {fornecedor}</p>
+        <p className="mt-1 text-[11px] text-slate-500">
+          A nota <b>continua existindo</b> na SEFAZ e no sistema — ela só sai da fila e vai pra
+          &quot;Recusadas&quot;. Você pode reabrir se a mercadoria aparecer.
+        </p>
+
+        {prev?.bloqueio && <p className="mt-2 rounded bg-rose-50 px-2.5 py-1.5 text-[11px] text-rose-700">{prev.bloqueio}</p>}
+
+        <div className="mt-3 space-y-1.5">
+          {[
+            ['NAO_CHEGOU', 'Não chegou', 'a mercadoria nunca veio'],
+            ['RECUSADA_NA_ENTREGA', 'Recusada na entrega', 'veio errada e foi devolvida na porta'],
+            ['NAO_E_MINHA', 'Não é minha', 'emitida por engano contra meu CNPJ'],
+          ].map(([v, titulo, ajuda]) => (
+            <label key={v} className={`flex cursor-pointer items-start gap-2 rounded-lg border px-2.5 py-2 ${motivo === v ? 'border-[#185FA5] bg-blue-50/50' : 'border-slate-200'}`}>
+              <input type="radio" name="motivo" value={v} checked={motivo === v} onChange={() => setMotivo(v)} className="mt-0.5" />
+              <span className="text-xs"><b className="text-slate-800">{titulo}</b><span className="block text-[11px] text-slate-500">{ajuda}</span></span>
+            </label>
+          ))}
+        </div>
+
+        <textarea value={obs} onChange={(e) => setObs(e.target.value)} rows={2}
+          placeholder="observação (opcional) — ex: falei com o vendedor, vai cancelar"
+          className="mt-2 w-full rounded-lg border border-slate-300 px-2 py-1.5 text-xs" />
+
+        {prev && (prev.sugestoes > 0 || prev.movimentos > 0) && !prev.bloqueio && (
+          <p className="mt-2 rounded bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-800">
+            Isto vai desfazer: {prev.sugestoes > 0 && <>{prev.sugestoes} parcela(s) de contas a pagar</>}
+            {prev.sugestoes > 0 && prev.movimentos > 0 && ' e '}
+            {prev.movimentos > 0 && <>{prev.movimentos} movimento(s) de estoque (estorno, o histórico fica)</>}.
+          </p>
+        )}
+        <p className="mt-2 text-[10px] text-slate-400">
+          ⚠️ Recusar aqui <b>não</b> manifesta nada na SEFAZ. Desconhecimento / operação não realizada
+          têm prazo legal — combine com o contador.
+        </p>
+        {erro && <p className="mt-2 text-xs text-rose-600">{erro}</p>}
+
+        <div className="mt-3 flex items-center gap-2">
+          <button onClick={recusar} disabled={!motivo || busy || !!prev?.bloqueio}
+            className="inline-flex h-8 items-center rounded-lg bg-rose-600 px-3 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-40">
+            {busy ? 'Recusando…' : 'Recusar nota'}
+          </button>
+          <button onClick={onFechar} className="text-xs text-slate-500 hover:text-slate-700">cancelar</button>
+        </div>
+      </div>
+    </div>
   )
 }
 

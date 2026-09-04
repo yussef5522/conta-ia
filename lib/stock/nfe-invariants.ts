@@ -12,6 +12,7 @@
 // não aconteceu — tem que olhar a tabela do FATO (a nota), não a do PROCESSO (o evento).
 
 import type { PrismaClient, Prisma } from '@prisma/client'
+import { idsRecusados } from './recusa-nota'
 import type { StockInvariantFail } from './stock-invariants'
 
 type Db = PrismaClient | Prisma.TransactionClient
@@ -24,7 +25,9 @@ export async function checkNfeInvariants(db: Db, now: Date = new Date()): Promis
 
   // A tabela do FATO: nota na fila, sem XML completo, parada há mais de 24h.
   const presas = await db.stockNfe.findMany({
-    where: { status: 'AGUARDANDO_MERCADORIA', temXmlCompleto: false, criadoEm: { lt: limite } },
+    // ⛔ nota RECUSADA não é vigiada: o dono já disse que ela não é dele (ou não chegou).
+    // Continuar cobrando XML de uma nota contestada é alarme que ele aprende a ignorar.
+    where: { status: 'AGUARDANDO_MERCADORIA', temXmlCompleto: false, criadoEm: { lt: limite }, id: { notIn: [...(await idsRecusados(db))] } },
     select: { companyId: true, chave: true, emitNome: true, vNF: true, criadoEm: true },
   })
   if (presas.length === 0) return fails
