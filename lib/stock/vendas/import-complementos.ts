@@ -108,17 +108,18 @@ export async function previewComplementos(
  *          a linha por 1.190 deixa **linha nova + movimento velho convivendo em silêncio** —
  *          o estoque baixou 30 a mais do que o relatório atual diz, e nada na tela conta isso.
  *
- * ⭐ AS DUAS SAÍDAS ACEITAS (escolha do dono quando chegar a hora), e nenhuma é "não fazer
- * nada": **ou** o reimport de dia baixado dispara o **estorno-e-refaz** na hora (o caminho
- * que `montarPlanoReprocesso` já faz pros produtos), **ou** ele marca o dia como
- * **"precisa reprocessar" VISÍVEL** na tela. Substituir calado não é opção — é a classe do
- * "estoque invisível" e do selo verde de graça que este módulo já pagou caro.
+ * ⭐⭐ RESOLVIDO EM 03/09, pela segunda saída: o dia ganha **"precisa reprocessar" VISÍVEL**
+ * (`montarPlanoComplementos.precisaReprocessar` / `listarDiasComplemento`), e o gesto de
+ * corrigir é do dono — preview → **estorna e refaz**. ⚠️ A marca é **DERIVADA**, nunca
+ * gravada: ela compara o que ESTÁ baixado com o que as linhas de hoje mandam baixar, então
+ * não tem como envelhecer e passar a mentir.
  *
- * ⚠️ Este comentário existe porque a decisão é fácil de esquecer: hoje o código está
- * CORRETO, e vai continuar compilando e passando nos testes no dia em que ficar errado.
+ * ⛔ E o import segue NÃO mexendo no ledger sozinho: refazer a baixa a partir de um upload,
+ * sem preview, é o oposto da disciplina do módulo — quem mexe em movimento é gesto próprio.
  *
  * ⛔ E NÃO BAIXA NADA AQUI. Importar é trazer o que o PDV vendeu; baixar é decisão
- * separada, com preview próprio — a mesma separação do fluxo de produtos.
+ * separada, com preview próprio (`lib/stock/vendas/baixa-complemento.ts`) — a mesma
+ * separação do fluxo de produtos.
  */
 export async function confirmarComplementos(
   companyId: string, data: string, html: string, userId?: string, db: PrismaClient = defaultPrisma,

@@ -177,7 +177,7 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
           )}
         </CardContent></Card>
       ) : aba === 'complementos' ? (
-        <ImportComplementos id={id} />
+        <><ImportComplementos id={id} /><BaixaComplementos id={id} /></>
       ) : aba === 'manual' ? (
         <LancamentoManual id={id} onProcessado={() => { carregarProcessados(); setAba('processados') }} />
       ) : (
@@ -499,5 +499,145 @@ function ImportComplementos({ id }: { id: string }) {
         </CardContent></Card>
       )}
     </div>
+  )
+}
+
+/**
+ * ⭐⭐⭐ A BAIXA DOS COMPLEMENTOS — preview → confirmar, como todo gesto que mexe no ledger.
+ *
+ * ⚠️ O NEGATIVO APARECE ANTES DE GRAVAR e **não bloqueia**: `INTERMEDIARIO` baixa o pack
+ * pronto, e negativo quer dizer *"vendeu sem produzir"* — o sinal que o dono quer ver.
+ * Bloquear trocaria uma informação verdadeira por um estoque bonito e falso.
+ */
+function BaixaComplementos({ id }: { id: string }) {
+  const [dias, setDias] = useState<{ data: string; ehPeriodo: boolean; linhas: number; ocorrencias: number; baixado: boolean; precisaReprocessar: boolean }[] | null>(null)
+  const [plano, setPlano] = useState<null | {
+    data: string; ehPeriodo: boolean; jaBaixado: boolean; precisaReprocessar: boolean
+    totalOcorrencias: number; ocorrenciasBaixadas: number
+    complementos: { nomeSuitable: string; ocorrencias: number; alvo: string }[]
+    pendentes: { nomeSuitable: string; ocorrencias: number }[]
+    ignorados: { nomeSuitable: string; ocorrencias: number }[]
+    agregada: { itemId: string; nome: string; qtd: number; valor: number | null; saldoDepois: number }[]
+  }>(null)
+  const [recibo, setRecibo] = useState<{ ocorrencias: number; itensBaixados: number; valorBaixado: number; pendentes: number; estornou: number } | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+
+  const carregar = () => fetch(`/api/empresas/${id}/estoque/vendas/complementos/baixa`)
+    .then((r) => r.json()).then((j) => setDias(j.dias ?? [])).catch(() => setDias([]))
+  useEffect(() => { carregar() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [id])
+
+  const abrir = async (data: string) => {
+    setBusy(true); setErro(null); setRecibo(null)
+    try {
+      const r = await fetch(`/api/empresas/${id}/estoque/vendas/complementos/baixa?data=${data}`)
+      const j = await r.json().catch(() => null)
+      if (!r.ok) { setErro(j?.erro ?? 'Não consegui montar o preview.'); return }
+      setPlano(j.plano)
+    } finally { setBusy(false) }
+  }
+
+  const confirmar = async () => {
+    if (!plano) return
+    setBusy(true); setErro(null)
+    try {
+      const r = await fetch(`/api/empresas/${id}/estoque/vendas/complementos/baixa`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: plano.data }),
+      })
+      const j = await r.json().catch(() => null)
+      if (!r.ok) { setErro(j?.erro ?? 'Não consegui baixar.'); return }
+      setRecibo(j); setPlano(null); await carregar()
+    } finally { setBusy(false) }
+  }
+
+  if (dias === null || !dias.length) return null
+
+  return (
+    <Card><CardContent className="space-y-3 p-4">
+      <p className="text-sm font-semibold text-slate-900">Baixar o estoque dos complementos</p>
+
+      <table className="density-normal w-full">
+        <thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-400">
+          <th className="px-3 py-2 font-medium">Dia</th>
+          <th className="px-3 py-2 text-right font-medium">Ocorrências</th>
+          <th className="px-3 py-2 font-medium">Estado</th>
+          <th className="px-3 py-2"></th>
+        </tr></thead>
+        <tbody>{dias.map((d) => (
+          <tr key={d.data} className="border-t border-slate-50">
+            <td className="px-3 py-0 text-[13px] font-medium text-slate-800">{fmtDia(d.data)}</td>
+            <td className="px-3 py-0 text-right text-[13px] tabular-nums text-slate-600">{d.ocorrencias.toLocaleString('pt-BR')}</td>
+            <td className="px-3 py-0 text-[13px]">
+              {/* ⛔ PERÍODO nunca baixa: ele existe pra montar a lista de sabores */}
+              {d.ehPeriodo ? <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-500">período — não baixa</span>
+                : d.precisaReprocessar ? <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-800">precisa reprocessar</span>
+                  : d.baixado ? <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[11px] text-emerald-700">baixado</span>
+                    : <span className="text-[11px] text-slate-400">não baixado</span>}
+            </td>
+            <td className="px-3 py-0 text-right">
+              {!d.ehPeriodo && (
+                <button onClick={() => abrir(d.data)} disabled={busy}
+                  className="text-[11px] text-[#185FA5] hover:underline disabled:opacity-40">
+                  {d.precisaReprocessar ? 'reprocessar' : d.baixado ? 'ver' : 'baixar'}
+                </button>
+              )}
+            </td>
+          </tr>
+        ))}</tbody>
+      </table>
+      {erro && <p className="text-sm text-rose-600">{erro}</p>}
+
+      {recibo && (
+        <div className="rounded-lg border border-emerald-300 bg-emerald-50/60 px-3 py-2 text-xs text-emerald-800">
+          <b>{recibo.ocorrencias.toLocaleString('pt-BR')} ocorrências</b> baixadas em {recibo.itensBaixados} item(ns) · {brl(recibo.valorBaixado)}
+          {recibo.estornou > 0 && <> · {recibo.estornou} baixa(s) anterior(es) estornada(s)</>}
+          {recibo.pendentes > 0 && <> · {recibo.pendentes} sem ficha (não baixaram)</>}
+        </div>
+      )}
+
+      {plano && (
+        <div className="space-y-2 rounded-lg border border-slate-200 p-3">
+          <p className="text-xs text-slate-600">
+            {fmtDia(plano.data)} · <b>{plano.ocorrenciasBaixadas.toLocaleString('pt-BR')}</b> de {plano.totalOcorrencias.toLocaleString('pt-BR')} ocorrências baixam
+            {plano.jaBaixado && <span className="ml-1 text-amber-700">· este dia já foi baixado: confirmar ESTORNA e refaz</span>}
+          </p>
+          <table className="density-normal w-full">
+            <thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-400">
+              <th className="px-3 py-2 font-medium">Item</th>
+              <th className="px-3 py-2 text-right font-medium">Sai</th>
+              <th className="px-3 py-2 text-right font-medium">Custo</th>
+              <th className="px-3 py-2 text-right font-medium">Saldo depois</th>
+            </tr></thead>
+            <tbody>{plano.agregada.map((a) => (
+              <tr key={a.itemId} className="border-t border-slate-50">
+                <td className="px-3 py-0 text-[13px] text-slate-800">{a.nome}</td>
+                <td className="px-3 py-0 text-right text-[13px] tabular-nums text-slate-700">{a.qtd.toLocaleString('pt-BR')}</td>
+                <td className="px-3 py-0 text-right text-[13px] tabular-nums text-slate-600">{a.valor == null ? '—' : brl(a.valor)}</td>
+                {/* ⚠️ negativo AVISA e não impede: é "vendeu sem produzir", não erro */}
+                <td className={`px-3 py-0 text-right text-[13px] tabular-nums ${a.saldoDepois < 0 ? 'font-semibold text-rose-600' : 'text-slate-600'}`}>
+                  {a.saldoDepois.toLocaleString('pt-BR')}
+                </td>
+              </tr>
+            ))}</tbody>
+          </table>
+          {plano.agregada.some((a) => a.saldoDepois < 0) && (
+            <p className="rounded bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-800">
+              ⚠️ algum item fica <b>negativo</b>: é o sinal de <b>vendeu sem produzir</b> — a baixa segue, e o número diz o que falta produzir.
+            </p>
+          )}
+          {plano.pendentes.length > 0 && (
+            <p className="text-[11px] text-slate-500">{plano.pendentes.length} complemento(s) sem ficha não baixam: {plano.pendentes.slice(0, 5).map((p) => p.nomeSuitable).join(' · ')}{plano.pendentes.length > 5 ? '…' : ''}</p>
+          )}
+          <div className="flex items-center gap-2">
+            <button onClick={confirmar} disabled={busy}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#185FA5] px-3 text-xs font-semibold text-white hover:bg-[#0F4A8C] disabled:opacity-50">
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+              {plano.jaBaixado ? 'Estornar e refazer' : 'Confirmar a baixa'}
+            </button>
+            <button onClick={() => setPlano(null)} className="text-xs text-slate-500 hover:text-slate-700">cancelar</button>
+          </div>
+        </div>
+      )}
+    </CardContent></Card>
   )
 }
