@@ -20,6 +20,7 @@ import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import type { AuthContext } from '@/lib/auth/rbac'
 import { createContaPendente } from '@/lib/contas-ap-ar/create'
+import { idsRecusados } from './recusa-nota'
 
 export const ORIGEM_PONTE = 'ESTOQUE_NF'
 
@@ -50,10 +51,20 @@ export interface PendentePonte {
 const nNFdaChave = (chave: string) => (chave?.length === 44 ? String(Number(chave.slice(25, 34))) : null)
 
 export async function listarPendentes(companyId: string, db: PrismaClient = defaultPrisma): Promise<PendentePonte[]> {
-  const sugestoes = await db.stockPayableSuggestion.findMany({
+  // ⛔⛔ TRAVA NA FONTE (04/09): mercadoria não conferida NUNCA vira dívida aprovável, e nota
+  // RECUSADA não aparece. Hoje isso já era verdade **por acidente** (sugestão só nasce no
+  // `confirmarConferencia`); agora é verdade **por desenho** — no dia em que outro caminho
+  // criar sugestão, ela não entra aqui sem passar pela conferência.
+  const [notasOk, recusados] = await Promise.all([
+    db.stockNfe.findMany({ where: { companyId, status: 'CONFIRMADA' }, select: { id: true } }),
+    idsRecusados(db, companyId),
+  ])
+  const conferidas = new Set(notasOk.map((n) => n.id).filter((id) => !recusados.has(id)))
+
+  const sugestoes = (await db.stockPayableSuggestion.findMany({
     where: { companyId },
     orderBy: { dVenc: 'asc' },
-  })
+  })).filter((s) => conferidas.has(s.nfeId))
   if (sugestoes.length === 0) return []
 
   // já enviadas? (o link é a verdade — status da sugestão é conveniência)

@@ -7,6 +7,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { guardStock } from '@/lib/stock/require-stock'
+import { getAuthContext } from '@/lib/auth/rbac'
+import { enviarParaContasPagar } from '@/lib/stock/ponte-contas-pagar'
 import { definirVencimento, parcelasSemData, rastroDoVencimento, VencimentoError } from '@/lib/stock/ponte/vencimento'
 
 interface Params { params: Promise<{ id: string }> }
@@ -40,7 +42,23 @@ export async function POST(request: NextRequest, { params }: Params) {
       companyId, suggestionId, new Date(`${dVenc}T00:00:00.000Z`),
       origem ?? 'DONO', a.user!.sub, prisma, aceitarConflito ?? false,
     )
-    return NextResponse.json(r)
+    // ⭐⭐ DEFINIU A DATA → VAI DIRETO PRO FINANCEIRO (04/09). Não existe mais fila
+    // intermediária: definir o vencimento É a aprovação, do mesmo jeito que confirmar a
+    // conferência é. ⚠️ Não roda quando houve CONFLITO (o dono ainda vai decidir qual data).
+    let ponte: Awaited<ReturnType<typeof enviarParaContasPagar>> | null = null
+    let ponteErro: string | null = null
+    if (r.gravou) {
+      const ctx = await getAuthContext(request, companyId)
+      try {
+        ponte = await enviarParaContasPagar({
+          companyId, suggestionIds: [suggestionId], cadastrarFornecedores: true, ctx, userId: a.user!.sub,
+        }, prisma)
+      } catch (e) {
+        // ⛔ a data FICA gravada mesmo se a ponte falhar — e a tela diz que a conta não nasceu
+        ponteErro = (e as Error).message
+      }
+    }
+    return NextResponse.json({ ...r, ponte, ponteErro })
   } catch (e) {
     if (e instanceof VencimentoError) return NextResponse.json({ erro: e.message }, { status: 422 })
     throw e

@@ -180,3 +180,28 @@ describe('⛔⛔ nada de meia-recusa', () => {
     expect(await prisma.stockMovement.count({ where: { companyId, tipo: 'ESTORNO' } })).toBe(1)
   })
 })
+
+describe('⛔⛔ a TRAVA NA FONTE da lista de boletos (04/09)', () => {
+  it('⛔⛔ nota NÃO CONFERIDA não vira dívida aprovável, nem com sugestão existindo', async () => {
+    // ⚠️ hoje isso já era verdade POR ACIDENTE (sugestão só nasce na conferência). O teste
+    // força o estado impossível pra provar que agora é verdade POR DESENHO.
+    await prisma.stockPayableSuggestion.create({
+      data: { companyId, nfeId, chave, supplierNome: 'TVG', nDup: null, dVenc: new Date('2026-09-20T00:00:00Z'), valor: 15000 },
+    })
+    const { listarPendentes } = await import('../ponte-contas-pagar')
+    expect(await prisma.stockNfe.findUniqueOrThrow({ where: { id: nfeId }, select: { status: true } }))
+      .toMatchObject({ status: 'AGUARDANDO_MERCADORIA' })
+    expect(await listarPendentes(companyId, prisma), 'mercadoria não conferida entrou na lista de aprovação').toHaveLength(0)
+  })
+
+  it('⛔ e nota RECUSADA também não aparece, mesmo conferida', async () => {
+    await prisma.stockNfe.update({ where: { id: nfeId }, data: { status: 'CONFIRMADA' } })
+    await prisma.stockPayableSuggestion.create({
+      data: { companyId, nfeId, chave, supplierNome: 'TVG', nDup: null, dVenc: new Date('2026-09-20T00:00:00Z'), valor: 15000 },
+    })
+    const { listarPendentes } = await import('../ponte-contas-pagar')
+    expect(await listarPendentes(companyId, prisma)).toHaveLength(1)
+    await recusarNota({ companyId, nfeId, motivo: 'NAO_E_MINHA', userId }, prisma)
+    expect(await listarPendentes(companyId, prisma)).toHaveLength(0)
+  })
+})

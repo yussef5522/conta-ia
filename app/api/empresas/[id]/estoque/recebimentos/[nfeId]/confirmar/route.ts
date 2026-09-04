@@ -67,30 +67,43 @@ export async function POST(request: NextRequest, { params }: Params) {
         ? { parcelas: parsed.data.pagamento.parcelas.map((p) => ({ dVenc: new Date(`${p.dVenc}T00:00:00.000Z`), valor: p.valor })) }
         : undefined })
 
-    // PONTE 1 — os boletos que o dono marcou no bloco "BOLETOS DA NOTA" viram conta a
-    // pagar de verdade. Só acontece com aceite EXPLÍCITO e só pra quem tem stock.manage:
-    // o operador de loja confere a nota (o estoque entra normal) mas NÃO cria obrigação
-    // financeira — as parcelas ficam esperando o dono aprovar em /estoque/contas-a-pagar.
+    // ⭐⭐⭐ UM GESTO SÓ (04/09/2026 — decisão do dono): confirmar a conferência FAZ TUDO —
+    // a mercadoria entra no estoque **e** os boletos viram conta a pagar no financeiro,
+    // direto. *"Quando eu confirmo a nota, eu JÁ aprovei — me pedir de novo em outra tela é
+    // aprovar duas vezes."* A fila intermediária de aprovação foi aposentada.
+    //
+    // ⚠️ SÓ VAI O QUE TEM DATA. Parcela sem vencimento fica "A DEFINIR" (o dono combina
+    // depois e ela vai direto, sem passar por fila) — a ponte recusaria sem `dVenc` de
+    // qualquer jeito, e mandar pra recusar seria erro na cara do dono sem motivo.
+    //
+    // ⚠️⚠️ E NÃO É A MESMA TRANSAÇÃO DO ESTOQUE, por limite real: `createContaPendente` (a
+    // função ÚNICA que cria conta a pagar, compartilhada com o formulário do financeiro)
+    // abre a própria `$transaction`, e Prisma **não aninha** — a mesma limitação que mordeu
+    // na marcação de import em 29/08. Então a ordem é: estoque commita, ponte roda em
+    // seguida. Se a ponte falhar, **a mercadoria fica** (ela chegou de verdade) e a resposta
+    // DIZ que a conta não nasceu — nunca em silêncio. É o mesmo desenho da Confirmação
+    // 210200, que também roda fora da transação pelo mesmo motivo.
     let ponte: Awaited<ReturnType<typeof enviarParaContasPagar>> | null = null
-    if (parsed.data.enviarBoletos) {
-      const ctx = await getAuthContext(request, companyId)
-      if (ctx.hasPermission('stock.manage')) {
-        // as sugestões acabaram de nascer no confirmarConferencia; a tela marcou por nDup
-        const sugestoes = await prisma.stockPayableSuggestion.findMany({ where: { companyId, nfeId }, select: { id: true, nDup: true } })
-        const marcados = parsed.data.boletosSelecionados
-        const escolhidas = marcados?.length
-          ? sugestoes.filter((x) => marcados.includes(x.nDup ?? '')).map((x) => x.id)
-          : sugestoes.map((x) => x.id)
-        if (escolhidas.length) {
+    let ponteErro: string | null = null
+    const ctx = await getAuthContext(request, companyId)
+    if (ctx.hasPermission('stock.manage')) {
+      const sugestoes = await prisma.stockPayableSuggestion.findMany({
+        where: { companyId, nfeId, dVenc: { not: null } }, select: { id: true },
+      })
+      if (sugestoes.length) {
+        try {
           ponte = await enviarParaContasPagar({
-            companyId, suggestionIds: escolhidas,
+            companyId, suggestionIds: sugestoes.map((x) => x.id),
             cadastrarFornecedores: parsed.data.cadastrarFornecedor ?? true,
             ctx, userId: user.sub,
           }, prisma)
+        } catch (e) {
+          // ⛔ falha aqui NÃO desfaz o recebimento físico — mas aparece na tela
+          ponteErro = (e as Error).message
         }
       }
     }
-    return NextResponse.json({ ok: true, resultado: r, ponte })
+    return NextResponse.json({ ok: true, resultado: r, ponte, ponteErro })
   } catch (e) {
     return NextResponse.json({ erro: (e as Error).message }, { status: 422 })
   }
