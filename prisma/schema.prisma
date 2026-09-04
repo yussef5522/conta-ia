@@ -3446,6 +3446,8 @@ model StockPayableSuggestion {
   @@map("stock_payable_suggestion")
 }
 
+/// ⛔ SUPERSEDED em 04/09 por StockVencimentoEvento — o CHECK de `origem` era fechado demais
+/// pra uma lista que cresce. NUNCA teve linha em produção; fica porque DROP é proibido aqui.
 model StockVencimentoDefinido {
   id            String   @id @default(cuid())
   companyId     String
@@ -3459,6 +3461,21 @@ model StockVencimentoDefinido {
   @@index([companyId])
   @@index([companyId, suggestionId])
   @@map("stock_vencimento_definido")
+}
+
+model StockVencimentoEvento {
+  id            String    @id @default(cuid())
+  companyId     String
+  suggestionId  String
+  dVencAnterior DateTime?
+  dVencNovo     DateTime
+  origem        String
+  criadoPorId   String?
+  criadoEm      DateTime  @default(now())
+
+  @@index([companyId])
+  @@index([companyId, suggestionId])
+  @@map("stock_vencimento_evento")
 }
 
 // ⭐ O COMBINADO (29/08/2026) — o que o FINANCEIRO vai cobrar, que pode diferir da nota.

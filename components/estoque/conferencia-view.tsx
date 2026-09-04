@@ -90,6 +90,12 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
   const [digitando, setDigitando] = useState(false)
   // PONTE 1 — boletos: marcados por default (o dono VÊ e confirma; nada entra às cegas)
   const dupsPendentes = (data.duplicatas ?? []).filter((d) => !d.jaEnviada)
+  // ⭐⭐ O BOLETO DE PAPEL (04/09): o XML não traz duplicata, mas o boleto veio com a
+  // mercadoria. Digitar aqui — na hora em que a informação está na mão — faz o payable nascer
+  // no fluxo normal, em vez de virar "A DEFINIR" e cobrar uma segunda visita.
+  // ⚠️ OPCIONAL: vazio = "a definir", que é o certo pra pix/dinheiro combinado.
+  const semDuplicataNoXml = (data.duplicatas ?? []).length === 0
+  const [parcelasPapel, setParcelasPapel] = useState<{ dVenc: string; valor: string }[]>([])
   const [boletos, setBoletos] = useState<string[]>(() => dupsPendentes.map((d) => d.nDup ?? ''))
   // ⭐ ajustar parcelas (renegociação pós-nota) — REGRA 9: hook no topo, longe do JSX
   const [editandoParcelas, setEditandoParcelas] = useState(false)
@@ -116,6 +122,10 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
           enviarBoletos: boletos.length > 0,
           boletosSelecionados: boletos,
           cadastrarFornecedor: cadastrarForn,
+          // ⚠️ só manda se o dono preencheu: lista vazia é "a definir", não erro
+          pagamento: parcelasPapel.length && parcelasPapel.every((p) => p.dVenc && Number(p.valor.replace(',', '.')) > 0)
+            ? { parcelas: parcelasPapel.map((p) => ({ dVenc: p.dVenc, valor: Number(p.valor.replace(',', '.')) })) }
+            : undefined,
         }),
       })
       const j = await r.json().catch(() => ({ erro: 'Resposta inválida' }))
@@ -355,6 +365,60 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
           })}
       </div>
       </>
+      )}
+
+      {/* ===== PAGAMENTO — quando o XML não traz boleto (04/09) ===== */}
+      {data.itens.length > 0 && semDuplicataNoXml && (
+        <div className="rounded-lg border border-slate-200 bg-white">
+          <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-3 py-2">
+            <Receipt className="h-4 w-4 shrink-0 text-[#185FA5]" />
+            <h3 className="text-sm font-semibold text-slate-900">Pagamento</h3>
+            <span className="text-[11px] text-slate-400">esta nota não traz boleto no XML</span>
+          </div>
+          <div className="space-y-2 p-3">
+            {parcelasPapel.length === 0 ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs text-slate-600">Você tem o boleto em mãos?</span>
+                <button type="button"
+                  onClick={() => setParcelasPapel([{ dVenc: '', valor: (data.valorNota ?? 0).toFixed(2).replace('.', ',') }])}
+                  className="inline-flex h-7 items-center rounded-lg border border-[#185FA5] px-2.5 text-[11px] font-medium text-[#185FA5] hover:bg-blue-50">
+                  informar o vencimento
+                </button>
+                {/* ⚠️ o caminho de não-informar é EXPLÍCITO e sem culpa: pix combinado não tem data */}
+                <span className="text-[11px] text-slate-400">ou deixe <b>a definir</b> — você combina depois, e o sistema cobra.</span>
+              </div>
+            ) : (
+              <>
+                {parcelasPapel.map((p, i) => (
+                  <div key={i} className="flex flex-wrap items-center gap-2">
+                    <span className="w-16 text-[11px] text-slate-500">{parcelasPapel.length > 1 ? `parcela ${i + 1}` : 'vence em'}</span>
+                    <input type="date" value={p.dVenc}
+                      onChange={(e) => setParcelasPapel((a) => a.map((x, j) => (j === i ? { ...x, dVenc: e.target.value } : x)))}
+                      className="h-8 rounded-lg border border-slate-300 px-2 text-xs" />
+                    <input value={p.valor} inputMode="decimal"
+                      onChange={(e) => setParcelasPapel((a) => a.map((x, j) => (j === i ? { ...x, valor: e.target.value } : x)))}
+                      className="h-8 w-28 rounded-lg border border-slate-300 px-2 text-right text-xs" />
+                    <button type="button" onClick={() => setParcelasPapel((a) => a.filter((_, j) => j !== i))}
+                      className="text-[11px] text-slate-400 hover:text-slate-700">remover</button>
+                  </div>
+                ))}
+                <div className="flex flex-wrap items-center gap-2">
+                  <button type="button"
+                    onClick={() => setParcelasPapel((a) => [...a, { dVenc: '', valor: '' }])}
+                    className="text-[11px] text-[#185FA5] hover:underline">+ parcela (30/60/90)</button>
+                  {/* ⛔ a soma tem que FECHAR com a nota, ao centavo — igual a todo o resto */}
+                  {(() => {
+                    const soma = parcelasPapel.reduce((s2, x) => s2 + (Number(x.valor.replace(',', '.')) || 0), 0)
+                    const dif = Math.round((soma - (data.valorNota ?? 0)) * 100) / 100
+                    return Math.abs(dif) > 0.01
+                      ? <span className="text-[11px] font-medium text-rose-600">soma {brl(soma)} · {dif > 0 ? 'sobra' : 'falta'} {brl(Math.abs(dif))} pra fechar a nota</span>
+                      : <span className="text-[11px] text-emerald-700">fecha com a nota ({brl(soma)})</span>
+                  })()}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       )}
 
       {/* ===== PONTE 1 — BOLETOS DA NOTA ===== */}

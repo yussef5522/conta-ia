@@ -16,6 +16,8 @@ import { enviarEvento } from './sefaz/ciencia'
 import { TP_EVENTO } from './sefaz/evento'
 import { combinadoDaNota } from './ponte/combinado'
 
+import { registrarVencimentoNoRecebimento, conferirPagamentoDoPapel } from './ponte/vencimento'
+
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 
 export interface ConfirmItemInput {
@@ -36,6 +38,12 @@ export interface ConfirmInput {
   userId: string
   fornecedor: { cnpj: string; nome: string; uf?: string | null }
   itens: ConfirmItemInput[]
+  /**
+   * ⭐ O BOLETO DE PAPEL, quando o XML não traz duplicata (04/09). OPCIONAL: sem ele a
+   * parcela nasce "A DEFINIR", que é o caminho certo pra pix/dinheiro combinado.
+   * ⚠️ A soma tem que fechar com o total da nota AO CENTAVO (`conferirPagamentoDoPapel`).
+   */
+  pagamento?: { parcelas: { dVenc: Date; valor: number }[] }
 }
 export interface ConfirmResult {
   conferenceId: string
@@ -49,6 +57,14 @@ export interface ConfirmResult {
 
 export async function confirmarConferencia(input: ConfirmInput): Promise<ConfirmResult> {
   const { companyId, nfeId, userId } = input
+
+  // ⛔ a conferência do pagamento vem ANTES de abrir a transação: parcela que não fecha com
+  // a nota é erro de digitação, e recusar cedo evita meia-gravação.
+  const nfePreCheck = await prisma.stockNfe.findFirst({ where: { id: input.nfeId, companyId: input.companyId }, select: { vNF: true } })
+  if (input.pagamento?.parcelas?.length) {
+    const c = conferirPagamentoDoPapel(input.pagamento.parcelas, nfePreCheck?.vNF ?? 0)
+    if (!c.ok) throw new Error(c.erros.join(' '))
+  }
 
   const nfe = await prisma.stockNfe.findFirst({ where: { id: nfeId, companyId }, select: { id: true, chave: true, status: true, temXmlCompleto: true, vNF: true } })
   if (!nfe) throw new Error('Nota não encontrada.')
@@ -185,14 +201,36 @@ export async function confirmarConferencia(input: ConfirmInput): Promise<Confirm
     // aparece no fluxo de caixa. ⚠️ E o juiz também não via — o F3 vigia sugestão parada, e
     // sugestão que não nasce não pára (a cegueira do E15).
     if (!dups.length) {
-      await tx.stockPayableSuggestion.create({
-        data: {
-          companyId, nfeId, chave: nfe.chave, supplierCnpj: cnpj || null,
-          supplierNome: input.fornecedor.nome, nDup: null,
-          dVenc: null, // ⚠️ NUNCA uma data inventada: sem documento, quem sabe é o dono
-          valor: round2(nfe.vNF ?? 0),
-        },
-      })
+      // ⭐⭐ O BOLETO DE PAPEL (04/09): o XML não traz duplicata, mas o boleto veio junto com a
+      // mercadoria e o dono SABE o vencimento. Digitar aqui — na hora em que a informação
+      // está na mão dele — faz o payable nascer no fluxo normal, sem passar pelo A DEFINIR.
+      //
+      // ⚠️ E É OPCIONAL: nota de pix combinado segue direto pro A DEFINIR. **A apurar > número
+      // inventado** — obrigar uma data aqui só produziria data falsa.
+      const doPapel = input.pagamento?.parcelas ?? []
+      if (doPapel.length) {
+        for (const [i, p] of doPapel.entries()) {
+          const sug = await tx.stockPayableSuggestion.create({
+            data: {
+              companyId, nfeId, chave: nfe.chave, supplierCnpj: cnpj || null,
+              supplierNome: input.fornecedor.nome,
+              nDup: doPapel.length > 1 ? `P${String(i + 1).padStart(2, '0')}` : null,
+              dVenc: p.dVenc, valor: round2(p.valor),
+            },
+          })
+          // ⭐ o rastro nasce junto: data sem quem-decidiu é número sem dono
+          await registrarVencimentoNoRecebimento(tx, companyId, sug.id, p.dVenc, userId)
+        }
+      } else {
+        await tx.stockPayableSuggestion.create({
+          data: {
+            companyId, nfeId, chave: nfe.chave, supplierCnpj: cnpj || null,
+            supplierNome: input.fornecedor.nome, nDup: null,
+            dVenc: null, // ⚠️ NUNCA uma data inventada: sem documento, quem sabe é o dono
+            valor: round2(nfe.vNF ?? 0),
+          },
+        })
+      }
     }
 
     // (e) tira da fila

@@ -32,6 +32,17 @@ const itemSchema = z.object({
 })
 const bodySchema = z.object({
   fornecedor: z.object({ cnpj: z.string(), nome: z.string(), uf: z.string().nullable().optional() }),
+  /**
+   * ⭐ O BOLETO DE PAPEL (04/09) — OPCIONAL. Quando o XML não traz duplicata mas o boleto veio
+   * junto com a mercadoria, o dono digita aqui e o payable nasce com a data certa, no fluxo
+   * normal. ⚠️ Sem isso a parcela nasce "A DEFINIR" — o certo pra pix/dinheiro combinado.
+   */
+  pagamento: z.object({
+    parcelas: z.array(z.object({
+      dVenc: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data da parcela inválida.'),
+      valor: z.number().positive('Valor da parcela inválido.'),
+    })).max(24),
+  }).optional(),
   itens: z.array(itemSchema).min(1),
   // PONTE 1 — bloco "BOLETOS DA NOTA": nada vai pro financeiro sem estes campos.
   enviarBoletos: z.boolean().optional(),
@@ -51,7 +62,10 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (!parsed.success) return NextResponse.json({ erro: 'Dados inválidos', detalhe: parsed.error.issues[0]?.message }, { status: 400 })
 
   try {
-    const r = await confirmarConferencia({ companyId, nfeId, userId: user.sub, fornecedor: parsed.data.fornecedor, itens: parsed.data.itens })
+    const r = await confirmarConferencia({ companyId, nfeId, userId: user.sub, fornecedor: parsed.data.fornecedor, itens: parsed.data.itens,
+      pagamento: parsed.data.pagamento
+        ? { parcelas: parsed.data.pagamento.parcelas.map((p) => ({ dVenc: new Date(`${p.dVenc}T00:00:00.000Z`), valor: p.valor })) }
+        : undefined })
 
     // PONTE 1 — os boletos que o dono marcou no bloco "BOLETOS DA NOTA" viram conta a
     // pagar de verdade. Só acontece com aceite EXPLÍCITO e só pra quem tem stock.manage:

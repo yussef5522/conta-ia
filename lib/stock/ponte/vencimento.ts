@@ -23,7 +23,15 @@ type Db = PrismaClient | Prisma.TransactionClient
 
 export class VencimentoError extends Error {}
 
-export type OrigemVencimento = 'DONO' | 'BOLETO'
+/**
+ * ⭐ De onde veio a data. **A lista mora AQUI, não num CHECK do banco** (lição de 04/09):
+ * origem é domínio ABERTO — nasceu com 2 valores e ganhou o 3º em 24 horas. Crescer aqui é
+ * editar um union; crescer no CHECK exigiria ALTER, que o módulo proíbe.
+ *   DONO                → combinou com o fornecedor e definiu depois, na tela de boletos
+ *   DONO_NO_RECEBIMENTO → o boleto de PAPEL chegou com a mercadoria e ele digitou na hora
+ *   BOLETO              → chegou o documento (XML/boleto) com a data
+ */
+export type OrigemVencimento = 'DONO' | 'DONO_NO_RECEBIMENTO' | 'BOLETO'
 
 /** ⭐ derivado, nunca gravado: sem data = a definir. */
 export const ehADefinir = (dVenc: Date | string | null | undefined): boolean => !dVenc
@@ -118,7 +126,7 @@ export async function definirVencimento(
     await tx.stockPayableSuggestion.update({ where: { id: suggestionId }, data: { dVenc } })
     // ⭐ o rastro entra na MESMA transação: data sem quem-decidiu é número sem dono, e é
     // exatamente o que o contador pergunta três meses depois.
-    await tx.stockVencimentoDefinido.create({
+    await tx.stockVencimentoEvento.create({
       data: { companyId, suggestionId, dVencAnterior: s.dVenc, dVencNovo: dVenc, origem, criadoPorId: userId ?? null },
     })
   })
@@ -138,7 +146,7 @@ export interface RastroVencimento {
 export async function rastroDoVencimento(
   companyId: string, suggestionId: string, db: Db = defaultPrisma,
 ): Promise<RastroVencimento[]> {
-  const rows = await db.stockVencimentoDefinido.findMany({
+  const rows = await db.stockVencimentoEvento.findMany({
     where: { companyId, suggestionId }, orderBy: { criadoEm: 'desc' },
   })
   if (!rows.length) return []
@@ -152,4 +160,59 @@ export async function rastroDoVencimento(
     origem: r.origem as OrigemVencimento, criadoEm: r.criadoEm,
     criadoPorNome: r.criadoPorId ? nome.get(r.criadoPorId) ?? null : null,
   }))
+}
+
+/**
+ * Registra o rastro de uma parcela que **já nasceu com data** na conferência.
+ *
+ * ⚠️ Existe separado de `definirVencimento` porque ali a data é uma TROCA (tem `anterior`,
+ * tem conflito a resolver); aqui é o nascimento — não há o que comparar, e a sugestão está
+ * sendo criada na mesma transação. Forçar o mesmo caminho exigiria a sugestão já existir.
+ */
+export async function registrarVencimentoNoRecebimento(
+  db: Db, companyId: string, suggestionId: string, dVenc: Date, userId?: string,
+): Promise<void> {
+  await db.stockVencimentoEvento.create({
+    data: { companyId, suggestionId, dVencAnterior: null, dVencNovo: dVenc, origem: 'DONO_NO_RECEBIMENTO', criadoPorId: userId ?? null },
+  })
+}
+
+export interface ParcelaDoPapel { dVenc: Date; valor: number }
+
+export interface ConferenciaDePagamento {
+  ok: boolean
+  erros: string[]
+  soma: number
+}
+
+const CENTAVO = 0.01
+const r2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
+
+/**
+ * ⭐⭐ VALIDA o pagamento digitado do boleto de PAPEL contra o total da nota.
+ *
+ * ⛔ RECUSA se não fechar AO CENTAVO — igual a todo resto do módulo. A nota é fato assinado
+ * pela SEFAZ: parcela que não soma o total é erro de digitação, e deixar passar criaria
+ * dívida com valor errado no fluxo de caixa.
+ *
+ * ⚠️ Data no passado é AVISO, não erro (a mesma regra da renegociação): boleto atrasado que
+ * chega junto com a mercadoria é justamente o caso mais urgente de registrar.
+ */
+export function conferirPagamentoDoPapel(parcelas: readonly ParcelaDoPapel[], totalNota: number): ConferenciaDePagamento {
+  const erros: string[] = []
+  if (!parcelas.length) return { ok: true, erros, soma: 0 } // ⭐ vazio = "a definir", caminho legítimo
+
+  parcelas.forEach((p, i) => {
+    if (!(p.valor > 0)) erros.push(`A parcela ${i + 1} está sem valor.`)
+    if (!p.dVenc || Number.isNaN(p.dVenc.getTime())) erros.push(`A parcela ${i + 1} está sem data.`)
+  })
+  const soma = r2(parcelas.reduce((s, p) => s + (Number(p.valor) || 0), 0))
+  const dif = r2(soma - r2(totalNota))
+  if (Math.abs(dif) > CENTAVO) {
+    erros.push(
+      `As parcelas somam R$ ${soma.toFixed(2)} e a nota é R$ ${r2(totalNota).toFixed(2)} `
+      + `(${dif > 0 ? 'sobra' : 'falta'} R$ ${Math.abs(dif).toFixed(2)}).`,
+    )
+  }
+  return { ok: erros.length === 0, erros, soma }
 }
