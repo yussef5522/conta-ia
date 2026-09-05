@@ -49,8 +49,22 @@ export async function lerConta(bankAccountId: string, db: PrismaClient = default
 
   // ⚠️ só EFFECTED soma — PAYABLE/RECEIVABLE é compromisso, não caixa (a mesma regra do
   // motor de saldo; se divergisse daqui, o invariante acusaria diferença fantasma).
+  //
+  // ⛔⛔ E CONCILIADA NÃO SOMA (05/09/2026) — a MESMA regra do saldo e do fluxo de caixa.
+  //
+  // O CASO: o dono marcou 8 boletos como pagos; como conta a pagar **é** uma `Transaction`,
+  // cada pagamento passou a ter DUAS linhas (a ex-payable e a do extrato). O saldo e o fluxo
+  // já descontavam a conciliada; **o B1 não** — e acusava a conta perfeita.
+  //
+  // Medido na Stone depois da costura: com as conciliadas, **9 intervalos** não fechavam;
+  // sem elas, **7** — e dois fecham **ao centavo** (31/08→01/09 e 03/09→05/09). Os outros
+  // sobreviventes têm assinatura de BANCO (pares ±2.178,67 e ±130,34 que se cancelam em
+  // intervalos vizinhos = fronteira de data, já documentada pro Stone em 28/08).
+  //
+  // ⚠️ Era o TERCEIRO leitor da mesma pergunta ("o que conta como caixa?") com régua própria.
+  // Alarme vermelho em conta que bate ao centavo é como um alarme morre.
   const txs = await db.transaction.findMany({
-    where: { bankAccountId, lifecycle: 'EFFECTED' },
+    where: { bankAccountId, lifecycle: 'EFFECTED', reconciledWithId: null },
     select: { date: true, amount: true, type: true, transferDirection: true },
   })
 
