@@ -242,6 +242,28 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⛔⛔⛔ O FÓSSIL DO LEDGERBAL NO GATE DO CONFIRMAR — E A CLASSE FECHADA (05/09/2026)
+
+**⚠️ E O IMPORT TINHA GRAVADO.** O dono leu *"Saldo não fechou com o banco — Calculado −R$ 5.871,14 vs LEDGERBAL −R$ 8.347,67. Revise a classificação"* e entendeu **recusa**. Conferido em prod: `status=SUCCESS · novas=14 · dup=6`, as 20 linhas de 01/09 em diante no ledger. Era **toast vermelho pós-gravação**. **O alarme falso custou um dia de import parado** — e alarme que mente sobre o que aconteceu é pior que alarme nenhum.
+
+Os **R$ 2.476,53** de diferença são o **bloqueio de 24h**, a mania documentada desde 15/08. Não era classificação errada; era a comparação que **saiu do preview em 04/09 e continuou viva no confirm**.
+
+**⛔⛔ SEGUNDA OCORRÊNCIA DA MESMA CLASSE NO MESMO PERFIL — e o conserto estava a 35 LINHAS.** No MESMO arquivo, o `ledgerBalMatched` consulta a ficha do banco **desde 01/09**; o `ledgerMismatch`, logo acima, não consultava. **Duas respostas pra mesma pergunta, calculadas em pontos diferentes** — foi assim que o fóssil sobreviveu a três correções.
+
+**⭐ A CLASSE, não a instância (ordem do dono).** Havia **6 leituras** de `ledgerBalReliable` espalhadas, cada uma com o seu `?? true`: orquestrador ×2 · `resolve-import-statuses` · `selo-do-import` · `classify-for-import` · `judge`. Agora:
+
+- **`podeConferirPorLedgerbal(ficha)`** é o dono da pergunta *"o saldo declarado deste banco serve de régua?"*.
+- **`avaliarFechamentoDeSaldo`** devolve as **três** saídas de um cálculo só (`mismatch`, `ledgerBalMatched`, `avisoSemSelo`) — impossível uma consultar a ficha e a outra não.
+- **Guard estrutural + auto-teste**: quem escrever `.ledgerBalReliable` num lugar novo fica vermelho e é mandado pra função. (Permitidos: o dono da pergunta, a ficha em si, e o juiz — que é PURO e recebe a resposta por parâmetro.)
+
+**⭐⭐ A REGRA DO DONO:** *"recusar a gravação por causa de um número que a gente provou que mente é segurar meu dinheiro fora do sistema por fé num número errado."* No Banrisul o import **grava**, não compara, e a tela diz **NEUTRO**: *"Importado — sem selo de saldo: … anexe o PDF pra conferir dia a dia."* ⚠️ **Banco desconhecido continua comparando** — a ressalva do banco sem ficha é da TELA (`decidirSelo` diz que não vai afirmar nada), **travar gravação, não**.
+
+**PROVADO EM PROD com os números reais:** `saldo −5.871,14 vs LEDGERBAL −8.347,67 → mismatch null · ledgerBalMatched null · aviso neutro`. E reimportar o mesmo arquivo agora: **20 já existem · 0 novas** — nada a refazer.
+
+⚠️ **`ledgerBalMatched: null` NÃO é "não bateu"** — é *"não dá pra dizer por aqui"*. Quem diz, no Banrisul, é a conferência dia a dia contra o PDF.
+
+12 testes novos (9 de comportamento + 3 do guard). Red-then-green nos dois: fóssil reposto → 2 vermelhos; cópia nova do `if` → o guard morde.
+
 ## ⛔⛔ A CONFERÊNCIA ACUSAVA O PRÓPRIO IMPORT · E O BANCO RE-DATA LINHA JÁ PUBLICADA (05/09/2026)
 
 **Os dois refinamentos que o dono levantou estavam certos — e juntos explicam os R$ 1.146,02 ao centavo.**
