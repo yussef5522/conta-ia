@@ -54,3 +54,16 @@ describe('⛔⛔ o furo de agosto NÃO contamina setembro', () => {
     expect(r.primeiroQueNaoFecha!.data, 'o dia em que o descolamento COMEÇOU').toBe('2026-08-31')
   })
 })
+
+describe('⛔⛔ REESCRITA × EXPORT DE MEIO-DIA — o que separa os dois é a HORA', () => {
+  // ⛔ Na 1ª rodada em prod o aviso somou o 01/09 ao 31/08 e anunciou R$ 2.699,08 de
+  // "reescrita". Mas a declaração anterior de 01/09 fora emitida às 14:01 DO PRÓPRIO DIA —
+  // um parcial, não um fechamento. O número que o dono mediu é 776,53, só o 31/08.
+  it('⭐⭐ a frase fala do MÊS certo e do valor certo', () => {
+    const aviso = reescritaDoBanco([{ data: '2026-08-31', de: -7353.66, para: -8130.19, diferenca: -776.53 }])!
+    expect(aviso).toMatch(/agosto/)
+    expect(aviso).toMatch(/776,53/)
+    expect(aviso, 'inflou com um parcial de setembro').not.toMatch(/2\.699,08/)
+    expect(aviso, 'mês abreviado errado ("set" no lugar de setembro)').not.toMatch(/ set /)
+  })
+})

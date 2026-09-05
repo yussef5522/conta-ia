@@ -144,15 +144,39 @@ export async function gravarReguaDeclarada(db: Db, input: GravarReguaInput): Pro
   // fechamento mudou — e o dono descobriria pelo saldo, meses depois.
   const jaGravados = await db.bankAccountSaldoDeclarado.findMany({
     where: { bankAccountId: input.bankAccountId },
-    select: { data: true, saldoContabil: true },
+    select: { data: true, saldoContabil: true, emitidoEm: true },
   })
-  const antes = new Map(jaGravados.map((g) => [g.data.toISOString().slice(0, 10), g.saldoContabil]))
+  const antes = new Map(jaGravados.map((g) => [g.data.toISOString().slice(0, 10), g]))
   const reescritos: ReguaReescrita[] = []
+  const atualizados: ReguaReescrita[] = []
   for (const d of input.dias) {
     const anterior = antes.get(d.data)
-    if (anterior != null && Math.abs(anterior - d.valor) > 0.005) {
-      reescritos.push({ data: d.data, de: anterior, para: d.valor, diferenca: Math.round((d.valor - anterior) * 100) / 100 })
+    if (anterior == null || Math.abs(anterior.saldoContabil - d.valor) <= 0.005) continue
+    const mudou: ReguaReescrita = {
+      data: d.data, de: anterior.saldoContabil, para: d.valor,
+      diferenca: Math.round((d.valor - anterior.saldoContabil) * 100) / 100,
     }
+    // ⭐⭐ REESCRITA × EXPORT DE MEIO-DIA — e a diferença é a HORA DE EMISSÃO da declaração
+    // anterior, que já estava gravada.
+    //
+    // ⛔ Sem esta separação o aviso inflava: na 1ª rodada ele somou o 01/09 (que mudou de
+    // −3.225,96 pra −5.148,51) ao 31/08 e anunciou **R$ 2.699,08** de "reescrita" — mas o
+    // PDF anterior fora emitido às **14:01 do próprio dia 01/09**, ou seja **no meio do
+    // dia**, antes dos encargos existirem. Aquele número nunca foi o fechamento do dia;
+    // era um parcial, e atualizá-lo é o esperado (a mania nº 6 do catálogo do Banrisul).
+    //
+    // ⚠️ REESCRITA DE VERDADE é o dia cuja declaração anterior foi emitida **depois do fim
+    // daquele dia** — já era o fechamento definitivo, e o banco o mudou. É o 31/08, com os
+    // R$ 776,53 que o dono mediu.
+    const declaradoDepoisDoDia = anterior.emitidoEm
+      ? anterior.emitidoEm.toISOString().slice(0, 10) > d.data
+      : true // sem hora de emissão, o conservador é tratar como fechamento
+    if (declaradoDepoisDoDia) reescritos.push(mudou)
+    else atualizados.push(mudou)
+  }
+  if (atualizados.length) {
+    console.log('[régua] parciais atualizados (export de meio-dia, esperado):',
+      atualizados.map((a) => `${a.data} ${a.de}→${a.para}`).join(' · '))
   }
 
   let n = 0
@@ -188,11 +212,8 @@ export async function gravarReguaDeclarada(db: Db, input: GravarReguaInput): Pro
 export function reescritaDoBanco(rs: ReguaReescrita[]): string | null {
   if (!rs.length) return null
   const brl = (n: number) => Math.abs(n).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-  const MES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'agosto', 'set', 'out', 'nov', 'dez']
-  const partes = rs.map((r) => {
-    const mes = MES[Number(r.data.slice(5, 7)) - 1]
-    return `${r.data.split('-').reverse().join('/')} de ${brl(r.de)} pra ${brl(r.para)} (${brl(r.diferenca)})`
-  })
+  const MES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']
+  const partes = rs.map((r) => `${r.data.split('-').reverse().join('/')} de ${brl(r.de)} pra ${brl(r.para)} (${brl(r.diferenca)})`)
   const mesesUnicos = [...new Set(rs.map((r) => MES[Number(r.data.slice(5, 7)) - 1]))]
   return `O banco reescreveu o fechamento de ${mesesUnicos.join(' e ')} em ${brl(rs.reduce((s, r) => s + Math.abs(r.diferenca), 0))}: `
     + `${partes.join(' · ')}. São lançamentos que ele postou depois do fato. `
