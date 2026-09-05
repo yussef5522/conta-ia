@@ -242,6 +242,44 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⛔⛔⛔ OS TRÊS BURACOS DO IMPORT DO BANRISUL — E OS TRÊS ERAM DE CÓDIGO (04/09/2026)
+
+**Os três faziam o dono retrabalhar A CADA import.** Medidos contra os blobs reais antes de eu tocar em qualquer coisa.
+
+### 1. A caixa "LEDGERBAL ausente" mentia — e a hipótese do dono estava certa
+
+**O arquivo TEM o saldo.** Nos 4 blobs de setembro o parser lê **−8.347,67 · −9.960,26 · −6.419,60 · −4.925,96**, e `<LEDGERBAL>` está nos quatro. **O parser não regrediu.**
+
+⛔ **A causa é a família "N caminhos":** a rota, pra ESCONDER a caixa nos bancos em que o LEDGERBAL não é régua, mandava `available:false` — e no componente essa flag **já tinha dono e significado**: *"o extrato não trouxe saldo"*. **Uma flag, dois significados**, e quem renderiza escolheu o errado, afirmando na cara do dono o contrário do arquivo.
+
+⭐ **Duas perguntas que nunca foram a mesma, agora separadas:** `available` = o ARQUIVO trouxe · `ehReguaNesteBanco` = a ficha do banco diz que serve de régua. Quem junta é `estadoDoBanner` (pura), e **os dois previews consomem o MESMO componente** — pôr a regra neles seria dois lugares decidindo, que foi como a mensagem errada nasceu. **No Banrisul a única mensagem sobre saldo é a faixa do PDF; "ausente" volta a significar uma coisa só, em qualquer banco.**
+
+### 2. A regra quebrava a cada grafia — e o SINAL tinha que entrar junto
+
+O ramo **CONTAINS casava por STRING CRUA**. As normalizações de 28/08 (que já colapsam `OP. CREDITO`/`OP.CREDITO`) valiam só pros ramos EXACT e NORMALIZED — e **todas as regras do Banrisul são CONTAINS**. Daí o **+5.252,06 em "escolha você" por UM espaço**, e a 2ª regra que o dono criou na mão com **0 aplicações**.
+
+⭐ As três grafias reais (`OP. CREDITO C/GARANTIA` · `OP.CREDITO C/GARANTIA` · `OP CRED C GARANT`) viram **`OP CREDITO C GARANTIA`**.
+
+⚠️⚠️ **E O CANÔNICO SOMA, NUNCA SUBSTITUI — medido ANTES de escrever:** a regra `"RECEBIMENTO PIX-PIX_CRE"` tem **851 aplicações** e casa por substring crua com `"RECEBIMENTO PIX-PIX_CRED  43098655000157 TUNA PAGAMENTOS LTDA"`. No canônico o catálogo expande `CRED → CREDITO`, o padrão vira `…PIX CRE` e **a regra de 851 aplicações pararia de morder**. Consertar o Banrisul quebrando o Sicredi, em silêncio, seria o pior desfecho — o raw fica.
+
+⛔⛔ **E A RÉGUA DO SINAL ENTRA NO MESMO COMMIT, senão o conserto vira um bug maior:** só a canonização jogaria o **−3.700 "OP CRED C GARANT"** dentro de **Receita de Vendas**, porque o texto casa. A régua saiu **sem coluna nova**: o `dreGroup` da categoria da regra já diz o sinal esperado — receita só casa com CREDIT, despesa só com DEBIT, **grupo neutro passa** (transferência e aporte acontecem nos dois sentidos; travar ali seria alarme falso). Sinal contraditório **não classifica** e a linha ganha *"Confira no banco: … saiu como DÉBITO, e o histórico com esse nome sempre foi entrada"* no lugar do "escolha você" mudo.
+
+⚠️ **O seed dos encargos usa a categoria que o DONO mais usou**, medida na história dele (IOF → Tarifas 6×2 · PACOTE SERVICOS → Tarifas 3×0 · JUROS → Juros e Encargos 1×0). **Não é o sistema escolhendo categoria: é o sistema repetindo a decisão dele.** O empate 1×1 do `TRANSF. ENCARGOS CTA UNICA` fica **marcado**, não resolvido no escuro.
+
+⛔ **E padrão CURTO é EXACT, não CONTAINS** — um teste pegou antes de ir pra prod: enquanto o CONTAINS casar por substring crua (e tem que casar), **um `"IOF"` acha `"BIOFARMA"`**.
+
+### 3. A inversão description × counterpartyName (anotada em 01/09, nunca tratada)
+
+O banco manda `<NAME>PIX ENVIADO` + `<MEMO>CACULA MIX`. Gravava descrição "CACULA MIX" e contraparte "PIX ENVIADO" — **9 transações em prod estão assim**. A correção decide **pela FORMA** (histórico genérico é conjunto fechado), **nunca pela posição** — posição é justamente o que o banco alterna.
+
+**⛔⛔ DOIS DEFEITOS MEUS QUE SÓ A PROVA EM PROD PEGOU** (rodar o pipeline real contra o arquivo do dono, em vez de acreditar no meu código):
+- **regra EXACT gravada CRUA nunca casa:** o índice indexa `rule.padrao` cru e busca com `normalizeExact(descricao)` (minúsculo). Meu seed gravou `"IOF"` e `"JUROS"` em maiúscula → **duas regras mortas**. *Regra morta é pior que regra ausente: parece cobertura.*
+- **espaço no fim do cadastro matava o sinal do PIX:** o nome da empresa está gravado como **`"caçula mix "`** e `normalizeForCompare` não aparava → `PIX ENVIADO` + `CACULA MIX` dava **0 sinais próprios**. É a **mesma cicatriz de 25/08** (a conta `'sicredi '`).
+
+**RESULTADO NO ARQUIVO REAL QUE ESTAVA PARADO (21 linhas):** **16 com categoria · 1 transferência (aguarda o par) · 1 "confira" · 3 escolha você** — contra o que ele viu ontem. **23 testes** com fixture derivada do `Extrato_20260904.ofx`; red-then-green nos **seis** defeitos (caixa 1 · CONTAINS cru 2 · canônico sem sinal 1 · inversão 2 · EXACT crua 1 · espaço no cadastro 2). 8.367 verdes, TS 0.
+
+**📋 ACHADO NO CAMINHO, NÃO PEDIDO — O BANRISUL ESTÁ 3 DIAS SEM IMPORTAR.** Os registros de 02, 03 e 04/09 são todos `status=PREVIEW`: **nenhum foi confirmado**. A última tx do Banrisul no sistema é de **01/09** ("ANTECIP STONE"), e o Sicredi e o Stone foram confirmados nesses mesmos dias. Ou seja: **ele abria o preview, batia nos três buracos e desistia** — exatamente o "retrabalho a cada import" que motivou este sprint. As 3 linhas de PREVIEW sem âncora não são regressão do gravador de âncora (preview não finaliza; `ledgerBalAmount` só é gravado no confirm).
+
 ## ⛔⛔⛔ A TELA ESCONDIA 63 DOS 85 FORNECEDORES — A DUPLICATA ERA SINTOMA (04/09/2026)
 
 **O dono achou que tinha sido descuido dele.** Foi cadastrar uma nota manual da **RM2**, não achou no seletor, criou uma segunda — e ficou com duas. **Medido em prod antes de tocar em qualquer coisa: `stock_supplier` = 27 · `Supplier` (financeiro) = 85. Sessenta e três invisíveis.**
