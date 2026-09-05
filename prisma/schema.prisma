@@ -247,8 +247,8 @@ model BankAccount {
 
   // ⭐ BLOQUEIO: retido pelo banco, NUNCA transação. Datado porque muda todo dia e só
   // vale no instante do PDF (o "(+) BLOQUEADO + 24 HS" do Banrisul).
-  blockedAmount  Float?
-  blockedAt      DateTime?
+  blockedAmount Float?
+  blockedAt     DateTime?
 
   saldosDeclarados BankAccountSaldoDeclarado[]
   openingEvents    BankAccountOpeningEvent[]
@@ -2871,9 +2871,9 @@ model MonitorAlert {
 // ============================================================================
 
 model Loan {
-  id            String      @id @default(cuid())
+  id            String       @id @default(cuid())
   companyId     String
-  company       Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company       Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
   // Conta que recebe a liberação E paga as parcelas.
   // ⭐⭐ NULLABLE desde 01/09/2026 — mútuo pago DIRETO ao fornecedor pelo mutuante nunca
   // transita por conta da empresa. `null` = **sem trânsito por conta**, e é um estado de
@@ -3449,14 +3449,14 @@ model StockPayableSuggestion {
 /// ⛔ SUPERSEDED em 04/09 por StockVencimentoEvento — o CHECK de `origem` era fechado demais
 /// pra uma lista que cresce. NUNCA teve linha em produção; fica porque DROP é proibido aqui.
 model StockVencimentoDefinido {
-  id            String   @id @default(cuid())
+  id            String    @id @default(cuid())
   companyId     String
   suggestionId  String
   dVencAnterior DateTime?
   dVencNovo     DateTime
   origem        String
   criadoPorId   String?
-  criadoEm      DateTime @default(now())
+  criadoEm      DateTime  @default(now())
 
   @@index([companyId])
   @@index([companyId, suggestionId])
@@ -4116,7 +4116,7 @@ model StockPayableLink {
 // ⭐ A RÉGUA do PDF: saldo CONTÁBIL declarado por dia. O selo "conferido" é DERIVADO
 // daqui contra o ledger — nunca gravado, porque selo gravado envelhece e mente.
 model BankAccountSaldoDeclarado {
-  id            String   @id @default(cuid())
+  id            String      @id @default(cuid())
   bankAccountId String
   /// ⚠️ o dia, SEMPRE em meia-noite UTC. `@db.Date` não existe no SQLite do dev, então a
   /// normalização é do código (`diaUtc`), não do banco — e tem teste.
@@ -4126,7 +4126,7 @@ model BankAccountSaldoDeclarado {
   origem        String
   /// instante de emissão do extrato (o retrato tem hora)
   emitidoEm     DateTime?
-  criadoEm      DateTime @default(now())
+  criadoEm      DateTime    @default(now())
   bankAccount   BankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
 
   @@unique([bankAccountId, data])
@@ -4136,7 +4136,7 @@ model BankAccountSaldoDeclarado {
 // ⭐⭐ Toda mudança de âncora vira evento (quem, quando, valor anterior). Exigência do
 // dono: "se um dia alguém importar jun/jul certo e mover a âncora pra trás, o rastro fica".
 model BankAccountOpeningEvent {
-  id            String   @id @default(cuid())
+  id            String      @id @default(cuid())
   bankAccountId String
   valorAnterior Float?
   dataAnterior  DateTime?
@@ -4144,7 +4144,7 @@ model BankAccountOpeningEvent {
   dataNova      DateTime
   origem        String
   userId        String?
-  criadoEm      DateTime @default(now())
+  criadoEm      DateTime    @default(now())
   bankAccount   BankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
 
   @@index([bankAccountId, criadoEm])
@@ -4213,4 +4213,31 @@ model StockVendaComplementoNome {
   @@unique([companyId, nomeSuitable])
   @@index([companyId])
   @@map("stock_venda_complemento_nome")
+}
+
+/// ⭐⭐ O RASTRO DA UNIDADE CORRIGIDA (05/09/2026) — "a nota dizia 12 KG; entrada conferida
+/// como 12 UN, por Fulano". A NOTA nunca se reescreve; o que se registra é a ENTRADA.
+/// ⛔ Tabela própria (migration de estoque é CREATE-only) e conteúdo próprio: correção tem
+/// autor e data. É daqui que sai o aprendizado por (fornecedor, cProd).
+model StockUnidadeCorrigida {
+  id             String   @id @default(cuid())
+  companyId      String
+  supplierCnpj   String?
+  cProd          String?
+  nfeItemId      String?
+  conferenceId   String?
+  itemId         String?
+  /// o que a NOTA declarou
+  unidadeNota    String
+  qtdNota        Float
+  /// o que o DONO conferiu
+  unidadeEntrada String
+  qtdEntrada     Float
+  fatorConversao Float    @default(1)
+  corrigidoPorId String?
+  criadoEm       DateTime @default(now())
+
+  @@index([companyId, supplierCnpj, cProd, criadoEm])
+  @@index([companyId, criadoEm])
+  @@map("stock_unidade_corrigida")
 }

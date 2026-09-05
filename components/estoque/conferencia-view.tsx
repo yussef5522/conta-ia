@@ -21,6 +21,10 @@ type Motivo = (typeof MOTIVOS)[number]
 export interface ConfItem {
   nfeItemId: string; xProd: string; cProd: string; ncm: string; uCom: string; qCom: number; vUnCom: number; vProd: number
   mapeado: { itemId: string; nome: string; unidadeControle: Unidade; fatorConversao: number } | null
+  /** ⭐ 05/09: o que o dono corrigiu da última vez neste (fornecedor, cProd) */
+  correcaoAnterior?: { unidadeNota: string; unidadeEntrada: string; em: string } | null
+  /** ⭐ o que o sistema sugere sobre a unidade, com o motivo — sugere, não decide */
+  sugestaoDeUnidade?: string | null
   sugestao: { nome: string; unidade: Unidade | null; categoria: Categoria }
   uTrib?: string; fatorNota?: number | null // dupla unidade da NF-e (o fator vem da nota)
 }
@@ -50,6 +54,8 @@ export interface MapeadoSel { itemId: string; nome: string; unidadeControle: Uni
 interface Estado {
   mapeado: MapeadoSel | null
   qtdRecebida: number
+  /** ⭐ 05/09: a unidade que o dono conferiu, quando a nota veio errada (null = a da nota) */
+  unidadeEntrada?: string | null
   motivo: Motivo | null
   fotoBase64: string | null
 }
@@ -112,7 +118,7 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
     try {
       const itens = data.itens.map((it) => {
         const e = estado[it.nfeItemId]!
-        return { nfeItemId: it.nfeItemId, cProd: it.cProd, xProd: it.xProd, uCom: it.uCom, qtdNota: it.qCom, vUnCom: it.vUnCom, qtdRecebida: e.qtdRecebida, motivo: e.motivo, fotoBase64: e.fotoBase64, mapeado: e.mapeado }
+        return { nfeItemId: it.nfeItemId, cProd: it.cProd, xProd: it.xProd, uCom: it.uCom, uTrib: it.uTrib, qtdNota: it.qCom, vUnCom: it.vUnCom, qtdRecebida: e.qtdRecebida, unidadeEntrada: e.unidadeEntrada ?? null, motivo: e.motivo, fotoBase64: e.fotoBase64, mapeado: e.mapeado }
       })
       const r = await fetch(`/api/empresas/${companyId}/estoque/recebimentos/${nfeId}/confirmar`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -256,9 +262,30 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
                         <span className="inline-flex items-center gap-1.5">
                           <input type="number" inputMode="decimal" value={e.qtdRecebida} onChange={(ev) => setItem(it.nfeItemId, { qtdRecebida: Number(ev.target.value) })}
                             className={`h-8 w-24 rounded-lg border px-2 text-right text-[13px] tabular-nums ${diverge ? 'border-amber-400 bg-amber-50' : 'border-slate-300'}`} />
-                          <span className="text-[11px] text-slate-400">{e.mapeado.unidadeControle}</span>
+                          {/* ⭐⭐ A UNIDADE DE ENTRADA É EDITÁVEL (05/09) — caso real: o ALAN
+                              mandou "12 KG" de leite em pó que são 12 LATAS. A NOTA fica
+                              como veio; o que muda é a ENTRADA, com rastro. */}
+                          <select
+                            value={e.unidadeEntrada ?? it.uCom}
+                            onChange={(ev) => setItem(it.nfeItemId, { unidadeEntrada: ev.target.value === it.uCom ? null : ev.target.value })}
+                            className={`h-8 rounded-lg border px-1 text-[11px] ${e.unidadeEntrada && e.unidadeEntrada !== it.uCom ? 'border-sky-400 bg-sky-50 text-sky-800' : 'border-slate-200 text-slate-500'}`}
+                            title="a unidade que ENTRA no estoque — a nota continua registrada como veio"
+                          >
+                            {[...new Set([it.uCom, it.uTrib, e.mapeado.unidadeControle, 'UN', 'KG', 'LT'].filter(Boolean))].map((u) => (
+                              <option key={u} value={u}>{u}</option>
+                            ))}
+                          </select>
                         </span>
                       ) : <span className="text-xs text-slate-300">—</span>}
+                      {/* ⚠️ SUGERE COM O MOTIVO, nunca troca sozinho */}
+                      {e?.mapeado && it.sugestaoDeUnidade && (e.unidadeEntrada ?? it.uCom) === it.uCom && (
+                        <p className="mt-0.5 max-w-[280px] text-left text-[10px] leading-tight text-sky-700">{it.sugestaoDeUnidade}</p>
+                      )}
+                      {e?.unidadeEntrada && e.unidadeEntrada !== it.uCom && (
+                        <p className="mt-0.5 text-right text-[10px] text-sky-700">
+                          a nota diz {it.qCom} {it.uCom} · entra como {e.qtdRecebida} {e.unidadeEntrada}
+                        </p>
+                      )}
                     </td>
                     <td className={`whitespace-nowrap px-3 py-1 text-right text-[13px] tabular-nums ${diverge ? 'font-semibold text-amber-700' : 'text-slate-300'}`}>
                       {diverge ? `${delta > 0 ? '+' : ''}${Number(delta.toFixed(3))}` : '—'}

@@ -11,6 +11,7 @@
 import { prisma } from '@/lib/db'
 import { normalizarBusca } from '@/lib/busca-texto'
 import { criarMovimento } from './movement'
+import { avaliarUnidadeDeEntrada, custoNaUnidadeDeEntrada, normalizarUnidade } from './unidade-de-entrada'
 import { recomputeSaldoCache } from './saldo'
 import { enviarEvento } from './sefaz/ciencia'
 import { TP_EVENTO } from './sefaz/evento'
@@ -30,6 +31,10 @@ export interface ConfirmItemInput {
   qtdRecebida: number
   motivo?: string | null
   fotoBase64?: string | null
+  /** `uTrib` da linha — o desempate que sugere a correção de unidade (ver `unidade-de-entrada.ts`) */
+  uTrib?: string | null
+  /** ⭐ 05/09: a unidade que o DONO conferiu, quando a nota veio errada. A nota fica como veio. */
+  unidadeEntrada?: string | null
   mapeado: { itemId: string; nome: string; unidadeControle: string; categoria?: string; fatorConversao: number; novo: boolean }
 }
 export interface ConfirmInput {
@@ -179,7 +184,17 @@ export async function confirmarConferencia(input: ConfirmInput): Promise<Confirm
       // quem arredonda é a LEITURA**. E não é só estética: com o fator certo,
       // qtdRecebida × (vUnCom/fator) == qCom × vUnCom == vProd **exato**, então o que
       // entra no estoque passa a bater ao centavo com o que a nota declara.
-      const custoUnitario = it.vUnCom / (it.mapeado.fatorConversao || 1)
+      // ⛔⛔ A UNIDADE DE ENTRADA PASSA PELA MESMA RÉGUA DO FATOR (05/09, guard do dono):
+      // identidade só entre unidades IGUAIS; entre diferentes, fator conhecido — **nada de
+      // fator 1 silencioso entre KG e UN**, que é como 12 quilos de leite em pó virariam
+      // 12 latas sem ninguém decidir.
+      const aval = avaliarUnidadeDeEntrada({
+        unidadeNota: it.uCom, unidadeTributaria: it.uTrib, unidadeEntrada: it.unidadeEntrada,
+        unidadeItem: it.mapeado.unidadeControle, fator: it.mapeado.fatorConversao,
+      })
+      if (!aval.ok) throw new Error(`${it.xProd}: ${aval.bloqueio}`)
+
+      const custoUnitario = custoNaUnidadeDeEntrada(it.vUnCom, it.mapeado.fatorConversao)
       const custoTotal = round2(it.qtdRecebida * custoUnitario)
       valorEntrada = round2(valorEntrada + custoTotal)
       await criarMovimento(tx, {
@@ -187,6 +202,21 @@ export async function confirmarConferencia(input: ConfirmInput): Promise<Confirm
         quantidade: it.qtdRecebida, custoUnitario, custoTotal,
         receiptId: conference.id, nfeChave: nfe.chave, nItem: null, origem, criadoPorId: userId,
       })
+
+      // ⭐⭐ O RASTRO DA CORREÇÃO — só quando houve correção de verdade. A NOTA fica como
+      // veio (12 KG, assinada); o que se registra é o que o dono conferiu. E é daqui que
+      // sai o aprendizado por (fornecedor, cProd) na próxima nota.
+      if (aval.corrigida) {
+        await tx.stockUnidadeCorrigida.create({
+          data: {
+            companyId, supplierCnpj: cnpj, cProd: it.cProd || null,
+            nfeItemId: it.nfeItemId, conferenceId: conference.id, itemId: itemIdReal.get(it.nfeItemId),
+            unidadeNota: normalizarUnidade(it.uCom), qtdNota: it.qtdNota,
+            unidadeEntrada: aval.unidade, qtdEntrada: it.qtdRecebida,
+            fatorConversao: it.mapeado.fatorConversao || 1, corrigidoPorId: userId,
+          },
+        })
+      }
     }
 
     // (d) contas a pagar SUGERIDO (ponte OFF)

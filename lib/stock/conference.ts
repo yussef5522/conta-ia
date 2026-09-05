@@ -2,6 +2,7 @@
 // pra a tela ser UMA só). Read-only: mostra itens, mapeamento existente e sugestões.
 // Enquanto o CONFIRMAR não liga, NÃO grava. Só LÊ.
 
+import { avaliarUnidadeDeEntrada, normalizarUnidade } from './unidade-de-entrada'
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { normalizarBusca } from '@/lib/busca-texto'
@@ -22,6 +23,10 @@ export interface ConfItem {
   mapeado: { itemId: string; nome: string; unidadeControle: UnidadeControle; fatorConversao: number } | null
   sugestao: { nome: string; unidade: UnidadeControle | null; categoria: CategoriaEstoque }
   uTrib: string // unidade de tributação da nota (às vezes já é a de controle: UN/KG)
+  /** ⭐ 05/09: a última vez que o dono corrigiu a unidade DESTE (fornecedor, cProd) */
+  correcaoAnterior: { unidadeNota: string; unidadeEntrada: string; em: string } | null
+  /** ⭐ o que o sistema SUGERE sobre a unidade, com o motivo medido (nunca decide) */
+  sugestaoDeUnidade: string | null
   fatorNota: number | null // qTrib/qCom quando uTrib é unidade de controle → o fator vem DA NOTA
 }
 export interface ConfView {
@@ -86,12 +91,29 @@ export async function buildConferenceView(companyId: string, nfeId: string, db: 
   const itensEstoque = itemIds.length ? await db.stockItem.findMany({ where: { companyId, id: { in: itemIds } }, select: { id: true, nome: true, unidadeControle: true } }) : []
   const itemById = new Map(itensEstoque.map((i) => [i.id, i]))
 
+  // ⭐⭐ O APRENDIZADO DA CORREÇÃO (05/09) — "da última vez você conferiu como UN".
+  //
+  // ⚠️ SUGERE, NÃO DECIDE: o mesmo cProd pode um dia vir a granel DE VERDADE, e aí a
+  // unidade da nota está certa. Decidir por ele aqui seria a mesma classe do "casar por
+  // semelhança" que o módulo recusa em toda parte.
+  const cProdsDaNota = itensNfe.map((i) => i.cProd).filter((c): c is string => !!c)
+  const correcoes = cnpj && cProdsDaNota.length
+    ? await db.stockUnidadeCorrigida.findMany({
+      where: { companyId, supplierCnpj: cnpj, cProd: { in: cProdsDaNota } },
+      orderBy: { criadoEm: 'desc' },
+      select: { cProd: true, unidadeNota: true, unidadeEntrada: true, criadoEm: true },
+    })
+    : []
+  const ultimaCorrecao = new Map<string, (typeof correcoes)[number]>()
+  for (const c of correcoes) if (c.cProd && !ultimaCorrecao.has(c.cProd)) ultimaCorrecao.set(c.cProd, c)
+
   const itens: ConfItem[] = itensNfe.map((it) => {
     // ⚠️ ORDEM DE RESOLUÇÃO — o CÓDIGO manda; o NOME é o 2º degrau, nunca o 1º. Código é
     // identificador do fornecedor; nome é texto que ele pode reescrever a qualquer nota.
     const porCodigo = it.cProd ? mapaPorCProd.get(it.cProd) : undefined
     const m = porCodigo ?? mapaPorNome.get(normalizarBusca(it.xProd ?? ''))
     const estoque = m ? itemById.get(m.itemId) : undefined
+    const correcao = it.cProd ? ultimaCorrecao.get(it.cProd) : undefined
     return {
       nfeItemId: it.id,
       xProd: it.xProd,
@@ -105,6 +127,17 @@ export async function buildConferenceView(companyId: string, nfeId: string, db: 
       sugestao: { nome: sugerirNome(it.xProd), unidade: sugerirUnidade(it.uCom), categoria: sugerirCategoria(it.xProd, it.ncm) },
       uTrib: it.uTrib ?? '',
       fatorNota: fatorDaNota(it.uCom, it.qCom, it.uTrib, it.qTrib),
+      correcaoAnterior: correcao
+        ? { unidadeNota: correcao.unidadeNota, unidadeEntrada: correcao.unidadeEntrada, em: correcao.criadoEm.toISOString().slice(0, 10) }
+        : null,
+      // ⭐ a memória do dono vem PRIMEIRO; a evidência da própria nota (uCom × uTrib) é o
+      // 2º degrau — a mesma ordem do fator (mapa aprendido > nota > palpite).
+      sugestaoDeUnidade: correcao && normalizarUnidade(correcao.unidadeNota) === normalizarUnidade(it.uCom)
+        ? `Da última vez (${correcao.criadoEm.toISOString().slice(8, 10)}/${correcao.criadoEm.toISOString().slice(5, 7)}) este produto veio como ${correcao.unidadeNota} e você conferiu como ${correcao.unidadeEntrada}. Conferir igual?`
+        : avaliarUnidadeDeEntrada({
+          unidadeNota: it.uCom, unidadeTributaria: it.uTrib,
+          unidadeItem: estoque?.unidadeControle ?? null, fator: m?.fatorConversao ?? null,
+        }).sugestao,
     }
   })
 

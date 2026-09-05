@@ -16,6 +16,9 @@ const itemSchema = z.object({
   cProd: z.string().default(''),
   xProd: z.string(),
   uCom: z.string().default(''),
+  // ⭐ 05/09: a unidade tributária (o desempate) e a que o dono conferiu
+  uTrib: z.string().nullable().optional(),
+  unidadeEntrada: z.string().nullable().optional(),
   qtdNota: z.coerce.number(),
   vUnCom: z.coerce.number(),
   qtdRecebida: z.coerce.number().positive('quantidade recebida tem que ser > 0'),
