@@ -510,7 +510,7 @@ function ImportComplementos({ id }: { id: string }) {
  * Bloquear trocaria uma informação verdadeira por um estoque bonito e falso.
  */
 function BaixaComplementos({ id }: { id: string }) {
-  const [dias, setDias] = useState<{ data: string; ehPeriodo: boolean; linhas: number; ocorrencias: number; baixado: boolean; precisaReprocessar: boolean }[] | null>(null)
+  const [dias, setDias] = useState<{ data: string; ehPeriodo: boolean; linhas: number; ocorrencias: number; baixado: boolean; precisaReprocessar: boolean; dispensado: boolean; importadoEm: string }[] | null>(null)
   const [plano, setPlano] = useState<null | {
     data: string; ehPeriodo: boolean; jaBaixado: boolean; precisaReprocessar: boolean
     totalOcorrencias: number; ocorrenciasBaixadas: number
@@ -534,6 +534,25 @@ function BaixaComplementos({ id }: { id: string }) {
       const j = await r.json().catch(() => null)
       if (!r.ok) { setErro(j?.erro ?? 'Não consegui montar o preview.'); return }
       setPlano(j.plano)
+    } finally { setBusy(false) }
+  }
+
+  // ⭐⭐ "NÃO BAIXAR — DECISÃO" (05/09): o dia sai do aviso e do juiz, com rastro e
+  // reversível. ⛔ Sem isto, o alarme novo gritaria pra sempre sobre dias que o dono pulou
+  // de propósito — e alarme falso repetido mata o alarme.
+  const dispensar = async (data: string, jaDispensado: boolean) => {
+    setBusy(true); setErro(null)
+    try {
+      const url = `/api/empresas/${id}/estoque/vendas/dispensar`
+      const r = jaDispensado
+        ? await fetch(`${url}?escopo=COMPLEMENTO&data=${data}`, { method: 'DELETE' })
+        : await fetch(url, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ escopo: 'COMPLEMENTO', data, motivo: 'produção não estava montada neste dia' }),
+        })
+      const j = await r.json().catch(() => null)
+      if (!r.ok) { setErro(j?.erro ?? 'Não consegui marcar o dia.'); return }
+      await carregar()
     } finally { setBusy(false) }
   }
 
@@ -572,14 +591,26 @@ function BaixaComplementos({ id }: { id: string }) {
               {d.ehPeriodo ? <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-500">período — não baixa</span>
                 : d.precisaReprocessar ? <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-800">precisa reprocessar</span>
                   : d.baixado ? <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[11px] text-emerald-700">baixado</span>
-                    : <span className="text-[11px] text-slate-400">não baixado</span>}
+                    : d.dispensado ? <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600">não baixar — decisão</span>
+                      : <span className="text-[11px] text-slate-400">não baixado</span>}
             </td>
             <td className="px-3 py-0 text-right">
               {!d.ehPeriodo && (
-                <button onClick={() => abrir(d.data)} disabled={busy}
-                  className="text-[11px] text-[#185FA5] hover:underline disabled:opacity-40">
-                  {d.precisaReprocessar ? 'reprocessar' : d.baixado ? 'ver' : 'baixar'}
-                </button>
+                <span className="inline-flex items-center gap-2">
+                  <button onClick={() => abrir(d.data)} disabled={busy}
+                    className="text-[11px] text-[#185FA5] hover:underline disabled:opacity-40">
+                    {d.precisaReprocessar ? 'reprocessar' : d.baixado ? 'ver' : 'baixar'}
+                  </button>
+                  {/* ⚠️ dia JÁ baixado não se dispensa: a saída ali é estornar, que é outro
+                      gesto, com outro nome. Dispensar é "este dia não vai baixar". */}
+                  {!d.baixado && (
+                    <button onClick={() => dispensar(d.data, d.dispensado)} disabled={busy}
+                      className="text-[11px] text-slate-400 hover:text-slate-700 hover:underline disabled:opacity-40"
+                      title={d.dispensado ? 'volta a ser pendência e o aviso volta a valer' : 'sai do aviso e do juiz — reversível, com rastro'}>
+                      {d.dispensado ? 'voltar a cobrar' : 'não baixar'}
+                    </button>
+                  )}
+                </span>
               )}
             </td>
           </tr>

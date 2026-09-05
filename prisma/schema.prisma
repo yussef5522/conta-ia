@@ -4241,3 +4241,23 @@ model StockUnidadeCorrigida {
   @@index([companyId, criadoEm])
   @@map("stock_unidade_corrigida")
 }
+
+/// ⭐⭐ O DIA QUE O DONO DECIDIU NÃO BAIXAR (05/09/2026). Sem ele, o aviso de "importado sem
+/// baixar" gritaria pra sempre sobre dias pulados de propósito — e alarme falso repetido
+/// mata o alarme. Reversível, com autor e data nos dois sentidos.
+model StockVendaDiaDispensado {
+  id              String    @id @default(cuid())
+  companyId       String
+  /// COMPLEMENTO | PRODUTO
+  escopo          String
+  data            DateTime
+  importId        String?
+  motivo          String?
+  dispensadoPorId String?
+  criadoEm        DateTime  @default(now())
+  revertidoEm     DateTime?
+  revertidoPorId  String?
+
+  @@index([companyId, escopo, criadoEm])
+  @@map("stock_venda_dia_dispensado")
+}

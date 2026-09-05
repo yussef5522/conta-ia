@@ -18,6 +18,7 @@
 //      import; se a baixa ficasse como está, sobrariam **linha nova + movimento velho**
 //      convivendo — o estoque baixado por um número que a tela não mostra mais.
 
+import { diasDispensados } from './dia-dispensado'
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { montarCtx, explodir } from './baixa-venda'
@@ -240,6 +241,10 @@ export interface DiaComplemento {
   linhas: number
   ocorrencias: number
   baixado: boolean
+  /** ⭐ 05/09: o dono decidiu NÃO baixar este dia — sai do aviso e do juiz, reversível */
+  dispensado: boolean
+  /** quando o dia entrou (a idade que o aviso de 24h usa) */
+  importadoEm: string
   precisaReprocessar: boolean
 }
 
@@ -254,14 +259,20 @@ export interface DiaComplemento {
 export async function listarDiasComplemento(
   companyId: string, db: PrismaClient = defaultPrisma,
 ): Promise<DiaComplemento[]> {
-  const linhas = await db.stockVendaComplementoLinha.findMany({
-    where: { companyId }, select: { data: true, importId: true, ocorrencias: true },
-  })
-  const porDia = new Map<string, { importId: string; linhas: number; ocorrencias: number }>()
+  const [linhas, dispensados] = await Promise.all([
+    db.stockVendaComplementoLinha.findMany({
+      where: { companyId }, select: { data: true, importId: true, ocorrencias: true, criadoEm: true },
+    }),
+    // ⭐ a régua ÚNICA da dispensa (05/09) — a tela, o aviso e o juiz leem a MESMA
+    diasDispensados(db, companyId, 'COMPLEMENTO'),
+  ])
+  const porDia = new Map<string, { importId: string; linhas: number; ocorrencias: number; importadoEm: Date }>()
   for (const l of linhas) {
     const k = l.data.toISOString().slice(0, 10)
-    const a = porDia.get(k) ?? { importId: l.importId, linhas: 0, ocorrencias: 0 }
+    const a = porDia.get(k) ?? { importId: l.importId, linhas: 0, ocorrencias: 0, importadoEm: l.criadoEm }
     a.linhas++; a.ocorrencias += l.ocorrencias
+    // ⚠️ o mais ANTIGO manda: é quando o dia entrou, e é dele que sai a idade do aviso
+    if (l.criadoEm < a.importadoEm) a.importadoEm = l.criadoEm
     porDia.set(k, a)
   }
 
@@ -273,6 +284,8 @@ export async function listarDiasComplemento(
       linhas: a.linhas, ocorrencias: a.ocorrencias,
       baixado: plano?.jaBaixado ?? false,
       precisaReprocessar: plano?.precisaReprocessar ?? false,
+      dispensado: dispensados.has(data),
+      importadoEm: a.importadoEm.toISOString(),
     })
   }
   return out
