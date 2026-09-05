@@ -242,6 +242,41 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⛔⛔⛔ TRÊS DIAS DE COMPLEMENTO PARADOS — E O JUIZ NÃO TINHA COMO SABER (05/09/2026)
+
+**O dono relatou "a baixa não desconta". O motor estava 100% certo; o que faltava era o gesto — e o alarme que teria contado.**
+
+**MEDIDO, tudo por ID (REGRA 8):**
+- **`0` movimentos com `receiptId` começando em `comp-`** — a baixa de complemento **nunca rodou**, em dia nenhum.
+- o mapa está certo: `"CALABRESA"` (e as 3 grafias) → ficha `cmtkwy7pl…`, SABOR, 1 componente → **`cmti20jp8000n8cepfzcieo5z`** ("porcao de calabresa 120 grama" — a INTERMEDIARIO, não a crua `cmthu8f1…` de KG).
+- o **plano do dia 04/09, montado pelo caminho real**, está correto: **103 ocorrências → 103 UN da porção** (+3 da acebolada), 4 itens agregados, 27 com destino, 60 pendentes.
+- a porção só tem **entradas**: `+70 · +106 · +72 · −9 (contagem) · +105`. **Nada nunca a consumiu** — por isso o saldo só sobe.
+
+**⛔ A CAUSA DE FUNDO É DE DESENHO, E É MINHA:** as duas metades do trabalho de complemento moram em **telas diferentes** — a **prateleira/mapeamento** em `/estoque/cardapio` (onde ele trabalha) e o **import + baixa** em `/estoque/vendas`, aba vizinha à baixa de **produtos**, que tem **o mesmo rótulo** ("Confirmar a baixa") e responde "pronto". A baixa de produtos de 04/09 rodou e gravou 10 movimentos (PAO DE XIS, beef, caixas, **porçao queijo −271**); **nenhuma porção de SABOR** entre eles — o que bate com o dono ter deixado em branco o *"CALABRESA aparecia?"*.
+
+### ⭐⭐ V2 — O INVARIANTE QUE FALTAVA EXISTIR
+
+*"importado e NUNCA baixou o estoque há > 24h"*, pros **dois** relatórios. Três dias ficaram parados com **mapa certo, ficha certa, plano certo e zero movimento**, e nada avisou. ⚠️ 24h porque **importar e baixar no mesmo minuto não é pendência**; e **PERÍODO nunca avisa** — ele existe pra montar a lista de sabores, não pra baixar.
+
+### ⭐⭐ "NÃO BAIXAR — DECISÃO" (o estado que protege o alarme)
+
+**Decisão do dono: as baixas começam de 04/09 pra frente** — em 02 e 03/09 a produção não estava montada e baixar ali só criaria negativo sem significado. É a mesma disciplina do **"AGOSTO É O PISO"**.
+
+**⛔⛔ O V2 JÁ NASCEU RESPEITANDO A DISPENSA.** Sem isso ele gritaria **para sempre** sobre dias pulados de propósito — **alarme falso repetido mata o alarme** (os 111 falsos do juiz de vendas). Um invariante que nasce ruidoso é pior que invariante nenhum.
+
+- tabela CREATE-only com **índice único PARCIAL**: dispensar duas vezes é **impossível por construção**, não "checado".
+- **reversível, com autor e motivo**; reverter **não apaga** — carimba `revertidoEm`, e o rastro vale nos dois sentidos (o desenho da recusa de nota).
+- ⚠️ **dia JÁ baixado não se dispensa**: ali a saída é **estornar**, que é outro gesto com outro nome.
+- a régua é **uma função** que a tela, o aviso e o juiz leem — em vez de um `where` copiado em três lugares, que é como um deles fica pra trás.
+
+**EM PROD:** V2 acusou os dois dias com a frase que **ensina a saída**; dispensados 02 e 03/09 → **juiz calou**; a tela mostra `NÃO BAIXAR — DECISÃO` com o rastro. **04/09 segue como pendência**, que é o certo — é o dia que o dono vai baixar.
+
+**⚠️ MEDIDO E REPORTADO:** os **PRODUTOS de 02, 03 e 04/09 já estão TODOS baixados** — só os complementos estavam parados. Fica a assimetria daqueles dois dias (o produto saiu, o sabor não), registrada por decisão do dono.
+
+**⚠️ ACHADO NO CAMINHO (cadastro, decisão dele):** a conta `yussefmusa5522@gmail.com` tem `name = "nura abu zahry musa"` — **todo rastro que o dono deixar sai com esse nome**. Não renomeei conta de usuário por conta própria.
+
+11 testes, red-then-green nos dois (V2 ignorando a dispensa → 2 vermelhos; sem o V2 → 3). 8.445 verdes.
+
 ## ⭐⭐⭐ A NOTA É FATO, A ENTRADA É COMBINADO — CORRIGIR A UNIDADE ERRADA (05/09/2026)
 
 **CASO REAL (ALAN SALBEGO, nota de 05/09):**
