@@ -75,11 +75,12 @@ async function main() {
     console.log(`  ${dia}: antes ${a ? (a.fecha ? '✓ fecha' : `✗ ${brl(a.diferenca)}`) : '(o PDF não declara este dia)'}`
       + ` → depois ${b ? (b.fecha ? '✓ fecha' : `✗ ${brl(b.diferenca)}`) : '(o PDF não declara este dia)'}`)
   }
-  console.log(`  no geral: antes ${antes.diasQueFecham}/${antes.dias.length} · depois ${depois.diasQueFecham}/${depois.dias.length}`)
+  const fecham = (r: typeof antes) => r.dias.filter((x) => x.fecha).length
+  console.log(`  no geral: antes ${fecham(antes)}/${antes.dias.length} · depois ${fecham(depois)}/${depois.dias.length}`)
 
   // ⛔⛔ A TRAVA DO DONO: "os dias 01 e 02 têm que fechar depois". Se não fecham, a
   // hipótese está errada — e mover a data espalharia o erro em vez de corrigi-lo.
-  const piorou = depois.diasQueFecham < antes.diasQueFecham
+  const piorou = fecham(depois) < fecham(antes)
   const naoFecham = [ALVO.de, ALVO.para].filter((dia) => { const b = linhaDoDia(depois, dia); return b && !b.fecha })
   if (piorou || naoFecham.length) {
     console.log(`\n⛔ ABORTADO: ${piorou ? 'a conferência PIOROU' : `os dias ${naoFecham.join(' e ')} continuam sem fechar`}.`)
