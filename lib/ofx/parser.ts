@@ -1,3 +1,5 @@
+import { corrigirInversao } from '@/lib/bank-profiles/historico-canonico'
+
 export interface OFXTransaction {
   fitid: string
   datePosted: Date
@@ -111,12 +113,18 @@ export function parseOFX(raw: string): OFXParseResult {
     const amountRaw = extractTag(block, 'TRNAMT')
     const memoTag = extractTag(block, 'MEMO')
     const nameTag = extractTag(block, 'NAME')
-    const memo = memoTag ?? nameTag ?? ''
-    // FASE 2.1: NAME vira contraparte SÓ quando existe MEMO e difere dele.
-    const counterpartyName =
-      nameTag && memoTag && nameTag.trim().toUpperCase() !== memoTag.trim().toUpperCase()
-        ? nameTag.trim()
-        : undefined
+    // ⭐⭐ A INVERSÃO DO BANRISUL É DESFEITA NA ENTRADA (04/09/2026).
+    //
+    // ⛔ No arquivo real de setembro o banco manda `<NAME>PIX ENVIADO` + `<MEMO>CACULA MIX`
+    // — o histórico no campo do nome e o favorecido no campo do histórico. O mapeamento
+    // direto gravava descrição "CACULA MIX" e contraparte "PIX ENVIADO", os dois errados
+    // (**9 transações em prod estão assim**).
+    //
+    // ⭐ `corrigirInversao` decide pela FORMA (histórico genérico é conjunto fechado),
+    // NUNCA pela posição — a posição é justamente o que o banco alterna.
+    const corrigido = corrigirInversao({ memo: memoTag, name: nameTag })
+    const memo = corrigido.memo
+    const counterpartyName = corrigido.contraparte ?? undefined
     const trntype = extractTag(block, 'TRNTYPE') ?? ''
 
     if (!fitid) { errors.push('Transação sem FITID — ignorada'); continue }

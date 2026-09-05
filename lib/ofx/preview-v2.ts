@@ -99,6 +99,10 @@ export interface V2BaseItem {
   date: string  // ISO
   memo: string
   type: 'CREDIT' | 'DEBIT'
+  /** ⭐ o favorecido/pagador quando o arquivo traz (04/09): sem ele, "PIX ENVIADO" pra
+   *  CACULA MIX (a própria empresa) chega na tela sem nenhum sinal de transferência —
+   *  o nome próprio está NESTE campo, não no memo. */
+  counterpartyName?: string | null
 }
 
 export interface V2SkipDupItem extends V2BaseItem {
@@ -179,7 +183,10 @@ export interface LedgerBalCheckPayload {
   deltaImportProposto: number
   saldoPosImport: number
   /** Verdict */
-  available: boolean               // false se ledgerBalAmount=null
+  available: boolean               // false SÓ quando o ARQUIVO não trouxe LEDGERBAL
+  /** ⭐ a ficha do banco diz que esse saldo serve de régua? (Banrisul: não). Ausente =
+   *  true (bancos cujo LEDGERBAL sempre foi a régua — comportamento de antes). */
+  ehReguaNesteBanco?: boolean
   bate: boolean                    // true se |LEDGERBAL - saldoPos| ≤ 0.02
   diff: number                     // LEDGERBAL - saldoPos
   /** Pro UI explicar quando não bate (vazio quando bate) */
@@ -472,6 +479,7 @@ export function buildV2PreviewPayload(input: {
       date: ofx.datePosted.toISOString(),
       memo: ofx.memo,
       type: ofx.type,
+      counterpartyName: ofx.counterpartyName ?? null,
     }
     if (r.action === 'SKIP_DUP') {
       const matched = r.matchedTxId ? candidatesById.get(r.matchedTxId) : undefined

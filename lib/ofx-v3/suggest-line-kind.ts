@@ -31,6 +31,8 @@ export interface SuggestLineKindInput {
   } | null
   /** Cartão sugerido (quando cardPaymentLikely + match único): {id, name} */
   cardCandidate?: { id: string; name: string } | null
+  /** ⛔ regra casou pelo texto mas o SINAL contradiz — a frase pronta (04/09). */
+  avisoDeSinal?: string | null
   /** Detecção de transferência (lib/ofx/detect-transfer) — quando rolou no preview */
   transferDetected?: {
     confidence: number
@@ -104,6 +106,20 @@ export function suggestLineKind(input: SuggestLineKindInput): AiSuggestion {
         confidence: 'MEDIA',
         reason: 'Possível transferência — confira',
       }
+    }
+  }
+
+  // 3.5) ⛔⛔ CONFLITO DE SINAL — o histórico é conhecido, o sinal não bate.
+  //
+  // Vem DEPOIS de cartão/empréstimo/transferência (que são identificações positivas) e
+  // ANTES dos fallbacks: é mais informativo que "escolha você", e menos que uma
+  // classificação — o sistema NÃO sabe o que a linha é, sabe que ela contradiz o que
+  // sempre foi. Selo "confira" (âmbar), nunca "tenho certeza".
+  if (input.avisoDeSinal) {
+    return {
+      suggestedKind: input.type === 'CREDIT' ? 'RECEITA' : 'DESPESA',
+      confidence: 'MEDIA',
+      reason: input.avisoDeSinal,
     }
   }
 

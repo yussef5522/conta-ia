@@ -11,6 +11,8 @@
 // Função não checa — mas RuleIndex carrega companyId pra defesa em profundidade.
 
 import { normalizeDescription, normalizeExact } from './normalize'
+import { canonizarHistorico } from '@/lib/bank-profiles/historico-canonico'
+import { sinalCompativel, frasePorConflitoDeSinal, type SinalDaLinha } from './sinal-da-regra'
 import type {
   Prediction,
   RuleSnapshot,
@@ -88,43 +90,97 @@ export function buildRuleIndex(
 //
 // Prioridade EXACT > NORMALIZED > CONTAINS (Sprint 5.0.2.m Vendor Memory).
 // Se nenhum match → null.
-export function predictCategory(
-  tx: { description: string },
+/**
+ * ⭐⭐ O CASAMENTO CRU, num lugar só — `predictCategory` e `explicarConflitoDeSinal`
+ * consomem ESTE resultado.
+ *
+ * ⚠️ Duas funções públicas respondendo sobre a mesma linha (uma classifica, a outra explica
+ * por que não classificou) **não podem discordar** — se a explicação achasse uma regra que
+ * o classificador não achou, a tela diria "confira o sinal" numa linha que foi classificada.
+ * Por isso o casamento é UM, e as duas o leem.
+ */
+function casarRegra(
+  tx: { description: string; type?: string },
   index: RuleIndex,
-): Prediction | null {
+): { rule: RuleSnapshot; tipo: TipoMatch; confidence: number } | null {
   if (!tx.description) return null
 
   // 1. Tentativa EXACT
   const exactKey = normalizeExact(tx.description)
   const exactRule = index.exactByPattern.get(exactKey)
-  if (exactRule) {
-    return predictionFromRule(exactRule, 'EXACT', exactRule.confianca)
-  }
+  if (exactRule) return { rule: exactRule, tipo: 'EXACT', confidence: exactRule.confianca }
 
   // 2. Tentativa NORMALIZED (com strip de prefixo nome próprio + data)
   const normKey = normalizeDescription(tx.description)
   const normRule = index.normalizedByPattern.get(normKey)
   if (normRule) {
-    const adjustedConfidence = Math.min(
-      normRule.confianca * NORMALIZED_PENALTY,
-      1.0,
-    )
-    return predictionFromRule(normRule, 'NORMALIZED', adjustedConfidence)
+    return { rule: normRule, tipo: 'NORMALIZED', confidence: Math.min(normRule.confianca * NORMALIZED_PENALTY, 1.0) }
   }
 
-  // 3. Sprint 5.0.2.m — Tentativa CONTAINS (Vendor Memory).
-  //    Substring case-insensitive. Linear no número de regras CONTAINS
-  //    (já ordenadas por vezesAplicada desc + length desc).
+  // 3. CONTAINS (Vendor Memory) — ⭐ AGORA PELO CANÔNICO.
+  //
+  // ⛔ ERA `descUpper.includes(padrao.toUpperCase())`, string CRUA: as normalizações de
+  // 28/08 (que já colapsam "OP. CREDITO"/"OP.CREDITO") valiam só pros ramos EXACT e
+  // NORMALIZED — e **todas** as regras do Banrisul são CONTAINS. Foi por isso que o
+  // +5.252,06 de 04/09 caiu em "escolha você" por causa de UM espaço.
+  //
+  // ⚠️⚠️ E O CANÔNICO **SOMA**, NUNCA SUBSTITUI — medido antes de escrever: a regra
+  // `"RECEBIMENTO PIX-PIX_CRE"` (**851 aplicações**) casa hoje por substring crua com
+  // `"RECEBIMENTO PIX-PIX_CRED  43098655000157 TUNA PAGAMENTOS LTDA"`. No canônico o
+  // catálogo expande `CRED → CREDITO`, o padrão vira `...PIX CRE` e o token `CRE` não
+  // existe mais na descrição → **a regra de 851 aplicações pararia de morder**. Trocar uma
+  // régua por outra teria consertado o Banrisul quebrando o Sicredi, em silêncio.
+  //
+  // ⚠️ E o lado canônico casa por TOKEN INTEIRO (com as bordas), senão o padrão "IOF"
+  // acharia "BIOFARMA" — regra curta em substring solta é assim que se classifica dinheiro
+  // no lugar errado.
   if (index.containsRules.length > 0) {
-    const descUpper = tx.description.toUpperCase()
+    const cru = tx.description.toUpperCase()
+    const alvo = ` ${canonizarHistorico(tx.description)} `
     for (const rule of index.containsRules) {
-      if (descUpper.includes(rule.padrao.toUpperCase())) {
-        return predictionFromRule(rule, 'CONTAINS', rule.confianca)
+      const casaCru = cru.includes(rule.padrao.toUpperCase())
+      const casaCanonico = alvo.includes(` ${canonizarHistorico(rule.padrao)} `)
+      if (casaCru || casaCanonico) {
+        return { rule, tipo: 'CONTAINS' as TipoMatch, confidence: rule.confianca }
       }
     }
   }
 
   return null
+}
+
+/**
+ * ⛔⛔ A regra casou pelo TEXTO mas o SINAL contradiz? Devolve a frase; senão, null.
+ *
+ * É o que a tela mostra no lugar do "escolha você" mudo — ver `sinal-da-regra.ts`.
+ */
+export function explicarConflitoDeSinal(
+  tx: { description: string; type?: string },
+  index: RuleIndex,
+): string | null {
+  const m = casarRegra(tx, index)
+  if (!m) return null
+  const sinal = tx.type === 'CREDIT' || tx.type === 'DEBIT' ? (tx.type as SinalDaLinha) : undefined
+  if (!sinal || sinalCompativel(m.rule.dreGroupDaCategoria, sinal)) return null
+  return frasePorConflitoDeSinal(tx.description.trim(), sinal, m.rule.padrao)
+}
+
+export function predictCategory(
+  tx: { description: string; type?: string },
+  index: RuleIndex,
+): Prediction | null {
+  if (!tx.description) return null
+
+  const m = casarRegra(tx, index)
+  if (!m) return null
+
+  // ⛔⛔ SINAL CONTRADIZ O GRUPO DA CATEGORIA → NÃO CLASSIFICA (regra do dono).
+  // Devolver `null` aqui é o que garante que NENHUM dos 5 chamadores auto-classifique:
+  // quem quiser a explicação chama `explicarConflitoDeSinal`, que lê o MESMO casamento.
+  const sinal = tx.type === 'CREDIT' || tx.type === 'DEBIT' ? (tx.type as SinalDaLinha) : undefined
+  if (sinal && !sinalCompativel(m.rule.dreGroupDaCategoria, sinal)) return null
+
+  return predictionFromRule(m.rule, m.tipo, m.confidence)
 }
 
 function predictionFromRule(

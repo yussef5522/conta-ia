@@ -48,6 +48,8 @@ interface CategorySuggestion {
   categoryName?: string | null
   confidence?: number
   rulePattern?: string | null
+  /** ⛔ regra casou pelo texto e o sinal contradiz — a frase pronta do servidor (04/09) */
+  avisoDeSinal?: string | null
 }
 
 interface Props {
@@ -117,8 +119,14 @@ export function PreviewV3Premium({
       //  - Nome de outra conta da empresa (SICREDI → +0.10)
       // Soma >=0.10 + keyword PIX/TED/DOC/TRANSFER → marca transferDetected.
       // suggestLineKind decide se vira ALTA/MEDIA/AGUARDA_PAR.
-      const ownSignals = extractOwnSignals(n.memo, effectiveRefs)
-      const keyword = detectTransferKeyword(n.memo)
+      // ⭐⭐ O NOME PRÓPRIO PODE ESTAR NA CONTRAPARTE (04/09). No Banrisul a linha chega
+      // como histórico "PIX ENVIADO" + favorecido "CACULA MIX" (a própria empresa). Ler só
+      // o memo deixava o par diário do dono chegando como "escolha você" todo dia: o memo
+      // tem a keyword e nenhum sinal próprio; o sinal próprio está no outro campo.
+      // ⚠️ SUGERE — não marca. O par se fecha quando o outro lado for importado.
+      const textoDaLinha = [n.memo, n.counterpartyName ?? ''].filter(Boolean).join(' ')
+      const ownSignals = extractOwnSignals(textoDaLinha, effectiveRefs)
+      const keyword = detectTransferKeyword(textoDaLinha)
       let transferDetected: { confidence: number; hasPair: boolean; keyword: string | null } | null = null
       if (ownSignals.signalCount > 0 && keyword) {
         // base 0.60 + boost dos sinais (max 0.30) — fica entre 0.70-0.90 single-side
@@ -155,6 +163,7 @@ export function PreviewV3Premium({
         predictedCategoryName: sug?.categoryName ?? null,
         predictedConfidence: sug?.confidence,
         predictedRulePattern: sug?.rulePattern ?? null,
+        avisoDeSinal: sug?.avisoDeSinal ?? null,
         cardPaymentLikely: detectCardPayLikely(n.memo, n.type),
         loanInstallmentCandidate: loanCandidate
           ? {

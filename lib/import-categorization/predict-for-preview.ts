@@ -20,6 +20,7 @@
 
 import type { RuleIndex } from '@/lib/ai-categorizer/predict'
 import type { SetorPatternSnapshot } from '@/lib/categorization/match-setor-pattern'
+import { explicarConflitoDeSinal } from '@/lib/ai-categorizer/predict'
 import { classifyTransactionsShared } from '@/lib/ai-categorizer/classify-shared'
 
 export type SuggestionSource = 'RULE' | 'SETOR' | 'KEYWORD' | 'DEFAULT'
@@ -29,6 +30,9 @@ export type SuggestionConfidence = 'ALTA' | 'REVISAR'
 export interface PreviewSuggestion {
   /** Identidade da tx incoming (dedupHash já calculado) */
   dedupHash: string
+  /** ⛔ a regra casou pelo TEXTO mas o SINAL contradiz — a frase que o dono lê no lugar
+   *  do "escolha você" mudo (ver `lib/ai-categorizer/sinal-da-regra.ts`). */
+  avisoDeSinal?: string | null
   /** categoryId proposto (null = "A classificar") */
   categoryId: string | null
   /** dreGroup proposto */
@@ -161,6 +165,9 @@ export function predictSuggestionsForPreview(
     }
 
     // Fallback: "A classificar"
+    // ⛔⛔ ANTES DE DIZER "escolha você", pergunta se houve CONFLITO DE SINAL: a regra
+    // casou pelo texto e o sinal contradisse (o −3.700 "OP CRED C GARANT" contra a regra
+    // da venda). Aí o silêncio vira uma pergunta que leva a uma ação.
     result.push({
       dedupHash: tx.dedupHash,
       categoryId: null,
@@ -168,6 +175,7 @@ export function predictSuggestionsForPreview(
       categoryName: null,
       confidence: 'REVISAR',
       source: 'DEFAULT',
+      avisoDeSinal: explicarConflitoDeSinal({ description: tx.description, type: tx.type }, ctx.ruleIndex),
     })
   }
 

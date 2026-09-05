@@ -9,6 +9,7 @@ import { Card } from '@/components/ui/card'
 import { CheckCircle2, AlertTriangle, Info } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { LedgerBalCheckPayload } from '@/lib/ofx/preview-v2'
+import { estadoDoBanner } from '@/lib/ofx/banner-ledgerbal'
 
 function fmtBRL(value: number): string {
   return value.toLocaleString('pt-BR', {
@@ -25,10 +26,23 @@ interface Props {
 }
 
 export function LedgerBalBanner({ check, className }: Props) {
+  // ⭐ A DECISÃO MORA EM `lib/ofx/banner-ledgerbal.ts` (pura, testável sem jsdom); aqui é
+  // eco. Os DOIS previews (V2 e V3) renderizam este componente — pôr a regra neles seria
+  // dois lugares decidindo a mesma coisa, que foi como a mensagem errada nasceu.
+  const estado = estadoDoBanner({
+    temNoArquivo: check.available,
+    ehReguaNesteBanco: check.ehReguaNesteBanco !== false,
+    bate: check.bate,
+  })
+
+  // ⛔ banco cujo LEDGERBAL não é régua (Banrisul): a ÚNICA mensagem sobre saldo é a faixa
+  // do PDF. Aqui, silêncio — e silêncio de propósito não é omissão.
+  if (estado === 'OCULTO') return null
+
   // ───────────────────────────────────────────────
   // Estado 1: LEDGERBAL ausente → faixa cinza neutra
   // ───────────────────────────────────────────────
-  if (!check.available) {
+  if (estado === 'AUSENTE') {
     return (
       <Card
         className={cn('border-slate-200 bg-slate-50 p-4', className)}
@@ -51,7 +65,7 @@ export function LedgerBalBanner({ check, className }: Props) {
   // ───────────────────────────────────────────────
   // Estado 2: bate → faixa verde
   // ───────────────────────────────────────────────
-  if (check.bate) {
+  if (estado === 'BATE') {
     return (
       <Card
         className={cn('border-emerald-200 bg-emerald-50 p-4', className)}

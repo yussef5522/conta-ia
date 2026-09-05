@@ -905,9 +905,17 @@ export async function POST(request: NextRequest, { params }: Params) {
         ...v2Payload,
         // ⛔ onde o LEDGERBAL mente, a caixa de "saldo não bate" não aparece: comparar
         // contra número que a gente já provou que mente é FABRICAR SUSTO.
-        ledgerBalCheck: selo.mostraGateLedgerBal
-          ? v2Payload.ledgerBalCheck
-          : { ...v2Payload.ledgerBalCheck, available: false },
+        //
+        // ⛔⛔ MAS ESCONDER NÃO É "NÃO VEIO NO ARQUIVO" (bug de 04/09): isto mandava
+        // `available:false`, e no componente essa flag SIGNIFICA "o extrato não trouxe saldo"
+        // → a tela afirmava LEDGERBAL ausente com o `<BALAMT>-8347.67` dentro do arquivo.
+        // Uma flag, dois donos. Agora `available` continua sendo só o FATO do arquivo e
+        // `ehReguaNesteBanco` carrega a decisão do selo — quem junta os dois é
+        // `estadoDoBanner`, num lugar só.
+        ledgerBalCheck: {
+          ...v2Payload.ledgerBalCheck,
+          ehReguaNesteBanco: selo.mostraGateLedgerBal,
+        },
         selo: { modo: selo.modo, aviso: selo.aviso, pedePdf: selo.pedePdf, diario: seloDiario },
         futuras: [...futurasPayload, ...agendadasDia],
         reconcileDedup: reconcileCount,

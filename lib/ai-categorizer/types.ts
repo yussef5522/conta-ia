@@ -20,6 +20,9 @@ export interface RuleSnapshot {
   vezesAplicada: number
   isActive: boolean
   fonte: string
+  /** ⭐ grupo do DRE da categoria da regra — é ele que diz o SINAL esperado da linha
+   *  (`lib/ai-categorizer/sinal-da-regra.ts`). Ausente = sem trava de sinal. */
+  dreGroupDaCategoria?: string | null
 }
 
 // Snapshot leve de uma transação (campos pro predict).

@@ -491,6 +491,10 @@ export async function loadActiveRules(
       vezesAplicada: true,
       isActive: true,
       fonte: true,
+      // ⭐ o grupo do DRE vem junto: é o que permite a régua do SINAL sem coluna nova.
+      // Este é o ÚNICO loader de regra que alimenta os 5 `buildRuleIndex` do projeto,
+      // então trazer aqui cobre preview, confirm, recategorize e cartão de uma vez.
+      category: { select: { dreGroup: true } },
     },
   })
   return rules.map(toRuleSnapshot)
@@ -806,6 +810,7 @@ interface RuleRowLike {
   vezesAplicada: number
   isActive: boolean
   fonte: string
+  category?: { dreGroup: string | null } | null
 }
 
 function toRuleSnapshot(rule: RuleRowLike): RuleSnapshot {
@@ -821,6 +826,7 @@ function toRuleSnapshot(rule: RuleRowLike): RuleSnapshot {
     vezesAplicada: rule.vezesAplicada,
     isActive: rule.isActive,
     fonte: rule.fonte,
+    dreGroupDaCategoria: rule.category?.dreGroup ?? null,
   }
 }
 
