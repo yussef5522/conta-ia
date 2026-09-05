@@ -267,7 +267,15 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 **18 testes novos · red-then-green medido nos três defeitos** (5 vermelhos no seletor, 1 na fusão financeiro×financeiro, 2 no PDF).
 
-**📋 A COSTURA DA RM2 ESTÁ NO PREVIEW, ESPERANDO O DONO** (`scripts/preview-costura-rm2.ts`, read-only): o cadastro original **`RM2 COMERCIO DE MATERIAIS PARA INFORMATICA LTDA`** (10/06, `fonte=MANUAL`, **0 transações**) e o **`rm2`** nascido do gesto de ontem (`fonte=ESTOQUE_NF`) com **1 transação: 08/09 · R$ 417,40 · PAYABLE/PENDING · "rm2 — compra sem nota"**. **Nenhum dos dois tem CNPJ**, e os nomes normalizados **diferem** → o sistema não pode provar que são a mesma empresa e **não une sozinho**. A confirmação é do dono.
+**⭐ COSTURA DA RM2 EXECUTADA (04/09, autorizada: *"CONFIRMO — mesma empresa"*).** `pg_dump pre-costura-rm2-20260904-225034` antes, preview antes do `--apply`. **1 transação movida** (08/09 · R$ 417,40 · PAYABLE/PENDING) pro cadastro original · 0 regras · 0 recorrências · o `rm2` do financeiro **desativado com o rastro nas `notes`** · o `stock_supplier` **renomeado** pro nome completo. **Conferido depois, medido:** o seletor mostra **1 linha, marcada AMBOS**, e a dívida está sob o cadastro certo.
+
+**⚠️ E O DESATIVADO PRECISOU SAIR DO SELETOR NO MESMO GESTO:** `listarFornecedoresUnificados` não filtrava `isActive` — o `rm2` recém-costurado **continuaria sendo oferecido numa nota nova**, recriando a duplicata que a costura acabou de resolver.
+
+**⚠️ O ESTOQUE NÃO TEM COLUNA DE "ATIVO"** (o isolamento proíbe ALTER) — lá a saída foi **renomear**, que é o que faz os dois lados se reconhecerem **pelo nome** enquanto não houver CNPJ. O snapshot `fornecedorNome` da entrada manual foi junto; a **descrição da transação** (*"rm2 — compra sem nota"*) **fica** — é o que o dono digitou naquele dia.
+
+**⛔⛔ E A CAUSA DE FUNDO CONTINUA ABERTA, com o dono sabendo:** *"sem CNPJ essa dúvida volta a cada duplicata"*. **Ele está certo** — sem CNPJ a única régua é o NOME, e nome é justamente o que diverge. `scripts/preencher-cnpj-fornecedor.ts` preenche os **dois lados de uma vez** (valida o dígito verificador — **CNPJ errado é pior que campo vazio, porque PARECE prova e passa a unir quem não é o mesmo** — e aborta se o CNPJ já for de outro fornecedor, que aí é caso de costura, não de preenchimento). **PENDENTE: o dono trazer o CNPJ da RM2 na próxima nota.**
+
+**📋 O PREVIEW QUE ANTECEDEU A COSTURA** (`scripts/preview-costura-rm2.ts`, read-only): o cadastro original **`RM2 COMERCIO DE MATERIAIS PARA INFORMATICA LTDA`** (10/06, `fonte=MANUAL`, **0 transações**) e o **`rm2`** nascido do gesto de ontem (`fonte=ESTOQUE_NF`) com **1 transação: 08/09 · R$ 417,40 · PAYABLE/PENDING · "rm2 — compra sem nota"**. **Nenhum dos dois tem CNPJ**, e os nomes normalizados **diferem** → o sistema não pode provar que são a mesma empresa e **não une sozinho**. A confirmação veio no mesmo dia.
 
 ## ⭐⭐ A LISTA MISTA MORREU E O "VOLTAR" APRENDEU DE ONDE VOCÊ VEIO (03/09/2026)
 
