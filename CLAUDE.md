@@ -242,6 +242,26 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⭐⭐⭐ OS R$ 776,53 DE AGOSTO ERAM **UMA LINHA**: O JUROS DO MÊS (05/09/2026)
+
+**O PDF de agosto atualizado achou, e é uma só:**
+
+```
+31/08   JUROS   000000   776,53-
+```
+
+É o **juros da conta garantida**, que o próprio extrato avisa em letras garrafais: *"OS JUROS DE SUA CONTA CORRENTE SERÃO DEBITADOS NO ÚLTIMO DIA ÚTIL DO MÊS"*. O banco o postou **depois** do PDF de 01/09 (emitido 13:55) e **nunca o re-publicou em OFX** — por isso não estava em nenhum dos 32 blobs guardados. Só o PDF do mês o mostra.
+
+**A CONFERÊNCIA FECHOU TUDO:** `156 casadas · 1 acrescentada · 0 órfãs` · **24/25 → 25/25 dias**; depois de gravar a régua de agosto inteira, **26/26 dias fecham, de 31/07 a 04/09**.
+
+**⭐⭐ E A PROVA MAIS BONITA É O SALDO:** −5.871,14 − 776,53 = **−6.647,67** = **exatamente o "SALDO NA DATA" de 04/09 do banco**. A conta passou a bater ao centavo com o contábil declarado.
+
+**⚠️ IMPACTO NO DRE DE AGOSTO: +R$ 776,53 de despesa financeira.** Agosto é o marco de referência do dono — e é justamente por isso que a linha entra: **o fechamento de agosto só volta a ser verdade COM ela**. Sem a linha, o mês fechava contra um extrato que o banco já tinha mudado.
+
+A linha entrou **`PENDING`, sem categoria** (categoria é decisão do dono) — e a fila já sugere **"Juros e Encargos" [ALTA, via regra]**, porque o seed dos encargos de ontem cobre o `JUROS` EXACT do Banrisul. `pg_dump pre-juros-agosto-20260905-023014` antes.
+
+**⭐ E O MÉTODO SE PAGOU:** o localizador roda o **mesmo motor do import** e **abortaria** se o período não fechasse depois da linha. Fechou — então a lista estava completa, e isso é uma afirmação medida, não uma esperança.
+
 ## ⛔⛔ CONFERIR NÃO DEPENDE DE TER LINHA NOVA — A FAIXA DO PDF SUMIA COM "0 NOVAS" (05/09/2026)
 
 **O dono subiu um OFX já importado só pra CONFERIR com o PDF — e a faixa de anexar não existia**, nem a conferência rodava. O selo estava **dentro do ramo V2**; o preview tem **três saídas** (legado · re-import vazio · V2) e ele caiu na do meio.
