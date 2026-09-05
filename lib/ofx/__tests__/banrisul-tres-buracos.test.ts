@@ -17,6 +17,7 @@ import { sinalCompativel } from '@/lib/ai-categorizer/sinal-da-regra'
 import type { RuleSnapshot } from '@/lib/ai-categorizer/types'
 import { stableKey } from '@/lib/reconciliation/stable-key'
 import { REGRAS_DE_ENCARGO, padroesCurtosComoContains } from '@/lib/bank-profiles/regras-encargos-banrisul'
+import { normalizeExact } from '@/lib/ai-categorizer/normalize'
 
 const OFX = readFileSync(join(__dirname, 'fixtures', 'banrisul-04-09.ofx'), 'utf8')
 const COMPANY = 'empresa-teste'
@@ -211,5 +212,25 @@ describe('⚠️⚠️ o canônico SOMA, nunca substitui — o que já casava te
     expect(porPadrao.get('JUROS')?.categoria).toBe('Juros e Encargos')
     // ⚠️ o empate 1×1 fica MARCADO, não resolvido no escuro
     expect(porPadrao.get('TRANSF. ENCARGOS CTA UNICA')?.empateNaHistoria).toBe(true)
+  })
+})
+
+// ────────────────────────────────────────────────────────────────
+describe('⛔⛔ regra EXACT gravada CRUA nunca casa — o defeito que a prova em prod pegou', () => {
+  it('⛔⛔ o índice busca pelo normalizado: "IOF" em maiúscula é regra morta', () => {
+    // ⚠️ `buildRuleIndex` indexa `rule.padrao` CRU e `predictCategory` busca com
+    // `normalizeExact(descricao)` (minúsculo). Gravar em maiúscula cria uma regra que
+    // NUNCA morde — e regra morta é pior que regra ausente: ela parece cobertura.
+    const crua: RuleSnapshot = {
+      id: 'x1', companyId: COMPANY, tipoMatch: 'EXACT' as RuleSnapshot['tipoMatch'],
+      padrao: 'IOF', categoryId: 'cat-tarifas', supplierId: null, confianca: 0.95,
+      vezesAplicada: 0, isActive: true, fonte: 'MANUAL', dreGroupDaCategoria: 'DESPESAS_FINANCEIRAS',
+    }
+    expect(predictCategory({ description: 'IOF', type: 'DEBIT' }, buildRuleIndex(COMPANY, [crua]))).toBeNull()
+
+    // ⭐ gravada como `learn.ts` grava (normalizada), morde
+    const boa = { ...crua, padrao: normalizeExact('IOF') }
+    expect(predictCategory({ description: 'IOF', type: 'DEBIT' }, buildRuleIndex(COMPANY, [boa]))?.categoryId)
+      .toBe('cat-tarifas')
   })
 })
