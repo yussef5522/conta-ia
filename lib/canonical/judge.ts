@@ -140,6 +140,8 @@ export function judgeStatement(input: JudgeInput): JudgeResult {
   const saldoAntes = input.saldoAntes
 
   const saldoAntesKnown = input.saldoAntesKnown ?? true
+  // ⚠️ o juiz é PURO: recebe a resposta pronta de quem resolveu a ficha
+  // (`resolve-import-statuses` → `podeConferirPorLedgerbal`). Aqui só o default.
   const ledgerBalReliable = input.ledgerBalReliable ?? true
   const anchorDay = ledger.asOf ? ledger.asOf.toISOString().slice(0, 10) : null
 

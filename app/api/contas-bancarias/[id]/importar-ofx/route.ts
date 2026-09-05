@@ -245,6 +245,8 @@ export async function POST(request: NextRequest, { params }: Params) {
         descartadasFuturas: futuras,
         // Aviso de fechamento: saldo calculado x LEDGERBAL não bateu.
         ledgerMismatch: result.ledgerMismatch,
+        // ⭐ gravou sem poder conferir o saldo (Banrisul): a tela mostra NEUTRO, não vermelho
+        avisoSemSelo: result.avisoSemSelo,
         orphanWarnings: result.classification.orphanWarnings,
         matchedExact: result.matchedExact,
         matchedFuzzy: result.matchedFuzzy,

@@ -6,6 +6,7 @@
 // decisão única (`classifyCanonicalForImport`). PURO por dentro (o classify não
 // toca DB); só a leitura dos blobs é I/O.
 
+import { podeConferirPorLedgerbal } from '@/lib/bank-profiles'
 import type { PrismaClient, Prisma } from '@prisma/client'
 import type { OFXParseResult } from '@/lib/ofx/parser'
 import { toCanonical, toCanonicalFromParsed, contentKey } from '@/lib/canonical/to-canonical'
@@ -44,7 +45,8 @@ export async function resolveImportStatuses(
 ): Promise<ResolvedImportStatuses> {
   const current = toCanonicalFromParsed(input.parsed, input.rawOfx)
   const profile = resolveBankProfile(input.parsed.bankId)
-  const ledgerBalReliable = profile?.ledgerBalReliable ?? true
+  // ⭐ a pergunta tem um dono só (05/09) — ver `pode-conferir-por-ledgerbal.ts`
+  const ledgerBalReliable = podeConferirPorLedgerbal(profile)
 
   const priorRows = await db.ofxImport.findMany({
     where: {

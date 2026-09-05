@@ -27,6 +27,7 @@ interface FileResult {
   descartadasFuturas?: number
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ledgerMismatch?: any
+  avisoSemSelo?: string | null
   erro?: string
 }
 
@@ -98,6 +99,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         duplicadas: result.classification.skippedMatched,
         descartadasFuturas: result.discardedFuture.length,
         ledgerMismatch: result.ledgerMismatch,
+        avisoSemSelo: result.avisoSemSelo,
       })
       totalNovas += result.classification.effected
       totalDup += result.classification.skippedMatched

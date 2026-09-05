@@ -24,7 +24,7 @@ import { buildReconcileUniverse } from './reconcile-universe'
 import { partitionFutureLines, reconcileLedgerAnchorDay } from '../ofx/future-line'
 import { isCanonicalClassifyEnabledForBank } from '../canonical/flag'
 import { resolveImportStatuses } from './resolve-import-statuses'
-import { resolveBankProfile, resolveStatementAnchor } from '../bank-profiles'
+import { resolveBankProfile, resolveStatementAnchor, avaliarFechamentoDeSaldo } from '../bank-profiles'
 import { stableKey } from './stable-key'
 import { buildLineDedupHash, makeOccurrenceCounter } from './line-dedup-hash'
 import { isReconcileV2Enabled } from './flag'
@@ -94,6 +94,8 @@ export interface ImportOrchestratorResult {
   }>
   // Validação de fechamento: saldo calculado x LEDGERBAL. null = fechou.
   ledgerMismatch: { saldoCalculado: number; ledgerBal: number; diferenca: number } | null
+  /** ⭐ gravou, mas sem poder conferir o saldo por aqui (Banrisul) — aviso NEUTRO, não erro */
+  avisoSemSelo: string | null
   matchedExact: number
   matchedFuzzy: number
   warnings: Array<{
@@ -654,16 +656,28 @@ export async function runImportV2(
   // TEM que bater com o LEDGERBAL declarado pelo banco. Se não bater, alguma linha
   // foi classificada errado (real descartada como futura, ou vice-versa) — AVISA
   // em vez de gravar calado. Vale pra QUALQUER banco. Tolerância R$ 0,02.
-  let ledgerMismatch: ImportOrchestratorResult['ledgerMismatch'] = null
-  if (ledgerBalance != null && Math.abs(recalc.saldoDepois - ledgerBalance) > 0.02) {
-    ledgerMismatch = {
-      saldoCalculado: recalc.saldoDepois,
-      ledgerBal: ledgerBalance,
-      diferenca: Math.round((recalc.saldoDepois - ledgerBalance) * 100) / 100,
-    }
+  //
+  // ⛔⛔⛔ FÓSSIL REMOVIDO (05/09/2026) — este gate comparava contra o LEDGERBAL **em
+  // qualquer banco**, inclusive naquele em que a gente PROVOU que o número mente. O dono
+  // importou o Banrisul e levou *"Saldo não fechou: calculado −5.871,14 vs LEDGERBAL
+  // −8.347,67. Revise a classificação"* — a diferença de **R$ 2.476,53 é o bloqueio de 24h**,
+  // não classificação errada. É a MESMA comparação que saiu do preview em 04/09.
+  // ⚠️ E o conserto estava 35 linhas abaixo: o `ledgerBalMatched` consulta a ficha do banco
+  // desde 01/09. Corrigir um e não o vizinho é a assinatura da classe "N caminhos".
+  // ⭐ Agora a pergunta tem UM dono: `podeConferirPorLedgerbal`.
+  const fechamento = avaliarFechamentoDeSaldo({
+    ficha: bankProfile,
+    nomeDoBanco: bankProfile?.id ?? null,
+    saldoCalculado: recalc.saldoDepois,
+    ledgerBalance,
+  })
+  const ledgerMismatch = fechamento.mismatch
+  if (ledgerMismatch) {
     console.warn(
       `[RECONCILE_V2] LEDGERBAL NÃO FECHA: calculado ${recalc.saldoDepois} vs LEDGERBAL ${ledgerBalance} (dif ${ledgerMismatch.diferenca}) — revisar classificação`,
     )
+  } else if (fechamento.avisoSemSelo) {
+    console.log(`[RECONCILE_V2] ${bankProfile?.id}: saldo declarado não é régua aqui — gravou sem selo (a régua é o PDF)`)
   }
 
   // 12. FINALIZE (Sprint rawOfxBlob 2.4): fecha o registro com status + contadores
@@ -689,10 +703,7 @@ export async function runImportV2(
     // contábil do banco era −4.567,03 — **selo verde contra o número errado**, e foi ele que
     // deixou o fantasma de R$ 1.700 passar por dias com o ledger 100% correto.
     // `null` = "não dá pra dizer por aqui"; quem diz é a conferência DIA A DIA contra o PDF.
-    ledgerBalMatched:
-      ledgerBalance != null && (bankProfile?.ledgerBalReliable ?? true)
-        ? ledgerMismatch === null
-        : null,
+    ledgerBalMatched: fechamento.ledgerBalMatched,
     ledgerBalDiff: ledgerMismatch?.diferenca ?? null,
   })
 
@@ -713,6 +724,7 @@ export async function runImportV2(
     },
     discardedFuture: descartadasFuturas,
     ledgerMismatch,
+    avisoSemSelo: fechamento.avisoSemSelo,
     matchedExact: result.matched.filter((m) => m.confidence === 'EXACT').length,
     matchedFuzzy: result.matched.filter((m) => m.confidence === 'FUZZY').length,
     warnings: warningsOut,

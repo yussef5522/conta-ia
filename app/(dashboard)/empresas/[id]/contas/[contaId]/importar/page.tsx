@@ -658,6 +658,12 @@ export default function ImportarOFXPage() {
           description: `Entram quando saírem de fato. ${lista}`,
         })
       }
+      // ⭐⭐ GRAVOU SEM SELO (05/09): banco cujo saldo declarado não serve de régua. É
+      // NOTÍCIA, não erro — nada a corrigir, e o vermelho aqui foi o que fez o dono achar
+      // que o import tinha sido RECUSADO (ele tinha gravado: 14 linhas entraram).
+      if (data.avisoSemSelo) {
+        toast({ title: 'Importado — sem selo de saldo', description: data.avisoSemSelo })
+      }
       // Validação de fechamento: saldo x LEDGERBAL não bateu → avisar (não silenciar).
       if (data.ledgerMismatch) {
         toast({

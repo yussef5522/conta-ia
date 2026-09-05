@@ -18,3 +18,8 @@ export type {
 export { BANK_PROFILES, resolveBankProfile, normalizeBankCode } from './registry'
 export { resolveStatementAnchor, type AnchorInput, type AnchorResult } from './anchor'
 export { bankProfileWarning, type BankProfileWarning } from './warnings'
+// ⭐ A pergunta "o saldo declarado serve de régua?" tem UM dono (05/09) — ver o arquivo.
+export {
+  podeConferirPorLedgerbal, avisoSemReguaDeSaldo, avaliarFechamentoDeSaldo,
+  type FichaParaLedgerbal, type FechamentoDeSaldo,
+} from './pode-conferir-por-ledgerbal'

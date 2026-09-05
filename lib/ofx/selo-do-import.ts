@@ -16,6 +16,7 @@
 // *"22/22 fecham"* ou *"o dia X não fecha por R$ Y, eis as linhas"*. Nunca "não identifiquei".
 
 import type { BankProfile } from '@/lib/bank-profiles/types'
+import { podeConferirPorLedgerbal } from '@/lib/bank-profiles/pode-conferir-por-ledgerbal'
 
 export type ModoDeConferencia = 'LEDGERBAL' | 'PDF_DIARIO' | 'SEM_CONFERENCIA'
 
@@ -48,7 +49,7 @@ export function decidirSelo(
 
   // ⛔ banco cujo LEDGERBAL mente: sem PDF, não há o que conferir — e dizer isso é melhor
   // que inventar uma divergência.
-  if (perfil && perfil.ledgerBalReliable === false) {
+  if (perfil && !podeConferirPorLedgerbal(perfil)) {
     return {
       modo: 'SEM_CONFERENCIA',
       mostraGateLedgerBal: false,
