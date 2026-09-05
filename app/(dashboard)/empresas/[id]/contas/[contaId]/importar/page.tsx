@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { pdfDaConferencia, podeReconferirInline } from '@/lib/ofx/regua-do-preview'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Upload, FileText, AlertCircle, Check, ArrowUpRight, ArrowDownRight, Loader2, Landmark, AlertTriangle, ArrowLeftRight, Sparkles, Clock } from 'lucide-react'
@@ -142,6 +143,9 @@ export default function ImportarOFXPage() {
   // ⭐⭐ O PDF DO MESMO PERÍODO (04/09) — a RÉGUA do saldo. Opcional: sem ele o import roda,
   // só não sela. É a mania do Banrisul tratada na ficha do Banrisul, sem afetar outros bancos.
   const [pdfDaRegua, setPdfDaRegua] = useState<File | null>(null)
+  // ⚠️ o input fica ESCONDIDO e é disparado por um <button> — ver o comentário no JSX:
+  // `<label>` embrulhando input dentro de card clicável foi o que quebrou o gesto em dois.
+  const pdfInputRef = useRef<HTMLInputElement | null>(null)
   const [preview, setPreview] = useState<PreviewResult | null>(null)
   const [loadingPreview, setLoadingPreview] = useState(false)
   const [loadingImport, setLoadingImport] = useState(false)
@@ -359,7 +363,15 @@ export default function ImportarOFXPage() {
     }
   }
 
-  async function handleFile(file: File) {
+  /**
+   * ⭐ O GESTO É UM SÓ: OFX + PDF na MESMA conferência.
+   *
+   * ⚠️ `pdfOverride` existe porque o PDF pode chegar DEPOIS do OFX (o dono sobe o extrato,
+   * lê o aviso e só então anexa a régua). Ler `pdfDaRegua` do estado aqui pegaria o valor
+   * ANTERIOR ao `setPdfDaRegua` que acabou de rodar — o preview voltaria sem o PDF e o
+   * selo nunca apareceria, com cara de "o arquivo não serviu".
+   */
+  async function handleFile(file: File, pdfOverride?: File | null) {
     setArquivo(file)
     setPreview(null)
     setBancoSalvo(false)
@@ -372,7 +384,8 @@ export default function ImportarOFXPage() {
       const fd = new FormData()
       fd.append('file', file)
       // ⭐⭐ o PDF do mesmo período vai NO MESMO GESTO: o OFX dá as linhas, o PDF dá a régua
-      if (pdfDaRegua) fd.append('filePdf', pdfDaRegua)
+      const pdf = pdfDaConferencia(pdfOverride, pdfDaRegua)
+      if (pdf) fd.append('filePdf', pdf)
       const res = await fetch(`/api/contas-bancarias/${contaId}/importar-ofx?preview=true`, {
         method: 'POST',
         body: fd,
@@ -885,12 +898,29 @@ export default function ImportarOFXPage() {
                 seria o susto fabricado que este sprint veio matar. */}
             <p className="text-xs text-slate-600 dark:text-slate-300">{preview.selo.aviso}</p>
             {preview.selo.pedePdf && (
-              <label className="mt-2 inline-flex cursor-pointer items-center gap-2 text-xs text-[#185FA5]">
-                <input type="file" accept=".pdf" className="hidden"
-                  onChange={(e) => { const f = e.target.files?.[0]; if (f) { setPdfDaRegua(f); setPreview(null) } }} />
-                <span className="rounded-lg border border-[#185FA5] px-2.5 py-1 font-medium">anexar o PDF do extrato</span>
+              <div className="mt-2 flex items-center gap-2 text-xs text-[#185FA5]">
+                {/* ⛔⛔ O GESTO SE QUEBRAVA EM DOIS (04/09). Anexar o PDF fazia
+                    `setPreview(null)` e a tela VOLTAVA pro começo — o dono lia isso como
+                    "perdi o OFX" e subia tudo de novo. E `<label>` embrulhando o input
+                    dentro de uma área clicável deixava o clique escapar pro que estava atrás.
+                    ⭐ Agora o clique é de um <button type="button"> com preventDefault, e o
+                    preview RECARREGA INLINE com o MESMO OFX + o PDF novo. Nada navega. */}
+                <input ref={pdfInputRef} type="file" accept=".pdf" className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0]
+                    e.target.value = '' // ⚠️ senão anexar o MESMO arquivo de novo não dispara onChange
+                    if (!f) return
+                    setPdfDaRegua(f)
+                    // ⚠️ o OFX continua na mão: reconferimos com ele, não pedimos de novo
+                    if (podeReconferirInline(arquivo)) void handleFile(arquivo!, f)
+                  }} />
+                <button type="button" disabled={loadingPreview}
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); pdfInputRef.current?.click() }}
+                  className="rounded-lg border border-[#185FA5] px-2.5 py-1 font-medium disabled:opacity-50">
+                  {loadingPreview ? 'conferindo…' : pdfDaRegua ? 'trocar o PDF' : 'anexar o PDF do extrato'}
+                </button>
                 {pdfDaRegua && <span className="text-slate-500">{pdfDaRegua.name}</span>}
-              </label>
+              </div>
             )}
           </CardContent>
         </Card>

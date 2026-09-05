@@ -6,11 +6,19 @@
 // A parcela do contas a pagar é OPT-IN: compra à vista não gera.
 
 import { useEffect, useMemo, useState, use } from 'react'
+import { filtrarPorBusca } from '@/lib/busca-texto'
 import { Card, CardContent } from '@/components/ui/card'
 import { PackageOpen, Plus, Trash2, Loader2, Check, ArrowLeft } from 'lucide-react'
 
 interface ItemCat { id: string; nome: string; unidadeControle: string }
-interface Forn { id: string; razaoSocial: string }
+interface Forn {
+  /** id do estoque — null quando o fornecedor só existe no financeiro ainda */
+  id: string | null
+  financeiroId: string | null
+  razaoSocial: string
+  cnpj: string | null
+  origem: 'ESTOQUE' | 'FINANCEIRO' | 'AMBOS'
+}
 interface Linha { itemId: string; novoNome: string; unidade: string; categoria: string; qtd: string; custo: string }
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -27,6 +35,10 @@ export default function EntradaManualPage({ params }: { params: Promise<{ id: st
   const { id } = use(params)
   const [cat, setCat] = useState<ItemCat[]>([])
   const [forns, setForns] = useState<Forn[]>([])
+  const [buscaForn, setBuscaForn] = useState('')
+  // ⭐ o filtro roda sobre a MESMA lista que a tela renderiza (REGRA 4): filtro e lista não
+  // têm como discordar, e o `take` do servidor não corta a busca.
+  const fornsFiltrados = useMemo(() => filtrarPorBusca<Forn>(forns, buscaForn, (f) => f.razaoSocial), [forns, buscaForn])
   const [supplierId, setSupplierId] = useState('')
   const [nomeNovo, setNomeNovo] = useState('')
   const [data, setData] = useState(hoje())
@@ -84,10 +96,32 @@ export default function EntradaManualPage({ params }: { params: Promise<{ id: st
         <div className="flex flex-wrap items-end gap-3">
           <div>
             <label className="text-[11px] font-medium uppercase tracking-wide text-slate-400">Fornecedor</label>
-            <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)} className="mt-1 block h-9 w-56 rounded-lg border border-slate-300 px-2 text-sm">
-              <option value="">— novo fornecedor —</option>
-              {forns.map((f) => <option key={f.id} value={f.id}>{f.razaoSocial}</option>)}
-            </select>
+            {/* ⭐⭐ BUSCA POR PEDAÇO, SEM ACENTO, SEM CAIXA — a régua de 31/08
+                (`filtrarPorBusca`), no APP, sobre a MESMA lista que a tela mostra. Antes era
+                um `<select>` nativo: só casava por prefixo e caixa, então "RM2" não achava
+                "rm2". ⚠️ Mas o bug maior era outro — a original nem estava na lista. */}
+            <input value={buscaForn} onChange={(e) => { setBuscaForn(e.target.value); setSupplierId('') }}
+              placeholder="buscar fornecedor…"
+              className="mt-1 block h-9 w-64 rounded-lg border border-slate-300 px-2 text-sm" />
+            {!supplierId && buscaForn.trim() && (
+              <ul className="mt-1 max-h-48 w-64 overflow-auto rounded-lg border border-slate-200 bg-white shadow-sm">
+                {fornsFiltrados.length === 0 && <li className="px-2 py-1.5 text-xs text-slate-400">nenhum com esse nome — deixe em branco pra cadastrar novo</li>}
+                {fornsFiltrados.map((f) => (
+                  <li key={f.id ?? f.financeiroId}>
+                    <button type="button"
+                      onClick={() => { setSupplierId(f.id ?? `fin:${f.financeiroId}`); setBuscaForn(f.razaoSocial) }}
+                      className="flex w-full items-center gap-1.5 px-2 py-1.5 text-left text-xs hover:bg-slate-50">
+                      <span className="min-w-0 flex-1 truncate text-slate-800">{f.razaoSocial}</span>
+                      {/* ⚠️ a ORIGEM fica à vista: quando o sistema não pode PROVAR que dois
+                          registros são o mesmo, ele mostra os dois — fusão errada de
+                          fornecedor é pior que duplicata visível. */}
+                      {f.origem === 'FINANCEIRO' && <span className="shrink-0 rounded bg-sky-50 px-1 text-[10px] text-sky-700">do financeiro</span>}
+                      {f.cnpj && <span className="shrink-0 text-[10px] text-slate-400">{f.cnpj.slice(0, 8)}…</span>}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
           {!supplierId && (
             <div>
@@ -204,7 +238,7 @@ export default function EntradaManualPage({ params }: { params: Promise<{ id: st
       {preview && (
         <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/40 p-4" onClick={() => !salvando && setPreview(false)}>
           <div className="w-full max-w-lg rounded-2xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-sm font-semibold text-slate-900">Confirmar entrada de {supplierId ? forns.find((f) => f.id === supplierId)?.razaoSocial : nomeNovo}</h3>
+            <h3 className="text-sm font-semibold text-slate-900">Confirmar entrada de {supplierId ? (forns.find((f: Forn) => (f.id ?? `fin:${f.financeiroId}`) === supplierId)?.razaoSocial ?? nomeNovo) : nomeNovo}</h3>
             <p className="mt-0.5 text-xs text-slate-400">Vai entrar no estoque agora, com custo real. O movimento é imutável — correção depois é estorno.</p>
             <table className="density-normal mt-3 w-full">
               <tbody>

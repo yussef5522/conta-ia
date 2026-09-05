@@ -14,6 +14,8 @@ import { recomputeSaldoCache } from './saldo'
 
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 
+import { garantirFornecedorDoEstoque } from './fornecedores-unificados'
+
 export class EntradaManualError extends Error {}
 
 export interface ItemEntradaInput {
@@ -87,6 +89,17 @@ export async function registrarEntradaManual(input: EntradaManualInput, db: Pris
     // 1) fornecedor: usa o escolhido, ou acha por CNPJ, ou cria na hora
     let supplierId = input.fornecedor.supplierId
     let fornecedorNome = input.fornecedor.nome?.trim() ?? ''
+
+    // ⭐ ESCOLHEU UM QUE SÓ EXISTE NO FINANCEIRO (prefixo `fin:`): o `stock_supplier` nasce
+    // AQUI, no gesto da escolha — na mesma transação da entrada. Antes o seletor só mostrava
+    // os 27 do estoque contra 85 cadastrados, e o dono criava duplicata do que já existia.
+    // ⚠️ Só COPIA pro lado de cá; nunca escreve no `Supplier` do financeiro.
+    if (supplierId?.startsWith('fin:')) {
+      supplierId = await garantirFornecedorDoEstoque(
+        input.companyId, { stockId: null, financeiroId: supplierId.slice(4) }, tx,
+      )
+    }
+
     if (supplierId) {
       const s = await tx.stockSupplier.findFirst({ where: { id: supplierId, companyId: input.companyId }, select: { id: true, razaoSocial: true } })
       if (!s) throw new EntradaManualError('Fornecedor não encontrado.')
