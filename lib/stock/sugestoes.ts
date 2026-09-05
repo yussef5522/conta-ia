@@ -35,7 +35,28 @@ export function sugerirCategoria(xProd: string, ncm?: string | null): CategoriaE
 }
 
 /** Sugere a unidade de controle pelo uCom da nota. null = "a definir" (o dono escolhe). */
-export function sugerirUnidade(uCom?: string | null): UnidadeControle | null {
+/**
+ * A unidade sugerida pro item NOVO.
+ *
+ * ⛔⛔ E O `uTrib` MANDA QUANDO AS DUAS DIVERGEM (05/09/2026) — buraco pego na prova em
+ * prod, não no código: a nota do ALAN diz `12 KG` de "LEITE EM PO INTEGRAL AURORA 400G"
+ * com `uTrib = UN`. Sugerindo pela comercial, o item novo **nasceria em KG** seguindo a
+ * unidade errada do fornecedor — e aí a correção de unidade nunca dispararia, porque
+ * entrada e item seriam ambos KG. **O conserto teria ficado inútil justamente no caso que
+ * o motivou.**
+ *
+ * ⚠️ A tributária é o campo que o fornecedor NÃO escolhe à toa (ela vai pro fisco), e por
+ * isso é a mais confiável quando as duas discordam. Mesma ordem do fator (22/08):
+ * *qTrib/uTrib primeiro, palpite por último*.
+ */
+export function sugerirUnidade(uCom?: string | null, uTrib?: string | null): UnidadeControle | null {
+  const daTrib = uTrib ? sugerirUnidadeBase(uTrib) : null
+  const daCom = sugerirUnidadeBase(uCom)
+  if (daTrib && daCom && daTrib !== daCom) return daTrib
+  return daCom ?? daTrib
+}
+
+function sugerirUnidadeBase(uCom?: string | null): UnidadeControle | null {
   const u = norm(uCom ?? '').replace(/[^A-Z]/g, '')
   if (['KG', 'KILO', 'QUILO', 'K'].includes(u)) return 'KG'
   if (['UN', 'UND', 'UNID', 'PC', 'PCT', 'CX', 'FD', 'DZ', 'PAR', 'PC'].includes(u)) return 'UN'

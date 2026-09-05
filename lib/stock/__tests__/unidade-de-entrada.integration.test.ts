@@ -13,6 +13,7 @@ import { confirmarConferencia } from '../confirmar-conferencia'
 import { buildConferenceView } from '../conference'
 import { avaliarUnidadeDeEntrada, custoNaUnidadeDeEntrada, rastroDaCorrecao } from '../unidade-de-entrada'
 import { saldoItem } from '../saldo'
+import { sugerirUnidade } from '../sugestoes'
 
 const CNPJ = '08850740000188'
 const CNPJ_FORN = '08850740000129'
@@ -186,5 +187,23 @@ describe('⛔⛔ o GUARD do fator continua valendo (item 4 do dono)', () => {
     expect(custoNaUnidadeDeEntrada(15.99, 1)).toBeCloseTo(15.99, 4)   // 191,88 ÷ 12 latas
     expect(custoNaUnidadeDeEntrada(15.99, 2)).toBeCloseTo(7.995, 4)   // 24 latas nos mesmos "12 KG"
     expect(12 * 2 * custoNaUnidadeDeEntrada(15.99, 2)).toBeCloseTo(191.88, 2)
+  })
+})
+
+describe('⛔⛔ o item NOVO não pode nascer na unidade errada do fornecedor', () => {
+  // ⚠️ Buraco pego na PROVA EM PROD, não no código: a sugestão de unidade do item novo
+  // vinha do `uCom`. No caso do leite, o item nasceria em KG seguindo a nota errada — e aí
+  // entrada e item seriam ambos KG, a correção nunca dispararia, e o conserto ficaria
+  // inútil justamente no caso que o motivou.
+  it('⛔⛔ uCom=KG e uTrib=UN → o item novo é sugerido em UN', async () => {
+    const v = await buildConferenceView(companyId, nfeId, prisma)
+    expect(v!.itens[0].sugestao.unidade, 'o item nasceria em KG, seguindo o erro do fornecedor').toBe('UN')
+  })
+
+  it('⭐ e quando a nota é coerente, nada muda', () => {
+    expect(sugerirUnidade('KG', 'KG')).toBe('KG')
+    expect(sugerirUnidade('UN', 'UN')).toBe('UN')
+    expect(sugerirUnidade('CX', null), 'sem tributária, vale a comercial').toBe('UN')
+    expect(sugerirUnidade('KG', null)).toBe('KG')
   })
 })

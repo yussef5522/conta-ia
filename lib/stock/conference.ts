@@ -124,7 +124,9 @@ export async function buildConferenceView(companyId: string, nfeId: string, db: 
       vUnCom: it.vUnCom ?? 0,
       vProd: it.vProd ?? r2((it.qCom ?? 0) * (it.vUnCom ?? 0)),
       mapeado: m && estoque ? { itemId: m.itemId, nome: estoque.nome, unidadeControle: estoque.unidadeControle as UnidadeControle, fatorConversao: m.fatorConversao } : null,
-      sugestao: { nome: sugerirNome(it.xProd), unidade: sugerirUnidade(it.uCom), categoria: sugerirCategoria(it.xProd, it.ncm) },
+      // ⛔ a unidade sugerida pro item NOVO segue a TRIBUTÁRIA quando as duas divergem —
+      // senão o item nasce na unidade errada do fornecedor e a correção nunca dispara.
+      sugestao: { nome: sugerirNome(it.xProd), unidade: sugerirUnidade(it.uCom, it.uTrib), categoria: sugerirCategoria(it.xProd, it.ncm) },
       uTrib: it.uTrib ?? '',
       fatorNota: fatorDaNota(it.uCom, it.qCom, it.uTrib, it.qTrib),
       correcaoAnterior: correcao
