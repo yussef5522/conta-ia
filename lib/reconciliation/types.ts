@@ -22,7 +22,11 @@ export interface DbBankTransaction {
   excludeFromReconciliation?: boolean
 }
 
-export type MatchConfidence = 'EXACT' | 'FUZZY'
+// ⭐ FRONTEIRA_DIA (05/09/2026): identidade IGUAL (valor + histórico canônico) com a data
+// deslocada em 1 dia, e a linha SUMIU do dia original no arquivo novo — o banco re-datou uma
+// linha já publicada. Não é fuzzy: é a mesma linha, com a régua estreita de
+// `fronteira-de-dia.ts`.
+export type MatchConfidence = 'EXACT' | 'FUZZY' | 'FRONTEIRA_DIA'
 
 export interface MatchedPair {
   dbTx: DbBankTransaction
@@ -31,6 +35,8 @@ export interface MatchedPair {
   // No Tier 2 'FUZZY': weakKey (data|signed) — memo divergia entre ERP e banco.
   matchKey: string
   confidence: MatchConfidence
+  /** só em FRONTEIRA_DIA: de que dia pra que dia o banco moveu (pra tela SUGERIR com nome) */
+  deslocamento?: { de: string; para: string }
 }
 
 export interface ReconcileResult {
@@ -46,4 +52,6 @@ export interface ReconcileResult {
   // linha real do extrato casou → a preview REALIZOU. Deve ser PROMOVIDA a
   // EFFECTED (não recriada). Fecha o bug de duplicata preview↔real entre imports.
   promoted: MatchedPair[]
+  /** ⭐ deslocamentos de dia detectados — a tela nomeia cada um (nunca casa em silêncio) */
+  deslocamentosDeDia?: MatchedPair[]
 }

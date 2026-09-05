@@ -51,6 +51,7 @@ describe('⭐⭐ com o PDF, a régua é o SALDO NA DATA', () => {
     const f = fraseDoSelo({
       diasConferidos: 22, diasQueFecham: 22, todosFecham: true, primeiroQueNaoFecha: null,
       bloqueado: 1700, saldoDisponivel: -4925.96, saldoContabil: -3225.96,
+      linhasSimuladas: 0, fechaDepoisDeConfirmar: false,
     })
     expect(f).toMatch(/22\/22 dias fecham/)
     // ⭐ os números de 01/09, do PDF real
@@ -64,6 +65,7 @@ describe('⭐⭐ com o PDF, a régua é o SALDO NA DATA', () => {
       diasConferidos: 22, diasQueFecham: 21, todosFecham: false,
       primeiroQueNaoFecha: { data: '2026-08-13', diferenca: -1463.71, lancamentos: [{ data: '2026-08-13', valor: -1463.71, descricao: 'PIX ENVIADO' }] },
       bloqueado: null, saldoDisponivel: null, saldoContabil: null,
+      linhasSimuladas: 0, fechaDepoisDeConfirmar: false,
     })
     expect(f).toMatch(/13\/08/)
     expect(f).toMatch(/1\.463,71/)

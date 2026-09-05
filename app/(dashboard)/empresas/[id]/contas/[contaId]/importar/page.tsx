@@ -77,9 +77,15 @@ interface PreviewResult {
       diasConferidos: number; diasQueFecham: number; todosFecham: boolean
       primeiroQueNaoFecha: { data: string; diferenca: number; lancamentos: { data: string; valor: number; descricao: string }[] } | null
       bloqueado: number | null; saldoDisponivel: number | null; saldoContabil: number | null
+      /** ⭐ 05/09: quantas linhas DESTE import entraram na simulação */
+      linhasSimuladas: number
+      /** ⭐ o dia só fecha PORQUE este import entra — notícia, não alarme */
+      fechaDepoisDeConfirmar: boolean
       frase: string
     } | null
   }
+  /** ⭐ 05/09: o banco re-datou uma linha já publicada entre dois downloads */
+  deslocamentosDeDia?: { de: string; para: string; memo: string; valor: number; frase: string }[]
   // Sprint Import Categoria Editável (18/06/2026)
   categorySuggestions?: CategorySuggestion[]
   categoriesForUI?: CategoryOption[]
@@ -875,7 +881,7 @@ export default function ImportarOFXPage() {
           : 'border-amber-400 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/40'}>
           <CardContent className="py-3">
             <p className={`text-sm font-medium ${preview.selo.diario.todosFecham ? 'text-emerald-800 dark:text-emerald-300' : 'text-amber-900 dark:text-amber-200'}`}>
-              {preview.selo.diario.todosFecham ? '✓ ' : '⚠️ '}{preview.selo.diario.frase}
+              {preview.selo.diario.todosFecham ? (preview.selo.diario.fechaDepoisDeConfirmar ? '↻ ' : '✓ ') : '⚠️ '}{preview.selo.diario.frase}
             </p>
             {/* ⚠️ quando não fecha, as LINHAS do dia — a diferença deixa de ser um número solto */}
             {preview.selo.diario.primeiroQueNaoFecha && (
@@ -887,6 +893,27 @@ export default function ImportarOFXPage() {
                 ))}
               </ul>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ⭐⭐ O BANCO RE-DATOU UMA LINHA JÁ PUBLICADA (05/09/2026).
+          As 2 CAPITALIZACAO RG saíram de 01/09 (1º download) pra 02/09 (os 3 seguintes).
+          A identidade da linha é data|valor|memo → sem esta régua elas voltariam como
+          novas e duplicariam R$ 595,68. ⚠️ Tom NEUTRO: não é erro, é mania do banco — e o
+          sistema DIZ o que fez em vez de casar em silêncio, porque quem decide a data é o
+          dono (a régua é o PDF). */}
+      {!!preview?.deslocamentosDeDia?.length && (
+        <Card className="border-sky-300 bg-sky-50 dark:border-sky-800 dark:bg-sky-950/30">
+          <CardContent className="py-3">
+            <p className="text-sm font-medium text-sky-900 dark:text-sky-200">
+              O banco mudou a data de {preview.deslocamentosDeDia.length} lançamento(s) entre dois downloads
+            </p>
+            <ul className="mt-1.5 space-y-0.5">
+              {preview.deslocamentosDeDia.map((d, i) => (
+                <li key={i} className="text-[11px] text-sky-900 dark:text-sky-200">{d.frase}</li>
+              ))}
+            </ul>
           </CardContent>
         </Card>
       )}

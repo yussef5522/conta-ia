@@ -54,6 +54,7 @@ import { resolveImportStatuses } from '@/lib/reconciliation/resolve-import-statu
 import { resolveBankProfile, resolveStatementAnchor, bankProfileWarning } from '@/lib/bank-profiles'
 import { decidirSelo } from '@/lib/ofx/selo-do-import'
 import { conferirComPdf } from '@/lib/ofx/conferir-com-pdf'
+import { fraseDoDeslocamento } from '@/lib/reconciliation/fronteira-de-dia'
 import { avisoExportMesmoDia } from '@/lib/ofx/export-mesmo-dia'
 import { verifyOfxMatchesAccount } from '@/lib/ofx/verify-account-match'
 import { conciliarDestinos } from '@/lib/ofx/conciliar-destinos'
@@ -610,6 +611,10 @@ export async function POST(request: NextRequest, { params }: Params) {
     // falhar, o preview segue sem o número (não bloqueia).
     let reconcileCount: { jaExistem: number; novas: number } | null = null
     let reconMissingKeys: Map<string, number> | null = null
+    // ⭐ o que o CONFIRMAR vai criar — alimenta a conferência diária (que passa a SIMULAR
+    // o confirm em vez de acusar o próprio conteúdo do import) e os deslocamentos de dia.
+    let linhasDoConfirmar: { datePosted: Date; signedAmount: number; memo: string }[] = []
+    let deslocamentosPayload: { de: string; para: string; memo: string; valor: number; frase: string }[] = []
     try {
       const allStmtLines: StatementLine[] = transactions.map((t) => ({
         datePosted: t.datePosted,
@@ -626,6 +631,19 @@ export async function POST(request: NextRequest, { params }: Params) {
         judgeRan: false,
       })
       reconcileCount = { jaExistem: recon.matched.length, novas: recon.missing.length }
+      linhasDoConfirmar = recon.missing.map((m) => ({ datePosted: m.datePosted, signedAmount: m.signedAmount, memo: m.memo }))
+      // ⚠️ SUGERE COM NOME, nunca casa em silêncio: o dono precisa saber que o banco
+      // re-datou a linha pra decidir a DATA (a régua é o PDF).
+      deslocamentosPayload = (recon.deslocamentosDeDia ?? []).map((d) => ({
+        de: d.deslocamento!.de,
+        para: d.deslocamento!.para,
+        memo: d.statementLine.memo,
+        valor: d.statementLine.signedAmount,
+        frase: fraseDoDeslocamento({
+          dbTx: d.dbTx, statementLine: d.statementLine,
+          deData: d.deslocamento!.de, paraData: d.deslocamento!.para,
+        }),
+      }))
       // Multiset dos stableKeys das linhas REALMENTE novas (o que o confirm cria).
       // A MESMA função stableKey do reconcile (REGRA 4/5) → impossível divergir.
       reconMissingKeys = new Map()
@@ -871,7 +889,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       let seloDiario: Awaited<ReturnType<typeof conferirComPdf>> = null
       if (pdfBytes) {
         try {
-          seloDiario = await conferirComPdf(contaId, pdfBytes, prisma)
+          seloDiario = await conferirComPdf(contaId, pdfBytes, prisma, linhasDoConfirmar)
         } catch (e) {
           // ⚠️ FAIL-SOFT: PDF ilegível não derruba o import — as linhas do OFX entram igual.
           console.error('[importar-ofx preview] conferência pelo PDF falhou (import segue):', e)
@@ -919,6 +937,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         selo: { modo: selo.modo, aviso: selo.aviso, pedePdf: selo.pedePdf, diario: seloDiario },
         futuras: [...futurasPayload, ...agendadasDia],
         reconcileDedup: reconcileCount,
+        deslocamentosDeDia: deslocamentosPayload,
         categorySuggestions,
         categoriesForUI,
         ownEntityRefs,

@@ -23,6 +23,7 @@ import type {
   ReconcileResult,
 } from './types'
 import { stableKey } from './stable-key'
+import { casarFronteiraDeDia, identidadeSemData } from './fronteira-de-dia'
 import { isPreviewLine } from './is-preview'
 import { isOpeningBalanceMemo } from './opening-balance'
 
@@ -125,13 +126,33 @@ export function reconcileStatement(
   }
 
   // ============================================================
+  // TIER 1.5 — FRONTEIRA DE DIA: a MESMA linha, re-datada pelo banco
+  // ============================================================
+  // ⛔ Caso real (05/09): as 2 CAPITALIZACAO RG que o Banrisul publicou em 01/09 e
+  // re-datou pra 02/09 nos downloads seguintes. Sem isto elas voltam como novas e
+  // duplicam R$ 595,68 — a chave da linha é data|valor|memo, e a data mudou.
+  //
+  // ⚠️ VEM ANTES DO TIER 2 de propósito: o fuzzy casa por data|valor IGNORANDO o memo, e
+  // aqui o memo é justamente o que PROVA que é a mesma linha. Deixar o fuzzy primeiro
+  // faria uma linha do MESMO dia com valor igual roubar o casamento.
+  const fronteira = casarFronteiraDeDia(tier1OrphanCandidates, tier1MissingCandidates, realLines)
+  const deslocamentosDeDia: MatchedPair[] = fronteira.deslocamentos.map((d) => ({
+    dbTx: d.dbTx,
+    statementLine: d.statementLine,
+    matchKey: `${identidadeSemData(d.statementLine)}@${d.deData}→${d.paraData}`,
+    confidence: 'FRONTEIRA_DIA' as const,
+    deslocamento: { de: d.deData, para: d.paraData },
+  }))
+  matched.push(...deslocamentosDeDia)
+
+  // ============================================================
   // TIER 2 — fuzzy por weakKey (data|signed) sobre os leftovers
   // ============================================================
   const orphans: DbBankTransaction[] = []
   const missing: StatementLine[] = []
 
   const leftStmtByWeak = new Map<string, StatementLine[]>()
-  for (const line of tier1MissingCandidates) {
+  for (const line of fronteira.linhasRestantes) {
     const k = weakKey({ date: line.datePosted, signedAmount: line.signedAmount })
     const arr = leftStmtByWeak.get(k) ?? []
     arr.push(line)
@@ -139,7 +160,7 @@ export function reconcileStatement(
   }
 
   const leftDbByWeak = new Map<string, DbBankTransaction[]>()
-  for (const tx of tier1OrphanCandidates) {
+  for (const tx of fronteira.dbRestante) {
     const k = weakKey({ date: tx.date, signedAmount: tx.signedAmount })
     const arr = leftDbByWeak.get(k) ?? []
     arr.push(tx)
@@ -173,5 +194,5 @@ export function reconcileStatement(
   // pending no universo de reconcile geraria warnings falsos de órfão.
   const effectedOrphans = orphans.filter((o) => o.lifecycle === 'EFFECTED')
 
-  return { matched, orphans: effectedOrphans, missing, previews, promoted }
+  return { matched, orphans: effectedOrphans, missing, previews, promoted, deslocamentosDeDia }
 }

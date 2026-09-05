@@ -86,6 +86,10 @@ export interface SeloDiario {
   bloqueado: number | null
   saldoDisponivel: number | null
   saldoContabil: number | null
+  /** quantas linhas do CONFIRMAR entraram na simulação (0 = nada pendente) */
+  linhasSimuladas: number
+  /** ⭐ o dia só fecha PORQUE as linhas deste import entraram — notícia, não alarme */
+  fechaDepoisDeConfirmar: boolean
   frase: string
 }
 
@@ -98,6 +102,15 @@ export interface SeloDiario {
  */
 export function fraseDoSelo(s: Omit<SeloDiario, 'frase'>): string {
   const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+
+  // ⭐⭐ OS DOIS DESFECHOS SÃO FRASES DIFERENTES (05/09) — decisão do dono. Antes a
+  // conferência rodava só contra o ledger e acusava o próprio conteúdo do import: o
+  // dono lia "01/09 não fecha: R$ 1.146,02 a mais" com os 3 encargos daquele dia na
+  // lista "a importar" logo abaixo.
+  if (s.todosFecham && s.fechaDepoisDeConfirmar) {
+    return `${s.diasQueFecham}/${s.diasConferidos} dias fecham DEPOIS de confirmar este import `
+      + `(${s.linhasSimuladas} linha(s) deste arquivo entram na conta). Nada a corrigir — é só confirmar.`
+  }
   if (s.todosFecham) {
     const extra = s.bloqueado != null && s.bloqueado > 0 && s.saldoDisponivel != null && s.saldoContabil != null
       ? ` · contábil ${brl(s.saldoContabil)} · disponível ${brl(s.saldoDisponivel)} (bloqueio ${brl(s.bloqueado)})`
@@ -107,6 +120,9 @@ export function fraseDoSelo(s: Omit<SeloDiario, 'frase'>): string {
   const d = s.primeiroQueNaoFecha
   if (!d) return `${s.diasQueFecham}/${s.diasConferidos} dias fecham`
   const sinal = d.diferenca > 0 ? 'a mais' : 'a menos'
-  return `O dia ${d.data.split('-').reverse().join('/')} não fecha: temos ${brl(Math.abs(d.diferenca))} ${sinal} que o extrato. `
+  // ⚠️ "NEM DEPOIS de confirmar" é o que separa o alarme legítimo do susto fabricado:
+  // aqui as linhas deste import JÁ estão na conta e o dia continua sem fechar.
+  const nemDepois = s.linhasSimuladas > 0 ? ' — e não fecha nem depois de confirmar este import' : ''
+  return `O dia ${d.data.split('-').reverse().join('/')} não fecha${nemDepois}: temos ${brl(Math.abs(d.diferenca))} ${sinal} que o extrato. `
     + `${d.lancamentos.length} lançamento(s) nosso(s) nesse dia — confira lado a lado.`
 }

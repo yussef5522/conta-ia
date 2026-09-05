@@ -14,14 +14,38 @@ import { banrisulPdfParser } from '@/lib/bank-statement-pdf/banrisul-parser'
 import { conferirDiaADia } from '@/lib/bank-statement-pdf/conferencia-diaria'
 import { fraseDoSelo, type SeloDiario } from './selo-do-import'
 
+/** uma linha que o CONFIRMAR vai criar (o que está na lista "a importar" da tela) */
+export interface LinhaAImportar {
+  datePosted: Date
+  signedAmount: number
+  memo: string
+}
+
 /**
- * Roda a conferência dia-a-dia do que ESTÁ no nosso ledger contra o PDF anexado.
+ * Roda a conferência dia-a-dia contra o PDF anexado.
+ *
+ * ⭐⭐⭐ ELA SIMULA O CONFIRMAR (05/09/2026) — decisão do dono: *"acusar o próprio conteúdo
+ * do import é fabricar susto"*.
+ *
+ * ⛔ O QUE ERA: a query pegava `lifecycle:'EFFECTED'` — só o que JÁ está no ledger — e
+ * rodava no PREVIEW, onde as linhas do dia ainda não entraram. Resultado medido no caso
+ * real: *"01/09 não fecha: R$ 1.146,02 a mais"*, sendo que **os 3 encargos daquele dia
+ * (Σ 1.741,70) estavam na lista "a importar" da MESMA TELA**. O dia ia fechar sozinho ao
+ * confirmar. Por construção, todo import acusava o próprio conteúdo.
+ *
+ * ⚠️ E OS DOIS DESFECHOS TÊM QUE SER DISTINTOS NA TELA, senão a correção troca um susto
+ * por outro: *"01/09 fecha depois de confirmar"* (nada a fazer) é uma notícia; *"não fecha
+ * nem depois — faltam R$ X"* é outra, e só a segunda pede ação.
  *
  * ⚠️ Devolve `null` (e não erro) quando o PDF não traz régua — sem `SALDO ANT` não há de
  * onde partir, e afirmar conferência sem abertura seria selo de graça.
+ *
+ * @param linhasAImportar o que o CONFIRMAR vai criar (`recon.missing` — a MESMA lista, não
+ *   uma recontagem: se viesse de outro cálculo, tela e gravação voltariam a divergir).
  */
 export async function conferirComPdf(
   bankAccountId: string, pdfBytes: Uint8Array, db: PrismaClient,
+  linhasAImportar: LinhaAImportar[] = [],
 ): Promise<SeloDiario | null> {
   const texto = await extractPdfText(pdfBytes)
   const p = banrisulPdfParser.parse(texto) as ReturnType<typeof banrisulPdfParser.parse> & {
@@ -41,16 +65,28 @@ export async function conferirComPdf(
     orderBy: { date: 'asc' },
   })
 
-  const r = conferirDiaADia(
-    { saldoAnterior: p.saldoAnterior, saldosDiarios: p.saldosDiarios },
-    txs.map((t) => ({
-      id: t.id,
-      data: t.date.toISOString().slice(0, 10),
-      // ⚠️ sinal pelo TIPO, como no resto do sistema (amount é sempre positivo)
-      valor: t.type === 'DEBIT' ? -t.amount : t.amount,
-      descricao: t.description,
-    })),
-  )
+  const doLedger = txs.map((t) => ({
+    id: t.id,
+    data: t.date.toISOString().slice(0, 10),
+    // ⚠️ sinal pelo TIPO, como no resto do sistema (amount é sempre positivo)
+    valor: t.type === 'DEBIT' ? -t.amount : t.amount,
+    descricao: t.description,
+  }))
+  // ⭐ as linhas que o confirmar vai criar, dentro da janela que o PDF cobre
+  const aImportar = linhasAImportar
+    .filter((l) => l.datePosted > de && l.datePosted <= ate)
+    .map((l, i) => ({
+      id: `a-importar-${i}`,
+      data: l.datePosted.toISOString().slice(0, 10),
+      valor: l.signedAmount,
+      descricao: l.memo,
+    }))
+
+  const regua = { saldoAnterior: p.saldoAnterior, saldosDiarios: p.saldosDiarios }
+  // ⭐⭐ O SELO FALA DO PREVISTO (ledger + o que vai entrar); o `soLedger` existe só pra
+  // distinguir "fecha depois de confirmar" de "não fecha nem depois".
+  const r = conferirDiaADia(regua, [...doLedger, ...aImportar])
+  const soLedger = aImportar.length ? conferirDiaADia(regua, doLedger) : r
   if (!r.conferivel) return null
 
   const contabil = p.saldosDiarios[p.saldosDiarios.length - 1]?.valor ?? null
@@ -68,6 +104,9 @@ export async function conferirComPdf(
     bloqueado: p.bloqueado ?? null,
     saldoDisponivel: p.saldoDisponivel ?? null,
     saldoContabil: contabil,
+    linhasSimuladas: aImportar.length,
+    // ⭐ o dia só fechava PORQUE as linhas deste import entraram na conta
+    fechaDepoisDeConfirmar: r.todosFecham && !soLedger.todosFecham,
   }
   return { ...base, frase: fraseDoSelo(base) }
 }
