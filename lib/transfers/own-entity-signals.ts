@@ -108,6 +108,14 @@ function normalizeForCompare(s: string): string {
     .toLowerCase()
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
+    // ⛔⛔ COLAPSA E APARA O ESPAÇO (04/09/2026) — sem isto o cadastro decide se o
+    // detector funciona. O nome da Caçula está gravado como `"caçula mix "`, **com espaço
+    // no fim**: o PIX diário "PIX ENVIADO" + "CACULA MIX" dava **0 sinais próprios**, e a
+    // transferência do dono chegava como linha comum todo santo dia.
+    // ⚠️ É a MESMA cicatriz de 25/08, quando uma query falhou porque a conta se chama
+    // `'sicredi '` — espaço invisível no cadastro já custou meia sessão neste projeto.
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 export function extractOwnSignals(

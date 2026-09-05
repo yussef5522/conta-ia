@@ -18,6 +18,7 @@ import type { RuleSnapshot } from '@/lib/ai-categorizer/types'
 import { stableKey } from '@/lib/reconciliation/stable-key'
 import { REGRAS_DE_ENCARGO, padroesCurtosComoContains } from '@/lib/bank-profiles/regras-encargos-banrisul'
 import { normalizeExact } from '@/lib/ai-categorizer/normalize'
+import { extractOwnSignals } from '@/lib/transfers/own-entity-signals'
 
 const OFX = readFileSync(join(__dirname, 'fixtures', 'banrisul-04-09.ofx'), 'utf8')
 const COMPANY = 'empresa-teste'
@@ -232,5 +233,30 @@ describe('⛔⛔ regra EXACT gravada CRUA nunca casa — o defeito que a prova e
     const boa = { ...crua, padrao: normalizeExact('IOF') }
     expect(predictCategory({ description: 'IOF', type: 'DEBIT' }, buildRuleIndex(COMPANY, [boa]))?.categoryId)
       .toBe('cat-tarifas')
+  })
+})
+
+// ────────────────────────────────────────────────────────────────
+describe('⛔⛔ o PIX diário do dono: "PIX ENVIADO" + "CACULA MIX"', () => {
+  // ⚠️ o nome da empresa está gravado como `"caçula mix "` — COM ESPAÇO NO FIM. Sem apará-lo,
+  // o detector dava 0 sinais próprios e a transferência diária virava linha comum.
+  const refs = {
+    cnpj: '29756732000198', names: ['caçula mix '], accountNames: ['banrisul', 'sicredi '],
+    ownerCpfs: [], ownerNames: [],
+  }
+
+  it('⭐⭐ o nome próprio está na CONTRAPARTE — ler só o memo dá zero sinal', () => {
+    expect(extractOwnSignals('PIX ENVIADO', refs).signalCount, 'o memo sozinho não tem nome nenhum').toBe(0)
+    // é a junção dos dois campos que faz o sinal existir
+    expect(extractOwnSignals('PIX ENVIADO CACULA MIX', refs).signalCount).toBeGreaterThan(0)
+    expect(extractOwnSignals('PIX ENVIADO CACULA MIX', refs).hasOwnName).toBe(true)
+  })
+
+  it('⛔ e o espaço no fim do cadastro não pode mais decidir se o detector funciona', () => {
+    expect(extractOwnSignals('PIX ENVIADO CACULA MIX', { ...refs, names: ['  caçula   mix  '] }).hasOwnName).toBe(true)
+  })
+
+  it('⭐ PIX pra TERCEIRO segue sem sinal próprio — sugerir transferência ali seria mentira', () => {
+    expect(extractOwnSignals('PIX RECEBIDO HUB INSTITUICAO DE PAGAMENTO SA', refs).signalCount).toBe(0)
   })
 })
