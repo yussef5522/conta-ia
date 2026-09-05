@@ -242,6 +242,33 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⛔⛔⛔ A TELA ESCONDIA 63 DOS 85 FORNECEDORES — A DUPLICATA ERA SINTOMA (04/09/2026)
+
+**O dono achou que tinha sido descuido dele.** Foi cadastrar uma nota manual da **RM2**, não achou no seletor, criou uma segunda — e ficou com duas. **Medido em prod antes de tocar em qualquer coisa: `stock_supplier` = 27 · `Supplier` (financeiro) = 85. Sessenta e três invisíveis.**
+
+**A CAUSA:** o seletor lia **só a tabela do estoque**, que **só enche quando uma nota é CONFERIDA**. Fornecedor cadastrado à mão no financeiro (como a RM2, de 10/06) nunca aparecia. ⚠️ **E a busca era o SEGUNDO problema, não o primeiro** — o `<select>` nativo casa por prefixo e caixa, então "RM2" não achava "rm2"; mas **consertar só a busca deixaria o bug vivo com cara de resolvido**, porque nenhuma busca acha o que não está na lista.
+
+**⛔⛔ OS GUARDS DA UNIFICAÇÃO SÃO DO DONO, e a regra de fundo é dele:** *"fusão errada de fornecedor é pior que duplicata visível"*. Duplicata se resolve com uma costura; fusão errada manda dinheiro pro CNPJ errado e ninguém percebe.
+
+| situação | decisão |
+|---|---|
+| CNPJ igual (os dois têm) | **é o mesmo** |
+| os DOIS com CNPJ **diferente** | **NUNCA une**, nem com nome idêntico (matriz × filial) |
+| nenhum dos dois tem CNPJ | une **só** se o nome normalizado for **igual** |
+| um tem, o outro não | **não une** — mostra os dois com a origem marcada |
+
+**⭐ O `stock_supplier` NASCE NO GESTO DA ESCOLHA** (`garantirFornecedorDoEstoque`), na mesma transação da entrada, idempotente por CNPJ. ⚠️ **LÊ o `Supplier` do financeiro e nunca escreve nele** — a exceção desenhada ao isolamento continua sendo só a ponte de contas a pagar.
+
+**⚠️⚠️ O NÚMERO DE PROD PEGOU UM BUG MEU QUE OS 12 TESTES NÃO PEGARAM:** a lista voltou **33 linhas com id de estoque contra 28 que existem**. Um registro do financeiro **já empilhado** virava alvo do próximo → dois cadastros do financeiro **se fundiam entre si**, um sumia da lista e o outro ainda dizia **"AMBOS"**, mentindo sobre existir no estoque. Fix: só casa com linha que **veio do estoque**. **A aritmética da lista foi o que denunciou** — os testes conferiam os casos, não a conta.
+
+**PROVADO EM PROD:** tabelas 28 + 88 → **seletor com 90 linhas · 28 ids de estoque (o máximo possível) · 88 ids do financeiro distintos, nenhum perdido**. Busca: `r` → 69 (pega FRIGORIFICO, R no meio) · `rm2`, `fgts`, `informatica`, `girua` → todos achados.
+
+**⛔ BUG 2 — O GESTO ÚNICO SE QUEBRAVA EM DOIS:** anexar o PDF do extrato fazia `setPreview(null)` e a tela **voltava pro começo**; o dono lia como "perdi o OFX" e subia tudo de novo. Agora o clique é de um **`<button type="button">` com `preventDefault`** (o `<label>` embrulhando input dentro de área clicável deixava o clique escapar) e o preview **recarrega inline** com o MESMO OFX + o PDF novo. ⚠️ **E o defeito seguinte era invisível:** reconferir lendo `pdfDaRegua` do **estado** pegaria o valor **anterior** ao `setState` — o preview voltaria sem régua e o selo nunca apareceria, com cara de "o arquivo não serviu". O arquivo vai por **parâmetro**, e a decisão mora em lib pura (`lib/ofx/regua-do-preview.ts`) — *regra que mora num `useState` é regra que ninguém prova*.
+
+**18 testes novos · red-then-green medido nos três defeitos** (5 vermelhos no seletor, 1 na fusão financeiro×financeiro, 2 no PDF).
+
+**📋 A COSTURA DA RM2 ESTÁ NO PREVIEW, ESPERANDO O DONO** (`scripts/preview-costura-rm2.ts`, read-only): o cadastro original **`RM2 COMERCIO DE MATERIAIS PARA INFORMATICA LTDA`** (10/06, `fonte=MANUAL`, **0 transações**) e o **`rm2`** nascido do gesto de ontem (`fonte=ESTOQUE_NF`) com **1 transação: 08/09 · R$ 417,40 · PAYABLE/PENDING · "rm2 — compra sem nota"**. **Nenhum dos dois tem CNPJ**, e os nomes normalizados **diferem** → o sistema não pode provar que são a mesma empresa e **não une sozinho**. A confirmação é do dono.
+
 ## ⭐⭐ A LISTA MISTA MORREU E O "VOLTAR" APRENDEU DE ONDE VOCÊ VEIO (03/09/2026)
 
 **O dono caiu na lista mista DEPOIS de salvar uma ficha de sabor** — e ia repetir esse gesto **~50 vezes** na mesma tarde. A causa, achada na leitura: `/estoque/fichas/nova` montava o editor **sem `voltarPara`**, então o destino caía no default `/estoque/fichas`. ⚠️ **A mesma porta atingia o `+ criar ficha` da tela de Vendas**; só o Cardápio escapava, porque lá o editor abre DENTRO da tela (`aoSalvar`), sem navegar.
