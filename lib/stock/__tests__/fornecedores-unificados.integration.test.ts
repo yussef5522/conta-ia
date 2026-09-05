@@ -158,3 +158,19 @@ describe('⭐⭐ o `stock_supplier` nasce no GESTO da escolha', () => {
     await prisma.company.deleteMany({ where: { id: outra.id } })
   })
 })
+
+describe('⛔⛔ dois cadastros do FINANCEIRO não se fundem entre si', () => {
+  it('⛔⛔ o achado do número de prod: 33 linhas com id de estoque contra 28 que existem', async () => {
+    // ⚠️ sem o filtro `x.stockId`, o 1º registro do financeiro virava alvo do 2º: um sumia
+    // da lista e o outro dizia "AMBOS" — mentindo sobre existir no estoque.
+    await prisma.supplier.create({ data: { companyId, razaoSocial: 'rm2' } })
+    await prisma.supplier.create({ data: { companyId, razaoSocial: 'RM2' } })
+
+    const lista = await listarFornecedoresUnificados(companyId, prisma)
+    expect(lista, 'um dos dois sumiu da lista').toHaveLength(2)
+    expect(lista.map((f) => f.origem)).toEqual(['FINANCEIRO', 'FINANCEIRO'])
+    expect(lista.every((f) => f.stockId === null), 'disse AMBOS sem existir no estoque').toBe(true)
+    // e cada linha guarda o SEU id — senão escolher uma escreveria na outra
+    expect(new Set(lista.map((f) => f.financeiroId)).size).toBe(2)
+  })
+})

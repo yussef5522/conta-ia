@@ -81,7 +81,13 @@ export async function listarFornecedoresUnificados(
   }))
 
   for (const f of doFinanceiro) {
-    const par = out.find((x) => ehMesmoFornecedor(x, { razaoSocial: f.razaoSocial, cnpj: f.cnpj ?? null }))
+    // ⛔⛔ SÓ CASA COM LINHA QUE VEIO DO ESTOQUE (`x.stockId`). Sem esse filtro, um registro
+    // do financeiro já EMPILHADO virava alvo do próximo — dois cadastros do financeiro se
+    // fundiam entre si, um sumia da lista e a linha ainda dizia "AMBOS" (mentindo sobre
+    // existir no estoque). Medido em prod: 33 linhas com id de estoque contra 28 que existem.
+    // ⚠️ Duplicata DENTRO do financeiro não é problema deste seletor — e some-la seria
+    // exatamente a fusão silenciosa que o dono proibiu.
+    const par = out.find((x) => x.stockId && ehMesmoFornecedor(x, { razaoSocial: f.razaoSocial, cnpj: f.cnpj ?? null }))
     if (par) {
       par.financeiroId = f.id
       par.origem = 'AMBOS'
