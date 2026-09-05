@@ -242,6 +242,41 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⛔⛔ A CONFERÊNCIA ACUSAVA O PRÓPRIO IMPORT · E O BANCO RE-DATA LINHA JÁ PUBLICADA (05/09/2026)
+
+**Os dois refinamentos que o dono levantou estavam certos — e juntos explicam os R$ 1.146,02 ao centavo.**
+
+```
+dia 01/09 · arquivo de 04/09 diz:  7 linhas ·  +2.981,68
+            nosso ledger tinha:    6 linhas ·  +4.127,70   →  +1.146,02
+
+  faltavam no ledger (3 encargos, na lista "a importar" da MESMA tela)  −1.741,70
+  sobravam no ledger (2 CAPITALIZACAO RG que o banco moveu pro dia 02)    +595,68
+```
+⭐ **Nenhuma das duas causas sozinha dá esse número.** As duas juntas dão.
+
+### 1. A conferência lia só o ledger — e rodava no preview
+
+`conferirComPdf` filtrava `lifecycle:'EFFECTED'`: **por construção, todo import acusava o que ele mesmo ia resolver.** Agora recebe `recon.missing` — **a MESMA lista que o confirm cria**, não uma recontagem (se viesse de outro cálculo, tela e gravação voltariam a divergir) — e o selo fala do **previsto**.
+
+⚠️ **E os dois desfechos são frases distintas**, senão a correção troca um susto por outro: *"os dias fecham DEPOIS de confirmar — nada a corrigir"* × *"o dia 01/09 não fecha **nem depois** de confirmar: faltam R$ X"*. Só a segunda pede ação.
+
+### 2. O banco muda a data de uma linha JÁ PUBLICADA
+
+As 2 `CAPITALIZACAO RG` (FITID 590244/590245): **01/09** no 1º download, **02/09** nos três seguintes. A identidade da linha é `data|valor|memo` (o FITID não entra — o Banrisul renumera), então elas voltariam como novas: **R$ 595,68 duplicados**. Varredura dos **32 blobs**: só estas 2 mudaram de data de verdade (o `PACOTE SERVICOS` em 4 datas é FITID **reciclado por mês**, não deslocamento).
+
+**Tier 1.5 do reconcile** (`fronteira-de-dia.ts`), estreito por exigência do dono: mesmo valor ao centavo · mesmo histórico **canônico** · exatamente 1 dia de diferença · ⭐ **e a linha SUMIU do dia original no arquivo novo**. A tela **sugere com nome** — *"o banco moveu X de 01/09 pra 02/09 entre dois downloads"* — em vez de casar em silêncio, porque quem decide a data é o dono.
+
+**⛔⛔ A 4ª condição é a que protege o PIX de 7.000:** dois PIX iguais em dias vizinhos **de verdade** (os dois listados no arquivo) não podem virar um só — **perder lançamento é pior que duplicar, porque duplicata a gente vê.**
+
+**⚠️⚠️ E O GUARD DESSE CASO NÃO MORDIA NA 1ª VERSÃO (REGRA 11, de novo):** com o ledger tendo UMA linha, ela casa exato no Tier 1 e **nunca chega na fronteira** — removi a condição 4 e os 11 testes ficaram **verdes**. O teste que ficou tem **sobra dos dois lados** (ledger com duas em 13/08, arquivo com uma em 13 e uma em 14), que é o único formato em que a condição 4 é executada.
+
+**⚠️ E A AMBIGUIDADE É DE DIA, NÃO DE LINHA** — minha 1ª versão errou isso e **não casava o caso que a motivou**: duas linhas idênticas no mesmo dia vizinho são intercambiáveis (é o multiset do Tier 1); o que não se decide é candidata no dia anterior **e** no seguinte.
+
+**PROVADO CONTRA O ARQUIVO REAL PARADO:** `já existem 6 · novas 14 · futuras 1 · órfãs 0` — **0 CAPITALIZACAO entrando de novo**, os dois deslocamentos nomeados na tela. (Antes: 17 novas, com os 595,68 dobrados.)
+
+**📋 A DATA — decisão do dono, pendente do PDF:** *"a régua é o PDF; sem o PDF, não move nada."* `scripts/mover-data-por-fronteira.ts` está pronto: **recusa rodar sem `--pdf`**, mostra antes×depois pela MESMA conferência da tela, e **ABORTA se os dias 01 e 02 não fecharem depois** — se o movimento não faz os dois fecharem, a hipótese está errada e mover espalharia o erro.
+
 ## ⛔⛔⛔ OS TRÊS BURACOS DO IMPORT DO BANRISUL — E OS TRÊS ERAM DE CÓDIGO (04/09/2026)
 
 **Os três faziam o dono retrabalhar A CADA import.** Medidos contra os blobs reais antes de eu tocar em qualquer coisa.
