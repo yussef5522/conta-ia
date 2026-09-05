@@ -242,6 +242,16 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⛔⛔ CONFERIR NÃO DEPENDE DE TER LINHA NOVA — A FAIXA DO PDF SUMIA COM "0 NOVAS" (05/09/2026)
+
+**O dono subiu um OFX já importado só pra CONFERIR com o PDF — e a faixa de anexar não existia**, nem a conferência rodava. O selo estava **dentro do ramo V2**; o preview tem **três saídas** (legado · re-import vazio · V2) e ele caiu na do meio.
+
+**⚠️ É A MESMA ANATOMIA DE 29/08 — e o guard daquele dia não pegou.** Lá o `avisoExportMesmoDia` saiu só no V2, virou guard, e o guard trava **o aviso**. O **selo nasceu depois** (04/09) e entrou no mesmo lugar errado, **sem entrar no guard**. *Guard que trava um campo não protege o campo do vizinho.* Agora selo e conferência são calculados **uma vez, fora dos ramos**, e o guard cobre os dois — inclusive que a conferência roda **uma vez só** (duas seriam duas verdades).
+
+**📋 E O LOCALIZADOR DOS R$ 776,53 ESTÁ PRONTO** (`scripts/localizar-linhas-que-o-banco-acrescentou.ts`): com o PDF do mês, lista as linhas que o banco postou depois do fato usando **o MESMO motor do import** (`reconcileStatement`, com a fronteira de dia) — uma régua própria discordaria do sistema no 1º caso de borda. Prova que o período **fecha depois** delas e **ABORTA se não fechar** (lista incompleta espalharia o erro). Entram **sem categoria**.
+
+**⚠️ VALIDADO CONTRA O PDF DE SETEMBRO (o que existe):** `20 lançamentos · 20 casadas · 0 acrescentadas · 4/4 dias fecham`. A ferramenta funciona ponta a ponta; **falta o PDF de AGOSTO**, que é o único documento em que os 776,53 aparecem — **conferido: os 32 blobs de OFX guardados não têm nada de agosto além do que já está no ledger**, porque o banco não re-publicou aquelas linhas em OFX.
+
 ## ⛔⛔⛔ A RÉGUA DO PDF NUNCA ERA GRAVADA · O ÚLTIMO DIA SUMIA · O BANCO REESCREVE O PASSADO (05/09/2026)
 
 **Três achados numa investigação só, com o PDF real (`Extrato_20260905.pdf`, emitido 00:55).**
