@@ -223,7 +223,13 @@ class BanrisulPdfParser implements BankStatementPdfParser {
         if (v) saldoAnterior = { data: `${mm[3]}-${mm[2]}-${mm[1]}`, valor: v.signed }
         continue
       }
-      if ((mm = raw.match(/^\s*SALDO\s+NA\s+DATA\s+(\S+)\s*$/i))) {
+      // ⛔⛔ O PONTO FINAL FAZIA O ÚLTIMO DIA SUMIR DA RÉGUA (05/09/2026).
+      // O Banrisul escreve `SALDO NA DATA` nos dias do meio e **`SALDO NA DATA.`** (com
+      // ponto) no ÚLTIMO — e o regex exigia espaço logo depois de DATA. Resultado: o dia
+      // mais recente, que é justamente o que o dono acabou de importar, **nunca era
+      // conferido**, e a contagem "N/N dias fecham" dizia N sobre N−1 dias reais.
+      // ⚠️ Some em SILÊNCIO: sem dia, sem divergência, sem aviso — a pior forma.
+      if ((mm = raw.match(/^\s*SALDO\s+NA\s+DATA\.*\s+(\S+)\s*$/i))) {
         const v = parseBrlAmount(mm[1])
         if (v && currentDay && mesAtual && anoAtual) {
           saldosDiarios.push({ data: `${anoAtual}-${mesAtual}-${String(currentDay).padStart(2, '0')}`, valor: v.signed })

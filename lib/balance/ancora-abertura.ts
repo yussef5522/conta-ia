@@ -120,7 +120,41 @@ export interface GravarReguaInput {
  * e um PDF mais novo do mesmo dia corrige o antigo, que é o certo (extrato de meio-dia
  * não fecha o próprio dia).
  */
-export async function gravarReguaDeclarada(db: Db, input: GravarReguaInput): Promise<number> {
+export interface ReguaReescrita {
+  data: string
+  /** o que o banco declarava ANTES (PDF anterior) */
+  de: number
+  /** o que ele declara AGORA */
+  para: number
+  /** para − de */
+  diferenca: number
+}
+
+export interface ResultadoDaRegua {
+  gravados: number
+  /** ⭐ dias em que o banco MUDOU o que já tinha declarado — ver `reescritaDoBanco` */
+  reescritos: ReguaReescrita[]
+}
+
+export async function gravarReguaDeclarada(db: Db, input: GravarReguaInput): Promise<ResultadoDaRegua> {
+  // ⭐⭐ O BANCO REESCREVE O PASSADO (05/09/2026) — e isso tem que APARECER.
+  // O PDF de 01/09 dizia `SALDO ANT EM 31/08 = −7.353,66`; o de 05/09 diz **−8.130,19**.
+  // São R$ 776,53 que o Banrisul postou em AGOSTO **depois do fato** (a família do
+  // "+24hs / re-publicação"). Sobrescrever calado apagaria a única evidência de que o
+  // fechamento mudou — e o dono descobriria pelo saldo, meses depois.
+  const jaGravados = await db.bankAccountSaldoDeclarado.findMany({
+    where: { bankAccountId: input.bankAccountId },
+    select: { data: true, saldoContabil: true },
+  })
+  const antes = new Map(jaGravados.map((g) => [g.data.toISOString().slice(0, 10), g.saldoContabil]))
+  const reescritos: ReguaReescrita[] = []
+  for (const d of input.dias) {
+    const anterior = antes.get(d.data)
+    if (anterior != null && Math.abs(anterior - d.valor) > 0.005) {
+      reescritos.push({ data: d.data, de: anterior, para: d.valor, diferenca: Math.round((d.valor - anterior) * 100) / 100 })
+    }
+  }
+
   let n = 0
   for (const d of input.dias) {
     await db.bankAccountSaldoDeclarado.upsert({
@@ -141,5 +175,26 @@ export async function gravarReguaDeclarada(db: Db, input: GravarReguaInput): Pro
       data: { blockedAmount: input.bloqueado, blockedAt: input.emitidoEm ?? new Date() },
     })
   }
-  return n
+  return { gravados: n, reescritos }
+}
+
+/**
+ * A frase que a tela mostra quando o banco reescreveu um fechamento já declarado.
+ *
+ * ⛔ **NÃO MEXE NO LEDGER NO CHUTE** (ordem do dono): a régua registra o que o banco diz
+ * HOJE; achar quais linhas ele acrescentou exige o extrato daquele mês. A frase pede
+ * exatamente isso, em vez de deixar um vermelho sem saída.
+ */
+export function reescritaDoBanco(rs: ReguaReescrita[]): string | null {
+  if (!rs.length) return null
+  const brl = (n: number) => Math.abs(n).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  const MES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'agosto', 'set', 'out', 'nov', 'dez']
+  const partes = rs.map((r) => {
+    const mes = MES[Number(r.data.slice(5, 7)) - 1]
+    return `${r.data.split('-').reverse().join('/')} de ${brl(r.de)} pra ${brl(r.para)} (${brl(r.diferenca)})`
+  })
+  const mesesUnicos = [...new Set(rs.map((r) => MES[Number(r.data.slice(5, 7)) - 1]))]
+  return `O banco reescreveu o fechamento de ${mesesUnicos.join(' e ')} em ${brl(rs.reduce((s, r) => s + Math.abs(r.diferenca), 0))}: `
+    + `${partes.join(' · ')}. São lançamentos que ele postou depois do fato. `
+    + `Traga o extrato de ${mesesUnicos.join('/').toUpperCase()} atualizado pra a conferência diária localizar exatamente quais linhas ele acrescentou.`
 }

@@ -13,6 +13,7 @@ import { extractPdfText } from '@/lib/bank-statement-pdf/extract-pdf-text'
 import { banrisulPdfParser } from '@/lib/bank-statement-pdf/banrisul-parser'
 import { conferirDiaADia } from '@/lib/bank-statement-pdf/conferencia-diaria'
 import { fraseDoSelo, type SeloDiario } from './selo-do-import'
+import { gravarReguaDeclarada, reescritaDoBanco, type ReguaReescrita } from '@/lib/balance/ancora-abertura'
 
 /** uma linha que o CONFIRMAR vai criar (o que está na lista "a importar" da tela) */
 export interface LinhaAImportar {
@@ -109,4 +110,50 @@ export async function conferirComPdf(
     fechaDepoisDeConfirmar: r.todosFecham && !soLedger.todosFecham,
   }
   return { ...base, frase: fraseDoSelo(base) }
+}
+
+
+/**
+ * ⭐⭐⭐ GRAVA A RÉGUA DO PDF — o passo que NUNCA existiu (05/09/2026).
+ *
+ * ⛔ **`gravarReguaDeclarada` tinha ZERO chamadores de produção**: só testes. A régua
+ * (`bank_account_saldo_declarado`) foi escrita **uma única vez**, em 01/09 18:03, por um
+ * script de sprint. O import com PDF lia o documento, conferia **em memória**, mostrava na
+ * tela e **jogava fora**.
+ *
+ * ⚠️ E o efeito era sutil, por isso durou: o selo do card **é derivado na hora** (recalcula
+ * certinho) — o que estava congelado era a **RÉGUA**. Ela era de um PDF emitido às **14:01
+ * do dia 01/09**, ou seja **no meio do dia**, antes dos 3 encargos existirem. Por isso o
+ * badge dizia *"01/09 não fecha (R$ 1.741,70)"* — a soma exata dos encargos — mesmo depois
+ * de eles entrarem no ledger. **O badge não estava velho; a régua estava.**
+ *
+ * ⚠️ Roda DEPOIS do commit do import e é FAIL-SOFT: PDF ilegível não desfaz um import que
+ * já gravou (a mesma disciplina do gatilho de vendas).
+ */
+export async function registrarReguaDoPdf(
+  bankAccountId: string, pdfBytes: Uint8Array, db: PrismaClient,
+): Promise<{ gravados: number; reescritos: ReguaReescrita[]; aviso: string | null } | null> {
+  const texto = await extractPdfText(pdfBytes)
+  const p = banrisulPdfParser.parse(texto) as ReturnType<typeof banrisulPdfParser.parse> & {
+    saldoAnterior?: { data: string; valor: number } | null
+    saldosDiarios?: Array<{ data: string; valor: number }>
+    bloqueado?: number | null
+    emitidoEm?: string | null
+  }
+  if (!p.saldosDiarios?.length) return null
+
+  // ⭐ o "SALDO ANT EM" entra como dia declarado também: é o fechamento do dia anterior, e
+  // é exatamente ele que denuncia a reescrita do mês fechado (31/08: −7.353,66 → −8.130,19).
+  const dias = [
+    ...(p.saldoAnterior ? [p.saldoAnterior] : []),
+    ...p.saldosDiarios,
+  ]
+  const r = await gravarReguaDeclarada(db, {
+    bankAccountId,
+    origem: 'PDF_BANRISUL',
+    emitidoEm: p.emitidoEm ? new Date(p.emitidoEm) : null,
+    dias,
+    bloqueado: p.bloqueado ?? null,
+  })
+  return { ...r, aviso: reescritaDoBanco(r.reescritos) }
 }

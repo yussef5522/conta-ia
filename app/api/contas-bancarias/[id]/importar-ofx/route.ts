@@ -53,7 +53,7 @@ import { isCanonicalClassifyEnabledForBank } from '@/lib/canonical/flag'
 import { resolveImportStatuses } from '@/lib/reconciliation/resolve-import-statuses'
 import { resolveBankProfile, resolveStatementAnchor, bankProfileWarning } from '@/lib/bank-profiles'
 import { decidirSelo } from '@/lib/ofx/selo-do-import'
-import { conferirComPdf } from '@/lib/ofx/conferir-com-pdf'
+import { conferirComPdf, registrarReguaDoPdf } from '@/lib/ofx/conferir-com-pdf'
 import { fraseDoDeslocamento } from '@/lib/reconciliation/fronteira-de-dia'
 import { avisoExportMesmoDia } from '@/lib/ofx/export-mesmo-dia'
 import { verifyOfxMatchesAccount } from '@/lib/ofx/verify-account-match'
@@ -218,6 +218,23 @@ export async function POST(request: NextRequest, { params }: Params) {
       // nova → recompute a VendaDiaria da empresa. NUNCA derruba o import — se falhar,
       // loga e segue; o juiz noturno pega (V1 vermelho de manhã). Por companyId.
       await recomputeVendasSafe(prisma, conta.companyId, 'import-ofx/confirm')
+
+      // ⭐⭐⭐ A RÉGUA DO PDF PASSA A SER GRAVADA (05/09) — era o passo que nunca existiu:
+      // `gravarReguaDeclarada` tinha ZERO chamadores de produção, e o selo do card ficava
+      // preso ao PDF de 01/09 (emitido às 14:01, ANTES dos encargos do dia).
+      // ⚠️ Fora da $transaction e fail-soft: PDF ilegível não desfaz import que já gravou.
+      let reguaDoPdf: Awaited<ReturnType<typeof registrarReguaDoPdf>> = null
+      if (pdfBytes) {
+        try {
+          reguaDoPdf = await registrarReguaDoPdf(contaId, pdfBytes, prisma)
+          if (reguaDoPdf?.reescritos.length) {
+            console.warn(`[importar-ofx confirm] o banco REESCREVEU ${reguaDoPdf.reescritos.length} fechamento(s) já declarado(s):`,
+              reguaDoPdf.reescritos.map((r) => `${r.data} ${r.de}→${r.para}`).join(' · '))
+          }
+        } catch (e) {
+          console.error('[importar-ofx confirm] não deu pra gravar a régua do PDF (import segue):', e)
+        }
+      }
       // Contrato: mantém os campos essenciais do legado (`mensagem`,
       // `inseridas`, `duplicadas`, `importId`, `errosParser`) + adiciona
       // métricas novas do V2 (preview/orphan/ledgerBalance).
@@ -247,6 +264,9 @@ export async function POST(request: NextRequest, { params }: Params) {
         ledgerMismatch: result.ledgerMismatch,
         // ⭐ gravou sem poder conferir o saldo (Banrisul): a tela mostra NEUTRO, não vermelho
         avisoSemSelo: result.avisoSemSelo,
+        // ⭐ a régua do PDF entrou (e, se o banco reescreveu algum fechamento, o aviso)
+        reguaGravada: reguaDoPdf ? { dias: reguaDoPdf.gravados, reescritos: reguaDoPdf.reescritos } : null,
+        avisoReescritaDoBanco: reguaDoPdf?.aviso ?? null,
         orphanWarnings: result.classification.orphanWarnings,
         matchedExact: result.matchedExact,
         matchedFuzzy: result.matchedFuzzy,

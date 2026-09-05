@@ -658,6 +658,11 @@ export default function ImportarOFXPage() {
           description: `Entram quando saírem de fato. ${lista}`,
         })
       }
+      // ⭐⭐ O BANCO REESCREVEU UM FECHAMENTO JÁ DECLARADO (05/09). Aviso com AÇÃO: o
+      // sistema não mexe no ledger no chute; ele diz o que mudou e pede o extrato do mês.
+      if (data.avisoReescritaDoBanco) {
+        toast({ title: 'O banco mudou um fechamento anterior', description: data.avisoReescritaDoBanco })
+      }
       // ⭐⭐ GRAVOU SEM SELO (05/09): banco cujo saldo declarado não serve de régua. É
       // NOTÍCIA, não erro — nada a corrigir, e o vermelho aqui foi o que fez o dono achar
       // que o import tinha sido RECUSADO (ele tinha gravado: 14 linhas entraram).
