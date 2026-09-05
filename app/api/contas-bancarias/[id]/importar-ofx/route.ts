@@ -747,6 +747,29 @@ export async function POST(request: NextRequest, { params }: Params) {
       }, { status: 422 })
     }
 
+    // ⭐⭐⭐ O SELO E A CONFERÊNCIA SAEM DAQUI — ANTES DOS TRÊS RETURNS (05/09/2026).
+    //
+    // ⛔ Estavam DENTRO do ramo V2. O preview tem **três saídas** (legado · re-import vazio ·
+    // V2) e o dono caiu justamente na do meio: subiu o OFX que já tinha importado, viu
+    // *"nenhuma transação nova"* e **a faixa de anexar o PDF não existia** — nem a
+    // conferência rodava. **Conferir não depende de ter linha nova**; depende de ter régua.
+    //
+    // ⚠️ É a MESMA anatomia de 29/08, quando o `avisoExportMesmoDia` saiu só no V2 e o
+    // re-import vazio ficou mudo. Na época virou guard; o guard trava o AVISO, e o selo
+    // nasceu depois (04/09) sem entrar nele. Agora os dois estão no mesmo lugar e o guard
+    // cobre os dois.
+    let seloDiario: Awaited<ReturnType<typeof conferirComPdf>> = null
+    if (pdfBytes) {
+      try {
+        seloDiario = await conferirComPdf(contaId, pdfBytes, prisma, linhasDoConfirmar)
+      } catch (e) {
+        // ⚠️ FAIL-SOFT: PDF ilegível não derruba o preview — as linhas do OFX seguem.
+        console.error('[importar-ofx preview] conferência pelo PDF falhou (preview segue):', e)
+      }
+    }
+    const selo = decidirSelo(bankProfile, !!seloDiario)
+    const seloPayload = { modo: selo.modo, aviso: selo.aviso, pedePdf: selo.pedePdf, diario: seloDiario }
+
     if (!isV2PreviewEnabled()) {
       const payload = buildLegacyPreviewPayload({
         novas: novasReais,
@@ -760,6 +783,8 @@ export async function POST(request: NextRequest, { params }: Params) {
         futuras: futurasPayload,
         conciliacao, // "N linhas no arquivo = A novas + B já no sistema + C futuras"
         reconcileDedup: reconcileCount,
+        selo: seloPayload,
+        deslocamentosDeDia: deslocamentosPayload,
         importIdentity: {
           gate: gateResult.stats,
           batchWarnings,
@@ -795,6 +820,9 @@ export async function POST(request: NextRequest, { params }: Params) {
         }),
         futuras: futurasPayload,
         reconcileDedup: reconcileCount,
+        // ⭐ 05/09: com 0 novas o dono ainda quer CONFERIR — o selo vem igual
+        selo: seloPayload,
+        deslocamentosDeDia: deslocamentosPayload,
         importIdentity: {
           gate: gateResult.stats,
           batchWarnings,
@@ -908,16 +936,6 @@ export async function POST(request: NextRequest, { params }: Params) {
       // ⭐⭐⭐ COM O PDF, A RÉGUA É O SALDO NA DATA, DIA A DIA (o desenho de 01/09 aplicado ao
       // import). O resultado é "22/22 dias fecham" ou "o dia X não fecha por R$ Y, eis as
       // linhas" — nunca mais "não identifiquei a causa".
-      let seloDiario: Awaited<ReturnType<typeof conferirComPdf>> = null
-      if (pdfBytes) {
-        try {
-          seloDiario = await conferirComPdf(contaId, pdfBytes, prisma, linhasDoConfirmar)
-        } catch (e) {
-          // ⚠️ FAIL-SOFT: PDF ilegível não derruba o import — as linhas do OFX entram igual.
-          console.error('[importar-ofx preview] conferência pelo PDF falhou (import segue):', e)
-        }
-      }
-      const selo = decidirSelo(bankProfile, !!seloDiario)
 
       let diagnostico: { de: string; ate: string; diferenca: number; instrucao: string } | null = null
       if (selo.rodaDiagnosticoLedgerBal && v2Payload.ledgerBalCheck.available && !v2Payload.ledgerBalCheck.bate) {
@@ -956,7 +974,7 @@ export async function POST(request: NextRequest, { params }: Params) {
           ...v2Payload.ledgerBalCheck,
           ehReguaNesteBanco: selo.mostraGateLedgerBal,
         },
-        selo: { modo: selo.modo, aviso: selo.aviso, pedePdf: selo.pedePdf, diario: seloDiario },
+        selo: seloPayload,
         futuras: [...futurasPayload, ...agendadasDia],
         reconcileDedup: reconcileCount,
         deslocamentosDeDia: deslocamentosPayload,

@@ -24,6 +24,22 @@ const rota = readFileSync(
 )
 
 describe('⭐ todo return do preview leva o aviso de export de mesmo dia', () => {
+  // ⛔⛔ 05/09: o SELO nasceu em 04/09 e entrou só no return do V2 — o dono subiu um OFX
+  // já importado ("0 novas"), caiu no return do meio e **a faixa de anexar o PDF não
+  // existia**. Conferir não depende de ter linha nova; depende de ter régua. O guard de
+  // 29/08 travava só o aviso, e por isso não pegou. Agora trava os dois.
+  it('⛔⛔ os 3 caminhos devolvem o SELO — inclusive o de "0 novas"', () => {
+    const retornosDePreview = (rota.match(/bankProfile: bankProfilePayload/g) ?? []).length
+    const comSelo = (rota.match(/selo: seloPayload/g) ?? []).length
+    expect(retornosDePreview).toBeGreaterThanOrEqual(3)
+    expect(comSelo, 'caminho de preview sem selo → a faixa do PDF some naquele estado').toBe(retornosDePreview)
+  })
+
+  it('⚠️ e o selo é calculado UMA vez, FORA dos ramos (senão eles divergem)', () => {
+    expect((rota.match(/const selo = decidirSelo\(/g) ?? []).length).toBe(1)
+    expect((rota.match(/await conferirComPdf\(/g) ?? []).length, 'duas conferências = duas verdades').toBe(1)
+  })
+
   it('⭐⭐ os 3 caminhos (legado · re-import vazio · V2) devolvem o campo', () => {
     const retornosDePreview = (rota.match(/bankProfile: bankProfilePayload/g) ?? []).length
     const comAviso = (rota.match(/avisoExportMesmoDia: avisoMesmoDiaPayload/g) ?? []).length
