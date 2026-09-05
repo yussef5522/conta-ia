@@ -1,3 +1,5 @@
+import { destaqueDoCard } from '@/lib/balance/destaque-do-card'
+import { podeConferirPorLedgerbal, resolveBankProfile } from '@/lib/bank-profiles'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { contaBancariaSchema } from '@/lib/validations/conta-bancaria'
@@ -68,13 +70,30 @@ export async function GET(request: NextRequest) {
         console.error('[contas] selo por dia falhou (a lista segue sem ele):', e)
       }
 
+      // ⭐⭐⭐ O DESTAQUE DO CARD (05/09) — decisão do dono: onde o saldo declarado embute
+      // bloqueio, o número grande é o **DEVEDOR** (o mesmo do app do banco), datado, com o
+      // contábil e o selo ao lado. ⛔ É a FICHA que decide, nunca um `if (Banrisul)`.
+      // ⛔⛔ E é SÓ apresentação: `balance` (contábil) continua no payload e é ele que o
+      // Saldo Total soma — ver `lib/balance/destaque-do-card.ts`.
       return NextResponse.json({
-        contas: contas.map((c) => ({
-          ...c,
-          lastSuccessfulImportAt: lastMap.get(c.id) ?? null,
-          conferencia: conferenciaMap.get(c.id) ?? null,
-          seloDiario: seloMap.get(c.id) ?? null,
-        })),
+        contas: contas.map((c) => {
+          const selo = seloMap.get(c.id) as { diasQueFecham?: number; diasConferidos?: number } | undefined
+          return {
+            ...c,
+            lastSuccessfulImportAt: lastMap.get(c.id) ?? null,
+            conferencia: conferenciaMap.get(c.id) ?? null,
+            seloDiario: seloMap.get(c.id) ?? null,
+            destaque: destaqueDoCard({
+              contabil: c.balance,
+              declarado: c.ledgerBal ?? null,
+              declaradoEm: c.ledgerBalDate ?? null,
+              bloqueio: c.blockedAmount ?? null,
+              bloqueioEm: c.blockedAt ?? null,
+              declaradoEhRegua: podeConferirPorLedgerbal(resolveBankProfile(c.bankCode ?? null)),
+              selo: selo?.diasConferidos ? { fecham: selo.diasQueFecham ?? 0, conferidos: selo.diasConferidos } : null,
+            }),
+          }
+        }),
       })
     }
 

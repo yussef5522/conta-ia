@@ -50,6 +50,8 @@ interface Conta {
   lastSuccessfulImportAt: string | null
   // ⭐ Série B (29/08/2026) — o saldo bate com o que o banco declarou?
   conferencia: { conferido: boolean; em: string | null; diferenca: number | null; rotulo: string } | null
+  /** ⭐ 05/09: que número vai GRANDE neste card (ver lib/balance/destaque-do-card.ts) */
+  destaque?: { valor: number; rotulo: 'DEVEDOR' | 'CONTABIL'; em: string | null; apoio: string } | null
 }
 
 const VARIANT_STYLES: Record<BadgeVariant, { dot: string; label: string; text: string; percent: string }> = {
@@ -262,13 +264,33 @@ export default function ContasPage() {
                         {status.label}
                       </span>
                     </div>
-                    <div className={`flex items-center gap-1 font-bold text-lg shrink-0 ${styles.text}`}>
-                      {conta.balance >= 0
-                        ? <ArrowUpRight className="h-4 w-4" />
-                        : <ArrowDownRight className="h-4 w-4" />}
-                      {formatBRL(conta.balance)}
+                    {/* ⭐⭐⭐ O NÚMERO GRANDE (05/09/2026) — decisão do dono: onde o saldo
+                        declarado embute bloqueio (ficha do banco, nunca um if do Banrisul),
+                        o destaque é o **SALDO DEVEDOR**, o mesmo que o app do banco mostra.
+                        ⛔ Só apresentação: `conta.balance` (contábil) segue intocado e é ele
+                        que o Saldo Total soma — o devedor dança com o bloqueio sem
+                        lançamento nenhum. */}
+                    <div className="shrink-0 text-right">
+                      <div className={`flex items-center justify-end gap-1 font-bold text-lg ${styles.text}`}>
+                        {(conta.destaque?.valor ?? conta.balance) >= 0
+                          ? <ArrowUpRight className="h-4 w-4" />
+                          : <ArrowDownRight className="h-4 w-4" />}
+                        {formatBRL(conta.destaque?.valor ?? conta.balance)}
+                      </div>
+                      {conta.destaque?.rotulo === 'DEVEDOR' && (
+                        // ⚠️ DATADO: o devedor é do último documento importado, não de hoje.
+                        // Sem a data, um número velho passa por atual.
+                        <p className="text-[10px] text-muted-foreground">
+                          saldo devedor{conta.destaque.em ? ` em ${new Date(conta.destaque.em).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'UTC' })}` : ''}
+                        </p>
+                      )}
                     </div>
                   </div>
+
+                  {/* o bloqueio explicado · o contábil visível · o selo junto */}
+                  {conta.destaque?.apoio && (
+                    <p className="mt-1 text-[11px] text-muted-foreground tabular-nums">{conta.destaque.apoio}</p>
+                  )}
 
                   <p className="mt-2 text-xs text-muted-foreground tabular-nums">
                     {status.usagePercent !== null && status.percentColor ? (
