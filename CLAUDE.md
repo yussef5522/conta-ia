@@ -242,6 +242,27 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⭐⭐ O NÚMERO GRANDE DO CARD É O SALDO DEVEDOR — SÓ APRESENTAÇÃO (05/09/2026)
+
+**Decisão do dono:** *"é esse que eu comparo todo dia; sistema mostrando outro número em destaque parece errado mesmo estando certo."*
+
+```
+banrisul   [DEVEDOR] −8.347,67  em 04/09
+           R$ 1.700,00 bloqueado (+24h) em 05/09 · contábil −R$ 6.647,67 · conferido 26/26 dias
+sicredi    [CONTABIL] −49.956,90        stone [CONTABIL] 636,63
+Saldo Total (contábil, inalterado): −56.556,37
+```
+
+**⭐ A REGRA É DA FICHA DO BANCO, NUNCA UM `if (Banrisul)`** — vale pra qualquer conta cujo declarado embuta bloqueio (`ledgerBalReliable: false`). O dia em que o banco consertar o LEDGERBAL, **o card acerta sozinho**; o dia em que outro banco tiver a mania, acerta também.
+
+**⚠️ O DEVEDOR VAI DATADO** (*"saldo devedor em 04/09"*): ele é do último documento importado, não de hoje — sem a data, um número velho passa por atual. E **sem bloqueio medido não se inventa um**: ele muda todo dia e só vale no instante do documento.
+
+**⛔⛔ A FRONTEIRA — só apresentação, e está TRAVADA POR TESTE:**
+- **ledger, conferência diária, selo e âncora seguem no CONTÁBIL** — é ele que fecha ao centavo (26/26). *O devedor dança com o bloqueio sem lançamento nenhum*, então nunca pode virar régua (foi o fantasma de R$ 1.700 de 01/09).
+- **Saldo Total e Fluxo de Caixa continuam somando `balance`**, com **guard estrutural + auto-teste**: alguém "uniformizar" e somar o destaque faria o total **dançar com o bloqueio de cada banco** — R$ 1.700 a menos sem nada ter acontecido.
+
+Red-then-green nos dois sentidos: destaque de volta no contábil → 4 vermelhos; total somando o devedor → o guard morde. 8.417 verdes.
+
 ## ⭐⭐⭐ OS R$ 776,53 DE AGOSTO ERAM **UMA LINHA**: O JUROS DO MÊS (05/09/2026)
 
 **O PDF de agosto atualizado achou, e é uma só:**
