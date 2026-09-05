@@ -73,7 +73,10 @@ export async function listarFornecedoresUnificados(
 ): Promise<FornecedorUnificado[]> {
   const [doEstoque, doFinanceiro] = await Promise.all([
     db.stockSupplier.findMany({ where: { companyId }, select: { id: true, razaoSocial: true, cnpj: true } }),
-    db.supplier.findMany({ where: { companyId }, select: { id: true, razaoSocial: true, cnpj: true } }),
+    // ⚠️ `isActive: false` FICA DE FORA: fornecedor desativado é decisão tomada (duplicata
+    // costurada, empresa que não fornece mais) e oferecê-lo numa nota nova recriaria
+    // exatamente a duplicata que a costura acabou de resolver.
+    db.supplier.findMany({ where: { companyId, isActive: true }, select: { id: true, razaoSocial: true, cnpj: true } }),
   ])
 
   const out: FornecedorUnificado[] = doEstoque.map((s) => ({

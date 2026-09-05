@@ -174,3 +174,13 @@ describe('⛔⛔ dois cadastros do FINANCEIRO não se fundem entre si', () => {
     expect(new Set(lista.map((f) => f.financeiroId)).size).toBe(2)
   })
 })
+
+describe('⛔ fornecedor DESATIVADO não volta pro seletor', () => {
+  it('⛔⛔ o "rm2" costurado não pode ser oferecido de novo — recriaria a duplicata', async () => {
+    await prisma.supplier.create({ data: { companyId, razaoSocial: 'RM2 COMERCIO DE MATERIAIS LTDA' } })
+    await prisma.supplier.create({ data: { companyId, razaoSocial: 'rm2', isActive: false } })
+
+    const lista = await listarFornecedoresUnificados(companyId, prisma)
+    expect(lista.map((f) => f.razaoSocial)).toEqual(['RM2 COMERCIO DE MATERIAIS LTDA'])
+  })
+})
