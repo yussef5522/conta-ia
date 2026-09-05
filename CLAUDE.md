@@ -242,6 +242,30 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⭐⭐⭐ A NOTA É FATO, A ENTRADA É COMBINADO — CORRIGIR A UNIDADE ERRADA (05/09/2026)
+
+**CASO REAL (ALAN SALBEGO, nota de 05/09):**
+
+```
+cProd 12457 · "LEITE EM PO INTEGRAL AURORA 400G" · 12 KG × 15,99 = 191,88 · trib 12 UN
+```
+
+São **12 latas de 400 g**, não 12 quilos. O fornecedor digitou a unidade errada — **e a própria nota se contradiz**: `uCom = KG`, **`uTrib = UN`**. Essa contradição é o sinal, e ele é **medido**, não chutado.
+
+**⛔⛔ A NOTA FICA COMO VEIO** (12 KG, assinada pela SEFAZ). O que se corrige é a **ENTRADA**, com rastro em tabela própria (`stock_unidade_corrigida`, CREATE-only): *"a nota dizia 12 KG; entrada conferida como 12 UN, por Yussef"*. É a mesma regra do combinado × duplicata e dos itens digitados do DANFE — **documento fiscal não se reescreve**.
+
+⚠️ **Tabela nova, não coluna**: migration de estoque é CREATE-only — e é o certo por conteúdo também, porque **correção tem autor e data**. Com CHECK `unidadeNota <> unidadeEntrada`: *correção que não corrige nada não existe*.
+
+**⭐ O CUSTO: o denominador muda, o valor da nota nunca.** R$ 191,88 ÷ 12 latas = **R$ 15,99 por LATA**. Se um dia vierem 24 latas nos mesmos "12 KG", o mesmo total vira R$ 7,995 — em **precisão cheia**, senão o CHECK do ledger recusa a linha.
+
+**⭐ APRENDE COM A CORREÇÃO, e SUGERE:** a próxima nota do mesmo (fornecedor, cProd) diz *"da última vez você conferiu como UN — conferir igual?"*. **Sugere, não decide** — um dia pode vir a granel de verdade, e casar sozinho seria a classe do "casar por semelhança" que o módulo recusa em toda parte.
+
+**⛔⛔ O GUARD DO FATOR INTACTO** (item 4 do dono): identidade só entre unidades **iguais**; entre diferentes, **fator conhecido**. `KG → UN` com fator 1 é **recusado no confirm**, sem meia-gravação — *assumir 1 aqui transformaria KG em UN sem ninguém decidir*.
+
+**⚠️⚠️ E A PROVA EM PROD PEGOU UM BURACO QUE O CÓDIGO ESCONDIA:** a unidade sugerida pro **item NOVO** vinha do `uCom`. No caso do leite o item **nasceria em KG**, seguindo a nota errada — entrada e item seriam ambos KG, **a correção nunca dispararia, e o conserto ficaria inútil justamente no caso que o motivou**. Agora `sugerirUnidade(uCom, uTrib)` faz a **tributária mandar quando as duas divergem**: é o campo que o fornecedor não escolhe à toa (vai pro fisco). Provado em prod: *"item novo sugerido em: UN"*.
+
+12 testes, red-then-green nos três pedaços (sem a unidade de entrada 3 vermelhos · sem o guard 2 · sem o aprendizado 2). 8.430 verdes.
+
 ## ⭐⭐ O NÚMERO GRANDE DO CARD É O SALDO DEVEDOR — SÓ APRESENTAÇÃO (05/09/2026)
 
 **Decisão do dono:** *"é esse que eu comparo todo dia; sistema mostrando outro número em destaque parece errado mesmo estando certo."*
