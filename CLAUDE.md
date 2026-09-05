@@ -242,6 +242,38 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⛔⛔⛔ A RÉGUA DO PDF NUNCA ERA GRAVADA · O ÚLTIMO DIA SUMIA · O BANCO REESCREVE O PASSADO (05/09/2026)
+
+**Três achados numa investigação só, com o PDF real (`Extrato_20260905.pdf`, emitido 00:55).**
+
+### 1. A cirurgia da data — o PDF elegeu o juiz e ele decidiu
+
+As 2 `CAPITALIZACAO RG` estão no **bloco do dia 02** (`SALDO NA DATA 4.841,10-`). Movidas com preview e a trava do dono (*"os dias 01 e 02 têm que fechar depois"*): **1/3 → 3/3**. `pg_dump pre-mover-capitalizacao-20260905-015346`. **Só a data mudou** — valor, histórico e categoria intactos.
+
+### 2. ⛔⛔ `gravarReguaDeclarada` TINHA ZERO CHAMADORES DE PRODUÇÃO
+
+A régua (`bank_account_saldo_declarado`) foi escrita **uma única vez**, em **01/09 18:03**, por um script de sprint. O import com PDF **lia o documento, conferia em memória, mostrava na tela e jogava fora**.
+
+**⚠️ E O DIAGNÓSTICO DO DONO PRECISAVA DE UM AJUSTE FINO:** ele supôs *"badge calculado no preview e nunca recalculado"*. O selo **é derivado na hora** — recalcula certinho. **Congelada estava a RÉGUA**, de um PDF emitido às **14:01 do dia 01/09**, ou seja **no meio do dia**, antes dos 3 encargos existirem. Por isso o badge dizia *"01/09 não fecha (R$ 1.741,70)"* — a soma exata deles. **O badge não estava velho; a régua estava.**
+
+Agora o **confirm com PDF grava a régua** (fora da `$transaction`, fail-soft — PDF ilegível não desfaz import que já gravou).
+
+### 3. ⛔⛔ O ÚLTIMO DIA DE TODO EXTRATO NUNCA FOI CONFERIDO
+
+O Banrisul escreve `SALDO NA DATA` nos dias do meio e **`SALDO NA DATA.`** — com ponto — no **último**. O regex exigia espaço depois de `DATA`. **O dia mais recente, justamente o que o dono acabou de importar, sumia da régua em silêncio** — e o *"N/N dias fecham"* dizia N sobre N−1 dias reais.
+
+### 4. ⭐⭐ O BANCO REESCREVE O FECHAMENTO DE UM MÊS JÁ FECHADO
+
+PDF de 01/09: `SALDO ANT EM 31/08 = −7.353,66` (e agosto fechava 22/22). PDF de hoje: **−8.130,19**. São **R$ 776,53** que o Banrisul postou em agosto **depois do fato**.
+
+**⛔ NÃO SE MEXE NO LEDGER NO CHUTE** (ordem do dono): a régua registra o que o banco diz hoje, e a tela **pede o extrato de AGOSTO** pra a conferência diária localizar as linhas.
+
+**⭐ E O FURO NÃO CONTAMINA SETEMBRO** — a conferência já seguia do saldo do **BANCO** a cada dia (cada dia é uma equação independente), então o vermelho fica **localizado no intervalo em que aconteceu**. Era o desenho certo desde 01/09 e é o que faz esta notícia ser legível.
+
+**⚠️ E A 1ª RODADA EM PROD INFLOU O AVISO — corrigido:** ela somou o 01/09 (−3.225,96 → −5.148,51) ao 31/08 e anunciou **R$ 2.699,08** de "reescrita". Mas a declaração anterior de 01/09 fora emitida **às 14:01 do próprio dia** — um **parcial**, não um fechamento. **Reescrita de verdade é o dia cuja declaração anterior foi emitida DEPOIS do fim daquele dia**; o dado (`emitidoEm`) já estava gravado. Sobra só o 31/08, com os 776,53 que o dono mediu. *Alarme inflado é alarme que se aprende a ignorar.*
+
+**RESULTADO EM PROD:** **24/25 dias fecham**, cobertura **03/08 a 04/09**, **setembro 4/4 ✓** (01, 02, 03 e 04), e **um único vermelho: 31/08, R$ 776,53** — exatamente o que o dono validou à mão.
+
 ## ⛔⛔⛔ O FÓSSIL DO LEDGERBAL NO GATE DO CONFIRMAR — E A CLASSE FECHADA (05/09/2026)
 
 **⚠️ E O IMPORT TINHA GRAVADO.** O dono leu *"Saldo não fechou com o banco — Calculado −R$ 5.871,14 vs LEDGERBAL −R$ 8.347,67. Revise a classificação"* e entendeu **recusa**. Conferido em prod: `status=SUCCESS · novas=14 · dup=6`, as 20 linhas de 01/09 em diante no ledger. Era **toast vermelho pós-gravação**. **O alarme falso custou um dia de import parado** — e alarme que mente sobre o que aconteceu é pior que alarme nenhum.
