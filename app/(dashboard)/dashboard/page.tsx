@@ -11,6 +11,7 @@ import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
 import { verifyToken, COOKIE_NAME } from '@/lib/auth'
 import { getCurrentEmpresaIdFromCookie } from '@/lib/auth/current-empresa-cookie'
+import { telaInicialDe } from '@/lib/auth/pode-ver-financeiro'
 import { prisma } from '@/lib/db'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { Metadata } from 'next'
@@ -79,16 +80,24 @@ export default async function DashboardPage({ searchParams }: PageProps) {
   for (const ucr of porPapel) porId.set(ucr.company.id, ucr.company)
   const empresas = [...porId.values()]
 
-  // ⭐⭐ QUEM SÓ OPERA ESTOQUE NÃO PASSA PELO DASHBOARD (pedido do dono, 30/08).
+  // ⛔⛔⛔ QUEM NÃO TEM CHAVE DE DINHEIRO NÃO VÊ ESTA TELA (06/09/2026).
   //
-  // ⚠️ O dashboard mostra FATURAMENTO. Pra uma operadora de estoque ele não é só inútil —
-  // é o número que ela não deveria ver, na primeira tela do login. Enquanto não existir um
-  // "dashboard do estoque", o login dela cai direto na Posição.
+  // **INCIDENTE:** a conta do TABLET DA COZINHA (`EXECUTOR_PRODUCAO`, só `stock.executar`)
+  // abriu aqui e o dono viu o dashboard INTEIRO — saldo total, saldo por banco, receita,
+  // despesa, fluxo de 6 meses. Medido navegando: **31 valores em reais no HTML**, os mesmos
+  // que ele vê. A sidebar escondia os itens e as APIs devolviam 403 — mas esta página monta
+  // os dados por caminho PRÓPRIO. *Esconder o link não é negar o dado.*
+  //
+  // ⛔ O GUARD DE 30/08 EXISTIA E ERA MAL FORMADO: exigia `chaves.has('stock.view')` pra
+  // desviar. O papel novo não tem `stock.view` → não desviava. Era uma denylist com
+  // exigência positiva no fim; a régua agora é **positiva e pelo DADO** (`podeVerFinanceiro`),
+  // então papel novo nasce SEM ver e quem precisar ganha a chave.
+  //
+  // ⚠️ O `redirect` acontece ANTES de qualquer consulta de dinheiro — nada é calculado pra
+  // ser jogado fora depois. Negar tarde ainda deixa o número passar pelo servidor.
   const chaves = new Set(porPapel.flatMap((p) => p.role.permissions.map((rp) => rp.permission.key)))
-  const soEstoque = !chaves.has('transaction.view') && !chaves.has('*') && chaves.has('stock.view')
-  if (soEstoque && empresas.length > 0) {
-    redirect(`/empresas/${porPapel[0].companyId}/estoque/posicao`)
-  }
+  const destino = telaInicialDe(chaves, porPapel[0]?.companyId ?? empresas[0]?.id ?? null)
+  if (destino) redirect(destino)
 
   // ====== Empty state — sem empresas ======
   if (empresas.length === 0) {
