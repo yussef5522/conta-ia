@@ -25,8 +25,14 @@ beforeEach(async () => {
   // passava por cegueira (medido na REGRA 11: troquei a busca por `findFirst` sem filtro de
   // nome e os 13 testes seguiram VERDES). Com o OWNER na frente, escolher errado entrega a
   // empresa inteira, que é exatamente o susto de 06/09.
+  // ⚠️ `createdAt` EXPLÍCITO: os dois papéis nasciam no mesmo milissegundo e a ordem virava
+  // sorteio — o teste piscava. Aqui o OWNER é comprovadamente o primeiro, que é o que torna
+  // "pegar o primeiro papel" perigoso.
   roleOwner = (await prisma.role.create({
-    data: { companyId, name: 'OWNER', description: 'acesso total — o papel que NUNCA pode sair por default' },
+    data: {
+      companyId, name: 'OWNER', description: 'acesso total — o papel que NUNCA pode sair por default',
+      createdAt: new Date(Date.now() - 60_000),
+    },
   })).id
   roleGerente = (await prisma.role.create({
     data: { companyId, name: 'GERENTE_ESTOQUE', description: DEFAULT_ROLES.GERENTE_ESTOQUE.description },
@@ -51,7 +57,12 @@ describe('⭐⭐ COZINHA: nome + PIN, e acabou', () => {
 
   it('⛔⛔ cozinha NÃO ganha conta, papel nem e-mail — ela não loga em nada', async () => {
     await cadastrarPessoa({ companyId, nome: 'Michelle', funcao: 'COZINHA', pin: '5813' }, prisma)
-    expect(await prisma.user.count({ where: { name: 'Michelle' } })).toBe(0)
+    // ⚠️ ESCOPADO: contar `user` por NOME no banco inteiro é frágil — outro arquivo criando
+    // alguém com o mesmo nome derruba um teste que não tem nada a ver com ele.
+    const usersDaEmpresa = await prisma.userCompanyRole.findMany({
+      where: { companyId }, include: { user: { select: { name: true } } },
+    })
+    expect(usersDaEmpresa.some((u) => u.user.name === 'Michelle')).toBe(false)
     expect(await prisma.userCompanyRole.count({ where: { companyId } })).toBe(0)
     expect(await prisma.companyInvite.count({ where: { companyId } })).toBe(0)
     expect(DESCRICAO_DA_FUNCAO.COZINHA.papelRbac, 'cozinha não tem papel de RBAC').toBeNull()

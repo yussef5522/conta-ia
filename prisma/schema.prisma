@@ -1026,6 +1026,10 @@ model UserCompanyRole {
   userId    String
   companyId String
   roleId    String
+  /// ⭐ CONTA DE APARELHO (06/09) — marcada pelo DONO, nunca inferida. A régua antiga
+  /// deduzia "aparelho" do papel e chamou uma pessoa de máquina; heurística não decide isso.
+  /// ⚠️ Mora aqui (e não em `users`) porque a marca é do ACESSO numa empresa.
+  ehAparelho Boolean @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

@@ -26,6 +26,8 @@ export type TipoDeAcesso = 'LOGIN' | 'PIN' | 'CONVITE_PENDENTE' | 'APARELHO' | '
 export interface PessoaDaEquipe {
   /** id da fonte de origem (User, StockColaborador ou CompanyInvite) */
   id: string
+  /** id do VÍNCULO com a empresa — é nele que a marca de aparelho mora (só em quem loga) */
+  vinculoId: string | null
   nome: string
   /** o papel do RBAC, ou a função de produção */
   funcao: string
@@ -40,18 +42,16 @@ export interface PessoaDaEquipe {
 }
 
 /**
- * ⛔⛔ O PAPEL DIZ O ACESSO, NÃO SE É GENTE OU MÁQUINA (corrigido 06/09, na prova em prod).
+ * ⛔⛔ O PAPEL DIZ O ACESSO, NÃO SE É GENTE OU MÁQUINA.
  *
  * A 1ª versão inferia "aparelho" do papel `EXECUTOR_PRODUCAO`. A prova contra os dados REAIS
  * mostrou o erro na hora: o dono tinha criado uma conta de LOGIN pra **Carlise** com esse
  * papel (contornando a tela que ele não achava), e a lista a chamou de **"Aparelho"**.
  * Chamar uma pessoa de máquina numa tela de equipe é pior que não marcar nada.
  *
- * ⚠️ **NÃO EXISTE, HOJE, UM SINAL CONFIÁVEL** que separe a conta do tablet de uma pessoa que
- * usa o mesmo papel — e inventar um (adivinhar pelo e-mail, pelo nome) seria a "heurística
- * que decide" que este projeto recusa em toda parte. Então a lista diz o que SABE: a função
- * e como a pessoa entra. Marcar o aparelho de verdade pede uma marca explícita — decisão do
- * dono, registrada, não chutada aqui.
+ * ⭐ A CORREÇÃO, decidida pelo dono: **uma MARCA explícita** (`ehAparelho`), que ele liga no
+ * cadastro. *Heurística nunca decide quem é máquina.* Sem a marca, a lista diz o que SABE —
+ * função e como a pessoa entra — e não arrisca palpite.
  */
 const PAPEL_DA_COZINHA = 'EXECUTOR_PRODUCAO'
 
@@ -63,6 +63,7 @@ export async function listarEquipe(
     db.userCompanyRole.findMany({
       where: { companyId },
       include: { user: { select: { id: true, name: true, email: true } }, role: { select: { name: true } } },
+      // ⚠️ `ehAparelho` vem do vínculo (não do usuário): a marca é do ACESSO numa empresa
     }),
     db.companyInvite.findMany({
       where: { companyId, acceptedAt: null, expiresAt: { gt: new Date() } },
@@ -77,17 +78,22 @@ export async function listarEquipe(
   // 1. QUEM LOGA (User com papel) — inclui o dono, a gerência e as contas da cozinha
   for (const m of comPapel) {
     const daCozinha = m.role.name === PAPEL_DA_COZINHA
+    // ⭐ só a MARCA do dono decide isto — nunca o papel, nunca o e-mail, nunca o nome
+    const ehAparelho = m.ehAparelho
     out.push({
       id: m.user.id,
+      vinculoId: m.id,
       nome: m.user.name,
-      funcao: daCozinha ? 'Cozinha / produção' : humanizarPapel(m.role.name),
-      tipo: 'LOGIN',
+      funcao: ehAparelho ? 'Aparelho' : daCozinha ? 'Cozinha / produção' : humanizarPapel(m.role.name),
+      tipo: ehAparelho ? 'APARELHO' : 'LOGIN',
       email: m.user.email,
-      // ⚠️ diz COMO entra, sem afirmar se é gente ou máquina — o que a gente não sabe, não
-      // se escreve na tela como se soubesse.
-      detalhe: daCozinha ? `login (${m.user.email}) · só a janela da cozinha` : `login (${m.user.email})`,
+      // ⚠️ sem a marca, diz COMO entra e para por aí: o que a gente não sabe, não se escreve
+      // na tela como se soubesse.
+      detalhe: ehAparelho
+        ? `conta de aparelho (fica logada no tablet) · ${m.user.email}`
+        : daCozinha ? `login (${m.user.email}) · só a janela da cozinha` : `login (${m.user.email})`,
       colaboradorId: null,
-      ehAparelho: false,
+      ehAparelho,
     })
   }
 
@@ -96,6 +102,7 @@ export async function listarEquipe(
   for (const c of convites) {
     out.push({
       id: c.id,
+      vinculoId: null,
       nome: c.email.split('@')[0],
       funcao: humanizarPapel(c.role.name),
       tipo: 'CONVITE_PENDENTE',
@@ -115,6 +122,7 @@ export async function listarEquipe(
     const tem = comPin.has(c.id)
     out.push({
       id: c.id,
+      vinculoId: null,
       nome: c.nome,
       funcao: 'Cozinha / produção',
       tipo: tem ? 'PIN' : 'SEM_ACESSO',
@@ -162,8 +170,6 @@ export function resumoDaEquipe(pessoas: PessoaDaEquipe[]) {
     comLogin: pessoas.filter((p) => p.tipo === 'LOGIN').length,
     convitesPendentes: pessoas.filter((p) => p.tipo === 'CONVITE_PENDENTE').length,
     semAcesso: pessoas.filter((p) => p.tipo === 'SEM_ACESSO').length,
-    // ⚠️ fica em 0 até existir uma MARCA de aparelho: contar por papel chamaria pessoa de
-    // máquina, que é o erro que a prova em prod pegou.
     aparelhos: pessoas.filter((p) => p.ehAparelho).length,
   }
 }

@@ -25,7 +25,9 @@ const ids: Record<string, string> = {}
 
 beforeEach(async () => {
   await prisma.company.deleteMany({ where: { cnpj: CNPJ } })
-  await prisma.user.deleteMany({ where: { email: { in: ['dono-eq@t.com', 'ger-eq@t.com', 'tablet-eq@t.com'] } } })
+  // ⚠️ inclui `carlise-eq@t.com`: ela é criada DENTRO de um teste e, se ele falhar no meio,
+  // a linha sobrevive e derruba a rodada seguinte com "unique constraint" — aconteceu.
+  await prisma.user.deleteMany({ where: { email: { in: ['dono-eq@t.com', 'ger-eq@t.com', 'tablet-eq@t.com', 'carlise-eq@t.com'] } } })
   companyId = (await prisma.company.create({ data: { cnpj: CNPJ, name: 'EQUIPE' } })).id
 
   for (const [chave, nome] of [['owner', 'OWNER'], ['gerente', 'GERENTE_ESTOQUE'], ['aparelho', 'EXECUTOR_PRODUCAO']] as const) {
@@ -40,7 +42,8 @@ beforeEach(async () => {
   }
   await prisma.userCompanyRole.create({ data: { companyId, userId: ids.dono, roleId: ids.role_owner } })
   await prisma.userCompanyRole.create({ data: { companyId, userId: ids.gerente, roleId: ids.role_gerente } })
-  await prisma.userCompanyRole.create({ data: { companyId, userId: ids.tablet, roleId: ids.role_aparelho } })
+  // ⭐ a conta do tablet nasce MARCADA pelo dono — é a marca que decide, não o papel
+  await prisma.userCompanyRole.create({ data: { companyId, userId: ids.tablet, roleId: ids.role_aparelho, ehAparelho: true } })
   // convite pendente (o Cristian)
   await prisma.companyInvite.create({
     data: {
@@ -78,11 +81,8 @@ describe('⭐⭐ a lista junta as DUAS fontes de gente', () => {
     expect(p.get('Marcyelle')).toMatchObject({ funcao: 'Gerente de estoque', tipo: 'LOGIN' })
     expect(p.get('cristian-eq')).toMatchObject({ funcao: 'Gerente de estoque', tipo: 'CONVITE_PENDENTE' })
     expect(p.get('Carlise')).toMatchObject({ funcao: 'Cozinha / produção', tipo: 'PIN' })
-    // ⛔⛔ CORRIGIDO NA PROVA EM PROD: a 1ª régua inferia "aparelho" do PAPEL, e chamou de
-    // máquina uma conta de LOGIN que o dono tinha criado pra uma PESSOA (a Carlise) com o
-    // mesmo papel. O papel diz o ACESSO, não se é gente. Sem marca explícita, a lista diz o
-    // que sabe: a função e como entra.
-    expect(p.get('Tablet da cozinha')).toMatchObject({ funcao: 'Cozinha / produção', tipo: 'LOGIN', ehAparelho: false })
+    // ⭐ COM a marca do dono, aí sim é Aparelho
+    expect(p.get('Tablet da cozinha')).toMatchObject({ funcao: 'Aparelho', tipo: 'APARELHO', ehAparelho: true })
   })
 
   it('⛔⛔ cozinha SEM PIN aparece como pendência — não some da lista', async () => {
@@ -94,17 +94,32 @@ describe('⭐⭐ a lista junta as DUAS fontes de gente', () => {
     expect(michelle.colaboradorId, 'a linha tem que oferecer definir o PIN').toBeTruthy()
   })
 
-  it('⛔⛔ NINGUÉM é chamado de "aparelho" por causa do papel — o erro que a prova pegou', async () => {
-    const pessoas = await listarEquipe(companyId, prisma)
-    expect(pessoas.some((p) => p.ehAparelho), 'inferir máquina do papel chama pessoa de coisa').toBe(false)
-    const t = pessoas.find((p) => p.email === 'tablet-eq@t.com')!
-    expect(t.funcao).toBe('Cozinha / produção')
-    expect(t.detalhe).toMatch(/só a janela da cozinha/)
+  it('⛔⛔ SEM a marca, ninguém é chamado de "aparelho" — nem com o papel de executor', async () => {
+    // ⛔ ESTE É O ERRO QUE A PROVA EM PROD PEGOU: o dono tinha criado uma conta de LOGIN pra
+    // uma PESSOA (a Carlise) com o papel `EXECUTOR_PRODUCAO`, e a régua antiga — que inferia
+    // do papel — a chamou de máquina. Aqui a Carlise-de-login entra sem marca.
+    // ⚠️ nome único: "Carlise" cru colidia com a asserção global de outro arquivo
+    const pessoa = await prisma.user.create({ data: { email: 'carlise-eq@t.com', password: 'x', name: 'Carlise (equipe-test)' } })
+    await prisma.userCompanyRole.create({ data: { companyId, userId: pessoa.id, roleId: ids.role_aparelho } })
+    const p = (await listarEquipe(companyId, prisma)).find((x) => x.email === 'carlise-eq@t.com')!
+    expect(p.ehAparelho, 'o papel voltou a decidir quem é máquina').toBe(false)
+    expect(p.funcao).toBe('Cozinha / produção')
+    expect(p.detalhe).toMatch(/só a janela da cozinha/)
+    await prisma.userCompanyRole.deleteMany({ where: { userId: pessoa.id } })
+    await prisma.user.delete({ where: { id: pessoa.id } })
+  })
+
+  it('⭐⭐ e COM a marca, é Aparelho — quem decide é o dono', async () => {
+    const t = (await listarEquipe(companyId, prisma)).find((p) => p.ehAparelho)!
+    expect(t.email).toBe('tablet-eq@t.com')
+    expect(t.detalhe).toMatch(/conta de aparelho/)
+    // ⚠️ e a marca mora no VÍNCULO — é por ele que a tela liga/desliga
+    expect(t.vinculoId, 'sem o vínculo a tela não tem o que marcar').toBeTruthy()
   })
 
   it('⭐ o resumo conta o que importa e a pendência é visível', async () => {
     const r = resumoDaEquipe(await listarEquipe(companyId, prisma))
-    expect(r).toMatchObject({ cozinha: 3, comLogin: 3, convitesPendentes: 1, semAcesso: 1, aparelhos: 0 })
+    expect(r).toMatchObject({ cozinha: 2, comLogin: 2, convitesPendentes: 1, semAcesso: 1, aparelhos: 1 })
   })
 
   it('⭐ ordem: gerência primeiro, cozinha depois, aparelho por último', async () => {
@@ -126,7 +141,12 @@ describe('⛔ nada de dado se moveu — a limpeza é de TELA e ROTA', () => {
   })
 
   it('⭐ e as fontes continuam separadas por baixo: cozinha NÃO virou User', async () => {
-    expect(await prisma.user.count({ where: { name: 'Carlise' } })).toBe(0)
+    // ⚠️ ESCOPADO À EMPRESA: contar `user` por NOME no banco inteiro quebra assim que
+    // outro teste criar alguém com o mesmo nome (aconteceu — foi este arquivo).
+    const usersDaEmpresa = await prisma.userCompanyRole.findMany({
+      where: { companyId }, include: { user: { select: { name: true } } },
+    })
+    expect(usersDaEmpresa.some((u) => u.user.name === 'Carlise'), 'a cozinha virou conta de login').toBe(false)
     expect(await prisma.stockColaborador.count({ where: { companyId, ativo: true } })).toBe(2)
   })
 

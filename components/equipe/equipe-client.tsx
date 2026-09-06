@@ -17,7 +17,7 @@ import { Loader2, UserPlus, KeyRound, Mail, Clock, Tablet, AlertTriangle, Users 
 import { CadastrarPessoaModal } from '@/components/estoque/cadastrar-pessoa-modal'
 
 interface Pessoa {
-  id: string; nome: string; funcao: string
+  id: string; vinculoId: string | null; nome: string; funcao: string
   tipo: 'LOGIN' | 'PIN' | 'CONVITE_PENDENTE' | 'APARELHO' | 'SEM_ACESSO'
   email: string | null; detalhe: string; colaboradorId: string | null; ehAparelho: boolean
 }
@@ -44,6 +44,20 @@ export function EquipeClient({ empresaId, empresaNome, filtro }: { empresaId: st
   const [pinNovo, setPinNovo] = useState('')
   const [erroPin, setErroPin] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+
+  // ⭐ A MARCA DE APARELHO — quem decide é o dono, nunca uma heurística (a régua antiga
+  // deduzia do papel e chamou uma PESSOA de máquina).
+  const marcarAparelho = async (vinculoId: string, ehAparelho: boolean) => {
+    setBusy(true)
+    try {
+      const r = await fetch(`/api/empresas/${empresaId}/equipe/aparelho`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vinculoId, ehAparelho }),
+      })
+      if (!r.ok) { setErro('Não consegui salvar a marca de aparelho.'); return }
+      carregar()
+    } finally { setBusy(false) }
+  }
 
   const salvarPin = async (colaboradorId: string, pin?: string) => {
     setBusy(true); setErroPin(null)
@@ -149,6 +163,14 @@ export function EquipeClient({ empresaId, empresaNome, filtro }: { empresaId: st
                   ))}
                   {p.colaboradorId && editando === p.colaboradorId && erroPin && (
                     <p className="w-full text-[11px] text-rose-600">{erroPin}</p>
+                  )}
+                  {/* ⚠️ só quem LOGA pode ser aparelho — quem entra por PIN é pessoa por
+                      definição (não existe tablet com PIN próprio). */}
+                  {p.vinculoId && (
+                    <button onClick={() => marcarAparelho(p.vinculoId!, !p.ehAparelho)} disabled={busy}
+                      className="text-[11px] text-slate-400 hover:text-slate-700">
+                      {p.ehAparelho ? 'não é aparelho' : 'marcar como aparelho'}
+                    </button>
                   )}
                 </li>
               )
