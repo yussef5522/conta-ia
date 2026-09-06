@@ -5,6 +5,7 @@
 
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
+import { normalizarEtapas, gravarEtapasDaVersao, etapasDaVersao, type EtapaDaReceita } from './etapas'
 import { ehTipoDeFicha, type TipoFicha } from '@/lib/stock/tipos-ficha'
 import { detectaCicloFicha, type GrafoFichas } from './ciclo'
 import { calcularCustoTeorico, calcularMargem, type ComponenteCusto } from './custo-teorico'
@@ -16,6 +17,14 @@ type Db = PrismaClient | Prisma.TransactionClient
 
 export interface ComponenteInput { itemId: string; qtdPlanejada: number; unidade: string; posicao?: number }
 export interface FichaBodyInput {
+  /**
+   * ⭐ AS ETAPAS (06/09/2026) — lista ORDENADA de nomes ("gessado", "moldar beef").
+   *
+   * ⚠️ É CORPO, não cabeçalho: mudar a lista de etapas é mudar o MÉTODO, e gera versão nova
+   * como componente e lote-base geram. Sem isso, renomear uma etapa hoje reescreveria o que
+   * a cozinha fez em agosto. Lista vazia = a receita não usa etapas (e continua igual).
+   */
+  etapas?: { nome: string; setorId?: string | null }[]
   loteBase: number
   unidadeLoteBase: string
   modoPreparo?: string | null
@@ -121,6 +130,9 @@ export async function criarFicha(input: CriarFichaInput, db: PrismaClient = defa
       data: { companyId: input.companyId, fichaId: ficha.id, versao: 1, loteBase: input.loteBase, unidadeLoteBase: input.unidadeLoteBase, modoPreparo: input.modoPreparo ?? null, tempoPreparoMin: input.tempoPreparoMin ?? null, validadeDias: input.validadeDias ?? null, criadoPorId: input.userId ?? null },
     })
     await tx.stockFichaComponente.createMany({ data: input.componentes.map((c, i) => ({ companyId: input.companyId, versaoId: versao.id, itemId: c.itemId, qtdPlanejada: c.qtdPlanejada, unidade: c.unidade, posicao: c.posicao ?? i })) })
+    // ⭐ as etapas entram na MESMA transação da ficha — a lição das 3 fichas órfãs de 01/09:
+    // o que nasce junto tem que gravar junto, senão a tela volta dizendo que não salvou.
+    await gravarEtapasDaVersao(input.companyId, versao.id, normalizarEtapas(input.etapas ?? []), tx)
 
     // ⭐ O VÍNCULO COM O PDV, NA MESMA TRANSAÇÃO. Se ele falhar, a ficha também não entra —
     // é a regra do módulo (a mesma das marcações do import: "ou grava tudo, ou nada grava").
@@ -204,7 +216,7 @@ export async function atualizarFicha(companyId: string, fichaId: string, input: 
   const ficha = await db.stockFicha.findFirst({ where: { id: fichaId, companyId } })
   if (!ficha) throw new FichaError('Ficha não encontrada.')
 
-  const mudouCorpo = input.componentes !== undefined || input.loteBase !== undefined || input.unidadeLoteBase !== undefined || input.modoPreparo !== undefined || input.tempoPreparoMin !== undefined || input.validadeDias !== undefined
+  const mudouCorpo = input.componentes !== undefined || input.loteBase !== undefined || input.unidadeLoteBase !== undefined || input.modoPreparo !== undefined || input.tempoPreparoMin !== undefined || input.validadeDias !== undefined || input.etapas !== undefined
 
   return db.$transaction(async (tx) => {
     // head (não versiona)
@@ -243,6 +255,12 @@ export async function atualizarFicha(companyId: string, fichaId: string, input: 
       },
     })
     await tx.stockFichaComponente.createMany({ data: componentes.map((c, i) => ({ companyId, versaoId: versao.id, itemId: c.itemId, qtdPlanejada: c.qtdPlanejada, unidade: c.unidade, posicao: c.posicao ?? i })) })
+    // ⚠️ etapa não veio no input → HERDA as da versão anterior. Sem isso, salvar o preço de
+    // um produto apagaria o método dele em silêncio — a classe do "campo ausente vira vazio".
+    const etapasNovas: EtapaDaReceita[] = input.etapas !== undefined
+      ? normalizarEtapas(input.etapas)
+      : atual ? await etapasDaVersao(companyId, atual.id, tx) : []
+    await gravarEtapasDaVersao(companyId, versao.id, etapasNovas, tx)
     await tx.stockFicha.update({ where: { id: fichaId }, data: { ...headData, versaoAtual: novaVersao } })
     return { versao: novaVersao }
   })
@@ -269,6 +287,8 @@ export interface FichaView {
   tempoPreparoMin: number | null
   validadeDias: number | null
   componentes: FichaComponenteView[]
+  /** ⭐ as etapas DECLARADAS (vazio = a receita não usa etapas; a ordem resolve como uma só) */
+  etapas: { posicao: number; nome: string; setorId: string | null }[]
   custoLote: number | null
   custoPorUnidade: number | null
   custoADefinir: boolean
@@ -292,6 +312,7 @@ async function versaoView(companyId: string, ficha: { id: string; itemProduzidoI
   const v = await db.stockFichaVersao.findFirst({ where: { companyId, fichaId: ficha.id, versao } })
   if (!v) return null
   const comps = await db.stockFichaComponente.findMany({ where: { companyId, versaoId: v.id }, orderBy: { posicao: 'asc' } })
+  const etapas = await etapasDaVersao(companyId, v.id, db)
   const produzido = await db.stockItem.findFirst({ where: { companyId, id: ficha.itemProduzidoId }, select: { nome: true, unidadeControle: true } })
   const custoMap = await custoMedioDosItens(companyId, comps.map((c) => c.itemId), db)
 
@@ -313,7 +334,7 @@ async function versaoView(companyId: string, ficha: { id: string; itemProduzidoI
     id: ficha.id, itemProduzidoId: ficha.itemProduzidoId, nomeProduzido: produzido?.nome ?? '(item removido)', unidadeProduzido: produzido?.unidadeControle ?? '—',
     tipoProduto: ficha.tipoProduto, setorId: ficha.setorId, versaoAtual: ficha.versaoAtual, valorVenda: ficha.valorVenda, ativo: ficha.ativo,
     loteBase: v.loteBase, unidadeLoteBase: v.unidadeLoteBase, modoPreparo: v.modoPreparo, tempoPreparoMin: v.tempoPreparoMin, validadeDias: v.validadeDias,
-    componentes, custoLote: custo.custoLote, custoPorUnidade: custo.custoPorUnidade, custoADefinir: custo.custoADefinir, rendimentoMedio, rendimentoLotes: medido.lotes,
+    componentes, etapas, custoLote: custo.custoLote, custoPorUnidade: custo.custoPorUnidade, custoADefinir: custo.custoADefinir, rendimentoMedio, rendimentoLotes: medido.lotes,
     margem: ficha.tipoProduto === 'PRODUTO_FINAL' ? calcularMargem(ficha.valorVenda, custo.custoPorUnidade) : null,
   }
 }

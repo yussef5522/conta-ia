@@ -23,6 +23,8 @@ const criarSchema = z.object({
   tempoPreparoMin: z.number().int().positive().nullable().optional(),
   validadeDias: z.number().int().positive().nullable().optional(),
   componentes: z.array(componenteSchema).min(1),
+  // ⭐ etapas (06/09): lista ordenada de nomes. `[]` é significativo (apaga as anteriores).
+  etapas: z.array(z.object({ nome: z.string().min(1).max(60), setorId: z.string().nullable().optional() })).max(12).optional(),
   // ⭐ o nome do PDV que esta ficha atende. Quando vem, o vínculo nome→ficha é criado na
   // MESMA transação — foi a ausência dele que deixou 3 fichas órfãs em 01/09.
   // ⭐ 1 nome ou VÁRIOS: o PDV escreve o mesmo produto de vários jeitos (apelidos)

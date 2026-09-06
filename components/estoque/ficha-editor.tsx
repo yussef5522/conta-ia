@@ -109,6 +109,9 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
   const [modoPreparo, setModoPreparo] = useState('')
   const [comps, setComps] = useState<Comp[]>([])
   const [setores, setSetores] = useState<Setor[]>([])
+  // ⭐ AS ETAPAS (06/09): lista ordenada de nomes. Vazia = a receita não usa etapas, e nada
+  // muda pra ela — a ordem resolve como uma etapa só ("produção").
+  const [etapas, setEtapas] = useState<string[]>([])
   const [cookbookAberto, setCookbookAberto] = useState(false)
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
@@ -152,6 +155,7 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
         setLoteBase(String(v.loteBase)); setUnidadeLoteBase(v.unidadeLoteBase)
         setValidadeDias(v.validadeDias != null ? String(v.validadeDias) : ''); setTempoPreparoMin(v.tempoPreparoMin != null ? String(v.tempoPreparoMin) : '')
         setModoPreparo(v.modoPreparo ?? '')
+        setEtapas((f.etapas ?? []).map((e: { nome: string }) => e.nome))
         if (f.modoPreparo || f.tempoPreparoMin != null) setCookbookAberto(true)
         setComps(f.componentes.map((c: { itemId: string; nome: string; unidade: string; qtdPlanejada: number; custoMedio: number | null; unidadeControle: string }) => ({ itemId: c.itemId, nome: c.nome, unidade: c.unidade, qtdTexto: textoQtd(c.qtdPlanejada), custoMedio: c.custoMedio, unidadeControle: c.unidadeControle })))
       }).finally(() => setCarregando(false))
@@ -206,6 +210,9 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
       loteBase: lb, unidadeLoteBase, componentes,
       modoPreparo: modoPreparo.trim() || null,
       tempoPreparoMin: parseNum(tempoPreparoMin) ?? null,
+      // ⚠️ manda SEMPRE (mesmo vazio): omitir faria o servidor herdar as antigas, e apagar a
+      // última etapa na tela não teria efeito nenhum — o gesto tem que valer.
+      etapas: etapas.map((n) => n.trim()).filter(Boolean).map((nome) => ({ nome })),
       // ⚠️ produto final não tem validade — o campo nem aparece; mandar null é explícito.
       validadeDias: monta ? null : parseNum(validadeDias) ?? null,
     }
@@ -335,6 +342,50 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
             )}
           </div>
         )}
+      </CardContent></Card>
+
+      {/* ── ETAPAS (opcional) — quem faz o quê, quando a produção passa por mais de uma mão ── */}
+      <Card><CardContent className="space-y-2 p-3">
+        <div className="flex items-baseline justify-between gap-3">
+          <p className="text-sm font-medium text-slate-700">Etapas</p>
+          <p className="text-[11px] text-slate-400">opcional — só quando muda a mão</p>
+        </div>
+        {/* ⚠️ a regra do dono, escrita onde ela é usada: etapa nova só quando MUDA A MÃO ou
+            muda o momento. Sem isso alguém quebra "moldar" em cinco micro-passos e a cozinha
+            passa a apertar botão em vez de cozinhar. */}
+        <p className="text-[11px] text-slate-400">
+          Crie uma etapa quando outra pessoa assume o trabalho (ex.: <em>gessado</em> e depois <em>moldar beef</em>).
+          Sem etapas, a ordem tem uma só e nada muda.
+        </p>
+        {etapas.length > 0 && (
+          <ul className="space-y-1.5">
+            {etapas.map((nome, i) => (
+              <li key={i} className="flex items-center gap-2">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-semibold tabular-nums text-slate-500">{i + 1}</span>
+                <input
+                  value={nome}
+                  onChange={(e) => setEtapas((v) => v.map((x, j) => (j === i ? e.target.value : x)))}
+                  placeholder="nome da etapa"
+                  className="h-8 flex-1 rounded-lg border border-slate-300 px-2 text-sm"
+                />
+                {/* ⚠️ setas ↑↓ em vez de arrastar: no celular, arrastar dentro de lista que
+                    rola briga com o scroll (a lição do editor de etiqueta) */}
+                <button type="button" onClick={() => setEtapas((v) => (i === 0 ? v : v.map((x, j) => (j === i - 1 ? v[i] : j === i ? v[i - 1] : x))))}
+                  disabled={i === 0} aria-label="subir"
+                  className="h-8 w-7 rounded border border-slate-200 text-xs text-slate-500 disabled:opacity-30">↑</button>
+                <button type="button" onClick={() => setEtapas((v) => (i === v.length - 1 ? v : v.map((x, j) => (j === i + 1 ? v[i] : j === i ? v[i + 1] : x))))}
+                  disabled={i === etapas.length - 1} aria-label="descer"
+                  className="h-8 w-7 rounded border border-slate-200 text-xs text-slate-500 disabled:opacity-30">↓</button>
+                <button type="button" onClick={() => setEtapas((v) => v.filter((_, j) => j !== i))} aria-label="remover etapa"
+                  className="h-8 w-7 rounded border border-slate-200 text-xs text-slate-400 hover:text-rose-600">×</button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <button type="button" onClick={() => setEtapas((v) => [...v, ''])}
+          className="rounded-lg border border-dashed border-slate-300 px-2.5 py-1.5 text-xs text-slate-600 hover:bg-slate-50">
+          + etapa
+        </button>
       </CardContent></Card>
 
       {/* ── LIVRO DE RECEITAS (opcional) — o Cookbook: pra equipe montar sempre igual ── */}

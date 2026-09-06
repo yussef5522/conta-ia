@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useState, use } from 'react'
 import { escalaDoConsumo, preverSaida, insumoParaSaida, reguaDoRendimento, avaliarVariacao } from '@/lib/stock/producao/previsao-rendimento'
 import { Card, CardContent } from '@/components/ui/card'
+import { EtapasDaOrdem } from '@/components/estoque/etapas-da-ordem'
 import { ArrowLeft, Loader2, Factory, Printer, AlertTriangle, Check, Undo2, X, Tag, TrendingUp } from 'lucide-react'
 import { diaEmSaoPaulo } from '@/lib/datas/dia-sao-paulo'
 
@@ -291,6 +292,10 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
           <button onClick={() => { if (confirm('Cancelar a ordem? Os insumos separados voltam pro estoque.')) acao({ acao: 'cancelar' }) }} disabled={busy} className="text-sm text-rose-500 hover:text-rose-700">Cancelar ordem</button>
         </div>
       )}
+
+      {/* ⭐⭐ ETAPAS — quem faz cada parte (06/09). Fica ANTES da conclusão porque é o
+          trabalho acontecendo; a conclusão é o fecho. */}
+      <EtapasDaOrdem id={id} ordemId={ordemId} colaboradores={colaboradores} />
 
       {/* conclusão ("quantos saíram?") */}
       {emProducao && <ConclusaoForm id={id} ordemId={ordemId} linhas={linhas} colaboradores={colaboradores} rendimentoMedio={rendimentoMedio} rendimentoLotes={rendimentoLotes} loteBase={ordem.loteBase} unidadeProduzido={ordem.unidadeProduzido} onConcluida={carregar} />}

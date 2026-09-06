@@ -3831,6 +3831,78 @@ model StockProducaoConclusao {
 // ESTOQUE (01/09) — DESVIO de rendimento da conclusão + o MOTIVO escrito pelo dono.
 // "queijo veio com muita casca", "mudou fornecedor": é o que transforma variância em causa.
 // Tabela própria (migration do módulo é CREATE-only, não dá pra ALTER a conclusão).
+// ⭐⭐ ETAPAS (06/09/2026) — a produção passa por DUAS MÃOS e o modelo só sabia registrar a
+// segunda. As etapas moram na VERSÃO da ficha (é método, e método é versionado); a EXECUÇÃO
+// mora na ordem, uma linha por etapa, com quem fez e o tempo dos próprios toques.
+model StockFichaEtapa {
+  id        String   @id @default(cuid())
+  companyId String
+  versaoId  String
+  posicao   Int
+  nome      String
+  setorId   String? // sugerido, nunca obrigatório
+  criadoEm  DateTime @default(now())
+
+  @@unique([versaoId, posicao])
+  @@index([companyId, versaoId])
+  @@map("stock_ficha_etapa")
+}
+
+// A execução de UMA etapa numa ordem. ⚠️ UM responsável (decisão do dono): quem inicia e
+// finaliza ASSINA o tempo — co-execução dividiria o tempo em rateio arbitrário.
+// ⛔ Ninguém edita horário: correção é `StockOrdemEtapaCorrecao`, nunca sobrescrita.
+model StockOrdemEtapa {
+  id             String    @id @default(cuid())
+  companyId      String
+  ordemId        String
+  posicao        Int
+  nome           String // SNAPSHOT: a receita pode mudar depois
+  setorId        String?
+  colaboradorId  String? // quem a gerência designou (pode ser null)
+  designadoPorId String?
+  designadoEm    DateTime?
+  executorId     String? // quem de fato executou (o PIN que iniciou) — é por ele que o relatório conta
+  iniciadoEm     DateTime?
+  finalizadoEm   DateTime?
+  criadoEm       DateTime  @default(now())
+
+  @@unique([ordemId, posicao])
+  @@index([companyId, ordemId])
+  @@index([companyId, colaboradorId, finalizadoEm])
+  @@map("stock_ordem_etapa")
+}
+
+model StockOrdemEtapaCorrecao {
+  id             String   @id @default(cuid())
+  companyId      String
+  etapaId        String
+  campo          String // INICIADO_EM | FINALIZADO_EM | EXECUTOR
+  de             String?
+  para           String?
+  motivo         String
+  corrigidoPorId String?
+  criadoEm       DateTime @default(now())
+
+  @@index([companyId, etapaId])
+  @@map("stock_ordem_etapa_correcao")
+}
+
+// ⭐ O PIN IDENTIFICA, NÃO AUTENTICA (decisão do dono, 06/09): diz QUEM apertou o botão no
+// tablet compartilhado; quem diz QUAL EMPRESA é a sessão do aparelho. Mesmo assim vai como
+// HASH — o segredo mora numa cozinha, e gente reusa 4 dígitos.
+model StockColaboradorPin {
+  id            String    @id @default(cuid())
+  companyId     String
+  colaboradorId String
+  pinHash       String
+  criadoPorId   String?
+  criadoEm      DateTime  @default(now())
+  revogadoEm    DateTime?
+
+  @@index([companyId, revogadoEm])
+  @@map("stock_colaborador_pin")
+}
+
 model StockProducaoDesvio {
   id           String   @id @default(cuid())
   companyId    String

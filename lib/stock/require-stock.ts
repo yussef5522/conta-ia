@@ -5,7 +5,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthContext, AuthenticationError, ForbiddenError } from '@/lib/auth/rbac'
 
-export type StockPerm = 'stock.view' | 'stock.operate' | 'stock.manage'
+export type StockPerm = 'stock.view' | 'stock.operate' | 'stock.manage' | 'stock.executar'
+
+/**
+ * ⭐ ACEITA UMA LISTA (06/09): a janela da cozinha serve ao funcionário (`stock.executar`) e
+ * ao gestor que quer conferir (`stock.view`) — a MESMA rota, duas portas de entrada.
+ *
+ * ⚠️ É OU, nunca E: exigir as duas trancaria o funcionário fora da própria tarefa, que é
+ * exatamente o que este papel existe pra evitar.
+ */
+function qualquerUma(ctx: { requirePermission: (p: string) => void }, perms: StockPerm[]): void {
+  let ultimo: unknown = null
+  for (const p of perms) {
+    try { ctx.requirePermission(p); return } catch (e) { ultimo = e }
+  }
+  throw ultimo
+}
 
 /**
  * MESMA decisão, no formato que as 31 rotas antigas já consomem
@@ -20,17 +35,17 @@ export type StockPerm = 'stock.view' | 'stock.operate' | 'stock.manage'
 export async function guardStock(
   request: NextRequest,
   companyId: string,
-  perm: StockPerm,
+  perm: StockPerm | StockPerm[],
 ): Promise<{ erro: NextResponse; user?: undefined } | { erro?: undefined; user: { sub: string; name: string } }> {
   const r = await requireStock(request, companyId, perm)
   if (!r.ok) return { erro: r.res }
   return { user: { sub: r.userId, name: r.userName } }
 }
 
-export async function requireStock(request: NextRequest, companyId: string, perm: StockPerm): Promise<{ ok: true; userId: string; userName: string } | { ok: false; res: NextResponse }> {
+export async function requireStock(request: NextRequest, companyId: string, perm: StockPerm | StockPerm[]): Promise<{ ok: true; userId: string; userName: string } | { ok: false; res: NextResponse }> {
   try {
     const ctx = await getAuthContext(request, companyId)
-    ctx.requirePermission(perm)
+    qualquerUma(ctx, Array.isArray(perm) ? perm : [perm])
     return { ok: true, userId: ctx.user.id, userName: ctx.user.name }
   } catch (e) {
     if (e instanceof AuthenticationError) return { ok: false, res: NextResponse.json({ erro: 'Sessão expirada', code: 'AUTH_REQUIRED' }, { status: 401 }) }

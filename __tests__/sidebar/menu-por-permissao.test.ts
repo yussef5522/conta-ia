@@ -12,19 +12,26 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { PERMISSIONS } from '@/lib/auth/permissions'
 
 const SIDEBAR = readFileSync(join(process.cwd(), 'components/sidebar/global-sidebar.tsx'), 'utf-8')
 const ITEM = readFileSync(join(process.cwd(), 'components/sidebar/sidebar-item.tsx'), 'utf-8')
 
-/** as 36 chaves REAIS do banco (seed do RBAC) + a marca do workspace pessoal */
-const CHAVES_VALIDAS = new Set([
-  'audit.export', 'audit.view', 'bank_account.create', 'bank_account.delete', 'bank_account.update',
-  'bank_account.view', 'category.create', 'category.deactivate', 'category.delete', 'category.reorder',
-  'category.restore_template', 'category.update', 'category.view', 'company.delete', 'company.update',
-  'company.view', 'dre.export', 'dre.view', 'report.export', 'report.view', 'role.create', 'role.delete',
-  'role.update', 'role.view', 'stock.manage', 'stock.operate', 'stock.view', 'transaction.categorize',
-  'transaction.create', 'transaction.delete', 'transaction.import_ofx', 'transaction.update',
-  'transaction.view', 'user.assign_role', 'user.invite', 'user.remove',
+/**
+ * ⭐ AS CHAVES VÊM DA FONTE (`PERMISSIONS`), não de uma cópia.
+ *
+ * ⛔ Antes esta lista era as 36 chaves DIGITADAS à mão. Ela cumpria o papel (pegar typo no
+ * `perm`), mas cobrava um preço escondido: **toda chave nova exigia editar dois lugares**, e
+ * esquecer o segundo deixava o item invisível pra todo mundo — o mesmo estrago que o guard
+ * existe pra evitar. Derivando, o typo continua sendo pego e a duplicata morre.
+ *
+ * ⚠️ Isto NÃO cobre a outra metade do problema: a chave existir no CÓDIGO não a põe no
+ * BANCO. O papel OWNER guarda a lista concreta do dia do seed — chave nova exige **re-seed**
+ * (`npx tsx scripts/seed-rbac.ts`, idempotente) ANTES das rotas subirem, senão o próprio dono
+ * leva 403. Foi o que aconteceu em 24/08.
+ */
+const CHAVES_VALIDAS = new Set<string>([
+  ...PERMISSIONS.map((p) => p.key),
   '@sempre', // workspace PESSOAL (PF) — não é dado da empresa
 ])
 

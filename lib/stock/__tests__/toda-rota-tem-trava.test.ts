@@ -13,7 +13,7 @@ import { readFileSync, existsSync, readdirSync, statSync } from 'fs'
 import { join } from 'path'
 
 const RAIZ = join(process.cwd(), 'app', 'api', 'empresas', '[id]', 'estoque')
-const CHAVES_VALIDAS = ['stock.view', 'stock.operate', 'stock.manage']
+const CHAVES_VALIDAS = ['stock.view', 'stock.operate', 'stock.manage', 'stock.executar']
 
 function rotas(dir: string): string[] {
   if (!existsSync(dir)) return []
@@ -36,7 +36,10 @@ function handlers(): Handler[] {
       .map((m) => ({ pos: m.index!, verbo: m[1] }))
     for (let i = 0; i < marcas.length; i++) {
       const corpo = src.slice(marcas[i].pos, i + 1 < marcas.length ? marcas[i + 1].pos : src.length)
-      const perms = [...corpo.matchAll(/(?:guardStock|requireStock)\(request, companyId, '([a-z.]+)'\)/g)].map((m) => m[1])
+      // ⚠️ entende as DUAS formas: chave única e LISTA (a janela da cozinha aceita
+      // `stock.executar` OU `stock.view` — funcionário e gestor pela mesma porta).
+      const perms = [...corpo.matchAll(/(?:guardStock|requireStock)\(request, companyId, (\[[^\]]*\]|'[a-z.]+')\)/g)]
+        .flatMap((m) => [...m[1].matchAll(/'([a-z.]+)'/g)].map((x) => x[1]))
       out.push({ arquivo: f.slice(RAIZ.length + 1), verbo: marcas[i].verbo, perms: [...new Set(perms)] })
     }
   }
@@ -60,14 +63,45 @@ describe('toda rota de estoque tem trava', () => {
     expect(comCheckAntigo.map((f) => f.slice(RAIZ.length + 1))).toEqual([])
   })
 
-  it('GET é sempre stock.view (ler nunca exige operar/gerenciar)', () => {
-    const errados = hs.filter((h) => h.verbo === 'GET' && h.perms.some((p) => p !== 'stock.view'))
+  // ⚠️ A REGRA CONTINUA "ler é ler" — com UMA exceção nomeada, e o motivo importa: existe
+  // uma leitura que é sensível POR SI. O comparativo entre pessoas é decisão do dono
+  // ("ranking só pra stock.manage — nunca na tela do funcionário nem em tela compartilhada"),
+  // então ali a chave alta protege o CONTEÚDO, não a escrita. Afrouxar a regra pra todo GET
+  // teria escondido isso; a exceção com motivo escrito deixa à vista.
+  const LEITURA_SENSIVEL: Record<string, string> = {
+    'producao/relatorio-pessoas/route.ts':
+      'comparativo de desempenho entre pessoas — decisão do dono (06/09): só gerência, nunca em tela compartilhada da cozinha',
+  }
+
+  it('GET nunca exige operar/gerenciar (ler é ler), fora as leituras sensíveis nomeadas', () => {
+    const LEITURA = ['stock.view', 'stock.executar']
+    const errados = hs.filter((h) => h.verbo === 'GET'
+      && h.perms.some((p) => !LEITURA.includes(p))
+      && !LEITURA_SENSIVEL[h.arquivo])
     expect(errados.map((h) => `${h.arquivo} ${h.verbo} → ${h.perms.join(',')}`)).toEqual([])
+  })
+
+  it('⚠️ e toda leitura sensível declarada existe de verdade (a lista não vira paisagem)', () => {
+    for (const arquivo of Object.keys(LEITURA_SENSIVEL)) {
+      const achou = hs.some((h) => h.arquivo === arquivo && h.verbo === 'GET')
+      expect(achou, `exceção declarada pra rota que não existe mais: ${arquivo}`).toBe(true)
+    }
   })
 
   it('nenhuma escrita (POST/PATCH/PUT/DELETE) se contenta com stock.view', () => {
     const errados = hs.filter((h) => h.verbo !== 'GET' && h.perms.includes('stock.view'))
     expect(errados.map((h) => `${h.arquivo} ${h.verbo} → ${h.perms.join(',')}`)).toEqual([])
+  })
+
+  // ⛔⛔ A CERCA DA CHAVE NOVA (06/09). `stock.executar` é o papel mais fraco do sistema — o
+  // tablet compartilhado da cozinha, identificado por PIN. Se um dia alguém marcar uma rota
+  // qualquer com ela "porque o operador precisava", a cozinha inteira ganha aquele poder.
+  // Escrita com `stock.executar` só existe onde ela nasceu: iniciar e finalizar a PRÓPRIA
+  // tarefa. Rota nova fora daqui com essa chave fica VERMELHA.
+  it('⛔ escrita com stock.executar existe SÓ na janela da cozinha', () => {
+    const PERMITIDO = /^producao\/minhas-tarefas\//
+    const fora = hs.filter((h) => h.verbo !== 'GET' && h.perms.includes('stock.executar') && !PERMITIDO.test(h.arquivo))
+    expect(fora.map((h) => `${h.arquivo} ${h.verbo}`)).toEqual([])
   })
 })
 

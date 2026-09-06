@@ -14,7 +14,7 @@ import { TotalsBar } from '@/components/ui/totals-bar'
 import { SortableTh, useSort } from '@/components/ui/sortable-th'
 import { baixarCsv, hojeArquivo } from '@/lib/format/csv-cliente'
 import { diaEmSaoPaulo, somarDias } from '@/lib/datas/dia-sao-paulo'
-import { Factory, Loader2, Plus, ChevronRight, ClipboardList, Settings, TrendingDown, UtensilsCrossed, Download, PlayCircle, CheckCircle2 } from 'lucide-react'
+import { Factory, Loader2, Plus, ChevronRight, ClipboardList, Settings, TrendingDown, UtensilsCrossed, Download, PlayCircle, CheckCircle2, Users } from 'lucide-react'
 import { ehReceitaDeProducao } from '@/lib/stock/producao/tipo-receita'
 
 interface Ordem { id: string; nomeProduzido: string; unidadeProduzido: string; escalaReceitas: number; loteBase: number; estado: string; dataProducao: string; setorNome: string | null }
@@ -136,6 +136,9 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
             className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-40"><Download className="h-3.5 w-3.5" /> CSV</button>
           <a href={`/empresas/${id}/estoque/cardapio`} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50"><UtensilsCrossed className="h-3.5 w-3.5" /> Cardápio</a>
           <a href={`/empresas/${id}/estoque/producao/receitas`} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50"><ClipboardList className="h-3.5 w-3.5" /> Receitas de produção</a>
+          {/* ⚠️ o relatório por pessoa exige stock.manage na rota — quem não tiver leva 403
+              com a permissão nomeada. O link fica visível porque esta tela já é de gestão. */}
+          <a href={`/empresas/${id}/estoque/producao/pessoas`} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50"><Users className="h-3.5 w-3.5" /> Por pessoa</a>
           <button onClick={() => setNovo((v) => !v)} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#185FA5] px-3 text-xs font-semibold text-white hover:bg-[#0F4A8C]"><Plus className="h-3.5 w-3.5" /> Nova ordem</button>
         </div>
       </div>

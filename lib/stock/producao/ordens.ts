@@ -8,6 +8,7 @@ import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { criarMovimento } from '../movement'
 import { saldoItem, custoMedioPorItem, recomputeSaldoCache } from '../saldo'
+import { materializarEtapasDaOrdem } from './etapas'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -48,6 +49,12 @@ export async function criarOrdem(input: CriarOrdemInput, db: Db = defaultPrisma)
       estado: 'PLANEJADA', criadoPorId: input.userId ?? null,
     },
   })
+  // ⭐ as etapas nascem COM a ordem (snapshot do método da versão). Receita sem etapa
+  // declarada vira UMA etapa "produção" — a régua mora em `resolverEtapas`, num lugar só.
+  const versao = await db.stockFichaVersao.findFirst({
+    where: { companyId: input.companyId, fichaId: ficha.id, versao: ficha.versaoAtual }, select: { id: true },
+  })
+  await materializarEtapasDaOrdem(input.companyId, ordem.id, versao?.id ?? null, db)
   return { ordemId: ordem.id }
 }
 

@@ -47,6 +47,7 @@ import {
   ListChecks,
   Printer,
   Tag,
+  ChefHat,
 } from 'lucide-react'
 import { SidebarItem } from './sidebar-item'
 import { useSidebarBadges } from '@/lib/hooks/use-sidebar-badges'
@@ -486,6 +487,17 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
               label="Produção"
               href={`/empresas/${empresaAtiva}/estoque/producao`}
               isActive={/^\/empresas\/[^/]+\/estoque\/producao(?!\/cadastros)/.test(pathname)}
+              onClick={onNavigate}
+            />
+            {/* ⭐ A JANELA DA COZINHA (06/09) — `stock.executar`, a chave mais fraca do
+                sistema. Quem só executa vê ISTO e mais nada no menu; quem gerencia vê o
+                item também, porque é por aqui que ele confere o tablet. */}
+            <SidebarItem
+          perm="stock.executar"
+              icon={ChefHat}
+              label="Cozinha (tarefas)"
+              href={`/cozinha/${empresaAtiva}`}
+              isActive={/^\/cozinha\//.test(pathname)}
               onClick={onNavigate}
             />
             <SidebarItem

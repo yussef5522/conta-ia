@@ -61,6 +61,17 @@ export const PERMISSIONS: PermissionDef[] = [
   { key: 'stock.view',    name: 'Ver estoque',       description: 'Ver posição, catálogo, movimentos, recebimentos, produção, vendas, perdas, contagem', group: 'Estoque' },
   { key: 'stock.operate', name: 'Operar estoque',    description: 'Contar, conferir, produzir, registrar saída, lançar venda',                          group: 'Estoque' },
   { key: 'stock.manage',  name: 'Gerenciar estoque', description: 'Editar ficha, mín/máx, catálogo e mapeamento de vendas',                             group: 'Estoque' },
+  // ⭐⭐ A 4ª CHAVE (06/09) — quem SÓ executa tarefa de produção no tablet da cozinha.
+  //
+  // ⚠️ NOME DENTRO DE `stock.` DE PROPÓSITO: assim o ADMIN (que tem `stock.*`) herda sozinho
+  // e o VIEWER (`*.view`) não pega. Com um recurso novo (`producao.executar`) seria preciso
+  // LEMBRAR de mexer em dois papéis — e "lembrar" é o que a REGRA 5 manda transformar em
+  // impossibilidade.
+  //
+  // ⛔⛔ CHAVE NOVA EXIGE RE-SEED **ANTES** DAS ROTAS: o papel OWNER no banco não guarda
+  // `*`, guarda a LISTA CONCRETA das chaves que existiam no dia do seed. Em 24/08 três
+  // rotas subiram com chave nova e deram **403 pro próprio dono**.
+  { key: 'stock.executar', name: 'Executar tarefa de produção', description: 'Iniciar e finalizar as próprias tarefas na janela da cozinha. Não vê estoque, ficha nem financeiro.', group: 'Estoque' },
 ]
 
 // Roles padrão com suas permissions (wildcards permitidos)
@@ -116,6 +127,14 @@ export const DEFAULT_ROLES = {
     name: 'LEITURA_ESTOQUE',
     description: 'Consulta do estoque: vê, não mexe. Não vê o financeiro.',
     permissions: ['stock.view'],
+  },
+  // ⭐ A janela da cozinha e MAIS NADA (06/09). Sem `stock.view` de propósito: com ele o
+  // funcionário abriria posição, custo e mapa de vendas — a janela dele é a lista das
+  // próprias tarefas, e o resto do módulo continua fora do alcance.
+  EXECUTOR_PRODUCAO: {
+    name: 'EXECUTOR_PRODUCAO',
+    description: 'Cozinha: inicia e finaliza as próprias tarefas de produção. Não vê estoque, ficha, venda nem financeiro.',
+    permissions: ['stock.executar'],
   },
 } as const
 
