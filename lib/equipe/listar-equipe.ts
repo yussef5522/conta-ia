@@ -21,7 +21,7 @@ import { prisma as defaultPrisma } from '@/lib/db'
 import { colaboradoresComPin } from '@/lib/stock/producao/pin'
 
 /** como a pessoa entra no sistema — é a COLUNA da lista, não uma tela separada */
-export type TipoDeAcesso = 'LOGIN' | 'PIN' | 'CONVITE_PENDENTE' | 'APARELHO' | 'SEM_ACESSO'
+export type TipoDeAcesso = 'LOGIN' | 'PIN' | 'CONVITE_PENDENTE' | 'APARELHO' | 'SEM_ACESSO' | 'INATIVO'
 
 export interface PessoaDaEquipe {
   /** id da fonte de origem (User, StockColaborador ou CompanyInvite) */
@@ -39,6 +39,8 @@ export interface PessoaDaEquipe {
   colaboradorId: string | null
   /** é a conta do próprio aparelho? (não é uma pessoa) */
   ehAparelho: boolean
+  /** só faz sentido em colaborador de produção; quem loga é sempre `true` */
+  ativo?: boolean
 }
 
 /**
@@ -58,6 +60,12 @@ const PAPEL_DA_COZINHA = 'EXECUTOR_PRODUCAO'
 export async function listarEquipe(
   companyId: string,
   db: PrismaClient = defaultPrisma,
+  /**
+   * ⚠️ INATIVOS SÓ SOB PEDIDO (06/09): quem saiu da produção não pode poluir a lista do dia
+   * a dia — mas TEM que ter caminho de volta, senão inativar vira porta sem maçaneta (o
+   * mesmo beco do PIN esquecido). A tela oferece "mostrar inativos".
+   */
+  incluirInativos = false,
 ): Promise<PessoaDaEquipe[]> {
   const [comPapel, convites, colaboradores, comPin] = await Promise.all([
     db.userCompanyRole.findMany({
@@ -69,7 +77,10 @@ export async function listarEquipe(
       where: { companyId, acceptedAt: null, expiresAt: { gt: new Date() } },
       include: { role: { select: { name: true } } },
     }),
-    db.stockColaborador.findMany({ where: { companyId, ativo: true }, select: { id: true, nome: true } }),
+    db.stockColaborador.findMany({
+      where: { companyId, ...(incluirInativos ? {} : { ativo: true }) },
+      select: { id: true, nome: true, ativo: true },
+    }),
     colaboradoresComPin(companyId, db),
   ])
 
@@ -125,11 +136,16 @@ export async function listarEquipe(
       vinculoId: null,
       nome: c.nome,
       funcao: 'Cozinha / produção',
-      tipo: tem ? 'PIN' : 'SEM_ACESSO',
+      // ⚠️ INATIVO vence "sem PIN": quem saiu não é pendência, é decisão — cobrar um PIN de
+      // quem não trabalha mais é o alarme falso que faz o dono parar de ler a lista.
+      tipo: !c.ativo ? 'INATIVO' : tem ? 'PIN' : 'SEM_ACESSO',
       email: null,
-      detalhe: tem ? 'PIN (entra pelo tablet)' : 'sem PIN — não consegue entrar no tablet',
+      detalhe: !c.ativo
+        ? 'inativo — não entra no tablet'
+        : tem ? 'PIN (entra pelo tablet)' : 'sem PIN — não consegue entrar no tablet',
       colaboradorId: c.id,
       ehAparelho: false,
+      ativo: c.ativo,
     })
   }
 
@@ -139,7 +155,8 @@ export async function listarEquipe(
     p.ehAparelho ? 40
       : p.tipo === 'CONVITE_PENDENTE' ? 11
       : p.tipo === 'SEM_ACESSO' ? 21
-      : p.tipo === 'PIN' ? 22 : 10
+      : p.tipo === 'PIN' ? 22
+      : p.tipo === 'INATIVO' ? 30 : 10
   return out.sort((a, b) => peso(a) - peso(b) || a.nome.localeCompare(b.nome, 'pt-BR'))
 }
 
@@ -165,11 +182,13 @@ export function humanizarPapel(nome: string): string {
 /** ⭐ o resumo que o topo da tela mostra — contagem por tipo, sem repetir a régua na tela */
 export function resumoDaEquipe(pessoas: PessoaDaEquipe[]) {
   return {
-    total: pessoas.filter((p) => !p.ehAparelho).length,
-    cozinha: pessoas.filter((p) => p.funcao === 'Cozinha / produção').length,
+    // ⚠️ inativo não conta como pessoa da equipe — ele está na lista pra poder VOLTAR
+    total: pessoas.filter((p) => !p.ehAparelho && p.tipo !== 'INATIVO').length,
+    cozinha: pessoas.filter((p) => p.funcao === 'Cozinha / produção' && p.tipo !== 'INATIVO').length,
     comLogin: pessoas.filter((p) => p.tipo === 'LOGIN').length,
     convitesPendentes: pessoas.filter((p) => p.tipo === 'CONVITE_PENDENTE').length,
     semAcesso: pessoas.filter((p) => p.tipo === 'SEM_ACESSO').length,
+    inativos: pessoas.filter((p) => p.tipo === 'INATIVO').length,
     aparelhos: pessoas.filter((p) => p.ehAparelho).length,
   }
 }

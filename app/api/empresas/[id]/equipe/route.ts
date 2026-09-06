@@ -21,6 +21,6 @@ export async function GET(request: NextRequest, { params }: Params) {
     if (e instanceof ForbiddenError) return NextResponse.json({ erro: e.message, permission: e.permission }, { status: 403 })
     throw e
   }
-  const pessoas = await listarEquipe(companyId, prisma)
+  const pessoas = await listarEquipe(companyId, prisma, request.nextUrl.searchParams.get('inativos') === '1')
   return NextResponse.json({ pessoas, resumo: resumoDaEquipe(pessoas) })
 }

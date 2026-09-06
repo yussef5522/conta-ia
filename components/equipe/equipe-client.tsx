@@ -13,15 +13,15 @@
 
 import { useEffect, useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
-import { Loader2, UserPlus, KeyRound, Mail, Clock, Tablet, AlertTriangle, Users } from 'lucide-react'
+import { Loader2, UserPlus, KeyRound, Mail, Clock, Tablet, AlertTriangle, Users, UserMinus } from 'lucide-react'
 import { CadastrarPessoaModal } from '@/components/estoque/cadastrar-pessoa-modal'
 
 interface Pessoa {
   id: string; vinculoId: string | null; nome: string; funcao: string
-  tipo: 'LOGIN' | 'PIN' | 'CONVITE_PENDENTE' | 'APARELHO' | 'SEM_ACESSO'
+  tipo: 'LOGIN' | 'PIN' | 'CONVITE_PENDENTE' | 'APARELHO' | 'SEM_ACESSO' | 'INATIVO'
   email: string | null; detalhe: string; colaboradorId: string | null; ehAparelho: boolean
 }
-interface Resumo { total: number; cozinha: number; comLogin: number; convitesPendentes: number; semAcesso: number; aparelhos: number }
+interface Resumo { total: number; cozinha: number; comLogin: number; convitesPendentes: number; semAcesso: number; aparelhos: number; inativos: number }
 
 const SELO: Record<Pessoa['tipo'], { icone: typeof Mail; cor: string }> = {
   LOGIN: { icone: Mail, cor: 'text-slate-600' },
@@ -29,6 +29,7 @@ const SELO: Record<Pessoa['tipo'], { icone: typeof Mail; cor: string }> = {
   CONVITE_PENDENTE: { icone: Clock, cor: 'text-amber-700' },
   APARELHO: { icone: Tablet, cor: 'text-slate-400' },
   SEM_ACESSO: { icone: AlertTriangle, cor: 'text-rose-600' },
+  INATIVO: { icone: UserMinus, cor: 'text-slate-400' },
 }
 
 export function EquipeClient({ empresaId, empresaNome, filtro }: { empresaId: string; empresaNome: string; filtro?: 'cozinha' }) {
@@ -37,6 +38,7 @@ export function EquipeClient({ empresaId, empresaNome, filtro }: { empresaId: st
   const [abrir, setAbrir] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   const [soCozinha, setSoCozinha] = useState(filtro === 'cozinha')
+  const [verInativos, setVerInativos] = useState(false)
   // ⚠️ TROCAR O PIN existia na tela velha e não podia sumir: quem esquece os 4 dígitos não
   // consegue entrar no tablet, e o PIN é hash — nem o dono consegue vê-lo pra lembrar.
   // Sem este gesto, esquecer o PIN viraria beco sem saída.
@@ -47,6 +49,21 @@ export function EquipeClient({ empresaId, empresaNome, filtro }: { empresaId: st
 
   // ⭐ A MARCA DE APARELHO — quem decide é o dono, nunca uma heurística (a régua antiga
   // deduzia do papel e chamou uma PESSOA de máquina).
+  // ⭐ tirar da produção / trazer de volta. O erro do servidor vai INTEIRO pra tela: ele diz
+  // QUANTAS etapas impedem, e isso é o que resolve.
+  const mudarAtivo = async (colaboradorId: string, ativo: boolean) => {
+    setBusy(true); setErro(null)
+    try {
+      const r = await fetch(`/api/empresas/${empresaId}/equipe/colaborador`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ colaboradorId, ativo }),
+      })
+      const j = await r.json().catch(() => null)
+      if (!r.ok) { setErro(j?.erro ?? 'Não consegui salvar.'); return }
+      carregar()
+    } finally { setBusy(false) }
+  }
+
   const marcarAparelho = async (vinculoId: string, ehAparelho: boolean) => {
     setBusy(true)
     try {
@@ -74,11 +91,11 @@ export function EquipeClient({ empresaId, empresaNome, filtro }: { empresaId: st
   }
 
   const carregar = () =>
-    fetch(`/api/empresas/${empresaId}/equipe`)
+    fetch(`/api/empresas/${empresaId}/equipe${verInativos ? '?inativos=1' : ''}`)
       .then((r) => (r.ok ? r.json() : Promise.reject(r)))
       .then((j) => { setPessoas(j.pessoas ?? []); setResumo(j.resumo ?? null) })
       .catch(() => { setErro('Não consegui carregar a equipe.'); setPessoas([]) })
-  useEffect(() => { carregar() }, [empresaId]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { carregar() }, [empresaId, verInativos]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const lista = (pessoas ?? []).filter((p) => !soCozinha || p.funcao === 'Cozinha / produção')
 
@@ -116,6 +133,12 @@ export function EquipeClient({ empresaId, empresaNome, filtro }: { empresaId: st
       {(pessoas?.length ?? 0) > 0 && (
         <label className="flex items-center gap-1.5 text-xs text-slate-500">
           <input type="checkbox" checked={soCozinha} onChange={(e) => setSoCozinha(e.target.checked)} /> só a cozinha
+          {/* ⚠️ inativo fica ESCONDIDO por padrão (não é trabalho do dia) mas tem caminho de
+              volta — sem isso, inativar seria porta sem maçaneta. */}
+          <span className="ml-3 flex items-center gap-1.5">
+            <input type="checkbox" checked={verInativos} onChange={(e) => setVerInativos(e.target.checked)} /> mostrar inativos
+            {resumo && resumo.inativos > 0 && <span className="text-slate-400">({resumo.inativos})</span>}
+          </span>
         </label>
       )}
 
@@ -143,7 +166,7 @@ export function EquipeClient({ empresaId, empresaNome, filtro }: { empresaId: st
                     <Icone className="h-3.5 w-3.5" /> {p.detalhe}
                   </span>
                   {/* ⭐ só quem é colaborador de produção tem PIN pra mexer */}
-                  {p.colaboradorId && (editando === p.colaboradorId ? (
+                  {p.colaboradorId && p.tipo !== 'INATIVO' && (editando === p.colaboradorId ? (
                     <span className="flex w-full items-center gap-1.5 sm:w-auto">
                       <input value={pinNovo} onChange={(e) => setPinNovo(e.target.value.replace(/\D/g, '').slice(0, 4))}
                         inputMode="numeric" placeholder="4 dígitos" autoFocus
@@ -166,6 +189,13 @@ export function EquipeClient({ empresaId, empresaNome, filtro }: { empresaId: st
                   )}
                   {/* ⚠️ só quem LOGA pode ser aparelho — quem entra por PIN é pessoa por
                       definição (não existe tablet com PIN próprio). */}
+                  {/* tirar da produção / trazer de volta — só colaborador tem isso */}
+                  {p.colaboradorId && (
+                    <button onClick={() => mudarAtivo(p.colaboradorId!, p.tipo === 'INATIVO')} disabled={busy}
+                      className="text-[11px] text-slate-400 hover:text-slate-700">
+                      {p.tipo === 'INATIVO' ? 'trazer de volta' : 'tirar da produção'}
+                    </button>
+                  )}
                   {p.vinculoId && (
                     <button onClick={() => marcarAparelho(p.vinculoId!, !p.ehAparelho)} disabled={busy}
                       className="text-[11px] text-slate-400 hover:text-slate-700">
