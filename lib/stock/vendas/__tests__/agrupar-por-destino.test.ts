@@ -107,7 +107,10 @@ describe('⭐ os cards contam coerente com a lista', () => {
 })
 
 describe('⭐⭐ o ciclo real: mapear junta, desmapear separa', () => {
-  const CNPJ = '11223344000155'
+  // ⚠️ CNPJ ÚNICO NA SUÍTE (06/09): este arquivo dividia o CNPJ com outro, e os dois, em
+// PARALELO, apagavam a empresa um do outro no `beforeEach` (FK violation intermitente).
+// Só aparece na suíte inteira — rodando o arquivo sozinho passa sempre.
+const CNPJ = '11223344000236'
   let companyId = ''
   let fichaId = ''
 

@@ -13,7 +13,10 @@ import { criarOrdem, confirmarSeparacao, iniciarProducao, explodirSeparacao } fr
 import { concluir, rendimentoMedidoDaFicha } from '../conclusao'
 import { escalaDoConsumo, preverSaida, insumoParaSaida } from '../previsao-rendimento'
 
-const CNPJ = '50505050000177'
+// ⚠️ CNPJ ÚNICO NA SUÍTE (06/09): este arquivo dividia o CNPJ com outro, e os dois, em
+// PARALELO, apagavam a empresa um do outro no `beforeEach` (FK violation intermitente).
+// Só aparece na suíte inteira — rodando o arquivo sozinho passa sempre.
+const CNPJ = '50505050000258'
 const POR_LOTE = 0.135 // KG de mussarela por porção — a precisão que o print perdia
 let companyId: string
 let queijoId: string

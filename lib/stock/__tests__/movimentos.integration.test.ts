@@ -6,7 +6,10 @@ import { prisma } from '@/lib/db'
 import { criarMovimento, estornarMovimento } from '../movement'
 import { listMovimentos, movimentosToCsv } from '../movimentos'
 
-const CNPJ = '50607080000199'
+// ⚠️ CNPJ ÚNICO NA SUÍTE (06/09): este arquivo dividia o CNPJ com outro, e os dois, em
+// PARALELO, apagavam a empresa um do outro no `beforeEach` (FK violation intermitente).
+// Só aparece na suíte inteira — rodando o arquivo sozinho passa sempre.
+const CNPJ = '50607080000270'
 const CHAVE = '43260850607080000199550100000000011234500017'
 let companyId: string
 let itemId: string

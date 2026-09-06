@@ -14,7 +14,7 @@ import { TotalsBar } from '@/components/ui/totals-bar'
 import { SortableTh, useSort } from '@/components/ui/sortable-th'
 import { baixarCsv, hojeArquivo } from '@/lib/format/csv-cliente'
 import { diaEmSaoPaulo, somarDias } from '@/lib/datas/dia-sao-paulo'
-import { Factory, Loader2, Plus, ChevronRight, ClipboardList, Settings, TrendingDown, UtensilsCrossed, Download, PlayCircle, CheckCircle2, Users } from 'lucide-react'
+import { Factory, Loader2, Plus, ChevronRight, ClipboardList, Settings, TrendingDown, UtensilsCrossed, Download, PlayCircle, CheckCircle2, Users, UserPlus } from 'lucide-react'
 import { ehReceitaDeProducao } from '@/lib/stock/producao/tipo-receita'
 
 interface Ordem { id: string; nomeProduzido: string; unidadeProduzido: string; escalaReceitas: number; loteBase: number; estado: string; dataProducao: string; setorNome: string | null }
@@ -139,6 +139,10 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
           {/* ⚠️ o relatório por pessoa exige stock.manage na rota — quem não tiver leva 403
               com a permissão nomeada. O link fica visível porque esta tela já é de gestão. */}
           <a href={`/empresas/${id}/estoque/producao/pessoas`} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50"><Users className="h-3.5 w-3.5" /> Por pessoa</a>
+          {/* ⭐⭐ O ATALHO QUE FALTAVA (06/09) — no TOPO, com nome de gente. O link antigo
+              vivia dentro do formulário de nova ordem, chamado "setores", e por isso o dono
+              nunca achou onde cadastrar as gurias. Atalho: a tela mora em Sistema → Equipe. */}
+          <a href="/equipe?filtro=cozinha" className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50"><UserPlus className="h-3.5 w-3.5" /> Equipe</a>
           <button onClick={() => setNovo((v) => !v)} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#185FA5] px-3 text-xs font-semibold text-white hover:bg-[#0F4A8C]"><Plus className="h-3.5 w-3.5" /> Nova ordem</button>
         </div>
       </div>
@@ -400,7 +404,8 @@ function NovaOrdem({ id, onCriada, onFechar }: { id: string; onCriada: (ordemId:
             <label className="text-xs text-slate-500">Setor
               <select value={setorId} onChange={(e) => setSetorId(e.target.value)} className="mt-1 block rounded-lg border border-slate-300 py-2 px-3 text-sm"><option value="">—</option>{setores.filter((s) => s.ativo).map((s) => <option key={s.id} value={s.id}>{s.nome}</option>)}</select>
             </label>
-            <a href={`/empresas/${id}/estoque/producao/cadastros`} className="inline-flex items-center gap-1 pb-2 text-[11px] text-slate-400 hover:text-slate-600"><Settings className="h-3 w-3" /> setores</a>
+            {/* ⚠️ ATALHO, não segunda tela: o cadastro de gente mora em Sistema → Equipe. */}
+            <a href="/equipe?filtro=cozinha" className="inline-flex items-center gap-1 pb-2 text-[11px] text-slate-400 hover:text-slate-600"><Settings className="h-3 w-3" /> setores e equipe</a>
           </div>
           {erro && <p className="text-xs text-rose-600">{erro}</p>}
           <button onClick={criar} disabled={busy} className="inline-flex items-center gap-2 rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-white hover:bg-[#0F4A8C] disabled:opacity-60">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Criar ordem</button>

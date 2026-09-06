@@ -29,9 +29,9 @@ export default function FichasPlacaPage({ params }: { params: Promise<{ id: stri
         <p className="hidden flex-1 truncate text-xs text-slate-400 lg:block">
           cada mundo tem a sua casa — escolha por onde entrar
         </p>
-        <a href={`/empresas/${id}/estoque/producao/cadastros`}
+        <a href="/equipe?filtro=cozinha"
           className="ml-auto inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50">
-          <Settings className="h-3.5 w-3.5" /> Setores e colaboradores
+          <Settings className="h-3.5 w-3.5" /> Equipe
         </a>
       </div>
 

@@ -659,12 +659,16 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
         />
 
         <SectionLabel>Sistema</SectionLabel>
+        {/* ⭐⭐ EQUIPE ABSORVEU USUÁRIOS (06/09) — uma lista com TODO MUNDO: quem loga e
+            quem usa PIN. Antes havia duas portas de gente (Usuários no Sistema, "Setores e
+            colaboradores" escondido na Produção) e o dono não achava nenhuma das duas pra
+            cadastrar a cozinha. `/usuarios` continua viva pra link antigo. */}
         <SidebarItem
           perm="user.invite"
           icon={Shield}
-          label="Usuários"
-          href="/usuarios"
-          isActive={pathname.startsWith('/usuarios')}
+          label="Equipe"
+          href="/equipe"
+          isActive={pathname.startsWith('/equipe') || pathname.startsWith('/usuarios')}
           onClick={onNavigate}
         />
         <SidebarItem

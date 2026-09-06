@@ -8,7 +8,10 @@ import { makePfx } from './_make-pfx'
 import { saveCertificate, getCertificateStatus, SaveCertificateError } from '../certificate-service'
 import { checkStockInvariants, snapshotClosedModules, isolationHeld } from '../stock-invariants'
 
-const CNPJ = '11222333000181'
+// ⚠️ CNPJ ÚNICO NA SUÍTE (06/09): este arquivo dividia o CNPJ com outro, e os dois, em
+// PARALELO, apagavam a empresa um do outro no `beforeEach` (FK violation intermitente).
+// Só aparece na suíte inteira — rodando o arquivo sozinho passa sempre.
+const CNPJ = '11222333000262'
 const SENHA = 'senha-forte-123'
 const daqui = (dias: number) => new Date(Date.now() + dias * 86_400_000)
 
