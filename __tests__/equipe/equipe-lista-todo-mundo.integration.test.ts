@@ -78,7 +78,11 @@ describe('⭐⭐ a lista junta as DUAS fontes de gente', () => {
     expect(p.get('Marcyelle')).toMatchObject({ funcao: 'Gerente de estoque', tipo: 'LOGIN' })
     expect(p.get('cristian-eq')).toMatchObject({ funcao: 'Gerente de estoque', tipo: 'CONVITE_PENDENTE' })
     expect(p.get('Carlise')).toMatchObject({ funcao: 'Cozinha / produção', tipo: 'PIN' })
-    expect(p.get('Tablet da cozinha')).toMatchObject({ funcao: 'Aparelho', tipo: 'APARELHO', ehAparelho: true })
+    // ⛔⛔ CORRIGIDO NA PROVA EM PROD: a 1ª régua inferia "aparelho" do PAPEL, e chamou de
+    // máquina uma conta de LOGIN que o dono tinha criado pra uma PESSOA (a Carlise) com o
+    // mesmo papel. O papel diz o ACESSO, não se é gente. Sem marca explícita, a lista diz o
+    // que sabe: a função e como entra.
+    expect(p.get('Tablet da cozinha')).toMatchObject({ funcao: 'Cozinha / produção', tipo: 'LOGIN', ehAparelho: false })
   })
 
   it('⛔⛔ cozinha SEM PIN aparece como pendência — não some da lista', async () => {
@@ -90,24 +94,22 @@ describe('⭐⭐ a lista junta as DUAS fontes de gente', () => {
     expect(michelle.colaboradorId, 'a linha tem que oferecer definir o PIN').toBeTruthy()
   })
 
-  it('⛔ a CONTA DE APARELHO aparece marcada — esconder deixaria uma sessão permanente invisível', async () => {
-    const t = (await listarEquipe(companyId, prisma)).find((p) => p.ehAparelho)!
-    expect(t.detalhe).toMatch(/conta de aparelho/)
-    // ⚠️ reconhecida pelo PAPEL, não pelo e-mail: a próxima conta de aparelho terá outro
-    // nome e continua sendo aparelho.
-    expect(t.email).toBe('tablet-eq@t.com')
-    expect(resumoDaEquipe(await listarEquipe(companyId, prisma)).total, 'aparelho não conta como pessoa').toBe(5)
+  it('⛔⛔ NINGUÉM é chamado de "aparelho" por causa do papel — o erro que a prova pegou', async () => {
+    const pessoas = await listarEquipe(companyId, prisma)
+    expect(pessoas.some((p) => p.ehAparelho), 'inferir máquina do papel chama pessoa de coisa').toBe(false)
+    const t = pessoas.find((p) => p.email === 'tablet-eq@t.com')!
+    expect(t.funcao).toBe('Cozinha / produção')
+    expect(t.detalhe).toMatch(/só a janela da cozinha/)
   })
 
   it('⭐ o resumo conta o que importa e a pendência é visível', async () => {
     const r = resumoDaEquipe(await listarEquipe(companyId, prisma))
-    expect(r).toMatchObject({ cozinha: 2, comLogin: 2, convitesPendentes: 1, semAcesso: 1, aparelhos: 1 })
+    expect(r).toMatchObject({ cozinha: 3, comLogin: 3, convitesPendentes: 1, semAcesso: 1, aparelhos: 0 })
   })
 
   it('⭐ ordem: gerência primeiro, cozinha depois, aparelho por último', async () => {
     const nomes = (await listarEquipe(companyId, prisma)).map((p) => p.nome)
-    expect(nomes[nomes.length - 1], 'aparelho não é gente — vai por último').toBe('Tablet da cozinha')
-    expect(nomes.indexOf('Marcyelle')).toBeLessThan(nomes.indexOf('Carlise'))
+    expect(nomes.indexOf('Marcyelle'), 'gerência antes da cozinha').toBeLessThan(nomes.indexOf('Carlise'))
   })
 
   it('⭐ o papel é humanizado só no RÓTULO — a chave do RBAC continua a técnica', () => {

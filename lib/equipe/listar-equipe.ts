@@ -40,16 +40,20 @@ export interface PessoaDaEquipe {
 }
 
 /**
- * ⭐ CONTA DE APARELHO NÃO É PESSOA — e a lista diz isso.
+ * ⛔⛔ O PAPEL DIZ O ACESSO, NÃO SE É GENTE OU MÁQUINA (corrigido 06/09, na prova em prod).
  *
- * ⚠️ Reconhecida pelo PAPEL (`EXECUTOR_PRODUCAO` num `User`), não pelo e-mail: amarrar a um
- * nome de e-mail faria a próxima conta de aparelho, com outro nome, aparecer como gente. O
- * papel é o fato; o e-mail é o rótulo.
+ * A 1ª versão inferia "aparelho" do papel `EXECUTOR_PRODUCAO`. A prova contra os dados REAIS
+ * mostrou o erro na hora: o dono tinha criado uma conta de LOGIN pra **Carlise** com esse
+ * papel (contornando a tela que ele não achava), e a lista a chamou de **"Aparelho"**.
+ * Chamar uma pessoa de máquina numa tela de equipe é pior que não marcar nada.
  *
- * ⛔ E ela aparece na lista de propósito, marcada — esconder deixaria o dono sem saber que
- * existe uma sessão permanente na loja, que é exatamente o que ele precisa vigiar.
+ * ⚠️ **NÃO EXISTE, HOJE, UM SINAL CONFIÁVEL** que separe a conta do tablet de uma pessoa que
+ * usa o mesmo papel — e inventar um (adivinhar pelo e-mail, pelo nome) seria a "heurística
+ * que decide" que este projeto recusa em toda parte. Então a lista diz o que SABE: a função
+ * e como a pessoa entra. Marcar o aparelho de verdade pede uma marca explícita — decisão do
+ * dono, registrada, não chutada aqui.
  */
-const PAPEL_DE_APARELHO = 'EXECUTOR_PRODUCAO'
+const PAPEL_DA_COZINHA = 'EXECUTOR_PRODUCAO'
 
 export async function listarEquipe(
   companyId: string,
@@ -70,18 +74,20 @@ export async function listarEquipe(
 
   const out: PessoaDaEquipe[] = []
 
-  // 1. QUEM LOGA (User com papel) — inclui o dono e a conta do aparelho
+  // 1. QUEM LOGA (User com papel) — inclui o dono, a gerência e as contas da cozinha
   for (const m of comPapel) {
-    const ehAparelho = m.role.name === PAPEL_DE_APARELHO
+    const daCozinha = m.role.name === PAPEL_DA_COZINHA
     out.push({
       id: m.user.id,
-      nome: ehAparelho ? m.user.name : m.user.name,
-      funcao: ehAparelho ? 'Aparelho' : humanizarPapel(m.role.name),
-      tipo: ehAparelho ? 'APARELHO' : 'LOGIN',
+      nome: m.user.name,
+      funcao: daCozinha ? 'Cozinha / produção' : humanizarPapel(m.role.name),
+      tipo: 'LOGIN',
       email: m.user.email,
-      detalhe: ehAparelho ? 'conta de aparelho (fica logada no tablet)' : `login (${m.user.email})`,
+      // ⚠️ diz COMO entra, sem afirmar se é gente ou máquina — o que a gente não sabe, não
+      // se escreve na tela como se soubesse.
+      detalhe: daCozinha ? `login (${m.user.email}) · só a janela da cozinha` : `login (${m.user.email})`,
       colaboradorId: null,
-      ehAparelho,
+      ehAparelho: false,
     })
   }
 
@@ -156,6 +162,8 @@ export function resumoDaEquipe(pessoas: PessoaDaEquipe[]) {
     comLogin: pessoas.filter((p) => p.tipo === 'LOGIN').length,
     convitesPendentes: pessoas.filter((p) => p.tipo === 'CONVITE_PENDENTE').length,
     semAcesso: pessoas.filter((p) => p.tipo === 'SEM_ACESSO').length,
+    // ⚠️ fica em 0 até existir uma MARCA de aparelho: contar por papel chamaria pessoa de
+    // máquina, que é o erro que a prova em prod pegou.
     aparelhos: pessoas.filter((p) => p.ehAparelho).length,
   }
 }
