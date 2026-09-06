@@ -16,6 +16,10 @@ import { etapasDaOrdem, designarEtapa } from '../etapas'
 import { minhasTarefasDeHoje, iniciarTarefa, finalizarTarefa, TarefaError } from '../minhas-tarefas'
 import { concluirDoTablet, quemFechouOLote, oQueVaiSerConsumido } from '../concluir-do-tablet'
 import { cadastrarPessoa } from '../cadastrar-pessoa'
+import { relatorioPorPessoa } from '../relatorio-por-pessoa'
+import { tarefasAbertasDemais } from '../minhas-tarefas'
+import { cancelarOrdem } from '../ordens'
+import { concluir } from '../conclusao'
 import { saldoItem } from '../../saldo'
 
 const CNPJ = '16180339000188'
@@ -194,5 +198,83 @@ describe('⭐⭐ o lote fecha na ponta, pelo MESMO motor', () => {
     const es = await etapasDaOrdem(companyId, ordemId, HOJE, prisma)
     await designarEtapa({ companyId, etapaId: es[0].id, colaboradorId: cristian }, prisma)
     expect((await minhasTarefasDeHoje(companyId, cristian, HOJE, prisma))[0].ultima).toBe(true)
+  })
+})
+
+describe('⛔⛔ ordem CANCELADA fica FORA do relatório por pessoa', () => {
+  // **Decisão do dono (06/09):** *"trabalho em ordem que não produziu não entra na média de
+  // ninguém"*. O caso real: a ordem de teste do beef foi cancelada, e a etapa de 3 segundos
+  // que ficou nela entrava no TEMPO do Cristian **sem quantidade junto** — o `min/un` subia
+  // por trabalho que não existiu.
+  it('⛔⛔ etapa feita em ordem cancelada tem ZERO efeito no min/un', async () => {
+    // 1. uma produção de VERDADE, pra existir uma média
+    const boa = await ordemSeparada(5)
+    const eb = await etapasDaOrdem(companyId, boa, HOJE, prisma)
+    await iniciarTarefa({ companyId, etapaId: eb[0].id, colaboradorId: cristian, agora: emSP(8) }, prisma)
+    await finalizarTarefa({ companyId, etapaId: eb[0].id, colaboradorId: cristian, agora: emSP(9) }, prisma)
+    await iniciarTarefa({ companyId, etapaId: eb[1].id, colaboradorId: cristian, agora: emSP(9) }, prisma)
+    await finalizarTarefa({ companyId, etapaId: eb[1].id, colaboradorId: cristian, agora: emSP(10) }, prisma)
+    await concluirDoTablet({ companyId, ordemId: boa, qtdGerada: 40, colaboradorId: cristian }, prisma)
+
+    const antes = await relatorioPorPessoa({ companyId, de: '2026-09-01', ate: '2026-09-05' }, prisma)
+    const pAntes = antes.pessoas.find((p) => p.nome === 'Cristian')!
+    expect(pAntes.tarefas).toBe(2)
+    expect(pAntes.minutos).toBe(120)
+
+    // 2. agora uma ordem que ele trabalhou e o dono CANCELOU
+    const ruim = await ordemSeparada(5)
+    const er = await etapasDaOrdem(companyId, ruim, HOJE, prisma)
+    await iniciarTarefa({ companyId, etapaId: er[0].id, colaboradorId: cristian, agora: emSP(11) }, prisma)
+    await finalizarTarefa({ companyId, etapaId: er[0].id, colaboradorId: cristian, agora: emSP(13) }, prisma)
+    await cancelarOrdem(companyId, ruim, prisma)
+
+    const depois = await relatorioPorPessoa({ companyId, de: '2026-09-01', ate: '2026-09-05' }, prisma)
+    const pDepois = depois.pessoas.find((p) => p.nome === 'Cristian')!
+    // ⭐ IDÊNTICO: as 2h da ordem cancelada não entraram em tarefa, tempo nem min/un
+    expect(pDepois.tarefas, 'a etapa cancelada virou tarefa').toBe(pAntes.tarefas)
+    expect(pDepois.minutos, 'as 2h da ordem cancelada entraram no tempo').toBe(pAntes.minutos)
+    expect(pDepois.minPorUnidade).toBe(pAntes.minPorUnidade)
+  })
+
+  it('⛔ e a tarefa ABERTA de ordem cancelada não vira alarme', async () => {
+    const ruim = await ordemSeparada()
+    const er = await etapasDaOrdem(companyId, ruim, HOJE, prisma)
+    await iniciarTarefa({ companyId, etapaId: er[0].id, colaboradorId: cristian, agora: emSP(8) }, prisma)
+    expect(await tarefasAbertasDemais(companyId, emSP(14), prisma), 'antes de cancelar, alarma').toHaveLength(1)
+    await cancelarOrdem(companyId, ruim, prisma)
+    expect(await tarefasAbertasDemais(companyId, emSP(14), prisma), 'ordem cancelada continuou cobrando').toHaveLength(0)
+  })
+
+  it('⛔⛔ e a etapa aberta de ordem CONCLUÍDA pelo encarregado também não cobra', async () => {
+    // ⭐ O CAMINHO DO ENCARREGADO, provado: sobrou material → a cozinha NÃO finaliza → ele
+    // conclui pela tela de Produção ajustando o consumo. `concluir()` não toca nas etapas
+    // (não inventa horário de fim), então a última fica aberta — e não pode virar alarme
+    // permanente por algo que não tem ação.
+    const ordemId = await ordemSeparada(5)
+    const es = await etapasDaOrdem(companyId, ordemId, HOJE, prisma)
+    await iniciarTarefa({ companyId, etapaId: es[0].id, colaboradorId: cristian, agora: emSP(8) }, prisma)
+    await finalizarTarefa({ companyId, etapaId: es[0].id, colaboradorId: cristian, agora: emSP(9) }, prisma)
+    await iniciarTarefa({ companyId, etapaId: es[1].id, colaboradorId: marcyelle, agora: emSP(9) }, prisma)
+    // ⚠️ a cozinha NÃO finaliza (sobrou material). O encarregado conclui com consumo AJUSTADO:
+    const r = await concluir({
+      companyId, ordemId, qtdGerada: 35,
+      consumo: [{ itemId: acem, qtdConsumida: 3.5 }, { itemId: gordura, qtdConsumida: 0.9 }],
+    }, prisma)
+    expect(r.qtdGerada).toBe(35)
+    expect((await prisma.stockProductionOrder.findUnique({ where: { id: ordemId } }))!.estado).toBe('CONCLUIDA')
+    // ⭐ a etapa CONTINUA aberta (o rastro é honesto: ninguém apertou finalizar)…
+    expect((await etapasDaOrdem(companyId, ordemId, emSP(20), prisma))[1].estado).toBe('EM_ANDAMENTO')
+    // …mas NÃO cobra: a ordem já fechou, não há o que fazer
+    expect(await tarefasAbertasDemais(companyId, emSP(20), prisma)).toHaveLength(0)
+  })
+
+  it('⭐ ordem EM PRODUÇÃO sem conclusão CONTINUA contando — a exclusão é pelo ESTADO', async () => {
+    // ⚠️ excluir "ordem sem conclusão" esconderia o trabalho em curso. A régua é o estado.
+    const ordemId = await ordemSeparada()
+    const es = await etapasDaOrdem(companyId, ordemId, HOJE, prisma)
+    await iniciarTarefa({ companyId, etapaId: es[0].id, colaboradorId: cristian, agora: emSP(8) }, prisma)
+    await finalizarTarefa({ companyId, etapaId: es[0].id, colaboradorId: cristian, agora: emSP(9) }, prisma)
+    const r = await relatorioPorPessoa({ companyId, de: '2026-09-01', ate: '2026-09-05' }, prisma)
+    expect(r.pessoas.find((p) => p.nome === 'Cristian')!.tarefas).toBe(1)
   })
 })

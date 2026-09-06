@@ -65,6 +65,8 @@ export async function minhasTarefasDeHoje(
   const ordens = await db.stockProductionOrder.findMany({
     where: {
       companyId,
+      // ⚠️ CANCELADA já está fora por construção (a lista de estados é allowlist) — e é o
+      // certo: ninguém deve começar tarefa de uma ordem que o dono cancelou.
       estado: { in: ['PLANEJADA', 'SEPARADA', 'EM_PRODUCAO'] },
       dataProducao: { gte: janela.de, lte: janela.ate },
     },
@@ -258,8 +260,28 @@ export async function tarefasAbertasDemais(
   companyId: string, agora: Date = new Date(), db: Db = defaultPrisma,
 ): Promise<TarefaAberta[]> {
   const limite = new Date(agora.getTime() - HORAS_ATE_ALARME * 3_600_000)
+  // ⛔⛔ ORDEM ENCERRADA NÃO GERA ALARME (cancelada OU concluída).
+  //
+  // **CANCELADA:** cobrar "tarefa aberta há 6h" de uma ordem que o dono já cancelou é alarme
+  // falso, e alarme falso repetido mata o alarme (a lição dos 111 do juiz de vendas).
+  //
+  // **CONCLUÍDA — e esta é a ponta solta que o fluxo novo criou:** quando sobra material, a
+  // tela do tablet manda a cozinha NÃO finalizar e chamar o encarregado. Ele conclui pela
+  // tela de Produção ajustando o consumo — e `concluir()` **não toca nas etapas** (de
+  // propósito: fechar a etapa ali inventaria um horário de fim que ninguém mediu). Resultado:
+  // a última etapa fica aberta pra sempre e viraria um alarme permanente por algo que não
+  // tem ação nenhuma.
+  //
+  // ⚠️ A etapa CONTINUA aberta no banco e à vista na tela da ordem — o rastro é honesto
+  // ("ninguém apertou finalizar"). O que sai é a COBRANÇA, porque não há o que cobrar.
+  const encerradas = await db.stockProductionOrder.findMany({
+    where: { companyId, estado: { in: ['CANCELADA', 'CONCLUIDA'] } }, select: { id: true },
+  })
   const rows = await db.stockOrdemEtapa.findMany({
-    where: { companyId, finalizadoEm: null, iniciadoEm: { not: null, lte: limite } },
+    where: {
+      companyId, finalizadoEm: null, iniciadoEm: { not: null, lte: limite },
+      ...(encerradas.length ? { ordemId: { notIn: encerradas.map((o) => o.id) } } : {}),
+    },
     orderBy: { iniciadoEm: 'asc' },
   })
   if (!rows.length) return []

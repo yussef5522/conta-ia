@@ -83,12 +83,34 @@ export async function relatorioPorPessoa(
 ): Promise<RelatorioPorPessoa> {
   const janela = janelaDoDiaSP(input.de, input.ate)
 
+  // ⛔⛔ ORDEM CANCELADA FICA DE FORA — decisão do dono (06/09): *"trabalho em ordem que não
+  // produziu não entra na média de ninguém"*.
+  //
+  // **O CASO REAL:** a ordem de teste do beef foi cancelada, mas a etapa de 3 segundos que
+  // ficou nela entrava no TEMPO do Cristian **sem quantidade junto** (ordem cancelada não
+  // tem conclusão) — e o `min/un` dele subia por trabalho que não existiu. Um lote de 3
+  // segundos empurrando a média é a mesma doença do lote de 0 minuto que o "devolver" evita.
+  //
+  // ⚠️ A EXCLUSÃO É PELO ESTADO DA ORDEM, não pela ausência de conclusão: ordem EM_PRODUCAO
+  // ainda sem conclusão é trabalho legítimo em curso, e sumir com ela esconderia o presente.
+  const canceladas = await db.stockProductionOrder.findMany({
+    where: { companyId: input.companyId, estado: 'CANCELADA' }, select: { id: true },
+  })
+  const foraDoRelatorio = canceladas.map((o) => o.id)
+
   const etapas = await db.stockOrdemEtapa.findMany({
-    where: { companyId: input.companyId, finalizadoEm: { gte: janela.de, lte: janela.ate } },
+    where: {
+      companyId: input.companyId,
+      finalizadoEm: { gte: janela.de, lte: janela.ate },
+      ...(foraDoRelatorio.length ? { ordemId: { notIn: foraDoRelatorio } } : {}),
+    },
     orderBy: { finalizadoEm: 'asc' },
   })
   const abertasIgnoradas = await db.stockOrdemEtapa.count({
-    where: { companyId: input.companyId, iniciadoEm: { gte: janela.de, lte: janela.ate }, finalizadoEm: null },
+    where: {
+      companyId: input.companyId, iniciadoEm: { gte: janela.de, lte: janela.ate }, finalizadoEm: null,
+      ...(foraDoRelatorio.length ? { ordemId: { notIn: foraDoRelatorio } } : {}),
+    },
   })
 
   const vazio: RelatorioPorPessoa = {
