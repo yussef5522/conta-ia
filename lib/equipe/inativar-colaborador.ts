@@ -20,11 +20,26 @@ import { prisma as defaultPrisma } from '@/lib/db'
 export class ColaboradorEmUsoError extends Error {}
 
 export interface TrabalhoPendurado {
+  // ── PENDÊNCIA: impede, porque inativar deixaria trabalho órfão no meio ──
   etapasEmAndamento: number
   designadasAbertas: number
-  conclusoes: number
-  /** já finalizadas — NÃO impedem (o rastro fica, e inativar não o apaga) */
+  // ── HISTÓRICO: NÃO impede — o rastro fica, e é justamente por isso que se inativa ──
+  /** já finalizadas */
   etapasFeitas: number
+  /**
+   * ⚠️ CONCLUSÕES SÃO HISTÓRICO, NÃO PENDÊNCIA — corrigido na 1ª rodada contra o dado real.
+   *
+   * A 1ª versão as tratava como impedimento e **barrou o Cristian por 24 conclusões**, que
+   * são lotes que ele JÁ produziu (2.196 unidades, 22/08 a 04/09). Barrar ali contradiz a
+   * própria régua deste arquivo ("distingue pendente de histórico") e, pior, daria a
+   * entender que inativar apagaria aquilo — não apaga.
+   *
+   * ⭐ Elas continuam sendo MOSTRADAS, e em destaque: quem decide precisa saber que o nome
+   * está em 24 lotes. O guard barra pendência; o número informa a decisão.
+   */
+  conclusoes: number
+  /** unidades produzidas por ele — o tamanho do que está no nome dele */
+  unidadesProduzidas: number
 }
 
 /**
@@ -38,13 +53,17 @@ export interface TrabalhoPendurado {
 export async function trabalhoPendurado(
   companyId: string, colaboradorId: string, db: PrismaClient = defaultPrisma,
 ): Promise<TrabalhoPendurado> {
-  const [etapasEmAndamento, designadasAbertas, conclusoes, etapasFeitas] = await Promise.all([
+  const [etapasEmAndamento, designadasAbertas, feitas, etapasFeitas] = await Promise.all([
     db.stockOrdemEtapa.count({ where: { companyId, executorId: colaboradorId, iniciadoEm: { not: null }, finalizadoEm: null } }),
     db.stockOrdemEtapa.count({ where: { companyId, colaboradorId, finalizadoEm: null } }),
-    db.stockProducaoConclusao.count({ where: { companyId, colaboradorId } }),
+    db.stockProducaoConclusao.findMany({ where: { companyId, colaboradorId }, select: { qtdGerada: true } }),
     db.stockOrdemEtapa.count({ where: { companyId, executorId: colaboradorId, finalizadoEm: { not: null } } }),
   ])
-  return { etapasEmAndamento, designadasAbertas, conclusoes, etapasFeitas }
+  return {
+    etapasEmAndamento, designadasAbertas, etapasFeitas,
+    conclusoes: feitas.length,
+    unidadesProduzidas: Math.round(feitas.reduce((s, x) => s + x.qtdGerada, 0) * 100) / 100,
+  }
 }
 
 /** a frase que explica por que NÃO dá pra inativar — `null` quando dá */
@@ -52,9 +71,24 @@ export function motivoParaNaoInativar(t: TrabalhoPendurado, nome: string): strin
   const impede: string[] = []
   if (t.etapasEmAndamento) impede.push(`${t.etapasEmAndamento} etapa(s) em andamento`)
   if (t.designadasAbertas) impede.push(`${t.designadasAbertas} tarefa(s) designada(s) e não finalizada(s)`)
-  if (t.conclusoes) impede.push(`${t.conclusoes} conclusão(ões) de produção`)
   if (!impede.length) return null
   return `${nome} tem ${impede.join(', ')}. Resolva a produção antes de tirar da equipe.`
+}
+
+/**
+ * ⭐ O QUE O NOME DELE CARREGA — a frase que a tela mostra ANTES de perguntar. `null` quando
+ * não há histórico nenhum (aí inativar é trivial e não precisa de aviso).
+ *
+ * ⚠️ Existe porque o guard, na 1ª rodada, barrou o Cristian dizendo "24 conclusões" como se
+ * fosse impedimento. O número é RELEVANTE — só não é uma trava: é o que o dono precisa saber
+ * pra decidir, não um motivo pra o sistema decidir por ele.
+ */
+export function historicoAAvisar(t: TrabalhoPendurado, nome: string): string | null {
+  if (!t.conclusoes && !t.etapasFeitas) return null
+  const partes: string[] = []
+  if (t.conclusoes) partes.push(`${t.conclusoes} lote(s) concluído(s)${t.unidadesProduzidas ? ` (${t.unidadesProduzidas} un)` : ''}`)
+  if (t.etapasFeitas) partes.push(`${t.etapasFeitas} etapa(s) feita(s)`)
+  return `${nome} tem ${partes.join(' e ')} no nome. Isso FICA — inativar só tira do tablet e da lista do dia a dia.`
 }
 
 export async function inativarColaborador(

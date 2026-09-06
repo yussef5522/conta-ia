@@ -12,7 +12,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { prisma } from '@/lib/db'
 import {
   inativarColaborador, reativarColaborador, trabalhoPendurado, motivoParaNaoInativar,
-  ColaboradorEmUsoError,
+  historicoAAvisar, ColaboradorEmUsoError,
 } from '@/lib/equipe/inativar-colaborador'
 import { listarEquipe, resumoDaEquipe } from '@/lib/equipe/listar-equipe'
 import { cadastrarPessoa } from '@/lib/stock/producao/cadastrar-pessoa'
@@ -56,11 +56,34 @@ describe('⛔⛔ o guard: não se tira da produção quem está no meio do traba
     await expect(inativarColaborador(companyId, carlise, prisma)).rejects.toThrow(/designada/)
   })
 
-  it('⛔ conclusão de produção impede', async () => {
+  it('⛔⛔ conclusão NÃO impede — ela é HISTÓRICO, e o guard barrava pelo motivo errado', async () => {
+    // ⛔ ACHADO NA 1ª RODADA CONTRA O DADO REAL: a régua tratava conclusão como impedimento e
+    // barrou o Cristian por **24 conclusões** — lotes que ele JÁ produziu. Barrar ali
+    // contradiz a régua deste arquivo ("pendente ≠ histórico") e sugeria que inativar
+    // apagaria aquilo. Não apaga.
     await prisma.stockProducaoConclusao.create({
       data: { companyId, ordemId, qtdGerada: 10, escalaConsumida: 1, custoLoteReal: 10, rendimento: 10, colaboradorId: carlise },
     })
-    await expect(inativarColaborador(companyId, carlise, prisma)).rejects.toThrow(/conclusão/)
+    const t = await trabalhoPendurado(companyId, carlise, prisma)
+    expect(t.conclusoes).toBe(1)
+    expect(t.unidadesProduzidas).toBe(10)
+    expect(motivoParaNaoInativar(t, 'Carlise'), 'histórico virou trava').toBeNull()
+    await inativarColaborador(companyId, carlise, prisma)
+    // ⭐ e a conclusão CONTINUA no nome dela
+    expect(await prisma.stockProducaoConclusao.count({ where: { companyId, colaboradorId: carlise } })).toBe(1)
+  })
+
+  it('⭐⭐ mas o histórico é AVISADO — o dono decide sabendo o tamanho do que está no nome', async () => {
+    await prisma.stockProducaoConclusao.create({
+      data: { companyId, ordemId, qtdGerada: 105, escalaConsumida: 1, custoLoteReal: 10, rendimento: 10, colaboradorId: carlise },
+    })
+    const aviso = historicoAAvisar(await trabalhoPendurado(companyId, carlise, prisma), 'Carlise')
+    expect(aviso).toMatch(/1 lote\(s\) concluído\(s\) \(105 un\)/)
+    expect(aviso, 'o aviso tem que dizer que o rastro FICA').toMatch(/FICA/)
+  })
+
+  it('⭐ e sem histórico nenhum, não há o que avisar', async () => {
+    expect(historicoAAvisar(await trabalhoPendurado(companyId, carlise, prisma), 'Carlise')).toBeNull()
   })
 
   it('⭐⭐ mas etapa JÁ FEITA não impede — o rastro fica, e é por isso que se inativa', async () => {

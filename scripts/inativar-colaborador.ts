@@ -15,7 +15,7 @@
 
 import { prisma } from '@/lib/db'
 import { exigirEmpresaNesteBanco } from '@/lib/scripts/prova-banco'
-import { inativarColaborador, trabalhoPendurado, motivoParaNaoInativar } from '@/lib/equipe/inativar-colaborador'
+import { inativarColaborador, trabalhoPendurado, motivoParaNaoInativar, historicoAAvisar } from '@/lib/equipe/inativar-colaborador'
 
 const COMPANY = 'cmq17yapb00gnrndlh33sctbo' // Caçula Mix — REGRA 8
 const APLICAR = process.argv.includes('--apply')
@@ -49,10 +49,13 @@ async function main() {
   const t = await trabalhoPendurado(COMPANY, c.id, prisma)
   console.log(`  etapas em andamento : ${t.etapasEmAndamento}`)
   console.log(`  tarefas designadas  : ${t.designadasAbertas}`)
-  console.log(`  conclusões dele     : ${t.conclusoes}`)
-  console.log(`  etapas já feitas    : ${t.etapasFeitas}  (não impedem — o rastro fica)`)
+  console.log(`  lotes concluídos    : ${t.conclusoes} (${t.unidadesProduzidas} un)  — HISTÓRICO, não impede`)
+  console.log(`  etapas já feitas    : ${t.etapasFeitas}  — HISTÓRICO, não impede`)
   const motivo = motivoParaNaoInativar(t, c.nome)
   if (motivo) throw new Error(`⛔ ABORTADO: ${motivo}`)
+  // ⭐ o histórico não trava, mas é gritado: quem decide precisa saber o tamanho dele
+  const aviso = historicoAAvisar(t, c.nome)
+  if (aviso) console.log(`\n  ⚠️  ${aviso}`)
   console.log('\n  ⭐ nada pendurado — inativar é seguro e reversível.')
 
   if (!APLICAR) { console.log('\n⛔ NADA FOI GRAVADO. Rode com --apply.\n'); return }
