@@ -98,6 +98,33 @@ describe('⛔⛔ as travas do "mais rápido"', () => {
     expect(linhas[0].volume).toBe(0)
   })
 
+  it('⛔⛔ TEMPO ZERO não é velocidade infinita — é tempo não medido', () => {
+    // ⚠️ ACHADO NO DADO REAL (06/09): o módulo guarda MINUTOS, e a tarefa fechada em segundos
+    // arredonda pra 0. A tela mostrava "média 0 min/un", que se lê como "o mais rápido de
+    // todos" — número inventado com cara de medição, no card que existe pra ser justo.
+    const linhas = porTarefaDaEquipe([
+      ...tresDe({ colaboradorId: 'a', nome: 'Ana', minutos: 0, unidades: 3 }),
+      ...tresDe({ colaboradorId: 'b', nome: 'Bia', minutos: 0, unidades: 3 }),
+    ])
+    expect(linhas[0].mediaDaEquipe, 'zero minuto virou uma velocidade').toBeNull()
+    expect(linhas[0].maisRapido, 'coroou alguém por não ter dado pra medir').toBeNull()
+    expect(linhas[0].semVencedor).toBe('a apurar — o tempo medido foi menor que 1 minuto')
+    // ⚠️ e o VOLUME continua contado — o que não dá pra medir é a velocidade, não a produção
+    expect(linhas[0].volume).toBe(18)
+  })
+
+  it('⭐ mas quem TEM minuto medido continua concorrendo, mesmo com um zero na mistura', () => {
+    const linhas = porTarefaDaEquipe([
+      ...tresDe({ colaboradorId: 'a', nome: 'Ana', minutos: 0, unidades: 3 }),
+      ...tresDe({ colaboradorId: 'b', nome: 'Bia', minutos: 9, unidades: 3 }),
+    ])
+    expect(linhas[0].maisRapido?.nome, 'o zero roubou a coroa de quem foi medido').toBe('Bia')
+    // ⚠️ 27min ÷ 9 un = 3,0 — a média cobre SÓ o que foi medido. Com o trabalho de 0 minuto
+    // no denominador daria 1,5, e a régua da equipe ficaria mais dura pra todo mundo por
+    // causa de tarefas que ninguém cronometrou.
+    expect(linhas[0].mediaDaEquipe).toBe(3)
+  })
+
   it('⭐ o subtítulo da linha lista os produtos, sem repetir', () => {
     const linhas = porTarefaDaEquipe([
       ex({ produto: 'beef de xis' }), ex({ produto: 'beef de xis' }), ex({ produto: 'beef de hambúrguer' }),

@@ -267,7 +267,10 @@ export async function relatorioPorPessoa(
       minutos: a.minutos,
       produziu: a.produziu,
       unidade,
-      minPorUnidade: unidade && a.produziu > 0 ? round1(a.minutos / a.produziu) : null,
+      // ⛔ tempo ZERO não é velocidade infinita, é tempo não medido: o módulo guarda MINUTOS e
+      // tarefa fechada em segundos arredonda pra 0 — `0 min/un` na tela seria lido como "a mais
+      // rápida de todas". Sem minuto medido, "a apurar" (achado no dado real em 06/09).
+      minPorUnidade: unidade && a.produziu > 0 && a.minutos > 0 ? round1(a.minutos / a.produziu) : null,
       rendimentoVsEsperado,
       lotesComRegua: a.desvios.length,
       pctDoEsperado: pctDoEsperado(rendimentoVsEsperado),

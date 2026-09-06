@@ -65,13 +65,21 @@ export function porTarefaDaEquipe(execucoes: ExecucaoDeTarefa[]): LinhaDaTarefa[
       a.minutos += e.minutos; a.unidades += e.unidades; a.vezes += 1
       porPessoa.set(e.colaboradorId, a)
     }
+    // ⛔⛔ TEMPO ZERO NÃO É VELOCIDADE INFINITA — é tempo não medido (achado no dado real,
+    // 06/09). O módulo guarda MINUTOS; tarefa fechada em segundos arredonda pra 0, e `0 min/un`
+    // na tela é lido como "o mais rápido de todos". Quem tem 0 minuto medido fica de fora da
+    // taxa, como quem não tem quantidade — "a apurar", nunca um número que premia por engano.
     const comTaxa = [...porPessoa.entries()]
-      .filter(([, a]) => a.unidades > 0 && a.vezes >= MINIMO_NA_TAREFA)
+      .filter(([, a]) => a.unidades > 0 && a.minutos > 0 && a.vezes >= MINIMO_NA_TAREFA)
       .map(([id, a]) => ({ colaboradorId: id, nome: a.nome, minPorUnidade: r2(a.minutos / a.unidades) }))
 
-    const comQtd = es.filter((e) => e.unidades > 0)
-    const mediaDaEquipe = comQtd.length
-      ? r2(comQtd.reduce((s, e) => s + e.minutos, 0) / comQtd.reduce((s, e) => s + e.unidades, 0))
+    // ⚠️ E A MÉDIA SÓ SOMA O QUE FOI MEDIDO. Deixar a execução de 0 minuto no denominador
+    // (as unidades dela) sem nada no numerador PUXA a média da equipe pra baixo — a régua
+    // ficaria mais dura pra todo mundo por causa de trabalho que ninguém cronometrou.
+    const medidas = es.filter((e) => e.unidades > 0 && e.minutos > 0)
+    const minutosMedidos = medidas.reduce((s, e) => s + e.minutos, 0)
+    const mediaDaEquipe = medidas.length
+      ? r2(minutosMedidos / medidas.reduce((s, e) => s + e.unidades, 0))
       : null
 
     let maisRapido: LinhaDaTarefa['maisRapido'] = null
@@ -80,7 +88,9 @@ export function porTarefaDaEquipe(execucoes: ExecucaoDeTarefa[]): LinhaDaTarefa[
       // ⛔ a trava central: sem ninguém pra comparar, não há "mais rápido"
       semVencedor = 'a apurar — só uma pessoa fez'
     } else if (!comTaxa.length) {
-      semVencedor = `a apurar — ninguém fez ${MINIMO_NA_TAREFA}+ vezes ainda`
+      semVencedor = medidas.length === 0
+        ? 'a apurar — o tempo medido foi menor que 1 minuto'
+        : `a apurar — ninguém fez ${MINIMO_NA_TAREFA}+ vezes ainda`
     } else {
       const melhor = Math.min(...comTaxa.map((c) => c.minPorUnidade))
       const empatados = comTaxa.filter((c) => Math.abs(c.minPorUnidade - melhor) < 0.005)
