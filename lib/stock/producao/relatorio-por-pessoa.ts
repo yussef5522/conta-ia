@@ -21,6 +21,10 @@
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { janelaDoDiaSP } from '@/lib/datas/dia-sao-paulo'
+import {
+  porTarefaDaEquipe, unidadesPorSemana, pctDoEsperado,
+  type ExecucaoDeTarefa, type LinhaDaTarefa,
+} from './por-tarefa-da-equipe'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -43,6 +47,12 @@ export interface LinhaPorPessoa {
   /** desvio do rendimento contra a média medida da ficha (%). `null` = sem régua ainda */
   rendimentoVsEsperado: number | null
   lotesComRegua: number
+  /** ⭐ o selo do card: "rende 98% do esperado". `null` = a apurar, nunca 100 por default */
+  pctDoEsperado: number | null
+  /** as tarefas que essa pessoa fez, mais frequentes primeiro — o subtítulo do card */
+  tarefasFeitas: string[]
+  /** unidades por semana do período — a sparkline. `[]` quando não houve quantidade medida */
+  sparkline: number[]
 }
 
 export interface LinhaPorTarefa {
@@ -59,6 +69,8 @@ export interface RelatorioPorPessoa {
   pessoas: LinhaPorPessoa[]
   /** detalhe por TIPO de tarefa, de uma pessoa (quando pedido) */
   porTarefa: LinhaPorTarefa[]
+  /** ⭐ "quem é mais rápido em cada tarefa" — recorte da EQUIPE, não de uma pessoa */
+  porTarefaEquipe: LinhaDaTarefa[]
   /** tarefas ainda abertas no período — o tempo delas NÃO entra em conta nenhuma */
   abertasIgnoradas: number
   /** ⚠️ o aviso que a tela imprime: isto mede tarefa, não presença */
@@ -114,7 +126,7 @@ export async function relatorioPorPessoa(
   })
 
   const vazio: RelatorioPorPessoa = {
-    de: input.de, ate: input.ate, pessoas: [], porTarefa: [],
+    de: input.de, ate: input.ate, pessoas: [], porTarefa: [], porTarefaEquipe: [],
     abertasIgnoradas, avisoDeEscopo: AVISO_NAO_E_PONTO,
   }
   if (!etapas.length) return vazio
@@ -127,9 +139,11 @@ export async function relatorioPorPessoa(
   ])
   const itens = await db.stockItem.findMany({
     where: { companyId: input.companyId, id: { in: [...new Set(ordens.map((o) => o.itemProduzidoId))] } },
-    select: { id: true, unidadeControle: true },
+    select: { id: true, unidadeControle: true, nome: true },
   })
   const unidadeDoItem = new Map(itens.map((i) => [i.id, i.unidadeControle]))
+  // ⭐ o nome do produto é o subtítulo da linha "por tarefa" ("gessado · beef de xis")
+  const nomeDoItem = new Map(itens.map((i) => [i.id, i.nome]))
   const ordemInfo = new Map(ordens.map((o) => [o.id, o]))
 
   const produzidoDaOrdem = new Map<string, number>()
@@ -165,12 +179,26 @@ export async function relatorioPorPessoa(
   }
 
   // ── agrega por PESSOA ────────────────────────────────────────────────────────────────
-  interface Acc { minutos: number; tarefas: number; produziu: number; unidades: Set<string>; desvios: number[] }
+  interface Acc {
+    minutos: number; tarefas: number; produziu: number; unidades: Set<string>; desvios: number[]
+    /** quantas vezes fez cada tipo de tarefa — ordena o subtítulo do card */
+    vezesPorTarefa: Map<string, number>
+    /** (quando, unidades) de cada execução — a matéria-prima da sparkline */
+    linhaDoTempo: { quando: Date; unidades: number }[]
+  }
   const porPessoa = new Map<string, Acc>()
   const acc = (id: string) => {
-    if (!porPessoa.has(id)) porPessoa.set(id, { minutos: 0, tarefas: 0, produziu: 0, unidades: new Set(), desvios: [] })
+    if (!porPessoa.has(id)) {
+      porPessoa.set(id, {
+        minutos: 0, tarefas: 0, produziu: 0, unidades: new Set(), desvios: [],
+        vezesPorTarefa: new Map(), linhaDoTempo: [],
+      })
+    }
     return porPessoa.get(id)!
   }
+  // ⭐ as execuções que alimentam o recorte POR TAREFA da equipe — montadas no MESMO laço que
+  // já divide a quantidade entre as etapas, pra os dois recortes nunca discordarem no total.
+  const execucoes: ExecucaoDeTarefa[] = []
   // ⚠️ a quantidade da ordem é dividida entre as ETAPAS dela: se duas mãos passaram pelo
   // mesmo lote de 100 kg, contar 100 kg pra cada uma dobraria a produção da cozinha no
   // relatório. Cada um responde pela sua etapa.
@@ -187,14 +215,30 @@ export async function relatorioPorPessoa(
     if (!quem || !e.iniciadoEm || !e.finalizadoEm) continue
     const a = acc(quem)
     a.tarefas++
-    a.minutos += Math.max(0, Math.round((e.finalizadoEm.getTime() - e.iniciadoEm.getTime()) / 60000))
+    const min = Math.max(0, Math.round((e.finalizadoEm.getTime() - e.iniciadoEm.getTime()) / 60000))
+    a.minutos += min
+    a.vezesPorTarefa.set(e.nome, (a.vezesPorTarefa.get(e.nome) ?? 0) + 1)
     const info = ordemInfo.get(e.ordemId)
     const qtd = produzidoDaOrdem.get(e.ordemId) ?? 0
     const fatias = etapasPorOrdem.get(e.ordemId) || 1
+    // ⚠️ a fatia desta execução é a MESMA conta do total da pessoa — se aqui dividisse
+    // diferente, o "por tarefa" somaria outro volume que o card, e as duas telas brigariam.
+    const minhaFatia = qtd > 0 ? qtd / fatias : 0
     if (qtd > 0) {
-      a.produziu = round2(a.produziu + qtd / fatias)
+      a.produziu = round2(a.produziu + minhaFatia)
       if (info) a.unidades.add(unidadeDoItem.get(info.itemProduzidoId) ?? '—')
     }
+    // ⚠️ a data da sparkline é a de FINALIZAÇÃO — é quando o trabalho ficou pronto; usar o
+    // início jogaria pra semana anterior a tarefa começada sexta e fechada segunda.
+    a.linhaDoTempo.push({ quando: e.finalizadoEm, unidades: minhaFatia })
+    execucoes.push({
+      tarefa: e.nome,
+      produto: info ? (nomeDoItem.get(info.itemProduzidoId) ?? '') : '',
+      colaboradorId: quem,
+      nome: '', // preenchido depois de resolver os nomes (uma consulta só)
+      minutos: min,
+      unidades: minhaFatia,
+    })
     const ficha = info?.fichaId
     const regua = ficha ? mediaDaFicha.get(ficha) : undefined
     const rs = rendimentoDaOrdem.get(e.ordemId) ?? []
@@ -213,6 +257,9 @@ export async function relatorioPorPessoa(
     // ⚠️ unidade misturada (kg com un) → não normaliza. Somar quilo com unidade e chamar de
     // "por unidade" seria a conta que parece certa e não significa nada.
     const unidade = a.unidades.size === 1 ? [...a.unidades][0] : null
+    const rendimentoVsEsperado = a.desvios.length >= LOTES_PARA_MEDIA
+      ? round1((a.desvios.reduce((x, y) => x + y, 0) / a.desvios.length) * 100)
+      : null
     return {
       colaboradorId: id,
       nome: nome.get(id) ?? '(colaborador removido)',
@@ -221,12 +268,19 @@ export async function relatorioPorPessoa(
       produziu: a.produziu,
       unidade,
       minPorUnidade: unidade && a.produziu > 0 ? round1(a.minutos / a.produziu) : null,
-      rendimentoVsEsperado: a.desvios.length >= LOTES_PARA_MEDIA
-        ? round1((a.desvios.reduce((x, y) => x + y, 0) / a.desvios.length) * 100)
-        : null,
+      rendimentoVsEsperado,
       lotesComRegua: a.desvios.length,
+      pctDoEsperado: pctDoEsperado(rendimentoVsEsperado),
+      tarefasFeitas: [...a.vezesPorTarefa.entries()].sort((p, q) => q[1] - p[1]).map(([n]) => n),
+      // ⚠️ sem quantidade medida a sparkline seria uma fileira de zeros — e uma barra vazia
+      // é lida como "não produziu", que é diferente de "não dá pra medir". Devolve `[]`.
+      sparkline: a.produziu > 0 ? unidadesPorSemana(a.linhaDoTempo, janela.de, janela.ate) : [],
     }
   }).sort((x, y) => y.produziu - x.produziu || y.tarefas - x.tarefas)
+
+  // ── o recorte POR TAREFA da equipe (os nomes só existem aqui) ────────────────────────
+  for (const ex of execucoes) ex.nome = nome.get(ex.colaboradorId) ?? '(colaborador removido)'
+  const porTarefaEquipe = porTarefaDaEquipe(execucoes)
 
   // ── detalhe por TIPO de tarefa (de uma pessoa) ───────────────────────────────────────
   const porTarefa: LinhaPorTarefa[] = []
@@ -256,5 +310,5 @@ export async function relatorioPorPessoa(
     porTarefa.sort((a, b) => b.vezes - a.vezes)
   }
 
-  return { de: input.de, ate: input.ate, pessoas, porTarefa, abertasIgnoradas, avisoDeEscopo: AVISO_NAO_E_PONTO }
+  return { de: input.de, ate: input.ate, pessoas, porTarefa, porTarefaEquipe, abertasIgnoradas, avisoDeEscopo: AVISO_NAO_E_PONTO }
 }

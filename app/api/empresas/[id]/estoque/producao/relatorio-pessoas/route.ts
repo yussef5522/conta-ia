@@ -6,6 +6,7 @@ import { guardStock } from '@/lib/stock/require-stock'
 import { relatorioPorPessoa } from '@/lib/stock/producao/relatorio-por-pessoa'
 import { tarefasAbertasDemais } from '@/lib/stock/producao/minhas-tarefas'
 import { diaEmSaoPaulo } from '@/lib/datas/dia-sao-paulo'
+import { destaquesDoMes, levouAsTres, mediaDaEquipe } from '@/lib/stock/producao/destaques-do-mes'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -23,5 +24,14 @@ export async function GET(request: NextRequest, { params }: Params) {
     relatorioPorPessoa({ companyId, de, ate, detalharColaboradorId: sp.get('colaborador') }, prisma),
     tarefasAbertasDemais(companyId, new Date(), prisma),
   ])
-  return NextResponse.json({ relatorio, abertas })
+  // ⭐ os destaques saem da MESMA lista que a tela desenha (REGRA 4): calcular no cliente
+  // abriria a porta pra o card premiar alguém que a lista não mostra.
+  const destaques = destaquesDoMes(relatorio.pessoas)
+  return NextResponse.json({
+    relatorio,
+    abertas,
+    destaques,
+    levouAsTres: levouAsTres(destaques),
+    media: mediaDaEquipe(relatorio.pessoas),
+  })
 }

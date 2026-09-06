@@ -14,7 +14,7 @@ import { TotalsBar } from '@/components/ui/totals-bar'
 import { SortableTh, useSort } from '@/components/ui/sortable-th'
 import { baixarCsv, hojeArquivo } from '@/lib/format/csv-cliente'
 import { diaEmSaoPaulo, somarDias } from '@/lib/datas/dia-sao-paulo'
-import { Factory, Loader2, Plus, ChevronRight, ClipboardList, Settings, TrendingDown, UtensilsCrossed, Download, PlayCircle, CheckCircle2, Users, UserPlus } from 'lucide-react'
+import { Factory, Loader2, Plus, ChevronRight, ClipboardList, Settings, TrendingDown, UtensilsCrossed, Download, PlayCircle, CheckCircle2, Users, UserPlus, Radio } from 'lucide-react'
 import { ehReceitaDeProducao } from '@/lib/stock/producao/tipo-receita'
 
 interface Ordem { id: string; nomeProduzido: string; unidadeProduzido: string; escalaReceitas: number; loteBase: number; estado: string; dataProducao: string; setorNome: string | null }
@@ -139,6 +139,9 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
           {/* ⚠️ o relatório por pessoa exige stock.manage na rota — quem não tiver leva 403
               com a permissão nomeada. O link fica visível porque esta tela já é de gestão. */}
           <a href={`/empresas/${id}/estoque/producao/pessoas`} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50"><Users className="h-3.5 w-3.5" /> Por pessoa</a>
+          {/* ⭐ "HOJE ao vivo" — o dia em curso, ao lado do relatório do mês. As duas telas
+              respondem perguntas diferentes: esta é "o que está acontecendo AGORA". */}
+          <a href={`/empresas/${id}/estoque/producao/hoje`} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50"><Radio className="h-3.5 w-3.5" /> Hoje ao vivo</a>
           {/* ⭐⭐ O ATALHO QUE FALTAVA (06/09) — no TOPO, com nome de gente. O link antigo
               vivia dentro do formulário de nova ordem, chamado "setores", e por isso o dono
               nunca achou onde cadastrar as gurias. Atalho: a tela mora em Sistema → Equipe. */}

@@ -63,14 +63,17 @@ describe('toda rota de estoque tem trava', () => {
     expect(comCheckAntigo.map((f) => f.slice(RAIZ.length + 1))).toEqual([])
   })
 
-  // ⚠️ A REGRA CONTINUA "ler é ler" — com UMA exceção nomeada, e o motivo importa: existe
-  // uma leitura que é sensível POR SI. O comparativo entre pessoas é decisão do dono
+  // ⚠️ A REGRA CONTINUA "ler é ler" — com exceções NOMEADAS, e o motivo importa: existem
+  // leituras que são sensíveis POR SI. O comparativo entre pessoas é decisão do dono
   // ("ranking só pra stock.manage — nunca na tela do funcionário nem em tela compartilhada"),
   // então ali a chave alta protege o CONTEÚDO, não a escrita. Afrouxar a regra pra todo GET
   // teria escondido isso; a exceção com motivo escrito deixa à vista.
   const LEITURA_SENSIVEL: Record<string, string> = {
     'producao/relatorio-pessoas/route.ts':
       'comparativo de desempenho entre pessoas — decisão do dono (06/09): só gerência, nunca em tela compartilhada da cozinha',
+    'producao/dia-ao-vivo/route.ts':
+      'mostra o ritmo de cada pessoa lado a lado no dia — mesma régua do relatório por pessoa: '
+      + 'conversa de gestão, nunca telão de cozinha. A janela do tablet segue mostrando só as tarefas de quem está com o PIN',
   }
 
   it('GET nunca exige operar/gerenciar (ler é ler), fora as leituras sensíveis nomeadas', () => {
