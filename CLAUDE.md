@@ -242,6 +242,30 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⭐⭐ AS DUAS TELAS DA PRODUÇÃO — "POR PESSOA" NO MOCK E "HOJE AO VIVO" (06/09/2026)
+
+**FRENTE 1 — `/estoque/producao/pessoas`, construída sobre o mock aprovado do dono:** 3 destaques por faceta · cards ricos por pessoa (selo de rendimento em **% do esperado**, barra `min/un` vs média da equipe, sparkline semanal, tarefas que faz) · navegação **‹ mês ›** com período livre opt-in · CSV. As réguas de honestidade vêm **do servidor**, da MESMA lista que a tela desenha (REGRA 4) — calcular no cliente abriria a porta pra o card premiar quem a lista não mostra.
+
+**⭐ `lib/stock/producao/por-tarefa-da-equipe.ts` (novo) — "quem é mais rápido em CADA tarefa".** A régua do dono: *"quem faz gessado mais rápido ≠ quem molda mais rápido"*. ⛔⛔ **E A TRAVA CENTRAL: uma pessoa só não é a mais rápida — é a única.** Coroar sem ninguém pra comparar é dar um prêmio que não foi disputado, e quem lê a tela não tem como saber. Empate **nomeia os dois**; a média mostrada é a **daquela tarefa**, nunca a geral. ⚠️ A sparkline é **bloco de 7 dias do início do período**, não semana de calendário — senão a 1ª barra sai menor por ter menos dias, não menos trabalho.
+
+**FRENTE 2 — `/estoque/producao/hoje`, "HOJE ao vivo", ZERO evento novo** (`lib/stock/producao/dia-ao-vivo.ts`, só leitura): **AGORA** · **o dia de cada uma** · **linha do tempo**. Auto-refresh de **30s só no dia de hoje** (recarregar o passado é gastar requisição num dia que não muda). Atalho na Produção ao lado de "Por pessoa".
+- ⛔ **o cronômetro é da TELA, o instante é do servidor** — e a **hora absoluta vai ao lado** ("começou 08:40"), porque relógio de aparelho pode estar torto.
+- ⛔⛔ **nenhum vermelho de atraso** (decisão do dono): não existe hora prometida por tarefa. O único alarme é o das **4h**, que tem causa real. *"Depois do gessado"* é **sequência da receita**, cinza, neutro.
+- ⭐ **quem não tem tarefa APARECE** ("nada designado hoje") — é o momento de designar; **some quem está INATIVO, não quem está livre**.
+- ⛔ dia passado **não tem "agora"**; ordem CANCELADA fica fora dos três blocos, a mesma régua do relatório.
+
+**⚠️⚠️ DOIS DEFEITOS DE DESENHO MEUS, PEGOS PELO TESTE ANTES DA TELA:**
+1. **a fila saía de `designadoEm`** — o gestor designa na SEXTA as tarefas do SÁBADO; a manhã de sábado apareceria **vazia**, justamente na hora em que a tela mais serve. Quem diz de que dia é o trabalho é a **`dataProducao` da ordem**.
+2. **o lote fechado pendurava na última etapa da ordem** — com produção **PARCIAL** a mesma ordem tem várias conclusões, e todas cairiam na mesma linha, somadas. Agora pendura no **toque que gerou cada uma** (a etapa finalizada mais recente antes da conclusão).
+
+**⛔⛔ E O FURO QUE SÓ O DADO REAL MOSTROU — TEMPO ZERO NÃO É VELOCIDADE INFINITA.** A medição em prod imprimia `beef · média 0 min/un` e `nadine · min/un 0`: o módulo guarda **MINUTOS**, e tarefa fechada em segundos arredonda pra 0. **"0 min/un" se lê como "a mais rápida de todas"** — número inventado com cara de medição, no card que existe justamente pra ser justo. Agora é **"a apurar"**, com o motivo na linha. ⚠️ **E num segundo grau:** a **média da equipe** contava as unidades do trabalho não cronometrado no denominador sem nada no numerador — isso a puxava pra baixo e **endurecia a régua de todo mundo**; passou a somar só o que foi medido. O **volume continua contado** — o que não dá pra medir é a velocidade, não a produção.
+
+**⚠️ O GUARD ESTRUTURAL DE ROTAS MORDEU A ROTA NOVA** (GET pedindo `stock.manage`) e exigiu o motivo escrito. **Nomeada em `LEITURA_SENSIVEL`, não afrouxada** — as duas telas mostram o ritmo de cada um lado a lado, e isso é conversa de gestão; a janela do tablet segue mostrando só as tarefas de quem está com o PIN.
+
+**REGRA 11 medida — 7 defeitos repostos, 7 vermelhos:** cancelada de volta nos três blocos · fila por `designadoEm` · dia em UTC · trava de "uma pessoa só" · "a apurar" virando 100% · empate desempatando no escuro · tempo zero valendo como velocidade. **8.652 verdes · TS 0.** Deploys `f3f4e7f` e `bf6e300`, os dois 4/4.
+
+**PROVADO EM PROD (read-only, REGRA 8b):** "Mais produziu" mostrou **Carlisle e nadine** (empate, os dois) e as outras duas facetas disseram *"ainda apurando: pelo menos 3 tarefas"* em vez de coroar com 1 lote; "HOJE ao vivo" trouxe **Carlisle fazendo**, 10 eventos com o lote (6 UN) pendurado no "finalizou" da nadine, e o **rodrigo com "nada designado hoje"**. **PENDENTE (REGRA 2):** o dono validar as duas telas no navegador.
+
 ## ⛔⛔⛔ TRÊS DIAS DE COMPLEMENTO PARADOS — E O JUIZ NÃO TINHA COMO SABER (05/09/2026)
 
 **O dono relatou "a baixa não desconta". O motor estava 100% certo; o que faltava era o gesto — e o alarme que teria contado.**
