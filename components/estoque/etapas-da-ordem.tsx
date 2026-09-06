@@ -27,13 +27,22 @@ export function duracao(min: number | null): string {
   return `${Math.floor(min / 60)}h${String(min % 60).padStart(2, '0')}`
 }
 
-export function EtapasDaOrdem({ id, ordemId, colaboradores }: { id: string; ordemId: string; colaboradores: Colaborador[] }) {
+export function EtapasDaOrdem({ id, ordemId, colaboradores, aoSaberAssinadas }: {
+  id: string; ordemId: string; colaboradores: Colaborador[]
+  /** ⭐ avisa a página quando alguma etapa já foi ASSINADA (executor carimbado pelo PIN) —
+      é o que faz o dropdown "quem produziu" sair da conclusão. */
+  aoSaberAssinadas?: (assinadas: boolean) => void
+}) {
   const [etapas, setEtapas] = useState<Etapa[] | null>(null)
   const [erro, setErro] = useState<string | null>(null)
   const [salvando, setSalvando] = useState<string | null>(null)
 
   const carregar = () => fetch(`/api/empresas/${id}/estoque/producao/ordens/${ordemId}/etapas`)
-    .then((r) => r.json()).then((j) => setEtapas(j.etapas ?? [])).catch(() => setEtapas([]))
+    .then((r) => r.json()).then((j) => {
+      const es: Etapa[] = j.etapas ?? []
+      setEtapas(es)
+      aoSaberAssinadas?.(es.some((e) => !!e.executorNome))
+    }).catch(() => setEtapas([]))
   useEffect(() => { carregar() }, [id, ordemId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const designar = async (etapaId: string, colaboradorId: string) => {
@@ -52,7 +61,9 @@ export function EtapasDaOrdem({ id, ordemId, colaboradores }: { id: string; orde
   if (etapas === null) return <div className="flex items-center gap-2 p-3 text-xs text-slate-400"><Loader2 className="h-3 w-3 animate-spin" /> etapas…</div>
   // ⚠️ receita sem etapas declaradas vira UMA ("produção") — mostrar um bloco de uma linha só
   // seria ruído numa tela que já é longa. Quem não usa etapas não vê nada de novo.
-  if (etapas.length <= 1) return null
+  // ⚠️ some quando a receita não usa etapas — MAS não quando a única etapa foi assinada:
+  // aí ela carrega quem fez e quanto durou, e esconder isso apagaria o rastro da tela.
+  if (etapas.length <= 1 && !etapas.some((e) => e.executorNome)) return null
 
   return (
     <div className="rounded-lg border border-slate-200">

@@ -22,8 +22,9 @@ interface Tarefa {
   etapaId: string; ordemId: string; posicao: number; nome: string; produto: string
   escalaReceitas: number; estado: 'AGUARDANDO' | 'EM_ANDAMENTO' | 'FEITA'
   iniciadoEm: string | null; minutos: number | null
-  esperandoEtapaAnterior: string | null; minha: boolean
+  esperandoEtapaAnterior: string | null; minha: boolean; ultima: boolean
 }
+interface Consumo { itemId: string; nome: string; qtd: number; unidade: string }
 
 export default function CozinhaPage({ params }: { params: Promise<{ empresaId: string }> }) {
   const { empresaId } = use(params)
@@ -32,7 +33,12 @@ export default function CozinhaPage({ params }: { params: Promise<{ empresaId: s
   const [tarefas, setTarefas] = useState<Tarefa[]>([])
   const [erro, setErro] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [feito, setFeito] = useState<{ nome: string; minutos: number } | null>(null)
+  const [feito, setFeito] = useState<{ nome: string; minutos: number; qtdGerada?: number } | null>(null)
+  // ⭐ "quantos saíram?" na ÚLTIMA etapa — o número vem de quem sabe, na ponta
+  const [fechando, setFechando] = useState<Tarefa | null>(null)
+  const [quanto, setQuanto] = useState('')
+  const [parcial, setParcial] = useState(false)
+  const [consumo, setConsumo] = useState<Consumo[] | null>(null)
   // ⚠️ o PIN fica só em memória, nunca em storage: tablet compartilhado, e fechar a aba
   // TEM que deslogar — senão o próximo a pegar o aparelho assina como o anterior.
   const pinRef = useRef('')
@@ -73,7 +79,21 @@ export default function CozinhaPage({ params }: { params: Promise<{ empresaId: s
     if (novo.length === 4) { pinRef.current = novo; chamar('entrar', {}).then((j) => { if (!j) setPin('') }) }
   }
 
-  const sair = () => { setQuem(null); setTarefas([]); setPin(''); pinRef.current = ''; setFeito(null); setErro(null) }
+  const sair = () => {
+    setQuem(null); setTarefas([]); setPin(''); pinRef.current = ''
+    setFeito(null); setErro(null); setFechando(null); setQuanto(''); setConsumo(null)
+  }
+
+  /** abre o passo de fechar o lote: mostra o que será consumido e pergunta o número */
+  const abrirFechamento = async (t: Tarefa) => {
+    setFechando(t); setQuanto(''); setParcial(false); setConsumo(null); setErro(null)
+    const r = await fetch(`/api/empresas/${empresaId}/estoque/producao/minhas-tarefas/o-que-consome`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pin: pinRef.current, etapaId: t.etapaId }),
+    }).catch(() => null)
+    const j = await r?.json().catch(() => null)
+    setConsumo(j?.consumo ?? [])
+  }
 
   // ── 1. IDENTIFICAR ────────────────────────────────────────────────────────────────
   if (!quem) {
@@ -115,11 +135,86 @@ export default function CozinhaPage({ params }: { params: Promise<{ empresaId: s
         <p className="mt-5 text-lg font-medium">Tarefa finalizada</p>
         <p className="mt-1 text-slate-300">{feito.nome}</p>
         <p className="mt-1 text-2xl font-semibold tabular-nums text-emerald-400">{duracao(feito.minutos)}</p>
+        {feito.qtdGerada != null && (
+          <p className="mt-3 rounded-xl bg-slate-800 px-4 py-2 text-sm text-slate-300">
+            lote fechado · <strong className="tabular-nums text-slate-100">{feito.qtdGerada}</strong> saíram
+          </p>
+        )}
         {proxima
           ? <p className="mt-6 text-sm text-slate-400">próxima: {proxima.nome}</p>
           : <p className="mt-6 text-sm text-slate-400">não tem mais nada pra você hoje</p>}
         <button onClick={() => setFeito(null)}
           className="mt-8 rounded-xl bg-slate-800 px-6 py-3 text-sm text-slate-200 active:bg-slate-700">voltar às tarefas</button>
+      </main>
+    )
+  }
+
+  // ── 3b. FECHAR O LOTE (só na última etapa) ─────────────────────────────────────────
+  if (fechando) {
+    const num = Number(quanto.replace(',', '.'))
+    return (
+      <main className="flex min-h-screen flex-col bg-slate-900 p-6 text-slate-100">
+        <div className="flex items-center justify-between">
+          <button onClick={() => setFechando(null)} className="text-sm text-slate-400">← voltar</button>
+          <span className="text-sm text-slate-500">{quem.nome}</span>
+        </div>
+        <div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center text-center">
+          <p className="text-lg font-medium">{fechando.produto}</p>
+          <p className="mt-1 text-sm text-slate-400">última etapa: {fechando.nome}</p>
+
+          <p className="mt-8 text-base">Quantos saíram?</p>
+          {/* ⛔⛔ O CAMPO NASCE E CONTINUA VAZIO — regra dura do dono: "a previsão SUGERE,
+              nunca preenche. Se preencher, todo mundo confirma o número sem contar." */}
+          <input
+            value={quanto} onChange={(e) => setQuanto(e.target.value.replace(/[^\d,.]/g, ''))}
+            inputMode="decimal" placeholder="conte e digite" autoFocus
+            className="mt-3 w-full rounded-2xl bg-slate-800 py-5 text-center text-4xl font-semibold tabular-nums text-slate-100 placeholder:text-lg placeholder:font-normal placeholder:text-slate-600"
+          />
+
+          {/* ⚠️ O QUE VAI SER CONSUMIDO, à vista: finalizar aqui consome TUDO que foi
+              separado. Quem está na cozinha não pesa sobra — se sobrou, não finaliza. */}
+          {consumo === null ? (
+            <p className="mt-5 text-xs text-slate-500">carregando o que foi separado…</p>
+          ) : consumo.length === 0 ? (
+            <p className="mt-5 rounded-xl bg-rose-500/10 p-3 text-sm text-rose-300">
+              Não há material separado nesta ordem. Chame o encarregado.
+            </p>
+          ) : (
+            <div className="mt-5 rounded-xl bg-slate-800/60 p-3 text-left">
+              <p className="text-[11px] uppercase tracking-wide text-slate-500">vai consumir</p>
+              <ul className="mt-1 space-y-0.5">
+                {consumo.map((c) => (
+                  <li key={c.itemId} className="flex justify-between text-xs text-slate-300">
+                    <span>{c.nome}</span><span className="tabular-nums">{c.qtd} {c.unidade}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+                Sobrou material? <strong>Não finalize</strong> — chame o encarregado, ele fecha ajustando a sobra.
+              </p>
+            </div>
+          )}
+
+          <label className="mt-4 flex items-center justify-center gap-2 text-xs text-slate-400">
+            <input type="checkbox" checked={parcial} onChange={(e) => setParcial(e.target.checked)} />
+            produção parcial (o resto sai depois)
+          </label>
+
+          {erro && <p className="mt-4 text-sm text-rose-300">{erro}</p>}
+
+          <button
+            onClick={async () => {
+              const j = await chamar('finalizar', { etapaId: fechando.etapaId, qtdGerada: num, parcial })
+              if (j) {
+                setFechando(null)
+                setFeito({ nome: fechando.nome, minutos: fechando.minutos ?? 0, qtdGerada: j.concluida?.qtdGerada ?? num })
+              }
+            }}
+            disabled={busy || !(num > 0) || !consumo?.length}
+            className="mt-8 w-full rounded-2xl bg-emerald-500 py-6 text-xl font-semibold text-white active:bg-emerald-600 disabled:opacity-40">
+            {busy ? <Loader2 className="mx-auto h-6 w-6 animate-spin" /> : 'FINALIZAR E FECHAR O LOTE'}
+          </button>
+        </div>
       </main>
     )
   }
@@ -149,13 +244,17 @@ export default function CozinhaPage({ params }: { params: Promise<{ empresaId: s
           {erro && <p className="mt-4 max-w-xs text-sm text-rose-300">{erro}</p>}
           <button
             onClick={async () => {
+              // ⭐ ÚLTIMA etapa → pergunta "quantos saíram?" ANTES de finalizar; as demais
+              // finalizam direto (não há lote a fechar no meio do caminho).
+              if (emAndamento.ultima) { abrirFechamento(emAndamento); return }
               const antes = emAndamento.minutos ?? 0
               const j = await chamar('finalizar', { etapaId: emAndamento.etapaId })
               if (j) setFeito({ nome: emAndamento.nome, minutos: Math.max(antes, Math.round(corridos / 60)) })
             }}
             disabled={busy}
             className="mt-10 w-full max-w-sm rounded-2xl bg-emerald-500 py-6 text-xl font-semibold text-white active:bg-emerald-600 disabled:opacity-50">
-            {busy ? <Loader2 className="mx-auto h-6 w-6 animate-spin" /> : 'FINALIZAR'}
+            {busy ? <Loader2 className="mx-auto h-6 w-6 animate-spin" />
+              : emAndamento.ultima ? 'FINALIZAR E FECHAR O LOTE' : 'FINALIZAR'}
           </button>
           {/* ⚠️ devolver NÃO é finalizar com zero: quem começou por engano solta a tarefa e
               nenhum tempo é gravado — um lote de 0 minuto envenenaria a média. */}
@@ -201,9 +300,15 @@ export default function CozinhaPage({ params }: { params: Promise<{ empresaId: s
                 <p className="mt-2 text-xs text-amber-400/80">depois de “{t.esperandoEtapaAnterior}”</p>
               ) : null}
               {!t.minha && <p className="mt-1 text-xs text-slate-500">não é sua — se você pegar, fica registrado no seu nome</p>}
-              <button onClick={() => chamar('iniciar', { etapaId: t.etapaId })} disabled={busy}
-                className="mt-4 w-full rounded-xl bg-emerald-500 py-4 text-lg font-semibold text-white active:bg-emerald-600 disabled:opacity-50">
-                {busy ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : 'INICIAR'}
+              {/* ⛔⛔ DESABILITADO quando espera a anterior — e o SERVIDOR também recusa.
+                  Antes o aviso era só texto e o botão funcionava: em 06/09 a etapa 2 do beef
+                  foi iniciada e finalizada com a 1 ainda AGUARDANDO. As duas portas, sempre. */}
+              <button
+                onClick={() => chamar('iniciar', { etapaId: t.etapaId })}
+                disabled={busy || !!t.esperandoEtapaAnterior}
+                className="mt-4 w-full rounded-xl bg-emerald-500 py-4 text-lg font-semibold text-white active:bg-emerald-600 disabled:bg-slate-700 disabled:text-slate-400 disabled:opacity-100">
+                {busy ? <Loader2 className="mx-auto h-5 w-5 animate-spin" />
+                  : t.esperandoEtapaAnterior ? `aguardando “${t.esperandoEtapaAnterior}”` : 'INICIAR'}
               </button>
             </li>
           ))}

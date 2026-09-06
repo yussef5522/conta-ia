@@ -31,10 +31,19 @@ export interface MinhaTarefa {
   estado: EstadoDaEtapa
   iniciadoEm: string | null
   minutos: number | null
-  /** ⭐ a etapa anterior ainda não terminou — a tela mostra "depois de X", não bloqueia */
+  /**
+   * ⭐ a etapa anterior ainda não terminou. A tela mostra "depois de X" **e desabilita o
+   * INICIAR** — e o SERVIDOR recusa (06/09). Antes só a tela avisava, e o botão funcionava:
+   * a etapa 2 do beef foi feita com a 1 ainda aguardando.
+   */
   esperandoEtapaAnterior: string | null
   /** designada a mim, ou solta (qualquer um pega com o PIN) */
   minha: boolean
+  /**
+   * ⭐ é a ÚLTIMA etapa da ordem? Finalizar ela pergunta "quantos saíram?" ALI — o número
+   * vem de quem sabe, e conclui a ordem pelo mesmo motor da tela de Produção.
+   */
+  ultima: boolean
 }
 
 /**
@@ -92,6 +101,9 @@ export async function minhasTarefasDeHoje(
     if (e.iniciadoEm && e.executorId !== colaboradorId) continue
 
     const anterior = etapas.find((x) => x.ordemId === e.ordemId && x.posicao === e.posicao - 1)
+    // ⚠️ "última" é sobre a ORDEM inteira, não sobre o que sobrou pra fazer: a lista já
+    // filtrou as finalizadas, então contar aqui daria "última" pra qualquer etapa sozinha.
+    const maiorPosicao = Math.max(...etapas.filter((x) => x.ordemId === e.ordemId).map((x) => x.posicao))
     const o = porOrdem.get(e.ordemId)!
     out.push({
       etapaId: e.id, ordemId: e.ordemId, posicao: e.posicao, nome: e.nome,
@@ -102,6 +114,7 @@ export async function minhasTarefasDeHoje(
       minutos: minutosDaEtapa(e, agora),
       esperandoEtapaAnterior: anterior && !anterior.finalizadoEm ? anterior.nome : null,
       minha,
+      ultima: e.posicao === maiorPosicao,
     })
   }
   // em andamento primeiro (é o que está na mão), depois as designadas, depois as soltas
@@ -130,6 +143,32 @@ export async function iniciarTarefa(
   }
   if (etapa.colaboradorId && etapa.colaboradorId !== input.colaboradorId) {
     throw new TarefaError('Essa tarefa foi designada pra outra pessoa. Fale com o encarregado.')
+  }
+  // ⛔⛔ A SEQUÊNCIA É DA RECEITA, E QUEM A IMPÕE É O SERVIDOR (06/09/2026).
+  //
+  // **PROVADO EM PROD:** na ordem do beef de hambúrguer, a etapa 2 ("beef") foi iniciada E
+  // finalizada às 15:19 com a etapa 1 ("gessado") ainda **AGUARDANDO**. A tela dizia
+  // *"depois de gessado"* e o botão INICIAR funcionava — **a trava era só visual**.
+  //
+  // ⚠️ É a classe "o menu esconde e a rota nega": esconder o botão não impede a chamada. E
+  // aqui o estrago é de DADO — moldar beef antes de existir gessado registra uma produção
+  // que não pode ter acontecido, e o tempo dessa etapa entra na média como se fosse real.
+  //
+  // ⭐ A ordem das etapas É a ordem da receita (`posicao`), então a régua é simples: a
+  // anterior tem que estar FINALIZADA. Sem exceção "só desta vez" — quem precisa pular a
+  // ordem está fazendo outra coisa, e isso pede outra etapa, não um furo aqui.
+  const anterior = etapa.posicao > 0
+    ? await db.stockOrdemEtapa.findFirst({
+        where: { companyId: input.companyId, ordemId: etapa.ordemId, posicao: etapa.posicao - 1 },
+        select: { nome: true, finalizadoEm: true, iniciadoEm: true },
+      })
+    : null
+  if (anterior && !anterior.finalizadoEm) {
+    throw new TarefaError(
+      anterior.iniciadoEm
+        ? `“${anterior.nome}” ainda está em andamento. Essa etapa começa depois que ela terminar.`
+        : `“${anterior.nome}” precisa ser feita antes. Essa etapa começa depois que ela terminar.`,
+    )
   }
   const jaCorrendo = await db.stockOrdemEtapa.findFirst({
     where: { companyId: input.companyId, executorId: input.colaboradorId, iniciadoEm: { not: null }, finalizadoEm: null },

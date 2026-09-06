@@ -201,15 +201,19 @@ describe('⭐⭐ a janela do funcionário: cada um vê SÓ o que é dele', () =>
   })
 
   it('⛔ a tarefa solta que o outro pegou SOME da minha janela — e o que protege é a designação', async () => {
+    // ⚠️ o gessado é FINALIZADO antes: desde 06/09 o servidor impõe a sequência da receita, e
+    // sem isso este cenário seria ilegal — a etapa 2 não começa com a 1 aberta.
+    await iniciarTarefa({ companyId, etapaId: gessado, colaboradorId: cristian, agora: emSP(13) }, prisma)
+    await finalizarTarefa({ companyId, etapaId: gessado, colaboradorId: cristian, agora: emSP(13, 30) }, prisma)
     await designarEtapa({ companyId, etapaId: moldar, colaboradorId: null }, prisma) // solta
-    // antes: ela aparece pros dois
+    // antes: a solta aparece pros dois (o gessado já saiu da lista do Cristian — feito)
     expect((await minhasTarefasDeHoje(companyId, cristian, HOJE, prisma)).map((t) => t.nome))
-      .toEqual(['gessado', 'moldar beef'])
+      .toEqual(['moldar beef'])
     await iniciarTarefa({ companyId, etapaId: moldar, colaboradorId: marcyelle, agora: emSP(15, 20) }, prisma)
     // ⭐ o mecanismo REAL: pegar a etapa carimba o `colaboradorId` — e é ISSO que a tira da
     // janela dos outros (o filtro por `executorId` é backstop, e está anotado como tal).
     expect((await etapasDaOrdem(companyId, ordemId, HOJE, prisma))[1].colaboradorNome).toBe('Marcyelle')
-    expect((await minhasTarefasDeHoje(companyId, cristian, HOJE, prisma)).map((t) => t.nome)).toEqual(['gessado'])
+    expect((await minhasTarefasDeHoje(companyId, cristian, HOJE, prisma)).map((t) => t.nome)).toEqual([])
   })
 
   it('⛔ e ninguém INICIA a tarefa designada a outro (a trava que o teste acima depende)', async () => {
@@ -221,6 +225,9 @@ describe('⭐⭐ a janela do funcionário: cada um vê SÓ o que é dele', () =>
     await designarEtapa({ companyId, etapaId: moldar, colaboradorId: null }, prisma)
     expect((await minhasTarefasDeHoje(companyId, cristian, HOJE, prisma)).map((t) => t.nome))
       .toEqual(['gessado', 'moldar beef'])
+    // ⚠️ a sequência da receita vale: pra pegar a 2ª, a 1ª tem que estar feita (06/09)
+    await iniciarTarefa({ companyId, etapaId: gessado, colaboradorId: cristian, agora: emSP(13) }, prisma)
+    await finalizarTarefa({ companyId, etapaId: gessado, colaboradorId: cristian, agora: emSP(13, 30) }, prisma)
     await iniciarTarefa({ companyId, etapaId: moldar, colaboradorId: cristian, agora: emSP(15) }, prisma)
     const e = (await etapasDaOrdem(companyId, ordemId, HOJE, prisma))[1]
     expect(e.colaboradorNome, 'quem pegou fica registrado').toBe('Cristian')

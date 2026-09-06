@@ -32,6 +32,9 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
   const [devolver, setDevolver] = useState<Record<string, string>>({})
   const [conclusoes, setConclusoes] = useState<Conclusao[]>([])
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([])
+  // ⭐ a ordem tem etapa ASSINADA (alguém carimbou com o PIN)? Então "quem produziu" já está
+  // respondido — o dropdown vira fóssil e sai da tela (06/09).
+  const [etapasAssinadas, setEtapasAssinadas] = useState(false)
   const [rendimentoMedio, setRendimentoMedio] = useState<number | null>(null)
   const [rendimentoLotes, setRendimentoLotes] = useState(0)
   // ⭐ "quero fazer N" — o sentido PRINCIPAL do dono ("faz 200 porções" → quantos kg pegar).
@@ -295,10 +298,10 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
 
       {/* ⭐⭐ ETAPAS — quem faz cada parte (06/09). Fica ANTES da conclusão porque é o
           trabalho acontecendo; a conclusão é o fecho. */}
-      <EtapasDaOrdem id={id} ordemId={ordemId} colaboradores={colaboradores} />
+      <EtapasDaOrdem id={id} ordemId={ordemId} colaboradores={colaboradores} aoSaberAssinadas={setEtapasAssinadas} />
 
       {/* conclusão ("quantos saíram?") */}
-      {emProducao && <ConclusaoForm id={id} ordemId={ordemId} linhas={linhas} colaboradores={colaboradores} rendimentoMedio={rendimentoMedio} rendimentoLotes={rendimentoLotes} loteBase={ordem.loteBase} unidadeProduzido={ordem.unidadeProduzido} onConcluida={carregar} />}
+      {emProducao && <ConclusaoForm id={id} ordemId={ordemId} linhas={linhas} colaboradores={etapasAssinadas ? [] : colaboradores} rendimentoMedio={rendimentoMedio} rendimentoLotes={rendimentoLotes} loteBase={ordem.loteBase} unidadeProduzido={ordem.unidadeProduzido} onConcluida={carregar} />}
 
       {/* histórico de conclusões + etiquetas */}
       {conclusoes.length > 0 && (
@@ -401,9 +404,19 @@ function ConclusaoForm({ id, ordemId, linhas, colaboradores, rendimentoMedio, re
             </p>
           )}
         </label>
-        <label className="text-xs text-slate-500">Quem produziu
-          <select value={colaboradorId} onChange={(e) => setColaboradorId(e.target.value)} className="mt-1 block rounded-lg border border-slate-300 py-2 px-3 text-sm"><option value="">—</option>{colaboradores.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}</select>
-        </label>
+        {/* ⭐⭐ "QUEM PRODUZIU" DERIVA DAS ETAPAS (06/09). Quando a ordem tem etapa assinada
+            pelo PIN, a pergunta já está respondida — e melhor: respondida POR ETAPA, com o
+            tempo de cada mão. Manter o dropdown aqui seria pedir de novo o que o tablet já
+            sabe, e abrir espaço pra as duas respostas divergirem.
+            ⚠️ Ele PERMANECE na ordem antiga (sem etapa assinada): lá ninguém carimbou nada,
+            e sem ele a conclusão ficaria sem dono. */}
+        {colaboradores.length > 0 ? (
+          <label className="text-xs text-slate-500">Quem produziu
+            <select value={colaboradorId} onChange={(e) => setColaboradorId(e.target.value)} className="mt-1 block rounded-lg border border-slate-300 py-2 px-3 text-sm"><option value="">—</option>{colaboradores.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}</select>
+          </label>
+        ) : (
+          <p className="pb-2 text-[11px] text-slate-400">quem produziu vem das etapas (o PIN de cada um)</p>
+        )}
         <label className="flex items-center gap-1.5 pb-2 text-xs text-slate-500"><input type="checkbox" checked={parcial} onChange={(e) => setParcial(e.target.checked)} /> produção parcial (concluo o resto depois)</label>
       </div>
 
