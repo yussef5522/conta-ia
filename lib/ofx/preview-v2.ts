@@ -244,6 +244,8 @@ export function buildLedgerBalCheck(input: {
    *  removidas do preview. Se o diff residual bater com ela, o diagnóstico
    *  aponta "linhas futuras" em vez de "histórico errado". */
   futurasSum?: number
+  /** quantos lançamentos futuros — só pra frase ficar exata ("1 lançamento" × "3") */
+  futurasQtd?: number
   /** CAMADA 2 (11/08): resultado da reconciliação do dia da âncora quando NÃO
    *  resolveu sozinha (ambíguo). ofxIndex das linhas do dia da âncora suspeitas.
    *  Presente → o diagnóstico lidera com "agendada do dia", NÃO "duplicata". */
@@ -307,9 +309,25 @@ export function buildLedgerBalCheck(input: {
   // errado". Se as futuras (DEBIT) entrassem no saldoPos, ele ficaria BAIXO por
   // |futurasSum| → diff = −futurasSum. Logo o casamento é diff ≈ −futurasSum.
   // Rede de segurança: com o particionamento no preview o diff já vira 0.
+  //
+  // ⛔⛔ O SINAL ESTAVA INVERTIDO — e o ramo NUNCA teve teste (05/09/2026).
+  //
+  // CASO REAL (`sicredi_1788654879.ofx`): o extrato lista um crédito FUTURO de
+  // **+R$ 7.479,91** (TUNA, 08/09) que não é importado, e o `<LEDGERBAL>` do Sicredi
+  // **já o inclui**. A tela cuspiu *"não identifiquei a causa"* com a resposta a dois
+  // centímetros, no próprio preview.
+  //
+  // A conta, com `diff = LEDGERBAL − saldoPos`:
+  //   futuro de CRÉDITO (+X): o banco inclui → LEDGERBAL = saldoPos + X → diff = +X
+  //   futuro de DÉBITO  (−X): o banco inclui → LEDGERBAL = saldoPos − X → diff = −X
+  // Nos dois, **diff e futurasSum têm o MESMO sinal** → o casamento é a SUBTRAÇÃO.
+  // O `+` só fecharia se eles tivessem sinais opostos, o que não acontece nunca.
+  //
+  // ⚠️ Sobreviveu 27 dias porque era "rede de segurança" e **nenhum teste o exercitava** —
+  // a mesma anatomia dos guards que nascem verdes por construção (REGRA 11).
   const futurasSum = input.futurasSum ?? 0
   const isFuturas =
-    futurasSum !== 0 && Math.abs(diff + futurasSum) <= LEDGER_BAL_TOLERANCE
+    futurasSum !== 0 && Math.abs(diff - futurasSum) <= LEDGER_BAL_TOLERANCE
 
   // CAMADA 2 (11/08): quando a diferença bate com linha(s) do DIA DA ÂNCORA que
   // ainda não liquidaram, a causa é ESSA. `agendadaDiaAncora` só chega aqui quando
@@ -348,7 +366,11 @@ export function buildLedgerBalCheck(input: {
     ...(isFuturas
       ? [{
           tipo: 'linhas_futuras' as const,
-          label: 'A diferença é exatamente a soma dos lançamentos futuros (agendados) — eles não entram no saldo. Nada errado.',
+          // ⭐ TOM NEUTRO, decisão do dono: não é susto, é explicação. A conta fecha
+          // sozinha quando o agendado efetivar — não há nada a corrigir hoje.
+          label: `O saldo declarado pelo banco JÁ INCLUI ${input.futurasQtd ?? 'os'} lançamento(s) futuro(s) `
+            + `(${futurasSum > 0 ? '+' : '−'}${fmtDiff}) que ainda não entram no nosso saldo — `
+            + `eles entram quando efetivarem, e a conta fecha sozinha. Nada a corrigir.`,
           maisProvavel: lider === 'linhas_futuras',
         }]
       : []),
@@ -424,6 +446,8 @@ export function buildV2PreviewPayload(input: {
   ledgerBalance?: { amount: number; asOfDate: Date } | null
   /** Sprint Preview-Futuro (09/08) — soma signed das linhas futuras removidas. */
   futurasSum?: number
+  /** quantos futuros — só pra frase ficar exata */
+  futurasQtd?: number
   /** CAMADA 2 (11/08) — âncora = max(DTASOF, DTEND). Default = ledgerBalance.asOfDate. */
   anchor?: Date
 }): V2PreviewPayload {
@@ -593,6 +617,7 @@ export function buildV2PreviewPayload(input: {
     novasGenuinas: novasFinais,
     conciliatePayable,
     futurasSum: input.futurasSum,
+    futurasQtd: input.futurasQtd,
     agendadaDiaAncora: agendadaDiaInfo,
   })
 

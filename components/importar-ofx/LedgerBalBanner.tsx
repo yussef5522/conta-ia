@@ -29,10 +29,12 @@ export function LedgerBalBanner({ check, className }: Props) {
   // ⭐ A DECISÃO MORA EM `lib/ofx/banner-ledgerbal.ts` (pura, testável sem jsdom); aqui é
   // eco. Os DOIS previews (V2 e V3) renderizam este componente — pôr a regra neles seria
   // dois lugares decidindo a mesma coisa, que foi como a mensagem errada nasceu.
+  const futuras = check.hipoteses.find((h) => h.tipo === 'linhas_futuras')
   const estado = estadoDoBanner({
     temNoArquivo: check.available,
     ehReguaNesteBanco: check.ehReguaNesteBanco !== false,
     bate: check.bate,
+    explicadoPorFuturos: !!futuras,
   })
 
   // ⛔ banco cujo LEDGERBAL não é régua (Banrisul): a ÚNICA mensagem sobre saldo é a faixa
@@ -98,6 +100,29 @@ export function LedgerBalBanner({ check, className }: Props) {
                 <dt>extrato (banco):</dt>
                 <dd className="tabular-nums">{fmtBRL(check.ledgerBalAmount ?? 0)} ✓</dd>
               </div>
+            </dl>
+          </div>
+        </div>
+      </Card>
+    )
+  }
+
+  // ───────────────────────────────────────────────
+  // ⭐ Estado 2b: a diferença TEM DONO — são os lançamentos futuros que o banco já
+  // contou e nós não importamos. Tom NEUTRO: não há nada a corrigir, e a conta fecha
+  // sozinha quando o agendado efetivar. (05/09/2026 — decisão do dono.)
+  // ───────────────────────────────────────────────
+  if (estado === 'EXPLICADO') {
+    return (
+      <Card className={cn('border-slate-300 bg-slate-50 p-4', className)} data-testid="ledger-bal-banner" data-state="explicado">
+        <div className="flex items-start gap-3">
+          <Info className="h-5 w-5 flex-shrink-0 text-slate-500" />
+          <div className="flex-1 text-sm text-slate-700">
+            <p className="font-medium text-slate-900">A diferença tem explicação — nada a corrigir</p>
+            <p className="mt-1">{futuras!.label}</p>
+            <dl className="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2 sm:gap-x-6">
+              <div className="flex justify-between"><dt>saldo previsto:</dt><dd className="tabular-nums">{fmtBRL(check.saldoPosImport)}</dd></div>
+              <div className="flex justify-between"><dt>extrato (banco):</dt><dd className="tabular-nums">{fmtBRL(check.ledgerBalAmount ?? 0)}</dd></div>
             </dl>
           </div>
         </div>

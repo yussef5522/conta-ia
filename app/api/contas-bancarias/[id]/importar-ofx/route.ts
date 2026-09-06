@@ -905,6 +905,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         // Sprint Preview-Futuro (09/08): soma das futuras — se o diff bater
         // com ela, o diagnóstico diz "= linhas futuras" (rede de segurança).
         futurasSum,
+        futurasQtd: futurasPayload.length,
         // CAMADA 2 (11/08): âncora max(DTASOF, DTEND) — pega a agendada do DIA
         // da âncora que a CAMADA 1 (data) deixa passar.
         anchor: dtAsOfPreview,

@@ -19,7 +19,7 @@
 // "LEDGERBAL ausente" volta a significar uma coisa só: *o arquivo não trouxe* — em qualquer
 // banco.
 
-export type EstadoDoBanner = 'OCULTO' | 'AUSENTE' | 'BATE' | 'NAO_BATE'
+export type EstadoDoBanner = 'OCULTO' | 'AUSENTE' | 'BATE' | 'EXPLICADO' | 'NAO_BATE'
 
 export interface SinaisDoBanner {
   /** o `<LEDGERBAL>` veio no arquivo? (fato do arquivo, nunca decisão de tela) */
@@ -28,6 +28,15 @@ export interface SinaisDoBanner {
   ehReguaNesteBanco: boolean
   /** o saldo declarado fecha com o nosso? (só faz sentido quando é régua) */
   bate: boolean
+  /**
+   * ⭐ a diferença é EXATAMENTE a soma dos lançamentos futuros que o banco já contou e nós
+   * (corretamente) não importamos (05/09/2026).
+   *
+   * ⛔ Isto NÃO é uma divergência: é o extrato do Sicredi declarando o saldo do FIM DO MÊS,
+   * com o agendado dentro. A conta fecha sozinha quando ele efetivar — e caixa de susto
+   * sobre algo que não tem conserto é como o dono aprende a ignorar a caixa.
+   */
+  explicadoPorFuturos?: boolean
 }
 
 /**
@@ -41,5 +50,7 @@ export interface SinaisDoBanner {
 export function estadoDoBanner(s: SinaisDoBanner): EstadoDoBanner {
   if (!s.ehReguaNesteBanco) return 'OCULTO'
   if (!s.temNoArquivo) return 'AUSENTE'
-  return s.bate ? 'BATE' : 'NAO_BATE'
+  if (s.bate) return 'BATE'
+  // ⭐ explicado ≠ divergente: o número tem dono, e o dono é o próprio extrato
+  return s.explicadoPorFuturos ? 'EXPLICADO' : 'NAO_BATE'
 }
