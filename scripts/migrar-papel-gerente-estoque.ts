@@ -60,11 +60,42 @@ async function main() {
   const vazou = chavesAlvo.filter((k) => FINANCEIRO.test(k))
   if (vazou.length) throw new Error(`⛔ ABORTADO: o alvo tem chave de financeiro (${vazou.join(', ')}).`)
 
-  const colisao = await prisma.role.findFirst({ where: { companyId: COMPANY, name: NOME_NOVO } })
-  if (colisao && colisao.id !== antigo.id) {
-    console.log(`\n  ⚠️ já existe um "${NOME_NOVO}" nesta empresa (${colisao.id}).`)
-    console.log('     Neste caso a migração é MOVER as pessoas pra ele, não renomear — e isso')
-    console.log('     é decisão do dono, não do script. Nada foi feito.\n')
+  // ⭐ O SEED cria os papéis de sistema como GLOBAIS (`companyId: null`). Então, depois de
+  // rodar o seed, a migração deixa de ser "renomear" e passa a ser **MOVER as pessoas** pro
+  // papel global e apagar o custom. Os dois caminhos existem porque os dois estados existem:
+  // empresa que ainda não rodou o seed (renomeia) e empresa que já rodou (move).
+  const doSistema = await prisma.role.findFirst({
+    where: { name: NOME_NOVO, OR: [{ companyId: COMPANY }, { companyId: null }] },
+    include: { permissions: { include: { permission: { select: { key: true } } } } },
+  })
+
+  if (doSistema && doSistema.id !== antigo.id) {
+    const chavesSistema = doSistema.permissions.map((p) => p.permission.key).sort()
+    console.log(`\n  ⭐ o papel de SISTEMA já existe (${doSistema.id}, ${doSistema.companyId ? 'da empresa' : 'global'})`)
+    console.log(`     chaves: ${chavesSistema.join(', ')}`)
+    // ⛔ mover não pode TIRAR acesso de ninguém: se o papel de sistema não cobrir tudo que o
+    // custom cobria, a pessoa perderia poder no meio de um sprint e ninguém veria.
+    const perderia = chavesHoje.filter((k) => !chavesSistema.includes(k))
+    if (perderia.length) throw new Error(`⛔ ABORTADO: mover tiraria ${perderia.join(', ')} de quem está no papel.`)
+    console.log(`\n  PLANO: mover ${quem.length} pessoa(s) pro papel de sistema e apagar o custom`)
+    console.log(`     ganha no caminho: ${chavesSistema.filter((k) => !chavesHoje.includes(k)).join(', ') || '(nada)'}`)
+
+    if (!APLICAR) { console.log('\n⛔ NADA FOI GRAVADO. Rode com --apply.\n'); return }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.userCompanyRole.updateMany({ where: { roleId: antigo.id }, data: { roleId: doSistema.id } })
+      // ⚠️ convite pendente apontando pro papel velho iria pro lugar errado depois de apagado
+      await tx.companyInvite.updateMany({ where: { roleId: antigo.id }, data: { roleId: doSistema.id } })
+      await tx.rolePermission.deleteMany({ where: { roleId: antigo.id } })
+      await tx.role.delete({ where: { id: antigo.id } })
+    })
+    const depois = await prisma.userCompanyRole.findMany({
+      where: { roleId: doSistema.id, companyId: COMPANY },
+      include: { user: { select: { email: true } }, role: { select: { name: true } } },
+    })
+    console.log(`\n✓ ${depois.length} pessoa(s) agora em "${NOME_NOVO}":`)
+    for (const d of depois) console.log(`    ${d.user.email}`)
+    console.log(`✓ papel custom "${NOME_ANTIGO}" removido\n`)
     return
   }
 
