@@ -5,24 +5,37 @@
 
 import { useEffect, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
-import { ArrowLeft, Loader2, Plus, Factory, Users, KeyRound, Check } from 'lucide-react'
+import { ArrowLeft, Loader2, Plus, Factory, Users, KeyRound, Check, UserPlus } from 'lucide-react'
+import { CadastrarPessoaModal } from '@/components/estoque/cadastrar-pessoa-modal'
 
 interface Row { id: string; nome: string; ativo: boolean }
 
 export default function CadastrosPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
+  // ⭐ o gesto único (06/09): nome + função + PIN/e-mail, e a pessoa produz no mesmo dia
+  const [abrirCadastro, setAbrirCadastro] = useState(false)
+  const [recarregar, setRecarregar] = useState(0)
   return (
     <div className="mx-auto max-w-2xl space-y-5 p-4 sm:p-6">
       <a href={`/empresas/${id}/estoque/producao`} className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700"><ArrowLeft className="h-3.5 w-3.5" /> voltar pra Produção</a>
-      <h1 className="text-xl font-semibold text-slate-900">Setores e colaboradores</h1>
-      <p className="text-sm text-slate-500">Cadastros mínimos que a produção vai usar. Comece só com a Cozinha e os nomes de quem produz.</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl font-semibold text-slate-900">Equipe</h1>
+        <button onClick={() => setAbrirCadastro(true)}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-[#185FA5] px-3 py-2 text-sm font-medium text-white hover:bg-[#0F4A8C]">
+          <UserPlus className="h-4 w-4" /> adicionar pessoa
+        </button>
+      </div>
+      <p className="text-sm text-slate-500">Quem é da cozinha entra pelo tablet com um PIN; quem é gerente recebe um convite por e-mail. A função decide tudo — você não monta permissão.</p>
+      {abrirCadastro && (
+        <CadastrarPessoaModal companyId={id} aoFechar={() => setAbrirCadastro(false)} aoCadastrar={() => setRecarregar((n) => n + 1)} />
+      )}
       <Cadastro companyId={id} titulo="Setores de produção" icone={<Factory className="h-4 w-4" />} rota="setores" chave="setores" chaveItem="setor" placeholder="ex: Cozinha" sugestao="Cozinha" />
-      <Cadastro companyId={id} titulo="Colaboradores" icone={<Users className="h-4 w-4" />} rota="colaboradores" chave="colaboradores" chaveItem="colaborador" placeholder="nome de quem produz" comPin />
+      <Cadastro companyId={id} titulo="Colaboradores" icone={<Users className="h-4 w-4" />} rota="colaboradores" chave="colaboradores" chaveItem="colaborador" placeholder="nome de quem produz" comPin recarregar={recarregar} />
     </div>
   )
 }
 
-function Cadastro({ companyId, titulo, icone, rota, chave, chaveItem, placeholder, sugestao, comPin }: { companyId: string; titulo: string; icone: React.ReactNode; rota: string; chave: string; chaveItem: string; placeholder: string; sugestao?: string; comPin?: boolean }) {
+function Cadastro({ companyId, titulo, icone, rota, chave, chaveItem, placeholder, sugestao, comPin, recarregar }: { companyId: string; titulo: string; icone: React.ReactNode; rota: string; chave: string; chaveItem: string; placeholder: string; sugestao?: string; comPin?: boolean; recarregar?: number }) {
   const [rows, setRows] = useState<Row[] | null | undefined>(undefined)
   const [nome, setNome] = useState('')
   const [busy, setBusy] = useState(false)
@@ -54,7 +67,7 @@ function Cadastro({ companyId, titulo, icone, rota, chave, chaveItem, placeholde
       setEditandoPin(null); setPinNovo(''); carregar()
     } finally { setBusy(false) }
   }
-  useEffect(() => { carregar() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { carregar() }, [recarregar]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const add = async (valor?: string) => {
     const n = (valor ?? nome).trim()

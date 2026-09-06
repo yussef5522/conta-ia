@@ -61,10 +61,22 @@ export async function POST(request: NextRequest) {
     }
 
     // Email do convite precisa bater com email da conta (case-insensitive)
+    //
+    // ⛔⛔ ESTE É O GUARD QUE IMPEDE "ACEITAR COMO OUTRA PESSOA" — e ele estava certo o tempo
+    // todo. O incidente de 06/09 não foi aqui: era o PROXY engolindo o link antes de a página
+    // abrir. Mas a resposta vinha só como FRASE, e a tela não tem como agir sobre uma frase.
+    //
+    // ⭐ Agora vai com CÓDIGO e com os dois e-mails: quem renderiza consegue oferecer a SAÍDA
+    // ("sair e entrar como o convidado") em vez de deixar a pessoa num beco com um texto
+    // vermelho. Ler a mensagem pra decidir o que mostrar seria a mesma fragilidade de casar
+    // regra por string.
     if (user.email.toLowerCase() !== invite.email.toLowerCase()) {
       return NextResponse.json(
         {
-          erro: `Este convite é pra ${invite.email}, mas você está logado como ${user.email}. Faça logout e entre com o email correto.`,
+          erro: `Este convite é pra ${invite.email}, mas você está logado como ${user.email}.`,
+          code: 'CONTA_DIFERENTE',
+          conviteEmail: invite.email,
+          contaEmail: user.email,
         },
         { status: 400 },
       )
@@ -176,7 +188,20 @@ export async function GET(request: NextRequest) {
 
     const status = getInviteStatus(invite)
 
+    // ⭐ QUEM ESTÁ LOGADO NESTE NAVEGADOR (pode ser ninguém). A tela precisa disso pra avisar
+    // ANTES do clique — descobrir que a conta é a errada só depois de apertar "aceitar" é
+    // como o dono descobriu o problema de 06/09: pelo susto.
+    // ⚠️ devolve só o e-mail, e só quando há sessão: é o mínimo pra decidir o que mostrar.
+    const authUser = await getAuthUser(request)
+    let logadoComo: string | null = null
+    if (authUser) {
+      const u = await prisma.user.findUnique({ where: { id: authUser.sub }, select: { email: true } })
+      logadoComo = u?.email ?? null
+    }
+
     return NextResponse.json({
+      logadoComo,
+      contaCorreta: logadoComo ? logadoComo.toLowerCase() === invite.email.toLowerCase() : null,
       invite: {
         email: invite.email,
         company: { name: invite.company.tradeName ?? invite.company.name },

@@ -34,11 +34,12 @@ describe('DEFAULT_ROLES', () => {
   // Fase 3 Parte 1 (22/08/2026): +OPERADOR_ESTOQUE e +LEITURA_ESTOQUE.
   // Assere os SLUGS, não só a contagem — role nova entra de propósito
   // (o teste trinca e alguém decide), role sumida não passa despercebida.
-  it('tem os 8 roles padrão (5 financeiro + 3 estoque)', () => {
+  it('tem os 9 roles padrão (5 financeiro + 4 estoque)', () => {
     // ⭐ EXECUTOR_PRODUCAO entrou em 06/09: a cozinha no tablet compartilhado, com a chave
     // mais fraca do sistema (`stock.executar` e MAIS NADA — nem `stock.view`).
     expect(Object.keys(DEFAULT_ROLES).sort()).toEqual([
-      'ACCOUNTANT', 'ADMIN', 'EXECUTOR_PRODUCAO', 'FINANCIAL', 'LEITURA_ESTOQUE', 'OPERADOR_ESTOQUE', 'OWNER', 'VIEWER',
+      'ACCOUNTANT', 'ADMIN', 'EXECUTOR_PRODUCAO', 'FINANCIAL', 'GERENTE_ESTOQUE',
+      'LEITURA_ESTOQUE', 'OPERADOR_ESTOQUE', 'OWNER', 'VIEWER',
     ])
   })
 
@@ -51,6 +52,22 @@ describe('DEFAULT_ROLES', () => {
     for (const proibida of ['transaction.view', 'dre.view', 'report.view', 'stock.view', 'stock.manage']) {
       expect(permissionMatches(expandido, proibida), `vazou ${proibida}`).toBe(false)
     }
+  })
+
+  it('⛔⛔ NENHUM papel de estoque enxerga o financeiro — a fronteira do dono', () => {
+    // ⚠️ Esta é a régua que o dono pediu por escrito ("estoque INTEIRO, SEM financeiro").
+    // Ela vale pros QUATRO, e o teste é sobre a CLASSE: papel de estoque novo cai aqui.
+    const FINANCEIRO = /^(transaction|bank_account|dre|report|category)\./
+    for (const papel of ['GERENTE_ESTOQUE', 'OPERADOR_ESTOQUE', 'LEITURA_ESTOQUE', 'EXECUTOR_PRODUCAO'] as const) {
+      const chaves = expandPermissions([...DEFAULT_ROLES[papel].permissions])
+      expect(chaves.filter((k) => FINANCEIRO.test(k)), `${papel} vê financeiro`).toEqual([])
+      expect(chaves.every((k) => k.startsWith('stock.')), `${papel} tem chave fora de stock.`).toBe(true)
+    }
+  })
+
+  it('⭐⭐ o GERENTE_ESTOQUE tem o estoque INTEIRO (as 4 chaves, nenhuma a menos)', () => {
+    expect(expandPermissions([...DEFAULT_ROLES.GERENTE_ESTOQUE.permissions]).sort())
+      .toEqual(['stock.executar', 'stock.manage', 'stock.operate', 'stock.view'])
   })
 
   it('⭐ e o ADMIN herda a chave nova de graça (por isso ela mora em `stock.`)', () => {

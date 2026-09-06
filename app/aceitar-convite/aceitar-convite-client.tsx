@@ -42,6 +42,9 @@ export function AceitarConviteClient({ token }: { token: string }) {
     companyName: string
   } | null>(null)
   const [needsLogin, setNeedsLogin] = useState(false)
+  // ⭐ quem está logado NESTE navegador (null = ninguém). Vem do GET, junto do convite.
+  const [logadoComo, setLogadoComo] = useState<string | null>(null)
+  const [saindo, setSaindo] = useState(false)
 
   useEffect(() => {
     fetch(`/api/aceitar-convite?token=${encodeURIComponent(token)}`)
@@ -53,6 +56,7 @@ export function AceitarConviteClient({ token }: { token: string }) {
         }
         const data = await r.json()
         setInfo(data.invite)
+        setLogadoComo(data.logadoComo ?? null)
       })
       .catch(() => setError('Erro ao carregar convite'))
       .finally(() => setIsLoading(false))
@@ -92,6 +96,19 @@ export function AceitarConviteClient({ token }: { token: string }) {
     }
   }
 
+  // ⚠️ a comparação é a MESMA do servidor (minúsculas): duas réguas divergiriam no primeiro
+  // e-mail com maiúscula, e a tela ofereceria "sair" pra quem já está na conta certa.
+  const contaErrada = !!logadoComo && !!info && logadoComo.toLowerCase() !== info.email.toLowerCase()
+
+  async function sairEEntrar() {
+    setSaindo(true)
+    // ⭐ desloga de VERDADE antes de mandar pro login: sem isso o proxy devolveria a pessoa
+    // pro dashboard da sessão antiga, que é exatamente o defeito que acabamos de fechar.
+    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {})
+    const destino = `/aceitar-convite?token=${token}`
+    window.location.href = `/login?email=${encodeURIComponent(info!.email)}&redirect=${encodeURIComponent(destino)}`
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center p-6 bg-white">
       <div className="w-full max-w-[440px] space-y-6">
@@ -112,6 +129,11 @@ export function AceitarConviteClient({ token }: { token: string }) {
             />
           ) : needsLogin && info ? (
             <NeedsLoginState info={info} token={token} />
+          ) : contaErrada && info ? (
+            /* ⛔⛔ A CONTA ERRADA TEM SAÍDA, NÃO BECO (06/09). Antes, quem abrisse o convite
+               logado como outra pessoa ou caía no dashboard (o bug do proxy) ou, no melhor
+               caso, apertava "aceitar" e levava um texto vermelho sem botão nenhum. */
+            <ContaErradaState info={info} token={token} logadoComo={logadoComo!} saindo={saindo} onSair={sairEEntrar} />
           ) : info?.status === 'EXPIRED' ? (
             <ExpiredState companyName={info.company.name} />
           ) : info?.status === 'ACCEPTED' ? (
@@ -259,6 +281,52 @@ function SuccessState({
         <ArrowRight className="h-4 w-4 ml-2" />
       </Button>
     </div>
+  )
+}
+
+/**
+ * ⛔⛔ "ESTE CONVITE É PRA FULANO, VOCÊ ESTÁ COMO BELTRANO" — com a saída junto.
+ *
+ * ⚠️ O texto nomeia os DOIS e-mails de propósito: sem eles a pessoa não sabe se o errado é o
+ * convite ou a sessão, e num aparelho compartilhado (o tablet da cozinha) essa dúvida é o
+ * caso comum, não a exceção.
+ */
+function ContaErradaState({
+  info, token, logadoComo, saindo, onSair,
+}: {
+  info: InviteInfo; token: string; logadoComo: string; saindo: boolean; onSair: () => void
+}) {
+  return (
+    <>
+      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-950 mb-3">
+        <UserCheck className="h-5 w-5 text-amber-700 dark:text-amber-300" />
+      </div>
+      <h1 className="font-medium tracking-tight" style={{ fontSize: 20, color: '#0C447C' }}>
+        Este convite não é pra esta conta
+      </h1>
+      <p className="mt-1.5 text-sm text-muted-foreground leading-relaxed">
+        O convite é pra <strong>{info.email}</strong>, e este navegador está logado como{' '}
+        <strong>{logadoComo}</strong>.
+      </p>
+      <p className="mt-3 rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground leading-relaxed">
+        Se este aparelho é compartilhado, saia da conta atual antes de continuar — quem aceitar
+        o convite fica com o acesso no nome de {info.email}.
+      </p>
+
+      <div className="mt-5 space-y-2">
+        <Button onClick={onSair} disabled={saindo} className="w-full h-11" style={{ backgroundColor: '#185FA5' }}>
+          {saindo ? <Loader2 className="h-4 w-4 animate-spin" /> : `Sair e entrar como ${info.email}`}
+        </Button>
+        <Button asChild variant="outline" className="w-full h-11">
+          <Link href="/dashboard">Continuar como {logadoComo}</Link>
+        </Button>
+      </div>
+      {/* ⚠️ o token continua na URL: quem sair e voltar cai no MESMO convite, não numa
+          página em branco pedindo o link de novo. */}
+      <p className="mt-3 text-center text-[11px] text-muted-foreground">
+        convite {token.slice(0, 6)}… · continua valendo
+      </p>
+    </>
   )
 }
 

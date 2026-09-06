@@ -128,6 +128,17 @@ export const DEFAULT_ROLES = {
     description: 'Consulta do estoque: vê, não mexe. Não vê o financeiro.',
     permissions: ['stock.view'],
   },
+  // ⭐⭐ OS DOIS GERENTES DE ESTOQUE (06/09) — estoque INTEIRO, zero financeiro.
+  //
+  // ⚠️ Este papel JÁ EXISTIA em produção, criado à mão na Caçula com exatamente estas três
+  // chaves. Como papel custom ele não nascia em empresa nova e não tinha garantia nenhuma —
+  // ninguém impedia alguém de adicionar `transaction.view` nele um dia. Promovido a papel de
+  // SISTEMA: nasce no seed, e o teste canônico trava que ele não tem financeiro.
+  GERENTE_ESTOQUE: {
+    name: 'GERENTE_ESTOQUE',
+    description: 'Gerente de estoque: o módulo inteiro (conferir, produzir, ficha, mín/máx, mapa de vendas). Não vê o financeiro.',
+    permissions: ['stock.*'],
+  },
   // ⭐ A janela da cozinha e MAIS NADA (06/09). Sem `stock.view` de propósito: com ele o
   // funcionário abriria posição, custo e mapa de vendas — a janela dele é a lista das
   // próprias tarefas, e o resto do módulo continua fora do alcance.

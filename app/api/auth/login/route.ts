@@ -16,6 +16,7 @@ import { ZodError } from 'zod'
 import { prisma } from '@/lib/db'
 import { signToken, COOKIE_NAME, COOKIE_OPTIONS } from '@/lib/auth'
 import { loginSchema } from '@/lib/validations/auth'
+import { empresaDoUsuarioParaAuditoria } from '@/lib/auth/empresa-do-usuario'
 import {
   rateLimit,
   checkBackoff,
@@ -208,19 +209,18 @@ async function recordLoginAudit(
   userEmail: string,
   request: NextRequest,
 ): Promise<void> {
-  const userCompany = await prisma.userCompany.findFirst({
-    where: { userId },
-    orderBy: { createdAt: 'asc' },
-    select: { companyId: true },
-  })
-  if (!userCompany) return
+  const companyId = await empresaDoUsuarioParaAuditoria(userId)
+  // ⚠️ conta sem empresa nenhuma (recém-criada, ainda sem convite aceito) não tem onde
+  // escopar o registro — e `AuditLog.companyId` é obrigatório. Segue sem log, mas isso agora
+  // é a exceção NOMEADA, não "achei nada na tabela errada".
+  if (!companyId) return
 
   const ipAddress = getRequestIp(request)
   const userAgent = request.headers.get('user-agent') ?? null
 
   await prisma.auditLog.create({
     data: {
-      companyId: userCompany.companyId,
+      companyId,
       userId,
       userName,
       userEmail,
@@ -248,16 +248,14 @@ async function recordFailedLoginAudit(
     select: { id: true, name: true, email: true },
   })
   if (!user) return // email não existe — não logamos pra evitar criar trilha de enumeração
-  const userCompany = await prisma.userCompany.findFirst({
-    where: { userId: user.id },
-    orderBy: { createdAt: 'asc' },
-    select: { companyId: true },
-  })
-  if (!userCompany) return
+  // ⛔ MESMA correção da porta dupla: sem ela, a tentativa FALHA de quem entrou por convite
+  // também sumia — e tentativa falha é o registro que mais importa numa perícia.
+  const companyId = await empresaDoUsuarioParaAuditoria(user.id)
+  if (!companyId) return
   const userAgent = request.headers.get('user-agent') ?? null
   await prisma.auditLog.create({
     data: {
-      companyId: userCompany.companyId,
+      companyId,
       userId: user.id,
       userName: user.name,
       userEmail: user.email,

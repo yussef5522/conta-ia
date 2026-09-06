@@ -32,6 +32,28 @@ const PUBLIC_PAGES = [
   '/esqueci-senha',
   '/aceitar-convite',
 ]
+
+/**
+ * ⛔⛔⛔ AS PÁGINAS PÚBLICAS QUE **NÃO** PODEM MANDAR O LOGADO PRO DASHBOARD (06/09/2026).
+ *
+ * **INCIDENTE MEDIDO:** o dono criou um convite pro gerente novo, clicou no link pra
+ * conferir e **caiu no próprio dashboard, com tudo liberado** — três vezes, e ele entendeu
+ * (com razão) que o convite estava entregando a sessão dele. Reproduzido em produção com o
+ * token real: sem sessão o link devolve **200** e a página abre; com sessão devolve
+ * **307 → /dashboard**, e o token do convite é **descartado**.
+ *
+ * ⭐ A CAUSA É UMA REGRA CERTA APLICADA NO LUGAR ERRADO: "já está logado? não precisa ver o
+ * login" vale pra `/login`, `/cadastro` e `/esqueci-senha`. O **convite é o oposto** — ele
+ * existe pra ser aberto por alguém **DIFERENTE** de quem está logado naquele navegador.
+ * Engolir o token ali não é só perder o convite: num aparelho COMPARTILHADO (o tablet da
+ * cozinha), quem clica cai dentro da conta que estiver aberta.
+ *
+ * ⚠️ ISTO É UMA ALLOWLIST INVERTIDA E É DE PROPÓSITO: página pública nova entra no
+ * comportamento SEGURO por default (não redireciona), e quem quiser o atalho declara aqui.
+ * O contrário — lista de exceções ao redirect — deixaria a próxima página nascer com o
+ * defeito, que é exatamente como esta nasceu.
+ */
+const PAGINAS_QUE_REDIRECIONAM_LOGADO = ['/login', '/cadastro', '/esqueci-senha']
 const PUBLIC_API = [
   '/api/auth/login',
   '/api/auth/cadastro',
@@ -163,7 +185,10 @@ export async function proxy(request: NextRequest) {
 
   // Páginas de autenticação
   if (PUBLIC_PAGES.some((page) => pathname === page)) {
-    if (token) {
+    // ⛔ o convite (e qualquer pública que não esteja na lista) NUNCA é engolido: abre a
+    // página, com sessão ou sem. Quem trata "você está logado como outra pessoa" é a
+    // PRÓPRIA página, que sabe pra quem o convite é — o proxy não sabe e não deve chutar.
+    if (token && PAGINAS_QUE_REDIRECIONAM_LOGADO.includes(pathname)) {
       try {
         const payload = await verifyToken(token)
         // Sprint Gestão de Conta: se precisa trocar senha, força /trocar-senha
