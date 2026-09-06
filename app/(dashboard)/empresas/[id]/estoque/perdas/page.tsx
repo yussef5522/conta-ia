@@ -11,6 +11,7 @@ import { SortableTh, useSort } from '@/components/ui/sortable-th'
 import { baixarCsv, hojeArquivo } from '@/lib/format/csv-cliente'
 import { TrendingDown, Loader2, ArrowLeft, PackageMinus, Download, Layers, Hash } from 'lucide-react'
 import { SaidaModal } from '@/components/estoque/saida-modal'
+import { diaEmSaoPaulo } from '@/lib/datas/dia-sao-paulo'
 
 interface Rel { de: string; ate: string; totalValor: number; totalItens: number; porMotivo: { motivo: string; label: string; tipo: string; quantidade: number; valor: number; n: number }[]; porItem: { itemId: string; nome: string; quantidade: number; valor: number; n: number }[] }
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -18,7 +19,7 @@ const num = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 3 
 
 export default function PerdasPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
-  const hoje = new Date().toISOString().slice(0, 10)
+  const hoje = diaEmSaoPaulo()
   const inicioMes = hoje.slice(0, 8) + '01'
   const [de, setDe] = useState(inicioMes)
   const [ate, setAte] = useState(hoje)

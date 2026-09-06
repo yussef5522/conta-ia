@@ -5,10 +5,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { requireStock } from '@/lib/stock/require-stock'
 import { calcularRealVsTeorico, interpretar, PISO_DADOS } from '@/lib/stock/real-vs-teorico'
+import { diaEmSaoPaulo } from '@/lib/datas/dia-sao-paulo'
 
 interface Params { params: Promise<{ id: string }> }
 
-const hoje = () => new Date().toISOString().slice(0, 10)
+const hoje = () => diaEmSaoPaulo()
 
 export async function GET(request: NextRequest, { params }: Params) {
   const { id: companyId } = await params

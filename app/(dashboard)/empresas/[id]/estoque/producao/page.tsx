@@ -13,6 +13,7 @@ import { StatCard, StatCardGrid } from '@/components/ui/stat-card'
 import { TotalsBar } from '@/components/ui/totals-bar'
 import { SortableTh, useSort } from '@/components/ui/sortable-th'
 import { baixarCsv, hojeArquivo } from '@/lib/format/csv-cliente'
+import { diaEmSaoPaulo, somarDias } from '@/lib/datas/dia-sao-paulo'
 import { Factory, Loader2, Plus, ChevronRight, ClipboardList, Settings, TrendingDown, UtensilsCrossed, Download, PlayCircle, CheckCircle2 } from 'lucide-react'
 import { ehReceitaDeProducao } from '@/lib/stock/producao/tipo-receita'
 
@@ -88,12 +89,15 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
   const [abrirCal, setAbrirCal] = useState(false)
   const [mostrar, setMostrar] = useState(PAGINA)
 
+  // ⚠️⚠️ O DIA É O DE SÃO PAULO, NUNCA `toISOString()` (que é UTC). Das 21h à meia-noite —
+  // justamente quando a cozinha fecha e lança a produção — o UTC já virou, a tela pedia o dia
+  // SEGUINTE e "hoje" abria VAZIO. Medido em prod às 22:16 de 05/09: 9 lotes do dia, zero na
+  // tela. O mesmo dia vem do MESMO lugar que o servidor usa pra recortar.
   const janela = (p: typeof periodo) => {
     if (custom) return custom
-    const h = new Date(); const d = new Date(h)
-    if (p === 'semana') d.setDate(h.getDate() - 6)
-    if (p === 'mes') d.setDate(h.getDate() - 29)
-    return { de: d.toISOString().slice(0, 10), ate: h.toISOString().slice(0, 10) }
+    const hoje = diaEmSaoPaulo()
+    const dias = p === 'semana' ? -6 : p === 'mes' ? -29 : 0
+    return { de: somarDias(hoje, dias), ate: hoje }
   }
   const carregar = () => {
     const { de, ate } = janela(periodo)
@@ -107,7 +111,7 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
   const produzirSugestao = async (s: Sugestao) => {
     setCriando(s.fichaId)
     try {
-      const hoje = new Date().toISOString().slice(0, 10)
+      const hoje = diaEmSaoPaulo()
       const r = await fetch(`/api/empresas/${id}/estoque/producao/ordens`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fichaId: s.fichaId, escalaReceitas: s.escalaSugerida ?? 1, dataProducao: hoje }) })
       const j = await r.json().catch(() => null)
       if (r.ok && j?.ordemId) window.location.href = `/empresas/${id}/estoque/producao/${j.ordemId}`

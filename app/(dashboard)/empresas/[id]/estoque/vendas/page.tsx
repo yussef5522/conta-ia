@@ -13,6 +13,7 @@ import { SortableTh, useSort } from '@/components/ui/sortable-th'
 import { baixarCsv, hojeArquivo } from '@/lib/format/csv-cliente'
 import { ShoppingCart, Loader2, Upload, Check, Layers, Pencil, Search, Play, Receipt, AlertTriangle, History, RefreshCw, Store, Download, CheckCircle2 } from 'lucide-react'
 import { PlanoVendaModal } from '@/components/estoque/plano-venda-modal'
+import { diaEmSaoPaulo } from '@/lib/datas/dia-sao-paulo'
 
 interface Linha { produto: string; quantidade: number; valorTotal: number; mapeado: boolean; alvoTipo: string | null; alvoId: string | null; alvoNome: string | null }
 interface Preview { linhas: Linha[]; totalUnidades: number; totalProdutos: number; naoMapeados: number; opcoes: { fichas: { id: string; nome: string; tipo: string }[]; itens: { id: string; nome: string }[] } }
@@ -277,7 +278,7 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
 
 // aba PDV manual: escolhe vendável + quantidade → mesmo modal preview/confirmar/recibo
 function LancamentoManual({ id, onProcessado }: { id: string; onProcessado: () => void }) {
-  const hoje = new Date().toISOString().slice(0, 10)
+  const hoje = diaEmSaoPaulo()
   const [vend, setVend] = useState<{ alvoTipo: 'FICHA' | 'REVENDA'; alvoId: string; nome: string }[]>([])
   const [data, setDataM] = useState(hoje)
   const [qtd, setQtd] = useState<Record<string, string>>({})

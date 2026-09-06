@@ -17,6 +17,7 @@ import { StatCard, StatCardGrid } from '@/components/ui/stat-card'
 import { FichaEditor } from '@/components/estoque/ficha-editor'
 import { podeAtenderProdutoDoPdv } from '@/lib/stock/tipos-ficha'
 import { ArrowLeft, Loader2, UtensilsCrossed, TrendingUp, CircleDollarSign, Percent, Factory, AlertTriangle, Check, Pencil, PackageSearch, ChevronRight } from 'lucide-react'
+import { diaEmSaoPaulo } from '@/lib/datas/dia-sao-paulo'
 
 type Status = 'SEM_DESTINO' | 'SEM_FICHA' | 'REVENDA' | 'FICHA_INCOMPLETA' | 'FICHA_OK'
 interface Linha {
@@ -74,7 +75,7 @@ export default function ProdutoCardapioPage({ params }: { params: Promise<{ id: 
   const produzirAgora = async (fichaId: string) => {
     setBusy(true); setErro(null)
     try {
-      const hoje = new Date().toISOString().slice(0, 10)
+      const hoje = diaEmSaoPaulo()
       const r = await fetch(`/api/empresas/${id}/estoque/producao/ordens`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fichaId, escalaReceitas: 1, dataProducao: hoje }),

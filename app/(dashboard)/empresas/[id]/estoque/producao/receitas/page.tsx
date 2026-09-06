@@ -12,6 +12,7 @@ import { useEffect, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { ChefHat, Loader2, Plus, Factory, ChevronRight, ArrowLeft, Copy } from 'lucide-react'
 import { ehReceitaDeProducao } from '@/lib/stock/producao/tipo-receita'
+import { diaEmSaoPaulo } from '@/lib/datas/dia-sao-paulo'
 
 interface Ficha {
   id: string; nomeProduzido: string; unidadeProduzido: string; tipoProduto: string
@@ -36,7 +37,7 @@ export default function ReceitasProducaoPage({ params }: { params: Promise<{ id:
   const produzir = async (fichaId: string) => {
     setBusy(true)
     try {
-      const hoje = new Date().toISOString().slice(0, 10)
+      const hoje = diaEmSaoPaulo()
       const r = await fetch(`/api/empresas/${id}/estoque/producao/ordens`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fichaId, escalaReceitas: 1, dataProducao: hoje }),

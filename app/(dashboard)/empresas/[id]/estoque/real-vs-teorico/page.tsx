@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Scale, Loader2, Download, AlertTriangle, Info, TrendingDown, TrendingUp } from 'lucide-react'
+import { diaEmSaoPaulo } from '@/lib/datas/dia-sao-paulo'
 
 interface Linha {
   itemId: string; nome: string; categoria: string; unidadeControle: string; custoMedio: number | null
@@ -30,7 +31,7 @@ const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', curren
 const num = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 3 })
 const pct = (n: number | null) => (n == null ? '—' : `${(n * 100).toFixed(1)}%`)
 const PISO = '2026-08-12'
-const hoje = () => new Date().toISOString().slice(0, 10)
+const hoje = () => diaEmSaoPaulo()
 
 export default function RealVsTeoricoPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)

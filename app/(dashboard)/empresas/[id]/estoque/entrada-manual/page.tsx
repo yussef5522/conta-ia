@@ -9,6 +9,7 @@ import { useEffect, useMemo, useState, use } from 'react'
 import { filtrarPorBusca } from '@/lib/busca-texto'
 import { Card, CardContent } from '@/components/ui/card'
 import { PackageOpen, Plus, Trash2, Loader2, Check, ArrowLeft } from 'lucide-react'
+import { diaEmSaoPaulo } from '@/lib/datas/dia-sao-paulo'
 
 interface ItemCat { id: string; nome: string; unidadeControle: string }
 interface Forn {
@@ -23,7 +24,7 @@ interface Linha { itemId: string; novoNome: string; unidade: string; categoria: 
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const num = (s: string) => Number(String(s).replace(',', '.')) || 0
-const hoje = () => new Date().toISOString().slice(0, 10)
+const hoje = () => diaEmSaoPaulo()
 const vazia = (): Linha => ({ itemId: '', novoNome: '', unidade: 'KG', categoria: 'MATERIA_PRIMA', qtd: '', custo: '' })
 
 const CATEGORIAS = [

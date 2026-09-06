@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState, use } from 'react'
 import { escalaDoConsumo, preverSaida, insumoParaSaida, reguaDoRendimento, avaliarVariacao } from '@/lib/stock/producao/previsao-rendimento'
 import { Card, CardContent } from '@/components/ui/card'
 import { ArrowLeft, Loader2, Factory, Printer, AlertTriangle, Check, Undo2, X, Tag, TrendingUp } from 'lucide-react'
+import { diaEmSaoPaulo } from '@/lib/datas/dia-sao-paulo'
 
 interface Linha { itemId: string; nome: string; unidade: string; unidadeControle: string; porLote: number; qtdPlanejada: number; qtdSeparada: number; saldoDisponivel: number; custoMedio: number | null; fichaIdComponente: string | null }
 interface Ordem { id: string; nomeProduzido: string; unidadeProduzido: string; escalaReceitas: number; loteBase: number; estado: string; dataProducao: string; setorNome: string | null; versaoFicha: number; fichaId: string }
@@ -106,7 +107,7 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
   const produzirAntes = async (fichaIdComp: string) => {
     setBusy(true); setErro(null)
     try {
-      const hoje = new Date().toISOString().slice(0, 10)
+      const hoje = diaEmSaoPaulo()
       const r = await fetch(`/api/empresas/${id}/estoque/producao/ordens`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fichaId: fichaIdComp, escalaReceitas: 1, dataProducao: hoje }) })
       const j = await r.json().catch(() => null)
       if (r.ok && j?.ordemId) window.location.href = `/empresas/${id}/estoque/producao/${j.ordemId}`

@@ -8,6 +8,7 @@ import { listOrdens, criarOrdem, OrdemError } from '@/lib/stock/producao/ordens'
 import { sugestoesDeProducao } from '@/lib/stock/producao/sugestao-cardapio'
 import { cardsDoPainel, lotesDoPeriodo, ESTADOS_ABERTOS, ehDeOntem } from '@/lib/stock/producao/painel-producao'
 import { conclusoesNoPeriodo } from '@/lib/stock/producao/conclusao'
+import { diaEmSaoPaulo, janelaDoDiaSP } from '@/lib/datas/dia-sao-paulo'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -20,16 +21,18 @@ export async function GET(request: NextRequest, { params }: Params) {
   // não é histórico (a regra central do redesenho).
   const sp = request.nextUrl.searchParams
   const agora = new Date()
-  // ⚠️⚠️ O DIA É O DE QUEM OPERA (BRT), NUNCA UTC — pego em prod antes do dono abrir a tela.
-  // Às 22:34 de 01/09 no servidor (UTC−3) as 7 conclusões da noite já tinham `criadoEm` em
-  // 02/09 UTC. Com o recorte em `Date.UTC` a tela abria em "hoje" com TUDO ZERADO, minutos
-  // depois de ele produzir 7 lotes — o tipo de zero que faz alguém achar que quebrou.
-  // É a mesma família do `fmt` da conferência (20/08) e da âncora de 31/07 12:00 UTC.
-  const BRT = -3
-  const local = new Date(agora.getTime() + BRT * 3_600_000)
-  const hoje0 = new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate()) - BRT * 3_600_000)
-  const de = sp.get('de') ? new Date(`${sp.get('de')}T00:00:00.000Z`) : hoje0
-  const ate = sp.get('ate') ? new Date(`${sp.get('ate')}T23:59:59.999Z`) : new Date(hoje0.getTime() + 86_399_999)
+  // ⚠️⚠️ O DIA É O DE QUEM OPERA (São Paulo), NUNCA UTC.
+  //
+  // ⛔ ISTO JÁ FOI CORRIGIDO UMA VEZ, EM 02/09 — **no ramo sem parâmetros**. E a tela SEMPRE
+  // manda `?de=&ate=`, então o ramo consertado é o único que ela nunca usa: o recorte
+  // `${dia}T00:00:00.000Z` continuou cobrindo o dia UTC, que em São Paulo começa às 21h do
+  // dia ANTERIOR. Medido em prod às 22:16 de 05/09: 9 conclusões do dia, "hoje" mostrando
+  // ZERO. É a família "N caminhos, 1 esquecido" — consertar o vizinho e não o vizinho do lado.
+  //
+  // ⭐ Agora os dois ramos passam pela MESMA função (`janelaDoDiaSP`), então não há como um
+  // responder um dia e o outro responder outro.
+  const hoje = diaEmSaoPaulo(agora)
+  const { de, ate } = janelaDoDiaSP(sp.get('de') || hoje, sp.get('ate') || hoje)
 
   const [ordens, sugestoes, painel, concluidas] = await Promise.all([
     listOrdens(companyId),
@@ -50,7 +53,9 @@ export async function GET(request: NextRequest, { params }: Params) {
       const s = seloPorConclusao.get(c.id)
       return { ...c, pct: s?.pct ?? null, faixa: s?.faixa ?? 'SEM_REGUA', motivo: s?.motivo ?? null, selo: s?.selo ?? 'SEM_DADO' }
     }),
-    periodo: { de: de.toISOString().slice(0, 10), ate: ate.toISOString().slice(0, 10) },
+    // ⚠️ o período ECOA os DIAS pedidos (calendário de SP), nunca o recorte UTC — senão a
+    // tela imprimiria 'de 04/09' pra uma janela que começa no dia 05.
+    periodo: { de: sp.get('de') || hoje, ate: sp.get('ate') || hoje },
   })
 }
 
