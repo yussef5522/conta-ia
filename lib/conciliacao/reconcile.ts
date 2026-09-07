@@ -56,6 +56,19 @@ export interface ReconcileInput {
   // groupId compartilhado entre N candidates do mesmo Find & Match (pra
   // undo agrupado). Null quando 1:1.
   reconcileGroupId?: string | null
+  /**
+   * ⭐⭐ A DIFERENÇA QUE O DONO VIU E ACEITOU (07/09/2026) — juros/tarifa de boleto.
+   *
+   * ⛔ NÃO é um `force` disfarçado. `force` desliga TODAS as pré-validações e
+   * existe pra backfill interno; este campo carrega **o número exato** que a tela
+   * mostrou, e a conciliação só passa se ele **bater ao centavo** com a diferença
+   * real. Assim o cliente não consegue "ignorar a checagem" — ele só consegue
+   * confirmar uma diferença que ele de fato enxergou.
+   *
+   * Nasce do caso Cancian: boleto R$ 230,81, pago R$ 232,81. Recusar o par seria
+   * deixar o mesmo dinheiro em duas linhas; casar sozinho seria inventar juros.
+   */
+  diferencaAceita?: number
 }
 
 const MAX_DAYS_APART = 5
@@ -124,10 +137,15 @@ export async function reconcileTransactions(
     candidateMode = 'CLASSIC'
   } else if (candidate.lifecycle === 'EFFECTED') {
     candidateMode = 'ORPHAN'
-    // Defesa: nunca conciliar OFX-vs-OFX (mesma decisão do find-candidates Sprint A)
-    if (candidate.origin !== 'IMPORT_EXCEL' && candidate.origin !== 'MANUAL') {
+    // Defesa: nunca conciliar OFX-vs-OFX (mesma decisão do find-candidates Sprint A).
+    // ⭐ ESTOQUE_NF entrou em 07/09/2026: a conta a pagar nascida da conferência de
+    // NF-e vira EFFECTED quando o dono a marca como paga, e aí é EXATAMENTE a mesma
+    // forma de um órfão de Excel — mesma dupla contagem, mesma saída. Ficar de fora
+    // da lista era o motivo de a costura do Cancian só existir como script.
+    const ORIGENS_ORFAS = ['IMPORT_EXCEL', 'MANUAL', 'ESTOQUE_NF']
+    if (!ORIGENS_ORFAS.includes(candidate.origin)) {
       throw new ReconciliationError(
-        `Candidato EFFECTED só pode ser conciliado se origin=IMPORT_EXCEL/MANUAL (recebeu ${candidate.origin})`,
+        `Candidato EFFECTED só pode ser conciliado se origin=${ORIGENS_ORFAS.join('/')} (recebeu ${candidate.origin})`,
       )
     }
   } else {
@@ -176,9 +194,16 @@ export async function reconcileTransactions(
   // candidate individual NÃO bate com OFX; a soma das N bate, validada
   // upstream no endpoint /find-and-match/reconcile).
   if (!input.force && !input.allowMultiReconcile) {
-    if (Math.abs(ofx.amount - candidate.amount) >= AMOUNT_EQ_TOLERANCE) {
+    const diferencaReal = Math.round((ofx.amount - candidate.amount) * 100) / 100
+    // ⭐ a diferença só passa se o dono tiver CONFIRMADO ESTE número. Bater ao
+    // centavo é o que separa "vi e aceito os R$ 2,00 de juros" de "ignora a trava".
+    const diferencaConfirmada =
+      input.diferencaAceita !== undefined &&
+      Math.abs(input.diferencaAceita - diferencaReal) < AMOUNT_EQ_TOLERANCE
+    if (Math.abs(diferencaReal) >= AMOUNT_EQ_TOLERANCE && !diferencaConfirmada) {
       throw new ReconciliationError(
-        `Valor divergente — OFX R$ ${ofx.amount.toFixed(2)} vs candidato R$ ${candidate.amount.toFixed(2)} (tolerância < R$ 0,01)`,
+        `Valor divergente — OFX R$ ${ofx.amount.toFixed(2)} vs candidato R$ ${candidate.amount.toFixed(2)}`
+        + ` (diferença de R$ ${diferencaReal.toFixed(2)}; confirme a diferença pra conciliar)`,
       )
     }
     const candidateDate = resolveCandidateDate(candidate)
@@ -256,11 +281,23 @@ export async function reconcileTransactions(
       ofxBackfill.supplierId = candidate.supplierId
     }
 
+    // ⭐ o rastro da diferença fica NA CONTA, escrito, não só no audit — é o que
+    // o dono lê seis meses depois quando perguntar "por que 232,81 e não 230,81?".
+    const rastroDaDiferenca =
+      input.diferencaAceita !== undefined && Math.abs(input.diferencaAceita) >= AMOUNT_EQ_TOLERANCE
+        ? `pagamento conciliado com a linha do extrato de ${ofx.date.toISOString().slice(0, 10)}`
+          + ` (R$ ${ofx.amount.toFixed(2)}) · diferença de R$ ${input.diferencaAceita.toFixed(2)}`
+          + ` = juros/tarifa de boleto, confirmada por quem conciliou`
+        : null
+
     const candidateUpdated = await trx.transaction.update({
       where: { id: candidate.id },
       data: {
         reconciledWithId: ofx.id,
         status: 'RECONCILED',
+        ...(rastroDaDiferenca
+          ? { notes: [candidate.notes, rastroDaDiferenca].filter(Boolean).join(' · ') }
+          : {}),
         // Sprint A-effected Fase B.3 — groupId pra undo agrupado N:1
         ...(input.reconcileGroupId !== undefined
           ? { reconcileGroupId: input.reconcileGroupId }
@@ -312,6 +349,7 @@ export async function reconcileTransactions(
           ofxBefore,
           ofxBackfilled: ofxBackfill,
           candidateStatusBefore: candidate.status,
+          diferencaAceita: input.diferencaAceita ?? null,
           reconcileGroupId: input.reconcileGroupId ?? null,
         },
       },

@@ -25,6 +25,7 @@ import {
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu'
 import { VincularTransferenciaModal } from '@/components/pendentes/VincularTransferenciaModal'
+import { SugestaoDeVinculoBanner, type VinculoSugerido } from '@/components/pendentes/SugestaoDeVinculoBanner'
 // ⭐ O MESMO seletor do import (fonte única, REGRA 4). Se precisar adaptar, adapta o
 // componente — não copia. Os 6 tipos e a régua de CREDIT/DEBIT vêm dele.
 import { TransactionKindSelect } from '@/components/import-shared/TransactionKindSelect'
@@ -185,6 +186,11 @@ export function PendentesClient({
   const [transferModalOpen, setTransferModalOpen] = useState(false)
   // Sprint Casar Pagamento (04/08): detecção de pagamento de empréstimo por tx
   const [emprestimoDet, setEmprestimoDet] = useState<Record<string, LoanPaymentDetection>>({})
+  // ⭐⭐ SUGESTÃO DE VÍNCULO (07/09/2026) — o buraco que o dono achou:
+  // *"o matcher CONCILIATE_PAYABLE existe, a sugestão PAGAMENTO_CONTA existe no
+  // import — mas a tela de Pendentes NÃO roda o matcher nem oferece o vínculo"*.
+  // ⛔ Mesma função do import e da Conciliação (`sugerirVinculos`): fonte única.
+  const [vinculoSug, setVinculoSug] = useState<Record<string, VinculoSugerido[]>>({})
   const [linkModal, setLinkModal] = useState<{ loanId: string; txId: string } | null>(null)
   const [solicitandoIa, setSolicitandoIa] = useState<Set<string>>(new Set())
   // Sprint 3.0.1 — banner persistente de falhas (Safari ITP cookie bug)
@@ -313,6 +319,13 @@ export function PendentesClient({
           setTransferCoverage(d?.coverage ?? null)
         })
         .catch((e) => console.warn('[pendentes] detect-active-transfers falhou:', e))
+      // ⭐ Sugestão de VÍNCULO (07/09/2026). Read-only, nunca vincula sozinha.
+      fetch(`/api/conciliacao/sugestoes-pendentes?empresaId=${empresaId}`, { credentials: 'include' })
+        .then((r) => { if (!r.ok) { console.warn(`[pendentes] sugestoes-pendentes HTTP ${r.status}`); return null } return r.json() })
+        .then((d: { sugestoes?: Record<string, VinculoSugerido[]> } | null) => {
+          setVinculoSug(d?.sugestoes ?? {})
+        })
+        .catch((e) => console.warn('[pendentes] sugestoes-pendentes falhou:', e))
       // Sprint Filtro de Data Parte A: guardar o total real pra UI mostrar
       // "Mostrando X de Y" e desambiguar quando há mais do que cabe na página.
       setTotalReal(data.paginacao?.total ?? txs.length)
@@ -1323,6 +1336,32 @@ export function PendentesClient({
                   </DropdownMenu>
                 </div>
                 </div>
+                {/* ⭐⭐ SUGESTÃO DE VÍNCULO (07/09/2026) — vem ANTES da sugestão de
+                    categoria de propósito: quando a linha é o pagamento de uma conta
+                    que já existe, vincular é a resposta certa e categorizar é a
+                    errada (a categoria vem da conta). ⛔ Mas o dropdown continua ali:
+                    sugestão nunca fecha a saída padrão do usuário. */}
+                {vinculoSug[t.id]?.length > 0 && (
+                  <SugestaoDeVinculoBanner
+                    empresaId={empresaId}
+                    transacaoId={t.id}
+                    sugestoes={vinculoSug[t.id]}
+                    onVinculada={(txId) => {
+                      setTransacoes((prev) => prev.filter((x) => x.id !== txId))
+                      setVinculoSug((prev) => { const n = { ...prev }; delete n[txId]; return n })
+                    }}
+                    onRecusada={(txId, contaId, extratoId) => {
+                      // ⚠️ some só ESTE par — a linha continua na fila com as outras
+                      // sugestões, porque recusar um par não é recusar a linha.
+                      setVinculoSug((prev) => ({
+                        ...prev,
+                        [txId]: (prev[txId] ?? []).filter(
+                          (s) => !(s.contaId === contaId && s.extratoId === extratoId),
+                        ),
+                      }))
+                    }}
+                  />
+                )}
                 {/* Sprint 5.0.2.r — Banner Sugerido por IA: SIBLING embaixo
                     (não LATERAL). Container outer é flex-col, então fica
                     em linha nova garantidamente — descrição da empresa

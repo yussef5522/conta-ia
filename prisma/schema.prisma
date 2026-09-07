@@ -4389,3 +4389,28 @@ model StockVendaDiaDispensado {
   @@index([companyId, escopo, criadoEm])
   @@map("stock_venda_dia_dispensado")
 }
+
+/// ⭐⭐ "NÃO É ISSO" — a recusa de um par sugerido (07/09/2026).
+///
+/// Sem esta tabela, recusar era um gesto sem memória: a mesma sugestão voltava no
+/// próximo carregamento, e a fila nunca esvaziava de verdade. A recusa é do PAR
+/// (esta linha × esta conta), nunca da linha inteira — o mesmo extrato continua
+/// podendo casar com outra nota do mesmo fornecedor.
+///
+/// ⛔ Único por par: recusar duas vezes é impossível por construção, não "checado".
+/// ⚠️ Reversível pelo rastro (quem/quando), como toda decisão do dono no módulo.
+model ConciliacaoParRecusado {
+  id         String   @id @default(cuid())
+  companyId  String
+  /// a linha do extrato (Transaction EFFECTED de origem OFX)
+  extratoId  String
+  /// a conta a pagar/receber (Transaction PAYABLE/RECEIVABLE, ou ex-payable sem vínculo)
+  contaId    String
+  motivo     String?
+  recusadoPorId String?
+  criadoEm   DateTime @default(now())
+
+  @@unique([extratoId, contaId])
+  @@index([companyId, criadoEm])
+  @@map("conciliacao_par_recusado")
+}

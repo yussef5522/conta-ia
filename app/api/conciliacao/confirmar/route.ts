@@ -15,6 +15,12 @@ import {
 const confirmarSchema = z.object({
   ofxTransactionId: z.string().cuid(),
   candidateId: z.string().cuid(),
+  /**
+   * ⭐ A diferença que o dono VIU na tela e aceitou (juros/tarifa de boleto).
+   * ⛔ Não é um `force`: o orquestrador só passa se este número bater AO CENTAVO
+   * com a diferença real. Mandar um número qualquer continua sendo recusado.
+   */
+  diferencaAceita: z.number().optional(),
 })
 
 export async function POST(request: NextRequest) {

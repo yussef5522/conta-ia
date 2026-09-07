@@ -534,3 +534,101 @@ describe('undoReconciliation — ORPHAN undo (Sprint A-effected)', () => {
     )
   })
 })
+
+// ────────────────────────────────────────────────────────────────
+// ⭐⭐ O CASO CANCIAN (07/09/2026) — a costura que só existia como script.
+//
+// Duas travas reais impediam o gesto pela tela, e as duas estão medidas em prod:
+//   1. a conta a pagar nasce da conferência de NF-e → `origin: 'ESTOQUE_NF'`, e o
+//      modo ÓRFÃO só aceitava IMPORT_EXCEL/MANUAL;
+//   2. o boleto era R$ 230,81 e o banco debitou R$ 232,81 → R$ 2,00 de juros, e a
+//      trava de valor exige diferença < R$ 0,01.
+//
+// ⛔ A saída NÃO é afrouxar a trava: é exigir que o dono confirme O NÚMERO EXATO.
+// ────────────────────────────────────────────────────────────────
+
+const cancianOFX = {
+  ...baseOFX,
+  id: 'ofx-cancian',
+  description: 'CARLOS CANCIAN CIA LTDA - Pagamento',
+  amount: 232.81,
+  date: utc(2026, 7, 31),
+}
+const cancianExPayable = {
+  ...baseCandidateOrphan,
+  id: 'exp-cancian',
+  description: 'CARLOS CANCIAN E CIA LTDA — NF 834771 (parcela 001)',
+  amount: 230.81,
+  origin: 'ESTOQUE_NF',
+  date: utc(2026, 7, 29),
+  dueDate: utc(2026, 7, 29),
+  paymentDate: utc(2026, 7, 29),
+  notes: 'Gerada pelo estoque na conferência da NF-e 4326089...',
+}
+
+describe('o caso Cancian — ex-payable de NF-e com juros de boleto', () => {
+  it('⛔ REPONDO A TRAVA 1: ESTOQUE_NF fora das origens órfãs → recusa', async () => {
+    mockBothFinds(cancianOFX, { ...cancianExPayable, origin: 'ESTOQUE_XYZ' })
+    await expect(
+      reconcileTransactions(
+        { ofxTransactionId: 'ofx-cancian', candidateId: 'exp-cancian', diferencaAceita: 2 },
+        fakeCtx,
+      ),
+    ).rejects.toThrow(ReconciliationError)
+  })
+
+  it('⛔ REPONDO A TRAVA 2: sem confirmar a diferença, os R$ 2,00 barram a costura', async () => {
+    mockBothFinds(cancianOFX, cancianExPayable)
+    await expect(
+      reconcileTransactions(
+        { ofxTransactionId: 'ofx-cancian', candidateId: 'exp-cancian' },
+        fakeCtx,
+      ),
+    ).rejects.toThrow(/diferença de R\$ 2\.00/)
+  })
+
+  it('⛔⛔ CONFIRMAR O NÚMERO ERRADO NÃO PASSA — não é um force disfarçado', async () => {
+    mockBothFinds(cancianOFX, cancianExPayable)
+    await expect(
+      reconcileTransactions(
+        { ofxTransactionId: 'ofx-cancian', candidateId: 'exp-cancian', diferencaAceita: 50 },
+        fakeCtx,
+      ),
+    ).rejects.toThrow(ReconciliationError)
+  })
+
+  it('⭐ confirmando os R$ 2,00 exatos, a ex-payable liquida VINCULADA', async () => {
+    mockBothFinds(cancianOFX, cancianExPayable)
+    await reconcileTransactions(
+      { ofxTransactionId: 'ofx-cancian', candidateId: 'exp-cancian', diferencaAceita: 2 },
+      fakeCtx,
+    )
+    const call = updateMock.mock.calls.find(
+      (c) => (c[0] as { where: { id: string } }).where.id === 'exp-cancian',
+    ) as [{ data: Record<string, unknown> }] | undefined
+    expect(call).toBeDefined()
+    const data = call![0].data
+    expect(data.reconciledWithId).toBe('ofx-cancian')
+    expect(data.status).toBe('RECONCILED')
+    // ⚠️ ÓRFÃO NÃO MEXE NA VERDADE CONTÁBIL da conta: nada de lifecycle/valor/data
+    expect(data.lifecycle).toBeUndefined()
+    expect(data.amount).toBeUndefined()
+    expect(data.paymentDate).toBeUndefined()
+    // ⭐ e o rastro da diferença fica escrito NA CONTA, preservando a nota antiga
+    expect(String(data.notes)).toContain('Gerada pelo estoque')
+    expect(String(data.notes)).toContain('juros/tarifa de boleto')
+    expect(String(data.notes)).toContain('2.00')
+  })
+
+  it('⚠️ diferença ZERO não escreve rastro de juros (não inventa o que não houve)', async () => {
+    mockBothFinds(cancianOFX, { ...cancianExPayable, amount: 232.81 })
+    await reconcileTransactions(
+      { ofxTransactionId: 'ofx-cancian', candidateId: 'exp-cancian', diferencaAceita: 0 },
+      fakeCtx,
+    )
+    const call = updateMock.mock.calls.find(
+      (c) => (c[0] as { where: { id: string } }).where.id === 'exp-cancian',
+    ) as [{ data: Record<string, unknown> }] | undefined
+    expect(call![0].data.notes).toBeUndefined()
+  })
+})
