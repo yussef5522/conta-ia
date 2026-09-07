@@ -278,6 +278,10 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 **⚠️ O QUE SUMIU DA TELA E ONDE FOI PARAR:** categorizar linha de extrato é a fila de `/pendentes`, que cobre o **mesmo universo** (a query velha era subconjunto dela) — nada se perdeu. O **Find & Match** (a saída do Xero pro caso difícil) continua vivo, agora pendurado no card do par em **"Procurar outra"**.
 
+**⚠️⚠️ 9,6 s → 242 ms: O LAÇO ESTAVA DO LADO ERRADO, e só a medição pela rota real mostrou.** A 1ª versão chamava `sugerirVinculos` uma vez por **PAR** (conta × linha), e **cada chamada reconhece o fornecedor contra os 78 nomes cadastrados**: 110 contas × ~1.300 linhas × 78 nomes de Jaro-Winkler. Numa rota que o **badge do menu consulta a cada 60 s**. A cura é o laço **por LINHA do extrato**, com uma **peneira barata de valor/data/direção ANTES de qualquer texto** — o `scoreMatch` já descarta valor fora de ±5%, então comparar dois números evita quase todo o trabalho caro, e o reconhecimento passa a rodar uma vez por linha (só nas que têm conta compatível). ⭐ **A prova de que a inversão não mudou comportamento é o resultado idêntico ao centavo:** os mesmos 2 pares, os mesmos scores 80/70, as mesmas frases.
+
+**PROVADO EM PROD (`Xl4gM4FQ7k3E1q8SCci7P`):** `/api/conciliacao/fila` **200 em 242 ms** · `/api/dashboard/badges` diz **2** e a fila diz **2** — badge e tela pelo mesmo número, que é o ponto.
+
 ## ⭐⭐⭐ CONFIRMAR O IMPORT **JÁ BAIXA** — O GESTO ÚNICO DA VENDA (07/09/2026)
 
 **O DONO RELATOU UM BUG E A MEDIÇÃO ACHOU OUTRA COISA — vale registrar que o servidor estava certo.** *"Importei os complementos de 06/09 …, cliquei BAIXAR no dia, e NADA baixou: porção de calabresa segue 597 UN."* Medido pelo caminho real, com sessão assinada: o motor monta o plano de 06/09 **perfeito** (31 nomes com destino, 335 de 736 ocorrências, CALABRESA 112 → a ficha certa), e o **endpoint responde 200** no preview e no confirmar. Nenhum erro no log do minuto. ⛔ **O que faltava era o SEGUNDO CLIQUE** — "baixar" abria o preview, e confirmar era outro gesto, em outro lugar da tela, sem cara de continuação do primeiro.
