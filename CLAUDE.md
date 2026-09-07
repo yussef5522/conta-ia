@@ -242,6 +242,24 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⭐⭐⭐ CONFIRMAR O IMPORT **JÁ BAIXA** — O GESTO ÚNICO DA VENDA (07/09/2026)
+
+**O DONO RELATOU UM BUG E A MEDIÇÃO ACHOU OUTRA COISA — vale registrar que o servidor estava certo.** *"Importei os complementos de 06/09 …, cliquei BAIXAR no dia, e NADA baixou: porção de calabresa segue 597 UN."* Medido pelo caminho real, com sessão assinada: o motor monta o plano de 06/09 **perfeito** (31 nomes com destino, 335 de 736 ocorrências, CALABRESA 112 → a ficha certa), e o **endpoint responde 200** no preview e no confirmar. Nenhum erro no log do minuto. ⛔ **O que faltava era o SEGUNDO CLIQUE** — "baixar" abria o preview, e confirmar era outro gesto, em outro lugar da tela, sem cara de continuação do primeiro.
+
+**⭐⭐ A REGRA NOVA, DECISÃO DO DONO:** *"O botão 'baixar' separado é estado intermediário que só serve pra ser esquecido — provou isso a semana inteira (dias 02–04 importados e nunca baixados)."* **CONFIRMAR IMPORT (produtos ou complementos) = importa E BAIXA na mesma ação.** O preview do import passa a mostrar **também o resumo da baixa** antes do confirmar: um preview, um clique, tudo. O botão "baixar" separado **sumiu**; a lista de dias mostra **estado** (baixado / precisa reprocessar / não baixar — decisão), não uma tarefa pendente.
+
+**⛔⛔ É O PADRÃO "COMMIT + PONTE" DO RECEBIMENTO, e a ordem importa:** as linhas gravam na `$transaction`, ela **commita**, e só então a baixa roda (`baixarSeHouverFicha`). Se a ponte falhar, o import **NÃO desfaz** — avisa (`avisoBaixa` / `baixaFalhou`) e o dia fica visível como pendente. ⚠️ Enfiar a baixa dentro da mesma transação faria um erro de ficha **apagar o import inteiro**, e o dono perderia os 113 nomes da prateleira por causa de um destino faltando.
+- **sem ficha/destino → não baixa** (entra na prateleira, como hoje) e mapear depois acende o `precisaReprocessar` do dia — o mecanismo que já existe cobre.
+- **PERÍODO continua nunca baixando** — a trava velha sobreviveu à mudança, e tem teste próprio dizendo isso.
+- **reprocessar (estorna-e-refaz) continua gesto próprio**, com preview: mexer no ledger sozinho a partir de um import é o oposto da disciplina do módulo.
+- ⚠️ **`lib/stock/vendas/identidade-import-complemento.ts` (novo)**: `importIdDe` / `ehLinhaDePeriodo` saíram do import porque agora o import chama a baixa **e** a baixa lê o `importId` — sem a extração, ciclo.
+
+**⚠️ UMA DECISÃO QUE EU MARQUEI EM VEZ DE ESCOLHER SOZINHO:** o dono pediu *"reimport de dia baixado → precisa reprocessar"*. Com o gesto único o reimport **se auto-corrige** (estorna e refaz no confirmar, com o preview avisando *"este dia já foi baixado — confirmar estorna e refaz"*), então `precisaReprocessar` ficou reservado ao caso de **mapeamento**, que é o que ele mesmo nomeou no bullet seguinte. Se ele preferir a marca também no reimport, é uma linha.
+
+**PROVADO EM PROD (07/09, read-only pelas MESMAS funções da tela):** os **quatro** dias baixaram — 06/09 (−118 calabresa), 04/09 (−106), 03/09 (−80), 02/09 (−64), todos por Yussef às 01:28-01:29, **20 minutos depois do deploy `63648f4`**. A porção de calabresa foi de **597 → 229 UN**, e 597−(118+106+80+64) = **229 à unidade**. Nenhum dia em `PENDENTE` nem em `PRECISA REPROCESSAR`. 8.695 verdes · TS 0 · deploy 4/4 (`v5wOOPP9ZRL0XamtDegIq`).
+
+⚠️ **`baixado` GANHA DE `dispensado` NO RÓTULO** (02 e 03/09 estavam dispensados e o dono baixou assim mesmo): a ordem da tela é **período → reprocessar → baixado → dispensado → pendente**. Script de diagnóstico que ordene diferente **inventa um segundo rótulo pro mesmo dia** — a lição do B1 vale pro script também, não só pra tela.
+
 ## ⛔⛔⛔ A ETAPA ABERTA: DO RÓTULO HONESTO AO GESTO DE RESOLVER (06-07/09/2026)
 
 **A FRESTA, achada pelo dono em prod:** etapa iniciada com o PIN da Carlise (16:38) e ordem concluída pela **tela de Produção** (o caminho do encarregado, que ajusta o consumo e não passa pelo tablet). A etapa ficou **aberta 7h05 sem NENHUM gesto que a resolvesse** — o tablet recusa (ordem encerrada) e a Produção não tinha botão. E o "HOJE ao vivo" a contava no AGORA: *"Carlise · fazendo há 7h05"*, **o retrato do presente mentindo por causa de uma ordem que já acabou**.
