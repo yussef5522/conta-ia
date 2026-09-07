@@ -5,10 +5,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
-import {
-  defaultTipoForCompany,
-  getTipoFilter,
-} from '@/lib/conciliacao/tipo-filter'
+import { contarVinculosEsperandoDecisao } from '@/lib/conciliacao/fila-de-conciliacao'
 import { NEEDS_REVIEW_WHERE_PRISMA } from '@/lib/transacoes/needs-review'
 
 export async function GET(request: NextRequest) {
@@ -22,16 +19,11 @@ export async function GET(request: NextRequest) {
     const ctx = await getAuthContext(request, empresaId)
     ctx.requirePermission('transaction.view')
 
-    // B1 + B2 (09/06/2026): badge da Conciliação tem que casar com a tela.
-    // Carrega companyType pra aplicar a MESMA heurística de tipo que a UI usa
-    // por default (restaurant/retail/industry → apenas-pagamentos; resto →
-    // todos). Sem isso o badge contava CREDIT que a tela escondia.
-    const empresa = await prisma.company.findUnique({
-      where: { id: empresaId },
-      select: { type: true },
-    })
-    const tipoDefault = defaultTipoForCompany(empresa?.type)
-    const tipoFilter = getTipoFilter(tipoDefault)
+    // ⚠️ O FILTRO POR TIPO SAIU DAQUI (07/09/2026). Ele existia pra o badge casar
+    // com o "apenas-pagamentos" que a tela velha aplicava por default. A fila nova
+    // não filtra por tipo — ela pergunta por VÍNCULO, e uma conta a receber sem
+    // pagamento casado é trabalho igual. Manter o filtro faria o badge esconder
+    // metade do que a tela mostra.
 
     const now = new Date()
     const in3Days = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000)
@@ -81,28 +73,17 @@ export async function GET(request: NextRequest) {
           dueDate: { gte: now, lte: in3Days },
         },
       }),
-      // Tx OFX EFFECTED a conciliar — IDÊNTICO ao filtro de
-      // /api/conciliacao/ofx-pendentes pra badge bater com a aba.
-      // Sprint Sync-Pendentes-Conciliacao: inclui categoryId IS NULL
-      // (OFX categorizada via Pendentes/Create/regra IA sai da fila).
-      // B1 (09/06/2026): transferGroupId IS NULL + type != 'TRANSFER' —
-      //   transferência pareada não é trabalho de conciliação.
-      // B2 (09/06/2026): tipoFilter por defaultTipoForCompany pra contador
-      //   bater com o que a tela mostra por default. Se tipoFilter.type
-      //   estiver setado (DEBIT/CREDIT), já cobre "!= TRANSFER" naturalmente.
-      prisma.transaction.count({
-        where: {
-          // Sprint Fundação Status (28/06/2026): FONTE DE VERDADE ÚNICA.
-          ...NEEDS_REVIEW_WHERE_PRISMA,
-          bankAccount: { companyId: empresaId },
-          origin: 'OFX',
-          lifecycle: 'EFFECTED',
-          cashCoded: false,
-          ...(tipoFilter.type
-            ? { type: tipoFilter.type }
-            : {}),
-        },
-      }),
+      // ⛔⛔ ESTE BADGE ERA A SEGUNDA DERIVAÇÃO (corrigido em 07/09/2026).
+      //
+      // Ele contava `origin=OFX` + `categoryId IS NULL` + `cashCoded=false` — a
+      // definição VELHA da fila, que era a de CLASSIFICAÇÃO com nome trocado. Com
+      // a tela passando a perguntar "que vínculo falta?", o badge passaria a mentir
+      // ao contrário do erro antigo: **0 no menu com 2 pares esperando decisão**.
+      //
+      // ⭐ Agora o número sai da MESMA função que a tela desenha
+      // (`filaDeConciliacao`). É a lição do B1: duas derivações da mesma pergunta
+      // divergem no primeiro caso de borda — e este caso de borda já estava aqui.
+      contarVinculosEsperandoDecisao(empresaId),
       // Badge "Pendentes" — alinha com /pendentes via fonte única.
       // Sprint Fundação Status (28/06/2026): REMOVIDO status='PENDING' forçado
       // — pendência é sobre FALTA de classificação, não sobre o nome do estado.

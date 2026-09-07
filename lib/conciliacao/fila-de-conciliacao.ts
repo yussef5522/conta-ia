@@ -32,6 +32,34 @@ type Db = PrismaClient
 /** janela de busca do par, em dias. Mesma do `find-candidates` histórico. */
 const JANELA_DIAS = 15
 
+/**
+ * ⛔⛔ QUANDO UMA LINHA DO EXTRATO ESTÁ **DISPONÍVEL** PRA SER O PAGAMENTO DE UMA CONTA.
+ *
+ * Achado pelos guards da casa em 07/09: a primeira versão desta fila oferecia
+ * QUALQUER linha OFX sem vínculo — inclusive dinheiro que **já tem dono**:
+ * pagamento de fatura de cartão, parcela de empréstimo já casada, transferência
+ * entre contas próprias, linha que o dono mandou ignorar. Sugerir uma dessas como
+ * pagamento de um boleto é oferecer o mesmo dinheiro duas vezes.
+ *
+ * ⚠️ E o que **NÃO** entra aqui é tão importante quanto: `categoryId IS NULL` fica
+ * DE FORA de propósito. Era exatamente ele que fazia a tela velha esquecer a linha
+ * assim que ela ganhava categoria — **ter categoria não quita conta nenhuma**.
+ */
+export const LINHA_DISPONIVEL_WHERE = {
+  origin: 'OFX',
+  lifecycle: 'EFFECTED',
+  reconciledWithId: null,
+  reconciledFrom: { none: {} },
+  isCardPayment: false,
+  loanInstallmentPaid: { is: null },
+  loanInstallmentPayments: { none: {} },
+  pendingTransfer: false,
+  isInternalTransfer: false,
+  transferGroupId: null,
+  ignoredAt: null,
+  type: { not: 'TRANSFER' as const },
+} as const
+
 export interface ContaEsperandoPagamento {
   conta: LadoDoPar
   /** PAYABLE em aberto · EX_PAYABLE = já marcada como paga e sem vínculo (dupla contagem) */
@@ -126,8 +154,8 @@ export async function contasEsperandoPagamento(
   const janela = JANELA_DIAS * 86400000
   const extratos = await db.transaction.findMany({
     where: {
-      bankAccount: { companyId }, origin: 'OFX', lifecycle: 'EFFECTED',
-      reconciledFrom: { none: {} }, reconciledWithId: null,
+      ...LINHA_DISPONIVEL_WHERE,
+      bankAccount: { companyId },
       date: { gte: new Date(Math.min(...alvos) - janela), lte: new Date(Math.max(...alvos) + janela) },
     },
     select: {
@@ -324,8 +352,8 @@ export async function sugestoesParaPendentes(
     }),
     db.transaction.findMany({
       where: {
-        bankAccount: { companyId }, origin: 'OFX', lifecycle: 'EFFECTED',
-        reconciledWithId: null, reconciledFrom: { none: {} },
+        ...LINHA_DISPONIVEL_WHERE,
+        bankAccount: { companyId },
         date: { gte: new Date(min), lte: new Date(max) },
       },
       select: {
@@ -375,4 +403,21 @@ export async function sugestoesParaPendentes(
     if (achados.length) out[t.id] = achados.sort((a, b) => b.score - a.score).slice(0, 3)
   }
   return out
+}
+
+/**
+ * ⭐ O NÚMERO DO BADGE DO MENU — a MESMA derivação da tela.
+ *
+ * ⛔ O badge tinha uma query própria (a definição velha da fila). Duas derivações
+ * da mesma pergunta divergem no primeiro caso de borda, e este já tinha divergido:
+ * com a fila nova, o menu mostraria **0** enquanto a tela mostra **2 pares**.
+ *
+ * ⚠️ Roda a busca inteira de propósito. Uma versão "leve e aproximada" seria a
+ * segunda derivação de novo, com outro nome.
+ */
+export async function contarVinculosEsperandoDecisao(
+  companyId: string, db: Db = defaultPrisma,
+): Promise<number> {
+  const contas = await contasEsperandoPagamento(companyId, db)
+  return contas.filter((c) => c.sugestoes.length > 0).length
 }

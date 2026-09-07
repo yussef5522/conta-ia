@@ -1,81 +1,57 @@
 'use client'
 
-// Sprint A-effected Fase B.1 — Página /conciliacao no modelo Xero.
+// ⭐⭐⭐ A FILA DE CONCILIAÇÃO (07/09/2026) — desenho aprovado pelo dono no mock.
 //
-// 4 abas do Xero:
-//   - Reconcile (default) — lista de statement lines com 4 ações por linha
-//   - Cash coding         — placeholder Fase C (grid bulk pra varejo)
-//   - Bank statements     — placeholder com link pra import OFX
-//   - Account transactions — histórico de conciliadas (era "Já Conciliado")
+// ⛔⛔ A TELA ANTERIOR ERRAVA DOS DOIS LADOS, e pelo MESMO motivo: ela listava
+// `origin=OFX` + `categoryId IS NULL` + `cashCoded=false` — a fila de
+// CLASSIFICAÇÃO com o nome trocado. Daí ela mostrava **o que não é dela**
+// (qualquer linha sem categoria, tendo par ou não) e **não mostrava o que é dela**
+// (a linha que ganha categoria some pra sempre, mesmo com a conta aberta).
+// Medido na Caçula em 07/09: **0 linhas na tela** com **108 contas na fila real**
+// e R$ 230,81 em dupla contagem.
 //
-// Topo sóbrio: Statement Balance / Balance in Xero / Diferença a conciliar.
-// Filtros: Conta / Período / Tipo (Só pagamentos/Só recebimentos/Todos).
+// ⭐ A PERGUNTA DA TELA MUDOU: não é "o que falta categorizar" (isso é /pendentes)
+// — é **"estes dois registros são o mesmo dinheiro?"**.
+//
+// ⚠️ O QUE SUMIU DAQUI E ONDE ESTÁ: categorizar linha de extrato é a fila de
+// /pendentes, que cobre o MESMO universo (a query velha era um subconjunto dela).
+// O Find & Match continua vivo, agora pendurado no card do par ("Procurar outra").
 
-import { useEffect, useState, useCallback, Suspense, useMemo, useRef } from 'react'
+import { useEffect, useState, useCallback, useMemo, Suspense } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Sparkles, CheckCircle2, FileText } from 'lucide-react'
+import { CheckCircle2, FileText, Loader2, AlertTriangle, History } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Header } from '@/components/layout/header'
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useEmpresa } from '@/lib/contexts/empresa-context'
 import { formatBRL } from '@/lib/format/money'
-import { suggestWithdrawal, type SocioRef } from '@/lib/withdrawals/suggest-from-description'
 import { StatementBalanceHeader } from '@/components/conciliacao/statement-balance-header'
 import { HistoricoTable } from '@/components/conciliacao/historico-table'
-import { BulkDryRunModal } from '@/components/conciliacao/bulk-dry-run-modal'
+import { FindAndMatchPanel } from '@/components/conciliacao/find-and-match-panel'
 import {
-  XeroRow,
-  type MatchSuggestion,
-} from '@/components/conciliacao/xero-row'
-import { TipoSelector } from '@/components/conciliacao/tipo-selector'
-import {
-  defaultTipoForCompany,
-  parseTipoParam,
-  type TipoConciliacao,
-} from '@/lib/conciliacao/tipo-filter'
-import { DateRangeFilter } from '@/components/shared/DateRangeFilter'
-import { useDateRangeFilter } from '@/lib/hooks/use-date-range-filter'
+  ParSugerido, type ContaDaFilaDTO, type SugestaoDTO,
+} from '@/components/conciliacao/par-sugerido'
 import { useToast } from '@/components/ui/use-toast'
 import { fetchJson } from '@/lib/http/fetch-json'
 
-// Score mínimo pra entrar na pré-classificação (esconde "TIELE/THIAGO").
-const DRY_RUN_MIN_SCORE = 70
-const HIGH_CONFIDENCE_THRESHOLD = 90
-
-interface Empresa {
-  id: string
-  name: string
-  tradeName: string | null
-  type: string | null
+interface TransferenciaDTO {
+  id: string; descricao: string; valor: number; data: string; tipo: string; conta: string
+}
+interface DuplicataDTO {
+  chave: string
+  linhas: { id: string; descricao: string; valor: number; data: string; conta: string; fitid: string | null; criadaEm: string }[]
+}
+interface FilaDTO {
+  contas: ContaDaFilaDTO[]
+  transferencias: TransferenciaDTO[]
+  duplicatas: DuplicataDTO[]
+  totais: { contas: number; comSugestao: number; transferencias: number; duplicatas: number }
 }
 
-interface OfxTx {
-  id: string
-  description: string
-  amount: number
-  date: string
-  type: string
-  bankAccount: { name: string; bankName: string | null } | null
-}
+type Aba = 'contas' | 'transferencias' | 'duplicatas' | 'historico'
 
-// Tipo local pra evitar import de ConfidenceList (Fase B descontinuada — XeroRow assume)
-interface DryRunPair {
-  ofx: { id: string; description: string; amount: number; date: string; type: string }
-  candidate: {
-    id: string
-    description: string
-    amount: number
-    dueDate: string
-    lifecycle: string
-  }
-  score: number
-  reasoning: string[]
-}
+const dia = (iso: string) => new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'UTC' })
 
 export default function ConciliacaoPage() {
   return (
@@ -89,261 +65,84 @@ function ConciliacaoInner() {
   const { toast } = useToast()
   const router = useRouter()
   const searchParams = useSearchParams()
-  // Fonte única da empresa atual: WorkspaceSwitcher no topo (EmpresaContext).
-  // URL ?empresaId= continua override pra deep-links antigos.
   const { currentEmpresaId: ctxEmpresaId } = useEmpresa()
 
-  const [empresas, setEmpresas] = useState<Empresa[]>([])
   const [empresaId, setEmpresaId] = useState<string>(
     searchParams.get('empresaId') ?? ctxEmpresaId ?? '',
   )
-
   useEffect(() => {
     const urlEmpresaId = searchParams.get('empresaId') ?? ''
-    if (urlEmpresaId) {
-      // URL é source-of-truth (deep-link). Vence o contexto.
-      if (urlEmpresaId !== empresaId) setEmpresaId(urlEmpresaId)
-    } else if (ctxEmpresaId && ctxEmpresaId !== empresaId) {
-      // Sem URL: sincroniza com WorkspaceSwitcher (user trocou no topo).
-      setEmpresaId(ctxEmpresaId)
-    }
+    if (urlEmpresaId) { if (urlEmpresaId !== empresaId) setEmpresaId(urlEmpresaId) }
+    else if (ctxEmpresaId && ctxEmpresaId !== empresaId) setEmpresaId(ctxEmpresaId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, ctxEmpresaId])
 
-  const [ofxTxs, setOfxTxs] = useState<OfxTx[]>([])
-  const [loadingOfx, setLoadingOfx] = useState(true)
-  // Sprint Filtro de Data Parte A (15/06/2026): substituído pelo hook
-  // useDateRangeFilter compartilhado (presets + custom + URL sync).
-  // ?inicio=&fim= ficam na URL — F5 mantém filtro.
-  const { inicio: rangeInicio, fim: rangeFim, setRange } = useDateRangeFilter()
-
-  // Sprint A-effected Fase A — TIPO de conciliação. Bug 3 fix:
-  // Removi o useEffect "setTipoInitialized(false) on empresaId" que causava
-  // race entre estado da URL e heurística. Agora: 1) URL traz tipo → usa e
-  // trava. 2) URL não traz → tipo='todos' temporário até heurística rodar
-  // (só roda uma vez, marcada via tipoLocked).
-  const [tipo, setTipo] = useState<TipoConciliacao>(
-    parseTipoParam(searchParams.get('tipo')),
-  )
-  const [tipoLocked, setTipoLocked] = useState<boolean>(
-    !!searchParams.get('tipo'),
-  )
-
-  // Wrapper: quando user troca manualmente, trava (heurística não sobrescreve)
-  const setTipoUser = useCallback((next: TipoConciliacao) => {
-    setTipo(next)
-    setTipoLocked(true)
-  }, [])
-
-  // Sprint A-effected Fase 2 — Pares pré-classificados (≥70) carregados em
-  // batch via /api/conciliacao/bulk-dry-run. Client divide em Alta e Revisar.
-  const [dryRunPairs, setDryRunPairs] = useState<DryRunPair[]>([])
-  const [dryRunLoading, setDryRunLoading] = useState(false)
-
-  // Bulk modal (revisão pré-aplicação)
-  const [bulkOpen, setBulkOpen] = useState(false)
-
-  // Bug 3 fix v2: AbortController pra cancelar fetch anterior quando
-  // tipo/periodo/empresaId muda. Sem isso, race condition: Promise A
-  // (tipo='todos' inicial) resolve DEPOIS de Promise B (tipo='apenas-
-  // pagamentos' após heurística) → setOfxTxs sobrescreve com dados antigos.
-  const ofxAbortRef = useRef<AbortController | null>(null)
-  const dryRunAbortRef = useRef<AbortController | null>(null)
-
-  // Sprint A-effected Fase 2-fix — refreshKey força BalanceBanner a refetch
-  // quando algo é conciliado/desfeito. Sem isso, banner ficaria parado
-  // mostrando saldo antigo até F5 manual.
+  const [fila, setFila] = useState<FilaDTO | null>(null)
+  const [carregando, setCarregando] = useState(true)
+  const [aba, setAba] = useState<Aba>('contas')
   const [refreshKey, setRefreshKey] = useState(0)
+  // Find & Match aberto pra UMA linha do extrato (a saída do caso difícil)
+  const [procurando, setProcurando] = useState<SugestaoDTO | null>(null)
 
-  // Sprint Conciliação-Visual: busca local sem refetch (preserva scroll
-  // do update otimista). Filtra ofxTxs por descrição/valor/banco/conta.
-  const [busca, setBusca] = useState('')
-
-  // Sprint Retirada-1-Clique: sócios da empresa carregados 1x pra sugestão
-  // visual nos XeroRows (chip "Parece retirada"). Lazy: só se houver empresa.
-  const [socios, setSocios] = useState<SocioRef[]>([])
-  useEffect(() => {
-    if (!empresaId) {
-      setSocios([])
-      return
-    }
-    fetch(`/api/empresas/${empresaId}/withdrawal-context`, {
-      credentials: 'include',
-    })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data: { socios?: SocioRef[] } | null) => {
-        if (data?.socios) setSocios(data.socios)
-      })
-      .catch(() => {
-        /* silencioso — chip desaparece, restante segue */
-      })
-  }, [empresaId])
-
-  useEffect(() => {
-    fetch('/api/empresas')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data?.empresas) {
-          setEmpresas(data.empresas)
-          if (!empresaId && data.empresas.length === 1) {
-            setEmpresaId(data.empresas[0].id)
-          }
-        }
-      })
-  }, [empresaId])
-
-  // Sprint A-effected Fase A — heurística de default por companyType.
-  // Bug 3 fix: roda APENAS se tipo não foi escolhido (tipoLocked=false).
-  // O useEffect anterior `setTipoInitialized(false) on empresaId` foi REMOVIDO
-  // — ele causava reset em mount inicial, sobrescrevendo URL param.
-  useEffect(() => {
-    if (tipoLocked || !empresaId || empresas.length === 0) return
-    const empresa = empresas.find((e) => e.id === empresaId)
-    if (!empresa) return
-    const defaultTipo = defaultTipoForCompany(empresa.type)
-    setTipo(defaultTipo)
-    setTipoLocked(true)
-  }, [empresaId, empresas, tipoLocked])
-
-  const fetchOfxTxs = useCallback(async () => {
-    if (!empresaId) {
-      setLoadingOfx(false)
-      return
-    }
-    // Bug 3 fix v2: aborta fetch anterior antes de disparar novo
-    ofxAbortRef.current?.abort()
-    const controller = new AbortController()
-    ofxAbortRef.current = controller
-
-    setLoadingOfx(true)
+  const carregar = useCallback(async () => {
+    if (!empresaId) { setCarregando(false); return }
+    setCarregando(true)
     try {
-      const qs = new URLSearchParams({ empresaId, limit: '200', tipo })
-      if (rangeInicio) qs.set('inicio', rangeInicio)
-      if (rangeFim) qs.set('fim', rangeFim)
-      const { ok, data, message, aborted } = await fetchJson<{ transacoes: OfxTx[] }>(
-        `/api/conciliacao/ofx-pendentes?${qs}`,
-        { signal: controller.signal },
+      const { ok, data, message } = await fetchJson<FilaDTO>(
+        `/api/conciliacao/fila?empresaId=${empresaId}`,
       )
-      // Aborted OU controller sobrescrito → ignora em silêncio (não é erro).
-      if (aborted || ofxAbortRef.current !== controller) return
       if (!ok) {
-        toast({ variant: 'destructive', title: 'Erro ao carregar OFX pendentes', description: message ?? 'Tenta de novo.' })
+        toast({ variant: 'destructive', title: 'Erro ao carregar a fila', description: message ?? 'Tenta de novo.' })
         return
       }
-      setOfxTxs(data!.transacoes)
-    } finally {
-      if (ofxAbortRef.current === controller) {
-        setLoadingOfx(false)
-      }
-    }
-  }, [empresaId, rangeInicio, rangeFim, tipo, toast])
+      setFila(data!)
+    } finally { setCarregando(false) }
+  }, [empresaId, toast])
 
-  const fetchDryRun = useCallback(async () => {
-    if (!empresaId) return
-    // Bug 3 fix v2: AbortController igual fetchOfxTxs
-    dryRunAbortRef.current?.abort()
-    const controller = new AbortController()
-    dryRunAbortRef.current = controller
-
-    setDryRunLoading(true)
-    try {
-      const qs = new URLSearchParams({
-        empresaId,
-        minScore: String(DRY_RUN_MIN_SCORE),
-        tipo,
-      })
-      const { ok, data, message, aborted } = await fetchJson<{ pairs: DryRunPair[] }>(
-        `/api/conciliacao/bulk-dry-run?${qs}`,
-        { signal: controller.signal },
-      )
-      if (aborted || dryRunAbortRef.current !== controller) return
-      if (!ok) {
-        toast({ variant: 'destructive', title: 'Erro na prévia de conciliação', description: message ?? 'Tenta de novo.' })
-        return
-      }
-      setDryRunPairs(data!.pairs)
-    } finally {
-      if (dryRunAbortRef.current === controller) {
-        setDryRunLoading(false)
-      }
-    }
-  }, [empresaId, tipo, toast])
-
-  useEffect(() => {
-    fetchOfxTxs()
-  }, [fetchOfxTxs])
-
-  useEffect(() => {
-    fetchDryRun()
-  }, [fetchDryRun])
+  useEffect(() => { carregar() }, [carregar])
 
   useEffect(() => {
     if (!empresaId) return
-    const sp = new URLSearchParams()
-    sp.set('empresaId', empresaId)
-    if (tipo !== 'todos') sp.set('tipo', tipo) // 'todos' é default na maioria — omite pra URL limpa
-    router.replace(`?${sp}`, { scroll: false })
-  }, [empresaId, tipo, router])
+    router.replace(`?empresaId=${empresaId}`, { scroll: false })
+  }, [empresaId, router])
 
-  // Sprint A-effected Fase B — Map ofxId → suggestion top pra consolidar
-  // tudo na aba "Conciliar". RowActions decide CASAR/CRIAR conforme suggestion
-  // existe ou não. Cor do botão CASAR indica confiança (≥90 verde, 70-89 amarelo).
-  const suggestionByOfxId = useMemo(() => {
-    const m = new Map<string, MatchSuggestion>()
-    for (const p of dryRunPairs) {
-      m.set(p.ofx.id, {
-        candidateId: p.candidate.id,
-        score: p.score,
-        reasoning: p.reasoning,
-        candidate: p.candidate,
-      })
-    }
-    return m
-  }, [dryRunPairs])
-
-  // Filtragem local — sem refetch, sem perda de scroll. Busca em descrição,
-  // valor (formatado), nome da conta e nome do banco.
-  const ofxTxsFiltradas = useMemo(() => {
-    const term = busca.trim().toLowerCase()
-    if (!term) return ofxTxs
-    return ofxTxs.filter((t) => {
-      if (t.description.toLowerCase().includes(term)) return true
-      const valorStr = formatBRL(Math.abs(t.amount)).toLowerCase()
-      if (valorStr.includes(term)) return true
-      if ((t.bankAccount?.name ?? '').toLowerCase().includes(term)) return true
-      if ((t.bankAccount?.bankName ?? '').toLowerCase().includes(term)) return true
-      return false
+  // ⭐ CONCILIADO SOME DA FILA NA HORA (régua do dono): remoção local, sem refetch
+  // — a lista não desmonta e o scroll fica onde estava. O saldo do topo refetcha.
+  const removerConta = useCallback((contaId: string) => {
+    setFila((f) => {
+      if (!f) return f
+      const contas = f.contas.filter((c) => c.conta.id !== contaId)
+      return { ...f, contas, totais: {
+        ...f.totais,
+        contas: contas.length,
+        comSugestao: contas.filter((c) => c.sugestoes.length > 0).length,
+      } }
     })
-  }, [ofxTxs, busca])
-
-  const altaCount = useMemo(
-    () => dryRunPairs.filter((p) => p.score >= HIGH_CONFIDENCE_THRESHOLD).length,
-    [dryRunPairs],
-  )
-  const altaTotal = useMemo(
-    () =>
-      dryRunPairs
-        .filter((p) => p.score >= HIGH_CONFIDENCE_THRESHOLD)
-        .reduce((acc, p) => acc + Math.abs(p.ofx.amount), 0),
-    [dryRunPairs],
-  )
-
-  function refresh() {
-    void fetchOfxTxs()
-    void fetchDryRun()
-    setRefreshKey((k) => k + 1) // dispara refetch do BalanceBanner
-  }
-
-  // Sprint UX-scroll-jump: remoção otimista sem refetch da lista inteira.
-  // Antes: refresh() → setLoadingOfx(true) → TabsContent renderiza Card de
-  // loading no lugar da lista → unmount → scroll volta pro topo.
-  // Agora: remove só o item conciliado/ignorado do array local + dispara
-  // refresh do balance (header). Lista nunca desmonta, scroll preservado.
-  const removeOfxOptimistic = useCallback((ofxId: string) => {
-    setOfxTxs((prev) => prev.filter((t) => t.id !== ofxId))
-    setDryRunPairs((prev) => prev.filter((p) => p.ofx.id !== ofxId))
-    setRefreshKey((k) => k + 1) // BalanceBanner refetcha saldos (não mexe na lista)
+    setRefreshKey((k) => k + 1)
   }, [])
+
+  // ⚠️ a recusa tira só ESTE par — a conta continua na fila com as outras
+  // sugestões, porque recusar um par não é recusar a conta.
+  const removerPar = useCallback((extratoId: string, contaId: string) => {
+    setFila((f) => {
+      if (!f) return f
+      const contas = f.contas.map((c) =>
+        c.conta.id !== contaId ? c
+          : { ...c, sugestoes: c.sugestoes.filter((s) => s.extratoId !== extratoId) })
+      return { ...f, contas, totais: {
+        ...f.totais, comSugestao: contas.filter((c) => c.sugestoes.length > 0).length,
+      } }
+    })
+  }, [])
+
+  const comSugestao = useMemo(
+    () => (fila?.contas ?? []).filter((c) => c.sugestoes.length > 0), [fila])
+  const semSugestao = useMemo(
+    () => (fila?.contas ?? []).filter((c) => c.sugestoes.length === 0), [fila])
+  const duplaContagem = useMemo(
+    () => comSugestao.filter((c) => c.situacao === 'DUPLA_CONTAGEM').length, [comSugestao])
+
+  const t = fila?.totais
 
   return (
     <div className="space-y-6">
@@ -351,119 +150,225 @@ function ConciliacaoInner() {
         title="Conciliação"
         description={
           empresaId
-            ? `${ofxTxs.length} transação${ofxTxs.length === 1 ? '' : 'ões'} no extrato`
-            : 'Selecione uma empresa pra ver as transações'
+            ? t
+              ? `${t.comSugestao} vínculo${t.comSugestao === 1 ? '' : 's'} esperando decisão · ${t.contas - t.comSugestao} conta${t.contas - t.comSugestao === 1 ? '' : 's'} sem par no extrato`
+              : 'Carregando…'
+            : 'Selecione uma empresa'
         }
       />
 
-      {empresaId && (
-        <StatementBalanceHeader empresaId={empresaId} refreshKey={refreshKey} />
-      )}
+      {empresaId && <StatementBalanceHeader empresaId={empresaId} refreshKey={refreshKey} />}
 
       {empresaId && (
-        <Tabs defaultValue="reconcile" className="space-y-4">
-          {/* Sprint Conciliação-Visual: abas reduzidas a 2 (Cash coding +
-              Bank statements removidas — modal "aprender e aplicar" e link
-              "Importações OFX →" cobrem). */}
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <TabsList className="grid w-auto grid-cols-2 min-w-[320px]">
-              <TabsTrigger value="reconcile">
-                A conciliar ({loadingOfx ? '…' : ofxTxs.length})
-              </TabsTrigger>
-              <TabsTrigger value="account-transactions">
+        <div className="rounded-lg border bg-card overflow-hidden">
+          {/* ── ABAS + saídas laterais ─────────────────────────────────── */}
+          <div className="flex flex-wrap items-center gap-1 border-b px-2">
+            <Tab ativa={aba === 'contas'} onClick={() => setAba('contas')}
+              rotulo="Contas a pagar" n={carregando ? null : (t?.comSugestao ?? 0)} />
+            <Tab ativa={aba === 'transferencias'} onClick={() => setAba('transferencias')}
+              rotulo="Transferências aguardando par" n={carregando ? null : (t?.transferencias ?? 0)} />
+            <Tab ativa={aba === 'duplicatas'} onClick={() => setAba('duplicatas')}
+              rotulo="Possíveis duplicatas" n={carregando ? null : (t?.duplicatas ?? 0)} />
+            <div className="ml-auto flex items-center gap-1 py-1">
+              <Button variant={aba === 'historico' ? 'secondary' : 'ghost'} size="sm"
+                className="h-7 text-xs gap-1.5" onClick={() => setAba('historico')}>
+                <History className="h-3.5 w-3.5" />
                 Já conciliadas
-              </TabsTrigger>
-            </TabsList>
-            <Link href={`/empresas/${empresaId}/imports`}>
-              <Button variant="ghost" size="sm" className="text-xs gap-1.5">
-                <FileText className="h-3.5 w-3.5" />
-                Importações OFX
               </Button>
-            </Link>
+              <Link href={`/empresas/${empresaId}/imports`}>
+                <Button variant="ghost" size="sm" className="h-7 text-xs gap-1.5">
+                  <FileText className="h-3.5 w-3.5" />
+                  Importações OFX
+                </Button>
+              </Link>
+            </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            <TipoSelector value={tipo} onChange={setTipoUser} />
-            <DateRangeFilter
-              value={{ inicio: rangeInicio, fim: rangeFim }}
-              onChange={(r) => setRange(r)}
-              label="Período"
-            />
-            {/* Busca local — preserva scroll do update otimista (sem refetch) */}
-            <input
-              type="search"
-              value={busca}
-              onChange={(e) => setBusca(e.target.value)}
-              placeholder="Buscar por nome, valor, banco..."
-              className="flex-1 min-w-[200px] max-w-md h-9 px-3 text-sm rounded-md border bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
-            />
-          </div>
+          <div className="p-3 space-y-2.5 bg-muted/30">
+            {carregando ? (
+              <Card><CardContent className="py-10 text-center text-sm text-muted-foreground">
+                <Loader2 className="h-5 w-5 mx-auto mb-2 animate-spin" />
+                Procurando os pares…
+              </CardContent></Card>
+            ) : aba === 'contas' ? (
+              <>
+                {duplaContagem > 0 && (
+                  <div className="flex gap-2.5 items-start rounded-md border border-amber-400 bg-amber-50 dark:bg-amber-950/40 px-3 py-2 text-[13px]">
+                    <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-700 dark:text-amber-400" />
+                    <span>
+                      <b>{duplaContagem} conta{duplaContagem > 1 ? 's' : ''} em dupla contagem.</b>{' '}
+                      Já {duplaContagem > 1 ? 'foram marcadas' : 'foi marcada'} como paga
+                      {duplaContagem > 1 ? 's' : ''}, mas ficou sem vínculo — o mesmo dinheiro está
+                      em duas linhas, e o saldo mente até alguém costurar.
+                    </span>
+                  </div>
+                )}
 
-          {/* RECONCILE — statement lines com 4 ações por linha (Xero style) */}
-          <TabsContent value="reconcile" className="space-y-4">
-            {loadingOfx || dryRunLoading ? (
-              <Card>
-                <CardContent className="py-10 text-center text-sm text-muted-foreground">
-                  <Sparkles className="h-6 w-6 mx-auto mb-2 animate-pulse" />
-                  Loading statement lines and matching...
-                </CardContent>
-              </Card>
-            ) : ofxTxs.length === 0 ? (
-              <Card>
-                <CardContent className="py-10 text-center text-sm text-muted-foreground">
-                  <CheckCircle2 className="h-6 w-6 mx-auto mb-2 text-emerald-600" />
-                  Tudo conciliado. Saldo do extrato e saldo no sistema estão em sincronia ✓
-                </CardContent>
-              </Card>
-            ) : ofxTxsFiltradas.length === 0 ? (
-              <Card>
-                <CardContent className="py-8 text-center text-sm text-muted-foreground">
-                  Nenhuma transação bate o filtro &quot;{busca}&quot;.
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="border rounded-lg bg-card divide-y">
-                {ofxTxsFiltradas.map((t) => {
-                  // Sugestão de retirada (chip + pré-fill) — só pra DEBIT
-                  const withdrawalSuggestion =
-                    t.type === 'DEBIT' && socios.length > 0
-                      ? suggestWithdrawal(t.description, socios)
-                      : null
-                  return (
-                    <div key={t.id} className="px-3">
-                      <XeroRow
-                        ofx={t}
-                        empresaId={empresaId}
-                        suggestion={suggestionByOfxId.get(t.id) ?? null}
-                        withdrawalSuggestion={withdrawalSuggestion}
-                        onAction={() => removeOfxOptimistic(t.id)}
-                      />
+                {comSugestao.length === 0 ? (
+                  <Vazio
+                    titulo="Nenhum vínculo esperando decisão"
+                    texto="As contas em aberto sem pagamento no extrato continuam abaixo — elas não são trabalho pendente, são informação."
+                  />
+                ) : (
+                  comSugestao.map((c) => (
+                    <div key={c.conta.id} className="space-y-2.5">
+                      {c.sugestoes.map((s) => (
+                        <ParSugerido
+                          key={`${s.extratoId}|${s.contaId}`}
+                          empresaId={empresaId}
+                          item={c}
+                          sugestao={s}
+                          onVinculado={removerConta}
+                          onRecusado={removerPar}
+                          onProcurar={setProcurando}
+                        />
+                      ))}
+                      {c.sugestoes.length > 1 && (
+                        <p className="text-[11px] text-muted-foreground px-1">
+                          ⚠️ <b>Mais de uma nota do mesmo fornecedor com o mesmo valor.</b> Esconder
+                          uma seria a régua decidindo qual foi paga — o card mostra o número da NF,
+                          a escolha é sua.
+                        </p>
+                      )}
                     </div>
-                  )
-                })}
-              </div>
+                  ))
+                )}
+
+                {semSugestao.length > 0 && (
+                  <>
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground pt-3 px-1">
+                      as outras {semSugestao.length} contas em aberto — sem par no extrato
+                    </p>
+                    <div className="rounded-md border bg-card divide-y">
+                      {semSugestao.map((c) => (
+                        <div key={c.conta.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-3 py-2">
+                          <span className="text-[12.5px] font-medium min-w-0 break-words">{c.conta.descricao}</span>
+                          <span className="text-[11.5px] text-muted-foreground tabular-nums">
+                            {formatBRL(Math.abs(c.conta.valor))} · vence {dia(c.conta.data)}
+                          </span>
+                          <span className="ml-auto text-[11px] text-muted-foreground">
+                            {c.situacao === 'DUPLA_CONTAGEM'
+                              ? '⚠️ marcada como paga e sem vínculo'
+                              : 'nenhum pagamento parecido no extrato'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </>
+            ) : aba === 'transferencias' ? (
+              fila?.transferencias.length ? (
+                <div className="rounded-md border bg-card divide-y">
+                  {fila.transferencias.map((tr) => (
+                    <div key={tr.id} className="flex flex-wrap items-baseline gap-x-3 px-3 py-2">
+                      <span className="text-[12.5px] font-medium">{tr.descricao}</span>
+                      <span className="text-[11.5px] text-muted-foreground tabular-nums">
+                        {formatBRL(Math.abs(tr.valor))} · {dia(tr.data)} · {tr.conta}
+                      </span>
+                      <Link href={`/transferencias?empresaId=${empresaId}`} className="ml-auto text-[11px] underline">
+                        parear
+                      </Link>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <Vazio
+                  titulo="Nenhuma transferência aguardando par"
+                  texto="Toda saída de uma conta própria achou a entrada correspondente na outra. Zero aqui é zero — a aba não lista nada só pra parecer ocupada."
+                />
+              )
+            ) : aba === 'duplicatas' ? (
+              fila?.duplicatas.length ? (
+                <div className="space-y-2">
+                  {fila.duplicatas.map((d) => (
+                    <div key={d.chave} className="rounded-md border bg-card px-3 py-2">
+                      <p className="text-[12px] font-semibold tabular-nums">
+                        {formatBRL(Math.abs(d.linhas[0].valor))} · {dia(d.linhas[0].data)} · {d.linhas[0].conta} · {d.linhas.length}×
+                      </p>
+                      {d.linhas.map((l) => (
+                        <p key={l.id} className="text-[11.5px] text-muted-foreground">
+                          FITID {l.fitid ?? '—'} · &quot;{l.descricao}&quot; · entrou {new Date(l.criadaEm).toLocaleString('pt-BR')}
+                        </p>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <>
+                  <Vazio
+                    titulo="Nenhuma duplicata suspeita"
+                    texto="Mesma conta, mesmo FITID, mesmo dia, mesmo valor e mesma descrição — nenhum grupo. O dedup do import está segurando."
+                  />
+                  {/* ⛔ a régua está escrita na tela porque ela é a decisão difícil aqui */}
+                  <p className="text-[11.5px] text-muted-foreground px-1">
+                    A régua ingênua (mesmo dia + mesmo valor) acusaria <b>84 grupos</b>, quase todos
+                    Pix de pessoas diferentes com o mesmo valor. Alarme falso repetido mata o alarme.
+                  </p>
+                </>
+              )
+            ) : (
+              <HistoricoTable empresaId={empresaId} onAfterUndo={carregar} />
             )}
-          </TabsContent>
-
-          {/* JÁ CONCILIADAS — histórico + Desfazer */}
-          <TabsContent value="account-transactions" className="space-y-4">
-            <HistoricoTable
-              empresaId={empresaId}
-              onAfterUndo={refresh}
-            />
-          </TabsContent>
-        </Tabs>
+          </div>
+        </div>
       )}
 
-      {empresaId && (
-        <BulkDryRunModal
-          empresaId={empresaId}
-          open={bulkOpen}
-          onClose={() => setBulkOpen(false)}
-          onAfterBulk={refresh}
-          minScore={HIGH_CONFIDENCE_THRESHOLD}
-        />
+      {/* a saída do Xero pro caso difícil — busca manual pela linha do extrato */}
+      {procurando && empresaId && (
+        <div className="rounded-lg border bg-card p-3">
+          <FindAndMatchPanel
+            empresaId={empresaId}
+            ofx={{
+              id: procurando.extrato.id,
+              description: procurando.extrato.descricao,
+              amount: procurando.extrato.valor,
+              date: procurando.extrato.data,
+              type: procurando.extrato.tipo,
+            }}
+            onCancel={() => setProcurando(null)}
+            onReconciled={() => { setProcurando(null); void carregar(); setRefreshKey((k) => k + 1) }}
+          />
+        </div>
       )}
+    </div>
+  )
+}
+
+/** ⭐ CONTADOR HONESTO: zero mostra zero, apagado — nunca lista fantasma pra
+ *  parecer ocupada. Enquanto carrega mostra "…", não um número chutado. */
+function Tab({ ativa, onClick, rotulo, n }: {
+  ativa: boolean; onClick: () => void; rotulo: string; n: number | null
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={ativa}
+      onClick={onClick}
+      className={`inline-flex items-center gap-2 px-3 py-2.5 text-[12.5px] border-b-2 -mb-px transition-colors ${
+        ativa
+          ? 'border-emerald-600 text-foreground font-semibold'
+          : 'border-transparent text-muted-foreground hover:text-foreground'
+      }`}
+    >
+      {rotulo}
+      <span className={`text-[11px] font-semibold tabular-nums rounded-full border px-1.5 min-w-[20px] text-center ${
+        ativa ? 'border-emerald-600 text-emerald-700 bg-emerald-50 dark:bg-emerald-950 dark:text-emerald-300'
+          : n === 0 ? 'text-muted-foreground' : ''
+      }`}>
+        {n === null ? '…' : n}
+      </span>
+    </button>
+  )
+}
+
+function Vazio({ titulo, texto }: { titulo: string; texto: string }) {
+  return (
+    <div className="rounded-lg border border-dashed bg-card py-8 px-4 text-center flex flex-col items-center gap-1">
+      <CheckCircle2 className="h-5 w-5 text-emerald-600 mb-1" />
+      <span className="text-sm font-semibold">{titulo}</span>
+      <span className="text-xs text-muted-foreground max-w-[46ch]">{texto}</span>
     </div>
   )
 }

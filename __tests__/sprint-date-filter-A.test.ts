@@ -84,13 +84,23 @@ describe('Sprint Filtro de Data Parte A — uso compartilhado nas 3 páginas', (
     expect(code).toMatch(/ActiveFilterChips/)
   })
 
-  it('/conciliacao usa useDateRangeFilter + DateRangeFilter (sem mais Select 30d/60d/90d)', () => {
+  // ⚠️⚠️ INVERTIDO EM 07/09/2026, COM O MOTIVO ESCRITO (não apagado).
+  //
+  // O sprint do filtro de data listava 3 páginas; a `/conciliacao` era uma delas
+  // porque ela era uma **lista de linhas do extrato** — e lista de extrato se
+  // navega por período. A tela nova não é lista: é **fila de decisão** sobre as
+  // contas que ainda não têm pagamento casado. O período dela é "o que está em
+  // aberto", e um filtro de data ali só serviria pra ESCONDER conta vencida.
+  //
+  // É o mesmo raciocínio que este arquivo já registra pra `/transferencias` logo
+  // abaixo. A `/pendentes` — que continua sendo lista — mantém o filtro, e o teste
+  // dela continua valendo.
+  it('/conciliacao é fila de decisão, não lista: NÃO tem filtro de período', () => {
     const code = readFileSync(join(ROOT, 'app/(dashboard)/conciliacao/page.tsx'), 'utf-8')
-    expect(code).toMatch(/useDateRangeFilter/)
-    expect(code).toMatch(/DateRangeFilter/)
-    // Não deve mais existir o periodo state nem o Select de 30d/60d/90d
+    expect(code).not.toMatch(/useDateRangeFilter/)
     expect(code).not.toMatch(/const \[periodo, setPeriodo\]/)
-    expect(code).not.toMatch(/value="30d"/)
+    // ⛔ e o que ela TEM que ter é o contador honesto por aba
+    expect(code).toMatch(/comSugestao/)
   })
 
   it('/transferencias (dashboard) NÃO precisa de filtro de data — mostra o mês corrente automaticamente via dashboard-summary', () => {

@@ -6,6 +6,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'fs'
 import { join } from 'path'
+import { LINHA_DISPONIVEL_WHERE } from '@/lib/conciliacao/fila-de-conciliacao'
 
 const root = (p: string) => join(__dirname, '..', '..', p)
 
@@ -42,11 +43,22 @@ describe('Sprint R6.1 — isCardPayment filtrado em endpoints de pendencias', ()
     expect(temFiltroCardPayment(code)).toBe(true)
   })
 
+  // ⚠️⚠️ REESCRITO EM 07/09/2026 — este era GREP na rota `/api/dashboard/badges`
+  // (REGRA 3) e ficou VERMELHO quando a contagem da Conciliação saiu de um `count`
+  // inline pra `contarVinculosEsperandoDecisao` (fonte única com a tela). **O grep
+  // não distingue "refatorei" de "quebrei".**
+  //
+  // ⭐ MAS ELE APONTOU BURACO DE VERDADE, e por isso não foi só reescrito: a 1ª
+  // versão da fila nova oferecia QUALQUER linha OFX sem vínculo como pagamento —
+  // inclusive dinheiro que já tem dono (fatura de cartão, parcela de empréstimo,
+  // transferência entre contas próprias, linha ignorada). O guard agora afirma a
+  // REGRA, não o texto: `LINHA_DISPONIVEL_WHERE` exclui isCardPayment.
   it('4) /api/dashboard/badges exclui isCardPayment (em AMBAS as 2 counts)', () => {
-    const code = readFileSync(root('app/api/dashboard/badges/route.ts'), 'utf-8')
-    const spreads = code.match(/\.\.\.NEEDS_REVIEW_WHERE_PRISMA/g) ?? []
-    const literais = code.match(/isCardPayment:\s*false/g) ?? []
-    expect(spreads.length + literais.length).toBeGreaterThanOrEqual(2)
+    // ⛔ dinheiro que já tem dono não pode ser oferecido como pagamento de boleto
+    expect(LINHA_DISPONIVEL_WHERE).toMatchObject({ isCardPayment: false })
+    // ⚠️ e `categoryId` NÃO entra: ter categoria não quita conta nenhuma — era
+    // exatamente esse filtro que fazia a tela velha esquecer a linha.
+    expect('categoryId' in LINHA_DISPONIVEL_WHERE).toBe(false)
   })
 
   it('5) /api/empresas/[id]/relatorios/drill-down/transacoes exclui isCardPayment', () => {
