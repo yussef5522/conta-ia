@@ -242,6 +242,30 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⛔⛔⛔ A CONCILIAÇÃO ERRAVA DOS DOIS LADOS — E A FONTE ÚNICA DE SUGESTÃO (07/09/2026)
+
+**O DONO:** *"Eu olhando uma conta a pagar casável e sem gesto pra casar."* · *"A tela mostra coisas que não têm nada a ver e às vezes NÃO mostra o que devia."*
+
+**⛔⛔ O DEFEITO DE CLASSE: a fila era de CLASSIFICAÇÃO com nome de CONCILIAÇÃO.** A query é `origin=OFX` + `NEEDS_REVIEW` (que exige `categoryId IS NULL`) + `cashCoded=false`. Daí os dois erros saem **do mesmo lugar**: entra qualquer linha sem categoria (tenha par ou não), e a linha que ganha categoria **sai da fila pra sempre — mesmo com a conta aberta**. Medido na Caçula: a tela listava **0 linhas** enquanto havia **93 contas em aberto** e **R$ 230,81 em dupla contagem**. ⭐ **A regra nova: a fila é sobre VÍNCULO QUE FALTA, nunca sobre categoria que falta.**
+
+**⛔⛔ O MATCHER SÓ ANDAVA NUM SENTIDO.** Ele nasce de uma **linha do extrato** e procura conta a pagar. A ex-payable do Cancian (paga, sem vínculo) **não é linha de extrato** — ninguém nunca procurou par pra ela. `sugerirVinculosDaConta` é o sentido que faltava, e **reusa a mesma função** em vez de ter ranker próprio: dois rankers divergem no primeiro caso de borda (a lição do B1).
+
+**⭐⭐ OS 15 PONTOS DO FORNECEDOR ERAM LETRA MORTA — o achado que destrava tudo.** O critério exigia `supplierId` nos DOIS lados; medido: **90 de 6.750 linhas OFX têm `supplierId` (1,3%)**. O nome mora na **descrição** (`"CARLOS CANCIAN CIA LTDA - Pagamento"`). O efeito, medido pelo matcher real: o par Cancian (232,81 × 230,81, nome 87%, 3 dias) marcava **65 = NO_MATCH**, invisível abaixo do corte de 70; com o nome reconhecido vai a **80** e vira sugestão. ⚠️ **Reconhecer é SUGERIR, nunca gravar** — o `supplierId` da transação não é tocado —, e **empate técnico entre dois fornecedores devolve NULL**: 15 pontos não se dão a palpite.
+
+**⛔⛔ A RÉGUA DA DUPLICATA FOI MEDIDA TRÊS VEZES ANTES DE ESCOLHER** (é o coração do "não tem nada a ver"): `conta+dia+valor+tipo` → **84 grupos**, quase todos Pix de gente diferente com o mesmo valor; `+ nome ≥85%` → **ainda erra** (o prefixo `"RECEBIMENTO PIX-PIX_CRED <cpf> "` engana o Jaro-Winkler); `+ FITID + descrição idêntica` → **0**. ⚠️ **E o FITID sozinho também não serve: o Banrisul RECICLA** — o FITID `000000` cobre 14 eventos diferentes (IOF, JUROS, TARIFA). **FITID diferente = o banco disse que são eventos diferentes**, e crer na minha heurística contra a identidade que o banco deu é o oposto da casa. **Zero é a resposta certa** — melhor aba honesta vazia que 84 fantasmas.
+
+**⭐ A DIFERENÇA DE JUROS NÃO É UM `force` DISFARÇADO.** `diferencaAceita` carrega **o número que a tela mostrou** e só passa se **bater ao centavo** com a diferença real — mandar um valor qualquer continua sendo recusado. O `force` (que desliga tudo) segue existindo só pra backfill interno. E o rastro dos juros fica **escrito na conta**, não só no audit.
+
+**⭐ `ESTOQUE_NF` ENTROU NAS ORIGENS ÓRFÃS** do `reconcile.ts`: a conta nascida da conferência de NF-e, quando marcada como paga, é **exatamente a mesma forma** de um órfão de Excel. Ficar de fora era o motivo de a costura do Cancian só existir como script.
+
+**⭐ "NÃO É ISSO" ENSINA** (`conciliacao_par_recusado`, CREATE-only, **unique por par**): recusar era gesto sem memória. ⚠️ A recusa é **do PAR, não da linha** — o mesmo extrato continua podendo casar com outra nota do mesmo fornecedor. E vale nas duas telas: recusar na Conciliação cala nos Pendentes.
+
+**⚠️⚠️ O CASO CANCIAN NÃO ERA O QUE O PRINT DIZIA — e é por isso que se mede antes.** O dono descreveu *"a linha da Stone … NF 834771 · 28/08 · −R$ 230,81"* como o pagamento, e a payable de 05/09 como o par. Medido: **não existe linha de extrato de R$ 230,81**. A linha que ele via nos Pendentes **É a própria ex-payable** (`ESTOQUE_NF/EFFECTED`, a única da fila), e o 28/08 é o 29/08 UTC visto em São Paulo. E a payable de **05/09 é OUTRA NOTA** (NF **835271**, chave `…835271…`), em aberto de verdade. Costurar o que ele descreveu marcaria uma nota **não paga** como paga. **O par que fecha 8/8 é NF 834771 × a linha de 232,81 de 31/08** (+R$ 2,00 de juros) — o mesmo par que a costura de 05/09 segurou de propósito.
+
+**REGRA 11 — 2 defeitos repostos, os 2 morderam:** tirar `ESTOQUE_NF` das origens órfãs → **3 vermelhos**; aceitar qualquer número em `diferencaAceita` → **1 vermelho** (o teste do "número errado"). **8.714 verdes · TS 0 · deploy 4/4 (`WrsXqO2xmQlZRHiLkJx63`) · `pg_dump` antes da migration.**
+
+**PROVADO EM PROD pelas rotas reais com sessão assinada:** `/api/conciliacao/fila` **200** (108 contas · **2 com sugestão** · 0 transferência sem par · 0 duplicata) e `/api/conciliacao/sugestoes-pendentes` **200** — a linha do Cancian devolve *"valor com R$ 2,00 de diferença · pago 3 dias depois do vencimento · o nome no extrato é CARLOS CANCIAN E CIA LTDA"*, score 80.
+
 ## ⭐⭐⭐ CONFIRMAR O IMPORT **JÁ BAIXA** — O GESTO ÚNICO DA VENDA (07/09/2026)
 
 **O DONO RELATOU UM BUG E A MEDIÇÃO ACHOU OUTRA COISA — vale registrar que o servidor estava certo.** *"Importei os complementos de 06/09 …, cliquei BAIXAR no dia, e NADA baixou: porção de calabresa segue 597 UN."* Medido pelo caminho real, com sessão assinada: o motor monta o plano de 06/09 **perfeito** (31 nomes com destino, 335 de 736 ocorrências, CALABRESA 112 → a ficha certa), e o **endpoint responde 200** no preview e no confirmar. Nenhum erro no log do minuto. ⛔ **O que faltava era o SEGUNDO CLIQUE** — "baixar" abria o preview, e confirmar era outro gesto, em outro lugar da tela, sem cara de continuação do primeiro.
