@@ -172,7 +172,7 @@ describe('⛔⛔ o AGORA volta a ser o retrato do presente', () => {
     const dela = d.pessoas.find((p) => p.colaboradorId === carlise)!
     expect(dela.tarefas).toHaveLength(1)
     expect(dela.tarefas[0].estado).toBe('ENCERRADA_SEM_FINALIZAR')
-    expect(dela.tarefas[0].encerradaPorque).toBe('ficou aberta — a ordem foi concluída pela Produção')
+    expect(dela.tarefas[0].rotulo).toBe('ficou aberta — a ordem foi concluída pela Produção')
     // ⚠️ e o CABEÇALHO fecha com a lista: uma linha visível que o resumo não conta é a
     // mesma doença do card `PRONTOS −72`.
     expect(dela).toMatchObject({ fazendo: 0, naFila: 0, feitas: 0, encerradas: 1 })
@@ -184,14 +184,14 @@ describe('⛔⛔ o AGORA volta a ser o retrato do presente', () => {
     const d = await diaAoVivo({ companyId, dia: DIA, agora: AGORA }, prisma)
     const iniciou = d.linhaDoTempo.find((e) => e.tipo === 'INICIOU')!
     expect(iniciou, 'apagar o INICIOU esconderia trabalho que aconteceu').toBeTruthy()
-    expect(iniciou.encerradaPorque).toMatch(/concluída pela Produção/)
+    expect(iniciou.rotulo).toMatch(/concluída pela Produção/)
   })
 
   it('⭐ etapa de ordem VIVA continua contando normal — a trava é estreita', async () => {
     await ordemComEtapaAberta()
     const d = await diaAoVivo({ companyId, dia: DIA, agora: AGORA }, prisma)
     expect(d.agora).toHaveLength(1)
-    expect(d.agora[0].tarefa.estado).toBe('FAZENDO')
+    expect(d.agora[0].tarefa.estado).toBe('EM_ANDAMENTO')
     expect(d.pessoas.find((p) => p.colaboradorId === carlise)).toMatchObject({ fazendo: 1, encerradas: 0 })
   })
 

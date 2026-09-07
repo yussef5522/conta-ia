@@ -3909,6 +3909,40 @@ model StockEtapaEncerrada {
   @@map("stock_etapa_encerrada")
 }
 
+// ⭐ "PEDI PRA VOCÊ FINALIZAR" (07/09) — o recado do gerente que aparece no tablet da pessoa.
+// É o caminho PREFERIDO: ela aperta com o PIN dela e o tempo é DELA, medido de verdade.
+model StockEtapaPedidoFinalizar {
+  id          String    @id @default(cuid())
+  companyId   String
+  etapaId     String    @unique // pedir de novo é REENVIAR, nunca empilhar recados
+  ordemId     String
+  pedidoPorId String?
+  pedidoEm    DateTime  @default(now())
+  /// carimbado quando ela realmente finaliza — pedido não atendido é informação de gestão
+  atendidoEm  DateTime?
+
+  @@index([companyId, ordemId])
+  @@map("stock_etapa_pedido_finalizar")
+}
+
+// ⛔⛔ "FINALIZEI POR ELA" (07/09) — a saída de quando a pessoa não está mais lá.
+// ⚠️ O `finalizadoEm` da etapa continua NULL de propósito (REGRA 5): se o gesto carimbasse a
+// coluna, o tempo entraria em toda média por construção. Tempo = A APURAR, e o rastro diz
+// quem apertou E em nome de quem — nunca "entrar na conta dela".
+model StockEtapaFinalizadaGerente {
+  id              String   @id @default(cuid())
+  companyId       String
+  etapaId         String   @unique
+  ordemId         String
+  finalizadaPorId String? // o USUÁRIO que apertou
+  emNomeDeId      String? // o COLABORADOR que executava
+  finalizadaEm    DateTime @default(now())
+  observacao      String?
+
+  @@index([companyId, ordemId])
+  @@map("stock_etapa_finalizada_gerente")
+}
+
 // ⭐ O PIN IDENTIFICA, NÃO AUTENTICA (decisão do dono, 06/09): diz QUEM apertou o botão no
 // tablet compartilhado; quem diz QUAL EMPRESA é a sessão do aparelho. Mesmo assim vai como
 // HASH — o segredo mora numa cozinha, e gente reusa 4 dígitos.

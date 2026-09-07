@@ -9,15 +9,23 @@
 // e "cristian"/"Cristian "/"cris" seriam três pessoas.
 
 import { useEffect, useState } from 'react'
-import { Loader2, Check, Clock, User, CircleSlash } from 'lucide-react'
+import { Loader2, Check, Clock, User, CircleSlash, BellRing, UserCheck } from 'lucide-react'
 
 interface Etapa {
   id: string; posicao: number; nome: string
   colaboradorId: string | null; colaboradorNome: string | null
   executorNome: string | null; iniciadoEm: string | null; finalizadoEm: string | null
-  estado: 'AGUARDANDO' | 'EM_ANDAMENTO' | 'FEITA' | 'ENCERRADA_SEM_FINALIZAR'; minutos: number | null
+  estado: 'AGUARDANDO' | 'EM_ANDAMENTO' | 'FEITA' | 'FINALIZADA_PELO_GERENTE' | 'ENCERRADA_SEM_FINALIZAR'
+  minutos: number | null
   /** ⛔ a ordem acabou e levou a etapa aberta junto — sem tempo medido */
   encerradaPor: 'ORDEM_CONCLUIDA' | 'ORDEM_CANCELADA' | null
+  /** ⭐ o rastro do gesto do gerente */
+  finalizadaPorNome: string | null
+  emNomeDeNome: string | null
+  /** ⭐ o recado "finalize sua tarefa" já está no tablet dela */
+  pedidoEmAberto: boolean
+  /** ⭐ o rótulo pronto — a MESMA frase nas três telas (fonte única) */
+  rotulo: string
 }
 interface Colaborador { id: string; nome: string }
 
@@ -51,6 +59,22 @@ export function EtapasDaOrdem({ id, ordemId, colaboradores, aoSaberAssinadas, ao
       aoSaberAbertas?.(es.filter((e) => e.estado === 'EM_ANDAMENTO').map((e) => ({ nome: e.nome, executorNome: e.executorNome })))
     }).catch(() => setEtapas([]))
   useEffect(() => { carregar() }, [id, ordemId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ⭐⭐ OS DOIS GESTOS DO GERENTE (07/09) — pra ele nunca ficar preso olhando etapa aberta.
+  const gesto = async (etapaId: string, acao: 'pedir-finalizar' | 'finalizar-pelo-gerente') => {
+    setSalvando(etapaId); setErro(null)
+    const r = await fetch(`/api/empresas/${id}/estoque/producao/ordens/${ordemId}/etapas`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ etapaId, acao }),
+    })
+    const j = await r.json().catch(() => null)
+    setSalvando(null)
+    // ⚠️ falha VISÍVEL: sem isso o gerente aperta e não sabe se pegou
+    if (!r.ok) { setErro(j?.erro ?? 'Não consegui.'); return }
+    const es: Etapa[] = j.etapas ?? []
+    setEtapas(es)
+    aoSaberAbertas?.(es.filter((e) => e.estado === 'EM_ANDAMENTO').map((e) => ({ nome: e.nome, executorNome: e.executorNome })))
+  }
 
   const designar = async (etapaId: string, colaboradorId: string) => {
     setSalvando(etapaId); setErro(null)
@@ -88,12 +112,20 @@ export function EtapasDaOrdem({ id, ordemId, colaboradores, aoSaberAssinadas, ao
             {/* ⛔⛔ ENCERRADA SEM FINALIZAR: a ordem acabou e levou a etapa junto. NÃO é
                 "feita" (ninguém apertou finalizar) e NÃO tem duração — dizer "1h12" aqui
                 seria inventar um tempo que ninguém mediu. */}
-            {e.estado === 'ENCERRADA_SEM_FINALIZAR' ? (
+            {e.estado === 'FINALIZADA_PELO_GERENTE' ? (
+              /* ⛔ NÃO é "feita": o rastro diz quem REALMENTE apertou, e o tempo é a apurar */
+              <span className="flex flex-wrap items-center gap-1.5 text-xs text-slate-600">
+                <UserCheck className="h-3.5 w-3.5 text-slate-400" />
+                <span className="font-medium text-slate-800">{e.emNomeDeNome ?? e.executorNome ?? '—'}</span>
+                <span className="text-slate-500">· {e.rotulo}</span>
+                <span className="text-slate-400">· começou {hhmm(e.iniciadoEm)}</span>
+              </span>
+            ) : e.estado === 'ENCERRADA_SEM_FINALIZAR' ? (
               <span className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
                 <CircleSlash className="h-3.5 w-3.5 text-slate-400" />
                 <span className="font-medium text-slate-700">{e.executorNome ?? '—'}</span>
-                <span>· ficou aberta — a ordem foi {e.encerradaPor === 'ORDEM_CANCELADA' ? 'cancelada' : 'concluída pela Produção'}</span>
-                <span className="text-slate-400">· começou {hhmm(e.iniciadoEm)} · tempo a apurar</span>
+                <span>· {e.rotulo}</span>
+                <span className="text-slate-400">{e.iniciadoEm ? `· começou ${hhmm(e.iniciadoEm)} ` : ''}· tempo a apurar</span>
               </span>
             ) : e.estado === 'FEITA' ? (
               <span className="flex items-center gap-1.5 text-xs text-emerald-700">
@@ -119,10 +151,35 @@ export function EtapasDaOrdem({ id, ordemId, colaboradores, aoSaberAssinadas, ao
                   </select>
                 </label>
                 {e.estado === 'EM_ANDAMENTO' ? (
-                  <span className="flex items-center gap-1.5 text-xs font-medium text-amber-700">
-                    <Clock className="h-3.5 w-3.5" /> em andamento · <span className="tabular-nums">{duracao(e.minutos)}</span>
-                    <span className="font-normal text-slate-400">desde {hhmm(e.iniciadoEm)}</span>
-                  </span>
+                  <>
+                    <span className="flex items-center gap-1.5 text-xs font-medium text-amber-700">
+                      <Clock className="h-3.5 w-3.5" /> em andamento · <span className="tabular-nums">{duracao(e.minutos)}</span>
+                      <span className="font-normal text-slate-400">desde {hhmm(e.iniciadoEm)}</span>
+                    </span>
+                    {/* ⭐⭐ AS AÇÕES (07/09) — o gerente nunca fica preso olhando.
+                        ⚠️ "Pedir" vem PRIMEIRO e é o caminho preferido: ela aperta com o PIN
+                        dela e o tempo é DELA, medido de verdade. "Finalizar pelo gerente" é a
+                        saída de quando ela não está mais lá — e custa o tempo (a apurar). */}
+                    <span className="flex items-center gap-1.5">
+                      {e.pedidoEmAberto ? (
+                        <span className="flex items-center gap-1 rounded-lg bg-[#f1edff] px-2 py-1 text-[11px] font-medium text-[#534AB7]">
+                          <BellRing className="h-3 w-3" /> pedido enviado ao tablet
+                          <button onClick={() => gesto(e.id, 'pedir-finalizar')} disabled={salvando === e.id} className="ml-1 underline underline-offset-2 hover:text-[#3a318f]">reenviar</button>
+                        </span>
+                      ) : (
+                        <button onClick={() => gesto(e.id, 'pedir-finalizar')} disabled={salvando === e.id}
+                          className="inline-flex items-center gap-1 rounded-lg border border-[#534AB7]/40 px-2 py-1 text-[11px] font-medium text-[#534AB7] hover:bg-[#f1edff] disabled:opacity-50">
+                          <BellRing className="h-3 w-3" /> pedir pra finalizar
+                        </button>
+                      )}
+                      <button
+                        onClick={() => { if (confirm(`Finalizar “${e.nome}” no lugar de ${e.executorNome ?? 'quem começou'}?\n\nO registro vai dizer que foi VOCÊ quem apertou, e o TEMPO fica “a apurar” — você não tem como saber quando ela parou de verdade.\n\nSe ela ainda estiver aí, prefira “pedir pra finalizar”.`)) gesto(e.id, 'finalizar-pelo-gerente') }}
+                        disabled={salvando === e.id}
+                        className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-2 py-1 text-[11px] text-slate-600 hover:bg-slate-50 disabled:opacity-50">
+                        <UserCheck className="h-3 w-3" /> finalizar por ela
+                      </button>
+                    </span>
+                  </>
                 ) : (
                   <span className="text-xs text-slate-400">
                     {e.colaboradorId ? 'aguardando' : 'quem pegar com o PIN fica registrado'}

@@ -16,7 +16,9 @@
 
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
-import { encerramentosDasEtapas, type MotivoDoEncerramento } from './encerrar-etapas-abertas'
+import { type MotivoDoEncerramento } from './encerrar-etapas-abertas'
+import { resolverEstadoDasEtapas } from './gestos-do-gerente'
+import { temTempoMedido, rotuloDoEstado, type EstadoDaEtapa } from './estado-da-etapa'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -103,10 +105,10 @@ export async function materializarEtapasDaOrdem(
 
 // ── a execução ───────────────────────────────────────────────────────────────────────
 
-// ⛔⛔ `ENCERRADA_SEM_FINALIZAR` tem NOME PRÓPRIO de propósito (06/09): a ordem encerrou e
-// levou a etapa aberta junto. **Não é FEITA** — ninguém apertou finalizar, não há tempo
-// medido, e colapsar os dois esconderia justamente o que interessa a quem lê a tela.
-export type EstadoDaEtapa = 'AGUARDANDO' | 'EM_ANDAMENTO' | 'FEITA' | 'ENCERRADA_SEM_FINALIZAR'
+// ⭐⭐ OS CINCO ESTADOS moram em `estado-da-etapa.ts` — UMA derivação pra TODAS as telas
+// (07/09). Antes existiam duas (esta e a do "HOJE ao vivo", inline), e foi por isso que "na
+// fila" sobreviveu numa ordem já concluída. É a lição do B1 aplicada à etapa.
+export type { EstadoDaEtapa } from './estado-da-etapa'
 
 export interface EtapaDaOrdem {
   id: string
@@ -119,42 +121,35 @@ export interface EtapaDaOrdem {
   iniciadoEm: string | null
   finalizadoEm: string | null
   estado: EstadoDaEtapa
-  /** minutos: fechados quando FEITA, correndo quando EM_ANDAMENTO, null quando aguarda ou
-   *  quando a ordem a encerrou sem finalizar (ali não há tempo medido) */
+  /** minutos: MEDIDOS só em FEITA; em EM_ANDAMENTO é o cronômetro correndo; nos outros três
+   *  é `null` = "a apurar", porque ali não há tempo que alguém tenha medido. */
   minutos: number | null
   /** ⛔ por que a ordem levou a etapa junto — `null` quando não foi encerrada assim */
   encerradaPor: MotivoDoEncerramento | null
-}
-
-/**
- * ⚠️ `encerrada` vem do registro `stock_etapa_encerrada` — a ordem levou a etapa junto.
- * Ela ganha estado próprio ANTES de qualquer outro teste, senão continuaria "EM_ANDAMENTO"
- * com o cronômetro correndo pra sempre (era o caso da Carlise, 7h05).
- */
-export function estadoDaEtapa(
-  e: { iniciadoEm: Date | null; finalizadoEm: Date | null }, encerrada = false,
-): EstadoDaEtapa {
-  if (e.finalizadoEm) return 'FEITA'
-  if (encerrada && e.iniciadoEm) return 'ENCERRADA_SEM_FINALIZAR'
-  if (e.iniciadoEm) return 'EM_ANDAMENTO'
-  return 'AGUARDANDO'
+  /** ⭐ o rastro do gesto do gerente: "finalizada por X em nome de Y" */
+  finalizadaPorNome: string | null
+  emNomeDeNome: string | null
+  /** ⭐ o gerente já pediu pra ela finalizar — o recado está no tablet dela */
+  pedidoEmAberto: boolean
+  /** ⭐ o rótulo pronto: a MESMA frase nas três telas (fonte única) */
+  rotulo: string
 }
 
 /**
  * minutos da etapa. PURA — `agora` é parâmetro (o relógio nunca decide num teste).
  *
- * ⛔⛔ ETAPA ENCERRADA SEM FINALIZAR NÃO TEM MINUTOS — devolve `null` ("a apurar"). Contar
- * `agora − iniciadoEm` daria um tempo que só cresce com o relógio, sobre trabalho que já
- * acabou; e carimbar um fim inventaria um horário que ninguém mediu. É a mesma disciplina do
- * "a apurar" do resto do módulo: número sem medição é pior que a ausência dele.
+ * ⛔⛔ SÓ **FEITA** TEM TEMPO MEDIDO. Em EM_ANDAMENTO o número é o cronômetro correndo (a
+ * tela mostra, ninguém grava); nos outros três é `null`. Contar `agora − iniciadoEm` numa
+ * etapa encerrada daria um tempo que só cresce com o relógio sobre trabalho que já acabou, e
+ * carimbar um fim inventaria um horário que ninguém mediu.
  */
 export function minutosDaEtapa(
-  e: { iniciadoEm: Date | null; finalizadoEm: Date | null }, agora: Date, encerrada = false,
+  e: { iniciadoEm: Date | null; finalizadoEm: Date | null }, agora: Date, estado: EstadoDaEtapa = 'FEITA',
 ): number | null {
   if (!e.iniciadoEm) return null
-  if (!e.finalizadoEm && encerrada) return null
-  const fim = e.finalizadoEm ?? agora
-  return Math.max(0, Math.round((fim.getTime() - e.iniciadoEm.getTime()) / 60000))
+  if (estado === 'EM_ANDAMENTO') return Math.max(0, Math.round((agora.getTime() - e.iniciadoEm.getTime()) / 60000))
+  if (!temTempoMedido(estado) || !e.finalizadoEm) return null
+  return Math.max(0, Math.round((e.finalizadoEm.getTime() - e.iniciadoEm.getTime()) / 60000))
 }
 
 /**
@@ -176,20 +171,27 @@ export async function etapasDaOrdem(
     ? await db.stockColaborador.findMany({ where: { companyId, id: { in: ids } }, select: { id: true, nome: true } })
     : []
   const nome = new Map(colabs.map((c) => [c.id, c.nome]))
-  const encerradas = await encerramentosDasEtapas(companyId, rows.map((r) => r.id), db)
+  // ⭐⭐ FONTE ÚNICA: o estado sai do MESMO resolvedor que o "HOJE ao vivo" e o relatório usam
+  const resolvidas = await resolverEstadoDasEtapas(companyId, rows, db)
   return rows.map((r) => {
-    const enc = encerradas.get(r.id)
+    const res = resolvidas.get(r.id)!
     return {
       id: r.id, posicao: r.posicao, nome: r.nome,
       colaboradorId: r.colaboradorId, colaboradorNome: r.colaboradorId ? nome.get(r.colaboradorId) ?? null : null,
       executorId: r.executorId, executorNome: r.executorId ? nome.get(r.executorId) ?? null : null,
       iniciadoEm: r.iniciadoEm?.toISOString() ?? null,
       finalizadoEm: r.finalizadoEm?.toISOString() ?? null,
-      estado: estadoDaEtapa(r, !!enc),
-      minutos: minutosDaEtapa(r, agora, !!enc),
-      // ⚠️ o motivo vai junto: "a ordem foi concluída pela Produção" e "a ordem foi
-      // cancelada" pedem leituras diferentes de quem está conferindo o dia.
-      encerradaPor: enc?.motivo ?? null,
+      estado: res.estado,
+      minutos: minutosDaEtapa(r, agora, res.estado),
+      encerradaPor: res.encerradaPor,
+      finalizadaPorNome: res.finalizadaPorNome,
+      emNomeDeNome: res.emNomeDeNome ?? (r.executorId ? nome.get(r.executorId) ?? null : null),
+      pedidoEmAberto: res.pedidoEmAberto,
+      rotulo: rotuloDoEstado(res.estado, {
+        iniciou: !!r.iniciadoEm, ordemCancelada: res.ordemCancelada,
+        gerente: res.finalizadaPorNome,
+        pessoa: res.emNomeDeNome ?? (r.executorId ? nome.get(r.executorId) ?? null : null),
+      }),
     }
   })
 }

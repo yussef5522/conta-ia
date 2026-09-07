@@ -15,7 +15,8 @@
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { diaEmSaoPaulo, janelaDoDiaSP } from '@/lib/datas/dia-sao-paulo'
-import { estadoDaEtapa, minutosDaEtapa, HORAS_ATE_ALARME, type EstadoDaEtapa } from './etapas'
+import { minutosDaEtapa, HORAS_ATE_ALARME, type EstadoDaEtapa } from './etapas'
+import { resolverEstadoDasEtapas, marcarPedidoAtendido } from './gestos-do-gerente'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -39,6 +40,13 @@ export interface MinhaTarefa {
   esperandoEtapaAnterior: string | null
   /** designada a mim, ou solta (qualquer um pega com o PIN) */
   minha: boolean
+  /**
+   * ⭐⭐ O GERENTE PEDIU PRA VOCÊ FINALIZAR (07/09) — o caminho PREFERIDO de resolver uma
+   * tarefa aberta. Ela aperta com o PIN dela e **o tempo é dela, medido de verdade**.
+   * ⚠️ É um RECADO, não uma ordem: o botão FINALIZAR é o mesmo de sempre, e nada muda no
+   * fluxo — só aparece o aviso.
+   */
+  pedidoPraFinalizar: boolean
   /**
    * ⭐ é a ÚLTIMA etapa da ordem? Finalizar ela pergunta "quantos saíram?" ALI — o número
    * vem de quem sabe, e conclui a ordem pelo mesmo motor da tela de Produção.
@@ -83,6 +91,8 @@ export async function minhasTarefasDeHoje(
   ])
   const nomeItem = new Map(itens.map((i) => [i.id, i.nome]))
   const porOrdem = new Map(ordens.map((o) => [o.id, o]))
+  // ⭐⭐ FONTE ÚNICA: o mesmo resolvedor da tela da ordem e do "HOJE ao vivo"
+  const resolvidas = await resolverEstadoDasEtapas(companyId, etapas, db)
 
   const out: MinhaTarefa[] = []
   for (const e of etapas) {
@@ -101,6 +111,10 @@ export async function minhasTarefasDeHoje(
     // passar por defesa provada. Guard que ninguém consegue derrubar é guard que ninguém sabe
     // se funciona.
     if (e.iniciadoEm && e.executorId !== colaboradorId) continue
+    // ⛔ o gerente já finalizou por ela: não é mais tarefa dela, e mostrar o botão FINALIZAR
+    // deixaria o tablet oferecer um gesto que o servidor recusa.
+    const res = resolvidas.get(e.id)!
+    if (res.estado !== 'AGUARDANDO' && res.estado !== 'EM_ANDAMENTO') continue
 
     const anterior = etapas.find((x) => x.ordemId === e.ordemId && x.posicao === e.posicao - 1)
     // ⚠️ "última" é sobre a ORDEM inteira, não sobre o que sobrou pra fazer: a lista já
@@ -111,16 +125,18 @@ export async function minhasTarefasDeHoje(
       etapaId: e.id, ordemId: e.ordemId, posicao: e.posicao, nome: e.nome,
       produto: nomeItem.get(o.itemProduzidoId) ?? '(produto)',
       escalaReceitas: o.escalaReceitas,
-      estado: estadoDaEtapa(e),
+      estado: res.estado,
       iniciadoEm: e.iniciadoEm?.toISOString() ?? null,
-      minutos: minutosDaEtapa(e, agora),
+      minutos: minutosDaEtapa(e, agora, res.estado),
       esperandoEtapaAnterior: anterior && !anterior.finalizadoEm ? anterior.nome : null,
       minha,
+      pedidoPraFinalizar: res.pedidoEmAberto,
       ultima: e.posicao === maiorPosicao,
     })
   }
   // em andamento primeiro (é o que está na mão), depois as designadas, depois as soltas
-  const peso = (t: MinhaTarefa) => (t.estado === 'EM_ANDAMENTO' ? 0 : t.minha ? 1 : 2)
+  // ⚠️ quem tem PEDIDO do gerente vem em PRIMEIRO: é a tarefa que alguém está esperando
+  const peso = (t: MinhaTarefa) => (t.pedidoPraFinalizar ? -1 : t.estado === 'EM_ANDAMENTO' ? 0 : t.minha ? 1 : 2)
   return out.sort((a, b) => peso(a) - peso(b) || a.posicao - b.posicao)
 }
 
@@ -211,7 +227,10 @@ export async function finalizarTarefa(
   }
 
   await db.stockOrdemEtapa.update({ where: { id: etapa.id }, data: { finalizadoEm: agora } })
-  return { minutos: minutosDaEtapa({ iniciadoEm: etapa.iniciadoEm, finalizadoEm: agora }, agora)! }
+  // ⭐ se o gerente tinha PEDIDO pra finalizar, o pedido foi ATENDIDO — e o tempo é DELA,
+  // medido de verdade. É o desfecho que o gesto 1 existe pra produzir.
+  await marcarPedidoAtendido(input.companyId, etapa.id, db)
+  return { minutos: minutosDaEtapa({ iniciadoEm: etapa.iniciadoEm, finalizadoEm: agora }, agora, 'FEITA')! }
 }
 
 /**
@@ -277,10 +296,16 @@ export async function tarefasAbertasDemais(
   const encerradas = await db.stockProductionOrder.findMany({
     where: { companyId, estado: { in: ['CANCELADA', 'CONCLUIDA'] } }, select: { id: true },
   })
+  // ⛔⛔ E A FINALIZADA PELO GERENTE TAMBÉM NÃO COBRA (07/09) — o `finalizadoEm` dela é NULL
+  // de propósito, então sem esta linha ela cairia direto no alarme e ficaria gritando pra
+  // sempre sobre uma tarefa que o gerente JÁ resolveu. Alarme falso repetido mata o alarme.
+  // ⚠️ Achado por um teste que esperava o alarme calar depois do gesto e viu ele morder.
+  const peloGerente = await db.stockEtapaFinalizadaGerente.findMany({ where: { companyId }, select: { etapaId: true } })
   const rows = await db.stockOrdemEtapa.findMany({
     where: {
       companyId, finalizadoEm: null, iniciadoEm: { not: null, lte: limite },
       ...(encerradas.length ? { ordemId: { notIn: encerradas.map((o) => o.id) } } : {}),
+      ...(peloGerente.length ? { id: { notIn: peloGerente.map((g) => g.etapaId) } } : {}),
     },
     orderBy: { iniciadoEm: 'asc' },
   })

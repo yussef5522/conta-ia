@@ -23,6 +23,8 @@ interface Tarefa {
   escalaReceitas: number; estado: 'AGUARDANDO' | 'EM_ANDAMENTO' | 'FEITA'
   iniciadoEm: string | null; minutos: number | null
   esperandoEtapaAnterior: string | null; minha: boolean; ultima: boolean
+  /** ⭐ o gerente pediu pra você finalizar (07/09) — é RECADO, não ordem: o botão é o mesmo */
+  pedidoPraFinalizar: boolean
 }
 interface Consumo { itemId: string; nome: string; qtd: number; unidade: string }
 
@@ -238,6 +240,16 @@ export default function CozinhaPage({ params }: { params: Promise<{ empresaId: s
           <p className="text-lg font-medium">{emAndamento.nome}</p>
           <p className="mt-1 text-sm text-slate-400">{emAndamento.produto} · {emAndamento.escalaReceitas} receitas</p>
           <p className="mt-8 text-6xl font-semibold tabular-nums text-amber-400">{mm}:{ss}</p>
+          {/* ⭐⭐ O RECADO DO GERENTE (07/09) — o caminho PREFERIDO de resolver tarefa aberta.
+              ⚠️ É AVISO, não trava: o botão FINALIZAR é o mesmo de sempre. Ela aperta com o
+              PIN dela e o tempo é DELA, medido de verdade — é isso que o gesto existe pra
+              produzir, em vez do gerente fechar por ela e o tempo virar "a apurar". */}
+          {emAndamento.pedidoPraFinalizar && (
+            <p className="mt-5 max-w-xs rounded-2xl bg-[#534AB7]/20 px-4 py-3 text-sm text-[#c7bdff]">
+              O gerente pediu pra você finalizar a tarefa “{emAndamento.nome}”.
+              <span className="mt-1 block text-[#a99bf5]">Se você terminou, aperte FINALIZAR.</span>
+            </p>
+          )}
           <p className="mt-2 text-xs text-slate-500">
             rodando desde {new Date(emAndamento.iniciadoEm!).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' })}
           </p>
@@ -294,6 +306,11 @@ export default function CozinhaPage({ params }: { params: Promise<{ empresaId: s
             <li key={t.etapaId} className="rounded-2xl bg-slate-800 p-4">
               <p className="text-base font-medium text-slate-100">{t.nome}</p>
               <p className="mt-0.5 text-sm text-slate-400">{t.produto} · {t.escalaReceitas} receitas</p>
+              {t.pedidoPraFinalizar && (
+                <p className="mt-2 rounded-xl bg-[#534AB7]/20 px-3 py-2 text-xs text-[#c7bdff]">
+                  O gerente pediu pra você finalizar esta tarefa — se terminou, aperte FINALIZAR.
+                </p>
+              )}
               {t.esperandoEtapaAnterior ? (
                 // ⚠️ AVISA, não bloqueia: o encarregado pode mandar adiantar, e travar aqui
                 // faria a pessoa parar de olhar a tela.

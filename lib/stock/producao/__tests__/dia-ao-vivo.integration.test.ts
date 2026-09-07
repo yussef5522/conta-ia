@@ -91,7 +91,7 @@ describe('⭐⭐ AGORA — quem está com a mão na massa', () => {
     expect(d.agora[0].tarefa.produto).toBe('Beef de xis')
     // ⛔ o cronômetro é da TELA — o motor entrega o INSTANTE, não os minutos decorridos
     expect(d.agora[0].tarefa.iniciadoEm?.toISOString()).toBe(emSP(8, 40).toISOString())
-    expect(d.agora[0].tarefa.estado).toBe('FAZENDO')
+    expect(d.agora[0].tarefa.estado).toBe('EM_ANDAMENTO')
     expect(d.agora[0].tarefa.abertaDemais, '1h20 não é alarme de 4h').toBe(false)
   })
 
@@ -211,7 +211,10 @@ describe('⭐ o dia de cada uma', () => {
 
     const d = await diaAoVivo({ companyId, dia: DIA, agora: AGORA }, prisma)
     const dela = d.pessoas.find((p) => p.colaboradorId === nadine)!.tarefas[0]
-    expect(dela.estado).toBe('AGUARDA_ANTERIOR')
+    // ⚠️ "aguarda a anterior" deixou de ser ESTADO e virou DETALHE do aguardando (07/09):
+    // não é uma fila diferente, é a MESMA fila com um motivo — e como estado obrigava toda
+    // tela a conhecer um sexto caso.
+    expect(dela.estado).toBe('AGUARDANDO')
     expect(dela.esperando, 'estado mudo em vez de dizer o que falta').toBe('gessado')
     // ⚠️ e as duas contam como "na fila": separar na contagem faria o cabeçalho não fechar
     // com a lista embaixo dele.

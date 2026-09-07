@@ -20,15 +20,19 @@ import { useEffect, useState, use, useCallback } from 'react'
 import { ArrowLeft, Loader2, ChevronLeft, ChevronRight, AlertTriangle, RefreshCw } from 'lucide-react'
 import { diaEmSaoPaulo, somarDias } from '@/lib/datas/dia-sao-paulo'
 
-type Estado = 'FAZENDO' | 'NA_FILA' | 'AGUARDA_ANTERIOR' | 'FEITA'
+// ⭐⭐ OS CINCO ESTADOS — os MESMOS da tela da ordem e do tablet (fonte única, 07/09)
+type Estado = 'AGUARDANDO' | 'EM_ANDAMENTO' | 'FEITA' | 'FINALIZADA_PELO_GERENTE' | 'ENCERRADA_SEM_FINALIZAR'
 interface Lote { qtdGerada: number; custoUnitario: number | null; unidade: string }
 interface Tarefa {
   etapaId: string; ordemId: string; nome: string; produto: string; posicao: number
   estado: Estado; iniciadoEm: string | null; finalizadoEm: string | null
   minutos: number | null; esperando: string | null; loteFechado: Lote | null; abertaDemais: boolean
+  /** ⭐ o rótulo pronto — a MESMA frase das outras duas telas */
+  rotulo: string
+  pedidoEmAberto: boolean
 }
-interface Pessoa { colaboradorId: string; nome: string; fazendo: number; naFila: number; feitas: number; tarefas: Tarefa[] }
-interface Evento { quando: string; tipo: 'INICIOU' | 'FINALIZOU' | 'DESIGNOU'; quem: string; texto: string; minutos: number | null; loteFechado: Lote | null; ordemId: string | null }
+interface Pessoa { colaboradorId: string; nome: string; fazendo: number; naFila: number; feitas: number; encerradas: number; tarefas: Tarefa[] }
+interface Evento { quando: string; tipo: 'INICIOU' | 'FINALIZOU' | 'DESIGNOU'; quem: string; texto: string; minutos: number | null; loteFechado: Lote | null; ordemId: string | null; rotulo: string | null }
 interface Dia {
   dia: string
   agora: { colaboradorId: string; nome: string; tarefa: Tarefa }[]
@@ -206,6 +210,10 @@ export default function HojeAoVivoPage({ params }: { params: Promise<{ id: strin
                       </div>
                       {/* ⚠️ o lote fechado vem INDENTADO sob o "finalizou" que o gerou — é
                           consequência daquele toque, não um evento solto */}
+                      {/* ⭐ o desfecho da tarefa ao lado do INICIOU — "ficou aberta…" */}
+                      {e.rotulo && (
+                        <div className="ml-[4.6rem] mt-0.5 text-[12px] text-slate-400">└ {e.rotulo}</div>
+                      )}
                       {e.loteFechado && (
                         <div className="ml-[4.6rem] mt-0.5 text-[12px] text-slate-400">
                           └ lote fechado · {num(e.loteFechado.qtdGerada)} {e.loteFechado.unidade}
@@ -234,7 +242,10 @@ function CardDaPessoa({ p, empresaId, agoraMs }: { p: Pessoa; empresaId: string;
           vazio ? 'bg-slate-100 text-slate-400' : 'bg-[#f1edff] text-[#534AB7]'}`}>{inicial(p.nome)}</div>
         <span className="text-[15px] font-medium text-slate-900">{p.nome}</span>
         <span className="ml-auto text-[12.5px] text-slate-400">
-          {vazio ? 'nada designado hoje' : `${p.fazendo} fazendo · ${p.naFila} na fila · ${p.feitas} feita${p.feitas === 1 ? '' : 's'}`}
+          {vazio ? 'nada designado hoje'
+            // ⚠️ o cabeçalho FECHA com a lista: linha visível que o resumo não conta é a
+            // mesma doença do card `PRONTOS −72`.
+            : `${p.fazendo} fazendo · ${p.naFila} na fila · ${p.feitas} feita${p.feitas === 1 ? '' : 's'}${p.encerradas ? ` · ${p.encerradas} sem finalizar` : ''}`}
         </span>
       </div>
       {vazio ? (
@@ -246,20 +257,26 @@ function CardDaPessoa({ p, empresaId, agoraMs }: { p: Pessoa; empresaId: string;
           {p.tarefas.map((t) => (
             <li key={t.etapaId} className="flex flex-wrap items-baseline gap-x-2.5 text-[13px]">
               <span className="w-3 shrink-0 text-center" aria-hidden>
-                {t.estado === 'FAZENDO' ? <span className="text-[#c2760a]">●</span>
+                {t.estado === 'EM_ANDAMENTO' ? <span className="text-[#c2760a]">●</span>
                   : t.estado === 'FEITA' ? <span className="text-[#15803d]">✓</span>
+                  : t.estado === 'FINALIZADA_PELO_GERENTE' ? <span className="text-slate-400">✓</span>
+                  : t.estado === 'ENCERRADA_SEM_FINALIZAR' ? <span className="text-slate-300">⊘</span>
                   : <span className="text-slate-300">○</span>}
               </span>
               <a href={`/empresas/${empresaId}/estoque/producao/${t.ordemId}`} className="text-slate-700 hover:underline hover:underline-offset-2">
                 {t.nome}{t.produto && <span className="text-slate-400"> · {t.produto}</span>}
               </a>
+              {/* ⭐⭐ CADA ESTADO COM UMA CARA SÓ — e a frase vem do servidor (fonte única),
+                  nunca redigida aqui. Texto copiado em três telas diverge na 1ª revisão. */}
               <span className={`ml-auto shrink-0 text-[12.5px] tabular-nums ${
-                t.estado === 'FAZENDO' ? 'font-medium text-[#c2760a]' : t.estado === 'FEITA' ? 'text-[#15803d]' : 'text-slate-400'}`}>
-                {t.estado === 'FAZENDO' && t.iniciadoEm ? `fazendo · ${decorrido(t.iniciadoEm, agoraMs)}`
+                t.estado === 'EM_ANDAMENTO' ? 'font-medium text-[#c2760a]'
+                  : t.estado === 'FEITA' ? 'text-[#15803d]'
+                  : 'text-slate-400'}`}>
+                {t.estado === 'EM_ANDAMENTO' && t.iniciadoEm ? `fazendo · ${decorrido(t.iniciadoEm, agoraMs)}`
                   : t.estado === 'FEITA' && t.iniciadoEm && t.finalizadoEm ? `${hora(t.iniciadoEm)}–${hora(t.finalizadoEm)} · ${duracaoCurta(t.minutos ?? 0)}`
                   // ⚠️ "depois do gessado" é SEQUÊNCIA da receita, não atraso dela — cinza, neutro
-                  : t.esperando ? `depois do ${t.esperando}`
-                  : 'na fila'}
+                  : t.estado === 'AGUARDANDO' && t.esperando ? `depois do ${t.esperando}`
+                  : t.rotulo}
               </span>
               {t.loteFechado && (
                 <span className="w-full pl-[1.4rem] text-[12px] text-slate-400">

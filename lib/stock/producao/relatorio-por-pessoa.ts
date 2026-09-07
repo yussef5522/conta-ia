@@ -47,6 +47,8 @@ export interface LinhaPorPessoa {
   /** desvio do rendimento contra a média medida da ficha (%). `null` = sem régua ainda */
   rendimentoVsEsperado: number | null
   lotesComRegua: number
+  /** ⭐ tarefas contadas mas SEM tempo medido (o gerente finalizou por ela) — a tela diz */
+  semTempoMedido: number
   /** ⭐ o selo do card: "rende 98% do esperado". `null` = a apurar, nunca 100 por default */
   pctDoEsperado: number | null
   /** as tarefas que essa pessoa fez, mais frequentes primeiro — o subtítulo do card */
@@ -113,8 +115,25 @@ export async function relatorioPorPessoa(
   const etapas = await db.stockOrdemEtapa.findMany({
     where: {
       companyId: input.companyId,
-      finalizadoEm: { gte: janela.de, lte: janela.ate },
       ...(foraDoRelatorio.length ? { ordemId: { notIn: foraDoRelatorio } } : {}),
+      OR: [
+        { finalizadoEm: { gte: janela.de, lte: janela.ate } },
+        // ⭐⭐ AS FINALIZADAS PELO GERENTE (07/09) — o `finalizadoEm` delas é NULL de
+        // propósito (é o que as mantém fora do tempo por construção), então elas entram por
+        // outro carimbo. *"A pessoa fica com a tarefa feita no dia dela, sem tempo."*
+        //
+        // ⛔⛔ E O DIA DELA É O DO **INÍCIO**, não o do gesto do gerente. O trabalho aconteceu
+        // quando ela começou; o gerente pode fechar a etapa três dias depois, e atribuir pelo
+        // gesto jogaria trabalho velho dentro do relatório de hoje — o mesmo erro de datar
+        // uma linha pelo dia em que alguém a conferiu. `iniciadoEm` é o único instante ligado
+        // ao trabalho de verdade.
+        {
+          iniciadoEm: { gte: janela.de, lte: janela.ate },
+          id: { in: (await db.stockEtapaFinalizadaGerente.findMany({
+            where: { companyId: input.companyId }, select: { etapaId: true },
+          })).map((g) => g.etapaId) },
+        },
+      ],
     },
     orderBy: { finalizadoEm: 'asc' },
   })
@@ -181,6 +200,8 @@ export async function relatorioPorPessoa(
   // ── agrega por PESSOA ────────────────────────────────────────────────────────────────
   interface Acc {
     minutos: number; tarefas: number; produziu: number; unidades: Set<string>; desvios: number[]
+    /** ⛔ só o que foi MEDIDO entra na taxa — ver o bloco do min/un abaixo */
+    minutosMedidos: number; unidadesMedidas: number; semTempo: number
     /** quantas vezes fez cada tipo de tarefa — ordena o subtítulo do card */
     vezesPorTarefa: Map<string, number>
     /** (quando, unidades) de cada execução — a matéria-prima da sparkline */
@@ -191,6 +212,7 @@ export async function relatorioPorPessoa(
     if (!porPessoa.has(id)) {
       porPessoa.set(id, {
         minutos: 0, tarefas: 0, produziu: 0, unidades: new Set(), desvios: [],
+        minutosMedidos: 0, unidadesMedidas: 0, semTempo: 0,
         vezesPorTarefa: new Map(), linhaDoTempo: [],
       })
     }
@@ -205,17 +227,29 @@ export async function relatorioPorPessoa(
   const etapasPorOrdem = new Map<string, number>()
   for (const e of etapas) etapasPorOrdem.set(e.ordemId, (etapasPorOrdem.get(e.ordemId) ?? 0) + 1)
 
+  // ⭐ quais destas etapas foram finalizadas PELO GERENTE — a tarefa conta, o tempo não
+  const peloGerente = new Set((await db.stockEtapaFinalizadaGerente.findMany({
+    where: { companyId: input.companyId, etapaId: { in: etapas.map((e) => e.id) } }, select: { etapaId: true },
+  })).map((g) => g.etapaId))
+
   for (const e of etapas) {
     const quem = e.executorId
+    const gerenteFinalizou = peloGerente.has(e.id)
     // ⛔⛔ É AQUI QUE A TAREFA ABERTA FICA DE FORA — e é a camada que importa (medido na
     // REGRA 11: mexer só no `where` acima deixa os 27 testes verdes, porque este `continue`
     // segura). O `where` é a 2ª camada; **esta é a 1ª**.
     // ⚠️ Sem ela, o tempo de uma tarefa esquecida em aberto cresceria com o relógio e a
     // pessoa apareceria MAIS LENTA a cada vez que o gestor abrisse a tela.
-    if (!quem || !e.iniciadoEm || !e.finalizadoEm) continue
+    if (!quem || !e.iniciadoEm || (!e.finalizadoEm && !gerenteFinalizou)) continue
     const a = acc(quem)
     a.tarefas++
-    const min = Math.max(0, Math.round((e.finalizadoEm.getTime() - e.iniciadoEm.getTime()) / 60000))
+    // ⛔⛔ TEMPO A APURAR quando o GERENTE finalizou (07/09): ele não sabe quando ela parou de
+    // verdade. Contar `gesto − início` colocaria dentro da média um número que ninguém mediu
+    // — e a média é o que o dono usa pra conversar com a equipe.
+    const min = e.finalizadoEm && !gerenteFinalizou
+      ? Math.max(0, Math.round((e.finalizadoEm.getTime() - e.iniciadoEm.getTime()) / 60000))
+      : 0
+    if (gerenteFinalizou) a.semTempo++
     a.minutos += min
     a.vezesPorTarefa.set(e.nome, (a.vezesPorTarefa.get(e.nome) ?? 0) + 1)
     const info = ordemInfo.get(e.ordemId)
@@ -228,10 +262,23 @@ export async function relatorioPorPessoa(
       a.produziu = round2(a.produziu + minhaFatia)
       if (info) a.unidades.add(unidadeDoItem.get(info.itemProduzidoId) ?? '—')
     }
+    // ⛔⛔ A TAXA SÓ COBRE O QUE FOI MEDIDO — os DOIS lados da divisão.
+    //
+    // ⚠️ Somar as UNIDADES sem somar os MINUTOS faria a pessoa parecer MAIS RÁPIDA justamente
+    // na tarefa em que ninguém cronometrou nada: o numerador ficaria parado e o denominador
+    // crescendo. É a mesma armadilha do "tempo zero" de ontem, agora pelo outro lado.
+    if (!gerenteFinalizou) {
+      a.minutosMedidos += min
+      a.unidadesMedidas = round2(a.unidadesMedidas + minhaFatia)
+    }
     // ⚠️ a data da sparkline é a de FINALIZAÇÃO — é quando o trabalho ficou pronto; usar o
     // início jogaria pra semana anterior a tarefa começada sexta e fechada segunda.
-    a.linhaDoTempo.push({ quando: e.finalizadoEm, unidades: minhaFatia })
-    execucoes.push({
+    // ⚠️ Na finalizada pelo gerente não há `finalizadoEm`: a semana dela é a do INÍCIO, que é
+    // o único instante que alguém de fato mediu naquela tarefa.
+    a.linhaDoTempo.push({ quando: e.finalizadoEm ?? e.iniciadoEm, unidades: minhaFatia })
+    // ⚠️ e o recorte por tarefa da equipe também só recebe execução MEDIDA — senão o
+    // "mais rápido em cada tarefa" premiaria quem teve o gerente finalizando por ela.
+    if (!gerenteFinalizou) execucoes.push({
       tarefa: e.nome,
       produto: info ? (nomeDoItem.get(info.itemProduzidoId) ?? '') : '',
       colaboradorId: quem,
@@ -270,9 +317,11 @@ export async function relatorioPorPessoa(
       // ⛔ tempo ZERO não é velocidade infinita, é tempo não medido: o módulo guarda MINUTOS e
       // tarefa fechada em segundos arredonda pra 0 — `0 min/un` na tela seria lido como "a mais
       // rápida de todas". Sem minuto medido, "a apurar" (achado no dado real em 06/09).
-      minPorUnidade: unidade && a.produziu > 0 && a.minutos > 0 ? round1(a.minutos / a.produziu) : null,
+      minPorUnidade: unidade && a.unidadesMedidas > 0 && a.minutosMedidos > 0 ? round1(a.minutosMedidos / a.unidadesMedidas) : null,
       rendimentoVsEsperado,
       lotesComRegua: a.desvios.length,
+      /** ⭐ quantas tarefas dela ficaram SEM tempo medido (o gerente finalizou) */
+      semTempoMedido: a.semTempo,
       pctDoEsperado: pctDoEsperado(rendimentoVsEsperado),
       tarefasFeitas: [...a.vezesPorTarefa.entries()].sort((p, q) => q[1] - p[1]).map(([n]) => n),
       // ⚠️ sem quantidade medida a sparkline seria uma fileira de zeros — e uma barra vazia
