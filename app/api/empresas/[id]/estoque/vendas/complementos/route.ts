@@ -41,7 +41,9 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (!parsed.success) return NextResponse.json({ erro: parsed.error.issues[0]?.message ?? 'Dados inválidos.' }, { status: 400 })
   const { data, html, confirmar, modo } = parsed.data
   try {
-    if (!confirmar) return NextResponse.json(await previewComplementos(companyId, data, html, prisma))
+    // ⚠️ o modo vai TAMBÉM pro preview: é ele que decide o `importId`, e sem isso o resumo
+    // da baixa sairia calculado contra a chave errada (dia × período).
+    if (!confirmar) return NextResponse.json(await previewComplementos(companyId, data, html, prisma, modo ?? 'DIA'))
     return NextResponse.json(await confirmarComplementos(companyId, data, html, a.user!.sub, prisma, modo ?? 'DIA'))
   } catch (e) {
     if (e instanceof ImportComplementoError) return NextResponse.json({ erro: e.message }, { status: 422 })

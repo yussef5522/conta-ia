@@ -22,7 +22,7 @@ import { diasDispensados } from './dia-dispensado'
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { montarCtx, explodir } from './baixa-venda'
-import { ehLinhaDePeriodo } from './import-complementos'
+import { ehLinhaDePeriodo } from './identidade-import-complemento'
 import { criarMovimento, estornarMovimento } from '../movement'
 import { custoMedioPorItem, recomputeSaldoCache } from '../saldo'
 
@@ -94,8 +94,29 @@ export async function montarPlanoComplementos(
     select: { importId: true, nomeSuitable: true, ocorrencias: true },
   })
   if (!linhas.length) throw new BaixaComplementoError(`Não há complementos importados em ${data}.`)
+  return planoDeLinhas(companyId, data, linhas[0].importId, linhas, db)
+}
 
-  const importId = linhas[0].importId
+/**
+ * ⭐⭐ O MESMO PLANO, A PARTIR DE LINHAS QUE AINDA NÃO ESTÃO NO BANCO (07/09/2026).
+ *
+ * É o que faz o **preview do import mostrar a baixa** antes do confirmar. ⚠️ E é a MESMA
+ * função (`planoDeLinhas`) que a baixa executa — um segundo cálculo "só pro preview" faria a
+ * tela prometer um número e o ledger gravar outro, que é a doença que este módulo mais paga.
+ */
+export async function preverBaixaDasLinhas(
+  companyId: string, data: string, importId: string,
+  linhas: { nomeSuitable: string; ocorrencias: number }[],
+  db: PrismaClient = defaultPrisma,
+): Promise<PlanoComplementos> {
+  return planoDeLinhas(companyId, data, importId, linhas, db)
+}
+
+async function planoDeLinhas(
+  companyId: string, data: string, importId: string,
+  linhas: { nomeSuitable: string; ocorrencias: number }[],
+  db: PrismaClient,
+): Promise<PlanoComplementos> {
   const ehPeriodo = ehLinhaDePeriodo(importId)
 
   const maps = await db.stockVendaComplementoMap.findMany({
@@ -289,4 +310,33 @@ export async function listarDiasComplemento(
     })
   }
   return out
+}
+
+/**
+ * ⭐⭐ A BAIXA QUE ANDA JUNTO DO IMPORT (07/09/2026) — decisão do dono.
+ *
+ * *"O botão 'baixar' separado é estado intermediário que só serve pra ser esquecido — provou
+ * isso a semana inteira (dias 02–04 importados e nunca baixados)."*
+ *
+ * ⚠️ **PADRÃO DO RECEBIMENTO: commit + ponte.** As linhas já estão gravadas quando esta
+ * função roda; se a baixa falhar, o import **NÃO se desfaz** — devolve o motivo pra a tela
+ * dizer. Uma transação única desfaria um import legítimo por causa de uma ficha com problema,
+ * e o dono perderia o arquivo que acabou de subir.
+ *
+ * ⛔ E "não baixou" NÃO É ERRO em dois casos legítimos, que ganham FRASE em vez de alarme:
+ * import de **PERÍODO** (nunca baixa, é a trava de 02/09) e dia em que **nenhum complemento
+ * tem ficha ainda** (ele entra na prateleira pra ser mapeado — é o trabalho, não a falha).
+ */
+export async function baixarSeHouverFicha(
+  companyId: string, data: string, userId?: string, db: PrismaClient = defaultPrisma,
+): Promise<{ recibo: ReciboComplementos | null; motivo: string | null; falhou: boolean }> {
+  try {
+    return { recibo: await processarComplementos(companyId, data, userId, db), motivo: null, falhou: false }
+  } catch (e) {
+    // ⚠️ recusa PREVISTA (período / sem ficha) é informação, não incidente
+    if (e instanceof BaixaComplementoError) return { recibo: null, motivo: e.message, falhou: false }
+    // ⛔ qualquer outra falha AVISA ALTO e não some: o import ficou gravado sem a baixa, e é
+    // exatamente esse estado que o "precisa reprocessar" e o juiz de 24h existem pra cobrar.
+    return { recibo: null, motivo: (e as Error).message, falhou: true }
+  }
 }

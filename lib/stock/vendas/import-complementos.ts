@@ -16,6 +16,8 @@ import { prisma as defaultPrisma } from '@/lib/db'
 import { parseSuitable, COLUNAS_COMPLEMENTOS } from './parse-suitable'
 import { prateleiraDeComplementos, type LinhaPrateleira } from './complemento-map'
 import { SABORES_DO_CARDAPIO, grupoPeloCardapio } from './grupo-complemento'
+import { importIdDe, type ModoImportComplemento } from './identidade-import-complemento'
+import { preverBaixaDasLinhas, baixarSeHouverFicha, type ReciboComplementos } from './baixa-complemento'
 
 export class ImportComplementoError extends Error {}
 
@@ -32,6 +34,21 @@ export interface PrevisaoComplementos {
   nosDoisRelatorios: number
   /** já existe import deste dia? (reimportar SUBSTITUI) */
   jaImportado: boolean
+  /**
+   * ⭐⭐ O QUE A BAIXA VAI FAZER (07/09) — porque **confirmar o import JÁ BAIXA**.
+   *
+   * ⚠️ Sai do MESMO motor que a baixa executa; um cálculo "só pro preview" faria a tela
+   * prometer um número e o ledger gravar outro. `null` quando não há o que baixar.
+   */
+  baixa: {
+    ocorrenciasQueBaixam: number
+    complementosComFicha: number
+    itens: { nome: string; qtd: number; saldoDepois: number }[]
+    /** ⛔ período nunca baixa (a trava de 02/09) */
+    ehPeriodo: boolean
+    /** já há baixa ativa deste dia: confirmar ESTORNA e refaz */
+    jaBaixado: boolean
+  } | null
 }
 
 /**
@@ -57,19 +74,17 @@ const MIN_EVIDENCIA_CARDAPIO = 10
  * ⚠️ Período serve pra SEMEAR a prateleira (o dono precisa da lista completa de nomes pra
  * montar as fichas) e pra priorizar por ocorrência. Não serve pra baixar estoque.
  */
-export type ModoImportComplemento = 'DIA' | 'PERIODO'
-
-export const importIdDe = (companyId: string, data: string, modo: ModoImportComplemento) =>
-  modo === 'PERIODO' ? `comp-periodo-${companyId}-${data}` : `comp-${companyId}-${data}`
-
-/** ⛔ a baixa TEM que chamar isto e pular: linha de período não é venda de um dia. */
-export const ehLinhaDePeriodo = (importId: string) => importId.startsWith('comp-periodo-')
+// ⚠️ a identidade do import mora em `identidade-import-complemento.ts` — este arquivo agora
+// CHAMA a baixa (o confirmar baixa junto), e a baixa precisa ler o `importId`: deixar as duas
+// coisas aqui fecharia um ciclo de import. Re-exportadas pra não quebrar quem já importava.
+export { importIdDe, ehLinhaDePeriodo, type ModoImportComplemento } from './identidade-import-complemento'
 
 const diaUtc = (s: string) => new Date(`${s.slice(0, 10)}T00:00:00.000Z`)
 
 /** PREVIEW — não grava nada. Mostra o que entraria e o estado do mapeamento. */
 export async function previewComplementos(
   companyId: string, data: string, html: string, db: PrismaClient = defaultPrisma,
+  modo: ModoImportComplemento = 'DIA',
 ): Promise<PrevisaoComplementos> {
   const p = parseSuitable(html, COLUNAS_COMPLEMENTOS)
   if (!p.linhas.length) throw new ImportComplementoError('Nenhum complemento encontrado no arquivo.')
@@ -80,6 +95,12 @@ export async function previewComplementos(
     where: { companyId, data: diaUtc(data) },
   })) > 0
 
+  // ⭐⭐ O RESUMO DA BAIXA ENTRA NO PREVIEW (07/09): um preview, um clique, tudo.
+  // ⚠️ fail-soft — o preview do import não pode morrer porque uma ficha tem problema; sem o
+  // resumo o dono ainda vê o que vai importar, que é o mínimo.
+  const importId = importIdDe(companyId, data, modo)
+  const plano = await preverBaixaDasLinhas(companyId, data, importId, linhas, db).catch(() => null)
+
   return {
     data,
     totalLinhas: p.linhas.length,
@@ -89,6 +110,13 @@ export async function previewComplementos(
     pendentes: prateleira.filter((x) => x.destino === 'SEM_FICHA').length,
     nosDoisRelatorios: prateleira.filter((x) => x.tambemProduto).length,
     jaImportado,
+    baixa: plano && plano.complementos.length ? {
+      ocorrenciasQueBaixam: plano.ocorrenciasBaixadas,
+      complementosComFicha: plano.complementos.length,
+      itens: plano.agregada.map((a) => ({ nome: a.nome, qtd: a.qtd, saldoDepois: a.saldoDepois })),
+      ehPeriodo: plano.ehPeriodo,
+      jaBaixado: plano.jaBaixado,
+    } : null,
   }
 }
 
@@ -124,7 +152,15 @@ export async function previewComplementos(
 export async function confirmarComplementos(
   companyId: string, data: string, html: string, userId?: string, db: PrismaClient = defaultPrisma,
   modo: ModoImportComplemento = 'DIA',
-): Promise<{ importId: string; linhas: number; ocorrencias: number; substituiu: boolean; modo: ModoImportComplemento }> {
+): Promise<{
+  importId: string; linhas: number; ocorrencias: number; substituiu: boolean; modo: ModoImportComplemento
+  /** ⭐ o que a baixa fez logo em seguida — `null` quando não havia o que baixar */
+  baixa: ReciboComplementos | null
+  /** ⚠️ por que não baixou (período, sem ficha) OU o erro, quando a ponte falhou */
+  avisoBaixa: string | null
+  /** ⛔ a ponte falhou de verdade: o import FICOU, e a tela tem que gritar */
+  baixaFalhou: boolean
+}> {
   const p = parseSuitable(html, COLUNAS_COMPLEMENTOS)
   if (!p.linhas.length) throw new ImportComplementoError('Nenhum complemento encontrado no arquivo.')
   const dia = diaUtc(data)
@@ -135,7 +171,7 @@ export async function confirmarComplementos(
       .map((m) => m.nomeSuitable),
   )
 
-  return db.$transaction(async (tx) => {
+  const gravado = await db.$transaction(async (tx) => {
     const antes = await tx.stockVendaComplementoLinha.count({ where: { companyId, data: dia } })
     await tx.stockVendaComplementoLinha.deleteMany({ where: { companyId, data: dia } })
     // ⚠️ `importId` é o dia: reimportar o mesmo dia reaproveita a chave, e a baixa
@@ -185,6 +221,16 @@ export async function confirmarComplementos(
       modo,
     }
   })
+
+  // ⭐⭐ E A BAIXA ANDA JUNTO (07/09) — decisão do dono: *"o botão 'baixar' separado é estado
+  // intermediário que só serve pra ser esquecido — provou isso a semana inteira"*.
+  //
+  // ⚠️ **DEPOIS do commit, no padrão do recebimento (commit + ponte).** Se a baixa falhar, o
+  // import NÃO se desfaz: uma transação única jogaria fora um arquivo legítimo por causa de
+  // uma ficha com problema, e o dono perderia o que acabou de subir. O que a falha produz é
+  // um AVISO — e o dia fica visível como pendente, que é o estado honesto.
+  const b = await baixarSeHouverFicha(companyId, data, userId, db)
+  return { ...gravado, baixa: b.recibo, avisoBaixa: b.motivo, baixaFalhou: b.falhou }
 }
 
 export interface PrateleiraCompleta {

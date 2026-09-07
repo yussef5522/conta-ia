@@ -364,8 +364,15 @@ function ImportComplementos({ id }: { id: string }) {
     totalLinhas: number; totalOcorrencias: number; comDestino: number; pendentes: number
     nosDoisRelatorios: number; jaImportado: boolean
     prateleira: { nomeSuitable: string; ocorrencias: number; destino: string; nomeFicha: string | null; tambemProduto: boolean }[]
+    /** ⭐⭐ o que a baixa vai fazer — porque CONFIRMAR JÁ BAIXA (07/09) */
+    baixa: { ocorrenciasQueBaixam: number; complementosComFicha: number; ehPeriodo: boolean; jaBaixado: boolean
+      itens: { nome: string; qtd: number; saldoDepois: number }[] } | null
   } | null>(null)
-  const [ok, setOk] = useState<{ linhas: number; ocorrencias: number; substituiu: boolean; modo?: string } | null>(null)
+  const [ok, setOk] = useState<{
+    linhas: number; ocorrencias: number; substituiu: boolean; modo?: string
+    baixa: { ocorrencias: number; itensBaixados: number; valorBaixado: number; estornou: number } | null
+    avisoBaixa: string | null; baixaFalhou: boolean
+  } | null>(null)
   // ⛔ PERÍODO semeia a prateleira e NUNCA vira dia de baixa (a linha fica marcada)
   const [modo, setModo] = useState<'DIA' | 'PERIODO'>('DIA')
   const [busy, setBusy] = useState(false)
@@ -438,7 +445,8 @@ function ImportComplementos({ id }: { id: string }) {
           {prev.pendentes > 0 && (
             <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
               {prev.pendentes} sem destino ainda — eles entram assim mesmo e ficam
-              <b> visíveis na prateleira</b> do Cardápio pra você apontar um a um. Nada baixa estoque agora.
+              <b> visíveis na prateleira</b> do Cardápio pra você apontar um a um. <b>Esses não baixam</b>;
+              quando você apontar a ficha, o dia acende <b>“precisa reprocessar”</b>.
             </p>
           )}
           {prev.nosDoisRelatorios > 0 && (
@@ -478,10 +486,48 @@ function ImportComplementos({ id }: { id: string }) {
             </table>
           </div>
 
+          {/* ⭐⭐ O RESUMO DA BAIXA, ANTES DO CLIQUE (07/09) — um preview, um clique, tudo.
+              ⚠️ Os números saem do MESMO motor que a baixa executa; um cálculo "só pro
+              preview" faria a tela prometer um número e o ledger gravar outro. */}
+          {modo === 'PERIODO' ? (
+            <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              <b>Período não baixa estoque</b> — ele entra pra montar a lista de sabores e priorizar por ocorrência.
+            </p>
+          ) : prev.baixa ? (
+            <div className="rounded-lg border border-[#185FA5]/30 bg-[#185FA5]/[0.04] px-3 py-2.5">
+              <p className="text-xs font-semibold text-slate-800">
+                Confirmar já baixa o estoque: {prev.baixa.complementosComFicha} complemento(s) com ficha
+                → <b>{prev.baixa.ocorrenciasQueBaixam.toLocaleString('pt-BR')}</b> ocorrências
+                {prev.pendentes > 0 && <span className="font-normal text-slate-500"> · {prev.pendentes} sem destino só entram na prateleira</span>}
+              </p>
+              <ul className="mt-1.5 space-y-0.5 text-[12px] text-slate-600">
+                {prev.baixa.itens.map((i) => (
+                  <li key={i.nome} className="tabular-nums">
+                    − {i.qtd.toLocaleString('pt-BR')} {i.nome}
+                    {/* ⚠️ negativo AVISA e não impede: é "vendeu sem produzir", não erro */}
+                    <span className={i.saldoDepois < 0 ? 'font-semibold text-rose-600' : 'text-slate-400'}> · fica {i.saldoDepois.toLocaleString('pt-BR')}</span>
+                  </li>
+                ))}
+              </ul>
+              {prev.baixa.itens.some((i) => i.saldoDepois < 0) && (
+                <p className="mt-1.5 text-[11px] text-amber-800">⚠️ algum item fica <b>negativo</b>: é o sinal de <b>vendeu sem produzir</b> — a baixa segue.</p>
+              )}
+              {prev.baixa.jaBaixado && (
+                <p className="mt-1.5 text-[11px] text-amber-800">Este dia já foi baixado — confirmar <b>estorna e refaz</b>.</p>
+              )}
+            </div>
+          ) : (
+            <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              Nenhum complemento deste dia tem ficha ainda — <b>nada baixa</b>. Eles entram na prateleira pra você apontar o destino.
+            </p>
+          )}
+
           <button onClick={() => chamar(true)} disabled={busy}
             className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#185FA5] px-3 text-sm font-semibold text-white hover:bg-[#0F4A8C] disabled:opacity-50">
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-            Confirmar import de {prev.totalLinhas} complementos
+            {modo === 'PERIODO' || !prev.baixa
+              ? `Confirmar import de ${prev.totalLinhas} complementos`
+              : `Confirmar e baixar (${prev.baixa.ocorrenciasQueBaixam.toLocaleString('pt-BR')} ocorrências)`}
           </button>
         </CardContent></Card>
       )}
@@ -493,7 +539,22 @@ function ImportComplementos({ id }: { id: string }) {
             {ok.modo === 'PERIODO' && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-normal text-slate-600">período — não baixa estoque</span>}
             {ok.substituiu && <span className="text-xs font-normal text-slate-500">— substituiu o import anterior deste dia</span>}
           </p>
-          <p className="mt-1 text-xs text-slate-500">Nada baixou estoque — o destino de cada sabor é você quem aponta.</p>
+          {/* ⭐ o recibo diz o que BAIXOU — era aqui que a tela antes afirmava, sempre, que
+              nada tinha baixado. Depois de 07/09 isso passou a ser mentira no caminho normal. */}
+          {ok.baixa ? (
+            <p className="mt-1 text-xs text-emerald-700">
+              <b>{ok.baixa.ocorrencias.toLocaleString('pt-BR')} ocorrências</b> baixaram o estoque em {ok.baixa.itensBaixados} item(ns) · {brl(ok.baixa.valorBaixado)}
+              {ok.baixa.estornou > 0 && <> · {ok.baixa.estornou} baixa(s) anterior(es) estornada(s)</>}
+            </p>
+          ) : ok.baixaFalhou ? (
+            // ⛔ a ponte falhou e o import FICOU — a tela grita, e o dia continua pendente
+            <p className="mt-1 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-800">
+              <b>O import gravou, mas a baixa NÃO rodou:</b> {ok.avisoBaixa}
+              <br />O dia fica como <b>pendente</b> — dá pra reprocessar por aqui depois de resolver.
+            </p>
+          ) : (
+            <p className="mt-1 text-xs text-slate-500">Nada baixou estoque: {ok.avisoBaixa ?? 'nenhum complemento com ficha ainda'}.</p>
+          )}
           <a href={`/empresas/${id}/estoque/cardapio`} className="mt-2 inline-block text-xs text-[#185FA5] hover:underline">
             ir pra prateleira de complementos no Cardápio →
           </a>
@@ -504,11 +565,18 @@ function ImportComplementos({ id }: { id: string }) {
 }
 
 /**
- * ⭐⭐⭐ A BAIXA DOS COMPLEMENTOS — preview → confirmar, como todo gesto que mexe no ledger.
+ * ⭐⭐ OS DIAS IMPORTADOS E O ESTADO DA BAIXA DE CADA UM.
+ *
+ * ⛔⛔ **O PASSO SEPARADO DE "BAIXAR" MORREU EM 07/09** (decisão do dono): *"é estado
+ * intermediário que só serve pra ser esquecido — provou isso a semana inteira (dias 02–04
+ * importados e nunca baixados)"*. **Confirmar o import já baixa.**
+ *
+ * ⚠️ O que sobra aqui é (a) o ESTADO de cada dia, (b) o **reprocesso** — que continua sendo
+ * gesto próprio com preview, porque estornar e refazer o ledger nunca pode ser efeito
+ * colateral —, e (c) o acerto dos dias **pendentes de antes da mudança**.
  *
  * ⚠️ O NEGATIVO APARECE ANTES DE GRAVAR e **não bloqueia**: `INTERMEDIARIO` baixa o pack
  * pronto, e negativo quer dizer *"vendeu sem produzir"* — o sinal que o dono quer ver.
- * Bloquear trocaria uma informação verdadeira por um estoque bonito e falso.
  */
 function BaixaComplementos({ id }: { id: string }) {
   const [dias, setDias] = useState<{ data: string; ehPeriodo: boolean; linhas: number; ocorrencias: number; baixado: boolean; precisaReprocessar: boolean; dispensado: boolean; importadoEm: string }[] | null>(null)
@@ -574,7 +642,11 @@ function BaixaComplementos({ id }: { id: string }) {
 
   return (
     <Card><CardContent className="space-y-3 p-4">
-      <p className="text-sm font-semibold text-slate-900">Baixar o estoque dos complementos</p>
+      <p className="text-sm font-semibold text-slate-900">Dias importados</p>
+      <p className="-mt-2 text-[11px] text-slate-400">
+        Confirmar o import já baixa o estoque. Os dias abaixo mostram o estado; “pendente” é dia
+        importado <b>antes</b> dessa mudança, ou dia cuja baixa não rodou.
+      </p>
 
       <table className="density-normal w-full">
         <thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-400">
@@ -593,14 +665,16 @@ function BaixaComplementos({ id }: { id: string }) {
                 : d.precisaReprocessar ? <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-800">precisa reprocessar</span>
                   : d.baixado ? <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[11px] text-emerald-700">baixado</span>
                     : d.dispensado ? <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600">não baixar — decisão</span>
-                      : <span className="text-[11px] text-slate-400">não baixado</span>}
+                      : <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-800">pendente — não baixou</span>}
             </td>
             <td className="px-3 py-0 text-right">
               {!d.ehPeriodo && (
                 <span className="inline-flex items-center gap-2">
+                  {/* ⚠️ o rótulo segue o ESTADO: "baixar" só aparece em dia pendente (o
+                      legado), nunca como passo do fluxo normal — que agora é um clique só. */}
                   <button onClick={() => abrir(d.data)} disabled={busy}
                     className="text-[11px] text-[#185FA5] hover:underline disabled:opacity-40">
-                    {d.precisaReprocessar ? 'reprocessar' : d.baixado ? 'ver' : 'baixar'}
+                    {d.precisaReprocessar ? 'reprocessar' : d.baixado ? 'ver' : d.dispensado ? 'ver' : 'baixar (pendente)'}
                   </button>
                   {/* ⚠️ dia JÁ baixado não se dispensa: a saída ali é estornar, que é outro
                       gesto, com outro nome. Dispensar é "este dia não vai baixar". */}
