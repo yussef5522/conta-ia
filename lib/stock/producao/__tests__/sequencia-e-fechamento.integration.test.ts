@@ -245,11 +245,20 @@ describe('⛔⛔ ordem CANCELADA fica FORA do relatório por pessoa', () => {
     expect(await tarefasAbertasDemais(companyId, emSP(14), prisma), 'ordem cancelada continuou cobrando').toHaveLength(0)
   })
 
-  it('⛔⛔ e a etapa aberta de ordem CONCLUÍDA pelo encarregado também não cobra', async () => {
-    // ⭐ O CAMINHO DO ENCARREGADO, provado: sobrou material → a cozinha NÃO finaliza → ele
-    // conclui pela tela de Produção ajustando o consumo. `concluir()` não toca nas etapas
-    // (não inventa horário de fim), então a última fica aberta — e não pode virar alarme
-    // permanente por algo que não tem ação.
+  // ⛔⛔ TESTE INVERTIDO EM 06/09, COM O MOTIVO ESCRITO — a regra caiu por EVIDÊNCIA.
+  //
+  // Ele afirmava que a etapa **continua EM_ANDAMENTO** depois da conclusão pelo encarregado,
+  // e chamava isso de "rastro honesto". **Não era honesto: era uma fresta.** O dono achou em
+  // prod — a etapa da Carlise ficou aberta 7h05 **sem nenhum gesto que a resolvesse** (o
+  // tablet recusa ordem encerrada, a Produção não tinha botão), e o "HOJE ao vivo" a mostrava
+  // como *"fazendo há 7h05"*: o retrato do presente mentindo por uma ordem que já acabou.
+  //
+  // ⚠️ A metade CERTA da regra antiga fica de pé e continua travada aqui: **não se inventa
+  // `finalizadoEm`** e **o alarme não cobra**. O que muda é que agora o estado tem NOME
+  // (`ENCERRADA_SEM_FINALIZAR`) em vez de fingir que o trabalho segue em curso.
+  it('⛔⛔ concluir pelo encarregado ENCERRA a etapa aberta — sem inventar tempo, sem cobrar', async () => {
+    // ⭐ O CAMINHO DO ENCARREGADO: sobrou material → a cozinha NÃO finaliza → ele conclui
+    // pela tela de Produção ajustando o consumo.
     const ordemId = await ordemSeparada(5)
     const es = await etapasDaOrdem(companyId, ordemId, HOJE, prisma)
     await iniciarTarefa({ companyId, etapaId: es[0].id, colaboradorId: cristian, agora: emSP(8) }, prisma)
@@ -262,9 +271,14 @@ describe('⛔⛔ ordem CANCELADA fica FORA do relatório por pessoa', () => {
     }, prisma)
     expect(r.qtdGerada).toBe(35)
     expect((await prisma.stockProductionOrder.findUnique({ where: { id: ordemId } }))!.estado).toBe('CONCLUIDA')
-    // ⭐ a etapa CONTINUA aberta (o rastro é honesto: ninguém apertou finalizar)…
-    expect((await etapasDaOrdem(companyId, ordemId, emSP(20), prisma))[1].estado).toBe('EM_ANDAMENTO')
-    // …mas NÃO cobra: a ordem já fechou, não há o que fazer
+    // ⭐ a ordem LEVOU a etapa junto — estado próprio, e o rastro de quem começou continua
+    const etapa = (await etapasDaOrdem(companyId, ordemId, emSP(20), prisma))[1]
+    expect(etapa.estado, 'a etapa ficou "em andamento" pra sempre — a fresta de 06/09').toBe('ENCERRADA_SEM_FINALIZAR')
+    expect(etapa.executorNome).toBe('Marcyelle')
+    // ⛔ e NÃO inventou tempo: o cronômetro de 11h não virou uma medição
+    expect(etapa.minutos, 'o tempo de uma etapa que ninguém finalizou virou fato').toBeNull()
+    expect((await prisma.stockOrdemEtapa.findUnique({ where: { id: es[1].id } }))!.finalizadoEm).toBeNull()
+    // …e continua NÃO cobrando: a ordem já fechou, não há o que fazer
     expect(await tarefasAbertasDemais(companyId, emSP(20), prisma)).toHaveLength(0)
   })
 

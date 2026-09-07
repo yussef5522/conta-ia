@@ -9,13 +9,15 @@
 // e "cristian"/"Cristian "/"cris" seriam três pessoas.
 
 import { useEffect, useState } from 'react'
-import { Loader2, Check, Clock, User } from 'lucide-react'
+import { Loader2, Check, Clock, User, CircleSlash } from 'lucide-react'
 
 interface Etapa {
   id: string; posicao: number; nome: string
   colaboradorId: string | null; colaboradorNome: string | null
   executorNome: string | null; iniciadoEm: string | null; finalizadoEm: string | null
-  estado: 'AGUARDANDO' | 'EM_ANDAMENTO' | 'FEITA'; minutos: number | null
+  estado: 'AGUARDANDO' | 'EM_ANDAMENTO' | 'FEITA' | 'ENCERRADA_SEM_FINALIZAR'; minutos: number | null
+  /** ⛔ a ordem acabou e levou a etapa aberta junto — sem tempo medido */
+  encerradaPor: 'ORDEM_CONCLUIDA' | 'ORDEM_CANCELADA' | null
 }
 interface Colaborador { id: string; nome: string }
 
@@ -27,11 +29,15 @@ export function duracao(min: number | null): string {
   return `${Math.floor(min / 60)}h${String(min % 60).padStart(2, '0')}`
 }
 
-export function EtapasDaOrdem({ id, ordemId, colaboradores, aoSaberAssinadas }: {
+export function EtapasDaOrdem({ id, ordemId, colaboradores, aoSaberAssinadas, aoSaberAbertas }: {
   id: string; ordemId: string; colaboradores: Colaborador[]
   /** ⭐ avisa a página quando alguma etapa já foi ASSINADA (executor carimbado pelo PIN) —
       é o que faz o dropdown "quem produziu" sair da conclusão. */
   aoSaberAssinadas?: (assinadas: boolean) => void
+  /** ⛔ as etapas ABERTAS — a conclusão avisa que a ordem vai levá-las junto (06/09).
+      ⚠️ Sai DAQUI, do payload que este componente já buscou: um segundo fetch faria o aviso
+      e a lista discordarem sobre quais etapas estão abertas. */
+  aoSaberAbertas?: (abertas: { nome: string; executorNome: string | null }[]) => void
 }) {
   const [etapas, setEtapas] = useState<Etapa[] | null>(null)
   const [erro, setErro] = useState<string | null>(null)
@@ -42,6 +48,7 @@ export function EtapasDaOrdem({ id, ordemId, colaboradores, aoSaberAssinadas }: 
       const es: Etapa[] = j.etapas ?? []
       setEtapas(es)
       aoSaberAssinadas?.(es.some((e) => !!e.executorNome))
+      aoSaberAbertas?.(es.filter((e) => e.estado === 'EM_ANDAMENTO').map((e) => ({ nome: e.nome, executorNome: e.executorNome })))
     }).catch(() => setEtapas([]))
   useEffect(() => { carregar() }, [id, ordemId]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -78,8 +85,17 @@ export function EtapasDaOrdem({ id, ordemId, colaboradores, aoSaberAssinadas }: 
             <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-semibold tabular-nums text-slate-500">{e.posicao + 1}</span>
             <span className="min-w-[9rem] flex-1 text-sm text-slate-800">{e.nome}</span>
 
-            {/* ⭐ FEITA: o seletor sai e fica o rastro — quem fez não se "redesigna" */}
-            {e.estado === 'FEITA' ? (
+            {/* ⛔⛔ ENCERRADA SEM FINALIZAR: a ordem acabou e levou a etapa junto. NÃO é
+                "feita" (ninguém apertou finalizar) e NÃO tem duração — dizer "1h12" aqui
+                seria inventar um tempo que ninguém mediu. */}
+            {e.estado === 'ENCERRADA_SEM_FINALIZAR' ? (
+              <span className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+                <CircleSlash className="h-3.5 w-3.5 text-slate-400" />
+                <span className="font-medium text-slate-700">{e.executorNome ?? '—'}</span>
+                <span>· ficou aberta — a ordem foi {e.encerradaPor === 'ORDEM_CANCELADA' ? 'cancelada' : 'concluída pela Produção'}</span>
+                <span className="text-slate-400">· começou {hhmm(e.iniciadoEm)} · tempo a apurar</span>
+              </span>
+            ) : e.estado === 'FEITA' ? (
               <span className="flex items-center gap-1.5 text-xs text-emerald-700">
                 <Check className="h-3.5 w-3.5" />
                 <span className="font-medium">{e.executorNome ?? '—'}</span>

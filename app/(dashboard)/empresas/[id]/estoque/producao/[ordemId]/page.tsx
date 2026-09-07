@@ -10,11 +10,13 @@ import { Card, CardContent } from '@/components/ui/card'
 import { EtapasDaOrdem } from '@/components/estoque/etapas-da-ordem'
 import { ArrowLeft, Loader2, Factory, Printer, AlertTriangle, Check, Undo2, X, Tag, TrendingUp } from 'lucide-react'
 import { diaEmSaoPaulo } from '@/lib/datas/dia-sao-paulo'
+import { avisoDeEtapasAbertas } from '@/lib/stock/producao/aviso-etapas-abertas'
 
 interface Linha { itemId: string; nome: string; unidade: string; unidadeControle: string; porLote: number; qtdPlanejada: number; qtdSeparada: number; saldoDisponivel: number; custoMedio: number | null; fichaIdComponente: string | null }
 interface Ordem { id: string; nomeProduzido: string; unidadeProduzido: string; escalaReceitas: number; loteBase: number; estado: string; dataProducao: string; setorNome: string | null; versaoFicha: number; fichaId: string }
 interface Conclusao { id: string; qtdGerada: number; colaboradorNome: string | null; rendimento: number; custoLoteReal: number; custoUnitarioReal: number | null; validadeAte: string | null; parcial: boolean; criadoEm: string }
 interface Colaborador { id: string; nome: string }
+interface EtapaAbertaNaTela { nome: string; executorNome: string | null }
 
 const brl = (n: number | null) => (n == null ? '—' : n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }))
 const num = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 3 })
@@ -35,6 +37,9 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
   // ⭐ a ordem tem etapa ASSINADA (alguém carimbou com o PIN)? Então "quem produziu" já está
   // respondido — o dropdown vira fóssil e sai da tela (06/09).
   const [etapasAssinadas, setEtapasAssinadas] = useState(false)
+  // ⛔ as etapas ABERTAS: concluir por aqui vai LEVÁ-LAS junto, sem tempo medido. O
+  // encarregado tem que saber ANTES de apertar — escolha consciente, não efeito colateral.
+  const [etapasAbertas, setEtapasAbertas] = useState<EtapaAbertaNaTela[]>([])
   const [rendimentoMedio, setRendimentoMedio] = useState<number | null>(null)
   const [rendimentoLotes, setRendimentoLotes] = useState(0)
   // ⭐ "quero fazer N" — o sentido PRINCIPAL do dono ("faz 200 porções" → quantos kg pegar).
@@ -298,10 +303,10 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
 
       {/* ⭐⭐ ETAPAS — quem faz cada parte (06/09). Fica ANTES da conclusão porque é o
           trabalho acontecendo; a conclusão é o fecho. */}
-      <EtapasDaOrdem id={id} ordemId={ordemId} colaboradores={colaboradores} aoSaberAssinadas={setEtapasAssinadas} />
+      <EtapasDaOrdem id={id} ordemId={ordemId} colaboradores={colaboradores} aoSaberAssinadas={setEtapasAssinadas} aoSaberAbertas={setEtapasAbertas} />
 
       {/* conclusão ("quantos saíram?") */}
-      {emProducao && <ConclusaoForm id={id} ordemId={ordemId} linhas={linhas} colaboradores={etapasAssinadas ? [] : colaboradores} rendimentoMedio={rendimentoMedio} rendimentoLotes={rendimentoLotes} loteBase={ordem.loteBase} unidadeProduzido={ordem.unidadeProduzido} onConcluida={carregar} />}
+      {emProducao && <ConclusaoForm id={id} ordemId={ordemId} linhas={linhas} etapasAbertas={etapasAbertas} colaboradores={etapasAssinadas ? [] : colaboradores} rendimentoMedio={rendimentoMedio} rendimentoLotes={rendimentoLotes} loteBase={ordem.loteBase} unidadeProduzido={ordem.unidadeProduzido} onConcluida={carregar} />}
 
       {/* histórico de conclusões + etiquetas */}
       {conclusoes.length > 0 && (
@@ -324,7 +329,7 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
   )
 }
 
-function ConclusaoForm({ id, ordemId, linhas, colaboradores, rendimentoMedio, rendimentoLotes, loteBase, unidadeProduzido, onConcluida }: { id: string; ordemId: string; linhas: Linha[]; colaboradores: Colaborador[]; rendimentoMedio: number | null; rendimentoLotes: number; loteBase: number; unidadeProduzido: string; onConcluida: () => void }) {
+function ConclusaoForm({ id, ordemId, linhas, colaboradores, etapasAbertas, rendimentoMedio, rendimentoLotes, loteBase, unidadeProduzido, onConcluida }: { id: string; ordemId: string; linhas: Linha[]; colaboradores: Colaborador[]; etapasAbertas: EtapaAbertaNaTela[]; rendimentoMedio: number | null; rendimentoLotes: number; loteBase: number; unidadeProduzido: string; onConcluida: () => void }) {
   const emProd = linhas.filter((l) => l.qtdSeparada > 0)
   const [consumo, setConsumo] = useState<Record<string, string>>(Object.fromEntries(emProd.map((l) => [l.itemId, String(l.qtdSeparada)])))
   const [qtdGerada, setQtdGerada] = useState('')
@@ -335,6 +340,10 @@ function ConclusaoForm({ id, ordemId, linhas, colaboradores, rendimentoMedio, re
   const [erro, setErro] = useState<string | null>(null)
   const parseNum = (s: string) => { const n = Number((s ?? '').replace(',', '.')); return Number.isFinite(n) ? n : 0 }
   const rend = { teorico: loteBase, medido: rendimentoMedio, lotes: rendimentoLotes }
+
+  // ⭐ REGRA 4: a frase vem da MESMA função que o servidor usa pra descrever o encerramento —
+  // duas redações divergiriam no dia em que uma delas mudasse.
+  const avisoEtapas = avisoDeEtapasAbertas(etapasAbertas)
 
   const custoLote = useMemo(() => emProd.reduce((s, l) => s + parseNum(consumo[l.itemId]) * (l.custoMedio ?? 0), 0), [consumo, emProd])
   const qg = parseNum(qtdGerada)
@@ -455,6 +464,18 @@ function ConclusaoForm({ id, ordemId, linhas, colaboradores, rendimentoMedio, re
         </div>
       )}
 
+
+      {/* ⛔⛔ O AVISO DO CAMINHO DO ENCARREGADO (06/09) — a fresta entre os dois caminhos.
+          Concluir por aqui ENCERRA a etapa aberta sem tempo medido; ele precisa saber ANTES
+          de apertar. ⚠️ E a frase ENSINA A SAÍDA ("peça pra finalizar no tablet primeiro"),
+          porque aviso que só comunica um estrago treina a pessoa a ignorar. NÃO BLOQUEIA:
+          quem decide é o encarregado — a mesma régua do aviso de rendimento logo acima. */}
+      {avisoEtapas && (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50/70 p-3 text-xs text-amber-800">
+          <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />
+          <span>{avisoEtapas}</span>
+        </div>
+      )}
 
       {erro && <p className="text-sm text-rose-600">{erro}</p>}
       <button onClick={concluir} disabled={busy} className="inline-flex items-center gap-2 rounded-lg bg-[#185FA5] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#0F4A8C] disabled:opacity-60">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Concluir e gerar etiqueta</button>

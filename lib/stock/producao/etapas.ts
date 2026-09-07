@@ -16,6 +16,7 @@
 
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
+import { encerramentosDasEtapas, type MotivoDoEncerramento } from './encerrar-etapas-abertas'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -102,7 +103,10 @@ export async function materializarEtapasDaOrdem(
 
 // ── a execução ───────────────────────────────────────────────────────────────────────
 
-export type EstadoDaEtapa = 'AGUARDANDO' | 'EM_ANDAMENTO' | 'FEITA'
+// ⛔⛔ `ENCERRADA_SEM_FINALIZAR` tem NOME PRÓPRIO de propósito (06/09): a ordem encerrou e
+// levou a etapa aberta junto. **Não é FEITA** — ninguém apertou finalizar, não há tempo
+// medido, e colapsar os dois esconderia justamente o que interessa a quem lê a tela.
+export type EstadoDaEtapa = 'AGUARDANDO' | 'EM_ANDAMENTO' | 'FEITA' | 'ENCERRADA_SEM_FINALIZAR'
 
 export interface EtapaDaOrdem {
   id: string
@@ -115,21 +119,40 @@ export interface EtapaDaOrdem {
   iniciadoEm: string | null
   finalizadoEm: string | null
   estado: EstadoDaEtapa
-  /** minutos: fechados quando FEITA, correndo quando EM_ANDAMENTO, null quando aguarda */
+  /** minutos: fechados quando FEITA, correndo quando EM_ANDAMENTO, null quando aguarda ou
+   *  quando a ordem a encerrou sem finalizar (ali não há tempo medido) */
   minutos: number | null
+  /** ⛔ por que a ordem levou a etapa junto — `null` quando não foi encerrada assim */
+  encerradaPor: MotivoDoEncerramento | null
 }
 
-export function estadoDaEtapa(e: { iniciadoEm: Date | null; finalizadoEm: Date | null }): EstadoDaEtapa {
+/**
+ * ⚠️ `encerrada` vem do registro `stock_etapa_encerrada` — a ordem levou a etapa junto.
+ * Ela ganha estado próprio ANTES de qualquer outro teste, senão continuaria "EM_ANDAMENTO"
+ * com o cronômetro correndo pra sempre (era o caso da Carlise, 7h05).
+ */
+export function estadoDaEtapa(
+  e: { iniciadoEm: Date | null; finalizadoEm: Date | null }, encerrada = false,
+): EstadoDaEtapa {
   if (e.finalizadoEm) return 'FEITA'
+  if (encerrada && e.iniciadoEm) return 'ENCERRADA_SEM_FINALIZAR'
   if (e.iniciadoEm) return 'EM_ANDAMENTO'
   return 'AGUARDANDO'
 }
 
-/** minutos da etapa. PURA — `agora` é parâmetro (o relógio nunca decide num teste). */
+/**
+ * minutos da etapa. PURA — `agora` é parâmetro (o relógio nunca decide num teste).
+ *
+ * ⛔⛔ ETAPA ENCERRADA SEM FINALIZAR NÃO TEM MINUTOS — devolve `null` ("a apurar"). Contar
+ * `agora − iniciadoEm` daria um tempo que só cresce com o relógio, sobre trabalho que já
+ * acabou; e carimbar um fim inventaria um horário que ninguém mediu. É a mesma disciplina do
+ * "a apurar" do resto do módulo: número sem medição é pior que a ausência dele.
+ */
 export function minutosDaEtapa(
-  e: { iniciadoEm: Date | null; finalizadoEm: Date | null }, agora: Date,
+  e: { iniciadoEm: Date | null; finalizadoEm: Date | null }, agora: Date, encerrada = false,
 ): number | null {
   if (!e.iniciadoEm) return null
+  if (!e.finalizadoEm && encerrada) return null
   const fim = e.finalizadoEm ?? agora
   return Math.max(0, Math.round((fim.getTime() - e.iniciadoEm.getTime()) / 60000))
 }
@@ -153,15 +176,22 @@ export async function etapasDaOrdem(
     ? await db.stockColaborador.findMany({ where: { companyId, id: { in: ids } }, select: { id: true, nome: true } })
     : []
   const nome = new Map(colabs.map((c) => [c.id, c.nome]))
-  return rows.map((r) => ({
-    id: r.id, posicao: r.posicao, nome: r.nome,
-    colaboradorId: r.colaboradorId, colaboradorNome: r.colaboradorId ? nome.get(r.colaboradorId) ?? null : null,
-    executorId: r.executorId, executorNome: r.executorId ? nome.get(r.executorId) ?? null : null,
-    iniciadoEm: r.iniciadoEm?.toISOString() ?? null,
-    finalizadoEm: r.finalizadoEm?.toISOString() ?? null,
-    estado: estadoDaEtapa(r),
-    minutos: minutosDaEtapa(r, agora),
-  }))
+  const encerradas = await encerramentosDasEtapas(companyId, rows.map((r) => r.id), db)
+  return rows.map((r) => {
+    const enc = encerradas.get(r.id)
+    return {
+      id: r.id, posicao: r.posicao, nome: r.nome,
+      colaboradorId: r.colaboradorId, colaboradorNome: r.colaboradorId ? nome.get(r.colaboradorId) ?? null : null,
+      executorId: r.executorId, executorNome: r.executorId ? nome.get(r.executorId) ?? null : null,
+      iniciadoEm: r.iniciadoEm?.toISOString() ?? null,
+      finalizadoEm: r.finalizadoEm?.toISOString() ?? null,
+      estado: estadoDaEtapa(r, !!enc),
+      minutos: minutosDaEtapa(r, agora, !!enc),
+      // ⚠️ o motivo vai junto: "a ordem foi concluída pela Produção" e "a ordem foi
+      // cancelada" pedem leituras diferentes de quem está conferindo o dia.
+      encerradaPor: enc?.motivo ?? null,
+    }
+  })
 }
 
 /** a GERÊNCIA designa (ou tira) o colaborador de uma etapa. Designar é reversível e não trava nada. */

@@ -10,6 +10,7 @@ import { criarMovimento } from '../movement'
 import { custoMedioPorItem, recomputeSaldoCache } from '../saldo'
 import { separadoPorItem, TIPO_CONSUMO, TIPO_DEVOLUCAO, TIPO_GERACAO, OrdemError } from './ordens'
 import { escalaDoConsumo, avaliarVariacao, type Variacao } from './previsao-rendimento'
+import { encerrarEtapasAbertas } from './encerrar-etapas-abertas'
 
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 const round4 = (n: number) => Math.round((n + 1e-9) * 10000) / 10000
@@ -147,6 +148,18 @@ export async function concluir(input: ConcluirInput, db: PrismaClient = defaultP
         criadoPorId: input.userId ?? null,
       },
     })
+    // ⛔⛔ A ORDEM LEVA AS ETAPAS ABERTAS JUNTO (06/09) — só quando ela ENCERRA de verdade.
+    //
+    // Era a fresta entre os dois caminhos: quem conclui pela tela de Produção não passa pelo
+    // tablet, e a etapa iniciada ficava aberta **sem gesto nenhum que a resolvesse** (o
+    // tablet recusa ordem encerrada, a Produção não tinha botão). O caso real ficou 7h05 em
+    // aberto e aparecia no "HOJE ao vivo" como *"fazendo há 7h05"*.
+    //
+    // ⚠️ PARCIAL NÃO ENCERRA: a ordem segue EM_PRODUCAO e o trabalho continua — encerrar ali
+    // mataria a etapa de quem ainda está com a mão na massa.
+    if (!input.parcial) {
+      await encerrarEtapasAbertas({ companyId: input.companyId, ordemId: input.ordemId, motivo: 'ORDEM_CONCLUIDA', userId: input.userId }, tx)
+    }
     await tx.stockProductionOrder.update({ where: { id: input.ordemId }, data: { estado: input.parcial ? 'EM_PRODUCAO' : 'CONCLUIDA' } })
     return conc.id
   })

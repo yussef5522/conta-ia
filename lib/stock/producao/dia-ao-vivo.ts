@@ -24,10 +24,15 @@ import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { janelaDoDiaSP } from '@/lib/datas/dia-sao-paulo'
 import { HORAS_ATE_ALARME } from './etapas'
+import { encerramentosDasEtapas } from './encerrar-etapas-abertas'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
-export type EstadoDaTarefa = 'FAZENDO' | 'NA_FILA' | 'AGUARDA_ANTERIOR' | 'FEITA'
+// ⛔⛔ `ENCERRADA_SEM_FINALIZAR` (06/09): a ordem acabou e levou a etapa aberta junto. Ela
+// **sai do AGORA** — o AGORA é o retrato do presente, e ordem encerrada não é presente — mas
+// **continua no dia da pessoa e na linha do tempo**, rotulada pelo que é. Some seria esconder
+// que alguém começou um trabalho; dizer "fazendo há 7h05" é o retrato mentindo.
+export type EstadoDaTarefa = 'FAZENDO' | 'NA_FILA' | 'AGUARDA_ANTERIOR' | 'FEITA' | 'ENCERRADA_SEM_FINALIZAR'
 
 export interface TarefaDoDia {
   etapaId: string
@@ -44,6 +49,8 @@ export interface TarefaDoDia {
   minutos: number | null
   /** ⚠️ só em AGUARDA_ANTERIOR: "depois do gessado" — é sequência da receita, não fila */
   esperando: string | null
+  /** ⛔ só em ENCERRADA_SEM_FINALIZAR: o que aconteceu com ela, em português */
+  encerradaPorque: string | null
   /** ⚠️ só quando a tarefa FECHOU o lote: o que saiu, com custo */
   loteFechado: { qtdGerada: number; custoUnitario: number | null; unidade: string } | null
   /** passou do alarme de 4h com o cronômetro correndo */
@@ -56,6 +63,8 @@ export interface PessoaDoDia {
   fazendo: number
   naFila: number
   feitas: number
+  /** ⛔ a ordem acabou e levou a etapa aberta junto — sem tempo medido */
+  encerradas: number
   tarefas: TarefaDoDia[]
 }
 
@@ -70,6 +79,8 @@ export interface EventoDoDia {
   minutos: number | null
   loteFechado: TarefaDoDia['loteFechado']
   ordemId: string | null
+  /** ⛔ o INICIOU de uma etapa que a ordem levou junto — a linha diz o que aconteceu */
+  encerradaPorque: string | null
 }
 
 export interface DiaAoVivo {
@@ -122,6 +133,15 @@ export async function diaAoVivo(
     select: { id: true },
   })
 
+  // ⛔⛔ ORDEM VIVA — o filtro que o AGORA passou a exigir (06/09). É o MESMO recorte que o
+  // alarme de 4h já tinha: ordem encerrada sai do retrato do presente, porque não há presente
+  // nela. Vive aqui como conjunto pra a decisão ser UMA (o carry-over de ontem e o AGORA
+  // consultam a mesma lista — duas consultas divergiriam no primeiro caso de borda).
+  const vivas = new Set((await db.stockProductionOrder.findMany({
+    where: { companyId: input.companyId, estado: { notIn: ['CONCLUIDA', 'CANCELADA'] } },
+    select: { id: true },
+  })).map((o) => o.id))
+
   // ⚠️ e uma etapa também entra pelo que ACONTECEU nela — a ordem pode ser de ontem e o toque
   // ser de hoje (produção que virou o dia).
   const etapas = await db.stockOrdemEtapa.findMany({
@@ -133,8 +153,9 @@ export async function diaAoVivo(
         { iniciadoEm: { gte: janela.de, lte: janela.ate } },
         { finalizadoEm: { gte: janela.de, lte: janela.ate } },
         // ⚠️ tarefa iniciada ONTEM e ainda aberta continua sendo "o que acontece agora" —
-        // e é exatamente o caso que o alarme de 4h existe pra pegar.
-        ...(ehHoje ? [{ iniciadoEm: { lt: janela.de }, finalizadoEm: null }] : []),
+        // e é exatamente o caso que o alarme de 4h existe pra pegar. ⛔ Mas SÓ de ordem VIVA:
+        // era por aqui que a etapa da Carlise (ordem já concluída) entrava no dia de hoje.
+        ...(ehHoje ? [{ ordemId: { in: [...vivas] }, iniciadoEm: { lt: janela.de }, finalizadoEm: null }] : []),
       ],
     },
     orderBy: [{ ordemId: 'asc' }, { posicao: 'asc' }],
@@ -181,6 +202,9 @@ export async function diaAoVivo(
     })
   }
 
+  // o RASTRO do encerramento (quem/quando/por quê) — o estado em si vem da ordem
+  const encerramentos = await encerramentosDasEtapas(input.companyId, etapas.map((e) => e.id), db)
+
   const nomeDaEtapaAnterior = (ordemId: string, posicao: number) =>
     etapas.find((x) => x.ordemId === ordemId && x.posicao === posicao - 1) ?? null
 
@@ -192,7 +216,14 @@ export async function diaAoVivo(
     // ⚠️ "aguarda a anterior" NÃO é atraso: é a sequência da receita, e a linha diz o nome da
     // etapa que falta em vez de um estado mudo.
     const esperando = !e.iniciadoEm && anterior && !anterior.finalizadoEm ? anterior.nome : null
+    // ⛔⛔ A ORDEM LEVOU A ETAPA JUNTO. **Derivado da ORDEM, não do registro** — assim a tela
+    // já fala a verdade sobre as etapas antigas (as de antes deste fix, como a da Carlise)
+    // mesmo antes do retroativo rodar. O registro `stock_etapa_encerrada` acrescenta o RASTRO
+    // (quem encerrou, quando, por quê); ele nunca é o que a tela precisa pra não mentir.
+    const levadaPelaOrdem = !!e.iniciadoEm && !e.finalizadoEm && !vivas.has(e.ordemId)
+    const enc = encerramentos.get(e.id)
     const estado: EstadoDaTarefa = e.finalizadoEm ? 'FEITA'
+      : levadaPelaOrdem ? 'ENCERRADA_SEM_FINALIZAR'
       : e.iniciadoEm ? 'FAZENDO'
       : esperando ? 'AGUARDA_ANTERIOR'
       : 'NA_FILA'
@@ -208,6 +239,11 @@ export async function diaAoVivo(
       finalizadoEm: e.finalizadoEm,
       minutos: e.iniciadoEm && e.finalizadoEm ? minutosEntre(e.iniciadoEm, e.finalizadoEm) : null,
       esperando,
+      // ⚠️ a frase diz O QUE ACONTECEU, nunca "fazendo há Xh" — era o retrato do presente
+      // mentindo por causa de uma ordem que já tinha acabado.
+      encerradaPorque: !levadaPelaOrdem ? null
+        : enc?.motivo === 'ORDEM_CANCELADA' ? 'ficou aberta — a ordem foi cancelada'
+        : 'ficou aberta — a ordem foi concluída pela Produção',
       loteFechado: conc ? { ...conc, unidade: item?.unidadeControle ?? '' } : null,
       abertaDemais: estado === 'FAZENDO' && !!e.iniciadoEm && e.iniciadoEm.getTime() < limiteDoAlarme,
       // ⚠️ quem responde pela tarefa é o EXECUTOR (o PIN que tocou); só antes de iniciar vale a
@@ -237,6 +273,10 @@ export async function diaAoVivo(
       // na contagem faria o cabeçalho não fechar com a lista embaixo dele.
       naFila: minhas.filter((t) => t.estado === 'NA_FILA' || t.estado === 'AGUARDA_ANTERIOR').length,
       feitas: minhas.filter((t) => t.estado === 'FEITA').length,
+      // ⚠️ CONTADA À PARTE, e nunca dentro de "feitas": ninguém apertou finalizar. Deixá-la
+      // fora de toda contagem faria o cabeçalho não fechar com a lista logo abaixo dele —
+      // uma linha visível que o resumo não conta é a mesma doença do card `PRONTOS −72`.
+      encerradas: minhas.filter((t) => t.estado === 'ENCERRADA_SEM_FINALIZAR').length,
       tarefas: minhas.sort((a, b) => ORDEM_NA_LISTA[a.estado] - ORDEM_NA_LISTA[b.estado]
         || (b.finalizadoEm?.getTime() ?? 0) - (a.finalizadoEm?.getTime() ?? 0)
         || a.posicao - b.posicao),
@@ -250,10 +290,12 @@ export async function diaAoVivo(
     const quem = t.colaboradorId ? (nomeDe.get(t.colaboradorId) ?? '(sem nome)') : '(sem nome)'
     const texto = t.produto ? `${t.nome} — ${t.produto}` : t.nome
     if (dentroDoDia(t.iniciadoEm)) {
-      eventos.push({ quando: t.iniciadoEm, tipo: 'INICIOU', quem, texto, minutos: null, loteFechado: null, ordemId: t.ordemId })
+      // ⚠️ o INICIOU FICA: ela começou de verdade, e apagar seria esconder trabalho. O que
+      // muda é o rótulo ao lado — "ficou aberta; a ordem foi concluída pela Produção".
+      eventos.push({ quando: t.iniciadoEm, tipo: 'INICIOU', quem, texto, minutos: null, loteFechado: null, ordemId: t.ordemId, encerradaPorque: t.encerradaPorque })
     }
     if (dentroDoDia(t.finalizadoEm)) {
-      eventos.push({ quando: t.finalizadoEm, tipo: 'FINALIZOU', quem, texto, minutos: t.minutos, loteFechado: t.loteFechado, ordemId: t.ordemId })
+      eventos.push({ quando: t.finalizadoEm, tipo: 'FINALIZOU', quem, texto, minutos: t.minutos, loteFechado: t.loteFechado, ordemId: t.ordemId, encerradaPorque: null })
     }
   }
   // ⚠️ DESIGNAR entra AGREGADO ("você designou 4 tarefas"): designação é preparo, e uma linha
@@ -264,7 +306,7 @@ export async function diaAoVivo(
     eventos.push({
       quando: ultima.designadoEm!, tipo: 'DESIGNOU', quem: '',
       texto: `${designadas.length} tarefa${designadas.length === 1 ? '' : 's'} designada${designadas.length === 1 ? '' : 's'}`,
-      minutos: null, loteFechado: null, ordemId: null,
+      minutos: null, loteFechado: null, ordemId: null, encerradaPorque: null,
     })
   }
   eventos.sort((a, b) => b.quando.getTime() - a.quando.getTime())
@@ -281,5 +323,5 @@ export async function diaAoVivo(
 
 /** fazendo primeiro (é o urgente), fila no meio, feitas por último */
 const ORDEM_NA_LISTA: Record<EstadoDaTarefa, number> = {
-  FAZENDO: 0, NA_FILA: 1, AGUARDA_ANTERIOR: 2, FEITA: 3,
+  FAZENDO: 0, NA_FILA: 1, AGUARDA_ANTERIOR: 2, FEITA: 3, ENCERRADA_SEM_FINALIZAR: 4,
 }

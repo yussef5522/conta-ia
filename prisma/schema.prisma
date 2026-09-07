@@ -3891,6 +3891,24 @@ model StockOrdemEtapaCorrecao {
   @@map("stock_ordem_etapa_correcao")
 }
 
+// ⛔⛔ A ETAPA QUE A ORDEM LEVOU JUNTO (06/09) — quando a ordem encerra (concluída pela tela
+// de Produção ou cancelada) com uma etapa ainda aberta. NÃO é "finalizar por ela": não há
+// `finalizadoEm`, porque inventar um horário criaria um tempo que ninguém mediu e ele entraria
+// na média de min/un como fato. Tempo = a apurar, fora das médias, com o rastro de quem
+// encerrou a ORDEM.
+model StockEtapaEncerrada {
+  id             String   @id @default(cuid())
+  companyId      String
+  etapaId        String   @unique // ⭐ encerrar 2× é impossível por construção
+  ordemId        String
+  motivo         String // ORDEM_CONCLUIDA | ORDEM_CANCELADA
+  encerradaEm    DateTime @default(now())
+  encerradaPorId String?
+
+  @@index([companyId, ordemId])
+  @@map("stock_etapa_encerrada")
+}
+
 // ⭐ O PIN IDENTIFICA, NÃO AUTENTICA (decisão do dono, 06/09): diz QUEM apertou o botão no
 // tablet compartilhado; quem diz QUAL EMPRESA é a sessão do aparelho. Mesmo assim vai como
 // HASH — o segredo mora numa cozinha, e gente reusa 4 dígitos.

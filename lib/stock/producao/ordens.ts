@@ -9,6 +9,7 @@ import { prisma as defaultPrisma } from '@/lib/db'
 import { criarMovimento } from '../movement'
 import { saldoItem, custoMedioPorItem, recomputeSaldoCache } from '../saldo'
 import { materializarEtapasDaOrdem } from './etapas'
+import { encerrarEtapasAbertas } from './encerrar-etapas-abertas'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -191,6 +192,9 @@ export async function cancelarOrdem(companyId: string, ordemId: string, db: Pris
         await criarMovimento(tx, { companyId, itemId, tipo: TIPO_DEVOLUCAO, quantidade: round2(emProd), custoUnitario: custo, custoTotal: round2(emProd * custo), receiptId: ordemId, origem: 'MANUAL', criadoPorId: userId ?? null })
       }
     }
+    // ⛔ cancelar também LEVA a etapa aberta junto, e pelo mesmo motivo: depois de cancelada
+    // não existe gesto que a resolva.
+    await encerrarEtapasAbertas({ companyId, ordemId, motivo: 'ORDEM_CANCELADA', userId }, tx)
     await tx.stockProductionOrder.update({ where: { id: ordemId }, data: { estado: 'CANCELADA' } })
   })
   await recomputeSaldoCache(db, companyId)
