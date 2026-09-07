@@ -242,6 +242,36 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⛔⛔⛔ A ETAPA ABERTA: DO RÓTULO HONESTO AO GESTO DE RESOLVER (06-07/09/2026)
+
+**A FRESTA, achada pelo dono em prod:** etapa iniciada com o PIN da Carlise (16:38) e ordem concluída pela **tela de Produção** (o caminho do encarregado, que ajusta o consumo e não passa pelo tablet). A etapa ficou **aberta 7h05 sem NENHUM gesto que a resolvesse** — o tablet recusa (ordem encerrada) e a Produção não tinha botão. E o "HOJE ao vivo" a contava no AGORA: *"Carlise · fazendo há 7h05"*, **o retrato do presente mentindo por causa de uma ordem que já acabou**.
+
+⚠️ **A metade CERTA da regra antiga era não inventar tempo** (`concluir()` não tocava nas etapas, de propósito). A metade errada era deixar a etapa "em andamento" **para sempre**, sem nome e sem saída.
+
+**⭐⭐ OS CINCO ESTADOS, UMA DERIVAÇÃO SÓ (`lib/stock/producao/estado-da-etapa.ts`):** `AGUARDANDO` · `EM_ANDAMENTO` (⛔ só ordem VIVA) · `FEITA` (tempo MEDIDO) · `FINALIZADA_PELO_GERENTE` (tempo A APURAR) · `ENCERRADA_SEM_FINALIZAR` (a ordem levou junto). **A tela da ordem, o "HOJE ao vivo" e o tablet leem a MESMA função e o MESMO rótulo** (`resolverEstadoDasEtapas`).
+- ⛔⛔ **"Na fila" + ordem concluída deixou de existir POR CONSTRUÇÃO** — era a contradição do print, e nascia de haver **DUAS derivações** (a tela da ordem tinha a sua, o "HOJE" calculava a dele inline). **É a lição do B1 aplicada à etapa.**
+- ⚠️ **`AGUARDA_ANTERIOR` deixou de ser ESTADO** e virou detalhe do aguardando: não é outra fila, é a **mesma fila com um motivo** — e como estado obrigava toda tela a conhecer um sexto caso.
+- ⚠️ **O estado deriva da ORDEM, não do registro.** Os registros carregam o RASTRO; se a tela dependesse deles pra não mentir, toda linha antiga mentiria até o retroativo rodar.
+
+**⭐⭐ OS DOIS GESTOS DO GERENTE** (`gestos-do-gerente.ts`, `stock.manage` — fechar tarefa de outra pessoa é decisão de gestão, não de operação). A diferença entre eles é a **QUALIDADE DO DADO**:
+1. **PEDIR PRA FINALIZAR** — o preferido: recado no tablet dela; **ela** aperta com o PIN e o tempo é **DELA, medido**, entra na média. Pedir 2× é **reenviar** (unique por etapa), e o pedido fica marcado **ATENDIDO** quando ela finaliza — pedido não atendido é informação de gestão, não lixo.
+2. **FINALIZAR PELO GERENTE** — quando ela foi embora: estado próprio, **tempo A APURAR**, rastro *"finalizada por X em nome de Y"* — ⛔ **nunca "entrar na conta dela"**.
+3. E **concluir a ordem com etapa aberta** avisa antes (*"…será encerrada sem tempo medido — se ela terminou de verdade, peça pra finalizar no tablet primeiro"*) e encerra como `ENCERRADA_SEM_FINALIZAR`. **Não bloqueia:** escolha consciente, não efeito colateral.
+
+**⛔⛔ E O `finalizadoEm` DA ETAPA CONTINUA NULL NO GESTO 2 — REGRA 5, e é a decisão que segura tudo.** Se o gesto carimbasse a coluna, o tempo entraria em TODA média **por construção** (o relatório calcula `fim − início`), e nenhuma lista de exceções seguraria isso pra sempre. Com a coluna nula, o erro é **impossível**, não improvável.
+
+**⛔⛔ A TAREFA DO GERENTE CONTA COMO FEITA, MAS FICA FORA DA TAXA — os DOIS lados da divisão.** Somar as UNIDADES sem os MINUTOS faria a pessoa parecer **mais rápida** justamente onde ninguém cronometrou nada. ⚠️ E **o dia dela é o do INÍCIO**, não o do gesto: o gerente pode fechar três dias depois, e datar pelo gesto jogaria trabalho velho dentro do relatório de hoje.
+
+**⚠️⚠️ REGRA 11 — UM GUARD MEU PASSAVA PELO MOTIVO ERRADO, de novo.** Com **só** a tarefa do gerente, `minutosMedidos` fica 0 e a taxa sai `null` de qualquer jeito: **repus o defeito e os 16 testes ficaram VERDES**. O teste que morde é o **MISTO** (uma tarefa medida + uma do gerente): **1,0 min/un contra 0,5 com o defeito — o dobro de velocidade**. E outro teste pegou que o **alarme de 4h seguia cobrando** o que o gerente já tinha resolvido.
+
+**TABELAS CREATE-only** (o isolamento proíbe ALTER): `stock_etapa_encerrada` · `stock_etapa_pedido_finalizar` · `stock_etapa_finalizada_gerente` — as três com **unique por etapa**, então gravar o mesmo fato duas vezes é impossível, não "checado".
+
+**RETROATIVO** (`scripts/encerrar-etapas-orfas.ts`, preview + `--apply`): grava o rastro com a **data da ORDEM**, nunca "agora", e **autor NULL** — quem encerrou naquele dia não está guardado em lugar nenhum, e inventar um nome é pior que a ausência.
+
+**PROVADO EM PROD (07/09):** a ordem da calabresa mostra *"produção · Carlisle → ENCERRADA_SEM_FINALIZAR [ficou aberta — a ordem foi concluída pela Produção] · minutos: a apurar · finalizadoEm: null"*; no dia 06/09 o card dela diz **"0 fazendo · 0 na fila · 1 feita · 1 sem finalizar"** (nunca mais "na fila"); **AGORA zerado e alarme de 4h em 0**. 8.688 verdes · TS 0 · `pg_dump` antes das duas migrations.
+
+⚠️ **TESTE INVERTIDO COM O MOTIVO ESCRITO** (não apagado): o guard do sprint anterior afirmava que a etapa "continua EM_ANDAMENTO" e chamava isso de rastro honesto. Não era honesto — era a fresta.
+
 ## ⭐⭐ AS DUAS TELAS DA PRODUÇÃO — "POR PESSOA" NO MOCK E "HOJE AO VIVO" (06/09/2026)
 
 **FRENTE 1 — `/estoque/producao/pessoas`, construída sobre o mock aprovado do dono:** 3 destaques por faceta · cards ricos por pessoa (selo de rendimento em **% do esperado**, barra `min/un` vs média da equipe, sparkline semanal, tarefas que faz) · navegação **‹ mês ›** com período livre opt-in · CSV. As réguas de honestidade vêm **do servidor**, da MESMA lista que a tela desenha (REGRA 4) — calcular no cliente abriria a porta pra o card premiar quem a lista não mostra.
