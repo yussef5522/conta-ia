@@ -165,37 +165,61 @@ export async function contasEsperandoPagamento(
     },
   })
 
-  const out: ContaEsperandoPagamento[] = []
+  const lados = new Map<string, LadoDoPar>()
   for (const c of contas) {
-    const alvo = c.dueDate ?? c.date
-    const lado: LadoDoPar = {
-      id: c.id, descricao: c.description, valor: Math.abs(c.amount), data: alvo,
-      tipo: c.type as 'CREDIT' | 'DEBIT', fornecedorId: c.supplierId, contaBancariaId: null,
+    lados.set(c.id, {
+      id: c.id, descricao: c.description, valor: Math.abs(c.amount),
+      data: c.dueDate ?? c.date, tipo: c.type as 'CREDIT' | 'DEBIT',
+      fornecedorId: c.supplierId, contaBancariaId: null,
+    })
+  }
+  const porConta = new Map<string, ContaEsperandoPagamento['sugestoes']>()
+
+  // ⚠️⚠️ O LAÇO É POR LINHA DO EXTRATO, NÃO POR CONTA — e a ordem aqui é
+  // PERFORMANCE MEDIDA, não estilo. Na 1ª versão eu chamava `sugerirVinculos` uma
+  // vez por PAR (conta × linha), e cada chamada reconhece o fornecedor comparando a
+  // descrição com os 78 nomes cadastrados: **110 contas × ~1.300 linhas × 78 nomes**
+  // de Jaro-Winkler. Medido em prod: **9,6 s** — inaceitável pra uma rota que o
+  // badge do menu consulta a cada 60 s.
+  //
+  // Invertendo, o reconhecimento roda UMA vez por linha, e só nas linhas que têm
+  // alguma conta de valor compatível (a peneira barata abaixo).
+  for (const e of extratos) {
+    const valorE = Math.abs(e.amount)
+    // ⭐ PENEIRA BARATA ANTES DE QUALQUER TEXTO: o `scoreMatch` já descarta valor
+    // fora de ±5%, então comparar dois números aqui evita ~99% do trabalho caro.
+    const candidatas: LadoDoPar[] = []
+    for (const c of contas) {
+      const lado = lados.get(c.id)!
+      if (lado.tipo !== e.type) continue
+      if (Math.abs(e.date.getTime() - lado.data.getTime()) > janela) continue
+      const ratio = Math.min(valorE, lado.valor) / Math.max(valorE, lado.valor)
+      if (!Number.isFinite(ratio) || ratio < 0.95) continue
+      candidatas.push(lado)
     }
-    const sugestoes: ContaEsperandoPagamento['sugestoes'] = []
-    for (const e of extratos) {
-      if (Math.abs(e.date.getTime() - alvo.getTime()) > janela) continue
-      const ladoE: LadoDoPar = {
-        id: e.id, descricao: e.description, valor: Math.abs(e.amount), data: e.date,
-        tipo: e.type as 'CREDIT' | 'DEBIT', fornecedorId: e.supplierId,
-        contaBancariaId: e.bankAccountId,
-      }
-      // ⛔ A MESMA função da tela de Pendentes e do import. Fonte única de sugestão.
-      const [s] = sugerirVinculos({ extrato: ladoE, contas: [lado], fornecedores, recusados })
-      if (s) sugestoes.push({
+    if (!candidatas.length) continue
+
+    const ladoE: LadoDoPar = {
+      id: e.id, descricao: e.description, valor: valorE, data: e.date,
+      tipo: e.type as 'CREDIT' | 'DEBIT', fornecedorId: e.supplierId,
+      contaBancariaId: e.bankAccountId,
+    }
+    // ⛔ A MESMA função da tela de Pendentes e do import. Fonte única de sugestão.
+    for (const s of sugerirVinculos({ extrato: ladoE, contas: candidatas, fornecedores, recusados })) {
+      porConta.set(s.contaId, [...(porConta.get(s.contaId) ?? []), {
         ...s, extrato: ladoE,
         extratoConta: e.bankAccount?.name?.trim() ?? null,
         extratoCategoria: e.category?.name ?? null,
-      })
+      }])
     }
-    sugestoes.sort((a, b) => b.score - a.score)
-    out.push({
-      conta: lado,
-      situacao: c.lifecycle === 'EFFECTED' ? 'DUPLA_CONTAGEM' : 'EM_ABERTO',
-      fornecedor: c.supplier?.razaoSocial ?? null,
-      sugestoes,
-    })
   }
+
+  const out: ContaEsperandoPagamento[] = contas.map((c) => ({
+    conta: lados.get(c.id)!,
+    situacao: c.lifecycle === 'EFFECTED' ? 'DUPLA_CONTAGEM' : 'EM_ABERTO',
+    fornecedor: c.supplier?.razaoSocial ?? null,
+    sugestoes: (porConta.get(c.id) ?? []).sort((a, b) => b.score - a.score),
+  }))
   // ⚠️ quem TEM sugestão sobe: a tela é uma fila de decisão, e o que não tem par
   // é informação de fundo, não trabalho pendente.
   return out.sort((a, b) => (b.sugestoes[0]?.score ?? -1) - (a.sugestoes[0]?.score ?? -1))
@@ -391,6 +415,13 @@ export async function sugestoesParaPendentes(
       // conta a pagar / ex-payable → linhas do extrato (⭐ o caso do Cancian)
       for (const e of linhasDoExtrato) {
         if (e.id === t.id) continue
+        // ⭐ a mesma peneira barata da fila: dois números antes de qualquer texto,
+        // senão o reconhecimento de fornecedor roda contra o extrato inteiro.
+        if (e.type !== lado.tipo) continue
+        if (Math.abs(e.date.getTime() - lado.data.getTime()) > janela) continue
+        const vE = Math.abs(e.amount)
+        const r = Math.min(vE, lado.valor) / Math.max(vE, lado.valor)
+        if (!Number.isFinite(r) || r < 0.95) continue
         const ladoE: LadoDoPar = {
           id: e.id, descricao: e.description, valor: Math.abs(e.amount), data: e.date,
           tipo: e.type as 'CREDIT' | 'DEBIT', fornecedorId: e.supplierId,
