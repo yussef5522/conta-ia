@@ -30,6 +30,9 @@ const STATUS_CHIP: Record<string, string> = {
   ABERTA: 'bg-sky-100 text-sky-700', FINALIZADA: 'bg-emerald-100 text-emerald-700', CANCELADA: 'bg-slate-100 text-slate-500',
 }
 
+// ⭐ A ÂNCORA `#c-<id>` (08/09/2026): o histórico do item linka a linha de AJUSTE_CONTAGEM
+// pra CÁ e precisa cair NA sessão certa. Não existe página por sessão; a âncora + o realce
+// `target:` resolvem sem inventar uma tela. ⚠️ Sem `scroll-mt`, o cabeçalho fixo cobriria a linha.
 export default function ContagensPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const [cs, setCs] = useState<Resumo[] | null | undefined>(undefined)
@@ -96,7 +99,7 @@ export default function ContagensPage({ params }: { params: Promise<{ id: string
             </tr></thead>
             <tbody>
               {lista.map((c) => (
-                <tr key={c.id} className="border-b border-slate-50 last:border-b-0 hover:bg-slate-50">
+                <tr key={c.id} id={`c-${c.id}`} className="scroll-mt-24 border-b border-slate-50 last:border-b-0 target:bg-amber-50 hover:bg-slate-50">
                   <td className="whitespace-nowrap px-3 py-0 text-[13px] tabular-nums text-slate-700">{fmt(c.iniciadaEm)}</td>
                   <td className="px-3 py-0">
                     <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${c.tipo === 'INICIAL' ? 'bg-violet-100 text-violet-700' : 'bg-slate-100 text-slate-500'}`}>{c.tipo === 'INICIAL' ? 'inicial' : 'rotina'}</span>

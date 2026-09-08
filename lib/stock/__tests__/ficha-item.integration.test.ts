@@ -43,13 +43,16 @@ describe('buildFichaItem', () => {
     expect(f.custoMedio).toBe(41.03) // 2380 / 58
   })
 
-  it('histórico de compras — mais recente primeiro, fornecedor + nº da nota', async () => {
+  it('histórico — mais recente primeiro, fornecedor + nº da nota no detalhe', async () => {
+    // ⚠️ era `f.compras`; o campo virou `historico` em 08/09 porque ele nunca teve filtro de
+    // tipo — mostrava o ledger inteiro sob o nome de "compras".
     const f = (await buildFichaItem(companyId, itemId))!
-    expect(f.compras).toHaveLength(2)
-    expect(f.compras[0].custoUnitario).toBe(42) // 25/08 vem primeiro (desc)
-    const comFornecedor = f.compras.find((c) => c.fornecedor)
-    expect(comFornecedor?.fornecedor).toBe('FRIGORIFICO SILVA')
-    expect(comFornecedor?.nNF).toBe('1') // extraído da chave
+    expect(f.historico).toHaveLength(2)
+    expect(f.historico[0].custoUnitario).toBe(42) // 25/08 vem primeiro (desc)
+    const comFornecedor = f.historico.find((c) => c.detalhe.includes('FRIGORIFICO SILVA'))
+    expect(comFornecedor?.detalhe).toBe('NF nº 1 · FRIGORIFICO SILVA')
+    expect(comFornecedor?.ehCompra).toBe(true)
+    expect(comFornecedor?.chip).toBe('Compra (NF-e)')
   })
 
   it('preço no tempo (ordem crescente, pro gráfico)', async () => {

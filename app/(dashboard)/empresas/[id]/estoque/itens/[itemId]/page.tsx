@@ -1,37 +1,68 @@
 'use client'
 
-// ESTOQUE FASE 1 — FICHA do produto. Cabeçalho + gráfico de preço no tempo + histórico
-// de compras (cada ENTRADA_NF, lida do ledger). Preparada pra crescer (consumo/produção).
+// ESTOQUE — HISTÓRICO DO ITEM. Cabeçalho + gráfico de preço + **tudo** que aconteceu com o
+// item: entradas E saídas, cada linha com o TIPO real, QUEM fez e link pra ORIGEM.
+//
+// ⛔ Era "Histórico de compras" e mostrava o ledger inteiro sob esse nome (08/09/2026).
 
-import { useEffect, useState, use } from 'react'
+import { useEffect, useState, use, useMemo } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
-import { Package, Loader2, ArrowLeft, TrendingUp, ChevronDown, Ruler } from 'lucide-react'
+import { Package, Loader2, ArrowLeft, TrendingUp, ChevronDown, Ruler, ExternalLink, History } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { NomeEditavel } from '@/components/estoque/nome-editavel'
 import { MinMaxEditor } from '@/components/estoque/min-max-editor'
 import { statusEstoque, type StatusEstoqueResult } from '@/lib/stock/status-estoque'
+import type { LinhaDoHistorico, FamiliaMovimento } from '@/lib/stock/movimento-explicado'
 
-interface Compra { movimentoId: string; data: string; tipo: string; estorno: boolean; fornecedor: string | null; nNF: string | null; conferenceId: string | null; quantidade: number; custoUnitario: number; custoTotal: number }
 interface Ficha {
   item: { id: string; nome: string; unidadeControle: string; categoriaLabel: string; ativo: boolean; estoqueMin: number | null; estoqueMax: number | null }
   saldo: number; custoMedio: number | null; valor: number; status: StatusEstoqueResult
-  compras: Compra[]; precoTempo: { data: string; preco: number }[]
+  historico: LinhaDoHistorico[]
+  tipos: { tipo: string; chip: string; n: number }[]
+  precoTempo: { data: string; preco: number }[]
 }
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const num = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 3 })
 const fmtDia = (iso: string | null) => (iso ? iso.slice(0, 10).split('-').reverse().join('/') : '—')
 
+/**
+ * ⭐ A COR DO CHIP É A DA FAMÍLIA — o dono reconhece o tipo de longe, sem ler.
+ * ⚠️ Máx 2 pesos escuros por linha (régua da casa): o chip é claro, o peso fica no número.
+ */
+const COR_DA_FAMILIA: Record<FamiliaMovimento, string> = {
+  COMPRA:   'bg-emerald-50 text-emerald-700 ring-emerald-600/20',
+  CONTAGEM: 'bg-violet-50 text-violet-700 ring-violet-600/20',
+  PRODUCAO: 'bg-sky-50 text-sky-700 ring-sky-600/20',
+  VENDA:    'bg-amber-50 text-amber-800 ring-amber-600/20',
+  SAIDA:    'bg-rose-50 text-rose-700 ring-rose-600/20',
+  ESTORNO:  'bg-slate-100 text-slate-600 ring-slate-500/20',
+  OUTRO:    'bg-slate-100 text-slate-600 ring-slate-500/20',
+}
+
 export default function FichaItemPage({ params }: { params: Promise<{ id: string; itemId: string }> }) {
   const { id, itemId } = use(params)
   const [ficha, setFicha] = useState<Ficha | null | undefined>(undefined)
+  /** 'TUDO' · 'COMPRAS' (a aba pra comparar preço de fornecedor) · ou um tipo específico */
+  const [filtro, setFiltro] = useState<string>('TUDO')
 
   useEffect(() => {
     fetch(`/api/empresas/${id}/estoque/itens/${itemId}`).then((r) => r.json()).then((j) => setFicha(j.ficha ?? null)).catch(() => setFicha(null))
   }, [id, itemId])
 
+  // ⚠️ REGRA 9: os hooks ficam ANTES do early return, com `?? []` — a ordem deles não pode
+  // depender de dado carregado.
+  const linhas = useMemo(() => {
+    const todas = ficha?.historico ?? []
+    if (filtro === 'TUDO') return todas
+    if (filtro === 'COMPRAS') return todas.filter((l) => l.ehCompra)
+    return todas.filter((l) => l.tipo === filtro)
+  }, [ficha, filtro])
+
   if (ficha === undefined) return <div className="p-6"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
   if (!ficha) return <div className="p-6 text-sm text-slate-500">Item não encontrado.</div>
+
+  const nCompras = ficha.historico.filter((l) => l.ehCompra).length
 
   return (
     <div className="space-y-6">
@@ -80,27 +111,86 @@ export default function FichaItemPage({ params }: { params: Promise<{ id: string
         </CardContent></Card>
       )}
 
-      {/* histórico de compras */}
+      {/* ⭐⭐ HISTÓRICO DO ITEM — entradas E saídas, cada linha com tipo/quem/origem */}
       <div>
-        <h2 className="mb-3 text-sm font-semibold text-slate-900">Histórico de compras</h2>
-        {ficha.compras.length === 0 ? (
-          <Card><CardContent className="p-6 text-center text-sm text-slate-500">Nenhuma compra ainda. Aparece aqui a cada recebimento confirmado.</CardContent></Card>
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <History className="h-4 w-4 shrink-0 text-[#185FA5]" />
+          <h2 className="text-sm font-semibold text-slate-900">Histórico do item</h2>
+          <p className="hidden flex-1 truncate text-xs text-slate-400 lg:block">tudo que entrou e saiu — clique na origem pra chegar na fonte</p>
+        </div>
+
+        {/* ⭐ o filtro só oferece o que EXISTE neste item — opção vazia é convite a beco sem saída */}
+        <div className="mb-2 flex flex-wrap items-center gap-1.5">
+          {[
+            { k: 'TUDO', label: `Tudo (${ficha.historico.length})` },
+            ...(nCompras ? [{ k: 'COMPRAS', label: `Só compras (${nCompras})` }] : []),
+            ...ficha.tipos.map((t) => ({ k: t.tipo, label: `${t.chip} (${t.n})` })),
+          ].map((o) => (
+            <button
+              key={o.k}
+              onClick={() => setFiltro(o.k)}
+              className={`h-7 rounded-lg px-2.5 text-[12px] font-medium transition ${
+                filtro === o.k ? 'bg-[#185FA5] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+
+        {linhas.length === 0 ? (
+          <Card><CardContent className="p-6 text-center text-sm text-slate-500">
+            {ficha.historico.length === 0
+              ? 'Nada aconteceu com este item ainda. Cada recebimento, contagem, produção ou venda aparece aqui.'
+              : 'Nenhuma linha neste filtro.'}
+          </CardContent></Card>
         ) : (
-          <Card><CardContent className="p-0">
-            <table className="density-normal w-full">
+          <Card><CardContent className="p-0 overflow-x-auto">
+            <table className="density-normal w-full min-w-[720px]">
               <thead><tr className="border-b border-slate-100 text-left text-[11px] uppercase tracking-wide text-slate-400">
-                <th className="px-3 py-2 font-medium">Data</th><th className="px-3 py-2 font-medium">Fornecedor</th><th className="px-3 py-2 font-medium">Nota</th>
-                <th className="px-3 py-2 text-right font-medium">Qtd</th><th className="px-3 py-2 text-right font-medium">Preço un.</th><th className="px-3 py-2 text-right font-medium">Total</th>
+                <th className="px-3 py-2 font-medium">Data</th>
+                <th className="px-3 py-2 font-medium">O que foi</th>
+                <th className="px-3 py-2 font-medium">De onde veio</th>
+                <th className="px-3 py-2 font-medium">Quem</th>
+                <th className="px-3 py-2 text-right font-medium">Qtd</th>
+                {/* ⚠️ o rótulo é GENÉRICO na coluna porque a natureza muda por linha; cada
+                    célula diz qual é a sua (preço de compra × custo médio da baixa). */}
+                <th className="px-3 py-2 text-right font-medium">Custo un.</th>
+                <th className="px-3 py-2 text-right font-medium">Total</th>
               </tr></thead>
               <tbody>
-                {ficha.compras.map((c) => (
-                  <tr key={c.movimentoId} className={`border-b border-slate-50 last:border-0 ${c.estorno ? 'bg-rose-50/40' : ''}`}>
-                    <td className="px-3 py-0 text-[13px] tabular-nums text-slate-700">{fmtDia(c.data)}</td>
-                    <td className="px-3 py-0 text-[13px] text-slate-700">{c.fornecedor ?? '—'}{c.estorno && <span className="ml-1 text-xs font-semibold text-rose-600">(estorno)</span>}</td>
-                    <td className="px-3 py-0 text-[13px] text-slate-400">{c.conferenceId ? <a href={`/empresas/${id}/estoque/recibos/${c.conferenceId}`} className="text-[#185FA5] hover:underline">{c.nNF ? `nº ${c.nNF}` : 'recibo'}</a> : c.nNF ? `nº ${c.nNF}` : '—'}</td>
-                    <td className="px-3 py-0 text-[13px] text-right tabular-nums text-slate-700">{num(c.quantidade)} {ficha.item.unidadeControle}</td>
-                    <td className="px-3 py-0 text-[13px] text-right tabular-nums text-slate-700">{brl(c.custoUnitario)}</td>
-                    <td className={`px-3 py-0 text-[13px] text-right font-medium tabular-nums ${c.estorno ? 'text-rose-600' : 'text-slate-900'}`}>{brl(c.custoTotal)}</td>
+                {linhas.map((l) => (
+                  <tr key={l.movimentoId} className={`border-b border-slate-50 last:border-0 ${l.familia === 'ESTORNO' ? 'bg-slate-50/60' : ''}`}>
+                    <td className="px-3 py-0 text-[13px] tabular-nums text-slate-700">{fmtDia(l.data)}</td>
+                    <td className="px-3 py-0">
+                      <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[11.5px] font-medium ring-1 ring-inset ${COR_DA_FAMILIA[l.familia]}`}>
+                        {l.chip}
+                      </span>
+                      {/* ⭐ o estorno DIZ o que estornou — antes era só uma linha vermelha */}
+                      {l.estornoDe && (
+                        <span className="ml-1.5 text-[11.5px] text-slate-500">
+                          do {l.estornoDe.chip.toLowerCase()} de {fmtDia(l.estornoDe.data)}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-0 text-[13px] text-slate-600">
+                      {l.href ? (
+                        <a href={l.href} className="inline-flex items-center gap-1 text-[#185FA5] hover:underline">
+                          {l.detalhe}<ExternalLink className="h-3 w-3 shrink-0 opacity-60" />
+                        </a>
+                      ) : l.detalhe}
+                    </td>
+                    <td className="px-3 py-0 text-[13px] text-slate-600">{l.quem ?? <span className="text-slate-300">—</span>}</td>
+                    <td className={`px-3 py-0 text-right text-[13px] tabular-nums ${l.quantidade < 0 ? 'text-rose-600' : 'text-slate-700'}`}>
+                      {l.quantidade > 0 ? '+' : ''}{num(l.quantidade)} {ficha.item.unidadeControle}
+                    </td>
+                    <td className="px-3 py-0 text-right text-[13px] tabular-nums text-slate-700">
+                      {brl(l.custoUnitario)}
+                      {/* ⛔ SAÍDA NÃO É PREÇO DE COMPRA: dizer "preço un." num consumo faria o
+                          dono comparar fornecedor contra a média interna do próprio estoque. */}
+                      {!l.precoEhDeCompra && <span className="ml-1 text-[10.5px] font-normal text-slate-400">médio</span>}
+                    </td>
+                    <td className={`px-3 py-0 text-right text-[13px] font-medium tabular-nums ${l.custoTotal < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{brl(l.custoTotal)}</td>
                   </tr>
                 ))}
               </tbody>

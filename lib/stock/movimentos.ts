@@ -1,12 +1,19 @@
 // ESTOQUE FASE 1 item 2 — o EXTRATO do estoque (lê o ledger). Filtros item/tipo/período,
-// referência clicável (nota/conferência), estorno destacado, quem lançou. Só LÊ.
+// referência clicável, estorno destacado, quem lançou. Só LÊ.
+//
+// ⛔⛔ **A MESMA MENTIRA DO HISTÓRICO DO ITEM VIVIA AQUI (corrigido 08/09/2026):** a
+// `referencia` colapsava **tudo** que não tinha nota em `{ tipo: 'conferencia', label:
+// 'conferência' }` — então movimento de produção, contagem e baixa de venda apareciam como
+// "conferência" no extrato. Duas telas, a mesma pergunta, duas respostas erradas.
+//
+// ⭐ Agora as duas leem `movimento-explicado.ts` (REGRA 4). A `referencia` continua no
+// payload **só pra não quebrar o consumidor atual**, derivada da explicação.
 
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
+import { explicarMovimentos } from './movimento-explicado'
 
 type Db = PrismaClient | Prisma.TransactionClient
-
-const nNFdaChave = (chave: string | null) => (chave && chave.length === 44 ? String(Number(chave.slice(25, 34))) : null)
 
 export interface MovimentoLinha {
   id: string
@@ -21,6 +28,10 @@ export interface MovimentoLinha {
   custoTotal: number
   referencia: { tipo: 'nota' | 'conferencia' | null; label: string; nfeId: string | null }
   quem: string
+  /** ⭐ o TIPO real com a cara dele (chip), o de-onde-veio e o link — o dono único */
+  chip: string
+  detalhe: string
+  href: string | null
 }
 
 export interface MovimentosFiltro { itemId?: string; tipo?: string; de?: string; ate?: string; limite?: number }
@@ -33,21 +44,19 @@ export async function listMovimentos(companyId: string, filtro: MovimentosFiltro
 
   const movs = await db.stockMovement.findMany({ where, orderBy: { dataMovimento: 'desc' }, take: filtro.limite ?? 500 })
 
-  // resolve item, nota (por chave) e quem (por criadoPorId)
   const itemIds = [...new Set(movs.map((m) => m.itemId))]
   const chaves = [...new Set(movs.map((m) => m.nfeChave).filter((c): c is string => !!c))]
-  const userIds = [...new Set(movs.map((m) => m.criadoPorId).filter((u): u is string => !!u))]
-  const [items, notas, users] = await Promise.all([
+  const [items, notas, explicadas] = await Promise.all([
     itemIds.length ? db.stockItem.findMany({ where: { companyId, id: { in: itemIds } }, select: { id: true, nome: true } }) : Promise.resolve([]),
-    chaves.length ? db.stockNfe.findMany({ where: { companyId, chave: { in: chaves } }, select: { id: true, chave: true, emitNome: true } }) : Promise.resolve([]),
-    userIds.length ? db.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } }) : Promise.resolve([]),
+    chaves.length ? db.stockNfe.findMany({ where: { companyId, chave: { in: chaves } }, select: { id: true, chave: true } }) : Promise.resolve([]),
+    explicarMovimentos(companyId, movs, db),
   ])
   const itemNome = new Map(items.map((i) => [i.id, i.nome]))
-  const notaByChave = new Map(notas.map((n) => [n.chave, n]))
-  const userNome = new Map((users as { id: string; name: string | null }[]).map((u) => [u.id, u.name]))
+  const nfeIdPorChave = new Map(notas.map((n) => [n.chave, n.id]))
+  const expPorId = new Map(explicadas.map((e) => [e.movimentoId, e]))
 
   return movs.map((m) => {
-    const nota = m.nfeChave ? notaByChave.get(m.nfeChave) : undefined
+    const e = expPorId.get(m.id)!
     return {
       id: m.id,
       data: m.dataMovimento.toISOString(),
@@ -59,12 +68,18 @@ export async function listMovimentos(companyId: string, filtro: MovimentosFiltro
       quantidade: m.quantidade,
       custoUnitario: m.custoUnitario,
       custoTotal: m.custoTotal,
-      referencia: nota
-        ? { tipo: 'nota', label: nota.emitNome ? `${nota.emitNome}${nNFdaChave(m.nfeChave) ? ` · nº ${nNFdaChave(m.nfeChave)}` : ''}` : `nota nº ${nNFdaChave(m.nfeChave) ?? '—'}`, nfeId: nota.id }
-        : m.receiptId
-        ? { tipo: 'conferencia', label: 'conferência', nfeId: null }
-        : { tipo: null, label: '—', nfeId: null },
-      quem: (m.criadoPorId && userNome.get(m.criadoPorId)) || m.origem,
+      // ⚠️ compat: `referencia` sobrevive pro CSV e pro consumidor atual, mas o LABEL agora
+      // vem da explicação — nunca mais "conferência" em cima de uma ordem de produção.
+      referencia: {
+        tipo: m.nfeChave ? 'nota' : m.receiptId ? 'conferencia' : null,
+        label: e.detalhe,
+        nfeId: m.nfeChave ? nfeIdPorChave.get(m.nfeChave) ?? null : null,
+      },
+      // ⚠️ sem autor, a origem ('SEFAZ'/'MANUAL') diz de ONDE veio em vez de inventar um nome
+      quem: e.quem ?? m.origem,
+      chip: e.chip,
+      detalhe: e.detalhe,
+      href: e.href,
     }
   })
 }

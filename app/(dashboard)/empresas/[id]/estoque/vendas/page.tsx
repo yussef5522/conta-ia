@@ -26,7 +26,14 @@ const fmtDia = (d: string) => d.split('-').reverse().join('/')
 
 export default function VendasImportPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
-  const [aba, setAba] = useState<'importar' | 'complementos' | 'manual' | 'processados'>('importar')
+  // ⭐ a aba pode vir da URL (08/09/2026): o histórico do item linka a baixa de venda pra
+  // `?aba=processados#dia-YYYY-MM-DD`, e cair na aba "Importar dia" seria não chegar na fonte.
+  // ⚠️ lido no 1º render (não em effect) pra a aba não PISCAR de importar → processados.
+  const [aba, setAba] = useState<'importar' | 'complementos' | 'manual' | 'processados'>(() => {
+    if (typeof window === 'undefined') return 'importar'
+    const q = new URLSearchParams(window.location.search).get('aba')
+    return q === 'processados' || q === 'complementos' || q === 'manual' ? q : 'importar'
+  })
   const [preview, setPreview] = useState<Preview | null>(null)
   const [html, setHtml] = useState('')
   const [carregando, setCarregando] = useState(false)
@@ -166,7 +173,7 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
                 <th className="w-10 px-3 py-2"></th>
               </tr></thead>
               <tbody>{sp.ordenar(processados, (d, c) => (c === 'data' ? d.data : c === 'baixados' ? d.baixados : c === 'valor' ? d.valorBaixado : d.pendentes)).map((d) => (
-                <tr key={d.data} className="border-b border-slate-50 last:border-0">
+                <tr key={d.data} id={`dia-${d.data}`} className="scroll-mt-24 border-b border-slate-50 last:border-0 target:bg-amber-50">
                   <td className="px-3 py-0 text-[13px] font-medium text-slate-800">{fmtDia(d.data)}</td>
                   <td className="px-3 py-0 text-[13px] text-right tabular-nums text-slate-700">{d.baixados}</td>
                   <td className="px-3 py-0 text-[13px] text-right tabular-nums text-slate-900">{brl(d.valorBaixado)}</td>
