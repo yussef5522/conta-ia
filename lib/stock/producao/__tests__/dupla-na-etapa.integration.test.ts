@@ -11,6 +11,7 @@ import { prisma } from '@/lib/db'
 import { criarFicha } from '../fichas'
 import { criarOrdem } from '../ordens'
 import { etapasDaOrdem } from '../etapas'
+import { minhasTarefasDeHoje } from '../minhas-tarefas'
 import { iniciarTarefa, finalizarTarefa, TarefaError } from '../minhas-tarefas'
 import { designarParticipantes, participantesDaEtapa } from '../participantes'
 import { dividirUnidades, etapaEstaFeita, DuplaError } from '../dupla-na-etapa'
@@ -169,5 +170,57 @@ describe('⛔⛔ as unidades dividem só entre quem MEDIU — no dado real', () 
     const r = dividirUnidades(comGerente, 20)
     expect(r.find((f) => f.colaboradorId === ana)).toEqual({ colaboradorId: ana, unidades: 20, minutos: 30 })
     expect(r.find((f) => f.colaboradorId === bruno)).toEqual({ colaboradorId: bruno, unidades: 0, minutos: null })
+  })
+})
+
+// ────────────────────────────────────────────────────────────────
+// ⛔⛔ O CAMINHO QUE FALTAVA SER NAVEGADO (REGRA 2, 08/09/2026).
+//
+// *"O modelo aceita 2 participantes, mas a tela da ordem só tem UM seletor de pessoa por
+// etapa — não existe onde marcar a segunda. REGRA 2 falhou aqui: o caminho do usuário não
+// foi navegado."* — o dono.
+//
+// ⭐ O motor estava certo; o que faltava era a leitura chegar na TELA. Este bloco anda o
+// caminho inteiro: designo 2 → os 2 veem no tablet → cada um inicia com o próprio PIN.
+// ────────────────────────────────────────────────────────────────
+
+describe('⭐⭐ REGRA 2: designo 2 → os 2 veem → cada um inicia', () => {
+  it('a etapa DEVOLVE os dois participantes pra tela desenhar os chips', async () => {
+    const { ordemId, gessado } = await ordemComEtapas()
+    await designarParticipantes({ companyId, etapaId: gessado, colaboradorIds: [ana, bruno] }, prisma)
+
+    const es = await etapasDaOrdem(companyId, ordemId, HOJE, prisma)
+    // ⛔ sem isto a tela não tinha COMO mostrar quem são os dois — era a lacuna
+    expect(es[0].participantes.map((p) => p.nome).sort()).toEqual(['Ana', 'Bruno'])
+    expect(es[0].participantes.every((p) => !p.iniciou)).toBe(true)
+  })
+
+  it('⭐ os DOIS veem a tarefa no tablet, e cada um inicia com o PRÓPRIO PIN', async () => {
+    const { gessado } = await ordemComEtapas()
+    await designarParticipantes({ companyId, etapaId: gessado, colaboradorIds: [ana, bruno] }, prisma)
+
+    // a janela de cada um mostra a MESMA etapa
+    expect((await minhasTarefasDeHoje(companyId, ana, HOJE, prisma)).map((t) => t.nome)).toContain('gessado')
+    expect((await minhasTarefasDeHoje(companyId, bruno, HOJE, prisma)).map((t) => t.nome)).toContain('gessado')
+
+    await iniciarTarefa({ companyId, etapaId: gessado, colaboradorId: ana, agora: emSP(8) }, prisma)
+    await iniciarTarefa({ companyId, etapaId: gessado, colaboradorId: bruno, agora: emSP(8, 15) }, prisma)
+
+    const ps = await participantesDaEtapa(gessado, prisma)
+    expect(ps.filter((p) => p.iniciadoEm)).toHaveLength(2)
+  })
+
+  it('⛔⛔ quem JÁ INICIOU não sai pela designação — o relógio dele está correndo', async () => {
+    const { ordemId, gessado } = await ordemComEtapas()
+    await designarParticipantes({ companyId, etapaId: gessado, colaboradorIds: [ana, bruno] }, prisma)
+    await iniciarTarefa({ companyId, etapaId: gessado, colaboradorId: ana, agora: emSP(8) }, prisma)
+
+    // o gerente tenta deixar só o Bruno
+    await designarParticipantes({ companyId, etapaId: gessado, colaboradorIds: [bruno] }, prisma)
+
+    const es = await etapasDaOrdem(companyId, ordemId, HOJE, prisma)
+    const ana2 = es[0].participantes.find((p) => p.nome === 'Ana')
+    // ⛔ ela continua lá, marcada como "no relógio" — a TELA usa esse flag pra esconder o X
+    expect(ana2?.iniciou).toBe(true)
   })
 })

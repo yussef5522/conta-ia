@@ -28,6 +28,8 @@ interface Tarefa {
   estado: Estado; iniciadoEm: string | null; finalizadoEm: string | null
   /** ⭐ última etapa da ordem — o gesto do gerente conclui ali mesmo quando é */
   ehUltima: boolean
+  /** ⭐ quem está designado NESTA etapa — o redesignar precisa da verdade da etapa */
+  designados: string[]
   minutos: number | null; esperando: string | null; loteFechado: Lote | null; abertaDemais: boolean
   /** ⭐ o rótulo pronto — a MESMA frase das outras duas telas */
   rotulo: string
@@ -315,7 +317,7 @@ function CardDaPessoa({ p, empresaId, agoraMs, colaboradores, onMudou }: {
                 <span className="w-full pl-[1.4rem]">
                   <RedesignarInline
                     empresaId={empresaId} ordemId={t.ordemId} etapaId={t.etapaId}
-                    colaboradores={colaboradores} atuais={[p.colaboradorId]} onFeito={onMudou}
+                    colaboradores={colaboradores} atuais={t.designados} onFeito={onMudou}
                   />
                 </span>
               )}

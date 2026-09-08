@@ -48,6 +48,12 @@ export interface TarefaDoDia {
   posicao: number
   /** ⭐ é a última etapa da ordem? (o HOJE conclui ali mesmo quando é) */
   ehUltima: boolean
+  /**
+   * ⭐ quem está designado NESTA etapa (0, 1 ou 2) — o redesignar do HOJE precisa da
+   * verdade da ETAPA, não do dono do card. Sem isto, remanejar pelo HOJE apagaria a
+   * segunda pessoa sem ninguém pedir.
+   */
+  designados: string[]
   estado: EstadoDaEtapa
   /** o instante que o toque gravou; a tela conta os segundos a partir dele */
   iniciadoEm: Date | null
@@ -215,6 +221,15 @@ export async function diaAoVivo(
   // ⭐⭐ FONTE ÚNICA: o mesmo resolvedor da tela da ordem e do tablet
   const resolvidas = await resolverEstadoDasEtapas(input.companyId, etapas, db)
 
+  // ⭐ os designados de cada etapa (a dupla) — o redesignar do HOJE lê daqui
+  const partes = await db.stockOrdemEtapaParticipante.findMany({
+    where: { etapaId: { in: etapas.map((e) => e.id) } },
+    select: { etapaId: true, colaboradorId: true },
+    orderBy: { criadoEm: 'asc' },
+  })
+  const designadosDaEtapa = new Map<string, string[]>()
+  for (const p of partes) designadosDaEtapa.set(p.etapaId, [...(designadosDaEtapa.get(p.etapaId) ?? []), p.colaboradorId])
+
   const nomeDaEtapaAnterior = (ordemId: string, posicao: number) =>
     etapas.find((x) => x.ordemId === ordemId && x.posicao === posicao - 1) ?? null
 
@@ -246,6 +261,7 @@ export async function diaAoVivo(
       produto: item?.nome ?? '',
       posicao: e.posicao,
       ehUltima: ehUltimaEtapa(e.ordemId, e.posicao),
+      designados: designadosDaEtapa.get(e.id) ?? (e.colaboradorId ? [e.colaboradorId] : []),
       estado: res.estado,
       iniciadoEm: e.iniciadoEm,
       finalizadoEm: e.finalizadoEm,

@@ -9,11 +9,13 @@
 // e "cristian"/"Cristian "/"cris" seriam três pessoas.
 
 import { useEffect, useState } from 'react'
-import { Loader2, Check, Clock, User, CircleSlash, BellRing, UserCheck } from 'lucide-react'
+import { Loader2, Check, Clock, User, CircleSlash, BellRing, UserCheck, X } from 'lucide-react'
 
 interface Etapa {
   id: string; posicao: number; nome: string
   colaboradorId: string | null; colaboradorNome: string | null
+  /** ⭐ a DUPLA: os designados desta etapa (0, 1 ou 2) */
+  participantes: { colaboradorId: string; nome: string; iniciou: boolean; finalizou: boolean }[]
   executorNome: string | null; iniciadoEm: string | null; finalizadoEm: string | null
   estado: 'AGUARDANDO' | 'EM_ANDAMENTO' | 'FEITA' | 'FINALIZADA_PELO_GERENTE' | 'ENCERRADA_SEM_FINALIZAR'
   minutos: number | null
@@ -78,11 +80,17 @@ export function EtapasDaOrdem({ id, ordemId, colaboradores, aoSaberAssinadas, ao
     aoSaberAbertas?.(es.filter((e) => e.estado === 'EM_ANDAMENTO').map((e) => ({ nome: e.nome, executorNome: e.executorNome })))
   }
 
-  const designar = async (etapaId: string, colaboradorId: string) => {
+  /**
+   * ⭐⭐ DESIGNAR A LISTA FINAL (08/09) — a dupla exige mandar QUEM SÃO, não "o novo".
+   *
+   * ⛔ O teto de 2 continua sendo do BANCO (`designarParticipantes` → `validarEntrada`); a
+   * tela só não oferece um terceiro campo. Trava de tela é conselho; trava de gravação é lei.
+   */
+  const designar = async (etapaId: string, colaboradorIds: string[]) => {
     setSalvando(etapaId); setErro(null); setConfirmado(null)
     const r = await fetch(`/api/empresas/${id}/estoque/producao/ordens/${ordemId}/etapas`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ etapaId, colaboradorId: colaboradorId || null }),
+      body: JSON.stringify({ etapaId, colaboradorIds }),
     })
     const j = await r.json().catch(() => null)
     setSalvando(null)
@@ -95,7 +103,8 @@ export function EtapasDaOrdem({ id, ordemId, colaboradores, aoSaberAssinadas, ao
     // "designado" a partir do meu próprio clique afirmaria uma gravação que pode não ter
     // acontecido — é a família do "a flag diz parece, o vínculo diz é".
     const salva = es.find((x) => x.id === etapaId)
-    setConfirmado({ etapaId, nome: salva?.executorNome ?? null })
+    // ⭐ o check nasce do que o SERVIDOR devolveu — nomes dos participantes, não do clique
+    setConfirmado({ etapaId, nome: salva?.participantes.map((p) => p.nome).join(' e ') || null })
     setTimeout(() => setConfirmado((c) => (c?.etapaId === etapaId ? null : c)), 3000)
   }
 
@@ -157,37 +166,51 @@ export function EtapasDaOrdem({ id, ordemId, colaboradores, aoSaberAssinadas, ao
               </span>
             ) : (
               <>
-                <label className="flex items-center gap-2 text-[13px] text-slate-500">
-                  <User className="h-4 w-4 text-slate-400" />
-                  {/* ⭐ a PESSOA designada é o outro protagonista da linha: quem o gerente
-                      procura aqui é "quem faz", e isso não pode estar em cinza pequeno. */}
-                  <select
-                    value={e.colaboradorId ?? ''}
-                    onChange={(ev) => designar(e.id, ev.target.value)}
-                    disabled={salvando === e.id || e.estado === 'EM_ANDAMENTO'}
-                    className={`rounded-lg border px-2.5 py-2 text-[14px] disabled:bg-slate-50 disabled:text-slate-500 ${
-                      e.colaboradorId
-                        ? 'border-slate-300 font-medium text-slate-900'
-                        : 'border-dashed border-slate-300 text-slate-400'
-                    }`}
-                  >
-                    {/* ⚠️ "ninguém ainda" NÃO é erro: etapa solta funciona, e quem pegar com o
-                        PIN fica registrado. Nada trava a cozinha por falta de designação. */}
-                    <option value="">— ninguém ainda</option>
-                    {colaboradores.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
-                  </select>
-                  {salvando === e.id && (
-                    <span className="inline-flex items-center gap-1 text-[11px] text-slate-400">
-                      <Loader2 className="h-3 w-3 animate-spin" /> salvando…
+                {/* ⭐⭐ OS DESIGNADOS COMO CHIPS (08/09) — a lacuna que o dono achou
+                    navegando: o modelo aceitava 2 e a tela só tinha UM seletor.
+                    ⛔ Quem JÁ INICIOU não tem X: o relógio dele está correndo, e tirá-lo
+                    pela designação apagaria trabalho medido. Pra esse caso existem os dois
+                    gestos do gerente, que REGISTRAM o que houve em vez de reescrever. */}
+                <span className="flex flex-wrap items-center gap-1.5">
+                  <User className="h-4 w-4 shrink-0 text-slate-400" />
+                  {e.participantes.map((pa) => (
+                    <span key={pa.colaboradorId}
+                      className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white py-1 pl-2.5 pr-1 text-[13px] font-medium text-slate-900">
+                      {pa.nome}
+                      {pa.iniciou ? (
+                        <span className="ml-0.5 rounded-full bg-amber-50 px-1.5 text-[10px] font-semibold text-amber-700" title="já iniciou — só o gesto do gerente resolve">
+                          no relógio
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => designar(e.id, e.participantes.filter((x) => x.colaboradorId !== pa.colaboradorId).map((x) => x.colaboradorId))}
+                          disabled={salvando === e.id}
+                          aria-label={`tirar ${pa.nome} da etapa`}
+                          className="rounded-full p-0.5 text-slate-300 hover:bg-slate-100 hover:text-rose-600 disabled:opacity-40"
+                        ><X className="h-3.5 w-3.5" /></button>
+                      )}
                     </span>
+                  ))}
+                  {/* ⚠️ o "+" some quando a vaga acaba: o teto de 2 aparece como AUSÊNCIA
+                      de opção, não como erro depois do clique. */}
+                  {e.participantes.length < 2 && (
+                    <select
+                      value=""
+                      onChange={(ev) => { if (ev.target.value) designar(e.id, [...e.participantes.map((x) => x.colaboradorId), ev.target.value]) }}
+                      disabled={salvando === e.id}
+                      aria-label="adicionar pessoa na etapa"
+                      className="rounded-full border border-dashed border-slate-300 px-2.5 py-1 text-[13px] text-slate-400 disabled:opacity-40"
+                    >
+                      <option value="">{e.participantes.length === 0 ? '+ quem faz' : '+ adicionar pessoa'}</option>
+                      {colaboradores
+                        .filter((c) => !e.participantes.some((pa) => pa.colaboradorId === c.id))
+                        .map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                    </select>
                   )}
-                  {confirmado?.etapaId === e.id && salvando !== e.id && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
-                      <Check className="h-3 w-3" />
-                      {confirmado.nome ? `designado: ${confirmado.nome}` : 'designação removida'}
-                    </span>
+                  {e.participantes.length === 0 && (
+                    <span className="text-[11.5px] text-slate-400">quem pegar com o PIN fica registrado</span>
                   )}
-                </label>
+                </span>
                 {e.estado === 'EM_ANDAMENTO' ? (
                   <>
                     <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-[12px] font-semibold text-amber-800">
@@ -222,13 +245,13 @@ export function EtapasDaOrdem({ id, ordemId, colaboradores, aoSaberAssinadas, ao
                 ) : (
                   /* ⭐ AGUARDANDO também é um dos 5 estados — ganha o chip, em tom neutro:
                      ele informa, não pede ação, e âmbar aqui competiria com "em andamento". */
-                  e.colaboradorId ? (
+                  // ⚠️ a frase "quem pegar com o PIN" já vive nos chips acima — repetir aqui
+                  // seria a mesma informação em dois lugares da MESMA linha.
+                  e.participantes.length > 0 ? (
                     <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-[12px] font-semibold text-slate-600">
                       <Clock className="h-3.5 w-3.5" /> aguardando
                     </span>
-                  ) : (
-                    <span className="text-[12px] text-slate-400">quem pegar com o PIN fica registrado</span>
-                  )
+                  ) : null
                 )}
               </>
             )}

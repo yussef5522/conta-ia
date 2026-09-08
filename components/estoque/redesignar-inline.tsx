@@ -23,7 +23,7 @@ interface Props {
   ordemId: string
   etapaId: string
   colaboradores: ColaboradorRef[]
-  /** quem está designado hoje (0, 1 ou 2) */
+  /** quem está designado hoje (0, 1 ou 2) — vem do SERVIDOR, não deduzido da tela */
   atuais: string[]
   onFeito: () => void
 }

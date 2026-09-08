@@ -110,12 +110,29 @@ export async function materializarEtapasDaOrdem(
 // fila" sobreviveu numa ordem já concluída. É a lição do B1 aplicada à etapa.
 export type { EstadoDaEtapa } from './estado-da-etapa'
 
+/**
+ * ⭐⭐ OS PARTICIPANTES DA ETAPA (08/09/2026) — a dupla, do lado da leitura.
+ *
+ * ⛔ Sem isto o motor da dupla existia e **a tela não tinha como mostrar quem são os dois**
+ * — foi a lacuna que o dono achou navegando: *"o modelo aceita 2 participantes, mas a tela
+ * só tem UM seletor"*. REGRA 2: o caminho do usuário tem que ser andado, não deduzido.
+ */
+export interface ParticipanteDaEtapa {
+  colaboradorId: string
+  nome: string
+  /** ⛔ quem JÁ INICIOU não pode ser tirado pela designação — o relógio dele está correndo */
+  iniciou: boolean
+  finalizou: boolean
+}
+
 export interface EtapaDaOrdem {
   id: string
   posicao: number
   nome: string
   colaboradorId: string | null
   colaboradorNome: string | null
+  /** ⭐ os designados/participantes desta etapa (0, 1 ou 2) */
+  participantes: ParticipanteDaEtapa[]
   executorId: string | null
   executorNome: string | null
   iniciadoEm: string | null
@@ -166,7 +183,15 @@ export async function etapasDaOrdem(
   companyId: string, ordemId: string, agora: Date = new Date(), db: Db = defaultPrisma,
 ): Promise<EtapaDaOrdem[]> {
   const rows = await db.stockOrdemEtapa.findMany({ where: { companyId, ordemId }, orderBy: { posicao: 'asc' } })
-  const ids = [...new Set(rows.flatMap((r) => [r.colaboradorId, r.executorId]).filter((x): x is string => !!x))]
+  const parts = await db.stockOrdemEtapaParticipante.findMany({
+    where: { etapaId: { in: rows.map((r) => r.id) } },
+    select: { etapaId: true, colaboradorId: true, iniciadoEm: true, finalizadoEm: true },
+    orderBy: { criadoEm: 'asc' },
+  })
+  const ids = [...new Set([
+    ...rows.flatMap((r) => [r.colaboradorId, r.executorId]),
+    ...parts.map((p) => p.colaboradorId),
+  ].filter((x): x is string => !!x))]
   const colabs = ids.length
     ? await db.stockColaborador.findMany({ where: { companyId, id: { in: ids } }, select: { id: true, nome: true } })
     : []
@@ -178,6 +203,23 @@ export async function etapasDaOrdem(
     return {
       id: r.id, posicao: r.posicao, nome: r.nome,
       colaboradorId: r.colaboradorId, colaboradorNome: r.colaboradorId ? nome.get(r.colaboradorId) ?? null : null,
+      // ⚠️ etapa ANTIGA (antes de 08/09) não tem linha de participante: o designado dela
+      // vira o participante único, pra tela não mostrar vazio onde há gente.
+      participantes: (() => {
+        const meus = parts.filter((p) => p.etapaId === r.id)
+        if (meus.length) {
+          return meus.map((p) => ({
+            colaboradorId: p.colaboradorId, nome: nome.get(p.colaboradorId) ?? '—',
+            iniciou: !!p.iniciadoEm, finalizou: !!p.finalizadoEm,
+          }))
+        }
+        return r.colaboradorId
+          ? [{
+            colaboradorId: r.colaboradorId, nome: nome.get(r.colaboradorId) ?? '—',
+            iniciou: !!r.iniciadoEm, finalizou: !!r.finalizadoEm,
+          }]
+          : []
+      })(),
       executorId: r.executorId, executorNome: r.executorId ? nome.get(r.executorId) ?? null : null,
       iniciadoEm: r.iniciadoEm?.toISOString() ?? null,
       finalizadoEm: r.finalizadoEm?.toISOString() ?? null,
