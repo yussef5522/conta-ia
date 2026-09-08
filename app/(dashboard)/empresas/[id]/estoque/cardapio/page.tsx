@@ -13,7 +13,7 @@
 // Anatomia da família: StatCards clicáveis (filtram) · cabeçalho de 1 linha · filtros h-9 ·
 // tabela density-normal · régua de totais · mobile em cards.
 
-import { useEffect, useMemo, useState, use } from 'react'
+import { useCallback, useEffect, useMemo, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { StatCard, StatCardGrid } from '@/components/ui/stat-card'
 import { TotalsBar } from '@/components/ui/totals-bar'
@@ -23,6 +23,8 @@ import type { LinhaPrateleira } from '@/lib/stock/vendas/complemento-map'
 import { cardsDaPrateleira, secoesDaPrateleira, precisaCarregarPrateleira, agruparPorDestino } from '@/lib/stock/vendas/painel-complementos'
 import { sugerirGruposDeGrafia } from '@/lib/stock/vendas/sugerir-grupos'
 import { sugestoesDeTamanho } from '@/lib/stock/vendas/grafia-canonica'
+import { normalizarNome } from '@/lib/stock/vendas/grupo-complemento'
+import { ordenarPrateleira } from '@/lib/stock/vendas/ordem-da-prateleira'
 import { UtensilsCrossed, Loader2, Download, Search, AlertTriangle, ChevronRight, ChevronDown, Sparkles, CircleDollarSign, PackageCheck, HelpCircle } from 'lucide-react'
 
 type Status = 'SEM_DESTINO' | 'SEM_FICHA' | 'REVENDA' | 'FICHA_INCOMPLETA' | 'FICHA_OK'
@@ -352,7 +354,6 @@ function PrateleiraComplementos({ id, linhas, periodo, onMapear, onMoverGrupo, o
   const [apelidosAbertos, setApelidosAbertos] = useState<Record<string, boolean>>({})
   const [ocupadoLinha, setOcupadoLinha] = useState(false)
   // ⭐ o dono INCLUI a parecida por clique — o sistema nunca a inclui sozinho
-  const [incluidas, setIncluidas] = useState<Record<string, string[]>>({})
   const [ocupado, setOcupado] = useState(false)
   // ⭐ as fichas existentes, pro "apontar a que existe" na LINHA (o dropdown da faixa amarela
   // dos produtos, agora aqui). Carrega junto com a prateleira, uma vez.
@@ -365,6 +366,64 @@ function PrateleiraComplementos({ id, linhas, periodo, onMapear, onMoverGrupo, o
       .then((j) => setFichasExistentes((j.fichas ?? []).filter((f: { ativo?: boolean }) => f.ativo !== false)))
       .catch(() => {})
   }, [id])
+
+  // ⭐⭐ AS SUGESTÕES SAEM DA MESMA LISTA QUE A TABELA DESENHA, e são indexadas por linha —
+  // não existe mais uma "seção de grupos" que apresente o mesmo dado por outro caminho.
+  // *"Duas apresentações do mesmo dado divergem e confundem."* (o dono, 08/09)
+  // ⚠️ `?? []` porque estes hooks agora rodam ANTES do early return de carregamento
+  // (REGRA 9: hook nenhum depois de `return`). O guard da casa pegou isso — e estaria
+  // certo mesmo se nada quebrasse hoje: a ordem dos hooks não pode depender de dado.
+  const jaMapeadas = useMemo(() => (linhas ?? [])
+    .filter((l) => l.destino === 'FICHA' && l.fichaId)
+    .map((l) => ({ nomeSuitable: l.nomeSuitable, fichaId: l.fichaId!, nomeFicha: l.nomeFicha ?? l.nomeSuitable })),
+  [linhas])
+
+  const pendentesCrus = useMemo(() => (linhas ?? [])
+    .filter((l) => l.destino === 'SEM_FICHA')
+    .map((l) => ({ nomeSuitable: l.nomeSuitable, ocorrencias: l.ocorrencias })), [linhas])
+
+  /** grupo sugerido por CANÔNICO — a mesma chave que a linha da tabela usa */
+  const grupoPorCanonico = useMemo(() => {
+    const m = new Map<string, ReturnType<typeof sugerirGruposDeGrafia>[number]>()
+    for (const g of sugerirGruposDeGrafia(pendentesCrus, jaMapeadas)) m.set(g.chave, g)
+    return m
+  }, [pendentesCrus, jaMapeadas])
+
+  /** sugestão de tamanho/promo por NOME cru */
+  const tamanhoPorNome = useMemo(() => {
+    const m = new Map<string, ReturnType<typeof sugestoesDeTamanho>[number]>()
+    for (const t of sugestoesDeTamanho(pendentesCrus, jaMapeadas)) m.set(t.nomeSuitable, t)
+    return m
+  }, [pendentesCrus, jaMapeadas])
+
+  /**
+   * ⛔ A LINHA É O SABOR: ignorar/desfazer/apontar ficha valem pra TODAS as grafias dela.
+   *
+   * ⚠️ Agir só na representante era invisível do jeito pior: a linha sumia da fila (a
+   * representante foi resolvida) e as irmãs continuavam pendentes sem aparecer em lugar
+   * nenhum, porque o agrupamento já as tinha juntado sob ela.
+   */
+  const todosOsApelidos = useCallback(async (
+    l: { apelidos: { nomeSuitable: string }[] }, acao: 'IGNORAR' | 'LIMPAR' | 'FICHA', fichaId?: string,
+  ) => {
+    setOcupado(true)
+    try { for (const a of l.apelidos) await onMapear(a.nomeSuitable, acao, fichaId) }
+    finally { setOcupado(false) }
+  }, [onMapear])
+
+  const sugestaoDaLinha = useCallback((nomeSuitable: string) => {
+    const g = grupoPorCanonico.get(normalizarNome(nomeSuitable))
+    const tam = tamanhoPorNome.get(nomeSuitable)
+    const irma = g?.fichaIrma ?? null
+    const comFicha = g?.parecidasComFicha ?? []
+    const parecidas = g?.parecidas ?? []
+    return { irma, comFicha, parecidas, tam, tem: !!(irma || comFicha.length || parecidas.length || tam) }
+  }, [grupoPorCanonico, tamanhoPorNome])
+
+  const comSugestao = useMemo(
+    () => new Set((linhas ?? []).filter((l) => l.destino === 'SEM_FICHA' && sugestaoDaLinha(l.nomeSuitable).tem)
+      .map((l) => l.nomeSuitable)),
+    [linhas, sugestaoDaLinha])
 
   /** link do editor com UM `complemento=` por grafia: uma ficha, uma viagem */
   const linkCriarFicha = (nomes: string[]) =>
@@ -397,7 +456,10 @@ function PrateleiraComplementos({ id, linhas, periodo, onMapear, onMoverGrupo, o
     && (!q || l.titulo.toLowerCase().includes(q) || l.apelidos.some((a) => a.nomeSuitable.toLowerCase().includes(q)))
   // ⭐ AGRUPA NA APRESENTAÇÃO: nomes na mesma ficha viram UMA linha com a soma. O dado
   // continua por nome cru (é ele que casa com o relatório de amanhã).
-  const secoes = secoesDaPrateleira(agruparPorDestino(linhas)).map((sec) => ({ ...sec, visiveis: sec.linhas.filter(passa) }))
+
+  // ⛔ ORDEM DO TRABALHO, não estética: pendente com ação de 1 clique primeiro.
+  const secoes = secoesDaPrateleira(agruparPorDestino(linhas))
+    .map((sec) => ({ ...sec, visiveis: ordenarPrateleira(sec.linhas.filter(passa), comSugestao) }))
 
   return (
     <div className="space-y-3">
@@ -453,23 +515,6 @@ function PrateleiraComplementos({ id, linhas, periodo, onMapear, onMoverGrupo, o
               vários jeitos (31 grupos no relatório real). Sem isto, limpar a tela exigiria
               mapear grafia por grafia. ⛔ O sistema SUGERE e o dono confirma — fundir
               sozinho apontaria dois sabores diferentes pra mesma ficha, em silêncio. */}
-          {aberta[sec.chave] && sec.chave !== 'IGNORADOS' && (
-            <GruposSugeridos
-              linhas={sec.visiveis} incluidas={incluidas} ocupado={ocupado}
-              jaMapeadas={linhas.filter((l) => l.destino === 'FICHA' && l.fichaId)
-                .map((l) => ({ nomeSuitable: l.nomeSuitable, fichaId: l.fichaId!, nomeFicha: l.nomeFicha ?? l.nomeSuitable }))}
-              onMapearTodas={async (nomes, fichaId) => {
-                setOcupado(true)
-                try { for (const n of nomes) await onMapear(n, 'FICHA', fichaId) } finally { setOcupado(false) }
-              }}
-              onIncluir={(chave, nome) => setIncluidas((a) => ({ ...a, [chave]: [...(a[chave] ?? []), nome] }))}
-              linkCriarFicha={linkCriarFicha}
-              onIgnorarTodas={async (nomes) => {
-                setOcupado(true)
-                try { for (const n of nomes) await onMapear(n, 'IGNORAR') } finally { setOcupado(false) }
-              }}
-            />
-          )}
           {aberta[sec.chave] && (
             sec.visiveis.length === 0 ? (
               <p className="px-3 pb-3 text-xs text-slate-400">
@@ -519,6 +564,47 @@ function PrateleiraComplementos({ id, linhas, periodo, onMapear, onMoverGrupo, o
                             ⚠️ também é PRODUTO{l.destinoComoProduto ? ` (lá: ${l.destinoComoProduto})` : ''}
                           </p>
                         )}
+                        {/* ⭐⭐ A SUGESTÃO MORA DENTRO DA LINHA DO SABOR (08/09) — decisão do
+                            dono. Ela era uma faixa de cards ACIMA da tabela, e o mesmo sabor
+                            aparecia nos dois lugares. Aqui ela fica onde o sabor mora, com o
+                            botão do lado; a faixa âmbar é a mesma, só mudou de endereço. */}
+                        {l.destino === 'SEM_FICHA' && (() => {
+                          const sug = sugestaoDaLinha(l.nomeSuitable)
+                          if (!sug.tem) return null
+                          return (
+                            <div className="my-1 space-y-1 rounded-md border border-amber-200 bg-amber-50/70 px-2 py-1.5">
+                              {/* irmã com ficha: só sobra aqui quando o automático não pôde gravar */}
+                              {sug.irma && (
+                                <SugestaoInline
+                                  texto={<>já existe ficha (via “{sug.irma.viaGrafia}”) — <b>{sug.irma.nomeFicha}</b></>}
+                                  rotulo={`mapear na ficha “${sug.irma.nomeFicha}”`} ocupado={ocupado}
+                                  onClick={() => todosOsApelidos(l, 'FICHA', sug.irma!.fichaId)} />
+                              )}
+                              {/* ⭐ tamanho/promo: sugestão forte, e ainda assim clique */}
+                              {sug.tam && (
+                                <SugestaoInline
+                                  texto={<>{sug.tam.frase} <span className="text-amber-700">· o tamanho não muda a explosão — 1 ocorrência = 1 porção</span></>}
+                                  rotulo={`mapear como apelido de “${sug.tam.nomeFicha}”`} ocupado={ocupado}
+                                  onClick={() => todosOsApelidos(l, 'FICHA', sug.tam!.fichaId)} />
+                              )}
+                              {/* ⛔ typo/parecida COM ficha: um clique, sem escolher na lista */}
+                              {sug.comFicha.map((c) => (
+                                <SugestaoInline key={`cf:${c.nomeSuitable}`}
+                                  texto={<>parece <b>{c.nomeSuitable}</b> ({c.motivo}) — ficha <b>{c.nomeFicha}</b></>}
+                                  rotulo={`mapear na ficha “${c.nomeFicha}”`} ocupado={ocupado}
+                                  onClick={() => todosOsApelidos(l, 'FICHA', c.fichaId!)} />
+                              ))}
+                              {/* ⛔⛔ PARECIDA SEM FICHA continua sendo só INFORMAÇÃO: juntar
+                                  typo por conta própria é a classe do "memo diz Transferência".
+                                  O gesto real é o "criar ficha" da linha, que já leva o grupo. */}
+                              {sug.parecidas.length > 0 && (
+                                <p className="text-[11px] text-amber-800">
+                                  parecidas, sem ficha ainda: {sug.parecidas.map((x) => `${x.nomeSuitable} (${x.motivo})`).join(' · ')}
+                                </p>
+                              )}
+                            </div>
+                          )
+                        })()}
                       </td>
                       <td className="px-3 py-0 text-right text-[13px] tabular-nums text-slate-600">
                         {/* ⚠️ 0 aqui não é "vendeu zero": é sabor do cardápio (ou nome já
@@ -554,11 +640,11 @@ function PrateleiraComplementos({ id, linhas, periodo, onMapear, onMoverGrupo, o
                               className="text-[11px] text-slate-300 hover:text-slate-600">seguir cardápio</button>
                           )}
                           {l.destino !== 'IGNORAR' && (
-                            <button onClick={() => onMapear(l.nomeSuitable, 'IGNORAR')}
+                            <button onClick={() => todosOsApelidos(l, 'IGNORAR')}
                               className="text-[11px] text-slate-400 hover:text-slate-700">ignorar</button>
                           )}
                           {l.destino !== 'SEM_FICHA' && (
-                            <button onClick={() => onMapear(l.nomeSuitable, 'LIMPAR')}
+                            <button onClick={() => todosOsApelidos(l, 'LIMPAR')}
                               className="text-[11px] text-slate-400 hover:text-slate-700">desfazer</button>
                           )}
                           {l.destino === 'SEM_FICHA' && (
@@ -569,8 +655,12 @@ function PrateleiraComplementos({ id, linhas, periodo, onMapear, onMoverGrupo, o
                                   guard de duplicata não barra. É a duplicata voltando pela
                                   porta do erro de digitação. */}
                               <ApontarFicha fichas={fichasExistentes} disabled={ocupadoLinha}
-                                onEscolher={async (fichaId) => { setOcupadoLinha(true); try { await onMapear(l.nomeSuitable, 'FICHA', fichaId) } finally { setOcupadoLinha(false) } }} />
-                              <a href={linkCriarFicha([l.nomeSuitable])}
+                                onEscolher={async (fichaId) => { setOcupadoLinha(true); try { await todosOsApelidos(l, 'FICHA', fichaId) } finally { setOcupadoLinha(false) } }} />
+                              {/* ⛔⛔ TODAS as grafias do grupo, não só a representante: a
+                                  linha É o sabor. Mandar uma só deixaria as irmãs pendentes
+                                  logo depois de o dono achar que resolveu — e a linha some
+                                  da fila, então o resto ficaria invisível. */}
+                              <a href={linkCriarFicha(l.apelidos.map((a) => a.nomeSuitable))}
                                 className="rounded border border-[#185FA5] px-2 py-0.5 text-[11px] text-[#185FA5] hover:bg-blue-50">criar ficha</a>
                             </>
                           )}
@@ -591,131 +681,27 @@ function PrateleiraComplementos({ id, linhas, periodo, onMapear, onMoverGrupo, o
 }
 
 /**
- * ⭐ A faixa de grupos sugeridos de uma seção.
+ * ⭐ Uma sugestão dentro da linha do sabor: o texto do PORQUÊ + um botão.
  *
- * ⚠️ SÓ PENDENTES entram: nome já mapeado tem destino, e destino é o que agrupa de verdade
- * (`agruparPorDestino`). Sugerir grupo pra quem já foi decidido seria reabrir decisão pronta.
+ * ⛔ O componente `GruposSugeridos` (a faixa de cards acima da tabela) foi **APAGADO** em
+ * 08/09, não escondido. Enquanto ele existisse, alguém religaria e a página voltaria a
+ * mostrar `4 QUEIJOS` duas vezes — *"duas apresentações do mesmo dado divergem e
+ * confundem"* (o dono). Uma lista só, por construção.
  */
-function GruposSugeridos({ linhas, incluidas, ocupado, onIncluir, onIgnorarTodas, onMapearTodas, jaMapeadas, linkCriarFicha }: {
-  linhas: { destino: string; titulo: string; apelidos: { nomeSuitable: string; ocorrencias: number }[] }[]
-  incluidas: Record<string, string[]>
-  ocupado: boolean
-  onIncluir: (chave: string, nome: string) => void
-  onIgnorarTodas: (nomes: string[]) => void | Promise<void>
-  onMapearTodas: (nomes: string[], fichaId: string) => void | Promise<void>
-  jaMapeadas: { nomeSuitable: string; fichaId: string; nomeFicha: string }[]
-  linkCriarFicha: (nomes: string[]) => string
+function SugestaoInline({ texto, rotulo, ocupado, onClick }: {
+  texto: React.ReactNode; rotulo: string; ocupado: boolean; onClick: () => void
 }) {
-  const pendentes = linhas
-    .filter((l) => l.destino === 'SEM_FICHA')
-    .flatMap((l) => l.apelidos.map((a) => ({ nomeSuitable: a.nomeSuitable, ocorrencias: a.ocorrencias })))
-  // ⚠️ só vale a pena mostrar o grupo quando ele RESOLVE algo: 2+ grafias, ou 1 com candidata
-  // ⚠️ as já mapeadas entram como CONTEXTO (não como membros): é o que faz o grupo saber
-  // que a ficha dele já existe, em vez de mandar criar uma segunda e morrer no erro.
-  const grupos = sugerirGruposDeGrafia(pendentes, jaMapeadas)
-    // ⭐ inclui o grupo de UM só quando há candidata que JÁ TEM FICHA: é o typo órfão
-    // (STROGONOFF DE CARNEE) cujo grupo já fechou — sem isto, a única ação dele seria
-    // "criar ficha", que faria a segunda ficha de strogonoff.
-    .filter((g) => g.nomes.length > 1 || g.parecidas.length > 0 || g.fichaIrma || g.parecidasComFicha.length > 0)
-
-  // ⭐⭐ SUFIXO DE TAMANHO/PROMO (08/09) — sugestão FORTE, e ainda assim clique.
-  //
-  // *"Não é grafia — é o sabor + sufixo de tamanho/promo. (…) SUGERE, eu clico — tamanho
-  // não muda a explosão (1 ocorrência = 1 explosão, como sempre), então apelido na mesma
-  // ficha resolve."* — o dono. Por isso ela mora numa faixa PRÓPRIA, âmbar: não é o mesmo
-  // trabalho das grafias (que já entram sozinhas), e misturar as duas apagaria a diferença.
-  const tamanhos = sugestoesDeTamanho(pendentes, jaMapeadas)
-
-  if (!grupos.length && !tamanhos.length) return null
-
   return (
-    <div className="space-y-1.5 border-b border-slate-100 px-3 py-2">
-      {tamanhos.map((t) => (
-        <div key={`tam:${t.nomeSuitable}`} className="rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-medium text-amber-900">
-              <b>{t.nomeSuitable}</b> · {t.ocorrencias.toLocaleString('pt-BR')} ocorrências
-            </span>
-            <button onClick={() => onMapearTodas([t.nomeSuitable], t.fichaId)} disabled={ocupado}
-              className="ml-auto inline-flex h-7 items-center rounded-lg bg-[#B45309] px-2.5 text-[11px] font-semibold text-white hover:bg-[#92400E] disabled:opacity-40">
-              mapear como apelido de “{t.nomeFicha}”
-            </button>
-            <button onClick={() => onIgnorarTodas([t.nomeSuitable])} disabled={ocupado}
-              className="inline-flex h-7 items-center rounded-lg border border-slate-300 bg-white px-2.5 text-[11px] text-slate-600 hover:bg-slate-50 disabled:opacity-40">
-              ignorar
-            </button>
-          </div>
-          {/* ⛔ o PORQUÊ é obrigatório: sugestão forte sem motivo é só um botão bonito */}
-          <p className="mt-1 text-[11px] text-amber-800">
-            {t.frase} <span className="text-amber-700">· o tamanho não muda a explosão — 1 ocorrência = 1 porção, como sempre</span>
-          </p>
-        </div>
-      ))}
-      {grupos.map((g) => {
-        const extras = incluidas[g.chave] ?? []
-        const nomes = [...g.nomes.map((n) => n.nomeSuitable), ...extras]
-        const total = g.ocorrencias + g.parecidas.filter((p) => extras.includes(p.nomeSuitable)).reduce((s, p) => s + p.ocorrencias, 0)
-        return (
-          <div key={g.chave} className="rounded-lg border border-sky-200 bg-sky-50/60 px-2.5 py-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-medium text-sky-900">
-                ≈ {nomes.length} grafias do mesmo nome · <b>{g.titulo}</b> · {total.toLocaleString('pt-BR')} ocorrências
-              </span>
-              {/* ⭐⭐ FICHA JÁ EXISTE NÃO É BECO (03/09): quando uma grafia irmã já aponta
-                  pra uma ficha, o gesto vira MAPEAR nela. A recusa de duplicata continua
-                  certa; o que muda é o botão terminar o trabalho em vez de morrer no erro. */}
-              {g.fichaIrma ? (
-                <button onClick={() => onMapearTodas(nomes, g.fichaIrma!.fichaId)} disabled={ocupado}
-                  className="ml-auto inline-flex h-7 items-center rounded-lg bg-[#185FA5] px-2.5 text-[11px] font-semibold text-white hover:bg-[#0F4A8C] disabled:opacity-40">
-                  mapear na ficha “{g.fichaIrma.nomeFicha}”
-                </button>
-              ) : (
-                <a href={linkCriarFicha(nomes)}
-                  className="ml-auto inline-flex h-7 items-center rounded-lg bg-[#185FA5] px-2.5 text-[11px] font-semibold text-white hover:bg-[#0F4A8C]">
-                  criar ficha pra todas
-                </a>
-              )}
-              <button onClick={() => onIgnorarTodas(nomes)} disabled={ocupado}
-                className="inline-flex h-7 items-center rounded-lg border border-slate-300 bg-white px-2.5 text-[11px] text-slate-600 hover:bg-slate-50 disabled:opacity-40">
-                ignorar todas
-              </button>
-            </div>
-            <p className="mt-1 text-[11px] text-sky-800">
-              {g.fichaIrma && <span className="text-sky-900">já existe ficha (via “{g.fichaIrma.viaGrafia}”) · falta: </span>}
-              {g.nomes.map((n) => `${n.nomeSuitable} (${n.ocorrencias})`).join(' · ')}
-              {extras.length > 0 && <span className="text-sky-900"> · + {extras.join(' · ')}</span>}
-            </p>
-            {/* ⛔ PARECIDA NÃO ENTRA SOZINHA: typo, promoção e tamanho exigem julgamento.
-                O motivo aparece pro dono julgar em vez de confiar. */}
-            {/* ⭐⭐ CANDIDATA QUE JÁ TEM FICHA: um clique mapeia, sem escolher na lista.
-                É o caminho curto do typo órfão — o dropdown da linha continua lá pro resto. */}
-            {g.parecidasComFicha.map((p) => (
-              <p key={`f-${p.fichaId}`} className="mt-1 text-[11px] text-slate-600">
-                parece <b>{p.nomeSuitable}</b> ({p.motivo}), que já tem a ficha <b>{p.nomeFicha}</b> —{' '}
-                <button onClick={() => onMapearTodas(nomes, p.fichaId)} disabled={ocupado}
-                  className="text-[#185FA5] hover:underline disabled:opacity-40">mapear nessa ficha</button>
-              </p>
-            ))}
-            {g.parecidas.filter((p) => !extras.includes(p.nomeSuitable)).map((p) => (
-              <p key={p.nomeSuitable} className="mt-1 text-[11px] text-slate-500">
-                parecida ({p.motivo}): <b>{p.nomeSuitable}</b> ({p.ocorrencias}) —{' '}
-                <button onClick={() => onIncluir(g.chave, p.nomeSuitable)} className="text-[#185FA5] hover:underline">incluir no grupo</button>
-              </p>
-            ))}
-          </div>
-        )
-      })}
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="min-w-[180px] flex-1 text-[11px] text-amber-900">{texto}</span>
+      <button onClick={onClick} disabled={ocupado}
+        className="inline-flex h-6 items-center rounded-lg bg-[#B45309] px-2 text-[11px] font-semibold text-white hover:bg-[#92400E] disabled:opacity-40">
+        {rotulo}
+      </button>
     </div>
   )
 }
 
-/**
- * ⭐ APONTAR UMA FICHA QUE JÁ EXISTE, na linha do complemento.
- *
- * ⚠️ Agrupado por tipo porque a lista mistura três mundos e sem rótulo o dono escolheria no
- * escuro: SABOR é o caso normal; INTERMEDIÁRIO existe pra quando o complemento aponta direto
- * na porção produzida; PRODUTO FINAL pro nome que também é item de combo.
- */
 function ApontarFicha({ fichas, disabled, onEscolher }: {
   fichas: { id: string; nomeProduzido: string; tipoProduto: string }[]
   disabled: boolean
