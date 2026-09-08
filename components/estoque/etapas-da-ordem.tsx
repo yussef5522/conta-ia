@@ -50,6 +50,8 @@ export function EtapasDaOrdem({ id, ordemId, colaboradores, aoSaberAssinadas, ao
   const [etapas, setEtapas] = useState<Etapa[] | null>(null)
   const [erro, setErro] = useState<string | null>(null)
   const [salvando, setSalvando] = useState<string | null>(null)
+  /** ⭐ o que o servidor CONFIRMOU — some sozinho em 3s */
+  const [confirmado, setConfirmado] = useState<{ etapaId: string; nome: string | null } | null>(null)
 
   const carregar = () => fetch(`/api/empresas/${id}/estoque/producao/ordens/${ordemId}/etapas`)
     .then((r) => r.json()).then((j) => {
@@ -77,7 +79,7 @@ export function EtapasDaOrdem({ id, ordemId, colaboradores, aoSaberAssinadas, ao
   }
 
   const designar = async (etapaId: string, colaboradorId: string) => {
-    setSalvando(etapaId); setErro(null)
+    setSalvando(etapaId); setErro(null); setConfirmado(null)
     const r = await fetch(`/api/empresas/${id}/estoque/producao/ordens/${ordemId}/etapas`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ etapaId, colaboradorId: colaboradorId || null }),
@@ -86,15 +88,30 @@ export function EtapasDaOrdem({ id, ordemId, colaboradores, aoSaberAssinadas, ao
     setSalvando(null)
     // ⚠️ falha VISÍVEL: designar sem feedback deixaria o encarregado achando que designou
     if (!r.ok) { setErro(j?.erro ?? 'Não consegui salvar quem faz essa etapa.'); return }
-    setEtapas(j.etapas ?? [])
+    const es: Etapa[] = j.etapas ?? []
+    setEtapas(es)
+    // ⭐⭐ A CONFIRMAÇÃO VISÍVEL (08/09) — decisão do dono: *"eu escolho o nome e não sei se
+    // salvou"*. O check verde nasce do que o SERVIDOR devolveu, não do que eu mandei: dizer
+    // "designado" a partir do meu próprio clique afirmaria uma gravação que pode não ter
+    // acontecido — é a família do "a flag diz parece, o vínculo diz é".
+    const salva = es.find((x) => x.id === etapaId)
+    setConfirmado({ etapaId, nome: salva?.executorNome ?? null })
+    setTimeout(() => setConfirmado((c) => (c?.etapaId === etapaId ? null : c)), 3000)
   }
 
   if (etapas === null) return <div className="flex items-center gap-2 p-3 text-xs text-slate-400"><Loader2 className="h-3 w-3 animate-spin" /> etapas…</div>
-  // ⚠️ receita sem etapas declaradas vira UMA ("produção") — mostrar um bloco de uma linha só
-  // seria ruído numa tela que já é longa. Quem não usa etapas não vê nada de novo.
-  // ⚠️ some quando a receita não usa etapas — MAS não quando a única etapa foi assinada:
-  // aí ela carrega quem fez e quanto durou, e esconder isso apagaria o rastro da tela.
-  if (etapas.length <= 1 && !etapas.some((e) => e.executorNome)) return null
+  // ⛔⛔ REGRA INVERTIDA EM 08/09/2026, COM O MOTIVO ESCRITO (não apagada).
+  //
+  // Aqui havia: `if (etapas.length <= 1 && !etapas.some(e => e.executorNome)) return null`,
+  // justificado como *"mostrar um bloco de uma linha só seria ruído numa tela longa"*.
+  //
+  // O DONO, na ordem do FILE DE PEITO DE FRANGO: *"não tem ONDE escolher quem vai produzir.
+  // (…) TODA ordem tem pelo menos a etapa 'produção', e ela precisa do seletor de quem faz."*
+  //
+  // ⚠️ E ele está certo pelo argumento mais forte: economizar uma linha de tela custou o
+  // GESTO INTEIRO. Receita sem etapas cadastradas é a maioria — nelas, designar era
+  // simplesmente impossível, e nada na tela dizia por quê.
+  if (etapas.length === 0) return null
 
   return (
     <div className="rounded-lg border border-slate-200">
@@ -149,6 +166,17 @@ export function EtapasDaOrdem({ id, ordemId, colaboradores, aoSaberAssinadas, ao
                     <option value="">— ninguém ainda</option>
                     {colaboradores.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
                   </select>
+                  {salvando === e.id && (
+                    <span className="inline-flex items-center gap-1 text-[11px] text-slate-400">
+                      <Loader2 className="h-3 w-3 animate-spin" /> salvando…
+                    </span>
+                  )}
+                  {confirmado?.etapaId === e.id && salvando !== e.id && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+                      <Check className="h-3 w-3" />
+                      {confirmado.nome ? `designado: ${confirmado.nome}` : 'designação removida'}
+                    </span>
+                  )}
                 </label>
                 {e.estado === 'EM_ANDAMENTO' ? (
                   <>

@@ -27,6 +27,7 @@ interface Tarefa {
   pedidoPraFinalizar: boolean
 }
 interface Consumo { itemId: string; nome: string; qtd: number; unidade: string }
+import { relogioDaTarefa, desvioDoAparelho } from '@/lib/stock/producao/cronometro'
 
 export default function CozinhaPage({ params }: { params: Promise<{ empresaId: string }> }) {
   const { empresaId } = use(params)
@@ -45,10 +46,24 @@ export default function CozinhaPage({ params }: { params: Promise<{ empresaId: s
   // TEM que deslogar — senão o próximo a pegar o aparelho assina como o anterior.
   const pinRef = useRef('')
   const [agora, setAgora] = useState(() => Date.now())
+  /**
+   * ⭐⭐ O DESVIO ENTRE O RELÓGIO DO TABLET E O DO SERVIDOR (08/09/2026).
+   *
+   * ⛔⛔ O BUG QUE ISTO MATA: o cronômetro fazia `Math.max(0, Date.now() − iniciadoEm)`.
+   * Num tablet com a hora ATRASADA, a conta dá negativo e o `max` **para o relógio em
+   * 00:00** — foi exatamente o que o dono viu ("clica INICIAR e o relógio fica no ZERO").
+   * ⚠️ E o tempo REAL nunca esteve errado: medido em prod, o `iniciadoEm` grava certinho.
+   * Era só a pintura, e a pintura confiava na fonte errada.
+   *
+   * ⭐ A casa já sabia: *"o cronômetro é da TELA, o instante é do servidor — relógio de
+   * aparelho pode estar torto"* está escrito desde 06/09, na tela do HOJE. Faltava aplicar
+   * aqui, que é onde o aparelho é de verdade compartilhado e ninguém acerta a hora.
+   */
+  const desvioRef = useRef(0)
 
   // o cronômetro da tela (só pintura — quem conta o tempo é o servidor, pelos toques)
   useEffect(() => {
-    const t = setInterval(() => setAgora(Date.now()), 1000)
+    const t = setInterval(() => setAgora(Date.now() + desvioRef.current), 1000)
     return () => clearInterval(t)
   }, [])
 
@@ -69,6 +84,11 @@ export default function CozinhaPage({ params }: { params: Promise<{ empresaId: s
       }
       setQuem(j.colaborador ? { id: j.colaborador.id, nome: j.colaborador.nome } : null)
       setTarefas(j.tarefas ?? [])
+      // ⭐ recalibra a cada resposta: o desvio é medido, não suposto
+      if (j.agoraServidor) {
+        desvioRef.current = desvioDoAparelho(j.agoraServidor)
+        setAgora(Date.now() + desvioRef.current)
+      }
       return j
     } finally { setBusy(false) }
   }
@@ -225,11 +245,9 @@ export default function CozinhaPage({ params }: { params: Promise<{ empresaId: s
 
   // ── 3. EXECUTAR ───────────────────────────────────────────────────────────────────
   if (emAndamento) {
-    const corridos = emAndamento.iniciadoEm
-      ? Math.max(0, Math.floor((agora - new Date(emAndamento.iniciadoEm).getTime()) / 1000))
-      : 0
-    const mm = String(Math.floor(corridos / 60)).padStart(2, '0')
-    const ss = String(corridos % 60).padStart(2, '0')
+    // ⛔ a conta mora numa função PURA e testada (`relogioDaTarefa`): regra que mora na
+    // tela é regra que ninguém prova — e esta ficou 2 dias mentindo zero sem ninguém achar.
+    const { segundos: corridos, relogioTorto, texto } = relogioDaTarefa(emAndamento.iniciadoEm, agora)
     return (
       <main className="flex min-h-screen flex-col bg-slate-900 p-6 text-slate-100">
         <div className="flex items-center justify-between">
@@ -237,9 +255,17 @@ export default function CozinhaPage({ params }: { params: Promise<{ empresaId: s
           <button onClick={sair} className="text-sm text-slate-500">sair</button>
         </div>
         <div className="flex flex-1 flex-col items-center justify-center text-center">
-          <p className="text-lg font-medium">{emAndamento.nome}</p>
-          <p className="mt-1 text-sm text-slate-400">{emAndamento.produto} · {emAndamento.escalaReceitas} receitas</p>
-          <p className="mt-8 text-6xl font-semibold tabular-nums text-amber-400">{mm}:{ss}</p>
+          {/* mesma hierarquia da lista: o produto grande, a etapa como rótulo */}
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">{emAndamento.nome}</p>
+          <p className="mt-1 max-w-md text-[28px] font-semibold leading-tight text-slate-50">{emAndamento.produto}</p>
+          <p className="mt-1 text-sm text-slate-400">{emAndamento.escalaReceitas} receitas</p>
+          <p className="mt-8 text-6xl font-semibold tabular-nums text-amber-400">{texto}</p>
+          {relogioTorto && (
+            <p className="mt-2 max-w-xs text-xs text-amber-300">
+              A hora deste tablet está adiantada em relação ao sistema. O tempo da tarefa
+              está sendo medido certo no servidor — é só o relógio da tela.
+            </p>
+          )}
           {/* ⭐⭐ O RECADO DO GERENTE (07/09) — o caminho PREFERIDO de resolver tarefa aberta.
               ⚠️ É AVISO, não trava: o botão FINALIZAR é o mesmo de sempre. Ela aperta com o
               PIN dela e o tempo é DELA, medido de verdade — é isso que o gesto existe pra
@@ -304,8 +330,16 @@ export default function CozinhaPage({ params }: { params: Promise<{ empresaId: s
         <ul className="mt-3 space-y-3">
           {tarefas.map((t) => (
             <li key={t.etapaId} className="rounded-2xl bg-slate-800 p-4">
-              <p className="text-base font-medium text-slate-100">{t.nome}</p>
-              <p className="mt-0.5 text-sm text-slate-400">{t.produto} · {t.escalaReceitas} receitas</p>
+              {/* ⭐⭐ O NOME INTEIRO DO PRODUTO É O PROTAGONISTA (08/09) — decisão do dono:
+                  *"quem olha de longe na cozinha tem que ler O QUE é sem apertar os olhos"*.
+                  ⛔ Antes o GRANDE era o nome da ETAPA ("porcao") e o produto inteiro
+                  ("porcao de calabresa 120 grama") ficava em cinza pequeno — de longe, o
+                  tablet dizia "porcao" e não dizia porção DE QUÊ. A etapa virou rótulo:
+                  ela diz o QUE FAZER, e isso cabe em letra pequena; o produto diz COM O QUE,
+                  e é ele que se confunde entre dez sabores parecidos. */}
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">{t.nome}</p>
+              <p className="mt-1 text-[26px] font-semibold leading-tight text-slate-50">{t.produto}</p>
+              <p className="mt-1 text-sm text-slate-400">{t.escalaReceitas} receitas</p>
               {t.pedidoPraFinalizar && (
                 <p className="mt-2 rounded-xl bg-[#534AB7]/20 px-3 py-2 text-xs text-[#c7bdff]">
                   O gerente pediu pra você finalizar esta tarefa — se terminou, aperte FINALIZAR.

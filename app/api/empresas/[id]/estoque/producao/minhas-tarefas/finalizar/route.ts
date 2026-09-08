@@ -63,6 +63,8 @@ export async function POST(request: NextRequest, { params }: Params) {
   return NextResponse.json({
     colaborador: { id: quem.colaboradorId, nome: quem.nome },
     tarefas: await minhasTarefasDeHoje(companyId, quem.colaboradorId, new Date(), prisma),
+    // ⭐ o instante do servidor — o cronômetro do tablet não confia no relógio do aparelho
+    agoraServidor: new Date().toISOString(),
     concluida,
   })
 }

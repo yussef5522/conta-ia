@@ -30,5 +30,13 @@ export async function POST(request: NextRequest, { params }: Params) {
   return NextResponse.json({
     colaborador: { id: quem.colaboradorId, nome: quem.nome },
     tarefas: await minhasTarefasDeHoje(companyId, quem.colaboradorId, new Date(), prisma),
+    // ⭐⭐ O INSTANTE DO SERVIDOR (08/09) — é ele que o cronômetro do tablet usa.
+    //
+    // ⛔ O RELÓGIO DO APARELHO NÃO SERVE DE RÉGUA. O cronômetro fazia
+    // `Math.max(0, Date.now() - iniciadoEm)`: num tablet com a hora atrasada, a conta dá
+    // NEGATIVO e o `max` parava o relógio em **00:00** — exatamente o que o dono viu. E a
+    // casa já sabia disso: *"o cronômetro é da TELA, o instante é do servidor (…) relógio
+    // de aparelho pode estar torto"* está escrito desde 06/09, na tela do HOJE.
+    agoraServidor: new Date().toISOString(),
   })
 }
