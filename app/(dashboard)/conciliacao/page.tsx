@@ -32,7 +32,7 @@ import {
   ParSugerido, type ContaDaFilaDTO, type SugestaoDTO,
 } from '@/components/conciliacao/par-sugerido'
 import {
-  CabecalhoDaFila, type SaldosDTO, type TotaisDTO,
+  CabecalhoDaFila, type SaldosDTO, type TotaisDTO, type SemParDTO,
 } from '@/components/conciliacao/cabecalho-da-fila'
 import { useToast } from '@/components/ui/use-toast'
 import { fetchJson } from '@/lib/http/fetch-json'
@@ -46,6 +46,7 @@ interface DuplicataDTO {
 }
 interface FilaDTO {
   contas: ContaDaFilaDTO[]
+  semPar: SemParDTO
   transferencias: TransferenciaDTO[]
   duplicatas: DuplicataDTO[]
   saldos: SaldosDTO
@@ -161,12 +162,12 @@ function ConciliacaoInner() {
     })
   }, [])
 
-  const comSugestao = useMemo(
-    () => (fila?.contas ?? []).filter((c) => c.sugestoes.length > 0), [fila])
-  const semSugestao = useMemo(
-    () => (fila?.contas ?? []).filter((c) => c.sugestoes.length === 0), [fila])
-  const duplaContagem = useMemo(
-    () => comSugestao.filter((c) => c.situacao === 'DUPLA_CONTAGEM').length, [comSugestao])
+  // ⚠️ o servidor já manda SÓ as com sugestão; o filtro fica como defesa barata
+  // (e some sozinho se um par for recusado sem recarregar).
+  const comSugestao = useMemo(() => fila?.contas ?? [], [fila])
+  // ⛔ do SERVIDOR: a dupla contagem existe tenha ou não par sugerido, e o banner
+  // tem que dizer o mesmo número do bloco do topo (uma fonte, não duas).
+  const duplaContagem = fila?.totais.duplaContagem ?? 0
 
   /**
    * ⛔ Quantas contas disputam CADA linha do extrato. Duas notas do mesmo
@@ -190,7 +191,7 @@ function ConciliacaoInner() {
         description={
           empresaId
             ? t
-              ? `${t.comSugestao} vínculo${t.comSugestao === 1 ? '' : 's'} esperando decisão · ${t.contas - t.comSugestao} conta${t.contas - t.comSugestao === 1 ? '' : 's'} sem par no extrato`
+              ? `${t.comSugestao} vínculo${t.comSugestao === 1 ? '' : 's'} esperando decisão`
               : 'Carregando…'
             : 'Selecione uma empresa'
         }
@@ -199,7 +200,14 @@ function ConciliacaoInner() {
       {/* ⛔ O CABEÇALHO SAI DA MESMA FONTE DAS ABAS. O anterior tinha régua
           própria e contradizia a aba de duplicatas na mesma tela (69 × 0), com o
           dinheiro errado até sob a própria régua. */}
-      {empresaId && fila && <CabecalhoDaFila totais={fila.totais} saldos={fila.saldos} />}
+      {empresaId && fila && (
+        <CabecalhoDaFila
+          empresaId={empresaId}
+          totais={fila.totais}
+          saldos={fila.saldos}
+          semPar={fila.semPar}
+        />
+      )}
 
       {empresaId && (
         <div className="rounded-lg border bg-card overflow-hidden">
@@ -249,11 +257,30 @@ function ConciliacaoInner() {
                 {comSugestao.length === 0 ? (
                   <Vazio
                     titulo="Nenhum vínculo esperando decisão"
-                    texto="As contas em aberto sem pagamento no extrato continuam abaixo — elas não são trabalho pendente, são informação."
+                    texto="Quando um extrato novo entrar, os pagamentos que casarem com contas em aberto aparecem aqui com o motivo escrito."
                   />
                 ) : (
                   comSugestao.map((c) => (
                     <div key={c.conta.id} className="space-y-2.5">
+                      {/* ⚠️ dupla contagem SEM par: não há gesto honesto a oferecer
+                          (o Find & Match parte de uma linha do extrato, e aqui não
+                          existe candidata). Então ela aparece dizendo exatamente o
+                          que é — sumir seria pior. */}
+                      {c.sugestoes.length === 0 && (
+                        <div className="rounded-lg border border-red-300 dark:border-red-800 bg-card px-3.5 py-2.5">
+                          <p className="text-[13px] font-semibold">{c.conta.descricao}</p>
+                          <p className="text-[11.5px] text-muted-foreground tabular-nums mt-0.5">
+                            {formatBRL(Math.abs(c.conta.valor))} · vence {dia(c.conta.data)} ·{' '}
+                            <b className="text-red-700 dark:text-red-400">
+                              marcada como paga e sem vínculo — o mesmo dinheiro está em duas linhas
+                            </b>
+                          </p>
+                          <p className="text-[11.5px] text-muted-foreground mt-0.5">
+                            Nenhum pagamento parecido no extrato importado. Quando o extrato que
+                            contém esse pagamento entrar, o par aparece aqui.
+                          </p>
+                        </div>
+                      )}
                       {c.sugestoes.map((s) => (
                         <ParSugerido
                           key={`${s.extratoId}|${s.contaId}`}
@@ -276,28 +303,6 @@ function ConciliacaoInner() {
                   ))
                 )}
 
-                {semSugestao.length > 0 && (
-                  <>
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground pt-3 px-1">
-                      as outras {semSugestao.length} contas em aberto — sem par no extrato
-                    </p>
-                    <div className="rounded-md border bg-card divide-y">
-                      {semSugestao.map((c) => (
-                        <div key={c.conta.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-3 py-2">
-                          <span className="text-[12.5px] font-medium min-w-0 break-words">{c.conta.descricao}</span>
-                          <span className="text-[11.5px] text-muted-foreground tabular-nums">
-                            {formatBRL(Math.abs(c.conta.valor))} · vence {dia(c.conta.data)}
-                          </span>
-                          <span className="ml-auto text-[11px] text-muted-foreground">
-                            {c.situacao === 'DUPLA_CONTAGEM'
-                              ? '⚠️ marcada como paga e sem vínculo'
-                              : 'nenhum pagamento parecido no extrato'}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
               </>
             ) : aba === 'transferencias' ? (
               fila?.transferencias.length ? (

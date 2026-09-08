@@ -84,7 +84,16 @@ export interface DuplicataSuspeita {
 }
 
 export interface FilaDeConciliacao {
+  /**
+   * ⛔ SÓ AS CONTAS QUE TÊM PAR SUGERIDO. As outras não vêm nem no JSON — não é
+   * economia de bytes, é a regra do dono virando impossibilidade: *"a tela de
+   * Conciliação fica só com o que pede DECISÃO"*, e *"ninguém sai procurando"*
+   * conta antiga. Sem a lista no payload, não há como uma tela futura ressuscitar
+   * a parede de texto por descuido.
+   */
   contas: ContaEsperandoPagamento[]
+  /** o que ficou de fora, resumido em números — informação, não fila */
+  semPar: ResumoSemPar
   transferencias: TransferenciaEsperandoPar[]
   duplicatas: DuplicataSuspeita[]
   /** ⭐ a conferência de saldo, derivada da MESMA leitura que os cards das contas */
@@ -311,22 +320,84 @@ export async function duplicatasSuspeitas(
     }))
 }
 
+
+/**
+ * ⭐⭐ O RESUMO DAS CONTAS SEM PAR (08/09/2026) — decisão do dono.
+ *
+ * *"A lista 'as outras N contas em aberto — sem par no extrato' SAI DA TELA.
+ * Aquilo é o Contas a Pagar normal (a maioria nem venceu — tem parcela pra
+ * novembro), e ele já tem tela própria. **Conta em aberto sem par no extrato é o
+ * estado NORMAL de uma conta que ainda não foi paga** — não é pendência de
+ * conciliação."*
+ *
+ * ⛔⛔ E O NÚMERO CRU SERIA O BADGE QUE TODO MUNDO IGNORA. Medido na Caçula em
+ * 08/09, as 109 se explicam inteiras: **67 nem venceram** (uma tem parcela pra
+ * novembro), **34 venceram depois do último extrato importado** — essas esperam o
+ * ARQUIVO, não uma decisão — e só **8** venceram dentro de um período que já tem
+ * extrato. Um "109" sozinho esconde exatamente isso.
+ *
+ * ⚠️ `aguardandoExtrato` é a categoria que mais importa e a mais fácil de
+ * esquecer: no dia da medição o último extrato era de **04/09** e já era **08/09**.
+ * Cobrar decisão de uma conta que venceu 06/09 é cobrar o impossível.
+ */
+export interface ResumoSemPar {
+  total: number
+  /** o estado normal de quem ainda vai pagar */
+  naoVenceram: number
+  /** venceu, mas o extrato daquele dia ainda não entrou — espera ARQUIVO, não ação */
+  aguardandoExtrato: number
+  /** venceu e o extrato do período já veio: as únicas que podem ser lacuna real */
+  comExtratoImportado: number
+  /** a data do último extrato importado — é ela que separa as duas categorias */
+  ultimoExtrato: Date | null
+}
+
+export function resumirSemPar(
+  contas: ContaEsperandoPagamento[], agora: Date, ultimoExtrato: Date | null,
+): ResumoSemPar {
+  // ⚠️ a dupla contagem NÃO é "sem par no extrato" — ela continua na tela como
+  // anomalia. Contá-la aqui a esconderia atrás de um número de informação.
+  const semPar = contas.filter((c) => c.sugestoes.length === 0 && c.situacao !== 'DUPLA_CONTAGEM')
+  let naoVenceram = 0, aguardandoExtrato = 0, comExtratoImportado = 0
+  for (const c of semPar) {
+    if (c.conta.data > agora) naoVenceram++
+    // ⚠️ sem extrato nenhum importado, NADA pode ter par — tudo aguarda arquivo.
+    else if (!ultimoExtrato || c.conta.data > ultimoExtrato) aguardandoExtrato++
+    else comExtratoImportado++
+  }
+  return { total: semPar.length, naoVenceram, aguardandoExtrato, comExtratoImportado, ultimoExtrato }
+}
+
 /** as três pilhas de uma vez — o que a tela carrega num fetch só */
 export async function filaDeConciliacao(
-  companyId: string, db: Db = defaultPrisma,
+  companyId: string, db: Db = defaultPrisma, agora: Date = new Date(),
 ): Promise<FilaDeConciliacao> {
-  const [contas, transferencias, duplicatas, saldos] = await Promise.all([
+  const [todas, transferencias, duplicatas, saldos, ultimo] = await Promise.all([
     contasEsperandoPagamento(companyId, db),
     transferenciasEsperandoPar(companyId, db),
     duplicatasSuspeitas(companyId, db),
     conferenciaDeSaldos(companyId, db),
+    db.transaction.findFirst({
+      where: { bankAccount: { companyId }, origin: 'OFX' },
+      orderBy: { date: 'desc' }, select: { date: true },
+    }),
   ])
-  const dc = contas.filter((c) => c.situacao === 'DUPLA_CONTAGEM')
+  const semPar = resumirSemPar(todas, agora, ultimo?.date ?? null)
+  // ⛔ a lista que vai pra tela é SÓ a que pede decisão.
+  //
+  // ⚠️ E a DUPLA CONTAGEM entra mesmo SEM par sugerido — ela não é "conta em aberto
+  // sem pagamento", que é o estado normal que saiu da tela; ela é uma conta marcada
+  // como PAGA e sem vínculo, ou seja **o mesmo dinheiro em duas linhas**. Isso é
+  // anomalia, não espera. Some daqui e não sobra lugar nenhum onde ela apareça.
+  const contas = todas.filter((c) => c.sugestoes.length > 0 || c.situacao === 'DUPLA_CONTAGEM')
+  // ⚠️ a dupla contagem conta TODAS, inclusive as sem par: é dinheiro contado
+  // duas vezes exista ou não sugestão, e esconder isso seria o oposto do ponto.
+  const dc = todas.filter((c) => c.situacao === 'DUPLA_CONTAGEM')
   return {
-    contas, transferencias, duplicatas, saldos,
+    contas, semPar, transferencias, duplicatas, saldos,
     totais: {
-      contas: contas.length,
-      comSugestao: contas.filter((c) => c.sugestoes.length > 0).length,
+      contas: todas.length,
+      comSugestao: contas.length,
       transferencias: transferencias.length,
       duplicatas: duplicatas.length,
       duplaContagem: dc.length,

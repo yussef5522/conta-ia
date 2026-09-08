@@ -39,6 +39,7 @@
 // — a ficha explica por que a comparação não fecha, não dá passe livre pra
 // qualquer divergência. **Pela ficha, nunca por `if (Banrisul)`.**
 
+import Link from 'next/link'
 import { AlertTriangle, CheckCircle2, Info } from 'lucide-react'
 import { formatBRL } from '@/lib/format/money'
 
@@ -56,6 +57,13 @@ export interface SaldosDTO {
   explicadas: number
   naoBatem: number
 }
+export interface SemParDTO {
+  total: number
+  naoVenceram: number
+  aguardandoExtrato: number
+  comExtratoImportado: number
+  ultimoExtrato: string | null
+}
 export interface TotaisDTO {
   contas: number; comSugestao: number; transferencias: number; duplicatas: number
   duplaContagem: number; valorEmDuplaContagem: number
@@ -64,10 +72,12 @@ export interface TotaisDTO {
 const dia = (iso: string | null) =>
   iso ? new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : '—'
 
-export function CabecalhoDaFila({ totais, saldos }: { totais: TotaisDTO; saldos: SaldosDTO }) {
+export function CabecalhoDaFila({ empresaId, totais, saldos, semPar }: {
+  empresaId: string; totais: TotaisDTO; saldos: SaldosDTO; semPar: SemParDTO
+}) {
   return (
     <div className="space-y-2">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-border border rounded-lg overflow-hidden">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-px bg-border border rounded-lg overflow-hidden">
         <Bloco
           valor={String(totais.comSugestao)}
           rotulo="vínculos esperando decisão"
@@ -77,10 +87,6 @@ export function CabecalhoDaFila({ totais, saldos }: { totais: TotaisDTO; saldos:
           valor={formatBRL(totais.valorEmDuplaContagem)}
           rotulo={`em dupla contagem · ${totais.duplaContagem} conta${totais.duplaContagem === 1 ? '' : 's'}`}
           tom={totais.duplaContagem > 0 ? 'ruim' : 'neutro'}
-        />
-        <Bloco
-          valor={String(totais.contas - totais.comSugestao)}
-          rotulo="contas em aberto sem par no extrato"
         />
         {/* ⛔ o contador soma BATE + EXPLICADO: diferença conferida contra o
             bloqueio declarado não é pendência. Só `naoBatem` pinta de âmbar. */}
@@ -128,6 +134,35 @@ export function CabecalhoDaFila({ totais, saldos }: { totais: TotaisDTO; saldos:
           </span>
         ))}
       </div>
+
+      {/* ⛔⛔ A LISTA DAS CONTAS SEM PAR SAIU DA TELA (08/09, decisão do dono):
+          *"conta em aberto sem par no extrato é o estado NORMAL de uma conta que
+          ainda não foi paga — não é pendência de conciliação"*, e o Contas a Pagar
+          já tem tela própria. Fica UMA linha: número, sem lista, com link.
+
+          ⚠️ E o número vem QUEBRADO de propósito. "109" sozinho é o badge que todo
+          mundo aprende a ignorar; quebrado, ele se explica: a maioria nem venceu, e
+          boa parte só espera o ARQUIVO do extrato — não uma decisão. */}
+      {semPar.total > 0 && (
+        <p className="text-[11.5px] text-muted-foreground px-1 tabular-nums">
+          <b className="text-foreground font-medium">{semPar.total}</b> contas em aberto sem par no extrato —{' '}
+          {semPar.naoVenceram > 0 && <>{semPar.naoVenceram} ainda não venceram</>}
+          {semPar.aguardandoExtrato > 0 && (
+            <>
+              {semPar.naoVenceram > 0 && ', '}
+              {semPar.aguardandoExtrato} venceram depois do último extrato
+              {semPar.ultimoExtrato && <> ({dia(semPar.ultimoExtrato)})</>}
+            </>
+          )}
+          {semPar.comExtratoImportado > 0 && (
+            <>, {semPar.comExtratoImportado} com o extrato do período já importado</>
+          )}
+          .{' '}
+          <Link href={`/contas-a-pagar?empresaId=${empresaId}`} className="underline hover:text-foreground">
+            Ver no Contas a Pagar →
+          </Link>
+        </p>
+      )}
     </div>
   )
 }

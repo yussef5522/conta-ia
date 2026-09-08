@@ -131,3 +131,59 @@ describe('⛔⛔ o bloqueio +24h é EXPLICADO, não alarme', () => {
     expect(r.contas[0].estado).toBe('DIVERGE')
   })
 })
+
+// ────────────────────────────────────────────────────────────────
+// ⭐⭐ O RESUMO DAS CONTAS SEM PAR (08/09/2026) — a lista saiu, o número ficou.
+//
+// *"Conta em aberto sem par no extrato é o estado NORMAL de uma conta que ainda
+// não foi paga — não é pendência de conciliação."* — o dono.
+//
+// ⛔ E o número CRU seria o badge que todo mundo ignora. Medido na Caçula em
+// 08/09: das 109, **67 nem venceram**, **34 venceram depois do último extrato
+// importado (04/09)** — essas esperam ARQUIVO, não decisão — e só **8** têm o
+// extrato do período já dentro. Este teste trava a quebra.
+// ────────────────────────────────────────────────────────────────
+
+import { resumirSemPar } from '../fila-de-conciliacao'
+
+const conteudo = (venc: string, sugestoes: number, situacao: 'EM_ABERTO' | 'DUPLA_CONTAGEM' = 'EM_ABERTO') => ({
+  conta: { id: venc + sugestoes + situacao, descricao: 'x', valor: 10, data: d(venc), tipo: 'DEBIT' as const, fornecedorId: null, contaBancariaId: null },
+  situacao, fornecedor: null,
+  sugestoes: Array.from({ length: sugestoes }, () => ({}) as never),
+})
+
+describe('o resumo das contas sem par', () => {
+  const HOJE = d('2026-09-08')
+  const ULTIMO_EXTRATO = d('2026-09-04')
+
+  it('⭐ quebra o número em três: não venceu · espera o extrato · extrato já veio', () => {
+    const r = resumirSemPar([
+      conteudo('2026-11-10', 0),  // parcela pra novembro — nem venceu
+      conteudo('2026-09-20', 0),  // ainda não venceu
+      conteudo('2026-09-06', 0),  // venceu, mas o extrato de 06/09 não entrou
+      conteudo('2026-09-03', 0),  // venceu e o extrato de 03/09 já está aqui
+    ], HOJE, ULTIMO_EXTRATO)
+    expect(r).toEqual({
+      total: 4, naoVenceram: 2, aguardandoExtrato: 1, comExtratoImportado: 1,
+      ultimoExtrato: ULTIMO_EXTRATO,
+    })
+  })
+
+  it('⛔ conta COM par sugerido não é "sem par" — ela está na fila de decisão', () => {
+    const r = resumirSemPar([conteudo('2026-09-03', 1)], HOJE, ULTIMO_EXTRATO)
+    expect(r.total).toBe(0)
+  })
+
+  it('⛔⛔ DUPLA CONTAGEM fica FORA do resumo mesmo sem par — é anomalia, não espera', () => {
+    // ⚠️ o teste que morde: contá-la aqui a esconderia atrás de um número de
+    // informação, e ela é o oposto — dinheiro em duas linhas, que continua na tela.
+    const r = resumirSemPar([conteudo('2026-09-03', 0, 'DUPLA_CONTAGEM')], HOJE, ULTIMO_EXTRATO)
+    expect(r.total).toBe(0)
+  })
+
+  it('⚠️ sem extrato NENHUM importado, tudo que venceu aguarda ARQUIVO', () => {
+    const r = resumirSemPar([conteudo('2026-09-03', 0)], HOJE, null)
+    expect(r.aguardandoExtrato).toBe(1)
+    expect(r.comExtratoImportado).toBe(0)
+  })
+})
