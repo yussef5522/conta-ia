@@ -282,6 +282,24 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 **PROVADO EM PROD (`Xl4gM4FQ7k3E1q8SCci7P`):** `/api/conciliacao/fila` **200 em 242 ms** · `/api/dashboard/badges` diz **2** e a fila diz **2** — badge e tela pelo mesmo número, que é o ponto.
 
+### ⛔⛔⛔ O CABEÇALHO CONTRADIZIA AS ABAS — a terceira derivação velha (07/09)
+
+**O dono, olhando a tela nova:** *"Ele diz '69 prováveis duplicatas somando R$ 845.646,99' e a aba Possíveis duplicatas diz 0. (…) Se é conta de outra época da tela, ela está afirmando um número que ninguém consegue defender."*
+
+**⛔ 1. AS "69 DUPLICATAS" ERAM A FAMÍLIA DOS 84 FANTASMAS.** A régua de trás (`/api/conciliacao/balance-check`) era um **JOIN por valor + ±5 dias SEM olhar o nome**. Medida, ela chamava de duplicata *"BIG GELO R$ 80,00"* × *"Mauricio Ramos Berro - Pix"* e *"chat gpt R$ 100,00 (06/07)"* × *"COOPERATIVA DE PAIS E MESTRES (01/07)"*. ⚠️⚠️ **E o dinheiro estava errado SOB A PRÓPRIA RÉGUA:** `COUNT(DISTINCT e.id)` com `SUM(e.amount)` **sobre as linhas do JOIN** — toda conta que casava com mais de uma linha entrava no dinheiro mais de uma vez. **R$ 845.646,99 no lugar de R$ 444.746,99**, medido. Número inflado por aritmética, não por régua.
+
+**⛔ 2. NENHUM DOS DOIS "SALDOS" ERA SALDO.** *"Saldo do extrato R$ 33.046,25"* era **Σ(CREDIT−DEBIT) de TODA tx OFX já importada** — ignora saldo inicial e ignora o que o banco declarou. *"Saldo no sistema −R$ 128.404,22"* era a régua da **DRE realizada**, e **325 daquelas linhas nem têm conta bancária** (R$ 61.812,00): elas não podem bater com extrato nenhum, por construção. A soma dos cards das contas é **−R$ 74.190,46** — nem um nem outro. Daí o *"R$ 161.450,47 a conciliar pra bater"*: a diferença entre duas somas que não são saldos.
+
+**⭐ A RÉGUA HONESTA JÁ EXISTIA NO MODELO:** `balance` (o saldo que o sistema calcula — **o MESMO número do card da conta**, que é contra o que o dono confere) contra `ledgerBal` (**o que o banco DECLAROU** no último extrato), com `ledgerBalDate` dizendo **de quando**, e **POR CONTA** — foi o agregado que produzia o indefensável. Em prod: sicredi e stone batem ao centavo, **banrisul tem R$ 1.700,00 de diferença desde 04/09** (número que dá pra defender e pra agir). ⛔ **Conta sem extrato importado fica FORA da conferência e NOMEADA** ("banco caixa", "caixa loja/cofre"): sem declaração do banco não existe conferência, e dizer "bate" seria **inventar o outro lado** — que é literalmente o defeito. É o teste que morde em `conferencia-de-saldos.test.ts`.
+
+**A REGRA QUE FICA (do dono):** *"O que dá pra derivar da MESMA fonte das abas, deriva; o que não tem definição honesta, sai do cabeçalho — **número sem régua em tela de dinheiro é pior que ausência**."* Sobraram: vínculos e dupla contagem saindo do MESMO `totais` das abas (somando a **lista**, cada conta **uma vez** — a aritmética que o JOIN errava), contas sem par, e a conferência por conta. **`statement-balance-header`, `balance-banner` e a rota `/balance-check` foram APAGADOS** — deixar a rota viva é deixar a segunda resposta viva.
+
+### ⛔⛔ E A NOTA ERRADA FOI VINCULADA — o desenho ajudou (08/09)
+
+As **duas** notas do Cancian (NF 834771 venc 29/08 e NF **835271** venc 05/09), R$ 230,81 cada, disputavam o **mesmo** débito de R$ 232,81. Os dois cards ficavam quase idênticos — **mesma linha à esquerda, mesmo valor à direita** — e o que os separa (**número da NF e vencimento**) estava em texto pequeno, com os dois em "provável". Resultado medido no audit: `mode CLASSIC`, a **835271** foi conciliada às 00:00:34 de 08/09, e a 834771 seguiu em dupla contagem.
+
+⛔ **A cura NÃO é esconder um dos cards** — esconder seria a régua decidindo qual nota foi paga, que é o oposto da disciplina. São duas outras coisas: **(1)** o card avisa **antes do par**, com borda âmbar, que *"N notas disputam este mesmo débito — só uma pode ser"*, e o **número da NF** e o **vencimento** ganham peso tipográfico, porque são o que decide; **(2)** vincular um par **tira aquela linha do extrato dos outros cards na hora** — ela foi **gasta**. O servidor já não a devolveria no próximo carregamento; **era a tela que mentia até o F5**, e o card concorrente seguia clicável.
+
 ## ⭐⭐⭐ CONFIRMAR O IMPORT **JÁ BAIXA** — O GESTO ÚNICO DA VENDA (07/09/2026)
 
 **O DONO RELATOU UM BUG E A MEDIÇÃO ACHOU OUTRA COISA — vale registrar que o servidor estava certo.** *"Importei os complementos de 06/09 …, cliquei BAIXAR no dia, e NADA baixou: porção de calabresa segue 597 UN."* Medido pelo caminho real, com sessão assinada: o motor monta o plano de 06/09 **perfeito** (31 nomes com destino, 335 de 736 ocorrências, CALABRESA 112 → a ficha certa), e o **endpoint responde 200** no preview e no confirmar. Nenhum erro no log do minuto. ⛔ **O que faltava era o SEGUNDO CLIQUE** — "baixar" abria o preview, e confirmar era outro gesto, em outro lugar da tela, sem cara de continuação do primeiro.
