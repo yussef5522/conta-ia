@@ -32,7 +32,18 @@ const SELO: Record<Pessoa['tipo'], { icone: typeof Mail; cor: string }> = {
   INATIVO: { icone: UserMinus, cor: 'text-slate-400' },
 }
 
-export function EquipeClient({ empresaId, empresaNome, filtro }: { empresaId: string; empresaNome: string; filtro?: 'cozinha' }) {
+export function EquipeClient({ empresaId, empresaNome, filtro, podeGerenciarAcessos = true }: {
+  empresaId: string; empresaNome: string; filtro?: 'cozinha'
+  /**
+   * ⭐ Quem tem `user.invite` gerencia ACESSO AO SISTEMA (convite, papel, aparelho).
+   * O gerente de estoque **não** tem — ele gerencia COLABORADOR (nome, PIN, ativo).
+   *
+   * ⛔ A fronteira do dono: *"eles gerenciam COLABORADOR (gente de PIN), NUNCA usuário de
+   * login"*. Aqui ela vira botão desabilitado COM O MOTIVO; no servidor, `user.invite`
+   * recusa igual. Esconder o botão seria pior: some a explicação junto.
+   */
+  podeGerenciarAcessos?: boolean
+}) {
   const [pessoas, setPessoas] = useState<Pessoa[] | null>(null)
   const [resumo, setResumo] = useState<Resumo | null>(null)
   const [abrir, setAbrir] = useState(false)
@@ -118,6 +129,17 @@ export function EquipeClient({ empresaId, empresaNome, filtro }: { empresaId: st
         Quem é <strong>gerente</strong> recebe um convite e cria a própria senha. A função decide; você não monta permissão.
       </p>
 
+      {/* ⛔⛔ A FRONTEIRA, ESCRITA (08/09) — decisão do dono: o gerente de estoque gerencia
+          COLABORADOR, nunca usuário de login. Dizer isso ANTES é o que evita ele tentar,
+          apanhar de um 403 e achar que o sistema quebrou. */}
+      {!podeGerenciarAcessos && (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-[11px] leading-relaxed text-amber-900">
+          Você gerencia a <strong>equipe de cozinha</strong>: adicionar pessoa, trocar o PIN de
+          quem esqueceu, ativar e inativar. <strong>Convite, função e marcar aparelho</strong> são
+          acessos ao sistema — <strong>só o dono gerencia acessos ao sistema</strong>.
+        </p>
+      )}
+
       {resumo && (
         <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-500">
           <span><strong className="tabular-nums text-slate-800">{resumo.total}</strong> pessoas</span>
@@ -197,7 +219,9 @@ export function EquipeClient({ empresaId, empresaNome, filtro }: { empresaId: st
                     </button>
                   )}
                   {p.vinculoId && (
-                    <button onClick={() => marcarAparelho(p.vinculoId!, !p.ehAparelho)} disabled={busy}
+                    <button onClick={() => marcarAparelho(p.vinculoId!, !p.ehAparelho)}
+                      disabled={busy || !podeGerenciarAcessos}
+                      title={podeGerenciarAcessos ? undefined : 'só o dono gerencia acessos ao sistema'}
                       className="text-[11px] text-slate-400 hover:text-slate-700">
                       {p.ehAparelho ? 'não é aparelho' : 'marcar como aparelho'}
                     </button>

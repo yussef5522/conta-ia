@@ -25,7 +25,20 @@ export type ResolveEmpresaResult =
   | { kind: 'forbidden'; missingPermission: string }
 
 export async function resolveEmpresaAccess(
-  options: { requirePermission?: string } = {},
+  /**
+   * `requirePermission` — a permissão exigida. Aceita UMA ou uma LISTA, e a lista é
+   * **QUALQUER UMA** (OR), não todas.
+   *
+   * ⭐ 08/09/2026: a lista nasceu de um caso real. A tela `/equipe` exigia `user.invite`,
+   * mas ela faz DUAS coisas — gerenciar quem LOGA (convite, papel, aparelho) e gerenciar
+   * COLABORADOR de cozinha (nome, PIN, ativo). O gerente de estoque tem `stock.*` e podia
+   * fazer a segunda metade — todas as rotas dela já o aceitavam — mas **não conseguia abrir
+   * a tela**. Uma permissão na porta escondia um gesto que o servidor já autorizava.
+   *
+   * ⛔ E abrir a porta NÃO afrouxa nada: cada ação lá dentro continua com o guard dela, e o
+   * que ele não pode aparece desabilitado com o motivo. Porta e ação são travas diferentes.
+   */
+  options: { requirePermission?: string | readonly string[] } = {},
 ): Promise<ResolveEmpresaResult> {
   // 1. Auth check
   const cookieStore = await cookies()
@@ -58,8 +71,12 @@ export async function resolveEmpresaAccess(
   const permissions = ucr.role.permissions.map((rp) => rp.permission.key)
 
   // 4. Permission check opcional
-  if (options.requirePermission && !permissionMatches(permissions, options.requirePermission)) {
-    return { kind: 'forbidden', missingPermission: options.requirePermission }
+  if (options.requirePermission) {
+    const exigidas = Array.isArray(options.requirePermission)
+      ? options.requirePermission : [options.requirePermission as string]
+    if (!exigidas.some((p) => permissionMatches(permissions, p))) {
+      return { kind: 'forbidden', missingPermission: exigidas.join(' ou ') }
+    }
   }
 
   return {
