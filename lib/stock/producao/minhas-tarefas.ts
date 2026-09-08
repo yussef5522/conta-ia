@@ -17,6 +17,8 @@ import { prisma as defaultPrisma } from '@/lib/db'
 import { diaEmSaoPaulo, janelaDoDiaSP } from '@/lib/datas/dia-sao-paulo'
 import { minutosDaEtapa, HORAS_ATE_ALARME, type EstadoDaEtapa } from './etapas'
 import { resolverEstadoDasEtapas, marcarPedidoAtendido } from './gestos-do-gerente'
+import { participantesDaEtapa, registrarInicio, registrarFim, desfazerInicio } from './participantes'
+import { validarEntrada, MAX_PARTICIPANTES } from './dupla-na-etapa'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -154,13 +156,42 @@ export async function iniciarTarefa(
   const etapa = await db.stockOrdemEtapa.findFirst({ where: { id: input.etapaId, companyId: input.companyId } })
   if (!etapa) throw new TarefaError('Tarefa não encontrada.')
   if (etapa.finalizadoEm) throw new TarefaError('Essa tarefa já foi finalizada.')
-  if (etapa.iniciadoEm) {
-    throw new TarefaError(etapa.executorId === input.colaboradorId
-      ? 'Você já iniciou essa tarefa.'
-      : 'Outra pessoa já está nessa tarefa.')
+  // ⭐⭐ A DUPLA (08/09/2026): "outra pessoa já está nessa tarefa" deixou de ser recusa —
+  // uma etapa aceita até DUAS pessoas, cada uma com o relógio dela. O que continua sendo
+  // recusado é a MESMA pessoa iniciar duas vezes e a TERCEIRA entrar (teto na gravação).
+  const participantes = await participantesDaEtapa(etapa.id, db)
+  const meu = participantes.find((p) => p.colaboradorId === input.colaboradorId)
+  if (meu?.iniciadoEm) throw new TarefaError('Você já iniciou essa tarefa.')
+  // ⚠️ caminho antigo (sem linha de participante): a etapa iniciada por OUTRO ainda tem
+  // dono, e quem entra vira o segundo — mas só se ninguém mais tiver entrado.
+  if (participantes.length === 0 && etapa.iniciadoEm && etapa.executorId === input.colaboradorId) {
+    throw new TarefaError('Você já iniciou essa tarefa.')
   }
-  if (etapa.colaboradorId && etapa.colaboradorId !== input.colaboradorId) {
-    throw new TarefaError('Essa tarefa foi designada pra outra pessoa. Fale com o encarregado.')
+  try {
+    validarEntrada(participantes, input.colaboradorId)
+  } catch (e) {
+    throw new TarefaError((e as Error).message)
+  }
+  // ⛔⛔ ETAPA DESIGNADA ADMITE SÓ OS DESIGNADOS — e o guard da casa me pegou tentando
+  // afrouxar isso (08/09). Eu tinha escrito "só recusa quando já há DOIS designados", o que
+  // deixaria um terceiro entrar em tarefa designada a UMA pessoa. Não foi o que o dono
+  // pediu: *"a etapa aceita ATÉ 2 designados (o GERENTE escolhe os dois)"*.
+  //
+  // ⭐ A régua fica: **se há designação, ela manda**; se não há, é tarefa solta e vale o
+  // "quem pegou, pegou" — até o teto de 2. Querer uma dupla é um gesto do gerente, não uma
+  // porta aberta pra quem passar pelo tablet.
+  // ⚠️ PLANO É O QUE O GERENTE DESIGNOU — e o que marca isso é o `designadoEm`, não o
+  // `colaboradorId`. Este último também é preenchido quando alguém PEGA uma tarefa solta
+  // ("a designação nasce do gesto"), e tratar isso como plano trancaria a etapa na primeira
+  // pessoa que tocasse — matando a dupla em toda tarefa não designada, que é a maioria.
+  const designados = participantes.filter((p) => p.designadoEm).map((p) => p.colaboradorId)
+  const plano = designados.length
+    ? designados
+    : (etapa.designadoEm && etapa.colaboradorId ? [etapa.colaboradorId] : [])
+  if (plano.length && !plano.includes(input.colaboradorId)) {
+    throw new TarefaError(plano.length > 1
+      ? 'Essa tarefa foi designada pra outras pessoas. Fale com o encarregado.'
+      : 'Essa tarefa foi designada pra outra pessoa. Fale com o encarregado.')
   }
   // ⛔⛔ A SEQUÊNCIA É DA RECEITA, E QUEM A IMPÕE É O SERVIDOR (06/09/2026).
   //
@@ -194,11 +225,15 @@ export async function iniciarTarefa(
   })
   if (jaCorrendo) throw new TarefaError(`Você está com “${jaCorrendo.nome}” em andamento. Finalize antes de começar outra.`)
 
+  // ⭐ o relógio DELE (a camada nova) …
+  await registrarInicio({ companyId: input.companyId, etapaId: etapa.id, colaboradorId: input.colaboradorId, agora }, db)
+  // … e o carimbo da ETAPA, que continua sendo o do PRIMEIRO toque: é dele que a régua de
+  // sequência e os relatórios antigos leem, e sobrescrever com o segundo apagaria o começo.
   await db.stockOrdemEtapa.update({
     where: { id: etapa.id },
     data: {
-      iniciadoEm: agora,
-      executorId: input.colaboradorId,
+      iniciadoEm: etapa.iniciadoEm ?? agora,
+      executorId: etapa.executorId ?? input.colaboradorId,
       // ⭐ pegou uma tarefa solta → a designação nasce do GESTO. Nada trava por falta de
       // cadastro, e o gestor vê de quem ela é sem ter designado.
       colaboradorId: etapa.colaboradorId ?? input.colaboradorId,
@@ -217,7 +252,15 @@ export async function finalizarTarefa(
   if (!etapa) throw new TarefaError('Tarefa não encontrada.')
   if (!etapa.iniciadoEm) throw new TarefaError('Essa tarefa ainda não foi iniciada.')
   if (etapa.finalizadoEm) throw new TarefaError('Essa tarefa já foi finalizada.')
-  if (etapa.executorId !== input.colaboradorId) throw new TarefaError('Quem finaliza é quem iniciou.')
+  // ⭐⭐ com a DUPLA, "quem finaliza é quem iniciou" vale POR PESSOA, não pela etapa
+  const participantes = await participantesDaEtapa(etapa.id, db)
+  const meu = participantes.find((p) => p.colaboradorId === input.colaboradorId)
+  if (participantes.length === 0) {
+    if (etapa.executorId !== input.colaboradorId) throw new TarefaError('Quem finaliza é quem iniciou.')
+  } else {
+    if (!meu?.iniciadoEm) throw new TarefaError('Quem finaliza é quem iniciou.')
+    if (meu.finalizadoEm) throw new TarefaError('Você já finalizou essa tarefa.')
+  }
   // ⛔⛔ TERMINAR ANTES DE COMEÇAR. O CHECK do banco cobre isso em produção, mas o dev roda
   // SQLite (sem CHECK) e o caller pode passar um instante — então a trava vale nos DOIS.
   // ⚠️ Sem ela o `minutosDaEtapa` devolveria 0 (ele clampa em zero) e a tarefa entraria na
@@ -226,11 +269,22 @@ export async function finalizarTarefa(
     throw new TarefaError('O fim não pode ser antes do início. Confira o relógio do aparelho.')
   }
 
-  await db.stockOrdemEtapa.update({ where: { id: etapa.id }, data: { finalizadoEm: agora } })
-  // ⭐ se o gerente tinha PEDIDO pra finalizar, o pedido foi ATENDIDO — e o tempo é DELA,
-  // medido de verdade. É o desfecho que o gesto 1 existe pra produzir.
-  await marcarPedidoAtendido(input.companyId, etapa.id, db)
-  return { minutos: minutosDaEtapa({ iniciadoEm: etapa.iniciadoEm, finalizadoEm: agora }, agora, 'FEITA')! }
+  // ⭐ o relógio DELE fecha …
+  const { etapaFechou } = await registrarFim(
+    { companyId: input.companyId, etapaId: etapa.id, colaboradorId: input.colaboradorId, agora }, db)
+
+  // ⛔⛔ … e a ETAPA só fecha quando TODOS QUE INICIARAM finalizarem (decisão 2 do dono).
+  // É este carimbo que a regra de sequência lê — então a etapa 2 libera com a 1 INTEIRA,
+  // sem uma linha de mudança na régua de sequência. *"A dependência é física: o moldar
+  // precisa do gessado PRONTO."*
+  if (etapaFechou) {
+    await db.stockOrdemEtapa.update({ where: { id: etapa.id }, data: { finalizadoEm: agora } })
+    // ⭐ se o gerente tinha PEDIDO pra finalizar, o pedido foi ATENDIDO — e o tempo é DELA,
+    // medido de verdade. É o desfecho que o gesto 1 existe pra produzir.
+    await marcarPedidoAtendido(input.companyId, etapa.id, db)
+  }
+  const inicioDele = meu?.iniciadoEm ?? etapa.iniciadoEm
+  return { minutos: minutosDaEtapa({ iniciadoEm: inicioDele, finalizadoEm: agora }, agora, 'FEITA')! }
 }
 
 /**
@@ -257,6 +311,8 @@ export async function devolverTarefa(
       colaboradorId: etapa.designadoEm ? etapa.colaboradorId : null,
     },
   })
+  // ⭐ e o relógio DELE some junto — devolver não grava tempo nenhum, nem na camada nova
+  await desfazerInicio(etapa.id, input.colaboradorId, db)
 }
 
 export interface TarefaAberta {

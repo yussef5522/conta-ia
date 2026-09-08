@@ -4486,3 +4486,35 @@ model StockCardapioProdutoSecao {
   @@index([companyId, secao])
   @@map("stock_cardapio_produto_secao")
 }
+
+/// ⭐⭐⭐ A DUPLA NA MESMA ETAPA (08/09/2026) — desenho aprovado pelo dono.
+///
+/// *"A cozinha provou o caso: beef de xis/burger tem produção em que UMA etapa precisa de
+/// DUAS pessoas trabalhando juntas."*
+///
+/// ⛔⛔ DOIS RELÓGIOS, NUNCA UM RATEADO. Cada um inicia e finaliza com o PRÓPRIO PIN, e o
+/// `minPorUnidade` de cada um sai do próprio relógio. A v1 travou em 1 responsável por etapa
+/// justamente pra não ratear tempo no chute — a evolução mantém a honestidade e só admite
+/// que duas pessoas podem estar na mesma etapa.
+///
+/// ⚠️ A ETAPA CONTINUA COM `executorId/iniciadoEm/finalizadoEm`: é por eles que a regra de
+/// SEQUÊNCIA e os relatórios antigos leem. Esta tabela é a camada nova; `etapa.finalizadoEm`
+/// é carimbado quando **todos que iniciaram** finalizarem — e é isso que faz a etapa 2
+/// liberar só com a 1 inteira, sem mudar a regra de sequência.
+model StockOrdemEtapaParticipante {
+  id            String    @id @default(cuid())
+  companyId     String
+  etapaId       String
+  colaboradorId String
+  /// quem designou (o plano) — `null` quando a pessoa pegou a tarefa sozinha pelo PIN
+  designadoPorId String?
+  designadoEm   DateTime?
+  /// ⛔ o relógio DELE: nasce do toque no INICIAR com o PIN dele
+  iniciadoEm    DateTime?
+  finalizadoEm  DateTime?
+  criadoEm      DateTime  @default(now())
+
+  @@unique([etapaId, colaboradorId])
+  @@index([companyId, colaboradorId, finalizadoEm])
+  @@map("stock_ordem_etapa_participante")
+}
