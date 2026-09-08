@@ -242,6 +242,32 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⭐⭐⭐ GRAFIA IGUAL É O MESMO SABOR, POR CONSTRUÇÃO (08/09/2026)
+
+**O dono:** *"A tela mostra 'frango com catupiry (2) · já existe ficha via FRANGO COM CATUPIRY — mapear nessa ficha' me pedindo clique. **Se o nome canônico é IDÊNTICO (só caixa/acento difere), isso não é heurística sugerindo — é a mesma palavra.**"*
+
+**⛔⛔ A FRONTEIRA É O CORAÇÃO DA REGRA, e ela é dura.** Automatizar o canônico igual só é seguro porque **tudo que exige julgamento continua pedindo clique** — e os casos são reais, não hipóteses:
+- **TYPO:** `STROGONOFF DE CARNEE` ≠ `STROGONOFF DE CARNE`. ⚠️ **As DUAS grafias existem de verdade** (o cardápio escreve com EE, o PDV sem) — "corrigir" sozinho **apagaria um sabor**.
+- **COMEÇA IGUAL:** `MUSSARELA ACEBOLADA` ⊄ `MUSSARELA` — dois pratos do cardápio.
+- **DÍGITO:** `4 QUEIJOS` ≠ `5 QUEIJOS` — um caractere, outro produto.
+
+**⭐ TRÊS PORTAS, UMA REGRA** (`aplicar-agrupamento.ts`) — e a terceira é a que o dono exigiu: *"deixa PLANTADO: quando uma ficha nova nascer, as grafias pendentes de canônico igual entram juntas na hora — **senão a regra só vale pro passado**."*
+1. **IMPORT** — ⚠️ roda **ANTES da baixa**: a grafia que entra agora precisa estar no mapa quando o plano da baixa for montado, senão a ocorrência dela cairia na prateleira e só baixaria no próximo reprocesso. Uma linha de ordem, um dia de estoque certo. **Fail-soft**: agrupar é bônus, nunca derruba import legítimo.
+2. **FICHA NOVA** — dentro da **transação da ficha** (ou entra tudo, ou nada — a disciplina que consertou as 3 fichas órfãs).
+3. **RETROATIVO** — script com preview + `--aplicar`.
+
+**⭐ E O "CRIAR FICHA PELO GRUPO" JÁ VINCULAVA TODAS AS GRAFIAS** — confirmado antes de mexer: `mapearComplemento` aceita array e grava todas na mesma transação. Não precisou de nada.
+
+**⚠️⚠️ UM GUARD INVERTIDO COM O MOTIVO ESCRITO (não apagado).** Ele afirmava *"PENDENTE não se agrupa — antes de mapear ninguém sabe que são o mesmo sabor"*. A **metade certa** era não juntar por **PARECIDO**, e ela continua travada em dois testes novos. A **metade errada** era chamar de parecido o que é **a mesma palavra**. O critério de agrupamento passou a ter um dono só (`chaveDeApresentacao`): **ficha** quando há ficha · **canônico** quando pendente · **nome cru** quando IGNORAR (ignorar é decisão por nome — um `GRANDE` não tem nada a ver com um `PEQUENO`).
+
+**⭐ O SUFIXO DE TAMANHO/PROMO — sugestão FORTE, clique obrigatório.** Lista **fechada e editável em código** (`FAMILIA · PROMO · GRANDE · MEDIO · PEQUENO · BROTO`, mais `PIZZA PEQUENA/GRANDE/MEDIA/BROTO` como prefixo). ⛔ Com lista **aberta**, `CALABRESA BLACK FRIDAY` viraria sugestão de CALABRESA — e promoção com nome inventado pode ser outro produto. E por que sugere em vez de mapear, nas palavras do dono: *"tamanho não muda a explosão (1 ocorrência = 1 explosão), então apelido na mesma ficha resolve"* — o gesto é barato e reversível, **mas é dele**.
+
+**⛔ O RASTRO VAI EM TABELA PRÓPRIA** (`stock_venda_grafia_agrupada`, CREATE-only, unique por nome): o isolamento do módulo **proíbe ALTER** em tabela existente, e a separação é honesta — o vínculo é um fato, a razão dele é outro. Sem ela, o mapa diria "alguém mapeou" sem dizer que **ninguém clicou**.
+
+**⚠️ E O AUTOMÁTICO SE RECUSA A ESCOLHER NUM CONFLITO:** mesmo canônico apontando pra fichas **diferentes** é dado inconsistente, não decisão — `conflitosDeGrafia` acha e mostra; escolher uma seria a adivinhação que a regra proíbe.
+
+**PROVADO EM PROD (`YzcCzYwUYwO1Z9r-nJN0D`), e o preview acertou os quatro que o dono nomeou:** `frango com catupiry` (2) · `Filé com Palha` (1) · `milho com bacon` (1) · `calabresa acebolada` (1) — todas com rastro `origem RETROATIVO`, **4/4 no mapa como FICHA**, **0 conflitos**, e **0 pendentes de canônico já mapeado sobrando**. A sugestão de tamanho achou `STROGONOFF DE CARNE FAMILIA` (**18 ocorrências**) esperando o clique. ⚠️ `SABOR CREME DE AVELA PROMO` seguiu pendente **de propósito**: a base `SABOR CREME DE AVELA` não está mapeada, e sufixo sobre base inexistente não é sugestão — é chute. **8.753 verdes · TS 0 · `pg_dump` antes da migration.**
+
 ## ⛔⛔⛔ A CONCILIAÇÃO ERRAVA DOS DOIS LADOS — E A FONTE ÚNICA DE SUGESTÃO (07/09/2026)
 
 **O DONO:** *"Eu olhando uma conta a pagar casável e sem gesto pra casar."* · *"A tela mostra coisas que não têm nada a ver e às vezes NÃO mostra o que devia."*
