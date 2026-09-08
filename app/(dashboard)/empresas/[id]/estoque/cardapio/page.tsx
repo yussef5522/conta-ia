@@ -43,11 +43,19 @@ interface Linha {
 // (foi assim que um `bankAccount` sem `| null` derrubou a carteira com a suíte verde).
 type Comp = LinhaPrateleira
 
+interface Secao { chave: string; nome: string; ordem: number }
+interface GrupoSecao {
+  secao: string; nome: string; ordem: number
+  total: number; comFicha: number; semFicha: number; cobertura: number | null; vendasQtd: number
+}
 interface Hub {
-  linhas: Linha[]
+  linhas: (Linha & { secao: string; secaoSugerida: boolean; secaoPorQue: string | null })[]
   periodo: { desde: string | null; ate: string | null; dias: number | null }
   campeaoSemFicha: { nome: string; vendasQtd: number } | null
   totais: { produtos: number; vendasQtd: number; vendasValor: number; semDestino: number; semCusto: number; prontos: number }
+  /** ⭐ 08/09: as seções do dono e o progresso de cada uma, vindos do SERVIDOR */
+  secoes: Secao[]
+  grupos: GrupoSecao[]
 }
 
 const brl = (n: number | null) => (n == null ? '—' : n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }))
@@ -102,6 +110,8 @@ export default function CardapioHubPage({ params }: { params: Promise<{ id: stri
   }
   const [busca, setBusca] = useState('')
   const [filtro, setFiltro] = useState<Filtro>('todos')
+  // ⭐ filtro por SEÇÃO — convive com o "sem ficha": um restringe DENTRO do outro
+  const [secaoFiltro, setSecaoFiltro] = useState<string | null>(null)
   const { col, dir, alternar, ordenar } = useSort<Col>('vendas', 'desc')
 
   useEffect(() => {
@@ -124,13 +134,14 @@ export default function CardapioHubPage({ params }: { params: Promise<{ id: stri
       if (filtro === 'semficha' && l.status !== 'SEM_DESTINO' && l.status !== 'SEM_FICHA') return false
       if (filtro === 'semcusto' && l.custoUnitario != null) return false
       if (filtro === 'ok' && !ehProntoNoCardapio(l)) return false
+      if (secaoFiltro && l.secao !== secaoFiltro) return false
       if (q && !l.nome.toLowerCase().includes(q) && !l.nomesSuitable.some((n) => n.toLowerCase().includes(q))) return false
       return true
     })
     return ordenar(filtradas, (l, c) =>
       c === 'nome' ? l.nome : c === 'vendas' ? l.vendasQtd : c === 'custo' ? l.custoUnitario
       : c === 'preco' ? l.precoUsado : l.margem)
-  }, [hub, busca, filtro, ordenar])
+  }, [hub, busca, filtro, secaoFiltro, ordenar])
 
   if (hub === undefined) return <div className="p-6"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
   if (hub === null) return <div className="p-6 text-sm text-slate-500">Não consegui carregar o cardápio.</div>
@@ -219,12 +230,58 @@ export default function CardapioHubPage({ params }: { params: Promise<{ id: stri
             className="h-9 w-full rounded-lg border border-slate-300 pl-8 pr-3 text-sm" />
         </div>
         {filtro !== 'todos' && (
-          <button onClick={() => setFiltro('todos')} className="h-9 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50">
+          <button onClick={() => { setFiltro('todos'); setSecaoFiltro(null) }} className="h-9 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50">
             limpar filtro
           </button>
         )}
         <span className="text-xs text-slate-400">{linhas.length} de {hub.linhas.length}</span>
       </div>
+
+      {/* ⭐ a porta do lote: só aparece quando ainda há produto sem seção CONFIRMADA —
+          decisão pronta não pede gesto de novo. */}
+      {hub.linhas.some((l) => l.secaoSugerida) && (
+        <a href={`/empresas/${id}/estoque/cardapio/secoes`}
+          className="flex flex-wrap items-center gap-2.5 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-[13px] text-indigo-900 hover:bg-indigo-100">
+          <Sparkles className="h-4 w-4 text-[#534AB7]" />
+          <span>
+            <b className="tabular-nums">{hub.linhas.filter((l) => l.secaoSugerida).length}</b> produtos
+            com seção <b>sugerida</b> — corra o olho e confirme de uma vez
+          </span>
+          <span className="ml-auto text-[12px] font-semibold text-[#534AB7]">classificar →</span>
+        </a>
+      )}
+
+      {/* ⭐⭐ A FAIXA DE SEÇÕES (08/09) — o progresso por setor, que é onde o dono decide
+          o que atacar primeiro. Faixa fina que rola no eixo x, o molde da casa: tijolo de
+          3 linhas quebraria em 2ª fileira e comeria a altura da lista. */}
+      {hub.grupos.some((g) => g.total > 0) && (
+        <div className="flex gap-1.5 overflow-x-auto pb-1">
+          {hub.grupos.filter((g) => g.total > 0).map((g) => {
+            const ativa = secaoFiltro === g.secao
+            const pct = g.cobertura == null ? null : Math.round(g.cobertura * 100)
+            return (
+              <button key={g.secao} onClick={() => setSecaoFiltro(ativa ? null : g.secao)}
+                className={`flex shrink-0 flex-col gap-1 rounded-xl border px-3 py-2 text-left transition-colors ${
+                  ativa ? 'border-[#534AB7] bg-indigo-50' : 'border-slate-200 bg-white hover:bg-slate-50'
+                }`}>
+                <span className="flex items-baseline gap-1.5 whitespace-nowrap text-[12px] font-semibold text-slate-800">
+                  {g.nome}
+                  <span className="text-[11px] font-normal text-slate-400 tabular-nums">{g.total}</span>
+                </span>
+                {/* ⛔ o header soma CERTO: comFicha + semFicha === total, do servidor */}
+                <span className="whitespace-nowrap text-[11px] tabular-nums text-slate-500">
+                  {g.comFicha} com ficha
+                  {g.semFicha > 0 && <span className="text-rose-600"> · {g.semFicha} sem</span>}
+                </span>
+                <span className="h-1.5 w-full min-w-[90px] overflow-hidden rounded-full bg-slate-100">
+                  <span className={`block h-full rounded-full ${g.semFicha === 0 ? 'bg-emerald-500' : 'bg-[#534AB7]'}`}
+                    style={{ width: `${pct ?? 0}%` }} />
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       {hub.linhas.length === 0 ? (
         <Card><CardContent className="flex flex-col items-center gap-2 p-10 text-center">

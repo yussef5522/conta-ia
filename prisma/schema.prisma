@@ -4440,3 +4440,49 @@ model StockVendaGrafiaAgrupada {
   @@index([companyId, criadoEm])
   @@map("stock_venda_grafia_agrupada")
 }
+
+/// ⭐⭐ AS SEÇÕES DO CARDÁPIO (08/09/2026) — a lista é do DONO, editável.
+///
+/// *"Lista editável (cadastro simples, ordem minha) — seção nova nasce quando eu precisar,
+/// sem sprint."* O `SECOES_SEED` do código é só o ponto de partida; quem manda é esta tabela.
+model StockCardapioSecao {
+  id        String   @id @default(cuid())
+  companyId String
+  /// chave estável (XIS, BURGERS…) — é ela que o produto guarda
+  chave     String
+  nome      String
+  ordem     Int      @default(50)
+  ativo     Boolean  @default(true)
+  criadoEm  DateTime @default(now())
+
+  @@unique([companyId, chave])
+  @@index([companyId, ordem])
+  @@map("stock_cardapio_secao")
+}
+
+/// ⭐⭐ A SEÇÃO DE CADA PRODUTO — guardada por NOME DO PDV, de propósito.
+///
+/// ⛔⛔ POR QUE NÃO PELA `chave` DO HUB: a chave é `nome:<x>` enquanto o produto não tem
+/// destino e vira `ficha:<id>` quando ganha ficha. Guardar por ela **perderia a seção no
+/// dia em que o dono criasse a ficha** — justo o dia em que ele mais mexe na tela. O nome
+/// do PDV é o fato bruto que não muda, e é ele que casa com o relatório de amanhã.
+///
+/// ⚠️ `sugerida = true` é PROPOSTA da régua de palavras; o lote de revisão existe pra o
+/// dono confirmar em bloco. Enquanto for proposta, a tela marca.
+model StockCardapioProdutoSecao {
+  id           String   @id @default(cuid())
+  companyId    String
+  nomeSuitable String
+  /// a `chave` da seção (XIS, BEBIDAS…)
+  secao        String
+  sugerida     Boolean  @default(true)
+  /// a palavra que a régua usou — null quando caiu em OUTROS sem regra
+  porQue       String?
+  criadoPorId  String?
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @default(now()) @updatedAt
+
+  @@unique([companyId, nomeSuitable])
+  @@index([companyId, secao])
+  @@map("stock_cardapio_produto_secao")
+}

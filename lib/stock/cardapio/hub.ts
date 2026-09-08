@@ -223,12 +223,14 @@ export function ehProntoNoCardapio(l: Pick<LinhaCardapio, 'status' | 'custoUnita
   return (l.status === 'FICHA_OK' || l.status === 'REVENDA') && l.custoUnitario != null
 }
 
-export function hubToCsv(linhas: LinhaCardapio[]): string {
-  const head = ['Produto', 'Nomes no PDV', 'Situação', 'Vendas (un)', 'Vendas (R$)', 'Custo unit.', 'Preço', 'Origem do preço', 'Margem %']
+/** ⭐ 08/09: a coluna SEÇÃO entrou (o dono pediu). `linhas` pode vir sem ela — o CSV do
+ *  hub cru continua funcionando, com "—" no lugar. */
+export function hubToCsv(linhas: (LinhaCardapio & { secao?: string })[]): string {
+  const head = ['Produto', 'Seção', 'Nomes no PDV', 'Situação', 'Vendas (un)', 'Vendas (R$)', 'Custo unit.', 'Preço', 'Origem do preço', 'Margem %']
   const esc = (s: string | number) => `"${String(s).replace(/"/g, '""')}"`
   const dec = (n: number | null) => (n == null ? 'a definir' : n.toFixed(2).replace('.', ','))
   const rows = linhas.map((l) => [
-    l.nome, l.nomesSuitable.join(' | '), ROTULO[l.status], l.vendasQtd, dec(l.vendasValor),
+    l.nome, l.secao ?? '—', l.nomesSuitable.join(' | '), ROTULO[l.status], l.vendasQtd, dec(l.vendasValor),
     dec(l.custoUnitario), dec(l.precoUsado), l.precoOrigem ?? '—',
     l.margem != null ? String(Math.round(l.margem * 100)) : 'a definir',
   ].map(esc).join(';'))

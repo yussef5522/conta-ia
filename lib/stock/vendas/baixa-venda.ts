@@ -17,6 +17,8 @@ const TIPO_BAIXA = 'BAIXA_VENDA'
 // que a venda usa pra BAIXAR. Se o cardápio tivesse fórmula própria, o custo da tela e o
 // custo que sai do estoque divergiriam no 1º caso de borda — a doença dos 7 detectores de
 // par. Nenhuma linha de lógica mudou aqui: só a visibilidade.
+import { semearSecoesDeNovos } from '@/lib/stock/cardapio/secoes-db'
+
 export interface Ctx {
   componentesByFicha: Map<string, { itemId: string; qtdPlanejada: number }[]>
   fichaByItemProduzido: Map<string, { id: string; tipoProduto: string }>
@@ -184,6 +186,19 @@ async function gravarVenda(companyId: string, data: string, linhas: LinhaVenda[]
   })
 
   await recomputeSaldoCache(db, companyId)
+
+  // ⭐⭐ PRODUTO NOVO ENTRA COM A SEÇÃO SUGERIDA, MARCADA (08/09) — decisão do dono:
+  // *"entra com a seção sugerida pela mesma régua, marcada 'sugerida' até eu confirmar"*.
+  //
+  // ⛔ DEPOIS do commit e fail-soft, no padrão do recebimento: classificar é um bônus, e
+  // um problema aqui não pode derrubar um import de vendas legítimo. ⚠️ E quem já tem
+  // seção NÃO é tocado — reavaliar a cada import reabriria a decisão do dono.
+  try {
+    await semearSecoesDeNovos(companyId, linhas.map((l) => l.produto), db)
+  } catch (e) {
+    console.warn('[vendas] semear seções falhou (import seguiu):', (e as Error).message)
+  }
+
   return {
     importId, data,
     baixados: plano.totalMapeados,
