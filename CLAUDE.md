@@ -294,6 +294,22 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 **A REGRA QUE FICA (do dono):** *"O que dá pra derivar da MESMA fonte das abas, deriva; o que não tem definição honesta, sai do cabeçalho — **número sem régua em tela de dinheiro é pior que ausência**."* Sobraram: vínculos e dupla contagem saindo do MESMO `totais` das abas (somando a **lista**, cada conta **uma vez** — a aritmética que o JOIN errava), contas sem par, e a conferência por conta. **`statement-balance-header`, `balance-banner` e a rota `/balance-check` foram APAGADOS** — deixar a rota viva é deixar a segunda resposta viva.
 
+### ⛔⛔ O BLOQUEIO +24h É **EXPLICADO**, NÃO ALARME — e a régua é a FICHA (08/09)
+
+**O dono, olhando a conferência por conta:** *"O ⚠ do Banrisul é o BLOQUEIO +24h — a mania nº 1, que a ficha do banco já conhece (`ledgerBalReliable` false). **Alarme âmbar em diferença esperada e explicável vira ruído.** (…) **Pela ficha, não por if do Banrisul.**"*
+
+**MEDIDO EM PROD:** a diferença de **R$ 1.700,00 é EXATAMENTE o `blockedAmount`** que o documento declarou — `diferença − bloqueio = 0`. É o **mesmo R$ 1.700 de 01/09** que o `destaque-do-card` já documenta como fantasma. E a ficha da **CAIXA também é `false`**: já hoje a régua vale pra mais de um banco, o que sozinho condena um `if (Banrisul)`.
+
+**TRÊS ESTADOS NO LUGAR DE DOIS:** `BATE` (✓ verde) · `EXPLICADO` (cinza, *"diferença = bloqueio +24h declarado (R$ 1.700,00 em 05/09)"*) · `DIVERGE` (⚠ âmbar). **Só o `DIVERGE` conta como pendência**, e o contador do topo soma BATE+EXPLICADO.
+
+**⛔⛔ E O PASSE LIVRE NÃO EXISTE — é a metade que segura a regra.** A ficha explica **por que a comparação não fecha**; ela **não explica qualquer número**. Sem `blockedAmount` medido, ou com um valor que não fecha ao centavo, **o ⚠ continua** — com a frase que ensina a saída (*"a conferência de lá é dia a dia contra o PDF"*). Dar EXPLICADO ali seria **inventar o bloqueio de hoje a partir da mania de ontem**, e o bloqueio muda todo dia. Três testes travam isso: sem a ficha volta a ⚠; com bloqueio que não fecha continua ⚠; sem bloqueio medido continua ⚠.
+
+**⭐ E A DATA É A DO BLOQUEIO, NÃO A DO SALDO:** o saldo é de 04/09 e o bloqueio de 05/09. Datar pelo saldo faria um número velho passar por atual — a mesma disciplina do card.
+
+⚠️ A resolução usa `podeConferirPorLedgerbal(resolveBankProfile(bankCode))`, a **mesma função** do card da conta e do import. Ler `ledgerBalReliable` na mão aqui **reprovaria no guard estrutural** (`ledgerbal-um-dono-so.test.ts`) — e com razão: a pergunta tem um dono só.
+
+**PROVADO EM PROD (`N93m7UKoPUqJQUaoPseox`):** `batem 2 · explicadas 1 · divergem 0` — a linha do banrisul agora é cinza com a frase, e **nada na tela pede ação que não exista**.
+
 ### ⛔⛔ E A NOTA ERRADA FOI VINCULADA — o desenho ajudou (08/09)
 
 As **duas** notas do Cancian (NF 834771 venc 29/08 e NF **835271** venc 05/09), R$ 230,81 cada, disputavam o **mesmo** débito de R$ 232,81. Os dois cards ficavam quase idênticos — **mesma linha à esquerda, mesmo valor à direita** — e o que os separa (**número da NF e vencimento**) estava em texto pequeno, com os dois em "provável". Resultado medido no audit: `mode CLASSIC`, a **835271** foi conciliada às 00:00:34 de 08/09, e a 834771 seguiu em dupla contagem.
