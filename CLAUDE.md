@@ -266,6 +266,22 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 **⚠️ E O AUTOMÁTICO SE RECUSA A ESCOLHER NUM CONFLITO:** mesmo canônico apontando pra fichas **diferentes** é dado inconsistente, não decisão — `conflitosDeGrafia` acha e mostra; escolher uma seria a adivinhação que a regra proíbe.
 
+### ⛔⛔ E SOBROU DUPLICAÇÃO DE **TELA**: o mesmo sabor em dois lugares (08/09)
+
+**O dono, depois do agrupamento funcionar:** *"A seção 'Sabores de pizza' (cards de grupo) e a tabela listam os MESMOS pendentes — 4 QUEIJOS, MUSSARELA, 5 QUEIJOS, PORTUGUESA, ENTREVERO, CARNEE, todos 2x na mesma página. (…) **Foi exatamente o que me fez achar que o bug continuava.**"*
+
+**⛔⛔ A CURA NÃO FOI ESCONDER O SEGUNDO — FOI APAGAR O COMPONENTE.** `GruposSugeridos` (a faixa de cards acima da tabela) **deixou de existir**. Enquanto ele estivesse no arquivo, alguém religaria e a página voltaria a mostrar `4 QUEIJOS` duas vezes. **Impossibilidade, não vigilância** — e *"duas apresentações do mesmo dado divergem e confundem"* é a mesma lição do B1, agora na tela em vez de na query.
+
+**⭐ A SUGESTÃO MUDOU DE ENDEREÇO, NÃO DE FORMA:** irmã com ficha, typo com ficha e sufixo FAMILIA viraram uma faixa âmbar **dentro da linha do sabor**, com o botão do lado. ⛔ **Parecida SEM ficha continua só informação** — juntar typo por conta própria é a classe do *"o memo diz Transferência"*; o gesto real é o "criar ficha" da linha, que leva o grupo inteiro.
+
+**⛔⛔ E UMA CORREÇÃO QUE O PEDIDO ASSUMIA PRONTA — as ações da LINHA agiam só na grafia REPRESENTANTE.** Como a linha agora **é o sabor**, "criar ficha", "apontar ficha", "ignorar" e "desfazer" valem pras N grafias. ⚠️ Agir só na representante era invisível **do jeito pior**: a linha sumia da fila (a representante foi resolvida) e as irmãs ficavam pendentes **sem aparecer em lugar nenhum**, porque o agrupamento já as tinha juntado sob ela.
+
+**⭐ A ORDEM É DO TRABALHO** (`ordem-da-prateleira.ts`), em quatro faixas: pendente **com sugestão** (ação de 1 clique) · pendente sem sugestão por ocorrências · já decidido · **"não vendeu" por último, mesmo estando pendente** — sabor do cardápio que não apareceu é **conferência, não fila**, e deixá-lo no topo empurraria pra baixo o que de fato vendeu. ⚠️ Medido: a CALABRESA (1.220 ocorrências, o maior volume de longe) fica **abaixo** de um pendente de 24 — ela já está resolvida.
+
+**⚠️ REGRA 9 PEGOU UM BUG REAL MEU:** os hooks novos ficaram **depois do early return** de carregamento. O guard `hooks-antes-de-early-return` reprovou antes do deploy. Movidos pro topo com `?? []` — **a ordem dos hooks não pode depender de dado**, mesmo quando nada quebra hoje.
+
+**PROVADO EM PROD (`E4SNLDyqEucTcuvYdGxwQ`) com os dados reais:** **230 linhas cruas → 181 na tela** (49 grafias fundidas na apresentação) e **`canônicos duplicados na página: []`**. A ordem saiu certa: `MUSSARELA` e `STROGONOFF DE CARNEE` (com sugestão) encabeçam os sabores mesmo com 55 e 6 ocorrências, e `STROGONOFF DE CARNE FAMILIA` (18) encabeça os outros. ⭐ E a fronteira segue de pé na tela: `4 QUEIJOS ▸2 nomes` e `5 QUEIJOS ▸2 nomes` são **duas linhas**, cada uma com as suas grafias.
+
 **PROVADO EM PROD (`YzcCzYwUYwO1Z9r-nJN0D`), e o preview acertou os quatro que o dono nomeou:** `frango com catupiry` (2) · `Filé com Palha` (1) · `milho com bacon` (1) · `calabresa acebolada` (1) — todas com rastro `origem RETROATIVO`, **4/4 no mapa como FICHA**, **0 conflitos**, e **0 pendentes de canônico já mapeado sobrando**. A sugestão de tamanho achou `STROGONOFF DE CARNE FAMILIA` (**18 ocorrências**) esperando o clique. ⚠️ `SABOR CREME DE AVELA PROMO` seguiu pendente **de propósito**: a base `SABOR CREME DE AVELA` não está mapeada, e sufixo sobre base inexistente não é sugestão — é chute. **8.753 verdes · TS 0 · `pg_dump` antes da migration.**
 
 ## ⛔⛔⛔ A CONCILIAÇÃO ERRAVA DOS DOIS LADOS — E A FONTE ÚNICA DE SUGESTÃO (07/09/2026)
