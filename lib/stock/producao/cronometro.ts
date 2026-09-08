@@ -50,3 +50,19 @@ export function relogioDaTarefa(iniciadoEm: string | null, agora: number): Relog
 export function desvioDoAparelho(agoraServidorIso: string, agoraLocal: number = Date.now()): number {
   return new Date(agoraServidorIso).getTime() - agoraLocal
 }
+
+/**
+ * ⭐⭐ O CRONÔMETRO GRANDE DO POSTO DE COMANDO (08/09/2026) — decisão 1 do desenho.
+ *
+ * ⛔ O FORMATO MUDA COM A GRANDEZA, de propósito: até 1h conta **mm:ss** (quem olha quer ver
+ * o segundo andar — é isso que diz "está vivo"); passando de 1h vira **h:mm**, porque aí o
+ * segundo é ruído e a hora é a informação.
+ *
+ * ⚠️ Mora AQUI e não na tela: *regra que mora num componente é regra que ninguém prova* — e
+ * foi assim que o cronômetro do tablet ficou dois dias mentindo zero sem ninguém achar.
+ */
+export function textoDoCronometro(desde: string, agora: number): string {
+  const seg = Math.max(0, Math.floor((agora - new Date(desde).getTime()) / 1000))
+  if (seg < 3600) return `${String(Math.floor(seg / 60)).padStart(2, '0')}:${String(seg % 60).padStart(2, '0')}`
+  return `${Math.floor(seg / 3600)}:${String(Math.floor((seg % 3600) / 60)).padStart(2, '0')}`
+}
