@@ -242,6 +242,26 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⭐⭐⭐ O CARDÁPIO POR SEÇÕES (08/09/2026) — a régua sugere, o dono confirma em UM gesto
+
+**O dono:** *"A CLASSIFICAÇÃO INICIAL não pode ser 156 cliques meus (…) heurística sugere, eu bato o martelo — **mas num gesto, não em 156**."*
+
+**⛔⛔ A SEÇÃO É GUARDADA POR NOME DO PDV, NÃO PELA CHAVE DO HUB — e a escolha tem um motivo duro.** A `chave` é `nome:<x>` enquanto o produto não tem destino e vira `ficha:<id>` quando ganha ficha: guardar por ela **perderia a seção justo no dia em que o dono cria a ficha**, que é o dia em que ele mais mexe na tela. O nome do PDV é o fato bruto que não muda — a mesma disciplina do *"o nome cru continua gravado como veio"*.
+
+**⛔ A BORDA DE PALAVRA É O QUE SEPARA REGRA DE ACASO.** Sem ela `AGUA` casaria dentro de **GUARDANAPO** e `LATA` dentro de **SALATA**. E palavra que não bate **não vira palpite**: cai em Outros, à vista. ⚠️ *Nome desconhecido em Outros é 1 clique; nome na seção errada é um número errado no relatório de cobertura — e ninguém desconfia de número.*
+
+**⭐ O GET DO LOTE NÃO GRAVA NADA.** A sugestão é calculada na hora; nada entra no banco antes do CONFIRMAR. Abrir a tela não pode ter classificado o cardápio inteiro — **ler não escreve**.
+
+**⚠️⚠️ REGRA 11 PEGOU UM GUARD MEU QUE NÃO MORDIA — e a justificativa escrita estava ERRADA.** Eu afirmava que `FRANGO FRITO` precisava vir antes de `FRITAS` *"senão cairia em Porções pelo FRIT"*. Repus o defeito (movi a linha pro fim) e **nenhum teste ficou vermelho**: a borda de palavra já separava `FRITO` de `FRITAS`. Reescrito com o caso que morde de verdade — **`PORCAO DE FRANGO FRITO` casa em DUAS regras inteiras**, e aí a ordem decide (o específico ganha do genérico).
+
+**⭐⭐ E MEDIR EM PROD MOVEU DUAS LINHAS DA RÉGUA — que é exatamente pra isso que ela é config, e não um modelo:**
+- **`PIZZAS` (plural) entrou:** `PROMO 2 PIZZAS GRANDES` (**150 un**, dos maiores do cardápio) caía em Outros porque o **"2" no meio quebra a frase** `PROMO PIZZAS`, e a borda de palavra não deixa `PIZZA` casar `PIZZAS`.
+- **`BURGERS` subiu acima de `FRANGO_FRITO`:** o real `BURGER FRANGO FRITO` é um **burger**.
+
+**⚠️ O guard estrutural de rotas reprovou as duas rotas novas** por não usarem `guardStock` — **corrigidas na fonte, não afrouxado**.
+
+**PROVADO EM PROD (`KFjP8_hPy00r8H6jO5nHT`) com os 156 reais:** **Σ das seções = 156 = total do hub — ninguém sumiu no caminho**, e **todo header soma certo** (`comFicha + semFicha === total`). A régua classificou **94 de 156**; os **62 que ela não soube** ficaram em Outros, nomeados, com `porQue: null` — e o maior deles é `GRANDE PRECINHO` (168 un), que não tem palavra nenhuma que o identifique. Cobertura real por seção: Bebidas 50% · Pizzas 50% · Burgers 23% · Xis 21% · **Pratos, Porções, Lanches e Doces em 0%** — é o mapa de onde atacar. **8.806 verdes · TS 0 · `pg_dump` antes da migration.**
+
 ## ⛔⛔⛔ QUANTIDADE NÃO ACEITAVA DECIMAL NA CONFERÊNCIA (08/09/2026)
 
 **Caso real do dono:** *"Produto que chega por KG em fração (0,600 · 0,350 · 0,100) e o campo de editar quantidade não deixa ir abaixo de 1 — não aceito 0,600. Pra conferir a nota certa eu PRECISO do decimal."*
