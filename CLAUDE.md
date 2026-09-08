@@ -242,6 +242,43 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⛔⛔⛔ O TABLET TRANCOU TRÊS PESSOAS FORA DO PRÓPRIO TRABALHO (08/09/2026)
+
+**O dono:** *"Ela esqueceu de finalizar e foi embora; eu finalizei pelo gerente — tudo fechado. Mas quando ela digita o PIN no tablet aparece 'Você está com "produção" em andamento. Finalize antes de começar outra.' — e ela não tem NADA em aberto."*
+
+**⚠️ UMA CORREÇÃO NO RELATO, e ela não muda o diagnóstico:** o rastro diz que a etapa não foi finalizada pelo gerente — foi **`ENCERRADA_SEM_FINALIZAR` (`ORDEM_CONCLUIDA`)**, ou seja a ordem foi concluída pela tela de Produção e varreu a etapa aberta junto. A aposta dele sobre a CAUSA estava certa em cheio.
+
+**⛔⛔ A CAUSA É A ARMADILHA MAIS BONITA DESTE MÓDULO — a mesma coluna que segura a honestidade é a que tranca a pessoa.** Nos **dois** gestos que fecham uma etapa sem tempo medido, `finalizadoEm` **fica NULL de propósito**: é isso que os mantém fora das médias por construção (REGRA 5, decisão de 07/09). Lida **crua**, essa mesmíssima coluna responde *"tem gente com a mão na massa"*. **Todo leitor que perguntar "em andamento?" olhando a coluna vai errar — e vai errar mais a cada gesto novo que fechar etapa sem carimbo.**
+
+**⭐ A VARREDURA ACHOU CINCO LEITORES, não um** (o dono pediu: *"que OUTROS leitores existem?"*):
+
+| leitor | o que a régua crua fazia |
+|---|---|
+| **trava "uma por vez" do tablet** | ⛔ **trancou a Carlise** — e ela não tinha saída, porque o gesto que resolveria a etapa é do gerente e ele já o tinha feito |
+| **alarme das 4h** | remontava **à mão** os degraus 1 e 3 de `derivarEstadoDaEtapa` com dois `notIn` — **segunda derivação**, concordando por coincidência |
+| **`inativar-colaborador`** | recusaria **tirar a pessoa da equipe** ("1 etapa em andamento"), um impedimento sem gesto que o resolvesse |
+| **fechar o lote pelo tablet** | contaria a etapa finalizada pelo gerente como "faltando" → **a cozinha nunca fecharia o lote** numa ordem que o gerente já resolveu |
+| **`abertasIgnoradas` do relatório** | contava a mesma etapa **duas vezes** (presente no corpo E como ignorada), inflando justamente o número que diz *quanto trabalho ficou fora da conta* |
+
+Todos passam agora por **`lib/stock/producao/em-andamento.ts`**, que pergunta pra `derivarEstadoDaEtapa`. Três perguntas com nome próprio: `somenteEmAndamento` · `somentePendentes` (*ainda pede trabalho* — outra pergunta) · `etapasEmAndamentoDoColaborador`.
+
+**⛔⛔ A CAMADA DO PARTICIPANTE NÃO SE RESOLVE CARIMBANDO O RELÓGIO DELE — e essa foi a decisão mais importante.** O dono levantou o nível 2 (*"o finalizar-pelo-gerente fecha o registro de participante dela também? Se a etapa fecha e o participante fica aberto, TODO leitor de participante vai mentir"*). A tentação óbvia era gravar `participante.finalizadoEm = agora`. **Isso inventaria um horário que ninguém mediu, um nível ABAIXO de todos os testes que protegem o de cima** — o mesmo erro que o NULL da etapa existe pra impedir, escondido onde nenhum guard olha. **Quem manda é o ESTADO DA ETAPA; o relógio do participante é RASTRO, não veredito.** Conferido: os outros dois leitores de participante (`etapasDaOrdem` e `dia-ao-vivo`) **já** usavam o resolvedor pro estado e o participante só pra nome/designação — a camada 2 era mais estreita do que parecia.
+
+**⭐⭐ E NÃO HOUVE RETROATIVO DE DADO — porque não havia dado errado.** O estado **sempre esteve certo** no banco (ordem CONCLUIDA + `stock_etapa_encerrada` gravado); a derivação única já respondia `ENCERRADA_SEM_FINALIZAR` antes de eu tocar numa linha. **Quem mentia era o leitor, e leitor se conserta com deploy, não com UPDATE.** `scripts/destravar-tablet-preview.ts` prova isso read-only, em vez de eu afirmar.
+
+**⛔⛔ E A PROVA EM PROD ACHOU MAIS DUAS PESSOAS — as duas travadas HOJE:**
+```
+⭐ DESTRAVA Carlisle    “produção” de 06/09 19:38 → ENCERRADA_SEM_FINALIZAR (ORDEM_CONCLUIDA)
+⭐ DESTRAVA lucas       “porcao”   de 08/09 17:13 → ENCERRADA_SEM_FINALIZAR (ORDEM_CONCLUIDA)
+⭐ DESTRAVA michelle    “produção” de 08/09 17:12 → ENCERRADA_SEM_FINALIZAR (ORDEM_CONCLUIDA)
+   (as outras 10 da equipe: livres pelas duas réguas)
+```
+⚠️ **O dono relatou UMA pessoa; eram TRÊS**, e duas travaram no mesmo dia, 1 minuto uma da outra — a cozinha estava batendo nisso repetidamente e só um caso chegou até ele. **É o argumento a favor de varrer a classe em vez de consertar a instância**: o relato é a ponta do que o defeito faz.
+
+**REGRA 11 medida — 4 defeitos repostos, 4 vermelhos** (a trava, o alarme, o inativar e o relatório, cada um no seu teste). **12 testes novos** montando a cena real pelos construtores de verdade, com a régua crua afirmada explicitamente em cada um pra o guard não passar por cegueira. **TS 0 · 329 verdes em produção+equipe · deploy `c_4ub9zAIf5LCi-wXJydJ` 4/4.**
+
+⚠️ **REGRA 2 é do dono:** o PIN da Carlise, do lucas e da michelle entrando livre no tablet, com a cozinha rodando.
+
 ## ⭐⭐ O HOJE VIROU POSTO DE COMANDO + A TELA DA DUPLA (08/09/2026)
 
 ### ⛔⛔ REGRA 2 FALHOU NO SPRINT ANTERIOR — e o dono achou navegando
