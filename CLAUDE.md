@@ -310,11 +310,32 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 **PROVADO EM PROD (`N93m7UKoPUqJQUaoPseox`):** `batem 2 · explicadas 1 · divergem 0` — a linha do banrisul agora é cinza com a frase, e **nada na tela pede ação que não exista**.
 
+### ⭐⭐ A LISTA DAS 109 SAI DA TELA — a fila é só o que pede DECISÃO (08/09)
+
+**Decisão do dono:** *"Conta em aberto sem par no extrato é o **estado NORMAL** de uma conta que ainda não foi paga — não é pendência de conciliação. (…) A conciliação trabalha **DAQUI PRA FRENTE**: nota nova → payable → extrato novo → par sugerido → vínculo. Se alguma antiga aparecer casando sozinha quando um extrato entrar, ótimo — **mas ninguém sai procurando**."*
+
+**⛔ A LISTA SAIU DO PAYLOAD, não só da tela.** `filaDeConciliacao` devolve **só as contas com par sugerido**. Não é economia de bytes: é a regra virando **impossibilidade**. Sem a lista no JSON, nenhuma tela futura ressuscita a parede de texto por descuido.
+
+**⛔⛔ E O NÚMERO CRU SERIA O BADGE QUE TODO MUNDO IGNORA — por isso ele vai QUEBRADO.** O dono perguntou por que subiu de 108 pra 109 *"se o número só cresce e ninguém vai tratar"*. Medido: as 109 se explicam inteiras.
+- **67 ainda não venceram** (uma tem parcela pra **novembro**) — estado normal.
+- **34 venceram DEPOIS do último extrato importado.** ⚠️ Esta é a categoria mais fácil de esquecer e a que mais importa: o último extrato era de **04/09** e já era **08/09**. **Elas esperam ARQUIVO, não decisão** — cobrar ação delas é cobrar o impossível.
+- **8** venceram dentro de um período que já tem extrato: as únicas que podem ser lacuna real.
+
+**⭐ E O CRESCIMENTO É TRABALHO NOVO, NÃO ACÚMULO:** medidas **23 contas entrando em 48h** (aluguel, INSS, ICMS, FGTS, fornecedores — o dono lançando o mês). O que segura o número é o fluxo natural, exatamente como ele previu.
+
+**⭐ A RESPOSTA À PERGUNTA DO GESTO "RESOLVIDA FORA DO EXTRATO": NENHUMA, hoje.** O extrato mais antigo importado é de **25/05/2026** e **zero** contas da fila vencem antes disso — todas as 42 vencidas são de **setembro**. Não há caso, então não se constrói o gesto. **Mecanismo sem caso é peso morto**, e o dono pediu o número justamente pra decidir isso com dado.
+
+**⚠️⚠️ A DUPLA CONTAGEM FICA NA TELA MESMO SEM PAR SUGERIDO — e é a exceção que prova a regra.** Ela **não** é "conta em aberto sem pagamento": é conta marcada como **PAGA** e sem vínculo, ou seja **o mesmo dinheiro em duas linhas**. Isso é **anomalia, não espera**. Se ela saísse junto com as outras, **não sobraria lugar nenhum onde aparecesse** — e o teste que morde é justamente esse (`resumirSemPar` a exclui do resumo).
+
+**PROVADO EM PROD (`ep_lZszAOzVWOjsa5x7-3`):** `contas no payload: 0` · `semPar: {total 109, naoVenceram 67, aguardandoExtrato 34, comExtratoImportado 8, ultimoExtrato 04/09}`.
+
 ### ⛔⛔ E A NOTA ERRADA FOI VINCULADA — o desenho ajudou (08/09)
 
 As **duas** notas do Cancian (NF 834771 venc 29/08 e NF **835271** venc 05/09), R$ 230,81 cada, disputavam o **mesmo** débito de R$ 232,81. Os dois cards ficavam quase idênticos — **mesma linha à esquerda, mesmo valor à direita** — e o que os separa (**número da NF e vencimento**) estava em texto pequeno, com os dois em "provável". Resultado medido no audit: `mode CLASSIC`, a **835271** foi conciliada às 00:00:34 de 08/09, e a 834771 seguiu em dupla contagem.
 
 ⛔ **A cura NÃO é esconder um dos cards** — esconder seria a régua decidindo qual nota foi paga, que é o oposto da disciplina. São duas outras coisas: **(1)** o card avisa **antes do par**, com borda âmbar, que *"N notas disputam este mesmo débito — só uma pode ser"*, e o **número da NF** e o **vencimento** ganham peso tipográfico, porque são o que decide; **(2)** vincular um par **tira aquela linha do extrato dos outros cards na hora** — ela foi **gasta**. O servidor já não a devolveria no próximo carregamento; **era a tela que mentia até o F5**, e o card concorrente seguia clicável.
+
+**⭐ RESOLVIDO PELO DONO NA TELA, e o rastro conta a história inteira:** ele desfez o vínculo errado (01:39) e vinculou o certo (01:41). A **NF 834771** ficou `EFFECTED/RECONCILED` apontando pra linha de 232,81, com a nota *"pagamento conciliado com a linha do extrato de 2026-08-31 (R$ 232.81) · diferença de R$ 2.00 = juros/tarifa de boleto, confirmada por quem conciliou"*; a **NF 835271** voltou a `PAYABLE/PENDING`, sem vínculo, como ele mandou. **As 8 ex-payables fecham 8/8 e a dupla contagem foi a zero.**
 
 ## ⭐⭐⭐ CONFIRMAR O IMPORT **JÁ BAIXA** — O GESTO ÚNICO DA VENDA (07/09/2026)
 
