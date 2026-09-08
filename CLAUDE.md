@@ -242,6 +242,41 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⛔⛔⛔ PRODUÇÃO: O CRONÔMETRO PARADO, O DESIGNAR QUE SUMIA E A PORTA DA EQUIPE (08/09/2026)
+
+**Quatro achados, e três deles eram MENORES do que pareciam — porque a medição veio antes.**
+
+### ⛔⛔ #4 O CRONÔMETRO PARADO NO ZERO — e o `Math.max` era o cúmplice
+
+**O dono:** *"Funcionário clica INICIAR e o relógio fica no ZERO — não anda."*
+
+**⭐ A primeira coisa medida foi a pergunta dele: o `iniciadoEm` grava?** Grava — **4 das 12 etapas recentes** têm o carimbo e as durações fecham. **O tempo real nunca esteve errado; era só a pintura.**
+
+**A causa:** o cálculo era `Math.max(0, Date.now() − iniciadoEm)`. Num tablet com a **hora atrasada**, a conta dá **negativo** e o `max` **para o relógio em 00:00** — pelo tanto que o aparelho estiver errado. ⛔ **E o `max` era justamente o que ESCONDIA o problema: em vez de acusar, mentia zero.**
+
+**⚠️ E A CASA JÁ SABIA:** *"o cronômetro é da TELA, o instante é do servidor (…) relógio de aparelho pode estar torto"* está escrito desde **06/09**, na tela do HOJE. Faltava aplicar **no tablet** — justamente onde o aparelho é compartilhado e ninguém acerta a hora. Agora as rotas devolvem `agoraServidor`, o desvio é **MEDIDO a cada resposta**, e a conta virou **função pura testada** (`relogioDaTarefa`) — *regra que mora na tela é regra que ninguém prova*, e esta ficou mentindo zero sem ninguém achar.
+
+### ⛔⛔ #2 DESIGNAR SUMIA NA ORDEM DE ETAPA ÚNICA — e era literal
+
+```js
+if (etapas.length <= 1 && !etapas.some(e => e.executorNome)) return null
+```
+
+O bloco **inteiro** retornava `null`. A justificativa escrita era *"mostrar um bloco de uma linha só seria ruído numa tela longa"* — e **economizar uma linha de tela custou o GESTO INTEIRO**: receita sem etapas cadastradas é a maioria, e nelas designar era **impossível**, sem nada na tela dizer por quê. Invertido com o motivo escrito.
+
+### ⭐⭐ #1 A FRONTEIRA DO GERENTE JÁ ESTAVA DE PÉ — faltava a PORTA
+
+Medido antes de mexer, e **o achado mudou o tamanho do trabalho**: as rotas de colaborador e de PIN **já exigem `stock.manage`**, que o `GERENTE_ESTOQUE` tem via `stock.*`; convite, papel e "marcar aparelho" **já exigem `user.invite`**, que ele **não** tem; e o "trocar PIN" **já existia** na tela, com o motivo escrito (o PIN é hash — o gesto é **redefinir**, não ver).
+
+**O que barrava era UMA LINHA:** a página `/equipe` inteira exigia `user.invite`. ⛔ **Uma permissão na PORTA escondia um gesto que o servidor já autorizava** — a tela faz duas coisas (gerenciar quem **loga** e gerenciar **colaborador**) e a porta só olhava a primeira. `resolveEmpresaAccess` passou a aceitar **lista (qualquer uma)**, e quem não tem `user.invite` vê **o motivo escrito** e o botão desabilitado — esconder o botão sumiria com a explicação junto. ⚠️ **Abrir a porta não afrouxa a ação: porta e ação são travas diferentes**, e o teste trava as duas (o que morde é repor `stock.*` como `'*'`).
+
+### ⭐ #5 O VISUAL
+
+**(a)** designar salva com **confirmação visível** — e o check verde nasce do que o **servidor devolveu**, não do clique: dizer "designado" a partir do próprio clique afirmaria uma gravação que pode não ter acontecido (*a flag diz "parece", o vínculo diz "é"*).
+**(b)** no tablet, o **nome inteiro do produto virou protagonista** (26px) e a etapa virou rótulo. Antes o grande era o nome da **etapa** (`"porcao"`) e o produto inteiro ficava em cinza pequeno: **de longe, o tablet dizia "porcao" e não dizia porção DE QUÊ.**
+
+**8.823 verdes · TS 0 · deploys `ubpQf0Apc5abe1J5R9vzU` e `vOby8GctHuU2SaZbdFHLx`, os dois 4/4.**
+
 ## ⭐⭐⭐ O CARDÁPIO POR SEÇÕES (08/09/2026) — a régua sugere, o dono confirma em UM gesto
 
 **O dono:** *"A CLASSIFICAÇÃO INICIAL não pode ser 156 cliques meus (…) heurística sugere, eu bato o martelo — **mas num gesto, não em 156**."*
