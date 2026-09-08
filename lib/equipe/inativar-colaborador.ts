@@ -16,6 +16,7 @@
 
 import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
+import { somenteEmAndamento, somentePendentes } from '@/lib/stock/producao/em-andamento'
 
 export class ColaboradorEmUsoError extends Error {}
 
@@ -53,12 +54,32 @@ export interface TrabalhoPendurado {
 export async function trabalhoPendurado(
   companyId: string, colaboradorId: string, db: PrismaClient = defaultPrisma,
 ): Promise<TrabalhoPendurado> {
-  const [etapasEmAndamento, designadasAbertas, feitas, etapasFeitas] = await Promise.all([
-    db.stockOrdemEtapa.count({ where: { companyId, executorId: colaboradorId, iniciadoEm: { not: null }, finalizadoEm: null } }),
-    db.stockOrdemEtapa.count({ where: { companyId, colaboradorId, finalizadoEm: null } }),
+  // ⛔⛔ AS DUAS PRIMEIRAS CONTAS LEEM A DERIVAÇÃO ÚNICA, NÃO A COLUNA (08/09/2026).
+  //
+  // ⚠️ **Era a mesma classe que trancou a Carlise no tablet**, com um estrago diferente: pela
+  // régua crua, a etapa que a ordem levou junto (`finalizadoEm` NULL de propósito) contava
+  // como "em andamento" e **a pessoa não podia mais ser tirada da equipe** — um impedimento
+  // sem gesto que o resolvesse, porque não há nada a resolver.
+  const [candidatasEmAndamento, candidatasDesignadas, feitas, etapasFeitas] = await Promise.all([
+    db.stockOrdemEtapa.findMany({
+      where: { companyId, executorId: colaboradorId, iniciadoEm: { not: null }, finalizadoEm: null },
+      select: { id: true, ordemId: true, iniciadoEm: true, finalizadoEm: true },
+    }),
+    db.stockOrdemEtapa.findMany({
+      where: { companyId, colaboradorId, finalizadoEm: null },
+      select: { id: true, ordemId: true, iniciadoEm: true, finalizadoEm: true },
+    }),
     db.stockProducaoConclusao.findMany({ where: { companyId, colaboradorId }, select: { qtdGerada: true } }),
     db.stockOrdemEtapa.count({ where: { companyId, executorId: colaboradorId, finalizadoEm: { not: null } } }),
   ])
+  const [emAndamento, designadas] = await Promise.all([
+    somenteEmAndamento(companyId, candidatasEmAndamento, db),
+    // ⚠️ designada "aberta" é a que ainda PEDE trabalho — na fila ou em andamento. A que o
+    // gerente finalizou, ou que a ordem levou junto, está resolvida e não impede nada.
+    somentePendentes(companyId, candidatasDesignadas, db),
+  ])
+  const etapasEmAndamento = emAndamento.length
+  const designadasAbertas = designadas.length
   return {
     etapasEmAndamento, designadasAbertas, etapasFeitas,
     conclusoes: feitas.length,

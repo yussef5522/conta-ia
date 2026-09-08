@@ -21,6 +21,7 @@
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { janelaDoDiaSP } from '@/lib/datas/dia-sao-paulo'
+import { somenteEmAndamento } from './em-andamento'
 import {
   porTarefaDaEquipe, unidadesPorSemana, pctDoEsperado,
   type ExecucaoDeTarefa, type LinhaDaTarefa,
@@ -137,12 +138,20 @@ export async function relatorioPorPessoa(
     },
     orderBy: { finalizadoEm: 'asc' },
   })
-  const abertasIgnoradas = await db.stockOrdemEtapa.count({
+  // ⛔ "ABERTA E IGNORADA" É QUEM AINDA ESTÁ CORRENDO — pela derivação única (08/09/2026).
+  //
+  // ⚠️ Pela régua crua, a finalizada pelo gerente entrava aqui **e** logo acima no corpo do
+  // relatório (ela tem carimbo próprio): a mesma etapa contada como presente e como ignorada.
+  // A encerrada pela ordem também inflava o número — e este número existe justamente pra dizer
+  // ao dono **quanto trabalho ficou fora da conta**. Inflado, ele cobra o que não existe.
+  const candidatasAbertas = await db.stockOrdemEtapa.findMany({
     where: {
       companyId: input.companyId, iniciadoEm: { gte: janela.de, lte: janela.ate }, finalizadoEm: null,
       ...(foraDoRelatorio.length ? { ordemId: { notIn: foraDoRelatorio } } : {}),
     },
+    select: { id: true, ordemId: true, iniciadoEm: true, finalizadoEm: true },
   })
+  const abertasIgnoradas = (await somenteEmAndamento(input.companyId, candidatasAbertas, db)).length
 
   const vazio: RelatorioPorPessoa = {
     de: input.de, ate: input.ate, pessoas: [], porTarefa: [], porTarefaEquipe: [],

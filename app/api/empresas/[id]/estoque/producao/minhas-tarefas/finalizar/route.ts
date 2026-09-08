@@ -12,6 +12,7 @@ import { guardStock } from '@/lib/stock/require-stock'
 import { quemEstaComOPin } from '@/lib/stock/producao/pin'
 import { finalizarTarefa, minhasTarefasDeHoje, TarefaError } from '@/lib/stock/producao/minhas-tarefas'
 import { concluirDoTablet } from '@/lib/stock/producao/concluir-do-tablet'
+import { somentePendentes } from '@/lib/stock/producao/em-andamento'
 import { OrdemError } from '@/lib/stock/producao/ordens'
 
 interface Params { params: Promise<{ id: string }> }
@@ -43,9 +44,19 @@ export async function POST(request: NextRequest, { params }: Params) {
     // ⭐ o número só chega quando a tela sabe que é a última etapa — e mesmo assim o
     // servidor confere que não sobrou etapa aberta antes de concluir.
     if (parsed.data.qtdGerada && etapa) {
-      const aberta = await prisma.stockOrdemEtapa.count({ where: { companyId, ordemId: etapa.ordemId, finalizadoEm: null } })
-      if (aberta > 0) {
-        return NextResponse.json({ erro: `Ainda faltam ${aberta} etapa(s) nesta ordem — não dá pra fechar o lote agora.` }, { status: 409 })
+      // ⛔⛔ "SOBROU ETAPA?" PELA DERIVAÇÃO ÚNICA, NÃO PELA COLUNA (08/09/2026).
+      //
+      // ⚠️ Mesma classe do bug que trancou a Carlise, com outro efeito: a etapa que o gerente
+      // finalizou fica com `finalizadoEm` NULL de propósito, então a régua crua a contava como
+      // "faltando" e **a cozinha nunca conseguiria fechar o lote pelo tablet** — numa ordem em
+      // que o gerente já resolveu tudo que estava pendente.
+      const candidatas = await prisma.stockOrdemEtapa.findMany({
+        where: { companyId, ordemId: etapa.ordemId, finalizadoEm: null },
+        select: { id: true, ordemId: true, iniciadoEm: true, finalizadoEm: true },
+      })
+      const faltando = await somentePendentes(companyId, candidatas, prisma)
+      if (faltando.length > 0) {
+        return NextResponse.json({ erro: `Ainda faltam ${faltando.length} etapa(s) nesta ordem — não dá pra fechar o lote agora.` }, { status: 409 })
       }
       const r = await concluirDoTablet({
         companyId, ordemId: etapa.ordemId, qtdGerada: parsed.data.qtdGerada,

@@ -18,6 +18,7 @@ import { diaEmSaoPaulo, janelaDoDiaSP } from '@/lib/datas/dia-sao-paulo'
 import { minutosDaEtapa, HORAS_ATE_ALARME, type EstadoDaEtapa } from './etapas'
 import { resolverEstadoDasEtapas, marcarPedidoAtendido } from './gestos-do-gerente'
 import { participantesDaEtapa, registrarInicio, registrarFim, desfazerInicio } from './participantes'
+import { etapasEmAndamentoDoColaborador, somenteEmAndamento } from './em-andamento'
 import { validarEntrada, MAX_PARTICIPANTES } from './dupla-na-etapa'
 
 type Db = PrismaClient | Prisma.TransactionClient
@@ -219,10 +220,18 @@ export async function iniciarTarefa(
         : `“${anterior.nome}” precisa ser feita antes. Essa etapa começa depois que ela terminar.`,
     )
   }
-  const jaCorrendo = await db.stockOrdemEtapa.findFirst({
-    where: { companyId: input.companyId, executorId: input.colaboradorId, iniciadoEm: { not: null }, finalizadoEm: null },
-    select: { nome: true },
-  })
+  // ⛔⛔ "UMA POR VEZ" LÊ A DERIVAÇÃO ÚNICA, NUNCA A COLUNA CRUA (08/09/2026).
+  //
+  // **CASO REAL:** esta trava era um `finalizadoEm: null` cru e **trancou a Carlise fora do
+  // tablet** por causa de uma etapa de 06/09 cuja ordem já fora concluída pela Produção
+  // (`ENCERRADA_SEM_FINALIZAR`). Ela não tinha nada em aberto e não tinha saída nenhuma: o
+  // gesto que resolveria a etapa é do gerente, e ele já o tinha feito.
+  //
+  // ⚠️ A coluna fica NULL **de propósito** nos dois gestos que fecham etapa sem tempo medido
+  // — é o que os mantém fora das médias. Lida crua, ela responde a pergunta errada.
+  // ⚠️ E continua bloqueando inclusive a PRÓPRIA etapa: um segundo toque no INICIAR
+  // reescreveria o `iniciadoEm` dela e apagaria o tempo já corrido.
+  const [jaCorrendo] = await etapasEmAndamentoDoColaborador(input.companyId, input.colaboradorId, db)
   if (jaCorrendo) throw new TarefaError(`Você está com “${jaCorrendo.nome}” em andamento. Finalize antes de começar outra.`)
 
   // ⭐ o relógio DELE (a camada nova) …
@@ -349,22 +358,21 @@ export async function tarefasAbertasDemais(
   //
   // ⚠️ A etapa CONTINUA aberta no banco e à vista na tela da ordem — o rastro é honesto
   // ("ninguém apertou finalizar"). O que sai é a COBRANÇA, porque não há o que cobrar.
-  const encerradas = await db.stockProductionOrder.findMany({
-    where: { companyId, estado: { in: ['CANCELADA', 'CONCLUIDA'] } }, select: { id: true },
-  })
   // ⛔⛔ E A FINALIZADA PELO GERENTE TAMBÉM NÃO COBRA (07/09) — o `finalizadoEm` dela é NULL
   // de propósito, então sem esta linha ela cairia direto no alarme e ficaria gritando pra
   // sempre sobre uma tarefa que o gerente JÁ resolveu. Alarme falso repetido mata o alarme.
   // ⚠️ Achado por um teste que esperava o alarme calar depois do gesto e viu ele morder.
-  const peloGerente = await db.stockEtapaFinalizadaGerente.findMany({ where: { companyId }, select: { etapaId: true } })
-  const rows = await db.stockOrdemEtapa.findMany({
-    where: {
-      companyId, finalizadoEm: null, iniciadoEm: { not: null, lte: limite },
-      ...(encerradas.length ? { ordemId: { notIn: encerradas.map((o) => o.id) } } : {}),
-      ...(peloGerente.length ? { id: { notIn: peloGerente.map((g) => g.etapaId) } } : {}),
-    },
+  //
+  // ⭐⭐ AS DUAS EXCEÇÕES ACIMA ERAM UMA **SEGUNDA DERIVAÇÃO** (08/09): este bloco remontava
+  // à mão, com dois `notIn`, exatamente os degraus 1 e 3 de `derivarEstadoDaEtapa`. Concordava
+  // com ela por coincidência, e no dia em que nascesse um sexto jeito de fechar etapa sem
+  // carimbo o alarme voltaria a gritar sozinho. Agora pergunta pra quem sabe. **É a mesma
+  // correção que destravou o tablet da Carlise, aplicada ao leitor vizinho.**
+  const candidatas = await db.stockOrdemEtapa.findMany({
+    where: { companyId, finalizadoEm: null, iniciadoEm: { not: null, lte: limite } },
     orderBy: { iniciadoEm: 'asc' },
   })
+  const rows = await somenteEmAndamento(companyId, candidatas, db)
   if (!rows.length) return []
   const ids = [...new Set(rows.map((r) => r.executorId).filter((x): x is string => !!x))]
   const colabs = ids.length ? await db.stockColaborador.findMany({ where: { companyId, id: { in: ids } }, select: { id: true, nome: true } }) : []
