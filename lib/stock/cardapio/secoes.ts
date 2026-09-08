@@ -43,15 +43,21 @@ export const SECAO_PADRAO = 'OUTROS'
  * `PORCAO DE FRANGO FRITO` bate em `FRANGO FRITO` **e** em `PORCAO`. Aí a primeira decide —
  * e ela é Frango Frito de propósito: o específico ganha do genérico. É esse caso que o
  * teste trava agora.
+ *
+ * ⚠️ E MEDIR EM PROD MOVEU DUAS LINHAS DAQUI (08/09), o que é o ponto de a régua ser config:
+ *   · `BURGERS` subiu acima de `FRANGO_FRITO` — o real `BURGER FRANGO FRITO` é um **burger**;
+ *   · `PIZZAS` (plural) entrou — `PROMO 2 PIZZAS GRANDES` (**150 un**, dos maiores do
+ *     cardápio) caía em Outros porque o "2" no meio quebra a frase `PROMO PIZZAS` e a borda
+ *     de palavra não deixa `PIZZA` casar `PIZZAS`.
  */
 export const REGRAS_DE_PALAVRA: readonly { termos: readonly string[]; secao: string }[] = [
   // ⛔ os mais específicos primeiro — ver o aviso acima
+  { termos: ['BURGER', 'BURGUER', 'HAMBURGUER', 'HAMBURGER', 'SMASH'], secao: 'BURGERS' },
   { termos: ['FRANGO FRITO', 'FRANGO A PASSARINHO', 'PASSARINHO'], secao: 'FRANGO_FRITO' },
   { termos: ['A LA MINUTA', 'MINUTA', 'PRATO', 'BIFE A CAVALO'], secao: 'PRATOS' },
   { termos: ['HOT DOG', 'CACHORRO QUENTE', 'CACHORRO', 'TORRADA', 'BAURU', 'MISTO'], secao: 'LANCHES' },
   { termos: ['XIS'], secao: 'XIS' },
-  { termos: ['BURGER', 'BURGUER', 'HAMBURGUER', 'HAMBURGER', 'SMASH'], secao: 'BURGERS' },
-  { termos: ['PIZZA', 'PROMO PIZZAS', 'CALZONE'], secao: 'PIZZAS' },
+  { termos: ['PIZZA', 'PIZZAS', 'CALZONE'], secao: 'PIZZAS' },
   { termos: ['FRITAS', 'BATATA', 'PORCAO', 'PORCOES', 'POLENTA', 'ONION', 'NUGGETS'], secao: 'PORCOES' },
   {
     termos: [

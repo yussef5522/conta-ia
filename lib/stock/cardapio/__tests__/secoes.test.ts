@@ -34,6 +34,9 @@ describe('⭐ a régua de palavras, ditada pelo dono', () => {
     ['FRANGO A PASSARINHO', 'FRANGO_FRITO'],
     ['A LA MINUTA DE FILE', 'PRATOS'],
     ['PUDIM DE LEITE', 'DOCES'],
+    // ⭐ os dois que a MEDIÇÃO EM PROD corrigiu (08/09)
+    ['PROMO 2 PIZZAS GRANDES', 'PIZZAS'],   // 150 un — o "2" quebra a frase "PROMO PIZZAS"
+    ['BURGER FRANGO FRITO', 'BURGERS'],     // é um burger, não um frango frito
   ]
   it.each(casos)('"%s" → %s', (nome, secao) => {
     expect(sugerirSecao(nome).secao).toBe(secao)
