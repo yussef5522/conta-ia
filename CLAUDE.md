@@ -242,6 +242,45 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⛔⛔⛔ A "HISTÓRICO DE COMPRAS" MOSTRAVA O LEDGER INTEIRO — E LINKAVA TUDO ERRADO (08/09/2026)
+
+**O dono:** *"Linhas NEGATIVAS (consumo!) aparecem como 'recibo' de compra, entradas grandes sem dizer se foi contagem/ajuste/estorno, e NADA diz quem fez. Quando eu precisar rastrear um erro, quero saber exatamente aonde foi cada kg."*
+
+**MEDIDO NO BACON (`cmtda5dwo006nek1cy78rlzvn`), em prod, antes de tocar em código:**
+
+| | |
+|---|---|
+| linhas na tela de "compras" | **19** |
+| **não eram compra** | **16** (AJUSTE_CONTAGEM 4 · PRODUCAO_CONSUMO 6 · SEPARACAO_SAIDA 6) |
+| **negativas** (consumo) sob a coluna *"Preço un."* | **14** |
+| sem autor no banco | **0** — o rastro sempre existiu em `criadoPorId`, **ninguém o mostrava** |
+
+**⛔ A CAUSA ERA UMA LINHA:** `buildFichaItem` fazia `findMany` **sem filtro de tipo** e jogava o resultado num campo chamado `compras`, com interface `CompraLinha`. O comentário do arquivo dizia, desde a Fase 1: *"preparada pra crescer (consumo/contagem/produção nas próximas fases leem os mesmos movimentos)"*. **As fases chegaram, os movimentos entraram, e o rótulo ficou.**
+
+**⛔⛔ E O LINK ESTAVA QUEBRADO EM 84% DAS LINHAS — ninguém tinha reportado.** O `receiptId` é **polimórfico**: aponta pra conferência, ordem de produção, sessão de contagem, import de venda ou entrada manual, e **quem desambigua é o `tipo`** (decisão de 21/08 — o isolamento proíbe ALTER em `stock_movement`, então não dá pra ter uma coluna por destino). A tela ignorava isso e mandava **tudo** pra `/estoque/recibos/{receiptId}`.
+
+**⭐⭐ O PAR ±222 QUE O DONO ESTAVA OLHANDO — a resposta, com os ids:**
+```
+[cmtmfja4v00c47928yywxsq18] 04/09 04:04 · AJUSTE_CONTAGEM · +222,19 KG · R$ 6.661,26
+[cmtsxzxet00rylxp5xheux6a1] 08/09 17:27 · AJUSTE_CONTAGEM · −222,01 KG · R$ −6.631,44
+   ⭐ os DOIS no MESMO receiptId cmtmf0htx00007928189dzw11 (contagem ROTINA, por marcyelle)
+```
+**Não é compra nem consumo: é a MESMA linha de contagem, contada em 04/09 e RECONTADA em 08/09.** O `@@unique(contagemId,itemId)` faz recontar virar UPDATE da linha, e cada confirmação grava o ajuste compensatório — o desenho de 23/08 (*"ajuste na hora, por linha"*) funcionando. **Líquido +0,18 KG.** ⚠️ E a sessão **seguia ABERTA desde 04/09** — 4 dias; a tela de Contagens mostra isso, mas vale o olho do dono.
+
+**⛔ A MESMA MENTIRA VIVIA NO EXTRATO** (`lib/stock/movimentos.ts`): lá a `referencia` colapsava **tudo** que não tinha nota em `label: 'conferência'` — produção, contagem e baixa de venda apareciam como "conferência". **Duas telas, a mesma pergunta, duas respostas erradas.** Por isso o fix é um **dono único** (`lib/stock/movimento-explicado.ts`) que as duas consomem, em vez de consertar só a que o dono viu.
+
+**O QUE CADA LINHA GANHOU:** chip com o **tipo real** (cor por família: compra verde · contagem violeta · produção azul · venda âmbar · saída coral) · **QUEM** — e na contagem é **quem CONTOU** (`contadoPorNome`), não quem abriu a sessão, porque numa sessão longa não é a mesma pessoa · **DE ONDE** com link pra fonte certa · **filtro por tipo** (só os que existem no item) + **aba "só compras"**, que devolve o uso original limpo.
+
+**⛔ E SAÍDA NÃO DIZ MAIS "PREÇO UN."** — numa baixa o `custoUnitario` é o **custo médio do estoque no instante**; exibi-lo como preço faria o dono comparar fornecedor contra a média do próprio estoque. A célula agora marca `médio`.
+
+**⭐ A ROTA DE DESTINO MORA NA LIB, não em cada tela** — se cada uma montasse a própria URL, a próxima divergiria no primeiro tipo novo, que é exatamente como o `/recibos/` acabou valendo pra contagem. Duas âncoras pequenas foram junto pra o link **chegar de fato na fonte**: `#c-<id>` na lista de contagens e `?aba=processados#dia-<data>` nas vendas (a aba lida no 1º render, pra não piscar).
+
+**⛔ TIPO DESCONHECIDO APARECE COM O NOME CRU** — nunca vira "recibo" nem some. Foi o fallback silencioso que produziu o defeito inteiro: *melhor uma linha feia e honesta que uma linha bonita e errada.*
+
+**REGRA 11 — 4 defeitos repostos, 4 vermelhos** (o fallback "recibo", o link cego pro recibo na produção e na contagem, e o rótulo do extrato). **12 testes** com as linhas reais do BACON. **TS 0 · 8.880 verdes · deploy `4qQzkdHeE8-7D8SfGraGv` 4/4.**
+
+**PROVADO EM PROD pelo MESMO caminho da tela:** `19 linhas · rótulo "recibo": 0 · sem QUEM: 0 · sem link: 0 · saídas dizendo "Preço un.": 0`, com *"NF nº 968530 · CASPER DISTRIB."* → recibo, *"ordem de 06/09 · porcao bacon 80 grama"* → a ordem, e o par ±222 → a sessão de contagem.
+
 ## ⛔⛔⛔ O TABLET TRANCOU TRÊS PESSOAS FORA DO PRÓPRIO TRABALHO (08/09/2026)
 
 **O dono:** *"Ela esqueceu de finalizar e foi embora; eu finalizei pelo gerente — tudo fechado. Mas quando ela digita o PIN no tablet aparece 'Você está com "produção" em andamento. Finalize antes de começar outra.' — e ela não tem NADA em aberto."*
