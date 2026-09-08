@@ -242,6 +242,35 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⭐⭐ O HOJE VIROU POSTO DE COMANDO + A TELA DA DUPLA (08/09/2026)
+
+### ⛔⛔ REGRA 2 FALHOU NO SPRINT ANTERIOR — e o dono achou navegando
+
+*"O modelo aceita 2 participantes, mas a tela da ordem só tem UM seletor de pessoa por etapa — não existe onde marcar a segunda. **REGRA 2 falhou aqui: o caminho do usuário não foi navegado.**"*
+
+⚠️ **O motor estava certo; a LEITURA é que não chegava na tela** — `etapasDaOrdem` não devolvia os participantes. Subir o modelo sem andar o caminho do gerente é a definição do que a REGRA 2 existe pra impedir.
+
+**O seletor único virou CHIPS**, e duas escolhas seguram a regra:
+- **o "+" some quando a vaga acaba** — o teto de 2 aparece como **ausência de opção**, não como erro depois do clique;
+- ⛔ **quem já iniciou não tem X**: ganha o selo **"no relógio"**. Tirá-lo pela designação **apagaria trabalho medido** — pra esse caso existem os dois gestos do gerente, que **registram** o que houve em vez de reescrever.
+
+**⚠️ E um bug meu junto:** o redesignar do HOJE mandava **o dono do card**, não os participantes da etapa — remanejar teria **apagado a segunda pessoa sem ninguém pedir**. Passou a receber os `designados` do servidor.
+
+### ⭐⭐ O POSTO DE COMANDO — as 6 decisões, aprovadas no mock antes de codar
+
+1. **O CRONÔMETRO MANDA** — 34px no AGORA, 16px na linha de cada pessoa. É *a pergunta da tela*, e de 2 metros é a única coisa que precisa ser legível. ⛔ **O formato muda com a grandeza**: `mm:ss` até 1h (o segundo andando é o que diz "está vivo"), `h:mm` depois — aí o segundo é ruído.
+2. **O ALERTA PINTA O CARD INTEIRO** de coral. O único alarme da tela tem causa real; **ícone no canto é fácil de não ver justo no caso que existe pra ser visto**.
+3. **BOTÕES DE VERDADE**, com *"pedir pra finalizar"* como **primário** — o caminho preferido, porque aí ela aperta com o PIN e **o tempo é dela, medido**.
+4. **"QUANTOS SAÍRAM?" nasce no card** quando é a última etapa, com o campo **vazio**.
+5. **REDESIGNAR SÓ NA FILA**, com os dois campos da dupla.
+6. **QUEM NÃO TEM NADA APARECE**, apagado, com o convite — **sumir com quem está livre esconderia justamente a decisão que o gerente precisa tomar**.
+
+Mais: cards em **grade** (o molde do "Por Pessoa"), estados em **chip** (o caractere solto sumia no meio do texto quando a lista crescia), timeline com **ícone em disco** e hora em destaque, e o vazio **"cozinha em silêncio"** — que é o estado do fim do dia e do começo da manhã, **aparece toda hora** e não podia parecer "não carregou".
+
+**⚠️⚠️ E UM ERRO MEU, PEGO NA HORA:** o primeiro teste do cronômetro **copiava o corpo da função** em vez de importá-la — a segunda derivação que este projeto inteiro combate, escrita por mim **num teste cujo próprio comentário dizia pra não fazer isso**. A conta foi pra lib (`textoDoCronometro`), e tela e teste importam a mesma. É a mesma lição do tablet que passou dois dias mentindo zero: **regra que mora na tela é regra que ninguém prova**.
+
+**8.856 verdes · TS 0 · deploys `1GPNkuST7XCvpwFP4mOgz` e `eJu_JfmUOKiH99A6b7zNK`, os dois 4/4.** ⚠️ REGRA 2 é do dono: ele navega como gerente e como tablet, com a cozinha rodando.
+
 ## ⭐⭐⭐ A DUPLA NA MESMA ETAPA + AS AÇÕES DO GERENTE NO HOJE (08/09/2026)
 
 ### ⭐⭐ A DUPLA — dois relógios, nenhum minuto rateado
