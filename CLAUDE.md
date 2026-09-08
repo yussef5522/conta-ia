@@ -242,6 +242,38 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⭐⭐⭐ A DUPLA NA MESMA ETAPA + AS AÇÕES DO GERENTE NO HOJE (08/09/2026)
+
+### ⭐⭐ A DUPLA — dois relógios, nenhum minuto rateado
+
+**A v1 travou em 1 responsável por etapa DE PROPÓSITO**, pra não ratear tempo no chute. A evolução admite duas pessoas e mantém a honestidade inteira: **cada uma inicia e finaliza com o próprio PIN**, e o `min/un` de cada uma sai do **próprio relógio**.
+
+**AS DUAS DECISÕES DO DONO:**
+1. **O SEGUNDO É OPCIONAL — "quem pegou, pegou".** A etapa fica FEITA quando todos que **INICIARAM** finalizarem. ⛔ O designado que nunca iniciou **não trava nada**: *"travar a etapa esperando quem não veio pararia a cozinha por um plano furado"*.
+2. **A ETAPA 2 LIBERA COM A 1 FEITA** — *"a dependência é física: o moldar precisa do gessado PRONTO"*. ⭐ E isso saiu **sem tocar na régua de sequência**: ela continua olhando `etapa.finalizadoEm`, que passa a ser carimbado exatamente quando o último participante finaliza. **Uma regra só, igual à de hoje.**
+
+**⛔⛔ AS UNIDADES DIVIDEM SÓ ENTRE QUEM MEDIU** — e o raciocínio ao pé da letra: `min/un = minutos ÷ unidades`, então **dar unidades a quem não tem minutos aumenta o denominador de alguém sem aumentar o numerador de ninguém**. É o defeito de 06/09 ("0 min/un" lido como "a mais rápida de todas") voltando por outra porta. ⚠️ Se **ninguém** mediu, dividem igual mas com minutos `null`: **o volume conta, o ritmo é a apurar**.
+
+**⚠️⚠️ E O GUARD DA CASA ME PEGOU AFROUXANDO O QUE NINGUÉM PEDIU.** Eu tinha escrito *"só recusa quando já há DOIS designados"* — o que deixaria um terceiro entrar em tarefa designada a **uma** pessoa. Não é o desenho: *"a etapa aceita até 2 designados, o GERENTE escolhe os dois"*. Corrigido: **se há PLANO, ele manda; sem plano, vale o "quem pegou, pegou" até o teto**.
+⚠️ E **plano é o que tem `designadoEm`** — o `colaboradorId` também é preenchido quando alguém **pega uma tarefa solta**, e tratar isso como plano **trancaria a etapa na primeira pessoa que tocasse**, matando a dupla em toda tarefa não designada (a maioria).
+
+**⛔ O teto de 2 é do BANCO** (no iniciar e no designar), e **redesignar NUNCA apaga o relógio de quem já trabalhou** — apagar seria perder tempo medido de verdade.
+
+### ⭐⭐ AS AÇÕES DO GERENTE NO HOJE AO VIVO
+
+*"Hoje é o primeiro dia da equipe no relógio — vai ter esquecimento, gente embora sem finalizar, e EU resolvendo."*
+
+**⛔ FONTE ÚNICA, SEM SEGUNDA IMPLEMENTAÇÃO:** os botões chamam **a mesma rota** da tela da ordem, que chama **as mesmas funções**; e quando é a última etapa, o *"quantos saíram?"* conclui pelo **mesmo `concluirDoTablet`** — consumo, custo e sobra pelo motor único.
+
+- **"pedir pra finalizar" vem PRIMEIRO**: é o caminho preferido, porque aí **ela aperta com o PIN e o tempo é dela, medido de verdade**.
+- o campo *"quantos saíram?"* nasce **vazio** — número sugerido vira número confirmado sem ninguém contar.
+- **redesignar só na FILA**: etapa iniciada tem relógio correndo no nome de alguém, e **trocar o nome por baixo do tempo medido escreveria o trabalho de uma pessoa na conta de outra**.
+- **`ehUltima` sai do SERVIDOR** junto do resto da tarefa: deixar a tela deduzir "é a última" seria uma segunda derivação da estrutura da ordem, e ela erraria no dia em que a receita ganhasse uma etapa.
+
+⚠️ `concluirDoTablet` passou a aceitar `colaboradorId: null` — **pelo HOJE ninguém assinou com PIN**, e inventar um assinante seria pior que a ausência.
+
+**PROVADO:** 26 testes novos (9 de integração com os dois relógios no banco) · **8.850 verdes · TS 0** · deploys `mnWSF1z-pdJ_WMVLGqzfU` e `Hw6_4hYK0iZtHnHEaUhVr`, os dois 4/4 · `pg_dump` antes da migration.
+
 ## ⛔⛔⛔ PRODUÇÃO: O CRONÔMETRO PARADO, O DESIGNAR QUE SUMIA E A PORTA DA EQUIPE (08/09/2026)
 
 **Quatro achados, e três deles eram MENORES do que pareciam — porque a medição veio antes.**
