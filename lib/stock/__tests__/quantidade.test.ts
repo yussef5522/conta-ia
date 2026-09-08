@@ -1,132 +1,133 @@
-// REGRA 1 — O CAMPO DE QUANTIDADE NÃO ACEITAVA DECIMAL (28/08, o dono pegou no Acém).
+// ⛔⛔⛔ QUANTIDADE NÃO ACEITAVA DECIMAL NA CONFERÊNCIA (08/09/2026) — caso real do dono.
 //
-// "escolhi Acém (33,95/KG) e o campo só aceita 1, 5, 10 — não consigo digitar 0,050 (50
-// gramas) nem 0,10. Receita de lanche É feita de fração de KG; sem decimal o modal é inútil."
+// *"Produto que chega por KG em fração (0,600 · 0,350 · 0,100) e o campo de editar
+// quantidade não deixa ir abaixo de 1 — não aceito 0,600."*
 //
-// ⚠️ A CAUSA: o input era `value={numero}` + `onChange={parse}`. No instante em que a
-// vírgula é digitada, "0," vira o número 0 e a vírgula SOME da tela — estado intermediário
-// não é representável como número. Por isso só inteiro passava.
+// ⚠️⚠️ E A LIÇÃO É "N CAMINHOS, 1 ESQUECIDO": este módulo existe desde **28/08** e resolve
+// exatamente esta dor — nasceu do mesmo bug no editor de ficha. **A conferência nunca o
+// usou.** Ela tinha `<input type="number">` cru, e `type="number"` sem `step` assume
+// `step="1"`: o navegador recusa `0,600` sozinho, sem erro, sem log, sem uma linha nossa
+// pra procurar.
 //
-// A cura: o que se DIGITA é TEXTO; o número é derivado. Estes testes travam os estados
-// intermediários, que são exatamente o que o `value` numérico destruía.
+// ⭐ O armazenamento sempre esteve certo, medido ANTES de mexer: `qtdRecebida` é `Float`, a
+// rota valida com `z.coerce.number().positive()` (sem `.int()`), e **241 dos 660 movimentos
+// do ledger já eram fracionados**. Só a DIGITAÇÃO era impossível.
 
 import { describe, it, expect } from 'vitest'
-import { sanitizarQtd, valorQtd, textoQtd, descreverQtd, validarQtd, aceitaFracao } from '../quantidade'
+import {
+  aceitaFracao, sanitizarQtd, valorQtd, textoQtd, validarQtd, descreverQtd, stepDaUnidade,
+} from '../quantidade'
 
-describe('⭐⭐ os números REAIS do dono', () => {
-  it('Acém: 0,050 KG × 33,95 = 1,70', () => {
-    const v = valorQtd(sanitizarQtd('0,050', 'KG'))!
-    expect(v).toBe(0.05)
-    expect(Math.round(v * 33.95 * 100) / 100).toBe(1.7)
+/** o caminho real da tela: digitar → sanitizar → virar número */
+const digitar = (texto: string, unidade: string) => valorQtd(sanitizarQtd(texto, unidade))
+
+describe('⭐ a régua vem da UNIDADE, não de um toggle', () => {
+  it('peso e volume aceitam fração', () => {
+    for (const u of ['KG', 'kg', 'G', 'L', 'LT', 'ML']) expect(aceitaFracao(u)).toBe(true)
   })
 
-  it('Queijo: 0,080 KG × 31,90 = 2,55', () => {
-    const v = valorQtd(sanitizarQtd('0,080', 'KG'))!
-    expect(v).toBe(0.08)
-    expect(Math.round(v * 31.9 * 100) / 100).toBe(2.55)
+  it('⛔ contagem de peça é inteira — "meia caixa não existe"', () => {
+    for (const u of ['UN', 'UND', 'PC', 'PCT', 'CX', 'DZ', 'PAR']) expect(aceitaFracao(u)).toBe(false)
   })
 
-  it('0,10 também passa (o outro que ele tentou)', () => {
-    expect(valorQtd(sanitizarQtd('0,10', 'KG'))).toBe(0.1)
+  it('⚠️ unidade DESCONHECIDA aceita fração — e a escolha tem motivo', () => {
+    // travar o desconhecido no inteiro repetiria o bug de origem num item que nem existe
+    // ainda; fração indevida numa peça o dono vê na hora, campo bloqueado ele descobre
+    // com a nota na mão.
+    expect(aceitaFracao('BANDEJA')).toBe(true)
+  })
+
+  it('⛔⛔ o `step` que faltava: sem ele o HTML assume 1 e o navegador recusa 0,6', () => {
+    expect(stepDaUnidade('KG')).toBe('0.001')
+    expect(stepDaUnidade('UN')).toBe('1')
   })
 })
 
-describe('⭐ os ESTADOS INTERMEDIÁRIOS — é aqui que o campo antigo morria', () => {
-  it('digitando "0" → "," → "0" → "5" → "0", cada passo sobrevive', () => {
-    // ⚠️ com `value={numero}`, o passo "0," virava 0 e a vírgula sumia: impossível seguir.
+describe('⭐ o caso que motivou: 0,600 KG', () => {
+  it('vírgula brasileira, do jeito que o dono digita', () => {
+    expect(digitar('0,600', 'KG')).toBe(0.6)
+    expect(digitar('0,350', 'KG')).toBe(0.35)
+    expect(digitar('0,100', 'KG')).toBe(0.1)
+  })
+
+  it('ponto também, como ele pediu', () => {
+    expect(digitar('0.600', 'KG')).toBe(0.6)
+  })
+
+  it('⛔⛔ E O ESTADO INTERMEDIÁRIO SOBREVIVE — é o coração do arquivo', () => {
+    // digitando "0,600" tecla a tecla: se algum passo virasse número, a vírgula sumiria
+    // da tela e seria IMPOSSÍVEL escrever o resto.
     expect(sanitizarQtd('0', 'KG')).toBe('0')
     expect(sanitizarQtd('0,', 'KG')).toBe('0,')
-    expect(sanitizarQtd('0,0', 'KG')).toBe('0,0')
-    expect(sanitizarQtd('0,05', 'KG')).toBe('0,05')
-    expect(sanitizarQtd('0,050', 'KG')).toBe('0,050')
+    expect(sanitizarQtd('0,6', 'KG')).toBe('0,6')
+    expect(sanitizarQtd('0,60', 'KG')).toBe('0,60')
+    expect(sanitizarQtd('0,600', 'KG')).toBe('0,600')
   })
 
-  it('"0," ainda não é número — e vazio NUNCA vira zero', () => {
-    expect(valorQtd('0,')).toBe(0) // "0." → 0, coerente
-    expect(valorQtd('')).toBeNull()
-    expect(valorQtd(',')).toBeNull()
-    expect(valorQtd('abc')).toBeNull()
+  it('não passa de 3 casas: a balança dá GRAMA', () => {
+    expect(sanitizarQtd('0,6001', 'KG')).toBe('0,600')
   })
 
-  it('campo pode ficar vazio enquanto o dono apaga pra redigitar', () => {
-    expect(sanitizarQtd('', 'KG')).toBe('')
-  })
-})
-
-describe('vírgula E ponto — o dono digita como quiser', () => {
-  it('ponto vira vírgula na tela (padrão BR), mesmo valor', () => {
-    expect(sanitizarQtd('0.050', 'KG')).toBe('0,050')
-    expect(valorQtd('0.05')).toBe(0.05)
-    expect(valorQtd('0,05')).toBe(0.05)
-  })
-
-  it('só UM separador — o primeiro manda', () => {
-    expect(sanitizarQtd('0,0,5', 'KG')).toBe('0,05')
-    expect(sanitizarQtd('1.2.3', 'KG')).toBe('1,23')
-  })
-
-  it('letra e símbolo não entram', () => {
-    expect(sanitizarQtd('0,0a5kg', 'KG')).toBe('0,05')
-    expect(sanitizarQtd('-3', 'KG')).toBe('3')
-  })
-
-  it('até 3 casas (grama/ml é o menor que a cozinha usa)', () => {
-    expect(sanitizarQtd('0,12345', 'KG')).toBe('0,123')
-  })
-})
-
-describe('⭐ UN é INTEIRO — não existe 0,5 pão', () => {
-  it('a digitação corta no separador', () => {
-    expect(sanitizarQtd('1,5', 'UN')).toBe('1')
-    expect(sanitizarQtd('2.75', 'UN')).toBe('2')
-  })
-
-  it('e a validação recusa fração com instrução, não com "inválido"', () => {
-    const erro = validarQtd('1.5', 'UN', 'Pão')!
-    expect(erro).toContain('fração')
-    expect(erro).toContain('unidade menor') // diz o que FAZER (é a reunitização)
-    expect(validarQtd('2', 'UN', 'Pão')).toBeNull()
-  })
-
-  it('KG e LT fracionam; UN e o resto não', () => {
-    expect(aceitaFracao('KG')).toBe(true)
-    expect(aceitaFracao('LT')).toBe(true)
-    expect(aceitaFracao('UN')).toBe(false)
-    expect(aceitaFracao('CX')).toBe(false)
-  })
-})
-
-describe('⭐ a conversão amigável — pra não errar UM ZERO', () => {
-  it('0,050 KG = 50 g · 0,080 KG = 80 g', () => {
+  it('e a confirmação visual evita o erro de UM ZERO', () => {
+    // 0,05 e 0,005 são parecidos na tela e 10× diferentes no custo
+    expect(descreverQtd(0.6, 'KG')).toBe('600 g')
     expect(descreverQtd(0.05, 'KG')).toBe('50 g')
-    expect(descreverQtd(0.08, 'KG')).toBe('80 g')
-  })
-
-  it('⚠️ 0,005 KG = 5 g — o zero a mais fica ÓBVIO (10× no custo)', () => {
     expect(descreverQtd(0.005, 'KG')).toBe('5 g')
   })
+})
 
-  it('litro vira ml', () => {
-    expect(descreverQtd(0.25, 'LT')).toBe('250 ml')
+describe('⛔⛔ DUAS REGRAS DE PONTO CONVIVIAM — unificadas em 08/09', () => {
+  // Aqui o separador CORTAVA o resto (`6.313 UN` → `6`); o cartão de contagem tinha parse
+  // próprio tratando ponto como milhar (`6.313` → `6313`). Duas derivações da mesma
+  // pergunta. Venceu a da contagem: cortar em 6 **perdia 6.307 unidades em silêncio**.
+  it('⭐ unidade INTEIRA: o separador é MILHAR e some', () => {
+    expect(digitar('6.313', 'UN')).toBe(6313)
+    expect(digitar('1.234', 'CX')).toBe(1234)
+    expect(digitar('6,313', 'UN')).toBe(6313)
   })
 
-  it('não polui: ≥ 1 se lê sozinho, e UN não tem conversão', () => {
-    expect(descreverQtd(1.5, 'KG')).toBeNull()
-    expect(descreverQtd(2, 'UN')).toBeNull()
-    expect(descreverQtd(null, 'KG')).toBeNull()
-    expect(descreverQtd(0, 'KG')).toBeNull()
+  it('⛔ e fração em unidade inteira é impossível POR CONSTRUÇÃO, não por aviso', () => {
+    // o sanitizador nem deixa a vírgula existir ali — não há o que validar depois
+    expect(sanitizarQtd('0,5', 'UN')).toBe('05')
+    expect(validarQtd('0,5', 'UN', 'Pão')).toContain('não dá pra usar fração')
+  })
+
+  it('⭐ unidade FRACIONÁVEL: o primeiro separador é DECIMAL', () => {
+    expect(digitar('6.313', 'KG')).toBe(6.313)
   })
 })
 
-describe('ida e volta (carregar ficha existente → editar)', () => {
-  it('número do banco vira texto pt-BR e volta igual', () => {
-    expect(textoQtd(0.08)).toBe('0,08')
-    expect(valorQtd(textoQtd(0.08))).toBe(0.08)
-    expect(textoQtd(null)).toBe('')
+describe('⛔ o que continua sendo recusado', () => {
+  it('vazio e lixo viram null — NUNCA 0', () => {
+    // ⚠️ devolver 0 faria "não digitou" passar por "digitou zero"
+    expect(valorQtd('')).toBeNull()
+    expect(valorQtd('abc')).toBeNull()
+    expect(digitar('', 'KG')).toBeNull()
   })
 
-  it('validação pega quantidade zerada antes de salvar', () => {
-    expect(validarQtd('', 'KG', 'Acém')).toContain('maior que zero')
+  it('zero não passa na validação de salvar', () => {
     expect(validarQtd('0', 'KG', 'Acém')).toContain('maior que zero')
+  })
+
+  it('a mensagem da fração ENSINA a saída', () => {
+    expect(validarQtd('0,5', 'UN', 'Pão')).toContain('unidade menor')
+  })
+})
+
+describe('⭐ o caminho inteiro: sem arredondamento silencioso', () => {
+  it('0,350 KG × custo por KG dá o proporcional certo', () => {
+    const qtd = digitar('0,350', 'KG')!
+    // ⚠️ se algum lugar arredondasse pra INTEIRO, 0,350 viraria 0 (some o item) ou 1
+    // (paga 40,00 por 350 g) — os dois, erros de dezenas de reais.
+    expect(Math.round(qtd * 40 * 100) / 100).toBe(14)
+    expect(qtd).not.toBe(0)
+    expect(qtd).not.toBe(1)
+  })
+
+  it('⛔ o número volta IGUAL: digitar → salvar → mostrar → digitar de novo', () => {
+    for (const t of ['0,600', '0,350', '0,100', '12,5']) {
+      const v = digitar(t, 'KG')!
+      expect(digitar(textoQtd(v), 'KG')).toBe(v)   // ida e volta sem perder nada
+    }
   })
 })

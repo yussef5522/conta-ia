@@ -11,18 +11,52 @@
 // sobreviver — é isso que um `value` numérico não permite.
 //
 // REGRAS por unidade:
-//   KG/LT → até 3 casas (grama / mililitro é o menor que a cozinha usa)
-//   UN    → INTEIRO. Não existe 0,5 pão. Se um dia existir meio pão, o item vira uma
-//           unidade menor (é o mesmo princípio da reunitização pacote → unidade).
+//   PESO/VOLUME → até 3 casas (grama / mililitro é o menor que a cozinha usa)
+//   UN e afins  → INTEIRO. Não existe 0,5 pão. Se um dia existir meio pão, o item vira uma
+//                 unidade menor (é o mesmo princípio da reunitização pacote → unidade).
+//
+// ⛔⛔ 08/09/2026 — "N CAMINHOS, 1 ESQUECIDO", A CLASSE INTEIRA DE NOVO. Este arquivo nasceu
+// em 28/08 pro editor de ficha e resolvia exatamente esta dor. **A conferência do
+// recebimento nunca o usou**: ela tinha `<input type="number">` cru, e `type="number"` SEM
+// `step` assume `step="1"` — o navegador recusa `0,600` **sozinho**, sem erro, sem log, sem
+// uma linha nossa pra procurar. Caso real do dono: nota de KG em fração (0,600 · 0,350 ·
+// 0,100) que ele não conseguia conferir.
+//
+// ⭐ E O ARMAZENAMENTO SEMPRE ESTEVE CERTO — medido antes de mexer: `qtdRecebida` é `Float`,
+// a rota valida com `z.coerce.number().positive()` (sem `.int()`), e **241 dos 660
+// movimentos do ledger já são fracionados** (vieram do `qCom` da nota). Só a DIGITAÇÃO era
+// impossível.
 
 const MAX_CASAS = 3
 
 export type UnidadeQtd = 'KG' | 'LT' | 'UN' | string
 
-/** Unidade fracionável? KG e LT sim; UN e qualquer outra, não. */
+/**
+ * Unidade fracionável? **Peso e volume sim; contagem de peça, não.**
+ *
+ * ⚠️ A lista de INTEIRAS é a fechada, não a de fracionáveis — e a diferença importa: item
+ * novo com unidade que ninguém previu (BANDEJA, FARDO…) cai no lado que **aceita** fração.
+ * Travar o desconhecido no inteiro seria repetir o bug de origem num item que nem existe
+ * ainda; e fração indevida numa peça o dono vê na hora, enquanto o campo bloqueado ele
+ * descobre com a nota na mão.
+ *
+ * ⭐ 08/09: entraram G e ML (o dono pediu "KG, G, L, ML") e as peças que faltavam.
+ */
+const INTEIRAS = /^(UN|UND|PC|PCT|CX|DZ|PAR|FD|SC)$/i
+
 export function aceitaFracao(unidade: UnidadeQtd): boolean {
-  const u = (unidade ?? '').trim().toUpperCase()
-  return u === 'KG' || u === 'LT'
+  return !INTEIRAS.test((unidade ?? '').trim())
+}
+
+/**
+ * O `step` do `<input type="number">`, derivado da unidade.
+ *
+ * ⛔ Existe pra quem **não puder** virar campo de texto. Onde der, prefira
+ * `sanitizarQtd` + `valorQtd`: `type="number"` também perde os estados intermediários
+ * (`"0,"` vira `0`), que é o bug que este arquivo nasceu pra matar.
+ */
+export function stepDaUnidade(unidade: UnidadeQtd): string {
+  return aceitaFracao(unidade) ? String(1 / 10 ** MAX_CASAS) : '1'
 }
 
 /**
@@ -31,7 +65,15 @@ export function aceitaFracao(unidade: UnidadeQtd): boolean {
  */
 export function sanitizarQtd(texto: string, unidade: UnidadeQtd): string {
   const bruto = (texto ?? '').replace(/[^\d.,]/g, '')
-  if (!aceitaFracao(unidade)) return bruto.replace(/[.,].*$/, '') // UN: corta no separador
+  // ⛔⛔ UNIDADE INTEIRA: o separador só pode ser MILHAR, então ele some e os dígitos ficam.
+  //
+  // ⚠️ 08/09 — DUAS REGRAS CONVIVIAM E EU SÓ VI MEDINDO. Aqui o separador **cortava** o
+  // resto (`6.313 UN` → `6`), enquanto o cartão de contagem tinha parse próprio tratando
+  // ponto como milhar (`6.313` → `6313`), com o motivo escrito lá: *"absurdo pra digitar
+  // 6.313"*. Duas derivações da mesma pergunta — a lição do B1, agora na digitação.
+  // Vence a da contagem: em unidade inteira, `6.313` é seis mil e trezentos e treze, e
+  // cortar em `6` **perdia 6.307 unidades em silêncio**.
+  if (!aceitaFracao(unidade)) return bruto.replace(/[.,]/g, '')
 
   // um separador só — o primeiro que aparecer manda; e vira vírgula (padrão BR na tela)
   const i = bruto.search(/[.,]/)
@@ -64,7 +106,7 @@ export function descreverQtd(valor: number | null, unidade: UnidadeQtd): string 
   if (valor == null || valor <= 0 || valor >= 1) return null
   const u = (unidade ?? '').trim().toUpperCase()
   if (u === 'KG') return `${arredonda(valor * 1000)} g`
-  if (u === 'LT') return `${arredonda(valor * 1000)} ml`
+  if (u === 'LT' || u === 'L') return `${arredonda(valor * 1000)} ml`
   return null
 }
 

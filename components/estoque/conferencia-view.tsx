@@ -11,6 +11,7 @@ import { sugerirFator, placeholderFator } from '@/lib/stock/unidade-fator'
 import { interpretarAjusteQtd } from '@/lib/stock/ajuste-quantidade'
 import { ItensManuaisEditor } from './itens-manuais-editor'
 import { EditorParcelas, type ParcelaEditavel } from './editor-parcelas'
+import { sanitizarQtd, valorQtd, textoQtd, descreverQtd, aceitaFracao } from '@/lib/stock/quantidade'
 
 export type Unidade = 'KG' | 'UN' | 'LT'
 export type Categoria = 'MATERIA_PRIMA' | 'REVENDA' | 'EMBALAGEM' | 'LIMPEZA' | 'USO_INTERNO'
@@ -260,7 +261,13 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
                     <td className="px-3 py-1 text-right">
                       {e?.mapeado ? (
                         <span className="inline-flex items-center gap-1.5">
-                          <input type="number" inputMode="decimal" value={e.qtdRecebida} onChange={(ev) => setItem(it.nfeItemId, { qtdRecebida: Number(ev.target.value) })}
+                          {/* ⛔⛔ NUNCA `type="number"` AQUI: sem `step` o HTML assume 1 e o
+                              navegador recusa 0,6 sozinho — sem erro, sem log, sem nada no
+                              nosso código pra procurar. Era essa a trava do peso fracionado.
+                              (E é a mesma decisão que a contagem já tinha tomado.) */}
+                          <CampoQuantidade
+                            valor={e.qtdRecebida} unidade={e.mapeado!.unidadeControle}
+                            onChange={(v) => setItem(it.nfeItemId, { qtdRecebida: v })}
                             className={`h-8 w-24 rounded-lg border px-2 text-right text-[13px] tabular-nums ${diverge ? 'border-amber-400 bg-amber-50' : 'border-slate-300'}`} />
                           {/* ⭐⭐ A UNIDADE DE ENTRADA É EDITÁVEL (05/09) — caso real: o ALAN
                               mandou "12 KG" de leite em pó que são 12 LATAS. A NOTA fica
@@ -363,7 +370,9 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
                   <div className="mt-3">
                     <label className="text-xs font-medium text-slate-600">Quantidade recebida ({e.mapeado.unidadeControle})</label>
                     <div className="mt-1 flex items-center gap-2">
-                      <input type="number" inputMode="decimal" value={e.qtdRecebida} onChange={(ev) => setItem(it.nfeItemId, { qtdRecebida: Number(ev.target.value) })}
+                      <CampoQuantidade
+                        valor={e.qtdRecebida} unidade={e.mapeado.unidadeControle}
+                        onChange={(v) => setItem(it.nfeItemId, { qtdRecebida: v })}
                         className={`w-32 rounded-lg border px-3 py-2 text-base tabular-nums ${diverge ? 'border-amber-400 bg-amber-50' : 'border-slate-300'}`} />
                       <span className="text-xs text-slate-400">esperado {esperada}</span>
                     </div>
@@ -772,5 +781,51 @@ function PerguntaAjusteQtd({ ajuste, onConversao }: {
         </div>
       </div>
     </div>
+  )
+}
+
+
+/**
+ * ⭐⭐ O CAMPO DE QUANTIDADE (08/09/2026) — decisão do dono: *"pra conferir a nota certa eu
+ * PRECISO do decimal"*.
+ *
+ * ⛔⛔ É `text`, não `number`. `<input type="number">` **sem `step` assume `step="1"`** e o
+ * navegador recusa `0,6` **sozinho** — a trava não estava em linha nenhuma do nosso código,
+ * por isso ninguém achava. `inputMode="decimal"` mantém o teclado numérico no celular, que é
+ * onde a nota é conferida de verdade.
+ *
+ * ⚠️ Guarda o TEXTO enquanto o dono digita: convertendo a cada tecla, `0,` viraria `0` e o
+ * cursor pularia — impossível digitar `0,600`. O número sobe no `onChange` só quando dá pra
+ * ler, e o texto cru continua na tela até ele sair do campo.
+ */
+function CampoQuantidade({ valor, unidade, onChange, className }: {
+  valor: number; unidade: string; onChange: (v: number) => void; className?: string
+}) {
+  // ⭐ o TEXTO é o estado enquanto o dono digita; o número é DERIVADO. Guardar o número
+  // faria "0," virar 0 e a vírgula sumir da tela — impossível escrever 0,600.
+  const [texto, setTexto] = useState<string | null>(null)
+  const mostrado = texto ?? textoQtd(valor)
+  const descricao = descreverQtd(valorQtd(mostrado), unidade)
+  return (
+    <span className="inline-flex flex-col items-end">
+      <input
+        inputMode="decimal"
+        autoComplete="off"
+        aria-label={`quantidade recebida em ${unidade}`}
+        value={mostrado}
+        onChange={(ev) => {
+          const limpo = sanitizarQtd(ev.target.value, unidade)
+          setTexto(limpo)
+          const v = valorQtd(limpo)
+          if (v !== null) onChange(v)
+        }}
+        onBlur={() => setTexto(null)}
+        className={className}
+      />
+      {/* ⭐ a confirmação visual que evita o erro de UM ZERO: 0,05 e 0,005 são parecidos
+          na tela e 10× diferentes no custo. Só aparece abaixo de 1. */}
+      {descricao && <span className="mt-0.5 text-[10px] text-slate-400">= {descricao}</span>}
+      {!aceitaFracao(unidade) && <span className="sr-only">{unidade} se conta inteiro</span>}
+    </span>
   )
 }

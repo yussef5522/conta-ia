@@ -18,6 +18,7 @@
 // inventado** — a mesma do "sem contagem" da Posição e do "A DEFINIR" da etiqueta.
 
 import { useEffect, useRef, useState } from 'react'
+import { aceitaFracao, sanitizarQtd, valorQtd } from '@/lib/stock/quantidade'
 import { Eye, EyeOff, SkipForward, HelpCircle, Check, Loader2, AlertTriangle, MessageSquarePlus } from 'lucide-react'
 
 export interface LinhaContar {
@@ -41,7 +42,6 @@ const dataCurta = (iso: string) => {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 /** ⚠️ UN não aceita fração — o back RECUSA, e a tela avisa antes de o dedo bater no botão */
-const ehInteira = (u: string) => /^(UN|UND|PC|PCT|CX|DZ|PAR)$/i.test(u)
 
 export function CartaoContar({
   linha, posicao, total, salvando, onConfirmar, onMarcar, onPular,
@@ -69,10 +69,15 @@ export function CartaoContar({
     campo.current?.focus()
   }, [linha.itemId, linha.contado])
 
-  const valor = Number(texto.replace(/\./g, '').replace(',', '.'))
+  // ⛔⛔ A RÉGUA SAIU DAQUI (08/09). Era um `const` local — *"regra que mora num
+  // componente é regra que ninguém prova"* — e divergia da do módulo `quantidade.ts`,
+  // que existe desde 28/08: aqui ponto era milhar, lá ele CORTAVA o resto (`6.313` → `6`).
+  // Agora as duas leem a mesma função, e a que sobreviveu foi esta (cortar perdia 6.307
+  // unidades em silêncio).
+  const valor = valorQtd(sanitizarQtd(texto, linha.unidadeControle)) ?? NaN
   const valido = texto.trim() !== '' && Number.isFinite(valor) && valor >= 0 &&
-    (!ehInteira(linha.unidadeControle) || Number.isInteger(valor))
-  const fracaoProibida = texto.trim() !== '' && Number.isFinite(valor) && ehInteira(linha.unidadeControle) && !Number.isInteger(valor)
+    (!!aceitaFracao(linha.unidadeControle) || Number.isInteger(valor))
+  const fracaoProibida = texto.trim() !== '' && Number.isFinite(valor) && !aceitaFracao(linha.unidadeControle) && !Number.isInteger(valor)
 
   const confirmar = () => {
     if (!valido || salvando) return
