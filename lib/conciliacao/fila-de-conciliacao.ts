@@ -26,6 +26,7 @@ import { prisma as defaultPrisma } from '@/lib/db'
 import {
   sugerirVinculos, type LadoDoPar, type SugestaoDeVinculo, type FornecedorConhecido,
 } from './sugestao-de-vinculo'
+import { podeConferirPorLedgerbal, resolveBankProfile } from '@/lib/bank-profiles'
 
 type Db = PrismaClient
 
@@ -495,6 +496,20 @@ export async function contarVinculosEsperandoDecisao(
 // sem extrato importado não entra na conferência — ela não tem contra o que bater,
 // e inventar um lado é o defeito que estamos consertando.
 
+/**
+ * ⛔⛔ TRÊS ESTADOS, NÃO DOIS (08/09/2026) — pedido do dono depois de ver a tela.
+ *
+ * *"O ⚠ do Banrisul é o BLOQUEIO +24h — a mania nº 1, que a ficha do banco já
+ * conhece. Alarme âmbar em diferença esperada e explicável vira ruído. ⚠ só
+ * quando a diferença NÃO for o bloqueio declarado. **Pela ficha, não por if do
+ * Banrisul.**"*
+ *
+ * `EXPLICADO` é o estado que faltava: a diferença existe, é conhecida, e bate AO
+ * CENTAVO com o `blockedAmount` que o documento declarou. Não é problema — é
+ * notícia, e vai em cinza, igual o import já faz desde 05/09.
+ */
+export type EstadoDaConferencia = 'BATE' | 'EXPLICADO' | 'DIVERGE'
+
 export interface ConferenciaDeConta {
   id: string
   nome: string
@@ -505,6 +520,13 @@ export interface ConferenciaDeConta {
   declaradoEm: Date | null
   /** sistema − declarado */
   diferenca: number
+  estado: EstadoDaConferencia
+  /** ⛔ obrigatória fora do BATE: diferença sem frase é o alarme que vira ruído */
+  explicacao: string | null
+  /** o bloqueio declarado que explica a diferença (só no EXPLICADO) */
+  bloqueio: number | null
+  bloqueioEm: Date | null
+  /** @deprecated use `estado`. Mantido só pra leitura antiga não quebrar. */
   bate: boolean
 }
 
@@ -513,6 +535,9 @@ export interface ConferenciaDeSaldos {
   /** contas sem extrato importado — ficam de fora da conta, com o nome à vista */
   semExtrato: { id: string; nome: string; sistema: number }[]
   batem: number
+  /** diferença conhecida e conferida contra o bloqueio declarado — não é problema */
+  explicadas: number
+  /** ⚠️ só isto pede ação */
   naoBatem: number
 }
 
@@ -522,6 +547,64 @@ const TOLERANCIA_SALDO = 0.01
 type ContaPraConferir = {
   id: string; name: string; balance: number
   ledgerBal: number | null; ledgerBalDate: Date | null
+  /**
+   * ⭐ A FICHA DO BANCO decide, não o nome dele: `false` = o saldo declarado é o
+   * DISPONÍVEL e já desconta o bloqueio, então a diferença é esperada. Vem de
+   * `podeConferirPorLedgerbal(resolveBankProfile(bankCode))` — a mesma função que
+   * o card da conta e o import usam. Hoje vale pra Banrisul **e Caixa**, o que já
+   * mostra por que um `if (banrisul)` seria errado.
+   */
+  declaradoEhRegua: boolean
+  /** o "(+) BLOQUEADO + 24 HS" que o documento declarou, com a data dele */
+  blockedAmount: number | null
+  blockedAt: Date | null
+}
+
+
+const brlS = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+const diaS = (d: Date | null) =>
+  d ? `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}` : null
+
+/**
+ * ⛔ A CLASSIFICAÇÃO, num lugar só. A ordem das perguntas É a regra:
+ *
+ *  1. bateu ao centavo → **BATE**, e não interessa o que a ficha diz;
+ *  2. a ficha diz que o declarado embute bloqueio **e** o bloqueio declarado
+ *     explica a diferença AO CENTAVO → **EXPLICADO**;
+ *  3. resto → **DIVERGE**.
+ *
+ * ⚠️ O passo 2 CONFERE, não supõe: sem `blockedAmount` medido, ou com um valor
+ * que não fecha, a diferença **não** está explicada e o ⚠ continua — senão a
+ * ficha viraria um passe livre pra qualquer divergência do banco.
+ */
+function classificar(c: ContaPraConferir, diferenca: number): Pick<
+  ConferenciaDeConta, 'estado' | 'explicacao' | 'bloqueio' | 'bloqueioEm' | 'bate'
+> {
+  if (Math.abs(diferenca) < TOLERANCIA_SALDO) {
+    return { estado: 'BATE', explicacao: null, bloqueio: null, bloqueioEm: null, bate: true }
+  }
+  if (!c.declaradoEhRegua) {
+    const bloqueioExplica =
+      c.blockedAmount != null && Math.abs(diferenca - c.blockedAmount) < TOLERANCIA_SALDO
+    if (bloqueioExplica) {
+      const quando = diaS(c.blockedAt)
+      return {
+        estado: 'EXPLICADO',
+        explicacao: `diferença = bloqueio +24h declarado (${brlS(c.blockedAmount!)}${quando ? ` em ${quando}` : ''})`,
+        bloqueio: c.blockedAmount, bloqueioEm: c.blockedAt, bate: false,
+      }
+    }
+    // ⚠️ a ficha explica POR QUE a comparação não fecha, mas não explica ESTE número:
+    // o bloqueio muda todo dia e o deste dia não foi medido. Dizer "explicado" aqui
+    // seria inventar o bloqueio de hoje a partir da mania de ontem.
+    return {
+      estado: 'DIVERGE',
+      explicacao: 'o saldo declarado por este banco embute o bloqueio +24h, e o bloqueio '
+        + 'deste dia não foi medido — a conferência de lá é dia a dia contra o PDF',
+      bloqueio: null, bloqueioEm: null, bate: false,
+    }
+  }
+  return { estado: 'DIVERGE', explicacao: null, bloqueio: null, bloqueioEm: null, bate: false }
 }
 
 /** ⭐ a classificação é PURA — testável sem banco, e é ela que a tela imprime */
@@ -537,15 +620,18 @@ export function conferirSaldos(contas: ContaPraConferir[]): ConferenciaDeSaldos 
     comExtrato.push({
       id: c.id, nome, sistema: c.balance, declarado: c.ledgerBal,
       declaradoEm: c.ledgerBalDate, diferenca,
-      bate: Math.abs(diferenca) < TOLERANCIA_SALDO,
+      ...classificar(c, diferenca),
     })
   }
-  // quem NÃO bate primeiro: é o que pede ação
-  comExtrato.sort((a, b) => Math.abs(b.diferenca) - Math.abs(a.diferenca))
+  // ⚠️ quem PEDE AÇÃO primeiro; o explicado desce junto do que bate, porque não é
+  // trabalho — é informação.
+  const peso = (e: EstadoDaConferencia) => (e === 'DIVERGE' ? 0 : e === 'EXPLICADO' ? 1 : 2)
+  comExtrato.sort((a, b) => peso(a.estado) - peso(b.estado) || Math.abs(b.diferenca) - Math.abs(a.diferenca))
   return {
     contas: comExtrato, semExtrato,
-    batem: comExtrato.filter((c) => c.bate).length,
-    naoBatem: comExtrato.filter((c) => !c.bate).length,
+    batem: comExtrato.filter((c) => c.estado === 'BATE').length,
+    explicadas: comExtrato.filter((c) => c.estado === 'EXPLICADO').length,
+    naoBatem: comExtrato.filter((c) => c.estado === 'DIVERGE').length,
   }
 }
 
@@ -554,8 +640,17 @@ export async function conferenciaDeSaldos(
 ): Promise<ConferenciaDeSaldos> {
   const contas = await db.bankAccount.findMany({
     where: { companyId, isActive: true },
-    select: { id: true, name: true, balance: true, ledgerBal: true, ledgerBalDate: true },
+    select: {
+      id: true, name: true, bankCode: true, balance: true,
+      ledgerBal: true, ledgerBalDate: true, blockedAmount: true, blockedAt: true,
+    },
     orderBy: { name: 'asc' },
   })
-  return conferirSaldos(contas)
+  // ⛔ a ficha do banco, pela MESMA função que o card da conta e o import usam.
+  // Ler `ledgerBalReliable` na mão aqui reprovaria no guard estrutural — e com
+  // razão: a pergunta "o declarado serve de régua?" tem um dono só.
+  return conferirSaldos(contas.map((c) => ({
+    ...c,
+    declaradoEhRegua: podeConferirPorLedgerbal(resolveBankProfile(c.bankCode ?? null)),
+  })))
 }

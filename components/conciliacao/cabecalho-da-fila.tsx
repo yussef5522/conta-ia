@@ -30,18 +30,30 @@
 // conta — `balance` (o número do card) contra `ledgerBal` (o que o banco
 // declarou), com a data da declaração. Conta sem extrato importado fica de fora,
 // nomeada.
+//
+// ⛔⛔ E O TERCEIRO ESTADO (08/09), pedido do dono depois de ver a tela: *"o ⚠ do
+// Banrisul é o BLOQUEIO +24h — a mania nº 1, que a ficha do banco já conhece.
+// Alarme âmbar em diferença esperada e explicável vira ruído."* Quando a diferença
+// bate AO CENTAVO com o bloqueio declarado, a linha fica **cinza, com a frase**, e
+// o ⚠ some. ⚠️ Só quando a diferença **não** é o bloqueio declarado o alarme volta
+// — a ficha explica por que a comparação não fecha, não dá passe livre pra
+// qualquer divergência. **Pela ficha, nunca por `if (Banrisul)`.**
 
-import { AlertTriangle, CheckCircle2 } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Info } from 'lucide-react'
 import { formatBRL } from '@/lib/format/money'
 
 export interface ConferenciaContaDTO {
   id: string; nome: string; sistema: number; declarado: number
-  declaradoEm: string | null; diferenca: number; bate: boolean
+  declaradoEm: string | null; diferenca: number
+  estado: 'BATE' | 'EXPLICADO' | 'DIVERGE'
+  explicacao: string | null
+  bloqueio: number | null; bloqueioEm: string | null
 }
 export interface SaldosDTO {
   contas: ConferenciaContaDTO[]
   semExtrato: { id: string; nome: string; sistema: number }[]
   batem: number
+  explicadas: number
   naoBatem: number
 }
 export interface TotaisDTO {
@@ -70,9 +82,11 @@ export function CabecalhoDaFila({ totais, saldos }: { totais: TotaisDTO; saldos:
           valor={String(totais.contas - totais.comSugestao)}
           rotulo="contas em aberto sem par no extrato"
         />
+        {/* ⛔ o contador soma BATE + EXPLICADO: diferença conferida contra o
+            bloqueio declarado não é pendência. Só `naoBatem` pinta de âmbar. */}
         <Bloco
-          valor={`${saldos.batem}/${saldos.contas.length}`}
-          rotulo="contas com extrato batendo com o banco"
+          valor={`${saldos.batem + saldos.explicadas}/${saldos.contas.length}`}
+          rotulo="contas de extrato conferidas"
           tom={saldos.naoBatem > 0 ? 'atencao' : 'bom'}
         />
       </div>
@@ -82,16 +96,27 @@ export function CabecalhoDaFila({ totais, saldos }: { totais: TotaisDTO; saldos:
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11.5px] text-muted-foreground px-1">
         {saldos.contas.map((c) => (
           <span key={c.id} className="inline-flex items-center gap-1.5 tabular-nums">
-            {c.bate
+            {c.estado === 'BATE'
               ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-              : <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />}
+              : c.estado === 'EXPLICADO'
+                // ⭐ cara de EXPLICADO: cinza e sem ícone de alarme. Alarme âmbar
+                // em diferença esperada vira ruído, e ruído mata o alarme.
+                ? <Info className="h-3.5 w-3.5 text-slate-400" />
+                : <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />}
             <b className="text-foreground font-medium">{c.nome}</b>
-            {c.bate
-              ? <>bate com o banco em {dia(c.declaradoEm)}</>
-              : <>
-                  sistema {formatBRL(c.sistema)} × banco declarou {formatBRL(c.declarado)} em{' '}
-                  {dia(c.declaradoEm)} — <b className="text-foreground">{formatBRL(Math.abs(c.diferenca))} de diferença</b>
-                </>}
+            {c.estado === 'BATE' ? (
+              <>bate com o banco em {dia(c.declaradoEm)}</>
+            ) : c.estado === 'EXPLICADO' ? (
+              // ⛔ a frase vem do servidor (a MESMA régua que classificou) — montar
+              // outra aqui seria a segunda derivação, no lugar mais fácil de errar.
+              <span className="text-slate-500 dark:text-slate-400">{c.explicacao}</span>
+            ) : (
+              <>
+                sistema {formatBRL(c.sistema)} × banco declarou {formatBRL(c.declarado)} em{' '}
+                {dia(c.declaradoEm)} — <b className="text-foreground">{formatBRL(Math.abs(c.diferenca))} de diferença</b>
+                {c.explicacao && <span className="ml-1 opacity-80">· {c.explicacao}</span>}
+              </>
+            )}
           </span>
         ))}
         {saldos.semExtrato.map((c) => (
