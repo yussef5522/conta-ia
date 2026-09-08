@@ -242,6 +242,26 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⛔⛔⛔ QUANTIDADE NÃO ACEITAVA DECIMAL NA CONFERÊNCIA (08/09/2026)
+
+**Caso real do dono:** *"Produto que chega por KG em fração (0,600 · 0,350 · 0,100) e o campo de editar quantidade não deixa ir abaixo de 1 — não aceito 0,600. Pra conferir a nota certa eu PRECISO do decimal."*
+
+**⛔⛔ A TRAVA ERA INVISÍVEL NO NOSSO CÓDIGO — e é por isso que ninguém achava.** `<input type="number">` **sem `step` assume `step="1"`**: o navegador recusa `0,6` **sozinho**, sem erro, sem log, sem uma linha de validação nossa dizendo isso. Procurar no nosso código por "onde recusa decimal" não acharia nada, porque não havia nada.
+
+**⭐ MEDIDO ANTES DE MEXER** (o dono pediu explicitamente pra avisar se algo no meio guardasse inteiro): **nada guarda**. `qtdNota`, `qtdRecebida`, `quantidade` do ledger, `qtdEntrada` e `qtdContada` são todas `Float`; a rota valida com `z.coerce.number().positive()` — **sem `.int()`**; e os únicos dois `Int` do schema (`VendaDiaria.quantidade`, `StockVendaLinha.quantidade`) são de **vendas**, onde ocorrência é inteira por natureza. ⭐ **A prova de que o armazenamento sempre esteve certo veio do dado:** dos **660 movimentos do ledger, 241 já eram fracionados** (vieram do `qCom` da nota), e **22 têm a 3ª casa significativa** (`1.834`, `1.736`, `0.926` — grama). **Só a DIGITAÇÃO era impossível.**
+
+**⚠️⚠️ "N CAMINHOS, 1 ESQUECIDO", A CLASSE INTEIRA DE NOVO.** `lib/stock/quantidade.ts` **existe desde 28/08** e resolve exatamente esta dor — nasceu do MESMO bug no editor de ficha (*"digitar 0,050 é IMPOSSÍVEL: no instante em que o dono digita a vírgula, o texto '0,' vira o número 0 e a vírgula some da tela"*). **A conferência nunca o usou.**
+
+**⛔⛔ E DUAS RÉGUAS DE PONTO CONVIVIAM — só visível medindo.** O módulo **cortava** no separador (`6.313 UN` → **6**); o cartão de contagem tinha **parse próprio** tratando ponto como milhar (→ **6313**), com o motivo escrito lá (*"absurdo pra digitar 6.313"*). Duas derivações da mesma pergunta, a lição do B1 agora na digitação. **Unificadas no módulo, e venceu a da contagem**: cortar em 6 **perdia 6.307 unidades em silêncio**. O `ehInteira` local do componente morreu — *regra que mora num componente é regra que ninguém prova*.
+
+**⚠️ A LISTA FECHADA PASSOU A SER A DAS INTEIRAS, não a das fracionáveis** (`UN|UND|PC|PCT|CX|DZ|PAR|FD|SC`). Item novo com unidade imprevista (BANDEJA, FARDO) cai no lado que **aceita** fração: fração indevida numa peça o dono vê na hora, **campo bloqueado ele descobre com a nota na mão**. G e ML entraram junto, como o dono pediu.
+
+**⭐ E A FRAÇÃO EM UNIDADE INTEIRA É IMPOSSÍVEL POR CONSTRUÇÃO, não por aviso:** o sanitizador **não deixa a vírgula existir** ali (`0,5 UN` → `05`). Não há o que validar depois.
+
+**A VARREDURA DA CLASSE (o dono pediu a lista):** conferência **estava errada** (corrigida) · contagem **já aceitava decimal** e agora lê a mesma régua · editor de ficha **já estava certo** (é a origem do módulo) · ⚠️ **entrada manual, saída/perda, itens manuais e produção (concluir e previsão) já aceitam decimal** — todos usam `<input>` de texto com `Number(s.replace(',', '.'))` — **mas têm parse próprio, sem a régua da unidade e com `|| 0` engolindo lixo como zero**. **NÃO foram tocados de propósito**: mudar a semântica de quatro telas sem pedido (passar a recusar `0,5 UN`, deixar de devolver 0) pode travar fluxo real. Fica registrado como a próxima costura, à espera da palavra do dono.
+
+**PROVADO EM PROD (`xIrd6QsH_3gTO4Mw1A4V6`), o caminho inteiro:** `0,600` · `0,350` · `0,100` · `0.600` → **0.6 / 0.35 / 0.1 / 0.6** · `0,5` em UN → sanitizado `05` · `6.313` → **6313 em UN, 6.313 em KG**. No ledger real: `102,68 KG × 46,95 = 4.820,83` — proporcional exato. **8.760 verdes · TS 0.**
+
 ## ⭐⭐⭐ GRAFIA IGUAL É O MESMO SABOR, POR CONSTRUÇÃO (08/09/2026)
 
 **O dono:** *"A tela mostra 'frango com catupiry (2) · já existe ficha via FRANGO COM CATUPIRY — mapear nessa ficha' me pedindo clique. **Se o nome canônico é IDÊNTICO (só caixa/acento difere), isso não é heurística sugerindo — é a mesma palavra.**"*
