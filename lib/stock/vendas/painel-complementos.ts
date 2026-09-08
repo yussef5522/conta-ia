@@ -6,6 +6,7 @@
 
 import type { LinhaPrateleira } from './complemento-map'
 import type { GrupoComplemento } from './grupo-complemento'
+import { chaveDeApresentacao } from './grafia-canonica'
 
 export interface CardsPrateleira {
   pendentes: number
@@ -125,24 +126,28 @@ export interface LinhaAgrupada extends Omit<LinhaPrateleira, 'nomeSuitable'> {
  * no dado faria a importação do próximo dia não reconhecer a grafia que sumiu, e aí a venda
  * deixa de baixar em silêncio. A linha única é da TELA; embaixo dela ficam os apelidos.
  *
- * ⭐ O CRITÉRIO É O DESTINO, não a semelhança: nomes apontados pra MESMA ficha viram uma
- * linha. ⛔ **Pendente NÃO se agrupa** — antes de o dono mapear, não há como saber que dois
- * nomes são o mesmo sabor, e adivinhar por parecido é a classe do "memo diz Transferência":
- * sugere, nunca funde.
+ * ⚠️⚠️ REGRA INVERTIDA EM 08/09/2026, COM O MOTIVO ESCRITO (não apagada). A versão anterior
+ * dizia: *"Pendente NÃO se agrupa — antes de o dono mapear, não há como saber que dois nomes
+ * são o mesmo sabor, e adivinhar por parecido é a classe do 'memo diz Transferência'."*
  *
- * ⚠️ E `IGNORAR` também fica linha por linha: ignorar é decisão por NOME (um `GRANDE` não
- * tem nada a ver com um `PEQUENO`), e juntá-los esconderia o que exatamente foi ignorado.
+ * A metade CERTA disso continua valendo e está travada em teste: **parecido** (typo, "começa
+ * igual", dígito) segue linha a linha, pedindo clique. A metade ERRADA era tratar
+ * `PORTUGUESA` · `portuguesa` · `Portuguesa` como três trabalhos: **não é parecido, é a mesma
+ * palavra**. O critério de agrupamento agora tem um dono só (`chaveDeApresentacao`):
+ * ficha quando há ficha, CANÔNICO quando é pendente, e nome cru quando é IGNORAR.
+ *
+ * ⚠️ E `IGNORAR` fica linha por linha de propósito: ignorar é decisão por NOME (um `GRANDE`
+ * não tem nada a ver com um `PEQUENO`), e juntá-los esconderia o que exatamente foi ignorado.
  */
 export function agruparPorDestino(linhas: readonly LinhaPrateleira[]): LinhaAgrupada[] {
-  const porFicha = new Map<string, LinhaPrateleira[]>()
-  const soltas: LinhaPrateleira[] = []
+  const porChave = new Map<string, LinhaPrateleira[]>()
   for (const l of linhas) {
-    if (l.destino === 'FICHA' && l.fichaId) porFicha.set(l.fichaId, [...(porFicha.get(l.fichaId) ?? []), l])
-    else soltas.push(l)
+    const k = chaveDeApresentacao(l)
+    porChave.set(k, [...(porChave.get(k) ?? []), l])
   }
 
   const agrupadas: LinhaAgrupada[] = []
-  for (const [, ls] of porFicha) {
+  for (const ls of porChave.values()) {
     // o nome cru de MAIOR volume representa o grupo nas ações — é o que o PDV usa de fato
     const ordenados = [...ls].sort((a, b) => b.ocorrencias - a.ocorrencias)
     const base = ordenados[0]
@@ -158,7 +163,6 @@ export function agruparPorDestino(linhas: readonly LinhaPrateleira[]): LinhaAgru
       destinoComoProduto: ls.find((l) => l.destinoComoProduto)?.destinoComoProduto ?? null,
     })
   }
-  for (const l of soltas) agrupadas.push({ ...l, titulo: l.nomeSuitable, apelidos: [{ nomeSuitable: l.nomeSuitable, ocorrencias: l.ocorrencias }] })
 
   return agrupadas.sort((a, b) => b.ocorrencias - a.ocorrencias || a.titulo.localeCompare(b.titulo, 'pt-BR'))
 }

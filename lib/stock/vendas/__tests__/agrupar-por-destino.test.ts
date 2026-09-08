@@ -36,14 +36,45 @@ describe('⭐⭐ agrupa por DESTINO', () => {
     ])
   })
 
-  it('⛔ PENDENTE não se agrupa — antes de mapear ninguém sabe que são o mesmo sabor', () => {
+  // ⚠️⚠️ INVERTIDO EM 08/09/2026, COM O MOTIVO ESCRITO (não apagado).
+  //
+  // Este teste afirmava: *"PENDENTE não se agrupa — antes de mapear ninguém sabe que são o
+  // mesmo sabor"*, e tratava `FRANGO COM BACON` + `frango com bacon` como DOIS trabalhos.
+  //
+  // ⛔ A metade CERTA era não juntar por PARECIDO — e ela continua travada nos dois testes
+  // logo abaixo. A metade ERRADA era chamar de "parecido" o que é **a mesma palavra**:
+  // *"se o nome canônico é IDÊNTICO (só caixa/acento difere), isso não é heurística
+  // sugerindo — é a mesma palavra"* (o dono, 08/09).
+  it('⭐ PENDENTE de canônico IGUAL vira UMA linha — é a mesma palavra, não parecido', () => {
     const r = agruparPorDestino([
       l({ nomeSuitable: 'FRANGO COM BACON', ocorrencias: 14 }),
       l({ nomeSuitable: 'frango com bacon', ocorrencias: 1 }),
     ])
+    expect(r).toHaveLength(1)
+    expect(r[0].ocorrencias).toBe(15)
+    // ⛔ e o nome CRU de cada grafia continua visível embaixo: a linha é da TELA, o dado não
+    // se funde — é ele que casa com o relatório de amanhã.
+    expect(r[0].apelidos).toEqual([
+      { nomeSuitable: 'FRANGO COM BACON', ocorrencias: 14 },
+      { nomeSuitable: 'frango com bacon', ocorrencias: 1 },
+    ])
+  })
+
+  it('⛔ PENDENTE PARECIDO continua linha a linha — typo é palavra diferente', () => {
+    // as duas grafias existem de verdade no cardápio da Caçula
+    const r = agruparPorDestino([
+      l({ nomeSuitable: 'STROGONOFF DE CARNE', ocorrencias: 9 }),
+      l({ nomeSuitable: 'STROGONOFF DE CARNEE', ocorrencias: 2 }),
+    ])
     expect(r).toHaveLength(2)
-    // ⚠️ juntar por parecido seria a classe do "o memo diz Transferência": sugere, nunca funde
-    expect(r.every((x) => x.apelidos.length === 1)).toBe(true)
+  })
+
+  it('⛔ e a trava de DÍGITO vale na tela também: 4 QUEIJOS ≠ 5 QUEIJOS', () => {
+    const r = agruparPorDestino([
+      l({ nomeSuitable: '4 QUEIJOS', ocorrencias: 6 }),
+      l({ nomeSuitable: '5 QUEIJOS', ocorrencias: 4 }),
+    ])
+    expect(r).toHaveLength(2)
   })
 
   it('⛔ IGNORADO fica linha a linha: ignorar é decisão por NOME', () => {

@@ -4414,3 +4414,29 @@ model ConciliacaoParRecusado {
   @@index([companyId, criadoEm])
   @@map("conciliacao_par_recusado")
 }
+
+/// ⭐⭐ O RASTRO DE "AGRUPADA POR GRAFIA" (08/09/2026).
+///
+/// Quando uma grafia entra no mapa SOZINHA porque o canônico dela já tinha ficha, o
+/// registro fica aqui: qual grafia entrou, pra qual ficha, e VIA qual irmã. Sem isso, o
+/// mapa diria "alguém mapeou" sem dizer que ninguém clicou.
+///
+/// ⛔ Tabela PRÓPRIA, e não uma coluna nova em `stock_venda_complemento_map`, porque o
+/// isolamento do módulo proíbe ALTER em tabela existente (guard `migration-isolation`).
+/// A separação também é honesta: o vínculo é um fato, a razão dele é outro.
+model StockVendaGrafiaAgrupada {
+  id           String   @id @default(cuid())
+  companyId    String
+  /// a grafia que entrou sem clique
+  nomeSuitable String
+  fichaId      String
+  /// a grafia irmã que já apontava pra essa ficha
+  viaGrafia    String
+  /// IMPORT | FICHA_NOVA | RETROATIVO — por qual porta a regra rodou
+  origem       String
+  criadoEm     DateTime @default(now())
+
+  @@unique([companyId, nomeSuitable])
+  @@index([companyId, criadoEm])
+  @@map("stock_venda_grafia_agrupada")
+}

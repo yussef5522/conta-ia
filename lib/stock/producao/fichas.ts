@@ -14,6 +14,7 @@ import { normalizarBusca } from '@/lib/busca-texto'
 import { rendimentoMedidoDaFicha } from './conclusao'
 
 type Db = PrismaClient | Prisma.TransactionClient
+import { planoDeAgrupamento, aplicarAgrupamento } from '@/lib/stock/vendas/aplicar-agrupamento'
 
 export interface ComponenteInput { itemId: string; qtdPlanejada: number; unidade: string; posicao?: number }
 export interface FichaBodyInput {
@@ -157,6 +158,18 @@ export async function criarFicha(input: CriarFichaInput, db: PrismaClient = defa
         update: { alvoTipo: 'FICHA', fichaId: ficha.id },
       })
     }
+    // ⭐⭐ A REGRA PLANTADA (08/09) — decisão do dono: *"quando uma ficha nova nascer, as
+    // grafias pendentes de canônico igual entram juntas NA HORA (4 Queijos entra sozinho no
+    // dia em que 4 QUEIJOS ganhar ficha) — senão a regra só vale pro passado."*
+    //
+    // ⛔ Roda DENTRO da transação da ficha: ou a ficha e todas as grafias dela entram, ou
+    // nada entra. É a mesma disciplina que consertou as 3 fichas órfãs.
+    // ⚠️ Só quando o gesto mapeou algum complemento — ficha de produto não recruta sabor.
+    if (complementos.length) {
+      const plano = await planoDeAgrupamento(input.companyId, tx)
+      vinculos += await aplicarAgrupamento(input.companyId, plano, 'FICHA_NOVA', input.userId, tx)
+    }
+
     // ⛔⛔ NOME PREFIXADO NUNCA VIRA MAPEAMENTO (03/09): a tela do produto mandava a CHAVE
     // do hub (`nome:GRANDE PRECINHO`, `ficha:<id>`) no lugar do nome do PDV, e o sistema
     // gravava alegremente um mapeamento com um nome que **não existe em relatório nenhum** —

@@ -22,6 +22,7 @@ import { ehProntoNoCardapio } from '@/lib/stock/cardapio/hub'
 import type { LinhaPrateleira } from '@/lib/stock/vendas/complemento-map'
 import { cardsDaPrateleira, secoesDaPrateleira, precisaCarregarPrateleira, agruparPorDestino } from '@/lib/stock/vendas/painel-complementos'
 import { sugerirGruposDeGrafia } from '@/lib/stock/vendas/sugerir-grupos'
+import { sugestoesDeTamanho } from '@/lib/stock/vendas/grafia-canonica'
 import { UtensilsCrossed, Loader2, Download, Search, AlertTriangle, ChevronRight, ChevronDown, Sparkles, CircleDollarSign, PackageCheck, HelpCircle } from 'lucide-react'
 
 type Status = 'SEM_DESTINO' | 'SEM_FICHA' | 'REVENDA' | 'FICHA_INCOMPLETA' | 'FICHA_OK'
@@ -616,10 +617,40 @@ function GruposSugeridos({ linhas, incluidas, ocupado, onIncluir, onIgnorarTodas
     // (STROGONOFF DE CARNEE) cujo grupo já fechou — sem isto, a única ação dele seria
     // "criar ficha", que faria a segunda ficha de strogonoff.
     .filter((g) => g.nomes.length > 1 || g.parecidas.length > 0 || g.fichaIrma || g.parecidasComFicha.length > 0)
-  if (!grupos.length) return null
+
+  // ⭐⭐ SUFIXO DE TAMANHO/PROMO (08/09) — sugestão FORTE, e ainda assim clique.
+  //
+  // *"Não é grafia — é o sabor + sufixo de tamanho/promo. (…) SUGERE, eu clico — tamanho
+  // não muda a explosão (1 ocorrência = 1 explosão, como sempre), então apelido na mesma
+  // ficha resolve."* — o dono. Por isso ela mora numa faixa PRÓPRIA, âmbar: não é o mesmo
+  // trabalho das grafias (que já entram sozinhas), e misturar as duas apagaria a diferença.
+  const tamanhos = sugestoesDeTamanho(pendentes, jaMapeadas)
+
+  if (!grupos.length && !tamanhos.length) return null
 
   return (
     <div className="space-y-1.5 border-b border-slate-100 px-3 py-2">
+      {tamanhos.map((t) => (
+        <div key={`tam:${t.nomeSuitable}`} className="rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium text-amber-900">
+              <b>{t.nomeSuitable}</b> · {t.ocorrencias.toLocaleString('pt-BR')} ocorrências
+            </span>
+            <button onClick={() => onMapearTodas([t.nomeSuitable], t.fichaId)} disabled={ocupado}
+              className="ml-auto inline-flex h-7 items-center rounded-lg bg-[#B45309] px-2.5 text-[11px] font-semibold text-white hover:bg-[#92400E] disabled:opacity-40">
+              mapear como apelido de “{t.nomeFicha}”
+            </button>
+            <button onClick={() => onIgnorarTodas([t.nomeSuitable])} disabled={ocupado}
+              className="inline-flex h-7 items-center rounded-lg border border-slate-300 bg-white px-2.5 text-[11px] text-slate-600 hover:bg-slate-50 disabled:opacity-40">
+              ignorar
+            </button>
+          </div>
+          {/* ⛔ o PORQUÊ é obrigatório: sugestão forte sem motivo é só um botão bonito */}
+          <p className="mt-1 text-[11px] text-amber-800">
+            {t.frase} <span className="text-amber-700">· o tamanho não muda a explosão — 1 ocorrência = 1 porção, como sempre</span>
+          </p>
+        </div>
+      ))}
       {grupos.map((g) => {
         const extras = incluidas[g.chave] ?? []
         const nomes = [...g.nomes.map((n) => n.nomeSuitable), ...extras]

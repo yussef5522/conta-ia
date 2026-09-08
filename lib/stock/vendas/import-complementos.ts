@@ -18,6 +18,8 @@ import { prateleiraDeComplementos, type LinhaPrateleira } from './complemento-ma
 import { SABORES_DO_CARDAPIO, grupoPeloCardapio } from './grupo-complemento'
 import { importIdDe, type ModoImportComplemento } from './identidade-import-complemento'
 import { preverBaixaDasLinhas, baixarSeHouverFicha, type ReciboComplementos } from './baixa-complemento'
+import { agruparGrafiasPendentes } from './aplicar-agrupamento'
+import type { AgrupamentoAutomatico } from './grafia-canonica'
 
 export class ImportComplementoError extends Error {}
 
@@ -160,6 +162,10 @@ export async function confirmarComplementos(
   avisoBaixa: string | null
   /** ⛔ a ponte falhou de verdade: o import FICOU, e a tela tem que gritar */
   baixaFalhou: boolean
+  /** ⭐ as grafias que entraram no mapa SOZINHAS por terem canônico já mapeado */
+  agrupadasPorGrafia: AgrupamentoAutomatico[]
+  /** ⚠️ o agrupamento falhou (fail-soft): o import ficou, mas a tela avisa */
+  agrupamentoFalhou: string | null
 }> {
   const p = parseSuitable(html, COLUNAS_COMPLEMENTOS)
   if (!p.linhas.length) throw new ImportComplementoError('Nenhum complemento encontrado no arquivo.')
@@ -229,8 +235,23 @@ export async function confirmarComplementos(
   // import NÃO se desfaz: uma transação única jogaria fora um arquivo legítimo por causa de
   // uma ficha com problema, e o dono perderia o que acabou de subir. O que a falha produz é
   // um AVISO — e o dia fica visível como pendente, que é o estado honesto.
+  // ⭐⭐ E A GRAFIA IGUAL ENTRA NO MAPA SOZINHA (08/09) — decisão do dono: *"se o nome
+  // canônico é IDÊNTICO (só caixa/acento difere), isso não é heurística sugerindo — é a
+  // mesma palavra"*.
+  //
+  // ⛔ ANTES DA BAIXA, de propósito: a grafia que entra agora precisa estar no mapa quando o
+  // plano da baixa for montado, senão a ocorrência dela cairia na prateleira e só baixaria
+  // no próximo reprocesso. Uma linha de ordem, um dia de estoque certo.
+  //
+  // ⚠️ FAIL-SOFT: agrupar é bônus, não a razão do gesto — `agruparGrafiasPendentes` engole o
+  // erro e devolve o motivo, então um problema aqui nunca derruba um import legítimo.
+  const g = await agruparGrafiasPendentes(companyId, 'IMPORT', userId, db)
+
   const b = await baixarSeHouverFicha(companyId, data, userId, db)
-  return { ...gravado, baixa: b.recibo, avisoBaixa: b.motivo, baixaFalhou: b.falhou }
+  return {
+    ...gravado, baixa: b.recibo, avisoBaixa: b.motivo, baixaFalhou: b.falhou,
+    agrupadasPorGrafia: g.agrupadas, agrupamentoFalhou: g.erro,
+  }
 }
 
 export interface PrateleiraCompleta {
