@@ -40,8 +40,9 @@
 // qualquer divergência. **Pela ficha, nunca por `if (Banrisul)`.**
 
 import Link from 'next/link'
-import { AlertTriangle, CheckCircle2, Info } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Info, Link2, Copy, ArrowRight } from 'lucide-react'
 import { formatBRL } from '@/lib/format/money'
+import { StatCard, StatCardGrid } from '@/components/ui/stat-card'
 
 export interface ConferenciaContaDTO {
   id: string; nome: string; sistema: number; declarado: number
@@ -77,61 +78,71 @@ export function CabecalhoDaFila({ empresaId, totais, saldos, semPar }: {
 }) {
   return (
     <div className="space-y-2">
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-px bg-border border rounded-lg overflow-hidden">
-        <Bloco
-          valor={String(totais.comSugestao)}
-          rotulo="vínculos esperando decisão"
-          tom={totais.comSugestao > 0 ? 'atencao' : 'neutro'}
+      {/* ⛔ MOLDE OFICIAL DA CASA (`StatCard`), o mesmo da Contas a Pagar e da
+          Produção. Antes eram blocos escritos à mão aqui — dois cards de resumo
+          no sistema divergem com o tempo, e a REGRA 4 existe pra isso. */}
+      <StatCardGrid>
+        <StatCard
+          tone={totais.comSugestao > 0 ? 'violet' : 'slate'}
+          icon={Link2}
+          label="esperando decisão"
+          value={String(totais.comSugestao)}
+          sub={totais.comSugestao === 1 ? 'vínculo sugerido' : 'vínculos sugeridos'}
         />
-        <Bloco
-          valor={formatBRL(totais.valorEmDuplaContagem)}
-          rotulo={`em dupla contagem · ${totais.duplaContagem} conta${totais.duplaContagem === 1 ? '' : 's'}`}
-          tom={totais.duplaContagem > 0 ? 'ruim' : 'neutro'}
+        <StatCard
+          tone={totais.duplaContagem > 0 ? 'rose' : 'slate'}
+          icon={Copy}
+          label="em dupla contagem"
+          value={formatBRL(totais.valorEmDuplaContagem)}
+          sub={`${totais.duplaContagem} conta${totais.duplaContagem === 1 ? '' : 's'} paga${totais.duplaContagem === 1 ? '' : 's'} sem vínculo`}
         />
-        {/* ⛔ o contador soma BATE + EXPLICADO: diferença conferida contra o
-            bloqueio declarado não é pendência. Só `naoBatem` pinta de âmbar. */}
-        <Bloco
-          valor={`${saldos.batem + saldos.explicadas}/${saldos.contas.length}`}
-          rotulo="contas de extrato conferidas"
-          tom={saldos.naoBatem > 0 ? 'atencao' : 'bom'}
+        <StatCard
+          tone={saldos.naoBatem > 0 ? 'amber' : 'emerald'}
+          icon={CheckCircle2}
+          label="contas de extrato"
+          value={`${saldos.batem + saldos.explicadas}/${saldos.contas.length}`}
+          sub={saldos.naoBatem > 0
+            ? `${saldos.naoBatem} com diferença aberta`
+            : saldos.explicadas > 0 ? 'conferidas · 1 diferença explicada' : 'conferidas com o banco'}
         />
-      </div>
+      </StatCardGrid>
 
       {/* ⛔ a conferência é POR CONTA — foi o agregado que produzia o número
-          indefensável. Quem não bate aparece com o valor e a DATA da declaração. */}
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11.5px] text-muted-foreground px-1">
+          indefensável. Cada linha traz o SELO do seu estado, no padrão da casa. */}
+      <div className="rounded-xl border border-slate-200 bg-white divide-y divide-slate-100
+                      dark:border-slate-800 dark:bg-slate-950 dark:divide-slate-800">
         {saldos.contas.map((c) => (
-          <span key={c.id} className="inline-flex items-center gap-1.5 tabular-nums">
-            {c.estado === 'BATE'
-              ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-              : c.estado === 'EXPLICADO'
-                // ⭐ cara de EXPLICADO: cinza e sem ícone de alarme. Alarme âmbar
-                // em diferença esperada vira ruído, e ruído mata o alarme.
-                ? <Info className="h-3.5 w-3.5 text-slate-400" />
-                : <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />}
-            <b className="text-foreground font-medium">{c.nome}</b>
+          <div key={c.id} className="flex flex-wrap items-center gap-x-2.5 gap-y-1 px-3.5 py-2">
+            <Selo estado={c.estado} />
+            <span className="text-[13px] font-medium text-slate-800 dark:text-slate-100">{c.nome}</span>
             {c.estado === 'BATE' ? (
-              <>bate com o banco em {dia(c.declaradoEm)}</>
+              <span className="text-[12px] text-slate-400 tabular-nums">
+                bate com o banco em {dia(c.declaradoEm)}
+              </span>
             ) : c.estado === 'EXPLICADO' ? (
               // ⛔ a frase vem do servidor (a MESMA régua que classificou) — montar
               // outra aqui seria a segunda derivação, no lugar mais fácil de errar.
-              <span className="text-slate-500 dark:text-slate-400">{c.explicacao}</span>
+              <span className="text-[12px] text-slate-500 dark:text-slate-400">{c.explicacao}</span>
             ) : (
-              <>
-                sistema {formatBRL(c.sistema)} × banco declarou {formatBRL(c.declarado)} em{' '}
-                {dia(c.declaradoEm)} — <b className="text-foreground">{formatBRL(Math.abs(c.diferenca))} de diferença</b>
-                {c.explicacao && <span className="ml-1 opacity-80">· {c.explicacao}</span>}
-              </>
+              <span className="text-[12px] text-slate-500 tabular-nums dark:text-slate-400">
+                sistema {formatBRL(c.sistema)} × banco {formatBRL(c.declarado)} em {dia(c.declaradoEm)}
+                {' · '}
+                <b className="font-semibold text-amber-700 dark:text-amber-400">
+                  {formatBRL(Math.abs(c.diferenca))} de diferença
+                </b>
+                {c.explicacao && <span className="text-slate-400"> · {c.explicacao}</span>}
+              </span>
             )}
-          </span>
+          </div>
         ))}
         {saldos.semExtrato.map((c) => (
-          <span key={c.id} className="inline-flex items-center gap-1.5 tabular-nums opacity-70">
-            <b className="text-foreground font-medium">{c.nome}</b>
+          <div key={c.id} className="flex flex-wrap items-center gap-x-2.5 gap-y-1 px-3.5 py-2">
+            <span className="w-[74px] shrink-0" />
+            <span className="text-[13px] font-medium text-slate-500 dark:text-slate-400">{c.nome}</span>
             {/* ⚠️ nomeada de propósito: sem declaração do banco não há conferência,
                 e dizer "bate" aqui seria inventar o outro lado. */}
-            sem extrato importado — fora da conferência
-          </span>
+            <span className="text-[12px] text-slate-400">sem extrato importado — fora da conferência</span>
+          </div>
         ))}
       </div>
 
@@ -144,8 +155,8 @@ export function CabecalhoDaFila({ empresaId, totais, saldos, semPar }: {
           mundo aprende a ignorar; quebrado, ele se explica: a maioria nem venceu, e
           boa parte só espera o ARQUIVO do extrato — não uma decisão. */}
       {semPar.total > 0 && (
-        <p className="text-[11.5px] text-muted-foreground px-1 tabular-nums">
-          <b className="text-foreground font-medium">{semPar.total}</b> contas em aberto sem par no extrato —{' '}
+        <p className="px-1 text-[11.5px] leading-relaxed text-slate-400 tabular-nums">
+          <b className="font-medium text-slate-600 dark:text-slate-300">{semPar.total}</b> contas em aberto sem par no extrato —{' '}
           {semPar.naoVenceram > 0 && <>{semPar.naoVenceram} ainda não venceram</>}
           {semPar.aguardandoExtrato > 0 && (
             <>
@@ -158,8 +169,11 @@ export function CabecalhoDaFila({ empresaId, totais, saldos, semPar }: {
             <>, {semPar.comExtratoImportado} com o extrato do período já importado</>
           )}
           .{' '}
-          <Link href={`/contas-a-pagar?empresaId=${empresaId}`} className="underline hover:text-foreground">
-            Ver no Contas a Pagar →
+          <Link
+            href={`/contas-a-pagar?empresaId=${empresaId}`}
+            className="inline-flex items-center gap-0.5 font-medium text-[#534AB7] hover:underline dark:text-indigo-400"
+          >
+            Ver no Contas a Pagar <ArrowRight className="h-3 w-3" />
           </Link>
         </p>
       )}
@@ -167,16 +181,22 @@ export function CabecalhoDaFila({ empresaId, totais, saldos, semPar }: {
   )
 }
 
-function Bloco({ valor, rotulo, tom = 'neutro' }: {
-  valor: string; rotulo: string; tom?: 'neutro' | 'bom' | 'atencao' | 'ruim'
-}) {
-  const cor = tom === 'ruim' ? 'text-red-700 dark:text-red-400'
-    : tom === 'atencao' ? 'text-amber-700 dark:text-amber-400'
-      : tom === 'bom' ? 'text-emerald-700 dark:text-emerald-400' : ''
+/**
+ * ⭐ O SELO DO ESTADO — os três tons da casa, e nada além disso.
+ *
+ * ⛔ `EXPLICADO` é SLATE de propósito: âmbar num fato conhecido e conferido é o
+ * ruído que o dono mandou tirar. Verde afirma que fecha; slate diz "sei o que é".
+ */
+function Selo({ estado }: { estado: ConferenciaContaDTO['estado'] }) {
+  const cfg = {
+    BATE: { txt: 'bate', Icon: CheckCircle2, cls: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400' },
+    EXPLICADO: { txt: 'explicado', Icon: Info, cls: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300' },
+    DIVERGE: { txt: 'diferença', Icon: AlertTriangle, cls: 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400' },
+  }[estado]
   return (
-    <div className="bg-card px-3.5 py-2.5 flex flex-col gap-0.5">
-      <span className={`text-xl font-semibold tabular-nums leading-tight ${cor}`}>{valor}</span>
-      <span className="text-[11.5px] text-muted-foreground">{rotulo}</span>
-    </div>
+    <span className={`inline-flex w-[74px] shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-semibold ${cfg.cls}`}>
+      <cfg.Icon className="h-3 w-3 shrink-0" />
+      {cfg.txt}
+    </span>
   )
 }

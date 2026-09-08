@@ -22,7 +22,6 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { CheckCircle2, FileText, Loader2, AlertTriangle, History } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import { Header } from '@/components/layout/header'
 import { useEmpresa } from '@/lib/contexts/empresa-context'
 import { formatBRL } from '@/lib/format/money'
@@ -210,9 +209,9 @@ function ConciliacaoInner() {
       )}
 
       {empresaId && (
-        <div className="rounded-lg border bg-card overflow-hidden">
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
           {/* ── ABAS + saídas laterais ─────────────────────────────────── */}
-          <div className="flex flex-wrap items-center gap-1 border-b px-2">
+          <div className="flex items-center gap-1 overflow-x-auto border-b border-slate-200 px-2 dark:border-slate-800">
             <Tab ativa={aba === 'contas'} onClick={() => setAba('contas')}
               rotulo="Contas a pagar" n={carregando ? null : (t?.comSugestao ?? 0)} />
             <Tab ativa={aba === 'transferencias'} onClick={() => setAba('transferencias')}
@@ -234,17 +233,16 @@ function ConciliacaoInner() {
             </div>
           </div>
 
-          <div className="p-3 space-y-2.5 bg-muted/30">
+          <div className="space-y-2.5 bg-slate-50/60 p-3 dark:bg-slate-900/40">
             {carregando ? (
-              <Card><CardContent className="py-10 text-center text-sm text-muted-foreground">
-                <Loader2 className="h-5 w-5 mx-auto mb-2 animate-spin" />
-                Procurando os pares…
-              </CardContent></Card>
+              <div className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white py-10 text-[13px] text-slate-400 dark:border-slate-800 dark:bg-slate-950">
+                <Loader2 className="h-4 w-4 animate-spin" /> procurando os pares…
+              </div>
             ) : aba === 'contas' ? (
               <>
                 {duplaContagem > 0 && (
-                  <div className="flex gap-2.5 items-start rounded-md border border-amber-400 bg-amber-50 dark:bg-amber-950/40 px-3 py-2 text-[13px]">
-                    <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-700 dark:text-amber-400" />
+                  <div className="flex items-start gap-2.5 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-[12.5px] leading-relaxed text-rose-900 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400" />
                     <span>
                       <b>{duplaContagem} conta{duplaContagem > 1 ? 's' : ''} em dupla contagem.</b>{' '}
                       Já {duplaContagem > 1 ? 'foram marcadas' : 'foi marcada'} como paga
@@ -256,8 +254,8 @@ function ConciliacaoInner() {
 
                 {comSugestao.length === 0 ? (
                   <Vazio
-                    titulo="Nenhum vínculo esperando decisão"
-                    texto="Quando um extrato novo entrar, os pagamentos que casarem com contas em aberto aparecem aqui com o motivo escrito."
+                    titulo="Tudo conciliado ✓"
+                    texto="Nenhum vínculo esperando decisão. O próximo extrato traz os novos pares — com o motivo escrito, pra você só confirmar."
                   />
                 ) : (
                   comSugestao.map((c) => (
@@ -267,15 +265,18 @@ function ConciliacaoInner() {
                           existe candidata). Então ela aparece dizendo exatamente o
                           que é — sumir seria pior. */}
                       {c.sugestoes.length === 0 && (
-                        <div className="rounded-lg border border-red-300 dark:border-red-800 bg-card px-3.5 py-2.5">
-                          <p className="text-[13px] font-semibold">{c.conta.descricao}</p>
-                          <p className="text-[11.5px] text-muted-foreground tabular-nums mt-0.5">
-                            {formatBRL(Math.abs(c.conta.valor))} · vence {dia(c.conta.data)} ·{' '}
-                            <b className="text-red-700 dark:text-red-400">
-                              marcada como paga e sem vínculo — o mesmo dinheiro está em duas linhas
-                            </b>
+                        <div className="rounded-xl border border-rose-200 bg-white px-4 py-3 dark:border-rose-900 dark:bg-slate-950">
+                          <div className="flex flex-wrap items-baseline gap-x-2.5">
+                            <span className="text-[17px] font-semibold tabular-nums text-slate-900 dark:text-slate-50">
+                              {formatBRL(Math.abs(c.conta.valor))}
+                            </span>
+                            <span className="text-[12.5px] text-slate-600 dark:text-slate-300">{c.conta.descricao}</span>
+                            <span className="text-[11px] tabular-nums text-slate-400">vence {dia(c.conta.data)}</span>
+                          </div>
+                          <p className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700 dark:bg-rose-950/50 dark:text-rose-300">
+                            marcada como paga e sem vínculo — o mesmo dinheiro em duas linhas
                           </p>
-                          <p className="text-[11.5px] text-muted-foreground mt-0.5">
+                          <p className="mt-1.5 text-[11.5px] leading-relaxed text-slate-400">
                             Nenhum pagamento parecido no extrato importado. Quando o extrato que
                             contém esse pagamento entrar, o par aparece aqui.
                           </p>
@@ -294,7 +295,7 @@ function ConciliacaoInner() {
                         />
                       ))}
                       {c.sugestoes.length > 1 && (
-                        <p className="text-[11px] text-muted-foreground px-1">
+                        <p className="px-1 text-[11.5px] leading-relaxed text-slate-400">
                           ⚠️ <b>Mais de um pagamento parecido no extrato pra esta conta.</b> Esconder
                           um seria a régua decidindo qual foi — a escolha é sua.
                         </p>
@@ -306,14 +307,14 @@ function ConciliacaoInner() {
               </>
             ) : aba === 'transferencias' ? (
               fila?.transferencias.length ? (
-                <div className="rounded-md border bg-card divide-y">
+                <div className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-950">
                   {fila.transferencias.map((tr) => (
-                    <div key={tr.id} className="flex flex-wrap items-baseline gap-x-3 px-3 py-2">
-                      <span className="text-[12.5px] font-medium">{tr.descricao}</span>
-                      <span className="text-[11.5px] text-muted-foreground tabular-nums">
+                    <div key={tr.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-2.5">
+                      <span className="text-[12.5px] font-medium text-slate-800 dark:text-slate-100">{tr.descricao}</span>
+                      <span className="text-[11.5px] tabular-nums text-slate-400">
                         {formatBRL(Math.abs(tr.valor))} · {dia(tr.data)} · {tr.conta}
                       </span>
-                      <Link href={`/transferencias?empresaId=${empresaId}`} className="ml-auto text-[11px] underline">
+                      <Link href={`/transferencias?empresaId=${empresaId}`} className="ml-auto text-[11.5px] font-medium text-[#534AB7] hover:underline dark:text-indigo-400">
                         parear
                       </Link>
                     </div>
@@ -329,12 +330,12 @@ function ConciliacaoInner() {
               fila?.duplicatas.length ? (
                 <div className="space-y-2">
                   {fila.duplicatas.map((d) => (
-                    <div key={d.chave} className="rounded-md border bg-card px-3 py-2">
-                      <p className="text-[12px] font-semibold tabular-nums">
+                    <div key={d.chave} className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 dark:border-slate-800 dark:bg-slate-950">
+                      <p className="text-[12.5px] font-semibold tabular-nums text-slate-800 dark:text-slate-100">
                         {formatBRL(Math.abs(d.linhas[0].valor))} · {dia(d.linhas[0].data)} · {d.linhas[0].conta} · {d.linhas.length}×
                       </p>
                       {d.linhas.map((l) => (
-                        <p key={l.id} className="text-[11.5px] text-muted-foreground">
+                        <p key={l.id} className="text-[11.5px] text-slate-400">
                           FITID {l.fitid ?? '—'} · &quot;{l.descricao}&quot; · entrou {new Date(l.criadaEm).toLocaleString('pt-BR')}
                         </p>
                       ))}
@@ -348,7 +349,7 @@ function ConciliacaoInner() {
                     texto="Mesma conta, mesmo FITID, mesmo dia, mesmo valor e mesma descrição — nenhum grupo. O dedup do import está segurando."
                   />
                   {/* ⛔ a régua está escrita na tela porque ela é a decisão difícil aqui */}
-                  <p className="text-[11.5px] text-muted-foreground px-1">
+                  <p className="px-1 text-[11.5px] leading-relaxed text-slate-400">
                     A régua ingênua (mesmo dia + mesmo valor) acusaria <b>84 grupos</b>, quase todos
                     Pix de pessoas diferentes com o mesmo valor. Alarme falso repetido mata o alarme.
                   </p>
@@ -363,7 +364,7 @@ function ConciliacaoInner() {
 
       {/* a saída do Xero pro caso difícil — busca manual pela linha do extrato */}
       {procurando && empresaId && (
-        <div className="rounded-lg border bg-card p-3">
+        <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-950">
           <FindAndMatchPanel
             empresaId={empresaId}
             ofx={{
@@ -384,6 +385,13 @@ function ConciliacaoInner() {
 
 /** ⭐ CONTADOR HONESTO: zero mostra zero, apagado — nunca lista fantasma pra
  *  parecer ocupada. Enquanto carrega mostra "…", não um número chutado. */
+/**
+ * ⭐ ABA no padrão do resto do sistema (`-mb-px border-b-2`, o mesmo da Vendas),
+ * com o primário ROXO da casa e o contador em pill.
+ *
+ * ⛔ CONTADOR HONESTO: zero mostra zero, apagado — nunca lista fantasma pra
+ * parecer ocupada. Enquanto carrega mostra "…", não um número chutado.
+ */
 function Tab({ ativa, onClick, rotulo, n }: {
   ativa: boolean; onClick: () => void; rotulo: string; n: number | null
 }) {
@@ -393,16 +401,19 @@ function Tab({ ativa, onClick, rotulo, n }: {
       role="tab"
       aria-selected={ativa}
       onClick={onClick}
-      className={`inline-flex items-center gap-2 px-3 py-2.5 text-[12.5px] border-b-2 -mb-px transition-colors ${
+      className={`-mb-px inline-flex shrink-0 items-center gap-2 whitespace-nowrap border-b-2 px-3 py-2.5 text-[13px] transition-colors ${
         ativa
-          ? 'border-emerald-600 text-foreground font-semibold'
-          : 'border-transparent text-muted-foreground hover:text-foreground'
+          ? 'border-[#534AB7] font-semibold text-[#534AB7] dark:border-indigo-400 dark:text-indigo-300'
+          : 'border-transparent font-medium text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
       }`}
     >
       {rotulo}
-      <span className={`text-[11px] font-semibold tabular-nums rounded-full border px-1.5 min-w-[20px] text-center ${
-        ativa ? 'border-emerald-600 text-emerald-700 bg-emerald-50 dark:bg-emerald-950 dark:text-emerald-300'
-          : n === 0 ? 'text-muted-foreground' : ''
+      <span className={`min-w-[20px] rounded-full px-1.5 py-px text-center text-[11px] font-semibold tabular-nums ${
+        ativa
+          ? 'bg-[#534AB7] text-white dark:bg-indigo-500'
+          : n === 0
+            ? 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500'
+            : 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-200'
       }`}>
         {n === null ? '…' : n}
       </span>
@@ -410,12 +421,19 @@ function Tab({ ativa, onClick, rotulo, n }: {
   )
 }
 
+/**
+ * ⭐ O ESTADO VAZIO É O ESTADO NORMAL DESTA TELA, daqui pra frente — então ele
+ * não pode parecer "não carregou". Ele afirma o que está certo e diz o que vem
+ * a seguir, sem pedir ação nenhuma.
+ */
 function Vazio({ titulo, texto }: { titulo: string; texto: string }) {
   return (
-    <div className="rounded-lg border border-dashed bg-card py-8 px-4 text-center flex flex-col items-center gap-1">
-      <CheckCircle2 className="h-5 w-5 text-emerald-600 mb-1" />
-      <span className="text-sm font-semibold">{titulo}</span>
-      <span className="text-xs text-muted-foreground max-w-[46ch]">{texto}</span>
+    <div className="flex flex-col items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-6 py-10 text-center dark:border-slate-800 dark:bg-slate-950">
+      <span className="mb-1 flex h-11 w-11 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/50">
+        <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+      </span>
+      <span className="text-[15px] font-semibold text-slate-800 dark:text-slate-100">{titulo}</span>
+      <span className="max-w-[52ch] text-[12.5px] leading-relaxed text-slate-400">{texto}</span>
     </div>
   )
 }
