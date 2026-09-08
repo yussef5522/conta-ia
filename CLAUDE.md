@@ -260,6 +260,25 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 **A VARREDURA DA CLASSE (o dono pediu a lista):** conferência **estava errada** (corrigida) · contagem **já aceitava decimal** e agora lê a mesma régua · editor de ficha **já estava certo** (é a origem do módulo) · ⚠️ **entrada manual, saída/perda, itens manuais e produção (concluir e previsão) já aceitam decimal** — todos usam `<input>` de texto com `Number(s.replace(',', '.'))` — **mas têm parse próprio, sem a régua da unidade e com `|| 0` engolindo lixo como zero**. **NÃO foram tocados de propósito**: mudar a semântica de quatro telas sem pedido (passar a recusar `0,5 UN`, deixar de devolver 0) pode travar fluxo real. Fica registrado como a próxima costura, à espera da palavra do dono.
 
+### 📋 PRÓXIMO SPRINT DE ESTOQUE — a costura dos 4 parses (aprovado 08/09, NÃO urgente)
+
+O dono aprovou costurar **entrada manual · saída/perda · itens manuais · produção (concluir e previsão)** na MESMA régua (`sanitizarQtd` + `valorQtd` + regra da unidade), com **duas exigências**:
+1. **O `|| 0` MORRE.** Lixo digitado vira **erro visível**, nunca zero calado — *"zero silencioso em quantidade é a família do 'salvo que mentia'"*.
+2. **UN passa a recusar fração nesses quatro** — mas **red-then-green com os fluxos reais antes**.
+
+**⭐ O GATE JÁ FOI MEDIDO (08/09, read-only) — e a aposta do dono estava certa: NADA depende de fração em unidade inteira pela DIGITAÇÃO.**
+
+| caminho | casos |
+|---|---|
+| contagem | **0** |
+| fichas (receita) | **0** |
+| entrada manual · produção · saída | **0** (nenhum movimento fracionado de UN veio de `ENTRADA_MANUAL`, `AJUSTE_CONTAGEM`, `PRODUCAO_*` ou `SEPARACAO_SAIDA`) |
+| conferência / ledger | **4 itens** — e **todos vieram de `ENTRADA_NF`**, nenhum de teclado |
+
+**⛔⛔ E OS 4 CASOS NÃO SÃO "ALGUÉM USA MEIA UNIDADE" — SÃO ITEM CADASTRADO NA UNIDADE ERRADA:** `19,2 UN` de *"QUEIJO MUSSARELA FATIADO **2KG**"*, `40,8 UN` de *"MOLHO TOMATE PIZZA **1,01KG**"*, `0,93 UN` de *"BOBINA 02 LITROS"*. A nota mandou **peso**; o item diz **peça**. Quem resolve isso é o gesto de **corrigir a unidade de entrada**, que já existe — não a trava da digitação.
+
+**⚠️ CONSEQUÊNCIA DE DESENHO PRA QUANDO O SPRINT RODAR: a trava é do TECLADO, nunca do LEDGER.** Aplicar a regra ao `ENTRADA_NF` **recusaria uma nota legítima** — o fornecedor manda o que manda, e o nosso papel ali é registrar, não julgar. A régua da unidade vale onde o dono **digita**; o que chega da NF-e entra como veio e, se estiver na unidade errada, é a correção de unidade que conserta.
+
 **PROVADO EM PROD (`xIrd6QsH_3gTO4Mw1A4V6`), o caminho inteiro:** `0,600` · `0,350` · `0,100` · `0.600` → **0.6 / 0.35 / 0.1 / 0.6** · `0,5` em UN → sanitizado `05` · `6.313` → **6313 em UN, 6.313 em KG**. No ledger real: `102,68 KG × 46,95 = 4.820,83` — proporcional exato. **8.760 verdes · TS 0.**
 
 ## ⭐⭐⭐ GRAFIA IGUAL É O MESMO SABOR, POR CONSTRUÇÃO (08/09/2026)
