@@ -46,6 +46,8 @@ export interface TarefaDoDia {
   /** o produto da ordem — o subtítulo da linha */
   produto: string
   posicao: number
+  /** ⭐ é a última etapa da ordem? (o HOJE conclui ali mesmo quando é) */
+  ehUltima: boolean
   estado: EstadoDaEtapa
   /** o instante que o toque gravou; a tela conta os segundos a partir dele */
   iniciadoEm: Date | null
@@ -216,6 +218,17 @@ export async function diaAoVivo(
   const nomeDaEtapaAnterior = (ordemId: string, posicao: number) =>
     etapas.find((x) => x.ordemId === ordemId && x.posicao === posicao - 1) ?? null
 
+  /**
+   * ⭐ É A ÚLTIMA ETAPA DA ORDEM? (08/09) — o HOJE precisa saber pra, ao finalizar pelo
+   * gerente, perguntar "quantos saíram?" ali mesmo e concluir pelo MESMO motor.
+   *
+   * ⚠️ Sai daqui, do servidor, junto do resto da tarefa: deixar a tela deduzir "é a última"
+   * seria uma segunda derivação da estrutura da ordem — e ela erraria no dia em que a
+   * receita ganhasse uma etapa.
+   */
+  const ehUltimaEtapa = (ordemId: string, posicao: number) =>
+    !etapas.some((x) => x.ordemId === ordemId && x.posicao > posicao)
+
   const limiteDoAlarme = input.agora.getTime() - HORAS_ATE_ALARME * 3_600_000
 
   const tarefas: (TarefaDoDia & { colaboradorId: string | null })[] = etapas.map((e) => {
@@ -232,6 +245,7 @@ export async function diaAoVivo(
       nome: e.nome,
       produto: item?.nome ?? '',
       posicao: e.posicao,
+      ehUltima: ehUltimaEtapa(e.ordemId, e.posicao),
       estado: res.estado,
       iniciadoEm: e.iniciadoEm,
       finalizadoEm: e.finalizadoEm,

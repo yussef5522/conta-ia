@@ -23,8 +23,14 @@ export interface ConcluirDoTabletInput {
   companyId: string
   ordemId: string
   qtdGerada: number
-  /** quem apertou FINALIZAR na última etapa — vem do PIN, não de dropdown */
-  colaboradorId: string
+  /**
+   * Quem apertou FINALIZAR na última etapa — vem do PIN, não de dropdown.
+   *
+   * ⭐ 08/09: aceita `null` porque o gerente também conclui pelo HOJE ao vivo, e **ali
+   * ninguém assinou com PIN**. `quemFechouOLote` continua mandando quando existe; quando não
+   * existe, `null` é a resposta honesta — inventar um assinante seria pior que a ausência.
+   */
+  colaboradorId: string | null
   parcial?: boolean
 }
 

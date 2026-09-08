@@ -26,6 +26,8 @@ interface Lote { qtdGerada: number; custoUnitario: number | null; unidade: strin
 interface Tarefa {
   etapaId: string; ordemId: string; nome: string; produto: string; posicao: number
   estado: Estado; iniciadoEm: string | null; finalizadoEm: string | null
+  /** ⭐ última etapa da ordem — o gesto do gerente conclui ali mesmo quando é */
+  ehUltima: boolean
   minutos: number | null; esperando: string | null; loteFechado: Lote | null; abertaDemais: boolean
   /** ⭐ o rótulo pronto — a MESMA frase das outras duas telas */
   rotulo: string
@@ -62,6 +64,8 @@ function decorrido(desde: string, agoraMs: number): string {
   return `há ${Math.floor(min / 60)}h${String(min % 60).padStart(2, '0')}`
 }
 const duracaoCurta = (min: number) => (min < 60 ? `${min}min` : `${Math.floor(min / 60)}h${String(min % 60).padStart(2, '0')}`)
+import { AcoesDoGerenteHoje } from '@/components/estoque/acoes-do-gerente-hoje'
+import { RedesignarInline, type ColaboradorRef } from '@/components/estoque/redesignar-inline'
 
 export default function HojeAoVivoPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
@@ -72,6 +76,15 @@ export default function HojeAoVivoPage({ params }: { params: Promise<{ id: strin
   // servidor. Buscar o servidor por segundo custaria uma requisição por pessoa por segundo.
   const [agoraMs, setAgoraMs] = useState(() => Date.now())
   const [recarregando, setRecarregando] = useState(false)
+
+  // ⭐ a equipe ativa, pro redesignar inline. Carrega uma vez — a lista não muda no dia.
+  const [colaboradores, setColaboradores] = useState<ColaboradorRef[]>([])
+  useEffect(() => {
+    fetch(`/api/empresas/${id}/estoque/colaboradores`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => setColaboradores(j?.colaboradores ?? []))
+      .catch(() => { /* silencioso: sem a lista o botão some, o resto da tela segue */ })
+  }, [id])
 
   const carregar = useCallback(() => {
     setRecarregando(true)
@@ -157,6 +170,14 @@ export default function HojeAoVivoPage({ params }: { params: Promise<{ id: strin
                             </a>
                           )}
                         </div>
+                        {/* ⭐⭐ OS DOIS GESTOS, AQUI (08/09) — decisão do dono: *"quero AGIR
+                            dali"*. Chamam a MESMA rota da tela da ordem: fonte única, e o
+                            "concluir" é o MESMO `concluirDoTablet`. */}
+                        <AcoesDoGerenteHoje
+                          empresaId={id} ordemId={tarefa.ordemId} etapaId={tarefa.etapaId}
+                          quem={nome} pedidoEmAberto={tarefa.pedidoEmAberto}
+                          ehUltima={tarefa.ehUltima} onFeito={carregar}
+                        />
                       </div>
                     ))}
                     <p className="text-[12px] text-slate-400">
@@ -178,7 +199,10 @@ export default function HojeAoVivoPage({ params }: { params: Promise<{ id: strin
                 </div>
               ) : (
                 <div className="space-y-2.5">
-                  {d.pessoas.map((p) => <CardDaPessoa key={p.colaboradorId} p={p} empresaId={id} agoraMs={agoraMs} />)}
+                  {d.pessoas.map((p) => (
+                    <CardDaPessoa key={p.colaboradorId} p={p} empresaId={id} agoraMs={agoraMs}
+                      colaboradores={colaboradores} onMudou={carregar} />
+                  ))}
                 </div>
               )}
             </section>
@@ -231,7 +255,12 @@ export default function HojeAoVivoPage({ params }: { params: Promise<{ id: strin
   )
 }
 
-function CardDaPessoa({ p, empresaId, agoraMs }: { p: Pessoa; empresaId: string; agoraMs: number }) {
+function CardDaPessoa({ p, empresaId, agoraMs, colaboradores, onMudou }: {
+  p: Pessoa; empresaId: string; agoraMs: number
+  /** ⭐ a equipe ativa — pro redesignar inline da fila */
+  colaboradores: ColaboradorRef[]
+  onMudou: () => void
+}) {
   // ⭐ quem não tem nada hoje APARECE — é o momento em que o gestor designa. Some da lista
   // quem está inativo, não quem está livre.
   const vazio = p.tarefas.length === 0
@@ -278,6 +307,18 @@ function CardDaPessoa({ p, empresaId, agoraMs }: { p: Pessoa; empresaId: string;
                   : t.estado === 'AGUARDANDO' && t.esperando ? `depois do ${t.esperando}`
                   : t.rotulo}
               </span>
+              {/* ⭐⭐ REDESIGNAR NA FILA (08/09) — decisão do dono: *"remanejo é decisão de
+                  manhã e a tela é o lugar dela"*. ⛔ Só em AGUARDANDO: etapa iniciada tem
+                  relógio correndo no nome de alguém, e trocar o nome por baixo do tempo
+                  medido escreveria o trabalho de uma pessoa na conta de outra. */}
+              {t.estado === 'AGUARDANDO' && colaboradores.length > 0 && (
+                <span className="w-full pl-[1.4rem]">
+                  <RedesignarInline
+                    empresaId={empresaId} ordemId={t.ordemId} etapaId={t.etapaId}
+                    colaboradores={colaboradores} atuais={[p.colaboradorId]} onFeito={onMudou}
+                  />
+                </span>
+              )}
               {t.loteFechado && (
                 <span className="w-full pl-[1.4rem] text-[12px] text-slate-400">
                   └ lote fechado: {num(t.loteFechado.qtdGerada)} {t.loteFechado.unidade}

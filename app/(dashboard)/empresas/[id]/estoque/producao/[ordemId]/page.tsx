@@ -226,8 +226,14 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
               const faltou = planejada && sepQtd > l.saldoDisponivel + 0.001
               return (
                 <tr key={l.itemId} className="border-t border-slate-50">
-                  <td className="px-3 py-0 text-[13px]"><p className="font-medium text-slate-800">{l.nome}</p><p className="text-[11px] text-slate-400">{l.custoMedio != null ? `${brl(l.custoMedio)}/${l.unidadeControle}` : 'sem custo (a definir)'}</p></td>
-                  <td className="px-3 py-0 text-[13px] text-right tabular-nums text-slate-500">{num(l.qtdPlanejada)} {l.unidade}</td>
+                  {/* ⭐ o INSUMO é o que o cozinheiro procura na linha: nome em 14px/500 e
+                      quantidade em 14px tabular. O custo continua em tom de apoio — máx 2
+                      pesos escuros por linha. */}
+                  <td className="px-3 py-0 text-[14px]">
+                    <p className="font-medium text-slate-900">{l.nome}</p>
+                    <p className="text-[11.5px] text-slate-400">{l.custoMedio != null ? `${brl(l.custoMedio)}/${l.unidadeControle}` : 'sem custo (a definir)'}</p>
+                  </td>
+                  <td className="px-3 py-0 text-right text-[14px] font-medium tabular-nums text-slate-700">{num(l.qtdPlanejada)} {l.unidade}</td>
                   <td className="px-3 py-0 text-[13px] text-right">
                     {planejada ? (
                       <div className="flex items-center justify-end gap-1">

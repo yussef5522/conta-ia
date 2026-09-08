@@ -114,17 +114,19 @@ export function EtapasDaOrdem({ id, ordemId, colaboradores, aoSaberAssinadas, ao
   if (etapas.length === 0) return null
 
   return (
-    <div className="rounded-lg border border-slate-200">
-      <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2">
-        <p className="text-sm font-semibold text-slate-900">Etapas</p>
-        <p className="text-[11px] text-slate-400">quem faz cada parte</p>
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <div className="flex items-baseline justify-between border-b border-slate-100 bg-slate-50/60 px-4 py-2.5">
+        <p className="text-[15px] font-semibold text-slate-900">Etapas</p>
+        <p className="text-[11.5px] text-slate-400">quem faz cada parte</p>
       </div>
       {erro && <p className="border-b border-rose-100 bg-rose-50 px-3 py-2 text-xs text-rose-700">{erro}</p>}
       <ul className="divide-y divide-slate-100">
         {etapas.map((e) => (
-          <li key={e.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2.5">
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-semibold tabular-nums text-slate-500">{e.posicao + 1}</span>
-            <span className="min-w-[9rem] flex-1 text-sm text-slate-800">{e.nome}</span>
+          <li key={e.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11.5px] font-semibold tabular-nums text-slate-500">{e.posicao + 1}</span>
+            {/* ⭐ a ETAPA é protagonista: 15px/500. Máx 2 pesos escuros por linha — este e
+                o nome da PESSOA; o resto (estado, horas, insumos) fica em tom de apoio. */}
+            <span className="min-w-[9rem] flex-1 text-[15px] font-medium text-slate-900">{e.nome}</span>
 
             {/* ⛔⛔ ENCERRADA SEM FINALIZAR: a ordem acabou e levou a etapa junto. NÃO é
                 "feita" (ninguém apertou finalizar) e NÃO tem duração — dizer "1h12" aqui
@@ -145,21 +147,29 @@ export function EtapasDaOrdem({ id, ordemId, colaboradores, aoSaberAssinadas, ao
                 <span className="text-slate-400">{e.iniciadoEm ? `· começou ${hhmm(e.iniciadoEm)} ` : ''}· tempo a apurar</span>
               </span>
             ) : e.estado === 'FEITA' ? (
-              <span className="flex items-center gap-1.5 text-xs text-emerald-700">
-                <Check className="h-3.5 w-3.5" />
-                <span className="font-medium">{e.executorNome ?? '—'}</span>
-                <span className="tabular-nums text-slate-500">· {duracao(e.minutos)}</span>
-                <span className="text-slate-400">· {hhmm(e.iniciadoEm)}–{hhmm(e.finalizadoEm)}</span>
+              <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[12px] font-semibold text-emerald-800">
+                  <Check className="h-3.5 w-3.5" /> feita
+                </span>
+                <span className="text-[14px] font-medium text-slate-900">{e.executorNome ?? '—'}</span>
+                <span className="text-[12px] tabular-nums text-slate-500">{duracao(e.minutos)}</span>
+                <span className="text-[11.5px] tabular-nums text-slate-400">{hhmm(e.iniciadoEm)}–{hhmm(e.finalizadoEm)}</span>
               </span>
             ) : (
               <>
-                <label className="flex items-center gap-1.5 text-xs text-slate-500">
-                  <User className="h-3.5 w-3.5 text-slate-400" />
+                <label className="flex items-center gap-2 text-[13px] text-slate-500">
+                  <User className="h-4 w-4 text-slate-400" />
+                  {/* ⭐ a PESSOA designada é o outro protagonista da linha: quem o gerente
+                      procura aqui é "quem faz", e isso não pode estar em cinza pequeno. */}
                   <select
                     value={e.colaboradorId ?? ''}
                     onChange={(ev) => designar(e.id, ev.target.value)}
                     disabled={salvando === e.id || e.estado === 'EM_ANDAMENTO'}
-                    className="rounded-lg border border-slate-300 py-1.5 px-2 text-xs disabled:bg-slate-50 disabled:text-slate-500"
+                    className={`rounded-lg border px-2.5 py-2 text-[14px] disabled:bg-slate-50 disabled:text-slate-500 ${
+                      e.colaboradorId
+                        ? 'border-slate-300 font-medium text-slate-900'
+                        : 'border-dashed border-slate-300 text-slate-400'
+                    }`}
                   >
                     {/* ⚠️ "ninguém ainda" NÃO é erro: etapa solta funciona, e quem pegar com o
                         PIN fica registrado. Nada trava a cozinha por falta de designação. */}
@@ -180,10 +190,11 @@ export function EtapasDaOrdem({ id, ordemId, colaboradores, aoSaberAssinadas, ao
                 </label>
                 {e.estado === 'EM_ANDAMENTO' ? (
                   <>
-                    <span className="flex items-center gap-1.5 text-xs font-medium text-amber-700">
-                      <Clock className="h-3.5 w-3.5" /> em andamento · <span className="tabular-nums">{duracao(e.minutos)}</span>
-                      <span className="font-normal text-slate-400">desde {hhmm(e.iniciadoEm)}</span>
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-[12px] font-semibold text-amber-800">
+                      <Clock className="h-3.5 w-3.5" /> em andamento
+                      <span className="font-medium tabular-nums">{duracao(e.minutos)}</span>
                     </span>
+                    <span className="text-[11.5px] tabular-nums text-slate-400">desde {hhmm(e.iniciadoEm)}</span>
                     {/* ⭐⭐ AS AÇÕES (07/09) — o gerente nunca fica preso olhando.
                         ⚠️ "Pedir" vem PRIMEIRO e é o caminho preferido: ela aperta com o PIN
                         dela e o tempo é DELA, medido de verdade. "Finalizar pelo gerente" é a
@@ -209,9 +220,15 @@ export function EtapasDaOrdem({ id, ordemId, colaboradores, aoSaberAssinadas, ao
                     </span>
                   </>
                 ) : (
-                  <span className="text-xs text-slate-400">
-                    {e.colaboradorId ? 'aguardando' : 'quem pegar com o PIN fica registrado'}
-                  </span>
+                  /* ⭐ AGUARDANDO também é um dos 5 estados — ganha o chip, em tom neutro:
+                     ele informa, não pede ação, e âmbar aqui competiria com "em andamento". */
+                  e.colaboradorId ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-[12px] font-semibold text-slate-600">
+                      <Clock className="h-3.5 w-3.5" /> aguardando
+                    </span>
+                  ) : (
+                    <span className="text-[12px] text-slate-400">quem pegar com o PIN fica registrado</span>
+                  )
                 )}
               </>
             )}
