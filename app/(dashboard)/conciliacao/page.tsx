@@ -26,12 +26,14 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Header } from '@/components/layout/header'
 import { useEmpresa } from '@/lib/contexts/empresa-context'
 import { formatBRL } from '@/lib/format/money'
-import { StatementBalanceHeader } from '@/components/conciliacao/statement-balance-header'
 import { HistoricoTable } from '@/components/conciliacao/historico-table'
 import { FindAndMatchPanel } from '@/components/conciliacao/find-and-match-panel'
 import {
   ParSugerido, type ContaDaFilaDTO, type SugestaoDTO,
 } from '@/components/conciliacao/par-sugerido'
+import {
+  CabecalhoDaFila, type SaldosDTO, type TotaisDTO,
+} from '@/components/conciliacao/cabecalho-da-fila'
 import { useToast } from '@/components/ui/use-toast'
 import { fetchJson } from '@/lib/http/fetch-json'
 
@@ -46,7 +48,8 @@ interface FilaDTO {
   contas: ContaDaFilaDTO[]
   transferencias: TransferenciaDTO[]
   duplicatas: DuplicataDTO[]
-  totais: { contas: number; comSugestao: number; transferencias: number; duplicatas: number }
+  saldos: SaldosDTO
+  totais: TotaisDTO
 }
 
 type Aba = 'contas' | 'transferencias' | 'duplicatas' | 'historico'
@@ -80,7 +83,6 @@ function ConciliacaoInner() {
   const [fila, setFila] = useState<FilaDTO | null>(null)
   const [carregando, setCarregando] = useState(true)
   const [aba, setAba] = useState<Aba>('contas')
-  const [refreshKey, setRefreshKey] = useState(0)
   // Find & Match aberto pra UMA linha do extrato (a saída do caso difícil)
   const [procurando, setProcurando] = useState<SugestaoDTO | null>(null)
 
@@ -101,6 +103,18 @@ function ConciliacaoInner() {
 
   useEffect(() => { carregar() }, [carregar])
 
+  /**
+   * ⭐ Depois de vincular, a LISTA se atualiza local (sem refetch, o scroll fica
+   * onde estava) mas o SALDO não: o número novo depende do recálculo da conta no
+   * servidor. Então releio só ele em vez de estimar aqui — estimar seria criar a
+   * segunda derivação de novo, agora no cliente.
+   */
+  const recarregarSaldos = useCallback(async () => {
+    if (!empresaId) return
+    const { ok, data } = await fetchJson<FilaDTO>(`/api/conciliacao/fila?empresaId=${empresaId}`)
+    if (ok && data) setFila((f) => (f ? { ...f, saldos: data.saldos } : f))
+  }, [empresaId])
+
   useEffect(() => {
     if (!empresaId) return
     router.replace(`?empresaId=${empresaId}`, { scroll: false })
@@ -112,14 +126,20 @@ function ConciliacaoInner() {
     setFila((f) => {
       if (!f) return f
       const contas = f.contas.filter((c) => c.conta.id !== contaId)
+      const dc = contas.filter((c) => c.situacao === 'DUPLA_CONTAGEM')
       return { ...f, contas, totais: {
         ...f.totais,
         contas: contas.length,
         comSugestao: contas.filter((c) => c.sugestoes.length > 0).length,
+        duplaContagem: dc.length,
+        // ⚠️ a MESMA aritmética do servidor: soma a LISTA, cada conta uma vez.
+        valorEmDuplaContagem: Math.round(dc.reduce((s, c) => s + c.conta.valor, 0) * 100) / 100,
       } }
     })
-    setRefreshKey((k) => k + 1)
-  }, [])
+    // ⭐ o saldo do topo é conferência de banco: só o servidor sabe o novo número,
+    // então recarrega em vez de eu chutar localmente.
+    void recarregarSaldos()
+  }, [recarregarSaldos])
 
   // ⚠️ a recusa tira só ESTE par — a conta continua na fila com as outras
   // sugestões, porque recusar um par não é recusar a conta.
@@ -157,7 +177,10 @@ function ConciliacaoInner() {
         }
       />
 
-      {empresaId && <StatementBalanceHeader empresaId={empresaId} refreshKey={refreshKey} />}
+      {/* ⛔ O CABEÇALHO SAI DA MESMA FONTE DAS ABAS. O anterior tinha régua
+          própria e contradizia a aba de duplicatas na mesma tela (69 × 0), com o
+          dinheiro errado até sob a própria régua. */}
+      {empresaId && fila && <CabecalhoDaFila totais={fila.totais} saldos={fila.saldos} />}
 
       {empresaId && (
         <div className="rounded-lg border bg-card overflow-hidden">
@@ -327,7 +350,7 @@ function ConciliacaoInner() {
               type: procurando.extrato.tipo,
             }}
             onCancel={() => setProcurando(null)}
-            onReconciled={() => { setProcurando(null); void carregar(); setRefreshKey((k) => k + 1) }}
+            onReconciled={() => { setProcurando(null); void carregar() }}
           />
         </div>
       )}

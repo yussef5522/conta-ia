@@ -86,8 +86,23 @@ export interface FilaDeConciliacao {
   contas: ContaEsperandoPagamento[]
   transferencias: TransferenciaEsperandoPar[]
   duplicatas: DuplicataSuspeita[]
-  /** contadores honestos — cada um é o tamanho da sua lista, sem inflar */
-  totais: { contas: number; comSugestao: number; transferencias: number; duplicatas: number }
+  /** ⭐ a conferência de saldo, derivada da MESMA leitura que os cards das contas */
+  saldos: ConferenciaDeSaldos
+  /**
+   * ⛔ contadores honestos — cada um é o TAMANHO DA SUA LISTA, sem inflar.
+   *
+   * Foi aqui que o cabeçalho velho errou duas vezes: ele contava `DISTINCT e.id`
+   * mas somava `SUM(e.amount)` **sobre as linhas do JOIN**, então toda conta que
+   * casava com mais de uma linha do extrato entrava no dinheiro mais de uma vez —
+   * R$ 845.646,99 no lugar de R$ 444.746,99 sob a própria régua dele.
+   */
+  totais: {
+    contas: number; comSugestao: number; transferencias: number; duplicatas: number
+    /** contas marcadas como pagas e SEM vínculo — o mesmo dinheiro em duas linhas */
+    duplaContagem: number
+    /** quanto está contado duas vezes. Soma das contas ACIMA, cada uma UMA vez. */
+    valorEmDuplaContagem: number
+  }
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -299,18 +314,23 @@ export async function duplicatasSuspeitas(
 export async function filaDeConciliacao(
   companyId: string, db: Db = defaultPrisma,
 ): Promise<FilaDeConciliacao> {
-  const [contas, transferencias, duplicatas] = await Promise.all([
+  const [contas, transferencias, duplicatas, saldos] = await Promise.all([
     contasEsperandoPagamento(companyId, db),
     transferenciasEsperandoPar(companyId, db),
     duplicatasSuspeitas(companyId, db),
+    conferenciaDeSaldos(companyId, db),
   ])
+  const dc = contas.filter((c) => c.situacao === 'DUPLA_CONTAGEM')
   return {
-    contas, transferencias, duplicatas,
+    contas, transferencias, duplicatas, saldos,
     totais: {
       contas: contas.length,
       comSugestao: contas.filter((c) => c.sugestoes.length > 0).length,
       transferencias: transferencias.length,
       duplicatas: duplicatas.length,
+      duplaContagem: dc.length,
+      // ⚠️ `reduce` sobre a LISTA, não sobre um join: cada conta entra uma vez.
+      valorEmDuplaContagem: Math.round(dc.reduce((s, c) => s + c.conta.valor, 0) * 100) / 100,
     },
   }
 }
@@ -451,4 +471,91 @@ export async function contarVinculosEsperandoDecisao(
 ): Promise<number> {
   const contas = await contasEsperandoPagamento(companyId, db)
   return contas.filter((c) => c.sugestoes.length > 0).length
+}
+
+// ────────────────────────────────────────────────────────────────
+// ⭐⭐ A CONFERÊNCIA DE SALDO — a única versão defensável (07/09/2026)
+// ────────────────────────────────────────────────────────────────
+//
+// ⛔⛔ O CABEÇALHO ANTIGO AFIRMAVA UM NÚMERO QUE NINGUÉM CONSEGUIA DEFENDER.
+// Ele mostrava *"SALDO DO EXTRATO R$ 33.046,25 × SALDO NO SISTEMA −R$ 128.404,22
+// → R$ 161.450,47 a conciliar pra bater"*. Medido, nenhum dos dois é saldo:
+//
+//   • o "saldo do extrato" era Σ(CREDIT−DEBIT) de TODA tx OFX já importada —
+//     ignora saldo inicial e ignora o que o banco declarou;
+//   • o "saldo no sistema" era a régua da **DRE realizada** (EFFECTED sem
+//     vínculo), e **325 daquelas linhas nem têm conta bancária** (R$ 61.812,00):
+//     elas não poderiam bater com extrato nenhum, por construção.
+//
+// A soma dos cards das contas é −R$ 74.190,46 — não bate com nenhum dos dois.
+//
+// ⭐ A RÉGUA HONESTA JÁ EXISTIA NO MODELO: `balance` (o saldo que o sistema
+// calcula, o MESMO número do card da conta) contra `ledgerBal` (o que o banco
+// DECLAROU no último extrato), com `ledgerBalDate` dizendo **de quando**. Conta
+// sem extrato importado não entra na conferência — ela não tem contra o que bater,
+// e inventar um lado é o defeito que estamos consertando.
+
+export interface ConferenciaDeConta {
+  id: string
+  nome: string
+  /** o saldo que o sistema calcula — o MESMO número do card da conta */
+  sistema: number
+  /** o que o banco declarou no último extrato importado */
+  declarado: number
+  declaradoEm: Date | null
+  /** sistema − declarado */
+  diferenca: number
+  bate: boolean
+}
+
+export interface ConferenciaDeSaldos {
+  contas: ConferenciaDeConta[]
+  /** contas sem extrato importado — ficam de fora da conta, com o nome à vista */
+  semExtrato: { id: string; nome: string; sistema: number }[]
+  batem: number
+  naoBatem: number
+}
+
+/** um centavo: abaixo disso é arredondamento, não divergência */
+const TOLERANCIA_SALDO = 0.01
+
+type ContaPraConferir = {
+  id: string; name: string; balance: number
+  ledgerBal: number | null; ledgerBalDate: Date | null
+}
+
+/** ⭐ a classificação é PURA — testável sem banco, e é ela que a tela imprime */
+export function conferirSaldos(contas: ContaPraConferir[]): ConferenciaDeSaldos {
+  const comExtrato: ConferenciaDeConta[] = []
+  const semExtrato: ConferenciaDeSaldos['semExtrato'] = []
+  for (const c of contas) {
+    const nome = c.name.trim()
+    // ⛔ sem declaração do banco não há conferência possível — e dizer "bate"
+    // aqui seria exatamente o número indefensável que saiu do cabeçalho.
+    if (c.ledgerBal == null) { semExtrato.push({ id: c.id, nome, sistema: c.balance }); continue }
+    const diferenca = Math.round((c.balance - c.ledgerBal) * 100) / 100
+    comExtrato.push({
+      id: c.id, nome, sistema: c.balance, declarado: c.ledgerBal,
+      declaradoEm: c.ledgerBalDate, diferenca,
+      bate: Math.abs(diferenca) < TOLERANCIA_SALDO,
+    })
+  }
+  // quem NÃO bate primeiro: é o que pede ação
+  comExtrato.sort((a, b) => Math.abs(b.diferenca) - Math.abs(a.diferenca))
+  return {
+    contas: comExtrato, semExtrato,
+    batem: comExtrato.filter((c) => c.bate).length,
+    naoBatem: comExtrato.filter((c) => !c.bate).length,
+  }
+}
+
+export async function conferenciaDeSaldos(
+  companyId: string, db: Db = defaultPrisma,
+): Promise<ConferenciaDeSaldos> {
+  const contas = await db.bankAccount.findMany({
+    where: { companyId, isActive: true },
+    select: { id: true, name: true, balance: true, ledgerBal: true, ledgerBalDate: true },
+    orderBy: { name: 'asc' },
+  })
+  return conferirSaldos(contas)
 }
