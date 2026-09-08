@@ -15,7 +15,7 @@
 // outra nota do mesmo fornecedor (as duas notas do Cancian são o caso real).
 
 import { useState } from 'react'
-import { Link2, X, Loader2, Search } from 'lucide-react'
+import { Link2, X, Loader2, Search, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
@@ -64,13 +64,26 @@ interface Props {
   empresaId: string
   item: ContaDaFilaDTO
   sugestao: SugestaoDTO
-  onVinculado: (contaId: string) => void
+  /**
+   * ⛔⛔ QUANTAS CONTAS ESTÃO DISPUTANDO ESTA MESMA LINHA DO EXTRATO.
+   *
+   * Nasceu de um erro real em 08/09/2026: o Cancian tinha DUAS notas de R$ 230,81
+   * (NF 834771 venc 29/08 e NF 835271 venc 05/09) disputando o mesmo débito de
+   * R$ 232,81. Os dois cards ficavam quase idênticos — mesma linha à esquerda,
+   * mesmo valor à direita — e o que os separava (**o número da NF e o
+   * vencimento**) estava em texto pequeno. **A nota errada foi vinculada.**
+   *
+   * Mostrar as duas continua certo (esconder uma seria a régua decidindo qual foi
+   * paga). O que faltava era dizer, alto, que **só uma pode ser**.
+   */
+  disputadaPor?: number
+  onVinculado: (contaId: string, extratoId: string) => void
   onRecusado: (extratoId: string, contaId: string) => void
   onProcurar: (s: SugestaoDTO) => void
 }
 
 export function ParSugerido({
-  empresaId, item, sugestao: s, onVinculado, onRecusado, onProcurar,
+  empresaId, item, sugestao: s, disputadaPor = 1, onVinculado, onRecusado, onProcurar,
 }: Props) {
   const { toast } = useToast()
   const [ocupado, setOcupado] = useState(false)
@@ -96,7 +109,7 @@ export function ParSugerido({
         return
       }
       toast({ title: 'Vinculado', description: 'O pagamento e a conta viraram uma linha só.' })
-      onVinculado(s.contaId)
+      onVinculado(s.contaId, s.extratoId)
     } catch {
       toast({ variant: 'destructive', title: 'Falha de rede', description: 'Tenta de novo.' })
     } finally { setOcupado(false) }
@@ -119,7 +132,20 @@ export function ParSugerido({
   }
 
   return (
-    <article className="rounded-lg border border-slate-300 dark:border-slate-700 overflow-hidden bg-card">
+    <article className={`rounded-lg border overflow-hidden bg-card ${
+      disputadaPor > 1 ? 'border-amber-500 dark:border-amber-600' : 'border-slate-300 dark:border-slate-700'
+    }`}>
+      {/* ⛔ o aviso vem ANTES do par: quem lê precisa saber que está escolhendo
+          ENTRE notas, não confirmando uma sozinha. */}
+      {disputadaPor > 1 && (
+        <div className="flex items-start gap-2 px-3.5 py-1.5 bg-amber-50 dark:bg-amber-950/40 border-b border-amber-300 dark:border-amber-800 text-[12px]">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-amber-700 dark:text-amber-400" />
+          <span>
+            <b>{disputadaPor} notas disputam este mesmo débito</b> — só uma pode ser.
+            Confira o <b>número da NF</b> e o <b>vencimento</b> à direita antes de vincular.
+          </span>
+        </div>
+      )}
       <div className="grid md:grid-cols-[1fr_34px_1fr]">
         {/* ── lado FRIO: o extrato ── */}
         <div className="px-3.5 py-2.5 bg-slate-100/70 dark:bg-slate-900/60 min-w-0 flex flex-col gap-0.5">
@@ -145,9 +171,15 @@ export function ParSugerido({
           <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             conta a pagar · {item.situacao === 'DUPLA_CONTAGEM' ? 'já marcada como paga' : 'em aberto'}
           </span>
-          <span className="text-[13px] font-semibold leading-snug break-words">{item.conta.descricao}</span>
+          <span className={`leading-snug break-words ${
+            disputadaPor > 1 ? 'text-[14px] font-bold' : 'text-[13px] font-semibold'
+          }`}>{item.conta.descricao}</span>
           <span className="text-[15px] font-semibold tabular-nums">{formatBRL(Math.abs(item.conta.valor))}</span>
-          <span className="text-[11px] text-muted-foreground tabular-nums">
+          <span className={`tabular-nums ${
+            disputadaPor > 1
+              ? 'text-[12.5px] font-semibold text-amber-800 dark:text-amber-300'
+              : 'text-[11px] text-muted-foreground'
+          }`}>
             vence {dia(item.conta.data)}
             {item.situacao === 'DUPLA_CONTAGEM' && ' · sem vínculo desde então'}
           </span>

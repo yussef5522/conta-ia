@@ -122,10 +122,16 @@ function ConciliacaoInner() {
 
   // ⭐ CONCILIADO SOME DA FILA NA HORA (régua do dono): remoção local, sem refetch
   // — a lista não desmonta e o scroll fica onde estava. O saldo do topo refetcha.
-  const removerConta = useCallback((contaId: string) => {
+  const removerConta = useCallback((contaId: string, extratoId: string) => {
     setFila((f) => {
       if (!f) return f
-      const contas = f.contas.filter((c) => c.conta.id !== contaId)
+      const contas = f.contas
+        .filter((c) => c.conta.id !== contaId)
+        // ⛔⛔ A LINHA DO EXTRATO FOI GASTA: ela não pode continuar sendo oferecida
+        // como pagamento de OUTRA conta. Sem isto, o card concorrente ficava na
+        // tela clicável — e foi assim que a NF errada do Cancian foi vinculada
+        // em 08/09. O servidor já não a devolveria; a tela é que mentia até o F5.
+        .map((c) => ({ ...c, sugestoes: c.sugestoes.filter((s) => s.extratoId !== extratoId) }))
       const dc = contas.filter((c) => c.situacao === 'DUPLA_CONTAGEM')
       return { ...f, contas, totais: {
         ...f.totais,
@@ -161,6 +167,19 @@ function ConciliacaoInner() {
     () => (fila?.contas ?? []).filter((c) => c.sugestoes.length === 0), [fila])
   const duplaContagem = useMemo(
     () => comSugestao.filter((c) => c.situacao === 'DUPLA_CONTAGEM').length, [comSugestao])
+
+  /**
+   * ⛔ Quantas contas disputam CADA linha do extrato. Duas notas do mesmo
+   * fornecedor com o mesmo valor viram dois cards quase idênticos — e só uma pode
+   * ser. Mostrar as duas continua certo; o que faltava era dizer isso alto.
+   */
+  const disputaPorExtrato = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const c of comSugestao) for (const s of c.sugestoes) {
+      m.set(s.extratoId, (m.get(s.extratoId) ?? 0) + 1)
+    }
+    return m
+  }, [comSugestao])
 
   const t = fila?.totais
 
@@ -241,6 +260,7 @@ function ConciliacaoInner() {
                           empresaId={empresaId}
                           item={c}
                           sugestao={s}
+                          disputadaPor={disputaPorExtrato.get(s.extratoId) ?? 1}
                           onVinculado={removerConta}
                           onRecusado={removerPar}
                           onProcurar={setProcurando}
@@ -248,9 +268,8 @@ function ConciliacaoInner() {
                       ))}
                       {c.sugestoes.length > 1 && (
                         <p className="text-[11px] text-muted-foreground px-1">
-                          ⚠️ <b>Mais de uma nota do mesmo fornecedor com o mesmo valor.</b> Esconder
-                          uma seria a régua decidindo qual foi paga — o card mostra o número da NF,
-                          a escolha é sua.
+                          ⚠️ <b>Mais de um pagamento parecido no extrato pra esta conta.</b> Esconder
+                          um seria a régua decidindo qual foi — a escolha é sua.
                         </p>
                       )}
                     </div>
