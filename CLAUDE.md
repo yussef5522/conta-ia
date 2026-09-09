@@ -242,6 +242,40 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⭐⭐⭐ UM CAMINHO SÓ: VENDA → FICHA → COMPONENTE(S) (09/09/2026) — decisão do dono
+
+**A ordem:** *"Produto vendido baixa estoque por UM mecanismo, não três. Três caminhos pra mesma pergunta é como a bagunça nasce — cada tela nova precisa conhecer os três, cada auditoria conferir os três. Revenda é só o caso particular de ficha com 1 componente ×1: é o caminho que já cobre o caso complexo, então os simples cabem nele — o contrário não."*
+
+**⭐ MEDIDO ANTES — a migração era MUITO menor do que parecia:**
+
+| caminho | quantos | |
+|---|---|---|
+| **1. ficha** | **42** | já era o alvo |
+| **3. mapa direto** | **2** | SKOL e FRUKI 600ML (⚠️ a COCA LATA **já era ficha** — o dono lembrou errado) |
+| **2. fundida** | **2** | COCA COLA 2L e COCA LATA |
+
+⚠️ **E as OUTRAS 6 linhas de `stock_item_mesclado` são mescla de ITEM DE VERDADE** (Coxão, Bobina, Filé de frango): **não entram**, e varrê-las junto seria estrago.
+
+**AS PORTAS FECHAM NUM CHOKE-POINT SÓ:** `upsertVendaMap` com `REVENDA` passa a **criar a ficha de 1 componente por baixo** — os **três** callers (dropdown do hub, tela do Suitable, lançamento manual) herdam, e **não há uma quarta porta pra alguém esquecer**. ⭐ O gesto de 1 clique **não muda pra quem usa**. E `mesclarItens` **recusa invólucro de ficha**, com o motivo escrito (a mescla MOVE MOVIMENTO — foi por aí que +154 garrafas entraram no item real); mesclar item de verdade continua funcionando.
+
+**⛔⛔ DOIS RISCOS QUE OS TESTES EXPUSERAM ANTES DE PROD — e são o motivo de ter feito red-then-green antes de migrar:**
+1. **O LINK APODRECERIA.** A bebida que era `item:<id>` virou `ficha:<id>`, e um favorito antigo daria 404 — contra a regra do próprio arquivo (*"a chave é um LINK, e link não apodrece"*). Curado com `baixaItemId` no hub + um último degrau em `acharLinhaPorChave`. **Provado em prod: `item:7qundp` ainda abre o SKOL.**
+2. **REUSAR FICHA SÓ PELO NOME.** Uma ficha homônima que baixa **outra coisa** seria reusada e o produto passaria a baixar o item errado **em silêncio** (no fixture degenerado virou explosão infinita). Agora só reusa o **passa-direto do MESMO item**; senão, erro que ensina a saída.
+
+⚠️ E o guard do rename deixou de tratar RECEITA como dona de nome — a linha do cardápio leva o nome do PDV **de propósito**, e bloquear o rename da garrafa por isso seria o guard impedindo o desenho.
+
+**5 testes invertidos com o motivo escrito** (status `REVENDA` → `FICHA_OK`, chave `item:` → `ficha:`, nome exibido vira o do cardápio) e **1 fixture degenerada corrigida** (uma ficha que produzia **e** consumia o mesmo item — ciclo que `criarFicha` recusa e que só existia porque o teste gravava por SQL cru).
+
+**CRITÉRIO DE ACEITE, PROVADO EM PROD** (`pg_dump pre-caminho-unico-20260909-041524`):
+```
+alvoTipo FICHA: 44 · mapas diretos restantes: 0 · invólucros fundidos: 0
+   (as 6 mesclas de item de verdade preservadas)
+44 produtos · 0 pendentes · 43 itens baixados · 0 baixando em invólucro
+plano do migrado: SKOL ⭐ IDÊNTICO · FRUKI 600ML ⭐ IDÊNTICO
+item:7qundp → ⭐ abre "SKOL"   ·   item:xap6fc → ⭐ abre "FRUKI 600ML"
+```
+**8.950 verdes · TS 0 · deploy `yp1LvHxIl0C41PzpDE6wd` 4/4.**
+
 ## ⭐⭐ INVÓLUCRO DE FICHA: NÃO FUNDIR OS OUTROS — E O CATÁLOGO CONTAR A VERDADE (09/09/2026)
 
 ### ⭐ A CONFERÊNCIA DA COCA 2L FUNDIDA: **nenhuma aresta**
