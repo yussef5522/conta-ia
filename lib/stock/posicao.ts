@@ -6,6 +6,7 @@ import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { saldosDaEmpresa } from './saldo'
 import { statusEstoque, type StatusEstoqueResult } from './status-estoque'
+import { seContaFisicamente } from './tipos-ficha'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -39,6 +40,10 @@ export async function listPosicao(companyId: string, db: Db = defaultPrisma, ago
   const [saldos, entradas, items] = await Promise.all([
     saldosDaEmpresa(db, companyId),
     db.stockMovement.findMany({ where: { companyId, tipo: 'ENTRADA_NF' }, select: { itemId: true, custoUnitario: true, dataMovimento: true }, orderBy: { dataMovimento: 'asc' } }),
+    // ⛔⛔ A POSIÇÃO É A PRATELEIRA FÍSICA (09/09/2026): o invólucro de PRODUTO_FINAL e de
+    // SABOR é a LINHA DO CARDÁPIO, não coisa que se estoca. Com as 25 fichas de bebida, cada
+    // refrigerante passou a aparecer DUAS vezes aqui — a garrafa da nota e a linha do menu —
+    // e foi na linha do menu que a contagem foi feita, criando 9 ajustes fantasma.
     db.stockItem.findMany({ where: { companyId }, select: { id: true, nome: true, categoria: true, unidadeControle: true, estoqueMin: true, estoqueMax: true, ativo: true } }),
   ])
   const byId = new Map(items.map((i) => [i.id, i]))
@@ -84,6 +89,10 @@ export async function listPosicao(companyId: string, db: Db = defaultPrisma, ago
     // ⚠️ o mesclado já sai por `ativo=false`; o filtro do Catálogo é que precisava do
     // registro próprio, porque lá o dono LIGA "mostrar inativos".
     .filter((i) => byId.get(i.itemId)?.ativo !== false)
+    // ⛔ e o invólucro do cardápio (PRODUTO_FINAL / SABOR) sai junto: a Posição responde
+    // "o que tem na prateleira", e a linha do menu não é coisa que se estoca. Mesma régua
+    // da contagem — uma pergunta, uma função (`seContaFisicamente`).
+    .filter((i) => seContaFisicamente(i.categoria))
     .sort((a, b) => b.valor - a.valor)
 
   const catMap = new Map<string, { valor: number; itens: number }>()

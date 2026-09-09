@@ -12,7 +12,7 @@
 
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
-import { TIPO_SABOR } from '@/lib/stock/tipos-ficha'
+import { CATEGORIAS_SEM_PRATELEIRA } from '@/lib/stock/tipos-ficha'
 import { criarMovimento } from './movement'
 import { recomputeSaldoCache, saldosDaEmpresa } from './saldo'
 import { partirNome } from './contagem/nome-produto'
@@ -196,9 +196,10 @@ export async function getQuadro(companyId: string, now: Date = new Date(), db: P
   const [sessao, itens, saldos] = await Promise.all([
     contagemAberta(companyId, db),
     db.stockItem.findMany({
-      // ⛔ invólucro de SABOR fica FORA: ninguém pesa "CALABRESA" na câmara — o que existe
+      // ⛔ invólucro de SABOR e de PRODUTO_FINAL ficam FORA: ninguém pesa "CALABRESA" nem
+      // "COCA COLA 2L (a linha do menu)" na câmara — o que existe
       // lá é a porção. Ver `seContaFisicamente` em lib/stock/tipos-ficha.ts.
-      where: { companyId, ativo: true, categoria: { not: TIPO_SABOR } },
+      where: { companyId, ativo: true, categoria: { notIn: [...CATEGORIAS_SEM_PRATELEIRA] } },
       select: { id: true, nome: true, categoria: true, unidadeControle: true }, orderBy: { nome: 'asc' },
     }),
     saldosDaEmpresa(db, companyId),

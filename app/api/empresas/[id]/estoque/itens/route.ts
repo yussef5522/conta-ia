@@ -8,6 +8,7 @@ import { prisma } from '@/lib/db'
 import { guardStock } from '@/lib/stock/require-stock'
 import { custoMedioPorItem } from '@/lib/stock/saldo'
 import { filtrarPorBusca } from '@/lib/busca-texto'
+import { involucrosPassaDireto } from '@/lib/stock/passa-direto-de-revenda'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -67,7 +68,18 @@ export async function GET(request: NextRequest, { params }: Params) {
     custoMedioPorItem(prisma, companyId),
   ])
 
-  const itens = filtrarPorBusca(todos, busca, (i) => i.nome).slice(0, 50)
+  let candidatos = filtrarPorBusca(todos, busca, (i) => i.nome)
+
+  // ⛔⛔ "COCA COLA 2L aparece 2× na busca da receita" (09/09) — e as duas eram itens reais:
+  // a garrafa que a NF alimenta (REVENDA) e o INVÓLUCRO que a ficha de revenda criou
+  // (PRODUTO_FINAL). Oferecer o invólucro é oferecer a garrafa com um degrau a mais.
+  // ⚠️ Só o PASSA-DIRETO sai (1 componente ×1 de um item REVENDA); XIS e COMBO ficam.
+  if (escopoReceita) {
+    const fora = await involucrosPassaDireto(companyId, candidatos, prisma)
+    if (fora.size) candidatos = candidatos.filter((i) => !fora.has(i.id))
+  }
+
+  const itens = candidatos.slice(0, 50)
 
   // ordem de RELEVÂNCIA pra receita: o que a cozinha usa primeiro aparece primeiro.
   const PESO: Record<string, number> = { INTERMEDIARIO: 0, MATERIA_PRIMA: 1, REVENDA: 2, PRODUTO_FINAL: 3 }

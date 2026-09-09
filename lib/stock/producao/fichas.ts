@@ -6,7 +6,7 @@
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { normalizarEtapas, gravarEtapasDaVersao, etapasDaVersao, type EtapaDaReceita } from './etapas'
-import { ehTipoDeFicha, type TipoFicha } from '@/lib/stock/tipos-ficha'
+import { ehTipoDeFicha, seContaFisicamente, type TipoFicha } from '@/lib/stock/tipos-ficha'
 import { detectaCicloFicha, type GrafoFichas } from './ciclo'
 import { calcularCustoTeorico, calcularMargem, type ComponenteCusto } from './custo-teorico'
 import { custoMedioPorItem } from '../saldo'
@@ -41,6 +41,15 @@ export interface CriarFichaInput extends FichaBodyInput {
   tipoProduto: TipoFicha
   setorId?: string | null
   valorVenda?: number | null
+  /**
+   * ⭐⭐ "ESTE NOME JÁ EXISTE NO ESTOQUE — usa aquele?" (09/09/2026), decisão do dono:
+   * *"criar segundo item vira decisão explícita, nunca default"*.
+   *
+   * ⛔ Sem esta trava, montar o cardápio de bebidas criou **um item-invólucro ao lado de cada
+   * garrafa que a NF já alimentava** (`COCA COLA 2L` × `COCA-COLA  2L`) — e a contagem, que
+   * oferecia os dois, recebeu 9 ajustes fantasma na linha errada.
+   */
+  permitirItemNovoComNomeDeEstoque?: boolean
   /**
    * ⭐⭐ O NOME DO PDV QUE ESTA FICHA ATENDE (01/09/2026). Quando vem preenchido, o vínculo
    * `nome do Suitable → ficha` é criado **NA MESMA TRANSAÇÃO** — ficha e vínculo entram
@@ -111,6 +120,21 @@ export async function criarFicha(input: CriarFichaInput, db: PrismaClient = defa
       `Já existe uma ficha para “${jaExiste.nome}”. Edite a ficha existente em vez de criar outra — ` +
       'duas fichas do mesmo produto brigam pelo vínculo com o PDV e pelo custo.',
     )
+  }
+
+  // ⛔⛔ O NOME JÁ É DE UM ITEM QUE A NOTA ALIMENTA? Então a ficha ia criar um SEGUNDO item
+  // com o mesmo nome — o defeito das bebidas (09/09). A saída certa pra revenda não é ficha:
+  // é mapear o nome do PDV **direto no item**, que é o que SKOL e FRUKI já fazem e funciona.
+  if (!input.permitirItemNovoComNomeDeEstoque) {
+    const doEstoque = await itemDeEstoqueComMesmoNome(input.companyId, input.nomeProduzido, db)
+    if (doEstoque) {
+      throw new FichaError(
+        `Já existe “${doEstoque.nome}” no estoque${doEstoque.temNota ? ', alimentado por nota fiscal' : ''}` +
+        ` (saldo ${doEstoque.saldo} ${doEstoque.unidadeControle}). Criar a ficha faria nascer um SEGUNDO item com esse nome, ` +
+        'e a contagem passaria a oferecer os dois. Se é bebida/revenda, aponte o nome do PDV direto nesse item ' +
+        '— a venda baixa a garrafa do mesmo jeito, sem ficha.',
+      )
+    }
   }
 
   return db.$transaction(async (tx) => {
@@ -199,6 +223,33 @@ export async function criarFicha(input: CriarFichaInput, db: PrismaClient = defa
 
     return { fichaId: ficha.id, itemProduzidoId: produzido.id, vinculadoAoPdv: vinculos > 0 }
   })
+}
+
+/**
+ * ⭐ Item DE PRATELEIRA com o mesmo nome canônico — o que a ficha ia duplicar.
+ *
+ * ⚠️ Só olha item que se estoca de verdade (`seContaFisicamente`): comparar contra outro
+ * invólucro não diz nada, e é o `fichaAtivaComNome` que cuida daquele caso.
+ */
+export async function itemDeEstoqueComMesmoNome(
+  companyId: string, nome: string, db: Db = defaultPrisma,
+): Promise<{ id: string; nome: string; unidadeControle: string; saldo: number; temNota: boolean } | null> {
+  const alvo = normalizarBusca(nome)
+  const itens = await db.stockItem.findMany({
+    where: { companyId, ativo: true },
+    select: { id: true, nome: true, categoria: true, unidadeControle: true },
+  })
+  const achado = itens.find((i) => seContaFisicamente(i.categoria) && normalizarBusca(i.nome) === alvo)
+  if (!achado) return null
+  const [agg, nf] = await Promise.all([
+    db.stockMovement.aggregate({ where: { companyId, itemId: achado.id, tipo: { not: 'PRODUCAO_CONSUMO' } }, _sum: { quantidade: true } }),
+    db.stockMovement.count({ where: { companyId, itemId: achado.id, tipo: 'ENTRADA_NF' } }),
+  ])
+  return {
+    id: achado.id, nome: achado.nome, unidadeControle: achado.unidadeControle,
+    saldo: Math.round(((agg._sum.quantidade ?? 0) + 1e-9) * 100) / 100,
+    temNota: nf > 0,
+  }
 }
 
 /** Ficha ATIVA cujo produto tem o mesmo nome (normalizado). `null` = pode criar. */

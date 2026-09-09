@@ -63,12 +63,30 @@ export function rotuloTipoFicha(tipoProduto: string): string {
  * linhas impossíveis de contar, e linha que não dá pra contar vira linha que se ignora —
  * o começo do "0/N que ninguém fecha".
  *
- * ⚠️ DÍVIDA REGISTRADA (pré-existente, não mexida aqui): item de `PRODUTO_FINAL`
- * (XIS COMPLETO, PIZZA PEQUENA 25CM) **também** aparece na contagem hoje e também não se
- * conta — são 2 linhas, e mexer nisso é decisão do dono, não efeito colateral deste fix.
+ * ⛔⛔ **A DÍVIDA DO `PRODUTO_FINAL` FOI PAGA EM 09/09/2026 — e o gatilho foi caro.**
+ *
+ * Ela estava escrita aqui desde 21/08: *"item de PRODUTO_FINAL (XIS COMPLETO, PIZZA PEQUENA
+ * 25CM) também aparece na contagem hoje e também não se conta — são 2 linhas"*. **Eram 2
+ * linhas; viraram 27** quando o dono montou o cardápio de bebidas: cada ficha de revenda cria
+ * um item-invólucro (`COCA COLA 2L`) **ao lado** do item que a NF alimenta (`COCA-COLA  2L`).
+ *
+ * **O QUE ACONTECEU:** a contagem ofereceu OS DOIS, e a marcyelle contou as garrafas **na
+ * linha do invólucro** — cujo saldo de sistema era **0**. Resultado medido: **9 ajustes
+ * fantasma** (+154 Coca 2L, +67 Coca lata, +62 Coca 600…) em itens que não existem na
+ * prateleira, enquanto o item REAL seguia com o saldo da nota, sem baixa nenhuma.
+ *
+ * ⭐ **O invólucro de PRODUTO_FINAL é a LINHA DO CARDÁPIO, não um item de prateleira** —
+ * ninguém estoca "XIS COMPLETO" nem "COCA COLA 2L (a linha do menu)"; o que existe na
+ * geladeira é a garrafa que a nota trouxe. É exatamente o mesmo raciocínio do SABOR, e
+ * deixá-lo de fora agora é continuar a régua, não inventar uma.
+ *
+ * ⚠️ Produto comprado pronto pra revender é `REVENDA`, não `PRODUTO_FINAL` — esse continua
+ * dentro, e é ele que se conta.
  */
+export const CATEGORIAS_SEM_PRATELEIRA: readonly string[] = [TIPO_SABOR, TIPO_PRODUTO_FINAL]
+
 export function seContaFisicamente(categoria: string): boolean {
-  return categoria !== TIPO_SABOR
+  return !CATEGORIAS_SEM_PRATELEIRA.includes(categoria)
 }
 
 /**
