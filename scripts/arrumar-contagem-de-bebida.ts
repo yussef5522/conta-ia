@@ -99,13 +99,19 @@ async function levantar(): Promise<Caso[]> {
         select: { estornoDeId: true },
       })).map((e) => e.estornoDeId),
     )
-    const fantasmas = [...doInvolucro, ...noReal]
-      .filter((m) => !jaEstornados.has(m.id) && m.quantidade === ci.qtdContada)
-      .map((m) => ({ id: m.id, quantidade: m.quantidade }))
+    const vivo = (m: { id: string; quantidade: number }) =>
+      !jaEstornados.has(m.id) && m.quantidade === ci.qtdContada
+    const fantasmas = [...doInvolucro, ...noReal].filter(vivo).map((m) => ({ id: m.id, quantidade: m.quantidade }))
 
     const s = await saldoDe(alvo.id)
-    // ⭐ o que o item real vai ficar DEPOIS de tirar o fantasma
-    const semFantasma = r2(s.saldo - fantasmas.reduce((acc, f) => acc + f.quantidade, 0))
+    // ⛔⛔ SÓ O FANTASMA QUE A MESCLA MOVEU PRA DENTRO DO ITEM REAL sai do saldo dele.
+    //
+    // ⚠️ BUG MEU, PEGO NO PREVIEW ANTES DE APLICAR: a 1ª versão subtraía TODOS os fantasmas
+    // do saldo do item real — inclusive os que estão no INVÓLUCRO, que não entram nesse saldo.
+    // Resultado: `COCA COLA 600ML` daria ajuste −284 em vez de −346, e o item ficaria com 124
+    // garrafas onde a marcyelle contou 62. Preview existe pra isso.
+    const fantasmaDentroDoReal = noReal.filter(vivo).reduce((acc, m) => acc + m.quantidade, 0)
+    const semFantasma = r2(s.saldo - fantasmaDentroDoReal)
     casos.push({
       involucro: { id: iv.id, nome: iv.nome },
       garrafa: { id: alvo.id, nome: alvo.nome, saldoAtual: s.saldo, custoMedio: s.custoMedio },
