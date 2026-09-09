@@ -50,10 +50,18 @@ export interface LinhaParaLote {
   contaBancariaId: string | null
   /** o nome da conta bancária, só pra tela */
   contaBancaria?: string | null
+  /** a categoria que a linha já tem — ⚠️ ter categoria NÃO quita conta nenhuma */
+  categoria?: string | null
 }
 
 export interface SugestaoDeLote {
   extratoId: string
+  /**
+   * ⭐ a linha do extrato ECOADA aqui de propósito: a tela desenha o lado frio do card
+   * sem uma segunda busca. Duas leituras da mesma linha poderiam divergir — e divergiriam
+   * no primeiro caso em que uma delas fosse esquecida num refactor.
+   */
+  linha: { descricao: string; data: Date; conta: string | null; categoria: string | null }
   fornecedorId: string
   fornecedorNome: string
   notas: NotaAberta[]
@@ -194,6 +202,10 @@ export function sugerirPagamentosEmLote(entrada: EntradaDeLote): ResultadoDeLote
     const soma = Math.round(escolhidas.reduce((s, n) => s + n.valor, 0) * 100) / 100
     lotes.push({
       extratoId: linha.id,
+      linha: {
+        descricao: linha.descricao, data: linha.data,
+        conta: linha.contaBancaria ?? null, categoria: linha.categoria ?? null,
+      },
       fornecedorId: linha.fornecedorId,
       fornecedorNome: nome,
       notas: escolhidas,

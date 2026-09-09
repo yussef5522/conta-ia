@@ -100,6 +100,14 @@ interface Props {
   /** Sprint Find&Match World-Class: nudge "→ Create" chama esta callback
    *  que troca o card direito de volta pro modo tabs com `Create` ativo. */
   onSwitchToCreate?: () => void
+  /**
+   * ⭐ o texto que a busca já nasce com (09/09/2026) — hoje é o NOME DO FORNECEDOR,
+   * quando o dono chega aqui a partir de um pagamento em lote que não fechou sozinho.
+   *
+   * ⚠️ Perder no caminho a informação que a tela ACABOU de mostrar é obrigar o dono a
+   * procurar de novo, numa lista de 100 contas, o fornecedor que o card nomeava.
+   */
+  buscaInicial?: string
 }
 
 const SEARCH_DEBOUNCE_MS = 300
@@ -158,9 +166,10 @@ export function FindAndMatchPanel({
   onCancel,
   onReconciled,
   onSwitchToCreate,
+  buscaInicial,
 }: Props) {
   const { toast } = useToast()
-  const [busca, setBusca] = useState('')
+  const [busca, setBusca] = useState(buscaInicial ?? '')
   const [windowDays, setWindowDays] = useState<WindowOption>('15')
   const [loading, setLoading] = useState(false)
   const [candidates, setCandidates] = useState<Candidate[]>([])

@@ -312,7 +312,8 @@ export async function lotesDaFila(
     },
     select: {
       id: true, description: true, amount: true, date: true, type: true,
-      supplierId: true, bankAccountId: true, bankAccount: { select: { name: true } },
+      supplierId: true, bankAccountId: true,
+      bankAccount: { select: { name: true } }, category: { select: { name: true } },
     },
     orderBy: { date: 'desc' },
   })
@@ -325,6 +326,7 @@ export async function lotesDaFila(
     fornecedorId: l.supplierId ?? reconhecerFornecedor(l.description, fornecedores)?.id ?? null,
     contaBancariaId: l.bankAccountId,
     contaBancaria: l.bankAccount?.name?.trim() ?? null,
+    categoria: l.category?.name ?? null,
   }))
   const notas: NotaAberta[] = contas.map((c) => ({
     id: c.id, descricao: c.description, valor: Math.abs(c.amount),

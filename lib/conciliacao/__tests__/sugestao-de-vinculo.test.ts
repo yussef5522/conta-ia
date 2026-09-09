@@ -176,3 +176,59 @@ describe('reconhecer o fornecedor pelo nome — 15 pontos que não podem ser pal
       .toEqual([])
   })
 })
+
+describe('⭐⭐ VALOR EXATO NUMA JANELA CURTA APARECE — os dois casos reais de 09/09', () => {
+  // ⛔ Medido em prod: os dois marcavam 55 e 65 pontos (corte 70) e ficavam INVISÍVEIS.
+  // A conta foi lançada à mão, sem fornecedor, e o nome que o dono digitou
+  // ("contabilidade") não parece com o do extrato ("I. V. S. LTDA").
+  // ⚠️ os horários são os REAIS do banco: vencimento à meia-noite, linha do extrato ao
+  // meio-dia UTC. Idealizar os dois em 12:00 dá 4 dias onde a produção arredonda 5 — é a
+  // fixture escondendo a convenção do banco, erro que já mordeu neste projeto.
+  const conta = (id: string, descricao: string, valor: number, venc: string): LadoDoPar => ({
+    id, descricao, valor, data: new Date(`${venc}T00:00:00.000Z`),
+    tipo: 'DEBIT', fornecedorId: null, contaBancariaId: null,
+  })
+  const linha = (descricao: string, valor: number, quando: string): LadoDoPar => ({
+    id: `ext-${valor}`, descricao, valor, data: new Date(`${quando}T12:00:00.000Z`),
+    tipo: 'DEBIT', fornecedorId: null, contaBancariaId: 'stone',
+  })
+
+  it('⭐ "contabilidade" R$ 1.621,00 × "I. V. S. LTDA - Pagamento" 5 dias depois', () => {
+    const [s] = sugerirVinculos({
+      extrato: linha('I. V. S. LTDA - Pagamento', 1621, '2026-09-08'),
+      contas: [conta('c-contab', 'contabilidade', 1621, '2026-09-04')],
+      fornecedores: FORNECEDORES,
+    })
+    expect(s).toBeDefined()
+    expect(s.score).toBeLessThan(70)          // ⚠️ o score NÃO foi inflado
+    expect(s.confianca).toBe('baixa')          // ⭐ aparece, sem se fingir de certeza
+    expect(s.porQue).toContain('valor exato')
+    expect(s.porQue).toContain('5 dias depois do vencimento')
+  })
+
+  it('⭐ "di car" R$ 1.000,00 × "DI CAR SUSPENSOES LTDA" 4 dias depois', () => {
+    const [s] = sugerirVinculos({
+      extrato: linha('DI CAR SUSPENSOES LTDA - Pagamento', 1000, '2026-09-08'),
+      contas: [conta('c-dicar', 'di car', 1000, '2026-09-05')],
+      fornecedores: FORNECEDORES,
+    })
+    expect(s).toBeDefined()
+    expect(s.diferenca).toBe(0)
+  })
+
+  it('⛔ mas valor exato LONGE continua fora — a janela curta é o que segura', () => {
+    expect(sugerirVinculos({
+      extrato: linha('I. V. S. LTDA - Pagamento', 1621, '2026-09-30'),
+      contas: [conta('c-contab', 'contabilidade', 1621, '2026-09-04')],
+      fornecedores: FORNECEDORES,
+    })).toHaveLength(0)
+  })
+
+  it('⛔⛔ e valor PRÓXIMO abaixo do corte continua fora — exato ≠ parecido', () => {
+    expect(sugerirVinculos({
+      extrato: linha('I. V. S. LTDA - Pagamento', 1615, '2026-09-08'),
+      contas: [conta('c-contab', 'contabilidade', 1621, '2026-09-04')],
+      fornecedores: FORNECEDORES,
+    })).toHaveLength(0)
+  })
+})

@@ -20,7 +20,7 @@
 import { useEffect, useState, useCallback, useMemo, Suspense } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { CheckCircle2, FileText, Loader2, AlertTriangle, History } from 'lucide-react'
+import { CheckCircle2, FileText, Loader2, AlertTriangle, History, Layers, ChevronDown, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Header } from '@/components/layout/header'
 import { useEmpresa } from '@/lib/contexts/empresa-context'
@@ -33,6 +33,7 @@ import {
 import {
   CabecalhoDaFila, type SaldosDTO, type TotaisDTO, type SemParDTO,
 } from '@/components/conciliacao/cabecalho-da-fila'
+import { LoteSugerido, type LoteDTO } from '@/components/conciliacao/lote-sugerido'
 import { useToast } from '@/components/ui/use-toast'
 import { fetchJson } from '@/lib/http/fetch-json'
 
@@ -43,8 +44,16 @@ interface DuplicataDTO {
   chave: string
   linhas: { id: string; descricao: string; valor: number; data: string; conta: string; fitid: string | null; criadaEm: string }[]
 }
+interface LoteQueNaoFechaDTO {
+  extratoId: string; descricao: string; valorDaLinha: number; data: string
+  contaBancaria: string | null; fornecedorNome: string
+  abertasDoFornecedor: number; somaDasAbertas: number
+  motivo: 'NAO_FECHA' | 'AMBIGUO'; combinacoes: number
+}
 interface FilaDTO {
   contas: ContaDaFilaDTO[]
+  lotes: LoteDTO[]
+  lotesQueNaoFecham: LoteQueNaoFechaDTO[]
   semPar: SemParDTO
   transferencias: TransferenciaDTO[]
   duplicatas: DuplicataDTO[]
@@ -85,6 +94,11 @@ function ConciliacaoInner() {
   const [aba, setAba] = useState<Aba>('contas')
   // Find & Match aberto pra UMA linha do extrato (a saída do caso difícil)
   const [procurando, setProcurando] = useState<SugestaoDTO | null>(null)
+  /** ⭐ o Find & Match aberto a partir de um LOTE — leva o nome do fornecedor na busca */
+  const [procurandoLote, setProcurandoLote] = useState<
+    { ofx: { id: string; description: string; amount: number; date: string; type: string }; busca: string } | null
+  >(null)
+  const [naoFechamAberto, setNaoFechamAberto] = useState(false)
 
   const carregar = useCallback(async () => {
     if (!empresaId) { setCarregando(false); return }
@@ -144,6 +158,29 @@ function ConciliacaoInner() {
     })
     // ⭐ o saldo do topo é conferência de banco: só o servidor sabe o novo número,
     // então recarrega em vez de eu chutar localmente.
+    void recarregarSaldos()
+  }, [recarregarSaldos])
+
+  /**
+   * ⭐ LOTE VINCULADO: some o card e somem as N notas.
+   *
+   * ⛔ E a LINHA foi GASTA: ela sai de toda outra sugestão na hora — a mesma regra que
+   * evitou, em 08/09, que o card concorrente do Cancian continuasse clicável até o F5.
+   */
+  const removerLote = useCallback((extratoId: string, notasIds: string[]) => {
+    const ids = new Set(notasIds)
+    setFila((f) => {
+      if (!f) return f
+      const lotes = f.lotes.filter((l) => l.extratoId !== extratoId)
+      const contas = f.contas
+        .filter((c) => !ids.has(c.conta.id))
+        .map((c) => ({ ...c, sugestoes: c.sugestoes.filter((s) => s.extratoId !== extratoId) }))
+      return { ...f, lotes, contas,
+        lotesQueNaoFecham: f.lotesQueNaoFecham.filter((x) => x.extratoId !== extratoId),
+        totais: { ...f.totais, lotes: lotes.length,
+          notasEmLote: lotes.reduce((n, l) => n + l.notas.length, 0),
+          comSugestao: contas.filter((c) => c.sugestoes.length > 0).length } }
+    })
     void recarregarSaldos()
   }, [recarregarSaldos])
 
@@ -240,6 +277,37 @@ function ConciliacaoInner() {
               </div>
             ) : aba === 'contas' ? (
               <>
+                {/* ⭐⭐⭐ A ORDEM DO FLUXO, ESCRITA NA TELA (padrão Xero/QuickBooks):
+                    CASAR ANTES DE CATEGORIZAR. A categoria da conta a pagar vem junto
+                    quando o vínculo é feito; só o que não casou precisa de categoria. */}
+                <p className="px-1 text-[11.5px] leading-relaxed text-slate-400">
+                  <b className="font-semibold text-slate-500 dark:text-slate-300">Passo 2 de 2.</b>{' '}
+                  Importou o extrato → o óbvio já casou no import → aqui fica o que precisa da sua
+                  decisão. <b>Casar vem antes de categorizar</b>: ao vincular, a conta a pagar leva
+                  a categoria dela junto. Linha que você já categorizou como despesa{' '}
+                  <b>continua casável</b> — ter categoria não quita conta nenhuma.
+                </p>
+
+                {/* ⭐ OS LOTES PRIMEIRO: um PIX que liquida N notas resolve mais trabalho
+                    por decisão do que qualquer card 1:1, e as notas dele sumiriam da lista
+                    de baixo de qualquer jeito. */}
+                {(fila?.lotes ?? []).map((l) => (
+                  <LoteSugerido
+                    key={l.extratoId}
+                    lote={l}
+                    linha={{
+                      descricao: l.linha.descricao, data: l.linha.data,
+                      conta: l.linha.conta, categoria: l.linha.categoria,
+                    }}
+                    onVinculado={removerLote}
+                    onProcurar={(extratoId, busca) => setProcurandoLote({
+                      ofx: { id: extratoId, description: l.linha.descricao,
+                        amount: l.valorDaLinha, date: l.linha.data, type: 'DEBIT' },
+                      busca,
+                    })}
+                  />
+                ))}
+
                 {duplaContagem > 0 && (
                   <div className="flex items-start gap-2.5 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-[12.5px] leading-relaxed text-rose-900 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">
                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400" />
@@ -252,7 +320,58 @@ function ConciliacaoInner() {
                   </div>
                 )}
 
-                {comSugestao.length === 0 ? (
+                {(fila?.lotesQueNaoFecham.length ?? 0) > 0 && (
+                  <div className="rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
+                    <button type="button" onClick={() => setNaoFechamAberto((v) => !v)}
+                      aria-expanded={naoFechamAberto}
+                      className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-[12.5px] text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900/50">
+                      <Layers className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                      <span>
+                        <b>{fila!.lotesQueNaoFecham.length} pagamentos</b> nomeiam um fornecedor
+                        que tem notas abertas, mas <b>nenhuma combinação fecha</b> na soma.
+                      </span>
+                      <ChevronDown className={`ml-auto h-4 w-4 shrink-0 text-slate-400 transition-transform ${naoFechamAberto ? 'rotate-180' : ''}`} />
+                    </button>
+                    {naoFechamAberto && (
+                      <div className="border-t border-slate-100 dark:border-slate-800">
+                        {/* ⚠️ o motivo fica escrito: quase sempre é pagamento parcial, ou
+                            cobre uma nota que nunca entrou no sistema. Some da tela seria o
+                            "erro disfarçado de vazio" que esta casa já pagou caro. */}
+                        <p className="px-4 py-2 text-[11.5px] leading-relaxed text-slate-400">
+                          Isso costuma ser <b>pagamento parcial</b> ou pagamento de uma nota que
+                          não está no sistema. O sistema não escolhe quais notas foram —
+                          &quot;escolher na mão&quot; abre a busca já no nome do fornecedor, com a
+                          soma conferida contra a linha antes de gravar.
+                        </p>
+                        {fila!.lotesQueNaoFecham.map((x) => (
+                          <div key={x.extratoId} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-slate-50 px-4 py-2 dark:border-slate-900">
+                            <span className="text-[12.5px] font-semibold tabular-nums text-slate-800 dark:text-slate-100">
+                              {formatBRL(x.valorDaLinha)}
+                            </span>
+                            <span className="text-[12px] text-slate-600 dark:text-slate-300">{x.fornecedorNome}</span>
+                            <span className="text-[11px] tabular-nums text-slate-400">
+                              {dia(x.data)}{x.contaBancaria ? ` · ${x.contaBancaria}` : ''} ·{' '}
+                              {x.motivo === 'AMBIGUO'
+                                ? `${x.combinacoes}+ combinações fechariam — o sistema não sabe qual foi`
+                                : `${x.abertasDoFornecedor} notas abertas somam ${formatBRL(x.somaDasAbertas)}`}
+                            </span>
+                            <Button size="sm" variant="ghost"
+                              onClick={() => setProcurandoLote({
+                                ofx: { id: x.extratoId, description: x.descricao,
+                                  amount: x.valorDaLinha, date: x.data, type: 'DEBIT' },
+                                busca: x.fornecedorNome,
+                              })}
+                              className="ml-auto h-7 gap-1 px-2 text-[11.5px] text-slate-500">
+                              <Search className="h-3.5 w-3.5" /> escolher na mão
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {comSugestao.length === 0 && (fila?.lotes.length ?? 0) === 0 ? (
                   <Vazio
                     titulo="Tudo conciliado ✓"
                     texto="Nenhum vínculo esperando decisão. O próximo extrato traz os novos pares — com o motivo escrito, pra você só confirmar."
@@ -359,6 +478,26 @@ function ConciliacaoInner() {
               <HistoricoTable empresaId={empresaId} onAfterUndo={carregar} />
             )}
           </div>
+        </div>
+      )}
+
+      {/* ⭐ o Find & Match em MODO LOTE: ele já seleciona N contas e confere a soma
+          contra a linha antes de gravar — o que faltava era CHEGAR aqui com o
+          fornecedor na busca em vez de procurá-lo de novo numa lista de 100. */}
+      {procurandoLote && empresaId && (
+        <div className="rounded-xl border border-[#534AB7]/30 bg-white p-3 dark:border-indigo-900 dark:bg-slate-950">
+          <p className="px-1 pb-2 text-[12px] leading-relaxed text-slate-500 dark:text-slate-400">
+            <b className="text-slate-700 dark:text-slate-200">Escolha as notas deste pagamento.</b>{' '}
+            Marque quantas quiser — o rodapé soma e só libera quando bater com a linha do
+            extrato. Se sobrar diferença de juros/tarifa, dá pra lançar como ajuste.
+          </p>
+          <FindAndMatchPanel
+            empresaId={empresaId}
+            ofx={procurandoLote.ofx}
+            buscaInicial={procurandoLote.busca}
+            onCancel={() => setProcurandoLote(null)}
+            onReconciled={() => { setProcurandoLote(null); void carregar() }}
+          />
         </div>
       )}
 

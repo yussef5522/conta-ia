@@ -98,6 +98,29 @@ export const CORTE_DE_ALTA = 90
 /** o nome do fornecedor bate com a descrição da linha? */
 const CORTE_DE_NOME = 0.82
 
+/**
+ * ⭐⭐ VALOR EXATO DENTRO DESTA JANELA APARECE MESMO ABAIXO DO CORTE (09/09/2026).
+ *
+ * **O caso do dono:** *"contabilidade R$ 1.621,00 · di car R$ 1.000,00 — o valor exato
+ * existe no extrato. Por que não sugeriu?"*
+ *
+ * **A conta do score explica:** 50 (valor exato) + 5 (pago 4-7 dias depois do vencimento)
+ * + 0 (a conta lançada à mão não tem fornecedor cadastrado) + 0 (o nome que ele digitou,
+ * "contabilidade", não parece com "I. V. S. LTDA") = **55 pontos, abaixo do corte de 70.**
+ * Invisível — e pagar cinco dias depois do vencimento é o mais normal do mundo.
+ *
+ * ⛔ A régua NÃO é "baixar o corte": isso deixaria entrar valor PRÓXIMO, que é palpite.
+ * **Valor exato é o sinal mais forte deste domínio** e a janela curta é o que impede a
+ * coincidência de virar sugestão. O score real fica como está, então o par nasce em
+ * confiança BAIXA e ranqueado abaixo dos fortes — aparece, mas sem se fingir de certeza.
+ *
+ * ⚠️ MEDIDO EM PROD ANTES DE LIGAR: na Caçula isso acrescenta **2 pares, os dois que o
+ * dono nomeou, com ZERO conta ganhando mais de uma opção**. Em empresa com muitos valores
+ * redondos iguais na mesma semana pode haver disputa — e aí a tela já diz *"mais de um
+ * pagamento parecido pra esta conta"* em vez de escolher por conta própria.
+ */
+export const DIAS_PRO_VALOR_EXATO_APARECER = 7
+
 export function grauDeConfianca(score: number): GrauDeConfianca {
   if (score >= CORTE_DE_ALTA) return 'alta'
   if (score >= CORTE_PRA_SUGERIR) return 'media'
@@ -219,7 +242,14 @@ export function sugerirVinculos(entrada: EntradaDeSugestao): SugestaoDeVinculo[]
       categoryId: null,
     }
     const s = scoreMatch(ofx, cand)
-    if (!s || s.score < corte) continue
+    if (!s) continue
+    // ⭐ o valor exato numa janela curta passa por cima do corte — ver a nota em
+    // `DIAS_PRO_VALOR_EXATO_APARECER`. O score NÃO é inflado: ele só deixa de ser filtro.
+    const diasDoPar = Math.abs(Math.round(
+      (entrada.extrato.data.getTime() - c.data.getTime()) / 86400000))
+    const exatoEPerto = s.reasons.includes('VALOR_EXATO')
+      && diasDoPar <= DIAS_PRO_VALOR_EXATO_APARECER
+    if (s.score < corte && !exatoEPerto) continue
     // ⚠️ o nome do fornecedor só entra na frase se ele REALMENTE contou —
     // dizer "o nome no extrato é X" quando o X não pontuou seria motivo falso.
     const contou = s.reasons.includes('FORNECEDOR_IGUAL') && !!reconhecido
