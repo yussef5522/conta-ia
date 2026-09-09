@@ -61,12 +61,17 @@ interface Hub {
 const brl = (n: number | null) => (n == null ? '—' : n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }))
 const fmtDia = (iso: string | null) => (iso ? iso.split('-').reverse().join('/') : '—')
 
+// ⭐⭐ O SELO FALA DO RESULTADO, NÃO DO CAMINHO (09/09) — decisão do dono. "revenda" e
+// "completa" eram dois nomes pro MESMO estado: baixa o item certo e tem custo. Provado com
+// o planejador real que os dois caminhos baixam igual (ver `ROTULO` em cardapio/hub.ts).
+// ⚠️ O `status` continua distinto por dentro — é ele que escolhe o gesto que a tela oferece.
+const PRONTO = { txt: 'baixa certo', cls: 'bg-emerald-50 text-emerald-700 ring-emerald-200' }
 const BADGE: Record<Status, { txt: string; cls: string }> = {
   SEM_DESTINO: { txt: 'sem ficha', cls: 'bg-rose-50 text-rose-700 ring-rose-200' },
   SEM_FICHA: { txt: 'ficha removida', cls: 'bg-rose-50 text-rose-700 ring-rose-200' },
   FICHA_INCOMPLETA: { txt: 'ficha incompleta', cls: 'bg-amber-50 text-amber-700 ring-amber-200' },
-  REVENDA: { txt: 'revenda', cls: 'bg-sky-50 text-sky-700 ring-sky-200' },
-  FICHA_OK: { txt: 'completa', cls: 'bg-emerald-50 text-emerald-700 ring-emerald-200' },
+  REVENDA: PRONTO,
+  FICHA_OK: PRONTO,
 }
 type Filtro = 'todos' | 'semficha' | 'semcusto' | 'ok'
 type Col = 'nome' | 'vendas' | 'custo' | 'preco' | 'margem'

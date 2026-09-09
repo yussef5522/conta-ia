@@ -174,3 +174,53 @@ describe('⛔ 3. criar ficha de revenda SUGERE o item existente, não duplica', 
     expect(achado?.temNota).toBe(true)
   })
 })
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// ⭐⭐ OS DOIS CAMINHOS BAIXAM IGUAL — e por isso o SELO pôde unificar (09/09/2026).
+//
+// **O dono:** *"SKOL e FRUKI aparecem com selo 'revenda' e as outras 'completa'. Confirma que
+// os DOIS caminhos baixam certo na venda — e se sim, unifica o selo (pro dono importa 'baixa
+// e tem custo', não o caminho interno). Se algum NÃO baixa, me conta antes de unificar."*
+//
+// **MEDIDO EM PROD com o planejador REAL (dry-run, nada gravado):**
+//   SKOL           (mapa direto no item) → CERV SKOL 600ML       −10 · custo 6,21
+//   FRUKI 600ML    (mapa direto no item) → FRUKI GUARANA 600ML    −5 · custo 3,75
+//   COCA COLA 2L   (mapa na FICHA)       → COCA-COLA  2L          −8 · custo 8,09
+//   COCA ZERO LATA (mapa na FICHA)       → CC Zero LT 350ml       −3 · custo 2,90
+// Os dois caem no MESMO item de estoque, com custo. **Só por isso o selo uniu.**
+// ═══════════════════════════════════════════════════════════════════════════════════════
+
+describe('⭐ os dois caminhos de revenda baixam o MESMO item', () => {
+  it('⭐⭐ mapa DIRETO no item e mapa na FICHA baixam a mesma garrafa, com custo', async () => {
+    const { montarPlanoDeLinhas } = await import('../vendas/baixa-venda')
+    const { upsertVendaMap } = await import('../vendas/venda-map')
+
+    // caminho A: o nome do PDV aponta DIRETO no item de revenda
+    await upsertVendaMap(companyId, 'COCA DIRETO', { tipo: 'REVENDA', itemId: garrafa }, userId, prisma)
+    // caminho B: o nome do PDV aponta numa FICHA de 1 componente ×1
+    const f = await fichaDaBebida('COCA PELA FICHA')
+    await upsertVendaMap(companyId, 'COCA PELA FICHA', { tipo: 'FICHA', fichaId: f.fichaId }, userId, prisma)
+
+    const plano = await montarPlanoDeLinhas(companyId, '2026-09-09', [
+      { produto: 'COCA DIRETO', quantidade: 4, valorTotal: 68 },
+      { produto: 'COCA PELA FICHA', quantidade: 6, valorTotal: 102 },
+    ], null, prisma)
+
+    // ⭐ tudo cai NA GARRAFA — 4 + 6 — e nada fica pendente
+    expect(plano.pendentes).toHaveLength(0)
+    expect(plano.agregada).toHaveLength(1)
+    expect(plano.agregada[0].itemId).toBe(garrafa)
+    expect(plano.agregada[0].qtd).toBe(10)
+    expect(plano.agregada[0].custoMedio, 'os dois têm custo — é o que o selo promete').toBeGreaterThan(0)
+  })
+
+  it('⭐ o selo é o MESMO nos dois — fala do resultado, não do caminho', async () => {
+    const { ROTULO } = await import('../cardapio/hub')
+    expect(ROTULO.REVENDA).toBe(ROTULO.FICHA_OK)
+    expect(ROTULO.REVENDA).toBe('baixa certo')
+    // ⛔ mas o que NÃO baixa continua com selo próprio — unificar não pode apagar problema
+    expect(ROTULO.SEM_DESTINO).not.toBe(ROTULO.FICHA_OK)
+    expect(ROTULO.FICHA_INCOMPLETA).not.toBe(ROTULO.FICHA_OK)
+    expect(ROTULO.SEM_FICHA).not.toBe(ROTULO.FICHA_OK)
+  })
+})

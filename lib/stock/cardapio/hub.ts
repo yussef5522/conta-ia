@@ -237,10 +237,29 @@ export function hubToCsv(linhas: (LinhaCardapio & { secao?: string })[]): string
   return [head.map(esc).join(';'), ...rows].join('\n')
 }
 
+/**
+ * ⭐⭐ O SELO É SOBRE O RESULTADO, NÃO SOBRE O CAMINHO INTERNO (09/09/2026) — decisão do dono:
+ * *"pro dono importa 'baixa e tem custo', não o caminho interno"*.
+ *
+ * ⛔ `REVENDA` (nome do PDV apontado direto no item) e `FICHA_OK` (ficha de 1 componente ×1)
+ * eram dois selos — "revenda" e "ficha completa" — pra a MESMA situação: o produto baixa a
+ * garrafa certa e tem custo. Dois nomes pro mesmo estado fazem o dono procurar diferença
+ * onde não há.
+ *
+ * ⭐ **MEDIDO ANTES DE UNIFICAR**, com o planejador REAL (dry-run, nada gravado):
+ *   SKOL          (direto) → CERV SKOL 600ML −10 · custo 6,21
+ *   FRUKI 600ML   (direto) → FRUKI GUARANA 600ML −5 · custo 3,75
+ *   COCA COLA 2L  (ficha)  → COCA-COLA  2L −8 · custo 8,09
+ *   COCA ZERO LATA(ficha)  → CC Zero LT 350ml −3 · custo 2,90
+ * Os dois caminhos caem no MESMO item de estoque, com custo. Só por isso o selo pôde unir.
+ *
+ * ⚠️ O `status` CONTINUA distinto por dentro — é ele que decide se a tela oferece "montar a
+ * receita" ou o seletor de revenda. O que unificou foi o RÓTULO.
+ */
 export const ROTULO: Record<StatusCardapio, string> = {
   SEM_DESTINO: 'sem ficha',
   SEM_FICHA: 'ficha removida',
-  REVENDA: 'revenda',
+  REVENDA: 'baixa certo',
   FICHA_INCOMPLETA: 'ficha incompleta',
-  FICHA_OK: 'ficha completa',
+  FICHA_OK: 'baixa certo',
 }
