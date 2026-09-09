@@ -172,3 +172,59 @@ describe('ISOLAMENTO', () => {
     expect(isolationHeld(antes, await snapshotClosedModules(prisma, companyId))).toBe(true)
   })
 })
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// ⛔⛔ "O TOMATE JÁ EXISTE — escrever TOMATE cria OUTRO?" (09/09/2026). **Criava.**
+// ═══════════════════════════════════════════════════════════════════════════════════════
+
+describe('⛔ duplicado não nasce por digitação', () => {
+  it('⛔⛔ digitar o nome de um item que EXISTE é recusado, e a mensagem ensina o seletor', async () => {
+    const existente = await prisma.stockItem.create({
+      data: { companyId, nome: 'TOMATE CAQUI', unidadeControle: 'KG', categoria: 'MATERIA_PRIMA', criadoVia: 'CONFERENCIA' },
+    })
+    const erro = await registrarEntradaManual({
+      companyId, fornecedor: { nome: 'SEU ZE' }, data: '2026-09-09',
+      itens: [{ novo: { nome: 'tomate caqui', unidadeControle: 'KG', categoria: 'MATERIA_PRIMA' }, quantidade: 5, custoUnitario: 4 }],
+    }, prisma).then(() => null).catch((e: Error) => e)
+
+    expect(erro?.message, 'tem que recusar').toContain('já existe no estoque')
+    expect(erro?.message, 'e ensinar a saída').toContain('seletor')
+    // ⭐ e NADA foi criado
+    expect(await prisma.stockItem.count({ where: { companyId, nome: { contains: 'TOMATE CAQUI' } } })).toBe(1)
+    void existente
+  })
+
+  it('⭐ escolher o item EXISTENTE no seletor passa — e não pede nome nenhum', async () => {
+    const existente = await prisma.stockItem.create({
+      data: { companyId, nome: 'TOMATE CAQUI', unidadeControle: 'KG', categoria: 'MATERIA_PRIMA', criadoVia: 'CONFERENCIA' },
+    })
+    const r = await registrarEntradaManual({
+      companyId, fornecedor: { nome: 'SEU ZE' }, data: '2026-09-09',
+      itens: [{ itemId: existente.id, quantidade: 5, custoUnitario: 4 }],
+    }, prisma)
+    expect(r).toBeTruthy()
+    // a entrada caiu NO item existente, sem criar outro
+    expect(await prisma.stockItem.count({ where: { companyId, nome: 'TOMATE CAQUI' } })).toBe(1)
+    expect(await prisma.stockMovement.count({ where: { companyId, itemId: existente.id, tipo: 'ENTRADA_MANUAL' } })).toBe(1)
+  })
+
+  it('⭐ nome INÉDITO cria normalmente — a trava não fecha o caminho legítimo', async () => {
+    const r = await registrarEntradaManual({
+      companyId, fornecedor: { nome: 'SEU ZE' }, data: '2026-09-09',
+      itens: [{ novo: { nome: 'QUIABO', unidadeControle: 'KG', categoria: 'MATERIA_PRIMA' }, quantidade: 2, custoUnitario: 9 }],
+    }, prisma)
+    expect(r).toBeTruthy()
+    expect(await prisma.stockItem.count({ where: { companyId, nome: 'QUIABO' } })).toBe(1)
+  })
+
+  it('⛔ e o MESMO nome novo duas vezes na mesma nota também não passa', async () => {
+    const erro = await registrarEntradaManual({
+      companyId, fornecedor: { nome: 'SEU ZE' }, data: '2026-09-09',
+      itens: [
+        { novo: { nome: 'CEBOLA', unidadeControle: 'KG', categoria: 'MATERIA_PRIMA' }, quantidade: 2, custoUnitario: 3 },
+        { novo: { nome: 'cebola', unidadeControle: 'KG', categoria: 'MATERIA_PRIMA' }, quantidade: 1, custoUnitario: 3 },
+      ],
+    }, prisma).then(() => null).catch((e: Error) => e)
+    expect(erro?.message).toContain('duas vezes')
+  })
+})

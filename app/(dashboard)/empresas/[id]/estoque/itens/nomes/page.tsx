@@ -94,6 +94,12 @@ export default function RevisarNomesPage({ params }: { params: Promise<{ id: str
       </div>
 
       {erro && <p className="text-[13px] text-rose-600">{erro}</p>}
+      {/* ⚠️ nada se perde em silêncio: se ele editou e ainda não confirmou, a tela diz. */}
+      {selecionados.length > 0 && !salvando && (
+        <p className="text-[12px] text-amber-700">
+          {selecionados.length} nome(s) editado(s) e <b>ainda não confirmado(s)</b> — sair da tela agora perde as alterações.
+        </p>
+      )}
       {ok && <p className="text-[13px] font-medium text-emerald-700">✓ {ok}</p>}
 
       {linhas.length === 0 ? (
@@ -134,7 +140,15 @@ export default function RevisarNomesPage({ params }: { params: Promise<{ id: str
                     <td className="px-3 py-0">
                       <input
                         value={v}
-                        onChange={(e) => setEdit((x) => ({ ...x, [l.itemId]: e.target.value }))}
+                        onChange={(e) => {
+                          setEdit((x) => ({ ...x, [l.itemId]: e.target.value }))
+                          // ⛔⛔ EDITAR JÁ É A INTENÇÃO (09/09). Antes o texto editado só
+                          // entrava no lote se o dono TAMBÉM marcasse o checkbox — e quem
+                          // editava e saía perdia tudo, com a sensação de que "o nome voltou".
+                          // Medido: 0 renomeios gravados pelo lote, com a fila cheia de linhas
+                          // que ele tinha mexido. O confirmar explícito continua no fim.
+                          setMarcado((m) => ({ ...m, [l.itemId]: e.target.value.trim() !== l.nomeAtual }))
+                        }}
                         className="h-7 w-full min-w-[220px] rounded-lg border border-slate-300 px-2 text-[13px]"
                       />
                       {l.porque.length > 0 && (
@@ -146,7 +160,7 @@ export default function RevisarNomesPage({ params }: { params: Promise<{ id: str
                         {/* ⭐ o nome do PDV é ATALHO, não a sugestão: medido que ele às vezes
                             PERDE informação ("SUCO DELL VALE" esquece o UVA). */}
                         {l.doCardapio && l.doCardapio !== v && (
-                          <button onClick={() => setEdit((x) => ({ ...x, [l.itemId]: l.doCardapio! }))}
+                          <button onClick={() => { setEdit((x) => ({ ...x, [l.itemId]: l.doCardapio! })); setMarcado((m) => ({ ...m, [l.itemId]: true })) }}
                             className="rounded-md bg-sky-50 px-1.5 py-0.5 text-[11.5px] text-sky-700 ring-1 ring-inset ring-sky-200 hover:bg-sky-100">
                             no cardápio: {l.doCardapio}
                           </button>

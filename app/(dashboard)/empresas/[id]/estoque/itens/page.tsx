@@ -7,7 +7,7 @@
 
 import { useEffect, useMemo, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
-import { Package, Loader2, Plus, Search, Ban, RotateCcw, Download, MoreHorizontal, FileText, Boxes, Layers, HelpCircle, CircleSlash , CornerDownRight } from 'lucide-react'
+import { Package, Loader2, Plus, Search, Ban, RotateCcw, Download, MoreHorizontal, FileText, Boxes, Layers, HelpCircle, CircleSlash , CornerDownRight, Trash2} from 'lucide-react'
 import { StatCard, StatCardGrid } from '@/components/ui/stat-card'
 import { TotalsBar, type TotalItem } from '@/components/ui/totals-bar'
 import { SortableTh, useSort } from '@/components/ui/sortable-th'
@@ -19,6 +19,12 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { corDaCategoria } from '@/lib/stock/categoria-cores'
 import { NomeEditavel } from '@/components/estoque/nome-editavel'
 
+interface Situacao {
+  itemId: string; nome: string; movimentos: number; saldo: number; valor: number
+  podeExcluir: boolean; caminho: 'EXCLUIR' | 'MESCLAR_OU_ARQUIVAR'
+  fichas: { fichaId: string; nome: string; ativa: boolean }[]
+  mapasDeNota: number; mapasDeVenda: number; avisos: string[]
+}
 interface Item { id: string; nome: string; unidadeControle: string; categoria: string; categoriaLabel: string; produzido: boolean; ativo: boolean; saldo: number; custoMedio: number | null; estoqueMin: number | null; estoqueMax: number | null; criadoVia: string; ehReceita: boolean; baixaEm: { itemId: string; nome: string } | null; componentes: number; fichaId: string | null }
 const CATS = [{ v: 'MATERIA_PRIMA', l: 'Matéria-prima' }, { v: 'REVENDA', l: 'Revenda' }, { v: 'EMBALAGEM', l: 'Embalagem' }, { v: 'LIMPEZA', l: 'Limpeza' }, { v: 'USO_INTERNO', l: 'Uso interno' }]
 const brl = (n: number | null) => (n == null ? 'a definir' : n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }))
@@ -36,6 +42,10 @@ export default function CatalogoPage({ params }: { params: Promise<{ id: string 
   const { col, dir, alternar, ordenar } = useSort<Campo>('nome', 'asc')
   const [soSemCusto, setSoSemCusto] = useState(false)
   const [sel, setSel] = useState<string[]>([])
+  /** ⭐ SUMIR COM O ITEM (09/09) — a régua é do SERVIDOR (`situacaoDoItem`), a tela só pergunta */
+  const [sumir, setSumir] = useState<{ item: Item; situacao: Situacao } | null>(null)
+  const [sumindo, setSumindo] = useState(false)
+  const [sumirErro, setSumirErro] = useState<string | null>(null)
 
   const carregar = () => fetch(`/api/empresas/${id}/estoque/catalogo`).then((r) => r.json()).then((j) => setItens(j.itens ?? [])).catch(() => setItens(null))
   useEffect(() => { carregar() }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -61,6 +71,33 @@ export default function CatalogoPage({ params }: { params: Promise<{ id: string 
       filhosDe,
     }
   }, [itens, busca, catFiltro, verInativos, soSemCusto, ordenar])
+
+  const abrirSumir = async (item: Item) => {
+    setSumirErro(null)
+    // ⛔ A CHECAGEM É DO SERVIDOR (as duas portas): a tela pergunta "dá pra apagar?" e
+    // obedece — nunca decide por conta própria olhando o saldo que ela tem em mão.
+    const r = await fetch(`/api/empresas/${id}/estoque/itens/${item.id}/arquivar`)
+    const j = await r.json().catch(() => null)
+    if (!r.ok || !j?.situacao) { setSumirErro('Não consegui checar o item.'); return }
+    setSumir({ item, situacao: j.situacao })
+  }
+
+  const confirmarSumir = async () => {
+    if (!sumir) return
+    setSumindo(true); setSumirErro(null)
+    try {
+      const { item, situacao } = sumir
+      const r = situacao.podeExcluir
+        ? await fetch(`/api/empresas/${id}/estoque/itens/${item.id}/arquivar`, { method: 'DELETE' })
+        : await fetch(`/api/empresas/${id}/estoque/itens/${item.id}/arquivar`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ arquivar: true, confirmado: true }),
+          })
+      const j = await r.json().catch(() => null)
+      if (!r.ok) { setSumirErro(j?.erro ?? 'Não consegui.'); return }
+      setSumir(null); carregar()
+    } finally { setSumindo(false) }
+  }
 
   if (itens === undefined) return <div className="p-6"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
   if (itens === null) return <div className="p-6 text-sm text-slate-500">Não consegui carregar o catálogo.</div>
@@ -205,6 +242,13 @@ export default function CatalogoPage({ params }: { params: Promise<{ id: string 
                       {i.ativo
                         ? <DropdownMenuItem onClick={() => setAtivo(i.id, false)}><Ban className="mr-2 h-3.5 w-3.5" /> Desativar</DropdownMenuItem>
                         : <DropdownMenuItem onClick={() => setAtivo(i.id, true)}><RotateCcw className="mr-2 h-3.5 w-3.5" /> Reativar</DropdownMenuItem>}
+                      {/* ⭐ SUMIR COM O ITEM — um gesto só; quem decide entre apagar e
+                          arquivar é o SERVIDOR, pela régua do dinheiro. */}
+                      {i.ativo && !i.ehReceita && (
+                        <DropdownMenuItem onClick={() => abrirSumir(i)} className="text-rose-600 focus:text-rose-700">
+                          <Trash2 className="mr-2 h-3.5 w-3.5" /> Sumir com o item
+                        </DropdownMenuItem>
+                      )}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </td>

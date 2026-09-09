@@ -15,6 +15,8 @@ import { recomputeSaldoCache } from './saldo'
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 
 import { garantirFornecedorDoEstoque } from './fornecedores-unificados'
+import { normalizarBusca } from '@/lib/busca-texto'
+import { seContaFisicamente } from './tipos-ficha'
 
 export class EntradaManualError extends Error {}
 
@@ -67,7 +69,50 @@ export interface EntradaManualResult {
   payableGerada: boolean
 }
 
+/**
+ * ⛔⛔ NOME QUE JÁ EXISTE NÃO NASCE DE NOVO (09/09/2026).
+ *
+ * **O dono:** *"pesquisei, o TOMATE já existe — mas o campo NOME é obrigatório e eu não sei
+ * se escrever 'TOMATE' cria OUTRO tomate."* **Criava.** Este caminho não tinha dedup nenhuma:
+ * digitar o nome de um item existente fazia nascer um segundo item com o mesmo nome, e a
+ * partir dali Posição, busca e contagem passavam a mostrar os dois.
+ *
+ * ⭐ A régua é a MESMA do `criarFicha` e do `POST /itens`: recusa e **ensina a saída** (o
+ * seletor). Duplicado nunca nasce por digitação.
+ *
+ * ⚠️ Compara pelo canônico (sem caixa/acento/espaço duplo) — "tomate" e "TOMATE " são o
+ * mesmo produto, e foi assim que a Bobina duplicou em agosto.
+ */
+async function recusarNomeQueJaExiste(
+  companyId: string, itens: { novo?: { nome?: string } | null }[], db: PrismaClient,
+): Promise<void> {
+  const novos = itens.map((i) => i.novo?.nome?.trim()).filter((x): x is string => !!x)
+  if (!novos.length) return
+  const doEstoque = await db.stockItem.findMany({
+    where: { companyId, ativo: true }, select: { nome: true, categoria: true },
+  })
+  const naPrateleira = doEstoque.filter((i) => seContaFisicamente(i.categoria))
+  for (const nome of novos) {
+    const achado = naPrateleira.find((i) => normalizarBusca(i.nome) === normalizarBusca(nome))
+    if (achado) {
+      throw new EntradaManualError(
+        `“${achado.nome}” já existe no estoque — use o seletor pra escolher esse item em vez de ` +
+        'digitar o nome. Criar outro com o mesmo nome faria a Posição e a contagem mostrarem os dois.',
+      )
+    }
+  }
+  // ⚠️ e dois "produto novo" com o MESMO nome na mesma nota também não passam
+  const vistos = new Set<string>()
+  for (const nome of novos) {
+    const k = normalizarBusca(nome)
+    if (vistos.has(k)) throw new EntradaManualError(`“${nome}” aparece duas vezes como produto novo nesta nota — deixe uma linha só.`)
+    vistos.add(k)
+  }
+}
+
 export async function registrarEntradaManual(input: EntradaManualInput, db: PrismaClient = defaultPrisma): Promise<EntradaManualResult> {
+  // ⛔ nome que já existe no estoque não nasce de novo — recusa e ensina o seletor
+  await recusarNomeQueJaExiste(input.companyId, input.itens, db)
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.data)) throw new EntradaManualError('Informe a data da compra.')
   if (input.payable) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(input.payable.vencimento)) throw new EntradaManualError('A parcela precisa de uma data de vencimento.')
