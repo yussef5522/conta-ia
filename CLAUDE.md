@@ -269,6 +269,22 @@ Agora é **um gesto só** — *"Sumir com o item"* — e **quem decide entre apa
 
 **12 testes novos** (o caminho inteiro do rename tela por tela · duplicado por digitação · virgem apaga / com NF arquiva e reativa / com ficha recusa nomeando). **8.971 verdes · TS 0 · deploy `-mustDFEDHrhyIMFNEoX3` 4/4.**
 
+## ⛔⛔⛔ RÓTULO QUE SOME QUANDO EU DIGITO É RÓTULO QUE NÃO EXISTE (09/09/2026)
+
+**O dono, depois de saber a causa do "1" que ele chutou:** *"conserta em TODA tela que fizer isso, independente de qual era a minha — rótulo que some quando eu digito é rótulo que não existe (foi exatamente assim que eu chutei '1' sem saber o quê). **Rótulo fixo em cima do campo, placeholder só de exemplo.**"*
+
+**A TELA DOS "3 QUADRADOS" ERA O MOBILE DO DANFE MANUAL** (`itens-manuais-editor.tsx`) — três caixas embaixo do nome do produto com `qtd` · `un` · `preço` **só no placeholder** e **sem total de linha**. ⚠️ **O DESKTOP DA MESMA TELA ESTAVA CERTO O TEMPO TODO** (`<th>` por coluna + coluna Total): o defeito vivia só no caminho que ele usa de fato. *Tela conferida no desktop não é tela conferida.*
+
+**⭐ A VARREDURA ACHOU 14, NÃO 1** — e duas valem por si:
+- **A PORTA DA IMPRESSORA não tinha NEM placeholder** — caixa completamente muda.
+- **A PERGUNTA DO FATOR era o placeholder** (*"quantas KG tem 1 CX?"*, na conferência **e** no DANFE manual): a única pista visível **sumia no primeiro dígito**. Agora a pergunta fica em cima e o placeholder é um número de exemplo.
+
+**⛔ O GUARD (`__tests__/regras-ui/rotulo-que-some-nao-e-rotulo.test.ts`):** campo de dado sem rótulo que FIQUE na tela quebra a suíte. **Três exceções, e as três têm rótulo que não some:** célula de tabela (o `<th>` da coluna) · campo de **busca** (ali o placeholder é o propósito, não o nome de um dado que vai ser gravado) · campo embrulhado num `<label>` (a checagem é **estrutural** — procura o `<label>` aberto acima sem `</label>` no meio —, não por distância em linhas).
+
+**⚠️⚠️ E O DETECTOR ERRADO ESCONDEU 4 DEFEITOS REAIS:** a 1ª versão olhava **uma linha só**, então `<input`, `placeholder=` e `aria-label=` em linhas diferentes passavam despercebidos nos dois sentidos — dava falso positivo no fator (que tem rótulo inline) e **falso NEGATIVO** no PIN da equipe, na etapa da ficha e no fator do DANFE. Lendo o **elemento inteiro**, os quatro apareceram. *Guard que lê uma linha de JSX não lê JSX.*
+
+**REGRA 11 medida:** repondo a pergunta como placeholder, **vermelho** nomeando arquivo e linha.
+
 ## ⛔⛔⛔ A PÁGINA ABRIA E O DADO NÃO VINHA — A **4ª** VOLTA DAS "DUAS PORTAS" (09/09/2026)
 
 **O dono:** *"/equipe renderiza mas mostra 'Não consegui carregar a equipe' + 'ninguém da cozinha cadastrado ainda' — com 5+ pessoas cadastradas."*
