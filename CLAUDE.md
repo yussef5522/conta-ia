@@ -265,7 +265,33 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 **11 testes · red-then-green: 5 vermelhos com os 3 defeitos repostos · 8.908 verdes · TS 0 · deploy `RNE7CqsiB9K5KQMbD8DbI` 4/4.**
 
-### 📋 A ARRUMAÇÃO DOS DADOS — PREVIEW PRONTO, AGUARDA O DONO
+### ⭐ O SELO DO CARDÁPIO FALA DO RESULTADO, NÃO DO CAMINHO (09/09)
+
+**O dono:** *"SKOL e FRUKI aparecem com selo 'revenda' e as outras 'completa'. Confirma que os DOIS caminhos baixam certo — e se sim, unifica (pro dono importa 'baixa e tem custo', não o caminho interno). Se algum NÃO baixa, me conta antes."*
+
+**MEDIDO COM O PLANEJADOR REAL (dry-run, nada gravado) — os dois baixam igual:**
+```
+SKOL           (mapa direto no item) → CERV SKOL 600ML       −10 · custo 6,21
+FRUKI 600ML    (mapa direto no item) → FRUKI GUARANA 600ML    −5 · custo 3,75
+COCA COLA 2L   (mapa na FICHA)       → COCA-COLA  2L          −8 · custo 8,09
+COCA ZERO LATA (mapa na FICHA)       → CC Zero LT 350ml       −3 · custo 2,90
+```
+Os dois caem **no mesmo item de estoque, com custo**. Só por isso o selo pôde unir — a pergunta *"os dois baixam?"* tinha que ser **respondida**, não presumida. Ambos agora mostram **"baixa certo"**. ⚠️ O `status` continua distinto por dentro (é ele que escolhe o gesto que a tela oferece), e **o que NÃO baixa mantém selo próprio**: unificar não pode apagar problema.
+
+### ✅ A ARRUMAÇÃO DOS DADOS — APLICADA (09/09, autorizada pelo dono)
+
+**`pg_dump pre-bebidas-20260909-013719.dump` (5,7 MB) antes.** 13 bebidas re-baseadas, **13/13 ✓**, ledger imutável (estorno do fantasma + ajuste novo contra o saldo certo).
+
+**CONFERIDO DEPOIS, em prod:**
+```
+POSIÇÃO   150 itens · R$ 134.571,96 · bebidas com MAIS DE UMA linha: 0 · invólucros: 0
+CONTAGEM  160 linhas · invólucros: 0
+COCA-COLA 2L 154 UN (R$ 1.245,48) · COCA LATA 67 · CC 600 62 · CC Zero 2L 43 …
+```
+
+**⚠️ BUG MEU PEGO NO PREVIEW, antes de aplicar:** a 1ª versão subtraía **todos** os fantasmas do saldo do item real, inclusive os que estão no invólucro (que não entram nesse saldo). `COCA COLA 600ML` daria **−284** em vez de **−346**, deixando 124 garrafas onde a marcyelle contou 62. **Preview existe pra isso** — e a versão corrigida bate com a medição independente feita antes por outro caminho.
+
+### 📋 (histórico) O PREVIEW QUE ANTECEDEU A APLICAÇÃO
 `scripts/arrumar-contagem-de-bebida.ts` (preview + `--aplicar`). **13 bebidas**, ledger **imutável** (estorno do fantasma + ajuste novo, nunca UPDATE):
 ```
 COCA COLA 2L    154 │ COCA-COLA  2L         714 → 154 │ -406
