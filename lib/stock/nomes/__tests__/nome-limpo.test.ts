@@ -72,3 +72,20 @@ describe('⭐ o filtro da tela erra pro lado de INCLUIR', () => {
     }
   })
 })
+
+describe('⚠️ as duas armadilhas que só o dado REAL de prod mostrou', () => {
+  it('⛔⛔ LT é LATA **ou** LITRO — o ML na linha é quem decide', () => {
+    // a lata de suco: tem 290ML ao lado → LT é LATA
+    expect(limpo('DV UVA LT 290ML 6U FL')).toBe('DEL VALLE UVA LATA 290ML')
+    // ⛔ a caixa de leite: NÃO tem ML → "1 LT" é 1 LITRO, e virar "1 LATA" seria mentira
+    expect(limpo('LEITE UHT INTEGRAL DALIA EDGE CX 12 X 1 LT')).toContain('1 LT')
+    expect(limpo('LEITE UHT INTEGRAL DALIA EDGE CX 12 X 1 LT')).not.toContain('LATA')
+    // e o LT grudado no número (200LT = 200 litros) nunca foi tocado
+    expect(limpo('SACO LIXO ITO 200LT C/5')).toBe('SACO LIXO ITO 200LT')
+  })
+
+  it('⛔ a barra órfã que sobra quando o CX sai', () => {
+    // "CX/08 PC" → o CX some e deixava " /08 " no meio do nome
+    expect(limpo('PREP. ALIM. SABOR CHEDDAR 2,27 KG CX/08 PC')).toBe('PREPARO SABOR CHEDDAR 2,27KG')
+  })
+})

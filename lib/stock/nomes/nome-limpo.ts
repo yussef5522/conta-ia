@@ -47,8 +47,11 @@ function normalizarTamanho(s: string): string {
     .replace(/\b(\d+)\s*L\b/gi, '$1L')
     .replace(/\b(\d+)\s*KG\b/gi, '$1KG')
     .replace(/\b(\d+)\s*GR?\b/gi, '$1G')
-    // LT solto = LATA (o 290ML/350ML ao lado já dá o tamanho)
-    .replace(/\bLT\b/g, 'LATA')
+    // ⚠️⚠️ `LT` É AMBÍGUO — LATA **ou** LITRO. Achado no dado real: `DV UVA LT 290ML` é lata,
+    // mas `LEITE UHT ... CX 12 X 1 LT` é LITRO, e trocar ali escreveria "1 LATA" de leite.
+    // ⭐ A régua: só vira LATA quando há um tamanho em ML na mesma linha — é o que distingue
+    // "a lata de 290ML" de "a caixa de 1 litro". Sem ML, `LT` fica como está.
+    .replace(/\bLT\b/g, (m, ...a) => (/\d+\s*ML\b/i.test(String(a[a.length - 1])) ? 'LATA' : m))
 }
 
 export interface SugestaoDeNome {
@@ -99,6 +102,11 @@ export function sugerirNomeLimpo(nome: string, opts: { doCardapio?: string | nul
 
   const semEmb = s.replace(EMBALAGEM, ' ')
   if (semEmb !== s) { porque.push('tirou a embalagem'); s = semEmb }
+
+  // ⚠️ SOBRA DA EMBALAGEM: `CX/08 PC` vira ` /08 ` quando o CX sai. O `/N` órfão não é
+  // produto — é o resto da caixa. (Visto em "PREP. ALIM. SABOR CHEDDAR 2,27 KG CX/08 PC".)
+  const semBarraOrfa = s.replace(/(^|\s)\/\s*\d+\b/g, ' ')
+  if (semBarraOrfa !== s) { porque.push('tirou a embalagem'); s = semBarraOrfa }
 
   // ⚠️ CONTAGEM DE PACK SEM UNIDADE, no fim: `CC 600 PET 12` — o 12 é a caixa, não o produto.
   // ⛔ Só no FIM e só até 3 dígitos: no meio ele costuma ser o tamanho (`COPO 400ML`), e um
