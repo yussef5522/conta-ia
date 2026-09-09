@@ -34,8 +34,12 @@ async function main() {
   console.log(`\n  ${semPar} conta(s) sem par no extrato (informação de fundo, não fila)`)
 
   console.log('\n\n=== AS SUGESTÕES NA FILA DE PENDENTES ===')
-  const sug = await sugestoesParaPendentes(COMPANY)
+  const { sugestoes: sug, lotes } = await sugestoesParaPendentes(COMPANY)
   const ids = Object.keys(sug)
+  console.log(`  ${Object.keys(lotes).length} linha(s) que são PAGAMENTO EM LOTE`)
+  for (const [id, l] of Object.entries(lotes)) {
+    console.log(`     [${id}] ${l.quantas} notas do ${l.fornecedorNome} somam ${brl(l.soma)}`)
+  }
   console.log(`  ${ids.length} linha(s) pendente(s) com sugestão de vínculo`)
   for (const id of ids) {
     console.log(`\n  [${id}]`)

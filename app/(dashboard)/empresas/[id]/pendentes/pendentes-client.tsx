@@ -191,6 +191,10 @@ export function PendentesClient({
   // import — mas a tela de Pendentes NÃO roda o matcher nem oferece o vínculo"*.
   // ⛔ Mesma função do import e da Conciliação (`sugerirVinculos`): fonte única.
   const [vinculoSug, setVinculoSug] = useState<Record<string, VinculoSugerido[]>>({})
+  /** ⭐ a linha é um PIX que liquida N notas — o gesto mora na Conciliação */
+  const [loteSug, setLoteSug] = useState<
+    Record<string, { fornecedorNome: string; quantas: number; soma: number }>
+  >({})
   const [linkModal, setLinkModal] = useState<{ loanId: string; txId: string } | null>(null)
   const [solicitandoIa, setSolicitandoIa] = useState<Set<string>>(new Set())
   // Sprint 3.0.1 — banner persistente de falhas (Safari ITP cookie bug)
@@ -322,8 +326,12 @@ export function PendentesClient({
       // ⭐ Sugestão de VÍNCULO (07/09/2026). Read-only, nunca vincula sozinha.
       fetch(`/api/conciliacao/sugestoes-pendentes?empresaId=${empresaId}`, { credentials: 'include' })
         .then((r) => { if (!r.ok) { console.warn(`[pendentes] sugestoes-pendentes HTTP ${r.status}`); return null } return r.json() })
-        .then((d: { sugestoes?: Record<string, VinculoSugerido[]> } | null) => {
+        .then((d: {
+          sugestoes?: Record<string, VinculoSugerido[]>
+          lotes?: Record<string, { fornecedorNome: string; quantas: number; soma: number }>
+        } | null) => {
           setVinculoSug(d?.sugestoes ?? {})
+          setLoteSug(d?.lotes ?? {})
         })
         .catch((e) => console.warn('[pendentes] sugestoes-pendentes falhou:', e))
       // Sprint Filtro de Data Parte A: guardar o total real pra UI mostrar
@@ -1341,6 +1349,24 @@ export function PendentesClient({
                     que já existe, vincular é a resposta certa e categorizar é a
                     errada (a categoria vem da conta). ⛔ Mas o dropdown continua ali:
                     sugestão nunca fecha a saída padrão do usuário. */}
+                {/* ⭐⭐ PAGAMENTO EM LOTE: a linha não bate com nota nenhuma sozinha,
+                    então sem este aviso ela chega aqui pedindo CATEGORIA e o dono
+                    categoriza como despesa — deixando as N notas abertas pra sempre.
+                    ⛔ O gesto fica na Conciliação: um lote, um lugar de decidir. */}
+                {loteSug[t.id] && (
+                  <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-[#534AB7]/30 bg-[#534AB7]/[0.06] px-3 py-2 text-[12px] text-[#3d3688] dark:border-indigo-900 dark:bg-indigo-950/30 dark:text-indigo-200">
+                    <span>
+                      Parece o pagamento de <b>{loteSug[t.id].quantas} notas</b> do{' '}
+                      <b>{loteSug[t.id].fornecedorNome}</b> de uma vez — elas somam exatamente
+                      este valor. <b>Vincular</b> liquida as {loteSug[t.id].quantas} e a
+                      categoria vem de cada nota; categorizar aqui deixaria todas em aberto.
+                    </span>
+                    <a href={`/conciliacao?empresaId=${empresaId}`}
+                      className="ml-auto shrink-0 font-semibold underline underline-offset-2">
+                      resolver na Conciliação →
+                    </a>
+                  </div>
+                )}
                 {vinculoSug[t.id]?.length > 0 && (
                   <SugestaoDeVinculoBanner
                     empresaId={empresaId}

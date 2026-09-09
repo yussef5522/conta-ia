@@ -518,9 +518,28 @@ export async function filaDeConciliacao(
  * Por isso esta função trata os dois lados: linha de extrato procura conta, conta
  * procura linha de extrato. **A mesma régua dos dois lados** (`sugerirVinculos`).
  */
+export interface SugestoesDePendentes {
+  /** por linha: os pares 1:1 que ela pode ter */
+  sugestoes: Record<string, (SugestaoDeVinculo & { outroLado: LadoDoPar; rotulo: string })[]>
+  /**
+   * ⭐⭐ POR LINHA: quando ELA é um pagamento em lote (09/09/2026).
+   *
+   * **A ordem do fluxo, na palavra do dono:** *"CASAR ANTES DE CATEGORIZAR — linha que
+   * casa mostra a sugestão de vínculo PRIMEIRO; categoria herda da conta."* O 1:1 já
+   * fazia isso aqui; o PIX consolidado **não**, e ele é justamente o que chega pedindo
+   * categoria sem bater com nota nenhuma.
+   *
+   * ⛔ Aqui vai só o AVISO com o número, não o card inteiro: **a decisão do lote tem UM
+   * lugar** (a Conciliação). Duas telas montando o mesmo lote seriam duas derivações da
+   * mesma pergunta — a lição do B1 aplicada à tela, que já custou o `GruposSugeridos`
+   * duplicado do cardápio.
+   */
+  lotes: Record<string, { fornecedorNome: string; quantas: number; soma: number }>
+}
+
 export async function sugestoesParaPendentes(
   companyId: string, db: Db = defaultPrisma,
-): Promise<Record<string, (SugestaoDeVinculo & { outroLado: LadoDoPar; rotulo: string })[]>> {
+): Promise<SugestoesDePendentes> {
   const [fornecedores, recusados] = await Promise.all([
     fornecedoresDaEmpresa(db, companyId), paresRecusados(db, companyId),
   ])
@@ -540,7 +559,7 @@ export async function sugestoesParaPendentes(
       origin: true, lifecycle: true, supplierId: true, bankAccountId: true,
     },
   })
-  if (!pendentes.length) return {}
+  if (!pendentes.length) return { sugestoes: {}, lotes: {} }
 
   const janela = JANELA_DIAS * 86400000
   const min = Math.min(...pendentes.map((t) => (t.dueDate ?? t.date).getTime())) - janela
@@ -624,7 +643,19 @@ export async function sugestoesParaPendentes(
     }
     if (achados.length) out[t.id] = achados.sort((a, b) => b.score - a.score).slice(0, 3)
   }
-  return out
+
+  // ⭐ e o lote: a MESMA função da Conciliação (REGRA 4 — um motor, dois consumidores),
+  // filtrada pelas linhas que estão nesta fila.
+  const idsPendentes = new Set(pendentes.map((t) => t.id))
+  const { lotes: todosOsLotes } = await lotesDaFila(companyId, db)
+  const lotes: SugestoesDePendentes['lotes'] = {}
+  for (const l of todosOsLotes) {
+    if (!idsPendentes.has(l.extratoId)) continue
+    lotes[l.extratoId] = {
+      fornecedorNome: l.fornecedorNome, quantas: l.notas.length, soma: l.soma,
+    }
+  }
+  return { sugestoes: out, lotes }
 }
 
 /**

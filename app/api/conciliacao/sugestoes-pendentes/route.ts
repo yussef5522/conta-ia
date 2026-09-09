@@ -24,8 +24,10 @@ export async function GET(request: NextRequest) {
     const ctx = await getAuthContext(request, data.empresaId)
     ctx.requirePermission('transaction.view')
 
-    const sugestoes = await sugestoesParaPendentes(data.empresaId)
-    return NextResponse.json({ sugestoes })
+    // ⚠️ a forma do payload é a MESMA de antes (`{ sugestoes }`) e ganhou `{ lotes }`
+    // ao lado — contrato aditivo, então uma tela que ainda não lê `lotes` não quebra.
+    const { sugestoes, lotes } = await sugestoesParaPendentes(data.empresaId)
+    return NextResponse.json({ sugestoes, lotes })
   } catch (error) {
     return handleApiError(error)
   }
