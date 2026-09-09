@@ -224,3 +224,66 @@ describe('⭐ os dois caminhos de revenda baixam o MESMO item', () => {
     expect(ROTULO.SEM_FICHA).not.toBe(ROTULO.FICHA_OK)
   })
 })
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// ⭐⭐ BEBIDA QUE EXISTE NA GELADEIRA MAS NUNCA VEIO EM NOTA (09/09/2026).
+//
+// **O dono:** *"Começamos há 1 semana — essas bebidas estão na geladeira, só nunca veio NF.
+// Cria o item, cria a ficha, aponta o cardápio. Saldo NÃO se chuta: nascem com 0 e entram na
+// minha fila de contagem."*
+// ═══════════════════════════════════════════════════════════════════════════════════════
+
+describe('⭐ o caminho "existe na geladeira, nunca veio nota"', () => {
+  async function criarSemNota(nomePdv: string, nomeItem: string) {
+    const { upsertVendaMap } = await import('../vendas/venda-map')
+    const item = await prisma.stockItem.create({
+      data: { companyId, nome: nomeItem, unidadeControle: 'UN', categoria: 'REVENDA', criadoVia: 'MANUAL' },
+    })
+    const f = await criarFicha({
+      companyId, userId, nomeProduzido: nomePdv, unidadeProduzido: 'UN', tipoProduto: 'PRODUTO_FINAL',
+      loteBase: 1, unidadeLoteBase: 'UN', valorVenda: 9,
+      componentes: [{ itemId: item.id, qtdPlanejada: 1, unidade: 'UN', posicao: 0 }],
+    }, prisma)
+    await upsertVendaMap(companyId, nomePdv, { tipo: 'FICHA', fichaId: f.fichaId }, userId, prisma)
+    return { item, fichaId: f.fichaId }
+  }
+
+  it('⭐⭐ a venda de FANTA LARANJA LATA passa a baixar o item novo', async () => {
+    const { montarPlanoDeLinhas } = await import('../vendas/baixa-venda')
+    const { item } = await criarSemNota('FANTA LARANJA LATA', 'FANTA LARANJA LATA 350ML')
+
+    const plano = await montarPlanoDeLinhas(companyId, '2026-09-09', [
+      { produto: 'FANTA LARANJA LATA', quantidade: 3, valorTotal: 27 },
+    ], null, prisma)
+    expect(plano.pendentes, 'não pode mais cair na fila de "sem destino"').toHaveLength(0)
+    expect(plano.agregada).toHaveLength(1)
+    expect(plano.agregada[0].itemId).toBe(item.id)
+    expect(plano.agregada[0].qtd).toBe(3)
+  })
+
+  it('⛔⛔ SALDO NASCE ZERO — nada é chutado', async () => {
+    const { item } = await criarSemNota('FRUKI ZERO 2L', 'FRUKI GUARANA ZERO 2L')
+    const movs = await prisma.stockMovement.count({ where: { companyId, itemId: item.id } })
+    expect(movs, 'item novo não nasce com movimento inventado').toBe(0)
+  })
+
+  it('⭐⭐ e ele entra na FILA DE CONTAGEM — é dali que o saldo vem', async () => {
+    const { item } = await criarSemNota('HEINEKEN LONG ZERO', 'HEINEKEN LONG NECK ZERO 330ML')
+    const quadro = await getQuadro(companyId, new Date(), prisma)
+    const linha = quadro.linhas.find((l) => l.itemId === item.id)
+    expect(linha, 'a garrafa nova tem que aparecer pra contar').toBeTruthy()
+    // ⚠️ "sem contagem" ≠ zero: o saldo de sistema é 0 porque nada entrou, e a contagem é
+    // que vai dizer quantas existem. Chutar aqui seria inventar estoque.
+    expect(linha!.saldoSistema).toBe(0)
+    // ⛔ e o invólucro do cardápio NÃO entra na fila junto
+    const f = await prisma.stockFicha.findFirst({ where: { companyId, tipoProduto: 'PRODUTO_FINAL' }, orderBy: { criadoEm: 'desc' }, select: { itemProduzidoId: true } })
+    expect(quadro.linhas.map((l) => l.itemId)).not.toContain(f!.itemProduzidoId)
+  })
+
+  it('⭐ a busca acha a garrafa nova por extenso', async () => {
+    await criarSemNota('FANTA LARANJA LATA', 'FANTA LARANJA LATA 350ML')
+    const itens = await prisma.stockItem.findMany({ where: { companyId, ativo: true }, select: { id: true, nome: true } })
+    const { filtrarPorBusca } = await import('@/lib/busca-texto')
+    expect(filtrarPorBusca(itens, 'fanta laranja lata', (i) => i.nome).length).toBeGreaterThan(0)
+  })
+})

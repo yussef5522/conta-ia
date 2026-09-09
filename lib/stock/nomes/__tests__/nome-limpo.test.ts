@@ -9,7 +9,9 @@ const limpo = (n: string) => sugerirNomeLimpo(n).sugestao
 
 describe('⭐ os nomes reais da Posição', () => {
   it('⭐ expande a sigla da marca e tira embalagem+pack', () => {
-    expect(limpo('CC 600 PET 12')).toBe('COCA COLA 600')
+    // ⚠️ TESTE INVERTIDO COM O MOTIVO (09/09): esperava "COCA COLA 600". O dono pediu a
+    // unidade junto — *"quero ler COCA COLA 600ML"* — e o volume solto passou a ganhar ML.
+    expect(limpo('CC 600 PET 12')).toBe('COCA COLA 600ML')
     expect(limpo('CC Zero PET 2L 8U FL')).toBe('COCA COLA ZERO 2L')
     expect(limpo('CC Zero PET 600ml 12U FL')).toBe('COCA COLA ZERO 600ML')
   })
@@ -87,5 +89,33 @@ describe('⚠️ as duas armadilhas que só o dado REAL de prod mostrou', () => 
   it('⛔ a barra órfã que sobra quando o CX sai', () => {
     // "CX/08 PC" → o CX some e deixava " /08 " no meio do nome
     expect(limpo('PREP. ALIM. SABOR CHEDDAR 2,27 KG CX/08 PC')).toBe('PREPARO SABOR CHEDDAR 2,27KG')
+  })
+})
+
+describe('⛔ SIGLA NÃO FICA — o dono não lê "CC" nem "DV"', () => {
+  it('⭐⭐ o que ele quer ler, por extenso e com a unidade', () => {
+    expect(limpo('CC 600 PET 12')).toBe('COCA COLA 600ML')
+    expect(limpo('CC Zero PET 2L 8U FL')).toBe('COCA COLA ZERO 2L')
+    expect(limpo('DV UVA LT 290ML 6U FL')).toBe('DEL VALLE UVA LATA 290ML')
+    expect(limpo('CC Zero LT 350ml 12U FL')).toBe('COCA COLA ZERO LATA 350ML')
+  })
+
+  it('⛔ e nenhuma sugestão sai com sigla', () => {
+    const SIGLA = /\b(CC|DV|CERV|GFA|RT|FL|PIL)\b/i
+    for (const n of [
+      'CC 600 PET 12', 'CC Zero PET 2L 8U FL', 'DV UVA LT 290ML 6U FL',
+      'CERV SKOL 600ML', '0000903482 - CERV HEINEKEN PIL 0.60GFA RT 24UN',
+    ]) expect(SIGLA.test(limpo(n)), `${n} → ${limpo(n)}`).toBe(false)
+  })
+
+  it('⛔⛔ SIGLA SOZINHA já põe o item na fila — "CERV SKOL 600ML" ficava de fora', () => {
+    expect(pareceNomeDeNota('CERV SKOL 600ML')).toBe(true)
+    expect(limpo('CERV SKOL 600ML')).toBe('CERVEJA SKOL 600ML')
+  })
+
+  it('⛔ o ML só é inferido em volume de BEBIDA, nunca em qualquer número', () => {
+    expect(limpo('SACO PAPEL SOS 15KG C/250UN CACULA MIX')).toBe('SACO PAPEL SOS 15KG CACULA MIX')
+    expect(limpo('SACO LIXO ITO 200LT C/5')).toBe('SACO LIXO ITO 200LT')
+    expect(limpo('COPOS  250ML COPAZA')).toBe('COPOS 250ML COPAZA')
   })
 })

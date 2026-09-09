@@ -52,6 +52,11 @@ function normalizarTamanho(s: string): string {
     // ⭐ A régua: só vira LATA quando há um tamanho em ML na mesma linha — é o que distingue
     // "a lata de 290ML" de "a caixa de 1 litro". Sem ML, `LT` fica como está.
     .replace(/\bLT\b/g, (m, ...a) => (/\d+\s*ML\b/i.test(String(a[a.length - 1])) ? 'LATA' : m))
+    // ⭐ VOLUME SOLTO GANHA ML: `CC 600 PET 12` → "COCA COLA 600ML", que é como o dono lê.
+    // ⛔ LISTA FECHADA de volumes de bebida — inferir ML de qualquer número transformaria
+    // "SACO PAPEL SOS 15" em "15ML". E o lookahead protege o que já tem unidade (250ML,
+    // 200LT, C/250UN).
+    .replace(/\b(150|200|250|290|300|350|400|473|500|600|900)\b(?!\s*(ML|G|KG|L|UN|X))/gi, '$1ML')
 }
 
 export interface SugestaoDeNome {
@@ -67,8 +72,14 @@ export interface SugestaoDeNome {
  * ⚠️ Falso positivo aqui custa uma linha a mais pra ele olhar; falso negativo esconde um
  * nome feio pra sempre. Então erra pro lado de INCLUIR.
  */
+/** as siglas que o dono não lê: se o nome tem uma, ele entra na fila mesmo sem mais nada */
+const TEM_SIGLA = /\b(CC|DV|CERV|GFA|RT|FL|PIL|INTEG|REFRIG?)\b/i
+
 export function pareceNomeDeNota(nome: string): boolean {
   return (
+    // ⛔ "CERV SKOL 600ML" não tinha marca nenhuma de embalagem e ficava FORA da fila —
+    // e o dono lê "CERV" na Posição do mesmo jeito. Sigla sozinha já basta pra revisar.
+    TEM_SIGLA.test(nome) ||
     /^\s*\d{4,}\s*[-–]/.test(nome) // código do fornecedor na frente
     || /\b(PET|FL|RT|GFA|CX|PCT|EMB|SC|FD|UND)\b/i.test(nome)
     || /\b\d{1,3}\s*(UN|U)\b/i.test(nome) // "12UN", "8U"

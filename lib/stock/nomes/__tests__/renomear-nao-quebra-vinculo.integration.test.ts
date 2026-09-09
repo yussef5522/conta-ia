@@ -55,7 +55,8 @@ describe('⛔⛔ o rename e os vínculos', () => {
     const antes = await prisma.stockItem.findUnique({ where: { id: item }, select: { nome: true } })
     const linhas = await itensParaRevisarNome(companyId, prisma)
     const l = linhas.find((x) => x.itemId === item)!
-    expect(l.sugestao).toBe('COCA COLA 600')
+    // ⚠️ era 'COCA COLA 600'; o dono pediu a unidade junto (09/09) e o volume solto ganha ML
+    expect(l.sugestao).toBe('COCA COLA 600ML')
     expect(l.saldo).toBe(408)
     // ⛔ LER NÃO ESCREVE
     expect((await prisma.stockItem.findUnique({ where: { id: item }, select: { nome: true } }))!.nome).toBe(antes!.nome)
