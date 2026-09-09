@@ -242,6 +242,39 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⛔⛔⛔ A PÁGINA ABRIA E O DADO NÃO VINHA — A **4ª** VOLTA DAS "DUAS PORTAS" (09/09/2026)
+
+**O dono:** *"/equipe renderiza mas mostra 'Não consegui carregar a equipe' + 'ninguém da cozinha cadastrado ainda' — com 5+ pessoas cadastradas."*
+
+**MEDIDO com a sessão real do Cristian:**
+```
+LISTA da equipe  GET → 403 ⛔ falta user.invite     ← e o banco tem 17 pessoas
+redefinir PIN    GET → 200
+usuários         GET → 403 (correto: ler ≠ mexer)
+```
+
+**AS QUATRO VOLTAS, e cada uma escapou do guard da anterior:**
+1. **(08/09)** a **porta** da página era mais restrita que a **ação** que o servidor já autorizava;
+2. **(08/09)** a página abriu pra `stock.manage`… e o **menu** ficou em `user.invite`;
+3. **(09/09)** guard novo: *o item do menu não pode exigir mais que a página*;
+4. **(09/09)** **a ROTA DA LISTA ficou pra trás** — e o efeito foi **pior que um 403 na cara**: a página abre, a chamada morre, e a tela afirma *"ninguém cadastrado"*. **Erro disfarçado de vazio.**
+
+**⭐⭐ POR QUE O GUARD DA 3ª VOLTA NÃO PEGOU — e é a lição que fecha a família:** ele comparava **MENU × PÁGINA**, as duas portas que eu conhecia. **A terceira porta é a API que a página chama DEPOIS de abrir**, e *status 200 da página não diz nada sobre ela*. Nas palavras do dono: *"página que abre com dado que não vem é exatamente o que o teste de rota não pega."*
+
+**O FIX:** a rota da lista aceita o mesmo conjunto da página — **ver a lista é o desenho aprovado** (ele precisa saber quem existe pra cadastrar cozinha e redefinir PIN). **Gerenciar acesso continua `user.invite`**, e o cliente já desabilitava convite/papel/aparelho com o motivo escrito: **ler e mexer são travas diferentes, e só a primeira abriu.**
+
+**⛔ E ERRO E VAZIO NUNCA MAIS JUNTOS:** quando a carga falha o sistema **não sabe** se está vazio — afirmar que está é inventar. O estado vazio só renderiza sem erro, e a mensagem passou a distinguir **permissão** de falha de rede.
+
+**⭐ O GUARD DA FAMÍLIA (`pagina-abre-com-dado.test.ts`):** pra **cada papel que a página aceita**, **toda rota que o cliente chama** tem que responder — lendo os `fetch` do componente e o guard de cada rota **das fontes**. Rota nova na tela sem entrar no guard fica vermelha, em vez de virar *"ninguém cadastrado"* na cara do dono. **Red-then-green: 4 vermelhos com os defeitos repostos.**
+
+**PROVADO EM PROD, navegando como cada um:**
+```
+cristian  LISTA 200 ⭐ 17 pessoas (13 da cozinha) · cadastrar cozinha ✅ · PIN ✅
+          usuários 403 · aparelho 403 ⭐ negado, como tem que ser
+tablet    LISTA 403 · cadastrar 403 · PIN 403 · acesso 403
+```
+**8.958 verdes · TS 0 · deploy `QIuxg3hWohT5KO0I1esVE` 4/4.**
+
 ## ⭐⭐⭐ UM CAMINHO SÓ: VENDA → FICHA → COMPONENTE(S) (09/09/2026) — decisão do dono
 
 **A ordem:** *"Produto vendido baixa estoque por UM mecanismo, não três. Três caminhos pra mesma pergunta é como a bagunça nasce — cada tela nova precisa conhecer os três, cada auditoria conferir os três. Revenda é só o caso particular de ficha com 1 componente ×1: é o caminho que já cobre o caso complexo, então os simples cabem nele — o contrário não."*
