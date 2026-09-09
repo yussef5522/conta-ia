@@ -242,6 +242,39 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⭐⭐ AUDITORIA DAS BEBIDAS (0 divergência) + NOMES DE NOTA EM LOTE (09/09/2026)
+
+### ⭐ FRENTE 1 — cada produto baixa a GARRAFA CERTA: **25 auditadas, 0 suspeitas**
+
+Régua de vermelho: divergência de **marca · sabor · zero×comum · tamanho** entre o vendido e o baixado. **Nenhuma.** Os dois que o dono mandou olhar com lupa estão certos:
+- `COCA LATA` → **COCA COLA LATA 350ML** (comum, custo 2,91) — **não** a Zero (2,90)
+- `SUCO DE PESSEGO` → **DV PESSEGO** · `SUCO DELL VALE` → **DV UVA** (os dois a 3,07, e cada um no seu)
+
+**⚠️ DAS 4 SEM FICHA, SÓ UMA TEM ALVO CERTO — as outras viram AVISO, não palpite:**
+
+| vendido no PDV | o que existe no estoque | veredito |
+|---|---|---|
+| FANTA LARANJA ZERO 2L (2 un) | `FANTA LARANJA ZERO 2L` · 18 un · custo 0 | ⭐ dá pra apontar |
+| **FANTA LARANJA LATA** (3 un) | só a **ZERO** (`FANTA LARANJA ZERO LATA`, 31 un) | ⛔ **a comum não existe** — decisão dele |
+| **FRUKI ZERO 2L** (1 un) | há Fruki Zero 600 e Zero lata, e Fruki **comum** 2L | ⛔ **não existe Zero 2L** — decisão dele |
+| **HEINEKEN LONG ZERO** (1 un) | só a `HEINEKEN PIL 0.60GFA` (600ml comum) | ⛔ **não existe long zero** — decisão dele |
+
+⭐ Ele **previu exatamente isto** ao pedir ("se só existe a ZERO, me AVISA em vez de apontar na errada"), e é a mesma regra do módulo inteiro: **a ausência se reporta, não se preenche**. ⚠️ Achado no caminho: `MILKSHAKE SABOR PACOCA` (2 un) também vende sem destino — não é bebida de revenda, fica registrado.
+
+### ⭐⭐ FRENTE 2 — nome de nota vira nome de gente
+
+**⭐ A PERGUNTA QUE ELE EXIGIU ANTES DO PRIMEIRO RENAME, respondida:** **nenhum vínculo do módulo é por NOME**. `fornecedor→produto` é `(cnpj, cProd) → itemId`; ficha, histórico, mapa de venda e contagem são **por id**. A única busca por nome é a dedup do *"criar item novo"* na conferência — **não é vínculo**. ⚠️ **Consequência registrada:** se um cProd NOVO chegar e alguém digitar o nome ANTIGO em "criar item novo", a dedup não casaria e nasceria duplicado — **o apelido fecha esse flanco**, e é por isso que ele não é enfeite.
+
+**⚠️⚠️ E O NOME DO CARDÁPIO NÃO VIROU A RESPOSTA — o dado real derrubou a ideia óbvia.** Nos 13 itens mapeados ele **perde informação**: `SUCO DELL VALE` esquece que é **UVA** (com o de PÊSSEGO ao lado, mesmo custo 3,07), `HEINEKEN` perde o **600ML**, `ORIGINAL` perde "cerveja 600ML". Entra como **atalho de um clique**, nunca por cima da sugestão.
+
+**O que subiu:** régua pura (`nome-limpo.ts`) · tabela **CREATE-only** `stock_item_nome_anterior` (apelido de busca + quem renomeou) · a busca acha pelos **dois** nomes · tela de revisão em lote **tudo desmarcado ao abrir** (confirmar em lote não pode virar "aceitei sem ler") · e o **GET não grava nada** (provado: 229 itens antes e depois, 0 renomeios).
+
+**⚠️⚠️ DUAS ARMADILHAS QUE SÓ O PREVIEW CONTRA PROD MOSTROU:**
+1. **`LT` é LATA *ou* LITRO.** `DV UVA LT 290ML` é lata; `LEITE UHT … CX 12 X 1 LT` é **litro** — e a régua escrevia *"1 LATA de leite"*. Agora só vira LATA quando há um tamanho em **ML** na mesma linha.
+2. **`CX/08 PC`** deixava um **`/08` órfão** no meio do nome quando o `CX` saía.
+
+**35 itens na fila de revisão · 21 testes** (incluindo os 4 vínculos que não podem quebrar e a busca achando por *"CC 600"* depois do rename) · **8.934 verdes · TS 0 · `pg_dump pre-nomes-20260909-024026` · deploys `QfauR4_xjo40f4OpaoXgQ` e `W2AYP6PpdoJ1tIgeCM6Uo`, os dois 4/4.**
+
 ## ⛔⛔⛔ BEBIDA TEM UM ITEM SÓ — A FICHA DE REVENDA CRIAVA UM SEGUNDO (09/09/2026)
 
 **O dono:** *"COCA COLA 2L aparece 2× na busca da receita. Fiz uma máscara e acho que fiz errado."*
