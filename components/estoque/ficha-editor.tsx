@@ -365,7 +365,8 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
                 <input
                   value={nome}
                   onChange={(e) => setEtapas((v) => v.map((x, j) => (j === i ? e.target.value : x)))}
-                  placeholder="nome da etapa"
+                  placeholder="ex: gessar a carne"
+                  aria-label={`nome da etapa ${i + 1}`}
                   className="h-8 flex-1 rounded-lg border border-slate-300 px-2 text-sm"
                 />
                 {/* ⚠️ setas ↑↓ em vez de arrastar: no celular, arrastar dentro de lista que

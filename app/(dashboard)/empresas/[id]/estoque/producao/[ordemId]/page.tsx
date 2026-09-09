@@ -248,7 +248,10 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
                       {l.qtdSeparada > 0 && (
                         devolver[l.itemId] !== undefined ? (
                           <div className="flex items-center gap-1">
-                            <input value={devolver[l.itemId]} onChange={(e) => setDevolver((d) => ({ ...d, [l.itemId]: e.target.value }))} inputMode="decimal" placeholder="qtd" className="w-16 rounded border border-slate-300 py-1 px-1.5 text-right text-xs tabular-nums" />
+                            {/* ⚠️ controle inline: o rótulo vai ANTES (fixo), porque em cima
+                                não cabe na linha — o que não pode é o nome do campo sumir. */}
+                            <span className="text-[11px] font-medium text-slate-500">devolver</span>
+                            <input aria-label={`quantidade a devolver de ${l.nome}`} value={devolver[l.itemId]} onChange={(e) => setDevolver((d) => ({ ...d, [l.itemId]: e.target.value }))} inputMode="decimal" placeholder="0" className="w-16 rounded border border-slate-300 py-1 px-1.5 text-right text-xs tabular-nums" />
                             <button disabled={busy} onClick={() => acao({ acao: 'devolver', itemId: l.itemId, qtd: parseNum(devolver[l.itemId]) })} className="rounded bg-slate-700 px-2 py-1 text-[11px] text-white disabled:opacity-50">ok</button>
                             <button onClick={() => setDevolver((d) => { const n = { ...d }; delete n[l.itemId]; return n })} className="text-slate-300"><X className="h-3.5 w-3.5" /></button>
                           </div>

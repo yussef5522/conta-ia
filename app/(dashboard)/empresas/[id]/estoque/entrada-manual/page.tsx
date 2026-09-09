@@ -160,7 +160,10 @@ export default function EntradaManualPage({ params }: { params: Promise<{ id: st
                       {cat.map((c) => <option key={c.id} value={c.id}>{c.nome} ({c.unidadeControle})</option>)}
                     </select>
                     {!l.itemId && (<>
-                      <input value={l.novoNome} onChange={(e) => set(i, { novoNome: e.target.value })} placeholder="nome do produto" className="h-8 w-44 rounded-lg border border-slate-300 px-2 text-[13px]" />
+                      <label className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500">
+                        nome novo:
+                        <input value={l.novoNome} onChange={(e) => set(i, { novoNome: e.target.value })} placeholder="ex: TOMATE ITALIANO" className="h-8 w-44 rounded-lg border border-slate-300 px-2 text-[13px] font-normal text-slate-900" />
+                      </label>
                       <select value={l.unidade} onChange={(e) => set(i, { unidade: e.target.value })} className="h-8 rounded-lg border border-slate-300 px-1 text-[13px]">
                         <option>KG</option><option>UN</option><option>LT</option>
                       </select>
@@ -189,13 +192,23 @@ export default function EntradaManualPage({ params }: { params: Promise<{ id: st
               </select>
               {!l.itemId && (
                 <div className="flex gap-2">
-                  <input value={l.novoNome} onChange={(e) => set(i, { novoNome: e.target.value })} placeholder="nome do produto" className="h-11 flex-1 rounded-lg border border-slate-300 px-2 text-sm" />
+                  <label className="block flex-1">
+                    <span className="text-[11px] font-medium text-slate-600">Nome do produto novo</span>
+                    <input value={l.novoNome} onChange={(e) => set(i, { novoNome: e.target.value })} placeholder="ex: TOMATE ITALIANO" className="mt-1 h-11 w-full rounded-lg border border-slate-300 px-2 text-sm" />
+                  </label>
                   <select value={l.unidade} onChange={(e) => set(i, { unidade: e.target.value })} className="h-11 rounded-lg border border-slate-300 px-2 text-sm"><option>KG</option><option>UN</option><option>LT</option></select>
                 </div>
               )}
-              <div className="flex items-center gap-2">
-                <input value={l.qtd} onChange={(e) => set(i, { qtd: e.target.value })} inputMode="decimal" placeholder="qtd" className="h-11 w-24 rounded-lg border border-slate-300 px-2 text-right text-sm tabular-nums" />
-                <input value={l.custo} onChange={(e) => set(i, { custo: e.target.value })} inputMode="decimal" placeholder="custo un." className="h-11 flex-1 rounded-lg border border-slate-300 px-2 text-right text-sm tabular-nums" />
+              {/* ⛔ rótulo FIXO em cima (o placeholder some quando se digita) + o total da linha */}
+              <div className="flex items-end gap-2">
+                <label className="block w-24">
+                  <span className="text-[11px] font-medium text-slate-600">Quantidade</span>
+                  <input value={l.qtd} onChange={(e) => set(i, { qtd: e.target.value })} inputMode="decimal" placeholder="12" className="mt-1 h-11 w-full rounded-lg border border-slate-300 px-2 text-right text-sm tabular-nums" />
+                </label>
+                <label className="block flex-1">
+                  <span className="text-[11px] font-medium text-slate-600">Preço por unidade</span>
+                  <input value={l.custo} onChange={(e) => set(i, { custo: e.target.value })} inputMode="decimal" placeholder="4,50" className="mt-1 h-11 w-full rounded-lg border border-slate-300 px-2 text-right text-sm tabular-nums" />
+                </label>
                 {linhas.length > 1 && <button onClick={() => setLinhas((ls) => ls.filter((_, idx) => idx !== i))} className="shrink-0 text-slate-300"><Trash2 className="h-4 w-4" /></button>}
               </div>
             </div>

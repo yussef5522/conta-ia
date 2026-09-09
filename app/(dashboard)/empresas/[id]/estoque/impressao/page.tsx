@@ -155,8 +155,11 @@ export default function ImpressaoPage({ params }: { params: Promise<{ id: string
           {novo && (
             <div className="mt-3 space-y-2 rounded-lg border p-3">
               <div className="flex flex-wrap gap-2">
-                <input value={novo.nome} onChange={(e) => setNovo({ ...novo, nome: e.target.value })} placeholder="nome (ex: Zebra da cozinha)"
-                  className="h-9 flex-1 min-w-[180px] rounded-md border px-2 text-sm" />
+                <label className="flex-1 min-w-[180px]">
+                  <span className="text-[11px] font-medium text-slate-600">Nome da impressora</span>
+                  <input value={novo.nome} onChange={(e) => setNovo({ ...novo, nome: e.target.value })} placeholder="ex: Zebra da cozinha"
+                    className="mt-1 h-9 w-full rounded-md border px-2 text-sm" />
+                </label>
                 <select value={novo.tipo} onChange={(e) => setNovo({ ...novo, tipo: e.target.value as 'REDE' | 'USB' })}
                   className="h-9 rounded-md border px-2 text-sm">
                   <option value="REDE">De rede (Ethernet/WiFi)</option>
@@ -165,9 +168,16 @@ export default function ImpressaoPage({ params }: { params: Promise<{ id: string
               </div>
               {novo.tipo === 'REDE' && (
                 <div className="flex flex-wrap items-center gap-2">
-                  <input value={novo.host} onChange={(e) => setNovo({ ...novo, host: e.target.value })} placeholder="IP na sua rede (ex: 192.168.0.50)"
-                    className="h-9 flex-1 min-w-[200px] rounded-md border px-2 text-sm tabular-nums" />
-                  <input value={novo.porta} onChange={(e) => setNovo({ ...novo, porta: e.target.value })} className="h-9 w-24 rounded-md border px-2 text-sm tabular-nums" />
+                  <label className="flex-1 min-w-[200px]">
+                    <span className="text-[11px] font-medium text-slate-600">IP na sua rede</span>
+                    <input value={novo.host} onChange={(e) => setNovo({ ...novo, host: e.target.value })} placeholder="ex: 192.168.0.50"
+                      className="mt-1 h-9 w-full rounded-md border px-2 text-sm tabular-nums" />
+                  </label>
+                  {/* ⚠️ este NÃO TINHA NEM PLACEHOLDER — caixa completamente muda */}
+                  <label className="w-24">
+                    <span className="text-[11px] font-medium text-slate-600">Porta</span>
+                    <input value={novo.porta} onChange={(e) => setNovo({ ...novo, porta: e.target.value })} placeholder="9100" className="mt-1 h-9 w-full rounded-md border px-2 text-sm tabular-nums" />
+                  </label>
                   <span className="text-[11px] text-slate-400">o IP sai no menu da impressora ou na etiqueta de configuração dela</span>
                 </div>
               )}

@@ -117,14 +117,38 @@ export function ItensManuaisEditor({ companyId, nfeId, valorNota, onSalvo, onCan
       <div className="divide-y divide-slate-50 sm:hidden">
         {linhas.map((l, i) => (
           <div key={i} className="space-y-2 p-3">
-            <input value={l.xProd} onChange={(e) => set(i, { xProd: e.target.value })} placeholder="descrição do DANFE" className="h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
+            {/* ⛔⛔ RÓTULO QUE SOME NÃO É RÓTULO (09/09/2026) — decisão do dono.
+                *"foi exatamente assim que eu chutei '1' sem saber o quê"*. Aqui eram TRÊS
+                caixas sob o nome com o rótulo só no placeholder: no instante em que ele
+                digita, o nome do campo desaparece e sobra um quadrado mudo. O desktop tinha
+                `<th>` e Total; o mobile, nada. Agora rótulo FIXO em cima, placeholder só de
+                exemplo, e o total da linha pra conferir contra o papel da nota. */}
+            <label className="block">
+              <span className="text-[11px] font-medium text-slate-600">Descrição, como está no papel da nota</span>
+              <input value={l.xProd} onChange={(e) => set(i, { xProd: e.target.value })} placeholder="ex: OLEO DE SOJA 900ML" className="mt-1 h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
+            </label>
             <Vinculo companyId={companyId} l={l} i={i} setLinhas={setLinhas} />
-            <div className="flex items-center gap-2">
-              <input value={l.qCom} onChange={(e) => set(i, { qCom: e.target.value })} inputMode="decimal" placeholder="qtd" className="h-11 w-20 rounded-lg border border-slate-300 px-2 text-right text-sm tabular-nums" />
-              <input value={l.uCom} onChange={(e) => set(i, { uCom: e.target.value })} placeholder="un" className="h-11 w-16 rounded-lg border border-slate-300 px-2 text-sm uppercase" />
-              <input value={l.vUnCom} onChange={(e) => set(i, { vUnCom: e.target.value })} inputMode="decimal" placeholder="preço" className="h-11 flex-1 rounded-lg border border-slate-300 px-2 text-right text-sm tabular-nums" />
-              {linhas.length > 1 && <button onClick={() => setLinhas((ls) => ls.filter((_, idx) => idx !== i))} className="shrink-0 text-slate-300"><Trash2 className="h-4 w-4" /></button>}
+            <div className="flex items-end gap-2">
+              <label className="block w-20">
+                <span className="text-[11px] font-medium text-slate-600">Quantidade</span>
+                <input value={l.qCom} onChange={(e) => set(i, { qCom: e.target.value })} inputMode="decimal" placeholder="12" className="mt-1 h-11 w-full rounded-lg border border-slate-300 px-2 text-right text-sm tabular-nums" />
+              </label>
+              <label className="block w-16">
+                <span className="text-[11px] font-medium text-slate-600">Unidade</span>
+                <input value={l.uCom} onChange={(e) => set(i, { uCom: e.target.value })} placeholder="CX" className="mt-1 h-11 w-full rounded-lg border border-slate-300 px-2 text-sm uppercase" />
+              </label>
+              <label className="block flex-1">
+                <span className="text-[11px] font-medium text-slate-600">Preço por unidade</span>
+                <input value={l.vUnCom} onChange={(e) => set(i, { vUnCom: e.target.value })} inputMode="decimal" placeholder="4,50" className="mt-1 h-11 w-full rounded-lg border border-slate-300 px-2 text-right text-sm tabular-nums" />
+              </label>
+              {linhas.length > 1 && <button onClick={() => setLinhas((ls) => ls.filter((_, idx) => idx !== i))} className="mb-2 shrink-0 text-slate-300"><Trash2 className="h-4 w-4" /></button>}
             </div>
+            {/* ⭐ o TOTAL da linha, pra conferir contra o papel ANTES de salvar */}
+            <p className="text-right text-[12px] text-slate-500">
+              total da linha: <b className="font-semibold text-slate-800">
+                {(num(l.qCom) || 0) * (num(l.vUnCom) || 0) > 0 ? brl((num(l.qCom) || 0) * (num(l.vUnCom) || 0)) : '—'}
+              </b>
+            </p>
           </div>
         ))}
       </div>
@@ -197,10 +221,13 @@ function Vinculo({ companyId, l, i, setLinhas }: {
       {/* ⛔ unidade diferente + fator desconhecido = campo VAZIO e linha bloqueada.
           Nunca 1 por omissão — foi o bug da Skol (a caixa de 20 entrou como 1). */}
       {estado.tipo === 'PERGUNTA' && (
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-col gap-0.5">
+          {/* ⛔⛔ a pergunta era o PLACEHOLDER e sumia no 1º dígito — rótulo que some não
+              é rótulo (09/09). Agora ela FICA em cima e o placeholder é só exemplo. */}
+          <span className="text-[10px] font-medium text-slate-500">{estado.pergunta}</span>
           <input value={l.fatorTexto} inputMode="decimal"
             onChange={(e) => setLinhas((ls) => ls.map((x, j) => (j === i ? { ...x, fatorTexto: e.target.value } : x)))}
-            placeholder={estado.pergunta}
+            placeholder="12" aria-label={estado.pergunta} title={estado.pergunta}
             className={`h-7 w-full rounded-md border px-2 text-[12px] ${
               l.fatorTexto.trim() === '' ? 'border-amber-400 bg-amber-50' : 'border-slate-300'
             }`} />

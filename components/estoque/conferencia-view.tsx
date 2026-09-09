@@ -237,7 +237,12 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
                             return (
                               <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] ${e.mapeado!.fatorConversao <= 1 ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-500'}`}>
                                 1 {it.uCom} =
-                                <input type="number" inputMode="decimal" value={e.mapeado!.fatorConversao || ''} placeholder={placeholderFator(e.mapeado!.unidadeControle, it.uCom)}
+                                {/* ⛔ o rótulo é o "1 CX =" ao lado (FIXO, não some ao digitar).
+                                    ⚠️ o placeholder era a PERGUNTA ("quantas KG tem 1 CX?") e
+                                    sumia no primeiro dígito — virou EXEMPLO, que é o papel dele. */}
+                                <input type="number" inputMode="decimal" value={e.mapeado!.fatorConversao || ''} placeholder="12"
+                                  aria-label={placeholderFator(e.mapeado!.unidadeControle, it.uCom)}
+                                  title={placeholderFator(e.mapeado!.unidadeControle, it.uCom)}
                                   onChange={(ev) => setF(Number(ev.target.value))} className="w-16 rounded border border-slate-300 px-1 py-0 text-right tabular-nums" />
                                 {e.mapeado!.unidadeControle}
                                 {difere && (
@@ -679,7 +684,7 @@ function MapearSheet({ item, existentes, onClose, onEscolher }: {
               <div className="rounded-lg border border-sky-200 bg-sky-50 p-3">
                 <p className="mb-2 text-sm font-medium text-slate-800">{selExistente.nome} <span className="text-xs text-slate-400">({selExistente.unidadeControle})</span></p>
                 <label className="text-xs font-medium text-sky-800">A nota veio em <b>{item.uCom}</b>, você controla em <b>{selExistente.unidadeControle}</b>. Quantas {selExistente.unidadeControle} tem 1 {item.uCom}?</label>
-                <input type="number" inputMode="decimal" value={fatorExist || ''} placeholder={placeholderFator(selExistente.unidadeControle, item.uCom)} onChange={(ev) => setFatorExist(Number(ev.target.value))} className="mt-1 block w-full rounded-lg border border-sky-300 px-3 py-2 text-base tabular-nums" />
+                <input type="number" inputMode="decimal" value={fatorExist || ''} placeholder="12" aria-label={placeholderFator(selExistente.unidadeControle, item.uCom)} onChange={(ev) => setFatorExist(Number(ev.target.value))} className="mt-1 block w-full rounded-lg border border-sky-300 px-3 py-2 text-base tabular-nums" />
                 {sugExist?.explicacao && <p className="mt-1 rounded bg-white/70 px-2 py-1 text-[11px] font-medium text-sky-800">sugestão: {sugExist.explicacao}</p>}
                 <p className="mt-1 text-[11px] text-sky-600">1 {item.uCom} = {fatorExist} {selExistente.unidadeControle} · {item.qCom} {item.uCom} = {item.qCom * fatorExist} {selExistente.unidadeControle} · {brl(item.vUnCom / (fatorExist || 1))}/{selExistente.unidadeControle}</p>
                 <div className="mt-3 flex gap-2">
@@ -700,7 +705,7 @@ function MapearSheet({ item, existentes, onClose, onEscolher }: {
             {difUnidade && (
               <div className="rounded-lg bg-sky-50 p-3">
                 <label className="text-xs font-medium text-sky-800">A nota veio em <b>{item.uCom}</b>, você controla em <b>{unidade}</b>. Quantas {unidade} tem 1 {item.uCom}?</label>
-                <input type="number" inputMode="decimal" value={fator || ''} placeholder={placeholderFator(unidade, item.uCom)} onChange={(e) => setFator(Number(e.target.value))} className="mt-1 w-full rounded-lg border border-sky-300 px-3 py-2 text-base tabular-nums" />
+                <input type="number" inputMode="decimal" value={fator || ''} placeholder="12" aria-label={placeholderFator(unidade, item.uCom)} onChange={(e) => setFator(Number(e.target.value))} className="mt-1 w-full rounded-lg border border-sky-300 px-3 py-2 text-base tabular-nums" />
                 {sugestao.explicacao && <p className="mt-1 rounded bg-white/70 px-2 py-1 text-[11px] font-medium text-sky-800">sugestão: {sugestao.explicacao}</p>}
                 <p className="mt-1 text-[11px] text-sky-600">1 {item.uCom} = {fator} {unidade} · {item.qCom} {item.uCom} = {item.qCom * fator} {unidade}</p>
               </div>

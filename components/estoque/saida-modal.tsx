@@ -80,7 +80,12 @@ export function SaidaModal({ companyId, itemInicial, onClose, onSalvo }: { compa
         <div className="mt-1 flex flex-wrap gap-1.5">
           {MOTIVOS.map((m) => <button key={m.v} onClick={() => setMotivo(m.v)} className={`rounded-full px-3 py-1 text-xs font-medium ${motivo === m.v ? 'bg-[#185FA5] text-white' : 'border border-slate-300 bg-white text-slate-600'}`}>{m.label}</button>)}
         </div>
-        {motivo === 'OUTRO' && <input value={motivoTexto} onChange={(e) => setMotivoTexto(e.target.value)} placeholder="qual o motivo?" className="mt-2 w-full rounded-lg border border-slate-300 py-2 px-3 text-sm" />}
+        {motivo === 'OUTRO' && (
+          <label className="mt-2 block">
+            <span className="text-[11px] font-medium text-slate-600">Qual foi o motivo?</span>
+            <input value={motivoTexto} onChange={(e) => setMotivoTexto(e.target.value)} placeholder="ex: caiu no chão" className="mt-1 w-full rounded-lg border border-slate-300 py-2 px-3 text-sm" />
+          </label>
+        )}
 
         {/* foto opcional */}
         <label className="mt-3 flex w-fit items-center gap-2 text-xs font-medium text-slate-600">

@@ -205,6 +205,7 @@ export function EquipeClient({ empresaId, empresaNome, filtro, podeGerenciarAces
                     <span className="flex w-full items-center gap-1.5 sm:w-auto">
                       <input value={pinNovo} onChange={(e) => setPinNovo(e.target.value.replace(/\D/g, '').slice(0, 4))}
                         inputMode="numeric" placeholder="4 dígitos" autoFocus
+                        aria-label={`PIN novo de ${p.nome}`} title={`PIN novo de ${p.nome}`}
                         className="h-7 w-24 rounded border border-slate-300 px-2 text-center text-xs tabular-nums" />
                       <button onClick={() => salvarPin(p.colaboradorId!, pinNovo)} disabled={busy || pinNovo.length !== 4}
                         className="rounded bg-[#185FA5] px-2 py-1 text-[11px] font-medium text-white disabled:opacity-40">salvar</button>
