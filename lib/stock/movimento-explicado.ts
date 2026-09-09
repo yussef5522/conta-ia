@@ -370,9 +370,15 @@ export function dobrarProducao(linhas: LinhaDoHistorico[]): LinhaDoHistorico[] {
       const separado = Math.abs(l.quantidade)
       const con = r3(consumido.get(k) ?? 0)
       const dev = r3(devolvido.get(k) ?? 0)
+      // ⚠️ A SEPARAÇÃO GRAVA 4 CASAS E O CONSUMO 2 — visto no dado real (separado 15,0487 ·
+      // consumido 15,05 → resíduo −0,001). Isso é ARREDONDAMENTO, não material: mostrar
+      // "em produção −0,001" faria o dono procurar um grama que não existe. O piso é o mesmo
+      // do CHECK do ledger (±0,01 por linha); acima dele, o resíduo é real e aparece.
+      const bruto = separado - con - dev
+      const emProducao = Math.abs(bruto) < 0.01 ? 0 : r3(bruto)
       return {
         ...l,
-        dentroDaProducao: { separado: r3(separado), consumido: con, devolvido: dev, emProducao: r3(separado - con - dev) },
+        dentroDaProducao: { separado: r3(separado), consumido: con, devolvido: dev, emProducao },
       }
     })
 }

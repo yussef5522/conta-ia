@@ -384,3 +384,27 @@ describe('⛔⛔⛔ a soma da tabela É o saldo', () => {
     expect(movePrateleira('TIPO_INVENTADO_AMANHA')).toBe(true)
   })
 })
+
+describe('⚠️ o resíduo de arredondamento não vira grama fantasma', () => {
+  it('separado 15,0487 · consumido 15,05 → em produção 0, não −0,001', async () => {
+    // ⚠️ CASO REAL do BACON em prod: a separação grava 4 casas e o consumo 2. Mostrar
+    // "em produção −0,001" mandaria o dono procurar um grama que não existe.
+    const mk = (d: Record<string, unknown>) =>
+      prisma.stockMovement.create({ data: { companyId, itemId, origem: 'MANUAL', criadoPorId: userId, ...d } as never })
+    await mk({ tipo: 'SEPARACAO_SAIDA', quantidade: -15.0487, custoUnitario: 29.9, custoTotal: -449.96, receiptId: ordemId, dataMovimento: new Date('2026-09-06T08:00:00Z') })
+    await mk({ tipo: 'PRODUCAO_CONSUMO', quantidade: -15.05, custoUnitario: 29.9, custoTotal: -449.99, receiptId: ordemId, dataMovimento: new Date('2026-09-06T12:00:00Z') })
+
+    const f = (await buildFichaItem(companyId, itemId))!
+    expect(f.historico.find((l) => l.tipo === 'SEPARACAO_SAIDA')!.dentroDaProducao!.emProducao).toBe(0)
+  })
+
+  it('⛔ mas resíduo DE VERDADE continua aparecendo — o piso é o do ledger (0,01)', async () => {
+    const mk = (d: Record<string, unknown>) =>
+      prisma.stockMovement.create({ data: { companyId, itemId, origem: 'MANUAL', criadoPorId: userId, ...d } as never })
+    await mk({ tipo: 'SEPARACAO_SAIDA', quantidade: -10, custoUnitario: 10, custoTotal: -100, receiptId: ordemId, dataMovimento: new Date('2026-09-06T08:00:00Z') })
+    await mk({ tipo: 'PRODUCAO_CONSUMO', quantidade: -8, custoUnitario: 10, custoTotal: -80, receiptId: ordemId, dataMovimento: new Date('2026-09-06T12:00:00Z') })
+
+    const f = (await buildFichaItem(companyId, itemId))!
+    expect(f.historico.find((l) => l.tipo === 'SEPARACAO_SAIDA')!.dentroDaProducao!.emProducao).toBe(2)
+  })
+})

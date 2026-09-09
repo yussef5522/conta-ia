@@ -242,6 +242,40 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⛔⛔⛔ A REGRA DO HISTÓRICO HONESTO — A SOMA DA TABELA **É** O SALDO (09/09/2026)
+
+**A suspeita do dono, olhando o BACON:** *"Pra CADA ordem aparecem DUAS saídas do mesmo tamanho — Separação −12,341 E Produção·consumiu −12,34 — e NENHUMA linha positiva de devolução. Se o saldo soma os dois tipos, todo insumo de produção baixa 2×."*
+
+**⭐ MEDIDO ANTES DE MEXER — e o saldo estava CERTO (braço B):**
+
+| item | Σ TODAS as linhas | Σ sem `PRODUCAO_CONSUMO` | **saldo exibido** |
+|---|---|---|---|
+| BACON | −34,14 | **114,00** | **114,00** ✓ |
+| FILÉ DE PEITO DE FRANGO | −112,26 | **59,71** | **59,71** ✓ |
+| Gordura | −0,50 | **20,95** | **20,95** ✓ |
+
+`saldo.ts` sempre excluiu o `PRODUCAO_CONSUMO` (é transferência interna — o insumo já saiu na separação). O invariante **P1 fecha em 60 de 60 ordens concluídas**, e o resíduo por item é **exatamente** o material preso nas **8 ordens abertas de hoje**. **Nada vaza.**
+
+**⚠️ E UM ERRO MEU NO CAMINHO, corrigido pela segunda medição:** minha 1ª fórmula de P1 rodou **por ITEM** e acusou "NÃO FECHA" nos três. Falso: P1 só fecha **por ORDEM CONCLUÍDA** — material separado numa ordem ainda aberta legitimamente não foi consumido. A conta por ordem deu 0 quebras. *Fórmula errada dá alarme com cara de achado.*
+
+**⛔ MESMO COM O NÚMERO CERTO, ISTO ERA DEFEITO** — palavras do dono, e viraram régua da casa: ***"a dúvida que essa tela me deu hoje é falha da tela mesmo se o número estiver certo por baixo; rastreio que deixa o dono na dúvida não rastreou nada."***
+
+**A REGRA QUE FICA:** ***ou a linha entra na conta, ou não aparece somando.***
+
+- **`saldo.ts` passou a EXPORTAR quem move a prateleira** (`movePrateleira`/`TIPOS_FORA_DA_PRATELEIRA`). A régua já tinha um dono só — **mas era privada**, e a TELA não tinha como saber dela. Foi essa invisibilidade que deixou a tela somar o que o saldo não conta.
+- **O consumo sai da lista e vira HISTÓRIA dentro da linha que baixou:** *"separado 10 · consumido 8 · devolvido 2 · em produção 0"* — informativo, **sem valor na coluna TOTAL**.
+- **A devolução FICA como linha própria**: ela move a prateleira, então tem que somar.
+- **Rodapé novo**: a soma das linhas com o selo *"✓ bate com o saldo em estoque"*. É o teste da tela **à vista do dono** — sem ele, ninguém tem como saber se a tabela fecha.
+- **Vale pro extrato também** (`/estoque/movimentos`), pelo mesmo dono.
+- ⛔⛔ **NADA SOME EM SILÊNCIO:** consumo **sem** separação correspondente **continua aparecendo**, marcado como "não move o saldo" e com `—` no total. Fazer a linha sumir seria trocar uma mentira por um **buraco**, e buraco é a doença que este módulo mais paga.
+- ⚠️ **Tipo NOVO entra na conta por default** (é denylist, não allowlist): esquecer de cadastrar um tipo faz ele **aparecer e somar** — o erro seguro. O inseguro seria um movimento real sumir do saldo sem ninguém ver.
+
+**⚠️ E O DADO REAL PEGOU UM DETALHE QUE A FIXTURE NÃO TERIA:** a separação grava **4 casas** e o consumo **2** (`separado 15,0487 · consumido 15,05`), então o resíduo dava **−0,001** e a tela diria *"em produção −0,001"* — mandando o dono procurar um grama que não existe. Piso de 0,01 (o mesmo do CHECK do ledger); acima dele o resíduo é real e aparece. Dois testes travam os dois lados.
+
+**REGRA 11 — 2 defeitos repostos, 6 vermelhos** (o consumo de volta na lista somando; a tela com régua própria de prateleira). **9 testes novos**, incluindo a **conta de padeiro do dono** (*separo 10, consumo 8 → saldo cai 8, não 18*). **TS 0 · 8.887 verdes · deploy `BoBuBkHw_Oqj3KzlG7FXO` 4/4.**
+
+**PROVADO EM PROD, na empresa inteira:** **170 itens batem · 0 não batem.** BACON `soma 114 KG / R$ 3.404,53 == saldo 114 / R$ 3.404,53`, com *"ordem de 09/09 · porcao bacon 80 grama → separado 10,356 · em produção 10,356"* (ordem aberta de hoje) e **0 consumos listados como saída própria**.
+
 ## ⛔⛔⛔ A "HISTÓRICO DE COMPRAS" MOSTRAVA O LEDGER INTEIRO — E LINKAVA TUDO ERRADO (08/09/2026)
 
 **O dono:** *"Linhas NEGATIVAS (consumo!) aparecem como 'recibo' de compra, entradas grandes sem dizer se foi contagem/ajuste/estorno, e NADA diz quem fez. Quando eu precisar rastrear um erro, quero saber exatamente aonde foi cada kg."*
