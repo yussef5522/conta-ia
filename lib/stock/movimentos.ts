@@ -11,7 +11,7 @@
 
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
-import { explicarMovimentos } from './movimento-explicado'
+import { explicarMovimentos, dobrarProducao, somaDasLinhas } from './movimento-explicado'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -32,6 +32,10 @@ export interface MovimentoLinha {
   chip: string
   detalhe: string
   href: string | null
+  /** ⛔ esta linha mexeu no saldo? (a MESMA pergunta do `saldo.ts`) */
+  movePrateleira: boolean
+  /** a história do que saiu pra produção, dentro da linha da separação */
+  dentroDaProducao: { separado: number; consumido: number; devolvido: number; emProducao: number } | null
 }
 
 export interface MovimentosFiltro { itemId?: string; tipo?: string; de?: string; ate?: string; limite?: number }
@@ -49,13 +53,16 @@ export async function listMovimentos(companyId: string, filtro: MovimentosFiltro
   const [items, notas, explicadas] = await Promise.all([
     itemIds.length ? db.stockItem.findMany({ where: { companyId, id: { in: itemIds } }, select: { id: true, nome: true } }) : Promise.resolve([]),
     chaves.length ? db.stockNfe.findMany({ where: { companyId, chave: { in: chaves } }, select: { id: true, chave: true } }) : Promise.resolve([]),
-    explicarMovimentos(companyId, movs, db),
+    explicarMovimentos(companyId, movs, db).then(dobrarProducao),
   ])
   const itemNome = new Map(items.map((i) => [i.id, i.nome]))
   const nfeIdPorChave = new Map(notas.map((n) => [n.chave, n.id]))
   const expPorId = new Map(explicadas.map((e) => [e.movimentoId, e]))
 
-  return movs.map((m) => {
+  // ⛔⛔ A REGRA DO HISTÓRICO HONESTO vale AQUI TAMBÉM (09/09): o consumo de produção some da
+  // lista (dobrado dentro da separação) porque não move o saldo. Extrato que soma o que o
+  // saldo não conta mente com cara de contabilidade.
+  return movs.filter((m) => expPorId.has(m.id)).map((m) => {
     const e = expPorId.get(m.id)!
     return {
       id: m.id,
@@ -80,8 +87,15 @@ export async function listMovimentos(companyId: string, filtro: MovimentosFiltro
       chip: e.chip,
       detalhe: e.detalhe,
       href: e.href,
+      movePrateleira: e.movePrateleira,
+      dentroDaProducao: e.dentroDaProducao,
     }
   })
+}
+
+/** ⭐ a soma que o extrato exibe — a mesma régua do saldo (o teste trava a igualdade) */
+export function somaDoExtrato(linhas: MovimentoLinha[]): { quantidade: number; valor: number } {
+  return somaDasLinhas(linhas.map((l) => ({ ...l, movimentoId: l.id }) as never))
 }
 
 /** CSV do extrato (o dono exporta pra planilha). */

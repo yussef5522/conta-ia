@@ -15,11 +15,32 @@ export interface SaldoItem {
   custoMedio: number | null // valor / saldo (quando saldo > 0)
 }
 
-// PRODUCAO_CONSUMO NÃO é evento de prateleira — é transferência interna da produção (o
-// insumo já saiu da prateleira no SEPARACAO_SAIDA). Contá-lo no saldo duplicaria a baixa.
-// SEPARACAO_SAIDA(−)/DEVOLUCAO_PRODUCAO(+) mexem na prateleira; PRODUCAO_GERACAO(+) é o
-// produto entrando. Excluir só o CONSUMO mantém saldo/cache/E1/posição coerentes (fonte única).
-const NAO_PRATELEIRA = { tipo: { not: 'PRODUCAO_CONSUMO' } } as const
+/**
+ * ⭐⭐⭐ QUEM MEXE NA PRATELEIRA — A LISTA MORA AQUI, E SÓ AQUI (exportada em 09/09/2026).
+ *
+ * PRODUCAO_CONSUMO NÃO é evento de prateleira — é transferência interna da produção (o insumo
+ * já saiu da prateleira no SEPARACAO_SAIDA). Contá-lo no saldo duplicaria a baixa.
+ * SEPARACAO_SAIDA(−)/DEVOLUCAO_PRODUCAO(+) mexem na prateleira; PRODUCAO_GERACAO(+) é o
+ * produto entrando.
+ *
+ * ⛔⛔ **POR QUE ELA PASSOU A SER EXPORTADA:** a regra era um `where` privado deste arquivo, e
+ * a TELA não tinha como saber dela — então o histórico do item mostrava a separação **e** o
+ * consumo como duas saídas do mesmo tamanho, **somando o dobro do que o saldo baixou**. O
+ * dono olhou e suspeitou de baixa dupla; o número estava certo e a TELA é que mentia.
+ * *"Rastreio que deixa o dono na dúvida não rastreou nada."*
+ *
+ * ⚠️ Tipo NOVO entra na prateleira por default (`movePrateleira` é uma denylist): esquecer de
+ * cadastrar um tipo novo faz ele **aparecer e somar**, que é o erro seguro — o inseguro seria
+ * um movimento real sumir do saldo em silêncio.
+ */
+export const TIPOS_FORA_DA_PRATELEIRA: string[] = ['PRODUCAO_CONSUMO']
+
+/** ⭐ esta linha mexe no saldo da prateleira? A MESMA pergunta que o saldo faz. */
+export function movePrateleira(tipo: string): boolean {
+  return !TIPOS_FORA_DA_PRATELEIRA.includes(tipo)
+}
+
+const NAO_PRATELEIRA = { tipo: { notIn: TIPOS_FORA_DA_PRATELEIRA } }
 
 /** Saldo derivado de UM item (Σ movimentos de prateleira). */
 export async function saldoItem(db: Db, companyId: string, itemId: string): Promise<SaldoItem> {

@@ -27,6 +27,7 @@
 
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
+import { movePrateleira } from './saldo'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -81,6 +82,7 @@ export function rotuloDoPreco(face: FaceDoTipo): string {
 
 export interface LinhaDoHistorico {
   movimentoId: string
+  itemId: string
   data: string
   tipo: string
   chip: string
@@ -98,10 +100,26 @@ export interface LinhaDoHistorico {
   quem: string | null
   /** ⭐ clico e chego na fonte. `null` quando o tipo não tem tela própria */
   href: string | null
+  /** o id da origem (ordem, contagem, conferência…) — o que agrupa as linhas do mesmo fato */
+  origemId: string | null
   /** entra na aba "só compras" (comparar preço de fornecedor) */
   ehCompra: boolean
   /** ⭐ ESTORNO diz o que estornou */
   estornoDe: { movimentoId: string; tipo: string; chip: string; data: string } | null
+  /**
+   * ⛔⛔ ESTA LINHA MEXEU NO SALDO? (09/09/2026)
+   *
+   * A resposta vem de `saldo.ts` — o MESMO dono que calcula o saldo. Linha que não move o
+   * saldo **não pode aparecer somando** numa coluna de total: foi assim que a separação e o
+   * consumo viraram "duas saídas do mesmo tamanho" e o dono suspeitou de baixa dupla.
+   */
+  movePrateleira: boolean
+  /**
+   * ⭐ A HISTÓRIA DO QUE SAIU PRA PRODUÇÃO, dentro da linha que de fato baixou.
+   * *"separado 12,341 → consumido 12,34 → devolvido 0,001"* — informativo, **sem valor na
+   * coluna TOTAL**, porque o total dessa história já está na própria separação.
+   */
+  dentroDaProducao: { separado: number; consumido: number; devolvido: number; emProducao: number } | null
 }
 
 const nNFdaChave = (chave: string | null) => (chave && chave.length === 44 ? String(Number(chave.slice(25, 34))) : null)
@@ -111,6 +129,7 @@ const iso = (d: Date) => d.toISOString().slice(0, 10)
 /** o mínimo que o resolvedor precisa de cada movimento */
 export interface MovimentoCru {
   id: string
+  itemId: string
   tipo: string
   quantidade: number
   custoUnitario: number
@@ -270,6 +289,7 @@ export async function explicarMovimentos(
       ?? null
     return {
       movimentoId: m.id,
+      itemId: m.itemId,
       data: m.dataMovimento.toISOString(),
       tipo: m.tipo,
       chip: face.chip,
@@ -283,14 +303,95 @@ export async function explicarMovimentos(
       detalhe: detalheDe(m),
       quem,
       href: linkDe(m),
+      origemId: m.receiptId ?? origPorId.get(m.estornoDeId ?? '')?.receiptId ?? null,
       // ⭐ o estorno de uma COMPRA continua sendo assunto de compra (ele cancela um preço),
       // então entra na aba "só compras" junto com o que ele corrige.
       ehCompra: face.familia === 'COMPRA' || (m.tipo === 'ESTORNO' && familiaEfetiva(m) === 'COMPRA'),
       estornoDe: orig
         ? { movimentoId: orig.id, tipo: orig.tipo, chip: faceDoTipo(orig.tipo).chip, data: orig.dataMovimento.toISOString() }
         : null,
+      movePrateleira: movePrateleira(m.tipo),
+      dentroDaProducao: null, // preenchido por `dobrarProducao`, que precisa do lote inteiro
     }
   })
+}
+
+const r3 = (n: number) => Math.round((n + 1e-9) * 1000) / 1000
+
+/**
+ * ⭐⭐⭐ A REGRA DO HISTÓRICO HONESTO (09/09/2026) — ordem do dono, e ela não negocia:
+ *
+ * > *"O histórico mostra SÓ o que realmente moveu o saldo. Linha que não move NÃO fica na
+ * > tabela fingindo ser saída — some da lista principal, ou vira no máximo detalhe
+ * > informativo DENTRO da linha real. Ou entra na conta, ou não aparece somando."*
+ *
+ * **O QUE ELE VIU:** no BACON, cada ordem produzia DUAS saídas do mesmo tamanho —
+ * `Separação −12,341` e `Produção·consumiu −12,34` — e nenhuma devolução positiva. Somando a
+ * coluna, o insumo baixava **duas vezes**.
+ *
+ * **MEDIDO ANTES DE MEXER: o SALDO estava certo.** Em 3 itens (BACON, FILÉ DE FRANGO,
+ * Gordura) o saldo exibido bate **exatamente** com Σ das linhas **sem** o `PRODUCAO_CONSUMO`,
+ * e o invariante P1 fecha em **60 de 60 ordens concluídas**. Era a TELA, não o ledger.
+ *
+ * ⭐ Esta função funde o consumo (e a devolução) **dentro da linha da separação**, que é a que
+ * de fato baixou a prateleira. A história fica: *separado 12,341 · consumido 12,34 · devolvido
+ * 0,001 · em produção 0*.
+ *
+ * ⛔⛔ **NADA SOME EM SILÊNCIO:** consumo sem separação correspondente no lote **continua
+ * aparecendo**, marcado como "não move o saldo" e sem valor no total. Fazer a linha
+ * desaparecer seria trocar uma mentira por um buraco — e buraco é a doença que este módulo
+ * mais paga.
+ */
+export function dobrarProducao(linhas: LinhaDoHistorico[]): LinhaDoHistorico[] {
+  // ⚠️ a chave é o ID da ordem + o item — nunca o TEXTO do detalhe: rótulo é apresentação
+  // e muda; o id é o fato.
+  const chave = (l: LinhaDoHistorico) => `${l.itemId}|${l.origemId ?? ''}`
+  const separacoes = new Map<string, LinhaDoHistorico>()
+  for (const l of linhas) if (l.tipo === 'SEPARACAO_SAIDA' && l.origemId) separacoes.set(chave(l), l)
+  if (!separacoes.size) return linhas
+
+  const consumido = new Map<string, number>()
+  const devolvido = new Map<string, number>()
+  const absorvidos = new Set<string>()
+  for (const l of linhas) {
+    const k = chave(l)
+    if (!separacoes.has(k)) continue
+    // ⚠️ só o CONSUMO some da lista — a DEVOLUÇÃO move a prateleira e por isso **fica**, com
+    // o `+` dela na coluna de total. Ela entra na história só como texto.
+    if (l.tipo === 'PRODUCAO_CONSUMO') { consumido.set(k, (consumido.get(k) ?? 0) + Math.abs(l.quantidade)); absorvidos.add(l.movimentoId) }
+    if (l.tipo === 'DEVOLUCAO_PRODUCAO') devolvido.set(k, (devolvido.get(k) ?? 0) + Math.abs(l.quantidade))
+  }
+
+  return linhas
+    .filter((l) => !absorvidos.has(l.movimentoId))
+    .map((l) => {
+      if (l.tipo !== 'SEPARACAO_SAIDA') return l
+      const k = chave(l)
+      const separado = Math.abs(l.quantidade)
+      const con = r3(consumido.get(k) ?? 0)
+      const dev = r3(devolvido.get(k) ?? 0)
+      return {
+        ...l,
+        dentroDaProducao: { separado: r3(separado), consumido: con, devolvido: dev, emProducao: r3(separado - con - dev) },
+      }
+    })
+}
+
+/**
+ * ⭐⭐ O TESTE DA TELA, como função: a soma da coluna TOTAL das linhas EXIBIDAS.
+ *
+ * ⛔ Se isto não bater com a variação real do saldo, **a tabela mente** — e o teste que trava
+ * essa igualdade compara contra o `saldo.ts`, não contra outra soma minha. Vale pra qualquer
+ * tipo que inventarem no futuro: ou ele move a prateleira e entra na conta, ou não aparece
+ * somando.
+ */
+export function somaDasLinhas(linhas: LinhaDoHistorico[]): { quantidade: number; valor: number } {
+  const contam = linhas.filter((l) => l.movePrateleira)
+  const r2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
+  return {
+    quantidade: r2(contam.reduce((s, l) => s + l.quantidade, 0)),
+    valor: r2(contam.reduce((s, l) => s + l.custoTotal, 0)),
+  }
 }
 
 /** os tipos presentes num lote — alimenta o filtro da tela sem inventar opção vazia */

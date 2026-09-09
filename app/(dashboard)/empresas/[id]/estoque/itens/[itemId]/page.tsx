@@ -19,6 +19,7 @@ interface Ficha {
   saldo: number; custoMedio: number | null; valor: number; status: StatusEstoqueResult
   historico: LinhaDoHistorico[]
   tipos: { tipo: string; chip: string; n: number }[]
+  conferencia: { somaQuantidade: number; saldo: number; somaValor: number; valor: number; confere: boolean }
   precoTempo: { data: string; preco: number }[]
 }
 
@@ -172,6 +173,17 @@ export default function FichaItemPage({ params }: { params: Promise<{ id: string
                           do {l.estornoDe.chip.toLowerCase()} de {fmtDia(l.estornoDe.data)}
                         </span>
                       )}
+                      {/* ⭐⭐ A HISTÓRIA DO QUE SAIU PRA PRODUÇÃO, dentro da linha que baixou.
+                          ⛔ Sem valor na coluna TOTAL: o consumo NÃO move a prateleira (o
+                          insumo já saiu aqui), e mostrá-lo como 2ª linha foi o que fez o dono
+                          suspeitar de baixa dupla. */}
+                      {l.dentroDaProducao && (
+                        <div className="mt-0.5 text-[11px] leading-tight text-slate-400">
+                          separado {num(l.dentroDaProducao.separado)} · consumido {num(l.dentroDaProducao.consumido)}
+                          {l.dentroDaProducao.devolvido > 0 && <> · devolvido {num(l.dentroDaProducao.devolvido)}</>}
+                          {l.dentroDaProducao.emProducao > 0 && <> · <span className="text-sky-600">em produção {num(l.dentroDaProducao.emProducao)}</span></>}
+                        </div>
+                      )}
                     </td>
                     <td className="px-3 py-0 text-[13px] text-slate-600">
                       {l.href ? (
@@ -190,10 +202,38 @@ export default function FichaItemPage({ params }: { params: Promise<{ id: string
                           dono comparar fornecedor contra a média interna do próprio estoque. */}
                       {!l.precoEhDeCompra && <span className="ml-1 text-[10.5px] font-normal text-slate-400">médio</span>}
                     </td>
-                    <td className={`px-3 py-0 text-right text-[13px] font-medium tabular-nums ${l.custoTotal < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{brl(l.custoTotal)}</td>
+                    {/* ⛔ linha que não move o saldo NÃO exibe valor no total: ou entra na
+                        conta, ou não aparece somando (regra do dono, 09/09). */}
+                    <td className={`px-3 py-0 text-right text-[13px] font-medium tabular-nums ${!l.movePrateleira ? 'text-slate-300' : l.custoTotal < 0 ? 'text-rose-600' : 'text-slate-900'}`}>
+                      {l.movePrateleira ? brl(l.custoTotal) : <span title="não mexe no saldo">—</span>}
+                    </td>
                   </tr>
                 ))}
               </tbody>
+              {/* ⭐⭐ O TESTE DA TELA, à vista: a soma da coluna TOTAL É o saldo. Sem isto o
+                  dono não tem como saber se a tabela fecha — e foi a dúvida dele que abriu
+                  esta frente. ⚠️ só aparece sem filtro: filtrado, a soma é do recorte. */}
+              {filtro === 'TUDO' && (
+                <tfoot>
+                  <tr className="border-t border-slate-200 bg-slate-50/60">
+                    <td className="px-3 py-2 text-[11.5px] font-medium uppercase tracking-wide text-slate-500" colSpan={4}>
+                      soma das linhas
+                    </td>
+                    <td className="px-3 py-2 text-right text-[13px] font-semibold tabular-nums text-slate-900">
+                      {num(ficha.conferencia.somaQuantidade)} {ficha.item.unidadeControle}
+                    </td>
+                    <td className="px-3 py-2" />
+                    <td className="px-3 py-2 text-right text-[13px] font-semibold tabular-nums text-slate-900">{brl(ficha.conferencia.somaValor)}</td>
+                  </tr>
+                  <tr className="bg-slate-50/60">
+                    <td className={`px-3 pb-2 text-[11.5px] ${ficha.conferencia.confere ? 'text-emerald-700' : 'text-rose-600'}`} colSpan={7}>
+                      {ficha.conferencia.confere
+                        ? `✓ bate com o saldo em estoque (${num(ficha.conferencia.saldo)} ${ficha.item.unidadeControle} · ${brl(ficha.conferencia.valor)})`
+                        : `⚠ NÃO bate com o saldo (${num(ficha.conferencia.saldo)} ${ficha.item.unidadeControle} · ${brl(ficha.conferencia.valor)}) — a tabela está somando algo que o saldo não conta`}
+                    </td>
+                  </tr>
+                </tfoot>
+              )}
             </table>
           </CardContent></Card>
         )}

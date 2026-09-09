@@ -14,7 +14,7 @@ import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { saldoItem } from './saldo'
 import { statusEstoque, type StatusEstoqueResult } from './status-estoque'
-import { explicarMovimentos, tiposPresentes, type LinhaDoHistorico } from './movimento-explicado'
+import { explicarMovimentos, tiposPresentes, dobrarProducao, somaDasLinhas, type LinhaDoHistorico } from './movimento-explicado'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -33,6 +33,15 @@ export interface FichaItem {
   historico: LinhaDoHistorico[]
   /** os tipos que existem NESTE item — o filtro não oferece opção vazia */
   tipos: { tipo: string; chip: string; n: number }[]
+  /**
+   * ⭐⭐ A CONFERÊNCIA DA PRÓPRIA TABELA (09/09/2026): a soma da coluna TOTAL das linhas
+   * exibidas **é** o saldo. Vai no payload pra a tela poder DIZER isso ao dono — e pra o
+   * teste travar a igualdade contra o `saldo.ts`, não contra outra soma minha.
+   *
+   * ⛔ `confere: false` é bug de tabela, não detalhe visual: significa que a tela está
+   * somando algo que o saldo não conta (ou deixando de somar algo que conta).
+   */
+  conferencia: { somaQuantidade: number; saldo: number; somaValor: number; valor: number; confere: boolean }
   precoTempo: { data: string; preco: number }[] // só ENTRADA_NF (pra o gráfico)
 }
 
@@ -46,14 +55,18 @@ export async function buildFichaItem(companyId: string, itemId: string, db: Db =
       where: { companyId, itemId },
       orderBy: { dataMovimento: 'desc' },
       select: {
-        id: true, tipo: true, quantidade: true, custoUnitario: true, custoTotal: true,
+        id: true, itemId: true, tipo: true, quantidade: true, custoUnitario: true, custoTotal: true,
         nfeChave: true, receiptId: true, estornoDeId: true, dataMovimento: true,
         criadoPorId: true, origem: true,
       },
     }),
   ])
 
-  const historico = await explicarMovimentos(companyId, movimentos, db)
+  // ⛔⛔ A REGRA DO HISTÓRICO HONESTO: o consumo de produção **não move a prateleira** (o
+  // insumo já saiu na separação) e por isso não pode ficar na tabela como uma segunda saída
+  // do mesmo tamanho — era o que fazia o dono ver baixa dupla onde o saldo estava certo.
+  const historico = dobrarProducao(await explicarMovimentos(companyId, movimentos, db))
+  const soma = somaDasLinhas(historico)
 
   const precoTempo = movimentos
     .filter((m) => m.tipo === 'ENTRADA_NF')
@@ -68,6 +81,11 @@ export async function buildFichaItem(companyId: string, itemId: string, db: Db =
     status: statusEstoque(saldo.saldo, item.estoqueMin, item.estoqueMax),
     historico,
     tipos: tiposPresentes(historico),
+    conferencia: {
+      somaQuantidade: soma.quantidade, saldo: saldo.saldo,
+      somaValor: soma.valor, valor: saldo.valor,
+      confere: soma.quantidade === saldo.saldo && soma.valor === saldo.valor,
+    },
     precoTempo,
   }
 }

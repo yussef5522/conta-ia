@@ -22,8 +22,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { prisma } from '@/lib/db'
 import { buildFichaItem } from '../ficha-item'
-import { listMovimentos } from '../movimentos'
+import { listMovimentos, somaDoExtrato } from '../movimentos'
 import { faceDoTipo, rotuloDoPreco, explicarMovimentos } from '../movimento-explicado'
+import { movePrateleira } from '../saldo'
 
 const CNPJ = '55901224000177'
 let companyId = ''
@@ -256,5 +257,130 @@ describe('⭐ a régua dos tipos (pura)', () => {
 
   it('⭐ lote vazio não quebra e não consulta nada', async () => {
     expect(await explicarMovimentos(companyId, [])).toEqual([])
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// ⛔⛔⛔ A REGRA DO HISTÓRICO HONESTO (09/09/2026) — ordem do dono, e ela não negocia.
+//
+// **O QUE ELE VIU no BACON:** pra CADA ordem, DUAS saídas do mesmo tamanho —
+// `Separação −12,341` e `Produção·consumiu −12,34` — e nenhuma devolução positiva. Somando a
+// coluna, o insumo baixava DUAS VEZES. Suspeita de baixa dupla.
+//
+// **MEDIDO EM PROD ANTES DE MEXER — o saldo estava CERTO:**
+//   BACON:    Σ todas −34,14 · Σ sem CONSUMO 114,00 · SALDO EXIBIDO 114,00 ✓
+//   FILÉ:     Σ todas −112,26 · Σ sem CONSUMO 59,71 · SALDO EXIBIDO 59,71 ✓
+//   Gordura:  Σ todas −0,50   · Σ sem CONSUMO 20,95 · SALDO EXIBIDO 20,95 ✓
+//   invariante P1 por ordem: **0 quebras em 60 ordens concluídas**
+//   o resíduo por item = exatamente o material preso nas 8 ordens ABERTAS de hoje
+//
+// ⭐ Ou seja: **braço B**. A dupla era só VISUAL — e mesmo assim conta como defeito, porque
+// *"rastreio que deixa o dono na dúvida não rastreou nada"*.
+//
+// **A REGRA:** ou a linha entra na conta, ou não aparece somando. E o teste que a trava
+// compara a soma da tabela contra o `saldo.ts` — nunca contra outra soma minha.
+// ═══════════════════════════════════════════════════════════════════════════════════════
+
+describe('⛔⛔⛔ a soma da tabela É o saldo', () => {
+  /** a conta de padeiro do dono: separo 10, consumo 8, sobra 2 volta */
+  async function cenaDePadeiro() {
+    const mk = (d: Record<string, unknown>) =>
+      prisma.stockMovement.create({ data: { companyId, itemId, origem: 'MANUAL', criadoPorId: userId, ...d } as never })
+    await mk({
+      tipo: 'ENTRADA_NF', quantidade: 30, custoUnitario: 10, custoTotal: 300,
+      nfeChave: CHAVE, receiptId: conferenceId, origem: 'SEFAZ', dataMovimento: new Date('2026-09-01T10:00:00Z'),
+    })
+    await mk({ tipo: 'SEPARACAO_SAIDA', quantidade: -10, custoUnitario: 10, custoTotal: -100, receiptId: ordemId, dataMovimento: new Date('2026-09-06T08:00:00Z') })
+    await mk({ tipo: 'PRODUCAO_CONSUMO', quantidade: -8, custoUnitario: 10, custoTotal: -80, receiptId: ordemId, dataMovimento: new Date('2026-09-06T12:00:00Z') })
+    await mk({ tipo: 'DEVOLUCAO_PRODUCAO', quantidade: 2, custoUnitario: 10, custoTotal: 20, receiptId: ordemId, dataMovimento: new Date('2026-09-06T12:01:00Z') })
+  }
+
+  it('⭐⭐ A CONTA DE PADEIRO: separo 10, consumo 8 → saldo cai 8, não 18', async () => {
+    await cenaDePadeiro()
+    const f = (await buildFichaItem(companyId, itemId))!
+    // 30 entrou · 10 saiu na separação · 2 voltou = 22. (Se o consumo contasse: 14 — errado.)
+    expect(f.saldo).toBe(22)
+    expect(f.valor).toBe(220)
+    // ⭐ e a TABELA soma exatamente isso
+    expect(f.conferencia.somaQuantidade).toBe(22)
+    expect(f.conferencia.somaValor).toBe(220)
+    expect(f.conferencia.confere).toBe(true)
+  })
+
+  it('⭐⭐ e o histórico CONTA A HISTÓRIA dentro da linha que baixou', async () => {
+    await cenaDePadeiro()
+    const f = (await buildFichaItem(companyId, itemId))!
+    // ⛔ o consumo NÃO é mais uma linha própria fingindo ser saída
+    expect(f.historico.filter((l) => l.tipo === 'PRODUCAO_CONSUMO')).toHaveLength(0)
+    expect(f.tipos.map((t) => t.tipo)).not.toContain('PRODUCAO_CONSUMO')
+
+    const sep = f.historico.find((l) => l.tipo === 'SEPARACAO_SAIDA')!
+    expect(sep.dentroDaProducao).toEqual({ separado: 10, consumido: 8, devolvido: 2, emProducao: 0 })
+    // ⭐ a devolução FICA como linha própria: ela move a prateleira, então tem que somar
+    expect(f.historico.find((l) => l.tipo === 'DEVOLUCAO_PRODUCAO')?.movePrateleira).toBe(true)
+  })
+
+  it('⭐ ordem AINDA ABERTA: a história diz o que segue em produção', async () => {
+    const mk = (d: Record<string, unknown>) =>
+      prisma.stockMovement.create({ data: { companyId, itemId, origem: 'MANUAL', criadoPorId: userId, ...d } as never })
+    await mk({ tipo: 'ENTRADA_NF', quantidade: 30, custoUnitario: 10, custoTotal: 300, nfeChave: CHAVE, receiptId: conferenceId, origem: 'SEFAZ', dataMovimento: new Date('2026-09-01T10:00:00Z') })
+    await mk({ tipo: 'SEPARACAO_SAIDA', quantidade: -10, custoUnitario: 10, custoTotal: -100, receiptId: ordemId, dataMovimento: new Date('2026-09-06T08:00:00Z') })
+
+    const f = (await buildFichaItem(companyId, itemId))!
+    const sep = f.historico.find((l) => l.tipo === 'SEPARACAO_SAIDA')!
+    expect(sep.dentroDaProducao).toEqual({ separado: 10, consumido: 0, devolvido: 0, emProducao: 10 })
+    expect(f.conferencia.confere).toBe(true) // 30 − 10 = 20
+    expect(f.conferencia.somaQuantidade).toBe(20)
+  })
+
+  it('⛔⛔ O INVARIANTE GERAL: com TODOS os tipos juntos, a soma continua sendo o saldo', async () => {
+    // ⚠️ é o teste que vale pra qualquer tipo que inventarem no futuro: ou ele move a
+    // prateleira e entra na conta, ou não aparece somando.
+    await cenaDoBacon()
+    await cenaDePadeiro()
+    const f = (await buildFichaItem(companyId, itemId))!
+    expect(f.conferencia.somaQuantidade).toBe(f.saldo)
+    expect(f.conferencia.somaValor).toBe(f.valor)
+    expect(f.conferencia.confere).toBe(true)
+    // e nenhuma linha exibida com total pode estar fora da conta do saldo
+    for (const l of f.historico) {
+      if (!l.movePrateleira) expect(l.dentroDaProducao, 'linha fora da conta tem que estar dobrada ou marcada').toBeNull()
+    }
+  })
+
+  it('⛔ NADA SOME EM SILÊNCIO: consumo SEM separação continua aparecendo, sem somar', async () => {
+    // ⚠️ fazer a linha desaparecer seria trocar uma mentira por um buraco.
+    const mk = (d: Record<string, unknown>) =>
+      prisma.stockMovement.create({ data: { companyId, itemId, origem: 'MANUAL', criadoPorId: userId, ...d } as never })
+    await mk({ tipo: 'ENTRADA_NF', quantidade: 30, custoUnitario: 10, custoTotal: 300, nfeChave: CHAVE, receiptId: conferenceId, origem: 'SEFAZ', dataMovimento: new Date('2026-09-01T10:00:00Z') })
+    await mk({ tipo: 'PRODUCAO_CONSUMO', quantidade: -8, custoUnitario: 10, custoTotal: -80, receiptId: ordemId, dataMovimento: new Date('2026-09-06T12:00:00Z') })
+
+    const f = (await buildFichaItem(companyId, itemId))!
+    const orfa = f.historico.find((l) => l.tipo === 'PRODUCAO_CONSUMO')
+    expect(orfa, 'o consumo órfão não pode sumir da tela').toBeTruthy()
+    expect(orfa!.movePrateleira).toBe(false)
+    // e mesmo aparecendo, ele NÃO entra na soma — o saldo continua 30
+    expect(f.saldo).toBe(30)
+    expect(f.conferencia.somaQuantidade).toBe(30)
+    expect(f.conferencia.confere).toBe(true)
+  })
+
+  it('⛔ o EXTRATO obedece a MESMA regra (mesmo dono)', async () => {
+    await cenaDePadeiro()
+    const linhas = await listMovimentos(companyId, { itemId })
+    expect(linhas.filter((l) => l.tipo === 'PRODUCAO_CONSUMO')).toHaveLength(0)
+    expect(somaDoExtrato(linhas)).toEqual({ quantidade: 22, valor: 220 })
+    const sep = linhas.find((l) => l.tipo === 'SEPARACAO_SAIDA')!
+    expect(sep.dentroDaProducao?.consumido).toBe(8)
+  })
+
+  it('⭐ a régua da prateleira tem UM dono — a tela não pode ter a sua', async () => {
+    // ⚠️ se alguém acrescentar um tipo à lista do saldo, a tela acompanha de graça.
+    expect(movePrateleira('PRODUCAO_CONSUMO')).toBe(false)
+    for (const t of ['ENTRADA_NF', 'SEPARACAO_SAIDA', 'DEVOLUCAO_PRODUCAO', 'PRODUCAO_GERACAO', 'BAIXA_VENDA', 'AJUSTE_CONTAGEM', 'PERDA', 'ESTORNO']) {
+      expect(movePrateleira(t), `${t} tem que contar no saldo`).toBe(true)
+    }
+    // ⭐ tipo novo entra na conta por default — o erro seguro
+    expect(movePrateleira('TIPO_INVENTADO_AMANHA')).toBe(true)
   })
 })
