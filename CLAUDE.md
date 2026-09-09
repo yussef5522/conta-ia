@@ -269,6 +269,33 @@ Agora é **um gesto só** — *"Sumir com o item"* — e **quem decide entre apa
 
 **12 testes novos** (o caminho inteiro do rename tela por tela · duplicado por digitação · virgem apaga / com NF arquiva e reativa / com ficha recusa nomeando). **8.971 verdes · TS 0 · deploy `-mustDFEDHrhyIMFNEoX3` 4/4.**
 
+## ⭐⭐⭐ UM PIX PAGA N NOTAS — E O SUBSET-SUM SEM ÂNCORA É CAÇA-NÍQUEL (09/09/2026)
+
+**O dono:** *"~30 contas VENCIDAS não apareceram na conciliação, e os pagamentos EXISTEM no extrato. O padrão: fornecedor pequeno com VÁRIAS notinhas — eu pago JUNTO, num PIX só. Aposto que o matcher só casa 1-pra-1."* **Ele estava certo em cheio.**
+
+**⭐ MEDIDO EM PROD ANTES DE CODAR:** dois pagamentos em lote reais de 08/09 na Stone — **ODISSEA R$ 1.137,78 = 5 das 11 notas dela** e **ALAN R$ 1.370,33 = 5 das 12** — e a tela dizia **"Tudo conciliado ✓"**, porque nenhuma nota bate sozinha com o PIX consolidado. `comSugestao: 0` com 31 contas vencidas.
+
+**⛔⛔⛔ A TRAVA CENTRAL VEIO DE UM ERRO MEU, MEDIDO:** a 1ª versão da investigação perguntava *"existe soma de N notas que dê o valor da linha?"* — e casou a ODISSEA com uma linha **"YUSSEF ABU ZAHRY MUSA · Distribuição de Lucros" de R$ 500,00**. Com 6 notinhas pequenas **quase qualquer alvo é alcançável**: medido nas listas reais do Alan e da Odissea, **9% de valores ALEATÓRIOS na faixa também fechariam**. ***Uma soma que fecha não prova nada sozinha.*** Foi o script de investigação que pegou isso, não um teste — e é o argumento de sempre a favor de medir contra o dado real antes de escrever a feature.
+
+**⭐ POR ISSO SÃO TRÊS ÂNCORAS, e nenhuma é opcional** (`lib/stock/../conciliacao/pagamento-em-lote.ts`):
+1. **A LINHA NOMEIA O FORNECEDOR** — FK (só 1,3% das linhas a têm) ou o nome reconhecido pela `reconhecerFornecedor` da casa. Sem fornecedor resolvido o motor **nem roda**.
+2. **JANELA DE VENCIMENTO** (−45d / +15d da data do pagamento) — ninguém paga hoje uma nota de daqui a três meses.
+3. **COMBINAÇÃO ÚNICA** — duas combinações que fecham é a resposta **"não sei qual foi"**, e o sistema não sugere. Escolher uma seria a régua decidindo quais notas o dono pagou.
+
+**⭐ A LINHA QUE NOMEIA E NÃO FECHA NÃO SOME** (16 em prod: Ivan, Maria Luiza, Oesa, Casper, Box Paper). Quase sempre é **pagamento parcial** ou pagamento de nota que não está no sistema. Sumir seria o *"erro disfarçado de vazio"* que esta casa já pagou caro — ela aparece recolhida, com os números à vista, e o gesto é **"escolher na mão"**, que abre o Find & Match **já com o nome do fornecedor na busca**. ⚠️ O painel N:1 (soma conferida + ajuste de juros) **já existia desde a Fase B.3**; o que faltava era **CHEGAR nele** — perder no caminho a informação que a tela acabou de mostrar é obrigar o dono a procurar de novo numa lista de 100.
+
+**⭐ E O VALOR EXATO DEIXOU DE SUMIR:** `contabilidade R$ 1.621,00` e `di car R$ 1.000,00` tinham o valor **exato** no extrato e não eram sugeridos — 50 (valor exato) + 5 (pago 4-7 dias depois) + 0 (a conta lançada à mão não tem fornecedor) + 0 (o nome digitado não parece com o do extrato) = **55, abaixo do corte de 70**. Agora **valor exato dentro de 7 dias aparece mesmo abaixo do corte**, com o score real preservado (nasce em confiança BAIXA, ranqueado abaixo dos fortes). ⛔ **Não é baixar o corte** — isso deixaria entrar valor PRÓXIMO, que é palpite. **Medido antes de ligar: +2 pares, os dois que ele nomeou, ZERO conta ganhando mais de uma opção.**
+
+**⭐⭐ A ORDEM DO FLUXO, ESCRITA NA TELA:** *"Passo 2 de 2 — importou → o óbvio casou no import → aqui fica o que precisa de decisão. **Casar vem antes de categorizar**: ao vincular, a conta a pagar leva a categoria dela junto. Linha que você já categorizou como despesa **continua casável** — ter categoria não quita conta nenhuma."* ⭐ **E isso está PROVADO no dado, não prometido:** as duas linhas de lote de prod já têm categoria (*Embalagens - Delivery* e *Matéria-Prima - Alimentos*) e continuam sendo oferecidas — o `LINHA_DISPONIVEL_WHERE` não olha `categoryId`, de propósito, desde 07/09.
+
+**⛔ E O LOTE AVISA ANTES DE PEDIR CATEGORIA:** em `/pendentes` o banner de vínculo 1:1 já vinha antes da sugestão de categoria; o PIX consolidado **não tinha aviso nenhum** e chegava pedindo categoria — categorizar como despesa deixaria as N notas abertas pra sempre. Agora a linha diz *"parece o pagamento de 5 notas do ODISSEA"* e manda pra Conciliação. ⚠️ **Só o AVISO mora lá: a decisão do lote tem UM lugar.** Duas telas montando o mesmo lote seriam duas derivações da mesma pergunta — a lição do B1, que já custou o `GruposSugeridos` duplicado do cardápio.
+
+**PROVADO EM PROD pelas ROTAS REAIS com sessão assinada** (`/api/conciliacao/fila` **200**): `lotes: 2 · notasEmLote: 10 · comSugestao: 2 · não fecham: 16`. **Prestação de contas das 31 vencidas: 11 resolvidas em 1 clique (9 por lote + 2 pelo valor exato) · 8 com pagamento no extrato que não fecha (escolher na mão) · 12 sem pagamento nenhum no extrato importado** — essas esperam ARQUIVO, não decisão.
+
+**REGRA 11 medida — 2 defeitos repostos, 3 vermelhos** (sem a âncora de fornecedor, o caça-níquel volta; com o corte de 70 de volta, os dois pares de valor exato somem). **12 testes novos com os números reais · 8.987 verdes · TS 0 · deploys `h14uvBKIgIKzT6Vo0jIYd` e `JGnfRT4i_vz3Z_5qDP7sh`, os dois 4/4.**
+
+⚠️ **O QUE NÃO ENTROU (registrado, não feito):** a sugestão de vínculo **dentro do preview do import de OFX**. Hoje a ordem "casar antes de categorizar" vale de `/pendentes` (onde a linha chega depois do confirm) em diante; o preview do import ainda só classifica. E o lote com **diferença de juros** não é sugerido com 1 clique — ele cai no *"escolher na mão"*, onde o ajuste com categoria já existe: sugerir um lote inexato exigiria **inventar** qual parte é juros.
+
 ## ⛔⛔⛔ RÓTULO QUE SOME QUANDO EU DIGITO É RÓTULO QUE NÃO EXISTE (09/09/2026)
 
 **O dono, depois de saber a causa do "1" que ele chutou:** *"conserta em TODA tela que fizer isso, independente de qual era a minha — rótulo que some quando eu digito é rótulo que não existe (foi exatamente assim que eu chutei '1' sem saber o quê). **Rótulo fixo em cima do campo, placeholder só de exemplo.**"*
