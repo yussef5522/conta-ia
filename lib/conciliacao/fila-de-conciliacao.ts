@@ -24,8 +24,13 @@
 import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import {
-  sugerirVinculos, type LadoDoPar, type SugestaoDeVinculo, type FornecedorConhecido,
+  sugerirVinculos, reconhecerFornecedor,
+  type LadoDoPar, type SugestaoDeVinculo, type FornecedorConhecido,
 } from './sugestao-de-vinculo'
+import {
+  sugerirPagamentosEmLote, DIAS_ANTES as DIAS_ANTES_LOTE,
+  type SugestaoDeLote, type LoteQueNaoFecha, type NotaAberta, type LinhaParaLote,
+} from './pagamento-em-lote'
 import { podeConferirPorLedgerbal, resolveBankProfile } from '@/lib/bank-profiles'
 
 type Db = PrismaClient
@@ -92,6 +97,14 @@ export interface FilaDeConciliacao {
    * a parede de texto por descuido.
    */
   contas: ContaEsperandoPagamento[]
+  /** ⭐ 1 PIX → N notas do mesmo fornecedor (o "one payment covers several bills") */
+  lotes: SugestaoDeLote[]
+  /**
+   * ⚠️ a linha NOMEIA o fornecedor, ele tem várias notas abertas, e nada fecha.
+   * Não é "nada a ver" — é pagamento parcial ou nota que não está no sistema. Aparece
+   * com os números à vista e o gesto de escolher na mão.
+   */
+  lotesQueNaoFecham: LoteQueNaoFecha[]
   /** o que ficou de fora, resumido em números — informação, não fila */
   semPar: ResumoSemPar
   transferencias: TransferenciaEsperandoPar[]
@@ -108,6 +121,8 @@ export interface FilaDeConciliacao {
    */
   totais: {
     contas: number; comSugestao: number; transferencias: number; duplicatas: number
+    /** quantos PIX consolidados esperam confirmação, e quantas notas eles liquidam */
+    lotes: number; notasEmLote: number
     /** contas marcadas como pagas e SEM vínculo — o mesmo dinheiro em duas linhas */
     duplaContagem: number
     /** quanto está contado duas vezes. Soma das contas ACIMA, cada uma UMA vez. */
@@ -250,6 +265,78 @@ export async function contasEsperandoPagamento(
   return out.sort((a, b) => (b.sugestoes[0]?.score ?? -1) - (a.sugestoes[0]?.score ?? -1))
 }
 
+/**
+ * ⭐⭐⭐ OS PAGAMENTOS EM LOTE — 1 PIX que liquida N notas do mesmo fornecedor.
+ *
+ * **O buraco que isto fecha (medido em prod, 09/09):** o `sugerirVinculos` compara UMA
+ * linha com UMA conta. O PIX consolidado não bate com nota nenhuma individualmente, então
+ * **nem a linha nem as notas apareciam na tela** — 9 das 31 contas vencidas da Caçula
+ * estavam nesse estado, com o pagamento sentado no extrato.
+ *
+ * ⛔ A resolução do fornecedor da linha acontece AQUI e uma vez só: `reconhecerFornecedor`
+ * compara a descrição com os 78 nomes cadastrados, e chamá-lo por combinação seria a mesma
+ * armadilha de performance que já custou 9,6 s nesta rota.
+ */
+export async function lotesDaFila(
+  companyId: string, db: Db = defaultPrisma,
+): Promise<{ lotes: SugestaoDeLote[]; naoFecham: LoteQueNaoFecha[] }> {
+  const [contas, fornecedores] = await Promise.all([
+    db.transaction.findMany({
+      where: {
+        // ⚠️ só conta EM ABERTO entra em lote. A dupla contagem (já marcada como paga)
+        // tem gesto próprio — misturar as duas faria o lote "pagar" o que já foi pago.
+        lifecycle: { in: ['PAYABLE', 'RECEIVABLE'] }, status: 'PENDING', paymentDate: null,
+        reconciledWithId: null, reconciledFrom: { none: {} },
+        supplierId: { not: null },
+        AND: [{ OR: [
+          { bankAccount: { companyId } }, { supplier: { companyId } },
+          { customer: { companyId } }, { category: { companyId } },
+        ] }],
+      },
+      select: {
+        id: true, description: true, amount: true, dueDate: true, date: true,
+        type: true, supplierId: true,
+      },
+    }),
+    fornecedoresDaEmpresa(db, companyId),
+  ])
+  if (!contas.length) return { lotes: [], naoFecham: [] }
+
+  const janela = (DIAS_ANTES_LOTE + 1) * 86400000
+  const alvos = contas.map((c) => (c.dueDate ?? c.date).getTime())
+  const linhas = await db.transaction.findMany({
+    where: {
+      ...LINHA_DISPONIVEL_WHERE,
+      bankAccount: { companyId },
+      date: { gte: new Date(Math.min(...alvos) - janela), lte: new Date(Math.max(...alvos) + janela) },
+    },
+    select: {
+      id: true, description: true, amount: true, date: true, type: true,
+      supplierId: true, bankAccountId: true, bankAccount: { select: { name: true } },
+    },
+    orderBy: { date: 'desc' },
+  })
+
+  const nomes = new Map(fornecedores.map((f) => [f.id, f.nomeFantasia ?? f.razaoSocial]))
+  const paraLote: LinhaParaLote[] = linhas.map((l) => ({
+    id: l.id, descricao: l.description, valor: Math.abs(l.amount), data: l.date,
+    tipo: l.type as 'CREDIT' | 'DEBIT',
+    // ⛔ a FK primeiro (só 1,3% das linhas a têm); o nome depois — a mesma régua do 1:1
+    fornecedorId: l.supplierId ?? reconhecerFornecedor(l.description, fornecedores)?.id ?? null,
+    contaBancariaId: l.bankAccountId,
+    contaBancaria: l.bankAccount?.name?.trim() ?? null,
+  }))
+  const notas: NotaAberta[] = contas.map((c) => ({
+    id: c.id, descricao: c.description, valor: Math.abs(c.amount),
+    vencimento: c.dueDate ?? c.date, fornecedorId: c.supplierId!,
+  }))
+
+  return sugerirPagamentosEmLote({
+    linhas: paraLote, notas,
+    nomeDoFornecedor: (id) => nomes.get(id) ?? 'fornecedor',
+  })
+}
+
 /** transferência entre contas que ficou sem par */
 export async function transferenciasEsperandoPar(
   companyId: string, db: Db = defaultPrisma,
@@ -372,8 +459,9 @@ export function resumirSemPar(
 export async function filaDeConciliacao(
   companyId: string, db: Db = defaultPrisma, agora: Date = new Date(),
 ): Promise<FilaDeConciliacao> {
-  const [todas, transferencias, duplicatas, saldos, ultimo] = await Promise.all([
+  const [todas, lote, transferencias, duplicatas, saldos, ultimo] = await Promise.all([
     contasEsperandoPagamento(companyId, db),
+    lotesDaFila(companyId, db),
     transferenciasEsperandoPar(companyId, db),
     duplicatasSuspeitas(companyId, db),
     conferenciaDeSaldos(companyId, db),
@@ -393,11 +481,20 @@ export async function filaDeConciliacao(
   // ⚠️ a dupla contagem conta TODAS, inclusive as sem par: é dinheiro contado
   // duas vezes exista ou não sugestão, e esconder isso seria o oposto do ponto.
   const dc = todas.filter((c) => c.situacao === 'DUPLA_CONTAGEM')
+  // ⛔ NOTA QUE JÁ ESTÁ NUM LOTE NÃO REPETE COMO CARD 1:1. Ela apareceria duas vezes
+  // pedindo a mesma decisão por dois caminhos — e confirmar os dois seria contar o mesmo
+  // dinheiro em dobro. O lote ganha porque ele explica o pagamento inteiro; o 1:1 daquela
+  // nota sozinha é justamente o que não fecha com a linha.
+  const noLote = new Set(lote.lotes.flatMap((l) => l.notas.map((n) => n.id)))
+  const contasForaDoLote = contas.filter((c) => !noLote.has(c.conta.id))
   return {
-    contas, semPar, transferencias, duplicatas, saldos,
+    contas: contasForaDoLote, lotes: lote.lotes, lotesQueNaoFecham: lote.naoFecham,
+    semPar, transferencias, duplicatas, saldos,
     totais: {
       contas: todas.length,
-      comSugestao: contas.length,
+      comSugestao: contasForaDoLote.length,
+      lotes: lote.lotes.length,
+      notasEmLote: noLote.size,
       transferencias: transferencias.length,
       duplicatas: duplicatas.length,
       duplaContagem: dc.length,
