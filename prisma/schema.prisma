@@ -3526,6 +3526,21 @@ model StockParcelaCombinada {
 // ⭐ ITEM MESCLADO (30/08) — o absorvido deixa de ser item; isto é o rastro de "foi pra X".
 // ARQUIVADO ≠ MESCLADO: o arquivado volta em "mostrar arquivados"; o mesclado não é mais
 // um item, some de toda lista, busca e dropdown.
+/// ⭐⭐ O NOME ANTIGO DO ITEM — apelido de busca + rastro do rename (09/09/2026).
+/// A Marcyelle procura "CC 600" e acha a "COCA COLA 600ML"; e fica gravado quem renomeou.
+model StockItemNomeAnterior {
+  id             String   @id @default(cuid())
+  companyId      String
+  itemId         String
+  nomeAnterior   String
+  renomeadoPorId String?
+  criadoEm       DateTime @default(now())
+
+  @@unique([companyId, itemId, nomeAnterior])
+  @@index([companyId, itemId])
+  @@map("stock_item_nome_anterior")
+}
+
 model StockItemMesclado {
   id           String   @id @default(cuid())
   companyId    String

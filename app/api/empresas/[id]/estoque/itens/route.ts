@@ -9,6 +9,7 @@ import { guardStock } from '@/lib/stock/require-stock'
 import { custoMedioPorItem } from '@/lib/stock/saldo'
 import { filtrarPorBusca } from '@/lib/busca-texto'
 import { involucrosPassaDireto } from '@/lib/stock/passa-direto-de-revenda'
+import { apelidosPorItem } from '@/lib/stock/nomes/renomear-em-lote'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -68,7 +69,12 @@ export async function GET(request: NextRequest, { params }: Params) {
     custoMedioPorItem(prisma, companyId),
   ])
 
-  let candidatos = filtrarPorBusca(todos, busca, (i) => i.nome)
+  // ⭐⭐ A BUSCA ACHA PELO NOME NOVO **E** PELO ANTIGO (09/09/2026) — decisão do dono:
+  // *"buscar 'CC 600' acha a COCA COLA 600ML — a Marcyelle não se perde na contagem"*.
+  // ⚠️ Renomear em lote é bom pro dono e é justamente o gesto que quebraria a memória de
+  // quem opera; o apelido é o que torna o rename seguro de fazer.
+  const apelidos = busca ? await apelidosPorItem(companyId, todos.map((i) => i.id), prisma) : new Map<string, string[]>()
+  let candidatos = filtrarPorBusca(todos, busca, (i) => [i.nome, ...(apelidos.get(i.id) ?? [])].join(' '))
 
   // ⛔⛔ "COCA COLA 2L aparece 2× na busca da receita" (09/09) — e as duas eram itens reais:
   // a garrafa que a NF alimenta (REVENDA) e o INVÓLUCRO que a ficha de revenda criou
