@@ -34,11 +34,25 @@ export function usePermissaoMenu(perm: string): boolean {
   // governado pelo papel dela na empresa — as despesas dela são dela.
   if (perm === '@sempre') return true
   if (permissoes === null) return true
-  return permissoes.some(
-    (p) =>
-      p === '*' ||
-      p === perm ||
-      (p.endsWith('.*') && perm.startsWith(p.slice(0, -1))) ||
-      (p.startsWith('*.') && perm.endsWith(p.slice(1))),
+  // ⭐⭐ "QUALQUER UMA DESTAS" (09/09/2026) — `perm="a|b"`.
+  //
+  // ⛔ NASCEU DE DEFEITO MEU, e é a lição das DUAS PORTAS pela terceira vez: em 08/09 abri a
+  // PÁGINA `/equipe` pra `['user.invite', 'stock.manage']` (ela faz duas coisas — gerenciar
+  // quem LOGA e gerenciar COLABORADOR) e **deixei o item do menu exigindo só `user.invite`**.
+  // Resultado medido em prod: o Cristian e a marcyelle (GERENTE_ESTOQUE, 4 chaves) **podiam
+  // usar a tela e não tinham como chegar nela** — porta fechada com a sala aberta.
+  //
+  // ⚠️ O separador é `|` em vez de array porque o guard estrutural do menu lê `perm="..."`
+  // por regex: trocar pra `perm={[...]}` deixaria o item **invisível pro guard**, e um item
+  // que o guard não enxerga é exatamente o buraco que ele existe pra fechar.
+  const exigidas = perm.split('|').map((p) => p.trim()).filter(Boolean)
+  return exigidas.some((exigida) =>
+    permissoes.some(
+      (p) =>
+        p === '*' ||
+        p === exigida ||
+        (p.endsWith('.*') && exigida.startsWith(p.slice(0, -1))) ||
+        (p.startsWith('*.') && exigida.endsWith(p.slice(1))),
+    ),
   )
 }

@@ -64,7 +64,11 @@ describe('⭐⭐ todo item do menu declara a permissão que exige', () => {
   it('⭐ e a chave existe de verdade no RBAC (chave inventada some pra TODO MUNDO)', () => {
     // ⚠️ o OWNER tem uma lista CONCRETA de 36 chaves, não `*` — então um `perm` inventado
     // esconderia o item até do dono. Erro de digitação aqui é bug de tela pra todos.
-    const invalidas = itens.filter((i) => i.perm && !CHAVES_VALIDAS.has(i.perm))
+    // ⭐ `perm="a|b"` = QUALQUER UMA das duas (09/09) — valida chave a chave, senão a
+    // composta passaria por "inválida" e o item sumiria pra todo mundo.
+    const invalidas = itens.filter(
+      (i) => i.perm && i.perm.split('|').some((k) => !CHAVES_VALIDAS.has(k.trim())),
+    )
     expect(invalidas.map((i) => `${i.label}→${i.perm}`)).toEqual([])
   })
 
@@ -78,7 +82,9 @@ describe('⭐⭐ todo item do menu declara a permissão que exige', () => {
 describe('⭐⭐ o que o OPERADOR_ESTOQUE enxerga', () => {
   // o papel tem exatamente estas duas chaves (conferido no banco de prod)
   const DO_OPERADOR = ['stock.view', 'stock.operate']
-  const veria = (perm: string | null) => perm === '@sempre' || (perm != null && DO_OPERADOR.includes(perm))
+  const veria = (perm: string | null) =>
+    perm === '@sempre'
+    || (perm != null && perm.split('|').some((k) => DO_OPERADOR.includes(k.trim())))
 
   it('⭐⭐ o menu dela cabe numa mão: SÓ estoque', () => {
     const visiveis = itensDoMenu().filter((i) => veria(i.perm))
@@ -128,7 +134,9 @@ describe('⭐⭐ o que o OPERADOR_ESTOQUE enxerga', () => {
         !href.includes('/perfis/') &&
         !href.includes('/estoque/')
       if (financeira) {
-        expect(['transaction.view', 'dre.view', 'report.view'], `${href} → ${perm}`).toContain(perm)
+        for (const k of perm.split('|')) {
+          expect(['transaction.view', 'dre.view', 'report.view'], `${href} → ${perm}`).toContain(k.trim())
+        }
       }
     }
   })

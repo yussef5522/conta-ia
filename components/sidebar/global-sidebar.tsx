@@ -663,8 +663,12 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
             quem usa PIN. Antes havia duas portas de gente (Usuários no Sistema, "Setores e
             colaboradores" escondido na Produção) e o dono não achava nenhuma das duas pra
             cadastrar a cozinha. `/usuarios` continua viva pra link antigo. */}
+        {/* ⛔⛔ A PORTA ACOMPANHA A SALA (09/09): a tela faz DUAS coisas — gerenciar quem
+            LOGA (`user.invite`) e gerenciar COLABORADOR de produção (`stock.manage`). Em
+            08/09 a PÁGINA passou a aceitar as duas e **este item ficou na chave antiga**:
+            o gerente de estoque podia usar a tela e não tinha como chegar nela. */}
         <SidebarItem
-          perm="user.invite"
+          perm="user.invite|stock.manage"
           icon={Shield}
           label="Equipe"
           href="/equipe"
