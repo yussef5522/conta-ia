@@ -242,6 +242,33 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⛔⛔ O NOME QUE VOLTAVA · DUPLICADO POR DIGITAÇÃO · SUMIR COM O ITEM (09/09/2026)
+
+### ⛔⛔ "RENOMEEI E O NOME VOLTOU" — duas causas, e **nenhuma era "não gravou"**
+
+**MEDIDO EM PROD antes de codar:** `stock_item_nome_anterior` com **0 renomeios** e a fila de nomes de **36 → 25** — ou seja, **11 itens MUDARAM** (pelo editor **inline**) e o **LOTE nunca foi confirmado**.
+
+1. **O LOTE tinha um no-op silencioso MEU.** O texto editado só entrava no envio se o dono **também** marcasse o checkbox. Quem editava e saía **perdia tudo**, e a tela voltava com os nomes velhos. ⭐ **Editar já é a intenção** — agora marcar é consequência de editar, o confirmar explícito continua no fim, e a tela **avisa** quando há edição não confirmada.
+2. **O editor INLINE renomeava por fora do dono.** Gravava (por isso 11 mudaram), mas **sem gravar o apelido** — buscar pelo nome antigo parava de achar, justo o que a tabela de apelido existe pra impedir — e **sem checar duplicado**. Agora passa pelo mesmo `renomearEmLote` (REGRA 4).
+
+⚠️ **Consequência registrada:** os 11 renomeados antes do fix ficaram **sem apelido**, e não dá pra recuperar o nome antigo (não foi gravado). Da correção em diante, todo rename registra.
+
+### ⛔ NOTA MANUAL — *"o TOMATE já existe; escrever TOMATE cria OUTRO?"* → **criava**
+
+Este caminho **não tinha dedup nenhuma**: digitar o nome de um item existente fazia nascer um segundo item, e a partir dali Posição, busca e contagem mostravam os dois. Agora **recusa e ensina o seletor**, com a régua do `criarFicha` (canônico, sem caixa/acento) — e **dois "produto novo" com o mesmo nome na mesma nota** também não passam.
+
+⭐ **E salvar já NÃO travava por nome vazio com o produto escolhido** — conferido no código: o nome só é exigido quando `novo` está setado. A queixa era legítima como *dúvida*, e a dúvida vinha da ausência da trava de duplicado.
+
+⚠️⚠️ **O QUE EU NÃO CONSEGUI REPRODUZIR: os "3 quadrados de número" com o primeiro sem rótulo.** Varri os quatro candidatos e **todos têm rótulo**: `/entrada-manual` tem **2** números + Total calculado (`Produto · Qtd · Custo un. · Total`); a conferência mostra o fator como **`1 CX = [__] KG`** (rótulo inline, desktop e mobile); o sheet *"Que produto é este?"* tem `<label>` em todo campo. **O campo que mais casa com a descrição é o FATOR DE CONVERSÃO** — e ele tem um defeito real da família: usa **placeholder como rótulo** (*"quantas KG tem 1 CX?"*), e **placeholder some quando se digita** — depois do "1" chutado, a caixa fica sem nome. **Não redesenhei a tela sem saber qual é** — chutar aqui custaria o tempo dele. Falta ele dizer em qual tela estava.
+
+### ⭐ SUMIR COM O ITEM — a régua já existia; faltava a TELA
+
+**MEDIDO ANTES DE CODAR:** `situacaoDoItem` / `excluirItem` / `arquivarItem` implementam **exatamente** a régua pedida — e desde **29-30/08**. Sem movimento **apaga do banco**; com movimento **recusa oferecendo mesclar/arquivar**; ficha ativa **nomeia a receita** no aviso; a checagem é **server-side**. **O que faltava era o menu do Catálogo oferecer**: ele tinha "Desativar", nunca "sumir".
+
+Agora é **um gesto só** — *"Sumir com o item"* — e **quem decide entre apagar e arquivar é o servidor**. O modal diz a verdade **antes**: *"tem história (N movimentos) — sai de todas as listas e a história fica; dá pra trazer de volta em mostrar inativos"*.
+
+**12 testes novos** (o caminho inteiro do rename tela por tela · duplicado por digitação · virgem apaga / com NF arquiva e reativa / com ficha recusa nomeando). **8.971 verdes · TS 0 · deploy `-mustDFEDHrhyIMFNEoX3` 4/4.**
+
 ## ⛔⛔⛔ A PÁGINA ABRIA E O DADO NÃO VINHA — A **4ª** VOLTA DAS "DUAS PORTAS" (09/09/2026)
 
 **O dono:** *"/equipe renderiza mas mostra 'Não consegui carregar a equipe' + 'ninguém da cozinha cadastrado ainda' — com 5+ pessoas cadastradas."*
