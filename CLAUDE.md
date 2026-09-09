@@ -242,6 +242,33 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⭐⭐ BEBIDA SEM NOTA + SIGLA NÃO FICA NO NOME (09/09/2026)
+
+### ⭐ "EXISTE NA GELADEIRA, SÓ NUNCA VEIO NF" — o caminho da 1ª semana
+
+**O dono:** *"Começamos há 1 semana — essas bebidas estão na geladeira, só nunca veio NF delas."* As 3 que a auditoria achou vendendo sem item foram criadas: **item REVENDA/UN com custo 0** (a 1ª nota ensina o preço) + **ficha de revenda ×1** + **vínculo com o PDV**, tudo na mesma transação.
+
+**⛔⛔ SALDO NASCE ZERO, e é o ponto.** *"Saldo NÃO se chuta"* — item sem movimento é item **sem contagem**, não item sem estoque. Chutar "umas 12 garrafas" poria número inventado exatamente onde o Real vs Teórico vai medir. Os 3 entram na fila de contagem e o saldo vem de lá.
+
+**⚠️ O NOME DO ITEM ≠ O NOME DO CARDÁPIO, de propósito:** `FANTA LARANJA LATA 350ML` (o que está na geladeira) × `FANTA LARANJA LATA` (a linha do menu). Além de ser o desenho, evita a colisão que o guard de 09/09 recusa — e que foi o que criou os invólucros duplicados.
+
+**PROVADO EM PROD:** as 3 vendas baixam o item novo (`−3 · −1 · −1`, **0 pendentes**), os 3 estão **na fila de contagem com saldo 0**, e **0 invólucros** na fila junto. ⚠️ `MILKSHAKE SABOR PACOCA` fica de fora (decisão do dono: família doces).
+
+### ⛔ SIGLA NÃO FICA — "CC" não serve
+
+- **Volume solto ganha ML:** `CC 600 PET 12` → **COCA COLA 600ML** (era "COCA COLA 600"). ⛔ **Lista FECHADA** de volumes de bebida: inferir ML de qualquer número faria `SACO PAPEL SOS 15` virar "15ML".
+- **⛔⛔ SIGLA SOZINHA JÁ PÕE O ITEM NA FILA.** `CERV SKOL 600ML` não tinha nenhuma marca de embalagem e ficava **fora** da revisão — e o dono lê "CERV" na Posição do mesmo jeito. Varredura: era **o único** nessa situação.
+- **⚠️ 2 testes MEUS invertidos com o motivo escrito** (esperavam "COCA COLA 600"; o dono pediu a unidade junto).
+
+**PROVADO EM PROD:** **36 itens na fila · 0 sugestões com sigla · 0 itens com sigla fora da fila.**
+```
+0000903482 - CERV HEINEKEN PIL 0.60GFA RT 24UN → CERVEJA HEINEKEN PILSEN 600ML
+CC 600 PET 12                                  → COCA COLA 600ML
+DV UVA LT 290ML 6U FL                          → DEL VALLE UVA LATA 290ML
+CERV SKOL 600ML                                → CERVEJA SKOL 600ML
+```
+**8.942 verdes · TS 0 · deploy `yF2TBYVmM4h0G8GhTf2gB` 4/4.** ⚠️ Falta o **confirmar dele** na fila — depois disso "coca" acha os 7 por extenso e nenhum "CC" sobra visível.
+
 ## ⭐⭐ AUDITORIA DAS BEBIDAS (0 divergência) + NOMES DE NOTA EM LOTE (09/09/2026)
 
 ### ⭐ FRENTE 1 — cada produto baixa a GARRAFA CERTA: **25 auditadas, 0 suspeitas**
