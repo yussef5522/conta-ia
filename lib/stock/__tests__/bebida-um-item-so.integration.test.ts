@@ -287,3 +287,65 @@ describe('⭐ o caminho "existe na geladeira, nunca veio nota"', () => {
     expect(filtrarPorBusca(itens, 'fanta laranja lata', (i) => i.nome).length).toBeGreaterThan(0)
   })
 })
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// ⭐⭐ O CATÁLOGO DIZ O QUE É GARRAFA E O QUE É RECEITA (09/09/2026).
+//
+// **O dono:** *"o invólucro aparece como linha igual às outras, 'PRODUTO FINAL via ficha · 0
+// UN · a definir' — parece item duplicado/quebrado, e eu mesmo levei susto achando que a
+// mescla tinha dado errado. O dono não pode olhar o Catálogo e achar que tem duplicata."*
+//
+// ⛔ O comportamento já estava certo (Posição, contagem e busca escondem). Era o CATÁLOGO
+// mostrando a linha do cardápio com a roupa de garrafa.
+// ═══════════════════════════════════════════════════════════════════════════════════════
+
+describe('⭐ o catálogo separa garrafa de receita', () => {
+  it('⛔⛔ a receita PASSA-DIRETO diz o que baixa, e não tem saldo/custo pra mostrar', async () => {
+    const { listCatalogo } = await import('../catalogo')
+    const { itemProduzidoId } = await fichaDaBebida('COCA COLA 2L')
+
+    const cat = await listCatalogo(companyId, prisma)
+    const receita = cat.find((c) => c.id === itemProduzidoId)!
+    const garrafaLinha = cat.find((c) => c.id === garrafa)!
+
+    expect(receita.ehReceita, 'a linha do menu tem que se declarar receita').toBe(true)
+    expect(receita.baixaEm?.itemId, 'e dizer QUAL garrafa ela baixa').toBe(garrafa)
+    expect(receita.baixaEm?.nome).toBe('COCA-COLA  2L')
+
+    // ⛔ o item REAL continua linha cheia — o fix não pode apagar a garrafa
+    expect(garrafaLinha.ehReceita).toBe(false)
+    expect(garrafaLinha.saldo).toBe(560)
+    expect(garrafaLinha.custoMedio).toBeGreaterThan(0)
+  })
+
+  it('⭐ receita com VÁRIOS componentes não finge ter um dono — mostra a contagem', async () => {
+    const { listCatalogo } = await import('../catalogo')
+    const carne = (await prisma.stockItem.create({
+      data: { companyId, nome: 'Coxão', unidadeControle: 'KG', categoria: 'MATERIA_PRIMA', criadoVia: 'CONFERENCIA' },
+    })).id
+    const xis = await criarFicha({
+      companyId, userId, nomeProduzido: 'XIS COMPLETO', unidadeProduzido: 'UN', tipoProduto: 'PRODUTO_FINAL',
+      loteBase: 1, unidadeLoteBase: 'UN',
+      componentes: [
+        { itemId: carne, qtdPlanejada: 0.1, unidade: 'KG', posicao: 0 },
+        { itemId: garrafa, qtdPlanejada: 1, unidade: 'UN', posicao: 1 },
+      ],
+    }, prisma)
+
+    const linha = (await listCatalogo(companyId, prisma)).find((c) => c.id === xis.itemProduzidoId)!
+    expect(linha.ehReceita).toBe(true)
+    // ⛔ sem `baixaEm`: inventar "o principal" seria escolher por conta própria
+    expect(linha.baixaEm).toBeNull()
+    expect(linha.componentes).toBe(2)
+    expect(linha.fichaId).toBe(xis.fichaId)
+  })
+
+  it('⛔ item de prateleira NUNCA é marcado como receita', async () => {
+    const { listCatalogo } = await import('../catalogo')
+    await fichaDaBebida('COCA COLA 2L')
+    const cat = await listCatalogo(companyId, prisma)
+    for (const c of cat.filter((x) => x.categoria === 'REVENDA' || x.categoria === 'MATERIA_PRIMA')) {
+      expect(c.ehReceita, `${c.nome} não é receita`).toBe(false)
+    }
+  })
+})

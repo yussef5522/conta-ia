@@ -7,7 +7,7 @@
 
 import { useEffect, useMemo, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
-import { Package, Loader2, Plus, Search, Ban, RotateCcw, Download, MoreHorizontal, FileText, Boxes, Layers, HelpCircle, CircleSlash } from 'lucide-react'
+import { Package, Loader2, Plus, Search, Ban, RotateCcw, Download, MoreHorizontal, FileText, Boxes, Layers, HelpCircle, CircleSlash , CornerDownRight } from 'lucide-react'
 import { StatCard, StatCardGrid } from '@/components/ui/stat-card'
 import { TotalsBar, type TotalItem } from '@/components/ui/totals-bar'
 import { SortableTh, useSort } from '@/components/ui/sortable-th'
@@ -19,7 +19,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { corDaCategoria } from '@/lib/stock/categoria-cores'
 import { NomeEditavel } from '@/components/estoque/nome-editavel'
 
-interface Item { id: string; nome: string; unidadeControle: string; categoria: string; categoriaLabel: string; produzido: boolean; ativo: boolean; saldo: number; custoMedio: number | null; estoqueMin: number | null; estoqueMax: number | null; criadoVia: string }
+interface Item { id: string; nome: string; unidadeControle: string; categoria: string; categoriaLabel: string; produzido: boolean; ativo: boolean; saldo: number; custoMedio: number | null; estoqueMin: number | null; estoqueMax: number | null; criadoVia: string; ehReceita: boolean; baixaEm: { itemId: string; nome: string } | null; componentes: number; fichaId: string | null }
 const CATS = [{ v: 'MATERIA_PRIMA', l: 'Matéria-prima' }, { v: 'REVENDA', l: 'Revenda' }, { v: 'EMBALAGEM', l: 'Embalagem' }, { v: 'LIMPEZA', l: 'Limpeza' }, { v: 'USO_INTERNO', l: 'Uso interno' }]
 const brl = (n: number | null) => (n == null ? 'a definir' : n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }))
 const num = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 3 })
@@ -42,13 +42,24 @@ export default function CatalogoPage({ params }: { params: Promise<{ id: string 
 
   const setAtivo = async (itemId: string, ativo: boolean) => { await fetch(`/api/empresas/${id}/estoque/itens/${itemId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ativo }) }); carregar() }
 
-  const filtrados = useMemo(() => {
-    if (!itens) return []
-    const ls = itens.filter((i) => (verInativos || i.ativo) && (!catFiltro || i.categoria === catFiltro) && (!soSemCusto || i.custoMedio == null) && (!busca.trim() || i.nome.toLowerCase().includes(busca.toLowerCase())))
-    return ordenar(ls, (i, c) => (
-      c === 'nome' ? i.nome : c === 'categoria' ? i.categoriaLabel : c === 'saldo' ? i.saldo
-        : c === 'custo' ? i.custoMedio : i.estoqueMin
-    ))
+  const { filtrados, filhosDe } = useMemo(() => {
+    if (!itens) return { filtrados: [] as Item[], filhosDe: new Map<string, Item[]>() }
+    const _ls = itens.filter((i) => (verInativos || i.ativo) && (!catFiltro || i.categoria === catFiltro) && (!soSemCusto || i.custoMedio == null) && (!busca.trim() || i.nome.toLowerCase().includes(busca.toLowerCase())))
+    // ⭐⭐ A RECEITA VAI LOGO ABAIXO DA GARRAFA QUE ELA BAIXA (09/09/2026): assim o dono lê
+    // "COCA COLA 600ML · 62 UN" e, indentado embaixo, "receita de venda → baixa esta". Antes
+    // as duas eram linhas irmãs e ele leu como DUPLICATA.
+    // ⚠️ Só a passa-direto tem onde pendurar; xis/combo ficam no lugar alfabético, marcadas.
+    const filhosDe = new Map<string, Item[]>()
+    for (const r of _ls) if (r.ehReceita && r.baixaEm) filhosDe.set(r.baixaEm.itemId, [...(filhosDe.get(r.baixaEm.itemId) ?? []), r])
+    const penduradas = new Set([...filhosDe.values()].flat().map((r) => r.id))
+    const ls = _ls.filter((i) => !penduradas.has(i.id))
+    return {
+      filtrados: ordenar(ls, (i, c) => (
+        c === 'nome' ? i.nome : c === 'categoria' ? i.categoriaLabel : c === 'saldo' ? i.saldo
+          : c === 'custo' ? i.custoMedio : i.estoqueMin
+      )),
+      filhosDe,
+    }
   }, [itens, busca, catFiltro, verInativos, soSemCusto, ordenar])
 
   if (itens === undefined) return <div className="p-6"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
@@ -138,21 +149,45 @@ export default function CatalogoPage({ params }: { params: Promise<{ id: string 
             <th className="w-10 px-3 py-2"></th>
           </tr></thead>
           <tbody>
-            {filtrados.map((i, idx) => (
+            {filtrados.flatMap((i, idx) => [i, ...(filhosDe.get(i.id) ?? [])]).map((i, idx) => (
               <tr key={i.id} className={`group border-b last:border-0 transition-colors hover:bg-muted/30 ${!i.ativo ? 'opacity-50' : ''} ${sel.includes(i.id) ? 'bg-primary/5' : idx % 2 === 1 ? 'bg-muted/10' : ''}`}>
                 {/* tarja lateral na cor da categoria (mesmo padrão da Contas a Pagar) */}
                 <td className={`w-1 p-0 ${corDaCategoria(i.categoria).stripe}`} aria-hidden="true" />
                 <td className="px-3 py-0">
                   <Checkbox checked={sel.includes(i.id)} onCheckedChange={() => setSel((x) => x.includes(i.id) ? x.filter((y) => y !== i.id) : [...x, i.id])} aria-label={`selecionar ${i.nome}`} />
                 </td>
-                <td className="px-3 py-0 text-[13px]">{i.produzido ? <span className="font-medium text-slate-800">{i.nome}</span> : <NomeEditavel companyId={id} itemId={i.id} nome={i.nome} comLink onSalvo={carregar} />}</td>
-                <td className="px-3 py-0">
-                  <Badge variant="outline" className={`border-0 text-[10px] uppercase tracking-wide ${corDaCategoria(i.categoria).badgeBg} ${corDaCategoria(i.categoria).badgeText}`}>{i.categoriaLabel}</Badge>
-                  {i.produzido && <span className="ml-1 text-[10px] text-slate-400">via ficha</span>}
+                <td className="px-3 py-0 text-[13px]">
+                  {i.ehReceita ? (
+                    // ⭐⭐ RECEITA DE VENDA — indentada e rotulada pelo que É. O dono leu esta
+                    // linha como item duplicado ("0 UN · a definir") e levou susto achando que
+                    // a mescla tinha dado errado. Receita não se estoca; o que ela faz é dizer
+                    // o que baixa quando vende.
+                    <span className="flex items-center gap-1.5 pl-4 text-slate-500">
+                      <CornerDownRight className="h-3.5 w-3.5 shrink-0 text-slate-300" />
+                      <span>{i.nome}</span>
+                      {i.baixaEm
+                        ? <span className="text-[11.5px] text-slate-400">receita de venda → baixa <b className="font-medium text-slate-600">{i.baixaEm.nome}</b></span>
+                        : <span className="text-[11.5px] text-slate-400">receita de venda → {i.componentes} componente{i.componentes === 1 ? '' : 's'}</span>}
+                      {i.fichaId && (
+                        <a href={`/empresas/${id}/estoque/cardapio`} className="text-[11.5px] text-[#185FA5] hover:underline">ver ficha</a>
+                      )}
+                    </span>
+                  ) : i.produzido ? <span className="font-medium text-slate-800">{i.nome}</span>
+                    : <NomeEditavel companyId={id} itemId={i.id} nome={i.nome} comLink onSalvo={carregar} />}
                 </td>
-                <td className={`px-3 py-0 text-[13px] text-right tabular-nums ${i.saldo < 0 ? 'text-rose-600' : i.saldo === 0 ? 'text-slate-400' : 'text-slate-800'}`}>{num(i.saldo)} {i.unidadeControle}</td>
-                <td className="px-3 py-0 text-[13px] text-right tabular-nums text-slate-600">{brl(i.custoMedio)}</td>
-                <td className="px-3 py-0 text-[13px] text-right tabular-nums text-slate-400">{i.estoqueMin != null ? `${num(i.estoqueMin)}${i.estoqueMax != null ? '–' + num(i.estoqueMax) : ''}` : '—'}</td>
+                <td className="px-3 py-0">
+                  {i.ehReceita
+                    ? <Badge variant="outline" className="border-0 bg-slate-100 text-[10px] uppercase tracking-wide text-slate-500">receita</Badge>
+                    : <><Badge variant="outline" className={`border-0 text-[10px] uppercase tracking-wide ${corDaCategoria(i.categoria).badgeBg} ${corDaCategoria(i.categoria).badgeText}`}>{i.categoriaLabel}</Badge>
+                      {i.produzido && <span className="ml-1 text-[10px] text-slate-400">via ficha</span>}</>}
+                </td>
+                {/* ⛔ RECEITA NÃO TEM SALDO NEM CUSTO: "0 UN · a definir" ali não é informação,
+                    é ruído — e foi ele que fez o dono achar que havia item quebrado. */}
+                <td className={`px-3 py-0 text-[13px] text-right tabular-nums ${i.ehReceita ? 'text-slate-300' : i.saldo < 0 ? 'text-rose-600' : i.saldo === 0 ? 'text-slate-400' : 'text-slate-800'}`}>
+                  {i.ehReceita ? '—' : `${num(i.saldo)} ${i.unidadeControle}`}
+                </td>
+                <td className="px-3 py-0 text-[13px] text-right tabular-nums text-slate-600">{i.ehReceita ? <span className="text-slate-300">—</span> : brl(i.custoMedio)}</td>
+                <td className="px-3 py-0 text-[13px] text-right tabular-nums text-slate-400">{i.ehReceita ? '—' : i.estoqueMin != null ? `${num(i.estoqueMin)}${i.estoqueMax != null ? '–' + num(i.estoqueMax) : ''}` : '—'}</td>
                 <td className="px-3 py-0 text-right">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
