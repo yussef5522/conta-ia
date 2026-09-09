@@ -242,6 +242,41 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⭐⭐ INVÓLUCRO DE FICHA: NÃO FUNDIR OS OUTROS — E O CATÁLOGO CONTAR A VERDADE (09/09/2026)
+
+### ⭐ A CONFERÊNCIA DA COCA 2L FUNDIDA: **nenhuma aresta**
+
+```
+"COCA COLA 2L (mesclado)" · PRODUTO_FINAL · ativo=false · mesclado em COCA-COLA 2L
+   usado como componente: 0 · mapa direto: 0 · ordens de produção: 0
+   ficha ativa v1 · cardápio FICHA_OK · custo 8,09 · a venda baixa −8 na garrafa
+```
+Nem geração/pack, nem contagem, nem leitor esperando o invólucro existir. **A estrutura fundida funciona.**
+
+### ⛔⛔ MAS NÃO VALE FUNDIR OS OUTROS — e o dado é que decide
+
+**MEDIDO:** dos invólucros que apareciam no Catálogo, **57 são passa-direto de revenda** e **36 têm vários componentes** (XIS, BURGER, Combo, pizza).
+
+1. **A mescla só alcança 61% do problema.** Combo Caçula não é "parte de" garrafa nenhuma — não há em que fundir. Sobrariam 36 linhas com exatamente a mesma cara, e o dono passaria a ter **dois estados pra lembrar** em vez de um. *Cura que resolve 6 de cada 10 não é cura, é um segundo caso especial.*
+2. **`stock_item_mesclado` significa "virou parte de outro" — e isso é FALSO aqui.** O invólucro é a linha do cardápio; ele não virou a garrafa. E o rastro da mescla vive na ficha do SOBREVIVENTE (decisão de 30/08): a garrafa passaria a dizer *"absorveu COCA COLA 2L"*, o que confunde em vez de explicar.
+3. **⛔ A MESCLA MOVE MOVIMENTO** (estorno no absorvido + igual no sobrevivente). **Foi exatamente esse mecanismo que empurrou o fantasma de +154 pra dentro da garrafa real.** Repetir 57 vezes é criar 57 chances do mesmo estrago — por uma arrumação de tela.
+4. **Onde importa, os dois estados já são idênticos:** Posição, contagem e busca escondem os dois igualmente. A única diferença era o **Catálogo** — e Catálogo se conserta com tela, não com cirurgia de ledger.
+
+**RECOMENDAÇÃO, e o que ficou:** os 2 já fundidos **ficam como estão** (funcionam, e desfazer mexeria no ledger de novo sem ganho); **nenhum outro é fundido**. ⚠️ Fica a assimetria registrada: 2 fundidos e o resto não — visualmente idêntico depois do fix do Catálogo.
+
+### ⭐ O CATÁLOGO PASSA A DIZER O QUE É CADA LINHA
+
+**O dono:** *"parece item duplicado/quebrado, e eu mesmo levei susto achando que a mescla tinha dado errado. O dono não pode olhar o Catálogo e achar que tem duplicata."*
+
+- receita vira **linha secundária indentada** sob a garrafa que ela baixa: *"↳ BRAHMA · receita de venda → baixa BRAHMA CHOPP 600ML"*;
+- com vários componentes: *"receita de venda → 2 componentes"* — **sem fingir um dono**, porque eleger "o principal" seria decidir por conta própria;
+- ⛔ **sem saldo, custo ou mín/máx**: *"0 UN · a definir"* ali não é informação, **é o ruído que assustou**;
+- legenda: *"garrafa se conta e se compra; a receita só diz o que baixa quando vende"*.
+
+**⚠️ E UM ZERO SILENCIOSO MEU NO CAMINHO:** a 1ª medição respondeu *"0 invólucros no Catálogo"* — e eu quase reportei que ele estava enganado. Eu li `cat.itens` e `listCatalogo` **devolve o array direto**; `undefined ?? []` deu lista vazia. **É a REGRA 8b em outra roupa: zero silencioso é indistinguível de "não tem".** Refeito com a forma certa: **93 receitas apareciam como linha cheia**, exatamente como ele descreveu.
+
+**PROVADO EM PROD:** `236 linhas · 93 receitas · 57 indentam sob a garrafa · 36 com N componentes · 31 itens REVENDA continuam linha cheia (28 com saldo) · 0 item de prateleira marcado como receita`. **3 testes · red-then-green: 2 vermelhos com o defeito reposto · 8.945 verdes · TS 0 · deploy `VyH5GTh_kkI3CjO3xQ8pj` 4/4.**
+
 ## ⭐⭐ BEBIDA SEM NOTA + SIGLA NÃO FICA NO NOME (09/09/2026)
 
 ### ⭐ "EXISTE NA GELADEIRA, SÓ NUNCA VEIO NF" — o caminho da 1ª semana
