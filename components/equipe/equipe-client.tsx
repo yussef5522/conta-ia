@@ -104,8 +104,17 @@ export function EquipeClient({ empresaId, empresaNome, filtro, podeGerenciarAces
   const carregar = () =>
     fetch(`/api/empresas/${empresaId}/equipe${verInativos ? '?inativos=1' : ''}`)
       .then((r) => (r.ok ? r.json() : Promise.reject(r)))
+      .then((j) => { setErro(null); return j })
       .then((j) => { setPessoas(j.pessoas ?? []); setResumo(j.resumo ?? null) })
-      .catch(() => { setErro('Não consegui carregar a equipe.'); setPessoas([]) })
+      .catch(async (r: Response | undefined) => {
+        // ⚠️ a mensagem DIZ o que houve: 403 é permissão, não "falhou". Antes tudo virava
+        // "não consegui carregar" e o dono não sabia se era acesso ou rede.
+        const j = r && typeof r.json === 'function' ? await r.json().catch(() => null) : null
+        setErro(r?.status === 403
+          ? `Sem permissão pra ver a equipe${j?.permission ? ` (falta ${j.permission})` : ''}.`
+          : 'Não consegui carregar a equipe. Tenta de novo.')
+        setPessoas([])
+      })
   useEffect(() => { carregar() }, [empresaId, verInativos]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const lista = (pessoas ?? []).filter((p) => !soCozinha || p.funcao === 'Cozinha / produção')
@@ -166,9 +175,13 @@ export function EquipeClient({ empresaId, empresaNome, filtro, podeGerenciarAces
 
       {erro && <p className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{erro}</p>}
 
+      {/* ⛔⛔ ERRO E VAZIO NUNCA JUNTOS (09/09/2026) — o dono viu "Não consegui carregar a
+          equipe" **e** "ninguém da cozinha cadastrado ainda" na mesma tela, com 17 pessoas no
+          banco. É o "sucesso disfarçado" ao contrário: **erro disfarçado de vazio**. Quando a
+          carga falhou, o sistema NÃO SABE se está vazio — e afirmar que está é inventar. */}
       {pessoas === null ? (
         <div className="flex items-center gap-2 p-6 text-sm text-slate-400"><Loader2 className="h-4 w-4 animate-spin" /> carregando…</div>
-      ) : lista.length === 0 ? (
+      ) : erro ? null : lista.length === 0 ? (
         <Card><CardContent className="p-6 text-center">
           <p className="text-sm text-slate-600">{soCozinha ? 'Ninguém da cozinha cadastrado ainda.' : 'Nenhuma pessoa ainda.'}</p>
           <p className="mt-1 text-xs text-slate-400">Use “adicionar pessoa” — nome, função e pronto.</p>
