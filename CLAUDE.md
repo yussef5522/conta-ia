@@ -242,6 +242,38 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⛔⛔ O GERENTE NÃO CHEGAVA NA EQUIPE — A PORTA NÃO ACOMPANHOU A SALA (09/09/2026)
+
+**O defeito é meu e é a terceira volta da MESMA classe.** Em 08/09 eu abri a **PÁGINA** `/equipe` pra `['user.invite', 'stock.manage']` — porque a tela faz duas coisas, gerenciar quem **LOGA** e gerenciar **COLABORADOR** de produção — e **deixei o item do MENU exigindo só `user.invite`**. Lá a porta era mais restrita que a ação; aqui **o menu ficou mais restrito que a porta**.
+
+**MEDIDO EM PROD, papel a papel, com as chaves REAIS do banco:**
+
+| papel | menu | página | redefinir PIN |
+|---|---|---|---|
+| OWNER (37 chaves) | ✅ | ✅ | ✅ |
+| **GERENTE_ESTOQUE (4 chaves)** | **⛔** | ✅ | ✅ |
+| EXECUTOR_PRODUCAO (1 chave) | ⛔ | ⛔ | ⛔ (correto) |
+
+⛔ **Porta fechada com a sala aberta** — e **eram DOIS gerentes**, não um: o Cristian **e a marcyelle** podiam usar a tela e não tinham como chegar nela.
+
+**O FIX:** `usePermissaoMenu` passa a aceitar **"qualquer uma destas"** (`perm="user.invite|stock.manage"`). ⚠️ **Separador `|` em vez de array por um motivo duro:** o guard estrutural do menu lê `perm="..."` **por regex**; virar `perm={[...]}` deixaria o item **invisível pro guard** — exatamente o buraco que ele existe pra fechar. O guard foi atualizado pra validar **chave a chave**, então typo continua sendo pego.
+
+**GUARD NOVO (`porta-acompanha-a-sala.test.ts`):** *o item do menu nunca pode exigir MAIS do que a página pra onde ele leva.* Ele lê o `requirePermission` da página e o `perm` do menu **das fontes**, e compara. Red-then-green: repondo `perm="user.invite"`, **2 vermelhos**.
+
+**PROVADO EM PROD com a sessão real de cada um:**
+```
+cristian  MENU ✅ (régua antiga: ⛔ — era isto) · /equipe 200 · PIN passa a trava
+          lista de colaboradores 200 (13) · lista de USUÁRIOS 403 ← a fronteira intacta
+tablet    MENU ⛔ · PIN 403 · colaboradores 403 · usuários 403
+```
+⭐ **A fronteira de papel continua de pé:** o gerente administra **colaborador e PIN**; **quem LOGA** segue sendo `user.invite`, e ele leva **403** ali. Abrir a porta não afrouxou a ação.
+
+**⚠️⚠️ DOIS ERROS MEUS NO CAMINHO, e os dois são sobre método:**
+1. **Assinei o token com `{userId}` e o `getAuthUser` lê `sub`.** Com `sub` indefinido, o `findFirst({ where: { userId: undefined, companyId } })` do `getAuthContext` **ignora o filtro e devolve o PRIMEIRO papel da empresa** — eu medi o **OWNER** achando que era o Cristian, e quase reportei "37 chaves" como vazamento de permissão. **Token de teste se assina pelo `signToken` da casa**, nunca à mão.
+2. **Sondei o método do "redefinir PIN" por tentativa (`POST`) e criei um colaborador "Carlisle" duplicado em prod.** O `POST /estoque/colaboradores` é *cadastrar pessoa*; o redefinir PIN é `POST /estoque/producao/cadastros/pin`. **Removido** (zero rastro: 0 PINs, 0 etapas, 0 conclusões, 0 participações — era lixo da sondagem, não uma pessoa; 14 → 13). ⭐ **A lição:** prova em prod não chuta verbo de rota que ESCREVE. O certo é o que fiz depois — **payload inválido de propósito**: `400` prova que a trava deixou passar, `403` provaria que barrou, e **nada é gravado**.
+
+**8.897 verdes · TS 0 · deploy `fldyLllPU6VQ0afvVsbbm` 4/4.** ⚠️ REGRA 2 é do dono: o Cristian logando e abrindo a Equipe pelo menu.
+
 ## ⛔⛔⛔ A REGRA DO HISTÓRICO HONESTO — A SOMA DA TABELA **É** O SALDO (09/09/2026)
 
 **A suspeita do dono, olhando o BACON:** *"Pra CADA ordem aparecem DUAS saídas do mesmo tamanho — Separação −12,341 E Produção·consumiu −12,34 — e NENHUMA linha positiva de devolução. Se o saldo soma os dois tipos, todo insumo de produção baixa 2×."*
