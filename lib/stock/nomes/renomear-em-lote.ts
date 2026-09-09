@@ -21,6 +21,7 @@ import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { normalizarBusca } from '@/lib/busca-texto'
 import { sugerirNomeLimpo, pareceNomeDeNota, type SugestaoDeNome } from './nome-limpo'
+import { seContaFisicamente } from '../tipos-ficha'
 
 export class RenomearError extends Error {}
 
@@ -130,9 +131,12 @@ export async function renomearEmLote(
 
   // ⛔ dois itens não podem terminar com o MESMO nome: a busca deixaria de distinguir, e o
   // guard de "já existe item com esse nome" passaria a acusar pra sempre.
-  const todosOsNomes = await db.stockItem.findMany({
-    where: { companyId: input.companyId, ativo: true }, select: { id: true, nome: true },
-  })
+  // ⚠️ SÓ ITEM DE PRATELEIRA DISPUTA O NOME (09/09). O invólucro de ficha é a linha do
+  // cardápio e leva o nome do PDV de propósito — bloquear o rename da garrafa porque a
+  // RECEITA já usa aquele nome seria o guard impedindo exatamente o desenho.
+  const todosOsNomes = (await db.stockItem.findMany({
+    where: { companyId: input.companyId, ativo: true }, select: { id: true, nome: true, categoria: true },
+  })).filter((i) => seContaFisicamente(i.categoria))
   const ocupados = new Map(todosOsNomes.map((i) => [normalizarBusca(i.nome), i.id]))
 
   const aplicados: ResultadoRenomeio['aplicados'] = []

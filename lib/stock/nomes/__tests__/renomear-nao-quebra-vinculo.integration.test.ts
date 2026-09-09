@@ -74,10 +74,17 @@ describe('⛔⛔ o rename e os vínculos', () => {
   })
 
   it('⭐⭐ a ficha continua explodindo NELE, e a venda baixa o mesmo item', async () => {
-    const ficha = await prisma.stockFicha.create({ data: { companyId, itemProduzidoId: item, tipoProduto: 'PRODUTO_FINAL' } })
+    // ⚠️ FIXTURE CORRIGIDA (09/09): antes a ficha produzia o MESMO item que consumia — um
+    // ciclo que `criarFicha` recusa e que só existia porque o teste gravava por SQL cru. Com
+    // o caminho único a explosão passou a alcançá-lo e estourou "ciclo?". A ficha real produz
+    // o INVÓLUCRO (a linha do cardápio) e consome a garrafa.
+    const involucro = await prisma.stockItem.create({
+      data: { companyId, nome: 'COCA COLA 600ML (menu)', unidadeControle: 'UN', categoria: 'PRODUTO_FINAL', criadoVia: 'MANUAL' },
+    })
+    const ficha = await prisma.stockFicha.create({ data: { companyId, itemProduzidoId: involucro.id, tipoProduto: 'PRODUTO_FINAL' } })
     const v = await prisma.stockFichaVersao.create({ data: { companyId, fichaId: ficha.id, versao: 1, loteBase: 1, unidadeLoteBase: 'UN' } })
     await prisma.stockFichaComponente.create({ data: { companyId, versaoId: v.id, itemId: item, qtdPlanejada: 1, unidade: 'UN', posicao: 0 } })
-    await upsertVendaMap(companyId, 'COCA COLA 600ML', { tipo: 'REVENDA', itemId: item }, userId, prisma)
+    await upsertVendaMap(companyId, 'COCA COLA 600ML', { tipo: 'FICHA', fichaId: ficha.id }, userId, prisma)
 
     await renomearEmLote({ companyId, userId, pedidos: [{ itemId: item, nomeNovo: 'COCA COLA 600ML' }] }, prisma)
 

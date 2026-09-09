@@ -60,7 +60,10 @@ describe('mapa que aprende + GUARD na fonte', () => {
     expect(p.naoMapeados).toBe(77)
     expect(p.linhas.find((l) => l.produto === 'XIS COMPLETO')!.alvoId).toBe(xisFichaId)
     expect(p.linhas.find((l) => l.produto === 'XIS - COMPLETO')!.alvoId).toBe(xisFichaId)
-    expect(p.linhas.find((l) => l.produto === 'COCA COLA 2L')!.alvoTipo).toBe('REVENDA')
+    // ⚠️ INVERTIDO COM O MOTIVO (09/09): o preview mostrava 'REVENDA'. Com o CAMINHO ÚNICO
+    // a bebida também é ficha — o que o dono vê continua sendo "mapeado", e o que baixa
+    // continua sendo a garrafa.
+    expect(p.linhas.find((l) => l.produto === 'COCA COLA 2L')!.alvoTipo).toBe('FICHA')
   })
 
   it('RECUSA venda mapeada em MATÉRIA-PRIMA (Coxão cru) — REGRA 1', async () => {

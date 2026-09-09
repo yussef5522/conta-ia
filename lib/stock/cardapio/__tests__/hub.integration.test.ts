@@ -89,7 +89,9 @@ afterEach(async () => {
   await prisma.company.deleteMany({ where: { id: companyId } })
 })
 
-const linhaDe = (h: Awaited<ReturnType<typeof hubCardapio>>, nome: string) => h.linhas.find((l) => l.nome === nome)!
+// ⚠️ nome exibido OU nome do PDV — a linha da bebida virou a FICHA (caminho único, 09/09)
+const linhaDe = (h: Awaited<ReturnType<typeof hubCardapio>>, nome: string) =>
+  h.linhas.find((l) => l.nome === nome || l.nomesSuitable.includes(nome))!
 
 describe('⭐ o custo do hub é o MESMO que a venda baixa do estoque (REGRA 4)', () => {
   it('Combo: custo da tela == Σ (insumo baixado × custo médio) do plano real de venda', async () => {
@@ -172,8 +174,14 @@ describe('preço: o que o PDV cobrou de fato manda sobre o que está cadastrado'
   })
 
   it('revenda fecha sozinha: custo da nota + preço do PDV = margem real, sem cadastrar preço', async () => {
-    const coca = linhaDe(await hubCardapio(companyId, {}, prisma), 'Coca 2L')
-    expect(coca.status).toBe('REVENDA')
+    // ⚠️ acha pelo nome do PDV: a linha da bebida é a FICHA agora (caminho único, 09/09)
+    const coca = linhaDe(await hubCardapio(companyId, {}, prisma), 'COCA COLA 2L')
+    // ⚠️ TESTE INVERTIDO COM O MOTIVO (09/09) — o status era 'REVENDA'. Com o CAMINHO ÚNICO
+    // (venda → ficha → componentes) o mapa direto deixou de existir: revenda virou o caso
+    // particular de ficha com 1 componente ×1, e o status dela é `FICHA_OK`.
+    // ⭐ O QUE IMPORTA NÃO MUDOU e continua travado nas 3 linhas abaixo: mesmo custo da nota,
+    // mesmo preço do PDV, mesma margem — sem cadastrar preço.
+    expect(coca.status).toBe('FICHA_OK')
     expect(coca.custoUnitario).toBe(8)
     expect(coca.precoPraticado).toBe(12) // 48 / 4
     expect(coca.margem).toBe(0.33) // (12 − 8) / 12

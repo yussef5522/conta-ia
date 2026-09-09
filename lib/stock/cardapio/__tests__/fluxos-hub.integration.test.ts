@@ -61,7 +61,12 @@ afterEach(async () => {
   await prisma.company.deleteMany({ where: { id: companyId } })
 })
 
-const linhaDe = async (nome: string) => (await hubCardapio(companyId, {}, prisma)).linhas.find((l) => l.nome === nome)!
+// ⚠️ ACHA PELO NOME EXIBIDO **OU** PELO NOME DO PDV (09/09): com o CAMINHO ÚNICO a linha da
+// bebida passou a ser a FICHA, e o nome dela é o do cardápio ("COCA COLA 2L"), não o do item
+// ("Coca 2L"). É a mudança visível do desenho — e o cardápio mostrar o nome do cardápio é o
+// certo. O helper acompanha em vez de fingir que nada mudou.
+const linhaDe = async (nome: string) => (await hubCardapio(companyId, {}, prisma)).linhas
+  .find((l) => l.nome === nome || l.nomesSuitable.includes(nome))!
 
 describe('FLUXO 1 — Coca 2L mapeada inline: margem na hora', () => {
   it('⭐ antes do mapa: aparece cobrando, sem custo e sem margem', async () => {
@@ -74,8 +79,10 @@ describe('FLUXO 1 — Coca 2L mapeada inline: margem na hora', () => {
 
   it('⭐⭐ mapeou → custo da NOTA + preço do PDV = margem fechada, sem cadastrar nada', async () => {
     await upsertVendaMap(companyId, 'COCA COLA 2L', { tipo: 'REVENDA', itemId: cocaId }, 'u', prisma)
-    const dep = await linhaDe('Coca 2L')
-    expect(dep.status).toBe('REVENDA')
+    const dep = await linhaDe('COCA COLA 2L')
+    // ⚠️ INVERTIDO COM O MOTIVO (09/09): era 'REVENDA'. O CAMINHO ÚNICO fez a revenda virar
+    // ficha de 1 componente ×1 — o status é FICHA_OK. Custo, preço e margem seguem iguais.
+    expect(dep.status).toBe('FICHA_OK')
     expect(dep.custoUnitario).toBe(8.08) // da nota
     expect(dep.precoUsado).toBe(17) // do PDV
     expect(dep.margem).toBe(0.52) // (17 − 8,08) / 17
@@ -88,11 +95,14 @@ describe('FLUXO 1 — Coca 2L mapeada inline: margem na hora', () => {
     ).rejects.toBeInstanceOf(VendaMapError)
   })
 
-  it('a chave muda de nome: → item: (a tela navega pro produto que agora existe)', async () => {
+  it('a chave muda de nome: → ficha: (a tela navega pro produto que agora existe)', async () => {
+    // ⚠️ INVERTIDO COM O MOTIVO (09/09): a chave virava `item:` no mapa direto. Com o caminho
+    // único ela vira `ficha:` — e o link antigo continua abrindo (o teste do link cobre).
     expect(parseChave('nome:COCA COLA 2L')).toEqual({ tipo: 'nome', valor: 'COCA COLA 2L' })
     await upsertVendaMap(companyId, 'COCA COLA 2L', { tipo: 'REVENDA', itemId: cocaId }, 'u', prisma)
-    const dep = await linhaDe('Coca 2L')
-    expect(dep.chave).toBe(`item:${cocaId}`)
+    const dep = await linhaDe('COCA COLA 2L')
+    expect(dep.chave.startsWith('ficha:'), `chave = ${dep.chave}`).toBe(true)
+    expect(dep.baixaItemId, 'e ela diz qual garrafa baixa — é o que segura o link antigo').toBe(cocaId)
   })
 })
 

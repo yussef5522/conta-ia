@@ -349,3 +349,81 @@ describe('⭐ o catálogo separa garrafa de receita', () => {
     }
   })
 })
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// ⭐⭐⭐ UM CAMINHO SÓ: VENDA → FICHA → COMPONENTE(S) (09/09/2026) — decisão do dono.
+//
+// *"Três caminhos pra mesma pergunta é como a bagunça nasce."* Revenda passa a ser o caso
+// particular de ficha com 1 componente ×1 — e o gesto de 1 clique continua igual pra quem usa.
+//
+// **MEDIDO:** a migração é pequena — 2 mapas diretos (SKOL, FRUKI 600ML) e 2 invólucros
+// fundidos. As outras 6 linhas de `stock_item_mesclado` são mescla de ITEM DE VERDADE
+// (Coxão, Bobina, Filé) e **não entram**.
+// ═══════════════════════════════════════════════════════════════════════════════════════
+
+describe('⭐⭐⭐ um caminho só', () => {
+  it('⛔⛔ mapear "revenda" NÃO cria mais mapa direto — cria a ficha por baixo', async () => {
+    const { upsertVendaMap } = await import('../vendas/venda-map')
+    await upsertVendaMap(companyId, 'SKOL', { tipo: 'REVENDA', itemId: garrafa }, userId, prisma)
+
+    const m = await prisma.stockVendaProdutoMap.findFirst({ where: { companyId, nomeSuitable: 'SKOL' }, select: { alvoTipo: true, fichaId: true, itemId: true } })
+    expect(m!.alvoTipo, 'o destino agora é sempre FICHA').toBe('FICHA')
+    expect(m!.fichaId).toBeTruthy()
+    expect(m!.itemId).toBeNull()
+
+    // ⭐ e a ficha criada é o caso particular: 1 componente ×1
+    const f = await prisma.stockFicha.findUnique({ where: { id: m!.fichaId! }, select: { versaoAtual: true, id: true } })
+    const v = await prisma.stockFichaVersao.findFirst({ where: { fichaId: f!.id, versao: f!.versaoAtual }, select: { id: true } })
+    const comps = await prisma.stockFichaComponente.findMany({ where: { versaoId: v!.id }, select: { itemId: true, qtdPlanejada: true } })
+    expect(comps).toHaveLength(1)
+    expect(comps[0]).toMatchObject({ itemId: garrafa, qtdPlanejada: 1 })
+  })
+
+  it('⭐⭐ E A BAIXA NÃO MUDA — mesmo item, mesma quantidade, mesmo custo', async () => {
+    const { upsertVendaMap } = await import('../vendas/venda-map')
+    const { montarPlanoDeLinhas } = await import('../vendas/baixa-venda')
+
+    // o mundo ANTIGO, gravado à mão (é o que existia em prod)
+    await prisma.stockVendaProdutoMap.create({
+      data: { companyId, nomeSuitable: 'SKOL', alvoTipo: 'REVENDA', itemId: garrafa },
+    })
+    const antes = await montarPlanoDeLinhas(companyId, '2026-09-09', [{ produto: 'SKOL', quantidade: 7, valorTotal: 126 }], null, prisma)
+
+    // a migração: o MESMO gesto, agora pelo caminho único
+    await upsertVendaMap(companyId, 'SKOL', { tipo: 'REVENDA', itemId: garrafa }, userId, prisma)
+    const depois = await montarPlanoDeLinhas(companyId, '2026-09-09', [{ produto: 'SKOL', quantidade: 7, valorTotal: 126 }], null, prisma)
+
+    expect(depois.agregada.map((a) => [a.itemId, a.qtd, a.custoMedio]))
+      .toEqual(antes.agregada.map((a) => [a.itemId, a.qtd, a.custoMedio]))
+    expect(depois.agregada[0].itemId).toBe(garrafa)
+    expect(depois.agregada[0].qtd).toBe(7)
+  })
+
+  it('⛔⛔ e a porta de FUNDIR receita em item fecha — com o motivo escrito', async () => {
+    const { mesclarItens } = await import('../itens/mesclar')
+    const { itemProduzidoId } = await fichaDaBebida('COCA COLA 2L')
+    await expect(
+      mesclarItens({ companyId, sobreviventeId: garrafa, absorvidoId: itemProduzidoId, userId }, prisma),
+    ).rejects.toThrow(/RECEITA de venda/)
+  })
+
+  it('⭐ mesclar dois itens DE VERDADE continua funcionando — a porta certa não fechou', async () => {
+    const { mesclarItens } = await import('../itens/mesclar')
+    const dup = await prisma.stockItem.create({
+      data: { companyId, nome: 'COCA COLA 2L DUPLICADA', unidadeControle: 'UN', categoria: 'REVENDA', criadoVia: 'CONFERENCIA' },
+    })
+    await prisma.stockMovement.create({
+      data: { companyId, itemId: dup.id, tipo: 'ENTRADA_NF', quantidade: 10, custoUnitario: 8, custoTotal: 80, origem: 'SEFAZ' },
+    })
+    const r = await mesclarItens({ companyId, sobreviventeId: garrafa, absorvidoId: dup.id, userId }, prisma)
+    expect(r).toBeTruthy()
+  })
+
+  it('⛔ depois da migração, NENHUM mapa aponta direto pra item', async () => {
+    const { upsertVendaMap } = await import('../vendas/venda-map')
+    await upsertVendaMap(companyId, 'SKOL', { tipo: 'REVENDA', itemId: garrafa }, userId, prisma)
+    await upsertVendaMap(companyId, 'FRUKI 600ML', { tipo: 'REVENDA', itemId: garrafa }, userId, prisma)
+    const diretos = await prisma.stockVendaProdutoMap.count({ where: { companyId, alvoTipo: 'REVENDA' } })
+    expect(diretos, 'a pergunta "como esse produto baixa?" tem UMA resposta').toBe(0)
+  })
+})

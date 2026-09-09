@@ -85,7 +85,12 @@ export function acharLinhaPorChave<T extends { chave: string; nome: string; nome
     return linhas.find((l) => l.nomesSuitable.includes(alvo.valor) || l.nome === alvo.valor)
   }
   if (alvo.tipo === 'ficha') return linhas.find((l) => l.fichaId === alvo.valor)
+  // ⛔⛔ O ÚLTIMO DEGRAU, e ele nasceu do CAMINHO ÚNICO (09/09): a bebida que era
+  // `item:<id>` (mapa direto) virou `ficha:<id>`. Um favorito antigo em `item:<id>` deixaria
+  // de abrir — e a regra desta função é justamente *"link não apodrece"*. Agora ele também
+  // acha a linha cuja ficha BAIXA aquele item.
   return linhas.find((l) => l.itemId === alvo.valor)
+    ?? linhas.find((l) => (l as { baixaItemId?: string | null }).baixaItemId === alvo.valor)
 }
 
 export async function detalheProduto(

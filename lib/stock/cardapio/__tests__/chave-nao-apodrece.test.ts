@@ -89,7 +89,7 @@ describe('⛔⛔ a chave é um LINK, e link não apodrece', () => {
     expect(d?.linha.fichaId).toBe(r.fichaId)
   })
 
-  it('⭐ o mesmo vale pra REVENDA: `nome:` continua abrindo depois de virar `item:`', async () => {
+  it('⭐ o mesmo vale pra REVENDA: `nome:` continua abrindo depois de virar `ficha:`', async () => {
     const bebida = await prisma.stockItem.create({ data: { companyId, nome: 'COCA 2L', unidadeControle: 'UN', categoria: 'REVENDA', criadoVia: 'MANUAL' } })
     await prisma.stockVendaLinha.create({
       data: { companyId, importId: `v2-${companyId}`, data: new Date('2026-08-21T00:00:00.000Z'),
@@ -98,7 +98,16 @@ describe('⛔⛔ a chave é um LINK, e link não apodrece', () => {
     await upsertVendaMap(companyId, 'COCA COLA 2L', { tipo: 'REVENDA', itemId: bebida.id }, undefined, prisma)
     const d = await detalheProduto(companyId, 'nome:COCA COLA 2L', prisma)
     expect(d, 'o F5 depois de mapear a bebida daria erro').not.toBeNull()
-    expect(d!.linha.itemId).toBe(bebida.id)
+    // ⚠️ INVERTIDO COM O MOTIVO (09/09): antes a linha era `item:` e o `itemId` era a garrafa.
+    // Com o CAMINHO ÚNICO ela é `ficha:`, e quem aponta a garrafa é `baixaItemId`.
+    expect(d!.linha.baixaItemId).toBe(bebida.id)
+
+    // ⛔⛔ E O LINK ANTIGO TEM QUE CONTINUAR ABRINDO — é a regra deste arquivo. Um favorito
+    // em `item:<garrafa>`, criado quando o mapa era direto, não pode dar 404 depois da
+    // migração de arquitetura.
+    const porLinkAntigo = await detalheProduto(companyId, `item:${bebida.id}`, prisma)
+    expect(porLinkAntigo, 'o favorito antigo apodreceu').not.toBeNull()
+    expect(porLinkAntigo!.linha.chave).toBe(d!.linha.chave)
   })
 
   it('⛔ e o que NÃO existe continua devolvendo null (o erro de verdade sobrevive)', async () => {

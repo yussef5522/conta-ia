@@ -4,6 +4,7 @@
 
 import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
+import { criarFicha, fichaAtivaComNome } from '@/lib/stock/producao/fichas'
 import { parseSuitable, type VendaLinhaSuitable } from './parse-suitable'
 
 export interface LinhaResolvida extends VendaLinhaSuitable {
@@ -61,6 +62,24 @@ export async function previewImportSuitable(companyId: string, html: string, db:
   }
 }
 
+/**
+ * ⭐⭐⭐ UM CAMINHO SÓ: VENDA → FICHA → COMPONENTE(S) (09/09/2026) — decisão do dono.
+ *
+ * *"Produto vendido baixa estoque por UM mecanismo, não três. Revenda é só o caso particular
+ * de ficha com 1 componente ×1. É o caminho que já cobre o caso complexo (xis, pizza, combo),
+ * então os simples cabem nele — o contrário não."*
+ *
+ * ⛔⛔ **O `alvo REVENDA` NÃO É MAIS UM DESTINO — é um ATALHO.** Quem pede "vincula esta
+ * bebida" continua com **o mesmo gesto de 1 clique**; por baixo nasce a ficha de 1 componente
+ * e o mapa aponta **nela**. A experiência não muda; o caminho por dentro passa a ser um só.
+ *
+ * ⭐ **ESTE É O CHOKE-POINT (REGRA 5):** os três lugares que mapeavam revenda — o dropdown do
+ * hub, a tela do Suitable e o lançamento manual — chamam esta função. Fechar a porta aqui
+ * fecha as três de uma vez, e não há uma quarta pra alguém esquecer.
+ *
+ * ⚠️ `criarFicha` abre transação própria; conferido que nenhum caller chama esta função de
+ * dentro de uma `$transaction` (o `lancamento-manual` usa o client de topo).
+ */
 export async function upsertVendaMap(companyId: string, nomeSuitable: string, alvo: { tipo: 'FICHA'; fichaId: string } | { tipo: 'REVENDA'; itemId: string }, userId?: string, db: PrismaClient = defaultPrisma) {
   // GUARD dos 3 níveis (na FONTE, não só na tela): venda só casa com PRODUTO_FINAL (ficha)
   // ou item REVENDA. Matéria-prima/intermediário NUNCA — senão cada venda baixaria insumo cru.
@@ -80,15 +99,49 @@ export async function upsertVendaMap(companyId: string, nomeSuitable: string, al
     if (!it) throw new VendaMapError('Item não encontrado.')
     if (it.categoria !== 'REVENDA') throw new VendaMapError('Venda só mapeia pra item de REVENDA (bebida etc.). Matéria-prima/insumo não é vendável direto.')
   }
-  const data = alvo.tipo === 'FICHA'
-    ? { alvoTipo: 'FICHA', fichaId: alvo.fichaId, itemId: null }
-    : { alvoTipo: 'REVENDA', itemId: alvo.itemId, fichaId: null }
+  // ⭐⭐ REVENDA VIRA FICHA DE 1 COMPONENTE — o caminho único (09/09). Reusa a ficha que já
+  // atende este nome; só cria quando não existe.
+  let fichaAlvo = alvo.tipo === 'FICHA' ? alvo.fichaId : null
+  if (alvo.tipo === 'REVENDA') {
+    // ⛔⛔ REUSAR FICHA SÓ PELO NOME É PERIGOSO — um teste pegou isto antes de ir pra prod:
+    // uma ficha homônima que baixa OUTRA COISA seria reusada, e o produto passaria a baixar
+    // o item errado em silêncio (no fixture degenerado virou explosão infinita).
+    // ⭐ Só reusa quando ela É o passa-direto DESTE item: 1 componente, ×1, o mesmo id.
+    const ja = await fichaAtivaComNome(companyId, nomeSuitable, db)
+    if (ja && !(await ehPassaDiretoDoItem(companyId, ja.fichaId, alvo.itemId, db))) {
+      throw new VendaMapError(
+        `Já existe uma ficha chamada “${ja.nome}” que baixa outra coisa. ` +
+        'Aponte o produto nela pela tela do cardápio, ou dê outro nome — ' +
+        'reusar por semelhança de nome faria a venda baixar o item errado.',
+      )
+    }
+    fichaAlvo = ja?.fichaId ?? (await criarFicha({
+      companyId, userId, nomeProduzido: nomeSuitable, unidadeProduzido: 'UN',
+      tipoProduto: 'PRODUTO_FINAL', loteBase: 1, unidadeLoteBase: 'UN',
+      componentes: [{ itemId: alvo.itemId, qtdPlanejada: 1, unidade: 'UN', posicao: 0 }],
+      // ⚠️ aqui o nome do PDV PODE ser igual ao do item ("FANTA LARANJA 2L"), e isso é o
+      // esperado neste caminho — o guard de 09/09 existe pra o dono não duplicar SEM QUERER,
+      // e aqui a duplicação é a própria linha do cardápio, criada de propósito.
+      permitirItemNovoComNomeDeEstoque: true,
+    }, db)).fichaId
+  }
+  const data = { alvoTipo: 'FICHA', fichaId: fichaAlvo!, itemId: null }
   return db.stockVendaProdutoMap.upsert({
     where: { companyId_nomeSuitable: { companyId, nomeSuitable } },
     create: { companyId, nomeSuitable, ...data, criadoPorId: userId ?? null },
     update: data,
     select: { id: true },
   })
+}
+
+/** ⭐ a ficha é exatamente "aquele item ×1"? É o que autoriza reusá-la. */
+async function ehPassaDiretoDoItem(companyId: string, fichaId: string, itemId: string, db: PrismaClient): Promise<boolean> {
+  const f = await db.stockFicha.findFirst({ where: { id: fichaId, companyId }, select: { versaoAtual: true } })
+  if (!f) return false
+  const v = await db.stockFichaVersao.findFirst({ where: { fichaId, versao: f.versaoAtual }, select: { id: true } })
+  if (!v) return false
+  const c = await db.stockFichaComponente.findMany({ where: { versaoId: v.id }, select: { itemId: true, qtdPlanejada: true } })
+  return c.length === 1 && c[0].qtdPlanejada === 1 && c[0].itemId === itemId
 }
 
 export async function removerVendaMap(companyId: string, nomeSuitable: string, db: PrismaClient = defaultPrisma) {

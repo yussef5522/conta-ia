@@ -129,6 +129,32 @@ export async function mesclarItens(
   db: PrismaClient = defaultPrisma,
 ): Promise<ResultadoMesclagem> {
   const { companyId, sobreviventeId, absorvidoId } = input
+
+  // ⛔⛔ INVÓLUCRO DE FICHA NÃO SE MESCLA EM ITEM (09/09/2026) — a segunda porta do
+  // "caminho único" do dono.
+  //
+  // **O QUE ISTO IMPEDE, e já aconteceu:** o dono mesclou a linha do cardápio `COCA COLA 2L`
+  // dentro da garrafa `COCA-COLA 2L` pra sumir com a duplicata do Catálogo. A mescla MOVE
+  // MOVIMENTO (estorno + recria no sobrevivente) — e foi por aí que um ajuste de contagem de
+  // **+154 garrafas** entrou no item real.
+  //
+  // ⚠️ E `stock_item_mesclado` significa *"virou parte de outro"*, o que é **falso** aqui: a
+  // receita não virou a garrafa. A duplicata de tela se resolve na TELA (o Catálogo já mostra
+  // a receita indentada); mexer no ledger pra arrumar apresentação é trocar um susto por um
+  // risco.
+  const doisLados = await db.stockItem.findMany({
+    where: { companyId, id: { in: [sobreviventeId, absorvidoId] } },
+    select: { id: true, nome: true, categoria: true },
+  })
+  const receita = doisLados.find((i) => i.categoria === 'PRODUTO_FINAL' || i.categoria === 'SABOR')
+  if (receita) {
+    throw new MesclarError(
+      `“${receita.nome}” é uma RECEITA de venda (a linha do cardápio), não uma coisa na prateleira — ` +
+      'mesclar moveria movimento de estoque pra arrumar uma tela. O Catálogo já mostra a receita ' +
+      'indentada sob o item que ela baixa.',
+    )
+  }
+
   const previa = await previewMesclagem(companyId, sobreviventeId, absorvidoId, db)
   const antes = { saldo: round2(previa.sobrevivente.saldo + previa.absorvido.saldo), valor: round2(previa.sobrevivente.valor + previa.absorvido.valor) }
 

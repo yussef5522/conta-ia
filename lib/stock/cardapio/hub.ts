@@ -41,6 +41,14 @@ export interface LinhaCardapio {
   destinoTipo: 'FICHA' | 'REVENDA' | null
   fichaId: string | null
   itemId: string | null
+  /**
+   * ⭐ O ITEM QUE ESTA LINHA BAIXA quando é passa-direto (ficha de 1 componente ×1).
+   *
+   * ⛔ Existe pra o LINK NÃO APODRECER (09/09): com o caminho único, a bebida que era
+   * `item:<id>` virou `ficha:<id>` — e um favorito antigo em `item:<id>` deixaria de abrir.
+   * `acharLinhaPorChave` usa isto como último degrau.
+   */
+  baixaItemId: string | null
   status: StatusCardapio
   vendasQtd: number
   vendasValor: number
@@ -111,6 +119,15 @@ export async function hubCardapio(
 
   const nomeItem = new Map(itens.map((i) => [i.id, i.nome]))
   const fichaPorId = new Map(fichas.map((f) => [f.id, f]))
+
+  // ⭐ QUAL ITEM CADA FICHA BAIXA quando é passa-direto (1 componente ×1) — o que faz o link
+  // antigo `item:<id>` continuar abrindo depois do caminho único (09/09). Sai do MESMO `ctx`
+  // que a explosão usa; não é uma segunda leitura da estrutura.
+  const passaDireto = new Map<string, string>()
+  for (const f of fichas) {
+    const comps = ctx.componentesByFicha.get(f.id) ?? []
+    if (comps.length === 1 && comps[0].qtdPlanejada === 1) passaDireto.set(f.id, comps[0].itemId)
+  }
   const mapaPorNome = new Map(mapa.map((m) => [m.nomeSuitable, m]))
 
   // ⭐ A linha é por DESTINO, não por nome do PDV: "XIS COMPLETO" e "XIS - COMPLETO" são o
@@ -130,7 +147,7 @@ export async function hubCardapio(
     let linha: LinhaCardapio
     if (!m) {
       linha = pegar(`nome:${l.nomeSuitable}`, () => ({
-        chave: `nome:${l.nomeSuitable}`, nome: l.nomeSuitable, nomesSuitable: [], destinoTipo: null,
+        chave: `nome:${l.nomeSuitable}`, nome: l.nomeSuitable, nomesSuitable: [], destinoTipo: null, baixaItemId: null,
         fichaId: null, itemId: null, status: 'SEM_DESTINO', vendasQtd: 0, vendasValor: 0,
         custoUnitario: null, componentesSemCusto: 0, precoCardapio: null, precoPraticado: null,
         precoUsado: null, precoOrigem: null, margem: null,
@@ -140,6 +157,7 @@ export async function hubCardapio(
       linha = pegar(`ficha:${m.fichaId}`, () => ({
         chave: `ficha:${m.fichaId}`, nome: f ? nomeItem.get(f.itemProduzidoId) ?? '(produto)' : '(ficha removida)',
         nomesSuitable: [], destinoTipo: 'FICHA', fichaId: m.fichaId, itemId: f?.itemProduzidoId ?? null,
+        baixaItemId: m.fichaId ? passaDireto.get(m.fichaId) ?? null : null,
         status: f ? 'FICHA_OK' : 'SEM_FICHA', vendasQtd: 0, vendasValor: 0, custoUnitario: null,
         componentesSemCusto: 0, precoCardapio: f?.valorVenda ?? null, precoPraticado: null,
         precoUsado: null, precoOrigem: null, margem: null,
@@ -147,7 +165,7 @@ export async function hubCardapio(
     } else if (m.alvoTipo === 'REVENDA' && m.itemId) {
       linha = pegar(`item:${m.itemId}`, () => ({
         chave: `item:${m.itemId}`, nome: nomeItem.get(m.itemId!) ?? '(item removido)', nomesSuitable: [],
-        destinoTipo: 'REVENDA', fichaId: null, itemId: m.itemId, status: 'REVENDA', vendasQtd: 0,
+        destinoTipo: 'REVENDA', fichaId: null, itemId: m.itemId, baixaItemId: m.itemId, status: 'REVENDA', vendasQtd: 0,
         vendasValor: 0, custoUnitario: null, componentesSemCusto: 0, precoCardapio: null,
         precoPraticado: null, precoUsado: null, precoOrigem: null, margem: null,
       }))
@@ -165,7 +183,8 @@ export async function hubCardapio(
     if (!f.ativo) continue
     pegar(`ficha:${f.id}`, () => ({
       chave: `ficha:${f.id}`, nome: nomeItem.get(f.itemProduzidoId) ?? '(produto)', nomesSuitable: [],
-      destinoTipo: 'FICHA', fichaId: f.id, itemId: f.itemProduzidoId, status: 'FICHA_OK', vendasQtd: 0,
+      destinoTipo: 'FICHA', fichaId: f.id, itemId: f.itemProduzidoId, baixaItemId: passaDireto.get(f.id) ?? null,
+      status: 'FICHA_OK', vendasQtd: 0,
       vendasValor: 0, custoUnitario: null, componentesSemCusto: 0, precoCardapio: f.valorVenda,
       precoPraticado: null, precoUsado: null, precoOrigem: null, margem: null,
     }))
