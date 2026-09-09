@@ -242,6 +242,41 @@ Sprint Fatia 4 03/06 — quando 2+ sócios usam a MESMA empresa:
 
 ⚠️ **3 testes ficaram vermelhos e a culpa era do TESTE:** `__tests__/pending-transfer-state/filters.test.ts` fazia **grep de string na rota** `/apply-marks`; a lógica mudou de arquivo e o grep perdeu o alvo. **É o falso vermelho que a REGRA 3 existe pra evitar** — o grep não distingue "refatorei" de "quebrei". Reescritos pra **executar** `aplicarMarcacao` (db duck-typed, sem banco): DEBIT→OUT, CREDIT→IN, tx já pareada → `skipped` sem tocar no banco.
 
+## ⛔⛔⛔ BEBIDA TEM UM ITEM SÓ — A FICHA DE REVENDA CRIAVA UM SEGUNDO (09/09/2026)
+
+**O dono:** *"COCA COLA 2L aparece 2× na busca da receita. Fiz uma máscara e acho que fiz errado."*
+
+**⭐ A 1ª HIPÓTESE CAIU NA MEDIÇÃO:** a busca **não** mistura ficha com item — ela lista **só `stock_item`**. As duas COCA eram **dois itens de verdade**:
+```
+[cmt6ugy5t…] "COCA-COLA  2L"  REVENDA/CONFERENCIA  560 un de NF   ← a garrafa
+[cmts4gqv9…] "COCA COLA 2L"   PRODUTO_FINAL/MANUAL criado pela FICHA ← a linha do menu
+```
+**Toda ficha cria um item-invólucro pro produto que ela produz.** Numa ficha de revenda esse invólucro nasce **ao lado** da garrafa que a nota alimenta.
+
+**⛔⛔ E O ESTRAGO FOI MUITO ALÉM DA BUSCA — a contagem oferecia OS DOIS.** As garrafas foram contadas **na linha do invólucro**, cujo saldo de sistema era **0**: cada contagem virou um `+N` fantasma (**+154** Coca 2L · **+67** lata · **+62** Coca 600 · +43 · +33 · +7 …) enquanto o item real seguia com o saldo da nota. Ao **mesclar** dois deles (a "máscara"), o fantasma entrou **dentro** do item real: `COCA-COLA 2L` foi de 560 pra **714** com **154 garrafas na geladeira**.
+
+**⭐⭐ A DÍVIDA ESTAVA ESCRITA DESDE 21/08, no próprio `tipos-ficha.ts`:** *"item de PRODUTO_FINAL (XIS COMPLETO, PIZZA PEQUENA 25CM) também aparece na contagem hoje e também não se conta — são 2 linhas, decisão do dono"*. **Eram 2 linhas; viraram 27** com o cardápio de bebidas, e aí custaram 9 ajustes fantasma. *Dívida registrada não é dívida paga — ela cobra juros no dia em que o volume chega.*
+
+**OS QUATRO FIXES:**
+- **`CATEGORIAS_SEM_PRATELEIRA` = [SABOR, PRODUTO_FINAL]** — um dono só (`seContaFisicamente`), consumido pela **contagem** E pela **Posição**. O invólucro é a linha do cardápio; ninguém estoca "XIS COMPLETO" nem "COCA COLA 2L (do menu)". ⚠️ Produto comprado pronto é `REVENDA` e **continua** dentro.
+- **A busca da receita não oferece o PASSA-DIRETO de revenda** (ficha de **1 componente ×1 de item REVENDA**) — oferecê-lo é oferecer a garrafa com um degrau a mais. ⛔ Régua **estreita de propósito**: XIS (vários componentes) e COMBO (leva o Xis) **ficam**; afrouxar aqui esconderia produto real da receita, que é o erro caro.
+- **`criarFicha` RECUSA nome que já é item de prateleira** e **ensina a saída**: *"já existe COCA-COLA 2L no estoque, alimentado por nota fiscal (saldo 560 UN) … aponte o nome do PDV direto nesse item — a venda baixa a garrafa do mesmo jeito, sem ficha"*. Criar assim vira **decisão explícita** (`permitirItemNovoComNomeDeEstoque`).
+- ⭐ **E o caminho dele FUNCIONA pra venda** — conferido: as fichas explodem na garrafa, e SKOL/FRUKI (mapeados **direto no item**) já baixam. O defeito era a duplicação, não a mecânica.
+
+**11 testes · red-then-green: 5 vermelhos com os 3 defeitos repostos · 8.908 verdes · TS 0 · deploy `RNE7CqsiB9K5KQMbD8DbI` 4/4.**
+
+### 📋 A ARRUMAÇÃO DOS DADOS — PREVIEW PRONTO, AGUARDA O DONO
+`scripts/arrumar-contagem-de-bebida.ts` (preview + `--aplicar`). **13 bebidas**, ledger **imutável** (estorno do fantasma + ajuste novo, nunca UPDATE):
+```
+COCA COLA 2L    154 │ COCA-COLA  2L         714 → 154 │ -406
+COCA LATA        67 │ COCA COLA LATA 350ML  307 →  67 │ -173
+COCA COLA 600ML  62 │ CC 600 PET 12         408 →  62 │ -346   (+10 outras)
+   valor que sai do estoque: ~R$ 5.573
+```
+⚠️ **NÃO é perda nova:** bebida **nunca teve baixa de venda** (os mapas do PDV são de ontem), então o sistema segurava a nota inteira. Isto é a **1ª contagem real de bebida** virando saldo. **A contagem da marcyelle está certa — errada estava a LINHA.**
+
+**⚠️ BUG MEU PEGO NO PREVIEW, antes de aplicar:** a 1ª versão subtraía **todos** os fantasmas do saldo do item real, inclusive os que estão no invólucro (que não entram nesse saldo). `COCA COLA 600ML` daria **−284** em vez de **−346**, deixando 124 garrafas onde ela contou 62. **Preview existe pra isso** — e a versão corrigida bate com a medição independente que eu tinha feito antes, por outro caminho.
+
 ## ⛔⛔ O GERENTE NÃO CHEGAVA NA EQUIPE — A PORTA NÃO ACOMPANHOU A SALA (09/09/2026)
 
 **O defeito é meu e é a terceira volta da MESMA classe.** Em 08/09 eu abri a **PÁGINA** `/equipe` pra `['user.invite', 'stock.manage']` — porque a tela faz duas coisas, gerenciar quem **LOGA** e gerenciar **COLABORADOR** de produção — e **deixei o item do MENU exigindo só `user.invite`**. Lá a porta era mais restrita que a ação; aqui **o menu ficou mais restrito que a porta**.
