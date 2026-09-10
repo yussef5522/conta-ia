@@ -1,0 +1,3 @@
+{
+  "/api/empresas/[id]/transferencias/aguardando-par/route": "app/api/empresas/[id]/transferencias/aguardando-par/route.js"
+}

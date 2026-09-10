@@ -1,0 +1,3 @@
+{
+  "/api/perfis/[id]/receitas/route": "app/api/perfis/[id]/receitas/route.js"
+}

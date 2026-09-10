@@ -1,0 +1,3 @@
+{
+  "/api/empresas/[id]/tax-expertise/route": "app/api/empresas/[id]/tax-expertise/route.js"
+}

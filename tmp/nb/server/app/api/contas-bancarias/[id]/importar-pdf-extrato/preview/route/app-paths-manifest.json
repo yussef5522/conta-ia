@@ -1,0 +1,3 @@
+{
+  "/api/contas-bancarias/[id]/importar-pdf-extrato/preview/route": "app/api/contas-bancarias/[id]/importar-pdf-extrato/preview/route.js"
+}

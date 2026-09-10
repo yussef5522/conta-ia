@@ -1,0 +1,3 @@
+module.exports=[826435,a=>{"use strict";var b=a.i(907997);a.s(["default",0,function({children:a}){return(0,b.jsx)("div",{className:"min-h-screen",style:{backgroundColor:"#0a0a0a",color:"#e5e5e5",colorScheme:"dark"},children:a})},"metadata",0,{title:"Admin",description:"Painel administrativo restrito.",robots:{index:!1,follow:!1,nocache:!0,googleBot:{index:!1,follow:!1,noimageindex:!0}}}])},67971,a=>{a.n(a.i(826435))}];
+
+//# sourceMappingURL=app_admin_layout_tsx_0yjsw7q._.js.map

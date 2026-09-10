@@ -1,0 +1,3 @@
+{
+  "/(dashboard)/empresas/[id]/contas/[contaId]/importar-pdf-extrato/page": "app/(dashboard)/empresas/[id]/contas/[contaId]/importar-pdf-extrato/page.js"
+}

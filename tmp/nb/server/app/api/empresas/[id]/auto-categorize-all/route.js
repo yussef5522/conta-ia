@@ -1,0 +1,11 @@
+var R=require("../../../../../chunks/[turbopack]_runtime.js")("server/app/api/empresas/[id]/auto-categorize-all/route.js")
+R.c("server/chunks/lib_0sp39ro._.js")
+R.c("server/chunks/node_modules_jose_dist_node_esm_jwt_sign_09hkxlc.js")
+R.c("server/chunks/_0ucm~~5._.js")
+R.c("server/chunks/lib_categorias_ensure-system-categories_ts_0wr8hbd._.js")
+R.c("server/chunks/lib_13vq_jg._.js")
+R.c("server/chunks/[root-of-the-server]__0lc2v41._.js")
+R.c("server/chunks/[root-of-the-server]__0tkgblk._.js")
+R.c("server/chunks/0zjb_server_app_api_empresas_[id]_auto-categorize-all_route_actions_10m1.wv.js")
+R.m(949663)
+module.exports=R.m(949663).exports

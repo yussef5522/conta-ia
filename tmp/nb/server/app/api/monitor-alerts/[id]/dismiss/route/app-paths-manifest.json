@@ -1,0 +1,3 @@
+{
+  "/api/monitor-alerts/[id]/dismiss/route": "app/api/monitor-alerts/[id]/dismiss/route.js"
+}

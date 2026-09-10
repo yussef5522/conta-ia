@@ -1,0 +1,3 @@
+{
+  "/(dashboard)/empresas/[id]/transferencias/ignoradas/page": "app/(dashboard)/empresas/[id]/transferencias/ignoradas/page.js"
+}

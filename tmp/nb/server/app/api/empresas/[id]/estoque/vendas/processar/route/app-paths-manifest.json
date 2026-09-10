@@ -1,0 +1,3 @@
+{
+  "/api/empresas/[id]/estoque/vendas/processar/route": "app/api/empresas/[id]/estoque/vendas/processar/route.js"
+}

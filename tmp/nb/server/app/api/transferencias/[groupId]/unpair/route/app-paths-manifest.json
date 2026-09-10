@@ -1,0 +1,3 @@
+{
+  "/api/transferencias/[groupId]/unpair/route": "app/api/transferencias/[groupId]/unpair/route.js"
+}

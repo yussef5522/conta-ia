@@ -1,0 +1,3 @@
+{
+  "/api/empresas/[id]/contas-pagar/aging/route": "app/api/empresas/[id]/contas-pagar/aging/route.js"
+}

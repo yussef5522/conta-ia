@@ -1,0 +1,3 @@
+{
+  "/(dashboard)/empresas/[id]/estoque/producao/conclusoes/[conclusaoId]/etiqueta/page": "app/(dashboard)/empresas/[id]/estoque/producao/conclusoes/[conclusaoId]/etiqueta/page.js"
+}

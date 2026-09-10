@@ -1,0 +1,3 @@
+{
+  "/api/empresas/[id]/transferencias/dashboard-summary/route": "app/api/empresas/[id]/transferencias/dashboard-summary/route.js"
+}

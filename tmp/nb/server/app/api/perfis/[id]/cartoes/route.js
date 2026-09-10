@@ -1,0 +1,10 @@
+var R=require("../../../../../chunks/[turbopack]_runtime.js")("server/app/api/perfis/[id]/cartoes/route.js")
+R.c("server/chunks/lib_credit-card_0fm1.u5._.js")
+R.c("server/chunks/node_modules_next_dist_esm_build_templates_app-route_0l.je77.js")
+R.c("server/chunks/node_modules_jose_dist_node_esm_jwt_sign_09hkxlc.js")
+R.c("server/chunks/node_modules_zod_v3_external_0_2gmko.js")
+R.c("server/chunks/[root-of-the-server]__0lc2v41._.js")
+R.c("server/chunks/[root-of-the-server]__0__di0j._.js")
+R.c("server/chunks/_next-internal_server_app_api_perfis_[id]_cartoes_route_actions_0z2.yal.js")
+R.m(868041)
+module.exports=R.m(868041).exports

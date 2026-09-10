@@ -1,0 +1,3 @@
+{
+  "/api/empresas/[id]/estoque/recebimentos/[nfeId]/route": "app/api/empresas/[id]/estoque/recebimentos/[nfeId]/route.js"
+}

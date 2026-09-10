@@ -1,0 +1,3 @@
+{
+  "/api/contas-bancarias/[id]/ajustar-saldo/route": "app/api/contas-bancarias/[id]/ajustar-saldo/route.js"
+}

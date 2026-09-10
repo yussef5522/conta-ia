@@ -1,0 +1,3 @@
+{
+  "/api/perfis/[id]/pdf-import/confirm/route": "app/api/perfis/[id]/pdf-import/confirm/route.js"
+}

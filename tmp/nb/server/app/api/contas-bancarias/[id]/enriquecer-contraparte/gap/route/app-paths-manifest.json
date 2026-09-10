@@ -1,0 +1,3 @@
+{
+  "/api/contas-bancarias/[id]/enriquecer-contraparte/gap/route": "app/api/contas-bancarias/[id]/enriquecer-contraparte/gap/route.js"
+}

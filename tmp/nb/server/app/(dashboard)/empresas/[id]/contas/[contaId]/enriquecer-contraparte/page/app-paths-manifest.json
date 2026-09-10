@@ -1,0 +1,3 @@
+{
+  "/(dashboard)/empresas/[id]/contas/[contaId]/enriquecer-contraparte/page": "app/(dashboard)/empresas/[id]/contas/[contaId]/enriquecer-contraparte/page.js"
+}

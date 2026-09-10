@@ -1,0 +1,3 @@
+{
+  "/api/empresas/[id]/relatorios/drill-down/transacoes/route": "app/api/empresas/[id]/relatorios/drill-down/transacoes/route.js"
+}

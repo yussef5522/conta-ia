@@ -1,0 +1,3 @@
+{
+  "/(dashboard)/empresas/[id]/import-warnings/page": "app/(dashboard)/empresas/[id]/import-warnings/page.js"
+}

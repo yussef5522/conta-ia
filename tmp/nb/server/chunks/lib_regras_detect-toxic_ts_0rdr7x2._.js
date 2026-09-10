@@ -1,0 +1,3 @@
+module.exports=[306604,e=>{"use strict";let a=new Set(["PAGAMENTO","PAGAMENTOS","TRANSFERENCIA","TRANSFERENCIAS","TRANSFER","PIX","TED","DOC","DEBITO","CREDITO","BANRI","STONE","CREDITO","JUROS","TARIFA","BOLETO","CARTAO"]);e.s(["detectToxicPattern",0,function(e){let{tipoMatch:s,padrao:t}=e,r=t.trim().toUpperCase().replace(/[^A-Z0-9 ]/g,"");return"CONTAINS"!==s&&"NORMALIZED"!==s?{isToxic:!1}:a.has(r)?{isToxic:!0,reason:`Palavra gen\xe9rica "${r}" aparece em quase toda transa\xe7\xe3o banc\xe1ria — pode classificar transa\xe7\xf5es demais.`}:!/\s/.test(r)&&r.length>0&&r.length<=10?{isToxic:!0,reason:`Padr\xe3o de 1 palavra curta ("${r}") — alto risco de falso positivo.`}:{isToxic:!1}}])}];
+
+//# sourceMappingURL=lib_regras_detect-toxic_ts_0rdr7x2._.js.map

@@ -1,0 +1,3 @@
+{
+  "/(dashboard)/empresas/[id]/estoque/recebimentos/preview/page": "app/(dashboard)/empresas/[id]/estoque/recebimentos/preview/page.js"
+}

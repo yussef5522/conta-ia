@@ -1,0 +1,3 @@
+{
+  "/api/contas-bancarias/[id]/importar-ofx/apply-marks/route": "app/api/contas-bancarias/[id]/importar-ofx/apply-marks/route.js"
+}

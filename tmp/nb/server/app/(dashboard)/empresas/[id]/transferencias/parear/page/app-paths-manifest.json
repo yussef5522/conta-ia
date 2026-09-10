@@ -1,0 +1,3 @@
+{
+  "/(dashboard)/empresas/[id]/transferencias/parear/page": "app/(dashboard)/empresas/[id]/transferencias/parear/page.js"
+}

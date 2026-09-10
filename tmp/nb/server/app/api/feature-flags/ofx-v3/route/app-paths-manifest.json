@@ -1,0 +1,3 @@
+{
+  "/api/feature-flags/ofx-v3/route": "app/api/feature-flags/ofx-v3/route.js"
+}

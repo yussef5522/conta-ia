@@ -1,0 +1,3 @@
+{
+  "/api/perfis/[id]/ofx-import/preview/route": "app/api/perfis/[id]/ofx-import/preview/route.js"
+}

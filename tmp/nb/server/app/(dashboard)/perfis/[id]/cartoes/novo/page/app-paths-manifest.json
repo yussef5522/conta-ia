@@ -1,0 +1,3 @@
+{
+  "/(dashboard)/perfis/[id]/cartoes/novo/page": "app/(dashboard)/perfis/[id]/cartoes/novo/page.js"
+}

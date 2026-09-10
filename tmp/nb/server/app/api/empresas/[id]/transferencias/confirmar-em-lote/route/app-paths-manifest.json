@@ -1,0 +1,3 @@
+{
+  "/api/empresas/[id]/transferencias/confirmar-em-lote/route": "app/api/empresas/[id]/transferencias/confirmar-em-lote/route.js"
+}

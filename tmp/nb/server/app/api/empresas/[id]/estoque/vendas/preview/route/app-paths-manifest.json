@@ -1,0 +1,3 @@
+{
+  "/api/empresas/[id]/estoque/vendas/preview/route": "app/api/empresas/[id]/estoque/vendas/preview/route.js"
+}

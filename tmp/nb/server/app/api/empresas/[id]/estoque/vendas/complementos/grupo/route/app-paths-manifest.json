@@ -1,0 +1,3 @@
+{
+  "/api/empresas/[id]/estoque/vendas/complementos/grupo/route": "app/api/empresas/[id]/estoque/vendas/complementos/grupo/route.js"
+}

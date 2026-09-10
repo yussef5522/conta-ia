@@ -1,0 +1,3 @@
+{
+  "/api/transferencias/aguardando-par/[txId]/classify-equity/route": "app/api/transferencias/aguardando-par/[txId]/classify-equity/route.js"
+}

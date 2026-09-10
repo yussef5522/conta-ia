@@ -1,0 +1,86 @@
+{
+  "version": 1,
+  "functions": {
+    "/_middleware": {
+      "runtime": "nodejs",
+      "matchers": [
+        {
+          "regexp": "^(?:\\/(_next\\/data\\/[^/]{1,}))?(?:\\/((?!_next\\/static|_next\\/image|favicon.ico|robots.txt|sitemap.xml|manifest.json|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|xml|json|zip|woff|woff2|ttf|otf)$).*))(\\.json)?[\\/#\\?]?$",
+          "originalSource": "/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|manifest.json|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|xml|json|zip|woff|woff2|ttf|otf)$).*)"
+        }
+      ]
+    },
+    "/api/ai/insights": {
+      "maxDuration": 60
+    },
+    "/api/client-error-report": {},
+    "/api/contas-bancarias/[id]/enriquecer-contraparte/confirm": {},
+    "/api/contas-bancarias/[id]/enriquecer-contraparte/gap": {},
+    "/api/contas-bancarias/[id]/enriquecer-contraparte/preview": {
+      "maxDuration": 60
+    },
+    "/api/contas-bancarias/[id]/importar-pdf-extrato/preview": {
+      "maxDuration": 300
+    },
+    "/api/empresas/[id]/cdb-reclass/confirm": {},
+    "/api/empresas/[id]/cdb-reclass/preview": {},
+    "/api/empresas/[id]/contas-pagar/[transactionId]/inline": {},
+    "/api/empresas/[id]/contas-pagar/aging": {},
+    "/api/empresas/[id]/contas-pagar/bulk": {
+      "maxDuration": 60
+    },
+    "/api/empresas/[id]/contas-pagar/export": {
+      "maxDuration": 60
+    },
+    "/api/empresas/[id]/contas-pagar/import/[batchId]/confirm": {
+      "maxDuration": 60
+    },
+    "/api/empresas/[id]/contas-pagar/import/[batchId]/detect": {
+      "maxDuration": 60
+    },
+    "/api/empresas/[id]/contas-pagar/import/[batchId]/resolve-row": {
+      "maxDuration": 30
+    },
+    "/api/empresas/[id]/contas-pagar/import/upload": {
+      "maxDuration": 60
+    },
+    "/api/empresas/[id]/counterparty-suggestions": {},
+    "/api/empresas/[id]/dre/export": {},
+    "/api/empresas/[id]/emprestimos/[loanId]/corrigir-agenda/confirm": {},
+    "/api/empresas/[id]/emprestimos/[loanId]/corrigir-agenda/preview": {},
+    "/api/empresas/[id]/emprestimos/[loanId]/vincular-parcela/confirm": {},
+    "/api/empresas/[id]/emprestimos/[loanId]/vincular-parcela/preview": {},
+    "/api/empresas/[id]/emprestimos/deteccao-pendentes": {},
+    "/api/empresas/[id]/emprestimos/importar-agenda/confirm": {
+      "maxDuration": 60
+    },
+    "/api/empresas/[id]/emprestimos/importar-agenda/preview": {
+      "maxDuration": 60
+    },
+    "/api/empresas/[id]/relatorios/analise-variacao": {},
+    "/api/empresas/[id]/relatorios/analise-variacao/export": {},
+    "/api/empresas/[id]/relatorios/categorias": {},
+    "/api/empresas/[id]/relatorios/categorias/export": {},
+    "/api/empresas/[id]/relatorios/comparativo": {},
+    "/api/empresas/[id]/relatorios/comparativo/export": {},
+    "/api/empresas/[id]/relatorios/drill-down/transacoes": {},
+    "/api/empresas/[id]/relatorios/fluxo-caixa": {},
+    "/api/empresas/[id]/relatorios/fluxo-caixa/export": {},
+    "/api/empresas/[id]/relatorios/fornecedores": {},
+    "/api/empresas/[id]/relatorios/fornecedores/export": {},
+    "/api/empresas/[id]/relatorios/funcionarios": {},
+    "/api/empresas/[id]/relatorios/funcionarios/export": {},
+    "/api/empresas/[id]/relatorios/variancias": {},
+    "/api/empresas/[id]/relatorios/variancias/export": {},
+    "/api/empresas/[id]/transferencias/aguardando-par": {},
+    "/api/empresas/[id]/transferencias/confirmar-em-lote": {},
+    "/api/empresas/[id]/transferencias/dashboard-summary": {},
+    "/api/empresas/[id]/transferencias/parear-sugestoes": {},
+    "/api/perfis/[id]/cartoes/[cardId]/faturas/[invoiceId]/casar-pagamento": {},
+    "/api/perfis/[id]/cartoes/[cardId]/importar-fatura": {},
+    "/api/transferencias/[groupId]/unpair": {},
+    "/api/transferencias/aguardando-par/[txId]": {},
+    "/api/transferencias/aguardando-par/[txId]/classify-equity": {},
+    "/api/transferencias/aguardando-par/[txId]/pair": {}
+  }
+}

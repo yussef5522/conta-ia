@@ -1,0 +1,3 @@
+{
+  "/api/transferencias/[groupId]/route": "app/api/transferencias/[groupId]/route.js"
+}

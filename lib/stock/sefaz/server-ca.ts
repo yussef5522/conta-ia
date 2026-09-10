@@ -20,7 +20,14 @@ export function loadServerCa(): string[] {
   const set = new Set<string>(tls.rootCertificates)
   for (const p of SYSTEM_CA_PATHS) {
     try {
-      const raw = readFileSync(p, 'utf8')
+      // ⛔⛔ O `turbopackIgnore` NÃO é enfeite (10/09/2026): sem ele o Turbopack não
+      // consegue resolver este caminho estaticamente, avisa *"a file was traced that
+      // indicates that the WHOLE PROJECT was traced unintentionally"* e **rastreia o
+      // projeto inteiro** pra dentro da lista NFT. O build passou a estourar a heap do V8
+      // no servidor — duas vezes seguidas, com prod salvo só pelo blue-green.
+      // ⚠️ São caminhos ABSOLUTOS do SO (o bundle de CA que o curl usa); não há nada do
+      // projeto pra rastrear aqui.
+      const raw = readFileSync(/* turbopackIgnore: true */ p, 'utf8')
       for (const m of raw.match(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g) ?? []) {
         set.add(m.trim())
       }

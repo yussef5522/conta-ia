@@ -1,0 +1,3 @@
+{
+  "/(dashboard)/empresas/[id]/cartoes/[cardId]/importar-fatura/page": "app/(dashboard)/empresas/[id]/cartoes/[cardId]/importar-fatura/page.js"
+}

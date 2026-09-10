@@ -1,0 +1,3 @@
+{
+  "/(dashboard)/empresas/[id]/monitor-alerts/page": "app/(dashboard)/empresas/[id]/monitor-alerts/page.js"
+}

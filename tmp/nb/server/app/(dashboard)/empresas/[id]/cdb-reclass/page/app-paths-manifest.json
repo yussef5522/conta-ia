@@ -1,0 +1,3 @@
+{
+  "/(dashboard)/empresas/[id]/cdb-reclass/page": "app/(dashboard)/empresas/[id]/cdb-reclass/page.js"
+}

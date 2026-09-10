@@ -1,0 +1,3 @@
+{
+  "/(dashboard)/perfis/[id]/imports/page": "app/(dashboard)/perfis/[id]/imports/page.js"
+}

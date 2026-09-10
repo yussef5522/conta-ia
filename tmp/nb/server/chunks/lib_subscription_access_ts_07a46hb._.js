@@ -1,0 +1,3 @@
+module.exports=[942585,t=>{"use strict";function e(t,n=new Date){let s=t.status;return"TRIAL"===s&&function(t,e=new Date){return"TRIAL"===t.status&&!!t.trialEndsAt&&t.trialEndsAt.getTime()<=e.getTime()}(t,n)?"EXPIRED":s}t.s(["computeEffectiveStatus",0,e,"getEffectiveSubscriptionStatus",0,function(t,n=new Date){let s=t.status,i=e(t,n);return{rawStatus:s,effectiveStatus:i,planId:t.planId,trialEndsAt:t.trialEndsAt,diasRestantesTrial:function(t,e=new Date){if("TRIAL"!==t.status||!t.trialEndsAt)return null;let n=t.trialEndsAt.getTime()-e.getTime();return n<=0?0:Math.ceil(n/864e5)}(t,n),isExpired:"EXPIRED"===i}}])}];
+
+//# sourceMappingURL=lib_subscription_access_ts_07a46hb._.js.map

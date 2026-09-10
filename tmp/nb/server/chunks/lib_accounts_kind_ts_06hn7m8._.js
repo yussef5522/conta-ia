@@ -1,0 +1,3 @@
+module.exports=[543020,i=>{"use strict";i.s(["classifyTransferPair",0,function(i,n,e){let P="PF"===i?"PF":"PJ",r="PF"===e?"PF":"PJ";if("PJ"===P&&"PJ"===r)return{kind:"TRANSFER_INTERNAL"};if("PF"===P&&"PF"===r)return{kind:"OUT_OF_SCOPE"};let d="DEBIT"===n;if("PJ"===P)if(d)return{kind:"RETIRADA_LUCRO",sideSending:"PJ"};else return{kind:"APORTE_CAPITAL",sideReceiving:"PJ"};return d?{kind:"APORTE_CAPITAL",sideReceiving:"PJ"}:{kind:"RETIRADA_LUCRO",sideSending:"PJ"}},"normalizeAccountKind",0,function(i){return"PF"===i?"PF":"PJ"}])}];
+
+//# sourceMappingURL=lib_accounts_kind_ts_06hn7m8._.js.map

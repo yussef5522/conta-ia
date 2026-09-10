@@ -1,0 +1,3 @@
+{
+  "/api/perfis/[id]/cartoes/dashboard-summary/route": "app/api/perfis/[id]/cartoes/dashboard-summary/route.js"
+}

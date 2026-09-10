@@ -1,0 +1,3 @@
+{
+  "/(dashboard)/empresas/[id]/estoque/cardapio/page": "app/(dashboard)/empresas/[id]/estoque/cardapio/page.js"
+}

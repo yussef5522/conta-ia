@@ -1,0 +1,3 @@
+{
+  "/api/alerts/send-now/route": "app/api/alerts/send-now/route.js"
+}

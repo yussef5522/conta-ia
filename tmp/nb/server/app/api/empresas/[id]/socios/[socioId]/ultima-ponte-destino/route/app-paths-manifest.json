@@ -1,0 +1,3 @@
+{
+  "/api/empresas/[id]/socios/[socioId]/ultima-ponte-destino/route": "app/api/empresas/[id]/socios/[socioId]/ultima-ponte-destino/route.js"
+}

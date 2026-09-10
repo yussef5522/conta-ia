@@ -1,0 +1,3 @@
+module.exports=[836394,e=>{"use strict";async function t(e,t){let i=await e.subscription.findUnique({where:{userId:t.userId}});if(i)return i;let n=t.startAt??new Date,r=Math.max(0,t.bonusDays??0),s=new Date(n.getTime()+24*(14+r)*36e5);return e.subscription.create({data:{userId:t.userId,planId:"inteligencia",status:"TRIAL",trialEndsAt:s,originCouponId:t.originCouponId??null}})}e.s(["createTrialSubscription",0,t])}];
+
+//# sourceMappingURL=lib_subscription_create-trial_ts_0veoxtn._.js.map

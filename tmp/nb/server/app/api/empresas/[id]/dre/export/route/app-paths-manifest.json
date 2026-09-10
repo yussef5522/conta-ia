@@ -1,0 +1,3 @@
+{
+  "/api/empresas/[id]/dre/export/route": "app/api/empresas/[id]/dre/export/route.js"
+}

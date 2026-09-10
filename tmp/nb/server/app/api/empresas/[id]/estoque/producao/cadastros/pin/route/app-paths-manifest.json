@@ -1,0 +1,3 @@
+{
+  "/api/empresas/[id]/estoque/producao/cadastros/pin/route": "app/api/empresas/[id]/estoque/producao/cadastros/pin/route.js"
+}

@@ -1,0 +1,3 @@
+{
+  "/api/empresas/[id]/relatorios/analise-variacao/route": "app/api/empresas/[id]/relatorios/analise-variacao/route.js"
+}

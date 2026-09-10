@@ -1,0 +1,3 @@
+module.exports=[769449,e=>{"use strict";async function s(){{let{startRecurrenceScheduler:s}=await e.A(539241);s();let{startAlertsScheduler:r}=await e.A(407319);r()}}e.s(["register",0,s])},539241,e=>{e.v(s=>Promise.all(["server/chunks/[root-of-the-server]__0bp3r8~._.js"].map(s=>e.l(s))).then(()=>s(503178)))},407319,e=>{e.v(s=>Promise.all(["server/chunks/[root-of-the-server]__0j0xs6u._.js","server/chunks/_0d9vwyg._.js"].map(s=>e.l(s))).then(()=>s(330594)))}];
+
+//# sourceMappingURL=_06-nkp~._.js.map

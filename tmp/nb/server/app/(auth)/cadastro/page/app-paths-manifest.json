@@ -1,0 +1,3 @@
+{
+  "/(auth)/cadastro/page": "app/(auth)/cadastro/page.js"
+}

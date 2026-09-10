@@ -1,0 +1,3 @@
+{
+  "/(dashboard)/empresas/[id]/estoque/real-vs-teorico/page": "app/(dashboard)/empresas/[id]/estoque/real-vs-teorico/page.js"
+}

@@ -1,0 +1,3 @@
+{
+  "/(dashboard)/empresas/[id]/fluxo-caixa/page": "app/(dashboard)/empresas/[id]/fluxo-caixa/page.js"
+}

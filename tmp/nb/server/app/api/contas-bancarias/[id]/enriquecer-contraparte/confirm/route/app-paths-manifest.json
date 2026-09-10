@@ -1,0 +1,3 @@
+{
+  "/api/contas-bancarias/[id]/enriquecer-contraparte/confirm/route": "app/api/contas-bancarias/[id]/enriquecer-contraparte/confirm/route.js"
+}

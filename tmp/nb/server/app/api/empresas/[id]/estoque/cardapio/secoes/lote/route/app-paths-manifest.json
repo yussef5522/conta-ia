@@ -1,0 +1,3 @@
+{
+  "/api/empresas/[id]/estoque/cardapio/secoes/lote/route": "app/api/empresas/[id]/estoque/cardapio/secoes/lote/route.js"
+}

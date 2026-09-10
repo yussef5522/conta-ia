@@ -1,0 +1,10 @@
+var R=require("../../../../../../../chunks/[turbopack]_runtime.js")("server/app/api/empresas/[id]/estoque/producao/ordens/route.js")
+R.c("server/chunks/node_modules_next_dist_esm_build_templates_app-route_0dmxeif.js")
+R.c("server/chunks/lib_stock_producao_03qdm3o._.js")
+R.c("server/chunks/[root-of-the-server]__0y1ki83._.js")
+R.c("server/chunks/node_modules_zod_v3_external_0_2gmko.js")
+R.c("server/chunks/node_modules_jose_dist_node_esm_jwt_sign_09hkxlc.js")
+R.c("server/chunks/[root-of-the-server]__0lc2v41._.js")
+R.c("server/chunks/0zjb_server_app_api_empresas_[id]_estoque_producao_ordens_route_actions_09yv9yx.js")
+R.m(50048)
+module.exports=R.m(50048).exports
