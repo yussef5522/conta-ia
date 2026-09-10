@@ -269,6 +269,44 @@ Agora é **um gesto só** — *"Sumir com o item"* — e **quem decide entre apa
 
 **12 testes novos** (o caminho inteiro do rename tela por tela · duplicado por digitação · virgem apaga / com NF arquiva e reativa / com ficha recusa nomeando). **8.971 verdes · TS 0 · deploy `-mustDFEDHrhyIMFNEoX3` 4/4.**
 
+## ⛔⛔⛔ O GOLDEN ACHAVA E A TELA NÃO, NO MESMO PDF — DOIS EXTRATORES (09/09/2026)
+
+**O dono, horas depois do sprint do 7º parser:** *"subi a fatura EXATA do golden. Os 37 lançamentos, portadores, parcelas e o 4.370,79 bateram — mas a conferência diz 'não achei os totais do resumo neste PDF' e pede o total digitado, sendo que o 'Total desta fatura R$ 4.491,18' está na página 1."* E a hipótese dele estava certa em cheio: ***"aposto em extrator diferente mudando espaçamento e quebrando a âncora do resumo"***.
+
+**MEDIDO, com o mesmo arquivo nos dois lados:**
+```
+Mac (poppler 25)     "Resumo da fatura em R$" @ 9  ·  "Total desta fatura" @ 19   (dist 10)
+servidor (24.02.0)   "Resumo da fatura em R$" @ 6  ·  "Total desta fatura" @ 20   (dist 14)
+```
+Meu `lerResumo` cortava o bloco com **`slice(i, i + 14)`** e o comentário dizia *"14 linhas cobrem com folga"*. Cobriam — **na extração do meu Mac**. Na do servidor o `slice(6, 20)` para no índice 19 e **exclui o 20 por UMA linha**: `totalDaFatura` virava `null`, e a tela pedia o número que está impresso na página 1.
+
+**⭐⭐ A CAUSA DE FUNDO É A QUE ELE NOMEOU: HAVIA DOIS EXTRATORES.** O gerador da fixture chamava `pdftotext -layout` **na mão, no Mac**; a rota chama **`extractPdfText`** (com `-enc UTF-8`) **no servidor**, com outra versão do poppler. ***Fixture que não sai do caminho real é promessa que prod não cumpre.***
+
+**O FIX DE CLASSE, nas três partes:**
+1. **O fim do bloco é o FATO que o fecha** (`= Total desta fatura`), nunca uma contagem de linhas — contagem quebra quando o extrator muda de versão, e **extrator muda de versão sozinho**. ⚠️ E a âncora virou cinto E suspensório: um teste prova que os **6 rótulos que o parser lê são únicos** no documento (só o "Total a pagar" repete — as duas simulações — e ele não é lido).
+2. **O gerador de fixture usa `extractPdfText`**, o MESMO do caminho real, e a **fixture primária é gerada NO SERVIDOR**.
+3. **A extração do outro poppler ficou como SEGUNDA fixture** e o golden roda contra as duas, exigindo leitura idêntica linha a linha. É o que impede o golden de voltar a ser promessa.
+
+**⭐ E O GUARD DA CLASSE PROS SETE PARSERS:** empurra o documento **3 linhas pra baixo** e exige o mesmo número. Nenhum parser pode depender de posição de linha — e o teste roda sem precisar do PDF original de cada banco. Varri o código atrás de outras janelas por linha: as que sobraram são em **caracteres** (1.200 e 3.000), muito mais tolerantes.
+
+## ⛔⛔⛔ E A "SAÍDA MANUAL" NUNCA FUNCIONOU — O DONO ACHOU QUE TINHA IMPORTADO (09/09/2026)
+
+**Achado ao CONFERIR o conserto acima em prod, não por relato:** o cartão magazine luiza tinha **0 lançamentos** e havia **0 transações `PDF_FATURA` nas últimas 24h**. A frase dele — *"importei com o total digitado pra fechar o mês"* — descrevia uma gravação **que não aconteceu**.
+
+**Eram DOIS defeitos na mesma saída, criada em 31/08 e nunca funcional ponta a ponta:**
+1. **O `ok` do preview era só a régua do BANCO.** Num PDF que não declara o total essa régua é `false` **por construção** — então o dono digitava o número, via `origemTotal: DIGITADO` na tela… e o `ok` continuava `false`, porque o digitado **nunca era consultado**.
+2. **O `confirmarFaturaPF` nem aceitava `totalDigitado`, e a rota não o repassava** — o confirm rerodava a conferência sem o número, caía em "não fecha" e **recusava calado, com o preview verde na tela**. É a família *"preview e confirm discordando"* que este projeto já pagou caro no import de OFX.
+
+**⛔ A TRAVA NÃO AFROUXOU:** o digitado só entra quando **o documento é omisso** (`saldoDeclarado == null`), quando **tudo o mais que dava pra conferir fechou** (`fechaSemOTotal`, definido por banco) e quando **o número dele bate** com o lido. PDF que declara e não bate continua recusado — *digitar não é `force`*, e há teste dizendo isso.
+
+**⭐ E A ROTA PASSOU A MONTAR UM OBJETO SÓ** pros dois caminhos (REGRA 5): não existe mais "esqueci de repassar num dos dois".
+
+**⚠️ LIÇÃO DE MÉTODO, e é sobre mim:** o sprint anterior fechou com *"REGRA 2 é do dono: subir o PDF pela tela"* — e **os dois defeitos só apareceram quando ele subiu**. Nenhum teste meu passava pela ROTA com upload real; eu provei `previewFaturaPF` (que recebe o texto **já extraído**) e chamei de prova de ponta a ponta. **Provar a função que fica DEPOIS do trecho quebrado não prova nada sobre ele.**
+
+**PROVADO EM PROD pela ROTA REAL** (upload do PDF, sessão assinada, **sem digitar nada**): `200 · banco Itaú/Luizacred · ok true · origem do total PDF · **totalDeclarado 4.491,18** · 37 lançamentos · despesas 4.370,79 = declarado · saldo 4.491,18 = declarado · portadores ["8818","2971"]`. **REGRA 11 — 2 defeitos repostos: a janela de 14 linhas → 8 vermelhos; o digitado fora do `ok` → 2. 9.053 verdes · TS 0 · deploys `p3l3L3QNQlOO-M8LayT8h` e `Smm3oPaMezv75xW0hCrto`, os dois 4/4.**
+
+⚠️ **PENDENTE (é do dono):** a fatura do Magalu **não está importada** — o preview agora fecha sozinho, falta o CONFIRMAR na tela.
+
 ## ⭐⭐⭐ 7º PARSER DE FATURA — ITAÚ/LUIZACRED, E O REGISTRY QUE ERA DECORATIVO (09/09/2026)
 
 **O dono:** *"o sistema não consegue ler"* — a fatura do **Magazine Luiza** (emissor **LUIZACRED S/A SCFI**, boleto do **Banco Itaú**, diagramação **Quadient**).
