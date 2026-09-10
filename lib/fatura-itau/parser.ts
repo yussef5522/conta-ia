@@ -22,7 +22,7 @@
 
 import {
   linhasEmOrdemDeLeitura, DATA_NA_COLUNA, MOEDA_NO_FIM,
-} from './colunas'
+} from '@/lib/pdf-fatura/colunas'
 
 export interface LinhaItau {
   /** ISO — o ano vem do fechamento (ver `resolverAno`) */

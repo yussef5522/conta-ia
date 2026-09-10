@@ -15,7 +15,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { parseItauFaturaPF, conferirItau, separarParcela, resolverAno } from '../parser'
-import { calhas, colunasDaRegiao } from '../colunas'
+import { calhas, colunasDaRegiao } from '@/lib/pdf-fatura/colunas'
 import { reconhecerBancoPF } from '@/lib/credit-card/registry-fatura-pf'
 
 // ⭐⭐⭐ DUAS EXTRAÇÕES DO MESMO PDF, e as duas têm que dar o MESMO número.
@@ -234,6 +234,7 @@ describe('⭐⭐ a GEOMETRIA — duas colunas achadas no próprio documento', ()
     const inicio = pagina.findIndex((l) => /Lançamentos: compras/.test(l))
     const bandas = colunasDaRegiao(pagina.slice(inicio))
     expect(bandas).toHaveLength(2)
+    expect(bandas.every((b) => b.linhas.length > 0)).toBe(true)
   })
 
   it('⛔⛔ e a calha SÓ existe na região de lançamentos — o erro que dava 2.686,42', () => {

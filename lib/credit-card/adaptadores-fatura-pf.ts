@@ -7,7 +7,7 @@
 
 import { parseBanrisulFaturaPF } from '@/lib/fatura-banrisul/banrisul-fatura-pf'
 import { parseNubankFaturaPF, conferirNubank } from '@/lib/fatura-nubank/parser'
-import { parseItauFaturaPF, conferirItau } from '@/lib/fatura-itau/parser'
+import { parseItauFaturaPF, conferirItau, separarParcela } from '@/lib/fatura-itau/parser'
 import { PROXIMAS_VAZIAS, type FaturaPFLida, type LinhaLidaPF } from './fatura-pf-lida'
 
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
@@ -25,6 +25,11 @@ function encargosDeclaradosBanrisul(texto: string): number {
     /Encargos sobre rotativo\s+([\d.]+,\d{2})/i,
     /Encargos sobre saque\s+([\d.]+,\d{2})/i,
     /Encargos sobre pagamento de contas\s+([\d.]+,\d{2})/i,
+    // ⭐ 10/09/2026: a fatura de SETEMBRO trouxe este rótulo e a de agosto não tinha.
+    // Sem ele o saldo ficava **1,45 curto** (18.591,71 × 18.593,16) e a fatura era
+    // recusada por um centavo e meio. ⚠️ Rótulo que aparece num mês e não no outro é
+    // exatamente o motivo de a segunda fixture existir.
+    /IOF sobre opera[çc][õo]es de cr[ée]dito\s+([\d.]+,\d{2})/i,
   ]) {
     const m = texto.match(re)
     if (m) soma += Number(m[1].replace(/\./g, '').replace(',', '.'))
@@ -44,7 +49,14 @@ export function lerBanrisulPF(texto: string): FaturaPFLida {
 
   const linhas: LinhaLidaPF[] = (r.extraction.lines ?? []).map((l) => ({
     data: l.date,
-    descricao: l.description,
+    // ⛔ A PARCELA SAI DA DESCRIÇÃO (10/09/2026). O núcleo extrai `10/12` pra
+    // `installmentNumber/Total` **e deixa o texto na descrição**; a tela mostra os dois e
+    // saía **"CHEFRED 10/1210/12"**. ⚠️ A limpeza mora AQUI, não no `nucleo.ts`: aquele
+    // arquivo é COMPARTILHADO com o parser PJ, e mexer nele mudaria as descrições de
+    // quatro layouts que hoje estão certos — o guard de isolamento existe pra isso.
+    descricao: l.installmentNumber != null
+      ? separarParcela(l.description).descricao
+      : l.description,
     valor: round2(l.amount),
     credito: !!l.note?.includes('estorno'),
     parcelaNumero: l.installmentNumber ?? null,

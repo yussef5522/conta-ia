@@ -25,6 +25,7 @@
 // A leitura da linha é a MESMA do PJ (`classificarLinhas` do núcleo) — este arquivo
 // só sabe fatiar colunas.
 
+import { colunasDaRegiao } from '@/lib/pdf-fatura/colunas'
 import {
   classificarLinhas,
   montarResultado,
@@ -64,6 +65,26 @@ export function acharCabecalhos(linhas: string[]): Cabecalho[] {
  *
  * Medido na fatura real: pág 2 agrupa em col 2 e col 66; pág 3 em col 2 e col 69;
  * pág 4 só em col 2 (coluna única). Por isso é por página e nunca um número fixo.
+ */
+/**
+ * ⛔⛔⛔ APOSENTADA EM 10/09/2026 — mantida SÓ pra o teste que prova por que ela caiu.
+ *
+ * Ela deduzia as colunas por **densidade de datas**: uma coluna "de verdade" precisava de
+ * pelo menos 4 datas alinhadas. Funcionou na fatura de agosto e **quebrou na de setembro**,
+ * onde a coluna da direita da última página tem **2 lançamentos** e um painel de limites —
+ * o filtro a descartou, a página virou uma coluna só, e o parser passou a ler o dinheiro
+ * do painel na linha das compras:
+ *
+ * ```
+ *   02/08  POSTO PITANGUEIRA ITAQUI BRA   262,00  │  TOTAL DE GASTOS   10.482,68
+ * ```
+ *
+ * **32.650,23 lidos contra 18.842,30 declarados.** ⚠️ A recusa por não fechar segurou (a
+ * fatura não entrou), mas *"o golden de um mês não congela o banco no tempo"* — foi o dono
+ * quem disse, e é a razão de existir a segunda fixture.
+ *
+ * ⭐ O lugar dela é `lib/pdf-fatura/colunas.ts`, a MESMA geometria que o Itaú usa: a calha
+ * (faixa em branco em todas as linhas) **não depende de quantos lançamentos a coluna tem**.
  */
 export function deduzirBandas(linhas: string[]): { de: number; ate: number }[] {
   const posicoes: number[] = []
@@ -132,12 +153,10 @@ export function parseBanrisulFaturaPF(text: string): FaturaPFParsed {
   const bucketed: Bucketed[] = []
   for (const linhas of paginas) {
     const cabecalhos = acharCabecalhos(linhas)
-    for (const banda of deduzirBandas(linhas)) {
-      const fatia = linhas.map((l) => {
-        const t = l.replace(/\s+$/, '')
-        return banda.ate === Number.MAX_SAFE_INTEGER ? t.slice(banda.de) : t.slice(banda.de, banda.ate)
-      })
-      bucketed.push(...classificarLinhas(fatia, venc, cartaoDaBanda(cabecalhos, banda)))
+    // ⭐ A CALHA MANDA (10/09/2026), não a densidade de datas — ver a nota em
+    // `deduzirBandas`. Mesma geometria do Itaú: um motor, dois bancos.
+    for (const banda of colunasDaRegiao(linhas)) {
+      bucketed.push(...classificarLinhas(banda.linhas, venc, cartaoDaBanda(cabecalhos, banda)))
     }
   }
 

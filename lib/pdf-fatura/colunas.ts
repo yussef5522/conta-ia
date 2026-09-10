@@ -1,4 +1,21 @@
-// ⭐⭐⭐ A GEOMETRIA DA FATURA ITAÚ/LUIZACRED (09/09/2026) — o 3º layout do caminho PF.
+// ⭐⭐⭐ A GEOMETRIA DE DUAS COLUNAS DE UMA FATURA — compartilhada (09/09-10/09/2026).
+//
+// ⚠️⚠️ **NASCEU PRO ITAÚ E O BANRISUL PRECISOU DELA NO DIA SEGUINTE.** O Banrisul PF tinha
+// a SUA dedução de colunas, por **densidade de datas** (uma coluna "de verdade" precisava
+// de ≥4 datas alinhadas). Funcionou em agosto e quebrou em setembro: a coluna da direita da
+// última página tinha **2 lançamentos** e um painel de limites — o filtro a descartou, a
+// página virou uma coluna só, e o parser passou a ler o dinheiro do PAINEL:
+//
+// ```
+//   02/08  POSTO PITANGUEIRA ITAQUI BRA   262,00  │  TOTAL DE GASTOS   10.482,68
+//                                          ↑ o certo         ↑ o que ele leu
+// ```
+//
+// Resultado: **32.650,23 lidos contra 18.842,30 declarados**. A recusa segurou (a fatura
+// não foi importada), mas a leitura estava errada.
+//
+// ⭐ A CALHA NÃO DEPENDE DE QUANTOS LANÇAMENTOS A COLUNA TEM — ela é uma faixa em branco em
+// TODAS as linhas da região. Uma coluna com 2 compras é tão coluna quanto uma com 40.
 //
 // **O dono:** *"DUAS COLUNAS na página de lançamentos — o texto sai intercalado; parsear
 // por posição X (coluna esquerda × direita), não por linha corrida."*
@@ -74,25 +91,54 @@ export function calhas(linhas: string[], minimo = CALHA_MINIMA): [number, number
  * número do painel). A aresta sai do PRIMEIRO valor de cada linha de data — o painel só
  * tem números DEPOIS dele.
  */
-export function colunasDaRegiao(linhas: string[]): string[][] {
+export interface Banda {
+  /** coluna onde a banda começa — o chamador precisa dela pra saber de que portador é */
+  de: number
+  ate: number
+  linhas: string[]
+}
+
+export function colunasDaRegiao(linhas: string[]): Banda[] {
   const inicios = new Set<number>([0])
   for (const [, fim] of calhas(linhas)) {
     const comData = linhas.filter((l) => DATA_NA_COLUNA.test(l.slice(fim))).length
     if (comData >= LINHAS_PRA_SER_COLUNA) inicios.add(fim)
   }
   const ordenados = [...inicios].sort((a, b) => a - b)
-  const bandas: string[][] = []
+  const bandas: Banda[] = []
   ordenados.forEach((inicio, i) => {
     const fim = ordenados[i + 1] ?? Number.MAX_SAFE_INTEGER
     const fatia = linhas.map((l) => l.slice(inicio, fim))
     if (fatia.filter((l) => DATA_NA_COLUNA.test(l)).length < LINHAS_PRA_SER_COLUNA) return
-    let aresta = 0
-    for (const l of fatia) {
-      if (!DATA_NA_COLUNA.test(l)) continue
-      const m = MOEDA.exec(l)
-      if (m) aresta = Math.max(aresta, m.index + m[0].length)
+    // ⛔⛔⛔ ONDE A BANDA TERMINA À DIREITA — e as duas tentativas erradas ficam escritas,
+    // porque cada uma quebrou um banco diferente (10/09/2026):
+    //
+    //  1. **o PRIMEIRO valor da linha** → quebrou o Banrisul: numa compra internacional a
+    //     linha traz US$ **e** R$ (`15/07 MERCADOME 8,70 45,49`), o "primeiro" é o dólar, e
+    //     o REAL era cortado fora. 50 linhas sumiram, o Brasil ficou 2.548,19 curto.
+    //  2. **o valor mais à direita que se repete** → quebrou o Itaú: o painel de juros da
+    //     página 2 TAMBÉM é alinhado à direita (borda 118, 6 vezes), então ele ganhava do
+    //     valor de verdade (borda 69, 11 vezes) e voltava pra dentro da banda.
+    //
+    // ⭐ O QUE SEPARA OS DOIS É A CALHA: a coluna de valor é seguida de uma faixa em
+    // branco; o painel vive DEPOIS dela. Então a banda termina na **primeira calha que vem
+    // depois da borda de valor mais frequente**. Sem calha depois dela, não se corta nada —
+    // a banda já está limitada pela coluna seguinte.
+    const comData = fatia.filter((l) => DATA_NA_COLUNA.test(l))
+    const bordas = new Map<number, number>()
+    for (const l of comData) {
+      for (const m of l.matchAll(new RegExp(MOEDA.source, 'g'))) {
+        const f = (m.index ?? 0) + m[0].length
+        bordas.set(f, (bordas.get(f) ?? 0) + 1)
+      }
     }
-    bandas.push(aresta ? fatia.map((l) => l.slice(0, aresta + 2)) : fatia)
+    const maisFrequente = [...bordas.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0]?.[0]
+    const aresta = maisFrequente == null ? 0
+      : (calhas(fatia).find(([ini]) => ini >= maisFrequente)?.[0] ?? 0)
+    bandas.push({
+      de: inicio, ate: fim,
+      linhas: aresta ? fatia.map((l) => l.slice(0, aresta)) : fatia,
+    })
   })
   return bandas
 }
@@ -110,7 +156,7 @@ export function linhasEmOrdemDeLeitura(texto: string): string[] {
     const linhas = pagina.split('\n')
     const inicio = linhas.findIndex((l) => INICIO_DOS_LANCAMENTOS.test(l))
     if (inicio < 0) continue
-    for (const banda of colunasDaRegiao(linhas.slice(inicio))) out.push(...banda)
+    for (const banda of colunasDaRegiao(linhas.slice(inicio))) out.push(...banda.linhas)
   }
   return out
 }
