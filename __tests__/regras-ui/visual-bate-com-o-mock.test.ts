@@ -23,7 +23,20 @@ const ler = (p: string) => readFileSync(join(raiz, p), 'utf-8')
 const mock = ler('docs/mocks/conciliacao-mock.html')
 const fila = ler('components/conciliacao/fila-escolher-na-mao.tsx')
 const card = ler('components/conciliacao/escolher-na-mao-card.tsx')
-const tela = fila + card
+const stats = ler('components/conciliacao/stats-do-mock.tsx')
+const pagina = ler('app/(dashboard)/conciliacao/page.tsx')
+const tela = fila + card + stats
+
+/**
+ * ⚠️ COMENTÁRIO NÃO É TELA. Este arquivo (e os componentes) citam os textões mortos pra
+ * explicar por que morreram — sem tirar comentário, o guard morderia a própria lápide.
+ * Foi exatamente isso que aconteceu na 1ª rodada.
+ */
+function semComentarios(src: string): string {
+  return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1')
+}
+const filaRender = semComentarios(fila)
+const paginaRender = semComentarios(pagina)
 
 /** ⭐ as variáveis do `:root{}` do mock, do jeito que estão escritas lá */
 export function tokensDoMock(html: string): Record<string, string> {
@@ -100,6 +113,16 @@ describe('⛔⛔ as MEDIDAS da tela são as do arquivo do mock', () => {
     ['.conta', 'font-size', 'text-[13.5px]'],
     ['.btn', 'border-radius', 'rounded-[12px]'],
     ['.btn', 'font-size', 'text-[14.5px]'],
+    // ── os 3 stats do topo ──
+    ['.stats', 'gap', 'gap-[10px]'],
+    ['.stats', 'margin-bottom', 'mb-[18px]'],
+    ['.stat', 'border-radius', 'rounded-[14px]'],
+    ['.stat', 'padding', 'py-[12px]'],
+    ['.stat .k', 'font-size', 'text-[11px]'],
+    ['.stat .k', 'letter-spacing', 'tracking-[.04em]'],
+    ['.stat .v', 'font-size', 'text-[26px]'],
+    ['.stat .v', 'margin-top', 'mt-[2px]'],
+    ['.stat .d', 'font-size', 'text-[12px]'],
   ]
   for (const [seletor, prop, naTela] of medidas) {
     it(`${seletor} { ${prop} } → a tela usa ${naTela}`, () => {
@@ -136,6 +159,57 @@ describe('⛔⛔ as MEDIDAS da tela são as do arquivo do mock', () => {
   it('⭐ a nota sugerida tem o fundo roxo-fraco', () => {
     expect(regraDoMock(mock, 'label.nota.sugerida', 'background')).toBe('var(--roxo-fraco)')
     expect(card).toContain('MOCK.roxoFraco')
+  })
+})
+
+describe('⭐⭐ os 3 STATS do topo', () => {
+  it('a grade é de 3 colunas, como no mock', () => {
+    expect(regraDoMock(mock, '.stats', 'grid-template-columns')).toBe('repeat(3,1fr)')
+    expect(stats).toContain('grid-cols-3')
+  })
+
+  it('o número do "pra tua mão" é ROXO (`.stat.acao .v`)', () => {
+    expect(regraDoMock(mock, '.stat.acao .v', 'color')).toBe('var(--roxo)')
+    expect(stats).toContain('acao ? MOCK.roxo')
+  })
+
+  it('os três rótulos são as três filas da tela', () => {
+    for (const r of ['Prontos pra confirmar', 'Pra tua mão', 'Sem pagamento']) {
+      expect(stats).toContain(r)
+    }
+  })
+
+  it('⛔ a dupla contagem só entra quando > 0 — anomalia não é móvel fixo', () => {
+    expect(stats).toContain('filas.duplaContagem > 0 &&')
+  })
+
+  it('⛔ os números vêm da MESMA função do badge (`contarFilas`)', () => {
+    const lib = ler('lib/conciliacao/fila-de-conciliacao.ts')
+    // no payload da tela E no contador do badge — duas chamadas, uma régua
+    expect((lib.match(/contarFilas\(/g) ?? []).length).toBeGreaterThanOrEqual(2)
+  })
+})
+
+describe('⛔⛔ os TEXTÕES morreram — tela não é manual', () => {
+  it('o parágrafo "Passo 2 de 2…" saiu da tela (virou ⓘ)', () => {
+    // ⚠️ o texto vive no `title` do ⓘ; o que não pode é ele RENDERIZAR como parágrafo
+    // ⚠️ a doutrina NÃO se perdeu — ela mudou de lugar. O teste separa os dois:
+    // antes do `title={` (o que RENDERIZA) não pode ter; depois dele, tem que ter.
+    const [renderizado, dentroDoTooltip] = paginaRender.split('title={')
+    expect(renderizado, 'a aula voltou a renderizar como parágrafo').not.toContain('Importou o extrato →')
+    expect(dentroDoTooltip, 'a doutrina sumiu junto com o parágrafo').toContain('Importou o extrato →')
+    expect(pagina).toContain('ⓘ')
+  })
+
+  it('o parágrafo de instrução da seção "Pra tua mão" morreu inteiro', () => {
+    expect(filaRender).not.toContain('esperando você dizer quais notas')
+    expect(filaRender).not.toContain('Marque as notas')
+    expect(filaRender).not.toContain('costuma ser')
+  })
+
+  it('⭐ mas o TÍTULO da seção fica — é ele que nomeia o trabalho', () => {
+    expect(mock).toContain('Pra tua mão — o pagamento existe, você diz o que ele pagou')
+    expect(fila).toContain('Pra tua mão — o pagamento existe, você diz o que ele pagou')
   })
 })
 

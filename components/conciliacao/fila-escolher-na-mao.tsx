@@ -90,8 +90,6 @@ export function FilaEscolherNaMao({ empresaId, cards, onConciliado }: Props) {
 
   if (!grupos.length) return null
 
-  const linhasTotais = grupos.reduce((n, g) => n + g.linhas.length, 0)
-
   return (
     // ⚠️ o `main` do app é `bg-zinc-50` (#fafafa) e o mock é #faf9f6 — quase igual, mas o
     // mock é a régua. O fundo entra NA SEÇÃO, não no shell: trocar o shell mudaria todas
@@ -167,14 +165,10 @@ export function FilaEscolherNaMao({ empresaId, cards, onConciliado }: Props) {
         )
       })}
 
-      {/* ⚠️ o porquê da fila continua escrito — em `.fech`, o estilo do mock pra linha
-          informativa (padding 14px 16px · 13.5px · cor --sub). */}
-      <p className="px-[16px] py-[14px] text-[13.5px] leading-relaxed" style={{ color: MOCK.sub }}>
-        São <b>{linhasTotais}</b> pagamento{linhasTotais > 1 ? 's' : ''} de{' '}
-        <b>{grupos.length}</b> fornecedor{grupos.length > 1 ? 'es' : ''} em que nenhuma
-        combinação fecha sozinha — costuma ser <b>pagamento parcial</b> ou nota que não está
-        no sistema.
-      </p>
+      {/* ⛔⛔ AQUI MORAVA UM PARÁGRAFO DE 4 LINHAS ("N pagamentos esperando você dizer
+          quais notas foram… Marque as notas: o rodapé soma ao vivo…"). Ordem do dono:
+          *"MORRE inteiro — a seção já se chama 'Pra tua mão' e o card ensina fazendo (o
+          rodapé vivo É a instrução). Título de seção + cards, nada de aula em cima."* */}
     </section>
   )
 }

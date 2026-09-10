@@ -40,9 +40,9 @@
 // qualquer divergência. **Pela ficha, nunca por `if (Banrisul)`.**
 
 import Link from 'next/link'
-import { AlertTriangle, CheckCircle2, Info, Link2, Copy, ArrowRight } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Info, ArrowRight } from 'lucide-react'
 import { formatBRL } from '@/lib/format/money'
-import { StatCard, StatCardGrid } from '@/components/ui/stat-card'
+import { StatsDoMock, type FilasDTO } from './stats-do-mock'
 
 export interface ConferenciaContaDTO {
   id: string; nome: string; sistema: number; declarado: number
@@ -73,39 +73,17 @@ export interface TotaisDTO {
 const dia = (iso: string | null) =>
   iso ? new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : '—'
 
-export function CabecalhoDaFila({ empresaId, totais, saldos, semPar }: {
-  empresaId: string; totais: TotaisDTO; saldos: SaldosDTO; semPar: SemParDTO
+export function CabecalhoDaFila({ empresaId, filas, saldos, semPar }: {
+  empresaId: string; filas: FilasDTO; saldos: SaldosDTO; semPar: SemParDTO
 }) {
   return (
     <div className="space-y-2">
-      {/* ⛔ MOLDE OFICIAL DA CASA (`StatCard`), o mesmo da Contas a Pagar e da
-          Produção. Antes eram blocos escritos à mão aqui — dois cards de resumo
-          no sistema divergem com o tempo, e a REGRA 4 existe pra isso. */}
-      <StatCardGrid>
-        <StatCard
-          tone={totais.comSugestao > 0 ? 'violet' : 'slate'}
-          icon={Link2}
-          label="esperando decisão"
-          value={String(totais.comSugestao)}
-          sub={totais.comSugestao === 1 ? 'vínculo sugerido' : 'vínculos sugeridos'}
-        />
-        <StatCard
-          tone={totais.duplaContagem > 0 ? 'rose' : 'slate'}
-          icon={Copy}
-          label="em dupla contagem"
-          value={formatBRL(totais.valorEmDuplaContagem)}
-          sub={`${totais.duplaContagem} conta${totais.duplaContagem === 1 ? '' : 's'} paga${totais.duplaContagem === 1 ? '' : 's'} sem vínculo`}
-        />
-        <StatCard
-          tone={saldos.naoBatem > 0 ? 'amber' : 'emerald'}
-          icon={CheckCircle2}
-          label="contas de extrato"
-          value={`${saldos.batem + saldos.explicadas}/${saldos.contas.length}`}
-          sub={saldos.naoBatem > 0
-            ? `${saldos.naoBatem} com diferença aberta`
-            : saldos.explicadas > 0 ? 'conferidas · 1 diferença explicada' : 'conferidas com o banco'}
-        />
-      </StatCardGrid>
+      {/* ⭐⭐ OS 3 STATS DO MOCK (10/09/2026) — pedido do dono: *"os 3 stats do mock
+          entram no lugar dos atuais… são as três filas REAIS da tela"*.
+          ⛔ O `StatCard` da casa saiu DESTA tela porque o mock tem molde próprio (raio 14,
+          número 26px, sem ícone) — e o mock é a régua aqui. Ele segue valendo no resto do
+          sistema; o que não pode é esta tela inventar um terceiro molde. */}
+      <StatsDoMock filas={filas} />
 
       {/* ⛔ a conferência é POR CONTA — foi o agregado que produzia o número
           indefensável. Cada linha traz o SELO do seu estado, no padrão da casa. */}

@@ -34,6 +34,8 @@ import {
   CabecalhoDaFila, type SaldosDTO, type TotaisDTO, type SemParDTO,
 } from '@/components/conciliacao/cabecalho-da-fila'
 import { LoteSugerido, type LoteDTO } from '@/components/conciliacao/lote-sugerido'
+import { type FilasDTO } from '@/components/conciliacao/stats-do-mock'
+import { MOCK } from '@/components/conciliacao/mock-tokens'
 import { type CardDeEscolhaDTO } from '@/components/conciliacao/escolher-na-mao-card'
 import { FilaEscolherNaMao } from '@/components/conciliacao/fila-escolher-na-mao'
 import { useToast } from '@/components/ui/use-toast'
@@ -53,6 +55,7 @@ interface LoteQueNaoFechaDTO {
   motivo: 'NAO_FECHA' | 'AMBIGUO'; combinacoes: number
 }
 interface FilaDTO {
+  filas: FilasDTO
   contas: ContaDaFilaDTO[]
   lotes: LoteDTO[]
   lotesQueNaoFecham: LoteQueNaoFechaDTO[]
@@ -251,16 +254,33 @@ function ConciliacaoInner() {
 
   return (
     <div className="space-y-6">
+      {/* ⚠️ A DOUTRINA VIROU ⓘ (10/09/2026). O parágrafo "Passo 2 de 2. Importou o
+          extrato → …" ocupava a primeira dobra do celular com uma AULA. Regra do dono:
+          *"tela não é manual"*. O texto não se perdeu — ele vive no `title` do ⓘ, e a
+          regra que ele ensinava ("casar antes de categorizar") continua valendo no
+          código: `LINHA_DISPONIVEL_WHERE` não olha `categoryId`, de propósito. */}
       <Header
         title="Conciliação"
         description={
           empresaId
             ? t
-              ? `${t.comSugestao} vínculo${t.comSugestao === 1 ? '' : 's'} esperando decisão`
+              ? 'o banco diz o que saiu · você diz o que cada pagamento pagou'
               : 'Carregando…'
             : 'Selecione uma empresa'
         }
-      />
+      >
+        {/* ⓘ — a doutrina que saiu da tela. Fica no `title` (nativo, zero componente
+            novo); no celular não abre, e tudo bem: é referência, não instrução de uso. */}
+        <span
+          className="cursor-help select-none text-[15px]"
+          style={{ color: MOCK.sub }}
+          title={'Passo 2 de 2. Importou o extrato → o óbvio já casou no import → aqui fica o que precisa da sua decisão. '
+            + 'Casar vem ANTES de categorizar: ao vincular, a conta a pagar leva a categoria dela junto. '
+            + 'Linha que você já categorizou como despesa continua casável — ter categoria não quita conta nenhuma.'}
+        >
+          ⓘ
+        </span>
+      </Header>
 
       {/* ⛔ O CABEÇALHO SAI DA MESMA FONTE DAS ABAS. O anterior tinha régua
           própria e contradizia a aba de duplicatas na mesma tela (69 × 0), com o
@@ -268,7 +288,7 @@ function ConciliacaoInner() {
       {empresaId && fila && (
         <CabecalhoDaFila
           empresaId={empresaId}
-          totais={fila.totais}
+          filas={fila.filas}
           saldos={fila.saldos}
           semPar={fila.semPar}
         />
@@ -306,17 +326,6 @@ function ConciliacaoInner() {
               </div>
             ) : aba === 'contas' ? (
               <>
-                {/* ⭐⭐⭐ A ORDEM DO FLUXO, ESCRITA NA TELA (padrão Xero/QuickBooks):
-                    CASAR ANTES DE CATEGORIZAR. A categoria da conta a pagar vem junto
-                    quando o vínculo é feito; só o que não casou precisa de categoria. */}
-                <p className="px-1 text-[11.5px] leading-relaxed text-slate-400">
-                  <b className="font-semibold text-slate-500 dark:text-slate-300">Passo 2 de 2.</b>{' '}
-                  Importou o extrato → o óbvio já casou no import → aqui fica o que precisa da sua
-                  decisão. <b>Casar vem antes de categorizar</b>: ao vincular, a conta a pagar leva
-                  a categoria dela junto. Linha que você já categorizou como despesa{' '}
-                  <b>continua casável</b> — ter categoria não quita conta nenhuma.
-                </p>
-
                 {/* ⭐⭐ "PRONTOS PRA CONFIRMAR" — nunca "fecham sozinhos" (10/09/2026).
                     ⛔ Regra do dono: **o sistema NUNCA concilia sem o clique dele**; ele
                     sugere e espera. Um título que diga "sozinho" promete o que a casa se

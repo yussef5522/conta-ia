@@ -32,6 +32,7 @@ import {
   type SugestaoDeLote, type LoteQueNaoFecha, type NotaAberta, type LinhaParaLote,
 } from './pagamento-em-lote'
 import { podeConferirPorLedgerbal, resolveBankProfile } from '@/lib/bank-profiles'
+import { contarFilas, type ContagemDasFilas } from './filas-da-tela'
 
 type Db = PrismaClient
 
@@ -119,6 +120,7 @@ export interface FilaDeConciliacao {
    * casava com mais de uma linha do extrato entrava no dinheiro mais de uma vez —
    * R$ 845.646,99 no lugar de R$ 444.746,99 sob a própria régua dele.
    */
+  filas: ContagemDasFilas
   totais: {
     contas: number; comSugestao: number; transferencias: number; duplicatas: number
     /** quantos PIX consolidados esperam confirmação, e quantas notas eles liquidam */
@@ -489,20 +491,29 @@ export async function filaDeConciliacao(
   // nota sozinha é justamente o que não fecha com a linha.
   const noLote = new Set(lote.lotes.flatMap((l) => l.notas.map((n) => n.id)))
   const contasForaDoLote = contas.filter((c) => !noLote.has(c.conta.id))
+  const totais = {
+    contas: todas.length,
+    comSugestao: contasForaDoLote.length,
+    lotes: lote.lotes.length,
+    notasEmLote: noLote.size,
+    transferencias: transferencias.length,
+    duplicatas: duplicatas.length,
+    duplaContagem: dc.length,
+    // ⚠️ `reduce` sobre a LISTA, não sobre um join: cada conta entra uma vez.
+    valorEmDuplaContagem: Math.round(dc.reduce((s, c) => s + c.conta.valor, 0) * 100) / 100,
+  }
   return {
     contas: contasForaDoLote, lotes: lote.lotes, lotesQueNaoFecham: lote.naoFecham,
-    semPar, transferencias, duplicatas, saldos,
-    totais: {
-      contas: todas.length,
-      comSugestao: contasForaDoLote.length,
-      lotes: lote.lotes.length,
-      notasEmLote: noLote.size,
-      transferencias: transferencias.length,
-      duplicatas: duplicatas.length,
-      duplaContagem: dc.length,
-      // ⚠️ `reduce` sobre a LISTA, não sobre um join: cada conta entra uma vez.
-      valorEmDuplaContagem: Math.round(dc.reduce((s, c) => s + c.conta.valor, 0) * 100) / 100,
-    },
+    semPar, transferencias, duplicatas, saldos, totais,
+    // ⭐ OS TRÊS NÚMEROS DOS STATS — pela MESMA função que o badge do menu usa.
+    filas: contarFilas({
+      lotes: totais.lotes,
+      paresUmPraUm: totais.comSugestao,
+      naoFecham: lote.naoFecham.length,
+      semPar: semPar.total,
+      duplaContagem: totais.duplaContagem,
+      valorEmDuplaContagem: totais.valorEmDuplaContagem,
+    }),
   }
 }
 
@@ -671,8 +682,20 @@ export async function sugestoesParaPendentes(
 export async function contarVinculosEsperandoDecisao(
   companyId: string, db: Db = defaultPrisma,
 ): Promise<number> {
-  const contas = await contasEsperandoPagamento(companyId, db)
-  return contas.filter((c) => c.sugestoes.length > 0).length
+  // ⛔⛔ ANTES ISTO CONTAVA SÓ OS PARES 1:1 — e a seção "prontos pra confirmar" mostra
+  // pares **e** LOTES. O menu dizia um número e a tela outra: a mesma família do
+  // cabeçalho que afirmava "69 duplicatas" com a aba dizendo 0. Agora os dois passam
+  // pelo `contarFilas`.
+  const [contas, lote] = await Promise.all([
+    contasEsperandoPagamento(companyId, db),
+    lotesDaFila(companyId, db),
+  ])
+  const noLote = new Set(lote.lotes.flatMap((l) => l.notas.map((n) => n.id)))
+  return contarFilas({
+    lotes: lote.lotes.length,
+    paresUmPraUm: contas.filter((c) => c.sugestoes.length > 0 && !noLote.has(c.conta.id)).length,
+    naoFecham: 0, semPar: 0, duplaContagem: 0, valorEmDuplaContagem: 0,
+  }).prontosPraConfirmar
 }
 
 // ────────────────────────────────────────────────────────────────
