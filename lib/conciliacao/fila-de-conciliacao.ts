@@ -707,6 +707,8 @@ export async function contarVinculosEsperandoDecisao(
   // pares **e** LOTES. O menu dizia um número e a tela outra: a mesma família do
   // cabeçalho que afirmava "69 duplicatas" com a aba dizendo 0. Agora os dois passam
   // pelo `contarFilas`.
+  // ⚠️ EM PARALELO, e não em série: as duas ainda são duas queries, mas o relógio do
+  // badge passa a ser o da mais lenta, não a soma.
   const [contas, lote] = await Promise.all([
     contasEsperandoPagamento(companyId, db),
     lotesDaFila(companyId, db),
