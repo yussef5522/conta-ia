@@ -358,6 +358,32 @@ ABRO O IVAN → pagamento 1 de 3 · linha − R$ 1.743,25 · 24/08 · stone
 
 ⚠️ **E o `30` da janela mora num lugar só** (`JANELA_A_VENCER_DIAS`): o servidor decide `foraDaJanela` e a tela **importa a constante** pro rótulo, em vez de digitar o número — número solto na tela vira a segunda régua no dia em que a janela mudar.
 
+### ⭐⭐⭐ O MOCK VIROU RÉGUA VERSIONADA — E O GUARD LÊ O ARQUIVO (10/09)
+
+**O dono, na terceira volta da mesma tela:** *"basta de descrição em palavras: o arquivo do mock está em `docs/mocks/conciliacao-mock.html` — ABRE ELE e copia o visual EXATAMENTE. Ele é a régua; divergência do mock = defeito. (…) Se tua versão 'melhorou' algo do mock, desfaz — igual primeiro, melhoria só com meu pedido depois."*
+
+**⭐⭐ A JOGADA QUE FECHA A CLASSE: o mock ENTROU NO REPO.** Enquanto ele vivia numa pasta de downloads, *"igual ao mock"* era **memória minha** — e memória é exatamente o que falhou nas duas voltas anteriores. Versionado, ele é **dado**, e `__tests__/regras-ui/visual-bate-com-o-mock.test.ts` **LÊ o HTML** e compara: os 17 tokens do `:root{}`, 28 medidas (raio, gap, padding, tamanho de fonte) e os textos que o mock imprime. Tom ajustado "no olho" fica **vermelho apontando o valor que o arquivo manda**.
+
+⚠️ **E o arquivo NÃO estava no caminho que ele deu** (estava em `~/Downloads/conciliacao-escolher-na-mao-mock.html`) — copiado pra `docs/mocks/conciliacao-mock.html`, que é onde ele espera e onde o guard lê.
+
+**O QUE FOI COPIADO, MEDIDO NO ARQUIVO:** cores num lugar só (`components/conciliacao/mock-tokens.ts`) · card borda 1px `#e8e6e0` / raio 16px / margem 12px · cabeçalho chip + nome 15px/700 + valor + **seta ▶ que gira 90°** · linha do banco em chão frio `#f2f6fb` com o valor em `<b>` 15px · notas com **checkbox 19px roxo**, nome + `venc` 12px cinza, valor à direita, **sugerida com fundo `#eeecfa`** · faixa âmbar do juros e dica slate, as duas raio 10 · **rodapé sticky branco com borda de 2px**, *"não é isso"* ghost e o primário roxo **nascendo em `opacity .35` sem `pointer-events`**.
+
+**⚠️ E OS ESPAÇAMENTOS VIRARAM px LITERAL.** `gap-2.5` do Tailwind É 10px e `gap-3` É 12px — certos, mas obrigam tradução mental, e foi tradução mental que produziu as duas versões anteriores. Agora é `gap-[10px]`, `py-[14px]`, `px-[16px]`: o número que está no arquivo, escrito igual. **Duas "melhorias" minhas foram DESFEITAS** por ordem dele — a faixa de ajuste tinha ganhado margem no topo (o mock diz `margin:0 16px 12px`) e o botão fantasma tinha virado *"fechar"* (o mock diz *"não é isso"*).
+
+**⚠️ E o `dark:` do app é código morto:** conferido — **nada no sistema adiciona a classe `dark`** (`darkMode:['class']`, zero chamadores). As variantes espalhadas nunca renderizam, então as cores do mock entram literais sem perder nada.
+
+⛔ **MOTOR INTOCADO** (ordem dele): as 3 travas, o agrupamento por fornecedor, a linha-por-vez e a janela do "a vencer" seguem idênticos — só a pintura mudou.
+
+**PROVADO NO BUNDLE QUE PROD SERVE** (sessão real; não no meu código-fonte, no que a tela entrega):
+```
+✓ #534AB7  ✓ #eeecfa  ✓ #f2f6fb  ✓ #e8e6e0  ✓ #fdf3e3  ✓ #fdecea  ✓ #eef2f6
+✓ #177245  ✓ #faf9f6  ✓ checkbox 19px  ✓ rodapé borda 2px  ✓ opacity .35
+✓ seta ▶  ✓ raio 16px  ✓ raio 12px  ✓ menos U+2212  ✓ "Pra tua mão"  ✓ "não é isso"
+```
+**REGRA 11 — 3 desvios repostos, 1 vermelho cada:** roxo trocado · rodapé com 1px · checkbox 16px. **9.201 verdes · TS 0 · deploy `U6WHnDm9nElDqIlgTqhJn` 4/4.**
+
+⚠️ **UMA DIFERENÇA QUE FICA REGISTRADA:** o `main` do app é `bg-zinc-50` (`#fafafa`) e o mock é `#faf9f6`. O fundo do mock entrou **na seção**, não no shell — trocar o shell mudaria todas as telas do sistema por causa de uma, o que ninguém pediu.
+
 ### ⛔⛔⛔ E O DEPLOY FALHOU 3× POR OOM — o teto era do V8, não do kernel
 
 **O blue-green segurou as três**: *"o symlink não moveu, prod continua no build anterior"*. Mas o diagnóstico levou duas tentativas erradas, e as duas ficam registradas:
