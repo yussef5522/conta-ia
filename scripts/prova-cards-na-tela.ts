@@ -77,7 +77,7 @@ async function main() {
   // ⭐⭐ 3b. OS 3 STATS + O CUSTO DO BADGE (que agora conta os lotes também)
   const t0 = Date.now()
   const rf = await fetch(`${BASE}/api/conciliacao/fila?empresaId=${CO}`, { headers: { cookie } })
-  const f = await rf.json() as { filas: Record<string, number>; saldos: { batem: number; explicadas: number; naoBatem: number }; semPar: { total: number } }
+  const f = await rf.json() as { filas: Record<string, number>; saldos?: unknown; semPar: { total: number } }
   const msFila = Date.now() - t0
   const t1 = Date.now()
   const rb = await fetch(`${BASE}/api/dashboard/badges?empresaId=${CO}`, { headers: { cookie } })
@@ -88,7 +88,9 @@ async function main() {
   console.log(`   PRA TUA MÃO            ${f.filas.praTuaMao}   (roxo)`)
   console.log(`   SEM PAGAMENTO          ${f.filas.semPagamento}`)
   console.log(`   EM DUPLA CONTAGEM      ${f.filas.duplaContagem}${f.filas.duplaContagem > 0 ? ` · ${brl(f.filas.valorEmDuplaContagem)}` : '  → não aparece na tela'}`)
-  console.log(`   conferência das contas: ${f.saldos.batem} batem · ${f.saldos.explicadas} explicadas · ${f.saldos.naoBatem} divergem`)
+  // ⛔ a conferência de saldo SAIU da Conciliação (casa dela é Bancos) — o payload
+  // não a traz mais, e o teste é justamente esse: `saldos` tem que ser undefined aqui.
+  console.log(`   ⛔ conferência de saldo no payload da Conciliação: ${JSON.stringify(f.saldos ?? null)}  (tem que ser null)`)
   const badge = (b.conciliacao ?? b.conciliacaoPendente ?? JSON.stringify(b).slice(0, 60)) as unknown
   console.log(`\n⛔ BADGE DO MENU (${msBadge} ms): ${String(badge)} — tem que ser IGUAL ao "prontos pra confirmar" (${f.filas.prontosPraConfirmar})`)
 
