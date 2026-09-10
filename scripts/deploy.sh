@@ -169,7 +169,20 @@ ok "workspace pronto (node_modules compartilhado)"
 
 log "Build em $BUILD_WS (prod segue servindo o build atual)"
 LOG="/tmp/build-${STAMP}.log"
-if ! (cd "$BUILD_WS" && npm run build > "$LOG" 2>&1); then
+# ⛔⛔⛔ O TETO DE HEAP DO V8 É EXPLÍCITO (10/09/2026) — e o número saiu de medição.
+#
+# O deploy da baixa parcial falhou por OOM **três vezes seguidas**, sempre com
+# `FATAL ERROR: Reached heap limit`. Medido no servidor: o padrão do Node nesta máquina é
+# **2006 MB**, e o build do Next passou disso. ⚠️ Não é o kernel matando (o OOM killer de
+# 24/08); é o **próprio V8** batendo no teto dele, com 3,2 GB livres na máquina.
+#
+# ⚠️ E o `turbopackIgnore` do `server-ca.ts` (que tirou o "whole project was traced" do
+# log) **NÃO era a causa** — o build seguiu estourando depois dele. Fica registrado porque
+# eu apostei nisso e errei: o aviso era real, o diagnóstico não.
+#
+# ⚠️ 3072 e não mais: a máquina tem 3,9 GB e ~2 GB de swap. O gate acima já aborta cedo se
+# não houver folga — build morto pela metade foi o que derrubou prod em 24/08.
+if ! (cd "$BUILD_WS" && NODE_OPTIONS="--max-old-space-size=3072" npm run build > "$LOG" 2>&1); then
   tail -25 "$LOG"
   fail "build FALHOU — o symlink não moveu, prod continua no build anterior. Log: $LOG"
 fi
