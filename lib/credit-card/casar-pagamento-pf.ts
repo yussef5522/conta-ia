@@ -15,6 +15,7 @@ import { prisma } from '@/lib/db'
 import { assertInvoicePaidConsistency } from './invoice-invariant'
 import { CreditCardError } from './queries'
 import { checkProfileAccess } from '@/lib/personal-profile/queries'
+import { diasEntre } from './estado-da-fatura-no-card'
 
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 
@@ -92,7 +93,10 @@ export async function candidatosPagamentoPF(input: {
       valor: t.amount,
       contaNome: t.bankAccount?.name ?? null,
       valorExato: Math.abs(t.amount - devido) <= TOLERANCIA,
-      distanciaDias: Math.round(Math.abs(t.date.getTime() - invoice.dueDate.getTime()) / 86_400_000),
+      // ⚠️ DIA DE CALENDÁRIO, não hora (09/09/2026): o vencimento é gravado à meia-noite
+      // e a transação ao meio-dia UTC, então a divisão crua dava 0,5 → `Math.round` → **1**.
+      // Um pagamento feito NO DIA aparecia como "1 dia de distância".
+      distanciaDias: Math.abs(diasEntre(invoice.dueDate, t.date)),
     }))
     .sort((a, b) => {
       if (a.valorExato !== b.valorExato) return a.valorExato ? -1 : 1

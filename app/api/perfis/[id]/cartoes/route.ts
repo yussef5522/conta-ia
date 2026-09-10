@@ -3,8 +3,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAuthUser } from '@/lib/auth'
+import { listarCartoesComEstado } from '@/lib/credit-card/cards-com-estado'
 import {
-  listCardsForProfile,
   createCreditCard,
   isCreditCardError,
   isProfileAccessError,
@@ -31,7 +31,10 @@ export async function GET(
   if (!user) return NextResponse.json({ erro: 'Não autenticado' }, { status: 401 })
   const { id } = await params
   try {
-    const cards = await listCardsForProfile(user.sub, id)
+    // ⭐ o card passa a trazer o ESTADO da fatura, não só o cadastro (09/09/2026).
+    // ⚠️ a chave `cards` continua com a MESMA forma de antes e ganhou `fatura` ao lado —
+    // contrato aditivo, então nada que já lia a lista quebra.
+    const cards = await listarCartoesComEstado(user.sub, id)
     return NextResponse.json({ cards })
   } catch (err) {
     return errorResponse(err)
