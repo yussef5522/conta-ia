@@ -134,6 +134,32 @@ export function grauDeConfianca(score: number): GrauDeConfianca {
  * "heurística nunca decide quem é" — é a mesma disciplina do pareamento de
  * transferência, e aqui ela vale porque o fornecedor vale 15 pontos.
  */
+/**
+ * ⛔⛔ O NOME NORMALIZADO DO FORNECEDOR, CALCULADO UMA VEZ (10/09/2026) — vale 1,7 s.
+ *
+ * `normalizeForMatch(f.razaoSocial)` estava DENTRO do laço: a cada chamada, os 79
+ * fornecedores eram normalizados de novo. Como o motor de lote chama isto uma vez por
+ * LINHA da janela (~1.300), davam **~200 mil normalizações** por consulta — medido em
+ * prod: `lotesDaFila` custava **2.179 ms**, e o badge do menu (a cada 60 s) passou a
+ * pagar isso quando eu o liguei nessa função.
+ *
+ * ⚠️ `WeakMap` pela IDENTIDADE do objeto: os fornecedores são recriados a cada request,
+ * então a memória morre com eles — nada de cache que envelhece entre requisições. E
+ * `normalizeForMatch` é pura, então o resultado é **idêntico**, não aproximado.
+ */
+const nomesNormalizados = new WeakMap<FornecedorConhecido, { razao: string; fantasia: string | null }>()
+function nomesDe(f: FornecedorConhecido) {
+  let n = nomesNormalizados.get(f)
+  if (!n) {
+    n = {
+      razao: normalizeForMatch(f.razaoSocial),
+      fantasia: f.nomeFantasia ? normalizeForMatch(f.nomeFantasia) : null,
+    }
+    nomesNormalizados.set(f, n)
+  }
+  return n
+}
+
 export function reconhecerFornecedor(
   descricao: string,
   fornecedores: FornecedorConhecido[],
@@ -144,9 +170,10 @@ export function reconhecerFornecedor(
   let melhor: { f: FornecedorConhecido; sim: number } | null = null
   let segundo = 0
   for (const f of fornecedores) {
+    const n = nomesDe(f)
     const sim = Math.max(
-      jaroWinkler(alvo, normalizeForMatch(f.razaoSocial)),
-      f.nomeFantasia ? jaroWinkler(alvo, normalizeForMatch(f.nomeFantasia)) : 0,
+      jaroWinkler(alvo, n.razao),
+      n.fantasia ? jaroWinkler(alvo, n.fantasia) : 0,
     )
     if (!melhor || sim > melhor.sim) { segundo = melhor?.sim ?? 0; melhor = { f, sim } }
     else if (sim > segundo) segundo = sim
