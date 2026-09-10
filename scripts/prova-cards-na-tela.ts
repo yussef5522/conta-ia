@@ -40,7 +40,7 @@ async function main() {
   let temCard = false, temFraseAntiga = false, temEscondido = false
   for (const c of [...new Set(chunks)]) {
     const js = await (await fetch(`${BASE}${c}`)).text()
-    if (js.includes('PRONTOS PRA CONFIRMAR') || js.includes('esperando você dizer quais notas')) temCard = true
+    if (js.includes('soma crava com o pagamento')) temCard = true
     if (js.includes('nomeiam um fornecedor')) temFraseAntiga = true
     if (js.includes('escolher na mão') && js.includes('abrindo…')) temEscondido = true
   }
@@ -63,9 +63,13 @@ async function main() {
     console.log(`   ${juntos.includes(cor) ? '✓' : '⛔'} ${nome.padEnd(14)} ${cor}`)
   }
   for (const [nome, marca] of [
-    ['checkbox 19px', "19px"], ['rodapé borda 2px', '2px solid'], ['botão opaco .35', '0.35'],
+    ['checkbox 19px', "19px"], ['rodapé borda 2px', '2px solid'], ['botão opaco .35', '.35'],
     ['seta ▶', '▶'], ['raio do card 16px', 'rounded-[16px]'], ['botão raio 12px', 'rounded-[12px]'],
     ['menos U+2212', '− '],
+    ['título "Pra tua mão"', 'Pra tua mão'],
+    ['botão "não é isso"', 'não é isso'],
+    ['grupo "A vencer (…)"', 'A vencer (o pagamento pode'],
+    ['instrução do mock', 'Marca as notas que esse pagamento cobriu'],
   ] as [string, string][]) {
     console.log(`   ${juntos.includes(marca) ? '✓' : '⛔'} ${nome}`)
   }
