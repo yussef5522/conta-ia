@@ -59,7 +59,13 @@ describe('⭐⭐ O CASO DE HOJE — o Magalu vence HOJE e tem que gritar', () =>
 
   it('⭐⭐ e vira PAGA sozinho quando o pagamento for REGISTRADO', () => {
     // ⚠️ nada muda no card além do vínculo: `paidAmount` cresce e o estado é derivado.
-    const pagas = [{ ...faturas[0], paidAmount: 4491.18, status: 'PAID', pagoEm: d('2026-09-09') }]
+    // ⚠️ o pagamento é um INSTANTE, e a aplicação nunca grava 00:00 UTC: o import usa
+    // meio-dia UTC e o `payInvoice` usa o relógio. Datar a fixture à meia-noite criava um
+    // caso que produção não produz — e escondia o fuso em vez de testá-lo.
+    const pagas = [{
+      ...faturas[0], paidAmount: 4491.18, status: 'PAID',
+      pagoEm: new Date('2026-09-09T12:00:00.000Z'),
+    }]
     const e = estadoDaFaturaNoCard({ card: MAGALU, faturas: pagas, hoje: HOJE })
     expect(e.estado).toBe('PAGA')
     expect(e.tom).toBe('ok')
@@ -214,5 +220,27 @@ describe('⛔⛔⛔ O "HOJE" É O DIA DO BRASIL — pego na prova em prod (09/09
       card: MAGALU, faturas, hoje: hojeNoBrasil(new Date('2026-09-11T03:00:00.000Z')),
     })
     expect(e.estado).toBe('VENCIDA')
+  })
+})
+
+describe('⚠️ a DATA DO PAGAMENTO é um instante — o vencimento é uma data de calendário', () => {
+  it('⛔ pagou 23:35 de 09/09 no Brasil → "paga ✓ em 09/09", não 10/09', () => {
+    // o instante gravado é 2026-09-10T02:35Z; foi assim que o card do banrisul dizia 10/09
+    const pagas = [fatura({
+      reference: '2026-09', closingDate: d('2026-09-02'), dueDate: d('2026-09-09'),
+      totalAmount: 4491.18, paidAmount: 4491.18, status: 'PAID',
+      pagoEm: new Date('2026-09-10T02:35:00.000Z'),
+    })]
+    const e = estadoDaFaturaNoCard({ card: MAGALU, faturas: pagas, hoje: HOJE })
+    expect(e.frase).toBe('paga ✓ em 09/09')
+  })
+
+  it('⛔ e o VENCIMENTO continua em UTC — formatá-lo no fuso o puxaria pro dia anterior', () => {
+    const vencida = [fatura({
+      reference: '2026-07', closingDate: d('2026-07-29'), dueDate: d('2026-08-10'),
+      totalAmount: 100,
+    })]
+    const e = estadoDaFaturaNoCard({ card: BANRISUL, faturas: vencida, hoje: HOJE })
+    expect(e.frase).toContain('VENCEU dia 10/08') // ⛔ nunca 09/08
   })
 })

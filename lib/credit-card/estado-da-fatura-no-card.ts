@@ -96,7 +96,22 @@ export interface EstadoNoCard {
 
 const DIA = 86_400_000
 const iso = (d: Date) => d.toISOString().slice(0, 10)
+/**
+ * ⚠️⚠️ DUAS COISAS DIFERENTES, E O FORMATO DE CADA UMA É DIFERENTE (09/09/2026):
+ *
+ *  • **VENCIMENTO e FECHAMENTO são DATAS DE CALENDÁRIO**, gravadas às 00:00 UTC. Formatar
+ *    em fuso brasileiro as puxaria pro dia ANTERIOR (00:00 UTC = 21:00 do dia de véspera).
+ *  • **O PAGAMENTO é um INSTANTE** — o momento em que o dinheiro saiu. Aí o fuso importa:
+ *    o dono pagou às 23:35 de 09/09 em São Paulo e o card dizia **"paga ✓ em 10/09"**,
+ *    porque o instante gravado é `2026-09-10T02:35Z`.
+ *
+ * É a mesma família do "hoje" do card, do outro lado: lá o UTC envelhecia o dia; aqui ele
+ * adiantava. Datar errado o pagamento é pequeno — e é o tipo de detalhe que faz o dono
+ * duvidar do resto da tela.
+ */
 const diaMes = (d: Date) => `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}`
+const diaMesDoInstante = (d: Date) =>
+  d.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit' })
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 
@@ -197,7 +212,7 @@ export function estadoDaFaturaNoCard(entrada: {
     const base = comum(paga, cicloCorrenteSemFatura)
     return {
       ...base, estado: 'PAGA', tom: 'ok',
-      frase: `paga ✓${paga.pagoEm ? ` em ${diaMes(paga.pagoEm)}` : ''}`,
+      frase: `paga ✓${paga.pagoEm ? ` em ${diaMesDoInstante(paga.pagoEm)}` : ''}`,
     }
   }
 
