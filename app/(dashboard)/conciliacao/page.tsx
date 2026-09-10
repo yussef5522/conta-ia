@@ -31,7 +31,7 @@ import {
   ParSugerido, type ContaDaFilaDTO, type SugestaoDTO,
 } from '@/components/conciliacao/par-sugerido'
 import {
-  CabecalhoDaFila, type SaldosDTO, type TotaisDTO, type SemParDTO,
+  CabecalhoDaFila, type TotaisDTO, type SemParDTO,
 } from '@/components/conciliacao/cabecalho-da-fila'
 import { LoteSugerido, type LoteDTO } from '@/components/conciliacao/lote-sugerido'
 import { type FilasDTO } from '@/components/conciliacao/stats-do-mock'
@@ -40,6 +40,7 @@ import { type CardDeEscolhaDTO } from '@/components/conciliacao/escolher-na-mao-
 import { FilaEscolherNaMao } from '@/components/conciliacao/fila-escolher-na-mao'
 import { useToast } from '@/components/ui/use-toast'
 import { fetchJson } from '@/lib/http/fetch-json'
+import { contarFilas } from '@/lib/conciliacao/filas-da-tela'
 
 interface TransferenciaDTO {
   id: string; descricao: string; valor: number; data: string; tipo: string; conta: string
@@ -62,7 +63,6 @@ interface FilaDTO {
   semPar: SemParDTO
   transferencias: TransferenciaDTO[]
   duplicatas: DuplicataDTO[]
-  saldos: SaldosDTO
   totais: TotaisDTO
 }
 
@@ -141,16 +141,25 @@ function ConciliacaoInner() {
   useEffect(() => { carregar() }, [carregar])
 
   /**
-   * ⭐ Depois de vincular, a LISTA se atualiza local (sem refetch, o scroll fica
-   * onde estava) mas o SALDO não: o número novo depende do recálculo da conta no
-   * servidor. Então releio só ele em vez de estimar aqui — estimar seria criar a
-   * segunda derivação de novo, agora no cliente.
+   * ⭐ Depois de vincular, os STATS do topo se atualizam LOCAL — pela `contarFilas`, a
+   * mesma função do servidor e do badge. Não é conta repetida no cliente: é a mesma
+   * regra, chamada de outro lugar.
+   *
+   * ⛔ Antes isto era um REFETCH INTEIRO da fila (~1,4 s) só pra atualizar o bloco de
+   * conferência de saldo — que saiu da tela em 10/09. Refetch que existe pra um bloco
+   * que não existe mais é trabalho que ninguém pediu.
    */
-  const recarregarSaldos = useCallback(async () => {
-    if (!empresaId) return
-    const { ok, data } = await fetchJson<FilaDTO>(`/api/conciliacao/fila?empresaId=${empresaId}`)
-    if (ok && data) setFila((f) => (f ? { ...f, saldos: data.saldos } : f))
-  }, [empresaId])
+  const recontar = (f: FilaDTO): FilaDTO => ({
+    ...f,
+    filas: contarFilas({
+      lotes: f.lotes.length,
+      paresUmPraUm: f.contas.filter((c) => c.sugestoes.length > 0).length,
+      naoFecham: f.lotesQueNaoFecham.length,
+      semPar: f.semPar.total,
+      duplaContagem: f.totais.duplaContagem,
+      valorEmDuplaContagem: f.totais.valorEmDuplaContagem,
+    }),
+  })
 
   useEffect(() => {
     if (!empresaId) return
@@ -158,7 +167,7 @@ function ConciliacaoInner() {
   }, [empresaId, router])
 
   // ⭐ CONCILIADO SOME DA FILA NA HORA (régua do dono): remoção local, sem refetch
-  // — a lista não desmonta e o scroll fica onde estava. O saldo do topo refetcha.
+  // — a lista não desmonta e o scroll fica onde estava; os stats do topo recontam.
   const removerConta = useCallback((contaId: string, extratoId: string) => {
     setFila((f) => {
       if (!f) return f
@@ -170,19 +179,16 @@ function ConciliacaoInner() {
         // em 08/09. O servidor já não a devolveria; a tela é que mentia até o F5.
         .map((c) => ({ ...c, sugestoes: c.sugestoes.filter((s) => s.extratoId !== extratoId) }))
       const dc = contas.filter((c) => c.situacao === 'DUPLA_CONTAGEM')
-      return { ...f, contas, totais: {
+      return recontar({ ...f, contas, totais: {
         ...f.totais,
         contas: contas.length,
         comSugestao: contas.filter((c) => c.sugestoes.length > 0).length,
         duplaContagem: dc.length,
         // ⚠️ a MESMA aritmética do servidor: soma a LISTA, cada conta uma vez.
         valorEmDuplaContagem: Math.round(dc.reduce((s, c) => s + c.conta.valor, 0) * 100) / 100,
-      } }
+      } })
     })
-    // ⭐ o saldo do topo é conferência de banco: só o servidor sabe o novo número,
-    // então recarrega em vez de eu chutar localmente.
-    void recarregarSaldos()
-  }, [recarregarSaldos])
+  }, [])
 
   /**
    * ⭐ LOTE VINCULADO: some o card e somem as N notas.
@@ -198,14 +204,13 @@ function ConciliacaoInner() {
       const contas = f.contas
         .filter((c) => !ids.has(c.conta.id))
         .map((c) => ({ ...c, sugestoes: c.sugestoes.filter((s) => s.extratoId !== extratoId) }))
-      return { ...f, lotes, contas,
+      return recontar({ ...f, lotes, contas,
         lotesQueNaoFecham: f.lotesQueNaoFecham.filter((x) => x.extratoId !== extratoId),
         totais: { ...f.totais, lotes: lotes.length,
           notasEmLote: lotes.reduce((n, l) => n + l.notas.length, 0),
-          comSugestao: contas.filter((c) => c.sugestoes.length > 0).length } }
+          comSugestao: contas.filter((c) => c.sugestoes.length > 0).length } })
     })
-    void recarregarSaldos()
-  }, [recarregarSaldos])
+  }, [])
 
   /**
    * ⭐ CONCILIOU PELO CARD: ele some da seção na hora e a fila recarrega — a linha do
@@ -289,7 +294,6 @@ function ConciliacaoInner() {
         <CabecalhoDaFila
           empresaId={empresaId}
           filas={fila.filas}
-          saldos={fila.saldos}
           semPar={fila.semPar}
         />
       )}

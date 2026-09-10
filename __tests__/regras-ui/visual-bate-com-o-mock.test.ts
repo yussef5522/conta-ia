@@ -213,6 +213,54 @@ describe('⛔⛔ os TEXTÕES morreram — tela não é manual', () => {
   })
 })
 
+// ⛔⛔⛔ A CONFERÊNCIA DE SALDO TEM UMA CASA SÓ (10/09/2026)
+//
+// **O dono:** *"conferência de saldo tem casa própria: o card da conta em BANCOS, que já
+// mostra isso. Repetir na Conciliação é informação duplicada — e duplicado diverge, em
+// tela como em código. A Conciliação cuida de VÍNCULOS; saldo é assunto de Bancos."*
+//
+// ⭐ O TESTE PROVA OS DOIS LADOS: saiu da Conciliação **e continua em Bancos**. Guard que
+// só verifica a remoção aprovaria o dia em que a conferência sumisse de todo lugar — e aí
+// não seria mudança de casa, seria perda.
+describe('⛔⛔ conferência de saldo: fora da Conciliação, viva em Bancos', () => {
+  const cabecalho = semComentarios(ler('components/conciliacao/cabecalho-da-fila.tsx'))
+  const libFila = semComentarios(ler('lib/conciliacao/fila-de-conciliacao.ts'))
+  const bancos = ler('app/(dashboard)/empresas/[id]/contas/page.tsx')
+  const rotaBancos = ler('app/api/contas-bancarias/route.ts')
+
+  it('o cabeçalho da Conciliação não desenha conta nenhuma', () => {
+    for (const marca of ['saldos.contas', 'semExtrato', 'BATE', 'DIVERGE', 'EXPLICADO', 'Selo']) {
+      expect(cabecalho, `"${marca}" voltou pro cabeçalho da Conciliação`).not.toContain(marca)
+    }
+  })
+
+  it('⚠️ e saiu do PAYLOAD também — dado que ninguém desenha alguém religa', () => {
+    expect(libFila).not.toContain('conferenciaDeSaldos(companyId, db)')
+    expect(paginaRender).not.toContain('saldos={')
+  })
+
+  it('⭐ mas o SELO continua vivo em Bancos — mudou de casa, não morreu', () => {
+    expect(rotaBancos).toContain('conferenciaDasContas')
+    expect(bancos).toContain('conferencia')
+    expect(bancos).toMatch(/conferido/)
+  })
+
+  it('a linha das contas sem par virou UMA frase', () => {
+    expect(cabecalho).toContain('em aberto sem par')
+    expect(cabecalho).toContain('Ver no Contas a Pagar')
+    // ⛔ a quebra em três e o gesto do cofre moram no Contas a Pagar agora
+    expect(cabecalho).not.toContain('naoVenceram >')
+    expect(cabecalho).not.toContain('registrar saída do cofre')
+  })
+
+  it('⛔ NADA entre os stats e os cards — o critério da dobra do celular', () => {
+    // o topo é: <StatsDoMock> e, no máximo, a frase das sem-par. Mais nada.
+    const corpo = cabecalho.slice(cabecalho.indexOf('return ('))
+    const tags = [...corpo.matchAll(/<([A-Z][A-Za-z]*)/g)].map((m) => m[1])
+    expect(tags).toEqual(['StatsDoMock', 'Link', 'ArrowRight'])
+  })
+})
+
 describe('⛔ os textos que o mock imprime', () => {
   it('o rodapé fala "selecionado …" e "✓ soma crava com o pagamento"', () => {
     expect(mock).toContain('soma crava com o pagamento')

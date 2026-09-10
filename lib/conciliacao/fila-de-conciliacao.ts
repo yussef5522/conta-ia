@@ -111,7 +111,6 @@ export interface FilaDeConciliacao {
   transferencias: TransferenciaEsperandoPar[]
   duplicatas: DuplicataSuspeita[]
   /** ⭐ a conferência de saldo, derivada da MESMA leitura que os cards das contas */
-  saldos: ConferenciaDeSaldos
   /**
    * ⛔ contadores honestos — cada um é o TAMANHO DA SUA LISTA, sem inflar.
    *
@@ -484,12 +483,18 @@ export function resumirSemPar(
 export async function filaDeConciliacao(
   companyId: string, db: Db = defaultPrisma, agora: Date = new Date(),
 ): Promise<FilaDeConciliacao> {
-  const [todas, lote, transferencias, duplicatas, saldos, ultimo] = await Promise.all([
+  // ⛔⛔ A CONFERÊNCIA DE SALDO SAIU DAQUI (10/09/2026, decisão do dono): *"conferência
+  // de saldo tem casa própria — o card da conta em BANCOS. Repetir na Conciliação é
+  // informação duplicada, e duplicado diverge, em tela como em código."*
+  // ⚠️ Saiu do PAYLOAD, não só da tela: dado que ninguém desenha é dado que alguém religa
+  // por descuido — e a fila parava pra conferir TODAS as contas a cada carregamento.
+  // ⭐ O motor (`conferenciaDeSaldos`/`conferenciaDasContas`) continua vivo e é ele que
+  // alimenta o selo em `/empresas/[id]/contas`. Saiu a vitrine, não a régua.
+  const [todas, lote, transferencias, duplicatas, ultimo] = await Promise.all([
     contasEsperandoPagamento(companyId, db),
     lotesDaFila(companyId, db),
     transferenciasEsperandoPar(companyId, db),
     duplicatasSuspeitas(companyId, db),
-    conferenciaDeSaldos(companyId, db),
     db.transaction.findFirst({
       where: { bankAccount: { companyId }, origin: 'OFX' },
       orderBy: { date: 'desc' }, select: { date: true },
@@ -525,7 +530,7 @@ export async function filaDeConciliacao(
   }
   return {
     contas: contasForaDoLote, lotes: lote.lotes, lotesQueNaoFecham: lote.naoFecham,
-    semPar, transferencias, duplicatas, saldos, totais,
+    semPar, transferencias, duplicatas, totais,
     // ⭐ OS TRÊS NÚMEROS DOS STATS — pela MESMA função que o badge do menu usa.
     filas: contarFilas({
       lotes: totais.lotes,
