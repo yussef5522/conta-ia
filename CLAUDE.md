@@ -384,6 +384,34 @@ ABRO O IVAN → pagamento 1 de 3 · linha − R$ 1.743,25 · 24/08 · stone
 
 ⚠️ **UMA DIFERENÇA QUE FICA REGISTRADA:** o `main` do app é `bg-zinc-50` (`#fafafa`) e o mock é `#faf9f6`. O fundo do mock entrou **na seção**, não no shell — trocar o shell mudaria todas as telas do sistema por causa de uma, o que ninguém pediu.
 
+### ⭐⭐ O TOPO NO DESENHO DO MOCK + A MORTE DOS TEXTÕES (10/09)
+
+**O dono:** *"os 3 stats do mock entram no lugar dos atuais — PRONTOS PRA CONFIRMAR · PRA TUA MÃO · SEM PAGAMENTO. São as três filas REAIS da tela (badge e stats da mesma função, como sempre). (…) Os textões morrem. (…) A tela abre e em UMA dobra de celular eu vejo os 3 stats, a conferência das contas, e o primeiro card colapsado. Zero parágrafo entre o topo e o trabalho."*
+
+**⛔⛔ E O "COMO SEMPRE" DELE ACHOU UMA DIVERGÊNCIA QUE JÁ EXISTIA:** o badge do menu contava `contas.filter(c => c.sugestoes.length > 0)` — **os pares 1:1, SEM os LOTES**. A seção "prontos pra confirmar" desenha os dois. Ou seja, **o menu já dizia um número e a tela mostrava outro** — a mesma família do cabeçalho que afirmava *"69 duplicatas"* com a aba dizendo 0. Agora os dois passam por `contarFilas` (`lib/conciliacao/filas-da-tela.ts`).
+
+**O QUE SAIU DA TELA:** o parágrafo *"Passo 2 de 2. Importou o extrato → …"* virou **ⓘ no título** (o texto não se perdeu, e a regra que ele ensinava — *casar antes de categorizar* — continua no CÓDIGO: o `LINHA_DISPONIVEL_WHERE` não olha `categoryId`, de propósito); e a aula da seção *"N pagamentos esperando você dizer quais notas foram… Marque as notas…"* **morreu inteira** — o título nomeia o trabalho e o **rodapé vivo É a instrução**. ⚠️ A dupla contagem virou stat **condicional**: *"anomalia é exceção, não móvel fixo da tela"* — card zerado toda vez treina o dono a não olhar.
+
+**⛔⛔⛔ E AÍ EU CRIEI UMA REGRESSÃO DE 12× NO BADGE — medida, não estimada.** Ligar o badge no `contarFilas` fez ele chamar `lotesDaFila`, e **o badge é consultado a cada 60 s**:
+
+| | antes | depois |
+|---|---|---|
+| badge do menu | **104 ms** | **1.288 ms** |
+
+**A CAUSA, achada medindo:** `reconhecerFornecedor` roda `normalizeForMatch(f.razaoSocial)` **DENTRO do laço**, pros 79 fornecedores — e o motor de lote a chama **uma vez por LINHA da janela (~1.300)**. Davam **~200 mil normalizações por consulta**. É a MESMA doença dos 9,6 s de 07/09, renascida no motor de lote de 09/09, que nunca recebeu a cura do caminho 1:1.
+
+**⭐ DUAS CURAS APLICADAS, as duas de resultado IDÊNTICO (não aproximado):** memória por descrição no `lotesDaFila` e — a que valeu — **`WeakMap` com o nome do fornecedor já normalizado**, pela IDENTIDADE do objeto (morre com o request; não é cache que envelhece). **`lotesDaFila` 2.179 → 1.368 ms** com as MESMAS 16 linhas, e a **página inteira caiu de 2,4 s pra 1,4 s** de brinde.
+
+**⚠️⚠️ MAS O BADGE SEGUE EM ~1,3 s, e essa é uma DECISÃO DO DONO, não minha.** Duas regras dele colidem: *"badge e stats da mesma função"* × *"o badge do menu consulta a cada 60 s"* (a razão registrada do fix de 07/09). As saídas: **(a)** fica como está — número certo, 1,3 s por consulta; **(b)** badge volta ao caminho barato (104 ms) e **subcontabiliza quando existir lote** (hoje são 0). **Está em (a)** — foi o que ele pediu nesta rodada — e o resto do custo é inerente a reconhecer fornecedor linha a linha. **Não escolhi por ele.**
+
+**PROVADO EM PROD:**
+```
+OS 3 STATS (1.415 ms)   PRONTOS PRA CONFIRMAR 0 · PRA TUA MÃO 16 (roxo) · SEM PAGAMENTO 93
+                        EM DUPLA CONTAGEM 0 → não aparece na tela
+conferência das contas: 2 batem · 1 explicada · 0 divergem
+```
+**REGRA 11 — 3 defeitos repostos, 1 vermelho cada:** dupla contagem como móvel fixo · o textão de volta · o badge com régua própria. **9.218 verdes · TS 0 · deploy `3RTQqNtZQP9GXYyQ0s-Wc` 4/4.**
+
 ### ⛔⛔⛔ E O DEPLOY FALHOU 3× POR OOM — o teto era do V8, não do kernel
 
 **O blue-green segurou as três**: *"o symlink não moveu, prod continua no build anterior"*. Mas o diagnóstico levou duas tentativas erradas, e as duas ficam registradas:
