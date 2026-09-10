@@ -97,10 +97,6 @@ async function main() {
   for (const l of f.lotes) for (const n of l.notas) emLote.set(n.id, l.fornecedorNome)
   const com11 = new Map(f.contas.filter((c) => c.sugestoes.length > 0).map((c) => [c.conta.id, c.sugestoes[0]]))
 
-  const emLote = new Map<string, string>()
-  for (const l of f.lotes) for (const n of l.notas) emLote.set(n.id, l.fornecedorNome)
-  const com11 = new Map(f.contas.filter((c) => c.sugestoes.length > 0).map((c) => [c.conta.id, c.sugestoes[0]]))
-
   // ⭐⭐ O ROTEIRO SE LÊ POR FORNECEDOR, não por nota: o Alan tem 3 notas vencidas e as
   // MESMAS 5 linhas no extrato — repetir isso 3× é ruído, não informação.
   type Nota = (typeof vencidas)[number]
