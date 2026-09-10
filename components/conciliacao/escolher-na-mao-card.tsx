@@ -1,26 +1,38 @@
 'use client'
 
-// ⭐⭐⭐ O CARD DO "ESCOLHER NA MÃO" (10/09/2026) — mock aprovado pelo dono.
+// ⭐⭐⭐ O CORPO DO CARD — O MOCK, AO PIXEL (`docs/mocks/conciliacao-mock.html`).
 //
-// Segue a gramática da casa: **chão FRIO em cima é o extrato**, chão QUENTE embaixo é o que
-// a gente deve, a tira do porquê é obrigatória, e **um primário só** (o roxo).
+// **O dono:** *"o comportamento está certo — NÃO MEXE NO MOTOR. O que está errado é o
+// VISUAL. Copia do arquivo, literalmente. Espaçamentos, tamanhos de fonte e raios: OS DO
+// ARQUIVO, medidos nele — não 'parecidos'."*
 //
-// ⛔⛔ AS TRÊS TRAVAS QUE MORAM AQUI, e nenhuma é enfeite:
-//  1. **Conciliar só acende com diferença ZERO** — ou com ela resolvida com NOME, ou com a
-//     baixa parcial ACEITA. Nunca com sobra solta.
-//  2. **O atalho ⭐ só MARCA as caixas.** Ele não grava: *"o Conciliar continua sendo meu"*.
-//  3. **Duas combinações que fecham = sem atalho.** O sistema não escolhe quais notas o
-//     dono pagou — é a régua do lote, de 09/09.
+// Medido no arquivo e reproduzido aqui:
+//   `.linha-banco` chão FRIO #f2f6fb · padding 12px 16px · 13.5px · valor <b> 15px
+//   `.instr`       padding 10px 16px 2px · 13px · cor --sub
+//   `.grupo-t`     padding 10px 16px 4px · 11.5px/700 caps · ls .03em · cor --sub
+//   `label.nota`   gap 12px · padding 10px 16px · borda-topo #f1efe9 · 14px
+//                  input 19px accent roxo · small 12px --sub · valor 600
+//                  `.sugerida` fundo #eeecfa, e o <b> do small em roxo
+//   `.ajuste`      margem 0 16px 12px · padding 10px 12px · âmbar-fraco · raio 10 · 13px
+//   `.dica`        idem em slate-fraco · 12.5px
+//   `.rodape`      sticky · fundo branco · **borda-topo 2px** · padding 12px 16px · gap 12
+//                  `.btn` raio 12px · padding 12px 18px · 14.5px/700
+//                  `.btn-p` roxo sólido, **nasce opacity .35 sem pointer-events**
+//                  `.btn-g` fundo nenhum, cor --sub, borda 1px --line
 //
-// ⚠️ MOBILE PRIMEIRO: rodapé sticky, e a LINHA INTEIRA da nota é o alvo do dedo (não o
-// quadradinho de 16px).
+// ⛔⛔ AS TRÊS TRAVAS DO MOTOR SEGUEM INTACTAS — só a pintura mudou:
+//  1. Conciliar só acende com diferença ZERO, ou nomeada dentro do teto, ou parcial aceita.
+//  2. O atalho ⭐ só MARCA as caixas.
+//  3. Duas combinações que fecham = sem atalho, e sem nada marcado.
+//
+// ⚠️ MOBILE PRIMEIRO: rodapé sticky, e a LINHA INTEIRA da nota é o alvo do dedo.
 
 import { useState, useMemo, useCallback } from 'react'
-import { Link2, Loader2, X, Sparkles, AlertTriangle, Scissors, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { Loader2 } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
 import { JANELA_A_VENCER_DIAS } from '@/lib/conciliacao/escolher-na-mao'
+import { MOCK, LINHA_ENTRE_NOTAS, HOVER_NOTA, chip } from './mock-tokens'
 
 export interface NotaDoCardDTO {
   id: string
@@ -46,12 +58,13 @@ export interface CardDeEscolhaDTO {
 
 /** o teto do acerto com nome — o MESMO do servidor (`escolher-na-mao.ts`) */
 const TETO = 25
-// ⚠️ a janela vem da LIB, não de um 30 digitado aqui: quem decide quais notas abrem é o
-// servidor (`foraDaJanela`), e um número solto na tela viraria a segunda régua no dia em
-// que a janela mudasse — a doença que este projeto mais paga.
 const TOL = 0.02
 const dia = (iso: string) => new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'UTC' })
+const diaCurto = (iso: string) =>
+  new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'UTC', day: '2-digit', month: '2-digit' })
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
+/** ⚠️ o mock usa o MENOS de verdade (U+2212), não hífen */
+const menos = (v: number) => `− ${formatBRL(v)}`
 
 /** ⭐ os três nomes que a diferença pequena pode ter — o "Revisar valores" da Conta Azul */
 const NOMES_DA_DIFERENCA = [
@@ -65,10 +78,7 @@ interface Props {
   card: CardDeEscolhaDTO
   onConciliado: (extratoId: string) => void
   onFechar: () => void
-  /**
-   * ⭐ NAVEGAÇÃO ENTRE AS LINHAS DO MESMO FORNECEDOR — *"decisão pequena em série, não 3
-   * cards repetindo as mesmas notas"*. Fornecedor de UMA linha não recebe nada aqui.
-   */
+  /** ⭐ navegação entre as linhas do mesmo fornecedor — *"uma linha por vez, da mais antiga"* */
   navegacao?: { indice: number; total: number; onIr: (i: number) => void }
 }
 
@@ -89,7 +99,7 @@ export function EscolherNaMaoCard({ empresaId, card, onConciliado, onFechar, nav
   const todas = useMemo(() => [...card.vencidas, ...card.aVencer], [card])
   const aVencerPerto = useMemo(() => card.aVencer.filter((n) => !n.foraDaJanela), [card])
   const aVencerLonge = useMemo(() => card.aVencer.filter((n) => n.foraDaJanela), [card])
-  /** ⭐ lista longa ROLA dentro do card — o card tem altura máxima, não empurra a página */
+  /** ⭐ lista longa ROLA dentro do card — o rodapé sticky não pode sair do polegar */
   const listaLonga = todas.length > 8
 
   // ⚠️ a ORDEM importa: quem recebe a baixa parcial é a ÚLTIMA marcada (vencimento mais
@@ -155,203 +165,199 @@ export function EscolherNaMaoCard({ empresaId, card, onConciliado, onFechar, nav
     } finally { setOcupado(false) }
   }
 
-  const Nota = ({ n }: { n: NotaDoCardDTO }) => (
-    <label className="flex cursor-pointer items-baseline gap-2.5 rounded-lg px-2 py-2 hover:bg-white/70 dark:hover:bg-slate-900/50">
-      {/* ⭐ checkbox GRANDE e a linha inteira clicável — o card se usa no celular */}
-      <input
-        type="checkbox" checked={marcadas.has(n.id)} onChange={() => alternar(n.id)}
-        className="h-[18px] w-[18px] shrink-0 translate-y-0.5 rounded border-slate-300 accent-[#534AB7]"
-      />
-      <span className="w-[92px] shrink-0 text-right text-[13px] font-semibold tabular-nums text-slate-900 dark:text-slate-50">
-        {formatBRL(n.emAberto)}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-[12.5px] text-slate-700 dark:text-slate-200">{n.descricao}</span>
-        {/* ⚠️ nota que já recebeu parte diz isso — o valor de face não é o que ela deve */}
-        {n.jaPago > 0 && (
-          <span className="block text-[11px] text-slate-400">
-            de {formatBRL(n.valor)} · já baixados {formatBRL(n.jaPago)}
-          </span>
-        )}
-      </span>
-      <span className="shrink-0 text-[11px] tabular-nums text-slate-400">
-        {n.vencida ? 'venceu' : 'vence'} {dia(n.vencimento)}
-      </span>
-    </label>
-  )
+  /** `label.nota` — gap 12px · padding 10px 16px · borda-topo #f1efe9 · 14px */
+  const Nota = ({ n }: { n: NotaDoCardDTO }) => {
+    const destacada = n.sugerida && marcadas.has(n.id)
+    return (
+      <label
+        className="flex cursor-pointer items-center gap-[12px] border-t px-[16px] py-[10px] text-[14px]"
+        style={{ borderColor: LINHA_ENTRE_NOTAS, background: destacada ? MOCK.roxoFraco : undefined }}
+        onMouseEnter={(e) => { if (!destacada) e.currentTarget.style.background = HOVER_NOTA }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = destacada ? MOCK.roxoFraco : '' }}
+      >
+        <input
+          type="checkbox" checked={marcadas.has(n.id)} onChange={() => alternar(n.id)}
+          className="shrink-0"
+          style={{ width: '19px', height: '19px', accentColor: MOCK.roxo }}
+        />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate" style={{ color: MOCK.ink }}>{n.descricao}</span>
+          <small className="block text-[12px]" style={{ color: MOCK.sub }}>
+            venc {dia(n.vencimento)}
+            {/* ⚠️ nota que já recebeu parte diz isso — o valor de face não é o que ela deve */}
+            {n.jaPago > 0 && <> · de {formatBRL(n.valor)}, já baixados {formatBRL(n.jaPago)}</>}
+            {n.sugerida && card.atalho && !card.atalho.ambiguo && (
+              <> · <b style={{ color: MOCK.roxo }}>⭐ com essa, a soma crava</b></>
+            )}
+          </small>
+        </span>
+        <span className="shrink-0 font-semibold tabular-nums" style={{ color: MOCK.ink }}>
+          {formatBRL(n.emAberto)}
+        </span>
+      </label>
+    )
+  }
 
   return (
-    <article className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
-      {/* ── chão FRIO: a linha do banco ── */}
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 bg-slate-50 px-4 py-3 dark:bg-slate-900/60">
-        <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400">
-          linha do extrato{card.linha.conta ? ` · ${card.linha.conta}` : ''}
+    <div>
+      {/* ── `.linha-banco` — chão FRIO ── */}
+      <div
+        className="flex items-center justify-between gap-[12px] px-[16px] py-[12px] text-[13.5px]"
+        style={{ background: MOCK.frio, color: MOCK.ink }}
+      >
+        <span className="min-w-0 truncate">
+          💳 {card.linha.conta ?? 'conta'} · {diaCurto(card.linha.data)} ·{' '}
+          &quot;{card.linha.descricao}&quot;
         </span>
-        <span className="w-full text-[19px] font-semibold leading-none tabular-nums text-slate-900 dark:text-slate-50">
-          − {formatBRL(card.linha.valor)}
-        </span>
-        <span className="text-[12.5px] text-slate-600 dark:text-slate-300">{card.linha.descricao}</span>
-        <span className="text-[11px] tabular-nums text-slate-400">
-          {dia(card.linha.data)}{card.linha.categoria ? ` · ${card.linha.categoria}` : ''}
-        </span>
+        <b className="shrink-0 text-[15px] tabular-nums">{menos(card.linha.valor)}</b>
       </div>
 
-      {/* ⭐⭐ UMA LINHA POR VEZ — a série de decisões pequenas do mock.
-          ⛔ É isto que impede a MESMA nota de aparecer em dois cards abertos: com N linhas
-          do mesmo fornecedor abertas ao mesmo tempo, marcar uma nota aqui e outra ali é o
-          caminho pra vincular a errada (a NF do Cancian, 08/09). */}
+      {/* ── uma linha por vez: `.fech` do mock (padding 14px 16px · 13.5px · --sub) ── */}
       {navegacao && navegacao.total > 1 && (
-        <div className="flex items-center gap-2 border-b border-slate-200 bg-white px-3 py-1.5 dark:border-slate-800 dark:bg-slate-950">
-          <Button size="sm" variant="ghost" disabled={ocupado || navegacao.indice === 0}
-            onClick={() => navegacao.onIr(navegacao.indice - 1)}
-            className="h-7 gap-1 px-2 text-[11.5px] text-slate-500">
-            <ChevronLeft className="h-3.5 w-3.5" /> anterior
-          </Button>
-          <span className="text-[11.5px] tabular-nums text-slate-500 dark:text-slate-400">
-            pagamento <b className="text-slate-700 dark:text-slate-200">{navegacao.indice + 1}</b> de {navegacao.total}
+        <div
+          className="flex items-center justify-between gap-[12px] px-[16px] py-[14px] text-[13.5px]"
+          style={{ color: MOCK.sub }}
+        >
+          <span>linha {navegacao.indice + 1} de {navegacao.total}</span>
+          <span className="flex items-center gap-2">
+            <button type="button" disabled={ocupado || navegacao.indice === 0}
+              onClick={() => navegacao.onIr(navegacao.indice - 1)}
+              className="disabled:opacity-35" style={chip(MOCK.slateFraco, MOCK.slate)}>
+              ‹ anterior
+            </button>
+            {/* ⚠️ "pular" e não "próximo": decisão adiada não é decisão errada */}
+            <button type="button" disabled={ocupado || navegacao.indice + 1 >= navegacao.total}
+              onClick={() => navegacao.onIr(navegacao.indice + 1)}
+              className="disabled:opacity-35" style={chip(MOCK.roxoFraco, MOCK.roxo)}>
+              pular pra próxima ›
+            </button>
           </span>
-          <Button size="sm" variant="ghost" disabled={ocupado || navegacao.indice + 1 >= navegacao.total}
-            onClick={() => navegacao.onIr(navegacao.indice + 1)}
-            className="ml-auto h-7 gap-1 px-2 text-[11.5px] font-medium text-[#534AB7] dark:text-indigo-300">
-            {/* ⚠️ "pular" e não "próximo": ele pode deixar esta linha pra depois sem
-                decidir nada — decisão adiada não é decisão errada. */}
-            pular pra próxima <ChevronRight className="h-3.5 w-3.5" />
-          </Button>
         </div>
       )}
 
-      {/* ⭐ O ATALHO — marca as caixas, não grava */}
-      {card.atalho && !card.atalho.ambiguo && (
-        <div className="flex flex-wrap items-center gap-2 border-y border-[#534AB7]/20 bg-[#534AB7]/[0.06] px-4 py-2 text-[12px] text-[#3d3688] dark:border-indigo-900 dark:bg-indigo-950/30 dark:text-indigo-200">
-          <Sparkles className="h-3.5 w-3.5 shrink-0" />
-          <span>Existe uma combinação que crava: <b>{card.atalho.resumo}</b></span>
-          <Button size="sm" variant="ghost"
-            onClick={() => { setMarcadas(new Set(card.atalho!.notasIds)); setParcialAceita(false) }}
-            className="ml-auto h-7 px-2.5 text-[11.5px] font-semibold text-[#534AB7] dark:text-indigo-300">
-            aplicar
-          </Button>
-        </div>
-      )}
-      {card.atalho?.ambiguo && (
-        <p className="border-y border-slate-200 bg-slate-50 px-4 py-2 text-[11.5px] leading-relaxed text-slate-500 dark:border-slate-800 dark:bg-slate-900/40">
-          ⚠️ <b>{card.atalho.resumo}</b> — o sistema não sabe qual foi, então não marca nada. A escolha é sua.
-        </p>
-      )}
+      {/* ── `.instr` ── */}
+      <p className="px-[16px] pb-[2px] pt-[10px] text-[13px]" style={{ color: MOCK.sub }}>
+        Marca as notas que esse pagamento cobriu — vale misturar vencidas e a vencer:
+      </p>
 
-      {/* ── chão QUENTE: as notas ──
-          ⚠️ lista longa ROLA aqui dentro (a Box Paper tem 15): card que cresce sem limite
-          empurra o rodapé sticky pra fora do polegar no celular. */}
-      <div className={`bg-amber-50/40 px-2 py-2 dark:bg-amber-950/10 ${
-        listaLonga ? 'max-h-[46vh] overflow-y-auto overscroll-contain' : ''}`}>
+      {/* ⚠️ lista longa ROLA aqui dentro (a Box Paper tem 15) */}
+      <div className={listaLonga ? 'max-h-[46vh] overflow-y-auto overscroll-contain' : ''}>
         {card.vencidas.length > 0 && (
           <>
-            <p className="px-2 pt-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-rose-600 dark:text-rose-400">
-              vencidas · {card.fornecedorNome}
+            <p className="px-[16px] pb-[4px] pt-[10px] text-[11.5px] font-bold uppercase tracking-[.03em]"
+              style={{ color: MOCK.sub }}>
+              Vencidas
             </p>
             {card.vencidas.map((n) => <Nota key={n.id} n={n} />)}
           </>
         )}
         {card.aVencer.length > 0 && (
           <>
-            {/* ⚠️ "a vencer" entra de propósito: o pagamento real leva junto a nota que
-                ainda não venceu, e escondê-la faria o card nunca fechar nesses casos.
-                ⛔ MAS COM JANELA: parcela de novembro não abre num pagamento de setembro. */}
-            <p className="px-2 pt-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400">
-              a vencer{aVencerLonge.length > 0 ? ` · próximos ${JANELA_A_VENCER_DIAS} dias` : ''}
+            <p className="px-[16px] pb-[4px] pt-[10px] text-[11.5px] font-bold uppercase tracking-[.03em]"
+              style={{ color: MOCK.sub }}>
+              A vencer (o pagamento pode ter levado junto)
             </p>
             {aVencerPerto.map((n) => <Nota key={n.id} n={n} />)}
             {verDistantes && aVencerLonge.map((n) => <Nota key={n.id} n={n} />)}
+            {/* ⛔ nenhuma some: o dono pode adiantar parcela — só não abre a tela */}
             {aVencerLonge.length > 0 && (
               <button type="button" onClick={() => setVerDistantes((v) => !v)}
-                className="mx-2 mt-1 flex items-center gap-1 rounded-md px-1 py-1 text-[11.5px] font-medium text-slate-500 hover:text-[#534AB7] dark:text-slate-400">
-                <ChevronDown className={`h-3.5 w-3.5 transition-transform ${verDistantes ? 'rotate-180' : ''}`} />
+                className="w-full border-t px-[16px] py-[10px] text-left text-[13px]"
+                style={{ borderColor: LINHA_ENTRE_NOTAS, color: MOCK.sub }}>
                 {verDistantes
-                  ? 'esconder as mais distantes'
-                  : `mostrar mais ${aVencerLonge.length} que vencem depois`}
+                  ? '▲ esconder as que vencem depois'
+                  : `▼ mostrar mais ${aVencerLonge.length} que vencem além de ${JANELA_A_VENCER_DIAS} dias`}
               </button>
             )}
           </>
         )}
         {todas.length === 0 && (
-          <p className="px-2 py-3 text-[12.5px] text-slate-500">
+          <p className="px-[16px] py-[12px] text-[13.5px]" style={{ color: MOCK.sub }}>
             Este fornecedor não tem nota em aberto — a linha não é pagamento de conta nossa.
           </p>
         )}
       </div>
 
-      {/* ⭐ a diferença pequena fecha COM NOME */}
+      {/* ── `.ajuste` — a faixa âmbar do juros ── */}
       {cabeNome && (
-        <div className="flex flex-wrap items-center gap-2 border-t border-amber-200 bg-amber-50 px-4 py-2.5 text-[12px] text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-          <span>Sobra <b>{formatBRL(diferenca)}</b> — o que foi?</span>
-          {NOMES_DA_DIFERENCA.map((o) => (
-            <button key={o.chave} type="button" onClick={() => setNomeDaDiferenca(o.chave)}
-              className={`rounded-md px-2 py-0.5 text-[11.5px] font-medium ring-1 ring-inset transition-colors ${
-                nomeDaDiferenca === o.chave
-                  ? 'bg-amber-600 text-white ring-amber-600'
-                  : 'bg-white text-amber-800 ring-amber-300 hover:bg-amber-100'}`}>
-              {o.rotulo}
-            </button>
-          ))}
+        <div className="mx-[16px] mb-[12px] rounded-[10px] px-[12px] py-[10px] text-[13px]"
+          style={{ background: MOCK.ambarFraco, color: MOCK.ambar }}>
+          Sobra <b>{formatBRL(diferenca)}</b> — dá pra fechar como <b>juros/tarifa</b>, com o
+          valor escrito no rastro. O que foi?
+          <span className="mt-2 flex flex-wrap gap-2">
+            {NOMES_DA_DIFERENCA.map((o) => (
+              <button key={o.chave} type="button" onClick={() => setNomeDaDiferenca(o.chave)}
+                style={nomeDaDiferenca === o.chave
+                  ? chip(MOCK.ambar, '#ffffff')
+                  : chip('#ffffff', MOCK.ambar)}>
+                {o.rotulo}
+              </button>
+            ))}
+          </span>
         </div>
       )}
-      {/* ⛔ SÓ DEPOIS DE SELECIONAR: com zero marcado, "faltam R$ 2.008,00" é a linha
-          inteira e não ensina nada — em 16 cards vira ruído. */}
+
+      {/* ── `.dica` — faixa slate. ⛔ só depois de selecionar algo: com zero marcado,
+             "faltam R$ 2.008,00" é a linha inteira e não ensina nada. ── */}
       {falta && !cabeNome && marcadas.size > 0 && (
-        <p className="flex items-start gap-2 border-t border-slate-200 bg-white px-4 py-2.5 text-[11.5px] leading-relaxed text-slate-500 dark:border-slate-800 dark:bg-slate-950">
-          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
-          {/* ⛔ acima do teto não existe acerto rápido — a trava não é opinião */}
-          Faltam <b className="mx-1">{formatBRL(diferenca)}</b>, acima do teto de {formatBRL(TETO)}:
-          ou falta uma nota que não está no sistema, ou é baixa parcial, ou não é isso.
+        <p className="mx-[16px] mb-[14px] rounded-[10px] px-[12px] py-[10px] text-[12.5px] leading-relaxed"
+          style={{ background: MOCK.slateFraco, color: MOCK.slate }}>
+          Faltam <b>{formatBRL(diferenca)}</b>, acima do teto de {formatBRL(TETO)}. Não acha a
+          nota que falta? Ela pode não estar no sistema ainda — aí é baixa parcial, ou não é
+          isso.
         </p>
       )}
 
-      {/* ⭐⭐ BAIXA PARCIAL — o card explica ali mesmo */}
+      {/* ── BAIXA PARCIAL, na faixa roxa-fraca ── */}
       {parcial && (
-        <label className="flex cursor-pointer items-start gap-2 border-t border-[#534AB7]/20 bg-[#534AB7]/[0.06] px-4 py-2.5 text-[12px] leading-relaxed text-[#3d3688] dark:border-indigo-900 dark:bg-indigo-950/30 dark:text-indigo-200">
+        <label className="mx-[16px] mb-[12px] flex cursor-pointer items-start gap-[10px] rounded-[10px] px-[12px] py-[10px] text-[13px] leading-relaxed"
+          style={{ background: MOCK.roxoFraco, color: MOCK.roxo }}>
           <input type="checkbox" checked={parcialAceita} onChange={(e) => setParcialAceita(e.target.checked)}
-            className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 accent-[#534AB7]" />
-          <span className="flex items-start gap-1.5">
-            <Scissors className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            <span>
-              <b>{parcial.nota.descricao}</b> recebe <b>{formatBRL(parcial.recebe)}</b> deste
-              pagamento · <b>{formatBRL(parcial.continuaEmAberto)}</b> continuam em aberto no
-              Contas a Pagar.
-            </span>
+            className="mt-0.5 shrink-0" style={{ width: '19px', height: '19px', accentColor: MOCK.roxo }} />
+          <span>
+            ✂️ <b>{parcial.nota.descricao}</b> recebe <b>{formatBRL(parcial.recebe)}</b> deste
+            pagamento · <b>{formatBRL(parcial.continuaEmAberto)}</b> continuam em aberto no
+            Contas a Pagar.
           </span>
         </label>
       )}
 
-      {/* ── RODAPÉ STICKY: a conta viva ── */}
-      <div className={`sticky bottom-0 flex flex-wrap items-center gap-x-3 gap-y-2 border-t px-4 py-2.5 text-[12.5px] tabular-nums ${
-        fecha
-          ? 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-300'
-          : passou
-            ? 'border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-900 dark:bg-rose-950/50 dark:text-rose-300'
-            : 'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950/50 dark:text-amber-200'
-      }`}>
-        <span>
-          {fecha
-            ? '✓ Diferença R$ 0,00'
-            : falta
-              ? <>selecionado <b>{formatBRL(selecionado)}</b> · faltam <b>{formatBRL(diferenca)}</b></>
-              : parcial
-                ? <>passou <b>{formatBRL(sobra)}</b> — a última nota recebe baixa parcial</>
-                : <>passou <b>{formatBRL(sobra)}</b> — desmarca alguma</>}
+      {/* ── `.rodape` — sticky, branco, borda-topo 2px ── */}
+      <div
+        className="sticky bottom-0 flex items-center gap-[12px] px-[16px] py-[12px]"
+        style={{ background: MOCK.card, borderTop: `2px solid ${MOCK.line}` }}
+      >
+        <span className="flex-1 text-[13.5px]" style={{ color: MOCK.ink }}>
+          selecionado {formatBRL(selecionado)} ·{' '}
+          {fecha ? (
+            <b style={{ color: MOCK.verde }}>✓ soma crava com o pagamento</b>
+          ) : falta ? (
+            <b style={{ color: MOCK.ambar }}>faltam {formatBRL(diferenca)}</b>
+          ) : parcial ? (
+            <b style={{ color: MOCK.coral }}>passou {formatBRL(sobra)} — a última recebe baixa parcial</b>
+          ) : (
+            <b style={{ color: MOCK.coral }}>passou {formatBRL(sobra)} — desmarca alguma</b>
+          )}
         </span>
-        <span className="ml-auto flex items-center gap-1">
-          <Button size="sm" disabled={ocupado || !podeConciliar} onClick={conciliar}
-            className="h-8 gap-1.5 px-3 text-xs">
-            {ocupado ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
-            Conciliar
-          </Button>
-          <Button size="sm" variant="ghost" disabled={ocupado} onClick={onFechar}
-            className="h-8 gap-1 px-2.5 text-xs text-slate-500 hover:text-rose-600">
-            <X className="h-3.5 w-3.5" />
-            fechar
-          </Button>
-        </span>
+        {/* `.btn-g` */}
+        <button type="button" disabled={ocupado} onClick={onFechar}
+          className="shrink-0 rounded-[12px] border px-[18px] py-[12px] text-[14.5px] font-bold"
+          style={{ background: 'none', color: MOCK.sub, borderColor: MOCK.line }}>
+          não é isso
+        </button>
+        {/* `.btn-p` — nasce opacity .35 e sem pointer-events; acende quando a conta fecha */}
+        <button type="button" onClick={conciliar} disabled={ocupado || !podeConciliar}
+          className="flex shrink-0 items-center gap-[8px] rounded-[12px] px-[18px] py-[12px] text-[14.5px] font-bold"
+          style={{
+            background: MOCK.roxo, color: '#fff',
+            opacity: podeConciliar && !ocupado ? 1 : 0.35,
+            pointerEvents: podeConciliar && !ocupado ? 'auto' : 'none',
+          }}>
+          {ocupado && <Loader2 className="h-4 w-4 animate-spin" />}
+          Conciliar
+        </button>
       </div>
       <span className="hidden" data-empresa={empresaId} />
-    </article>
+    </div>
   )
 }

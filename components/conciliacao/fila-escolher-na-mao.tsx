@@ -1,23 +1,27 @@
 'use client'
 
-// ⭐⭐⭐ A FILA DO FIND & MATCH — UM CARD POR FORNECEDOR, FECHADO (10/09/2026).
+// ⭐⭐⭐ A FILA DO FIND & MATCH — O MOCK, AO PIXEL (`docs/mocks/conciliacao-mock.html`).
 //
-// **O dono, navegando em prod:** *"a APRESENTAÇÃO virou parede: 16 cards abertos, Ivan
-// aparece 3×, Casper 5×. O mock era outra coisa: a fila mostra cards COLAPSADOS
-// (fornecedor · N linhas · valor total), eu abro UM de cada vez."*
+// **O dono:** *"basta de descrição em palavras: o arquivo do mock é a régua; divergência
+// do mock = defeito. Eu abro o mock e a tela LADO A LADO no celular e não distingo qual é
+// qual no card do fornecedor."*
 //
-// ⛔⛔ **E NÃO É SÓ ARRUMAÇÃO — É A TRAVA.** N cards do mesmo fornecedor mostram AS MESMAS
-// notas e disputam entre si; marcar uma nota num card e outra no vizinho é o caminho pra
-// vincular a errada (foi assim que a NF do Cancian foi conciliada em 08/09). A faixa de
-// disputa existe pro caso 1:1, mas aqui *"o desenho certo é nem criar a disputa visual"*:
-// **com um grupo aberto e uma linha por vez, o estado ruim é inalcançável** (REGRA 5).
+// O que este arquivo reproduz, medido NO arquivo (não "parecido"):
+//   `.card`    borda 1px #e8e6e0 · raio 16px · margem 12px · overflow hidden
+//   `.card-h`  flex · gap 10px · padding 14px 16px · chip · nome 700/15px · valor 700/15px
+//   `.seta`    ▶ que gira 90° quando abre
+//   `.secao-t` caps 13px/700 · letter-spacing .03em · cor --sub
+//   `.fech`    padding 14px 16px · 13.5px · cor --sub · space-between
+//
+// ⛔ O COMPORTAMENTO NÃO MUDA (ordem do dono: *"NÃO MEXE NO MOTOR"*): um grupo aberto por
+// vez, uma linha por vez da mais antiga — a trava que faz a disputa entre cards pelas
+// mesmas notas ser inalcançável.
 
 import { useState, useMemo, useCallback, useEffect } from 'react'
-import { ChevronDown, Layers } from 'lucide-react'
 import { formatBRL } from '@/lib/format/money'
 import { EscolherNaMaoCard, type CardDeEscolhaDTO } from './escolher-na-mao-card'
+import { MOCK, chip } from './mock-tokens'
 
-/** ⚠️ o DTO chega com data em string (JSON) — o agrupador da lib trabalha com Date */
 interface Grupo {
   fornecedorId: string
   fornecedorNome: string
@@ -28,10 +32,12 @@ interface Grupo {
 
 const dia = (iso: string) => new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'UTC' })
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
+/** ⚠️ o mock usa o MENOS de verdade (U+2212), não hífen */
+const menos = (v: number) => `− ${formatBRL(v)}`
 
 /**
  * ⚠️ MESMA REGRA da `agruparPorFornecedor` da lib, sobre o DTO serializado. A lib é a
- * dona da decisão e tem os testes; aqui é a tradução de `string` pra `number` do tempo.
+ * dona da decisão e tem os testes; aqui é só a tradução de `string` pra tempo.
  */
 export function agruparDTO(cards: CardDeEscolhaDTO[]): Grupo[] {
   const porId = new Map<string, CardDeEscolhaDTO[]>()
@@ -87,48 +93,63 @@ export function FilaEscolherNaMao({ empresaId, cards, onConciliado }: Props) {
   const linhasTotais = grupos.reduce((n, g) => n + g.linhas.length, 0)
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-start gap-2.5 px-1">
-        <Layers className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
-        <p className="text-[12px] leading-relaxed text-slate-500 dark:text-slate-400">
-          <b className="text-slate-700 dark:text-slate-200">
-            {grupos.length} fornecedor{grupos.length > 1 ? 'es' : ''} · {linhasTotais} pagamento{linhasTotais > 1 ? 's' : ''} esperando você dizer quais notas {linhasTotais > 1 ? 'foram' : 'foi'}.
-          </b>{' '}
-          {/* ⚠️ o motivo fica escrito: quase sempre é pagamento parcial ou pagamento de
-              nota que nem está no sistema. */}
-          Nenhuma combinação fecha sozinha na soma — costuma ser <b>pagamento parcial</b> ou
-          nota que não está no sistema. Abra um, marque as notas: o rodapé soma ao vivo e o
-          Conciliar só acende quando a conta fecha.
-        </p>
-      </div>
+    // ⚠️ o `main` do app é `bg-zinc-50` (#fafafa) e o mock é #faf9f6 — quase igual, mas o
+    // mock é a régua. O fundo entra NA SEÇÃO, não no shell: trocar o shell mudaria todas
+    // as telas do sistema por causa de uma, o que ninguém pediu.
+    <section style={{ background: MOCK.bg }}>
+      {/* `.secao-t` — caps 13px/700, ls .03em, cor --sub, margem 20px 0 8px */}
+      <h2
+        className="mb-[8px] mt-[20px] text-[13px] font-bold uppercase tracking-[.03em]"
+        style={{ color: MOCK.sub }}
+      >
+        Pra tua mão — o pagamento existe, você diz o que ele pagou
+      </h2>
 
       {grupos.map((g) => {
         const i = Math.min(indice[g.fornecedorId] ?? 0, g.linhas.length - 1)
         const estaAberto = aberto === g.fornecedorId
         const linha = g.linhas[i]
+        // ⚠️ o chip conta as VENCIDAS da linha em foco — é o que o mock mostra
+        const vencidas = linha?.vencidas.length ?? 0
         return (
-          <div key={g.fornecedorId}
-            className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
-            {/* ── o cabeçalho COLAPSADO: fornecedor · N linhas · total ── */}
-            <button type="button" aria-expanded={estaAberto}
+          <article
+            key={g.fornecedorId}
+            className="mb-[12px] overflow-hidden rounded-[16px] border"
+            style={{ background: MOCK.card, borderColor: MOCK.line }}
+          >
+            {/* ── `.card-h` ── */}
+            <button
+              type="button" aria-expanded={estaAberto}
               onClick={() => setAberto(estaAberto ? null : g.fornecedorId)}
-              className="flex w-full flex-wrap items-baseline gap-x-2.5 gap-y-1 px-4 py-3 text-left hover:bg-slate-50 dark:hover:bg-slate-900/50">
-              <span className="text-[13px] font-semibold text-slate-800 dark:text-slate-100">
+              className="flex w-full items-center gap-[10px] px-[16px] py-[14px] text-left"
+            >
+              <span style={vencidas > 0
+                ? chip(MOCK.coralFraco, MOCK.coral)
+                : chip(MOCK.slateFraco, MOCK.slate)}>
+                {vencidas > 0
+                  ? `${vencidas} vencida${vencidas > 1 ? 's' : ''}`
+                  : `${(linha?.aVencer.length ?? 0)} a vencer`}
+              </span>
+              <span className="flex-1 text-[15px] font-bold" style={{ color: MOCK.ink }}>
                 {g.fornecedorNome}
               </span>
-              <span className="text-[11.5px] tabular-nums text-slate-400">
-                {g.linhas.length} pagamento{g.linhas.length > 1 ? 's' : ''} · desde {dia(g.linhas[0].linha.data)}
+              <span className="text-[15px] font-bold tabular-nums" style={{ color: MOCK.ink }}>
+                {/* o mock: "5 linhas · − R$ 10.885,97" com N>1; só o valor com N=1 */}
+                {g.linhas.length > 1
+                  ? `${g.linhas.length} linhas · ${menos(g.total)}`
+                  : menos(g.total)}
               </span>
-              <span className="ml-auto flex items-baseline gap-2">
-                <span className="text-[14px] font-semibold tabular-nums text-slate-900 dark:text-slate-50">
-                  {formatBRL(g.total)}
-                </span>
-                <ChevronDown className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${estaAberto ? 'rotate-180' : ''}`} />
+              <span
+                className="text-[11px] transition-transform duration-200"
+                style={{ color: MOCK.sub, transform: estaAberto ? 'rotate(90deg)' : undefined }}
+              >
+                ▶
               </span>
             </button>
 
+            {/* ── `.card-corpo` ── */}
             {estaAberto && linha && (
-              <div className="border-t border-slate-100 p-2 dark:border-slate-800">
+              <div className="border-t" style={{ borderColor: MOCK.line }}>
                 <EscolherNaMaoCard
                   key={linha.linha.id}
                   empresaId={empresaId}
@@ -142,9 +163,18 @@ export function FilaEscolherNaMao({ empresaId, cards, onConciliado }: Props) {
                 />
               </div>
             )}
-          </div>
+          </article>
         )
       })}
-    </div>
+
+      {/* ⚠️ o porquê da fila continua escrito — em `.fech`, o estilo do mock pra linha
+          informativa (padding 14px 16px · 13.5px · cor --sub). */}
+      <p className="px-[16px] py-[14px] text-[13.5px] leading-relaxed" style={{ color: MOCK.sub }}>
+        São <b>{linhasTotais}</b> pagamento{linhasTotais > 1 ? 's' : ''} de{' '}
+        <b>{grupos.length}</b> fornecedor{grupos.length > 1 ? 'es' : ''} em que nenhuma
+        combinação fecha sozinha — costuma ser <b>pagamento parcial</b> ou nota que não está
+        no sistema.
+      </p>
+    </section>
   )
 }

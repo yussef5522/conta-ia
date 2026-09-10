@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Conciliação — mock "escolher na mão"</title>
+<style>
+  :root{
+    --bg:#faf9f6; --card:#ffffff; --ink:#1f2430; --sub:#6b7280; --line:#e8e6e0;
+    --roxo:#534AB7; --roxo-fraco:#eeecfa; --verde:#177245; --verde-fraco:#e6f4ec;
+    --ambar:#b45309; --ambar-fraco:#fdf3e3; --coral:#b3382c; --coral-fraco:#fdecea;
+    --slate:#475569; --slate-fraco:#eef2f6; --frio:#f2f6fb; --quente:#fdf8f0;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{font-family:-apple-system,'Segoe UE',Inter,sans-serif; background:var(--bg); color:var(--ink); padding:16px; max-width:860px; margin:0 auto;}
+  h1{font-size:22px; margin-bottom:2px;}
+  .sub{color:var(--sub); font-size:13.5px; margin-bottom:16px;}
+  .stats{display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:18px;}
+  .stat{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px 14px;}
+  .stat .k{font-size:11px; letter-spacing:.04em; color:var(--sub); text-transform:uppercase;}
+  .stat .v{font-size:26px; font-weight:700; margin-top:2px;}
+  .stat .d{font-size:12px; color:var(--sub);}
+  .stat.acao .v{color:var(--roxo);}
+  .chip{display:inline-block; font-size:11px; font-weight:600; padding:2px 9px; border-radius:99px;}
+  .chip.frio{background:var(--slate-fraco); color:var(--slate);}
+  .chip.verde{background:var(--verde-fraco); color:var(--verde);}
+  .chip.ambar{background:var(--ambar-fraco); color:var(--ambar);}
+  .chip.coral{background:var(--coral-fraco); color:var(--coral);}
+  .secao-t{font-size:13px; font-weight:700; letter-spacing:.03em; color:var(--sub); text-transform:uppercase; margin:20px 0 8px;}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:16px; margin-bottom:12px; overflow:hidden;}
+  .card-h{display:flex; align-items:center; gap:10px; padding:14px 16px; cursor:pointer;}
+  .card-h .nome{font-weight:700; font-size:15px; flex:1;}
+  .card-h .valor{font-weight:700; font-size:15px;}
+  .card-h .seta{color:var(--sub); transition:.2s;}
+  .card.aberto .seta{transform:rotate(90deg);}
+  .card-corpo{display:none; border-top:1px solid var(--line);}
+  .card.aberto .card-corpo{display:block;}
+  .linha-banco{background:var(--frio); padding:12px 16px; font-size:13.5px; display:flex; justify-content:space-between; align-items:center;}
+  .linha-banco b{font-size:15px;}
+  .instr{padding:10px 16px 2px; font-size:13px; color:var(--sub);}
+  .grupo-t{padding:10px 16px 4px; font-size:11.5px; font-weight:700; color:var(--sub); text-transform:uppercase; letter-spacing:.03em;}
+  label.nota{display:flex; align-items:center; gap:12px; padding:10px 16px; border-top:1px solid #f1efe9; cursor:pointer; font-size:14px;}
+  label.nota:hover{background:#fbfaf7;}
+  label.nota input{width:19px; height:19px; accent-color:var(--roxo);}
+  label.nota .desc{flex:1;}
+  label.nota .desc small{display:block; color:var(--sub); font-size:12px;}
+  label.nota .v{font-weight:600;}
+  label.nota.sugerida{background:var(--roxo-fraco);}
+  label.nota.sugerida .desc small b{color:var(--roxo);}
+  .rodape{position:sticky; bottom:0; background:var(--card); border-top:2px solid var(--line); padding:12px 16px; display:flex; align-items:center; gap:12px;}
+  .conta{flex:1; font-size:13.5px;}
+  .conta .falta{font-weight:700; color:var(--ambar);}
+  .conta .crava{font-weight:700; color:var(--verde);}
+  .conta .passou{font-weight:700; color:var(--coral);}
+  .btn{border:none; border-radius:12px; padding:12px 18px; font-size:14.5px; font-weight:700; cursor:pointer;}
+  .btn-p{background:var(--roxo); color:#fff; opacity:.35; pointer-events:none;}
+  .btn-p.on{opacity:1; pointer-events:auto;}
+  .btn-g{background:none; color:var(--sub); border:1px solid var(--line);}
+  .ajuste{display:none; margin:0 16px 12px; padding:10px 12px; background:var(--ambar-fraco); border-radius:10px; font-size:13px; color:var(--ambar);}
+  .ajuste.on{display:block;}
+  .dica{margin:0 16px 14px; padding:10px 12px; background:var(--slate-fraco); border-radius:10px; font-size:12.5px; color:var(--slate);}
+  .fech{padding:14px 16px; color:var(--sub); font-size:13.5px; display:flex; justify-content:space-between;}
+  .rodape-pg{margin-top:22px; text-align:center; color:var(--sub); font-size:12px;}
+</style>
+</head>
+<body>
+
+<h1>Conciliação</h1>
+<div class="sub">o banco diz o que saiu · você diz o que cada pagamento pagou</div>
+
+<div class="stats">
+  <div class="stat acao"><div class="k">Pra tua mão</div><div class="v">6</div><div class="d">pagamentos que não fecham sozinhos</div></div>
+  <div class="stat"><div class="k">Fecham sozinhos</div><div class="v">0</div><div class="d">nada esperando clique</div></div>
+  <div class="stat"><div class="k">Sem pagamento</div><div class="v">13</div><div class="d">pagar, ou registrar saída do cofre</div></div>
+</div>
+
+<div class="secao-t">Pra tua mão — o pagamento existe, você diz o que ele pagou</div>
+
+<!-- ═══════ IVAN — ABERTO, INTERATIVO ═══════ -->
+<div class="card aberto" id="cardIvan">
+  <div class="card-h" onclick="document.getElementById('cardIvan').classList.toggle('aberto')">
+    <span class="chip coral">3 vencidas</span>
+    <span class="nome">M. IVAN LUNARDI OURIQUE</span>
+    <span class="valor">− R$ 2.008,00</span>
+    <span class="seta">▶</span>
+  </div>
+  <div class="card-corpo">
+    <div class="linha-banco">
+      <span>💳 STONE · 08/09 · "M IVAN LUNARDI - Pagamento"</span>
+      <b>− R$ 2.008,00</b>
+    </div>
+    <div class="instr">Marca as notas que esse pagamento cobriu — vale misturar vencidas e a vencer:</div>
+
+    <div class="grupo-t">Vencidas</div>
+    <label class="nota"><input type="checkbox" class="nIvan" value="625.00" checked>
+      <span class="desc">NF 39 <small>venc 07/09</small></span><span class="v">R$ 625,00</span></label>
+    <label class="nota"><input type="checkbox" class="nIvan" value="613.50" checked>
+      <span class="desc">NF 41 <small>venc 07/09</small></span><span class="v">R$ 613,50</span></label>
+    <label class="nota"><input type="checkbox" class="nIvan" value="350.00" checked>
+      <span class="desc">NF 40 <small>venc 07/09</small></span><span class="v">R$ 350,00</span></label>
+
+    <div class="grupo-t">A vencer (o pagamento pode ter levado junto)</div>
+    <label class="nota sugerida"><input type="checkbox" class="nIvan" value="419.50">
+      <span class="desc">NF 43 <small>venc 14/09 · <b>⭐ com essa, a soma crava</b></small></span><span class="v">R$ 419,50</span></label>
+    <label class="nota"><input type="checkbox" class="nIvan" value="512.00">
+      <span class="desc">NF 44 <small>venc 21/09</small></span><span class="v">R$ 512,00</span></label>
+
+    <div class="ajuste" id="ajusteIvan">Diferença pequena sobrando? Dá pra fechar como <b>juros/tarifa</b> — com o valor escrito no rastro.</div>
+    <div class="dica">Não acha a nota que falta? Ela pode não estar no sistema ainda (nota que não chegou pelo Recebimentos) — aí o botão "a diferença é uma nota que falta" registra a pendência com nome.</div>
+
+    <div class="rodape">
+      <div class="conta" id="contaIvan"></div>
+      <button class="btn btn-g">não é isso</button>
+      <button class="btn btn-p" id="btnIvan">Vincular</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════ CASPER — FECHADO ═══════ -->
+<div class="card" id="cardCasper">
+  <div class="card-h" onclick="document.getElementById('cardCasper').classList.toggle('aberto')">
+    <span class="chip coral">1 vencida</span>
+    <span class="nome">CASPER DISTRIBUIDORA</span>
+    <span class="valor">5 linhas · − R$ 10.885,97</span>
+    <span class="seta">▶</span>
+  </div>
+  <div class="card-corpo">
+    <div class="linha-banco"><span>💳 STONE · 5 pagamentos entre 31/08 e 04/09</span><b>um de cada vez</b></div>
+    <div class="instr">Fornecedor com várias linhas: a tela abre <b>uma linha por vez</b> (a mais antiga primeiro), mesma mecânica de marcar notas até cravar.</div>
+    <div class="fech"><span>linha 1 de 5 · 31/08 · − R$ 2.079,98</span><span class="chip verde">valor = NF 967122 ⭐</span></div>
+  </div>
+</div>
+
+<!-- ═══════ DEMAIS FECHADOS ═══════ -->
+<div class="card"><div class="card-h"><span class="chip coral">2 vencidas</span><span class="nome">MARIA LUIZA COELHO</span><span class="valor">2 linhas · − R$ 3.339,22</span><span class="seta">▶</span></div></div>
+<div class="card"><div class="card-h"><span class="chip coral">3 vencidas</span><span class="nome">BOX PAPER EMBALAGENS</span><span class="valor">− R$ 5.211,85</span><span class="seta">▶</span></div></div>
+<div class="card"><div class="card-h"><span class="chip coral">2 vencidas</span><span class="nome">OESA COMERCIO</span><span class="valor">− R$ 1.838,61</span><span class="seta">▶</span></div></div>
+
+<div class="secao-t">Sem pagamento em banco nenhum — 13 · pagar, ou registrar a saída do cofre</div>
+<div class="card"><div class="fech"><span>FRIGORÍFICO SILVA · 2 notas · R$ 8.099,09 · vencidas desde 04/09</span><span class="chip ambar">pagar → ou saiu do cofre?</span></div></div>
+<div class="card"><div class="fech"><span>+ 12 grupos (Odissea, Focatto, Cia da Fruta, aluguéis…)</span><span class="chip frio">ver todos</span></div></div>
+
+<div class="rodape-pg">mock navegável · números reais de 10/09 · o card do Ivan é clicável: marca a NF 43 e vê a conta cravar</div>
+
+<script>
+function contaIvan(){
+  const alvo = 2008.00;
+  let soma = 0;
+  document.querySelectorAll('.nIvan:checked').forEach(c => soma += parseFloat(c.value));
+  const dif = Math.round((alvo - soma)*100)/100;
+  const el = document.getElementById('contaIvan');
+  const btn = document.getElementById('btnIvan');
+  const aj = document.getElementById('ajusteIvan');
+  const f = v => 'R$ ' + v.toFixed(2).replace('.',',');
+  btn.classList.remove('on'); aj.classList.remove('on');
+  if (dif === 0){
+    el.innerHTML = 'selecionado ' + f(soma) + ' · <span class="crava">✓ soma crava com o pagamento</span>';
+    btn.classList.add('on');
+  } else if (dif > 0 && dif <= 15){
+    el.innerHTML = 'selecionado ' + f(soma) + ' · <span class="falta">faltam ' + f(dif) + '</span>';
+    aj.classList.add('on'); btn.classList.add('on');
+  } else if (dif > 0){
+    el.innerHTML = 'selecionado ' + f(soma) + ' · <span class="falta">faltam ' + f(dif) + '</span>';
+  } else {
+    el.innerHTML = 'selecionado ' + f(soma) + ' · <span class="passou">passou ' + f(-dif) + ' — desmarca alguma</span>';
+  }
+}
+document.querySelectorAll('.nIvan').forEach(c => c.addEventListener('change', contaIvan));
+contaIvan();
+</script>
+</body>
+</html>
