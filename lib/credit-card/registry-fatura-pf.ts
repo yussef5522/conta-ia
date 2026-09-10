@@ -16,15 +16,27 @@
 // ⭐ MESMO PADRÃO DO PJ E DOS `bank-profiles`: adicionar banco = adicionar objeto. Banco
 // que não casa **não é processado** — devolve null, e quem chamou dá o erro certo.
 
-import { parseBanrisulFaturaPF } from '@/lib/fatura-banrisul/banrisul-fatura-pf'
-import { parseNubankFaturaPF } from '@/lib/fatura-nubank/parser'
+import { lerBanrisulPF, lerNubankPF, lerItauPF } from './adaptadores-fatura-pf'
+import type { FaturaPFLida } from './fatura-pf-lida'
 
 export interface ParserFaturaPF {
   banco: string
   /** casa no CONTEÚDO do PDF, nunca no nome que o dono deu ao cartão — cartão pode se
    *  chamar "meu cartão", e o nome do cadastro não prova de quem é o documento. */
   match: RegExp
-  parse: (texto: string) => unknown
+  /**
+   * ⛔⛔ **A LEITURA DE VERDADE — e este campo passou 9 dias sendo decorativo.**
+   *
+   * O registry nasceu em 31/08 com `parse`, e o `importar-fatura-pf.ts` **nunca o
+   * chamou**: ele reconhecia o banco pelo `match` e em seguida rodava
+   * `parseBanrisulFaturaPF` cravado, pra qualquer documento. Uma fatura do Nubank passava
+   * no reconhecimento e era lida com a régua do Banrisul.
+   *
+   * ⚠️ O campo virou `ler` e devolve a **forma única** (`FaturaPFLida`): assim não existe
+   * mais um "formato do Banrisul" que o import saiba ler por acidente — todos os bancos
+   * entram pela mesma porta, e um banco novo que não a implemente **não compila**.
+   */
+  ler: (texto: string) => FaturaPFLida
 }
 
 export const PARSERS_FATURA_PF: ParserFaturaPF[] = [
@@ -48,7 +60,7 @@ export const PARSERS_FATURA_PF: ParserFaturaPF[] = [
     // palavra que o parser passou a usar pra DECIDIR. **Toda palavra usada pra decidir
     // tem que sobreviver à anonimização — ou a decisão não pode depender só dela.**
     match: /banrisul|saldo da fatura atual/i,
-    parse: parseBanrisulFaturaPF,
+    ler: lerBanrisulPF,
   },
   {
     banco: 'Nubank',
@@ -56,7 +68,17 @@ export const PARSERS_FATURA_PF: ParserFaturaPF[] = [
     // (1×) e "RESUMO DA FATURA ATUAL" (1×). O último é o rótulo estrutural — e ele NÃO
     // casa com o "Saldo da fatura atual" do Banrisul, que é o que mantém os dois separados.
     match: /nubank|nu\s+pagamentos|RESUMO DA FATURA ATUAL/i,
-    parse: parseNubankFaturaPF,
+    ler: lerNubankPF,
+  },
+  {
+    banco: 'Itaú/Luizacred',
+    // ⚠️ TRÊS sinais, e nenhum é a palavra "Itaú" sozinha: o boleto é do Banco Itaú mas o
+    // EMISSOR é a LUIZACRED (o cartão Magazine Luiza), e "Itaú" aparece no rodapé de
+    // documento de outros bancos. Os dois rótulos estruturais são do layout Quadient
+    // desta fatura e não colidem com o "Saldo da fatura atual" do Banrisul nem com o
+    // "RESUMO DA FATURA ATUAL" do Nubank.
+    match: /LUIZACRED|Resumo da fatura em R\$|Lançamentos no cartão \(final/i,
+    ler: lerItauPF,
   },
 ]
 

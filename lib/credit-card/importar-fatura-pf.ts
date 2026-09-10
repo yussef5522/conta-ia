@@ -18,7 +18,6 @@
 
 import { createHash } from 'node:crypto'
 import { prisma } from '@/lib/db'
-import { parseBanrisulFaturaPF } from '@/lib/fatura-banrisul/banrisul-fatura-pf'
 import { reconhecerBancoPF, diagnosticarFalha } from './registry-fatura-pf'
 import { resolverTotalDeclarado, conferirTotal, type OrigemTotal } from './total-declarado'
 import { getCardInProfile, getOrCreateInvoice, CreditCardError } from './queries'
@@ -57,6 +56,8 @@ export interface PreviewFaturaPF {
     fecha: boolean
     /** encargo que só existe no resumo (não é linha) */
     encargosDeclarados: number
+    /** ⭐ como o BANCO chama esse encargo — vira a descrição da linha no confirm */
+    encargosRotulo: string
   }
   portadores: string[]
   linhas: LinhaFaturaPF[]
@@ -91,7 +92,8 @@ function semLeitura(
     banco: 'desconhecido', vencimento: null, referencia: null, totalDeclarado: null,
     conferencia: {
       despesasCalculado: 0, despesasDeclarado: null,
-      saldoCalculado: 0, saldoDeclarado: null, fecha: false, encargosDeclarados: 0,
+      saldoCalculado: 0, saldoDeclarado: null, fecha: false,
+      encargosDeclarados: 0, encargosRotulo: 'Encargos',
     },
     portadores: [], linhas: [], novas: 0, jaExistem: 0,
     proximasFaturas: {
@@ -112,18 +114,12 @@ export function hashLinha(cardId: string, l: {
 }
 
 /** Encargo declarado no resumo que NÃO aparece como linha (rotativo, juros). */
-function encargosDeclarados(texto: string): number {
-  let soma = 0
-  for (const re of [
-    /Encargos sobre rotativo\s+([\d.]+,\d{2})/i,
-    /Encargos sobre saque\s+([\d.]+,\d{2})/i,
-    /Encargos sobre pagamento de contas\s+([\d.]+,\d{2})/i,
-  ]) {
-    const m = texto.match(re)
-    if (m) soma += Number(m[1].replace(/\./g, '').replace(',', '.'))
-  }
-  return round2(soma)
-}
+/**
+ * ⛔ O ENCARGO DO BANRISUL SAIU DAQUI (09/09/2026). Ele lia rótulos que só existem na
+ * fatura do Banrisul ("Encargos sobre rotativo") e rodava pra QUALQUER banco — código de
+ * um layout aplicado a todos, que é a doença que este import acabou de curar. Agora mora
+ * em `adaptadores-fatura-pf.ts`, junto da régua do banco dele.
+ */
 
 export async function previewFaturaPF(input: {
   userId: string
@@ -152,35 +148,31 @@ export async function previewFaturaPF(input: {
     return semLeitura(card, d.mensagem, d.causa)
   }
 
-  const r = parseBanrisulFaturaPF(input.texto)
-  const enc = encargosDeclarados(input.texto)
+  // ⭐⭐⭐ AQUI ESTAVA O BURACO (09/09/2026): esta linha era
+  // `parseBanrisulFaturaPF(input.texto)` — CRAVADA. O registry reconhecia o banco e em
+  // seguida o Banrisul lia tudo, inclusive uma fatura do Nubank. Agora quem lê é o banco
+  // reconhecido, pela forma única.
+  const lida = parser.ler(input.texto)
+  const enc = lida.conferencia.encargosDeclarados
 
-  const despesasCalculado = r.computed.sumPositives
-  const saldoCalculado = round2(r.computed.sumEstornos + despesasCalculado + enc)
-  const despesasOk =
-    r.declared.brasil != null && Math.abs(despesasCalculado - r.declared.brasil) <= TOL
-  const saldoOk =
-    r.declared.saldoAtual != null && Math.abs(saldoCalculado - r.declared.saldoAtual) <= TOL
-  const fecha = despesasOk && saldoOk
+  const despesasCalculado = lida.conferencia.despesasCalculado
+  const saldoCalculado = lida.conferencia.saldoCalculado
+  const fecha = lida.conferencia.fecha
 
   // A fatura do EXTRATO: a que vence na data impressa no PDF.
-  const venc = r.extraction.dueDate ? new Date(`${r.extraction.dueDate}T00:00:00.000Z`) : null
+  const venc = lida.vencimento ? new Date(`${lida.vencimento}T00:00:00.000Z`) : null
   const referencia = venc ? `${venc.getUTCFullYear()}-${String(venc.getUTCMonth() + 1).padStart(2, '0')}` : null
 
-  const linhasCru = (r.extraction.lines ?? []).map((l) => {
-    const credito = !!l.note?.includes('estorno')
+  const linhasCru = lida.linhas.map((l) => {
     const base = {
-      data: l.date,
-      descricao: l.description,
-      valor: round2(l.amount),
-      parcelaNumero: l.installmentNumber ?? null,
+      data: l.data, descricao: l.descricao, valor: l.valor, parcelaNumero: l.parcelaNumero,
     }
     return {
       ...base,
-      credito,
-      parcelaTotal: l.installmentTotal ?? null,
-      portador: (l as { cardLastDigits?: string }).cardLastDigits ?? null,
-      internacional: !!l.note?.includes('internacional'),
+      credito: l.credito,
+      parcelaTotal: l.parcelaTotal,
+      portador: l.portador,
+      internacional: l.internacional,
       dedupHash: hashLinha(input.cardId, base),
       jaExiste: false,
     }
@@ -207,12 +199,12 @@ export async function previewFaturaPF(input: {
       projetadoProxima = round2(projetadoProxima + l.valor)
     }
   }
-  const pf = r.proximas
+  const pf = lida.proximas
   const bateProjecao = pf.proxima != null && Math.abs(projetadoProxima - pf.proxima) <= 1
 
   // ⭐ O TOTAL DECLARADO — do PDF, ou digitado pelo dono olhando a fatura. A conferência
   // é a MESMA nos dois casos; o que muda é só de onde o número veio (e isso fica gravado).
-  const total = resolverTotalDeclarado({ doPdf: r.declared.saldoAtual, digitado: input.totalDigitado })
+  const total = resolverTotalDeclarado({ doPdf: lida.conferencia.saldoDeclarado, digitado: input.totalDigitado })
   const conf = total ? conferirTotal(saldoCalculado, total) : null
 
   // ⭐ UMA decisão, um lugar: preview e confirm dizem a MESMA coisa da MESMA falha.
@@ -221,12 +213,8 @@ export async function previewFaturaPF(input: {
     linhas: linhas.length,
     temTotalDeclarado: total != null,
     fecha,
-    detalhe: [
-      r.declared.brasil != null
-        ? `   despesas: lido R$ ${despesasCalculado.toFixed(2)} · declarado R$ ${r.declared.brasil.toFixed(2)}`
-        : null,
-      conf?.detalhe ?? null,
-    ].filter(Boolean).join('\n'),
+    // ⭐ o detalhe é do BANCO: cada layout explica a própria composição
+    detalhe: [lida.conferencia.detalhe, conf?.detalhe ?? null].filter(Boolean).join('\n'),
   })
   const erro = fecha ? null : diag?.mensagem ?? null
 
@@ -238,19 +226,20 @@ export async function previewFaturaPF(input: {
     banco: parser.banco,
     causa: fecha ? undefined : diag?.causa,
     origemTotal: total?.origem,
-    vencimento: r.extraction.dueDate,
+    vencimento: lida.vencimento,
     referencia,
     // ⭐ o total que VALEU na conferência — pode ter vindo do PDF ou do dono
     totalDeclarado: total?.valor ?? null,
     conferencia: {
       despesasCalculado,
-      despesasDeclarado: r.declared.brasil,
+      despesasDeclarado: lida.conferencia.despesasDeclarado,
       saldoCalculado,
-      saldoDeclarado: r.declared.saldoAtual,
+      saldoDeclarado: lida.conferencia.saldoDeclarado,
       fecha,
       encargosDeclarados: enc,
+      encargosRotulo: lida.conferencia.encargosRotulo,
     },
-    portadores: r.extraction.cardLastDigitsFound ?? [],
+    portadores: lida.portadores,
     linhas,
     novas: linhas.filter((l) => !l.jaExiste).length,
     jaExistem: linhas.filter((l) => l.jaExiste).length,
@@ -321,9 +310,12 @@ export async function confirmarFaturaPF(input: {
     // invariante KP1 (`totalAmount == Σ das linhas`) continua valendo e o dono VÊ a
     // cobrança na lista em vez de um total que não fecha com o que ele soma na mão.
     const enc = prev.conferencia.encargosDeclarados
+    // ⭐ o NOME é o do banco (09/09): "Encargos sobre rotativo" é rótulo do Banrisul, e o
+    // Itaú chama de "Encargos (financiamento + moratório)".
+    const rotuloEnc = prev.conferencia.encargosRotulo
     if (enc > 0) {
       const hashEnc = hashLinha(input.cardId, {
-        data: prev.vencimento!, valor: enc, descricao: 'ENCARGOS SOBRE ROTATIVO', parcelaNumero: null,
+        data: prev.vencimento!, valor: enc, descricao: rotuloEnc.toUpperCase(), parcelaNumero: null,
       })
       // ⚠️ dedup por HASH **ou** por (fatura + descrição + valor): o encargo pode ter
       // sido lançado à mão (foi o que aconteceu na correção da fatura de 26/08 — a
@@ -334,7 +326,7 @@ export async function confirmarFaturaPF(input: {
           creditCardId: input.cardId,
           OR: [
             { dedupHash: hashEnc },
-            { creditCardInvoiceId: invoice.id, description: 'Encargos sobre rotativo', amount: enc },
+            { creditCardInvoiceId: invoice.id, description: rotuloEnc, amount: enc },
           ],
         },
         select: { id: true },
@@ -343,7 +335,7 @@ export async function confirmarFaturaPF(input: {
         await tx.personalTransaction.create({
           data: {
             profileId: input.profileId, date: new Date(`${prev.vencimento}T12:00:00.000Z`),
-            description: 'Encargos sobre rotativo', amount: enc, type: 'DEBIT',
+            description: rotuloEnc, amount: enc, type: 'DEBIT',
             status: 'RECONCILED', origin: 'PDF_FATURA', dedupHash: hashEnc,
             creditCardId: input.cardId, creditCardInvoiceId: invoice.id,
             notes: 'declarado no resumo da fatura (não é linha de transação)',
