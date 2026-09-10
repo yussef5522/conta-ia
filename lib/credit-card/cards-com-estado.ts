@@ -12,7 +12,8 @@
 import { prisma } from '@/lib/db'
 import { checkProfileAccess } from '@/lib/personal-profile/queries'
 import {
-  estadoDaFaturaNoCard, diasEntre, type EstadoNoCard, type FaturaConhecida,
+  estadoDaFaturaNoCard, diasEntre, hojeNoBrasil,
+  type EstadoNoCard, type FaturaConhecida,
 } from './estado-da-fatura-no-card'
 import { JANELA_DIAS, TOLERANCIA } from './casar-pagamento-pf'
 
@@ -51,8 +52,11 @@ export interface CartaoComEstado {
 }
 
 export async function listarCartoesComEstado(
-  userId: string, profileId: string, hoje: Date = new Date(),
+  userId: string, profileId: string, agora: Date = new Date(),
 ): Promise<CartaoComEstado[]> {
+  // ⛔ o dia é o DO BRASIL — ver `hojeNoBrasil`. O servidor roda em UTC, e das 21h à
+  // meia-noite ele já está no dia seguinte: toda fatura que vence hoje apareceria vencida.
+  const hoje = hojeNoBrasil(agora)
   await checkProfileAccess(userId, profileId)
 
   const cards = await prisma.creditCard.findMany({

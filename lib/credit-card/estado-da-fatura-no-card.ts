@@ -21,6 +21,27 @@
 // tempo: fatura importada nasce OPEN e continua OPEN depois de vencer").
 
 import { calculateInvoiceReference, type CardConfig } from './calculate-invoice-reference'
+import { endOfTodayBrazil } from '@/lib/ofx/future-line'
+
+/**
+ * ⛔⛔⛔ O "HOJE" DO CARD É O DIA **DO BRASIL**, não o do servidor (09/09/2026).
+ *
+ * **Pego na prova em prod, não em teste:** o servidor marcava `2026-09-10 02:32 UTC` —
+ * mas em São Paulo ainda era **23:32 de 09/09**. O card do Magalu, cuja fatura vence
+ * 09/09, já dizia **"VENCEU dia 09/09"** com o dono ainda dentro do prazo.
+ *
+ * ⚠️ Não é preciosismo de fuso: **todo dia, das 21h à meia-noite, todo cartão que vence
+ * naquele dia apareceria como vencido.** É uma mentira de três horas por dia, no número
+ * que o dono usa pra decidir se corre pagar.
+ *
+ * ⭐ Reusa o `endOfTodayBrazil` do módulo de OFX — a casa já tinha o dono desta pergunta
+ * desde 07/08; escrever um segundo cálculo de "dia BRT" aqui seria a lição do B1 de novo.
+ */
+export function hojeNoBrasil(agora: Date = new Date()): Date {
+  // ⚠️ o fim do dia BRT convertido pra UTC cai no dia seguinte; recuo 12h pra pousar no
+  // MEIO do dia brasileiro, que é o instante que representa o dia sem ambiguidade.
+  return new Date(endOfTodayBrazil(agora).getTime() - 12 * 3600_000)
+}
 
 export type EstadoDaFatura =
   /** ciclo corrente, ainda não fechou */

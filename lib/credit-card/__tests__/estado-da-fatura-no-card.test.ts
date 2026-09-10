@@ -7,7 +7,7 @@
 
 import { describe, it, expect } from 'vitest'
 import {
-  estadoDaFaturaNoCard, estaPaga, diasEntre, type FaturaConhecida,
+  estadoDaFaturaNoCard, estaPaga, diasEntre, hojeNoBrasil, type FaturaConhecida,
 } from '../estado-da-fatura-no-card'
 import type { CardConfig } from '../calculate-invoice-reference'
 
@@ -184,5 +184,35 @@ describe('⚠️ dias em UTC — "vence em 2 dias" não pode virar 1 por causa d
   it('conta dias de calendário, não de relógio', () => {
     expect(diasEntre(new Date('2026-09-09T23:00:00.000Z'), new Date('2026-09-10T01:00:00.000Z'))).toBe(1)
     expect(diasEntre(new Date('2026-09-09T00:00:00.000Z'), new Date('2026-09-09T23:59:00.000Z'))).toBe(0)
+  })
+})
+
+describe('⛔⛔⛔ O "HOJE" É O DIA DO BRASIL — pego na prova em prod (09/09/2026)', () => {
+  // O servidor marcava 2026-09-10 02:32 UTC e em São Paulo ainda era 23:32 de 09/09.
+  // O card do Magalu (vence 09/09) já dizia "VENCEU dia 09/09" com o dono no prazo.
+  const NOITE_NO_BRASIL = new Date('2026-09-10T02:32:00.000Z')
+  const faturas = [fatura({
+    reference: '2026-09', closingDate: d('2026-09-02'), dueDate: d('2026-09-09'),
+    totalAmount: 4491.18,
+  })]
+
+  it('⛔ às 23h32 de 09/09 no Brasil, a fatura de hoje NÃO está vencida', () => {
+    const e = estadoDaFaturaNoCard({
+      card: MAGALU, faturas, hoje: hojeNoBrasil(NOITE_NO_BRASIL),
+    })
+    expect(e.estado).toBe('VENCE_HOJE')
+  })
+
+  it('⛔ e o UTC cru diria VENCIDA — o contrafactual', () => {
+    const e = estadoDaFaturaNoCard({ card: MAGALU, faturas, hoje: NOITE_NO_BRASIL })
+    expect(e.estado).toBe('VENCIDA')
+  })
+
+  it('⭐ e no dia seguinte de verdade ela vence, sim', () => {
+    // 03:00 UTC do dia 11 = meia-noite e pouco de 11/09 no Brasil
+    const e = estadoDaFaturaNoCard({
+      card: MAGALU, faturas, hoje: hojeNoBrasil(new Date('2026-09-11T03:00:00.000Z')),
+    })
+    expect(e.estado).toBe('VENCIDA')
   })
 })
