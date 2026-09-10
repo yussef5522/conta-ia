@@ -412,6 +412,30 @@ conferência das contas: 2 batem · 1 explicada · 0 divergem
 ```
 **REGRA 11 — 3 defeitos repostos, 1 vermelho cada:** dupla contagem como móvel fixo · o textão de volta · o badge com régua própria. **9.218 verdes · TS 0 · deploy `3RTQqNtZQP9GXYyQ0s-Wc` 4/4.**
 
+### ⭐⭐ A CONFERÊNCIA DE SALDO SAIU DA CONCILIAÇÃO — UMA CASA SÓ (10/09)
+
+**O dono:** *"conferência de saldo (bate/explicado/diverge) tem casa própria: o card da conta em BANCOS, que já mostra isso. Repetir na Conciliação é informação duplicada — e duplicado diverge, em tela como em código. A Conciliação cuida de VÍNCULOS (pagamento ↔ conta a pagar); saldo é assunto de Bancos."*
+
+**⭐ CONFERIDO ANTES DE APAGAR** (a régua da casa: nada some sem ter onde morar): o selo vive em `/empresas/[id]/contas`, alimentado por `conferenciaDasContas` via `/api/contas-bancarias` — *"✓ conferido · ⚠ divergente em R$ X · ○ nunca conferida"*. **Saiu a segunda vitrine, não a régua.**
+
+**⚠️ E SAIU DO PAYLOAD, não só da tela.** Dado que ninguém desenha é dado que alguém religa por descuido — e, no caminho, a fila parava pra conferir **todas as contas** a cada carregamento.
+
+**⭐⭐ E UM REFETCH DE 1,4 s POR VÍNCULO MORREU JUNTO.** O `recarregarSaldos` recarregava a **fila inteira** só pra atualizar o bloco de conferência. Sem o bloco, ele virou lixo — e os stats do topo passaram a **recontar local pela `contarFilas`**, a MESMA função do servidor e do badge. Não é conta repetida no cliente: é a mesma regra, chamada de outro lugar.
+
+**A LINHA DAS SEM-PAR ENCOLHEU** pra *"N em aberto sem par · Ver no Contas a Pagar"*; a quebra em três e o gesto do cofre moram lá dentro.
+
+**⭐ O GUARD PROVA OS DOIS LADOS** — saiu da Conciliação **e continua em Bancos. Guard que só verifica a remoção aprovaria o dia em que a conferência sumisse de todo lugar**, e aí não seria mudança de casa, seria perda. Ele também trava o critério da dobra: as únicas tags do cabeçalho são `StatsDoMock` + o link — **nada entre os stats e os cards**.
+
+**PROVADO EM PROD:**
+```
+OS 3 STATS   PRONTOS PRA CONFIRMAR 0 · PRA TUA MÃO 16 (roxo) · SEM PAGAMENTO 93
+             EM DUPLA CONTAGEM 0 → não aparece na tela
+conferência de saldo no payload da Conciliação: null
+```
+**REGRA 11 — 3 defeitos repostos, 1 vermelho cada:** a lista de contas de volta · a quebra em três na frase · o payload recalculando a conferência. **9.219 verdes · TS 0 · deploy `mQrCd3JH9QrKQKZF1K0uL` 4/4.**
+
+⚠️ **SEGUE ABERTA A DECISÃO DO BADGE** (registrada acima): número certo a ~1,3 s por consulta, ou barato a 104 ms subcontabilizando quando existir lote. Está no primeiro.
+
 ### ⛔⛔⛔ E O DEPLOY FALHOU 3× POR OOM — o teto era do V8, não do kernel
 
 **O blue-green segurou as três**: *"o symlink não moveu, prod continua no build anterior"*. Mas o diagnóstico levou duas tentativas erradas, e as duas ficam registradas:
