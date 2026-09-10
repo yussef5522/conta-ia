@@ -35,6 +35,7 @@ import {
 } from '@/lib/conciliacao/create-adjustment'
 import { logAudit } from '@/lib/audit'
 import { recomputeVendasSeVenda } from '@/lib/vendas/recompute-hook'
+import { aplicarBaixaParcial } from '@/lib/conciliacao/aplicar-baixa-parcial'
 
 const adjustmentSchema = z.object({
   categoryId: z.string().cuid(),
@@ -48,6 +49,19 @@ const bodySchema = z.object({
   candidateIds: z.array(z.string().cuid()).min(1).max(50),
   // Sprint A-effected Fase B.4.1 — ajustes opcionais (cap 3 — decisão Yussef #6)
   adjustments: z.array(adjustmentSchema).max(3).optional(),
+  /**
+   * ⭐⭐ BAIXA PARCIAL (10/09/2026) — a última nota marcada recebe só PARTE do pagamento.
+   *
+   * Casos reais: BOX PAPER (linha 5.211,85 × 3 notas de 7.008,94 → 283,04 na NF 6477) e
+   * OESA (1.838,61 × 2 notas de 2.380,11 → 1.099,62 na NF 3866696).
+   *
+   * ⚠️ A conta parcial **NÃO** vai em `candidateIds`: aquelas são conciliadas por INTEIRO.
+   * A soma que o servidor confere passa a ser `inteiras + parcial.valor == linha`.
+   */
+  parcial: z.object({
+    payableId: z.string().cuid(),
+    valor: z.number().positive(),
+  }).optional(),
 })
 
 const SUM_TOLERANCE = 0.02 // 2 cents — acomoda arredondamento bancário de 1¢
@@ -190,12 +204,14 @@ export async function POST(request: NextRequest) {
       0,
     )
     const ofxAbs = Math.abs(ofx.amount)
-    const totalSelected = sumCandidates + sumAdjustmentsSigned
+    // ⭐ a parte que vai como BAIXA PARCIAL entra na soma: é dinheiro desta mesma linha
+    const parcialValor = data.parcial?.valor ?? 0
+    const totalSelected = sumCandidates + sumAdjustmentsSigned + parcialValor
     const diff = Math.abs(totalSelected - ofxAbs)
     if (diff > SUM_TOLERANCE) {
       return NextResponse.json(
         {
-          erro: `Soma ${candidates.length} candidate(s) ${adjustments.length > 0 ? `+ ${adjustments.length} ajuste(s)` : ''} (R$ ${totalSelected.toFixed(2)}) não bate com OFX (R$ ${ofxAbs.toFixed(2)}). Diferença: R$ ${diff.toFixed(2)}. Tolerância máxima: R$ ${SUM_TOLERANCE.toFixed(2)}.`,
+          erro: `Soma ${candidates.length} candidate(s)${adjustments.length > 0 ? ` + ${adjustments.length} ajuste(s)` : ''}${parcialValor ? ` + baixa parcial de R$ ${parcialValor.toFixed(2)}` : ''} (R$ ${totalSelected.toFixed(2)}) não bate com OFX (R$ ${ofxAbs.toFixed(2)}). Diferença: R$ ${diff.toFixed(2)}. Tolerância máxima: R$ ${SUM_TOLERANCE.toFixed(2)}.`,
         },
         { status: 422 },
       )
@@ -231,7 +247,27 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (failed > 0 && reconciled === 0) {
+    // ⭐⭐ A BAIXA PARCIAL vai no MESMO grupo das inteiras — desfazer o grupo desfaz tudo.
+    let parcialAplicada: Awaited<ReturnType<typeof aplicarBaixaParcial>> | null = null
+    if (data.parcial) {
+      // ⛔ a mesma conta não pode estar nas inteiras E na parcial: seria contar duas vezes
+      if (uniqueIds.includes(data.parcial.payableId)) {
+        return NextResponse.json(
+          { erro: 'A conta da baixa parcial não pode estar também na lista das conciliadas por inteiro' },
+          { status: 422 },
+        )
+      }
+      parcialAplicada = await aplicarBaixaParcial({
+        companyId,
+        payableId: data.parcial.payableId,
+        extratoId: data.ofxTransactionId,
+        valor: data.parcial.valor,
+        reconcileGroupId,
+        userId: ctx.user.id,
+      })
+    }
+
+    if (failed > 0 && reconciled === 0 && !parcialAplicada) {
       // Tudo falhou → retorna 422 com erros
       return NextResponse.json(
         { ok: false, groupId: reconcileGroupId, reconciled, failed, errors },
@@ -296,6 +332,7 @@ export async function POST(request: NextRequest) {
       reconciled,
       failed,
       adjustmentsCreated,
+      parcial: parcialAplicada,
       errors,
     })
   } catch (error) {

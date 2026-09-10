@@ -166,9 +166,26 @@ export function CabecalhoDaFila({ empresaId, totais, saldos, semPar }: {
             </>
           )}
           {semPar.comExtratoImportado > 0 && (
-            <>, {semPar.comExtratoImportado} com o extrato do período já importado</>
+            <>
+              , <b className="font-medium text-slate-600 dark:text-slate-300">{semPar.comExtratoImportado}</b>{' '}
+              com o extrato do período já importado — <b>pagar, ou registrar saída do cofre</b>
+            </>
           )}
           .{' '}
+          {/* ⭐⭐ O GESTO DO COFRE A 1 CLIQUE (10/09/2026). ⚠️ Conta em aberto com o extrato
+              do período JÁ importado e sem linha nenhuma quase sempre significa uma de duas
+              coisas: não foi paga, ou saiu do COFRE — e o cofre não tem extrato por
+              natureza (nunca teve OFX). Sem este caminho, essas contas ficam pendendo pra
+              sempre esperando um arquivo que não existe. */}
+          {semPar.comExtratoImportado > 0 && (
+            <Link
+              href={`/transacoes/nova?empresaId=${empresaId}&tipo=DEBIT&conta=cofre`}
+              className="inline-flex items-center gap-0.5 font-medium text-[#534AB7] hover:underline dark:text-indigo-400"
+            >
+              registrar saída do cofre
+            </Link>
+          )}
+          {semPar.comExtratoImportado > 0 && <> · </>}
           <Link
             href={`/contas-a-pagar?empresaId=${empresaId}`}
             className="inline-flex items-center gap-0.5 font-medium text-[#534AB7] hover:underline dark:text-indigo-400"

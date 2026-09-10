@@ -34,6 +34,7 @@ import {
   CabecalhoDaFila, type SaldosDTO, type TotaisDTO, type SemParDTO,
 } from '@/components/conciliacao/cabecalho-da-fila'
 import { LoteSugerido, type LoteDTO } from '@/components/conciliacao/lote-sugerido'
+import { EscolherNaMaoCard, type CardDeEscolhaDTO } from '@/components/conciliacao/escolher-na-mao-card'
 import { useToast } from '@/components/ui/use-toast'
 import { fetchJson } from '@/lib/http/fetch-json'
 
@@ -99,6 +100,9 @@ function ConciliacaoInner() {
     { ofx: { id: string; description: string; amount: number; date: string; type: string }; busca: string } | null
   >(null)
   const [naoFechamAberto, setNaoFechamAberto] = useState(false)
+  /** ⭐ o card do "escolher na mão" — UMA linha por vez, carregada sob demanda */
+  const [cardEscolha, setCardEscolha] = useState<CardDeEscolhaDTO | null>(null)
+  const [carregandoCard, setCarregandoCard] = useState<string | null>(null)
 
   const carregar = useCallback(async () => {
     if (!empresaId) { setCarregando(false); return }
@@ -183,6 +187,24 @@ function ConciliacaoInner() {
     })
     void recarregarSaldos()
   }, [recarregarSaldos])
+
+  /**
+   * ⭐ ABRE O CARD DE ESCOLHA de uma linha. Carrega sob demanda (o payload da fila não
+   * carrega as 15 parcelas da Box Paper sem ninguém pedir).
+   */
+  const abrirEscolha = useCallback(async (extratoId: string) => {
+    setCarregandoCard(extratoId)
+    try {
+      const { ok, data, message } = await fetchJson<{ card: CardDeEscolhaDTO | null }>(
+        `/api/conciliacao/escolher-na-mao?empresaId=${empresaId}&extratoId=${extratoId}`,
+      )
+      if (!ok || !data?.card) {
+        toast({ variant: 'destructive', title: 'Não deu pra abrir', description: message ?? 'Tenta de novo.' })
+        return
+      }
+      setCardEscolha(data.card)
+    } finally { setCarregandoCard(null) }
+  }, [empresaId, toast])
 
   // ⚠️ a recusa tira só ESTE par — a conta continua na fila com as outras
   // sugestões, porque recusar um par não é recusar a conta.
@@ -288,6 +310,16 @@ function ConciliacaoInner() {
                   <b>continua casável</b> — ter categoria não quita conta nenhuma.
                 </p>
 
+                {/* ⭐⭐ "PRONTOS PRA CONFIRMAR" — nunca "fecham sozinhos" (10/09/2026).
+                    ⛔ Regra do dono: **o sistema NUNCA concilia sem o clique dele**; ele
+                    sugere e espera. Um título que diga "sozinho" promete o que a casa se
+                    recusa a fazer — e é assim que a confiança na tela se perde. */}
+                {((fila?.lotes.length ?? 0) > 0 || comSugestao.length > 0) && (
+                  <p className="px-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+                    prontos pra confirmar
+                  </p>
+                )}
+
                 {/* ⭐ OS LOTES PRIMEIRO: um PIX que liquida N notas resolve mais trabalho
                     por decisão do que qualquer card 1:1, e as notas dele sumiriam da lista
                     de baixo de qualquer jeito. */}
@@ -356,13 +388,11 @@ function ConciliacaoInner() {
                                 : `${x.abertasDoFornecedor} notas abertas somam ${formatBRL(x.somaDasAbertas)}`}
                             </span>
                             <Button size="sm" variant="ghost"
-                              onClick={() => setProcurandoLote({
-                                ofx: { id: x.extratoId, description: x.descricao,
-                                  amount: x.valorDaLinha, date: x.data, type: 'DEBIT' },
-                                busca: x.fornecedorNome,
-                              })}
+                              disabled={carregandoCard === x.extratoId}
+                              onClick={() => abrirEscolha(x.extratoId)}
                               className="ml-auto h-7 gap-1 px-2 text-[11.5px] text-slate-500">
-                              <Search className="h-3.5 w-3.5" /> escolher na mão
+                              <Search className="h-3.5 w-3.5" />
+                              {carregandoCard === x.extratoId ? 'abrindo…' : 'escolher na mão'}
                             </Button>
                           </div>
                         ))}
@@ -479,6 +509,16 @@ function ConciliacaoInner() {
             )}
           </div>
         </div>
+      )}
+
+      {/* ⭐⭐ O CARD DO "ESCOLHER NA MÃO" — o desenho novo (10/09/2026). */}
+      {cardEscolha && empresaId && (
+        <EscolherNaMaoCard
+          empresaId={empresaId}
+          card={cardEscolha}
+          onFechar={() => setCardEscolha(null)}
+          onConciliado={() => { setCardEscolha(null); void carregar() }}
+        />
       )}
 
       {/* ⭐ o Find & Match em MODO LOTE: ele já seleciona N contas e confere a soma

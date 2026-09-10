@@ -501,6 +501,16 @@ model Transaction {
   reconciledWithId String?
   reconciledWith   Transaction?  @relation("ConciliationLink", fields: [reconciledWithId], references: [id])
   reconciledFrom   Transaction[] @relation("ConciliationLink")
+
+  // ⭐⭐ BAIXA PARCIAL (10/09/2026) — o pagamento que cobre SÓ PARTE de uma conta.
+  //
+  // ⛔ Não virou coluna em `transactions` de propósito: o valor pago é a SOMA das baixas e
+  // o em aberto é DERIVADO (`amount − Σ baixas`) — *"nunca status na mão"*, palavras do
+  // dono. É o mesmo desenho do `LoanInstallmentPayment` (N pagamentos → 1 parcela) e do
+  // `CreditCardInvoice.paidAmount`, e ele resolve os DOIS sentidos com a mesma mecânica:
+  // 1 linha pagando N notas (a última parcial) e N linhas pagando 1 nota até zerar.
+  baixasParciaisRecebidas ConciliacaoBaixaParcial[] @relation("BaixaParcialPayable")
+  baixasParciaisPagas     ConciliacaoBaixaParcial[] @relation("BaixaParcialExtrato")
   // Sprint A-effected Fase B.3: agrupa N:1 (várias candidates conciliadas
   // com mesma OFX via Find & Match). null = single 1:1 ou pré-B.3.
   reconcileGroupId String?
@@ -4532,4 +4542,34 @@ model StockOrdemEtapaParticipante {
   @@unique([etapaId, colaboradorId])
   @@index([companyId, colaboradorId, finalizadoEm])
   @@map("stock_ordem_etapa_participante")
+}
+
+// ⭐⭐⭐ UMA PARTE DE UMA CONTA, PAGA POR UMA LINHA DO EXTRATO (10/09/2026).
+//
+// Casos reais que a motivaram, medidos em prod:
+//   BOX PAPER  linha 5.211,85 × 3 notas (7.008,94) → 2 inteiras + 283,04 na NF 6477
+//   OESA       linha 1.838,61 × 2 notas (2.380,11) → 1 inteira + 1.099,62 na NF 3866696
+//
+// ⛔ O `@@unique([payableId, extratoId])` faz a MESMA linha pagar a MESMA conta duas vezes
+// ser impossível no banco — não "checado".
+model ConciliacaoBaixaParcial {
+  id        String   @id @default(cuid())
+  companyId String
+  /// a conta a pagar que recebeu a baixa
+  payableId String
+  payable   Transaction @relation("BaixaParcialPayable", fields: [payableId], references: [id], onDelete: Cascade)
+  /// a linha do extrato que pagou
+  extratoId String
+  extrato   Transaction @relation("BaixaParcialExtrato", fields: [extratoId], references: [id], onDelete: Cascade)
+  valor     Float
+  /// o grupo do N:1 que originou a baixa — permite desfazer junto
+  reconcileGroupId String?
+  criadoPorId      String?
+  createdAt        DateTime @default(now())
+
+  @@unique([payableId, extratoId])
+  @@index([companyId])
+  @@index([payableId])
+  @@index([extratoId])
+  @@map("conciliacao_baixa_parcial")
 }
