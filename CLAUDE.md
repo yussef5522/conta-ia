@@ -301,6 +301,36 @@ BOX PAPER  linha 5.211,85 · 3 vencidas + 12 a vencer · atalho: nenhum · (parc
 ```
 **22 testes novos · 9.119 verdes · TS 0 · `pg_dump pre-baixa-parcial-20260910-145925` antes da migration · deploy `9j5vI5Gn0gJyxo85bhxrK` 4/4.**
 
+### ⛔⛔⛔ PORTA SEM MAÇANETA — O MOTOR SUBIU E A TELA NÃO MUDOU (10/09)
+
+**O dono, depois do deploy 4/4 verde:** *"a TELA que eu vejo em /conciliacao NÃO mudou — continua a mensagem '16 pagamentos nomeiam um fornecedor…' com o visual antigo, sem os cards novos. Já recarreguei com cache limpo."*
+
+**O diagnóstico dele estava certo em cheio.** O `EscolherNaMaoCard` estava em prod, funcionando — e **inalcançável**, por TRÊS camadas somadas:
+1. a seção nascia **colapsada** (`useState(false)`) → ele via só a frase;
+2. dentro dela, cada linha exigia um **segundo clique** ("escolher na mão");
+3. o card renderizava **no RODAPÉ da página**, longe de onde ele clicou.
+
+⚠️ **E o texto da seção descrevia o fluxo VELHO** (*"abre a busca já no nome do fornecedor"*) — ou seja, a tela documentava por escrito uma coisa que o sprint anterior tinha substituído.
+
+**⭐ O CONSERTO É O QUE ELE MANDOU: a seção dos que não fecham VIRA os cards, e a mensagem antiga morre.** A rota passou a devolver a **lista inteira** e a página a carrega **junto com a fila** (`Promise.all`), renderizando os cards no lugar da frase. ⛔ **E o modo de uma-linha-só (`?extratoId=`) saiu junto**: sem chamador, seria o campo decorativo que esta casa já pagou caro no `registry.parse` — existia, ninguém chamava, e o bug ficou invisível por semanas.
+
+**⚠️ DUAS ARMADILHAS DA TROCA, as duas fechadas:** *"Tudo conciliado ✓"* apareceria **em cima de 16 pagamentos** esperando decisão (a frase do vazio só sai quando não há card na tela); e a falha ao carregar os cards viraria **erro disfarçado de vazio** — agora é um aviso âmbar dizendo que a ausência não é prova.
+
+**⭐ O GUARD (`__tests__/regras-ui/card-nao-nasce-escondido.test.ts`) — a regra da família:** *componente que o dono precisa VER não pode nascer atrás de um booleano que começa `false`.* Ele lê a fonte (sem jsdom não dá pra clicar), **ignora comentários** (senão morderia a própria documentação do defeito) e tem **auto-teste do detector**. **REGRA 11 medida com o defeito reposto NA PÁGINA, não só no detector: 1 vermelho, verde ao restaurar.**
+
+**PROVADO EM PROD, pelo caminho da tela** (sessão real, sem URL secreta):
+```
+PAGE /conciliacao (celular) → 200      PAGE /conciliacao (desktop) → 200
+BUNDLE: texto dos cards novos true · frase antiga false · botão do 2º clique false
+GET /api/conciliacao/escolher-na-mao?empresaId=… → 200 · 16 cards
+  IVAN   linha 2.008,00 · 3 vencidas + 1 a vencer = 4 caixinhas · diferença R$ 69,50
+  OESA   linha 1.838,61 · 2 vencidas · diferença −R$ 541,50 (baixa parcial)
+  BOX PAPER linha 5.211,85 · 3 + 12 = 15 caixinhas
+```
+**9.129 verdes · TS 0 · deploy `iZOToAAWdPqFkJXosfOSq` 4/4.**
+
+⚠️ **ACHADO NO CAMINHO, registrado e NÃO construído:** há **cards do MESMO fornecedor disputando as MESMAS notas** (3 do Casper, 2 do Ivan — linhas de extrato diferentes, uma lista de notas só). É a família do caso Cancian de 08/09, onde a nota errada foi vinculada porque dois cards ficaram quase idênticos. Hoje o servidor recusa nota já conciliada e a tela recarrega depois de cada vínculo, então **não dá pra contar duas vezes** — mas o card **não avisa** que a nota é disputada. O `ParSugerido` já tem essa faixa âmbar; portá-la pro card é um passo pequeno, à espera da palavra do dono.
+
 ### ⛔⛔⛔ E O DEPLOY FALHOU 3× POR OOM — o teto era do V8, não do kernel
 
 **O blue-green segurou as três**: *"o symlink não moveu, prod continua no build anterior"*. Mas o diagnóstico levou duas tentativas erradas, e as duas ficam registradas:
