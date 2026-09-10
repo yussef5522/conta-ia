@@ -14,10 +14,11 @@
 // ⭐ E O SCRIPT SE CONFERE: ele roda o parser ANTES e DEPOIS e **aborta** se qualquer
 // número mudar. Palavra que decide não se anonimiza — e aqui isso é medido, não prometido.
 
-import { execFileSync } from 'node:child_process'
-import { writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
+import { extractPdfText } from '../lib/bank-statement-pdf/extract-pdf-text'
 import { parseItauFaturaPF, conferirItau } from '../lib/fatura-itau/parser'
 
+async function main() {
 const PDF = process.argv[2]
 const SAIDA = process.argv[3] ?? 'lib/fatura-itau/__tests__/fixtures/itau-luizacred-pf.txt'
 if (!PDF) { console.error('uso: tsx scripts/gerar-fixture-itau.ts <pdf> [saida]'); process.exit(1) }
@@ -39,7 +40,13 @@ const TROCAS: [string, string][] = [
   ['2040/01687-1', '0000/00000-0'],
 ]
 
-const texto = execFileSync('pdftotext', ['-layout', PDF, '-'], { encoding: 'utf-8', maxBuffer: 1 << 24 })
+// ⭐⭐⭐ O MESMO EXTRATOR DA ROTA (09/09/2026) — não `pdftotext` na mão.
+//
+// ⛔ O bug que isto mata: a 1ª versão deste gerador chamava `pdftotext -layout` direto, e
+// a rota chama `extractPdfText` (que usa `-enc UTF-8`) **no servidor**, com outra versão do
+// poppler. O golden fechava 4.491,18 e a TELA dizia *"não achei os totais do resumo"* — no
+// MESMO PDF. **Fixture que não sai do caminho real é promessa que prod não cumpre.**
+const texto = await extractPdfText(readFileSync(PDF))
 const antes = parseItauFaturaPF(texto)
 
 let saida = texto
@@ -67,3 +74,5 @@ console.log(`✓ fixture em ${SAIDA}`)
 console.log(`   ${depois.linhas.length} lançamentos · Σ ${c.lancamentos} · declarado ${c.declarado} · fecha ${c.fecha}`)
 console.log(`   cartões: ${depois.cartoes.map((x) => `${x.final} ${x.somado}/${x.declarado} ${x.fecha ? '✓' : '✗'}`).join(' · ')}`)
 console.log(`   total recomposto ${c.totalRecomposto} × declarado ${c.totalDeclarado} · fecha ${c.totalFecha}`)
+}
+main().catch((e) => { console.error(String(e)); process.exit(1) })

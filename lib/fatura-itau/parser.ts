@@ -125,14 +125,45 @@ function isoDeData(s: string | undefined): string | null {
 }
 
 /**
+ * ⛔⛔⛔ ONDE O BLOCO DO RESUMO TERMINA — e isto foi um bug REAL em prod (09/09/2026).
+ *
+ * **O dono:** *"a tela não acha o total que o golden acha, NO MESMO PDF"*. A primeira
+ * versão cortava o bloco por **contagem de linhas** (`slice(i, i + 14)`), com o comentário
+ * *"14 linhas cobrem com folga"*. Cobriam — **na extração do meu Mac**. O poppler do
+ * servidor (24.02.0) devolve o mesmo PDF com **uma linha a mais** antes do resumo:
+ *
+ * ```
+ *   Mac        "Resumo da fatura em R$" no índice  9 · "Total desta fatura" no 19  (dist 10)
+ *   servidor   "Resumo da fatura em R$" no índice  6 · "Total desta fatura" no 20  (dist 14)
+ * ```
+ *
+ * `slice(6, 6+14)` para no índice 19 e **exclui o 20 por UMA linha**: `totalDaFatura`
+ * virava `null` e a tela pedia o total digitado, com o número impresso na página 1.
+ *
+ * ⭐ A REGRA: **o fim do bloco é o FATO que o fecha**, não uma contagem. O resumo termina
+ * na linha do `= Total desta fatura`; contagem de linhas é exatamente o tipo de número que
+ * quebra quando o extrator muda de versão — e extrator muda de versão sozinho.
+ */
+function fimDoResumo(linhas: string[], inicio: number): number {
+  const depois = linhas.slice(inicio, inicio + 30)
+  // o próprio fechamento do bloco, INCLUSIVE
+  const fecha = depois.findIndex((l) => /Total desta fatura/.test(l))
+  if (fecha >= 0) return fecha + 1
+  // ⚠️ fallback: o bloco do titular vem logo abaixo do resumo — para nele. E os 6 rótulos
+  // que este parser lê são ÚNICOS no documento (teste em `golden-fatura-itau`), então a
+  // âncora é cinto E suspensório, nunca a única defesa.
+  const titular = depois.findIndex((l) => /^\s*Titular\b/.test(l))
+  return titular > 0 ? titular : 30
+}
+
+/**
  * ⛔⛔ O RESUMO É LIDO DENTRO DO BLOCO DELE. Ver a nota do topo: "Total a pagar" aparece
  * 2× nas simulações de parcelamento desta mesma fatura, com números MAIORES.
  */
 function lerResumo(texto: string): DeclaradosItau {
   const linhas = texto.split('\n')
   const i = linhas.findIndex((l) => /Resumo da fatura em R\$/.test(l))
-  // ⚠️ o bloco é curto (7 rótulos); 14 linhas cobrem com folga sem alcançar as simulações
-  const bloco = i >= 0 ? linhas.slice(i, i + 14).join('\n') : ''
+  const bloco = i >= 0 ? linhas.slice(i, i + fimDoResumo(linhas, i)).join('\n') : ''
   const pega = (rotulo: RegExp): number | null => {
     const m = new RegExp(`${rotulo.source}[^\\n]*?(-\\s*)?(\\d{1,3}(?:\\.\\d{3})*,\\d{2})`).exec(bloco)
     if (!m) return null
