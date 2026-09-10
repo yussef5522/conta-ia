@@ -321,11 +321,32 @@ export async function lotesDaFila(
   })
 
   const nomes = new Map(fornecedores.map((f) => [f.id, f.nomeFantasia ?? f.razaoSocial]))
+  /**
+   * ⛔⛔ MEMÓRIA POR DESCRIÇÃO — e ela vale 2 segundos (medido em prod, 10/09/2026).
+   *
+   * `reconhecerFornecedor` roda **Jaro-Winkler contra os 78 fornecedores cadastrados**, e
+   * este laço a chamava uma vez POR LINHA da janela. É o MESMO defeito dos 9,6 s de
+   * 07/09, que o caminho 1:1 já tinha aprendido a evitar — e que nasceu de novo aqui, no
+   * motor de lote de 09/09. Medido: `lotesDaFila` custava **2.179 ms**, e o badge do menu
+   * (que consulta a cada 60 s) passou a pagar isso quando eu o liguei nesta função.
+   *
+   * ⚠️ A memória é por DESCRIÇÃO CRUA e o reconhecimento é função pura da descrição —
+   * então o resultado é **idêntico**, não aproximado. Não é heurística nova; é a mesma
+   * resposta, computada uma vez por texto em vez de uma vez por linha.
+   */
+  const memoria = new Map<string, string | null>()
+  const fornecedorDaDescricao = (descricao: string): string | null => {
+    const achado = memoria.get(descricao)
+    if (achado !== undefined) return achado
+    const id = reconhecerFornecedor(descricao, fornecedores)?.id ?? null
+    memoria.set(descricao, id)
+    return id
+  }
   const paraLote: LinhaParaLote[] = linhas.map((l) => ({
     id: l.id, descricao: l.description, valor: Math.abs(l.amount), data: l.date,
     tipo: l.type as 'CREDIT' | 'DEBIT',
     // ⛔ a FK primeiro (só 1,3% das linhas a têm); o nome depois — a mesma régua do 1:1
-    fornecedorId: l.supplierId ?? reconhecerFornecedor(l.description, fornecedores)?.id ?? null,
+    fornecedorId: l.supplierId ?? fornecedorDaDescricao(l.description),
     contaBancariaId: l.bankAccountId,
     contaBancaria: l.bankAccount?.name?.trim() ?? null,
     categoria: l.category?.name ?? null,
