@@ -16,6 +16,12 @@
 // motor que não subiu — e o deploy verde mente sobre isso, porque o teste de rota e o
 // smoke não abrem a tela.
 //
+// ⚠️⚠️ E A 1ª CORREÇÃO FOI LONGE DEMAIS PRO OUTRO LADO: 16 cards ABERTOS, o mesmo
+// fornecedor repetido 5× com as mesmas notas. **Colapsar por FORNECEDOR, com o nome e o
+// valor no cabeçalho, é o desenho aprovado — e é OUTRA COISA:** ali o trabalho está
+// visível e nomeado, e o clique abre o que ele escolheu. O que este guard proíbe é a
+// seção que **esconde a existência** do trabalho atrás de uma frase.
+//
 // ⚠️ ESTE GUARD É ESTRUTURAL E ASSUMIDO COMO TAL: o projeto roda em `environment: node`,
 // sem jsdom, então não dá pra renderizar e clicar. Ele lê a FONTE. Por isso tem
 // **auto-teste do detector** (REGRA 11): sem ele, passaria verde por cegueira — que é
@@ -77,11 +83,21 @@ export function gatesQueEscondem(src: string, tag: string): string[] {
 
 describe('⛔⛔ /conciliacao — os cards do "escolher na mão" aparecem SEM clique escondido', () => {
   it('o card não nasce atrás de um estado que começa fechado', () => {
-    expect(gatesQueEscondem(fonte, '<EscolherNaMaoCard')).toEqual([])
+    expect(gatesQueEscondem(fonte, '<FilaEscolherNaMao')).toEqual([])
+    // e dentro da fila, o card também não pode nascer atrás de um booleano fechado
+    const filaSrc = readFileSync(join(raiz, 'components/conciliacao/fila-escolher-na-mao.tsx'), 'utf-8')
+    expect(gatesQueEscondem(filaSrc, '<EscolherNaMaoCard')).toEqual([])
   })
 
-  it('a página renderiza o card de verdade (não só importa)', () => {
-    expect(fonte).toContain('<EscolherNaMaoCard')
+  it('a página renderiza a fila de verdade (não só importa)', () => {
+    expect(fonte).toContain('<FilaEscolherNaMao')
+  })
+
+  // ⛔⛔ O CARD NÃO PODE VOLTAR A SER RENDERIZADO DIRETO NA PÁGINA: foi assim que
+  // nasceram os 16 cards abertos, com o mesmo fornecedor repetido 5×. Quem decide o que
+  // abre é a FILA — um grupo por vez, uma linha por vez.
+  it('⛔ a página não renderiza card solto — quem abre é a fila agrupada', () => {
+    expect(renderizado).not.toContain('<EscolherNaMaoCard')
   })
 
   it('⛔ a mensagem antiga MORREU — ela é o que o dono via no lugar dos cards', () => {
@@ -108,7 +124,7 @@ describe('⛔⛔ /conciliacao — os cards do "escolher na mão" aparecem SEM cl
     // ⚠️ até o `?` do TERNÁRIO (seguido de `(`), não o `?.` do optional chaining
     const cond = /\{comSugestao\.length === 0([\s\S]{0,300}?)\?\s*\(/.exec(renderizado)
     expect(cond, 'a condição do vazio sumiu — reescreveram o bloco?').not.toBeNull()
-    expect(cond![1]).toContain('cardsVisiveis.length === 0')
+    expect(cond![1]).toContain('cardsEscolha.length === 0')
   })
 })
 

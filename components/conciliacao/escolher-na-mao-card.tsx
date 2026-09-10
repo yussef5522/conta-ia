@@ -16,10 +16,11 @@
 // quadradinho de 16px).
 
 import { useState, useMemo, useCallback } from 'react'
-import { Link2, Loader2, X, Sparkles, AlertTriangle, Scissors } from 'lucide-react'
+import { Link2, Loader2, X, Sparkles, AlertTriangle, Scissors, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
+import { JANELA_A_VENCER_DIAS } from '@/lib/conciliacao/escolher-na-mao'
 
 export interface NotaDoCardDTO {
   id: string
@@ -30,6 +31,8 @@ export interface NotaDoCardDTO {
   vencimento: string
   vencida: boolean
   sugerida: boolean
+  /** ⭐ a vencer LONGE (> 30 dias): fica atrás de "mostrar mais" em vez de virar parede */
+  foraDaJanela: boolean
 }
 
 export interface CardDeEscolhaDTO {
@@ -43,6 +46,9 @@ export interface CardDeEscolhaDTO {
 
 /** o teto do acerto com nome — o MESMO do servidor (`escolher-na-mao.ts`) */
 const TETO = 25
+// ⚠️ a janela vem da LIB, não de um 30 digitado aqui: quem decide quais notas abrem é o
+// servidor (`foraDaJanela`), e um número solto na tela viraria a segunda régua no dia em
+// que a janela mudasse — a doença que este projeto mais paga.
 const TOL = 0.02
 const dia = (iso: string) => new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'UTC' })
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
@@ -59,9 +65,14 @@ interface Props {
   card: CardDeEscolhaDTO
   onConciliado: (extratoId: string) => void
   onFechar: () => void
+  /**
+   * ⭐ NAVEGAÇÃO ENTRE AS LINHAS DO MESMO FORNECEDOR — *"decisão pequena em série, não 3
+   * cards repetindo as mesmas notas"*. Fornecedor de UMA linha não recebe nada aqui.
+   */
+  navegacao?: { indice: number; total: number; onIr: (i: number) => void }
 }
 
-export function EscolherNaMaoCard({ empresaId, card, onConciliado, onFechar }: Props) {
+export function EscolherNaMaoCard({ empresaId, card, onConciliado, onFechar, navegacao }: Props) {
   const { toast } = useToast()
   const [marcadas, setMarcadas] = useState<Set<string>>(
     () => new Set([...card.vencidas, ...card.aVencer].filter((n) => n.sugerida).map((n) => n.id)),
@@ -69,8 +80,17 @@ export function EscolherNaMaoCard({ empresaId, card, onConciliado, onFechar }: P
   const [nomeDaDiferenca, setNomeDaDiferenca] = useState<string | null>(null)
   const [parcialAceita, setParcialAceita] = useState(false)
   const [ocupado, setOcupado] = useState(false)
+  /** ⚠️ nasce ABERTO se alguma nota de fora da janela veio sugerida — senão a tela marcaria
+   *  uma caixa que o dono não consegue ver. */
+  const [verDistantes, setVerDistantes] = useState(
+    () => card.aVencer.some((n) => n.foraDaJanela && n.sugerida),
+  )
 
   const todas = useMemo(() => [...card.vencidas, ...card.aVencer], [card])
+  const aVencerPerto = useMemo(() => card.aVencer.filter((n) => !n.foraDaJanela), [card])
+  const aVencerLonge = useMemo(() => card.aVencer.filter((n) => n.foraDaJanela), [card])
+  /** ⭐ lista longa ROLA dentro do card — o card tem altura máxima, não empurra a página */
+  const listaLonga = todas.length > 8
 
   // ⚠️ a ORDEM importa: quem recebe a baixa parcial é a ÚLTIMA marcada (vencimento mais
   // distante), e a tela DIZ qual é — o dono desmarca se quiser outra.
@@ -176,6 +196,30 @@ export function EscolherNaMaoCard({ empresaId, card, onConciliado, onFechar }: P
         </span>
       </div>
 
+      {/* ⭐⭐ UMA LINHA POR VEZ — a série de decisões pequenas do mock.
+          ⛔ É isto que impede a MESMA nota de aparecer em dois cards abertos: com N linhas
+          do mesmo fornecedor abertas ao mesmo tempo, marcar uma nota aqui e outra ali é o
+          caminho pra vincular a errada (a NF do Cancian, 08/09). */}
+      {navegacao && navegacao.total > 1 && (
+        <div className="flex items-center gap-2 border-b border-slate-200 bg-white px-3 py-1.5 dark:border-slate-800 dark:bg-slate-950">
+          <Button size="sm" variant="ghost" disabled={ocupado || navegacao.indice === 0}
+            onClick={() => navegacao.onIr(navegacao.indice - 1)}
+            className="h-7 gap-1 px-2 text-[11.5px] text-slate-500">
+            <ChevronLeft className="h-3.5 w-3.5" /> anterior
+          </Button>
+          <span className="text-[11.5px] tabular-nums text-slate-500 dark:text-slate-400">
+            pagamento <b className="text-slate-700 dark:text-slate-200">{navegacao.indice + 1}</b> de {navegacao.total}
+          </span>
+          <Button size="sm" variant="ghost" disabled={ocupado || navegacao.indice + 1 >= navegacao.total}
+            onClick={() => navegacao.onIr(navegacao.indice + 1)}
+            className="ml-auto h-7 gap-1 px-2 text-[11.5px] font-medium text-[#534AB7] dark:text-indigo-300">
+            {/* ⚠️ "pular" e não "próximo": ele pode deixar esta linha pra depois sem
+                decidir nada — decisão adiada não é decisão errada. */}
+            pular pra próxima <ChevronRight className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      )}
+
       {/* ⭐ O ATALHO — marca as caixas, não grava */}
       {card.atalho && !card.atalho.ambiguo && (
         <div className="flex flex-wrap items-center gap-2 border-y border-[#534AB7]/20 bg-[#534AB7]/[0.06] px-4 py-2 text-[12px] text-[#3d3688] dark:border-indigo-900 dark:bg-indigo-950/30 dark:text-indigo-200">
@@ -194,8 +238,11 @@ export function EscolherNaMaoCard({ empresaId, card, onConciliado, onFechar }: P
         </p>
       )}
 
-      {/* ── chão QUENTE: as notas ── */}
-      <div className="bg-amber-50/40 px-2 py-2 dark:bg-amber-950/10">
+      {/* ── chão QUENTE: as notas ──
+          ⚠️ lista longa ROLA aqui dentro (a Box Paper tem 15): card que cresce sem limite
+          empurra o rodapé sticky pra fora do polegar no celular. */}
+      <div className={`bg-amber-50/40 px-2 py-2 dark:bg-amber-950/10 ${
+        listaLonga ? 'max-h-[46vh] overflow-y-auto overscroll-contain' : ''}`}>
         {card.vencidas.length > 0 && (
           <>
             <p className="px-2 pt-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-rose-600 dark:text-rose-400">
@@ -207,11 +254,22 @@ export function EscolherNaMaoCard({ empresaId, card, onConciliado, onFechar }: P
         {card.aVencer.length > 0 && (
           <>
             {/* ⚠️ "a vencer" entra de propósito: o pagamento real leva junto a nota que
-                ainda não venceu, e escondê-la faria o card nunca fechar nesses casos. */}
+                ainda não venceu, e escondê-la faria o card nunca fechar nesses casos.
+                ⛔ MAS COM JANELA: parcela de novembro não abre num pagamento de setembro. */}
             <p className="px-2 pt-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400">
-              a vencer
+              a vencer{aVencerLonge.length > 0 ? ` · próximos ${JANELA_A_VENCER_DIAS} dias` : ''}
             </p>
-            {card.aVencer.map((n) => <Nota key={n.id} n={n} />)}
+            {aVencerPerto.map((n) => <Nota key={n.id} n={n} />)}
+            {verDistantes && aVencerLonge.map((n) => <Nota key={n.id} n={n} />)}
+            {aVencerLonge.length > 0 && (
+              <button type="button" onClick={() => setVerDistantes((v) => !v)}
+                className="mx-2 mt-1 flex items-center gap-1 rounded-md px-1 py-1 text-[11.5px] font-medium text-slate-500 hover:text-[#534AB7] dark:text-slate-400">
+                <ChevronDown className={`h-3.5 w-3.5 transition-transform ${verDistantes ? 'rotate-180' : ''}`} />
+                {verDistantes
+                  ? 'esconder as mais distantes'
+                  : `mostrar mais ${aVencerLonge.length} que vencem depois`}
+              </button>
+            )}
           </>
         )}
         {todas.length === 0 && (
@@ -236,7 +294,9 @@ export function EscolherNaMaoCard({ empresaId, card, onConciliado, onFechar }: P
           ))}
         </div>
       )}
-      {falta && !cabeNome && (
+      {/* ⛔ SÓ DEPOIS DE SELECIONAR: com zero marcado, "faltam R$ 2.008,00" é a linha
+          inteira e não ensina nada — em 16 cards vira ruído. */}
+      {falta && !cabeNome && marcadas.size > 0 && (
         <p className="flex items-start gap-2 border-t border-slate-200 bg-white px-4 py-2.5 text-[11.5px] leading-relaxed text-slate-500 dark:border-slate-800 dark:bg-slate-950">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
           {/* ⛔ acima do teto não existe acerto rápido — a trava não é opinião */}
@@ -287,7 +347,7 @@ export function EscolherNaMaoCard({ empresaId, card, onConciliado, onFechar }: P
           <Button size="sm" variant="ghost" disabled={ocupado} onClick={onFechar}
             className="h-8 gap-1 px-2.5 text-xs text-slate-500 hover:text-rose-600">
             <X className="h-3.5 w-3.5" />
-            não é isso
+            fechar
           </Button>
         </span>
       </div>

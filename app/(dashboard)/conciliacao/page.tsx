@@ -34,7 +34,8 @@ import {
   CabecalhoDaFila, type SaldosDTO, type TotaisDTO, type SemParDTO,
 } from '@/components/conciliacao/cabecalho-da-fila'
 import { LoteSugerido, type LoteDTO } from '@/components/conciliacao/lote-sugerido'
-import { EscolherNaMaoCard, type CardDeEscolhaDTO } from '@/components/conciliacao/escolher-na-mao-card'
+import { type CardDeEscolhaDTO } from '@/components/conciliacao/escolher-na-mao-card'
+import { FilaEscolherNaMao } from '@/components/conciliacao/fila-escolher-na-mao'
 import { useToast } from '@/components/ui/use-toast'
 import { fetchJson } from '@/lib/http/fetch-json'
 
@@ -108,8 +109,6 @@ function ConciliacaoInner() {
    * **Porta sem maçaneta.** Agora carregam junto com a fila e aparecem no lugar dela.
    */
   const [cardsEscolha, setCardsEscolha] = useState<CardDeEscolhaDTO[]>([])
-  /** ⚠️ card dispensado nesta sessão (o X do card) — some da lista, volta no F5 */
-  const [dispensados, setDispensados] = useState<Set<string>>(new Set())
   const [cardsFalharam, setCardsFalharam] = useState(false)
 
   const carregar = useCallback(async () => {
@@ -133,7 +132,6 @@ function ConciliacaoInner() {
       // DIZ que não conseguiu, nunca finge que não há trabalho (erro disfarçado de vazio).
       setCardsEscolha(c.ok ? (c.data?.cards ?? []) : [])
       setCardsFalharam(!c.ok)
-      setDispensados(new Set())
     } finally { setCarregando(false) }
   }, [empresaId, toast])
 
@@ -249,12 +247,6 @@ function ConciliacaoInner() {
     return m
   }, [comSugestao])
 
-  /** ⭐ os cards que a seção mostra — menos os que o dono dispensou nesta sessão */
-  const cardsVisiveis = useMemo(
-    () => cardsEscolha.filter((c) => !dispensados.has(c.linha.id)),
-    [cardsEscolha, dispensados],
-  )
-
   const t = fila?.totais
 
   return (
@@ -367,37 +359,18 @@ function ConciliacaoInner() {
                   </div>
                 )}
 
-                {/* ⭐⭐⭐ ESCOLHER NA MÃO — a seção dos que não fecham É esta lista de cards.
+                {/* ⭐⭐⭐ ESCOLHER NA MÃO — a seção dos que não fecham É esta lista.
                     ⛔ Aqui morava a frase colapsada ("N pagamentos nomeiam um fornecedor…")
-                    com o card escondido atrás de dois cliques e renderizado no rodapé da
-                    página. O dono subiu a tela e não achou nada novo. Card que precisa de
-                    URL secreta é motor que não subiu. */}
-                {cardsVisiveis.length > 0 && (
-                  <div className="space-y-2.5">
-                    <div className="flex items-start gap-2.5 px-1">
-                      <Layers className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
-                      <p className="text-[12px] leading-relaxed text-slate-500 dark:text-slate-400">
-                        <b className="text-slate-700 dark:text-slate-200">
-                          {cardsVisiveis.length} pagamento{cardsVisiveis.length > 1 ? 's' : ''} esperando você dizer quais notas {cardsVisiveis.length > 1 ? 'foram' : 'foi'}.
-                        </b>{' '}
-                        {/* ⚠️ o motivo fica escrito: quase sempre é pagamento parcial ou
-                            pagamento de nota que nem está no sistema. */}
-                        Cada um nomeia um fornecedor com notas abertas, mas nenhuma combinação
-                        fecha sozinha na soma — costuma ser <b>pagamento parcial</b> ou nota que
-                        não está no sistema. Marque as notas: o rodapé soma ao vivo e o Conciliar
-                        só acende quando a conta fecha.
-                      </p>
-                    </div>
-                    {cardsVisiveis.map((c) => (
-                      <EscolherNaMaoCard
-                        key={c.linha.id}
-                        empresaId={empresaId}
-                        card={c}
-                        onFechar={() => setDispensados((s) => new Set(s).add(c.linha.id))}
-                        onConciliado={cardConciliado}
-                      />
-                    ))}
-                  </div>
+                    com o card escondido atrás de dois cliques. E a 1ª correção foi longe
+                    demais pro outro lado: 16 cards ABERTOS, o mesmo fornecedor repetido 5×
+                    com as mesmas notas. O mock sempre disse UM card por fornecedor,
+                    FECHADO — e a linha de dentro, uma por vez. */}
+                {cardsEscolha.length > 0 && (
+                  <FilaEscolherNaMao
+                    empresaId={empresaId}
+                    cards={cardsEscolha}
+                    onConciliado={cardConciliado}
+                  />
                 )}
 
                 {/* ⛔ ERRO NUNCA VIRA VAZIO: se os cards não carregaram, a tela diz isso em
@@ -415,7 +388,7 @@ function ConciliacaoInner() {
                 {/* ⛔ "Tudo conciliado" só quando NÃO HÁ card de escolha na tela — senão a
                     frase apareceria em cima de 16 pagamentos esperando decisão. */}
                 {comSugestao.length === 0 && (fila?.lotes.length ?? 0) === 0
-                  && cardsVisiveis.length === 0 && !cardsFalharam ? (
+                  && cardsEscolha.length === 0 && !cardsFalharam ? (
                   <Vazio
                     titulo="Tudo conciliado ✓"
                     texto="Nenhum vínculo esperando decisão. O próximo extrato traz os novos pares — com o motivo escrito, pra você só confirmar."

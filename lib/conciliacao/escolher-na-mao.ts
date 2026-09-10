@@ -32,6 +32,19 @@ export const TOLERANCIA = 0.02
  */
 export const TETO_DA_DIFERENCA = 25
 
+/**
+ * ⭐ A JANELA DO "A VENCER" — quantos dias à frente abrem na tela (decisão do dono: *"só
+ * notas até ~30 dias, com 'mostrar mais' pro resto"*).
+ */
+export const JANELA_A_VENCER_DIAS = 30
+
+/**
+ * ⚠️ E o PISO: se a janela não deixar NENHUMA a vencer visível, as 3 mais próximas abrem
+ * assim mesmo. Seção vazia com um "mostrar mais" ao lado esconde o caminho de fechar a
+ * conta — e é justamente o caso do fornecedor cujas parcelas são todas trimestrais.
+ */
+export const MINIMO_A_VENCER_VISIVEL = 3
+
 export interface NotaAbertaDoCard {
   id: string
   descricao: string
@@ -55,8 +68,16 @@ export interface NotaNoCard extends NotaAbertaDoCard {
   /** valor − jaPago: é ELE que entra na conta, não o valor de face */
   emAberto: number
   vencida: boolean
-  /** ⭐ marcada pelo atalho? (a tela nasce com estas ligadas) */
+  /** ⭐ a tela nasce com estas ligadas (o atalho, ou as vencidas — ver `marcadasDeSaida`) */
   sugerida: boolean
+  /**
+   * ⭐ A JANELA: nota a vencer LONGE fica escondida atrás de "mostrar mais".
+   *
+   * ⛔ O dono, vendo a Box Paper: *"R02 R03 R04 R05 até 09/11 é ruído — pagamento de 02/09
+   * não quita parcela de novembro"*. Ela **continua na lista** (esconder de vez faria o
+   * card nunca fechar no dia em que ele adiantar uma parcela) — só não abre a tela.
+   */
+  foraDaJanela: boolean
 }
 
 export interface CardDeEscolha {
@@ -104,8 +125,39 @@ export function montarCardDeEscolha(entrada: {
   const unica = combos.length === 1 ? combos[0] : null
   const ids = unica ? unica.map((i) => comAberto[i].id) : []
 
-  const marcadas = new Set(ids)
-  const comSugestao: NotaNoCard[] = comAberto.map((n) => ({ ...n, sugerida: marcadas.has(n.id) }))
+  /**
+   * ⭐⭐ O QUE NASCE MARCADO — decisão do dono: *"vencidas já vêm marcadas; o caso comum é
+   * o pagamento cobrir as vencidas, eu desmarco a exceção"*.
+   *
+   * ⛔⛔ MAS A AMBIGUIDADE CONTINUA MARCANDO NADA. Quando duas combinações fecham, a tela
+   * diz por escrito *"o sistema não sabe qual foi, então não marca nada"* — pré-marcar ali
+   * quebraria uma promessa impressa na tela, que é pior que a falta do atalho.
+   *
+   * ⚠️ E marcar É SUGERIR, nunca decidir: o Conciliar continua acendendo só com a conta
+   * fechada (ou a diferença nomeada dentro do teto, ou a parcial aceita).
+   */
+  const marcadas = new Set(
+    unica ? ids
+      : combos.length > 1 ? []
+        : comAberto.filter((n) => n.vencida).map((n) => n.id),
+  )
+
+  const limite = new Date(hoje.getTime() + JANELA_A_VENCER_DIAS * 86_400_000)
+  const aVencerOrdenadas = comAberto.filter((n) => !n.vencida)
+  // ⚠️ O PISO SÓ VALE QUANDO A JANELA DEIXOU A SEÇÃO VAZIA. Aplicá-lo sempre faria as 3
+  // mais próximas abrirem mesmo estando em novembro — que é justamente o ruído reclamado.
+  const pisoDaJanela = new Set(
+    aVencerOrdenadas.some((n) => n.vencimento <= limite)
+      ? []
+      : aVencerOrdenadas.slice(0, MINIMO_A_VENCER_VISIVEL).map((n) => n.id),
+  )
+
+  const comSugestao: NotaNoCard[] = comAberto.map((n) => ({
+    ...n,
+    sugerida: marcadas.has(n.id),
+    // ⚠️ vencida nunca sai da janela — ela é o trabalho, não o ruído.
+    foraDaJanela: !n.vencida && n.vencimento > limite && !pisoDaJanela.has(n.id),
+  }))
 
   return {
     linha,
