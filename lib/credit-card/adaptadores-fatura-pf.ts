@@ -65,6 +65,8 @@ export function lerBanrisulPF(texto: string): FaturaPFLida {
       encargosDeclarados: enc,
       encargosRotulo: 'Encargos sobre rotativo',
       fecha: despesasOk && saldoOk,
+      // ⭐ o "Brasil" não depende do saldo declarado — dá pra conferir sem ele
+      fechaSemOTotal: despesasOk,
       detalhe: r.declared.brasil != null
         ? `   despesas: lido ${brl(despesasCalculado)} · declarado ${brl(r.declared.brasil)}`
         : null,
@@ -107,6 +109,8 @@ export function lerNubankPF(texto: string): FaturaPFLida {
       encargosDeclarados: r.declared.outrosLancamentos ?? 0,
       encargosRotulo: 'Outros lançamentos',
       fecha: c.fecha,
+      fechaSemOTotal: r.declared.compras != null
+        && Math.abs(r.computed.compras - r.declared.compras) <= TOL,
       detalhe: `   composição: lido ${brl(c.composicao)} · Total a pagar ${brl(c.totalAPagar ?? 0)}`,
     },
     portadores: [...new Set(r.linhas.map((l) => l.final).filter((x): x is string => !!x))],
@@ -144,6 +148,9 @@ export function lerItauPF(texto: string): FaturaPFLida {
       // ⛔ as DUAS provas: os lançamentos fecham, cada cartão fecha com o próprio
       // subtotal, e o total do boleto fecha pela composição.
       fecha: c.fecha && c.cartoesFecham && c.totalFecha,
+      // ⭐ os lançamentos e os subtotais por cartão vivem no CORPO da fatura — conferem
+      // mesmo num recorte que não traga o bloco do resumo
+      fechaSemOTotal: c.fecha && c.cartoesFecham,
       detalhe: [
         `   lançamentos: lido ${brl(c.lancamentos)} · declarado ${brl(c.declarado ?? 0)}`,
         ...r.cartoes.map((x) => `   cartão ${x.final}: lido ${brl(x.somado)} · declarado ${brl(x.declarado ?? 0)}`),

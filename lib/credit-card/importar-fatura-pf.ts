@@ -157,7 +157,6 @@ export async function previewFaturaPF(input: {
 
   const despesasCalculado = lida.conferencia.despesasCalculado
   const saldoCalculado = lida.conferencia.saldoCalculado
-  const fecha = lida.conferencia.fecha
 
   // A fatura do EXTRATO: a que vence na data impressa no PDF.
   const venc = lida.vencimento ? new Date(`${lida.vencimento}T00:00:00.000Z`) : null
@@ -206,6 +205,24 @@ export async function previewFaturaPF(input: {
   // é a MESMA nos dois casos; o que muda é só de onde o número veio (e isso fica gravado).
   const total = resolverTotalDeclarado({ doPdf: lida.conferencia.saldoDeclarado, digitado: input.totalDigitado })
   const conf = total ? conferirTotal(saldoCalculado, total) : null
+
+  /**
+   * ⛔⛔ A SAÍDA MANUAL PASSOU A VALER (09/09/2026) — ela existia e nunca dava verde.
+   *
+   * O `ok` era só `lida.conferencia.fecha`, a régua do BANCO. Num PDF que não declara o
+   * total, essa régua é `false` por construção — então o dono digitava o número, via
+   * `origemTotal: DIGITADO` na tela, e o import continuava recusando.
+   *
+   * ⚠️ A trava não afrouxou: o digitado só entra quando **o documento é omisso**
+   * (`saldoDeclarado == null`), quando **tudo o mais que dava pra conferir fechou**
+   * (`fechaSemOTotal`) e quando **o número dele bate** com o que foi lido. PDF que
+   * declara e não bate continua recusado — digitar não é `force`.
+   */
+  const fechaPeloDigitado = lida.conferencia.saldoDeclarado == null
+    && lida.conferencia.fechaSemOTotal
+    && total?.origem === 'DIGITADO'
+    && !!conf?.fecha
+  const fecha = lida.conferencia.fecha || fechaPeloDigitado
 
   // ⭐ UMA decisão, um lugar: preview e confirm dizem a MESMA coisa da MESMA falha.
   const diag = diagnosticarFalha({
@@ -278,6 +295,21 @@ export async function confirmarFaturaPF(input: {
   profileId: string
   cardId: string
   texto: string
+  /**
+   * ⛔⛔⛔ O TOTAL DIGITADO PRECISA CHEGAR ATÉ AQUI (09/09/2026) — e não chegava.
+   *
+   * A saída "digite o total olhando a fatura" foi construída em 31/08 pro caso do PDF que
+   * não declara o total. Ela funcionava no PREVIEW e **evaporava no CONFIRM**: este
+   * parâmetro não existia e a rota não o repassava, então o confirm rerodava o preview
+   * SEM o número, caía em `SEM_TOTAIS_DECLARADOS` e **recusava gravar**.
+   *
+   * ⚠️ Medido em prod (09/09): o dono digitou o total da fatura do Magalu, o preview
+   * ficou verde, ele confirmou — e o cartão tem **0 lançamentos**. Ele acreditou que
+   * tinha importado ("importei com o total digitado pra fechar o mês"). É a família
+   * "preview e confirm discordando", que este projeto já pagou caro no import de OFX:
+   * **a tela dizia uma coisa e a gravação fazia outra.**
+   */
+  totalDigitado?: number | null
 }): Promise<ConfirmResultPF> {
   const prev = await previewFaturaPF(input)
   // ⛔ a mesma recusa do preview, no servidor: quem chamar direto não escapa.

@@ -172,7 +172,16 @@ function lerResumo(texto: string): DeclaradosItau {
   }
   return {
     totalDaFatura: pega(/Total desta fatura/),
-    lancamentosAtuais: pega(/Lançamentos atuais/),
+    // ⭐ o documento declara este número DUAS vezes: "L Lançamentos atuais" no resumo da
+    // capa e "L Total dos lançamentos atuais" no fim do corpo. Ler os dois deixa a
+    // conferência dos lançamentos de pé mesmo num PDF sem a capa (recorte, ou o dia em
+    // que o banco mudar o resumo) — e as duas são a MESMA declaração, então não há régua
+    // nova aqui. ⚠️ Os rótulos não colidem: o do corpo é "lançamentos" minúsculo.
+    lancamentosAtuais: pega(/Lançamentos atuais/)
+      ?? (() => {
+        const m = /Total dos lançamentos atuais\s+(\d{1,3}(?:\.\d{3})*,\d{2})/.exec(texto)
+        return m ? brl(m[1]) : null
+      })(),
     encargos: pega(/Encargos \(financiamento/),
     faturaAnterior: pega(/Total da fatura anterior/),
     pagamentoEfetuado: pega(/Pagamento efetuado/),

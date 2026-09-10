@@ -60,6 +60,20 @@ export interface ConferenciaLidaPF {
    */
   encargosRotulo: string
   fecha: boolean
+  /**
+   * ⭐⭐ TUDO QUE DAVA PRA CONFERIR NESTE DOCUMENTO FECHOU — menos o total, que ele não
+   * declara (09/09/2026).
+   *
+   * ⛔ É o que autoriza o **total digitado pelo dono** a valer como régua. Sem este campo
+   * o `fecha` do banco era a única palavra, e a saída manual criada em 31/08 **nunca
+   * podia dar verde**: o dono digitava o número, o preview mostrava `origemTotal:
+   * DIGITADO`… e `ok` continuava `false`, porque ele nunca foi consultado.
+   *
+   * ⚠️ E o total digitado NÃO resgata fatura que o PDF declara e não bate — isso seria o
+   * `force` disfarçado que a casa recusa desde o caso Cancian. Ele só entra onde o
+   * documento é omisso.
+   */
+  fechaSemOTotal: boolean
   /** o detalhe numérico que a mensagem de falha anexa — lido × declarado, ao centavo */
   detalhe: string | null
 }

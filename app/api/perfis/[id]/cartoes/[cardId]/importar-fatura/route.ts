@@ -53,12 +53,17 @@ export async function POST(
       )
     }
 
+    // ⛔⛔ UM OBJETO SÓ PROS DOIS CAMINHOS (09/09/2026) — REGRA 5, impossível em vez de
+    // combinado. Antes o preview recebia `totalDigitado` e o confirm NÃO: o dono digitava
+    // o total, o preview ficava verde e a gravação recusava calada. Montando o pedido uma
+    // vez, não existe mais "esqueci de repassar num dos dois".
+    const pedido = { userId: user.sub, profileId, cardId, texto, totalDigitado }
     if (!confirmar) {
       // ⭐ o dono pode digitar o total olhando a fatura quando o PDF não declara — a
       // conferência roda IGUAL, e a origem do número fica gravada.
-      return NextResponse.json({ preview: await previewFaturaPF({ userId: user.sub, profileId, cardId, texto, totalDigitado }) })
+      return NextResponse.json({ preview: await previewFaturaPF(pedido) })
     }
-    return NextResponse.json({ resultado: await confirmarFaturaPF({ userId: user.sub, profileId, cardId, texto }) })
+    return NextResponse.json({ resultado: await confirmarFaturaPF(pedido) })
   } catch (err) {
     if (isProfileAccessError(err)) {
       return NextResponse.json({ erro: err.message }, { status: err.code === 'NO_ACCESS' ? 404 : 403 })

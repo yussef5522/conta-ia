@@ -34,6 +34,9 @@ const NUBANK = readFileSync(
 let userId = ''
 let profileId = ''
 let cardId = ''
+/** ⚠️ cartão SÓ pro teste da saída manual: o de cima já importou as 37 linhas, e o dedup
+ *  faria `criadas: 0` — o teste passaria a medir a dedup, não a saída manual. */
+let cardManualId = ''
 
 beforeAll(async () => {
   const u = await db.user.create({
@@ -51,11 +54,20 @@ beforeAll(async () => {
     },
   })
   cardId = c.id
+  const c2 = await db.creditCard.create({
+    data: {
+      profileId, name: 'magalu manual', bankName: 'Itaú', lastDigits: '2971',
+      brand: 'MASTERCARD', creditLimit: 6535, closingDay: 2, dueDay: 9, closingDayRule: 'PROXIMA',
+    },
+  })
+  cardManualId = c2.id
 })
 
 afterAll(async () => {
-  await db.personalTransaction.deleteMany({ where: { creditCardId: cardId } })
-  await db.creditCardInvoice.deleteMany({ where: { creditCardId: cardId } })
+  for (const id of [cardId, cardManualId]) {
+    await db.personalTransaction.deleteMany({ where: { creditCardId: id } })
+    await db.creditCardInvoice.deleteMany({ where: { creditCardId: id } })
+  }
   await db.creditCard.deleteMany({ where: { profileId } })
   await db.userPersonalProfile.deleteMany({ where: { profileId } })
   await db.personalProfile.deleteMany({ where: { id: profileId } })
@@ -156,5 +168,60 @@ describe('⛔ documento de banco desconhecido continua parando com a frase certa
     expect(p.causa).toBe('BANCO_NAO_RECONHECIDO')
     expect(p.linhas).toHaveLength(0)
     expect(p.erro).toContain('Itaú/Luizacred') // a lista do que ele sabe ler, atualizada
+  })
+})
+
+describe('⛔⛔⛔ O TOTAL DIGITADO SOBREVIVE ATÉ A GRAVAÇÃO (09/09/2026)', () => {
+  // ⛔ Medido em prod: o dono digitou o total da fatura do Magalu, o preview ficou VERDE,
+  // ele confirmou — e o cartão ficou com **0 lançamentos**. O `confirmarFaturaPF` nem
+  // aceitava `totalDigitado` e a rota não o repassava: o confirm rerodava a conferência
+  // sem o número, caía em "não fecha" e recusava gravar **em silêncio pra quem olhava a
+  // tela verde**. A saída "digite o total olhando a fatura", criada em 31/08, NUNCA
+  // funcionou ponta a ponta.
+  //
+  // ⚠️ O documento aqui é o MESMO PDF com a linha do "Total desta fatura" removida — o
+  // caso exato pra que a saída manual existe (o PDF não declara o total). Se ele
+  // declarasse, este teste passaria por acidente e não provaria nada.
+  // ⛔ Removo SÓ essa linha de propósito: cortar a capa inteira levaria junto o
+  // vencimento, e aí a recusa seria por outro motivo — o teste ficaria verde pelo
+  // caminho errado.
+  const SEM_TOTAL = ITAU.split('\n').filter((l) => !/Total desta fatura/.test(l)).join('\n')
+
+  it('⭐ sem o resumo, o preview pede o total — e o aceita', async () => {
+    const semNada = await previewFaturaPF({ userId, profileId, cardId: cardManualId, texto: SEM_TOTAL })
+    expect(semNada.ok).toBe(false)
+    expect(semNada.causa).toBe('SEM_TOTAIS_DECLARADOS')
+
+    const comTotal = await previewFaturaPF({
+      userId, profileId, cardId: cardManualId, texto: SEM_TOTAL, totalDigitado: 4491.18,
+    })
+    expect(comTotal.origemTotal).toBe('DIGITADO')
+    expect(comTotal.totalDeclarado).toBeCloseTo(4491.18, 2)
+    // ⛔⛔ ESTE era o `false` que fazia o dono digitar o número e o import recusar
+    expect(comTotal.ok).toBe(true)
+  })
+
+  it('⛔⛔ e o CONFIRM grava com ele — antes, recusava com o preview verde na tela', async () => {
+    const r = await confirmarFaturaPF({
+      userId, profileId, cardId: cardManualId, texto: SEM_TOTAL, totalDigitado: 4491.18,
+    })
+    expect(r.criadas).toBeGreaterThan(0)
+    expect(r.totalFatura).toBeCloseTo(4491.18, 2)
+    const n = await db.personalTransaction.count({ where: { creditCardId: cardManualId } })
+    expect(n).toBeGreaterThan(0)
+  })
+
+  it('⛔ e sem o total digitado o confirm continua RECUSANDO — a trava não afrouxou', async () => {
+    await expect(
+      confirmarFaturaPF({ userId, profileId, cardId: cardManualId, texto: SEM_TOTAL }),
+    ).rejects.toThrow()
+  })
+
+  it('⛔⛔ e digitar NÃO resgata fatura que o PDF declara e não bate — não é `force`', async () => {
+    // ⚠️ a fatura completa declara 4.491,18; digitar 9.999 não pode fazê-la passar.
+    const p = await previewFaturaPF({
+      userId, profileId, cardId: cardManualId, texto: ITAU.replace('4.370,79', '4.999,99'), totalDigitado: 9999,
+    })
+    expect(p.ok).toBe(false)
   })
 })
