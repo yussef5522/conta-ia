@@ -269,6 +269,52 @@ Agora é **um gesto só** — *"Sumir com o item"* — e **quem decide entre apa
 
 **12 testes novos** (o caminho inteiro do rename tela por tela · duplicado por digitação · virgem apaga / com NF arquiva e reativa / com ficha recusa nomeando). **8.971 verdes · TS 0 · deploy `-mustDFEDHrhyIMFNEoX3` 4/4.**
 
+## ⭐⭐⭐ 7º PARSER DE FATURA — ITAÚ/LUIZACRED, E O REGISTRY QUE ERA DECORATIVO (09/09/2026)
+
+**O dono:** *"o sistema não consegue ler"* — a fatura do **Magazine Luiza** (emissor **LUIZACRED S/A SCFI**, boleto do **Banco Itaú**, diagramação **Quadient**).
+
+**⛔⛔⛔ ACHADO ANTES DE ESCREVER UMA LINHA DO PARSER, e é maior que o pedido: o registry de bancos do caminho PF NUNCA foi chamado.** Ele nasceu em 31/08 justamente pra matar o fallback silencioso (o dono subiu um Nubank e o Banrisul foi aplicado por cima) — e a porta foi **só até a metade**:
+```ts
+const parser = reconhecerBancoPF(input.texto)   // ⭐ reconhece o banco…
+if (!parser) { …falha com a frase certa… }
+const r = parseBanrisulFaturaPF(input.texto)    // ⛔ …e parseia SEMPRE com o Banrisul
+```
+**O campo `parse` do registry tinha ZERO chamadores.** Uma fatura do Nubank passava no reconhecimento, era lida com a régua do Banrisul e caía em *"não consegui ler nenhum lançamento"*.
+
+**⚠️⚠️ POR QUE NINGUÉM VIU, e a lição vale pra todo parser:** o parser do Nubank tinha **20 testes verdes** e **nenhum deles passava pelo import**; o único teste de ciclo do import PF roda com a fatura do **Banrisul** — o caso em que o bug é **invisível por construção**. ***Parser testado isoladamente não prova que alguém o chama.*** É a família do "N caminhos, 1 esquecido", agora entre o registry e quem deveria consumi-lo.
+
+**⭐ O CONSERTO:** o campo virou **`ler`** e devolve uma **forma única** (`FaturaPFLida`); cada banco tem um **adaptador** e o import conhece **uma** língua. ⛔ **Mas a RÉGUA DE CONFERÊNCIA continua sendo de cada banco, de propósito** — a composição que fecha o Nubank (compras + IOF + outros) não é a do Banrisul (brasil + estornos + encargos) nem a do Itaú (cartão A + cartão B + produtos e serviços). **Régua única aqui reprovaria fatura correta**, que foi a lição de 31/08. O que se unifica é o FORMATO, nunca a régua.
+
+### ⭐⭐ A ANATOMIA DO LAYOUT, e o corte é MEDIDO no documento
+
+**DUAS COLUNAS na página de lançamentos — e a da direita não é painel, é a CONTINUAÇÃO.** Cortá-la fora perderia **16 das 37 linhas**; ler a linha corrida somaria duas compras diferentes. O corte sai de uma **calha** (faixa de colunas em branco em todas as linhas): *o documento diz onde ele mesmo se divide*. Número fixo envelheceria no primeiro estabelecimento de nome mais longo.
+
+**⚠️⚠️ DOIS ERROS MEUS, MEDIDOS CONTRA O PDF REAL, e os dois viraram regra no arquivo:**
+1. **A calha só vale na REGIÃO DE LANÇAMENTOS.** Na página inteira, os parágrafos de aviso do topo atravessam as duas colunas e **apagam a calha** — a página vira uma coluna só. Total: **2.686,42** contra os 4.370,79 do documento.
+2. **A data tem que estar NO COMEÇO da coluna** (`^\s{0,2}`). Com `^\s*`, qualquer corte à esquerda "enxerga" as datas da coluna da direita e inventa uma coluna **no meio do campo de valor**.
+
+**O resto da anatomia:** cada lançamento ocupa **2 linhas** (a 2ª é `CATEGORIA .CIDADE`, complemento) · **dois cartões** em blocos (`(final 8818)` e `(final 2971)`), cada linha guardando o portador · **parcela colada no nome**, com e sem espaço (`LOJAS RIACHUELO SA03/03`, `Leiturinha S.A 12/12`) · a data é a da **compra original** (há parcelas de 27/01, 16/04 e 20/05 ainda correndo) · **estorno com sinal** (`- 0,03`) · **encargo de atraso** entra como lançamento · ⛔ **"Compras parceladas - próximas faturas" NÃO entra** (são as parcelas dos meses seguintes; entrariam duas vezes).
+
+**⛔⛔ E O TOTAL SAI DO BLOCO DO RESUMO, NUNCA DE REGEX SOLTO:** esta fatura tem **"Total a pagar" duas vezes fora do resumo** — R$ 5.185,79 e R$ 5.387,96 — e as duas são **SIMULAÇÃO de parcelamento**, maiores que a fatura. É a armadilha que custou o parser do Nubank em 31/08, e o teste guarda o contrafactual: o regex ingênuo pega **5.185,79**.
+
+**AS PROVAS, AO CENTAVO:**
+```
+cartão 8818  1.070,89 ✓   cartão 2971  3.285,23 ✓   produtos e serviços  14,67
+                            = 4.370,79 = "Total dos lançamentos atuais"
+1.635,08 − 1.635,08 + 0,00 + 120,39 + 4.370,79 = 4.491,18 = "Total desta fatura"
+```
+e o **confirm grava 4.491,18** — 37 lançamentos + a linha do encargo. ⭐ **O encargo vira LINHA com o nome QUE O DOCUMENTO USA** (*"Encargos (financiamento + moratório)"*): "Encargos sobre rotativo" é rótulo do Banrisul, e gravá-lo aqui poria na tela um nome que não existe na fatura que o dono tem na mão.
+
+**⚠️ E A MEDIÇÃO PEGOU UMA TERCEIRA SUPOSIÇÃO MINHA — no NUBANK:** eu zerei os *"outros lançamentos"* no adaptador achando que já vinham como linha. **Não vêm**: a Σ das linhas dá 2.726,03 contra 3.053,32 declarados, exatamente os **327,29** do campo. Ia gravar a fatura do Nubank 327,29 curta — o mesmo bug dos R$ 0,62 do Banrisul de 26/08. *Conferi os três bancos pela mesma conta (Σ linhas + encargo == declarado) em vez de acreditar no meu raciocínio.*
+
+**⭐ O GUARD DE ISOLAMENTO (o dono pediu):** os **7 layouts travados ao centavo**, cada um contra a sua fixture — Banrisul PJ 13.797,73 · Caixa 7.280,39 · Sicredi 7.896,32 · Mercado Pago 2.666,44 · Banrisul PF 18.348,72 · Nubank 3.053,32 · **Itaú 4.370,79/4.491,18**. ⚠️ Isso importa porque **Banrisul PF e PJ compartilham o `nucleo.ts`**: régua nova escrita "pro Itaú" num trecho comum sai de graça pros outros. Mais dois guards: **cada fixture casa com UM parser só** (testado sem a proteção da ordem do registry, senão um `match` largo no primeiro sequestraria os de baixo) e **todo banco do registry tem `ler`** — o teste que impede o campo de voltar a ser enfeite.
+
+**A FIXTURE É ANONIMIZADA COM TROCAS DO MESMO COMPRIMENTO** (`scripts/gerar-fixture-itau.ts`): aqui a **geometria** é o que está sendo testado, e uma troca de tamanho diferente **move a calha** — a fixture passaria a testar um documento que não existe. O gerador **roda o parser antes e depois e aborta se qualquer número mudar**; sai o nome da segunda portadora (terceiro), o nome de pessoa física que aparece como estabelecimento, CPF, endereço e os números de documento.
+
+**REGRA 11 medida — 3 defeitos repostos:** calha na página inteira → **8 vermelhos**; data com `^\s*` → **11**; o Banrisul cravado de volta no import → **6**. **32 testes novos · 9.033 verdes (era 8.987) · TS 0 · deploy `RixbA7qypgm6MJCkBrcAj` 4/4.**
+
+⚠️ **REGRA 2 é do dono:** subir o PDF da fatura pela tela do cartão PF e confirmar — e **o import do Nubank também**, que nunca foi validado em prod e só agora tem como funcionar.
+
 ## ⭐⭐⭐ UM PIX PAGA N NOTAS — E O SUBSET-SUM SEM ÂNCORA É CAÇA-NÍQUEL (09/09/2026)
 
 **O dono:** *"~30 contas VENCIDAS não apareceram na conciliação, e os pagamentos EXISTEM no extrato. O padrão: fornecedor pequeno com VÁRIAS notinhas — eu pago JUNTO, num PIX só. Aposto que o matcher só casa 1-pra-1."* **Ele estava certo em cheio.**
