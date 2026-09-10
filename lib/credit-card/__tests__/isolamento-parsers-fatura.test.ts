@@ -129,3 +129,55 @@ describe('⛔⛔ TODO parser do registry entra pela MESMA porta', () => {
     }
   })
 })
+
+describe('⛔⛔⛔ NENHUM PARSER PODE DEPENDER DA POSIÇÃO DAS LINHAS (09/09/2026)', () => {
+  // ⛔ A CLASSE, com nome e data: o parser do Itaú lia o bloco do resumo por **contagem
+  // de linhas** (`slice(i, i + 14)`). Funcionava na extração do meu Mac e falhava na do
+  // servidor, que devolve o MESMO PDF com uma linha em branco a mais — o
+  // "Total desta fatura" caía fora da janela **por UMA linha**, e a tela pedia o total
+  // digitado com o número impresso na página 1.
+  //
+  // ⚠️ Extrator muda de versão sozinho (poppler do Mac × do Ubuntu), e a fixture de cada
+  // parser foi gravada numa máquina só. Este teste é o que impede a próxima janela por
+  // contagem de linha de nascer: **empurra o documento inteiro pra baixo e exige o mesmo
+  // número**. Não precisa do PDF original de cada banco pra rodar.
+  const empurrar = (t: string) => `\n\n\n${t}`
+
+  it('Banrisul PJ — 13.797,73 com o documento deslocado', () => {
+    const d = parseBanrisulFatura(empurrar(PJ('banrisul-fatura-real.txt'))).declared
+    expect(d.totalGastos).toBeCloseTo(13797.73, 2)
+    expect(d.saldoAtual).toBeCloseTo(13779.73, 2)
+  })
+
+  it('Caixa PJ — 7.280,39 com o documento deslocado', () => {
+    expect(parseCaixaFatura(empurrar(PJ('caixa-fatura-real.txt'))).declared.valorTotalFatura)
+      .toBeCloseTo(7280.39, 2)
+  })
+
+  it('Sicredi PJ — 7.896,32 com o documento deslocado', () => {
+    expect(parseSicrediFatura(empurrar(PJ('sicredi-fatura-real.txt'))).declared.totalFatura)
+      .toBeCloseTo(7896.32, 2)
+  })
+
+  it('Mercado Pago PJ — 2.666,44 com o documento deslocado', () => {
+    expect(parseMercadoPagoFatura(empurrar(PJ('mercadopago-fatura-2026-08.txt'))).totalDeclared)
+      .toBeCloseTo(2666.44, 2)
+  })
+
+  it('Banrisul PF — 18.348,72 com o documento deslocado', () => {
+    expect(parseBanrisulFaturaPF(empurrar(PF_BANRISUL)).declared.saldoAtual)
+      .toBeCloseTo(18348.72, 2)
+  })
+
+  it('Nubank PF — 3.053,32 com o documento deslocado', () => {
+    expect(conferirNubank(parseNubankFaturaPF(empurrar(PF_NUBANK))).composicao)
+      .toBeCloseTo(3053.32, 2)
+  })
+
+  it('⭐ Itaú PF — 4.370,79 e 4.491,18 com o documento deslocado', () => {
+    const c = conferirItau(parseItauFaturaPF(empurrar(PF_ITAU)))
+    expect(c.lancamentos).toBeCloseTo(4370.79, 2)
+    // ⛔ era ESTE que virava null quando as linhas andavam
+    expect(c.totalDeclarado).toBeCloseTo(4491.18, 2)
+  })
+})

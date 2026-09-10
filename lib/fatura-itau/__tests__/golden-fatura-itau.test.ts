@@ -18,9 +18,62 @@ import { parseItauFaturaPF, conferirItau, separarParcela, resolverAno } from '..
 import { calhas, colunasDaRegiao } from '../colunas'
 import { reconhecerBancoPF } from '@/lib/credit-card/registry-fatura-pf'
 
+// ⭐⭐⭐ DUAS EXTRAÇÕES DO MESMO PDF, e as duas têm que dar o MESMO número.
+//
+// ⛔⛔ O BUG QUE ISTO EXISTE PRA IMPEDIR (09/09/2026, achado pelo dono em prod): a fixture
+// original saiu de um `pdftotext -layout` rodado na mão no meu Mac; a ROTA chama
+// `extractPdfText` **no servidor**, com outra versão do poppler. O texto sai com uma linha
+// em branco a mais antes do resumo — e a janela de 14 linhas do bloco cortava o
+// "Total desta fatura" **por UMA linha**. O golden fechava 4.491,18 e a TELA dizia
+// *"não achei os totais do resumo neste PDF"*, no MESMO arquivo.
+//
+// ⭐ Agora a fixture PRIMÁRIA é gerada **no servidor, pelo `extractPdfText`** — o caminho
+// real, byte a byte. A segunda é a do poppler do Mac, e ela fica aqui de propósito: é o
+// guard de que o parser não depende do espaçamento de UMA versão do extrator.
 const TEXTO = readFileSync(join(__dirname, 'fixtures/itau-luizacred-pf.txt'), 'utf-8')
+const TEXTO_OUTRO_POPPLER = readFileSync(
+  join(__dirname, 'fixtures/itau-luizacred-pf.poppler-25.txt'), 'utf-8')
 const r = parseItauFaturaPF(TEXTO)
 const c = conferirItau(r)
+
+describe('⛔⛔⛔ O MESMO PDF POR DOIS EXTRATORES DÁ O MESMO NÚMERO', () => {
+  it('⭐ as duas extrações são MESMO diferentes — senão este guard não guarda nada', () => {
+    expect(TEXTO).not.toBe(TEXTO_OUTRO_POPPLER)
+    // ⚠️ a diferença é de espaçamento/quebra: a posição do resumo muda de linha
+    const linhaDo = (t: string, re: RegExp) => t.split('\n').findIndex((l) => re.test(l))
+    expect(linhaDo(TEXTO, /Resumo da fatura em R\$/))
+      .not.toBe(linhaDo(TEXTO_OUTRO_POPPLER, /Resumo da fatura em R\$/))
+  })
+
+  it('⭐⭐ e os números fecham nos DOIS — 4.370,79 e 4.491,18', () => {
+    for (const [qual, texto] of [['servidor', TEXTO], ['outro poppler', TEXTO_OUTRO_POPPLER]] as const) {
+      const x = conferirItau(parseItauFaturaPF(texto))
+      expect(x.lancamentos, qual).toBeCloseTo(4370.79, 2)
+      // ⛔ ESTE era o que vinha null em prod
+      expect(x.totalDeclarado, qual).toBeCloseTo(4491.18, 2)
+      expect(x.totalRecomposto, qual).toBeCloseTo(4491.18, 2)
+      expect(x.fecha && x.cartoesFecham && x.totalFecha, qual).toBe(true)
+    }
+  })
+
+  it('⭐ e a leitura inteira é idêntica nas duas — linha a linha', () => {
+    const so = (t: string) => parseItauFaturaPF(t).linhas
+      .map((l) => `${l.data}|${l.descricao}|${l.valor}|${l.credito}|${l.portador}`)
+    expect(so(TEXTO)).toEqual(so(TEXTO_OUTRO_POPPLER))
+  })
+})
+
+describe('⛔⛔ os rótulos do resumo são ÚNICOS no documento', () => {
+  // ⚠️ é isto que faz a âncora do bloco ser cinto E suspensório, não a única defesa.
+  // "Total a pagar" NÃO está na lista — ele repete 2× (as simulações) e não é lido.
+  it.each([
+    'Total desta fatura', 'Lançamentos atuais', 'Encargos (financiamento',
+    'Total da fatura anterior', 'Pagamento efetuado', 'Saldo financiado',
+  ])('"%s" aparece uma vez só', (rotulo) => {
+    const n = TEXTO.split(rotulo).length - 1
+    expect(n).toBe(1)
+  })
+})
 
 describe('⭐⭐ a fatura fecha AO CENTAVO, pelas duas provas', () => {
   it('⭐ os 37 lançamentos somam o "Total dos lançamentos atuais"', () => {
