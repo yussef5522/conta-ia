@@ -269,6 +269,44 @@ Agora é **um gesto só** — *"Sumir com o item"* — e **quem decide entre apa
 
 **12 testes novos** (o caminho inteiro do rename tela por tela · duplicado por digitação · virgem apaga / com NF arquiva e reativa / com ficha recusa nomeando). **8.971 verdes · TS 0 · deploy `-mustDFEDHrhyIMFNEoX3` 4/4.**
 
+## ⛔⛔⛔ A COLUNA COM 2 LANÇAMENTOS SUMIA — E O PAINEL VIRAVA DINHEIRO (10/09/2026)
+
+**O dono, ao subir a fatura do Banrisul PF do mês:** *"lido 32.650,23 × declarado 18.842,30 — diferença 13.806,48. **A recusa está certa; a leitura não.**"*
+
+**A CAUSA, medida:** o Banrisul PF tinha a **SUA** dedução de colunas, por **densidade de datas** — uma coluna "de verdade" precisava de **≥4 datas alinhadas**. Funcionou em agosto e quebrou em setembro, porque a coluna da direita da última página tem **2 lançamentos** e um painel de limites. Ela foi descartada, a página virou uma coluna só, e o parser passou a ler o dinheiro do **painel** na linha das compras:
+```
+02/08  POSTO PITANGUEIRA ITAQUI BRA   262,00  │  TOTAL DE GASTOS   10.482,68
+                                       ↑ o certo         ↑ o que ele leu
+```
+Os três números que entraram por engano: **10.482,68** (total do portador), **2.839,53** (pagamento mínimo) e **114,31** (encargo do painel).
+
+**⭐ A GEOMETRIA VIROU UMA SÓ** (`lib/pdf-fatura/colunas.ts`): a **calha** — faixa em branco em TODAS as linhas — **não depende de quantos lançamentos a coluna tem**. Uma coluna com 2 compras é tão coluna quanto uma com 40. **Mesmo motor do Itaú, dois bancos** — a régua nasceu ontem pro 7º parser e o Banrisul precisou dela no dia seguinte.
+
+**⚠️⚠️ E A ARESTA DA BANDA PRECISOU DE DUAS CORREÇÕES, cada uma quebrando um banco diferente — as duas ficaram escritas no arquivo:**
+1. **cortar no PRIMEIRO valor da linha** → quebrou o **Banrisul**: compra internacional traz **US$ e R$** na mesma linha (`15/07 MERCADOME 8,70 45,49`), o "primeiro" é o dólar e o **real era cortado fora** — **50 linhas sumiram** e o Brasil ficou 2.548,19 curto;
+2. **cortar no valor mais à direita que se repete** → quebrou o **Itaú**: o painel de juros da página 2 **também é alinhado à direita** (borda 118, 6×) e ganhava do valor de verdade (borda 69, 11×).
+
+⭐ **O que separa os dois é a CALHA depois da coluna de valor:** o valor é seguido de faixa em branco; o painel vive DEPOIS dela.
+
+**MAIS DOIS ACHADOS QUE SÓ O MÊS NOVO TRAZIA:**
+- **`(+) IOF sobre operações de crédito 1,45`** — rótulo que **não existe na fatura de agosto**. Sem ele o saldo ficava **1,45 curto** e a fatura era recusada por um centavo e meio.
+- **A parcela ficava na descrição** junto do campo estruturado → a tela mostrava **"CHEFRED 10/1210/12"**. ⚠️ A limpeza mora no **adaptador**, não no `nucleo.ts`: aquele arquivo é **compartilhado com o parser PJ**, e mexer nele mudaria as descrições de quatro layouts que hoje estão certos.
+
+**⭐⭐ A SEGUNDA FIXTURE, e a regra do dono que a justifica:** *"meses diferentes, layouts que variam — **o golden de um mês não congela o banco no tempo**"*. Gerada **no servidor, pelo `extractPdfText`** (a regra que nasceu do episódio do Itaú, em que o golden fechava e a tela não).
+
+**PROVADO PELA ROTA REAL, com upload e sem digitar nada:**
+```
+POST /importar-fatura (preview) → 200 · Banrisul · ok true · origem do total: PDF
+despesas 18.842,30 == declarado   ·   saldo 18.593,16 == declarado   ·   fecha true
+93 linhas · portadores ["5349","9113"] · venc 10/09 · descrições com parcela duplicada: 0
+próximas faturas (declaradas, FORA do import): 21.680,57
+```
+E **agosto seguiu verde**: 39.302,64 / 18.348,72 com as **mesmas 181 linhas**, incluindo as internacionais.
+
+**REGRA 11 — 3 defeitos repostos:** densidade de datas de volta → **6 vermelhos**; aresta no primeiro valor → **6**; IOF de crédito fora do encargo → **2**. **22 testes novos · 9.094 verdes · TS 0 · deploy `yjp7cj3EzHhr1ea0gFYwn` 4/4.**
+
+⚠️ **REGISTRADO, NÃO FEITO:** a mesma duplicação de parcela na descrição provavelmente existe nos **4 parsers PJ** (o `nucleo.ts` é compartilhado e a limpeza ficou só no adaptador PF). Não mexi: mudaria descrições de faturas que hoje estão certas, sem pedido.
+
 ## ⭐⭐⭐ O CARD DO CARTÃO PASSOU A DIZER O ESTADO DA FATURA (09/09/2026)
 
 **O dono:** *"a lista diz limite e 'fecha dia X · vence dia Y' — e nada sobre a fatura em si: aberta? fechada esperando pagamento? vencida? paga? **É a pergunta que me faz abrir a tela.**"*
