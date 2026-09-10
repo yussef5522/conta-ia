@@ -269,6 +269,43 @@ Agora é **um gesto só** — *"Sumir com o item"* — e **quem decide entre apa
 
 **12 testes novos** (o caminho inteiro do rename tela por tela · duplicado por digitação · virgem apaga / com NF arquiva e reativa / com ficha recusa nomeando). **8.971 verdes · TS 0 · deploy `-mustDFEDHrhyIMFNEoX3` 4/4.**
 
+## ⭐⭐⭐ O CARD DO CARTÃO PASSOU A DIZER O ESTADO DA FATURA (09/09/2026)
+
+**O dono:** *"a lista diz limite e 'fecha dia X · vence dia Y' — e nada sobre a fatura em si: aberta? fechada esperando pagamento? vencida? paga? **É a pergunta que me faz abrir a tela.**"*
+
+**A linha da fatura virou o protagonista do card** e o cadastro (limite, ciclo) desceu pro rodapé. Seis estados, cada um com **frase e tom decididos no servidor** — a tela só pinta; se ela derivasse a cor do estado seriam duas derivações da mesma pergunta.
+
+**⛔⛔ A RÉGUA DO PAGO É A DELE, e é dura:** *"pago = pagamento REGISTRADO. Se não tem registro, a tela não adivinha."* `estaPaga` lê o **`paidAmount`** — que só cresce quando um pagamento é AMARRADO —, **nunca o `status` gravado**. ⚠️ E o motivo é estrutural, não estético: **`CreditCardInvoice.status` existe desde a Fatia 2 e NINGUÉM o transiciona com o tempo** (fatura importada nasce `OPEN` e continua `OPEN` depois de vencer); e um cartão que se diz pago sem vínculo é **o mesmo dinheiro contado duas vezes**. Teste com o contrafactual: `status: 'PAID'` com `paidAmount: 0` continua cobrando.
+
+**⛔ E AUSÊNCIA NUNCA VIRA VERDE:** `SEM_FATURA` é estado próprio, com o que fazer escrito. E um card pode mostrar a **VENCIDA de julho** e dizer, na segunda linha, que **o ciclo de agora não foi importado** — as duas coisas são verdade e as duas aparecem.
+
+### ⭐ O VÍNCULO PAGAMENTO→CARTÃO: **não existia nenhum** (a resposta à pergunta dele)
+
+A categoria *"Cartão de crédito"* do PF é **só um nome** — não aponta pra cartão nem pra fatura. O único vínculo real é `casarPagamentoPF`/`payInvoice`, e em prod havia **0 transações com ele**. Agora o card **oferece o débito de valor EXATO na janela do vencimento**, com o motivo, e 1 clique registra — daí em diante o *"paga ✓"* é derivado sozinho.
+
+⛔ **Só valor EXATO é oferecido, e o sistema não casa sozinho:** ele tem 4 cartões e valores se parecem; marcar uma fatura como paga com o dinheiro de outra é bem mais caro de desfazer que um clique. ⚠️ E um débito só é oferecido a UM cartão — senão o mesmo dinheiro apareceria como "o pagamento" de duas faturas.
+
+### ⛔⛔⛔ E A PROVA EM PROD PEGOU UM FUSO QUE MENTIA TRÊS HORAS POR DIA
+
+A 1ª medição pela rota real mostrou o Magalu como **"VENCEU dia 09/09"** — com o dono **dentro do prazo**. O servidor marcava `2026-09-10 02:32 UTC`; em São Paulo ainda era **23:32 de 09/09**.
+
+⚠️ **Não é preciosismo:** todo dia, **das 21h à meia-noite, TODO cartão que vence naquele dia apareceria vencido** — no número que ele usa pra decidir se corre pagar. O card passou a usar o **dia do Brasil**, reusando o `endOfTodayBrazil` que a casa já tinha desde 07/08.
+
+**⚠️ E o irmão do mesmo bug, do outro lado:** o card dizia *"paga ✓ em **10/09**"* pra um pagamento feito às 23:35 de **09/09**. **Vencimento e fechamento são DATAS DE CALENDÁRIO** (00:00 UTC — formatá-las no fuso as puxaria pro dia anterior); **o pagamento é um INSTANTE**, e aí o fuso manda. Os dois sentidos têm teste. ⚠️ E a fixture antiga datava o pagamento à **meia-noite UTC**, forma que a aplicação **nunca grava** (o import usa meio-dia; o `payInvoice` usa o relógio) — ela escondia o fuso em vez de testá-lo.
+
+**⚠️ E O GUARD DA CASA PEGOU O MEU PRÓPRIO TESTE:** o `sem-data-fixa-no-futuro` reprovou `hoje: new Date('2026-09-13')` — data fixa no futuro na posição de "agora". Nada ali compara com o relógio real, mas **a forma importava**: o calendário do cenário passou a ser derivado da própria âncora (`maisDias(4)`), o que deixa a independência do relógio **visível** em vez de depender de alguém reparar nela.
+
+**PROVADO EM PROD, pela ROTA REAL, com o dono usando o app ao vivo** (ele registrou o pagamento do Banrisul às 23:35, entre duas medições minhas, e o card virou sozinho):
+```
+banrisul (9113)        [OK]      PAGA       "paga ✓ em 09/09"
+nubank (1564)          [NEUTRO]  FECHADA    "R$ 6.210,30 · vence em 6 dias"
+magazine luiza (2971)  [ALERTA]  VENCE_HOJE "R$ 4.491,18 · vence HOJE"
+   ⚠️ os três com a 2ª linha: sem fatura importada deste ciclo
+```
+**REGRA 11 — 3 defeitos repostos:** "paga" confiando no status gravado → 1 vermelho; `SEM_FATURA` com tom `ok` → 1; a sugestão aceitando valor **parecido** → 1. **22 testes novos · 9.078 verdes · TS 0 · deploys `kLOYQNDFarQjHozRXqU-F`, `oZPQ75hxLh-J75uCUJWhU` e `TOENjtqHg1uIs52L9ZdWL`, os três 4/4.**
+
+⚠️ **PENDENTE (é do dono):** as três faturas do ciclo corrente não foram importadas — a segunda linha de cada card já diz isso.
+
 ## ⛔⛔⛔ O GOLDEN ACHAVA E A TELA NÃO, NO MESMO PDF — DOIS EXTRATORES (09/09/2026)
 
 **O dono, horas depois do sprint do 7º parser:** *"subi a fatura EXATA do golden. Os 37 lançamentos, portadores, parcelas e o 4.370,79 bateram — mas a conferência diz 'não achei os totais do resumo neste PDF' e pede o total digitado, sendo que o 'Total desta fatura R$ 4.491,18' está na página 1."* E a hipótese dele estava certa em cheio: ***"aposto em extrator diferente mudando espaçamento e quebrando a âncora do resumo"***.
