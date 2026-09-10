@@ -20,7 +20,7 @@
 import { useEffect, useState, useCallback, useMemo, Suspense } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { CheckCircle2, FileText, Loader2, AlertTriangle, History, Layers, ChevronDown, Search } from 'lucide-react'
+import { CheckCircle2, FileText, Loader2, AlertTriangle, History, Layers } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Header } from '@/components/layout/header'
 import { useEmpresa } from '@/lib/contexts/empresa-context'
@@ -99,23 +99,41 @@ function ConciliacaoInner() {
   const [procurandoLote, setProcurandoLote] = useState<
     { ofx: { id: string; description: string; amount: number; date: string; type: string }; busca: string } | null
   >(null)
-  const [naoFechamAberto, setNaoFechamAberto] = useState(false)
-  /** ⭐ o card do "escolher na mão" — UMA linha por vez, carregada sob demanda */
-  const [cardEscolha, setCardEscolha] = useState<CardDeEscolhaDTO | null>(null)
-  const [carregandoCard, setCarregandoCard] = useState<string | null>(null)
+  /**
+   * ⭐⭐ OS CARDS DO "ESCOLHER NA MÃO" — a seção dos que não fecham É esta lista.
+   *
+   * ⛔ Eles ficavam atrás de DOIS cliques (expandir a seção colapsada + "escolher na mão"
+   * por linha) e renderizavam no RODAPÉ da página, longe do clique. O dono abriu
+   * `/conciliacao` e viu só a frase antiga: *"16 pagamentos nomeiam um fornecedor…"*.
+   * **Porta sem maçaneta.** Agora carregam junto com a fila e aparecem no lugar dela.
+   */
+  const [cardsEscolha, setCardsEscolha] = useState<CardDeEscolhaDTO[]>([])
+  /** ⚠️ card dispensado nesta sessão (o X do card) — some da lista, volta no F5 */
+  const [dispensados, setDispensados] = useState<Set<string>>(new Set())
+  const [cardsFalharam, setCardsFalharam] = useState(false)
 
   const carregar = useCallback(async () => {
     if (!empresaId) { setCarregando(false); return }
     setCarregando(true)
     try {
-      const { ok, data, message } = await fetchJson<FilaDTO>(
-        `/api/conciliacao/fila?empresaId=${empresaId}`,
-      )
-      if (!ok) {
-        toast({ variant: 'destructive', title: 'Erro ao carregar a fila', description: message ?? 'Tenta de novo.' })
+      // ⭐ a fila e os cards vêm JUNTOS: o card do "escolher na mão" é uma seção da tela,
+      // não uma tela escondida — carregar sob demanda foi o que o deixou inalcançável.
+      const [f, c] = await Promise.all([
+        fetchJson<FilaDTO>(`/api/conciliacao/fila?empresaId=${empresaId}`),
+        fetchJson<{ cards: CardDeEscolhaDTO[] }>(
+          `/api/conciliacao/escolher-na-mao?empresaId=${empresaId}`,
+        ),
+      ])
+      if (!f.ok) {
+        toast({ variant: 'destructive', title: 'Erro ao carregar a fila', description: f.message ?? 'Tenta de novo.' })
         return
       }
-      setFila(data!)
+      setFila(f.data!)
+      // ⚠️ FALHA MACIA: se os cards não vierem, a fila abre do mesmo jeito — mas a seção
+      // DIZ que não conseguiu, nunca finge que não há trabalho (erro disfarçado de vazio).
+      setCardsEscolha(c.ok ? (c.data?.cards ?? []) : [])
+      setCardsFalharam(!c.ok)
+      setDispensados(new Set())
     } finally { setCarregando(false) }
   }, [empresaId, toast])
 
@@ -189,22 +207,13 @@ function ConciliacaoInner() {
   }, [recarregarSaldos])
 
   /**
-   * ⭐ ABRE O CARD DE ESCOLHA de uma linha. Carrega sob demanda (o payload da fila não
-   * carrega as 15 parcelas da Box Paper sem ninguém pedir).
+   * ⭐ CONCILIOU PELO CARD: ele some da seção na hora e a fila recarrega — a linha do
+   * extrato foi GASTA e não pode continuar oferecida em card nenhum.
    */
-  const abrirEscolha = useCallback(async (extratoId: string) => {
-    setCarregandoCard(extratoId)
-    try {
-      const { ok, data, message } = await fetchJson<{ card: CardDeEscolhaDTO | null }>(
-        `/api/conciliacao/escolher-na-mao?empresaId=${empresaId}&extratoId=${extratoId}`,
-      )
-      if (!ok || !data?.card) {
-        toast({ variant: 'destructive', title: 'Não deu pra abrir', description: message ?? 'Tenta de novo.' })
-        return
-      }
-      setCardEscolha(data.card)
-    } finally { setCarregandoCard(null) }
-  }, [empresaId, toast])
+  const cardConciliado = useCallback((extratoId: string) => {
+    setCardsEscolha((cs) => cs.filter((c) => c.linha.id !== extratoId))
+    void carregar()
+  }, [carregar])
 
   // ⚠️ a recusa tira só ESTE par — a conta continua na fila com as outras
   // sugestões, porque recusar um par não é recusar a conta.
@@ -239,6 +248,12 @@ function ConciliacaoInner() {
     }
     return m
   }, [comSugestao])
+
+  /** ⭐ os cards que a seção mostra — menos os que o dono dispensou nesta sessão */
+  const cardsVisiveis = useMemo(
+    () => cardsEscolha.filter((c) => !dispensados.has(c.linha.id)),
+    [cardsEscolha, dispensados],
+  )
 
   const t = fila?.totais
 
@@ -352,56 +367,55 @@ function ConciliacaoInner() {
                   </div>
                 )}
 
-                {(fila?.lotesQueNaoFecham.length ?? 0) > 0 && (
-                  <div className="rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
-                    <button type="button" onClick={() => setNaoFechamAberto((v) => !v)}
-                      aria-expanded={naoFechamAberto}
-                      className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-[12.5px] text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900/50">
-                      <Layers className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                      <span>
-                        <b>{fila!.lotesQueNaoFecham.length} pagamentos</b> nomeiam um fornecedor
-                        que tem notas abertas, mas <b>nenhuma combinação fecha</b> na soma.
-                      </span>
-                      <ChevronDown className={`ml-auto h-4 w-4 shrink-0 text-slate-400 transition-transform ${naoFechamAberto ? 'rotate-180' : ''}`} />
-                    </button>
-                    {naoFechamAberto && (
-                      <div className="border-t border-slate-100 dark:border-slate-800">
-                        {/* ⚠️ o motivo fica escrito: quase sempre é pagamento parcial, ou
-                            cobre uma nota que nunca entrou no sistema. Some da tela seria o
-                            "erro disfarçado de vazio" que esta casa já pagou caro. */}
-                        <p className="px-4 py-2 text-[11.5px] leading-relaxed text-slate-400">
-                          Isso costuma ser <b>pagamento parcial</b> ou pagamento de uma nota que
-                          não está no sistema. O sistema não escolhe quais notas foram —
-                          &quot;escolher na mão&quot; abre a busca já no nome do fornecedor, com a
-                          soma conferida contra a linha antes de gravar.
-                        </p>
-                        {fila!.lotesQueNaoFecham.map((x) => (
-                          <div key={x.extratoId} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-slate-50 px-4 py-2 dark:border-slate-900">
-                            <span className="text-[12.5px] font-semibold tabular-nums text-slate-800 dark:text-slate-100">
-                              {formatBRL(x.valorDaLinha)}
-                            </span>
-                            <span className="text-[12px] text-slate-600 dark:text-slate-300">{x.fornecedorNome}</span>
-                            <span className="text-[11px] tabular-nums text-slate-400">
-                              {dia(x.data)}{x.contaBancaria ? ` · ${x.contaBancaria}` : ''} ·{' '}
-                              {x.motivo === 'AMBIGUO'
-                                ? `${x.combinacoes}+ combinações fechariam — o sistema não sabe qual foi`
-                                : `${x.abertasDoFornecedor} notas abertas somam ${formatBRL(x.somaDasAbertas)}`}
-                            </span>
-                            <Button size="sm" variant="ghost"
-                              disabled={carregandoCard === x.extratoId}
-                              onClick={() => abrirEscolha(x.extratoId)}
-                              className="ml-auto h-7 gap-1 px-2 text-[11.5px] text-slate-500">
-                              <Search className="h-3.5 w-3.5" />
-                              {carregandoCard === x.extratoId ? 'abrindo…' : 'escolher na mão'}
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                {/* ⭐⭐⭐ ESCOLHER NA MÃO — a seção dos que não fecham É esta lista de cards.
+                    ⛔ Aqui morava a frase colapsada ("N pagamentos nomeiam um fornecedor…")
+                    com o card escondido atrás de dois cliques e renderizado no rodapé da
+                    página. O dono subiu a tela e não achou nada novo. Card que precisa de
+                    URL secreta é motor que não subiu. */}
+                {cardsVisiveis.length > 0 && (
+                  <div className="space-y-2.5">
+                    <div className="flex items-start gap-2.5 px-1">
+                      <Layers className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+                      <p className="text-[12px] leading-relaxed text-slate-500 dark:text-slate-400">
+                        <b className="text-slate-700 dark:text-slate-200">
+                          {cardsVisiveis.length} pagamento{cardsVisiveis.length > 1 ? 's' : ''} esperando você dizer quais notas {cardsVisiveis.length > 1 ? 'foram' : 'foi'}.
+                        </b>{' '}
+                        {/* ⚠️ o motivo fica escrito: quase sempre é pagamento parcial ou
+                            pagamento de nota que nem está no sistema. */}
+                        Cada um nomeia um fornecedor com notas abertas, mas nenhuma combinação
+                        fecha sozinha na soma — costuma ser <b>pagamento parcial</b> ou nota que
+                        não está no sistema. Marque as notas: o rodapé soma ao vivo e o Conciliar
+                        só acende quando a conta fecha.
+                      </p>
+                    </div>
+                    {cardsVisiveis.map((c) => (
+                      <EscolherNaMaoCard
+                        key={c.linha.id}
+                        empresaId={empresaId}
+                        card={c}
+                        onFechar={() => setDispensados((s) => new Set(s).add(c.linha.id))}
+                        onConciliado={cardConciliado}
+                      />
+                    ))}
                   </div>
                 )}
 
-                {comSugestao.length === 0 && (fila?.lotes.length ?? 0) === 0 ? (
+                {/* ⛔ ERRO NUNCA VIRA VAZIO: se os cards não carregaram, a tela diz isso em
+                    vez de deixar o dono achar que não há trabalho. */}
+                {cardsFalharam && (
+                  <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-[12.5px] leading-relaxed text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                    <span>
+                      Não consegui carregar os pagamentos que não fecham. Isso <b>não</b> quer
+                      dizer que não existem — recarregue a página.
+                    </span>
+                  </div>
+                )}
+
+                {/* ⛔ "Tudo conciliado" só quando NÃO HÁ card de escolha na tela — senão a
+                    frase apareceria em cima de 16 pagamentos esperando decisão. */}
+                {comSugestao.length === 0 && (fila?.lotes.length ?? 0) === 0
+                  && cardsVisiveis.length === 0 && !cardsFalharam ? (
                   <Vazio
                     titulo="Tudo conciliado ✓"
                     texto="Nenhum vínculo esperando decisão. O próximo extrato traz os novos pares — com o motivo escrito, pra você só confirmar."
@@ -511,15 +525,8 @@ function ConciliacaoInner() {
         </div>
       )}
 
-      {/* ⭐⭐ O CARD DO "ESCOLHER NA MÃO" — o desenho novo (10/09/2026). */}
-      {cardEscolha && empresaId && (
-        <EscolherNaMaoCard
-          empresaId={empresaId}
-          card={cardEscolha}
-          onFechar={() => setCardEscolha(null)}
-          onConciliado={() => { setCardEscolha(null); void carregar() }}
-        />
-      )}
+      {/* ⚠️ o card do "escolher na mão" NÃO mora mais aqui embaixo — ele É a seção dos que
+          não fecham, lá em cima. Renderizar longe do clique foi metade do defeito. */}
 
       {/* ⭐ o Find & Match em MODO LOTE: ele já seleciona N contas e confere a soma
           contra a linha antes de gravar — o que faltava era CHEGAR aqui com o

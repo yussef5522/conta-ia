@@ -1,24 +1,32 @@
-// GET /api/conciliacao/escolher-na-mao?empresaId=…&extratoId=…
+// GET /api/conciliacao/escolher-na-mao?empresaId=…
 //
-// ⭐ O card de UMA linha do extrato contra as notas abertas do fornecedor dela.
+// ⭐ OS CARDS do Find & Match: cada linha do extrato que NOMEIA um fornecedor e não fecha
+// na soma, contra as notas abertas dele.
 //
-// ⚠️ CARREGA SOB DEMANDA, uma linha por vez — decisão do dono no mock (*"Casper (5 linhas):
-// abre uma linha por vez, da mais antiga"*). Mandar as notas de todos os fornecedores na
-// fila encheria o payload com as 15 parcelas da Box Paper sem ninguém ter pedido.
+// ⛔⛔ **DEVOLVE A LISTA INTEIRA, e essa é a correção de 10/09/2026.**
+//
+// A primeira versão carregava UMA linha por vez, sob demanda (`?extratoId=`). Na tela isso
+// virou **porta sem maçaneta**: a seção nascia colapsada, o dono precisava (1) expandir,
+// (2) clicar "escolher na mão" numa linha, e o card aparecia no RODAPÉ da página, longe do
+// clique. Ele abriu `/conciliacao` e disse: *"continua a mensagem antiga… sem os cards
+// novos"*. **A seção dos que não fecham VIRA os cards.**
+//
+// ⚠️ E o modo de uma-linha-só saiu junto: sem chamador, ele seria o campo decorativo que
+// esta casa já pagou caro no `registry.parse` (existia, ninguém chamava, e o bug ficou
+// invisível por semanas).
 
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
-import { fornecedoresDaEmpresa } from '@/lib/conciliacao/fila-de-conciliacao'
+import { fornecedoresDaEmpresa, lotesDaFila } from '@/lib/conciliacao/fila-de-conciliacao'
 import { reconhecerFornecedor } from '@/lib/conciliacao/sugestao-de-vinculo'
 import { montarCardDeEscolha } from '@/lib/conciliacao/escolher-na-mao'
 import { jaPagoPorConta } from '@/lib/conciliacao/aplicar-baixa-parcial'
 
 const querySchema = z.object({
   empresaId: z.string().cuid(),
-  extratoId: z.string().cuid(),
 })
 
 export async function GET(request: NextRequest) {
@@ -28,59 +36,78 @@ export async function GET(request: NextRequest) {
     const ctx = await getAuthContext(request, data.empresaId)
     ctx.requirePermission('transaction.view')
 
-    const linha = await prisma.transaction.findUnique({
-      where: { id: data.extratoId },
+    const fila = await lotesDaFila(data.empresaId, prisma)
+    const ids = fila.naoFecham.map((x) => x.extratoId)
+    if (!ids.length) return NextResponse.json({ cards: [] })
+
+    const fornecedores = await fornecedoresDaEmpresa(prisma, data.empresaId)
+
+    const linhas = await prisma.transaction.findMany({
+      where: { id: { in: ids } },
       select: {
         id: true, description: true, amount: true, date: true, supplierId: true,
         bankAccount: { select: { name: true, companyId: true } },
         category: { select: { name: true } },
       },
     })
-    // ⛔ REGRA 8: a linha tem que ser DESTA empresa; sem isto um id de outra listaria as
-    // contas desta contra o extrato de outra.
-    if (!linha || linha.bankAccount?.companyId !== data.empresaId) {
-      return NextResponse.json({ erro: 'Linha não encontrada nesta empresa' }, { status: 404 })
-    }
+    // ⛔ REGRA 8: a linha tem que ser DESTA empresa — resolvida pelo dono da conta bancária
+    const daEmpresa = linhas.filter((l) => l.bankAccount?.companyId === data.empresaId)
 
-    const fornecedores = await fornecedoresDaEmpresa(prisma, data.empresaId)
-    const fid = linha.supplierId
-      ?? reconhecerFornecedor(linha.description, fornecedores)?.id
-      ?? null
-    if (!fid) {
-      // ⚠️ sem fornecedor reconhecido não há lista pra oferecer — e inventar uma seria o
-      // caça-níquel do subset-sum sem âncora, que já mordeu em 09/09.
-      return NextResponse.json({
-        erro: 'Não reconheci o fornecedor nesta linha — não dá pra listar as notas dele.',
-        card: null,
-      }, { status: 422 })
+    // ⭐ UMA query pras notas de TODOS os fornecedores envolvidos — nunca uma por card.
+    // ⚠️ N cards × 1 query cada é o padrão que já custou 9,6 s nesta mesma tela.
+    const fornecedorDaLinha = new Map<string, string>()
+    for (const l of daEmpresa) {
+      const fid = l.supplierId ?? reconhecerFornecedor(l.description, fornecedores)?.id ?? null
+      if (fid) fornecedorDaLinha.set(l.id, fid)
     }
-    const nome = fornecedores.find((f) => f.id === fid)
-    const notas = await prisma.transaction.findMany({
-      where: {
-        supplierId: fid,
-        lifecycle: { in: ['PAYABLE', 'RECEIVABLE'] }, status: 'PENDING', paymentDate: null,
-        reconciledWithId: null, reconciledFrom: { none: {} },
-      },
-      select: { id: true, description: true, amount: true, dueDate: true, date: true },
-      orderBy: { dueDate: 'asc' },
-    })
-    const jaPago = await jaPagoPorConta(notas.map((n) => n.id), prisma)
+    const notasTodas = fornecedorDaLinha.size
+      ? await prisma.transaction.findMany({
+          where: {
+            supplierId: { in: [...new Set(fornecedorDaLinha.values())] },
+            lifecycle: { in: ['PAYABLE', 'RECEIVABLE'] },
+            status: 'PENDING',
+            paymentDate: null,
+            reconciledWithId: null,
+            reconciledFrom: { none: {} },
+          },
+          select: { id: true, description: true, amount: true, dueDate: true, date: true, supplierId: true },
+          orderBy: { dueDate: 'asc' },
+        })
+      : []
+    const jaPago = await jaPagoPorConta(notasTodas.map((n) => n.id), prisma)
 
-    const card = montarCardDeEscolha({
-      linha: {
-        id: linha.id, descricao: linha.description, valor: Math.abs(linha.amount),
-        data: linha.date, conta: linha.bankAccount?.name?.trim() ?? null,
-        categoria: linha.category?.name ?? null,
-      },
-      fornecedorId: fid,
-      fornecedorNome: nome?.nomeFantasia ?? nome?.razaoSocial ?? 'fornecedor',
-      notas: notas.map((n) => ({
-        id: n.id, descricao: n.description, valor: Math.abs(n.amount),
-        vencimento: n.dueDate ?? n.date, jaPago: jaPago.get(n.id) ?? 0,
-      })),
-      hoje: new Date(),
+    const hoje = new Date()
+    const cards = daEmpresa.flatMap((l) => {
+      const fid = fornecedorDaLinha.get(l.id)
+      if (!fid) return []
+      const doForn = notasTodas.filter((n) => n.supplierId === fid)
+      if (!doForn.length) return []
+      const forn = fornecedores.find((f) => f.id === fid)
+      return [montarCardDeEscolha({
+        linha: {
+          id: l.id,
+          descricao: l.description,
+          valor: Math.abs(l.amount),
+          data: l.date,
+          conta: l.bankAccount?.name?.trim() ?? null,
+          categoria: l.category?.name ?? null,
+        },
+        fornecedorId: fid,
+        fornecedorNome: forn?.nomeFantasia ?? forn?.razaoSocial ?? 'fornecedor',
+        notas: doForn.map((n) => ({
+          id: n.id,
+          descricao: n.description,
+          valor: Math.abs(n.amount),
+          vencimento: n.dueDate ?? n.date,
+          jaPago: jaPago.get(n.id) ?? 0,
+        })),
+        hoje,
+      })]
     })
-    return NextResponse.json({ card })
+    // ⚠️ a mais ANTIGA primeiro — a ordem que o dono pediu no mock ("da mais antiga")
+    cards.sort((a, b) => a.linha.data.getTime() - b.linha.data.getTime())
+
+    return NextResponse.json({ cards })
   } catch (error) {
     return handleApiError(error)
   }
