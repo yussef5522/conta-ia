@@ -49,6 +49,27 @@ async function main() {
   console.log(`   ⛔ frase antiga ("nomeiam um fornecedor"): ${temFraseAntiga}`)
   console.log(`   ⛔ botão do segundo clique ("abrindo…"): ${temEscondido}`)
 
+  // ⭐⭐ 3. O VISUAL DO MOCK NO BUNDLE SERVIDO — não no meu código, no que prod entrega
+  const { MOCK } = await import('@/components/conciliacao/mock-tokens')
+  const doMock: [string, string][] = [
+    ['roxo', MOCK.roxo], ['roxo-fraco', MOCK.roxoFraco], ['chão frio', MOCK.frio],
+    ['linha do card', MOCK.line], ['âmbar-fraco', MOCK.ambarFraco], ['coral-fraco', MOCK.coralFraco],
+    ['slate-fraco', MOCK.slateFraco], ['verde', MOCK.verde], ['fundo', MOCK.bg],
+  ]
+  const juntos = (await Promise.all([...new Set(chunks)].map(async (c) =>
+    (await fetch(`${BASE}${c}`)).text()))).join('')
+  console.log('\n⭐ O VISUAL DO MOCK, NO BUNDLE QUE PROD SERVE:')
+  for (const [nome, cor] of doMock) {
+    console.log(`   ${juntos.includes(cor) ? '✓' : '⛔'} ${nome.padEnd(14)} ${cor}`)
+  }
+  for (const [nome, marca] of [
+    ['checkbox 19px', "19px"], ['rodapé borda 2px', '2px solid'], ['botão opaco .35', '0.35'],
+    ['seta ▶', '▶'], ['raio do card 16px', 'rounded-[16px]'], ['botão raio 12px', 'rounded-[12px]'],
+    ['menos U+2212', '− '],
+  ] as [string, string][]) {
+    console.log(`   ${juntos.includes(marca) ? '✓' : '⛔'} ${nome}`)
+  }
+
   // 3. A ROTA que a tela chama NO LOAD (sem extratoId, sem URL secreta)
   const r = await fetch(`${BASE}/api/conciliacao/escolher-na-mao?empresaId=${CO}`, { headers: { cookie } })
   const { cards } = await r.json() as { cards: {
