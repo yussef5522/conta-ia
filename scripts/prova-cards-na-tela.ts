@@ -52,25 +52,52 @@ async function main() {
   // 3. A ROTA que a tela chama NO LOAD (sem extratoId, sem URL secreta)
   const r = await fetch(`${BASE}/api/conciliacao/escolher-na-mao?empresaId=${CO}`, { headers: { cookie } })
   const { cards } = await r.json() as { cards: {
-    linha: { descricao: string; valor: number; data: string; conta: string | null }
-    fornecedorNome: string
-    vencidas: { descricao: string; emAberto: number; vencimento: string; sugerida: boolean }[]
-    aVencer: { descricao: string; emAberto: number; vencimento: string; sugerida: boolean }[]
+    linha: { id: string; descricao: string; valor: number; data: string; conta: string | null }
+    fornecedorId: string; fornecedorNome: string
+    vencidas: { descricao: string; emAberto: number; vencimento: string; sugerida: boolean; foraDaJanela: boolean }[]
+    aVencer: { descricao: string; emAberto: number; vencimento: string; sugerida: boolean; foraDaJanela: boolean }[]
     atalho: { resumo: string; ambiguo: boolean } | null
   }[] }
-  console.log(`\nGET /api/conciliacao/escolher-na-mao?empresaId=… → ${r.status} · ${cards.length} cards`)
-  for (const c of cards) {
-    const notas = [...c.vencidas, ...c.aVencer]
-    const soma = Math.round(notas.reduce((s, n) => s + n.emAberto, 0) * 100) / 100
-    console.log(`\n  ▸ ${c.fornecedorNome.toUpperCase()} — linha ${brl(c.linha.valor)} · ${dia(c.linha.data)} · ${c.linha.conta ?? '—'}`)
-    console.log(`    ${c.vencidas.length} vencida(s) + ${c.aVencer.length} a vencer = ${notas.length} caixinhas · somam ${brl(soma)}`)
-    console.log(`    conta viva se marcar tudo: ${brl(Math.round((c.linha.valor - soma) * 100) / 100)} de diferença`)
-    console.log(`    atalho ⭐: ${c.atalho ? (c.atalho.ambiguo ? `AMBÍGUO — ${c.atalho.resumo}` : c.atalho.resumo) : 'nenhum'}`)
-    for (const n of notas.slice(0, 4)) {
-      console.log(`      [${n.sugerida ? 'x' : ' '}] ${brl(n.emAberto)} · ${n.descricao.slice(0, 46)} · vence ${dia(n.vencimento)}`)
-    }
-    if (notas.length > 4) console.log(`      … +${notas.length - 4}`)
+  console.log(`\nGET /api/conciliacao/escolher-na-mao?empresaId=… → ${r.status} · ${cards.length} linhas`)
+
+  // ⭐ o AGRUPAMENTO é da lib — a tela desenha o que sai daqui
+  const { agruparPorFornecedor } = await import('@/lib/conciliacao/agrupar-escolha')
+  const grupos = agruparPorFornecedor(cards.map((c) => ({
+    ...c,
+    linha: { ...c.linha, data: new Date(c.linha.data) },
+    vencidas: c.vencidas.map((n) => ({ ...n, vencimento: new Date(n.vencimento) })),
+    aVencer: c.aVencer.map((n) => ({ ...n, vencimento: new Date(n.vencimento) })),
+  })) as never)
+
+  console.log(`\n⭐ A FILA COMO ELA CABE NA TELA — ${grupos.length} cards COLAPSADOS:`)
+  for (const g of grupos) {
+    console.log(`   ▸ ${g.fornecedorNome.slice(0, 34).padEnd(34)} ${String(g.linhas.length).padStart(2)} pagamento(s) · ${brl(g.total).padStart(12)} · desde ${dia(String(g.linhas[0].linha.data))}`)
   }
+
+  // ⭐ ABRINDO O IVAN — a 1ª linha (a mais antiga), como o dono pediu
+  const ivan = grupos.find((g) => g.fornecedorNome.toUpperCase().includes('IVAN'))
+  if (!ivan) { console.log('\n⚠️ nenhum grupo do Ivan na fila'); return }
+  const l = ivan.linhas[0]
+  const marcadas = [...l.vencidas, ...l.aVencer].filter((n) => n.sugerida)
+  const soma = Math.round(marcadas.reduce((s, n) => s + n.emAberto, 0) * 100) / 100
+  console.log(`\n⭐ ABRO O ${ivan.fornecedorNome} → pagamento 1 de ${ivan.linhas.length}`)
+  console.log(`   linha do extrato: − ${brl(l.linha.valor)} · ${dia(String(l.linha.data))} · ${l.linha.conta}`)
+  for (const n of [...l.vencidas, ...l.aVencer]) {
+    console.log(`     [${n.sugerida ? 'x' : ' '}] ${brl(n.emAberto).padStart(11)} · ${n.descricao.slice(0, 40).padEnd(40)} ${n.vencida ? 'venceu' : 'vence '} ${dia(String(n.vencimento))}${n.foraDaJanela ? '   (escondida: fora da janela)' : ''}`)
+  }
+  console.log(`   RODAPÉ VIVO: selecionado ${brl(soma)} · ${soma > l.linha.valor ? `passou ${brl(soma - l.linha.valor)}` : `faltam ${brl(Math.round((l.linha.valor - soma) * 100) / 100)}`}`)
+
+  // ⛔ a prova do que o dono pediu: nenhuma nota em dois cards ABERTOS
+  const abertos = grupos.map((g) => g.linhas[0])
+  const donos = new Map<string, number>()
+  for (const c of abertos) for (const n of [...c.vencidas, ...c.aVencer]) {
+    donos.set(n.descricao, (donos.get(n.descricao) ?? 0) + 1)
+  }
+  const repetidas = [...donos].filter(([, n]) => n > 1)
+  console.log(`\n⛔ notas aparecendo em mais de um card ABERTO: ${repetidas.length}`)
+
+  const janela = cards.flatMap((c) => c.aVencer).filter((n) => n.foraDaJanela).length
+  console.log(`⭐ notas "a vencer" escondidas atrás de "mostrar mais": ${janela}`)
 }
 
 main().finally(() => prisma.$disconnect())
