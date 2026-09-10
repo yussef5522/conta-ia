@@ -269,6 +269,49 @@ Agora é **um gesto só** — *"Sumir com o item"* — e **quem decide entre apa
 
 **12 testes novos** (o caminho inteiro do rename tela por tela · duplicado por digitação · virgem apaga / com NF arquiva e reativa / com ficha recusa nomeando). **8.971 verdes · TS 0 · deploy `-mustDFEDHrhyIMFNEoX3` 4/4.**
 
+## ⭐⭐⭐ ESCOLHER NA MÃO + BAIXA PARCIAL — a peça que faltava (10/09/2026)
+
+**Mock aprovado pelo dono.** Card por linha do banco: chão FRIO em cima (banco · data · descrição · valor) → notas abertas do fornecedor em **dois grupos, VENCIDAS e A VENCER** → **rodapé sticky** com a conta viva.
+
+**⭐ A INVESTIGAÇÃO QUE ELE PEDIU, respondida: o payable NÃO aceitava pagamento parcial.** O vínculo era tudo-ou-nada (`reconciledWithId` + `EFFECTED` + `RECONCILED`) e não existe campo de valor pago. A peça nova é a tabela **`conciliacao_baixa_parcial`** (CREATE-only): o valor pago de uma conta é a **SOMA das baixas** e o em aberto é **DERIVADO** — *"nunca status na mão"*, palavras dele.
+
+⛔ **Por que tabela e não coluna:** coluna de "valor pago" é número gravado, e número gravado envelhece — foi assim que a `CreditCardInvoice.status` ficou eternamente `OPEN` depois de vencer. Somando as baixas, o em aberto é sempre o que as linhas dizem, e **desfazer devolve o saldo sozinho**. É o desenho do `LoanInstallmentPayment`, e ele resolve **os dois sentidos com a mesma mecânica**: 1 linha → N notas (a última parcial) e N linhas → 1 nota até zerar.
+
+**AS TRAVAS, cada uma com red-then-green medido:**
+| trava | defeito reposto | vermelhos |
+|---|---|---|
+| **Conciliar só com diferença ZERO** — ou nomeada dentro do teto de R$ 25, ou com a parcial ACEITA | `podeConciliar: true` | **4** |
+| **O atalho ⭐ só com UMA combinação** — duas que fecham é *"não sei qual foi"* | escolher a primeira | **1** |
+| **A baixa nunca passa do que a conta deve** | tirar a checagem | **1** |
+| **Desfazer REABRE a conta quitada por partes** | não reabrir | **1** |
+
+⭐ **E o atalho SÓ MARCA as caixas** — *"o Conciliar continua sendo meu"*. A prova é a forma: `atalho` só carrega ids, não existe caminho de gravação nele.
+
+**⚠️ E "A VENCER" ENTRA NA LISTA DE PROPÓSITO** — não é folga de régua, é o pagamento real: o dono paga o fornecedor de uma vez e a nota que ainda não venceu vai junto. Escondê-las faria o card nunca fechar nos pequenos, que são a maioria.
+
+**NOMES HONESTOS (item 5):** a seção virou **"PRONTOS PRA CONFIRMAR"** — nunca *"fecham sozinhos"*, porque **o sistema não concilia sem o clique**; título que promete o contrário é como a confiança na tela se perde. E quem tem o extrato do período importado e nenhuma linha ganhou **"pagar, ou registrar saída do cofre"** a 1 clique — o cofre não tem OFX por natureza, e sem esse caminho essas contas ficariam esperando pra sempre um arquivo que não existe.
+
+**⚠️⚠️ E O CASO IVAN DO MOCK NÃO EXISTE EM PROD.** O mock dizia *"PIX 2.008,00 = 3 vencidas 1.588,50 + NF 419,50 que nem venceu"*. Medido (resolvendo o fornecedor por **ID** — a 1ª medição foi por NOME e caiu no homônimo *"MAURO IVAN LUNARDI (PAO DE MEL)"*): a 4ª nota é **R$ 350,00** (NF 42, vence 14/09) e **não existe nenhuma de 419,50 em estado nenhum**. As 4 abertas somam **1.938,50** contra a linha de **2.008,00** → sobram **69,50**, acima do teto. Então o Ivan **não é** caso de atalho: ou falta uma nota que não está no sistema, ou é juros acima do teto.
+
+**PROVADO PELA ROTA REAL** (`/api/conciliacao/escolher-na-mao`, 7 cards):
+```
+IVAN       linha 2.008,00 · 3 vencidas + 1 a vencer · atalho: nenhum · diferença  R$   69,50
+OESA       linha 1.838,61 · 2 vencidas             · atalho: nenhum · diferença −R$  541,50
+BOX PAPER  linha 5.211,85 · 3 vencidas + 12 a vencer · atalho: nenhum · (parcial na NF 6477)
+```
+**22 testes novos · 9.119 verdes · TS 0 · `pg_dump pre-baixa-parcial-20260910-145925` antes da migration · deploy `9j5vI5Gn0gJyxo85bhxrK` 4/4.**
+
+### ⛔⛔⛔ E O DEPLOY FALHOU 3× POR OOM — o teto era do V8, não do kernel
+
+**O blue-green segurou as três**: *"o symlink não moveu, prod continua no build anterior"*. Mas o diagnóstico levou duas tentativas erradas, e as duas ficam registradas:
+
+1. **APOSTEI NO AVISO DO TURBOPACK e errei.** O log trazia *"a file was traced that indicates that the WHOLE PROJECT was traced unintentionally"*, apontando `lib/stock/sefaz/server-ca.ts` (um `readFileSync` de caminho que o Turbopack não resolve estaticamente). O `/* turbopackIgnore: true */` **matou o aviso** — e o build **continuou estourando**. *Aviso real não é causa provada.*
+2. **A CAUSA MEDIDA:** `FATAL ERROR: Reached heap limit`, e o limite padrão do Node **nesta máquina é 2006 MB** — o build do Next passou disso. ⚠️ **Não é o OOM killer de 24/08** (aquele era o kernel matando o processo); é o **próprio V8** batendo no teto dele, com **3,2 GB livres**. Fix: `NODE_OPTIONS=--max-old-space-size=3072` no build do `deploy.sh`.
+
+⚠️ **A migration TINHA sido aplicada** nas três tentativas (ela roda antes do build): prod ficou com a tabela nova e o código velho — inofensivo por ser CREATE-only e sem leitor, mas vale saber que o deploy não é atômico entre schema e código.
+
+⚠️ **PENDENTE (é do dono):** navegar o card e conciliar a Box Paper e a Oesa com baixa parcial — as duas estão prontas na tela, e a régua do restante em aberto só se prova com o clique dele.
+
 ## ⛔⛔⛔ A COLUNA COM 2 LANÇAMENTOS SUMIA — E O PAINEL VIRAVA DINHEIRO (10/09/2026)
 
 **O dono, ao subir a fatura do Banrisul PF do mês:** *"lido 32.650,23 × declarado 18.842,30 — diferença 13.806,48. **A recusa está certa; a leitura não.**"*
