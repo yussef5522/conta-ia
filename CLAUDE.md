@@ -331,6 +331,33 @@ GET /api/conciliacao/escolher-na-mao?empresaId=… → 200 · 16 cards
 
 ⚠️ **ACHADO NO CAMINHO, registrado e NÃO construído:** há **cards do MESMO fornecedor disputando as MESMAS notas** (3 do Casper, 2 do Ivan — linhas de extrato diferentes, uma lista de notas só). É a família do caso Cancian de 08/09, onde a nota errada foi vinculada porque dois cards ficaram quase idênticos. Hoje o servidor recusa nota já conciliada e a tela recarrega depois de cada vínculo, então **não dá pra contar duas vezes** — mas o card **não avisa** que a nota é disputada. O `ParSugerido` já tem essa faixa âmbar; portá-la pro card é um passo pequeno, à espera da palavra do dono.
 
+### ⛔⛔ E A CORREÇÃO FOI LONGE DEMAIS PRO OUTRO LADO — 16 CARDS ABERTOS (10/09)
+
+**O dono, navegando de novo:** *"o motor está certo (caixinhas, rodapé vivo, teto); a APRESENTAÇÃO virou parede: 16 cards abertos, Ivan aparece 3×, Casper 5×, Box Paper lista 15 parcelas até novembro. O mock era outra coisa."*
+
+**⭐⭐ 1. UM CARD POR FORNECEDOR, FECHADO — e isto é TRAVA, não arrumação.** A fila são cabeçalhos colapsados (*fornecedor · N pagamentos · total*), **um aberto por vez**, e dentro dele **uma LINHA por vez, da mais antiga**, com ‹ anterior / pular pra próxima ›. ⛔ O motivo é que **N cards do mesmo fornecedor mostram AS MESMAS notas e disputam entre si** — marcar uma nota num card e outra no vizinho é o caminho pra vincular a errada, que é literalmente o que aconteceu com a NF do Cancian em 08/09. Nas palavras dele: *"o desenho certo é nem criar a disputa visual"*. **Com um grupo aberto e uma linha por vez, o estado ruim vira inalcançável** (REGRA 5) — não é um aviso que alguém precisa ler. ⚠️ O agrupamento é por **id**, nunca por nome: o homônimo *"MAURO IVAN LUNARDI (PAO DE MEL)"* já enganou uma medição minha.
+
+**⭐ 2. JANELA DE 30 DIAS NO "A VENCER".** *"R02 R03 R04 R05 até 09/11 é ruído — pagamento de 02/09 não quita parcela de novembro."* ⛔ **Mas nenhuma some**: ficam atrás de *"mostrar mais N que vencem depois"*, porque no dia em que ele adiantar uma parcela o card precisa fechar. ⚠️ **E o PISO**: se a janela deixar a seção VAZIA, as 3 mais próximas abrem assim mesmo — senão o fornecedor de parcela trimestral perderia o caminho de fechar a conta. Lista com mais de 8 notas **rola dentro do card** (altura máxima), senão o rodapé sticky sai do alcance do polegar.
+
+**⭐ 3. VENCIDAS NASCEM MARCADAS** — *"o caso comum é o pagamento cobrir as vencidas; eu desmarco a exceção"*. ⛔⛔ **COM UMA EXCEÇÃO QUE NÃO SE MEXE: o AMBÍGUO continua marcando nada**, porque a tela diz por escrito *"o sistema não sabe qual foi, então não marca nada"* — pré-marcar ali quebraria uma promessa impressa. E o **atalho ⭐ ganha das vencidas** quando existe combinação exata. ⚠️ Marcar é SUGERIR: o Conciliar segue acendendo só com a conta fechada. **A mensagem do teto só aparece DEPOIS da primeira seleção** — com zero marcado, *"faltam R$ 2.008,00"* é a linha inteira e não ensina nada.
+
+**PROVADO EM PROD, pelo caminho da tela:**
+```
+16 linhas → 6 cards COLAPSADOS (cabe numa tela de celular)
+  IVAN 3 pagamentos · R$ 6.332,25 · desde 24/08      CASPER 5 · R$ 10.885,97
+  ALAN 2 · 1.218,47   OESA 2 · 2.973,20   BOX PAPER 2 · 5.964,19   MARIA LUIZA 2 · 3.339,22
+
+ABRO O IVAN → pagamento 1 de 3 · linha − R$ 1.743,25 · 24/08 · stone
+  [x] 350,00 NF 40 · [x] 613,50 NF 41 · [x] 625,00 NF 39   (venceram 07/09)
+  [ ] 350,00 NF 42                                          (vence 14/09)
+  RODAPÉ VIVO: selecionado R$ 1.588,50 · faltam R$ 154,75
+
+⛔ notas em mais de um card ABERTO: 0     ⭐ escondidas atrás de "mostrar mais": 12
+```
+**REGRA 11 — 3 defeitos repostos, 2 vermelhos cada:** sem agrupar (card solto na página) · sem a janela · sem as vencidas marcadas. **9.144 verdes · TS 0 · deploy `dNlIFRWys8wuEng1JRTEF` 4/4.**
+
+⚠️ **E o `30` da janela mora num lugar só** (`JANELA_A_VENCER_DIAS`): o servidor decide `foraDaJanela` e a tela **importa a constante** pro rótulo, em vez de digitar o número — número solto na tela vira a segunda régua no dia em que a janela mudar.
+
 ### ⛔⛔⛔ E O DEPLOY FALHOU 3× POR OOM — o teto era do V8, não do kernel
 
 **O blue-green segurou as três**: *"o symlink não moveu, prod continua no build anterior"*. Mas o diagnóstico levou duas tentativas erradas, e as duas ficam registradas:
