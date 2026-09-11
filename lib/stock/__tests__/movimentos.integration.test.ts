@@ -100,8 +100,20 @@ describe('⭐⭐ coluna SALDO no extrato — só quando dá pra AFIRMAR', () => 
     for (const m of ms) expect(m.saldoApos).toBeNull()
   })
 
-  it('⛔ LIMITE estourado não dá saldo — falta o que veio depois', async () => {
+  // ⚠️⚠️ INVERTIDO PELA PROVA EM PROD (11/09): eu tinha barrado o limite estourado, e a
+  // Caçula tem 1.013 movimentos contra um teto de 500 — a coluna inteira nascia "—" na tela
+  // em que ela mais serve. Truncar corta o PASSADO, e o passado não entra nesta conta: o
+  // saldo desce do topo, e o topo está inteiro.
+  it('⭐⭐ LIMITE estourado CONTINUA dando saldo — truncar corta o passado, não o presente', async () => {
+    const { saldosDaEmpresa } = await import('../saldo')
+    const saldos = new Map((await saldosDaEmpresa(prisma, companyId)).map((s) => [s.itemId, s.saldo]))
     const ms = await listMovimentos(companyId, { limite: 1, forense: true })
-    expect(ms[0].saldoApos).toBeNull()
+    expect(ms).toHaveLength(1)
+    expect(ms[0].saldoApos).toBe(saldos.get(ms[0].itemId))
+  })
+
+  it('⭐ filtro DE (corta o passado) também continua dando saldo', async () => {
+    const ms = await listMovimentos(companyId, { de: '2020-01-01', forense: true })
+    expect(ms.every((m) => m.saldoApos != null)).toBe(true)
   })
 })

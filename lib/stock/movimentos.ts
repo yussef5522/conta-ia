@@ -65,13 +65,21 @@ export async function listMovimentos(companyId: string, filtro: MovimentosFiltro
   /**
    * ⛔⛔ A COLUNA SALDO SÓ EXISTE QUANDO A LISTA É CONTÍGUA ATÉ HOJE.
    *
-   * O saldo de um instante desce do saldo de HOJE descontando tudo que veio depois — então
-   * se o recorte **não tem** todas as linhas mais recentes daquele item, o número não é
-   * derivável. Filtro por TIPO, período que fecha antes de hoje ou limite estourado quebram
-   * a contiguidade. ⚠️ Nesses casos a coluna vem `null` e a tela diz "—": um número de
-   * estoque plausível e errado é a mentira mais cara que esta tela poderia contar.
+   * O saldo de um instante desce do saldo de HOJE descontando tudo que veio DEPOIS dele —
+   * então o que quebra a derivação é faltar linha **mais recente**, nunca linha mais antiga.
+   *
+   * ⚠️⚠️ **A PROVA EM PROD CORRIGIU ESTA RÉGUA.** Eu tinha posto `movs.length < limite` na
+   * lista, e a Caçula tem **1.013 movimentos** contra um teto de 500: a coluna inteira
+   * nascia "—" **justamente na tela em que ela mais serve**. Truncar por limite corta o
+   * PASSADO (a lista desce do mais recente), e o passado não entra nesta conta. Idem o
+   * filtro `de`.
+   *
+   * ⛔ O que quebra de verdade: **TIPO** (arranca linhas de qualquer ponto, inclusive acima)
+   * e **`ate`** (fecha o período antes de hoje, então as mais recentes ficam de fora). Nesses
+   * casos a coluna vem `null` e a tela diz "—" — um número de estoque plausível e errado é a
+   * mentira mais cara que esta tela poderia contar.
    */
-  const contiguo = !filtro.tipo && !filtro.ate && movs.length < limite
+  const contiguo = !filtro.tipo && !filtro.ate
 
   const itemIds = [...new Set(movs.map((m) => m.itemId))]
   const chaves = [...new Set(movs.map((m) => m.nfeChave).filter((c): c is string => !!c))]
