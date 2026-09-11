@@ -22,6 +22,7 @@
 // ocupada — foi por isso que a régua de duplicata mudou (ver `duplicatasSuspeitas`).
 
 import type { PrismaClient } from '@prisma/client'
+import { comCorte, corteDaEmpresa } from './corte-de-epoca'
 import { prisma as defaultPrisma } from '@/lib/db'
 import {
   sugerirVinculos, reconhecerFornecedor, canonizadorDeFornecedor,
@@ -51,6 +52,13 @@ const JANELA_DIAS = 15
  * ⚠️ E o que **NÃO** entra aqui é tão importante quanto: `categoryId IS NULL` fica
  * DE FORA de propósito. Era exatamente ele que fazia a tela velha esquecer a linha
  * assim que ela ganhava categoria — **ter categoria não quita conta nenhuma**.
+ */
+/**
+ * ⭐⭐ O CORTE DE ÉPOCA ENTRA AQUI, NUM LUGAR SÓ (11/09/2026).
+ *
+ * As 4 consultas que montam a fila passam por `comCorte`. ⛔ Nenhuma delas é a busca do
+ * Find & Match: lá o dono procura de propósito, e o corte não pode esconder o que ele
+ * pediu — o corte é do que a tela OFERECE.
  */
 export const LINHA_DISPONIVEL_WHERE = {
   origin: 'OFX',
@@ -164,6 +172,7 @@ export async function paresRecusados(db: Db, companyId: string) {
 export async function contasEsperandoPagamento(
   companyId: string, db: Db = defaultPrisma,
 ): Promise<ContaEsperandoPagamento[]> {
+  const corte = await corteDaEmpresa(db, companyId)
   const [contas, fornecedores, recusados] = await Promise.all([
     db.transaction.findMany({
       where: {
@@ -195,11 +204,11 @@ export async function contasEsperandoPagamento(
   const alvos = contas.map((c) => (c.dueDate ?? c.date).getTime())
   const janela = JANELA_DIAS * 86400000
   const extratos = await db.transaction.findMany({
-    where: {
+    where: comCorte({
       ...LINHA_DISPONIVEL_WHERE,
       bankAccount: { companyId },
       date: { gte: new Date(Math.min(...alvos) - janela), lte: new Date(Math.max(...alvos) + janela) },
-    },
+    }, corte),
     select: {
       id: true, description: true, amount: true, date: true, type: true,
       supplierId: true, bankAccountId: true,
@@ -282,6 +291,7 @@ export async function contasEsperandoPagamento(
 export async function lotesDaFila(
   companyId: string, db: Db = defaultPrisma,
 ): Promise<{ lotes: SugestaoDeLote[]; naoFecham: LoteQueNaoFecha[] }> {
+  const corte = await corteDaEmpresa(db, companyId)
   const [contas, fornecedores] = await Promise.all([
     db.transaction.findMany({
       where: {
@@ -307,11 +317,11 @@ export async function lotesDaFila(
   const janela = (DIAS_ANTES_LOTE + 1) * 86400000
   const alvos = contas.map((c) => (c.dueDate ?? c.date).getTime())
   const linhas = await db.transaction.findMany({
-    where: {
+    where: comCorte({
       ...LINHA_DISPONIVEL_WHERE,
       bankAccount: { companyId },
       date: { gte: new Date(Math.min(...alvos) - janela), lte: new Date(Math.max(...alvos) + janela) },
-    },
+    }, corte),
     select: {
       id: true, description: true, amount: true, date: true, type: true,
       supplierId: true, bankAccountId: true,
@@ -581,8 +591,8 @@ export interface SugestoesDePendentes {
 export async function sugestoesParaPendentes(
   companyId: string, db: Db = defaultPrisma,
 ): Promise<SugestoesDePendentes> {
-  const [fornecedores, recusados] = await Promise.all([
-    fornecedoresDaEmpresa(db, companyId), paresRecusados(db, companyId),
+  const [fornecedores, recusados, corteParaPendentes] = await Promise.all([
+    fornecedoresDaEmpresa(db, companyId), paresRecusados(db, companyId), corteDaEmpresa(db, companyId),
   ])
 
   // As linhas que a fila de Pendentes mostra (mesma régua da tela — NEEDS_REVIEW).
@@ -626,11 +636,11 @@ export async function sugestoesParaPendentes(
       },
     }),
     db.transaction.findMany({
-      where: {
+      where: comCorte({
         ...LINHA_DISPONIVEL_WHERE,
         bankAccount: { companyId },
         date: { gte: new Date(min), lte: new Date(max) },
-      },
+      }, corteParaPendentes),
       select: {
         id: true, description: true, amount: true, date: true, type: true,
         supplierId: true, bankAccountId: true, bankAccount: { select: { name: true } },

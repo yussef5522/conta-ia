@@ -113,6 +113,8 @@ function ConciliacaoInner() {
    */
   const [cardsEscolha, setCardsEscolha] = useState<CardDeEscolhaDTO[]>([])
   const [cardsFalharam, setCardsFalharam] = useState(false)
+  /** ⭐ CORTE DE ÉPOCA (11/09): `undefined` = ainda carregando · `null` = sem corte */
+  const [corte, setCorte] = useState<string | null | undefined>(undefined)
 
   const carregar = useCallback(async () => {
     if (!empresaId) { setCarregando(false); return }
@@ -120,7 +122,7 @@ function ConciliacaoInner() {
     try {
       // ⭐ a fila e os cards vêm JUNTOS: o card do "escolher na mão" é uma seção da tela,
       // não uma tela escondida — carregar sob demanda foi o que o deixou inalcançável.
-      const [f, c] = await Promise.all([
+      const [f, c, k] = await Promise.all([
         fetchJson<FilaDTO>(`/api/conciliacao/fila?empresaId=${empresaId}`),
         fetchJson<{ cards: CardDeEscolhaDTO[] }>(
           // ⭐ `abrir` carrega a linha que veio de outra tela mesmo que a fila não a
@@ -128,7 +130,10 @@ function ConciliacaoInner() {
           `/api/conciliacao/escolher-na-mao?empresaId=${empresaId}`
           + (searchParams.get('abrir') ? `&abrir=${searchParams.get('abrir')}` : ''),
         ),
+        fetchJson<{ corte: string | null }>(`/api/conciliacao/corte?empresaId=${empresaId}`),
       ])
+      // ⚠️ falha macia: sem o corte a linha some do cabeçalho, a fila abre igual
+      setCorte(k.ok ? (k.data?.corte ?? null) : null)
       if (!f.ok) {
         toast({ variant: 'destructive', title: 'Erro ao carregar a fila', description: f.message ?? 'Tenta de novo.' })
         return
@@ -298,6 +303,17 @@ function ConciliacaoInner() {
           empresaId={empresaId}
           filas={fila.filas}
           semPar={fila.semPar}
+          corte={corte}
+          aoTrocarCorte={async (novo) => {
+            const r = await fetchJson(`/api/conciliacao/corte`, {
+              method: 'PUT', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ empresaId, data: novo }),
+            })
+            if (!r.ok) { toast({ variant: 'destructive', title: 'Não consegui salvar o corte', description: r.message ?? '' }); return }
+            setCorte(novo)
+            // ⭐ recarrega: o corte muda o que a fila OFERECE, e a tela tem que refletir na hora
+            carregar()
+          }}
         />
       )}
 

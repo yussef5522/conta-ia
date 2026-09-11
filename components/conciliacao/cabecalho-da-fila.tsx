@@ -42,12 +42,46 @@ export interface TotaisDTO {
   duplaContagem: number; valorEmDuplaContagem: number
 }
 
-export function CabecalhoDaFila({ empresaId, filas, semPar }: {
+export function CabecalhoDaFila({ empresaId, filas, semPar, corte, aoTrocarCorte }: {
   empresaId: string; filas: FilasDTO; semPar: SemParDTO
+  /** AAAA-MM-DD ou null (sem corte). Ver `lib/conciliacao/corte-de-epoca.ts`. */
+  corte?: string | null
+  aoTrocarCorte?: (novo: string | null) => void
 }) {
   return (
     <div>
       <StatsDoMock filas={filas} />
+
+      {/* ⭐⭐ O CORTE DE ÉPOCA, à vista (11/09/2026) — decisão do dono: *"comecei a usar a
+          conciliação em setembro; agosto fica pra trás POR DECISÃO"*.
+          ⛔ Tem que estar NA TELA, não escondido numa config: a fila mostrando menos do que
+          existe precisa DIZER por quê, senão o dono procura o card que ele não vê. */}
+      {corte !== undefined && (
+        <p className="mb-[10px] text-[11.5px]" style={{ color: MOCK.sub }}>
+          {corte ? (
+            <>conciliando a partir de <b style={{ color: MOCK.ink }}>{corte.split('-').reverse().join('/')}</b>
+              {' '}· o que é anterior continua nas Movimentações e na busca, só não é oferecido aqui</>
+          ) : (
+            <>sem corte de época — a fila oferece todo o extrato importado</>
+          )}
+          {aoTrocarCorte && (
+            <button
+              onClick={() => {
+                const v = window.prompt(
+                  'Conciliar a partir de qual data? (AAAA-MM-DD · vazio = sem corte)',
+                  corte ?? '',
+                )
+                if (v === null) return
+                aoTrocarCorte(v.trim() === '' ? null : v.trim())
+              }}
+              className="ml-1.5 font-medium hover:underline"
+              style={{ color: MOCK.roxo }}
+            >
+              mudar
+            </button>
+          )}
+        </p>
+      )}
 
       {/* ⭐ UMA FRASE, e o resto mora no Contas a Pagar (ordem do dono): a quebra em três
           (não venceram · esperam extrato · já dava pra pagar) e o gesto do cofre saíram

@@ -135,6 +135,11 @@ model Company {
   taxRegime String  @default("SIMPLES_NACIONAL")
   isActive  Boolean @default(true)
 
+  // ⭐ CORTE DE ÉPOCA DA CONCILIAÇÃO (11/09/2026): a fila só OFERECE linha de extrato a
+  // partir desta data. null = sem corte (o padrão). Ver lib/conciliacao/corte-de-epoca.ts —
+  // o corte é do que a tela OFERECE, nunca do que existe.
+  conciliarAPartirDe DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
