@@ -3,6 +3,7 @@
 // valida ANTES de gravar (mesma regra, runtime) e implementa a correção = estorno+novo.
 
 import type { PrismaClient, Prisma } from '@prisma/client'
+import { TIPOS_FORA_DA_PRATELEIRA } from './saldo'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -46,10 +47,47 @@ export function assertMovementValid(m: { quantidade: number; custoUnitario: numb
   }
 }
 
+/**
+ * ⛔⛔⛔ ESTADO IMPOSSÍVEL É IMPOSSÍVEL, NÃO IMPROVÁVEL (11/09/2026) — ordem do dono.
+ *
+ * **O que aconteceu em 10/09:** o import baixou **1.499 FANTA UVA** (o real era **1**) e
+ * depois a contagem devolveu **+1.496 a R$ 0,00**. Resultado: **saldo 4 unidades e valor
+ * −R$ 10.160,52** — unidades positivas com dinheiro negativo, um estado que **não existe
+ * no mundo**. A Coca-Cola 2L e a Coca Zero ficaram iguais.
+ *
+ * ⚠️ **SALDO negativo continua permitido** — é sinal legítimo de *"vendeu sem produzir"*,
+ * e barrá-lo esconderia o aviso. O que não pode é **saldo ≥ 0 com valor < 0**: aí o custo
+ * médio vira negativo e contamina a Posição, o cardápio (margem 5218%!) e o CMV.
+ *
+ * ⭐ E o guard mora AQUI, no choke-point de escrita do ledger — não em cada chamador
+ * (REGRA 5): a Posição é derivada, então checar na tela seria checar depois do estrago.
+ */
+async function assertSaldoNaoFicaImpossivel(db: Db, m: NovoMovimento, custoTotal: number) {
+  // ⚠️ só olha quando ESTE movimento tira valor: entrada nunca cria o estado
+  if (custoTotal > 0) return
+  const atual = await db.stockMovement.aggregate({
+    // ⚠️ a MESMA régua de prateleira do `saldo.ts` (dono único): o `PRODUCAO_CONSUMO` é
+    // transferência interna e não conta no saldo — usar outra lista aqui faria o guard
+    // julgar um saldo que a tela não mostra.
+    where: { companyId: m.companyId, itemId: m.itemId, tipo: { notIn: [...TIPOS_FORA_DA_PRATELEIRA] } },
+    _sum: { quantidade: true, custoTotal: true },
+  })
+  const saldoDepois = round2((atual._sum.quantidade ?? 0) + m.quantidade)
+  const valorDepois = round2((atual._sum.custoTotal ?? 0) + custoTotal)
+  if (saldoDepois >= 0 && valorDepois < -0.01) {
+    throw new MovementInvalidError(
+      `Este movimento deixaria o item com ${saldoDepois} unidade(s) e valor `
+      + `R$ ${valorDepois.toFixed(2)} — dinheiro negativo com saldo positivo é um estado `
+      + 'que não existe. Confira a quantidade (ela costuma ser o sintoma) antes de gravar.',
+    )
+  }
+}
+
 /** Cria um movimento no ledger (valida antes). custoTotal default = round2(qtd×custo). */
 export async function criarMovimento(db: Db, m: NovoMovimento) {
   const custoTotal = m.custoTotal ?? round2(m.quantidade * m.custoUnitario)
   assertMovementValid({ quantidade: m.quantidade, custoUnitario: m.custoUnitario, custoTotal })
+  await assertSaldoNaoFicaImpossivel(db, m, custoTotal)
   return db.stockMovement.create({
     data: {
       companyId: m.companyId, itemId: m.itemId, tipo: m.tipo, quantidade: m.quantidade,

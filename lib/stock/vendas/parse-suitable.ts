@@ -64,8 +64,60 @@ const unescapeHtml = (s: string) => s.replace(/&amp;/g, '&').replace(/&lt;/g, '<
  * Lê o relatório do PDV. `colunas` default = PRODUTOS, pra os call-sites existentes
  * seguirem idênticos (o golden trava isso).
  */
-export function parseSuitable(html: string, colunas: MapaColunas = COLUNAS_PRODUTOS): SuitableParse {
+/**
+ * ⭐⭐⭐ A COLUNA SE RESOLVE PELO NOME DO CABEÇALHO, NUNCA PELA POSIÇÃO (11/09/2026).
+ *
+ * ⛔⛔ **O ESTRAGO QUE ISTO EXISTE PRA IMPEDIR** (10/09, prod): o **Relatório de
+ * COMPLEMENTOS** foi subido na aba de **PRODUTOS**. Os dois layouts diferem:
+ *
+ *   PRODUTOS:     `[Produto   · **Quantidade**             · Valor Extra · Valor total]`
+ *   COMPLEMENTOS: `[Descrição · **Valor médio por unidade** · Quantidade  · Valor Total]`
+ *
+ * Lendo por POSIÇÃO, a coluna 1 do arquivo errado é o **PREÇO**: `R$ 14,99` virou
+ * **1499**. O import baixou **1.499 unidades** de FANTA UVA (o real era **1**), a
+ * Coca-Cola 2L foi a **−1.499**, o custo médio virou **negativo** e a Posição ficou com
+ * **valor negativo e saldo positivo** — um estado impossível. Σ do arquivo: **53.761
+ * "ocorrências"** contra 745/576/536 dos dias normais.
+ *
+ * ⭐ E RECUSAR É PARTE DO FIX: cabeçalho sem as colunas esperadas **não entra calado**.
+ * A mensagem diz **o que achou**, pra o dono saber que subiu o arquivo trocado — em vez
+ * de descobrir pelo estoque explodido no dia seguinte.
+ */
+export function resolverColunas(html: string, esperado: MapaColunas): MapaColunas {
+  const tr = /<tr[\s\S]*?<\/tr>/i.exec(html)?.[0] ?? ''
+  const cels = [...tr.matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi)]
+    .map((m) => unescapeHtml(m[1]).trim().toLowerCase())
+  if (!cels.length) throw new SuitableParseError('Não achei o cabeçalho do relatório.')
+
+  const acha = (re: RegExp) => cels.findIndex((c) => re.test(c))
+  const nome = acha(/^(produto|descri[çc][ãa]o)$/)
+  const quantidade = acha(/^quantidade$/)
+  const total = acha(/^valor\s*total$/)
+  const unitario = acha(/^(valor\s*extra|valor\s*m[ée]dio.*)$/)
+
+  if (nome < 0 || quantidade < 0 || total < 0) {
+    throw new SuitableParseError(
+      `Este arquivo não tem as colunas que eu esperava. Achei: [${cels.join(' · ')}]. `
+      + 'O Relatório de PRODUTOS tem "Produto · Quantidade · Valor Extra · Valor total"; '
+      + 'o de COMPLEMENTOS tem "Descrição · Valor médio por unidade · Quantidade · Valor Total" '
+      + '— e cada um entra na sua aba.',
+    )
+  }
+  // ⛔ o cabeçalho NOMEIA o arquivo: subir complementos na aba de produtos para aqui
+  if (esperado.cabecalho && !esperado.cabecalho.test(cels[nome])) {
+    throw new SuitableParseError(
+      `Este parece o relatório de "${cels[nome]}", e esta tela espera "${String(esperado.cabecalho).replace(/[^a-zç ]/gi, '')}". `
+      + 'Use a aba certa — as colunas dos dois relatórios são diferentes, e ler uma pela outra '
+      + 'faz o PREÇO entrar como quantidade.',
+    )
+  }
+  return { nome, quantidade, unitario: unitario >= 0 ? unitario : esperado.unitario, total, cabecalho: esperado.cabecalho }
+}
+
+export function parseSuitable(html: string, colunasEsperadas: MapaColunas = COLUNAS_PRODUTOS): SuitableParse {
   if (!/<table/i.test(html)) throw new SuitableParseError('Arquivo não parece o relatório do Suitable (sem tabela HTML).')
+  // ⭐ a POSIÇÃO sai do cabeçalho do arquivo, não da constante
+  const colunas = resolverColunas(html, colunasEsperadas)
   // cada <tr> com >= 4 <td>. Captura o conteúdo de cada td.
   const linhas: VendaLinhaSuitable[] = []
   const trs = html.match(/<tr[\s\S]*?<\/tr>/gi) ?? []

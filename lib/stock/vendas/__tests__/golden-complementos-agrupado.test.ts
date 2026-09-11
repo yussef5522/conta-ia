@@ -19,7 +19,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { parseSuitable, COLUNAS_COMPLEMENTOS, COLUNAS_PRODUTOS } from '../parse-suitable'
+import { SuitableParseError, parseSuitable, COLUNAS_COMPLEMENTOS, COLUNAS_PRODUTOS } from '../parse-suitable'
 
 const fx = (n: string) => readFileSync(join(__dirname, 'fixtures', n), 'utf-8')
 const HTML = fx('fixture-complementos-agrupado.xls')
@@ -86,18 +86,26 @@ describe('⭐⭐ GOLDEN — complementos', () => {
   })
 })
 
-describe('⛔⛔ red-then-green: com as colunas de PRODUTO o arquivo se perde', () => {
-  it('⛔⛔ 142 linhas e 142.255 "unidades" — o estado de antes do mapa de colunas', () => {
-    // ⚠️ a quantidade em complementos é a 3ª coluna; lida na 2ª ("R$ 0,00") vira 0 e a
-    // linha é DESCARTADA. Sobram só as de valor médio não-zero, com quantidade tirada do
-    // dinheiro. É o que este golden impede de voltar.
-    const errado = parseSuitable(HTML, COLUNAS_PRODUTOS)
-    expect(errado.linhas).toHaveLength(142)
-    expect(errado.linhas.reduce((s, l) => s + l.quantidade, 0)).toBe(142255)
+// ⚠️⚠️ TESTES INVERTIDOS COM O MOTIVO ESCRITO (11/09/2026), não apagados.
+//
+// Eles AFIRMAVAM o estrago: *"142 linhas e 142.255 unidades — o estado de antes do mapa
+// de colunas"*. A casa já sabia que ler o arquivo com o mapa errado produzia número
+// absurdo — **e transformou isso em teste em vez de RECUSA**.
+//
+// ⛔ Em 10/09 esse exato caminho rodou em PROD: o Relatório de COMPLEMENTOS foi subido na
+// aba de PRODUTOS, `R$ 14,99` virou **1499**, o import baixou **1.499 FANTA UVA** (o real
+// era **1**) e a Posição ficou com **valor negativo e saldo positivo**.
+//
+// ⭐ A LIÇÃO: **número absurdo conhecido é para BARRAR, não para documentar.** Agora o
+// parser resolve a coluna pelo NOME do cabeçalho e RECUSA o arquivo trocado, dizendo o que
+// achou. O que era "o estado de antes" virou erro.
+describe('⛔⛔ o arquivo trocado agora é RECUSADO (era só documentado)', () => {
+  it('complementos na aba de PRODUTOS para, em vez de virar 142.255 unidades', () => {
+    expect(() => parseSuitable(HTML, COLUNAS_PRODUTOS)).toThrow(SuitableParseError)
   })
 
-  it('⛔ e o inverso também quebra: produtos lidos como complementos', () => {
-    const errado = parseSuitable(fx('fixture-produtos-agrupado.xls'), COLUNAS_COMPLEMENTOS)
-    expect(errado.linhas.reduce((s, l) => s + l.quantidade, 0)).not.toBe(10384)
+  it('⛔ e o inverso também para: produtos lidos como complementos', () => {
+    expect(() => parseSuitable(fx('fixture-produtos-agrupado.xls'), COLUNAS_COMPLEMENTOS))
+      .toThrow(SuitableParseError)
   })
 })

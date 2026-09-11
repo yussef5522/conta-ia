@@ -1,0 +1,13 @@
+<html><body><table><tr><td>Produto</td><td>Quantidade</td><td>Valor Extra</td><td>Valor total</td></tr><tr>
+                <td>GRANDE PRECINHO</td><td>114</td><td>R$ 693,21</td><td>R$ 5252,07</td>
+            </tr><tr>
+                <td>XIS - COMPLETO</td><td>105</td><td>R$ 93,81</td><td>R$ 2213,76</td>
+            </tr><tr>
+                <td>MINI FRITAS</td><td>24</td><td>R$ 0,00</td><td>R$ 239,76</td>
+            </tr><tr>
+                <td>BURGER TRADICIONAL</td><td>20</td><td>R$ 66,92</td><td>R$ 480,72</td>
+            </tr><tr>
+                <td>PRATO ISQUINHAS</td><td>11</td><td>R$ 0,00</td><td>R$ 251,90</td>
+            </tr><tr>
+                <td>COCA COLA 600ML</td><td>10</td><td>R$ 0,00</td><td>R$ 110,00</td>
+            </tr></table></body></html>

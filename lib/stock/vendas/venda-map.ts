@@ -6,6 +6,7 @@ import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { criarFicha, fichaAtivaComNome } from '@/lib/stock/producao/fichas'
 import { parseSuitable, type VendaLinhaSuitable } from './parse-suitable'
+import { avaliarSanidade, DIAS_DE_HISTORICO, type ResultadoDaSanidade } from './sanidade-do-import'
 
 export interface LinhaResolvida extends VendaLinhaSuitable {
   mapeado: boolean
@@ -19,12 +20,54 @@ export interface PreviewImport {
   totalProdutos: number
   naoMapeados: number
   opcoes: { fichas: { id: string; nome: string; tipo: string }[]; itens: { id: string; nome: string }[] }
+  /**
+   * ⭐⭐ A SANIDADE, no PREVIEW — antes de escrever (11/09/2026).
+   *
+   * ⛔ Em 10/09 o arquivo errado passou e baixou **1.499 FANTA UVA** (o real era 1). O
+   * parser agora recusa o arquivo TROCADO pelo cabeçalho; isto aqui é a 2ª camada, pro
+   * caso de arquivo certo com número errado. **Pergunta, não recusa** — dia de evento
+   * existe, e um guard que recusa venda de verdade manda o dono lançar por fora.
+   */
+  sanidade: ResultadoDaSanidade
 }
 
 export class VendaMapError extends Error {}
 
+/**
+ * ⭐ O HISTÓRICO que a sanidade compara — os últimos dias JÁ IMPORTADOS.
+ *
+ * ⚠️ Média por DIA EM QUE O PRODUTO APARECEU, não por dia do calendário: produto que só
+ * vende no fim de semana teria a média diluída por 5 zeros e qualquer sábado viraria
+ * suspeita — alarme falso repetido é como um alarme morre.
+ */
+async function medirSanidade(
+  companyId: string, linhas: VendaLinhaSuitable[], db: PrismaClient,
+): Promise<ResultadoDaSanidade> {
+  const desde = new Date(Date.now() - DIAS_DE_HISTORICO * 86_400_000)
+  const imports = await db.stockVendaImport.findMany({
+    where: { companyId, data: { gte: desde } }, select: { id: true, totalUnidades: true },
+  })
+  if (!imports.length) {
+    // ⚠️ sem histórico não há régua: a 1ª importação da vida não pode ser suspeita.
+    return { suspeitas: [], totalDoArquivo: linhas.reduce((s, l) => s + l.quantidade, 0), totalMedioDoDia: 0, vezesNoTotal: 0, precisaConfirmar: false }
+  }
+  const passadas = await db.stockVendaLinha.groupBy({
+    by: ['nomeSuitable'],
+    where: { importId: { in: imports.map((i) => i.id) } },
+    _sum: { quantidade: true }, _count: true,
+  })
+  const historico = passadas.map((p) => ({
+    produto: p.nomeSuitable,
+    mediaDiaria: (p._sum.quantidade ?? 0) / Math.max(1, p._count),
+    dias: p._count,
+  }))
+  const totalMedio = imports.reduce((s, i) => s + i.totalUnidades, 0) / imports.length
+  return avaliarSanidade(linhas.map((l) => ({ produto: l.produto, quantidade: l.quantidade })), historico, totalMedio)
+}
+
 export async function previewImportSuitable(companyId: string, html: string, db: PrismaClient = defaultPrisma): Promise<PreviewImport> {
   const parsed = parseSuitable(html)
+  const sanidade = await medirSanidade(companyId, parsed.linhas, db)
   // DESTINO PERMITIDO só respeita os 3 níveis: PRODUTO_FINAL (ficha) ou REVENDA (item).
   // Matéria-prima NUNCA é destino de venda; intermediário é consumido VIA ficha, não vendido direto.
   const [mapa, fichasFinais, itensRevenda, todasFichas] = await Promise.all([
@@ -55,6 +98,7 @@ export async function previewImportSuitable(companyId: string, html: string, db:
     totalUnidades: parsed.totalUnidades,
     totalProdutos: parsed.totalProdutos,
     naoMapeados: linhas.filter((l) => !l.mapeado).length,
+    sanidade,
     opcoes: {
       fichas: fichas.map((f) => ({ id: f.id, nome: fichaNome.get(f.id) ?? '(produto)', tipo: f.tipoProduto })),
       itens: itens.map((i) => ({ id: i.id, nome: i.nome })),

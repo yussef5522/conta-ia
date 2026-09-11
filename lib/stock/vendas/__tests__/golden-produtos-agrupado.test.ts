@@ -79,9 +79,11 @@ describe('⛔ e o arquivo de COMPLEMENTOS não pode ser lido por este caminho', 
     // em complementos a ordem é `Descrição | Valor médio | Quantidade | Valor Total`.
     // Lendo a 2ª coluna como quantidade, "R$ 0,00" vira 0 → a linha é DESCARTADA; sobram
     // só as de valor médio não-zero, com quantidade lixo tirada do dinheiro.
-    const c = parseSuitable(fx('fixture-complementos-agrupado.xls'))
-    expect(c.linhas.length).toBe(142) // ⛔ deveriam ser 215
-    expect(c.linhas.reduce((s, l) => s + l.quantidade, 0)).toBe(142255) // ⛔ deveriam ser 7.648
-    // ⭐ este teste vira o "antes" do red-then-green da generalização.
+    // ⚠️⚠️ INVERTIDO EM 11/09/2026, com o motivo escrito. Ele afirmava o ESTRAGO
+    // (142 linhas, 142.255 "unidades") como estado esperado. Em 10/09 esse caminho rodou
+    // em PROD e baixou 1.499 FANTA UVA (o real era 1), deixando a Posição com valor
+    // negativo. ⭐ Número absurdo conhecido é pra BARRAR, não pra documentar.
+    expect(() => parseSuitable(fx('fixture-complementos-agrupado.xls')))
+      .toThrow(/Achei:|relatório de/)
   })
 })
