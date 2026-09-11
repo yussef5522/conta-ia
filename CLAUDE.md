@@ -522,6 +522,29 @@ A PORTA:  sem ?abrir= → 16 cards, a linha do Focatto NÃO está
 
 ⚠️ **REGISTRADO E NÃO FEITO:** (a) o **aluguel** (conta manual **sem fornecedor**) não tem como virar card por fornecedor — nem pela porta: sem fornecedor dos dois lados, o Find & Match por nome não alcança. O caminho vivo é o `FindAndMatchPanel` de busca livre; ligar a porta nele é o passo que falta. (b) **os 11 cadastros duplicados continuam lá** — a leitura os trata como um, mas mesclar é decisão do dono.
 
+### ⭐⭐ OS 11 FORNECEDORES DUPLICADOS FORAM MESCLADOS — E A PORTA FECHOU (11/09)
+
+**Autorizado pelo dono** depois do preview par a par. `pg_dump pre-mescla-fornecedores-20260911-000646.dump` (5,8 MB) antes.
+
+**⛔⛔ A PORTA ERA A PONTE DO ESTOQUE, e o preview é que a revelou:** os cadastros **sem CNPJ são todos de 05-07/06** (os antigos, do Excel) e os **com CNPJ são de agosto/setembro** — nascidos da NF-e. O `resolverFornecedor` procurava **só por CNPJ**, e como o velho não tinha, **toda NF-e criava um segundo cadastro com o mesmo nome**. *A duplicata não era descuido do dono: era uma fábrica rodando a cada nota.*
+
+**A RÉGUA DE QUEM SOBREVIVE** (a mesma do estoque, 04/09 — *"fusão errada de fornecedor é pior que duplicata visível"*): **CNPJ diferente NÃO MESCLA** (matriz e filial têm o mesmo nome) · sobrevive **quem tem CNPJ** · sem CNPJ nos dois, **quem tem mais movimento**. ⚠️ **Nada é apagado**: o absorvido é **desativado com o rastro nas `notes`** — o desenho da costura da RM2.
+
+**APLICADO: 11 pares · 0 recusados · 23 transações mudam de cadastro.** Conferido depois:
+```
+1) SELETOR   68 ativos (era 79) · nomes 2×: 0 · 11 absorvidos com rastro
+2) FRIGORÍFICO  2 cards na fila · 6 notas somando R$ 19.491,46 (os DOIS ex-cadastros)
+3) ÓRFÃS     0 contas em aberto apontando pra desativado · 0 tx de qualquer tipo
+```
+
+**⭐ A PORTA FECHOU NA ORIGEM, nos dois pontos:**
+- **ponte do estoque:** procura também por NOME; achou o velho sem CNPJ → **completa ele com o CNPJ da SEFAZ e reusa** (o cadastro melhora em vez de duplicar). Nome idêntico com CNPJ **diferente** cria mesmo.
+- **`POST /fornecedores`:** nome idêntico → **409 que APONTA o existente** (devolve o `supplierId` pra tela oferecer "usar esse"), com escape explícito `permitirNomeDuplicado`. ⚠️ O escape existe porque travar sem saída **empurraria o dono a cadastrar "FULANO 2"** — e aí nem ele nem a régua reconhecem depois.
+
+**REGRA 11 — a porta reposta (busca só por CNPJ) deixa vermelho o caso real do Focatto. 9.254 verdes · TS 0 · deploy `xG0WbvKW88jcxN07mzSdd` 4/4.**
+
+**⚠️⚠️ E UMA AFIRMAÇÃO MINHA QUE O DADO DESMENTIU:** eu disse que *"o aluguel é conta manual sem fornecedor"*. Medido: **existem ZERO contas em aberto sem fornecedor**, e o único "ALUGUEL" do período é `ALUGUEL MAQ CARTOES-91942388` (R$ 266,88, 11/08, **já conciliada**) — aluguel de maquininha, não o do escritório. O caso que o dono nomeou não está na base como conta em aberto; **eu repeti a suposição dele em vez de medir**. O débito do "Find & Match sem fornecedor dos dois lados" continua válido como classe — o que não vale é o exemplo que eu dei.
+
 ### ⛔⛔⛔ E O DEPLOY FALHOU 3× POR OOM — o teto era do V8, não do kernel
 
 **O blue-green segurou as três**: *"o symlink não moveu, prod continua no build anterior"*. Mas o diagnóstico levou duas tentativas erradas, e as duas ficam registradas:
