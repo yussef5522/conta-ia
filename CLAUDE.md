@@ -572,6 +572,30 @@ OLEO DE SOJA: controle UN → LT (fator 1)
 
 ⚠️ **2c — o log é SENTINELA, não autópsia:** a marcação de 10/09 já passou e não deixou rastro; **não dá pra reconstruir a causa**, e o dono já tinha dito que nesse caso *"o log fica de sentinela"*. A próxima pulada sai com nome e motivo.
 
+### ⛔⛔ O ITEM PRODUZIDO SUMIA DA POSIÇÃO — E O RÓTULO PROMETIA A FONTE ERRADA (11/09)
+
+**⛔ 1. "SEM CUSTO — ENTRA NA 1ª NOTA" NUM ITEM PRODUZIDO.** O dono: *"nota NUNCA vai chegar pra ele — é produzido: o custo nasce da 1ª PRODUÇÃO concluída. **Texto que promete fonte errada me deixa esperando o que não vem.**"* O texto era o mesmo pra todo componente sem custo. ⭐ Agora segue o TIPO, e o sinal é o **mesmo que o botão "produzir agora" já usava** (existe ficha que o produz) — nada de régua nova pra uma pergunta que a tela já sabia responder. O rodapé e o card de "sem custo" cobrem os dois caminhos, porque a lista pode ter comprado e produzido junto.
+
+**⛔⛔ 2. A POSIÇÃO NASCIA DO LEDGER, NÃO DO CATÁLOGO.** `listPosicao` partia de `saldosDaEmpresa` — um `groupBy` em `stockMovement`. **Item com ZERO movimento não existia pra ela.**
+
+**E não era só o item dele: 9 itens ativos estavam invisíveis** — `tomate`, `gas`, 6 porções e a **`HEINEKEN LONG NECK ZERO 330ML`**, justamente uma das bebidas que em 09/09 este doc registrou como *"nasce com saldo 0 e entra na fila de contagem"*. ⚠️ **Elas entraram na contagem e sumiram da tela onde o dono confere o estoque** — a família do *"erro disfarçado de vazio"*.
+
+**⭐ A RÉGUA QUE FICOU:** a Posição é a PRATELEIRA, e **prateleira com zero unidades continua sendo uma linha da prateleira**. Saldo 0 é um **FATO** ("não tem"), não ausência de dado. A lista passa a partir do CATÁLOGO (`ativo` + `seContaFisicamente`) com o saldo DERIVADO.
+
+**⭐⭐ E A MEDIÇÃO MOSTROU QUE A CONTAGEM JÁ ESTAVA CERTA:** `getQuadro` sempre partiu de `stockItem.findMany` — **a Posição é que era a exceção**, e as duas telas agora respondem a mesma coisa (165 linhas nas duas). Duas telas sobre a mesma prateleira dando números diferentes é o defeito que este módulo mais paga.
+
+⚠️ **O que NÃO afrouxou:** invólucro de cardápio (`SABOR`/`PRODUTO_FINAL`) segue fora, item desativado segue fora, e **órfão com saldo sem cadastro continua aparecendo** — esconder por ausência de cadastro esconderia estoque de verdade.
+
+**PROVADO EM PROD:**
+```
+1) POSIÇÃO   165 linhas (era 156) · "porcao beef de alimenuta" SIM · saldo 0 UN · custo a definir
+2) CONTAGEM  165 linhas · o item está lá, saldo sistema 0
+3) PRODUÇÃO  ficha ativa v1 — dá pra criar ordem antes do 1º movimento
+```
+⚠️ **O valor total do estoque não muda com a régua nova** (zero não soma) — a variação entre duas leituras (108.096,20 → 108.057,80) é movimento real da operação acontecendo entre elas, não efeito da mudança.
+
+**REGRA 11 — a régua velha (partir do ledger) deixa 2 vermelhos. 9.265 verdes · TS 0 · deploy `LbnxjSzSEb-jHmVHJGXwD` 4/4.**
+
 ### ⛔⛔⛔ E O DEPLOY FALHOU 3× POR OOM — o teto era do V8, não do kernel
 
 **O blue-green segurou as três**: *"o symlink não moveu, prod continua no build anterior"*. Mas o diagnóstico levou duas tentativas erradas, e as duas ficam registradas:
