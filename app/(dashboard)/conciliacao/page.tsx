@@ -123,7 +123,10 @@ function ConciliacaoInner() {
       const [f, c] = await Promise.all([
         fetchJson<FilaDTO>(`/api/conciliacao/fila?empresaId=${empresaId}`),
         fetchJson<{ cards: CardDeEscolhaDTO[] }>(
-          `/api/conciliacao/escolher-na-mao?empresaId=${empresaId}`,
+          // ⭐ `abrir` carrega a linha que veio de outra tela mesmo que a fila não a
+          // liste (fornecedor com UMA nota aberta não entra no motor de lote)
+          `/api/conciliacao/escolher-na-mao?empresaId=${empresaId}`
+          + (searchParams.get('abrir') ? `&abrir=${searchParams.get('abrir')}` : ''),
         ),
       ])
       if (!f.ok) {

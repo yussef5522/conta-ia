@@ -27,6 +27,17 @@ import { jaPagoPorConta } from '@/lib/conciliacao/aplicar-baixa-parcial'
 
 const querySchema = z.object({
   empresaId: z.string().cuid(),
+  /**
+   * ⭐⭐ A PORTA DOS DOIS LADOS precisa montar o card de UMA LINHA QUALQUER (10/09/2026).
+   *
+   * ⛔ A fila só lista o que o motor de LOTE marcou como "não fecha", e o lote exige
+   * 2+ notas. Fornecedor com UMA nota aberta (Oesa depois de conciliar uma, Focatto)
+   * **não entra na fila** — e sem isto o "Casar com conta a pagar…" abriria a tela sem
+   * card nenhum, que é a porta sem maçaneta de novo, agora do outro lado.
+   *
+   * ⚠️ É o MESMO `montarCardDeEscolha` — o card continua morando num lugar só.
+   */
+  abrir: z.string().cuid().optional(),
 })
 
 export async function GET(request: NextRequest) {
@@ -37,7 +48,10 @@ export async function GET(request: NextRequest) {
     ctx.requirePermission('transaction.view')
 
     const fila = await lotesDaFila(data.empresaId, prisma)
-    const ids = fila.naoFecham.map((x) => x.extratoId)
+    const ids = [...new Set([
+      ...fila.naoFecham.map((x) => x.extratoId),
+      ...(data.abrir ? [data.abrir] : []),
+    ])]
     if (!ids.length) return NextResponse.json({ cards: [] })
 
     const fornecedores = await fornecedoresDaEmpresa(prisma, data.empresaId)
