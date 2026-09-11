@@ -486,6 +486,42 @@ KPI "Juros do contrato": R$ 4.649,06 (só realizado)
 ```
 **⚠️⚠️ REGRA 11 PEGOU UM TESTE MEU QUE NÃO MORDIA.** Repus o terceiro defeito (usar a amortização da AGENDA na linha paga) e os **169 continuaram verdes** — porque na #3 os dois valores COINCIDEM (2.777,80). O teste que separa é o **pagamento acima da previsão** (pagou 5.000 → amortização 3.440,28, não 2.777,80). Os outros dois morderam de primeira. **9.225 verdes · TS 0 · deploy `a2PLqeqPp_5WLBmSqmFfp` 4/4.**
 
+### ⛔⛔⛔ 11 FORNECEDORES CADASTRADOS 2× MATAVAM O RECONHECIMENTO (10/09)
+
+**O dono:** *"o caso Frigorífico/Focatto: eles FORAM pagos pela Stone mas não aparecem em card nenhum. (…) aposto que a descrição não NOMEIA (boleto = 'LIQUIDACAO BOLETO <cnpj>')."*
+
+**⚠️⚠️ A MEDIÇÃO REFUTOU A HIPÓTESE DELE — e achou uma causa maior.** A Stone **NOMEIA com todas as letras**: `FRIGORIFICO SILVA INDUSTRIA E COMERCIO LTDA - Pagamento`. O problema não era a descrição: **11 fornecedores da Caçula estão cadastrados DUAS VEZES com nome IDÊNTICO** (Frigorífico, Focatto, Doceoli, Tozzo, Nestlé, Bamberg, Menon, Lamana, e 3 "SILVANO"), e a trava do empate (*"dois fornecedores igualmente parecidos = não sei qual é"*) devolvia **NULL**:
+```
+⛔ NULL  FRIGORIFICO SILVA … - Pagamento      (6 contas em aberto, R$ 19.491,46)
+⛔ NULL  FOCATTO DISTRIBUIDORA … - Pagamento
+⛔ NULL  DOCEOLI ALIMENTOS LTDA - Pagamento
+✓        BOX PAPER · OESA                     (cadastro único → reconhecidos)
+```
+**⭐ A TRAVA ESTAVA CERTA PRO CASO QUE A MOTIVOU** (o homônimo *"MAURO IVAN LUNARDI (PAO DE MEL)"*, 09/09) — ela só **não distinguia duas coisas diferentes**: *ambiguidade real* (nomes DIFERENTES e parecidos → não sei quem é → **NULL, fica**) de *duplicata de cadastro* (nome IDÊNTICO → **sei quem é**; a dúvida é só sobre em qual registro as contas foram parar). ⭐ E por isso a função devolve **os irmãos**: o fornecedor é UM, e as contas dele são as dos dois registros — um `canonizadorDeFornecedor` junta os dois lados (linha e nota). ⚠️ **Nada é fundido no banco** — fundir cadastro é decisão do dono, e a régua dura dele está no estoque desde 04/09.
+
+**⭐ E O CNPJ ENTROU COMO ÂNCORA MESMO ASSIM** (ele pediu, e é correto): quando a descrição carrega o CNPJ do cadastro, **não há semelhança envolvida — é identidade**, e ela vence o nome. Não resolve a Stone (que não escreve CNPJ), resolve o Banrisul e qualquer boleto que escreva.
+
+**⚠️ TESTE INVERTIDO COM O MOTIVO ESCRITO, não apagado** — e a metade certa dele (nome DIFERENTE e parecido → NULL) ficou travada num teste próprio.
+
+**⭐ CABEÇALHO SEM NÚMERO INVENTADO:** *"a soma dos pagamentos sai — 6.332,25 não é valor que eu paguei em gesto nenhum; parece cobrança e confunde. Datas contam mais que soma."* Agora **"N pagamentos · 24/08 a 08/09"**; com UM pagamento o valor fica, porque ali ele É o gesto.
+
+**⭐⭐ A PORTA DOS DOIS LADOS, por DEEP-LINK:** da linha do extrato (*"Casar com conta a pagar…"*, nos Pendentes) e da conta a pagar (*"Procurar no extrato…"*) pro **MESMO card**, já no grupo e na linha certa. ⛔ Deep-link e não um segundo painel: o card mora num lugar só, e render duplicado divergiria na primeira regra nova.
+
+**⚠️⚠️ E A PORTA TINHA UMA LACUNA QUE SÓ A PROVA MOSTROU:** a fila lista só o que o motor de LOTE marcou, e **o lote exige 2+ notas** — fornecedor com UMA nota aberta (o Oesa depois de conciliar uma, o Focatto) **não entra nela**, e o "Casar com conta a pagar…" abriria a tela **sem card**: a porta sem maçaneta de novo, do outro lado. A rota passou a aceitar `?abrir=<linha>` e montar o card de **qualquer** linha, pelo mesmo `montarCardDeEscolha`.
+
+**PROVADO EM PROD:**
+```
+A FILA (6 cards):  IVAN 3 pagamentos · ALAN 2 · ⭐ FRIGORIFICO 2 · BOX PAPER 2
+                   MARIA LUIZA 2 · CASPER 5
+A PORTA:  sem ?abrir= → 16 cards, a linha do Focatto NÃO está
+          com ?abrir= → 17 cards · FOCATTO · linha 2.528,31 × nota 2.459,76 · falta 68,55
+```
+⚠️ **O OESA SUMIU DA FILA POR MOTIVO LEGÍTIMO** — o dono conciliou R$ 738,99 em 10/09; sobrou 1 conta, e fornecedor de 1 nota só chega pela porta.
+
+**REGRA 11 — 3 defeitos repostos, 1 vermelho cada. 9.248 verdes · TS 0 · deploys `vDdKIOEvFXBTN7Z72ZEBF` e `78xZXnnR4lj5lhoUY0u2m`, os dois 4/4.**
+
+⚠️ **REGISTRADO E NÃO FEITO:** (a) o **aluguel** (conta manual **sem fornecedor**) não tem como virar card por fornecedor — nem pela porta: sem fornecedor dos dois lados, o Find & Match por nome não alcança. O caminho vivo é o `FindAndMatchPanel` de busca livre; ligar a porta nele é o passo que falta. (b) **os 11 cadastros duplicados continuam lá** — a leitura os trata como um, mas mesclar é decisão do dono.
+
 ### ⛔⛔⛔ E O DEPLOY FALHOU 3× POR OOM — o teto era do V8, não do kernel
 
 **O blue-green segurou as três**: *"o symlink não moveu, prod continua no build anterior"*. Mas o diagnóstico levou duas tentativas erradas, e as duas ficam registradas:
