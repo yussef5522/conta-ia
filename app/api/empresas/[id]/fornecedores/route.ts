@@ -1,6 +1,7 @@
 // GET, POST /api/empresas/[id]/fornecedores — Sprint 2.2 Onda 2.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { chaveDoNomeDoFornecedor } from '@/lib/stock/ponte-contas-pagar'
 import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
@@ -176,6 +177,43 @@ export async function POST(request: NextRequest, { params }: Params) {
           },
           { status: 409 },
         )
+      }
+    }
+
+    /**
+     * ⛔⛔ NOME IDÊNTICO A UM EXISTENTE → RECUSA E APONTA (10/09/2026, ordem do dono:
+     * *"a porta que criava duplicata de fornecedor fecha na origem, igual o criar-item
+     * já faz"*).
+     *
+     * **Por que isto vale um 409 e não um aviso:** a Caçula chegou a **11 fornecedores
+     * cadastrados 2×**, e a duplicata não é só feia — ela **quebra o reconhecimento**
+     * (o empate entre dois cadastros idênticos devolvia NULL) e deixou o Frigorífico,
+     * com 6 contas em aberto, fora de card nenhum na conciliação.
+     *
+     * ⭐ E A RECUSA ENSINA A SAÍDA, como a do `criarFicha`: devolve o `supplierId` do
+     * que já existe, pra tela oferecer "usar esse" em um clique.
+     *
+     * ⚠️ COM ESCAPE EXPLÍCITO (`permitirNomeDuplicado`): matriz e filial TÊM o mesmo
+     * nome, e travar sem saída empurraria o dono a cadastrar "FULANO 2" — que é pior,
+     * porque aí nem a régua nem ele reconhecem depois.
+     */
+    if (!data.permitirNomeDuplicado) {
+      const alvo = chaveDoNomeDoFornecedor(data.nomeFantasia || data.razaoSocial)
+      const todos = await prisma.supplier.findMany({
+        where: { companyId: empresaId, isActive: true },
+        select: { id: true, razaoSocial: true, nomeFantasia: true, cnpj: true },
+      })
+      const igual = todos.find((f) => chaveDoNomeDoFornecedor(f.nomeFantasia ?? f.razaoSocial) === alvo)
+      if (igual) {
+        return NextResponse.json({
+          erro: `Já existe "${igual.nomeFantasia ?? igual.razaoSocial}"`
+            + `${igual.cnpj ? ` (CNPJ ${igual.cnpj})` : ' (sem CNPJ)'}.`
+            + ' Use esse cadastro — dois com o mesmo nome quebram o reconhecimento do'
+            + ' pagamento na conciliação. Se for outra empresa com o mesmo nome (matriz e'
+            + ' filial), confirme pra cadastrar assim mesmo.',
+          supplierId: igual.id,
+          code: 'NOME_DUPLICADO',
+        }, { status: 409 })
       }
     }
 

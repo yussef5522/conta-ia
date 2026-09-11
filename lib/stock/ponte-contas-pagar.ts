@@ -113,6 +113,12 @@ export interface EnviarResult {
  * Resolve o Supplier do financeiro: acha por CNPJ ou — SE o dono confirmou — cadastra
  * com os dados do XML. Nunca cadastra sem o aceite explícito.
  */
+/** ⚠️ a MESMA chave do reconhecimento da conciliação: nome sem acento, caixa e pontuação */
+export function chaveDoNomeDoFornecedor(nome: string): string {
+  return nome.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim()
+}
+
 async function resolverFornecedor(
   db: PrismaClient,
   companyId: string,
@@ -121,11 +127,44 @@ async function resolverFornecedor(
   podeCadastrar: boolean,
 ): Promise<{ supplierId: string | null; criou: boolean }> {
   const doc = soDigitos(cnpj)
+  const todos = await db.supplier.findMany({
+    where: { companyId, isActive: true },
+    select: { id: true, cnpj: true, razaoSocial: true, nomeFantasia: true },
+  })
   if (doc) {
-    const todos = await db.supplier.findMany({ where: { companyId }, select: { id: true, cnpj: true } })
     const achou = todos.find((f) => soDigitos(f.cnpj) === doc)
     if (achou) return { supplierId: achou.id, criou: false }
   }
+
+  /**
+   * ⛔⛔⛔ ESTA ERA A PORTA QUE CRIAVA AS DUPLICATAS (10/09/2026).
+   *
+   * A busca era **só por CNPJ** — e os cadastros antigos da Caçula (05-07/06, vindos do
+   * Excel) **não têm CNPJ**. Resultado medido: **11 fornecedores cadastrados 2× com o
+   * nome IDÊNTICO**, um velho sem CNPJ e um novo de agosto/setembro criado aqui. E foi
+   * essa duplicata que matou o reconhecimento na conciliação (o empate devolvia NULL) e
+   * deixou o Frigorífico, com 6 contas abertas, fora de card nenhum.
+   *
+   * ⭐ AGORA O NOME TAMBÉM PROCURA — e o velho é COMPLETADO em vez de duplicado: o
+   * cadastro ganha o CNPJ que a SEFAZ assinou, que é dado melhor do que ele tinha.
+   *
+   * ⛔ E A TRAVA: nome idêntico com CNPJ **DIFERENTE** não é o mesmo fornecedor — matriz
+   * e filial têm o mesmo nome. Aí cadastra o novo, como sempre fez. É a régua de 04/09
+   * (*"fusão errada de fornecedor é pior que duplicata visível"*), aplicada na ORIGEM.
+   */
+  const alvo = chaveDoNomeDoFornecedor(nome)
+  const mesmoNome = todos.filter((f) => chaveDoNomeDoFornecedor(f.nomeFantasia ?? f.razaoSocial) === alvo)
+  const semCnpj = mesmoNome.find((f) => !soDigitos(f.cnpj))
+  if (semCnpj) {
+    if (doc) {
+      // ⚠️ completa o cadastro antigo com o CNPJ da nota — e o `@@unique(companyId,cnpj)`
+      // garante que isso não cria colisão (se houvesse outro com esse CNPJ, o find acima
+      // já o teria achado).
+      await db.supplier.update({ where: { id: semCnpj.id }, data: { cnpj: doc } })
+    }
+    return { supplierId: semCnpj.id, criou: false }
+  }
+
   if (!podeCadastrar) return { supplierId: null, criou: false }
   const novo = await db.supplier.create({
     data: {

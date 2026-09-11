@@ -13,6 +13,12 @@ const cnpjSchema = z
 
 export const createFornecedorSchema = z.object({
   razaoSocial: z.string().trim().min(2, 'Razão social muito curta').max(200),
+  /**
+   * ⭐ O ESCAPE do guard de nome duplicado (10/09/2026): matriz e filial TÊM o mesmo
+   * nome. ⚠️ Só o dono liga isto, e de propósito — travar sem saída empurraria ele a
+   * cadastrar "FULANO 2", que é pior: aí nem ele nem a régua reconhecem depois.
+   */
+  permitirNomeDuplicado: z.boolean().optional(),
   nomeFantasia: z.string().trim().max(200).optional().nullable(),
   cnpj: cnpjSchema.optional().nullable(),
   categoryId: z.string().cuid().nullable().optional(),
