@@ -51,16 +51,20 @@ export interface ReunitizarResultado {
   antes: { saldo: number; custoMedio: number | null; valor: number }
   depois: { saldo: number; custoMedio: number | null; valor: number }
   movimentosConvertidos: number
+  /** ⭐ quantos componentes de ficha tiveram a quantidade convertida junto */
+  componentesConvertidos: number
   mapasAtualizados: { cProd: string; fatorAntes: number; fatorDepois: number }[]
 }
 
 /** Prévia SEM gravar — o dono vê o antes/depois antes de confirmar. */
 export async function previewReunitizar(
   companyId: string, itemId: string, fator: number, db: PrismaClient = defaultPrisma,
-): Promise<{ nome: string; unidadeControle: string; antes: { saldo: number; custoMedio: number | null; valor: number }; depois: { saldo: number; custoMedio: number | null; valor: number }; movimentos: number; mapas: { cProd: string; xProd: string | null; unidadeNota: string | null; fatorAntes: number; fatorDepois: number }[] }> {
+  unidadeNova?: string,
+): Promise<{ nome: string; unidadeControle: string; unidadeNova: string; antes: { saldo: number; custoMedio: number | null; valor: number }; depois: { saldo: number; custoMedio: number | null; valor: number }; movimentos: number; mapas: { cProd: string; xProd: string | null; unidadeNota: string | null; fatorAntes: number; fatorDepois: number }[]; fichas: { fichaNome: string; qtdAntes: number; qtdDepois: number; unidadeAntes: string }[]; bloqueios: string[] }> {
   const item = await db.stockItem.findFirst({ where: { id: itemId, companyId } })
   if (!item) throw new ReunitizarError('Item não encontrado nesta empresa.')
-  validarFator(fator)
+  const trocaDeUnidade = !!unidadeNova && unidadeNova !== item.unidadeControle
+  validarFator(fator, trocaDeUnidade)
 
   const s = await saldoItem(db, companyId, itemId)
   const movimentos = await db.stockMovement.count({ where: { companyId, itemId } })
@@ -68,9 +72,62 @@ export async function previewReunitizar(
     where: { companyId, itemId },
     select: { cProd: true, xProd: true, unidadeNota: true, fatorConversao: true },
   })
+  /**
+   * ⭐⭐ AS FICHAS AFETADAS, NO PREVIEW (11/09/2026) — pedido do dono: *"me lista as
+   * fichas afetadas"*. Antes o gesto RECUSAVA item usado em ficha; agora ele CONVERTE as
+   * quantidades no mesmo ato, e **a conversão só é segura porque está à vista antes**.
+   */
+  const comps = await db.stockFichaComponente.findMany({
+    where: { companyId, itemId }, select: { qtdPlanejada: true, unidade: true, versaoId: true },
+  })
+  const versoes = comps.length
+    ? await db.stockFichaVersao.findMany({
+        where: { id: { in: comps.map((c) => c.versaoId) } }, select: { id: true, fichaId: true, versao: true },
+      })
+    : []
+  const fichasDb = versoes.length
+    ? await db.stockFicha.findMany({
+        where: { id: { in: versoes.map((v) => v.fichaId) } }, select: { id: true, itemProduzidoId: true },
+      })
+    : []
+  const produzidos = fichasDb.length
+    ? await db.stockItem.findMany({
+        where: { id: { in: fichasDb.map((f) => f.itemProduzidoId) } }, select: { id: true, nome: true },
+      })
+    : []
+  const fichas = comps.map((c) => {
+    const v = versoes.find((x) => x.id === c.versaoId)
+    const f = fichasDb.find((x) => x.id === v?.fichaId)
+    const prod = produzidos.find((x) => x.id === f?.itemProduzidoId)
+    return {
+      fichaNome: `${prod?.nome ?? 'ficha'} (v${v?.versao ?? '?'})`,
+      qtdAntes: c.qtdPlanejada,
+      qtdDepois: round2(c.qtdPlanejada * fator),
+      unidadeAntes: c.unidade,
+    }
+  })
+
+  // ⚠️ o que IMPEDE a troca aparece no preview, não só no erro do confirmar
+  const bloqueios: string[] = []
+  const separado = await db.stockMovement.findMany({
+    where: { companyId, itemId, tipo: 'SEPARACAO_SAIDA' }, select: { receiptId: true },
+  })
+  const ordensDoItem = [...new Set(separado.map((m) => m.receiptId).filter(Boolean) as string[])]
+  if (ordensDoItem.length) {
+    const abertas = await db.stockProductionOrder.count({
+      where: { companyId, id: { in: ordensDoItem }, estado: { in: ['PLANEJADA', 'SEPARADA', 'EM_PRODUCAO'] } },
+    })
+    if (abertas > 0) {
+      bloqueios.push(`${abertas} ordem(ns) de produção aberta(s) com este item separado — conclua antes de trocar`)
+    }
+  }
+
   return {
     nome: item.nome,
     unidadeControle: item.unidadeControle,
+    unidadeNova: unidadeNova ?? item.unidadeControle,
+    fichas,
+    bloqueios,
     antes: { saldo: s.saldo, custoMedio: s.custoMedio, valor: s.valor },
     // o VALOR é o mesmo dos dois lados — é isso que prova que a conta só mudou de régua
     depois: {
@@ -83,27 +140,58 @@ export async function previewReunitizar(
   }
 }
 
-function validarFator(fator: number) {
+function validarFator(fator: number, trocaDeUnidade = false) {
   if (!Number.isFinite(fator) || fator <= 0) throw new ReunitizarError('O fator tem que ser maior que zero.')
-  if (fator === 1) throw new ReunitizarError('Fator 1 não muda nada — informe quantas unidades novas cabem em 1 atual.')
+  // ⛔⛔ FATOR 1 SÓ É ERRO SE A UNIDADE TAMBÉM NÃO MUDAR (11/09/2026).
+  //
+  // O caso do dono: `OLEO DE SOJA` controlado em **UN** virando **LT**, com `1 UN = 1 L`.
+  // A troca é legítima e importante — é ela que faz o item **aceitar decimal** (LT é
+  // fracionável, UN não), que era metade do motivo. A recusa antiga tratava "fator 1"
+  // como "nada muda", quando o que muda é a RÉGUA.
+  if (fator === 1 && !trocaDeUnidade) {
+    throw new ReunitizarError(
+      'Fator 1 com a mesma unidade não muda nada — informe quantas unidades novas cabem em 1 atual, ou escolha outra unidade de controle.',
+    )
+  }
   if (fator > 100000) throw new ReunitizarError('Fator absurdo — confira o número.')
 }
 
 export async function reunitizarItem(input: ReunitizarInput, db: PrismaClient = defaultPrisma): Promise<ReunitizarResultado> {
   const { companyId, itemId, fator } = input
-  validarFator(fator)
 
   const item = await db.stockItem.findFirst({ where: { id: itemId, companyId } })
   if (!item) throw new ReunitizarError('Item não encontrado nesta empresa.')
+  const trocaDeUnidade = !!input.unidadeControle && input.unidadeControle !== item.unidadeControle
+  validarFator(fator, trocaDeUnidade)
 
-  // ⛔ item já usado em ficha/contagem: a receita foi escrita na régua ANTIGA e passaria a
-  // significar outra coisa em silêncio. Recusa com instrução, não converte por debaixo.
-  const emFicha = await db.stockFichaComponente.count({ where: { companyId, itemId } })
-  if (emFicha > 0) {
-    throw new ReunitizarError(
-      `Este item já é componente de ${emFicha} ficha(s) — as quantidades de lá foram escritas na unidade atual. ` +
-      'Tire o item das fichas (ou ajuste as quantidades depois) antes de trocar a unidade.',
-    )
+  /**
+   * ⛔⛔ PRODUÇÃO EM ANDAMENTO COM ESTE ITEM → RECUSA (11/09/2026, ordem do dono).
+   *
+   * *"material separado está medido na unidade velha"* — e está mesmo: o
+   * `SEPARACAO_SAIDA` já gravou a quantidade na régua antiga, e o consumo vai fechar
+   * contra ela (o invariante P1: Σ separado == Σ consumido + Σ devolvido). Trocar a régua
+   * no meio faria a conta do armazém virtual não fechar, e o P1 acusaria um vazamento
+   * que não existe.
+   *
+   * ⚠️ E o guard é POR ITEM, não "existe ordem aberta na empresa": medido em 11/09 há
+   * **8 ordens abertas** na Caçula, nenhuma com óleo — um guard global proibiria pra
+   * sempre o que é seguro.
+   */
+  const emProducao = await db.stockMovement.findMany({
+    where: { companyId, itemId, tipo: 'SEPARACAO_SAIDA' },
+    select: { receiptId: true },
+  })
+  const ordensDoItem = [...new Set(emProducao.map((m) => m.receiptId).filter(Boolean) as string[])]
+  if (ordensDoItem.length) {
+    const abertas = await db.stockProductionOrder.count({
+      where: { companyId, id: { in: ordensDoItem }, estado: { in: ['PLANEJADA', 'SEPARADA', 'EM_PRODUCAO'] } },
+    })
+    if (abertas > 0) {
+      throw new ReunitizarError(
+        `Este item está separado em ${abertas} ordem(ns) de produção ainda aberta(s) — o material já foi medido `
+        + 'na unidade atual. Conclua (ou cancele) essas ordens antes de trocar a unidade.',
+      )
+    }
   }
 
   const antes = await saldoItem(db, companyId, itemId)
@@ -143,6 +231,38 @@ export async function reunitizarItem(input: ReunitizarInput, db: PrismaClient = 
       },
     })
 
+    /**
+     * ⭐⭐⭐ 2.5) AS FICHAS CONVERTEM NO MESMO ATO (11/09/2026, ordem do dono):
+     * *"as quantidades das receitas CONVERTEM pelo mesmo fator no mesmo ato — senão toda
+     * receita quebra calada"*.
+     *
+     * ⛔ ANTES ISTO ERA UMA RECUSA: *"tire o item das fichas antes de trocar a unidade"*.
+     * A recusa protegia do estrago certo (receita passando a significar outra coisa em
+     * silêncio), mas empurrava o dono pra um caminho pior — desmontar a ficha na mão e
+     * remontar, que é onde se erra de verdade. **Converter junto, com a lista à vista no
+     * preview, protege do mesmo estrago e resolve.**
+     *
+     * ⚠️ CONVERTE TODAS AS VERSÕES, não só a ativa: cada componente guarda a unidade
+     * DELE, e deixar as versões antigas na régua velha faria a explosão de uma ordem que
+     * aponte pra elas baixar na unidade errada. ⭐ E NÃO cria versão nova de propósito: a
+     * receita **não mudou** — 0,05 L é a mesma coisa física que 0,05 UN era; versão nova
+     * afirmaria uma alteração que ninguém fez.
+     */
+    let componentesConvertidos = 0
+    if (fator !== 1 || input.unidadeControle) {
+      const comps = await tx.stockFichaComponente.findMany({ where: { companyId, itemId } })
+      for (const c of comps) {
+        await tx.stockFichaComponente.update({
+          where: { id: c.id },
+          data: {
+            qtdPlanejada: c.qtdPlanejada * fator,
+            ...(input.unidadeControle ? { unidade: input.unidadeControle } : {}),
+          },
+        })
+        componentesConvertidos++
+      }
+    }
+
     // 3) o fator APRENDIDO das notas: sem isto a PRÓXIMA nota volta a entrar na régua antiga
     const mapasAtualizados: ReunitizarResultado['mapasAtualizados'] = []
     if (input.ajustarFatorDasNotas !== false) {
@@ -153,7 +273,7 @@ export async function reunitizarItem(input: ReunitizarInput, db: PrismaClient = 
         mapasAtualizados.push({ cProd: mp.cProd, fatorAntes: mp.fatorConversao, fatorDepois: novo })
       }
     }
-    return { convertidos, mapasAtualizados }
+    return { convertidos, mapasAtualizados, componentesConvertidos }
   })
 
   await recomputeSaldoCache(db, companyId)
@@ -173,6 +293,7 @@ export async function reunitizarItem(input: ReunitizarInput, db: PrismaClient = 
     antes: { saldo: antes.saldo, custoMedio: antes.custoMedio, valor: antes.valor },
     depois: { saldo: depois.saldo, custoMedio: depois.custoMedio, valor: depois.valor },
     movimentosConvertidos: resultado.convertidos,
+    componentesConvertidos: resultado.componentesConvertidos,
     mapasAtualizados: resultado.mapasAtualizados,
   }
 }

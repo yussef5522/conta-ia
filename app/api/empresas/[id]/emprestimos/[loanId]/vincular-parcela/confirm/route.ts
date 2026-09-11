@@ -9,7 +9,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
-import { computeLinkSplit, storedScheduleValid, shouldWriteSplit } from '@/lib/loans/link-payment'
+import { vincularPagamentoDeParcela, VinculoDeParcelaError } from '@/lib/loans/vincular-pagamento'
 import { exigeContaDoEmprestimo, MutuoSemContaError } from '@/lib/loans/exige-conta'
 
 export const runtime = 'nodejs'
@@ -56,67 +56,18 @@ export async function POST(request: NextRequest, { params }: Params) {
       return NextResponse.json({ erro: 'Alguns lançamentos não são elegíveis (conta errada, já vinculados, ou não são débito).', code: 'TX_INELIGIBLE' }, { status: 409 })
     }
 
-    const paidTotal = txs.reduce((s, t) => s + t.amount, 0)
-    const split = computeLinkSplit({
-      installment: { amortization: target.amortization, openingBalance: target.openingBalance },
-      rateMonthly: loan.interestRateMonthly, paidTotal,
+    // ⭐ A GRAVAÇÃO MORA NA LIB (11/09/2026) — a MESMA que o import chama. Antes ela
+    // vivia só aqui, e o import gravava do jeito dele: marcava PAID **sem split**, o que
+    // jogava os encargos pra fora do DRE. Uma porta, dois chamadores (REGRA 4).
+    const r = await vincularPagamentoDeParcela({
+      db: prisma, companyId: empresaId, loanId,
+      installmentNumber: target.number, transactionIds: body.transactionIds,
     })
-
-    const startNumber = loan.installmentsPaidBefore + 1
-    const trackedFull = await prisma.loanInstallment.findMany({
-      where: { loanId, number: { gte: startNumber } }, orderBy: { number: 'asc' },
-      select: { number: true, openingBalance: true, interest: true, amortization: true, correcao: true, payment: true, closingBalance: true },
-    })
-    const base = trackedFull[0]?.openingBalance ?? 0
-    const agendaValida = storedScheduleValid(trackedFull, base, loan.interestRateMonthly > 0, loan.rateType === 'POS')
-
-    const paidDate = txs.reduce((max, t) => (t.date > max ? t.date : max), txs[0].date)
-    const status = split.isPartial ? 'PARTIAL' : 'PAID'
-
-    // Empréstimo SEM JUROS (mútuo Arafat / FLEXIBLE): o split é determinístico
-    // (encargo 0, amortização = valor devolvido inteiro). A agenda nominal de 7x
-    // é irrelevante — SEMPRE grava o split e move a amortização pro valor pago,
-    // pra o saldo (principal − Σamort PAID) cair exatamente o que foi devolvido.
-    const isZeroRate = loan.interestRateMonthly === 0
-    // FIX (15/08): IMPORTED confia no amort do banco → grava o split mesmo com
-    // juros=0 nas OPEN. Ver shouldWriteSplit (dono único). Sem isso, POS casada
-    // pela tela nasce com paidInterest=0 (bug da #2/#23).
-    const gravaSplit = shouldWriteSplit({
-      scheduleSource: loan.scheduleSource,
-      isZeroRate,
-      agendaValida,
-      isPartial: split.isPartial,
-    })
-
-    await prisma.$transaction(async (trx) => {
-      for (const t of txs) {
-        await trx.loanInstallmentPayment.create({ data: { installmentId: target.id, transactionId: t.id, amount: t.amount } })
-      }
-      await trx.loanInstallment.update({
-        where: { id: target.id },
-        data: {
-          status,
-          paidDate,
-          paidTotal: split.paidTotal,
-          // Split só quando a agenda fecha (FASE 5.3). Senão fica "a definir".
-          // Zero-rate sempre grava (encargo 0, sem risco de despesa espúria).
-          ...(gravaSplit
-            ? {
-                paidInterest: split.paidInterest, paidCorrection: split.paidCorrection, paidPenalty: split.paidPenalty,
-                closingBalance: split.closingBalance,
-                // 0%: amortização = valor devolvido (não a parcela nominal).
-                ...(isZeroRate ? { amortization: split.amortization } : {}),
-              }
-            : {}),
-        },
-      })
-    })
-
-    return NextResponse.json({
-      ok: true, linked: txs.length, status, paidTotal: split.paidTotal,
-      splitInjected: gravaSplit, isPartial: split.isPartial, agendaValida,
-    })
+    return NextResponse.json({ ok: true, ...r })
   } catch (error) {
+    if (error instanceof VinculoDeParcelaError) {
+      return NextResponse.json({ erro: error.message, code: error.code }, { status: 409 })
+    }
     return handleApiError(error)
   }
 }

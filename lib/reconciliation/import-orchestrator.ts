@@ -578,13 +578,39 @@ export async function runImportV2(
     { aplicadas: 0, puladas: 0, falhas: [] }
   if (input.marks?.length) {
     const { aplicarMarcacao } = await import('@/lib/ofx-v3/aplicar-marcacao')
+
+    /**
+     * ⭐⭐⭐ O LOG DE TODA MARCAÇÃO (11/09/2026) — pedido do dono depois de um vínculo
+     * sumir: *"'pulada silenciosa por desenho' é onde meu vínculo sumiu dia 10"*.
+     *
+     * ⛔ O contador dizia `N puladas` e MAIS NADA — nem qual linha, nem por quê. Medido
+     * em 10/09: a marcação de pagamento do C61021346-2 foi confirmada na tela e a linha
+     * ficou com **zero vínculo**; o import respondeu SUCCESS. Com só um número, a causa
+     * era inalcançável — e "pulada" é exatamente o lugar onde um vínculo some sem ruído.
+     *
+     * ⚠️ Cada pulada agora sai com o MOTIVO derivado dos conjuntos que o próprio import
+     * já tem: a linha virou duplicata (`matched`), foi descartada como futura, ou o
+     * preview a marcou e o confirm não a criou (o caso que ninguém explica).
+     */
+    // ⚠️ o MESMO `ofxHashOf` que montou o mapa `txIdByOfxHash` — outra régua de hash aqui
+    // diria "motivo desconhecido" pra tudo, que é a pior resposta possível num log.
+    const hashesJaExistiam = new Set(result.matched.map((m) => ofxHashOf(m.statementLine)))
+    const hashesFuturas = new Set(futureLines.map((l) => ofxHashOf(l)))
+    const porQuePulou = (h: string): string =>
+      hashesJaExistiam.has(h) ? 'a linha já existia (duplicata do dedup)'
+        : hashesFuturas.has(h) ? 'a linha foi descartada como FUTURA (agendada)'
+          : 'a linha marcada NÃO virou transação neste confirm — sem duplicata nem futura'
+
     for (const mark of input.marks) {
       const txId = txIdByOfxHash[mark.ofxHash]
       if (!txId) {
-        // ⚠️ linha marcada que não virou transação (foi duplicata, futura ou SKIP). Não é
-        // erro: é o preview e o confirm discordando sobre o destino dela, e o dono já vê
-        // isso na conciliação de destinos. Registra e segue.
+        // ⚠️ linha marcada que não virou transação. Não derruba o import — mas AGORA
+        // aparece no log com nome e motivo, em vez de virar +1 num contador.
         marcacoesAplicadas.puladas += 1
+        console.warn(
+          `[MARCACAO] PULADA · kind=${mark.kind} · ofxHash=${mark.ofxHash.slice(0, 12)}…`
+          + ` · motivo: ${porQuePulou(mark.ofxHash)}`,
+        )
         continue
       }
       const alvo = await tx.transaction.findUniqueOrThrow({
@@ -602,10 +628,20 @@ export async function runImportV2(
         alvo, mark.kind as never, (mark.params ?? {}) as never,
         bankAcc.companyId, input.userId, tx,
       )
-      if (r === 'applied') marcacoesAplicadas.aplicadas += 1
-      else marcacoesAplicadas.puladas += 1
+      if (r === 'applied') {
+        marcacoesAplicadas.aplicadas += 1
+        console.log(`[MARCACAO] APLICADA · kind=${mark.kind} · tx=${txId}`)
+      } else {
+        marcacoesAplicadas.puladas += 1
+        // ⚠️ `skipped` do `aplicarMarcacao` = o fato JÁ estava gravado (idempotência).
+        // É diferente de "a linha não existe", e o log distingue os dois.
+        console.warn(`[MARCACAO] PULADA · kind=${mark.kind} · tx=${txId} · motivo: já estava aplicada (idempotente)`)
+      }
     }
-    console.log(`[RECONCILE_V2] marcações: ${marcacoesAplicadas.aplicadas} aplicadas · ${marcacoesAplicadas.puladas} puladas (na MESMA transação do import)`)
+    console.log(
+      `[RECONCILE_V2] marcações: ${input.marks.length} recebidas · ${marcacoesAplicadas.aplicadas} aplicadas`
+      + ` · ${marcacoesAplicadas.puladas} puladas (na MESMA transação do import)`,
+    )
   }
 
   // 9. Warnings para orphans (NUNCA delete automático)

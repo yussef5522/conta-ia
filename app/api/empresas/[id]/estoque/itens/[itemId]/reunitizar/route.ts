@@ -21,8 +21,11 @@ export async function GET(request: NextRequest, { params }: Params) {
   const a = await guardStock(request, companyId, 'stock.view')
   if (a.erro) return a.erro
   const fator = Number(request.nextUrl.searchParams.get('fator') ?? '')
+  // ⭐ a unidade nova entra na prévia: é ela que libera o fator 1 (UN → LT, o caso do óleo)
+  // e que diz em que régua as fichas vão ficar.
+  const unidade = request.nextUrl.searchParams.get('unidade') ?? undefined
   try {
-    return NextResponse.json(await previewReunitizar(companyId, itemId, fator, prisma))
+    return NextResponse.json(await previewReunitizar(companyId, itemId, fator, prisma, unidade))
   } catch (e) {
     if (e instanceof ReunitizarError) return NextResponse.json({ erro: e.message }, { status: 422 })
     throw e

@@ -14,6 +14,7 @@
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { z } from 'zod'
 import { resolvePaidInvoiceMonth } from '@/lib/credit-card-pj/resolve-paid-month'
+import { vincularPagamentoDeParcela } from '@/lib/loans/vincular-pagamento'
 import type { OfxLineKind } from './types'
 
 type Db = PrismaClient | Prisma.TransactionClient
@@ -137,42 +138,31 @@ export async function aplicarMarcacao(
       if (!params.loanId || params.installmentNumber == null)
         throw new Error('loanId e installmentNumber obrigatórios')
       if (tx.type !== 'DEBIT') throw new Error('apenas DEBIT pode ser pagamento de parcela')
-      const loan = await db.loan.findFirst({
-        where: { id: params.loanId, companyId },
-        select: { id: true, bankAccountId: true },
+
+      /**
+       * ⭐⭐⭐ A MESMA PORTA DO PAINEL (11/09/2026) — `vincularPagamentoDeParcela`.
+       *
+       * ⛔⛔ O QUE ISTO SUBSTITUI, e era grave: o ramo marcava `status:'PAID'` +
+       * `reconciledTransactionId` **e mais nada**. Sem `paidTotal`/`paidInterest`/
+       * `paidCorrection`, e como o DRE lê **exatamente** esses campos, a parcela entrava
+       * "paga" com **encargo ZERO** — no caso real do C61021346-2 seriam
+       * **R$ 1.559,72 de despesa financeira sumindo do resultado**, calados.
+       *
+       * ⚠️ E gravava pela porta **1:1** enquanto o painel usa a **N:1**: duas portas pro
+       * mesmo fato, a família que o `loan_installment_no_double_link` existe pra recusar.
+       */
+      const jaVinculada = await (db as PrismaClient).loanInstallmentPayment.findFirst({
+        where: { transactionId: tx.id }, select: { id: true },
       })
-      if (!loan) throw new Error('empréstimo inválido')
-      const installment = await db.loanInstallment.findFirst({
-        where: { loanId: params.loanId, number: params.installmentNumber },
-        select: { id: true, status: true, reconciledTransactionId: true },
+      if (jaVinculada) return 'skipped'   // idempotente: reimportar não duplica
+
+      await vincularPagamentoDeParcela({
+        db,
+        companyId,
+        loanId: params.loanId,
+        installmentNumber: params.installmentNumber,
+        transactionIds: [tx.id],
       })
-      if (!installment) throw new Error('parcela não encontrada')
-      // Idempotente
-      if (installment.reconciledTransactionId === tx.id) return 'skipped'
-      if (installment.reconciledTransactionId)
-        throw new Error('parcela já conciliada com outra tx')
-      // Reusa o padrão do endpoint /parcelas/[number] POST
-      {
-        const trx = db
-        await trx.loanInstallment.update({
-          where: { id: installment.id },
-          data: {
-            status: 'PAID',
-            paidDate: tx.date,
-            reconciledTransactionId: tx.id,
-          },
-        })
-        const remaining = await trx.loanInstallment.count({
-          where: { loanId: params.loanId!, status: { not: 'PAID' } },
-        })
-        if (remaining === 0) {
-          await trx.loan.update({
-            where: { id: params.loanId! },
-            data: { status: 'PAID_OFF' },
-          })
-        }
-      }
-      // Silenciar warning de "userId não usado" — caller pode logar audit
       void userId
       return 'applied'
     }

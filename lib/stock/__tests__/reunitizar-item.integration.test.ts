@@ -104,18 +104,52 @@ describe('⭐ o pão: de PACOTE pra PÃO', () => {
 })
 
 describe('recusas — a conversão não pode acontecer por debaixo', () => {
-  it('⛔ item JÁ usado em ficha é recusado (a receita foi escrita na régua antiga)', async () => {
+  // ⚠️⚠️ TESTE INVERTIDO COM O MOTIVO ESCRITO (11/09/2026), não apagado.
+  //
+  // Ele afirmava que **item usado em ficha é RECUSADO**. A recusa protegia do estrago
+  // certo (a receita passando a significar outra coisa em silêncio) — mas empurrava o
+  // dono pro caminho pior: desmontar a ficha na mão e remontar, que é onde se erra de
+  // verdade. Ordem dele: *"as quantidades das receitas CONVERTEM pelo mesmo fator no
+  // mesmo ato — senão toda receita quebra calada"*, com a lista à vista no preview.
+  //
+  // ⭐ A METADE CERTA CONTINUA VALENDO e está travada logo abaixo: a receita **não pode
+  // mudar de significado**. Por isso o teste confere a QUANTIDADE convertida.
+  it('⭐ item usado em ficha: a receita CONVERTE junto, no mesmo ato', async () => {
     const outro = await prisma.stockItem.create({ data: { companyId, nome: 'Carne', unidadeControle: 'KG', categoria: 'MATERIA_PRIMA', criadoVia: 'MANUAL' } })
     await criarFicha({ companyId, nomeProduzido: 'Xis', unidadeProduzido: 'UN', tipoProduto: 'PRODUTO_FINAL', loteBase: 1, unidadeLoteBase: 'UN', componentes: [{ itemId: paoId, qtdPlanejada: 1, unidade: 'UN' }, { itemId: outro.id, qtdPlanejada: 0.1, unidade: 'KG' }] }, prisma)
-    await expect(reunitizarItem({ companyId, itemId: paoId, fator: 12 }, prisma)).rejects.toBeInstanceOf(ReunitizarError)
-    // e NADA foi convertido
-    expect((await saldoItem(prisma, companyId, paoId)).saldo).toBe(64)
+
+    const r = await reunitizarItem({ companyId, itemId: paoId, fator: 12 }, prisma)
+    expect(r.componentesConvertidos).toBe(1)
+
+    // ⭐ 1 pacote virou 12 pães — a MESMA quantidade física, na régua nova
+    const comp = await prisma.stockFichaComponente.findFirstOrThrow({ where: { companyId, itemId: paoId } })
+    expect(comp.qtdPlanejada).toBeCloseTo(12, 4)
+    // ⚠️ o componente do OUTRO item não é tocado
+    const intacto = await prisma.stockFichaComponente.findFirstOrThrow({ where: { companyId, itemId: outro.id } })
+    expect(intacto.qtdPlanejada).toBeCloseTo(0.1, 4)
   })
 
-  it('fator 0, negativo ou 1 é recusado', async () => {
-    for (const f of [0, -3, 1]) {
+  it('fator 0 ou negativo é recusado', async () => {
+    for (const f of [0, -3]) {
       await expect(reunitizarItem({ companyId, itemId: paoId, fator: f }, prisma)).rejects.toBeInstanceOf(ReunitizarError)
     }
+  })
+
+  // ⚠️ INVERTIDO JUNTO: fator 1 era recusado sempre. O caso do dono — `OLEO DE SOJA` de
+  // **UN** pra **LT** com `1 UN = 1 L` — é legítimo: o que muda é a RÉGUA (e com ela a
+  // régua do decimal: LT aceita 0,5; UN não). Só é erro quando a unidade também não muda.
+  it('⛔ fator 1 SEM trocar unidade continua recusado', async () => {
+    await expect(reunitizarItem({ companyId, itemId: paoId, fator: 1 }, prisma))
+      .rejects.toBeInstanceOf(ReunitizarError)
+  })
+
+  it('⭐ o CASO DO ÓLEO: fator 1 trocando UN → LT passa, e o dinheiro não muda', async () => {
+    const antes = await saldoItem(prisma, companyId, paoId)
+    const r = await reunitizarItem({ companyId, itemId: paoId, fator: 1, unidadeControle: 'LT' }, prisma)
+    expect(r.unidadeControle).toBe('LT')
+    expect(r.depois.saldo).toBeCloseTo(antes.saldo, 4)        // 1 UN = 1 L
+    // ⭐⭐ A PROVA: o valor do estoque é invariante da troca
+    expect(r.depois.valor).toBeCloseTo(antes.valor, 2)
   })
 
   it('item de outra empresa é recusado (REGRA 8)', async () => {

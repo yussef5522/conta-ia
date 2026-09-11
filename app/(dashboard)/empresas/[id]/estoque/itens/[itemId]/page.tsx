@@ -257,17 +257,24 @@ function ReunitizarBloco({ companyId, itemId, nome, unidade, saldo, custoMedio }
   const [aberto, setAberto] = useState(false)
   const [fator, setFator] = useState('')
   const [novoNome, setNovoNome] = useState(nome)
-  const [prev, setPrev] = useState<{ antes: { saldo: number; custoMedio: number | null; valor: number }; depois: { saldo: number; custoMedio: number | null; valor: number }; movimentos: number; mapas: { cProd: string; xProd: string | null; unidadeNota: string | null; fatorAntes: number; fatorDepois: number }[] } | null>(null)
+  const [prev, setPrev] = useState<{ antes: { saldo: number; custoMedio: number | null; valor: number }; depois: { saldo: number; custoMedio: number | null; valor: number }; movimentos: number; mapas: { cProd: string; xProd: string | null; unidadeNota: string | null; fatorAntes: number; fatorDepois: number }[]; unidadeNova?: string; fichas?: { fichaNome: string; qtdAntes: number; qtdDepois: number; unidadeAntes: string }[]; bloqueios?: string[] } | null>(null)
   const [erro, setErro] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
+  const [unidadeNova, setUnidadeNova] = useState(unidade)
   const f = Number((fator || '').replace(',', '.'))
-  const valido = Number.isFinite(f) && f > 1
+  /**
+   * ⭐ FATOR 1 É VÁLIDO QUANDO A UNIDADE MUDA (11/09/2026) — o caso do `OLEO DE SOJA`:
+   * controle em **UN** virando **LT** com `1 UN = 1 L`. É a troca que faz o item aceitar
+   * decimal (LT é fracionável), que era metade do motivo do dono.
+   */
+  const trocaUnidade = unidadeNova !== unidade
+  const valido = Number.isFinite(f) && f > 0 && (f !== 1 || trocaUnidade)
 
   const verPrevia = async () => {
     setBusy(true); setErro(null); setPrev(null)
     try {
-      const r = await fetch(`/api/empresas/${companyId}/estoque/itens/${itemId}/reunitizar?fator=${f}`)
+      const r = await fetch(`/api/empresas/${companyId}/estoque/itens/${itemId}/reunitizar?fator=${f}&unidade=${unidadeNova}`)
       const j = await r.json().catch(() => null)
       if (!r.ok) { setErro(j?.erro ?? 'Não consegui calcular a prévia.'); return }
       setPrev(j)
@@ -279,7 +286,11 @@ function ReunitizarBloco({ companyId, itemId, nome, unidade, saldo, custoMedio }
     try {
       const r = await fetch(`/api/empresas/${companyId}/estoque/itens/${itemId}/reunitizar`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fator: f, novoNome: novoNome.trim() !== nome ? novoNome.trim() : undefined }),
+        body: JSON.stringify({
+          fator: f,
+          novoNome: novoNome.trim() !== nome ? novoNome.trim() : undefined,
+          ...(trocaUnidade ? { unidadeControle: unidadeNova } : {}),
+        }),
       })
       const j = await r.json().catch(() => null)
       if (!r.ok) { setErro(j?.erro ?? 'Não consegui trocar a unidade.'); return }
@@ -329,6 +340,16 @@ function ReunitizarBloco({ companyId, itemId, nome, unidade, saldo, custoMedio }
       </div>
 
       <div className="flex flex-wrap items-end gap-2">
+        {/* ⭐ A UNIDADE NOVA (11/09/2026): sem ela o gesto só sabia "quantas cabem em 1",
+            e o caso do óleo (UN → LT com fator 1) era recusado como "não muda nada". */}
+        <label className="text-xs text-slate-500">controlar em
+          <select value={unidadeNova} onChange={(e) => { setUnidadeNova(e.target.value); setPrev(null) }}
+            className="mt-1 block w-24 rounded-lg border border-slate-300 py-2 px-3 text-sm">
+            <option value="UN">UN</option>
+            <option value="KG">KG</option>
+            <option value="LT">LT</option>
+          </select>
+        </label>
         <label className="text-xs text-slate-500">1 {unidade} contém
           <input value={fator} onChange={(e) => { setFator(e.target.value); setPrev(null) }} inputMode="decimal" placeholder="ex: 12"
             className="mt-1 block w-24 rounded-lg border border-slate-300 py-2 px-3 text-sm tabular-nums" />
@@ -361,6 +382,25 @@ function ReunitizarBloco({ companyId, itemId, nome, unidade, saldo, custoMedio }
           <p className="text-[11px] text-slate-500">
             {prev.movimentos} movimento(s) do histórico são reescritos na régua nova (estorno + linha nova — o ledger não se apaga).
           </p>
+          {/* ⭐⭐ AS FICHAS AFETADAS, À VISTA ANTES (11/09/2026, pedido do dono). Antes o
+              gesto RECUSAVA item usado em ficha; agora converte junto — e converter em
+              silêncio seria pior que recusar, então a lista vem primeiro. */}
+          {(prev.fichas ?? []).length > 0 && (
+            <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11.5px] text-amber-900">
+              <b>{(prev.fichas ?? []).length} receita(s) usam este item — as quantidades convertem junto:</b>
+              {(prev.fichas ?? []).map((fi: { fichaNome: string; qtdAntes: number; qtdDepois: number; unidadeAntes: string }, i: number) => (
+                <p key={i} className="tabular-nums">
+                  {fi.fichaNome}: {num(fi.qtdAntes)} {fi.unidadeAntes} → {num(fi.qtdDepois)} {prev.unidadeNova ?? unidade}
+                </p>
+              ))}
+            </div>
+          )}
+          {/* ⛔ o que IMPEDE a troca aparece ANTES do botão, não como erro depois do clique */}
+          {(prev.bloqueios ?? []).length > 0 && (
+            <div className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[11.5px] text-rose-900">
+              {(prev.bloqueios ?? []).map((b: string, i: number) => <p key={i}>⛔ {b}</p>)}
+            </div>
+          )}
           {prev.mapas.map((m) => (
             <p key={m.cProd} className="text-[11px] text-slate-500">
               Fator da nota “{m.xProd ?? m.cProd}” ({m.unidadeNota}): <b>{m.fatorAntes} → {m.fatorDepois}</b> — a próxima nota já entra convertida.
