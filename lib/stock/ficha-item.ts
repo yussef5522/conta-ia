@@ -14,7 +14,7 @@ import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { saldoItem } from './saldo'
 import { statusEstoque, type StatusEstoqueResult } from './status-estoque'
-import { explicarMovimentos, tiposPresentes, dobrarProducao, colapsarAnulados, somaDasLinhas, type LinhaDoHistorico } from './movimento-explicado'
+import { explicarMovimentos, tiposPresentes, dobrarProducao, colapsarAnulados, anotarSaldo, somaDasLinhas, type LinhaDoHistorico } from './movimento-explicado'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -70,14 +70,28 @@ export async function buildFichaItem(companyId: string, itemId: string, db: Db =
   const completo = dobrarProducao(await explicarMovimentos(companyId, movimentos, db))
   // ⭐⭐ MODO CLEAN por padrão (11/09): par movimento+estorno que se anula vira UMA linha fina.
   // ⛔ O forense devolve a lista crua — o rastro é o que provou o desastre de 10/09.
-  const historico = opts.forense ? completo : colapsarAnulados(completo)
+  const limpo = colapsarAnulados(completo)
+  // ⭐ a COLUNA SALDO desce do saldo de HOJE: a 1ª linha vale o número da Posição, e daí pra
+  // baixo cada linha devolve o próprio efeito. Aqui a lista é SEMPRE o item inteiro até hoje
+  // (a query não filtra nem limita), então dá pra afirmar o saldo de cada instante.
+  const historico = anotarSaldo(opts.forense ? completo : limpo, new Map([[itemId, saldo.saldo]]))
   const anulados = historico.filter((l) => l.anulado).length
   const soma = somaDasLinhas(historico)
 
-  const precoTempo = movimentos
-    .filter((m) => m.tipo === 'ENTRADA_NF')
-    .sort((a, b) => a.dataMovimento.getTime() - b.dataMovimento.getTime())
-    .map((m) => ({ data: m.dataMovimento.toISOString().slice(0, 10), preco: m.custoUnitario }))
+  /**
+   * ⛔⛔ O GRÁFICO DE PREÇO PASSA PELA MESMA RÉGUA DO HISTÓRICO (11/09) — e isto era um
+   * defeito real: ele lia `ENTRADA_NF` do CRU, então **uma compra 100% estornada entrava na
+   * curva de preço** como se alguém tivesse pago aquilo.
+   *
+   * ⭐ A fonte é a lista JÁ COLAPSADA — não um filtro local a mais. Compra desfeita não é
+   * preço pago, exatamente como ela saiu da aba "só compras".
+   * ⚠️ E usa sempre `limpo`, nunca o forense: o gráfico responde "que preços eu paguei?",
+   * pergunta que não muda quando o dono liga o modo de auditoria.
+   */
+  const precoTempo = limpo
+    .filter((l) => l.tipo === 'ENTRADA_NF')
+    .map((l) => ({ data: l.data.slice(0, 10), preco: l.custoUnitario }))
+    .sort((a, b) => a.data.localeCompare(b.data))
 
   return {
     item: { ...item, categoriaLabel: CAT_LABEL[item.categoria] ?? item.categoria },

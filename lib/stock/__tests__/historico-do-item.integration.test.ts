@@ -219,11 +219,28 @@ describe('⛔⛔ a tela deixou de ser "compras" e passou a ser HISTÓRICO', () =
     expect(f.tipos.find((t) => t.tipo === 'AJUSTE_CONTAGEM')?.n).toBe(2)
   })
 
-  it('⭐ o gráfico de preço continua só com COMPRA — a média da baixa não polui', async () => {
+  // ⚠️⚠️ INVERTIDO COM O MOTIVO (11/09/2026): o gráfico passou a ler a lista JÁ COLAPSADA, e
+  // a única compra desta cena foi 100% ESTORNADA. Antes ela entrava na curva de preço como
+  // se alguém tivesse pago aquilo — defeito que eu tinha registrado e o dono mandou fechar
+  // pela MESMA régua da contribuição, não por um filtro local a mais.
+  it('⛔⛔ compra 100% ESTORNADA fica FORA do gráfico de preço — não é preço pago', async () => {
     await cenaDoBacon()
-    const f = (await buildFichaItem(companyId, itemId, undefined, { forense: true }))!
+    const f = (await buildFichaItem(companyId, itemId))!
+    expect(f.precoTempo).toHaveLength(0)
+    // ⭐ e o gráfico NÃO muda com o toggle: "que preços eu paguei?" não é pergunta de auditoria
+    const forense = (await buildFichaItem(companyId, itemId, undefined, { forense: true }))!
+    expect(forense.precoTempo).toEqual(f.precoTempo)
+  })
+
+  it('⭐ a compra VIVA continua na curva — o gráfico não ficou cego', async () => {
+    await cenaDoBacon()
+    await prisma.stockMovement.create({ data: {
+      companyId, itemId, tipo: 'ENTRADA_NF', quantidade: 10, custoUnitario: 31.5, custoTotal: 315,
+      origem: 'SEFAZ', criadoPorId: userId, dataMovimento: new Date('2026-09-06T10:00:00Z'),
+    } as never })
+    const f = (await buildFichaItem(companyId, itemId))!
     expect(f.precoTempo).toHaveLength(1)
-    expect(f.precoTempo[0].preco).toBe(29.98)
+    expect(f.precoTempo[0].preco).toBe(31.5)
   })
 })
 
@@ -456,5 +473,32 @@ describe('⭐⭐ modo CLEAN na cena real do bacon', () => {
     await cenaDoBacon()
     expect((await buildFichaItem(companyId, itemId))!.historico.filter((l) => l.ehCompra)).toHaveLength(0)
     expect((await buildFichaItem(companyId, itemId, undefined, { forense: true }))!.historico.filter((l) => l.ehCompra)).toHaveLength(2)
+  })
+})
+
+describe('⭐⭐⭐ a coluna SALDO é a prova das TRÊS LEITURAS', () => {
+  it('⭐ saldo da linha mais recente == rodapé == saldo real do item', async () => {
+    await cenaDoBacon()
+    const f = (await buildFichaItem(companyId, itemId))!
+    const { saldoItem } = await import('../saldo')
+    const real = await saldoItem(prisma, companyId, itemId)
+    expect(f.historico[0].saldoApos).toBe(real.saldo)       // a coluna
+    expect(f.conferencia.saldo).toBe(real.saldo)            // o rodapé
+    expect(f.conferencia.confere).toBe(true)                // e eles batem
+  })
+
+  it('⭐⭐ a coluna desce até o começo: a linha mais antiga vale o efeito dela sozinha', async () => {
+    await cenaDoBacon()
+    const f = (await buildFichaItem(companyId, itemId, undefined, { forense: true }))!
+    const maisAntiga = f.historico.at(-1)!
+    expect(maisAntiga.saldoApos).toBe(maisAntiga.movePrateleira ? maisAntiga.quantidade : 0)
+  })
+
+  it('⛔ o rodapé bate NOS DOIS MODOS — é o que a coluna expõe linha a linha', async () => {
+    await cenaDoBacon()
+    const clean = (await buildFichaItem(companyId, itemId))!
+    const forense = (await buildFichaItem(companyId, itemId, undefined, { forense: true }))!
+    expect(clean.historico[0].saldoApos).toBe(forense.historico[0].saldoApos)
+    expect(clean.conferencia.confere && forense.conferencia.confere).toBe(true)
   })
 })

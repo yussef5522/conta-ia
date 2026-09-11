@@ -177,8 +177,11 @@ export default function FichaItemPage({ params }: { params: Promise<{ id: string
                 <th className="px-3 py-2 text-right font-medium">Qtd</th>
                 {/* ⚠️ o rótulo é GENÉRICO na coluna porque a natureza muda por linha; cada
                     célula diz qual é a sua (preço de compra × custo médio da baixa). */}
-                <th className="px-3 py-2 text-right font-medium">Custo un.</th>
+                {/* ⚠️ CUSTO UN. muda raro — é segundo olhar. Some no celular pra o SALDO caber. */}
+                <th className="hidden px-3 py-2 text-right font-normal text-slate-300 sm:table-cell">Custo un.</th>
                 <th className="px-3 py-2 text-right font-medium">Total</th>
+                {/* ⭐⭐ O EXTRATO BANCÁRIO DO ITEM: quanto ele tinha DEPOIS de cada linha */}
+                <th className="px-3 py-2 text-right font-medium text-slate-500">Saldo</th>
               </tr></thead>
               <tbody>
                 {linhas.map((l) => (
@@ -188,7 +191,7 @@ export default function FichaItemPage({ params }: { params: Promise<{ id: string
                        foi apagado. */
                     <Fragment key={l.movimentoId}>
                       <tr className="border-b border-slate-50 last:border-0">
-                        <td colSpan={7} className="px-3 py-1">
+                        <td colSpan={8} className="px-3 py-1">
                           <button onClick={() => setParAberto((v) => (v === l.movimentoId ? null : l.movimentoId))} className="flex w-full items-center gap-1.5 text-left text-[11.5px] text-slate-400 hover:text-slate-600">
                             <span className="shrink-0">⊘</span>
                             <span className="truncate">{l.anulado.frase}</span>
@@ -203,8 +206,10 @@ export default function FichaItemPage({ params }: { params: Promise<{ id: string
                           <td className="px-3 py-1 text-[12px] text-slate-500">{d.detalhe}</td>
                           <td className="px-3 py-1 text-[12px] text-slate-500">{d.quem ?? '—'}</td>
                           <td className="px-3 py-1 text-right text-[12px] tabular-nums text-slate-500">{d.quantidade > 0 ? '+' : ''}{num(d.quantidade)} {ficha.item.unidadeControle}</td>
-                          <td className="px-3 py-1 text-right text-[12px] tabular-nums text-slate-400">{brl(d.custoUnitario)}</td>
+                          <td className="hidden px-3 py-1 text-right text-[12px] tabular-nums text-slate-400 sm:table-cell">{brl(d.custoUnitario)}</td>
                           <td className="px-3 py-1 text-right text-[12px] tabular-nums text-slate-500">{brl(d.custoTotal)}</td>
+                          {/* ⛔ o par não mexeu no saldo — a célula fica vazia de propósito */}
+                          <td className="px-3 py-1" />
                         </tr>
                       ))}
                     </Fragment>
@@ -244,7 +249,7 @@ export default function FichaItemPage({ params }: { params: Promise<{ id: string
                     <td className={`px-3 py-0 text-right text-[13px] tabular-nums ${l.quantidade < 0 ? 'text-rose-600' : 'text-slate-700'}`}>
                       {l.quantidade > 0 ? '+' : ''}{num(l.quantidade)} {ficha.item.unidadeControle}
                     </td>
-                    <td className="px-3 py-0 text-right text-[13px] tabular-nums text-slate-700">
+                    <td className="hidden px-3 py-0 text-right text-[12px] tabular-nums text-slate-400 sm:table-cell">
                       {brl(l.custoUnitario)}
                       {/* ⛔ SAÍDA NÃO É PREÇO DE COMPRA: dizer "preço un." num consumo faria o
                           dono comparar fornecedor contra a média interna do próprio estoque. */}
@@ -254,6 +259,14 @@ export default function FichaItemPage({ params }: { params: Promise<{ id: string
                         conta, ou não aparece somando (regra do dono, 09/09). */}
                     <td className={`px-3 py-0 text-right text-[13px] font-medium tabular-nums ${!l.movePrateleira ? 'text-slate-300' : l.custoTotal < 0 ? 'text-rose-600' : 'text-slate-900'}`}>
                       {l.movePrateleira ? brl(l.custoTotal) : <span title="não mexe no saldo">—</span>}
+                    </td>
+                    {/* ⭐⭐ SALDO DEPOIS DESTA LINHA — derivado do ledger na ordem, nunca gravado.
+                        ⛔ "—" quando não dá pra AFIRMAR (recorte parcial): número de estoque
+                        plausível e errado é a mentira mais cara que esta tela poderia contar. */}
+                    <td className="px-3 py-0 text-right text-[13px] font-semibold tabular-nums text-slate-700">
+                      {l.saldoApos == null
+                        ? <span className="font-normal text-slate-300" title="o recorte não permite afirmar o saldo deste instante">—</span>
+                        : <>{num(l.saldoApos)} <span className="text-[10.5px] font-normal text-slate-400">{ficha.item.unidadeControle}</span></>}
                     </td>
                   </tr>
                   )
@@ -271,11 +284,16 @@ export default function FichaItemPage({ params }: { params: Promise<{ id: string
                     <td className="px-3 py-2 text-right text-[13px] font-semibold tabular-nums text-slate-900">
                       {num(ficha.conferencia.somaQuantidade)} {ficha.item.unidadeControle}
                     </td>
-                    <td className="px-3 py-2" />
+                    <td className="hidden px-3 py-2 sm:table-cell" />
                     <td className="px-3 py-2 text-right text-[13px] font-semibold tabular-nums text-slate-900">{brl(ficha.conferencia.somaValor)}</td>
+                    {/* ⭐⭐ O FECHO DA PROVA: o rodapé repete o saldo que a coluna vem descendo
+                        linha a linha — e é o MESMO número da Posição. Três leitores, uma régua. */}
+                    <td className="px-3 py-2 text-right text-[13px] font-semibold tabular-nums text-slate-900">
+                      {num(ficha.conferencia.saldo)} <span className="text-[10.5px] font-normal text-slate-400">{ficha.item.unidadeControle}</span>
+                    </td>
                   </tr>
                   <tr className="bg-slate-50/60">
-                    <td className={`px-3 pb-2 text-[11.5px] ${ficha.conferencia.confere ? 'text-emerald-700' : 'text-rose-600'}`} colSpan={7}>
+                    <td className={`px-3 pb-2 text-[11.5px] ${ficha.conferencia.confere ? 'text-emerald-700' : 'text-rose-600'}`} colSpan={8}>
                       {ficha.conferencia.confere
                         ? `✓ bate com o saldo em estoque (${num(ficha.conferencia.saldo)} ${ficha.item.unidadeControle} · ${brl(ficha.conferencia.valor)})`
                         : `⚠ NÃO bate com o saldo (${num(ficha.conferencia.saldo)} ${ficha.item.unidadeControle} · ${brl(ficha.conferencia.valor)}) — a tabela está somando algo que o saldo não conta`}

@@ -11,7 +11,8 @@
 
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
-import { explicarMovimentos, dobrarProducao, colapsarAnulados, somaDasLinhas, type ParAnulado } from './movimento-explicado'
+import { explicarMovimentos, dobrarProducao, colapsarAnulados, anotarSaldo, somaDasLinhas, type ParAnulado } from './movimento-explicado'
+import { saldosDaEmpresa } from './saldo'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -38,6 +39,8 @@ export interface MovimentoLinha {
   dentroDaProducao: { separado: number; consumido: number; devolvido: number; emProducao: number } | null
   /** ⭐ par movimento+estorno colapsado numa linha fina (null = linha normal) */
   anulado: ParAnulado | null
+  /** ⭐ quanto o ITEM tinha depois desta linha · `null` quando o recorte não permite afirmar */
+  saldoApos: number | null
 }
 
 export interface MovimentosFiltro {
@@ -56,15 +59,31 @@ export async function listMovimentos(companyId: string, filtro: MovimentosFiltro
   if (filtro.tipo) where.tipo = filtro.tipo
   if (filtro.de || filtro.ate) where.dataMovimento = { ...(filtro.de ? { gte: new Date(`${filtro.de}T00:00:00`) } : {}), ...(filtro.ate ? { lte: new Date(`${filtro.ate}T23:59:59`) } : {}) }
 
-  const movs = await db.stockMovement.findMany({ where, orderBy: { dataMovimento: 'desc' }, take: filtro.limite ?? 500 })
+  const limite = filtro.limite ?? 500
+  const movs = await db.stockMovement.findMany({ where, orderBy: { dataMovimento: 'desc' }, take: limite })
+
+  /**
+   * ⛔⛔ A COLUNA SALDO SÓ EXISTE QUANDO A LISTA É CONTÍGUA ATÉ HOJE.
+   *
+   * O saldo de um instante desce do saldo de HOJE descontando tudo que veio depois — então
+   * se o recorte **não tem** todas as linhas mais recentes daquele item, o número não é
+   * derivável. Filtro por TIPO, período que fecha antes de hoje ou limite estourado quebram
+   * a contiguidade. ⚠️ Nesses casos a coluna vem `null` e a tela diz "—": um número de
+   * estoque plausível e errado é a mentira mais cara que esta tela poderia contar.
+   */
+  const contiguo = !filtro.tipo && !filtro.ate && movs.length < limite
 
   const itemIds = [...new Set(movs.map((m) => m.itemId))]
   const chaves = [...new Set(movs.map((m) => m.nfeChave).filter((c): c is string => !!c))]
-  const [items, notas, explicadas] = await Promise.all([
+  const [items, notas, explicadasCruas, saldosHoje] = await Promise.all([
     itemIds.length ? db.stockItem.findMany({ where: { companyId, id: { in: itemIds } }, select: { id: true, nome: true } }) : Promise.resolve([]),
     chaves.length ? db.stockNfe.findMany({ where: { companyId, chave: { in: chaves } }, select: { id: true, chave: true } }) : Promise.resolve([]),
     explicarMovimentos(companyId, movs, db).then(dobrarProducao).then((ls) => (filtro.forense ? ls : colapsarAnulados(ls))),
+    contiguo ? saldosDaEmpresa(db, companyId) : Promise.resolve([]),
   ])
+  const explicadas = contiguo
+    ? anotarSaldo(explicadasCruas, new Map(saldosHoje.map((s) => [s.itemId, s.saldo])))
+    : explicadasCruas
   const itemNome = new Map(items.map((i) => [i.id, i.nome]))
   const nfeIdPorChave = new Map(notas.map((n) => [n.chave, n.id]))
   const expPorId = new Map(explicadas.map((e) => [e.movimentoId, e]))
@@ -104,6 +123,7 @@ export async function listMovimentos(companyId: string, filtro: MovimentosFiltro
       movePrateleira: e.movePrateleira,
       dentroDaProducao: e.dentroDaProducao,
       anulado: e.anulado,
+      saldoApos: e.saldoApos,
     }
   })
 }

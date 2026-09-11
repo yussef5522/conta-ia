@@ -80,3 +80,28 @@ describe('listMovimentos', () => {
     expect(csv).toContain('"40,00"') // custo unit com vírgula
   })
 })
+
+describe('⭐⭐ coluna SALDO no extrato — só quando dá pra AFIRMAR', () => {
+  it('⭐ lista contígua (sem filtro): a linha mais recente vale o saldo de hoje', async () => {
+    const { saldosDaEmpresa } = await import('../saldo')
+    const ms = await listMovimentos(companyId, {})
+    const saldos = new Map((await saldosDaEmpresa(prisma, companyId)).map((s) => [s.itemId, s.saldo]))
+    expect(ms[0].saldoApos).toBe(saldos.get(ms[0].itemId))
+  })
+
+  it('⛔⛔ FILTRO POR TIPO não dá saldo — o recorte não permite afirmar', async () => {
+    const ms = await listMovimentos(companyId, { tipo: 'ESTORNO', forense: true })
+    expect(ms).toHaveLength(1)
+    expect(ms[0].saldoApos).toBeNull()
+  })
+
+  it('⛔⛔ PERÍODO que fecha antes de hoje não dá saldo', async () => {
+    const ms = await listMovimentos(companyId, { ate: '2026-09-30', forense: true })
+    for (const m of ms) expect(m.saldoApos).toBeNull()
+  })
+
+  it('⛔ LIMITE estourado não dá saldo — falta o que veio depois', async () => {
+    const ms = await listMovimentos(companyId, { limite: 1, forense: true })
+    expect(ms[0].saldoApos).toBeNull()
+  })
+})

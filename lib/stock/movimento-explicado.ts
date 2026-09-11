@@ -128,6 +128,15 @@ export interface LinhaDoHistorico {
    * que provou o desastre de 10/09.
    */
   anulado: ParAnulado | null
+  /**
+   * ⭐⭐ QUANTO O ITEM TINHA **DEPOIS** DESTA LINHA (11/09/2026) — o extrato bancário do item.
+   *
+   * ⛔ **DERIVADO do ledger na ordem, NUNCA gravado** — saldo gravado envelhece, e é a régua
+   * da casa desde o dia 1 do módulo. `null` quando a lista **não é contígua até hoje**
+   * (filtro por tipo, período fechado, limite estourado): aí não dá pra afirmar o saldo
+   * daquele instante, e **afirmar mesmo assim seria inventar**.
+   */
+  saldoApos: number | null
 }
 
 export interface ParAnulado {
@@ -330,6 +339,7 @@ export async function explicarMovimentos(
       movePrateleira: movePrateleira(m.tipo),
       dentroDaProducao: null, // preenchido por `dobrarProducao`, que precisa do lote inteiro
       anulado: null,        // preenchido por `colapsarAnulados`, que precisa do par inteiro
+      saldoApos: null,      // preenchido por `anotarSaldo`, que precisa da lista inteira
     }
   })
 }
@@ -464,7 +474,7 @@ export function colapsarAnulados(linhas: LinhaDoHistorico[]): LinhaDoHistorico[]
       quantidade: 0, custoUnitario: 0, custoTotal: 0,
       movePrateleira: false,
       precoRotulo: '—', precoEhDeCompra: false, ehCompra: false, href: null,
-      dentroDaProducao: null, estornoDe: null,
+      dentroDaProducao: null, estornoDe: null, saldoApos: null,
       // ⚠️ a frase sai SÓ do que o ledger guarda. Não existe campo de motivo no movimento,
       // e escrever "(import com coluna errada)" aqui seria inventar um dado que ninguém gravou.
       detalhe: `${orig.chip.toLowerCase()} de ${qtd} ${orig.quantidade < 0 ? 'un (saída)' : 'un'} · estornada em ${quando}`,
@@ -483,6 +493,46 @@ export function colapsarAnulados(linhas: LinhaDoHistorico[]): LinhaDoHistorico[]
   // ⭐ a sintética ocupa o LUGAR DO ORIGINAL: o fato começou ali, e é ali que o dono procura
   // ("o que aconteceu no dia 10?"). A frase diz quando foi desfeito.
   return linhas.flatMap((l) => (sinteticaDe.has(l.movimentoId) ? [sinteticaDe.get(l.movimentoId)!] : absorvidos.has(l.movimentoId) ? [] : [l]))
+}
+
+/**
+ * ⭐⭐⭐ A COLUNA SALDO — O EXTRATO BANCÁRIO DO ITEM (11/09/2026)
+ *
+ * **O dono:** *"quanto o item tinha DEPOIS de cada linha (227 → 234 → …). Derivada do
+ * ledger na ordem, nunca gravada."*
+ *
+ * ⭐ A conta desce do **saldo de HOJE**, que é o número que a Posição mostra — então a
+ * primeira linha da lista (a mais recente) **é** o saldo atual, e o dono vê as três
+ * leituras baterem: coluna, rodapé e Posição, **uma régua só**.
+ *
+ * ⛔⛔ **LISTA NÃO CONTÍGUA NÃO GANHA SALDO.** Se o recorte não contém todas as linhas mais
+ * recentes daquele item (filtro por tipo, período que fecha antes de hoje, limite estourado),
+ * o saldo daquele instante **não é derivável do que está na mão** — e o campo vem `null`,
+ * com a tela dizendo "—". Preencher mesmo assim seria a mentira mais cara possível: um
+ * número de estoque **plausível** e errado.
+ *
+ * ⚠️ **A LINHA ANULADA REPETE O SALDO ANTERIOR**, nunca mexe nele: ela não move a prateleira
+ * (é isso que o `movePrateleira: false` dela já diz) e o par soma zero por construção.
+ *
+ * @param linhas ordenadas do MAIS RECENTE pro mais antigo (a ordem da tela)
+ * @param saldoAtualPorItem o saldo de HOJE de cada item — o MESMO de `saldo.ts`
+ */
+export function anotarSaldo(
+  linhas: LinhaDoHistorico[],
+  saldoAtualPorItem: Map<string, number>,
+): LinhaDoHistorico[] {
+  const r3 = (n: number) => Math.round((n + 1e-9) * 1000) / 1000
+  // ⚠️ desce do topo (hoje) pra trás: o saldo DEPOIS da linha i é o saldo atual menos tudo
+  // o que aconteceu DEPOIS dela. Por isso a 1ª linha já vale o saldo de hoje.
+  const corrente = new Map(saldoAtualPorItem)
+  return linhas.map((l) => {
+    const atual = corrente.get(l.itemId)
+    if (atual == null) return { ...l, saldoApos: null }   // item fora do mapa → não afirma
+    const saldoApos = r3(atual)
+    // a linha que MOVE desconta o próprio efeito pra quem vem abaixo dela (mais antigo)
+    if (l.movePrateleira) corrente.set(l.itemId, r3(atual - l.quantidade))
+    return { ...l, saldoApos }
+  })
 }
 
 /**

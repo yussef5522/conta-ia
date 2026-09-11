@@ -25,7 +25,7 @@ function linha(p: Partial<LinhaDoHistorico> & { quantidade: number; custoTotal: 
     detalhe: p.detalhe ?? '', quem: p.quem ?? 'marcyelle', href: null, origemId: null, ehCompra: false,
     estornoDe: p.estornoDe ?? null,
     movePrateleira: p.movePrateleira ?? true,
-    dentroDaProducao: null, anulado: null,
+    dentroDaProducao: null, anulado: null, saldoApos: null,
   }
 }
 const estornoDe = (alvo: LinhaDoHistorico, data: string) => linha({
@@ -159,5 +159,100 @@ describe('⭐⭐ modo CLEAN: o par anulado colapsa, o rastro fica', () => {
     expect(clean).toHaveLength(7)
     expect(clean.filter((l) => l.anulado)).toHaveLength(3)
     expect(somaDasLinhas(clean)).toEqual(somaDasLinhas(cru))
+  })
+})
+
+// ⭐⭐⭐ A COLUNA SALDO — O EXTRATO BANCÁRIO DO ITEM (11/09/2026)
+//
+// **O dono:** *"quanto o item tinha DEPOIS de cada linha (227 → 234 → …). Derivada do
+// ledger na ordem, nunca gravada."* ⭐ A prova que ele pediu está embutida: o saldo da
+// linha mais recente **é** o rodapé **e** a Posição — três leitores, uma régua.
+
+import { anotarSaldo } from '../movimento-explicado'
+
+describe('⭐⭐ coluna SALDO derivada do ledger', () => {
+  // ⚠️ o saldo de "hoje" sai da PRÓPRIA cena (Σ das linhas que movem), senão o teste
+  // afirmaria a mecânica contra um número que não é o desta fixture.
+  const saldoHoje = somaDasLinhas(cocaReal()).quantidade
+  const saldoDaCoca = new Map([['item-1', saldoHoje]])
+
+  it('⭐ a linha MAIS RECENTE vale o saldo de HOJE — o número da Posição', () => {
+    const ls = anotarSaldo(colapsarAnulados(cocaReal()), saldoDaCoca)
+    expect(ls[0].saldoApos).toBe(saldoHoje)
+  })
+
+  it('⭐⭐ desce linha a linha: cada uma devolve o próprio efeito pra quem vem abaixo', () => {
+    const ls = anotarSaldo(colapsarAnulados(cocaReal()), saldoDaCoca)
+    const nf1 = ls.find((l) => l.movimentoId === 'nf1')!   // compra de +120, a penúltima
+    const nf2 = ls.find((l) => l.movimentoId === 'nf2')!   // compra de +120, a MAIS ANTIGA
+    const boa = ls.find((l) => l.movimentoId === 'boa')!   // a baixa de −8
+    // ⭐ a linha do tempo, de baixo pra cima: 120 → 240 → 232
+    expect(nf2.saldoApos).toBe(120)
+    expect(nf1.saldoApos).toBe(240)
+    expect(boa.saldoApos).toBe(232)
+    expect(boa.saldoApos).toBe(saldoHoje)   // nada aconteceu depois dela, no modo limpo
+  })
+
+  it('⛔ a linha ANULADA repete o saldo ANTERIOR (a de baixo na lista) — não mexe em nada', () => {
+    // ⚠️ "anterior" é no TEMPO, e a lista desce do mais recente pro mais antigo — então a
+    // linha anterior é a de BAIXO. Meu 1º teste comparava com a de cima e falhou com razão.
+    const ls = anotarSaldo(colapsarAnulados(cocaReal()), saldoDaCoca)
+    const anuladas = ls.filter((l) => l.anulado)
+    expect(anuladas.length).toBeGreaterThan(0)
+    for (let i = 0; i < ls.length; i++) {
+      if (!ls[i].anulado) continue
+      const abaixo = ls[i + 1]
+      if (abaixo) expect(ls[i].saldoApos, `anulada em ${i}`).toBe(abaixo.saldoApos)
+    }
+  })
+
+  /**
+   * ⚠️⚠️ DESCOBERTA DE DESENHO, e ela é importante o suficiente pra ficar travada num teste:
+   * **os dois modos respondem perguntas diferentes e por isso divergem NO MEIO da lista.**
+   *
+   * No FORENSE, a linha de 10/09 mostra o saldo que o item **realmente tinha naquele dia** —
+   * fundo do poço, porque as baixas erradas já tinham acontecido e o estorno só veio em
+   * 11/09. No CLEAN, ela mostra a linha do tempo **sem os lançamentos anulados**: o saldo que
+   * o item teria tido se o erro nunca existisse.
+   *
+   * ⭐ Os dois **convergem onde tem que convergir**: no topo (hoje) e em tudo que está ABAIXO
+   * do par — porque o par soma zero. É por isso que o rodapé bate nos dois modos.
+   */
+  it('⛔⛔ CLEAN e FORENSE convergem no TOPO e ABAIXO do par — e divergem no meio, de propósito', () => {
+    const cru = cocaReal()
+    const forense = anotarSaldo(cru, saldoDaCoca)
+    const clean = anotarSaldo(colapsarAnulados(cru), saldoDaCoca)
+
+    expect(clean[0].saldoApos).toBe(forense[0].saldoApos)          // hoje: o mesmo número
+    for (const id of ['nf1', 'nf2']) {                             // abaixo do par: o mesmo
+      expect(clean.find((l) => l.movimentoId === id)!.saldoApos)
+        .toBe(forense.find((l) => l.movimentoId === id)!.saldoApos)
+    }
+    // ⚠️ no meio, o forense conta a verdade crua: em 10/09 o item estava MUITO negativo
+    const boaForense = forense.find((l) => l.movimentoId === 'boa')!
+    expect(boaForense.saldoApos).toBeLessThan(0)
+    expect(clean.find((l) => l.movimentoId === 'boa')!.saldoApos).toBe(saldoHoje)
+  })
+
+  it('⭐ a linha que NÃO move a prateleira não desconta nada de quem vem abaixo', () => {
+    const consumo = linha({ movimentoId: 'c9', tipo: 'PRODUCAO_CONSUMO', chip: 'Produção', quantidade: -10, custoTotal: -50, movePrateleira: false })
+    const compra = linha({ movimentoId: 'nf9', tipo: 'ENTRADA_NF', chip: 'Compra (NF-e)', quantidade: 50, custoTotal: 400 })
+    const ls = anotarSaldo([consumo, compra], new Map([['item-1', 50]]))
+    expect(ls[0].saldoApos).toBe(50)
+    expect(ls[1].saldoApos).toBe(50)   // ⭐ o consumo não tirou nada do saldo
+  })
+
+  it('⛔⛔ item FORA do mapa de saldo não ganha número inventado', () => {
+    const ls = anotarSaldo([linha({ quantidade: 5, custoTotal: 40 })], new Map())
+    expect(ls[0].saldoApos).toBeNull()
+  })
+
+  it('⭐ a FANTA real fecha em 6 no topo', () => {
+    const b1 = linha({ movimentoId: 'f1', quantidade: -1499, custoTotal: -10208.19 })
+    const cru = [estornoDe(b1, '2026-09-11'), linha({ movimentoId: 'boa', quantidade: -1, custoTotal: -6.81 }), b1,
+      linha({ movimentoId: 'nf', tipo: 'ENTRADA_NF', chip: 'Compra (NF-e)', quantidade: 7, custoTotal: 47.67 })]
+    const ls = anotarSaldo(colapsarAnulados(cru), new Map([['item-1', somaDasLinhas(cru).quantidade]]))
+    expect(ls[0].saldoApos).toBe(6)
+    expect(ls.at(-1)!.saldoApos).toBe(7)   // depois da compra, antes da venda
   })
 })

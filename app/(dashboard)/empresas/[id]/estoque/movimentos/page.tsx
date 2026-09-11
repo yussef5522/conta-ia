@@ -16,6 +16,8 @@ interface Mov {
   referencia: { tipo: 'nota' | 'conferencia' | null; label: string; nfeId: string | null }; quem: string
   /** ⭐ par lançamento+estorno que se anula, colapsado (null = linha normal) */
   anulado: { frase: string } | null
+  /** ⭐ quanto o ITEM tinha depois desta linha (null = o recorte não permite afirmar) */
+  saldoApos: number | null
 }
 interface ItemOpt { id: string; nome: string }
 type Campo = 'data' | 'tipo' | 'item' | 'qtd' | 'total'
@@ -100,16 +102,19 @@ export default function MovimentosPage({ params }: { params: Promise<{ id: strin
                 <SortableTh campo="tipo" col={col} dir={dir} onSort={alternar}>Tipo</SortableTh>
                 <SortableTh campo="item" col={col} dir={dir} onSort={alternar}>Item</SortableTh>
                 <SortableTh campo="qtd" col={col} dir={dir} onSort={alternar} align="right">Qtd</SortableTh>
-                <th className="px-3 py-2 text-right font-medium">Custo un.</th>
+                {/* ⚠️ custo un. muda raro — segundo olhar; some no celular pra o SALDO caber */}
+                <th className="hidden px-3 py-2 text-right font-normal text-slate-300 sm:table-cell">Custo un.</th>
                 <SortableTh campo="total" col={col} dir={dir} onSort={alternar} align="right">Custo total</SortableTh>
                 <th className="px-3 py-2 font-medium">Referência</th><th className="px-3 py-2 font-medium">Quem</th>
+                {/* ⭐⭐ saldo do ITEM depois desta linha — derivado, nunca gravado */}
+                <th className="px-3 py-2 text-right font-medium text-slate-500">Saldo</th>
               </tr></thead>
               <tbody>
                 {lista.map((m) => (
                   m.anulado ? (
                     /* ⭐ o par que se anula: UMA linha fina, apagada, sem valor somando */
                     <tr key={m.id} className="border-b border-slate-50 last:border-0">
-                      <td colSpan={8} className="px-3 py-1 text-[11.5px] text-slate-400">⊘ {m.itemNome} · {m.anulado.frase}</td>
+                      <td colSpan={9} className="px-3 py-1 text-[11.5px] text-slate-400">⊘ {m.itemNome} · {m.anulado.frase}</td>
                     </tr>
                   ) : (
                   <tr key={m.id} className={`border-b border-slate-50 last:border-0 ${m.estorno ? 'bg-rose-50/40' : ''}`}>
@@ -117,10 +122,15 @@ export default function MovimentosPage({ params }: { params: Promise<{ id: strin
                     <td className="px-3 py-0 text-[13px]"><span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${tipoBadge(m.tipo)}`}>{TIPO_LABEL[m.tipo] ?? m.tipo}</span></td>
                     <td className="px-3 py-0 text-[13px] font-medium text-slate-800">{m.itemNome}</td>
                     <td className={`px-3 py-0 text-[13px] text-right tabular-nums ${m.quantidade < 0 ? 'text-rose-600' : 'text-slate-700'}`}>{num(m.quantidade)}</td>
-                    <td className="px-3 py-0 text-[13px] text-right tabular-nums text-slate-600">{brl(m.custoUnitario)}</td>
+                    <td className="hidden px-3 py-0 text-[12px] text-right tabular-nums text-slate-400 sm:table-cell">{brl(m.custoUnitario)}</td>
                     <td className={`px-3 py-0 text-[13px] text-right font-medium tabular-nums ${m.custoTotal < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{brl(m.custoTotal)}</td>
                     <td className="px-3 py-0 text-[13px]">{m.referencia.nfeId ? <a href={`/empresas/${id}/estoque/recebimentos/${m.referencia.nfeId}`} className="inline-flex items-center gap-1 text-[#185FA5] hover:underline"><FileText className="h-3.5 w-3.5" />{m.referencia.label}</a> : <span className="text-slate-500">{m.referencia.label}</span>}</td>
                     <td className="px-3 py-0 text-[13px] text-slate-500">{m.quem}</td>
+                    <td className="px-3 py-0 text-right text-[13px] font-semibold tabular-nums text-slate-700">
+                      {m.saldoApos == null
+                        ? <span className="font-normal text-slate-300" title="com filtro de tipo/período (ou lista truncada) não dá pra afirmar o saldo deste instante">—</span>
+                        : num(m.saldoApos)}
+                    </td>
                   </tr>
                   )
                 ))}
@@ -139,7 +149,7 @@ export default function MovimentosPage({ params }: { params: Promise<{ id: strin
                   </div>
                   <div className="mt-1 flex items-center justify-between text-xs text-slate-500">
                     <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${tipoBadge(m.tipo)}`}>{TIPO_LABEL[m.tipo] ?? m.tipo}</span>
-                    <span>{num(m.quantidade)} · {fmtDia(m.data)}</span>
+                    <span>{num(m.quantidade)}{m.saldoApos != null && <> · saldo <b className="font-semibold text-slate-600">{num(m.saldoApos)}</b></>} · {fmtDia(m.data)}</span>
                   </div>
                   <div className="mt-1 text-xs text-slate-400">{m.referencia.nfeId ? <a href={`/empresas/${id}/estoque/recebimentos/${m.referencia.nfeId}`} className="text-[#185FA5]">{m.referencia.label}</a> : m.referencia.label} · {m.quem}</div>
                 </div>
