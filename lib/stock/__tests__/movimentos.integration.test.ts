@@ -34,8 +34,12 @@ afterAll(async () => {
 })
 
 describe('listMovimentos', () => {
+  // ⚠️ INVERTIDO COM O MOTIVO (11/09): o extrato passou a nascer no modo CLEAN, e esta cena
+  // é uma entrada 100% estornada — ou seja, exatamente o par que colapsa. O teste é sobre a
+  // REFERÊNCIA da linha, então pede o forense (a lista crua de sempre). O clean ganhou teste
+  // próprio logo abaixo.
   it('lista com referência da nota (fornecedor + nº) e destaca o estorno', async () => {
-    const ms = await listMovimentos(companyId, {})
+    const ms = await listMovimentos(companyId, { forense: true })
     expect(ms).toHaveLength(2) // entrada + estorno
     const entrada = ms.find((m) => m.tipo === 'ENTRADA_NF')!
     expect(entrada.referencia.tipo).toBe('nota')
@@ -46,10 +50,32 @@ describe('listMovimentos', () => {
     expect(estorno.quantidade).toBe(-28)
   })
   it('filtra por tipo', async () => {
-    expect(await listMovimentos(companyId, { tipo: 'ESTORNO' })).toHaveLength(1)
+    expect(await listMovimentos(companyId, { tipo: 'ESTORNO', forense: true })).toHaveLength(1)
   })
+
+  it('⭐⭐ MODO CLEAN (padrão): a entrada estornada vira UMA linha fina, sem valor somando', async () => {
+    const ms = await listMovimentos(companyId, {})
+    expect(ms).toHaveLength(1)
+    expect(ms[0].anulado).not.toBeNull()
+    expect(ms[0].anulado!.frase).toContain('estornada em')
+    expect([ms[0].quantidade, ms[0].custoTotal, ms[0].movePrateleira]).toEqual([0, 0, false])
+  })
+
+  it('⛔⛔ e a soma do extrato NÃO muda entre clean e forense', async () => {
+    const { somaDoExtrato } = await import('../movimentos')
+    expect(somaDoExtrato(await listMovimentos(companyId, {})))
+      .toEqual(somaDoExtrato(await listMovimentos(companyId, { forense: true })))
+  })
+
+  it('⛔ o filtro por TIPO não colapsa meio par — estorno sozinho na lista fica à vista', async () => {
+    // o original não entra no recorte, então não há par: esconder aqui seria sumir com o dado
+    const so = await listMovimentos(companyId, { tipo: 'ESTORNO' })
+    expect(so).toHaveLength(1)
+    expect(so[0].anulado).toBeNull()
+  })
+  // ⭐ o CSV é SEMPRE forense (a rota força): arquivo é pra auditoria, e lá o par vai inteiro.
   it('CSV tem cabeçalho + linhas com ; e vírgula decimal', async () => {
-    const csv = movimentosToCsv(await listMovimentos(companyId, {}))
+    const csv = movimentosToCsv(await listMovimentos(companyId, { forense: true }))
     expect(csv.split('\n')[0]).toContain('Data')
     expect(csv).toContain('"40,00"') // custo unit com vírgula
   })

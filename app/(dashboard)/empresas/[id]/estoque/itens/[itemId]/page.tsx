@@ -5,7 +5,7 @@
 //
 // ⛔ Era "Histórico de compras" e mostrava o ledger inteiro sob esse nome (08/09/2026).
 
-import { useEffect, useState, use, useMemo } from 'react'
+import { useEffect, useState, use, useMemo, Fragment } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Package, Loader2, ArrowLeft, TrendingUp, ChevronDown, Ruler, ExternalLink, History } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
@@ -20,6 +20,7 @@ interface Ficha {
   historico: LinhaDoHistorico[]
   tipos: { tipo: string; chip: string; n: number }[]
   conferencia: { somaQuantidade: number; saldo: number; somaValor: number; valor: number; confere: boolean }
+  anulados: number
   precoTempo: { data: string; preco: number }[]
 }
 
@@ -46,10 +47,18 @@ export default function FichaItemPage({ params }: { params: Promise<{ id: string
   const [ficha, setFicha] = useState<Ficha | null | undefined>(undefined)
   /** 'TUDO' · 'COMPRAS' (a aba pra comparar preço de fornecedor) · ou um tipo específico */
   const [filtro, setFiltro] = useState<string>('TUDO')
+  /**
+   * ⭐⭐ MODO CLEAN É O PADRÃO (11/09) — par movimento+estorno que se anula vira UMA linha
+   * fina. ⛔ O forense abre os pares: o rastro é o que provou o desastre de 10/09, e some
+   * da LISTA, nunca do DADO.
+   */
+  const [forense, setForense] = useState(false)
+  /** qual linha anulada o dono abriu (o par inteiro, dentro da própria tabela) */
+  const [parAberto, setParAberto] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch(`/api/empresas/${id}/estoque/itens/${itemId}`).then((r) => r.json()).then((j) => setFicha(j.ficha ?? null)).catch(() => setFicha(null))
-  }, [id, itemId])
+    fetch(`/api/empresas/${id}/estoque/itens/${itemId}${forense ? '?forense=1' : ''}`).then((r) => r.json()).then((j) => setFicha(j.ficha ?? null)).catch(() => setFicha(null))
+  }, [id, itemId, forense])
 
   // ⚠️ REGRA 9: os hooks ficam ANTES do early return, com `?? []` — a ordem deles não pode
   // depender de dado carregado.
@@ -137,6 +146,18 @@ export default function FichaItemPage({ params }: { params: Promise<{ id: string
               {o.label}
             </button>
           ))}
+          {/* ⭐ o toggle só existe quando há par colapsado — botão que não faz nada é ruído.
+              ⚠️ no forense o contador some (a lista já está crua), então a régua é `anulados > 0`
+              OU estar ligado, senão desligar esconderia o próprio botão. */}
+          {(ficha.anulados > 0 || forense) && (
+            <button
+              onClick={() => { setForense((v) => !v); setParAberto(null) }}
+              className={`ml-auto h-7 rounded-lg px-2.5 text-[12px] font-medium transition ${forense ? 'bg-slate-700 text-white' : 'bg-white text-slate-500 ring-1 ring-inset ring-slate-200 hover:bg-slate-50'}`}
+              title="abre os pares lançamento+estorno que se anulam"
+            >
+              {forense ? 'voltar ao modo limpo' : 'mostrar tudo (forense)'}
+            </button>
+          )}
         </div>
 
         {linhas.length === 0 ? (
@@ -161,6 +182,33 @@ export default function FichaItemPage({ params }: { params: Promise<{ id: string
               </tr></thead>
               <tbody>
                 {linhas.map((l) => (
+                  l.anulado ? (
+                    /* ⭐⭐ O PAR QUE SE ANULA: UMA linha fina, apagada, SEM valor somando —
+                       líquido zero. ⛔ Expansível: o par inteiro está aqui dentro, nada
+                       foi apagado. */
+                    <Fragment key={l.movimentoId}>
+                      <tr className="border-b border-slate-50 last:border-0">
+                        <td colSpan={7} className="px-3 py-1">
+                          <button onClick={() => setParAberto((v) => (v === l.movimentoId ? null : l.movimentoId))} className="flex w-full items-center gap-1.5 text-left text-[11.5px] text-slate-400 hover:text-slate-600">
+                            <span className="shrink-0">⊘</span>
+                            <span className="truncate">{l.anulado.frase}</span>
+                            <span className="ml-auto shrink-0 text-[#185FA5]">{parAberto === l.movimentoId ? 'ocultar' : 'ver detalhe'}</span>
+                          </button>
+                        </td>
+                      </tr>
+                      {parAberto === l.movimentoId && [l.anulado.original, ...l.anulado.estornos].map((d) => (
+                        <tr key={d.movimentoId} className="border-b border-slate-50 bg-slate-50/60 last:border-0">
+                          <td className="px-3 py-1 pl-6 text-[12px] tabular-nums text-slate-500">{fmtDia(d.data)}</td>
+                          <td className="px-3 py-1 text-[12px] text-slate-500">{d.chip}</td>
+                          <td className="px-3 py-1 text-[12px] text-slate-500">{d.detalhe}</td>
+                          <td className="px-3 py-1 text-[12px] text-slate-500">{d.quem ?? '—'}</td>
+                          <td className="px-3 py-1 text-right text-[12px] tabular-nums text-slate-500">{d.quantidade > 0 ? '+' : ''}{num(d.quantidade)} {ficha.item.unidadeControle}</td>
+                          <td className="px-3 py-1 text-right text-[12px] tabular-nums text-slate-400">{brl(d.custoUnitario)}</td>
+                          <td className="px-3 py-1 text-right text-[12px] tabular-nums text-slate-500">{brl(d.custoTotal)}</td>
+                        </tr>
+                      ))}
+                    </Fragment>
+                  ) : (
                   <tr key={l.movimentoId} className={`border-b border-slate-50 last:border-0 ${l.familia === 'ESTORNO' ? 'bg-slate-50/60' : ''}`}>
                     <td className="px-3 py-0 text-[13px] tabular-nums text-slate-700">{fmtDia(l.data)}</td>
                     <td className="px-3 py-0">
@@ -208,6 +256,7 @@ export default function FichaItemPage({ params }: { params: Promise<{ id: string
                       {l.movePrateleira ? brl(l.custoTotal) : <span title="não mexe no saldo">—</span>}
                     </td>
                   </tr>
+                  )
                 ))}
               </tbody>
               {/* ⭐⭐ O TESTE DA TELA, à vista: a soma da coluna TOTAL É o saldo. Sem isto o

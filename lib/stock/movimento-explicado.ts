@@ -120,6 +120,23 @@ export interface LinhaDoHistorico {
    * coluna TOTAL**, porque o total dessa história já está na própria separação.
    */
   dentroDaProducao: { separado: number; consumido: number; devolvido: number; emProducao: number } | null
+  /**
+   * ⭐⭐ O PAR QUE SE ANULA, COLAPSADO (11/09/2026).
+   *
+   * Preenchido só na linha SINTÉTICA que representa "movimento + estorno que o desfez por
+   * inteiro". As duas linhas originais vivem aqui dentro — **nada é apagado**, o rastro é o
+   * que provou o desastre de 10/09.
+   */
+  anulado: ParAnulado | null
+}
+
+export interface ParAnulado {
+  /** o que houve, em uma linha: "baixa de venda de 1.499 un · estornada em 11/09" */
+  frase: string
+  /** o movimento que foi desfeito */
+  original: LinhaDoHistorico
+  /** o(s) estorno(s) que o desfizeram */
+  estornos: LinhaDoHistorico[]
 }
 
 const nNFdaChave = (chave: string | null) => (chave && chave.length === 44 ? String(Number(chave.slice(25, 34))) : null)
@@ -312,6 +329,7 @@ export async function explicarMovimentos(
         : null,
       movePrateleira: movePrateleira(m.tipo),
       dentroDaProducao: null, // preenchido por `dobrarProducao`, que precisa do lote inteiro
+      anulado: null,        // preenchido por `colapsarAnulados`, que precisa do par inteiro
     }
   })
 }
@@ -381,6 +399,90 @@ export function dobrarProducao(linhas: LinhaDoHistorico[]): LinhaDoHistorico[] {
         dentroDaProducao: { separado: r3(separado), consumido: con, devolvido: dev, emProducao },
       }
     })
+}
+
+/**
+ * ⭐⭐⭐ MODO CLEAN — O PAR QUE SE ANULA VIRA UMA LINHA FINA (11/09/2026)
+ *
+ * **O dono, olhando o histórico da Coca 2L depois do conserto:** *"16 linhas, das quais 8
+ * são pares que se anulam. Pra entender 'o que aconteceu com meu estoque', essas linhas são
+ * ruído — mas APAGAR não pode: o rastro é o que provou o desastre de ontem."*
+ *
+ * ⛔ **NADA É APAGADO.** O par colapsa numa linha sintética que **carrega os dois lados
+ * dentro dela** (`anulado.original` + `anulado.estornos`) — a tela expande, e o modo forense
+ * devolve a lista crua. É a mesma disciplina do `dobrarProducao`: some da LISTA, nunca do
+ * DADO.
+ *
+ * ⭐⭐ **A SOMA NÃO PODE MUDAR — e isso é garantido por construção, não prometido:** o par
+ * só colapsa quando a contribuição dele à soma exibida é **zero**. Um par cujo original não
+ * move a prateleira e cujo estorno move (assimetria possível no `PRODUCAO_CONSUMO`) **não
+ * colapsa** — senão o rodapé *"✓ bate com o saldo"* passaria a mentir, que é exatamente o
+ * defeito que esta tela existe pra não ter.
+ *
+ * ⚠️ **ESTORNO PARCIAL NÃO COLAPSA:** só o que foi desfeito POR INTEIRO vira ruído; se
+ * sobrou efeito, o efeito tem que estar à vista.
+ */
+export function colapsarAnulados(linhas: LinhaDoHistorico[]): LinhaDoHistorico[] {
+  const porId = new Map(linhas.map((l) => [l.movimentoId, l]))
+  const estornosDe = new Map<string, LinhaDoHistorico[]>()
+  for (const l of linhas) {
+    const alvo = l.estornoDe?.movimentoId
+    // ⚠️ estorno cujo original NÃO está na lista (filtro por tipo, por período) fica como
+    // está: colapsar meio par esconderia movimento sem par à vista.
+    if (!alvo || !porId.has(alvo)) continue
+    const arr = estornosDe.get(alvo) ?? []; arr.push(l); estornosDe.set(alvo, arr)
+  }
+  if (!estornosDe.size) return linhas
+
+  const zero = (n: number) => Math.abs(n) < 0.005
+  const contrib = (l: LinhaDoHistorico) => (l.movePrateleira ? { q: l.quantidade, v: l.custoTotal } : { q: 0, v: 0 })
+
+  const absorvidos = new Set<string>()
+  const sinteticaDe = new Map<string, LinhaDoHistorico>()
+
+  for (const [origId, estornos] of estornosDe) {
+    const orig = porId.get(origId)!
+    // ⭐ desfeito POR INTEIRO? (a soma das quantidades do par volta a zero)
+    const somaQtd = estornos.reduce((s, e) => s + e.quantidade, 0) + orig.quantidade
+    if (!zero(somaQtd)) continue                                   // parcial → fica como está
+    // ⭐⭐ e o colapso preserva a soma exibida?
+    const cq = estornos.reduce((s, e) => s + contrib(e).q, contrib(orig).q)
+    const cv = estornos.reduce((s, e) => s + contrib(e).v, contrib(orig).v)
+    if (!zero(cq) || !zero(cv)) continue                           // assimétrico → fica à vista
+
+    const ultimo = estornos.reduce((a, b) => (a.data > b.data ? a : b))
+    const qtd = Math.abs(orig.quantidade).toLocaleString('pt-BR')
+    const quando = ultimo.data.slice(8, 10) + '/' + ultimo.data.slice(5, 7)
+    sinteticaDe.set(origId, {
+      ...orig,
+      movimentoId: `anulado:${orig.movimentoId}`,
+      tipo: 'ANULADO',
+      chip: 'anulado',
+      familia: 'ESTORNO',
+      sentido: 'AJUSTE',
+      // ⛔ zero de verdade nas três colunas: a linha NÃO pode somar nem parecer que soma
+      quantidade: 0, custoUnitario: 0, custoTotal: 0,
+      movePrateleira: false,
+      precoRotulo: '—', precoEhDeCompra: false, ehCompra: false, href: null,
+      dentroDaProducao: null, estornoDe: null,
+      // ⚠️ a frase sai SÓ do que o ledger guarda. Não existe campo de motivo no movimento,
+      // e escrever "(import com coluna errada)" aqui seria inventar um dado que ninguém gravou.
+      detalhe: `${orig.chip.toLowerCase()} de ${qtd} ${orig.quantidade < 0 ? 'un (saída)' : 'un'} · estornada em ${quando}`,
+      quem: ultimo.quem,
+      anulado: {
+        frase: `lançamento anulado — ${orig.chip.toLowerCase()} de ${qtd} un estornada em ${quando}`,
+        original: orig,
+        estornos,
+      },
+    })
+    absorvidos.add(origId)
+    for (const e of estornos) absorvidos.add(e.movimentoId)
+  }
+  if (!absorvidos.size) return linhas
+
+  // ⭐ a sintética ocupa o LUGAR DO ORIGINAL: o fato começou ali, e é ali que o dono procura
+  // ("o que aconteceu no dia 10?"). A frase diz quando foi desfeito.
+  return linhas.flatMap((l) => (sinteticaDe.has(l.movimentoId) ? [sinteticaDe.get(l.movimentoId)!] : absorvidos.has(l.movimentoId) ? [] : [l]))
 }
 
 /**

@@ -11,7 +11,7 @@
 
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
-import { explicarMovimentos, dobrarProducao, somaDasLinhas } from './movimento-explicado'
+import { explicarMovimentos, dobrarProducao, colapsarAnulados, somaDasLinhas, type ParAnulado } from './movimento-explicado'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -36,9 +36,19 @@ export interface MovimentoLinha {
   movePrateleira: boolean
   /** a história do que saiu pra produção, dentro da linha da separação */
   dentroDaProducao: { separado: number; consumido: number; devolvido: number; emProducao: number } | null
+  /** ⭐ par movimento+estorno colapsado numa linha fina (null = linha normal) */
+  anulado: ParAnulado | null
 }
 
-export interface MovimentosFiltro { itemId?: string; tipo?: string; de?: string; ate?: string; limite?: number }
+export interface MovimentosFiltro {
+  itemId?: string; tipo?: string; de?: string; ate?: string; limite?: number
+  /**
+   * ⭐ MODO FORENSE (11/09): abre os pares que se anulam. O padrão é CLEAN — par desfeito
+   * por inteiro vira UMA linha fina, porque pra entender "o que aconteceu com meu estoque"
+   * ele é ruído. ⛔ Nada é apagado: o forense devolve a lista crua.
+   */
+  forense?: boolean
+}
 
 export async function listMovimentos(companyId: string, filtro: MovimentosFiltro = {}, db: Db = defaultPrisma): Promise<MovimentoLinha[]> {
   const where: Prisma.StockMovementWhereInput = { companyId }
@@ -53,7 +63,7 @@ export async function listMovimentos(companyId: string, filtro: MovimentosFiltro
   const [items, notas, explicadas] = await Promise.all([
     itemIds.length ? db.stockItem.findMany({ where: { companyId, id: { in: itemIds } }, select: { id: true, nome: true } }) : Promise.resolve([]),
     chaves.length ? db.stockNfe.findMany({ where: { companyId, chave: { in: chaves } }, select: { id: true, chave: true } }) : Promise.resolve([]),
-    explicarMovimentos(companyId, movs, db).then(dobrarProducao),
+    explicarMovimentos(companyId, movs, db).then(dobrarProducao).then((ls) => (filtro.forense ? ls : colapsarAnulados(ls))),
   ])
   const itemNome = new Map(items.map((i) => [i.id, i.nome]))
   const nfeIdPorChave = new Map(notas.map((n) => [n.chave, n.id]))
@@ -62,33 +72,38 @@ export async function listMovimentos(companyId: string, filtro: MovimentosFiltro
   // ⛔⛔ A REGRA DO HISTÓRICO HONESTO vale AQUI TAMBÉM (09/09): o consumo de produção some da
   // lista (dobrado dentro da separação) porque não move o saldo. Extrato que soma o que o
   // saldo não conta mente com cara de contabilidade.
-  return movs.filter((m) => expPorId.has(m.id)).map((m) => {
-    const e = expPorId.get(m.id)!
+  // ⚠️ A LISTA NASCE DAS LINHAS EXPLICADAS, não de `movs`: a linha ANULADA é sintética
+  // (id `anulado:<id>`) e não existe no cru — montar a partir de `movs` a deixaria de fora,
+  // que é o bug de "some da tela" que esta tela inteira existe pra não ter.
+  const cruPorId = new Map(movs.map((m) => [m.id, m]))
+  return explicadas.map((e) => {
+    const m = cruPorId.get(e.movimentoId)
     return {
-      id: m.id,
-      data: m.dataMovimento.toISOString(),
-      tipo: m.tipo,
-      estorno: m.tipo === 'ESTORNO',
-      estornoDeId: m.estornoDeId,
-      itemId: m.itemId,
-      itemNome: itemNome.get(m.itemId) ?? '(item removido)',
-      quantidade: m.quantidade,
-      custoUnitario: m.custoUnitario,
-      custoTotal: m.custoTotal,
+      id: e.movimentoId,
+      data: e.data + 'T12:00:00.000Z',
+      tipo: e.tipo,
+      estorno: e.tipo === 'ESTORNO',
+      estornoDeId: e.estornoDe?.movimentoId ?? null,
+      itemId: e.itemId,
+      itemNome: itemNome.get(e.itemId) ?? '(item removido)',
+      quantidade: e.quantidade,
+      custoUnitario: e.custoUnitario,
+      custoTotal: e.custoTotal,
       // ⚠️ compat: `referencia` sobrevive pro CSV e pro consumidor atual, mas o LABEL agora
       // vem da explicação — nunca mais "conferência" em cima de uma ordem de produção.
       referencia: {
-        tipo: m.nfeChave ? 'nota' : m.receiptId ? 'conferencia' : null,
+        tipo: m?.nfeChave ? 'nota' : m?.receiptId ? 'conferencia' : null,
         label: e.detalhe,
-        nfeId: m.nfeChave ? nfeIdPorChave.get(m.nfeChave) ?? null : null,
+        nfeId: m?.nfeChave ? nfeIdPorChave.get(m.nfeChave) ?? null : null,
       },
       // ⚠️ sem autor, a origem ('SEFAZ'/'MANUAL') diz de ONDE veio em vez de inventar um nome
-      quem: e.quem ?? m.origem,
+      quem: e.quem ?? m?.origem ?? '—',
       chip: e.chip,
       detalhe: e.detalhe,
       href: e.href,
       movePrateleira: e.movePrateleira,
       dentroDaProducao: e.dentroDaProducao,
+      anulado: e.anulado,
     }
   })
 }

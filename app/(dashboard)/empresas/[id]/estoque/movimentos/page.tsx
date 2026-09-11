@@ -14,6 +14,8 @@ interface Mov {
   id: string; data: string; tipo: string; estorno: boolean; itemNome: string
   quantidade: number; custoUnitario: number; custoTotal: number
   referencia: { tipo: 'nota' | 'conferencia' | null; label: string; nfeId: string | null }; quem: string
+  /** ⭐ par lançamento+estorno que se anula, colapsado (null = linha normal) */
+  anulado: { frase: string } | null
 }
 interface ItemOpt { id: string; nome: string }
 type Campo = 'data' | 'tipo' | 'item' | 'qtd' | 'total'
@@ -33,12 +35,15 @@ export default function MovimentosPage({ params }: { params: Promise<{ id: strin
   const [fDe, setFDe] = useState('')
   const [fAte, setFAte] = useState('')
   const { col, dir, alternar, ordenar } = useSort<Campo>('data', 'desc')
+  /** ⭐⭐ MODO CLEAN é o padrão (11/09) — o mesmo dono do histórico do item. */
+  const [forense, setForense] = useState(false)
 
   const qs = useMemo(() => {
     const p = new URLSearchParams()
     if (fItem) p.set('itemId', fItem); if (fTipo) p.set('tipo', fTipo); if (fDe) p.set('de', fDe); if (fAte) p.set('ate', fAte)
+    if (forense) p.set('forense', '1')
     return p.toString()
-  }, [fItem, fTipo, fDe, fAte])
+  }, [fItem, fTipo, fDe, fAte, forense])
 
   useEffect(() => {
     setMovs(undefined)
@@ -60,7 +65,18 @@ export default function MovimentosPage({ params }: { params: Promise<{ id: strin
         <ArrowLeftRight className="h-5 w-5 shrink-0 text-[#185FA5]" />
         <h1 className="text-base font-semibold text-slate-900">Movimentação de estoque</h1>
         <p className="hidden flex-1 truncate text-xs text-slate-400 lg:block">O extrato do estoque — cada entrada, estorno e baixa, com rastro</p>
-        <a href={`/api/empresas/${id}/estoque/movimentos?${qs}&formato=csv`} className="ml-auto inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50"><Download className="h-3.5 w-3.5" /> CSV</a>
+        {/* ⭐ o toggle só aparece quando há par colapsado na tela — botão que não faz nada é ruído */}
+        {(forense || (movs ?? []).some((m) => m.anulado)) && (
+          <button
+            onClick={() => setForense((v) => !v)}
+            className={`ml-auto h-8 shrink-0 rounded-lg px-2.5 text-xs font-medium transition ${forense ? 'bg-slate-700 text-white' : 'border border-slate-300 text-slate-600 hover:bg-slate-50'}`}
+            title="abre os pares lançamento+estorno que se anulam"
+          >
+            {forense ? 'voltar ao modo limpo' : 'mostrar tudo (forense)'}
+          </button>
+        )}
+        {/* ⚠️ o CSV vai SEMPRE forense (o servidor força): arquivo é pra auditoria. */}
+        <a href={`/api/empresas/${id}/estoque/movimentos?${qs}&formato=csv`} className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50"><Download className="h-3.5 w-3.5" /> CSV</a>
       </div>
 
       {/* FILTROS numa linha (anatomia oficial) */}
@@ -90,6 +106,12 @@ export default function MovimentosPage({ params }: { params: Promise<{ id: strin
               </tr></thead>
               <tbody>
                 {lista.map((m) => (
+                  m.anulado ? (
+                    /* ⭐ o par que se anula: UMA linha fina, apagada, sem valor somando */
+                    <tr key={m.id} className="border-b border-slate-50 last:border-0">
+                      <td colSpan={8} className="px-3 py-1 text-[11.5px] text-slate-400">⊘ {m.itemNome} · {m.anulado.frase}</td>
+                    </tr>
+                  ) : (
                   <tr key={m.id} className={`border-b border-slate-50 last:border-0 ${m.estorno ? 'bg-rose-50/40' : ''}`}>
                     <td className="px-3 py-0 text-[13px] tabular-nums text-slate-700">{fmtDia(m.data)}</td>
                     <td className="px-3 py-0 text-[13px]"><span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${tipoBadge(m.tipo)}`}>{TIPO_LABEL[m.tipo] ?? m.tipo}</span></td>
@@ -100,12 +122,16 @@ export default function MovimentosPage({ params }: { params: Promise<{ id: strin
                     <td className="px-3 py-0 text-[13px]">{m.referencia.nfeId ? <a href={`/empresas/${id}/estoque/recebimentos/${m.referencia.nfeId}`} className="inline-flex items-center gap-1 text-[#185FA5] hover:underline"><FileText className="h-3.5 w-3.5" />{m.referencia.label}</a> : <span className="text-slate-500">{m.referencia.label}</span>}</td>
                     <td className="px-3 py-0 text-[13px] text-slate-500">{m.quem}</td>
                   </tr>
+                  )
                 ))}
               </tbody>
             </table>
             {/* mobile */}
             <div className="divide-y divide-slate-50 sm:hidden">
               {lista.map((m) => (
+                m.anulado ? (
+                  <div key={m.id} className="px-4 py-2 text-[11.5px] text-slate-400">⊘ {m.itemNome} · {m.anulado.frase}</div>
+                ) : (
                 <div key={m.id} className={`p-4 ${m.estorno ? 'bg-rose-50/40' : ''}`}>
                   <div className="flex items-center justify-between">
                     <span className="font-medium text-slate-800">{m.itemNome}</span>
@@ -117,6 +143,7 @@ export default function MovimentosPage({ params }: { params: Promise<{ id: strin
                   </div>
                   <div className="mt-1 text-xs text-slate-400">{m.referencia.nfeId ? <a href={`/empresas/${id}/estoque/recebimentos/${m.referencia.nfeId}`} className="text-[#185FA5]">{m.referencia.label}</a> : m.referencia.label} · {m.quem}</div>
                 </div>
+                )
               ))}
             </div>
           </CardContent></Card>

@@ -14,7 +14,7 @@ import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { saldoItem } from './saldo'
 import { statusEstoque, type StatusEstoqueResult } from './status-estoque'
-import { explicarMovimentos, tiposPresentes, dobrarProducao, somaDasLinhas, type LinhaDoHistorico } from './movimento-explicado'
+import { explicarMovimentos, tiposPresentes, dobrarProducao, colapsarAnulados, somaDasLinhas, type LinhaDoHistorico } from './movimento-explicado'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -42,10 +42,12 @@ export interface FichaItem {
    * somando algo que o saldo não conta (ou deixando de somar algo que conta).
    */
   conferencia: { somaQuantidade: number; saldo: number; somaValor: number; valor: number; confere: boolean }
+  /** ⭐ quantos pares foram colapsados — o toggle "mostrar tudo (forense)" só aparece se > 0 */
+  anulados: number
   precoTempo: { data: string; preco: number }[] // só ENTRADA_NF (pra o gráfico)
 }
 
-export async function buildFichaItem(companyId: string, itemId: string, db: Db = defaultPrisma): Promise<FichaItem | null> {
+export async function buildFichaItem(companyId: string, itemId: string, db: Db = defaultPrisma, opts: { forense?: boolean } = {}): Promise<FichaItem | null> {
   const item = await db.stockItem.findFirst({ where: { id: itemId, companyId }, select: { id: true, nome: true, unidadeControle: true, categoria: true, ativo: true, estoqueMin: true, estoqueMax: true } })
   if (!item) return null
 
@@ -65,7 +67,11 @@ export async function buildFichaItem(companyId: string, itemId: string, db: Db =
   // ⛔⛔ A REGRA DO HISTÓRICO HONESTO: o consumo de produção **não move a prateleira** (o
   // insumo já saiu na separação) e por isso não pode ficar na tabela como uma segunda saída
   // do mesmo tamanho — era o que fazia o dono ver baixa dupla onde o saldo estava certo.
-  const historico = dobrarProducao(await explicarMovimentos(companyId, movimentos, db))
+  const completo = dobrarProducao(await explicarMovimentos(companyId, movimentos, db))
+  // ⭐⭐ MODO CLEAN por padrão (11/09): par movimento+estorno que se anula vira UMA linha fina.
+  // ⛔ O forense devolve a lista crua — o rastro é o que provou o desastre de 10/09.
+  const historico = opts.forense ? completo : colapsarAnulados(completo)
+  const anulados = historico.filter((l) => l.anulado).length
   const soma = somaDasLinhas(historico)
 
   const precoTempo = movimentos
@@ -81,6 +87,7 @@ export async function buildFichaItem(companyId: string, itemId: string, db: Db =
     status: statusEstoque(saldo.saldo, item.estoqueMin, item.estoqueMax),
     historico,
     tipos: tiposPresentes(historico),
+    anulados,
     conferencia: {
       somaQuantidade: soma.quantidade, saldo: saldo.saldo,
       somaValor: soma.valor, valor: saldo.valor,

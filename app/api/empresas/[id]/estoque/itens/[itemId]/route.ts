@@ -14,7 +14,8 @@ export async function GET(request: NextRequest, { params }: Params) {
   const { id: companyId, itemId } = await params
   const a = await guardStock(request, companyId, 'stock.view')
   if (a.erro) return a.erro
-  const ficha = await buildFichaItem(companyId, itemId)
+  // ⭐ ?forense=1 abre os pares que se anulam. O padrão é CLEAN (11/09).
+  const ficha = await buildFichaItem(companyId, itemId, undefined, { forense: request.nextUrl.searchParams.get('forense') === '1' })
   if (!ficha) return NextResponse.json({ erro: 'Item não encontrado' }, { status: 404 })
   return NextResponse.json({ ficha })
 }

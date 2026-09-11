@@ -13,7 +13,9 @@ export async function GET(request: NextRequest, { params }: Params) {
   if (a.erro) return a.erro
   const user = a.user
   const sp = request.nextUrl.searchParams
-  const filtro = { itemId: sp.get('itemId') ?? undefined, tipo: sp.get('tipo') ?? undefined, de: sp.get('de') ?? undefined, ate: sp.get('ate') ?? undefined, limite: sp.get('formato') === 'csv' ? 5000 : 500 }
+  const filtro = { itemId: sp.get('itemId') ?? undefined, tipo: sp.get('tipo') ?? undefined, de: sp.get('de') ?? undefined, ate: sp.get('ate') ?? undefined, limite: sp.get('formato') === 'csv' ? 5000 : 500,
+    // ⚠️ o CSV vai SEMPRE forense: arquivo é pra auditoria, e lá o par tem que estar inteiro.
+    forense: sp.get('forense') === '1' || sp.get('formato') === 'csv' }
   const movimentos = await listMovimentos(companyId, filtro)
 
   if (sp.get('formato') === 'csv') {

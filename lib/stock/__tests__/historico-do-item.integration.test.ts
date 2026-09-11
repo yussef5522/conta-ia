@@ -120,10 +120,16 @@ async function cenaDoBacon() {
   return { compra, cont1, cont2, consumo, venda, estorno }
 }
 
+
+// ⚠️⚠️ MODO CLEAN VIROU O PADRÃO (11/09/2026) — E ESTES TESTES AFIRMAVAM O MUNDO ANTIGO.
+// A cena do bacon tem uma COMPRA inteiramente estornada, e o par agora colapsa numa linha
+// fina. Os testes abaixo são sobre a NATUREZA das linhas (chip, quem, href, estornoDe), não
+// sobre a lista — então eles pedem o **forense**, que é a lista crua de sempre. ⛔ E é
+// justamente isso que prova o combinado: no forense **nada se perdeu**.
 describe('⛔⛔ a tela deixou de ser "compras" e passou a ser HISTÓRICO', () => {
   it('⛔ NENHUMA linha sobra com o rótulo "recibo" — cada uma tem o TIPO real', async () => {
     await cenaDoBacon()
-    const f = (await buildFichaItem(companyId, itemId))!
+    const f = (await buildFichaItem(companyId, itemId, undefined, { forense: true }))!
     expect(f.historico).toHaveLength(6)
     for (const l of f.historico) {
       expect(l.chip, `“${l.tipo}” ficou sem chip`).toBeTruthy()
@@ -137,7 +143,7 @@ describe('⛔⛔ a tela deixou de ser "compras" e passou a ser HISTÓRICO', () =
 
   it('⛔⛔ O PAR ±222 é CONTAGEM — não compra, não consumo — e aponta pra MESMA sessão', async () => {
     const { cont1, cont2 } = await cenaDoBacon()
-    const f = (await buildFichaItem(companyId, itemId))!
+    const f = (await buildFichaItem(companyId, itemId, undefined, { forense: true }))!
     const a = f.historico.find((l) => l.movimentoId === cont1.id)!
     const b = f.historico.find((l) => l.movimentoId === cont2.id)!
 
@@ -158,7 +164,7 @@ describe('⛔⛔ a tela deixou de ser "compras" e passou a ser HISTÓRICO', () =
 
   it('⭐ QUEM: a contagem mostra quem CONTOU, não quem abriu a sessão', async () => {
     const { cont2, compra } = await cenaDoBacon()
-    const f = (await buildFichaItem(companyId, itemId))!
+    const f = (await buildFichaItem(companyId, itemId, undefined, { forense: true }))!
     // ⚠️ a linha da contagem foi contada pela Carlise; o movimento foi gravado pelo Yussef.
     // Numa sessão longa quem conta pode não ser quem abriu — o desnormalizado é mais preciso.
     expect(f.historico.find((l) => l.movimentoId === cont2.id)!.quem).toBe('Carlise')
@@ -167,7 +173,7 @@ describe('⛔⛔ a tela deixou de ser "compras" e passou a ser HISTÓRICO', () =
 
   it('⭐ DE ONDE: cada tipo linka pra SUA fonte, nunca todos pro recibo', async () => {
     const { compra, consumo, venda } = await cenaDoBacon()
-    const f = (await buildFichaItem(companyId, itemId))!
+    const f = (await buildFichaItem(companyId, itemId, undefined, { forense: true }))!
     const h = (id: string) => f.historico.find((l) => l.movimentoId === id)!
 
     expect(h(compra.id).href).toBe(`/empresas/${companyId}/estoque/recibos/${conferenceId}`)
@@ -184,7 +190,7 @@ describe('⛔⛔ a tela deixou de ser "compras" e passou a ser HISTÓRICO', () =
 
   it('⭐ ESTORNO diz o que estornou — e herda a origem do original', async () => {
     const { compra, estorno } = await cenaDoBacon()
-    const f = (await buildFichaItem(companyId, itemId))!
+    const f = (await buildFichaItem(companyId, itemId, undefined, { forense: true }))!
     const e = f.historico.find((l) => l.movimentoId === estorno.id)!
     expect(e.chip).toBe('Estorno')
     expect(e.estornoDe?.movimentoId).toBe(compra.id)
@@ -196,7 +202,7 @@ describe('⛔⛔ a tela deixou de ser "compras" e passou a ser HISTÓRICO', () =
 
   it('⭐ a aba "só compras" devolve o uso original, limpo', async () => {
     await cenaDoBacon()
-    const f = (await buildFichaItem(companyId, itemId))!
+    const f = (await buildFichaItem(companyId, itemId, undefined, { forense: true }))!
     const compras = f.historico.filter((l) => l.ehCompra)
     // a compra + o estorno dela; contagem, produção e venda ficam de fora
     expect(compras.map((c) => c.chip).sort()).toEqual(['Compra (NF-e)', 'Estorno'])
@@ -206,7 +212,7 @@ describe('⛔⛔ a tela deixou de ser "compras" e passou a ser HISTÓRICO', () =
 
   it('⭐ o filtro só oferece tipos que EXISTEM neste item', async () => {
     await cenaDoBacon()
-    const f = (await buildFichaItem(companyId, itemId))!
+    const f = (await buildFichaItem(companyId, itemId, undefined, { forense: true }))!
     expect(f.tipos.map((t) => t.tipo).sort()).toEqual(
       ['AJUSTE_CONTAGEM', 'BAIXA_VENDA', 'ENTRADA_NF', 'ESTORNO', 'PRODUCAO_CONSUMO'],
     )
@@ -215,7 +221,7 @@ describe('⛔⛔ a tela deixou de ser "compras" e passou a ser HISTÓRICO', () =
 
   it('⭐ o gráfico de preço continua só com COMPRA — a média da baixa não polui', async () => {
     await cenaDoBacon()
-    const f = (await buildFichaItem(companyId, itemId))!
+    const f = (await buildFichaItem(companyId, itemId, undefined, { forense: true }))!
     expect(f.precoTempo).toHaveLength(1)
     expect(f.precoTempo[0].preco).toBe(29.98)
   })
@@ -297,7 +303,7 @@ describe('⛔⛔⛔ a soma da tabela É o saldo', () => {
 
   it('⭐⭐ A CONTA DE PADEIRO: separo 10, consumo 8 → saldo cai 8, não 18', async () => {
     await cenaDePadeiro()
-    const f = (await buildFichaItem(companyId, itemId))!
+    const f = (await buildFichaItem(companyId, itemId, undefined, { forense: true }))!
     // 30 entrou · 10 saiu na separação · 2 voltou = 22. (Se o consumo contasse: 14 — errado.)
     expect(f.saldo).toBe(22)
     expect(f.valor).toBe(220)
@@ -309,7 +315,7 @@ describe('⛔⛔⛔ a soma da tabela É o saldo', () => {
 
   it('⭐⭐ e o histórico CONTA A HISTÓRIA dentro da linha que baixou', async () => {
     await cenaDePadeiro()
-    const f = (await buildFichaItem(companyId, itemId))!
+    const f = (await buildFichaItem(companyId, itemId, undefined, { forense: true }))!
     // ⛔ o consumo NÃO é mais uma linha própria fingindo ser saída
     expect(f.historico.filter((l) => l.tipo === 'PRODUCAO_CONSUMO')).toHaveLength(0)
     expect(f.tipos.map((t) => t.tipo)).not.toContain('PRODUCAO_CONSUMO')
@@ -326,7 +332,7 @@ describe('⛔⛔⛔ a soma da tabela É o saldo', () => {
     await mk({ tipo: 'ENTRADA_NF', quantidade: 30, custoUnitario: 10, custoTotal: 300, nfeChave: CHAVE, receiptId: conferenceId, origem: 'SEFAZ', dataMovimento: new Date('2026-09-01T10:00:00Z') })
     await mk({ tipo: 'SEPARACAO_SAIDA', quantidade: -10, custoUnitario: 10, custoTotal: -100, receiptId: ordemId, dataMovimento: new Date('2026-09-06T08:00:00Z') })
 
-    const f = (await buildFichaItem(companyId, itemId))!
+    const f = (await buildFichaItem(companyId, itemId, undefined, { forense: true }))!
     const sep = f.historico.find((l) => l.tipo === 'SEPARACAO_SAIDA')!
     expect(sep.dentroDaProducao).toEqual({ separado: 10, consumido: 0, devolvido: 0, emProducao: 10 })
     expect(f.conferencia.confere).toBe(true) // 30 − 10 = 20
@@ -338,7 +344,7 @@ describe('⛔⛔⛔ a soma da tabela É o saldo', () => {
     // prateleira e entra na conta, ou não aparece somando.
     await cenaDoBacon()
     await cenaDePadeiro()
-    const f = (await buildFichaItem(companyId, itemId))!
+    const f = (await buildFichaItem(companyId, itemId, undefined, { forense: true }))!
     expect(f.conferencia.somaQuantidade).toBe(f.saldo)
     expect(f.conferencia.somaValor).toBe(f.valor)
     expect(f.conferencia.confere).toBe(true)
@@ -355,7 +361,7 @@ describe('⛔⛔⛔ a soma da tabela É o saldo', () => {
     await mk({ tipo: 'ENTRADA_NF', quantidade: 30, custoUnitario: 10, custoTotal: 300, nfeChave: CHAVE, receiptId: conferenceId, origem: 'SEFAZ', dataMovimento: new Date('2026-09-01T10:00:00Z') })
     await mk({ tipo: 'PRODUCAO_CONSUMO', quantidade: -8, custoUnitario: 10, custoTotal: -80, receiptId: ordemId, dataMovimento: new Date('2026-09-06T12:00:00Z') })
 
-    const f = (await buildFichaItem(companyId, itemId))!
+    const f = (await buildFichaItem(companyId, itemId, undefined, { forense: true }))!
     const orfa = f.historico.find((l) => l.tipo === 'PRODUCAO_CONSUMO')
     expect(orfa, 'o consumo órfão não pode sumir da tela').toBeTruthy()
     expect(orfa!.movePrateleira).toBe(false)
@@ -394,7 +400,7 @@ describe('⚠️ o resíduo de arredondamento não vira grama fantasma', () => {
     await mk({ tipo: 'SEPARACAO_SAIDA', quantidade: -15.0487, custoUnitario: 29.9, custoTotal: -449.96, receiptId: ordemId, dataMovimento: new Date('2026-09-06T08:00:00Z') })
     await mk({ tipo: 'PRODUCAO_CONSUMO', quantidade: -15.05, custoUnitario: 29.9, custoTotal: -449.99, receiptId: ordemId, dataMovimento: new Date('2026-09-06T12:00:00Z') })
 
-    const f = (await buildFichaItem(companyId, itemId))!
+    const f = (await buildFichaItem(companyId, itemId, undefined, { forense: true }))!
     expect(f.historico.find((l) => l.tipo === 'SEPARACAO_SAIDA')!.dentroDaProducao!.emProducao).toBe(0)
   })
 
@@ -404,7 +410,51 @@ describe('⚠️ o resíduo de arredondamento não vira grama fantasma', () => {
     await mk({ tipo: 'SEPARACAO_SAIDA', quantidade: -10, custoUnitario: 10, custoTotal: -100, receiptId: ordemId, dataMovimento: new Date('2026-09-06T08:00:00Z') })
     await mk({ tipo: 'PRODUCAO_CONSUMO', quantidade: -8, custoUnitario: 10, custoTotal: -80, receiptId: ordemId, dataMovimento: new Date('2026-09-06T12:00:00Z') })
 
-    const f = (await buildFichaItem(companyId, itemId))!
+    const f = (await buildFichaItem(companyId, itemId, undefined, { forense: true }))!
     expect(f.historico.find((l) => l.tipo === 'SEPARACAO_SAIDA')!.dentroDaProducao!.emProducao).toBe(2)
+  })
+})
+
+describe('⭐⭐ modo CLEAN na cena real do bacon', () => {
+  it('⭐ a compra estornada vira UMA linha fina (6 → 5)', async () => {
+    await cenaDoBacon()
+    const clean = (await buildFichaItem(companyId, itemId))!
+    const forense = (await buildFichaItem(companyId, itemId, undefined, { forense: true }))!
+    expect(forense.historico).toHaveLength(6)
+    expect(clean.historico).toHaveLength(5)
+    expect(clean.anulados).toBe(1)
+    expect(forense.anulados).toBe(0)
+  })
+
+  it('⛔⛔ a SOMA e o "✓ bate com o saldo" NÃO mudam — é o ponto todo', async () => {
+    await cenaDoBacon()
+    const clean = (await buildFichaItem(companyId, itemId))!
+    const forense = (await buildFichaItem(companyId, itemId, undefined, { forense: true }))!
+    expect(clean.conferencia).toEqual(forense.conferencia)
+    expect(clean.conferencia.confere).toBe(true)
+  })
+
+  it('⛔ NADA É APAGADO: a compra e o estorno dela viajam dentro da linha fina', async () => {
+    const { compra, estorno } = await cenaDoBacon()
+    const fina = (await buildFichaItem(companyId, itemId))!.historico.find((l) => l.anulado)!
+    expect(fina.anulado!.original.movimentoId).toBe(compra.id)
+    expect(fina.anulado!.estornos.map((e) => e.movimentoId)).toEqual([estorno.id])
+    // ⭐ o par lá dentro continua com TUDO o que a tela mostrava antes
+    expect(fina.anulado!.original.chip).toBe('Compra (NF-e)')
+    expect(fina.anulado!.estornos[0].estornoDe?.movimentoId).toBe(compra.id)
+  })
+
+  it('⭐ a linha fina não soma e não parece que soma', async () => {
+    await cenaDoBacon()
+    const fina = (await buildFichaItem(companyId, itemId))!.historico.find((l) => l.anulado)!
+    expect([fina.quantidade, fina.custoTotal, fina.movePrateleira]).toEqual([0, 0, false])
+  })
+
+  it('⚠️ CONSEQUÊNCIA REGISTRADA: a compra 100% estornada sai da aba "só compras"', async () => {
+    // ⭐ e isso é o certo: aquela aba existe pra COMPARAR PREÇO DE FORNECEDOR, e uma compra
+    // desfeita não é um preço que alguém pagou. No forense ela volta.
+    await cenaDoBacon()
+    expect((await buildFichaItem(companyId, itemId))!.historico.filter((l) => l.ehCompra)).toHaveLength(0)
+    expect((await buildFichaItem(companyId, itemId, undefined, { forense: true }))!.historico.filter((l) => l.ehCompra)).toHaveLength(2)
   })
 })
