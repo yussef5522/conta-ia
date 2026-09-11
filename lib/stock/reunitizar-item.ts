@@ -21,14 +21,45 @@
 // faria 768 × 2,31 = 1.774,08 ≠ 1.776,00 e o CHECK do banco recusaria a linha (foi o que
 // mordeu na conclusão de produção). Quem arredonda é a TELA, não o ledger.
 
-import type { PrismaClient } from '@prisma/client'
+import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { criarMovimento, estornarMovimento } from './movement'
+import { unidadeFisicaDosMovimentos, planejarConversao, type PlanoDeConversao } from './unidade-do-movimento'
 import { saldoItem, recomputeSaldoCache } from './saldo'
 
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
+const norm = (u: string) => u.trim().toUpperCase()
 
 export class ReunitizarError extends Error {}
+
+/**
+ * ⭐ O GUARD DA PRODUÇÃO ABERTA TEM UM DONO SÓ (11/09/2026).
+ *
+ * ⚠️ Ele já vivia em DUAS cópias (o preview e o aplicar), e quando o miolo transacional foi
+ * extraído pra a conferência poder chamá-lo, o caminho novo nasceu **sem guard nenhum** — o
+ * teste da produção aberta pegou isso na hora. Agora os três chamam esta função.
+ *
+ * ⛔ *"material separado está medido na unidade velha"*: o `SEPARACAO_SAIDA` já gravou na
+ * régua antiga e o consumo vai fechar contra ela (invariante P1). Trocar a régua no meio
+ * faria o P1 acusar um vazamento que não existe.
+ * ⚠️ E é POR ITEM, nunca "existe ordem aberta na empresa".
+ */
+export async function bloqueioDeProducaoAberta(
+  db: PrismaClient | Prisma.TransactionClient, companyId: string, itemId: string,
+): Promise<string | null> {
+  const separado = await db.stockMovement.findMany({
+    where: { companyId, itemId, tipo: 'SEPARACAO_SAIDA' }, select: { receiptId: true },
+  })
+  const ordens = [...new Set(separado.map((m) => m.receiptId).filter(Boolean) as string[])]
+  if (!ordens.length) return null
+  const abertas = await db.stockProductionOrder.count({
+    where: { companyId, id: { in: ordens }, estado: { in: ['PLANEJADA', 'SEPARADA', 'EM_PRODUCAO'] } },
+  })
+  return abertas > 0
+    ? `há ${abertas} ordem(ns) de produção aberta(s) com este item — o material separado está medido `
+      + 'na unidade atual. Conclua (ou cancele) essas ordens antes de trocar a unidade.'
+    : null
+}
 
 export interface ReunitizarInput {
   companyId: string
@@ -60,7 +91,7 @@ export interface ReunitizarResultado {
 export async function previewReunitizar(
   companyId: string, itemId: string, fator: number, db: PrismaClient = defaultPrisma,
   unidadeNova?: string,
-): Promise<{ nome: string; unidadeControle: string; unidadeNova: string; antes: { saldo: number; custoMedio: number | null; valor: number }; depois: { saldo: number; custoMedio: number | null; valor: number }; movimentos: number; mapas: { cProd: string; xProd: string | null; unidadeNota: string | null; fatorAntes: number; fatorDepois: number }[]; fichas: { fichaNome: string; qtdAntes: number; qtdDepois: number; unidadeAntes: string }[]; bloqueios: string[] }> {
+): Promise<{ nome: string; unidadeControle: string; unidadeNova: string; antes: { saldo: number; custoMedio: number | null; valor: number }; depois: { saldo: number; custoMedio: number | null; valor: number }; movimentos: number; mapas: { cProd: string; xProd: string | null; unidadeNota: string | null; fatorAntes: number; fatorDepois: number }[]; fichas: { fichaNome: string; qtdAntes: number; qtdDepois: number; unidadeAntes: string }[]; bloqueios: string[]; plano: PlanoDeConversao }> {
   const item = await db.stockItem.findFirst({ where: { id: itemId, companyId } })
   if (!item) throw new ReunitizarError('Item não encontrado nesta empresa.')
   const trocaDeUnidade = !!unidadeNova && unidadeNova !== item.unidadeControle
@@ -68,6 +99,14 @@ export async function previewReunitizar(
 
   const s = await saldoItem(db, companyId, itemId)
   const movimentos = await db.stockMovement.count({ where: { companyId, itemId } })
+  /**
+   * ⭐⭐⭐ QUEM CONVERTE E QUEM JÁ ESTÁ CERTO (11/09) — o ledger de um item pode ser MISTO.
+   * Ver `unidade-do-movimento.ts`: no queijo real, converter tudo ×2 inventaria 51,2 kg.
+   */
+  const plano = planejarConversao(
+    await unidadeFisicaDosMovimentos(db, companyId, itemId, item.unidadeControle),
+    item.unidadeControle, unidadeNova ?? item.unidadeControle,
+  )
   const mapas = await db.stockSupplierProduct.findMany({
     where: { companyId, itemId },
     select: { cProd: true, xProd: true, unidadeNota: true, fatorConversao: true },
@@ -109,18 +148,24 @@ export async function previewReunitizar(
 
   // ⚠️ o que IMPEDE a troca aparece no preview, não só no erro do confirmar
   const bloqueios: string[] = []
-  const separado = await db.stockMovement.findMany({
-    where: { companyId, itemId, tipo: 'SEPARACAO_SAIDA' }, select: { receiptId: true },
-  })
-  const ordensDoItem = [...new Set(separado.map((m) => m.receiptId).filter(Boolean) as string[])]
-  if (ordensDoItem.length) {
-    const abertas = await db.stockProductionOrder.count({
-      where: { companyId, id: { in: ordensDoItem }, estado: { in: ['PLANEJADA', 'SEPARADA', 'EM_PRODUCAO'] } },
-    })
-    if (abertas > 0) {
-      bloqueios.push(`${abertas} ordem(ns) de produção aberta(s) com este item separado — conclua antes de trocar`)
-    }
+  const bloqueioProd = await bloqueioDeProducaoAberta(db, companyId, itemId)
+  if (bloqueioProd) bloqueios.push(bloqueioProd)
+
+
+  // ⛔⛔ NUNCA CONVERTE METADE E CALA: linha numa TERCEIRA unidade não tem fator conhecido
+  if (plano.naoSeiConverter.length) {
+    bloqueios.push(
+      `${plano.naoSeiConverter.length} movimento(s) entraram numa unidade que não é nem ${item.unidadeControle} nem ${unidadeNova ?? item.unidadeControle}`
+      + ` (${[...new Set(plano.naoSeiConverter.map((m) => m.unidade))].join(', ')}) — sem o fator deles eu converteria no chute.`,
+    )
   }
+
+  // ⭐⭐ O SALDO DEPOIS sai do PLANO, não de `saldo × fator`: só o que está na régua antiga
+  // dobra. No queijo real, `59,2 × 2 = 118,4` inventaria 51,2 kg — o certo é 67,2.
+  const saldoDepois = round2(
+    plano.converte.reduce((acc, m) => acc + m.quantidade * fator, 0)
+    + plano.jaEstaCerto.reduce((acc, m) => acc + m.quantidade, 0),
+  )
 
   return {
     nome: item.nome,
@@ -128,11 +173,12 @@ export async function previewReunitizar(
     unidadeNova: unidadeNova ?? item.unidadeControle,
     fichas,
     bloqueios,
+    plano,
     antes: { saldo: s.saldo, custoMedio: s.custoMedio, valor: s.valor },
-    // o VALOR é o mesmo dos dois lados — é isso que prova que a conta só mudou de régua
+    // ⭐ o VALOR é o mesmo dos dois lados — é isso que prova que a conta só mudou de régua
     depois: {
-      saldo: round2(s.saldo * fator),
-      custoMedio: s.custoMedio != null ? s.custoMedio / fator : null,
+      saldo: saldoDepois,
+      custoMedio: saldoDepois !== 0 ? s.valor / saldoDepois : null,
       valor: s.valor,
     },
     movimentos,
@@ -177,33 +223,81 @@ export async function reunitizarItem(input: ReunitizarInput, db: PrismaClient = 
    * **8 ordens abertas** na Caçula, nenhuma com óleo — um guard global proibiria pra
    * sempre o que é seguro.
    */
-  const emProducao = await db.stockMovement.findMany({
-    where: { companyId, itemId, tipo: 'SEPARACAO_SAIDA' },
-    select: { receiptId: true },
-  })
-  const ordensDoItem = [...new Set(emProducao.map((m) => m.receiptId).filter(Boolean) as string[])]
-  if (ordensDoItem.length) {
-    const abertas = await db.stockProductionOrder.count({
-      where: { companyId, id: { in: ordensDoItem }, estado: { in: ['PLANEJADA', 'SEPARADA', 'EM_PRODUCAO'] } },
-    })
-    if (abertas > 0) {
-      throw new ReunitizarError(
-        `Este item está separado em ${abertas} ordem(ns) de produção ainda aberta(s) — o material já foi medido `
-        + 'na unidade atual. Conclua (ou cancele) essas ordens antes de trocar a unidade.',
-      )
-    }
-  }
+  const bloqueioProducao = await bloqueioDeProducaoAberta(db, companyId, itemId)
+  if (bloqueioProducao) throw new ReunitizarError(bloqueioProducao)
 
   const antes = await saldoItem(db, companyId, itemId)
 
-  const resultado = await db.$transaction(async (tx) => {
+  const resultado = await db.$transaction(async (tx) => reunitizarNaTransacao(tx as unknown as PrismaClient, input, item))
+
+
+  await recomputeSaldoCache(db, companyId)
+  const depois = await saldoItem(db, companyId, itemId)
+  const atual = await db.stockItem.findUnique({ where: { id: itemId }, select: { nome: true, unidadeControle: true } })
+
+  // ⭐ a prova, verificada em runtime: o dinheiro não mudou.
+  if (Math.abs(depois.valor - antes.valor) > 0.01) {
+    throw new ReunitizarError(
+      `INVARIANTE QUEBRADA: o valor mudou de ${antes.valor.toFixed(2)} pra ${depois.valor.toFixed(2)}. ` +
+      'A reunitização só troca a régua — se o dinheiro muda, algo está errado.',
+    )
+  }
+
+  return {
+    itemId, nome: atual?.nome ?? item.nome, unidadeControle: atual?.unidadeControle ?? item.unidadeControle,
+    antes: { saldo: antes.saldo, custoMedio: antes.custoMedio, valor: antes.valor },
+    depois: { saldo: depois.saldo, custoMedio: depois.custoMedio, valor: depois.valor },
+    movimentosConvertidos: resultado.convertidos,
+    componentesConvertidos: resultado.componentesConvertidos,
+    mapasAtualizados: resultado.mapasAtualizados,
+  }
+}
+
+/**
+ * ⭐⭐⭐ O MIOLO, SEM ABRIR TRANSAÇÃO (11/09/2026) — pra a CONFERÊNCIA poder chamar DENTRO
+ * da transação dela.
+ *
+ * ⛔ O dono: *"corrigir unidade NA CONFERÊNCIA passa a fazer as TRÊS coisas numa transação"*.
+ * Prisma não aninha `$transaction`, então o corpo saiu daqui e virou função — a mesma
+ * cirurgia que o `aplicar-marcacao` levou em 29/08 pelo mesmo motivo.
+ */
+export async function reunitizarNaTransacao(
+  tx: PrismaClient, input: ReunitizarInput,
+  item: { id: string; nome: string; unidadeControle: string; estoqueMin: number | null; estoqueMax: number | null },
+): Promise<{ convertidos: number; mapasAtualizados: ReunitizarResultado['mapasAtualizados']; componentesConvertidos: number }> {
+  const { companyId, itemId, fator } = input
+  const bloqueio = await bloqueioDeProducaoAberta(tx, companyId, itemId)
+  if (bloqueio) throw new ReunitizarError(bloqueio)
+
     // 1) cada movimento vivo é ESTORNADO e recriado na régua nova (ledger imutável)
     const movs = await tx.stockMovement.findMany({
       where: { companyId, itemId, tipo: { not: 'ESTORNO' } },
       orderBy: { criadoEm: 'asc' },
     })
+    /**
+     * ⛔⛔⛔ SÓ CONVERTE QUEM ESTÁ NA RÉGUA ANTIGA (11/09/2026).
+     *
+     * Até hoje este laço multiplicava **tudo** pelo fator, assumindo ledger homogêneo. O
+     * queijo real provou que não é: das 3 entradas, **duas já estavam em KG** (um segundo
+     * fornecedor que manda a granel + a entrada já corrigida na conferência). Converter
+     * todas daria 118,4 kg contra os 67,2 reais — **51,2 kg de queijo inventados**.
+     */
+    const plano = planejarConversao(
+      await unidadeFisicaDosMovimentos(tx, companyId, itemId, item.unidadeControle),
+      item.unidadeControle, input.unidadeControle ?? item.unidadeControle,
+    )
+    if (plano.naoSeiConverter.length) {
+      throw new ReunitizarError(
+        `Não dá pra converter: ${plano.naoSeiConverter.length} movimento(s) entraram em `
+        + `${[...new Set(plano.naoSeiConverter.map((m) => m.unidade))].join(', ')}, e eu não tenho o fator deles. `
+        + 'Converter só uma parte deixaria duas réguas dentro do mesmo saldo.',
+      )
+    }
+    const aConverter = new Set(plano.converte.map((m) => m.movimentoId))
     let convertidos = 0
     for (const m of movs) {
+      // ⭐ o que JÁ está na régua nova fica intacto — mexer nele é que seria o erro
+      if (!aConverter.has(m.id)) continue
       // já estornado antes (correção anterior) → o efeito dele no saldo é zero, pula
       const jaEstornado = await tx.stockMovement.findFirst({ where: { estornoDeId: m.id, tipo: 'ESTORNO' } })
       if (jaEstornado) continue
@@ -267,33 +361,22 @@ export async function reunitizarItem(input: ReunitizarInput, db: PrismaClient = 
     const mapasAtualizados: ReunitizarResultado['mapasAtualizados'] = []
     if (input.ajustarFatorDasNotas !== false) {
       const mapas = await tx.stockSupplierProduct.findMany({ where: { companyId, itemId } })
+      const nova = input.unidadeControle ? norm(input.unidadeControle) : null
       for (const mp of mapas) {
+        /**
+         * ⛔⛔ O FATOR DO MAPA TEM A MESMA DOENÇA DOS MOVIMENTOS (11/09) — e o queijo real
+         * mostra: ele tem DOIS fornecedores, um que manda **peça** (cProd 70, fator 2) e
+         * outro que manda **KG a granel** (fator 1). Multiplicar os dois por 2 faria a
+         * próxima nota do segundo entrar com **o dobro de queijo**.
+         *
+         * ⭐ Quem já manda na unidade NOVA não se mexe: `1 KG da nota = 1 KG do item`
+         * continua verdade depois da troca.
+         */
+        if (nova && mp.unidadeNota && norm(mp.unidadeNota) === nova) continue
         const novo = round2(mp.fatorConversao * fator)
         await tx.stockSupplierProduct.update({ where: { id: mp.id }, data: { fatorConversao: novo } })
         mapasAtualizados.push({ cProd: mp.cProd, fatorAntes: mp.fatorConversao, fatorDepois: novo })
       }
     }
     return { convertidos, mapasAtualizados, componentesConvertidos }
-  })
-
-  await recomputeSaldoCache(db, companyId)
-  const depois = await saldoItem(db, companyId, itemId)
-  const atual = await db.stockItem.findUnique({ where: { id: itemId }, select: { nome: true, unidadeControle: true } })
-
-  // ⭐ a prova, verificada em runtime: o dinheiro não mudou.
-  if (Math.abs(depois.valor - antes.valor) > 0.01) {
-    throw new ReunitizarError(
-      `INVARIANTE QUEBRADA: o valor mudou de ${antes.valor.toFixed(2)} pra ${depois.valor.toFixed(2)}. ` +
-      'A reunitização só troca a régua — se o dinheiro muda, algo está errado.',
-    )
   }
-
-  return {
-    itemId, nome: atual?.nome ?? item.nome, unidadeControle: atual?.unidadeControle ?? item.unidadeControle,
-    antes: { saldo: antes.saldo, custoMedio: antes.custoMedio, valor: antes.valor },
-    depois: { saldo: depois.saldo, custoMedio: depois.custoMedio, valor: depois.valor },
-    movimentosConvertidos: resultado.convertidos,
-    componentesConvertidos: resultado.componentesConvertidos,
-    mapasAtualizados: resultado.mapasAtualizados,
-  }
-}

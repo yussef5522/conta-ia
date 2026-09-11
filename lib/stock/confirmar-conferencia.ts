@@ -8,10 +8,12 @@
 // Depois (fora da transação): recomputa saldo + envia Confirmação 210200 à SEFAZ.
 // Isolado: só escreve stock_*. Idempotente: nota já confirmada não duplica.
 
+import type { PrismaClient } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { normalizarBusca } from '@/lib/busca-texto'
 import { criarMovimento } from './movement'
 import { avaliarUnidadeDeEntrada, custoNaUnidadeDeEntrada, normalizarUnidade } from './unidade-de-entrada'
+import { reunitizarNaTransacao, previewReunitizar, ReunitizarError } from './reunitizar-item'
 import { recomputeSaldoCache } from './saldo'
 import { enviarEvento } from './sefaz/ciencia'
 import { TP_EVENTO } from './sefaz/evento'
@@ -193,6 +195,45 @@ export async function confirmarConferencia(input: ConfirmInput): Promise<Confirm
         unidadeItem: it.mapeado.unidadeControle, fator: it.mapeado.fatorConversao,
       })
       if (!aval.ok) throw new Error(`${it.xProd}: ${aval.bloqueio}`)
+
+      /**
+       * ⛔⛔⛔ SUCESSO DISFARÇADO — A CORREÇÃO VIRAVA A ENTRADA E NÃO VIRAVA O ITEM (11/09).
+       *
+       * **Caso real:** NF 179646, QUEIJO MUSSARELA FATIADO 2KG. O dono trocou pra KG na
+       * conferência (1 peça = 2 KG), o recibo disse *"16 UN → Recebido 32 · custo 34,45"* —
+       * **conta certa** — e o ITEM continuou `unidadeControle: 'UN'`, somando os 32 KG com
+       * as 8 peças antigas no mesmo saldo. `59,2 UN` é um número sem significado físico.
+       *
+       * ⭐ Agora a correção faz as TRÊS coisas na MESMA transação: converte a entrada (já
+       * fazia), grava o fator no mapa (já fazia) e **reunitiza o item** — aqui, ANTES de o
+       * movimento novo nascer, pra ele entrar já na régua nova e não ser convertido 2×.
+       */
+      const itemDoBanco = await tx.stockItem.findUnique({
+        where: { id: itemIdReal.get(it.nfeItemId)! },
+        select: { id: true, nome: true, unidadeControle: true, estoqueMin: true, estoqueMax: true },
+      })
+      if (aval.corrigida && itemDoBanco && normalizarUnidade(aval.unidade) !== normalizarUnidade(itemDoBanco.unidadeControle)) {
+        try {
+          await reunitizarNaTransacao(tx as unknown as PrismaClient, {
+            companyId, itemId: itemDoBanco.id, fator: it.mapeado.fatorConversao || 1,
+            unidadeControle: normalizarUnidade(aval.unidade) as 'KG' | 'UN' | 'LT',
+            // ⚠️ o mapa deste (cnpj,cProd) já foi gravado com o fator certo alguns passos
+            // acima; deixar o reunitizar multiplicá-lo de novo dobraria a próxima nota.
+            ajustarFatorDasNotas: false,
+            userId,
+          }, itemDoBanco)
+        } catch (e) {
+          /**
+           * ⛔⛔ NUNCA CONVERTE METADE E CALA (ordem do dono): se o item não pode reunitizar
+           * agora — produção aberta com ele, ou linha numa terceira unidade —, a conferência
+           * INTEIRA para com o motivo na tela. Gravar a entrada convertida deixando o item na
+           * régua velha é exatamente o sucesso disfarçado que estamos consertando.
+           */
+          throw new Error(
+            `${it.xProd}: a troca de unidade não pôde ser aplicada ao item — ${(e as Error).message}`,
+          )
+        }
+      }
 
       const custoUnitario = custoNaUnidadeDeEntrada(it.vUnCom, it.mapeado.fatorConversao)
       const custoTotal = round2(it.qtdRecebida * custoUnitario)
