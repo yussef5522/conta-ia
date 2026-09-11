@@ -79,6 +79,14 @@ async function comprimirFoto(file: File): Promise<string> {
   return c.toDataURL('image/jpeg', 0.6)
 }
 
+interface EfeitoNoItem {
+  unidadeControle: string; unidadeNova: string
+  antes: { saldo: number; valor: number }; depois: { saldo: number }
+  plano: { converte: unknown[]; jaEstaCerto: unknown[]; naoSeiConverter: unknown[] }
+  fichas: unknown[]; bloqueios: string[]
+}
+const brlPequeno = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+
 export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeConfirmar }: {
   data: ConferenciaData; itensExistentes: ItemExistente[]
   companyId?: string; nfeId?: string; podeConfirmar?: boolean
@@ -108,10 +116,45 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
   const [editandoParcelas, setEditandoParcelas] = useState(false)
   const [salvandoParcelas, setSalvandoParcelas] = useState(false)
   const [cadastrarForn, setCadastrarForn] = useState(true)
+  /**
+   * ⭐⭐⭐ O EFEITO DA TROCA DE UNIDADE NO ITEM, buscado do servidor (11/09/2026).
+   *
+   * ⛔ O dono: *"Preview mostra o efeito nos três antes do confirmar"*. A conta vem da
+   * MESMA função que o confirmar vai executar (`previewReunitizar`) — se a tela calculasse
+   * por conta própria, ela prometeria um resultado que o servidor não entrega, que é
+   * exatamente o sucesso disfarçado que esta rodada está consertando.
+   */
+  const [efeitoNoItem, setEfeitoNoItem] = useState<Record<string, EfeitoNoItem | null>>({})
 
   const totalMapeado = useMemo(() => data.itens.length > 0 && data.itens.every((it) => estado[it.nfeItemId]?.mapeado), [data.itens, estado])
   const divergencias = useMemo(() => data.itens.filter((it) => { const e = estado[it.nfeItemId]; return e && Math.abs(e.qtdRecebida - it.qCom * (e.mapeado?.fatorConversao ?? 1)) > 0.0001 }).length, [data.itens, estado])
   const setItem = (id_: string, patch: Partial<Estado>) => setEstado((s) => ({ ...s, [id_]: { ...s[id_], ...patch } }))
+
+  /**
+   * ⚠️ REGRA 9 — hook no TOPO, longe do JSX. Busca o efeito só das linhas em que a unidade
+   * de entrada REALMENTE difere da régua do item; nas outras nada muda e nada é buscado.
+   */
+  useEffect(() => {
+    let vivo = true
+    const alvos = data.itens.filter((it) => {
+      const e = estado[it.nfeItemId]
+      const entrada = e?.unidadeEntrada ?? it.uCom
+      return !!e?.mapeado && !e.mapeado.novo && entrada.toUpperCase() !== e.mapeado.unidadeControle.toUpperCase()
+    })
+    if (!alvos.length) { setEfeitoNoItem({}); return }
+    Promise.all(alvos.map(async (it) => {
+      const e = estado[it.nfeItemId]!
+      const unidade = (e.unidadeEntrada ?? it.uCom).toUpperCase()
+      const fator = e.mapeado!.fatorConversao || 1
+      try {
+        const r = await fetch(`/api/empresas/${companyId}/estoque/itens/${e.mapeado!.itemId}/reunitizar?fator=${fator}&unidade=${unidade}`)
+        const j = await r.json().catch(() => null)
+        return [it.nfeItemId, r.ok ? (j?.preview ?? j) : null] as const
+      } catch { return [it.nfeItemId, null] as const }
+    })).then((pares) => { if (vivo) setEfeitoNoItem(Object.fromEntries(pares)) })
+    return () => { vivo = false }
+    // ⚠️ depende da unidade/fator/item escolhidos — não do objeto inteiro, que muda a cada tecla
+  }, [companyId, data.itens, estado])
 
   async function confirmar() {
     if (!companyId || !nfeId) return
@@ -297,6 +340,27 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
                         <p className="mt-0.5 text-right text-[10px] text-sky-700">
                           a nota diz {it.qCom} {it.uCom} · entra como {e.qtdRecebida} {e.unidadeEntrada}
                         </p>
+                      )}
+                      {/* ⭐⭐⭐ O EFEITO NO ITEM, ANTES DO CONFIRMAR (11/09/2026).
+                          ⛔ Até hoje a correção virava a ENTRADA e não virava o ITEM — o
+                          recibo dizia "32 KG" e o estoque seguia contando UN. Agora ela
+                          reunitiza o item no mesmo ato, e o dono vê isso ANTES de clicar. */}
+                      {efeitoNoItem[it.nfeItemId] && (
+                        <div className="mt-1 max-w-[300px] rounded-lg border border-sky-200 bg-sky-50 px-2 py-1 text-left text-[10px] leading-tight text-sky-900">
+                          {efeitoNoItem[it.nfeItemId]!.bloqueios.length ? (
+                            <><b className="text-rose-700">não dá pra trocar a unidade deste item:</b> {efeitoNoItem[it.nfeItemId]!.bloqueios[0]}</>
+                          ) : (
+                            <>
+                              <b>o item passa a ser controlado em {efeitoNoItem[it.nfeItemId]!.unidadeNova}</b><br />
+                              saldo {efeitoNoItem[it.nfeItemId]!.antes.saldo} {efeitoNoItem[it.nfeItemId]!.unidadeControle} → <b>{efeitoNoItem[it.nfeItemId]!.depois.saldo} {efeitoNoItem[it.nfeItemId]!.unidadeNova}</b>
+                              {' · '}valor {brlPequeno(efeitoNoItem[it.nfeItemId]!.antes.valor)} (não muda)<br />
+                              <span className="text-sky-700">
+                                {efeitoNoItem[it.nfeItemId]!.plano.converte.length} movimento(s) convertem · {efeitoNoItem[it.nfeItemId]!.plano.jaEstaCerto.length} já estão certos
+                                {efeitoNoItem[it.nfeItemId]!.fichas.length > 0 && ` · ${efeitoNoItem[it.nfeItemId]!.fichas.length} ficha(s) convertem junto`}
+                              </span>
+                            </>
+                          )}
+                        </div>
                       )}
                     </td>
                     <td className={`whitespace-nowrap px-3 py-1 text-right text-[13px] tabular-nums ${diverge ? 'font-semibold text-amber-700' : 'text-slate-300'}`}>
