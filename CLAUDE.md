@@ -572,6 +572,46 @@ OLEO DE SOJA: controle UN → LT (fator 1)
 
 ⚠️ **2c — o log é SENTINELA, não autópsia:** a marcação de 10/09 já passou e não deixou rastro; **não dá pra reconstruir a causa**, e o dono já tinha dito que nesse caso *"o log fica de sentinela"*. A próxima pulada sai com nome e motivo.
 
+### ⭐⭐⭐ CORTE DE ÉPOCA NA CONCILIAÇÃO + O RAIO-X DE SETEMBRO (11/09)
+
+**O dono:** *"Comecei a usar a conciliação em setembro; agosto fica pra trás POR DECISÃO — as linhas de agosto já estão categorizadas como despesa, completas no DRE; não vou caçar par de conta velha."*
+
+**⛔⛔ O CORTE É DA VITRINE, NUNCA DO DADO.** A linha anterior continua nas Movimentações, continua no DRE e o **Find & Match manual ainda a acha** quando ele procura. O que encolhe é a fila parar de empurrar trabalho que ele recusou. ⚠️ É a diferença que separa isto do *"AGOSTO É O PISO"* das vendas: lá o piso é do **MOTOR** (o dado pré-corte nem existe), aqui é só da **VITRINE**.
+
+**⭐ CONFIG DA EMPRESA, não constante** — `Company.conciliarAPartirDe` (migration **aditiva pura**, coluna nullable; `null` = sem corte = o comportamento de hoje pra toda empresa existente). Empresa nova define a dela no onboarding.
+
+**⚠️ `comCorte` JUNTA O CORTE COM A JANELA SEM PERDER NENHUM DOS DOIS** — o `gte` que vale é o **mais restritivo**. Escrever o corte por cima apagaria a janela de ±N dias em silêncio, e ela existe pra não casar pagamento com conta de três meses atrás: o bug apareceria como *"a fila oferece linha velha demais"* num lugar e *"a fila esqueceu de olhar"* noutro.
+
+Aplicado nas **4 consultas que OFERECEM** (`contasEsperandoPagamento`, `lotesDaFila`, `sugestoesParaPendentes`) — e o **badge deriva das mesmas**, então menu e tela não têm como divergir. **A tela DIZ o corte**, com o gesto de mudar ao lado: fila mostrando menos do que existe **precisa dizer por quê**, senão o dono procura o card que não vê.
+
+**PROVADO EM PROD (corte 01/09/2026 aplicado na Caçula):**
+```
+ANTES (sem corte):  16 linhas oferecidas · 10 delas PRÉ-01/09
+DEPOIS:              6 linhas oferecidas ·  0 pré-01/09  ⭐
+```
+**REGRA 11 — sem `comCorte` nas queries: 2 vermelhos. 9.337 verdes · TS 0 · deploy `vCD0uPJePbl3A0x-Fc-wI` 4/4.**
+
+### 📋 O RAIO-X DAS 95 CONTAS DE SETEMBRO (pós-mescla, pós-corte)
+
+**95 contas em aberto · R$ 183.061,40**, e a prestação de contas grupo a grupo:
+
+| grupo | quantas | valor | o que é |
+|---|---|---|---|
+| **(a)** par/lote sugerido | **0** | — | nenhuma fecha sozinha hoje |
+| **(b)** card no "pra tua mão" | **31** | R$ 64.977,65 | a linha existe, não fecha — é o clique dele |
+| **(c1)** vencida **sem linha** | **25** | R$ 28.786,39 | *"paguei por onde?"* |
+| **(c2)** ainda não venceu | **39** | R$ 89.297,36 | estado normal, **não é buraco** |
+| **(d)** paga sem vínculo | **0** | — | a dupla contagem está zerada |
+
+**⛔⛔ E A RESPOSTA DO (c1) É DURA: nenhuma das 25 tem um débito de valor exato em conta nenhuma desde 01/09** — nem OFX, nem manual. Elas não estão "perdidas na tela": **o pagamento delas não está no sistema**.
+
+**⭐ O CANDIDATO MAIS FORTE, medido:** o **banco caixa está sem extrato desde 28/08** (0 linhas ≥ 01/09), enquanto banrisul, sicredi e stone estão importados até 10/09 e o cofre até 11/09. Pagamento feito por ali em setembro **não tem como aparecer**.
+
+**⚠️⚠️ E UM PONTO CEGO REAL, ACHADO NO CAMINHO — a fila só oferece `origin: 'OFX'`.** Há **25 débitos MANUAIS sem vínculo** no cofre desde 01/09 (R$ 67.220,90) que a conciliação **nunca oferece**, por construção. ⭐ **Medi antes de chamar de causa: NENHUM deles casa por valor com conta em aberto** — são salários, entregadores e a devolução de mútuo da Arafat (R$ 50.000 em 01/09). **O ponto cego existe e fica registrado; ele não explica as 25.**
+
+**⚠️ E UMA CORREÇÃO NO QUE O DONO LEMBROU:** os PIX pro PF são **R$ 10.000 (08/09)** e **R$ 21.000 (10/09)**, os dois no sicredi e categorizados como Distribuição de Lucros — não *"10.000 e 8.000"*. Há ainda um de **R$ 3.500 (09/09)** pra outro CPF, mesma categoria.
+
+
 ### ⛔⛔⛔ A CORREÇÃO DE UNIDADE VIRAVA A ENTRADA E NÃO VIRAVA O ITEM (11/09)
 
 **O dono, depois de conferir a NF 179646 da LATICINIOS SANTO CRISTO:** *"troquei pra KG (1 peça = 2 KG), a tela mostrou certo, confirmei — o recibo diz '16 UN → Recebido 32 · custo 34,45' (**conta certa!**) mas NO ESTOQUE o item segue 'controle em UN' com o 32 entrando como unidades."* **Sucesso disfarçado, e o diagnóstico dele estava certo.**
