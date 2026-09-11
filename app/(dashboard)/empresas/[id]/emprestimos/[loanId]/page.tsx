@@ -100,6 +100,11 @@ interface LoanDetalhe {
     closingBalance: number
     status: 'PAID' | 'OPEN' | 'LATE'
     paidDate: string | null
+    /** ⭐ o que a LINHA mostra: realizado quando há vínculo, previsto quando não há */
+    linha: {
+      juros: number; amortizacao: number; parcela: number; realizado: boolean
+      detalhe: { juros: number; correcao: number; mora: number } | null
+    }
     /** mordidas do débito parcial (N:1) — parcela paga em partes */
     pagamentos: Array<{ id: string; amount: number; date: string | null; description: string | null; accountName: string | null; transactionId: string | null }>
     reconciledTransaction: {
@@ -444,14 +449,30 @@ export default function DetalheEmprestimoPage({
                     <td className="p-3 text-right tabular-nums text-xs text-muted-foreground">
                       {formatBRL(i.openingBalance)}
                     </td>
+                    {/* ⭐⭐ PAGA RELATA, FUTURA PREVÊ (10/09/2026). A #3 mostrava "juros
+                        R$ 0,00 · parcela R$ 2.777,80" numa parcela conciliada por
+                        R$ 4.337,52 — a previsão do pós-fixado ocupando o lugar do fato.
+                        O número vem do servidor (`i.linha`), que é onde a régua mora. */}
                     <td className="p-3 text-right tabular-nums text-xs text-red-700">
-                      {formatBRL(i.interest)}
+                      {formatBRL(i.linha.juros)}
+                      {/* ⚠️ a abertura do realizado, quando o vínculo soube separar */}
+                      {i.linha.realizado && i.linha.detalhe && i.linha.detalhe.correcao > 0 && (
+                        <span className="block text-[10px] font-normal text-muted-foreground">
+                          juros {formatBRL(i.linha.detalhe.juros)} + corr {formatBRL(i.linha.detalhe.correcao)}
+                        </span>
+                      )}
                     </td>
                     <td className="p-3 text-right tabular-nums text-xs text-emerald-700">
-                      {formatBRL(i.amortization)}
+                      {formatBRL(i.linha.amortizacao)}
                     </td>
                     <td className="p-3 text-right tabular-nums font-medium">
-                      {formatBRL(i.payment)}
+                      {formatBRL(i.linha.parcela)}
+                      {/* ⛔ o SELO: linha que relata não pode parecer que prevê */}
+                      {i.linha.realizado && (
+                        <span className="block text-[10px] font-normal text-emerald-700">
+                          pago{i.paidDate ? ` em ${fmtDate(i.paidDate)}` : ''}
+                        </span>
+                      )}
                     </td>
                     <td className="p-3 text-right tabular-nums text-xs text-muted-foreground">
                       {formatBRL(i.closingBalance)}

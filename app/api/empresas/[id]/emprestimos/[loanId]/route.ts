@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
+import { linhaDoCronograma, jurosRealizados } from '@/lib/loans/linha-do-cronograma'
 import { saldoDevedorAtual } from '@/lib/loans/saldo'
 
 interface Params {
@@ -73,8 +74,13 @@ export async function GET(request: NextRequest, { params }: Params) {
     // FIX saldo (04/08): agenda válida → closingBalance da última paga; inválida →
     // fórmula conservadora. Fonte única em lib/loans/saldo.ts.
     const saldoDevedor = saldoDevedorAtual(loan, loan.installments)
-    const jurosTotalContrato = loan.installments.reduce((s, i) => s + i.interest, 0)
-    const jurosPagos = paid.reduce((s, i) => s + i.interest, 0)
+    // ⛔⛔ O TOTAL DA COLUNA JUROS SOMA SÓ O REALIZADO (10/09/2026, decisão do dono):
+    // *"passado realizado + nada inventado no futuro — é o número que conversa com a
+    // despesa financeira do DRE"*. Antes era Σ da AGENDA inteira, que num pós-fixado
+    // soma a previsão das pagas com ZERO das futuras: nem realizado, nem projeção.
+    // Medido no C61021346-2: dizia R$ 3.089,34 com R$ 4.649,06 realizados.
+    const jurosTotalContrato = jurosRealizados(loan.installments)
+    const jurosPagos = jurosTotalContrato
 
     // FLEXIBLE: quanto já foi devolvido = base original − saldo atual.
     const devolvido = Math.round((loan.principal - saldoDevedor) * 100) / 100
@@ -104,6 +110,11 @@ export async function GET(request: NextRequest, { params }: Params) {
             : i.dueDate.getTime() < now.getTime()
               ? 'LATE'
               : 'OPEN'
+      // ⭐⭐ PARCELA PAGA RELATA, PARCELA FUTURA PREVÊ (10/09/2026) — a régua mora na
+      // lib e a tela só desenha. Os campos `interest`/`payment` continuam indo CRUS
+      // (o "Corrigir agenda" edita a PREVISÃO e precisa dela), mas o que a linha do
+      // cronograma mostra sai de `linha`.
+      const linha = linhaDoCronograma(i)
       return {
         number: i.number,
         dueDate: i.dueDate.toISOString(),
@@ -114,6 +125,13 @@ export async function GET(request: NextRequest, { params }: Params) {
         closingBalance: i.closingBalance,
         status: statusUI,
         paidDate: i.paidDate?.toISOString() ?? null,
+        linha: {
+          juros: linha.juros,
+          amortizacao: linha.amortizacao,
+          parcela: linha.parcela,
+          realizado: linha.realizado,
+          detalhe: linha.detalhe,
+        },
         // mordidas do débito parcial (N:1), ordenadas por entrada
         pagamentos: i.payments.map((pg) => ({
           id: pg.id,
