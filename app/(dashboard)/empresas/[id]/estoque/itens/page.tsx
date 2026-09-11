@@ -145,7 +145,9 @@ export default function CatalogoPage({ params }: { params: Promise<{ id: string 
               )
             })}
             <StatCard tone="amber" label="Sem custo (a definir)" value={String(semCusto.length)}
-              sub="esperando a 1ª nota" icon={HelpCircle}
+              /* ⚠️ o card conta comprados E produzidos juntos — a fonte do custo depende
+                 do tipo, e prometer só a nota deixa o produzido esperando o que não vem */
+              sub="esperando a 1ª nota ou produção" icon={HelpCircle}
               onClick={() => setSoSemCusto((v) => !v)} active={soSemCusto} />
             <StatCard tone="sky" label="Zerados" value={String(zerados.length)}
               sub="sem saldo hoje" icon={CircleSlash} />

@@ -55,7 +55,34 @@ export async function listPosicao(companyId: string, db: Db = defaultPrisma, ago
     entradasPorItem.set(e.itemId, arr)
   }
 
-  const itens: PosicaoItem[] = saldos.map((s) => {
+  /**
+   * ⭐⭐⭐ A POSIÇÃO PARTE DO CATÁLOGO, NÃO DO LEDGER (11/09/2026).
+   *
+   * **O dono, depois de criar a receita:** *"o item produzido não está na Posição junto
+   * com as outras porções"*. Medido: a lista nascia de `saldosDaEmpresa`, que é um
+   * `groupBy` em `stockMovement` — **item sem nenhum movimento não existia pra ela**.
+   *
+   * ⛔ E não era só o dele: **9 itens ativos estavam invisíveis**, entre eles o `tomate`,
+   * o `gas` e a `HEINEKEN LONG NECK ZERO` — justamente uma das bebidas que em 09/09
+   * registramos como *"nasce com saldo 0 e entra na fila de contagem"*. Elas entraram na
+   * contagem e **sumiram da tela onde o dono confere o estoque**: o item existe, se conta,
+   * e não aparecia. É a família do *"erro disfarçado de vazio"*.
+   *
+   * ⭐ A RÉGUA HONESTA: a Posição é a PRATELEIRA — e prateleira com zero unidades continua
+   * sendo uma linha da prateleira. Saldo 0 é um FATO ("não tem"), não uma ausência de
+   * dado. ⚠️ O valor total não muda: zero não soma.
+   */
+  const daPrateleira = items.filter((i) => i.ativo !== false && seContaFisicamente(i.categoria))
+  const saldoPorItem = new Map(saldos.map((s) => [s.itemId, s]))
+  // ⚠️ E o que tem SALDO mas sumiu do cadastro continua aparecendo como "(item removido)":
+  // esconder por ausência de cadastro esconderia estoque de verdade.
+  const orfaosComSaldo = saldos.filter((s) => !byId.has(s.itemId))
+  const universo = [
+    ...daPrateleira.map((i) => saldoPorItem.get(i.id) ?? { itemId: i.id, saldo: 0, custoMedio: null, valor: 0 }),
+    ...orfaosComSaldo,
+  ]
+
+  const itens: PosicaoItem[] = universo.map((s) => {
     const it = byId.get(s.itemId)
     const ent = entradasPorItem.get(s.itemId) ?? []
     const ultima = ent[ent.length - 1]
@@ -88,6 +115,9 @@ export async function listPosicao(companyId: string, db: Db = defaultPrisma, ago
     // sumir por ausência de dado esconderia saldo de verdade.
     // ⚠️ o mesclado já sai por `ativo=false`; o filtro do Catálogo é que precisava do
     // registro próprio, porque lá o dono LIGA "mostrar inativos".
+    // ⚠️ os dois filtros abaixo continuam: o universo já nasce filtrado, mas os ÓRFÃOS
+    // com saldo entram por fora e passam por aqui (e é por isso que o `ativo !== false`
+    // ainda usa o `?.` — item sem cadastro não é item inativo).
     .filter((i) => byId.get(i.itemId)?.ativo !== false)
     // ⛔ e o invólucro do cardápio (PRODUTO_FINAL / SABOR) sai junto: a Posição responde
     // "o que tem na prateleira", e a linha do menu não é coisa que se estoca. Mesma régua

@@ -271,7 +271,17 @@ export default function ProdutoCardapioPage({ params }: { params: Promise<{ id: 
                       <td className={`px-3 py-0 text-right text-[13px] tabular-nums ${zerado ? 'font-semibold text-rose-600' : 'text-slate-600'}`}>{num(c.saldo)}</td>
                       <td className="px-3 py-0 text-[13px]">
                         {c.custoMedio == null ? (
-                          <span className="text-[11px] text-amber-600">sem custo — entra na 1ª nota</span>
+                          /* ⛔⛔ O TEXTO SEGUE O TIPO DO ITEM (11/09/2026). Ele dizia "entra
+                             na 1ª nota" pra TODO componente sem custo — inclusive pros
+                             PRODUZIDOS, onde **nota nenhuma vai chegar**. O dono: *"texto
+                             que promete fonte errada me deixa esperando o que não vem"*.
+                             ⭐ O sinal é o mesmo que o botão "produzir agora" já usa:
+                             tem ficha que o produz → o custo nasce da PRODUÇÃO. */
+                          <span className="text-[11px] text-amber-600">
+                            {c.fichaIdComponente
+                              ? 'sem custo — nasce na 1ª produção concluída'
+                              : 'sem custo — entra na 1ª nota'}
+                          </span>
                         ) : zerado && c.fichaIdComponente ? (
                           <button onClick={() => produzirAgora(c.fichaIdComponente!)} disabled={busy}
                             className="inline-flex items-center gap-1 rounded border border-amber-400 px-2 py-0.5 text-[11px] font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-50">
@@ -296,7 +306,10 @@ export default function ProdutoCardapioPage({ params }: { params: Promise<{ id: 
           </div>
           {l.componentesSemCusto > 0 && (
             <p className="border-t bg-amber-50/50 px-3 py-2 text-[11px] text-amber-700">
-              {l.componentesSemCusto} componente(s) sem custo médio — o custo do produto fica <b>a definir</b> até a 1ª nota (nunca chutamos).
+              {/* ⚠️ a frase do rodapé cobre os DOIS caminhos: a lista acima pode ter
+                  comprado e produzido ao mesmo tempo, e prometer só um deixaria metade do
+                  dono esperando a fonte errada. */}
+              {l.componentesSemCusto} componente(s) sem custo médio — o custo do produto fica <b>a definir</b> até a 1ª nota (ou a 1ª produção, pro que é feito aqui). Nunca chutamos.
             </p>
           )}
         </Card>
