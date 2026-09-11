@@ -572,6 +572,46 @@ OLEO DE SOJA: controle UN → LT (fator 1)
 
 ⚠️ **2c — o log é SENTINELA, não autópsia:** a marcação de 10/09 já passou e não deixou rastro; **não dá pra reconstruir a causa**, e o dono já tinha dito que nesse caso *"o log fica de sentinela"*. A próxima pulada sai com nome e motivo.
 
+### ⭐⭐⭐ A COLUNA SALDO — O EXTRATO BANCÁRIO DO ITEM (11/09)
+
+**O dono:** *"quanto o item tinha DEPOIS de cada linha (227 → 234 → …). **Derivada do ledger na ordem, nunca gravada.**"*
+
+**⭐ A CONTA DESCE DO SALDO DE HOJE** — que é o número que a Posição mostra. Então a linha mais recente **é** o saldo atual, e a prova que ele pediu fica **embutida na tela**: coluna, rodapé e Posição, **três leitores e uma régua só**. Cada linha devolve o próprio efeito pra quem vem abaixo; linha que não move a prateleira não desconta nada.
+
+**⛔⛔ LISTA NÃO CONTÍGUA NÃO GANHA SALDO.** O que quebra a derivação é faltar linha **mais recente**. Filtro por **TIPO** (arranca linha de qualquer ponto) e **`ate`** (fecha o período antes de hoje) quebram → o campo vem `null` e a tela diz **"—"**. ⚠️ *Um número de estoque plausível e errado é a mentira mais cara que esta tela poderia contar.*
+
+**⚠️⚠️ E A PROVA EM PROD CORRIGIU A MINHA RÉGUA — a coluna nasceu MORTA no extrato.** Eu tinha posto `movs.length < limite` na lista de quebras; a Caçula tem **1.013 movimentos** contra um teto de **500**, então **as 403 linhas do extrato vinham TODAS "—"**, justamente na tela em que a coluna mais serve. **Truncar corta o PASSADO** (a lista desce do mais recente), e o passado **não entra nesta conta**. Idem o filtro `de`. Um teste invertido com o motivo escrito.
+
+**⚠️⚠️ DESCOBERTA DE DESENHO, travada em teste: CLEAN e FORENSE divergem NO MEIO da lista, de propósito.** No forense a linha de 10/09 mostra o saldo que o item **realmente tinha naquele dia** — fundo do poço, porque as baixas erradas já existiam e o estorno só veio em 11/09. No clean ela mostra a linha do tempo **sem os lançamentos anulados**. ⭐ Os dois **convergem onde tem que convergir**: no topo (hoje) e em tudo **abaixo do par** — porque o par soma zero. É por isso que o rodapé bate nos dois modos.
+
+**⛔ O GRÁFICO DE PREÇO PASSOU PELA MESMA RÉGUA — e era defeito real que eu tinha registrado:** ele lia `ENTRADA_NF` do **CRU**, então **compra 100% estornada entrava na curva** como se alguém tivesse pago aquilo. Agora ele lê a lista **já colapsada** — fonte única, **não um filtro local a mais** —, exatamente como a compra desfeita saiu da aba "só compras". ⚠️ E usa sempre a lista limpa, **nunca o forense**: *"que preços eu paguei?"* não é pergunta que muda quando se liga o modo de auditoria.
+
+**TIPOGRAFIA (item 4):** TOTAL e SALDO viram os protagonistas; **CUSTO UN. vira texto menor e cinza** (muda raro — é segundo olhar) e **some no celular** pra o SALDO caber. A linha anulada **não mostra saldo**: a célula fica vazia porque nada mudou ali.
+
+**PROVADO EM PROD, pela rota real:**
+```
+COCA-COLA 2L — CLEAN (13 linhas)
+   11/09 · Contagem      −12 un   −R$    97,08   saldo  215
+   ⊘ lançamento anulado — contagem de 1.480 un estornada em 11/09   (saldo intacto: 227)
+   10/09 · Compra (NF-e) +80 un    R$   646,79   saldo  227
+   ⊘ lançamento anulado — baixa de venda de 1.499 un estornada em 11/09
+   10/09 · Baixa de venda −7 un   −R$    56,63   saldo  147
+   …
+   24/08 · Compra (NF-e) +200 un   R$ 1.616,00   saldo  200   ← a 1ª compra da vida
+   RODAPÉ: soma 215 · ✓ bate true
+   ⭐ topo da coluna == rodapé == Posição:  215 == 215 == 215
+
+FORENSE (17 linhas): mesmo topo (215) e mesmo rodapé, e no meio a verdade crua —
+   10/09 · Compra (NF-e) +80 un   saldo −2.771   (o poço em que o item esteve)
+
+EXTRATO: 403 linhas · 403 com saldo · filtrado por TIPO → todas "—" ⭐
+GRÁFICO DE PREÇO: 6 pontos, sem a compra fantasma
+```
+**REGRA 11 — 3 travas repostas:** saldo virado gravado → **4 vermelhos** · contiguidade removida → **3** · gráfico lendo o cru → **2**. ⚠️ E o primeiro teste da linha anulada comparava com a linha **de cima**: *"anterior"* é no TEMPO, e a lista desce do mais recente — a linha anterior é a **de baixo**.
+
+**9.321 verdes · TS 0 · deploys `T_hvFx3aQtHVubMRCxBDs` e `otksaKa7knJ55aMSKQPgS`, os dois 4/4.**
+
+
 ### ⭐⭐⭐ HISTÓRICO EM MODO CLEAN — O PAR QUE SE ANULA VIRA UMA LINHA FINA (11/09)
 
 **O dono, olhando a Coca 2L depois do conserto:** *"16 linhas, das quais 6 são pares que se anulam. Pra entender 'o que aconteceu com meu estoque', essas linhas são ruído — mas APAGAR não pode: **o rastro é o que provou o desastre de ontem**."*
