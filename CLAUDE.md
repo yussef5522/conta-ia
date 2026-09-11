@@ -460,6 +460,32 @@ SALDO 94.444,47 → 91.666,67 · AGENDA VÁLIDA: true
 
 **⚠️⚠️ E A RESPOSTA DURA SOBRE O IMPORT: ELE CONFIRMOU E NÃO GRAVOU — sucesso disfarçado, medido.** A linha nasceu no import de **10/09 23:13 (SUCCESS, 3 tx)** e está com **0 vínculos** (nem 1:1 nem N:1), **sem categoria**, `PENDING`. **O FATO está provado; a CAUSA não** — a UI monta a marca certo (`loanId` + `installmentNumber` em `handleConfirmar`) e o `aplicarMarcacao` gravaria ou **derrubaria o import** (o ramo não tem try/catch). Como marcação não deixa rastro próprio, não dá pra dizer por qual porta ela se perdeu sem instrumentar. **Débito nomeado, não consertado:** (a) logar toda marcação recebida × aplicada × pulada no confirm — hoje *"pulada"* é silenciosa por desenho (*"marcação cuja linha não virou transação não derruba nada"*), e é justamente onde um vínculo some; (b) ⚠️ **e quando ele grava, grava torto**: o ramo `PAGAMENTO_EMPRESTIMO` marca `PAID` + `reconciledTransactionId` **sem split** — os R$ 1.559,72 de encargos ficariam FORA do DRE. O caminho honesto do import é chamar o mesmo `computeLinkSplit` do painel.
 
+### ⭐⭐⭐ PARCELA PAGA RELATA; PARCELA FUTURA PREVÊ (10/09)
+
+**O dono, com a #3 do C61021346-2 recém-conciliada:** *"a linha do cronograma mostra JUROS R$ 0,00 · PARCELA R$ 2.777,80, como se eu tivesse pago sem juro nenhum. (…) É pós-fixado: o juros só nasce no vencimento — quando nasce, a linha ADOTA o nascido."*
+
+**⛔⛔ O DADO JÁ ESTAVA TODO GRAVADO — a TELA é que lia a coluna errada.** Medido antes de escrever qualquer linha: a #3 tem `paidTotal 4.337,52 · paidInterest 459,71 · paidCorrection 1.100,01` desde o vínculo, enquanto `interest` (a AGENDA) segue 0 — que é o valor **honesto da previsão** num pós-fixado. **São dois campos com duas perguntas diferentes, e a tabela misturava.**
+
+**⭐ A RÉGUA (`lib/loans/linha-do-cronograma.ts`), e é a mesma do resto da casa: DERIVADO, NÃO GRAVADO.** ⛔ O gatilho é o **VÍNCULO** (`paidTotal`), **nunca o `status`** — campo gravado envelhece, e foi assim que a `CreditCardInvoice.status` ficou eternamente `OPEN` depois de vencer. Parcela `PAID` sem vínculo nenhum **não tem fato pra relatar** e continua mostrando a previsão (ninguém mediu aquele pagamento).
+
+**⚠️ E A LINHA PAGA FECHA PELO FATO:** amortização = `pago − encargos`, não a da agenda. Repetir a prevista faria `amort + juros ≠ parcela` **justo na linha que relata um fato** — e linha de dinheiro que não soma é como a confiança na tela se perde.
+
+**⭐ O TOTAL "JUROS DO CONTRATO" SOMA SÓ O REALIZADO** (*"é o número que conversa com a despesa financeira do DRE"*). Era `Σ(installment.interest)` da agenda inteira: no pós isso soma a previsão das pagas com ZERO das futuras — **nem realizado, nem projeção**. Medido: dizia **R$ 3.089,34** com **R$ 4.649,06** realizados; a diferença, R$ 1.559,72, é exatamente a parcela que ele acabou de conciliar.
+
+**⚠️ A #1 E A #2 SÃO A PROVA DE QUE A RÉGUA É SEGURA** (ele perguntou se mostravam real ou previsão velha): nelas o real **BATE** com a agenda — o documento do Sicredi já trazia o efetivo das parcelas pagas. **A régua nova não as altera**; ela só tem efeito onde previsão e fato divergem, que é exatamente onde a tela mentia.
+
+**⭐⭐ CRONOGRAMA × DRE TRAVADO POR EXECUÇÃO:** os dois derivam dos MESMOS campos (`paidInterest + paidCorrection + paidPenalty`, datados por `paidDate`), e o teste **roda as duas funções sobre a mesma parcela** em vez de prometer que conversam.
+
+**PROVADO PELA ROTA REAL:**
+```
+#1 PAID  juros 1.518,43                                  · parcela 4.296,23 | pago em 10/07
+#2 PAID  juros 1.570,91 (juros 473,23 + corr 1.097,68)   · parcela 4.348,64 | pago em 10/08
+#3 PAID  juros 1.559,72 (juros 459,71 + corr 1.100,01)   · parcela 4.337,52 | pago em 10/09
+#4 OPEN  juros     0,00                                  · parcela 2.777,77 | previsto
+KPI "Juros do contrato": R$ 4.649,06 (só realizado)
+```
+**⚠️⚠️ REGRA 11 PEGOU UM TESTE MEU QUE NÃO MORDIA.** Repus o terceiro defeito (usar a amortização da AGENDA na linha paga) e os **169 continuaram verdes** — porque na #3 os dois valores COINCIDEM (2.777,80). O teste que separa é o **pagamento acima da previsão** (pagou 5.000 → amortização 3.440,28, não 2.777,80). Os outros dois morderam de primeira. **9.225 verdes · TS 0 · deploy `a2PLqeqPp_5WLBmSqmFfp` 4/4.**
+
 ### ⛔⛔⛔ E O DEPLOY FALHOU 3× POR OOM — o teto era do V8, não do kernel
 
 **O blue-green segurou as três**: *"o symlink não moveu, prod continua no build anterior"*. Mas o diagnóstico levou duas tentativas erradas, e as duas ficam registradas:
