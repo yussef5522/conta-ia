@@ -57,7 +57,7 @@ export async function previewLancamentoManual(companyId: string, data: string, e
   return montarPlanoDeLinhas(companyId, data, linhas, null, db)
 }
 
-export async function confirmarLancamentoManual(companyId: string, data: string, entradas: EntradaManual[], userId: string | undefined, db: PrismaClient = defaultPrisma): Promise<ReciboVenda> {
+export async function confirmarLancamentoManual(companyId: string, data: string, entradas: EntradaManual[], userId: string | undefined, db: PrismaClient = defaultPrisma, confirmouSanidade = false): Promise<ReciboVenda> {
   // garante o mapa (nome→alvo) e monta as linhas mescladas (Suitable do dia + manual por nome)
   const manuais = await resolverEntradas(companyId, entradas, userId, db)
   const linhas = await linhasMescladas(companyId, data, manuais, db)
@@ -66,5 +66,5 @@ export async function confirmarLancamentoManual(companyId: string, data: string,
   await db.stockVendaLinha.deleteMany({ where: { companyId, importId: imp.id } })
   const mapaNomes = new Set((await db.stockVendaProdutoMap.findMany({ where: { companyId }, select: { nomeSuitable: true } })).map((m) => m.nomeSuitable))
   await db.stockVendaLinha.createMany({ data: linhas.map((l) => ({ companyId, importId: imp.id, data: dataDate, nomeSuitable: l.produto, quantidade: l.quantidade, valorTotal: l.valorTotal, mapeadoNoImport: mapaNomes.has(l.produto) })) })
-  return reprocessarDia(companyId, data, userId, db)
+  return reprocessarDia(companyId, data, userId, db, confirmouSanidade)
 }

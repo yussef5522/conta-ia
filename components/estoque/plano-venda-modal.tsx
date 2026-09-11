@@ -7,12 +7,23 @@
 import { useState } from 'react'
 import { X, Loader2, Check, Info, AlertTriangle } from 'lucide-react'
 
-export interface PlanoVM { produtos: { nome: string }[]; pendentes: { nome: string; quantidade: number }[]; fora: { nome: string; quantidade: number }[]; agregada: { nome: string; qtd: number; valor: number | null }[] }
+export interface SanidadeVM {
+  precisaConfirmar: boolean
+  suspeitas: { produto: string; quantidade: number; mediaDiaria: number; frase: string }[]
+  totalDoArquivo: number
+  totalMedioDoDia: number
+  vezesNoTotal: number
+}
+export interface PlanoVM { produtos: { nome: string }[]; pendentes: { nome: string; quantidade: number }[]; fora: { nome: string; quantidade: number }[]; agregada: { nome: string; qtd: number; valor: number | null }[]; sanidade?: SanidadeVM }
 const brl = (n: number | null) => (n == null ? '—' : n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }))
 const fmtDia = (d: string) => d.split('-').reverse().join('/')
 
-export function PlanoVendaModal({ plano, data, titulo, subtitulo, processando, erro, onConfirmar, onClose }: { plano: PlanoVM; data: string; titulo: string; subtitulo?: string; processando: boolean; erro: string | null; onConfirmar: () => void; onClose: () => void }) {
+export function PlanoVendaModal({ plano, data, titulo, subtitulo, processando, erro, onConfirmar, onClose }: { plano: PlanoVM; data: string; titulo: string; subtitulo?: string; processando: boolean; erro: string | null; onConfirmar: (confirmouSanidade: boolean) => void; onClose: () => void }) {
   const [verLista, setVerLista] = useState(false)
+  // ⛔⛔ A PERGUNTA DA SANIDADE (11/09) — o import de 10/09 baixou 1.499 FANTA UVA porque
+  // nada perguntou. Nasce DESMARCADO de propósito: confirmar tem que ser um gesto.
+  const [cienteDaSanidade, setCiente] = useState(false)
+  const perguntar = plano.sanidade?.precisaConfirmar === true
   const total = plano.agregada.reduce((s, a) => s + (a.valor ?? 0), 0)
   const unPend = plano.pendentes.reduce((s, p) => s + p.quantidade, 0)
   return (
@@ -40,9 +51,25 @@ export function PlanoVendaModal({ plano, data, titulo, subtitulo, processando, e
         )}
         {plano.fora.length > 0 && <p className="mt-2 flex items-center gap-1.5 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500"><Info className="h-3.5 w-3.5" /> {plano.fora.length} deixado(s) de fora (desmarcado)</p>}
 
+        {perguntar && plano.sanidade && (
+          <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+            <p className="flex items-center gap-1.5 text-xs font-semibold text-amber-900"><AlertTriangle className="h-3.5 w-3.5" /> Número muito acima do normal — confere antes de baixar</p>
+            <ul className="mt-1.5 space-y-1">
+              {plano.sanidade.suspeitas.slice(0, 5).map((x) => <li key={x.produto} className="text-xs text-amber-900">{x.frase}</li>)}
+            </ul>
+            {plano.sanidade.suspeitas.length === 0 && (
+              <p className="mt-1.5 text-xs text-amber-900">O arquivo traz {plano.sanidade.totalDoArquivo.toLocaleString('pt-BR')} unidades num dia — o normal é {plano.sanidade.totalMedioDoDia.toLocaleString('pt-BR')} ({plano.sanidade.vezesNoTotal}× o normal). Confere se é o arquivo certo.</p>
+            )}
+            <label className="mt-2.5 flex items-start gap-2 text-xs text-amber-900">
+              <input type="checkbox" checked={cienteDaSanidade} onChange={(e) => setCiente(e.target.checked)} className="mt-0.5 h-4 w-4 accent-amber-600" />
+              <span>Conferi e é isso mesmo — pode baixar</span>
+            </label>
+          </div>
+        )}
+
         {erro && <p className="mt-3 flex items-center gap-1 text-sm text-rose-600"><AlertTriangle className="h-3.5 w-3.5" /> {erro}</p>}
         <div className="mt-4 flex items-center gap-3">
-          <button onClick={onConfirmar} disabled={processando || plano.agregada.length === 0} className="inline-flex items-center gap-2 rounded-lg bg-[#185FA5] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#0F4A8C] disabled:opacity-60">{processando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Confirmar e baixar</button>
+          <button onClick={() => onConfirmar(cienteDaSanidade)} disabled={processando || plano.agregada.length === 0 || (perguntar && !cienteDaSanidade)} className="inline-flex items-center gap-2 rounded-lg bg-[#185FA5] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#0F4A8C] disabled:opacity-60">{processando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Confirmar e baixar</button>
           <button onClick={onClose} className="text-sm text-slate-500">cancelar</button>
         </div>
       </div>

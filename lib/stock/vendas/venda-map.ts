@@ -6,7 +6,8 @@ import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { criarFicha, fichaAtivaComNome } from '@/lib/stock/producao/fichas'
 import { parseSuitable, type VendaLinhaSuitable } from './parse-suitable'
-import { avaliarSanidade, DIAS_DE_HISTORICO, type ResultadoDaSanidade } from './sanidade-do-import'
+import { type ResultadoDaSanidade } from './sanidade-do-import'
+import { medirSanidade } from './medir-sanidade'
 
 export interface LinhaResolvida extends VendaLinhaSuitable {
   mapeado: boolean
@@ -40,31 +41,6 @@ export class VendaMapError extends Error {}
  * vende no fim de semana teria a média diluída por 5 zeros e qualquer sábado viraria
  * suspeita — alarme falso repetido é como um alarme morre.
  */
-async function medirSanidade(
-  companyId: string, linhas: VendaLinhaSuitable[], db: PrismaClient,
-): Promise<ResultadoDaSanidade> {
-  const desde = new Date(Date.now() - DIAS_DE_HISTORICO * 86_400_000)
-  const imports = await db.stockVendaImport.findMany({
-    where: { companyId, data: { gte: desde } }, select: { id: true, totalUnidades: true },
-  })
-  if (!imports.length) {
-    // ⚠️ sem histórico não há régua: a 1ª importação da vida não pode ser suspeita.
-    return { suspeitas: [], totalDoArquivo: linhas.reduce((s, l) => s + l.quantidade, 0), totalMedioDoDia: 0, vezesNoTotal: 0, precisaConfirmar: false }
-  }
-  const passadas = await db.stockVendaLinha.groupBy({
-    by: ['nomeSuitable'],
-    where: { importId: { in: imports.map((i) => i.id) } },
-    _sum: { quantidade: true }, _count: true,
-  })
-  const historico = passadas.map((p) => ({
-    produto: p.nomeSuitable,
-    mediaDiaria: (p._sum.quantidade ?? 0) / Math.max(1, p._count),
-    dias: p._count,
-  }))
-  const totalMedio = imports.reduce((s, i) => s + i.totalUnidades, 0) / imports.length
-  return avaliarSanidade(linhas.map((l) => ({ produto: l.produto, quantidade: l.quantidade })), historico, totalMedio)
-}
-
 export async function previewImportSuitable(companyId: string, html: string, db: PrismaClient = defaultPrisma): Promise<PreviewImport> {
   const parsed = parseSuitable(html)
   const sanidade = await medirSanidade(companyId, parsed.linhas, db)

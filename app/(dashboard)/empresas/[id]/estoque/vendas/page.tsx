@@ -110,12 +110,12 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
       abrirModal(j.plano, dia, j.estornaItens ?? 0)
     } catch { alert('Falha de conexão ao reprocessar.') } finally { setProcessando(false) }
   }
-  const confirmar = async () => {
+  const confirmar = async (confirmouSanidade = false) => {
     setProcessando(true); setErroModal(null)
     try {
       const body = modoReprocesso
-        ? { data: modoReprocesso, reprocessar: true, confirmar: true }
-        : { html, data, confirmar: true, incluir: marcados }
+        ? { data: modoReprocesso, reprocessar: true, confirmar: true, confirmouSanidade }
+        : { html, data, confirmar: true, incluir: marcados, confirmouSanidade }
       const r = await fetch(`/api/empresas/${id}/estoque/vendas/processar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       const j = await r.json().catch(() => null)
       if (r.ok) { setRecibo(j.recibo); setPlano(null); setModoReprocesso(null); carregarProcessados(); if (modoReprocesso) setAba('processados') }
@@ -314,10 +314,10 @@ function LancamentoManual({ id, onProcessado }: { id: string; onProcessado: () =
       setPlano(j.plano)
     } catch { setErro('Falha de conexão.') } finally { setBusy(false) }
   }
-  const confirmar = async () => {
+  const confirmar = async (confirmouSanidade = false) => {
     setBusy(true)
     try {
-      const r = await fetch(`/api/empresas/${id}/estoque/vendas/manual`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data, confirmar: true, entradas: entradas.map((e) => ({ alvoTipo: e.alvoTipo, alvoId: e.alvoId, quantidade: e.quantidade })) }) })
+      const r = await fetch(`/api/empresas/${id}/estoque/vendas/manual`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data, confirmar: true, confirmouSanidade, entradas: entradas.map((e) => ({ alvoTipo: e.alvoTipo, alvoId: e.alvoId, quantidade: e.quantidade })) }) })
       const j = await r.json().catch(() => null)
       if (r.ok) { setRecibo(j.recibo); setPlano(null); setQtd({}); onProcessado() } else setErro(j?.erro ?? 'Não consegui processar.')
     } finally { setBusy(false) }
