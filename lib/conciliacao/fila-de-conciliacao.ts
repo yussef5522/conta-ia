@@ -24,7 +24,7 @@
 import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import {
-  sugerirVinculos, reconhecerFornecedor,
+  sugerirVinculos, reconhecerFornecedor, canonizadorDeFornecedor,
   type LadoDoPar, type SugestaoDeVinculo, type FornecedorConhecido,
 } from './sugestao-de-vinculo'
 import {
@@ -137,7 +137,8 @@ export interface FilaDeConciliacao {
 export async function fornecedoresDaEmpresa(db: Db, companyId: string): Promise<FornecedorConhecido[]> {
   const fs = await db.supplier.findMany({
     where: { companyId, isActive: true },
-    select: { id: true, razaoSocial: true, nomeFantasia: true },
+    // ⭐ o CNPJ entra: é âncora mais forte que nome quando o boleto o carrega
+    select: { id: true, razaoSocial: true, nomeFantasia: true, cnpj: true },
   })
   return fs
 }
@@ -320,6 +321,9 @@ export async function lotesDaFila(
   })
 
   const nomes = new Map(fornecedores.map((f) => [f.id, f.nomeFantasia ?? f.razaoSocial]))
+  // ⭐ os 11 fornecedores cadastrados 2× viram UM dos dois lados (linha e nota) — senão
+  // a régua acha o registro sem contas e o card não nasce. Ver `canonizadorDeFornecedor`.
+  const canon = canonizadorDeFornecedor(fornecedores)
   /**
    * ⛔⛔ MEMÓRIA POR DESCRIÇÃO — e ela vale 2 segundos (medido em prod, 10/09/2026).
    *
@@ -345,14 +349,14 @@ export async function lotesDaFila(
     id: l.id, descricao: l.description, valor: Math.abs(l.amount), data: l.date,
     tipo: l.type as 'CREDIT' | 'DEBIT',
     // ⛔ a FK primeiro (só 1,3% das linhas a têm); o nome depois — a mesma régua do 1:1
-    fornecedorId: l.supplierId ?? fornecedorDaDescricao(l.description),
+    fornecedorId: canon(l.supplierId ?? fornecedorDaDescricao(l.description)),
     contaBancariaId: l.bankAccountId,
     contaBancaria: l.bankAccount?.name?.trim() ?? null,
     categoria: l.category?.name ?? null,
   }))
   const notas: NotaAberta[] = contas.map((c) => ({
     id: c.id, descricao: c.description, valor: Math.abs(c.amount),
-    vencimento: c.dueDate ?? c.date, fornecedorId: c.supplierId!,
+    vencimento: c.dueDate ?? c.date, fornecedorId: canon(c.supplierId)!,
   }))
 
   return sugerirPagamentosEmLote({

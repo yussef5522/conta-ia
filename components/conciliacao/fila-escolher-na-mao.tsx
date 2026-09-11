@@ -34,6 +34,14 @@ const dia = (iso: string) => new Date(iso).toLocaleDateString('pt-BR', { timeZon
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 /** ⚠️ o mock usa o MENOS de verdade (U+2212), não hífen */
 const menos = (v: number) => `− ${formatBRL(v)}`
+/** ⭐ "24/08 a 08/09" — e só o dia quando os N pagamentos caíram no mesmo */
+const diaMes = (iso: string) =>
+  new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'UTC', day: '2-digit', month: '2-digit' })
+function periodo(g: { linhas: CardDeEscolhaDTO[] }): string {
+  const de = diaMes(g.linhas[0].linha.data)
+  const ate = diaMes(g.linhas[g.linhas.length - 1].linha.data)
+  return de === ate ? de : `${de} a ${ate}`
+}
 
 /**
  * ⚠️ MESMA REGRA da `agruparPorFornecedor` da lib, sobre o DTO serializado. A lib é a
@@ -65,9 +73,22 @@ interface Props {
   empresaId: string
   cards: CardDeEscolhaDTO[]
   onConciliado: (extratoId: string) => void
+  /**
+   * ⭐⭐ A PORTA DOS DOIS LADOS (10/09/2026) — *"na linha do extrato, 'casar com conta a
+   * pagar' → abre O MESMO card; na conta a pagar vencida, 'procurar no extrato' → idem.
+   * Fonte única — nada de segunda implementação."*
+   *
+   * ⛔ Por isso é DEEP-LINK e não um segundo componente: o card mora num lugar só, e as
+   * outras telas mandam pra ele. Render duplicado divergiria na primeira regra nova —
+   * é a lição do B1, e a do `GruposSugeridos` que virou duas listas do mesmo sabor.
+   */
+  abrirExtratoId?: string | null
+  abrirContaId?: string | null
 }
 
-export function FilaEscolherNaMao({ empresaId, cards, onConciliado }: Props) {
+export function FilaEscolherNaMao({
+  empresaId, cards, onConciliado, abrirExtratoId, abrirContaId,
+}: Props) {
   const grupos = useMemo(() => agruparDTO(cards), [cards])
   /** ⛔ UM aberto por vez — é a trava, não uma preferência de layout */
   const [aberto, setAberto] = useState<string | null>(null)
@@ -83,6 +104,27 @@ export function FilaEscolherNaMao({ empresaId, cards, onConciliado }: Props) {
     })
     setAberto((a) => (a && grupos.some((g) => g.fornecedorId === a) ? a : null))
   }, [grupos])
+
+  /**
+   * ⭐ VEIO DE OUTRA TELA: abre o grupo certo e posiciona na LINHA certa.
+   *
+   * ⚠️ `?abrir=` é a linha do extrato (veio dos Pendentes); `?conta=` é a nota (veio do
+   * Contas a Pagar) — e aí o grupo é o que tem aquela nota na lista. Nos dois casos quem
+   * decide é o DADO que já está na tela, não uma segunda busca no servidor.
+   */
+  useEffect(() => {
+    if (!abrirExtratoId && !abrirContaId) return
+    for (const g of grupos) {
+      const i = g.linhas.findIndex((l) =>
+        (abrirExtratoId && l.linha.id === abrirExtratoId)
+        || (abrirContaId && [...l.vencidas, ...l.aVencer].some((n) => n.id === abrirContaId)))
+      if (i >= 0) {
+        setAberto(g.fornecedorId)
+        setIndice((m) => ({ ...m, [g.fornecedorId]: i }))
+        return
+      }
+    }
+  }, [grupos, abrirExtratoId, abrirContaId])
 
   const irPara = useCallback((fornecedorId: string, i: number) => {
     setIndice((m) => ({ ...m, [fornecedorId]: i }))
@@ -132,9 +174,14 @@ export function FilaEscolherNaMao({ empresaId, cards, onConciliado }: Props) {
                 {g.fornecedorNome}
               </span>
               <span className="text-[15px] font-bold tabular-nums" style={{ color: MOCK.ink }}>
-                {/* o mock: "5 linhas · − R$ 10.885,97" com N>1; só o valor com N=1 */}
+                {/* ⛔⛔ A SOMA DOS PAGAMENTOS SAIU DAQUI (10/09/2026, ordem do dono):
+                    *"6.332,25 não é valor que eu paguei em gesto nenhum; parece cobrança
+                    e confunde. Datas contam mais que soma."* Fornecedor com N linhas são
+                    N pagamentos separados — o total deles não é uma quantia que exista no
+                    mundo, e número que não existe em gesto nenhum é o que esta casa chama
+                    de número sem régua. Com UMA linha, o valor É o pagamento e fica. */}
                 {g.linhas.length > 1
-                  ? `${g.linhas.length} linhas · ${menos(g.total)}`
+                  ? `${g.linhas.length} pagamentos · ${periodo(g)}`
                   : menos(g.total)}
               </span>
               <span

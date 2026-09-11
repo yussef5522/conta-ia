@@ -12,7 +12,7 @@
 
 import { describe, it, expect } from 'vitest'
 import {
-  sugerirVinculos, sugerirVinculosDaConta, reconhecerFornecedor,
+  sugerirVinculos, sugerirVinculosDaConta, reconhecerFornecedor, reconhecerFornecedorComIrmaos,
   CORTE_PRA_SUGERIR, type LadoDoPar, type FornecedorConhecido,
 } from '../sugestao-de-vinculo'
 
@@ -158,12 +158,51 @@ describe('reconhecer o fornecedor pelo nome — 15 pontos que não podem ser pal
       .toBe('forn-cancian')
   })
 
-  it('⛔ EMPATE TÉCNICO NÃO DECIDE: dois fornecedores igualmente parecidos → ninguém', () => {
+  // ⚠️⚠️ TESTE INVERTIDO COM O MOTIVO ESCRITO (10/09/2026), não apagado.
+  //
+  // Ele afirmava que **nome IDÊNTICO em dois cadastros → NULL**. Medido em prod, isso
+  // era dinheiro parado: **11 fornecedores da Caçula estão cadastrados 2×** com o nome
+  // igual, e `FRIGORIFICO SILVA … - Pagamento` — descrição que NOMEIA o fornecedor com
+  // todas as letras — não era reconhecida. As **6 contas dele (R$ 19.491,46)** não
+  // apareciam em card nenhum.
+  //
+  // ⭐ A METADE CERTA DO TESTE CONTINUA TRAVADA logo abaixo: nome DIFERENTE e parecido
+  // segue devolvendo NULL (a trava que nasceu do homônimo "PAO DE MEL"). O que mudou é
+  // que **nome idêntico não é dúvida sobre QUEM é** — é duplicata de cadastro.
+  it('⭐ nome IDÊNTICO em 2 cadastros = o MESMO fornecedor, não ambiguidade', () => {
     const gemeos: FornecedorConhecido[] = [
       { id: 'a', razaoSocial: 'COMERCIAL SILVA LTDA', nomeFantasia: null },
       { id: 'b', razaoSocial: 'COMERCIAL SILVA LTDA', nomeFantasia: null },
     ]
-    expect(reconhecerFornecedor('COMERCIAL SILVA LTDA - Pagamento', gemeos)).toBeNull()
+    const r = reconhecerFornecedorComIrmaos('COMERCIAL SILVA LTDA - Pagamento', gemeos)
+    expect(r).not.toBeNull()
+    // ⭐ e os DOIS ids voltam: as contas dele podem estar em qualquer um dos registros
+    expect(r!.ids.sort()).toEqual(['a', 'b'])
+  })
+
+  it('⛔ mas nome DIFERENTE e parecido continua NÃO decidindo (o caso PAO DE MEL)', () => {
+    const homonimos: FornecedorConhecido[] = [
+      { id: 'a', razaoSocial: 'M. IVAN LUNARDI OURIQUE LTDA', nomeFantasia: null },
+      { id: 'b', razaoSocial: 'MAURO IVAN LUNARDI', nomeFantasia: 'PAO DE MEL' },
+    ]
+    expect(reconhecerFornecedor('IVAN LUNARDI - Pagamento', homonimos)).toBeNull()
+  })
+
+  it('⭐⭐ o CNPJ na descrição VENCE o nome — é identidade, não semelhança', () => {
+    const fs: FornecedorConhecido[] = [
+      { id: 'certo', razaoSocial: 'FOCATTO DISTRIBUIDORA DE ALIMENTOS LTDA', nomeFantasia: null, cnpj: '04.902.760/0001-45' },
+      { id: 'outro', razaoSocial: 'OUTRA EMPRESA QUALQUER LTDA', nomeFantasia: null, cnpj: '88.728.027/0001-46' },
+    ]
+    const r = reconhecerFornecedorComIrmaos('LIQUIDACAO BOLETO- 04902760000145 DIVERSOS', fs)
+    expect(r?.fornecedor.id).toBe('certo')
+    expect(r?.porCnpj).toBe(true)
+  })
+
+  it('⚠️ CNPJ que não está em cadastro nenhum não inventa fornecedor', () => {
+    const fs: FornecedorConhecido[] = [
+      { id: 'a', razaoSocial: 'FOCATTO DISTRIBUIDORA DE ALIMENTOS LTDA', nomeFantasia: null, cnpj: '04.902.760/0001-45' },
+    ]
+    expect(reconhecerFornecedor('LIQUIDACAO BOLETO- 99999999000199 DIVERSOS', fs)).toBeNull()
   })
 
   it('⛔ nome que não bate não vira fornecedor (o Pix de salário não é o Frigorífico)', () => {

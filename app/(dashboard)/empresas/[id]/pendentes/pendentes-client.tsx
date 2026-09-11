@@ -1340,6 +1340,17 @@ export function PendentesClient({
                           Marcar como retirada de sócio
                         </DropdownMenuItem>
                       )}
+                      {/* ⭐⭐ A PORTA DOS DOIS LADOS (10/09/2026): daqui pro MESMO card do
+                          Find & Match daquela linha. ⛔ Deep-link, não um segundo painel:
+                          o card mora num lugar só, e render duplicado divergiria na
+                          primeira regra nova (a lição do `GruposSugeridos`). */}
+                      {t.type === 'DEBIT' && (
+                        <DropdownMenuItem asChild>
+                          <a href={`/conciliacao?empresaId=${empresaId}&abrir=${t.id}`}>
+                            Casar com conta a pagar…
+                          </a>
+                        </DropdownMenuItem>
+                      )}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
@@ -1361,7 +1372,10 @@ export function PendentesClient({
                       este valor. <b>Vincular</b> liquida as {loteSug[t.id].quantas} e a
                       categoria vem de cada nota; categorizar aqui deixaria todas em aberto.
                     </span>
-                    <a href={`/conciliacao?empresaId=${empresaId}`}
+                    {/* ⭐ leva PRA LINHA (`&abrir=`), não só pra tela: perder no caminho a
+                        informação que a tela acabou de mostrar é obrigar o dono a
+                        procurar de novo numa lista de 100. */}
+                    <a href={`/conciliacao?empresaId=${empresaId}&abrir=${t.id}`}
                       className="ml-auto shrink-0 font-semibold underline underline-offset-2">
                       resolver na Conciliação →
                     </a>

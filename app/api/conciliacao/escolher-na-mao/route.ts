@@ -21,7 +21,7 @@ import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import { fornecedoresDaEmpresa, lotesDaFila } from '@/lib/conciliacao/fila-de-conciliacao'
-import { reconhecerFornecedor } from '@/lib/conciliacao/sugestao-de-vinculo'
+import { reconhecerFornecedorComIrmaos, canonizadorDeFornecedor } from '@/lib/conciliacao/sugestao-de-vinculo'
 import { montarCardDeEscolha } from '@/lib/conciliacao/escolher-na-mao'
 import { jaPagoPorConta } from '@/lib/conciliacao/aplicar-baixa-parcial'
 
@@ -55,15 +55,25 @@ export async function GET(request: NextRequest) {
 
     // ⭐ UMA query pras notas de TODOS os fornecedores envolvidos — nunca uma por card.
     // ⚠️ N cards × 1 query cada é o padrão que já custou 9,6 s nesta mesma tela.
+    // ⭐ o fornecedor da linha E os IRMÃOS dele no cadastro: 11 fornecedores da Caçula
+    // estão cadastrados 2×, e as contas podem estar em qualquer um dos registros.
+    const canon = canonizadorDeFornecedor(fornecedores)
     const fornecedorDaLinha = new Map<string, string>()
+    const irmaosDe = new Map<string, string[]>()
     for (const l of daEmpresa) {
-      const fid = l.supplierId ?? reconhecerFornecedor(l.description, fornecedores)?.id ?? null
-      if (fid) fornecedorDaLinha.set(l.id, fid)
+      const achado = reconhecerFornecedorComIrmaos(l.description, fornecedores)
+      const fid = canon(l.supplierId) ?? (achado ? canon(achado.fornecedor.id) : null)
+      if (!fid) continue
+      fornecedorDaLinha.set(l.id, fid)
+      const ids = l.supplierId
+        ? fornecedores.filter((f) => canon(f.id) === fid).map((f) => f.id)
+        : (achado?.ids ?? [])
+      irmaosDe.set(fid, ids.length ? ids : [fid])
     }
     const notasTodas = fornecedorDaLinha.size
       ? await prisma.transaction.findMany({
           where: {
-            supplierId: { in: [...new Set(fornecedorDaLinha.values())] },
+            supplierId: { in: [...new Set([...irmaosDe.values()].flat())] },
             lifecycle: { in: ['PAYABLE', 'RECEIVABLE'] },
             status: 'PENDING',
             paymentDate: null,
@@ -80,7 +90,8 @@ export async function GET(request: NextRequest) {
     const cards = daEmpresa.flatMap((l) => {
       const fid = fornecedorDaLinha.get(l.id)
       if (!fid) return []
-      const doForn = notasTodas.filter((n) => n.supplierId === fid)
+      const dele = new Set(irmaosDe.get(fid) ?? [fid])
+      const doForn = notasTodas.filter((n) => n.supplierId && dele.has(n.supplierId))
       if (!doForn.length) return []
       const forn = fornecedores.find((f) => f.id === fid)
       return [montarCardDeEscolha({

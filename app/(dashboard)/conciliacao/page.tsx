@@ -383,6 +383,9 @@ function ConciliacaoInner() {
                     empresaId={empresaId}
                     cards={cardsEscolha}
                     onConciliado={cardConciliado}
+                    // ⭐ quem chegou de outra tela já cai no card certo, aberto
+                    abrirExtratoId={searchParams.get('abrir')}
+                    abrirContaId={searchParams.get('conta')}
                   />
                 )}
 

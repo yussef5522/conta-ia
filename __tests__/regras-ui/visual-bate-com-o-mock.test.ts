@@ -261,6 +261,25 @@ describe('⛔⛔ conferência de saldo: fora da Conciliação, viva em Bancos', 
   })
 })
 
+// ⛔⛔ O CABEÇALHO NÃO INVENTA NÚMERO (10/09/2026)
+//
+// **O dono:** *"a soma dos pagamentos sai — 6.332,25 não é valor que eu paguei em gesto
+// nenhum; parece cobrança e confunde. Datas contam mais que soma."*
+//
+// ⚠️ É a mesma régua que matou o cabeçalho de 07/09 (*"número sem régua em tela de
+// dinheiro é pior que ausência"*): a soma de N pagamentos separados não corresponde a
+// nenhuma quantia que exista no mundo.
+describe('⛔⛔ o cabeçalho do card não soma pagamentos', () => {
+  it('com N pagamentos mostra a CONTAGEM e o PERÍODO, não o total', () => {
+    expect(fila).toContain('pagamentos · ${periodo(g)}')
+    expect(fila).not.toContain('linhas · ${menos(g.total)}')
+  })
+
+  it('⭐ com UM pagamento o valor fica — ali ele É o gesto', () => {
+    expect(fila).toContain('menos(g.total)')
+  })
+})
+
 describe('⛔ os textos que o mock imprime', () => {
   it('o rodapé fala "selecionado …" e "✓ soma crava com o pagamento"', () => {
     expect(mock).toContain('soma crava com o pagamento')

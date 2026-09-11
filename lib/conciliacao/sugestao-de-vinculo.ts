@@ -83,6 +83,8 @@ export interface FornecedorConhecido {
   id: string
   razaoSocial: string
   nomeFantasia: string | null
+  /** ⭐ o CNPJ do cadastro — âncora mais forte que nome quando o boleto o carrega */
+  cnpj?: string | null
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -160,29 +162,114 @@ function nomesDe(f: FornecedorConhecido) {
   return n
 }
 
-export function reconhecerFornecedor(
+/** só os dígitos — CNPJ vem formatado no cadastro e cru no extrato */
+const soDigitos = (x: string) => x.replace(/\D/g, '')
+
+/**
+ * ⭐⭐⭐ QUEM É O FORNECEDOR DESTA LINHA — e os IRMÃOS dele no cadastro.
+ *
+ * ⛔⛔ O ACHADO DE 10/09/2026: **11 fornecedores da Caçula estão cadastrados DUAS VEZES
+ * com o nome IDÊNTICO** (Frigorífico Silva, Focatto, Doceoli, Tozzo, Nestlé…). A trava do
+ * empate (*"dois fornecedores igualmente parecidos = não sei qual é"*) devolvia **NULL**
+ * — e ela estava certa pro caso que a motivou (o homônimo *"MAURO IVAN LUNARDI (PAO DE
+ * MEL)"*, 09/09), mas **não distingue duas coisas diferentes**:
+ *
+ *   • **ambiguidade real** — nomes DIFERENTES e parecidos → não sei quem é → NULL. Fica.
+ *   • **duplicata de cadastro** — nome IDÊNTICO → sei exatamente QUEM é; a dúvida é só
+ *     sobre em qual REGISTRO as contas dele foram parar. Isso não é palpite.
+ *
+ * **O estrago era dinheiro parado:** medido em prod, `FRIGORIFICO SILVA … - Pagamento`
+ * (uma descrição que NOMEIA o fornecedor com todas as letras) não era reconhecida, e as
+ * **6 contas em aberto dele (R$ 19.491,46)** não apareciam em card nenhum.
+ *
+ * ⭐ Por isso esta função devolve **todos os ids do mesmo nome**: o fornecedor é UM, e as
+ * contas dele são as dos dois registros. Quem monta o card soma os dois.
+ */
+export function reconhecerFornecedorComIrmaos(
   descricao: string,
   fornecedores: FornecedorConhecido[],
-): FornecedorConhecido | null {
+): { fornecedor: FornecedorConhecido; ids: string[]; porCnpj: boolean } | null {
+  /**
+   * ⭐ O CNPJ MANDA — é âncora mais forte que nome (decisão do dono).
+   *
+   * ⚠️ Boleto costuma carregar o CNPJ do beneficiário (`LIQUIDACAO BOLETO- 00360305…`).
+   * Quando ele está na descrição e bate com o cadastro, **não há semelhança envolvida**:
+   * é identidade. ⛔ E CNPJ que aponta pra DOIS cadastros diferentes volta pra régua do
+   * nome — dois CNPJs iguais em cadastros distintos é duplicata, não escolha.
+   */
+  const digitos = soDigitos(descricao)
+  if (digitos.length >= 14) {
+    const porCnpj = fornecedores.filter((f) => {
+      const c = soDigitos(f.cnpj ?? '')
+      return c.length === 14 && digitos.includes(c)
+    })
+    if (porCnpj.length) {
+      return { fornecedor: porCnpj[0], ids: porCnpj.map((f) => f.id), porCnpj: true }
+    }
+  }
+
   const alvo = normalizeForMatch(descricao)
   if (!alvo) return null
 
   let melhor: { f: FornecedorConhecido; sim: number } | null = null
-  let segundo = 0
+  let segundo: { f: FornecedorConhecido; sim: number } | null = null
   for (const f of fornecedores) {
     const n = nomesDe(f)
     const sim = Math.max(
       jaroWinkler(alvo, n.razao),
       n.fantasia ? jaroWinkler(alvo, n.fantasia) : 0,
     )
-    if (!melhor || sim > melhor.sim) { segundo = melhor?.sim ?? 0; melhor = { f, sim } }
-    else if (sim > segundo) segundo = sim
+    if (!melhor || sim > melhor.sim) { segundo = melhor; melhor = { f, sim } }
+    else if (!segundo || sim > segundo.sim) segundo = { f, sim }
   }
   if (!melhor || melhor.sim < CORTE_DE_NOME) return null
-  // ⛔ dois fornecedores igualmente parecidos = não sei qual é. Devolver um
-  // deles seria dar 15 pontos a um palpite.
-  if (melhor.sim - segundo < 0.03) return null
-  return melhor.f
+
+  // ⭐ os IRMÃOS: mesmo nome normalizado = o mesmo fornecedor, cadastrado N vezes
+  const chave = chaveDoNome(melhor.f)
+  const irmaos = fornecedores.filter((f) => chaveDoNome(f) === chave)
+
+  // ⛔ empate com nome DIFERENTE continua sendo "não sei qual é" — a trava do PAO DE MEL
+  if (segundo && melhor.sim - segundo.sim < 0.03 && chaveDoNome(segundo.f) !== chave) return null
+
+  return { fornecedor: melhor.f, ids: irmaos.map((f) => f.id), porCnpj: false }
+}
+
+/**
+ * ⭐⭐ O CANONIZADOR — mapeia CADA cadastro pro id do grupo de mesmo nome.
+ *
+ * ⛔ Sem isto, reconhecer o fornecedor não basta: as contas do Frigorífico estão no
+ * registro A e a régua pode devolver o B (que tem ZERO contas) — e o card não nasce do
+ * mesmo jeito. Canonizando os DOIS lados (linha e nota), as contas dos dois registros
+ * viram as contas de um fornecedor só, que é o que eles são.
+ *
+ * ⚠️ Isto NÃO funde nada no banco — é leitura. Fundir cadastro é decisão do dono, e a
+ * régua dura dele está no estoque desde 04/09 (*"fusão errada é pior que duplicata
+ * visível"*).
+ */
+export function canonizadorDeFornecedor(
+  fornecedores: FornecedorConhecido[],
+): (id: string | null | undefined) => string | null {
+  const canonPorChave = new Map<string, string>()
+  const canonPorId = new Map<string, string>()
+  for (const f of fornecedores) {
+    const k = chaveDoNome(f)
+    if (!canonPorChave.has(k)) canonPorChave.set(k, f.id)
+    canonPorId.set(f.id, canonPorChave.get(k)!)
+  }
+  return (id) => (id ? canonPorId.get(id) ?? id : null)
+}
+
+/** ⚠️ a chave da identidade: nome normalizado, o mesmo dos dois campos do cadastro */
+function chaveDoNome(f: FornecedorConhecido): string {
+  return normalizeForMatch(f.nomeFantasia ?? f.razaoSocial)
+}
+
+/** ⚠️ casca fina — quem só quer "quem é" continua chamando isto (REGRA 4) */
+export function reconhecerFornecedor(
+  descricao: string,
+  fornecedores: FornecedorConhecido[],
+): FornecedorConhecido | null {
+  return reconhecerFornecedorComIrmaos(descricao, fornecedores)?.fornecedor ?? null
 }
 
 /** a frase do "porquê", montada dos MESMOS dados que geraram o score */

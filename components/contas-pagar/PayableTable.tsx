@@ -42,7 +42,7 @@ import {
   sortableKeyboardCoordinates,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { GripVertical } from 'lucide-react'
+import { GripVertical, Search } from 'lucide-react'
 // Sprint 5.0.3.0c (c3) — Edit inline
 import { EditableCell } from './cells/EditableCell'
 import {
@@ -460,6 +460,21 @@ export function PayableTable({
                   >
                     <Check className="mr-2 h-3.5 w-3.5 text-emerald-600" />
                     Marcar como paga
+                  </DropdownMenuItem>
+                )}
+                {/* ⭐⭐ A PORTA DOS DOIS LADOS (10/09/2026): da CONTA pro mesmo card do
+                    Find & Match, com as linhas candidatas do fornecedor dela.
+                    ⛔ Deep-link, não um segundo painel — o card mora num lugar só.
+                    ⚠️ "Marcar como paga" continua ali: procurar no extrato é a saída
+                    HONESTA (o vínculo prova o pagamento), marcar na mão é a saída
+                    rápida, e sumir com ela deixaria o dono sem caminho quando o
+                    dinheiro saiu do cofre — que não tem extrato por natureza. */}
+                {!isPaid && (
+                  <DropdownMenuItem asChild data-testid="row-action-procurar-extrato">
+                    <a href={`/conciliacao?conta=${row.original.id}`}>
+                      <Search className="mr-2 h-3.5 w-3.5 text-[#534AB7]" />
+                      Procurar no extrato…
+                    </a>
                   </DropdownMenuItem>
                 )}
                 {isPaid && onMarkUnpaid && (
