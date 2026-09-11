@@ -572,6 +572,65 @@ OLEO DE SOJA: controle UN → LT (fator 1)
 
 ⚠️ **2c — o log é SENTINELA, não autópsia:** a marcação de 10/09 já passou e não deixou rastro; **não dá pra reconstruir a causa**, e o dono já tinha dito que nesse caso *"o log fica de sentinela"*. A próxima pulada sai com nome e motivo.
 
+### ⛔⛔⛔ O IMPORT DE VENDAS DE 10/09 EXPLODIU O ESTOQUE — E O GUARD NASCEU NA PORTA ERRADA (11/09)
+
+**O dono, congelando tudo antes de qualquer conserto:** *"CONGELA E MEDE — nada de consertar antes de responder."* A medição respondeu a pergunta dele (*"de onde saiu 1.499 de Fanta Uva?"*) e **refutou a hipótese da baixa dupla**.
+
+**⛔⛔ A CAUSA, medida contra o arquivo real:** o **Relatório de COMPLEMENTOS** foi subido na aba de **PRODUTOS**. Os dois layouts têm colunas diferentes:
+
+```
+PRODUTOS:     [Produto   · **Quantidade**             · Valor Extra · Valor total]
+COMPLEMENTOS: [Descrição · **Valor médio por unidade** · Quantidade  · Valor Total]
+```
+
+O parser lia **a coluna 1 como quantidade** — e no arquivo errado ela é o **PREÇO**. `R$ 14,99` virou **1.499 unidades**. As 54 linhas (de 86) são as de `R$ 0,00` virando quantidade 0 e sumindo: justamente os sabores inclusos no preço.
+
+**⚠️ A HIPÓTESE DA BAIXA DUPLA NÃO SE CONFIRMOU:** as 6 baixas eram o **estorna-e-refaz do reprocesso funcionando** (3 estornadas + 3 vivas). O estrago era **o −1.499 que deveria ser −1**, não a duplicidade.
+
+**⭐ O FIX DE CLASSE (ordem do dono): coluna se resolve pelo NOME DO CABEÇALHO, nunca pela posição.** `resolverColunas()` acha cada coluna pelo título e, quando o cabeçalho não traz o que se espera, **RECUSA o arquivo dizendo o que achou** — layout novo nunca mais entra calado. Golden com os **DOIS** layouts reais de 10/09.
+
+⚠️ **3 testes foram INVERTIDOS com o motivo escrito:** a casa documentava *"142 linhas e 142.255 unidades"* como o **resultado esperado** de um arquivo trocado. O teste afirmava o defeito.
+
+### ⛔⛔ E O GUARD DE SANIDADE ESTAVA NA PORTA ERRADA — a prova em prod que pegou
+
+Escrevi `sanidade-do-import.ts` e o liguei no `previewImportSuitable` — **a tela de MAPEAMENTO**. A prova em prod mostrou o payload do `processar` (**quem baixa o estoque**) **sem bloco de sanidade nenhum**: o import de 10/09 repetido hoje passaria calado de novo, com o guard "pronto" no arquivo ao lado. ⚠️ *Guard na porta que o dono pode nem abrir no dia não é guard.*
+
+- **`medirSanidade` tem um dono só** (`lib/stock/vendas/medir-sanidade.ts`) — o preview do mapa e o caminho da baixa chamam a MESMA; duas réguas divergiriam no 1º ajuste de fator.
+- **O plano CARREGA a pergunta** (`montarPlanoDeLinhas` devolve `sanidade`) e **quem RECUSA é o SERVIDOR** (409 `SANIDADE`), não um diálogo de tela — é a régua do **FREIO da contagem** (23/08). Aviso que mora no componente some no dia em que a rota for chamada por outro caminho, e foi por outro caminho que o estrago entrou.
+- ⭐ **Pergunta, nunca recusa cega** (a régua do dono): reenviar com `confirmouSanidade` passa. Encadeado nos **3** caminhos que baixam (import, reprocesso, lançamento manual). Na tela: as frases com o número dele e um checkbox que **nasce desmarcado** — confirmar tem que ser um gesto.
+
+### ⛔⛔ O GUARD ESTRUTURAL E O LIMIAR QUE O TESTE CORRIGIU
+
+*"Valor negativo com saldo positivo é impossível, não improvável — barra na escrita."* `assertSaldoNaoFicaImpossivel` entrou no `criarMovimento`.
+
+⚠️⚠️ **E o teste pegou o limiar errado:** eu escrevi `if (custoTotal >= 0) return`, e **a linha que CRIOU o estado impossível tem `custoTotal` ZERO** — a contagem de **+1.496 a R$ 0,00**. Um guard que só olhasse valor negativo deixaria passar **exatamente o movimento que causou o defeito**. Agora é `> 0`. ⭐ E a baixa que deixa **saldo** negativo continua passando: "vendeu sem produzir" é sinal legítimo, e barrá-lo esconderia o aviso.
+
+**REGRA 11 medida nos três:** parser por posição → **4 vermelhos** · guard estrutural removido → **2** · sanidade fora do `gravarVenda` → **1**.
+
+**O CONSERTO APLICADO, na ordem que o dono aprovou** (`pg_dump pre-conserto-vendas-1009-20260911-013812`): estorno das 3 `BAIXA_VENDA` vivas + das 3 `AJUSTE_CONTAGEM` a R$ 0,00 pelo `estornarMovimento` da casa (ledger imutável) · **sessão de contagem ROTINA de 04/09 FECHADA** (7 dias aberta — *"sessão é FOTO"*) · reimport do arquivo certo.
+
+**PROVADO EM PROD, pelas rotas e funções das telas:**
+```
+O ARQUIVO CERTO diz FANTA UVA: 1 un   (o trocado dizia 1.499)
+o dia 10/09: 437 unidades · 30 produtos mapeados · R$ 2.764,72 baixados
+  (o trocado: 53.761 un — 72× a média)
+
+SALDO DOS 3        COCA-COLA 2L 227 · R$ 1.835,64   |  CC Zero 2L 57 · R$ 462,19
+                   FANTA UVA 2L   6 · R$    40,86
+POSIÇÃO   165 linhas · R$ 136.822,38 · valor negativo: 0 ✓ · custo médio negativo: 0 ✓
+CARDÁPIO  165 produtos · COCA COLA 600ML 117 vendas · custo 3,31 · preço 11,00 · margem 70%
+          margens impossíveis: 0 ✓ · custos negativos: 0 ✓
+JUIZ      E1/E2/E8/C1/P1 = 0
+```
+⭐ **As 117 vendas da COCA 600 são as 107 que o dono citou + as 10 de 10/09** que agora entraram certas. **Varredura dos outros dias: nenhum inflado** (média 529 un/dia, 10/09 em 437).
+
+**9.285 verdes · TS 0 · deploys `4dbjmd_nPB3UncJw1Yz_v` e `onzxKJE1ct9el5RIXgkCw`, os dois 4/4.**
+
+⚠️ **PENDENTE (é do dono):** conferir os 3 saldos contra a geladeira. Se discordar, a marcyelle reconta **OS 3 numa sessão NOVA de hoje, nunca na velha** — a de 04/09 está fechada.
+
+⚠️ **ACHADO NO CAMINHO, não consertado:** o juiz do estoque voltou 🔴 com **51 issues, nenhuma do ledger** — são **E15** (eventos 210210 em ERRO > 24h, o débito registrado *"sem cron de retry de evento SEFAZ"*), **E7** (itens com saldo nunca contados — a contagem inicial) e **F5** (21 notas sem data de pagamento, R$ 8.588,75). Registrado, não atacado.
+
+
 ### ⛔⛔ O ITEM PRODUZIDO SUMIA DA POSIÇÃO — E O RÓTULO PROMETIA A FONTE ERRADA (11/09)
 
 **⛔ 1. "SEM CUSTO — ENTRA NA 1ª NOTA" NUM ITEM PRODUZIDO.** O dono: *"nota NUNCA vai chegar pra ele — é produzido: o custo nasce da 1ª PRODUÇÃO concluída. **Texto que promete fonte errada me deixa esperando o que não vem.**"* O texto era o mesmo pra todo componente sem custo. ⭐ Agora segue o TIPO, e o sinal é o **mesmo que o botão "produzir agora" já usava** (existe ficha que o produz) — nada de régua nova pra uma pergunta que a tela já sabia responder. O rodapé e o card de "sem custo" cobrem os dois caminhos, porque a lista pode ter comprado e produzido junto.
