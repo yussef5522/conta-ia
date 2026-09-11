@@ -51,9 +51,15 @@ async function cargaDe(id: string): Promise<Carga> {
     prisma.transaction.count({ where: { supplierId: id, reconciledWithId: { not: null } } }),
     prisma.aiLearningRule.count({ where: { supplierId: id } }),
     prisma.recurringSchedule.count({ where: { supplierId: id } }),
-    // ⚠️ a ponte do ESTOQUE aponta pro cadastro do financeiro — se o sobrevivente muda,
-    // este ponteiro tem que mudar junto, senão a próxima NF-e volta a criar duplicata.
-    prisma.stockSupplier.count({ where: { supplierId: id } }),
+    /**
+     * ⚠️ A AMARRA DA PONTE ESTOQUE→FINANCEIRO (`stock_payable_link.supplierId`).
+     *
+     * ⛔ Medido antes de escrever: o `StockSupplier` **NÃO** aponta pro cadastro do
+     * financeiro — o módulo de estoque é isolado e casa por CNPJ. Quem guarda o ponteiro
+     * é a AMARRA, e ela precisa acompanhar o sobrevivente: é o registro que responde
+     * *"esta conta veio de qual nota, e de qual fornecedor"*.
+     */
+    prisma.stockPayableLink.count({ where: { supplierId: id } }),
   ])
   return {
     transacoes, contasAbertas: abertas.length,
@@ -95,7 +101,7 @@ async function main() {
       const c = cargas.get(f.id)!
       console.log(`   [${f.id.slice(-6)}] CNPJ ${f.cnpj ?? '—'.padEnd(18)} · criado ${f.createdAt.toISOString().slice(0, 10)}`)
       console.log(`        ${c.transacoes} tx · ${c.contasAbertas} em aberto (${brl(c.valorAberto)}) · ${c.conciliadas} conciliadas`
-        + ` · ${c.regras} regra(s) · ${c.recorrentes} recorrente(s) · ${c.pontesDoEstoque} ponte(s) do estoque`)
+        + ` · ${c.regras} regra(s) · ${c.recorrentes} recorrente(s) · ${c.pontesDoEstoque} amarra(s) do estoque`)
     }
 
     // ⛔ RECUSA 1: dois CNPJs diferentes = empresas diferentes com o mesmo nome
@@ -122,7 +128,7 @@ async function main() {
         c.contasAbertas ? `${c.contasAbertas} conta(s) em aberto ${brl(c.valorAberto)}` : null,
         c.regras ? `${c.regras} regra(s) aprendida(s)` : null,
         c.recorrentes ? `${c.recorrentes} recorrente(s)` : null,
-        c.pontesDoEstoque ? `${c.pontesDoEstoque} ponte(s) do estoque (cnpj+cProd)` : null,
+        c.pontesDoEstoque ? `${c.pontesDoEstoque} amarra(s) da ponte do estoque` : null,
       ].filter(Boolean)
       console.log(`   → [${a.id.slice(-6)}] carrega junto: ${leva.length ? leva.join(' · ') : 'NADA (cadastro vazio)'}`)
       totalMovido += c.transacoes
@@ -134,7 +140,7 @@ async function main() {
           await tx.transaction.updateMany({ where: { supplierId: a.id }, data: { supplierId: sobrevivente.id } })
           await tx.aiLearningRule.updateMany({ where: { supplierId: a.id }, data: { supplierId: sobrevivente.id } })
           await tx.recurringSchedule.updateMany({ where: { supplierId: a.id }, data: { supplierId: sobrevivente.id } })
-          await tx.stockSupplier.updateMany({ where: { supplierId: a.id }, data: { supplierId: sobrevivente.id } })
+          await tx.stockPayableLink.updateMany({ where: { supplierId: a.id }, data: { supplierId: sobrevivente.id } })
           // ⚠️ DESATIVA, não apaga — e o rastro fica escrito (desenho da costura da RM2)
           await tx.supplier.update({
             where: { id: a.id },
