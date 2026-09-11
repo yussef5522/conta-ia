@@ -436,6 +436,30 @@ conferência de saldo no payload da Conciliação: null
 
 ⚠️ **SEGUE ABERTA A DECISÃO DO BADGE** (registrada acima): número certo a ~1,3 s por consulta, ou barato a 104 ms subcontabilizando quando existir lote. Está no primeiro.
 
+### ⛔⛔⛔ O VÍNCULO DA PARCELA OFERECIA O CONTRATO ERRADO E ESCONDIA O PAGAMENTO (10/09)
+
+**O dono, com a parcela #3 do C61021346-2 vencendo no dia:** *"a lista 'Lançamentos do grupo' mostra o CONTRATO ERRADO (…) e a linha que eu estou vinculando NÃO ESTÁ NA LISTA."* **Os três eram de código, e um é bomba de calendário.**
+
+**⛔ 1. O GRUPO ERA "TODA LINHA COM CARA DE EMPRÉSTIMO".** `buildLinkGroup` punha no universo qualquer descrição que casasse `LOAN_KW` (`amortizac|liquidac|presta|contrato|financ|parcela`). Medido em prod: **7 candidatos, ZERO do contrato dele** — 6 do **C61021766** (de julho) e um **pagamento de fatura de cartão**. ⭐ Agora: **achou linha do contrato → o número manda**; e **linha que nomeia OUTRO identificador longo nunca entra**, nem por keyword (a mesma régua tira o CNPJ do boleto do cartão). ⚠️ **A keyword NÃO morreu** — no Caixa (`DEBITO PRESTA SIEMP`) e no Banrisul (`PREV-EMP.BBH`) o banco não escreve número, e ali ela é o único caminho; ela só se cala quando já existe linha deste contrato.
+
+**⛔⛔ 2. A JANELA ERA FIXA — `2026-07-01` a `2026-08-31` — E EXPLODIU EM 01/09.** É a classe proibida desde 01/09 (*"data fixa não é futuro, é uma data que o calendário alcança"*), sobrevivendo nesta rota. **O pagamento de HOJE nem era buscado**; sobravam as de julho, de outro contrato. Agora a janela é **relativa ao vencimento das parcelas em aberto** (−45/+15) e **a SEMENTE entra POR ID mesmo fora da janela** — *"ela é o PRIMEIRO item do grupo, pré-marcada, sempre"*, e é o único jeito de ela não depender de heurística.
+
+**⛔ 3. A AGENDA NÃO TINHA O QUE CORRIGIR — o VALIDADOR é que estava errado.** `validateSchedule` acusava *"34 parcela(s) com juros = 0 num empréstimo com taxa > 0"* → `agendaValida: false` → a tela mandava **"Corrigir agenda"** e travava o vínculo. ⭐⭐ **E o comentário da própria regra sempre disse "PRÉ-fixado" — o código é que não checava `isPostFixed`.** No pós-fixado, **juros 0 na parcela futura é o estado honesto**: o juros do mês só se conhece no vencimento, e a agenda importada nasce amort-only de propósito (regra da casa desde 14/08). **A resposta à pergunta dele:** a agenda são **36 amortizações de ~R$ 2.777,78** (100.000 ÷ 36) e o juros de cada mês entra quando o mês chega — **não havia o que corrigir**.
+
+**⭐ E O SPLIT JÁ NASCIA CERTO DO VALOR REAL** — o que faltava era chegar nele. `4.337,52 = 2.777,80` de amortização (fora do DRE) `+ 1.559,72` de encargos (`juros 459,71 + correção 1.100,01`), exatamente o número que o dono previu.
+
+**PROVADO PELA ROTA REAL** (`vincular-parcela/preview`, sessão assinada, READ-ONLY):
+```
+PARCELA #3 · vence 10/09 · contrato C61021346-2
+LANÇAMENTOS DO GRUPO (1):
+  [x] ✓ 10/09  R$ 4.337,52 · LIQUIDACAO DE PARCELA-C61021346
+PAGO R$ 4.337,52 · amortização 2.777,80 + encargos 1.559,72
+SALDO 94.444,47 → 91.666,67 · AGENDA VÁLIDA: true
+```
+**REGRA 11 — 3 defeitos repostos, vermelho em cada. 9.222 verdes · TS 0 · deploy `L_nDtsNcxo1elAnDItmB3` 4/4.**
+
+**⚠️⚠️ E A RESPOSTA DURA SOBRE O IMPORT: ELE CONFIRMOU E NÃO GRAVOU — sucesso disfarçado, medido.** A linha nasceu no import de **10/09 23:13 (SUCCESS, 3 tx)** e está com **0 vínculos** (nem 1:1 nem N:1), **sem categoria**, `PENDING`. **O FATO está provado; a CAUSA não** — a UI monta a marca certo (`loanId` + `installmentNumber` em `handleConfirmar`) e o `aplicarMarcacao` gravaria ou **derrubaria o import** (o ramo não tem try/catch). Como marcação não deixa rastro próprio, não dá pra dizer por qual porta ela se perdeu sem instrumentar. **Débito nomeado, não consertado:** (a) logar toda marcação recebida × aplicada × pulada no confirm — hoje *"pulada"* é silenciosa por desenho (*"marcação cuja linha não virou transação não derruba nada"*), e é justamente onde um vínculo some; (b) ⚠️ **e quando ele grava, grava torto**: o ramo `PAGAMENTO_EMPRESTIMO` marca `PAID` + `reconciledTransactionId` **sem split** — os R$ 1.559,72 de encargos ficariam FORA do DRE. O caminho honesto do import é chamar o mesmo `computeLinkSplit` do painel.
+
 ### ⛔⛔⛔ E O DEPLOY FALHOU 3× POR OOM — o teto era do V8, não do kernel
 
 **O blue-green segurou as três**: *"o symlink não moveu, prod continua no build anterior"*. Mas o diagnóstico levou duas tentativas erradas, e as duas ficam registradas:
