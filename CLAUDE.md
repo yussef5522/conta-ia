@@ -572,6 +572,51 @@ OLEO DE SOJA: controle UN → LT (fator 1)
 
 ⚠️ **2c — o log é SENTINELA, não autópsia:** a marcação de 10/09 já passou e não deixou rastro; **não dá pra reconstruir a causa**, e o dono já tinha dito que nesse caso *"o log fica de sentinela"*. A próxima pulada sai com nome e motivo.
 
+### ⛔⛔⛔ A CORREÇÃO DE UNIDADE VIRAVA A ENTRADA E NÃO VIRAVA O ITEM (11/09)
+
+**O dono, depois de conferir a NF 179646 da LATICINIOS SANTO CRISTO:** *"troquei pra KG (1 peça = 2 KG), a tela mostrou certo, confirmei — o recibo diz '16 UN → Recebido 32 · custo 34,45' (**conta certa!**) mas NO ESTOQUE o item segue 'controle em UN' com o 32 entrando como unidades."* **Sucesso disfarçado, e o diagnóstico dele estava certo.**
+
+**MEDIDO COM OS IDS, antes de tocar em código:** a entrada gravou **perfeita** (32 × R$ 34,45 = R$ 1.102,40), a `stock_unidade_corrigida` gravou (`UN→KG fator 2`) e o mapa `(cnpj, cProd)` **aprendeu o fator 2** — as três coisas que ele perguntou. O que **não** aconteceu foi a quarta: `stockItem.unidadeControle` continuou **UN**, e o saldo virou **`59,2 UN`** — um número **sem significado físico**, somando 8 peças com 19,2 kg com 32 kg.
+
+**⛔⛔ E A MEDIÇÃO REFUTOU O FIX QUE ELE PROPÔS — "reunitiza o item com o mesmo fator" inventaria 51,2 kg de queijo.** O `reunitizar-item.ts` converte **TODOS** os movimentos vivos pelo fator; ele assume, desde 27/08, que o ledger inteiro está na régua antiga. **No queijo isso é falso:**
+
+| quando | movimento | o que a CONFERÊNCIA registrou | fisicamente |
+|---|---|---|---|
+| 24/08 | 8 × R$ 69,90 | a nota disse **UN** | 8 **peças** → precisa ×2 |
+| 03/09 | 19,2 × R$ 33,90 | a nota disse **KG** (outro fornecedor, a granel) | **19,2 kg — já certo** |
+| 11/09 | 32 × R$ 34,45 | corrigida **UN→KG** | **32 kg — já certo** |
+
+`59,2 × 2 = 118,4` contra os **67,2** reais. ⚠️ **Um item recebe de FORNECEDORES DIFERENTES, e cada um manda na unidade que quer** — nada garante ledger homogêneo.
+
+**⭐⭐ E A UNIDADE DE CADA ENTRADA É DERIVÁVEL, NÃO ADIVINHÁVEL** (`lib/stock/unidade-do-movimento.ts`): a cadeia é **correção de unidade → `unidadeNota` da conferência → a régua do próprio item** (contagem e produção são digitadas nela). ⚠️ O custo unitário também denunciaria (69,90 é preço de peça, 33,90 é preço de quilo), mas isso é **heurística sobre número** — e este módulo decide pelo que foi **REGISTRADO**.
+
+**O GESTO ÚNICO, as três coisas numa transação:** a correção converte a entrada (já fazia), grava o fator do fornecedor (já fazia) e **reunitiza o item** — **antes** de o movimento novo nascer, pra ele entrar já na régua nova e não ser convertido duas vezes. `reunitizarNaTransacao` foi extraído porque **Prisma não aninha `$transaction`** (a mesma cirurgia que o `aplicar-marcacao` levou em 29/08).
+
+**⛔ NUNCA CONVERTE METADE E CALA:** movimento numa **terceira** unidade (nem a antiga nem a nova) **bloqueia nomeando** — sem o fator dele, converter seria chute; e se o item não puder reunitizar agora (**produção aberta**), a **conferência inteira para** e nada grava. Teste prova: 0 movimento, 0 conferência, item ainda em UN.
+
+**⭐ O FATOR DOS MAPAS TEM A MESMA DOENÇA** — e ela mordia no mesmo caso: o queijo tem **dois** fornecedores, um que manda peça (fator 2) e outro **a granel em KG** (fator 1). Multiplicar os dois por 2 faria a próxima nota do granel entrar com **o dobro de queijo**. Agora quem já manda na unidade nova **não se mexe**.
+
+**⚠️⚠️ E UM GUARD NASCEU SEM GUARD NO CAMINHO — o teste pegou.** Ao extrair o miolo transacional, a recusa por **produção aberta** ficou de fora (ela vivia **em duas cópias**, no preview e no aplicar). Virou `bloqueioDeProducaoAberta`, com **dono único**, chamada pelos três.
+
+**A TELA MOSTRA O EFEITO ANTES DO CLIQUE**, e a conta vem da **mesma** `previewReunitizar` que o confirmar executa: *"o item passa a ser controlado em KG · saldo 59,2 UN → 67,2 KG · valor R$ 2.312,48 (não muda) · 1 movimento converte, 2 já estão certos"*.
+
+**REGRA 11 — 2 defeitos repostos:** sem o reunitizar na conferência → **3 vermelhos** (o de hoje, exato) · reunitizar global (converte tudo) → **5**.
+
+**9.327 verdes · TS 0 · deploys `bIKmA25pmFFsAHXGDE-mR` e `y2cRmD_4GrNYfjPUtV6Fw`, os dois 4/4.**
+
+**📋 O RETROATIVO DO QUEIJO ESTÁ EM PREVIEW, ESPERANDO O OK** (`scripts/retro-queijo.ts`, read-only por padrão):
+```
+QUEIJO MUSSARELA FATIADO 2KG FATIA 10x10 CM   ·   UN → KG · fator 2
+   ⭐ CONVERTE      8 UN → 16 KG        (unidade veio da CONFERÊNCIA)
+   ✓ JÁ CERTO    19,2 KG — fica intacto (o granel)
+   ✓ JÁ CERTO      32 KG — fica intacto (a entrada de hoje, já corrigida)
+
+SALDO:  59,2 UN      →  67,2 KG
+CUSTO:  R$ 39,06/UN  →  R$ 34,41/KG
+VALOR:  R$ 2.312,48  →  R$ 2.312,48   ⭐ INVARIANTE ao centavo
+```
+
+
 ### ⭐⭐⭐ A COLUNA SALDO — O EXTRATO BANCÁRIO DO ITEM (11/09)
 
 **O dono:** *"quanto o item tinha DEPOIS de cada linha (227 → 234 → …). **Derivada do ledger na ordem, nunca gravada.**"*
