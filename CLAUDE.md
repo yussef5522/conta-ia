@@ -572,6 +572,55 @@ OLEO DE SOJA: controle UN → LT (fator 1)
 
 ⚠️ **2c — o log é SENTINELA, não autópsia:** a marcação de 10/09 já passou e não deixou rastro; **não dá pra reconstruir a causa**, e o dono já tinha dito que nesse caso *"o log fica de sentinela"*. A próxima pulada sai com nome e motivo.
 
+### ⭐⭐⭐ HISTÓRICO EM MODO CLEAN — O PAR QUE SE ANULA VIRA UMA LINHA FINA (11/09)
+
+**O dono, olhando a Coca 2L depois do conserto:** *"16 linhas, das quais 6 são pares que se anulam. Pra entender 'o que aconteceu com meu estoque', essas linhas são ruído — mas APAGAR não pode: **o rastro é o que provou o desastre de ontem**."*
+
+⚠️ **Medido antes de desenhar: são 4 pares (8 linhas), não 3.** O `+154 × −154` que ele mesmo citou também é par — a lista sai de **16 → 12**, não pros ~10 que ele estimou. Fanta: **10 → 7**.
+
+**⭐ `colapsarAnulados` mora no MESMO dono do `dobrarProducao`** (`movimento-explicado.ts`), e por isso o histórico do item e o extrato herdam a régua juntos — duas implementações divergiriam no 1º tipo novo, que é a doença que este módulo mais paga.
+
+**⛔⛔ A SOMA NÃO MUDA — E ISSO É POR CONSTRUÇÃO, NÃO PROMESSA.** O par só colapsa quando a contribuição dele à soma exibida é **zero**. Par **assimétrico** (um lado fora da prateleira, como o `PRODUCAO_CONSUMO` com estorno que move) **NÃO colapsa** — senão o rodapé *"✓ bate com o saldo"* passaria a mentir, e ele é justamente o teste da tela que o dono pediu em 09/09.
+
+**AS TRÊS RECUSAS, cada uma com o seu motivo:**
+| situação | decisão |
+|---|---|
+| desfeito **por inteiro** e contribuição zero | ⭐ colapsa numa linha fina |
+| **estorno PARCIAL** | fica à vista — *sobrou efeito, o efeito aparece* |
+| **par assimétrico** | fica à vista — colapsar mentiria na soma |
+| estorno cujo **original não está na lista** (filtro/período) | fica como está — colapsar meio par sumiria com dado |
+
+**⛔ NADA É APAGADO:** o par inteiro **viaja dentro da linha** (`anulado.original` + `anulado.estornos`), a tela expande em *"ver detalhe"*, e o toggle **"mostrar tudo (forense)"** devolve a lista crua. ⭐ O toggle **só aparece quando há par colapsado** — botão que não faz nada é ruído. **E o CSV vai SEMPRE forense** (o servidor força): arquivo é pra auditoria, e lá o par tem que estar inteiro.
+
+⚠️ **A FRASE SAI SÓ DO QUE O LEDGER GUARDA.** Não existe campo de motivo em `stock_movement` — escrever *"(import com coluna errada)"* na linha seria inventar um dado que ninguém gravou. A linha diz o que dá pra provar: *"⊘ lançamento anulado — baixa de venda de 1.499 un estornada em 11/09"*.
+
+**⚠️⚠️ REGRA 11 PEGOU UM TESTE MEU QUE NÃO MORDIA — de novo.** Repus o defeito tirando a trava do **PARCIAL** e os 11 testes ficaram **VERDES**: quem barrava o meu caso era a trava de **contribuição** (−100 + 40 já não soma zero). O teste que **isola** a régua do parcial é o dos **dois lados fora da prateleira**, onde a contribuição é zero de qualquer jeito e só a pergunta *"desfez tudo?"* separa. Com ele, remover a trava fica vermelho.
+
+**7 TESTES ANTIGOS INVERTIDOS COM O MOTIVO ESCRITO** (afirmavam o mundo antigo, em que o par aparecia): os que falam da **natureza da linha** (chip, quem, href, `estornoDe`) passaram a pedir o **forense** — e isso, por si, prova que no forense **nada se perdeu**.
+
+⚠️ **CONSEQUÊNCIA REGISTRADA:** a compra **100% estornada sai da aba "só compras"**. É o certo — aquela aba existe pra **comparar preço de fornecedor**, e uma compra desfeita não é um preço que alguém pagou; no forense ela volta. ⚠️ **E o gráfico de preço NÃO segue essa régua** (lê `ENTRADA_NF` do cru, incluindo compra estornada): é defeito **pré-existente**, achado no caminho, **não consertado sem pedido**.
+
+**PROVADO EM PROD, pelas rotas reais com sessão assinada:**
+```
+COCA-COLA 2L   forense 16 linhas → CLEAN 12 (4 anuladas)
+               soma clean 227 · R$ 1.835,64  ==  soma forense 227 · R$ 1.835,64
+               ✓ bate com o saldo: clean true · forense true
+   ⊘ lançamento anulado — contagem de 1.480 un estornada em 11/09   [1 estorno dentro]
+   10/09 · Compra (NF-e)    +80 un   R$ 646,79
+   10/09 · Baixa de venda    −7 un  −R$  56,63
+   ⊘ lançamento anulado — baixa de venda de 1.499 un estornada em 11/09
+   ⊘ lançamento anulado — baixa de venda de 1.499 un estornada em 11/09
+   09/09 · Contagem        −406 un −R$ 3.280,48
+   ⊘ lançamento anulado — contagem de 154 un estornada em 09/09
+
+FANTA UVA 2L   forense 10 → CLEAN 7 (3 anuladas) · soma 6 un · R$ 40,86 nos dois
+EXTRATO        clean 401 linhas (26 anuladas) · forense 427
+```
+**REGRA 11 — 2 travas repostas, 1 vermelho cada. 9.305 verdes · TS 0 · deploy `QjsylK61vkqb-L1cPEcAf` 4/4.**
+
+⚠️ **E O BUILD FALHOU UMA VEZ POR CULPA MINHA:** deixei um script de medição (`scripts/medir-coca-tmp.ts`) no servidor e o type-check do build o compilou. **O blue-green segurou** — *"o symlink não moveu, prod continua no build anterior"*. Lição pequena e registrada: script temporário no servidor vive em `/tmp`, nunca em `scripts/`.
+
+
 ### ⛔⛔⛔ O IMPORT DE VENDAS DE 10/09 EXPLODIU O ESTOQUE — E O GUARD NASCEU NA PORTA ERRADA (11/09)
 
 **O dono, congelando tudo antes de qualquer conserto:** *"CONGELA E MEDE — nada de consertar antes de responder."* A medição respondeu a pergunta dele (*"de onde saiu 1.499 de Fanta Uva?"*) e **refutou a hipótese da baixa dupla**.
