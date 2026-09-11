@@ -545,6 +545,33 @@ A PORTA:  sem ?abrir= → 16 cards, a linha do Focatto NÃO está
 
 **⚠️⚠️ E UMA AFIRMAÇÃO MINHA QUE O DADO DESMENTIU:** eu disse que *"o aluguel é conta manual sem fornecedor"*. Medido: **existem ZERO contas em aberto sem fornecedor**, e o único "ALUGUEL" do período é `ALUGUEL MAQ CARTOES-91942388` (R$ 266,88, 11/08, **já conciliada**) — aluguel de maquininha, não o do escritório. O caso que o dono nomeou não está na base como conta em aberto; **eu repeti a suposição dele em vez de medir**. O débito do "Find & Match sem fornecedor dos dois lados" continua válido como classe — o que não vale é o exemplo que eu dei.
 
+### ⭐⭐ BADGE DECIDIDO · IMPORT VINCULA IGUAL AO PAINEL · TROCAR A UNIDADE DO ITEM (11/09)
+
+**⭐ 1. BADGE — decisão do dono, e ela vira regra da casa:** *"fica no número honesto. Se doer um dia: cache do contador invalidado na escrita. **Performance se resolve com cache, nunca com número errado.**"* O badge segue em `contarFilas` (~1,3 s a cada 60 s).
+
+**⛔⛔ 2a. O LOG DE TODA MARCAÇÃO.** O contador dizia `N puladas` e **mais nada** — e *"pulada silenciosa por desenho"* foi onde o vínculo do dia 10 sumiu. Agora cada marcação sai com **kind, hash e MOTIVO**, derivado dos conjuntos que o próprio import tem: *a linha já existia (duplicata)* · *foi descartada como futura* · *marcada mas NÃO virou transação neste confirm* (o caso que ninguém explicava) · *já estava aplicada (idempotente)*.
+
+**⛔⛔⛔ 2b. O IMPORT MARCAVA "PAGA" SEM SPLIT — R$ 1.559,72 FORA DO DRE.** O ramo `PAGAMENTO_EMPRESTIMO` gravava `status:'PAID'` + `reconciledTransactionId` **e nada mais**: sem `paidTotal`, sem `paidInterest`, sem `paidCorrection`. Como o DRE lê **exatamente** esses campos, a parcela entrava paga com **encargo ZERO**. ⚠️ E gravava pela porta **1:1** enquanto o painel usa a **N:1** — duas portas pro mesmo fato, a família que o trigger `loan_installment_no_double_link` existe pra recusar. **⭐ A gravação virou UMA função** (`vincularPagamentoDeParcela`): o painel é casca fina sobre ela, o import chama a mesma. Vincular pelo import **é** vincular pelo painel.
+
+**⭐⭐⭐ 3. TROCAR A UNIDADE — O GESTO JÁ EXISTIA, e medir isso ANTES economizou reescrever tudo.** O dono disse *"hoje não existe onde trocar"*; medido, o `reunitizar-item.ts` faz isso **desde 27/08** (o caso do pão), com rota, UI na ficha do item e a invariante do valor checada em runtime. **O que faltava era exatamente o caso dele** — e eram três coisas:
+
+1. **`fator === 1` era recusado SEMPRE** (*"não muda nada"*), e o caso do óleo é `1 UN = 1 L`. **Muda a RÉGUA** — e é a troca que faz o item **aceitar decimal** (LT é fracionável, UN não), que era metade do motivo. Agora só é erro quando a unidade também não muda.
+2. **Item usado em ficha era RECUSADO.** A recusa protegia do estrago certo, mas **empurrava pro caminho pior**: desmontar a receita na mão e remontar. Agora as quantidades **convertem no mesmo ato**, com a lista à vista no preview. ⚠️ Converte **todas as versões** (cada componente guarda a unidade dele) e **não cria versão nova**: a receita não mudou — 0,05 L é a mesma coisa física que 0,05 UN era.
+3. **Guard novo: produção aberta COM ESTE ITEM recusa** — *"material separado está medido na unidade velha"*, e o P1 acusaria um vazamento que não existe. ⚠️ **Por ITEM, não global**: há **8 ordens abertas** na Caçula hoje e nenhuma tem óleo; guard global proibiria pra sempre o que é seguro.
+
+**PROVADO EM PROD pela rota real (PRÉVIA, nada gravado):**
+```
+OLEO DE SOJA: controle UN → LT (fator 1)
+  ANTES : 480 UN · R$ 8,04/UN · valor R$ 3.858,80
+  DEPOIS: 480 LT · R$ 8,04/LT · valor R$ 3.858,80
+  ⭐ valor INVARIANTE ao centavo · 5 movimentos reescritos · 0 fichas · 0 bloqueios
+```
+⚠️ **E o parentesco com a "correção de unidade" da conferência está confirmado:** aquela conserta a **ENTRADA de uma nota** (`stock_unidade_corrigida`, por nota); esta muda o **CONTROLE do item**. São tabelas e gestos diferentes e **não se cruzam** — a troca de controle mexe no `fatorConversao` do mapa `cnpj+cProd` (pra a próxima nota entrar na régua nova), nunca no `uCom`/`uTrib` que a nota declarou.
+
+**2 testes invertidos com o motivo escrito. REGRA 11 em cada frente. 9.260 verdes · TS 0 · deploy `EFCrUP54oEL8rbXJM4JTX` 4/4.**
+
+⚠️ **2c — o log é SENTINELA, não autópsia:** a marcação de 10/09 já passou e não deixou rastro; **não dá pra reconstruir a causa**, e o dono já tinha dito que nesse caso *"o log fica de sentinela"*. A próxima pulada sai com nome e motivo.
+
 ### ⛔⛔⛔ E O DEPLOY FALHOU 3× POR OOM — o teto era do V8, não do kernel
 
 **O blue-green segurou as três**: *"o symlink não moveu, prod continua no build anterior"*. Mas o diagnóstico levou duas tentativas erradas, e as duas ficam registradas:
