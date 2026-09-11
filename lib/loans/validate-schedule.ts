@@ -62,7 +62,7 @@ function r2(n: number): number {
 }
 
 export function validateSchedule(input: ValidateScheduleInput): ScheduleValidationResult {
-  const { rows, base, ratePositive, tolerance = 0.02 } = input
+  const { rows, base, ratePositive, isPostFixed, tolerance = 0.02 } = input
   const errors: string[] = []
 
   if (!rows || rows.length === 0) {
@@ -113,8 +113,19 @@ export function validateSchedule(input: ValidateScheduleInput): ScheduleValidati
     errors.push(`saldo devedor final R$ ${last.closingBalance.toFixed(2)} ≠ 0`)
   }
 
-  // 7. pré-fixado com taxa > 0 não pode ter juros = 0
-  if (ratePositive) {
+  // 7. PRÉ-fixado com taxa > 0 não pode ter juros = 0
+  //
+  // ⛔⛔ O `!isPostFixed` FALTAVA — e o comentário desta regra (e o do topo do arquivo)
+  // sempre disse "pré-fixado". O código cobrava de TODO contrato, e no PÓS-FIXADO isso é
+  // cobrar o impossível: **o juros do mês só se conhece no vencimento** (é a regra da casa
+  // desde 14/08: *"parcela POS OPEN não tem juros gravado — tem previsão"*, e a agenda
+  // importada nasce amort-only de propósito).
+  //
+  // ⚠️ O ESTRAGO ERA REAL, medido no C61021346-2 (10/09/2026): 34 das 36 parcelas com
+  // juros 0 → agenda "inválida" → a tela mandava **"Corrigir agenda"** e não deixava
+  // vincular o pagamento do dia. Não havia o que corrigir: a agenda são 36 amortizações
+  // de ~R$ 2.777,78 e o juros de cada mês entra quando o mês chega.
+  if (ratePositive && !isPostFixed) {
     const semJuros = rows.filter((r) => r.openingBalance > tolerance && r.interest <= tolerance)
     if (semJuros.length > 0) {
       errors.push(

@@ -14,8 +14,20 @@ import { exigeContaDoEmprestimo, MutuoSemContaError } from '@/lib/loans/exige-co
 export const runtime = 'nodejs'
 interface Params { params: Promise<{ id: string; loanId: string }> }
 
-const WINDOW_START = new Date('2026-07-01T00:00:00.000Z')
-const WINDOW_END = new Date('2026-08-31T23:59:59.999Z')
+/**
+ * ⛔⛔⛔ ISTO ERA UMA JANELA FIXA — `2026-07-01` a `2026-08-31` — e ela EXPLODIU EM 01/09.
+ *
+ * É a bomba de calendário que a casa proibiu em 01/09/2026 (*"data fixa não é futuro, é
+ * uma data que o calendário alcança"*), e ela sobreviveu aqui. **O estrago, medido em
+ * 10/09:** a parcela #3 do C61021346-2 venceu HOJE, o débito de R$ 4.337,52 entrou HOJE —
+ * e o grupo do vínculo **nem buscava** essa linha. Sobravam as de julho, de OUTRO
+ * contrato: o dono via 7 candidatos e nenhum era o pagamento dele.
+ *
+ * ⭐ A JANELA AGORA É RELATIVA AO VENCIMENTO DA PARCELA ALVO — que é a pergunta certa:
+ * *"que débitos podem ter pago ESTA parcela?"*, não *"que débitos existem em julho?"*.
+ */
+const DIAS_ANTES = 45
+const DIAS_DEPOIS = 15
 
 const bodySchema = z.object({
   installmentNumber: z.number().int().positive().optional(),
@@ -51,15 +63,40 @@ export async function POST(request: NextRequest, { params }: Params) {
     // Candidatos: DEBIT pendentes da conta, na janela, ainda não vinculados, que
     // batem com o contrato (Sicredi tem nº na descrição; outros bancos: sem nº,
     // caem aqui só se o nº bater — pra keyword-only o painel é aberto manualmente).
-    const pend = await prisma.transaction.findMany({
+    // ⚠️ a janela pende das parcelas EM ABERTO — o alvo ainda não foi escolhido aqui
+    const contaDoEmprestimo = exigeContaDoEmprestimo(loan, 'pré-visualizar o vínculo')
+    const vencs = (openList.length ? openList : installments).map((i) => i.dueDate.getTime())
+    const CANDIDATO_WHERE = {
+      bankAccountId: contaDoEmprestimo, type: 'DEBIT' as const, lifecycle: 'EFFECTED' as const,
+      loanInstallmentPaid: { is: null }, loanInstallmentPayments: { none: {} },
+    }
+    const pendJanela = await prisma.transaction.findMany({
       where: {
-        bankAccountId: exigeContaDoEmprestimo(loan, 'pré-visualizar o vínculo'), type: 'DEBIT', lifecycle: 'EFFECTED',
-        date: { gte: WINDOW_START, lte: WINDOW_END },
-        loanInstallmentPaid: { is: null }, loanInstallmentPayments: { none: {} },
+        ...CANDIDATO_WHERE,
+        date: {
+          gte: new Date(Math.min(...vencs) - DIAS_ANTES * 86400_000),
+          lte: new Date(Math.max(...vencs) + DIAS_DEPOIS * 86400_000),
+        },
       },
       orderBy: { date: 'asc' },
       select: { id: true, description: true, amount: true, date: true },
     })
+
+    /**
+     * ⭐⭐ A SEMENTE ENTRA POR ID, mesmo fora da janela — *"ela é o PRIMEIRO item do grupo,
+     * pré-marcada, sempre"* (ordem do dono).
+     *
+     * ⛔ Sem isto, o vínculo dependia de a janela ter acertado a linha que o dono
+     * ACABOU de clicar — e quando errava, o painel abria sem o pagamento e sem dizer por
+     * quê. Buscar por id é a única forma de a semente não depender de heurística nenhuma.
+     */
+    const semente = body.originTxId && !pendJanela.some((t) => t.id === body.originTxId)
+      ? await prisma.transaction.findFirst({
+          where: { ...CANDIDATO_WHERE, id: body.originTxId },
+          select: { id: true, description: true, amount: true, date: true },
+        })
+      : null
+    const pend = semente ? [semente, ...pendJanela] : pendJanela
 
     // FIX matcher por data (05/08): casa a parcela pela DATA do débito, não pela
     // mais antiga aberta. Alerta quando o valor não distingue (parcelas iguais).

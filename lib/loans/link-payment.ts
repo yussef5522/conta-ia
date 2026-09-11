@@ -41,16 +41,67 @@ export interface LinkGroup {
  *    não pré-selecionados).
  * Puro — sem DB.
  */
+/**
+ * ⛔⛔ A DESCRIÇÃO NOMEIA UM CONTRATO QUE NÃO É O MEU?
+ *
+ * O Sicredi escreve `AMORTIZACAO CONTRATO-C61021766` — o número está ali, e ele diz que
+ * aquele dinheiro **tem dono**. Oferecer essa linha no vínculo de OUTRO contrato é convite
+ * pra vincular errado, que é a família do caso Cancian (08/09).
+ *
+ * ⚠️ Sequência de 6+ dígitos serve de "identificador de terceiro" com folga: pega
+ * `C61021766` e também o CNPJ do `LIQUIDACAO BOLETO- 00360305000104 CARTOES CAIXA VISA PJ`
+ * — que também não é empréstimo nenhum e também tinha que sair.
+ */
+export function nomeiaOutroContrato(descricao: string, contractNumber: string | null): boolean {
+  // sem número no contrato (Caixa/Banrisul), não dá pra afirmar que a linha é de outro
+  if (!contractNumber) return false
+  // a linha traz ALGUM identificador longo? sem isso, ela não nomeia contrato nenhum
+  if (!/\d{6,}/.test(descricao)) return false
+  // ⚠️ a pergunta vai pro matcher da casa com a DESCRIÇÃO inteira — ele é quem sabe
+  // que `C61021346-2` casa com `…PARCELA-C61021346` (o sufixo do contrato não vai no
+  // extrato). Passar só os dígitos soltos furava justamente o caso do dono.
+  return !descriptionMatchesContract(descricao, contractNumber)
+}
+
 export function buildLinkGroup(input: BuildLinkGroupInput): LinkGroup {
   const { pend, contractNumber, originTxId, transactionIds } = input
   const contractHits = contractNumber ? pend.filter((t) => descriptionMatchesContract(t.description, contractNumber)) : []
   const autoIds = new Set(contractHits.map((t) => t.id))
+  // ⭐ A SEMENTE SEMPRE ENTRA e sempre marcada: ela é a linha que o dono clicou pra
+  // vincular. Grupo que não contém o próprio pagamento não tem como fechar.
   if (originTxId && pend.some((t) => t.id === originTxId)) autoIds.add(originTxId)
   const selectedIds = new Set(transactionIds ?? [...autoIds])
-  const universe = pend.filter((t) => autoIds.has(t.id) || selectedIds.has(t.id) || LOAN_KW.test(t.description ?? ''))
+
+  /**
+   * ⛔⛔ O UNIVERSO É DO CONTRATO — não "toda linha com cara de empréstimo".
+   *
+   * Antes: `… || LOAN_KW.test(t.description)`, e a keyword casa `amortizac|liquidac|
+   * presta|contrato|…` em QUALQUER linha. Medido em prod (10/09/2026), o vínculo da
+   * parcela #3 do C61021346-2 oferecia **7 linhas, todas de outro contrato** (6 do
+   * C61021766, de julho) mais um **pagamento de fatura de cartão**.
+   *
+   * ⚠️ A keyword NÃO morre: em banco que não escreve o número (Caixa `DEBITO PRESTA
+   * SIEMP`, Banrisul `PREV-EMP.BBH`) ela é o único caminho. Ela só deixa de valer quando
+   * já achei linha DESTE contrato — aí o número manda — e nunca vale pra linha que
+   * nomeia OUTRO contrato.
+   */
+  // ⚠️ é `contractHits`, NÃO `autoIds`: a semente entrar no grupo não prova que eu achei
+  // linha DESTE contrato — e amarrar a régua nela desligaria a keyword no Caixa, que
+  // depende dela por não escrever número nenhum na descrição.
+  const achouDoContrato = contractHits.length > 0
+  const universe = pend.filter((t) =>
+    autoIds.has(t.id)
+    || selectedIds.has(t.id)
+    || (!achouDoContrato
+        && LOAN_KW.test(t.description ?? '')
+        && !nomeiaOutroContrato(t.description ?? '', contractNumber)),
+  )
+  // ⭐ a semente PRIMEIRO: é a linha que o dono está vinculando, não uma da pilha
+  const ordenado = [...universe].sort((a, b) =>
+    (b.id === originTxId ? 1 : 0) - (a.id === originTxId ? 1 : 0))
   const selected = universe.filter((t) => selectedIds.has(t.id))
   return {
-    candidates: universe.map((t) => ({ ...t, selected: selectedIds.has(t.id) })),
+    candidates: ordenado.map((t) => ({ ...t, selected: selectedIds.has(t.id) })),
     selectedIds: [...selectedIds],
     paidTotal: round2(selected.reduce((s, t) => s + t.amount, 0)),
   }
