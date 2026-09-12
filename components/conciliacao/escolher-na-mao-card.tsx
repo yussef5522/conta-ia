@@ -31,7 +31,8 @@ import { useState, useMemo, useCallback } from 'react'
 import { Loader2 } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
-import { JANELA_A_VENCER_DIAS, TETO_DA_DIFERENCA, tetoDoGestoManual } from '@/lib/conciliacao/escolher-na-mao'
+import { JANELA_A_VENCER_DIAS } from '@/lib/conciliacao/escolher-na-mao'
+import { avaliarDiferenca, TETO_QUE_O_SISTEMA_OFERECE, FECHA_AO_CENTAVO } from '@/lib/conciliacao/regua-da-diferenca'
 import { MOCK, LINHA_ENTRE_NOTAS, HOVER_NOTA, chip } from './mock-tokens'
 
 export interface NotaDoCardDTO {
@@ -62,8 +63,9 @@ export interface CardDeEscolhaDTO {
  * segunda régua no dia em que o teto mudar, exatamente como o `30` da janela do "a vencer"
  * já tinha ensinado. Agora vem do dono único.
  */
-const TETO = TETO_DA_DIFERENCA
-const TOL = 0.02
+const TETO = TETO_QUE_O_SISTEMA_OFERECE
+// ⚠️ o mesmo "fecha ao centavo" do servidor — um dono só (12/09)
+const TOL = FECHA_AO_CENTAVO
 const dia = (iso: string) => new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'UTC' })
 const diaCurto = (iso: string) =>
   new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'UTC', day: '2-digit', month: '2-digit' })
@@ -73,7 +75,7 @@ const menos = (v: number) => `− ${formatBRL(v)}`
 
 /** ⭐ os três nomes que a diferença pequena pode ter — o "Revisar valores" da Conta Azul */
 const NOMES_DA_DIFERENCA = [
-  { chave: 'JUROS', rotulo: 'juros/multa' },
+  { chave: 'JUROS' as const, rotulo: 'juros/multa' },
   { chave: 'TARIFA', rotulo: 'tarifa' },
   { chave: 'DESCONTO', rotulo: 'desconto' },
 ] as const
@@ -129,17 +131,20 @@ export function EscolherNaMaoCard({ empresaId, card, onConciliado, onFechar, nav
    * a tela já duplica a montagem do rodapé (débito registrado), e duplicar também o TETO
    * faria a tela oferecer o gesto que o servidor recusa — ou o contrário.
    */
-  const tetoManual = tetoDoGestoManual(card.linha.valor)
-  const cabeNoManual = falta && !cabeNome && diferenca <= tetoManual
+  // ⭐⭐ A RÉGUA É A MESMA DO SERVIDOR (12/09) — `avaliarDiferenca`. Antes a tela tinha a
+  // dela e a rota tinha a dela (0,02), e o Conciliar acendia pra um gesto que o servidor
+  // recusava com "Tolerância máxima: R$ 0,02".
+  const veredicto = avaliarDiferenca(card.linha.valor, diferenca, !!nomeDaDiferenca)
+  const tetoManual = veredicto.tetoDoGesto
+  const cabeNoManual = veredicto.degrau === 'PERGUNTA'
   const ultima = marcadasOrdenadas[marcadasOrdenadas.length - 1]
   const sobra = round2(-diferenca)
   const parcial = passou && ultima && ultima.emAberto > sobra + TOL
     ? { nota: ultima, recebe: round2(ultima.emAberto - sobra), continuaEmAberto: sobra }
     : null
 
-  const podeConciliar = fecha
-    || ((cabeNome || cabeNoManual) && !!nomeDaDiferenca)
-    || (!!parcial && parcialAceita)
+  // ⭐ o Conciliar acende pela MESMA régua que o servidor aplica — nunca mais um sem o outro
+  const podeConciliar = veredicto.podeFechar || (!!parcial && parcialAceita)
 
   const alternar = useCallback((id: string) => {
     setParcialAceita(false)
@@ -163,6 +168,15 @@ export function EscolherNaMaoCard({ empresaId, card, onConciliado, onFechar, nav
           ofxTransactionId: card.linha.id,
           candidateIds: inteiras,
           ...(parcial ? { parcial: { payableId: parcial.nota.id, valor: parcial.recebe } } : {}),
+          /**
+           * ⛔⛔ ISTO NÃO IA (12/09/2026) — e era o defeito inteiro. O card coletava o nome
+           * da diferença, acendia o botão com ele e **mandava só os `candidateIds`**: o
+           * servidor não tinha como saber que havia uma diferença confirmada, e recusava
+           * com razão. A tela prometia o que não tinha como cumprir.
+           */
+          ...(nomeDaDiferenca && !fecha
+            ? { diferencaNomeada: { valor: diferenca, natureza: nomeDaDiferenca } }
+            : {}),
         }),
       })
       const body = await res.json().catch(() => ({}))

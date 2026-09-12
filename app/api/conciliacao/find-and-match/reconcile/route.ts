@@ -62,9 +62,28 @@ const bodySchema = z.object({
     payableId: z.string().cuid(),
     valor: z.number().positive(),
   }).optional(),
+  /**
+   * ⭐⭐ A DIFERENÇA QUE O DONO VIU E NOMEOU (12/09/2026) — juros/multa de atraso.
+   *
+   * ⛔ Carrega **o número exato que a tela mostrou**: o servidor só aceita se ele bater ao
+   * centavo com a diferença real. Não é `force` — é a régua do Cancian (07/09) chegando ao
+   * caminho N:1, que era por onde o card do "escolher na mão" conciliava.
+   */
+  diferencaNomeada: z.object({
+    valor: z.number(),
+    natureza: z.enum(['JUROS', 'TARIFA', 'DESCONTO']).default('JUROS'),
+  }).optional(),
 })
 
-const SUM_TOLERANCE = 0.02 // 2 cents — acomoda arredondamento bancário de 1¢
+/**
+ * ⚠️ ERA A TERCEIRA RÉGUA DE DIFERENÇA DO MÓDULO (corrigido 12/09/2026). Ela media a coisa
+ * CERTA — *"a soma fecha?"* — e não fazia a segunda pergunta: *"e se não fecha, o dono
+ * nomeou?"*. Resultado: a tela oferecia o gesto de juros e o servidor recusava com
+ * *"Tolerância máxima: R$ 0,02"*, mandando o dono procurar um erro que não existia.
+ * ⭐ Agora o degrau "fecha ao centavo" mora em `regua-da-diferenca.ts`, junto com os outros
+ * dois — a MESMA função que a tela usa pra acender o botão.
+ */
+import { servidorAceitaADiferenca } from '@/lib/conciliacao/regua-da-diferenca'
 
 function makeGroupId(): string {
   return `rg_${randomUUID().replace(/-/g, '').slice(0, 18)}`
@@ -207,11 +226,18 @@ export async function POST(request: NextRequest) {
     // ⭐ a parte que vai como BAIXA PARCIAL entra na soma: é dinheiro desta mesma linha
     const parcialValor = data.parcial?.valor ?? 0
     const totalSelected = sumCandidates + sumAdjustmentsSigned + parcialValor
-    const diff = Math.abs(totalSelected - ofxAbs)
-    if (diff > SUM_TOLERANCE) {
+    // ⭐⭐ A MESMA RÉGUA QUE A TELA USA PRA ACENDER O BOTÃO (12/09) — nunca menos, nunca mais.
+    const vereditoDaDiferenca = servidorAceitaADiferenca({
+      valorDaLinha: ofxAbs,
+      somaMarcada: totalSelected,
+      diferencaConfirmada: data.diferencaNomeada?.valor,
+    })
+    if (!vereditoDaDiferenca.ok) {
       return NextResponse.json(
         {
-          erro: `Soma ${candidates.length} candidate(s)${adjustments.length > 0 ? ` + ${adjustments.length} ajuste(s)` : ''}${parcialValor ? ` + baixa parcial de R$ ${parcialValor.toFixed(2)}` : ''} (R$ ${totalSelected.toFixed(2)}) não bate com OFX (R$ ${ofxAbs.toFixed(2)}). Diferença: R$ ${diff.toFixed(2)}. Tolerância máxima: R$ ${SUM_TOLERANCE.toFixed(2)}.`,
+          erro: `${vereditoDaDiferenca.erro}`
+            + ` · marcado R$ ${totalSelected.toFixed(2)}${adjustments.length > 0 ? ` (com ${adjustments.length} ajuste(s))` : ''}`
+            + `${parcialValor ? ` + parcial de R$ ${parcialValor.toFixed(2)}` : ''} × linha R$ ${ofxAbs.toFixed(2)}`,
         },
         { status: 422 },
       )
@@ -226,7 +252,7 @@ export async function POST(request: NextRequest) {
     let adjustmentsCreated = 0
     const errors: Array<{ candidateId: string; error: string }> = []
 
-    for (const candidateId of uniqueIds) {
+    for (const [i, candidateId] of uniqueIds.entries()) {
       try {
         await reconcileTransactions(
           {
@@ -234,6 +260,16 @@ export async function POST(request: NextRequest) {
             candidateId,
             allowMultiReconcile: true,
             reconcileGroupId,
+            /**
+             * ⭐ O RASTRO DA DIFERENÇA VAI NA **PRIMEIRA** NOTA DO GRUPO (12/09/2026).
+             *
+             * ⚠️ Só na primeira de propósito: a diferença é do PAGAMENTO, não de cada nota.
+             * Escrevê-la em todas faria quem lê a segunda achar que também houve 54,15 de
+             * juros ali — cinco notas somariam R$ 270,75 de juros que nunca existiram.
+             * ⛔ E com `allowMultiReconcile` o `reconcileTransactions` NÃO revalida o valor
+             * (a régua do grupo é a da rota, acima) — aqui o campo serve só ao rastro.
+             */
+            ...(i === 0 && data.diferencaNomeada ? { diferencaAceita: data.diferencaNomeada.valor } : {}),
           },
           ctx,
         )

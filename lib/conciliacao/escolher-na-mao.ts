@@ -20,7 +20,8 @@
 import { combinacoesQueFecham, MIN_NOTAS_NO_LOTE } from './pagamento-em-lote'
 
 /** dois centavos — a mesma tolerância do endpoint que grava o N:1 */
-export const TOLERANCIA = 0.02
+export { FECHA_AO_CENTAVO as TOLERANCIA } from './regua-da-diferenca'
+import { FECHA_AO_CENTAVO as TOLERANCIA, TETO_QUE_O_SISTEMA_OFERECE, tetoDoGestoManual as tetoDoGesto, avaliarDiferenca } from './regua-da-diferenca'
 
 /**
  * ⭐ O TETO DA DIFERENÇA QUE FECHA COM NOME (decisão do dono: *"ex. R$ 25"*).
@@ -30,7 +31,7 @@ export const TOLERANCIA = 0.02
  * é o mesmo raciocínio do `diferencaAceita` de 07/09, que só passa se o dono confirmar o
  * número exato que a tela mostrou.
  */
-export const TETO_DA_DIFERENCA = 25
+export const TETO_DA_DIFERENCA = TETO_QUE_O_SISTEMA_OFERECE
 
 /**
  * ⭐⭐⭐ O TETO DO GESTO MANUAL (11/09/2026) — decisão do dono.
@@ -48,12 +49,9 @@ export const TETO_DA_DIFERENCA = 25
  * linha ele **pergunta, com o valor em destaque**; acima de 10% **não há acerto rápido** —
  * ou acha a nota, ou baixa parcial, ou não é isso.
  */
-export const PERCENTUAL_MAXIMO_DO_GESTO_MANUAL = 0.10
-
-/** ⭐ até onde o dono pode confirmar uma diferença NOMEADA nesta linha */
-export function tetoDoGestoManual(valorDaLinha: number): number {
-  return round2(Math.abs(valorDaLinha) * PERCENTUAL_MAXIMO_DO_GESTO_MANUAL)
-}
+/** ⚠️ os NÚMEROS moram em `regua-da-diferenca.ts` desde 12/09 — aqui só reexportamos, pra
+ *  quem já importava daqui continuar funcionando sem criar uma segunda régua. */
+export { PERCENTUAL_DO_GESTO_MANUAL as PERCENTUAL_MAXIMO_DO_GESTO_MANUAL, tetoDoGestoManual } from './regua-da-diferenca'
 
 /**
  * ⭐ A JANELA DO "A VENCER" — quantos dias à frente abrem na tela (decisão do dono: *"só
@@ -257,7 +255,7 @@ export function contaDoRodape(entrada: {
   if (diferenca > 0) {
     const cabe = diferenca <= TETO_DA_DIFERENCA
     // ⭐⭐ entre o teto automático e 10% da linha: o gesto existe, mas é DELE (11/09)
-    const teto = tetoDoGestoManual(entrada.valorDaLinha)
+    const teto = tetoDoGesto(entrada.valorDaLinha)
     const cabeNoManual = !cabe && diferenca <= teto
     return {
       estado: 'FALTA', selecionado, diferenca,
