@@ -572,6 +572,38 @@ OLEO DE SOJA: controle UN → LT (fator 1)
 
 ⚠️ **2c — o log é SENTINELA, não autópsia:** a marcação de 10/09 já passou e não deixou rastro; **não dá pra reconstruir a causa**, e o dono já tinha dito que nesse caso *"o log fica de sentinela"*. A próxima pulada sai com nome e motivo.
 
+### ⛔⛔⛔ A PORTA SUMIA QUANDO O TRABALHO ACABAVA — 4ª VOLTA DA FAMÍLIA (12/09)
+
+**O dono:** *"existia um lugar pra trocar a seção de um produto do cardápio e ele não aparece mais. **Eu uso isso direto**."*
+
+**⛔ MEDIDO EM PROD, e o relato estava certo em cheio:** a porta pra `/estoque/cardapio/secoes` renderizava **só** com `hub.linhas.some((l) => l.secaoSugerida)` — e a Caçula tem **166 produtos com ZERO sugeridos**. O link ficou **invisível**.
+
+⚠️ **E o comentário original explicava a intenção:** *"só aparece quando ainda há produto sem seção CONFIRMADA — decisão pronta não pede gesto de novo"*. A intenção era boa; **o efeito é que REVER uma decisão virou impossível pela tela**. ⚠️ E o **produto individual nunca teve** o gesto — só o lote.
+
+**⭐⭐ A REGRA QUE FICA, irmã da de 10/09 (*card que nasce escondido*):**
+
+> **Fila zerada esconde o TRABALHO, nunca a FERRAMENTA.** O contador pode sumir; a porta não.
+
+**O FIX:**
+- **a tela do produto ganhou o seletor de SEÇÃO**, à vista no cabeçalho — e usa a **MESMA rota do lote** (ela aceita `min(1)`), então não nasce uma segunda porta de gravação;
+- **a porta do lote fica SEMPRE**, e o que muda é o TEXTO: com pendência ela chama pro trabalho (*"N com seção sugerida — confirme de uma vez"*), sem pendência ela é a saída de revisão (*"166 produtos classificados · revisar ou remanejar em lote"*);
+- o estado novo da tela vem do que o **SERVIDOR aceitou**, nunca do clique.
+
+**PROVADO NAVEGANDO, pelo caminho dele (sessão real, sem URL secreta):**
+```
+PAGE /estoque/cardapio                → 200   (com 0 sugeridos, a porta está lá)
+PRODUTO "CACHORRO QUENTE" · LANCHES
+   detalhe → 200 · secao "LANCHES" · 10 seções pra escolher
+   PAGE do produto → 200
+TROCA LANCHES → DOCES → 200 {"ok":true,"produtos":1,"nomes":1}
+PLACAR:  LANCHES 2 → 1  ·  DOCES 11 → 12   ⭐ reflete na hora
+⭐ devolvido ao original ("LANCHES") — o cardápio dele não fica mexido pela prova
+```
+**GUARD NOVO** (`porta-nao-some-quando-o-trabalho-acaba.test.ts`): link de ferramenta **não pode ficar atrás de um contador de pendência**, com **auto-teste do detector nos dois sentidos** (pega o padrão antigo, não acusa o novo). **REGRA 11 — com a porta escondida de volta: 2 vermelhos.**
+
+**9.398 verdes · TS 0 · deploy `NjyZMu3hh2xE9ycgyF0NM` 4/4.**
+
+
 ### ⭐⭐ A CATEGORIA DO ITEM VIROU EDITÁVEL + OS DOIS VINAGRES (12/09)
 
 **O dono:** *"VINAGRE CBS VINHO TINTO 750ML marquei USO INTERNO por engano — o certo é MATÉRIA-PRIMA. **Não existe onde trocar**."*
