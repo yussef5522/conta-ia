@@ -19,6 +19,7 @@ import { SABORES_DO_CARDAPIO, grupoPeloCardapio } from './grupo-complemento'
 import { importIdDe, type ModoImportComplemento } from './identidade-import-complemento'
 import { preverBaixaDasLinhas, baixarSeHouverFicha, type ReciboComplementos } from './baixa-complemento'
 import { agruparGrafiasPendentes } from './aplicar-agrupamento'
+import { aplicarHerancas, type HerancaDeMapa } from './bebida-no-complemento'
 import type { AgrupamentoAutomatico } from './grafia-canonica'
 
 export class ImportComplementoError extends Error {}
@@ -166,6 +167,10 @@ export async function confirmarComplementos(
   agrupadasPorGrafia: AgrupamentoAutomatico[]
   /** ⚠️ o agrupamento falhou (fail-soft): o import ficou, mas a tela avisa */
   agrupamentoFalhou: string | null
+  /** ⭐ as bebidas que herdaram o destino do cardápio (canônico idêntico) — 12/09 */
+  herdadasDoCardapio: HerancaDeMapa[]
+  /** ⚠️ a herança falhou (fail-soft) */
+  herancaFalhou: string | null
 }> {
   const p = parseSuitable(html, COLUNAS_COMPLEMENTOS)
   if (!p.linhas.length) throw new ImportComplementoError('Nenhum complemento encontrado no arquivo.')
@@ -247,10 +252,27 @@ export async function confirmarComplementos(
   // erro e devolve o motivo, então um problema aqui nunca derruba um import legítimo.
   const g = await agruparGrafiasPendentes(companyId, 'IMPORT', userId, db)
 
+  /**
+   * ⭐⭐ A BEBIDA HERDA O DESTINO DO CARDÁPIO (12/09/2026) — ordem do dono.
+   *
+   * `COCA COLA 2L` vende nos DOIS relatórios; a do cardápio baixava e a do complemento não,
+   * porque **são dois mapas e ninguém preencheu o de complementos**. Quando o canônico é o
+   * MESMO nome já mapeado em ficha, ele entra sozinho — a régua de 08/09, sem afrouxar nada.
+   *
+   * ⛔ ANTES DA BAIXA, pelo mesmo motivo do agrupamento logo acima: o mapa precisa existir
+   * quando o plano for montado, senão a bebida cai na prateleira e só baixa no reprocesso.
+   * ⚠️ FAIL-SOFT: herdar é bônus; um erro aqui não pode derrubar o import.
+   */
+  let herdadas: Awaited<ReturnType<typeof aplicarHerancas>> = []
+  let herancaFalhou: string | null = null
+  try { herdadas = await aplicarHerancas(companyId, userId, db) }
+  catch (e) { herancaFalhou = (e as Error).message }
+
   const b = await baixarSeHouverFicha(companyId, data, userId, db)
   return {
     ...gravado, baixa: b.recibo, avisoBaixa: b.motivo, baixaFalhou: b.falhou,
     agrupadasPorGrafia: g.agrupadas, agrupamentoFalhou: g.erro,
+    herdadasDoCardapio: herdadas, herancaFalhou,
   }
 }
 
