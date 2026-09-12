@@ -114,3 +114,52 @@ describe('⛔⛔ o SERVIDOR aceita exatamente o que a tela oferece', () => {
     }
   })
 })
+
+// ⛔⛔ O RASTRO SÓ EXISTIA NUM DOS DOIS RAMOS (12/09/2026)
+//
+// A OESA fechou com os 54,15 aceitos e o `notes` ficou **sem uma linha explicando**: o texto
+// do rastro vivia só no ramo `EFFECTED_ORPHAN` (o caso do Cancian, uma ex-payable já paga).
+// A conta em aberto normal segue o ramo **CLASSIC**, e por ali não passava nada.
+//
+// ⚠️ Guard ESTRUTURAL e assumido como tal: o `reconcileTransactions` precisa de banco e de
+// sessão pra rodar inteiro. O que quebrou de fato foi o texto existir num ramo só — e é isso
+// que ele trava, com auto-teste do detector.
+
+import { readFileSync } from 'fs'
+import { join } from 'path'
+
+describe('⛔⛔ o rastro da diferença vale pros DOIS ramos', () => {
+  const fonte = readFileSync(join(__dirname, '..', 'reconcile.ts'), 'utf8')
+  /**
+   * ⚠️⚠️ A REGRA 11 REPROVOU O MEU PRIMEIRO DETECTOR: ele pegava uma janela de 3.500
+   * caracteres em volta do `mode:` — e essa janela alcançava a DECLARAÇÃO do rastro, que
+   * fica acima dos dois ramos. Removi o uso no CLASSIC e os 17 testes ficaram VERDES.
+   * ⭐ O que morde é contar o **USO** (a escrita em `notes`), não a vizinhança do texto.
+   */
+  const escritasDoRastro = (fonte.match(/notes: \[candidate\.notes, rastroDaDiferenca\]/g) ?? []).length
+  const ramo = (modo: string) => {
+    const i = fonte.indexOf(`mode: '${modo}'`)
+    expect(i, `ramo ${modo} sumiu`).toBeGreaterThan(-1)
+    return fonte.slice(Math.max(0, i - 3000), i + 500)
+  }
+
+  it('⭐ o texto é montado UMA vez — não há segunda cópia pra divergir', () => {
+    const montagens = fonte.split('= juros/tarifa de boleto, confirmada por quem conciliou').length - 1
+    expect(montagens).toBe(1)
+  })
+
+  it('⛔⛔ os DOIS ramos ESCREVEM o rastro — um só era o defeito da OESA', () => {
+    // ⭐ dois usos: um no CLASSIC (conta em aberto) e um no EFFECTED_ORPHAN (ex-payable)
+    expect(escritasDoRastro).toBe(2)
+  })
+
+  it('⭐ e os DOIS gravam a diferença no metadata do audit', () => {
+    expect(ramo('CLASSIC')).toContain('diferencaAceita')
+    expect(ramo('EFFECTED_ORPHAN')).toContain('diferencaAceita')
+  })
+
+  it('⚠️ AUTO-TESTE: o detector reprova um ramo sem o rastro', () => {
+    const falso = "metadata: { mode: 'FALSO', ofxTransactionId: x }"
+    expect(falso).not.toContain('rastroDaDiferenca')
+  })
+})

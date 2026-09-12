@@ -217,6 +217,24 @@ export async function reconcileTransactions(
   }
 
   // Operação atomic — branch por modo
+  /**
+   * ⭐⭐ O RASTRO DA DIFERENÇA, PARA OS **DOIS** RAMOS (12/09/2026).
+   *
+   * ⛔⛔ Ele vivia só no ramo `EFFECTED_ORPHAN` — o caso do Cancian (07/09), que era uma
+   * ex-payable já marcada como paga. **A conta em aberto normal segue o ramo CLASSIC**, e
+   * por ali a diferença confirmada não deixava rastro nenhum: a OESA fechou com os 54,15
+   * aceitos e o `notes` ficou sem uma linha explicando.
+   *
+   * ⚠️ É a família "N caminhos, 1 esquecido" — a mesma do estorno de cartão e do gatilho de
+   * vendas. Agora o texto é montado UMA vez, antes da bifurcação.
+   */
+  const rastroDaDiferenca =
+    input.diferencaAceita !== undefined && Math.abs(input.diferencaAceita) >= AMOUNT_EQ_TOLERANCE
+      ? `pagamento conciliado com a linha do extrato de ${ofx.date.toISOString().slice(0, 10)}`
+        + ` (R$ ${ofx.amount.toFixed(2)}) · diferença de R$ ${input.diferencaAceita.toFixed(2)}`
+        + ` = juros/tarifa de boleto, confirmada por quem conciliou`
+      : null
+
   const updated = await prisma.$transaction(async (trx) => {
     if (candidateMode === 'CLASSIC') {
       // FLUXO ANTIGO Sprint 4.0.2 — PAYABLE/RECEIVABLE vira EFFECTED + link
@@ -229,6 +247,10 @@ export async function reconcileTransactions(
           bankAccountId: ofx.bankAccountId,
           reconciledWithId: ofx.id,
           status: 'RECONCILED',
+          // ⭐ o rastro da diferença vale AQUI TAMBÉM (12/09) — ver o comentário acima
+          ...(rastroDaDiferenca
+            ? { notes: [candidate.notes, rastroDaDiferenca].filter(Boolean).join(' · ') }
+            : {}),
           // Sprint A-effected Fase B.3 — groupId pra undo agrupado N:1
           ...(input.reconcileGroupId !== undefined
             ? { reconcileGroupId: input.reconcileGroupId }
@@ -259,6 +281,7 @@ export async function reconcileTransactions(
             ofxAmount: ofx.amount,
             candidateDescription: candidate.description,
             candidateAmount: candidate.amount,
+            diferencaAceita: input.diferencaAceita ?? null,
             reconcileGroupId: input.reconcileGroupId ?? null,
           },
         },
@@ -284,12 +307,7 @@ export async function reconcileTransactions(
 
     // ⭐ o rastro da diferença fica NA CONTA, escrito, não só no audit — é o que
     // o dono lê seis meses depois quando perguntar "por que 232,81 e não 230,81?".
-    const rastroDaDiferenca =
-      input.diferencaAceita !== undefined && Math.abs(input.diferencaAceita) >= AMOUNT_EQ_TOLERANCE
-        ? `pagamento conciliado com a linha do extrato de ${ofx.date.toISOString().slice(0, 10)}`
-          + ` (R$ ${ofx.amount.toFixed(2)}) · diferença de R$ ${input.diferencaAceita.toFixed(2)}`
-          + ` = juros/tarifa de boleto, confirmada por quem conciliou`
-        : null
+    // ⚠️ montado UMA vez lá em cima, pros dois ramos (12/09).
 
     const candidateUpdated = await trx.transaction.update({
       where: { id: candidate.id },
