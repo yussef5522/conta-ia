@@ -606,6 +606,25 @@ FANTA UVA LATA    1        ·  pizza grande(35cm) 1  ·  XIS - COXAO MOLE   1
 XIS - FRANGO      1
 ```
 
+### ✅ APLICADO NOS 13 (12/09, autorizado pelo dono)
+
+**A pergunta dele sobre a PIZZA foi respondida ANTES de aplicar:** a ficha da `Pizza Grande (35cm)` baixa **`2 × porção queijo 135 grama`** — a **base**. Os **54 sabores** já mapeados baixam **proteína** (calabresa, frango, bacon, coxão). **Interseção: NENHUMA** — conferido contra os 54, não contra uma amostra. Sem dobra de porção; a pizza entrou.
+
+`pg_dump pre-heranca-complemento-20260912-013130.dump` (6,0 MB) antes. **13 heranças gravadas · 6 dias reprocessados** (02, 03, 04, 06, 10 e 11/09).
+
+**SALDOS PRA O DONO BATER COM A COZINHA:**
+```
+COCA-COLA 2L                      144 UN · custo R$ 8,08 · valor R$ 1.164,23
+COCA COLA Zero 2L                  30 UN · custo R$ 8,11 · valor R$   243,22
+FEIJAO PRETO CALDO DE OURO 1K   12,12 KG · custo R$ 7,80 · valor R$    94,52
+
+o que o COMPLEMENTO baixou (todos os dias):
+   COCA-COLA 2L −38 · COCA Zero 2L −14 · PAO DE XIS −8 · OVO −8
+   (e os sabores de sempre: calabresa −931, frango −519, coxão −503, bacon −476)
+```
+
+**⚠️ ACHADO NO CAMINHO, e NÃO é o estado impossível:** `porçao calabresa ralada 50 grama` está com **saldo −99 e valor −R$ 21,60**. ⭐ **Saldo negativo COM valor negativo é coerente** — é o sinal *"vendeu sem produzir"* que o módulo trata como comportamento certo desde 09/09. O guard de 11/09 barra **saldo ≥ 0 com valor < 0**, que é outro estado. Medido no ledger: **154 vendidas contra 71 produzidas** — ou a cozinha produziu menos, ou a produção não foi lançada. **É informação pro dono, não defeito.**
+
 **⚠️ MEDIDO ANTES DE PEDIR O OK — os 13 vendem nos DOIS relatórios, e no MESMO dia:**
 ```
 COCA COLA 2L   complemento 38 em 6d · produto 107 em 7d · mesmo dia nos dois: 6
