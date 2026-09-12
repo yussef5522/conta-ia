@@ -242,19 +242,32 @@ export default function CardapioHubPage({ params }: { params: Promise<{ id: stri
         <span className="text-xs text-slate-400">{linhas.length} de {hub.linhas.length}</span>
       </div>
 
-      {/* ⭐ a porta do lote: só aparece quando ainda há produto sem seção CONFIRMADA —
-          decisão pronta não pede gesto de novo. */}
-      {hub.linhas.some((l) => l.secaoSugerida) && (
-        <a href={`/empresas/${id}/estoque/cardapio/secoes`}
-          className="flex flex-wrap items-center gap-2.5 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-[13px] text-indigo-900 hover:bg-indigo-100">
-          <Sparkles className="h-4 w-4 text-[#534AB7]" />
-          <span>
-            <b className="tabular-nums">{hub.linhas.filter((l) => l.secaoSugerida).length}</b> produtos
-            com seção <b>sugerida</b> — corra o olho e confirme de uma vez
-          </span>
-          <span className="ml-auto text-[12px] font-semibold text-[#534AB7]">classificar →</span>
-        </a>
-      )}
+      {/* ⛔⛔ A PORTA DO LOTE SUMIA QUANDO TUDO ESTAVA CONFIRMADO (corrigido 12/09/2026).
+          Ela renderizava só com `secaoSugerida`, e o comentário dizia *"decisão pronta não
+          pede gesto de novo"*. A intenção era boa; o efeito é que **REVER uma seção já
+          decidida virou impossível pela tela** — medido em prod: 166 produtos, **0
+          sugeridos**, link invisível. É a 4ª volta da porta-sem-maçaneta desta casa.
+          ⭐ Agora ela fica SEMPRE, e o que muda é o TEXTO: com sugestão pendente ela chama
+          pra o trabalho; sem nenhuma, ela é a saída pra revisar. */}
+      {(() => {
+        const pendentes = hub.linhas.filter((l) => l.secaoSugerida).length
+        return (
+          <a href={`/empresas/${id}/estoque/cardapio/secoes`}
+            className={`flex flex-wrap items-center gap-2.5 rounded-xl border px-4 py-2.5 text-[13px] ${pendentes > 0 ? 'border-indigo-200 bg-indigo-50 text-indigo-900 hover:bg-indigo-100' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
+            <Sparkles className={`h-4 w-4 ${pendentes > 0 ? 'text-[#534AB7]' : 'text-slate-400'}`} />
+            <span>
+              {pendentes > 0 ? (
+                <><b className="tabular-nums">{pendentes}</b> produtos com seção <b>sugerida</b> — corra o olho e confirme de uma vez</>
+              ) : (
+                <>seções do cardápio — <b>{hub.linhas.length}</b> produtos classificados · revisar ou remanejar em lote</>
+              )}
+            </span>
+            <span className={`ml-auto text-[12px] font-semibold ${pendentes > 0 ? 'text-[#534AB7]' : 'text-slate-500'}`}>
+              {pendentes > 0 ? 'classificar →' : 'abrir →'}
+            </span>
+          </a>
+        )
+      })()}
 
       {/* ⭐⭐ A FAIXA DE SEÇÕES (08/09) — o progresso por setor, que é onde o dono decide
           o que atacar primeiro. Faixa fina que rola no eixo x, o molde da casa: tijolo de

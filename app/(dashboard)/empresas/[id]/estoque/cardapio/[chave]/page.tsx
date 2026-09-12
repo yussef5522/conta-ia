@@ -36,6 +36,9 @@ interface Comp {
 }
 interface Detalhe {
   linha: Linha; componentes: Comp[]
+  /** ⭐ a seção do cardápio deste produto + a lista pra trocar (12/09) */
+  secao?: string; secaoSugerida?: boolean
+  secoes?: { chave: string; nome: string }[]
   podeFazer: number | null; gargalo: { nome: string; rendeAte: number } | null
   loteBase: number | null; validadeDias: number | null; versaoAtual: number | null
 }
@@ -52,6 +55,20 @@ export default function ProdutoCardapioPage({ params }: { params: Promise<{ id: 
   const [preco, setPreco] = useState('')
   const [editandoPreco, setEditandoPreco] = useState(false)
   const [busy, setBusy] = useState(false)
+  /**
+   * ⭐⭐⭐ TROCAR A SEÇÃO DO PRODUTO (12/09/2026) — 4ª volta da porta-sem-maçaneta.
+   *
+   * **O dono:** *"existia um lugar pra trocar a seção e ele não aparece mais. Eu uso isso
+   * direto."* ⛔ **Medido: a porta do LOTE só renderiza quando há produto com seção
+   * SUGERIDA** — e depois que ele confirmou tudo, `secaoSugerida` zerou em prod (166
+   * produtos, **0 sugeridos**) e o link **sumiu**. O comentário de lá dizia *"decisão pronta
+   * não pede gesto de novo"*, e a intenção era boa; o efeito é que **trocar uma seção já
+   * decidida virou impossível pela tela**.
+   *
+   * ⭐ E o produto individual **nunca** teve o gesto. Agora tem — e usa a MESMA rota do
+   * lote (ela aceita `min(1)`), então não nasce uma segunda porta de gravação.
+   */
+  const [trocandoSecao, setTrocandoSecao] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
 
   const carregar = () => fetch(`/api/empresas/${id}/estoque/cardapio/${chave}`)
@@ -109,6 +126,37 @@ export default function ProdutoCardapioPage({ params }: { params: Promise<{ id: 
           <p className="hidden flex-1 truncate text-xs text-slate-400 lg:block">
             no PDV: {l.nomesSuitable.join(' · ')}
           </p>
+        )}
+        {/* ⭐ A SEÇÃO, à vista e editável — o gesto que só existia no lote */}
+        {det.secoes && det.secoes.length > 0 && (
+          <span className="inline-flex items-center gap-1.5">
+            <select
+              value={det.secao ?? 'OUTROS'}
+              disabled={trocandoSecao}
+              aria-label="Seção do cardápio"
+              onChange={async (e) => {
+                const nova = e.target.value
+                if (nova === det.secao) return
+                setTrocandoSecao(true); setErro(null)
+                try {
+                  const r = await fetch(`/api/empresas/${id}/estoque/cardapio/secoes/lote`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ itens: [{ nomesSuitable: l.nomesSuitable, secao: nova }] }),
+                  })
+                  const j = await r.json().catch(() => null)
+                  if (!r.ok) { setErro(j?.erro ?? 'Não deu pra trocar a seção.'); return }
+                  // ⭐ o estado novo vem do que o SERVIDOR aceitou, não do clique
+                  setDet({ ...det, secao: nova, secaoSugerida: false })
+                } catch { setErro('Falha de rede ao trocar a seção.') }
+                finally { setTrocandoSecao(false) }
+              }}
+              className={`h-7 rounded-lg border px-1.5 text-[12px] ${det.secaoSugerida ? 'border-indigo-300 bg-indigo-50 text-indigo-800' : 'border-slate-200 text-slate-600'} hover:bg-slate-50 disabled:opacity-60`}
+            >
+              {det.secoes.map((s) => <option key={s.chave} value={s.chave}>{s.nome}</option>)}
+            </select>
+            {trocandoSecao && <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />}
+            {det.secaoSugerida && <span className="text-[10.5px] text-indigo-600">sugerida</span>}
+          </span>
         )}
         {l.fichaId && !editandoFicha && (
           <button onClick={() => setEditandoFicha(true)}

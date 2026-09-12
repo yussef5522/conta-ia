@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { guardStock } from '@/lib/stock/require-stock'
+import { secoesDaEmpresa, secoesPorNome, secaoDaLinha } from '@/lib/stock/cardapio/secoes-db'
 import { detalheProduto } from '@/lib/stock/cardapio/detalhe'
 import { atualizarFicha, FichaError } from '@/lib/stock/producao/fichas'
 
@@ -20,7 +21,13 @@ export async function GET(request: NextRequest, { params }: Params) {
 
   const det = await detalheProduto(companyId, decodeURIComponent(chave), prisma)
   if (!det) return NextResponse.json({ erro: 'Produto não encontrado no cardápio.' }, { status: 404 })
-  return NextResponse.json(det)
+  /**
+   * ⭐⭐ A SEÇÃO VAI NO PAYLOAD (12/09/2026) — sem ela a tela do produto não tinha como
+   * mostrar nem trocar, e o gesto só existia no LOTE. Ver o comentário do componente.
+   */
+  const [secoes, gravadas] = await Promise.all([secoesDaEmpresa(companyId), secoesPorNome(companyId)])
+  const s = secaoDaLinha(det.linha.nomesSuitable, gravadas, det.linha.nome)
+  return NextResponse.json({ ...det, secao: s.secao, secaoSugerida: s.sugerida, secoes })
 }
 
 const patchSchema = z.object({ valorVenda: z.number().positive().nullable() })
