@@ -572,6 +572,51 @@ OLEO DE SOJA: controle UN → LT (fator 1)
 
 ⚠️ **2c — o log é SENTINELA, não autópsia:** a marcação de 10/09 já passou e não deixou rastro; **não dá pra reconstruir a causa**, e o dono já tinha dito que nesse caso *"o log fica de sentinela"*. A próxima pulada sai com nome e motivo.
 
+### ⭐⭐⭐ O MATCHER APRESENTA O QUE JÁ ESTAVA NO EXTRATO (11-12/09)
+
+**O dono cruzou os 99 débitos da Stone com o Contas a Pagar:** *"a maioria dos 'sumidos' ESTÁ no extrato — **o matcher é que não apresenta**."* Medido caso a caso, rodando o matcher de verdade antes de escrever régua nenhuma:
+
+```
+ELETROSUL 143,03 × conta manual "eletrosul" 143,00  →  60 pts  (corte 70) ⛔
+Casper   2.120,81 × manual "casper"       2.113,83  →  60 pts ⛔
+PJBANK   2.222,88 × "aluguel escritorio"  2.222,81  →  65 pts ⛔
+⛔⛔ aluguel caçula 5.234,00 × DOCEOLI 5.234,88     →  70 pts: PASSAVA
+```
+
+**⭐ 1. A DIFERENÇA QUE O DONO NOMEIA — DOIS TETOS COM PAPÉIS DIFERENTES.** *"O teto de R$ 25 vale pro que o sistema SUGERE sozinho; acima dele, aparece o gesto explícito."* Até 25 o sistema **oferece**; entre 25 e **10% da linha** ele **pergunta com o valor em destaque** (*"a diferença de R$ 45,60 é juros/multa de atraso — confirmar"*); acima de 10% **não existe gesto** — o teste do *"500 de juros numa nota de 600"* trava isso. ⛔ E sem NOMEAR não fecha em nenhum dos dois.
+
+**⭐ 2. A CONTA MANUAL TAMBÉM TEM NOME** (`nome-da-conta-manual.ts`). Conta sem FK nunca ganha os 15 do `FORNECEDOR_IGUAL` — e era exatamente isso que faltava, **com o nome escrito nos dois lados**. ⚠️ Palavra que descreve a NATUREZA do gasto (*aluguel, fgts, salario*) **não identifica ninguém** e fica de fora: casar por assunto é palpite.
+
+**⛔⛔⛔ 6. O GUARD DO FALSO-AMIGO — a trava que protege todo o resto.** *"Quase-exato SEM nome compatível NUNCA sugere; diferença de centavos não compra identidade."* ⭐ **E ele só é possível por causa do item 2**: quando dá pra perguntar *"o nome bate?"*, dá pra **recusar** quem não bate. Valor **EXATO** continua passando sozinho (o sinal mais forte do domínio, com a janela curta impedindo coincidência).
+
+**⭐ 5. O INTERMEDIÁRIO DE BOLETO, com exceção NOMEADA e estreita.** Na linha da PJBANK **ninguém pode dizer o beneficiário** — o banco vê a processadora. Lista **fechada**, só com data D0/D1, **sempre com o aviso na cara**, nascendo em confiança **baixa**. E **o vínculo ensina**: tabela CREATE-only, e na segunda vez a frase vira *"PJBANK costuma ser o boleto desta conta (3× confirmado por você)"*.
+
+⚠️ **UMA CONTRADIÇÃO ENTRE OS PEDIDOS, RESOLVIDA E REGISTRADA:** `MIXX PLAY 111,21 × "radio" 109,00` é **exatamente** um quase-exato sem nome compatível — o item 2 o quer oferecido e o item 6 o proíbe. **O dono sabe que a MIXX é o rádio; o sistema não tem como saber.** Ficou barrado, e a saída é a do item 5: ele vincula uma vez pelo Find & Match e o padrão passa a ser conhecido.
+
+⚠️ **E O `const TETO = 25` ESTAVA HARDCODED NA TELA** — número solto é a segunda régua no dia em que o teto muda, a mesma doença que o `30` da janela do "a vencer" já tinha ensinado. Agora vem do dono único.
+
+**⚠️⚠️ A REGRA 11 ME CORRIGIU NUMA AFIRMAÇÃO MINHA.** Anunciei como bug que `'BOLETO'` normaliza pra **string vazia** e que `includes('')` faria **toda** linha virar processadora, derrubando o guard. **Repus o defeito e os 19 testes ficaram VERDES**: o `if (!achada) return null` já barrava, porque string vazia é *falsy*. O filtro ficou — a proteção era **acidental** e agora é **explícita** —, mas o comentário foi reescrito com a verdade.
+
+**PROVADO EM PROD, pelas funções que a tela chama:**
+```
+casper              R$ 2.113,83 ← R$ 2.120,81  score 75 · "CASPER" aparece nos dois
+ELETROSUL              R$ 40,00 ←    R$ 40,02  score 75 · "ELETROSUL" aparece nos dois
+eletrosul             R$ 143,00 ←   R$ 143,03  score 75
+box paper           R$ 5.211,85 ← R$ 5.211,85  score 75 · valor exato
+aluguel escritorio  R$ 2.222,81 ← R$ 2.222,88  score 65 [baixa]
+   ⚠️ pagamento via processadora de boleto (PJBANK) — ela não diz o beneficiário, confere antes
+
+⛔ GUARD: "aluguel caçula" tem sugestão? NÃO (DOCEOLI barrada) ⭐
+⭐ item 4: as linhas NOVAS de 11/09 entraram nos cards sozinhas —
+   BOX PAPER 2.143,91 · OESA 1.695,27 · CASPER 2.120,81
+```
+**REGRA 11 — 2 defeitos repostos:** sem o guard do falso-amigo → **1 vermelho** · sem os pontos do nome manual → **4**. **1 teste invertido com o motivo escrito** (o Ivan: 69,50 é 3,5% da linha e agora fecha com ele nomeando). **9.356 verdes · TS 0 · deploy `evIGNEOToFXeSDMt34Dfq` 4/4.**
+
+⚠️ **DÉBITO REGISTRADO, NÃO FEITO:** o card do "escolher na mão" **remonta a conta do rodapé por conta própria** em vez de chamar `contaDoRodape`. Hoje os dois concordam (o TETO já vem do dono único), mas é a segunda derivação que esta casa combate — e ela diverge no primeiro caso de borda.
+
+⚠️ **E O ITEM 3 SE RESOLVEU SOZINHO ENQUANTO EU MEDIA:** dos 6 "exatos não oferecidos", **o dono conciliou 5 às 02:25** (o audit mostra os 5 `UPDATE Reconciliation`) e o Frigorífico já estava vinculado há dias. **Não tenho como provar que eles não foram oferecidos antes** — o estado mudou debaixo da medição, e afirmar a causa sem o estado seria inventar.
+
+
 ### ⭐⭐⭐ CORTE DE ÉPOCA NA CONCILIAÇÃO + O RAIO-X DE SETEMBRO (11/09)
 
 **O dono:** *"Comecei a usar a conciliação em setembro; agosto fica pra trás POR DECISÃO — as linhas de agosto já estão categorizadas como despesa, completas no DRE; não vou caçar par de conta velha."*
