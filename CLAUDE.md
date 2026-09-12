@@ -572,6 +572,57 @@ OLEO DE SOJA: controle UN → LT (fator 1)
 
 ⚠️ **2c — o log é SENTINELA, não autópsia:** a marcação de 10/09 já passou e não deixou rastro; **não dá pra reconstruir a causa**, e o dono já tinha dito que nesse caso *"o log fica de sentinela"*. A próxima pulada sai com nome e motivo.
 
+### ⛔⛔⛔ O SERVIDOR RECUSAVA O QUE A TELA OFERECIA — E A CAUSA NÃO ERA A RÉGUA (12/09)
+
+**O dono, conciliando a OESA:** linha **1.695,27** × NF 3866696 de **1.641,12**, os **54,15** de multa+juros (3,3% da linha, dentro do gesto explícito de ontem). A tela acendeu o Conciliar e veio:
+
+> *"Soma 1 candidate(s) (R$ 1641.12) não bate com OFX (R$ 1695.27). Diferença: R$ 54.15. **Tolerância máxima: R$ 0.02**."*
+
+**⭐ O MAPA DAS RÉGUAS (ele pediu, e eram CINCO):**
+
+| onde mora | valor | o que mede |
+|---|---|---|
+| `escolher-na-mao` `TOLERANCIA` | 0,02 | "fecha ao centavo" (card + baixa parcial) |
+| `escolher-na-mao` `TETO_DA_DIFERENCA` | 25 | o que o sistema **oferece** nomeado |
+| `escolher-na-mao` gesto manual | 10% | o que o **dono** confirma (11/09) |
+| **`/find-and-match/reconcile` `SUM_TOLERANCE`** | **0,02** | **a régua do SERVIDOR** ← a terceira |
+| `reconcile.ts` `AMOUNT_EQ_TOLERANCE` | 0,01 | bate o `diferencaAceita` ao centavo |
+
+**⛔⛔ MAS A CAUSA NÃO ERA A RÉGUA DE 0,02 — era mais simples e pior: o card COLETAVA o nome da diferença, acendia o botão com ele e NUNCA O ENVIAVA.** O POST ia só com `candidateIds`; o servidor não tinha como saber que havia algo confirmado, e recusava **com razão**. ⭐ *A régua de 0,02 media a coisa certa — "a soma fecha?" — e não fazia a segunda pergunta: "e se não fecha, o dono nomeou?"*
+
+**⭐ O FIX DE CLASSE (`regua-da-diferenca.ts`): quatro chamadores, uma função.** Card, Find & Match, lote e **servidor** passam pelos mesmos degraus — `FECHA` (≤0,02) · `OFERECE` (≤25) · `PERGUNTA` (≤10% da linha) · `RECUSA`. ⚠️ **O degrau NÃO muda quando o dono marca a caixinha** (só o `podeFechar`): senão a tela mudaria de degrau no clique e o servidor avaliaria outro. Um teste **varre de 0 a 20% da linha** e exige que tela e servidor **nunca** discordem.
+
+⚠️ **E A MENSAGEM PASSOU A DIZER O QUE FAZER:** *"Diferença de R$ 54,15 — confirme na tela que é juros/multa pra conciliar"*. *"Tolerância máxima: R$ 0,02"* mandava o dono procurar um erro que não existia — ele sabia que era juros.
+
+### ⛔⛔ E O RASTRO SÓ EXISTIA NUM DOS DOIS RAMOS
+
+A OESA fechou (HTTP 200, RECONCILED) e o `notes` ficou **sem uma linha explicando**. Medido no audit: `diferencaAceita: undefined · mode: CLASSIC`. **O texto do rastro vivia só no ramo `EFFECTED_ORPHAN`** — o caso do Cancian (07/09), que era ex-payable já paga. **Conta em aberto normal segue o ramo CLASSIC**, e por ali não passava nada. É a família *"N caminhos, 1 esquecido"*, a mesma do estorno de cartão e do gatilho de vendas. Agora o texto é montado **uma vez**, antes da bifurcação.
+
+⚠️ **O rastro vai na PRIMEIRA nota do grupo, não em todas:** a diferença é do **pagamento**, não de cada nota — escrevê-la nas cinco faria quem lê a segunda achar que houve 54,15 de juros ali também, e o grupo "somaria" R$ 270,75 que nunca existiram.
+
+**PROVADO EM PROD, pela rota real, com o caso dele:**
+```
+SEM NOMEAR         → HTTP 422: "Diferença de R$ 54,15 — confirme na tela que é
+                                juros/multa pra conciliar · marcado R$ 1641.12
+                                × linha R$ 1695.27"
+COM 54,15 NOMEADOS → HTTP 200: reconciled 1 · failed 0
+
+A NOTA: RECONCILED · vínculo sim
+⭐ RASTRO: "… · pagamento conciliado com a linha do extrato de 2026-09-11
+   (R$ 1695.27) · diferença de R$ 54.15 = juros/tarifa de boleto,
+   confirmada por quem conciliou"
+```
+⭐ **Os irmãos entram pelo mesmo gesto** (travado em teste com os números reais): **Focatto 68,55 · Cia da Fruta 32,35 · Box 63,78 · Ivan 69,50** — todos no degrau `PERGUNTA`, todos aceitos pelo servidor quando nomeados.
+
+**REGRA 11 — 3 defeitos repostos:** card sem enviar → **1 vermelho** · régua de 0,02 solta de volta → **1** · ramo CLASSIC sem o rastro → **1**.
+
+**⚠️⚠️ E A REGRA 11 REPROVOU DOIS GUARDS MEUS NO CAMINHO:** (a) o detector do rastro olhava uma **janela de 3.500 caracteres** em volta do `mode:` — e ela alcançava a **declaração** lá de cima, então remover o uso no CLASSIC deixava tudo verde; o que morde é contar o **USO**. (b) o guard do POST cortava o corpo em `'}),'` e parava no **spread interno**, acusando um campo que estava lá. **Guard novo só conta depois de rodar contra o defeito que o motivou — inclusive contra os defeitos dele mesmo.**
+
+**9.378 verdes · TS 0 · deploys `Jh5E4QPQt7qRY9rfwCdZp` e `kX_Xe0qWe7edxs0S_LL6i`, os dois 4/4.**
+
+⚠️ **A régua de 0,02 NÃO morreu — ela virou o degrau `FECHA`**, que é o papel legítimo dela: arredondamento bancário de um centavo não é diferença, é ruído. O que morreu foi ela ser **a única pergunta** do servidor.
+
+
 ### ⭐⭐⭐ O MATCHER APRESENTA O QUE JÁ ESTAVA NO EXTRATO (11-12/09)
 
 **O dono cruzou os 99 débitos da Stone com o Contas a Pagar:** *"a maioria dos 'sumidos' ESTÁ no extrato — **o matcher é que não apresenta**."* Medido caso a caso, rodando o matcher de verdade antes de escrever régua nenhuma:
