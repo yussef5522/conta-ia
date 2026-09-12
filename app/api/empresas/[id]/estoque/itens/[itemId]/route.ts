@@ -62,6 +62,30 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       if (!/igual ao atual/i.test(motivo)) return NextResponse.json({ erro: motivo }, { status: 409 })
     }
   }
+  /**
+   * ⭐⭐ A TROCA DE CATEGORIA DEIXA RASTRO (12/09/2026) — ordem do dono.
+   *
+   * **Caso real:** `VINAGRE CBS VINHO TINTO 750ML` marcado `USO_INTERNO` por engano; o certo
+   * é `MATERIA_PRIMA`, e não existia onde trocar (a ROTA já aceitava — faltava a tela).
+   *
+   * ⚠️ **MEDIDO ANTES: a categoria NÃO pesa em CMV/DRE.** Onde ela decide alguma coisa:
+   *   · `seContaFisicamente` (Posição/contagem) exclui só `SABOR` e `PRODUTO_FINAL` — trocar
+   *     entre MATERIA_PRIMA e USO_INTERNO **não muda** nem a Posição nem a contagem;
+   *   · a busca de ingrediente da receita (`escopo=receita`) e a etiqueta passam a oferecer
+   *     o item, que é justamente o efeito desejado;
+   *   · `sugestoes.ts` só palpita na CRIAÇÃO — não relê nada depois.
+   * ⭐ Ou seja: a troca vale na LEITURA, daqui pra frente. **Nenhum movimento é reescrito** —
+   * história não se mexe, que é a régua do módulo desde o dia 1.
+   */
+  if (resto.categoria !== undefined) {
+    const atual = await prisma.stockItem.findUniqueOrThrow({ where: { id: itemId }, select: { categoria: true } })
+    if (atual.categoria !== resto.categoria) {
+      await prisma.stockItemCategoriaTrocada.create({
+        data: { companyId, itemId, de: atual.categoria, para: resto.categoria, trocadoPorId: a.user!.sub },
+      })
+    }
+  }
+
   const item = Object.keys(resto).length
     ? await prisma.stockItem.update({ where: { id: itemId }, data: resto, select: { id: true, nome: true, categoria: true, unidadeControle: true, estoqueMin: true, estoqueMax: true } })
     : (await prisma.stockItem.findUniqueOrThrow({ where: { id: itemId }, select: { id: true, nome: true, categoria: true, unidadeControle: true, estoqueMin: true, estoqueMax: true } }))

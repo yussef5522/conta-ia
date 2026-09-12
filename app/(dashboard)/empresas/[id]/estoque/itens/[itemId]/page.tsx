@@ -11,11 +11,12 @@ import { Package, Loader2, ArrowLeft, TrendingUp, ChevronDown, Ruler, ExternalLi
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { NomeEditavel } from '@/components/estoque/nome-editavel'
 import { MinMaxEditor } from '@/components/estoque/min-max-editor'
+import { CategoriaEditavel } from '@/components/estoque/categoria-editavel'
 import { statusEstoque, type StatusEstoqueResult } from '@/lib/stock/status-estoque'
 import type { LinhaDoHistorico, FamiliaMovimento } from '@/lib/stock/movimento-explicado'
 
 interface Ficha {
-  item: { id: string; nome: string; unidadeControle: string; categoriaLabel: string; ativo: boolean; estoqueMin: number | null; estoqueMax: number | null }
+  item: { id: string; nome: string; unidadeControle: string; categoria: string; categoriaLabel: string; ativo: boolean; estoqueMin: number | null; estoqueMax: number | null }
   saldo: number; custoMedio: number | null; valor: number; status: StatusEstoqueResult
   historico: LinhaDoHistorico[]
   tipos: { tipo: string; chip: string; n: number }[]
@@ -84,7 +85,14 @@ export default function FichaItemPage({ params }: { params: Promise<{ id: string
           <Package className="h-5 w-5 shrink-0 text-[#185FA5]" />
           <div className="min-w-0">
             <div className="text-xl"><NomeEditavel companyId={id} itemId={itemId} nome={ficha.item.nome} className="text-xl font-semibold" onSalvo={(n) => setFicha({ ...ficha, item: { ...ficha.item, nome: n } })} /></div>
-            <p className="text-sm text-slate-500">{ficha.item.categoriaLabel} · controle em {ficha.item.unidadeControle}</p>
+            {/* ⭐ a CATEGORIA virou editável (12/09) — o caso do vinagre marcado "uso interno" */}
+            <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm text-slate-500">
+              <CategoriaEditavel
+                companyId={id} itemId={itemId} categoria={ficha.item.categoria}
+                onSalvo={(nova) => setFicha({ ...ficha, item: { ...ficha.item, categoria: nova } })}
+              />
+              · controle em {ficha.item.unidadeControle}
+            </p>
           </div>
         </div>
         <div className="mt-4 grid grid-cols-3 gap-3">
