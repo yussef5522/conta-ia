@@ -572,6 +572,49 @@ OLEO DE SOJA: controle UN → LT (fator 1)
 
 ⚠️ **2c — o log é SENTINELA, não autópsia:** a marcação de 10/09 já passou e não deixou rastro; **não dá pra reconstruir a causa**, e o dono já tinha dito que nesse caso *"o log fica de sentinela"*. A próxima pulada sai com nome e motivo.
 
+### ⛔⛔⛔ A BEBIDA VENDIDA COMO COMPLEMENTO NÃO BAIXAVA (12/09)
+
+**O dono:** *"COCA 2L é produto no cardápio E complemento quando o cliente adiciona. A do relatório de Produtos baixa certinho; a MESMA bebida no relatório de Complementos não baixa nada."*
+
+**⚠️ A APOSTA DELE ERA *"bebida esbarra numa régua complemento = sabor"* — E O DADO REFUTOU.** Não existe régua nenhuma barrando: `baixaComplemento` aceita **qualquer** ficha (`alvoTipo === 'FICHA'`) e `upsertComplementoMap` também — o comentário de lá até explica que aceita `INTERMEDIARIO` **e** `PRODUTO_FINAL` de propósito.
+
+**⭐ A CAUSA MEDIDA É OUTRA, e mais simples: são DOIS MAPAS e ninguém preencheu o de complementos.** Das **18 bebidas** do relatório, **18 pendentes** — e várias já com ficha no cardápio:
+```
+"COCA COLA 2L"  38 ocorrências em 6 dias · complemento PENDENTE | produto FICHA
+"COCA ZERO 2L"  14 ocorrências em 6 dias · complemento PENDENTE | produto FICHA
+"FANTA UVA 2L"   3 ocorrências           · complemento PENDENTE | produto FICHA
+```
+⚠️ Os dois mapas continuam separados **de propósito** (02/09: 25 nomes vivem nos dois relatórios, cada um com seu destino). O que faltava não era fundir — era **herdar** quando o nome é literalmente o mesmo.
+
+**⭐ A RÉGUA É A DE 08/09, SEM AFROUXAR: canônico IDÊNTICO** (mesma string ignorando caixa, acento e espaço). Roda no **IMPORT** e **antes da baixa** — o mapa precisa existir quando o plano é montado, senão a bebida cai na prateleira e só baixa no reprocesso. Fail-soft: herdar é bônus.
+
+**⛔ O QUE NÃO HERDA, e por quê:** `COCA LATA MAIS MINI FRITAS` **tem fritas dentro** — herdar por "parece" baixaria só a lata e esqueceria a batata. E **decisão do dono não se sobrescreve**: nome já `IGNORAR` continua ignorado (ignorar é uma resposta, não uma ausência).
+
+**REGRA 11 — sem a herança: 2 vermelhos.** ⚠️ **E a primeira reposição do guard do combo NÃO mordeu:** casar por `includes` não fazia o combo entrar de verdade. O defeito que morde é casar pela **primeira palavra** — com ele, o teste do combo fica vermelho.
+
+**9.385 verdes · TS 0 · deploy `XD4mdFyy6i758iAzd8cin` 4/4.**
+
+### 📋 O RETROATIVO ESTÁ EM PREVIEW, ESPERANDO O OK (`scripts/retro-bebida.ts`)
+
+**⚠️⚠️ E O PREVIEW MOSTROU QUE O DEFEITO ERA MAIOR QUE BEBIDA: são 13 nomes, 87 ocorrências, 6 dias.** `FEIJAO` (16), `XIS - CALABRESA` (4), `XIS - BACON` (2), `XIS - FRANGO`, `XIS - COXAO MOLE` e `pizza grande (35cm)` estavam no mesmo buraco — qualquer nome do complemento que já tinha destino no cardápio.
+
+```
+COCA COLA 2L     38 ocorr  ·  FEIJAO            16  ·  COCA ZERO 2L      14
+XIS - CALABRESA   4        ·  FANTA UVA 2L       3  ·  FRUKI 2L           2
+FANTA LARANJA 2L  2        ·  FANTA LARANJA LATA 2  ·  XIS - BACON        2
+FANTA UVA LATA    1        ·  pizza grande(35cm) 1  ·  XIS - COXAO MOLE   1
+XIS - FRANGO      1
+```
+
+**⚠️ MEDIDO ANTES DE PEDIR O OK — os 13 vendem nos DOIS relatórios, e no MESMO dia:**
+```
+COCA COLA 2L   complemento 38 em 6d · produto 107 em 7d · mesmo dia nos dois: 6
+FEIJAO         complemento 16 em 5d · produto  27 em 6d · mesmo dia: 5
+XIS-CALABRESA  complemento  4 em 2d · produto   8 em 4d · mesmo dia: 1
+```
+⭐ Pra **bebida** o dono já disse que são **duas vendas** (*"a mesma garrafa, uma por caminho"*). Pra **XIS, FEIJÃO e pizza** a mesma lógica provavelmente vale (adicional, acompanhamento) — **mas eu não posso afirmar**, e aplicar em todos sem ele dizer seria decidir por ele num número que sai do estoque.
+
+
 ### ⛔⛔⛔ O SERVIDOR RECUSAVA O QUE A TELA OFERECIA — E A CAUSA NÃO ERA A RÉGUA (12/09)
 
 **O dono, conciliando a OESA:** linha **1.695,27** × NF 3866696 de **1.641,12**, os **54,15** de multa+juros (3,3% da linha, dentro do gesto explícito de ontem). A tela acendeu o Conciliar e veio:
