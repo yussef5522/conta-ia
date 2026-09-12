@@ -572,6 +572,57 @@ OLEO DE SOJA: controle UN → LT (fator 1)
 
 ⚠️ **2c — o log é SENTINELA, não autópsia:** a marcação de 10/09 já passou e não deixou rastro; **não dá pra reconstruir a causa**, e o dono já tinha dito que nesse caso *"o log fica de sentinela"*. A próxima pulada sai com nome e motivo.
 
+### ⭐⭐ A CATEGORIA DO ITEM VIROU EDITÁVEL + OS DOIS VINAGRES (12/09)
+
+**O dono:** *"VINAGRE CBS VINHO TINTO 750ML marquei USO INTERNO por engano — o certo é MATÉRIA-PRIMA. **Não existe onde trocar**."*
+
+**⚠️ MEDIDO ANTES DE ESCREVER QUALQUER COISA: a ROTA JÁ ACEITAVA `categoria`** no `patchSchema`. O que faltava era **a TELA** — a mesma anatomia do *"sumir com o item"* de 09/09, em que a régua existia há dias e o menu não oferecia o gesto.
+
+**⭐ A INVESTIGAÇÃO QUE ELE PEDIU ("a categoria pesa em alguma derivação?"), respondida:**
+| onde | pesa? |
+|---|---|
+| **CMV / DRE** | **não** — nenhum uso de `categoria` nos dois |
+| Posição / contagem (`seContaFisicamente`) | exclui só `SABOR` e `PRODUTO_FINAL` → **trocar entre MATERIA_PRIMA e USO_INTERNO não muda nada** (teste prova) |
+| busca de ingrediente da receita · etiqueta | **sim** — e é justamente o efeito que ele quer |
+| `sugestoes.ts` | só palpita na **criação**, não relê depois |
+
+⭐ Ou seja: a troca vale na **LEITURA, daqui pra frente**. **Nenhum movimento é reescrito** — história não se mexe. `stock_item_categoria_trocada` (CREATE-only, `CHECK de <> para`) guarda **de, para, quem e quando**: tabela própria porque a troca tem autor e é um fato por si, e o item pode mudar de ideia mais de uma vez.
+
+⛔ **Item PRODUZIDO não troca por ali** (`SABOR`/`PRODUTO_FINAL`/`INTERMEDIARIO`): a categoria dele vem da FICHA, e mexer soltaria o item da receita que o produz.
+
+**PROVADO EM PROD, pela rota real:**
+```
+ANTES:  VINAGRE CBS VINHO TINTO 750ML → USO_INTERNO
+PATCH → HTTP 200
+DEPOIS: MATERIA_PRIMA
+RASTRO: USO_INTERNO → MATERIA_PRIMA por 05e9mg em 2026-09-12T19:55
+POSIÇÃO: ⭐ aparece · saldo 7   (não mudou de tamanho, como o teste previu)
+```
+**9.392 verdes · TS 0 · deploy `PItscD9x_WHFcGK9fuKoJ` 4/4.**
+
+### 📋 OS DOIS VINAGRES — PREVIEW PRONTO, ESPERANDO O OK (`scripts/vinagres.ts`)
+
+**A aposta do dono se confirmou — é o padrão invólucro/garrafa — MAS com uma diferença que muda o conserto: as UNIDADES DIVERGEM.**
+```
+FANTASMA  VINAGRE 750ML (LT, MANUAL)      saldo −0,16 · custo R$ 0,00
+          └ é componente da ficha da MAIONESE (0,02 LT) e o ÚNICO movimento dele
+            é a SEPARAÇÃO de hoje
+COMPRADO  VINAGRE CBS VINHO TINTO (UN)    saldo 7 · R$ 47,75 · 2 entradas de NF
+          └ não é componente de ficha nenhuma
+```
+⭐ E há um **terceiro**, já resolvido: `VINAGRE TINTO ROSINA 750 ML (mesclado)` — inativo, entrada estornada, saldo 0.
+
+**O CONSERTO, em três passos — e o passo 3 NÃO pode ser agora:**
+```
+1. REUNITIZAR o CBS de UN → LT (1 garrafa = 0,75 LT)
+   7 UN → 5,25 LT · custo R$ 6,82/UN → R$ 9,10/LT · valor R$ 47,75 ⭐ INVARIANTE
+   2 movimentos convertem · 0 bloqueios
+2. a ficha da MAIONESE aponta pro CBS — a quantidade NÃO muda (0,02 LT segue 0,02 LT)
+3. ⛔⛔ a baixa de −0,161 é a SEPARAÇÃO de uma ordem **EM_PRODUCAO**
+```
+**⛔⛔ MOVER A BAIXA AGORA QUEBRARIA O INVARIANTE P1** (`Σ separado == Σ consumido + Σ devolvido`). O material **já foi separado fisicamente** com o item fantasma; o certo é a ordem **fechar nela** e a costura vir depois. ⚠️ **Impacto financeiro de deixar: ZERO** — o movimento é a custo R$ 0,00.
+
+
 ### ⛔⛔⛔ A BEBIDA VENDIDA COMO COMPLEMENTO NÃO BAIXAVA (12/09)
 
 **O dono:** *"COCA 2L é produto no cardápio E complemento quando o cliente adiciona. A do relatório de Produtos baixa certinho; a MESMA bebida no relatório de Complementos não baixa nada."*
