@@ -116,13 +116,22 @@ describe('⛔⛔ IVAN — o atalho NÃO aparece, e o número do mock não existe
     expect(c.podeConciliar).toBe(false)
   })
 
-  it('⛔ e nem dizer "é juros" salva acima do teto — a trava não é opinião', () => {
-    const c = contaDoRodape({
-      valorDaLinha: 2008,
-      marcadas: marcar(card, ['NF-39', 'NF-41', 'NF-40', 'NF-42']),
-      diferencaNomeada: true,
-    })
-    expect(c.podeConciliar).toBe(false)
+  // ⚠️⚠️ INVERTIDO COM O MOTIVO (11/09/2026) — decisão do dono, não afrouxamento meu:
+  // *"o teto de R$ 25 vale pro que o sistema SUGERE sozinho; acima dele aparece o gesto
+  // explícito, com o valor em destaque"*, limitado a 10% da linha. Os R$ 69,50 do Ivan são
+  // 3,5% de R$ 2.008 — cabem no gesto dele, e o caso real é juros de atraso.
+  // ⛔ A trava que NÃO é opinião continua de pé: sem NOMEAR, não fecha; e acima de 10% não
+  // existe gesto nenhum (o teste do "500 de juros em nota de 600" trava isso).
+  it('⭐ acima do teto automático, a diferença fecha COM o dono nomeando', () => {
+    const marcadas = marcar(card, ['NF-39', 'NF-41', 'NF-40', 'NF-42'])
+    const semNomear = contaDoRodape({ valorDaLinha: 2008, marcadas })
+    expect(semNomear.podeConciliar).toBe(false)
+    expect(semNomear.cabeAcertoComNome).toBe(false)          // ⛔ o sistema não oferece sozinho
+    expect(semNomear.acertoQueEuConfirmo).not.toBeNull()      // ⭐ mas o gesto DELE existe
+    expect(semNomear.acertoQueEuConfirmo!.frase).toContain('69,50')
+
+    const nomeada = contaDoRodape({ valorDaLinha: 2008, marcadas, diferencaNomeada: true })
+    expect(nomeada.podeConciliar).toBe(true)
   })
 
   it('⭐ mas a nota que VENCE DEPOIS entra na lista — é o pagamento real', () => {

@@ -63,6 +63,10 @@ export type MatchReason =
   | 'FORNECEDOR_IGUAL'
   | 'DESC_MUITO_SIMILAR'
   | 'DESC_SIMILAR'
+  // ⭐ o nome que a CONTA MANUAL carrega na descrição apareceu na linha do banco
+  // (11/09/2026) — ver `nome-da-conta-manual.ts`. Conta sem FK nunca ganha
+  // `FORNECEDOR_IGUAL`, e era isso que deixava ELETROSUL e Casper 10 pontos abaixo.
+  | 'NOME_DA_CONTA_MANUAL'
 
 export interface MatchScore {
   candidateId: string

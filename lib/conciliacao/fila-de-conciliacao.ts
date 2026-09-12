@@ -23,6 +23,7 @@
 
 import type { PrismaClient } from '@prisma/client'
 import { comCorte, corteDaEmpresa } from './corte-de-epoca'
+import { chaveDoPadrao } from './processadora-de-boleto'
 import { prisma as defaultPrisma } from '@/lib/db'
 import {
   sugerirVinculos, reconhecerFornecedor, canonizadorDeFornecedor,
@@ -152,6 +153,18 @@ export async function fornecedoresDaEmpresa(db: Db, companyId: string): Promise<
 }
 
 /** os pares que o dono já recusou — o filtro vale nas DUAS telas */
+/**
+ * ⭐ OS PADRÕES DE PROCESSADORA JÁ CONFIRMADOS (11/09) — `chave → vezes`.
+ * Ver `processadora-de-boleto.ts`: é o que faz "PJBANK" deixar de ser palpite puro na
+ * segunda vez em que o dono confirma o mesmo par.
+ */
+export async function padroesDeProcessadora(db: Db, companyId: string): Promise<Map<string, number>> {
+  const rs = await db.conciliacaoPadraoProcessadora.findMany({
+    where: { companyId }, select: { chave: true, vezes: true },
+  })
+  return new Map(rs.map((r) => [r.chave, r.vezes]))
+}
+
 export async function paresRecusados(db: Db, companyId: string) {
   const rs = await db.conciliacaoParRecusado.findMany({
     where: { companyId }, select: { extratoId: true, contaId: true },
@@ -172,7 +185,7 @@ export async function paresRecusados(db: Db, companyId: string) {
 export async function contasEsperandoPagamento(
   companyId: string, db: Db = defaultPrisma,
 ): Promise<ContaEsperandoPagamento[]> {
-  const corte = await corteDaEmpresa(db, companyId)
+  const [corte, padroes] = await Promise.all([corteDaEmpresa(db, companyId), padroesDeProcessadora(db, companyId)])
   const [contas, fornecedores, recusados] = await Promise.all([
     db.transaction.findMany({
       where: {
@@ -256,7 +269,7 @@ export async function contasEsperandoPagamento(
       contaBancariaId: e.bankAccountId,
     }
     // ⛔ A MESMA função da tela de Pendentes e do import. Fonte única de sugestão.
-    for (const s of sugerirVinculos({ extrato: ladoE, contas: candidatas, fornecedores, recusados })) {
+    for (const s of sugerirVinculos({ extrato: ladoE, contas: candidatas, fornecedores, recusados, padroesDeProcessadora: padroes })) {
       porConta.set(s.contaId, [...(porConta.get(s.contaId) ?? []), {
         ...s, extrato: ladoE,
         extratoConta: e.bankAccount?.name?.trim() ?? null,
@@ -591,8 +604,9 @@ export interface SugestoesDePendentes {
 export async function sugestoesParaPendentes(
   companyId: string, db: Db = defaultPrisma,
 ): Promise<SugestoesDePendentes> {
-  const [fornecedores, recusados, corteParaPendentes] = await Promise.all([
+  const [fornecedores, recusados, corteParaPendentes, padroes] = await Promise.all([
     fornecedoresDaEmpresa(db, companyId), paresRecusados(db, companyId), corteDaEmpresa(db, companyId),
+    padroesDeProcessadora(db, companyId),
   ])
 
   // As linhas que a fila de Pendentes mostra (mesma régua da tela — NEEDS_REVIEW).
@@ -668,7 +682,7 @@ export async function sugestoesParaPendentes(
           data: c.dueDate ?? c.date, tipo: c.type as 'CREDIT' | 'DEBIT',
           fornecedorId: c.supplierId, contaBancariaId: null,
         }))
-      for (const s of sugerirVinculos({ extrato: lado, contas, fornecedores, recusados })) {
+      for (const s of sugerirVinculos({ extrato: lado, contas, fornecedores, recusados, padroesDeProcessadora: padroes })) {
         const o = contas.find((c) => c.id === s.contaId)!
         achados.push({ ...s, outroLado: o, rotulo: 'conta a pagar' })
       }
@@ -688,7 +702,7 @@ export async function sugestoesParaPendentes(
           tipo: e.type as 'CREDIT' | 'DEBIT', fornecedorId: e.supplierId,
           contaBancariaId: e.bankAccountId,
         }
-        const [s] = sugerirVinculos({ extrato: ladoE, contas: [lado], fornecedores, recusados })
+        const [s] = sugerirVinculos({ extrato: ladoE, contas: [lado], fornecedores, recusados, padroesDeProcessadora: padroes })
         if (s) achados.push({ ...s, outroLado: ladoE, rotulo: 'linha do extrato' })
       }
     }

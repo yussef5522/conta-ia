@@ -32,6 +32,7 @@
 //   - Mesma empresa (multi-tenant)
 //   - ORPHAN: candidato.origin IN (IMPORT_EXCEL, MANUAL) — nunca OFX-vs-OFX
 
+import { processadoraDaLinha, chaveDoPadrao } from './processadora-de-boleto'
 import { prisma } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
 import type { AuthContext } from '@/lib/auth/rbac'
@@ -355,6 +356,28 @@ export async function reconcileTransactions(
       },
       trx,
     )
+
+    /**
+     * ⭐⭐ O VÍNCULO ENSINA O PADRÃO DA PROCESSADORA (11/09/2026) — ordem do dono:
+     * *"EU confirmo, e o vínculo ensina o padrão ('PJBANK costuma ser o boleto do
+     * aluguel')"*.
+     *
+     * ⚠️ FAIL-SOFT de propósito: aprender é bônus. Se a gravação do padrão falhar, o
+     * VÍNCULO — que é o fato — já está gravado, e derrubá-lo por causa da memória seria
+     * trocar dinheiro conciliado por conveniência futura.
+     */
+    const proc = processadoraDaLinha(ofx.description)
+    if (proc) {
+      const chave = chaveDoPadrao(proc, candidate.description)
+      const companyIdDoPar = ofxCompanyId
+      if (companyIdDoPar) {
+        await trx.conciliacaoPadraoProcessadora.upsert({
+          where: { companyId_chave: { companyId: companyIdDoPar, chave } },
+          create: { companyId: companyIdDoPar, processadora: proc, chave, contaDescricao: candidate.description, criadoPorId: null },
+          update: { vezes: { increment: 1 }, ultimoEm: new Date() },
+        }).catch(() => null)
+      }
+    }
 
     return candidateUpdated
   })

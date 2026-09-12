@@ -4578,3 +4578,21 @@ model ConciliacaoBaixaParcial {
   @@index([extratoId])
   @@map("conciliacao_baixa_parcial")
 }
+
+// ⭐ O PADRÃO APRENDIDO DA PROCESSADORA DE BOLETO (11/09/2026) — ver
+// lib/conciliacao/processadora-de-boleto.ts. A linha da PJBANK não nomeia o beneficiário;
+// quando o dono confirma o vínculo, o par vira padrão e da próxima vez a tela já sabe.
+model ConciliacaoPadraoProcessadora {
+  id             String   @id @default(cuid())
+  companyId      String
+  processadora   String
+  chave          String
+  contaDescricao String
+  vezes          Int      @default(1)
+  ultimoEm       DateTime @default(now())
+  criadoPorId    String?
+  criadoEm       DateTime @default(now())
+
+  @@unique([companyId, chave])
+  @@map("conciliacao_padrao_processadora")
+}

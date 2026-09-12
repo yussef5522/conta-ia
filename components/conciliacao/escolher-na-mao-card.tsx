@@ -31,7 +31,7 @@ import { useState, useMemo, useCallback } from 'react'
 import { Loader2 } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
-import { JANELA_A_VENCER_DIAS } from '@/lib/conciliacao/escolher-na-mao'
+import { JANELA_A_VENCER_DIAS, TETO_DA_DIFERENCA, tetoDoGestoManual } from '@/lib/conciliacao/escolher-na-mao'
 import { MOCK, LINHA_ENTRE_NOTAS, HOVER_NOTA, chip } from './mock-tokens'
 
 export interface NotaDoCardDTO {
@@ -57,7 +57,12 @@ export interface CardDeEscolhaDTO {
 }
 
 /** o teto do acerto com nome — o MESMO do servidor (`escolher-na-mao.ts`) */
-const TETO = 25
+/**
+ * ⚠️ ERA `const TETO = 25` HARDCODED AQUI (corrigido 11/09/2026) — número solto na tela é a
+ * segunda régua no dia em que o teto mudar, exatamente como o `30` da janela do "a vencer"
+ * já tinha ensinado. Agora vem do dono único.
+ */
+const TETO = TETO_DA_DIFERENCA
 const TOL = 0.02
 const dia = (iso: string) => new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'UTC' })
 const diaCurto = (iso: string) =>
@@ -114,6 +119,18 @@ export function EscolherNaMaoCard({ empresaId, card, onConciliado, onFechar, nav
   const falta = diferenca > TOL
   const passou = diferenca < -TOL
   const cabeNome = falta && diferenca <= TETO
+  /**
+   * ⭐⭐⭐ ACIMA DO TETO AUTOMÁTICO, O GESTO É DELE (11/09/2026) — decisão do dono.
+   *
+   * **Caso real:** Frigorífico, linha 3.845,71 × NF de 3.800,11 paga atrasada — os **45,60
+   * SÃO multa+juros**, e o teto de R$ 25 os deixava sem saída nenhuma.
+   *
+   * ⚠️ O NÚMERO vem de `tetoDoGestoManual` (10% da linha), não de uma conta escrita aqui:
+   * a tela já duplica a montagem do rodapé (débito registrado), e duplicar também o TETO
+   * faria a tela oferecer o gesto que o servidor recusa — ou o contrário.
+   */
+  const tetoManual = tetoDoGestoManual(card.linha.valor)
+  const cabeNoManual = falta && !cabeNome && diferenca <= tetoManual
   const ultima = marcadasOrdenadas[marcadasOrdenadas.length - 1]
   const sobra = round2(-diferenca)
   const parcial = passou && ultima && ultima.emAberto > sobra + TOL
@@ -121,7 +138,7 @@ export function EscolherNaMaoCard({ empresaId, card, onConciliado, onFechar, nav
     : null
 
   const podeConciliar = fecha
-    || (cabeNome && !!nomeDaDiferenca)
+    || ((cabeNome || cabeNoManual) && !!nomeDaDiferenca)
     || (!!parcial && parcialAceita)
 
   const alternar = useCallback((id: string) => {
@@ -297,12 +314,29 @@ export function EscolherNaMaoCard({ empresaId, card, onConciliado, onFechar, nav
         </div>
       )}
 
+      {/* ── ⭐⭐ O GESTO EXPLÍCITO, acima do teto automático (11/09). O valor vai em
+             DESTAQUE porque é exatamente o que o dono está confirmando — e é o que fica
+             escrito no rastro ("confirmada por quem conciliou"). ── */}
+      {cabeNoManual && marcadas.size > 0 && (
+        <label className="mx-[16px] mb-[12px] flex cursor-pointer items-start gap-[10px] rounded-[10px] px-[12px] py-[10px] text-[13px] leading-relaxed"
+          style={{ background: MOCK.ambarFraco ?? '#fdf3e3', color: MOCK.ambar }}>
+          <input type="checkbox" checked={nomeDaDiferenca === 'JUROS'}
+            onChange={(e) => setNomeDaDiferenca(e.target.checked ? 'JUROS' : null)}
+            className="mt-0.5 shrink-0" style={{ width: '19px', height: '19px', accentColor: MOCK.ambar }} />
+          <span>
+            A diferença de <b style={{ fontSize: '15px' }}>{formatBRL(diferenca)}</b> é
+            {' '}<b>juros/multa de atraso</b> — confirmar.
+            <span className="ml-1 opacity-70">(até {formatBRL(tetoManual)} nesta linha)</span>
+          </span>
+        </label>
+      )}
+
       {/* ── `.dica` — faixa slate. ⛔ só depois de selecionar algo: com zero marcado,
              "faltam R$ 2.008,00" é a linha inteira e não ensina nada. ── */}
-      {falta && !cabeNome && marcadas.size > 0 && (
+      {falta && !cabeNome && !cabeNoManual && marcadas.size > 0 && (
         <p className="mx-[16px] mb-[14px] rounded-[10px] px-[12px] py-[10px] text-[12.5px] leading-relaxed"
           style={{ background: MOCK.slateFraco, color: MOCK.slate }}>
-          Faltam <b>{formatBRL(diferenca)}</b>, acima do teto de {formatBRL(TETO)}. Não acha a
+          Faltam <b>{formatBRL(diferenca)}</b>, acima do teto de segurança ({formatBRL(tetoManual)}). Não acha a
           nota que falta? Ela pode não estar no sistema ainda — aí é baixa parcial, ou não é
           isso.
         </p>

@@ -33,6 +33,29 @@ export const TOLERANCIA = 0.02
 export const TETO_DA_DIFERENCA = 25
 
 /**
+ * ⭐⭐⭐ O TETO DO GESTO MANUAL (11/09/2026) — decisão do dono.
+ *
+ * **Ele:** *"O teto de R$ 25 vale pro que o sistema SUGERE sozinho; acima dele, aparece o
+ * gesto explícito: 'a diferença de R$ 45,60 é juros/multa de atraso — confirmar'. Teto de
+ * segurança maior pro gesto manual (ex. 10% da linha) pra ninguém 'confirmar' 500 de juros
+ * em nota de 600 sem querer."*
+ *
+ * **O caso real:** Frigorífico, linha **3.845,71** × NF parcela 001 de **3.800,11** paga
+ * atrasada — os **R$ 45,60** SÃO multa+juros, e o teto de 25 os deixava sem saída.
+ *
+ * ⛔ São DOIS tetos com papéis diferentes, e é isso que impede "juros" de virar a caixinha
+ * onde some qualquer diferença: até 25 o sistema **oferece** o acerto; entre 25 e 10% da
+ * linha ele **pergunta, com o valor em destaque**; acima de 10% **não há acerto rápido** —
+ * ou acha a nota, ou baixa parcial, ou não é isso.
+ */
+export const PERCENTUAL_MAXIMO_DO_GESTO_MANUAL = 0.10
+
+/** ⭐ até onde o dono pode confirmar uma diferença NOMEADA nesta linha */
+export function tetoDoGestoManual(valorDaLinha: number): number {
+  return round2(Math.abs(valorDaLinha) * PERCENTUAL_MAXIMO_DO_GESTO_MANUAL)
+}
+
+/**
  * ⭐ A JANELA DO "A VENCER" — quantos dias à frente abrem na tela (decisão do dono: *"só
  * notas até ~30 dias, com 'mostrar mais' pro resto"*).
  */
@@ -192,8 +215,14 @@ export interface ContaDoRodape {
   frase: string
   /** o Conciliar acende? */
   podeConciliar: boolean
-  /** ⭐ a diferença cabe num acerto com NOME (juros/tarifa/desconto)? */
+  /** ⭐ a diferença cabe num acerto com NOME que o SISTEMA oferece (≤ R$ 25)? */
   cabeAcertoComNome: boolean
+  /**
+   * ⭐⭐ acima do teto automático, mas dentro do teto de segurança: o dono PODE confirmar,
+   * com o valor em destaque. `null` quando não se aplica (cabe no automático, ou passou de
+   * 10% da linha). Ver `tetoDoGestoManual`.
+   */
+  acertoQueEuConfirmo: { diferenca: number; teto: number; frase: string } | null
   /** ⭐ quando a linha é MENOR que o marcado: quem recebe a baixa parcial e de quanto */
   parcial: { notaId: string; recebe: number; continuaEmAberto: number } | null
 }
@@ -221,18 +250,29 @@ export function contaDoRodape(entrada: {
     return {
       estado: 'FECHA', selecionado, diferenca: 0,
       frase: '✓ Diferença R$ 0,00',
-      podeConciliar: true, cabeAcertoComNome: false, parcial: null,
+      podeConciliar: true, cabeAcertoComNome: false, acertoQueEuConfirmo: null, parcial: null,
     }
   }
 
   if (diferenca > 0) {
     const cabe = diferenca <= TETO_DA_DIFERENCA
+    // ⭐⭐ entre o teto automático e 10% da linha: o gesto existe, mas é DELE (11/09)
+    const teto = tetoDoGestoManual(entrada.valorDaLinha)
+    const cabeNoManual = !cabe && diferenca <= teto
     return {
       estado: 'FALTA', selecionado, diferenca,
       frase: `selecionado ${brl(selecionado)} · faltam ${brl(diferenca)}`,
-      // ⛔ só acende quando o dono DEU NOME à diferença, e ela cabe no teto
-      podeConciliar: cabe && !!entrada.diferencaNomeada,
+      // ⛔ só acende quando o dono DEU NOME à diferença — e ela cabe num dos dois tetos
+      podeConciliar: (cabe || cabeNoManual) && !!entrada.diferencaNomeada,
       cabeAcertoComNome: cabe,
+      acertoQueEuConfirmo: cabeNoManual
+        ? {
+            diferenca, teto,
+            // ⚠️ a frase NOMEIA a diferença e mostra o número — é o que o dono confirma,
+            // e é o que fica escrito no rastro ("confirmada por quem conciliou").
+            frase: `a diferença de ${brl(diferenca)} é juros/multa de atraso — confirmar`,
+          }
+        : null,
       parcial: null,
     }
   }
@@ -256,7 +296,7 @@ export function contaDoRodape(entrada: {
       ? `passou ${brl(sobra)} — a última nota recebe baixa parcial`
       : `passou ${brl(sobra)} — desmarca alguma`,
     podeConciliar: !!parcial && !!entrada.parcialAceita,
-    cabeAcertoComNome: false,
+    cabeAcertoComNome: false, acertoQueEuConfirmo: null,
     parcial,
   }
 }

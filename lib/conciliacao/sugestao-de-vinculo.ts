@@ -35,6 +35,8 @@
 import { jaroWinkler } from './jaro-winkler'
 import { normalizeForMatch } from './normalize-for-match'
 import { scoreMatch, type MatchCandidate, type OFXTransaction, type MatchReason } from './match'
+import { nomeDaContaBateComALinha } from './nome-da-conta-manual'
+import { processadoraDaLinha, chaveDoPadrao, avisoDaProcessadora } from './processadora-de-boleto'
 
 // ────────────────────────────────────────────────────────────────
 // Tipos
@@ -71,6 +73,12 @@ export interface SugestaoDeVinculo {
   diferenca: number
   /** o fornecedor foi reconhecido pelo NOME (não pela FK)? */
   fornecedorPeloNome: string | null
+  /**
+   * ⭐ quando a linha é de uma PROCESSADORA de boleto (PJBANK, PagSeguro…): o texto que a
+   * tela mostra junto da sugestão. Ela não nomeia o beneficiário, e a oferta tem que dizer
+   * isso — é palpite de VALOR, não de nome.
+   */
+  avisoDeProcessadora?: string | null
 }
 
 /** Um par que o dono já recusou — "não é isso". */
@@ -122,6 +130,17 @@ const CORTE_DE_NOME = 0.82
  * pagamento parecido pra esta conta"* em vez de escolher por conta própria.
  */
 export const DIAS_PRO_VALOR_EXATO_APARECER = 7
+
+/**
+ * ⭐ o que o nome da conta MANUAL vale — o mesmo peso do `FORNECEDOR_IGUAL` (15), porque
+ * responde a MESMA pergunta ("é essa pessoa?") por outro caminho. Dar menos faria o caso
+ * do ELETROSUL continuar 5 pontos abaixo do corte; dar mais inflaria texto sobre FK.
+ */
+export const PONTOS_DO_NOME_MANUAL = 15
+
+/** ⭐ o que vale um padrão de processadora JÁ confirmado pelo dono — abaixo do nome, porque
+ *  é memória de hábito, não identidade. */
+export const PONTOS_DO_PADRAO_APRENDIDO = 10
 
 export function grauDeConfianca(score: number): GrauDeConfianca {
   if (score >= CORTE_DE_ALTA) return 'alta'
@@ -289,7 +308,9 @@ export function frasePorQue(
   else if (dias > 0) partes.push(`pago ${dias} dia${dias > 1 ? 's' : ''} depois do vencimento`)
   else partes.push(`pago ${-dias} dia${dias < -1 ? 's' : ''} antes de vencer`)
 
-  if (fornecedorPeloNome) partes.push(`o nome no extrato é ${fornecedorPeloNome}`)
+  // ⭐ o nome da conta manual é o motivo mais explicativo que existe pra ela — vem primeiro
+  if (motivos.includes('NOME_DA_CONTA_MANUAL') && fornecedorPeloNome) partes.push(`"${fornecedorPeloNome}" aparece nos dois`)
+  else if (fornecedorPeloNome) partes.push(`o nome no extrato é ${fornecedorPeloNome}`)
   else if (motivos.includes('FORNECEDOR_IGUAL')) partes.push('mesmo fornecedor')
   else if (motivos.includes('DESC_MUITO_SIMILAR')) partes.push('nome muito parecido')
   else if (motivos.includes('DESC_SIMILAR')) partes.push('nome parecido')
@@ -314,6 +335,13 @@ export interface EntradaDeSugestao {
   recusados?: ParRecusado[]
   /** corte de exibição (default CORTE_PRA_SUGERIR) */
   corte?: number
+  /**
+   * ⭐ padrões de processadora JÁ CONFIRMADOS pelo dono (chave → vezes). Ver
+   * `processadora-de-boleto.ts`: linha de intermediária não nomeia o beneficiário, então
+   * sem isto o par do aluguel é invisível — e com a porta aberta pra todo mundo o
+   * falso-amigo volta.
+   */
+  padroesDeProcessadora?: Map<string, number>
 }
 
 /**
@@ -357,25 +385,86 @@ export function sugerirVinculos(entrada: EntradaDeSugestao): SugestaoDeVinculo[]
     }
     const s = scoreMatch(ofx, cand)
     if (!s) continue
+
+    /**
+     * ⭐⭐⭐ A CONTA MANUAL TAMBÉM TEM NOME (11/09/2026) — ordem do dono.
+     *
+     * Conta sem FK de fornecedor nunca ganha os 15 do `FORNECEDOR_IGUAL`, e por isso
+     * `ELETROSUL 143,03 × "eletrosul" 143,00` parava em **60** contra um corte de 70 —
+     * faltando exatamente esses pontos, com o nome escrito nos dois lados.
+     *
+     * ⚠️ Só vale quando a conta NÃO tem fornecedor: com FK, quem manda é a FK, e dar os
+     * pontos duas vezes inflaria o score de quem já estava certo.
+     */
+    const nomeBate = !c.fornecedorId
+      ? nomeDaContaBateComALinha(c.descricao, entrada.extrato.descricao)
+      : null
+    const scoreFinal = nomeBate ? s.score + PONTOS_DO_NOME_MANUAL : s.score
+
+    /**
+     * ⛔⛔⛔ O GUARD DO FALSO-AMIGO (11/09/2026) — a trava que protege tudo o resto.
+     *
+     * **O caso real:** `aluguel caçula 5.234,00 × DOCEOLI 5.234,88` — 88 centavos de
+     * diferença, mesmo dia, **70 pontos: passava**. E DOCEOLI não tem nada com aluguel.
+     *
+     * ⭐ **A âncora do nome vale TAMBÉM no quase-exato: diferença de centavos não compra
+     * identidade.** Valor EXATO continua passando sozinho (é o sinal mais forte do
+     * domínio, e a janela curta impede a coincidência); o quase-exato precisa de alguém
+     * dizendo QUEM é — FK igual, nome reconhecido na descrição, ou o nome da conta manual.
+     */
+    const soParecido = !s.reasons.includes('VALOR_EXATO')
+    const alguemDizQuemE = s.reasons.includes('FORNECEDOR_IGUAL')
+      || s.reasons.includes('DESC_MUITO_SIMILAR')
+      || !!nomeBate
+
+    /**
+     * ⭐⭐ A EXCEÇÃO NOMEADA DA PROCESSADORA (11/09) — e ela é estreita de propósito.
+     *
+     * `PJBANK PAGAMENTOS 2.222,88 × "aluguel escritorio" 2.222,81` (7 centavos): ninguém
+     * pode dizer quem é o beneficiário porque **o banco não sabe** — ele vê a PJBANK.
+     * ⛔ Só entra quem está na lista fechada, só com data MUITO perto, e **sempre com o
+     * aviso na cara**: é palpite de VALOR, e a tela diz isso.
+     */
+    const proc = processadoraDaLinha(entrada.extrato.descricao)
+    const jaVisto = proc ? (entrada.padroesDeProcessadora?.get(chaveDoPadrao(proc, c.descricao)) ?? 0) : 0
+    const peloIntermediario = !!proc && (
+      s.reasons.includes('DATA_MESMA') || s.reasons.includes('DATA_D1') || jaVisto > 0
+    )
+
+    if (soParecido && !alguemDizQuemE && !peloIntermediario) continue
     // ⭐ o valor exato numa janela curta passa por cima do corte — ver a nota em
     // `DIAS_PRO_VALOR_EXATO_APARECER`. O score NÃO é inflado: ele só deixa de ser filtro.
     const diasDoPar = Math.abs(Math.round(
       (entrada.extrato.data.getTime() - c.data.getTime()) / 86400000))
     const exatoEPerto = s.reasons.includes('VALOR_EXATO')
       && diasDoPar <= DIAS_PRO_VALOR_EXATO_APARECER
-    if (s.score < corte && !exatoEPerto) continue
+    /**
+     * ⭐⭐ A PROCESSADORA PASSA PELO CORTE PELA MESMA PORTA DO VALOR EXATO (11/09) — e pelo
+     * mesmo motivo: **o score real fica como está**, ele só deixa de ser filtro. `PJBANK ×
+     * aluguel` vale 65 (valor quase exato + D±1) contra um corte de 70, e sem esta porta o
+     * par que o dono nomeou seria invisível pra sempre.
+     * ⛔ O que a torna segura não é o número: é o **aviso na cara** e o fato de que ela
+     * nasce em confiança BAIXA, ranqueada abaixo de todo par que tem nome.
+     */
+    if (scoreFinal < corte && !exatoEPerto && !peloIntermediario) continue
     // ⚠️ o nome do fornecedor só entra na frase se ele REALMENTE contou —
     // dizer "o nome no extrato é X" quando o X não pontuou seria motivo falso.
     const contou = s.reasons.includes('FORNECEDOR_IGUAL') && !!reconhecido
+    const motivos = nomeBate ? ([...s.reasons, 'NOME_DA_CONTA_MANUAL'] as MatchReason[]) : s.reasons
+    // ⚠️ o padrão já confirmado vale pontos (deixa de ser palpite puro), mas NUNCA vira
+    // "alta confiança" sozinho — conciliar continua sendo o clique dele.
+    const comPadrao = jaVisto > 0 ? scoreFinal + PONTOS_DO_PADRAO_APRENDIDO : scoreFinal
     out.push({
       extratoId: entrada.extrato.id,
       contaId: c.id,
-      score: s.score,
-      confianca: grauDeConfianca(s.score),
-      motivos: s.reasons,
-      porQue: frasePorQue(entrada.extrato, c, s.reasons, contou ? (reconhecido!.nomeFantasia ?? reconhecido!.razaoSocial) : null),
+      score: comPadrao,
+      confianca: grauDeConfianca(comPadrao),
+      motivos,
+      porQue: frasePorQue(entrada.extrato, c, motivos, contou ? (reconhecido!.nomeFantasia ?? reconhecido!.razaoSocial) : nomeBate ? nomeBate.palavra.toUpperCase() : null),
       diferenca: Math.round((entrada.extrato.valor - c.valor) * 100) / 100,
       fornecedorPeloNome: contou ? (reconhecido!.nomeFantasia ?? reconhecido!.razaoSocial) : null,
+      // ⭐ o aviso vai JUNTO com a sugestão — quem lê a oferta lê a ressalva
+      avisoDeProcessadora: proc ? avisoDaProcessadora(proc, jaVisto) : null,
     })
   }
   return out.sort((a, b) => b.score - a.score)

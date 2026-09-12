@@ -133,6 +133,7 @@ const REASON_LABEL: Record<MatchReason, string> = {
   DATA_SEMANA: 'Mesma semana',
   FORNECEDOR_IGUAL: 'Mesmo fornecedor',
   DESC_MUITO_SIMILAR: 'Descrição parecida',
+  NOME_DA_CONTA_MANUAL: 'Nome bate',
   DESC_SIMILAR: 'Descrição similar',
 }
 
