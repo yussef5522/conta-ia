@@ -611,6 +611,28 @@ beef de hamburger          5 medidas · 1 relâmpago · média COM 13min → SEM
 ```
 **Consequência real:** o *"rodrigo −49% · 2h07 (média 44min)"* compara com uma média pela metade — **sem os 3 relâmpagos a média é 88min e o 2h07 dele fica perto do normal**. É a família do *"tempo zero não é velocidade infinita"* (06/09) um degrau acima: lá a régua matou o `0`, aqui o `1` passa. **NÃO inventei um piso** — escolher "menos de N minutos não conta" é decisão do dono sobre o número que sai da cozinha dele. As saídas possíveis: (a) piso de duração pra entrar na média (e o relâmpago contado à parte, como o "sem tempo" já é); (b) deixar como está e tratar os 2 lotes na mão.
 
+### 📋 PF FASE 1 — A INVESTIGAÇÃO (13/09). **Dois dos três itens já existem, e um COLIDE com o terceiro.**
+
+**0.1 — CONTA BANCÁRIA PF: existem 3.** `nubank` (R$ 0) · `bradesco` (R$ 0) · **`banrisul` (R$ 71.609,96)**. ⚠️ **Nenhuma tem `bankCode` nem `accountNumber` preenchidos** — e é exatamente disso que vive a trava `verifyOfxMatchesAccount` (12/08), a que impediu 355 tx do Sicredi de entrarem na conta Stone. **Sem esses dois campos a trava não tem como conferir nada** e o import PF nasceria sem a proteção que a PJ tem.
+
+**0.2 — O MOTOR DA PJ NÃO SE APONTA PRO PERFIL, e o import PF que existe é de CARTÃO.** `lib/ofx-card/` é card-only; o campo `PersonalOfxImport.bankAccountId` está no schema com o comentário *"reservado pra Fatia 3B (OFX de conta PF)"* — **planejado em 2026-06 e nunca construído**. **0 imports de OFX feitos no perfil.** O `runImportV2` da PJ escreve em `Transaction`/`BankAccount` e chama gatilho de vendas, conciliação e DRE — nada disso existe no PF. ⭐ **O que É reusável é a camada de baixo** (parser OFX, `stableKey`/dedup, perfil de banco, descarte de futuro); o que precisa nascer é um orquestrador PF fino.
+⛔ **E FALTA A ÂNCORA: `PersonalBankAccount` não tem `ledgerBal`/`ledgerBalDate`.** A conferência BATE/DIVERGE pedida **não tem onde se apoiar** no PF — é migration aditiva de 2 colunas nullable.
+
+**0.3 — CATEGORIAS PF: árvore PRÓPRIA, e está CERTA.** `personal_categories`, **23 categorias**, tabela separada, **zero vínculo com `Category`/`dreGroup`** — os dois mundos já estão separados como o dono exige. INCOME 6 (Salário · Outros recebimentos · **Retirada da empresa [BRIDGE_ENTRY]** · 3 inativas, as duplicatas já documentadas em 13/08) · EXPENSE 17 (Alimentação, Transporte, Moradia, Contas, Saúde, Educação, Lazer, Vestuário, Investimentos, Cartão de crédito, Empréstimos, Telefone, Viagem, Daniela, nura, yussef gastos, Outros). ⚠️ **Lista PLANA** (0 categorias com pai, embora o modelo suporte) e **0 `AiLearningRule` no perfil** — a categorização aprendida do PF **nunca aprendeu nada**.
+
+**⭐⭐ ITEM 2b JÁ ESTÁ FEITO — e o red-then-green do dono JÁ É VERDE.** As três transferências têm **ponte `DISTRIBUICAO` + gasto**:
+```
+08/09 R$ 10.000 · sicredi · ponte SIM     09/09 R$ 3.500 · sicredi · ponte SIM
+10/09 R$ 21.000 · sicredi · ponte SIM     84 pontes no perfil
+```
+E o dinheiro já está espelhado na PF: `CREDIT 21.000 "Distribuição de Lucros caçula"` + `DEBIT 21.000 "yussef gastos"` (o fluxo A/B de 10/08).
+
+**⛔⛔ E DAÍ SAI A COLISÃO QUE PRECISA DE DECISÃO ANTES DE CONSTRUIR O ITEM 1:** quando o OFX do banrisul PF entrar, **esses mesmos créditos virão no arquivo** — e hoje viram **transação nova**, porque as 152 tx de conta do PF são `origin: MANUAL` **sem `dedupHash`**. Resultado: *o mesmo dinheiro duas vezes*, que é a doença que esta casa mais paga. **A régua honesta: a linha do extrato é o FATO, a tx da ponte é o REGISTRO do mesmo fato → o import CASA com ela (como o dedup da PJ faz), nunca cria a segunda.**
+
+**⚠️ ITEM 2a — o `casar-pagamento` JÁ EXISTE** (rota + lib, 26/08); o que falta é **disparar no import**. Mas há dois obstáculos de DADO: **3 dos 4 cartões não têm `defaultPaymentAccountId`**, e existem **dois cartões com os mesmos 4 dígitos** (`banrisul pf ****9113` fecha 28 · `banrisul ****9113` fecha 29) — duplicata de cadastro que faria o casamento por nome/dígitos escolher o errado. É a família do Cancian (08/09), e o desenho certo é **nem criar a disputa**.
+
+**📋 ESTADO PF MEDIDO:** 499 transações (347 `PDF_FATURA` de cartão · 152 `MANUAL` de conta) · **348 sem categoria** (as de fatura) · tx de conta por mês: jun 47 · jul 42 · ago 50 · **set 13**. Faturas: `banrisul 2026-08` OPEN R$ 18.593,16 (venceu 10/09) · `nubank 2026-09` OPEN R$ 6.210,30 · `magalu 2026-09` OPEN R$ 4.491,18.
+
 ### ⛔⛔⛔ O FILTRO DE TAREFA VAZAVA — PAINÉIS GERAIS DENTRO DO RECORTE (13/09)
 
 **O dono, com o print:** filtrou *"metade de bolinha massa de pizza"* e a tela mostrava, **dentro do recorte**, *"Unidades por pessoa · todas as tarefas"* (rodrigo 1.415) e *"Geral do período"* (51 lotes, top queijo). **A tela dizia falar de massa de pizza e mostrava a cozinha inteira.**
