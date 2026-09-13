@@ -611,6 +611,48 @@ beef de hamburger          5 medidas · 1 relâmpago · média COM 13min → SEM
 ```
 **Consequência real:** o *"rodrigo −49% · 2h07 (média 44min)"* compara com uma média pela metade — **sem os 3 relâmpagos a média é 88min e o 2h07 dele fica perto do normal**. É a família do *"tempo zero não é velocidade infinita"* (06/09) um degrau acima: lá a régua matou o `0`, aqui o `1` passa. **NÃO inventei um piso** — escolher "menos de N minutos não conta" é decisão do dono sobre o número que sai da cozinha dele. As saídas possíveis: (a) piso de duração pra entrar na média (e o relâmpago contado à parte, como o "sem tempo" já é); (b) deixar como está e tratar os 2 lotes na mão.
 
+### ⛔⛔⛔ O LOTE RELÂMPAGO ENVENENAVA A MÉDIA — PISO DE 5 MIN (13/09)
+
+**Decisão do dono, depois do raio-x:** *"Piso de 5 minutos: execução medida abaixo disso é RELÂMPAGO — conta à parte (como o 'sem tempo' já é), fora das médias, dito no rodapé. **Nenhum lote real fica pronto em menos de 5 min; registro retroativo é o caso, e vai se repetir.** Os 2 lotes atuais ficam classificados pelo piso — não mexe neles na mão, a régua resolve."*
+
+**⚠️⚠️ A PERGUNTA *"esta duração conta na média?"* VIVIA COPIADA EM 7 LUGARES** (`minutos != null && minutos > 0`) — e foi exatamente por isso que o piso não tinha onde entrar. Virou **`foiMedido()` / `ehRelampago()`** em `desempenho.ts`, e os 7 passaram a consumir. É a lição do B1 outra vez: quando N leitores precisam da MESMA decisão, a decisão vira função.
+
+**⛔ O TRABALHO NÃO SOME — essa é a metade que segura a régua.** O relâmpago sai do TEMPO e fica na PRODUÇÃO: `lotesRelampago`/`tarefasRelampago` contados à parte e **ditos na tela**, exatamente como o "sem tempo" já era. ⚠️ E **zero não é relâmpago**: zero é ausência de cronômetro, relâmpago é alguém tocando os dois botões seguidos — misturar apagaria uma distinção real.
+
+**O EFEITO EM PROD, medido pela rota real — a régua estava envenenada e cobrava de gente:**
+```
+porçao queijo   média 44,3 → 87,7 min/lote   ·   mediana 26,5 → 84
+melhor lote     "1min p/ 504 un" → "53min p/ 306 un"        ⭐ o falso recorde morreu
+Cristian        "+98% vs média" → "registro retroativo (menos de 5 min) — sem ritmo medido"
+rodrigo (12/09) "−19% · 2h07 (média 44min)" → "+9% vs média"  ⭐ MUDOU DE LADO
+7 dias: 3 relâmpago · mês: 7 relâmpago — contados, ditos, fora do tempo
+```
+⭐ O rodrigo aparecia **abaixo da média** porque a média dele era metade do real. Não era desempenho: eram três toques de botão.
+
+**⚠️⚠️ E EU QUASE MUDEI UMA DECISÃO DE 06/09 CALADO — os testes daquele dia me pararam.** Ao aplicar o piso na tela "Por pessoa", troquei a trava da coroa por *"conta quem tem relógio"*, o que fazia a pessoa cujo único concorrente era relâmpago **perder a coroa**. Mas a casa **já decidiu, por escrito**, que *"quem TEM minuto medido continua concorrendo, mesmo com um zero na mistura"* — e **relâmpago é o zero um minuto acima, não um caso novo**. Revertido. 📋 Fica a pergunta registrada pro dono: *coroar quem foi medido, quando o único concorrente não tem tempo medido, é prêmio disputado?* Hoje a resposta da casa é sim, e vale igual pros dois.
+
+**⚠️ REGRA 11 REPROVOU MAIS UM GUARD MEU:** a exigência *"a tela DIZ o relâmpago"* **não tinha ninguém conferindo** — repus o defeito (tirei a frase do placar) e os 48 testes ficaram **VERDES**. Agora existe, e ele também proíbe **digitar o `5` em tela** (a lição do `TETO = 25` hardcoded e do `30` da janela do "a vencer"): o número vem do dono único ou não vem.
+
+**REGRA 11 nos outros três, cada um com vermelho:** piso de volta a 0 → **19** · `relatorios.ts` com régua própria → **1** · a 7ª cópia com a régua velha → **2**. **9.525 verdes · TS 0 · deploy `oqV3Bap34r5uHaxqGXeKz` 4/4.**
+
+### 📋 OS DOIS VINAGRES — JÁ ESTAVAM RESOLVIDOS, E NÃO POR MIM (13/09)
+
+**O dono autorizou aplicar; o preview quebrou porque o mundo mudou.** `scripts/vinagres.ts` procura `VINAGRE 750ML` e não acha mais — e a medição explicou: **o próprio dono fez a costura na tela em 12/09** (audit: sessão dele às 19:24), mesclando os três vinagres.
+
+**O ESTADO MEDIDO HOJE — dois dos três passos estão feitos:**
+```
+✓ POSIÇÃO com UM vinagre só:  "VINAGRE" · 6,84 · R$ 47,75 · custo R$ 6,98
+✓ o fantasma "VINAGRE 750ML (mesclado)" está INATIVO, saldo 0, a separação de −0,161 ESTORNADA
+✓ as baixas MOVERAM pro item vivo (SEPARACAO_SAIDA −0,161 e PRODUCAO_CONSUMO −0,16)
+✓ o ROSINA também foi absorvido (entrada de 4 × 5,75 estornada e refeita no vivo)
+```
+⚠️ **P1 NÃO QUEBROU** — minha primeira fórmula acusou `dif −0,16` no fantasma e **o juiz real não aponta nada**. É a lição de 09/09 ao pé da letra: *fórmula errada dá alarme com cara de achado*; P1 fecha **por ORDEM**, não por item.
+
+**⛔⛔ MAS DUAS COISAS FICARAM, e NÃO apliquei nenhuma — a autorização era pra um plano que não existe mais:**
+
+1. **A FICHA ATUAL DA MAIONESE NÃO TEM VINAGRE.** O componente `0,02 LT` só existe na **v1**; as v2/v3/v4 (criadas 19:23–19:27 da mesma noite, na sessão dele) têm **5 componentes, sem vinagre**. Ou seja: **produzir maionese hoje não baixa vinagre nenhum**. Não dá pra distinguir no dado se ele tirou de propósito ou se o editor perdeu o componente ao salvar depois da mescla — e adivinhar qual das duas seria decidir a receita por ele.
+2. **A UNIDADE DIZ LT, A QUANTIDADE ESTÁ EM GARRAFA.** A reunitização de 12/09 usou **fator 1** (as entradas de 3 e 4 foram estornadas e refeitas **com a mesma quantidade**), não o **0,75** do plano. São **7 garrafas de 750 ml = 5,25 LT**, mas o item mostra **6,84 LT**. ⭐ O **valor está certo** (R$ 47,75, invariante); o rótulo é que não. Efeito prático: `0,02 LT` na receita viraria **15 ml em vez de 20 ml** — pequeno, mas é exatamente o que o fator 0,75 existia pra resolver.
+
 ### ⛔⛔⛔ A PORTA SUMIA QUANDO O TRABALHO ACABAVA — 4ª VOLTA DA FAMÍLIA (12/09)
 
 **O dono:** *"existia um lugar pra trocar a seção de um produto do cardápio e ele não aparece mais. **Eu uso isso direto**."*
