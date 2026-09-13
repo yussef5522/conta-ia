@@ -74,6 +74,11 @@ const conferirTrocandoPraKg = () => confirmarConferencia({
     uCom: 'UN', qtdNota: 16, vUnCom: 68.90, qtdRecebida: 32, unidadeEntrada: 'KG',
     mapeado: { itemId: queijoId, nome: 'QUEIJO MUSSARELA FATIADO 2KG', unidadeControle: 'UN', fatorConversao: 2, novo: false },
   }],
+  // ⚠️ 13/09: a nota sem duplicata no XML passou a EXIGIR resposta no confirm — ou o
+  // vencimento digitado, ou este aceite explícito. **O silêncio era a fábrica das 21
+  // notas invisíveis** (F5, R$ 8.588,75). Aqui o assunto é unidade, não pagamento:
+  // a resposta honesta é "defino depois".
+  pagamento: { semDataDefinirDepois: true },
 })
 
 describe('⛔⛔ corrigir a unidade na CONFERÊNCIA vira o ITEM, não só a entrada', () => {
@@ -83,6 +88,7 @@ describe('⛔⛔ corrigir a unidade na CONFERÊNCIA vira o ITEM, não só a entr
       companyId, nfeId, userId: 'u', fornecedor: { cnpj: FORN, nome: 'LATICINIOS SANTO CRISTO' },
       itens: [{ nfeItemId: ni!.id, cProd: '70', xProd: 'QUEIJO MUSSARELA FATIADO 2KG', uCom: 'UN', qtdNota: 16, vUnCom: 68.90, qtdRecebida: 32, unidadeEntrada: 'KG',
         mapeado: { itemId: queijoId, nome: 'QUEIJO MUSSARELA FATIADO 2KG', unidadeControle: 'UN', fatorConversao: 2, novo: false } }],
+      pagamento: { semDataDefinirDepois: true }, // ⚠️ 13/09: nota sem duplicata exige resposta no confirm (o silêncio era a fábrica das 21)
     })
     const item = await prisma.stockItem.findUnique({ where: { id: queijoId }, select: { unidadeControle: true } })
     expect(item!.unidadeControle).toBe('KG')     // ⛔ era isto que NÃO acontecia
@@ -94,6 +100,7 @@ describe('⛔⛔ corrigir a unidade na CONFERÊNCIA vira o ITEM, não só a entr
       companyId, nfeId, userId: 'u', fornecedor: { cnpj: FORN, nome: 'L' },
       itens: [{ nfeItemId: ni!.id, cProd: '70', xProd: 'Q', uCom: 'UN', qtdNota: 16, vUnCom: 68.90, qtdRecebida: 32, unidadeEntrada: 'KG',
         mapeado: { itemId: queijoId, nome: 'Q', unidadeControle: 'UN', fatorConversao: 2, novo: false } }],
+      pagamento: { semDataDefinirDepois: true }, // ⚠️ 13/09: nota sem duplicata exige resposta no confirm (o silêncio era a fábrica das 21)
     })
     const s = await saldoItem(prisma, companyId, queijoId)
     // 8 peças → 16 KG · 19,2 KG (intacto) · 32 KG (a de hoje) = 67,2
@@ -109,6 +116,7 @@ describe('⛔⛔ corrigir a unidade na CONFERÊNCIA vira o ITEM, não só a entr
       companyId, nfeId, userId: 'u', fornecedor: { cnpj: FORN, nome: 'L' },
       itens: [{ nfeItemId: ni!.id, cProd: '70', xProd: 'Q', uCom: 'UN', qtdNota: 16, vUnCom: 68.90, qtdRecebida: 32, unidadeEntrada: 'KG',
         mapeado: { itemId: queijoId, nome: 'Q', unidadeControle: 'UN', fatorConversao: 2, novo: false } }],
+      pagamento: { semDataDefinirDepois: true }, // ⚠️ 13/09: nota sem duplicata exige resposta no confirm (o silêncio era a fábrica das 21)
     })
     const depois = await saldoItem(prisma, companyId, queijoId)
     // o que entrou de novo é a nota de hoje, nada mais: o histórico só mudou de régua
@@ -121,6 +129,7 @@ describe('⛔⛔ corrigir a unidade na CONFERÊNCIA vira o ITEM, não só a entr
       companyId, nfeId, userId: 'u', fornecedor: { cnpj: FORN, nome: 'L' },
       itens: [{ nfeItemId: ni!.id, cProd: '70', xProd: 'Q', uCom: 'UN', qtdNota: 16, vUnCom: 68.90, qtdRecebida: 32, unidadeEntrada: 'KG',
         mapeado: { itemId: queijoId, nome: 'Q', unidadeControle: 'UN', fatorConversao: 2, novo: false } }],
+      pagamento: { semDataDefinirDepois: true }, // ⚠️ 13/09: nota sem duplicata exige resposta no confirm (o silêncio era a fábrica das 21)
     })
     const granel = await prisma.stockSupplierProduct.findFirst({ where: { companyId, supplierCnpj: FORN_GRANEL } })
     expect(granel!.fatorConversao).toBe(1)     // ⛔ dobrar aqui faria a próxima nota entrar com 2× queijo
@@ -141,6 +150,7 @@ describe('⛔⛔ corrigir a unidade na CONFERÊNCIA vira o ITEM, não só a entr
       companyId, nfeId, userId: 'u', fornecedor: { cnpj: FORN, nome: 'L' },
       itens: [{ nfeItemId: ni!.id, cProd: '70', xProd: 'Q', uCom: 'UN', qtdNota: 16, vUnCom: 68.90, qtdRecebida: 32, unidadeEntrada: 'KG',
         mapeado: { itemId: queijoId, nome: 'Q', unidadeControle: 'UN', fatorConversao: 2, novo: false } }],
+      pagamento: { semDataDefinirDepois: true }, // ⚠️ 13/09: nota sem duplicata exige resposta no confirm (o silêncio era a fábrica das 21)
     })).rejects.toThrow(/troca de unidade não pôde ser aplicada/)
 
     // ⭐ NADA gravou: nem a entrada, nem a conferência, nem a troca do item

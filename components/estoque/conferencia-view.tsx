@@ -111,6 +111,10 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
   // ⚠️ OPCIONAL: vazio = "a definir", que é o certo pra pix/dinheiro combinado.
   const semDuplicataNoXml = (data.duplicatas ?? []).length === 0
   const [parcelasPapel, setParcelasPapel] = useState<{ dVenc: string; valor: string }[]>([])
+  // ⭐⭐ A RESPOSTA EXPLÍCITA "sem data, defino depois" (13/09). O estado final é o mesmo
+  // de antes (A DEFINIR); o que muda é que ele passa a ser uma ESCOLHA. **O silêncio era
+  // a fábrica das 21 notas** (R$ 8.588,75 fora do fluxo de caixa, sem alarme nenhum).
+  const [semDataDefinirDepois, setSemDataDefinirDepois] = useState(false)
   const [boletos, setBoletos] = useState<string[]>(() => dupsPendentes.map((d) => d.nDup ?? ''))
   // ⭐ ajustar parcelas (renegociação pós-nota) — REGRA 9: hook no topo, longe do JSX
   const [editandoParcelas, setEditandoParcelas] = useState(false)
@@ -127,6 +131,20 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
   const [efeitoNoItem, setEfeitoNoItem] = useState<Record<string, EfeitoNoItem | null>>({})
 
   const totalMapeado = useMemo(() => data.itens.length > 0 && data.itens.every((it) => estado[it.nfeItemId]?.mapeado), [data.itens, estado])
+
+  /**
+   * ⭐⭐ O PAGAMENTO FOI RESPONDIDO? (13/09)
+   *
+   * ⚠️ Isto é UX — **a trava de verdade é o servidor** (`confirmarConferencia` recusa).
+   * O botão desabilitado existe pra o dono não clicar e levar um erro; se esta tela fosse
+   * a única guardiã, o dia em que a rota for chamada por outro caminho a fábrica das 21
+   * reabriria — que é exatamente como elas entraram.
+   */
+  const pagamentoRespondido = useMemo(() => {
+    if (!semDuplicataNoXml) return true // a nota trouxe boleto: não há o que perguntar
+    if (semDataDefinirDepois) return true
+    return parcelasPapel.length > 0 && parcelasPapel.every((p) => p.dVenc && Number(p.valor.replace(',', '.')) > 0)
+  }, [semDuplicataNoXml, semDataDefinirDepois, parcelasPapel])
   const divergencias = useMemo(() => data.itens.filter((it) => { const e = estado[it.nfeItemId]; return e && Math.abs(e.qtdRecebida - it.qCom * (e.mapeado?.fatorConversao ?? 1)) > 0.0001 }).length, [data.itens, estado])
   const setItem = (id_: string, patch: Partial<Estado>) => setEstado((s) => ({ ...s, [id_]: { ...s[id_], ...patch } }))
 
@@ -175,6 +193,8 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
           // ⚠️ só manda se o dono preencheu: lista vazia é "a definir", não erro
           pagamento: parcelasPapel.length && parcelasPapel.every((p) => p.dVenc && Number(p.valor.replace(',', '.')) > 0)
             ? { parcelas: parcelasPapel.map((p) => ({ dVenc: p.dVenc, valor: Number(p.valor.replace(',', '.')) })) }
+            : semDataDefinirDepois
+            ? { semDataDefinirDepois: true }
             : undefined,
         }),
       })
@@ -489,8 +509,17 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
                   className="inline-flex h-7 items-center rounded-lg border border-[#185FA5] px-2.5 text-[11px] font-medium text-[#185FA5] hover:bg-blue-50">
                   informar o vencimento
                 </button>
-                {/* ⚠️ o caminho de não-informar é EXPLÍCITO e sem culpa: pix combinado não tem data */}
-                <span className="text-[11px] text-slate-400">ou deixe <b>a definir</b> — você combina depois, e o sistema cobra.</span>
+                {/* ⛔⛔ ERA UMA FRASE PASSIVA ("ou deixe a definir") e virou ESCOLHA (13/09):
+                    o dono tem que MARCAR. O servidor recusa confirmar sem uma das duas
+                    respostas — a trava mora lá, não aqui (a régua do FREIO da contagem:
+                    aviso que vive no componente some no dia em que a rota for chamada por
+                    outro caminho, e foi por outro caminho que as 21 entraram). */}
+                <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-slate-600">
+                  <input type="checkbox" checked={semDataDefinirDepois}
+                    onChange={(e) => setSemDataDefinirDepois(e.target.checked)}
+                    className="h-3.5 w-3.5 accent-[#185FA5]" />
+                  sem data — <b>defino depois</b> (entra na fila de notas sem vencimento)
+                </label>
               </div>
             ) : (
               <>
@@ -675,9 +704,16 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
           {erro && <span className="rounded-md bg-rose-50 px-2 py-1 text-xs text-rose-700">{erro}</span>}
           <div className="ml-auto">
             {podeConfirmar ? (
-              <button onClick={confirmar} disabled={!totalMapeado || enviando}
+              <button onClick={confirmar} disabled={!totalMapeado || !pagamentoRespondido || enviando}
                 className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#185FA5] px-5 text-sm font-semibold text-white hover:bg-[#0F4A8C] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 sm:w-auto">
-                {enviando ? <><Loader2 className="h-4 w-4 animate-spin" /> Confirmando…</> : totalMapeado ? <><PackageCheck className="h-4 w-4" /> Confirmar recebimento</> : 'Mapeie todos os itens pra confirmar'}
+                {enviando
+                  ? <><Loader2 className="h-4 w-4 animate-spin" /> Confirmando…</>
+                  : !totalMapeado
+                  ? 'Mapeie todos os itens pra confirmar'
+                  // ⚠️ o rótulo DIZ o que falta — botão cinza mudo manda o dono adivinhar
+                  : !pagamentoRespondido
+                  ? 'Diga como esta nota vai ser paga'
+                  : <><PackageCheck className="h-4 w-4" /> Confirmar recebimento</>}
               </button>
             ) : (
               <button disabled className="h-10 w-full cursor-not-allowed rounded-xl bg-slate-200 px-5 text-sm font-semibold text-slate-400 sm:w-auto">

@@ -4,9 +4,10 @@
 // o que aquela conferência fez no estoque: itens conferidos (nota vs recebido, divergência),
 // movimentos gerados (o que entrou), duplicatas sugeridas. Link da nota, da ficha, das Recebidas.
 
-import { useEffect, useState, use } from 'react'
+import { useEffect, useState, use, useCallback } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
-import { Receipt, Loader2, ArrowLeft, Package, CheckCircle2, AlertTriangle, Camera, ExternalLink } from 'lucide-react'
+import { Receipt, Loader2, ArrowLeft, Package, CheckCircle2, AlertTriangle, Camera, ExternalLink, CalendarPlus } from 'lucide-react'
+import { DefinirParcelasDaNota } from '@/components/estoque/definir-parcelas-da-nota'
 
 interface ReciboItem {
   xProd: string; itemNome: string | null; itemId: string | null; qtdNota: number; qtdRecebida: number | null
@@ -30,7 +31,7 @@ interface Recibo {
  */
 interface ParcelaComEstado {
   numero: string; valor: number; vencimento: string | null; origem: string
-  estado: 'ABERTA' | 'PAGA' | 'PAGA_SEM_VINCULO' | 'SEM_CONTA'
+  estado: 'ABERTA' | 'PAGA' | 'PAGA_SEM_VINCULO' | 'SEM_CONTA' | 'A_DEFINIR'
   transactionId: string | null; pagaEm: string | null
   linha: { transactionId: string; data: string; valor: number; conta: string | null; descricao: string; diferenca: number } | null
   frase: string
@@ -50,6 +51,9 @@ function SeloDaParcela({ estado }: { estado: ParcelaComEstado['estado'] }) {
     PAGA_SEM_VINCULO: ['bg-amber-50 text-amber-700', 'paga — sem linha vinculada'],
     ABERTA: ['bg-slate-100 text-slate-600', 'em aberto'],
     SEM_CONTA: ['bg-slate-100 text-slate-500', 'não enviada ao financeiro'],
+    // ⚠️ ÂMBAR, não cinza: "a definir" é TRABALHO PENDENTE, não informação neutra — é o
+    // estado das 21 notas que ficaram fora do fluxo de caixa sem ninguém ver.
+    A_DEFINIR: ['bg-amber-50 text-amber-700', 'sem vencimento'],
   }[estado]
   return <span className={`inline-block rounded px-1.5 py-0.5 text-[11px] font-semibold ${m[0]}`}>{m[1]}</span>
 }
@@ -57,10 +61,12 @@ function SeloDaParcela({ estado }: { estado: ParcelaComEstado['estado'] }) {
 export default function ReciboPage({ params }: { params: Promise<{ id: string; conferenceId: string }> }) {
   const { id, conferenceId } = use(params)
   const [r, setR] = useState<Recibo | null | undefined>(undefined)
+  const [definindo, setDefinindo] = useState(false)
 
-  useEffect(() => {
+  const carregar = useCallback(() => {
     fetch(`/api/empresas/${id}/estoque/recibos/${conferenceId}`).then((x) => x.json()).then((j) => setR(j.recibo ?? null)).catch(() => setR(null))
   }, [id, conferenceId])
+  useEffect(() => { carregar() }, [carregar])
 
   if (r === undefined) return <div className="p-6"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
   if (!r) return <div className="p-6 text-sm text-slate-500">Recibo não encontrado.</div>
@@ -165,10 +171,30 @@ export default function ReciboPage({ params }: { params: Promise<{ id: string; c
           {/* ⚠️ a frase antiga dizia que "a ponte pro financeiro está desligada" — ela foi
               LIGADA em 24/08 e as parcelas viram conta a pagar de verdade. Texto de tela que
               descreve o mundo antigo é a mesma doença do parágrafo da Conciliação (10/09). */}
+          {/* ⭐⭐ O GESTO QUE ZERA A FILA (13/09): a nota A DEFINIR ganha onde combinar. */}
+          {r.parcelas.some((p) => p.estado === 'A_DEFINIR') && (
+            <button
+              type="button"
+              onClick={() => setDefinindo(true)}
+              className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-700"
+            >
+              <CalendarPlus className="h-4 w-4" /> Definir parcelas e vencimentos
+            </button>
+          )}
           <p className="mt-1 text-[11px] text-slate-400">
             Conta paga e conciliada com o extrato sai do Contas a Pagar e vive em Movimentações — por isso o link.
           </p>
         </div>
+      )}
+
+      {definindo && (
+        <DefinirParcelasDaNota
+          empresaId={id}
+          nfeId={r.nfeId}
+          totalNota={r.vNF ?? r.valorEntrada}
+          onFechar={() => setDefinindo(false)}
+          onSalvo={carregar}
+        />
       )}
 
       <p className="text-xs text-slate-400">Conferido por {r.conferidoPor ?? '—'} · chave {r.chave}</p>

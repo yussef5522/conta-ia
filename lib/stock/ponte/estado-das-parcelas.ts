@@ -16,6 +16,7 @@
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { combinadoDaNota } from './combinado'
+import { parcelasSemData } from './vencimento'
 
 // ⚠️ o mesmo `Db` de `combinado.ts` (aceita o client transacional) — tipos diferentes aqui
 // obrigariam um cast na fronteira, e cast é onde o erro passa calado
@@ -38,10 +39,12 @@ export interface ParcelaComEstado {
   origem: string
   /**
    * ABERTA · PAGA · PAGA_SEM_VINCULO (marcada paga na mão, sem linha do extrato)
+   * ⭐ A_DEFINIR = a nota deve e **ninguém combinou a data** (13/09). Não é ausência de
+   * dado: é trabalho pendente, e é o estado das 21 notas que o F5 conta desde 03/09.
    * ⛔ SEM_CONTA = a ponte nunca criou a conta a pagar (o boleto não foi enviado) —
    * e isso é um estado REAL, não um erro: o dono pode não ter enviado ainda.
    */
-  estado: 'ABERTA' | 'PAGA' | 'PAGA_SEM_VINCULO' | 'SEM_CONTA'
+  estado: 'ABERTA' | 'PAGA' | 'PAGA_SEM_VINCULO' | 'SEM_CONTA' | 'A_DEFINIR'
   /** a conta a pagar dessa parcela — `null` quando nunca foi enviada pro financeiro */
   transactionId: string | null
   pagaEm: string | null
@@ -66,6 +69,26 @@ export async function estadoDasParcelas(
 ): Promise<ParcelaComEstado[]> {
   const combinado = await combinadoDaNota(companyId, nfeId, db)
   if (!combinado) return []
+
+  // ⭐⭐ A NOTA QUE DEVE E NÃO TEM DATA (13/09) — o estado das 21 do F5.
+  //
+  // ⚠️ `combinadoDaNota` responde *"quais parcelas VALEM hoje"* e, por desenho, uma parcela
+  // sem data não vale (ela não pode virar conta a pagar — `dueDate` alimenta fluxo de caixa
+  // e DRE). Então a nota sem vencimento voltava **lista vazia**, e o recibo ficava MUDO
+  // justamente onde havia dívida. **Vazio não é "não deve nada".**
+  //
+  // ⛔ E não nasce um terceiro leitor: quem responde *"o que está sem data"* é o
+  // `parcelasSemData`, dono dessa pergunta desde 03/09 — o mesmo que alimenta o F5.
+  if (combinado.parcelas.length === 0) {
+    const semData = (await parcelasSemData(companyId, db)).filter((s) => s.nfeId === nfeId && !s.enviada)
+    return semData.map((s, i): ParcelaComEstado => ({
+      numero: s.nDup ?? String(i + 1).padStart(3, '0'),
+      valor: s.valor, vencimento: null, origem: 'A_DEFINIR',
+      estado: 'A_DEFINIR', transactionId: null, pagaEm: null, linha: null,
+      // ⭐ a frase diz o GESTO, não o estado — "sem data" sozinho não ensina o que fazer
+      frase: 'sem vencimento combinado — defina as parcelas pra virar conta a pagar',
+    }))
+  }
 
   const links = await db.stockPayableLink.findMany({
     where: { companyId, origem: 'NFE', refId: nfeId },

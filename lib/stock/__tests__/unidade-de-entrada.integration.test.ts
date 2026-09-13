@@ -68,6 +68,12 @@ const confirmar = (unidadeEntrada: string | null) =>
       unidadeEntrada,
       mapeado: { itemId: '', nome: 'Leite em pó Aurora 400g', unidadeControle: 'UN', categoria: 'MATERIA_PRIMA', fatorConversao: 1, novo: true },
     }],
+    // ⚠️ 13/09: a nota sem duplicata no XML passou a EXIGIR resposta no confirm — ou o
+    // vencimento digitado, ou este aceite explícito. **O silêncio era a fábrica das 21
+    // notas invisíveis** (F5, R$ 8.588,75). Aqui o assunto é unidade, não pagamento:
+    // a resposta honesta é "defino depois".
+    pagamento: { semDataDefinirDepois: true },
+
   })
 
 describe('⭐⭐ conferir 12 KG da nota como 12 UN', () => {
@@ -112,6 +118,7 @@ describe('⭐⭐ conferir 12 KG da nota como 12 UN', () => {
         qtdNota: 12, vUnCom: 15.99, qtdRecebida: 12, unidadeEntrada: null,
         mapeado: { itemId: '', nome: 'Leite a granel', unidadeControle: 'KG', categoria: 'MATERIA_PRIMA', fatorConversao: 1, novo: true },
       }],
+      pagamento: { semDataDefinirDepois: true }, // ⚠️ 13/09: nota sem duplicata exige resposta no confirm (o silêncio era a fábrica das 21)
     })
     expect(await prisma.stockUnidadeCorrigida.count({ where: { companyId } })).toBe(0)
   })
@@ -158,6 +165,7 @@ describe('⛔⛔ o GUARD do fator continua valendo (item 4 do dono)', () => {
         qtdNota: 12, vUnCom: 15.99, qtdRecebida: 12, unidadeEntrada: 'KG',
         mapeado: { itemId: '', nome: 'Leite lata', unidadeControle: 'UN', categoria: 'MATERIA_PRIMA', fatorConversao: 0, novo: true },
       }],
+      pagamento: { semDataDefinirDepois: true }, // ⚠️ 13/09: nota sem duplicata exige resposta no confirm (o silêncio era a fábrica das 21)
     })).rejects.toThrow(/quantos UN tem 1 KG|não dá pra dar entrada/)
     expect(await prisma.stockMovement.count({ where: { companyId } }), 'gravou meia entrada').toBe(0)
   })

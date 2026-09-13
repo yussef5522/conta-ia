@@ -50,7 +50,19 @@ export interface ConfirmInput {
    * parcela nasce "A DEFINIR", que é o caminho certo pra pix/dinheiro combinado.
    * ⚠️ A soma tem que fechar com o total da nota AO CENTAVO (`conferirPagamentoDoPapel`).
    */
-  pagamento?: { parcelas: { dVenc: Date; valor: number }[] }
+  pagamento?: {
+    parcelas?: { dVenc: Date; valor: number }[]
+    /**
+     * ⭐⭐ "SEM DATA — DEFINIR DEPOIS" (13/09): a resposta EXPLÍCITA pro pix/dinheiro que
+     * ainda não foi combinado. **O estado é o mesmo de antes (A DEFINIR); o que muda é que
+     * agora ele é uma ESCOLHA, não um silêncio.**
+     *
+     * ⛔ E a porta fecha: nota sem duplicata no XML **não confirma sem resposta** — ou vêm
+     * as parcelas, ou vem este aceite. **O silêncio era a fábrica das 21 notas** que o F5
+     * conta (R$ 8.588,75 fora do fluxo de caixa, sem alarme nenhum).
+     */
+    semDataDefinirDepois?: boolean
+  }
 }
 export interface ConfirmResult {
   conferenceId: string
@@ -75,6 +87,20 @@ export async function confirmarConferencia(input: ConfirmInput): Promise<Confirm
 
   const nfe = await prisma.stockNfe.findFirst({ where: { id: nfeId, companyId }, select: { id: true, chave: true, status: true, temXmlCompleto: true, vNF: true } })
   if (!nfe) throw new Error('Nota não encontrada.')
+
+  // ⛔⛔ A PORTA QUE FECHA A FÁBRICA DAS 21 (13/09) — nota sem duplicata no XML NÃO confirma
+  // em silêncio: ou o dono digita o(s) vencimento(s), ou marca "sem data — definir depois".
+  //
+  // ⚠️ A trava mora AQUI, no servidor, e não num diálogo de tela — é a régua do FREIO da
+  // contagem (23/08): aviso que vive no componente some no dia em que a rota for chamada
+  // por outro caminho, e foi por outro caminho que estas 21 entraram.
+  const temDup = await prisma.stockNfeDup.count({ where: { companyId, nfeId } })
+  if (temDup === 0 && !input.pagamento?.parcelas?.length && !input.pagamento?.semDataDefinirDepois) {
+    throw new Error(
+      'Esta nota não traz boleto no XML: diga como ela vai ser paga — digite o(s) vencimento(s), '
+      + 'ou marque "sem data, defino depois" (ela entra na fila de notas sem vencimento).',
+    )
+  }
   // De onde veio o QUE está sendo conferido: XML da SEFAZ, ou os itens que o dono digitou
   // do DANFE de papel porque o XML não tinha chegado. Fica no ledger pra auditoria — é a
   // diferença entre "a SEFAZ me disse" e "eu li do papel".

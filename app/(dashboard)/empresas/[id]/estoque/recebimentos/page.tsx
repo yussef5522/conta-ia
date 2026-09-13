@@ -25,6 +25,7 @@ import { SortableTh, useSort } from '@/components/ui/sortable-th'
 import { baixarCsv, hojeArquivo } from '@/lib/format/csv-cliente'
 import { casaBusca, casaDigitos } from '@/lib/busca-texto'
 import { CardFilaBoletos } from '@/components/estoque/card-fila-boletos'
+import { ListaNotasSemVencimento } from '@/components/estoque/lista-notas-sem-vencimento'
 import { AjustarParcelasDaNota } from '@/components/estoque/ajustar-parcelas-da-nota'
 import {
   Inbox, PackageOpen, Archive, Info, Loader2, FlaskConical, MoonStar, Search, Loader,
@@ -202,6 +203,9 @@ export default function RecebimentosPage({ params }: { params: Promise<{ id: str
 
       {/* ⭐ A FILA DE ENVIO (30/08) — some sozinho quando está vazia; a operadora não vê */}
       <CardFilaBoletos empresaId={id} />
+      {/* ⭐ a LISTA logo abaixo do card: o contador diz QUANTAS, a lista diz QUAIS —
+          card sem lista é o número que o dono não tem por onde atacar (13/09). */}
+      <ListaNotasSemVencimento empresaId={id} />
 
       {/* ── 1. CARDS DE RESUMO ── */}
       <StatCardGrid>

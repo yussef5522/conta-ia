@@ -37,7 +37,7 @@ async function notaSemDuplicata() {
   return { nfeId: nfe.id, itemId: item.id }
 }
 
-const confirmar = (pagamento?: { parcelas: { dVenc: Date; valor: number }[] }) =>
+const confirmar = (pagamento?: { parcelas?: { dVenc: Date; valor: number }[]; semDataDefinirDepois?: boolean }) =>
   confirmarConferencia({
     companyId, nfeId, userId,
     fornecedor: { cnpj: '11222333000144', nome: 'CEREALISTA GIRUA LTDA' },
@@ -135,18 +135,51 @@ describe('⛔⛔ as parcelas têm que FECHAR com a nota', () => {
   })
 })
 
-describe('⭐ sem preencher, o caminho de ontem continua', () => {
-  it('⭐⭐ nota sem boleto e sem digitar → A DEFINIR, como antes', async () => {
-    await confirmar()
+describe('⛔⛔ SEM RESPONDER NÃO CONFIRMA — a porta que fecha a fábrica das 21 (13/09)', () => {
+  // ⚠️ ESTE BLOCO FOI INVERTIDO, COM O MOTIVO ESCRITO. Ele afirmava *"sem preencher, o
+  // caminho de ontem continua"* — e o caminho de ontem é justamente o que produziu
+  // **21 notas · R$ 8.588,75** fora do fluxo de caixa. Palavras do dono: *"o silêncio era
+  // a fábrica dessas 21"*. O ESTADO final não mudou (A DEFINIR continua existindo); o que
+  // mudou é que agora ele é uma ESCOLHA, não um esquecimento.
+
+  it('⛔⛔ confirmar sem dizer nada é RECUSADO — e nada é gravado', async () => {
+    await expect(confirmar()).rejects.toThrow(/diga como ela vai ser paga/)
+    expect(await prisma.stockPayableSuggestion.count({ where: { companyId } })).toBe(0)
+    // ⛔ recusa CEDO: a nota nem sai de EM_CONFERENCIA, sem meia-gravação
+    const nfe = await prisma.stockNfe.findUniqueOrThrow({ where: { id: nfeId }, select: { status: true } })
+    expect(nfe.status).toBe('EM_CONFERENCIA')
+    expect(await prisma.stockMovement.count({ where: { companyId } })).toBe(0)
+  })
+
+  it('⭐ a mensagem ENSINA as duas saídas — recusa que não diz o que fazer trava o dono', async () => {
+    await expect(confirmar()).rejects.toThrow(/vencimento/)
+    await expect(confirmar()).rejects.toThrow(/defino depois/)
+  })
+
+  it('⭐⭐ "sem data, defino depois" é resposta VÁLIDA → A DEFINIR, agora consciente', async () => {
+    await confirmar({ semDataDefinirDepois: true })
     const sug = await prisma.stockPayableSuggestion.findMany({ where: { companyId } })
     expect(sug).toHaveLength(1)
     expect(sug[0].dVenc, 'o sistema inventou uma data').toBeNull()
     expect(await parcelasSemData(companyId, prisma)).toHaveLength(1)
   })
 
-  it('⭐ e sem rastro nenhum: ninguém definiu nada ainda', async () => {
-    await confirmar()
+  it('⭐ e segue sem rastro de vencimento: ninguém definiu data nenhuma', async () => {
+    // ⚠️ o aceite é "vou definir depois", NÃO uma data — gravar rastro aqui seria
+    // registrar uma decisão de vencimento que não houve
+    await confirmar({ semDataDefinirDepois: true })
     const sug = await prisma.stockPayableSuggestion.findFirstOrThrow({ where: { companyId } })
     expect(await rastroDoVencimento(companyId, sug.id, prisma)).toEqual([])
+  })
+
+  it('⛔ a porta NÃO morde nota que TEM duplicata no XML — lá o boleto já veio', async () => {
+    // o caminho comum (nota com boleto) segue confirmando sem nenhuma pergunta nova
+    await prisma.stockNfeDup.create({
+      data: { companyId, nfeId, nDup: '001', vDup: TOTAL, dVenc: new Date('2026-09-20T00:00:00Z') },
+    })
+    await confirmar()
+    const sug = await prisma.stockPayableSuggestion.findMany({ where: { companyId } })
+    expect(sug).toHaveLength(1)
+    expect(sug[0].dVenc?.toISOString().slice(0, 10)).toBe('2026-09-20')
   })
 })
