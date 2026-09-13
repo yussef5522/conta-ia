@@ -18,9 +18,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { fetchJson } from '@/lib/http/fetch-json'
 import { LancamentoRapido } from './lancamento-rapido'
+import { BottomNavPF } from './bottom-nav-pf'
 import {
   M, GRADIENTE_HERO, andar, nomeMes, saudacao,
-  WSaldo, WFluxo, WEmpresa, WDonut, WCartoes, WBalanco, WAVencer, WUltimos,
+  WSaldo, WFluxo, WContas, WEmpresa, WDonut, WCartoes, WBalanco, WAVencer, WUltimos,
   Card, type Dados, type Fmt,
 } from './widgets-pf'
 
@@ -96,24 +97,26 @@ export function DashboardPFView({ profileId }: { profileId: string }) {
           {aviso}
           {d && (
             <>
+              {/* ⭐⭐ A ORDEM É A RÉGUA DO DONO (13/09): **quem AGE fica em cima** (contas,
+                  cartões, a vencer — é onde ele clica); **quem ANALISA fica embaixo**
+                  (donut, balanço — é onde ele olha). Antes o donut vinha antes dos cartões
+                  e o gesto ficava depois da contemplação. */}
+              <WContas d={d} f={f} profileId={profileId} />
               <WEmpresa d={d} f={f} />
-              <WDonut d={d} f={f} />
               <WCartoes d={d} f={f} profileId={profileId} />
+              <WAVencer d={d} f={f} />
+              <WDonut d={d} f={f} />
               {/* ⭐ 4 meses no bolso — o payload traz 6 e a TELA corta */}
               <WBalanco d={d} f={f} meses={4} />
-              <WAVencer d={d} f={f} />
               <WUltimos d={d} f={f} profileId={profileId} />
               {d.vazio && <Card><p className="text-center text-[13px] italic" style={{ color: M.sub }}>{d.vazio}</p></Card>}
             </>
           )}
         </div>
 
-        {/* ⚠️ FAB flutuante é gesto de POLEGAR — no desktop ele vira botão de barra */}
-        <button onClick={() => setFab(true)}
-          className="fixed bottom-[22px] right-[18px] flex h-14 w-14 items-center justify-center rounded-full text-[28px] text-white"
-          style={{ background: `linear-gradient(140deg,${M.roxo},${M.roxo2})`, boxShadow: '0 8px 22px rgba(83,74,183,.4)' }}>
-          ＋
-        </button>
+        {/* ⭐ O FAB SOLTO SAIU: ele virou o ＋ CENTRAL do bottom-nav (13/09). Dois botões
+            de lançar na mesma tela seriam dois gestos pra uma coisa só — e o de baixo
+            cobriria o outro. O modal é o MESMO. */}
       </div>
 
       {/* ══════════════════════════════════════════════════════════════════════
@@ -141,30 +144,23 @@ export function DashboardPFView({ profileId }: { profileId: string }) {
 
           {d && (
             <div className="grid grid-cols-12 gap-4">
-              {/* ── LINHA 1: saldo · fluxo · empresa ─────────────────────────
-                  ⚠️⚠️ **O GUARD ME PEGOU AQUI.** Eu tinha posto o "a vencer" nesta coluna
-                  quando não há recebimento da empresa, pra não deixar buraco — e com isso o
-                  widget aparecia DUAS vezes na mesma composição. Tapar buraco duplicando
-                  widget é o começo de duas telas divergentes. **Quem se adapta é a LINHA**:
-                  sem a empresa, saldo e fluxo dividem as 12 colunas. */}
-              {(() => {
-                const temEmpresa = d.recebidoDaEmpresa.transferencias > 0
-                const col = temEmpresa ? 'col-span-4' : 'col-span-6'
-                return (
-                  <>
-                    <div className={col}><WSaldo d={d} f={f} comoCard /></div>
-                    <div className={col}><WFluxo d={d} f={f} comCard /></div>
-                    {temEmpresa && <div className="col-span-4"><WEmpresa d={d} f={f} /></div>}
-                  </>
-                )
-              })()}
+              {/* ── L1: saldo · fluxo · MINHAS CONTAS ─────────────────────────
+                  ⚠️ A coluna 3 era o "recebido da empresa" e virou CONTAS: a porta de
+                  entrada do dado tem que estar onde o dono olha, não numa tela de cadastro.
+                  E a empresa desceu pra L2 como faixa — *"é selo, não bloco gigante"*. */}
+              <div className="col-span-4"><WSaldo d={d} f={f} comoCard /></div>
+              <div className="col-span-4"><WFluxo d={d} f={f} comCard /></div>
+              <div className="col-span-4"><WContas d={d} f={f} profileId={profileId} /></div>
 
-              {/* ── LINHA 2: donut · balanço ───────────────────────────────── */}
+              {/* ── L2: a faixa fina da empresa, largura toda ──────────────── */}
+              <div className="col-span-12"><WEmpresa d={d} f={f} /></div>
+
+              {/* ── L3: donut · balanço (quem ANALISA) ─────────────────────── */}
               <div className="col-span-6"><WDonut d={d} f={f} grande /></div>
               {/* ⭐ 6 meses no monitor: tem espaço, e a leitura fica melhor */}
               <div className="col-span-6"><WBalanco d={d} f={f} meses={6} /></div>
 
-              {/* ── LINHA 3: cartões · (a vencer + últimos) ────────────────── */}
+              {/* ── L4: cartões · (a vencer + últimos) ─────────────────────── */}
               <div className="col-span-6"><WCartoes d={d} f={f} profileId={profileId} /></div>
               <div className="col-span-6 flex flex-col gap-4">
                 <WAVencer d={d} f={f} />
@@ -176,6 +172,9 @@ export function DashboardPFView({ profileId }: { profileId: string }) {
           )}
         </div>
       </div>
+
+      {/* ⭐ a barra de polegar — só no celular; no desktop a espinha está sempre à vista */}
+      <BottomNavPF profileId={profileId} aoLancar={() => setFab(true)} />
 
       {fab && <LancamentoRapido profileId={profileId} contas={d?.contas ?? []} aoFechar={() => setFab(false)} aoSalvar={() => { setFab(false); void carregar() }} />}
     </>

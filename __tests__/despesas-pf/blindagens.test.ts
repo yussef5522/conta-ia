@@ -162,16 +162,31 @@ describe('d) UI — page + client existem', () => {
   })
 })
 
-describe('e) Sidebar — Despesas PF adicionado', () => {
+describe('e) O CAMINHO pra Despesas PF — reapontado em 13/09, não apagado', () => {
   const code = read('components/sidebar/global-sidebar.tsx')
+  const lancamentos = read('app/(dashboard)/perfis/[id]/transacoes/page.tsx')
 
-  it('item Despesas condicional pra workspaceType=pf + currentProfileId', () => {
-    expect(code).toMatch(
-      /workspaceType\s*===\s*['"]pf['"]\s*&&\s*currentProfileId[\s\S]{0,600}\/perfis\/\$\{currentProfileId\}\/despesas/,
-    )
+  /**
+   * ⚠️⚠️ **TENSÃO REAL COM O SPRINT DE 02/07, e ela fica registrada.** Naquele dia
+   * Despesas ganhou *"lugar próprio no workspace PF"* porque o gesto estava **enterrado**
+   * dentro de `/perfis/[id]/transacoes`. Em 13/09 a espinha do PF foi cortada pra **5
+   * itens** (ordem do dono, padrão Monarch) e Despesas saiu do MENU.
+   *
+   * ⭐ **O que NÃO se repete é o defeito de 02/07:** lá o botão estava enterrado **sem
+   * caminho visível**; aqui a tela de Lançamentos abre com o botão de Despesas **à vista, no
+   * topo**. A tela continua existindo e continua a um clique.
+   *
+   * ⛔ Por isso a asserção mudou de ALVO e não de RÉGUA: antes ela exigia o item no menu,
+   * agora exige o CAMINHO. Exigir o menu de volta seria desfazer a limpeza; apagar o teste
+   * seria deixar a tela virar órfã — a família que já custou 5 voltas nesta casa.
+   */
+  it('⭐ a tela de Despesas continua ALCANÇÁVEL — agora de dentro de Lançamentos', () => {
+    expect(lancamentos, 'a tela de Despesas ficou sem caminho').toContain('/despesas`}')
+    expect(lancamentos).toContain('Despesas')
   })
 
-  it('isActive detecta /perfis/[id]/despesas', () => {
-    expect(code).toMatch(/\/\^\\\/perfis\\\/\[\^\/\]\+\\\/despesas/)
+  it('⭐ e a espinha ACENDE em Lançamentos quando o dono está em Despesas', () => {
+    // sem isto o menu perderia o rastro de onde ele está
+    expect(code).toMatch(/transacoes\|despesas\|receitas/)
   })
 })

@@ -31,7 +31,10 @@ const mock = ler(MOCK)
  * guard só pra composição o faria acusar um token que está no lugar certo.
  */
 const WIDGETS = 'components/perfis/widgets-pf.tsx'
-const tela = semComentarios(ler(TELA)) + semComentarios(ler(WIDGETS))
+// ⚠️ e o BOTTOM-NAV (13/09): o FAB mudou de casa — de botão solto pro ＋ central da barra
+// de polegar. O caminho de render são os três arquivos.
+const NAV = 'components/perfis/bottom-nav-pf.tsx'
+const tela = semComentarios(ler(TELA)) + semComentarios(ler(WIDGETS)) + semComentarios(ler(NAV))
 const fab = semComentarios(ler(FAB))
 
 function tokensDo(html: string): string[] {

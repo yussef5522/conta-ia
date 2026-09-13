@@ -36,18 +36,24 @@ const CHAVES_VALIDAS = new Set<string>([
 ])
 
 /** todo bloco <SidebarItem …/> com o `perm` e o `label` */
-function itensDoMenu(): Array<{ label: string; perm: string | null }> {
-  const out: Array<{ label: string; perm: string | null }> = []
+function itensDoMenu(): Array<{ label: string; perm: string | null; href: string }> {
+  const out: Array<{ label: string; perm: string | null; href: string }> = []
   const re = /<SidebarItem\b([\s\S]*?)\/>/g
   let m: RegExpExecArray | null
   while ((m = re.exec(SIDEBAR))) {
     const corpo = m[1]
     const label = /label="([^"]+)"/.exec(corpo)?.[1] ?? '(sem label)'
     const perm = /perm="([^"]+)"/.exec(corpo)?.[1] ?? null
-    out.push({ label, perm })
+    // ⭐ o HREF entrou (13/09): sem ele o guard casava por LABEL, e "Relatórios" do PERFIL
+    // colidia com "Relatórios" da EMPRESA — dois destinos diferentes, o mesmo nome.
+    const href = /href=\{?[`'"]([^`'"]+)/.exec(corpo)?.[1] ?? ''
+    out.push({ label, perm, href })
   }
   return out
 }
+
+/** ⭐ rota do PRÓPRIO usuário (perfil pessoal ou global) — não é dado de empresa */
+const ehRotaPessoal = (href: string) => href.includes('/perfis/') || !href.includes('/empresas/')
 
 describe('⭐⭐ todo item do menu declara a permissão que exige', () => {
   const itens = itensDoMenu()
@@ -112,9 +118,20 @@ describe('⭐⭐ o que o OPERADOR_ESTOQUE enxerga', () => {
       const achados = itens.filter((i) => i.label === label)
       if (achados.length === 0) continue // item pode ter outro nome; o teste acima cobre
       for (const a of achados) {
-        expect(veria(a.perm), `"${label}" (perm=${a.perm}) AINDA aparece pra a operadora`).toBe(false)
+        // ⚠️ item do PERFIL PESSOAL com o MESMO nome de um da empresa ("Relatórios") não é
+        // vazamento: ele leva ao workspace dela própria. O que importa é o DESTINO.
+        if (a.perm === '@sempre' && a.href.includes('/perfis/')) continue
+        expect(veria(a.perm), `"${label}" (perm=${a.perm} → ${a.href}) AINDA aparece pra a operadora`).toBe(false)
       }
     }
+  })
+
+  it('⛔⛔ `@sempre` NUNCA aponta pra rota de EMPRESA — é a régua que substitui o label', () => {
+    // a trava de verdade: `@sempre` é bypass de permissão, e só é aceitável quando o destino
+    // é do próprio usuário (o perfil pessoal ou uma rota global). Um `@sempre` apontando
+    // pra `/empresas/` seria dado de empresa aberto pra qualquer um.
+    const bypass = itensDoMenu().filter((i) => i.perm === '@sempre' && !ehRotaPessoal(i.href))
+    expect(bypass.map((i) => `${i.label} → ${i.href}`)).toEqual([])
   })
 
   it('⚠️ tela FINANCEIRA da empresa não pode estar mapeada em company.view', () => {

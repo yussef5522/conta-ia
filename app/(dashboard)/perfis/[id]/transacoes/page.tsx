@@ -185,6 +185,22 @@ export default function TransacoesPFPage({
         Voltar ao perfil
       </Link>
 
+      {/* ⭐⭐ AS PORTAS DE DESPESAS E RECEITAS MORAM AQUI (13/09).
+          A espinha de navegação do PF tem 5 itens, e "Despesas"/"Receitas" saíram do MENU —
+          mas **tela viva sem caminho é a porta sem maçaneta**, a família que já custou 5
+          voltas nesta casa. Elas são sub-visões de Lançamentos, então é daqui que se chega:
+          o menu ficou limpo E nada ficou órfão. */}
+      <div className="mb-4 flex gap-2">
+        <Link href={`/perfis/${id}/despesas`}
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-zinc-300 px-3 text-xs font-semibold text-zinc-700 hover:bg-zinc-50">
+          📉 Despesas
+        </Link>
+        <Link href={`/perfis/${id}/receitas`}
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-zinc-300 px-3 text-xs font-semibold text-zinc-700 hover:bg-zinc-50">
+          📈 Receitas
+        </Link>
+      </div>
+
       <div className="flex items-start justify-between gap-3 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-zinc-900">Transações</h1>

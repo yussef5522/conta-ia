@@ -28,9 +28,16 @@ export const nomeMes = (m: string) => MESES[Number(m.slice(5, 7)) - 1]
 export const dia = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
 export const saudacao = () => { const h = new Date().getHours(); return h < 12 ? 'bom dia' : h < 18 ? 'boa tarde' : 'boa noite' }
 
+export interface ContaDoDash {
+  id: string; name: string; balance: number
+  bankName?: string | null
+  ledgerBal?: number | null
+  ledgerBalDate?: string | null
+}
+
 export interface Dados extends DashboardPF {
   nome: string
-  contas: { id: string; name: string; balance: number }[]
+  contas: ContaDoDash[]
   ultimos: { id: string; data: string; descricao: string; valorComSinal: number; categoriaNome: string | null; ehPagamentoDeFatura: boolean; temPonte: boolean; casou: boolean }[]
 }
 export interface Fmt { brl: (n: number, semSimbolo?: boolean) => string; curto: (n: number) => string; oculto: boolean }
@@ -118,16 +125,82 @@ function Duo({ icone, fundo, rotulo, valor, cor, solto }: { icone: string; fundo
   )
 }
 
+/**
+ * ⭐⭐ MINHAS CONTAS (13/09) — **a porta de entrada do dado estava fora da home.**
+ *
+ * **O dono:** *"CONTAS BANCÁRIAS e o IMPORTAR EXTRATO não estão no dashboard — a porta de
+ * entrada do dado ficou fora da home."* E ele tem razão: o gesto que ALIMENTA o dashboard
+ * inteiro vivia numa tela de cadastro, a dois cliques de onde ele olha os números.
+ *
+ * ⚠️ A tela `/contas` **continua viva** (pela espinha de navegação) — este widget é a porta
+ * RÁPIDA, não a substituta: cadastrar conta é gesto raro, importar extrato é gesto semanal.
+ */
+export function WContas({ d, f, profileId }: { d: Dados; f: Fmt; profileId: string }) {
+  if (d.contas.length === 0) {
+    // ⛔ zero conta não é "widget vazio": é o convite pro primeiro gesto
+    return (
+      <Card>
+        <H3>Minhas contas</H3>
+        <Link href={`/perfis/${profileId}/contas`} className="text-[13px] font-semibold hover:underline" style={{ color: M.roxo }}>
+          + cadastrar a primeira conta →
+        </Link>
+      </Card>
+    )
+  }
+  return (
+    <Card>
+      <H3 link={{ href: `/perfis/${profileId}/contas`, texto: 'gerenciar →' }}>Minhas contas</H3>
+      {d.contas.map((c, i) => {
+        // ⭐ a conferência mora no card da conta — a régua de 10/09 ("uma casa só")
+        const conf = c.ledgerBal == null ? null
+          : Math.abs(c.balance - c.ledgerBal) <= 0.02
+            ? { txt: `✓ confere${c.ledgerBalDate ? ` em ${c.ledgerBalDate.slice(8, 10)}/${c.ledgerBalDate.slice(5, 7)}` : ''}`, cor: M.verde }
+            : { txt: `⚠ difere em ${f.brl(Math.abs(c.balance - c.ledgerBal))}`, cor: M.ambar }
+        return (
+          <div key={c.id} className="flex items-center gap-2.5 py-2" style={{ borderTop: i ? `1px solid ${M.line}` : undefined }}>
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[15px]" style={{ background: M.roxoFraco }}>🏦</span>
+            <span className="min-w-0 flex-1 text-[13.5px] font-semibold">
+              <span className="block truncate">{c.name}</span>
+              <small className="block text-[10.5px] font-medium" style={{ color: conf?.cor ?? M.sub }}>
+                {/* ⚠️ "nunca conferida" NÃO é defeito — é informação que antes ficava presumida */}
+                {conf?.txt ?? '○ nunca conferida'}
+              </small>
+            </span>
+            <span className="shrink-0 text-right text-[13.5px] font-extrabold tabular-nums">{f.brl(c.balance)}</span>
+            {/* ⭐⭐ O GESTO QUE ALIMENTA TUDO, a 1 clique da home */}
+            <Link href={`/perfis/${profileId}/extrato?conta=${c.id}`}
+              className="shrink-0 rounded-lg px-2 py-1 text-[11px] font-bold hover:opacity-80"
+              style={{ background: M.roxoFraco, color: M.roxo }} title="importar extrato (OFX)">
+              ↑ extrato
+            </Link>
+          </div>
+        )
+      })}
+      <Link href={`/perfis/${profileId}/contas`} className="mt-2 inline-block text-[11.5px] font-bold hover:underline" style={{ color: M.sub }}>
+        + nova conta
+      </Link>
+    </Card>
+  )
+}
+
+/**
+ * ⭐ RECEBIDO DA EMPRESA — **faixa fina** (13/09).
+ *
+ * *"é SELO, não bloco gigante"* (dono). Ele ocupava um card inteiro do tamanho do donut pra
+ * dizer um número e uma frase — e roubava a altura de quem pede ação.
+ */
 export function WEmpresa({ d, f }: { d: Dados; f: Fmt }) {
   if (d.recebidoDaEmpresa.transferencias === 0) return null
   return (
-    <Card estilo={{ background: 'linear-gradient(135deg,#eeecfa,#e8f7ee)' }}>
-      <H3>💼 Recebido da empresa</H3>
-      <div className="text-[23px] font-extrabold">{f.brl(d.recebidoDaEmpresa.total)}</div>
-      <div className="mt-0.5 text-[12px]" style={{ color: M.sub }}>
-        {d.recebidoDaEmpresa.transferencias} transferência{d.recebidoDaEmpresa.transferencias > 1 ? 's' : ''} no mês · espelhadas na empresa ✓
-      </div>
-    </Card>
+    <div className="mb-3 flex items-center gap-3 rounded-[14px] px-4 py-2.5 lg:mb-0"
+      style={{ background: 'linear-gradient(135deg,#eeecfa,#e8f7ee)', boxShadow: M.sombra }}>
+      <span className="text-[17px]">💼</span>
+      <span className="text-[12px] font-extrabold uppercase tracking-[.04em]" style={{ color: M.sub }}>Recebido da empresa</span>
+      <span className="text-[17px] font-extrabold">{f.brl(d.recebidoDaEmpresa.total)}</span>
+      <span className="ml-auto truncate text-[11.5px]" style={{ color: M.sub }}>
+        {d.recebidoDaEmpresa.transferencias} transferência{d.recebidoDaEmpresa.transferencias > 1 ? 's' : ''} · espelhadas na empresa ✓
+      </span>
+    </div>
   )
 }
 
@@ -247,10 +320,13 @@ export function WAVencer({ d, f }: { d: Dados; f: Fmt }) {
         const atrasada = a.diasDeAtraso > 0
         return (
           <div key={i} className="flex items-center gap-[11px] py-[9px] text-[13.5px]" style={{ borderTop: i ? `1px solid ${M.line}` : undefined }}>
+            {/* ⛔⛔ A PÍLULA MOSTRA A DATA DO VENCIMENTO, SEMPRE (defeito do print de 13/09:
+                ela dizia "HOJE" em fatura de 4 dias atrás). O coral diz que está atrasada;
+                a DATA continua sendo a verdadeira. "HOJE" só quando vence hoje de verdade. */}
             <span className="w-[42px] shrink-0 rounded-[11px] py-1 text-center text-[13px] font-extrabold"
-              style={atrasada ? { background: M.coralFraco, color: M.coral } : { background: M.bg }}>
-              {atrasada ? 'HOJE' : v.getUTCDate()}
-              {!atrasada && <small className="block text-[8.5px] font-bold uppercase" style={{ color: M.sub }}>{MESES[v.getUTCMonth()].slice(0, 3)}</small>}
+              style={atrasada || a.ehHoje ? { background: M.coralFraco, color: M.coral } : { background: M.bg }}>
+              {a.ehHoje ? 'HOJE' : String(v.getUTCDate()).padStart(2, '0')}
+              {!a.ehHoje && <small className="block text-[8.5px] font-bold uppercase" style={{ color: atrasada ? M.coral : M.sub }}>{MESES[v.getUTCMonth()].slice(0, 3)}</small>}
             </span>
             <span className="flex-1 font-semibold">
               {a.nome}{a.estimada && <small style={{ color: M.sub }}> (estimada)</small>}

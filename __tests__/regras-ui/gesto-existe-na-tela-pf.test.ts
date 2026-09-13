@@ -54,10 +54,30 @@ describe('⛔⛔ o gesto de importar extrato PF é ALCANÇÁVEL', () => {
     expect(ex).toMatch(/atual \|\| /)
   })
 
-  it('⭐ o menu do PF leva às duas telas novas', () => {
+  /**
+   * ⚠️⚠️ **REAPONTADO EM 13/09 — a LIÇÃO fica, o caminho mudou.** Este teste exigia
+   * `/mes` e `/extrato` no MENU. O `/mes` morreu (virou a home) e o `/extrato` saiu da
+   * espinha de 5 itens. **Manter a asserção antiga seria pedir de volta o menu de 9 itens
+   * que a espinha limpou; apagá-la seria deixar o gesto virar órfão outra vez.**
+   *
+   * ⭐ A régua que fica é a de sempre: *o dedo do dono tem que alcançar o import a partir
+   * de onde ele ESTÁ* — e agora ele está na HOME, que tem o widget de contas.
+   */
+  it('⭐⭐ o import continua a UM clique — do widget de contas na home', () => {
+    const widgets = semComentarios(ler('components/perfis/widgets-pf.tsx'))
+    expect(widgets, 'o widget de contas perdeu o botão de extrato').toMatch(/\/extrato\?conta=/)
+    expect(widgets).toContain('export function WContas')
+    // e o widget está nas DUAS composições
+    const dash = semComentarios(ler('components/perfis/dashboard-pf.tsx'))
+    expect([...dash.matchAll(/<WContas\b/g)].length, 'o widget de contas não está nos dois viewports').toBe(2)
+  })
+
+  it('⭐ e a espinha do menu leva a Contas, que acende também no /extrato', () => {
     const sb = semComentarios(ler(SIDEBAR))
-    expect(sb).toMatch(/perfis\/\$\{currentProfileId\}\/mes/)
-    expect(sb).toMatch(/perfis\/\$\{currentProfileId\}\/extrato/)
+    expect(sb).toMatch(/perfis\/\$\{currentProfileId\}\/contas/)
+    // ⚠️ o item "Contas" fica ACESO quando o dono está importando — senão a espinha
+    // perderia o rastro de onde ele está
+    expect(sb).toMatch(/contas\|extrato/)
   })
 })
 

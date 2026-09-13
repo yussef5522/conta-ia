@@ -41,12 +41,18 @@ describe('o choke-point existe e é a única fonte da empresa no menu', () => {
 })
 
 describe('o PF tem menu próprio', () => {
+  /**
+   * ⭐⭐ **A ESPINHA DE 13/09** — 5 itens, padrão Monarch/Mobills. O menu do PF tinha **9**,
+   * com um *"Mês"* apontando pro redirect que morreu, DOIS caminhos pro mesmo import e TRÊS
+   * formas de ver lançamento. Menu com três portas pra mesma sala é o B1 em forma de
+   * navegação.
+   */
   const itensPF = [
-    ['Cartões', '/perfis/${currentProfileId}/cartoes'],
+    ['Meu Dinheiro', '/perfis/${currentProfileId}`}'],
     ['Contas', '/perfis/${currentProfileId}/contas'],
-    ['Movimentações', '/perfis/${currentProfileId}/transacoes'],
-    ['Despesas', '/perfis/${currentProfileId}/despesas'],
-    ['Receitas', '/perfis/${currentProfileId}/receitas'],
+    ['Cartões', '/perfis/${currentProfileId}/cartoes'],
+    ['Lançamentos', '/perfis/${currentProfileId}/transacoes'],
+    ['Relatórios', '/perfis/${currentProfileId}/insights'],
   ] as const
 
   for (const [label, href] of itensPF) {
@@ -55,11 +61,34 @@ describe('o PF tem menu próprio', () => {
     })
   }
 
-  it('⭐ o item de CARTÕES do PF existe (era o que faltava — o módulo já funcionava)', () => {
-    // o bloco tem que estar gated por PF, senão apareceria na empresa também
-    const bloco = src.slice(src.indexOf('/perfis/${currentProfileId}/cartoes') - 400,
-                            src.indexOf('/perfis/${currentProfileId}/cartoes') + 200)
-    expect(bloco).toMatch(/workspaceType === 'pf' && currentProfileId/)
+  /**
+   * ⛔⛔ **O QUE SAIU DO MENU NÃO PODE FICAR ÓRFÃO** — a família "porta sem maçaneta", que
+   * já custou 5 voltas. `Despesas` e `Receitas` são telas VIVAS; elas saíram da espinha e
+   * passaram a ser alcançadas de dentro de Lançamentos, que é onde fazem sentido. **Este
+   * teste é o que impede a limpeza do menu de virar um sumiço.**
+   */
+  it('⭐ Despesas e Receitas saíram do menu mas NÃO ficaram órfãs', () => {
+    const lancamentos = readFileSync(
+      resolve(process.cwd(), 'app/(dashboard)/perfis/[id]/transacoes/page.tsx'), 'utf-8')
+    expect(lancamentos, 'a tela de Despesas ficou sem caminho').toContain('/despesas`}')
+    expect(lancamentos, 'a tela de Receitas ficou sem caminho').toContain('/receitas`}')
+  })
+
+  it('⭐⭐ os 5 itens da espinha vivem DENTRO do gate de PF — nenhum vaza pra empresa', () => {
+    /**
+     * ⚠️⚠️ **JANELA DE N CARACTERES DE NOVO.** A 1ª versão olhava ±400 chars em volta do
+     * item de Cartões; com os 5 itens num fragmento único, o gate passou a ficar mais longe
+     * e o guard quebrou **com a tela certa**. É o mesmo defeito do detector de rastro de
+     * 12/09 — *o que define o bloco é a ESTRUTURA, não a distância*.
+     */
+    const gate = src.indexOf("workspaceType === 'pf' && currentProfileId && (\n          <>")
+    expect(gate, 'a espinha do PF não está num bloco único gated por PF').toBeGreaterThan(0)
+    // o bloco vai do gate até o `)}` que o fecha, na MESMA indentação
+    const fim = src.indexOf('\n        )}', gate)
+    const bloco = src.slice(gate, fim)
+    for (const rota of ['contas', 'cartoes', 'transacoes', 'insights']) {
+      expect(bloco, `o item de ${rota} está fora do gate de PF`).toContain(`/perfis/\${currentProfileId}/${rota}`)
+    }
   })
 })
 

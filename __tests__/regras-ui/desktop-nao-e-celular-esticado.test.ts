@@ -69,10 +69,19 @@ describe('⛔⛔ no desktop a tela não é o celular esticado', () => {
      * falso vermelho no primeiro refactor legítimo. O que importa: os três widgets da
      * linha 1 vêm ANTES do donut, cada um no seu bloco de coluna.
      */
-    const ateODonut = grid.slice(0, grid.indexOf('<WDonut'))
-    for (const w of ['<WSaldo', '<WFluxo', '<WEmpresa']) {
-      expect(ateODonut, `${w} não está na linha 1 do cockpit`).toContain(w)
+    /**
+     * ⚠️ **A LINHA 1 É O QUE VEM ANTES DO PRIMEIRO BLOCO DE LARGURA TOTAL.** A 1ª versão
+     * cortava no donut e passou a acusar a faixa fina do "recebido da empresa" (`col-span-12`,
+     * legítima, é um SELO de largura toda). Guard que crava o nome do widget seguinte
+     * quebra na próxima reorganização — o que define a linha é a estrutura, não o vizinho.
+     */
+    const primeiraLinha = grid.indexOf('col-span-12') > 0 ? grid.slice(0, grid.indexOf('col-span-12')) : grid
+    for (const w of ['<WSaldo', '<WFluxo']) {
+      expect(primeiraLinha, `${w} não está na linha 1 do cockpit`).toContain(w)
     }
+    // ⭐ e a 3ª coluna existe — é a porta de entrada do dado (contas)
+    expect(primeiraLinha, 'a linha 1 não tem o terceiro card').toContain('<WContas')
+    const ateODonut = primeiraLinha
     /**
      * ⚠️⚠️ **REGRA 11 me pegou aqui:** a 1ª versão contava `col-span-` e **`col-span-12`
      * casava** — ou seja, com os três cards em largura cheia (EMPILHADOS, que é exatamente
@@ -124,10 +133,16 @@ describe('⭐⭐ FONTE ÚNICA DE WIDGET — muda o layout, nunca o conteúdo', (
   })
 
   it('⭐ o gesto de lançar muda de FORMA, não de função', () => {
-    // FAB no polegar, botão na barra no mouse — o MESMO componente de frase
-    expect(dash).toContain('rounded-full text-[28px]')      // o FAB
-    expect(dash).toContain('Novo lançamento')                // o botão da barra
+    // ⭐ FAB central do bottom-nav no polegar, botão de barra no mouse — o MESMO modal.
+    // ⚠️ o FAB saiu do dashboard e virou o ＋ da barra de baixo (13/09): dois botões de
+    // lançar na mesma tela seriam dois gestos pra uma coisa só, e o de baixo cobriria o outro.
+    const nav = semComentarios(ler('components/perfis/bottom-nav-pf.tsx'))
+    expect(nav, 'o ＋ sumiu do bottom-nav').toContain('rounded-full text-[28px]')
+    expect(dash).toContain('Novo lançamento')                // o botão da barra do desktop
+    expect(dash, 'sobrou um FAB solto além do ＋ da barra').not.toContain('fixed bottom-[22px]')
     expect([...dash.matchAll(/<LancamentoRapido\b/g)].length, 'dois modais de lançamento').toBe(1)
+    // ⛔ e a barra de polegar não existe no desktop
+    expect(nav).toContain('lg:hidden')
   })
 
   it('⭐ o desktop responde ao MOUSE — hover e cursor', () => {

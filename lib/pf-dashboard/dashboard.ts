@@ -66,10 +66,18 @@ export interface DashboardPF extends PainelDoMes {
   donut: FatiaDoDonut[]
   cartoes: CartaoDoDash[]
   balanco: MesDoBalanco[]
-  aVencer: { nome: string; valor: number; vencimento: Date; diasDeAtraso: number; estimada: boolean }[]
+  aVencer: { nome: string; valor: number; vencimento: Date; diasDeAtraso: number; ehHoje: boolean; estimada: boolean }[]
 }
 
 const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
+
+/** ⭐ o formato ÚNICO de data curta da PF — `09/09`, nunca `9/09` */
+export const ddmm = (d: Date) =>
+  `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}`
+
+/** ⚠️ "hoje" é DIA de calendário — comparar instantes faria a fatura virar "hoje" às 21h */
+export const ehHoje = (d: Date, hoje: Date) =>
+  d.toISOString().slice(0, 10) === hoje.toISOString().slice(0, 10)
 
 /** ⭐ o estado da fatura — DERIVADO do pago vs total, nunca do status gravado (09/09) */
 export function estadoDaFatura(f: { total: number; pago: number; vencimento: Date }, hoje: Date): { estado: CartaoDoDash['estado']; selo: string } {
@@ -78,7 +86,10 @@ export function estadoDaFatura(f: { total: number; pago: number; vencimento: Dat
   // transiciona com o tempo — foi assim que ele ficou eternamente OPEN depois de vencer.
   if (emAberto <= 0.005) return { estado: 'PAGA', selo: 'paga ✓' }
   const dias = Math.floor((hoje.getTime() - f.vencimento.getTime()) / 86_400_000)
-  if (dias > 0) return { estado: 'VENCIDA', selo: `venceu ${f.vencimento.getUTCDate()}/${String(f.vencimento.getUTCMonth() + 1).padStart(2, '0')}` }
+  // ⚠️ ZERO À ESQUERDA SEMPRE (13/09): a tela mostrava *"venceu 9/09"* ao lado de
+  // *"venceu 10/09"* — dois formatos na mesma lista. Data sem padrão faz o olho tropeçar
+  // justamente onde ele precisa comparar.
+  if (dias > 0) return { estado: 'VENCIDA', selo: `venceu ${ddmm(f.vencimento)}` }
   return { estado: 'ABERTA', selo: 'aberta' }
 }
 
@@ -168,6 +179,13 @@ export function montarDashboard(input: {
       return {
         nome: `fatura ${c.nome}`, valor: c.emAberto, vencimento: f.vencimento,
         diasDeAtraso: Math.max(0, Math.floor((input.hoje.getTime() - f.vencimento.getTime()) / 86_400_000)),
+        /**
+         * ⛔⛔ **A PÍLULA MOSTRA A DATA DO VENCIMENTO, SEMPRE** (13/09, defeito do print):
+         * ela dizia **"HOJE"** em fatura ATRASADA — a magalu de 4 dias e o banrisul de 3
+         * apareciam como se vencessem hoje. *Pílula que mente a data ensina a ignorar a
+         * pílula.* "HOJE" só quando vence hoje **de verdade**; o atraso vai no selo ao lado.
+         */
+        ehHoje: ehHoje(f.vencimento, input.hoje),
         // ⚠️ "estimada" quando a fatura ainda não fechou — o número pode crescer
         estimada: c.estado === 'ABERTA' && f.vencimento > input.hoje,
       }

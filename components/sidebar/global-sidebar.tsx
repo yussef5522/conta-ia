@@ -311,113 +311,62 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
             onClick={onNavigate}
           />
         )}
-        {/* ⭐⭐ O PAINEL DO MÊS (13/09) — a tela-mãe da PF, no TOPO da seção.
-            ENTROU · SAIU · SOBROU + categorias + contas + cartões. É daqui que o
-            dono entra no resto, como o Fluxo de Caixa é na PJ. */}
+        {/* ⭐⭐⭐ A ESPINHA DE NAVEGAÇÃO DO PF (13/09) — padrão Monarch/Mobills.
+            **O dono:** *"SIDEBAR fixa à esquerda: Meu Dinheiro (home) · Contas · Cartões ·
+            Lançamentos · Relatórios"*.
+
+            ⛔⛔ **NÃO nasceu uma segunda sidebar — esta aqui FOI LIMPA.** O PF tinha **9
+            itens**, e entre eles: um **"Mês" apontando pro redirect** que morreu hoje, DOIS
+            caminhos pro mesmo import ("Extrato da conta" e "Importar extrato") e TRÊS
+            formas de ver lançamento ("Despesas", "Receitas", "Movimentações"). Menu com
+            três portas pra mesma sala é a doença do B1 em forma de navegação — e uma
+            sidebar nova ao lado desta seria a quarta.
+
+            ⚠️ **Nada foi perdido**: Despesas/Receitas/Insights/Categorias moram DENTRO das
+            telas que a espinha abre; o que saiu foi a repetição no MENU. */}
         {workspaceType === 'pf' && currentProfileId && (
-          <SidebarItem
-          perm="@sempre"
-            icon={Wallet}
-            label="Mês"
-            href={`/perfis/${currentProfileId}/mes`}
-            isActive={/^\/perfis\/[^/]+\/mes(\/|$)/.test(pathname)}
-            onClick={onNavigate}
-          />
-        )}
-        {/* ⭐ IMPORTAR EXTRATO DA CONTA (13/09) — o gesto que a PF não tinha: o
-            import de OFX do perfil era CARTÃO-only (`lib/ofx-card/`), e o campo
-            `PersonalOfxImport.bankAccountId` estava no schema desde junho com o
-            comentário "reservado pra Fatia 3B" — planejado e nunca construído. */}
-        {workspaceType === 'pf' && currentProfileId && (
-          <SidebarItem
-          perm="@sempre"
-            icon={Upload}
-            label="Extrato da conta"
-            href={`/perfis/${currentProfileId}/extrato`}
-            isActive={/^\/perfis\/[^/]+\/extrato(\/|$)/.test(pathname)}
-            onClick={onNavigate}
-          />
-        )}
-        {/* Sprint Despesas-PF (02/07/2026): tela dedicada de despesas do
-            perfil pessoal. Antes o botão "Nova despesa" ficava enterrado
-            em /perfis/[id]/transacoes. Agora Despesas é lugar próprio no
-            workspace PF — visual Monarch/Copilot + marcador Retirada PJ. */}
-        {workspaceType === 'pf' && currentProfileId && (
-          <SidebarItem
-          perm="@sempre"
-            icon={TrendingDown}
-            label="Despesas"
-            href={`/perfis/${currentProfileId}/despesas`}
-            isActive={/^\/perfis\/[^/]+\/despesas(\/|$)/.test(pathname)}
-            onClick={onNavigate}
-          />
-        )}
-        {/* Sprint Receitas-PF (02/07/2026): irmã de Despesas. Visão
-            unificada do que entrou (retiradas PJ + rendas externas) com
-            selo de origem por empresa — diferencial único CAIXAOS. */}
-        {workspaceType === 'pf' && currentProfileId && (
-          <SidebarItem
-          perm="@sempre"
-            icon={TrendingUp}
-            label="Receitas"
-            href={`/perfis/${currentProfileId}/receitas`}
-            isActive={/^\/perfis\/[^/]+\/receitas(\/|$)/.test(pathname)}
-            onClick={onNavigate}
-          />
-        )}
-        {/* ⭐ CARTÕES DO PF (26/08) — o item que FALTAVA. O módulo existe desde a
-            Fatia 2 (`CreditCard` + `CreditCardInvoice`, com status de fatura de
-            verdade) e estava 100% funcional, mas NENHUMA entrada de menu levava a
-            ele: no PF o menu mostrava o "Cartões" da EMPRESA. */}
-        {workspaceType === 'pf' && currentProfileId && (
-          <SidebarItem
-          perm="@sempre"
-            icon={CreditCard}
-            label="Cartões"
-            href={`/perfis/${currentProfileId}/cartoes`}
-            isActive={/^\/perfis\/[^/]+\/cartoes(\/|$)/.test(pathname)}
-            onClick={onNavigate}
-          />
-        )}
-        {workspaceType === 'pf' && currentProfileId && (
-          <SidebarItem
-          perm="@sempre"
-            icon={Landmark}
-            label="Contas"
-            href={`/perfis/${currentProfileId}/contas`}
-            isActive={/^\/perfis\/[^/]+\/contas(\/|$)/.test(pathname)}
-            onClick={onNavigate}
-          />
-        )}
-        {workspaceType === 'pf' && currentProfileId && (
-          <SidebarItem
-          perm="@sempre"
-            icon={ArrowLeftRight}
-            label="Movimentações"
-            href={`/perfis/${currentProfileId}/transacoes`}
-            isActive={/^\/perfis\/[^/]+\/transacoes(\/|$)/.test(pathname)}
-            onClick={onNavigate}
-          />
-        )}
-        {workspaceType === 'pf' && currentProfileId && (
-          <SidebarItem
-          perm="@sempre"
-            icon={Sparkles}
-            label="Insights"
-            href={`/perfis/${currentProfileId}/insights`}
-            isActive={/^\/perfis\/[^/]+\/insights(\/|$)/.test(pathname)}
-            onClick={onNavigate}
-          />
-        )}
-        {workspaceType === 'pf' && currentProfileId && (
-          <SidebarItem
-          perm="@sempre"
-            icon={History}
-            label="Importar extrato"
-            href={`/perfis/${currentProfileId}/importar`}
-            isActive={/^\/perfis\/[^/]+\/(importar|imports)(\/|$)/.test(pathname)}
-            onClick={onNavigate}
-          />
+          <>
+            <SidebarItem
+              perm="@sempre"
+              icon={Wallet}
+              label="Meu Dinheiro"
+              href={`/perfis/${currentProfileId}`}
+              isActive={/^\/perfis\/[^/]+$/.test(pathname)}
+              onClick={onNavigate}
+            />
+            <SidebarItem
+              perm="@sempre"
+              icon={Landmark}
+              label="Contas"
+              href={`/perfis/${currentProfileId}/contas`}
+              isActive={/^\/perfis\/[^/]+\/(contas|extrato|importar|imports)(\/|$)/.test(pathname)}
+              onClick={onNavigate}
+            />
+            <SidebarItem
+              perm="@sempre"
+              icon={CreditCard}
+              label="Cartões"
+              href={`/perfis/${currentProfileId}/cartoes`}
+              isActive={/^\/perfis\/[^/]+\/cartoes(\/|$)/.test(pathname)}
+              onClick={onNavigate}
+            />
+            <SidebarItem
+              perm="@sempre"
+              icon={ArrowLeftRight}
+              label="Lançamentos"
+              href={`/perfis/${currentProfileId}/transacoes`}
+              isActive={/^\/perfis\/[^/]+\/(transacoes|despesas|receitas)(\/|$)/.test(pathname)}
+              onClick={onNavigate}
+            />
+            <SidebarItem
+              perm="@sempre"
+              icon={BarChart3}
+              label="Relatórios"
+              href={`/perfis/${currentProfileId}/insights`}
+              isActive={/^\/perfis\/[^/]+\/(insights|categorias)(\/|$)/.test(pathname)}
+              onClick={onNavigate}
+            />
+          </>
         )}
         {/* Hotfix 5.0.4.0a-fix — Relatórios substituiu DRE Gerencial.
             Index per-empresa contém DRE + Categorias + Comparativo. */}

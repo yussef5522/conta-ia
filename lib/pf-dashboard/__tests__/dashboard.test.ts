@@ -162,3 +162,55 @@ describe('⭐ o recebido da empresa e o a-vencer', () => {
     expect(d.aVencer[0].diasDeAtraso).toBe(0)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⛔⛔ OS DOIS DEFEITOS DO PRINT (13/09) — a pílula que mentia e a data sem padrão
+// ─────────────────────────────────────────────────────────────────────────────
+import { ddmm, ehHoje } from '../dashboard'
+
+describe('⛔⛔ a pílula do "a vencer" mostra a DATA, não "HOJE"', () => {
+  const comVencimento = (v: string) => montarDashboard({
+    mes: '2026-09', hoje: HOJE, linhas: [], historico: [], saldoNasContas: 0,
+    faturas: [fat({ cardId: 'x', total: 100, vencimento: new Date(`${v}T00:00:00Z`) })], pontesDoMes: [],
+  }).aVencer[0]
+
+  it('⛔ fatura ATRASADA não é "HOJE" — era o defeito do print (magalu 4d, banrisul 3d)', () => {
+    const a = comVencimento('2026-09-09')
+    expect(a.diasDeAtraso).toBe(4)
+    expect(a.ehHoje, '⛔ fatura de 4 dias atrás aparecendo como "HOJE"').toBe(false)
+  })
+
+  it('⭐ "HOJE" só quando vence HOJE de verdade', () => {
+    const a = comVencimento('2026-09-13')
+    expect(a.ehHoje).toBe(true)
+    expect(a.diasDeAtraso).toBe(0)
+  })
+
+  it('⭐ e a que ainda vai vencer também não é "hoje"', () => {
+    const a = comVencimento('2026-09-20')
+    expect(a.ehHoje).toBe(false)
+    expect(a.estimada).toBe(true)
+  })
+
+  it('⚠️ "hoje" é DIA de calendário — 21h não vira o dia seguinte', () => {
+    const noite = new Date('2026-09-13T23:50:00Z')
+    expect(ehHoje(new Date('2026-09-13T00:00:00Z'), noite)).toBe(true)
+    expect(ehHoje(new Date('2026-09-14T00:00:00Z'), noite)).toBe(false)
+  })
+})
+
+describe('⭐ a data tem UM formato só na tela toda', () => {
+  it.each([
+    ['2026-09-09T00:00:00Z', '09/09'],
+    ['2026-09-10T00:00:00Z', '10/09'],
+    ['2026-01-05T00:00:00Z', '05/01'],
+  ])('%s → %s (zero à esquerda sempre)', (iso, esperado) => {
+    expect(ddmm(new Date(iso))).toBe(esperado)
+  })
+
+  it('⛔ o selo da fatura vencida usa o mesmo formato — era "venceu 9/09"', () => {
+    const s = estadoDaFatura({ total: 500, pago: 0, vencimento: new Date('2026-09-09T00:00:00Z') }, HOJE)
+    expect(s.selo).toBe('venceu 09/09')
+    expect(s.selo, 'voltou o formato sem zero à esquerda').not.toContain(' 9/')
+  })
+})
