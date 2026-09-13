@@ -611,6 +611,42 @@ beef de hamburger          5 medidas · 1 relâmpago · média COM 13min → SEM
 ```
 **Consequência real:** o *"rodrigo −49% · 2h07 (média 44min)"* compara com uma média pela metade — **sem os 3 relâmpagos a média é 88min e o 2h07 dele fica perto do normal**. É a família do *"tempo zero não é velocidade infinita"* (06/09) um degrau acima: lá a régua matou o `0`, aqui o `1` passa. **NÃO inventei um piso** — escolher "menos de N minutos não conta" é decisão do dono sobre o número que sai da cozinha dele. As saídas possíveis: (a) piso de duração pra entrar na média (e o relâmpago contado à parte, como o "sem tempo" já é); (b) deixar como está e tratar os 2 lotes na mão.
 
+### ⭐⭐⭐ PF — DASHBOARD "MEU DINHEIRO" + LANÇAMENTO POR FRASE (13/09)
+
+**Mock versionado** em `docs/mocks/pf-dashboard-mock.html`, com guard que **lê o HTML** e compara token a token (o protocolo da Conciliação). Deploy `pW6SzxKDdLJQtOK3SF_va` 4/4.
+
+**⭐ A ROTA DECIDIDA (o dono pediu pra eu escolher e dizer): o dashboard É `/perfis/[id]`, a HOME.** É onde ele cai ao entrar no workspace pessoal; pôr num endereço próprio deixaria a home velha viva ao lado, e *"qual é a tela do meu dinheiro?"* teria duas respostas. ⛔ **E `/perfis/[id]/mes` MORREU** — virou redirect. *"NUNCA dois painéis"* é ordem dele, e dois painéis do mesmo mês divergem na primeira régua nova.
+
+**⭐⭐ FONTE ÚNICA, literal:** `montarDashboard` **não recalcula** ENTROU/SAIU/SOBROU — chama a MESMA `painelDoMes`, **e cada mês do balanço também**. O teste que morde compara o topo com o mês atual do balanço e exige igualdade.
+
+**AS RÉGUAS DE HONESTIDADE, todas travadas:** previsto = saldo − **faturas conhecidas** (⛔ zero projeção de gasto inventado) · **cartão sem limite não ganha barra** · *"sem categoria"* tem **fatia própria em âmbar** (enterrá-la em "outras" esconderia o que pede ação) · pagamento de fatura **fora do SAIU** · o **olhinho esconde TODOS os números**, não só o hero · **zero widget sem dado** (investimento/metas/recorrentes não existem nem cinza).
+
+**⭐⭐ LANÇAMENTO POR FRASE:** *"mercado 280,50"* · *"gastei 45 na farmácia"* · *"recebi 500 pix"* viram lançamento com a categoria sugerida pelas regras **DO PERFIL**. ⛔⛔ **SEM VALOR, SEM LANÇAMENTO** — descrição a gente deduz, sentido a gente deduz, **valor não**: um valor chutado é dinheiro errado no extrato dele, e o erro só aparece no fim do mês. ⚠️ **`1.280,50` não é R$ 1,28** — o ponto é milhar em pt-BR, a mesma armadilha que o campo de quantidade do estoque pagou em 08/09. Trocar a categoria **ENSINA** a regra.
+
+**PROVADO EM PROD, navegando como celular:**
+```
+/perfis/<id> → 200      /perfis/<id>/mes → 307 → a home  ⭐ morreu
+SETEMBRO  saldo 71.609,96 · previsto 42.315,32 (3 faturas)
+   banrisul 18.593,16 [VENCIDA] 24% do limite · nubank 6.210,30 [ABERTA] 44%
+   magalu 4.491,18 [VENCIDA] 69% · a vencer: 3, duas atrasadas + 1 estimada
+   balanço jun 61k/22k · jul 72k/22k · ago 35k/35k · set* 38k/38k
+AGOSTO    tudo recalcula (35.098,26) · o balanço anda pra mai-ago
+FRASES    "mercado 280,50" → SAIDA 280,50 "Mercado"
+          "gastei 45 na farmácia" → SAIDA 45,00 "Farmácia"
+          "recebi 500 pix" → ENTRADA 500,00 "Pix"
+          "almoço com a Daniela" → montou:false "não achei o valor" ⭐ não trava
+```
+
+**⚠️⚠️ DOIS ACHADOS NO DADO REAL, pro dono saber:**
+1. **RECEITAS == DESPESAS e SOBROU R$ 0,00 em TODOS os meses.** Não é bug: **toda ponte PJ→PF cria o par** crédito *"Distribuição de Lucros"* + débito *"yussef gastos"* (o fluxo A/B *"já gastei esse dinheiro"*, de 10/08). O dinheiro entra e sai no mesmo gesto, então o PF nunca "sobra". ⭐ Quando o extrato da conta entrar, os gastos REAIS aparecem e o número passa a significar alguma coisa.
+2. **"Recebido da empresa" conta 6 transferências em setembro, não 3** — as 3 que o dono cita mais outras com ponte no mesmo mês. O widget soma **todo crédito com ponte**, que é o que ele pediu.
+
+⚠️ **E o guard de contrato de 27/08 foi REAPONTADO, não apagado** (a home mudou; a lição — *contrato quebrado dá silêncio* — não). O alvo novo expôs **duas cegueiras dele**: via só `fetch` cru (o dashboard usa `fetchJson`) e cortava o payload em **400 caracteres**, enxergando só o `{erro}` do 404. Os dois consertados.
+
+**REGRA 11 — 5 defeitos repostos, todos vermelhos.** **9.688 verdes · TS 0.**
+
+📋 **ROADMAP REGISTRADO, NÃO CONSTRUÍDO** (ordem do dono): **Fase 2** recorrentes + orçamento por categoria → é o que destrava a projeção estilo Meu Assessor na pílula do hero (*"contas fixas + média dos meses = o mês que vem já tem número"*). **Fase 3** o assessor por **WhatsApp** (lançar por mensagem/áudio, *"quanto gastei?"*, alerta de fatura — e falando PJ também: *"quanto a Caçula vendeu hoje?"*) — **visão, não item de sprint**: WhatsApp Business API é projeto próprio.
+
 ### ⛔⛔⛔ O GESTO SÓ EXISTIA POR ROTA — 5ª VOLTA DA "PORTA SEM MAÇANETA" (13/09)
 
 **O dono, no celular:** *"o import de extrato existe (você provou pela rota: 3 casadas, 2 novas, aprender-na-conta) mas **NÃO TEM BOTÃO NA TELA**. Estou em /perfis/[id] → Contas bancárias: os 3 cards e 'Nova conta' — nenhum 'importar extrato' em card nenhum."*
