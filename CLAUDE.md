@@ -572,6 +572,45 @@ OLEO DE SOJA: controle UN → LT (fator 1)
 
 ⚠️ **2c — o log é SENTINELA, não autópsia:** a marcação de 10/09 já passou e não deixou rastro; **não dá pra reconstruir a causa**, e o dono já tinha dito que nesse caso *"o log fica de sentinela"*. A próxima pulada sai com nome e motivo.
 
+### ⭐⭐⭐ PRODUÇÃO — PLACAR NO HOJE + TELA DE RELATÓRIOS, FONTE ÚNICA (13/09)
+
+**O dono:** *"os 3 mocks aprovados estão em `~/Downloads` — copia pra `docs/mocks/` e versiona, com guard de tokens como o da Conciliação. **O mock é a RÉGUA: igual primeiro, melhoria só com meu pedido.**"* E a régua de arquitetura: *"media/velocidade/rendimento têm UM dono (lib), e HOJE + Relatórios chamam a MESMA função."*
+
+**⭐⭐ A FONTE ÚNICA É LITERAL, não promessa.** `lib/stock/producao/desempenho.ts` é o dono da conta; `relatorios.ts` **não calcula desempenho nenhum** — ele monta a janela e delega. O teste que morde é o que roda as duas e exige igualdade: `expect(r.pessoas).toEqual(placarDaEquipe(janela, historico))`. ⚠️ E **a média vem sempre da história INTEIRA, nunca da janela do filtro** — senão *"a média do período"* seria a própria pessoa do período, e o selo nunca acenderia.
+
+**AS RÉGUAS DE HONESTIDADE, todas travadas em teste:** lote **sem meta não vira pedido 0** (sai da conta do %, mas o VOLUME dele conta) · dia sem lote medido vem **`null`, não zero** · custo médio **ignora lote sem custo fechado e DIZ quantos** · o melhor lote é por **unidades por minuto**, não por volume · período vazio **diz o motivo**, nunca um painel de zeros.
+
+**⛔⛔ O TABLET NUNCA VÊ O PLACAR — e a trava é no que a ROTA DEVOLVE.** Esconder no componente seria combinado; não mandar o dado é impossibilidade. O guard (`tablet-nunca-ve-o-placar.test.ts`) prova os **dois lados** — que a rota do tablet não conhece `placarDaEquipe`/`vsMediaPct`, **e que o placar VIVE** atrás de `stock.manage`. Guard que só prova a ausência aprovaria o dia em que o placar sumisse de todo lugar.
+
+**⚠️ UMA DIVERGÊNCIA DO MOCK, REGISTRADA E RESOLVIDA A FAVOR DO PEDIDO ESCRITO:** o rodapé do `hoje-placar-mock.html` menciona chips de período (hoje · 7 dias · mês); a ordem escrita é *"FIXO NO DIA — período livre mora nos Relatórios"*. Duas janelas na mesma tela fariam a mesma pergunta ter duas respostas. Há teste afirmando a ausência dos chips.
+
+**⚠️⚠️ REGRA 11 REPROVOU O GUARD DO MOCK NA 1ª VERSÃO.** Ele conferia que a cor aparecia **em algum lugar do arquivo** — e trocar o roxo no objeto de tokens passava **VERDE**, porque o MESMO roxo também está no degradê da barra do gráfico. O que morde é conferir a **DECLARAÇÃO do token**, que é de onde a tela inteira lê. Com o aperto, os 3 desvios repostos dão vermelho (paleta trocada · chip de período no placar · nota de honestidade removida).
+
+**⚠️ E O GUARD ESTRUTURAL DE ROTAS PEGOU A ROTA NOVA** (GET pedindo `manage`): **nomeada em `LEITURA_SENSIVEL` com o motivo escrito, não afrouxada** — a régua *"ler é ler"* continua valendo pro resto.
+
+**PROVADO EM PROD, pelo caminho da tela (sessão real):**
+```
+PAGE /estoque/producao/relatorios → 200   ·   /hoje → 200   ·   /producao → 200
+7 dias:  50 lotes · 4.953,86 un · 87,1h · 18 sem tempo · top "porçao queijo" 1.744 un
+   porçao queijo: 7 lotes · média 44min/lote (mediana 26,5) · custo 4,45 (4,22–5,40)
+   rodrigo −49% · 2h07 (média 44min)  ·  edmar "tarefa nova — sem média ainda"
+mês:     99 lotes · 10.438,86 un · 19 tarefas no seletor
+hoje:    "sem produção no filtro"  ⭐ (o vazio DIZ, não mostra zeros)
+PLACAR 12/09: 8 pessoas · 11/09: 7 pessoas
+⛔ tablet: payload menciona placar/vsMedia? ✓ NÃO
+```
+
+**⚠️ E O "CONFERIR 1 NA MÃO" DO DONO ACHOU UM PROBLEMA NO DADO — não no código.** A conferência rodrigo × média do queijo **bateu ao centavo** (média 44,3 / mediana 26,5; minha soma de cabeça divergia porque eu incluí os lotes de 0 min, que a régua já exclui). Mas o caminho expôs isto:
+
+**📋 ACHADO MEDIDO, NÃO CONSERTADO — "LOTE RELÂMPAGO" polui a média de UMA tarefa.** 48 execuções medidas na história; **4 delas (8%) duram 1-2 minutos** — etapa iniciada e finalizada no mesmo minuto (registro retroativo, não trabalho). ⚠️ **E elas estão CONCENTRADAS na porção de queijo: 3 de 6**, que é justamente a tarefa mais produzida:
+```
+porçao queijo 135 grama    6 medidas · 3 relâmpago · média COM 44min → SEM 88min
+beef de hamburger          5 medidas · 1 relâmpago · média COM 13min → SEM 16min
+(as outras 6 tarefas com média: ZERO relâmpago)
+⛔ os piores:  06/09 Cristian 1min p/ 504 un  ·  10/09 rodrigo 1min p/ 153 un
+```
+**Consequência real:** o *"rodrigo −49% · 2h07 (média 44min)"* compara com uma média pela metade — **sem os 3 relâmpagos a média é 88min e o 2h07 dele fica perto do normal**. É a família do *"tempo zero não é velocidade infinita"* (06/09) um degrau acima: lá a régua matou o `0`, aqui o `1` passa. **NÃO inventei um piso** — escolher "menos de N minutos não conta" é decisão do dono sobre o número que sai da cozinha dele. As saídas possíveis: (a) piso de duração pra entrar na média (e o relâmpago contado à parte, como o "sem tempo" já é); (b) deixar como está e tratar os 2 lotes na mão.
+
 ### ⛔⛔⛔ A PORTA SUMIA QUANDO O TRABALHO ACABAVA — 4ª VOLTA DA FAMÍLIA (12/09)
 
 **O dono:** *"existia um lugar pra trocar a seção de um produto do cardápio e ele não aparece mais. **Eu uso isso direto**."*
