@@ -677,6 +677,57 @@ CONTAS A PAGAR → 200 · "Pagas (sem conciliar)" ✓ · "Em aberto e pagas sem 
 
 **9.726 verdes · TS 0 · deploy `R4Dacd_GQpSrmdBb_Ie9n` 4/4.**
 
+### ⭐⭐⭐ NOTA SEM VENCIMENTO VIRA CONTA A PAGAR — as 21 do F5 ganharam gesto (13/09)
+
+**A história, nas palavras do dono:** *"no começo a conferência não tinha onde pôr vencimento; notas entraram só como estoque."* O **F5** conta o estrago desde 03/09: **21 notas · R$ 8.588,75** que passaram pelo estoque e nunca chegaram ao Contas a Pagar.
+
+**⭐ MEDIDO EM PROD ANTES DE CODAR — e o dado apertou o desenho:** as **21 são sem duplicata NENHUMA no XML** (0 com duplicata). Não é boleto perdido: é nota de pix/dinheiro que entrou calada.
+
+**O CASO QUE FECHA A CONTA (a régua do dono):** a linha da stone de **R$ 2.843,35 (08/09)** paga **6 notas** da MARIA LUIZA — 2 com conta (518,87 + 967,63 = **1.486,50**) e **4 invisíveis** (463,74 · 326,69 · 235,16 · 331,28 = **1.356,87**). **A diferença que o card não fechava eram exatamente elas.**
+
+**⭐⭐ 1. O GESTO (`lib/stock/ponte/definir-parcelas.ts`) — ORQUESTRADOR, NÃO MOTOR NOVO.** Ele costura dois donos que já existiam: `salvarCombinado` (29/08 — dono de *"o que a gente combinou pagar"*, que já refaz a fila de sugestão na mesma transação) e `enviarParaContasPagar` (24/08 — **a única porta** que cria conta no financeiro). ⛔ Escrever a gravação aqui seria a segunda porta, que é o que o `@@unique` do `stock_payable_link` existe pra recusar.
+
+⚠️ **Duas transações, de propósito, e o estado do meio é VISÍVEL:** se as parcelas gravarem e o envio falhar, a nota fica **na fila de envio** (o card de 30/08) — estado legítimo e à vista, não um buraco. Enfiar o envio na transação do combinado faria um fornecedor recusado **apagar as parcelas que o dono acabou de digitar**.
+
+⚠️ **E a soma que não fecha AVISA, não trava** (a régua do combinado): boleto com juros embutido é o mundo real, e travar empurraria o dono a lançar por fora — que é literalmente o que produziu estas 21. Passa com o motivo escrito.
+
+**⭐⭐ 2. O RECIBO PAROU DE FICAR MUDO — estado `A_DEFINIR`.** `combinadoDaNota` responde *"quais parcelas VALEM hoje"*, e parcela sem data **não vale** (não pode virar conta a pagar; `dueDate` alimenta fluxo de caixa e DRE). Resultado: a nota sem vencimento devolvia **lista vazia** e o recibo não mostrava nada — justamente onde havia dívida. **Vazio não é "não deve nada".** ⛔ E não nasceu um terceiro leitor: quem responde *"o que está sem data"* é o `parcelasSemData`, dono da pergunta desde 03/09 — o mesmo que alimenta o F5. ⚠️ O selo é **ÂMBAR, não cinza**: "a definir" é trabalho pendente, não informação neutra.
+
+**⭐ 3. A FILA DAS 21 (o F5 virando TELA).** Lista em Recebimentos: fornecedor · nº · total · data de entrada, **cada linha abrindo o recibo**. ⛔⛔ E ela é a metade que faltava do card: o card já dizia *"N notas sem data"* desde 04/09 e levava pra uma tela que **não listava nenhuma** — o dono via o número e não tinha por onde começar. **É a 6ª volta da "porta sem maçaneta", do outro lado.** ⚠️ Nota sem conferência aparece **cinza dizendo o porquê**, nunca como link morto.
+
+**⛔⛔ 4. A PORTA FECHA PRO FUTURO.** Nota sem duplicata no XML **não confirma sem resposta**: ou o dono digita o(s) vencimento(s), ou marca **"sem data — defino depois"**. O estado final é o mesmo de antes (A DEFINIR); o que muda é que ele virou **ESCOLHA**. Nas palavras do dono: ***"o silêncio era a fábrica dessas 21"***.
+
+⚠️ **A trava mora no SERVIDOR**, não num diálogo de tela — a régua do FREIO da contagem (23/08): aviso que vive no componente some no dia em que a rota for chamada por outro caminho, **e foi por outro caminho que estas 21 entraram**. O botão desabilitado e o rótulo *"Diga como esta nota vai ser paga"* são UX; a recusa é do `confirmarConferencia`.
+
+**PROVADO EM PROD, pelo caminho da tela (sessão real, celular):**
+```
+ROTA DA FILA → 21 notas sem vencimento · R$ 8.588,75 · com link pro recibo: 21 de 21
+MARIA LUIZA na fila: 5 notas · R$ 1.852,69
+
+PREVIEW das 4 (confirmar:false — NADA gravado):
+  NF 68770459 · 463,74 → 200 · fecha com a nota ✓   NF 68815521 · 326,69 → 200 ✓
+  NF 68824809 · 235,16 → 200 ✓                      NF 68850297 · 331,28 → 200 ✓
+  as 4 somam 1.356,87  +  as 2 que já têm conta 1.486,50  =  2.843,37
+  × a linha da stone 2.843,35 → diferença R$ 0,02  ⭐ dentro do degrau FECHA
+  a fila continua 21 · ⛔ nada gravado
+
+RECEBIMENTOS → 200 · "notas entraram sem vencimento" ✓ · "não viraram conta a pagar e não
+               aparecem no fluxo de caixa" ✓ · "confira a nota primeiro" ✓
+RECIBO       → 200 · "Definir parcelas e vencimentos" ✓ · A_DEFINIR ✓
+CONFERÊNCIA  → 200 · "defino depois" ✓ · "Diga como esta nota vai ser paga" ✓
+               ⛔ a frase passiva antiga ("ou deixe a definir"): SUMIU ✓
+```
+
+**REGRA 11 — 4 defeitos repostos:** recibo mudo na nota sem data (**1**) · a porta somindo (**2**) · o gesto renegociando por cima (**1**) · **e o D4 ficou VERDE** — dava pra apagar a resolução do `conferenceId` e a fila continuava listando o trabalho **sem jeito de alcançá-lo**. Ganhou teste próprio; é a mesma família da porta sem maçaneta.
+
+**⚠️ 1 BLOCO DE TESTE INVERTIDO COM O MOTIVO ESCRITO:** ele afirmava *"sem preencher, o caminho de ontem continua"* — e o caminho de ontem é o que produziu as 21.
+
+**⚠️ E A ORDEM DAS TRAVAS FICA REGISTRADA:** a porta do pagamento roda **antes** da validação de item (que vive dentro da transação), então nota com fator errado responde primeiro sobre o pagamento. Três fixtures de unidade passaram a mandar `semDataDefinirDepois` — o assunto delas é unidade, e a resposta honesta ali é *"defino depois"*.
+
+**9.742 verdes · TS 0 · deploy `VbCxzTmVLJnbtXKGFcBW8` 4/4.**
+
+**⛔ PENDENTE E É DO DONO — as 4 datas.** O preview fecha, mas **o vencimento é o do boleto, que está na mão dele** — e este módulo não inventa data (*"sem documento, quem sabe é o dono"*). As 4 esperam o clique em `Definir parcelas e vencimentos`; com as contas nascidas, o card da Maria Luiza passa a oferecer as 6 notas e a linha de 2.843,35 crava.
+
 ### ⭐⭐ PF — ESPINHA DE NAVEGAÇÃO, WIDGET DE CONTAS E O GRID POR HIERARQUIA (13/09)
 
 **Deploy `Dn6OBbAu6bPFYc7oMZs_f` 4/4.** Quatro frentes numa: navegação, a porta do dado, a ordem dos cards e dois defeitos do print.
