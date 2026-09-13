@@ -611,6 +611,31 @@ beef de hamburger          5 medidas · 1 relâmpago · média COM 13min → SEM
 ```
 **Consequência real:** o *"rodrigo −49% · 2h07 (média 44min)"* compara com uma média pela metade — **sem os 3 relâmpagos a média é 88min e o 2h07 dele fica perto do normal**. É a família do *"tempo zero não é velocidade infinita"* (06/09) um degrau acima: lá a régua matou o `0`, aqui o `1` passa. **NÃO inventei um piso** — escolher "menos de N minutos não conta" é decisão do dono sobre o número que sai da cozinha dele. As saídas possíveis: (a) piso de duração pra entrar na média (e o relâmpago contado à parte, como o "sem tempo" já é); (b) deixar como está e tratar os 2 lotes na mão.
 
+### 📋 A PARCELA "SUMIDA" DO CASPER ESTAVA PAGA — e o achado é o FILTRO "PAGAS" (13/09)
+
+**O dono:** *"Casper NF 967122, parcela 002 (2.079,98, venc 10/09) não aparece nas notas abertas do card, e no Contas a Pagar eu não acho ela em estado nenhum."*
+
+**⭐ MEDIDO POR ID (read-only): ela está PAGA, e o pagamento está certo.**
+```
+NF 967122 · CASPER · 26/08 · R$ 6.239,95 · 3 duplicatas no XML
+  001  2.079,99  venc 03/09  →  PAGA 04/09 · linha stone R$ 2.086,85  (+6,86 de juros)
+  002  2.079,98  venc 10/09  →  PAGA 11/09 · linha stone R$ 2.086,84  (+6,86 de juros)  ⭐
+  003  2.079,98  venc 17/09  →  em aberto (PAYABLE/PENDING) — a que ele vê
+```
+⚠️ **E não é UMA parcela: são DUAS** — a 001 está exatamente no mesmo estado. Ele reparou na 002 porque é a do vencimento mais próximo.
+
+**⭐ O CARD ESTÁ CERTO:** nota paga sai das "notas abertas". Não há bug de filtro ali.
+
+**⛔⛔ MAS O "NÃO ACHO EM ESTADO NENHUM" É LEGÍTIMO — e a causa está ESCRITA NO CÓDIGO desde 28/05:** o `lifecycleScope` do Contas a Pagar tem `reconciledWithId: null` com o comentário *"exclui as conciliadas com OFX (que aparecem em /movimentacoes)"*. Rodei a **mesma query da tela** nos três filtros:
+```
+filtro {}          → NÃO aparece
+filtro PAGAS       → NÃO aparece   ⛔
+filtro TODAS       → NÃO aparece   ⛔
+```
+**A decisão de 28/05 é defensável** (evita a mesma linha em duas telas) — o problema é a **PROMESSA DO RÓTULO**: um filtro chamado **"PAGAS"** que esconde as pagas-e-conciliadas, e um **"TODAS"** que não traz todas. *"Todas" que não é todas é a família do cabeçalho que afirmava 69 duplicatas com a aba dizendo 0.* ⚠️ E o KPI de pagas usa o mesmo `whereBase`, então tela e número **concordam entre si** — e escondem a mesma metade.
+
+**⛔ NÃO CONSERTEI** — o dono foi explícito (*"se está paga, me diz qual linha pagou; se está aberta e o card não mostra, é bug do filtro"*), e mexer nesse filtro faz a linha conciliada aparecer em duas telas, que é justamente o que a decisão de 28/05 evita. **As saídas, pra ele escolher:** (a) o rótulo passa a dizer a verdade (*"pagas — as conciliadas estão em Movimentações →"*, com o link); (b) "TODAS" passa a incluir as conciliadas, e Movimentações deixa de ser o único lugar; (c) o **recibo da nota** mostra as 3 parcelas com o estado de cada uma — que é onde a pergunta *"o que houve com a 002?"* nasce.
+
 ### ⭐⭐ PF — ESPINHA DE NAVEGAÇÃO, WIDGET DE CONTAS E O GRID POR HIERARQUIA (13/09)
 
 **Deploy `Dn6OBbAu6bPFYc7oMZs_f` 4/4.** Quatro frentes numa: navegação, a porta do dado, a ordem dos cards e dois defeitos do print.
