@@ -677,6 +677,47 @@ CONTAS A PAGAR → 200 · "Pagas (sem conciliar)" ✓ · "Em aberto e pagas sem 
 
 **9.726 verdes · TS 0 · deploy `R4Dacd_GQpSrmdBb_Ie9n` 4/4.**
 
+### ⛔⛔⛔ OS 5 CASOS QUE NÃO APARECIAM PRA CASAR — E AS DUAS CAUSAS ERAM GERAIS (13/09)
+
+**O dono trouxe 5 pagamentos reais, todos no extrato e invisíveis na fila.** A medição por id achou **duas causas de classe**, as duas maiores que o relato — e uma terceira que era só a maçaneta.
+
+**⛔⛔ CAUSA 1 — BOLETO PAGO COM JUROS NUNCA ERA SUGERIDO.** Medido no `scoreMatch`: valor dentro de ±5% vale **25 pontos**; exato vale **50**. `FOCATTO 2.528,31 × 2.459,76` — **fornecedor EXATO**, descrição 81% parecida, 4 dias — soma **50 contra um corte de 70**. Ou seja: **o caso mais comum de conta vencida (boleto com juros/multa) era invisível por construção**, e isso explicava 4 dos 5.
+
+⭐ **O conserto reusa o dono único dos degraus** (`avaliarDiferenca`, 12/09): quase-exato **com âncora de identidade** e dentro do **teto do gesto manual (10% da linha)** passa pelo corte, **em confiança BAIXA**. ⚠️ O score **não é inflado** — ele só deixa de ser filtro, exatamente como a porta do valor exato (09/09) e a da processadora (11/09).
+
+⛔ **E o guard do falso-amigo continua barrando — isso foi MEDIDO, não suposto.** Repondo o defeito na condição nova a suíte ficou **verde**; ela só ficou vermelha ao remover o `continue` anterior (3 vermelhos). **Quem barra `aluguel caçula × DOCEOLI` é o guard de cima; a condição nova é cinto e suspensório**, e o comentário no código foi reescrito com essa verdade.
+
+**⛔⛔ CAUSA 2 — 10 CONTAS EM ABERTO **SEM FORNECEDOR** (R$ 30.738,31) QUE NENHUM CARD ALCANÇAVA.** `oesa 1.759,44` · `oficina 180` · `radio 109` · `aluguel caçula 5.234` · fgts · inss · icms… Conta lançada à mão não tem FK, e **o card nasce de um fornecedor reconhecido** — era o débito registrado em 10/09 (*"sem fornecedor dos dois lados, o Find & Match não alcança"*) e nunca fechado.
+
+⭐ O card passa a oferecê-las, e as três travas são o que separa isto do caça-níquel de 09/09: **só pela porta** (`?abrir=`, nunca na fila automática) · **nada pré-marcado** · **fora do atalho ⭐** (impossível por construção: `combinacoesQueFecham` só recebe as do fornecedor). ⚠️ E passam por uma **janela de VALOR**, não de data — sem nome, o tamanho é o único sinal, e despejar o FGTS de 8.072,17 numa linha de R$ 111,21 é a parede que o dono já recusou no "a vencer".
+
+**⛔ CAUSA 3 — A PORTA EXISTIA E ESTAVA DENTRO DO MENU ⋮.** O dono: *"é onde eu estou quando quero casar; hoje só me oferecem categoria."* Ele estava certo: o deep-link nasceu em 10/09 **dentro do dropdown de 3 pontinhos**, que é o mesmo que não existir (a lição de 30/08 — *"ação escondida sem afordância não existe, principalmente no celular"*). Virou **botão à vista**, o MESMO deep-link.
+
+**⭐⭐⭐ E O 5º CASO ERA OUTRA COISA: DUPLICATA DE CADASTRO POR SUFIXO SOCIETÁRIO.** `CIA DA FRUTA … LTDA` (sem CNPJ, MANUAL, 05/06) × `CIA DA FRUTA … EIRELI` (CNPJ 36603841000130, ESTOQUE_NF, 04/09) — a mesma empresa. As 2 contas abertas (**790,49 + 472,64 = 1.263,13, o valor EXATO da linha**) vivem na EIRELI, a linha empatava entre as duas e o reconhecedor devolvia **NULL** (trava certa: *"dois igualmente parecidos = não sei qual é"*).
+
+⚠️⚠️ **É A FÁBRICA DOS 11 DUPLICADOS DE 11/09, E ELA NÃO TINHA FECHADO:** o fix daquele dia casa por nome **IDÊNTICO**, e `LTDA ≠ EIRELI`. A chave de identidade passou a **ignorar o sufixo societário no FIM do nome**. ⛔ **Não funde nada — é leitura**: os dois viram irmãos e o card oferece as contas dos dois. **Fundir cadastro segue sendo decisão do dono** (04/09).
+
+**⭐⭐ A PROVA DA DÚVIDA VIROU TESTE PERMANENTE — e a resposta é NÃO.** `categorizar-nao-esconde-da-conciliacao.integration.test.ts` categoriza de verdade e roda as MESMAS funções da tela: a linha **continua disponível**, a conta **continua com sugestão**, o lote **não a perde**, e **só CONCILIAR a tira**. ⭐ Com o **contrafactual** da régua velha (`categoryId IS NULL`) — sem ele os outros quatro passariam verdes num mundo onde nada nunca filtrou por categoria. **Medido: não há caminho onde categoria esconde linha da fila.**
+
+**PROVADO EM PROD, pela rota real (sessão de celular) — os 5, um a um:**
+```
+CIA DA FRUTA  1.263,13 → card ✓ · 790,49 ✓ + 472,64 ✓ marcadas  → diferença R$ 0,00 · FECHA ⭐
+FOCATTO       2.528,31 → card ✓ · nota 2.459,76                  → diferença 68,55 · PERGUNTA
+OESA          1.838,61 → card ✓ · [sem forn.] "oesa" 1.759,44    → diferença 79,17 · PERGUNTA
+PJBANK          183,65 → card ✓ · [sem forn.] "oficina" 180,00   → diferença  3,65 · OFERECE
+MIXX PLAY       111,21 → card ✓ · [sem forn.] "radio"  109,00    → diferença  2,21 · OFERECE
+
+FILA: comSugestao 0 → 4      PENDENTES → 200 · botão "casar conta" à vista ✓
+```
+
+**REGRA 11 — 6 defeitos repostos, e TRÊS vieram VERDES**: (a) o `alguemDizQuemE` redundante (virou comentário com a medição, e o teste foi apontado pro `continue` que morde de verdade); (b) *"conta sem fornecedor nasce desmarcada"* não tinha ninguém conferindo → ganhou teste, e agora dá **2 vermelhos**; (c) *"não entra no atalho"* é **impossível por construção** — a asserção documenta, quem garante é a forma do código, e o comentário diz isso.
+
+**⚠️ 1 TESTE INVERTIDO COM O MOTIVO ESCRITO:** o contrafactual do Cancian de 07/09 (*"sem os fornecedores o par SOME"*) — hoje ele aparece pela âncora `DESC_MUITO_SIMILAR`, **que o guard do falso-amigo já aceitava desde 11/09**. Entrou um teste novo provando que o falso-amigo continua barrado.
+
+**9.759 verdes · TS 0 · deploys `WSgLTuKq5Z8Ppr6cHR8DS`, `-oKEfZvr4uZvc_uEx5Wkr` e `3TH4N984JQIEQkDgScHBU`, os três 4/4.**
+
+📋 **REGISTRADO E NÃO FEITO:** (a) **a mescla da CIA DA FRUTA** — preview pronto (sobrevive a EIRELI, que tem CNPJ; 8 transações mudam de cadastro), **esperando o OK do dono**; (b) **a fábrica de duplicata na ESCRITA** continua aberta: a ponte do estoque reusa cadastro por nome idêntico, e `LTDA × EIRELI` escapa — mexer ali é caminho de GRAVAÇÃO e a régua de 04/09 manda não fundir sem a palavra dele.
+
 ### ⭐⭐⭐ NOTA SEM VENCIMENTO VIRA CONTA A PAGAR — as 21 do F5 ganharam gesto (13/09)
 
 **A história, nas palavras do dono:** *"no começo a conferência não tinha onde pôr vencimento; notas entraram só como estoque."* O **F5** conta o estrago desde 03/09: **21 notas · R$ 8.588,75** que passaram pelo estoque e nunca chegaram ao Contas a Pagar.
