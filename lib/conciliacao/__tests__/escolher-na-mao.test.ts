@@ -264,6 +264,30 @@ describe('⭐⭐ o card alcança a conta lançada à mão', () => {
     expect(c.atalho, 'a conta sem fornecedor virou atalho').toBeNull()
   })
 
+  it('⛔ conta MAIOR que a linha (+teto) não é candidata — FGTS 8.072 num pagamento de 111', () => {
+    // ⚠️ sem nome, o tamanho é o ÚNICO sinal. Despejar as 10 contas manuais numa linha de
+    // R$ 111,21 é a parede que o dono recusou no "a vencer" — e enterra a candidata certa.
+    const c = montarCardDeEscolha({
+      linha, fornecedorId: '', fornecedorNome: '', notas: [], hoje: new Date('2026-09-13'),
+      semFornecedor: [
+        radio,
+        { id: 'fgts', descricao: 'fgts', valor: 8072.17, vencimento: new Date('2026-09-18'), jaPago: 0 },
+      ],
+    })
+    expect(c.semFornecedor.map((n) => n.id)).toEqual(['radio'])
+  })
+
+  it('⭐ e a mais PRÓXIMA do valor vem primeiro — o único sinal que sobra sem nome', () => {
+    const c = montarCardDeEscolha({
+      linha, fornecedorId: '', fornecedorNome: '', notas: [], hoje: new Date('2026-09-13'),
+      semFornecedor: [
+        { id: 'longe', descricao: 'x', valor: 20, vencimento: new Date('2026-09-10'), jaPago: 0 },
+        radio,
+      ],
+    })
+    expect(c.semFornecedor.map((n) => n.id)).toEqual(['radio', 'longe'])
+  })
+
   it('⭐ o card do fornecedor RECONHECIDO também as oferece — o caso OESA', () => {
     // OESA: o card acha a nota da OESA SA (1.574,00, 14% → fora do gesto) e a conta certa
     // é a manual `oesa 1.759,44` (4,3%), que não tem fornecedor. As duas aparecem.

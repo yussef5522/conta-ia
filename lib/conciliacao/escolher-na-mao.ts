@@ -133,6 +133,8 @@ export interface CardDeEscolha {
   semFornecedor: NotaNoCard[]
 }
 
+import { tetoDoGestoManual } from './regua-da-diferenca'
+
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 
@@ -203,10 +205,21 @@ export function montarCardDeEscolha(entrada: {
 
   // ⚠️ passam pela MESMA preparação (em aberto, vencida, janela) — o que muda é que
   // `sugerida` é SEMPRE false: sem nome dos dois lados, marcar seria adivinhar.
+  /**
+   * ⚠️ E ELAS PASSAM POR UMA JANELA DE **VALOR**, não de data.
+   *
+   * Sem nome, a única coisa que aproxima a conta da linha é o tamanho — e despejar as 10
+   * (FGTS 8.072,17, ICMS 4.944,30…) numa linha de R$ 111,21 é a parede que o dono já
+   * recusou no "a vencer" (*"R02 R03 até novembro é ruído"*). **Conta que sozinha já passa
+   * do que a linha pode pagar não é candidata**; o teto é o do gesto manual, então a soma
+   * de várias pequenas continua possível.
+   */
+  const tetoDoValor = linha.valor + tetoDoGestoManual(linha.valor)
   const semForn: NotaNoCard[] = (entrada.semFornecedor ?? [])
     .map((n) => ({ ...n, emAberto: emAbertoDaNota(n), vencida: n.vencimento < hoje }))
-    .filter((n) => n.emAberto > TOLERANCIA)
-    .sort((a, b) => a.vencimento.getTime() - b.vencimento.getTime())
+    .filter((n) => n.emAberto > TOLERANCIA && n.emAberto <= tetoDoValor)
+    // ⭐ a mais PRÓXIMA do valor da linha primeiro — sem nome, é o único sinal que existe
+    .sort((a, b) => Math.abs(a.emAberto - linha.valor) - Math.abs(b.emAberto - linha.valor))
     .map((n) => ({ ...n, sugerida: false, foraDaJanela: false }))
 
   return {
