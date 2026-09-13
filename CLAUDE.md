@@ -611,6 +611,34 @@ beef de hamburger          5 medidas · 1 relâmpago · média COM 13min → SEM
 ```
 **Consequência real:** o *"rodrigo −49% · 2h07 (média 44min)"* compara com uma média pela metade — **sem os 3 relâmpagos a média é 88min e o 2h07 dele fica perto do normal**. É a família do *"tempo zero não é velocidade infinita"* (06/09) um degrau acima: lá a régua matou o `0`, aqui o `1` passa. **NÃO inventei um piso** — escolher "menos de N minutos não conta" é decisão do dono sobre o número que sai da cozinha dele. As saídas possíveis: (a) piso de duração pra entrar na média (e o relâmpago contado à parte, como o "sem tempo" já é); (b) deixar como está e tratar os 2 lotes na mão.
 
+### ⛔⛔⛔ O GESTO SÓ EXISTIA POR ROTA — 5ª VOLTA DA "PORTA SEM MAÇANETA" (13/09)
+
+**O dono, no celular:** *"o import de extrato existe (você provou pela rota: 3 casadas, 2 novas, aprender-na-conta) mas **NÃO TEM BOTÃO NA TELA**. Estou em /perfis/[id] → Contas bancárias: os 3 cards e 'Nova conta' — nenhum 'importar extrato' em card nenhum."*
+
+**Ele estava certo, e o card era pior do que o relato:** um `<Card>` **MORTO** — sem botão, sem link, **sem nem responder ao toque**. O motor estava em prod, provado pela rota, e **inalcançável**. ⚠️ **Eu tinha posto o gesto na SIDEBAR e chamado de feito** — mas o dono não estava na sidebar, estava na **lista de contas**, que é onde a pergunta nasce.
+
+**⭐⭐ A FAMÍLIA INTEIRA, agora com cinco voltas:** (1) 10/09 o card da conciliação nascia colapsado · (2) 10/09 o motor subiu e a tela não mudou · (3) 12/09 a porta do cardápio sumia quando a fila zerava · (4) 12/09 o produto individual nunca teve o gesto · **(5) hoje: o gesto só existia por rota**. ⭐ **A regra que fecha as cinco:** *se o motor está em prod, o dedo do dono tem que alcançar ele **a partir de onde ele ESTÁ*** — e não de onde eu achei natural pôr o link.
+
+**O QUE FICOU:** o card ganha **"Importar extrato (OFX)"** apontando pra **aquela** conta (`?conta=`), a **conferência aparece ali** (a casa dela desde 10/09 — inclusive o *"nunca conferida"*, que não é defeito, é informação antes presumida), e a tela do extrato **abre falando daquela conta** (saldo, conferência, e se ela já tem identidade pra trava morder). ⚠️ E ela **não sobrescreve** a escolha que veio do card — perder no caminho a informação que a tela acabou de mostrar é obrigar o dono a escolher de novo.
+
+**⚠️⚠️ E A PRIMEIRA PROVA FALHOU POR MÉTODO MEU, não por defeito:** eu conferi o **HTML servido** e deu *"⛔ o botão não está no card"* — a tela é **client-side**, os cards nascem do `fetch` e **não existem no primeiro paint**. A prova certa é o **BUNDLE que prod serve**, como em 10/09. *Medir no lugar errado dá um vermelho tão convincente quanto um defeito real.*
+
+**PROVADO NO BUNDLE, navegando como celular:**
+```
+PAGE /perfis/<id>/contas → 200 · bundle 856 KB
+   "Importar extrato (OFX)" ✓ · /extrato?conta= ✓ · "nunca conferida" ✓
+   "confere com o banco" ✓ · "difere do banco em" ✓ · "Ver o mês" ✓
+TOCO o botão → /extrato?conta=<banrisul> → 200 · bundle 821 KB
+   lê ?conta= ✓ · "casam, não duplicam" ✓ · "de fatura reconhecido" ✓
+   o aprender-na-conta ✓ · "sem identificação ainda" ✓
+SUBO O OFX pela rota da tela:
+   ⭐ CASADAS na ponte: 3 (10.000 · 3.500 · 21.000)
+   ⭐ NOVAS: 2 · fatura encontrada: banrisul · aprender: {"041","0605534106"}
+```
+⛔ **Não confirmei** — a gravação é o clique do dono.
+
+**O GUARD (`gesto-existe-na-tela-pf.test.ts`) PROVA OS DOIS LADOS:** o card não pode voltar a ser morto, o link não pode virar decorativo — **e as rotas por trás têm que EXISTIR e exigir o dono do perfil**. ⚠️ Guard que só olhasse a TELA aprovaria um botão apontando pro nada, que é o mesmo defeito de cabeça pra baixo. **REGRA 11 — 3 defeitos repostos, todos vermelhos. 9.596 verdes · TS 0 · deploy `jE1B8cwx9E6PiXW_cT6QO` 4/4.**
+
 ### ⭐⭐⭐ PF FASE 1 EM PROD (13/09) — EXTRATO DA CONTA · CASAMENTO COM A PONTE · PAINEL DO MÊS
 
 **O desenho veio da investigação, item por item.** `pg_dump pre-pf-fase1-20260913-022651` (6,0 MB) antes da migration; deploy `p19qaHOzNljwql1pV37WX` 4/4.
