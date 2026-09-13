@@ -85,6 +85,12 @@ export function estadoDaFatura(f: { total: number; pago: number; vencimento: Dat
 export function montarDashboard(input: {
   mes: string
   hoje: Date
+  /**
+   * ⭐ quantos meses o balanço traz (13/09). **6 no desktop, 4 no celular** — e quem corta
+   * é a TELA, não uma segunda consulta: o cockpit e o app leem o MESMO payload, senão o
+   * mesmo mês teria dois números dependendo do aparelho.
+   */
+  mesesNoBalanco?: number
   linhas: LinhaDoMes[]
   /** todas as linhas da história — o balanço dos 4 meses sai daqui, não de outra consulta */
   historico: LinhaDoMes[]
@@ -142,7 +148,8 @@ export function montarDashboard(input: {
 
   // ── O BALANÇO DOS 4 MESES ──────────────────────────────────────────────────
   const balanco: MesDoBalanco[] = []
-  for (let i = 3; i >= 0; i--) {
+  const quantos = (input.mesesNoBalanco ?? 4) - 1
+  for (let i = quantos; i >= 0; i--) {
     const d = new Date(`${input.mes}-15T12:00:00Z`); d.setUTCMonth(d.getUTCMonth() - i)
     const m = d.toISOString().slice(0, 7)
     // ⭐ a MESMA `painelDoMes` de novo: um mês do balanço e o mês do topo não têm como

@@ -15,9 +15,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   catch { return NextResponse.json({ erro: 'Perfil não encontrado' }, { status: 404 }) }
 
   const mes = request.nextUrl.searchParams.get('mes') ?? new Date().toISOString().slice(0, 7)
-  // ⚠️ o BALANÇO precisa dos 4 meses — então a janela do histórico começa 3 meses antes.
+  // ⚠️ o BALANÇO precisa dos 6 meses (o desktop mostra 6, o celular corta pros 4 últimos) — então a janela do histórico começa 3 meses antes.
   // Uma segunda consulta por mês daria 4 fontes pro mesmo número.
-  const de = new Date(`${mes}-01T00:00:00.000Z`); de.setUTCMonth(de.getUTCMonth() - 3)
+  const de = new Date(`${mes}-01T00:00:00.000Z`); de.setUTCMonth(de.getUTCMonth() - 5)
   const ate = new Date(`${mes}-01T00:00:00.000Z`); ate.setUTCMonth(ate.getUTCMonth() + 1)
 
   const [txs, contas, cards, perfil] = await Promise.all([
@@ -63,7 +63,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const pontes = txs.filter((t) => t.bridge && t.date.toISOString().slice(0, 7) === mes && t.type === 'CREDIT')
 
   const dash = montarDashboard({
-    mes, hoje: new Date(), linhas: doMes, historico: linhas,
+    mes, hoje: new Date(), linhas: doMes, historico: linhas, mesesNoBalanco: 6,
     saldoNasContas: contas.reduce((s, c) => s + c.balance, 0),
     faturas, pontesDoMes: pontes.map((t) => ({ valor: Math.abs(t.amount) })),
   })

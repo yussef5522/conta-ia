@@ -24,7 +24,14 @@ const HOME = 'app/(dashboard)/perfis/[id]/page.tsx'
 const MES = 'app/(dashboard)/perfis/[id]/mes/page.tsx'
 
 const mock = ler(MOCK)
-const tela = semComentarios(ler(TELA))
+/**
+ * ⚠️ **A TELA SÃO DOIS ARQUIVOS desde 13/09**: `dashboard-pf.tsx` tem as duas COMPOSIÇÕES
+ * (celular e cockpit) e `widgets-pf.tsx` tem os WIDGETS — que são os mesmos objetos nas
+ * duas. Os tokens do mock moram nos widgets, que é de onde a tela inteira lê. Apontar o
+ * guard só pra composição o faria acusar um token que está no lugar certo.
+ */
+const WIDGETS = 'components/perfis/widgets-pf.tsx'
+const tela = semComentarios(ler(TELA)) + semComentarios(ler(WIDGETS))
 const fab = semComentarios(ler(FAB))
 
 function tokensDo(html: string): string[] {
@@ -101,11 +108,17 @@ describe('⛔⛔ as RÉGUAS de honestidade da tela', () => {
   it('⭐ o olhinho esconde TODOS os números, não só o hero', () => {
     // a régua do dono. Se `oculto` só governasse o hero, o dono abriria a tela no ônibus
     // achando que escondeu e o cartão estaria lá.
-    expect(tela).toContain('const brl = useCallback')
+    //
+    // ⚠️ os formatadores viraram UM objeto `Fmt` passado a todo widget (13/09) — e isso é
+    // MAIS forte que o `useCallback` que o guard olhava antes: agora não existe widget que
+    // formate número por fora, porque nenhum recebe outra função.
     expect(tela).toMatch(/oculto \? '••••'/)
     expect(tela).toMatch(/oculto \? '••'/)
-    // e o balanço também obedece
-    expect(tela).toContain('oculto={oculto}')
+    expect(tela, 'o formatador não é único').toContain('const f: Fmt =')
+    // e todo widget que mostra número recebe o MESMO `f`
+    for (const w of ['WSaldo', 'WFluxo', 'WDonut', 'WCartoes', 'WBalanco', 'WAVencer', 'WUltimos']) {
+      expect(tela, `${w} não recebe o formatador único`).toMatch(new RegExp(`<${w}[^>]*f=\\{f\\}`))
+    }
   })
 
   it('⛔ cartão SEM LIMITE não desenha barra', () => {
@@ -113,9 +126,18 @@ describe('⛔⛔ as RÉGUAS de honestidade da tela', () => {
     expect(tela).toContain('sem limite cadastrado')
   })
 
-  it('⛔⛔ ZERO WIDGET SEM DADO — cada bloco é condicional ao próprio dado', () => {
-    for (const gate of ['d.donut.length > 0', 'd.cartoes.length > 0', 'd.aVencer.length > 0', 'd.ultimos.length > 0', 'd.recebidoDaEmpresa.transferencias > 0']) {
-      expect(tela, `bloco sem gate: ${gate}`).toContain(gate)
+  it('⛔⛔ ZERO WIDGET SEM DADO — e agora a trava é DO WIDGET, não da composição', () => {
+    /**
+     * ⭐ A REGRA MUDOU DE LUGAR E FICOU MAIS FORTE (13/09): antes cada composição decidia
+     * se renderizava; agora **o próprio widget se recusa** (`if (…length === 0) return
+     * null`). Com duas composições, a trava na composição teria que ser lembrada DUAS
+     * vezes — e a segunda é a que alguém esquece.
+     */
+    for (const gate of [
+      'd.donut.length === 0', 'd.cartoes.length === 0', 'd.aVencer.length === 0',
+      'd.ultimos.length === 0', 'd.recebidoDaEmpresa.transferencias === 0',
+    ]) {
+      expect(tela, `widget sem trava própria: ${gate}`).toContain(gate)
     }
   })
 
