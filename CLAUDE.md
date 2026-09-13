@@ -611,6 +611,38 @@ beef de hamburger          5 medidas · 1 relâmpago · média COM 13min → SEM
 ```
 **Consequência real:** o *"rodrigo −49% · 2h07 (média 44min)"* compara com uma média pela metade — **sem os 3 relâmpagos a média é 88min e o 2h07 dele fica perto do normal**. É a família do *"tempo zero não é velocidade infinita"* (06/09) um degrau acima: lá a régua matou o `0`, aqui o `1` passa. **NÃO inventei um piso** — escolher "menos de N minutos não conta" é decisão do dono sobre o número que sai da cozinha dele. As saídas possíveis: (a) piso de duração pra entrar na média (e o relâmpago contado à parte, como o "sem tempo" já é); (b) deixar como está e tratar os 2 lotes na mão.
 
+### ⭐⭐ PF — ESPINHA DE NAVEGAÇÃO, WIDGET DE CONTAS E O GRID POR HIERARQUIA (13/09)
+
+**Deploy `Dn6OBbAu6bPFYc7oMZs_f` 4/4.** Quatro frentes numa: navegação, a porta do dado, a ordem dos cards e dois defeitos do print.
+
+**⛔⛔ 1. A ESPINHA — e NÃO nasceu uma segunda sidebar: a que existe FOI LIMPA.** O PF tinha **9 itens**, e entre eles um **"Mês" apontando pro redirect que morreu no mesmo dia**, **DOIS** caminhos pro mesmo import (*"Extrato da conta"* e *"Importar extrato"*) e **TRÊS** formas de ver lançamento (*Despesas · Receitas · Movimentações*). ⭐ Ficou: **Meu Dinheiro · Contas · Cartões · Lançamentos · Relatórios**. *Menu com três portas pra mesma sala é o B1 em forma de navegação — e uma sidebar nova ao lado desta seria a quarta.*
+
+**⛔⛔ E O QUE SAIU DO MENU NÃO FICOU ÓRFÃO.** `Despesas` e `Receitas` são telas VIVAS e **nada mais apontava pra elas** — eu ia criar a **6ª volta da porta sem maçaneta com as minhas próprias mãos**. Passaram a ser alcançadas **do topo de Lançamentos**, com botão à vista.
+
+**⚠️⚠️ E ISSO ABRIU UMA TENSÃO COM O SPRINT DE 02/07, que fica registrada:** naquele dia Despesas ganhou *"lugar próprio no workspace PF"* **porque o gesto estava enterrado** dentro de `/transacoes`. Hoje ela voltou pra lá — mas **o defeito de 02/07 era o gesto enterrado SEM CAMINHO VISÍVEL**, e agora ele é um botão no topo. Os dois guards daquele sprint foram **reapontados** (de *"o item está no menu"* pra *"a tela está alcançável"*), com o porquê escrito nos dois.
+
+**⭐ 2. BOTTOM-NAV no celular** (Início · Lançamentos · **＋** · Cartões · Contas). ⛔ **O FAB solto SAIU** — virou o **＋ central**: dois botões de lançar na mesma tela seriam dois gestos pra uma coisa só, e o de baixo cobriria o outro. **O modal é o mesmo.**
+
+**⭐⭐ 3. O WIDGET "MINHAS CONTAS" na home, com "↑ extrato" POR CONTA.** *"A porta de entrada do dado ficou fora da home"* — e ele tem razão: o gesto que **alimenta o dashboard inteiro** vivia numa tela de cadastro, a dois cliques de onde ele olha os números. A **conferência** aparece ali (a casa dela desde 10/09), incluindo o *"nunca conferida"*.
+
+**⭐ 4. O GRID PELA RÉGUA DELE:** *"quem AGE fica em cima (contas/cartões/vencer); quem ANALISA fica embaixo (donut/balanço)"*. E o **recebido da empresa virou FAIXA FINA** — *"é selo, não bloco gigante"*: ele ocupava um card do tamanho do donut pra dizer um número.
+
+**⛔⛔ 5. OS DOIS DEFEITOS DO PRINT:** a pílula do "a vencer" dizia **"HOJE"** em fatura de **4 dias atrás** — *pílula que mente a data ensina a ignorar a pílula*. Agora mostra **a data do vencimento sempre**, em coral quando atrasada, e **"HOJE" só quando vence hoje de verdade**. E a data tem **um formato só**: `09/09`, nunca `9/09`.
+
+**PROVADO EM PROD, no bundle e pela rota:**
+```
+espinha ✓ · bottom-nav ✓ · widget Minhas contas ✓ · ↑ extrato por conta ✓
+faixa da empresa ✓ · grid de 12 ✓ · FAB solto: SUMIU ✓
+[09 SET] fatura magazine luiza — atrasada 4d      selos: venceu 09/09 · venceu 10/09
+[10 SET] fatura banrisul — atrasada 3d            L1 saldo/fluxo/CONTAS · L2 faixa
+[15 SET] fatura nubank — estimada                 L3 donut/balanço(6m) · L4 cartões/(vencer+últimos)
+/contas → 200 (viva pela espinha) · /transacoes → 200
+```
+
+**⚠️ QUATRO GUARDS REAPONTADOS, nenhum apagado** — e um deles me pegou de novo com **janela de ±400 caracteres**: ele quebrou **com a tela CERTA** quando os 5 itens viraram um fragmento único. *O que define o bloco é a ESTRUTURA, não a distância* (a lição do detector de rastro, 12/09). ⭐ E o guard de vazamento do menu ficou **mais afiado**: ele casava por **label**, e *"Relatórios"* do perfil colidia com *"Relatórios"* da empresa — **dois destinos, o mesmo nome**. Agora a régua é o **destino**: `@sempre` **nunca** aponta pra rota de `/empresas/`.
+
+**REGRA 11 — 4 defeitos repostos, todos vermelhos.** **9.714 verdes · TS 0.**
+
 ### ⛔⛔ O DESKTOP ERA O CELULAR ESTICADO — O COCKPIT (13/09)
 
 **O dono, no MacBook:** *"o mock era MOBILE e o desktop ficou uma coluna de 480px boiando no meio do monitor."* Virou a **REGRA 12** da casa (acima).
