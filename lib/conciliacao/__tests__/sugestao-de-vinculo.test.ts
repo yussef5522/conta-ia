@@ -13,7 +13,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   sugerirVinculos, sugerirVinculosDaConta, reconhecerFornecedor, reconhecerFornecedorComIrmaos,
-  CORTE_PRA_SUGERIR, type LadoDoPar, type FornecedorConhecido,
+  CORTE_PRA_SUGERIR, canonizadorDeFornecedor, type LadoDoPar, type FornecedorConhecido,
 } from '../sugestao-de-vinculo'
 
 const d = (iso: string) => new Date(`${iso}T00:00:00.000Z`)
@@ -294,5 +294,47 @@ describe('⭐⭐ VALOR EXATO NUMA JANELA CURTA APARECE — os dois casos reais d
       contas: [conta('c-contab', 'contabilidade', 1621, '2026-09-04')],
       fornecedores: FORNECEDORES,
     })).toHaveLength(0)
+  })
+})
+
+// ⭐⭐⭐ O SUFIXO SOCIETÁRIO NÃO É IDENTIDADE — o caso CIA DA FRUTA (13/09/2026).
+//
+// **Medido em prod:** `…VERDURAS LTDA` (sem CNPJ, MANUAL, 05/06) e `…VERDURAS EIRELI`
+// (CNPJ 36603841000130, ESTOQUE_NF, 04/09) são a MESMA empresa. As 2 contas abertas
+// (790,49 + 472,64 = **1.263,13**, o valor EXATO da linha) vivem na EIRELI, e a linha
+// empatava entre as duas → o reconhecedor devolvia NULL e o card nunca nascia.
+describe('⭐⭐ LTDA e EIRELI do mesmo nome são IRMÃOS (leitura, não fusão)', () => {
+  const LTDA = { id: 'ltda', razaoSocial: 'CIA DA FRUTA COMERCIO DE FRUTAS E VERDURAS LTDA', nomeFantasia: null, cnpj: null }
+  const EIRELI = { id: 'eireli', razaoSocial: 'CIA DA FRUTA COMERCIO DE FRUTAS E VERDURAS EIRELI', nomeFantasia: null, cnpj: '36603841000130' }
+  const LINHA = 'CIA DA FRUTA COMERCIO DE FRUTAS E VERDURAS LTDA - Transferência | Pix'
+
+  it('⛔⛔ REPONDO O MUNDO DE ONTEM: com um cadastro só, ele reconhece', () => {
+    // ⚠️ o contrafactual que dá sentido ao teste seguinte — o problema NÃO era o nome
+    expect(reconhecerFornecedorComIrmaos(LINHA, [EIRELI])?.fornecedor.id).toBe('eireli')
+  })
+
+  it('⭐⭐ com os DOIS cadastros, devolve os dois como irmãos — em vez de NULL', () => {
+    const r = reconhecerFornecedorComIrmaos(LINHA, [LTDA, EIRELI])
+    expect(r, 'o empate LTDA×EIRELI ainda devolve NULL').not.toBeNull()
+    expect([...r!.ids].sort()).toEqual(['eireli', 'ltda'])
+  })
+
+  it('⭐ e o canonizador aponta os dois pro MESMO grupo — as contas viram de um só', () => {
+    const canon = canonizadorDeFornecedor([LTDA, EIRELI])
+    expect(canon('ltda')).toBe(canon('eireli'))
+  })
+
+  it('⛔⛔ mas nome DIFERENTE com o mesmo sufixo continua sendo dois fornecedores', () => {
+    // ⚠️ o que muda é só o sufixo; a identidade continua sendo o NOME. Sem isto, a régua
+    // viraria "tudo que termina em LTDA é o mesmo", que é o oposto do que ela faz.
+    const outro = { id: 'x', razaoSocial: 'CARGNELUTTI E CIA LTDA', nomeFantasia: null, cnpj: '98417645000129' }
+    const canon = canonizadorDeFornecedor([LTDA, outro])
+    expect(canon('ltda')).not.toBe(canon('x'))
+  })
+
+  it('⛔ e o sufixo só cai no FIM — "ME" no meio da razão social não se toca', () => {
+    const a = { id: 'a', razaoSocial: 'ME COMERCIO DE ALIMENTOS', nomeFantasia: null, cnpj: null }
+    const b = { id: 'b', razaoSocial: 'COMERCIO DE ALIMENTOS', nomeFantasia: null, cnpj: null }
+    expect(canonizadorDeFornecedor([a, b])('a')).not.toBe(canonizadorDeFornecedor([a, b])('b'))
   })
 })

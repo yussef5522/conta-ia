@@ -279,9 +279,32 @@ export function canonizadorDeFornecedor(
   return (id) => (id ? canonPorId.get(id) ?? id : null)
 }
 
-/** ⚠️ a chave da identidade: nome normalizado, o mesmo dos dois campos do cadastro */
+/**
+ * ⭐⭐⭐ O SUFIXO SOCIETÁRIO NÃO É IDENTIDADE (13/09/2026).
+ *
+ * **O caso, medido em prod:** `CIA DA FRUTA COMERCIO DE FRUTAS E VERDURAS **LTDA**` (sem
+ * CNPJ, MANUAL, 05/06) e `…**EIRELI**` (CNPJ 36603841000130, ESTOQUE_NF, 04/09) — a MESMA
+ * empresa em dois cadastros. As 2 contas abertas (790,49 + 472,64 = **1.263,13**, o valor
+ * EXATO da linha da stone) vivem na EIRELI; a linha empatava entre as duas e o reconhecedor
+ * devolvia **NULL** (trava certa: *"dois igualmente parecidos = não sei qual é"*).
+ *
+ * ⚠️ **É a mesma fábrica dos 11 duplicados de 11/09 — e ela NÃO tinha fechado**: o fix
+ * daquele dia casa por nome IDÊNTICO, e `LTDA` ≠ `EIRELI`.
+ *
+ * ⛔⛔ **ISTO NÃO FUNDE NADA — é leitura.** Só faz os dois cadastros virarem IRMÃOS pro
+ * card oferecer as contas dos dois. Fundir é decisão do dono (a régua de 04/09:
+ * *"fusão errada de fornecedor é pior que duplicata visível"*), e ela continua de pé.
+ *
+ * ⚠️ E a lista é FECHADA e só corta no FIM do nome: tirar "ME" do meio de uma razão social
+ * mudaria o nome de empresas de verdade.
+ */
+const SUFIXOS_SOCIETARIOS = /\s+(ltda|eireli|me|epp|sa|s\/a|s a|mei|ltda me|eireli me)$/i
+
+/** ⚠️ a chave da identidade: nome normalizado, SEM o sufixo societário */
 function chaveDoNome(f: FornecedorConhecido): string {
-  return normalizeForMatch(f.nomeFantasia ?? f.razaoSocial)
+  const bruto = normalizeForMatch(f.nomeFantasia ?? f.razaoSocial)
+  // ⚠️ roda 2× de propósito: "X LTDA ME" tem dois sufixos empilhados
+  return bruto.replace(SUFIXOS_SOCIETARIOS, '').replace(SUFIXOS_SOCIETARIOS, '').trim() || bruto
 }
 
 /** ⚠️ casca fina — quem só quer "quem é" continua chamando isto (REGRA 4) */
