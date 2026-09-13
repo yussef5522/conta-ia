@@ -112,6 +112,25 @@ export interface CardDeEscolha {
    * `null` quando não existe nenhuma — ou quando existem duas (aí o sistema não sabe).
    */
   atalho: { notasIds: string[]; resumo: string; ambiguo: boolean } | null
+  /**
+   * ⭐⭐⭐ AS CONTAS **SEM FORNECEDOR** (13/09/2026) — o que o card por fornecedor nunca
+   * alcançou.
+   *
+   * **Medido em prod:** **10 contas em aberto sem fornecedor, R$ 30.738,31** — entre elas
+   * `oesa 1.759,44`, `oficina 180`, `radio 109` e o `aluguel caçula 5.234`. Conta lançada
+   * à mão não tem FK de fornecedor, então **nenhum card jamais a ofereceu**: era o débito
+   * registrado em 10/09 (*"sem fornecedor dos dois lados, o Find & Match por nome não
+   * alcança"*) e nunca fechado.
+   *
+   * ⛔⛔ **NADA AQUI NASCE MARCADO E NADA ENTRA NO ATALHO ⭐** — e essa é a régua que
+   * separa isto do caça-níquel de 09/09. Sem nome dos dois lados **não existe âncora**, e
+   * uma soma que fecha não prova nada sozinha (medido: 9% de valores aleatórios fechavam).
+   * O card só as **OFERECE PRA ESCOLHA**; quem diz que são essas é o dono.
+   *
+   * ⚠️ E elas só aparecem quando o dono ABRE a linha de propósito (`?abrir=`), nunca na
+   * fila automática — a fila continua exigindo fornecedor reconhecido.
+   */
+  semFornecedor: NotaNoCard[]
 }
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -134,6 +153,8 @@ export function montarCardDeEscolha(entrada: {
   fornecedorNome: string
   notas: NotaAbertaDoCard[]
   hoje: Date
+  /** ⭐ contas em aberto que não têm fornecedor nenhum — ver `semFornecedor` no card */
+  semFornecedor?: NotaAbertaDoCard[]
 }): CardDeEscolha {
   const { linha, notas, hoje } = entrada
   const comAberto = notas
@@ -180,12 +201,21 @@ export function montarCardDeEscolha(entrada: {
     foraDaJanela: !n.vencida && n.vencimento > limite && !pisoDaJanela.has(n.id),
   }))
 
+  // ⚠️ passam pela MESMA preparação (em aberto, vencida, janela) — o que muda é que
+  // `sugerida` é SEMPRE false: sem nome dos dois lados, marcar seria adivinhar.
+  const semForn: NotaNoCard[] = (entrada.semFornecedor ?? [])
+    .map((n) => ({ ...n, emAberto: emAbertoDaNota(n), vencida: n.vencimento < hoje }))
+    .filter((n) => n.emAberto > TOLERANCIA)
+    .sort((a, b) => a.vencimento.getTime() - b.vencimento.getTime())
+    .map((n) => ({ ...n, sugerida: false, foraDaJanela: false }))
+
   return {
     linha,
     fornecedorId: entrada.fornecedorId,
     fornecedorNome: entrada.fornecedorNome,
     vencidas: comSugestao.filter((n) => n.vencida),
     aVencer: comSugestao.filter((n) => !n.vencida),
+    semFornecedor: semForn,
     atalho: unica
       ? {
           notasIds: ids,

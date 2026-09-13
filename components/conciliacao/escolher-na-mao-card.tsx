@@ -55,6 +55,8 @@ export interface CardDeEscolhaDTO {
   vencidas: NotaDoCardDTO[]
   aVencer: NotaDoCardDTO[]
   atalho: { notasIds: string[]; resumo: string; ambiguo: boolean } | null
+  /** ⭐ contas lançadas à mão, sem fornecedor — nunca pré-marcadas (13/09) */
+  semFornecedor?: NotaDoCardDTO[]
 }
 
 /** o teto do acerto com nome — o MESMO do servidor (`escolher-na-mao.ts`) */
@@ -103,7 +105,8 @@ export function EscolherNaMaoCard({ empresaId, card, onConciliado, onFechar, nav
     () => card.aVencer.some((n) => n.foraDaJanela && n.sugerida),
   )
 
-  const todas = useMemo(() => [...card.vencidas, ...card.aVencer], [card])
+  const semForn = useMemo(() => card.semFornecedor ?? [], [card])
+  const todas = useMemo(() => [...card.vencidas, ...card.aVencer, ...semForn], [card, semForn])
   const aVencerPerto = useMemo(() => card.aVencer.filter((n) => !n.foraDaJanela), [card])
   const aVencerLonge = useMemo(() => card.aVencer.filter((n) => n.foraDaJanela), [card])
   /** ⭐ lista longa ROLA dentro do card — o rodapé sticky não pode sair do polegar */
@@ -302,9 +305,31 @@ export function EscolherNaMaoCard({ empresaId, card, onConciliado, onFechar, nav
             )}
           </>
         )}
+        {/* ⭐⭐⭐ AS CONTAS SEM FORNECEDOR (13/09) — o que nenhum card alcançava.
+            ⛔ NADA marcado e FORA do atalho ⭐: sem nome dos dois lados não há âncora, e
+            uma soma que fecha não prova nada (9% de valores aleatórios fechavam, 09/09).
+            O card OFERECE; quem diz que é essa é o dono. */}
+        {semForn.length > 0 && (
+          <>
+            <p className="px-[16px] pb-[2px] pt-[10px] text-[11.5px] font-bold uppercase tracking-[.03em]"
+              style={{ color: MOCK.sub }}>
+              Contas lançadas à mão (sem fornecedor)
+            </p>
+            <p className="px-[16px] pb-[4px] text-[11.5px]" style={{ color: MOCK.sub }}>
+              o sistema não tem como ligar estas ao nome da linha — {card.fornecedorNome
+                ? 'confira antes de marcar'
+                : 'e o nome desta linha não bate com nenhum fornecedor cadastrado'}
+            </p>
+            {semForn.map((n) => <Nota key={n.id} n={n} />)}
+          </>
+        )}
         {todas.length === 0 && (
           <p className="px-[16px] py-[12px] text-[13.5px]" style={{ color: MOCK.sub }}>
-            Este fornecedor não tem nota em aberto — a linha não é pagamento de conta nossa.
+            {card.fornecedorNome
+              ? 'Este fornecedor não tem nota em aberto — a linha não é pagamento de conta nossa.'
+              // ⚠️ diz o ESTADO REAL que impede, em vez de tela vazia: o dono abriu a porta
+              // de propósito e merece saber por que não há nada atrás dela.
+              : 'Não reconheci o fornecedor desta linha e não há conta em aberto sem fornecedor — nada pra casar aqui.'}
           </p>
         )}
       </div>

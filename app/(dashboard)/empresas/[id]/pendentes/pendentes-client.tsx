@@ -57,7 +57,7 @@ import {
 import { CategoryCombobox } from '@/components/transacoes/category-combobox'
 import { LinkPaymentModal } from '@/components/emprestimos/LinkPaymentModal'
 import { pendenteRowActions } from '@/lib/pendentes/row-actions'
-import { Landmark } from 'lucide-react'
+import { Landmark, Link2 } from 'lucide-react'
 
 // Sprint Casar Pagamento (04/08): detecção retornada por /emprestimos/deteccao-pendentes
 type LoanPaymentDetection =
@@ -1298,6 +1298,24 @@ export function PendentesClient({
                       else if (k === 'IGNORAR') ignorarTransacao(t.id)
                     }}
                   />
+
+                  {/* ⭐⭐⭐ "CASAR COM CONTA A PAGAR" À VISTA (13/09/2026).
+                      **O dono:** *"é onde eu estou quando quero casar; hoje só me oferecem
+                      categoria."* Ele estava certo: a porta EXISTE desde 10/09 — e mora
+                      **dentro do menu ⋮**, que é o mesmo que não existir. É a lição de
+                      30/08 (*"ação escondida sem afordância não existe, principalmente no
+                      celular, que é onde o dono opera"*).
+                      ⛔ **É o MESMO deep-link, não um segundo painel** — o card mora num
+                      lugar só; render duplicado divergiria na primeira regra nova. */}
+                  {t.type === 'DEBIT' && (
+                    <Button asChild size="sm" variant="ghost" title="Casar com uma conta a pagar">
+                      <a href={`/conciliacao?empresaId=${empresaId}&abrir=${t.id}`}
+                        className="gap-1.5 text-[#534AB7] hover:bg-violet-50">
+                        <Link2 className="h-3.5 w-3.5" />
+                        <span className="hidden sm:inline text-xs font-medium">casar conta</span>
+                      </a>
+                    </Button>
+                  )}
 
                   {/* Botão "Ignorar" */}
                   <Button

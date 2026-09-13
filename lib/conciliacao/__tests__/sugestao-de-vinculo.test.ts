@@ -64,11 +64,36 @@ describe('a sugestão de vínculo — o caso Cancian', () => {
     expect(s[0].fornecedorPeloNome).toBe('CARLOS CANCIAN E CIA LTDA')
   })
 
-  it('⛔⛔ REPONDO O DEFEITO: sem os fornecedores cadastrados o par SOME (era o estado de hoje)', () => {
+  it('⚠️ INVERTIDO em 13/09: sem os fornecedores o par AINDA aparece — por OUTRA âncora', () => {
+    // ⚠️⚠️ ESTE TESTE AFIRMAVA O MUNDO DE 07/09, e ele mudou por evidência.
+    //
+    // Ele era o contrafactual do fix daquele dia: sem os 15 pontos do fornecedor o par
+    // dava **65 contra o corte de 70** e sumia. Em 13/09 o corte deixou de ser a única
+    // porta: **quase-exato COM âncora de identidade e dentro do teto nomeado (10%) passa**
+    // — porque `FOCATTO 2.528,31 × 2.459,76`, com fornecedor EXATO, dava 50 e era
+    // invisível. Boleto pago com juros é o caso mais comum de conta vencida.
+    //
+    // ⭐ Aqui a âncora que sobra é `DESC_MUITO_SIMILAR` — as duas descrições dizem
+    // "CANCIAN". **É a MESMA âncora que o guard do falso-amigo já aceitava desde 11/09**,
+    // então isto não afrouxa nada: só deixa de esconder o que ela já autorizava.
     const s = sugerirVinculos({
       extrato: LINHA_CANCIAN, contas: [CONTA_834771], fornecedores: [],
     })
-    // 40 (valor) + 15 (data) + 0 (fornecedor) + 10 (descrição) = 65 < 70
+    expect(s).toHaveLength(1)
+    // ⭐ e nasce ABAIXO do corte: confiança baixa, ranqueado sob quem fecha ao centavo
+    expect(s[0].score).toBeLessThan(CORTE_PRA_SUGERIR)
+    expect(s[0].confianca).toBe('baixa')
+  })
+
+  it('⛔⛔ E O FALSO-AMIGO CONTINUA BARRADO — quase-exato SEM nome não passa', () => {
+    // ⚠️ é este teste que segura a porta nova: `aluguel caçula × DOCEOLI` tem 88 centavos
+    // de diferença (0,02%) e passaria no teto de 10% — o que o barra é NÃO TER ÂNCORA.
+    // **Diferença de centavos não compra identidade.**
+    const s = sugerirVinculos({
+      extrato: { id: 'lx', descricao: 'DOCEOLI ALIMENTOS LTDA - Pagamento', valor: 5234.88, data: new Date('2026-09-10'), tipo: 'DEBIT', fornecedorId: null, contaBancariaId: 'b1' },
+      contas: [{ id: 'cx', descricao: 'aluguel caçula', valor: 5234.00, data: new Date('2026-09-10'), tipo: 'DEBIT', fornecedorId: null, contaBancariaId: null }],
+      fornecedores: [],
+    })
     expect(s).toHaveLength(0)
   })
 

@@ -213,3 +213,69 @@ describe('⭐⭐ NOTA QUE JÁ RECEBEU BAIXA PARCIAL entra pelo EM ABERTO', () =>
     expect([...card.vencidas, ...card.aVencer].map((n) => n.id)).toEqual(['viva'])
   })
 })
+
+// ⭐⭐⭐ AS CONTAS SEM FORNECEDOR — o que nenhum card alcançava (13/09/2026).
+//
+// **Medido em prod:** 10 contas em aberto sem fornecedor, **R$ 30.738,31** — `oesa
+// 1.759,44`, `oficina 180`, `radio 109`, `aluguel caçula 5.234`… Conta lançada à mão não
+// tem FK, e o card nasce de um fornecedor reconhecido: **elas nunca foram oferecidas**.
+// Era o débito de 10/09 (*"sem fornecedor dos dois lados, o Find & Match não alcança"*).
+describe('⭐⭐ o card alcança a conta lançada à mão', () => {
+  const linha = {
+    id: 'l1', descricao: 'MIXX PLAY - Pagamento', valor: 111.21,
+    data: new Date('2026-09-11'), conta: 'stone', categoria: null,
+  }
+  const radio = { id: 'radio', descricao: 'radio', valor: 109, vencimento: new Date('2026-09-10'), jaPago: 0 }
+
+  it('⭐⭐ ela APARECE mesmo sem fornecedor reconhecido — a porta deixa de abrir no vazio', () => {
+    const c = montarCardDeEscolha({
+      linha, fornecedorId: '', fornecedorNome: '', notas: [], hoje: new Date('2026-09-13'),
+      semFornecedor: [radio],
+    })
+    expect(c.semFornecedor).toHaveLength(1)
+    expect(c.semFornecedor[0].emAberto).toBe(109)
+  })
+
+  it('⛔⛔ mas NASCE DESMARCADA — sem nome dos dois lados não há âncora', () => {
+    // ⚠️ REGRA 11 pegou este buraco: eu tinha a régua no código e NADA a provava —
+    // trocar `sugerida: false` por `sugerida: n.vencida` deixava os 132 testes verdes.
+    // ⛔ É a régua de 09/09: uma soma que fecha não prova nada sozinha (9% de valores
+    // ALEATÓRIOS fechavam nas listas reais). O card OFERECE; quem diz é o dono.
+    const c = montarCardDeEscolha({
+      linha, fornecedorId: '', fornecedorNome: '', notas: [], hoje: new Date('2026-09-13'),
+      semFornecedor: [radio], // vencida em 10/09, "hoje" é 13/09
+    })
+    expect(c.semFornecedor[0].vencida, 'o fixture precisa de uma VENCIDA pra o teste morder').toBe(true)
+    expect(c.semFornecedor[0].sugerida, 'conta sem fornecedor nasceu marcada').toBe(false)
+  })
+
+  it('⛔ e NUNCA entra no atalho ⭐ — o atalho afirma "foi esta combinação"', () => {
+    // o atalho é a única coisa que o sistema afirma sozinho; deixar entrar uma conta
+    // anônima que fecha por valor é literalmente o caça-níquel de 09/09.
+    //
+    // ⚠️ E ISTO É IMPOSSÍVEL POR CONSTRUÇÃO, não vigiado: `combinacoesQueFecham` recebe
+    // SÓ `comAberto`. Medido pela REGRA 11 — injetei as sem-fornecedor na combinação e a
+    // suíte ficou verde, porque os índices nem resolvem. **A asserção abaixo documenta o
+    // comportamento; quem o garante é a forma do código.**
+    const c = montarCardDeEscolha({
+      linha: { ...linha, valor: 109 }, fornecedorId: '', fornecedorNome: '', notas: [],
+      hoje: new Date('2026-09-13'), semFornecedor: [radio],
+    })
+    expect(c.atalho, 'a conta sem fornecedor virou atalho').toBeNull()
+  })
+
+  it('⭐ o card do fornecedor RECONHECIDO também as oferece — o caso OESA', () => {
+    // OESA: o card acha a nota da OESA SA (1.574,00, 14% → fora do gesto) e a conta certa
+    // é a manual `oesa 1.759,44` (4,3%), que não tem fornecedor. As duas aparecem.
+    const c = montarCardDeEscolha({
+      linha: { ...linha, descricao: 'OESA COMERCIO E REPRESENTACOES S A - Pagamento', valor: 1838.61, data: new Date('2026-09-08') },
+      fornecedorId: 'f-oesa', fornecedorNome: 'OESA COMERCIO E REPRESENTACOES SA',
+      notas: [{ id: 'nf', descricao: 'OESA — NF 3900302', valor: 1574, vencimento: new Date('2026-09-24'), jaPago: 0 }],
+      hoje: new Date('2026-09-13'),
+      semFornecedor: [{ id: 'manual', descricao: 'oesa', valor: 1759.44, vencimento: new Date('2026-09-03'), jaPago: 0 }],
+    })
+    expect(c.aVencer).toHaveLength(1)
+    expect(c.semFornecedor).toHaveLength(1)
+    expect(c.semFornecedor[0].sugerida).toBe(false)
+  })
+})

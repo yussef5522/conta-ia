@@ -98,16 +98,58 @@ export async function GET(request: NextRequest) {
           orderBy: { dueDate: 'asc' },
         })
       : []
-    const jaPago = await jaPagoPorConta(notasTodas.map((n) => n.id), prisma)
+    /**
+     * ⭐⭐⭐ AS CONTAS SEM FORNECEDOR — só quando o dono ABRE a linha (13/09/2026).
+     *
+     * **Medido em prod:** 10 contas em aberto sem fornecedor (R$ 30.738,31) que **nenhum
+     * card jamais alcançou**, porque o card nasce de um fornecedor reconhecido. São
+     * `oesa 1.759,44`, `oficina 180`, `radio 109`, `aluguel caçula 5.234`… — lançadas à
+     * mão, sem FK. É o débito de 10/09, nunca fechado.
+     *
+     * ⛔⛔ **SÓ PELA PORTA (`?abrir=`), NUNCA NA FILA.** A fila é o que o sistema OFERECE
+     * sozinho, e sem nome dos dois lados não há âncora — sugerir ali seria o caça-níquel
+     * que a régua de 09/09 recusou (9% de valores aleatórios fecham). Aqui o dono APONTOU
+     * a linha; a resposta honesta é mostrar o que existe, sem marcar nada.
+     */
+    const semFornecedor = data.abrir
+      ? await prisma.transaction.findMany({
+          where: {
+            supplierId: null,
+            lifecycle: { in: ['PAYABLE', 'RECEIVABLE'] },
+            status: 'PENDING',
+            paymentDate: null,
+            reconciledWithId: null,
+            reconciledFrom: { none: {} },
+            // ⛔ REGRA 8: multi-tenant pelo que a conta manual TEM (categoria/conta/pessoa)
+            OR: [
+              { category: { companyId: data.empresaId } },
+              { bankAccount: { companyId: data.empresaId } },
+              { employee: { companyId: data.empresaId } },
+            ],
+          },
+          select: { id: true, description: true, amount: true, dueDate: true, date: true },
+          orderBy: { dueDate: 'asc' },
+        })
+      : []
+
+    const jaPago = await jaPagoPorConta([...notasTodas, ...semFornecedor].map((n) => n.id), prisma)
 
     const hoje = new Date()
     const cards = daEmpresa.flatMap((l) => {
       const fid = fornecedorDaLinha.get(l.id)
-      if (!fid) return []
-      const dele = new Set(irmaosDe.get(fid) ?? [fid])
-      const doForn = notasTodas.filter((n) => n.supplierId && dele.has(n.supplierId))
-      if (!doForn.length) return []
-      const forn = fornecedores.find((f) => f.id === fid)
+      /**
+       * ⭐⭐ LINHA SEM FORNECEDOR RECONHECIDO TAMBÉM GANHA CARD — pela porta.
+       *
+       * Era aqui que MIXX PLAY e PJBANK morriam: `if (!fid) return []`. A linha que o
+       * dono abriu de propósito não pode devolver tela vazia — **abrir a porta e não ter
+       * nada atrás é a mesma "porta sem maçaneta" de cabeça pra baixo.**
+       */
+      const semFornDaLinha = l.id === data.abrir ? semFornecedor : []
+      if (!fid && !semFornDaLinha.length) return []
+      const dele = new Set(fid ? (irmaosDe.get(fid) ?? [fid]) : [])
+      const doForn = fid ? notasTodas.filter((n) => n.supplierId && dele.has(n.supplierId)) : []
+      if (!doForn.length && !semFornDaLinha.length) return []
+      const forn = fid ? fornecedores.find((f) => f.id === fid) : null
       return [montarCardDeEscolha({
         linha: {
           id: l.id,
@@ -117,8 +159,10 @@ export async function GET(request: NextRequest) {
           conta: l.bankAccount?.name?.trim() ?? null,
           categoria: l.category?.name ?? null,
         },
-        fornecedorId: fid,
-        fornecedorNome: forn?.nomeFantasia ?? forn?.razaoSocial ?? 'fornecedor',
+        fornecedorId: fid ?? '',
+        // ⚠️ nome vazio quando o sistema NÃO reconheceu: inventar um nome aqui faria a
+        // tela afirmar uma identidade que ninguém provou.
+        fornecedorNome: forn?.nomeFantasia ?? forn?.razaoSocial ?? '',
         notas: doForn.map((n) => ({
           id: n.id,
           descricao: n.description,
@@ -127,6 +171,13 @@ export async function GET(request: NextRequest) {
           jaPago: jaPago.get(n.id) ?? 0,
         })),
         hoje,
+        semFornecedor: semFornDaLinha.map((n) => ({
+          id: n.id,
+          descricao: n.description,
+          valor: Math.abs(n.amount),
+          vencimento: n.dueDate ?? n.date,
+          jaPago: jaPago.get(n.id) ?? 0,
+        })),
       })]
     })
     // ⚠️ a mais ANTIGA primeiro — a ordem que o dono pediu no mock ("da mais antiga")

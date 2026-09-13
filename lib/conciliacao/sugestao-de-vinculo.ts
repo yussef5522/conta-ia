@@ -35,6 +35,7 @@
 import { jaroWinkler } from './jaro-winkler'
 import { normalizeForMatch } from './normalize-for-match'
 import { scoreMatch, type MatchCandidate, type OFXTransaction, type MatchReason } from './match'
+import { avaliarDiferenca } from './regua-da-diferenca'
 import { nomeDaContaBateComALinha } from './nome-da-conta-manual'
 import { processadoraDaLinha, chaveDoPadrao, avisoDaProcessadora } from './processadora-de-boleto'
 
@@ -446,7 +447,36 @@ export function sugerirVinculos(entrada: EntradaDeSugestao): SugestaoDeVinculo[]
      * ⛔ O que a torna segura não é o número: é o **aviso na cara** e o fato de que ela
      * nasce em confiança BAIXA, ranqueada abaixo de todo par que tem nome.
      */
-    if (scoreFinal < corte && !exatoEPerto && !peloIntermediario) continue
+    /**
+     * ⭐⭐⭐ O QUASE-EXATO COM NOME PASSA PELA MESMA PORTA (13/09/2026) — ordem do dono:
+     * *"a régua da processadora só olha exato? afrouxa pro teto nomeado"*.
+     *
+     * **A CAUSA GERAL, medida:** valor dentro de ±5% vale **25 pontos**; exato vale 50.
+     * `FOCATTO 2.528,31 × 2.459,76` — fornecedor EXATO, descrição 81% parecida, 4 dias —
+     * soma **50 contra um corte de 70**. Ou seja: **boleto pago com juros/multa nunca era
+     * sugerido**, que é o caso mais comum de conta vencida. Eram 4 dos 5 casos que o dono
+     * trouxe (FOCATTO 2,7% · OESA 4,3% · PJBANK 2,0% · RADIO 2,0%).
+     *
+     * ⭐ **A porta reusa o dono único dos degraus** (`avaliarDiferenca`, 12/09): passa o
+     * que está dentro do **teto do gesto manual (10% da linha)** — exatamente o que o dono
+     * pode confirmar nomeando. Acima disso segue invisível: *"ninguém confirma 500 de
+     * juros numa nota de 600"*.
+     *
+     * ⛔⛔ **E ELA NÃO AFROUXA O GUARD DO FALSO-AMIGO — ela vem DEPOIS dele.** Quem barra
+     * `aluguel caçula × DOCEOLI` é o `continue` de cima (`soParecido && !alguemDizQuemE`),
+     * e **isso foi MEDIDO, não suposto**: repondo o defeito aqui os testes ficaram verdes,
+     * e só ficaram vermelhos ao remover o `continue` anterior (3 vermelhos, incluindo o da
+     * processadora). ⚠️ O `alguemDizQuemE` repetido abaixo é redundante de propósito —
+     * cinto e suspensório numa porta que solta o corte de score.
+     *
+     * ⚠️ E o score NÃO é inflado: ele só deixa de ser filtro. O par nasce em confiança
+     * BAIXA, ranqueado abaixo de todo mundo que fecha ao centavo.
+     */
+    const quaseComNome = soParecido
+      && alguemDizQuemE
+      && avaliarDiferenca(entrada.extrato.valor, entrada.extrato.valor - c.valor).degrau !== 'RECUSA'
+
+    if (scoreFinal < corte && !exatoEPerto && !peloIntermediario && !quaseComNome) continue
     // ⚠️ o nome do fornecedor só entra na frase se ele REALMENTE contou —
     // dizer "o nome no extrato é X" quando o X não pontuou seria motivo falso.
     const contou = s.reasons.includes('FORNECEDOR_IGUAL') && !!reconhecido
