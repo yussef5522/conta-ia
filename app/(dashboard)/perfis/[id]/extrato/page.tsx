@@ -6,8 +6,9 @@
 // ⛔ O preview e o confirm rodam o MESMO motor com o MESMO arquivo — a tela não tem como
 // mostrar uma coisa e a gravação fazer outra (a régua de 13/08).
 
-import { use, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { use, useCallback, useEffect, useState } from 'react'
+import Link from 'next/link'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { fetchJson } from '@/lib/http/fetch-json'
 
 interface Preview {
@@ -28,25 +29,36 @@ interface Preview {
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
+interface ContaPF {
+  id: string; name: string; bankName: string | null; balance: number
+  bankCode: string | null; accountNumber: string | null
+  ledgerBal: number | null; ledgerBalDate: string | null
+}
+
 export default function ImportarExtratoPFPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const router = useRouter()
-  const [contas, setContas] = useState<{ id: string; name: string }[]>([])
-  const [contaId, setContaId] = useState('')
+  const sp = useSearchParams()
+  // ⚠️ REGRA 9: todo hook antes de qualquer early return
+  const [contas, setContas] = useState<ContaPF[]>([])
+  // ⭐ `?conta=` vem do card — o gesto começa lá e chega aqui já apontado
+  const [contaId, setContaId] = useState(sp.get('conta') ?? '')
   const [arquivo, setArquivo] = useState<File | null>(null)
   const [p, setP] = useState<Preview | null>(null)
   const [erro, setErro] = useState<string | null>(null)
   const [ocupado, setOcupado] = useState(false)
   const [aprender, setAprender] = useState(true)
 
-  useState(() => {
-    void fetchJson<{ contas?: { id: string; name: string }[] } | { id: string; name: string }[]>(`/api/perfis/${id}/contas`)
-      .then((r) => {
-        if (!r.ok || !r.data) return
-        const lista = Array.isArray(r.data) ? r.data : r.data.contas ?? []
-        setContas(lista); if (lista[0]) setContaId(lista[0].id)
-      })
-  })
+  const carregarContas = useCallback(async () => {
+    const r = await fetchJson<{ accounts?: ContaPF[] }>(`/api/perfis/${id}/contas`)
+    if (!r.ok || !r.data?.accounts) return
+    setContas(r.data.accounts)
+    // ⚠️ só escolhe sozinho quando o dono não veio apontando de lugar nenhum
+    setContaId((atual) => atual || r.data!.accounts![0]?.id || '')
+  }, [id])
+  useEffect(() => { void carregarContas() }, [carregarContas])
+
+  const conta = contas.find((c) => c.id === contaId) ?? null
 
   async function enviar(confirmar: boolean) {
     if (!arquivo || !contaId) return setErro('Escolha a conta e o arquivo.')
@@ -64,8 +76,39 @@ export default function ImportarExtratoPFPage({ params }: { params: Promise<{ id
 
   return (
     <div className="mx-auto max-w-[720px] pb-12">
-      <h1 className="mb-1 text-base font-bold text-slate-800">Importar extrato da conta</h1>
-      <p className="mb-4 text-xs text-slate-400">o OFX do banco — o mesmo gesto da empresa, com a conferência de saldo</p>
+      <div className="mb-3 flex items-center gap-2">
+        <Link href={`/perfis/${id}/contas`} className="text-sm text-slate-500">←</Link>
+        <div className="flex-1">
+          <h1 className="text-base font-bold text-slate-800">Importar extrato da conta</h1>
+          <p className="text-xs text-slate-400">o OFX do banco — o mesmo gesto da empresa, com a conferência de saldo</p>
+        </div>
+      </div>
+
+      {/* ⭐ "DENTRO DA CONTA": com `?conta=` a tela abre falando DAQUELA conta — saldo,
+          conferência e se ela já tem identidade pra trava morder. */}
+      {conta && (
+        <div className="mb-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
+          <p className="text-[13px] font-bold text-slate-800">{conta.name}
+            {conta.bankName && <small className="ml-1.5 font-normal text-slate-400">{conta.bankName}</small>}
+          </p>
+          <p className="mt-0.5 text-[19px] font-bold tabular-nums text-slate-900">{brl(conta.balance)}</p>
+          <p className="text-[11.5px]" style={{
+            color: conta.ledgerBal == null ? '#94a3b8'
+              : Math.abs(conta.balance - conta.ledgerBal) <= 0.02 ? '#177245' : '#b45309',
+          }}>
+            {conta.ledgerBal == null
+              ? '○ nunca conferida com o banco'
+              : Math.abs(conta.balance - conta.ledgerBal) <= 0.02
+                ? `✓ confere com o banco${conta.ledgerBalDate ? ` em ${conta.ledgerBalDate.slice(8, 10)}/${conta.ledgerBalDate.slice(5, 7)}` : ''}`
+                : `⚠ difere do banco em ${brl(Math.abs(conta.balance - conta.ledgerBal))}`}
+          </p>
+          <p className="mt-1 text-[11px] text-slate-400">
+            {conta.bankCode || conta.accountNumber
+              ? `identificada: ${[conta.bankCode, conta.accountNumber].filter(Boolean).join(' · ')} — recuso OFX de outra conta`
+              : '⚠ sem identificação ainda — o 1º import aprende quem ela é, e daí em diante recuso arquivo de outra conta'}
+          </p>
+        </div>
+      )}
 
       <div className="mb-3 rounded-xl border border-slate-200 bg-white px-4 py-3.5">
         <label className="mb-1 block text-[12px] font-semibold text-slate-600">Conta</label>

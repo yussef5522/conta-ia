@@ -4,7 +4,7 @@
 
 import { use, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Plus, Loader2, Building2, Wallet } from 'lucide-react'
+import { ArrowLeft, Plus, Loader2, Building2, Wallet, Upload } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -24,6 +24,8 @@ interface Account {
   bankName: string | null
   accountType: string
   balance: number
+  ledgerBal?: number | null
+  ledgerBalDate?: string | null
   allowNegativeBalance: boolean
   creditLimit: number
   isActive: boolean
@@ -282,6 +284,38 @@ export default function ContasPFPage({
                     Cheque especial: {formatBRL(a.creditLimit)}
                   </p>
                 )}
+
+                {/* ⭐ A CONFERÊNCIA MORA NO CARD DA CONTA — a régua de 10/09 ("uma casa só"):
+                    saldo é assunto de quem guarda o saldo. E "nunca conferida" NÃO é defeito:
+                    é informação que antes ficava presumida. */}
+                <p className="mt-1.5 text-[11px]" style={{
+                  color: a.ledgerBal == null ? '#94a3b8'
+                    : Math.abs(a.balance - a.ledgerBal) <= 0.02 ? '#177245' : '#b45309',
+                }}>
+                  {a.ledgerBal == null
+                    ? '○ nunca conferida com o banco'
+                    : Math.abs(a.balance - a.ledgerBal) <= 0.02
+                      ? `✓ confere com o banco${a.ledgerBalDate ? ` em ${a.ledgerBalDate.slice(8, 10)}/${a.ledgerBalDate.slice(5, 7)}` : ''}`
+                      : `⚠ difere do banco em ${formatBRL(Math.abs(a.balance - a.ledgerBal))}`}
+                </p>
+
+                {/* ⛔⛔ O GESTO QUE FALTAVA (13/09, 5ª volta da família "porta sem maçaneta").
+                    O motor do import existia e estava provado pela rota — e o card era um
+                    `<Card>` MORTO: nem botão, nem toque. **Existir por rota é não existir.** */}
+                <div className="mt-3 flex gap-2">
+                  <Link
+                    href={`/perfis/${id}/extrato?conta=${a.id}`}
+                    className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#534AB7] px-2.5 text-xs font-semibold text-white"
+                  >
+                    <Upload className="h-3.5 w-3.5" /> Importar extrato (OFX)
+                  </Link>
+                  <Link
+                    href={`/perfis/${id}/mes`}
+                    className="inline-flex h-8 items-center justify-center rounded-lg border border-zinc-300 px-2.5 text-xs text-zinc-600"
+                  >
+                    Ver o mês
+                  </Link>
+                </div>
               </CardContent>
             </Card>
           ))}
