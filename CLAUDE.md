@@ -634,7 +634,48 @@ filtro TODAS       → NÃO aparece   ⛔
 ```
 **A decisão de 28/05 é defensável** (evita a mesma linha em duas telas) — o problema é a **PROMESSA DO RÓTULO**: um filtro chamado **"PAGAS"** que esconde as pagas-e-conciliadas, e um **"TODAS"** que não traz todas. *"Todas" que não é todas é a família do cabeçalho que afirmava 69 duplicatas com a aba dizendo 0.* ⚠️ E o KPI de pagas usa o mesmo `whereBase`, então tela e número **concordam entre si** — e escondem a mesma metade.
 
-**⛔ NÃO CONSERTEI** — o dono foi explícito (*"se está paga, me diz qual linha pagou; se está aberta e o card não mostra, é bug do filtro"*), e mexer nesse filtro faz a linha conciliada aparecer em duas telas, que é justamente o que a decisão de 28/05 evita. **As saídas, pra ele escolher:** (a) o rótulo passa a dizer a verdade (*"pagas — as conciliadas estão em Movimentações →"*, com o link); (b) "TODAS" passa a incluir as conciliadas, e Movimentações deixa de ser o único lugar; (c) o **recibo da nota** mostra as 3 parcelas com o estado de cada uma — que é onde a pergunta *"o que houve com a 002?"* nasce.
+**⛔ NÃO CONSERTEI NA HORA** — o dono foi explícito (*"se está paga, me diz qual linha pagou"*). Ele escolheu depois: **(c) o recibo + (a) os rótulos**, e recusou a (b) — *"linha em duas telas é duplicação, quebraria a decisão de 28/05"*.
+
+### ⭐⭐⭐ A PERGUNTA GANHOU UM LUGAR PRA NASCER E MORRER (13/09)
+
+**Critério do dono, e é a régua que fica:** ***nenhum rótulo promete mais do que entrega.***
+
+**⭐⭐ (c) O RECIBO DA NOTA MOSTRA AS PARCELAS COM ESTADO** (`lib/stock/ponte/estado-das-parcelas.ts`, só leitura). ⚠️ **E ele NÃO relê a duplicata crua** — quem responde *"quais parcelas valem hoje"* é o `combinadoDaNota` desde 29/08, e foi **ler o XML direto** que fez o recibo mostrar 3 parcelas depois de uma renegociação pra 5. O que nasce aqui é só o ESTADO, em cima daquela fonte.
+
+Quatro estados, cada um com frase própria: **PAGA** (com a linha do extrato, a conta e os juros **nomeados**) · **ABERTA** · **PAGA_SEM_VINCULO** · **SEM_CONTA**.
+
+⛔ **"paga sem vínculo" é estado PRÓPRIO, não um jeito de dizer "paga"**: ninguém apontou o dinheiro que saiu, e é exatamente esse estado que o juiz **F1** vigia como dupla contagem. ⚠️ E a **diferença aparece NOMEADA** (*"R$ 6,86 de juros/tarifa"*) — escondê-la faria o dono ver dois números que não batem (2.079,98 × 2.086,84) sem nada explicando.
+
+**⭐⭐ E O FIXTURE PEGOU UMA ASSERÇÃO ERRADA MINHA — que expôs o desenho certo.** Eu afirmei que parcela recém-conferida *"nasce em ABERTA"*; o teste devolveu **`SEM_CONTA`** e está certo: **conferir a nota NÃO cria conta a pagar** — enviar o boleto é `stock.manage` (a fronteira de 24/08, *"boleto é obrigação, coisa minha"*). Entre conferir e enviar existe um estado REAL, e a tela passa a **nomeá-lo** em vez de chamar de "em aberto" uma conta que não existe.
+
+**⭐⭐ (a) OS RÓTULOS PASSARAM A DIZER A VERDADE** (`lib/contas-pagar/rotulos.ts` — dono único, porque o **chip do rodapé**, o **card do topo** e o **dropdown** filtram a MESMA coisa e três textos à mão divergiriam no primeiro ajuste):
+
+| antes | depois |
+|---|---|
+| "Conciliadas" / "Pagas" | **"Pagas (sem conciliar)"** |
+| "Todos status" | **"Em aberto e pagas sem vínculo"** |
+
+⛔ **A decisão de 28/05 fica INTACTA** — a conta conciliada não volta pra cá. O que mudou foi a **promessa**. ⚠️ **E a nota linkada é obrigatória:** *"· as já conciliadas estão em Movimentações →"*. Sem a segunda metade, o rótulo honesto (*"sem conciliar"*) levanta a pergunta *"então cadê as outras?"* e não responde — **troca uma mentira por um mistério**.
+
+**PROVADO EM PROD, pelo caminho da tela (sessão real, celular):**
+```
+NF 967122 · CASPER · 26/08 · R$ 6.239,95
+  001  2.079,99  PAGA    paga em 04/09 pela linha de R$ 2.086,85 na stone · R$ 6,86 de juros
+  002  2.079,98  PAGA    paga em 11/09 pela linha de R$ 2.086,84 na stone · R$ 6,86 de juros  ⭐
+  003  2.079,98  ABERTA  em aberto · vence 17/09
+
+RECIBO  → 200 · "Parcelas da nota" ✓ · "ver a linha em Movimentações" ✓
+           "paga — sem linha vinculada" ✓ · "não enviada ao financeiro" ✓
+           ⛔ "Contas a pagar sugeridas" (o rótulo mudo de antes): SUMIU ✓
+CONTAS A PAGAR → 200 · "Pagas (sem conciliar)" ✓ · "Em aberto e pagas sem vínculo" ✓
+           "as já conciliadas estão em Movimentações" ✓ · ⛔ "Todos status": SUMIU ✓
+```
+
+**REGRA 11 — 3 defeitos repostos em cada frente, 1 vermelho cada:** reler a duplicata crua · colapsar "paga sem vínculo" em "paga" · a diferença sumindo da frase · o "Pagas" seco de volta · o "Todos status" de volta · a nota linkada apagada.
+
+**⚠️⚠️ E O GUARD DOS RÓTULOS REPROVOU A SI MESMO NA 1ª VERSÃO.** Repus o 3º defeito (apaguei a nota da tela) e ele ficou **VERDE** — porque media `toContain('NOTA_CONCILIADAS')` e **a linha do `import` já bastava**. É a lição do detector de rastro (12/09) outra vez: **o que morde é contar o USO, não a menção**. Com o aperto, o defeito fica vermelho.
+
+**9.726 verdes · TS 0 · deploy `R4Dacd_GQpSrmdBb_Ie9n` 4/4.**
 
 ### ⭐⭐ PF — ESPINHA DE NAVEGAÇÃO, WIDGET DE CONTAS E O GRID POR HIERARQUIA (13/09)
 
