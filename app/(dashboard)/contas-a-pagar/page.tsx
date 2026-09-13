@@ -39,6 +39,7 @@ import { StatCardGrid } from '@/components/ui/stat-card'
 import { PayableSkeleton } from '@/components/contas-pagar/PayableSkeleton'
 import { PayableEmptyState } from '@/components/contas-pagar/PayableEmptyState'
 import { StickyFooter } from '@/components/contas-pagar/StickyFooter'
+import { ROTULO_PAGAS, NOTA_CONCILIADAS, hrefMovimentacoes } from '@/lib/contas-pagar/rotulos'
 import {
   PayableFilters,
   EMPTY_FILTERS,
@@ -958,11 +959,21 @@ function ContasAPagarInner() {
       {/* Conteúdo principal */}
       {empresaId && !loading && (
         <>
+          {/* ⭐⭐ A NOTA QUE FECHA A PROMESSA (13/09) — sem ela o rótulo honesto
+              ("pagas SEM CONCILIAR") levanta a pergunta "então cadê as outras?" e não
+              responde. O link leva ao lugar onde elas REALMENTE estão. */}
+          <p className="-mt-1 mb-2 text-xs text-slate-500">
+            Esta tela mostra o que está <b>em aberto</b> e o que foi pago <b>sem vínculo com o extrato</b> ·{' '}
+            <a href={hrefMovimentacoes(empresaId)} className="font-medium text-violet-700 hover:underline">
+              {NOTA_CONCILIADAS} →
+            </a>
+          </p>
+
           {/* 4 stats — Sprint 5.0.3.0a */}
           <StatCardGrid>
             <StatsCard
               variant="paid"
-              label="Pagas"
+              label={ROTULO_PAGAS}
               amount={kpis.totalPagas}
               count={kpis.countPagas}
               icon={CheckCircle2}

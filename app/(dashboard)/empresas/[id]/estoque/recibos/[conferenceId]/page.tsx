@@ -6,7 +6,7 @@
 
 import { useEffect, useState, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
-import { Receipt, Loader2, ArrowLeft, Package, CheckCircle2, AlertTriangle, Camera } from 'lucide-react'
+import { Receipt, Loader2, ArrowLeft, Package, CheckCircle2, AlertTriangle, Camera, ExternalLink } from 'lucide-react'
 
 interface ReciboItem {
   xProd: string; itemNome: string | null; itemId: string | null; qtdNota: number; qtdRecebida: number | null
@@ -17,13 +17,42 @@ interface Recibo {
   conferenceId: string; nfeId: string; chave: string; nNF: string | null; status: string; divergente: boolean
   confirmadoEm: string | null; fornecedor: { nome: string | null; cnpj: string | null }
   valorEntrada: number; vNF: number | null
-  itens: ReciboItem[]; duplicatas: { nDup: string | null; dVenc: string | null; valor: number }[]; conferidoPor: string | null
+  itens: ReciboItem[]; parcelas: ParcelaComEstado[]; conferidoPor: string | null
+}
+
+/**
+ * ⭐⭐ AS PARCELAS COM ESTADO (13/09) — a resposta pra *"cadê a 002?"*.
+ *
+ * O dono abriu o card do Casper, não achou a parcela 002 da NF 967122, foi no Contas a
+ * Pagar e **não achou em estado nenhum**. Ela estava PAGA e conciliada — e conta conciliada
+ * sai do Contas a Pagar por decisão de 28/05 (senão a mesma linha aparece em duas telas).
+ * **A nota é onde a pergunta nasce; passa a ser onde ela morre.**
+ */
+interface ParcelaComEstado {
+  numero: string; valor: number; vencimento: string | null; origem: string
+  estado: 'ABERTA' | 'PAGA' | 'PAGA_SEM_VINCULO' | 'SEM_CONTA'
+  transactionId: string | null; pagaEm: string | null
+  linha: { transactionId: string; data: string; valor: number; conta: string | null; descricao: string; diferenca: number } | null
+  frase: string
 }
 
 const brl = (n: number | null) => (n == null ? '—' : n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }))
 const num = (n: number | null) => (n == null ? '—' : n.toLocaleString('pt-BR', { maximumFractionDigits: 3 }))
 const fmtData = (iso: string | null) => (iso ? new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—')
 const fmtDia = (d: string | null) => (d ? d.split('-').reverse().join('/') : '—')
+
+/** ⭐ o selo é o estado por EXTENSO — sigla e cor sozinhas obrigam a decorar legenda */
+function SeloDaParcela({ estado }: { estado: ParcelaComEstado['estado'] }) {
+  const m = {
+    PAGA: ['bg-emerald-50 text-emerald-700', 'paga'],
+    // ⛔ "paga sem vínculo" NÃO é "paga": ninguém apontou o dinheiro que saiu, e é esse
+    // estado que o juiz F1 vigia como dupla contagem. Cor própria, nome próprio.
+    PAGA_SEM_VINCULO: ['bg-amber-50 text-amber-700', 'paga — sem linha vinculada'],
+    ABERTA: ['bg-slate-100 text-slate-600', 'em aberto'],
+    SEM_CONTA: ['bg-slate-100 text-slate-500', 'não enviada ao financeiro'],
+  }[estado]
+  return <span className={`inline-block rounded px-1.5 py-0.5 text-[11px] font-semibold ${m[0]}`}>{m[1]}</span>
+}
 
 export default function ReciboPage({ params }: { params: Promise<{ id: string; conferenceId: string }> }) {
   const { id, conferenceId } = use(params)
@@ -99,24 +128,46 @@ export default function ReciboPage({ params }: { params: Promise<{ id: string; c
         </div>
       </CardContent></Card>
 
-      {/* duplicatas (contas a pagar sugeridas) */}
-      {r.duplicatas.length > 0 && (
+      {/* ⭐⭐ AS PARCELAS COM ESTADO — nasce e morre aqui a pergunta "cadê a 002?" */}
+      {r.parcelas.length > 0 && (
         <div>
-          <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-900"><Package className="h-4 w-4" /> Contas a pagar sugeridas</h2>
+          <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-900"><Package className="h-4 w-4" /> Parcelas da nota</h2>
           <Card><CardContent className="p-0">
             <table className="w-full text-sm">
               <tbody>
-                {r.duplicatas.map((d, k) => (
-                  <tr key={k} className="border-b border-slate-50 last:border-0">
-                    <td className="p-3 text-slate-600">Parcela {d.nDup ?? k + 1}</td>
-                    <td className="p-3 text-slate-500">vence {fmtDia(d.dVenc)}</td>
-                    <td className="p-3 text-right font-medium tabular-nums text-slate-900">{brl(d.valor)}</td>
+                {r.parcelas.map((p, k) => (
+                  <tr key={k} className="border-b border-slate-50 last:border-0 align-top">
+                    <td className="p-3 whitespace-nowrap text-slate-600">
+                      Parcela {p.numero}
+                      {p.origem === 'RENEGOCIADO' && <span className="ml-1.5 rounded bg-violet-50 px-1 py-0.5 text-[10px] font-medium text-violet-700">renegociada</span>}
+                    </td>
+                    <td className="p-3">
+                      <SeloDaParcela estado={p.estado} />
+                      <div className="mt-1 text-xs text-slate-500">{p.frase}</div>
+                      {/* ⭐ O LINK QUE FECHA A PERGUNTA: a linha do extrato que pagou.
+                          Sem ele o selo diria "paga" e o dono continuaria sem saber POR ONDE. */}
+                      {p.linha && (
+                        <a
+                          href={`/transacoes?empresaId=${id}&inicio=${p.linha.data}&fim=${p.linha.data}&valorMin=${p.linha.valor}&valorMax=${p.linha.valor}`}
+                          className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-violet-700 hover:underline"
+                        >
+                          ver a linha em Movimentações <ExternalLink className="h-3 w-3" />
+                        </a>
+                      )}
+                    </td>
+                    <td className="p-3 whitespace-nowrap text-right text-slate-500">{p.vencimento ? `vence ${fmtDia(p.vencimento)}` : '—'}</td>
+                    <td className="p-3 text-right font-medium tabular-nums text-slate-900">{brl(p.valor)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </CardContent></Card>
-          <p className="mt-1 text-[11px] text-slate-400">Sugestão do estoque — a ponte pro financeiro está desligada (não lança sozinho).</p>
+          {/* ⚠️ a frase antiga dizia que "a ponte pro financeiro está desligada" — ela foi
+              LIGADA em 24/08 e as parcelas viram conta a pagar de verdade. Texto de tela que
+              descreve o mundo antigo é a mesma doença do parágrafo da Conciliação (10/09). */}
+          <p className="mt-1 text-[11px] text-slate-400">
+            Conta paga e conciliada com o extrato sai do Contas a Pagar e vive em Movimentações — por isso o link.
+          </p>
         </div>
       )}
 

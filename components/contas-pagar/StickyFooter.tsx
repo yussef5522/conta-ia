@@ -6,6 +6,7 @@
 // Cada item tem aria-label pra screen reader + role="button" pra accessibility.
 
 import { formatBRL } from '@/lib/format/money'
+import { ROTULO_PAGAS } from '@/lib/contas-pagar/rotulos'
 
 interface Totals {
   paid: number
@@ -23,7 +24,8 @@ const ITEMS = [
   { kind: 'overdue', label: 'Vencidas', tone: 'text-red-600 dark:text-red-400' },
   { kind: 'warn3d', label: 'A vencer (3d)', tone: 'text-amber-600 dark:text-amber-400' },
   { kind: 'pending', label: 'A pagar', tone: 'text-sky-600 dark:text-sky-400' },
-  { kind: 'paid', label: 'Pagas', tone: 'text-emerald-600 dark:text-emerald-400' },
+  // ⚠️ o rótulo vem do dono único — o chip filtra a MESMA coisa que o card e o dropdown
+  { kind: 'paid', label: ROTULO_PAGAS, tone: 'text-emerald-600 dark:text-emerald-400' },
 ] as const
 
 export function StickyFooter({ totals, onClickFilter }: Props) {

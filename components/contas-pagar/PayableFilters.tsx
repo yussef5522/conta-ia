@@ -23,6 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { ROTULO_PAGAS, ROTULO_TODOS } from '@/lib/contas-pagar/rotulos'
 
 export interface PayableFilterState {
   q: string
@@ -101,9 +102,12 @@ export function PayableFilters({ value, onChange, onClear, total }: Props) {
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="PENDING">Pendentes</SelectItem>
-          <SelectItem value="RECONCILED">Conciliadas</SelectItem>
+          {/* ⛔ dizia "Conciliadas" e era o PIOR rótulo da tela: filtra `status=RECONCILED`
+              (paga/categorizada) e o escopo EXCLUI justamente as conciliadas com o extrato.
+              Ver `lib/contas-pagar/rotulos.ts`. */}
+          <SelectItem value="RECONCILED">{ROTULO_PAGAS}</SelectItem>
           <SelectItem value="IGNORED">Ignoradas</SelectItem>
-          <SelectItem value="TODOS">Todos status</SelectItem>
+          <SelectItem value="TODOS">{ROTULO_TODOS}</SelectItem>
         </SelectContent>
       </Select>
 

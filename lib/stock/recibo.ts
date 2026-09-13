@@ -4,6 +4,7 @@
 
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
+import { estadoDasParcelas, type ParcelaComEstado } from './ponte/estado-das-parcelas'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -36,7 +37,16 @@ export interface ReciboData {
   valorEntrada: number // Σ custoTotal dos movimentos (valor que ENTROU no estoque, vProd)
   vNF: number | null // total da nota (com impostos; ≠ valorEntrada quando há ST/frete)
   itens: ReciboItem[]
-  duplicatas: { nDup: string | null; dVenc: string | null; valor: number }[]
+  /**
+   * ⭐⭐ AS PARCELAS COM ESTADO (13/09) — *"é onde a pergunta 'o que houve com a 002?' nasce
+   * e morre"* (dono). Antes eram três linhas mudas de valor e vencimento; agora cada uma diz
+   * se está aberta, paga, por qual LINHA do extrato e com quanto de juros.
+   *
+   * ⚠️ Vêm de `estadoDasParcelas`, que por sua vez lê o `combinadoDaNota` — o dono único de
+   * *"quais parcelas valem hoje"* desde 29/08. **Não relê a duplicata crua**: foi ler o XML
+   * direto que fez o recibo mostrar 3 parcelas depois de uma renegociação pra 5.
+   */
+  parcelas: ParcelaComEstado[]
   conferidoPor: string | null
 }
 
@@ -50,7 +60,7 @@ export async function buildRecibo(companyId: string, conferenceId: string, db: D
     db.stockNfe.findFirst({ where: { id: conf.nfeId, companyId }, select: { chave: true, emitNome: true, emitCnpj: true, vNF: true } }),
     db.stockConferenceItem.findMany({ where: { companyId, conferenceId }, orderBy: { criadoEm: 'asc' } }),
     db.stockMovement.findMany({ where: { companyId, receiptId: conferenceId }, select: { itemId: true, quantidade: true, custoUnitario: true, custoTotal: true } }),
-    db.stockPayableSuggestion.findMany({ where: { companyId, nfeId: conf.nfeId }, orderBy: { dVenc: 'asc' }, select: { nDup: true, dVenc: true, valor: true } }),
+    estadoDasParcelas(companyId, conf.nfeId, db),
   ])
 
   const itemIds = [...new Set(confItens.map((c) => c.itemId).filter((i): i is string => !!i))]
@@ -92,7 +102,7 @@ export async function buildRecibo(companyId: string, conferenceId: string, db: D
     valorEntrada: round2(movimentos.reduce((s, m) => s + m.custoTotal, 0)),
     vNF: nfe?.vNF ?? null,
     itens,
-    duplicatas: dups.map((d) => ({ nDup: d.nDup, dVenc: d.dVenc?.toISOString().slice(0, 10) ?? null, valor: d.valor })),
+    parcelas: dups,
     conferidoPor: usuario?.name ?? null,
   }
 }

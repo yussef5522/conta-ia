@@ -84,6 +84,15 @@ describe('recebimentos item 4', () => {
     expect(recibo!.vNF).toBe(288)
     expect(recibo!.itens).toHaveLength(1)
     expect(recibo!.itens[0].custoTotal).toBe(288)
-    expect(recibo!.duplicatas.map((d) => d.valor)).toEqual([288])
+    // ⚠️ `duplicatas` virou `parcelas` em 13/09 — a lista deixou de ser três linhas mudas
+    // de valor e passou a carregar o ESTADO de cada uma (aberta/paga, e por qual linha).
+    expect(recibo!.parcelas.map((d) => d.valor)).toEqual([288])
+    // ⭐⭐ E O ESTADO É `SEM_CONTA`, NÃO "ABERTA" — a minha 1ª asserção estava errada e o
+    // fixture provou o desenho: conferir a nota NÃO cria conta a pagar. Enviar o boleto
+    // pro financeiro é `stock.manage` (fronteira de papel de 24/08 — *"boleto é obrigação,
+    // coisa minha"*), então entre conferir e enviar existe um estado REAL, e a tela tem
+    // que nomeá-lo em vez de chamar de "em aberto" uma conta que não existe.
+    expect(recibo!.parcelas[0].estado).toBe('SEM_CONTA')
+    expect(recibo!.parcelas[0].frase).toContain('Contas a Pagar')
   })
 })
