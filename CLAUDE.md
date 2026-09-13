@@ -611,6 +611,40 @@ beef de hamburger          5 medidas · 1 relâmpago · média COM 13min → SEM
 ```
 **Consequência real:** o *"rodrigo −49% · 2h07 (média 44min)"* compara com uma média pela metade — **sem os 3 relâmpagos a média é 88min e o 2h07 dele fica perto do normal**. É a família do *"tempo zero não é velocidade infinita"* (06/09) um degrau acima: lá a régua matou o `0`, aqui o `1` passa. **NÃO inventei um piso** — escolher "menos de N minutos não conta" é decisão do dono sobre o número que sai da cozinha dele. As saídas possíveis: (a) piso de duração pra entrar na média (e o relâmpago contado à parte, como o "sem tempo" já é); (b) deixar como está e tratar os 2 lotes na mão.
 
+### ⛔⛔⛔ O FILTRO DE TAREFA VAZAVA — PAINÉIS GERAIS DENTRO DO RECORTE (13/09)
+
+**O dono, com o print:** filtrou *"metade de bolinha massa de pizza"* e a tela mostrava, **dentro do recorte**, *"Unidades por pessoa · todas as tarefas"* (rodrigo 1.415) e *"Geral do período"* (51 lotes, top queijo). **A tela dizia falar de massa de pizza e mostrava a cozinha inteira.**
+
+**⚠️ A CAUSA RAIZ NÃO ERA O FILTRO — era a tela ESCOLHER A TAREFA SOZINHA.** Sem tarefa na URL ela adotava a que mais produziu e **seguia desenhando os painéis gerais embaixo**: recorte em cima, empresa inteira embaixo, sem ninguém dizer qual era qual. **O estado "todas as tarefas" virou EXPLÍCITO** (opção no topo do seletor, default ao abrir), o recorte mora **num lugar só** na rota, e o geral **só renderiza na visão geral**. ⭐ Na visão geral as **top tarefas viram LINKS** pro recorte de cada uma. **Mesmo princípio pra PESSOA** — e ali faltava o LOTE: as execuções já vinham filtradas, os lotes não.
+
+**A VARREDURA, item a item:**
+
+**⛔⛔ 1. `UN + KG` NUNCA SOMAM.** O placar dizia *"rodrigo 1.415,84 un"* — e aquele `,84` era **porção de queijo (UN) somada com massa de pizza (KG)**. O decimal estranho era o sintoma de um número que **não existe**. `somarQuantidades` virou o dono da pergunta *"quanto saiu?"* e devolve **"1.410 UN · 522 KG"**; a barra por pessoa passa a medir **LOTES** quando as unidades se misturam, e a tela **diz**. ⚠️ A casa já tinha essa disciplina no leitor mais antigo (`relatorio-por-pessoa.ts` recusa `min/un` com `unidades.size !== 1`, desde 06/09) — faltava ela existir no dono novo. ⭐ **E ordenar "top tarefa" por unidades era, ele próprio, comparar UN com KG**: passou a ser por **lotes**, com a razão escrita.
+
+**⛔ 2. "MELHOR" NÃO DIZIA A RÉGUA.** *"melhor: 3h10 p/ 214 un"* num lote que era o **mais longo** do período. Virou **"melhor ritmo: 1,13 UN/min · 12/09 (214 UN em 3h10)"** — o rótulo carrega a conta.
+
+**⭐ 3. O GRÁFICO NÃO INVENTA ZERO.** Dia **com lote e sem tempo medido** ganha marca vazada no eixo + nota (*"○ N dia(s) com lote e sem tempo medido — sem ponto, nunca zero"*); dia **sem lote** não entra no eixo. O volume do dia continua contado.
+
+**⭐ 4. META PARCIAL É DITA:** *"2 de 3 lotes com meta · 104% nesses"* — nunca uma média silenciosa só dos que têm. O volume conta os três.
+
+**⭐ 5. O FILTRO VIVE NA URL** (`router.replace`, não `push` — cada chip não merece entrada no histórico).
+
+**PROVADO EM PROD, pelo caminho da tela:**
+```
+VISÃO GERAL   100 lotes · 10.421 UN · 22,86 KG  ⭐ (mista) · porTarefa: null
+              top tarefas clicáveis: queijo 13L · calabresa 12L · coxão 10L · bacon 10L
+              por pessoa: edmar 880,01 UN [barra=20 lotes] · rodrigo 1.420,34 UN [15 lotes]
+
+FILTRO massa  3 lotes · 522 UN · média 162min · eliane 522 UN
+              ⛔ "rodrigo" na tela inteira? NÃO ✓   ⛔ "queijo"? NÃO ✓
+              o GERAL vem recortado: 3 lotes · top: só a massa
+              melhor ritmo: 1,13 UN/min · 12/09 (214 UN em 3h10)
+              série 10/09=129 · 11/09=168 · 12/09=190 (sem zeros inventados)
+
+FILTRO edmar  só ele nas barras · top tarefas DELE · 19 lotes (a cozinha tinha 100)
+```
+**REGRA 11 — 8 defeitos repostos, todos vermelhos:** escopo sem recorte · soma mista · "melhor" por duração · rendimento espalhado · barra somando misto · geral sempre visível · auto-escolhe de volta · top tarefas não-clicáveis. **9.552 verdes · TS 0 · deploy `Vnx8a956PkqFAZU-3rjXW` 4/4.**
+
 ### ⛔⛔⛔ O LOTE RELÂMPAGO ENVENENAVA A MÉDIA — PISO DE 5 MIN (13/09)
 
 **Decisão do dono, depois do raio-x:** *"Piso de 5 minutos: execução medida abaixo disso é RELÂMPAGO — conta à parte (como o 'sem tempo' já é), fora das médias, dito no rodapé. **Nenhum lote real fica pronto em menos de 5 min; registro retroativo é o caso, e vai se repetir.** Os 2 lotes atuais ficam classificados pelo piso — não mexe neles na mão, a régua resolve."*
