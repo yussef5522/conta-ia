@@ -20,6 +20,8 @@
 // alarme é o das 4h em aberto, que já existe e tem causa real (cronômetro correndo corrompe a
 // média). "Na fila" é cinza, neutro.
 
+import { execucoesParaMedia } from './execucoes'
+import { rendimentoDoLote, mediaDaTarefa, passouDaMedia as passouDaMediaDaTarefa, placarDaEquipe, type RendimentoDoLote, type DesempenhoDaPessoa, type Execucao } from './desempenho'
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { janelaDoDiaSP } from '@/lib/datas/dia-sao-paulo'
@@ -68,6 +70,18 @@ export interface TarefaDoDia {
   pedidoEmAberto: boolean
   /** ⚠️ só quando a tarefa FECHOU o lote: o que saiu, com custo */
   loteFechado: { qtdGerada: number; custoUnitario: number | null; unidade: string } | null
+  /**
+   * ⭐⭐ PEDIDO → ENTREGUE (13/09/2026) — o mock: *"pedido 130 → entregue 137 UN (105%)"*.
+   * `null` quando a etapa não fechou lote. Sem meta registrada, o objeto diz isso — nunca
+   * inventa 100%. A conta vem de `desempenho.ts`, o dono único.
+   */
+  rendimento: RendimentoDoLote | null
+  /** ⭐ o PEDIDO da ordem, pro card vivo mostrar a meta ANTES de terminar */
+  pedido: number | null
+  /** ⭐ a média histórica desta tarefa — o card vivo diz "média dessa tarefa: 1h48" */
+  mediaDaTarefaMin: number | null
+  /** ⭐ "passou 1h07 da média" — `null` quando está dentro (alerta que grita sempre ninguém lê) */
+  passouDaMedia: string | null
   /** passou do alarme de 4h com o cronômetro correndo */
   abertaDemais: boolean
 }
@@ -100,6 +114,14 @@ export interface EventoDoDia {
 }
 
 export interface DiaAoVivo {
+  /**
+   * ⭐⭐⭐ O PLACAR DA EQUIPE (13/09/2026) — uma linha por pessoa que trabalhou no dia.
+   *
+   * ⛔⛔ **NUNCA VAI PRO TABLET.** É informação de gestão: a rota do tablet não recebe este
+   * campo, e há guard disso. *"o âmbar é convite pra olhar, não veredito"* — e um convite
+   * desses na tela de quem está com a mão na massa vira outra coisa.
+   */
+  placar: DesempenhoDaPessoa[]
   dia: string
   /** quem está com a mão na massa AGORA — vazio em dia passado, por construção */
   agora: { colaboradorId: string; nome: string; tarefa: TarefaDoDia }[]
@@ -246,6 +268,22 @@ export async function diaAoVivo(
 
   const limiteDoAlarme = input.agora.getTime() - HORAS_ATE_ALARME * 3_600_000
 
+  /**
+   * ⭐⭐⭐ O HISTÓRICO QUE FORMA AS MÉDIAS (13/09/2026) — a história INTEIRA, não a janela.
+   *
+   * ⚠️ Se a média saísse do próprio dia, "a média da tarefa" seria a própria pessoa de hoje
+   * e o placar compararia cada um consigo mesmo. A janela muda; a régua não.
+   */
+  const historico = await execucoesParaMedia(input.companyId, db)
+  const mediasPorTarefa = new Map<string, ReturnType<typeof mediaDaTarefa>>()
+  for (const t of new Set(historico.map((h: Execucao) => h.tarefa))) mediasPorTarefa.set(t, mediaDaTarefa(t, historico))
+
+  /** ⭐ o PEDIDO de cada ordem do dia — sem registro, fica `null` e a tela DIZ isso */
+  const metas = new Map((await db.stockOrdemMeta.findMany({
+    where: { companyId: input.companyId, ordemId: { in: ordens.map((o) => o.id) } },
+    select: { ordemId: true, unidades: true },
+  })).map((m) => [m.ordemId, m.unidades]))
+
   const tarefas: (TarefaDoDia & { colaboradorId: string | null })[] = etapas.map((e) => {
     const item = itemDaOrdem.get(e.ordemId)
     const anterior = nomeDaEtapaAnterior(e.ordemId, e.posicao)
@@ -274,6 +312,19 @@ export async function diaAoVivo(
         gerente: res.finalizadaPorNome, pessoa: res.emNomeDeNome,
       }),
       loteFechado: conc ? { ...conc, unidade: item?.unidadeControle ?? '' } : null,
+      // ⭐ pedido → entregue, pela régua única (`desempenho.ts`)
+      rendimento: conc
+        ? rendimentoDoLote(metas.get(e.ordemId) ?? null, conc.qtdGerada, item?.unidadeControle ?? 'UN')
+        : null,
+      pedido: metas.get(e.ordemId) ?? null,
+      mediaDaTarefaMin: mediasPorTarefa.get(item?.nome ?? '')?.minutosPorLote ?? null,
+      // ⚠️ só faz sentido pra quem está CORRENDO agora — a etapa fechada já tem o tempo dela
+      passouDaMedia: res.estado === 'EM_ANDAMENTO' && e.iniciadoEm
+        ? passouDaMediaDaTarefa(
+            Math.round((input.agora.getTime() - e.iniciadoEm.getTime()) / 60000),
+            mediasPorTarefa.get(item?.nome ?? '') ?? null,
+          )
+        : null,
       abertaDemais: res.estado === 'EM_ANDAMENTO' && !!e.iniciadoEm && e.iniciadoEm.getTime() < limiteDoAlarme,
       pedidoEmAberto: res.pedidoEmAberto,
       // ⚠️ quem responde pela tarefa é o EXECUTOR (o PIN que tocou); só antes de iniciar vale a
@@ -344,10 +395,26 @@ export async function diaAoVivo(
   }
   eventos.sort((a, b) => b.quando.getTime() - a.quando.getTime())
 
+  /**
+   * ⭐⭐ O PLACAR DO DIA — a MESMA `placarDaEquipe` que os Relatórios chamam com outra janela.
+   * ⚠️ As execuções do dia saem das etapas FECHADAS hoje; as médias, do histórico inteiro.
+   */
+  const execucoesDoDia: Execucao[] = tarefas
+    .filter((t) => (t.estado === 'FEITA' || t.estado === 'FINALIZADA_PELO_GERENTE') && t.colaboradorId)
+    .map((t) => ({
+      ordemId: t.ordemId, tarefa: t.produto, colaboradorId: t.colaboradorId!,
+      nome: pessoas.find((p) => p.colaboradorId === t.colaboradorId)?.nome ?? '—',
+      // ⛔ FINALIZADA_PELO_GERENTE tem `minutos` null por construção (06/09) — e é isso que a
+      // mantém fora das médias sem nenhuma lista de exceção.
+      minutos: t.minutos, unidades: t.loteFechado?.qtdGerada ?? 0,
+      quando: t.finalizadoEm ?? input.agora,
+    }))
+
   return {
     dia: input.dia,
     agora,
     pessoas,
+    placar: placarDaEquipe(execucoesDoDia, historico),
     linhaDoTempo: eventos,
     abertasDemais: agora.filter((a) => a.tarefa.abertaDemais).length,
     ehHoje,

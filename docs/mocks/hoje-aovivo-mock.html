@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HOJE ao vivo — o que muda</title>
+<style>
+  :root{
+    --bg:#faf9f6; --card:#fff; --ink:#1f2430; --sub:#6b7280; --line:#e8e6e0;
+    --roxo:#534AB7; --roxo-fraco:#eeecfa; --verde:#177245; --verde-fraco:#e6f4ec;
+    --ambar:#b45309; --ambar-fraco:#fdf3e3; --coral:#b3382c; --coral-fraco:#fdecea;
+    --slate:#475569; --slate-fraco:#eef2f6;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:-apple-system,Inter,sans-serif;background:var(--bg);color:var(--ink);padding:16px;max-width:760px;margin:0 auto;padding-bottom:40px;}
+  h1{font-size:20px;} .sub{color:var(--sub);font-size:13px;margin-bottom:16px;}
+  .rotulo{display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.05em;padding:3px 10px;border-radius:99px;margin-bottom:8px;text-transform:uppercase;}
+  .rotulo.novo{background:var(--verde-fraco);color:var(--verde);}
+  .rotulo.igual{background:var(--slate-fraco);color:var(--slate);}
+  .secao-t{font-size:12.5px;font-weight:700;letter-spacing:.04em;color:var(--sub);text-transform:uppercase;margin:18px 0 8px;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 16px;margin-bottom:10px;}
+  .card.vivo{border-left:4px solid var(--roxo);}
+  .card.alerta{border-left:4px solid var(--coral);background:#fffbfa;}
+  .quem{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+  .avatar{width:32px;height:32px;border-radius:50%;background:var(--roxo-fraco);color:var(--roxo);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;}
+  .quem b{font-size:15px;}
+  .quem small{display:block;color:var(--sub);font-size:12px;font-weight:400;}
+  .crono{font-size:34px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:.01em;}
+  .crono.coral{color:var(--coral);}
+  .meta-viva{display:flex;gap:14px;margin-top:6px;font-size:13px;color:var(--sub);flex-wrap:wrap;}
+  .meta-viva b{color:var(--ink);}
+  .meta-viva .nova{background:var(--verde-fraco);color:var(--verde);font-weight:700;border-radius:8px;padding:2px 8px;}
+  .feita{display:flex;align-items:flex-start;gap:8px;padding:10px 0;border-top:1px solid #f1efe9;}
+  .feita:first-of-type{border-top:none;}
+  .feita .check{color:var(--verde);font-weight:800;}
+  .feita .tt{font-size:14px;}
+  .feita .tt b{font-weight:600;}
+  .feita .tt small{color:var(--sub);font-size:12px;}
+  .lote{font-size:13px;margin-top:3px;color:var(--sub);}
+  .lote b{color:var(--ink);}
+  .pct{font-weight:800;padding:1px 7px;border-radius:8px;font-size:12px;}
+  .pct.ok{background:var(--verde-fraco);color:var(--verde);}
+  .pct.baixo{background:var(--ambar-fraco);color:var(--ambar);}
+  .pct.alto{background:var(--ambar-fraco);color:var(--ambar);}
+  .semmeta{color:var(--sub);font-style:italic;font-size:12px;}
+  .divisor{border:none;border-top:2px dashed var(--line);margin:22px 0 14px;}
+</style>
+</head>
+<body>
+
+<h1>HOJE ao vivo — o que muda e o que fica</h1>
+<div class="sub">a tela continua a mesma; entram os NÚMEROS onde hoje só tem % — e a meta aparece já no card vivo</div>
+
+<div class="secao-t">AGORA · 2 trabalhando</div>
+
+<span class="rotulo novo">novo no card vivo: a meta e a média da tarefa</span>
+<div class="card vivo">
+  <div class="quem"><span class="avatar">R</span><div><b>rodrigo</b><small>porcao — porção queijo 135 grama</small></div></div>
+  <div class="crono">42:17</div>
+  <div class="meta-viva">
+    <span class="nova">pedido: 400 UN</span>
+    <span>média dessa tarefa: <b>1h48</b></span>
+    <span>iniciou às <b>12:24</b></span>
+  </div>
+</div>
+
+<div class="card alerta">
+  <div class="quem"><span class="avatar">E</span><div><b>eliane</b><small>produção — massa de pizza</small></div></div>
+  <div class="crono coral">4:12:44</div>
+  <div class="meta-viva">
+    <span class="nova">pedido: 200 UN</span>
+    <span>média dessa tarefa: <b>3h05</b> — passou 1h07 da média</span>
+  </div>
+</div>
+
+<hr class="divisor">
+
+<div class="secao-t">O DIA DE CADA UMA</div>
+<span class="rotulo novo">novo na linha do lote: pedido → entregue, em números</span>
+
+<div class="card">
+  <div class="quem"><span class="avatar">R</span><div><b>rodrigo</b><small>0 fazendo · 0 na fila · 6 feitas</small></div></div>
+
+  <div class="feita"><span class="check">✓</span><div style="flex:1">
+    <div class="tt"><b>porcao coxao 80 grama</b> <small>· porcao · 15:49–16:25 · 36min</small></div>
+    <div class="lote">└ <b>pedido 130 → entregue 137 UN</b> <span class="pct ok">105%</span> · R$ 7,79/un</div>
+  </div></div>
+
+  <div class="feita"><span class="check">✓</span><div style="flex:1">
+    <div class="tt"><b>porcao bacon 80 grama</b> <small>· porcao · 15:29–15:45 · 16min</small></div>
+    <div class="lote">└ <b>pedido 60 → entregue 54 UN</b> <span class="pct baixo">90%</span> · R$ 4,98/un</div>
+  </div></div>
+
+  <div class="feita"><span class="check">✓</span><div style="flex:1">
+    <div class="tt"><b>porção queijo 135 grama</b> <small>· porcao · 12:24–14:31 · 2h07</small></div>
+    <div class="lote">└ <b>pedido 400 → entregue 410 UN</b> <span class="pct ok">103%</span> · R$ 4,26/un</div>
+  </div></div>
+
+  <div class="feita"><span class="check">✓</span><div style="flex:1">
+    <div class="tt"><b>porcao frango 100 grama</b> <small>· EMBALA FRANGO · 15:10–15:29 · 19min</small></div>
+    <div class="lote">└ <span class="semmeta">sem meta registrada</span> · <b>entregue 72 UN</b> · R$ 2,64/un</div>
+  </div></div>
+</div>
+
+<span class="rotulo igual">tudo o resto fica exatamente como está</span>
+<div class="card" style="color:var(--sub);font-size:13px;line-height:1.6">
+  cronômetro grande e card coral no alerta · gestos inline do gerente · linha do tempo embaixo ·
+  "quantos saíram?" no concluir · quem não tem nada designado com o atalho de designar —
+  <b style="color:var(--ink)">nada disso muda</b>. Só entram os números.
+</div>
+
+<div class="sub" style="text-align:center;margin-top:10px">mock · verde = novo · cinza = igual</div>
+</body>
+</html>

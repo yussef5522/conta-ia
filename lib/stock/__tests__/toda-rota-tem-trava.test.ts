@@ -74,6 +74,10 @@ describe('toda rota de estoque tem trava', () => {
     'producao/dia-ao-vivo/route.ts':
       'mostra o ritmo de cada pessoa lado a lado no dia — mesma régua do relatório por pessoa: '
       + 'conversa de gestão, nunca telão de cozinha. A janela do tablet segue mostrando só as tarefas de quem está com o PIN',
+    'producao/relatorios/route.ts':
+      'relatórios de produção (13/09) — tempo, rendimento e custo por PESSOA lado a lado, em período livre. '
+      + 'Mesma régua das duas acima, e a ordem do dono é explícita: "SÓ na tela do dono/gerente — o TABLET DA COZINHA '
+      + 'NUNCA mostra o placar". Guard próprio em __tests__/regras-ui/tablet-nunca-ve-o-placar.ts prova os dois lados',
   }
 
   it('GET nunca exige operar/gerenciar (ler é ler), fora as leituras sensíveis nomeadas', () => {

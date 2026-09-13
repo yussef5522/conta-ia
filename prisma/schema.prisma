@@ -4611,3 +4611,19 @@ model StockItemCategoriaTrocada {
   @@index([companyId, itemId])
   @@map("stock_item_categoria_trocada")
 }
+
+// ⭐ O PEDIDO (meta em unidades) da ordem de produção (13/09/2026).
+// "pedido 130 → entregue 137 UN (105%)"; sem registro → "sem meta registrada".
+// ⛔ Registrada, nunca derivada: `escala × rendimento médio` compararia o real com a média
+// do próprio real e daria ~100% sempre.
+model StockOrdemMeta {
+  id              String   @id @default(cuid())
+  companyId       String
+  ordemId         String
+  unidades        Float
+  registradoPorId String?
+  criadoEm        DateTime @default(now())
+
+  @@unique([companyId, ordemId])
+  @@map("stock_ordem_meta")
+}

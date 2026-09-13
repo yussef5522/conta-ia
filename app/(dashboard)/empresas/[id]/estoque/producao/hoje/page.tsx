@@ -21,7 +21,20 @@ import { ArrowLeft, Loader2, ChevronLeft, ChevronRight, AlertTriangle, RefreshCw
 import { diaEmSaoPaulo, somarDias } from '@/lib/datas/dia-sao-paulo'
 // ⛔ o cronômetro é FUNÇÃO DE LIB, testada — a lição do tablet que passou dois dias
 // mentindo zero porque a conta morava dentro do componente.
+import { PlacarDaEquipe, type LinhaDoPlacar } from '@/components/estoque/placar-da-equipe'
 import { textoDoCronometro as cronometro } from '@/lib/stock/producao/cronometro'
+
+/**
+ * ⭐ AS CORES DO SELO DE RENDIMENTO — do mock `hoje-aovivo-mock.html` (`--verde-fraco`
+ * `#e6f4ec`/`--verde` `#177245`, `--ambar-fraco` `#fdf3e3`/`--ambar` `#b45309`).
+ * ⛔ **Âmbar dos DOIS lados**: *"produzir demais é custo parado"* — 300% não é boa notícia.
+ */
+const SELO_RENDIMENTO: Record<'OK' | 'BAIXO' | 'ALTO' | 'SEM_META', string> = {
+  OK: 'bg-[#e6f4ec] text-[#177245]',
+  BAIXO: 'bg-[#fdf3e3] text-[#b45309]',
+  ALTO: 'bg-[#fdf3e3] text-[#b45309]',
+  SEM_META: 'bg-transparent text-slate-400',
+}
 
 // ⭐⭐ OS CINCO ESTADOS — os MESMOS da tela da ordem e do tablet (fonte única, 07/09)
 type Estado = 'AGUARDANDO' | 'EM_ANDAMENTO' | 'FEITA' | 'FINALIZADA_PELO_GERENTE' | 'ENCERRADA_SEM_FINALIZAR'
@@ -34,6 +47,9 @@ interface Tarefa {
   /** ⭐ quem está designado NESTA etapa — o redesignar precisa da verdade da etapa */
   designados: string[]
   minutos: number | null; esperando: string | null; loteFechado: Lote | null; abertaDemais: boolean
+  /** ⭐ pedido → entregue (13/09) — ver `desempenho.ts`, o dono único da conta */
+  rendimento: { pedido: number | null; entregue: number; pct: number | null; selo: 'OK' | 'BAIXO' | 'ALTO' | 'SEM_META'; frase: string } | null
+  pedido: number | null; mediaDaTarefaMin: number | null; passouDaMedia: string | null
   /** ⭐ o rótulo pronto — a MESMA frase das outras duas telas */
   rotulo: string
   pedidoEmAberto: boolean
@@ -44,6 +60,8 @@ interface Dia {
   dia: string
   agora: { colaboradorId: string; nome: string; tarefa: Tarefa }[]
   pessoas: Pessoa[]; linhaDoTempo: Evento[]; abertasDemais: number; ehHoje: boolean
+  /** ⭐ o placar do dia (13/09) — só nesta tela; o tablet não recebe */
+  placar?: LinhaDoPlacar[]
 }
 
 /** ⚠️ a tela existe pra ficar aberta — 30s é o intervalo aprovado pelo dono */
@@ -197,6 +215,27 @@ export default function HojeAoVivoPage({ params }: { params: Promise<{ id: strin
                             </span>
                           </div>
 
+                          {/* ⭐⭐ A META E A MÉDIA, JÁ NO CARD VIVO (13/09, mock `hoje-aovivo`)
+                              — ele não precisa esperar o lote fechar pra saber o alvo.
+                              ⛔ O alerta ficou INTELIGENTE: passou da média DESTA tarefa →
+                              a frase com o excedente. A régua das 4h segue como teto
+                              absoluto (ela pega até tarefa sem média). */}
+                          {(tarefa.pedido != null || tarefa.mediaDaTarefaMin != null) && (
+                            <div className="mt-1.5 flex flex-wrap items-center gap-x-3.5 gap-y-1 text-[13px] text-slate-500">
+                              {tarefa.pedido != null && (
+                                <span className="rounded-[8px] bg-[#e6f4ec] px-2 py-0.5 font-bold text-[#177245]">
+                                  pedido: {num(tarefa.pedido)} UN
+                                </span>
+                              )}
+                              {tarefa.mediaDaTarefaMin != null && (
+                                <span>
+                                  média dessa tarefa: <b className="text-slate-800">{duracaoCurta(tarefa.mediaDaTarefaMin)}</b>
+                                  {tarefa.passouDaMedia && <span className="text-[#b3382c]"> — {tarefa.passouDaMedia}</span>}
+                                </span>
+                              )}
+                            </div>
+                          )}
+
                           <div className="flex flex-wrap gap-1.5">
                             <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-semibold ${
                               alarme ? 'bg-white text-rose-700' : 'border border-amber-200 bg-white text-[#c2760a]'
@@ -236,6 +275,10 @@ export default function HojeAoVivoPage({ params }: { params: Promise<{ id: strin
                 )}
               </section>
             )}
+
+            {/* ── ⭐⭐ PLACAR DA EQUIPE (13/09) — entre o AGORA e "o dia de cada uma",
+                   exatamente onde o mock o põe. Só nesta tela: o tablet não recebe. ── */}
+            {d.placar && d.placar.length > 0 && <PlacarDaEquipe empresaId={id} linhas={d.placar} dia={d.dia} />}
 
             {/* ── o dia de cada uma ──────────────────────────────────────────────────── */}
             <section>
@@ -400,9 +443,20 @@ function CardDaPessoa({ p, empresaId, agoraMs, colaboradores, onMudou }: {
                   />
                 </span>
               )}
+              {/* ⭐⭐ PEDIDO → ENTREGUE (13/09, mock `hoje-aovivo`): os NÚMEROS primeiro, a
+                  % vira SELO. ⛔ Sem meta registrada NÃO vira 100% — vira a frase honesta,
+                  com o entregue à vista. */}
               {t.loteFechado && (
-                <span className="w-full text-[12px] text-slate-400">
-                  └ lote fechado: {num(t.loteFechado.qtdGerada)} {t.loteFechado.unidade}
+                <span className="w-full text-[13px] text-slate-500">
+                  └{' '}
+                  {t.rendimento?.selo === 'SEM_META' ? (
+                    <><i className="text-slate-400">sem meta registrada</i> · <b className="font-semibold text-slate-900">entregue {num(t.loteFechado.qtdGerada)} {t.loteFechado.unidade}</b></>
+                  ) : (
+                    <>
+                      <b className="font-semibold text-slate-900">pedido {num(t.rendimento!.pedido!)} → entregue {num(t.rendimento!.entregue)} {t.loteFechado.unidade}</b>{' '}
+                      <span className={`rounded-[8px] px-[7px] py-px text-[12px] font-extrabold ${SELO_RENDIMENTO[t.rendimento!.selo]}`}>{t.rendimento!.pct}%</span>
+                    </>
+                  )}
                   {t.loteFechado.custoUnitario != null && ` · R$ ${num(t.loteFechado.custoUnitario)}/un`}
                 </span>
               )}
