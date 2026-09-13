@@ -15,6 +15,7 @@ import {
   MessageSquare,
   Clock,
   Wallet,
+  Upload,
   Repeat,
   Users,
   Link2,
@@ -307,6 +308,33 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
             label="Despesas"
             href={`/empresas/${empresaAtiva}/despesas`}
             isActive={/^\/empresas\/[^/]+\/despesas(\/|$)/.test(pathname)}
+            onClick={onNavigate}
+          />
+        )}
+        {/* ⭐⭐ O PAINEL DO MÊS (13/09) — a tela-mãe da PF, no TOPO da seção.
+            ENTROU · SAIU · SOBROU + categorias + contas + cartões. É daqui que o
+            dono entra no resto, como o Fluxo de Caixa é na PJ. */}
+        {workspaceType === 'pf' && currentProfileId && (
+          <SidebarItem
+          perm="@sempre"
+            icon={Wallet}
+            label="Mês"
+            href={`/perfis/${currentProfileId}/mes`}
+            isActive={/^\/perfis\/[^/]+\/mes(\/|$)/.test(pathname)}
+            onClick={onNavigate}
+          />
+        )}
+        {/* ⭐ IMPORTAR EXTRATO DA CONTA (13/09) — o gesto que a PF não tinha: o
+            import de OFX do perfil era CARTÃO-only (`lib/ofx-card/`), e o campo
+            `PersonalOfxImport.bankAccountId` estava no schema desde junho com o
+            comentário "reservado pra Fatia 3B" — planejado e nunca construído. */}
+        {workspaceType === 'pf' && currentProfileId && (
+          <SidebarItem
+          perm="@sempre"
+            icon={Upload}
+            label="Extrato da conta"
+            href={`/perfis/${currentProfileId}/extrato`}
+            isActive={/^\/perfis\/[^/]+\/extrato(\/|$)/.test(pathname)}
             onClick={onNavigate}
           />
         )}

@@ -518,7 +518,7 @@ model Transaction {
   baixasParciaisPagas     ConciliacaoBaixaParcial[] @relation("BaixaParcialExtrato")
   // Sprint A-effected Fase B.3: agrupa N:1 (várias candidates conciliadas
   // com mesma OFX via Find & Match). null = single 1:1 ou pré-B.3.
-  reconcileGroupId String?
+  reconcileGroupId        String?
 
   // RECEIVABLE pode vincular cliente (Customer); PAYABLE usa supplierId já existente.
   customerId String?
@@ -1037,16 +1037,16 @@ model RolePermission {
 // mantido na 5.3.A pra não quebrar rotas atuais — removido na 5.3.B).
 // 1 role por user por empresa.
 model UserCompanyRole {
-  id        String   @id @default(cuid())
-  userId    String
-  companyId String
-  roleId    String
+  id         String   @id @default(cuid())
+  userId     String
+  companyId  String
+  roleId     String
   /// ⭐ CONTA DE APARELHO (06/09) — marcada pelo DONO, nunca inferida. A régua antiga
   /// deduzia "aparelho" do papel e chamou uma pessoa de máquina; heurística não decide isso.
   /// ⚠️ Mora aqui (e não em `users`) porque a marca é do ACESSO numa empresa.
-  ehAparelho Boolean @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  ehAparelho Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -2361,6 +2361,13 @@ model PersonalBankAccount {
   allowNegativeBalance Boolean @default(true)
   creditLimit          Float   @default(0)
   lowBalanceThreshold  Float?
+
+  // PF FASE 1 (13/09) — o saldo que o BANCO declarou no último extrato importado, e de
+  // quando. É a âncora do BATE/DIVERGE: sem ela a conferência não tem contra o que comparar.
+  // ⚠️ `balance` é o que o sistema calcula; `ledgerBal` é o que o banco disse. São perguntas
+  // diferentes, e é a divergência entre as duas que interessa.
+  ledgerBal     Float?
+  ledgerBalDate DateTime?
 
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
@@ -4430,15 +4437,15 @@ model StockVendaDiaDispensado {
 /// ⛔ Único por par: recusar duas vezes é impossível por construção, não "checado".
 /// ⚠️ Reversível pelo rastro (quem/quando), como toda decisão do dono no módulo.
 model ConciliacaoParRecusado {
-  id         String   @id @default(cuid())
-  companyId  String
+  id            String   @id @default(cuid())
+  companyId     String
   /// a linha do extrato (Transaction EFFECTED de origem OFX)
-  extratoId  String
+  extratoId     String
   /// a conta a pagar/receber (Transaction PAYABLE/RECEIVABLE, ou ex-payable sem vínculo)
-  contaId    String
-  motivo     String?
+  contaId       String
+  motivo        String?
   recusadoPorId String?
-  criadoEm   DateTime @default(now())
+  criadoEm      DateTime @default(now())
 
   @@unique([extratoId, contaId])
   @@index([companyId, criadoEm])
@@ -4532,17 +4539,17 @@ model StockCardapioProdutoSecao {
 /// é carimbado quando **todos que iniciaram** finalizarem — e é isso que faz a etapa 2
 /// liberar só com a 1 inteira, sem mudar a regra de sequência.
 model StockOrdemEtapaParticipante {
-  id            String    @id @default(cuid())
-  companyId     String
-  etapaId       String
-  colaboradorId String
+  id             String    @id @default(cuid())
+  companyId      String
+  etapaId        String
+  colaboradorId  String
   /// quem designou (o plano) — `null` quando a pessoa pegou a tarefa sozinha pelo PIN
   designadoPorId String?
-  designadoEm   DateTime?
+  designadoEm    DateTime?
   /// ⛔ o relógio DELE: nasce do toque no INICIAR com o PIN dele
-  iniciadoEm    DateTime?
-  finalizadoEm  DateTime?
-  criadoEm      DateTime  @default(now())
+  iniciadoEm     DateTime?
+  finalizadoEm   DateTime?
+  criadoEm       DateTime  @default(now())
 
   @@unique([etapaId, colaboradorId])
   @@index([companyId, colaboradorId, finalizadoEm])
@@ -4558,19 +4565,19 @@ model StockOrdemEtapaParticipante {
 // ⛔ O `@@unique([payableId, extratoId])` faz a MESMA linha pagar a MESMA conta duas vezes
 // ser impossível no banco — não "checado".
 model ConciliacaoBaixaParcial {
-  id        String   @id @default(cuid())
-  companyId String
+  id               String      @id @default(cuid())
+  companyId        String
   /// a conta a pagar que recebeu a baixa
-  payableId String
-  payable   Transaction @relation("BaixaParcialPayable", fields: [payableId], references: [id], onDelete: Cascade)
+  payableId        String
+  payable          Transaction @relation("BaixaParcialPayable", fields: [payableId], references: [id], onDelete: Cascade)
   /// a linha do extrato que pagou
-  extratoId String
-  extrato   Transaction @relation("BaixaParcialExtrato", fields: [extratoId], references: [id], onDelete: Cascade)
-  valor     Float
+  extratoId        String
+  extrato          Transaction @relation("BaixaParcialExtrato", fields: [extratoId], references: [id], onDelete: Cascade)
+  valor            Float
   /// o grupo do N:1 que originou a baixa — permite desfazer junto
   reconcileGroupId String?
   criadoPorId      String?
-  createdAt        DateTime @default(now())
+  createdAt        DateTime    @default(now())
 
   @@unique([payableId, extratoId])
   @@index([companyId])
