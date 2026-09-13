@@ -633,7 +633,7 @@ beef de hamburger          5 medidas · 1 relâmpago · média COM 13min → SEM
 
 ⚠️ **E dois guards anteriores foram REAPONTADOS, não afrouxados:** o do mock (os tokens se mudaram pro módulo de widgets) e o de "zero widget sem dado" — que agora mede a trava **DENTRO do widget**, e isso é **mais forte**: com duas composições, a trava na composição teria que ser lembrada duas vezes, e a segunda é a que alguém esquece.
 
-**9.704 verdes · TS 0 · deploy `%DEPLOY%` 4/4.**
+**9.704 verdes · TS 0 · deploy `8sYjYGPJZRHYlyhvUXLAp` 4/4.**
 
 ### ⭐⭐⭐ PF — DASHBOARD "MEU DINHEIRO" + LANÇAMENTO POR FRASE (13/09)
 
