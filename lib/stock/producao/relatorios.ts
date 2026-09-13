@@ -11,7 +11,9 @@
 //
 // ⛔ **Período vazio é DITO, nunca zero disfarçado** — a régua de honestidade do módulo.
 
-import { mediaDaTarefa, placarDaEquipe, rendimentoDoLote, fmtMin, type Execucao, type MediaDaTarefa, type DesempenhoDaPessoa } from './desempenho'
+// ⭐ `foiMedido`/`ehRelampago` vêm do DONO ÚNICO — o piso de 5 min mora lá, e este arquivo
+// só consome. Reescrever `minutos > 0` aqui seria a 2ª régua de duração do módulo.
+import { mediaDaTarefa, placarDaEquipe, rendimentoDoLote, fmtMin, foiMedido, ehRelampago, type Execucao, type MediaDaTarefa, type DesempenhoDaPessoa } from './desempenho'
 
 const r1 = (n: number) => Math.round(n * 10) / 10
 const r2 = (n: number) => Math.round(n * 100) / 100
@@ -46,6 +48,8 @@ export interface RelatorioDaTarefa {
   custoMax: number | null
   /** ⚠️ lotes sem custo fechado — contados à parte, nunca somidos na média */
   lotesSemCusto: number
+  /** ⛔ lotes abaixo do piso de duração (registro retroativo) — fora do tempo, à vista */
+  lotesRelampago: number
   porDia: PontoDoDia[]
   /** o melhor lote do período (mais unidades por minuto) — o destaque verde do mock */
   melhor: { minutos: number; unidades: number; frase: string } | null
@@ -62,10 +66,11 @@ export function seriePorDia(lotes: Lote[]): PontoDoDia[] {
   return [...porDia.entries()]
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([dia, ls]) => {
-      const medidos = ls.filter((l) => l.minutos != null && l.minutos > 0)
+      const medidos = ls.filter((l) => foiMedido(l.minutos))
       return {
         dia,
-        // ⚠️ `null` ≠ 0: dia em que ninguém cronometrou não é dia de lote instantâneo
+        // ⚠️ `null` ≠ 0: dia em que ninguém cronometrou não é dia de lote instantâneo — e o
+        // dia que só teve relâmpago fica SEM ponto, em vez de desenhar um recorde falso
         minutosPorLote: medidos.length ? r1(medidos.reduce((s, l) => s + l.minutos!, 0) / medidos.length) : null,
         lotes: ls.length,
         unidades: r2(ls.reduce((s, l) => s + l.entregue, 0)),
@@ -92,7 +97,7 @@ export function relatorioDaTarefa(
       tarefa, lotes: 0, unidades: 0,
       media: mediaDaTarefa(tarefa, historico),
       rendimento: rendimentoDoLote(null, 0, unidade),
-      custoMedio: null, custoMin: null, custoMax: null, lotesSemCusto: 0,
+      custoMedio: null, custoMin: null, custoMax: null, lotesSemCusto: 0, lotesRelampago: 0,
       porDia: [], melhor: null, pessoas: [],
       vazio: 'sem produção dessa tarefa no filtro',
     }
@@ -107,7 +112,9 @@ export function relatorioDaTarefa(
   const pedido = comMeta.length ? r2(comMeta.reduce((s, l) => s + l.pedido!, 0)) : null
   const entregueComMeta = comMeta.length ? r2(comMeta.reduce((s, l) => s + l.entregue, 0)) : entregue
 
-  const medidos = doPeriodo.filter((l) => l.minutos != null && l.minutos > 0 && l.entregue > 0)
+  // ⛔ o destaque verde NÃO coroa registro retroativo: era daqui que saía o
+  // "melhor: 1min p/ 504 un" que prod mostrava
+  const medidos = doPeriodo.filter((l) => foiMedido(l.minutos) && l.entregue > 0)
   const melhorLote = medidos.length
     ? medidos.reduce((a, b) => (a.entregue / a.minutos! >= b.entregue / b.minutos! ? a : b))
     : null
@@ -123,6 +130,7 @@ export function relatorioDaTarefa(
     custoMin: custos.length ? r2(Math.min(...custos)) : null,
     custoMax: custos.length ? r2(Math.max(...custos)) : null,
     lotesSemCusto: doPeriodo.length - comCusto.length,
+    lotesRelampago: doPeriodo.filter((l) => ehRelampago(l.minutos)).length,
     porDia: seriePorDia(doPeriodo),
     melhor: melhorLote
       ? { minutos: melhorLote.minutos!, unidades: melhorLote.entregue, frase: `melhor: ${fmtMin(melhorLote.minutos!)} p/ ${melhorLote.entregue} un` }
@@ -139,6 +147,8 @@ export interface GeralDoPeriodo {
   /** horas de cozinha MEDIDAS — o que não foi cronometrado fica de fora e é dito */
   horas: number
   lotesSemTempo: number
+  /** ⛔ lotes abaixo do piso — não somam horas, e a tela DIZ quantos foram */
+  lotesRelampago: number
   topTarefa: { tarefa: string; unidades: number } | null
   vazio: string | null
 }
@@ -146,17 +156,19 @@ export interface GeralDoPeriodo {
 /** ⭐ o rodapé do mock: todas as tarefas do período, sem entrar em nenhuma. */
 export function geralDoPeriodo(lotes: Lote[]): GeralDoPeriodo {
   if (!lotes.length) {
-    return { lotes: 0, unidades: 0, horas: 0, lotesSemTempo: 0, topTarefa: null, vazio: 'sem produção no filtro' }
+    return { lotes: 0, unidades: 0, horas: 0, lotesSemTempo: 0, lotesRelampago: 0, topTarefa: null, vazio: 'sem produção no filtro' }
   }
   const porTarefa = new Map<string, number>()
   for (const l of lotes) porTarefa.set(l.tarefa, (porTarefa.get(l.tarefa) ?? 0) + l.entregue)
   const top = [...porTarefa.entries()].sort((a, b) => b[1] - a[1])[0]
-  const medidos = lotes.filter((l) => l.minutos != null && l.minutos > 0)
+  const medidos = lotes.filter((l) => foiMedido(l.minutos))
+  const relampago = lotes.filter((l) => ehRelampago(l.minutos)).length
   return {
     lotes: lotes.length,
     unidades: r2(lotes.reduce((s, l) => s + l.entregue, 0)),
     horas: r1(medidos.reduce((s, l) => s + l.minutos!, 0) / 60),
-    lotesSemTempo: lotes.length - medidos.length,
+    lotesSemTempo: lotes.length - medidos.length - relampago,
+    lotesRelampago: relampago,
     topTarefa: { tarefa: top[0], unidades: r2(top[1]) },
     vazio: null,
   }

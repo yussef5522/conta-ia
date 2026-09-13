@@ -12,6 +12,13 @@
 /** ⚠️ mesma régua da tela: menos de 3 tarefas na etapa é amostra, não desempenho */
 export const MINIMO_NA_TAREFA = 3
 
+// ⭐ O PISO DE DURAÇÃO VEM DO DONO ÚNICO (13/09). Esta tela é o leitor MAIS ANTIGO da
+// família e tinha a régua própria (`minutos > 0`) — se ela ficasse com a dela, o mesmo
+// registro retroativo entraria aqui e ficaria fora dos Relatórios: duas telas, dois
+// vereditos sobre a mesma pessoa. É a lição do B1, e ela vale pros leitores antigos também.
+
+import { foiMedido, ehRelampago, PISO_DE_DURACAO_MIN } from './desempenho'
+
 export interface ExecucaoDeTarefa {
   /** o nome da etapa — é ele que agrupa ("gessado", "moldar beef") */
   tarefa: string
@@ -62,7 +69,10 @@ export function porTarefaDaEquipe(execucoes: ExecucaoDeTarefa[]): LinhaDaTarefa[
     const porPessoa = new Map<string, { nome: string; minutos: number; unidades: number; vezes: number }>()
     for (const e of es) {
       const a = porPessoa.get(e.colaboradorId) ?? { nome: e.nome, minutos: 0, unidades: 0, vezes: 0 }
-      a.minutos += e.minutos; a.unidades += e.unidades; a.vezes += 1
+      // ⛔ o RELÂMPAGO não entra nem no numerador nem no denominador da taxa: somar as
+      // unidades dele sem os minutos daria "min/un" absurdamente baixo — o mesmo defeito
+      // que o tempo zero causava, com um minuto em vez de nenhum.
+      if (foiMedido(e.minutos)) { a.minutos += e.minutos; a.unidades += e.unidades; a.vezes += 1 }
       porPessoa.set(e.colaboradorId, a)
     }
     // ⛔⛔ TEMPO ZERO NÃO É VELOCIDADE INFINITA — é tempo não medido (achado no dado real,
@@ -76,7 +86,7 @@ export function porTarefaDaEquipe(execucoes: ExecucaoDeTarefa[]): LinhaDaTarefa[
     // ⚠️ E A MÉDIA SÓ SOMA O QUE FOI MEDIDO. Deixar a execução de 0 minuto no denominador
     // (as unidades dela) sem nada no numerador PUXA a média da equipe pra baixo — a régua
     // ficaria mais dura pra todo mundo por causa de trabalho que ninguém cronometrou.
-    const medidas = es.filter((e) => e.unidades > 0 && e.minutos > 0)
+    const medidas = es.filter((e) => e.unidades > 0 && foiMedido(e.minutos))
     const minutosMedidos = medidas.reduce((s, e) => s + e.minutos, 0)
     const mediaDaEquipe = medidas.length
       ? r2(minutosMedidos / medidas.reduce((s, e) => s + e.unidades, 0))
@@ -84,12 +94,28 @@ export function porTarefaDaEquipe(execucoes: ExecucaoDeTarefa[]): LinhaDaTarefa[
 
     let maisRapido: LinhaDaTarefa['maisRapido'] = null
     let semVencedor: string | null = null
+    /**
+     * ⚠️⚠️ **O PISO NÃO MUDA A POLÍTICA DA COROA — ele se comporta como o ZERO já se
+     * comportava** (13/09). Cheguei a trocar esta trava por "conta quem tem relógio", e os
+     * testes de **06/09** me pararam: a casa já decidiu, por escrito, que *"quem TEM minuto
+     * medido continua concorrendo, mesmo com um zero na mistura"*. Mudar isso agora seria
+     * decidir por conta própria uma regra que já tem dono — e o relâmpago não é um caso
+     * novo, é o zero um minuto acima.
+     *
+     * 📋 Fica registrada a pergunta que o dono pode querer responder um dia: *coroar quem
+     * foi medido quando o único concorrente não tem tempo medido é prêmio disputado?* Hoje
+     * a resposta da casa é sim, e ela vale pros dois (zero e relâmpago) igualmente.
+     */
     if (porPessoa.size === 1) {
       // ⛔ a trava central: sem ninguém pra comparar, não há "mais rápido"
       semVencedor = 'a apurar — só uma pessoa fez'
     } else if (!comTaxa.length) {
       semVencedor = medidas.length === 0
-        ? 'a apurar — o tempo medido foi menor que 1 minuto'
+        ? (es.some((e) => ehRelampago(e.minutos))
+          // ⭐ o motivo DIZ que foi registro retroativo, senão o dono lê "a apurar" numa
+          // tarefa que produziu o dia inteiro e não entende por quê
+          ? `a apurar — só registro retroativo (menos de ${PISO_DE_DURACAO_MIN} min)`
+          : 'a apurar — o tempo medido foi menor que 1 minuto')
         : `a apurar — ninguém fez ${MINIMO_NA_TAREFA}+ vezes ainda`
     } else {
       const melhor = Math.min(...comTaxa.map((c) => c.minPorUnidade))

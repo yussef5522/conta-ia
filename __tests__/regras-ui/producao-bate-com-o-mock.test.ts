@@ -164,3 +164,45 @@ describe('⭐ HOJE — o formato pedido→entregue e o selo de rendimento', () =
     expect(render).toContain('sem meta registrada')
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────────────
+// ⭐⭐ A RÉGUA DO PISO É VISÍVEL (13/09) — ordem do dono: *"dito no rodapé ('3 relâmpago')
+// (…) e o piso mora no dono único, visível nos Relatórios como as outras réguas."*
+//
+// ⚠️⚠️ ESTE BLOCO NASCEU DE UM GUARD QUE NÃO MORDIA (REGRA 11): repus o defeito "a tela
+// para de dizer o relâmpago" e os 48 testes ficaram VERDES — a exigência de *dizer* não
+// tinha ninguém conferindo. Número que some da tela sem nada acusar é como a régua vira
+// segredo, e uma régua secreta cobra o dono sem ele saber por quê.
+// ─────────────────────────────────────────────────────────────────────────────────────
+describe('⭐⭐ o PISO DE DURAÇÃO é dito nas duas telas', () => {
+  const rel = semComentarios(telaRelatorios)
+  const pla = semComentarios(telaPlacar)
+
+  it('⛔ os Relatórios DIZEM o relâmpago — no tempo médio e nas horas de cozinha', () => {
+    expect(rel).toContain('lotesRelampago')
+    expect(rel.match(/relâmpago/g)?.length ?? 0).toBeGreaterThanOrEqual(3)
+  })
+
+  it('⛔ o placar diz o relâmpago na linha da pessoa', () => {
+    expect(pla).toContain('tarefasRelampago')
+    expect(pla).toContain('relâmpago')
+  })
+
+  it('⭐ e as duas EXPLICAM a régua no rodapé, junto das outras honestidades', () => {
+    for (const [nome, src] of [['relatórios', rel], ['placar', pla]] as const) {
+      expect(src, `${nome} não explica o que é relâmpago`).toMatch(/registro retroativo/)
+      // ⚠️ e a frase diz que o trabalho NÃO some — é a metade que impede a régua de virar
+      // um jeito silencioso de apagar produção de alguém
+      expect(src, `${nome} não diz que a produção continua contada`).toMatch(/fora do tempo/)
+    }
+  })
+
+  it('⛔⛔ o número 5 NUNCA é digitado na tela — ele vem do dono único', () => {
+    // ⚠️ é a lição do `const TETO = 25` hardcoded na Conciliação e do `30` da janela do "a
+    // vencer": número solto em tela vira a 2ª régua no dia em que o piso mudar.
+    for (const [nome, src] of [['relatórios', rel], ['placar', pla]] as const) {
+      expect(src, `${nome} não importa o piso do dono único`).toContain('PISO_DE_DURACAO_MIN')
+      expect(src, `${nome} digitou "5 min" na mão`).not.toMatch(/\b5\s*min/)
+    }
+  })
+})

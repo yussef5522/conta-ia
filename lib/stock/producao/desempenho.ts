@@ -28,6 +28,46 @@ export const RENDIMENTO_OK = { min: 95, max: 110 } as const
 /** ⚠️ abaixo disso a diferença de velocidade é ruído de medição, não desempenho */
 export const RUIDO_DE_VELOCIDADE_PCT = 5
 
+/**
+ * ⛔⛔ **O PISO DA DURAÇÃO (13/09) — decisão do dono:** *"Nenhum lote real fica pronto em
+ * menos de 5 min; registro retroativo é o caso, e vai se repetir."*
+ *
+ * Execução medida **abaixo do piso é RELÂMPAGO**: alguém tocou iniciar e finalizar em
+ * seguida pra registrar trabalho já feito. Ela fica **fora das médias** e é **contada à
+ * parte**, exatamente como o "sem tempo" já era — sumir com ela esconderia unidades que
+ * saíram de verdade.
+ *
+ * **O que motivou, medido em prod:** 4 de 48 execuções medidas duravam 1-2 min, e **3
+ * delas na porção de queijo** — cortavam a média daquela tarefa pela metade (44min com,
+ * 88min sem), e o placar comparava a equipe contra essa régua envenenada.
+ *
+ * ⭐ É a família do *"tempo zero não é velocidade infinita"* (06/09) um degrau acima: lá a
+ * régua matou o `0`, e o `1` passava.
+ */
+export const PISO_DE_DURACAO_MIN = 5
+
+/**
+ * ⭐⭐ *"Esta duração conta na média?"* — **a pergunta tem UM dono.**
+ *
+ * ⚠️ Ela vivia copiada em **7 lugares** (`minutos != null && minutos > 0`), e foi por isso
+ * que o piso não tinha onde entrar. É a lição do B1: quando N leitores precisam da MESMA
+ * decisão, a decisão vira função.
+ */
+export function foiMedido(minutos: number | null | undefined): boolean {
+  return minutos != null && minutos >= PISO_DE_DURACAO_MIN
+}
+
+/**
+ * ⛔ *"Isto é registro retroativo?"* — duração positiva, porém abaixo do piso.
+ *
+ * ⚠️ **Zero NÃO é relâmpago**: zero é o que o módulo já chamava de "sem tempo", e misturar
+ * os dois apagaria uma distinção real (ninguém tocou o cronômetro × alguém tocou os dois
+ * botões seguidos).
+ */
+export function ehRelampago(minutos: number | null | undefined): boolean {
+  return minutos != null && minutos > 0 && minutos < PISO_DE_DURACAO_MIN
+}
+
 /** uma execução de tarefa por uma pessoa — o tijolo de tudo aqui */
 export interface Execucao {
   ordemId: string
@@ -51,6 +91,8 @@ export interface MediaDaTarefa {
   lotesMedidos: number
   /** ⚠️ contados à parte, nunca somidos */
   lotesSemTempo: number
+  /** ⛔ medidos abaixo do piso (registro retroativo) — fora da média, DITOS na tela */
+  lotesRelampago: number
   /** por que não há média (pra a tela DIZER, em vez de mostrar vazio) */
   porQue: string | null
 }
@@ -58,15 +100,21 @@ export interface MediaDaTarefa {
 /** ⭐ A MÉDIA DE UMA TAREFA — pura. Recebe as execuções e devolve a régua dela. */
 export function mediaDaTarefa(tarefa: string, execucoes: Execucao[]): MediaDaTarefa {
   const daTarefa = execucoes.filter((e) => e.tarefa === tarefa)
-  const medidas = daTarefa.filter((e) => e.minutos != null && e.minutos > 0)
-  const semTempo = daTarefa.length - medidas.length
+  const medidas = daTarefa.filter((e) => foiMedido(e.minutos))
+  const relampago = daTarefa.filter((e) => ehRelampago(e.minutos)).length
+  const semTempo = daTarefa.length - medidas.length - relampago
   if (medidas.length < LOTES_PRA_TER_MEDIA) {
     return {
       tarefa, minutosPorLote: null, medianaMinutos: null,
-      lotesMedidos: medidas.length, lotesSemTempo: semTempo,
+      lotesMedidos: medidas.length, lotesSemTempo: semTempo, lotesRelampago: relampago,
+      // ⭐ o porquê CITA o relâmpago quando ele é o motivo — senão o dono olha "sem média
+      // ainda" numa tarefa que produziu o dia inteiro e não entende
       porQue: medidas.length === 0
-        ? 'tarefa nova — sem média ainda'
-        : `só ${medidas.length} lote(s) medido(s) — precisa de ${LOTES_PRA_TER_MEDIA}`,
+        ? (relampago > 0
+          ? `${relampago} lote(s) relâmpago (menos de ${PISO_DE_DURACAO_MIN} min) — sem tempo real medido ainda`
+          : 'tarefa nova — sem média ainda')
+        : `só ${medidas.length} lote(s) medido(s) — precisa de ${LOTES_PRA_TER_MEDIA}`
+          + (relampago > 0 ? ` (${relampago} relâmpago fora da conta)` : ''),
     }
   }
   const mins = medidas.map((e) => e.minutos!).sort((a, b) => a - b)
@@ -75,7 +123,7 @@ export function mediaDaTarefa(tarefa: string, execucoes: Execucao[]): MediaDaTar
     tarefa,
     minutosPorLote: r1(mins.reduce((s, m) => s + m, 0) / mins.length),
     medianaMinutos: r1(mins.length % 2 ? mins[meio] : (mins[meio - 1] + mins[meio]) / 2),
-    lotesMedidos: medidas.length, lotesSemTempo: semTempo, porQue: null,
+    lotesMedidos: medidas.length, lotesSemTempo: semTempo, lotesRelampago: relampago, porQue: null,
   }
 }
 
@@ -88,6 +136,8 @@ export interface DesempenhoDaPessoa {
   minutosMedidos: number
   /** ⚠️ tarefas cujo tempo não foi medido — contadas à parte, nunca escondidas */
   tarefasSemTempo: number
+  /** ⛔ tarefas com tempo abaixo do piso (registro retroativo) — fora do ritmo, à vista */
+  tarefasRelampago: number
   /**
    * ⭐ quanto ela foi mais rápida (+) ou mais devagar (−) que a média das tarefas que fez,
    * em %. `null` quando nenhuma tarefa dela tem média.
@@ -123,8 +173,9 @@ export function placarDaEquipe(execucoes: Execucao[], historico: Execucao[]): De
   const out: DesempenhoDaPessoa[] = []
   for (const [colaboradorId, es] of porPessoa) {
     const unidades = r2(es.reduce((s, e) => s + e.unidades, 0))
-    const medidas = es.filter((e) => e.minutos != null && e.minutos > 0)
-    const semTempo = es.length - medidas.length
+    const medidas = es.filter((e) => foiMedido(e.minutos))
+    const relampago = es.filter((e) => ehRelampago(e.minutos)).length
+    const semTempo = es.length - medidas.length - relampago
 
     // ⭐ compara CADA execução com a média DA TAREFA dela; a % da pessoa é a média dessas
     const comparaveis = medidas
@@ -139,7 +190,10 @@ export function placarDaEquipe(execucoes: Execucao[], historico: Execucao[]): De
 
     let selo: DesempenhoDaPessoa['selo'] = 'SEM_MEDIA'
     let frase = comparaveis.length === 0
-      ? (es.length === 1 ? 'tarefa nova — sem média ainda' : 'sem média ainda')
+      // ⛔ a pessoa cujo único lote foi relâmpago não é "a mais rápida": ela é sem média
+      ? (relampago > 0 && medidas.length === 0
+        ? `registro retroativo (menos de ${PISO_DE_DURACAO_MIN} min) — sem ritmo medido`
+        : es.length === 1 ? 'tarefa nova — sem média ainda' : 'sem média ainda')
       : ''
     if (vsMediaPct != null) {
       if (Math.abs(vsMediaPct) < RUIDO_DE_VELOCIDADE_PCT) { selo = 'NA_MEDIA'; frase = 'na média' }
@@ -155,7 +209,7 @@ export function placarDaEquipe(execucoes: Execucao[], historico: Execucao[]): De
     out.push({
       colaboradorId, nome: es[0].nome, tarefas: es.length, unidades,
       minutosMedidos: r1(medidas.reduce((s, e) => s + (e.minutos ?? 0), 0)),
-      tarefasSemTempo: semTempo, vsMediaPct, selo, frase,
+      tarefasSemTempo: semTempo, tarefasRelampago: relampago, vsMediaPct, selo, frase,
       proporcao: r2(unidades / maxUn),
     })
   }

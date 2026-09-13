@@ -21,7 +21,7 @@
 import Link from 'next/link'
 // ⭐ o TIPO vem do dono único da conta (`desempenho.ts`) — declarar uma cópia aqui seria a
 // segunda régua do placar, e ela divergiria no primeiro selo novo.
-import type { DesempenhoDaPessoa } from '@/lib/stock/producao/desempenho'
+import { PISO_DE_DURACAO_MIN, type DesempenhoDaPessoa } from '@/lib/stock/producao/desempenho'
 
 /** ⭐ os tokens do mock, literais (a régua é o arquivo, como na Conciliação) */
 const MOCK = {
@@ -76,8 +76,9 @@ export function PlacarDaEquipe({ empresaId, linhas, dia }: {
             <small className="block text-[11px] font-normal" style={{ color: MOCK.sub }}>
               {l.tarefas} tarefa{l.tarefas > 1 ? 's' : ''}
               {l.unidades > 0 && ` · ${l.unidades.toLocaleString('pt-BR')} un`}
-              {/* ⚠️ o tempo a apurar é DITO, nunca somido */}
+              {/* ⚠️ o tempo a apurar é DITO, nunca somido — e o relâmpago também */}
               {l.tarefasSemTempo > 0 && ` · ${l.tarefasSemTempo} sem tempo`}
+              {l.tarefasRelampago > 0 && ` · ${l.tarefasRelampago} relâmpago`}
             </small>
           </span>
           <span className="min-w-0 flex-1">
@@ -101,8 +102,10 @@ export function PlacarDaEquipe({ empresaId, linhas, dia }: {
       {/* ⭐ as REGRAS no rodapé, como no mock — quem lê o âmbar precisa saber o que ele mede */}
       <p className="mt-2 text-[11px] leading-[1.5]" style={{ color: MOCK.sub }}>
         velocidade comparada com a <b>média histórica de cada tarefa</b> (só tarefas com 3+ lotes
-        medidos entram na conta) · tempo finalizado pelo gerente fica fora · o âmbar é convite
-        pra olhar, não veredito — toca na pessoa pra abrir o detalhe dela nos Relatórios
+        medidos entram na conta) · tempo finalizado pelo gerente fica fora · lote abaixo de{' '}
+        {PISO_DE_DURACAO_MIN} min é <b>relâmpago</b> (registro retroativo) e fica fora do tempo,
+        nunca da produção · o âmbar é convite pra olhar, não veredito — toca na pessoa pra abrir
+        o detalhe dela nos Relatórios
       </p>
     </div>
   )

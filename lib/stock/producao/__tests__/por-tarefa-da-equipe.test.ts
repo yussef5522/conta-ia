@@ -35,21 +35,26 @@ describe('⭐⭐ cada tarefa elege pela SUA régua', () => {
   it('⭐⭐ tarefas diferentes NÃO se comparam entre si', () => {
     // ⚠️ o "moldar" é naturalmente mais rápido; num ranking único a Bia venceria por fazer
     // uma tarefa mais fácil, não por ser melhor.
+    //
+    // ⚠️⚠️ OS MINUTOS DO MOLDAR SUBIRAM DE 2/3 PRA 6/9 (13/09) — a razão entre eles é a
+    // MESMA, e o que o teste afirma não mudou. O que mudou é a régua: execução abaixo de
+    // 5 min passou a ser RELÂMPAGO (registro retroativo) e fica fora das médias. A fixture
+    // antiga modelava uma etapa de 2 minutos, que hoje o módulo se recusa a cronometrar.
     const linhas = porTarefaDaEquipe([
       ...tresDe({ tarefa: 'gessado', colaboradorId: 'a', nome: 'Ana', minutos: 10, unidades: 20 }),
       ...tresDe({ tarefa: 'gessado', colaboradorId: 'c', nome: 'Cris', minutos: 14, unidades: 20 }),
-      ...tresDe({ tarefa: 'moldar', colaboradorId: 'b', nome: 'Bia', minutos: 2, unidades: 20 }),
-      ...tresDe({ tarefa: 'moldar', colaboradorId: 'c', nome: 'Cris', minutos: 3, unidades: 20 }),
+      ...tresDe({ tarefa: 'moldar', colaboradorId: 'b', nome: 'Bia', minutos: 6, unidades: 20 }),
+      ...tresDe({ tarefa: 'moldar', colaboradorId: 'c', nome: 'Cris', minutos: 9, unidades: 20 }),
     ])
     const gessado = linhas.find((l) => l.tarefa === 'gessado')!
     const moldar = linhas.find((l) => l.tarefa === 'moldar')!
     expect(gessado.maisRapido?.nome).toBe('Ana')
     expect(moldar.maisRapido?.nome).toBe('Bia')
-    // ⚠️ a Ana (0,50) é MAIS LENTA que a Cris no moldar (0,15) e mesmo assim vence o gessado
+    // ⚠️ a Ana (0,50) é MAIS LENTA que a Cris no moldar (0,45) e mesmo assim vence o gessado
     expect(gessado.mediaDaEquipe).toBe(0.6)
-    // ⚠️ 15/120 = 0,125 → 0,13: min/un anda em 2 casas, a MESMA régua que a tela imprime.
+    // ⚠️ 45/120 = 0,375 → 0,38: min/un anda em 2 casas, a MESMA régua que a tela imprime.
     // Uma média em precisão cheia aqui faria a barra dizer um número e o card outro.
-    expect(moldar.mediaDaEquipe).toBe(0.13)
+    expect(moldar.mediaDaEquipe).toBe(0.38)
   })
 
   it('⭐ ordena por VOLUME — é onde ganho de velocidade vale dinheiro', () => {

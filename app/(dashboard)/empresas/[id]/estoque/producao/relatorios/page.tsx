@@ -13,6 +13,8 @@ import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { fetchJson } from '@/lib/http/fetch-json'
 import type { RelatorioDaTarefa, GeralDoPeriodo } from '@/lib/stock/producao/relatorios'
+// ⭐ o piso vem do DONO ÚNICO — digitar "5" na tela seria a 2ª régua no dia em que ele mudar
+import { PISO_DE_DURACAO_MIN } from '@/lib/stock/producao/desempenho'
 
 /** ⭐ os tokens do mock, literais */
 const M = {
@@ -172,7 +174,10 @@ export default function RelatoriosDeProducaoPage({ params }: { params: Promise<{
                   valor={d.porTarefa.media.minutosPorLote ? fmt(d.porTarefa.media.minutosPorLote) : '—'}
                   sufixo={d.porTarefa.media.minutosPorLote ? '/lote' : undefined}
                   detalhe={d.porTarefa.media.minutosPorLote
-                    ? `mediana ${fmt(d.porTarefa.media.medianaMinutos!)}${d.porTarefa.media.lotesSemTempo ? ` · ${d.porTarefa.media.lotesSemTempo} sem tempo` : ''}`
+                    ? `mediana ${fmt(d.porTarefa.media.medianaMinutos!)}`
+                      + (d.porTarefa.media.lotesSemTempo ? ` · ${d.porTarefa.media.lotesSemTempo} sem tempo` : '')
+                      /* ⭐ o relâmpago é DITO, como o "sem tempo" — some da média, nunca da tela */
+                      + (d.porTarefa.media.lotesRelampago ? ` · ${d.porTarefa.media.lotesRelampago} relâmpago` : '')
                     /* ⚠️ sem média a tela DIZ o porquê, em vez de mostrar um número falso */
                     : d.porTarefa.media.porQue ?? 'sem média ainda'} />
                 <Stat rotulo="Rendimento"
@@ -235,6 +240,9 @@ export default function RelatoriosDeProducaoPage({ params }: { params: Promise<{
                 </div>
                 <p className="mt-2 text-[11.5px]" style={{ color: M.sub }}>
                   comparação com a média da tarefa, sem pódio · tempo a apurar fica fora das médias e é dito · lote cancelado fora pelo estado
+                  {/* ⭐⭐ A RÉGUA DO PISO FICA VISÍVEL, como as outras — quem lê o número
+                      precisa saber o que ele exclui (ordem do dono, 13/09) */}
+                  {' · '}<b>lote abaixo de {PISO_DE_DURACAO_MIN} min é “relâmpago”</b> (registro retroativo): conta na produção, fica fora do tempo
                 </p>
               </Painel>
             </>
@@ -265,7 +273,10 @@ export default function RelatoriosDeProducaoPage({ params }: { params: Promise<{
                   <Stat nu rotulo="Lotes" valor={String(d.geral.lotes)} />
                   <Stat nu rotulo="Unidades" valor={num(d.geral.unidades)} />
                   <Stat nu rotulo="Horas de cozinha" valor={`${num(d.geral.horas)}h`}
-                    detalhe={d.geral.lotesSemTempo ? `${d.geral.lotesSemTempo} lote(s) sem tempo` : undefined} />
+                    detalhe={[
+                      d.geral.lotesSemTempo ? `${d.geral.lotesSemTempo} sem tempo` : null,
+                      d.geral.lotesRelampago ? `${d.geral.lotesRelampago} relâmpago` : null,
+                    ].filter(Boolean).join(' · ') || undefined} />
                   <Stat nu pequeno rotulo="Top tarefa" valor={d.geral.topTarefa?.tarefa ?? '—'}
                     detalhe={d.geral.topTarefa ? `${num(d.geral.topTarefa.unidades)} un` : undefined} />
                 </div>
