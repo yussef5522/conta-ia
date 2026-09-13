@@ -611,6 +611,43 @@ beef de hamburger          5 medidas · 1 relâmpago · média COM 13min → SEM
 ```
 **Consequência real:** o *"rodrigo −49% · 2h07 (média 44min)"* compara com uma média pela metade — **sem os 3 relâmpagos a média é 88min e o 2h07 dele fica perto do normal**. É a família do *"tempo zero não é velocidade infinita"* (06/09) um degrau acima: lá a régua matou o `0`, aqui o `1` passa. **NÃO inventei um piso** — escolher "menos de N minutos não conta" é decisão do dono sobre o número que sai da cozinha dele. As saídas possíveis: (a) piso de duração pra entrar na média (e o relâmpago contado à parte, como o "sem tempo" já é); (b) deixar como está e tratar os 2 lotes na mão.
 
+### ⭐⭐⭐ PF FASE 1 EM PROD (13/09) — EXTRATO DA CONTA · CASAMENTO COM A PONTE · PAINEL DO MÊS
+
+**O desenho veio da investigação, item por item.** `pg_dump pre-pf-fase1-20260913-022651` (6,0 MB) antes da migration; deploy `p19qaHOzNljwql1pV37WX` 4/4.
+
+**⭐⭐ O CASAMENTO É O CORAÇÃO — régua confirmada pelo dono:** *"a linha do extrato é o FATO, a tx da ponte é o REGISTRO do mesmo fato — o import CASA com a ponte existente, NUNCA cria segunda."*
+
+**⛔⛔ E ELE NÃO PODE OLHAR O TEXTO.** A ponte diz *"Distribuição de Lucros caçula"* (as palavras do dono) e o banco dirá *"PIX RECEBIDO…"* — **o mesmo fato com dois nomes**. Casar por memo não casaria NADA. A régua é **data ±2d + valor exato + sentido**, e é estreita justamente porque não há texto pra desempatar. **Duas camadas:** identidade (`stableKey`, pro re-import) e o fato (a janela larga, só pra quem **não** tem `dedupHash`). ⚠️ **Dois candidatos = AMBÍGUA**, e o sistema não escolhe — casar com o errado amarraria a categoria de um gasto no outro.
+
+**A TRAVA NASCEU JUNTO, como o dono exigiu.** O 1º import **propõe gravar `bankCode`/`accountNumber`** (o arquivo já diz quem é a conta) e a partir daí `verifyOfxMatchesAccount` morde. Teste prova: com a conta já identificada, um OFX do Sicredi na conta do Banrisul **bloqueia** com `OFX_BANK_MISMATCH`.
+
+**ORQUESTRADOR FINO:** reusa `parseOFX` · `stableKey` · `resolveBankProfile` · `partitionFutureLines` — **zero gatilho de vendas/DRE/conciliação**, que não existem no PF. ⚠️ E **sem âncora no arquivo não se descarta nada**: o relógio não decide (a régua de 13/08).
+
+**⭐ ITEM 2a JUNTO:** pagamento de fatura casa por **valor EXATO + janela do vencimento**, o cartão vira **paga ✓** sozinho, e **APRENDE a conta de pagamento no 1º casamento** (*"aprende, não pede cadastro antes"*). ⛔ **Cartão INATIVO nunca é candidato** — o perfil tem um `banrisul pf ****9113` **vazio e inativo** ao lado do `banrisul ****9113` com 277 transações; casar pelos 4 dígitos escolheria o morto. **Não houve mescla: não há o que absorver** (0 faturas, 0 tx, 0 imports).
+
+**⭐ PAINEL DO MÊS:** ENTROU · SAIU · SOBROU + barras por categoria + contas com conferência + cartões. ⛔⛔ **O PAGAMENTO DE FATURA FICA FORA DO SAIU** — senão a mesma despesa conta **duas vezes** (a compra no mês em que foi feita, a fatura no mês em que foi paga) — e **aparece nomeado**, porque exclusão escondida é tão ruim quanto exclusão nenhuma (a régua do Fluxo da PJ, 25/08).
+
+**PROVADO EM PROD, pelo motor real (preview, nada gravado):**
+```
+PAGE /mes · /extrato · /cartoes → 200
+PAINEL 09/2026: ENTROU 38.090,00 · SAIU 38.090,00 · SOBROU 0,00 · 13 lançamentos
+   yussef gastos 31.000 · nura 3.590 · Daniela 3.500 · sem categoria: 0
+   ⭐ 1 pagamento de fatura FORA do SAIU
+
+O OFX do banrisul PF com os 3 créditos da empresa:
+   ⭐⭐ CASADAS: 3 — "já registrado como dinheiro vindo da empresa (ponte PJ→PF)"
+   ⭐ NOVAS: 2 (a fatura de 18.593,16 e o mercado de 280,50)
+   ⭐ PAGAMENTO DE FATURA: banrisul — valor exato da fatura 2026-08, que vence 10/09
+   aprender na conta: {"bankCode":"041","accountNumber":"0605534106"}
+```
+⭐ **Os 3 créditos da empresa NÃO viram transação nova** — era exatamente o red-then-green pedido.
+
+**⚠️⚠️ UMA RESSALVA QUE O DONO PRECISA SABER: o BATE/DIVERGE NÃO VAI FUNCIONAR NO BANRISUL.** O preview devolveu `SEM_DECLARADO` **com o `<LEDGERBAL>` dentro do arquivo** — e está **certo**: a ficha do Banrisul tem `ledgerBalReliable: false` desde 29/08, porque **o saldo declarado dele embute o bloqueado +24h** (provado com os 1.700 do card da PJ). A conferência vale nas outras contas; no Banrisul quem confere é o PDF, dia a dia — igual na empresa.
+
+**REGRA 11 — 5 defeitos repostos, todos vermelhos:** o import criando tx nova pro dinheiro da ponte (**7**) · a trava da conta errada fora do caminho (**1**) · sem LEDGERBAL dizendo que BATE (**2**) · cartão inativo voltando a ser candidato (**1**) · uma tx manual casando com várias linhas (**1**). **⛔ Guard de isolamento PF↔PJ:** foto da PJ (contagens de `transactions`/`bankAccounts`/`categories`/`suppliers` + saldo da conta) **idêntica** depois de um import PF completo. **9.584 verdes · TS 0.**
+
+📋 **FICA PRA FASE 2 (não construído, por ordem do dono):** orçamento/metas (*"meta sem histórico é chute"*), a hierarquia de categorias (o modelo suporta `parentId`, hoje 0 em uso) e a tela de classificar em lote — as **regras aprendidas do perfil nascem em 0** e só passam a existir quando o dono categorizar o primeiro extrato.
+
 ### 📋 PF FASE 1 — A INVESTIGAÇÃO (13/09). **Dois dos três itens já existem, e um COLIDE com o terceiro.**
 
 **0.1 — CONTA BANCÁRIA PF: existem 3.** `nubank` (R$ 0) · `bradesco` (R$ 0) · **`banrisul` (R$ 71.609,96)**. ⚠️ **Nenhuma tem `bankCode` nem `accountNumber` preenchidos** — e é exatamente disso que vive a trava `verifyOfxMatchesAccount` (12/08), a que impediu 355 tx do Sicredi de entrarem na conta Stone. **Sem esses dois campos a trava não tem como conferir nada** e o import PF nasceria sem a proteção que a PJ tem.
