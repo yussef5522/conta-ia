@@ -635,6 +635,33 @@ rodrigo (12/09) "−19% · 2h07 (média 44min)" → "+9% vs média"  ⭐ MUDOU D
 
 **REGRA 11 nos outros três, cada um com vermelho:** piso de volta a 0 → **19** · `relatorios.ts` com régua própria → **1** · a 7ª cópia com a régua velha → **2**. **9.525 verdes · TS 0 · deploy `oqV3Bap34r5uHaxqGXeKz` 4/4.**
 
+### ✅ O EDITOR DE RECEITA **NÃO** PERDE COMPONENTE — investigado e inocentado (13/09)
+
+**A pergunta do dono:** *"o editor PERDE componente ao salvar depois de uma mescla de itens? Reproduz: ficha com componente X → mescla o item X em outro → abre a ficha, salva sem mexer → o componente sumiu?"*
+
+**⭐⭐ A CRONOLOGIA JÁ RESPONDIA, e ela é dura:**
+```
+19:08  o fantasma recebe a separação de −0,161
+18:55  v1 da MAIONESE (COM vinagre)
+19:23  v2 — SEM vinagre          ← a perda aconteceu AQUI
+19:27  v3 e v4
+19:58  A MESCLA acontece (estornos + re-entradas no item vivo)   ← 35 min DEPOIS
+```
+**O vinagre saiu da receita 35 minutos ANTES de existir mescla.** E é por isso que a v1 hoje aponta pro item vivo: a mescla das 19:58 repontou aquele componente depois. **O sumiço da v2 foi gesto de tela**, não efeito colateral.
+
+**⛔ MAS CRONOLOGIA PROVA O CASO, NÃO A CLASSE** — então a classe ganhou teste (`editor-nao-perde-componente.integration.test.ts`, 6 casos rodando o caminho REAL: o mesmo `getFicha` que a tela carrega e o mesmo `atualizarFicha` que o PATCH chama). **Todos verdes:** a mescla **repõe** o componente (`updateMany`, sem unique pra colidir), o load devolve todos (`versaoView` não filtra nada), o save persiste todos, componente de item **desativado** sobrevive, mudar o corpo **sem** mandar a lista **herda** a receita, e lista vazia é **recusada**.
+
+**⚠️⚠️ E A REGRA 11 IMPORTOU MAIS AQUI DO QUE DE COSTUME — porque o veredito é "não tem bug".** Um teste verde por vacuidade **inocentaria um defeito real**, que é o pior desfecho possível de uma investigação. Repus três defeitos:
+| defeito reposto | mordeu? |
+|---|---|
+| a mescla NÃO repõe a ficha | ✓ vermelho na hora |
+| o load descarta componente de item inativo | ⛔ **VERDE** — depois da mescla o componente aponta pro SOBREVIVENTE, que está ativo |
+| `componentes` ausente vira lista vazia | ⛔ **VERDE** — o teste do "salvar só o preço" **nem alcança** a linha de herança (`valorVenda` sozinho não muda o corpo, e `atualizarFicha` retorna cedo) |
+
+Os dois buracos viraram caso próprio: **item arquivado** com a ficha apontando pra ele, e **mudar o modo de preparo** sem mandar os componentes. Com eles, os três defeitos ficam vermelhos.
+
+**9.531 verdes · TS 0.**
+
 ### 📋 OS DOIS VINAGRES — JÁ ESTAVAM RESOLVIDOS, E NÃO POR MIM (13/09)
 
 **O dono autorizou aplicar; o preview quebrou porque o mundo mudou.** `scripts/vinagres.ts` procura `VINAGRE 750ML` e não acha mais — e a medição explicou: **o próprio dono fez a costura na tela em 12/09** (audit: sessão dele às 19:24), mesclando os três vinagres.
