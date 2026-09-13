@@ -75,7 +75,10 @@ export function PlacarDaEquipe({ empresaId, linhas, dia }: {
             {l.nome}
             <small className="block text-[11px] font-normal" style={{ color: MOCK.sub }}>
               {l.tarefas} tarefa{l.tarefas > 1 ? 's' : ''}
-              {l.unidades > 0 && ` · ${l.unidades.toLocaleString('pt-BR')} un`}
+              {/* ⛔ POR UNIDADE: "138 UN · 2,5 KG". O placar mostrava "1.415,84 un" somando
+                  porção de queijo (UN) com massa de pizza (KG) — e aquele `,84` era o
+                  sintoma de um número que não existe. */}
+              {l.quantidade.porUnidade.length > 0 && ` · ${l.quantidade.texto}`}
               {/* ⚠️ o tempo a apurar é DITO, nunca somido — e o relâmpago também */}
               {l.tarefasSemTempo > 0 && ` · ${l.tarefasSemTempo} sem tempo`}
               {l.tarefasRelampago > 0 && ` · ${l.tarefasRelampago} relâmpago`}
@@ -104,7 +107,7 @@ export function PlacarDaEquipe({ empresaId, linhas, dia }: {
         velocidade comparada com a <b>média histórica de cada tarefa</b> (só tarefas com 3+ lotes
         medidos entram na conta) · tempo finalizado pelo gerente fica fora · lote abaixo de{' '}
         {PISO_DE_DURACAO_MIN} min é <b>relâmpago</b> (registro retroativo) e fica fora do tempo,
-        nunca da produção · o âmbar é convite pra olhar, não veredito — toca na pessoa pra abrir
+        nunca da produção{linhas.some((l) => l.barraEmLotes) && <> · a barra mede <b>lotes</b> (as tarefas do dia têm unidades diferentes)</>} · o âmbar é convite pra olhar, não veredito — toca na pessoa pra abrir
         o detalhe dela nos Relatórios
       </p>
     </div>

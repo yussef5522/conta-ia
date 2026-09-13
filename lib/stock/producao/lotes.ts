@@ -36,9 +36,10 @@ export async function lotesDaJanela(companyId: string, janela: JanelaDeLotes = {
   // ⛔ CANCELADA fora — pelo ESTADO, nunca por heurística de nome (a régua de 06/09)
   const vivas = new Map(ordens.filter((o) => o.estado !== 'CANCELADA').map((o) => [o.id, o]))
   const itens = await db.stockItem.findMany({
-    where: { id: { in: [...new Set([...vivas.values()].map((o) => o.itemProduzidoId))] } }, select: { id: true, nome: true },
+    where: { id: { in: [...new Set([...vivas.values()].map((o) => o.itemProduzidoId))] } }, select: { id: true, nome: true, unidadeControle: true },
   })
   const nomeItem = new Map(itens.map((i) => [i.id, i.nome]))
+  const unidadeItem = new Map(itens.map((i) => [i.id, i.unidadeControle]))
   const metaPorOrdem = new Map(metas.map((m) => [m.ordemId, m.unidades]))
 
   // ⭐ a duração do LOTE é da 1ª etapa iniciada à última finalizada; se alguma etapa ficou
@@ -72,6 +73,7 @@ export async function lotesDaJanela(companyId: string, janela: JanelaDeLotes = {
     const j = janelaDaOrdem.get(ordemId)
     out.push({
       ordemId, tarefa,
+      unidade: unidadeItem.get(o.itemProduzidoId) ?? 'UN',
       pedido: metaPorOrdem.get(ordemId) ?? null,
       entregue: Math.round(v.entregue * 100) / 100,
       custoUnitario: v.comCusto > 0 ? Math.round((v.custoSoma / v.comCusto) * 100) / 100 : null,
@@ -83,13 +85,15 @@ export async function lotesDaJanela(companyId: string, janela: JanelaDeLotes = {
 }
 
 /** ⭐ as tarefas que aparecem no seletor — só o que de fato produziu na janela */
-export function tarefasDaJanela(lotes: Lote[]): { tarefa: string; lotes: number; unidades: number }[] {
-  const m = new Map<string, { lotes: number; unidades: number }>()
+export function tarefasDaJanela(lotes: Lote[]): { tarefa: string; lotes: number; unidades: number; unidade: string }[] {
+  // ⚠️ aqui a soma é SEGURA porque agrupa POR TAREFA — e uma tarefa produz uma coisa só.
+  // É exatamente o contrário de somar por PESSOA, que atravessa tarefas de unidades diferentes.
+  const m = new Map<string, { lotes: number; unidades: number; unidade: string }>()
   for (const l of lotes) {
-    const a = m.get(l.tarefa) ?? { lotes: 0, unidades: 0 }
-    m.set(l.tarefa, { lotes: a.lotes + 1, unidades: a.unidades + l.entregue })
+    const a = m.get(l.tarefa) ?? { lotes: 0, unidades: 0, unidade: l.unidade }
+    m.set(l.tarefa, { lotes: a.lotes + 1, unidades: a.unidades + l.entregue, unidade: a.unidade })
   }
   return [...m.entries()]
-    .map(([tarefa, v]) => ({ tarefa, lotes: v.lotes, unidades: Math.round(v.unidades * 100) / 100 }))
-    .sort((a, b) => b.unidades - a.unidades)
+    .map(([tarefa, v]) => ({ tarefa, lotes: v.lotes, unidades: Math.round(v.unidades * 100) / 100, unidade: v.unidade }))
+    .sort((a, b) => b.lotes - a.lotes || b.unidades - a.unidades)
 }

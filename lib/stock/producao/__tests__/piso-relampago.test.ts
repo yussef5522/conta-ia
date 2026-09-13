@@ -22,11 +22,11 @@ import { relatorioDaTarefa, geralDoPeriodo, seriePorDia, type Lote } from '../re
 
 const ex = (o: Partial<Execucao> & { tarefa: string; colaboradorId: string; minutos: number | null; unidades: number }): Execucao => ({
   ordemId: o.ordemId ?? `o-${o.colaboradorId}-${o.minutos}-${o.unidades}`,
-  nome: o.nome ?? o.colaboradorId, quando: o.quando ?? new Date('2026-09-12T10:00:00Z'), ...o,
+  nome: o.nome ?? o.colaboradorId, unidade: o.unidade ?? 'UN', quando: o.quando ?? new Date('2026-09-12T10:00:00Z'), ...o,
 })
 const lote = (o: Partial<Lote> & { tarefa: string; entregue: number }): Lote => ({
   ordemId: o.ordemId ?? `l-${o.tarefa}-${o.entregue}-${o.minutos}`,
-  pedido: o.pedido ?? null, custoUnitario: o.custoUnitario ?? null,
+  pedido: o.pedido ?? null, custoUnitario: o.custoUnitario ?? null, unidade: o.unidade ?? 'UN',
   minutos: o.minutos ?? null, dia: o.dia ?? '2026-09-12', ...o,
 })
 
@@ -99,7 +99,7 @@ describe('⛔ o placar não compara ninguém com um relâmpago', () => {
 
   it('⭐ e o VOLUME dela continua contado — o trabalho não some', () => {
     const p = placarDaEquipe([ex({ tarefa: QUEIJO, colaboradorId: 'cristian', minutos: 1, unidades: 504 })], QUEIJO_REAL)
-    expect(p[0].unidades).toBe(504)
+    expect(p[0].quantidade.total).toBe(504)
     expect(p[0].tarefas).toBe(1)
     expect(p[0].minutosMedidos).toBe(0)   // ⚠️ e o minuto NÃO entra: un/min seria absurdo
   })
@@ -140,7 +140,7 @@ describe('⭐ o piso vale no LOTE também (era lá que nascia o "melhor: 1min p/
     expect(g.lotesRelampago).toBe(1)
     expect(g.lotesSemTempo).toBe(1)
     expect(g.lotes).toBe(3)
-    expect(g.unidades).toBe(1014)
+    expect(g.quantidade.total).toBe(1014)
   })
 
   it('⭐ e o relatório da tarefa relata os relâmpagos do período', () => {

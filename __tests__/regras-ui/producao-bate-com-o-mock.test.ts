@@ -206,3 +206,52 @@ describe('⭐⭐ o PISO DE DURAÇÃO é dito nas duas telas', () => {
     }
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────────────
+// ⛔⛔⛔ O ESCOPO NÃO VAZA (13/09) — *"escolhi tarefa → TUDO na tela é daquela tarefa"*.
+//
+// ⚠️ O defeito que isto trava estava no print do dono: com uma tarefa filtrada, os painéis
+// *"todas as tarefas"* e *"Geral do período"* desenhavam a cozinha inteira DENTRO do
+// recorte. A régua da rota tem teste próprio (`escopo-dos-relatorios.test.ts`); aqui mora
+// a metade que é de TELA — o geral não pode nem renderizar fora da visão geral.
+// ─────────────────────────────────────────────────────────────────────────────────────
+describe('⛔⛔ o painel GERAL só existe na visão geral', () => {
+  const rel = semComentarios(telaRelatorios)
+
+  it('o "Geral do período" está atrás de `visaoGeral`', () => {
+    const i = rel.indexOf('Geral do período')
+    expect(i, 'o painel sumiu da tela').toBeGreaterThan(0)
+    // o bloco tem que estar dentro de um gate `d.visaoGeral &&` que o precede de perto
+    const antes = rel.slice(Math.max(0, i - 400), i)
+    expect(antes, '⛔ o geral renderiza mesmo com tarefa escolhida').toContain('d.visaoGeral &&')
+  })
+
+  it('⭐ "todas as tarefas" é opção do seletor, e o default é ela', () => {
+    expect(rel).toContain('todas as tarefas')
+    expect(rel).toContain('visão geral')
+    // ⛔ e a tela NÃO adota uma tarefa sozinha — era isso que misturava os dois mundos
+    expect(rel, '⛔ voltou o auto-escolhe da tarefa').not.toMatch(/if \(r\.data\.tarefa && !tarefa\)/)
+  })
+
+  it('⭐ as top tarefas são CLICÁVEIS — o caminho pro recorte de cada uma', () => {
+    const i = rel.indexOf('topTarefas')
+    expect(i).toBeGreaterThan(0)
+    expect(rel.slice(i, i + 600)).toContain('setTarefa(t.tarefa)')
+  })
+
+  it('⛔ e nenhuma soma da tela usa um número composto de unidades', () => {
+    // a tela lê `quantidade.texto` / `quantidade.total`; somar unidades cruas sumiu
+    expect(rel).toContain('quantidade.texto')
+    expect(rel, '⛔ voltou a somar unidades sem olhar a unidade').not.toMatch(/num\(\w+\.unidades\)\s*\}\s*un/)
+  })
+
+  it('⭐ o filtro vive na URL — compartilhar e voltar devolvem o mesmo recorte', () => {
+    expect(rel).toContain('router.replace')
+    for (const p of ['periodo', 'tarefa', 'pessoa', 'de', 'ate']) expect(rel).toContain(`q.set('${p}'`)
+  })
+
+  it('⭐ e o "← o dia de hoje" continua levando pro HOJE', () => {
+    expect(rel).toMatch(/producao\/hoje/)
+    expect(rel).toContain('o dia de hoje')
+  })
+})

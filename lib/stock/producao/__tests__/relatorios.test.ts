@@ -9,11 +9,11 @@ import { placarDaEquipe, mediaDaTarefa, type Execucao } from '../desempenho'
 
 const ex = (o: Partial<Execucao> & { tarefa: string; colaboradorId: string; minutos: number | null; unidades: number }): Execucao => ({
   ordemId: o.ordemId ?? `o-${o.colaboradorId}-${o.minutos}-${o.unidades}`,
-  nome: o.nome ?? o.colaboradorId, quando: o.quando ?? new Date('2026-09-12T10:00:00Z'), ...o,
+  nome: o.nome ?? o.colaboradorId, unidade: o.unidade ?? 'UN', quando: o.quando ?? new Date('2026-09-12T10:00:00Z'), ...o,
 })
 const lote = (o: Partial<Lote> & { tarefa: string; entregue: number }): Lote => ({
   ordemId: o.ordemId ?? `l-${o.tarefa}-${o.entregue}-${o.dia ?? 'x'}`,
-  pedido: o.pedido ?? null, custoUnitario: o.custoUnitario ?? null,
+  pedido: o.pedido ?? null, custoUnitario: o.custoUnitario ?? null, unidade: o.unidade ?? 'UN',
   minutos: o.minutos ?? null, dia: o.dia ?? '2026-09-12', ...o,
 })
 
@@ -130,7 +130,12 @@ describe('⭐ o geral e as barras por pessoa', () => {
     expect(g.horas).toBe(3)
     expect(g.lotesSemTempo).toBe(1)
     expect(g.lotes).toBe(3)
-    expect(g.topTarefa).toEqual({ tarefa: QUEIJO, unidades: 400 })
+    // ⭐⭐ A ORDEM É POR LOTES, não por unidades — e o motivo é o mesmo do resto (13/09):
+    // ordenar "top tarefa" por quantidade é, ele próprio, comparar UN com KG. Lote é a única
+    // magnitude comparável entre tarefas de unidades diferentes. Aqui "massa" tem 2 lotes
+    // contra 1 do queijo, então ela lidera mesmo produzindo menos unidades.
+    expect(g.topTarefas.map((t) => t.tarefa)).toEqual(['massa', QUEIJO])
+    expect(g.topTarefas[0]).toEqual({ tarefa: 'massa', lotes: 2, unidades: 150, unidade: 'UN' })
   })
 
   it('a barra é proporcional a quem mais produziu', () => {
@@ -139,6 +144,7 @@ describe('⭐ o geral e as barras por pessoa', () => {
       ex({ tarefa: QUEIJO, colaboradorId: 'eliane', minutos: 60, unidades: 150 }),
     ])
     expect(b[0].nome).toBe('rodrigo')
+    expect(b[0].quantidade.total).toBe(1410)
     expect(b[0].proporcao).toBe(1)
     expect(b[1].proporcao).toBeCloseTo(0.11, 2)
   })

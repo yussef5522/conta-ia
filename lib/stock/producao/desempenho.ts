@@ -68,6 +68,49 @@ export function ehRelampago(minutos: number | null | undefined): boolean {
   return minutos != null && minutos > 0 && minutos < PISO_DE_DURACAO_MIN
 }
 
+/**
+ * ⛔⛔⛔ **NÚMERO COMPOSTO DE UNIDADES DIFERENTES NUNCA EXISTE** (13/09, régua do dono):
+ * *"somar unidade com quilo é número sem sentido: ou separa por unidade de medida
+ * ('1.415 UN · 23 KG'), ou a barra por pessoa vira 'lotes' quando as unidades são mistas."*
+ *
+ * **O QUE MOTIVOU:** o placar mostrava *"rodrigo 1.415,84 un"* — e aquele `,84` era porção
+ * de queijo (UN) somada com massa de pizza (KG). O decimal estranho era o sintoma.
+ *
+ * ⚠️ A casa já tinha essa disciplina no leitor mais antigo (`relatorio-por-pessoa.ts`
+ * recusa `min/un` quando `unidades.size !== 1`); o que faltava era ela existir aqui.
+ */
+export interface Quantidade {
+  /** quanto de cada unidade — a única forma honesta quando há mistura */
+  porUnidade: { unidade: string; qtd: number }[]
+  /** ⚠️ só existe quando há UMA unidade; misto devolve `null`, nunca uma soma */
+  total: number | null
+  unidade: string | null
+  mista: boolean
+  /** o texto pronto: "522 UN" ou "1.415 UN · 23 KG" */
+  texto: string
+}
+
+const fmtQtd = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 2 })
+
+/** ⭐ soma respeitando a unidade — o dono único da pergunta "quanto saiu?" */
+export function somarQuantidades(itens: { unidades: number; unidade: string }[]): Quantidade {
+  const m = new Map<string, number>()
+  for (const i of itens) m.set(i.unidade, (m.get(i.unidade) ?? 0) + i.unidades)
+  const porUnidade = [...m.entries()]
+    .map(([unidade, qtd]) => ({ unidade, qtd: r2(qtd) }))
+    .filter((x) => x.qtd !== 0)
+    .sort((a, b) => b.qtd - a.qtd)
+  if (!porUnidade.length) return { porUnidade: [], total: 0, unidade: null, mista: false, texto: '0' }
+  const mista = porUnidade.length > 1
+  return {
+    porUnidade,
+    total: mista ? null : porUnidade[0].qtd,
+    unidade: mista ? null : porUnidade[0].unidade,
+    mista,
+    texto: porUnidade.map((x) => `${fmtQtd(x.qtd)} ${x.unidade}`).join(' · '),
+  }
+}
+
 /** uma execução de tarefa por uma pessoa — o tijolo de tudo aqui */
 export interface Execucao {
   ordemId: string
@@ -79,6 +122,8 @@ export interface Execucao {
   minutos: number | null
   /** unidades atribuídas a ESTA execução */
   unidades: number
+  /** ⭐ a unidade do que saiu (UN/KG/LT) — sem ela, somar duas tarefas inventa número */
+  unidade: string
   quando: Date
 }
 
@@ -131,7 +176,8 @@ export interface DesempenhoDaPessoa {
   colaboradorId: string
   nome: string
   tarefas: number
-  unidades: number
+  /** ⭐ o que saiu, POR UNIDADE — nunca uma soma de UN com KG */
+  quantidade: Quantidade
   /** minutos MEDIDOS (o que entra na conta) */
   minutosMedidos: number
   /** ⚠️ tarefas cujo tempo não foi medido — contadas à parte, nunca escondidas */
@@ -147,8 +193,10 @@ export interface DesempenhoDaPessoa {
   selo: 'ACIMA' | 'NA_MEDIA' | 'ABAIXO' | 'SEM_MEDIA'
   /** a frase do selo, com os números dentro (a régua do dono: número antes de %) */
   frase: string
-  /** ⭐ 0..1 — a barra do placar. Proporcional às unidades da pessoa no dia. */
+  /** ⭐ 0..1 — a barra do placar. Unidades da pessoa; LOTES quando as unidades são mistas. */
   proporcao: number
+  /** ⚠️ a barra está medindo LOTES (unidades mistas na janela) — a tela tem que DIZER */
+  barraEmLotes: boolean
 }
 
 const fmtMin = (m: number) => (m >= 60 ? `${Math.floor(m / 60)}h${String(Math.round(m % 60)).padStart(2, '0')}` : `${Math.round(m)}min`)
@@ -168,11 +216,18 @@ export function placarDaEquipe(execucoes: Execucao[], historico: Execucao[]): De
   const porPessoa = new Map<string, Execucao[]>()
   for (const e of execucoes) porPessoa.set(e.colaboradorId, [...(porPessoa.get(e.colaboradorId) ?? []), e])
 
-  const maxUn = Math.max(1, ...[...porPessoa.values()].map((es) => es.reduce((s, e) => s + e.unidades, 0)))
+  /**
+   * ⚠️ A BARRA PRECISA DE UM NÚMERO SÓ, e com unidades mistas esse número não existe.
+   * Régua do dono: **ela vira LOTES** — que é comparável entre qualquer tarefa.
+   */
+  const algumaMista = [...porPessoa.values()].some((es) => new Set(es.map((e) => e.unidade)).size > 1)
+  const unidadesMisturadas = new Set(execucoes.map((e) => e.unidade)).size > 1 || algumaMista
+  const magnitude = (es: Execucao[]) => unidadesMisturadas ? es.length : es.reduce((s, e) => s + e.unidades, 0)
+  const maxUn = Math.max(1, ...[...porPessoa.values()].map(magnitude))
 
   const out: DesempenhoDaPessoa[] = []
   for (const [colaboradorId, es] of porPessoa) {
-    const unidades = r2(es.reduce((s, e) => s + e.unidades, 0))
+    const quantidade = somarQuantidades(es)
     const medidas = es.filter((e) => foiMedido(e.minutos))
     const relampago = es.filter((e) => ehRelampago(e.minutos)).length
     const semTempo = es.length - medidas.length - relampago
@@ -207,15 +262,16 @@ export function placarDaEquipe(execucoes: Execucao[], historico: Execucao[]): De
     }
 
     out.push({
-      colaboradorId, nome: es[0].nome, tarefas: es.length, unidades,
+      colaboradorId, nome: es[0].nome, tarefas: es.length, quantidade,
       minutosMedidos: r1(medidas.reduce((s, e) => s + (e.minutos ?? 0), 0)),
       tarefasSemTempo: semTempo, tarefasRelampago: relampago, vsMediaPct, selo, frase,
-      proporcao: r2(unidades / maxUn),
+      proporcao: r2(magnitude(es) / maxUn),
+      barraEmLotes: unidadesMisturadas,
     })
   }
   // ⛔ ordenado por VOLUME, não por velocidade: *"sem pódio público"* — a comparação é com a
   // média de cada um, e ordenar por % faria um ranking que o dono não pediu.
-  return out.sort((a, b) => b.unidades - a.unidades)
+  return out.sort((a, b) => b.proporcao - a.proporcao || b.tarefas - a.tarefas)
 }
 
 export interface RendimentoDoLote {

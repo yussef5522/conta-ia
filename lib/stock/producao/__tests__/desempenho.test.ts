@@ -11,7 +11,7 @@ import {
 
 let n = 0
 const ex = (tarefa: string, nome: string, minutos: number | null, unidades = 100): Execucao => ({
-  ordemId: `o${++n}`, tarefa, colaboradorId: `c-${nome}`, nome, minutos, unidades,
+  ordemId: `o${++n}`, tarefa, colaboradorId: `c-${nome}`, nome, minutos, unidades, unidade: 'UN',
   quando: new Date('2026-09-13T12:00:00Z'),
 })
 
@@ -79,7 +79,7 @@ describe('⭐⭐ o placar compara queijo com queijo', () => {
 
   it('⛔⛔ quem foi finalizado PELO GERENTE não entra na velocidade — e aparece assim mesmo', () => {
     const p = placarDaEquipe([ex('porção queijo 135 grama', 'eliane', null, 150)], historico)[0]
-    expect(p.unidades).toBe(150)          // ⭐ o VOLUME conta
+    expect(p.quantidade.total).toBe(150)          // ⭐ o VOLUME conta
     expect(p.selo).toBe('SEM_MEDIA')      // ⛔ a VELOCIDADE não
     expect(p.tarefasSemTempo).toBe(1)     // ⚠️ e é dito
   })
@@ -96,8 +96,8 @@ describe('⭐⭐ o placar compara queijo com queijo', () => {
     const hoje = [ex('porção queijo 135 grama', 'rodrigo', 90, 400)]
     const semana = [...hoje, ex('porção queijo 135 grama', 'rodrigo', 100, 300)]
     // mesma régua, resultados diferentes só porque a JANELA é outra
-    expect(placarDaEquipe(hoje, historico)[0].unidades).toBe(400)
-    expect(placarDaEquipe(semana, historico)[0].unidades).toBe(700)
+    expect(placarDaEquipe(hoje, historico)[0].quantidade.total).toBe(400)
+    expect(placarDaEquipe(semana, historico)[0].quantidade.total).toBe(700)
   })
 })
 

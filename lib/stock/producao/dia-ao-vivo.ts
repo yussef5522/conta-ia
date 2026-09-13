@@ -407,6 +407,8 @@ export async function diaAoVivo(
       // ⛔ FINALIZADA_PELO_GERENTE tem `minutos` null por construção (06/09) — e é isso que a
       // mantém fora das médias sem nenhuma lista de exceção.
       minutos: t.minutos, unidades: t.loteFechado?.qtdGerada ?? 0,
+      // ⭐ a unidade do que saiu viaja junto — somar UN com KG no placar era o "1.415,84 un"
+      unidade: t.loteFechado?.unidade ?? 'UN',
       quando: t.finalizadoEm ?? input.agora,
     }))
 

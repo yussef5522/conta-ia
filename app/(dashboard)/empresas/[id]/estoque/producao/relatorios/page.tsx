@@ -10,9 +10,9 @@
 
 import { use, useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { fetchJson } from '@/lib/http/fetch-json'
-import type { RelatorioDaTarefa, GeralDoPeriodo } from '@/lib/stock/producao/relatorios'
+import type { RelatorioDaTarefa, GeralDoPeriodo, BarraDaPessoa } from '@/lib/stock/producao/relatorios'
 // ⭐ o piso vem do DONO ÚNICO — digitar "5" na tela seria a 2ª régua no dia em que ele mudar
 import { PISO_DE_DURACAO_MIN } from '@/lib/stock/producao/desempenho'
 
@@ -26,9 +26,11 @@ const M = {
 
 interface Dados {
   de: string; ate: string; periodo: string; tarefa: string | null; pessoa: string | null
-  tarefas: { tarefa: string; lotes: number; unidades: number }[]
+  /** ⭐ o estado é EXPLÍCITO: ou a tela fala de uma tarefa, ou fala de todas */
+  visaoGeral: boolean
+  tarefas: { tarefa: string; lotes: number; unidades: number; unidade: string }[]
   porTarefa: RelatorioDaTarefa | null
-  porPessoa: { colaboradorId: string; nome: string; unidades: number; proporcao: number }[]
+  porPessoa: BarraDaPessoa[]
   geral: GeralDoPeriodo
 }
 
@@ -40,6 +42,7 @@ const fmt = (m: number) => (m >= 60 ? `${Math.floor(m / 60)}h${String(Math.round
 export default function RelatoriosDeProducaoPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const sp = useSearchParams()
+  const router = useRouter()
   // ⚠️ REGRA 9: todo hook ANTES de qualquer early return
   const [periodo, setPeriodo] = useState(sp.get('periodo') ?? (sp.get('de') ? 'livre' : '7d'))
   const [de, setDe] = useState(sp.get('de') ?? '')
@@ -63,10 +66,28 @@ export default function RelatoriosDeProducaoPage({ params }: { params: Promise<{
     // ⛔ erro NUNCA vira vazio: "sem produção" é uma afirmação, e ela precisa ser verdade
     if (!r.ok || !r.data) { setErro(r.message ?? 'resposta vazia'); setCarregando(false); return }
     setErro(null); setD(r.data); setCarregando(false)
-    if (r.data.tarefa && !tarefa) setTarefa(r.data.tarefa)
+    // ⛔ E AQUI MORREU O AUTO-ESCOLHE: a tela adotava sozinha a tarefa que mais produziu e
+    // seguia desenhando os painéis gerais embaixo — recorte em cima, empresa inteira embaixo,
+    // sem ninguém dizer. Sem tarefa na URL, o estado é "todas as tarefas", explícito.
   }, [id, periodo, de, ate, tarefa, pessoa])
 
   useEffect(() => { void carregar() }, [carregar])
+
+  /**
+   * ⭐ O FILTRO VIVE NA URL (item 5 do dono): compartilhar o link ou voltar no navegador
+   * devolve o MESMO recorte. `replace` e não `push` — cada toque num chip não merece uma
+   * entrada no histórico, senão o "voltar" vira um desfazer de filtro, um por um.
+   */
+  useEffect(() => {
+    const q = new URLSearchParams()
+    if (periodo !== 'livre') q.set('periodo', periodo)
+    if (de) q.set('de', de)
+    if (ate) q.set('ate', ate)
+    if (tarefa) q.set('tarefa', tarefa)
+    if (pessoa) q.set('pessoa', pessoa)
+    const nova = q.toString()
+    if (nova !== sp.toString()) router.replace(`?${nova}`, { scroll: false })
+  }, [router, sp, periodo, de, ate, tarefa, pessoa])
 
   const chip = (on: boolean) => ({
     background: on ? M.roxo : M.card, color: on ? '#fff' : M.ink,
@@ -136,30 +157,39 @@ export default function RelatoriosDeProducaoPage({ params }: { params: Promise<{
       {d && (
         <>
           {/* ── POR TAREFA ─────────────────────────────────────────────────────── */}
-          <div className="mb-3.5 flex items-center gap-2.5 rounded-[14px] border px-4 py-3"
-            style={{ background: M.card, borderColor: M.line }}>
-            <span className="text-[20px]">🍽️</span>
-            <span className="flex-1 text-[16px] font-bold">{d.tarefa ?? 'sem tarefa no período'}</span>
-            {d.tarefas.length > 1 && (
-              <button onClick={() => setTrocando((v) => !v)} className="text-[13px] font-semibold" style={{ color: M.roxo }}>
-                trocar tarefa ▾
-              </button>
-            )}
-          </div>
+          {/* ⭐⭐ O ESTADO É EXPLÍCITO: ou "todas as tarefas" (visão geral) ou UMA tarefa.
+              Antes a tela adotava sozinha a que mais produziu e misturava os dois mundos. */}
+          <button onClick={() => setTrocando((v) => !v)}
+            className="mb-3.5 flex w-full items-center gap-2.5 rounded-[14px] border px-4 py-3 text-left"
+            style={{ background: M.card, borderColor: d.visaoGeral ? M.line : M.roxo }}>
+            <span className="text-[20px]">{d.visaoGeral ? '🍽️' : '🎯'}</span>
+            <span className="flex-1 text-[16px] font-bold">
+              {d.tarefa ?? 'todas as tarefas'}
+              {d.visaoGeral && <small className="ml-2 text-[12px] font-normal" style={{ color: M.sub }}>visão geral</small>}
+            </span>
+            <span className="text-[13px] font-semibold" style={{ color: M.roxo }}>trocar tarefa ▾</span>
+          </button>
           {trocando && (
             <div className="mb-3.5 overflow-hidden rounded-[14px] border" style={{ background: M.card, borderColor: M.line }}>
+              {/* ⭐ "todas" é uma OPÇÃO do seletor, no topo — e é o default ao abrir */}
+              <button onClick={() => { setTarefa(''); setTrocando(false) }}
+                className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-[13.5px]"
+                style={{ fontWeight: d.visaoGeral ? 700 : 400, background: d.visaoGeral ? M.roxoFraco : undefined }}>
+                <span className="flex-1">todas as tarefas</span>
+                <span style={{ color: M.sub }}>{d.tarefas.length} tarefa(s) no período</span>
+              </button>
               {d.tarefas.map((t) => (
                 <button key={t.tarefa} onClick={() => { setTarefa(t.tarefa); setTrocando(false) }}
                   className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-[13.5px]"
                   style={{ borderTop: `1px solid #f1efe9`, fontWeight: t.tarefa === d.tarefa ? 700 : 400 }}>
                   <span className="flex-1">{t.tarefa}</span>
-                  <span style={{ color: M.sub }}>{t.lotes} lote{t.lotes > 1 ? 's' : ''} · {num(t.unidades)} un</span>
+                  <span style={{ color: M.sub }}>{t.lotes} lote{t.lotes > 1 ? 's' : ''} · {num(t.unidades)} {t.unidade}</span>
                 </button>
               ))}
             </div>
           )}
 
-          {d.porTarefa?.vazio || !d.porTarefa ? (
+          {d.visaoGeral ? null : d.porTarefa?.vazio || !d.porTarefa ? (
             // ⛔ o vazio DIZ o motivo — nunca um painel de zeros
             <div className="mb-3.5 rounded-[16px] border px-4 py-8 text-center text-[13px]"
               style={{ background: M.card, borderColor: M.line, color: M.sub }}>
@@ -182,7 +212,11 @@ export default function RelatoriosDeProducaoPage({ params }: { params: Promise<{
                     : d.porTarefa.media.porQue ?? 'sem média ainda'} />
                 <Stat rotulo="Rendimento"
                   valor={d.porTarefa.rendimento.pct != null ? `${d.porTarefa.rendimento.pct}%` : '—'}
-                  detalhe={d.porTarefa.rendimento.frase}
+                  /* ⛔ META PARCIAL É DITA: "2 de 3 lotes com meta · 104% nesses" — nunca
+                     uma média silenciosa só dos que têm */
+                  detalhe={d.porTarefa.lotesComMeta > 0 && d.porTarefa.lotesComMeta < d.porTarefa.lotes
+                    ? `${d.porTarefa.lotesComMeta} de ${d.porTarefa.lotes} lotes com meta · ${d.porTarefa.rendimento.pct}% nesses`
+                    : d.porTarefa.rendimento.frase}
                   cor={d.porTarefa.rendimento.selo === 'OK' ? M.verde : d.porTarefa.rendimento.selo === 'SEM_META' ? undefined : M.ambar} />
                 <Stat rotulo="Custo médio"
                   valor={d.porTarefa.custoMedio != null ? brl(d.porTarefa.custoMedio) : '—'}
@@ -201,7 +235,7 @@ export default function RelatoriosDeProducaoPage({ params }: { params: Promise<{
                   <table className="w-full text-[13.5px]" style={{ borderCollapse: 'collapse' }}>
                     <thead>
                       <tr>
-                        {['Pessoa', 'Lotes', 'UN', 'un/min', 'vs média'].map((h, i) => (
+                        {['Pessoa', 'Lotes', 'Quantidade', 'un/min', 'vs média'].map((h, i) => (
                           <th key={h} className="px-2 py-2 text-[10.5px] font-bold uppercase tracking-[.04em]"
                             style={{ color: M.sub, borderBottom: `1px solid ${M.line}`, textAlign: i ? 'right' : 'left' }}>{h}</th>
                         ))}
@@ -218,10 +252,13 @@ export default function RelatoriosDeProducaoPage({ params }: { params: Promise<{
                             </span>
                           </td>
                           <td className="px-2 py-2.5 text-right" style={{ borderBottom: '1px solid #f1efe9' }}>{p.tarefas}</td>
-                          <td className="px-2 py-2.5 text-right" style={{ borderBottom: '1px solid #f1efe9' }}>{num(p.unidades)}</td>
+                          <td className="px-2 py-2.5 text-right" style={{ borderBottom: '1px solid #f1efe9' }}>{p.quantidade.texto}</td>
                           <td className="px-2 py-2.5 text-right" style={{ borderBottom: '1px solid #f1efe9' }}>
-                            {p.minutosMedidos > 0
-                              ? <b>{num(Math.round((p.unidades / p.minutosMedidos) * 10) / 10)}</b>
+                            {/* ⛔ un/min só existe com UMA unidade — misto não vira número */}
+                            {p.minutosMedidos > 0 && p.quantidade.total != null
+                              ? <b>{num(Math.round((p.quantidade.total / p.minutosMedidos) * 10) / 10)}</b>
+                              : p.quantidade.mista
+                              ? <span className="text-[12px] italic" style={{ color: M.sub }}>unidades mistas</span>
                               /* ⚠️ tempo a apurar é DITO, nunca vira 0 (a lição de 06/09) */
                               : <span className="text-[12px] italic" style={{ color: M.sub }}>sem tempo (pelo gerente)</span>}
                           </td>
@@ -249,7 +286,10 @@ export default function RelatoriosDeProducaoPage({ params }: { params: Promise<{
           )}
 
           {/* ── POR PESSOA (todas as tarefas) ──────────────────────────────────── */}
-          <Painel titulo="Unidades por pessoa" nota="· no período, todas as tarefas">
+          <Painel titulo={d.visaoGeral ? 'Unidades por pessoa' : 'Quem produziu essa tarefa'}
+            nota={d.visaoGeral
+              ? `· no período, todas as tarefas${d.porPessoa[0]?.emLotes ? ' · barra em LOTES (unidades mistas)' : ''}`
+              : `· ${d.tarefa}`}>
             {d.porPessoa.length === 0
               ? <p className="text-[13px] italic" style={{ color: M.sub }}>ninguém produziu no filtro</p>
               : d.porPessoa.map((p, i) => (
@@ -259,29 +299,55 @@ export default function RelatoriosDeProducaoPage({ params }: { params: Promise<{
                     <i className="block h-full rounded-full"
                       style={{ width: `${Math.round(p.proporcao * 100)}%`, background: ['#534AB7', '#8b84d6', '#b3aee6', '#d5d2f0'][Math.min(i, 3)] }} />
                   </span>
-                  <span className="w-[72px] shrink-0 text-right text-[11.5px] font-bold">{num(p.unidades)} un</span>
+                  <span className="w-[96px] shrink-0 text-right text-[11.5px] font-bold">
+                    {p.quantidade.texto}
+                    {p.emLotes && <small className="block font-normal" style={{ color: M.sub }}>{p.lotes} lote(s)</small>}
+                  </span>
                 </div>
               ))}
           </Painel>
 
           {/* ── GERAL ──────────────────────────────────────────────────────────── */}
-          <Painel titulo="Geral do período" nota={`· todas as tarefas, ${diaCurto(d.de)}–${diaCurto(d.ate)}`}>
-            {d.geral.vazio
-              ? <p className="text-[13px] italic" style={{ color: M.sub }}>{d.geral.vazio}</p>
-              : (
-                <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-                  <Stat nu rotulo="Lotes" valor={String(d.geral.lotes)} />
-                  <Stat nu rotulo="Unidades" valor={num(d.geral.unidades)} />
-                  <Stat nu rotulo="Horas de cozinha" valor={`${num(d.geral.horas)}h`}
-                    detalhe={[
-                      d.geral.lotesSemTempo ? `${d.geral.lotesSemTempo} sem tempo` : null,
-                      d.geral.lotesRelampago ? `${d.geral.lotesRelampago} relâmpago` : null,
-                    ].filter(Boolean).join(' · ') || undefined} />
-                  <Stat nu pequeno rotulo="Top tarefa" valor={d.geral.topTarefa?.tarefa ?? '—'}
-                    detalhe={d.geral.topTarefa ? `${num(d.geral.topTarefa.unidades)} un` : undefined} />
-                </div>
-              )}
-          </Painel>
+          {/* ⛔⛔ O GERAL SÓ APARECE NA VISÃO GERAL. Com uma tarefa escolhida ele mostrava a
+              empresa inteira DENTRO do recorte — o defeito do print (51 lotes, top queijo,
+              numa tela que dizia falar de massa de pizza). */}
+          {d.visaoGeral && (
+            <Painel titulo="Geral do período"
+              nota={`· ${d.pessoa ? 'as tarefas dessa pessoa' : 'todas as tarefas'}, ${diaCurto(d.de)}–${diaCurto(d.ate)}`}>
+              {d.geral.vazio
+                ? <p className="text-[13px] italic" style={{ color: M.sub }}>{d.geral.vazio}</p>
+                : (
+                  <>
+                    <div className="mb-3 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+                      <Stat nu rotulo="Lotes" valor={String(d.geral.lotes)} />
+                      {/* ⛔ por UNIDADE: "6.912 UN · 23 KG", nunca um número composto */}
+                      <Stat nu pequeno rotulo="Quantidade" valor={d.geral.quantidade.texto} />
+                      <Stat nu rotulo="Horas de cozinha" valor={`${num(d.geral.horas)}h`}
+                        detalhe={[
+                          d.geral.lotesSemTempo ? `${d.geral.lotesSemTempo} sem tempo` : null,
+                          d.geral.lotesRelampago ? `${d.geral.lotesRelampago} relâmpago` : null,
+                        ].filter(Boolean).join(' · ') || undefined} />
+                    </div>
+                    <div className="text-[10.5px] font-bold uppercase tracking-[.04em]" style={{ color: M.sub }}>
+                      {d.pessoa ? 'Top tarefas dela' : 'Top tarefas'}
+                      {/* ⚠️ por LOTES: ordenar por quantidade seria comparar UN com KG */}
+                      <small className="font-normal normal-case tracking-normal"> · por nº de lotes</small>
+                    </div>
+                    {/* ⭐ CLICÁVEIS: daqui o dono entra no recorte de cada uma (pedido dele) */}
+                    {d.geral.topTarefas.slice(0, 6).map((t) => (
+                      <button key={t.tarefa} onClick={() => setTarefa(t.tarefa)}
+                        className="flex w-full items-center gap-2 py-1.5 text-left text-[13.5px]"
+                        style={{ borderTop: '1px solid #f1efe9' }}>
+                        <span className="flex-1 truncate" style={{ color: M.roxo, fontWeight: 600 }}>{t.tarefa} →</span>
+                        <span className="shrink-0 text-[12px]" style={{ color: M.sub }}>
+                          {t.lotes} lote{t.lotes > 1 ? 's' : ''} · {num(t.unidades)} {t.unidade}
+                        </span>
+                      </button>
+                    ))}
+                  </>
+                )}
+            </Painel>
+          )}
         </>
       )}
     </div>
@@ -320,10 +386,11 @@ function Painel({ titulo, nota, children }: { titulo: string; nota?: string; chi
 
 /** ⭐ a linha do mock — SVG puro. Dia sem lote medido fica SEM ponto (não vira zero). */
 function LinhaDoTempo({ pontos, melhor }: {
-  pontos: { dia: string; minutosPorLote: number | null; lotes: number }[]
+  pontos: { dia: string; minutosPorLote: number | null; lotes: number; semTempoMedido: boolean }[]
   melhor: { frase: string } | null
 }) {
   const medidos = pontos.filter((p) => p.minutosPorLote != null)
+  const semTempo = pontos.filter((p) => p.semTempoMedido).length
   if (medidos.length === 0) {
     return <p className="text-[13px] italic" style={{ color: M.sub }}>
       nenhum lote com tempo medido no período — <b>sem tempo medido não há linha</b>, e inventar um valor seria pior que a ausência
@@ -346,10 +413,24 @@ function LinhaDoTempo({ pontos, melhor }: {
       {pontos.map((p, i) => p.minutosPorLote != null && (
         <circle key={p.dia} cx={x(i)} cy={y(p.minutosPorLote)} r="4" fill={M.roxo} />
       ))}
+      {/* ⛔ DIA COM LOTE E SEM TEMPO MEDIDO: marca vazada no eixo, nunca um ponto em zero.
+          O buraco fica VISÍVEL (régua do dono) em vez de mudo — e zero inventado seria pior. */}
+      {pontos.map((p, i) => p.minutosPorLote == null && p.lotes > 0 && (
+        <circle key={`v-${p.dia}`} cx={x(i)} cy="145" r="3.5" fill="none" stroke={M.sub} strokeDasharray="2 2" />
+      ))}
       <g fontSize="10" fill={M.sub} textAnchor="middle">
-        {pontos.map((p, i) => <text key={p.dia} x={x(i)} y="162">{diaCurto(p.dia)}</text>)}
+        {pontos.map((p, i) => (
+          <text key={p.dia} x={x(i)} y="162" fill={p.semTempoMedido ? M.sub : M.ink} opacity={p.semTempoMedido ? 0.6 : 1}>
+            {diaCurto(p.dia)}
+          </text>
+        ))}
       </g>
       {melhor && <text x="330" y="14" fontSize="10.5" fontWeight="700" fill={M.verde} textAnchor="middle">{melhor.frase}</text>}
+      {semTempo > 0 && (
+        <text x="330" y="176" fontSize="9.5" fill={M.sub} textAnchor="middle">
+          ○ {semTempo} dia(s) com lote e sem tempo medido — sem ponto, nunca zero
+        </text>
+      )}
     </svg>
   )
 }

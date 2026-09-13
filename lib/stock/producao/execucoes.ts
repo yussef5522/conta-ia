@@ -53,11 +53,13 @@ export async function execucoesDaJanela(
   const vivas = new Map(ordens.filter((o) => o.estado !== 'CANCELADA').map((o) => [o.id, o]))
 
   const [itens, conclusoes, colaboradores] = await Promise.all([
-    db.stockItem.findMany({ where: { id: { in: [...new Set(ordens.map((o) => o.itemProduzidoId))] } }, select: { id: true, nome: true } }),
+    db.stockItem.findMany({ where: { id: { in: [...new Set(ordens.map((o) => o.itemProduzidoId))] } }, select: { id: true, nome: true, unidadeControle: true } }),
     db.stockProducaoConclusao.findMany({ where: { companyId, ordemId: { in: [...vivas.keys()] } }, select: { ordemId: true, qtdGerada: true } }),
     db.stockColaborador.findMany({ where: { companyId }, select: { id: true, nome: true } }),
   ])
   const nomeItem = new Map(itens.map((i) => [i.id, i.nome]))
+  // ⭐ a unidade do que SAIU viaja com a execução: sem ela, somar duas tarefas inventa número
+  const unidadeItem = new Map(itens.map((i) => [i.id, i.unidadeControle]))
   const nomePessoa = new Map(colaboradores.map((c) => [c.id, c.nome]))
   const geradoPorOrdem = new Map<string, number>()
   for (const c of conclusoes) geradoPorOrdem.set(c.ordemId, (geradoPorOrdem.get(c.ordemId) ?? 0) + c.qtdGerada)
@@ -90,6 +92,7 @@ export async function execucoesDaJanela(
       if (!quem) continue
       out.push({
         ordemId, tarefa, colaboradorId: quem, nome: nomePessoa.get(quem) ?? '—',
+        unidade: unidadeItem.get(o.itemProduzidoId) ?? 'UN',
         minutos,
         unidades: (medidas.length === 0 || mediu) ? Math.round((total / divididoEntre) * 100) / 100 : 0,
         quando: e.finalizadoEm ?? e.iniciadoEm!,
