@@ -677,6 +677,50 @@ CONTAS A PAGAR → 200 · "Pagas (sem conciliar)" ✓ · "Em aberto e pagas sem 
 
 **9.726 verdes · TS 0 · deploy `R4Dacd_GQpSrmdBb_Ie9n` 4/4.**
 
+### ⭐⭐⭐ A REVISÃO DO IMPORT DE VENDAS — O PADRÃO DO EXTRATO DE BANCO (14/09)
+
+**O dono:** *"hoje o import baixa por baixo e mostra um resumo; o ajuste mora em outra tela. Vira o desenho do extrato: **o que chegou · com quem está vinculado · ajusto ali mesmo**."*
+
+⛔ É a **"porta sem maçaneta" de cabeça pra baixo**: o gesto EXISTE (a prateleira mapeia, o reprocesso rebaixa) e mora **longe de onde a pergunta nasce**. O dono lia *"COCA COLA LATA não baixou"* e tinha que sair da tela, achar o nome numa lista de 130 e voltar.
+
+**A TELA** (produtos E complementos, **mesma cara** — são dois mapas por desenho, mas a PERGUNTA é idêntica): a lista **POR NOME**, com estado (✅ vinculado · 🟡 sem destino · ⚪ ignorado), **o destino E O QUE ELE DESCONTA à vista** (*"→ COCA COLA 2L (baixa: COCA-COLA 2L ×1)"*) e as **ações inline em toda linha — inclusive na vinculada**, porque vínculo errado se conserta ali. Os 3 contadores saem da **MESMA lista** que a tela desenha.
+
+⚠️ *"Vinculado" sem dizer o que desconta é uma afirmação que o dono não tem como conferir* — e vínculo errado só apareceria no dia em que o saldo não batesse.
+
+**⭐⭐ A SUGESTÃO SUGERE, NUNCA DECIDE — e ela tem DUAS travas, as duas medidas:**
+- **DIREÇÃO:** a ficha só sugere quando está **contida no nome do PDV** (`COCA LATA` ⊂ `COCA COLA LATA` ✓). ⛔ **Nunca o contrário:** `FRUKI LATA` com a ficha `FRUKI LATA ZERO` seria a ficha **acrescentando um qualificador que o PDV não disse** — e *"zero" é outra bebida*. **Sugerir ali inventa uma distinção que ninguém fez**, e um clique rápido baixaria a errada.
+- **AMBIGUIDADE:** duas candidatas = *"não sei qual"* (a trava do PAO DE MEL).
+
+⚠️ E a régua do **IDÊNTICO** (08/09) continua sendo **a única que age sozinha**.
+
+**⭐ O PREVIEW É SELETIVO** — só os nomes que **mudaram de estado**, com a conta: *"COCA COLA LATA: 5 ocorr. → baixa 5 × COCA LATA 350ML"* — e diz quantos **não** mudam, senão o dono não sabe se o preview está completo. ⛔ Nada baixa pro destino novo sem ele: mudança de vínculo é **escrita em estoque**.
+
+**⚠️⚠️ UMA DECISÃO DE ENGENHARIA, DECLARADA (e ela contraria a letra do pedido):** o dono pediu *"estorno+rebaixa SÓ dos nomes que mudaram"*. O **preview** é seletivo; a **gravação** continua sendo o `reprocessarDia` que já existe. **O efeito no estoque é IDÊNTICO** (o nome que não mudou é estornado e rebaixado pelo mesmo valor: líquido zero) — o que um reprocesso seletivo economizaria é **ruído no ledger**, não exatidão. E abrir um **SEGUNDO caminho de escrita no ledger** é o que esta casa mais pagou caro (*"N caminhos, 1 esquecido"* custou o gatilho de vendas, o estorno de cartão e o split do empréstimo). ⭐ Se o ruído incomodar, o caminho é **estreitar o estorno DENTRO do `gravarVenda`** — uma função, um lugar —, nunca criar o segundo.
+
+**PROVADO EM PROD, no dia 13/09 real (130 nomes):**
+```
+🟡 86 sem destino (457 ocorr.) · ✅ 44 baixam (557) · ⚪ 0 ignorados
+soma dos três = 130 = linhas ✓ nada some
+
+🟡   5× COCA COLA LATA           → ⭐ parece COCA LATA — usar? [1 clique]
+🟡   1× FRUKI LATA               → escolher destino   ⭐ (NÃO sugere a ZERO)
+🟡  19× COCA LATA MAIS MINI FRITAS → escolher destino  ⭐ (combo não herda)
+✅  15× COCA COLA 2L             → COCA COLA 2L (baixa: COCA-COLA 2L ×1)
+✅   6× COCA ZERO 2L             → COCA ZERO 2L (baixa: COCA COLA Zero 2L ×1)
+TELA → 200 · "revisar" ✓ · "sem destino" ✓ · "parece" ✓ · o aviso do que falta ✓
+```
+
+**⚠️⚠️ E A PROVA EM PROD ACHOU DOIS DEFEITOS MEUS que teste nenhum pegaria:**
+
+1. **A REVISÃO DEVOLVEU `0 NOMES` PRO DIA QUE TEM 130.** Os dois writers do módulo usam **convenções de hora DIFERENTES**: `stock_venda_complemento_linha` grava **00:00:00Z** e `stock_venda_linha` grava **15:00:00Z** — porque `new Date('…T12:00:00')` **sem Z** num processo que roda em `America/Sao_Paulo` vira 15h UTC. **Comparar timestamp EXATO acerta um writer e erra o outro.** A leitura passou a ser por **FAIXA do dia** (`gte` dia, `lt` dia+1), indiferente a quem escreveu — hoje e no dia em que alguém mudar a hora.
+2. **A SUGESTÃO NÃO NASCIA NO CASO QUE MOTIVOU A TELA:** `COCA COLA LATA` não sugeria nada com a `COCA LATA` existindo, porque meus candidatos eram só as fichas **já mapeadas naquele relatório**. *Candidato estreito demais é uma sugestão que não aparece justamente onde ela serve.* Alargado pras fichas de produto final — **seguro por causa das duas travas acima**.
+
+**REGRA 11 — 6 defeitos repostos, todos vermelhos:** sem-vínculo sumindo do contador (**3**) · sugerir com duas candidatas (**1**) · sugerir por letras parecidas (**1**) · a baixa sumindo da vinculada (**2**) · o timestamp exato de volta (**1**) · a direção caindo, sugerindo a ZERO (**1**).
+
+**9.849 verdes · TS 0 · deploys `bbSoqlmhzx9kCOiTRvgfp` e `OZv3wzuhCQlbuljnmTyXc`, os dois 4/4.**
+
+📋 **FICA PRO DONO (o gesto é dele):** os **4 combos** (`… MAIS MINI FRITAS`, 28 ocorrências) precisam de ficha composta (lata + porção mini fritas) — o botão *"definir"* da linha leva ao cardápio com o nome já carregado. E **"ignorar" só aparece nos complementos**: o mapa de produtos aceita `FICHA | REVENDA | REMOVER`, e REMOVER **devolve a pendente**, que é outra coisa — oferecer ali seria um gesto que promete uma coisa e faz outra. Registrado como o que falta naquele mapa, não disfarçado.
+
 ### ⭐⭐ O IMPORT DE COMPLEMENTOS DE 13/09 — AS BEBIDAS BAIXARAM; O DEFEITO ERA DA TELA (14/09)
 
 **O relato:** *"bebidas não baixaram"*. **A investigação read-only inocentou o arquivo, o import e a baixa** — e achou o defeito na TELA.
