@@ -716,7 +716,29 @@ FILA: comSugestao 0 → 4      PENDENTES → 200 · botão "casar conta" à vist
 
 **9.759 verdes · TS 0 · deploys `WSgLTuKq5Z8Ppr6cHR8DS`, `-oKEfZvr4uZvc_uEx5Wkr` e `3TH4N984JQIEQkDgScHBU`, os três 4/4.**
 
-📋 **REGISTRADO E NÃO FEITO:** (a) **a mescla da CIA DA FRUTA** — preview pronto (sobrevive a EIRELI, que tem CNPJ; 8 transações mudam de cadastro), **esperando o OK do dono**; (b) **a fábrica de duplicata na ESCRITA** continua aberta: a ponte do estoque reusa cadastro por nome idêntico, e `LTDA × EIRELI` escapa — mexer ali é caminho de GRAVAÇÃO e a régua de 04/09 manda não fundir sem a palavra dele.
+### ✅ A CIA DA FRUTA FOI MESCLADA (13/09, autorizada pelo dono)
+
+`pg_dump pre-mescla-cia-da-fruta-20260913-222443` (6,1 MB) antes; preview → aplicar, o protocolo dos 11 de 11/09.
+
+**⚠️⚠️ E O SCRIPT PRECISOU DA MESMA CHAVE DA LEITURA — REGRA 4, que mordeu de verdade.** O `mesclar-fornecedores-duplicados.ts` tinha régua PRÓPRIA casando por nome **IDÊNTICO**, e foi por isso que a CIA DA FRUTA **escapou da rodada de 11/09**. Ele passou a importar `chaveDeIdentidadeDoFornecedor` da lib: *duas réguas de "é o mesmo fornecedor?" — uma na leitura, outra na mescla — é o caminho pro card tratar dois cadastros como um e a mescla se recusar a juntá-los.*
+
+⭐ **E o rastro diz a VERDADE do que casou** — `"mesmo nome, sufixo societário diferente"`, não `"nome idêntico"`, que seria falso aqui.
+
+**CONFERIDO DEPOIS:**
+```
+LTDA  [fs6zaj] ativo=false · 0 tx · rastro: mesclado em …z78jix39 (mesmo nome, sufixo societário diferente)
+EIRELI[8jix39] ativo=true  · 10 tx        seletor: 70 → 69 ativos · órfãs: 0
+a linha de 1.263,13 → reconhece a EIRELI direto (irmãos: 1)
+⭐ e ela JÁ PAGA as duas: 790,49 + 472,64 = R$ 1.263,13 — soma exata, conciliadas pelo card
+```
+
+**⭐⭐ E A CHAVE NOVA FEZ APARECER UM SEGUNDO PAR — que a trava de 04/09 RECUSOU, corretamente:** `TOZZO ALIMENTOS` tem dois cadastros com **CNPJs diferentes** (`01314317000165` × `01314317000599` — mesma raiz, filial diferente). ⛔ *"Matriz e filial têm o mesmo nome"*: **não mescla**, e o script diz por quê. É a régua funcionando no primeiro caso que ela encontrou depois de ficar mais larga.
+
+📋 **DÉBITO NOMEADO — A FÁBRICA NA ESCRITA CONTINUA ABERTA (decisão do dono, 13/09):** *"casar por nome ignorando sufixo societário na LEITURA já protege; a escrita que cria segundo cadastro LTDA×EIRELI fecha quando eu autorizar a próxima rodada de cadastro."*
+
+⚠️ **O que exatamente segue aberto:** a ponte do estoque (`resolverFornecedor`/`chaveDoNomeDoFornecedor` em `ponte-contas-pagar.ts`) reusa cadastro por nome **idêntico** — então a próxima NF-e de uma empresa já cadastrada com outro sufixo **cria um segundo registro de novo**. ⛔ Mexer ali é caminho de **GRAVAÇÃO**, e a régua de 04/09 (*"fusão errada de fornecedor é pior que duplicata visível"*) manda não alargar o critério de reuso sem a palavra dele. **A leitura já protege enquanto isso**: o card enxerga os dois como um.
+
+
 
 ### ⭐⭐⭐ NOTA SEM VENCIMENTO VIRA CONTA A PAGAR — as 21 do F5 ganharam gesto (13/09)
 
