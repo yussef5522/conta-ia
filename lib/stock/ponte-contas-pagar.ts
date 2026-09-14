@@ -21,6 +21,9 @@ import { prisma as defaultPrisma } from '@/lib/db'
 import type { AuthContext } from '@/lib/auth/rbac'
 import { createContaPendente } from '@/lib/contas-ap-ar/create'
 import { idsRecusados } from './recusa-nota'
+// ⚠️ leitura de função PURA da conciliação — o estoque continua sem ESCREVER lá fora;
+// a exceção desenhada (transactions/suppliers) é só a ponte, e ela não muda com isto.
+import { chaveDeIdentidadeDoFornecedor } from '@/lib/conciliacao/sugestao-de-vinculo'
 
 export const ORIGEM_PONTE = 'ESTOQUE_NF'
 
@@ -113,10 +116,32 @@ export interface EnviarResult {
  * Resolve o Supplier do financeiro: acha por CNPJ ou — SE o dono confirmou — cadastra
  * com os dados do XML. Nunca cadastra sem o aceite explícito.
  */
-/** ⚠️ a MESMA chave do reconhecimento da conciliação: nome sem acento, caixa e pontuação */
+/**
+ * ⭐⭐⭐ A CHAVE É A MESMA DA LEITURA — A FÁBRICA FECHOU NA ESCRITA (13/09/2026).
+ *
+ * **Autorizado pelo dono** depois da mescla da CIA DA FRUTA: *"a ponte passa a procurar
+ * pela MESMA `chaveDeIdentidadeDoFornecedor` da leitura (sufixo societário fora), com as
+ * regras de 11/09 intactas."*
+ *
+ * ⛔ **O QUE ESTAVA ABERTO:** esta chave casava por nome **cru** (só caixa/acento/
+ * pontuação). `CIA DA FRUTA … LTDA` × `… EIRELI` são a mesma empresa e **não casavam** —
+ * então toda NF-e nova criava o segundo cadastro de novo. Foi exatamente o que o fix de
+ * 11/09 (*"a porta fechou na origem"*) **não** alcançou, e ninguém viu até a duplicata
+ * matar o reconhecimento da linha de 1.263,13.
+ *
+ * ⭐⭐ **E A TROCA FOI MEDIDA ANTES, contra os 69 cadastros reais** — porque este é um
+ * caminho de **ESCRITA** e a chave da leitura é agressiva de propósito (ela nasceu pra
+ * descrição de banco: corta "- Pagamento", "| Pix", datas, códigos no fim):
+ *
+ *   chave VELHA → 1 grupo com 2+ cadastros    chave NOVA → 1 grupo (o MESMO)
+ *   grupos que só a chave nova junta: 1 — o TOZZO, e a trava do CNPJ o RECUSA
+ *
+ * Ou seja: **zero colisão nova na base real**. ⚠️ O risco que fica nomeado é um fornecedor
+ * cujo nome TERMINE numa dessas palavras ("ALFA TED" viraria "alfa") — não existe hoje, e
+ * se aparecer o escape é o `permitirNomeDuplicado` do POST.
+ */
 export function chaveDoNomeDoFornecedor(nome: string): string {
-  return nome.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim()
+  return chaveDeIdentidadeDoFornecedor(nome)
 }
 
 async function resolverFornecedor(

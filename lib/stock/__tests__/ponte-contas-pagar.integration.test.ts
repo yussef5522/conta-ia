@@ -190,3 +190,81 @@ describe('⚠️ ISOLAMENTO — a exceção tem o TAMANHO que foi nomeado', () =
     expect(depois.forn).toBe(antes.forn + 1)
   })
 })
+
+// ⭐⭐⭐ A FÁBRICA DE DUPLICATA FECHOU NA ESCRITA — o caso CIA DA FRUTA (13/09/2026).
+//
+// **Autorizado pelo dono:** *"a ponte passa a procurar pela MESMA chave da leitura (sufixo
+// societário fora), com as regras de 11/09 intactas: achou sem CNPJ → completa e reusa;
+// achou com o MESMO CNPJ → reusa; achou com CNPJ DIFERENTE → cria (matriz/filial)."*
+//
+// ⛔ O que estava aberto: o fix de 11/09 casa por nome **cru**, e `… LTDA` × `… EIRELI`
+// não casam. Toda NF-e nova recriava o segundo cadastro — e foi essa duplicata que devolveu
+// NULL no reconhecedor e escondeu a linha de R$ 1.263,13 da stone.
+describe('⭐⭐ NF-e de "…LTDA" reusa o cadastro "…EIRELI" em vez de duplicar', () => {
+  const CNPJ_CIA = '36603841000130'
+
+  /** a NF-e chegando: nome do XML + CNPJ da SEFAZ, o caminho real da ponte */
+  async function enviarNotaDaCia(nomeNoXml: string, cnpjNoXml: string) {
+    const chave = `4326093660384100013055001000001035100334886${Math.floor(Math.random() * 9)}`
+    const nfe = await prisma.stockNfe.create({
+      data: { companyId, chave, nsu: '9', status: 'CONFIRMADA', temXmlCompleto: true, emitNome: nomeNoXml, emitCnpj: cnpjNoXml, vNF: 472.64 },
+    })
+    const sug = await prisma.stockPayableSuggestion.create({
+      data: { companyId, nfeId: nfe.id, chave, supplierCnpj: cnpjNoXml, supplierNome: nomeNoXml, nDup: '001', dVenc: new Date('2026-09-07'), valor: 472.64 },
+    })
+    return enviarParaContasPagar({ companyId, suggestionIds: [sug.id], cadastrarFornecedores: true, ctx: ctx(), userId }, prisma)
+  }
+
+  it('⭐⭐⭐ o cadastro EIRELI já existe → a NF-e da LTDA REUSA (0 cadastro novo)', async () => {
+    const eireli = await prisma.supplier.create({
+      data: { companyId, razaoSocial: 'CIA DA FRUTA COMERCIO DE FRUTAS E VERDURAS EIRELI', cnpj: CNPJ_CIA },
+    })
+    const r = await enviarNotaDaCia('CIA DA FRUTA COMERCIO DE FRUTAS E VERDURAS LTDA', CNPJ_CIA)
+    expect(r.criadas).toBe(1)
+    expect(r.fornecedoresCadastrados, 'ressuscitou o segundo cadastro').toBe(0)
+    const todos = await prisma.supplier.findMany({ where: { companyId, razaoSocial: { contains: 'CIA DA FRUTA' } } })
+    expect(todos).toHaveLength(1)
+    const link = await prisma.stockPayableLink.findFirstOrThrow({ where: { companyId, valor: 472.64 } })
+    expect(link.supplierId, 'a conta nasceu apontando pro cadastro errado').toBe(eireli.id)
+  })
+
+  it('⭐ achou SEM CNPJ → completa com o da SEFAZ e reusa (a régua de 11/09, intacta)', async () => {
+    const velho = await prisma.supplier.create({
+      data: { companyId, razaoSocial: 'CIA DA FRUTA COMERCIO DE FRUTAS E VERDURAS LTDA', cnpj: null },
+    })
+    const r = await enviarNotaDaCia('CIA DA FRUTA COMERCIO DE FRUTAS E VERDURAS EIRELI', CNPJ_CIA)
+    expect(r.fornecedoresCadastrados).toBe(0)
+    const depois = await prisma.supplier.findUniqueOrThrow({ where: { id: velho.id } })
+    // ⭐ o cadastro MELHORA: ganha o CNPJ que a SEFAZ assinou
+    expect(depois.cnpj).toBe(CNPJ_CIA)
+  })
+
+  it('⛔⛔ achou com CNPJ DIFERENTE → CRIA — matriz e filial têm o mesmo nome (caso TOZZO)', async () => {
+    // ⚠️ é a régua de 04/09 (*"fusão errada é pior que duplicata visível"*) na ORIGEM.
+    // Medido em prod: TOZZO ALIMENTOS tem 01314317000165 e 01314317000599 — mesma raiz,
+    // filiais diferentes. Juntar as duas mandaria dinheiro pro CNPJ errado.
+    await prisma.supplier.create({
+      data: { companyId, razaoSocial: 'TOZZO ALIMENTOS LTDA', cnpj: '01314317000165' },
+    })
+    const chave = `4326091314317000599550010000010351003348861`
+    const nfe = await prisma.stockNfe.create({
+      data: { companyId, chave, nsu: '9', status: 'CONFIRMADA', temXmlCompleto: true, emitNome: 'TOZZO ALIMENTOS EIRELI', emitCnpj: '01314317000599', vNF: 85.17 },
+    })
+    const sug = await prisma.stockPayableSuggestion.create({
+      data: { companyId, nfeId: nfe.id, chave, supplierCnpj: '01314317000599', supplierNome: 'TOZZO ALIMENTOS EIRELI', nDup: '001', dVenc: new Date('2026-09-20'), valor: 85.17 },
+    })
+    const r = await enviarParaContasPagar({ companyId, suggestionIds: [sug.id], cadastrarFornecedores: true, ctx: ctx(), userId }, prisma)
+    expect(r.fornecedoresCadastrados, 'fundiu matriz com filial').toBe(1)
+    expect(await prisma.supplier.count({ where: { companyId, razaoSocial: { contains: 'TOZZO' } } })).toBe(2)
+  })
+
+  it('⭐ e o MESMO CNPJ com nome diferente segue reusando — o CNPJ manda', async () => {
+    const eireli = await prisma.supplier.create({
+      data: { companyId, razaoSocial: 'OUTRO NOME QUALQUER', cnpj: CNPJ_CIA },
+    })
+    const r = await enviarNotaDaCia('CIA DA FRUTA COMERCIO DE FRUTAS E VERDURAS LTDA', CNPJ_CIA)
+    expect(r.fornecedoresCadastrados).toBe(0)
+    const link = await prisma.stockPayableLink.findFirstOrThrow({ where: { companyId, valor: 472.64 } })
+    expect(link.supplierId).toBe(eireli.id)
+  })
+})

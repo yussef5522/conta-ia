@@ -308,7 +308,19 @@ const SUFIXOS_SOCIETARIOS = /\s+(ltda|eireli|me|epp|sa|s\/a|s a|mei|ltda me|eire
  * tratar dois cadastros como um e a mescla recusá-los — ou, pior, o contrário.
  */
 export function chaveDeIdentidadeDoFornecedor(nome: string): string {
-  const bruto = normalizeForMatch(nome)
+  /**
+   * ⚠️⚠️ A PONTUAÇÃO INTERNA COLAPSA — e quem me ensinou foi o guard de 11/09.
+   *
+   * Ao fazer a ponte usar esta chave, o teste do `DISTRIB. DE PROD. ALIMENT. LAMANA` ficou
+   * **vermelho**: `normalizeForMatch` só limpa pontuação no FIM (ela nasceu pra descrição
+   * de banco), enquanto a régua da ponte já trocava **toda** pontuação por espaço desde
+   * 11/09. Sem isto, `DISTRIB. DE PROD.` e `DISTRIB DE PROD` voltariam a ser dois
+   * fornecedores — e a LAMANA é **uma das 11 que foram mescladas naquele dia**.
+   *
+   * ⭐ E isso deixa a LEITURA mais forte também: hoje o card trata as duas grafias como
+   * cadastros diferentes, que é o bug de 11/09 vivo do outro lado.
+   */
+  const bruto = normalizeForMatch(nome).replace(/[^a-z0-9]+/g, ' ').trim()
   // ⚠️ roda 2× de propósito: "X LTDA ME" tem dois sufixos empilhados
   return bruto.replace(SUFIXOS_SOCIETARIOS, '').replace(SUFIXOS_SOCIETARIOS, '').trim() || bruto
 }

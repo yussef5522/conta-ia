@@ -70,3 +70,45 @@ describe('⛔⛔ a régua da ponte: completar o velho, não criar um segundo', (
     expect(decidir('FORNECEDOR NOVO LTDA', '11222333000181', VELHO_SEM_CNPJ)).toBe('CRIA_NOVO')
   })
 })
+
+// ⭐⭐⭐ A FÁBRICA FECHOU NA ESCRITA — SUFIXO SOCIETÁRIO (13/09/2026).
+//
+// **Autorizado pelo dono** depois da mescla da CIA DA FRUTA: *"a escrita que cria segundo
+// cadastro LTDA×EIRELI fecha"*.
+//
+// ⛔ O que estava aberto: o fix de 11/09 casa por nome **cru**, e `CIA DA FRUTA … LTDA` ×
+// `… EIRELI` são a mesma empresa. Toda NF-e nova recriava o segundo cadastro — e foi essa
+// duplicata que devolveu NULL no reconhecedor e escondeu a linha de R$ 1.263,13.
+describe('⭐⭐ o sufixo societário não cria um segundo cadastro', () => {
+  const k = chaveDoNomeDoFornecedor
+
+  it('⭐⭐ LTDA e EIRELI do mesmo nome têm a MESMA chave — a NF-e reusa', () => {
+    expect(k('CIA DA FRUTA COMERCIO DE FRUTAS E VERDURAS LTDA'))
+      .toBe(k('CIA DA FRUTA COMERCIO DE FRUTAS E VERDURAS EIRELI'))
+  })
+
+  it('⭐ e vale pros outros sufixos reais da base (ME, EPP, SA, MEI)', () => {
+    const base = 'PADARIA DO BAIRRO'
+    for (const suf of ['LTDA', 'ME', 'EPP', 'SA', 'MEI', 'LTDA ME', 'EIRELI ME']) {
+      expect(k(`${base} ${suf}`), `"${suf}" não caiu`).toBe(k(base))
+    }
+  })
+
+  it('⛔⛔ mas NOME diferente continua sendo outro fornecedor — a chave é o NOME', () => {
+    // sem isto a régua viraria "tudo que termina em LTDA é o mesmo", o oposto do que faz
+    expect(k('CARGNELUTTI E CIA LTDA')).not.toBe(k('CARLOS CANCIAN E CIA LTDA'))
+    expect(k('TOZZO ALIMENTOS LTDA')).not.toBe(k('TOZZO COMERCIO LTDA'))
+  })
+
+  it('⛔ o sufixo só cai no FIM — "ME COMERCIO DE ALIMENTOS" não vira "COMERCIO…"', () => {
+    expect(k('ME COMERCIO DE ALIMENTOS')).not.toBe(k('COMERCIO DE ALIMENTOS'))
+  })
+
+  it('⭐⭐ e a pontuação interna continua colapsando — o caso LAMANA, de 11/09', () => {
+    // ⚠️ foi este guard que pegou a regressão quando a ponte passou a usar a chave da
+    // leitura: `normalizeForMatch` só limpa pontuação no FIM. A LAMANA é uma das 11
+    // mescladas em 11/09 — perder isso a duplicaria de novo.
+    expect(k('DISTRIB. DE PROD. ALIMENT. LAMANA LTDA'))
+      .toBe(k('DISTRIB DE PROD ALIMENT LAMANA LTDA'))
+  })
+})
