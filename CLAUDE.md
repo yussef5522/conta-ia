@@ -677,6 +677,44 @@ CONTAS A PAGAR → 200 · "Pagas (sem conciliar)" ✓ · "Em aberto e pagas sem 
 
 **9.726 verdes · TS 0 · deploy `R4Dacd_GQpSrmdBb_Ie9n` 4/4.**
 
+### ⭐⭐⭐ FLUXO ABRE NO MÊS; ESTOQUE MOSTRA O ESTADO DE AGORA (14/09) — régua da casa
+
+**A REGRA DOS DOIS TEMPOS, ditada pelo dono, e ela existe pra NÃO ESCONDER DÍVIDA:**
+- **PAGAS é FLUXO** → recorta no período, padrão **mês corrente**. *"É o número que muda com o filtro."*
+- **VENCIDAS e A PAGAR são ESTOQUE** → mostram **tudo que está em aberto, SEMPRE**. *"Dívida aberta não expira com a virada do mês — esconder vencida de agosto seria mentir que não devo."*
+
+**⭐⭐ E A DECISÃO MORA NO DONO DO ESCOPO, não em cada tela:** `whereDoStatus` **IGNORA o mês** quando o status é de estoque, **mesmo recebendo um**. ⛔ Se dependesse de cada chamador lembrar de não passar o período, a primeira tela nova esconderia dívida em silêncio — *aqui é impossível*. Quem separa os dois é `ehFluxo`, num lugar só.
+
+⚠️ **O MÊS É O DO BRASIL**, pelo mesmo motivo do `inicioDoDiaBrasil`: **1º de outubro às 00h30 de São Paulo ainda é setembro**, e o servidor em UTC já diria outubro desde as 21h do dia 30.
+
+**⭐ O CABEÇALHO DIZ O RECORTE *E* O QUE ELE ALCANÇA:** *"setembro ‹ › · o mês recorta as **pagas**; **vencidas** e **a pagar** mostram tudo que está em aberto"*. ⛔ Sem a segunda metade, ver "setembro" no topo faria o dono concluir que as vencidas de agosto sumiram — exatamente a mentira que a régua evita. ⚠️ E **limpar os filtros volta pro mês corrente**, nunca pro começo dos tempos.
+
+**PROVADO EM PROD:**
+```
+ABRO A TELA → mês "2026-09"
+   PAGAS     26 · R$  19.040,90   (era 250 · R$ 220.353,76 "desde sempre")
+   VENCIDAS   7 · R$  20.346,54   ⭐ TODAS as abertas
+   A PAGAR   87 · R$ 175.982,36
+‹ AGOSTO → PAGAS 62 · R$ 87.710,77 (recalculou) · VENCIDAS 7 · R$ 20.346,54 (IGUAIS ✓)
+clico PAGAS: card 26 → lista 26 ✓   ·   clico VENCIDAS: card 7 → lista 7 ✓
+```
+
+**REGRA 11 — 3 defeitos repostos, 1 vermelho cada:** o mês vazando pro estoque (vencida de agosto sumindo) · PAGAS sem recorte (voltando aos R$ 220 mil) · o mês pelo fuso do servidor.
+
+### 📋 A VARREDURA DAS OUTRAS TELAS (14/09) — o que mudou e o que NÃO muda
+
+| tela | o que mostra | classe | desfecho |
+|---|---|---|---|
+| **Contas a Pagar** | pagas · vencidas · a pagar | **misto** | ⭐ FEITO — pagas no mês, as duas abertas sempre |
+| **Contas a Receber** | a receber · vencidas | **ESTOQUE (os dois)** | ⭐ **não ganha mês** — e o *"vencidas"* entrou na mesma fronteira: usava o MESMO `dueDate < now` de timestamp, e às 23h daria número diferente do Contas a Pagar ao lado |
+| **Movimentações** (`/transacoes`) | linhas do extrato · **7.360 desde sempre** | FLUXO | ✅ **já abria no mês** (1º → hoje) desde o Sprint 3 — conferido, nada a fazer |
+| **Pendentes** | 60 linhas a classificar | **FILA DE TRABALHO** | ⛔ **NUNCA ganha mês** — esconder pendente antigo é esconder trabalho, e foi assim que 21 notas ficaram invisíveis |
+| **Posição de estoque · saldo das contas** | foto de agora | **ESTOQUE** | ⛔ não ganham filtro, por ordem do dono |
+
+📋 **REGISTRADO E NÃO FEITO (fluxo que ainda soma desde sempre):** **Recebimentos → "Recebidas"** (123 conferências desde sempre · 80 no mês) e **PF → Lançamentos** (499 · 27 no mês). Os dois são FLUXO e pedem o mesmo navegador — mas são telas com estado próprio e cada uma merece a sua passada com red-then-green, em vez de cinco mudanças de uma vez. ⚠️ O **dashboard PF já navega mês**; é a tela de lançamentos dele que não.
+
+**9.809 verdes · TS 0 · deploy `cTM4f16yZDDbIlirCzNvj` 4/4.**
+
 ### ⛔⛔⛔ O `?abrir=` NÃO ABRIA O CARD — E O DEFEITO ERA MEU, DO MESMO DIA (13/09)
 
 **O dono, preso há 3 dias nos mesmos 2 casos:** *"clico 'casar conta' no pendente PJBANK 183,65 → a tela abre e o card do PJBANK NÃO ESTÁ — só o Casper de sempre."*
