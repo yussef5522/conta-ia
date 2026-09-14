@@ -300,11 +300,21 @@ export function canonizadorDeFornecedor(
  */
 const SUFIXOS_SOCIETARIOS = /\s+(ltda|eireli|me|epp|sa|s\/a|s a|mei|ltda me|eireli me)$/i
 
-/** ⚠️ a chave da identidade: nome normalizado, SEM o sufixo societário */
-function chaveDoNome(f: FornecedorConhecido): string {
-  const bruto = normalizeForMatch(f.nomeFantasia ?? f.razaoSocial)
+/**
+ * ⭐ A CHAVE DA IDENTIDADE DE UM FORNECEDOR, exportada de propósito.
+ *
+ * ⚠️ **REGRA 4:** quem MESCLA cadastro (`scripts/mesclar-fornecedores-duplicados.ts`) usa
+ * ESTA função. Uma segunda régua de "é o mesmo fornecedor?" no script faria a leitura
+ * tratar dois cadastros como um e a mescla recusá-los — ou, pior, o contrário.
+ */
+export function chaveDeIdentidadeDoFornecedor(nome: string): string {
+  const bruto = normalizeForMatch(nome)
   // ⚠️ roda 2× de propósito: "X LTDA ME" tem dois sufixos empilhados
   return bruto.replace(SUFIXOS_SOCIETARIOS, '').replace(SUFIXOS_SOCIETARIOS, '').trim() || bruto
+}
+
+function chaveDoNome(f: FornecedorConhecido): string {
+  return chaveDeIdentidadeDoFornecedor(f.nomeFantasia ?? f.razaoSocial)
 }
 
 /** ⚠️ casca fina — quem só quer "quem é" continua chamando isto (REGRA 4) */

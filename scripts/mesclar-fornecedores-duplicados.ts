@@ -23,13 +23,23 @@
 
 import { prisma } from '@/lib/db'
 import { exigirEmpresaNesteBanco } from '@/lib/scripts/prova-banco'
+import { chaveDeIdentidadeDoFornecedor } from '@/lib/conciliacao/sugestao-de-vinculo'
 
 const CO = process.env.EMPRESA_ID ?? 'cmq17yapb00gnrndlh33sctbo'
 const APLICAR = process.argv.includes('--aplicar')
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const soDigitos = (x: string | null) => (x ?? '').replace(/\D/g, '')
-const chave = (s: string) =>
-  s.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim()
+/**
+ * ⚠️⚠️ A CHAVE VEM DA LIB (13/09/2026) — REGRA 4, e ela mordeu de verdade.
+ *
+ * A régua local casava por nome **IDÊNTICO**, e por isso a CIA DA FRUTA escapou da rodada
+ * de 11/09: `…VERDURAS **LTDA**` (sem CNPJ, MANUAL, 05/06) × `…VERDURAS **EIRELI**` (CNPJ
+ * 36603841000130, ESTOQUE_NF, 04/09) são a mesma empresa, e `LTDA ≠ EIRELI`.
+ *
+ * ⛔ Duas réguas de *"é o mesmo fornecedor?"* — uma na leitura e outra na mescla — é o
+ * caminho pro card tratar dois cadastros como um e a mescla se recusar a juntá-los.
+ */
+const chave = chaveDeIdentidadeDoFornecedor
 
 interface Carga {
   transacoes: number
@@ -136,6 +146,11 @@ async function main() {
 
     if (APLICAR) {
       for (const a of absorvidos) {
+        // ⭐ o rastro diz a VERDADE do que casou: nome idêntico, ou o mesmo nome com
+        // sufixo societário diferente. "nome idêntico" seria falso na CIA DA FRUTA.
+        const nomeA = (a.nomeFantasia ?? a.razaoSocial).trim().toUpperCase()
+        const nomeS = (sobrevivente.nomeFantasia ?? sobrevivente.razaoSocial).trim().toUpperCase()
+        const motivoDaChave = nomeA === nomeS ? 'nome idêntico' : 'mesmo nome, sufixo societário diferente'
         await prisma.$transaction(async (tx) => {
           await tx.transaction.updateMany({ where: { supplierId: a.id }, data: { supplierId: sobrevivente.id } })
           await tx.aiLearningRule.updateMany({ where: { supplierId: a.id }, data: { supplierId: sobrevivente.id } })
@@ -146,7 +161,7 @@ async function main() {
             where: { id: a.id },
             data: {
               isActive: false,
-              notes: `${a.notes ? a.notes + ' · ' : ''}mesclado em ${sobrevivente.id} (nome idêntico) em ${new Date().toISOString().slice(0, 10)}`,
+              notes: `${a.notes ? a.notes + ' · ' : ''}mesclado em ${sobrevivente.id} (${motivoDaChave}) em ${new Date().toISOString().slice(0, 10)}`,
             },
           })
         })
