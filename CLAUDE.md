@@ -721,6 +721,48 @@ TELA → 200 · "revisar" ✓ · "sem destino" ✓ · "parece" ✓ · o aviso do
 
 📋 **FICA PRO DONO (o gesto é dele):** os **4 combos** (`… MAIS MINI FRITAS`, 28 ocorrências) precisam de ficha composta (lata + porção mini fritas) — o botão *"definir"* da linha leva ao cardápio com o nome já carregado. E **"ignorar" só aparece nos complementos**: o mapa de produtos aceita `FICHA | REVENDA | REMOVER`, e REMOVER **devolve a pendente**, que é outra coisa — oferecer ali seria um gesto que promete uma coisa e faz outra. Registrado como o que falta naquele mapa, não disfarçado.
 
+### ⛔⛔⛔ A TELA VELHA NÃO MORREU QUANDO A NOVA NASCEU — NAS DUAS (14/09)
+
+**O dono:** *"depois do confirmar (e no upload), a página empilha: recibo + REVISÃO nova + o RELATÓRIO/TABELA VELHA (produtos: 'Mapeamento (115)' com trocar/desmapear e SEGUNDO botão de confirmar; complementos: o relatório feio antigo que não edita nada). O mesmo dado em duas vitrines, dois confirmares — **é a segunda derivação em forma de página**."*
+
+**⭐⭐⭐ A REGRA QUE FICA, E VALE PRAS PRÓXIMAS:** ***quando a tela nova assume, a velha MORRE NO MESMO DEPLOY.*** Conviver *"por enquanto"* é como nasce a página com duas verdades — a mesma doença dos 7 detectores de par, agora em HTML. ⚠️ **E o defeito foi meu:** eu subi a revisão ao lado da tabela em vez de no lugar dela.
+
+**⭐⭐ A PEÇA QUE DESTRAVOU TUDO: `montarRevisaoDeLinhas`.** A tabela velha existia por um motivo técnico real — **a revisão só sabia ler do BANCO, e antes de confirmar o dia não está no banco**. Separando as LINHAS do resto, a MESMA função serve os dois momentos: o arquivo recém-lido e o dia já importado. ⚠️ **E isso NÃO ressuscita o "baixar" separado que morreu em 07/09:** o upload continua **sem escrever nada** — o que a tela pré-import edita é o **MAPA** (configuração, vale pra sempre), e o dia nasce num confirmar só.
+
+**1. PRODUTOS — a tabela "Mapeamento (N)" SAI.** A revisão é a única lista, com as ações completas na linha: **definir/trocar** · **desmapear** (migrou da velha) · **IGNORAR** (novo aqui).
+
+**⭐⭐ IGNORAR CHEGOU AO MAPA DE PRODUTOS**, e o dono nomeou o custo de não ter: *"os ~30 doces/milkshakes/açaí que POR MINHA DECISÃO não controlam estoque param de engordar o contador de pendentes pra sempre"*. ⛔ **PENDENTE = "espera decisão", NUNCA "tudo que não baixa"** — contador que cobra o que já foi resolvido é como o dono aprende a não olhar o contador. Ele é **reversível** (o desmapear devolve à fila), **datado** (o *"por você, em DD/MM"* da linha) e o plano de baixa lista os ignorados **nomeados**, nunca só contados.
+
+**2. COMPLEMENTOS — o relatório velho pós-upload SAI.** Upload → **revisão direto** → `[Confirmar e baixar]` → recibo + contadores. ⭐ E o confirmar de lá passou a usar o **MESMO `PlanoVendaModal`** da tela de produtos: o resumo inline que existia ali era um **segundo desenho da mesma pergunta** (*"o que acontece se eu confirmar?"*), e dois desenhos divergem no primeiro campo novo.
+
+**3. O PREVIEW MORRE NO CONFIRMAR.** Sem isso a página ficaria com a lista do ARQUIVO e a lista do DIA ao mesmo tempo — as duas vitrines de novo, agora por dentro. Depois de confirmar existe **uma verdade: o dia gravado**.
+
+**⚠️ "DESFAZER" TEM NOME DIFERENTE NOS DOIS MAPAS** — `LIMPAR` nos complementos, `REMOVER` nos produtos. A tradução mora **num lugar só** (o `aplicar` da revisão): uniformizar as rotas quebraria um dos dois guards, que são opostos de propósito desde 02/09.
+
+**OS 3 GUARDS DA FAMÍLIA** (`uma-vitrine-um-confirmar.test.ts`): **(a)** a página não desenha NENHUMA lista de nomes do dia — quem lista é a revisão; **(b)** **zero** botão de gravar o dia fora do rodapé da revisão, nos dois relatórios; **(c)** o **guard da mudança de casa** — desmapear EXISTE na revisão, e IGNORAR não pode voltar a ser só de complementos. *Remoção sem realocação é perda* (a disciplina da conferência de saldo que mudou de casa em 10/09).
+
+**PROVADO EM PROD, NOS DOIS VIEWPORTS (REGRA 12):**
+```
+/estoque/vendas   CELULAR 200 · 873 KB      DESKTOP 200 · 873 KB
+  ✓ morreu — a tabela velha "Mapeamento ("      ✓ morreu — o filtro "só pendentes"
+  ✓ morreu — o relatório velho de complementos  ✓ morreu — o 2º confirmar
+  ✓ a revisão · ignorar · desmapear · Confirmar do rodapé · o modal único
+
+PRODUTOS     12/09 → 🟡 33 · ✅ 52 · soma 85 = linhas 85 ✓
+COMPLEMENTOS 13/09 → 🟡 84 · ✅ 46 · soma 130 = linhas 130 ✓
+```
+⭐ **E o dono já usou a tela enquanto eu provava:** `COCA COLA LATA` e `COCA COLA ZERO LATA` mapeadas por ele às **17:59 de hoje** (auditoria: `criadoPorId` dele) — é por isso que os complementos saíram de 🟡86/✅44 pra 🟡84/✅46.
+
+**REGRA 11 — 5 defeitos repostos, 1-2 vermelhos cada:** a segunda vitrine de volta na página (**2**) · o segundo confirmar (**1**) · o preview sobrevivendo ao confirmar (**1**) · IGNORAR voltando a ser só de complementos (**1**) · desmapear não migrando (**1**).
+
+**⚠️ 5 TESTES DO GUARD ANTERIOR FICARAM VERMELHOS COM A TELA CERTA — e foram REAPONTADOS, não afrouxados.** Eles mediam *"a tela de produtos renderiza `<SeletorDeDestino>`"*, o que era verdade **enquanto a tabela velha existia**; agora ela renderiza a REVISÃO, e é a revisão que usa o seletor. A pergunta continua a mesma (*"o destino se edita pelo componente único?"*); o que mudou é por onde ela passa. É a mesma classe do guard que quebrou com a tela certa em 13/09.
+
+**9.983 verdes · TS 0 · deploy `VFe4IlUZ2ogobVspE6a_H` 4/4.**
+
+📋 **DUAS CONSEQUÊNCIAS MEDIDAS, NOMEADAS E NÃO ESCONDIDAS:**
+1. **O checkbox "não processar este nome HOJE" morreu com a tabela velha.** Ele era o `fora` do plano (mapeado que o dono desmarcava naquele processamento). **Não foi pedido pra ficar e não foi realocado** — o IGNORAR cobre a decisão permanente, que é o caso real; o "só hoje" deixou de existir. Se ele fizer falta, volta como um toggle na linha.
+2. **Produto IGNORADO sai do CARDÁPIO.** O hub pula quem não tem destino FICHA/REVENDA, então o milkshake ignorado deixa de aparecer lá — inclusive com as vendas dele. É o efeito pretendido no contador de pendentes, mas o número de vendas daquele nome some junto da tela de margem. Fica registrado pro dia em que ele quiser um estado "ignorado" visível também no cardápio.
+
 ### ⛔⛔⛔ "O DEFINIR FICHA ME EXPULSA DA TELA" — PARIDADE COM PRODUTOS (14/09)
 
 **O dono, na revisão de complementos:** *"clico em definir → navega pro cardápio e eu SAIO da revisão — perco o dia, a lista e o fio. A referência é a NOSSA tela de PRODUTOS, que está certa: clico no destino → seletor abre ALI → escolho → sigo na mesma tela."*
