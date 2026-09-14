@@ -711,7 +711,33 @@ clico PAGAS: card 26 → lista 26 ✓   ·   clico VENCIDAS: card 7 → lista 7 
 | **Pendentes** | 60 linhas a classificar | **FILA DE TRABALHO** | ⛔ **NUNCA ganha mês** — esconder pendente antigo é esconder trabalho, e foi assim que 21 notas ficaram invisíveis |
 | **Posição de estoque · saldo das contas** | foto de agora | **ESTOQUE** | ⛔ não ganham filtro, por ordem do dono |
 
-📋 **REGISTRADO E NÃO FEITO (fluxo que ainda soma desde sempre):** **Recebimentos → "Recebidas"** (123 conferências desde sempre · 80 no mês) e **PF → Lançamentos** (499 · 27 no mês). Os dois são FLUXO e pedem o mesmo navegador — mas são telas com estado próprio e cada uma merece a sua passada com red-then-green, em vez de cinco mudanças de uma vez. ⚠️ O **dashboard PF já navega mês**; é a tela de lançamentos dele que não.
+### ✅ AS DUAS REGISTRADAS FECHARAM (14/09) — uma de cada vez, cada uma com o seu red-then-green
+
+**⭐⭐ 1. RECEBIMENTOS → "RECEBIDAS" abre no mês.** 123 conferências desde sempre viravam a lista; agora **80 em setembro**, com ‹ ›.
+
+⚠️ **O recorte vai na CONFERÊNCIA, não na emissão:** `confirmadoEm` é *"quando eu recebi"* — o fato que aconteceu comigo. A `dataEmissao` é do FORNECEDOR, e **nota de agosto conferida em setembro é recebimento DE SETEMBRO**. Há teste com esse caso exato.
+
+⛔⛔ **E A FILA NÃO ENTRA NISSO.** *"Na fila"* e *"pra depois"* são **TRABALHO PENDENTE**, a mesma classe dos Pendentes de classificação — recortá-los por mês esconderia a nota de agosto esperando conferência, e **foi assim que 21 notas ficaram invisíveis** (o F5 de 03/09). A trava mora na lib, não na tela, e o contrafactual (`fila` em 4 meses diferentes) é o que segura a régua.
+
+**⭐⭐ 2. PF → LANÇAMENTOS abre no mês — e é A MESMA ESCOLHA do dashboard.** 499 desde sempre → **27 em setembro** (151 em agosto).
+
+⭐ `useMesDoPerfil` (localStorage **por perfil**) faz *"uma escolha, duas telas"*: mudar o mês num lado muda no outro. ⛔ Não vai na URL porque são **rotas diferentes** — o link teria que carregar o parâmetro em toda navegação, e a primeira que esquecesse voltaria a divergir. ⚠️ E todo acesso ao storage é protegido: ele **lança** em aba anônima e com cookies bloqueados, e um throw ali derrubaria a tela por causa de uma preferência.
+
+**⚠️⚠️ E O DASHBOARD PF USAVA O MÊS DO UTC:** `new Date().toISOString().slice(0,7)` — **no dia 1º às 00h30 de São Paulo ele abria no mês ANTERIOR**. Achado ao unificar; o `mesCorrente` resolve os dois de uma vez.
+
+**PROVADO EM PROD, pela rota real:**
+```
+RECEBIMENTOS  (padrão) mês 2026-09 · recebidas  80 · FILA 6 ⭐
+              ‹ agosto  mês 2026-08 · recebidas  43 · FILA 6 ⭐ (não muda)
+PF LANÇAMENTOS  desde sempre 499 · setembro 27 · agosto 151
+BUNDLE: navegador ✓ · "é a mesma escolha" ✓ · a frase da fila ✓
+```
+
+**⚠️⚠️ REGRA 11 — 4 defeitos repostos, e OS DOIS DO PF VIERAM VERDES.** Meus testes provavam a **régua** (`janelaDoMes`, `mesCorrente`) e ficaram verdes quando repus os defeitos **nas telas**: tirei o recorte do fetch dos Lançamentos e devolvi o mês UTC ao hook, e nada acusou. ***Guard que testa a lib aprova a tela que ignora a lib.*** O bloco novo pergunta pras TELAS e agora eles mordem.
+
+⚠️ **E UM ERRO MEU NO CAMINHO, o mesmo de 13/09:** rodei `git checkout` num arquivo **não-commitado** pra desfazer a reposição e apaguei a edição de verdade junto. Reaplicada — e a suíte pegou (2 vermelhos) antes de virar deploy.
+
+**9.821 verdes · TS 0 · deploy `EcpG5H1uXzJC-EmVfQ_jS` 4/4.**
 
 **9.809 verdes · TS 0 · deploy `cTM4f16yZDDbIlirCzNvj` 4/4.**
 
