@@ -88,16 +88,50 @@ export interface RevisaoDoImport {
  * ⚠️ E ela exige que o candidato seja PREFIXO ou SUFIXO do outro, em PALAVRAS inteiras —
  * "parecido por letras" traria `FANTA UVA` pra `FANTA LARANJA`.
  */
+/**
+ * ⛔⛔⛔ PALAVRA QUE MUDA A BEBIDA — lista FECHADA (14/09/2026).
+ *
+ * **Achado na prova em prod da tela, não em teste:** `FANTA LARANJA ZERO 2L` (PDV) ganhava
+ * a sugestão da ficha `FANTA LARANJA 2L` — a régua da DIREÇÃO passava (a ficha ESTÁ contida
+ * no nome do PDV), e mesmo assim um clique baixaria a **comum no lugar da zero**.
+ *
+ * ⚠️ É o espelho do caso `FRUKI LATA`, e a régua velha só olhava um dos lados: ela assumia
+ * que a palavra a mais do PDV é **ruído** (`COCA COLA LATA` × `COCA LATA` — "COLA" é ruído).
+ * Às vezes ela **distingue o produto**, e aí a sugestão é a bebida errada.
+ *
+ * ⛔ A lista é FECHADA de propósito (a disciplina dos volumes de bebida e do sufixo
+ * societário): inferir "qualificador" de qualquer palavra a mais mataria as sugestões boas,
+ * que são a razão de a tela existir.
+ */
+// ⚠️ MAIÚSCULAS porque `normalizarNome` devolve maiúsculas — a 1ª versão desta lista veio
+// em minúsculas e o guard virou NO-OP: passava verde com o defeito reposto (REGRA 11).
+const QUALIFICADORES = ['ZERO', 'DIET', 'LIGHT', 'SEM ACUCAR'] as const
+
+/** os qualificadores presentes num nome já normalizado */
+export function qualificadoresDe(nomeNormalizado: string): string[] {
+  const p = ` ${nomeNormalizado} `
+  return QUALIFICADORES.filter((q) => p.includes(` ${q} `))
+}
+
 export function sugerirDestino(
   nome: string,
   candidatos: readonly { fichaId: string; rotulo: string }[],
 ): SugestaoDeDestino | null {
-  const alvo = normalizarNome(nome).split(/\s+/).filter(Boolean)
+  const normAlvo = normalizarNome(nome)
+  const alvo = normAlvo.split(/\s+/).filter(Boolean)
   if (alvo.length < 2) return null
+  const qAlvo = qualificadoresDe(normAlvo).join('|')
 
   const achados = candidatos.filter((c) => {
-    const p = normalizarNome(c.rotulo).split(/\s+/).filter(Boolean)
+    const normFicha = normalizarNome(c.rotulo)
+    const p = normFicha.split(/\s+/).filter(Boolean)
     if (!p.length || p.length >= alvo.length) return false
+    /**
+     * ⛔⛔ OS QUALIFICADORES TÊM QUE BATER EXATO. Zero com zero, comum com comum — nunca
+     * um clique transformando um no outro. Sem isto, `FANTA LARANJA ZERO 2L` baixava a
+     * `FANTA LARANJA 2L` comum (medido em prod, 14/09).
+     */
+    if (qualificadoresDe(normFicha).join('|') !== qAlvo) return false
     /**
      * ⭐⭐⭐ A DIREÇÃO IMPORTA, e ela é a régua que impede a bebida errada.
      *

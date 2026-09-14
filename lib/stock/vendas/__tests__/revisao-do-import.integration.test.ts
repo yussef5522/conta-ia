@@ -162,6 +162,50 @@ describe('⛔ a régua da sugestão, pura', () => {
   it('⛔ nome IGUAL não vira sugestão — ali quem age é a régua do automático (08/09)', () => {
     expect(sugerirDestino('COCA LATA', cands)).toBeNull()
   })
+
+  /**
+   * ⛔⛔⛔ O CASO REAL ACHADO NA PROVA EM PROD (14/09) — o espelho do FRUKI LATA.
+   *
+   * A régua da DIREÇÃO passava (`FANTA LARANJA 2L` ESTÁ contida em `FANTA LARANJA ZERO
+   * 2L`) e um clique baixaria a **comum no lugar da zero**. A direção sozinha só olhava
+   * um lado: ela supõe que a palavra a mais do PDV é ruído, e "ZERO" **é outra bebida**.
+   */
+  const bebidas = [
+    { fichaId: 'c', rotulo: 'FANTA LARANJA 2L' },
+    { fichaId: 'z', rotulo: 'FANTA LARANJA ZERO 2L' },
+  ]
+
+  /**
+   * ⚠️⚠️ REGRA 11 PEGOU A 1ª VERSÃO DESTE TESTE: com as DUAS fichas na lista, quem barra
+   * é a trava da AMBIGUIDADE (duas casam) — repondo o defeito, ele ficava VERDE. O caso
+   * que isola a régua nova é o REAL de prod: **existe só a ficha comum**, ela casa
+   * sozinha, e sem a trava a sugestão nasce apontando a bebida errada.
+   */
+  it('⛔⛔ PDV com ZERO nunca sugere a ficha COMUM (era a bebida errada em 1 clique)', () => {
+    expect(sugerirDestino('FANTA LARANJA ZERO 2L PET', [bebidas[0]])).toBeNull()
+  })
+
+  /**
+   * ⭐ E A RÉGUA NOVA GANHOU UM EFEITO QUE EU NÃO TINHA PREVISTO (o teste me corrigiu):
+   * com as DUAS fichas na lista, o que antes era **ambiguidade** (as duas casavam, então
+   * nada era sugerido) agora **se resolve sozinho** — a comum é descartada pelo
+   * qualificador e sobra a certa. Menos "não sei qual", e nenhuma perda de segurança.
+   */
+  it('⭐ com as duas fichas, o qualificador DESEMPATA em vez de travar', () => {
+    expect(sugerirDestino('FANTA LARANJA ZERO 2L PET', bebidas)?.rotulo).toBe('FANTA LARANJA ZERO 2L')
+  })
+
+  it('⛔⛔ e o contrário segue barrado — PDV comum nunca sugere a ficha ZERO', () => {
+    expect(sugerirDestino('FANTA LARANJA 2L PET', [bebidas[1]])).toBeNull()
+  })
+
+  it('⭐ com o qualificador batendo dos dois lados, a sugestão VOLTA a valer', () => {
+    expect(sugerirDestino('FANTA LARANJA ZERO 2L PET', [bebidas[1]])?.rotulo).toBe('FANTA LARANJA ZERO 2L')
+  })
+
+  it('⭐ e a bebida comum continua sugerindo normal — a régua não matou o caso bom', () => {
+    expect(sugerirDestino('FANTA LARANJA 2L PET', [bebidas[0]])?.rotulo).toBe('FANTA LARANJA 2L')
+  })
 })
 
 // ⭐⭐⭐ O GUARD QUE O DONO PEDIU: *"nome sem destino NUNCA some do contador"*.
