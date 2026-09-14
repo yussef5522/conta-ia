@@ -4,6 +4,7 @@
 
 import { idsRecusados } from '../recusa-nota'
 import type { PrismaClient, Prisma } from '@prisma/client'
+import { janelaDoMes } from '@/lib/periodo/mes-corrente'
 import { prisma as defaultPrisma } from '@/lib/db'
 
 type Db = PrismaClient | Prisma.TransactionClient
@@ -44,7 +45,25 @@ export interface RecebimentosData {
   historicasPeriodo: { de: string | null; ate: string | null }
 }
 
-export async function listRecebimentos(companyId: string, db: Db = defaultPrisma, agora = new Date()): Promise<RecebimentosData> {
+/**
+ * ⭐⭐⭐ "RECEBIDAS" É FLUXO E ABRE NO MÊS (14/09/2026) — a régua dos dois tempos.
+ *
+ * **Medido em prod:** **123 conferências desde sempre · 80 em setembro.** A lista crescia
+ * pra sempre, e o card dizia um número que não responde pergunta nenhuma do mês.
+ *
+ * ⛔⛔ **E A FILA NÃO ENTRA NISSO.** "Na fila" e "pra depois" são **TRABALHO PENDENTE**,
+ * não fluxo — a mesma classe dos Pendentes de classificação. Recortar por mês esconderia
+ * a nota de agosto esperando conferência, que é exatamente como 21 notas ficaram
+ * invisíveis. ⚠️ A trava mora aqui: o `mes` só alcança `recebidas`.
+ */
+export async function listRecebimentos(
+  companyId: string,
+  db: Db = defaultPrisma,
+  agora = new Date(),
+  /** `YYYY-MM` — recorta SÓ as recebidas. `null` = todas (o histórico inteiro). */
+  mes?: string | null,
+): Promise<RecebimentosData> {
+  const janela = mes ? janelaDoMes(mes) : null
   const [state, ultimoLog, filaNotas, itemCounts, histAgg, adiadas, recebidasNotas, conferencias] = await Promise.all([
     db.stockSefazState.findUnique({ where: { companyId }, select: { dataCorte: true } }),
     db.stockSefazLog.findFirst({ where: { companyId }, orderBy: { criadoEm: 'desc' }, select: { criadoEm: true } }),
@@ -61,10 +80,24 @@ export async function listRecebimentos(companyId: string, db: Db = defaultPrisma
     db.stockNfe.findMany({
       where: { companyId, status: 'CONFIRMADA' },
       orderBy: { atualizadoEm: 'desc' },
-      take: 100,
+      // ⚠️ o `take` é só um teto de carga; quem recorta é a CONFERÊNCIA (abaixo), e a
+      // nota sem conferência no mês cai fora no filtro logo depois
+      take: 300,
       select: { id: true, chave: true, emitNome: true, vNF: true },
     }),
-    db.stockReceiptConference.findMany({ where: { companyId, status: { in: ['CONFIRMADA', 'DIVERGENTE_ACEITA'] } }, select: { id: true, nfeId: true, status: true, confirmadoEm: true } }),
+    /**
+     * ⚠️ O RECORTE VAI NA **CONFERÊNCIA**, não na nota: `confirmadoEm` é *"quando eu
+     * recebi"* — o fato que aconteceu no tempo. A `dataEmissao` é quando o FORNECEDOR
+     * emitiu, e nota de agosto conferida em setembro é recebimento DE SETEMBRO.
+     */
+    db.stockReceiptConference.findMany({
+      where: {
+        companyId,
+        status: { in: ['CONFIRMADA', 'DIVERGENTE_ACEITA'] },
+        ...(janela ? { confirmadoEm: { gte: janela.de, lt: janela.ate } } : {}),
+      },
+      select: { id: true, nfeId: true, status: true, confirmadoEm: true },
+    }),
   ])
 
   const itensPorNfe = new Map(itemCounts.map((g) => [g.nfeId, g._count._all]))
@@ -85,7 +118,11 @@ export async function listRecebimentos(companyId: string, db: Db = defaultPrisma
     motivoAdiada: adiadaPorNfe.get(n.id) ?? null,
   }))
 
-  const recebidas: RecebidaCard[] = recebidasNotas.map((n) => {
+  const recebidas: RecebidaCard[] = recebidasNotas
+    // ⭐ com mês, só a nota cuja CONFERÊNCIA caiu no mês — a nota sem conferência na
+    // janela não é "recebida neste mês", ainda que esteja confirmada há tempos
+    .filter((n) => !janela || confPorNfe.has(n.id))
+    .map((n) => {
     const conf = confPorNfe.get(n.id)
     return {
       nfeId: n.id,

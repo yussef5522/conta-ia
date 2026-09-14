@@ -22,6 +22,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { StatCard, StatCardGrid } from '@/components/ui/stat-card'
 import { TotalsBar, type TotalItem } from '@/components/ui/totals-bar'
 import { SortableTh, useSort } from '@/components/ui/sortable-th'
+import { NavegadorDeMes } from '@/components/contas-pagar/NavegadorDeMes'
+import { mesCorrente } from '@/lib/periodo/mes-corrente'
 import { baixarCsv, hojeArquivo } from '@/lib/format/csv-cliente'
 import { casaBusca, casaDigitos } from '@/lib/busca-texto'
 import { CardFilaBoletos } from '@/components/estoque/card-fila-boletos'
@@ -92,8 +94,14 @@ export default function RecebimentosPage({ params }: { params: Promise<{ id: str
   const [bulkBusy, setBulkBusy] = useState(false)
   const { col, dir, alternar, ordenar } = useSort<Campo>('espera', 'desc')
 
-  const recarregar = () => fetch(`/api/empresas/${id}/estoque/recebimentos`).then((r) => r.json()).then((j) => setData(j.recebimentos ? j : null)).catch(() => setData(null))
-  useEffect(() => { recarregar() }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
+  /**
+   * ⭐⭐ "RECEBIDAS" ABRE NO MÊS (14/09) — a régua dos dois tempos.
+   * ⛔ A FILA e o "pra depois" NÃO: são trabalho pendente, e recortá-los por mês
+   * esconderia a nota de agosto esperando conferência.
+   */
+  const [mes, setMes] = useState(mesCorrente())
+  const recarregar = () => fetch(`/api/empresas/${id}/estoque/recebimentos?mes=${mes}`).then((r) => r.json()).then((j) => setData(j.recebimentos ? j : null)).catch(() => setData(null))
+  useEffect(() => { recarregar() }, [id, mes]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { fetch(`/api/empresas/${id}/estoque/entrada-manual`).then((x) => x.json()).then((j) => setManuais(j.entradas ?? [])).catch(() => {}) }, [id])
 
   // ── as 3 origens viram UMA lista de linhas comparáveis ──
@@ -113,7 +121,9 @@ export default function RecebimentosPage({ params }: { params: Promise<{ id: str
         estado: 'recebida', cancelada: false, divergente: n.divergente,
         href: null, reciboHref: n.conferenceId ? `/empresas/${id}/estoque/recibos/${n.conferenceId}` : null,
       })),
-      ...manuais.map((m): Linha => ({
+      // ⚠️ a entrada MANUAL é recebimento igual — entra no mesmo recorte de mês, senão
+      // a lista misturaria "setembro" das notas com "desde sempre" das manuais
+      ...manuais.filter((m) => (m.data ?? '').slice(0, 7) === mes).map((m): Linha => ({
         key: `m-${m.id}`, nfeId: null, fornecedor: m.fornecedorNome, cnpj: null,
         data: m.data, nItens: null, valor: m.valorTotal, esperandoDias: null,
         estado: 'manual', cancelada: false, divergente: false,
@@ -198,6 +208,14 @@ export default function RecebimentosPage({ params }: { params: Promise<{ id: str
           </a>
         </div>
       </div>
+
+      <NavegadorDeMes
+        mes={mes}
+        onMudar={setMes}
+        /* ⭐ a frase diz o que o mês alcança — sem ela, ver "setembro" faria o dono achar
+           que a nota de agosto esperando conferência sumiu da fila */
+        frase="· o mês recorta as recebidas; a fila e o 'pra depois' mostram tudo que está esperando"
+      />
 
       {buscarAberto && <BuscarChave id={id} onAchou={() => { setBuscarAberto(false); recarregar() }} onFechar={() => setBuscarAberto(false)} />}
 

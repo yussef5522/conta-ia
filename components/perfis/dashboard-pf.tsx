@@ -16,6 +16,7 @@
 // daria hydration mismatch, ou o app piscando o layout errado antes de trocar.
 
 import { useCallback, useEffect, useState } from 'react'
+import { useMesDoPerfil } from '@/lib/hooks/use-mes-do-perfil'
 import { fetchJson } from '@/lib/http/fetch-json'
 import { LancamentoRapido } from './lancamento-rapido'
 import { BottomNavPF } from './bottom-nav-pf'
@@ -27,7 +28,12 @@ import {
 
 export function DashboardPFView({ profileId }: { profileId: string }) {
   // ⚠️ REGRA 9: todo hook antes de qualquer early return
-  const [mes, setMes] = useState(() => new Date().toISOString().slice(0, 7))
+  /**
+   * ⭐⭐ UMA ESCOLHA, DUAS TELAS (14/09) — o mês é compartilhado com os Lançamentos.
+   * ⚠️ E era `new Date().toISOString()`, o mês do **UTC**: no dia 1º às 00h30 de São Paulo
+   * o dashboard abria no mês ANTERIOR. O `mesCorrente` de dentro do hook resolve os dois.
+   */
+  const [mes, setMes] = useMesDoPerfil(profileId)
   const [d, setD] = useState<Dados | null>(null)
   const [erro, setErro] = useState<string | null>(null)
   /** ⭐ o olhinho esconde TODOS os números da tela, não só o hero (régua do dono) */

@@ -5,6 +5,9 @@
 'use client'
 
 import { use, useEffect, useState } from 'react'
+import { useMesDoPerfil } from '@/lib/hooks/use-mes-do-perfil'
+import { janelaDoMes } from '@/lib/periodo/mes-corrente'
+import { NavegadorDeMes } from '@/components/contas-pagar/NavegadorDeMes'
 import Link from 'next/link'
 import {
   ArrowLeft,
@@ -92,16 +95,33 @@ export default function TransacoesPFPage({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  function reload() {
+  /**
+   * ⭐⭐⭐ LANÇAMENTOS ABREM NO MÊS (14/09) — a régua dos dois tempos.
+   *
+   * **Medido em prod:** **499 lançamentos desde sempre · 27 em setembro.** Uma lista que
+   * cresce pra sempre não responde *"o que eu gastei este mês?"* — e era a única pergunta
+   * que esta tela existe pra responder.
+   *
+   * ⭐ E o mês é o MESMO do dashboard (`useMesDoPerfil`): *"uma escolha, duas telas"*.
+   */
+  const [mes, setMes] = useMesDoPerfil(id)
+
+  function reload(m: string = mes) {
     setLoading(true)
-    fetch(`/api/perfis/${id}/transacoes?pageSize=100`)
+    const { de, ate } = janelaDoMes(m)
+    // ⚠️ `endDate` é EXCLUSIVO na janela; mando o último instante do mês pra a rota, que
+    // compara com `lte` — sem isto o último dia inteiro sumiria da lista
+    const fim = new Date(ate.getTime() - 1)
+    fetch(`/api/perfis/${id}/transacoes?pageSize=200&startDate=${de.toISOString()}&endDate=${fim.toISOString()}`)
       .then((r) => r.json())
       .then((d) => setItems(d.items ?? []))
       .finally(() => setLoading(false))
   }
 
+  // ⚠️ recarrega quando o mês muda — inclusive quando ele chega do storage no 1º effect
+  useEffect(() => { reload(mes) }, [mes]) // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
-    reload()
     fetch(`/api/perfis/${id}/contas`)
       .then((r) => r.json())
       .then((d) => setAccounts(d.accounts ?? []))
@@ -200,6 +220,14 @@ export default function TransacoesPFPage({
           📈 Receitas
         </Link>
       </div>
+
+      {/* ⭐ o MESMO navegador das outras telas — dois jeitos de andar no mês seriam duas
+          coisas pra aprender. E a escolha é a mesma do dashboard (`useMesDoPerfil`). */}
+      <NavegadorDeMes
+        mes={mes}
+        onMudar={setMes}
+        frase="· o mês vale aqui e no Meu Dinheiro — é a mesma escolha"
+      />
 
       <div className="flex items-start justify-between gap-3 mb-6">
         <div>

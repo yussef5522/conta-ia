@@ -13,7 +13,12 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { mesVizinho, rotuloDoMes, mesCorrente } from '@/lib/periodo/mes-corrente'
 
-export function NavegadorDeMes({ mes, onMudar }: { mes: string; onMudar: (m: string) => void }) {
+export function NavegadorDeMes({ mes, onMudar, frase }: {
+  mes: string
+  onMudar: (m: string) => void
+  /** ⚠️ cada tela DIZ o que o mês dela alcança — a frase genérica mentiria na outra */
+  frase?: string
+}) {
   const corrente = mesCorrente()
   return (
     <div className="-mt-1 mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
@@ -47,7 +52,7 @@ export function NavegadorDeMes({ mes, onMudar }: { mes: string; onMudar: (m: str
       )}
 
       <span className="w-full text-[11px] text-slate-400 sm:w-auto">
-        · o mês recorta as <b>pagas</b>; <b>vencidas</b> e <b>a pagar</b> mostram tudo que está em aberto
+        {frase ?? '· o mês recorta as pagas; vencidas e a pagar mostram tudo que está em aberto'}
       </span>
     </div>
   )
