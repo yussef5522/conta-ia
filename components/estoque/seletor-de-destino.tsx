@@ -25,6 +25,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, Search, Link2, Plus, ChefHat } from 'lucide-react'
 import { useDismissivel } from '@/lib/hooks/use-dismissivel'
 import { filtrarPorBusca } from '@/lib/busca-texto'
+import { fetchComTimeout } from '@/lib/http/fetch-com-timeout'
+
 
 export interface OpcaoDeDestinoDTO {
   tipo: 'FICHA' | 'REVENDA'
@@ -59,20 +61,26 @@ export function SeletorDeDestino({
   const ref = useDismissivel<HTMLDivElement>(aberto, () => setAberto(false))
   const campo = useRef<HTMLInputElement>(null)
 
+  const [tentativa, setTentativa] = useState(0)
   useEffect(() => {
     if (!aberto || opcoes) return
+    void tentativa // ⭐ "tentar de novo" refaz a busca sem fechar o painel
     let vivo = true
     void (async () => {
-      const r = await fetch(`/api/empresas/${empresaId}/estoque/vendas/destinos?relatorio=${relatorio}`)
-      const j = await r.json().catch(() => null)
+      // ⛔⛔ COM TIMEOUT: em 14/09 esta lista ficou em "carregando…" PRA SEMPRE porque a
+      // requisição estava presa na fila do browser. **Spinner eterno é a ausência fingindo
+      // progresso** — agora ela desiste em 12 s e DIZ, com "tentar de novo".
+      const r = await fetchComTimeout<{ destinos: { fichas: OpcaoDeDestinoDTO[]; itens: OpcaoDeDestinoDTO[] } }>(
+        `/api/empresas/${empresaId}/estoque/vendas/destinos?relatorio=${relatorio}`,
+      )
       if (!vivo) return
       // ⛔ ERRO NUNCA VIRA LISTA VAZIA: "nenhuma ficha" é uma afirmação, e quando a carga
       // falha o sistema NÃO SABE (a lição da tela da equipe, 09/09).
-      if (!r.ok) { setErro(j?.erro ?? 'Não consegui carregar os destinos.'); return }
-      setOpcoes({ fichas: j.destinos.fichas, itens: j.destinos.itens })
+      if (!r.ok || !r.data) { setErro(r.erro ?? 'Não consegui carregar os destinos.'); return }
+      setOpcoes({ fichas: r.data.destinos.fichas, itens: r.data.destinos.itens })
     })()
     return () => { vivo = false }
-  }, [aberto, opcoes, empresaId, relatorio])
+  }, [aberto, opcoes, empresaId, relatorio, tentativa])
 
   useEffect(() => { if (aberto) campo.current?.focus() }, [aberto])
 
@@ -123,7 +131,14 @@ export function SeletorDeDestino({
             />
           </div>
 
-          {erro && <p className="mt-1.5 rounded-lg bg-rose-50 px-2 py-1.5 text-[11px] text-rose-700">{erro}</p>}
+          {/* ⭐ ERRO VISÍVEL COM SAÍDA — âmbar, não vermelho de pânico: quase sempre é rede */}
+          {erro && (
+            <div className="mt-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-900">
+              {erro}
+              <button type="button" onClick={() => { setErro(null); setTentativa((n) => n + 1) }}
+                className="ml-1.5 font-semibold underline">tentar de novo</button>
+            </div>
+          )}
 
           {/* ⚠️ o mini-form da ficha simples é UMA LINHA: o nome já vem do PDV, só falta o
               item. Pedir o nome de novo seria pedir o que a tela já sabe. */}

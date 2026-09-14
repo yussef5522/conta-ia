@@ -16,6 +16,7 @@ import { PlanoVendaModal } from '@/components/estoque/plano-venda-modal'
 import { RevisaoDoImport, type RevisaoDTO, type ConfirmarDelegado } from '@/components/estoque/revisao-do-import'
 import { SeletorDeDestino } from '@/components/estoque/seletor-de-destino'
 import { hrefDoEditor } from '@/lib/stock/vendas/volta-da-revisao'
+import { fetchComTimeout } from '@/lib/http/fetch-com-timeout'
 import { diaEmSaoPaulo } from '@/lib/datas/dia-sao-paulo'
 
 interface Linha { produto: string; quantidade: number; valorTotal: number; mapeado: boolean; alvoTipo: string | null; alvoId: string | null; alvoNome: string | null }
@@ -98,11 +99,11 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
   const enviar = async (conteudo: string, dia?: string): Promise<RevisaoDTO | null> => {
     setCarregando(true); setErro(null)
     try {
-      const r = await fetch(`/api/empresas/${id}/estoque/vendas/preview`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ html: conteudo, data: dia || data || undefined }) })
-      const j = await r.json().catch(() => null)
-      if (!r.ok) { setErro(j?.erro ?? 'Não consegui ler o arquivo.'); setPreview(null); setPrevRevisao(null); return null }
-      setPreview(j.preview); setPrevRevisao(j.revisao ?? null)
-      return j.revisao ?? null
+      // ⛔ COM TIMEOUT: o "Lendo…" deste botão girou pra sempre em 14/09 (14/09)
+      const r = await fetchComTimeout<{ preview: Preview; revisao?: RevisaoDTO }>(`/api/empresas/${id}/estoque/vendas/preview`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ html: conteudo, data: dia || data || undefined }) })
+      if (!r.ok || !r.data) { setErro(r.erro ?? 'Não consegui ler o arquivo.'); setPreview(null); setPrevRevisao(null); return null }
+      setPreview(r.data.preview); setPrevRevisao(r.data.revisao ?? null)
+      return r.data.revisao ?? null
     } catch { setErro('Falha de conexão.'); return null } finally { setCarregando(false) }
   }
   const onFile = (f: File) => { const reader = new FileReader(); reader.onload = () => { const t = String(reader.result ?? ''); setHtml(t); enviar(t) }; reader.readAsText(f, 'utf-8') }
@@ -151,9 +152,11 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
       const body = modoReprocesso
         ? { data: modoReprocesso, reprocessar: true, confirmar: true, confirmouSanidade }
         : { html, data, confirmar: true, incluir: null, confirmouSanidade }
-      const r = await fetch(`/api/empresas/${id}/estoque/vendas/processar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-      const j = await r.json().catch(() => null)
-      if (r.ok) {
+      // ⚠️ o confirmar grava: teto MAIOR (60 s), porque desistir cedo de uma gravação que
+      // está acontecendo é pior que esperar — mas ele TERMINA, com erro visível.
+      const rr = await fetchComTimeout<{ recibo: Recibo }>(`/api/empresas/${id}/estoque/vendas/processar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), timeoutMs: 60_000 })
+      const j = rr.data
+      if (rr.ok && j) {
         setRecibo(j.recibo); setPlano(null); setModoReprocesso(null); carregarProcessados()
         // ⛔⛔ O PREVIEW MORRE NO CONFIRMAR (14/09): sem isto a página ficaria com a lista
         // do ARQUIVO e a lista do DIA ao mesmo tempo — as duas vitrines de novo, agora
@@ -166,7 +169,7 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
         if (dia) setRevisao({ data: dia, relatorio: 'PRODUTOS', origem: modoReprocesso ? 'LISTA' : 'IMPORT' })
         if (modoReprocesso) setAba('processados')
       }
-      else setErroModal(j?.erro ?? 'Não consegui processar.')
+      else setErroModal(rr.erro ?? 'Não consegui processar.')
     } catch { setErroModal('Falha de conexão.') } finally { setProcessando(false) }
   }
 

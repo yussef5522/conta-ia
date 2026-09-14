@@ -5,7 +5,7 @@
 // fora do DRE + encargos despesa financeira) e saldo antes→depois. O usuário
 // CONFERE e ajusta a seleção; UMA confirmação fecha tudo. Nunca vincula sozinho.
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { Loader2, Landmark, CheckCircle2, AlertTriangle } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
@@ -39,6 +39,16 @@ export function LinkPaymentModal({ empresaId, loanId, txId, onClose, onDone }: {
   // FIX matcher: parcela escolhida manualmente (override do casamento por data)
   const [chosenNumber, setChosenNumber] = useState<number | null>(null)
 
+  /**
+   * ⚠️⚠️ MESMA CLASSE DO LOOP DE 14/09 (achada na varredura REGRA 4): `onClose` e `toast`
+   * são **funções vindas de fora** e a identidade delas muda a cada render de quem monta o
+   * modal — com elas nas deps, todo render do pai dispara um `fetch` novo. Aqui não virou
+   * enxurrada porque o `load` só mexe em estado LOCAL, mas é a mesma bomba armada.
+   * ⭐ Elas vão pro ref: são chamadas por DESFECHO, nunca por dependência.
+   */
+  const saidaRef = useRef({ onClose, toast })
+  saidaRef.current = { onClose, toast }
+
   const load = useCallback(async (ids?: string[], installmentNumber?: number) => {
     setLoading(true)
     const resp = await fetch(`/api/empresas/${empresaId}/emprestimos/${loanId}/vincular-parcela/preview`, {
@@ -47,11 +57,11 @@ export function LinkPaymentModal({ empresaId, loanId, txId, onClose, onDone }: {
       body: JSON.stringify({ ...(ids ? { transactionIds: ids } : {}), originTxId: txId, ...(installmentNumber ? { installmentNumber } : {}) }),
     })
     const { ok, data, message } = await readJsonResponse<Preview>(resp)
-    if (!ok || !data) { toast({ variant: 'destructive', title: 'Erro', description: message ?? 'Falha ao carregar' }); onClose(); return }
+    if (!ok || !data) { saidaRef.current.toast({ variant: 'destructive', title: 'Erro', description: message ?? 'Falha ao carregar' }); saidaRef.current.onClose(); return }
     setPv(data)
     if (!ids) setSel(new Set(data.candidates.filter((c) => c.selected).map((c) => c.id)))
     setLoading(false)
-  }, [empresaId, loanId, txId, toast, onClose])
+  }, [empresaId, loanId, txId])
 
   useEffect(() => { void load() }, [load])
 

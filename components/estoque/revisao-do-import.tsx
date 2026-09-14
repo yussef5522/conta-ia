@@ -11,10 +11,11 @@
 // ⚠️ REGRA 12: a mesma tela nos dois viewports — no celular cada linha vira um bloco (o
 // destino embaixo do nome), no monitor vira tabela. **Mesmos dados, uma fonte.**
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Loader2, Check, AlertTriangle, Search, EyeOff, Undo2 } from 'lucide-react'
 import { SeletorDeDestino, type EscolhaDeDestino } from './seletor-de-destino'
 import { ancoraDaLinha, hrefDoEditor } from '@/lib/stock/vendas/volta-da-revisao'
+import { fetchComTimeout } from '@/lib/http/fetch-com-timeout'
 
 export interface LinhaRevisaoDTO {
   nome: string
@@ -86,24 +87,56 @@ export function RevisaoDoImport({
 
   const externo = revisaoExterna !== undefined
 
+  /**
+   * ⛔⛔⛔ AQUI NASCEU O LOOP DE 20 REQUISIÇÕES POR SEGUNDO (14/09/2026) — defeito MEU.
+   *
+   * **O dono:** *"três fetches não resolvem — o 'Lendo…', a lista de receitas do seletor e
+   * o processar, todos presos."* **Medido no nginx: 489 de 500 requisições eram o MESMO
+   * `POST /vendas/preview`, ~20/s, cada uma re-enviando o arquivo inteiro.**
+   *
+   * **A CAUSA:** o `carregar` tinha `recarregarExterna` nas dependências, e a tela pai
+   * monta essa função **nova a cada render**. Efeito → fetch → `setState` no pai → render →
+   * identidade nova → efeito de novo. ⚠️ **E o servidor estava SADIO o tempo todo** (54 MB,
+   * 0,1% de CPU, cada rota em 72–302 ms): quem entupia era o limite de ~6 conexões do
+   * browser, e as outras duas chamadas ficavam **na fila, pra sempre**.
+   *
+   * ⭐ **A CURA É ESTRUTURAL, não um `useRef` em cima do laço:** no modo externo a lista
+   * **É a prop** — o componente ESPELHA, não busca. Quem busca é o pai, e só quando alguém
+   * pede (um ajuste). Sem efeito que busca, não há laço possível.
+   *
+   * ⚠️ E a lição geral: **`useCallback` com função vinda de prop nas deps é um laço
+   * esperando acontecer** — a identidade muda a cada render do pai por construção.
+   */
+  const carregarDoDia = useCallback(async () => {
+    // ⛔ COM TIMEOUT: "abrindo a revisão…" não pode girar pra sempre (14/09)
+    const r = await fetchComTimeout<{ revisao: RevisaoDTO }>(`/api/empresas/${empresaId}/estoque/vendas/revisao?data=${data}&relatorio=${relatorio}`)
+    // ⛔ ERRO NUNCA VIRA VAZIO: "nenhuma linha" é uma afirmação, e quando a carga falha o
+    // sistema NÃO SABE (a lição da tela da equipe, 09/09).
+    if (!r.ok || !r.data) { setErro(r.erro ?? 'Não consegui carregar a revisão deste import.'); return }
+    setErro(null)
+    setRev(r.data.revisao)
+  }, [empresaId, data, relatorio])
+
+  // modo DIA: busca no banco, uma vez por (empresa, dia, relatório)
+  useEffect(() => { if (!externo) void carregarDoDia() }, [externo, carregarDoDia])
+
+  // ⭐ modo EXTERNO: espelha a prop. `revisaoExterna` só muda quando o PAI grava estado
+  // novo — então isto roda uma vez por carga de verdade, nunca por render.
+  useEffect(() => { if (externo) { setRev(revisaoExterna ?? null); setErro(null) } }, [externo, revisaoExterna])
+
+  // ⚠️ o recarregar do pai fica num REF: ele é chamado por GESTO (depois de um ajuste),
+  // nunca por efeito — e assim a identidade dele não entra em dependência nenhuma.
+  const recarregarRef = useRef(recarregarExterna)
+  recarregarRef.current = recarregarExterna
+
   const carregar = useCallback(async () => {
-    // ⭐ FONTE EXTERNA (pré-import): a lista vem do arquivo, não do dia gravado
     if (externo) {
-      if (!recarregarExterna) { setRev(revisaoExterna ?? null); setErro(null); return }
-      const r = await recarregarExterna()
+      const r = await recarregarRef.current?.()
       if (r) { setRev(r); setErro(null) }
       return
     }
-    const r = await fetch(`/api/empresas/${empresaId}/estoque/vendas/revisao?data=${data}&relatorio=${relatorio}`)
-    const j = await r.json().catch(() => null)
-    // ⛔ ERRO NUNCA VIRA VAZIO: "nenhuma linha" é uma afirmação, e quando a carga falha o
-    // sistema NÃO SABE (a lição da tela da equipe, 09/09).
-    if (!r.ok) { setErro(j?.erro ?? 'Não consegui carregar a revisão deste import.'); return }
-    setErro(null)
-    setRev(j.revisao)
-  }, [empresaId, data, relatorio, externo, revisaoExterna, recarregarExterna])
-
-  useEffect(() => { void carregar() }, [carregar])
+    await carregarDoDia()
+  }, [externo, carregarDoDia])
 
   /**
    * ⭐⭐ O PREVIEW NASCE JUNTO COM A TELA (14/09) — antes ele só existia DEPOIS de um ajuste,
@@ -190,7 +223,13 @@ export function RevisaoDoImport({
   }
 
   if (erro && !rev) {
-    return <div className="rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-[13px] text-amber-900">{erro}</div>
+    // ⭐ ERRO COM SAÍDA — "tentar de novo" sem recarregar a página inteira
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-[13px] text-amber-900">
+        {erro}
+        <button type="button" onClick={() => { setErro(null); void carregar() }} className="ml-1.5 font-semibold underline">tentar de novo</button>
+      </div>
+    )
   }
   if (!rev) return <div className="flex items-center gap-2 p-4 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> abrindo a revisão…</div>
 
