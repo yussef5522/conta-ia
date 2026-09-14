@@ -71,6 +71,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { formatBRL } from '@/lib/format/money'
+import { textoDoPrazo } from '@/lib/contas-pagar/escopo'
 import {
   payableVisualStatus,
   payableStatusLabel,
@@ -277,9 +278,21 @@ export function PayableTable({
             />
           )
         }
+        /**
+         * ⭐⭐ O PRAZO VIROU TEXTO DA DATA (13/09) — decisão do dono.
+         *
+         * *"'Vence em 2 dias' é informação da COLUNA de vencimento (pode ficar como texto
+         * pequeno na data, ex. '14/09 · em 2d'), nunca um status/filtro/stat próprio."*
+         * ⛔ A informação não se perdeu — ela saiu de onde mentia (um 4º status que era
+         * subconjunto de "a pagar") e foi pra onde pertence.
+         */
+        const prazo = textoDoPrazo(r.dueDate)
         return (
           <span className="text-xs tabular-nums">
             {formatDate(r.dueDate)}
+            {prazo && (
+              <span className="ml-1 text-[10px] font-normal text-muted-foreground">· {prazo}</span>
+            )}
           </span>
         )
       },
@@ -428,8 +441,31 @@ export function PayableTable({
           paymentDate: row.original.paymentDate,
         })
         const isPaid = visual === 'paid'
+        /**
+         * ⭐⭐⭐ "PROCURAR NO EXTRATO" À VISTA (13/09/2026) — o dono: *"nenhuma linha tem
+         * à vista (a porta de 10/09 existe mas não aparece aqui)"*.
+         *
+         * Ele estava certo: o deep-link nasceu em 10/09 **dentro do menu ⋮**, que é o
+         * mesmo que não existir — a 7ª volta da "porta sem maçaneta", e a lição de 30/08
+         * (*"ação escondida sem afordância não existe, principalmente no celular"*).
+         *
+         * ⭐ Aparece em **VENCIDA** e em **PAGA** — e toda paga desta tela é
+         * *paga-sem-vínculo* por construção (a conciliada sai daqui pela decisão de
+         * 28/05). ⛔ Não aparece em A PAGAR: conta que ainda não venceu não tem pagamento
+         * pra procurar, e oferecer ali treinaria o dono a ignorar o botão.
+         * ⚠️ É o MESMO deep-link do item do menu — o card mora num lugar só.
+         */
+        const procurarNoExtrato = visual === 'overdue' || isPaid
         return (
-          <div onClick={(e) => e.stopPropagation()}>
+          <div onClick={(e) => e.stopPropagation()} className="flex items-center justify-end gap-0.5">
+            {procurarNoExtrato && (
+              <Button asChild variant="ghost" size="icon" className="h-7 w-7 text-[#534AB7] hover:bg-violet-50"
+                title="Procurar no extrato" data-testid={`row-procurar-extrato-${row.original.id}`}>
+                <a href={`/conciliacao?conta=${row.original.id}`} aria-label={`Procurar no extrato: ${favorecidoLabel(row.original)}`}>
+                  <Search className="h-3.5 w-3.5" />
+                </a>
+              </Button>
+            )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -469,7 +505,10 @@ export function PayableTable({
                     HONESTA (o vínculo prova o pagamento), marcar na mão é a saída
                     rápida, e sumir com ela deixaria o dono sem caminho quando o
                     dinheiro saiu do cofre — que não tem extrato por natureza. */}
-                {!isPaid && (
+                {/* ⚠️ segue no menu também, e agora pra TODA linha: o botão à vista cobre
+                    vencida e paga, e o menu continua sendo a saída pra quem está numa
+                    conta a vencer e quer procurar assim mesmo. Mesma URL. */}
+                {(
                   <DropdownMenuItem asChild data-testid="row-action-procurar-extrato">
                     <a href={`/conciliacao?conta=${row.original.id}`}>
                       <Search className="mr-2 h-3.5 w-3.5 text-[#534AB7]" />

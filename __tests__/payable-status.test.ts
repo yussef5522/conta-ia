@@ -32,22 +32,29 @@ describe('payableVisualStatus', () => {
     ).toBe('overdue')
   })
 
-  it('paymentDate vazia + dueDate hoje → warn (≤3d)', () => {
+  // ⚠️⚠️ OS TRÊS TESTES ABAIXO FORAM INVERTIDOS EM 13/09, COM O MOTIVO ESCRITO.
+  //
+  // Eles afirmavam `warn` ("Vence em breve") como STATUS — e o dono matou o conceito:
+  // *"'Vence em 2 dias' é informação da COLUNA de vencimento, nunca um status próprio"*.
+  // Como status ele fazia duas coisas erradas: era SUBCONJUNTO de "a pagar" (a soma dos
+  // 4 cards contava a mesma conta 2×) e discordava do KPI, que comparava por TIMESTAMP.
+  // ⭐ O prazo não se perdeu: virou `textoDoPrazo` ("· em 2d") colado na data.
+  it('⚠️ INVERTIDO: dueDate hoje → A PAGAR (o dia não acabou), nunca "vence em breve"', () => {
     expect(
       payableVisualStatus(
         { status: 'PENDING', dueDate: '2026-05-27', paymentDate: null },
         NOW,
       ),
-    ).toBe('warn')
+    ).toBe('pending')
   })
 
-  it('paymentDate vazia + dueDate em 2 dias → warn (≤3d)', () => {
+  it('⚠️ INVERTIDO: dueDate em 2 dias → A PAGAR — o prazo é texto da data', () => {
     expect(
       payableVisualStatus(
         { status: 'PENDING', dueDate: '2026-05-29', paymentDate: null },
         NOW,
       ),
-    ).toBe('warn')
+    ).toBe('pending')
   })
 
   it('paymentDate vazia + dueDate em 7 dias → pending', () => {
@@ -81,8 +88,9 @@ describe('payableVisualStatus', () => {
     ).toBe('overdue')
   })
 
-  it('exatamente 3 dias à frente (mesmo horário ou diferente) → warn', () => {
-    // Comparação por DIA — qualquer horário em day(now+3) vira warn
+  it('⚠️ INVERTIDO: 3 dias à frente → A PAGAR (não existe mais um degrau de 3 dias)', () => {
+    // ⛔ o "3" era um número escolhido a dedo virando ESTADO — a mesma família do `TETO=25`
+    // hardcoded e do `30` da janela do "a vencer": régua que mora na tela
     expect(
       payableVisualStatus(
         {
@@ -92,10 +100,10 @@ describe('payableVisualStatus', () => {
         },
         NOW,
       ),
-    ).toBe('warn')
+    ).toBe('pending')
   })
 
-  it('4 dias à frente → pending (sai do warn de 3d)', () => {
+  it('4 dias à frente → A PAGAR (segue igual — nunca foi warn)', () => {
     expect(
       payableVisualStatus(
         {
@@ -122,7 +130,6 @@ describe('payableStatusLabel', () => {
   it.each([
     ['paid', 'Paga'],
     ['pending', 'A pagar'],
-    ['warn', 'Vence em breve'],
     ['overdue', 'Vencida'],
   ] as const)('%s → %s', (s, label) => {
     expect(payableStatusLabel(s)).toBe(label)
@@ -131,7 +138,7 @@ describe('payableStatusLabel', () => {
 
 describe('PAYABLE_STATUS_COLOR — safelist Tailwind', () => {
   it('todos os 4 status tem mapeamento completo', () => {
-    for (const k of ['paid', 'pending', 'warn', 'overdue'] as const) {
+    for (const k of ['paid', 'pending', 'overdue'] as const) {
       expect(PAYABLE_STATUS_COLOR[k]).toBeDefined()
       expect(PAYABLE_STATUS_COLOR[k].stripe).toMatch(/^bg-/)
       expect(PAYABLE_STATUS_COLOR[k].badgeBg).toMatch(/^bg-/)
@@ -143,6 +150,7 @@ describe('PAYABLE_STATUS_COLOR — safelist Tailwind', () => {
     const stripes = new Set(
       Object.values(PAYABLE_STATUS_COLOR).map((c) => c.stripe),
     )
-    expect(stripes.size).toBe(4)
+    // ⚠️ 3 desde 13/09 — o 'warn' âmbar saiu junto com o status
+    expect(stripes.size).toBe(3)
   })
 })

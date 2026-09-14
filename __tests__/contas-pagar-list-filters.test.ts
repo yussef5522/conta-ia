@@ -4,6 +4,7 @@
 // período no campo escolhido, busca textual compose com AND, e parse Zod.
 
 import { describe, it, expect } from 'vitest'
+import { inicioDoDiaBrasil } from '@/lib/contas-pagar/escopo'
 import {
   buildPayableListWhere,
   buildPayableOrderBy,
@@ -71,10 +72,35 @@ describe('buildPayableListWhere — filtros condicionais', () => {
     expect(where.status).toBeUndefined()
   })
 
-  it('vencidasOnly força status=PENDING + dueDate<now', () => {
+  it('⚠️ INVERTIDO em 13/09: vencidasOnly agora entra no AND, pelo dono único', () => {
+    // ⚠️⚠️ ESTE TESTE AFIRMAVA A RÉGUA VELHA, e ela era o bug: `dueDate < NOW` usa um
+    // TIMESTAMP, então às 23h de São Paulo (00h+ UTC) a conta que vence AMANHÃ já entrava
+    // como vencida. Medido em prod: **25 das 34 "vencidas" venciam HOJE** (R$ 27.867,03).
+    //
+    // ⛔ E escrever em `where.status`/`where.dueDate` direto **atropelava o filtro de
+    // período** do dono (os dois usam `where.dueDate`). Agora o recorte vai no `AND`,
+    // pelo MESMO `whereDoStatus` dos stats e do aging.
     const where = buildPayableListWhere(parse({ vencidasOnly: 'true' }), NOW)
-    expect(where.status).toBe('PENDING')
-    expect(where.dueDate).toEqual({ lt: NOW })
+    const and = where.AND as Array<Record<string, unknown>>
+    const recorte = and.find((x) => x.paymentDate === null)
+    expect(recorte, 'o recorte de vencida sumiu do AND').toBeDefined()
+    expect(recorte!.status).toBe('PENDING')
+    // ⭐ a fronteira é o INÍCIO DO DIA DO BRASIL, não o instante
+    expect((recorte!.dueDate as { lt: Date }).lt).toEqual(inicioDoDiaBrasil(NOW))
+  })
+
+  it('⭐⭐ escopo=VENCIDA e vencidasOnly dão o MESMO recorte — não dá pra discordarem', () => {
+    const a = buildPayableListWhere(parse({ vencidasOnly: 'true' }), NOW)
+    const b = buildPayableListWhere(parse({ escopo: 'VENCIDA' }), NOW)
+    expect(JSON.stringify(a.AND)).toBe(JSON.stringify(b.AND))
+  })
+
+  it('⭐ escopo=PAGA recorta por paymentDate — o MESMO que o card conta', () => {
+    // ⛔ o preset antigo mandava `status=RECONCILED` enquanto o card contava
+    // `paymentDate != null`: card e lista com réguas diferentes, o defeito do print
+    const where = buildPayableListWhere(parse({ escopo: 'PAGA' }), NOW)
+    const and = where.AND as Array<Record<string, unknown>>
+    expect(and.some((x) => JSON.stringify(x.paymentDate) === JSON.stringify({ not: null }))).toBe(true)
   })
 
   it('período no campo padrão (dueDate)', () => {

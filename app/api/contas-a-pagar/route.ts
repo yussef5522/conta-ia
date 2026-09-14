@@ -16,6 +16,7 @@ import {
   listPayableSchema,
 } from '@/lib/contas-pagar/list-filters'
 import { notasDeOrigem, type NotaDeOrigem } from '@/lib/stock/ponte/nota-de-origem'
+import { whereDoStatus } from '@/lib/contas-pagar/escopo'
 
 export async function POST(request: NextRequest) {
   try {
@@ -76,7 +77,7 @@ export async function GET(request: NextRequest) {
     } as typeof input
     const whereBase = buildPayableListWhere(kpiBaseInput, now)
 
-    const [items, total, kpiPagas, kpiPendentes, kpiVencidas, kpiAVencer3d] =
+    const [items, total, kpiPagas, kpiPendentes, kpiVencidas] =
       await Promise.all([
         prisma.transaction.findMany({
           where: whereList,
@@ -101,37 +102,25 @@ export async function GET(request: NextRequest) {
           _sum: { amount: true },
           _count: { _all: true },
         }),
-        // A PAGAR PENDENTE = status PENDING, dueDate >= hoje (não vencida)
-        // Sprint 5.0.3.1 (Bug #1) — AND explícito preserva OR multi-tenant
-        // do whereBase. Spread + override do OR APAGAVA o filtro multi-tenant
-        // e a aggregate rodava no banco inteiro (vazava txs de outras empresas).
+        /**
+         * ⭐⭐⭐ OS STATS SAEM DO DONO ÚNICO (13/09/2026) — `whereDoStatus`.
+         *
+         * ⛔ Antes cada card tinha a sua régua aqui, e elas **brigavam com o aging e com a
+         * lista**: o KPI comparava `dueDate < now` (um TIMESTAMP) e o aging por DIA. O
+         * print do dono: `VENCIDAS 34 · R$ 48.502,57` × `inadimplência 9 · R$ 20.635,54`.
+         * A diferença eram as **25 que vencem HOJE** (R$ 27.867,03) — fecha ao centavo.
+         *
+         * ⚠️ Sprint 5.0.3.1 (Bug #1) preservado: **AND explícito**, nunca spread — spread
+         * com `OR` próprio APAGA o OR multi-tenant do `whereBase` e a aggregate roda no
+         * banco inteiro (já vazou tx de outra empresa uma vez).
+         */
         prisma.transaction.aggregate({
-          where: {
-            AND: [
-              whereBase,
-              { status: 'PENDING' },
-              { OR: [{ dueDate: { gte: now } }, { dueDate: null }] },
-            ],
-          },
+          where: { AND: [whereBase, whereDoStatus('A_PAGAR', now)] },
           _sum: { amount: true },
           _count: { _all: true },
         }),
-        // VENCIDAS = status PENDING, dueDate < hoje
         prisma.transaction.aggregate({
-          where: { ...whereBase, status: 'PENDING', dueDate: { lt: now } },
-          _sum: { amount: true },
-          _count: { _all: true },
-        }),
-        // A VENCER em até 3 dias = status PENDING, dueDate entre hoje e +3d
-        prisma.transaction.aggregate({
-          where: {
-            ...whereBase,
-            status: 'PENDING',
-            dueDate: {
-              gte: now,
-              lte: new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000),
-            },
-          },
+          where: { AND: [whereBase, whereDoStatus('VENCIDA', now)] },
           _sum: { amount: true },
           _count: { _all: true },
         }),
@@ -155,13 +144,13 @@ export async function GET(request: NextRequest) {
         totalPages: Math.max(1, Math.ceil(total / input.limit)),
       },
       kpis: {
-        // Sprint 5.0.3.0a — 4 KPIs (PAGAS verde, A PAGAR azul, A VENCER 3d amarelo, VENCIDAS vermelho)
+        // ⭐ TRÊS status, como no mundo real (13/09): VENCIDA · A PAGAR · PAGA.
+        // ⛔ "A VENCER (3d)" morreu como card — era um SUBCONJUNTO de A PAGAR, então a
+        // soma dos quatro contava a mesma conta 2×. O prazo virou texto na coluna da data.
         totalPagas: kpiPagas._sum.amount ?? 0,
         countPagas: kpiPagas._count._all,
         totalPendente: kpiPendentes._sum.amount ?? 0,
         countPendente: kpiPendentes._count._all,
-        totalAVencer3d: kpiAVencer3d._sum.amount ?? 0,
-        countAVencer3d: kpiAVencer3d._count._all,
         totalVencido: kpiVencidas._sum.amount ?? 0,
         countVencido: kpiVencidas._count._all,
       },

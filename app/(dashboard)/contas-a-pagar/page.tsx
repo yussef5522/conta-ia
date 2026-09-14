@@ -572,6 +572,8 @@ function ContasAPagarInner() {
       if (filters.dataDe) qs.set('dataDe', filters.dataDe)
       if (filters.dataAte) qs.set('dataAte', filters.dataAte)
       if (filters.status !== 'TODOS') qs.set('status', filters.status)
+      // ⭐ o recorte dos três stats — é ele que faz o card e a lista mostrarem o MESMO
+      if (filters.escopo) qs.set('escopo', filters.escopo)
       if (filters.vencidasOnly) qs.set('vencidasOnly', 'true')
 
       const { ok, data, message } = await fetchJson<{ items: typeof items; kpis: typeof kpis; paginacao: typeof paginacao }>(
@@ -594,6 +596,7 @@ function ContasAPagarInner() {
     filters.dataDe,
     filters.dataAte,
     filters.status,
+    filters.escopo,
     filters.vencidasOnly,
   ])
 
@@ -828,28 +831,25 @@ function ContasAPagarInner() {
     if (filters.dataDe) sp.set('dataDe', filters.dataDe)
     if (filters.dataAte) sp.set('dataAte', filters.dataAte)
     if (filters.status !== 'PENDING') sp.set('status', filters.status)
+    if (filters.escopo) sp.set('escopo', filters.escopo)
     if (filters.vencidasOnly) sp.set('vencidasOnly', 'true')
     return sp.toString()
   }, [filters])
 
-  function applyFilterPreset(kind: 'paid' | 'pending' | 'warn3d' | 'overdue') {
-    if (kind === 'paid') {
-      setFilters({ ...EMPTY_FILTERS, status: 'RECONCILED' })
-    } else if (kind === 'overdue') {
-      setFilters({ ...EMPTY_FILTERS, status: 'PENDING', vencidasOnly: true })
-    } else if (kind === 'pending') {
-      setFilters({ ...EMPTY_FILTERS, status: 'PENDING' })
-    } else if (kind === 'warn3d') {
-      // 3 dias à frente
-      const today = new Date()
-      const in3d = new Date(today.getTime() + 3 * 86400_000)
-      setFilters({
-        ...EMPTY_FILTERS,
-        status: 'PENDING',
-        dataDe: today.toISOString().slice(0, 10),
-        dataAte: in3d.toISOString().slice(0, 10),
-      })
-    }
+  /**
+   * ⭐⭐⭐ O NÚMERO É O FILTRO (13/09) — decisão do dono: *"card diz 34, lista mostra 34"*.
+   *
+   * ⛔ Antes cada preset montava o SEU recorte na mão — e nenhum batia com o do card:
+   * "pagas" filtrava `status=RECONCILED` enquanto o card contava `paymentDate != null`;
+   * "vencidas" usava `dueDate < now` (timestamp) enquanto o aging comparava por DIA.
+   * Agora os três mandam o MESMO `escopo` que o servidor usou pra contar.
+   */
+  function applyFilterPreset(kind: 'paid' | 'pending' | 'overdue') {
+    const escopo = kind === 'paid' ? 'PAGA' : kind === 'overdue' ? 'VENCIDA' : 'A_PAGAR'
+    // ⚠️ `status: 'TODOS'` de propósito: quem recorta agora é o ESCOPO, e deixar o filtro
+    // de status junto cortaria de novo por outra régua (foi assim que a lista mostrava
+    // "muito menos" do que o card dizia).
+    setFilters({ ...EMPTY_FILTERS, status: 'TODOS', escopo })
     setPage(1)
   }
 
@@ -969,7 +969,12 @@ function ContasAPagarInner() {
             </a>
           </p>
 
-          {/* 4 stats — Sprint 5.0.3.0a */}
+          {/* ⭐⭐⭐ TRÊS STATUS, COMO NO MUNDO REAL (13/09) — decisão do dono.
+              ⛔ "A VENCER (3D)" MORREU COMO CARD: era um SUBCONJUNTO de A PAGAR, então a
+              soma dos quatro contava a mesma conta 2× — e "vence em 2 dias" não é um
+              ESTADO, é informação da data (virou o "· em 2d" na coluna de vencimento).
+              ⭐ E cada card É o filtro: clicar recorta a lista no MESMO conjunto que ele
+              contou (`escopo`), pelo dono único `whereDoStatus`. */}
           <StatCardGrid>
             <StatsCard
               variant="paid"
@@ -981,19 +986,11 @@ function ContasAPagarInner() {
             />
             <StatsCard
               variant="pending"
-              label="A pagar pendente"
+              label="A pagar"
               amount={kpis.totalPendente}
               count={kpis.countPendente}
               icon={CalendarClock}
               onClick={() => applyFilterPreset('pending')}
-            />
-            <StatsCard
-              variant="warn"
-              label="A vencer (3d)"
-              amount={kpis.totalAVencer3d}
-              count={kpis.countAVencer3d}
-              icon={Clock}
-              onClick={() => applyFilterPreset('warn3d')}
             />
             <StatsCard
               variant="overdue"
@@ -1121,7 +1118,6 @@ function ContasAPagarInner() {
           totals={{
             paid: kpis.totalPagas,
             pending: kpis.totalPendente,
-            warn3d: kpis.totalAVencer3d,
             overdue: kpis.totalVencido,
           }}
           onClickFilter={applyFilterPreset}

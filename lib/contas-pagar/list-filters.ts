@@ -5,6 +5,7 @@
 // em filtro multi-tenant / multi-select / período / busca textual.
 
 import { z } from 'zod'
+import { whereDoStatus } from './escopo'
 
 export const dataFieldEnum = z.enum([
   'dueDate', // padrão — data esperada de pagamento
@@ -35,6 +36,15 @@ export const listPayableSchema = z.object({
 
   // Status / scope
   status: z.enum(['PENDING', 'RECONCILED', 'IGNORED', 'TODOS']).optional(),
+  /**
+   * ⭐⭐⭐ O RECORTE DOS TRÊS STATS (13/09) — **o número É o filtro**.
+   *
+   * O dono: *"clicar no stat = a lista filtra naquele exato conjunto; card diz 34, lista
+   * mostra 34"*. Sem isto, o card e a lista tinham réguas diferentes e o dono via um
+   * número no topo e outro na tabela — a doença que este sprint inteiro conserta.
+   */
+  escopo: z.enum(['VENCIDA', 'A_PAGAR', 'PAGA']).optional(),
+  /** @deprecated use `escopo=VENCIDA` — mantido pra link antigo não quebrar */
   vencidasOnly: z.coerce.boolean().default(false),
 
   // Multi-selects (CSV no querystring: "?supplierIds=a,b,c")
@@ -127,10 +137,19 @@ export function buildPayableListWhere(
   if (input.status && input.status !== 'TODOS') {
     where.status = input.status
   }
-  // Vencidas: dueDate < now AND status = PENDING (não conta pago em atraso)
-  if (input.vencidasOnly) {
-    where.status = 'PENDING'
-    where.dueDate = { lt: now }
+  /**
+   * ⭐⭐ O RECORTE VEM DO DONO ÚNICO — o mesmo `whereDoStatus` dos stats e do aging.
+   *
+   * ⚠️ Entra no `AND` (nunca por spread): o fragmento de A_PAGAR tem `OR` próprio, e
+   * spread apagaria o OR multi-tenant — o Bug #1 de 5.0.3.1, que já vazou tx de outra
+   * empresa uma vez.
+   */
+  if (input.escopo) {
+    ;(where.AND as Array<Record<string, unknown>>).push(whereDoStatus(input.escopo, now))
+  } else if (input.vencidasOnly) {
+    // ⚠️ o caminho velho segue vivo pra link antigo, mas lendo a MESMA régua — não dá
+    // pra ele voltar a discordar do card
+    ;(where.AND as Array<Record<string, unknown>>).push(whereDoStatus('VENCIDA', now))
   }
 
   // Período no campo escolhido

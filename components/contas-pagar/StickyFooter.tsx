@@ -11,25 +11,26 @@ import { ROTULO_PAGAS } from '@/lib/contas-pagar/rotulos'
 interface Totals {
   paid: number
   pending: number
-  warn3d: number
   overdue: number
 }
 
 interface Props {
   totals: Totals
-  onClickFilter: (kind: 'paid' | 'pending' | 'warn3d' | 'overdue') => void
+  onClickFilter: (kind: 'paid' | 'pending' | 'overdue') => void
 }
 
 const ITEMS = [
   { kind: 'overdue', label: 'Vencidas', tone: 'text-red-600 dark:text-red-400' },
-  { kind: 'warn3d', label: 'A vencer (3d)', tone: 'text-amber-600 dark:text-amber-400' },
+  // ⛔ "A vencer (3d)" saiu daqui junto com o card (13/09): era SUBCONJUNTO de "A pagar",
+  // então o rodapé somava a mesma conta 2× e o total geral vinha inflado.
   { kind: 'pending', label: 'A pagar', tone: 'text-sky-600 dark:text-sky-400' },
   // ⚠️ o rótulo vem do dono único — o chip filtra a MESMA coisa que o card e o dropdown
   { kind: 'paid', label: ROTULO_PAGAS, tone: 'text-emerald-600 dark:text-emerald-400' },
 ] as const
 
 export function StickyFooter({ totals, onClickFilter }: Props) {
-  const total = totals.paid + totals.pending + totals.warn3d + totals.overdue
+  // ⭐ agora a soma FECHA: os três status cobrem tudo e não se sobrepõem
+  const total = totals.paid + totals.pending + totals.overdue
 
   return (
     <div

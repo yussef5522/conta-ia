@@ -8,6 +8,7 @@ import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import { computeAging } from '@/lib/contas-pagar/aging'
+import { whereDoStatus } from '@/lib/contas-pagar/escopo'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -28,9 +29,11 @@ export async function GET(request: NextRequest, { params }: Params) {
     const rows = await prisma.transaction.findMany({
       where: {
         lifecycle: 'PAYABLE',
-        status: 'PENDING',
-        dueDate: { lt: now },
-        paymentDate: null,
+        // ⭐⭐ O MESMO RECORTE DOS STATS (13/09) — `whereDoStatus('VENCIDA')`.
+        // ⛔ Aqui ficava a SEGUNDA régua de "vencida": o aging comparava por DIA e o KPI
+        // por TIMESTAMP, e o dono via `34 · R$ 48.502,57` num card e `9 · R$ 20.635,54`
+        // no outro. **Uma palavra, dois números.**
+        ...whereDoStatus('VENCIDA', now),
         OR: [
           { supplier: { companyId: empresaId } },
           { employee: { companyId: empresaId } },
