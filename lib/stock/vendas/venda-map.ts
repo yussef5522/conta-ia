@@ -4,7 +4,7 @@
 
 import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
-import { criarFicha, fichaAtivaComNome } from '@/lib/stock/producao/fichas'
+import { garantirFichaDeRevenda, FichaDeRevendaError } from './ficha-de-revenda'
 import { parseSuitable, type VendaLinhaSuitable } from './parse-suitable'
 import { type ResultadoDaSanidade } from './sanidade-do-import'
 import { medirSanidade } from './medir-sanidade'
@@ -121,29 +121,16 @@ export async function upsertVendaMap(companyId: string, nomeSuitable: string, al
   }
   // ⭐⭐ REVENDA VIRA FICHA DE 1 COMPONENTE — o caminho único (09/09). Reusa a ficha que já
   // atende este nome; só cria quando não existe.
+  // ⭐ a construção da ficha passa-direto mora em `ficha-de-revenda.ts` desde 14/09 —
+  // o mapa de COMPLEMENTOS precisou do mesmo gesto e duas cópias divergiriam.
   let fichaAlvo = alvo.tipo === 'FICHA' ? alvo.fichaId : null
   if (alvo.tipo === 'REVENDA') {
-    // ⛔⛔ REUSAR FICHA SÓ PELO NOME É PERIGOSO — um teste pegou isto antes de ir pra prod:
-    // uma ficha homônima que baixa OUTRA COISA seria reusada, e o produto passaria a baixar
-    // o item errado em silêncio (no fixture degenerado virou explosão infinita).
-    // ⭐ Só reusa quando ela É o passa-direto DESTE item: 1 componente, ×1, o mesmo id.
-    const ja = await fichaAtivaComNome(companyId, nomeSuitable, db)
-    if (ja && !(await ehPassaDiretoDoItem(companyId, ja.fichaId, alvo.itemId, db))) {
-      throw new VendaMapError(
-        `Já existe uma ficha chamada “${ja.nome}” que baixa outra coisa. ` +
-        'Aponte o produto nela pela tela do cardápio, ou dê outro nome — ' +
-        'reusar por semelhança de nome faria a venda baixar o item errado.',
-      )
+    try {
+      fichaAlvo = await garantirFichaDeRevenda(companyId, nomeSuitable, alvo.itemId, userId, db)
+    } catch (e) {
+      if (e instanceof FichaDeRevendaError) throw new VendaMapError(e.message)
+      throw e
     }
-    fichaAlvo = ja?.fichaId ?? (await criarFicha({
-      companyId, userId, nomeProduzido: nomeSuitable, unidadeProduzido: 'UN',
-      tipoProduto: 'PRODUTO_FINAL', loteBase: 1, unidadeLoteBase: 'UN',
-      componentes: [{ itemId: alvo.itemId, qtdPlanejada: 1, unidade: 'UN', posicao: 0 }],
-      // ⚠️ aqui o nome do PDV PODE ser igual ao do item ("FANTA LARANJA 2L"), e isso é o
-      // esperado neste caminho — o guard de 09/09 existe pra o dono não duplicar SEM QUERER,
-      // e aqui a duplicação é a própria linha do cardápio, criada de propósito.
-      permitirItemNovoComNomeDeEstoque: true,
-    }, db)).fichaId
   }
   const data = { alvoTipo: 'FICHA', fichaId: fichaAlvo!, itemId: null }
   return db.stockVendaProdutoMap.upsert({
@@ -152,16 +139,6 @@ export async function upsertVendaMap(companyId: string, nomeSuitable: string, al
     update: data,
     select: { id: true },
   })
-}
-
-/** ⭐ a ficha é exatamente "aquele item ×1"? É o que autoriza reusá-la. */
-async function ehPassaDiretoDoItem(companyId: string, fichaId: string, itemId: string, db: PrismaClient): Promise<boolean> {
-  const f = await db.stockFicha.findFirst({ where: { id: fichaId, companyId }, select: { versaoAtual: true } })
-  if (!f) return false
-  const v = await db.stockFichaVersao.findFirst({ where: { fichaId, versao: f.versaoAtual }, select: { id: true } })
-  if (!v) return false
-  const c = await db.stockFichaComponente.findMany({ where: { versaoId: v.id }, select: { itemId: true, qtdPlanejada: true } })
-  return c.length === 1 && c[0].qtdPlanejada === 1 && c[0].itemId === itemId
 }
 
 export async function removerVendaMap(companyId: string, nomeSuitable: string, db: PrismaClient = defaultPrisma) {

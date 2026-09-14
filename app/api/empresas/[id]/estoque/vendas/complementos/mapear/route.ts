@@ -16,8 +16,11 @@ const schema = z.object({
   nomeSuitable: z.string().min(1).max(200),
   // ⚠️ LIMPAR devolve ao estado PENDENTE — o IGNORAR é reversível por desenho (milkshake,
   // açaí e doces entram depois, e a volta não pode exigir mexer no banco à mão).
-  destino: z.enum(['FICHA', 'IGNORAR', 'LIMPAR']),
+  // ⭐ REVENDA (14/09) é ATALHO, não destino: vira FICHA de 1 componente por baixo, pelo
+  // mesmo `garantirFichaDeRevenda` do mapa de produtos. É o caso `FRUKI LATA` comum.
+  destino: z.enum(['FICHA', 'IGNORAR', 'LIMPAR', 'REVENDA']),
   fichaId: z.string().nullable().optional(),
+  itemId: z.string().nullable().optional(),
 })
 
 export async function POST(request: NextRequest, { params }: Params) {
@@ -26,16 +29,19 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (a.erro) return a.erro
   const parsed = schema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ erro: 'Dados do mapeamento inválidos.' }, { status: 400 })
-  const { nomeSuitable, destino, fichaId } = parsed.data
+  const { nomeSuitable, destino, fichaId, itemId } = parsed.data
   try {
     if (destino === 'LIMPAR') {
       await limparComplementoMap(companyId, nomeSuitable, prisma)
       return NextResponse.json({ ok: true, destino: 'SEM_FICHA' })
     }
     if (destino === 'FICHA' && !fichaId) return NextResponse.json({ erro: 'Escolha a ficha do sabor.' }, { status: 400 })
+    if (destino === 'REVENDA' && !itemId) return NextResponse.json({ erro: 'Escolha o item do estoque que este nome baixa.' }, { status: 400 })
     const r = await upsertComplementoMap(
       companyId, nomeSuitable,
-      destino === 'FICHA' ? { tipo: 'FICHA', fichaId: fichaId! } : { tipo: 'IGNORAR' },
+      destino === 'FICHA' ? { tipo: 'FICHA', fichaId: fichaId! }
+        : destino === 'REVENDA' ? { tipo: 'REVENDA', itemId: itemId! }
+          : { tipo: 'IGNORAR' },
       a.user!.sub, prisma,
     )
     return NextResponse.json({ ok: true, ...r })

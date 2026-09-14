@@ -11,9 +11,11 @@ import { StatCard, StatCardGrid } from '@/components/ui/stat-card'
 import { TotalsBar } from '@/components/ui/totals-bar'
 import { SortableTh, useSort } from '@/components/ui/sortable-th'
 import { baixarCsv, hojeArquivo } from '@/lib/format/csv-cliente'
-import { ListChecks, ShoppingCart, Loader2, Upload, Check, Layers, Pencil, Search, Play, Receipt, AlertTriangle, History, RefreshCw, Store, Download, CheckCircle2 } from 'lucide-react'
+import { ListChecks, ShoppingCart, Loader2, Upload, Check, Layers, Search, Play, Receipt, AlertTriangle, History, RefreshCw, Store, Download, CheckCircle2 } from 'lucide-react'
 import { PlanoVendaModal } from '@/components/estoque/plano-venda-modal'
 import { RevisaoDoImport } from '@/components/estoque/revisao-do-import'
+import { SeletorDeDestino } from '@/components/estoque/seletor-de-destino'
+import { hrefDoEditor } from '@/lib/stock/vendas/volta-da-revisao'
 import { diaEmSaoPaulo } from '@/lib/datas/dia-sao-paulo'
 
 interface Linha { produto: string; quantidade: number; valorTotal: number; mapeado: boolean; alvoTipo: string | null; alvoId: string | null; alvoNome: string | null }
@@ -41,7 +43,18 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
   // ⚠️ `origem` diz em qual SLOT o painel renderiza: aberto pelo upload, ele aparece
   // colado no resultado; aberto pela lista, embaixo da lista. Um slot só faria o painel
   // nascer longe do dedo que clicou — o defeito de 10/09, de novo.
-  const [revisao, setRevisao] = useState<{ data: string; relatorio: 'PRODUTOS' | 'COMPLEMENTOS'; origem: 'IMPORT' | 'LISTA' } | null>(null)
+  //
+  // ⭐⭐ E A VOLTA DO EDITOR CAI AQUI (14/09): `?revisar=<dia>&relatorio=<R>` reabre o
+  // painel no MESMO dia, e o hash `#rev-<nome>` leva o olho pra linha. ⚠️ Lido no 1º render
+  // (não em effect), como o `?aba=` — ler depois faria a tela piscar sem a revisão antes
+  // de abri-la, e "voltar e não ver nada" é indistinguível de "não gravou".
+  const [revisao, setRevisao] = useState<{ data: string; relatorio: 'PRODUTOS' | 'COMPLEMENTOS'; origem: 'IMPORT' | 'LISTA' } | null>(() => {
+    if (typeof window === 'undefined') return null
+    const q = new URLSearchParams(window.location.search)
+    const dia = q.get('revisar')
+    if (!dia || !/^\d{4}-\d{2}-\d{2}$/.test(dia)) return null
+    return { data: dia, relatorio: q.get('relatorio') === 'COMPLEMENTOS' ? 'COMPLEMENTOS' : 'PRODUTOS', origem: 'LISTA' }
+  })
   const [aba, setAba] = useState<'importar' | 'complementos' | 'manual' | 'processados'>(() => {
     if (typeof window === 'undefined') return 'importar'
     const q = new URLSearchParams(window.location.search).get('aba')
@@ -298,31 +311,40 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
                   <thead><tr className="border-b border-slate-100 text-left text-[11px] uppercase tracking-wide text-slate-400"><th className="w-8 px-3 py-2"></th><th className="px-3 py-2 font-medium">Produto (Suitable)</th><th className="px-3 py-2 text-right font-medium">Qtd</th><th className="px-3 py-2 font-medium">Destino no estoque</th></tr></thead>
                   <tbody>
                     {linhasFiltradas.map((l) => {
-                      const emEdicao = editando.has(l.produto)
                       const marcado = l.mapeado && !desmarcados.has(l.produto)
                       return (
                         <tr key={l.produto} className={`border-b border-slate-50 last:border-0 ${!l.mapeado ? 'bg-amber-50/30' : ''}`}>
                           <td className="px-3 py-0 text-[13px]">{l.mapeado ? <input type="checkbox" checked={marcado} onChange={() => setDesmarcados((s) => { const n = new Set(s); n.has(l.produto) ? n.delete(l.produto) : n.add(l.produto); return n })} className="h-4 w-4 accent-[#185FA5]" /> : null}</td>
                           <td className="px-3 py-0 text-[13px] font-medium text-slate-800">{l.produto}</td>
                           <td className="px-3 py-0 text-[13px] text-right tabular-nums text-slate-600">{l.quantidade}</td>
+                          {/* ⭐⭐ O MESMO SELETOR DA REVISÃO (14/09) — fonte única. O
+                              `<select>` nativo daqui era a referência do dono ("clico no
+                              destino → escolho ALI"), mas **não tinha busca** e a lista já
+                              passa de 150 nomes. Um componente só pros dois lugares; dois
+                              divergiriam no primeiro destino novo. */}
                           <td className="px-3 py-0 text-[13px]">
-                            {l.mapeado && !emEdicao ? (
-                              <div className="flex items-center gap-2">
-                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700"><Check className="h-3.5 w-3.5" /> {l.alvoNome}</span>
-                                <button onClick={() => setEditando((s) => new Set(s).add(l.produto))} className="text-slate-400 hover:text-slate-600" title="trocar"><Pencil className="h-3.5 w-3.5" /></button>
+                            <div className="flex items-center gap-2">
+                              {l.mapeado ? (
+                                <span className="inline-flex items-center gap-1 truncate rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700"><Check className="h-3.5 w-3.5 shrink-0" /> {l.alvoNome}</span>
+                              ) : (
+                                <span className="text-xs text-amber-700">escolher destino</span>
+                              )}
+                              <div className="ml-auto flex shrink-0 items-center gap-1">
+                                <SeletorDeDestino
+                                  empresaId={id} relatorio="PRODUTOS" nomePdv={l.produto}
+                                  jaTemDestino={l.mapeado}
+                                  hrefEditor={hrefDoEditor(id, 'PRODUTOS', data || null, l.produto)}
+                                  onEscolher={(e) => mapear(l.produto, e.tipo === 'FICHA' ? `FICHA:${e.fichaId}` : `REVENDA:${e.itemId}`)}
+                                />
+                                {/* ⚠️ "desmapear" vivia como opção do `<select>` e continua
+                                    existindo: ele DEVOLVE o nome pra fila de pendentes, que
+                                    é diferente de ignorar. Sumir com ele seria tirar
+                                    capacidade ao unificar. */}
+                                {l.mapeado && (
+                                  <button onClick={() => mapear(l.produto, 'REMOVER')} className="inline-flex h-7 items-center rounded-lg border border-slate-300 px-2 text-[11px] text-slate-500 hover:bg-slate-50" title="volta pra fila de pendentes">desmapear</button>
+                                )}
                               </div>
-                            ) : (
-                              <select autoFocus={emEdicao} value={l.mapeado ? l.alvoTipo + ':' + l.alvoId : ''} onChange={(e) => e.target.value && mapear(l.produto, e.target.value)} className={`w-full max-w-xs rounded-lg border py-1.5 px-2 text-sm ${l.mapeado ? 'border-slate-200' : 'border-amber-300 text-amber-700'}`}>
-                                <option value="">— escolher —</option>
-                                {l.mapeado ? <option value="REMOVER">desmapear</option> : null}
-                                <optgroup label="Criar novo">
-                                  <option value="CRIAR_FICHA">+ criar ficha de produto final</option>
-                                  <option value="CRIAR_REVENDA">+ criar item de revenda (bebida)</option>
-                                </optgroup>
-                                <optgroup label="Produtos finais (ficha)">{preview.opcoes.fichas.map((f) => <option key={f.id} value={'FICHA:' + f.id}>{f.nome}</option>)}</optgroup>
-                                <optgroup label="Revenda (bebida etc.)">{preview.opcoes.itens.map((i) => <option key={i.id} value={'REVENDA:' + i.id}>{i.nome}</option>)}</optgroup>
-                              </select>
-                            )}
+                            </div>
                           </td>
                         </tr>
                       )

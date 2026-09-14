@@ -26,11 +26,21 @@
 import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { gruposVigentes, type GrupoComplemento } from './grupo-complemento'
+import { garantirFichaDeRevenda, FichaDeRevendaError } from './ficha-de-revenda'
 
 export class ComplementoMapError extends Error {}
 
 export type DestinoComplemento =
   | { tipo: 'FICHA'; fichaId: string }
+  /**
+   * ⭐⭐ O ATALHO DA REVENDA (14/09) — o caso `FRUKI LATA` comum, levantado pelo dono na
+   * revisão do import: *"criar ficha simples (revenda 1 componente) também inline"*.
+   *
+   * ⛔ **NÃO É UM QUARTO DESTINO** — por baixo ele vira `FICHA`, pelo MESMO
+   * `garantirFichaDeRevenda` que o mapa de produtos usa desde 09/09. O caminho único
+   * (venda → ficha → componente) continua sendo um só; o que muda é o gesto na tela.
+   */
+  | { tipo: 'REVENDA'; itemId: string }
   | { tipo: 'IGNORAR' }
 
 /**
@@ -76,17 +86,28 @@ export async function upsertComplementoMap(
     // ficha que um produto usa (XIS - CALABRESA vendido solto E como item de combo).
   }
 
+  // ⭐ o atalho da revenda vira FICHA antes de gravar — a tabela segue com 2 estados
+  // (FICHA | IGNORAR), como sempre. ⛔ O guard do item mora aqui: complemento de revenda é
+  // bebida/produto pronto; apontar matéria-prima faria cada sabor baixar insumo cru.
+  let fichaId: string | null = destino.tipo === 'FICHA' ? destino.fichaId : null
+  if (destino.tipo === 'REVENDA') {
+    const it = await db.stockItem.findFirst({ where: { id: destino.itemId, companyId }, select: { categoria: true, ativo: true } })
+    if (!it) throw new ComplementoMapError('Item não encontrado.')
+    if (!it.ativo) throw new ComplementoMapError('Esse item está arquivado — reative antes de mapear.')
+    if (it.categoria !== 'REVENDA') throw new ComplementoMapError('O atalho da revenda só vale pra item de REVENDA (bebida etc.). Matéria-prima/insumo não é vendável direto — pra ela, monte a receita no editor.')
+    try {
+      fichaId = await garantirFichaDeRevenda(companyId, nome, destino.itemId, userId, db)
+    } catch (e) {
+      if (e instanceof FichaDeRevendaError) throw new ComplementoMapError(e.message)
+      throw e
+    }
+  }
+  const alvoTipo = destino.tipo === 'REVENDA' ? 'FICHA' : destino.tipo
+
   return db.stockVendaComplementoMap.upsert({
     where: { companyId_nomeSuitable: { companyId, nomeSuitable: nome } },
-    create: {
-      companyId, nomeSuitable: nome, alvoTipo: destino.tipo,
-      fichaId: destino.tipo === 'FICHA' ? destino.fichaId : null,
-      criadoPorId: userId ?? null,
-    },
-    update: {
-      alvoTipo: destino.tipo,
-      fichaId: destino.tipo === 'FICHA' ? destino.fichaId : null,
-    },
+    create: { companyId, nomeSuitable: nome, alvoTipo, fichaId, criadoPorId: userId ?? null },
+    update: { alvoTipo, fichaId },
     select: { id: true, alvoTipo: true, fichaId: true },
   })
 }

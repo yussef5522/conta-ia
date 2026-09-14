@@ -62,7 +62,12 @@ function semRotuloFixo(arquivo: string): { linha: number; placeholder: string }[
     if (/<td\b/.test(linhas.slice(Math.max(0, i - 2), i + 1).join(' '))) return
     // ⚠️ exceção 2: campo de BUSCA — ali o placeholder é o propósito, não o nome de um dado
     if (/busca/i.test(arquivo) || /busca/i.test(ln)) return
-    if (/placeholder="(buscar|pesquisar|procurar|filtrar)/i.test(elementoDaLinha(linhas, i))) return
+    // ⚠️⚠️ O ASPAS ERA PARTE DA RÉGUA E NÃO DEVIA SER (14/09): `placeholder={cond ? 'buscar
+    // item…' : 'buscar receita…'}` é tão campo de busca quanto `placeholder="buscar…"`, e
+    // o guard o acusava só por estar numa EXPRESSÃO. **A pergunta é "é um campo de busca?",
+    // não "com que aspas ele foi escrito"** — medir a forma no lugar do sentido é como
+    // guard vira falso vermelho no primeiro refactor legítimo.
+    if (/placeholder=[{"'][^>]{0,120}?(buscar|pesquisar|procurar|filtrar)/i.test(elementoDaLinha(linhas, i))) return
     // ⚠️ exceção 3: campo EMBRULHADO num <label> — o rótulo é o texto do próprio label,
     // e ele fica na tela enquanto se digita. Procura o <label> aberto acima, sem </label>
     // no meio (é estrutura, não distância — o label pode abrir 20 linhas acima).

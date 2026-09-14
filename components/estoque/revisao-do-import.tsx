@@ -12,7 +12,9 @@
 // destino embaixo do nome), no monitor vira tabela. **Mesmos dados, uma fonte.**
 
 import { useCallback, useEffect, useState } from 'react'
-import { Loader2, Check, AlertTriangle, Search, Link2, EyeOff } from 'lucide-react'
+import { Loader2, Check, AlertTriangle, Search, EyeOff } from 'lucide-react'
+import { SeletorDeDestino, type EscolhaDeDestino } from './seletor-de-destino'
+import { ancoraDaLinha, hrefDoEditor } from '@/lib/stock/vendas/volta-da-revisao'
 
 export interface LinhaRevisaoDTO {
   nome: string
@@ -70,6 +72,30 @@ export function RevisaoDoImport({
   useEffect(() => { void carregar() }, [carregar])
 
   /**
+   * ⭐⭐ O PREVIEW NASCE JUNTO COM A TELA (14/09) — antes ele só existia DEPOIS de um ajuste,
+   * então o rodapé de confirmar não existia ao abrir. O dono voltava do editor com a linha
+   * vinculada e **não tinha onde aplicar**: o reprocessar morava na lista de dias, fora da
+   * tela onde ele trabalhou.
+   */
+  useEffect(() => { void verPreview() }, [empresaId, data, relatorio]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /**
+   * ⭐ A VOLTA DO EDITOR CAI NA LINHA. `?revisar=` reabre o dia (a tela de Vendas lê no 1º
+   * render) e o hash traz o olho pro nome que acabou de ser resolvido.
+   *
+   * ⚠️ Roda depois que as linhas existem — antes disso o elemento não está no DOM, e um
+   * scroll pra âncora inexistente é um scroll que não acontece, calado.
+   */
+  useEffect(() => {
+    if (!rev) return
+    const alvo = typeof window !== 'undefined' ? window.location.hash.slice(1) : ''
+    if (!alvo.startsWith('rev-')) return
+    const el = document.getElementById(alvo)
+    el?.scrollIntoView({ block: 'center' })
+    el?.classList.add('ring-2', 'ring-violet-400')
+  }, [rev])
+
+  /**
    * ⭐⭐ GRAVA PELAS ROTAS QUE JÁ EXISTEM — nenhuma porta de escrita nova (REGRA 4).
    *
    * ⚠️ Os dois mapas têm CONTRATOS diferentes de propósito (produtos aceita REVENDA, o de
@@ -77,7 +103,7 @@ export function RevisaoDoImport({
    * vivem nos dois relatórios e um mapa só faria cada um baixar duas vezes. A tradução
    * mora AQUI, num lugar; uniformizar as rotas quebraria um dos dois guards.
    */
-  async function aplicar(nome: string, corpo: { alvoTipo: 'FICHA' | 'IGNORAR'; fichaId?: string }) {
+  async function aplicar(nome: string, corpo: { alvoTipo: 'FICHA' | 'IGNORAR' | 'REVENDA'; fichaId?: string; itemId?: string }) {
     setOcupado(nome)
     try {
       const comp = relatorio === 'COMPLEMENTOS'
@@ -85,8 +111,8 @@ export function RevisaoDoImport({
         ? `/api/empresas/${empresaId}/estoque/vendas/complementos/mapear`
         : `/api/empresas/${empresaId}/estoque/vendas/mapear`
       const body = comp
-        ? { nomeSuitable: nome, destino: corpo.alvoTipo, fichaId: corpo.fichaId }
-        : { nomeSuitable: nome, alvoTipo: corpo.alvoTipo, fichaId: corpo.fichaId }
+        ? { nomeSuitable: nome, destino: corpo.alvoTipo, fichaId: corpo.fichaId, itemId: corpo.itemId }
+        : { nomeSuitable: nome, alvoTipo: corpo.alvoTipo, fichaId: corpo.fichaId, itemId: corpo.itemId }
       const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
       const j = await r.json().catch(() => null)
       if (!r.ok) { setErro(j?.erro ?? 'Não consegui gravar o destino.'); return }
@@ -159,26 +185,6 @@ export function RevisaoDoImport({
 
       {erro && <div className="rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">{erro}</div>}
 
-      {/* ⭐⭐ O PREVIEW DO AJUSTE — nada baixa pro destino novo sem ele */}
-      {preview && preview.mudam.length > 0 && (
-        <div className="rounded-xl border border-violet-200 bg-violet-50 p-3">
-          <p className="text-[13px] font-semibold text-violet-900">
-            {preview.mudam.length} {preview.mudam.length === 1 ? 'nome mudou' : 'nomes mudaram'} de destino
-            <span className="ml-1 font-normal text-violet-700">· {preview.inalterados} seguem como estavam</span>
-          </p>
-          <ul className="mt-1 space-y-0.5 text-[12px] text-violet-800">
-            {preview.mudam.map((m) => <li key={m.nome}>· {m.frase}</li>)}
-          </ul>
-          <button
-            type="button" onClick={reprocessar} disabled={gravando}
-            className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-60"
-          >
-            {gravando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-            aplicar no dia {data.split('-').reverse().join('/')}
-          </button>
-        </div>
-      )}
-
       <div className="overflow-hidden rounded-xl border border-slate-200">
         {visiveis.length === 0 && (
           <p className="px-3 py-4 text-[13px] text-slate-500">
@@ -188,7 +194,7 @@ export function RevisaoDoImport({
         {visiveis.map((l) => {
           const s = SELO[l.estado]
           return (
-            <div key={l.nome} className="flex flex-col gap-1.5 border-b border-slate-100 px-3 py-2.5 last:border-0 sm:flex-row sm:items-center sm:gap-3">
+            <div key={l.nome} id={ancoraDaLinha(l.nome)} className="scroll-mt-24 flex flex-col gap-1.5 border-b border-slate-100 px-3 py-2.5 last:border-0 sm:flex-row sm:items-center sm:gap-3">
               <div className="min-w-0 flex-1">
                 <span className="text-[13px] font-medium text-slate-800">{l.nome}</span>
                 <span className="ml-1.5 text-xs tabular-nums text-slate-400">{l.ocorrencias}×</span>
@@ -222,13 +228,22 @@ export function RevisaoDoImport({
 
               {/* ⭐ AÇÕES EM TODA LINHA — inclusive na vinculada: vínculo errado se conserta aqui */}
               <div className="flex shrink-0 items-center gap-1">
-                <a
-                  href={`/empresas/${empresaId}/estoque/cardapio?nome=${encodeURIComponent(l.nome)}`}
-                  className="inline-flex h-7 items-center gap-1 rounded-lg border border-slate-300 px-2 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
-                  title={l.estado === 'VINCULADO' ? 'trocar o destino' : 'definir o destino'}
-                >
-                  <Link2 className="h-3 w-3" /> {l.estado === 'VINCULADO' ? 'trocar' : 'definir'}
-                </a>
+                {/* ⭐⭐ O SELETOR ABRE AQUI — não navega, não expulsa (14/09). O único
+                    caminho que sai da tela é o "é um combo?", e ele volta pro MESMO dia. */}
+                <SeletorDeDestino
+                  empresaId={empresaId}
+                  relatorio={relatorio}
+                  nomePdv={l.nome}
+                  jaTemDestino={l.estado === 'VINCULADO'}
+                  ocupado={ocupado === l.nome}
+                  hrefEditor={hrefDoEditor(empresaId, relatorio, data, l.nome)}
+                  onEscolher={(e: EscolhaDeDestino) => aplicar(
+                    l.nome,
+                    e.tipo === 'FICHA'
+                      ? { alvoTipo: 'FICHA', fichaId: e.fichaId }
+                      : { alvoTipo: 'REVENDA', itemId: e.itemId },
+                  )}
+                />
                 {/* ⚠️⚠️ "IGNORAR" SÓ EXISTE NO MAPA DE COMPLEMENTOS — o de produtos aceita
                     FICHA | REVENDA | REMOVER, e REMOVER **devolve a pendente**, que é outra
                     coisa. Oferecer o botão aqui e mandar REMOVER faria o nome voltar pra
@@ -257,6 +272,43 @@ export function RevisaoDoImport({
           {rev.contadores.semVinculo} nome(s) sem destino não baixaram estoque — eles esperam a sua escolha e voltam no próximo import.
         </p>
       )}
+
+      {/* ⭐⭐⭐ O ARREMATE — CONFIRMAR NO PÉ DA TELA ONDE EU TRABALHEI (14/09).
+          **O dono:** *"hoje o reprocessar mora na lista de dias, FORA da tela onde eu
+          trabalhei"*. ⛔ Ajustar destino e aplicar eram dois lugares, e o segundo era fácil
+          de não achar — a mesma anatomia do "baixar" separado que morreu em 07/09 por ser
+          "estado intermediário que só serve pra ser esquecido".
+          ⚠️ E o rodapé é PERMANENTE, não condicional ao preview: botão que aparece e some
+          conforme o estado é botão que o dono aprende a não procurar. */}
+      <div className="sticky bottom-0 -mx-3 flex flex-wrap items-center gap-2 border-t border-slate-200 bg-white/95 px-3 py-2 backdrop-blur">
+        <div className="min-w-0 flex-1 text-[12px]">
+          {preview == null ? (
+            <span className="text-slate-400">conferindo o que mudou…</span>
+          ) : preview.mudam.length === 0 ? (
+            // ⚠️ "nada mudou" é um ESTADO, não um erro: o dia já está aplicado como está.
+            <span className="text-slate-500">nada mudou de destino · {preview.inalterados} nome(s) seguem como estavam</span>
+          ) : (
+            <>
+              <span className="font-semibold text-violet-900">
+                {preview.mudam.length} {preview.mudam.length === 1 ? 'nome mudou' : 'nomes mudaram'} de destino
+              </span>
+              <span className="text-violet-700"> · {preview.inalterados} seguem como estavam</span>
+              {/* ⛔ NADA BAIXA PRO DESTINO NOVO SEM O DONO VER O QUE MUDA */}
+              <ul className="mt-0.5 max-h-20 overflow-auto text-[11px] text-violet-800">
+                {preview.mudam.map((m) => <li key={m.nome}>· {m.frase}</li>)}
+              </ul>
+            </>
+          )}
+        </div>
+        <button
+          type="button" onClick={reprocessar}
+          disabled={gravando || !preview || preview.mudam.length === 0}
+          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-violet-600 px-3.5 text-[13px] font-semibold text-white hover:bg-violet-700 disabled:opacity-40"
+        >
+          {gravando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+          Confirmar e baixar {data.split('-').reverse().join('/')}
+        </button>
+      </div>
     </div>
   )
 }
