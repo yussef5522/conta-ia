@@ -721,6 +721,47 @@ TELA → 200 · "revisar" ✓ · "sem destino" ✓ · "parece" ✓ · o aviso do
 
 📋 **FICA PRO DONO (o gesto é dele):** os **4 combos** (`… MAIS MINI FRITAS`, 28 ocorrências) precisam de ficha composta (lata + porção mini fritas) — o botão *"definir"* da linha leva ao cardápio com o nome já carregado. E **"ignorar" só aparece nos complementos**: o mapa de produtos aceita `FICHA | REVENDA | REMOVER`, e REMOVER **devolve a pendente**, que é outra coisa — oferecer ali seria um gesto que promete uma coisa e faz outra. Registrado como o que falta naquele mapa, não disfarçado.
 
+### ⛔⛔⛔ O CLIQUE QUE GRAVAVA E NÃO DIZIA NADA (14/09) — REGRA 2 no confirmar do dia
+
+**O dono, navegando:** *"abro Vendas → Complementos → dia 13/09 → revisão → clico 'Confirmar e baixar' → NADA acontece: nenhum modal de prévia, nenhum recibo, nenhuma mudança de contador."*
+
+**⛔⛔ E ERA PIOR QUE NADA — O CLIQUE GRAVOU.** Medido no ledger: **`BAIXA_VENDA` de complementos às 19:33:17**, do clique dele. A tela zerava o preview, recarregava a lista (que **não mudava**, porque os nomes já estavam vinculados) e **jogava o recibo fora**.
+
+**⭐⭐ A RÉGUA QUE FICA:** ***gravar sem dizer é pior que não gravar — porque o dono clica de novo.*** Todo botão que escreve no ledger: **modal de prévia antes**, **recibo depois**.
+
+**⚠️⚠️ E A LIÇÃO SOBRE O GUARD ANTERIOR É A QUE DÓI:** eu tinha um teste verde provando que `<PlanoVendaModal` existe no fluxo de complementos. **Ele passava porque eu liguei o modal no caminho do UPLOAD e o dono navegou o caminho do DIA.** *É o "guard que testa a lib e aprova a tela que ignora a lib" em versão nova: **testei o modal, não o botão que o abre**.* O guard novo pergunta **quem dispara a escrita** — e exige que a resposta seja *"o modal"*, nunca *"o botão"*.
+
+**A INVESTIGAÇÃO, na ordem que ele pediu:** o clique chamava `reprocessar()` direto (o caminho do DIA nunca passou pelo modal — só o do upload) · o preview do rodapé respondia em **132 ms** com `mudam: 2`, então o botão estava **habilitado** e a rota **não travava** · `montarRevisaoDeLinhas` com as 1.014 ocorrências: **202 ms** · deploy íntegro. **Nada estava pendurado: estava mudo.**
+
+**O QUE SUBIU:**
+1. o botão do rodapé **ABRE O MODAL** (o mesmo de produtos), nos **dois** relatórios — e quem grava é o `gravar()`, chamado **só de dentro dele**;
+2. a rota da revisão devolve o **plano do dia na forma do modal** (`planoDoDia`), saindo do **MESMO motor que a baixa executa** — um cálculo "só pro modal" faria a tela prometer um número e o ledger gravar outro;
+3. **recibo do SERVIDOR** no topo da revisão (*"baixado: N ocorrências · M itens · R$ X"*) + `carregar()` e `verPreview()` logo depois, pros contadores andarem;
+4. prévia e gravação com **teto de tempo** — e o da gravação é **maior (60 s)**: desistir cedo de uma escrita que está acontecendo é pior que esperar.
+
+⚠️ **A tradução do recibo mora num lugar só:** complementos contam **ocorrências**, produtos contam **produtos**, e os campos do servidor têm nomes diferentes. Remontar isso em duas telas daria dois números pro mesmo fato.
+
+**PROVADO EM PROD, NOS DOIS VIEWPORTS (REGRA 12):**
+```
+CELULAR 200 · 876 KB      DESKTOP 200 · 876 KB
+  ✓ modal de prévia · ✓ recibo · ✓ "custo total baixado" · ✓ teto de tempo · ✓ "tentar de novo"
+
+O QUE O MODAL DESENHA — 13/09 COMPLEMENTOS (a rota real):
+  46 baixam · 84 sem destino · 0 ignorados
+  sai do estoque: 22 itens · custo total R$ 2.682,80
+    − 181 porcao de calabresa 120 grama · R$ 427,16
+    − 117 porcao bacon 80 grama         · R$ 586,17
+    − 113 porcao frango 100 grama       · R$ 322,05
+12/09 PRODUTOS → 52 baixam · 52 itens
+```
+**REGRA 11 — 4 defeitos repostos:** o botão gravando direto (**2 vermelhos**) · o recibo jogado fora (**1**) · o modal sumindo do fluxo do dia (**3**) · a gravação sem teto (**1**).
+
+⚠️ **UM VERMELHO DA MINHA SONDA, NÃO DA TELA:** a 1ª prova acusou *"⛔ o custo total do modal"* — eu procurei `"Custo total"` e o rótulo real é `"custo total baixado"`, minúsculo. **Erro da sonda**; conferido com o texto certo, está lá.
+
+**10.015 verdes · TS 0 · deploy `51NroDCWdqIp4XDi1ZRL0` 4/4.**
+
+⚠️ **E O DIA 13/09 FOI REPROCESSADO PELO CLIQUE MUDO DELE** (19:33:17). O estoque está correto — `processarComplementos` estorna e refaz, é idempotente —, mas o ledger tem esse par a mais, sem ninguém ter visto o que ia acontecer. É o custo registrado do defeito.
+
 ### ⛔⛔⛔ A TELA PENDUROU EM PROD — 20 REQUISIÇÕES POR SEGUNDO, 18.051 NO DIA (14/09)
 
 **O dono:** *"com a página RECARREGADA, três fetches não resolvem — o 'Lendo…' do topo, a lista de receitas do seletor ('carregando…' eterno) e o POST do processar ('processando…' preso)."*
