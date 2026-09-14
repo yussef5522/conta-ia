@@ -206,6 +206,22 @@ describe('⛔ a régua da sugestão, pura', () => {
   it('⭐ e a bebida comum continua sugerindo normal — a régua não matou o caso bom', () => {
     expect(sugerirDestino('FANTA LARANJA 2L PET', [bebidas[0]])?.rotulo).toBe('FANTA LARANJA 2L')
   })
+
+  /**
+   * ⛔⛔⛔ COMBO — guard que nasceu de um EFEITO COLATERAL do fix acima, achado na prova
+   * em prod: `COCA COLA ZERO LATA MAIS MINI FRITAS` passou a ganhar sugestão de 1 clique
+   * pra `COCA ZERO LATA`, porque o qualificador desempatou o que antes morria na
+   * ambiguidade. **Baixaria a lata e esqueceria a batata** (a régua de 12/09).
+   */
+  it('⛔⛔ combo NUNCA herda a ficha de um produto só', () => {
+    expect(sugerirDestino('COCA COLA ZERO LATA MAIS MINI FRITAS', [{ fichaId: 'z', rotulo: 'COCA ZERO LATA' }])).toBeNull()
+    expect(sugerirDestino('COCA LATA + BATATA', [{ fichaId: 'c', rotulo: 'COCA LATA' }])).toBeNull()
+  })
+
+  it('⛔ "COM" não é marca de combo — FRANGO COM CATUPIRY é UM sabor', () => {
+    expect(sugerirDestino('PIZZA FRANGO COM CATUPIRY', [{ fichaId: 'f', rotulo: 'FRANGO COM CATUPIRY' }])?.rotulo)
+      .toBe('FRANGO COM CATUPIRY')
+  })
 })
 
 // ⭐⭐⭐ O GUARD QUE O DONO PEDIU: *"nome sem destino NUNCA some do contador"*.

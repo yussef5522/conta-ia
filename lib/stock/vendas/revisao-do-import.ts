@@ -107,6 +107,26 @@ export interface RevisaoDoImport {
 // em minúsculas e o guard virou NO-OP: passava verde com o defeito reposto (REGRA 11).
 const QUALIFICADORES = ['ZERO', 'DIET', 'LIGHT', 'SEM ACUCAR'] as const
 
+/**
+ * ⛔⛔⛔ COMBO NÃO HERDA — e este guard nasceu de um efeito colateral MEU (14/09).
+ *
+ * A régua de 12/09 (*"herdar por 'parece' baixaria só a lata e esqueceria a batata"*)
+ * valia aqui **por acidente**: `COCA COLA ZERO LATA MAIS MINI FRITAS` casava com DUAS
+ * fichas (`COCA LATA` e `COCA ZERO LATA`) e morria na trava da ambiguidade. Ao pôr o
+ * qualificador, a comum saiu, sobrou uma — e a prova em prod mostrou o combo ganhando
+ * **sugestão de 1 clique pra baixar só a lata**.
+ *
+ * ⚠️ Lista FECHADA: `COM` fica de fora de propósito — `FRANGO COM CATUPIRY` é UM sabor,
+ * não um combo, e barrá-lo mataria sugestão legítima.
+ */
+const MARCAS_DE_COMBO = [' MAIS ', ' + '] as const
+
+/** o nome do PDV anuncia composição? (`… MAIS MINI FRITAS`) */
+export function ehCombo(nomeNormalizado: string): boolean {
+  const p = ` ${nomeNormalizado} `
+  return MARCAS_DE_COMBO.some((m) => p.includes(m))
+}
+
 /** os qualificadores presentes num nome já normalizado */
 export function qualificadoresDe(nomeNormalizado: string): string[] {
   const p = ` ${nomeNormalizado} `
@@ -132,6 +152,8 @@ export function sugerirDestino(
      * `FANTA LARANJA 2L` comum (medido em prod, 14/09).
      */
     if (qualificadoresDe(normFicha).join('|') !== qAlvo) return false
+    // ⛔ o PDV anuncia combo e a ficha é um produto só → ela NÃO é o todo (12/09)
+    if (ehCombo(normAlvo) && !ehCombo(normFicha)) return false
     /**
      * ⭐⭐⭐ A DIREÇÃO IMPORTA, e ela é a régua que impede a bebida errada.
      *
