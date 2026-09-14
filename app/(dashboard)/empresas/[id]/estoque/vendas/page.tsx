@@ -11,8 +11,9 @@ import { StatCard, StatCardGrid } from '@/components/ui/stat-card'
 import { TotalsBar } from '@/components/ui/totals-bar'
 import { SortableTh, useSort } from '@/components/ui/sortable-th'
 import { baixarCsv, hojeArquivo } from '@/lib/format/csv-cliente'
-import { ShoppingCart, Loader2, Upload, Check, Layers, Pencil, Search, Play, Receipt, AlertTriangle, History, RefreshCw, Store, Download, CheckCircle2 } from 'lucide-react'
+import { ListChecks, ShoppingCart, Loader2, Upload, Check, Layers, Pencil, Search, Play, Receipt, AlertTriangle, History, RefreshCw, Store, Download, CheckCircle2 } from 'lucide-react'
 import { PlanoVendaModal } from '@/components/estoque/plano-venda-modal'
+import { RevisaoDoImport } from '@/components/estoque/revisao-do-import'
 import { diaEmSaoPaulo } from '@/lib/datas/dia-sao-paulo'
 
 interface Linha { produto: string; quantidade: number; valorTotal: number; mapeado: boolean; alvoTipo: string | null; alvoId: string | null; alvoNome: string | null }
@@ -29,6 +30,7 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
   // ⭐ a aba pode vir da URL (08/09/2026): o histórico do item linka a baixa de venda pra
   // `?aba=processados#dia-YYYY-MM-DD`, e cair na aba "Importar dia" seria não chegar na fonte.
   // ⚠️ lido no 1º render (não em effect) pra a aba não PISCAR de importar → processados.
+  const [revisao, setRevisao] = useState<{ data: string; relatorio: 'PRODUTOS' | 'COMPLEMENTOS' } | null>(null)
   const [aba, setAba] = useState<'importar' | 'complementos' | 'manual' | 'processados'>(() => {
     if (typeof window === 'undefined') return 'importar'
     const q = new URLSearchParams(window.location.search).get('aba')
@@ -162,6 +164,7 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
       </div>
 
       {aba === 'processados' ? (
+        <>
         <Card><CardContent className="p-0">
           {processados.length === 0 ? <p className="p-6 text-center text-sm text-slate-500">Nenhum dia processado ainda.</p> : (
             <table className="density-normal w-full">
@@ -178,12 +181,35 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
                   <td className="px-3 py-0 text-[13px] text-right tabular-nums text-slate-700">{d.baixados}</td>
                   <td className="px-3 py-0 text-[13px] text-right tabular-nums text-slate-900">{brl(d.valorBaixado)}</td>
                   <td className={`px-3 py-0 text-[13px] text-right tabular-nums ${d.pendentes > 0 ? 'text-amber-600' : 'text-slate-400'}`}>{d.pendentes}</td>
-                  <td className="px-3 py-0 text-[13px] text-right"><button onClick={() => reprocessar(d.data)} className="inline-flex items-center gap-1 text-xs text-[#185FA5] hover:underline"><RefreshCw className="h-3 w-3" /> reprocessar</button></td>
+                  <td className="px-3 py-0 text-[13px] text-right">
+                    {/* ⭐⭐ A REVISÃO ABRE DAQUI (14/09) — o extrato do que chegou naquele
+                        dia, com o destino de cada nome e o ajuste inline. ⛔ Antes o dono
+                        via "N pendentes" e tinha que sair da tela pra resolver: o número
+                        sem o caminho é o mesmo defeito da fila sem lista. */}
+                    <button onClick={() => setRevisao(revisao?.data === d.data ? null : { data: d.data, relatorio: 'PRODUTOS' })} className="mr-2 inline-flex items-center gap-1 text-xs font-medium text-violet-700 hover:underline">
+                      <ListChecks className="h-3 w-3" /> {revisao?.data === d.data ? 'fechar' : 'revisar'}
+                    </button>
+                    <button onClick={() => reprocessar(d.data)} className="inline-flex items-center gap-1 text-xs text-[#185FA5] hover:underline"><RefreshCw className="h-3 w-3" /> reprocessar</button>
+                  </td>
                 </tr>
               ))}</tbody>
             </table>
           )}
         </CardContent></Card>
+        {revisao && (
+          <Card className="mt-3"><CardContent className="p-3">
+            <p className="mb-2 text-[13px] font-semibold text-slate-800">
+              O que chegou em {fmtDia(revisao.data)} — e pra onde foi
+            </p>
+            <RevisaoDoImport
+              empresaId={id}
+              data={revisao.data}
+              relatorio={revisao.relatorio}
+              onMudou={carregarProcessados}
+            />
+          </CardContent></Card>
+        )}
+        </>
       ) : aba === 'complementos' ? (
         <><ImportComplementos id={id} /><BaixaComplementos id={id} /></>
       ) : aba === 'manual' ? (
