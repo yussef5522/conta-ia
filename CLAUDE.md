@@ -677,6 +677,49 @@ CONTAS A PAGAR → 200 · "Pagas (sem conciliar)" ✓ · "Em aberto e pagas sem 
 
 **9.726 verdes · TS 0 · deploy `R4Dacd_GQpSrmdBb_Ie9n` 4/4.**
 
+### ⭐⭐ O IMPORT DE COMPLEMENTOS DE 13/09 — AS BEBIDAS BAIXARAM; O DEFEITO ERA DA TELA (14/09)
+
+**O relato:** *"bebidas não baixaram"*. **A investigação read-only inocentou o arquivo, o import e a baixa** — e achou o defeito na TELA.
+
+**⭐ O QUE O DADO DIZ (import `comp-…-2026-09-13`, 130 linhas):**
+```
+  ocorr  nome do PDV                             mapa?   desfecho
+    19×  COCA LATA MAIS MINI FRITAS              ⛔ NÃO  pendente (combo)
+    15×  COCA COLA 2L                            SIM     BAIXOU
+     7×  COCA COLA ZERO LATA MAIS MINI FRITAS    ⛔ NÃO  pendente (combo)
+     6×  COCA ZERO 2L                            SIM     BAIXOU
+     5×  COCA COLA LATA                          ⛔ NÃO  pendente
+     3×  COCA COLA ZERO LATA                     ⛔ NÃO  pendente
+     1×  FRUKI 2L · FANTA LARANJA LATA · FANTA UVA 2L · FANTA UVA LATA   SIM  BAIXARAM
+     1×  FANTA LARANJA LATA MAIS MINI FRITAS · GUARANA FRUKI ZERO LATA · FRUKI LATA  ⛔ pendentes
+
+O QUE SAIU (líquido, 54 movimentos · 17 estornados · 20 vivos):
+  −15 COCA-COLA 2L · −6 COCA COLA Zero 2L · −1 FANTA LARANJA LATA · −1 FANTA UVA 2L
+  −1 FANTA UVA LATA · −1 FRUKI GUARANA 2L
+```
+⭐ **As 15 ocorrências viraram −15.** Os 17 estornos são o **estorna-e-refaz do reprocesso funcionando** — o dia foi baixado parcial e refeito inteiro.
+
+**⛔⛔ O DEFEITO REAL ERA DE TELA:** o modal só desenhava o `agregada` — **o que sai do ESTOQUE, por ITEM**. A pergunta do dono é *"e a COCA COLA 2L?"*, e **um xis vira 6 itens**: o nome do PDV sumia no meio do efeito. ***Contar o efeito não é listar o que entrou.*** Agora o resumo traz **três contadores** (N baixam · M sem mapa · K fora) e **a lista por NOME** com quantidade e destino — e o *"fora"* também passou a ser **nomeado**, nunca só contado.
+
+**⭐ ITEM 2 — POR QUE A HERANÇA NÃO PEGOU OS NOVOS: o canônico DIFERE, e a régua de 08/09 está certa** (*"canônico IDÊNTICO"*, nunca *"parecido"*). Os pares, **pro dono decidir**:
+
+| nome no PDV | ocorr. | ficha que existe |
+|---|---|---|
+| `COCA COLA LATA` | 5 | **`COCA LATA`** |
+| `COCA COLA ZERO LATA` | 3 | **`COCA ZERO LATA`** |
+| `GUARANA FRUKI ZERO LATA` | 1 | **`FRUKI LATA ZERO`** |
+| `FRUKI LATA` (comum) | 1 | ⛔ **não existe** — só a `FRUKI LATA ZERO` |
+
+⚠️ **O `FRUKI LATA` comum é o caso que NÃO se resolve mapeando**: apontá-lo pra a ZERO baixaria a bebida errada. É a régua de 09/09 (*"se só existe a ZERO, me AVISA em vez de apontar na errada"*) — **a ausência se reporta, não se preenche**.
+
+**⭐ ITEM 3 — OS COMBOS ESTÃO PENDENTES POR DESENHO, confirmado.** São **4 nomes · 28 ocorrências**: `COCA LATA MAIS MINI FRITAS` (19) · `COCA COLA ZERO LATA MAIS MINI FRITAS` (7) · `FANTA LARANJA LATA MAIS MINI FRITAS` (1) · e o irmão do FRUKI. ⛔ **Combo não herda** (régua de 12/09): herdar por *"parece"* baixaria só a lata e **esqueceria a batata**. Cada um precisa da ficha do dono, **uma vez** (lata + porção mini fritas) — daí em diante baixa sozinho.
+
+**⚠️⚠️ REGRA 11 — o defeito reposto veio VERDE:** meus testes provavam o **PLANO**, e ele **sempre carregou tudo**; apagar o resumo por nome DA TELA deixava os 5 verdes. ***Guard que testa o dado aprova a tela que não o desenha*** — a mesma lição do card do PJBANK, no dia anterior. O teste passou a perguntar pra TELA.
+
+⚠️ **E um fixture meu nasceu degenerado**: a ficha produzia e consumia o MESMO item — o ciclo que `criarFicha` recusa desde 09/09. O motor acusou (*"explosão de venda muito profunda"*) antes de eu perceber.
+
+**9.827 verdes · TS 0 · deploy `Spe71jNqCfRobDq6FdJYg` 4/4.**
+
 ### ⭐⭐⭐ FLUXO ABRE NO MÊS; ESTOQUE MOSTRA O ESTADO DE AGORA (14/09) — régua da casa
 
 **A REGRA DOS DOIS TEMPOS, ditada pelo dono, e ela existe pra NÃO ESCONDER DÍVIDA:**
