@@ -12,6 +12,9 @@ const schema = z.discriminatedUnion('alvoTipo', [
   z.object({ nomeSuitable: z.string().min(1), alvoTipo: z.literal('FICHA'), fichaId: z.string().min(1) }),
   z.object({ nomeSuitable: z.string().min(1), alvoTipo: z.literal('REVENDA'), itemId: z.string().min(1) }),
   z.object({ nomeSuitable: z.string().min(1), alvoTipo: z.literal('REMOVER') }),
+  // ⭐ IGNORAR (14/09): decisão do dono de que aquele nome NÃO controla estoque. Reversível
+  // pelo REMOVER, que é outra coisa — ele devolve o nome pra fila de pendentes.
+  z.object({ nomeSuitable: z.string().min(1), alvoTipo: z.literal('IGNORAR') }),
 ])
 
 export async function POST(request: NextRequest, { params }: Params) {
@@ -23,7 +26,9 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (!parsed.success) return NextResponse.json({ erro: 'Mapeamento inválido.' }, { status: 400 })
   const d = parsed.data
   if (d.alvoTipo === 'REMOVER') { await removerVendaMap(companyId, d.nomeSuitable, prisma); return NextResponse.json({ ok: true }) }
-  const alvo = d.alvoTipo === 'FICHA' ? { tipo: 'FICHA' as const, fichaId: d.fichaId } : { tipo: 'REVENDA' as const, itemId: d.itemId }
+  const alvo = d.alvoTipo === 'FICHA' ? { tipo: 'FICHA' as const, fichaId: d.fichaId }
+    : d.alvoTipo === 'IGNORAR' ? { tipo: 'IGNORAR' as const }
+      : { tipo: 'REVENDA' as const, itemId: d.itemId }
   try {
     await upsertVendaMap(companyId, d.nomeSuitable, alvo, user.sub, prisma)
     return NextResponse.json({ ok: true })

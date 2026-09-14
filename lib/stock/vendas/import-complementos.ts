@@ -21,6 +21,7 @@ import { preverBaixaDasLinhas, baixarSeHouverFicha, type ReciboComplementos } fr
 import { agruparGrafiasPendentes } from './aplicar-agrupamento'
 import { aplicarHerancas, type HerancaDeMapa } from './bebida-no-complemento'
 import type { AgrupamentoAutomatico } from './grafia-canonica'
+import { montarRevisaoDeLinhas, type RevisaoDoImport } from './revisao-do-import'
 
 export class ImportComplementoError extends Error {}
 
@@ -30,6 +31,19 @@ export interface PrevisaoComplementos {
   totalOcorrencias: number
   /** a prateleira do período, ordenada por ocorrências DESC */
   prateleira: LinhaPrateleira[]
+  /** ⭐ a MESMA lista da revisão pós-import — uma vitrine só (14/09) */
+  revisao: RevisaoDoImport
+  /**
+   * ⭐⭐ O PLANO NA FORMA DO MODAL ÚNICO (14/09) — o mesmo `PlanoVendaModal` da tela de
+   * produtos. ⛔ O resumo inline daqui era um SEGUNDO desenho da mesma prévia: dois modos
+   * de responder *"o que acontece se eu confirmar?"* divergem no primeiro campo novo.
+   */
+  plano: {
+    produtos: { nome: string; quantidade: number; alvoNome: string }[]
+    pendentes: { nome: string; quantidade: number }[]
+    fora: { nome: string; quantidade: number }[]
+    agregada: { nome: string; qtd: number; valor: number | null }[]
+  } | null
   /** quantos já têm destino (ficha ou ignorar) */
   comDestino: number
   pendentes: number
@@ -104,15 +118,36 @@ export async function previewComplementos(
   const importId = importIdDe(companyId, data, modo)
   const plano = await preverBaixaDasLinhas(companyId, data, importId, linhas, db).catch(() => null)
 
+  /**
+   * ⭐⭐ A REVISÃO JÁ NO PREVIEW (14/09) — a lista POR NOME com estado, destino e o que
+   * desconta, **a mesma** que a tela mostra depois do import.
+   *
+   * ⛔ Foi o que matou o "relatório velho pós-upload": ele e a revisão mostravam o MESMO
+   * dado em duas vitrines, e a de cima não editava nada. *Duas vitrines do mesmo dado é a
+   * segunda derivação em forma de página.*
+   */
+  const revisao = await montarRevisaoDeLinhas(
+    companyId, data, 'COMPLEMENTOS',
+    linhas.map((l) => ({ nome: l.nomeSuitable, ocorrencias: l.ocorrencias })), db,
+  )
+
   return {
     data,
     totalLinhas: p.linhas.length,
     totalOcorrencias: p.linhas.reduce((s, l) => s + l.quantidade, 0),
     prateleira,
+    revisao,
     comDestino: prateleira.filter((x) => x.destino !== 'SEM_FICHA').length,
     pendentes: prateleira.filter((x) => x.destino === 'SEM_FICHA').length,
     nosDoisRelatorios: prateleira.filter((x) => x.tambemProduto).length,
     jaImportado,
+    plano: plano ? {
+      produtos: plano.complementos.map((c) => ({ nome: c.nomeSuitable, quantidade: c.ocorrencias, alvoNome: c.alvo })),
+      pendentes: plano.pendentes.map((c) => ({ nome: c.nomeSuitable, quantidade: c.ocorrencias })),
+      // ⚠️ "fora" aqui são os IGNORADOS — decisão do dono, nomeada e não escondida
+      fora: plano.ignorados.map((c) => ({ nome: c.nomeSuitable, quantidade: c.ocorrencias })),
+      agregada: plano.agregada.map((a) => ({ nome: a.nome, qtd: a.qtd, valor: a.valor })),
+    } : null,
     baixa: plano && plano.complementos.length ? {
       ocorrenciasQueBaixam: plano.ocorrenciasBaixadas,
       complementosComFicha: plano.complementos.length,

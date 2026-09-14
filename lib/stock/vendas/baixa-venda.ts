@@ -70,6 +70,8 @@ export interface PlanoVenda {
   produtos: ProdutoBaixa[]
   pendentes: { nome: string; quantidade: number }[]
   fora: { nome: string; quantidade: number }[] // mapeado, mas o dono NÃO marcou pra este processamento
+  /** ⭐ decisão do dono: não controla estoque. Não baixa e NÃO é pendente (14/09) */
+  ignorados: { nome: string; quantidade: number }[]
   agregada: { itemId: string; nome: string; qtd: number; custoMedio: number | null; valor: number | null }[]
   totalUnidades: number
   totalMapeados: number
@@ -97,11 +99,16 @@ export async function montarPlanoDeLinhas(companyId: string, data: string, linha
   const produtos: ProdutoBaixa[] = []
   const pendentes: { nome: string; quantidade: number }[] = []
   const fora: { nome: string; quantidade: number }[] = []
+  /** ⭐ decisão do dono: este nome não controla estoque (14/09). NOMEADO, nunca só contado. */
+  const ignorados: { nome: string; quantidade: number }[] = []
   const agregada = new Map<string, number>()
 
   for (const l of linhas) {
     const m = mapaPorNome.get(l.produto)
     if (!m) { pendentes.push({ nome: l.produto, quantidade: l.quantidade }); continue }
+    // ⛔ IGNORAR é DECISÃO, não ausência: não baixa, não volta pra fila, e aparece
+    // nomeado no plano — "exclusão escondida é tão ruim quanto exclusão nenhuma" (25/08).
+    if (m.alvoTipo === 'IGNORAR') { ignorados.push({ nome: l.produto, quantidade: l.quantidade }); continue }
     if (incluirSet && !incluirSet.has(l.produto)) { fora.push({ nome: l.produto, quantidade: l.quantidade }); continue }
     const acc = new Map<string, number>()
     if (m.alvoTipo === 'FICHA' && m.fichaId) explodir({ tipo: 'FICHA', fichaId: m.fichaId }, l.quantidade, ctx, acc)
@@ -112,7 +119,7 @@ export async function montarPlanoDeLinhas(companyId: string, data: string, linha
   }
 
   return {
-    data, produtos, pendentes, fora,
+    data, produtos, pendentes, fora, ignorados,
     agregada: [...agregada.entries()].map(([itemId, qtd]) => { const c = custoMap.get(itemId) ?? null; return { itemId, nome: ctx.nomeItem.get(itemId) ?? '(item)', qtd: round2(qtd), custoMedio: c, valor: c != null ? round2(qtd * c) : null } }),
     totalUnidades: linhas.reduce((s, l) => s + l.quantidade, 0),
     totalMapeados: produtos.length,

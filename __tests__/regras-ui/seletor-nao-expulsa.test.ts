@@ -67,10 +67,18 @@ describe('⛔⛔ a revisão ajusta o destino SEM sair da tela', () => {
    * produtos. Dois seletores divergiriam no primeiro destino novo, e o dono veria opções
    * diferentes pra mesma pergunta em duas telas do mesmo módulo.
    */
-  it('⭐ a tela de PRODUTOS usa o MESMO seletor — não um segundo', () => {
-    expect(vendas).toContain('<SeletorDeDestino')
-    expect(vendas).toContain("from '@/components/estoque/seletor-de-destino'")
+  /**
+   * ⚠️⚠️ REAPONTADO EM 14/09, NÃO AFROUXADO: a tela de produtos deixou de renderizar o
+   * seletor **diretamente** porque a tabela velha morreu — agora ela renderiza a REVISÃO,
+   * e é a revisão que usa o seletor. A pergunta continua a mesma ("o destino se edita pelo
+   * componente único?"); o que mudou é por onde ela passa.
+   */
+  it('⭐ o destino se edita pelo MESMO seletor nas duas telas', () => {
+    expect(revisao).toContain('<SeletorDeDestino')
     expect(revisao).toContain("from './seletor-de-destino'")
+    expect(vendas).toContain('<RevisaoDoImport')
+    // ⛔ e a página não pode ter um SEGUNDO desenho de destino por conta própria
+    expect(vendas).not.toContain('optgroup')
   })
 
   it('⛔ o `<select>` de destino da tela de produtos morreu (não tinha busca)', () => {
@@ -84,7 +92,10 @@ describe('⛔⛔ a revisão ajusta o destino SEM sair da tela', () => {
    * sobreviveram — senão o fix seria uma regressão com cara de melhoria.
    */
   it('⭐ "desmapear" e "criar item" sobreviveram à unificação', () => {
-    expect(vendas).toContain('desmapear')
+    // ⭐ o guard da MUDANÇA DE CASA: desmapear migrou da tabela velha PRA REVISÃO antes de
+    // a velha morrer. **Remoção sem realocação é perda** — a régua do dono em 14/09.
+    expect(revisao).toContain('desmapear')
+    expect(revisao).toContain("alvoTipo: 'DESMAPEAR'")
     expect(seletor).toMatch(/criar .{0,4}\{nomePdv\}/)
     expect(seletor).toContain("categoria: 'REVENDA'")
   })
@@ -100,8 +111,8 @@ describe('⛔⛔ a revisão ajusta o destino SEM sair da tela', () => {
 
 describe('⭐⭐ ida com volta — o combo sai e VOLTA pro mesmo dia', () => {
   it('a URL do editor vem da régua provada, não montada à mão na tela', () => {
+    // ⚠️ só a REVISÃO monta o href agora: a tabela velha, que era o outro chamador, morreu
     expect(revisao).toContain('hrefDoEditor(')
-    expect(vendas).toContain('hrefDoEditor(')
     expect(existsSync(join(raiz, 'lib/stock/vendas/volta-da-revisao.ts'))).toBe(true)
   })
 
@@ -133,11 +144,14 @@ describe('⭐⭐ o arremate — confirmar no PÉ da tela onde eu trabalhei', () 
   })
 
   it('⛔ e ele NÃO grava sem preview — nada baixa pro destino novo às cegas', () => {
-    expect(revisao).toMatch(/disabled=\{gravando \|\| !preview \|\| preview\.mudam\.length === 0\}/)
+    // ⚠️ no modo DIA quem trava é o preview; no modo PRÉ-IMPORT quem trava é o
+    // `confirmar.habilitado` da tela (que exige a DATA). Os dois caminhos travam.
+    expect(revisao).toMatch(/gravando \|\| !preview \|\| preview\.mudam\.length === 0/)
+    expect(revisao).toContain('confirmar.habilitado')
   })
 
   it('o preview carrega junto com a tela', () => {
-    expect(revisao).toMatch(/useEffect\(\(\) => \{ void verPreview\(\) \}/)
+    expect(revisao).toMatch(/useEffect\(\(\) => \{ if \(!externo\) void verPreview\(\) \}/)
   })
 })
 

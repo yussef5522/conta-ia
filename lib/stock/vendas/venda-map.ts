@@ -100,7 +100,29 @@ export async function previewImportSuitable(companyId: string, html: string, db:
  * ⚠️ `criarFicha` abre transação própria; conferido que nenhum caller chama esta função de
  * dentro de uma `$transaction` (o `lancamento-manual` usa o client de topo).
  */
-export async function upsertVendaMap(companyId: string, nomeSuitable: string, alvo: { tipo: 'FICHA'; fichaId: string } | { tipo: 'REVENDA'; itemId: string }, userId?: string, db: PrismaClient = defaultPrisma) {
+export async function upsertVendaMap(companyId: string, nomeSuitable: string, alvo: { tipo: 'FICHA'; fichaId: string } | { tipo: 'REVENDA'; itemId: string } | { tipo: 'IGNORAR' }, userId?: string, db: PrismaClient = defaultPrisma) {
+  /**
+   * ⭐⭐⭐ IGNORAR CHEGOU AO MAPA DE PRODUTOS (14/09) — pedido do dono na revisão:
+   * *"os ~30 doces/milkshakes/açaí que POR MINHA DECISÃO não controlam estoque param de
+   * engordar o contador de pendentes pra sempre"*.
+   *
+   * ⛔ **PENDENTE = "espera decisão", NUNCA "tudo que não baixa".** Enquanto ignorar não
+   * existia aqui, decisão tomada voltava a pedir decisão em todo import — e contador que
+   * cobra o que já foi resolvido é como o dono aprende a não olhar o contador.
+   *
+   * ⚠️ É o MESMO estado que o mapa de complementos tem desde 02/09, e ele é **reversível**
+   * (o `REMOVER`/desmapear devolve à fila) e **datado** (`criadoEm` vira o rastro do "por
+   * você, em DD/MM" que a revisão mostra).
+   */
+  if (alvo.tipo === 'IGNORAR') {
+    const data = { alvoTipo: 'IGNORAR', fichaId: null, itemId: null }
+    return db.stockVendaProdutoMap.upsert({
+      where: { companyId_nomeSuitable: { companyId, nomeSuitable } },
+      create: { companyId, nomeSuitable, ...data, criadoPorId: userId ?? null },
+      update: data,
+      select: { id: true },
+    })
+  }
   // GUARD dos 3 níveis (na FONTE, não só na tela): venda só casa com PRODUTO_FINAL (ficha)
   // ou item REVENDA. Matéria-prima/intermediário NUNCA — senão cada venda baixaria insumo cru.
   //

@@ -13,7 +13,7 @@ import { SortableTh, useSort } from '@/components/ui/sortable-th'
 import { baixarCsv, hojeArquivo } from '@/lib/format/csv-cliente'
 import { ListChecks, ShoppingCart, Loader2, Upload, Check, Layers, Search, Play, Receipt, AlertTriangle, History, RefreshCw, Store, Download, CheckCircle2 } from 'lucide-react'
 import { PlanoVendaModal } from '@/components/estoque/plano-venda-modal'
-import { RevisaoDoImport } from '@/components/estoque/revisao-do-import'
+import { RevisaoDoImport, type RevisaoDTO, type ConfirmarDelegado } from '@/components/estoque/revisao-do-import'
 import { SeletorDeDestino } from '@/components/estoque/seletor-de-destino'
 import { hrefDoEditor } from '@/lib/stock/vendas/volta-da-revisao'
 import { diaEmSaoPaulo } from '@/lib/datas/dia-sao-paulo'
@@ -61,13 +61,12 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
     return q === 'processados' || q === 'complementos' || q === 'manual' ? q : 'importar'
   })
   const [preview, setPreview] = useState<Preview | null>(null)
+  /** ⭐ a revisão do arquivo recém-lido — a MESMA lista de depois do import (14/09) */
+  const [prevRevisao, setPrevRevisao] = useState<RevisaoDTO | null>(null)
   const [html, setHtml] = useState('')
   const [carregando, setCarregando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
-  const [busca, setBusca] = useState('')
-  const [soPendentes, setSoPendentes] = useState(false)
   const [editando, setEditando] = useState<Set<string>>(new Set())
-  const [desmarcados, setDesmarcados] = useState<Set<string>>(new Set()) // mapeados que o dono TIROU deste processamento
   const [data, setData] = useState('')
   const [erroProc, setErroProc] = useState<string | null>(null)
   const [plano, setPlano] = useState<Plano | null>(null)
@@ -87,14 +86,24 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
   const carregarProcessados = () => fetch(`/api/empresas/${id}/estoque/vendas/processados`).then((r) => r.json()).then((j) => setProcessados(j.processados ?? [])).catch(() => {})
   useEffect(() => { carregarProcessados() }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const enviar = async (conteudo: string) => {
+  /**
+   * ⭐⭐ O UPLOAD JÁ DEVOLVE A REVISÃO (14/09) — a MESMA lista de depois do import.
+   *
+   * ⛔ A tabela velha "Mapeamento (N)" existia só porque a revisão não sabia desenhar um dia
+   * que ainda não está no banco. Com o preview devolvendo a lista pronta, a página passa a
+   * ter **uma vitrine e um confirmar**. ⚠️ E o upload continua **sem escrever nada**: o que
+   * a revisão pré-import edita é o MAPA (configuração, vale pra sempre), e o dia só nasce no
+   * confirmar — a régua de 07/09 (um preview, um clique) fica intacta.
+   */
+  const enviar = async (conteudo: string, dia?: string): Promise<RevisaoDTO | null> => {
     setCarregando(true); setErro(null)
     try {
-      const r = await fetch(`/api/empresas/${id}/estoque/vendas/preview`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ html: conteudo }) })
+      const r = await fetch(`/api/empresas/${id}/estoque/vendas/preview`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ html: conteudo, data: dia || data || undefined }) })
       const j = await r.json().catch(() => null)
-      if (!r.ok) { setErro(j?.erro ?? 'Não consegui ler o arquivo.'); setPreview(null); return }
-      setPreview(j.preview); setDesmarcados(new Set())
-    } catch { setErro('Falha de conexão.') } finally { setCarregando(false) }
+      if (!r.ok) { setErro(j?.erro ?? 'Não consegui ler o arquivo.'); setPreview(null); setPrevRevisao(null); return null }
+      setPreview(j.preview); setPrevRevisao(j.revisao ?? null)
+      return j.revisao ?? null
+    } catch { setErro('Falha de conexão.'); return null } finally { setCarregando(false) }
   }
   const onFile = (f: File) => { const reader = new FileReader(); reader.onload = () => { const t = String(reader.result ?? ''); setHtml(t); enviar(t) }; reader.readAsText(f, 'utf-8') }
 
@@ -113,18 +122,15 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
     setErro(null); setEditando((s) => { const n = new Set(s); n.delete(nomeSuitable); return n }); if (html) enviar(html)
   }
 
-  // nomes marcados = mapeados − desmarcados
-  const marcados = useMemo(() => (preview ? preview.linhas.filter((l) => l.mapeado && !desmarcados.has(l.produto)).map((l) => l.produto) : []), [preview, desmarcados])
 
   const abrirModal = (p: Plano, reprocessoDia: string | null, estorna: number) => { setPlano(p); setModoReprocesso(reprocessoDia); setEstornaItens(estorna); setVerLista(false); setErroModal(null) }
 
   const abrirPreview = async () => {
     setErroProc(null)
     if (!data) { setErroProc('Escolha a data das vendas antes de processar.'); return }
-    if (marcados.length === 0) { setErroProc('Marque ao menos um produto pra processar.'); return }
     setProcessando(true)
     try {
-      const r = await fetch(`/api/empresas/${id}/estoque/vendas/processar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ html, data, confirmar: false, incluir: marcados }) })
+      const r = await fetch(`/api/empresas/${id}/estoque/vendas/processar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ html, data, confirmar: false, incluir: null }) })
       const j = await r.json().catch(() => null)
       if (!r.ok) { setErroProc(j?.erro ?? 'Não consegui montar o preview.'); return }
       abrirModal(j.plano, null, 0)
@@ -144,11 +150,15 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
     try {
       const body = modoReprocesso
         ? { data: modoReprocesso, reprocessar: true, confirmar: true, confirmouSanidade }
-        : { html, data, confirmar: true, incluir: marcados, confirmouSanidade }
+        : { html, data, confirmar: true, incluir: null, confirmouSanidade }
       const r = await fetch(`/api/empresas/${id}/estoque/vendas/processar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       const j = await r.json().catch(() => null)
       if (r.ok) {
         setRecibo(j.recibo); setPlano(null); setModoReprocesso(null); carregarProcessados()
+        // ⛔⛔ O PREVIEW MORRE NO CONFIRMAR (14/09): sem isto a página ficaria com a lista
+        // do ARQUIVO e a lista do DIA ao mesmo tempo — as duas vitrines de novo, agora
+        // por dentro. Depois de confirmar existe UMA verdade: o dia gravado.
+        setPreview(null); setPrevRevisao(null); setHtml('')
         // ⭐⭐ O RESULTADO DO UPLOAD **ABRE A REVISÃO** — não o resumo velho. Os 3 números
         // do recibo dizem "quanto"; a pergunta que o dono tem na mão é "o que chegou e
         // pra onde foi", e ela nasce aqui.
@@ -160,13 +170,6 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
     } catch { setErroModal('Falha de conexão.') } finally { setProcessando(false) }
   }
 
-  const linhasFiltradas = useMemo(() => {
-    if (!preview) return []
-    let ls = preview.linhas
-    if (soPendentes) ls = ls.filter((l) => !l.mapeado)
-    if (busca.trim()) ls = ls.filter((l) => l.produto.toLowerCase().includes(busca.toLowerCase()))
-    return ls
-  }, [preview, soPendentes, busca])
   const sp = useSort<'data' | 'baixados' | 'valor' | 'pendentes'>('data', 'desc')
 
   return (
@@ -283,75 +286,42 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
 
           {preview && (
             <>
-              {/* ÁREA 2: PROCESSAR O DIA */}
+              {/* ⭐⭐⭐ UMA VITRINE, UM CONFIRMAR (14/09) — a tabela velha "Mapeamento (N)"
+                  MORREU aqui. **O dono:** *"a tela velha não morreu quando a nova nasceu:
+                  recibo + REVISÃO nova + o RELATÓRIO/TABELA VELHA, dois confirmares — é a
+                  segunda derivação em forma de página."*
+                  ⚠️ O que sobrou desta área é o que a revisão NÃO sabe: a DATA do arquivo
+                  (o Suitable não a traz). O botão de confirmar desceu pro rodapé da revisão. */}
               <Card className="border-[#185FA5]/30"><CardContent className="space-y-2 p-4">
-                <p className="text-sm font-semibold text-slate-900">Processar o dia</p>
                 <div className="flex flex-wrap items-end gap-3">
                   <label className="text-xs text-slate-500">Data das vendas
                     <input ref={dateRef} type="date" value={data} onChange={(e) => { setData(e.target.value); setErroProc(null) }} onClick={() => { try { dateRef.current?.showPicker?.() } catch { /* fallback nativo */ } }}
                       className="mt-1 block w-44 cursor-pointer rounded-lg border border-slate-300 py-2 px-3 text-sm" />
                   </label>
-                  <button onClick={abrirPreview} disabled={processando} className="inline-flex items-center gap-2 rounded-lg bg-[#185FA5] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#0F4A8C] disabled:opacity-60">
-                    {processando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />} Confirmar baixa de {marcados.length} produto{marcados.length === 1 ? '' : 's'}
-                  </button>
+                  <p className="flex-1 text-[11px] text-slate-400">
+                    O arquivo do Suitable não traz o período — quem sabe é você, na tela dele.
+                  </p>
                 </div>
-                <p className="text-[11px] text-slate-400">{marcados.length} marcados · {preview.naoMapeados} pendentes (não baixam) · parcial é normal.</p>
                 {erroProc && <p className="flex items-center gap-1 text-sm text-rose-600"><AlertTriangle className="h-3.5 w-3.5" /> {erroProc}</p>}
               </CardContent></Card>
 
-              {/* ÁREA 1: MAPEAMENTO */}
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="mr-auto text-sm font-semibold text-slate-900">Mapeamento ({preview.totalProdutos} produtos)</p>
-                <div className="relative min-w-[160px]"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="buscar…" className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm" /></div>
-                {preview.naoMapeados > 0 && <button onClick={() => setSoPendentes((v) => !v)} className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm ${soPendentes ? 'border-amber-400 bg-amber-50 text-amber-700' : 'border-slate-300 text-slate-600'}`}><AlertTriangle className="h-3.5 w-3.5" /> só pendentes ({preview.naoMapeados})</button>}
-              </div>
-
-              <Card><CardContent className="p-0">
-                <table className="density-normal w-full">
-                  <thead><tr className="border-b border-slate-100 text-left text-[11px] uppercase tracking-wide text-slate-400"><th className="w-8 px-3 py-2"></th><th className="px-3 py-2 font-medium">Produto (Suitable)</th><th className="px-3 py-2 text-right font-medium">Qtd</th><th className="px-3 py-2 font-medium">Destino no estoque</th></tr></thead>
-                  <tbody>
-                    {linhasFiltradas.map((l) => {
-                      const marcado = l.mapeado && !desmarcados.has(l.produto)
-                      return (
-                        <tr key={l.produto} className={`border-b border-slate-50 last:border-0 ${!l.mapeado ? 'bg-amber-50/30' : ''}`}>
-                          <td className="px-3 py-0 text-[13px]">{l.mapeado ? <input type="checkbox" checked={marcado} onChange={() => setDesmarcados((s) => { const n = new Set(s); n.has(l.produto) ? n.delete(l.produto) : n.add(l.produto); return n })} className="h-4 w-4 accent-[#185FA5]" /> : null}</td>
-                          <td className="px-3 py-0 text-[13px] font-medium text-slate-800">{l.produto}</td>
-                          <td className="px-3 py-0 text-[13px] text-right tabular-nums text-slate-600">{l.quantidade}</td>
-                          {/* ⭐⭐ O MESMO SELETOR DA REVISÃO (14/09) — fonte única. O
-                              `<select>` nativo daqui era a referência do dono ("clico no
-                              destino → escolho ALI"), mas **não tinha busca** e a lista já
-                              passa de 150 nomes. Um componente só pros dois lugares; dois
-                              divergiriam no primeiro destino novo. */}
-                          <td className="px-3 py-0 text-[13px]">
-                            <div className="flex items-center gap-2">
-                              {l.mapeado ? (
-                                <span className="inline-flex items-center gap-1 truncate rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700"><Check className="h-3.5 w-3.5 shrink-0" /> {l.alvoNome}</span>
-                              ) : (
-                                <span className="text-xs text-amber-700">escolher destino</span>
-                              )}
-                              <div className="ml-auto flex shrink-0 items-center gap-1">
-                                <SeletorDeDestino
-                                  empresaId={id} relatorio="PRODUTOS" nomePdv={l.produto}
-                                  jaTemDestino={l.mapeado}
-                                  hrefEditor={hrefDoEditor(id, 'PRODUTOS', data || null, l.produto)}
-                                  onEscolher={(e) => mapear(l.produto, e.tipo === 'FICHA' ? `FICHA:${e.fichaId}` : `REVENDA:${e.itemId}`)}
-                                />
-                                {/* ⚠️ "desmapear" vivia como opção do `<select>` e continua
-                                    existindo: ele DEVOLVE o nome pra fila de pendentes, que
-                                    é diferente de ignorar. Sumir com ele seria tirar
-                                    capacidade ao unificar. */}
-                                {l.mapeado && (
-                                  <button onClick={() => mapear(l.produto, 'REMOVER')} className="inline-flex h-7 items-center rounded-lg border border-slate-300 px-2 text-[11px] text-slate-500 hover:bg-slate-50" title="volta pra fila de pendentes">desmapear</button>
-                                )}
-                              </div>
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </CardContent></Card>
+              {prevRevisao && (
+                <BlocoRevisao
+                  id={id} data={data || prevRevisao.data} relatorio="PRODUTOS"
+                  revisaoExterna={prevRevisao}
+                  recarregarExterna={() => enviar(html)}
+                  confirmar={{
+                    rotulo: processando ? 'processando…' : `Confirmar e baixar${data ? ' ' + fmtDia(data) : ''}`,
+                    acao: abrirPreview,
+                    habilitado: !!data && !processando,
+                    // ⚠️ o rodapé DIZ por que não dá, em vez de ficar cinza mudo
+                    resumo: !data
+                      ? 'escolha a data das vendas pra confirmar'
+                      : `${prevRevisao.contadores.vinculados} nome(s) baixam · ${prevRevisao.contadores.semVinculo} sem destino não baixam`,
+                  }}
+                  onFechar={null}
+                />
+              )}
             </>
           )}
         </>
@@ -372,9 +342,14 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
  * quatro telas que divergem no primeiro rótulo novo — a doença que esta casa mais paga.
  * Aqui o texto e a moldura moram num lugar; o que muda é só ONDE ele é renderizado.
  */
-function BlocoRevisao({ id, data, relatorio, onMudou, onFechar }: {
+function BlocoRevisao({ id, data, relatorio, onMudou, onFechar, revisaoExterna, recarregarExterna, confirmar }: {
   id: string; data: string; relatorio: 'PRODUTOS' | 'COMPLEMENTOS'
-  onMudou?: () => void; onFechar: () => void
+  onMudou?: () => void
+  /** ⚠️ `null` = painel do FLUXO (não dá pra fechar, ele É a tela); função = painel aberto sob demanda */
+  onFechar: (() => void) | null
+  revisaoExterna?: RevisaoDTO | null
+  recarregarExterna?: () => Promise<RevisaoDTO | null>
+  confirmar?: ConfirmarDelegado
 }) {
   return (
     <Card className="mt-3 border-violet-300"><CardContent className="p-3">
@@ -386,9 +361,12 @@ function BlocoRevisao({ id, data, relatorio, onMudou, onFechar }: {
             {relatorio === 'COMPLEMENTOS' ? 'complementos' : 'produtos'}
           </span>
         </p>
-        <button onClick={onFechar} className="ml-auto inline-flex h-7 items-center rounded-lg border border-slate-300 px-2 text-xs text-slate-600 hover:bg-slate-50">fechar</button>
+        {onFechar && <button onClick={onFechar} className="ml-auto inline-flex h-7 items-center rounded-lg border border-slate-300 px-2 text-xs text-slate-600 hover:bg-slate-50">fechar</button>}
       </div>
-      <RevisaoDoImport empresaId={id} data={data} relatorio={relatorio} onMudou={onMudou} />
+      <RevisaoDoImport
+        empresaId={id} data={data} relatorio={relatorio} onMudou={onMudou}
+        revisaoExterna={revisaoExterna} recarregarExterna={recarregarExterna} confirmar={confirmar}
+      />
     </CardContent></Card>
   )
 }
@@ -480,6 +458,10 @@ function ImportComplementos({ id, onImportado }: { id: string; onImportado: (dia
     totalLinhas: number; totalOcorrencias: number; comDestino: number; pendentes: number
     nosDoisRelatorios: number; jaImportado: boolean
     prateleira: { nomeSuitable: string; ocorrencias: number; destino: string; nomeFicha: string | null; tambemProduto: boolean }[]
+    /** ⭐ a MESMA lista da revisão pós-import — uma vitrine só (14/09) */
+    revisao: RevisaoDTO
+    /** ⭐ o plano na forma do modal ÚNICO da tela de produtos */
+    plano: { produtos: { nome: string; quantidade: number; alvoNome: string }[]; pendentes: { nome: string; quantidade: number }[]; fora: { nome: string; quantidade: number }[]; agregada: { nome: string; qtd: number; valor: number | null }[] } | null
     /** ⭐⭐ o que a baixa vai fazer — porque CONFIRMAR JÁ BAIXA (07/09) */
     baixa: { ocorrenciasQueBaixam: number; complementosComFicha: number; ehPeriodo: boolean; jaBaixado: boolean
       itens: { nome: string; qtd: number; saldoDepois: number }[] } | null
@@ -492,12 +474,13 @@ function ImportComplementos({ id, onImportado }: { id: string; onImportado: (dia
   // ⛔ PERÍODO semeia a prateleira e NUNCA vira dia de baixa (a linha fica marcada)
   const [modo, setModo] = useState<'DIA' | 'PERIODO'>('DIA')
   const [busy, setBusy] = useState(false)
+  const [modal, setModal] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
 
-  const chamar = async (confirmar: boolean, conteudo?: string) => {
+  const chamar = async (confirmar: boolean, conteudo?: string): Promise<{ revisao?: RevisaoDTO } | null> => {
     const corpo = conteudo ?? html
-    if (!data) { setErro('Escolha a data do relatório — o arquivo do Suitable não traz o período.'); return }
-    if (!corpo) { setErro('Escolha o arquivo do relatório de complementos.'); return }
+    if (!data) { setErro('Escolha a data do relatório — o arquivo do Suitable não traz o período.'); return null }
+    if (!corpo) { setErro('Escolha o arquivo do relatório de complementos.'); return null }
     setBusy(true); setErro(null)
     try {
       const r = await fetch(`/api/empresas/${id}/estoque/vendas/complementos`, {
@@ -505,7 +488,7 @@ function ImportComplementos({ id, onImportado }: { id: string; onImportado: (dia
         body: JSON.stringify({ data, html: corpo, confirmar, modo }),
       })
       const j = await r.json().catch(() => null)
-      if (!r.ok) { setErro(j?.erro ?? 'Não consegui ler o arquivo.'); return }
+      if (!r.ok) { setErro(j?.erro ?? 'Não consegui ler o arquivo.'); return null }
       if (confirmar) {
         setOk(j); setPrev(null)
         // ⭐⭐ O RESULTADO DO UPLOAD ABRE A REVISÃO (14/09) — o mesmo gesto do lado dos
@@ -513,7 +496,8 @@ function ImportComplementos({ id, onImportado }: { id: string; onImportado: (dia
         // prateleira — abrir "o que chegou no dia" ali prometeria um dia que não existe.
         if (modo !== 'PERIODO') onImportado(data)
       } else { setPrev(j); setOk(null) }
-    } catch { setErro('Não consegui falar com o servidor.') } finally { setBusy(false) }
+      return j
+    } catch { setErro('Não consegui falar com o servidor.'); return null } finally { setBusy(false) }
   }
 
   const onFile = (f: File) => {
@@ -553,24 +537,12 @@ function ImportComplementos({ id, onImportado }: { id: string; onImportado: (dia
         {erro && <p className="text-sm text-rose-600">{erro}</p>}
       </CardContent></Card>
 
+      {/* ⭐⭐⭐ UMA VITRINE (14/09) — o "relatório velho pós-upload" MORREU.
+          **O dono:** *"o relatório feio antigo que não edita nada"*. Ele e a revisão
+          mostravam o MESMO dado, e só um dos dois deixava agir. Agora o upload cai
+          direto na REVISÃO, com definir/apelidar/ignorar/desmapear na linha. */}
       {prev && (
-        <Card><CardContent className="space-y-3 p-4">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <div><p className="text-xs text-slate-500">Complementos</p><p className="text-lg font-semibold text-slate-900">{prev.totalLinhas}</p></div>
-            <div><p className="text-xs text-slate-500">Ocorrências</p><p className="text-lg font-semibold text-slate-900">{prev.totalOcorrencias}</p></div>
-            <div><p className="text-xs text-slate-500">Com destino</p><p className="text-lg font-semibold text-emerald-600">{prev.comDestino}</p></div>
-            <div><p className="text-xs text-slate-500">Sem destino</p><p className={`text-lg font-semibold ${prev.pendentes > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>{prev.pendentes}</p></div>
-          </div>
-
-          {/* ⚠️ pendente NÃO trava o import — mapear a cauda longa é decisão do dono, e o
-              nome só aparece na prateleira depois de importado. */}
-          {prev.pendentes > 0 && (
-            <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
-              {prev.pendentes} sem destino ainda — eles entram assim mesmo e ficam
-              <b> visíveis na prateleira</b> do Cardápio pra você apontar um a um. <b>Esses não baixam</b>;
-              quando você apontar a ficha, o dia acende <b>“precisa reprocessar”</b>.
-            </p>
-          )}
+        <>
           {prev.nosDoisRelatorios > 0 && (
             <p className="rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2 text-xs text-amber-900">
               <AlertTriangle className="mr-1 inline h-3.5 w-3.5" />
@@ -583,75 +555,42 @@ function ImportComplementos({ id, onImportado }: { id: string; onImportado: (dia
               Já existe import deste dia — confirmar <b>substitui</b> as linhas dele.
             </p>
           )}
-
-          <div className="max-h-72 overflow-auto rounded-lg border border-slate-200">
-            <table className="density-normal w-full">
-              <thead className="sticky top-0 bg-slate-50"><tr>
-                <th className="px-3 py-2 text-left text-[11px] uppercase tracking-wide text-slate-500">Complemento</th>
-                <th className="px-3 py-2 text-right text-[11px] uppercase tracking-wide text-slate-500">Ocorr.</th>
-                <th className="px-3 py-2 text-left text-[11px] uppercase tracking-wide text-slate-500">Destino</th>
-              </tr></thead>
-              <tbody>{prev.prateleira.map((l) => (
-                <tr key={l.nomeSuitable} className="border-b border-slate-50 last:border-0">
-                  <td className="px-3 py-0 text-[13px] text-slate-800">
-                    {l.nomeSuitable}
-                    {l.tambemProduto && <span className="ml-1.5 rounded bg-amber-100 px-1 text-[10px] text-amber-800">também produto</span>}
-                  </td>
-                  <td className="px-3 py-0 text-right text-[13px] tabular-nums text-slate-700">{l.ocorrencias}</td>
-                  <td className="px-3 py-0 text-[13px]">
-                    {l.destino === 'FICHA' ? <span className="text-emerald-700">{l.nomeFicha ?? 'ficha'}</span>
-                      : l.destino === 'IGNORAR' ? <span className="text-slate-400">ignorado</span>
-                        : <span className="text-amber-600">sem destino</span>}
-                  </td>
-                </tr>
-              ))}</tbody>
-            </table>
-          </div>
-
-          {/* ⭐⭐ O RESUMO DA BAIXA, ANTES DO CLIQUE (07/09) — um preview, um clique, tudo.
-              ⚠️ Os números saem do MESMO motor que a baixa executa; um cálculo "só pro
-              preview" faria a tela prometer um número e o ledger gravar outro. */}
-          {modo === 'PERIODO' ? (
+          {modo === 'PERIODO' && (
             <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
               <b>Período não baixa estoque</b> — ele entra pra montar a lista de sabores e priorizar por ocorrência.
             </p>
-          ) : prev.baixa ? (
-            <div className="rounded-lg border border-[#185FA5]/30 bg-[#185FA5]/[0.04] px-3 py-2.5">
-              <p className="text-xs font-semibold text-slate-800">
-                Confirmar já baixa o estoque: {prev.baixa.complementosComFicha} complemento(s) com ficha
-                → <b>{prev.baixa.ocorrenciasQueBaixam.toLocaleString('pt-BR')}</b> ocorrências
-                {prev.pendentes > 0 && <span className="font-normal text-slate-500"> · {prev.pendentes} sem destino só entram na prateleira</span>}
-              </p>
-              <ul className="mt-1.5 space-y-0.5 text-[12px] text-slate-600">
-                {prev.baixa.itens.map((i) => (
-                  <li key={i.nome} className="tabular-nums">
-                    − {i.qtd.toLocaleString('pt-BR')} {i.nome}
-                    {/* ⚠️ negativo AVISA e não impede: é "vendeu sem produzir", não erro */}
-                    <span className={i.saldoDepois < 0 ? 'font-semibold text-rose-600' : 'text-slate-400'}> · fica {i.saldoDepois.toLocaleString('pt-BR')}</span>
-                  </li>
-                ))}
-              </ul>
-              {prev.baixa.itens.some((i) => i.saldoDepois < 0) && (
-                <p className="mt-1.5 text-[11px] text-amber-800">⚠️ algum item fica <b>negativo</b>: é o sinal de <b>vendeu sem produzir</b> — a baixa segue.</p>
-              )}
-              {prev.baixa.jaBaixado && (
-                <p className="mt-1.5 text-[11px] text-amber-800">Este dia já foi baixado — confirmar <b>estorna e refaz</b>.</p>
-              )}
-            </div>
-          ) : (
-            <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-              Nenhum complemento deste dia tem ficha ainda — <b>nada baixa</b>. Eles entram na prateleira pra você apontar o destino.
-            </p>
           )}
+          <Card><CardContent className="p-3">
+            <RevisaoDoImport
+              empresaId={id} data={data} relatorio="COMPLEMENTOS"
+              revisaoExterna={prev.revisao}
+              recarregarExterna={async () => { const r = await chamar(false); return r?.revisao ?? null }}
+              confirmar={{
+                rotulo: busy ? 'processando…' : modo === 'PERIODO' ? `Confirmar import de ${prev.totalLinhas} complementos` : `Confirmar e baixar ${fmtDia(data)}`,
+                acao: () => setModal(true),
+                habilitado: !busy,
+                resumo: modo === 'PERIODO'
+                  ? 'período semeia a prateleira e não baixa estoque'
+                  : `${prev.revisao.contadores.vinculados} nome(s) baixam · ${prev.revisao.contadores.semVinculo} sem destino não baixam`,
+              }}
+            />
+          </CardContent></Card>
+        </>
+      )}
 
-          <button onClick={() => chamar(true)} disabled={busy}
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#185FA5] px-3 text-sm font-semibold text-white hover:bg-[#0F4A8C] disabled:opacity-50">
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-            {modo === 'PERIODO' || !prev.baixa
-              ? `Confirmar import de ${prev.totalLinhas} complementos`
-              : `Confirmar e baixar (${prev.baixa.ocorrenciasQueBaixam.toLocaleString('pt-BR')} ocorrências)`}
-          </button>
-        </CardContent></Card>
+      {/* ⭐⭐ O MESMO MODAL DE PRÉVIA DA TELA DE PRODUTOS (o modal único) — dois desenhos
+          da mesma pergunta ("o que acontece se eu confirmar?") divergem no 1º campo novo. */}
+      {modal && prev && (
+        <PlanoVendaModal
+          plano={prev.plano ?? { produtos: [], pendentes: [], fora: [], agregada: [] }}
+          data={data}
+          titulo={modo === 'PERIODO' ? 'Import do período' : 'Baixa dos complementos'}
+          subtitulo={prev.jaImportado ? 'este dia já foi importado — confirmar substitui as linhas dele' : undefined}
+          processando={busy}
+          erro={erro}
+          onConfirmar={() => { setModal(false); void chamar(true) }}
+          onClose={() => setModal(false)}
+        />
       )}
 
       {ok && (

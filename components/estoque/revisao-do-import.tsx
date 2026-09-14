@@ -12,7 +12,7 @@
 // destino embaixo do nome), no monitor vira tabela. **Mesmos dados, uma fonte.**
 
 import { useCallback, useEffect, useState } from 'react'
-import { Loader2, Check, AlertTriangle, Search, EyeOff } from 'lucide-react'
+import { Loader2, Check, AlertTriangle, Search, EyeOff, Undo2 } from 'lucide-react'
 import { SeletorDeDestino, type EscolhaDeDestino } from './seletor-de-destino'
 import { ancoraDaLinha, hrefDoEditor } from '@/lib/stock/vendas/volta-da-revisao'
 
@@ -42,14 +42,39 @@ const SELO = {
   IGNORADO: { cor: 'bg-slate-100 text-slate-500', icone: '⚪', texto: 'ignorado' },
 } as const
 
+/**
+ * ⭐⭐ O CONFIRMAR DELEGADO — o que permite UM botão por página (14/09).
+ *
+ * ⛔ Antes do import, quem grava é a tela (import + baixa num gesto só, a régua de 07/09);
+ * depois, quem grava é a própria revisão (reprocessar o dia). **São dois donos pro mesmo
+ * botão**, e por isso ele é parâmetro: dois botões na página seriam dois confirmares pro
+ * mesmo dado — foi exatamente o que o dono achou empilhado na tela.
+ */
+export interface ConfirmarDelegado {
+  rotulo: string
+  acao: () => void
+  habilitado: boolean
+  /** a frase do rodapé — o que vai acontecer, ou por que ainda não dá */
+  resumo: string
+}
+
 export function RevisaoDoImport({
-  empresaId, data, relatorio, onMudou,
+  empresaId, data, relatorio, onMudou, revisaoExterna, recarregarExterna, confirmar,
 }: {
   empresaId: string
   data: string
   relatorio: 'PRODUTOS' | 'COMPLEMENTOS'
   /** chamado depois de qualquer ajuste — a tela de trás recarrega */
   onMudou?: () => void
+  /**
+   * ⭐⭐ A MESMA LISTA, ANTES DO IMPORT. Quando vem preenchida, a revisão desenha ESTE DTO
+   * em vez de ler o dia no banco — porque antes de confirmar o dia **não está no banco**.
+   * Era essa a única razão de a tabela velha existir.
+   */
+  revisaoExterna?: RevisaoDTO | null
+  /** como recarregar a lista externa depois de um ajuste (re-lê o arquivo, não o banco) */
+  recarregarExterna?: () => Promise<RevisaoDTO | null>
+  confirmar?: ConfirmarDelegado
 }) {
   const [rev, setRev] = useState<RevisaoDTO | null>(null)
   const [erro, setErro] = useState<string | null>(null)
@@ -59,7 +84,16 @@ export function RevisaoDoImport({
   const [preview, setPreview] = useState<{ mudam: { nome: string; frase: string }[]; inalterados: number } | null>(null)
   const [gravando, setGravando] = useState(false)
 
+  const externo = revisaoExterna !== undefined
+
   const carregar = useCallback(async () => {
+    // ⭐ FONTE EXTERNA (pré-import): a lista vem do arquivo, não do dia gravado
+    if (externo) {
+      if (!recarregarExterna) { setRev(revisaoExterna ?? null); setErro(null); return }
+      const r = await recarregarExterna()
+      if (r) { setRev(r); setErro(null) }
+      return
+    }
     const r = await fetch(`/api/empresas/${empresaId}/estoque/vendas/revisao?data=${data}&relatorio=${relatorio}`)
     const j = await r.json().catch(() => null)
     // ⛔ ERRO NUNCA VIRA VAZIO: "nenhuma linha" é uma afirmação, e quando a carga falha o
@@ -67,7 +101,7 @@ export function RevisaoDoImport({
     if (!r.ok) { setErro(j?.erro ?? 'Não consegui carregar a revisão deste import.'); return }
     setErro(null)
     setRev(j.revisao)
-  }, [empresaId, data, relatorio])
+  }, [empresaId, data, relatorio, externo, revisaoExterna, recarregarExterna])
 
   useEffect(() => { void carregar() }, [carregar])
 
@@ -77,7 +111,9 @@ export function RevisaoDoImport({
    * vinculada e **não tinha onde aplicar**: o reprocessar morava na lista de dias, fora da
    * tela onde ele trabalhou.
    */
-  useEffect(() => { void verPreview() }, [empresaId, data, relatorio]) // eslint-disable-line react-hooks/exhaustive-deps
+  // ⚠️ só no modo DIA: antes do import não existe dia pra prever reprocesso, e quem manda
+  // no rodapé ali é o `confirmar` delegado da tela.
+  useEffect(() => { if (!externo) void verPreview() }, [empresaId, data, relatorio, externo]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * ⭐ A VOLTA DO EDITOR CAI NA LINHA. `?revisar=` reabre o dia (a tela de Vendas lê no 1º
@@ -103,16 +139,23 @@ export function RevisaoDoImport({
    * vivem nos dois relatórios e um mapa só faria cada um baixar duas vezes. A tradução
    * mora AQUI, num lugar; uniformizar as rotas quebraria um dos dois guards.
    */
-  async function aplicar(nome: string, corpo: { alvoTipo: 'FICHA' | 'IGNORAR' | 'REVENDA'; fichaId?: string; itemId?: string }) {
+  async function aplicar(nome: string, corpo: { alvoTipo: 'FICHA' | 'IGNORAR' | 'REVENDA' | 'DESMAPEAR'; fichaId?: string; itemId?: string }) {
     setOcupado(nome)
     try {
       const comp = relatorio === 'COMPLEMENTOS'
       const url = comp
         ? `/api/empresas/${empresaId}/estoque/vendas/complementos/mapear`
         : `/api/empresas/${empresaId}/estoque/vendas/mapear`
+      /**
+       * ⚠️⚠️ "DESFAZER" TEM NOME DIFERENTE NOS DOIS MAPAS — `LIMPAR` no de complementos,
+       * `REMOVER` no de produtos. **A tradução mora AQUI, num lugar**: uniformizar as rotas
+       * quebraria um dos dois guards (eles são opostos de propósito desde 02/09), e mandar
+       * o verbo errado devolveria 400 na cara do dono num botão que existe.
+       */
+      const verbo = corpo.alvoTipo === 'DESMAPEAR' ? (comp ? 'LIMPAR' : 'REMOVER') : corpo.alvoTipo
       const body = comp
-        ? { nomeSuitable: nome, destino: corpo.alvoTipo, fichaId: corpo.fichaId, itemId: corpo.itemId }
-        : { nomeSuitable: nome, alvoTipo: corpo.alvoTipo, fichaId: corpo.fichaId, itemId: corpo.itemId }
+        ? { nomeSuitable: nome, destino: verbo, fichaId: corpo.fichaId, itemId: corpo.itemId }
+        : { nomeSuitable: nome, alvoTipo: verbo, fichaId: corpo.fichaId, itemId: corpo.itemId }
       const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
       const j = await r.json().catch(() => null)
       if (!r.ok) { setErro(j?.erro ?? 'Não consegui gravar o destino.'); return }
@@ -244,19 +287,33 @@ export function RevisaoDoImport({
                       : { alvoTipo: 'REVENDA', itemId: e.itemId },
                   )}
                 />
-                {/* ⚠️⚠️ "IGNORAR" SÓ EXISTE NO MAPA DE COMPLEMENTOS — o de produtos aceita
-                    FICHA | REVENDA | REMOVER, e REMOVER **devolve a pendente**, que é outra
-                    coisa. Oferecer o botão aqui e mandar REMOVER faria o nome voltar pra
-                    fila em vez de sair dela: **um gesto que promete uma coisa e faz outra**.
-                    Fica registrado como o que falta no mapa de produtos, não disfarçado. */}
-                {relatorio === 'COMPLEMENTOS' && l.estado !== 'IGNORADO' && (
+                {/* ⭐⭐ IGNORAR NOS DOIS RELATÓRIOS (14/09) — era o que faltava no mapa de
+                    PRODUTOS, e o dono nomeou o custo: *"os ~30 doces/milkshakes/açaí que por
+                    minha decisão não controlam estoque param de engordar o contador de
+                    pendentes pra sempre"*. ⛔ **Pendente = "espera decisão", nunca "tudo que
+                    não baixa"** — contador que cobra o que já foi resolvido é como o dono
+                    aprende a não olhar o contador. */}
+                {l.estado !== 'IGNORADO' && (
                   <button
                     type="button" disabled={ocupado === l.nome}
                     onClick={() => aplicar(l.nome, { alvoTipo: 'IGNORAR' })}
                     className="inline-flex h-7 items-center gap-1 rounded-lg border border-slate-300 px-2 text-[11px] text-slate-500 hover:bg-slate-50 disabled:opacity-60"
-                    title="não baixa estoque"
+                    title="decisão sua: este nome não controla estoque"
                   >
                     <EyeOff className="h-3 w-3" /> ignorar
+                  </button>
+                )}
+                {/* ⭐ DESMAPEAR migrou da tabela velha ANTES de ela morrer (o guard da
+                    mudança de casa): **remoção sem realocação é perda**. ⚠️ E ele é outra
+                    coisa que ignorar — devolve o nome PRA FILA, não tira dela. */}
+                {l.estado !== 'SEM_VINCULO' && (
+                  <button
+                    type="button" disabled={ocupado === l.nome}
+                    onClick={() => aplicar(l.nome, { alvoTipo: 'DESMAPEAR' })}
+                    className="inline-flex h-7 items-center gap-1 rounded-lg border border-slate-300 px-2 text-[11px] text-slate-500 hover:bg-slate-50 disabled:opacity-60"
+                    title="desfaz a decisão: volta pra fila de pendentes"
+                  >
+                    <Undo2 className="h-3 w-3" /> desmapear
                   </button>
                 )}
               </div>
@@ -282,7 +339,9 @@ export function RevisaoDoImport({
           conforme o estado é botão que o dono aprende a não procurar. */}
       <div className="sticky bottom-0 -mx-3 flex flex-wrap items-center gap-2 border-t border-slate-200 bg-white/95 px-3 py-2 backdrop-blur">
         <div className="min-w-0 flex-1 text-[12px]">
-          {preview == null ? (
+          {confirmar ? (
+            <span className="text-slate-600">{confirmar.resumo}</span>
+          ) : preview == null ? (
             <span className="text-slate-400">conferindo o que mudou…</span>
           ) : preview.mudam.length === 0 ? (
             // ⚠️ "nada mudou" é um ESTADO, não um erro: o dia já está aplicado como está.
@@ -301,12 +360,13 @@ export function RevisaoDoImport({
           )}
         </div>
         <button
-          type="button" onClick={reprocessar}
-          disabled={gravando || !preview || preview.mudam.length === 0}
+          type="button"
+          onClick={confirmar ? confirmar.acao : reprocessar}
+          disabled={confirmar ? !confirmar.habilitado : (gravando || !preview || preview.mudam.length === 0)}
           className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-violet-600 px-3.5 text-[13px] font-semibold text-white hover:bg-violet-700 disabled:opacity-40"
         >
           {gravando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-          Confirmar e baixar {data.split('-').reverse().join('/')}
+          {confirmar ? confirmar.rotulo : `Confirmar e baixar ${data.split('-').reverse().join('/')}`}
         </button>
       </div>
     </div>

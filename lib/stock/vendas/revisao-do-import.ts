@@ -212,7 +212,31 @@ export async function montarRevisao(
         where: { companyId, data: faixaDoDia(data) },
         select: { nomeSuitable: true, quantidade: true },
       })).map((l) => ({ nome: l.nomeSuitable, ocorrencias: l.quantidade }))
+  return montarRevisaoDeLinhas(companyId, data, relatorio, linhasCruas, db)
+}
 
+/**
+ * ⭐⭐⭐ A MESMA REVISÃO, ANTES DO IMPORT (14/09/2026) — o que matou a segunda vitrine.
+ *
+ * **O dono:** *"depois do confirmar (e no upload), a página empilha: recibo + REVISÃO nova
+ * + o RELATÓRIO/TABELA VELHA. O mesmo dado em duas vitrines, dois confirmares — é a segunda
+ * derivação em forma de página."*
+ *
+ * ⛔ A tela velha existia porque a revisão só sabia ler do BANCO, e antes de confirmar o dia
+ * não está no banco. Separando as LINHAS do resto, a mesma função serve os dois momentos:
+ * o arquivo recém-lido e o dia já importado. **Uma lista, uma régua, um confirmar.**
+ *
+ * ⚠️ E isto NÃO ressuscita o "baixar" separado que morreu em 07/09: o upload continua
+ * **sem escrever nada** — o que a tela pré-import edita é o MAPA (configuração, vale pra
+ * sempre), e a gravação do dia segue num confirmar só.
+ */
+export async function montarRevisaoDeLinhas(
+  companyId: string,
+  data: string,
+  relatorio: Relatorio,
+  linhasCruas: readonly { nome: string; ocorrencias: number }[],
+  db: PrismaClient = defaultPrisma,
+): Promise<RevisaoDoImport> {
   const mapaRows = relatorio === 'COMPLEMENTOS'
     ? (await db.stockVendaComplementoMap.findMany({ where: { companyId }, select: { nomeSuitable: true, alvoTipo: true, fichaId: true, atualizadoEm: true } }))
         .map((m) => ({ nomeSuitable: m.nomeSuitable, alvoTipo: m.alvoTipo, fichaId: m.fichaId, itemId: null as string | null, decididoEm: m.atualizadoEm }))
