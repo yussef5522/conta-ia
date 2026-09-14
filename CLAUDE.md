@@ -677,6 +677,36 @@ CONTAS A PAGAR → 200 · "Pagas (sem conciliar)" ✓ · "Em aberto e pagas sem 
 
 **9.726 verdes · TS 0 · deploy `R4Dacd_GQpSrmdBb_Ie9n` 4/4.**
 
+### ⛔⛔⛔ O `?abrir=` NÃO ABRIA O CARD — E O DEFEITO ERA MEU, DO MESMO DIA (13/09)
+
+**O dono, preso há 3 dias nos mesmos 2 casos:** *"clico 'casar conta' no pendente PJBANK 183,65 → a tela abre e o card do PJBANK NÃO ESTÁ — só o Casper de sempre."*
+
+**⭐ MEDIDO COM OS DOIS IDS EXATOS DELE: a ROTA devolvia o card certo** (3 cards, o do PJBANK entre eles). **Quem o perdia era a TELA** — e a causa entrou no código **naquela mesma manhã**, comigo: eu dei `fornecedorId: ''` pro card da linha sem fornecedor reconhecido, e a fila usa o id do grupo como *"quem está aberto"*. Com `a && …`, **string vazia é FALSY**: o grupo abria e **se fechava no mesmo render**. O card estava na tela, sem nome e fechado.
+
+**⭐⭐ O CONSERTO É UMA FUNÇÃO COM DONO (`identidadeDoCard`):** id **não-vazio e único por linha** (cada pagamento não reconhecido é o próprio grupo — juntá-los faria o ‹ anterior / próxima › passear entre pagamentos sem relação) e **nome = o TEXTO DA LINHA**. ⚠️ Não é inventar identidade: é mostrar **o que o banco escreveu**. *Cabeçalho em branco é um card que o dono não consegue nomear nem procurar.* E a fila passou a comparar `a !== null`, nunca `a &&` — cinto sobre o suspensório.
+
+**⛔ O CONTRATO, escrito pelo dono:** *"`?abrir=<linha>` SEMPRE mostra o card daquela linha; se ela não tem candidata nenhuma, o card abre VAZIO dizendo 'nenhuma conta em aberto parece par desta linha · busca livre →'. **Deep-link que abre a tela sem o alvo é porta pintada na parede.**"*
+
+**⛔⛔ E A PORTA DO OUTRO LADO ESTAVA PIOR:** o `?conta=` (o *"procurar no extrato"* do Contas a Pagar) **não ia no fetch da tela nem existia na rota** — o dono clicava na conta e caía numa Conciliação sem card nenhum. Agora a rota resolve as **linhas candidatas daquela conta** pelo MESMO `LINHA_DISPONIVEL_WHERE` e a mesma janela; não é um segundo matcher, é o recorte que alimenta o card que já existe.
+
+**⛔⛔⛔ 2. A TABELA DE AGING SAIU DA TELA** — decisão do dono: *"meu negócio paga em DIAS, não carrego dívida de 90 dias — 100% sempre vai estar no 0-30. O card VENCIDAS já diz tudo, e clicar nele já filtra."* ⭐ **Móvel que mostra sempre a mesma coisa ocupa dobra e treina o dono a não olhar** (a régua que tirou o card de dupla contagem zerado da Conciliação). ⚠️ **O motor FICA** — `aging.ts` e a rota seguem vivos e testados pro dia em que ele vender com prazo longo. **Saiu a VITRINE, não a régua** — e o **fetch saiu junto**: dado que ninguém desenha é dado que alguém religa por descuido (a lição da conferência de saldo, 10/09).
+
+**⛔ 3. O "R$ R$" ERA CLASSE, NÃO UM CANTO:** **13 ocorrências em 7 arquivos**. `formatBRL` usa `Intl` com `style:'currency'` e **já traz o cifrão**. ⚠️ O `totals-bar.tsx` documentava o bug desde a travessia e ele **renasceu em 6 telas** — *comentário não é guard*. Agora um guard varre `app/` e `components/`, ignorando comentário em bloco.
+
+**PROVADO EM PROD, pelo caminho da tela (celular, sessão real):**
+```
+R$ 183,65 PJBANK  → card SIM · grupo "linha:cmtxpb1cd…" · nome "PJBANK PAGAMENTOS S.A."
+                    oferece 180,00 "oficina" → diferença R$ 3,65 · OFERECE
+R$ 111,21 MIXX    → card SIM · nome "MIXX PLAY - Pagamento"
+                    oferece 109,00 "radio"   → diferença R$ 2,21 · OFERECE
+?conta= isabel camera fria R$ 3.700,00 → 5 cards (a linha de R$ 3.700,00 entre eles)
+CONTAS A PAGAR: "Análise de inadimplência" SUMIU ✓ · "0-30" SUMIU ✓ · "R$ R$" SUMIU ✓
+```
+
+**⚠️⚠️ REGRA 11 — 4 DEFEITOS REPOSTOS E **TRÊS VIERAM VERDES**, e a lição é a mesma de sempre com outra roupa:** o guard montava os cards **à mão** e testava a `agruparDTO` — repondo o `fornecedorId: ''` **na rota**, ele seguia verde. ***Guard que pergunta pro fixture em vez de perguntar a quem decide não prova nada.*** A decisão saiu pra `identidadeDoCard` e os três passaram a morder (2 · 1 · 1 vermelhos). ⚠️ E o guard do cifrão me pegou de volta: a 1ª versão limpava comentário **linha a linha** e acusou o `{/* … */}` de duas linhas que **documenta o próprio defeito**.
+
+**9.800 verdes · TS 0 · deploy `S5aLScVIc8OkThnyEMcXm` 4/4.**
+
 ### ⛔⛔⛔ CONTAS A PAGAR — TRÊS STATUS, UMA RÉGUA, E A MAÇANETA À VISTA (13/09)
 
 **⛔⛔ 1. "VENCE EM BREVE" MORREU COMO STATUS.** Decisão do dono: *"'Vence em 2 dias' é informação da COLUNA de vencimento, nunca um status/filtro/stat próprio."* ⭐ E como status ele fazia duas coisas erradas: era **SUBCONJUNTO de "a pagar"**, então a soma dos 4 cards (e o total do rodapé) contava a mesma conta **2×**; e o `3` era um número escolhido a dedo virando ESTADO — a família do `TETO = 25` hardcoded e do `30` da janela do "a vencer". **A informação não se perdeu**: virou `textoDoPrazo`, colado na data (*"14/09 · em 2d"*). O tipo tem 3 valores **por construção** — um `warn` novo não compila.
