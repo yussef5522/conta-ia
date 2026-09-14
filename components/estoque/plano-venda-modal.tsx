@@ -14,12 +14,20 @@ export interface SanidadeVM {
   totalMedioDoDia: number
   vezesNoTotal: number
 }
-export interface PlanoVM { produtos: { nome: string }[]; pendentes: { nome: string; quantidade: number }[]; fora: { nome: string; quantidade: number }[]; agregada: { nome: string; qtd: number; valor: number | null }[]; sanidade?: SanidadeVM }
+export interface PlanoVM {
+  /** ⭐ cada NOME do PDV com o destino — é ele que responde "e a COCA COLA 2L?" */
+  produtos: { nome: string; quantidade: number; alvoNome: string }[]
+  pendentes: { nome: string; quantidade: number }[]
+  fora: { nome: string; quantidade: number }[]
+  agregada: { nome: string; qtd: number; valor: number | null }[]
+  sanidade?: SanidadeVM
+}
 const brl = (n: number | null) => (n == null ? '—' : n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }))
 const fmtDia = (d: string) => d.split('-').reverse().join('/')
 
 export function PlanoVendaModal({ plano, data, titulo, subtitulo, processando, erro, onConfirmar, onClose }: { plano: PlanoVM; data: string; titulo: string; subtitulo?: string; processando: boolean; erro: string | null; onConfirmar: (confirmouSanidade: boolean) => void; onClose: () => void }) {
   const [verLista, setVerLista] = useState(false)
+  const [verNomes, setVerNomes] = useState(false)
   // ⛔⛔ A PERGUNTA DA SANIDADE (11/09) — o import de 10/09 baixou 1.499 FANTA UVA porque
   // nada perguntou. Nasce DESMARCADO de propósito: confirmar tem que ser um gesto.
   const [cienteDaSanidade, setCiente] = useState(false)
@@ -32,7 +40,39 @@ export function PlanoVendaModal({ plano, data, titulo, subtitulo, processando, e
         <div className="mb-1 flex items-center justify-between"><h3 className="text-base font-semibold text-slate-900">{titulo} de {fmtDia(data)}</h3><button onClick={onClose}><X className="h-5 w-5 text-slate-400" /></button></div>
         {subtitulo && <p className="mb-3 text-xs text-slate-500">{subtitulo}</p>}
 
-        <p className="mb-1 mt-2 text-xs font-semibold text-slate-700">Vai baixar ({plano.agregada.length}):</p>
+        {/* ⭐⭐⭐ O RESUMO POR NOME (14/09/2026) — ordem do dono: *"o resumo do import
+            lista TUDO: baixou N × pendente M × ignorado K, POR NOME"*.
+            ⛔ A tela só mostrava o que sai do ESTOQUE (`agregada`, por item). Pra o dono a
+            pergunta é *"e a COCA COLA 2L?"*, e um xis vira 6 itens — o nome dele sumia no
+            meio. **Contar o efeito não responde a pergunta que ele fez.** */}
+        <div className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
+          <span className="rounded bg-emerald-50 px-1.5 py-0.5 font-semibold text-emerald-700">{plano.produtos.length} baixam</span>
+          <span className="rounded bg-amber-50 px-1.5 py-0.5 font-semibold text-amber-700">{plano.pendentes.length} sem mapa</span>
+          {plano.fora.length > 0 && <span className="rounded bg-slate-100 px-1.5 py-0.5 font-semibold text-slate-600">{plano.fora.length} fora</span>}
+        </div>
+
+        {plano.produtos.length > 0 && (
+          <div className="mt-2 rounded-lg border border-slate-200">
+            <button type="button" onClick={() => setVerNomes((v) => !v)} className="flex w-full items-center justify-between px-3 py-2 text-left text-xs text-slate-600 hover:bg-slate-50">
+              <span>{verNomes ? '▲ esconder' : '▼ ver'} o que cada nome do PDV baixou</span>
+            </button>
+            {verNomes && (
+              <table className="w-full border-t border-slate-100 text-xs">
+                <tbody>
+                  {plano.produtos.map((p) => (
+                    <tr key={p.nome} className="border-b border-slate-50 last:border-0">
+                      <td className="px-3 py-1.5 text-slate-700">{p.nome}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums text-slate-400">{p.quantidade}×</td>
+                      <td className="px-3 py-1.5 text-slate-500">→ {p.alvoNome}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+
+        <p className="mb-1 mt-2 text-xs font-semibold text-slate-700">Sai do estoque ({plano.agregada.length}):</p>
         {plano.agregada.length === 0 ? <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-500">Nada a baixar.</p> : (
           <div className="rounded-lg border border-slate-100">
             {plano.agregada.map((a) => <div key={a.nome} className="flex items-center justify-between border-b border-slate-50 px-3 py-2 text-sm last:border-0"><span className="text-slate-700">{a.nome}</span><span className="tabular-nums text-slate-600">−{a.qtd} · {brl(a.valor)}</span></div>)}
@@ -49,7 +89,13 @@ export function PlanoVendaModal({ plano, data, titulo, subtitulo, processando, e
             {verLista && <table className="w-full border-t border-slate-100 text-xs"><tbody>{plano.pendentes.map((p) => <tr key={p.nome} className="border-b border-slate-50 last:border-0"><td className="px-3 py-1.5 text-slate-600">{p.nome}</td><td className="px-3 py-1.5 text-right tabular-nums text-slate-400">{p.quantidade}</td></tr>)}</tbody></table>}
           </div>
         )}
-        {plano.fora.length > 0 && <p className="mt-2 flex items-center gap-1.5 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500"><Info className="h-3.5 w-3.5" /> {plano.fora.length} deixado(s) de fora (desmarcado)</p>}
+        {/* ⚠️ "fora" também LISTA: contar sem dizer quais faz o dono procurar no escuro */}
+        {plano.fora.length > 0 && (
+          <details className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+            <summary className="cursor-pointer">{plano.fora.length} deixado(s) de fora (desmarcado)</summary>
+            <div className="mt-1 space-y-0.5">{plano.fora.map((f) => <div key={f.nome}>{f.nome} <span className="tabular-nums text-slate-400">{f.quantidade}×</span></div>)}</div>
+          </details>
+        )}
 
         {perguntar && plano.sanidade && (
           <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
