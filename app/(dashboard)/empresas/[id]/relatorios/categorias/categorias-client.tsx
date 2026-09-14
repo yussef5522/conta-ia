@@ -147,7 +147,7 @@ export function CategoriasClient({ empresaId }: Props) {
                 Total {tipo === 'RECEITA' ? 'Receitas' : tipo === 'DESPESA' ? 'Despesas' : 'Movimentações'}
               </p>
               <p className="text-2xl font-semibold tabular-nums mt-0.5">
-                R$ {formatBRL(data.totalAmount)}
+                {formatBRL(data.totalAmount)}
               </p>
               <p className="text-xs text-muted-foreground mt-0.5">
                 {data.totalCount} lançamento{data.totalCount !== 1 ? 's' : ''}
@@ -261,7 +261,7 @@ function CategoriaBar({ row, maxValue, color, isOutras }: BarProps) {
       </div>
       <div className="w-32 shrink-0 text-right text-sm">
         <span className="tabular-nums font-medium">
-          R$ {formatBRL(row.amount)}
+          {formatBRL(row.amount)}
         </span>
         <span className="ml-2 text-xs text-muted-foreground tabular-nums">
           ({row.percent.toFixed(1)}%)

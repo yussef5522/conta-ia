@@ -102,7 +102,11 @@ export function FilaEscolherNaMao({
       for (const g of grupos) novo[g.fornecedorId] = Math.min(m[g.fornecedorId] ?? 0, g.linhas.length - 1)
       return novo
     })
-    setAberto((a) => (a && grupos.some((g) => g.fornecedorId === a) ? a : null))
+    // ⚠️⚠️ `a !== null`, NUNCA `a &&`: id de grupo pode ser string VAZIA, e falsy fechava
+    // o grupo no mesmo render em que ele abria — foi assim que o card do PJBANK "não
+    // existia" pro dono por três dias. O id agora nunca é vazio, e esta checagem é o
+    // cinto: comparar com `null` não depende de o id ser "verdadeiro".
+    setAberto((a) => (a !== null && grupos.some((g) => g.fornecedorId === a) ? a : null))
   }, [grupos])
 
   /**

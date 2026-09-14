@@ -98,7 +98,7 @@ export function MarcarPagaDialog({ open, conta, onClose, onDone }: Props) {
               <div className="rounded-md bg-muted/40 px-3 py-2 text-sm">
                 <p className="font-medium">{conta.description}</p>
                 <p className="text-xs text-muted-foreground mt-0.5 tabular-nums">
-                  R$ {formatBRL(conta.amount)}
+                  {formatBRL(conta.amount)}
                 </p>
               </div>
 

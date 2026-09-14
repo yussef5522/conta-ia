@@ -32,7 +32,7 @@ export function ImportedBanner({ imported, totalAmount, fileName }: Props) {
           {typeof totalAmount === 'number' && (
             <>
               {' '}
-              · R$ {formatBRL(totalAmount)}
+              · {formatBRL(totalAmount)}
             </>
           )}
         </p>

@@ -80,7 +80,6 @@ import {
 } from '@/lib/contas-pagar/use-edit-cell'
 import type { CategoryOption } from '@/components/contas-pagar/cells/CategoryComboboxCell'
 // Sprint 5.0.3.0c (c4) — Aging Dashboard
-import { AgingDashboard } from '@/components/contas-pagar/AgingDashboard'
 import {
   periodFromBucket,
   type AgingResult,
@@ -392,43 +391,15 @@ function ContasAPagarInner() {
       .catch(() => {})
   }, [empresaId])
 
-  // Sprint 5.0.3.0c (c4) — Aging Dashboard data
-  const [aging, setAging] = useState<AgingResult | null>(null)
-  const [agingLoading, setAgingLoading] = useState(false)
+  /**
+   * ⛔ O FETCH DO AGING SAIU JUNTO COM A TABELA (13/09) — e o payload também.
+   *
+   * ⚠️ **Dado que ninguém desenha é dado que alguém religa por descuido** (a lição da
+   * conferência de saldo que saiu da Conciliação em 10/09). A rota `/aging` continua viva
+   * e testada pro dia em que o aging voltar como opção; o que morreu foi a chamada — e
+   * com ela um round-trip a cada carregamento da tela.
+   */
 
-  const refetchAging = useCallback(() => {
-    if (!empresaId) {
-      setAging(null)
-      return
-    }
-    setAgingLoading(true)
-    void fetchJson<{ aging: typeof aging }>(`/api/empresas/${empresaId}/contas-pagar/aging`)
-      .then(({ ok, data, message, aborted }) => {
-        if (aborted) return
-        if (!ok) {
-          toast({ variant: 'destructive', title: 'Erro no aging', description: message ?? 'Não foi possível carregar o vencimento.' })
-          return
-        }
-        if (data?.aging) setAging(data.aging)
-      })
-      .finally(() => setAgingLoading(false))
-  }, [empresaId, toast])
-
-  useEffect(() => {
-    refetchAging()
-  }, [refetchAging])
-
-  function applyAgingFilter(bucketId: AgingBucketId) {
-    const { dataDe, dataAte } = periodFromBucket(bucketId)
-    setFilters({
-      q: filters.q,
-      status: 'PENDING',
-      vencidasOnly: false, // usa período em dueDate em vez de "só vencidas"
-      dataDe,
-      dataAte,
-    })
-    setPage(1)
-  }
 
   // Sprint 5.0.3.0c (c5) — Custom Saved Views CRUD
   const savedViewsApi = useSavedViews({
@@ -665,7 +636,6 @@ function ContasAPagarInner() {
       // Update OTIMISTA — só essa row, sem refetch
       updateRowOptimistic(row.id, { paymentDate: null, status: 'PENDING' })
       // Aging usa contagens/totais agregados; recalcula em paralelo (não bloqueia UI)
-      refetchAging()
     } catch {
       toast({ variant: 'destructive', title: 'Erro de rede' })
     }
@@ -761,7 +731,6 @@ function ContasAPagarInner() {
 
       // ── PASSO 6: refetchAging em paralelo (background) ──
       try {
-        refetchAging()
       } catch (e) {
         reportClientError({
           context: 'executeDelete:refetchAging',
@@ -818,7 +787,6 @@ function ContasAPagarInner() {
       setBulkDeleteOpen(false)
       await Promise.resolve()
       removeRowsOptimistic(targetIds)
-      refetchAging()
     } catch {
       toast({ variant: 'destructive', title: 'Erro de rede' })
     }
@@ -941,14 +909,14 @@ function ContasAPagarInner() {
         />
       )}
 
-      {/* Sprint 5.0.3.0c (c4) — Aging Dashboard (acima dos stats) */}
-      {empresaId && !loading && (
-        <AgingDashboard
-          result={aging}
-          loading={agingLoading}
-          onClickBucket={applyAgingFilter}
-        />
-      )}
+      {/* ⛔⛔⛔ A TABELA DE AGING SAIU DA TELA (13/09/2026) — decisão do dono.
+          *"Meu negócio paga em DIAS, não carrego dívida de 90 dias — 100% sempre vai estar
+          no 0-30. O card VENCIDAS (9 · 20.635,54) já diz tudo que preciso, e clicar nele já
+          filtra."* ⭐ **Móvel que mostra sempre a mesma coisa ocupa dobra e treina o dono a
+          não olhar** — a régua que tirou o card de dupla contagem zerado da Conciliação.
+          ⚠️ O MOTOR FICA: `lib/contas-pagar/aging.ts` e a rota seguem vivos e testados — o
+          dia em que ele vender com prazo longo, o aging volta como OPÇÃO. Saiu a VITRINE,
+          não a régua. */}
 
       {/* Sprint 5.0.3.1 (Bug #4) — Dropdown empresa removido. Seletor
           global em workspace-switcher (topo do app) é o canônico. */}
@@ -1141,7 +1109,6 @@ function ContasAPagarInner() {
                 ? { id: bankAcc.id, name: bankAcc.name, bankName: bankAcc.bankName ?? null }
                 : null,
             })
-            refetchAging()
           }
         }}
       />
@@ -1166,7 +1133,6 @@ function ContasAPagarInner() {
               paymentDate: paymentDateISO,
               status: 'RECONCILED',
             })
-            refetchAging()
           }
         }}
       />
@@ -1220,7 +1186,6 @@ function ContasAPagarInner() {
             ),
           )
           setSelection({})
-          refetchAging()
         }}
       />
 

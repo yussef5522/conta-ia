@@ -134,6 +134,8 @@ export interface CardDeEscolha {
 }
 
 import { tetoDoGestoManual } from './regua-da-diferenca'
+import { prisma as defaultPrisma } from '@/lib/db'
+import { LINHA_DISPONIVEL_WHERE } from './fila-de-conciliacao'
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
@@ -344,3 +346,81 @@ export function contaDoRodape(entrada: {
 
 /** ⚠️ o mínimo de notas pra o atalho fazer sentido (1 nota é o caminho 1:1, que já existe) */
 export const MIN_NOTAS = MIN_NOTAS_NO_LOTE
+
+/**
+ * ⭐⭐ AS LINHAS CANDIDATAS DE UMA CONTA A PAGAR (13/09/2026) — a porta do outro lado.
+ *
+ * O dono clica *"procurar no extrato"* numa conta e espera cair no card DELA. Antes, a
+ * tela só recebia a fila — e se a linha daquela conta não estivesse nela, ele caía numa
+ * Conciliação sem nada do que clicou: a mesma porta pintada na parede do `?abrir=`.
+ *
+ * ⛔ **Não é um segundo matcher.** Ele só recorta as linhas que PODEM ser aquele pagamento
+ * (mesmo sentido · janela de vencimento · dentro do teto do gesto manual) e entrega os ids
+ * pro card que já existe montar a escolha. Quem decide continua sendo o dono.
+ */
+export async function linhasCandidatasDaConta(
+  companyId: string,
+  contaId: string,
+  db: typeof defaultPrisma = defaultPrisma,
+): Promise<string[]> {
+  const conta = await db.transaction.findFirst({
+    where: { id: contaId },
+    select: { id: true, amount: true, dueDate: true, date: true, type: true, supplierId: true },
+  })
+  if (!conta) return []
+
+  const alvo = (conta.dueDate ?? conta.date).getTime()
+  const janela = JANELA_DIAS_DA_CONTA * 86_400_000
+  const valor = Math.abs(conta.amount)
+  const teto = valor + tetoDoGestoManual(valor)
+
+  const linhas = await db.transaction.findMany({
+    where: {
+      ...LINHA_DISPONIVEL_WHERE,
+      bankAccount: { companyId },
+      type: conta.type,
+      date: { gte: new Date(alvo - janela), lte: new Date(alvo + janela) },
+    },
+    select: { id: true, amount: true, date: true },
+  })
+
+  return linhas
+    // ⚠️ a linha tem que ALCANÇAR a conta: pagamento de R$ 20 não quita boleto de R$ 180.
+    // O limite de cima é o teto do gesto (juros); o de baixo, o valor da conta menos ele.
+    .filter((l) => Math.abs(l.amount) <= teto && Math.abs(l.amount) >= valor - tetoDoGestoManual(valor))
+    // ⭐ a mais próxima do valor primeiro — sem nome, é o único sinal que existe
+    .sort((a, b) => Math.abs(Math.abs(a.amount) - valor) - Math.abs(Math.abs(b.amount) - valor))
+    .slice(0, LIMITE_DE_CANDIDATAS)
+    .map((l) => l.id)
+}
+
+/** ⚠️ a mesma janela da fila — o pagamento acontece perto do vencimento */
+const JANELA_DIAS_DA_CONTA = 15
+/** ⚠️ teto de candidatas: o card é pra ESCOLHER, não pra ler uma lista de 50 */
+const LIMITE_DE_CANDIDATAS = 8
+
+/**
+ * ⭐⭐⭐ QUEM É O CARD quando o sistema NÃO reconheceu o fornecedor (13/09/2026).
+ *
+ * **O defeito que isto mata, e ele era meu:** eu devolvia `fornecedorId: ''` e
+ * `fornecedorNome: ''`. A fila usa o id do grupo como *"quem está aberto"* — e string
+ * vazia é **falsy**: o grupo do PJBANK abria e **se fechava no mesmo render**. O card
+ * estava na tela e o dono via *"só o Casper de sempre"*, três dias seguidos.
+ *
+ * ⭐ **Id não-vazio e único por linha** (cada pagamento não reconhecido é o próprio grupo
+ * — eles não têm nada em comum, e juntá-los faria o ‹ anterior / próxima › passear entre
+ * pagamentos sem relação). ⭐ **E o nome é o que o BANCO escreveu**: não é inventar
+ * identidade, é mostrar o texto da linha. Cabeçalho em branco é um card que o dono não
+ * consegue nomear nem procurar.
+ *
+ * ⚠️ Mora aqui, e não na rota, pra ser TESTÁVEL: a REGRA 11 me pegou com o guard verde
+ * porque ele montava o card à mão em vez de perguntar a quem decide.
+ */
+export function identidadeDoCard(
+  fornecedorId: string | null,
+  fornecedorNome: string | null | undefined,
+  linha: { id: string; descricao: string },
+): { fornecedorId: string; fornecedorNome: string } {
+  if (fornecedorId) return { fornecedorId, fornecedorNome: (fornecedorNome ?? '').trim() || linha.descricao.trim() }
+  return { fornecedorId: `linha:${linha.id}`, fornecedorNome: linha.descricao.trim() }
+}

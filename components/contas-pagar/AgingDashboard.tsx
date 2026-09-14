@@ -94,7 +94,7 @@ export function AgingDashboard({
             <span className="text-xs text-muted-foreground ml-1">
               ({result!.total.count}{' '}
               {result!.total.count === 1 ? 'conta' : 'contas'} ·{' '}
-              R$ {formatBRL(result!.total.amount)})
+              {formatBRL(result!.total.amount)})
             </span>
           )}
         </button>
@@ -143,7 +143,7 @@ export function AgingDashboard({
                         <div
                           className={`text-sm font-medium tabular-nums ${cores.text}`}
                         >
-                          R$ {formatBRL(bucket.amount)}
+                          {formatBRL(bucket.amount)}
                         </div>
                         <div className="text-[10px] text-muted-foreground">
                           {bucket.count}{' '}
@@ -157,7 +157,7 @@ export function AgingDashboard({
                 <div className="border-t pt-2 px-3 flex items-center justify-between text-sm">
                   <span className="font-medium">Total</span>
                   <span className="font-medium tabular-nums">
-                    R$ {formatBRL(result!.total.amount)}
+                    {formatBRL(result!.total.amount)}
                   </span>
                 </div>
               </div>
@@ -209,7 +209,7 @@ export function AgingDashboard({
                           <td
                             className={`px-2 py-1.5 text-right tabular-nums ${cores.text}`}
                           >
-                            R$ {formatBRL(bucket.amount)}
+                            {formatBRL(bucket.amount)}
                           </td>
                           <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground text-xs">
                             {bucket.percent.toFixed(1)}%
@@ -238,7 +238,7 @@ export function AgingDashboard({
                         {result!.total.count}
                       </td>
                       <td className="px-2 py-1.5 text-right tabular-nums">
-                        R$ {formatBRL(result!.total.amount)}
+                        {formatBRL(result!.total.amount)}
                       </td>
                       <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground text-xs">
                         100%

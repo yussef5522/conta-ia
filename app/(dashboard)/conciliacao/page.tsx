@@ -128,7 +128,11 @@ function ConciliacaoInner() {
           // ⭐ `abrir` carrega a linha que veio de outra tela mesmo que a fila não a
           // liste (fornecedor com UMA nota aberta não entra no motor de lote)
           `/api/conciliacao/escolher-na-mao?empresaId=${empresaId}`
-          + (searchParams.get('abrir') ? `&abrir=${searchParams.get('abrir')}` : ''),
+          + (searchParams.get('abrir') ? `&abrir=${searchParams.get('abrir')}` : '')
+          // ⛔ `conta=` (veio do "procurar no extrato" do Contas a Pagar) NÃO ia no fetch:
+          // a tela recebia só a fila e, se a linha daquela conta não estivesse nela, o
+          // dono caía na Conciliação sem o card — a MESMA porta pintada do `abrir=`.
+          + (searchParams.get('conta') ? `&conta=${searchParams.get('conta')}` : ''),
         ),
         fetchJson<{ corte: string | null }>(`/api/conciliacao/corte?empresaId=${empresaId}`),
       ])

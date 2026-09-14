@@ -424,7 +424,7 @@ export function PayableTable({
         }
         return (
           <span className={`block text-right tabular-nums font-medium ${amountColor}`}>
-            − R$ {formatBRL(r.amount)}
+            − {formatBRL(r.amount)}
           </span>
         )
       },

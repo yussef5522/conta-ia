@@ -221,7 +221,7 @@ export function DetectarTransferenciasModal({
                         </span>
                       )}
                       <span className="text-xs text-muted-foreground tabular-nums ml-auto">
-                        R$ {formatBRL(c.debit.amount)}
+                        {formatBRL(c.debit.amount)}
                       </span>
                     </div>
 

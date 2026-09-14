@@ -580,7 +580,7 @@ export function ImportExcelClient({ empresaId }: Props) {
                       {r.pagamento ? formatDate(r.pagamento) : '—'}
                     </td>
                     <td className="px-3 py-2 text-right font-mono tabular-nums">
-                      R$ {formatBRL(r.valor)}
+                      {formatBRL(r.valor)}
                     </td>
                     <td className="px-3 py-2">
                       {r.paymentStatus === 'PAID' ? (
@@ -1067,7 +1067,7 @@ function PendingRowsList({
                 </div>
                 <div className="text-right tabular-nums shrink-0">
                   <p className="text-sm font-mono font-semibold">
-                    R$ {formatBRL(r.valor)}
+                    {formatBRL(r.valor)}
                   </p>
                   {r.vencimento && (
                     <p className="text-[10px] text-muted-foreground">

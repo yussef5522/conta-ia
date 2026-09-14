@@ -323,14 +323,21 @@ export function EscolherNaMaoCard({ empresaId, card, onConciliado, onFechar, nav
             {semForn.map((n) => <Nota key={n.id} n={n} />)}
           </>
         )}
+        {/* ⛔⛔ O CARD VAZIO DIZ O QUE HOUVE — contrato do `?abrir=` (13/09).
+            *"Se a linha não tem candidata nenhuma, o card abre VAZIO dizendo 'nenhuma
+            conta em aberto parece par desta linha · busca livre →'."* Tela sem o alvo é
+            porta pintada na parede; card vazio COM a saída é uma resposta. */}
         {todas.length === 0 && (
-          <p className="px-[16px] py-[12px] text-[13.5px]" style={{ color: MOCK.sub }}>
-            {card.fornecedorNome
-              ? 'Este fornecedor não tem nota em aberto — a linha não é pagamento de conta nossa.'
-              // ⚠️ diz o ESTADO REAL que impede, em vez de tela vazia: o dono abriu a porta
-              // de propósito e merece saber por que não há nada atrás dela.
-              : 'Não reconheci o fornecedor desta linha e não há conta em aberto sem fornecedor — nada pra casar aqui.'}
-          </p>
+          <div className="px-[16px] py-[12px] text-[13.5px]" style={{ color: MOCK.sub }}>
+            <p>Nenhuma conta em aberto parece par desta linha.</p>
+            <a
+              href={`/conciliacao?empresaId=${empresaId}&busca=${encodeURIComponent(card.linha.descricao)}`}
+              className="mt-1 inline-block font-semibold"
+              style={{ color: MOCK.roxo }}
+            >
+              busca livre →
+            </a>
+          </div>
         )}
       </div>
 

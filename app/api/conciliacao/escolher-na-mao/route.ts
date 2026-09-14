@@ -22,7 +22,7 @@ import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import { fornecedoresDaEmpresa, lotesDaFila } from '@/lib/conciliacao/fila-de-conciliacao'
 import { reconhecerFornecedorComIrmaos, canonizadorDeFornecedor } from '@/lib/conciliacao/sugestao-de-vinculo'
-import { montarCardDeEscolha } from '@/lib/conciliacao/escolher-na-mao'
+import { montarCardDeEscolha, linhasCandidatasDaConta, identidadeDoCard } from '@/lib/conciliacao/escolher-na-mao'
 import { jaPagoPorConta } from '@/lib/conciliacao/aplicar-baixa-parcial'
 
 const querySchema = z.object({
@@ -38,6 +38,15 @@ const querySchema = z.object({
    * ⚠️ É o MESMO `montarCardDeEscolha` — o card continua morando num lugar só.
    */
   abrir: z.string().cuid().optional(),
+  /**
+   * ⭐⭐ A PORTA DO OUTRO LADO (13/09): veio do "procurar no extrato" de uma CONTA A PAGAR.
+   *
+   * ⚠️ Aqui o alvo não é uma linha — é uma NOTA. A rota resolve as linhas candidatas
+   * dela (mesmo fornecedor, ou as compatíveis por valor quando não há fornecedor) e as
+   * trata como se tivessem vindo pelo `abrir=`. Sem isto, o dono clicava na conta da
+   * `isabel camera fria` e caía numa tela sem card nenhum dela.
+   */
+  conta: z.string().cuid().optional(),
 })
 
 export async function GET(request: NextRequest) {
@@ -48,9 +57,21 @@ export async function GET(request: NextRequest) {
     ctx.requirePermission('transaction.view')
 
     const fila = await lotesDaFila(data.empresaId, prisma)
+
+    /**
+     * ⭐ `conta=` → as LINHAS candidatas daquela conta a pagar.
+     *
+     * ⛔ Usa o MESMO `LINHA_DISPONIVEL_WHERE` da fila (dinheiro que já tem dono não pode
+     * ser oferecido de novo) e a MESMA janela de ±15 dias, com a régua de valor do gesto
+     * manual. **Não é um segundo matcher** — é o recorte que traz as candidatas pra o card
+     * que já existe montar a escolha.
+     */
+    const porConta = data.conta ? await linhasCandidatasDaConta(data.empresaId, data.conta) : []
+
     const ids = [...new Set([
       ...fila.naoFecham.map((x) => x.extratoId),
       ...(data.abrir ? [data.abrir] : []),
+      ...porConta,
     ])]
     if (!ids.length) return NextResponse.json({ cards: [] })
 
@@ -111,7 +132,7 @@ export async function GET(request: NextRequest) {
      * que a régua de 09/09 recusou (9% de valores aleatórios fecham). Aqui o dono APONTOU
      * a linha; a resposta honesta é mostrar o que existe, sem marcar nada.
      */
-    const semFornecedor = data.abrir
+    const semFornecedor = data.abrir || data.conta
       ? await prisma.transaction.findMany({
           where: {
             supplierId: null,
@@ -144,11 +165,22 @@ export async function GET(request: NextRequest) {
        * dono abriu de propósito não pode devolver tela vazia — **abrir a porta e não ter
        * nada atrás é a mesma "porta sem maçaneta" de cabeça pra baixo.**
        */
-      const semFornDaLinha = l.id === data.abrir ? semFornecedor : []
-      if (!fid && !semFornDaLinha.length) return []
+      const semFornDaLinha = (l.id === data.abrir || porConta.includes(l.id)) ? semFornecedor : []
+      /**
+       * ⛔⛔⛔ O CONTRATO DO `?abrir=` (13/09/2026) — ordem do dono:
+       * *"`?abrir=<linha>` SEMPRE mostra o card daquela linha no topo; se ela não tem
+       * candidata nenhuma, o card abre VAZIO dizendo isso. **Deep-link que abre a tela sem
+       * o alvo é porta pintada na parede.**"*
+       *
+       * ⚠️ Era aqui que a porta morria em silêncio: sem fornecedor E sem conta manual
+       * compatível, a linha simplesmente não virava card — e o dono, vindo dos Pendentes,
+       * caía numa tela com "o Casper de sempre" e nada do que ele clicou.
+       */
+      const veioPelaPorta = l.id === data.abrir || porConta.includes(l.id)
+      if (!fid && !semFornDaLinha.length && !veioPelaPorta) return []
       const dele = new Set(fid ? (irmaosDe.get(fid) ?? [fid]) : [])
       const doForn = fid ? notasTodas.filter((n) => n.supplierId && dele.has(n.supplierId)) : []
-      if (!doForn.length && !semFornDaLinha.length) return []
+      if (!doForn.length && !semFornDaLinha.length && !veioPelaPorta) return []
       const forn = fid ? fornecedores.find((f) => f.id === fid) : null
       return [montarCardDeEscolha({
         linha: {
@@ -159,10 +191,7 @@ export async function GET(request: NextRequest) {
           conta: l.bankAccount?.name?.trim() ?? null,
           categoria: l.category?.name ?? null,
         },
-        fornecedorId: fid ?? '',
-        // ⚠️ nome vazio quando o sistema NÃO reconheceu: inventar um nome aqui faria a
-        // tela afirmar uma identidade que ninguém provou.
-        fornecedorNome: forn?.nomeFantasia ?? forn?.razaoSocial ?? '',
+        ...identidadeDoCard(fid ?? null, forn?.nomeFantasia ?? forn?.razaoSocial ?? null, { id: l.id, descricao: l.description }),
         notas: doForn.map((n) => ({
           id: n.id,
           descricao: n.description,
