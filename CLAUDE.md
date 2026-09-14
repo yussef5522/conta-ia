@@ -721,6 +721,49 @@ TELA → 200 · "revisar" ✓ · "sem destino" ✓ · "parece" ✓ · o aviso do
 
 📋 **FICA PRO DONO (o gesto é dele):** os **4 combos** (`… MAIS MINI FRITAS`, 28 ocorrências) precisam de ficha composta (lata + porção mini fritas) — o botão *"definir"* da linha leva ao cardápio com o nome já carregado. E **"ignorar" só aparece nos complementos**: o mapa de produtos aceita `FICHA | REVENDA | REMOVER`, e REMOVER **devolve a pendente**, que é outra coisa — oferecer ali seria um gesto que promete uma coisa e faz outra. Registrado como o que falta naquele mapa, não disfarçado.
 
+### ⛔⛔⛔ "O DEFINIR FICHA ME EXPULSA DA TELA" — PARIDADE COM PRODUTOS (14/09)
+
+**O dono, na revisão de complementos:** *"clico em definir → navega pro cardápio e eu SAIO da revisão — perco o dia, a lista e o fio. A referência é a NOSSA tela de PRODUTOS, que está certa: clico no destino → seletor abre ALI → escolho → sigo na mesma tela."*
+
+**A EXPULSÃO ERA LITERAL:** o "definir" era um `<a href>` pro cardápio. E **o gesto se repete ~80 vezes num dia de import** — sair e voltar 80 vezes não é fluxo, é castigo. ⚠️ É a "porta sem maçaneta" **do avesso**: o gesto existe, o caminho de VOLTA é que não.
+
+**⭐⭐ 1. O SELETOR VIROU UM SÓ (`seletor-de-destino.tsx`), pros dois relatórios e pras duas telas.** ⛔ Dois seletores divergiriam no primeiro destino novo, e o dono veria opções diferentes pra mesma pergunta em duas telas do mesmo módulo. ⚠️ **E a referência dele ganhou o que faltava:** o `<select>` nativo da tela de produtos **não tinha busca**, e a lista já passa de **150 nomes** — agora busca pela régua da casa (palavra em qualquer ordem, sem caixa e sem acento, 08/09) e é dispensável com ESC/clique-fora (28/08).
+
+**⛔ UNIFICAR NÃO PODE TIRAR CAPACIDADE:** o `<select>` velho oferecia **"desmapear"** (que DEVOLVE o nome pra fila, diferente de ignorar) e **"criar item de revenda"**. Os dois sobreviveram — senão o fix seria uma regressão com cara de melhoria. O guard trava os dois.
+
+**⭐⭐ 2. A FICHA SIMPLES NASCE DO GESTO — e a régua não afrouxou.** O caso `FRUKI LATA` comum: escolher um item do estoque cria a ficha ×1 e mapeia, sem sair. ⛔ **`REVENDA` continua sendo ATALHO, não um quarto destino** — por baixo vira `FICHA`, pelo **MESMO** `garantirFichaDeRevenda` que o mapa de produtos usa desde 09/09. Ele saiu de dentro do `venda-map.ts` porque agora serve os dois mapas: **REGRA 4** — copiar as 20 linhas faria duas implementações da mesma decisão.
+
+⚠️ **O QUE NÃO VEIO JUNTO: os GUARDS de destino.** `venda-map` recusa INTERMEDIARIO, `complemento-map` ACEITA — são **opostos de propósito desde 02/09** e unificá-los quebraria um dos dois. O que é comum é só a **construção** da ficha. E `destinosPossiveis` decide **o que a tela OFERECE, nunca o que o mapa ACEITA**: se divergirem, quem ganha é o guard da fonte.
+
+**⭐⭐ 3. IDA COM VOLTA — o combo sai e VOLTA pro mesmo dia e pra mesma linha.** `?revisar=<dia>&relatorio=<R>#rev-<nome>`, lido no **1º render** (como o `?aba=`): em `useEffect` a tela renderizaria sem a revisão antes de abri-la, e *"voltar e não ver nada"* é indistinguível de *"não gravou"*. ⚠️ A régua mora em `lib/stock/vendas/volta-da-revisao.ts`, **nunca no componente** — sem jsdom, regra dentro de JSX é regra que ninguém prova (foi assim que o prefill do cardápio quebrou 2× em 28/08). O `voltar` só aceita **caminho interno**.
+
+**⭐⭐ 4. O ARREMATE — CONFIRMAR NO PÉ DA TELA ONDE EU TRABALHEI.** ⛔ Antes o botão só existia **depois** de um ajuste (o preview só nascia ali), então voltar do editor com a linha vinculada deixava o dono **sem onde aplicar** — e o reprocessar morava na lista de dias, fora da tela. Agora o preview carrega junto com a tela e o rodapé é **permanente**: *botão que aparece e some conforme o estado é botão que se aprende a não procurar.* ⚠️ E ele **não grava sem preview**: mudança de vínculo é escrita em estoque.
+
+**PROVADO EM PROD, NOS DOIS VIEWPORTS (REGRA 12):**
+```
+/estoque/vendas   CELULAR 200 · 880 KB      DESKTOP 200 · 880 KB
+  ✓ seletor inline  ✓ 2 abas  ✓ busca  ✓ criar-item inline
+  ✓ ida-com-volta do combo  ✓ Confirmar no pé  ✓ desmapear
+  ✓ o <select> velho morreu
+
+DESTINOS (a rota real)  PRODUTOS 80 receitas · 31 itens
+                        COMPLEMENTOS 114 receitas · 31 itens
+  ⭐ COCA LATA → "COCA COLA LATA 350ML ×1"   (o destino DIZ o que desconta)
+
+IDA COM VOLTA  voltar: /…/vendas?aba=complementos&revisar=2026-09-13
+                       &relatorio=COMPLEMENTOS#rev-coca-lata-mais-mini-fritas
+               interno ✓ · responde 200
+```
+**REGRA 11 — 4 defeitos repostos:** o "definir" de volta a link (**3 vermelhos**) · o `?revisar=` fora do estado inicial (**1**) · a âncora da linha sumindo (**1**) · o rodapé de volta atrás do preview (**1**).
+
+**⚠️⚠️ E O DETECTOR DO RODAPÉ NÃO MORDEU NA 1ª VERSÃO:** ele era um regex com **janela de 400 caracteres** entre o gate e o botão — e no arquivo real há o bloco inteiro do preview no meio. **Janela de distância já produziu falso vermelho e falso verde nesta casa** (o rastro em 12/09, o menu do PF em 13/09). O que morde é olhar o que vem **imediatamente antes** da tag: estrutura, não distância.
+
+**⚠️ E O GUARD DE 09/09 ("rótulo que some não é rótulo") ME PEGOU — com razão parcial.** Ele acusou o campo de busca do seletor porque a exceção dele casava `placeholder="buscar…"` **com aspas literais**, e o meu é `placeholder={cond ? 'buscar item…' : 'buscar receita…'}`. **A pergunta é "é um campo de busca?", não "com que aspas foi escrito"** — a exceção foi corrigida na forma, não afrouxada: campo de DADO sem rótulo continua vermelho (medido).
+
+**9.943 verdes · TS 0 · deploy `F02MS2AbYIC97UGbM0Ul6` 4/4.**
+
+⚠️ **OS DOIS CLIQUES DO RED-THEN-GREEN SÃO DELE, e de propósito:** mapear `COCA COLA LATA` e criar a ficha do `FRUKI LATA` comum é **decisão do dono** (a régua desde 22/08) — o sistema oferece, ele aponta. O caminho de escrita está provado ponta a ponta nos 9 testes de integração contra banco real; o que falta é o dedo dele. ⚠️ E pro `FRUKI LATA` comum **não existe item no estoque** (só a `FRUKI GUARANA 2L` e a lata ZERO): ali o caminho é o **"criar no estoque"** do próprio seletor — o item nasce com **saldo ZERO** e entra na fila de contagem, porque saldo não se chuta.
+
 ### ⛔⛔⛔ A REVISÃO SÓ EXISTIA POR ROTA DIRETA — 8ª VOLTA DA "PORTA SEM MAÇANETA" (14/09)
 
 **O dono, com o deploy 4/4 verde e a tela provada:** *"NAVEGANDO EM PROD (cache limpo, celular e desktop) eu NÃO ACHO a tela: subo arquivo, vejo o resumo velho, e nenhum botão/link leva à revisão."*
