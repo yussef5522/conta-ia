@@ -30,7 +30,18 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
   // ⭐ a aba pode vir da URL (08/09/2026): o histórico do item linka a baixa de venda pra
   // `?aba=processados#dia-YYYY-MM-DD`, e cair na aba "Importar dia" seria não chegar na fonte.
   // ⚠️ lido no 1º render (não em effect) pra a aba não PISCAR de importar → processados.
-  const [revisao, setRevisao] = useState<{ data: string; relatorio: 'PRODUTOS' | 'COMPLEMENTOS' } | null>(null)
+  // ⛔⛔⛔ 8ª VOLTA DA "PORTA SEM MAÇANETA" (14/09) — a revisão existia e o dono NÃO ACHAVA.
+  // Ela só abria por um link `text-xs hover:underline` na ÚLTIMA coluna da 4ª aba — e
+  // `hover` não existe no celular, que é onde ele importa. E o caminho real dele (subir o
+  // arquivo → confirmar) desembocava no RESUMO VELHO, sem nenhum caminho pra revisão.
+  //
+  // ⭐ A RÉGUA: a revisão nasce ONDE A PERGUNTA NASCE — (a) o RESULTADO do upload ABRE ela
+  // e (b) todo import da lista tem "revisar" À VISTA, com borda e ícone (nunca só hover).
+  //
+  // ⚠️ `origem` diz em qual SLOT o painel renderiza: aberto pelo upload, ele aparece
+  // colado no resultado; aberto pela lista, embaixo da lista. Um slot só faria o painel
+  // nascer longe do dedo que clicou — o defeito de 10/09, de novo.
+  const [revisao, setRevisao] = useState<{ data: string; relatorio: 'PRODUTOS' | 'COMPLEMENTOS'; origem: 'IMPORT' | 'LISTA' } | null>(null)
   const [aba, setAba] = useState<'importar' | 'complementos' | 'manual' | 'processados'>(() => {
     if (typeof window === 'undefined') return 'importar'
     const q = new URLSearchParams(window.location.search).get('aba')
@@ -54,6 +65,9 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
   const [recibo, setRecibo] = useState<Recibo | null>(null)
   const [processando, setProcessando] = useState(false)
   const [processados, setProcessados] = useState<Dia[]>([])
+  // ⚠️ ajustar um vínculo na revisão de complementos muda o ESTADO do dia ("precisa
+  // reprocessar") — a lista tem que recarregar, senão a tela fica contando o mundo velho.
+  const [recargaComp, setRecargaComp] = useState(0)
   const fileRef = useRef<HTMLInputElement>(null)
   const dateRef = useRef<HTMLInputElement>(null)
 
@@ -120,7 +134,15 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
         : { html, data, confirmar: true, incluir: marcados, confirmouSanidade }
       const r = await fetch(`/api/empresas/${id}/estoque/vendas/processar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       const j = await r.json().catch(() => null)
-      if (r.ok) { setRecibo(j.recibo); setPlano(null); setModoReprocesso(null); carregarProcessados(); if (modoReprocesso) setAba('processados') }
+      if (r.ok) {
+        setRecibo(j.recibo); setPlano(null); setModoReprocesso(null); carregarProcessados()
+        // ⭐⭐ O RESULTADO DO UPLOAD **ABRE A REVISÃO** — não o resumo velho. Os 3 números
+        // do recibo dizem "quanto"; a pergunta que o dono tem na mão é "o que chegou e
+        // pra onde foi", e ela nasce aqui.
+        const dia = j.recibo?.data ?? modoReprocesso ?? data
+        if (dia) setRevisao({ data: dia, relatorio: 'PRODUTOS', origem: modoReprocesso ? 'LISTA' : 'IMPORT' })
+        if (modoReprocesso) setAba('processados')
+      }
       else setErroModal(j?.erro ?? 'Não consegui processar.')
     } catch { setErroModal('Falha de conexão.') } finally { setProcessando(false) }
   }
@@ -186,8 +208,12 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
                         dia, com o destino de cada nome e o ajuste inline. ⛔ Antes o dono
                         via "N pendentes" e tinha que sair da tela pra resolver: o número
                         sem o caminho é o mesmo defeito da fila sem lista. */}
-                    <button onClick={() => setRevisao(revisao?.data === d.data ? null : { data: d.data, relatorio: 'PRODUTOS' })} className="mr-2 inline-flex items-center gap-1 text-xs font-medium text-violet-700 hover:underline">
-                      <ListChecks className="h-3 w-3" /> {revisao?.data === d.data ? 'fechar' : 'revisar'}
+                    {/* ⛔ BOTÃO DE VERDADE, não texto que só sublinha no hover: no celular
+                        não existe hover, e foi exatamente assim que este caminho ficou
+                        invisível (a lição do "converter a unidade", 30/08). */}
+                    <button onClick={() => setRevisao(revisao?.data === d.data && revisao.origem === 'LISTA' ? null : { data: d.data, relatorio: 'PRODUTOS', origem: 'LISTA' })}
+                      className="mr-2 inline-flex h-7 items-center gap-1 rounded-lg border border-violet-300 bg-violet-50 px-2 text-xs font-medium text-violet-700 hover:bg-violet-100">
+                      <ListChecks className="h-3 w-3" /> {revisao?.data === d.data && revisao.origem === 'LISTA' ? 'fechar' : 'revisar'}
                     </button>
                     <button onClick={() => reprocessar(d.data)} className="inline-flex items-center gap-1 text-xs text-[#185FA5] hover:underline"><RefreshCw className="h-3 w-3" /> reprocessar</button>
                   </td>
@@ -196,22 +222,21 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
             </table>
           )}
         </CardContent></Card>
-        {revisao && (
-          <Card className="mt-3"><CardContent className="p-3">
-            <p className="mb-2 text-[13px] font-semibold text-slate-800">
-              O que chegou em {fmtDia(revisao.data)} — e pra onde foi
-            </p>
-            <RevisaoDoImport
-              empresaId={id}
-              data={revisao.data}
-              relatorio={revisao.relatorio}
-              onMudou={carregarProcessados}
-            />
-          </CardContent></Card>
+        {revisao?.origem === 'LISTA' && revisao.relatorio === 'PRODUTOS' && (
+          <BlocoRevisao id={id} data={revisao.data} relatorio="PRODUTOS" onMudou={carregarProcessados} onFechar={() => setRevisao(null)} />
         )}
         </>
       ) : aba === 'complementos' ? (
-        <><ImportComplementos id={id} /><BaixaComplementos id={id} /></>
+        <>
+          <ImportComplementos id={id} onImportado={(dia) => setRevisao({ data: dia, relatorio: 'COMPLEMENTOS', origem: 'IMPORT' })} />
+          {revisao?.origem === 'IMPORT' && revisao.relatorio === 'COMPLEMENTOS' && (
+            <BlocoRevisao id={id} data={revisao.data} relatorio="COMPLEMENTOS" onMudou={() => setRecargaComp((n) => n + 1)} onFechar={() => setRevisao(null)} />
+          )}
+          <BaixaComplementos id={id} recarga={recargaComp} revisandoDia={revisao?.origem === 'LISTA' ? revisao.data : null} onRevisar={(dia) => setRevisao(revisao?.origem === 'LISTA' && revisao.data === dia ? null : { data: dia, relatorio: 'COMPLEMENTOS', origem: 'LISTA' })} />
+          {revisao?.origem === 'LISTA' && revisao.relatorio === 'COMPLEMENTOS' && (
+            <BlocoRevisao id={id} data={revisao.data} relatorio="COMPLEMENTOS" onMudou={() => setRecargaComp((n) => n + 1)} onFechar={() => setRevisao(null)} />
+          )}
+        </>
       ) : aba === 'manual' ? (
         <LancamentoManual id={id} onProcessado={() => { carregarProcessados(); setAba('processados') }} />
       ) : (
@@ -234,6 +259,13 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
               </div>
               <a href={`/empresas/${id}/estoque/movimentos`} className="mt-2 inline-block text-xs text-[#185FA5] hover:underline">ver os movimentos no extrato →</a>
             </CardContent></Card>
+          )}
+
+          {/* ⭐⭐ CAÍ NA REVISÃO — o resultado do upload ABRE o extrato do dia (14/09).
+              ⚠️ Fica DEPOIS do recibo e ANTES do mapeamento: é a resposta à pergunta que
+              o recibo levanta ("{recibo.pendentes} pendentes — quais?"). */}
+          {revisao?.origem === 'IMPORT' && revisao.relatorio === 'PRODUTOS' && (
+            <BlocoRevisao id={id} data={revisao.data} relatorio="PRODUTOS" onMudou={carregarProcessados} onFechar={() => setRevisao(null)} />
           )}
 
           {preview && (
@@ -310,6 +342,35 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
 }
 
 // aba PDV manual: escolhe vendável + quantidade → mesmo modal preview/confirmar/recibo
+/**
+ * ⭐⭐ O PAINEL DA REVISÃO, COM UM DONO SÓ.
+ *
+ * ⛔ Ele é aberto de QUATRO lugares (upload de produtos, lista de produtos, upload de
+ * complementos, lista de complementos). Copiar o cabeçalho e a chamada em cada um faria
+ * quatro telas que divergem no primeiro rótulo novo — a doença que esta casa mais paga.
+ * Aqui o texto e a moldura moram num lugar; o que muda é só ONDE ele é renderizado.
+ */
+function BlocoRevisao({ id, data, relatorio, onMudou, onFechar }: {
+  id: string; data: string; relatorio: 'PRODUTOS' | 'COMPLEMENTOS'
+  onMudou?: () => void; onFechar: () => void
+}) {
+  return (
+    <Card className="mt-3 border-violet-300"><CardContent className="p-3">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <ListChecks className="h-4 w-4 shrink-0 text-violet-700" />
+        <p className="text-[13px] font-semibold text-slate-800">
+          O que chegou em {fmtDia(data)} — e pra onde foi
+          <span className="ml-1.5 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-normal text-slate-600">
+            {relatorio === 'COMPLEMENTOS' ? 'complementos' : 'produtos'}
+          </span>
+        </p>
+        <button onClick={onFechar} className="ml-auto inline-flex h-7 items-center rounded-lg border border-slate-300 px-2 text-xs text-slate-600 hover:bg-slate-50">fechar</button>
+      </div>
+      <RevisaoDoImport empresaId={id} data={data} relatorio={relatorio} onMudou={onMudou} />
+    </CardContent></Card>
+  )
+}
+
 function LancamentoManual({ id, onProcessado }: { id: string; onProcessado: () => void }) {
   const hoje = diaEmSaoPaulo()
   const [vend, setVend] = useState<{ alvoTipo: 'FICHA' | 'REVENDA'; alvoId: string; nome: string }[]>([])
@@ -389,7 +450,7 @@ function LancamentoManual({ id, onProcessado }: { id: string; onProcessado: () =
  * ⛔ E NÃO BAIXA NADA: importar é trazer o que o PDV vendeu; a baixa é gesto separado.
  * A tela diz isso, pra ninguém achar que o estoque já mexeu.
  */
-function ImportComplementos({ id }: { id: string }) {
+function ImportComplementos({ id, onImportado }: { id: string; onImportado: (dia: string) => void }) {
   const fileRef = useRef<HTMLInputElement>(null)
   const [data, setData] = useState('')
   const [html, setHtml] = useState('')
@@ -423,7 +484,13 @@ function ImportComplementos({ id }: { id: string }) {
       })
       const j = await r.json().catch(() => null)
       if (!r.ok) { setErro(j?.erro ?? 'Não consegui ler o arquivo.'); return }
-      if (confirmar) { setOk(j); setPrev(null) } else { setPrev(j); setOk(null) }
+      if (confirmar) {
+        setOk(j); setPrev(null)
+        // ⭐⭐ O RESULTADO DO UPLOAD ABRE A REVISÃO (14/09) — o mesmo gesto do lado dos
+        // produtos. ⛔ PERÍODO fica de fora: ele não é um dia de venda, é semente da
+        // prateleira — abrir "o que chegou no dia" ali prometeria um dia que não existe.
+        if (modo !== 'PERIODO') onImportado(data)
+      } else { setPrev(j); setOk(null) }
     } catch { setErro('Não consegui falar com o servidor.') } finally { setBusy(false) }
   }
 
@@ -611,7 +678,7 @@ function ImportComplementos({ id }: { id: string }) {
  * ⚠️ O NEGATIVO APARECE ANTES DE GRAVAR e **não bloqueia**: `INTERMEDIARIO` baixa o pack
  * pronto, e negativo quer dizer *"vendeu sem produzir"* — o sinal que o dono quer ver.
  */
-function BaixaComplementos({ id }: { id: string }) {
+function BaixaComplementos({ id, recarga, revisandoDia, onRevisar }: { id: string; recarga: number; revisandoDia: string | null; onRevisar: (dia: string) => void }) {
   const [dias, setDias] = useState<{ data: string; ehPeriodo: boolean; linhas: number; ocorrencias: number; baixado: boolean; precisaReprocessar: boolean; dispensado: boolean; importadoEm: string }[] | null>(null)
   const [plano, setPlano] = useState<null | {
     data: string; ehPeriodo: boolean; jaBaixado: boolean; precisaReprocessar: boolean
@@ -627,7 +694,7 @@ function BaixaComplementos({ id }: { id: string }) {
 
   const carregar = () => fetch(`/api/empresas/${id}/estoque/vendas/complementos/baixa`)
     .then((r) => r.json()).then((j) => setDias(j.dias ?? [])).catch(() => setDias([]))
-  useEffect(() => { carregar() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [id])
+  useEffect(() => { carregar() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [id, recarga])
 
   const abrir = async (data: string) => {
     setBusy(true); setErro(null); setRecibo(null)
@@ -703,6 +770,13 @@ function BaixaComplementos({ id }: { id: string }) {
             <td className="px-3 py-0 text-right">
               {!d.ehPeriodo && (
                 <span className="inline-flex items-center gap-2">
+                  {/* ⭐⭐ "REVISAR" À VISTA EM TODO IMPORT DA LISTA (14/09) — era a metade
+                      que faltava: a revisão de complementos NÃO tinha caminho nenhum na
+                      tela, só existia por rota direta. Botão com borda, nunca hover. */}
+                  <button onClick={() => onRevisar(d.data)} disabled={busy}
+                    className="inline-flex h-7 items-center gap-1 rounded-lg border border-violet-300 bg-violet-50 px-2 text-[11px] font-medium text-violet-700 hover:bg-violet-100 disabled:opacity-40">
+                    <ListChecks className="h-3 w-3" /> {revisandoDia === d.data ? 'fechar' : 'revisar'}
+                  </button>
                   {/* ⚠️ o rótulo segue o ESTADO: "baixar" só aparece em dia pendente (o
                       legado), nunca como passo do fluxo normal — que agora é um clique só. */}
                   <button onClick={() => abrir(d.data)} disabled={busy}
