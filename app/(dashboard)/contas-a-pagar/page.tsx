@@ -39,6 +39,8 @@ import { StatCardGrid } from '@/components/ui/stat-card'
 import { PayableSkeleton } from '@/components/contas-pagar/PayableSkeleton'
 import { PayableEmptyState } from '@/components/contas-pagar/PayableEmptyState'
 import { StickyFooter } from '@/components/contas-pagar/StickyFooter'
+import { NavegadorDeMes } from '@/components/contas-pagar/NavegadorDeMes'
+import { mesCorrente, rotuloDoMes } from '@/lib/periodo/mes-corrente'
 import { ROTULO_PAGAS, NOTA_CONCILIADAS, hrefMovimentacoes } from '@/lib/contas-pagar/rotulos'
 import {
   PayableFilters,
@@ -225,6 +227,14 @@ function ContasAPagarInner() {
 
   const [items, setItems] = useState<PayableRow[]>([])
   const [kpis, setKpis] = useState<KPIs>(EMPTY_KPIS)
+  /**
+   * ⭐⭐ O RECORTE DE FLUXO — padrão MÊS CORRENTE (14/09), nunca "desde sempre".
+   *
+   * ⚠️ Ele vive na URL (`?mes=`) pra sobreviver ao F5 e ser compartilhável, como o resto
+   * dos filtros da casa. ⛔ E NÃO é `EMPTY_FILTERS`: limpar os filtros volta pro mês
+   * corrente, não pro começo dos tempos — *"limpar período volta pro mês corrente"*.
+   */
+  const [mes, setMes] = useState(searchParams.get('mes') ?? mesCorrente())
   const [paginacao, setPaginacao] = useState<Paginacao>({
     total: 0,
     page: 1,
@@ -545,6 +555,7 @@ function ContasAPagarInner() {
       if (filters.status !== 'TODOS') qs.set('status', filters.status)
       // ⭐ o recorte dos três stats — é ele que faz o card e a lista mostrarem o MESMO
       if (filters.escopo) qs.set('escopo', filters.escopo)
+      qs.set('mes', mes)
       if (filters.vencidasOnly) qs.set('vencidasOnly', 'true')
 
       const { ok, data, message } = await fetchJson<{ items: typeof items; kpis: typeof kpis; paginacao: typeof paginacao }>(
@@ -569,6 +580,7 @@ function ContasAPagarInner() {
     filters.status,
     filters.escopo,
     filters.vencidasOnly,
+    mes,
   ])
 
   useEffect(() => {
@@ -937,6 +949,8 @@ function ContasAPagarInner() {
             </a>
           </p>
 
+          <NavegadorDeMes mes={mes} onMudar={setMes} />
+
           {/* ⭐⭐⭐ TRÊS STATUS, COMO NO MUNDO REAL (13/09) — decisão do dono.
               ⛔ "A VENCER (3D)" MORREU COMO CARD: era um SUBCONJUNTO de A PAGAR, então a
               soma dos quatro contava a mesma conta 2× — e "vence em 2 dias" não é um
@@ -946,7 +960,9 @@ function ContasAPagarInner() {
           <StatCardGrid>
             <StatsCard
               variant="paid"
-              label={ROTULO_PAGAS}
+              // ⭐ o rótulo diz o RECORTE: "Pagas (sem conciliar) · setembro" — card de
+              // fluxo sem o período é um número que não se sabe de quando
+              label={`${ROTULO_PAGAS} · ${rotuloDoMes(mes)}`}
               amount={kpis.totalPagas}
               count={kpis.countPagas}
               icon={CheckCircle2}

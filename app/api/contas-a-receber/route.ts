@@ -2,6 +2,7 @@
 // Espelha /api/contas-a-pagar adaptado (customerId em vez de supplierId).
 
 import { NextRequest, NextResponse } from 'next/server'
+import { whereDoStatus } from '@/lib/contas-pagar/escopo'
 import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
@@ -96,8 +97,19 @@ export async function GET(request: NextRequest) {
         _sum: { amount: true },
         _count: { _all: true },
       }),
+      /**
+       * ⭐⭐ A MESMA FRONTEIRA DO CONTAS A PAGAR (14/09) — `whereDoStatus('VENCIDA')`.
+       *
+       * ⛔ Era `dueDate < now`, um TIMESTAMP: o servidor roda em UTC, então às 23h de São
+       * Paulo a conta que vence AMANHÃ já contava como vencida — e o Contas a Pagar, do
+       * lado, diria outra coisa. **Uma palavra, duas telas, dois números.**
+       *
+       * ⚠️ E os DOIS cards daqui são ESTOQUE (a receber / vencidas): não ganham recorte de
+       * mês. *"Dívida aberta não expira com a virada do mês"* vale pro que entra também —
+       * cliente que não pagou em agosto continua devendo em setembro.
+       */
       prisma.transaction.aggregate({
-        where: { ...where, status: 'PENDING', dueDate: { lt: now } },
+        where: { AND: [where, whereDoStatus('VENCIDA', now)] },
         _sum: { amount: true },
         _count: { _all: true },
       }),

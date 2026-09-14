@@ -17,6 +17,7 @@ import {
 } from '@/lib/contas-pagar/list-filters'
 import { notasDeOrigem, type NotaDeOrigem } from '@/lib/stock/ponte/nota-de-origem'
 import { whereDoStatus } from '@/lib/contas-pagar/escopo'
+import { mesCorrente } from '@/lib/periodo/mes-corrente'
 
 export async function POST(request: NextRequest) {
   try {
@@ -63,7 +64,11 @@ export async function GET(request: NextRequest) {
     )
 
     const now = new Date()
-    const whereList = buildPayableListWhere(input, now)
+    // ⭐ o mês vem da tela; sem ele, o corrente — nunca "desde sempre"
+    const mesDoRecorte = input.mes ?? mesCorrente(now)
+    // ⚠️ a LISTA recebe o mês JÁ RESOLVIDO — se ela caísse no default por conta própria,
+    // card e lista poderiam recortar meses diferentes (o defeito que este sprint fecha)
+    const whereList = buildPayableListWhere({ ...input, mes: mesDoRecorte }, now)
     const orderBy = buildPayableOrderBy(input)
 
     // Sprint 5.0.3.1 (Bug #2) — KPIs respeitam dataDe/dataAte do filtro do user.
@@ -97,8 +102,13 @@ export async function GET(request: NextRequest) {
         }),
         prisma.transaction.count({ where: whereList }),
         // PAGAS = paymentDate preenchida (status RECONCILED ou EFFECTED)
+        /**
+         * ⭐⭐ PAGAS É FLUXO: recorta no MÊS (padrão, o corrente).
+         * ⛔ Antes somava **desde sempre** — R$ 220 mil que não respondem pergunta nenhuma
+         * do mês. Os outros dois seguem sem mês: são ESTOQUE (ver `whereDoStatus`).
+         */
         prisma.transaction.aggregate({
-          where: { ...whereBase, paymentDate: { not: null } },
+          where: { AND: [whereBase, whereDoStatus('PAGA', now, mesDoRecorte)] },
           _sum: { amount: true },
           _count: { _all: true },
         }),
@@ -147,6 +157,9 @@ export async function GET(request: NextRequest) {
         // ⭐ TRÊS status, como no mundo real (13/09): VENCIDA · A PAGAR · PAGA.
         // ⛔ "A VENCER (3d)" morreu como card — era um SUBCONJUNTO de A PAGAR, então a
         // soma dos quatro contava a mesma conta 2×. O prazo virou texto na coluna da data.
+        // ⭐ a tela ecoa o mês que o servidor usou — se ela adivinhasse, o card e a lista
+        // poderiam recortar meses diferentes
+        mes: mesDoRecorte,
         totalPagas: kpiPagas._sum.amount ?? 0,
         countPagas: kpiPagas._count._all,
         totalPendente: kpiPendentes._sum.amount ?? 0,

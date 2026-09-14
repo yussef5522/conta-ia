@@ -44,6 +44,13 @@ export const listPayableSchema = z.object({
    * número no topo e outro na tabela — a doença que este sprint inteiro conserta.
    */
   escopo: z.enum(['VENCIDA', 'A_PAGAR', 'PAGA']).optional(),
+  /**
+   * ⭐⭐ O MÊS DO RECORTE DE FLUXO (`YYYY-MM`, 14/09) — padrão: o mês corrente.
+   *
+   * ⚠️ Ele só morde no que é FLUXO (PAGAS). VENCIDA e A PAGAR são ESTOQUE e o
+   * `whereDoStatus` o **ignora** — *"dívida aberta não expira com a virada do mês"*.
+   */
+  mes: z.string().regex(/^\d{4}-\d{2}$/).optional(),
   /** @deprecated use `escopo=VENCIDA` — mantido pra link antigo não quebrar */
   vencidasOnly: z.coerce.boolean().default(false),
 
@@ -145,7 +152,7 @@ export function buildPayableListWhere(
    * empresa uma vez.
    */
   if (input.escopo) {
-    ;(where.AND as Array<Record<string, unknown>>).push(whereDoStatus(input.escopo, now))
+    ;(where.AND as Array<Record<string, unknown>>).push(whereDoStatus(input.escopo, now, input.mes))
   } else if (input.vencidasOnly) {
     // ⚠️ o caminho velho segue vivo pra link antigo, mas lendo a MESMA régua — não dá
     // pra ele voltar a discordar do card

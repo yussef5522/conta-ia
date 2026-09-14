@@ -20,7 +20,17 @@
 // NÃO é vencida (é assunto do card PAGAS)."* E "hoje" é o dia do **BRASIL**.
 
 /** ⭐ os três estados do mundo real — "vence em breve" NÃO é um deles */
+import { janelaDoMes } from '@/lib/periodo/mes-corrente'
+
 export type StatusDaConta = 'VENCIDA' | 'A_PAGAR' | 'PAGA'
+
+/**
+ * ⭐ QUEM É FLUXO E QUEM É ESTOQUE — a régua da casa, num lugar só.
+ *
+ * ⚠️ É ela que decide se o período se aplica. Um `boolean` solto em cada tela viraria a
+ * segunda régua no dia em que um status novo aparecer.
+ */
+export const ehFluxo = (s: StatusDaConta): boolean => s === 'PAGA'
 
 /**
  * ⚠️ meia-noite do dia do BRASIL, em UTC — a fronteira que decide vencida × a pagar.
@@ -59,10 +69,34 @@ export function statusDaConta(c: ContaParaStatus, now: Date = new Date()): Statu
  * e o multi-tenant do `buildPayableListWhere`. Montar o where completo aqui criaria a
  * segunda porta de multi-tenant, que é onde o vazamento entre empresas nasce.
  */
-export function whereDoStatus(status: StatusDaConta, now: Date = new Date()): Record<string, unknown> {
+export function whereDoStatus(
+  status: StatusDaConta,
+  now: Date = new Date(),
+  /** ⭐ `YYYY-MM` — o recorte de FLUXO. Ignorado de propósito pelos dois de ESTOQUE. */
+  mes?: string | null,
+): Record<string, unknown> {
   const hoje = inicioDoDiaBrasil(now)
-  if (status === 'PAGA') return { paymentDate: { not: null } }
+  if (status === 'PAGA') {
+    /**
+     * ⭐⭐ PAGAS É FLUXO — aconteceu no tempo, e o padrão é o MÊS CORRENTE.
+     *
+     * O dono: *"pagas em setembro: R$ X. Pagas de junho/julho/agosto só quando eu escolher
+     * o período. É o número que muda com o filtro."* ⛔ Sem isto o card somava **R$ 220 mil
+     * desde sempre** — um número que não responde pergunta nenhuma do mês.
+     */
+    if (!mes) return { paymentDate: { not: null } }
+    const { de, ate } = janelaDoMes(mes)
+    return { paymentDate: { gte: de, lt: ate } }
+  }
   if (status === 'VENCIDA') return { status: 'PENDING', paymentDate: null, dueDate: { lt: hoje } }
+  /**
+   * ⛔⛔ VENCIDA E A PAGAR SÃO **ESTOQUE**, e o `mes` é IGNORADO aqui de propósito.
+   *
+   * *"Dívida aberta não expira com a virada do mês — esconder vencida de agosto seria
+   * mentir que não devo."* ⚠️ E a decisão mora **nesta função**, não em cada tela: se
+   * dependesse de cada chamador lembrar de não passar o mês, a primeira tela nova
+   * esconderia dívida em silêncio. **Aqui é impossível.**
+   */
   // ⚠️ A PAGAR inclui a SEM VENCIMENTO — ela deve e ninguém combinou a data; some-la
   // faria a soma dos três não fechar com o total, que é o defeito que isto conserta.
   return { status: 'PENDING', paymentDate: null, OR: [{ dueDate: { gte: hoje } }, { dueDate: null }] }

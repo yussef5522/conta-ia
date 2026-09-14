@@ -8,8 +8,9 @@
 // (R$ 27.867,03): `9 + 25 = 34` e `20.635,54 + 27.867,03 = 48.502,57`.
 
 import { describe, it, expect } from 'vitest'
-import { statusDaConta, whereDoStatus, inicioDoDiaBrasil, textoDoPrazo, diasAteVencer } from '../escopo'
+import { statusDaConta, whereDoStatus, ehFluxo, inicioDoDiaBrasil, textoDoPrazo, diasAteVencer } from '../escopo'
 import { resumirSemPar } from '@/lib/conciliacao/fila-de-conciliacao'
+import { mesCorrente, mesVizinho, rotuloDoMes, janelaDoMes } from '@/lib/periodo/mes-corrente'
 
 /** 23h12 de São Paulo em 13/09 — o instante exato da medição em prod */
 const NOITE_DE_13 = new Date('2026-09-14T02:12:37.007Z')
@@ -111,5 +112,69 @@ describe('⛔⛔ Contas a Pagar e Conciliação usam a MESMA fronteira', () => {
     const r = resumirSemPar([contaVencida], NOITE_DE_13, null)
     expect(r.naoVenceram).toBe(0)
     expect(statusDaConta(conta('2026-09-12'), NOITE_DE_13)).toBe('VENCIDA')
+  })
+})
+
+// ⭐⭐⭐ A REGRA DOS DOIS TEMPOS (14/09/2026) — pra não esconder dívida.
+//
+// **O dono:** *"PAGAS: recorte do período, padrão MÊS CORRENTE. VENCIDAS e A PAGAR são
+// ESTOQUE, não fluxo — dívida aberta não expira com a virada do mês; esconder vencida de
+// agosto seria mentir que não devo."*
+describe('⛔⛔ fluxo abre no mês; estoque mostra o estado de agora', () => {
+  it('⭐⭐ PAGAS recorta no mês — é o número que muda com o filtro', () => {
+    const w = whereDoStatus('PAGA', NOITE_DE_13, '2026-09') as { paymentDate: { gte: Date; lt: Date } }
+    expect(w.paymentDate.gte.toISOString().slice(0, 10)).toBe('2026-09-01')
+    // ⚠️ o fim é EXCLUSIVO: `lte` no último dia às 23:59:59 perde o último segundo
+    expect(w.paymentDate.lt.toISOString().slice(0, 10)).toBe('2026-10-01')
+  })
+
+  it('⛔⛔ VENCIDAS IGNORA o mês — mesmo recebendo um, mostra TUDO em aberto', () => {
+    // ⚠️ a decisão mora na FUNÇÃO, não em cada tela: se dependesse de o chamador lembrar
+    // de não passar o mês, a primeira tela nova esconderia dívida em silêncio
+    const semMes = whereDoStatus('VENCIDA', NOITE_DE_13)
+    const comMes = whereDoStatus('VENCIDA', NOITE_DE_13, '2026-09')
+    expect(comMes, 'o mês vazou pro estoque — vencida de agosto sumiria').toEqual(semMes)
+    expect(comMes).not.toHaveProperty('paymentDate.gte')
+  })
+
+  it('⛔ A PAGAR também ignora — conta de outubro não some em setembro', () => {
+    expect(whereDoStatus('A_PAGAR', NOITE_DE_13, '2026-09'))
+      .toEqual(whereDoStatus('A_PAGAR', NOITE_DE_13))
+  })
+
+  it('⭐ quem é FLUXO tem um dono só — não é um booleano solto por tela', () => {
+    expect(ehFluxo('PAGA')).toBe(true)
+    expect(ehFluxo('VENCIDA')).toBe(false)
+    expect(ehFluxo('A_PAGAR')).toBe(false)
+  })
+
+  it('⚠️ sem mês nenhum, PAGAS volta a somar TUDO — por isso a rota nunca deixa vir vazio', () => {
+    // ⛔ é o estado antigo (R$ 220 mil "desde sempre"); ele continua alcançável pra quem
+    // quiser o total histórico, mas a tela SEMPRE manda um mês
+    expect(whereDoStatus('PAGA', NOITE_DE_13)).toEqual({ paymentDate: { not: null } })
+  })
+})
+
+describe('⭐ o mês é o do BRASIL, e navega', () => {
+  it('⛔⛔ 1º de outubro às 00h30 de São Paulo ainda é SETEMBRO', () => {
+    // ⚠️ o servidor roda em UTC: `2026-10-01T03:30Z` é 00h30 do dia 1º em SP — mas às
+    // 21h30 de 30/09 o UTC já dizia outubro. Mesmo fuso do `inicioDoDiaBrasil`.
+    expect(mesCorrente(new Date('2026-10-01T02:00:00Z'))).toBe('2026-09')
+    expect(mesCorrente(new Date('2026-10-01T04:00:00Z'))).toBe('2026-10')
+  })
+
+  it('⭐ ‹ › anda no calendário, inclusive na virada do ano', () => {
+    expect(mesVizinho('2026-09', -1)).toBe('2026-08')
+    expect(mesVizinho('2026-12', 1)).toBe('2027-01')
+    expect(mesVizinho('2026-01', -1)).toBe('2025-12')
+  })
+
+  it('⭐ o rótulo esconde o ano corrente e MOSTRA o de fora — senão o dono se perde', () => {
+    expect(rotuloDoMes('2026-09', NOITE_DE_13)).toBe('setembro')
+    expect(rotuloDoMes('2025-09', NOITE_DE_13)).toBe('setembro de 2025')
+  })
+
+  it('⛔ dezembro fecha em 1º de janeiro do ano seguinte', () => {
+    expect(janelaDoMes('2026-12').ate.toISOString().slice(0, 10)).toBe('2027-01-01')
   })
 })
