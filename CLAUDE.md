@@ -734,9 +734,33 @@ a linha de 1.263,13 → reconhece a EIRELI direto (irmãos: 1)
 
 **⭐⭐ E A CHAVE NOVA FEZ APARECER UM SEGUNDO PAR — que a trava de 04/09 RECUSOU, corretamente:** `TOZZO ALIMENTOS` tem dois cadastros com **CNPJs diferentes** (`01314317000165` × `01314317000599` — mesma raiz, filial diferente). ⛔ *"Matriz e filial têm o mesmo nome"*: **não mescla**, e o script diz por quê. É a régua funcionando no primeiro caso que ela encontrou depois de ficar mais larga.
 
-📋 **DÉBITO NOMEADO — A FÁBRICA NA ESCRITA CONTINUA ABERTA (decisão do dono, 13/09):** *"casar por nome ignorando sufixo societário na LEITURA já protege; a escrita que cria segundo cadastro LTDA×EIRELI fecha quando eu autorizar a próxima rodada de cadastro."*
+### ✅ A FÁBRICA NA ESCRITA FECHOU (13/09, autorizada pelo dono)
 
-⚠️ **O que exatamente segue aberto:** a ponte do estoque (`resolverFornecedor`/`chaveDoNomeDoFornecedor` em `ponte-contas-pagar.ts`) reusa cadastro por nome **idêntico** — então a próxima NF-e de uma empresa já cadastrada com outro sufixo **cria um segundo registro de novo**. ⛔ Mexer ali é caminho de **GRAVAÇÃO**, e a régua de 04/09 (*"fusão errada de fornecedor é pior que duplicata visível"*) manda não alargar o critério de reuso sem a palavra dele. **A leitura já protege enquanto isso**: o card enxerga os dois como um.
+*"A ponte passa a procurar pela MESMA `chaveDeIdentidadeDoFornecedor` da leitura (sufixo societário fora), com as regras de 11/09 intactas."* **Uma régua, os dois lados** — `chaveDoNomeDoFornecedor` virou casca sobre a da leitura, e o POST manual (409-apontando + escape `permitirNomeDuplicado`) herda de graça.
+
+**AS TRÊS REGRAS DE 11/09, INTACTAS E COM TESTE:** achou **sem CNPJ** → completa com o da SEFAZ e reusa · achou com o **MESMO CNPJ** → reusa · achou com **CNPJ DIFERENTE** → **cria** (matriz e filial têm o mesmo nome — a régua de 04/09 na origem).
+
+**⭐⭐ E A TROCA FOI MEDIDA ANTES, contra os 69 cadastros reais** — porque isto é caminho de **ESCRITA** e a chave da leitura é agressiva de propósito (nasceu pra descrição de banco: corta `- Pagamento`, `| Pix`, datas e códigos no fim):
+```
+chave VELHA → 1 grupo com 2+ cadastros     chave NOVA → 1 grupo (o MESMO)
+grupos que só a chave nova junta: 1 — o TOZZO, e a trava do CNPJ o RECUSA
+```
+**Zero colisão nova na base real.** ⚠️ O risco fica nomeado: fornecedor cujo nome TERMINE numa dessas palavras (`ALFA TED` → `alfa`) — não existe hoje, e o escape é o `permitirNomeDuplicado`.
+
+**⚠️⚠️ E O GUARD DE 11/09 PEGOU UMA REGRESSÃO REAL NO CAMINHO.** Ao delegar, o teste do `DISTRIB. DE PROD. ALIMENT. LAMANA` ficou **vermelho**: `normalizeForMatch` só limpa pontuação **no FIM**, enquanto a régua da ponte já trocava **toda** pontuação por espaço desde 11/09 — e a **LAMANA é uma das 11 mescladas naquele dia**. Sem isso ela duplicaria de novo. ⭐ A chave compartilhada passou a colapsar pontuação interna, **o que deixa a LEITURA mais forte também**: até hoje o card tratava `DISTRIB. DE PROD.` e `DISTRIB DE PROD` como dois fornecedores.
+
+**PROVADO EM PROD, contra os cadastros REAIS (read-only):**
+```
+"CIA DA FRUTA … LTDA" [36603841000130] → ⭐ REUSA a EIRELI (CNPJ)   ← a NF-e de amanhã
+"TOZZO ALIMENTOS EIRELI" [01314317000599] → REUSA o cadastro da filial (CNPJ)
+69 ativos · nomes que ainda aparecem 2×: 1 (o TOZZO — matriz + filial, por desenho)
+```
+
+**REGRA 11 — 3 defeitos repostos:** chave crua de volta na ponte (**3 vermelhos**) · pontuação interna sem colapsar, o caso LAMANA (**2**) · trava do CNPJ diferente caindo, fundindo matriz com filial (**1**).
+
+⚠️ **RESÍDUO NOMEADO (medido, não consertado):** documento **SEM CNPJ** ao lado de um cadastro **COM CNPJ** ainda **cria** um segundo registro — o `semCnpj` procura cadastro sem CNPJ, e ali não há. **Não morde na NF-e** (documento fiscal sempre traz `emitCnpj`); morde só na **entrada manual** sem CNPJ digitado, que usa o mesmo `resolverFornecedor`. Reusar ali significaria **amarrar a compra a um CNPJ que o documento não declarou** — a direção conservadora é a que está no código. Fica registrado pro dia em que ele quiser decidir.
+
+**9.768 verdes · TS 0 · deploy `U_bX3oIyb2ewqcYQtRBbC` 4/4.**
 
 
 
