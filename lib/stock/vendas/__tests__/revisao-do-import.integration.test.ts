@@ -191,3 +191,38 @@ describe('⛔⛔ nada some calado da revisão', () => {
     expect(r.linhas.some((l) => l.estado === 'IGNORADO')).toBe(true)
   })
 })
+
+// ⭐⭐⭐ A FAIXA DO DIA — os dois writers usam convenções DIFERENTES (medido em prod).
+//
+// ```
+// stock_venda_complemento_linha → 2026-09-13T00:00:00.000Z
+// stock_venda_linha (produtos)  → 2026-09-13T15:00:00.000Z
+// ```
+// ⚠️ Os 15:00Z vêm de `new Date('…T12:00:00')` **sem Z** num processo em `America/
+// Sao_Paulo`. **Comparar timestamp EXATO acerta um e erra o outro** — a minha 1ª versão
+// devolveu **0 nomes** pro dia que tem 130, e só a prova em prod mostrou.
+describe('⛔⛔ a revisão acha o dia em QUALQUER convenção de hora', () => {
+  it('⭐⭐ linha gravada à MEIA-NOITE UTC aparece', async () => {
+    await prisma.stockVendaComplementoLinha.deleteMany({ where: { companyId } })
+    await prisma.stockVendaComplementoLinha.create({
+      data: { companyId, importId: 'x', data: new Date('2026-09-13T00:00:00.000Z'), nomeSuitable: 'MEIA NOITE', ocorrencias: 1 },
+    })
+    expect((await rev()).linhas.map((l) => l.nome)).toContain('MEIA NOITE')
+  })
+
+  it('⭐⭐ e a gravada às 15:00 UTC também — a convenção do outro import', async () => {
+    await prisma.stockVendaComplementoLinha.deleteMany({ where: { companyId } })
+    await prisma.stockVendaComplementoLinha.create({
+      data: { companyId, importId: 'x', data: new Date('2026-09-13T15:00:00.000Z'), nomeSuitable: 'MEIO DIA LOCAL', ocorrencias: 1 },
+    })
+    expect((await rev()).linhas.map((l) => l.nome)).toContain('MEIO DIA LOCAL')
+  })
+
+  it('⛔ e o dia VIZINHO não vaza — a faixa fecha em `lt`, nunca `lte` 23:59:59', async () => {
+    await prisma.stockVendaComplementoLinha.deleteMany({ where: { companyId } })
+    await prisma.stockVendaComplementoLinha.create({
+      data: { companyId, importId: 'x', data: new Date('2026-09-14T00:00:00.000Z'), nomeSuitable: 'DO DIA SEGUINTE', ocorrencias: 1 },
+    })
+    expect((await rev()).linhas).toHaveLength(0)
+  })
+})

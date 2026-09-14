@@ -17,6 +17,26 @@ import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { normalizarNome } from './grupo-complemento'
 
+/**
+ * ⭐⭐⭐ A FAIXA DO DIA — e ela existe porque **os dois writers usam convenções
+ * DIFERENTES** (medido em prod, 14/09):
+ * ```
+ * stock_venda_complemento_linha → 2026-09-13T00:00:00.000Z
+ * stock_venda_linha (produtos)  → 2026-09-13T15:00:00.000Z
+ * ```
+ * ⚠️ Os 15:00Z vêm de `new Date('2026-09-13T12:00:00')` **sem Z**: o processo roda em
+ * `America/Sao_Paulo`, então o meio-dia "local" vira 15:00 UTC. O outro import grava
+ * meia-noite. **Um leitor que compara timestamp EXATO acerta um e erra o outro** — e foi
+ * exatamente o que a minha 1ª versão fez: devolveu **0 nomes** pro dia que tem 130.
+ *
+ * ⭐ Ler por FAIXA é indiferente à convenção de quem escreveu, hoje e no dia em que
+ * alguém mudar a hora. ⛔ E `lt` no dia seguinte, nunca `lte` às 23:59:59.
+ */
+export function faixaDoDia(data: string): { gte: Date; lt: Date } {
+  const [a, m, d] = data.split('-').map(Number)
+  return { gte: new Date(Date.UTC(a, m - 1, d)), lt: new Date(Date.UTC(a, m - 1, d + 1)) }
+}
+
 export type EstadoDoVinculo = 'VINCULADO' | 'SEM_VINCULO' | 'IGNORADO'
 export type Relatorio = 'PRODUTOS' | 'COMPLEMENTOS'
 
@@ -119,11 +139,11 @@ export async function montarRevisao(
 ): Promise<RevisaoDoImport> {
   const linhasCruas = relatorio === 'COMPLEMENTOS'
     ? (await db.stockVendaComplementoLinha.findMany({
-        where: { companyId, data: new Date(`${data}T12:00:00`) },
+        where: { companyId, data: faixaDoDia(data) },
         select: { nomeSuitable: true, ocorrencias: true },
       })).map((l) => ({ nome: l.nomeSuitable, ocorrencias: l.ocorrencias }))
     : (await db.stockVendaLinha.findMany({
-        where: { companyId, data: new Date(`${data}T12:00:00`) },
+        where: { companyId, data: faixaDoDia(data) },
         select: { nomeSuitable: true, quantidade: true },
       })).map((l) => ({ nome: l.nomeSuitable, ocorrencias: l.quantidade }))
 
@@ -260,8 +280,8 @@ export async function previewDoAjuste(
   const revisao = await montarRevisao(companyId, data, relatorio, db)
 
   const linhasDoImport = relatorio === 'COMPLEMENTOS'
-    ? await db.stockVendaComplementoLinha.findMany({ where: { companyId, data: new Date(`${data}T12:00:00`) }, select: { nomeSuitable: true, mapeadoNoImport: true } })
-    : await db.stockVendaLinha.findMany({ where: { companyId, data: new Date(`${data}T12:00:00`) }, select: { nomeSuitable: true, mapeadoNoImport: true } })
+    ? await db.stockVendaComplementoLinha.findMany({ where: { companyId, data: faixaDoDia(data) }, select: { nomeSuitable: true, mapeadoNoImport: true } })
+    : await db.stockVendaLinha.findMany({ where: { companyId, data: faixaDoDia(data) }, select: { nomeSuitable: true, mapeadoNoImport: true } })
   const baixavaAntes = new Map(linhasDoImport.map((l) => [l.nomeSuitable, l.mapeadoNoImport]))
 
   const mudam: MudancaDoAjuste[] = []
