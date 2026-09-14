@@ -97,12 +97,22 @@ export function sugerirDestino(
 
   const achados = candidatos.filter((c) => {
     const p = normalizarNome(c.rotulo).split(/\s+/).filter(Boolean)
-    if (!p.length || p.length === alvo.length) return false // igual já é caso do automático
-    const [menor, maior] = p.length < alvo.length ? [p, alvo] : [alvo, p]
-    // ⭐ toda palavra do menor aparece no maior, NA ORDEM — "COCA LATA" ⊂ "COCA COLA LATA"
+    if (!p.length || p.length >= alvo.length) return false
+    /**
+     * ⭐⭐⭐ A DIREÇÃO IMPORTA, e ela é a régua que impede a bebida errada.
+     *
+     * Só sugere quando a FICHA está contida NO NOME do PDV — `COCA LATA` ⊂ `COCA COLA
+     * LATA` ✓. ⛔ **NUNCA o contrário:** `FRUKI LATA` (comum) com a ficha `FRUKI LATA
+     * ZERO` seria a ficha ACRESCENTANDO um qualificador que o PDV não disse — e "zero"
+     * é outra bebida. **Sugerir ali é inventar uma distinção que ninguém fez**, e um
+     * clique rápido baixaria a errada.
+     *
+     * ⚠️ É a mesma família do guard do falso-amigo: o mais específico nunca vira o mais
+     * genérico sozinho.
+     */
     let i = 0
-    for (const w of maior) if (w === menor[i]) i++
-    return i === menor.length
+    for (const w of alvo) if (w === p[i]) i++
+    return i === p.length
   })
 
   /**
@@ -187,9 +197,28 @@ export async function montarRevisao(
    * ⚠️ Não é o catálogo inteiro: sugerir uma ficha que o dono nunca usou como destino é
    * palpite; sugerir uma que ele JÁ escolheu pra um nome irmão é padrão dele.
    */
-  const candidatos = [...mapa.entries()]
-    .filter(([, m]) => m.alvoTipo === 'FICHA' && m.fichaId)
-    .map(([nome, m]) => ({ fichaId: m.fichaId!, rotulo: nomeItem.get(fichas.find((f) => f.id === m.fichaId)?.itemProduzidoId ?? '') ?? nome }))
+  /**
+   * ⭐⭐ OS CANDIDATOS SÃO AS FICHAS DE PRODUTO FINAL DA EMPRESA.
+   *
+   * ⚠️ A 1ª versão só olhava as fichas **já mapeadas neste relatório**, e a prova em prod
+   * mostrou o buraco: `COCA COLA LATA` não sugeria nada, com a ficha `COCA LATA` existindo
+   * — ela só não estava mapeada como COMPLEMENTO ainda. **Candidato estreito demais é uma
+   * sugestão que não nasce justamente no caso que motivou a tela.**
+   *
+   * ⛔ E alargar é seguro porque as DUAS travas continuam: a direção (ficha ⊂ nome) e a
+   * ambiguidade (dois candidatos = não sugere).
+   */
+  const todasAsFichas = await db.stockFicha.findMany({
+    where: { companyId, ativo: true, tipoProduto: 'PRODUTO_FINAL' },
+    select: { id: true, itemProduzidoId: true },
+  })
+  const nomesDasFichas = new Map((await db.stockItem.findMany({
+    where: { companyId, id: { in: todasAsFichas.map((f) => f.itemProduzidoId) } },
+    select: { id: true, nome: true },
+  })).map((i) => [i.id, i.nome]))
+  const candidatos = todasAsFichas
+    .map((f) => ({ fichaId: f.id, rotulo: nomesDasFichas.get(f.itemProduzidoId) ?? '' }))
+    .filter((c) => c.rotulo)
 
   const linhas: LinhaDaRevisao[] = linhasCruas
     .map((l) => {

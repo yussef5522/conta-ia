@@ -85,16 +85,22 @@ describe('⭐⭐ o extrato do que chegou', () => {
     expect(l.sugestao!.porQue).toContain('COCA LATA')
   })
 
-  it('⛔⛔ e a ambígua NÃO sugere — "FRUKI LATA" com duas candidatas é "não sei qual"', async () => {
-    // ⚠️ é o contrafactual que segura a régua: apontar a ZERO baixaria a bebida errada
+  it('⛔⛔⛔ a ficha MAIS ESPECÍFICA não vira sugestão — "FRUKI LATA" × "FRUKI LATA ZERO"', async () => {
+    // ⚠️⚠️ É O CASO REAL DO DONO, e a régua que o protege é a DIREÇÃO: a ficha só sugere
+    // quando está contida NO NOME do PDV. `FRUKI LATA ZERO` acrescenta um qualificador que
+    // o PDV não disse — e "zero" é outra bebida. **Sugerir ali inventa uma distinção.**
     const zero = await item('FRUKI LATA ZERO 350ML')
-    const f1 = await ficha('FRUKI LATA ZERO', [{ itemId: zero, qtd: 1 }])
-    const f2 = await ficha('FRUKI LATA GRANDE', [{ itemId: zero, qtd: 1 }])
-    for (const [n, f] of [['FRUKI LATA ZERO', f1], ['FRUKI LATA GRANDE', f2]] as const) {
-      await prisma.stockVendaComplementoMap.create({ data: { companyId, nomeSuitable: n, alvoTipo: 'FICHA', fichaId: f } })
-    }
+    await ficha('FRUKI LATA ZERO', [{ itemId: zero, qtd: 1 }])
     const l = (await rev()).linhas.find((x) => x.nome === 'FRUKI LATA')!
-    expect(l.sugestao, 'sugeriu com DUAS candidatas — isso escolhe a bebida por ele').toBeNull()
+    expect(l.sugestao, 'sugeriu a ZERO pra a comum — baixaria a bebida errada').toBeNull()
+  })
+
+  it('⛔⛔ e DUAS candidatas também não sugerem — "não sei qual" continua valendo', async () => {
+    const lata = await item('LATA X')
+    await ficha('COCA LATA', [{ itemId: lata, qtd: 1 }])       // já existe do fixture
+    await ficha('COLA LATA', [{ itemId: lata, qtd: 1 }])       // 2ª candidata ⊂ "COCA COLA LATA"
+    const l = (await rev()).linhas.find((x) => x.nome === 'COCA COLA LATA')!
+    expect(l.sugestao, 'escolheu entre duas — isso é decidir por ele').toBeNull()
   })
 
   it('⭐ o ignorado mostra o rastro (desde quando), em vez de sumir', async () => {
