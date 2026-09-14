@@ -677,6 +677,48 @@ CONTAS A PAGAR → 200 · "Pagas (sem conciliar)" ✓ · "Em aberto e pagas sem 
 
 **9.726 verdes · TS 0 · deploy `R4Dacd_GQpSrmdBb_Ie9n` 4/4.**
 
+### ⛔⛔⛔ CONTAS A PAGAR — TRÊS STATUS, UMA RÉGUA, E A MAÇANETA À VISTA (13/09)
+
+**⛔⛔ 1. "VENCE EM BREVE" MORREU COMO STATUS.** Decisão do dono: *"'Vence em 2 dias' é informação da COLUNA de vencimento, nunca um status/filtro/stat próprio."* ⭐ E como status ele fazia duas coisas erradas: era **SUBCONJUNTO de "a pagar"**, então a soma dos 4 cards (e o total do rodapé) contava a mesma conta **2×**; e o `3` era um número escolhido a dedo virando ESTADO — a família do `TETO = 25` hardcoded e do `30` da janela do "a vencer". **A informação não se perdeu**: virou `textoDoPrazo`, colado na data (*"14/09 · em 2d"*). O tipo tem 3 valores **por construção** — um `warn` novo não compila.
+
+**⛔⛔⛔ 2. OS NÚMEROS DO TOPO BRIGAVAM — e a conta fecha AO CENTAVO.**
+```
+KPI VENCIDAS  34 · R$ 48.502,57   ← `dueDate < now`, um TIMESTAMP
+AGING          9 · R$ 20.635,54   ← `bucketFor`, que compara por DIA
+a diferença:  25 · R$ 27.867,03   ← as contas que vencem HOJE
+9 + 25 = 34   ·   20.635,54 + 27.867,03 = 48.502,57
+```
+**Duas réguas pra mesma palavra** — e a lista tinha uma terceira (o preset "pagas" filtrava `status=RECONCILED` enquanto o card contava `paymentDate != null`).
+
+⚠️⚠️ **E HAVIA UM SEGUNDO ERRO NO MESMO LUGAR: o servidor roda em UTC.** Às 23h12 de São Paulo o `new Date()` já diz **14/09** — então o dono, olhando à noite, via **25 contas vermelhas que ainda tinha o dia inteiro pra pagar**. É o mesmo fuso que fazia o card do cartão PF mentir 3 horas por dia (09/09).
+
+⭐ **`lib/contas-pagar/escopo.ts` é o dono único:** `VENCIDA | A_PAGAR | PAGA`, pela fronteira do **dia do BRASIL**. Consumido pelos **stats**, pelo **aging**, pela **lista** e pelo **status visual** da tabela (`payableVisualStatus` virou casca — perdeu a régua própria). ⛔ **PAGA ganha de tudo**: paga com atraso não é vencida — não há ação pendente quando o dinheiro já saiu. ⚠️ E **A PAGAR carrega a sem-vencimento**, senão a soma dos três não fecha com o total.
+
+**⭐⭐ E O NÚMERO É O FILTRO:** clicar no card manda o MESMO `escopo` que o servidor usou pra contar. ⚠️ Com `status: 'TODOS'` de propósito — deixar o filtro de status junto recortaria de novo por outra régua, que é como a lista mostrava "muito menos" do que o card dizia.
+
+**⛔ 3. A MAÇANETA NA TABELA.** O dono: *"nenhuma linha tem 'procurar no extrato' à vista"*. Ele estava certo: o deep-link nasceu em 10/09 **dentro do menu ⋮**, o mesmo que não existir — a **7ª volta da "porta sem maçaneta"** e a lição de 30/08. Virou botão à vista em **VENCIDA** e em **PAGA** (toda paga desta tela é *paga-sem-vínculo*, pela decisão de 28/05); **não** aparece em A PAGAR, porque conta que não venceu não tem pagamento pra procurar. Mesmo deep-link, guard estrutural com auto-teste do detector.
+
+**⭐⭐ E A CONCILIAÇÃO ENTROU NA MESMA FRONTEIRA** (*"as duas telas, uma verdade"*): o `resumirSemPar` usava `c.conta.data > agora`, o mesmo timestamp — às 23h ele e o Contas a Pagar dariam respostas diferentes pra mesma conta.
+
+**PROVADO EM PROD, pela rota real:**
+```
+VENCIDAS   9 · R$  20.635,54     card diz   9 → lista tem   9 ✓
+A PAGAR   87 · R$ 175.982,36     card diz  87 → lista tem  87 ✓
+PAGAS    250 · R$ 220.353,76     card diz 250 → lista tem 250 ✓
+INADIMPLÊNCIA 9 · R$ 20.635,54 → bate com o card VENCIDAS ✓
+4º card "a vencer 3d" no payload: SUMIU ✓
+
+BUNDLE: "Procurar no extrato" ✓ · "Vencidas" ✓ · "A pagar" ✓
+        ⛔ "Vence em breve": SUMIU ✓ · "A vencer (3d)": SUMIU ✓
+isabel camera fria R$ 3.700,00 → /conciliacao?conta=… → 200 ✓
+```
+
+**REGRA 11 — 5 defeitos repostos:** fronteira de volta ao timestamp (**4 vermelhos**) · fuso UTC no lugar do dia do Brasil (**5**) · PAGA deixando de ganhar de tudo (**2**) · maçaneta de volta pro menu ⋮ (**3**) · Conciliação com o timestamp (**1**).
+
+**⚠️ 4 TESTES INVERTIDOS COM O MOTIVO ESCRITO:** os três que afirmavam `warn` como status, e o do `vencidasOnly` — que além do timestamp **atropelava o filtro de período** do dono (os dois escreviam em `where.dueDate`).
+
+**9.787 verdes · TS 0 · deploys `tnQI9u_69G72Xfc9iNodF` e `VQqCVQcczykSC8yboN9fF`, os dois 4/4.**
+
 ### ⛔⛔⛔ OS 5 CASOS QUE NÃO APARECIAM PRA CASAR — E AS DUAS CAUSAS ERAM GERAIS (13/09)
 
 **O dono trouxe 5 pagamentos reais, todos no extrato e invisíveis na fila.** A medição por id achou **duas causas de classe**, as duas maiores que o relato — e uma terceira que era só a maçaneta.
