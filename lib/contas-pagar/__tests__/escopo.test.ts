@@ -9,6 +9,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { statusDaConta, whereDoStatus, inicioDoDiaBrasil, textoDoPrazo, diasAteVencer } from '../escopo'
+import { resumirSemPar } from '@/lib/conciliacao/fila-de-conciliacao'
 
 /** 23h12 de São Paulo em 13/09 — o instante exato da medição em prod */
 const NOITE_DE_13 = new Date('2026-09-14T02:12:37.007Z')
@@ -88,5 +89,27 @@ describe('⭐ "vence em 2 dias" é texto da DATA, nunca um status', () => {
   it('⚠️ sem data o texto DIZ isso — em vez de sumir a coluna', () => {
     expect(textoDoPrazo(null, NOITE_DE_13)).toBe('sem data')
     expect(diasAteVencer(null, NOITE_DE_13)).toBeNull()
+  })
+})
+
+// ⭐⭐⭐ AS DUAS TELAS, UMA VERDADE (13/09) — pedido do dono:
+// *"'vencidas' daqui = 'sem pagamento vencidas' da Conciliação no mesmo recorte"*.
+describe('⛔⛔ Contas a Pagar e Conciliação usam a MESMA fronteira', () => {
+  it('⭐⭐ a Conciliação conta "não venceu" pelo dia do Brasil, igual ao Contas a Pagar', () => {
+    // ⛔ era `c.conta.data > agora` (TIMESTAMP): às 23h de São Paulo o servidor em UTC já
+    // dizia "amanhã", e a conta que vence amanhã contava como vencida numa tela e não na
+    // outra. Um número, duas respostas.
+    const contaDeAmanha = { conta: { id: 'x', descricao: 'x', valor: 100, data: new Date('2026-09-14'), tipo: 'DEBIT' as const, fornecedorId: null, contaBancariaId: null }, situacao: 'EM_ABERTO' as const, fornecedor: null, sugestoes: [] }
+    const r = resumirSemPar([contaDeAmanha], NOITE_DE_13, null)
+    expect(r.naoVenceram, 'a Conciliação achou vencida o que o Contas a Pagar chama de A PAGAR').toBe(1)
+    // ⭐ e o outro lado diz a MESMA coisa
+    expect(statusDaConta(conta('2026-09-14'), NOITE_DE_13)).toBe('A_PAGAR')
+  })
+
+  it('⭐ e a que venceu de verdade conta como vencida nas duas', () => {
+    const contaVencida = { conta: { id: 'y', descricao: 'y', valor: 100, data: new Date('2026-09-12'), tipo: 'DEBIT' as const, fornecedorId: null, contaBancariaId: null }, situacao: 'EM_ABERTO' as const, fornecedor: null, sugestoes: [] }
+    const r = resumirSemPar([contaVencida], NOITE_DE_13, null)
+    expect(r.naoVenceram).toBe(0)
+    expect(statusDaConta(conta('2026-09-12'), NOITE_DE_13)).toBe('VENCIDA')
   })
 })

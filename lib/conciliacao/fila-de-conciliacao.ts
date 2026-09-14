@@ -22,6 +22,7 @@
 // ocupada — foi por isso que a régua de duplicata mudou (ver `duplicatasSuspeitas`).
 
 import type { PrismaClient } from '@prisma/client'
+import { inicioDoDiaBrasil } from '@/lib/contas-pagar/escopo'
 import { comCorte, corteDaEmpresa } from './corte-de-epoca'
 import { chaveDoPadrao } from './processadora-de-boleto'
 import { prisma as defaultPrisma } from '@/lib/db'
@@ -497,8 +498,17 @@ export function resumirSemPar(
   // anomalia. Contá-la aqui a esconderia atrás de um número de informação.
   const semPar = contas.filter((c) => c.sugestoes.length === 0 && c.situacao !== 'DUPLA_CONTAGEM')
   let naoVenceram = 0, aguardandoExtrato = 0, comExtratoImportado = 0
+  /**
+   * ⭐⭐ A MESMA FRONTEIRA DO CONTAS A PAGAR (13/09) — *"as duas telas, uma verdade"*.
+   *
+   * ⛔ Era `c.conta.data > agora`, um TIMESTAMP: o servidor roda em UTC, então às 23h de
+   * São Paulo a conta que vence AMANHÃ já contava como vencida aqui — e o Contas a Pagar,
+   * depois do fix, diria outra coisa. **Duas telas, dois números pra mesma palavra** é
+   * exatamente o que este sprint veio matar.
+   */
+  const hoje = inicioDoDiaBrasil(agora)
   for (const c of semPar) {
-    if (c.conta.data > agora) naoVenceram++
+    if (c.conta.data >= hoje) naoVenceram++
     // ⚠️ sem extrato nenhum importado, NADA pode ter par — tudo aguarda arquivo.
     else if (!ultimoExtrato || c.conta.data > ultimoExtrato) aguardandoExtrato++
     else comExtratoImportado++
