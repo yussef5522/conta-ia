@@ -721,6 +721,62 @@ TELA → 200 · "revisar" ✓ · "sem destino" ✓ · "parece" ✓ · o aviso do
 
 📋 **FICA PRO DONO (o gesto é dele):** os **4 combos** (`… MAIS MINI FRITAS`, 28 ocorrências) precisam de ficha composta (lata + porção mini fritas) — o botão *"definir"* da linha leva ao cardápio com o nome já carregado. E **"ignorar" só aparece nos complementos**: o mapa de produtos aceita `FICHA | REVENDA | REMOVER`, e REMOVER **devolve a pendente**, que é outra coisa — oferecer ali seria um gesto que promete uma coisa e faz outra. Registrado como o que falta naquele mapa, não disfarçado.
 
+### ⛔⛔⛔ A REVISÃO SÓ EXISTIA POR ROTA DIRETA — 8ª VOLTA DA "PORTA SEM MAÇANETA" (14/09)
+
+**O dono, com o deploy 4/4 verde e a tela provada:** *"NAVEGANDO EM PROD (cache limpo, celular e desktop) eu NÃO ACHO a tela: subo arquivo, vejo o resumo velho, e nenhum botão/link leva à revisão."*
+
+**⭐ NAVEGUEI COMO ELE E ELE ESTAVA CERTO — o defeito era MAIOR que o relato.** O caminho existia e tinha três degraus invisíveis:
+```
+Estoque → Vendas (Suitable) → aba "Processados" (a 4ª) → última coluna da tabela
+  → <button class="text-xs text-violet-700 hover:underline">revisar</button>
+```
+1. ⛔ **`hover` NÃO EXISTE NO CELULAR**, que é onde ele importa — a lição literal do *"converter a unidade"* (30/08): **ação sem afordância não existe**;
+2. ⛔ **o caminho REAL dele nem passava por ali:** subir o arquivo → confirmar desembocava no **recibo velho** (três números + link pro extrato). A pergunta que o recibo LEVANTA (*"86 pendentes — quais?"*) não tinha resposta na tela;
+3. ⛔⛔ **e do lado dos COMPLEMENTOS a revisão NÃO TINHA CAMINHO NENHUM** — o `relatorio` estava cravado em `'PRODUTOS'`. O relatório que motivou a tela (as bebidas) só era revisável por URL secreta.
+
+**⭐ A REGRA QUE FICA** (irmã da de 12/09, *"fila zerada esconde o trabalho, nunca a ferramenta"*): ***o RESULTADO do gesto abre a tela que responde a pergunta do gesto, e todo item da lista carrega o caminho À VISTA.***
+
+**O QUE SUBIU:** **(a)** confirmar o import — produtos **e** complementos — **ABRE a revisão do dia** (⛔ PERÍODO fica de fora: não é dia de venda, é semente da prateleira); **(b)** as **duas** listas de dias ganharam **"revisar" com borda e ícone**, nunca só hover; **(c)** o painel tem **um dono só** (`BlocoRevisao`) aberto de quatro lugares — copiar o cabeçalho em cada um faria quatro telas divergindo no primeiro rótulo novo.
+
+⚠️ **E o painel renderiza em DOIS SLOTS (`origem`)**: aberto pelo upload, cola no resultado; aberto pela lista, embaixo da lista. Um slot só o faria nascer longe do dedo que clicou — o defeito de 10/09, de novo.
+
+**GUARD DE 2 LADOS** (`revisao-do-import-tem-macaneta.test.ts`), porque guard que só olha a TELA aprovaria botão apontando pro nada: o botão existe **E** a rota responde (GET+POST, `view` pra ler e `manage` pra mudar vínculo, aceitando os DOIS relatórios), **e** todo caminho que o painel chama tem arquivo de rota. Mais: nenhum "revisar" pode ser texto hover-only, e o detector de `useState(false)` de 10/09 é **reusado**, não copiado.
+
+**PROVADO EM PROD, NAVEGANDO, NOS DOIS VIEWPORTS (REGRA 12):**
+```
+/estoque/vendas  CELULAR 200 · 874 KB    ·    DESKTOP 200 · 874 KB
+  ✓ botão revisar  ✓ "O que chegou em"  ✓ selo complementos
+  ✓ border-violet-300 (não é hover-only)  ✓ 3 contadores  ✓ sugestão  ✓ o que desconta
+
+PRODUTOS     13/09 → 🟡 5 (39 oc) · ✅ 2 (22 oc) · soma 7 = linhas 7 ✓
+PRODUTOS     12/09 → 🟡 33 (126) · ✅ 52 (559) · soma 85 = linhas 85 ✓
+COMPLEMENTOS 13/09 → 🟡 86 (457) · ✅ 44 (557) · soma 130 = linhas 130 ✓
+COMPLEMENTOS 12/09 → 🟡 59 (228) · ✅ 40 (306) · soma 99 = linhas 99 ✓
+  ✅ CACHORRO QUENTE → baixa CACHORRO GG ×1, SALSICHA ×0,085, MILHO ×0,04, …
+```
+**REGRA 11 — 4 defeitos repostos, 1 vermelho cada:** o link de volta a hover-only · o confirm voltando a terminar no recibo · a lista de complementos sem o botão · o upload de complementos deixando de avisar.
+
+### ⛔⛔ E A PROVA EM PROD ACHOU DOIS DEFEITOS NA SUGESTÃO — UM DELES CRIADO POR MIM (14/09)
+
+**1. `FANTA LARANJA ZERO 2L` (PDV) ganhava a sugestão da ficha `FANTA LARANJA 2L` — a COMUM.** A régua da DIREÇÃO **passava** (a ficha ESTÁ contida no nome do PDV) e **um clique baixaria a bebida errada**. ⚠️ **É o espelho exato do `FRUKI LATA`:** a régua velha supunha que a palavra a mais do PDV é **ruído** (`COCA COLA LATA` × `COCA LATA` — "COLA" é ruído); **`ZERO` distingue o produto**. Lista **FECHADA** (`ZERO · DIET · LIGHT · SEM ACUCAR`), como a dos volumes de bebida e a dos sufixos societários: inferir "qualificador" de qualquer palavra a mais mataria as sugestões boas, que são a razão de a tela existir.
+
+**⭐ E a régua nova ganhou um efeito que eu não previ (o teste me corrigiu):** com as duas fichas na lista, o que antes era **ambiguidade** (as duas casavam → nada sugerido) agora **se resolve sozinho** — a comum cai pelo qualificador e sobra a certa.
+
+**⛔⛔ 2. …E ESSE MESMO EFEITO CRIOU UM DEFEITO MEU, achado na prova seguinte:** `COCA COLA ZERO LATA MAIS MINI FRITAS` passou a **ganhar sugestão de 1 clique pra `COCA ZERO LATA`**. A régua de 12/09 (*"combo não herda — baixaria só a lata e esqueceria a batata"*) valia aqui **POR ACIDENTE**: o combo casava com DUAS fichas e morria na trava da ambiguidade. Tirei o acidente e o buraco apareceu. Agora é **explícito** (marcas `MAIS` e `+`, lista fechada). ⚠️ **`COM` fica de fora de propósito:** `FRANGO COM CATUPIRY` é **um sabor**, e barrá-lo mataria sugestão legítima.
+
+**⚠️⚠️ REGRA 11 REPROVOU DUAS VERSÕES MINHAS DO MESMO GUARD:** (a) a fixture com **duas** candidatas passava pela trava da **ambiguidade** — repondo o defeito, ficava **VERDE**; o caso que isola é o REAL de prod, com **uma** ficha só; (b) a lista de qualificadores nasceu em **minúsculas** e `normalizarNome` devolve **MAIÚSCULAS** → o guard era **no-op**, verde com o defeito reposto. *Guard que não roda contra o defeito que o motivou é uma afirmação sobre o mundo bom.*
+
+**PROVADO EM PROD depois dos dois:**
+```
+PRODUTOS     12/09  ✓ FANTA LARANJA ZERO 2L — sem sugestão (a comum não entra)
+COMPLEMENTOS 13/09  ⭐ COCA COLA LATA → COCA LATA          (comum → comum)
+                    ⭐ COCA COLA ZERO LATA → COCA ZERO LATA (zero  → zero)
+                    ✓ COCA LATA MAIS MINI FRITAS            — combo sem sugestão
+                    ✓ COCA COLA ZERO LATA MAIS MINI FRITAS  — combo sem sugestão
+                    ✓ FANTA LARANJA LATA MAIS MINI FRITAS · SPRITE LATA MAIS MINI FRITAS
+```
+**9.880 verdes · TS 0 · deploys `Muxqj0EeHnkUlt0WpwA1a`, `rsUZZXoICeOUbMyVaIq_G` e `-f9t45mvSaLEh0bDD_QoE`, os três 4/4.**
+
 ### ⭐⭐ O IMPORT DE COMPLEMENTOS DE 13/09 — AS BEBIDAS BAIXARAM; O DEFEITO ERA DA TELA (14/09)
 
 **O relato:** *"bebidas não baixaram"*. **A investigação read-only inocentou o arquivo, o import e a baixa** — e achou o defeito na TELA.
