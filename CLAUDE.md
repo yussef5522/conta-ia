@@ -721,6 +721,51 @@ TELA → 200 · "revisar" ✓ · "sem destino" ✓ · "parece" ✓ · o aviso do
 
 📋 **FICA PRO DONO (o gesto é dele):** os **4 combos** (`… MAIS MINI FRITAS`, 28 ocorrências) precisam de ficha composta (lata + porção mini fritas) — o botão *"definir"* da linha leva ao cardápio com o nome já carregado. E **"ignorar" só aparece nos complementos**: o mapa de produtos aceita `FICHA | REVENDA | REMOVER`, e REMOVER **devolve a pendente**, que é outra coisa — oferecer ali seria um gesto que promete uma coisa e faz outra. Registrado como o que falta naquele mapa, não disfarçado.
 
+### ⛔⛔⛔ A TELA PENDUROU EM PROD — 20 REQUISIÇÕES POR SEGUNDO, 18.051 NO DIA (14/09)
+
+**O dono:** *"com a página RECARREGADA, três fetches não resolvem — o 'Lendo…' do topo, a lista de receitas do seletor ('carregando…' eterno) e o POST do processar ('processando…' preso)."*
+
+**⭐ A INVESTIGAÇÃO INOCENTOU TUDO QUE ELE LEVANTOU, e a medição é que apontou o culpado:**
+```
+pm2        online · 40 restarts · uptime 629s · 54 MB · CPU 0,1%   → sem loop, sem OOM
+dmesg      nenhum "killed process"                                 → sem OOM killer
+free       2.854 MB livres de 3.915                                → sem pressão
+as rotas   destinos 184/261ms · revisao 13/09 202ms · processados 302ms
+           preview-do-ajuste 72-112ms                              → montarRevisaoDeLinhas NÃO é pesado
+deploy     BUILD_ID servido == buildado, 4/4                       → não ficou pela metade
+```
+⛔ **E o nginx deu o veredito: 489 de 500 requisições eram o MESMO `POST /vendas/preview`, ~20 por segundo, todas 200, cada uma reenviando o arquivo inteiro** — do Safari dele. **18.051 no dia.**
+
+**A CAUSA É MINHA, do deploy das 17h:** o `carregar` da revisão tinha **`recarregarExterna` nas dependências**, e a tela pai monta essa função **nova a cada render**:
+```
+efeito → fetch → setState no pai → render → identidade nova → efeito → …
+```
+⚠️ **E é por isso que os TRÊS spinners travaram, não só um:** com o limite de **~6 conexões por host** do browser saturado pelo laço, o `GET /destinos` do seletor e o `POST /processar` **ficaram na FILA — pra sempre**. *O servidor nunca soube que havia um problema.*
+
+**⭐⭐ A CURA É ESTRUTURAL, não um `useRef` em cima do laço:** no modo externo **a lista É a prop** — o componente **ESPELHA**, não busca. Quem busca é o pai, e só quando alguém pede (um ajuste). **Sem efeito que busca, não há laço possível** (REGRA 5). O `recarregarExterna` foi pro ref: é chamado por GESTO, nunca por dependência.
+
+**⚠️ A RÉGUA GERAL QUE FICA:** ***`useCallback`/`useEffect` que busca não pode depender de função vinda de prop*** — a identidade muda a cada render do pai **por construção**. É um laço armado esperando o pai re-renderizar.
+
+**⭐ A VARREDURA (REGRA 4) ACHOU A MESMA BOMBA NOUTRO LUGAR:** `LinkPaymentModal` tem `load` com `onClose` e `toast` nas deps + `useEffect(… , [load])`. Lá não virou enxurrada porque o `load` só mexe em estado **local** — mas é a mesma bomba armada, e foi fechada junto (os dois foram pro ref).
+
+**⛔⛔ E O TIMEOUT QUE O DONO PEDIU — com uma declaração honesta: ELE NÃO TERIA PEGO ESTE DEFEITO.** As requisições eram **200 e rápidas**; o que pendurou foi a FILA. O timeout não impede o laço — **impede a mentira**: em vez de girar pra sempre, a tela diz *"não consegui carregar — tentar de novo"* em **12 s**. `lib/http/fetch-com-timeout.ts` (12 s pra ler, **60 s pra gravar** — desistir cedo de uma gravação que está acontecendo é pior que esperar), **nunca lança** (throw solto em efeito vira spinner com o erro só no console), e respeita o `signal` de quem chama.
+
+**⭐ *"Carregando pra sempre e erro são estados diferentes; o spinner eterno é a ausência fingindo progresso"*** — palavras do dono, e virou régua da casa.
+
+**O GUARD (`spinner-eterno-nao-existe.test.ts`) TEM DUAS FORMAS, e a 2ª nasceu de o guard não morder:**
+- **(A) direta** — o hook tem `fetch(` no corpo e uma prop-função nas deps;
+- **(B) indireta** — um `useCallback` com prop-função nas deps é ele próprio dependência de um `useEffect`.
+
+**⚠️⚠️ REGRA 11 REPROVOU A 1ª VERSÃO:** repondo o defeito, o `fetch(` ficou num callback **VIZINHO** e o detector que só olhava o corpo passou **VERDE**. *O laço não precisa do `fetch` na mesma função — precisa da **identidade instável chegando ao efeito**.* ⛔ E `onClose` num efeito de listener **não** cai no detector: a forma é outra, e alarme falso no dia 1 mataria o guard.
+
+**PROVADO EM PROD:**
+```
+CELULAR 200 · DESKTOP 200  →  ✓ teto de tempo no fetch · ✓ "tentar de novo" · ✓ a frase do erro
+nginx    último POST /preview 16:26 (antes do deploy) · agora 16:31
+         últimas requisições: navegação normal, ZERO /preview
+```
+**9.992 verdes · TS 0 · deploy `BjtjdYxjEEHTrXkBHb-OQ` 4/4.**
+
 ### ⛔⛔⛔ A TELA VELHA NÃO MORREU QUANDO A NOVA NASCEU — NAS DUAS (14/09)
 
 **O dono:** *"depois do confirmar (e no upload), a página empilha: recibo + REVISÃO nova + o RELATÓRIO/TABELA VELHA (produtos: 'Mapeamento (115)' com trocar/desmapear e SEGUNDO botão de confirmar; complementos: o relatório feio antigo que não edita nada). O mesmo dado em duas vitrines, dois confirmares — **é a segunda derivação em forma de página**."*
