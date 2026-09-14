@@ -16,6 +16,7 @@ import { Loader2, Check, AlertTriangle, Search, EyeOff, Undo2 } from 'lucide-rea
 import { SeletorDeDestino, type EscolhaDeDestino } from './seletor-de-destino'
 import { ancoraDaLinha, hrefDoEditor } from '@/lib/stock/vendas/volta-da-revisao'
 import { fetchComTimeout } from '@/lib/http/fetch-com-timeout'
+import { PlanoVendaModal, type PlanoVM } from './plano-venda-modal'
 
 export interface LinhaRevisaoDTO {
   nome: string
@@ -84,6 +85,11 @@ export function RevisaoDoImport({
   const [ocupado, setOcupado] = useState<string | null>(null)
   const [preview, setPreview] = useState<{ mudam: { nome: string; frase: string }[]; inalterados: number } | null>(null)
   const [gravando, setGravando] = useState(false)
+  /** ⭐ o plano na forma do modal ÚNICO — o mesmo da tela de produtos (14/09) */
+  const [plano, setPlano] = useState<PlanoVM | null>(null)
+  const [modal, setModal] = useState(false)
+  /** ⭐ a tela RESPONDE depois de gravar — era o "clique mudo" do dono */
+  const [recibo, setRecibo] = useState<{ baixados: number; itens: number; valor: number } | null>(null)
 
   const externo = revisaoExterna !== undefined
 
@@ -199,25 +205,51 @@ export function RevisaoDoImport({
   }
 
   async function verPreview() {
-    const r = await fetch(`/api/empresas/${empresaId}/estoque/vendas/revisao`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ data, relatorio, confirmar: false }),
-    })
-    const j = await r.json().catch(() => null)
-    if (r.ok) setPreview(j.preview)
+    // ⛔ COM TIMEOUT: o rodapé não pode ficar em "conferindo o que mudou…" pra sempre
+    const r = await fetchComTimeout<{ preview: typeof preview; plano: PlanoVM | null }>(
+      `/api/empresas/${empresaId}/estoque/vendas/revisao`,
+      { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ data, relatorio, confirmar: false }) },
+    )
+    if (!r.ok || !r.data) { setErro(r.erro ?? 'Não consegui conferir o que muda neste dia.'); return }
+    setPreview(r.data.preview)
+    setPlano(r.data.plano)
   }
 
-  async function reprocessar() {
+  /**
+   * ⛔⛔⛔ O CLIQUE MUDO QUE GRAVAVA (14/09) — o pior desfecho possível.
+   *
+   * **O dono, navegando:** *"clico 'Confirmar e baixar' → NADA acontece."* **E acontecia:**
+   * o ledger registrou `BAIXA_VENDA` às 19:33:17 do clique dele. A tela zerava o preview,
+   * recarregava a lista (que não mudava, porque os nomes já estavam vinculados) e **jogava
+   * o recibo fora**. *Gravar sem dizer é pior que não gravar: o dono clica de novo.*
+   *
+   * ⭐ Agora o botão **ABRE O MODAL** (o mesmo da tela de produtos) e quem grava é o
+   * `gravar()`, que **guarda o recibo e o mostra**.
+   */
+  function abrirModal() { setErro(null); setModal(true) }
+
+  async function gravar(confirmouSanidade: boolean) {
     setGravando(true)
     try {
-      const r = await fetch(`/api/empresas/${empresaId}/estoque/vendas/revisao`, {
-        method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ data, relatorio, confirmar: true, confirmouSanidade: true }),
+      // ⚠️ teto MAIOR porque isto GRAVA: desistir cedo de uma escrita que está acontecendo
+      // é pior que esperar — mas termina, com erro visível.
+      const r = await fetchComTimeout<{ recibo?: { baixados?: number; itensBaixados?: number; valorBaixado?: number; ocorrencias?: number; itens?: number; valor?: number } }>(
+        `/api/empresas/${empresaId}/estoque/vendas/revisao`,
+        { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ data, relatorio, confirmar: true, confirmouSanidade }), timeoutMs: 60_000 },
+      )
+      if (!r.ok || !r.data) { setErro(r.erro ?? 'Não consegui reprocessar o dia.'); return }
+      setModal(false)
+      // ⚠️ os dois relatórios nomeiam o recibo diferente (ocorrências × produtos) — a
+      // tradução mora AQUI, num lugar, e o número que vai pra tela é sempre o do servidor.
+      const rc = r.data.recibo ?? {}
+      setRecibo({
+        baixados: rc.ocorrencias ?? rc.baixados ?? 0,
+        itens: rc.itens ?? rc.itensBaixados ?? 0,
+        valor: rc.valor ?? rc.valorBaixado ?? 0,
       })
-      const j = await r.json().catch(() => null)
-      if (!r.ok) { setErro(j?.erro ?? 'Não consegui reprocessar o dia.'); return }
       setPreview(null)
       await carregar()
+      await verPreview()
       onMudou?.()
     } finally { setGravando(false) }
   }
@@ -265,7 +297,28 @@ export function RevisaoDoImport({
         </div>
       </div>
 
-      {erro && <div className="rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">{erro}</div>}
+      {/* ⭐ ERRO COM SAÍDA — âmbar, não vermelho de pânico: quase sempre é rede */}
+      {erro && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          {erro}
+          <button type="button" onClick={() => { setErro(null); void verPreview() }} className="ml-1.5 font-semibold underline">tentar de novo</button>
+        </div>
+      )}
+
+      {/* ⭐⭐⭐ A TELA RESPONDE (14/09) — era exatamente isto que faltava: o dono clicava,
+          o ledger gravava e a tela ficava igual. **Gravar sem dizer é pior que não gravar,
+          porque ele clica de novo.** */}
+      {recibo && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-[13px] text-emerald-900">
+          <Check className="h-4 w-4 shrink-0" />
+          <span>
+            <b>baixado: {recibo.baixados.toLocaleString('pt-BR')} {relatorio === 'COMPLEMENTOS' ? 'ocorrências' : 'produtos'}</b>
+            {recibo.itens > 0 && <> · {recibo.itens} item(ns) do estoque</>}
+            {recibo.valor > 0 && <> · {recibo.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</>}
+          </span>
+          <button type="button" onClick={() => setRecibo(null)} className="ml-auto text-[11px] underline">ok</button>
+        </div>
+      )}
 
       <div className="overflow-hidden rounded-xl border border-slate-200">
         {visiveis.length === 0 && (
@@ -400,7 +453,7 @@ export function RevisaoDoImport({
         </div>
         <button
           type="button"
-          onClick={confirmar ? confirmar.acao : reprocessar}
+          onClick={confirmar ? confirmar.acao : abrirModal}
           disabled={confirmar ? !confirmar.habilitado : (gravando || !preview || preview.mudam.length === 0)}
           className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-violet-600 px-3.5 text-[13px] font-semibold text-white hover:bg-violet-700 disabled:opacity-40"
         >
@@ -408,6 +461,22 @@ export function RevisaoDoImport({
           {confirmar ? confirmar.rotulo : `Confirmar e baixar ${data.split('-').reverse().join('/')}`}
         </button>
       </div>
+
+      {/* ⭐⭐ O MESMO MODAL DA TELA DE PRODUTOS — "o que acontece se eu confirmar?" numa
+          tela só: o que baixa por NOME, o que sai do estoque item a item com custo, o
+          custo total, e os pendentes numa linha neutra. ⛔ Nada grava sem ele. */}
+      {modal && (
+        <PlanoVendaModal
+          plano={plano ?? { produtos: [], pendentes: [], fora: [], agregada: [] }}
+          data={data}
+          titulo={relatorio === 'COMPLEMENTOS' ? 'Baixa dos complementos' : 'Baixa das vendas'}
+          subtitulo={preview && preview.mudam.length > 0 ? `${preview.mudam.length} nome(s) mudaram de destino — confirmar estorna e refaz o dia` : 'confirmar estorna e refaz a baixa deste dia'}
+          processando={gravando}
+          erro={erro}
+          onConfirmar={(confirmouSanidade) => void gravar(confirmouSanidade)}
+          onClose={() => setModal(false)}
+        />
+      )}
     </div>
   )
 }
