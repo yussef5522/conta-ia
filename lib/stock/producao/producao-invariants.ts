@@ -6,6 +6,7 @@ import type { PrismaClient, Prisma } from '@prisma/client'
 import type { StockInvariantFail } from '../stock-invariants'
 import { rendimentoMedioDaFicha } from './conclusao'
 import { emProducaoPorOrdem } from './em-producao'
+import { diaEmSaoPaulo, janelaDoDiaSP } from '@/lib/datas/dia-sao-paulo'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -20,6 +21,24 @@ export async function checkProducaoInvariants(db: Db, now: Date = new Date()): P
   const F = (invariante: string, companyId: string | null, detalhe: string) => fails.push({ invariante, companyId, detalhe })
 
   const ordens = await db.stockProductionOrder.findMany({ select: { id: true, companyId: true, estado: true, atualizadoEm: true, fichaId: true } })
+  /**
+   * ⭐ AS ORDENS COM DESCANSO PLANEJADO — etapa ainda por fazer, marcada pra HOJE ou pra
+   * FRENTE. É o que separa *"o lote está dormindo de propósito"* de *"o lote foi esquecido"*.
+   * ⚠️ O corte é o DIA de São Paulo: um plano pra hoje não pode virar "vencido" às 21h.
+   */
+  const hojeSP = janelaDoDiaSP(diaEmSaoPaulo(now), diaEmSaoPaulo(now)).de
+  const planosVigentes = await db.stockEtapaPlano.findMany({
+    where: { diaPrevisto: { gte: hojeSP } },
+    select: { etapaId: true },
+  })
+  const descansoPlanejado = new Set(
+    planosVigentes.length
+      ? (await db.stockOrdemEtapa.findMany({
+          where: { id: { in: planosVigentes.map((p) => p.etapaId) }, finalizadoEm: null },
+          select: { ordemId: true },
+        })).map((e) => e.ordemId)
+      : [],
+  )
   if (ordens.length) {
     const ids = ordens.map((o) => o.id)
     const movs = await db.stockMovement.findMany({ where: { receiptId: { in: ids }, tipo: { in: TIPOS_ORDEM } }, select: { receiptId: true, itemId: true, tipo: true, quantidade: true } })
@@ -58,10 +77,21 @@ export async function checkProducaoInvariants(db: Db, now: Date = new Date()): P
           if (emProd > 0.01) F('P4', o.companyId, `ordem ${o.id} (${o.estado}) tem ${emProd} do item ${itemId} preso em-produção — não devolvido nem consumido.`)
         }
       }
-      // P2 — ordem em aberto parada > 24h no mesmo estado
+      /**
+       * P2 — ordem em aberto parada > 24h no mesmo estado.
+       *
+       * ⛔⛔ **DESCANSO INTENCIONAL NÃO É ATRASO (15/09):** desde que a etapa pode ter DIA
+       * PRÓPRIO, um lote que dorme (massa que descansa, molho que apura) fica legitimamente
+       * parado — e o alarme gritaria **toda noite** sobre uma receita funcionando.
+       * *Alarme falso repetido é como um alarme morre* (a lição dos 111 de vendas).
+       *
+       * ⚠️ E a exceção é ESTREITA: só cala quando existe etapa **planejada pra hoje ou pra
+       * frente**. Lote esquecido com o plano VENCIDO continua vermelho — que é o caso que o
+       * P2 existe pra pegar.
+       */
       if (['PLANEJADA', 'SEPARADA', 'EM_PRODUCAO'].includes(o.estado)) {
         const horas = (now.getTime() - o.atualizadoEm.getTime()) / 3600_000
-        if (horas > 24) F('P2', o.companyId, `ordem ${o.id} está ${o.estado} há ${Math.floor(horas)}h sem avançar.`)
+        if (horas > 24 && !descansoPlanejado.has(o.id)) F('P2', o.companyId, `ordem ${o.id} está ${o.estado} há ${Math.floor(horas)}h sem avançar.`)
       }
     }
   }

@@ -14,6 +14,9 @@ import { Loader2, Check, Clock, User, CircleSlash, BellRing, UserCheck, X } from
 interface Etapa {
   id: string; posicao: number; nome: string
   colaboradorId: string | null; colaboradorNome: string | null
+  diaPrevisto: string | null
+  liberadaParaEquipe: boolean
+  visibilidade: string | null
   /** ⭐ a DUPLA: os designados desta etapa (0, 1 ou 2) */
   participantes: { colaboradorId: string; nome: string; iniciou: boolean; finalizou: boolean }[]
   executorNome: string | null; iniciadoEm: string | null; finalizadoEm: string | null
@@ -86,6 +89,24 @@ export function EtapasDaOrdem({ id, ordemId, colaboradores, aoSaberAssinadas, ao
    * ⛔ O teto de 2 continua sendo do BANCO (`designarParticipantes` → `validarEntrada`); a
    * tela só não oferece um terceiro campo. Trava de tela é conselho; trava de gravação é lei.
    */
+  /**
+   * ⭐⭐ O PLANO DA ETAPA (15/09) — dia próprio e "liberar pra equipe".
+   * ⚠️ Campo ausente NÃO MEXE no outro: mudar o dia não pode desligar a liberação sem querer.
+   */
+  const plano = async (etapaId: string, corpo: { diaPrevisto?: string | null; liberadaParaEquipe?: boolean }) => {
+    setSalvando(etapaId); setErro(null)
+    try {
+      const r = await fetch(`/api/empresas/${id}/estoque/producao/etapas/${etapaId}/plano`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(corpo),
+      })
+      const j = await r.json().catch(() => null)
+      // ⚠️ falha VISÍVEL: plano sem feedback deixaria o encarregado achando que marcou o dia
+      if (!r.ok) { setErro(j?.erro ?? 'Não consegui salvar o plano da etapa.'); return }
+      // ⭐ o estado novo vem do que o SERVIDOR aceitou — nunca do clique (a régua de 12/09)
+      await carregar()
+    } finally { setSalvando(null) }
+  }
+
   const designar = async (etapaId: string, colaboradorIds: string[]) => {
     setSalvando(etapaId); setErro(null); setConfirmado(null)
     const r = await fetch(`/api/empresas/${id}/estoque/producao/ordens/${ordemId}/etapas`, {
@@ -207,8 +228,39 @@ export function EtapasDaOrdem({ id, ordemId, colaboradores, aoSaberAssinadas, ao
                         .map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
                     </select>
                   )}
+                </span>
+
+                {/* ⭐⭐⭐ O PLANO DA ETAPA (15/09) — o dia dela e quem pode vê-la.
+                    ⛔ O texto antigo aqui dizia *"quem pegar com o PIN fica registrado"*, e
+                    ele descrevia o mundo que morreu: etapa sem nome **não aparece pra
+                    ninguém**. Deixá-lo seria a tela documentando uma regra que não existe
+                    mais — o defeito de 10/09, em forma de frase. */}
+                <span className="flex flex-wrap items-center gap-2 text-[11.5px]">
+                  {e.visibilidade && (
+                    <span className={`rounded-full px-2 py-0.5 font-medium ${e.liberadaParaEquipe ? 'bg-sky-50 text-sky-800' : 'bg-amber-50 text-amber-800'}`}>
+                      {e.visibilidade}
+                    </span>
+                  )}
+                  <label className="inline-flex items-center gap-1 text-slate-500">
+                    dia
+                    {/* ⚠️ vazio = o dia da ORDEM (o caso comum, tudo no mesmo dia) */}
+                    <input
+                      type="date" value={e.diaPrevisto ?? ''} disabled={salvando === e.id}
+                      onChange={(ev) => plano(e.id, { diaPrevisto: ev.target.value || null })}
+                      aria-label={`dia previsto da etapa ${e.nome}`}
+                      className="h-7 rounded-lg border border-slate-300 px-1.5 text-[11.5px] disabled:opacity-40"
+                    />
+                    {!e.diaPrevisto && <span className="text-slate-400">= o da ordem</span>}
+                  </label>
+                  {/* ⛔ LIBERAR É ESCOLHA, nunca o padrão por omissão: o silêncio não publica */}
                   {e.participantes.length === 0 && (
-                    <span className="text-[11.5px] text-slate-400">quem pegar com o PIN fica registrado</span>
+                    <button
+                      onClick={() => plano(e.id, { liberadaParaEquipe: !e.liberadaParaEquipe })}
+                      disabled={salvando === e.id}
+                      className={`inline-flex h-7 items-center rounded-lg border px-2 font-medium disabled:opacity-40 ${e.liberadaParaEquipe ? 'border-sky-300 bg-sky-50 text-sky-800' : 'border-slate-300 text-slate-600 hover:bg-slate-50'}`}
+                    >
+                      {e.liberadaParaEquipe ? 'voltar a ser rascunho' : 'liberar pra equipe'}
+                    </button>
                   )}
                 </span>
                 {e.estado === 'EM_ANDAMENTO' ? (

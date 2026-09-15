@@ -28,6 +28,22 @@ import { cadastrarPessoa } from '../cadastrar-pessoa'
 import { finalizarPeloGerente } from '../gestos-do-gerente'
 import { relatorioPorPessoa } from '../relatorio-por-pessoa'
 import { trabalhoPendurado, motivoParaNaoInativar } from '@/lib/equipe/inativar-colaborador'
+import { definirPlanoDaEtapa } from '../plano-etapas'
+
+/**
+ * ⚠️⚠️ FIXTURE EXPLÍCITA DESDE 15/09 — o pressuposto saiu do silêncio.
+ *
+ * Até 14/09 etapa **sem responsável** aparecia pra todo mundo e qualquer um iniciava, e
+ * estes testes se apoiavam nisso sem dizer. A régua nova é *"sem nome = rascunho do dono"*
+ * (**o silêncio não publica**), então o mundo que eles testam — *"quem pegou, pegou"* —
+ * virou uma ESCOLHA: `liberadaParaEquipe`.
+ *
+ * ⭐ O ASSUNTO de cada teste não mudou; o que mudou é que o pressuposto agora está escrito.
+ */
+async function liberarEtapas(ordemId: string) {
+  const es = await prisma.stockOrdemEtapa.findMany({ where: { companyId, ordemId }, select: { id: true } })
+  for (const e of es) await definirPlanoDaEtapa({ companyId, etapaId: e.id, liberadaParaEquipe: true }, prisma)
+}
 import {
   etapasEmAndamentoDoColaborador,
   somenteEmAndamento,
@@ -81,6 +97,7 @@ afterEach(async () => {
 /** a etapa da Carlise aberta desde as 19:38 — o cenário do caso real */
 async function etapaAberta() {
   const { ordemId } = await criarOrdem({ companyId, fichaId, escalaReceitas: 5, dataProducao: emSP(6) }, prisma)
+  await liberarEtapas(ordemId)
   await confirmarSeparacao(companyId, ordemId, [{ itemId: acem, qtdSeparada: 4 }, { itemId: gordura, qtdSeparada: 1 }], prisma)
   const [e1] = await etapasDaOrdem(companyId, ordemId, AGORA, prisma)
   await designarEtapa({ companyId, etapaId: e1.id, colaboradorId: carlise }, prisma)
@@ -122,6 +139,7 @@ describe('⛔⛔⛔ O CASO REAL — a etapa que a ordem levou junto não prende 
 
     // a produção de hoje, numa ordem viva
     const { ordemId } = await criarOrdem({ companyId, fichaId, escalaReceitas: 5, dataProducao: emSP(8) }, prisma)
+    await liberarEtapas(ordemId)
     await confirmarSeparacao(companyId, ordemId, [{ itemId: acem, qtdSeparada: 4 }, { itemId: gordura, qtdSeparada: 1 }], prisma)
     const [hoje] = await etapasDaOrdem(companyId, ordemId, AGORA, prisma)
 
@@ -134,6 +152,7 @@ describe('⛔⛔⛔ O CASO REAL — a etapa que a ordem levou junto não prende 
     await etapaAberta()
 
     const { ordemId } = await criarOrdem({ companyId, fichaId, escalaReceitas: 5, dataProducao: emSP(8) }, prisma)
+    await liberarEtapas(ordemId)
     await confirmarSeparacao(companyId, ordemId, [{ itemId: acem, qtdSeparada: 4 }, { itemId: gordura, qtdSeparada: 1 }], prisma)
     const [outra] = await etapasDaOrdem(companyId, ordemId, AGORA, prisma)
 

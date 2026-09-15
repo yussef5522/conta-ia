@@ -7,6 +7,7 @@
 
 import { prisma as defaultPrisma } from '@/lib/db'
 import type { Lote } from './relatorios'
+import { minutosDoLote } from './plano-da-etapa'
 
 type Db = typeof defaultPrisma
 
@@ -42,14 +43,23 @@ export async function lotesDaJanela(companyId: string, janela: JanelaDeLotes = {
   const unidadeItem = new Map(itens.map((i) => [i.id, i.unidadeControle]))
   const metaPorOrdem = new Map(metas.map((m) => [m.ordemId, m.unidades]))
 
-  // ⭐ a duração do LOTE é da 1ª etapa iniciada à última finalizada; se alguma etapa ficou
-  // sem finalizar, o lote **não tem tempo medido** — inventar o fim seria inventar minutos.
-  const janelaDaOrdem = new Map<string, { ini: Date; fim: Date | null }>()
-  for (const e of etapas) {
-    const a = janelaDaOrdem.get(e.ordemId)
-    const fim = a?.fim === null ? null : e.finalizadoEm ? (a?.fim && a.fim > e.finalizadoEm ? a.fim : e.finalizadoEm) : null
-    janelaDaOrdem.set(e.ordemId, { ini: a && a.ini < e.iniciadoEm! ? a.ini : e.iniciadoEm!, fim })
-  }
+  /**
+   * ⛔⛔⛔ AQUI MORAVA A ARMADILHA DO RELÓGIO (corrigida 15/09/2026).
+   *
+   * Esta linha dizia, em comentário: *"a duração do LOTE é da 1ª etapa iniciada à última
+   * finalizada"* — ou seja, **fim − início atravessando a noite**. Um lote cuja etapa 1 é
+   * feita hoje e a 2 amanhã contava as **16 horas de descanso como produção**, e esse número
+   * ia pra média por lote, pro gráfico por dia e pro "melhor ritmo".
+   *
+   * **A régua do dono:** *"o TEMPO do lote é a SOMA dos cronômetros das etapas. Lote que
+   * dorme 16h não produziu 16h — se a etapa 1 levou 40min e a 2 levou 35min, o lote levou
+   * 1h15."*
+   *
+   * ⚠️ O defeito **já existia** antes das etapas em dias diferentes: bastava um intervalo
+   * grande entre duas etapas do mesmo lote. A feature só o tornaria rotina.
+   */
+  const etapasDaOrdem = new Map<string, { iniciadoEm: Date | null; finalizadoEm: Date | null }[]>()
+  for (const e of etapas) etapasDaOrdem.set(e.ordemId, [...(etapasDaOrdem.get(e.ordemId) ?? []), e])
 
   // ⚠️ produção PARCIAL gera VÁRIAS conclusões na mesma ordem — elas somam num lote só,
   // senão o mesmo pedido apareceria 3× no numerador do rendimento.
@@ -70,14 +80,15 @@ export async function lotesDaJanela(companyId: string, janela: JanelaDeLotes = {
     const o = vivas.get(ordemId)!
     const tarefa = nomeItem.get(o.itemProduzidoId) ?? '(item removido)'
     if (janela.tarefa && tarefa !== janela.tarefa) continue
-    const j = janelaDaOrdem.get(ordemId)
+    const doLote = etapasDaOrdem.get(ordemId) ?? []
     out.push({
       ordemId, tarefa,
       unidade: unidadeItem.get(o.itemProduzidoId) ?? 'UN',
       pedido: metaPorOrdem.get(ordemId) ?? null,
       entregue: Math.round(v.entregue * 100) / 100,
       custoUnitario: v.comCusto > 0 ? Math.round((v.custoSoma / v.comCusto) * 100) / 100 : null,
-      minutos: j?.fim ? Math.round((j.fim.getTime() - j.ini.getTime()) / 60000) : null,
+      // ⭐ SOMA dos cronômetros — nunca a janela do lote (o sono não é trabalho)
+      minutos: minutosDoLote(doLote),
       dia: diaBrasil(v.quando),
     })
   }

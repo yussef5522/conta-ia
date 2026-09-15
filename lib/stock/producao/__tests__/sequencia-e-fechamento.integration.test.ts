@@ -21,6 +21,22 @@ import { tarefasAbertasDemais } from '../minhas-tarefas'
 import { cancelarOrdem } from '../ordens'
 import { concluir } from '../conclusao'
 import { saldoItem } from '../../saldo'
+import { definirPlanoDaEtapa } from '../plano-etapas'
+
+/**
+ * ⚠️⚠️ FIXTURE EXPLÍCITA DESDE 15/09 — o pressuposto saiu do silêncio.
+ *
+ * Até 14/09 etapa **sem responsável** aparecia pra todo mundo e qualquer um iniciava, e
+ * estes testes se apoiavam nisso sem dizer. A régua nova é *"sem nome = rascunho do dono"*
+ * (**o silêncio não publica**), então o mundo que eles testam — *"quem pegou, pegou"* —
+ * virou uma ESCOLHA: `liberadaParaEquipe`.
+ *
+ * ⭐ O ASSUNTO de cada teste não mudou; o que mudou é que o pressuposto agora está escrito.
+ */
+async function liberarEtapas(ordemId: string) {
+  const es = await prisma.stockOrdemEtapa.findMany({ where: { companyId, ordemId }, select: { id: true } })
+  for (const e of es) await definirPlanoDaEtapa({ companyId, etapaId: e.id, liberadaParaEquipe: true }, prisma)
+}
 
 const CNPJ = '16180339000188'
 let companyId = ''
@@ -69,6 +85,7 @@ afterEach(async () => {
 /** uma ordem com material separado, pronta pra produzir */
 async function ordemSeparada(escala = 5) {
   const { ordemId } = await criarOrdem({ companyId, fichaId, escalaReceitas: escala, dataProducao: HOJE }, prisma)
+  await liberarEtapas(ordemId)
   await confirmarSeparacao(companyId, ordemId, [
     { itemId: acem, qtdSeparada: 0.8 * escala },
     { itemId: gordura, qtdSeparada: 0.2 * escala },
@@ -174,6 +191,7 @@ describe('⭐⭐ o lote fecha na ponta, pelo MESMO motor', () => {
 
   it('⛔ ordem sem material separado é recusada com frase que ensina', async () => {
     const { ordemId } = await criarOrdem({ companyId, fichaId, escalaReceitas: 5, dataProducao: HOJE }, prisma)
+    await liberarEtapas(ordemId)
     await expect(concluirDoTablet({ companyId, ordemId, qtdGerada: 10, colaboradorId: cristian }, prisma))
       .rejects.toThrow(/Não há material separado/)
   })
@@ -194,6 +212,7 @@ describe('⭐⭐ o lote fecha na ponta, pelo MESMO motor', () => {
       componentes: [{ itemId: acem, qtdPlanejada: 1, unidade: 'KG', posicao: 0 }],
     }, prisma)
     const { ordemId } = await criarOrdem({ companyId, fichaId: sem.fichaId, escalaReceitas: 2, dataProducao: HOJE }, prisma)
+    await liberarEtapas(ordemId)
     await confirmarSeparacao(companyId, ordemId, [{ itemId: acem, qtdSeparada: 2 }], prisma)
     const es = await etapasDaOrdem(companyId, ordemId, HOJE, prisma)
     await designarEtapa({ companyId, etapaId: es[0].id, colaboradorId: cristian }, prisma)

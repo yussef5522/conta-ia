@@ -25,6 +25,8 @@ interface Tarefa {
   esperandoEtapaAnterior: string | null; minha: boolean; ultima: boolean
   /** ⭐ o gerente pediu pra você finalizar (07/09) — é RECADO, não ordem: o botão é o mesmo */
   pedidoPraFinalizar: boolean
+  /** ⭐⭐ o lote veio de ontem (15/09) — informação, nunca alarme: o descanso é a receita */
+  continuacao: { etapaAnterior: string; dia: string; quem: string | null } | null
 }
 interface Consumo { itemId: string; nome: string; qtd: number; unidade: string }
 import { relogioDaTarefa, desvioDoAparelho } from '@/lib/stock/producao/cronometro'
@@ -345,12 +347,24 @@ export default function CozinhaPage({ params }: { params: Promise<{ empresaId: s
                   O gerente pediu pra você finalizar esta tarefa — se terminou, aperte FINALIZAR.
                 </p>
               )}
+              {/* ⭐⭐ "COMEÇOU ONTEM" (15/09) — o lote que dormiu chega com história.
+                  ⚠️ Tom NEUTRO de propósito: massa que descansa e molho que apura são a
+                  RECEITA, não atraso. Pintar de âmbar treinaria a cozinha a ver alarme onde
+                  há processo — a lição dos 111 alarmes falsos de vendas. */}
+              {t.continuacao && (
+                <p className="mt-2 rounded-xl bg-white/5 px-3 py-2 text-xs text-slate-300">
+                  começou {t.continuacao.dia.split('-').reverse().slice(0, 2).join('/')} — “{t.continuacao.etapaAnterior}”
+                  {t.continuacao.quem ? ` feita por ${t.continuacao.quem}` : ''}
+                </p>
+              )}
               {t.esperandoEtapaAnterior ? (
                 // ⚠️ AVISA, não bloqueia: o encarregado pode mandar adiantar, e travar aqui
                 // faria a pessoa parar de olhar a tela.
                 <p className="mt-2 text-xs text-amber-400/80">depois de “{t.esperandoEtapaAnterior}”</p>
               ) : null}
-              {!t.minha && <p className="mt-1 text-xs text-slate-500">não é sua — se você pegar, fica registrado no seu nome</p>}
+              {/* ⚠️ desde 15/09 a etapa só chega aqui DESIGNADA a você ou LIBERADA pra
+                  equipe — "não é sua" passou a significar a segunda, e a frase diz isso. */}
+              {!t.minha && <p className="mt-1 text-xs text-slate-500">liberada pra equipe — se você pegar, fica registrado no seu nome</p>}
               {/* ⛔⛔ DESABILITADO quando espera a anterior — e o SERVIDOR também recusa.
                   Antes o aviso era só texto e o botão funcionava: em 06/09 a etapa 2 do beef
                   foi iniciada e finalizada com a 1 ainda AGUARDANDO. As duas portas, sempre. */}

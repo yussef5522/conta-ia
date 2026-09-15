@@ -16,6 +16,22 @@ import { iniciarTarefa, finalizarTarefa } from '../minhas-tarefas'
 import { concluirDoTablet } from '../concluir-do-tablet'
 import { cadastrarPessoa } from '../cadastrar-pessoa'
 import { diaAoVivo } from '../dia-ao-vivo'
+import { definirPlanoDaEtapa } from '../plano-etapas'
+
+/**
+ * ⚠️⚠️ FIXTURE EXPLÍCITA DESDE 15/09 — o pressuposto saiu do silêncio.
+ *
+ * Até 14/09 etapa **sem responsável** aparecia pra todo mundo e qualquer um iniciava, e
+ * estes testes se apoiavam nisso sem dizer. A régua nova é *"sem nome = rascunho do dono"*
+ * (**o silêncio não publica**), então o mundo que eles testam — *"quem pegou, pegou"* —
+ * virou uma ESCOLHA: `liberadaParaEquipe`.
+ *
+ * ⭐ O ASSUNTO de cada teste não mudou; o que mudou é que o pressuposto agora está escrito.
+ */
+async function liberarEtapas(ordemId: string) {
+  const es = await prisma.stockOrdemEtapa.findMany({ where: { companyId, ordemId }, select: { id: true } })
+  for (const e of es) await definirPlanoDaEtapa({ companyId, etapaId: e.id, liberadaParaEquipe: true }, prisma)
+}
 
 const CNPJ = '11785433000122'
 let companyId = ''
@@ -64,6 +80,7 @@ afterEach(async () => {
 
 async function ordemSeparada(escala = 5) {
   const { ordemId } = await criarOrdem({ companyId, fichaId, escalaReceitas: escala, dataProducao: emSP(6) }, prisma)
+  await liberarEtapas(ordemId)
   await confirmarSeparacao(companyId, ordemId, [
     { itemId: acem, qtdSeparada: 0.8 * escala },
     { itemId: gordura, qtdSeparada: 0.2 * escala },

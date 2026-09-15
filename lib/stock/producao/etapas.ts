@@ -19,6 +19,9 @@ import { prisma as defaultPrisma } from '@/lib/db'
 import { type MotivoDoEncerramento } from './encerrar-etapas-abertas'
 import { resolverEstadoDasEtapas } from './gestos-do-gerente'
 import { temTempoMedido, rotuloDoEstado, type EstadoDaEtapa } from './estado-da-etapa'
+import { planosDasEtapas } from './plano-etapas'
+import { seloDeVisibilidade } from './plano-da-etapa'
+import { diaEmSaoPaulo } from '@/lib/datas/dia-sao-paulo'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -148,6 +151,16 @@ export interface EtapaDaOrdem {
   emNomeDeNome: string | null
   /** ⭐ o gerente já pediu pra ela finalizar — o recado está no tablet dela */
   pedidoEmAberto: boolean
+  /** ⭐ o dia previsto DESTA etapa (`YYYY-MM-DD`); `null` = o dia da ordem (15/09) */
+  diaPrevisto: string | null
+  /** ⛔ escolha explícita: qualquer um da equipe pode pegar. Padrão `false` */
+  liberadaParaEquipe: boolean
+  /**
+   * ⭐⭐ O SELO DA GESTÃO — *"sem responsável, não aparece pra equipe"*.
+   * ⛔ Invisível pra equipe **e** invisível pro dono seria a fila que some quando o trabalho
+   * zera (12/09): ele planejaria o mesmo lote duas vezes. `null` quando há responsável.
+   */
+  visibilidade: string | null
   /** ⭐ o rótulo pronto: a MESMA frase nas três telas (fonte única) */
   rotulo: string
 }
@@ -198,8 +211,18 @@ export async function etapasDaOrdem(
   const nome = new Map(colabs.map((c) => [c.id, c.nome]))
   // ⭐⭐ FONTE ÚNICA: o estado sai do MESMO resolvedor que o "HOJE ao vivo" e o relatório usam
   const resolvidas = await resolverEstadoDasEtapas(companyId, rows, db)
+  // ⭐ o PLANO de cada etapa (dia próprio + liberada) — a régua de quem vê mora na lib pura
+  const planos = await planosDasEtapas(companyId, rows.map((r) => r.id), db)
   return rows.map((r) => {
     const res = resolvidas.get(r.id)!
+    const pl = planos.get(r.id)
+    const meusParts = parts.filter((p) => p.etapaId === r.id).map((p) => p.colaboradorId)
+    const paraRegua = {
+      colaboradorId: r.colaboradorId,
+      participantes: meusParts,
+      diaPrevisto: pl?.diaPrevisto ? diaEmSaoPaulo(pl.diaPrevisto) : null,
+      liberadaParaEquipe: pl?.liberadaParaEquipe ?? false,
+    }
     return {
       id: r.id, posicao: r.posicao, nome: r.nome,
       colaboradorId: r.colaboradorId, colaboradorNome: r.colaboradorId ? nome.get(r.colaboradorId) ?? null : null,
@@ -229,6 +252,10 @@ export async function etapasDaOrdem(
       finalizadaPorNome: res.finalizadaPorNome,
       emNomeDeNome: res.emNomeDeNome ?? (r.executorId ? nome.get(r.executorId) ?? null : null),
       pedidoEmAberto: res.pedidoEmAberto,
+      diaPrevisto: paraRegua.diaPrevisto,
+      liberadaParaEquipe: paraRegua.liberadaParaEquipe,
+      // ⚠️ etapa FEITA não precisa de selo de visibilidade: o trabalho já aconteceu
+      visibilidade: r.finalizadoEm ? null : seloDeVisibilidade(paraRegua),
       rotulo: rotuloDoEstado(res.estado, {
         iniciou: !!r.iniciadoEm, ordemCancelada: res.ordemCancelada,
         gerente: res.finalizadaPorNome,

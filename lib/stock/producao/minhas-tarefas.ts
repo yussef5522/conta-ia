@@ -20,6 +20,7 @@ import { resolverEstadoDasEtapas, marcarPedidoAtendido } from './gestos-do-geren
 import { participantesDaEtapa, registrarInicio, registrarFim, desfazerInicio } from './participantes'
 import { etapasEmAndamentoDoColaborador, somenteEmAndamento } from './em-andamento'
 import { validarEntrada, MAX_PARTICIPANTES } from './dupla-na-etapa'
+import { diaDaEtapa, pessoaVeAEtapa, nomeadosDaEtapa } from './plano-da-etapa'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -55,6 +56,14 @@ export interface MinhaTarefa {
    * vem de quem sabe, e conclui a ordem pelo mesmo motor da tela de Produção.
    */
   ultima: boolean
+  /**
+   * ⭐⭐ O LOTE VEIO DE ONTEM (15/09) — *"aparece no HOJE de amanhã como continuação, com o
+   * selo 'começou ontem — etapa 1 feita por eliane'"*.
+   *
+   * ⚠️ É INFORMAÇÃO, não alarme: o descanso pode ser a receita (massa, molho que apura).
+   * `null` quando o lote inteiro é do mesmo dia.
+   */
+  continuacao: { etapaAnterior: string; dia: string; quem: string | null } | null
 }
 
 /**
@@ -73,15 +82,31 @@ export async function minhasTarefasDeHoje(
   const hoje = diaEmSaoPaulo(agora)
   const janela = janelaDoDiaSP(hoje, hoje)
 
+  /**
+   * ⭐⭐ O LOTE PODE DORMIR (15/09): a etapa 2 de um lote de ONTEM aparece HOJE quando ela
+   * tem dia previsto pra hoje. Por isso a busca não é só "ordem de hoje" — ela é
+   * **"ordem de hoje OU ordem com etapa planejada pra hoje"**.
+   */
+  const planosDeHoje = await db.stockEtapaPlano.findMany({
+    where: { companyId, diaPrevisto: { gte: janela.de, lte: janela.ate } },
+    select: { etapaId: true },
+  })
+  const ordensDeEtapaPlanejada = planosDeHoje.length
+    ? (await db.stockOrdemEtapa.findMany({ where: { companyId, id: { in: planosDeHoje.map((p) => p.etapaId) } }, select: { ordemId: true } })).map((e) => e.ordemId)
+    : []
+
   const ordens = await db.stockProductionOrder.findMany({
     where: {
       companyId,
       // ⚠️ CANCELADA já está fora por construção (a lista de estados é allowlist) — e é o
       // certo: ninguém deve começar tarefa de uma ordem que o dono cancelou.
       estado: { in: ['PLANEJADA', 'SEPARADA', 'EM_PRODUCAO'] },
-      dataProducao: { gte: janela.de, lte: janela.ate },
+      OR: [
+        { dataProducao: { gte: janela.de, lte: janela.ate } },
+        ...(ordensDeEtapaPlanejada.length ? [{ id: { in: [...new Set(ordensDeEtapaPlanejada)] } }] : []),
+      ],
     },
-    select: { id: true, itemProduzidoId: true, escalaReceitas: true },
+    select: { id: true, itemProduzidoId: true, escalaReceitas: true, dataProducao: true },
   })
   if (!ordens.length) return []
 
@@ -94,16 +119,40 @@ export async function minhasTarefasDeHoje(
   ])
   const nomeItem = new Map(itens.map((i) => [i.id, i.nome]))
   const porOrdem = new Map(ordens.map((o) => [o.id, o]))
+  const [planos, participantes, pessoas] = await Promise.all([
+    db.stockEtapaPlano.findMany({ where: { companyId, etapaId: { in: etapas.map((e) => e.id) } }, select: { etapaId: true, diaPrevisto: true, liberadaParaEquipe: true } }),
+    db.stockOrdemEtapaParticipante.findMany({ where: { companyId, etapaId: { in: etapas.map((e) => e.id) } }, select: { etapaId: true, colaboradorId: true } }),
+    db.stockColaborador.findMany({ where: { companyId }, select: { id: true, nome: true } }),
+  ])
+  const planoDe = new Map(planos.map((p) => [p.etapaId, p]))
+  const nomePessoa = new Map(pessoas.map((c) => [c.id, c.nome]))
+  const partsDe = new Map<string, string[]>()
+  for (const p of participantes) partsDe.set(p.etapaId, [...(partsDe.get(p.etapaId) ?? []), p.colaboradorId])
+  /** ⭐ a régua pura: dia da etapa e quem a vê. Uma resposta, três telas. */
+  const planoDaEtapa = (e: { id: string; colaboradorId: string | null }) => ({
+    colaboradorId: e.colaboradorId,
+    participantes: partsDe.get(e.id) ?? [],
+    diaPrevisto: planoDe.get(e.id)?.diaPrevisto ? diaEmSaoPaulo(planoDe.get(e.id)!.diaPrevisto!) : null,
+    liberadaParaEquipe: planoDe.get(e.id)?.liberadaParaEquipe ?? false,
+  })
   // ⭐⭐ FONTE ÚNICA: o mesmo resolvedor da tela da ordem e do "HOJE ao vivo"
   const resolvidas = await resolverEstadoDasEtapas(companyId, etapas, db)
 
   const out: MinhaTarefa[] = []
   for (const e of etapas) {
     if (e.finalizadoEm) continue // feita não é tarefa
-    // ⚠️ tarefa de OUTRA pessoa não aparece — nem pra espiar. A janela é dele.
-    const minha = e.colaboradorId === colaboradorId
-    const solta = e.colaboradorId == null
-    if (!minha && !solta) continue
+    const o0 = porOrdem.get(e.ordemId)!
+    const pl = planoDaEtapa(e)
+    // ⭐⭐ A ETAPA APARECE NO DIA DELA — não no da ordem (15/09)
+    if (diaDaEtapa(pl, diaEmSaoPaulo(o0.dataProducao)) !== hoje) continue
+    /**
+     * ⛔⛔ SEM NOME NÃO VAI PRO TABLET (15/09) — ordem do dono: *"sem nome = rascunho MEU"*.
+     * Até 14/09 a etapa SOLTA aparecia pra TODO MUNDO e qualquer um iniciava; o dono punha
+     * uma produção em "planejado" ainda pensando e ela já estava publicada.
+     * ⚠️ A saída existe e é EXPLÍCITA: `liberadaParaEquipe`. **O silêncio não publica.**
+     */
+    if (!pessoaVeAEtapa(pl, colaboradorId)) continue
+    const minha = nomeadosDaEtapa(pl).includes(colaboradorId)
     // ⚠️ BACKSTOP HONESTO: hoje esta linha **não é alcançável pelo caminho do app** — quem
     // pega uma etapa solta vira o `colaboradorId` dela (a designação nasce do gesto), e o
     // filtro de cima já a tira da janela dos outros; e etapa designada a alguém o
@@ -120,6 +169,15 @@ export async function minhasTarefasDeHoje(
     if (res.estado !== 'AGUARDANDO' && res.estado !== 'EM_ANDAMENTO') continue
 
     const anterior = etapas.find((x) => x.ordemId === e.ordemId && x.posicao === e.posicao - 1)
+    /**
+     * ⭐⭐ "COMEÇOU ONTEM" — o lote que dormiu chega com história (15/09).
+     * ⚠️ Só quando a etapa anterior terminou em OUTRO dia: lote do mesmo dia não precisa
+     * de selo, e selo que aparece sempre é selo que ninguém lê.
+     */
+    const diaAnterior = anterior?.finalizadoEm ? diaEmSaoPaulo(anterior.finalizadoEm) : null
+    const continuacao = anterior && diaAnterior && diaAnterior !== hoje
+      ? { etapaAnterior: anterior.nome, dia: diaAnterior, quem: nomePessoa.get(anterior.executorId ?? anterior.colaboradorId ?? '') ?? null }
+      : null
     // ⚠️ "última" é sobre a ORDEM inteira, não sobre o que sobrou pra fazer: a lista já
     // filtrou as finalizadas, então contar aqui daria "última" pra qualquer etapa sozinha.
     const maiorPosicao = Math.max(...etapas.filter((x) => x.ordemId === e.ordemId).map((x) => x.posicao))
@@ -135,6 +193,7 @@ export async function minhasTarefasDeHoje(
       minha,
       pedidoPraFinalizar: res.pedidoEmAberto,
       ultima: e.posicao === maiorPosicao,
+      continuacao,
     })
   }
   // em andamento primeiro (é o que está na mão), depois as designadas, depois as soltas
@@ -193,6 +252,21 @@ export async function iniciarTarefa(
     throw new TarefaError(plano.length > 1
       ? 'Essa tarefa foi designada pra outras pessoas. Fale com o encarregado.'
       : 'Essa tarefa foi designada pra outra pessoa. Fale com o encarregado.')
+  }
+  /**
+   * ⛔⛔⛔ SEM RESPONSÁVEL, NINGUÉM INICIA — E QUEM RECUSA É O SERVIDOR (15/09).
+   *
+   * **A regra do dono:** *"sem nome = rascunho MEU"*. Esconder do tablet não basta: a lição
+   * de 06/09 (a etapa 2 do beef feita antes da 1) e a de 09/09 ("o menu esconde e a rota
+   * nega") dizem que **trava só visual não é trava** — a rota continua chamável.
+   *
+   * ⚠️ E a saída é EXPLÍCITA: `liberadaParaEquipe`. Silêncio não publica.
+   */
+  if (!plano.length) {
+    const pl = await db.stockEtapaPlano.findUnique({ where: { etapaId: etapa.id }, select: { liberadaParaEquipe: true } })
+    if (!pl?.liberadaParaEquipe) {
+      throw new TarefaError('Essa produção ainda não tem responsável — é rascunho do encarregado. Peça pra ele te designar ou liberar pra equipe.')
+    }
   }
   // ⛔⛔ A SEQUÊNCIA É DA RECEITA, E QUEM A IMPÕE É O SERVIDOR (06/09/2026).
   //

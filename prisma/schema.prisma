@@ -4634,3 +4634,37 @@ model StockOrdemMeta {
   @@unique([companyId, ordemId])
   @@map("stock_ordem_meta")
 }
+
+// ⭐⭐⭐ O PLANO DA ETAPA — DIA PRÓPRIO + QUEM PODE VER (15/09/2026).
+//
+// **Duas dores reais de operação, do dono:**
+//   1. *"tem tarefa de 2 etapas onde a etapa 1 é feita hoje e a 2 amanhã (massa que descansa,
+//      molho que apura) — o lote precisa poder DORMIR entre etapas"*;
+//   2. *"eu coloco uma produção em planejado ainda pensando, SEM nome em etapa nenhuma — e
+//      ela JÁ aparece pra equipe inteira. Sem nome = rascunho MEU. **O silêncio não publica.**"*
+//
+// ⛔ **POR QUE TABELA E NÃO COLUNA:** migration de estoque é **CREATE-only** (guard de CI
+// desde a Fase 0) — `stock_ordem_etapa` não aceita ALTER. E a separação é honesta por
+// conteúdo também: o PLANO tem autor e data, a ETAPA é o fato.
+//
+// ⚠️ Ausência = padrão: sem linha aqui, a etapa é do dia da ORDEM e **não** está liberada.
+// É o que faz a regra nova valer pro histórico inteiro sem backfill.
+model StockEtapaPlano {
+  id        String @id @default(cuid())
+  companyId String
+  etapaId   String @unique // ⭐ um plano por etapa é impossível de duplicar
+
+  /// o dia previsto DESTA etapa. `null` = o dia da ordem (o caso comum, mesmo dia)
+  diaPrevisto DateTime?
+
+  /// ⛔ ESCOLHA EXPLÍCITA: "qualquer um da equipe pode pegar". Nunca o padrão por omissão —
+  /// sem responsável E sem isto, a etapa não aparece no tablet de ninguém.
+  liberadaParaEquipe Boolean @default(false)
+
+  definidoPorId String?
+  criadoEm      DateTime @default(now())
+  atualizadoEm  DateTime @updatedAt
+
+  @@index([companyId, diaPrevisto])
+  @@map("stock_etapa_plano")
+}

@@ -16,6 +16,22 @@ import { definirPin, quemEstaComOPin, validarFormatoDoPin, hashDoPin, PinError }
 import { minhasTarefasDeHoje, iniciarTarefa, finalizarTarefa, devolverTarefa, tarefasAbertasDemais, TarefaError } from '../minhas-tarefas'
 import { relatorioPorPessoa, AVISO_NAO_E_PONTO } from '../relatorio-por-pessoa'
 import { snapshotClosedModules, isolationHeld } from '../../stock-invariants'
+import { definirPlanoDaEtapa } from '../plano-etapas'
+
+/**
+ * ⚠️⚠️ FIXTURE EXPLÍCITA DESDE 15/09 — o pressuposto saiu do silêncio.
+ *
+ * Até 14/09 etapa **sem responsável** aparecia pra todo mundo e qualquer um iniciava, e
+ * estes testes se apoiavam nisso sem dizer. A régua nova é *"sem nome = rascunho do dono"*
+ * (**o silêncio não publica**), então o mundo que eles testam — *"quem pegou, pegou"* —
+ * virou uma ESCOLHA: `liberadaParaEquipe`.
+ *
+ * ⭐ O ASSUNTO de cada teste não mudou; o que mudou é que o pressuposto agora está escrito.
+ */
+async function liberarEtapas(ordemId: string) {
+  const es = await prisma.stockOrdemEtapa.findMany({ where: { companyId, ordemId }, select: { id: true } })
+  for (const e of es) await definirPlanoDaEtapa({ companyId, etapaId: e.id, liberadaParaEquipe: true }, prisma)
+}
 
 const CNPJ = '50505050000188'
 let companyId = ''
@@ -85,6 +101,7 @@ describe('⭐⭐ as etapas moram na receita e nascem com a ordem', () => {
       componentes: [{ itemId: ids['Acém'], qtdPlanejada: 1, unidade: 'KG', posicao: 0 }],
     }, prisma)
     const { ordemId } = await criarOrdem({ companyId, fichaId: sem.fichaId, escalaReceitas: 1, dataProducao: HOJE }, prisma)
+    await liberarEtapas(ordemId)
     const etapas = await etapasDaOrdem(companyId, ordemId, HOJE, prisma)
     expect(etapas).toHaveLength(1)
     expect(etapas[0].nome).toBe(ETAPA_UNICA)
@@ -200,13 +217,21 @@ describe('⭐⭐ a janela do funcionário: cada um vê SÓ o que é dele', () =>
       .rejects.toThrow(/Quem finaliza é quem iniciou/)
   })
 
-  it('⛔ a tarefa solta que o outro pegou SOME da minha janela — e o que protege é a designação', async () => {
+  /**
+   * ⚠️⚠️ TESTE INVERTIDO EM 15/09, COM O MOTIVO ESCRITO — ele afirmava o mundo que o dono
+   * aposentou: *"a solta aparece pros dois"*. A régua nova é **sem responsável, ninguém vê**
+   * (*"sem nome = rascunho MEU"*), e a metade que continua valendo — **pegar a etapa a tira
+   * da janela dos outros** — está travada logo abaixo, agora partindo de uma etapa
+   * LIBERADA, que é o estado em que "quem pegou, pegou" existe.
+   */
+  it('⛔ a tarefa LIBERADA que o outro pegou SOME da minha janela — e o que protege é a designação', async () => {
     // ⚠️ o gessado é FINALIZADO antes: desde 06/09 o servidor impõe a sequência da receita, e
     // sem isso este cenário seria ilegal — a etapa 2 não começa com a 1 aberta.
     await iniciarTarefa({ companyId, etapaId: gessado, colaboradorId: cristian, agora: emSP(13) }, prisma)
     await finalizarTarefa({ companyId, etapaId: gessado, colaboradorId: cristian, agora: emSP(13, 30) }, prisma)
     await designarEtapa({ companyId, etapaId: moldar, colaboradorId: null }, prisma) // solta
-    // antes: a solta aparece pros dois (o gessado já saiu da lista do Cristian — feito)
+    await definirPlanoDaEtapa({ companyId, etapaId: moldar, liberadaParaEquipe: true }, prisma)
+    // a liberada aparece pros dois (o gessado já saiu da lista do Cristian — feito)
     expect((await minhasTarefasDeHoje(companyId, cristian, HOJE, prisma)).map((t) => t.nome))
       .toEqual(['moldar beef'])
     await iniciarTarefa({ companyId, etapaId: moldar, colaboradorId: marcyelle, agora: emSP(15, 20) }, prisma)
@@ -221,8 +246,17 @@ describe('⭐⭐ a janela do funcionário: cada um vê SÓ o que é dele', () =>
       .rejects.toThrow(/designada pra outra pessoa/)
   })
 
-  it('⭐ etapa SEM designação aparece pra todo mundo e a designação nasce do gesto', async () => {
+  /**
+   * ⚠️⚠️ INVERTIDO EM 15/09: o título dizia *"aparece pra todo mundo"*, e era verdade — e era
+   * o defeito. **O silêncio não publica**: agora ela só aparece LIBERADA, e o teste guarda as
+   * duas metades — a recusa antes de liberar, e "a designação nasce do gesto" depois.
+   */
+  it('⭐ etapa LIBERADA aparece pra equipe, e a designação nasce do gesto', async () => {
     await designarEtapa({ companyId, etapaId: moldar, colaboradorId: null }, prisma)
+    // ⛔ ANTES de liberar: rascunho do dono — não aparece pra ninguém
+    expect((await minhasTarefasDeHoje(companyId, cristian, HOJE, prisma)).map((t) => t.nome))
+      .toEqual(['gessado'])
+    await definirPlanoDaEtapa({ companyId, etapaId: moldar, liberadaParaEquipe: true }, prisma)
     expect((await minhasTarefasDeHoje(companyId, cristian, HOJE, prisma)).map((t) => t.nome))
       .toEqual(['gessado', 'moldar beef'])
     // ⚠️ a sequência da receita vale: pra pegar a 2ª, a 1ª tem que estar feita (06/09)
@@ -278,6 +312,7 @@ describe('⭐⭐ o relatório do fim do mês', () => {
     // três lotes: Cristian faz o gessado (rápido), Marcyelle molda
     for (let i = 0; i < 3; i++) {
       const { ordemId } = await criarOrdem({ companyId, fichaId: fichaBeef, escalaReceitas: 10, dataProducao: HOJE }, prisma)
+      await liberarEtapas(ordemId)
       const es = await etapasDaOrdem(companyId, ordemId, HOJE, prisma)
       await iniciarTarefa({ companyId, etapaId: es[0].id, colaboradorId: cristian, agora: emSP(8) }, prisma)
       await finalizarTarefa({ companyId, etapaId: es[0].id, colaboradorId: cristian, agora: emSP(9) }, prisma)
@@ -314,6 +349,7 @@ describe('⭐⭐ o relatório do fim do mês', () => {
 
   it('⛔ tarefa ABERTA fica de fora da média (senão a pessoa piora sozinha com o relógio)', async () => {
     const { ordemId } = await criarOrdem({ companyId, fichaId: fichaBeef, escalaReceitas: 10, dataProducao: HOJE }, prisma)
+    await liberarEtapas(ordemId)
     const es = await etapasDaOrdem(companyId, ordemId, HOJE, prisma)
     await iniciarTarefa({ companyId, etapaId: es[0].id, colaboradorId: cristian, agora: emSP(8) }, prisma)
     const r = await relatorioPorPessoa({ companyId, de: '2026-09-01', ate: '2026-09-05' }, prisma)
