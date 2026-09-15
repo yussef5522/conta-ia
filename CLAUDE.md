@@ -721,6 +721,47 @@ TELA → 200 · "revisar" ✓ · "sem destino" ✓ · "parece" ✓ · o aviso do
 
 📋 **FICA PRO DONO (o gesto é dele):** os **4 combos** (`… MAIS MINI FRITAS`, 28 ocorrências) precisam de ficha composta (lata + porção mini fritas) — o botão *"definir"* da linha leva ao cardápio com o nome já carregado. E **"ignorar" só aparece nos complementos**: o mapa de produtos aceita `FICHA | REVENDA | REMOVER`, e REMOVER **devolve a pendente**, que é outra coisa — oferecer ali seria um gesto que promete uma coisa e faz outra. Registrado como o que falta naquele mapa, não disfarçado.
 
+### ⭐⭐⭐ ETAPAS EM DIAS DIFERENTES + O SILÊNCIO NÃO PUBLICA (15/09)
+
+Duas dores de operação do dono, e **a armadilha que ele nomeou ANTES de ela aparecer já estava cobrando em prod**.
+
+**⛔⛔⛔ 1. A ARMADILHA DO RELÓGIO — E ELA NÃO ERA HIPOTÉTICA.** `lotes.ts` dizia, em comentário: *"a duração do LOTE é da 1ª etapa iniciada à última finalizada"* — **fim − início**. **MEDIDO EM PROD ANTES DE MEXER: 30 de 45 lotes com 2+ etapas estavam inflados**, com casos de **51 min de trabalho contados como 305 min (6×)** e **57 min como 343 min**. Isso ia pra média por lote, pro gráfico por dia e pro *"melhor ritmo"*.
+
+**A régua do dono, ao pé da letra:** *"o TEMPO do lote é a SOMA dos cronômetros das etapas. Lote que dorme 16h não produziu 16h — se a etapa 1 levou 40min e a 2 levou 35min, o lote levou 1h15."* ⚠️ E a honestidade não afrouxou: **etapa sem `finalizadoEm` = lote sem tempo medido** (`null` ≠ 0).
+
+**⭐⭐ 2. O LOTE PODE DORMIR.** `stock_etapa_plano` (CREATE-only — `stock_ordem_etapa` não aceita ALTER desde a Fase 0) guarda **dia previsto por etapa** e **liberada pra equipe**. ⚠️ **Ausência = padrão**: sem linha, a etapa é do dia da ordem e não está liberada — é o que faz a regra nova valer pro histórico inteiro **sem backfill**.
+- terminar a etapa 1 **não obriga** começar a 2: à noite a fila fica vazia;
+- amanhã ela aparece com **"começou 03/09 — 'sovar' feita por Eliane"**, em tom **neutro**: massa que descansa é a RECEITA, não atraso (a lição dos 111 alarmes falsos);
+- **o P2 não grita mais** sobre descanso planejado — e a exceção é **estreita**: só cala com plano **vigente** (hoje ou pra frente). Lote esquecido com plano vencido continua vermelho.
+
+**⭐⭐⭐ 3. SEM NOME = RASCUNHO MEU.** Até 14/09 a etapa **solta** aparecia pra TODO MUNDO e qualquer um iniciava. Agora ela só chega ao tablet **designada** (e só pros nomeados) ou **liberada** — um gesto explícito. ***O silêncio não publica.***
+⛔ **E QUEM RECUSA É O SERVIDOR**, não a tela: esconder o botão não impede a chamada (a lição de 06/09, a etapa 2 do beef feita antes da 1, e a de 09/09, *"o menu esconde e a rota nega"*). A mensagem ENSINA a saída: *"é rascunho do encarregado — peça pra ele te designar ou liberar pra equipe"*.
+⚠️ E o dono continua vendo: a tela de gestão traz o selo **"sem responsável — não aparece pra equipe"**. Invisível pros dois seria a fila que some quando o trabalho zera (12/09) — ele planejaria o mesmo lote duas vezes.
+
+**⭐ MEDIDO EM PROD ANTES DE SUBIR — a régua nova NÃO esconde nada hoje:** das **8 ordens abertas / 9 etapas por fazer**, **ZERO estão sem responsável**. A cozinha não perde nada ao acordar amanhã.
+
+**PROVADO EM PROD, depois do deploy:**
+```
+tempo dos lotes, agora por SOMA (83 medidos):
+   278 min · 408 UN · metade de bolinha massa de pizza    média por lote: 61 min
+   262 min ·  68 UN · porcao bacon 80 grama               ⛔ lotes acima de 8h: 0 ✓
+tela da ordem (celular e desktop, REGRA 12): ✓ dia por etapa · ✓ liberar pra equipe
+   ✓ a frase do mundo velho ("quem pegar com o PIN fica registrado") MORREU
+tablet: ✓ "começou …" · ✓ "liberada pra equipe"
+a régua pura: NINGUEM/EQUIPE/NOMEADOS · rodrigo vê a da eliane? false · o rascunho? false
+```
+**REGRA 11 — 4 defeitos repostos:** a régua velha do tempo (**1 vermelho**) · a etapa voltando pro dia da ordem (**1**) · o silêncio voltando a publicar (**1**) · o selo "começou ontem" sumindo (**1**).
+
+**⚠️⚠️ E REGRA 11 ME CORRIGIU NO CAMINHO:** o teste *"a eliane vê só a etapa 1"* passava **mesmo sem o filtro de dia** — a etapa 2 estava sem responsável e a régua da VISIBILIDADE já a escondia. *Duas travas empilhadas, e o teste media a de cima.* O caso que ISOLA o dia é a etapa **designada à própria eliane** e marcada pra amanhã: visível por responsável, invisível por DIA.
+
+**⚠️ E O CONTRAFACTUAL ME CORRIGIU TAMBÉM:** eu escrevi "20h35" de cabeça; a conta é **18h35 = 1.115 min** — **quinze vezes** os 75 min que a cozinha trabalhou. O número que importa não mudou; a minha aritmética estava errada.
+
+**⚠️ 2 TESTES INVERTIDOS COM O MOTIVO ESCRITO** (afirmavam *"a solta aparece pros dois"* e *"etapa SEM designação aparece pra todo mundo"* — o mundo que o dono aposentou) **e 6 fixtures passaram a declarar `liberadaParaEquipe`**: elas se apoiavam no antigo padrão **sem dizer**, e o assunto delas não mudou — o que mudou é que o pressuposto agora está escrito.
+
+**10.027 verdes · TS 0 · `pg_dump pre-plano-etapa-20260915-144932` (6,2 MB) antes da migration · deploy `tjb48eK8CFXFDhHbSB0tK` 4/4.**
+
+📋 **FICA PRO DONO (REGRA 2, o red-then-green navegando):** criar a tarefa de 2 etapas com a etapa 2 marcada pra amanhã, ver o tablet da eliane, e nomear o rodrigo no dia seguinte.
+
 ### ⛔⛔⛔ O CLIQUE QUE GRAVAVA E NÃO DIZIA NADA (14/09) — REGRA 2 no confirmar do dia
 
 **O dono, navegando:** *"abro Vendas → Complementos → dia 13/09 → revisão → clico 'Confirmar e baixar' → NADA acontece: nenhum modal de prévia, nenhum recibo, nenhuma mudança de contador."*
