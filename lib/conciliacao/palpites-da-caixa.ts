@@ -18,7 +18,14 @@ import { escolherPalpite, type CandidatoBruto, type PalpiteDaLinha } from './pal
 import { sugerirVinculos } from './sugestao-de-vinculo'
 import { fornecedoresDaEmpresa, paresRecusados, padroesDeProcessadora } from './fila-de-conciliacao'
 import { sugerirVinculoEmprestimo, type ParcelaLite } from '@/lib/loans/sugerir-vinculo'
-import { resolvePaidInvoiceMonth } from '@/lib/credit-card-pj/resolve-paid-month'
+/**
+ * ⛔ **`mesQueBateOValor`, NÃO `resolvePaidInvoiceMonth`** — a diferença é de contrato e
+ * foi medida em prod no 1º uso: aquele tem FALLBACK pra a fatura mais recente (correto
+ * quando o dono já escolheu o cartão) e devolvia `2026-08` pros QUATRO cartões da Caçula
+ * com um valor que não bate nenhum. Palpite com fallback é palpite inventado.
+ */
+import { mesQueBateOValor } from '@/lib/credit-card-pj/fatura-net-total'
+import { signedFaturaAmount } from '@/lib/credit-card-pj/fatura-net-total'
 import type { LinhaCrua } from './leitura-da-caixa'
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -51,6 +58,26 @@ export async function palpitesDaCaixa(
     paresRecusados(db, empresaId),
     padroesDeProcessadora(db, empresaId),
   ])
+
+  /**
+   * ⭐ O NET DE CADA FATURA, buscado UMA vez pros N cartões.
+   * ⚠️ A versão anterior consultava por LINHA × CARTÃO — 400 linhas × 4 cartões = 1.600
+   * consultas numa rota que a tela abre a cada visita. É a regressão de 9,6 s de 10/09
+   * esperando pra acontecer.
+   */
+  const netPorMes = new Map<string, Map<string, number>>()
+  if (cartoes.length > 0) {
+    const itens = await db.transaction.findMany({
+      where: { businessCreditCardId: { in: cartoes.map((c) => c.id) }, invoiceMonth: { not: null }, isCardPayment: false },
+      select: { businessCreditCardId: true, invoiceMonth: true, type: true, amount: true },
+    })
+    for (const it of itens) {
+      const porCartao = netPorMes.get(it.businessCreditCardId!) ?? new Map<string, number>()
+      const m = it.invoiceMonth as string
+      porCartao.set(m, (porCartao.get(m) ?? 0) + signedFaturaAmount({ type: it.type, amount: it.amount, isCardPayment: false }))
+      netPorMes.set(it.businessCreditCardId!, porCartao)
+    }
+  }
 
   const parcelasPorLoan: Record<string, ParcelaLite[]> = {}
   if (loans.length > 0) {
@@ -90,7 +117,7 @@ export async function palpitesDaCaixa(
     if (l.type === 'DEBIT' && cartoes.length > 0) {
       for (const c of cartoes) {
         try {
-          const mes = await resolvePaidInvoiceMonth(db, c.id, l.amount)
+          const mes = mesQueBateOValor(netPorMes.get(c.id) ?? new Map(), l.amount)
           if (!mes) continue
           candidatos.push({
             acao: 'PGTO_CARTAO',

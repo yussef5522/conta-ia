@@ -168,7 +168,16 @@ export interface ProgressoDoMes {
  */
 export function progressoDoMes(c: { arquivo: number; saidas: number; entradas: number; total: number }): ProgressoDoMes {
   const naCaixa = c.saidas + c.entradas
-  const pct = c.total > 0 ? Math.round((c.arquivo / c.total) * 100) : 0
+  const cru = c.total > 0 ? (c.arquivo / c.total) * 100 : 0
+  /**
+   * ⛔⛔ **100% SÓ COM A CAIXA VAZIA** — e isto foi medido em prod no 1º uso (16/09): com
+   * 220 no arquivo e **1 na caixa**, o arredondamento dava `100%` e o anel fechava com
+   * trabalho pendente embaixo. *Tela que se parabeniza cedo é a que ensina o dono a não
+   * olhar o número* — a família do "carregando pra sempre" e do alarme falso.
+   *
+   * ⚠️ Por isso o teto é 99 enquanto sobrar linha, e o 100 é reservado pro inbox zero.
+   */
+  const pct = naCaixa > 0 ? Math.min(99, Math.round(cru)) : Math.round(cru)
   return {
     pct,
     resolvidas: c.arquivo,

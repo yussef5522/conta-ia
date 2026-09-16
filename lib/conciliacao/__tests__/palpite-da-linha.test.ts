@@ -149,4 +149,15 @@ describe('⭐⭐ o anel de progresso deriva dos MESMOS contadores', () => {
   it('⭐ tudo resolvido → 100%', () => {
     expect(progressoDoMes({ arquivo: 9, saidas: 0, entradas: 0, total: 9 }).pct).toBe(100)
   })
+
+  /**
+   * ⛔⛔ O CASO REAL QUE PROD ME DEU NO 1º USO: 220 no arquivo, **1 na caixa** — o
+   * arredondamento dava 100% e o anel fechava com trabalho pendente embaixo.
+   * **100% é reservado pro inbox zero.**
+   */
+  it('⭐ 220 resolvidas e 1 na caixa NÃO é 100% — é 99%', () => {
+    const p = progressoDoMes({ arquivo: 220, saidas: 1, entradas: 0, total: 221 })
+    expect(p.pct, 'o anel fechou com trabalho na caixa').toBe(99)
+    expect(p.naCaixa).toBe(1)
+  })
 })
