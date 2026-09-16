@@ -721,6 +721,47 @@ TELA → 200 · "revisar" ✓ · "sem destino" ✓ · "parece" ✓ · o aviso do
 
 📋 **FICA PRO DONO (o gesto é dele):** os **4 combos** (`… MAIS MINI FRITAS`, 28 ocorrências) precisam de ficha composta (lata + porção mini fritas) — o botão *"definir"* da linha leva ao cardápio com o nome já carregado. E **"ignorar" só aparece nos complementos**: o mapa de produtos aceita `FICHA | REVENDA | REMOVER`, e REMOVER **devolve a pendente**, que é outra coisa — oferecer ali seria um gesto que promete uma coisa e faz outra. Registrado como o que falta naquele mapa, não disfarçado.
 
+### ⭐⭐⭐ A CAIXA DE ENTRADA NO DESENHO DO MOCK v3 — O CARTÃO ≍ (16/09)
+
+**O dono:** *"mesma tela, mesmos motores, ROUPA nova — nenhuma régua de negócio muda."* Mock aprovado em `docs/mocks/conciliacao-caixa-mock-v3.html`, **versionado e lido pelo guard** (`caixa-bate-com-o-mock-v3.test.ts`): 17 tokens do `:root{}`, 10 medidas e as frases que o arquivo imprime. *Divergência do mock = defeito.*
+
+**⭐⭐ O CARTÃO ≍ (padrão Xero):** à esquerda **O BANCO DIZ** (chip do banco, memo, data, valor gigante — coral débito, verde crédito), no meio o conector, à direita **MELHOR PALPITE** com a **diferença SEMPRE nomeada** e o botão que diz **o efeito** (*"✓ Confirmar — baixa a fatura"*). Sem palpite, o lado direito abre direto nos chips — *ausência de palpite não pode virar linha morta*. Mais: anel do mês, abas segmented, faixa verde com o selo do COMO, e o **inbox zero** do mock.
+
+**⛔⛔ ZERO MATCHER NOVO — e é o ponto.** `palpite-da-linha.ts` é **puro**: ele **escolhe e traduz** o que os motores provados devolveram (`mesQueBateOValor` do cartão · `sugerirVinculoEmprestimo` · `sugerirVinculos`). Um matcher próprio seria a **segunda régua** — *a tela não pode achar um par que o servidor recusa*.
+
+**⛔ E O EMPATE NÃO ESCOLHE NO ESCURO:** dois candidatos igualmente bons devolvem **nenhum palpite**. *"Não sei qual é"* é resposta — a trava do PAO DE MEL.
+
+**⚠️⚠️ E ELA SE PAGOU NA PRIMEIRA PROVA EM PROD, com uma lição de CONTRATO.** Eu liguei o palpite do cartão no `resolvePaidInvoiceMonth`, e ele devolveu **`2026-08` pros QUATRO cartões da Caçula** com a linha de R$ 3.194,35 — sendo que nenhum tem fatura desse valor (os nets são 13.779,73 · 7.305,55 · 8.094,78 · 2.666,44). **Por quê:** aquela função tem **fallback pra fatura mais recente**, e ele é **CERTO no contrato dela** — *"o dono JÁ disse que este pagamento é deste cartão; qual competência ele quita?"*. A minha pergunta era outra: *"este pagamento é de ALGUM cartão?"* — e aí o fallback é veneno. **Nasceu `mesQueBateOValor` (sem fallback), com a tolerância extraída pra um lugar só.** ⭐ **Quem segurou o estrago foi a trava do empate** (4 candidatos ALTA empatados → nenhum palpite); sem ela a tela poria um botão verde gigante *"baixa a fatura"* sobre o cartão errado. **Depender disso seria depender de sorte** — a régua certa é não usar motor fora do contrato dele.
+
+**⚠️ SEGUNDO DEFEITO DA MESMA PROVA: o anel dava 100% com trabalho na caixa.** 220 no arquivo e **1 na caixa** = 99,5%, que arredondava pra **100%** — a tela fechando o anel com o dono ainda tendo o que fazer. *Tela que se parabeniza cedo ensina o dono a não olhar o número.* **100% é reservado pro inbox zero**; com linha na caixa o teto é 99.
+
+**⭐ O RESTO DA COMPOSIÇÃO:** os 3 stats viraram **cards-filtro** (hover levanta, ativo com borda roxa) — ⚠️ e viraram `<button>`, não `<div>`: *elemento clicável que não é botão perde teclado e leitor de tela*. Os cards de fornecedor ganharam **avatar** e **pílula de estado**; ⛔ o comportamento não mudou — continua UM card por fornecedor, fechado, uma linha por vez (a trava que impede dois cards disputarem as MESMAS notas, o caso Cancian).
+
+**⚠️⚠️ REGRA 11 REPROVOU O GUARD NOVO — a "menção, não uso" de novo, dois dias seguidos.** Repondo o defeito (apagar `MELHOR PALPITE` do JSX) ele ficou **VERDE**, porque a frase também aparece no **comentário** do arquivo. Agora ele lê a tela **sem comentário**. E o conector passou a ser conferido pelo **uso do token** (`{CONECTOR}`), não pelo glifo solto — escrever `≍` à mão seria a segunda cópia do valor.
+
+**⚠️ 6 ASSERÇÕES DO GUARD DE 10/09 FORAM REAPONTADAS, nenhuma apagada:** o v3 redesenhou os stats (raio, fonte, tokens) e o cabeçalho do card de fornecedor. ⭐ Uma delas merece nota: o mock antigo indicava "isto abre" com a **seta ▶ girando**; o v3 troca por **texto** (*"abrir o caso →"* / *"fechar o caso"*), o que é **mais forte** — a seta exigia interpretar um glifo, o texto DIZ o que acontece, e o `aria-expanded` segue carregando o estado.
+
+**⛔ REGRA DE NEGÓCIO: ZERO MUDANÇA.** Degraus, contenção, corte de época, uma-linha-uma-estação — intocados. **A suíte E2E das 9 linhas passou SEM UMA EDIÇÃO**, que era a condição que o dono pôs.
+
+**PROVADO EM PROD, NOS DOIS VIEWPORTS (REGRA 12), no bundle servido:**
+```
+CELULAR /conciliacao 1.063 KB        DESKTOP 1.063 KB
+  ✓ título · ✓ O BANCO DIZ · ✓ MELHOR PALPITE · ✓ OU ESCOLHA OUTRO CAMINHO
+  ✓ 🎉 inbox zero · ✓ "resolvida agora" · ✓ o anel · ✓ min-[900px] (empilha)
+  ✓ tokens do mock: roxo · verde · coral · âmbar-bg
+
+A ROTA: SAÍDAS 1 · ENTRADAS 0 · ARQUIVO 220 · TOTAL 221 · Σ fecha ✓
+        anel 99% — "220 resolvidas · 1 na caixa" · corte 01/09
+```
+**REGRA 11 — 4 desvios repostos, 1 vermelho cada:** o tom do verde trocado · o conector virando `=` · o inbox zero sumindo · `MELHOR PALPITE` sumindo (este só mordeu **depois** do aperto).
+
+**10.124 verdes · TS 0 · deploys `zGH_tUpi2QINT9Zvsi2l0` e o do fix, os dois 4/4 · Δ bundle +4 KB.**
+
+⚠️ **DUAS COISAS REGISTRADAS, NÃO ESCONDIDAS:**
+1. **O red-then-green do dono não acontece com o dado de hoje:** a linha `DEB.CTA.FATURA` de R$ 3.194,35 **não tem fatura correspondente em nenhum dos 4 cartões** — a de setembro ainda não foi importada. Ela aparece no cartão ≍ **sem palpite**, com os 6 chips do sentido, que é o comportamento honesto. Assim que a fatura entrar, o palpite acende sozinho.
+2. **Dois mocks convivem na mesma tela:** o v3 governa a caixa, os stats e o cabeçalho do card de fornecedor; o mock de 10/09 continua governando **o interior do card** (as caixinhas de nota, o rodapé sticky), que o v3 não redesenhou. Enquanto for assim, o verde/coral dos dois é um tom diferente. **É o preço de "igual ao mock" com dois mocks aprovados** — o dia em que o dono pedir, o v3 absorve o interior e o arquivo de tokens vira um só.
+
+
 ### 🧹 A FAXINA DO PENDENTES — O QUE MORRE, O QUE FICA, E A VIGILÂNCIA QUE MUDA DE RÉGUA (15/09)
 
 **A regra que o dono ditou:** ***o que era DA TELA morre; o que é DO DOMÍNIO fica.*** O conceito *"linha sem destino"* continua existindo — dentro da caixa. Só a **TELA** morreu.
