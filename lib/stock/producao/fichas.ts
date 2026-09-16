@@ -412,8 +412,25 @@ export async function getFicha(companyId: string, fichaId: string, db: Db = defa
   return { ficha: view, versoes: versoes.map((v) => ({ versao: v.versao, criadoEm: v.criadoEm.toISOString() })) }
 }
 
-export async function listFichas(companyId: string, db: Db = defaultPrisma): Promise<FichaView[]> {
-  const fichas = await db.stockFicha.findMany({ where: { companyId }, orderBy: { criadoEm: 'desc' } })
+/**
+ * ⭐⭐ SÓ AS ATIVAS POR DEFAULT (16/09) — e isto era um buraco: a lista **não filtrava
+ * `ativo`**, então uma receita desativada continuaria aparecendo no **planejar produção**,
+ * no seletor de tarefas e na lista da cozinha.
+ *
+ * ⛔ Desativar que não some de lugar nenhum é o mesmo que não desativar — e é o oposto do
+ * que o gesto promete no confirm (*"ela sai do planejar e do produzir"*). **Promessa de
+ * tela que o dado não cumpre é como a confiança se perde.**
+ *
+ * ⚠️ `incluirInativas` existe pra UM caso: a tela que quiser mostrar o histórico com um
+ * toggle explícito. **Nunca como default** — o default é o trabalho de hoje.
+ */
+export async function listFichas(
+  companyId: string, db: Db = defaultPrisma, opts: { incluirInativas?: boolean } = {},
+): Promise<FichaView[]> {
+  const fichas = await db.stockFicha.findMany({
+    where: { companyId, ...(opts.incluirInativas ? {} : { ativo: true }) },
+    orderBy: { criadoEm: 'desc' },
+  })
   const out: FichaView[] = []
   for (const f of fichas) {
     const v = await versaoView(companyId, f, f.versaoAtual, db)

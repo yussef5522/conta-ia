@@ -8,11 +8,12 @@
 //
 // Produto FINAL não aparece aqui: ele se edita dentro do próprio produto, no cardápio.
 
-import { useEffect, useState, use } from 'react'
+import { useEffect, useState, useCallback, use } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { ChefHat, Loader2, Plus, Factory, ChevronRight, ArrowLeft, Copy } from 'lucide-react'
 import { ehReceitaDeProducao } from '@/lib/stock/producao/tipo-receita'
 import { diaEmSaoPaulo } from '@/lib/datas/dia-sao-paulo'
+import { ExcluirReceita } from '@/components/estoque/excluir-receita'
 
 interface Ficha {
   id: string; nomeProduzido: string; unidadeProduzido: string; tipoProduto: string
@@ -27,12 +28,16 @@ export default function ReceitasProducaoPage({ params }: { params: Promise<{ id:
   const { id } = use(params)
   const [fichas, setFichas] = useState<Ficha[] | null | undefined>(undefined)
   const [busy, setBusy] = useState(false)
+  /** ⭐ o efeito do que aconteceu — a linha nunca sai da lista em silêncio */
+  const [aviso, setAviso] = useState<string | null>(null)
 
-  useEffect(() => {
+  const carregar = useCallback(() => {
     fetch(`/api/empresas/${id}/estoque/fichas`).then((r) => r.json())
       .then((j) => setFichas((j.fichas ?? []).filter(ehReceitaDeProducao)))
       .catch(() => setFichas(null))
   }, [id])
+
+  useEffect(() => { carregar() }, [carregar])
 
   const produzir = async (fichaId: string) => {
     setBusy(true)
@@ -63,6 +68,18 @@ export default function ReceitasProducaoPage({ params }: { params: Promise<{ id:
           <Plus className="h-3.5 w-3.5" /> Nova receita
         </a>
       </div>
+
+      {/*
+        ⭐ O EFEITO, à vista e some sozinho — *"a linha nunca sai em silêncio"* (15/09).
+        ⚠️ Ele DIZ qual dos dois casos aconteceu, porque o servidor pode ter decidido
+        diferente do que o confirm prometeu (a cozinha produziu no meio).
+      */}
+      {aviso && (
+        <div className="flex items-start gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-[13px] text-emerald-900">
+          <span>{aviso}</span>
+          <button type="button" onClick={() => setAviso(null)} className="ml-auto shrink-0 text-[11px] underline">ok</button>
+        </div>
+      )}
 
       {fichas.length === 0 ? (
         <Card><CardContent className="flex flex-col items-center gap-2 p-10 text-center">
@@ -102,6 +119,9 @@ export default function ReceitasProducaoPage({ params }: { params: Promise<{ id:
                 className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-600 hover:bg-slate-50">
                 <Copy className="h-3.5 w-3.5" /> duplicar
               </a>
+              {/* ⭐ EXCLUIR à vista no card (16/09) — o servidor decide se apaga ou desativa */}
+              <ExcluirReceita empresaId={id} fichaId={f.id} compacto
+                aoConcluir={(r) => { setAviso(r.efeito); carregar() }} />
               <a href={`/empresas/${id}/estoque/producao/receitas/${f.id}`} className="text-slate-300 hover:text-slate-500"><ChevronRight className="h-4 w-4" /></a>
             </CardContent></Card>
           ))}

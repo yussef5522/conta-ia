@@ -58,9 +58,23 @@ describe('⛔⛔ ficha ARQUIVADA some da busca de nova ordem', () => {
     await criar('porcao queijo 135 grama')
     await criar('porcao de carne 100 grama', false) // ⬅️ a de TESTE, arquivada hoje em prod
 
-    const fichas = await listFichas(companyId, prisma)
-    expect(fichas).toHaveLength(2) // a listagem crua traz as duas
-    expect(oferecidasNaBusca(fichas)).toEqual(['porcao queijo 135 grama'])
+    /**
+     * ⚠️⚠️ REAPONTADO EM 16/09 — GANHOU UMA SEGUNDA CAMADA, e a prova original FICA.
+     *
+     * `listFichas` passou a filtrar `ativo` **no servidor** (o gesto de excluir promete
+     * *"ela sai do planejar"*, e a lista não cumpria). Mas o valor deste guard é provar
+     * que **a TELA também filtra** — `ehReceitaDeProducao` carrega o `ativo` por dentro.
+     *
+     * ⭐ Por isso a cena é montada com `incluirInativas` (a listagem crua de antes) e a
+     * asserção do filtro da tela continua idêntica. **Cinto E suspensório, os dois provados.**
+     */
+    const cruas = await listFichas(companyId, prisma, { incluirInativas: true })
+    expect(cruas).toHaveLength(2) // a listagem crua traz as duas
+    expect(oferecidasNaBusca(cruas), 'a TELA parou de filtrar a arquivada').toEqual(['porcao queijo 135 grama'])
+
+    // ⭐ e a camada nova: o SERVIDOR já não a devolve
+    const doServidor = await listFichas(companyId, prisma)
+    expect(doServidor, 'o servidor voltou a devolver a arquivada pro planejar').toHaveLength(1)
   })
 
   it('⛔ e desarquivar a traz de volta — o estado é reversível, não destrutivo', async () => {
