@@ -7,6 +7,7 @@
 
 import { useEffect, useMemo, useState, use } from 'react'
 import { filtrarPorBusca } from '@/lib/busca-texto'
+import { urlDaBuscaDeItens } from '@/lib/stock/buscar-itens'
 import { Card, CardContent } from '@/components/ui/card'
 import { PackageOpen, Plus, Trash2, Loader2, Check, ArrowLeft } from 'lucide-react'
 import { diaEmSaoPaulo } from '@/lib/datas/dia-sao-paulo'
@@ -53,7 +54,13 @@ export default function EntradaManualPage({ params }: { params: Promise<{ id: st
   const [erro, setErro] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch(`/api/empresas/${id}/estoque/itens`).then((r) => r.json()).then((j) => setCat(j.itens ?? [])).catch(() => {})
+    /**
+     * ⭐⭐ O UNIVERSO DA COMPRA (16/09) — `COMPRAVEL`, e o tipo obriga a declarar.
+     * ⛔ Sem ele a lista trazia ficha de cardápio e tarefa de produção: *"compra NUNCA
+     * aponta pra ficha de cardápio nem pra tarefa de produção"* (régua do dono).
+     */
+    fetch(urlDaBuscaDeItens({ empresaId: id, universo: 'COMPRAVEL' }))
+      .then((r) => r.json()).then((j) => setCat(j.itens ?? [])).catch(() => {})
     fetch(`/api/empresas/${id}/estoque/fornecedores`).then((r) => r.json()).then((j) => setForns(j.fornecedores ?? [])).catch(() => {})
   }, [id])
 

@@ -14,6 +14,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Search, Plus } from 'lucide-react'
 import { useDismissivel } from '@/lib/hooks/use-dismissivel'
+import { urlDaBuscaDeItens } from '@/lib/stock/buscar-itens'
 
 export interface ItemBusca {
   id: string
@@ -55,8 +56,12 @@ export function BuscaItem({
   useEffect(() => {
     if (timer.current) clearTimeout(timer.current)
     timer.current = setTimeout(() => {
-      const escopo = tudo ? '' : '&escopo=receita'
-      fetch(`/api/empresas/${companyId}/estoque/itens?busca=${encodeURIComponent(q)}${escopo}`)
+      /**
+       * ⭐ O TOGGLE "mostrar tudo" **É uma declaração de universo** (16/09): o dono está
+       * dizendo, com o dedo, que quer o CATÁLOGO inteiro naquele momento. O que deixou de
+       * existir é o universo **indeclarado** — aquele que ninguém escolheu.
+       */
+      fetch(urlDaBuscaDeItens({ empresaId: companyId, universo: tudo ? 'CATALOGO' : 'RECEITA', busca: q }))
         .then((r) => r.json()).then((j) => setRes(j.itens ?? [])).catch(() => setRes([]))
     }, 200)
     return () => { if (timer.current) clearTimeout(timer.current) }

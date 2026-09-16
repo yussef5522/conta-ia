@@ -106,8 +106,12 @@ describe('busca de ingrediente (escopo=receita)', () => {
     expect(cats.indexOf('MATERIA_PRIMA')).toBeLessThan(posRevenda)
   })
 
-  it('⚠️ o comportamento ANTIGO (sem escopo) ainda traz tudo — é o toggle "mostrar tudo"', async () => {
-    const r = (await nomes('')).map((i) => i.nome)
+  it('⚠️ o toggle "mostrar tudo" declara CATALOGO e traz tudo', async () => {
+    // ⚠️ `?universo=CATALOGO` desde 16/09 — o toggle É a declaração do dono de que ele
+    // quer o catálogo inteiro naquele momento. O que deixou de existir é chamar SEM
+    // declarar nada, que era o default silencioso por onde a ficha de cardápio vazou
+    // pra o seletor da entrada manual.
+    const r = (await nomes('?universo=CATALOGO')).map((i) => i.nome)
     expect(r).toContain('DESENGRAXANTE') // some por default, NÃO desaparece
     expect(r).toContain('Coxão mole')
   })

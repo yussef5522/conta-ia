@@ -6,6 +6,12 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { X, Loader2, Search, Camera, AlertTriangle } from 'lucide-react'
+/**
+ * ⭐ O UNIVERSO DA SAÍDA é **PRATELEIRA**, não COMPRAVEL (16/09).
+ * ⚠️ Dá pra perder uma **porção pronta** (caiu no chão, venceu) — ela não se compra, mas
+ * está na câmara e some de verdade. Cortá-la daqui esconderia perda real.
+ */
+import { urlDaBuscaDeItens } from '@/lib/stock/buscar-itens'
 
 interface ItemBusca { id: string; nome: string; unidadeControle: string; custoMedio: number | null }
 const MOTIVOS: { v: string; label: string }[] = [
@@ -31,7 +37,7 @@ export function SaidaModal({ companyId, itemInicial, onClose, onSalvo }: { compa
   useEffect(() => {
     if (item) return
     if (timer.current) clearTimeout(timer.current)
-    timer.current = setTimeout(() => { fetch(`/api/empresas/${companyId}/estoque/itens?busca=${encodeURIComponent(busca)}`).then((r) => r.json()).then((j) => setRes(j.itens ?? [])).catch(() => setRes([])) }, 200)
+    timer.current = setTimeout(() => { fetch(urlDaBuscaDeItens({ empresaId: companyId, universo: 'PRATELEIRA', busca })).then((r) => r.json()).then((j) => setRes(j.itens ?? [])).catch(() => setRes([])) }, 200)
     return () => { if (timer.current) clearTimeout(timer.current) }
   }, [busca, companyId, item])
 

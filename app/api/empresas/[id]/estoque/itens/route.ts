@@ -10,6 +10,7 @@ import { custoMedioPorItem } from '@/lib/stock/saldo'
 import { filtrarPorBusca } from '@/lib/busca-texto'
 import { involucrosPassaDireto } from '@/lib/stock/passa-direto-de-revenda'
 import { apelidosPorItem } from '@/lib/stock/nomes/renomear-em-lote'
+import { categoriasDoUniverso, ehUniversoValido, pesoDaCategoria, type UniversoDoSeletor } from '@/lib/stock/universo-do-seletor'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -25,6 +26,20 @@ export async function GET(request: NextRequest, { params }: Params) {
   // intermediário produzido ou revenda (combo leva refri); LIMPEZA/USO_INTERNO/EMBALAGEM
   // não entram em receita. ⚠️ O filtro é NO SERVIDOR de propósito: com `take: 50`, filtrar
   // no cliente deixaria itens bons de fora quando o material de limpeza ocupa as 50 vagas.
+  /**
+   * ⭐⭐⭐ O UNIVERSO É CONTRATO OBRIGATÓRIO (16/09) — *"cada gesto tem seu universo"*.
+   *
+   * ⛔ **O DEFEITO QUE ISTO FECHA:** sem parâmetro, esta rota devolvia `{ companyId,
+   * ativo: true }` — **TUDO**, incluindo os invólucros de `SABOR`/`PRODUTO_FINAL` que só
+   * existem pra nomear linha de cardápio. Foi assim que a **entrada manual** (a compra do
+   * fermento) ofereceu ficha de cardápio e tarefa de produção, e o dono não achou os itens
+   * da Posição.
+   *
+   * ⚠️ **O default silencioso era o veneno:** quem esquecia o parâmetro não via erro
+   * nenhum — via uma lista **plausível e errada**. Agora a ausência é **400 que ensina**,
+   * e o cliente tem o universo no TIPO (chamador que não declara não compila).
+   */
+  const universoBruto = request.nextUrl.searchParams.get('universo')?.trim() ?? ''
   const escopoReceita = request.nextUrl.searchParams.get('escopo') === 'receita'
   // ⭐⭐ EMBALAGEM ENTRA NA BUSCA DA FICHA (01/09/2026) — e a ausência dela era ERRO MEU.
   //
@@ -39,6 +54,28 @@ export async function GET(request: NextRequest, { params }: Params) {
   // filtro por categoria — usado pelo hub pra listar SÓ revenda ao mapear bebida inline.
   // Também no servidor: com `take: 50` o filtro no cliente perderia itens.
   const categoria = request.nextUrl.searchParams.get('categoria')?.trim() || null
+
+  /**
+   * ⚠️ COMPAT NOMEADA, não silenciosa: `?escopo=receita` e `?categoria=X` já existiam e
+   * continuam valendo — eles SÃO uma declaração de universo, só com outro nome. O que
+   * deixou de existir é **chamar sem declarar nada**.
+   */
+  const universo: UniversoDoSeletor | null =
+    universoBruto && ehUniversoValido(universoBruto) ? universoBruto
+    : escopoReceita ? 'RECEITA'
+    : categoria ? 'CATALOGO'   // filtro explícito por categoria já é o recorte
+    : null
+
+  if (!universo) {
+    return NextResponse.json({
+      erro: 'Diga o UNIVERSO desta lista: cada gesto tem o seu. '
+        + 'COMPRAVEL (entrada manual/nota) · PRATELEIRA (contagem/saída) · RECEITA (ficha) · '
+        + 'VENDAVEL (mapa do PDV) · CATALOGO (a lista administrativa, que mostra tudo).',
+      code: 'UNIVERSO_OBRIGATORIO',
+    }, { status: 400 })
+  }
+
+  const catsDoUniverso = categoriasDoUniverso(universo)
 
   // ⭐⭐ A BUSCA É FILTRADA NO APP, SOBRE A MESMA LISTA QUE A TELA MOSTRA (28/08 — REGRA 4).
   //
@@ -59,7 +96,7 @@ export async function GET(request: NextRequest, { params }: Params) {
     prisma.stockItem.findMany({
       where: {
         companyId, ativo: true,
-        ...(categoria ? { categoria } : escopoReceita ? { categoria: { in: CATS_RECEITA } } : {}),
+        ...(categoria ? { categoria } : catsDoUniverso ? { categoria: { in: [...catsDoUniverso] } } : {}),
       },
       orderBy: { nome: 'asc' },
       take: LIMITE_LEITURA,

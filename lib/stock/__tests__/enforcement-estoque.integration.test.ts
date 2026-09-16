@@ -158,7 +158,9 @@ describe('OPERADOR_ESTOQUE — OPERA mas não GERENCIA', () => {
 describe('LEITURA_ESTOQUE — vê e NÃO mexe', () => {
   it('VÊ a posição e o catálogo', async () => {
     expect((await posicaoGET(req('LEITURA_ESTOQUE', `/api/empresas/${companyId}/estoque/posicao`), params())).status).toBe(200)
-    expect((await itensGET(req('LEITURA_ESTOQUE', `/api/empresas/${companyId}/estoque/itens`), params())).status).toBe(200)
+    // ⚠️ `?universo=CATALOGO` desde 16/09: a listagem passou a EXIGIR o universo do gesto.
+    // Aqui a pergunta é de PERMISSÃO (quem lê vê?), e o gesto é a lista administrativa.
+    expect((await itensGET(req('LEITURA_ESTOQUE', `/api/empresas/${companyId}/estoque/itens?universo=CATALOGO`), params())).status).toBe(200)
   })
   it('NÃO opera: saída → 403', async () => {
     const r = await saidaPOST(req('LEITURA_ESTOQUE', '/x', { method: 'POST', body: { itemId, quantidade: 1, motivo: 'VENCEU' } }), params())

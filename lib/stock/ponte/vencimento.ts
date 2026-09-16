@@ -147,7 +147,19 @@ export async function rastroDoVencimento(
   companyId: string, suggestionId: string, db: Db = defaultPrisma,
 ): Promise<RastroVencimento[]> {
   const rows = await db.stockVencimentoEvento.findMany({
-    where: { companyId, suggestionId }, orderBy: { criadoEm: 'desc' },
+    /**
+     * ⚠️⚠️ O DESEMPATE POR `id` NÃO É ENFEITE (16/09) — sem ele o rastro sai fora de ordem.
+     *
+     * Dois eventos gravados no MESMO milissegundo (o que acontece quando o boleto chega e
+     * o dono confirma na mesma transação) empatam no `criadoEm`, e aí o Postgres devolve
+     * na ordem que quiser. O teste do rastro pegava isso como **flake**: às vezes o
+     * primeiro era `BOLETO`, às vezes `DONO`.
+     *
+     * ⭐ É a MESMA cicatriz do juiz de saldo em 28/08: *"ordenar só por `anchorDate`
+     * deixava o desempate arbitrário"* — e lá isso virou dois alarmes de ±3.026,31 que se
+     * cancelavam. Timestamp sozinho não é ordem total.
+     */
+    where: { companyId, suggestionId }, orderBy: [{ criadoEm: 'desc' }, { id: 'desc' }],
   })
   if (!rows.length) return []
   const users = await db.user.findMany({
