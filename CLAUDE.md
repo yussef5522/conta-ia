@@ -784,6 +784,8 @@ TELA → 200 · "revisar" ✓ · "sem destino" ✓ · "parece" ✓ · o aviso do
 
 **⭐ RED-THEN-GREEN DOS OUTROS BANCOS: os 9 goldens de 7 bancos VERDES** — o conserto do Banrisul não alcançou ninguém, que era a condição do dono.
 
+⚠️ **DUAS FUNÇÕES DA QUARENTENA NASCERAM SEM CHAMADOR — uma corrigida, uma registrada:** o **expurgo de 12 meses** (LGPD) era promessa minha escrita e **nunca rodaria** — entrou no cron noturno do juiz, fail-soft (é a lição do E10: *planejado e não construído é pior que nenhum*). E o **`recusadasParaDiagnosticar`** (o leitor) **não tem tela**: hoje quem abre a quarentena sou eu, por script. Fica registrado como a maçaneta que falta — o dono não tem por onde olhar sozinho.
+
 📋 **O QUE SÓ O DOCUMENTO FECHA:** a fatura de hoje **não importou** — o V1 (Σ Brasil 11.376,89 × 11.358,89) segue em aberto. A classe consertada **produz exatamente esse sintoma** (um único valor somindo de uma linha colada), mas afirmar que era ela sem o texto seria a hipótese confortável no lugar da medida — o erro que este doc já registra sobre mim em 29/08. **Subir a fatura de novo agora resolve as duas pontas: se a classe era a causa, ela fecha; se não, o texto fica na quarentena e eu diagnostico sem pedir o PDF.**
 
 
