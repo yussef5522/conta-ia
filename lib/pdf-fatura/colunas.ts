@@ -100,7 +100,29 @@ export interface Banda {
 
 export function colunasDaRegiao(linhas: string[]): Banda[] {
   const inicios = new Set<number>([0])
-  for (const [, fim] of calhas(linhas)) {
+  /**
+   * ⭐⭐⭐ A GEOMETRIA DA TABELA É DEFINIDA PELAS LINHAS DA TABELA (16/09/2026).
+   *
+   * ⛔⛔ A calha é uma faixa em branco em **TODAS** as linhas da região — e por isso
+   * **uma única linha que atravessa as colunas apaga a divisão da página inteira**. Num
+   * documento com duas colunas de lançamento, basta o cabeçalho do bloco, um parágrafo de
+   * aviso ou a linha de totais cruzar o meio pra o corte sumir: a página vira UMA banda, e
+   * a coluna da direita é lida colada na esquerda — ou perdida.
+   *
+   * ⚠️ Foi assim que o histórico do portador ADICIONAL se perdeu: o boundary real existia
+   * entre as colunas, mas nenhuma calha o marcava porque as linhas de fora da tabela
+   * passavam por cima dele.
+   *
+   * ⭐ Então o corte também é procurado **só entre as linhas datadas** — as que formam a
+   * tabela. É a mesma ideia do `INICIO_DOS_LANCAMENTOS` do Itaú, sem depender de um rótulo
+   * que cada banco escreve com outras palavras: quem define a coluna é o lançamento.
+   *
+   * ⛔ E isto só ACRESCENTA candidatos — cada um ainda precisa passar no
+   * `LINHAS_PRA_SER_COLUNA`, que é o que impede uma data solta de inventar coluna.
+   */
+  const linhasDaTabela = linhas.filter((l) => /\d{2}\/\d{2}\s/.test(l))
+  const candidatos = [...calhas(linhas), ...(linhasDaTabela.length >= LINHAS_PRA_SER_COLUNA ? calhas(linhasDaTabela) : [])]
+  for (const [, fim] of candidatos) {
     const comData = linhas.filter((l) => DATA_NA_COLUNA.test(l.slice(fim))).length
     if (comData >= LINHAS_PRA_SER_COLUNA) inicios.add(fim)
   }
@@ -135,9 +157,54 @@ export function colunasDaRegiao(linhas: string[]): Banda[] {
     const maisFrequente = [...bordas.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0]?.[0]
     const aresta = maisFrequente == null ? 0
       : (calhas(fatia).find(([ini]) => ini >= maisFrequente)?.[0] ?? 0)
+    /**
+     * ⛔⛔⛔ O CORTE QUE ÓRFÃ UM VALOR É UM CORTE ERRADO (16/09/2026).
+     *
+     * A apara existe pra tirar PAINEL (juros/pontos) que mora à direita da coluna de
+     * valor. Mas quando as duas colunas de lançamento **não foram separadas** — calha
+     * estreita demais entre elas — a banda é a largura inteira, a borda de valor mais
+     * frequente é a da coluna ESQUERDA, e a apara cai **entre a data e o valor da coluna
+     * da direita**:
+     *
+     * ```
+     *   02/09 MERCADOLIVRE … 79,08  07/09 ANUIDADEINT DIFER 05/12 0123 ┆ 18,00
+     *                                                          apara ↑  ↑ o valor fica do lado de fora
+     * ```
+     *
+     * A linha sobra **datada e sem valor**, e o motor a descarta em silêncio (`nums.length
+     * === 0`). **Some dinheiro sem ninguém acusar** — a pior forma.
+     *
+     * ⭐ A trava é uma pergunta que o painel nunca reprova: *a apara deixou alguma linha
+     * datada SEM o dinheiro que ela tinha?* Se deixou, não é painel do lado de fora, é
+     * coluna — e não se corta nada. O painel do Itaú não morde aqui: lá o valor da linha
+     * datada fica **antes** da apara, e a linha continua com dinheiro depois do corte.
+     */
+    /**
+     * ⭐ A PERGUNTA CERTA: **o que a apara ia jogar fora é PAINEL ou é COLUNA?**
+     *
+     * Painel (juros, pontos, limites) mora à direita do valor e **não tem lançamento**:
+     * os números dele caem na mesma linha física de uma transação, mas sem data própria.
+     * Coluna de lançamento tem **data seguida de descrição e valor** — e aí a apara estaria
+     * cortando dinheiro de verdade.
+     *
+     * ⚠️ O caso que ensinou (16/09): o cartão adicional com UM lançamento no mês não gera
+     * corte de coluna (um lançamento só não faz coluna, e afrouxar isso deixaria data solta
+     * inventar coluna), então a banda é a página inteira e a apara cai **entre a data e o
+     * valor dele**. Resultado: linha datada sem dinheiro, descartada calada.
+     */
+    const restoEhColuna = aresta > 0 && fatia.some((l) => {
+      const resto = l.slice(aresta)
+      return /\d{2}\/\d{2}\s+\S/.test(resto) && MOEDA.test(resto)
+    })
+    /** ⛔ e o caso cru: a apara deixou uma linha datada SEM o dinheiro que ela tinha */
+    const orfanaValor = aresta > 0 && fatia.some((l) => (
+      /\d{2}\/\d{2}\s/.test(l)
+      && MOEDA.test(l)
+      && !MOEDA.test(l.slice(0, aresta))
+    ))
     bandas.push({
       de: inicio, ate: fim,
-      linhas: aresta ? fatia.map((l) => l.slice(0, aresta)) : fatia,
+      linhas: aresta && !orfanaValor && !restoEhColuna ? fatia.map((l) => l.slice(0, aresta)) : fatia,
     })
   })
   return bandas

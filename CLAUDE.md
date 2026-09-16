@@ -752,6 +752,37 @@ TELA → 200 · "revisar" ✓ · "sem destino" ✓ · "parece" ✓ · o aviso do
 📋 **FALTA PRA FECHAR O CASO DE HOJE — e é o que só o PDF resolve:** o **V1** (Σ Brasil 11.376,89 × 11.358,89). A fixture que temos aponta a classe (linha em moeda estrangeira), mas **a fatura de hoje é outra**, e o texto dela não existe mais em lugar nenhum. **Da próxima recusa em diante isso não se repete** — a quarentena guarda.
 
 
+### ⛔⛔⛔ O PORTADOR ADICIONAL SUMIA — A COLUNA DESCARTADA EM SILÊNCIO (16/09)
+
+**O dono, com o PDF na mão:** *"a fatura tem DOIS PORTADORES (principal + adicional NR. 0123) e 'Débitos no Brasil' 11.376,89 = TOTAL principal 11.225,33 + TOTAL do 0123 151,56. O parser lê o lado esquerdo e o `DESC. ANUID. 0123 −18,00`, mas PERDE o `ANUIDADEINT DIFER 05/12 0123 +18,00` — a dif de −18,00 é exatamente ele."*
+
+**⭐ E A ARITMÉTICA DELE FECHA A CAUSA SOZINHA.** O `DESC. ANUID.` é **crédito** (vai pro balde de estorno, fora das despesas) e o `ANUIDADEINT` é **débito** (entra em Brasil). Perder só o débito deixa `despesasCalculado` exatamente **18,00 curto** — que é o número que a conferência acusou. *As duas linhas existem e nenhuma se deduplica* (já era a trap 5 do núcleo).
+
+**⛔⛔ O SINTOMA REFUTOU A MINHA PRIMEIRA HIPÓTESE.** Ele leu o lado **esquerdo** e perdeu o direito — isso **não é linha colada** (ali o motor leria o valor da direita e perderia o da esquerda, o oposto). É **corte por dentro**: a geometria de colunas descartando conteúdo.
+
+**A PERÍCIA ACHOU TRÊS MECANISMOS DE DESCARTE, e nenhum gritava:**
+
+| mecanismo | o que fazia |
+|---|---|
+| **a calha cega pra tabela** | a faixa em branco tem que existir em **TODAS** as linhas da página — então **uma única linha que atravessa as colunas** (cabeçalho do bloco, linha de totais, parágrafo de aviso) **apaga a divisão da página inteira**. A coluna do adicional deixava de existir |
+| **a apara do dinheiro** | ela tira o painel de juros/pontos à direita do valor. Quando as colunas não foram separadas, a borda de valor é a da **esquerda**, e a apara cai **entre a data e o valor da direita**: a linha sobra **datada e sem dinheiro** → `nums.length === 0` → descartada calada |
+| **banda com poucos lançamentos** | banda com menos de 2 linhas datadas era jogada fora inteira |
+
+**AS DUAS CURAS (a terceira foi revertida — ver abaixo):**
+1. **A geometria da tabela é definida pelas linhas da tabela.** O corte passa a ser procurado **também** só entre as linhas datadas. É a ideia do `INICIO_DOS_LANCAMENTOS` do Itaú sem depender de um rótulo que cada banco escreve com outras palavras: *quem define a coluna é o lançamento*. ⛔ E só **acrescenta** candidatos — cada um ainda passa pelo `LINHAS_PRA_SER_COLUNA`, que é o que impede data solta de inventar coluna.
+2. **A apara pergunta se o que ela ia cortar é PAINEL ou COLUNA.** Painel tem números mas **nenhum lançamento**; coluna tem **data + descrição + valor**. Se o lado de fora tem lançamento, não se corta nada. ⚠️ O painel do Itaú não morde aqui: lá o valor da linha datada fica **antes** da apara.
+
+**⚠️⚠️ E UMA CORREÇÃO MINHA FOI REVERTIDA POR NÃO MORDER — REGRA 11 cobrando de mim.** Eu tinha separado *"este corte é uma coluna?"* de *"vale ler esta banda?"* e baixado a segunda pra 1 linha datada, com um argumento bonito (*"coluna com uma compra também é coluna"*). Repondo o defeito, **o teste ficou VERDE**: quem entrega o caso é a apara, não ela. **Afrouxar um guard sem prova é trocar risco por nada** — o guard existe pra painel não virar lançamento. Revertida.
+
+**REGRA 11 — 3 defeitos repostos:** a calha cega (**4 vermelhos**) · a apara cortando coluna (**1**) · e o terceiro **não mordeu e por isso não foi ao ar**.
+
+**⭐⭐ A FIXTURE DE DOIS PORTADORES FECHA AO CENTAVO — 11.376,89.** Dois portadores reconhecidos · o V4 somando os **dois** `TOTAL DE GASTOS` · o par de anuidade inteiro (crédito no principal, débito no adicional) · cada linha marcada com o portador de quem gastou · `FECHA: true`.
+
+⚠️⚠️ **MAS ELA É UMA RECONSTRUÇÃO, NÃO O PDF DELE — e isso está dito no arquivo e no nome.** O texto da fatura real nunca foi guardado (a quarentena subiu 20 min depois da tentativa); o que existe aqui é a **estrutura que ele descreveu** com os **números que ele mediu**. Ela trava a estrutura pra sempre; **não substitui o golden do documento real**, e o congelador não a lista — *o congelador é de PDF lido certo, e chamar reconstrução de golden diluiria o que a palavra significa*.
+
+📋 **FALTA, E É UM CLIQUE:** subir a fatura de novo. Se a causa era um destes três mecanismos, ela fecha nos 11.376,89; se não era, **o texto fica na quarentena** e o diagnóstico sai sem pedir o PDF.
+
+
 ### ⛔⛔⛔ MOEDA ESTRANGEIRA — QUATRO JEITOS DE PERDER DINHEIRO CALADO (16/09)
 
 **O dono, com a fatura recusando de novo:** *"a mesma dif −18,00 nos dois verificadores (o V4 agora confere igual, o conserto do latente pegou) — conserta a leitura NO PARSER DO BANRISUL, a classe inteira de linha em moeda estrangeira, não só esta."*

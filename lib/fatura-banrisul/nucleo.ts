@@ -120,12 +120,28 @@ export function removerCotacaoInformativa(linha: string): string {
  * começa outra coluna. É o mesmo princípio da calha — *o documento diz onde ele se divide* —
  * só que aplicado à linha, e não à página.
  *
- * ⛔ CONSERVADORA DE PROPÓSITO: exige 3+ espaços **e** data seguida de letra. `01/04` de
- * parcela vem colado na descrição (um espaço) e por isso não parte nada — se partisse,
- * inventaria transação, que é pior do que perder.
+ * ⭐⭐ A RÉGUA É **POSIÇÃO, NÃO QUANTIDADE DE ESPAÇO**: coluna nova começa logo depois do
+ * VALOR da coluna anterior. É a estrutura de uma tabela de dinheiro em duas colunas.
+ *
+ * ```
+ *   02/09 MERCADOLIVRE MERCAD 11/12   79,08  07/09 ANUIDADEINT DIFER 05/12 0123   18,00
+ *                                          ↑ dois espaços só — e é outra coluna
+ * ```
+ *
+ * ⚠️⚠️ **A 1ª VERSÃO CONTAVA ESPAÇO (3+) E ISSO ERRAVA DOS DOIS LADOS, medido:** o gap
+ * apertado acima **não partia** (lia 18,00 e perdia os 79,08), e uma descrição com 3
+ * espaços antes de uma parcela **partia onde não devia** — `06/07 PADARIA RESTA   01/04
+ * HOT   347,50` virava uma transação datada em **01/04**, com a data e o começo da
+ * descrição inventados. *Contar espaço é heurística de aparência; a posição relativa ao
+ * valor é a estrutura.*
+ *
+ * ⛔ **O QUE ISSO TRAVA:** a parcela vem **antes** do valor, dentro da descrição; a coluna
+ * vizinha vem **depois** dele. Como a régua exige o valor imediatamente atrás, parcela
+ * nenhuma parte linha — e **inventar transação é pior que perder**, porque ninguém
+ * desconfia de um número a mais.
  */
 export function fatiarColunasColadas(linha: string): string[] {
-  const re = /\s{3,}(?=\d{2}\/\d{2}\s+[A-Za-zÀ-ú])/g
+  const re = /(?<=\d,\d{2})\s{2,}(?=\d{2}\/\d{2}\s+[A-Za-zÀ-ú])/g
   const out: string[] = []
   let ini = 0
   let m: RegExpExecArray | null
