@@ -23,6 +23,8 @@ import { resolverTotalDeclarado, conferirTotal, type OrigemTotal } from './total
 import { getCardInProfile, getOrCreateInvoice, CreditCardError } from './queries'
 import { checkProfileAccess } from '@/lib/personal-profile/queries'
 import { calculateInvoiceReference, type CardConfig } from './calculate-invoice-reference'
+import { diagnosticarRecusa } from '@/lib/credit-card-pj/deterministic/regiao-suspeita'
+import { guardarNaQuarentena } from './quarentena-fatura'
 
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 const TOL = 0.02
@@ -233,7 +235,50 @@ export async function previewFaturaPF(input: {
     // ⭐ o detalhe é do BANCO: cada layout explica a própria composição
     detalhe: [lida.conferencia.detalhe, conf?.detalhe ?? null].filter(Boolean).join('\n'),
   })
-  const erro = fecha ? null : diag?.mensagem ?? null
+  /**
+   * ⭐⭐⭐ A RECUSA GANHOU DIAGNÓSTICO (16/09) — peça 4 do dono: *"além do 'esperado × lido',
+   * mostra A REGIÃO suspeita do texto cru"*.
+   *
+   * ⛔ **A conferência NÃO afrouxou** — ela recusou hoje e estava certa. O que muda é o que
+   * a recusa **entrega junto**: antes o dono saía com dois números e sem saber onde
+   * procurar; agora sai com **as linhas candidatas** do próprio PDF.
+   *
+   * ⚠️ E ela **não conserta nada**: apontar a linha é diferente de somá-la. Somar seria o
+   * sistema inventando a transação que não soube ler.
+   */
+  let erro = fecha ? null : diag?.mensagem ?? null
+  /**
+   * ⚠️ A DIFERENÇA SAI DO PAR **declarado × calculado** das DESPESAS — que é onde o V1 do
+   * caso de hoje falhou (*"Σ Brasil esperado 11.376,89 × lido 11.358,89"*). Cada banco tem
+   * a sua composição, mas esse par existe em todos.
+   */
+  const declarado = lida.conferencia.despesasDeclarado
+  const calculado = lida.conferencia.despesasCalculado
+  if (!fecha && erro && declarado != null) {
+    const dif = Math.round((calculado - declarado) * 100) / 100
+    const d = diagnosticarRecusa(input.texto, dif)
+    if (d.candidatas.length > 0) {
+      erro += `\n\n${d.resumo}\n`
+        + d.candidatas.slice(0, 3).map((c) => `  linha ${c.numero}: "${c.texto}"`).join('\n')
+    } else if (Math.abs(dif) > 0.02) {
+      erro += `\n\n${d.resumo}`
+    }
+  }
+
+  /**
+   * ⭐⭐⭐ A QUARENTENA (16/09) — **toda** tentativa fica guardada com o texto extraído.
+   *
+   * ⛔ A recusada espera diagnóstico **sem precisar do PDF de novo** (foi o que faltou
+   * hoje); a que FECHOU é o **golden de amanhã**. ⚠️ Fail-soft de propósito: guardar é
+   * diagnóstico, e derrubar um import legítimo porque a quarentena não gravou seria trocar
+   * um problema de diagnóstico por um de operação.
+   */
+  void guardarNaQuarentena({
+    profileId: input.profileId, cardId: input.cardId, banco: parser.banco,
+    desfecho: fecha ? 'OK' : 'RECUSADA', motivo: erro,
+    declarado, calculado, texto: input.texto, linhas: linhas.length,
+    criadoPorId: input.userId,
+  })
 
   return {
     ok: fecha,

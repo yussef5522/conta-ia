@@ -31,14 +31,13 @@ const TIPO_PRESENCA = new Set(['presencial', 'online'])
 const round2 = (n: number) => Math.round(n * 100) / 100
 
 /** "-R$ 2.304,83" → -2304.83 · "R$ 99,94" → 99.94. Null se não for valor. */
-export function parseBRL(raw: string): number | null {
-  const m = raw.match(/(-?)\s*R\$\s*([\d.]+),(\d{2})/i)
-  if (!m) return null
-  const sign = m[1] === '-' ? -1 : 1
-  const intPart = m[2].replace(/\./g, '')
-  const val = Number(`${intPart}.${m[3]}`)
-  return isNaN(val) ? null : round2(sign * val)
-}
+/**
+ * ⚠️ MUDOU DE CASA EM 16/09 — a implementação foi pra `./numero-br` (utilitário burro).
+ * O re-export fica pra não quebrar quem já importava, mas **ninguém novo deve pegar daqui**:
+ * parser de banco não é biblioteca de outro banco.
+ */
+import { parseBRL } from './numero-br'
+export { parseBRL }
 
 /** "01/04" → {number:1, total:4}. Null se não for parcela (dd/dd, ambos ≤ total). */
 function parseParcela(token: string): { number: number; total: number } | null {

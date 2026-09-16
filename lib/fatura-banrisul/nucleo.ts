@@ -95,13 +95,40 @@ export interface BanrisulFaturaParsed {
 }
 
 
+/**
+ * ⭐⭐⭐ SOMA TODAS AS OCORRÊNCIAS DO RÓTULO — e isto conserta um defeito que estava
+ * **registrado como LATENTE desde 31/08** e virou o bug real de 16/09.
+ *
+ * ⛔⛔ **O DEFEITO:** `TOTAL DE GASTOS` aparece **uma vez por PORTADOR** na fatura do
+ * Banrisul, e o `match` pegava só a **PRIMEIRA**. Na fixture de agosto isso lê **23.648,03**
+ * quando o total é **39.302,64** (= 23.648,03 + 15.654,61, os dois portadores). Na fatura
+ * que o dono subiu hoje a primeira ocorrência era **151,56** — e a conferência recusou,
+ * **corretamente**.
+ *
+ * ⚠️ E o comentário do campo **já prometia** *"Σ de todos os débitos do período"*: o código
+ * dizia uma coisa e entregava outra. **É o padrão que o Caixa já resolveu certo** (ele
+ * coleta com `matchAll` indexado pelos 4 dígitos do cartão) e que o próprio CLAUDE.md
+ * chamou de *"seguro por CONSTRUÇÃO"* em 31/08, contra o *"seguro por coincidência"* daqui.
+ */
+function somarTodas(text: string, re: RegExp): number | null {
+  const todas = [...text.matchAll(new RegExp(re.source, re.flags.includes('g') ? re.flags : `${re.flags}g`))]
+  if (todas.length === 0) return null
+  let soma = 0
+  for (const m of todas) {
+    const v = parseBRNumber(m[1]!)
+    if (v == null) return null // ⛔ não soma pela metade: ou lê todas, ou diz que não leu
+    soma += v
+  }
+  return Math.round(soma * 100) / 100
+}
+
 export function readDeclared(text: string): BanrisulFaturaParsed['declared'] {
   const grab = (re: RegExp): number | null => {
     const m = text.match(re)
     return m ? parseBRNumber(m[1]) : null
   }
   return {
-    totalGastos: grab(/TOTAL DE GASTOS\s+([\d.]+,\d{2})/i),
+    totalGastos: somarTodas(text, /TOTAL DE GASTOS\s+([\d.]+,\d{2})/i),
     saldoAtual: grab(/Saldo da fatura atual\s+([\d.]+,\d{2})/i),
     anterior: grab(/Total da fatura anterior\s+([\d.]+,\d{2})/i),
     pagamentosCreditos: grab(/Pagamentos\s*\/\s*Cr[eé]ditos\s+([\d.]+,\d{2})/i),

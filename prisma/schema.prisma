@@ -4668,3 +4668,53 @@ model StockEtapaPlano {
   @@index([companyId, diaPrevisto])
   @@map("stock_etapa_plano")
 }
+
+/// ⭐⭐⭐ A QUARENTENA DE FATURA (16/09/2026) — peça 2+4 do dono.
+///
+/// **A régua:** *"Popula com o que temos: os PDFs das faturas já importadas (estão
+/// guardados? se não, PASSA A GUARDAR o arquivo de cada import — o golden de amanhã)"* e
+/// *"fatura recusada fica guardada com o texto extraído pra eu/você diagnosticar sem pedir
+/// o PDF de novo"*.
+///
+/// ⛔⛔ **O BURACO QUE ISTO FECHA, medido em 16/09:** o import de fatura **não guardava
+/// nada** — nem o PDF, nem o texto extraído. Quando a conferência recusou a fatura do
+/// Banrisul, o documento **se perdeu**, e diagnosticar exigia pedir o arquivo de volta ao
+/// dono. É exatamente o que o `rawOfxBlob` resolveu pro extrato em 13/08, e que nunca
+/// chegou aqui.
+///
+/// ⚠️ **GUARDA TODA TENTATIVA, não só a recusada:** a que DEU CERTO é o **golden de
+/// amanhã** — e foi por não ter os PDFs antigos que o congelador nasceu com 9 fixtures em
+/// vez de com o histórico inteiro.
+///
+/// ⚠️ LGPD: o texto tem nome de estabelecimento e 4 dígitos de cartão. Mesma régua do
+/// `rawOfxBlob` — **expurgar o texto após 12 meses**, mantendo a metadata.
+model FaturaQuarentena {
+  id             String    @id @default(cuid())
+  /// ⚠️ VALOR, sem @relation: serve PJ (companyId) e PF (profileId), e nenhum dos dois
+  /// obriga o outro a existir.
+  companyId      String?
+  profileId      String?
+  cardId         String
+  banco          String
+  /// OK | RECUSADA — a recusada é a que espera diagnóstico
+  desfecho       String
+  /// o que a conferência disse (esperado × lido, e a causa)
+  motivo         String?
+  declarado      Float?
+  calculado      Float?
+  /// ⭐ o TEXTO EXTRAÍDO — o que faz o diagnóstico não precisar do PDF de novo
+  texto          String
+  /// quantas linhas o parser achou (ajuda a ver "seção inteira perdida")
+  linhas         Int       @default(0)
+  /// ⭐ virou fixture no congelador? (o caminho, quando sim)
+  fixture        String?
+  criadoPorId    String?
+  criadoEm       DateTime  @default(now())
+  /// ⚠️ quando o texto foi expurgado (LGPD) — a metadata fica
+  textoPurgadoEm DateTime?
+
+  @@index([companyId, criadoEm])
+  @@index([profileId, criadoEm])
+  @@index([desfecho, criadoEm])
+  @@map("fatura_quarentena")
+}

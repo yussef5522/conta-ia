@@ -29,7 +29,12 @@
 // que EM ATRASO — daí multa e juros. Por isso os pagamentos NÃO entram na conta do total.
 
 import type { InvoiceExtraction, InvoiceLine } from '../types'
-import { parseBRL } from './sicredi-fatura-parser' // REGRA 4: uma leitura de valor, não quatro
+/**
+ * ⭐ O utilitário BURRO, não o parser do vizinho (16/09). ⚠️ Isto importava `parseBRL` de
+ * dentro do **sicredi-fatura-parser** — mexer no arquivo do Sicredi podia quebrar o Mercado
+ * Pago, e nada avisava. *Número BR é utilitário; onde ele aparece na página é do banco.*
+ */
+import { parseBRL } from './numero-br'
 
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 
