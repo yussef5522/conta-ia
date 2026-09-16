@@ -147,6 +147,19 @@ export async function previewFaturaPF(input: {
   const parser = reconhecerBancoPF(input.texto)
   if (!parser) {
     const d = diagnosticarFalha({ banco: null, linhas: 0, temTotalDeclarado: false, fecha: false })!
+    /**
+     * ⭐ A QUARENTENA VALE AQUI TAMBÉM (16/09) — e este é o caso em que ela mais serve.
+     *
+     * ⛔ A 1ª versão guardava só DEPOIS do reconhecimento, então *"não sei de que banco é
+     * este PDF"* saía da tela **sem deixar o texto** — justo a recusa em que eu preciso do
+     * documento pra escrever o parser que falta. Sem isto, a única saída era pedir o PDF de
+     * novo, que é o buraco que a quarentena existe pra fechar.
+     */
+    void guardarNaQuarentena({
+      profileId: input.profileId, cardId: input.cardId, banco: 'DESCONHECIDO',
+      desfecho: 'RECUSADA', motivo: d.mensagem, declarado: null, calculado: null,
+      texto: input.texto, linhas: 0, criadoPorId: input.userId,
+    })
     return semLeitura(card, d.mensagem, d.causa)
   }
 

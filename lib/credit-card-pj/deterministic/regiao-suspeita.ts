@@ -30,6 +30,20 @@ export interface DiagnosticoDaRecusa {
 
 const NUM = /(-?\s*)(\d{1,3}(?:\.\d{3})*|\d+),(\d{2})/g
 
+/**
+ * ⚠️⚠️ NEM TODO NÚMERO NUMA FATURA É REAL — e a diferença importa MUITO aqui (16/09/2026).
+ *
+ * Na fatura do Banrisul a compra internacional imprime uma linha informativa com a **moeda
+ * de origem** e a taxa: `JOD 18,00 TX DÓLAR R$ 5,2504`. Aquele `18,00` são **18 dinares**,
+ * não 18 reais — em R$ ele vale 94,51.
+ *
+ * ⛔ Este diagnóstico apontou exatamente essa linha como candidata a uma diferença de
+ * −R$ 18,00, e eu quase mandei o dono procurar lá. Coincidência de número não é evidência:
+ * a linha continua aparecendo (esconder seria pior), mas **marcada**, pra ninguém gastar
+ * tempo numa pista que a própria fatura já diz não ser dinheiro daqui.
+ */
+const MARCA_DE_CAMBIO = /TX\s*D[ÓO]?LAR|TAXA\s*(?:DE\s*)?C[ÂA]MBIO|\b(?:USD|EUR|GBP|JOD|ARS|CLP)\b/i
+
 function valoresDaLinha(linha: string): number[] {
   const out: number[] = []
   for (const m of linha.matchAll(NUM)) {
@@ -60,9 +74,13 @@ export function diagnosticarRecusa(textoCru: string, diferenca: number): Diagnos
     linhas.forEach((texto, i) => {
       for (const v of valoresDaLinha(texto)) {
         if (Math.abs(v - alvo) <= 0.005) {
+          const cambio = MARCA_DE_CAMBIO.test(texto)
           candidatas.push({
             numero: i + 1, texto: texto.trim().slice(0, 160), valor: v,
-            porQue: `valor EXATO da diferença (${alvo.toFixed(2)}) — é a transação que provavelmente não foi lida`,
+            porQue: cambio
+              ? `valor EXATO da diferença (${alvo.toFixed(2)}), mas esta linha é de CÂMBIO — `
+                + 'o número provavelmente está na moeda de origem, não em R$'
+              : `valor EXATO da diferença (${alvo.toFixed(2)}) — é a transação que provavelmente não foi lida`,
           })
           return
         }

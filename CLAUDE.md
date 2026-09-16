@@ -752,6 +752,41 @@ TELA → 200 · "revisar" ✓ · "sem destino" ✓ · "parece" ✓ · o aviso do
 📋 **FALTA PRA FECHAR O CASO DE HOJE — e é o que só o PDF resolve:** o **V1** (Σ Brasil 11.376,89 × 11.358,89). A fixture que temos aponta a classe (linha em moeda estrangeira), mas **a fatura de hoje é outra**, e o texto dela não existe mais em lugar nenhum. **Da próxima recusa em diante isso não se repete** — a quarentena guarda.
 
 
+### ⛔⛔⛔ MOEDA ESTRANGEIRA — QUATRO JEITOS DE PERDER DINHEIRO CALADO (16/09)
+
+**O dono, com a fatura recusando de novo:** *"a mesma dif −18,00 nos dois verificadores (o V4 agora confere igual, o conserto do latente pegou) — conserta a leitura NO PARSER DO BANRISUL, a classe inteira de linha em moeda estrangeira, não só esta."*
+
+**⛔⛔ PRIMEIRO, A CORREÇÃO DE ROTA: A QUARENTENA ESTAVA VAZIA.** A migration fechou **01:49** e o app subiu **01:53**; a tentativa do dono é anterior. O texto da fatura de hoje **não existe em lugar nenhum** — e isso não é o mecanismo falhando, é ele tendo nascido depois do fato. ⚠️ Conferido no caminho, não suposto: o `guardarNaQuarentena` roda dentro do **`previewFaturaPF`**, antes do `return`, com `desfecho RECUSADA` — toda tentativa a partir de agora fica guardada.
+
+**⭐ E UMA BRECHA REAL FECHADA NO CAMINHO:** o ramo *"banco não reconhecido"* retornava **antes** da quarentena. Era justo a recusa em que o documento mais importa (é dele que sai o parser que falta) e a única saída era pedir o PDF de novo — o buraco que a quarentena existe pra tapar. Agora guarda com `banco: 'DESCONHECIDO'`.
+
+**⭐⭐ A CLASSE, MEDIDA NAS LINHAS REAIS DA FATURA — e ela perde dinheiro de QUATRO jeitos.** Numa compra internacional o Banrisul imprime a transação (`US$` + `R$`), o IOF, e uma linha **informativa** com a moeda de origem e a taxa (`JOD 49,95 TX DÓLAR R$ 5,2264`). A régua velha era *"linha que fala TX DÓLAR não é transação → pula a LINHA INTEIRA"*, e ela **só vale enquanto a cotação estiver sozinha na linha física**:
+
+| linha REAL da fatura | o que o motor fazia |
+|---|---|
+| compra `617,00` │ cotação ao lado | lia **R$ 5,22** — a **TAXA** — e jogava em EXTERIOR |
+| `IOF 0,06` │ cotação ao lado | **sumia** |
+| cotação │ compra `559,42` | **sumia** |
+| `IOF 9,62` │ `22/07 … 18,00` | lia **IOF 18,00** (o valor do vizinho) e **perdia a compra** |
+| `06/07 … 347,50` │ `15/07 … 45,49` | lia **uma** transação de 45,49 e perdia **347,50** |
+
+⚠️ **O primeiro é o pior: não falta LINHA, falta DINHEIRO dentro de uma linha que existe.** A conferência acusa a diferença e o dono sai procurando uma transação inteira que está lá, na cara dele. ⚠️ E repare na aritmética que produz o `5,22`: a taxa tem **4 casas** e o leitor de dinheiro casa `[\d.]+,\d{2}` — `5,2264` vira **5,22**, um número plausível com cara de valor.
+
+**⭐ O GATILHO É A CALHA FALHANDO** — e ela **já falhou em documento real** (setembro, última página com 2 lançamentos na direita, registrado em 10/09). Quando falha, a página vira uma banda só e as duas colunas colam.
+
+**AS DUAS RÉGUAS NOVAS, as duas no núcleo compartilhado:**
+1. **`removerCotacaoInformativa`** — tira o FRAGMENTO, nunca a linha. Sobrou conteúdo? é transação. Não sobrou? era só a cotação. ⛔ O token da moeda só é comido quando é **alfabético** (`JOD`, `USD`): engolir `\S+` comeria o **valor da compra** que vem antes quando a fatura não imprime o token.
+2. **`fatiarColunasColadas`** — backstop da calha: onde uma data de lançamento começa depois de **3+ espaços**, ali começa outra coluna. É o mesmo princípio da calha (*o documento diz onde ele se divide*), aplicado à linha. ⛔ **Conservadora de propósito:** a parcela `01/04` vem colada com UM espaço e por isso não parte nada — **inventar transação é pior que perder**, porque ninguém desconfia de um número a mais.
+
+**⚠️ E O DIAGNÓSTICO DA PEÇA 4 QUASE ME MANDOU PRA PISTA FALSA — corrigido junto.** Ele apontou `JOD 18,00 TX DÓLAR R$ 5,2504` como candidata à diferença de −R$ 18,00. Aqueles `18,00` são **18 dinares** (≈ R$ 94,51), não 18 reais. A linha continua aparecendo (esconder seria pior), agora **marcada**: *"esta linha é de CÂMBIO — o número provavelmente está na moeda de origem, não em R$"*. **Coincidência de número não é evidência.**
+
+**REGRA 11 — 2 defeitos repostos:** a cotação voltando a pular a linha inteira (**3 vermelhos**) · o fatiador removido (**2**).
+
+**⭐ RED-THEN-GREEN DOS OUTROS BANCOS: os 9 goldens de 7 bancos VERDES** — o conserto do Banrisul não alcançou ninguém, que era a condição do dono.
+
+📋 **O QUE SÓ O DOCUMENTO FECHA:** a fatura de hoje **não importou** — o V1 (Σ Brasil 11.376,89 × 11.358,89) segue em aberto. A classe consertada **produz exatamente esse sintoma** (um único valor somindo de uma linha colada), mas afirmar que era ela sem o texto seria a hipótese confortável no lugar da medida — o erro que este doc já registra sobre mim em 29/08. **Subir a fatura de novo agora resolve as duas pontas: se a classe era a causa, ela fecha; se não, o texto fica na quarentena e eu diagnostico sem pedir o PDF.**
+
+
 ### ⭐⭐⭐ EXCLUIR RECEITA DE PRODUÇÃO — E O SERVIDOR DECIDE QUAL DOS DOIS CASOS É (16/09)
 
 **A régua do dono:** receita **sem lote na história** → **exclui de vez** (*"rascunho que nasceu errado não merece cerimônia"*); **com lotes** → **DESATIVA**, e ***o passado não se reescreve*** — a mesma regra do fornecedor mesclado (11/09) e do item desativado (09/09).

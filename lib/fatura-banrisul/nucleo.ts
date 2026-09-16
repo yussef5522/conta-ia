@@ -60,6 +60,83 @@ export function extractParcela(desc: string): { number: number; total: number } 
 
 export const MONTHS_TX = /^(\d{2})\/(\d{2})\s+(.*)$/
 
+/**
+ * ⭐⭐⭐ A COTAÇÃO É UM FRAGMENTO, NÃO UMA LINHA (16/09/2026) — e tratá-la como linha
+ * custava dinheiro em silêncio.
+ *
+ * Numa compra internacional o Banrisul imprime TRÊS coisas: a transação (`US$` + `R$`), o
+ * `IOF SOBRE TRANSACAO NO EXTERIOR` e — puramente informativa — a moeda de origem com a
+ * taxa: `JOD 49,95 TX DÓLAR R$ 5,2264`. A régua antiga era *"linha que fala TX DÓLAR não é
+ * transação → pula a LINHA INTEIRA"*, e ela só funciona enquanto a cotação estiver
+ * **sozinha** na linha física.
+ *
+ * ⛔⛔ **E ela não fica sozinha quando a calha some.** O PDF tem duas colunas; quando
+ * `colunasDaRegiao` não acha a faixa em branco (foi o que aconteceu na última página de
+ * setembro, com 2 lançamentos na direita), a página vira uma banda só e o fragmento de uma
+ * coluna passa a dividir a linha com o conteúdo REAL da outra. Medido, com os três
+ * desfechos:
+ *
+ * ```
+ *  06/07 HOT CAFECA … 617,00 │ JOD 49,95 TX DÓLAR R$ 5,2264  → lê R$ 5,22 (a TAXA!) em EXTERIOR
+ *  IOF … 0,06             │ JOD 3,00 TX DÓLAR R$ 5,2711      → some
+ *  JOD 19,50 TX DÓLAR R$ 5,2621 │ 19/07 … 106,13 559,42      → some
+ * ```
+ *
+ * ⚠️ O primeiro é o pior dos três: **não falta linha, falta DINHEIRO dentro de uma linha
+ * que existe** — a conferência acusa uma diferença e o dono procura uma transação inteira
+ * que está lá. ⚠️ E repare que a taxa tem **4 casas**: `allBRNumbers('R$ 5,2504')` devolve
+ * `[5.25]`, porque o leitor casa `[\d.]+,\d{2}`. A taxa não é dinheiro em lugar nenhum
+ * desta fatura — ela não pode chegar ao leitor de valor.
+ *
+ * ⭐ A CURA É TIRAR O FRAGMENTO, NUNCA A LINHA. Sobrou conteúdo? é transação. Não sobrou?
+ * era só a cotação. Funciona com calha e sem calha — e é por isso que ela é a régua, e não
+ * um segundo remendo de coluna.
+ *
+ * ⚠️ O token da moeda só é comido quando é ALFABÉTICO (`JOD`, `USD`): exigir letras impede
+ * o caso em que não há token e o `\S+` engoliria o **valor da compra** que vem antes.
+ */
+const COTACAO_INFORMATIVA =
+  /(?:[A-Za-zÀ-ú]{2,5}\s+)?[\d.]+,\d{2}\s+TX\s*D(?:[ÓO]LAR)?\.?\s*(?:R\$\s*)?[\d.]+,\d{2,6}/gi
+
+export function removerCotacaoInformativa(linha: string): string {
+  return linha.replace(COTACAO_INFORMATIVA, '  ')
+}
+
+/**
+ * ⭐⭐⭐ DUAS COLUNAS COLADAS NA MESMA LINHA FÍSICA — o backstop da calha (16/09/2026).
+ *
+ * ⚠️ **Por que isto existe se já existe `colunasDaRegiao`:** a calha é a defesa certa e
+ * continua sendo a primeira. Mas ela **já falhou uma vez em documento real** (setembro,
+ * última página com 2 lançamentos na direita) — e quando ela falha a página inteira vira
+ * uma banda só, colando as duas colunas. Medido nas linhas REAIS da fatura de agosto, o
+ * motor perdia dinheiro de **quatro** jeitos diferentes, todos calados:
+ *
+ * ```
+ *  IOF … 9,62 │ 22/07 CAFECA … 3,44  18,00   → lia IOF 18,00 (o valor do VIZINHO) e perdia a compra
+ *  06/07 … 347,50 │ 15/07 … 8,70 45,49       → lia UMA transação de 45,49 e perdia 347,50
+ * ```
+ *
+ * ⭐ A régua: onde uma **data de lançamento** começa depois de uma faixa de 3+ espaços, ali
+ * começa outra coluna. É o mesmo princípio da calha — *o documento diz onde ele se divide* —
+ * só que aplicado à linha, e não à página.
+ *
+ * ⛔ CONSERVADORA DE PROPÓSITO: exige 3+ espaços **e** data seguida de letra. `01/04` de
+ * parcela vem colado na descrição (um espaço) e por isso não parte nada — se partisse,
+ * inventaria transação, que é pior do que perder.
+ */
+export function fatiarColunasColadas(linha: string): string[] {
+  const re = /\s{3,}(?=\d{2}\/\d{2}\s+[A-Za-zÀ-ú])/g
+  const out: string[] = []
+  let ini = 0
+  let m: RegExpExecArray | null
+  while ((m = re.exec(linha)) !== null) {
+    if (m.index > ini) out.push(linha.slice(ini, m.index))
+    ini = m.index + m[0].length
+  }
+  out.push(linha.slice(ini))
+  return out
+}
+
 
 export interface Bucketed {
   bucket: 'BRASIL' | 'EXTERIOR' | 'IOF' | 'ESTORNO' | 'PAYMENT'
@@ -231,7 +308,11 @@ export function classificarLinhas(
     const cardHdr = full.match(/NR\.\s*(\d{4})/i)
     if (cardHdr) currentCard = cardHdr[1]
 
-    const trimmed = full.trim()
+    // ⭐ A COTAÇÃO SAI ANTES DE QUALQUER DECISÃO — ver `removerCotacaoInformativa`. Linha
+    // que era só cotação fica vazia aqui e some; linha que tinha conteúdo real do lado
+    // segue viva, com o valor certo. Depois, se DUAS colunas vieram coladas (calha que
+    // falhou), a linha é fatiada e cada pedaço é lido por si.
+    for (const trimmed of fatiarColunasColadas(removerCotacaoInformativa(full)).map((s) => s.trim())) {
     if (!trimmed) continue
 
     const dated = trimmed.match(MONTHS_TX)
@@ -259,7 +340,11 @@ export function classificarLinhas(
     }
 
     // continuação (sem data): IOF exterior · TX DÓLAR (informativa) · TOTAL DE GASTOS
-    if (/\bTX\s*D[ÓO]?LAR|\bTX\s*D\b/i.test(trimmed)) continue // trap 3: cotação informativa
+    // trap 3 — BACKSTOP. O caminho normal é o `removerCotacaoInformativa` lá em cima; isto
+    // aqui só pega uma cotação de forma que a régua não reconheceu (sem taxa, por exemplo).
+    // ⚠️ Ele NÃO pode voltar a ser o caminho principal: pular a LINHA foi exatamente o que
+    // apagou IOF e transação real quando a calha sumiu.
+    if (/\bTX\s*D[ÓO]?LAR|\bTX\s*D\b/i.test(trimmed)) continue
     if (/TOTAL DE GASTOS/i.test(trimmed)) continue // trap 6: total declarado, não tx
     if (/\bIOF\b/i.test(trimmed)) {
       const nums = allBRNumbers(trimmed)
@@ -268,6 +353,7 @@ export function classificarLinhas(
       }
     }
     // qualquer outra continuação: ignora (se sobrar valor real, a validação morde)
+    }
   }
   return bucketed
 }
