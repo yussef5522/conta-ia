@@ -20,6 +20,12 @@
 
 import { formatBRL } from '@/lib/format/money'
 import { MOCK } from './mock-tokens'
+/**
+ * ⭐⭐ O MOCK v3 REDESENHOU ESTES CARDS (16/09) — eles viraram **CARDS-FILTRO**: hover
+ * levanta, ativo ganha borda roxa e fundo em degradê. ⛔ **Os NÚMEROS não mudaram** —
+ * continuam as três filas reais, da MESMA `contarFilas` do badge e do servidor.
+ */
+import { V3, SOMBRA, SOMBRA_UP, MEDIDA } from './mock-v3-tokens'
 
 export interface FilasDTO {
   prontosPraConfirmar: number
@@ -29,21 +35,33 @@ export interface FilasDTO {
   valorEmDuplaContagem: number
 }
 
-function Stat({ rotulo, valor, descricao, acao }: {
-  rotulo: string; valor: string; descricao: string; acao?: boolean
+function Stat({ rotulo, valor, descricao, acao, tom, ativo, onClick }: {
+  rotulo: string; valor: string; descricao: string
+  acao?: boolean; tom?: 'verde' | 'roxo' | 'slate'
+  ativo?: boolean; onClick?: () => void
 }) {
+  const corDoNumero = tom === 'verde' ? V3.verde : tom === 'slate' ? '#475569' : acao || tom === 'roxo' ? V3.roxo : V3.ink
   return (
-    <div className="rounded-[14px] border px-[14px] py-[12px]"
-      style={{ background: MOCK.card, borderColor: MOCK.line }}>
-      <div className="text-[11px] uppercase tracking-[.04em]" style={{ color: MOCK.sub }}>
+    /*
+      ⚠️ É <button> e não <div> porque ELE FILTRA — o dono clica no número e a lista
+      recorta. Elemento clicável que não é botão perde teclado e leitor de tela, e a casa
+      já pagou isso no "ação escondida sem afordância não existe" (30/08).
+    */
+    <button type="button" onClick={onClick} aria-pressed={ativo ? true : undefined}
+      className={`rounded-[${MEDIDA.raioStat}px] border-[1.5px] px-4 py-[13px] text-left transition-all duration-150 hover:-translate-y-px`}
+      style={{
+        background: ativo ? `linear-gradient(160deg,#fff, ${V3.roxoBg})` : V3.card,
+        borderColor: ativo ? V3.roxo : V3.line,
+        boxShadow: ativo ? SOMBRA_UP : SOMBRA,
+      }}>
+      <div className="text-[10.5px] font-extrabold uppercase tracking-[.05em]" style={{ color: V3.sub }}>
         {rotulo}
       </div>
-      <div className="mt-[2px] text-[26px] font-bold tabular-nums"
-        style={{ color: acao ? MOCK.roxo : MOCK.ink }}>
+      <div className="mb-[1px] mt-[2px] text-[24px] font-extrabold tabular-nums" style={{ color: corDoNumero }}>
         {valor}
       </div>
-      <div className="text-[12px]" style={{ color: MOCK.sub }}>{descricao}</div>
-    </div>
+      <div className="text-[11px]" style={{ color: V3.sub }}>{descricao}</div>
+    </button>
   )
 }
 
@@ -51,35 +69,37 @@ export function StatsDoMock({ filas }: { filas: FilasDTO }) {
   return (
     <div className="mb-[18px] grid grid-cols-3 gap-[10px]">
       <Stat
-        rotulo="Prontos pra confirmar"
+        tom="verde"
+        rotulo="⭐ Prontos pra confirmar"
         valor={String(filas.prontosPraConfirmar)}
         // ⛔ nunca "fecham sozinhos": o sistema NÃO concilia sem o clique do dono, e
         // título que promete o contrário é como a confiança na tela se perde.
         descricao={filas.prontosPraConfirmar > 0 ? 'esperando só o seu clique' : 'nada esperando clique'}
       />
       <Stat
-        acao
-        rotulo="Pra tua mão"
+        acao tom="roxo"
+        rotulo="🖐 Pra tua mão"
         valor={String(filas.praTuaMao)}
         descricao="pagamentos que não fecham sozinhos"
       />
       <Stat
-        rotulo="Sem pagamento"
+        tom="slate"
+        rotulo="💤 Sem pagamento"
         valor={String(filas.semPagamento)}
         descricao="pagar, ou registrar saída do cofre"
       />
       {/* ⚠️ a anomalia entra na grade só quando existe — e em DINHEIRO, que é o que
           torna o problema legível (duas linhas com o mesmo dinheiro). */}
       {filas.duplaContagem > 0 && (
-        <div className="col-span-3 rounded-[14px] border px-[14px] py-[12px]"
-          style={{ background: MOCK.coralFraco, borderColor: MOCK.coral + '33' }}>
-          <div className="text-[11px] uppercase tracking-[.04em]" style={{ color: MOCK.coral }}>
+        <div className="col-span-3 rounded-[18px] border-[1.5px] px-4 py-[13px]"
+          style={{ background: V3.coralBg, borderColor: V3.coral + '44', boxShadow: SOMBRA }}>
+          <div className="text-[11px] uppercase tracking-[.04em]" style={{ color: V3.coral }}>
             Em dupla contagem
           </div>
-          <div className="mt-[2px] text-[26px] font-bold tabular-nums" style={{ color: MOCK.coral }}>
+          <div className="mt-[2px] text-[24px] font-extrabold tabular-nums" style={{ color: V3.coral }}>
             {formatBRL(filas.valorEmDuplaContagem)}
           </div>
-          <div className="text-[12px]" style={{ color: MOCK.coral }}>
+          <div className="text-[11px]" style={{ color: V3.coral }}>
             {filas.duplaContagem} conta{filas.duplaContagem === 1 ? '' : 's'} paga
             {filas.duplaContagem === 1 ? '' : 's'} sem vínculo — o mesmo dinheiro em duas linhas
           </div>

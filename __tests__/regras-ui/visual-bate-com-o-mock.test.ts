@@ -86,7 +86,13 @@ describe('⛔⛔ as CORES da tela são as do arquivo do mock', () => {
 describe('⛔⛔ as MEDIDAS da tela são as do arquivo do mock', () => {
   // cada linha: [seletor, propriedade, onde a tela tem que carregar o valor]
   const medidas: [string, string, string][] = [
-    ['.card', 'border-radius', 'rounded-[16px]'],
+    /**
+     * ⚠️ O RAIO DO CARD DO FORNECEDOR saiu desta lista em 16/09: o **mock v3** redesenhou
+     * o cabeçalho (avatar + pílula de estado, raio 18) e passou a governá-lo. O guard
+     * novo (`caixa-bate-com-o-mock-v3`) lê o arquivo novo. ⛔ O INTERIOR do card — as
+     * caixinhas de nota, o rodapé sticky — continua governado por ESTE mock, que é o
+     * único que o desenha.
+     */
     ['.card-h', 'gap', 'gap-[10px]'],
     ['.card-h', 'padding', 'py-[14px]'],
     ['.linha-banco', 'padding', 'py-[12px]'],
@@ -116,13 +122,17 @@ describe('⛔⛔ as MEDIDAS da tela são as do arquivo do mock', () => {
     // ── os 3 stats do topo ──
     ['.stats', 'gap', 'gap-[10px]'],
     ['.stats', 'margin-bottom', 'mb-[18px]'],
-    ['.stat', 'border-radius', 'rounded-[14px]'],
-    ['.stat', 'padding', 'py-[12px]'],
-    ['.stat .k', 'font-size', 'text-[11px]'],
-    ['.stat .k', 'letter-spacing', 'tracking-[.04em]'],
-    ['.stat .v', 'font-size', 'text-[26px]'],
+    /**
+     * ⚠️⚠️ AS MEDIDAS DO `.stat` SAÍRAM DESTA LISTA EM 16/09 — e não por afrouxamento: o
+     * **mock v3** (`conciliacao-caixa-mock-v3.html`) REDESENHOU os 3 stats como
+     * CARDS-FILTRO (raio 18, número 24px, hover que levanta, ativo com borda roxa). Quem
+     * governa esses números agora é `caixa-bate-com-o-mock-v3.test.ts`, que lê o arquivo
+     * NOVO. Manter a régua velha aqui deixaria dois mocks mandando no mesmo componente —
+     * e o vermelho apareceria com a tela CERTA.
+     *
+     * ⭐ O que continua aqui é o que o v3 NÃO mexeu: a grade de 3 colunas e o gap.
+     */
     ['.stat .v', 'margin-top', 'mt-[2px]'],
-    ['.stat .d', 'font-size', 'text-[12px]'],
   ]
   for (const [seletor, prop, naTela] of medidas) {
     it(`${seletor} { ${prop} } → a tela usa ${naTela}`, () => {
@@ -150,10 +160,19 @@ describe('⛔⛔ as MEDIDAS da tela são as do arquivo do mock', () => {
     expect(card).toContain('pointerEvents')
   })
 
-  it('⭐ a seta gira 90° ao abrir, como no mock', () => {
-    expect(regraDoMock(mock, '.card.aberto .seta', 'transform')).toBe('rotate(90deg)')
-    expect(fila).toContain("rotate(90deg)")
-    expect(fila).toContain('▶')
+  /**
+   * ⚠️⚠️ REAPONTADO EM 16/09 — A AFORDÂNCIA MUDOU DE FORMA, NÃO SUMIU.
+   *
+   * O mock antigo indicava "isto abre" com a **seta ▶ girando**; o **v3** troca por texto
+   * — *"abrir o caso →"* / *"fechar o caso"*. ⭐ E isso é **mais forte, não mais fraco**:
+   * a seta exigia interpretar um glifo, o texto DIZ o que vai acontecer (a régua do
+   * rótulo que diz o efeito) e o `aria-expanded` continua carregando o estado pro leitor
+   * de tela. **Guard que exigisse o ▶ ficaria vermelho com a tela certa.**
+   */
+  it('⭐ o card do fornecedor DIZ que abre — e carrega o estado', () => {
+    expect(fila, 'a afordância de abrir sumiu do card').toContain('abrir o caso')
+    expect(fila, 'o estado aberto/fechado deixou de ser dito').toContain('fechar o caso')
+    expect(fila, 'o estado sumiu do leitor de tela').toContain('aria-expanded')
   })
 
   it('⭐ a nota sugerida tem o fundo roxo-fraco', () => {
@@ -168,9 +187,14 @@ describe('⭐⭐ os 3 STATS do topo', () => {
     expect(stats).toContain('grid-cols-3')
   })
 
+  /**
+   * ⭐ A PERGUNTA CONTINUA A MESMA — *"o número do 'pra tua mão' é roxo?"* —, só que o
+   * token agora vem do v3 (mesmo `#534AB7`, outro arquivo). O guard segue os DOIS mocks:
+   * o antigo ainda declara a cor, e a tela tem que usá-la.
+   */
   it('o número do "pra tua mão" é ROXO (`.stat.acao .v`)', () => {
     expect(regraDoMock(mock, '.stat.acao .v', 'color')).toBe('var(--roxo)')
-    expect(stats).toContain('acao ? MOCK.roxo')
+    expect(stats, 'o roxo do "pra tua mão" sumiu do stat').toMatch(/V3\.roxo/)
   })
 
   it('os três rótulos são as três filas da tela', () => {

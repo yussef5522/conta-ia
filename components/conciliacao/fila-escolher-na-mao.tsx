@@ -20,6 +20,7 @@
 import { useState, useMemo, useCallback, useEffect } from 'react'
 import { formatBRL } from '@/lib/format/money'
 import { EscolherNaMaoCard, type CardDeEscolhaDTO } from './escolher-na-mao-card'
+import { V3, SOMBRA } from './mock-v3-tokens'
 import { MOCK, chip } from './mock-tokens'
 
 interface Grupo {
@@ -84,6 +85,11 @@ interface Props {
    */
   abrirExtratoId?: string | null
   abrirContaId?: string | null
+}
+
+/** ⭐ as iniciais do avatar — 2 letras, como o mock ("CA" pra Casper) */
+function iniciais(nome: string): string {
+  return nome.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join('').toUpperCase() || '?'
 }
 
 export function FilaEscolherNaMao({
@@ -158,26 +164,30 @@ export function FilaEscolherNaMao({
         return (
           <article
             key={g.fornecedorId}
-            className="mb-[12px] overflow-hidden rounded-[16px] border"
-            style={{ background: MOCK.card, borderColor: MOCK.line }}
+            className="mb-[12px] overflow-hidden rounded-[18px] border"
+            style={{ background: V3.card, borderColor: V3.line, boxShadow: SOMBRA }}
           >
-            {/* ── `.card-h` ── */}
+            {/*
+              ⭐⭐ O CABEÇALHO NO DESENHO DO MOCK v3 (16/09): **avatar** com as iniciais,
+              nome + resumo à esquerda, **pílula de estado** à direita e a seta.
+              ⛔ O COMPORTAMENTO NÃO MUDOU — continua UM card por fornecedor, FECHADO, e
+              uma linha por vez lá dentro. Aquela trava é o que impede dois cards do mesmo
+              fornecedor disputarem as MESMAS notas (o caso Cancian, 08/09).
+            */}
             <button
               type="button" aria-expanded={estaAberto}
               onClick={() => setAberto(estaAberto ? null : g.fornecedorId)}
-              className="flex w-full items-center gap-[10px] px-[16px] py-[14px] text-left"
+              className="flex w-full items-center gap-[13px] px-[18px] py-[14px] text-left"
             >
-              <span style={vencidas > 0
-                ? chip(MOCK.coralFraco, MOCK.coral)
-                : chip(MOCK.slateFraco, MOCK.slate)}>
-                {vencidas > 0
-                  ? `${vencidas} vencida${vencidas > 1 ? 's' : ''}`
-                  : `${(linha?.aVencer.length ?? 0)} a vencer`}
+              <span className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[14px] text-[15px] font-extrabold text-white"
+                style={{ background: `linear-gradient(135deg,${V3.roxo},${V3.roxo2})` }}>
+                {iniciais(g.fornecedorNome)}
               </span>
-              <span className="flex-1 text-[15px] font-bold" style={{ color: MOCK.ink }}>
-                {g.fornecedorNome}
-              </span>
-              <span className="text-[15px] font-bold tabular-nums" style={{ color: MOCK.ink }}>
+              <span className="min-w-0 flex-1">
+                <b className="block text-[14.5px] font-extrabold" style={{ color: V3.ink }}>
+                  {g.fornecedorNome}
+                </b>
+                <small className="text-[12px]" style={{ color: V3.sub }}>
                 {/* ⛔⛔ A SOMA DOS PAGAMENTOS SAIU DAQUI (10/09/2026, ordem do dono):
                     *"6.332,25 não é valor que eu paguei em gesto nenhum; parece cobrança
                     e confunde. Datas contam mais que soma."* Fornecedor com N linhas são
@@ -187,12 +197,21 @@ export function FilaEscolherNaMao({
                 {g.linhas.length > 1
                   ? `${g.linhas.length} pagamentos · ${periodo(g)}`
                   : menos(g.total)}
+                </small>
               </span>
-              <span
-                className="text-[11px] transition-transform duration-200"
-                style={{ color: MOCK.sub, transform: estaAberto ? 'rotate(90deg)' : undefined }}
-              >
-                ▶
+              {/* ⭐ a pílula de estado — coral quando há vencida, cinza quando é só "a vencer" */}
+              <span className="shrink-0 text-right">
+                <span className="rounded-full px-2.5 py-[3px] text-[11px] font-extrabold"
+                  style={vencidas > 0
+                    ? { background: V3.coralBg, color: V3.coral }
+                    : { background: '#eef2f6', color: '#475569' }}>
+                  {vencidas > 0
+                    ? `${vencidas} vencida${vencidas > 1 ? 's' : ''}`
+                    : `${(linha?.aVencer.length ?? 0)} a vencer`}
+                </span>
+                <span className="mt-1 block text-[12px] font-semibold" style={{ color: V3.sub }}>
+                  {estaAberto ? 'fechar o caso' : 'abrir o caso →'}
+                </span>
               </span>
             </button>
 

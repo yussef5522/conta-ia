@@ -14,6 +14,14 @@ import { estacaoDaLinha, comoFoiResolvida, sentidoDaLinha, acoesDoSentido } from
  * de dizer um número e a tela mostrar outro (o defeito de 10/09).
  */
 import { lerCaixa, paraLei } from '@/lib/conciliacao/leitura-da-caixa'
+import { progressoDoMes } from '@/lib/conciliacao/palpite-da-linha'
+/**
+ * ⭐ O PALPITE do cartão ≍ (mock v3). ⚠️ Ele NÃO tem matcher próprio: chama os motores
+ * provados (`resolvePaidInvoiceMonth`, `sugerirVinculoEmprestimo`, `sugerirVinculos`) e
+ * só ESCOLHE entre o que eles devolveram. É fail-soft: sem palpite, a linha aparece com
+ * os chips de sempre — a caixa de ontem, que funciona.
+ */
+import { palpitesDaCaixa } from '@/lib/conciliacao/palpites-da-caixa'
 
 export async function GET(request: NextRequest) {
   const url = new URL(request.url)
@@ -24,7 +32,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ erro: 'Sem permissão.', permission: 'transaction.view' }, { status: 403 })
   }
 
-  const { rows, contadores, nomeConta } = await lerCaixa(empresaId)
+  const { rows, contadores, nomeConta, corte } = await lerCaixa(empresaId)
+
+  // ⚠️ só as linhas que ESTÃO na caixa ganham palpite — palpitar sobre o arquivo é
+  // trabalho (e consulta) pra quem já está resolvido.
+  const naCaixa = rows.filter((r) => estacaoDaLinha(paraLei(r)) === 'CAIXA')
+  const palpites = await palpitesDaCaixa(empresaId, naCaixa).catch(() => new Map())
 
   const linhas = rows.map((r) => {
     const l = paraLei(r)
@@ -37,11 +50,16 @@ export async function GET(request: NextRequest) {
       // ⭐ o selo do ARQUIVO diz COMO foi resolvida — nunca um "ok" genérico
       resolvidaComo: comoFoiResolvida(l),
       acoes: estacaoDaLinha(l) === 'CAIXA' ? acoesDoSentido(sentidoDaLinha(r.type)) : [],
+      palpite: palpites.get(r.id) ?? null,
     }
   })
 
   return NextResponse.json({
     contadores,
+    /** ⭐ o anel do mês sai dos MESMOS contadores — nunca de uma consulta própria */
+    progresso: progressoDoMes(contadores),
+    /** a tela DIZ de quando ela conta: fila que mostra menos precisa dizer por quê */
+    corte: corte ? corte.toISOString().slice(0, 10) : null,
     // ⚠️ a tela desenha SÓ a caixa; o arquivo tem casa própria (Movimentações)
     linhas: linhas.filter((l) => l.estacao === 'CAIXA'),
   })

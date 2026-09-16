@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Caixa de Entrada do Banco — mock</title>
+<style>
+  :root{
+    --bg:#f6f5fb; --card:#fff; --ink:#171a26; --sub:#7b8194; --line:#eae9f2;
+    --roxo:#534AB7; --roxo2:#6f63d8; --roxo-bg:#efedfb;
+    --verde:#0f9d58; --verde2:#12b768; --verde-bg:#e7f7ee;
+    --coral:#e5484d; --coral-bg:#fdecec; --ambar:#c47b0a; --ambar-bg:#fdf3e0;
+    --azul:#2563eb; --azul-bg:#e8effd;
+    --sombra:0 1px 2px rgba(23,26,38,.05),0 8px 28px rgba(83,74,183,.08);
+    --sombra-up:0 2px 4px rgba(23,26,38,.06),0 16px 44px rgba(83,74,183,.14);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:-apple-system,'Inter',sans-serif;background:
+    radial-gradient(1200px 400px at 70% -100px,#eeecfa 0%,transparent 60%),var(--bg);
+    color:var(--ink);padding:22px 16px 60px;max-width:1180px;margin:0 auto;}
+
+  /* ===== HEADER ===== */
+  .top{display:flex;justify-content:space-between;align-items:flex-end;gap:14px;flex-wrap:wrap;margin-bottom:6px;}
+  h1{font-size:22px;letter-spacing:-.01em;}
+  .sub{color:var(--sub);font-size:13px;margin-top:2px;}
+  .flow{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--sub);font-weight:600;flex-wrap:wrap;}
+  .flow b{color:var(--roxo);background:var(--roxo-bg);border-radius:99px;padding:3px 10px;font-weight:800;}
+  .flow span{opacity:.55;}
+  .prog{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:8px 14px;box-shadow:var(--sombra);}
+  .ring{width:40px;height:40px;border-radius:50%;background:conic-gradient(var(--verde2) 0 86%,#e8e7f1 86% 100%);display:flex;align-items:center;justify-content:center;}
+  .ring i{width:30px;height:30px;border-radius:50%;background:var(--card);font-style:normal;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;color:var(--verde);}
+  .prog .t{font-size:11px;color:var(--sub);font-weight:600;}
+  .prog .n{font-size:13.5px;font-weight:800;}
+
+  /* ===== STATS = FILTROS ===== */
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:16px 0 14px;}
+  .stat{background:var(--card);border:1.5px solid var(--line);border-radius:18px;padding:13px 16px;cursor:pointer;box-shadow:var(--sombra);position:relative;transition:.15s;}
+  .stat:hover{transform:translateY(-1px);box-shadow:var(--sombra-up);}
+  .stat.on{border-color:var(--roxo);background:linear-gradient(160deg,#fff, var(--roxo-bg));}
+  .stat .k{font-size:10.5px;font-weight:800;letter-spacing:.05em;color:var(--sub);}
+  .stat .v{font-size:24px;font-weight:800;margin:2px 0 1px;}
+  .stat .d{font-size:11px;color:var(--sub);}
+  .stat.verde .v{color:var(--verde);} .stat.roxo .v{color:var(--roxo);} .stat.slate .v{color:#475569;}
+
+  /* ===== TABS ===== */
+  .barra{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px;}
+  .tabs{display:inline-flex;background:#e9e8f3;border-radius:14px;padding:4px;gap:4px;}
+  .tab{border-radius:11px;padding:8px 18px;font-size:13.5px;font-weight:700;color:var(--sub);cursor:pointer;display:flex;gap:8px;align-items:center;}
+  .tab.on{background:var(--card);color:var(--ink);box-shadow:0 2px 8px rgba(23,26,38,.10);}
+  .tab .b{font-size:11px;font-weight:800;background:var(--coral);color:#fff;border-radius:99px;padding:1px 8px;}
+  .tab.on .b{background:var(--roxo);}
+  .tab .b.zero{background:#d6d5e3;color:#fff;}
+  .mini{font-size:12px;color:var(--sub);}
+  .mini a{color:var(--roxo);font-weight:700;text-decoration:none;}
+
+  /* ===== O CARTÃO XERO ===== */
+  .par{background:var(--card);border:1px solid var(--line);border-radius:22px;box-shadow:var(--sombra);overflow:hidden;margin-bottom:14px;}
+  .par-grid{display:grid;grid-template-columns:1fr 64px 1fr;}
+  @media(max-width:900px){.par-grid{grid-template-columns:1fr;}.meio{flex-direction:row !important;padding:0 16px 4px !important;}.meio .fio{width:100% !important;height:2px !important;}}
+  .lado{padding:18px 20px;}
+  .lado .rot{font-size:10px;font-weight:800;letter-spacing:.07em;color:var(--sub);margin-bottom:10px;display:flex;align-items:center;gap:6px;}
+  .banco-chip{display:inline-flex;align-items:center;gap:7px;background:#f2f1f8;border-radius:99px;padding:3px 10px;font-size:11.5px;font-weight:700;}
+  .banco-chip i{width:16px;height:16px;border-radius:50%;background:linear-gradient(135deg,#7ac142,#4a8f2a);font-style:normal;}
+  .memo{font-size:14.5px;font-weight:700;line-height:1.35;margin:6px 0 2px;}
+  .memo small{display:block;font-weight:500;color:var(--sub);font-size:12px;margin-top:2px;}
+  .valor{font-size:28px;font-weight:800;letter-spacing:-.01em;color:var(--coral);margin-top:8px;font-variant-numeric:tabular-nums;}
+  .valor.cred{color:var(--verde);}
+  .meio{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:12px 0;}
+  .meio .fio{width:2px;height:100%;min-height:34px;background:linear-gradient(var(--line),var(--roxo-bg),var(--line));border-radius:2px;flex:1;}
+  .meio .simb{width:34px;height:34px;border-radius:50%;background:var(--roxo-bg);color:var(--roxo);font-weight:800;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;}
+  .palpite{background:linear-gradient(160deg,#fbfbff,var(--verde-bg));border-radius:16px;border:1.5px solid #cdebd9;padding:14px 16px;}
+  .palpite .p-rot{font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--verde);display:flex;gap:6px;align-items:center;}
+  .palpite .p-nome{font-size:14.5px;font-weight:800;margin:6px 0 1px;}
+  .palpite .p-det{font-size:12px;color:var(--sub);}
+  .dif{display:inline-flex;align-items:center;gap:6px;background:var(--ambar-bg);color:var(--ambar);font-size:11.5px;font-weight:800;border-radius:99px;padding:3px 10px;margin-top:8px;}
+  .btn-ok{margin-top:12px;width:100%;border:none;border-radius:14px;padding:13px;background:linear-gradient(135deg,var(--verde),var(--verde2));color:#fff;font-size:15px;font-weight:800;cursor:pointer;box-shadow:0 6px 18px rgba(15,157,88,.35);display:flex;align-items:center;justify-content:center;gap:8px;}
+  .btn-ok:hover{filter:brightness(1.05);}
+  .ou{text-align:center;font-size:10.5px;color:var(--sub);font-weight:700;margin:10px 0 8px;letter-spacing:.05em;}
+  .acoes{display:flex;flex-wrap:wrap;gap:7px;}
+  .chip{border:1.5px solid var(--line);background:var(--card);border-radius:99px;padding:7px 13px;font-size:12.5px;font-weight:700;color:var(--ink);cursor:pointer;display:inline-flex;gap:6px;align-items:center;transition:.12s;}
+  .chip:hover{border-color:var(--roxo);color:var(--roxo);background:var(--roxo-bg);}
+  .chip.mudo{color:var(--sub);}
+
+  /* linha resolvida (feedback) */
+  .feita{display:flex;align-items:center;gap:12px;background:var(--verde-bg);border:1px solid #cdebd9;border-radius:16px;padding:11px 16px;margin-bottom:14px;font-size:13px;animation:pop .3s ease;}
+  @keyframes pop{from{opacity:0;transform:translateY(-6px)}to{opacity:1}}
+  .feita .ok{width:26px;height:26px;border-radius:50%;background:var(--verde);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;flex-shrink:0;}
+  .feita b{font-weight:800;}
+  .feita .selo{margin-left:auto;background:#fff;border-radius:99px;padding:3px 10px;font-size:11px;font-weight:800;color:var(--verde);white-space:nowrap;}
+
+  /* ===== PRA TUA MÃO (fornecedores) ===== */
+  h2{font-size:12px;font-weight:800;letter-spacing:.06em;color:var(--sub);margin:22px 0 10px;}
+  .forn{background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:var(--sombra);padding:14px 18px;display:flex;align-items:center;gap:13px;cursor:pointer;transition:.15s;}
+  .forn:hover{box-shadow:var(--sombra-up);transform:translateY(-1px);}
+  .avatar{width:42px;height:42px;border-radius:14px;background:linear-gradient(135deg,var(--roxo),var(--roxo2));color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;}
+  .forn .nm{flex:1;min-width:0;}
+  .forn .nm b{font-size:14.5px;display:block;}
+  .forn .nm small{color:var(--sub);font-size:12px;}
+  .forn .st{text-align:right;}
+  .forn .st .pill{background:var(--coral-bg);color:var(--coral);border-radius:99px;font-size:11px;font-weight:800;padding:3px 10px;}
+  .forn .st .qt{display:block;font-size:12px;color:var(--sub);margin-top:4px;font-weight:600;}
+  .forn .seta{color:var(--sub);font-size:18px;}
+
+  /* inbox zero */
+  .zero{background:var(--card);border:1.5px dashed #d9d7ea;border-radius:22px;padding:34px;text-align:center;margin-top:14px;}
+  .zero .e{font-size:34px;}
+  .zero b{display:block;font-size:16px;margin:8px 0 3px;}
+  .zero span{color:var(--sub);font-size:13px;}
+
+  .nota{font-size:11px;color:var(--sub);text-align:center;margin-top:26px;}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div>
+    <h1>Caixa de entrada do banco</h1>
+    <div class="sub">o banco diz o que aconteceu · você diz o que cada linha é</div>
+  </div>
+  <div class="flow"><b>BANCO</b><span>→</span><b>IMPORT</b><span>→</span><b style="background:var(--roxo);color:#fff">CAIXA</b><span>→</span><b>ARQUIVO</b></div>
+  <div class="prog"><div class="ring"><i>86%</i></div><div><div class="t">setembro</div><div class="n">190 resolvidas · 1 na caixa</div></div></div>
+</div>
+
+<div class="stats">
+  <div class="stat verde"><div class="k">⭐ PRONTOS PRA CONFIRMAR</div><div class="v">0</div><div class="d">nada esperando clique</div></div>
+  <div class="stat roxo on"><div class="k">🖐 PRA TUA MÃO</div><div class="v">1</div><div class="d">linha esperando decisão</div></div>
+  <div class="stat slate"><div class="k">💤 SEM PAGAMENTO</div><div class="v">91</div><div class="d">contas abertas · ver no Contas a Pagar →</div></div>
+</div>
+
+<div class="barra">
+  <div class="tabs">
+    <div class="tab on">Saídas <span class="b">1</span></div>
+    <div class="tab">Entradas <span class="b zero">0</span></div>
+  </div>
+  <div class="mini">conciliando a partir de <b>01/09</b> · <a href="#">mudar</a> · <a href="#">220 no arquivo →</a></div>
+</div>
+
+<div class="feita"><span class="ok">✓</span><div><b>PIX Elevepan R$ 308,50</b> resolvida agora</div><span class="selo">recebimento de venda · no arquivo</span></div>
+
+<div class="par">
+  <div class="par-grid">
+    <div class="lado">
+      <div class="rot">O BANCO DIZ <span class="banco-chip"><i></i>sicredi</span></div>
+      <div class="memo">DEB.CTA.FATURA-030129693<small>14/09/2026 · débito em conta</small></div>
+      <div class="valor">− R$ 3.194,35</div>
+    </div>
+    <div class="meio"><div class="fio"></div><div class="simb">≍</div><div class="fio"></div></div>
+    <div class="lado">
+      <div class="rot">MELHOR PALPITE</div>
+      <div class="palpite">
+        <div class="p-rot">💳 PAGAMENTO DE FATURA</div>
+        <div class="p-nome">Fatura do cartão Sicredi</div>
+        <div class="p-det">fatura 2026-08 · R$ 3.194,35 · vence 15/09</div>
+        <div class="dif">✓ valor exato — fecha em R$ 0,00</div>
+        <button class="btn-ok">✓ Confirmar — baixa a fatura</button>
+      </div>
+      <div class="ou">OU ESCOLHA OUTRO CAMINHO</div>
+      <div class="acoes">
+        <span class="chip">🧾 casar com conta a pagar</span>
+        <span class="chip">🏦 parcela de empréstimo</span>
+        <span class="chip">⇄ transferência</span>
+        <span class="chip">🏷 é despesa: categoria</span>
+        <span class="chip mudo">⌫ ignorar</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h2>🖐 PRA TUA MÃO — O PAGAMENTO EXISTE, VOCÊ DIZ O QUE ELE PAGOU</h2>
+<div class="forn">
+  <div class="avatar">CA</div>
+  <div class="nm"><b>Casper Distribuidora</b><small>2 pagamentos na Stone · 04/09 · 7 notas a vencer</small></div>
+  <div class="st"><span class="pill">1 vencida</span><span class="qt">abrir o caso →</span></div>
+</div>
+
+<div class="zero" style="margin-top:20px">
+  <div class="e">🎉</div><b>É assim que a caixa fica quando você termina</b>
+  <span>tudo resolvido e no arquivo, com o selo de como · amanhã o banco traz mais</span>
+</div>
+
+<div class="nota">mock · desktop: cartão dividido banco ≍ palpite lado a lado (grid acima) · celular: empilha banco em cima, palpite embaixo, chips roláveis · REGRA 12</div>
+</body>
+</html>

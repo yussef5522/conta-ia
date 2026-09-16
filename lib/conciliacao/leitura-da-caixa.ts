@@ -62,6 +62,8 @@ export function paraLei(r: LinhaCrua): LinhaParaEstacao {
 export interface CaixaLida {
   rows: LinhaCrua[]
   contadores: ContadoresDoBalcao
+  /** ⭐ a tela DIZ de quando ela conta — fila que mostra menos precisa dizer por quê */
+  corte: Date | null
   /** nome de cada conta, pra tela nomear de onde a linha veio */
   nomeConta: Map<string, string>
 }
@@ -89,7 +91,7 @@ export async function lerCaixa(empresaId: string, db: PrismaClient = defaultPris
     take: TETO_DA_CAIXA,
   })) as unknown as LinhaCrua[]
 
-  return { rows, contadores: contarEstacoes(rows.map(paraLei)), nomeConta: new Map(contas.map((c) => [c.id, c.name])) }
+  return { rows, contadores: contarEstacoes(rows.map(paraLei)), corte, nomeConta: new Map(contas.map((c) => [c.id, c.name])) }
 }
 
 /**
