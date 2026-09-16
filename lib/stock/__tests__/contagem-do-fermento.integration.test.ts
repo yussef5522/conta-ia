@@ -88,6 +88,14 @@ describe('⛔ a cena de prod: o item está num estado que a contagem não conseg
     expect(r!.erro, 'o número que explica sumiu').toMatch(/-?\d+[.,]\d\d/)
     expect(r!.saida, 'recusa sem saída é beco').toBeTruthy()
     expect(r!.saida!.href).toContain(itemId)
+
+    /**
+     * ⛔⛔ E A MENSAGEM APONTA O CAMPO CERTO. A versão antiga dizia *"confira a
+     * quantidade"* — mas a quantidade do dono está CERTA (10 kg é o que está na
+     * prateleira). O sintoma é o VALOR: falta a compra que nunca foi lançada.
+     */
+    expect(r!.erro, 'a mensagem manda conferir a quantidade, que está certa').toMatch(/falta registrar a COMPRA/i)
+    expect(r!.erro, 'não disse que a contagem dele está ok').toMatch(/não é a sua contagem que está errada/i)
   })
 
   /**

@@ -62,6 +62,11 @@ export function assertMovementValid(m: { quantidade: number; custoUnitario: numb
  * ⭐ E o guard mora AQUI, no choke-point de escrita do ledger — não em cada chamador
  * (REGRA 5): a Posição é derivada, então checar na tela seria checar depois do estrago.
  */
+/** ⚠️ "1 unidade" e não "1 unidade(s)" — parêntese em mensagem de erro é ruído */
+function unidadeOuUnidades(n: number): string {
+  return Math.abs(n) === 1 ? 'unidade' : 'unidades'
+}
+
 async function assertSaldoNaoFicaImpossivel(db: Db, m: NovoMovimento, custoTotal: number) {
   // ⚠️ só olha quando ESTE movimento tira valor: entrada nunca cria o estado
   if (custoTotal > 0) return
@@ -75,10 +80,27 @@ async function assertSaldoNaoFicaImpossivel(db: Db, m: NovoMovimento, custoTotal
   const saldoDepois = round2((atual._sum.quantidade ?? 0) + m.quantidade)
   const valorDepois = round2((atual._sum.custoTotal ?? 0) + custoTotal)
   if (saldoDepois >= 0 && valorDepois < -0.01) {
+    /**
+     * ⚠️⚠️ A MENSAGEM APONTA O CAMPO CERTO (16/09) — e isto veio de um caso real.
+     *
+     * Ela dizia *"confira a quantidade (ela costuma ser o sintoma)"*. No fermento a
+     * quantidade do dono estava **CERTA** (10 kg é o que está na prateleira); o sintoma
+     * era o **VALOR** residual de −R$ 31,04, de consumo lançado antes da nota de compra.
+     * **Mensagem que acusa o campo errado faz o dono caçar um erro que não existe.**
+     *
+     * ⭐ Agora ela separa os dois casos pelo que o próprio movimento revela: se o saldo
+     * **cruza o zero** (vinha negativo), o buraco é a ENTRADA que falta; se já estava
+     * positivo, aí sim a quantidade é a suspeita.
+     */
+    const saldoAntes = round2(atual._sum.quantidade ?? 0)
+    const cruzouOZero = saldoAntes < 0 && saldoDepois >= 0
     throw new MovementInvalidError(
-      `Este movimento deixaria o item com ${saldoDepois} unidade(s) e valor `
-      + `R$ ${valorDepois.toFixed(2)} — dinheiro negativo com saldo positivo é um estado `
-      + 'que não existe. Confira a quantidade (ela costuma ser o sintoma) antes de gravar.',
+      `Este item ficaria com ${saldoDepois} ${unidadeOuUnidades(saldoDepois)} e valor `
+      + `R$ ${valorDepois.toFixed(2)} — dinheiro negativo com saldo positivo é um estado que não existe. `
+      + (cruzouOZero
+        ? `O saldo estava em ${saldoAntes} (saiu mais do que entrou), então falta registrar `
+          + 'a COMPRA que não foi lançada — não é a sua contagem que está errada.'
+        : 'Confira a quantidade: ela costuma ser o sintoma.'),
     )
   }
 }

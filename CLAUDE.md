@@ -721,6 +721,51 @@ TELA → 200 · "revisar" ✓ · "sem destino" ✓ · "parece" ✓ · o aviso do
 
 📋 **FICA PRO DONO (o gesto é dele):** os **4 combos** (`… MAIS MINI FRITAS`, 28 ocorrências) precisam de ficha composta (lata + porção mini fritas) — o botão *"definir"* da linha leva ao cardápio com o nome já carregado. E **"ignorar" só aparece nos complementos**: o mapa de produtos aceita `FICHA | REVENDA | REMOVER`, e REMOVER **devolve a pendente**, que é outra coisa — oferecer ali seria um gesto que promete uma coisa e faz outra. Registrado como o que falta naquele mapa, não disfarçado.
 
+### ⛔⛔⛔ "NÃO CONSEGUI GRAVAR A CONTAGEM" — O ERRO SEM MOTIVO, E A CAUSA QUE NÃO ERA A SUSPEITA (16/09)
+
+**⭐ A HIPÓTESE DO DONO CAIU NA MEDIÇÃO, e isso mudou a resposta inteira.** Ele apostou em *"unidade UN-inteira recusando decimal"* e perguntou se o reunitizar resolvia. Medido por id: o item **`fermento` JÁ É KG** (`cmttb7w1p0003o9db38fdqthf`) — **a unidade está certa e o reunitizar não tem o que fazer**. Mandá-lo reunitizar seria mandá-lo consertar o campo errado.
+
+**⛔ A CAUSA REAL, achada no log de prod:**
+```
+Error [MovementInvalidError]: Este movimento deixaria o item com 10 unidade(s) e valor
+R$ -31.04 — dinheiro negativo com saldo positivo é um estado que não existe.
+```
+É o **guard estrutural de 11/09** funcionando. O fermento está com **saldo −1,921 e valor −R$ 31,04**, e contar 10 kg (a quantidade **CERTA** — é o que está na prateleira) cruza o zero com o valor ainda negativo.
+
+**A HISTÓRIA, lida no ledger:** em 10-11/09 saíram **21,24 kg de produção a custo ZERO** — *antes de qualquer nota*. Em 11/09 a NF trouxe **1,5 kg a R$ 62,28**, e um **AJUSTE_CONTAGEM de +21,24 entrou a custo ZERO**. As separações seguintes saíram a **62,28/62,22** (o custo da nota, não o médio diluído) e drenaram R$ 124,46 com 2 kg. ⭐ **A compra que nunca foi registrada é o buraco.**
+
+**⛔⛔ E O SEGUNDO DEFEITO É O QUE O DONO NOMEOU: A FRASE EXISTIA E NINGUÉM A ENTREGAVA.** O `MovementInvalidError` **não é `ContagemError`** → caía no **`throw e`** do catch da rota → **500 sem corpo** → o cliente fazia `j.erro ?? 'Não consegui gravar a contagem.'` e o `??` só cai no fallback **quando o servidor não manda nada**. ⚠️ **Eram 52 `throw e` nas rotas de estoque** — cada um é um 500 mudo esperando a vez.
+
+**⭐⭐ A CURA É UM TRADUTOR ÚNICO** (`lib/stock/erro-da-tela.ts`, REGRA 5): erro de domínio vira **422 com a mensagem**; o que ninguém previu **continua 500** — *ali o genérico é honesto, e inventar frase amigável pra bug desconhecido esconde o bug*. ⚠️ A lista é **FECHADA** de propósito: `e instanceof Error` pegaria `TypeError` e erro do Prisma, cujas mensagens são pra MIM, não pro dono.
+
+**⭐⭐ E A RECUSA CARREGA A SAÍDA** — *"recusa ensina a saída"*, a régua que o 409 do fornecedor já cumpria. O 422 agora devolve `{ erro, code, saida: { rotulo, href } }` e a tela desenha o link do gesto.
+
+**⚠️⚠️ A MENSAGEM APONTAVA O CAMPO ERRADO, e isso foi corrigido junto.** Ela dizia sempre *"confira a quantidade (ela costuma ser o sintoma)"*. Agora ela separa pelos fatos: **saldo que CRUZA o zero** → *"o saldo estava em −1,92 (saiu mais do que entrou), então falta registrar a COMPRA que não foi lançada — **não é a sua contagem que está errada**"*; saldo que já era positivo → aí sim a quantidade é a suspeita.
+
+**PROVADO EM PROD, na rota REAL com a sessão do dono:**
+```
+POST /estoque/contagem/linha  { itemId: fermento, qtdContada: 10 }  →  HTTP 422
+{
+  "erro": "… valor R$ -31.04 — dinheiro negativo com saldo positivo é um estado que
+           não existe. O saldo estava em -1.92 (saiu mais do que entrou), então falta
+           registrar a COMPRA que não foi lançada — não é a sua contagem que está errada.",
+  "code": "ESTADO_IMPOSSIVEL",
+  "saida": { "rotulo": "ver o histórico deste item e corrigir a entrada que faltou", "href": "…" }
+}
+⭐ 422 (não 500) ✓ · tem MOTIVO ✓ · tem SAÍDA ✓ · nada gravou ✓
+```
+
+**⚠️⚠️ REGRA 11 — 3 defeitos repostos, e o PRIMEIRO VEIO VERDE: a "menção, não uso" pela TERCEIRA VEZ EM TRÊS DIAS.** Repondo o `throw e` mudo na rota, o guard passou — porque a linha do **`import`** já casava com `toContain('respostaDeErroDoEstoque')`. É o mesmo defeito do `acaoValePraSentido` (15/09) e do `MELHOR PALPITE` no comentário (16/09). **O padrão virou helper (`usosDe`), não lembrança.** Os outros dois morderam de primeira (o fallback genérico de volta na tela; o guard do estado impossível removido).
+
+**⚠️ E UM GUARD DE 11/09 PASSAVA POR VACUIDADE:** ele era `try/catch` **sem `expect.fail()`** — se `criarMovimento` não lançasse, o catch nunca rodava e o teste ficava verde **sem asserção nenhuma**. Corrigido junto, e reapontado pra a frase nova.
+
+**10.145 verdes · TS 0 · deploy `u-aKjqpYYvzuR_JSkCG3L` 4/4 · Δ bundle +0 KB.**
+
+📋 **A DECISÃO É DO DONO — e eu NÃO gravei nada** (preview read-only, a régua de sempre):
+- **(a)** se **houve compra sem nota**, o gesto é **entrada manual** do fermento. ⚠️ Pra zerar o valor negativo bastariam **0,498 kg a R$ 62,28**, mas **a quantidade é a que ele comprou de verdade** — *saldo não se chuta*. Feito isso, contar 10 kg grava normal (há teste provando exatamente essa sequência).
+- **(b)** se **não houve compra** (o consumo é que foi lançado a mais), o caminho é **estornar as separações erradas** — e aí ele precisa dizer **quais**.
+
+
 ### ⭐⭐⭐ A CAIXA DE ENTRADA NO DESENHO DO MOCK v3 — O CARTÃO ≍ (16/09)
 
 **O dono:** *"mesma tela, mesmos motores, ROUPA nova — nenhuma régua de negócio muda."* Mock aprovado em `docs/mocks/conciliacao-caixa-mock-v3.html`, **versionado e lido pelo guard** (`caixa-bate-com-o-mock-v3.test.ts`): 17 tokens do `:root{}`, 10 medidas e as frases que o arquivo imprime. *Divergência do mock = defeito.*

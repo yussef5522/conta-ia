@@ -56,15 +56,30 @@ describe('⛔⛔ o estado impossível é barrado na escrita', () => {
     expect(s.saldo).toBe(-1492)
   })
 
-  it('⭐ a mensagem ensina onde olhar (a quantidade é o sintoma)', async () => {
-    try {
-      await criarMovimento(prisma, {
-        companyId, itemId, tipo: 'AJUSTE_CONTAGEM', quantidade: 1496, custoUnitario: 0, origem: 'CONTAGEM',
-      })
-    } catch (e) {
-      expect((e as Error).message).toContain('não existe')
-      expect((e as Error).message).toContain('quantidade')
-    }
+  /**
+   * ⚠️⚠️ REAPONTADO EM 16/09 — A MENSAGEM PASSOU A APONTAR O CAMPO CERTO.
+   *
+   * Ela dizia sempre *"confira a quantidade"*. No caso do **fermento** (saldo −1,921 com
+   * valor −R$ 31,04) a quantidade do dono estava **CERTA** — 10 kg é o que está na
+   * prateleira; o sintoma era o VALOR, resíduo de consumo lançado antes da compra.
+   * *Mensagem que acusa o campo errado faz o dono caçar um erro que não existe.*
+   *
+   * ⭐ Agora ela separa os casos: **saldo que CRUZA o zero** → falta a COMPRA; saldo que
+   * já estava positivo → aí sim a quantidade é a suspeita. Este cenário (a Coca de 11/09)
+   * vem de −1.492, então ele cai no primeiro.
+   *
+   * ⚠️⚠️ E O TESTE ANTIGO PASSAVA POR VACUIDADE: era `try/catch` **sem `expect.fail()`** —
+   * se `criarMovimento` não lançasse, o catch nunca rodava e o teste ficava verde sem
+   * asserção nenhuma. Agora a rejeição é exigida.
+   */
+  it('⭐ a mensagem ensina onde olhar — e aqui o sintoma é a COMPRA que falta', async () => {
+    await expect(criarMovimento(prisma, {
+      companyId, itemId, tipo: 'AJUSTE_CONTAGEM', quantidade: 1496, custoUnitario: 0, origem: 'CONTAGEM',
+    })).rejects.toThrow(/não existe/)
+
+    await expect(criarMovimento(prisma, {
+      companyId, itemId, tipo: 'AJUSTE_CONTAGEM', quantidade: 1496, custoUnitario: 0, origem: 'CONTAGEM',
+    })).rejects.toThrow(/falta registrar a COMPRA/)
   })
 
   it('⭐ e a contagem com o CUSTO CERTO passa — o guard não trava trabalho honesto', async () => {
