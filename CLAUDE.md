@@ -721,6 +721,45 @@ TELA → 200 · "revisar" ✓ · "sem destino" ✓ · "parece" ✓ · o aviso do
 
 📋 **FICA PRO DONO (o gesto é dele):** os **4 combos** (`… MAIS MINI FRITAS`, 28 ocorrências) precisam de ficha composta (lata + porção mini fritas) — o botão *"definir"* da linha leva ao cardápio com o nome já carregado. E **"ignorar" só aparece nos complementos**: o mapa de produtos aceita `FICHA | REVENDA | REMOVER`, e REMOVER **devolve a pendente**, que é outra coisa — oferecer ali seria um gesto que promete uma coisa e faz outra. Registrado como o que falta naquele mapa, não disfarçado.
 
+### 🧹 A FAXINA DO PENDENTES — O QUE MORRE, O QUE FICA, E A VIGILÂNCIA QUE MUDA DE RÉGUA (15/09)
+
+**A regra que o dono ditou:** ***o que era DA TELA morre; o que é DO DOMÍNIO fica.*** O conceito *"linha sem destino"* continua existindo — dentro da caixa. Só a **TELA** morreu.
+
+**⛔ O QUE O INVENTÁRIO ACHOU ANTES DE APAGAR — e o achado é o item de menu.** O `pendentes-client.tsx` tinha sido deletado na entrega das estações, mas **o item "Pendentes" continuava na sidebar, com badge âmbar**, apontando pra uma rota que só redireciona. *É a "porta sem maçaneta" ao contrário: a maçaneta sem a porta.*
+
+**MORRERAM (tela, 0 chamadores):** o item da sidebar · `VincularTransferenciaModal` **e a rota `/api/transferencias/candidatas/[id]` que só ele usava** (a capacidade vive em `/parear`, com o motor único, pra onde a caixa deep-linka) · `SugestaoDeVinculoBanner` (virou o menu `CASAR_PAGAR`) · `lib/pendentes/row-actions` · `/api/conciliacao/sugestoes-pendentes` (**zero fetch no repo inteiro**).
+
+**⚠️ E EU ERREI UMA CLASSIFICAÇÃO NO MEIO DA FAXINA:** apaguei o `SourceBadge` como "órfão" — ele tinha **2 chamadores**, e os dois eram justamente as capacidades que o dono mandou guardar. **Restaurado no mesmo passo.** *Órfão de segundo grau não é órfão: é peça de quem está guardado.*
+
+**⚠️⚠️ FICARAM COM SELO DE DÍVIDA (decisão do dono: *"guardar e registrar"*) — 4 arquivos SEM chamador, de propósito:** `AutoCategorizePreviewModal` (auto-categorizar em lote com prévia) · `VendorSuggestionBanner` (o selo *"sugerido por IA"* com a fonte) · `AprenderEAplicarModal` (criar regra aprendida ao categorizar — o ciclo que este doc registra como **nunca provado E2E**) · `SourceBadge`. **A caixa não tem nenhuma das três**, e *"remoção sem realocação é perda"*. Cada arquivo abre com o selo **`CAPACIDADE GUARDADA — NÃO É LIXO, É DÍVIDA REGISTRADA`**, e há guard exigindo que o selo continue lá: sem ele, a próxima faxina trata como lixo.
+
+**⭐ O REDIRECT FICA, MARCADO:** `/pendentes` e `/empresas/:id/pendentes` abrem com **`ROTA LEGADA, REDIRECT PERMANENTE`**. *Link velho em e-mail, no histórico ou num print não pode virar 404 — redirect de uma linha não é lixo, é cortesia.*
+
+**⭐⭐ A VIGILÂNCIA FOI REAPONTADA, NÃO APAGADA — e a régua mudou de lado.** O badge contava `NEEDS_REVIEW` (*"linha sem CATEGORIA, desde sempre"*). Agora conta o que a **CAIXA** tem esperando decisão — o que **inclui o crédito que a régua velha nunca olhou** e **exclui** o que já foi resolvido por qualquer caminho.
+
+**⛔ E ELE NÃO SOMA COM OS VÍNCULOS, de propósito:** `conciliacao.pendentes` conta **CONTAS a pagar** com par sugerido; `conciliacao.caixa` conta **LINHAS do extrato** sem destino. Casar uma linha com uma conta **apaga as duas de uma vez** — somar seria a **dupla contagem** que esta casa combate desde o cabeçalho dos *"69 duplicatas"* (07/09). Os vínculos seguem visíveis nos **3 stats do topo da tela**.
+
+**⭐⭐ E A LEITURA DA CAIXA GANHOU DONO ÚNICO** (`lib/conciliacao/leitura-da-caixa.ts`): a **rota** e o **badge** chamam a MESMA função, com o MESMO recorte — corte de época e teto de 400 inclusive. ⚠️ Sem isso o badge teria consulta própria, que é **exatamente** como o menu passou meses dizendo um número e a tela outro (10/09: o badge contava os pares 1:1 **sem os lotes**). *Badge com teto diferente da tela é a divergência de novo, com outra roupa.*
+
+**⚠️ 6 GUARDS ANTIGOS FICARAM VERMELHOS COM A FAXINA CERTA — todos REAPONTADOS, nenhum apagado:** o filtro de data (×2, o corte mudou pra a leitura única) · o payload do badge (`transacoesPendentes` → `conciliacao.caixa`) · a lista de callers do `NEEDS_REVIEW` (o badges saiu, com o porquê) · o `owner-detection` (a rota `/candidatas` morreu com o modal) · o gate do PF (o item não existe mais pra esconder).
+
+**PROVADO EM PROD, NAVEGANDO, NOS DOIS VIEWPORTS:**
+```
+DEEP-LINKS VELHOS   /pendentes → 307 → /conciliacao      (celular e desktop)
+                    /empresas/:id/pendentes → 307 → select-and-redirect
+ROTAS APAGADAS      sugestoes-pendentes → 404 ✓ · candidatas/[id] → 404 ✓   (não 500)
+O MENU (no bundle)  item "Pendentes"? ✓ não · href "/pendentes"? ✓ não   (nos dois)
+O BADGE             conciliacao = {"pendentes":0,"caixa":1}
+                    campo velho "transacoesPendentes": ✓ não existe mais
+                    ⭐ badge (1) == caixa saídas+entradas (1) — MESMA leitura
+```
+**GUARD NOVO — `rota-morta-nao-volta-pro-menu.test.ts`, e ele prova OS DOIS LADOS:** o item **não pode renascer** em nenhuma sidebar (detector que ignora comentário, senão morderia a documentação do próprio defeito) · o **redirect tem que continuar vivo e dizer que é legado** · os apagados continuam apagados · e as 4 guardadas continuam existindo **com o selo**. Rota aposentada nova entra na lista `ROTAS_APOSENTADAS`. **REGRA 11: repondo o item no menu, vermelho na hora; auto-teste do detector nos 4 sentidos** (template literal, aspas, comentário, rota de nome parecido).
+
+**10.071 verdes · TS 0 · deploy 4/4 (`-gbCQ43EO4DtoIJqI5Gva`) · Δ chunks vs deploy anterior: +0 KB** (faxina não engorda bundle — a série de performance já mostrando serviço).
+
+⚠️ **RESSALVA NOMEADA, não escondida:** o badge agora mede a CAIXA, então **conta a pagar com par pronto cuja linha já foi categorizada** não acende o badge (a linha saiu da caixa, a conta segue esperando). É a fronteira de 07/09 (*"ter categoria não quita conta nenhuma"*) aparecendo no contador. Ela fica **visível nos 3 stats do topo** quando o dono abre a tela; se incomodar, a saída é o badge mostrar os dois números lado a lado — não somá-los.
+
+
 ### ⭐⭐⭐ O EXTRATO EM 3 ESTAÇÕES — O PENDENTES MORRE COMO TELA (15/09)
 
 **O desenho aprovado pelo dono, depois do estudo de QuickBooks/Conta Azul/Organizze:** ***o SENTIDO decide o menu, o menu decide a fila.*** **ESTAÇÃO 1 — IMPORT** (o portão; resolve só o automático) → **ESTAÇÃO 2 — CAIXA DE ENTRADA** (o balcão único, duas abas) → **ESTAÇÃO 3 — MOVIMENTAÇÕES** (o arquivo, com o selo de COMO).
