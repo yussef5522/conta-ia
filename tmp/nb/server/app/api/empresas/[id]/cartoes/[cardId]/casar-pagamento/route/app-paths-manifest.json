@@ -1,3 +1,0 @@
-{
-  "/api/empresas/[id]/cartoes/[cardId]/casar-pagamento/route": "app/api/empresas/[id]/cartoes/[cardId]/casar-pagamento/route.js"
-}

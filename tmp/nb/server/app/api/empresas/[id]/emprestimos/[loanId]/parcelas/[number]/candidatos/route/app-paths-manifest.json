@@ -1,3 +1,0 @@
-{
-  "/api/empresas/[id]/emprestimos/[loanId]/parcelas/[number]/candidatos/route": "app/api/empresas/[id]/emprestimos/[loanId]/parcelas/[number]/candidatos/route.js"
-}

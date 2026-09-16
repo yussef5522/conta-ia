@@ -1,3 +1,0 @@
-{
-  "/api/empresas/[id]/rules/suggest-similar/route": "app/api/empresas/[id]/rules/suggest-similar/route.js"
-}

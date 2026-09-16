@@ -33,7 +33,11 @@ describe('Fonte única usada em todos os callers de "pra revisar"', () => {
     'app/api/transacoes/route.ts',
     'app/api/conciliacao/ofx-pendentes/route.ts',
     'app/api/conciliacao/bulk-dry-run/route.ts',
-    'app/api/dashboard/badges/route.ts',
+    // ⚠️⚠️ `badges/route.ts` SAIU da lista na faxina de 15/09. Ele contava `NEEDS_REVIEW`
+    // (linha sem categoria, desde sempre) pro badge da tela **Pendentes**, que morreu. A
+    // vigilância não sumiu: foi REAPONTADA pro contador da CAIXA — e lá a pergunta não é
+    // "falta categoria?", é "falta DESTINO?". Régua diferente, fonte única própria
+    // (`contarLinhasEsperandoDecisao`, a MESMA que a tela desenha).
   ]
 
   for (const f of FILES) {

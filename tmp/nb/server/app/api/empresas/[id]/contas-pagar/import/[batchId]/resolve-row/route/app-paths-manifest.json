@@ -1,3 +1,0 @@
-{
-  "/api/empresas/[id]/contas-pagar/import/[batchId]/resolve-row/route": "app/api/empresas/[id]/contas-pagar/import/[batchId]/resolve-row/route.js"
-}

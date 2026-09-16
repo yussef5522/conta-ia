@@ -68,12 +68,14 @@ describe('b) Endpoint: retorna contasAReceber com counts RECEIVABLE', () => {
     )
   })
 
-  it('response preserva contasAPagar + conciliacao + transacoesPendentes', () => {
+  it('response preserva contasAPagar + conciliacao (pendentes + caixa)', () => {
     // Backward-compat: shape antigo continua funcionando pra callers que
     // ainda não sabem de contasAReceber.
     expect(code).toMatch(/contasAPagar:\s*\{/)
     expect(code).toMatch(/conciliacao:\s*\{/)
-    expect(code).toMatch(/transacoesPendentes/)
+    // ⭐ o badge do menu passou a ser o da CAIXA (faxina 15/09) — o payload carrega os
+    // DOIS, nomeados, porque são perguntas diferentes que nunca se somam.
+    expect(code).toMatch(/caixa:\s*linhasEsperandoDecisao/)
   })
 })
 

@@ -1,3 +1,0 @@
-{
-  "/api/empresas/[id]/cartoes/[cardId]/importar-fatura/preview/route": "app/api/empresas/[id]/cartoes/[cardId]/importar-fatura/preview/route.js"
-}

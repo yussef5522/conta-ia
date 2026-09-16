@@ -1,3 +1,0 @@
-{
-  "/api/auth/verify-reset-code/route": "app/api/auth/verify-reset-code/route.js"
-}

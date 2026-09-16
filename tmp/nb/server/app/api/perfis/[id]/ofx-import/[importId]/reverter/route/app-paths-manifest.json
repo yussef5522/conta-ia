@@ -1,3 +1,0 @@
-{
-  "/api/perfis/[id]/ofx-import/[importId]/reverter/route": "app/api/perfis/[id]/ofx-import/[importId]/reverter/route.js"
-}

@@ -1,3 +1,0 @@
-{
-  "/api/empresas/[id]/contas-pagar/import/[batchId]/detect/route": "app/api/empresas/[id]/contas-pagar/import/[batchId]/detect/route.js"
-}

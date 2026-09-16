@@ -1,3 +1,0 @@
-{
-  "/api/admin/clientes/[userId]/reset-password/route": "app/api/admin/clientes/[userId]/reset-password/route.js"
-}

@@ -1,3 +1,0 @@
-{
-  "/api/empresas/[id]/socios/[socioId]/aggregated/route": "app/api/empresas/[id]/socios/[socioId]/aggregated/route.js"
-}

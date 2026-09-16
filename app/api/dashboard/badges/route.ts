@@ -6,7 +6,7 @@ import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import { contarVinculosEsperandoDecisao } from '@/lib/conciliacao/fila-de-conciliacao'
-import { NEEDS_REVIEW_WHERE_PRISMA } from '@/lib/transacoes/needs-review'
+import { contarLinhasEsperandoDecisao } from '@/lib/conciliacao/leitura-da-caixa'
 
 export async function GET(request: NextRequest) {
   try {
@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
       vencidas,
       vencendoEm3,
       conciliacaoPendente,
-      transacoesPendentes,
+      linhasEsperandoDecisao,
       arVencidas,
       arVencendoEm3,
     ] = await Promise.all([
@@ -84,17 +84,25 @@ export async function GET(request: NextRequest) {
       // (`filaDeConciliacao`). É a lição do B1: duas derivações da mesma pergunta
       // divergem no primeiro caso de borda — e este caso de borda já estava aqui.
       contarVinculosEsperandoDecisao(empresaId),
-      // Badge "Pendentes" — alinha com /pendentes via fonte única.
-      // Sprint Fundação Status (28/06/2026): REMOVIDO status='PENDING' forçado
-      // — pendência é sobre FALTA de classificação, não sobre o nome do estado.
-      // Tx RECONCILED-sem-categoria (bug pré-backfill) também conta como trabalho.
-      prisma.transaction.count({
-        where: {
-          ...NEEDS_REVIEW_WHERE_PRISMA,
-          bankAccount: { companyId: empresaId },
-          lifecycle: 'EFFECTED',
-        },
-      }),
+      /**
+       * ⭐⭐ REAPONTADO NA FAXINA DE 15/09 — A VIGILÂNCIA FICOU, A RÉGUA MUDOU DE LADO.
+       *
+       * Era o badge da tela **Pendentes**, contando `NEEDS_REVIEW` (linha sem categoria,
+       * **desde sempre**). A tela morreu; a pergunta continua viva, só que agora ela é a
+       * da **CAIXA DE ENTRADA**: *"quantas linhas ainda esperam decisão minha?"* — o que
+       * inclui o crédito que a régua velha nunca olhou e exclui o que já foi resolvido
+       * por qualquer caminho (categoria, vínculo, ignorar).
+       *
+       * ⛔ **E ELE NÃO SOMA COM `contarVinculosEsperandoDecisao`, de propósito.** Aquele
+       * conta **CONTAS a pagar** sem par; este conta **LINHAS do extrato** sem destino.
+       * São unidades diferentes do MESMO trabalho: casar uma linha com uma conta apaga
+       * os dois de uma vez. Somar seria a **dupla contagem** que esta casa combate desde
+       * o cabeçalho dos "69 duplicatas" (07/09).
+       *
+       * ⭐ Deriva da MESMA função que a tela desenha (`contarEstacoes`), nunca de uma
+       * consulta paralela — *"badge e stats da mesma função"* é ordem do dono (10/09).
+       */
+      contarLinhasEsperandoDecisao(empresaId),
       // Sprint Fix-Badge-Contas-Pagar (05/07/2026): counts RECEIVABLE análogos
       // pro badge do menu "Contas a Receber". Mesmo tenant OR + status/dueDate.
       prisma.transaction.count({
@@ -125,9 +133,11 @@ export async function GET(request: NextRequest) {
         vencendoEm3Dias: arVencendoEm3,
       },
       conciliacao: {
+        /** contas a pagar com par sugerido — alimenta os 3 stats do topo da tela */
         pendentes: conciliacaoPendente,
+        /** ⭐ linhas do extrato esperando decisão na CAIXA — o badge do menu */
+        caixa: linhasEsperandoDecisao,
       },
-      transacoesPendentes,
     })
   } catch (error) {
     return handleApiError(error)

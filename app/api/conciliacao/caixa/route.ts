@@ -7,16 +7,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
-import { contarEstacoes, estacaoDaLinha, comoFoiResolvida, sentidoDaLinha, acoesDoSentido, type LinhaParaEstacao } from '@/lib/conciliacao/caixa-de-entrada'
-
-const SELECT = {
-  id: true, type: true, amount: true, date: true, description: true, counterpartyName: true,
-  categoryId: true, reconciledWithId: true, isCardPayment: true, transferGroupId: true,
-  isInternalTransfer: true, pendingTransfer: true, ignoredAt: true, bankAccountId: true,
-  reconciledFrom: { select: { id: true } },
-  loanInstallmentPaid: { select: { id: true } },
-  loanInstallmentPayments: { select: { id: true } },
-} as const
+import { estacaoDaLinha, comoFoiResolvida, sentidoDaLinha, acoesDoSentido } from '@/lib/conciliacao/caixa-de-entrada'
+/**
+ * ⭐ A CONSULTA NÃO MORA MAIS AQUI (faxina de 15/09) — ela é de `leitura-da-caixa`, a MESMA
+ * que o **badge do menu** chama. Rota e badge lendo o mesmo recorte é o que impede o menu
+ * de dizer um número e a tela mostrar outro (o defeito de 10/09).
+ */
+import { lerCaixa, paraLei } from '@/lib/conciliacao/leitura-da-caixa'
 
 export async function GET(request: NextRequest) {
   const url = new URL(request.url)
@@ -27,34 +24,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ erro: 'Sem permissão.', permission: 'transaction.view' }, { status: 403 })
   }
 
-  const contas = await prisma.bankAccount.findMany({ where: { companyId: empresaId }, select: { id: true, name: true } })
-  const nomeConta = new Map(contas.map((c) => [c.id, c.name]))
-  /**
-   * ⚠️ O CORTE DE ÉPOCA VALE AQUI (decisão do dono, 15/09): *"os créditos históricos já
-   * categorizados nascem em PAZ no arquivo, não como pendência retroativa"*. Sem ele, a
-   * caixa abriria com anos de extrato pedindo decisão que o dono já tomou.
-   */
-  const empresa = await prisma.company.findUnique({ where: { id: empresaId }, select: { conciliarAPartirDe: true } })
-  const corte = empresa?.conciliarAPartirDe ?? null
-
-  const rows = await prisma.transaction.findMany({
-    where: {
-      bankAccountId: { in: contas.map((c) => c.id) },
-      origin: 'OFX', lifecycle: 'EFFECTED',
-      ...(corte ? { date: { gte: corte } } : {}),
-    },
-    select: SELECT,
-    orderBy: { date: 'desc' },
-    take: 400,
-  })
-
-  const paraLei = (r: (typeof rows)[number]): LinhaParaEstacao => ({
-    categoryId: r.categoryId, reconciledWithId: r.reconciledWithId,
-    temReconciledFrom: r.reconciledFrom.length > 0, isCardPayment: r.isCardPayment,
-    temParcelaVinculada: !!r.loanInstallmentPaid || r.loanInstallmentPayments.length > 0,
-    transferGroupId: r.transferGroupId, isInternalTransfer: r.isInternalTransfer,
-    pendingTransfer: r.pendingTransfer, ignoredAt: r.ignoredAt, tipo: r.type,
-  })
+  const { rows, contadores, nomeConta } = await lerCaixa(empresaId)
 
   const linhas = rows.map((r) => {
     const l = paraLei(r)
@@ -70,7 +40,6 @@ export async function GET(request: NextRequest) {
     }
   })
 
-  const contadores = contarEstacoes(rows.map(paraLei))
   return NextResponse.json({
     contadores,
     // ⚠️ a tela desenha SÓ a caixa; o arquivo tem casa própria (Movimentações)

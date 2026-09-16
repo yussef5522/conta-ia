@@ -1,3 +1,0 @@
-{
-  "/api/auth/me/pdf-cache/[sha256]/route": "app/api/auth/me/pdf-cache/[sha256]/route.js"
-}

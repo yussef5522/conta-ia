@@ -1,3 +1,0 @@
-{
-  "/(dashboard)/perfis/[id]/cartoes/[cardId]/faturas/[invoiceId]/page": "app/(dashboard)/perfis/[id]/cartoes/[cardId]/faturas/[invoiceId]/page.js"
-}

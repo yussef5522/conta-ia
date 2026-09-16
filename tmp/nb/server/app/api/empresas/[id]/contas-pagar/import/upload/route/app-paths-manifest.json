@@ -1,3 +1,0 @@
-{
-  "/api/empresas/[id]/contas-pagar/import/upload/route": "app/api/empresas/[id]/contas-pagar/import/upload/route.js"
-}

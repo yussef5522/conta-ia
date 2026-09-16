@@ -1,3 +1,0 @@
-{
-  "/api/empresas/[id]/cleanup-type-mismatches/route": "app/api/empresas/[id]/cleanup-type-mismatches/route.js"
-}

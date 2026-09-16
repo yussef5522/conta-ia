@@ -1,3 +1,9 @@
+// ⚠️⚠️ CAPACIDADE GUARDADA — NÃO É LIXO, É DÍVIDA REGISTRADA (faxina de 15/09/2026).
+//
+// Este componente ficou **sem chamador** quando a tela dos Pendentes morreu. Ele NÃO foi
+// apagado por decisão do dono: é uma capacidade que o balcão (a CAIXA DE ENTRADA) ainda
+// não tem, e *"remoção sem realocação é perda"*. Migrar pro balcão é sprint próprio, com
+// o desenho dele — ver a entrada da faxina no CLAUDE.md.
 'use client'
 
 // Modal "Aprender e aplicar" — Fase 3 Etapa 1 + Sprint UX-bulk-review.

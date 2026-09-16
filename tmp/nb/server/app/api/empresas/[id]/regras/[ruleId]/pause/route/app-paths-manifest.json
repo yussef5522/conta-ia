@@ -1,3 +1,0 @@
-{
-  "/api/empresas/[id]/regras/[ruleId]/pause/route": "app/api/empresas/[id]/regras/[ruleId]/pause/route.js"
-}

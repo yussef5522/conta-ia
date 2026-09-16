@@ -129,8 +129,17 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
     : badges?.contasAReceber?.vencendoEm3Dias
       ? 'amber'
       : 'neutral'
-  const conciliacaoBadge = badges?.conciliacao?.pendentes ?? 0
-  const pendentesBadge = badges?.transacoesPendentes ?? 0
+  /**
+   * ⭐⭐ O BADGE DA CONCILIAÇÃO É O DA CAIXA (faxina de 15/09) — a tela VIROU a caixa, e
+   * o número tem que falar do trabalho que o dono encontra ao abrir: **linhas do extrato
+   * esperando decisão**. Vem da MESMA leitura que a tela desenha (`lerCaixa`).
+   *
+   * ⚠️ **NÃO é a soma com os vínculos**, de propósito: `conciliacao.pendentes` conta
+   * CONTAS a pagar com par sugerido, e a linha que casa com elas já é contada aqui —
+   * somar daria dupla contagem do mesmo trabalho. Os vínculos seguem visíveis nos **3
+   * stats do topo da tela** (PRONTOS PRA CONFIRMAR · PRA TUA MÃO · SEM PAGAMENTO).
+   */
+  const conciliacaoBadge = badges?.conciliacao?.caixa ?? 0
 
   // ⛔ CHOKE-POINT (26/08) — em modo PF NÃO existe empresa ativa.
   //
@@ -215,18 +224,13 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
           badge={conciliacaoBadge > 0 ? String(conciliacaoBadge) : undefined}
           badgeTone="neutral"
         />
-        {!soEstoque && (
-        <SidebarItem
-          perm="transaction.view"
-          icon={Inbox}
-          label="Pendentes"
-          href={`/pendentes${empresaQs}`}
-          isActive={pathname.startsWith('/pendentes')}
-          onClick={onNavigate}
-          badge={pendentesBadge > 0 ? String(pendentesBadge) : undefined}
-          badgeTone="amber"
-        />
-        )}
+        {/*
+          ⛔⛔ O ITEM "PENDENTES" MORREU AQUI EM 15/09 — a tela virou a CAIXA DE ENTRADA.
+          A régua do dono: *"quando a tela nova assume, a velha MORRE NO MESMO DEPLOY"*.
+          ⚠️ E o que era o badge dele foi **reapontado**, não apagado: a vigilância agora
+          é o contador da CAIXA (saídas + entradas esperando decisão), no item Conciliação.
+          A rota `/pendentes` continua viva como REDIRECT — link velho não vira 404.
+        */}
         </>
         )}
         {/* Sprint Central de Transferências — sidebar item dedicado */}

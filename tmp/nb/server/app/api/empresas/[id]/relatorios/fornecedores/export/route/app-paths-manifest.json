@@ -1,3 +1,0 @@
-{
-  "/api/empresas/[id]/relatorios/fornecedores/export/route": "app/api/empresas/[id]/relatorios/fornecedores/export/route.js"
-}

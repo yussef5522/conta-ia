@@ -135,7 +135,9 @@ describe('Sprint Visual — /pendentes usa ActiveFilterChips (substitui banner a
     const caixa = readFileSync(join(ROOT, 'components/conciliacao/caixa-de-entrada.tsx'), 'utf-8')
     expect(caixa).not.toMatch(/DateRangeFilter|useDateRangeFilter/)
     // ⭐ e o corte de época (que é outra coisa) mora no servidor, não na tela
-    const rota = readFileSync(join(ROOT, 'app/api/conciliacao/caixa/route.ts'), 'utf-8')
-    expect(rota).toContain('conciliarAPartirDe')
+    // ⚠️ o corte saiu da ROTA pra a LEITURA ÚNICA na faxina de 15/09 — a rota virou casca,
+    // e é a leitura que a tela e o badge do menu compartilham.
+    const leitura = readFileSync(join(ROOT, 'lib/conciliacao/leitura-da-caixa.ts'), 'utf-8')
+    expect(leitura).toContain('conciliarAPartirDe')
 })
 })

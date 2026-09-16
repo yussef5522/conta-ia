@@ -93,7 +93,7 @@ describe('o PF tem menu próprio', () => {
 })
 
 describe('os itens PJ que não têm gate de empresa somem no PF', () => {
-  it('Contas a Pagar/Receber, Conciliação e Pendentes ficam atrás de `workspaceType !== pf`', () => {
+  it('Contas a Pagar/Receber e Conciliação ficam atrás de `workspaceType !== pf`', () => {
     const i = src.indexOf("<SectionLabel>Financeiro</SectionLabel>")
     const j = src.indexOf('label="Transferências"')
     const bloco = src.slice(i, j)
@@ -104,7 +104,13 @@ describe('os itens PJ que não têm gate de empresa somem no PF', () => {
     // que envelheceu.
     /workspaceType !== 'pf' &&/)
     // e os 4 estão DENTRO desse bloco
-    for (const l of ['Contas a Pagar', 'Contas a Receber', 'Conciliação', 'Pendentes']) {
+    /**
+     * ⚠️ "Pendentes" SAIU desta lista na faxina de 15/09 — **não porque afrouxou, porque o
+     * item não existe mais**: a tela morreu e virou a CAIXA DE ENTRADA. O guard de quem
+     * NÃO pode voltar mora em `regras-ui/rota-morta-nao-volta-pro-menu`; aqui a pergunta
+     * continua sendo a do PF (item de empresa não vaza pro workspace pessoal).
+     */
+    for (const l of ['Contas a Pagar', 'Contas a Receber', 'Conciliação']) {
       expect(bloco).toContain(`label="${l}"`)
     }
   })

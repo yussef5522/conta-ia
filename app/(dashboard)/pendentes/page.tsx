@@ -1,3 +1,9 @@
+// ⭐ ROTA LEGADA, REDIRECT PERMANENTE (15/09/2026).
+//
+// A tela dos Pendentes morreu — virou a CAIXA DE ENTRADA. Esta rota **fica**: link
+// velho em e-mail, no histórico do navegador ou num print não pode virar 404.
+// ⚠️ Redirect de uma linha não é lixo, é cortesia — e o guard da faxina garante que
+// ela **não volte a ter item de menu** (rota morta que renasce em menu = vermelho).
 // ⛔⛔⛔ PENDENTES DE CLASSIFICAÇÃO MORREU COMO TELA (15/09/2026).
 //
 // **A ordem do dono, no desenho das 3 estações:** *"PENDENTES DE CLASSIFICAÇÃO MORRE COMO

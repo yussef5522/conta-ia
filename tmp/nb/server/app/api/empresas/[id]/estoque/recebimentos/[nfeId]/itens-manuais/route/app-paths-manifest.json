@@ -1,3 +1,0 @@
-{
-  "/api/empresas/[id]/estoque/recebimentos/[nfeId]/itens-manuais/route": "app/api/empresas/[id]/estoque/recebimentos/[nfeId]/itens-manuais/route.js"
-}

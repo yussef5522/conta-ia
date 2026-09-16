@@ -11,9 +11,14 @@ export interface SidebarBadges {
   // "Contas a Receber" — antes as tx RECEIVABLE somavam no badge de "Contas
   // a Pagar" (bug). Opcional porque hooks antigos podem receber payload sem.
   contasAReceber?: { vencidas: number; vencendoEm3Dias: number }
-  conciliacao: { pendentes: number }
+  /**
+   * ⭐ `pendentes` = CONTAS a pagar com par sugerido (os 3 stats do topo da tela).
+   * ⭐ `caixa` = LINHAS do extrato esperando decisão — **é este que vira o badge do menu**
+   * desde a faxina de 15/09, quando a tela dos Pendentes morreu. Os dois NÃO se somam:
+   * são unidades diferentes do mesmo trabalho (ver o comentário no `global-sidebar`).
+   */
+  conciliacao: { pendentes: number; caixa: number }
   // Sprint 5.0.2.h — Transações com status PENDING (precisam categorizar)
-  transacoesPendentes?: number
 }
 
 const POLL_INTERVAL_MS = 60_000

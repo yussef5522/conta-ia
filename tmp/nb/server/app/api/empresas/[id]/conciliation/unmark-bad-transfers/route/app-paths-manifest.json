@@ -1,3 +1,0 @@
-{
-  "/api/empresas/[id]/conciliation/unmark-bad-transfers/route": "app/api/empresas/[id]/conciliation/unmark-bad-transfers/route.js"
-}

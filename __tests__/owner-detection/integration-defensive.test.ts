@@ -44,7 +44,9 @@ describe('Sprint Owner Detection — callers vivos usam o helper (DRY)', () => {
     'app/api/contas-bancarias/[id]/importar-ofx/route.ts',
     'app/api/empresas/[id]/transferencias/duplicatas/route.ts',
     'app/api/empresas/[id]/transferencias/aguardando-par/route.ts',
-    'app/api/transferencias/candidatas/[id]/route.ts',
+    // ⚠️ `candidatas/[id]` SAIU na faxina de 15/09: ela só servia o
+    // `VincularTransferenciaModal` dos Pendentes (o legado 2×PENDING). A tela morreu, e a
+    // capacidade está em `/parear`, com o motor único — pra onde a CAIXA deep-linka.
     'app/api/contas-bancarias/[id]/detectar-transferencias/route.ts',
     'lib/transfers/detect-transfers-for-company.ts',
   ]
