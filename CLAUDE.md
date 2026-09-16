@@ -721,6 +721,48 @@ TELA → 200 · "revisar" ✓ · "sem destino" ✓ · "parece" ✓ · o aviso do
 
 📋 **FICA PRO DONO (o gesto é dele):** os **4 combos** (`… MAIS MINI FRITAS`, 28 ocorrências) precisam de ficha composta (lata + porção mini fritas) — o botão *"definir"* da linha leva ao cardápio com o nome já carregado. E **"ignorar" só aparece nos complementos**: o mapa de produtos aceita `FICHA | REVENDA | REMOVER`, e REMOVER **devolve a pendente**, que é outra coisa — oferecer ali seria um gesto que promete uma coisa e faz outra. Registrado como o que falta naquele mapa, não disfarçado.
 
+### ⭐⭐⭐ O EXTRATO EM 3 ESTAÇÕES — O PENDENTES MORRE COMO TELA (15/09)
+
+**O desenho aprovado pelo dono, depois do estudo de QuickBooks/Conta Azul/Organizze:** ***o SENTIDO decide o menu, o menu decide a fila.*** **ESTAÇÃO 1 — IMPORT** (o portão; resolve só o automático) → **ESTAÇÃO 2 — CAIXA DE ENTRADA** (o balcão único, duas abas) → **ESTAÇÃO 3 — MOVIMENTAÇÕES** (o arquivo, com o selo de COMO).
+
+**⛔⛔⛔ O BURACO, MEDIDO EM PROD ANTES DE CODAR:** o `LINHA_DISPONIVEL_WHERE` filtrava **onze coisas** (cartão, empréstimo, transferência, ignorada…) e **não filtrava SENTIDO**. A fila de *"casar com conta a pagar"* tinha **6.555 linhas, das quais 5.705 eram CRÉDITO — 87%**. O PIX de venda de **R$ 308,50** do dono estava ali, junto de `ANTECIP STONE` e `OP.CREDITO C/GARANTIA` de R$ 28.223,77. ***A fila de pagar dívida era, quase toda, dinheiro que entrou.*** Uma linha (`type: 'DEBIT'`) tirou os 5.705 — e ela exclui `TRANSFER` **por construção**, então a trava antiga ficou mais forte, não mais fraca.
+
+**⭐⭐ TODO GESTO EFETIVA — a régua nova da casa:** ***gesto que ESCOLHE um alvo e não EFETIVA o vínculo é MEIA-PONTE.*** O defeito que a criou: no `pendentes-client.tsx` o seletor oferecia *"Pgto cartão"* e *"Pgto empréstimo"* e o `onChange` só tratava `TRANSFER` e `IGNORAR` — as outras duas **caíam no vazio**, guardando um rótulo num `useState` local. O dono escolhia o cartão e a fatura não baixava. *Não era meia-ponte: era ponte que não começa.*
+
+**⛔ E NENHUM MOTOR NOVO NASCEU:** `resolverLinha` é o choke-point e **despacha pros motores provados** — `casarPagamentoDeCartao` (extraído da rota, que virou casca), `vincularPagamentoDeParcela` (a porta única de 11/09), o update + `recomputeVendasSeVenda`. As **quatro ações de VÍNCULO** (casar pagar/receber, as duas transferências) **não gravam aqui de propósito** — a escolha do alvo já tem casa provada — e por isso **devolvem o CAMINHO** em vez de calar. **A lei do sentido é checada no SERVIDOR**, não só no menu: esconder o botão não impede a chamada.
+
+**⛔⛔ O PENDENTES MORREU NO MESMO DEPLOY, com realocação completa** — e o `pendentes-client.tsx` foi **DELETADO**, não deixado órfão: enquanto o arquivo existisse, o seletor morto podia ser remontado.
+
+**⚠️ E OS GUARDS DE SPRINTS ANTIGOS COBRARAM A MUDANÇA DE CASA — 5 ficaram vermelhos e TODOS foram REAPONTADOS, nenhum apagado:** o filtro de data (**deixou de existir de propósito** — *"Pendentes é FILA e NUNCA ganha mês"*, a régua de 14/09; quem navega por período é Movimentações) · o `status=PENDING` forçado (virou *"a caixa não define a fila por status NEM por categoria"*) · os call-sites de `fetchJson` (a caixa usa `fetchComTimeout`) · e o **banner retroativo de transferência**, que **já morava** em `/parear` — o guard passou a provar **os dois lados**: a detecção vive lá **e** a caixa leva até lá.
+
+**⚠️⚠️ REGRA 11 REPROVOU UM GUARD MEU — a lição do rastro (12/09) em roupa nova.** O `meia-ponte-proibida` afirmava `toContain('acaoValePraSentido')`; troquei a condição por `if (false)` no servidor e ele ficou **VERDE** — **a linha do `import` já bastava**. O que morde é `usosDe()`, que ignora import/comentário e exige a chamada dentro do `if`. **Guard que conta a MENÇÃO aprova o servidor que não checa nada.**
+
+**PROVADO EM PROD, NAVEGANDO, NOS DOIS VIEWPORTS (REGRA 12):**
+```
+CELULAR /conciliacao 200 · 1.057 KB      DESKTOP 200 · 1.057 KB   (bundle servido)
+  ✓ o fluxo no topo · ✓ abas SAÍDAS/ENTRADAS · ✓ contador do arquivo
+  ✓ "⛔ a soma não fecha" (o invariante VISÍVEL) · ✓ o vazio que DIZ · ✓ "tentar de novo"
+  ✓ o gesto vai pro choke-point · ⛔ "Pgto cartão" (o seletor morto): SUMIU
+
+/pendentes → 307 → /conciliacao   ·   /empresas/:id/pendentes → 307   (nos dois)
+
+A CAIXA:  SAÍDAS 1 · ENTRADAS 0 · ARQUIVO 220 · TOTAL 221
+          ⭐ Σ(caixa + arquivo) == total ✓ · crédito vendo "casar com conta a pagar": 0
+A FILA DE PAGAR:  régua VELHA 6.555 → régua NOVA 850   ⭐ −5.705 créditos
+```
+**REGRA 11 — 5 defeitos repostos:** a fila voltando a filtrar por categoria (**1 vermelho**) · a lei do sentido caindo no servidor (**1**, depois do aperto) · o invariante sumindo da tela (**3**) · a detecção de par sumindo do `/parear` (**1**) · o `not: 'TRANSFER'` de volta no lugar do `DEBIT` (**1**).
+
+**10.063 verdes · TS 0 · `pg_dump pre-estacoes-20260915-214235` (6,2 MB) · deploy 4/4 (`PO9SGRQsL5-iul7g5IpLT`).** Migration nenhuma — o `conciliarAPartirDe` já estava em prod desde 11/09.
+
+**⭐ SÉRIE DE PERFORMANCE POR DEPLOY LIGADA** (`scripts/serie-performance.sh`, uma linha no `deploy.sh`): grava `data · build · chunks_kb · mem_mb · home_p95_ms` em `.perf-serie.tsv` e imprime o **Δ vs o deploy anterior**. 1ª linha: **8.228 KB · 54 MB · home p95 25 ms**.
+
+⚠️ **DÍVIDA REGISTRADA, NÃO TOCADA (ordem do dono):** os **874 KB de JS do estoque** são dívida de **code-splitting**.
+
+**⚠️⚠️ E A LIÇÃO DO DIA É SOBRE A MINHA SONDA, que errou TRÊS VEZES seguidas e cada vez com cara de defeito de prod:** (a) assinei o token só com `{sub}` e **todas** as páginas do dashboard deram **500** — o shell faz `initials(name)`, e o login real assina `name`; eu ia reportar prod quebrada; (b) mandei `?empresaId=` sem o cookie `current_empresa_id` e o `/pendentes` respondeu **200** em vez do 307, parecendo que o redirect não subiu; (c) procurei `"Saídas:"` no bundle e o minificador escreve **`Sa\xeddas:`** — a aba estava lá. ***Sonda errada dá um vermelho tão convincente quanto um defeito real*** — é a mesma família do `"Custo total"` de 14/09 e do token de 09/09. **Antes de reportar prod quebrada, provar que a SONDA reproduz o caminho real do dono.**
+
+📋 **FICA PRO DONO (REGRA 2, o red-then-green navegando):** abrir a Conciliação, resolver uma saída e uma entrada pelo menu de cada sentido, e ver a linha **sair da caixa na hora** com o efeito nomeado no destino.
+
+
 ### ⭐⭐⭐ ETAPAS EM DIAS DIFERENTES + O SILÊNCIO NÃO PUBLICA (15/09)
 
 Duas dores de operação do dono, e **a armadilha que ele nomeou ANTES de ela aparecer já estava cobrando em prod**.
@@ -4016,6 +4058,8 @@ Nasceu do episódio de 24-25/08: o `next build` foi morto pelo OOM killer **trê
 > **"PRÉ-EXISTENTE" SÓ DEPOIS DE MEDIR A CAUSA. Sem causa medida, é "VERMELHO SEM DIAGNÓSTICO" — e isso não fica na fila mais de um dia.**
 
 Eu rotulei o `producao P2` de pré-existente **por dias**, e o rótulo *"não é meu"* **parou a investigação**. O dono: *"eu aceitei porque você repetiu."* Quando finalmente instrumentei, a causa apareceu em minutos — era bomba de calendário, e as P5/P6 estavam armadas do lado. ⚠️ Duas vezes eu também expliquei os 5 do `real-vs-teorico` como *"poluição do dev.db"* sem medir; a sujeira existia (663 empresas de teste acumuladas, hoje 0 com o teardown global), mas **não era a causa** — serviu de explicação confortável pra eu não medir. **Alarme falso repetido mata o alarme; rótulo confortável mata o diagnóstico.**
+
+- **⚠️ O FILTRO DE PERÍODO DA FILA DE TRABALHO NÃO FOI REALOCADO — e é DECISÃO, não esquecimento (15/09).** Os Pendentes tinham `DateRangeFilter`; a CAIXA DE ENTRADA **não tem**, pela régua de 14/09: *"Pendentes é FILA DE TRABALHO e NUNCA ganha mês — esconder pendente antigo é esconder trabalho, e foi assim que 21 notas ficaram invisíveis"*. Quem navega por período é **Movimentações** (o arquivo). O que a caixa tem no lugar é o **corte de época**, que é outra coisa: diz de quando o dono começou a conciliar, **não** esconde o que ele ainda não resolveu. Há teste afirmando a AUSÊNCIA com o motivo escrito.
 
 ## Regras do acordo (teste + tela + comportamento)
 
