@@ -759,7 +759,9 @@ TELA → 200 · "revisar" ✓ · "sem destino" ✓ · "parece" ✓ · o aviso do
 
 **O `<select>` de 50 virou o `BuscaItem`** — o seletor único da casa (o de 14/09, *"definir ficha me expulsa da tela"*), que busca no servidor e mostra o custo médio. ⭐ E o `universo` virou **prop obrigatória** dele: o *"não compila"* achou **2 chamadores** que eu não tinha tocado — o **DANFE digitado** (que é COMPRA) e o **editor de ficha** (RECEITA).
 
-**10.166 verdes · TS 0 · deploys `hSHk9o85aeSpk6Z6KKP3A` e o do seletor, os dois 4/4 · Δ bundle −96 KB.**
+**⚠️⚠️ E A PROVA NO CELULAR PEGOU O FIX PELA METADE — REGRA 12 cobrando.** A entrada manual tem **duas composições** (tabela no desktop, cards no celular) e eu troquei **só a de cima**. **O dono opera no celular** — o conserto teria passado **ao lado do caso que motivou o sprint**. O guard agora conta os `<select>` de catálogo e exige **zero nos dois viewports**.
+
+**10.167 verdes · TS 0 · deploys `hSHk9o85aeSpk6Z6KKP3A`, `ezU4mxIgKczgGLLzHxQml` e o do celular, todos 4/4 · Δ bundle −96 KB.**
 
 
 ### ⛔⛔⛔ "NÃO CONSEGUI GRAVAR A CONTAGEM" — O ERRO SEM MOTIVO, E A CAUSA QUE NÃO ERA A SUSPEITA (16/09)

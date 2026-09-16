@@ -224,10 +224,28 @@ export default function EntradaManualPage({ params }: { params: Promise<{ id: st
         <div className="divide-y divide-slate-50 sm:hidden">
           {linhas.map((l, i) => (
             <div key={i} className="space-y-2 p-3">
-              <select value={l.itemId} onChange={(e) => set(i, { itemId: e.target.value })} className="h-11 w-full rounded-lg border border-slate-300 px-2 text-sm">
-                <option value="">— criar produto novo —</option>
-                {cat.map((c) => <option key={c.id} value={c.id}>{c.nome} ({c.unidadeControle})</option>)}
-              </select>
+              {/*
+                ⛔⛔ O CELULAR TAMBÉM — e ele quase ficou de fora (REGRA 12, 16/09).
+                A tela tem DUAS composições (tabela no desktop, cards no celular) e eu
+                troquei só a de cima. **O dono opera no celular**: o fix teria passado ao
+                lado do caso que motivou o sprint. *Tela com duas composições se conserta
+                nas duas, e a prova é nos dois viewports.*
+              */}
+              {l.itemId ? (
+                <div className="flex h-11 w-full items-center justify-between gap-2 rounded-lg border border-slate-300 px-2 text-sm">
+                  <span className="truncate">{cat.find((c) => c.id === l.itemId)?.nome ?? 'item'}</span>
+                  <button type="button" onClick={() => set(i, { itemId: '' })} className="shrink-0 px-1 text-slate-400" aria-label="trocar item">✕</button>
+                </div>
+              ) : (
+                <BuscaItem
+                  companyId={id} universo="COMPRAVEL"
+                  placeholder="buscar o que você comprou…"
+                  onEscolher={(it) => {
+                    setCat((c) => (c.some((x) => x.id === it.id) ? c : [...c, { id: it.id, nome: it.nome, unidadeControle: it.unidadeControle }]))
+                    set(i, { itemId: it.id })
+                  }}
+                />
+              )}
               {!l.itemId && (
                 <div className="flex gap-2">
                   <label className="block flex-1">

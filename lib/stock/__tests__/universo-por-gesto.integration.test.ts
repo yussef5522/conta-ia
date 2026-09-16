@@ -213,6 +213,24 @@ describe('⛔⛔ cada TELA declara o universo do SEU gesto', () => {
   }
 
   /**
+   * ⛔⛔ E O SELETOR SEM BUSCA NÃO VOLTA — nos DOIS viewports (REGRA 12).
+   *
+   * ⚠️⚠️ **ISTO QUASE PASSOU:** a entrada manual tem duas composições (tabela no desktop,
+   * cards no celular) e eu troquei **só a de cima**. **O dono opera no celular** — o fix
+   * teria passado ao lado do caso que motivou o sprint. O guard conta as ocorrências: um
+   * `<select>` listando `cat.map` é a lista truncada de volta.
+   */
+  it('⛔ a entrada manual não tem <select> de catálogo em viewport nenhum', async () => {
+    const { readFileSync } = await import('node:fs')
+    const src = semComentario(readFileSync(`${raiz}/app/(dashboard)/empresas/[id]/estoque/entrada-manual/page.tsx`, 'utf-8'))
+    const selectsDeCatalogo = (src.match(/\{cat\.map\(/g) ?? []).length
+    expect(
+      selectsDeCatalogo,
+      'voltou um <select> com o catálogo truncado — o item fora dos 50 some de novo',
+    ).toBe(0)
+  })
+
+  /**
    * ⛔ E NINGUÉM CHAMA A ROTA DE LISTAGEM NA MÃO. O helper é o choke-point: é ele que
    * carrega o universo no TIPO, e quem monta a URL à mão escapa da trava.
    */
