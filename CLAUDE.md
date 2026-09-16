@@ -721,6 +721,42 @@ TELA → 200 · "revisar" ✓ · "sem destino" ✓ · "parece" ✓ · o aviso do
 
 📋 **FICA PRO DONO (o gesto é dele):** os **4 combos** (`… MAIS MINI FRITAS`, 28 ocorrências) precisam de ficha composta (lata + porção mini fritas) — o botão *"definir"* da linha leva ao cardápio com o nome já carregado. E **"ignorar" só aparece nos complementos**: o mapa de produtos aceita `FICHA | REVENDA | REMOVER`, e REMOVER **devolve a pendente**, que é outra coisa — oferecer ali seria um gesto que promete uma coisa e faz outra. Registrado como o que falta naquele mapa, não disfarçado.
 
+### ⭐⭐⭐ EXCLUIR RECEITA DE PRODUÇÃO — E O SERVIDOR DECIDE QUAL DOS DOIS CASOS É (16/09)
+
+**A régua do dono:** receita **sem lote na história** → **exclui de vez** (*"rascunho que nasceu errado não merece cerimônia"*); **com lotes** → **DESATIVA**, e ***o passado não se reescreve*** — a mesma regra do fornecedor mesclado (11/09) e do item desativado (09/09).
+
+**⛔⛔ A TRAVA MORA NO SERVIDOR, NÃO NA TELA.** A tela só **pergunta**: a prévia vem do servidor e o gesto **re-avalia dentro da transação**. Uma tela que decidisse mandaria o `DELETE` de uma receita com 40 lotes — é a régua do FREIO da contagem (23/08): *"aviso que vive no componente some no dia em que a rota for chamada por outro caminho"*.
+
+**⭐⭐ E ELE RE-AVALIA POR UM MOTIVO REAL: a cozinha produz enquanto o dono lê o confirm.** Se o `DELETE` confiasse na prévia, apagaria uma receita que **acabou de ganhar história**. ⭐ E quando o desfecho **muda do que foi prometido**, a resposta **DIZ que mudou** (*"ganhou 1 lote enquanto você decidia — foi DESATIVADA em vez de excluída"*) — *fazer diferente do prometido e não avisar é a família do clique que gravou em silêncio (14/09)*.
+
+**O QUE VAI JUNTO NA EXCLUSÃO, e o que NÃO vai:** somem ficha, versões, componentes e os mapas do PDV. ⭐ **O item-invólucro vai junto** — toda ficha cria um item pra nomear o que ela produz, e deixá-lo órfão poluiria o catálogo (foi item-invólucro esquecido que produziu as contagens fantasma da Coca). ⛔ **Mas com movimento ele FICA e só desativa**: movimento é ledger, e ledger é imutável. ⛔ **E o INSUMO nunca vai** — apagar a receita não apaga a carne.
+
+**⚠️ O CONFIRM MOSTRA O EFEITO COLATERAL ANTES, NÃO DEPOIS:** *"⚠️ ela é ingrediente de: XIS COMPLETO, Combo Caçula — essas receitas ficam sem esse componente"* e *"N nomes do PDV apontam pra ela — a venda desses nomes para de baixar estoque"*. ⭐ **Sem digitar o nome pra confirmar** (decisão do dono: *"exagero pra cozinha"*) — o que segura é a frase dizendo **o efeito**, não a cerimônia.
+
+**⛔⛔ E A VARREDURA ACHOU UM BURACO QUE TORNARIA O GESTO UMA MENTIRA: `listFichas` NÃO FILTRAVA `ativo`.** Ou seja, a receita desativada **continuaria aparecendo no planejar produção, no seletor de tarefas e na lista da cozinha** — e o confirm promete *"ela sai do planejar e do produzir"*. ***Desativar que não some de lugar nenhum é o mesmo que não desativar***, e promessa de tela que o dado não cumpre é como a confiança se perde. Agora o default é **só ativas**; `incluirInativas` existe pro toggle explícito de histórico.
+
+**⚠️ UM GUARD DE SETEMBRO FOI REAPONTADO SEM PERDER A PROVA:** o `ficha-arquivada-fora-da-busca` existia pra provar que **a TELA filtra** (`ehReceitaDeProducao` carrega o `ativo` por dentro), e o comentário dele dizia *"um `.filter(f => f.ativo)` aqui esconderia que a tela não filtra"*. Com o servidor filtrando também, a cena passou a ser montada com `incluirInativas` e **as duas camadas ficaram provadas** — cinto **e** suspensório.
+
+**PROVADO EM PROD, NOS DOIS VIEWPORTS (REGRA 12), no bundle servido:**
+```
+CELULAR lista  ✓ botão · ✓ vermelho discreto (não é hover) · ✓ o confirm
+CELULAR editar ✓ · DESKTOP lista ✓ · DESKTOP editar ✓
+
+NO DADO REAL DA CAÇULA — 165 receitas:
+  38 seriam DESATIVADAS · 127 seriam EXCLUÍDAS (nunca produzidas)
+  "beef de xis" → DESATIVA · 13 lotes
+     ⚠️ "é ingrediente de: XIS COMPLETO, Combo Caçula, XIS - COMPLETO"
+  "CUBA MAIONESE" → DESATIVA · 10 lotes
+     ⚠️ "é ingrediente de: POÇAO MAIONESE 30G, ENCHER TUBO MAIONESE"
+⛔ nada foi excluído na prova — só a prévia, que é leitura
+```
+**REGRA 11 — 3 defeitos repostos:** a receita COM história voltando a ser apagada (**2 vermelhos**) · a SEM história virando desativação (**3**) · a desativada voltando pro planejar (**2**).
+
+**10.178 verdes · TS 0 · deploy `i1VgMzogxnj5wLhFXU7aC` 4/4.**
+
+📋 **FICA PRO DONO (REGRA 2):** criar a receita de teste, excluir (some de vez), e tentar excluir uma com história pra ver o confirm virar desativação.
+
+
 ### ⛔⛔⛔ CADA GESTO TEM SEU UNIVERSO DE SELETOR (16/09)
 
 **O dono, fazendo a entrada manual da compra do fermento:** *"na hora de escolher o produto a lista traz coisa de CARDÁPIO (fichas) e coisa de PRODUÇÃO — e não acho direito os itens de ESTOQUE que aparecem na Posição."*
