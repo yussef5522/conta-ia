@@ -753,7 +753,13 @@ TELA → 200 · "revisar" ✓ · "sem destino" ✓ · "parece" ✓ · o aviso do
 
 **⚠️ E UM VERMELHO PRÉ-EXISTENTE FOI DIAGNOSTICADO EM VEZ DE ROTULADO** (a régua de 01/09): o rastro de vencimento ordenava só por `criadoEm`, e dois eventos gravados **no mesmo milissegundo** saíam em ordem arbitrária — às vezes `BOLETO` primeiro, às vezes `DONO`. **É a cicatriz do juiz de saldo de 28/08** (*"ordenar só por `anchorDate` deixava o desempate arbitrário"*), que lá custou dois alarmes de ±3.026,31 que se cancelavam. **Timestamp sozinho não é ordem total** — desempate por `id`, estável em 3 rodadas.
 
-**10.165 verdes · TS 0.**
+**⚠️⚠️ E A PROVA EM PROD ACHOU A SEGUNDA METADE DA QUEIXA — o universo certo não bastava.** Medido: o universo da compra tem **152 itens**, a rota devolve no máximo **50** (`slice(0, 50)`), e o **`fermento` NÃO estava entre os 50 primeiros** — a lista alfabética parava em *"COPOS PS 150ML"*. Ou seja: **mesmo com o recorte certo, o item nunca chegava ao navegador**, e a tela filtrava **no CLIENTE** sobre a lista já truncada.
+
+⭐ **É a doença de 28/08 por outra porta** — e o comentário da própria rota já a documentava: *"o `take` passa a valer DEPOIS de filtrar; antes, 50 itens eram lidos e só então a busca acontecia, então item fora das 50 sumia"*. **A correção daquele dia valeu pra busca NO SERVIDOR; esta tela buscava no cliente.**
+
+**O `<select>` de 50 virou o `BuscaItem`** — o seletor único da casa (o de 14/09, *"definir ficha me expulsa da tela"*), que busca no servidor e mostra o custo médio. ⭐ E o `universo` virou **prop obrigatória** dele: o *"não compila"* achou **2 chamadores** que eu não tinha tocado — o **DANFE digitado** (que é COMPRA) e o **editor de ficha** (RECEITA).
+
+**10.166 verdes · TS 0 · deploys `hSHk9o85aeSpk6Z6KKP3A` e o do seletor, os dois 4/4 · Δ bundle −96 KB.**
 
 
 ### ⛔⛔⛔ "NÃO CONSEGUI GRAVAR A CONTAGEM" — O ERRO SEM MOTIVO, E A CAUSA QUE NÃO ERA A SUSPEITA (16/09)
