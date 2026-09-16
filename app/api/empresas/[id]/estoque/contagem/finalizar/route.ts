@@ -7,6 +7,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { requireStock } from '@/lib/stock/require-stock'
 import { finalizarContagem, cancelarContagem, ContagemError } from '@/lib/stock/contagem'
+import { respostaDeErroDoEstoque } from '@/lib/stock/erro-da-tela'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -27,7 +28,16 @@ export async function POST(request: NextRequest, { params }: Params) {
       : await finalizarContagem(companyId, parsed.data.contagemId, prisma)
     return NextResponse.json({ ok: true, contagem: { id: c.id, status: c.status } })
   } catch (e) {
-    if (e instanceof ContagemError) return NextResponse.json({ erro: e.message, code: e.code }, { status: 422 })
+    /**
+     * ⭐⭐ RECUSA ENSINA A SAÍDA (16/09) — o tradutor único do estoque.
+     * ⛔ Antes daqui existia um `throw e` que virava **500 sem corpo**, e o cliente caía
+     * no fallback genérico. Foi assim que a contagem do fermento disse *"não consegui
+     * gravar"* enquanto o servidor tinha a explicação inteira na mão.
+     * ⚠️ Erro que ninguém previu CONTINUA re-lançado: inventar frase amigável pra bug
+     * desconhecido esconde o bug.
+     */
+    const r = respostaDeErroDoEstoque(e, { empresaId: companyId })
+    if (r) return NextResponse.json({ erro: r.erro, code: r.code, saida: r.saida }, { status: r.status })
     throw e
   }
 }

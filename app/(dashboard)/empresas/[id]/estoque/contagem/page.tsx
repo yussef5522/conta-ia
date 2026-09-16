@@ -46,6 +46,23 @@ const fmtQuando = (iso: string) => {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
+/**
+ * ⭐⭐ A TRADUÇÃO DA FALHA — e ela **nunca inventa um genérico quando o servidor falou**.
+ *
+ * ⛔ **O DEFEITO DE 16/09:** era `j.erro ?? 'Não consegui gravar a contagem.'`. O `??` só
+ * cai no fallback quando o servidor **não manda** `erro` — o que acontece no **500**. E foi
+ * exatamente isso na contagem do fermento: o `MovementInvalidError` explicava tudo
+ * (*"valor R$ −31,04 · dinheiro negativo com saldo positivo não existe"*) e morria num
+ * `throw e` que virava 500 sem corpo. **A frase existia; ninguém a entregava.**
+ *
+ * ⚠️ O fallback continua existindo — porque 500 acontece —, mas agora ele **DIZ que é
+ * falha do sistema** em vez de fingir que sabe o motivo.
+ */
+function comoErro(j: { erro?: string; saida?: { rotulo: string; href: string } }, oQue: string) {
+  if (j?.erro) return { msg: j.erro, saida: j.saida }
+  return { msg: `O sistema falhou ao ${oQue} e não devolveu o motivo — isso é defeito nosso, não seu. Tente de novo; se repetir, me chame.` }
+}
+
 export default function ContagemPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const { pode } = usePermissoes(id)
@@ -53,7 +70,11 @@ export default function ContagemPage({ params }: { params: Promise<{ id: string 
   const [modo, setModo] = useState<'contar' | 'revisar'>('contar')
   const [atualId, setAtualId] = useState<string | null>(null)
   const [salvando, setSalvando] = useState(false)
-  const [erro, setErro] = useState<string | null>(null)
+  /**
+   * ⭐⭐ O ERRO CARREGA A SAÍDA (16/09) — *"recusa ensina a saída"*, régua do dono.
+   * ⛔ Antes era `string`, e a tela só sabia dizer o quê, nunca o que fazer.
+   */
+  const [erro, setErro] = useState<{ msg: string; saida?: { rotulo: string; href: string } } | null>(null)
   const [iniciando, setIniciando] = useState(false)
   const [finalizando, setFinalizando] = useState(false)
   const [freio, setFreio] = useState<{ itemId: string; qtd: number; msg: string; opts: { viuSistema: boolean; observacao: string | null } } | null>(null)
@@ -89,9 +110,9 @@ export default function ContagemPage({ params }: { params: Promise<{ id: string 
     try {
       const r = await fetch(`/api/empresas/${id}/estoque/contagem`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(tipo ? { tipo } : {}) })
       const j = await r.json().catch(() => ({}))
-      if (!r.ok) { setErro(j.erro ?? 'Não consegui iniciar a contagem.'); return }
+      if (!r.ok) { setErro(comoErro(j, 'iniciar a contagem')); return }
       await carregar()
-    } catch { setErro('Falha de rede ao iniciar a contagem.') } finally { setIniciando(false) }
+    } catch { setErro({ msg: 'A rede falhou ao iniciar a contagem — tente de novo.' }) } finally { setIniciando(false) }
   }
 
   async function contar(itemId: string, qtd: number, opts: { viuSistema: boolean; observacao: string | null }, confirmarFreio = false) {
@@ -106,11 +127,11 @@ export default function ContagemPage({ params }: { params: Promise<{ id: string 
       // ⛔ o FREIO é do SERVIDOR: divergência grande sem 2ª confirmação = 409 e o ledger
       // não se move. A tela só PERGUNTA — não é ela que decide (REGRA 5).
       if (r.status === 409 && j.code === 'FREIO') { setFreio({ itemId, qtd, msg: j.erro, opts }); return }
-      if (!r.ok) { setErro(j.erro ?? 'Não consegui gravar a contagem.'); return }
+      if (!r.ok) { setErro(comoErro(j, 'gravar a contagem')); return }
       setFreio(null)
       await carregar()
       irProximo()
-    } catch { setErro('Falha de rede ao gravar a contagem.') } finally { setSalvando(false) }
+    } catch { setErro({ msg: 'A rede falhou ao gravar a contagem — o que você digitou continua aí; tente de novo.' }) } finally { setSalvando(false) }
   }
 
   async function marcar(itemId: string, estado: 'NAO_SEI' | 'PULADO', observacao: string | null) {
@@ -122,10 +143,10 @@ export default function ContagemPage({ params }: { params: Promise<{ id: string 
         body: JSON.stringify({ contagemId: q.contagem.id, itemId, estado, observacao }),
       })
       const j = await r.json().catch(() => ({}))
-      if (!r.ok) { setErro(j.erro ?? 'Não consegui marcar a linha.'); return }
+      if (!r.ok) { setErro(comoErro(j, 'marcar a linha')); return }
       await carregar()
       irProximo()
-    } catch { setErro('Falha de rede.') } finally { setSalvando(false) }
+    } catch { setErro({ msg: 'A rede falhou — o que você digitou continua aí; tente de novo.' }) } finally { setSalvando(false) }
   }
 
   async function reordenar(de: number, para: number) {
@@ -155,9 +176,9 @@ export default function ContagemPage({ params }: { params: Promise<{ id: string 
     try {
       const r = await fetch(`/api/empresas/${id}/estoque/contagem/finalizar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contagemId: q.contagem.id, acao }) })
       const j = await r.json().catch(() => ({}))
-      if (!r.ok) { setErro(j.erro ?? 'Não consegui encerrar a contagem.'); return }
+      if (!r.ok) { setErro(comoErro(j, 'encerrar a contagem')); return }
       location.href = `/empresas/${id}/estoque/contagens`
-    } catch { setErro('Falha de rede ao encerrar.') } finally { setFinalizando(false) }
+    } catch { setErro({ msg: 'A rede falhou ao encerrar — a contagem segue aberta; tente de novo.' }) } finally { setFinalizando(false) }
   }
 
   if (q === undefined) return <div className="p-6"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
@@ -177,7 +198,17 @@ export default function ContagemPage({ params }: { params: Promise<{ id: string 
             valer. Cada linha confirmada ajusta o saldo na hora, e dá pra parar e voltar:
             a sessão fica aberta até você finalizar.
           </p>
-          {erro && <p className="rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700">{erro}</p>}
+          {erro && (
+        <div className="rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700">
+          <p>{erro.msg}</p>
+          {/* ⭐ o gesto que RESOLVE — recusa sem saída é beco */}
+          {erro.saida && (
+            <a href={erro.saida.href} className="mt-1 inline-block font-semibold underline">
+              {erro.saida.rotulo} →
+            </a>
+          )}
+        </div>
+      )}
           <button onClick={() => iniciar()} disabled={iniciando} className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#185FA5] px-5 text-sm font-semibold text-white hover:bg-[#0F4A8C] disabled:opacity-50">
             {iniciando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />} {primeira ? 'Começar contagem inicial' : 'Começar contagem'}
           </button>
@@ -229,7 +260,17 @@ export default function ContagemPage({ params }: { params: Promise<{ id: string 
         )}
       </div>
 
-      {erro && <p className="rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700">{erro}</p>}
+      {erro && (
+        <div className="rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700">
+          <p>{erro.msg}</p>
+          {/* ⭐ o gesto que RESOLVE — recusa sem saída é beco */}
+          {erro.saida && (
+            <a href={erro.saida.href} className="mt-1 inline-block font-semibold underline">
+              {erro.saida.rotulo} →
+            </a>
+          )}
+        </div>
+      )}
 
       {modo === 'contar' ? (
         atual ? (

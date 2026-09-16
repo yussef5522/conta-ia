@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { guardStock } from '@/lib/stock/require-stock'
 import { registrarSaida, SaidaError, MOTIVOS } from '@/lib/stock/saida'
+import { respostaDeErroDoEstoque } from '@/lib/stock/erro-da-tela'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -28,7 +29,16 @@ export async function POST(request: NextRequest, { params }: Params) {
     const r = await registrarSaida({ companyId, userId: user.sub, ...parsed.data, motivo: parsed.data.motivo as keyof typeof MOTIVOS }, prisma)
     return NextResponse.json({ ok: true, ...r })
   } catch (e) {
-    if (e instanceof SaidaError) return NextResponse.json({ erro: e.message }, { status: 422 })
+    /**
+     * ⭐⭐ RECUSA ENSINA A SAÍDA (16/09) — o tradutor único do estoque.
+     * ⛔ Antes daqui existia um `throw e` que virava **500 sem corpo**, e o cliente caía
+     * no fallback genérico. Foi assim que a contagem do fermento disse *"não consegui
+     * gravar"* enquanto o servidor tinha a explicação inteira na mão.
+     * ⚠️ Erro que ninguém previu CONTINUA re-lançado: inventar frase amigável pra bug
+     * desconhecido esconde o bug.
+     */
+    const r = respostaDeErroDoEstoque(e, { empresaId: companyId })
+    if (r) return NextResponse.json({ erro: r.erro, code: r.code, saida: r.saida }, { status: r.status })
     throw e
   }
 }

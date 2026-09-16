@@ -8,6 +8,7 @@ import { requireStock } from '@/lib/stock/require-stock'
 import { registrarEntradaManual, listarEntradasManuais, EntradaManualError } from '@/lib/stock/entrada-manual'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { enviarEntradaManual } from '@/lib/stock/ponte-contas-pagar'
+import { respostaDeErroDoEstoque } from '@/lib/stock/erro-da-tela'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -62,7 +63,16 @@ export async function POST(request: NextRequest, { params }: Params) {
     }
     return NextResponse.json({ ok: true, ...r, ponte })
   } catch (e) {
-    if (e instanceof EntradaManualError) return NextResponse.json({ erro: e.message }, { status: 422 })
+    /**
+     * ⭐⭐ RECUSA ENSINA A SAÍDA (16/09) — o tradutor único do estoque.
+     * ⛔ Antes daqui existia um `throw e` que virava **500 sem corpo**, e o cliente caía
+     * no fallback genérico. Foi assim que a contagem do fermento disse *"não consegui
+     * gravar"* enquanto o servidor tinha a explicação inteira na mão.
+     * ⚠️ Erro que ninguém previu CONTINUA re-lançado: inventar frase amigável pra bug
+     * desconhecido esconde o bug.
+     */
+    const r = respostaDeErroDoEstoque(e, { empresaId: companyId })
+    if (r) return NextResponse.json({ erro: r.erro, code: r.code, saida: r.saida }, { status: r.status })
     throw e
   }
 }
