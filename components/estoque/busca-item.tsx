@@ -15,6 +15,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Search, Plus } from 'lucide-react'
 import { useDismissivel } from '@/lib/hooks/use-dismissivel'
 import { urlDaBuscaDeItens } from '@/lib/stock/buscar-itens'
+import type { UniversoDoSeletor } from '@/lib/stock/universo-do-seletor'
 
 export interface ItemBusca {
   id: string
@@ -29,7 +30,7 @@ const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', curren
 export function BuscaItem({
   companyId, jaAdicionados = [], onEscolher,
   placeholder = 'buscar no catálogo…',
-  escopoInicial = 'receita',
+  universo,
   compacto,
 }: {
   companyId: string
@@ -37,8 +38,12 @@ export function BuscaItem({
   jaAdicionados?: string[]
   onEscolher: (it: ItemBusca) => void
   placeholder?: string
-  /** 'receita' = matéria-prima + produzidos + revenda · '' = catálogo inteiro */
-  escopoInicial?: 'receita' | ''
+  /**
+   * ⛔⛔ O UNIVERSO DO GESTO — **obrigatório** (16/09). Sem default: a ausência dele foi
+   * o que pôs ficha de cardápio no seletor da compra, e um default aqui recriaria o
+   * problema com outro nome. Ver `lib/stock/universo-do-seletor.ts`.
+   */
+  universo: UniversoDoSeletor
   /** versão de uma linha só, pra caber dentro de uma célula de tabela */
   compacto?: boolean
 }) {
@@ -46,7 +51,7 @@ export function BuscaItem({
   const [res, setRes] = useState<ItemBusca[]>([])
   const [aberto, setAberto] = useState(false)
   const [criando, setCriando] = useState(false)
-  const [tudo, setTudo] = useState(escopoInicial === '')
+  const [tudo, setTudo] = useState(universo === 'CATALOGO')
   const [novaUnidade, setNovaUnidade] = useState<'KG' | 'UN' | 'LT' | 'CX'>('UN')
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   // ⭐ clique fora + ESC fecham a lista (28/08). Antes só dava pra sair ESCOLHENDO — quem
@@ -61,7 +66,7 @@ export function BuscaItem({
        * dizendo, com o dedo, que quer o CATÁLOGO inteiro naquele momento. O que deixou de
        * existir é o universo **indeclarado** — aquele que ninguém escolheu.
        */
-      fetch(urlDaBuscaDeItens({ empresaId: companyId, universo: tudo ? 'CATALOGO' : 'RECEITA', busca: q }))
+      fetch(urlDaBuscaDeItens({ empresaId: companyId, universo: tudo ? 'CATALOGO' : universo, busca: q }))
         .then((r) => r.json()).then((j) => setRes(j.itens ?? [])).catch(() => setRes([]))
     }, 200)
     return () => { if (timer.current) clearTimeout(timer.current) }

@@ -11,6 +11,7 @@ import { urlDaBuscaDeItens } from '@/lib/stock/buscar-itens'
 import { Card, CardContent } from '@/components/ui/card'
 import { PackageOpen, Plus, Trash2, Loader2, Check, ArrowLeft } from 'lucide-react'
 import { diaEmSaoPaulo } from '@/lib/datas/dia-sao-paulo'
+import { BuscaItem } from '@/components/estoque/busca-item'
 
 interface ItemCat { id: string; nome: string; unidadeControle: string }
 interface Forn {
@@ -162,10 +163,40 @@ export default function EntradaManualPage({ params }: { params: Promise<{ id: st
               <tr key={i} className="border-b border-slate-50 last:border-b-0">
                 <td className="px-3 py-1">
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <select value={l.itemId} onChange={(e) => set(i, { itemId: e.target.value })} className="h-8 w-52 rounded-lg border border-slate-300 px-2 text-[13px]">
-                      <option value="">— criar produto novo —</option>
-                      {cat.map((c) => <option key={c.id} value={c.id}>{c.nome} ({c.unidadeControle})</option>)}
-                    </select>
+                    {/*
+                      ⛔⛔ AQUI MORAVA UM <select> COM 50 ITENS — e ele era a SEGUNDA metade
+                      da queixa do dono. Medido em prod: o universo da compra tem **152
+                      itens**, a rota devolve no máximo **50**, e o `fermento` **não estava
+                      entre os 50 primeiros** (a lista parava em "COPOS PS 150ML"). Ou seja:
+                      mesmo com o universo certo, o item nunca chegava ao navegador.
+
+                      ⚠️ É a doença de 28/08 por outra porta — o comentário da própria rota
+                      já dizia *"o `take` passa a valer DEPOIS de filtrar; antes, item fora
+                      das 50 sumia"*. A correção de lá valeu pra busca NO SERVIDOR, e esta
+                      tela buscava no CLIENTE, sobre a lista já truncada.
+
+                      ⭐ Agora usa o `BuscaItem` — o seletor único da casa, que busca no
+                      servidor e mostra o custo médio. O `— criar produto novo —` continua
+                      (ele tem o "criar item" embutido).
+                    */}
+                    {l.itemId ? (
+                      <span className="inline-flex h-8 max-w-[13rem] items-center gap-1.5 truncate rounded-lg border border-slate-300 px-2 text-[13px]">
+                        {cat.find((c) => c.id === l.itemId)?.nome ?? 'item'}
+                        <button type="button" onClick={() => set(i, { itemId: '' })} className="text-slate-400" aria-label="trocar item">✕</button>
+                      </span>
+                    ) : (
+                      <div className="w-52">
+                        <BuscaItem
+                          companyId={id} compacto universo="COMPRAVEL"
+                          placeholder="buscar o que você comprou…"
+                          onEscolher={(it) => {
+                            // ⚠️ o item escolhido entra no catálogo local pra a linha saber o nome
+                            setCat((c) => (c.some((x) => x.id === it.id) ? c : [...c, { id: it.id, nome: it.nome, unidadeControle: it.unidadeControle }]))
+                            set(i, { itemId: it.id })
+                          }}
+                        />
+                      </div>
+                    )}
                     {!l.itemId && (<>
                       <label className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500">
                         nome novo:

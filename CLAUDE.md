@@ -721,6 +721,41 @@ TELA → 200 · "revisar" ✓ · "sem destino" ✓ · "parece" ✓ · o aviso do
 
 📋 **FICA PRO DONO (o gesto é dele):** os **4 combos** (`… MAIS MINI FRITAS`, 28 ocorrências) precisam de ficha composta (lata + porção mini fritas) — o botão *"definir"* da linha leva ao cardápio com o nome já carregado. E **"ignorar" só aparece nos complementos**: o mapa de produtos aceita `FICHA | REVENDA | REMOVER`, e REMOVER **devolve a pendente**, que é outra coisa — oferecer ali seria um gesto que promete uma coisa e faz outra. Registrado como o que falta naquele mapa, não disfarçado.
 
+### ⛔⛔⛔ CADA GESTO TEM SEU UNIVERSO DE SELETOR (16/09)
+
+**O dono, fazendo a entrada manual da compra do fermento:** *"na hora de escolher o produto a lista traz coisa de CARDÁPIO (fichas) e coisa de PRODUÇÃO — e não acho direito os itens de ESTOQUE que aparecem na Posição."*
+
+**⛔ A CAUSA, numa linha:** `/api/.../estoque/itens` **sem parâmetro** devolvia `{ companyId, ativo: true }` — **TUDO**, inclusive os invólucros de `SABOR` e `PRODUTO_FINAL` que existem só pra dar nome a uma linha do cardápio. ⚠️ **O default silencioso era o veneno:** quem esquecia o recorte não via erro nenhum — via uma lista **plausível e errada**.
+
+**A RÉGUA, registrada:** ***compra NUNCA aponta pra ficha de cardápio nem pra tarefa de produção.*** Cada seletor com o WHERE do seu gesto, e **o universo é contrato obrigatório** — a rota recusa com **400 que ensina**, e o helper o carrega **no TIPO**: chamador que não declara **não compila**.
+
+**⚠️⚠️ E A VARREDURA ACHOU QUE NÃO É UM UNIVERSO SÓ — SÃO DOIS, e a diferença é real.** O dono listou, pra compra, *"matéria-prima, insumo, revenda, embalagem"* — **sem intermediário**, e está certo: **ninguém COMPRA "porção de carne 100g"**, ela se produz. Mas ela **se conta** (está na câmara) e **se perde** (cai no chão). Um universo só poria porção na lista de compra **ou** tiraria porção da contagem — os dois errados.
+
+| universo | gesto | o que entra |
+|---|---|---|
+| **COMPRAVEL** | entrada manual, nota | matéria-prima · revenda · embalagem · limpeza · uso interno |
+| **PRATELEIRA** | contagem, saída/perda | os de cima **+ intermediário** |
+| **RECEITA** | componente de ficha | matéria-prima · intermediário · produto final · revenda · embalagem |
+| **VENDAVEL** | mapa do PDV | produto final · sabor · revenda |
+| **CATALOGO** | a lista administrativa | tudo — **e o nome diz isso** |
+
+**A VARREDURA DOS CHAMADORES (item 1 do pedido):** dos 17 que tocam a rota, **só 4 LISTAM** — o resto é `PATCH`/`POST` ou `href`. Os defeitos reais eram **dois**: a **entrada manual** e a **saída/perda**. O seletor de ficha já declarava (`escopo=receita`, 27/08) e o hub já filtrava `categoria=REVENDA`.
+
+**⭐ E O TOGGLE "mostrar tudo" DO EDITOR DE FICHA É UMA DECLARAÇÃO**, não uma exceção: o dono está dizendo, com o dedo, que quer o catálogo naquele momento. O que deixou de existir é o universo **que ninguém escolheu**.
+
+**⭐ O VAZIO PASSOU A DIZER O RECORTE:** *"Nada com «xis» entre os itens que se COMPRAM"*. ⛔ *"Nenhum item encontrado"* faria o dono achar que o item não existe, quando ele só não pertence àquele gesto — **vazio que não diz o recorte é a ausência fingindo verdade**.
+
+**⚠️⚠️ O TESTE POR GESTO PEGOU UM DEFEITO MEU NA HORA:** eu escrevi `RECEITA = [...COMPRAVEL, INTERMEDIARIO]` por conveniência e **arrastei LIMPEZA junto** — quebrando a régua de 27/08 (*"o editor oferecia DESENGRAXANTE, SACO DE LIXO e JAPONA DE CÂMARA como ingrediente de lanche"*). **Universo se escreve item a item**; derivar um do outro é como a régua de um gesto vaza pro outro.
+
+**⭐⭐ E HÁ TESTE PROVANDO QUE PRATELEIRA == `seContaFisicamente`**, item a item. Aqui a régua é uma **LISTA** (vira `where`, não atravessa a query) e lá é uma **FUNÇÃO** — sem o teste, as duas divergiriam no primeiro tipo novo, que é exatamente como o B1 se perdeu.
+
+**⚠️⚠️ REGRA 11 — 3 defeitos repostos, e o PRIMEIRO VEIO VERDE:** trocar o universo da entrada manual pra `CATALOGO` deixou **515 testes verdes**, porque os meus chamavam `listar(universo)` direto e **nenhum lia o que a TELA declara**. ***Guard que testa a lib aprova a tela que ignora a lib*** — a mesma lição de 14/09 (o modal) e 13/09 (o card do PJBANK). Com o bloco novo (*"cada TELA declara o universo do SEU gesto"*), o defeito fica vermelho. Os outros dois morderam de primeira: `PRODUTO_FINAL` voltando pra compra (**5 vermelhos**) e a PRATELEIRA deixando de concordar com a função (**2**).
+
+**⚠️ E UM VERMELHO PRÉ-EXISTENTE FOI DIAGNOSTICADO EM VEZ DE ROTULADO** (a régua de 01/09): o rastro de vencimento ordenava só por `criadoEm`, e dois eventos gravados **no mesmo milissegundo** saíam em ordem arbitrária — às vezes `BOLETO` primeiro, às vezes `DONO`. **É a cicatriz do juiz de saldo de 28/08** (*"ordenar só por `anchorDate` deixava o desempate arbitrário"*), que lá custou dois alarmes de ±3.026,31 que se cancelavam. **Timestamp sozinho não é ordem total** — desempate por `id`, estável em 3 rodadas.
+
+**10.165 verdes · TS 0.**
+
+
 ### ⛔⛔⛔ "NÃO CONSEGUI GRAVAR A CONTAGEM" — O ERRO SEM MOTIVO, E A CAUSA QUE NÃO ERA A SUSPEITA (16/09)
 
 **⭐ A HIPÓTESE DO DONO CAIU NA MEDIÇÃO, e isso mudou a resposta inteira.** Ele apostou em *"unidade UN-inteira recusando decimal"* e perguntou se o reunitizar resolvia. Medido por id: o item **`fermento` JÁ É KG** (`cmttb7w1p0003o9db38fdqthf`) — **a unidade está certa e o reunitizar não tem o que fazer**. Mandá-lo reunitizar seria mandá-lo consertar o campo errado.

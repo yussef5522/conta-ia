@@ -320,7 +320,9 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
           </p>
         )}
 
-        <BuscaItem companyId={companyId} jaAdicionados={comps.map((c) => c.itemId)} onEscolher={addComp}
+        {/* ⭐ componente de ficha → universo RECEITA (a régua de 27/08: pano de chão não
+            vai em receita; a embalagem VAI, desde 01/09, porque a caixa custa) */}
+        <BuscaItem companyId={companyId} universo="RECEITA" jaAdicionados={comps.map((c) => c.itemId)} onEscolher={addComp}
           placeholder="buscar ingrediente (ou criar um que nunca veio em nota)…" />
 
         {comps.length === 0 ? (

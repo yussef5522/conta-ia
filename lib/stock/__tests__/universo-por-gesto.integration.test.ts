@@ -189,19 +189,26 @@ describe('⛔⛔ cada TELA declara o universo do SEU gesto', () => {
   /** ⭐ o gesto → o universo que ELE tem que declarar */
   const GESTOS: [string, string, string][] = [
     ['entrada manual (compra)', 'app/(dashboard)/empresas/[id]/estoque/entrada-manual/page.tsx', 'COMPRAVEL'],
+    ['DANFE digitado (compra)', 'components/estoque/itens-manuais-editor.tsx', 'COMPRAVEL'],
+    ['editor de ficha', 'components/estoque/ficha-editor.tsx', 'RECEITA'],
     ['saída / perda', 'components/estoque/saida-modal.tsx', 'PRATELEIRA'],
-    ['componente de ficha', 'components/estoque/busca-item.tsx', 'RECEITA'],
+    // ⚠️ `busca-item.tsx` NÃO entra: ele é a PEÇA, não o gesto — quem declara o universo
+    // é quem o monta. Exigir uma constante dentro dele seria travar a peça num gesto só.
   ]
 
   for (const [gesto, arq, universo] of GESTOS) {
     it(`⭐ ${gesto} → universo ${universo}`, async () => {
       const { readFileSync } = await import('node:fs')
       const src = semComentario(readFileSync(`${raiz}/${arq}`, 'utf-8'))
-      expect(src, `${arq} não declara universo — volta o default silencioso`).toContain('urlDaBuscaDeItens')
+      // ⚠️ declara pelo helper OU pela prop do seletor único — os dois carregam o universo
+      expect(
+        /urlDaBuscaDeItens|universo=/.test(src),
+        `${arq} não declara universo — volta o default silencioso`,
+      ).toBe(true)
       expect(
         src,
         `${arq} declara o universo ERRADO — "${universo}" é o gesto dela`,
-      ).toContain(`'${universo}'`)
+      ).toMatch(new RegExp(`['"]${universo}['"]`))
     })
   }
 

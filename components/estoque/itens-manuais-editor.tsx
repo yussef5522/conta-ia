@@ -200,7 +200,8 @@ function Vinculo({ companyId, l, i, setLinhas }: {
   if (!l.itemId) {
     return (
       <div className="mt-1">
-        <BuscaItem companyId={companyId} compacto escopoInicial=""
+        <BuscaItem companyId={companyId} compacto /* ⭐ o DANFE digitado é COMPRA — mesma régua da entrada manual */
+                      universo="COMPRAVEL"
           placeholder="qual produto do catálogo é este? (ou crie)"
           onEscolher={(it) => setLinhas((ls) => aplicarItemEscolhido(ls, i, it))} />
       </div>
