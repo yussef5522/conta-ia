@@ -721,6 +721,37 @@ TELA → 200 · "revisar" ✓ · "sem destino" ✓ · "parece" ✓ · o aviso do
 
 📋 **FICA PRO DONO (o gesto é dele):** os **4 combos** (`… MAIS MINI FRITAS`, 28 ocorrências) precisam de ficha composta (lata + porção mini fritas) — o botão *"definir"* da linha leva ao cardápio com o nome já carregado. E **"ignorar" só aparece nos complementos**: o mapa de produtos aceita `FICHA | REVENDA | REMOVER`, e REMOVER **devolve a pendente**, que é outra coisa — oferecer ali seria um gesto que promete uma coisa e faz outra. Registrado como o que falta naquele mapa, não disfarçado.
 
+### ⭐⭐⭐ FATURAS — A CURA DA REINCIDÊNCIA EM 4 PEÇAS, E O V4 DE HOJE ERA UM DÉBITO DE 31/08 (16/09)
+
+**O dono, com a fatura Banrisul recusada:** *"o problema de fundo é a REINCIDÊNCIA — consertamos e volta. A cura é arquitetura."*
+
+**⭐⭐ E O DIAGNÓSTICO DO V4 DELE ESTAVA CERTO EM CHEIO — o runner novo achou no primeiro uso.** `TOTAL DE GASTOS` aparece **uma vez por PORTADOR** na fatura do Banrisul, e o parser fazia `text.match()` — **pegava a PRIMEIRA**. Medido na fixture de agosto: lia **23.648,03** quando o total é **39.302,64** (= 23.648,03 + 15.654,61, os dois portadores); na fatura que ele subiu hoje, a primeira ocorrência era **151,56**.
+
+⚠️⚠️ **E ISTO ESTAVA REGISTRADO COMO "LATENTE" DESDE 31/08**, neste mesmo doc: *"`TOTAL DE GASTOS` 2× (23.648,03 × 15.654,61 — os dois portadores) · ⚠️ LATENTE — lê o 1º portador como se fosse total; inofensivo só porque ninguém confere com ele"*. **Alguém passou a conferir, e o latente virou o bug do dia.** ⭐ *Débito registrado não é débito pago* — é a mesma lição da dívida do PRODUTO_FINAL na contagem, que ficou 2 linhas por meses e custou 9 ajustes fantasma quando o volume chegou.
+
+**⭐ E O COMENTÁRIO DO CAMPO JÁ PROMETIA O CERTO:** *"Σ de todos os débitos do período"* — **o código dizia uma coisa e entregava outra**. O fix é `somarTodas`, e ⛔ ele **não soma pela metade**: valor ilegível no meio devolve `null` em vez de um total curto.
+
+═══ **AS 4 PEÇAS** ═══
+
+**1. PARSER ISOLADO DE VERDADE.** A varredura achou **uma corrente entre bancos**: o parser do **Mercado Pago** importava `parseBRL` **de dentro do parser do SICREDI**, com o comentário *"REGRA 4: uma leitura de valor, não quatro"*. A intenção era boa e o efeito era que **mexer no Sicredi podia quebrar o Mercado Pago** sem nada avisar. ⭐ A saída não é duplicar — é **tirar o utilitário de dentro do banco** (`numero-br.ts`): *número BR se lê igual em qualquer fatura; **onde ele aparece na página**, não*.
+
+**2. O CONGELADOR — e os goldens JÁ EXISTIAM, soltos.** Cinco arquivos, um por banco, e **nada ligava** *"mexi no Banrisul"* a *"rode o Sicredi"*: o conserto de um quebrava o vizinho **em silêncio**, e voltava semanas depois com cara de bug novo. Agora é **uma lista** (`congelador.ts`, **9 fixtures de 7 bancos**) e **um runner** que roda todas a cada rodada. ⛔ E o guard é **estrutural**: *parser de fatura sem golden fica vermelho* — ninguém consegue adicionar banco que ninguém congela. ⚠️ `goldensPara()` devolve **sempre a lista inteira**, de propósito: não é filtro, é a afirmação de que **não existe rodada parcial**.
+
+⚠️ **E O CONGELADOR ME CORRIGIU ENQUANTO EU O ESCREVIA:** congelei 13.779,73 como `totalGastos` do Banrisul PJ e o parser leu 13.797,73 — **os dois estão certos**: um é o total de gastos, o outro é **o que se paga**, e a diferença de R$ 18,00 é o par de anuidade (`DESC ANUID` −18 / `ANUIDADEINT` +18). *Cada número tem o seu nome*, e congelar o pago no campo dos gastos criaria um vermelho eterno com o parser certo.
+
+**3. VERSÃO DE LAYOUT.** O congelador registra `layout` por fixture (as duas do Banrisul PF são `v1`). ⚠️ **A detecção por versão ainda NÃO foi construída** — ela só se escreve honestamente com **dois layouts reais na mão**, e hoje temos um. *Inventar um detector v1/v2 sem o v2 seria adivinhar onde o banco vai mexer.* Fica nomeado como a próxima peça, com a fixture de hoje entrando como `v2` se o PDF do dono mostrar redesenho.
+
+**4. A RECUSA QUE AJUDA A CONSERTAR.** ⛔ **A conferência NÃO afrouxou** — ela recusou hoje e estava certa; é a heroína. O que mudou é o que a recusa **entrega junto**: além de *esperado × lido*, ela aponta **as linhas candidatas do texto cru**. ⭐ **Testado contra a fatura real com a diferença de hoje (−18,00), ele achou duas linhas com 18,00** — e uma delas é **`JOD 18,00 TX DÓLAR R$ 5,2504`**, compra em moeda estrangeira, que é **exatamente a classe de linha que este parser já perdeu antes** (01/09: *"compra internacional traz US$ e R$ na mesma linha — o primeiro é o dólar e o real era cortado fora"*). ⚠️ **Hipótese forte, não veredito** — sem o PDF do dono não dá pra cravar. E ⛔ o diagnóstico **não conserta nada**: somar a linha achada seria o sistema **inventando** a transação que não soube ler.
+
+**⭐⭐ E A QUARENTENA — o buraco que fez este sprint começar sem o documento.** O import de fatura **não guardava NADA**: nem o PDF, nem o texto extraído. Quando a conferência recusou, o documento **se perdeu**, e diagnosticar exigia pedir o arquivo de volta. **É o que o `rawOfxBlob` resolveu pro extrato em 13/08 e nunca chegou aqui.** Agora **toda tentativa** fica guardada com o texto — a recusada pra diagnosticar sem pedir o PDF, ⭐ **e a que FECHOU como o golden de amanhã** (foi por não ter os PDFs antigos que o congelador nasceu com 9 fixtures em vez do histórico inteiro). ⚠️ Fail-soft de propósito, e com **expurgo do texto em 12 meses** (LGPD), mantendo a metadata — a mesma régua do blob do OFX.
+
+**REGRA 11 — 2 defeitos repostos, os dois morderam:** o V4 voltando a pegar a primeira ocorrência (**2 vermelhos**) · um banco saindo do congelador, virando parser solto (**2**).
+
+**10.205 verdes · TS 0 · `pg_dump pre-quarentena-20260916-014904` (6,2 MB) antes da migration (CREATE-only, aditiva pura).**
+
+📋 **FALTA PRA FECHAR O CASO DE HOJE — e é o que só o PDF resolve:** o **V1** (Σ Brasil 11.376,89 × 11.358,89). A fixture que temos aponta a classe (linha em moeda estrangeira), mas **a fatura de hoje é outra**, e o texto dela não existe mais em lugar nenhum. **Da próxima recusa em diante isso não se repete** — a quarentena guarda.
+
+
 ### ⭐⭐⭐ EXCLUIR RECEITA DE PRODUÇÃO — E O SERVIDOR DECIDE QUAL DOS DOIS CASOS É (16/09)
 
 **A régua do dono:** receita **sem lote na história** → **exclui de vez** (*"rascunho que nasceu errado não merece cerimônia"*); **com lotes** → **DESATIVA**, e ***o passado não se reescreve*** — a mesma regra do fornecedor mesclado (11/09) e do item desativado (09/09).
