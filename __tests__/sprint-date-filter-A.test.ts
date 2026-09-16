@@ -69,20 +69,27 @@ describe('rangeForPreset (helper puro)', () => {
 })
 
 describe('Sprint Filtro de Data Parte A — uso compartilhado nas 3 páginas', () => {
-  it('/pendentes usa useDateRangeFilter + DateRangeFilter', () => {
-    const code = readFileSync(
-      join(ROOT, 'app/(dashboard)/empresas/[id]/pendentes/pendentes-client.tsx'),
-      'utf-8',
-    )
-    expect(code).toMatch(/useDateRangeFilter/)
-    expect(code).toMatch(/DateRangeFilter/)
-    expect(code).toMatch(/totalReal/)
-    expect(code).toMatch(/Mostrando/)
-    // Sprint Visual (15/06/2026): banner "Filtros ativos" foi substituído
-    // por <ActiveFilterChips>. O sinal de filtros ativos agora é a presença
-    // dos próprios chips.
-    expect(code).toMatch(/ActiveFilterChips/)
-  })
+    /**
+   * ⚠️⚠️ REAPONTADO EM 15/09 — A TELA MORREU, E A RÉGUA MUDOU DE LADO.
+   *
+   * `/pendentes` deixou de existir: ela era a **segunda fila** sobre o mesmo extrato (a
+   * linha aparecia lá sem categoria E na Conciliação sem vínculo), e virou a **CAIXA DE
+   * ENTRADA**, com duas abas por sentido.
+   *
+   * ⛔ **E o filtro de período NÃO foi realocado, de propósito** — é a régua desta casa
+   * desde 14/09: *"Pendentes é FILA DE TRABALHO e NUNCA ganha mês: esconder pendente antigo
+   * é esconder trabalho, e foi assim que 21 notas ficaram invisíveis"*. A caixa é fila, não
+   * lista; quem navega por período é **Movimentações**, o arquivo. O que a caixa tem no
+   * lugar é o **corte de época**, que é outra coisa: ele diz de quando o dono começou a
+   * conciliar, não esconde o que ele ainda não resolveu.
+   */
+  it('⛔ a caixa de entrada é FILA — e fila não ganha filtro de período', () => {
+    const caixa = readFileSync(join(ROOT, 'components/conciliacao/caixa-de-entrada.tsx'), 'utf-8')
+    expect(caixa).not.toMatch(/DateRangeFilter|useDateRangeFilter/)
+    // ⭐ e o corte de época (que é outra coisa) mora no servidor, não na tela
+    const rota = readFileSync(join(ROOT, 'app/api/conciliacao/caixa/route.ts'), 'utf-8')
+    expect(rota).toContain('conciliarAPartirDe')
+})
 
   // ⚠️⚠️ INVERTIDO EM 07/09/2026, COM O MOTIVO ESCRITO (não apagado).
   //

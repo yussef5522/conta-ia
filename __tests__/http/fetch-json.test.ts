@@ -72,7 +72,8 @@ describe('Etapa 1 — call-sites críticos migrados', () => {
     'app/(dashboard)/contas-a-pagar/page.tsx',
     'app/(dashboard)/contas-a-receber/page.tsx',
     'app/(dashboard)/conciliacao/page.tsx',
-    'app/(dashboard)/empresas/[id]/pendentes/pendentes-client.tsx',
+    // ⚠️ a tela dos Pendentes morreu em 15/09 — o call-site crítico agora é a CAIXA,
+    // que usa `fetchComTimeout` (o irmão que NUNCA lança, da lição do spinner eterno).
   ]
   for (const f of files) {
     it(`${f} importa e usa fetchJson`, () => {

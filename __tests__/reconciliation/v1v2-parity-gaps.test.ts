@@ -32,10 +32,25 @@ describe('Paridade V1/V2 — COBERTO (verde)', () => {
     expect(orchestrator).toMatch(/recalcularSaldoConta/)
   })
 
-  it('V2 detecção de transferência: coberta pelo banner retroativo de Pendentes (fix 06/08)', () => {
-    // não roda no import, mas o banner reavalia todas as EFFECTED no load.
-    const pendentes = readFileSync(join(ROOT, 'app/(dashboard)/empresas/[id]/pendentes/pendentes-client.tsx'), 'utf-8')
-    expect(pendentes).toMatch(/detect-active-transfers/)
+  /**
+   * ⚠️⚠️ REAPONTADO EM 15/09 — A CASA MUDOU, A CAPACIDADE NÃO SE PERDEU.
+   *
+   * A régua de 06/09 era *"o banner dos Pendentes reavalia todas as EFFECTED no load"*. Os
+   * **Pendentes morreram** (viraram a CAIXA DE ENTRADA), e a detecção **já morava** na tela
+   * do par (`/transferencias/parear`) — que é onde o vínculo de fato acontece.
+   *
+   * ⛔ **Por isso o guard prova os DOIS LADOS** (a disciplina da mudança de casa, 10/09):
+   * a detecção VIVE em `/parear`, **e** a caixa LEVA até lá. Guard que provasse só a
+   * remoção aprovaria o dia em que a detecção sumisse de todo lugar.
+   */
+  it('V2 detecção de transferência: vive em /parear, e a caixa LEVA até lá', () => {
+    const parear = readFileSync(join(ROOT, 'app/(dashboard)/empresas/[id]/transferencias/parear/page.tsx'), 'utf-8')
+    expect(parear, 'a detecção de par sumiu da tela que pareia').toMatch(/detect-active-transfers/)
+
+    // ⭐ o outro lado: o gesto da caixa não cala — ele leva ao lugar do vínculo
+    const resolver = readFileSync(join(ROOT, 'lib/conciliacao/resolver-linha.ts'), 'utf-8')
+    expect(resolver).toContain('TRANSFERENCIA_ENVIADA')
+    expect(resolver, 'a ação de transferência deixou de levar ao /parear').toMatch(/transferencias\/parear/)
   })
 
   // Etapa 3a (06/08) — GAP ALTO FECHADO: V2 agora recebe e aplica `decisions`.

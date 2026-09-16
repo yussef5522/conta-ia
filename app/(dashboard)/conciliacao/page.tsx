@@ -38,6 +38,7 @@ import { type FilasDTO } from '@/components/conciliacao/stats-do-mock'
 import { MOCK } from '@/components/conciliacao/mock-tokens'
 import { type CardDeEscolhaDTO } from '@/components/conciliacao/escolher-na-mao-card'
 import { FilaEscolherNaMao } from '@/components/conciliacao/fila-escolher-na-mao'
+import { CaixaDeEntrada } from '@/components/conciliacao/caixa-de-entrada'
 import { useToast } from '@/components/ui/use-toast'
 import { fetchJson } from '@/lib/http/fetch-json'
 import { contarFilas } from '@/lib/conciliacao/filas-da-tela'
@@ -401,6 +402,16 @@ function ConciliacaoInner() {
                     demais pro outro lado: 16 cards ABERTOS, o mesmo fornecedor repetido 5×
                     com as mesmas notas. O mock sempre disse UM card por fornecedor,
                     FECHADO — e a linha de dentro, uma por vez. */}
+                {/* ⭐⭐⭐ A CAIXA DE ENTRADA DO BANCO (15/09) — o balcão único, duas abas.
+                    **A Conciliação VIRA esta tela**: toda linha confirmada e não-resolvida
+                    mora aqui, com o menu do SEU SENTIDO. ⛔ Crédito nunca vê "casar com conta
+                    a pagar" — era o buraco que punha 5.705 créditos (87% da fila) na fila de
+                    dívida.
+                    ⚠️ Ela fica FORA do gate dos cards: a caixa existe mesmo quando não há
+                    card nenhum (é a fila de TODAS as linhas), e prendê-la ali a faria sumir
+                    justamente no dia em que o dono só tem linhas soltas pra resolver. */}
+                <CaixaDeEntrada empresaId={empresaId} />
+
                 {cardsEscolha.length > 0 && (
                   <FilaEscolherNaMao
                     empresaId={empresaId}

@@ -8,7 +8,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { resolvePaidInvoiceMonth } from '@/lib/credit-card-pj/resolve-paid-month'
+import { casarPagamentoDeCartao, CasarPagamentoError } from '@/lib/credit-card-pj/casar-pagamento'
 
 interface Params { params: Promise<{ id: string; cardId: string }> }
 
@@ -88,49 +88,30 @@ export async function POST(request: NextRequest, { params }: Params) {
     )
   }
 
-  // Snapshot pra delta no DRE
-  const previousCategoryId = targetTx.categoryId
-  const previousCategoryName = targetTx.category?.name ?? null
-
-  // Competência que este pagamento quita: a que a tela mandou OU — no default — a
-  // fatura cujo TOTAL LÍQUIDO bate o valor pago. ⚠️ NÃO "a mais recente": esse era o
-  // bug sistêmico — pagamento casado antes da fatura existir ia pro mês errado
-  // (o 7.896,32 caiu em julho porque agosto ainda não tinha sido importada).
-  // Competência que quita: a que a tela mandou OU — no default — pela fn ÚNICA
-  // (resolve-paid-month), a MESMA que o import usa (REGRA 4/5).
-  let targetInvoiceMonth = body.invoiceMonth ?? null
-  if (!targetInvoiceMonth) {
-    targetInvoiceMonth = await resolvePaidInvoiceMonth(prisma, cardId, targetTx.amount)
+  /**
+   * ⭐⭐ A GRAVAÇÃO MUDOU DE CASA (15/09) — ela mora em `lib/credit-card-pj/casar-pagamento`.
+   *
+   * ⛔ O balcão da caixa de entrada precisa do MESMO gesto, e copiar as 20 linhas seria a
+   * **segunda porta de gravação do mesmo fato** — a doença que o `vincularPagamentoDeParcela`
+   * (11/09) existe pra impedir do lado do empréstimo. Esta rota é CASCA FINA.
+   */
+  try {
+    const r = await casarPagamentoDeCartao(
+      { companyId, cardId, txId: targetTx.id, invoiceMonth: body.invoiceMonth ?? null },
+      prisma,
+    )
+    return NextResponse.json({
+      casado: true,
+      transactionId: r.transactionId,
+      paidInvoiceMonth: r.paidInvoiceMonth,
+      previousCategoryId: r.previousCategoryId,
+      previousCategoryName: targetTx.category?.name ?? null,
+      deltaDespesaRemovidoDoDRE: r.deltaDespesaRemovidoDoDRE,
+    })
+  } catch (e) {
+    if (e instanceof CasarPagamentoError) return NextResponse.json({ erro: e.message }, { status: 422 })
+    throw e
   }
-
-  // Atomic: marca como pagamento de cartao + vincula ao cartao + amarra à
-  // competência que quita + zera categoria (pra DRE filtrar isCardPayment=true)
-  const updated = await prisma.transaction.update({
-    where: { id: targetTx.id },
-    data: {
-      isCardPayment: true,
-      businessCreditCardId: cardId,
-      paidInvoiceMonth: targetInvoiceMonth,
-      // Remove categoria de despesa (se tinha) — pagamento nao eh despesa
-      categoryId: null,
-    },
-    select: {
-      id: true,
-      isCardPayment: true,
-      businessCreditCardId: true,
-      paidInvoiceMonth: true,
-      categoryId: true,
-    },
-  })
-
-  return NextResponse.json({
-    casado: true,
-    transactionId: updated.id,
-    paidInvoiceMonth: updated.paidInvoiceMonth,
-    previousCategoryId,
-    previousCategoryName,
-    deltaDespesaRemovidoDoDRE: targetTx.amount,
-  })
 }
 
 export async function DELETE(request: NextRequest, { params }: Params) {

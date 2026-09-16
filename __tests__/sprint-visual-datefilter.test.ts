@@ -117,14 +117,25 @@ describe('Sprint Visual — /pendentes usa ActiveFilterChips (substitui banner a
   // 02/08). Não há regra de design reservando âmbar (é cor semântica de atenção,
   // usada em vários CTAs). Então a proteção certa é afirmar o indicador de filtro,
   // não caçar cor no arquivo todo.
-  it('indicador de filtro ativo = ActiveFilterChips com chips + count (não banner)', () => {
-    const code = readFileSync(
-      join(ROOT, 'app/(dashboard)/empresas/[id]/pendentes/pendentes-client.tsx'),
-      'utf-8',
-    )
-    expect(code).toMatch(/import .*ActiveFilterChips.* from '@\/components\/shared\/ActiveFilterChips'/)
-    // renderizado com a API de chips de filtro (chips[] + contagem)
-    expect(code).toMatch(/<ActiveFilterChips[\s\S]*?chips=/)
-    expect(code).toMatch(/<ActiveFilterChips[\s\S]*?count=/)
-  })
+    /**
+   * ⚠️⚠️ REAPONTADO EM 15/09 — A TELA MORREU, E A RÉGUA MUDOU DE LADO.
+   *
+   * `/pendentes` deixou de existir: ela era a **segunda fila** sobre o mesmo extrato (a
+   * linha aparecia lá sem categoria E na Conciliação sem vínculo), e virou a **CAIXA DE
+   * ENTRADA**, com duas abas por sentido.
+   *
+   * ⛔ **E o filtro de período NÃO foi realocado, de propósito** — é a régua desta casa
+   * desde 14/09: *"Pendentes é FILA DE TRABALHO e NUNCA ganha mês: esconder pendente antigo
+   * é esconder trabalho, e foi assim que 21 notas ficaram invisíveis"*. A caixa é fila, não
+   * lista; quem navega por período é **Movimentações**, o arquivo. O que a caixa tem no
+   * lugar é o **corte de época**, que é outra coisa: ele diz de quando o dono começou a
+   * conciliar, não esconde o que ele ainda não resolveu.
+   */
+  it('⛔ a caixa de entrada é FILA — e fila não ganha filtro de período', () => {
+    const caixa = readFileSync(join(ROOT, 'components/conciliacao/caixa-de-entrada.tsx'), 'utf-8')
+    expect(caixa).not.toMatch(/DateRangeFilter|useDateRangeFilter/)
+    // ⭐ e o corte de época (que é outra coisa) mora no servidor, não na tela
+    const rota = readFileSync(join(ROOT, 'app/api/conciliacao/caixa/route.ts'), 'utf-8')
+    expect(rota).toContain('conciliarAPartirDe')
+})
 })

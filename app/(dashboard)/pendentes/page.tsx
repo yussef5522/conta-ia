@@ -1,69 +1,36 @@
-// Sprint 4.0.5.b — Pendentes global. Lê empresa do cookie.
+// ⛔⛔⛔ PENDENTES DE CLASSIFICAÇÃO MORREU COMO TELA (15/09/2026).
+//
+// **A ordem do dono, no desenho das 3 estações:** *"PENDENTES DE CLASSIFICAÇÃO MORRE COMO
+// TELA, no MESMO deploy, com realocação completa"* — e a régua da casa desde 14/09: *quando
+// a tela nova assume, a velha morre no mesmo deploy; conviver "por enquanto" é como nasce a
+// página com duas verdades.*
+//
+// ⛔ **POR QUE ELA PRECISAVA MORRER, e não só encolher:** ela era a SEGUNDA fila sobre o
+// mesmo extrato. A linha aparecia lá (sem categoria) **e** na Conciliação (sem vínculo) — a
+// mesma linha em duas filas, que é o invariante *"uma linha, uma estação"* sendo violado
+// pela própria arquitetura das telas.
+//
+// ⭐ **REALOCAÇÃO COMPLETA — nada se perdeu** (o guard de mudança de casa):
+//   · categorizar .................. o menu do sentido, na CAIXA DE ENTRADA
+//   · casar com conta a pagar ...... o mesmo deep-link, agora como ação de SAÍDA
+//   · transferência ................ ação de saída/entrada, levando ao `/parear`
+//   · ignorar ...................... ação dos dois sentidos
+//   · pgto de cartão / empréstimo .. **passaram a EFETIVAR** (eram opções mortas: o
+//     `onChange` só tratava TRANSFER e IGNORAR — medido em 15/09)
+//   · sugestão da IA e regra aprendida ... seguem no import (estação 1), que é onde o
+//     automático mora; o que sobra pro balcão é só o que pede decisão.
+//
+// ⚠️ **REDIRECT, e não uma placa:** aqui não há dois papéis chegando (foi o que salvou a
+// `/estoque/fichas` de virar redirect em 03/09). Quem vinha pra cá queria resolver linha de
+// extrato — e é exatamente isso que a caixa faz, melhor.
 
-import type { Metadata } from 'next'
-import { prisma } from '@/lib/db'
-import { PendentesClient } from '@/app/(dashboard)/empresas/[id]/pendentes/pendentes-client'
+import { redirect } from 'next/navigation'
 import { resolveEmpresaAccess } from '@/lib/auth/resolve-empresa-access'
-import {
-  NoEmpresaSelectedState,
-  NoAccessState,
-} from '@/components/empresa/empty-empresa-state'
-
-export const metadata: Metadata = { title: 'Pendentes de Classificação' }
+import { NoEmpresaSelectedState, NoAccessState } from '@/components/empresa/empty-empresa-state'
 
 export default async function PendentesPage() {
   const access = await resolveEmpresaAccess()
   if (access.kind === 'no-empresa-selected') return <NoEmpresaSelectedState />
-  if (access.kind === 'no-access') return <NoAccessState />
-  if (access.kind === 'forbidden') return <NoAccessState />
-
-  const hojeInicio = new Date()
-  hojeInicio.setUTCHours(0, 0, 0, 0)
-
-  const [categorias, autoClassificadasHoje, regrasAtivas, fornecedoresDetectados, iaUsageHoje] =
-    await Promise.all([
-      prisma.category.findMany({
-        where: { companyId: access.empresaId, isActive: true },
-        orderBy: { name: 'asc' },
-        // Sprint Category-Combobox (29/06/2026): dreGroup pro agrupamento visual
-        select: { id: true, name: true, type: true, color: true, dreGroup: true },
-      }),
-      prisma.transaction.count({
-        where: {
-          bankAccount: { companyId: access.empresaId },
-          classificationSource: 'RULE',
-          updatedAt: { gte: hojeInicio },
-        },
-      }),
-      prisma.aiLearningRule.count({
-        where: { companyId: access.empresaId, isActive: true },
-      }),
-      prisma.supplier.count({
-        where: { companyId: access.empresaId, isActive: true },
-      }),
-      prisma.aiUsageLog.aggregate({
-        where: { companyId: access.empresaId, createdAt: { gte: hojeInicio } },
-        _count: { id: true },
-        _sum: { costCents: true },
-      }),
-    ])
-
-  const claudeEnabled =
-    process.env.AI_CLAUDE_ENABLED !== 'false' && !!process.env.ANTHROPIC_API_KEY
-
-  return (
-    <PendentesClient
-      empresaId={access.empresaId}
-      empresaNome={access.empresa.tradeName ?? access.empresa.name}
-      categorias={categorias}
-      stats={{
-        autoClassificadasHoje,
-        regrasAtivas,
-        fornecedoresDetectados,
-        iaSugestoesHoje: iaUsageHoje._count.id ?? 0,
-        iaCustoCentavosHoje: iaUsageHoje._sum.costCents ?? 0,
-        claudeEnabled,
-      }}
-    />
-  )
+  if (access.kind === 'no-access' || access.kind === 'forbidden') return <NoAccessState />
+  redirect(`/conciliacao?empresaId=${access.empresaId}`)
 }

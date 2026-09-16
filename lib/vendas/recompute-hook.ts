@@ -35,6 +35,8 @@ export type OrigemHook =
   | 'PATCH /api/transacoes/[id]'
   | 'POST /api/transacoes/lote'
   | 'import-ofx/confirm'
+  /** ⭐ o balcão da caixa de entrada (15/09) — o 7º caminho que CRIA venda */
+  | 'balcao'
   | 'conciliacao/reconcile'
   | 'createContaPendente'
   | 'desconhecida'

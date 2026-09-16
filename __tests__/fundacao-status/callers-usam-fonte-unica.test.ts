@@ -53,19 +53,27 @@ describe('Fonte única usada em todos os callers de "pra revisar"', () => {
   }
 })
 
-describe('/pendentes (cliente) NÃO força mais status=PENDING', () => {
-  const code = readFileSync(
-    root('app/(dashboard)/empresas/[id]/pendentes/pendentes-client.tsx'),
-    'utf-8',
-  )
+/**
+ * ⚠️⚠️ REAPONTADO EM 15/09 — A TELA MORREU E A PERGUNTA FICOU MAIS FORTE.
+ *
+ * A régua antiga era *"o cliente dos Pendentes não pode forçar `status=PENDING`"* — porque
+ * `status` é DERIVADO da escada (`categoryId` null ⇒ PENDING), e filtrar por ele congelava
+ * a leitura. Os Pendentes viraram a **CAIXA DE ENTRADA**, e lá a régua é a mesma um degrau
+ * acima: a fila não se define por STATUS **nem por CATEGORIA** — se define por **VÍNCULO
+ * QUE FALTA** (a lição de 07/09: *"ter categoria não quita conta nenhuma"*).
+ */
+describe('a CAIXA não define a fila por status nem por categoria', () => {
+  const caixa = readFileSync(root('lib/conciliacao/fila-de-conciliacao.ts'), 'utf-8')
 
-  it('removeu qs.set(status, PENDING) forçado', () => {
-    // Defensivo: aceita comentário citando "status='PENDING'", mas REJEITA
-    // chamada ativa qs.set('status', 'PENDING') no fluxo do fetchTransacoes.
-    // Pegamos só o bloco do fetchTransacoes (até a chamada fetch).
-    const fetchBlock = code.match(/const fetchTransacoes = useCallback\(async \(\) => \{[\s\S]+?const res = await fetch/)
-    expect(fetchBlock).toBeTruthy()
-    expect(fetchBlock![0]).not.toMatch(/qs\.set\(['"]status['"],\s*['"]PENDING['"]\)/)
+  it('⛔ `LINHA_DISPONIVEL_WHERE` não filtra por categoryId', () => {
+    const bloco = caixa.slice(caixa.indexOf('LINHA_DISPONIVEL_WHERE'), caixa.indexOf('LINHA_DISPONIVEL_WHERE') + 1400)
+    expect(bloco, 'a fila voltou a esquecer a linha assim que ela ganha categoria').not.toMatch(/categoryId:/)
+  })
+
+  it('⭐ quem decide a estação é a derivação única, não um status gravado', () => {
+    const lei = readFileSync(root('lib/conciliacao/caixa-de-entrada.ts'), 'utf-8')
+    expect(lei).toContain('export function estacaoDaLinha')
+    expect(lei).toContain('export function comoFoiResolvida')
   })
 })
 

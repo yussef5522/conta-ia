@@ -274,6 +274,9 @@ ls -1dt "$APP_DIR/${PREFIXO}"* 2>/dev/null | tail -n +$((MANTER + 1)) | while re
   rm -rf "$velho" && echo "  removido build antigo: $(basename "$velho")"
 done
 
+# ⭐ a série de performance (15/09) — uma linha por deploy, pra "sentir" ter régua
+bash "$(dirname "$0")/serie-performance.sh" || true
+
 printf '\n\033[32m✓ DEPLOY OK\033[0m  %s\n' "$NOVO_ID"
 [[ -n "$ANTERIOR" ]] && printf '  rollback:  bash scripts/rollback.sh\n'
 printf '  builds:    %s\n' "$(ls -1dt "$APP_DIR/${PREFIXO}"* 2>/dev/null | wc -l)"

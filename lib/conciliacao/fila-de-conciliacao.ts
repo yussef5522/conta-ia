@@ -74,7 +74,24 @@ export const LINHA_DISPONIVEL_WHERE = {
   isInternalTransfer: false,
   transferGroupId: null,
   ignoredAt: null,
-  type: { not: 'TRANSFER' as const },
+  /**
+   * ⛔⛔⛔ **CRÉDITO NUNCA VÊ A FILA DE CONTAS A PAGAR** — a régua do dono (15/09):
+   * *"crédito não se casa com dívida; o SENTIDO da linha decide o caminho ANTES de
+   * qualquer fila."*
+   *
+   * **O BURACO, MEDIDO EM PROD:** o `not: 'TRANSFER'` filtrava onze coisas e **não
+   * filtrava SENTIDO** — a fila de *"casar com conta a pagar"* tinha **6.555 linhas, das
+   * quais 5.705 eram CRÉDITO (87%)**. O PIX de venda de R$ 308,50 do dono estava ali,
+   * junto de `ANTECIP STONE` e `OP.CREDITO C/GARANTIA` de R$ 28.223,77.
+   *
+   * ⚠️ `'DEBIT'` também exclui `TRANSFER` **por construção** (é o terceiro valor do enum),
+   * então a trava antiga não se perdeu — ficou mais forte. Há teste executando isso.
+   *
+   * ⭐ Os **5 consumidores deste WHERE** são todos do lado de PAGAR (sugestões dos
+   * pendentes, lotes, escolher-na-mão, contas esperando pagamento). Quem serve a ENTRADA é
+   * a rota da CAIXA, que tem consulta própria e traz os dois sentidos.
+   */
+  type: 'DEBIT' as const,
 } as const
 
 export interface ContaEsperandoPagamento {
