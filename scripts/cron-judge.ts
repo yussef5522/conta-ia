@@ -6,6 +6,7 @@
 // Destinatário: JUDGE_ALERT_EMAIL (env). Sem ele, loga que não mandou (não trava).
 
 import { PrismaClient } from '@prisma/client'
+import { expurgarTextosAntigos } from '@/lib/credit-card/quarentena-fatura'
 import { runModuleJudge } from '../lib/loans/run-module-judge'
 import { runAndPersistStockJudge } from '../lib/stock/run-stock-judge'
 import { buildJudgeAlertEmail } from '../lib/loans/judge-alert-email'
@@ -78,6 +79,24 @@ async function main() {
       console.log(`[juiz ${stamp}] e-mail de falha → ${ALERT_TO}: ${r.success ? 'enviado (' + (r.id ?? '') + ')' : r.skipped ? 'PULADO (RESEND ausente)' : 'FALHOU (' + (r.error ?? '?') + ')'}`)
     }
   }
+  /**
+   * ⭐ O EXPURGO DA QUARENTENA (16/09) — e isto é a correção de uma promessa MINHA.
+   *
+   * ⛔ Quando a quarentena nasceu eu escrevi que o texto era expurgado em 12 meses (LGPD,
+   * a mesma régua do `rawOfxBlob`) — e a função ficou com **zero chamadores**, ou seja a
+   * promessa nunca ia acontecer. É a lição do E10 deste doc: *invariante planejado e não
+   * construído é pior que nenhum*, porque cria confiança falsa.
+   *
+   * ⚠️ Fail-soft: higiene de retenção não pode derrubar a rodada do juiz. E o texto é a
+   * ÚNICA coisa que sai — a metadata fica, pra auditoria sem PII.
+   */
+  try {
+    const purgados = await expurgarTextosAntigos(new Date())
+    if (purgados > 0) console.log(`[juiz ${stamp}] quarentena de faturas: ${purgados} texto(s) expurgado(s) (12 meses, LGPD)`)
+  } catch (e) {
+    console.error(`[juiz ${stamp}] expurgo da quarentena falhou (não derruba a rodada):`, (e as Error).message)
+  }
+
   await prisma.$disconnect()
 }
 
