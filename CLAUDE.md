@@ -752,6 +752,45 @@ TELA → 200 · "revisar" ✓ · "sem destino" ✓ · "parece" ✓ · o aviso do
 📋 **FALTA PRA FECHAR O CASO DE HOJE — e é o que só o PDF resolve:** o **V1** (Σ Brasil 11.376,89 × 11.358,89). A fixture que temos aponta a classe (linha em moeda estrangeira), mas **a fatura de hoje é outra**, e o texto dela não existe mais em lugar nenhum. **Da próxima recusa em diante isso não se repete** — a quarentena guarda.
 
 
+### ⛔⛔ "A IA CLASSIFICOU ERRADO EM MASSA" — ERA A IDENTIDADE, NÃO A CLASSIFICAÇÃO (17/09)
+
+**O dono, na tela de revisão:** *"as compras normais do bloco com sinal negativo (NETFLIX, IFD, VIDAU, ULTRAFARMA) vieram como estorno, só 14 de 33 marcadas, e o rodapé diz Compras R$ 0,00 · Total a importar −2.749,91. O sinal negativo ali é convenção DE SEÇÃO desse layout, não estorno."*
+
+**⛔⛔ MEDI ANTES DE MEXER, E O DOCUMENTO CONTRADIZ A LEITURA DELE — as 14 linhas SÃO crédito.** Três totais impressos pelo próprio banco concordam:
+
+```
+Despesas / Débitos no Brasil  11.376,89 = só as POSITIVAS (as 19)
+Pagamentos / Créditos         16.529,64 = pagamento 13.779,73 + 2.749,91 (as 14)
+Saldo da fatura atual          8.626,98 = 13.779,73 − 16.529,64 + 11.376,89
+```
+
+⚠️ **E não existe "seção" pra usar como régua:** dentro do MESMO `HISTÓRICO DE TRANSAÇÕES` do `NR. 0115` convivem as linhas de 24-25/08 **negativas** e as de 02/09 **positivas**, sem nenhum cabeçalho separando. O único sinal que o documento dá é o sinal — e o bloco negativo é estorno de compras do ciclo anterior (uma delas se chama, literalmente, `ESTORNO IOF S/ TRANSAC NO EXTERIOR`; refund carrega o nome do lojista, por isso "NETFLIX" aparece ali).
+
+**⛔ Reclassificar as 14 como compra quebraria os TRÊS totais** e a fatura pararia de fechar — depois de quatro rodadas pra fazer fechar. **Não reclassifiquei**, e é a mesma disciplina de 29/08: *evidência medida não se abandona por hipótese confortável*.
+
+**⭐⭐ MAS O RELATO ERA REAL, E A CAUSA É DA FAMÍLIA MAIS CARA DESTE PROJETO: PREVIEW E CONFIRM DISCORDANDO.**
+
+```
+PREVIEW  computeIdentity({ …, type: 'DEBIT' })                         ← cravado
+CONFIRM  computeIdentity({ …, type: kind === 'ESTORNO' ? 'CREDIT' : … })
+```
+
+Estorno gravado com hash de **CREDIT** nunca casa com o hash de **DEBIT** do preview → **o estorno aparece como "novo" pra sempre**. Medido contra a fatura real, com ela já importada:
+
+| régua | duplicatas detectadas | a tela marcaria |
+|---|---|---|
+| velha (`DEBIT` cravado) | 19 de 33 | **14** ← o "14 de 33" do dono |
+| nova (identidade única) | **33 de 33** | 0 |
+
+E a fatura tem **exatamente 14 estornos** — o que a régua velha deixava escapar. *A classificação estava certa; o que divergia era a identidade.* É o mesmo defeito que custou o import de OFX (a tela dizia "N novas" e a gravação fazia outra coisa), e a cura é a mesma de lá: **uma função que as duas pontas chamam** (`identidadeDaLinha`), com **guard proibindo qualquer das rotas de calcular por conta própria** — foi a cópia que fez a divergência nascer.
+
+**⭐ O RODAPÉ MOSTRAVA COMPRAS · ENCARGOS · TOTAL E ESCONDIA OS ESTORNOS.** Por isso o *"Compras R$ 0,00 · Total −2.749,91"* parecia mágica: o que reduzia o total era invisível. Agora são **quatro** colunas (com `Estornos (−)`) e, quando a soma não bate com a fatura, a tela **diz por quê** (*"a fatura fecha em R$ 8.626,98 · você marcou N de M lançamentos"*). ⚠️ *Número em tela de dinheiro sem régua é pior que ausência.*
+
+⚠️ **E O DEFAULT JÁ MARCAVA TUDO QUE NÃO É DUPLICATA** — não havia o que consertar ali. As 14 apareciam marcadas porque a divergência as escondia da dedup. Com o conserto, **esta** fatura marca 0: ela já está importada.
+
+**REGRA 11 — o `type: 'DEBIT'` reposto no preview: vermelho no guard.**
+
+
 ### ⭐⭐⭐ A FATURA DAS TRÊS RECUSAS FECHOU — E O GOLDEN VEIO DA QUARENTENA (17/09)
 
 **Primeira vez que a régua nova roda inteira: quarentena → perícia → conserto → golden.** O texto é o que o motor leu **em produção** (registro `cmu4xpfv00064z0ci36uz0q8n`, cartão "Carter banrisul"), não um `pdftotext` meu e muito menos uma reconstrução.
