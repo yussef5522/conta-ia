@@ -752,6 +752,38 @@ TELA → 200 · "revisar" ✓ · "sem destino" ✓ · "parece" ✓ · o aviso do
 📋 **FALTA PRA FECHAR O CASO DE HOJE — e é o que só o PDF resolve:** o **V1** (Σ Brasil 11.376,89 × 11.358,89). A fixture que temos aponta a classe (linha em moeda estrangeira), mas **a fatura de hoje é outra**, e o texto dela não existe mais em lugar nenhum. **Da próxima recusa em diante isso não se repete** — a quarentena guarda.
 
 
+### ⭐⭐⭐ A FATURA DAS TRÊS RECUSAS FECHOU — E O GOLDEN VEIO DA QUARENTENA (17/09)
+
+**Primeira vez que a régua nova roda inteira: quarentena → perícia → conserto → golden.** O texto é o que o motor leu **em produção** (registro `cmu4xpfv00064z0ci36uz0q8n`, cartão "Carter banrisul"), não um `pdftotext` meu e muito menos uma reconstrução.
+
+**⭐ A PERÍCIA, contra o texto real — `cutCol = 68`:**
+```
+LIDO 11.358,89 × DECLARADO 11.376,89 · dif −18,00      (reproduzido ao centavo)
+⛔ DESCARTADO  07/09   +18,00 BRASIL  [0123] ANUIDADEINT DIFER 05/12 0123   ← a dif
+⛔ DESCARTADO  07/09   −18,00 ESTORNO [0123] DESC. ANUID. 0123 05/12
+⛔ DESCARTADO  15/09 1.585,81 IOF     [—]    lixo do PAINEL de taxas
+```
+
+**As duas pistas do dono confirmadas no documento:** o bloco do `0123` aparece **2×** (cabeçalho `NR. 0123` na coluna direita da página de lançamentos **e** um bloco próprio com `US$ | R$`), e o par de anuidade mora nas linhas físicas **compartilhadas** com as compras do titular.
+
+**⛔⛔ E "LER A DIREITA INTEIRA" NÃO ERA A CURA** — medido: inventa um **IOF de 1.585,81** colhido da tabela de taxas. *O corte existia por um motivo real; o que faltava era distinguir PAINEL de COLUNA.*
+
+**⭐⭐ A CURA FOI MEDIDA NOS DOIS DOCUMENTOS ANTES DE TROCAR:**
+
+| | fatura real (alvo 11.376,89) | golden PJ de agosto (alvo 13.797,73) |
+|---|---|---|
+| corte fixo (`cutCol`) | ⛔ 11.358,89 | ✅ bate |
+| geometria por BANDAS | ✅ **11.376,89** | ✅ bate, número a número |
+
+**As bandas não são troca de risco, são SUPERCONJUNTO** — então o que era *"a única coisa específica da PJ"* (onde cortar a coluna) **virou nada**, e some a segunda cópia da decisão *"onde a coluna termina"*. Um motor, dois documentos. ⚠️ E o que fez as bandas darem conta foi o trabalho de ontem no PF — a calha enxergando a geometria da TABELA e a apara perguntando se o que ia cortar é painel ou coluna. *O conserto estava no lugar errado; a peça, não.*
+
+**REGRA 11 — o corte fixo reposto: 8 vermelhos**, 4 deles no golden novo.
+
+**⭐ O GOLDEN:** `banrisul-pj-2-portadores.txt` no congelador (10 fixtures / 7 bancos), gerado por `scripts/gerar-fixture-banrisul-pj-2portadores.ts` — anonimização com trocas do **mesmo comprimento** (a geometria é o que está sob teste), preservando as palavras que o parser usa pra decidir, e **o script aborta se qualquer número, o banco reconhecido ou o comprimento de qualquer linha mudar**. ⚠️ O congelador confere só os DECLARADOS, então o teste próprio é que trava a soma das linhas — sem ele o −18,00 voltaria sem ninguém ver. Inclui **dois contrafactuais**: o corte fixo dando 11.358,89 e a direita crua inventando o IOF.
+
+**⛔ A RECONSTRUÇÃO FOI APAGADA** (`banrisul-pf-dois-portadores`), como o dono determinou: *"a reconstrução sai da suíte quando o real entrar"*.
+
+
 ### ⛔⛔⛔ EU CONSERTEI O PARSER ERRADO DURAS RODADAS — A FATURA ENTRA PELA PORTA DA EMPRESA (16/09)
 
 **O dono, na terceira recusa idêntica:** *"mesma dif −18,00 APÓS os consertos, e o número idêntico (11.358,89) prova que a RECONSTRUÇÃO não reproduzia o defeito real."*

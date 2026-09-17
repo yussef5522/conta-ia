@@ -68,6 +68,24 @@ export const GOLDENS: readonly GoldenDeFatura[] = [
     motivo: 'transações à ESQUERDA (corte por coluna) + o par anuidade DESC/INT',
   },
   {
+    /**
+     * ⭐⭐⭐ O PRIMEIRO GOLDEN QUE VEIO DA QUARENTENA (17/09/2026) — e ele nasce da fatura
+     * que recusou TRÊS vezes. O texto é o que o motor leu em PRODUÇÃO (registro
+     * `cmu4xpfv00064z0ci36uz0q8n`), não um `pdftotext` meu e muito menos uma reconstrução.
+     *
+     * ⛔ O que ele trava: a empresa ganhou um **cartão adicional**, o histórico dele mora na
+     * **coluna direita**, e o parser PJ a cortava fora por desenho (`cutCol`). Sumia o
+     * `ANUIDADEINT DIFER 05/12 0123 · +18,00` e a conferência recusava por −18,00 — três
+     * vezes, sempre o mesmo número.
+     */
+    nome: 'Banrisul PJ · setembro/2026 — DOIS portadores',
+    fixture: 'lib/credit-card-pj/deterministic/__tests__/fixtures/banrisul-pj-2-portadores.txt',
+    parser: 'lib/credit-card-pj/deterministic/banrisul-fatura-parser.ts',
+    esperado: { linhas: 33, declarado: 11376.89, fecha: 8626.98 },
+    layout: 'v1',
+    motivo: 'portador ADICIONAL na coluna direita — o corte fixo o jogava fora (dif −18,00)',
+  },
+  {
     nome: 'Caixa PJ · agosto/2026',
     fixture: 'lib/credit-card-pj/deterministic/__tests__/fixtures/caixa-fatura-real.txt',
     parser: 'lib/credit-card-pj/deterministic/caixa-fatura-parser.ts',
