@@ -766,7 +766,15 @@ TELA → 200 · "revisar" ✓ · "sem destino" ✓ · "parece" ✓ · o aviso do
 
 ⭐ **As bordas que fariam a conta torcer, todas travadas:** reenviar a fatura inteira **não conta duas vezes** (a enviada que já existe vale uma) · **estorno já gravado entra com sinal** (senão misto com crédito nunca fecharia) · **pagamento de fatura fica fora** (não é lançamento dela, é a quitação).
 
-**REGRA 11 — o tudo-ou-nada reposto: 2 vermelhos**, um deles reproduzindo a diferença exata de 828,50.
+**⛔⛔⛔ E A MINHA PRIMEIRA CORREÇÃO TROUXE A SEGUNDA RÉGUA DENTRO DELA — o dono pegou na volta seguinte.** A tela pergunta *"esta linha já está no sistema?"* pelo **hash**: a linha é conhecida **onde quer que ela more**. Eu fui buscar as gravadas **pela competência da fatura** — e as 8 do caso real são **parcelas que moram em faturas de jun/jul/ago**. Em `2026-09` a busca achou **ZERO**, e o fechamento voltou a cobrar as novas sozinhas com a mesma diferença de 828,50. ***Duas chaves de partição são duas réguas***, e eu escrevi a segunda dentro do conserto da primeira.
+
+**⭐ A PERGUNTA TEM UMA RESPOSTA SÓ:** o `contentHash` existe no banco — sem competência, sem data, sem o mês de qual fatura. E ela precisa das duas metades:
+- **o validador** parte as linhas por hash (a mesma chave que pinta o selo "já no sistema" na tela);
+- **a tela manda as já-no-sistema JUNTO** — senão o servidor nunca as vê, e nenhuma partição do mundo as encontra. Elas **contam pra fechar e não regravam** (o dedup de sempre pula).
+
+**REGRA 11 — 2 defeitos repostos:** a busca por competência (**3 vermelhos**, um reproduzindo os 2.365,85 × 3.194,35) · a tela voltando a mandar só as marcadas (**1**).
+
+⚠️ E o tudo-ou-nada original segue travado: reposto, dá vermelho igual.
 
 
 ### ⛔⛔ FATURA DA CAIXA — DUAS RÉGUAS NA MESMA TELA (17/09)

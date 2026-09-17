@@ -1,84 +1,114 @@
-// ⛔⛔⛔ IMPORT MISTO — O VALIDADOR APRENDE A PARTIÇÃO (17/09/2026)
+// ⛔⛔⛔ IMPORT MISTO — UMA CHAVE DE PARTIÇÃO: O `contentHash` (17/09/2026)
 //
-// **O dono, na fatura Sicredi:** *"40 linhas, 8 já no sistema (R$ 828,50, em leitura sem
-// checkbox — como a tela de ontem manda), 32 novas marcadas (R$ 2.365,85). Confirmar →
-// 'a soma das linhas 2.365,85 não fecha com o total 3.194,35, diferença 828,50' — a diferença
-// é EXATAMENTE as 8 que a própria tela impediu de marcar."*
+// **O dono, na fatura Sicredi:** *"40 linhas, 8 já no sistema (R$ 828,50), 32 novas marcadas
+// (R$ 2.365,85). Confirmar → 'não fecha, diferença 828,50' — a diferença é EXATAMENTE as 8
+// que a própria tela impediu de marcar."*
 //
-// ⛔⛔ **A TELA APRENDEU E O VALIDADOR FICOU PRA TRÁS.** O preview já dizia a frase certa
-// (*"você marcou 32 de 40, por isso o total é outro"*); o `confirm` continuava exigindo que
-// as ENVIADAS fechassem sozinhas. **Duas réguas, agora entre preview e confirm** — a dupla
-// que já custou o import de OFX inteiro.
+// ⛔⛔ **E A MINHA PRIMEIRA CORREÇÃO TROUXE A SEGUNDA RÉGUA DENTRO DELA.** A tela pergunta
+// *"esta linha já está no sistema?"* pelo **hash** — a linha é conhecida **onde quer que ela
+// more**. Eu fui buscar as gravadas **pela competência da fatura**, e as 8 do caso real são
+// **parcelas que moram em faturas de jun/jul/ago**: em `2026-09` a busca achou **zero** e o
+// fechamento voltou a cobrar as novas sozinhas, com a mesma diferença de 828,50.
 //
-// ⛔ E A DEFESA NÃO AFROUXA: fatura 100% nova não tem nada gravado, `jaNoSistema` é 0, e o
-// fechamento continua exigindo a soma cheia. *Ela não ficou permissiva — aprendeu que a
-// fatura pode chegar em duas partes.*
+// ⭐ *Duas chaves de partição são duas réguas.* A pergunta tem UMA resposta: o hash existe no
+// banco, ponto — sem competência, sem data, sem o mês de qual fatura.
 
 import { describe, it, expect } from 'vitest'
-import { fecharImport } from '@/lib/credit-card-pj/fechamento-do-import'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { fecharImport, type LinhaEnviada } from '@/lib/credit-card-pj/fechamento-do-import'
 
-const novas = (n: number, valor: number) =>
-  Array.from({ length: n }, (_, i) => ({ kind: 'COMPRA_AVISTA' as const, amount: valor, contentHash: `novo-${i}` }))
-const gravadas = (n: number, valor: number, tipo = 'DEBIT') =>
-  Array.from({ length: n }, (_, i) => ({ type: tipo, amount: valor, contentHash: `velho-${i}`, isCardPayment: false }))
+const linha = (hash: string, amount: number, kind: LinhaEnviada['kind'] = 'COMPRA_AVISTA'): LinhaEnviada =>
+  ({ kind, amount, contentHash: hash })
 
-describe('⭐⭐ o caso REAL do dono: 32 novas + 8 já no sistema', () => {
-  // 32 × 73,9328125 = 2.365,85 · 8 × 103,5625 = 828,50
-  const ENVIADAS = novas(32, 2365.85 / 32)
-  const GRAVADAS = gravadas(8, 828.5 / 8)
+/** as 40 linhas da fatura: 32 novas (2.365,85) + 8 que já moram em faturas ANTIGAS (828,50) */
+const NOVAS = Array.from({ length: 32 }, (_, i) => linha(`novo-${i}`, 2365.85 / 32))
+const JA_NO_SISTEMA = Array.from({ length: 8 }, (_, i) => linha(`velho-${i}`, 828.5 / 8))
+const AS_40 = [...NOVAS, ...JA_NO_SISTEMA]
+/** ⭐ o que a dedup por HASH aponta — as 8 estão gravadas, em OUTRAS competências */
+const HASHES_GRAVADOS = new Set(JA_NO_SISTEMA.map((l) => l.contentHash))
 
-  it('⭐⭐ fecha por Σ(novas) + Σ(já no sistema) = 3.194,35', () => {
-    const f = fecharImport(ENVIADAS, GRAVADAS)
+describe('⭐⭐ o caso REAL: 32 novas + 8 que moram em faturas antigas', () => {
+  it('⭐⭐ fecha em 3.194,35 com a partição por hash', () => {
+    const f = fecharImport(AS_40, HASHES_GRAVADOS)
     expect(f.novas).toBe(2365.85)
-    expect(f.jaNoSistema).toBe(828.5)
-    expect(f.net, 'a diferença acusada era exatamente as 8 que a tela impediu de marcar').toBe(3194.35)
+    expect(f.jaNoSistema, 'as 8 vivem em jun/jul/ago — a competência não as acha').toBe(828.5)
+    expect(f.net).toBe(3194.35)
+    expect(f.enviadasDuplicadas).toBe(8)
   })
 
-  it('⛔ a régua ANTIGA (só as enviadas) daria 2.365,85 — a diferença de 828,50 do erro', () => {
-    const f = fecharImport(ENVIADAS, [])
-    expect(f.net).toBe(2365.85)
-    expect(Math.round((3194.35 - f.net) * 100) / 100).toBe(828.5)
-  })
-})
-
-describe('⛔ a defesa continua inteira onde não há partição', () => {
-  it('⭐ fatura 100% nova: nada gravado, fechamento cheio', () => {
-    const f = fecharImport(novas(10, 10), [])
+  /**
+   * ⛔⛔ O CONTRAFACTUAL DO DEFEITO QUE EU CRIEI: buscar por competência devolve conjunto
+   * VAZIO pra estas 8 (elas estão em 2026-06/07/08, não em 2026-09) — e o fechamento volta
+   * a dar exatamente a mensagem que o dono recebeu.
+   */
+  it('⛔ partição vazia (a busca por competência) reproduz o erro: 2.365,85 × 3.194,35', () => {
+    const f = fecharImport(AS_40, new Set())
     expect(f.jaNoSistema).toBe(0)
-    expect(f.net).toBe(100)
-  })
-
-  it('⛔ linha faltando continua NÃO fechando', () => {
-    const f = fecharImport(novas(9, 10), [])
-    expect(f.net).toBe(90) // contra um total de 100 → o confirm recusa
+    expect(f.novas).toBe(3194.35) // ⚠️ e aí ele trata as 8 como NOVAS — o outro lado do mesmo erro
+    const soAsMarcadas = fecharImport(NOVAS, new Set())
+    expect(soAsMarcadas.net).toBe(2365.85)
+    expect(Math.round((3194.35 - soAsMarcadas.net) * 100) / 100).toBe(828.5)
   })
 })
 
-describe('⭐ as bordas que fariam a conta dobrar ou torcer', () => {
-  /** ⚠️ reenviar a fatura inteira: a linha enviada que JÁ existe conta UMA vez */
-  it('⭐ linha enviada que já está gravada não conta duas vezes', () => {
-    const enviada = [{ kind: 'COMPRA_AVISTA' as const, amount: 100, contentHash: 'h1' }]
-    const jaTem = [{ type: 'DEBIT', amount: 100, contentHash: 'h1', isCardPayment: false }]
-    const f = fecharImport(enviada, jaTem)
-    expect(f.net, 'a mesma linha foi contada nos dois lados').toBe(100)
-    expect(f.enviadasDuplicadas).toBe(1)
+describe('⛔ a defesa não afrouxa', () => {
+  it('⭐ fatura 100% nova: nada gravado, fechamento cheio', () => {
+    const f = fecharImport(NOVAS, new Set())
+    expect(f.jaNoSistema).toBe(0)
+    expect(f.net).toBe(2365.85)
   })
 
-  /** ⛔ estorno JÁ GRAVADO subtrai — senão o misto com crédito nunca fecharia */
-  it('⭐ estorno já no sistema entra com sinal', () => {
-    const f = fecharImport(novas(1, 100), [
-      { type: 'CREDIT', amount: 18, contentHash: 'c1', isCardPayment: false },
-    ])
+  it('⛔ linha faltando continua não fechando', () => {
+    const f = fecharImport(NOVAS.slice(0, 31), new Set())
+    expect(f.net).toBeLessThan(2365.85)
+  })
+
+  /** ⭐ reenvio integral: tudo já existe → fecha igual e NADA regrava */
+  it('⭐ reenvio da fatura inteira fecha sem dupla contagem', () => {
+    const f = fecharImport(AS_40, new Set(AS_40.map((l) => l.contentHash)))
+    expect(f.novas).toBe(0)
+    expect(f.jaNoSistema).toBe(3194.35)
+    expect(f.net, 'a mesma linha contada dos dois lados dobraria o total').toBe(3194.35)
+    expect(f.enviadasDuplicadas).toBe(40)
+  })
+})
+
+describe('⭐ os sinais na partição', () => {
+  it('⭐ estorno já no sistema SUBTRAI do lado dele', () => {
+    const c = linha('c1', 18, 'ESTORNO')
+    const f = fecharImport([linha('n1', 100), c], new Set(['c1']))
+    expect(f.novas).toBe(100)
     expect(f.jaNoSistema).toBe(-18)
     expect(f.net).toBe(82)
   })
 
-  /** ⛔ pagamento da fatura não é lançamento dela */
-  it('⭐ pagamento de fatura gravado fica FORA da conta', () => {
-    const f = fecharImport(novas(1, 100), [
-      { type: 'CREDIT', amount: 5000, contentHash: 'pg', isCardPayment: true },
-    ])
-    expect(f.jaNoSistema).toBe(0)
-    expect(f.net).toBe(100)
+  it('⭐ e estorno NOVO subtrai do lado das novas', () => {
+    const f = fecharImport([linha('n1', 100), linha('n2', 18, 'ESTORNO')], new Set())
+    expect(f.novas).toBe(82)
+    expect(f.net).toBe(82)
+  })
+})
+
+describe('⛔ a TELA manda as já-no-sistema junto — senão o servidor nunca as vê', () => {
+  const tela = () =>
+    readFileSync(join(process.cwd(), 'app/(dashboard)/empresas/[id]/cartoes/[cardId]/importar-fatura/page.tsx'), 'utf-8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
+      .replace(/^\s*\/\/.*$/gm, '')
+
+  /**
+   * ⚠️ O servidor particiona pelo hash — mas só do que CHEGA. Mandando apenas as marcadas,
+   * as já-no-sistema não existem pra ele, e o fechamento volta a cobrar as novas sozinhas.
+   */
+  it('⭐ o payload leva as marcadas MAIS as já-no-sistema', () => {
+    const t = tela()
+    expect(t).toMatch(/const jaNoSistema = editableLines\.filter\(\(l\) => l\.isDuplicate/)
+    expect(t).toMatch(/const paraEnviar = \[\.\.\.valid, \.\.\.jaNoSistema\]/)
+    expect(t).toMatch(/lines: paraEnviar\.map/)
+    expect(
+      /lines: valid\.map/.test(t),
+      'voltou a mandar só as marcadas — o misto para de fechar',
+    ).toBe(false)
   })
 })

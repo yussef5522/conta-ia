@@ -28,57 +28,48 @@ export interface LinhaEnviada {
   contentHash: string
 }
 
-/** o que já está gravado NESTA fatura (mesmo cartão, mesma competência) */
-export interface LinhaGravada {
-  type: string
-  amount: number
-  contentHash: string | null
-  isCardPayment: boolean
-}
-
 export interface FechamentoDoImport {
   /** Σ das linhas que vão entrar agora */
   novas: number
-  /** Σ das que já estavam gravadas e NÃO vieram no envio */
+  /** Σ das que a dedup apontou como já gravadas — **onde quer que elas morem** */
   jaNoSistema: number
   /** o que a fatura soma no total — é isto que fecha com o declarado */
   net: number
-  /** quantas das enviadas já existem (vão ser puladas pelo dedup) */
+  /** quantas das enviadas já existem (o dedup vai pular) */
   enviadasDuplicadas: number
 }
 
 /**
- * ⭐⭐ A PARTIÇÃO — **a mesma que a tela mostra**, porque as duas nascem do mesmo
- * `contentHash` (`identidadeDaLinha`). O validador não recalcula "o que é novo" por conta
- * própria: ele pergunta pela mesma chave.
+ * ⭐⭐ A PARTIÇÃO — **uma chave só: o `contentHash`**, a mesma da tela.
  *
- * ⚠️ Uma linha enviada que JÁ está gravada conta **uma vez só** — senão o fechamento
- * dobraria justo no caso em que o dono reenvia a fatura inteira.
+ * ⚠️⚠️ **A 1ª VERSÃO DESTE CONSERTO TINHA A SEGUNDA RÉGUA DENTRO DELE** (17/09): a tela
+ * particiona por hash — a linha é "já no sistema" **onde quer que ela more** —, e eu fui
+ * buscar as gravadas **pela competência da fatura**. As 8 do caso real são parcelas que
+ * entraram em faturas de jun/jul/ago; em `2026-09` o validador achou **zero** e voltou a
+ * exigir o fechamento cheio das novas, com a mesma diferença de 828,50.
  *
- * ⚠️ E pagamento de fatura fica fora: ele não é lançamento da fatura, é a quitação dela.
+ * ⭐ *Duas chaves de partição são duas réguas.* Aqui a pergunta *"esta linha já está no
+ * sistema?"* tem UMA resposta: o hash existe no banco, ponto — sem competência, sem data,
+ * sem cartão de qual mês.
+ *
+ * ⛔ E a defesa não afrouxa: a soma é a das linhas da FATURA (todas), e ela tem que bater com
+ * o total declarado. Fatura 100% nova → `jaNoSistema` 0 e fechamento cheio. Reenvio integral
+ * → tudo em `jaNoSistema`, fecha igual, e **nada regrava**.
  */
 export function fecharImport(
   enviadas: LinhaEnviada[],
-  gravadas: LinhaGravada[],
+  hashesJaGravados: ReadonlySet<string>,
 ): FechamentoDoImport {
-  const hashesEnviados = new Set(enviadas.map((l) => l.contentHash))
+  const soma = (ls: LinhaEnviada[]) =>
+    faturaNetTotal(ls.map((l) => ({ type: tipoDaLinha(l.kind), amount: l.amount, isCardPayment: false }))).net
 
-  const netNovas = faturaNetTotal(
-    enviadas.map((l) => ({ type: tipoDaLinha(l.kind), amount: l.amount, isCardPayment: false })),
-  ).net
-
-  const soDoBanco = gravadas.filter(
-    (t) => !t.isCardPayment && (!t.contentHash || !hashesEnviados.has(t.contentHash)),
-  )
-  const netGravadas = faturaNetTotal(
-    soDoBanco.map((t) => ({ type: t.type, amount: t.amount, isCardPayment: false })),
-  ).net
-
+  const jaTem = enviadas.filter((l) => hashesJaGravados.has(l.contentHash))
+  const novas = enviadas.filter((l) => !hashesJaGravados.has(l.contentHash))
   const round2 = (n: number) => Math.round(n * 100) / 100
   return {
-    novas: round2(netNovas),
-    jaNoSistema: round2(netGravadas),
-    net: round2(netNovas + netGravadas),
-    enviadasDuplicadas: gravadas.filter((t) => t.contentHash && hashesEnviados.has(t.contentHash)).length,
+    novas: round2(soma(novas)),
+    jaNoSistema: round2(soma(jaTem)),
+    net: round2(soma(enviadas)),
+    enviadasDuplicadas: jaTem.length,
   }
 }

@@ -205,18 +205,25 @@ export async function POST(request: NextRequest, { params }: Params) {
    * ⛔ E a defesa NÃO afrouxou: em fatura 100% nova não há nada gravado, `jaNoSistema` é 0, e
    * o fechamento continua exigindo a soma cheia.
    */
+  const incomingHashes = linesWithIdentity.map((li) => li.identity.contentHash)
+
   if (body.totalToPay != null) {
-    const gravadas = invoiceMonth
-      ? await prisma.transaction.findMany({
-          where: { businessCreditCardId: cardId, invoiceMonth },
-          select: { type: true, amount: true, contentHash: true, isCardPayment: true },
-        })
-      : []
+    /**
+     * ⛔⛔ AQUI ESTAVA A SEGUNDA RÉGUA DENTRO DO CONSERTO (17/09): eu buscava as gravadas
+     * **pela competência** (`invoiceMonth`), e a tela particiona **pelo hash**. As
+     * já-no-sistema do caso real são parcelas que moram em faturas de jun/jul/ago — em
+     * `2026-09` a busca achava ZERO e o fechamento voltava a cobrar as novas sozinhas.
+     * **A pergunta é uma só: este hash existe no banco?**
+     */
+    const jaGravadas = await prisma.transaction.findMany({
+      where: { businessCreditCardId: cardId, contentHash: { in: incomingHashes } },
+      select: { contentHash: true },
+    })
     const f = fecharImport(
       linesWithIdentity.map((li) => ({
         kind: li.line.kind, amount: li.line.amount, contentHash: li.identity.contentHash,
       })),
-      gravadas,
+      new Set(jaGravadas.map((g) => g.contentHash).filter((h): h is string => !!h)),
     )
     const diff = Math.round((body.totalToPay - f.net) * 100) / 100
     if (Math.abs(diff) > 0.02) {
@@ -262,8 +269,6 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   try {
     await prisma.$transaction(async (tx) => {
-      const incomingHashes = linesWithIdentity.map((li) => li.identity.contentHash)
-
       // Dedup explicit: tx existentes na conta cartao com mesmo contentHash
       const existingTx = await tx.transaction.findMany({
         where: {

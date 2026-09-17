@@ -294,6 +294,21 @@ export default function ImportarFaturaPage() {
     const valid = selectedLines.filter(
       (l) => l.description.trim() && l.amount > 0 && (!semCatRequired(l) || l.categoryId !== null),
     )
+    /**
+     * ⭐⭐⭐ AS JÁ-NO-SISTEMA VÃO JUNTO (17/09/2026) — e é isto que torna o import misto
+     * possível de gravar.
+     *
+     * ⛔⛔ A tela passou a **impedir de marcar** a linha que já existe (sem checkbox, em
+     * leitura — e está certo), e o `confirm` confere se **a fatura fecha**. Mandando só as
+     * marcadas, a soma chega curta exatamente no valor das que a tela tirou da mão do dono —
+     * o erro que ele viu duas vezes, com a diferença batendo ao centavo.
+     *
+     * ⭐ Elas **contam pra fechar e não regravam**: o servidor as reconhece pelo MESMO
+     * `contentHash` que pintou o selo "já no sistema" e o dedup de sempre as pula. *Uma
+     * chave, as duas pontas* — e por isso não importa em que fatura elas moram.
+     */
+    const jaNoSistema = editableLines.filter((l) => l.isDuplicate && l.kind !== 'IGNORAR')
+    const paraEnviar = [...valid, ...jaNoSistema]
     if (valid.length === 0) {
       toast({
         title: 'Nada pra importar',
@@ -330,7 +345,7 @@ export default function ImportarFaturaPage() {
             totalToPay: previewData.extraction.totalToPay,
             availableLimit: previewData.extraction.availableLimit,
             detectedBank: previewData.extraction.detectedBank,
-            lines: valid.map((l) => ({
+            lines: paraEnviar.map((l) => ({
               date: l.date,
               description: l.description.trim(),
               amount: l.amount,
