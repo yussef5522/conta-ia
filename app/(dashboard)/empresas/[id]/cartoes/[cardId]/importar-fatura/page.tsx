@@ -100,6 +100,14 @@ interface PreviewResponse {
   }
   lines: PreviewLine[]
   categories: CategoryOption[]
+  /** ⭐ o estado "já importada", resumido pelo servidor — a tela não deduz de 33 linhas */
+  jaNoSistema: {
+    duplicatas: number
+    novas: number
+    todasDuplicatas: boolean
+    importadaEm: string | null
+    invoiceMonth: string | null
+  }
   counts: { total: number; compraAvista: number; compraParcelada: number; encargo: number; ignorar: number; duplicatas: number; precisaRevisar: number }
   paymentCandidates: PaymentCandidate[]
 }
@@ -453,6 +461,38 @@ export default function ImportarFaturaPage() {
 
       {step === 'PREVIEW' && previewData && (
         <>
+          {/* ⭐⭐⭐ FATURA JÁ IMPORTADA — O ESTADO PRECISA TER CARA DE ESTADO (17/09/2026).
+              ⛔ Antes, uma fatura 100% duplicada abria IGUAL a um import pendente: tabela
+              inteira, checkbox em tudo, botão "Confirmar e importar 0". O dono *"quase
+              confirmou duas vezes achando que faltava algo"*. ⚠️ A informação existia (selo
+              "duplicata" por linha), mas **ninguém lê 33 selos pra concluir que não há nada
+              a fazer** — quem conclui é a tela. */}
+          {previewData.jaNoSistema.todasDuplicatas && (
+            <Card className="border-emerald-300 bg-emerald-50/70">
+              <CardContent className="py-3 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-start gap-2">
+                  <CheckCircle2 className="h-5 w-5 text-emerald-700 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold text-emerald-900">
+                      Esta fatura já está importada
+                      {previewData.jaNoSistema.importadaEm
+                        ? ` (${fmtDateBR(previewData.jaNoSistema.importadaEm.slice(0, 10))})`
+                        : ''}
+                      {' '}— nada novo pra entrar.
+                    </p>
+                    <p className="text-xs text-emerald-800">
+                      {previewData.jaNoSistema.duplicatas} lançamento(s) já no sistema.
+                    </p>
+                  </div>
+                </div>
+                <Link href={`/empresas/${params.id}/cartoes/${params.cardId}`}>
+                  <Button size="sm" variant="outline" className="border-emerald-400 text-emerald-800">
+                    Ver a fatura no cartão →
+                  </Button>
+                </Link>
+              </CardContent>
+            </Card>
+          )}
           {/* SPRINT R3 — Banner azul prominente: pagamento desta fatura encontrado */}
           {(() => {
             const top = previewData.paymentCandidates[0]
@@ -723,8 +763,17 @@ export default function ImportarFaturaPage() {
                 </p>
               </div>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => selectAll(true)}>Marcar todas</Button>
-                <Button variant="outline" size="sm" onClick={() => selectAll(false)}>Desmarcar</Button>
+                {previewData.jaNoSistema.duplicatas > 0 && (
+                  <span className="text-xs text-muted-foreground mr-1 self-center">
+                    {previewData.jaNoSistema.novas} nova(s) · {previewData.jaNoSistema.duplicatas} já no sistema
+                  </span>
+                )}
+                {previewData.jaNoSistema.novas > 0 && (
+                  <>
+                    <Button variant="outline" size="sm" onClick={() => selectAll(true)}>Marcar todas</Button>
+                    <Button variant="outline" size="sm" onClick={() => selectAll(false)}>Desmarcar</Button>
+                  </>
+                )}
                 <Button variant="outline" size="sm" onClick={addManualLine}>
                   <Plus className="h-4 w-4 mr-1" />
                   Adicionar
@@ -746,7 +795,9 @@ export default function ImportarFaturaPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {editableLines.map((l) => (
+                    {/* ⭐ NOVAS EM CIMA, JÁ-NO-SISTEMA EMBAIXO (caso misto). O que pede
+                        decisão fica onde o olho começa; o que é histórico desce. */}
+                    {[...editableLines].sort((a, b) => Number(a.isDuplicate) - Number(b.isDuplicate)).map((l) => (
                       <EditableRow
                         key={l.index}
                         line={l}
@@ -809,10 +860,13 @@ export default function ImportarFaturaPage() {
           {/* Botões finais */}
           <div className="flex justify-end gap-3">
             <Button variant="outline" onClick={() => router.back()}>Cancelar tudo</Button>
-            <Button onClick={handleConfirm} disabled={selectedLines.length === 0}>
-              <CheckCircle2 className="h-4 w-4 mr-1" />
-              Confirmar e importar {selectedLines.length} {reclassPaymentTxId ? '+ reclassificar pagamento' : ''}
-            </Button>
+            {/* ⛔ "Confirmar e importar 0" é botão que não faz nada fingindo que faz — some. */}
+            {selectedLines.length > 0 && (
+              <Button onClick={handleConfirm}>
+                <CheckCircle2 className="h-4 w-4 mr-1" />
+                Confirmar e importar {selectedLines.length} {reclassPaymentTxId ? '+ reclassificar pagamento' : ''}
+              </Button>
+            )}
           </div>
         </>
       )}
@@ -876,10 +930,18 @@ function EditableRow({
   onRemove: () => void
 }) {
   const isIgnored = line.kind === 'IGNORAR'
-  const rowClass = !line.selected || isIgnored
-    ? 'opacity-50'
-    : line.isDuplicate
-      ? 'bg-amber-50/50'
+  /**
+   * ⭐⭐ LINHA JÁ NO SISTEMA É LEITURA, NÃO TRABALHO (17/09/2026).
+   *
+   * ⛔ Ela vinha com checkbox, seletor de tipo e de categoria — tudo editável — pra um
+   * lançamento que **não vai entrar**. Oferecer gesto que não tem efeito é a mesma família
+   * do botão "Confirmar e importar 0": a tela promete uma coisa e faz outra (nenhuma).
+   */
+  const soLeitura = line.isDuplicate
+  const rowClass = soLeitura
+    ? 'bg-slate-50 text-muted-foreground'
+    : !line.selected || isIgnored
+      ? 'opacity-50'
       : line.needsReview
         ? 'bg-yellow-50/40'
         : ''
@@ -887,7 +949,11 @@ function EditableRow({
   return (
     <tr className={`border-b last:border-0 ${rowClass}`}>
       <td className="py-2">
-        <input type="checkbox" checked={line.selected} onChange={onToggleSelect} disabled={isIgnored} className="h-4 w-4" />
+        {soLeitura ? (
+          <span className="text-[10px] text-muted-foreground" title="já no sistema">✓</span>
+        ) : (
+          <input type="checkbox" checked={line.selected} onChange={onToggleSelect} disabled={isIgnored} className="h-4 w-4" />
+        )}
       </td>
       <td className="py-2 pr-2">
         {line.isEditing ? (
@@ -928,8 +994,8 @@ function EditableRow({
               </Badge>
             )}
             {line.isDuplicate && (
-              <Badge variant="outline" className="text-[9px] bg-amber-50 text-amber-700 border-amber-200 py-0">
-                duplicata
+              <Badge variant="outline" className="text-[9px] bg-slate-100 text-slate-600 border-slate-300 py-0">
+                já no sistema
               </Badge>
             )}
             {line.needsReview && (
@@ -946,6 +1012,11 @@ function EditableRow({
         )}
       </td>
       <td className="py-2 pr-2">
+        {soLeitura ? (
+          <span className="text-[10px]">
+            {line.kind === 'ESTORNO' ? 'estorno (crédito)' : line.kind === 'ENCARGO_FINANCEIRO' ? 'encargo' : 'compra'}
+          </span>
+        ) : (
         <select
           value={line.kind}
           onChange={(e) => onUpdate({ kind: e.target.value as LineKind, selected: e.target.value !== 'IGNORAR' })}
@@ -957,9 +1028,12 @@ function EditableRow({
           <option value="ESTORNO">Estorno (crédito)</option>
           <option value="IGNORAR">Ignorar</option>
         </select>
+        )}
       </td>
       <td className="py-2 pr-2">
-        {isIgnored ? (
+        {soLeitura ? (
+          <span className="text-[10px] text-muted-foreground">—</span>
+        ) : isIgnored ? (
           <span className="text-[10px] text-muted-foreground">—</span>
         ) : (
           <div className="space-y-0.5">

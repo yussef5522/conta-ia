@@ -752,6 +752,22 @@ TELA → 200 · "revisar" ✓ · "sem destino" ✓ · "parece" ✓ · o aviso do
 📋 **FALTA PRA FECHAR O CASO DE HOJE — e é o que só o PDF resolve:** o **V1** (Σ Brasil 11.376,89 × 11.358,89). A fixture que temos aponta a classe (linha em moeda estrangeira), mas **a fatura de hoje é outra**, e o texto dela não existe mais em lugar nenhum. **Da próxima recusa em diante isso não se repete** — a quarentena guarda.
 
 
+### ⛔⛔ ESTADO RESOLVIDO DISFARÇADO DE TRABALHO PENDENTE (17/09)
+
+**O dono:** *"quando TODAS as linhas são duplicata, a tela continua parecendo um import pendente — tabela inteira, checkboxes, 'Confirmar e importar 0', nota pequena no rodapé. **Eu quase confirmei duas vezes achando que faltava algo.**"*
+
+**⭐⭐ E A INFORMAÇÃO JÁ ESTAVA LÁ — cada linha vinha com o selo "duplicata".** Não adiantou: ***ninguém lê 33 selos pra concluir que não há nada a fazer.*** Quem conclui é a TELA. É o *"erro disfarçado de vazio"* de cabeça pra baixo — aqui é **estado resolvido com cara de trabalho pendente**, e o custo é o dono gravar duas vezes.
+
+**O QUE MUDOU:**
+- **Banner no topo** quando tudo é duplicata: *"Esta fatura já está importada (DD/MM) — nada novo pra entrar"* + **"Ver a fatura no cartão →"**. ⛔ Banner sem saída é só um aviso; o link é o que fecha o gesto.
+- **Linha já-no-sistema vira LEITURA** — sem checkbox, cinza, selo *"já no sistema"*, tipo e categoria como texto. ⚠️ Oferecer seletor pra um lançamento que **não vai entrar** é a mesma mentira do botão que não faz nada.
+- **⛔ O botão SOME quando não há linha marcada — `disabled` não basta.** Botão desabilitado continua dizendo *"é aqui que se conclui"*, e foi lendo *"Confirmar e importar 0"* que ele quase confirmou de novo.
+- **Caso misto:** novas em cima (com checkbox), já-no-sistema embaixo, e o contador diz **"N nova(s) · M já no sistema"**.
+- ⭐ **Quem decide o estado é a ROTA** (`jaNoSistema.todasDuplicatas`), não a tela varrendo linhas — senão nasce a segunda régua e ela diverge do `isDuplicate` no primeiro caso de borda.
+
+**REGRA 11 — 3 defeitos repostos:** o botão voltando a `disabled` (**1 vermelho**) · o checkbox incondicional (**1**) · o banner apagado (**2**). O guard tem **auto-teste do detector** contra a tela antiga, senão passaria por cegueira — já aconteceu três vezes nesta casa.
+
+
 ### ⛔⛔ "A IA CLASSIFICOU ERRADO EM MASSA" — ERA A IDENTIDADE, NÃO A CLASSIFICAÇÃO (17/09)
 
 **O dono, na tela de revisão:** *"as compras normais do bloco com sinal negativo (NETFLIX, IFD, VIDAU, ULTRAFARMA) vieram como estorno, só 14 de 33 marcadas, e o rodapé diz Compras R$ 0,00 · Total a importar −2.749,91. O sinal negativo ali é convenção DE SEÇÃO desse layout, não estorno."*

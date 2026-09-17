@@ -152,16 +152,31 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   // Carrega tx existentes da MESMA conta cartao com contentHash batendo
   const existingHashes = new Set<string>()
+  /**
+   * ⭐⭐ O ESTADO "JÁ IMPORTADA" PRECISA CHEGAR NA TELA (17/09/2026).
+   *
+   * ⛔ Sem isto a tela de uma fatura inteiramente duplicada continuava com **cara de import
+   * pendente** — tabela completa, checkbox em tudo, botão *"Confirmar e importar 0"* — e o
+   * dono *"quase confirmou duas vezes achando que faltava algo"*. ⚠️ A informação existia
+   * (as linhas vinham `isDuplicate`), mas espalhada por 33 linhas: **ninguém lê 33 selos
+   * pra concluir "não tem nada a fazer aqui"**. Quem conclui é a tela.
+   */
+  const jaNoSistema: { importadaEm: Date | null; invoiceMonth: string | null } = {
+    importadaEm: null, invoiceMonth: null,
+  }
   if (lineHashes.length > 0) {
     const dups = await prisma.transaction.findMany({
       where: {
         businessCreditCardId: cardId,
         contentHash: { in: lineHashes },
       },
-      select: { contentHash: true },
+      // ⭐ a data e o mês vêm junto: a tela precisa dizer QUANDO entrou e pra ONDE levar
+      select: { contentHash: true, createdAt: true, invoiceMonth: true },
     })
     for (const d of dups) {
       if (d.contentHash) existingHashes.add(d.contentHash)
+      if (!jaNoSistema.importadaEm || d.createdAt < jaNoSistema.importadaEm) jaNoSistema.importadaEm = d.createdAt
+      if (!jaNoSistema.invoiceMonth && d.invoiceMonth) jaNoSistema.invoiceMonth = d.invoiceMonth
     }
   }
 
@@ -283,6 +298,19 @@ export async function POST(request: NextRequest, { params }: Params) {
       }
     }),
     categories,
+    /**
+     * ⭐ O RESUMO DO "JÁ ESTÁ LÁ" — um lugar só, pra tela não ter que deduzir de 33 linhas.
+     * ⚠️ `todasDuplicatas` é a pergunta que muda a CARA da tela; as duas contagens são o que
+     * o caso misto precisa mostrar ("N novas · M já no sistema").
+     */
+    jaNoSistema: {
+      duplicatas: extraction.lines.filter((_, i) => existingHashes.has(lineHashes[i])).length,
+      novas: extraction.lines.filter((_, i) => !existingHashes.has(lineHashes[i])).length,
+      todasDuplicatas: extraction.lines.length > 0
+        && extraction.lines.every((_, i) => existingHashes.has(lineHashes[i])),
+      importadaEm: jaNoSistema.importadaEm ? jaNoSistema.importadaEm.toISOString() : null,
+      invoiceMonth: jaNoSistema.invoiceMonth,
+    },
     counts: {
       total: extraction.lines.length,
       compraAvista: extraction.lines.filter((l) => l.suggestedKind === 'COMPRA_AVISTA').length,
