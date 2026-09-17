@@ -12,7 +12,7 @@ import { prisma } from '@/lib/db'
 import { createOfxImportRecord } from '@/lib/ofx/persist-import'
 import { checkCreditCardPjFlag } from '@/lib/credit-card-pj/feature-flag'
 import { faturaNetTotal } from '@/lib/credit-card-pj/fatura-net-total'
-import { computeIdentity } from '@/lib/import-identity/compute-identity'
+import { identidadeDaLinha, tipoDaLinha } from '@/lib/credit-card-pj/identidade-da-linha'
 
 interface Params { params: Promise<{ id: string; cardId: string }> }
 
@@ -180,7 +180,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     // Total pela fn ÚNICA (faturaNetTotal), não recalculando na mão (REGRA 4 —
     // era o 6º lugar somando DEBIT−CREDIT). ESTORNO→CREDIT (subtrai); resto→DEBIT.
     const netFatura = faturaNetTotal(
-      body.lines.map((l) => ({ type: l.kind === 'ESTORNO' ? 'CREDIT' : 'DEBIT', amount: l.amount, isCardPayment: false })),
+      body.lines.map((l) => ({ type: tipoDaLinha(l.kind), amount: l.amount, isCardPayment: false })),
     ).net
     const diff = Math.round((body.totalToPay - netFatura) * 100) / 100
     if (Math.abs(diff) > 0.02) {
@@ -199,14 +199,8 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   // Computa identidades pra dedup. ESTORNO é CREDIT (não colide com um débito de mesmo valor).
   const linesWithIdentity = body.lines.map((line) => {
-    const identity = computeIdentity({
-      accountId: `card:${cardId}`,
-      fitid: null,
-      date: line.date,
-      amount: line.amount,
-      type: line.kind === 'ESTORNO' ? 'CREDIT' : 'DEBIT',
-      memo: line.description,
-    })
+    // ⭐ a MESMA conta do preview — ver `identidadeDaLinha` (17/09)
+    const identity = { contentHash: identidadeDaLinha(cardId, { date: line.date, description: line.description, amount: line.amount, kind: line.kind }) }
     return { line, identity }
   })
 
@@ -273,7 +267,7 @@ export async function POST(request: NextRequest, { params }: Params) {
               description: line.description,
               amount: line.amount,
               // ESTORNO = crédito no cartão (devolução) → reduz a despesa; o resto é compra/encargo.
-              type: line.kind === 'ESTORNO' ? 'CREDIT' : 'DEBIT',
+              type: tipoDaLinha(line.kind),
               status: 'RECONCILED',
               origin: 'CREDIT_CARD_PDF',
               externalId: null,

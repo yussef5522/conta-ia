@@ -763,9 +763,15 @@ export default function ImportarFaturaPage() {
             </CardContent>
           </Card>
 
-          {/* Resumo do que vai entrar */}
+          {/* ⭐⭐ O RODAPÉ QUE FECHA COM O CABEÇALHO DA FATURA (17/09/2026).
+              ⛔ Ele mostrava Compras · Encargos · Total e **escondia os ESTORNOS** — então,
+              quando a seleção era só de crédito, o dono lia "Compras R$ 0,00 · Total a
+              importar −2.749,91" e o número negativo parecia mágica. ⚠️ Estorno REDUZ o
+              total; se ele reduz, ele aparece. E quando a soma não bate com o que a fatura
+              declara, a tela DIZ o porquê em vez de deixar a diferença no ar — *número em
+              tela de dinheiro sem régua é pior que ausência*. */}
           <Card className="bg-slate-50/50">
-            <CardContent className="py-3 grid grid-cols-3 gap-4 text-sm">
+            <CardContent className="py-3 grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
               <div>
                 <p className="text-xs text-muted-foreground">Compras</p>
                 <p className="font-semibold tabular-nums">{formatBRL(totalCompras)}</p>
@@ -775,10 +781,29 @@ export default function ImportarFaturaPage() {
                 <p className="font-semibold tabular-nums">{formatBRL(totalEncargos)}</p>
               </div>
               <div>
+                <p className="text-xs text-muted-foreground">Estornos (−)</p>
+                <p className="font-semibold tabular-nums text-emerald-700">{formatBRL(totalEstornos)}</p>
+              </div>
+              <div>
                 <p className="text-xs text-muted-foreground">Total a importar</p>
                 <p className="font-semibold tabular-nums text-primary">{formatBRL(totalConfirmar)}</p>
               </div>
             </CardContent>
+            {previewData.extraction.totalToPay != null && (
+              <CardContent className="pb-3 pt-0 text-xs text-muted-foreground">
+                {Math.abs(totalConfirmar - previewData.extraction.totalToPay) <= 0.02 ? (
+                  <span className="text-emerald-700">
+                    ✓ bate com a fatura: {formatBRL(previewData.extraction.totalToPay)}
+                  </span>
+                ) : (
+                  <span>
+                    a fatura fecha em <strong>{formatBRL(previewData.extraction.totalToPay)}</strong>
+                    {' '}· você marcou {selectedLines.length} de {editableLines.filter((l) => l.kind !== 'IGNORAR').length} lançamentos,
+                    {' '}por isso o total acima é outro
+                  </span>
+                )}
+              </CardContent>
+            )}
           </Card>
 
           {/* Botões finais */}

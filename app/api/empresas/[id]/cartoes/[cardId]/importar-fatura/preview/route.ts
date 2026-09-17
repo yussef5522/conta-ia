@@ -12,7 +12,7 @@ import { CreditCardPjExtractError } from '@/lib/credit-card-pj/types'
 import { checkInvoiceTotals } from '@/lib/credit-card-pj/totals-check'
 import { suggestCategoriesForInvoiceLines } from '@/lib/credit-card-pj/suggest-category'
 import { getOrCreateCardWithdrawalCategory } from '@/lib/credit-card-pj/card-withdrawal-category'
-import { computeIdentity } from '@/lib/import-identity/compute-identity'
+import { identidadeDaLinha } from '@/lib/credit-card-pj/identidade-da-linha'
 import { findCardPaymentCandidatesInBank } from '@/lib/credit-card-pj/queries'
 import { guardarNaQuarentena } from '@/lib/credit-card/quarentena-fatura'
 
@@ -138,17 +138,17 @@ export async function POST(request: NextRequest, { params }: Params) {
   // Dedup: pra cada linha que ENTRA (nao IGNORAR), calcula identity contra
   // o "ledger" da conta cartao. Como cartao nao tem fitidKey, dedup eh
   // por contentHash (cross-format) usando businessCreditCardId como scope.
-  const lineHashes = extraction.lines.map((line) => {
-    const id = computeIdentity({
-      accountId: `card:${cardId}`,
-      fitid: null,
+  // ⛔⛔ AQUI MORAVA `type: 'DEBIT'` CRAVADO (17/09) — e o confirm usava o tipo de verdade.
+  // Estorno gravado como CREDIT nunca casava com o hash DEBIT do preview: a tela dizia
+  // "novo" pro que já estava gravado. Agora a conta é UMA (`identidadeDaLinha`).
+  const lineHashes = extraction.lines.map((line) =>
+    identidadeDaLinha(cardId, {
       date: line.date,
+      description: line.description,
       amount: line.amount,
-      type: 'DEBIT',
-      memo: line.description,
-    })
-    return id.contentHash
-  })
+      kind: line.suggestedKind,
+    }),
+  )
 
   // Carrega tx existentes da MESMA conta cartao com contentHash batendo
   const existingHashes = new Set<string>()
