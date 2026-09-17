@@ -39,7 +39,9 @@ interface DashboardData {
     type: string
     installmentNumber: number | null
     installmentTotal: number | null
+    categoryId: string | null
     categoryName: string | null
+    suggestedCategoryId: string | null
     isCardPayment: boolean
   }>
   spendByCategory: Array<{
@@ -84,6 +86,17 @@ export default function CartaoDashboardPage() {
   const [savingTreatment, setSavingTreatment] = useState(false)
   const [reviewQueue, setReviewQueue] = useState<{ count: number; sum: number; ids: string[] } | null>(null)
   const [expenseCats, setExpenseCats] = useState<Array<{ id: string; name: string }>>([])
+  /**
+   * ⭐⭐ CATEGORIZAR NA TELA DA FATURA (17/09/2026) — *"não tem como categorizar"*, e o dono
+   * chamou pelo nome: **porta sem maçaneta**. As 33 linhas entraram sem categoria (é decisão
+   * dele) e não havia onde decidir.
+   *
+   * ⚠️ REGRA 4: grava pelo **`/despesas/recategorizar`**, a MESMA porta que o "mover em lote"
+   * desta tela já usava — inclusive pra UMA linha. Um segundo caminho de escrita aqui seria
+   * a doença que este projeto mais paga.
+   */
+  const [marcadas, setMarcadas] = useState<Set<string>>(new Set())
+  const [salvando, setSalvando] = useState(false)
   const [batchTarget, setBatchTarget] = useState('')
   const [movingBatch, setMovingBatch] = useState(false)
 
@@ -105,6 +118,40 @@ export default function CartaoDashboardPage() {
       .catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.id, params.cardId])
+
+  function alternar(id: string) {
+    setMarcadas((prev) => {
+      const s = new Set(prev)
+      if (s.has(id)) s.delete(id); else s.add(id)
+      return s
+    })
+  }
+
+  async function categorizar(ids: string[], categoriaId: string | null) {
+    // ⛔ "sem categoria" não é um destino: o endpoint exige categoria de verdade.
+    if (!categoriaId || ids.length === 0) return
+    setSalvando(true)
+    try {
+      const resp = await fetch(`/api/empresas/${params.id}/despesas/recategorizar`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ transactionIds: ids, novaCategoriaId: categoriaId }),
+      })
+      if (!resp.ok) {
+        const j = await resp.json().catch(() => ({}))
+        toast({ title: 'Não consegui categorizar', description: j.erro ?? 'tente de novo', variant: 'destructive' })
+        return
+      }
+      const nome = expenseCats.find((c) => c.id === categoriaId)?.name ?? 'categoria'
+      toast({ title: `${ids.length} lançamento(s) em “${nome}”` })
+      setMarcadas(new Set())
+      loadReviewQueue()
+      reload()
+    } finally {
+      setSalvando(false)
+    }
+  }
 
   async function moverLote() {
     if (!batchTarget || !reviewQueue?.ids.length) return
@@ -255,6 +302,10 @@ export default function CartaoDashboardPage() {
   }
 
   const { card, monthTransactions, spendByCategory } = data
+  const linhasDaFatura = monthTransactions.filter((t) => !t.isCardPayment)
+  // ⭐ a conta que o cabeçalho da fatura faz: débitos menos estornos
+  const somaDebitos = linhasDaFatura.filter((t) => t.type !== 'CREDIT').reduce((a, t) => a + t.amount, 0)
+  const somaEstornos = linhasDaFatura.filter((t) => t.type === 'CREDIT').reduce((a, t) => a + t.amount, 0)
   const limiteUsado = card.monthSpend
   const limiteDisp = Math.max(0, card.creditLimit - limiteUsado)
   const purchasesCount = monthTransactions.filter((t) => !t.isCardPayment).length
@@ -608,10 +659,18 @@ export default function CartaoDashboardPage() {
 
         {/* Recent transactions */}
         <Card className="lg:col-span-2 rounded-xl border-border/60">
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
             <CardTitle className="text-base">
-              Compras da fatura {data.currentInvoiceMonth ? fmtInvoiceLabel(data.currentInvoiceMonth) : ''}
+              Lançamentos da fatura {data.currentInvoiceMonth ? fmtInvoiceLabel(data.currentInvoiceMonth) : ''}
             </CardTitle>
+            {/* ⭐⭐ O TOTAL COM A CONTA À VISTA — débitos menos estornos. Sem ele, uma lista
+                com 14 créditos parece somar muito mais do que a fatura cobra. */}
+            {linhasDaFatura.length > 0 && (
+              <p className="text-xs text-muted-foreground tabular-nums">
+                {formatBRL(somaDebitos)} − {formatBRL(somaEstornos)} ={' '}
+                <span className="font-semibold text-foreground">{formatBRL(somaDebitos - somaEstornos)}</span>
+              </p>
+            )}
           </CardHeader>
           <CardContent>
             {monthTransactions.length === 0 ? (
@@ -620,14 +679,49 @@ export default function CartaoDashboardPage() {
               </p>
             ) : (
               <div className="space-y-0">
-                {monthTransactions.filter((t) => !t.isCardPayment).map((t) => (
+                {/* ⭐⭐ CATEGORIZAR EM MASSA — as 15 MERCADOLIVRE de uma vez.
+                    ⚠️ REGRA 4: grava pelo `/api/transacoes/lote`, a MESMA porta que o
+                    financeiro já usa (e que dispara o gatilho de vendas). Nenhum caminho
+                    de escrita novo nasce aqui. */}
+                {marcadas.size > 0 && (
+                  <div className="sticky top-0 z-10 -mx-2 mb-1 flex flex-wrap items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-2 py-2">
+                    <span className="text-xs font-medium">{marcadas.size} selecionada(s)</span>
+                    <select
+                      className="h-8 flex-1 min-w-[160px] rounded border px-1 text-xs"
+                      value=""
+                      onChange={(e) => e.target.value && categorizar([...marcadas], e.target.value)}
+                      disabled={salvando}
+                    >
+                      <option value="">— categorizar as {marcadas.size} como… —</option>
+                      {expenseCats.map((c) => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                    <Button size="sm" variant="ghost" onClick={() => setMarcadas(new Set())}>limpar</Button>
+                  </div>
+                )}
+                {linhasDaFatura.map((t) => {
+                  const credito = t.type === 'CREDIT'
+                  return (
                   <div
                     key={t.id}
-                    className="flex items-center justify-between py-2.5 border-t border-border first:border-0 text-sm gap-3"
+                    className="flex items-start justify-between py-2.5 border-t border-border first:border-0 text-sm gap-3"
                   >
+                    <input
+                      type="checkbox"
+                      className="mt-1 h-4 w-4 shrink-0"
+                      checked={marcadas.has(t.id)}
+                      onChange={() => alternar(t.id)}
+                      aria-label={`selecionar ${t.description}`}
+                    />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="truncate">{t.description}</span>
+                        {credito && (
+                          <Badge variant="outline" className="text-[10px] py-0 font-normal bg-emerald-50 text-emerald-700 border-emerald-200">
+                            estorno (crédito)
+                          </Badge>
+                        )}
                         {t.installmentNumber && t.installmentTotal && (
                           <Badge
                             variant="outline"
@@ -637,15 +731,40 @@ export default function CartaoDashboardPage() {
                           </Badge>
                         )}
                       </div>
-                      <p className="text-[11px] text-muted-foreground mt-0.5">
-                        {fmtDateBR(t.date)} {t.categoryName ? `· ${t.categoryName}` : ''}
-                      </p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">{fmtDateBR(t.date)}</p>
+                      {/* ⭐ a categoria é editável ALI — era o gesto que não existia */}
+                      <select
+                        className={`mt-1 h-7 w-full max-w-[260px] rounded border px-1 text-[11px] ${
+                          t.categoryId ? '' : 'border-amber-400 bg-amber-50/40'
+                        }`}
+                        value={t.categoryId ?? ''}
+                        onChange={(e) => categorizar([t.id], e.target.value || null)}
+                        disabled={salvando}
+                      >
+                        <option value="">— sem categoria —</option>
+                        {expenseCats.map((c) => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                      </select>
+                      {!t.categoryId && t.suggestedCategoryId && (
+                        <button
+                          type="button"
+                          className="mt-0.5 block text-[10px] text-primary hover:underline"
+                          onClick={() => categorizar([t.id], t.suggestedCategoryId!)}
+                        >
+                          🧠 usar “{expenseCats.find((c) => c.id === t.suggestedCategoryId)?.name}” (regra aprendida)
+                        </button>
+                      )}
                     </div>
-                    <span className="tabular-nums font-medium text-foreground">
-                      {formatBRL(t.amount)}
+                    {/* ⭐⭐ ESTORNO É CRÉDITO: sai com − e em verde. O dado sempre esteve
+                        certo (amount positivo + type CREDIT, a convenção da casa); quem
+                        mentia era a tela, que imprimia tudo positivo. */}
+                    <span className={`tabular-nums font-medium shrink-0 ${credito ? 'text-emerald-700' : 'text-foreground'}`}>
+                      {credito ? `− ${formatBRL(t.amount)}` : formatBRL(t.amount)}
                     </span>
                   </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </CardContent>

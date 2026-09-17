@@ -3,6 +3,8 @@
 import { prisma } from '@/lib/db'
 import { invoiceMonthIsPaid } from './invoice-paid'
 import { faturaNetTotal, signedFaturaAmount } from './fatura-net-total'
+import { loadActiveRules, buildRuleIndex } from '@/lib/ai-categorizer/apply'
+import { predictCategory } from '@/lib/ai-categorizer/predict'
 
 export interface CardCardSummary {
   id: string
@@ -146,7 +148,10 @@ export interface CardDashboardData {
     type: string
     installmentNumber: number | null
     installmentTotal: number | null
+    categoryId: string | null
     categoryName: string | null
+    /** ⭐ regra APRENDIDA do dono — só pra linha sem categoria; sugere, nunca aplica */
+    suggestedCategoryId: string | null
     isCardPayment: boolean
   }>
   /** Gasto por categoria (Top N) no mes corrente */
@@ -241,6 +246,24 @@ export async function getCardDashboard(
         include: { category: { select: { name: true } } },
       })
     : []
+
+  /**
+   * ⭐⭐ A PORTA DE CATEGORIZAR NASCE AQUI (17/09/2026) — *"a lista das compras não oferece
+   * categoria por linha"*, e o dono chamou pelo nome: **porta sem maçaneta**.
+   *
+   * ⚠️ A sugestão é a **regra APRENDIDA** dele (`predictCategory`), determinística e barata
+   * — nada de chamada de IA numa rota de dashboard. ⛔ E ela SUGERE: quem aplica é o clique.
+   * *Categoria é decisão do dono* — a régua da casa desde 17/08.
+   */
+  const sugestaoPorTx = new Map<string, string>()
+  const semCategoria = txs.filter((t) => !t.categoryId && !t.isCardPayment)
+  if (semCategoria.length > 0) {
+    const ruleIndex = buildRuleIndex(card.companyId, await loadActiveRules(card.companyId))
+    for (const t of semCategoria) {
+      const pred = predictCategory({ description: t.description }, ruleIndex)
+      if (pred?.categoryId && pred.confidence >= 0.6) sugestaoPorTx.set(t.id, pred.categoryId)
+    }
+  }
 
   // Por categoria — COM SINAL (estorno CREDIT subtrai; antes somava positivo e
   // inflava). Mesma fonte do total: signedFaturaAmount.
@@ -361,7 +384,9 @@ export async function getCardDashboard(
       type: t.type,
       installmentNumber: t.installmentNumber,
       installmentTotal: t.installmentTotal,
+      categoryId: t.categoryId,
       categoryName: t.category?.name ?? null,
+      suggestedCategoryId: sugestaoPorTx.get(t.id) ?? null,
       isCardPayment: t.isCardPayment,
     })),
     spendByCategory,

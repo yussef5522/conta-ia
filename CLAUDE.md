@@ -752,6 +752,31 @@ TELA → 200 · "revisar" ✓ · "sem destino" ✓ · "parece" ✓ · o aviso do
 📋 **FALTA PRA FECHAR O CASO DE HOJE — e é o que só o PDF resolve:** o **V1** (Σ Brasil 11.376,89 × 11.358,89). A fixture que temos aponta a classe (linha em moeda estrangeira), mas **a fatura de hoje é outra**, e o texto dela não existe mais em lugar nenhum. **Da próxima recusa em diante isso não se repete** — a quarentena guarda.
 
 
+### ⛔⛔ A TELA DA FATURA — O SINAL, A MAÇANETA E O TOGGLE (17/09)
+
+**⭐⭐ O ITEM 1 ERA DE VALOR, E A MEDIÇÃO O REBAIXOU DE CIRURGIA PRA DEPLOY.** O dono viu os 14 estornos listados POSITIVOS (`NETFLIX R$ 85,70`, `VIDAU R$ 1.052,42`) e perguntou o certo: *"perdeu no GRAVAR ou só na EXIBIÇÃO? A soma por categoria vai errar por 5.499,82 se o dado estiver positivo."*
+
+**Medido antes de tocar em qualquer coisa:**
+```
+amount NEGATIVO no banco: 0   (a casa grava amount POSITIVO; o sinal é o type)
+type=CREDIT: 14 · type=DEBIT: 19
+Σ DEBIT 11.376,89 − Σ CREDIT 2.749,91 = 8.626,98
+```
+⭐ **O dado está certo** — é a convenção do módulo desde a Fase 2 — **e a agregação por categoria já usava `signedFaturaAmount`** (REGRA 6, 14/08), então **o erro de 5.499,82 que ele temia não existia**. O defeito era a linha imprimindo `formatBRL(amount)` sem olhar o tipo. ⚠️ **Nenhuma cirurgia.** *A diferença entre "o número está errado no banco" e "errado na tela" é a diferença entre mexer em dado real e um deploy* — e só se sabe medindo.
+
+**O QUE MUDOU NA TELA:** estorno sai **`− R$ x` em verde** com o selo *estorno (crédito)*, e o cabeçalho mostra a **conta à vista**: `débitos − estornos = total`. Sem ela, uma lista com 14 créditos parece somar muito mais do que a fatura cobra.
+
+**⭐⭐ ITEM 2 — A PORTA SEM MAÇANETA, DE NOVO:** as 33 linhas entraram sem categoria (decisão do dono) e **não havia onde decidir**. Agora: **seletor por linha**, **seleção múltipla** com barra fixa (*"categorizar as 15 como…"*) e a **sugestão da regra APRENDIDA** (`predictCategory`) só onde falta categoria — ⛔ determinística e barata, nada de chamada de IA numa rota de dashboard; e ela **sugere**, quem aplica é o clique.
+
+⚠️ **REGRA 4 cumprida duas vezes:** grava pelo **`/despesas/recategorizar`**, a MESMA porta que o "mover em lote" desta tela já usava (inclusive pra UMA linha); e a lista de categorias vem do `expenseCats` que a tela **já carregava** — cheguei a pôr `expenseCategories` no payload do dashboard e **tirei** ao ver que era a segunda fonte.
+
+**⭐ ITEM 3 — A LINHA VENCE O CARTÃO, POR CONSTRUÇÃO.** Varrido: `defaultTreatment` é lido **só no import** (pra SUGERIR a categoria de retirada) e pra exibir; **nenhum caminho reescreve `categoryId` de linha gravada** a partir do toggle. Então em fatura mista o toggle não é mentira — ele é o default, e a linha manda. Guard trava os dois lados: o `recategorizar` não pode passar a olhar o toggle, e o PATCH do cartão não pode escrever em `transaction`.
+
+**REGRA 11 — 2 defeitos repostos na tela:** o valor sem sinal (**1 vermelho**) · o gesto de categorizar sumindo (**1**).
+
+**⚠️⚠️ E A 1ª VERSÃO DO GUARD DO TOGGLE DEU FALSO VERMELHO — a janela de distância, pela quarta vez.** Eu procurei `defaultTreatment` seguido de `categoryId:` numa janela de 400 caracteres e mordi o `queries.ts`, onde o campo só é exibido e há um `categoryId` do mapa de categorias por perto. *Janela de distância já produziu falso vermelho e falso verde nesta casa* (o rastro em 12/09, o menu do PF em 13/09, o rodapé em 14/09). **O que morde é perguntar pelo ARQUIVO certo, não pela vizinhança.**
+
+
 ### ⛔⛔ ESTADO RESOLVIDO DISFARÇADO DE TRABALHO PENDENTE (17/09)
 
 **O dono:** *"quando TODAS as linhas são duplicata, a tela continua parecendo um import pendente — tabela inteira, checkboxes, 'Confirmar e importar 0', nota pequena no rodapé. **Eu quase confirmei duas vezes achando que faltava algo.**"*
