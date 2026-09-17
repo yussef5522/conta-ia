@@ -752,6 +752,35 @@ TELA → 200 · "revisar" ✓ · "sem destino" ✓ · "parece" ✓ · o aviso do
 📋 **FALTA PRA FECHAR O CASO DE HOJE — e é o que só o PDF resolve:** o **V1** (Σ Brasil 11.376,89 × 11.358,89). A fixture que temos aponta a classe (linha em moeda estrangeira), mas **a fatura de hoje é outra**, e o texto dela não existe mais em lugar nenhum. **Da próxima recusa em diante isso não se repete** — a quarentena guarda.
 
 
+### ⛔⛔⛔ EU CONSERTEI O PARSER ERRADO DURAS RODADAS — A FATURA ENTRA PELA PORTA DA EMPRESA (16/09)
+
+**O dono, na terceira recusa idêntica:** *"mesma dif −18,00 APÓS os consertos, e o número idêntico (11.358,89) prova que a RECONSTRUÇÃO não reproduzia o defeito real."*
+
+**⭐⭐ ELE ESTAVA CERTO, E A PROVA ESTAVA NO NOME DO ERRO O TEMPO TODO.** Os rótulos **`V1 Σ Brasil`** e **`V4 Σ débitos = TOTAL DE GASTOS`** vivem em `lib/credit-card-pj/deterministic/validate-banrisul-fatura.ts` — **o validador do caminho PJ**. A fatura dele **nunca passou pelo parser PF**; entra por `/api/empresas/[id]/cartoes/[cardId]/importar-fatura/preview`, no cartão **"Carter banrisul"** (confirmado em prod: 5 cartões PJ, e as transações PJ com o padrão `MERCADOLIVRE*…` que ele citou).
+
+⛔⛔ **E o parser PJ CORTA A COLUNA DIREITA POR DESENHO** — está escrito no arquivo: *"a defesa do parser PJ é CORTAR a direita fora"* (lá a direita é BanriClube/pontos/limites). **Se o histórico do portador adicional mora na direita, ele é jogado fora por construção.** Bate com o sintoma dele desde o começo: *lê o esquerdo, perde o direito*.
+
+**⚠️⚠️ A LIÇÃO É SOBRE MIM, e é a mais cara da série:** eu tinha o rótulo `V1/V4` na mão desde a primeira mensagem e **não fui atrás de qual arquivo o imprime**. Consertei duas rodadas no parser **PF** — cotação, calha, apara, fatiador —, tudo medido, tudo verde, **e nada disso toca o caminho por onde a fatura dele entra**. *Conserto provado no lugar errado é tão inútil quanto conserto nenhum, e custa a confiança de quem esperou.*
+
+**⛔⛔ POR QUE A QUARENTENA ESTAVA VAZIA: ela nasceu SÓ no caminho PF.** *"N caminhos, 1 esquecido"*, a doença que este projeto mais paga, agora entre **dois imports de fatura**. O caminho da empresa lançava `VALIDATION_FAILED` e **o texto morria no `throw`** — por isso diagnosticar exigia pedir o PDF de novo, e por isso eu passei a adivinhar.
+
+**O QUE SUBIU (instrumento, não correção de parser):**
+- **`CreditCardPjExtractError` carrega o TEXTO** que o motor leu, e a rota PJ guarda **toda tentativa** na quarentena — a recusada pra diagnosticar e **a que FECHA como o golden de amanhã**. Fail-soft.
+- ⛔ **A correção do parser NÃO subiu junto, de propósito** — ver a regra abaixo. A cadeia de evidência é forte (rótulo ⇒ caminho PJ; parser PJ corta a direita; o dono leu no PDF que o 0123 está na direita), mas **falta o documento**, e é exatamente isso que a regra nova proíbe.
+
+### ⛔⛔⛔ REGRA DE PROCESSO — CORREÇÃO DE PARSER SÓ COM O TEXTO REAL NA SUÍTE (16/09)
+
+**Ditada pelo dono depois de duas rodadas perdidas, e vale pra sempre:**
+
+> **Correção de parser só é aceita com o TEXTO REAL do caso na suíte (quarentena → teste). Reconstrução nunca mais vira prova.**
+
+⚠️ **O que a reconstrução fez de mal:** ela **fechou** — 11.376,89 ao centavo — e isso me deu confiança de que o caso estava resolvido. Só que ela exercitava o parser **PF**, e o defeito vive no **PJ**. *Fixture que eu invento testa o mundo que eu imaginei; o documento testa o mundo que existe.*
+
+⭐ **O corolário operacional:** quando a fatura recusar, **o primeiro movimento é abrir a quarentena**, não teorizar. E se a quarentena estiver vazia, a pergunta certa não é *"qual é o bug?"* — é **"por qual porta esse documento entrou?"**.
+
+📋 **A reconstrução `banrisul-pf-dois-portadores` fica ATÉ o texto real entrar na suíte, e sai quando entrar** — foi o dono quem pôs o prazo, e ela não é golden nem entra no congelador.
+
+
 ### ⛔⛔⛔ O PORTADOR ADICIONAL SUMIA — A COLUNA DESCARTADA EM SILÊNCIO (16/09)
 
 **O dono, com o PDF na mão:** *"a fatura tem DOIS PORTADORES (principal + adicional NR. 0123) e 'Débitos no Brasil' 11.376,89 = TOTAL principal 11.225,33 + TOTAL do 0123 151,56. O parser lê o lado esquerdo e o `DESC. ANUID. 0123 −18,00`, mas PERDE o `ANUIDADEINT DIFER 05/12 0123 +18,00` — a dif de −18,00 é exatamente ele."*

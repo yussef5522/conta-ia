@@ -26,6 +26,11 @@ export interface SmartExtractResult extends ExtractInvoiceResult {
   /** de onde veio a leitura — pra log/tela. */
   source: 'PDFTEXT' | 'VISION'
   validation?: FaturaValidation
+  /**
+   * ⭐ O TEXTO EXTRAÍDO — é o golden de amanhã. A fatura que FECHA é a que vira fixture;
+   * sem devolvê-lo, o único jeito de congelar um layout novo é pedir o PDF ao dono.
+   */
+  texto?: string
 }
 
 interface DeterministicParser {
@@ -131,13 +136,15 @@ export async function extractInvoiceSmart(
       const validation = det.validate(parsed)
       if (!validation.ok) {
         // NÃO cai pro Vision: o Yussef mandou FALHAR quando não fecha (impossibilidade).
-        throw new CreditCardPjExtractError('VALIDATION_FAILED', validation.message ?? 'Fatura não fecha.', validation.checks)
+        // ⭐ A RECUSA LEVA O TEXTO JUNTO (16/09) — ver `CreditCardPjExtractError.texto`.
+        throw new CreditCardPjExtractError('VALIDATION_FAILED', validation.message ?? 'Fatura não fecha.', validation.checks, text)
       }
       return {
         extraction: parsed.extraction,
         metrics: { durationMs: 0, inputTokens: 0, outputTokens: 0, model: 'pdftotext-layout', pdfSize: input.pdfBytes.length },
         source: 'PDFTEXT',
         validation,
+        texto: text,
       }
     }
     // banco com texto mas sem parser determinístico → Vision (Banrisul/Caixa hoje).

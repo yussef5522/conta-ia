@@ -14,6 +14,7 @@ import { suggestCategoriesForInvoiceLines } from '@/lib/credit-card-pj/suggest-c
 import { getOrCreateCardWithdrawalCategory } from '@/lib/credit-card-pj/card-withdrawal-category'
 import { computeIdentity } from '@/lib/import-identity/compute-identity'
 import { findCardPaymentCandidatesInBank } from '@/lib/credit-card-pj/queries'
+import { guardarNaQuarentena } from '@/lib/credit-card/quarentena-fatura'
 
 interface Params { params: Promise<{ id: string; cardId: string }> }
 
@@ -75,6 +76,24 @@ export async function POST(request: NextRequest, { params }: Params) {
     result = await extractInvoiceSmart({ pdfBytes, fileName })
   } catch (err: unknown) {
     if (err instanceof CreditCardPjExtractError) {
+      /**
+       * ⭐⭐⭐ A QUARENTENA CHEGOU AO CAMINHO DA EMPRESA (16/09/2026).
+       *
+       * ⛔⛔ Ela nasceu no import PF e **o import PJ ficou de fora** — *"N caminhos, 1
+       * esquecido"*, a doença que este projeto mais paga, agora entre dois imports de
+       * fatura. O efeito foi caro e concreto: a fatura do dono entra POR AQUI, a recusa
+       * jogava o texto fora, e eu passei duas rodadas consertando o parser **PF** achando
+       * que o documento vinha de lá. *Sem o texto, o diagnóstico vira adivinhação.*
+       *
+       * ⚠️ Fail-soft: guardar é diagnóstico. Uma falha aqui não pode mudar a resposta que
+       * o dono recebe.
+       */
+      void guardarNaQuarentena({
+        companyId, cardId, banco: card.name,
+        desfecho: 'RECUSADA', motivo: err.message,
+        declarado: null, calculado: null,
+        texto: err.texto ?? '', linhas: 0, criadoPorId: user.sub,
+      })
       const code = err.code
       // Mensagens ACIONÁVEIS (BUG B): timeout/truncamento/validação não são "erro
       // genérico" — dizem o que fazer. 422 = "li mas não fecha / grande demais".
@@ -93,6 +112,20 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
 
   const { extraction, metrics } = result
+
+  /**
+   * ⭐ E A QUE FECHOU TAMBÉM FICA GUARDADA — é o **golden de amanhã**. Foi por não ter os
+   * PDFs antigos que o congelador nasceu com 9 fixtures em vez do histórico inteiro.
+   * ⚠️ Só quando houve texto: leitura por Vision não produz documento pra congelar.
+   */
+  if (result.texto) {
+    void guardarNaQuarentena({
+      companyId, cardId, banco: extraction.detectedBank ?? card.name,
+      desfecho: 'OK', motivo: null,
+      declarado: extraction.totalDeclared ?? null, calculado: null,
+      texto: result.texto, linhas: extraction.lines?.length ?? 0, criadoPorId: user.sub,
+    })
+  }
 
   // Sugestoes de categoria (reusa pipeline IA do OFX)
   const suggestions = await suggestCategoriesForInvoiceLines(extraction.lines, {

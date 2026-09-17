@@ -79,6 +79,19 @@ export class CreditCardPjExtractError extends Error {
       | 'GATE_DISABLED',
     message: string,
     public details?: unknown,
+    /**
+     * ⭐⭐⭐ O TEXTO QUE O MOTOR LEU, CARREGADO PELA RECUSA (16/09/2026).
+     *
+     * ⛔⛔ Sem isto, `VALIDATION_FAILED` **jogava o documento fora**: a fatura não fechava,
+     * a tela mostrava dois números, e o texto extraído morria no `throw`. Diagnosticar
+     * exigia pedir o PDF de novo — e foi exatamente esse o buraco que custou duas rodadas
+     * de conserto no parser ERRADO, porque eu não tinha o documento pra saber por onde ele
+     * entrava.
+     *
+     * ⚠️ A quarentena do caminho PF já guardava desde 16/09; o caminho da EMPRESA não —
+     * *"N caminhos, 1 esquecido"*, a doença de sempre, agora entre dois imports de fatura.
+     */
+    public texto?: string,
   ) {
     super(message)
     this.name = 'CreditCardPjExtractError'
