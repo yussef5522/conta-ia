@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Header } from '@/components/layout/header'
 import { formatBRL } from '@/lib/format/money'
+import { valorDoSeletor } from '@/lib/credit-card-pj/valor-do-seletor'
 
 interface DashboardData {
   card: {
@@ -763,9 +764,9 @@ export default function CartaoDashboardPage() {
                       {/* ⭐ a categoria é editável ALI — era o gesto que não existia */}
                       <select
                         className={`mt-1 h-7 w-full max-w-[260px] rounded border px-1 text-[11px] ${
-                          (otimista[t.id] ?? t.categoryId) ? '' : 'border-amber-400 bg-amber-50/40'
+                          valorDoSeletor(otimista, t) ? '' : 'border-amber-400 bg-amber-50/40'
                         }`}
-                        value={otimista[t.id] ?? t.categoryId ?? ''}
+                        value={valorDoSeletor(otimista, t)}
                         onChange={(e) => categorizar([t.id], e.target.value || null)}
                         disabled={salvando}
                       >
@@ -774,6 +775,18 @@ export default function CartaoDashboardPage() {
                           <option key={c.id} value={c.id}>{c.name}</option>
                         ))}
                       </select>
+                      {/* ⭐⭐ A CATEGORIA GRAVADA, DITA EM TEXTO (17/09).
+                          ⚠️ O dono viu o painel certo e TODOS os seletores em "sem
+                          categoria". Medi tudo — payload, fonte, build, JS servido — e o
+                          binding estava certo; **não reproduzi**. Isto não é o conserto de
+                          um defeito que eu vi: é a tela deixando de depender de UM widget
+                          pra dizer a verdade. *Se o `<select>` falhar em hidratar por
+                          qualquer motivo, a linha continua afirmando o que está no banco.* */}
+                      {t.categoryName && (
+                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                          categoria salva: <span className="font-medium text-foreground">{t.categoryName}</span>
+                        </p>
+                      )}
                       {!t.categoryId && t.suggestedCategoryId && (
                         <button
                           type="button"

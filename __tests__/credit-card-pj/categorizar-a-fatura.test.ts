@@ -96,10 +96,17 @@ describe('⭐ o feedback de salvo — silêncio depois do clique não vale', () 
     expect(tela()).toMatch(/salvos\.has\(t\.id\)[\s\S]{0,120}salvo ✓/)
   })
 
-  /** ⚠️ o `value` do select vem de `data`, que só muda no reload — sem o otimista ele
-   *  VOLTA pra "sem categoria" na frente do dono, que é o fracasso-disfarçado de novo */
-  it('⭐ o seletor segue o dedo na hora (otimista)', () => {
-    expect(tela()).toMatch(/value=\{otimista\[t\.id\] \?\? t\.categoryId \?\? ''\}/)
+  /**
+   * ⚠️ o `value` do select vem de `data`, que só muda no reload — sem o otimista ele VOLTA
+   * pra "sem categoria" na frente do dono, que é o fracasso-disfarçado de novo.
+   *
+   * ⭐ REAPONTADO em 17/09, não afrouxado: a regra **mudou de casa** pra `valorDoSeletor`
+   * (função pura, testável — *regra que mora num `value={...}` é regra que ninguém prova*).
+   * A pergunta continua a mesma; o que mudou é onde ela é respondida, e lá ela tem teste
+   * próprio com o otimista vencendo o gravado.
+   */
+  it('⭐ o seletor segue o dedo na hora (otimista) — agora pela regra com dono', () => {
+    expect(tela()).toMatch(/value=\{valorDoSeletor\(otimista, t\)\}/)
   })
 
   it('⛔ e a FALHA reverte o otimista em vez de deixar a escolha na tela', () => {

@@ -752,6 +752,30 @@ TELA → 200 · "revisar" ✓ · "sem destino" ✓ · "parece" ✓ · o aviso do
 📋 **FALTA PRA FECHAR O CASO DE HOJE — e é o que só o PDF resolve:** o **V1** (Σ Brasil 11.376,89 × 11.358,89). A fixture que temos aponta a classe (linha em moeda estrangeira), mas **a fatura de hoje é outra**, e o texto dela não existe mais em lugar nenhum. **Da próxima recusa em diante isso não se repete** — a quarentena guarda.
 
 
+### ⚠️⚠️ O SELETOR "SEM CATEGORIA" COM O DADO GRAVADO — NÃO REPRODUZI (17/09)
+
+**O dono:** *"o painel mostra os 4 grupos certos, mas TODAS as linhas exibem o seletor em '— sem categoria —'. O value do `<select>` não está sendo hidratado."*
+
+**⛔ MEDI AS QUATRO CAMADAS E TODAS ESTAVAM CERTAS:**
+```
+payload sem parâmetro     33 linhas · 33 com categoryId · 49 opções · 0 ids fora da lista
+payload COM ?fatura=2026-09  idem  ← o caminho que a tela usa ao escolher a fatura
+fonte no servidor         value={otimista[t.id] ?? t.categoryId ?? ''}
+JS SERVIDO (minificado)   value: W[e.id] ?? e.categoryId ?? ""
+```
+
+⚠️⚠️ **E É POR ISSO QUE ESTA ENTRADA EXISTE: eu NÃO reproduzi o defeito, e não vou registrar conserto de bug que não vi quebrar.** A hipótese que sobra é **bundle velho no navegador** (a casa já pagou isso em 26/08: *"o navegador do dono guardou a página quebrada em cache; um hard-reload resolvia"*), mas **hipótese não é medição** — fica dito como hipótese.
+
+⚠️ **UMA SONDA MINHA ERA FRACA E EU A REPORTEI COMO PROVA:** na volta anterior escrevi *"com categoryId no payload: 33 de 33"* — o teste era `'categoryId' in t`, que é **verdade mesmo com `null`**, e naquele momento as 33 estavam todas sem categoria. *Chave presente não é valor presente*, e eu apresentei isso como se fosse.
+
+**O QUE FOI FEITO, e o que cada coisa é:**
+- ⭐ **A regra saiu do JSX** pra `valorDoSeletor` (pura, testável). *Regra que mora num `value={...}` é regra que ninguém prova* — a lição do prefill do cardápio (28/08), que quebrou duas vezes antes de virar função. **REGRA 11: o binding ignorando o dado do servidor = vermelho.**
+- ⭐⭐ **A categoria gravada passou a ser dita em TEXTO** na linha (*"categoria salva: EQUIPAMENTOS"*). ⛔ **Isto não é o conserto de um defeito que eu vi** — é a tela deixando de depender de **um widget só** pra afirmar o que o banco já sabe. Se o `<select>` falhar em hidratar por qualquer motivo, a linha continua dizendo a verdade.
+- ⚠️ **Um guard de hoje foi REAPONTADO, não afrouxado** — ele afirmava o literal do `value` no JSX; a pergunta é a mesma, a resposta mudou de casa.
+
+⭐ **E a tela do cartão tem UMA composição só** (uma `.map` de `linhasDaFatura`), então não há a segunda metade esquecida da entrada manual (16/09) — celular e desktop renderizam o mesmo DOM.
+
+
 ### ⛔⛔⛔ "CATEGORIA NÃO ENCONTRADA OU INATIVA" — DUAS FONTES E UMA PORTA FECHADA (17/09)
 
 **O dono, tentando usar a maçaneta que eu tinha acabado de ligar:** *"escolho categoria na linha da fatura → 'Não consegui categorizar · Categoria não encontrada ou inativa'."*
