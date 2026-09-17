@@ -93,6 +93,22 @@ export const GOLDENS: readonly GoldenDeFatura[] = [
     motivo: 'o crédito por SUFIXO D/C — foi o C que o Vision perdeu (os 12,58 do K1)',
   },
   {
+    /**
+     * ⭐⭐⭐ A FATURA RICA DA CAIXA (17/09/2026) — **o segundo golden que veio da quarentena**,
+     * e o primeiro com desfecho **OK**: é a promessa de que *"a que FECHOU é o golden de
+     * amanhã"* se cumprindo pela primeira vez.
+     *
+     * ⭐ O que ela traz num documento só: **rotativo, multa, mora, IOF, anuidade, cashback e
+     * ESTORNOS** — e é justamente o estorno que expôs as duas réguas da tela (o banner somava
+     * o bruto 5.119,53, o rodapé o líquido 5.106,99).
+     */
+    nome: 'Caixa PJ · setembro/2026 — rotativo, multa, mora e estornos',
+    fixture: 'lib/credit-card-pj/deterministic/__tests__/fixtures/caixa-fatura-rica.txt',
+    parser: 'lib/credit-card-pj/deterministic/caixa-fatura-parser.ts',
+    esperado: { linhas: 15, declarado: 5106.99 },
+    motivo: 'a fatura com estorno que provou o banner e o rodapé discordando (12,54)',
+  },
+  {
     nome: 'Mercado Pago PJ · agosto/2026',
     fixture: 'lib/credit-card-pj/deterministic/__tests__/fixtures/mercadopago-fatura-2026-08.txt',
     parser: 'lib/credit-card-pj/deterministic/mercadopago-fatura-parser.ts',

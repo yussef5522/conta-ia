@@ -752,6 +752,30 @@ TELA → 200 · "revisar" ✓ · "sem destino" ✓ · "parece" ✓ · o aviso do
 📋 **FALTA PRA FECHAR O CASO DE HOJE — e é o que só o PDF resolve:** o **V1** (Σ Brasil 11.376,89 × 11.358,89). A fixture que temos aponta a classe (linha em moeda estrangeira), mas **a fatura de hoje é outra**, e o texto dela não existe mais em lugar nenhum. **Da próxima recusa em diante isso não se repete** — a quarentena guarda.
 
 
+### ⛔⛔ FATURA DA CAIXA — DUAS RÉGUAS NA MESMA TELA (17/09)
+
+**O dono:** *"o banner do topo diz 'não fecha' (somou compras+encargos 5.119,53 sem SUBTRAIR os estornos 12,54) enquanto o rodapé diz '✓ bate: 5.106,99'."*
+
+**⭐ E A CONTA PRINCIPAL SEMPRE ESTEVE CERTA — `diferenca 0`.** Quem reprovava era um **check secundário** que confere o BRUTO contra o *"Total cartão"* declarado:
+
+```
+diferenca 0 · matches FALSE
+"Total cartão não bate: somei compras+encargos R$ 5.119,53 mas o declarado é R$ 5.106,99"
+```
+
+**⛔⛔ A CAUSA: nem todo banco declara DOIS números.** O Banrisul PJ imprime `TOTAL DE GASTOS` **e** `Saldo da fatura atual` (13.797,73 × 13.779,73); a **Caixa imprime um só** — o que se paga —, e o parser o devolve nos dois campos. Aí o check passava a comparar **bruto contra líquido**, e os 12,54 de estorno viravam "não fecha".
+
+⭐ **A cura não é remover a defesa** (ela existe pra pegar bruto declarado que não bate): é ela **só existir quando há duas declarações diferentes pra conferir**. Onde o banco declara os dois, continua mordendo — há teste pros dois lados.
+
+**REGRA 11 — a fórmula sem estornos reposta: 3 vermelhos**, um deles reproduzindo a mensagem exata que o dono viu.
+
+**⭐⭐ E O SEGUNDO GOLDEN VEIO DA QUARENTENA — o primeiro com desfecho OK.** É a promessa *"a que FECHOU é o golden de amanhã"* se cumprindo pela primeira vez: `caixa-fatura-rica.txt`, 15 linhas, com **rotativo, multa, mora, IOF, anuidade, cashback e estornos** num documento só. **11 fixtures / 7 bancos**, todas verdes.
+
+⚠️ **E O GERADOR PEGOU UMA PALAVRA FALTANDO NA LISTA DE PRESERVAR:** a anonimização comeu **`final`** (de `Total final (cartão XXXX)`) e o `totalFinalByCard` veio vazio. O script abortou em vez de gravar uma fixture que testaria outro documento — **é a terceira vez que essa trava se paga** (26/08 "PAGAMENTO", 31/08 os meses, hoje "final").
+
+**⭐ O IMPORT QUE O DONO CONFIRMOU ENTROU FECHANDO:** 15 lançamentos · `5.119,53 − 12,54 = 5.106,99` ao centavo · os estornos são `CASHBACK ANUIDADE 12,50` e `AJUSTE CREDITO 0,04`.
+
+
 ### ⚠️⚠️ O SELETOR "SEM CATEGORIA" COM O DADO GRAVADO — NÃO REPRODUZI (17/09)
 
 **O dono:** *"o painel mostra os 4 grupos certos, mas TODAS as linhas exibem o seletor em '— sem categoria —'. O value do `<select>` não está sendo hidratado."*

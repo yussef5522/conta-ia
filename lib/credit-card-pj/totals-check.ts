@@ -57,8 +57,32 @@ export function checkInvoiceTotals(extraction: InvoiceExtraction): InvoiceTotals
   const calc = declaradoFatura != null ? totalFatura : totalCartao
   const diferenca = round2(alvo - calc)
   const faturaOk = Math.abs(diferenca) <= TOLERANCE
-  // check secundário: Total cartão (compras+encargos) bate com o declarado?
-  const cartaoOk = declaradoCartao == null || Math.abs(round2(declaradoCartao - totalCartao)) <= TOLERANCE
+  /**
+   * ⛔⛔ O CHECK SECUNDÁRIO SÓ EXISTE QUANDO O BANCO DECLAROU **DOIS NÚMEROS** (17/09/2026).
+   *
+   * Ele confere o BRUTO (compras+encargos) contra o *"Total cartão"* declarado. Só que
+   * **nem todo banco declara os dois**: a Caixa imprime **um total só** — o que se paga —, e
+   * o parser o devolve nos dois campos. Aí o check comparava o **bruto contra o líquido** e
+   * reprovava uma fatura que fecha:
+   *
+   * ```
+   *   diferenca 0 · matches FALSE
+   *   "Total cartão não bate: somei compras+encargos R$ 5.119,53 mas o declarado é 5.106,99"
+   *                                                            ↑ os 12,54 de estorno
+   * ```
+   *
+   * ⚠️ **E o estrago foi a tela se contradizer:** o banner do topo dizia *"não fecha"* e o
+   * rodapé, *"✓ bate: 5.106,99"* — **duas réguas na mesma tela**, que é a doença que este
+   * projeto mais paga. A conta que vale é uma só: **Σ débitos − Σ estornos vs declarado**.
+   *
+   * ⭐ Quando os dois declarados são o MESMO número, não há segunda declaração pra conferir
+   * — o check principal já fez o trabalho inteiro.
+   */
+  const declarouCartaoSeparado = declaradoCartao != null
+    && declaradoFatura != null
+    && Math.abs(round2(declaradoCartao - declaradoFatura)) > TOLERANCE
+  const cartaoOk = !declarouCartaoSeparado
+    || Math.abs(round2(declaradoCartao! - totalCartao)) <= TOLERANCE
   const matches = faturaOk && cartaoOk
 
   const alvoLabel = declaradoFatura != null ? 'Total desta Fatura' : 'total da fatura'
