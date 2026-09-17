@@ -11,8 +11,8 @@ import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { createOfxImportRecord } from '@/lib/ofx/persist-import'
 import { checkCreditCardPjFlag } from '@/lib/credit-card-pj/feature-flag'
-import { faturaNetTotal } from '@/lib/credit-card-pj/fatura-net-total'
 import { identidadeDaLinha, tipoDaLinha } from '@/lib/credit-card-pj/identidade-da-linha'
+import { fecharImport } from '@/lib/credit-card-pj/fechamento-do-import'
 
 interface Params { params: Promise<{ id: string; cardId: string }> }
 
@@ -176,20 +176,58 @@ export async function POST(request: NextRequest, { params }: Params) {
   // Total cartão). compras+encargos − estornos TEM que fechar com "Total desta
   // Fatura" (totalToPay). Se não fecha, NÃO grava (impossibilidade). Sem totalToPay
   // (banco sem esse campo) pula — não bloqueia leitura legítima.
+  // Computa identidades pra dedup. ESTORNO é CREDIT (não colide com um débito de mesmo valor).
+  // ⚠️ SOBE pra antes da conferência: é a mesma chave que parte novas × já-no-sistema.
+  const linesWithIdentity = body.lines.map((line) => {
+    // ⭐ a MESMA conta do preview — ver `identidadeDaLinha` (17/09)
+    const identity = { contentHash: identidadeDaLinha(cardId, { date: line.date, description: line.description, amount: line.amount, kind: line.kind }) }
+    return { line, identity }
+  })
+
+  // ⭐ a competência sobe pra CÁ: a conferência precisa dela pra achar o que já está gravado
+  const invoiceMonth =
+    body.dueDate && /^\d{4}-\d{2}-\d{2}$/.test(body.dueDate)
+      ? body.dueDate.slice(0, 7)
+      : null
+
+  /**
+   * ⭐⭐⭐ IMPORT MISTO FECHA POR `Σ(novas) + Σ(já no sistema)` (17/09/2026).
+   *
+   * ⛔⛔ Antes isto exigia que as linhas ENVIADAS fechassem sozinhas com o total — e a tela
+   * de ontem passou a **impedir de marcar** as já-no-sistema (sem checkbox, em leitura). As
+   * duas coisas juntas tornavam o import misto **impossível de gravar**: a diferença acusada
+   * era, ao centavo, o que a própria tela tinha tirado da mão do dono.
+   *
+   * ⚠️ É a segunda régua de novo, agora entre **preview e confirm** — a dupla que já custou
+   * o import de OFX inteiro. A partição aqui é a MESMA da tela porque nasce do mesmo
+   * `contentHash`; o validador não inventa "o que é novo".
+   *
+   * ⛔ E a defesa NÃO afrouxou: em fatura 100% nova não há nada gravado, `jaNoSistema` é 0, e
+   * o fechamento continua exigindo a soma cheia.
+   */
   if (body.totalToPay != null) {
-    // Total pela fn ÚNICA (faturaNetTotal), não recalculando na mão (REGRA 4 —
-    // era o 6º lugar somando DEBIT−CREDIT). ESTORNO→CREDIT (subtrai); resto→DEBIT.
-    const netFatura = faturaNetTotal(
-      body.lines.map((l) => ({ type: tipoDaLinha(l.kind), amount: l.amount, isCardPayment: false })),
-    ).net
-    const diff = Math.round((body.totalToPay - netFatura) * 100) / 100
+    const gravadas = invoiceMonth
+      ? await prisma.transaction.findMany({
+          where: { businessCreditCardId: cardId, invoiceMonth },
+          select: { type: true, amount: true, contentHash: true, isCardPayment: true },
+        })
+      : []
+    const f = fecharImport(
+      linesWithIdentity.map((li) => ({
+        kind: li.line.kind, amount: li.line.amount, contentHash: li.identity.contentHash,
+      })),
+      gravadas,
+    )
+    const diff = Math.round((body.totalToPay - f.net) * 100) / 100
     if (Math.abs(diff) > 0.02) {
       return NextResponse.json(
         {
           erro:
-            `A soma das linhas (R$ ${netFatura.toFixed(2)}) não fecha com o Total desta Fatura ` +
-            `(R$ ${body.totalToPay.toFixed(2)}, diferença R$ ${diff.toFixed(2)}). ` +
-            `Confira se há estorno não marcado como Estorno, ou linha faltando/sobrando — não vou gravar sem fechar.`,
+            `A fatura não fecha: R$ ${f.novas.toFixed(2)} nas linhas novas`
+            + (f.jaNoSistema !== 0 ? ` + R$ ${f.jaNoSistema.toFixed(2)} já no sistema` : '')
+            + ` = R$ ${f.net.toFixed(2)}, contra o Total desta Fatura de R$ ${body.totalToPay.toFixed(2)} `
+            + `(diferença R$ ${diff.toFixed(2)}). `
+            + `Confira se há estorno não marcado como Estorno, ou linha faltando/sobrando — não vou gravar sem fechar.`,
           code: 'VALIDATION_FAILED',
         },
         { status: 422 },
@@ -197,22 +235,11 @@ export async function POST(request: NextRequest, { params }: Params) {
     }
   }
 
-  // Computa identidades pra dedup. ESTORNO é CREDIT (não colide com um débito de mesmo valor).
-  const linesWithIdentity = body.lines.map((line) => {
-    // ⭐ a MESMA conta do preview — ver `identidadeDaLinha` (17/09)
-    const identity = { contentHash: identidadeDaLinha(cardId, { date: line.date, description: line.description, amount: line.amount, kind: line.kind }) }
-    return { line, identity }
-  })
 
   // Sprint R4 — Competencia da fatura (YYYY-MM) extraida do vencimento.
   // Caixa 12/06 -> 2026-06; Banrisul 15/06 -> 2026-06. Permite dashboard
   // agrupar por fatura (nao por data da compra, que pode ser velha pra
   // parceladas).
-  const invoiceMonth =
-    body.dueDate && /^\d{4}-\d{2}-\d{2}$/.test(body.dueDate)
-      ? body.dueDate.slice(0, 7)
-      : null
-
   // GroupId por parcelamento (compartilhado pelas N parcelas — neste batch
   // só vem 1 parcela do mês, mas o ID pode ser usado em batches futuros).
   const installmentGroupByLine = new Map<number, string>()

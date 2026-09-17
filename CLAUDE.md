@@ -752,6 +752,23 @@ TELA → 200 · "revisar" ✓ · "sem destino" ✓ · "parece" ✓ · o aviso do
 📋 **FALTA PRA FECHAR O CASO DE HOJE — e é o que só o PDF resolve:** o **V1** (Σ Brasil 11.376,89 × 11.358,89). A fixture que temos aponta a classe (linha em moeda estrangeira), mas **a fatura de hoje é outra**, e o texto dela não existe mais em lugar nenhum. **Da próxima recusa em diante isso não se repete** — a quarentena guarda.
 
 
+### ⛔⛔⛔ IMPORT MISTO NÃO GRAVAVA — A TELA APRENDEU A PARTIÇÃO E O VALIDADOR FICOU PRA TRÁS (17/09)
+
+**O dono, na fatura Sicredi:** *"40 linhas, 8 já no sistema (R$ 828,50, em leitura sem checkbox — como a tela de ontem manda), 32 novas marcadas (R$ 2.365,85). Confirmar → 'a soma das linhas 2.365,85 não fecha com o total 3.194,35, diferença 828,50'."*
+
+**⛔⛔ A DIFERENÇA ACUSADA ERA, AO CENTAVO, O QUE A PRÓPRIA TELA TINHA TIRADO DA MÃO DELE.** E foi eu quem criou as duas metades: ontem a tela passou a **impedir de marcar** as já-no-sistema (sem checkbox, em leitura — e está certo), mas o `confirm` continuava exigindo que as linhas **ENVIADAS** fechassem sozinhas com o total. Juntas, as duas tornavam o import misto **impossível de gravar**.
+
+⚠️ **É a segunda régua de novo — agora entre PREVIEW e CONFIRM.** O preview já dizia a frase certa (*"você marcou 32 de 40, por isso o total é outro"*); quem não sabia da partição era a gravação. É a dupla que já custou o import de OFX inteiro, e que o `resolveImportStatuses` resolveu lá com o mesmo desenho: **uma função, as duas pontas**.
+
+**⭐ A CONTA CERTA:** `Σ(novas) + Σ(já no sistema) == total da fatura`. A já-gravada **conta pra fechar e não regrava** — o dedup de sempre cuida. E a partição é a **MESMA** da tela porque nasce do mesmo `contentHash` (`identidadeDaLinha`): o validador não inventa o que é novo, ele pergunta pela mesma chave. ⚠️ E ele **não confia no cliente**: lê as já-gravadas do banco pela competência da fatura.
+
+**⛔ E A DEFESA NÃO AFROUXOU** — em fatura 100% nova não há nada gravado, `jaNoSistema` é 0 e o fechamento continua exigindo a soma cheia. *Ela não ficou mais permissiva: aprendeu que a fatura pode chegar em duas partes.*
+
+⭐ **As bordas que fariam a conta torcer, todas travadas:** reenviar a fatura inteira **não conta duas vezes** (a enviada que já existe vale uma) · **estorno já gravado entra com sinal** (senão misto com crédito nunca fecharia) · **pagamento de fatura fica fora** (não é lançamento dela, é a quitação).
+
+**REGRA 11 — o tudo-ou-nada reposto: 2 vermelhos**, um deles reproduzindo a diferença exata de 828,50.
+
+
 ### ⛔⛔ FATURA DA CAIXA — DUAS RÉGUAS NA MESMA TELA (17/09)
 
 **O dono:** *"o banner do topo diz 'não fecha' (somou compras+encargos 5.119,53 sem SUBTRAIR os estornos 12,54) enquanto o rodapé diz '✓ bate: 5.106,99'."*
