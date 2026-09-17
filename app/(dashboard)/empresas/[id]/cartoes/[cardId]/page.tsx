@@ -44,6 +44,7 @@ interface DashboardData {
     suggestedCategoryId: string | null
     isCardPayment: boolean
   }>
+  expenseCategories: Array<{ id: string; name: string }>
   spendByCategory: Array<{
     categoryId: string | null
     categoryName: string
@@ -97,6 +98,17 @@ export default function CartaoDashboardPage() {
    */
   const [marcadas, setMarcadas] = useState<Set<string>>(new Set())
   const [salvando, setSalvando] = useState(false)
+  /**
+   * ⭐⭐ O FEEDBACK DE SALVO (17/09) — **o botão que ele procurava não existe de propósito:
+   * cada escolha grava na hora.** Mas então a tela TEM que dizer. ⛔ Silêncio depois do
+   * clique é o sucesso-disfarçado (ou, como estava, o fracasso-disfarçado).
+   *
+   * `otimista` faz o seletor seguir o dedo na hora (o `value` vem de `data`, que só muda
+   * depois do reload — sem isto o select **volta pra "sem categoria"** na frente dele);
+   * `salvos` acende o selo ✓; e a FALHA **reverte** o otimista e mostra o motivo do servidor.
+   */
+  const [otimista, setOtimista] = useState<Record<string, string>>({})
+  const [salvos, setSalvos] = useState<Set<string>>(new Set())
   const [batchTarget, setBatchTarget] = useState('')
   const [movingBatch, setMovingBatch] = useState(false)
 
@@ -131,6 +143,8 @@ export default function CartaoDashboardPage() {
     // ⛔ "sem categoria" não é um destino: o endpoint exige categoria de verdade.
     if (!categoriaId || ids.length === 0) return
     setSalvando(true)
+    // ⭐ o seletor segue o dedo AGORA — o `data` só volta depois do reload
+    setOtimista((p) => ({ ...p, ...Object.fromEntries(ids.map((id) => [id, categoriaId])) }))
     try {
       const resp = await fetch(`/api/empresas/${params.id}/despesas/recategorizar`, {
         method: 'POST',
@@ -140,11 +154,22 @@ export default function CartaoDashboardPage() {
       })
       if (!resp.ok) {
         const j = await resp.json().catch(() => ({}))
-        toast({ title: 'Não consegui categorizar', description: j.erro ?? 'tente de novo', variant: 'destructive' })
+        // ⛔ FALHA REVERTE — deixar a escolha na tela seria dizer que gravou
+        setOtimista((p) => {
+          const n = { ...p }
+          for (const id of ids) delete n[id]
+          return n
+        })
+        toast({
+          title: 'Não consegui categorizar',
+          description: [j.erro, j.saida?.rotulo].filter(Boolean).join(' · ') || 'tente de novo',
+          variant: 'destructive',
+        })
         return
       }
-      const nome = expenseCats.find((c) => c.id === categoriaId)?.name ?? 'categoria'
-      toast({ title: `${ids.length} lançamento(s) em “${nome}”` })
+      const nome = (data?.expenseCategories ?? expenseCats).find((c) => c.id === categoriaId)?.name ?? 'categoria'
+      toast({ title: `Salvo · ${ids.length} lançamento(s) em “${nome}”` })
+      setSalvos((p) => new Set([...p, ...ids]))
       setMarcadas(new Set())
       loadReviewQueue()
       reload()
@@ -542,7 +567,7 @@ export default function CartaoDashboardPage() {
                 className="border rounded h-9 px-2 text-sm min-w-[180px]"
               >
                 <option value="">— categoria final —</option>
-                {expenseCats.map((c) => (
+                {(data?.expenseCategories ?? expenseCats).map((c) => (
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
@@ -693,7 +718,7 @@ export default function CartaoDashboardPage() {
                       disabled={salvando}
                     >
                       <option value="">— categorizar as {marcadas.size} como… —</option>
-                      {expenseCats.map((c) => (
+                      {(data?.expenseCategories ?? expenseCats).map((c) => (
                         <option key={c.id} value={c.id}>{c.name}</option>
                       ))}
                     </select>
@@ -722,6 +747,9 @@ export default function CartaoDashboardPage() {
                             estorno (crédito)
                           </Badge>
                         )}
+                        {salvos.has(t.id) && (
+                          <span className="text-[10px] text-emerald-700 font-medium">salvo ✓</span>
+                        )}
                         {t.installmentNumber && t.installmentTotal && (
                           <Badge
                             variant="outline"
@@ -735,14 +763,14 @@ export default function CartaoDashboardPage() {
                       {/* ⭐ a categoria é editável ALI — era o gesto que não existia */}
                       <select
                         className={`mt-1 h-7 w-full max-w-[260px] rounded border px-1 text-[11px] ${
-                          t.categoryId ? '' : 'border-amber-400 bg-amber-50/40'
+                          (otimista[t.id] ?? t.categoryId) ? '' : 'border-amber-400 bg-amber-50/40'
                         }`}
-                        value={t.categoryId ?? ''}
+                        value={otimista[t.id] ?? t.categoryId ?? ''}
                         onChange={(e) => categorizar([t.id], e.target.value || null)}
                         disabled={salvando}
                       >
                         <option value="">— sem categoria —</option>
-                        {expenseCats.map((c) => (
+                        {(data?.expenseCategories ?? expenseCats).map((c) => (
                           <option key={c.id} value={c.id}>{c.name}</option>
                         ))}
                       </select>
@@ -752,7 +780,7 @@ export default function CartaoDashboardPage() {
                           className="mt-0.5 block text-[10px] text-primary hover:underline"
                           onClick={() => categorizar([t.id], t.suggestedCategoryId!)}
                         >
-                          🧠 usar “{expenseCats.find((c) => c.id === t.suggestedCategoryId)?.name}” (regra aprendida)
+                          🧠 usar “{(data?.expenseCategories ?? expenseCats).find((c) => c.id === t.suggestedCategoryId)?.name}” (regra aprendida)
                         </button>
                       )}
                     </div>

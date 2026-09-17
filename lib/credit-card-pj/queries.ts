@@ -5,6 +5,7 @@ import { invoiceMonthIsPaid } from './invoice-paid'
 import { faturaNetTotal, signedFaturaAmount } from './fatura-net-total'
 import { loadActiveRules, buildRuleIndex } from '@/lib/ai-categorizer/apply'
 import { predictCategory } from '@/lib/ai-categorizer/predict'
+import { categoriasDestinoDespesa, type CategoriaDestino } from '@/lib/categorias/destino-valido'
 
 export interface CardCardSummary {
   id: string
@@ -154,6 +155,13 @@ export interface CardDashboardData {
     suggestedCategoryId: string | null
     isCardPayment: boolean
   }>
+  /**
+   * ⭐⭐ AS CATEGORIAS QUE A GRAVAÇÃO ACEITA — a MESMA fonte (`categoriasDestinoDespesa`).
+   * ⛔ A tela pedia a lista crua de `/categorias` e oferecia **260 opções, 203 inativas**;
+   * escolher uma devolvia "Categoria não encontrada ou inativa". Oferecer o que a gravação
+   * recusa é a tela mentindo sobre o que dá pra fazer.
+   */
+  expenseCategories: CategoriaDestino[]
   /** Gasto por categoria (Top N) no mes corrente */
   spendByCategory: Array<{
     categoryId: string | null
@@ -255,6 +263,7 @@ export async function getCardDashboard(
    * — nada de chamada de IA numa rota de dashboard. ⛔ E ela SUGERE: quem aplica é o clique.
    * *Categoria é decisão do dono* — a régua da casa desde 17/08.
    */
+  const expenseCategories = await categoriasDestinoDespesa(card.companyId)
   const sugestaoPorTx = new Map<string, string>()
   const semCategoria = txs.filter((t) => !t.categoryId && !t.isCardPayment)
   if (semCategoria.length > 0) {
@@ -389,6 +398,7 @@ export async function getCardDashboard(
       suggestedCategoryId: sugestaoPorTx.get(t.id) ?? null,
       isCardPayment: t.isCardPayment,
     })),
+    expenseCategories,
     spendByCategory,
     matchedPayments: matchedPaymentsRaw.map((p) => ({
       id: p.id,

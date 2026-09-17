@@ -752,6 +752,31 @@ TELA → 200 · "revisar" ✓ · "sem destino" ✓ · "parece" ✓ · o aviso do
 📋 **FALTA PRA FECHAR O CASO DE HOJE — e é o que só o PDF resolve:** o **V1** (Σ Brasil 11.376,89 × 11.358,89). A fixture que temos aponta a classe (linha em moeda estrangeira), mas **a fatura de hoje é outra**, e o texto dela não existe mais em lugar nenhum. **Da próxima recusa em diante isso não se repete** — a quarentena guarda.
 
 
+### ⛔⛔⛔ "CATEGORIA NÃO ENCONTRADA OU INATIVA" — DUAS FONTES E UMA PORTA FECHADA (17/09)
+
+**O dono, tentando usar a maçaneta que eu tinha acabado de ligar:** *"escolho categoria na linha da fatura → 'Não consegui categorizar · Categoria não encontrada ou inativa'."*
+
+**⛔⛔ DOIS BLOQUEIOS EM SÉRIE, os dois medidos em prod — e a aposta dele estava certa nos dois:**
+
+```
+o seletor oferece 260 categorias — 203 INATIVAS (78%) e 47 de RECEITA
+   a rota valida isActive → quase 4 de cada 5 opções eram armadilha
+
+a porta não alcança cartão:  bankAccount.companyId       → 0 linhas
+                             businessCreditCard.companyId → 1
+```
+
+**1. DUAS FONTES.** A tela pedia `/categorias` **cru** e só tirava a fila `A_CLASSIFICAR`; a gravação exige `isActive`. Agora a lista nasce de `categoriasDestinoDespesa` e a rota valida por `whereCategoriaAceita` — **mesma origem**, com a invariante travada em teste: *o que a tela oferece é SUBCONJUNTO do que a gravação aceita, nunca o contrário*.
+
+**⚠️⚠️ 2. E O SEGUNDO É ERRO MEU DA VOLTA ANTERIOR.** Reusei `/despesas/recategorizar` em nome da REGRA 4 e **não medi se ela abria pro caso novo**: ela filtra posse por `bankAccount: { companyId }`, e **compra de cartão nasce SEM conta bancária** (quem a prende à empresa é o `businessCreditCardId`). Mesmo com categoria válida, a resposta seria *"Nenhuma transação encontrada na empresa"*. ⭐ **A REGRA 4 tem duas metades — achar a porta única E provar que ela serve.** Metade dela é um bug com cara de disciplina. Fix: o filtro passa a aceitar `bankAccount` **OU** `businessCreditCard`. ⚠️ O resto da rota já tolerava (`accountType ?? null` na escada de status).
+
+**⭐ 3. A RECUSA QUE SOBRA ENSINA** (a régua do tradutor 422 do estoque): em vez de *"Categoria não encontrada ou inativa"*, ela diz **o nome**, **o porquê** (inativa · de outra empresa · não existe mais) e **para onde ir**.
+
+**⭐⭐ 4. O FEEDBACK DE SALVO — e o dono nomeou a classe:** *"silêncio depois do clique é o sucesso-disfarçado (ou o fracasso-disfarçado, como agora)"*. Não nasceu botão de confirmar (cada escolha grava na hora); nasceu **selo "salvo ✓"** na linha, o painel **Por categoria** atualizando na frente, e **a falha REVERTE** o seletor com o motivo do servidor. ⚠️ O `value` do select vem do `data`, que só muda no reload — sem o estado **otimista** ele voltava pra *"sem categoria"* na frente dele, que é o fracasso-disfarçado de novo.
+
+**REGRA 11 — 4 defeitos repostos:** a porta voltando a exigir conta bancária (**1 vermelho**) · a mensagem genérica (**1**) · o valor sem sinal (**1**) · o gesto sumindo (**1**).
+
+
 ### ⛔⛔ A TELA DA FATURA — O SINAL, A MAÇANETA E O TOGGLE (17/09)
 
 **⭐⭐ O ITEM 1 ERA DE VALOR, E A MEDIÇÃO O REBAIXOU DE CIRURGIA PRA DEPLOY.** O dono viu os 14 estornos listados POSITIVOS (`NETFLIX R$ 85,70`, `VIDAU R$ 1.052,42`) e perguntou o certo: *"perdeu no GRAVAR ou só na EXIBIÇÃO? A soma por categoria vai errar por 5.499,82 se o dado estiver positivo."*

@@ -26,6 +26,7 @@ import { revalidateTag } from 'next/cache'
 import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
+import { whereCategoriaAceita } from '@/lib/categorias/destino-valido'
 import { enforceStatusLadder } from '@/lib/transacoes/needs-review'
 
 interface Params {
@@ -55,12 +56,30 @@ export async function POST(request: NextRequest, { params }: Params) {
 
     // Valida categoria
     const cat = await prisma.category.findFirst({
-      where: { id: novaCategoriaId, companyId, isActive: true },
+      where: { ...whereCategoriaAceita(companyId), id: novaCategoriaId },
       select: { id: true, name: true, dreGroup: true, type: true },
     })
     if (!cat) {
+      /**
+       * ⭐ A RECUSA ENSINA A SAÍDA (17/09) — a régua do tradutor 422 do estoque.
+       * ⛔ *"Categoria não encontrada ou inativa."* mandava o dono adivinhar QUAL das 260
+       * opções era o problema. Agora ela diz o NOME e o PORQUÊ.
+       */
+      const qualquer = await prisma.category.findFirst({
+        where: { id: novaCategoriaId },
+        select: { name: true, isActive: true, companyId: true },
+      })
+      const motivo = !qualquer
+        ? 'essa categoria não existe mais'
+        : qualquer.companyId !== companyId
+          ? 'essa categoria é de outra empresa'
+          : `“${qualquer.name}” está INATIVA`
       return NextResponse.json(
-        { erro: 'Categoria não encontrada ou inativa.' },
+        {
+          erro: `Não dá pra usar essa categoria: ${motivo}.`,
+          code: 'CATEGORIA_INVALIDA',
+          saida: { rotulo: 'ver e reativar categorias', href: `/empresas/${companyId}/categorias` },
+        },
         { status: 400 },
       )
     }
@@ -71,7 +90,20 @@ export async function POST(request: NextRequest, { params }: Params) {
     const ownedTx = await prisma.transaction.findMany({
       where: {
         id: { in: transactionIds },
-        bankAccount: { companyId },
+        /**
+         * ⛔⛔ AQUI ERA SÓ `bankAccount: { companyId }` — e **compra de cartão nasce SEM
+         * conta bancária** (`bankAccountId` null; é o `businessCreditCardId` que a prende à
+         * empresa). Então a fatura inteira ficava fora do alcance: mesmo com categoria
+         * válida, a resposta era *"Nenhuma transação encontrada na empresa"*.
+         *
+         * ⚠️ Foi o erro de 17/09 ao reusar esta porta pra a tela da fatura **sem medir se
+         * ela alcançava cartão**. REGRA 4 tem duas metades: achar a porta única *e*
+         * provar que ela abre pro caso novo.
+         */
+        OR: [
+          { bankAccount: { companyId } },
+          { businessCreditCard: { companyId } },
+        ],
       },
       select: {
         id: true,
