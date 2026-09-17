@@ -768,6 +768,16 @@ JS SERVIDO (minificado)   value: W[e.id] ?? e.categoryId ?? ""
 
 ⚠️ **UMA SONDA MINHA ERA FRACA E EU A REPORTEI COMO PROVA:** na volta anterior escrevi *"com categoryId no payload: 33 de 33"* — o teste era `'categoryId' in t`, que é **verdade mesmo com `null`**, e naquele momento as 33 estavam todas sem categoria. *Chave presente não é valor presente*, e eu apresentei isso como se fosse.
 
+**⭐⭐ E O TEXTO DEDUROU O WIDGET — a volta seguinte fechou o cerco.** O dono: *"TODAS as 33 linhas mostram 'categoria salva: <certa>' e o `<select>` AO LADO continua em '— sem categoria —'"*. ⭐ **Foi o cinto que virou instrumento de diagnóstico:** ele matou a hipótese do bundle velho (o texto só existe no bundle novo) e isolou a falha no widget. ⚠️ Uma ressalva que eu devia: o texto lê `categoryName` direto do payload, então ele prova o NOME, não que o id case com alguma `<option>`.
+
+**⛔ MEDIDO DE NOVO, E AS OPÇÕES TINHAM OS IDS:** contra o `dashboard.expenseCategories` (49) e contra o fallback de `/categorias` (262), **linhas com id fora da lista = 0 nas duas**. Então não é descasamento de id — a causa continua sem observação direta (a tela é cliente; não consigo o DOM dele).
+
+**⭐⭐ O CONSERTO ENTÃO É POR CONSTRUÇÃO, nas duas suspeitas que o dono nomeou:**
+1. **`key` carregando o valor** (`key={\`cat-${'${t.id}'}-${'${valor}'}\`}`) — React aplica `value` no nó; se no commit a lista de options ainda não tem aquele id, o browser cai na primeira opção, e **num commit seguinte, com o `value` IGUAL, React não reaplica** (só escreve prop que mudou). O nó fica preso em "sem categoria" com o dado certo por baixo. Com o valor no `key`, o nó é NOVO quando o valor chega — **não existe estado velho pra ficar preso**.
+2. **`opcoesDoSeletor` garante a option da categoria salva**, mesmo que a lista venha curta, vazia ou de outra fonte. ⛔ *Value sem option é um select que não mostra nada.*
+
+**⭐ E O GUARD RENDERIZA DE VERDADE** (`renderToStaticMarkup`, sem jsdom): pra cada uma das 33 linhas, a `<option selected>` tem que **existir** e carregar o **nome** da categoria — a separação que o dono fez (*"não basta o value bater"*). **REGRA 11: com a garantia removida, o markup volta `null` — exatamente o sintoma dele — 2 vermelhos.**
+
 **O QUE FOI FEITO, e o que cada coisa é:**
 - ⭐ **A regra saiu do JSX** pra `valorDoSeletor` (pura, testável). *Regra que mora num `value={...}` é regra que ninguém prova* — a lição do prefill do cardápio (28/08), que quebrou duas vezes antes de virar função. **REGRA 11: o binding ignorando o dado do servidor = vermelho.**
 - ⭐⭐ **A categoria gravada passou a ser dita em TEXTO** na linha (*"categoria salva: EQUIPAMENTOS"*). ⛔ **Isto não é o conserto de um defeito que eu vi** — é a tela deixando de depender de **um widget só** pra afirmar o que o banco já sabe. Se o `<select>` falhar em hidratar por qualquer motivo, a linha continua dizendo a verdade.

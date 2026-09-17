@@ -12,7 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Header } from '@/components/layout/header'
 import { formatBRL } from '@/lib/format/money'
-import { valorDoSeletor } from '@/lib/credit-card-pj/valor-do-seletor'
+import { valorDoSeletor, opcoesDoSeletor } from '@/lib/credit-card-pj/valor-do-seletor'
 
 interface DashboardData {
   card: {
@@ -762,7 +762,16 @@ export default function CartaoDashboardPage() {
                       </div>
                       <p className="text-[11px] text-muted-foreground mt-0.5">{fmtDateBR(t.date)}</p>
                       {/* ⭐ a categoria é editável ALI — era o gesto que não existia */}
+                      {/* ⛔⛔ O `key` CARREGA O VALOR — e isso é o conserto da classe.
+                          React aplica `value` no nó do DOM; se na hora do commit a lista de
+                          options ainda não tem aquele id, o browser cai na primeira opção —
+                          e num commit seguinte, com o `value` IGUAL, **React não reaplica**
+                          (ele só escreve prop que mudou). O select fica preso em "sem
+                          categoria" com o dado certo por baixo. ⭐ Com o valor no `key`, o
+                          nó é NOVO quando o valor chega: não existe estado velho pra ficar
+                          preso. */}
                       <select
+                        key={`cat-${t.id}-${valorDoSeletor(otimista, t)}`}
                         className={`mt-1 h-7 w-full max-w-[260px] rounded border px-1 text-[11px] ${
                           valorDoSeletor(otimista, t) ? '' : 'border-amber-400 bg-amber-50/40'
                         }`}
@@ -771,7 +780,7 @@ export default function CartaoDashboardPage() {
                         disabled={salvando}
                       >
                         <option value="">— sem categoria —</option>
-                        {(data?.expenseCategories ?? expenseCats).map((c) => (
+                        {opcoesDoSeletor(data?.expenseCategories ?? expenseCats, t).map((c) => (
                           <option key={c.id} value={c.id}>{c.name}</option>
                         ))}
                       </select>

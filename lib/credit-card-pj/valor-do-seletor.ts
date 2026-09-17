@@ -34,3 +34,37 @@ export function valorDoSeletor(
 ): string {
   return otimista[linha.id] ?? linha.categoryId ?? ''
 }
+
+export interface OpcaoDoSeletor {
+  id: string
+  name: string
+}
+
+export interface LinhaComCategoriaNomeada extends LinhaComCategoria {
+  categoryName: string | null
+}
+
+/**
+ * ⭐⭐⭐ AS OPÇÕES DE UMA LINHA — **a categoria salva SEMPRE está entre elas** (17/09/2026).
+ *
+ * ⛔⛔ **O QUE ISTO TORNA IMPOSSÍVEL:** um `<select>` com `value` que não existe em nenhuma
+ * `<option>`. O browser, nesse caso, não mostra nada — ele cai na primeira opção, e a tela
+ * afirma *"— sem categoria —"* sobre uma linha categorizada. **Não basta o value bater com
+ * o dado: a option tem que EXISTIR** — foi o dono quem separou as duas coisas.
+ *
+ * ⚠️ Medido no caso dele, as duas fontes de lista JÁ continham os 33 ids — ou seja, isto
+ * **não é o conserto de um descasamento que eu vi**. É a garantia de que o widget não
+ * depende de a lista estar completa: lista veio curta, veio vazia, veio de outra fonte? A
+ * linha continua mostrando a categoria dela.
+ *
+ * ⚠️ E a extra entra **no fim e só quando falta**, pra não duplicar opção nem mexer na ordem
+ * alfabética que o dono já conhece.
+ */
+export function opcoesDoSeletor(
+  lista: OpcaoDoSeletor[],
+  linha: LinhaComCategoriaNomeada,
+): OpcaoDoSeletor[] {
+  if (!linha.categoryId) return lista
+  if (lista.some((c) => c.id === linha.categoryId)) return lista
+  return [...lista, { id: linha.categoryId, name: linha.categoryName ?? 'categoria salva' }]
+}
