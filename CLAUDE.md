@@ -752,6 +752,57 @@ TELA → 200 · "revisar" ✓ · "sem destino" ✓ · "parece" ✓ · o aviso do
 📋 **FALTA PRA FECHAR O CASO DE HOJE — e é o que só o PDF resolve:** o **V1** (Σ Brasil 11.376,89 × 11.358,89). A fixture que temos aponta a classe (linha em moeda estrangeira), mas **a fatura de hoje é outra**, e o texto dela não existe mais em lugar nenhum. **Da próxima recusa em diante isso não se repete** — a quarentena guarda.
 
 
+### ⛔⛔⛔ O PALPITE DE EMPRÉSTIMO NUNCA EXISTIU — SELECT INCOMPLETO, E O ESTRAGO FOI VÍNCULO CRUZADO (19/09/2026)
+
+**O dono:** *"vinculei a parcela pelo gesto da caixa e nada aconteceu."* E a cadeia, medida por id, é mais longa que o relato:
+
+```
+1. palpites-da-caixa buscava os contratos SEM o campo `status`
+2. detectLoanPayment começa com  loans.filter(l => l.status === 'ACTIVE' || 'LATE')
+   → com o campo UNDEFINED, a lista fica VAZIA
+3. → nenhum contrato casa → NENHUM palpite de parcela, NUNCA (zero, desde que a caixa nasceu)
+4. sem palpite, o dono escolheu numa lista de 8 contratos → pegou o errado
+5. a linha do C41022570 foi parar na parcela #24 do C41022227-1  ⛔ VÍNCULO CRUZADO
+```
+
+**⚠️⚠️ É A DOENÇA DO SELECT INCOMPLETO — a mesma do PIX de 7.000 (17/08):** o motor decide com um campo que a consulta não trouxe, e **não dá erro: dá silêncio**. ⭐ O que deixou passar foi um **`as never`** no call-site — sem o cast, o TypeScript teria acusado o campo faltando. *Cast que cala o compilador é o lugar onde o select incompleto se esconde.* ⚠️ E o `.catch(() => new Map())` da rota fechava o caixão: se explodisse, alguém veria; como só "não casa", o silêncio é perfeito.
+
+**⭐ A LIB SEMPRE SOUBE A RESPOSTA** (medido com a forma certa): `LIQUIDACAO DE PARCELA-C41022570` → contrato **C41022570-0**, **parcela 14** — o extrato escreve o número sem o sufixo e `descriptionMatchesContract` já resolve isso desde 27/06. O motor estava certo; quem o cegava era a consulta.
+
+**⚠️ E TRÊS SONDAS MINHAS ERRARAM ANTES DE EU ACERTAR** — a primeira chamou a lib com a assinatura errada, a segunda esqueceu o `status` (o MESMO campo do bug), a terceira passou `dueDay`, que não existe em `Loan`. *Sonda errada dá um vermelho tão convincente quanto um defeito real* — cada uma foi conferida contra a assinatura antes de virar conclusão.
+
+**AS TRÊS CAMADAS DA FALHA MUDA, todas consertadas:**
+| camada | como calava |
+|---|---|
+| **motor** | select sem `status` → palpite nunca nasce |
+| **mensagem** | *"Alguns lançamentos não são elegíveis (conta errada, já vinculados, ou não são débito)"* — três motivos, nenhum nomeado |
+| **rota** | `VinculoDeParcelaError` não é `ResolverError` → escapava como **500 sem corpo** |
+| **tela** | a recusa renderizava **no topo da caixa** — no celular, com o dedo num cartão do meio da lista, está fora da tela |
+
+⭐ Agora a recusa diz **qual** e **onde**: *"«LIQUIDACAO DE PARCELA-C41022570» já está vinculada à parcela 24 do contrato C41022227-1 — desfaça lá primeiro"*, em 422, **dentro do cartão da linha**.
+
+**⭐⭐ E O CONVITE DA PONTE DEIXOU DE SER UM TOAST.** O dono: *"aparece uma mensagem em cima e ela DESAPARECE sozinha — depois eu não sei onde achar as retiradas. **Fiz 2 que teriam ido pra PF e não sei se deram certo.**"* ***Nada que some sozinho carrega decisão.*** O painel passou a abrir **ancorado na linha** (como o Find & Match) e **a linha não sai da caixa** até ele responder — mandar ou pular, explícito.
+
+**⭐ E "RETIRADAS" GANHOU LUGAR VISÍVEL — a 9ª volta da porta sem maçaneta.** A tela `/empresas/[id]/retiradas` existe **desde 08/08** e só era alcançável por um banner de órfãs ou de dentro do próprio painel da ponte: **nunca esteve no menu**. Entrou, e ganhou a seção **"já mandadas pro perfil pessoal"**, cada uma com link pra ponte — que mostra as duas pontas. *A pergunta "deu certo?" não tinha tela.*
+
+**AS 2 RETIRADAS DELE, respondidas por id:**
+```
+✅ RGE SUL · R$ 307,22 · 17/09 → PONTE COMPLETA
+     ponte cmu7tbagr006llqd9mrtrefsr · entrada na PF cmu7tbag4006jlqd9oxbqstec
+⛔ MONIQUE SOARES PAZ · R$ 350,00 · 16/09 → PENDENTE (sem ponte) · tx cmu7qxrxh013g7tu92g58moyv
+```
+
+**PROVADO EM PROD depois do deploy** (o montador real, sobre as linhas que ele tentou):
+```
+LIQUIDACAO DE PARCELA-C41022227 → Contrato C41022227-1 — parcela 25 · R$ 6.903,45
+LIQUIDACAO DE PARCELA-C41022570 → Contrato C41022570-0 — parcela 14 · R$ 5.617,23
+(antes deste deploy: ZERO palpites de empréstimo, sempre)
+```
+**REGRA 11 — 4 defeitos repostos, 1 vermelho cada** (select sem `status` · convite voltando a recarregar · recusa genérica · Retiradas fora do menu). **10.381 verdes · TS 0 · deploy `PT39n-HltnU-kOg9XCbVv` 4/4.**
+
+📋 **PENDENTE, E É DECISÃO DO DONO (preview pronto, NADA gravado):** desfazer o vínculo cruzado — tirar os R$ 5.617,23 da #24 do C41022227-1 (ela nunca foi desse contrato) e vinculá-los à **#14 do C41022570-0**: amortização R$ 4.166,64 + encargos R$ 1.450,59, saldo 95.833,36 → 91.666,72. ⚠️ Hoje a #24 tem **2 pagamentos somando R$ 12.520,68 com `paidTotal` 5.617,23** — inconsistente enquanto o cruzado estiver lá.
+
+
 ### ⛔⛔ DOIS GESTOS QUE EFETIVAVAM PELA METADE — E NENHUMA DAS DUAS CAUSAS ERA A SUSPEITA (18/09/2026)
 
 **⭐ 1. RETIRADA SEM PONTE — a capacidade NÃO tinha sido guardada.** O dono: *"marquei uma saída como Distribuição de Lucros na caixa e ela só gravou a categoria: não abriu a ponte que mandava a retirada pro meu perfil PF. **Não quero meia-ponte gravada.**"* Ele perguntou se a peça tinha ficado nas guardadas da faxina de 15/09. **Não:** o `WithdrawalPanel` está **VIVO** (usado pelo `xero-row` e pela tela do sócio) e os 4 arquivos com selo `CAPACIDADE GUARDADA` são outros. O que houve é mais silencioso — **a caixa de entrada nasceu sem o convite**, porque o *"convite pós-categorização"* morava no **Pendentes**, e o Pendentes morreu como TELA em 15/09. *Quando uma tela morre, some junto tudo que era oferecido POR ELA — e some sem erro nenhum.*
