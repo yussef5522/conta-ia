@@ -102,7 +102,8 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
   useEffect(() => {
     void (async () => {
       const [c, k, e] = await Promise.all([
-        fetchComTimeout<{ categorias?: CategoriaDoMenu[] }>(`/api/empresas/${empresaId}/categorias`),
+        // ⛔ `soAtivas=true` — a rota devolve o catálogo inteiro (263 na Caçula, 60 ativas)
+        fetchComTimeout<{ categorias?: CategoriaDoMenu[] }>(`/api/empresas/${empresaId}/categorias?soAtivas=true`),
         fetchComTimeout<{ cards?: { id: string; name: string }[] }>(`/api/empresas/${empresaId}/cartoes`),
         fetchComTimeout<{ loans?: { id: string; lender: string; contractNumber: string | null; proximaParcelaNumero: number | null; proximaParcelaDate: string | null; proximaParcelaValor: number | null }[] }>(`/api/empresas/${empresaId}/emprestimos`),
       ])

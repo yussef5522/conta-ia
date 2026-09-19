@@ -93,3 +93,34 @@ describe('⛔ seção vazia não aparece — cabeçalho sobre lista vazia promet
     expect(totalDeOpcoes(secoesDoMenu([], 'ENTRADA'))).toBe(0)
   })
 })
+
+describe('⛔⛔ INATIVA nunca é destino — a prova em prod pegou 203 armadilhas', () => {
+  /**
+   * ⚠️ A rota devolve o catálogo INTEIRO: **263 categorias na Caçula, 60 ativas**. Oferecer
+   * as 203 inativas é a família do defeito de 17/09 na fatura do cartão — *o que a tela
+   * oferece tem que ser SUBCONJUNTO do que a gravação aceita*.
+   */
+  const COM_INATIVAS = [
+    { id: 'v1', name: 'Distribuição de Lucros', type: 'EXPENSE', dreGroup: 'DISTRIBUICAO_LUCROS', isActive: true },
+    { id: 'v2', name: 'Salários', type: 'EXPENSE', dreGroup: 'DESPESAS_PESSOAL', isActive: true },
+    { id: 'm1', name: 'Retirada ANTIGA (desativada)', type: 'EXPENSE', dreGroup: 'DISTRIBUICAO_LUCROS', isActive: false },
+    { id: 'm2', name: 'Despesa ANTIGA (desativada)', type: 'EXPENSE', dreGroup: 'OUTRAS_DESPESAS', isActive: false },
+  ]
+
+  it('⭐ a inativa some das DUAS seções', () => {
+    const s = secoesDoMenu(COM_INATIVAS, 'SAIDA')
+    expect(totalDeOpcoes(s)).toBe(2)
+    expect(JSON.stringify(s)).not.toContain('desativada')
+  })
+
+  it('⭐ e a trava vale mesmo se a chamada esquecer o ?soAtivas=true', () => {
+    // a régua é pura: não depende de quem chamou a rota
+    expect(secoesDoMenu(COM_INATIVAS, 'SAIDA').find((x) => x.titulo.includes('retirada'))!.itens)
+      .toHaveLength(1)
+  })
+
+  it('⛔ fonte que NÃO informa isActive continua valendo (não esvazia em silêncio)', () => {
+    const semCampo = [{ id: 'x', name: 'Aluguel', type: 'EXPENSE', dreGroup: 'DESPESAS_ADMINISTRATIVAS' }]
+    expect(totalDeOpcoes(secoesDoMenu(semCampo, 'SAIDA'))).toBe(1)
+  })
+})

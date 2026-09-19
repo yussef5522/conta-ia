@@ -33,6 +33,8 @@ export interface CategoriaDoMenu {
   name: string
   type: string
   dreGroup?: string | null
+  /** ⚠️ a rota devolve ATIVAS **e** inativas — ver a trava abaixo */
+  isActive?: boolean
 }
 
 export interface SecaoDoMenu {
@@ -59,7 +61,20 @@ export function secoesDoMenu(
   categorias: readonly CategoriaDoMenu[],
   sentido: 'SAIDA' | 'ENTRADA',
 ): SecaoDoMenu[] {
-  const ativas = categorias.filter((c) => c.dreGroup !== GRUPO_A_CLASSIFICAR)
+  /**
+   * ⛔⛔ **INATIVA NUNCA É DESTINO — e a prova em prod pegou isto.** A rota devolve o
+   * catálogo INTEIRO: **263 categorias, das quais só 60 estão ativas**. Sem esta linha o
+   * menu ofereceria **203 armadilhas** — exatamente o defeito de 17/09 na fatura do
+   * cartão (*"o seletor oferecia 260 opções, 203 inativas; a gravação exige isActive"*).
+   *
+   * ⚠️ A trava mora AQUI, na régua pura, e não só no `?soAtivas=true` da chamada: quem
+   * esquecer o parâmetro numa tela nova continua com o menu honesto. *O que a tela oferece
+   * é SUBCONJUNTO do que a gravação aceita, nunca o contrário.*
+   *
+   * ⚠️ `isActive` ausente conta como ATIVA — fonte que não informa o campo (fixture, tela
+   * antiga) não pode ter o menu esvaziado em silêncio.
+   */
+  const ativas = categorias.filter((c) => c.isActive !== false && c.dreGroup !== GRUPO_A_CLASSIFICAR)
 
   if (sentido === 'SAIDA') {
     const saidas = ativas.filter((c) => c.type === 'EXPENSE')
