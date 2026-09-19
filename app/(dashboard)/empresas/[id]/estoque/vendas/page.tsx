@@ -75,6 +75,8 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
   const [estornaItens, setEstornaItens] = useState(0)
   const [verLista, setVerLista] = useState(false)
   const [erroModal, setErroModal] = useState<string | null>(null)
+  /** ⭐ os itens que barraram a baixa — NOMEADOS, com o botão de seguir sem eles */
+  const [barrados, setBarrados] = useState<{ itens: { itemId: string; nome: string; motivo: string }[]; seguem: number } | null>(null)
   const [recibo, setRecibo] = useState<Recibo | null>(null)
   const [processando, setProcessando] = useState(false)
   const [processados, setProcessados] = useState<Dia[]>([])
@@ -169,7 +171,33 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
         if (dia) setRevisao({ data: dia, relatorio: 'PRODUTOS', origem: modoReprocesso ? 'LISTA' : 'IMPORT' })
         if (modoReprocesso) setAba('processados')
       }
-      else setErroModal(rr.erro ?? 'Não consegui processar.')
+      else {
+        /**
+         * ⭐⭐ A RECUSA QUE OFERECE O CAMINHO (19/09). O dono ficou travado numa baixa de 58
+         * itens porque UM barrou e a mensagem não dizia qual. Agora o servidor devolve os
+         * réus NOMEADOS e a tela vira um botão: *"baixar os outros 57"*.
+         * ⛔ A atomicidade não afrouxa — o reenvio grava tudo-ou-nada sem os pendentes.
+         */
+        const c = rr.corpo as { code?: string; barrados?: { itemId: string; nome: string; motivo: string }[]; quantosSeguem?: number } | null
+        if (c?.code === 'ITEM_BARRADO' && c.barrados?.length) setBarrados({ itens: c.barrados, seguem: c.quantosSeguem ?? 0 })
+        setErroModal(rr.erro ?? 'Não consegui processar.')
+      }
+    } catch { setErroModal('Falha de conexão.') } finally { setProcessando(false) }
+  }
+
+  /** ⭐ o reenvio: baixa o resto e deixa os barrados pendentes, com o motivo na tela */
+  const baixarSemOsBarrados = async () => {
+    if (!barrados) return
+    setProcessando(true); setErroModal(null)
+    try {
+      const body = modoReprocesso
+        ? { data: modoReprocesso, reprocessar: true, confirmar: true, confirmouSanidade: true, itensPendentes: barrados.itens.map((b) => b.itemId) }
+        : { html, data, confirmar: true, incluir: null, confirmouSanidade: true, itensPendentes: barrados.itens.map((b) => b.itemId) }
+      const rr = await fetchComTimeout<{ recibo: Recibo }>(`/api/empresas/${id}/estoque/vendas/processar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), timeoutMs: 60_000 })
+      if (rr.ok && rr.data) {
+        setRecibo(rr.data.recibo); setPlano(null); setModoReprocesso(null); setBarrados(null)
+        setPreview(null); setPrevRevisao(null); setHtml(''); carregarProcessados()
+      } else setErroModal(rr.erro ?? 'Não consegui processar.')
     } catch { setErroModal('Falha de conexão.') } finally { setProcessando(false) }
   }
 
@@ -331,6 +359,40 @@ export default function VendasImportPage({ params }: { params: Promise<{ id: str
       )}
 
       {/* modal ÚNICO de confirmação (import + reprocesso) */}
+      {/*
+        ⭐⭐ OS RÉUS NOMEADOS (19/09) — a recusa deixou de ser um texto sem ação. Fica ACIMA
+        do modal porque é ele que decide o que acontece com o lote, e vale nos dois
+        viewports: é uma composição só (REGRA 12).
+      */}
+      {barrados && (
+        <div className="fixed inset-x-3 bottom-3 z-[70] mx-auto max-w-xl rounded-2xl border-[1.5px] border-rose-300 bg-white p-4 shadow-xl sm:inset-x-auto sm:right-4 dark:bg-slate-900">
+          <p className="text-[13px] font-extrabold text-rose-900 dark:text-rose-200">
+            {barrados.itens.length === 1 ? 'Um item barrou a baixa' : `${barrados.itens.length} itens barraram a baixa`}
+          </p>
+          <ul className="mt-1.5 space-y-1.5">
+            {barrados.itens.map((b) => (
+              <li key={b.itemId} className="text-[12.5px] leading-relaxed text-slate-700 dark:text-slate-300">
+                <b>«{b.nome}»</b> — {b.motivo}
+              </li>
+            ))}
+          </ul>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button type="button" disabled={processando} onClick={baixarSemOsBarrados}
+              className="rounded-xl bg-emerald-600 px-3.5 py-2 text-[13px] font-extrabold text-white disabled:opacity-50">
+              baixar os outros {barrados.seguem} e deixar {barrados.itens.length === 1 ? 'este' : 'estes'} pendente{barrados.itens.length === 1 ? '' : 's'}
+            </button>
+            <button type="button" onClick={() => setBarrados(null)}
+              className="rounded-xl border px-3 py-2 text-[12.5px] font-bold text-slate-600 dark:border-slate-700">
+              agora não
+            </button>
+          </div>
+          {/* ⛔ e a tela DIZ que o dia continua reprocessável — pular não é perder */}
+          <p className="mt-2 text-[11.5px] leading-snug text-slate-500">
+            As linhas do dia ficam gravadas: resolvido o item, um reprocesso baixa o que faltou — sem reimportar nada.
+          </p>
+        </div>
+      )}
+
       {plano && <PlanoVendaModal plano={plano} data={modoReprocesso ?? data} titulo={modoReprocesso ? 'Reprocessar' : 'Confirmar baixa'} subtitulo={modoReprocesso && estornaItens > 0 ? `Estorna ${estornaItens} baixa(s) anterior(es) e refaz com o mapa atual.` : undefined} processando={processando} erro={erroModal} onConfirmar={confirmar} onClose={() => setPlano(null)} />}
     </div>
   )

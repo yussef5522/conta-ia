@@ -10,7 +10,10 @@ import { parseSuitable } from './parse-suitable'
 import { medirSanidade, SanidadeNaoConfirmadaError } from './medir-sanidade'
 import type { ResultadoDaSanidade } from './sanidade-do-import'
 import { criarMovimento, estornarMovimento } from '../movement'
-import { custoMedioPorItem, recomputeSaldoCache } from '../saldo'
+import { custoMedioPorItem, recomputeSaldoCache, saldosDaEmpresa } from '../saldo'
+import { avaliarResiduo, custoParaBaixar } from '../residuo-de-centavos'
+import { BaixaComItemBarradoError, semOsPendentes, type ItemBarrado } from './itens-pendentes-da-baixa'
+import { MovementInvalidError } from '../movement'
 
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 const TIPO_BAIXA = 'BAIXA_VENDA'
@@ -136,8 +139,8 @@ export async function montarPlanoVenda(companyId: string, data: string, html: st
 export interface ReciboVenda { importId: string; data: string; baixados: number; itensBaixados: number; pendentes: number; valorBaixado: number }
 
 /** EXECUTA a partir do HTML (import novo do dia). */
-export async function processarVendas(companyId: string, data: string, html: string, userId: string | undefined, db: PrismaClient = defaultPrisma, incluir: string[] | null = null, confirmouSanidade = false): Promise<ReciboVenda> {
-  return gravarVenda(companyId, data, parseSuitable(html).linhas, incluir, userId, db, confirmouSanidade)
+export async function processarVendas(companyId: string, data: string, html: string, userId: string | undefined, db: PrismaClient = defaultPrisma, incluir: string[] | null = null, confirmouSanidade = false, itensPendentes: string[] = []): Promise<ReciboVenda> {
+  return gravarVenda(companyId, data, parseSuitable(html).linhas, incluir, userId, db, confirmouSanidade, itensPendentes)
 }
 
 /** DRY-RUN do reprocesso: o que vai acontecer se refizer um dia já importado (com o mapa
@@ -155,17 +158,17 @@ export async function montarPlanoReprocesso(companyId: string, data: string, db:
 
 /** REPROCESSA um dia já importado a partir das linhas GRAVADAS (sem re-upload) — quando o
  *  dono mapeia mais fichas depois. incluir = null → todos os mapeados atuais. Idempotente. */
-export async function reprocessarDia(companyId: string, data: string, userId: string | undefined, db: PrismaClient = defaultPrisma, confirmouSanidade = false): Promise<ReciboVenda> {
+export async function reprocessarDia(companyId: string, data: string, userId: string | undefined, db: PrismaClient = defaultPrisma, confirmouSanidade = false, itensPendentes: string[] = []): Promise<ReciboVenda> {
   const dataDate = new Date(`${data}T12:00:00`)
   const imp = await db.stockVendaImport.findUnique({ where: { companyId_data: { companyId, data: dataDate } }, select: { id: true } })
   if (!imp) throw new Error('Não há import desse dia pra reprocessar.')
   const linhas = await db.stockVendaLinha.findMany({ where: { companyId, importId: imp.id }, select: { nomeSuitable: true, quantidade: true, valorTotal: true } })
-  return gravarVenda(companyId, data, linhas.map((l) => ({ produto: l.nomeSuitable, quantidade: l.quantidade, valorTotal: l.valorTotal })), null, userId, db, confirmouSanidade)
+  return gravarVenda(companyId, data, linhas.map((l) => ({ produto: l.nomeSuitable, quantidade: l.quantidade, valorTotal: l.valorTotal })), null, userId, db, confirmouSanidade, itensPendentes)
 }
 
 /** EXECUTA: cria/atualiza o import do dia (idempotente), estorna baixas anteriores e refaz,
  *  grava BAIXA_VENDA no ledger + as linhas (pra pendentes/reprocessar). */
-async function gravarVenda(companyId: string, data: string, linhas: LinhaVenda[], incluir: string[] | null, userId: string | undefined, db: PrismaClient = defaultPrisma, confirmouSanidade = false): Promise<ReciboVenda> {
+async function gravarVenda(companyId: string, data: string, linhas: LinhaVenda[], incluir: string[] | null, userId: string | undefined, db: PrismaClient = defaultPrisma, confirmouSanidade = false, itensPendentes: string[] = []): Promise<ReciboVenda> {
   const plano = await montarPlanoDeLinhas(companyId, data, linhas, incluir, db)
   // ⛔⛔ ANTES DE ESCREVER: o import de 10/09 baixou 1.499 FANTA UVA porque nada perguntou.
   // Quem recusa é o SERVIDOR (a régua do FREIO da contagem) — aviso que mora na tela some
@@ -187,13 +190,51 @@ async function gravarVenda(companyId: string, data: string, linhas: LinhaVenda[]
     const jaEstornado = new Set(estornos.map((e) => e.estornoDeId))
     for (const b of baixasAntigas) if (!jaEstornado.has(b.id)) await estornarMovimento(tx, b.id, { criadoPorId: userId ?? null })
 
-    // baixa nova (agregada por item; quantidade NEGATIVA = saiu por venda)
-    const custoMap = await custoMedioPorItem(tx, companyId)
-    for (const a of plano.agregada) {
+    /**
+     * ⭐⭐ BAIXA NOVA — **custo em PRECISÃO CHEIA** (19/09).
+     *
+     * ⛔⛔ Antes: `custoMedioPorItem` devolve o custo **arredondado em 2 casas**, e a baixa
+     * multiplicava pela quantidade — o erro **cresce com a quantidade**. Medido em prod:
+     * zerar 1.019 ovos a `0,55` deixava **R$ −4,81** de resíduo, e **55 dos 215 itens**
+     * estavam nesse estado. Era isso que barrava o lote inteiro do dono.
+     *
+     * ⭐ *O ledger guarda precisão cheia; quem arredonda é a leitura* — a lição que já
+     * mordeu na reunitização do pão (2,3125) e na conclusão de produção. Com o custo cheio,
+     * zerar a quantidade zera o valor **por construção**: o resíduo não nasce.
+     *
+     * ⚠️ E quando a baixa ZERA o item, ela leva o valor que sobrou do histórico junto —
+     * dentro do teto do arredondamento (`avaliarResiduo`). Acima do teto continua recusando:
+     * ali não é centavo, é dado torto.
+     */
+    const saldosAgora = await saldosDaEmpresa(tx, companyId)
+    const estado = new Map(saldosAgora.map((s) => [s.itemId, s]))
+    const barrados: ItemBarrado[] = []
+    const aBaixar = semOsPendentes(plano.agregada, itensPendentes)
+    for (const a of aBaixar) {
       if (a.qtd <= 0) continue
-      const custo = custoMap.get(a.itemId) ?? 0
-      await criarMovimento(tx, { companyId, itemId: a.itemId, tipo: TIPO_BAIXA, quantidade: -a.qtd, custoUnitario: custo, custoTotal: round2(-a.qtd * custo), receiptId: imp.id, origem: 'MANUAL', criadoPorId: userId ?? null, dataMovimento: dataDate })
+      const at = estado.get(a.itemId)
+      const custo = custoParaBaixar(at?.valor ?? 0, at?.saldo ?? 0)
+      let custoTotal = round2(-a.qtd * custo)
+      const v = avaliarResiduo({
+        saldoAntes: at?.saldo ?? 0, valorAntes: at?.valor ?? 0,
+        qtdDaBaixa: a.qtd, valorDaBaixa: Math.abs(custoTotal),
+      })
+      // ⭐ zerou a quantidade e sobrou resíduo do histórico? vai junto — zerar qtd zera valor
+      if (v.decisao === 'AJUSTA_RESIDUO') custoTotal = round2(custoTotal + v.valorDepois)
+      try {
+        await criarMovimento(tx, { companyId, itemId: a.itemId, tipo: TIPO_BAIXA, quantidade: -a.qtd, custoUnitario: custo, custoTotal, receiptId: imp.id, origem: 'MANUAL', criadoPorId: userId ?? null, dataMovimento: dataDate })
+      } catch (e) {
+        /**
+         * ⛔ O LOTE NÃO É REFÉM DE UM: em vez de estourar no primeiro barrado, junta TODOS
+         * e devolve a recusa com o caminho ("baixa os outros N e deixa estes pendentes").
+         * ⚠️ A transação ainda é tudo-ou-nada — o `throw` abaixo a desfaz. O que mudou é
+         * que a recusa agora NOMEIA e OFERECE.
+         */
+        if (e instanceof MovementInvalidError) { barrados.push({ itemId: a.itemId, nome: e.culpado?.nome ?? a.nome, motivo: e.message }); continue }
+        throw e
+      }
     }
+    if (barrados.length) throw new BaixaComItemBarradoError(barrados, aBaixar.filter((x) => x.qtd > 0).length - barrados.length)
 
     // linhas (todas) pra pendentes/reprocessar — reescreve
     await tx.stockVendaLinha.deleteMany({ where: { companyId, importId: imp.id } })

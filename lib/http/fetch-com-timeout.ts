@@ -30,6 +30,15 @@ export interface RespostaComTimeout<T> {
   erro: string | null
   /** o tempo estourou (≠ de erro do servidor) — a tela pode oferecer "tentar de novo" */
   timeout: boolean
+  /**
+   * ⭐ O CORPO DA RECUSA (19/09) — aditivo, só preenchido quando `ok` é false.
+   *
+   * ⛔ Antes a falha carregava só a FRASE, e uma recusa que oferece caminho (*"estes 2
+   * itens barraram; dá pra baixar os outros 56"*) chegava na tela como texto morto: a lista
+   * dos réus se perdia. ***Recusa acionável precisa dos dados, não só da frase.***
+   * ⚠️ Quem já lê `erro` não muda em nada.
+   */
+  corpo?: unknown
 }
 
 /**
@@ -53,7 +62,7 @@ export async function fetchComTimeout<T = unknown>(
   try {
     const r = await fetch(url, { ...init, signal: ctrl.signal })
     const j = await r.json().catch(() => null)
-    if (!r.ok) return { ok: false, data: null, erro: (j as { erro?: string } | null)?.erro ?? 'Não consegui carregar.', timeout: false }
+    if (!r.ok) return { ok: false, data: null, erro: (j as { erro?: string } | null)?.erro ?? 'Não consegui carregar.', timeout: false, corpo: j }
     return { ok: true, data: j as T, erro: null, timeout: false }
   } catch (e) {
     // ⚠️ abortado pelo NOSSO relógio = timeout; abortado por fora = a tela sumiu, e aí

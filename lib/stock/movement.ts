@@ -10,10 +10,21 @@ type Db = PrismaClient | Prisma.TransactionClient
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 const CUSTO_TOL = 0.01 // por LINHA (o mesmo do CHECK do banco)
 
+/** ⭐ quem é o item barrado — a tela precisa disto pra oferecer "deixa este pendente" */
+export interface CulpadoDoMovimento {
+  itemId: string
+  nome: string
+  saldoDepois: number
+  valorDepois: number
+}
+
 export class MovementInvalidError extends Error {
-  constructor(message: string) {
+  /** ⛔ sem isto a recusa vira um texto que ninguém consegue acionar em lote */
+  readonly culpado?: CulpadoDoMovimento
+  constructor(message: string, culpado?: CulpadoDoMovimento) {
     super(message)
     this.name = 'MovementInvalidError'
+    this.culpado = culpado
   }
 }
 
@@ -93,14 +104,27 @@ async function assertSaldoNaoFicaImpossivel(db: Db, m: NovoMovimento, custoTotal
      * positivo, aí sim a quantidade é a suspeita.
      */
     const saldoAntes = round2(atual._sum.quantidade ?? 0)
+    const valorAntes = round2(atual._sum.custoTotal ?? 0)
     const cruzouOZero = saldoAntes < 0 && saldoDepois >= 0
+    /**
+     * ⛔⛔ **A MENSAGEM NOMEIA O RÉU** (19/09). Ela dizia *"Este item ficaria com 0 unidades
+     * e valor R$ -0.04"* — **sem dizer QUAL item**. Numa baixa de 58 produtos o dono ficava
+     * travado sem saber onde agir, e os outros 57 viravam reféns do 1. ***Recusa que não
+     * nomeia o réu é a mesma coisa que silêncio*** (a régua do 422 do estoque).
+     */
+    const item = await db.stockItem.findUnique({ where: { id: m.itemId }, select: { nome: true, unidadeControle: true } })
+    const nome = item?.nome ?? m.itemId
+    const un = item?.unidadeControle ?? ''
     throw new MovementInvalidError(
-      `Este item ficaria com ${saldoDepois} ${unidadeOuUnidades(saldoDepois)} e valor `
+      `«${nome}» ficaria com ${saldoDepois} ${un || unidadeOuUnidades(saldoDepois)} e valor `
       + `R$ ${valorDepois.toFixed(2)} — dinheiro negativo com saldo positivo é um estado que não existe. `
+      + `Hoje ele tem ${saldoAntes} ${un} valendo R$ ${valorAntes.toFixed(2)}; esta baixa tira `
+      + `${Math.abs(m.quantidade)} ${un} (R$ ${Math.abs(custoTotal).toFixed(2)}). `
       + (cruzouOZero
         ? `O saldo estava em ${saldoAntes} (saiu mais do que entrou), então falta registrar `
           + 'a COMPRA que não foi lançada — não é a sua contagem que está errada.'
         : 'Confira a quantidade: ela costuma ser o sintoma.'),
+      { itemId: m.itemId, nome, saldoDepois, valorDepois },
     )
   }
 }
