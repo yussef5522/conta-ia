@@ -86,6 +86,28 @@ describe('ordens de produção 2.1', () => {
     expect((await saldoItem(prisma, companyId, coxaoId)).saldo).toBe(20) // voltou ao inicial
   })
 
+  /**
+   * ⭐ 19/09 — o caso da calabresa ralada: ela estava **EM_PRODUCAO**, não SEPARADA.
+   *
+   * ⚠️ O teste acima cobria só o cancelamento logo após separar. A ordem parada de
+   * verdade já foi INICIADA, e é dela que o dono precisa sair sem perder insumo.
+   */
+  it('⭐ cancelar EM PRODUÇÃO também devolve tudo — o caso da ordem parada', async () => {
+    const { ordemId } = await criarOrdem({ companyId, fichaId, escalaReceitas: 5, dataProducao: new Date('2026-08-21') }, prisma)
+    await confirmarSeparacao(companyId, ordemId, [{ itemId: coxaoId, qtdSeparada: 5 }], prisma)
+    await iniciarProducao(companyId, ordemId)
+    expect((await saldoItem(prisma, companyId, coxaoId)).saldo, 'o insumo está fora da prateleira').toBe(15)
+
+    await cancelarOrdem(companyId, ordemId, prisma)
+    expect((await getOrdem(companyId, ordemId))!.estado).toBe('CANCELADA')
+    expect((await saldoItem(prisma, companyId, coxaoId)).saldo, 'voltou inteiro').toBe(20)
+
+    // ⛔ P1 — o invariante contábil do módulo: nada evapora entre a câmara e a panela
+    const ms = await prisma.stockMovement.findMany({ where: { companyId, receiptId: ordemId }, select: { tipo: true, quantidade: true } })
+    const soma = (t: string) => ms.filter((m) => m.tipo === t).reduce((s, m) => s + Math.abs(m.quantidade), 0)
+    expect(soma('SEPARACAO_SAIDA')).toBe(soma('PRODUCAO_CONSUMO') + soma('DEVOLUCAO_PRODUCAO'))
+  })
+
   it('não separa 2×; não produz sem separar', async () => {
     const { ordemId } = await criarOrdem({ companyId, fichaId, escalaReceitas: 1, dataProducao: new Date('2026-08-21') }, prisma)
     await expect(iniciarProducao(companyId, ordemId)).rejects.toThrow(OrdemError) // PLANEJADA

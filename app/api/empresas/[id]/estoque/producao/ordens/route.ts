@@ -1,6 +1,7 @@
 // ESTOQUE FASE 2 item 2.1 — ordens de produção (GET lista, POST cria).
 
 import { NextRequest, NextResponse } from 'next/server'
+import { dataDaOrdem, DataDaOrdemError } from '@/lib/stock/producao/data-da-ordem'
 import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { guardStock } from '@/lib/stock/require-stock'
@@ -62,7 +63,8 @@ export async function GET(request: NextRequest, { params }: Params) {
 const criarSchema = z.object({
   fichaId: z.string().min(1),
   escalaReceitas: z.number().positive(),
-  dataProducao: z.string().min(1),
+  // ⛔ NÃO é `.min(1)` — foi ele que aceitou "0202-09-18" e sumiu com um lote (19/09)
+  dataProducao: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Escolha a data no calendário (ano com 4 dígitos).'),
   setorId: z.string().nullable().optional(),
   observacao: z.string().max(500).nullable().optional(),
 })
@@ -74,10 +76,12 @@ export async function POST(request: NextRequest, { params }: Params) {
   const parsed = criarSchema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ erro: 'Dados da ordem inválidos.' }, { status: 400 })
   try {
-    const r = await criarOrdem({ companyId, userId: a.user!.sub, ...parsed.data, dataProducao: new Date(`${parsed.data.dataProducao}T12:00:00`) })
+    const r = await criarOrdem({ companyId, userId: a.user!.sub, ...parsed.data, dataProducao: dataDaOrdem(parsed.data.dataProducao) })
     return NextResponse.json({ ok: true, ...r })
   } catch (e) {
-    if (e instanceof OrdemError) return NextResponse.json({ erro: e.message }, { status: 422 })
+    // ⚠️ a data ruim recusa com a MESMA cara de erro de domínio: ela é decisão do dono
+    //    (escolher a data), não bug — e a frase DIZ o que fazer.
+    if (e instanceof OrdemError || e instanceof DataDaOrdemError) return NextResponse.json({ erro: e.message }, { status: 422 })
     throw e
   }
 }

@@ -24,7 +24,9 @@ import { preverSaida, avaliarVariacao, MIN_LOTES_PARA_MEDIA, type FaixaVariacao 
 /** ⭐ Os estados de trabalho ABERTO. A MESMA lista que o P2 do juiz usa — antes estava
  *  literal nos dois lugares. Ordem aberta NUNCA obedece o filtro de período: trabalho
  *  aberto não é histórico. */
-export const ESTADOS_ABERTOS = ['PLANEJADA', 'SEPARADA', 'EM_PRODUCAO'] as const
+// ⭐ reexporta o dono ÚNICO (a definição mora em `data-da-ordem`, arquivo puro sem ciclo)
+export { ESTADOS_ABERTOS } from './data-da-ordem'
+import { ESTADOS_ABERTOS } from './data-da-ordem'
 
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 

@@ -5,14 +5,18 @@ import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { guardStock } from '@/lib/stock/require-stock'
 import { confirmarSeparacao, iniciarProducao, devolverInsumo, cancelarOrdem, OrdemError } from '@/lib/stock/producao/ordens'
+import { marcarQueContinuaDepois } from '@/lib/stock/producao/saidas-da-ordem-parada'
+import { dataDaOrdem, DataDaOrdemError } from '@/lib/stock/producao/data-da-ordem'
 
 interface Params { params: Promise<{ id: string; ordemId: string }> }
 
 const schema = z.object({
-  acao: z.enum(['separar', 'iniciar', 'devolver', 'cancelar']),
+  acao: z.enum(['separar', 'iniciar', 'devolver', 'cancelar', 'continua-depois']),
   itens: z.array(z.object({ itemId: z.string(), qtdSeparada: z.number().nonnegative() })).optional(),
   itemId: z.string().optional(),
   qtd: z.number().positive().optional(),
+  /** ⭐ a 3ª porta da ordem parada: o dia em que ela continua (lote que dorme, 15/09) */
+  diaPrevisto: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 })
 
 export async function POST(request: NextRequest, { params }: Params) {
@@ -35,9 +39,21 @@ export async function POST(request: NextRequest, { params }: Params) {
         await devolverInsumo(companyId, ordemId, parsed.data.itemId, parsed.data.qtd, prisma, user.sub); return NextResponse.json({ ok: true })
       case 'cancelar':
         await cancelarOrdem(companyId, ordemId, prisma, user.sub); return NextResponse.json({ ok: true })
+      /**
+       * ⭐⭐ A TERCEIRA PORTA (19/09) — "é lote que dorme de verdade".
+       *
+       * ⛔ Ela NÃO mexe no ledger: o insumo continua reservado, que é o certo. O que muda
+       * é o aviso calar — e ele cala porque existe uma DECISÃO registrada, com dia, não
+       * porque alguém o silenciou. *Plano vencido volta a avisar* (a régua de 15/09).
+       */
+      case 'continua-depois': {
+        if (!parsed.data.diaPrevisto) return NextResponse.json({ erro: 'Diga em que dia ela continua.' }, { status: 400 })
+        await marcarQueContinuaDepois({ companyId, ordemId, dia: dataDaOrdem(parsed.data.diaPrevisto), userId: user.sub }, prisma)
+        return NextResponse.json({ ok: true })
+      }
     }
   } catch (e) {
-    if (e instanceof OrdemError) return NextResponse.json({ erro: e.message }, { status: 422 })
+    if (e instanceof OrdemError || e instanceof DataDaOrdemError) return NextResponse.json({ erro: e.message }, { status: 422 })
     throw e
   }
 }

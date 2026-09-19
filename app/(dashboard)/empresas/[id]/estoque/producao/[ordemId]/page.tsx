@@ -37,6 +37,9 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
   // ⭐ a ordem tem etapa ASSINADA (alguém carimbou com o PIN)? Então "quem produziu" já está
   // respondido — o dropdown vira fóssil e sai da tela (06/09).
   const [etapasAssinadas, setEtapasAssinadas] = useState(false)
+  /** ⭐ o aviso da ordem PARADA com as três portas (19/09) — vem do SERVIDOR, não da tela */
+  const [parada, setParada] = useState<{ avisar: boolean; motivo: string | null; portas: { acao: string; rotulo: string; efeito: string; primaria?: boolean }[] } | null>(null)
+  const [diaQueContinua, setDiaQueContinua] = useState('')
   // ⛔ as etapas ABERTAS: concluir por aqui vai LEVÁ-LAS junto, sem tempo medido. O
   // encarregado tem que saber ANTES de apertar — escolha consciente, não efeito colateral.
   const [etapasAbertas, setEtapasAbertas] = useState<EtapaAbertaNaTela[]>([])
@@ -50,6 +53,7 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
     if (!j.ordem) { setOrdem(null); return }
     setOrdem(j.ordem); setLinhas(j.linhas ?? [])
     setConclusoes(j.conclusoes ?? []); setColaboradores(j.colaboradores ?? []); setRendimentoMedio(j.rendimentoMedio ?? null); setRendimentoLotes(j.rendimentoLotes ?? 0)
+    setParada(j.parada ?? null)
     if (j.ordem.estado === 'PLANEJADA') setSep(Object.fromEntries((j.linhas ?? []).map((l: Linha) => [l.itemId, String(l.qtdPlanejada)])))
   }).catch(() => setOrdem(null))
   useEffect(() => { carregar() }, [id, ordemId]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -137,6 +141,45 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
         </div>
         {ordem.estado === 'CANCELADA' && <span className="rounded-full bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-600">Cancelada</span>}
       </div>
+
+      {/* ⭐⭐ A ORDEM PARADA E AS TRÊS PORTAS (19/09) — aviso sem porta é beco.
+          O card do painel leva pra cá; aqui ele DIZ o que cada saída faz com o dinheiro. */}
+      {parada?.avisar && (
+        <div className="rounded-xl border-[1.5px] border-amber-300 bg-amber-50 p-3.5 print:hidden">
+          <p className="text-[13px] font-semibold leading-snug text-amber-900">{parada.motivo}</p>
+          <div className="mt-2.5 space-y-1.5">
+            {parada.portas.map((porta) => (
+              <div key={porta.acao} className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                {porta.acao === 'CONCLUIR' && (
+                  <a href="#concluir" className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-bold text-white">{porta.rotulo}</a>
+                )}
+                {porta.acao === 'CANCELAR_E_DEVOLVER' && (
+                  <button type="button" disabled={busy}
+                    onClick={() => { if (confirm('Cancelar a ordem? Os insumos separados voltam pro estoque.')) acao({ acao: 'cancelar' }) }}
+                    className="rounded-lg border border-amber-400 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:opacity-50">
+                    {porta.rotulo}
+                  </button>
+                )}
+                {porta.acao === 'CONTINUA_DEPOIS' && (
+                  <span className="inline-flex items-center gap-1.5">
+                    <input type="date" aria-label="dia em que a produção continua" value={diaQueContinua}
+                      onChange={(e) => setDiaQueContinua(e.target.value)}
+                      className="rounded-lg border border-amber-300 bg-white px-2 py-1 text-xs" />
+                    <button type="button" disabled={busy || !diaQueContinua}
+                      onClick={async () => { if (await acao({ acao: 'continua-depois', diaPrevisto: diaQueContinua })) setDiaQueContinua('') }}
+                      className="rounded-lg border border-amber-400 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:opacity-40">
+                      {porta.rotulo}
+                    </button>
+                  </span>
+                )}
+                {/* ⚠️ o EFEITO à vista: escolher sem saber o que acontece com o insumo é o
+                    que faz o dono não escolher nada e o lote ficar parado mais um dia */}
+                <span className="text-[11px] leading-snug text-amber-800/80">{porta.efeito}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* stepper */}
       {ordem.estado !== 'CANCELADA' && (
@@ -314,7 +357,8 @@ export default function OrdemDetalhePage({ params }: { params: Promise<{ id: str
           trabalho acontecendo; a conclusão é o fecho. */}
       <EtapasDaOrdem id={id} ordemId={ordemId} colaboradores={colaboradores} aoSaberAssinadas={setEtapasAssinadas} aoSaberAbertas={setEtapasAbertas} />
 
-      {/* conclusão ("quantos saíram?") */}
+      {/* conclusão ("quantos saíram?") — ⭐ a âncora é o alvo da 1ª porta do aviso */}
+      <div id="concluir" />
       {emProducao && <ConclusaoForm id={id} ordemId={ordemId} linhas={linhas} etapasAbertas={etapasAbertas} colaboradores={etapasAssinadas ? [] : colaboradores} rendimentoMedio={rendimentoMedio} rendimentoLotes={rendimentoLotes} loteBase={ordem.loteBase} unidadeProduzido={ordem.unidadeProduzido} onConcluida={carregar} />}
 
       {/* histórico de conclusões + etiquetas */}

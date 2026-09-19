@@ -5,6 +5,7 @@
 // movimentos (receiptId = id da ordem), nunca uma tabela de saldo à parte. Só stock_.
 
 import type { PrismaClient, Prisma } from '@prisma/client'
+import { ESTADOS_ABERTOS } from './data-da-ordem'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { criarMovimento } from '../movement'
 import { saldoItem, custoMedioPorItem, recomputeSaldoCache } from '../saldo'
@@ -237,7 +238,29 @@ export async function getOrdem(companyId: string, ordemId: string, db: Db = defa
 }
 
 export async function listOrdens(companyId: string, db: Db = defaultPrisma): Promise<OrdemView[]> {
-  const os = await db.stockProductionOrder.findMany({ where: { companyId }, orderBy: [{ dataProducao: 'desc' }, { criadoEm: 'desc' }], take: 200 })
+  /**
+   * ⛔⛔ A ORDEM ABERTA NUNCA DEPENDE DO TETO (19/09).
+   *
+   * Antes era um `findMany` só, `dataProducao desc` com `take: 200`. A ordem da calabresa
+   * ralada nasceu com a data no **ano 202** (ver `data-da-ordem.ts`), foi pro fim da
+   * ordenação — **posição 238 de 238** — e caiu fora das 200. Resultado medido: **1 ordem
+   * aberta no banco, 0 visíveis em qualquer tela**, com R$ 42,18 de insumo preso nela.
+   *
+   * ⭐ Trabalho pendente não é histórico: ele é a razão da tela existir. O teto continua
+   * valendo pras ENCERRADAS (que são a massa e envelhecem), e as abertas vêm inteiras —
+   * a mesma cura do `take: 50` que escondia o fermento da busca (16/09).
+   */
+  const [naFila, encerradas] = await Promise.all([
+    db.stockProductionOrder.findMany({
+      where: { companyId, estado: { in: [...ESTADOS_ABERTOS] } },
+      orderBy: [{ dataProducao: 'desc' }, { criadoEm: 'desc' }],
+    }),
+    db.stockProductionOrder.findMany({
+      where: { companyId, estado: { notIn: [...ESTADOS_ABERTOS] } },
+      orderBy: [{ dataProducao: 'desc' }, { criadoEm: 'desc' }], take: 200,
+    }),
+  ])
+  const os = [...naFila, ...encerradas]
   const out: OrdemView[] = []
   for (const o of os) {
     const v = await getOrdem(companyId, o.id, db)
