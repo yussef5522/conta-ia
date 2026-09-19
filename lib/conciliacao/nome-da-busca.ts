@@ -39,5 +39,38 @@ export function nomeDaBusca(descricao: string | null | undefined): string {
   const ehCodigoDoBanco = !/\s/.test(semCauda) && /\d/.test(semCauda)
   if (ehCodigoDoBanco) return ''
   if (!/[a-zA-ZÀ-ú]{3,}/.test(semCauda)) return ''
-  return semCauda
+  return prefixoDistintivo(semCauda)
+}
+
+/** conectores que sozinhos não identificam ninguém */
+const CONECTORES = new Set(['da', 'de', 'do', 'das', 'dos', 'e', 'em', 'a', 'o'])
+
+/**
+ * ⭐⭐⭐ **O BANCO ABREVIA — e foi a prova em prod que mostrou.** Medido no caso do dono:
+ *
+ * ```
+ * extrato  : BAMBERG COMERCIO E REPRES LTDA        ← abreviado
+ * cadastro : BAMBERG COMERCIO E REPRESENTACOES LTDA
+ * busca cheia      → 0 candidatas   ⛔ (o painel abriria dizendo "nada encontrado")
+ * "BAMBERG COMERCIO" → 3 candidatas ✅ (as 3 contas abertas dele)
+ * ```
+ *
+ * ⛔ Semear com o nome INTEIRO é pior que não semear: o painel abre afirmando que não há
+ * candidata quando há três — *erro disfarçado de vazio*, a doença que esta casa mais paga.
+ *
+ * ⭐ A semente passa a ser o **PREFIXO com 2 palavras significativas**. Prefixo porque a
+ * busca é `contains` (fragmento contíguo), e 2 palavras porque uma só pode ser genérica
+ * demais (`CIA`, `POSTO`) — o conector no meio entra junto pra o fragmento continuar
+ * contíguo: `CIA DA FRUTA`, não `CIA FRUTA`, que não casaria com nada.
+ */
+export function prefixoDistintivo(nome: string): string {
+  const palavras = nome.split(/\s+/).filter(Boolean)
+  let significativas = 0
+  const saida: string[] = []
+  for (const p of palavras) {
+    saida.push(p)
+    if (!CONECTORES.has(p.toLowerCase())) significativas++
+    if (significativas >= 2) break
+  }
+  return saida.join(' ')
 }

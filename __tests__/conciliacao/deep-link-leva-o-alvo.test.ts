@@ -36,18 +36,25 @@ describe('⭐ a perna que o dono tocou já vem marcada, do lado certo', () => {
 })
 
 describe('⭐ a busca do painel nasce com o nome da linha — sem procurar numa lista de 100', () => {
-  it('⭐ o caso real do dono: BAMBERG', () => {
-    expect(nomeDaBusca('BAMBERG COMERCIO E REPRES LTDA - Pagamento')).toBe('BAMBERG COMERCIO E REPRES LTDA')
+  /**
+   * ⚠️⚠️ **ESTES QUATRO AFIRMAVAM O NOME INTEIRO, e a PROVA EM PROD os derrubou** — ficam
+   * corrigidos com o motivo, não apagados. O extrato escreve `BAMBERG COMERCIO E REPRES
+   * LTDA` e o cadastro `…REPRESENTACOES LTDA`: **a busca cheia devolve 0 candidatas** e o
+   * painel abriria dizendo "nada encontrado" com 3 contas abertas do cara na tela de baixo.
+   * Quem sobrevive à abreviação do banco é o PREFIXO (ver o bloco lá embaixo).
+   */
+  it('⭐ o caso real do dono: BAMBERG (prefixo, porque o banco abrevia)', () => {
+    expect(nomeDaBusca('BAMBERG COMERCIO E REPRES LTDA - Pagamento')).toBe('BAMBERG COMERCIO')
   })
 
   it('⭐ corta a cauda do banco em todas as grafias que o extrato usa', () => {
-    expect(nomeDaBusca('CIA DA FRUTA COMERCIO LTDA - Transferência | Pix')).toBe('CIA DA FRUTA COMERCIO LTDA')
-    expect(nomeDaBusca('MARIA LUIZA COELHO - Pix')).toBe('MARIA LUIZA COELHO')
+    expect(nomeDaBusca('CIA DA FRUTA COMERCIO LTDA - Transferência | Pix')).toBe('CIA DA FRUTA')
+    expect(nomeDaBusca('MARIA LUIZA COELHO - Pix')).toBe('MARIA LUIZA')
   })
 
   it('⛔ preserva MAIÚSCULA e acento — o `contains` do Postgres é case-sensitive (28/08)', () => {
     const r = nomeDaBusca('Cerâmica São João LTDA - Pagamento')
-    expect(r).toBe('Cerâmica São João LTDA')
+    expect(r).toBe('Cerâmica São')
     expect(r).not.toBe(r.toLowerCase())
   })
 
@@ -57,8 +64,8 @@ describe('⭐ a busca do painel nasce com o nome da linha — sem procurar numa 
     expect(nomeDaBusca(null)).toBe('')
   })
 
-  it('⭐ nome sem cauda nenhuma passa inteiro', () => {
-    expect(nomeDaBusca('FRIGORIFICO SILVA INDUSTRIA E COMERCIO')).toBe('FRIGORIFICO SILVA INDUSTRIA E COMERCIO')
+  it('⭐ nome sem cauda nenhuma também vira prefixo', () => {
+    expect(nomeDaBusca('FRIGORIFICO SILVA INDUSTRIA E COMERCIO')).toBe('FRIGORIFICO SILVA')
   })
 })
 
@@ -78,6 +85,32 @@ describe('⛔ o que distingue nome de CÓDIGO DE BANCO é a forma, não o tamanh
   })
 
   it('⛔ e nome com número no meio NÃO é descartado (tem espaço)', () => {
-    expect(nomeDaBusca('POSTO 24 HORAS LTDA - Pagamento')).toBe('POSTO 24 HORAS LTDA')
+    expect(nomeDaBusca('POSTO 24 HORAS LTDA - Pagamento')).toBe('POSTO 24')
+  })
+})
+
+describe('⛔⛔ O BANCO ABREVIA — a semente é o PREFIXO, não o nome inteiro', () => {
+  /**
+   * ⭐ Medido em prod no caso do dono: o extrato escreve `BAMBERG COMERCIO E REPRES LTDA`
+   * e o cadastro `BAMBERG COMERCIO E REPRESENTACOES LTDA`. A busca cheia devolveu
+   * **0 candidatas**; `BAMBERG COMERCIO` devolveu **as 3 contas abertas dele**.
+   * Semear com o nome inteiro faria o painel abrir dizendo "nada encontrado" — havendo três.
+   */
+  it('⭐ o caso real: BAMBERG → prefixo que sobrevive à abreviação', () => {
+    expect(nomeDaBusca('BAMBERG COMERCIO E REPRES LTDA - Pagamento')).toBe('BAMBERG COMERCIO')
+  })
+
+  it('⛔ o conector entra junto — a busca é `contains`, fragmento tem que ser CONTÍGUO', () => {
+    // "CIA FRUTA" não casaria com "CIA DA FRUTA COMERCIO…"; "CIA DA FRUTA" casa
+    expect(nomeDaBusca('CIA DA FRUTA COMERCIO DE FRUTAS LTDA - Pagamento')).toBe('CIA DA FRUTA')
+  })
+
+  it('⛔ duas palavras significativas, porque UMA pode ser genérica demais', () => {
+    expect(nomeDaBusca('MARIA LUIZA COELHO PIENEGONDA - Transferência | Pix')).toBe('MARIA LUIZA')
+    expect(nomeDaBusca('FRIGORIFICO SILVA INDUSTRIA E COMERCIO LTDA - Pagamento')).toBe('FRIGORIFICO SILVA')
+  })
+
+  it('⭐ nome de uma palavra só continua inteiro', () => {
+    expect(nomeDaBusca('CASPER - Pagamento')).toBe('CASPER')
   })
 })
