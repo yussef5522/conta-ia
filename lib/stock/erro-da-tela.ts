@@ -23,12 +23,15 @@ import { RecusaError } from './recusa-nota'
 import { ReunitizarError } from './reunitizar-item'
 import { SaidaError } from './saida'
 import { VendaMapError } from './vendas/venda-map'
+import { GrandezaImplausivelError } from './producao/conclusao'
 
 export interface RespostaDeErro {
   erro: string
   /** o gesto que RESOLVE — a tela desenha como link. Recusa sem saída é beco. */
   saida?: { rotulo: string; href: string }
   code?: string
+  /** ⭐ o número que a cozinha provavelmente quis dizer — a tela oferece em 1 toque */
+  grandeza?: { qtdProvavel: number | null; fator: number | null }
   status: number
 }
 
@@ -43,6 +46,7 @@ export interface RespostaDeErro {
 const DE_DOMINIO = [
   ContagemError, MovementInvalidError, ItensManuaisError, EntradaManualError,
   PonteError, RecusaError, ReunitizarError, SaidaError, VendaMapError,
+  GrandezaImplausivelError,
 ] as const
 
 export function ehErroDeDominio(e: unknown): e is Error {
@@ -81,6 +85,22 @@ export function respostaDeErroDoEstoque(e: unknown, ctx?: { empresaId?: string; 
 
   // ⛔ o FREIO é 409 de propósito: a tela PERGUNTA de novo, não é erro final (23/08)
   if (e instanceof ContagemError && code === 'FREIO') return { erro: e.message, code, status: 409 }
+
+  /**
+   * ⛔ A GRANDEZA É 409, IGUAL AO FREIO — e pelo mesmo motivo: não é erro final, é uma
+   * PERGUNTA. O `22864` pode ser verdade num item de porção; o que a casa não pode é
+   * gravar mil vezes o histórico **sem ninguém olhar**.
+   *
+   * ⭐ E a resposta carrega `qtdProvavel`: a tela oferece o número certo em um toque, em
+   * vez de mandar a cozinha recalcular de cabeça no meio do turno.
+   */
+  if (e instanceof GrandezaImplausivelError) {
+    return {
+      erro: e.message, status: 409,
+      code: e.veredicto.decisao === 'RECUSA' ? 'GRANDEZA' : 'GRANDEZA_AVISO',
+      grandeza: { qtdProvavel: e.veredicto.qtdProvavel, fator: e.veredicto.fator },
+    }
+  }
 
   if (e instanceof MovementInvalidError && ctx?.empresaId) {
     return { erro: e.message, code: 'ESTADO_IMPOSSIVEL', status: 422, saida: saidaDoEstadoImpossivel(ctx.empresaId, ctx.itemId) }

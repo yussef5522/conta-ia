@@ -7,6 +7,7 @@
 
 import { PrismaClient } from '@prisma/client'
 import { expurgarTextosAntigos } from '@/lib/credit-card/quarentena-fatura'
+import { expurgarTextosDeVendaAntigos } from '@/lib/stock/vendas/quarentena-venda'
 import { runModuleJudge } from '../lib/loans/run-module-judge'
 import { runAndPersistStockJudge } from '../lib/stock/run-stock-judge'
 import { buildJudgeAlertEmail } from '../lib/loans/judge-alert-email'
@@ -95,6 +96,19 @@ async function main() {
     if (purgados > 0) console.log(`[juiz ${stamp}] quarentena de faturas: ${purgados} texto(s) expurgado(s) (12 meses, LGPD)`)
   } catch (e) {
     console.error(`[juiz ${stamp}] expurgo da quarentena falhou (não derruba a rodada):`, (e as Error).message)
+  }
+
+  /**
+   * ⭐ E o mesmo pra quarentena de VENDAS (19/09) — ela nasce COM chamador.
+   *
+   * ⚠️ A lição do E10: expurgo prometido no comentário e sem quem o chame é pior que
+   * expurgo nenhum, porque cria a confiança de que a retenção está cuidada.
+   */
+  try {
+    const purgados = await expurgarTextosDeVendaAntigos()
+    if (purgados > 0) console.log(`[juiz ${stamp}] quarentena de vendas: ${purgados} texto(s) expurgado(s) (12 meses)`)
+  } catch (e) {
+    console.error(`[juiz ${stamp}] expurgo da quarentena de vendas falhou (não derruba a rodada):`, (e as Error).message)
   }
 
   await prisma.$disconnect()

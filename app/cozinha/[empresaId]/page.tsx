@@ -18,18 +18,20 @@ import { useEffect, useRef, useState, use } from 'react'
 import { Loader2, Check, Delete } from 'lucide-react'
 import { duracao } from '@/components/estoque/etapas-da-ordem'
 
-interface Tarefa {
-  etapaId: string; ordemId: string; posicao: number; nome: string; produto: string
-  escalaReceitas: number; estado: 'AGUARDANDO' | 'EM_ANDAMENTO' | 'FEITA'
-  iniciadoEm: string | null; minutos: number | null
-  esperandoEtapaAnterior: string | null; minha: boolean; ultima: boolean
-  /** ⭐ o gerente pediu pra você finalizar (07/09) — é RECADO, não ordem: o botão é o mesmo */
-  pedidoPraFinalizar: boolean
-  /** ⭐⭐ o lote veio de ontem (15/09) — informação, nunca alarme: o descanso é a receita */
-  continuacao: { etapaAnterior: string; dia: string; quem: string | null } | null
-}
+/**
+ * ⭐ O TIPO VEM DA LIB, não é reescrito aqui (19/09).
+ *
+ * ⚠️ Esta interface era copiada à mão sobre o payload da rota — a dívida que o CLAUDE.md
+ * registra desde 01/09 (*"interface escrita à mão sobre payload de API é promessa, não
+ * prova"*): o TypeScript validava a tela contra o que o autor **achava** que a rota
+ * devolve. Campo novo no servidor (a `unidadeProduto`) ficava invisível aqui, e campo
+ * renomeado lá passava verde. Derivando, o compilador cobra.
+ */
+type Tarefa = MinhaTarefa
+
 interface Consumo { itemId: string; nome: string; qtd: number; unidade: string }
 import { relogioDaTarefa, desvioDoAparelho } from '@/lib/stock/producao/cronometro'
+import type { MinhaTarefa } from '@/lib/stock/producao/minhas-tarefas'
 
 export default function CozinhaPage({ params }: { params: Promise<{ empresaId: string }> }) {
   const { empresaId } = use(params)
@@ -41,6 +43,8 @@ export default function CozinhaPage({ params }: { params: Promise<{ empresaId: s
   const [feito, setFeito] = useState<{ nome: string; minutos: number; qtdGerada?: number } | null>(null)
   // ⭐ "quantos saíram?" na ÚLTIMA etapa — o número vem de quem sabe, na ponta
   const [fechando, setFechando] = useState<Tarefa | null>(null)
+  /** ⭐ o aviso de GRANDEZA (22864 KG?) — pergunta com o número provável em 1 toque */
+  const [grandeza, setGrandeza] = useState<{ qtdProvavel: number | null; recusa: boolean } | null>(null)
   const [quanto, setQuanto] = useState('')
   const [parcial, setParcial] = useState(false)
   const [consumo, setConsumo] = useState<Consumo[] | null>(null)
@@ -81,6 +85,10 @@ export default function CozinhaPage({ params }: { params: Promise<{ empresaId: s
         // ⚠️ a mensagem do servidor vai INTEIRA pra tela: "outra pessoa já está nessa tarefa"
         // ensina o que fazer; "erro" manda procurar o encarregado.
         setErro(j?.erro ?? 'Não consegui falar com o sistema. Tente de novo.')
+        // ⭐ a grandeza não é erro final: é PERGUNTA, e ela vem com o número provável
+        if (j?.code === 'GRANDEZA' || j?.code === 'GRANDEZA_AVISO') {
+          setGrandeza({ qtdProvavel: j?.grandeza?.qtdProvavel ?? null, recusa: j?.code === 'GRANDEZA' })
+        }
         if (r.status === 401) { setQuem(null); pinRef.current = ''; setPin('') }
         return null
       }
@@ -105,12 +113,12 @@ export default function CozinhaPage({ params }: { params: Promise<{ empresaId: s
 
   const sair = () => {
     setQuem(null); setTarefas([]); setPin(''); pinRef.current = ''
-    setFeito(null); setErro(null); setFechando(null); setQuanto(''); setConsumo(null)
+    setFeito(null); setErro(null); setFechando(null); setQuanto(''); setConsumo(null); setGrandeza(null)
   }
 
   /** abre o passo de fechar o lote: mostra o que será consumido e pergunta o número */
   const abrirFechamento = async (t: Tarefa) => {
-    setFechando(t); setQuanto(''); setParcial(false); setConsumo(null); setErro(null)
+    setFechando(t); setQuanto(''); setParcial(false); setConsumo(null); setErro(null); setGrandeza(null)
     const r = await fetch(`/api/empresas/${empresaId}/estoque/producao/minhas-tarefas/o-que-consome`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ pin: pinRef.current, etapaId: t.etapaId }),
@@ -186,11 +194,14 @@ export default function CozinhaPage({ params }: { params: Promise<{ empresaId: s
           <p className="text-lg font-medium">{fechando.produto}</p>
           <p className="mt-1 text-sm text-slate-400">última etapa: {fechando.nome}</p>
 
-          <p className="mt-8 text-base">Quantos saíram?</p>
+          <p className="mt-8 text-base">
+            Quantos saíram?
+            {fechando.unidadeProduto ? <span className="ml-1 text-slate-400">em {fechando.unidadeProduto}</span> : null}
+          </p>
           {/* ⛔⛔ O CAMPO NASCE E CONTINUA VAZIO — regra dura do dono: "a previsão SUGERE,
               nunca preenche. Se preencher, todo mundo confirma o número sem contar." */}
           <input
-            value={quanto} onChange={(e) => setQuanto(e.target.value.replace(/[^\d,.]/g, ''))}
+            value={quanto} onChange={(e) => { setQuanto(e.target.value.replace(/[^\d,.]/g, '')); setGrandeza(null); setErro(null) }}
             inputMode="decimal" placeholder="conte e digite" autoFocus
             className="mt-3 w-full rounded-2xl bg-slate-800 py-5 text-center text-4xl font-semibold tabular-nums text-slate-100 placeholder:text-lg placeholder:font-normal placeholder:text-slate-600"
           />
@@ -225,6 +236,31 @@ export default function CozinhaPage({ params }: { params: Promise<{ empresaId: s
           </label>
 
           {erro && <p className="mt-4 text-sm text-rose-300">{erro}</p>}
+
+          {/* ⭐⭐ O AVISO DA GRANDEZA — o número provável em UM toque. A cozinha está no meio
+              do turno: mandar recalcular de cabeça é como o erro se repete. */}
+          {grandeza && (
+            <div className="mt-3 rounded-xl border border-amber-400/40 bg-amber-400/10 p-3 text-left">
+              <div className="flex flex-wrap gap-2">
+                {grandeza.qtdProvavel != null && (
+                  <button type="button"
+                    onClick={() => { setQuanto(String(grandeza.qtdProvavel).replace('.', ',')); setGrandeza(null); setErro(null) }}
+                    className="rounded-xl bg-amber-400 px-4 py-2 text-sm font-semibold text-slate-900 active:bg-amber-500">
+                    usar {String(grandeza.qtdProvavel).replace('.', ',')} {fechando.unidadeProduto}
+                  </button>
+                )}
+                <button type="button"
+                  onClick={async () => {
+                    const j = await chamar('finalizar', { etapaId: fechando.etapaId, qtdGerada: num, parcial, confirmouGrandeza: true })
+                    if (j) { setGrandeza(null); setFechando(null); setFeito({ nome: fechando.nome, minutos: fechando.minutos ?? 0, qtdGerada: j.concluida?.qtdGerada ?? num }) }
+                  }}
+                  disabled={busy}
+                  className="rounded-xl border border-slate-600 px-4 py-2 text-sm text-slate-300 active:bg-slate-800 disabled:opacity-40">
+                  é isso mesmo, pode fechar
+                </button>
+              </div>
+            </div>
+          )}
 
           <button
             onClick={async () => {

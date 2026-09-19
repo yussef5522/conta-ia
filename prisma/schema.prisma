@@ -3850,6 +3850,44 @@ model StockProductionOrder {
 // contra o consumo REAL (nunca a escala planejada). Custo real do lote = Σ consumido ×
 // custoMedio. Os movimentos (PRODUCAO_CONSUMO/GERACAO) vivem no ledger; aqui é o registro
 // + os números derivados (rendimento, custo unit, validade da etiqueta). CREATE-only.
+model StockVendaQuarentena {
+  id             String    @id @default(cuid())
+  companyId      String
+  /// PRODUTOS | COMPLEMENTOS — os dois relatórios do Suitable
+  relatorio      String
+  /// OK | RECUSADA — a recusada é a que espera diagnóstico
+  desfecho       String
+  /// o dia que o DONO informou (o arquivo não traz data)
+  data           String?
+  motivo         String?
+  /// ⭐ o TEXTO do arquivo — é o que faz o diagnóstico não precisar do .xls de novo
+  texto          String
+  linhas         Int       @default(0)
+  nomeArquivo    String?
+  criadoPorId    String?
+  criadoEm       DateTime  @default(now())
+  /// ⚠️ quando o texto foi expurgado (12 meses) — a metadata fica
+  textoPurgadoEm DateTime?
+
+  @@index([companyId, criadoEm])
+  @@index([desfecho, criadoEm])
+  @@map("stock_venda_quarentena")
+}
+
+model StockConclusaoEstornada {
+  id                      String   @id @default(cuid())
+  companyId               String
+  conclusaoId             String   @unique // ⭐ estornar 2× é impossível por construção
+  motivo                  String
+  estornoMovimentoId      String? // o ESTORNO no ledger (correção = estorno + novo)
+  relancamentoMovimentoId String? // o movimento NOVO, quando houve relançamento
+  criadoPorId             String?
+  criadoEm                DateTime @default(now())
+
+  @@index([companyId])
+  @@map("stock_conclusao_estornada")
+}
+
 model StockProducaoConclusao {
   id                String    @id @default(cuid())
   companyId         String

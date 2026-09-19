@@ -14,6 +14,7 @@
 import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { parseSuitable, COLUNAS_COMPLEMENTOS } from './parse-suitable'
+import { lerComQuarentena } from './quarentena-venda'
 import { prateleiraDeComplementos, type LinhaPrateleira } from './complemento-map'
 import { SABORES_DO_CARDAPIO, grupoPeloCardapio } from './grupo-complemento'
 import { importIdDe, type ModoImportComplemento } from './identidade-import-complemento'
@@ -103,8 +104,11 @@ export async function previewComplementos(
   companyId: string, data: string, html: string, db: PrismaClient = defaultPrisma,
   modo: ModoImportComplemento = 'DIA',
 ): Promise<PrevisaoComplementos> {
-  const p = parseSuitable(html, COLUNAS_COMPLEMENTOS)
-  if (!p.linhas.length) throw new ImportComplementoError('Nenhum complemento encontrado no arquivo.')
+  // ⭐ porta ÚNICA: guarda o arquivo (falhe ou feche) e a recusa de "0 linhas" ENSINA
+  //    — antes ela morria no throw e diagnosticar exigia pedir o .xls de volta.
+  const { resultado: p } = await lerComQuarentena(
+    { companyId, relatorio: 'COMPLEMENTOS', html, data }, (h) => parseSuitable(h, COLUNAS_COMPLEMENTOS), db,
+  )
 
   const linhas = p.linhas.map((l) => ({ nomeSuitable: l.produto, ocorrencias: l.quantidade }))
   const prateleira = await prateleiraDeComplementos(companyId, linhas, db)
@@ -207,8 +211,11 @@ export async function confirmarComplementos(
   /** ⚠️ a herança falhou (fail-soft) */
   herancaFalhou: string | null
 }> {
-  const p = parseSuitable(html, COLUNAS_COMPLEMENTOS)
-  if (!p.linhas.length) throw new ImportComplementoError('Nenhum complemento encontrado no arquivo.')
+  // ⭐ porta ÚNICA: guarda o arquivo (falhe ou feche) e a recusa de "0 linhas" ENSINA
+  //    — antes ela morria no throw e diagnosticar exigia pedir o .xls de volta.
+  const { resultado: p } = await lerComQuarentena(
+    { companyId, relatorio: 'COMPLEMENTOS', html, data }, (h) => parseSuitable(h, COLUNAS_COMPLEMENTOS), db,
+  )
   const dia = diaUtc(data)
 
   // o mapa DE COMPLEMENTOS (não o de produtos) diz o que já tem destino

@@ -10,7 +10,15 @@ import { criarMovimento } from '../movement'
 import { custoMedioPorItem, recomputeSaldoCache } from '../saldo'
 import { separadoPorItem, TIPO_CONSUMO, TIPO_DEVOLUCAO, TIPO_GERACAO, OrdemError } from './ordens'
 import { escalaDoConsumo, avaliarVariacao, type Variacao } from './previsao-rendimento'
+import { avaliarPlausibilidade, type VeredictoDaPlausibilidade } from './plausibilidade'
+import { idsDeConclusoesEstornadas } from './conclusao-estornada'
 import { encerrarEtapasAbertas } from './encerrar-etapas-abertas'
+
+/** ⛔ a recusa por GRANDEZA carrega o veredicto — sem ele a tela não consegue sugerir nada */
+export class GrandezaImplausivelError extends Error {
+  readonly veredicto: VeredictoDaPlausibilidade
+  constructor(v: VeredictoDaPlausibilidade) { super(v.mensagem ?? 'Número implausível.'); this.name = 'GrandezaImplausivelError'; this.veredicto = v }
+}
 
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 const round4 = (n: number) => Math.round((n + 1e-9) * 10000) / 10000
@@ -27,6 +35,8 @@ export interface ConcluirInput {
   motivoDesvio?: string | null
   parcial?: boolean
   userId?: string
+  /** ⭐ o dono olhou o aviso de grandeza e disse que é isso mesmo (pergunta, nunca recusa cega) */
+  confirmouGrandeza?: boolean
 }
 export interface ConcluirResult {
   conclusaoId: string
@@ -54,7 +64,12 @@ export async function rendimentoMedidoDaFicha(companyId: string, fichaId: string
   const ordens = await db.stockProductionOrder.findMany({ where: { companyId, fichaId }, select: { id: true } })
   const ids = ordens.map((o) => o.id)
   if (!ids.length) return { media: null, lotes: 0 }
-  const cs = await db.stockProducaoConclusao.findMany({ where: { companyId, ordemId: { in: ids }, ...(exceptConclusaoId ? { id: { not: exceptConclusaoId } } : {}) }, orderBy: { criadoEm: 'desc' }, take: 5, select: { rendimento: true } })
+  // ⛔⛔ LOTE ESTORNADO NUNCA ENTRA NA MÉDIA (19/09). Sem isto o rendimento podre de 2858
+  // continuaria sendo "o histórico" da maionese e envenenaria toda conclusão seguinte —
+  // inclusive o guard de plausibilidade, que passaria a aprovar o erro por ele ser a norma.
+  const estornadas = await idsDeConclusoesEstornadas(companyId, db)
+  const fora = [...estornadas, ...(exceptConclusaoId ? [exceptConclusaoId] : [])]
+  const cs = await db.stockProducaoConclusao.findMany({ where: { companyId, ordemId: { in: ids }, ...(fora.length ? { id: { notIn: fora } } : {}) }, orderBy: { criadoEm: 'desc' }, take: 5, select: { rendimento: true } })
   if (!cs.length) return { media: null, lotes: 0 }
   return { media: round4(cs.reduce((s, c) => s + c.rendimento, 0) / cs.length), lotes: cs.length }
 }
@@ -106,6 +121,26 @@ export async function concluir(input: ConcluirInput, db: PrismaClient = defaultP
   const variacao = avaliarVariacao(input.qtdGerada, escalaConsumida, {
     teorico: versao?.loteBase ?? 1, medido: medidoAnterior.media, lotes: medidoAnterior.lotes,
   })
+  /**
+   * ⛔⛔ O GUARD DE PLAUSIBILIDADE (19/09) — e ele mora AQUI, no motor, não na tela.
+   *
+   * A régua de ±15% acima é de VARIAÇÃO (rendeu menos hoje); esta é de GRANDEZA (o número
+   * não é deste mundo). Misturar as duas faria o aviso de 22864 sair com a mesma cara do
+   * aviso de "rendeu 12% menos" — e aviso de rotina é o que se aprende a ignorar.
+   *
+   * ⭐ Pergunta, nunca recusa cega: com `confirmouGrandeza` o dono passa, e a decisão dele
+   * fica gravada no `motivoDesvio` — a régua do `confirmouSanidade` do import.
+   */
+  // ⚠️ o nome e a unidade vêm do ITEM, não da ordem: a mensagem precisa dizer "22864 KG",
+  // senão o dono lê um número solto e não tem como perceber a grandeza trocada.
+  const itemProduzido = await db.stockItem.findUnique({ where: { id: ordem.itemProduzidoId }, select: { nome: true, unidadeControle: true } })
+  const plaus = avaliarPlausibilidade({
+    qtdGerada: input.qtdGerada, rendimento, rendimentoMedio: medidoAnterior.media,
+    lotesNaMedia: medidoAnterior.lotes, unidade: itemProduzido?.unidadeControle ?? '',
+    nomeDoProduto: itemProduzido?.nome ?? 'este produto',
+  })
+  if (plaus.decisao !== 'OK' && !input.confirmouGrandeza) throw new GrandezaImplausivelError(plaus)
+
   const desvio = rendimentoMedioAnterior && rendimentoMedioAnterior > 0 ? round4((rendimento - rendimentoMedioAnterior) / rendimentoMedioAnterior) : null
   const foraDaFaixa = desvio != null && Math.abs(desvio) > RENDIMENTO_DESVIO
 

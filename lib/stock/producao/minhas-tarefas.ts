@@ -32,6 +32,9 @@ export interface MinhaTarefa {
   posicao: number
   nome: string
   produto: string
+  /** ⭐ a unidade em que o SISTEMA conta este produto — a cozinha pesa em grama e o item
+   *  pode ser KG; sem isso na tela, 22.864 g virou 22864 KG em 14/09 (o caso da maionese) */
+  unidadeProduto: string
   escalaReceitas: number
   estado: EstadoDaEtapa
   iniciadoEm: string | null
@@ -115,9 +118,10 @@ export async function minhasTarefasDeHoje(
       where: { companyId, ordemId: { in: ordens.map((o) => o.id) } },
       orderBy: [{ ordemId: 'asc' }, { posicao: 'asc' }],
     }),
-    db.stockItem.findMany({ where: { companyId, id: { in: ordens.map((o) => o.itemProduzidoId) } }, select: { id: true, nome: true } }),
+    db.stockItem.findMany({ where: { companyId, id: { in: ordens.map((o) => o.itemProduzidoId) } }, select: { id: true, nome: true, unidadeControle: true } }),
   ])
   const nomeItem = new Map(itens.map((i) => [i.id, i.nome]))
+  const unidadeItem = new Map(itens.map((i) => [i.id, i.unidadeControle]))
   const porOrdem = new Map(ordens.map((o) => [o.id, o]))
   const [planos, participantes, pessoas] = await Promise.all([
     db.stockEtapaPlano.findMany({ where: { companyId, etapaId: { in: etapas.map((e) => e.id) } }, select: { etapaId: true, diaPrevisto: true, liberadaParaEquipe: true } }),
@@ -185,6 +189,7 @@ export async function minhasTarefasDeHoje(
     out.push({
       etapaId: e.id, ordemId: e.ordemId, posicao: e.posicao, nome: e.nome,
       produto: nomeItem.get(o.itemProduzidoId) ?? '(produto)',
+      unidadeProduto: unidadeItem.get(o.itemProduzidoId) ?? '',
       escalaReceitas: o.escalaReceitas,
       estado: res.estado,
       iniciadoEm: e.iniciadoEm?.toISOString() ?? null,

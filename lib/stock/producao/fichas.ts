@@ -4,6 +4,7 @@
 // versão da época). Ciclo proibido (grafo do banco). Custo teórico AO VIVO. Só stock_.
 
 import type { PrismaClient, Prisma } from '@prisma/client'
+import { fichaInativaComNome, ReceitaHomonimaError } from './receita-ja-existe'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { normalizarEtapas, gravarEtapasDaVersao, etapasDaVersao, type EtapaDaReceita } from './etapas'
 import { ehTipoDeFicha, seContaFisicamente, type TipoFicha } from '@/lib/stock/tipos-ficha'
@@ -120,6 +121,19 @@ export async function criarFicha(input: CriarFichaInput, db: PrismaClient = defa
       `Já existe uma ficha para “${jaExiste.nome}”. Edite a ficha existente em vez de criar outra — ` +
       'duas fichas do mesmo produto brigam pelo vínculo com o PDV e pelo custo.',
     )
+  }
+
+  /**
+   * ⛔⛔ O NOME É DE UMA FICHA **DESATIVADA** (19/09) — e aí a recusa tem TRÊS saídas.
+   *
+   * "Excluir" receita com história DESATIVA (16/09), e o item-invólucro fica no estoque com
+   * o mesmo nome. Sem este ramo, a tentativa de recriar caía no guard genérico do item de
+   * estoque — uma frase sobre NOTA FISCAL, que não é o caso, num produto que a cozinha
+   * FAZ. O dono lia "já existe" e não tinha por onde sair.
+   */
+  if (!input.permitirItemNovoComNomeDeEstoque) {
+    const inativa = await fichaInativaComNome(input.companyId, input.nomeProduzido, db)
+    if (inativa) throw new ReceitaHomonimaError(inativa)
   }
 
   // ⛔⛔ O NOME JÁ É DE UM ITEM QUE A NOTA ALIMENTA? Então a ficha ia criar um SEGUNDO item

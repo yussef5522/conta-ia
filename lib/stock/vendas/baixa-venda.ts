@@ -7,6 +7,7 @@ import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { montaNaVenda } from '@/lib/stock/tipos-ficha'
 import { parseSuitable } from './parse-suitable'
+import { lerComQuarentena } from './quarentena-venda'
 import { medirSanidade, SanidadeNaoConfirmadaError } from './medir-sanidade'
 import type { ResultadoDaSanidade } from './sanidade-do-import'
 import { criarMovimento, estornarMovimento } from '../movement'
@@ -133,14 +134,17 @@ export async function montarPlanoDeLinhas(companyId: string, data: string, linha
 
 /** DRY-RUN a partir do HTML do Suitable. */
 export async function montarPlanoVenda(companyId: string, data: string, html: string, db: PrismaClient = defaultPrisma, incluir: string[] | null = null): Promise<PlanoVenda> {
-  return montarPlanoDeLinhas(companyId, data, parseSuitable(html).linhas, incluir, db)
+  // ⭐ a leitura passa pela porta ÚNICA: guarda o arquivo (falhe ou feche) e a recusa ensina
+  const { resultado } = await lerComQuarentena({ companyId, relatorio: 'PRODUTOS', html, data }, parseSuitable, db)
+  return montarPlanoDeLinhas(companyId, data, resultado.linhas, incluir, db)
 }
 
 export interface ReciboVenda { importId: string; data: string; baixados: number; itensBaixados: number; pendentes: number; valorBaixado: number }
 
 /** EXECUTA a partir do HTML (import novo do dia). */
 export async function processarVendas(companyId: string, data: string, html: string, userId: string | undefined, db: PrismaClient = defaultPrisma, incluir: string[] | null = null, confirmouSanidade = false, itensPendentes: string[] = []): Promise<ReciboVenda> {
-  return gravarVenda(companyId, data, parseSuitable(html).linhas, incluir, userId, db, confirmouSanidade, itensPendentes)
+  const { resultado } = await lerComQuarentena({ companyId, relatorio: 'PRODUTOS', html, data, userId }, parseSuitable, db)
+  return gravarVenda(companyId, data, resultado.linhas, incluir, userId, db, confirmouSanidade, itensPendentes)
 }
 
 /** DRY-RUN do reprocesso: o que vai acontecer se refizer um dia já importado (com o mapa

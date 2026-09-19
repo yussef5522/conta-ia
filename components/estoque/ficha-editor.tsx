@@ -115,6 +115,9 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
   const [cookbookAberto, setCookbookAberto] = useState(false)
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
+  /** ⭐ a recusa de receita homônima não é erro final: é PERGUNTA com três saídas (19/09) */
+  const [homonima, setHomonima] = useState<{ fichaId: string; nome: string; lotes: number } | null>(null)
+  const [refazendo, setRefazendo] = useState(false)
   // guarda o que o dono TOCOU, pra o prefill nunca sobrescrever digitação
   const tocou = useRef({ nome: false, preco: false })
 
@@ -222,7 +225,12 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
         ? await fetch(`/api/empresas/${companyId}/estoque/fichas/${fichaId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, nomeProduzido: nomeProduzido.trim(), setorId: setorId || null, valorVenda: vv }) })
         : await fetch(`/api/empresas/${companyId}/estoque/fichas`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, nomeProduzido: nomeProduzido.trim(), unidadeProduzido, tipoProduto, setorId: setorId || null, valorVenda: vv, mapearNomeSuitable: duplicarDaUrl || !temNomePdv ? null : mapearDaUrl, mapearComplemento: duplicarDaUrl ? null : (complementoDaUrl ?? null) }) })
       const j = await r.json().catch(() => null)
-      if (!r.ok) { setErro(j?.erro ?? 'Não consegui salvar.'); return }
+      if (!r.ok) {
+        setErro(j?.erro ?? 'Não consegui salvar.')
+        // ⛔ 409 da homônima: guarda a ficha inativa pra tela oferecer os três caminhos
+        if (j?.code === 'RECEITA_HOMONIMA' && j?.ficha?.id) setHomonima({ fichaId: j.ficha.id, nome: j.ficha.nome, lotes: j.ficha.lotes ?? 0 })
+        return
+      }
       // ⭐ ITEM 5 (01/09): gravação INCOMPLETA nunca mais volta calada. Se a tela pediu o
       // vínculo com o PDV e ele não veio, o dono fica sabendo NA HORA — foi o silêncio que
       // fez ele salvar de novo e duplicar a PIZZA.
@@ -417,6 +425,42 @@ export function FichaEditor({ companyId, fichaId, tipoTravado, voltarPara, linha
       </Card>
 
       {erro && <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{erro}</p>}
+
+      {/* ⭐⭐ AS TRÊS PORTAS DA RECEITA HOMÔNIMA (19/09) — recusa sem saída é beco.
+          A ordem é deliberada: reativar primeiro, porque é o caso comum. */}
+      {homonima && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5">
+          <div className="flex flex-wrap gap-2">
+            <button type="button" disabled={refazendo}
+              onClick={async () => {
+                setRefazendo(true)
+                const r = await fetch(`/api/empresas/${companyId}/estoque/fichas`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ acao: 'REATIVAR', fichaId: homonima.fichaId }) })
+                setRefazendo(false)
+                if (r.ok) { setHomonima(null); setErro(null); if (aoSalvar) aoSalvar(); else window.location.href = voltar }
+                else setErro('Não consegui reativar. Tente de novo.')
+              }}
+              className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50">
+              reativar “{homonima.nome}”
+            </button>
+            <button type="button" disabled={refazendo}
+              onClick={async () => {
+                setRefazendo(true)
+                const r = await fetch(`/api/empresas/${companyId}/estoque/fichas`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ acao: 'RENOMEAR_A_ANTIGA', fichaId: homonima.fichaId }) })
+                setRefazendo(false)
+                if (r.ok) { setHomonima(null); setErro('A antiga foi renomeada — o nome está livre. Clique em salvar de novo.') }
+                else setErro('Não consegui renomear a antiga.')
+              }}
+              className="rounded-lg border border-amber-400 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:opacity-50">
+              renomear a antiga e liberar o nome
+            </button>
+          </div>
+          {/* ⚠️ o renomear NÃO apaga nada: o apelido de busca continua achando pelo nome velho */}
+          <p className="mt-1.5 text-[11px] leading-snug text-amber-800/80">
+            Reativar traz a receita inteira — a história e o vínculo com o PDV. Renomear libera o nome e guarda o
+            apelido, então buscar pelo nome antigo continua achando.
+          </p>
+        </div>
+      )}
 
       {/* ── RODAPÉ ───────────────────────────────────────────────────────────── */}
       <div className="sticky bottom-0 flex items-center gap-3 border-t bg-white/95 py-2.5 backdrop-blur">

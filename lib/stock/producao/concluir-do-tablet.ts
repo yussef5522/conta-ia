@@ -16,13 +16,17 @@
 
 import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
-import { concluir, type ConcluirResult } from './conclusao'
+import { concluir, rendimentoMedidoDaFicha, type ConcluirResult } from './conclusao'
+import { escalaDoConsumo } from './previsao-rendimento'
+import { avaliarPlausibilidade, type VeredictoDaPlausibilidade } from './plausibilidade'
 import { separadoPorItem, OrdemError } from './ordens'
 
 export interface ConcluirDoTabletInput {
   companyId: string
   ordemId: string
   qtdGerada: number
+  /** ⭐ o aceite explícito do aviso de grandeza (22864 KG?) — pergunta, nunca recusa cega */
+  confirmouGrandeza?: boolean
   /**
    * Quem apertou FINALIZAR na última etapa — vem do PIN, não de dropdown.
    *
@@ -74,6 +78,39 @@ export async function oQueVaiSerConsumido(
 }
 
 /**
+ * ⭐⭐ A PERGUNTA DA GRANDEZA **ANTES DE QUALQUER ESCRITA** (19/09).
+ *
+ * ⚠️⚠️ **Achado ao ligar o guard:** o caminho do tablet finaliza a ETAPA e só então conclui
+ * a ordem. Com a recusa dentro do `concluir`, a cozinha digitava 22864, levava o aviso — e
+ * **a tarefa já estava fechada**, sem como repetir. Estado pela metade no meio do turno.
+ *
+ * ⛔ **E isto NÃO é uma segunda régua.** É a MESMA composição (`oQueVaiSerConsumido` →
+ * `escalaDoConsumo` → `rendimentoMedidoDaFicha` → `avaliarPlausibilidade`) chamada mais
+ * cedo; o guard dentro do `concluir` continua de pé pros outros caminhos — cinto e
+ * suspensório, nunca duas contas diferentes da mesma pergunta.
+ */
+export async function avaliarGrandezaDaConclusao(
+  companyId: string, ordemId: string, qtdGerada: number, db: PrismaClient = defaultPrisma,
+): Promise<VeredictoDaPlausibilidade> {
+  const ok: VeredictoDaPlausibilidade = { decisao: 'OK', fator: null, suspeitaDeGrandeza: null, mensagem: null, qtdProvavel: null }
+  const ordem = await db.stockProductionOrder.findFirst({ where: { id: ordemId, companyId }, select: { fichaId: true, versaoFicha: true, itemProduzidoId: true } })
+  if (!ordem) return ok
+  const consumo = await oQueVaiSerConsumido(companyId, ordemId, db)
+  if (!consumo.length) return ok
+  const versao = await db.stockFichaVersao.findFirst({ where: { companyId, fichaId: ordem.fichaId, versao: ordem.versaoFicha }, select: { id: true } })
+  const comps = versao ? await db.stockFichaComponente.findMany({ where: { companyId, versaoId: versao.id }, select: { itemId: true, qtdPlanejada: true } }) : []
+  const porLote = new Map(comps.map((c) => [c.itemId, c.qtdPlanejada]))
+  const escala = escalaDoConsumo(consumo.map((c) => ({ qtd: c.qtd, porLote: porLote.get(c.itemId) ?? 0 }))) ?? 1
+  const medido = await rendimentoMedidoDaFicha(companyId, ordem.fichaId, db)
+  const item = await db.stockItem.findUnique({ where: { id: ordem.itemProduzidoId }, select: { nome: true, unidadeControle: true } })
+  return avaliarPlausibilidade({
+    qtdGerada, rendimento: Math.round((qtdGerada / (escala || 1)) * 10000) / 10000,
+    rendimentoMedio: medido.media, lotesNaMedia: medido.lotes,
+    unidade: item?.unidadeControle ?? '', nomeDoProduto: item?.nome ?? 'este produto',
+  })
+}
+
+/**
  * Conclui a ordem a partir do tablet. **Delegação pura** ao motor de sempre.
  *
  * ⛔ Recusa se não houver nada em produção: concluir sem consumo geraria produto do nada, e o
@@ -94,5 +131,6 @@ export async function concluirDoTablet(
     qtdGerada: input.qtdGerada,
     colaboradorId: await quemFechouOLote(input.companyId, input.ordemId, db) ?? input.colaboradorId,
     parcial: input.parcial ?? false,
+    confirmouGrandeza: input.confirmouGrandeza ?? false,
   }, db)
 }

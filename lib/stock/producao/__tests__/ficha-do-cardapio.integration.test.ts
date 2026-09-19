@@ -12,6 +12,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { prisma } from '@/lib/db'
+import { ReceitaHomonimaError, reativarFicha } from '../receita-ja-existe'
 import { criarFicha, fichaAtivaComNome, FichaError } from '../fichas'
 
 const CNPJ = '50505050000233'
@@ -108,10 +109,54 @@ describe('⛔⛔ a duplicata da PIZZA não pode mais nascer', () => {
     expect(await prisma.stockFicha.count({ where: { companyId } })).toBe(2)
   })
 
-  it('⚠️ ficha INATIVA não bloqueia — arquivar e recriar continua possível', async () => {
+  /**
+   * ⚠️⚠️ TESTE INVERTIDO COM O MOTIVO ESCRITO (19/09), não apagado.
+   *
+   * Ele afirmava *"ficha INATIVA não bloqueia — arquivar e recriar continua possível"*. Em
+   * 01/09 isso parecia inofensivo; **medido em prod, é a fábrica de duplicata**: recriar
+   * cria um item NOVO com o mesmo nome, e o dono fica com dois.
+   *
+   * ⭐ E o caso real (19/09) mostrou que a recusa já acontecia — pela frase errada. A CUBA
+   * MAIONESE é INTERMEDIARIO, e `seContaFisicamente` inclui intermediário: o dono levava a
+   * mensagem sobre **NOTA FISCAL** num produto que a cozinha FAZ, sem saída nenhuma. Em
+   * PRODUTO_FINAL (como esta pizza) não levava recusa alguma e nascia o segundo item.
+   *
+   * ⛔ Agora é UMA recusa pros dois, e ela **carrega as três portas**.
+   */
+  it('⛔⛔ ficha INATIVA com o mesmo nome RECUSA — e a recusa traz as três saídas', async () => {
     const r = await criarFicha(base('PIZZA PEQUENA 25CM'), prisma)
     await prisma.stockFicha.update({ where: { id: r.fichaId }, data: { ativo: false } })
     expect(await fichaAtivaComNome(companyId, 'PIZZA PEQUENA 25CM', prisma)).toBeNull()
-    await expect(criarFicha(base('PIZZA PEQUENA 25CM'), prisma)).resolves.toBeTruthy()
+
+    await expect(criarFicha(base('PIZZA PEQUENA 25CM'), prisma)).rejects.toThrow(ReceitaHomonimaError)
+    // ⭐ e NADA foi criado: a recusa não deixa meia-ficha pra trás
+    expect(await prisma.stockFicha.count({ where: { companyId } })).toBe(1)
+
+    try { await criarFicha(base('PIZZA PEQUENA 25CM'), prisma) } catch (e) {
+      const err = e as ReceitaHomonimaError
+      expect(err.saidas.map((s) => s.acao)).toEqual(['REATIVAR', 'RENOMEAR_A_ANTIGA', 'CRIAR_ASSIM_MESMO'])
+      expect(err.saidas[0].primaria, 'reativar é a primária — é o caso comum').toBe(true)
+    }
+  })
+
+  it('⭐ REATIVAR devolve a MESMA ficha (com a história), nunca uma cópia', async () => {
+    const r = await criarFicha(base('PIZZA PEQUENA 25CM'), prisma)
+    await prisma.stockFicha.update({ where: { id: r.fichaId }, data: { ativo: false } })
+    await prisma.stockItem.update({ where: { id: r.itemProduzidoId }, data: { ativo: false } })
+
+    const volta = await reativarFicha(companyId, r.fichaId, prisma)
+    expect(volta.fichaId).toBe(r.fichaId)
+    expect((await prisma.stockFicha.findUniqueOrThrow({ where: { id: r.fichaId } })).ativo).toBe(true)
+    // ⚠️ o invólucro volta junto: ficha ativa com item inativo some do cardápio e do planejar
+    expect((await prisma.stockItem.findUniqueOrThrow({ where: { id: r.itemProduzidoId } })).ativo).toBe(true)
+    expect(await prisma.stockFicha.count({ where: { companyId } }), 'reativar não pode criar uma 2ª').toBe(1)
+  })
+
+  it('⭐ "criar assim mesmo" é o escape que JÁ existia — não nasce uma 3ª porta de escrita', async () => {
+    const r = await criarFicha(base('PIZZA PEQUENA 25CM'), prisma)
+    await prisma.stockFicha.update({ where: { id: r.fichaId }, data: { ativo: false } })
+    const outra = await criarFicha({ ...base('PIZZA PEQUENA 25CM'), permitirItemNovoComNomeDeEstoque: true }, prisma)
+    expect(outra.fichaId).toBeTruthy()
+    expect(await prisma.stockFicha.count({ where: { companyId } })).toBe(2)
   })
 })

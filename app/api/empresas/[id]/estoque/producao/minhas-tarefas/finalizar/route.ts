@@ -11,7 +11,7 @@ import { prisma } from '@/lib/db'
 import { guardStock } from '@/lib/stock/require-stock'
 import { quemEstaComOPin } from '@/lib/stock/producao/pin'
 import { finalizarTarefa, minhasTarefasDeHoje, TarefaError } from '@/lib/stock/producao/minhas-tarefas'
-import { concluirDoTablet } from '@/lib/stock/producao/concluir-do-tablet'
+import { concluirDoTablet, avaliarGrandezaDaConclusao } from '@/lib/stock/producao/concluir-do-tablet'
 import { somentePendentes } from '@/lib/stock/producao/em-andamento'
 import { OrdemError } from '@/lib/stock/producao/ordens'
 
@@ -22,6 +22,8 @@ const schema = z.object({
   /** ⭐ só na ÚLTIMA etapa: o número que conclui a ordem */
   qtdGerada: z.number().positive().optional(),
   parcial: z.boolean().optional(),
+  /** ⭐ a cozinha olhou o aviso de grandeza e disse que é isso mesmo */
+  confirmouGrandeza: z.boolean().optional(),
 })
 
 export async function POST(request: NextRequest, { params }: Params) {
@@ -37,6 +39,23 @@ export async function POST(request: NextRequest, { params }: Params) {
   const etapa = await prisma.stockOrdemEtapa.findFirst({
     where: { id: parsed.data.etapaId, companyId }, select: { ordemId: true },
   })
+
+  /**
+   * ⛔⛔ A PERGUNTA DA GRANDEZA VEM ANTES DE FINALIZAR A ETAPA (19/09).
+   *
+   * A etapa fecha ANTES da conclusão; se a recusa viesse depois, a cozinha digitaria
+   * 22864, levaria o aviso e ficaria **com a tarefa fechada e sem como repetir** — estado
+   * pela metade no meio do turno. Aqui nada foi escrito ainda.
+   */
+  if (parsed.data.qtdGerada != null && etapa && !parsed.data.confirmouGrandeza) {
+    const v = await avaliarGrandezaDaConclusao(companyId, etapa.ordemId, parsed.data.qtdGerada, prisma)
+    if (v.decisao !== 'OK') {
+      return NextResponse.json({
+        erro: v.mensagem, code: v.decisao === 'RECUSA' ? 'GRANDEZA' : 'GRANDEZA_AVISO',
+        grandeza: { qtdProvavel: v.qtdProvavel, fator: v.fator },
+      }, { status: 409 })
+    }
+  }
 
   let concluida: { qtdGerada: number; custoUnitarioReal: number | null } | null = null
   try {
@@ -61,6 +80,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       const r = await concluirDoTablet({
         companyId, ordemId: etapa.ordemId, qtdGerada: parsed.data.qtdGerada,
         colaboradorId: quem.colaboradorId, parcial: parsed.data.parcial,
+        confirmouGrandeza: parsed.data.confirmouGrandeza,
       }, prisma)
       concluida = { qtdGerada: r.qtdGerada, custoUnitarioReal: r.custoUnitarioReal }
     }

@@ -752,6 +752,47 @@ TELA → 200 · "revisar" ✓ · "sem destino" ✓ · "parece" ✓ · o aviso do
 📋 **FALTA PRA FECHAR O CASO DE HOJE — e é o que só o PDF resolve:** o **V1** (Σ Brasil 11.376,89 × 11.358,89). A fixture que temos aponta a classe (linha em moeda estrangeira), mas **a fatura de hoje é outra**, e o texto dela não existe mais em lugar nenhum. **Da próxima recusa em diante isso não se repete** — a quarentena guarda.
 
 
+### ⛔⛔⛔ A RECUSA NÃO DIZIA QUAL DOS 58 ITENS — E O TETO DE 5 CENTAVOS CAIU NA MEDIÇÃO (19/09/2026)
+
+**O dono, travado na baixa de 18/09:** *"o confirmar recusa com «Este item ficaria com 0 unidades e valor R$ -0.04» mas NÃO DIZ QUAL ITEM dos 58 — fico travado sem saber onde agir (e os outros 57 reféns do 1)."*
+
+**⭐⭐ DE ONDE O CENTAVO NEGATIVO NASCE, medido em prod:** `custoMedioPorItem` devolve `round2(valor / saldo)` — um número de **TELA** — e a baixa **multiplica** esse arredondado pela quantidade. O erro **cresce com a quantidade**:
+```
+OVO BRANCO · 1.019 un · R$ 555,64 · custo médio arredondado 0,55
+   zerar: 1.019 × 0,55 = R$ 560,45  →  sobra R$ -4,81
+```
+**47 de 190 itens com saldo > 0 ficariam negativos ao zerar** — o pior é a **CUBA MAIONESE, R$ -113,63** (o resíduo do lote podre do Sprint B).
+
+**⚠️⚠️ ISSO DERRUBOU O TETO DE ~R$ 0,05 QUE O DONO PROPÔS** — ele recusaria 46 dos 47. O teto que fica é o **LIMITE MATEMÁTICO DO ARREDONDAMENTO**, não um número escolhido a dedo: **meio centavo por unidade** (`max(0,05; qtd × 0,005)`), a **mesma régua do E16** (*"0,005 × Σ|quantidade|"*, 29/08). Um custo arredondado na 2ª casa erra no máximo meio centavo por unidade — acima disso não é centavo, é dado torto, e **continua recusando**.
+
+**⭐ E A CURA DE FUNDO É A LIÇÃO QUE ESTA CASA JÁ APRENDEU DUAS VEZES** (a reunitização do pão, 27/08; o custo por unidade da conclusão de produção, 21/08): ***o ledger guarda precisão cheia; quem arredonda é a leitura***. `custoParaBaixar` devolve `valor / saldo` **sem arredondar** — com ele o resíduo **não nasce**. O teto acima é só pra o que JÁ está gravado.
+
+**⛔ `AJUSTA_RESIDUO` SÓ EXISTE QUANDO A QUANTIDADE VAI A ZERO.** Com saldo remanescente, valor negativo é dado torto de verdade — é o caso do **fermento** (16/09: consumo lançado antes da nota de compra) — e zerar o valor de um item que ainda está na prateleira **esconderia a compra que falta**.
+
+**⭐⭐ O RÉU TEM NOME.** `MovementInvalidError` passou a carregar o `culpado` (item, nome, saldo e valor depois) e a mensagem diz o estado de hoje e o que a baixa tira. Medido em prod, com rollback:
+```
+«porcao file para xis 150grama» ficaria com 1 UN e valor R$ -10.00 — dinheiro negativo
+com saldo positivo é um estado que não existe. Hoje ele tem 3 UN valendo R$ 0.00;
+esta baixa tira 2 UN (R$ 10.00). Confira a quantidade: ela costuma ser o sintoma.
+```
+
+**⭐ O LOTE NÃO FICA REFÉM DE UM ITEM — e a ATOMICIDADE NÃO AFROUXA.** A baixa **junta todos os barrados** e **desfaz tudo** (gravar 57 e "meio" o 58º seria o estado pela metade que o módulo existe pra evitar). O que muda é que a **recusa carrega o caminho**: 409 `ITEM_BARRADO` com os réus e a oferta *"baixar os outros N e deixar este pendente"* — o mesmo desenho do `confirmouSanidade` (05/09), ***pergunta, nunca recusa cega***. ⚠️ E **as linhas do dia continuam gravadas**: resolvido o item, um reprocesso baixa o que faltou, **sem reimportar nada** — a tela diz isso, senão pular vira perder.
+
+**⚠️ O SUSPEITO DO DONO FOI INOCENTADO PELA MEDIÇÃO:** *"porcao file para xis"* está em **3 UN · R$ 0,00**, não negativo (é um dos **6 itens** com saldo > 0 e valor zerado). **Os dois candidatos com a assinatura EXATA de −0,04** são *«porcao beef de alimenuta»* (40 un · R$ 490,36 → 40 × 12,26 = 490,40) e *«beef aparmegiana de carne 120g»* (13 un · R$ 121,25 → 13 × 9,33 = 121,29). **Os dois cabem no teto proporcional e, com o custo cheio, nem chegam a nascer.**
+
+**⚠️ E A PRIMEIRA PROVA EM PROD FOI SONDA MINHA ERRADA:** ela só baixava os chunks do primeiro paint e devolveu **5 ⛔** com o código **no build**. *Sonda errada dá um vermelho tão convincente quanto um defeito real* — conferido por grep no build servido antes de reportar qualquer coisa.
+
+**PROVADO EM PROD, no chunk que prod serve, nos DOIS viewports (REGRA 12):**
+```
+CELULAR 200 · 56 KB      DESKTOP 200 · 56 KB
+  ✓ a recusa NOMEIA os réus · ✓ "baixar os outros N" · ✓ o dia continua reprocessável
+  ✓ 409 ITEM_BARRADO · ✓ o escape · ✓ composição ÚNICA (uma lista, não uma por viewport)
+```
+**REGRA 11 — 16 guards, cada trava reposta dá vermelho** (custo arredondado de volta · contiguidade do teto · atomicidade afrouxada · a lista sumindo da tela). ⚠️ E **uma asserção minha estava errada**: contei `barrados.itens.map` e peguei os 2 usos do *reenvio* — a régua é a **lista desenhada** (`<li key>`), não toda menção. **10.401 verdes · TS 0 · deploy `4SF_-n8AiR1uo3zoEthUS` 4/4 · Δ bundle +4 KB.**
+
+📋 **FICA PRO DONO (REGRA 2, o clique é dele):** repor a baixa de 18/09 — ou ela passa inteira, ou a recusa **nomeia** o réu e oferece baixar os outros. **Recusa sem nome reposta = vermelho.**
+
+
 ### ✅ O VÍNCULO CRUZADO FOI DESFEITO (19/09/2026, autorizado: *"preview conferido"*)
 
 `pg_dump pre-vinculo-cruzado-20260919-010501.dump` (6,5 MB) antes · preview conferido contra o estado do minuto · aplicado **pelas portas únicas**, nunca por script replicando a lógica.
