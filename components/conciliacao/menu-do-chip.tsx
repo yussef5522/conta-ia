@@ -16,10 +16,12 @@
 // caixa e sem acento). ⚠️ Dispensável por **ESC e clique-fora** pelo hook ÚNICO da casa
 // (`useDismissivel`, 28/08) — dropdown novo nasce dispensável, não reinventa o gesto.
 
-import { useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Loader2, Check } from 'lucide-react'
-import { useDismissivel } from '@/lib/hooks/use-dismissivel'
+import { cliqueFoiFora, ehTeclaDeFechar } from '@/lib/hooks/use-dismissivel'
 import { filtrarPorBusca } from '@/lib/busca-texto'
+import { posicaoDoMenu } from '@/lib/conciliacao/posicao-do-menu'
 
 export interface OpcaoDoMenu {
   id: string
@@ -52,7 +54,51 @@ export function MenuDoChip({
 }) {
   const [aberto, setAberto] = useState(false)
   const [busca, setBusca] = useState('')
-  const ref = useDismissivel<HTMLDivElement>(aberto, () => { setAberto(false); setBusca('') })
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const painelRef = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState<ReturnType<typeof posicaoDoMenu> | null>(null)
+  const fechar = () => { setAberto(false); setBusca(''); setPos(null) }
+
+  /**
+   * ⭐ MEDE ONDE CABE — e remede a cada scroll/resize, porque o painel vive no portal
+   * (coordenadas de viewport). Fechar no scroll seria mais simples e pior: o dedo esbarra
+   * na rolagem e o menu somia na cara do dono.
+   */
+  useLayoutEffect(() => {
+    if (!aberto) return
+    const medir = () => {
+      const r = btnRef.current?.getBoundingClientRect()
+      if (!r) return
+      setPos(posicaoDoMenu(r, { largura: window.innerWidth, altura: window.innerHeight }))
+    }
+    medir()
+    window.addEventListener('scroll', medir, true)
+    window.addEventListener('resize', medir)
+    return () => { window.removeEventListener('scroll', medir, true); window.removeEventListener('resize', medir) }
+  }, [aberto])
+
+  /**
+   * ⚠️ O painel está FORA do container do chip (portal), então o hook de dispensar — que
+   * conhece **um** container — não serve direto. O que se reusa são as DECISÕES puras dele
+   * (`cliqueFoiFora` / `ehTeclaDeFechar`, REGRA 4): a régua é a mesma, o que muda é que
+   * agora há duas caixas que contam como "dentro".
+   */
+  useEffect(() => {
+    if (!aberto) return
+    const fora = (e: Event) => {
+      const alvo = e.target as Node | null
+      if (cliqueFoiFora(btnRef.current, alvo) && cliqueFoiFora(painelRef.current, alvo)) fechar()
+    }
+    const tecla = (e: KeyboardEvent) => { if (ehTeclaDeFechar(e.key)) fechar() }
+    document.addEventListener('mousedown', fora)
+    document.addEventListener('touchstart', fora)
+    document.addEventListener('keydown', tecla)
+    return () => {
+      document.removeEventListener('mousedown', fora)
+      document.removeEventListener('touchstart', fora)
+      document.removeEventListener('keydown', tecla)
+    }
+  }, [aberto])
 
   const total = useMemo(() => secoes.reduce((n, s) => n + s.itens.length, 0), [secoes])
 
@@ -65,24 +111,38 @@ export function MenuDoChip({
   }, [secoes, busca])
 
   return (
-    <div ref={ref} className="relative">
+    <>
       <button
+        ref={btnRef}
         type="button"
         disabled={ocupado}
         aria-haspopup="menu"
         aria-expanded={aberto}
-        onClick={() => setAberto((a) => !a)}
+        onClick={() => (aberto ? fechar() : setAberto(true))}
         className={className}
         style={style}
       >
         {ocupado ? <Loader2 className="h-3 w-3 animate-spin" /> : <>{icone ? `${icone} ` : ''}{rotulo} ▾</>}
       </button>
 
-      {aberto && (
+      {/*
+        ⛔⛔ **PORTAL, E O MOTIVO É UM DEFEITO MEDIDO:** o cartão ≍ é `overflow-hidden` e os
+        chips são o último bloco dele — um painel `absolute` ali é **recortado pela borda do
+        cartão**. Foi assim que o menu de contrato abriu "vazio" com 10 contratos no payload.
+        No portal ele não tem ancestral que corte, e a posição vem de `posicaoDoMenu`.
+      */}
+      {aberto && pos && typeof document !== 'undefined' && createPortal(
         <div
+          ref={painelRef}
           role="menu"
-          className="absolute left-0 top-[calc(100%+6px)] z-30 max-h-[min(60vh,22rem)] w-[min(20rem,calc(100vw-3rem))] overflow-y-auto rounded-2xl border bg-white p-1.5 shadow-xl dark:bg-slate-900"
-          style={{ borderColor: '#e6e4ef' }}
+          className="fixed z-[60] overflow-y-auto rounded-2xl border bg-white p-1.5 shadow-xl dark:bg-slate-900"
+          style={{
+            borderColor: '#e6e4ef',
+            left: pos.left,
+            ...(pos.top != null ? { top: pos.top } : { bottom: pos.bottom }),
+            width: pos.largura,
+            maxHeight: pos.maxAltura,
+          }}
         >
           {total === 0 && (
             // ⛔ vazio que DIZ o motivo — "nenhuma opção" faria o dono achar que o gesto quebrou
@@ -116,7 +176,7 @@ export function MenuDoChip({
                   key={o.id}
                   role="menuitem"
                   type="button"
-                  onClick={() => { setAberto(false); setBusca(''); onEscolher(o.id) }}
+                  onClick={() => { fechar(); onEscolher(o.id) }}
                   className="flex w-full items-start gap-2 rounded-xl px-2.5 py-[7px] text-left hover:bg-violet-50 dark:hover:bg-slate-800"
                 >
                   <Check className="mt-[3px] h-3 w-3 shrink-0 opacity-0" />
@@ -132,8 +192,9 @@ export function MenuDoChip({
           {busca.trim() && filtradas.length === 0 && (
             <p className="px-2.5 py-3 text-[12px] text-slate-500">Nada com «{busca}» aqui.</p>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
-    </div>
+    </>
   )
 }

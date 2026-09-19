@@ -23,6 +23,9 @@ import { MenuDoChip, type SecaoDoChip } from './menu-do-chip'
 import { FindAndMatchPanel } from './find-and-match-panel'
 import { secoesDoMenu, type CategoriaDoMenu } from '@/lib/conciliacao/categorias-do-gesto'
 import { nomeDaBusca } from '@/lib/conciliacao/nome-da-busca'
+import { conviteDaPonte, type ConviteDaPonte } from '@/lib/conciliacao/convite-da-ponte'
+import { VAZIO, type EstadoDaCarga } from '@/lib/conciliacao/vazio-do-menu'
+import { WithdrawalPanel } from '@/components/withdrawals/WithdrawalPanel'
 
 interface AcaoDTO { acao: string; rotulo: string; pedeAlvo: string | null }
 interface PalpiteDTO {
@@ -76,8 +79,27 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
    * rota que **não existe**) passa a ter destino de verdade.
    */
   const [procurando, setProcurando] = useState<LinhaDTO | null>(null)
+  /**
+   * ⭐⭐ O CONVITE DA PONTE — o passo 2 da retirada (18/09).
+   *
+   * ⛔ Categorizar como Distribuição de Lucros gravava **só a categoria**: o dinheiro saía
+   * da PJ e não entrava em lugar nenhum da PF. **Meia-ponte.** O convite vive FORA da lista
+   * de linhas de propósito — a linha sai da caixa assim que é categorizada, e se o convite
+   * morasse nela sumiria junto, no instante exato em que ele precisa aparecer.
+   */
+  const [ponte, setPonte] = useState<{ linha: LinhaDTO; convite: ConviteDaPonte; abrir: boolean } | null>(null)
   const [categorias, setCategorias] = useState<CategoriaDoMenu[]>([])
   const [contratos, setContratos] = useState<{ id: string; nome: string; detalhe: string; parcela: number }[]>([])
+  /**
+   * ⛔⛔ **VAZIO NÃO PODE AFIRMAR O QUE NÃO SABE.** As três listas carregam com falha MACIA:
+   * se a chamada morre, o estado fica `[]` e o menu dizia *"nenhum contrato com parcela em
+   * aberto"* — uma **afirmação** sobre a empresa, feita a partir de uma falha de rede. É o
+   * *erro disfarçado de vazio*, a doença que esta casa mais paga. Agora cada lista sabe se
+   * está CARREGANDO, se FALHOU ou se está de fato vazia, e a frase muda com isso.
+   */
+  const [cargas, setCargas] = useState<Record<'categorias' | 'cartoes' | 'contratos', 'CARREGANDO' | 'OK' | 'FALHOU'>>(
+    { categorias: 'CARREGANDO', cartoes: 'CARREGANDO', contratos: 'CARREGANDO' },
+  )
   const [cartoes, setCartoes] = useState<{ id: string; name: string }[]>([])
 
   const carregar = useCallback(async () => {
@@ -107,6 +129,11 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
         fetchComTimeout<{ cards?: { id: string; name: string }[] }>(`/api/empresas/${empresaId}/cartoes`),
         fetchComTimeout<{ loans?: { id: string; lender: string; contractNumber: string | null; proximaParcelaNumero: number | null; proximaParcelaDate: string | null; proximaParcelaValor: number | null }[] }>(`/api/empresas/${empresaId}/emprestimos`),
       ])
+      setCargas({
+        categorias: c.ok && c.data?.categorias ? 'OK' : 'FALHOU',
+        cartoes: k.ok && k.data?.cards ? 'OK' : 'FALHOU',
+        contratos: e.ok && e.data?.loans ? 'OK' : 'FALHOU',
+      })
       if (c.ok && c.data?.categorias) setCategorias(c.data.categorias)
       if (k.ok && k.data?.cards) setCartoes(k.data.cards)
       if (e.ok && e.data?.loans) {
@@ -158,9 +185,16 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
         titulo: `${linha.descricao || '(sem descrição)'} ${brl(linha.valor)}`,
         selo: `${r.data.efeito ?? 'resolvida'} · no arquivo`,
       })
+      /**
+       * ⭐⭐ RETIRADA GRAVADA → O PASSO 2 É OFERECIDO NA HORA. A régua de quem é retirada é
+       * o `dreGroup` (a MESMA que separa a seção 💰 do menu — uma decisão, um lugar).
+       */
+      const cat = categorias.find((x) => x.id === alvo.categoryId)
+      const convite = conviteDaPonte(cat)
+      if (convite) setPonte({ linha, convite, abrir: false })
       await carregar()   // ⭐ a linha sai da caixa NA HORA
     } finally { setOcupado(null) }
-  }, [empresaId, carregar])
+  }, [empresaId, carregar, categorias])
 
   const visiveis = useMemo(() => (caixa?.linhas ?? []).filter((l) => l.sentido === aba), [caixa, aba])
 
@@ -267,11 +301,60 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
         </div>
       )}
 
+      {/* ══════════ 5b. O PASSO 2 DA RETIRADA — A PONTE PRO PERFIL PF ══════════
+          ⛔ Categorizar como retirada gravava só a categoria: o dinheiro saía da PJ e não
+          entrava em lugar nenhum da PF. **Meia-ponte.** O convite aparece aqui, fora da
+          lista, porque a linha SAI da caixa no instante em que é categorizada. */}
+      {ponte && (
+        <div className="rounded-2xl border-[1.5px] px-4 py-3" style={{ borderColor: V3.roxo, background: V3.roxoBg }}>
+          {!ponte.abrir ? (
+            <div className="flex flex-wrap items-center gap-2.5">
+              <span className="text-[13px] leading-relaxed" style={{ color: V3.ink }}>
+                <b className="font-extrabold">{ponte.convite.titulo}</b>{' '}
+                a saída de <b>{brl(ponte.linha.valor)}</b> virou retirada na empresa — falta a
+                ENTRADA no perfil pessoal, com as duas pontas vinculadas.
+              </span>
+              <button type="button" onClick={() => setPonte({ ...ponte, abrir: true })}
+                className="ml-auto rounded-full px-3.5 py-[7px] text-[12.5px] font-extrabold text-white"
+                style={{ background: V3.roxo }}>
+                mandar pro perfil PF →
+              </button>
+              {/* ⛔ PULAR É LEGÍTIMO — e a tela diz ONDE o gesto continua existindo, senão
+                  "pular" vira "perder" e nasce a meia-ponte que o dono não quer. */}
+              <button type="button" onClick={() => setPonte(null)}
+                className="rounded-full border px-3 py-[6px] text-[12px] font-bold"
+                style={{ borderColor: V3.line, color: V3.sub }}>
+                pular — fica em <u>Retiradas pendentes</u>
+              </button>
+            </div>
+          ) : (
+            <WithdrawalPanel
+              empresaId={empresaId}
+              pjTransactionId={ponte.linha.id}
+              pjAmount={ponte.linha.valor}
+              pjDescription={ponte.linha.descricao}
+              /* ⭐ SUGESTÃO, não decisão: o painel pergunta sócio, conta e tipo */
+              initialKind={ponte.convite.tipo ?? undefined}
+              onCancel={() => setPonte(null)}
+              onConfirmed={() => {
+                setFeito({
+                  id: ponte.linha.id,
+                  titulo: `${ponte.linha.descricao || '(sem descrição)'} ${brl(ponte.linha.valor)}`,
+                  selo: 'retirada na empresa + entrada no perfil PF · pontas vinculadas',
+                })
+                setPonte(null)
+                void carregar()
+              }}
+            />
+          )}
+        </div>
+      )}
+
       {/* ══════════ 4. OS CARTÕES ≍ ══════════ */}
       {visiveis.map((l) => (
         <div key={l.id} className="flex flex-col gap-2">
           <CartaoDaLinha linha={l} ocupado={ocupado === l.id}
-            categorias={categorias} cartoes={cartoes} contratos={contratos} onGesto={gesto} />
+            categorias={categorias} cartoes={cartoes} contratos={contratos} cargas={cargas} onGesto={gesto} />
 
           {/*
             ⭐⭐⭐ O PAINEL ABRE **DEBAIXO DA PRÓPRIA LINHA** — nunca noutra tela, nunca
@@ -328,11 +411,12 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
 // ⭐⭐⭐ O CARTÃO ≍ — banco à esquerda, palpite à direita, chips embaixo
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, onGesto }: {
+function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, cargas, onGesto }: {
   linha: LinhaDTO; ocupado: boolean
   categorias: CategoriaDoMenu[]
   cartoes: { id: string; name: string }[]
   contratos: { id: string; nome: string; detalhe: string; parcela: number }[]
+  cargas: Record<'categorias' | 'cartoes' | 'contratos', EstadoDaCarga>
   onGesto: (l: LinhaDTO, acao: string, alvo?: Record<string, unknown>) => void
 }) {
   const credito = l.sentido === 'ENTRADA'
@@ -438,7 +522,7 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, onGe
                 return (
                   <MenuDoChip key={a.acao} rotulo={a.rotulo} icone={ICONE[a.acao]} secoes={secoes}
                     ocupado={ocupado} className={chip} style={cor}
-                    vazio="Não consegui carregar as categorias desta empresa — recarregue a página."
+                    vazio={VAZIO.categorias(cargas.categorias).texto}
                     onEscolher={(id) => onGesto(l, a.acao, { categoryId: id })} />
                 )
               }
@@ -447,7 +531,7 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, onGe
                   <MenuDoChip key={a.acao} rotulo={a.rotulo} icone={ICONE[a.acao]} ocupado={ocupado}
                     className={chip} style={cor}
                     secoes={[{ titulo: '💳 qual cartão esta linha quita?', itens: cartoes.map((k) => ({ id: k.id, nome: k.name })) }]}
-                    vazio="Nenhum cartão cadastrado nesta empresa."
+                    vazio={VAZIO.cartoes(cargas.cartoes).texto}
                     onEscolher={(id) => onGesto(l, a.acao, { cardId: id })} />
                 )
               }
@@ -456,7 +540,7 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, onGe
                   <MenuDoChip key={a.acao} rotulo={a.rotulo} icone={ICONE[a.acao]} ocupado={ocupado}
                     className={chip} style={cor}
                     secoes={[{ titulo: '🏦 qual parcela esta linha paga?', ajuda: 'a próxima em aberto de cada contrato', itens: contratos.map((k) => ({ id: k.id, nome: k.nome, detalhe: k.detalhe })) }]}
-                    vazio="Nenhum contrato com parcela em aberto."
+                    vazio={VAZIO.contratos(cargas.contratos).texto}
                     onEscolher={(id) => {
                       const c2 = contratos.find((x) => x.id === id)
                       if (c2) onGesto(l, a.acao, { loanId: c2.id, installmentNumber: c2.parcela })
