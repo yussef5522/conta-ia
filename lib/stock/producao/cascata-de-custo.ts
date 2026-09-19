@@ -61,8 +61,15 @@ export interface PreviewDaCascata {
   valorDepois: number
   custoMedioAntes: number | null
   custoMedioDepois: number | null
-  /** ⭐ o custo que NÃO foi lançado — o Δ que vai pro CMV do mês */
-  deltaDeCusto: number
+  /**
+   * ⭐ o custo a mais que sai da PRATELEIRA (as separações) — muda o valor do estoque
+   *
+   * ⚠️ É diferente do Δ do CMV: a separação tira do estoque, o consumo entra no produto.
+   * Somar os dois (como a 1ª versão fazia) conta o mesmo dinheiro duas vezes.
+   */
+  deltaDaPrateleira: number
+  /** ⭐ o custo a mais que entra nos PRODUTOS gerados — o Δ que vai pro CMV do mês */
+  deltaDoCmv: number
 }
 
 /** ⭐ o custo unitário que um movimento de SAÍDA deve usar: o médio do instante, cheio */
@@ -96,7 +103,7 @@ export async function preverCascata(
   for (const m of todos.slice(0, iCorte)) if (naPrateleira(m.tipo)) { qtd += m.quantidade; valor += m.custoTotal }
 
   const linhas: LinhaDaCascata[] = []
-  let deltaDeCusto = 0
+  let deltaDaPrateleira = 0, deltaDoCmv = 0
   for (const m of todos.slice(iCorte)) {
     const ehGeracaoCorrigida = alvos.has(m.id)
     const saida = m.quantidade < 0
@@ -111,7 +118,10 @@ export async function preverCascata(
       // ⛔ toda SAÍDA passa a usar o custo médio do instante reconstruído, em precisão cheia
       cu = custoMedioNoInstante(qtd, valor)
       ct = r2(m.quantidade * cu)
-      deltaDeCusto += Math.abs(ct) - Math.abs(m.custoTotal)
+      const aMais = Math.abs(ct) - Math.abs(m.custoTotal)
+      // ⚠️ a separação tira do ESTOQUE; o consumo entra no PRODUTO. Contas diferentes.
+      if (m.tipo === 'PRODUCAO_CONSUMO') deltaDoCmv += aMais
+      else deltaDaPrateleira += aMais
     }
 
     linhas.push({
@@ -133,7 +143,7 @@ export async function preverCascata(
     saldoDepois: r2(qtd), valorDepois: r2(valor),
     custoMedioAntes: antes.q > 0 ? r2(antes.v / antes.q) : null,
     custoMedioDepois: qtd > 0 ? r2(valor / qtd) : null,
-    deltaDeCusto: r2(deltaDeCusto),
+    deltaDaPrateleira: r2(deltaDaPrateleira), deltaDoCmv: r2(deltaDoCmv),
   }
 }
 
