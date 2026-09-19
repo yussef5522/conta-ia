@@ -752,6 +752,44 @@ TELA → 200 · "revisar" ✓ · "sem destino" ✓ · "parece" ✓ · o aviso do
 📋 **FALTA PRA FECHAR O CASO DE HOJE — e é o que só o PDF resolve:** o **V1** (Σ Brasil 11.376,89 × 11.358,89). A fixture que temos aponta a classe (linha em moeda estrangeira), mas **a fatura de hoje é outra**, e o texto dela não existe mais em lugar nenhum. **Da próxima recusa em diante isso não se repete** — a quarentena guarda.
 
 
+### ⭐⭐⭐ A FAMÍLIA MAIONESE VIROU UMA SÓ — E A CIRURGIA ACHOU 4 DEFEITOS DE LEDGER (19/09/2026)
+
+**Autorizado pelo dono** (*"DISPARA A SEQUÊNCIA COMPLETA"*), `pg_dump pre-familia-maionese-20260919-203347` (6,5 MB) antes.
+
+**⛔⛔ PASSO 1 — CORRIGIR SÓ A GERAÇÃO NÃO BASTAVA.** Com os 22864 kg desfeitos, a CUBA ficaria em **R$ 21,96/kg** contra os ~10,87 dos lotes bons: as separações seguintes tinham saído a **R$ 0,04/kg**, porque o custo médio já estava poluído pela própria geração podre. ***O erro de custo não fica parado — ele escorre pelos movimentos seguintes.*** `cascata-de-custo.ts` estorna do ponto podre em diante e recria em ordem cronológica, recalculando o custo médio a cada passo, com a **data do FATO** (nunca a do conserto).
+
+⚠️ E o preview de ontem estava **desatualizado**: eram **6 pares** (a cozinha produziu em 19/09), não 5 — e a separação de 14/09 18:40 saiu a **R$ 12,51/kg** com o consumo dela a **R$ 0,04**, R$ 69,58 presos numa ordem já encerrada.
+
+⚠️ **E o meu Δ estava inflado:** somava separação **e** consumo, que é o mesmo dinheiro contado duas vezes. Separados: **Δ prateleira R$ 365,35** (o valor a mais que sai do estoque) e **Δ CMV R$ 433,25** (o custo que entra nos produtos).
+
+═══ **OS QUATRO DEFEITOS QUE A CIRURGIA EXPÔS** ═══
+
+**⛔⛔ 1. O ESTORNO DE UM MOVIMENTO INTERNO ENTRAVA NA PRATELEIRA.** `estornarMovimento` cria a linha oposta com `tipo: 'ESTORNO'` — e ESTORNO **conta no saldo**. Desfazer um `PRODUCAO_CONSUMO` (que é interno e NÃO conta) **somava ao estoque**: o consumo saía por fora e voltava por dentro. A CUBA ficou com **72,74 kg** onde a reconstrução previa **36,49** — a diferença de **36,25** é a soma exata dos 6 consumos. ⚠️⚠️ **E não era da cirurgia:** medidos **9 estornos** nessa situação em prod, e o «Patinho Bife (mesclado)» carregava **+38,16 kg / R$ 1.754,36** desde uma mescla antiga. ⭐ **A cura é de LEITURA, não de dado** — o ledger está certo, quem somava é que errava (a família do E2, que contava linha crua).
+
+**⛔⛔ 2. A REUNITIZAÇÃO IGNORAVA OS ESTORNOS.** `unidadeFisicaDosMovimentos` filtrava `tipo: { not: 'ESTORNO' }`, e como o plano de conversão nasce dessa lista, eles (a) ficavam fora do saldo previsto — o preview anunciou **22.915,44 KG** onde o saldo é **51,44** — e (b) **não seriam convertidos ao aplicar**, deixando metade do ledger em cada unidade. *O "nunca converte metade e cala" acontecendo por omissão.* ⭐ Um estorno está na mesma unidade física do original; resolver pelo `estornoDeId` é a única resposta que não chuta.
+
+**⛔⛔ 3. REUNITIZAR PERDIA MASSA — e o CHECK do banco pegou.** Era `round2(quantidade)`, e o estoque trabalha em **3 casas** (grama/ml, a régua do próprio módulo): `22,864` virava `22,86`, e `22,86 × 9,79103 = 223,82` contra os **223,86** do dinheiro → o banco **recusou a linha** por 4 centavos. ⭐ Agora o unitário é **derivado da quantidade final**, com o `custoTotal` como âncora: o CHECK fecha **por construção**, não por sorte.
+
+**⚠️ 4. O PREVIEW FALAVA LÍNGUA DIFERENTE DA POSIÇÃO** (pego antes do OK): o `saldoAntes` vinha de um `aggregate` cru, mostrando 3,12 onde a tela mostra 36,494.
+
+═══ **O RESULTADO** ═══
+```
+MAIONESE            51,44 KG · R$ 503,69 · R$  9,79/kg   ⭐ agora em KG (era UN)
+CUBA MAIONESE       36,49 KG · R$ 436,13 · R$ 11,95/kg   (ficha já inativa; espera a contagem)
+POÇAO MAIONESE 30G  ← 0,030 KG de MAIONESE = R$ 0,294/pote   ⭐ consumo em kg, rende em POTES
+ENCHER TUBO         ← 0,590 KG de MAIONESE = R$ 5,776/tubo
+Patinho Bife (mesclado)  R$ 1.754,36 de fantasma → R$ 0,00
+```
+
+**⚠️⚠️ E A ORDEM DO PASSO 4 ESTAVA ERRADA NO PLANO — minha, não dele.** Desativar a CUBA **antes** da contagem a tiraria da lista de contagem, e aí o saldo dela não teria como ser zerado pela porta certa. ***Item desativado não aparece pra contar*** — o gesto tem que vir primeiro. Ela fica ativa até o dono contar.
+
+**⛔ E HÁ UMA SESSÃO DE CONTAGEM ABERTA HÁ 28H, do cristian, com ZERO linhas** — *"1 sessão ABERTA por vez"* é índice único no banco, então ela **bloqueia a contagem do dono**. Não fechei sessão de outra pessoa sem ordem; está reportada.
+
+**10.458 verdes · TS 0.**
+
+📋 **FICA PRO DONO (o passo 5 é dele):** fechar a sessão vazia do cristian, contar **MAIONESE 3,000 KG** e **CUBA 0** na mesma sessão (o FREIO vai perguntar nas duas — é pra isso que ele existe), e então eu desativo a CUBA.
+
+
 ### ⛔⛔⛔ A ORDEM DO ANO 202 — O AVISO E O "SUMIU" ERAM O MESMO CASO (19/09/2026)
 
 **O dono trouxe dois problemas:** *"o painel diz '1 ordem de ontem ainda em produção'"* e *"criei uma produção de calabresa ralada e ELA SUMIU — não aparece em lugar nenhum"*. **Medido por id, é a MESMA ordem** (`…4et405`).
