@@ -752,6 +752,45 @@ TELA → 200 · "revisar" ✓ · "sem destino" ✓ · "parece" ✓ · o aviso do
 📋 **FALTA PRA FECHAR O CASO DE HOJE — e é o que só o PDF resolve:** o **V1** (Σ Brasil 11.376,89 × 11.358,89). A fixture que temos aponta a classe (linha em moeda estrangeira), mas **a fatura de hoje é outra**, e o texto dela não existe mais em lugar nenhum. **Da próxima recusa em diante isso não se repete** — a quarentena guarda.
 
 
+### ⛔⛔⛔ A ORDEM DO ANO 202 — O AVISO E O "SUMIU" ERAM O MESMO CASO (19/09/2026)
+
+**O dono trouxe dois problemas:** *"o painel diz '1 ordem de ontem ainda em produção'"* e *"criei uma produção de calabresa ralada e ELA SUMIU — não aparece em lugar nenhum"*. **Medido por id, é a MESMA ordem** (`…4et405`).
+
+**⭐⭐ A CAUSA, PROVADA ATÉ OS SEGUNDOS.** A rota validava com **`z.string().min(1)`** — que aceita qualquer texto — e montava `new Date(\`${data}T12:00:00\`)`, **sem `Z`**:
+```
+new Date('0202-09-18T12:00:00')  em America/Sao_Paulo  →  0202-09-18T15:06:28.000Z
+                                    o gravado em prod  →  0202-09-18T15:06:28.000Z  ⭐
+```
+⚠️ **Os `:06:28` são a assinatura.** No ano 202 São Paulo não tinha fuso de hora inteira — usava **LMT −03:06:28**. Toda ordem normal grava `15:00:00` cravado; **só esta tem segundos**. *Foi o resíduo do relógio histórico que identificou a string de origem* (`"0202-09-18"`, o que um `<input type="date">` manda quando o ano sai com um zero a mais).
+
+**⛔⛔ MAS O ESTRAGO NÃO FOI A DATA — FOI O SUMIÇO.** `listOrdens` ordenava por `dataProducao desc` com **`take: 200`**, e a empresa tem **238 ordens**: o ano 202 jogou a linha pra **posição 238 de 238**, dentro das 38 que o teto corta.
+```
+ordens ABERTAS no banco: 1  ·  visíveis em qualquer tela: 0  ·  R$ 42,18 de insumo preso
+```
+⭐ É **o teto de leitura aplicado ANTES da pergunta que importa** — a mesma doença do `take: 50` que escondeu o fermento da busca (16/09), e o *"desativar que não some"* ao contrário: **o ativo que não aparece**.
+
+**A CURA É DE DUAS PONTAS, e as duas são necessárias:** a data **não pode mais nascer torta** (formato + plausibilidade + `Z`, REGRA 5 — sem o `Z` ela continuaria dependendo do fuso do processo) e **a ordem ABERTA deixou de depender do teto** (ele vale só pras encerradas, que são a massa e envelhecem). ⚠️ *Trabalho pendente não é histórico: ele é a razão da tela existir.*
+
+**⭐⭐ E O AVISO GANHOU AS TRÊS PORTAS** — elas **já existiam** (concluir · cancelar-e-devolver · o plano de etapa de 15/09); faltava o aviso **nomeá-las**. Quem lê *"o insumo saiu da prateleira e não virou produto"* fica sabendo do problema e não do que fazer com ele. Agora cada porta **diz o efeito em dinheiro** (*"os R$ 42,18 voltam pra prateleira"*), o estado vem do **SERVIDOR** (se a tela deduzisse, discordaria do P2 na primeira borda) e a 3ª reusa `stock_etapa_plano` — nenhuma segunda resposta pra *"em que dia?"*.
+
+⛔ **E o aviso NÃO é ruidoso:** etapa em andamento não é ordem parada (alguém está com a mão na massa) · lote com plano de continuar não avisa (massa que descansa é a **receita**) · **plano VENCIDO volta a avisar** (lote esquecido continua sendo lote esquecido).
+
+**📋 O CENSO (14 dias) — 196 ordens:** 158 concluídas · 37 canceladas · **1 em produção**. Dinheiro em trânsito: **só a calabresa, R$ 42,18, parada há 45h**. ⭐ **E as canceladas SEMPRE devolveram** — varridas todas as 37, zero com sobra; o guard ganhou o caso que faltava (cancelar **EM_PRODUCAO**, não só logo após separar) com o invariante P1 junto.
+
+**PROVADO EM PROD, pelas rotas reais depois do deploy:**
+```
+GET ordem → 200 · «porçao calabresa ralada 50 grama» EM_PRODUCAO
+  parada.avisar: true · "parada há 1 dia · R$ 42,18 saíram da prateleira…
+   ⚠️ a data desta ordem está fora do calendário — foi por isso que ela sumiu das listas"
+  [concluir agora] [cancelar e devolver] [continua depois]  — cada uma com o efeito
+GET lista → ordens 201 · abertas 1 · ⭐ a calabresa aparece nas DUAS
+PAGE celular 200 · desktop 200        POST com "0202-09-18" → 422 que ENSINA
+```
+**REGRA 11 — 3 defeitos repostos, 1 vermelho cada** (o `.min(1)` de volta · o teto na busca das abertas · o efeito sumindo da tela). ⚠️ **E uma sonda minha deu 401 em tudo** antes de eu reportar: o cookie é `auth_token` com **underscore**, não hífen — *o 401 do proxy é indistinguível do 401 de credencial*, e a diferença entre "prod quebrada" e "sonda errada" era um caractere. **10.453 verdes · TS 0 · deploy `iCPgTIeg6zTGnJ32pPfnZ` 4/4 · Δ bundle +4 KB.**
+
+📋 **FICA PRO DONO (REGRA 2, o clique é dele):** abrir a ordem da calabresa e escolher uma das três portas — o aviso some quando ela sair do estado parado.
+
+
 ### ⛔⛔⛔ O LOTE QUE ENTROU MIL VEZES MAIOR — E A CAUSA NÃO ERA O PARSE (19/09/2026)
 
 **O dono:** *"a receita de maionese está descontando demais."* E ele apontou a causa: *"PAGA A DÍVIDA DE 08/09 — costura os 4 campos de parse próprio no `sanitizarQtd`."*
