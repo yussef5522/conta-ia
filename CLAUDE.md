@@ -752,6 +752,35 @@ TELA → 200 · "revisar" ✓ · "sem destino" ✓ · "parece" ✓ · o aviso do
 📋 **FALTA PRA FECHAR O CASO DE HOJE — e é o que só o PDF resolve:** o **V1** (Σ Brasil 11.376,89 × 11.358,89). A fixture que temos aponta a classe (linha em moeda estrangeira), mas **a fatura de hoje é outra**, e o texto dela não existe mais em lugar nenhum. **Da próxima recusa em diante isso não se repete** — a quarentena guarda.
 
 
+### ⛔⛔ DOIS GESTOS QUE EFETIVAVAM PELA METADE — E NENHUMA DAS DUAS CAUSAS ERA A SUSPEITA (18/09/2026)
+
+**⭐ 1. RETIRADA SEM PONTE — a capacidade NÃO tinha sido guardada.** O dono: *"marquei uma saída como Distribuição de Lucros na caixa e ela só gravou a categoria: não abriu a ponte que mandava a retirada pro meu perfil PF. **Não quero meia-ponte gravada.**"* Ele perguntou se a peça tinha ficado nas guardadas da faxina de 15/09. **Não:** o `WithdrawalPanel` está **VIVO** (usado pelo `xero-row` e pela tela do sócio) e os 4 arquivos com selo `CAPACIDADE GUARDADA` são outros. O que houve é mais silencioso — **a caixa de entrada nasceu sem o convite**, porque o *"convite pós-categorização"* morava no **Pendentes**, e o Pendentes morreu como TELA em 15/09. *Quando uma tela morre, some junto tudo que era oferecido POR ELA — e some sem erro nenhum.*
+
+⭐ **O passo 2 agora é oferecido na hora** (e reusa o painel que existe — REGRA 4): categorizar na seção 💰 abre *"mandar pro perfil PF →"*, que cria a entrada na PF e vincula as duas pontas pelo mesmo `/api/pontes` de sempre. ⛔ **Pular é legítimo** (*"opcional mas oferecido sempre"*) — e a tela **diz onde reabrir**, senão pular vira perder. ⭐ Quem decide se é retirada é o **`dreGroup`**, a MESMA régua que separa a seção do menu: uma decisão, um lugar.
+
+⚠️ **E o estado que sobra já tinha nome e casa:** `orphanWithdrawalWhere` chama de **órfã** a saída marcada como retirada **sem ponte**, e `/retiradas-pendentes` a lista. **Medido: a linha do dono está lá** — `cmu7qxrxh013g7tu92g58moyv` (R$ 350, 16/09, *PAGAMENTO PIX-PIX_DEB … MONIQUE SOARES PAZ*). O gesto sempre foi reabrível; o que faltava era a caixa **dizer isso**.
+
+**⛔⛔ 2. SELETOR DE EMPRÉSTIMO "VAZIO" — NÃO ERA DADO, ERA CSS.** O dono: *"clico «parcela de empréstimo» e o seletor abre SEM NENHUM empréstimo — e a empresa TEM contratos ativos."* As três hipóteses dele (companyId, filtro de status, universo) **caíram na medição**: a rota devolve **10 contratos, 8 com parcela em aberto, em 41 ms** — e o **log do nginx prova que o payload chegou no navegador dele**: `GET /api/empresas/…/emprestimos → 200 · 8024 bytes`, às 23:37:06.
+
+⭐ **A causa:** o cartão ≍ é `overflow-hidden` (é o que arredonda os dois lados do grid) e o menu era `absolute` **dentro** dele — os chips são o **último bloco** do cartão, então **o painel era recortado pela borda**. ***Menu que abre fora da vista é indistinguível de menu vazio.*** ⚠️ E foi por isso que a categoria "funcionou" e o contrato não: a seção 💰 é a **primeira**, e era o único pedaço que sobrava visível.
+
+⭐ **O conserto é no MENU, não no cartão:** o painel foi pro **portal** (sem ancestral que corte) e a posição virou função pura (`posicaoDoMenu`) — abre **pra cima** quando o chip está no rodapé (no celular do dono: `ACIMA com 682px`), **nunca sangra pela direita**, e a altura é o **espaço REAL** que sobra. Um teste prova que o cartão **continua** com `overflow-hidden`: o conserto não pagou o arredondamento como preço.
+
+**⛔ 3. E O VAZIO PAROU DE MENTIR.** As três listas carregam com falha macia; o menu dizia *"nenhum contrato com parcela em aberto"* — uma **afirmação sobre a empresa feita a partir de uma falha de rede**. Agora `CARREGANDO`, `FALHOU` e `OK+vazio` têm frases diferentes, e **só a última fala da empresa**.
+
+**PROVADO EM PROD (bundle servido, os dois viewports):**
+```
+seletor de empréstimo: 10 contratos · 8 no menu (Caixa 33/32 · Sicredi 4/22/14/24 · Banrisul 25/59)
+convite da ponte nas 5 categorias de retirada · tipo sugerido só quando o nome não é ambíguo
+   "Pró-labore e Distribuição" → (o dono escolhe)   ⭐ diz as duas coisas, não chuta
+menu no PORTAL ✓ · convite ✓ · pular diz onde reabrir ✓ · selo das 2 pontas ✓ · vazio honesto ✓
+chip no rodapé do celular → menu abre ACIMA com 682px
+```
+**REGRA 11 — 3 defeitos repostos, 1 vermelho cada** (portal removido · convite não oferecido · vazio afirmando com a carga falha). **10.365 verdes · TS 0 · deploy `BHyeQ3x61hkDzdCxmQgut` 4/4 · Δ bundle +16 KB.**
+
+📋 **FICA PRO DONO:** a linha de R$ 350 de 16/09 está em **Retiradas pendentes** esperando a ponte — e daqui pra frente o convite aparece no ato.
+
+
 ### ⛔⛔⛔ 10 DOS 12 CHIPS DO CARTÃO ≍ NÃO ENTREGAVAM O GESTO (17-18/09/2026)
 
 **O dono, navegando em prod no celular:** *"clico «casar com conta a pagar» na linha do BAMBERG (que TEM candidata — o card dela está logo abaixo no PRA TUA MÃO) e não abre painel nenhum — pior: a tela SAI/fecha o cartão. **Gesto principal do balcão mudo = REGRA 2.**"*
