@@ -19,6 +19,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Loader2, ArrowDownLeft, ArrowUpRight, Check } from 'lucide-react'
 import { fetchComTimeout } from '@/lib/http/fetch-com-timeout'
 import { V3, SOMBRA, CONECTOR } from './mock-v3-tokens'
+import { MenuDoChip, type SecaoDoChip } from './menu-do-chip'
+import { FindAndMatchPanel } from './find-and-match-panel'
+import { secoesDoMenu, type CategoriaDoMenu } from '@/lib/conciliacao/categorias-do-gesto'
+import { nomeDaBusca } from '@/lib/conciliacao/nome-da-busca'
 
 interface AcaoDTO { acao: string; rotulo: string; pedeAlvo: string | null }
 interface PalpiteDTO {
@@ -57,7 +61,23 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
   const [erro, setErro] = useState<string | null>(null)
   const [ocupado, setOcupado] = useState<string | null>(null)
   const [feito, setFeito] = useState<{ id: string; titulo: string; selo: string } | null>(null)
-  const [categorias, setCategorias] = useState<{ id: string; name: string; type: string }[]>([])
+  /**
+   * ⭐⭐ O PAINEL DE CASAR, ABERTO **NA PRÓPRIA CAIXA** (17/09).
+   *
+   * ⛔⛔ Antes o chip *"casar com conta a pagar"* mandava o navegador pra `window.location`
+   * — **um reload da MESMA tela**. Medido em prod com a linha do BAMBERG: o deep-link está
+   * certo, o card existe no destino e a fila até abre o grupo — mas o reload **fecha o
+   * cartão ≍, joga o scroll pro topo e deixa o painel abaixo da dobra**. No celular o dono
+   * nunca chega a vê-lo: *"não abre painel nenhum — pior: a tela SAI/fecha o cartão"*.
+   *
+   * ⭐ Agora o alvo se escolhe **onde o gesto nasceu**. Não é um segundo card: é o MESMO
+   * `FindAndMatchPanel` que o lote e a sugestão já abrem por props — e ele cobre PAYABLE
+   * **e** RECEIVABLE, então o "casar com conta a receber" (cujo deep-link apontava pra uma
+   * rota que **não existe**) passa a ter destino de verdade.
+   */
+  const [procurando, setProcurando] = useState<LinhaDTO | null>(null)
+  const [categorias, setCategorias] = useState<CategoriaDoMenu[]>([])
+  const [contratos, setContratos] = useState<{ id: string; nome: string; detalhe: string; parcela: number }[]>([])
   const [cartoes, setCartoes] = useState<{ id: string; name: string }[]>([])
 
   const carregar = useCallback(async () => {
@@ -68,14 +88,38 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
   }, [empresaId])
 
   useEffect(() => { void carregar() }, [carregar])
+  /**
+   * ⛔⛔⛔ **A PORTA DO MENU DE CATEGORIA NÃO EXISTIA** (achado em prod, 17/09). A caixa
+   * pedia `/api/categorias?empresaId=…` — **rota que não existe em lugar nenhum do app**
+   * (a real é `/api/empresas/[id]/categorias`, e devolve `{ categorias }`, não
+   * `{ categories }`). O 404 devolvia HTML, o `fetchComTimeout` falhava macio, e o seletor
+   * nascia **VAZIO**: o dono abria *"é despesa: categoria"* e não achava a Distribuição de
+   * Lucros porque **não havia opção nenhuma ali**.
+   *
+   * ⚠️ *Falha macia sem ninguém olhando é falha silenciosa* — o menu ficou mudo desde que
+   * nasceu e a tela nunca disse por quê. Agora o vazio **fala** (ver `vazio` no chip).
+   */
   useEffect(() => {
     void (async () => {
-      const [c, k] = await Promise.all([
-        fetchComTimeout<{ categories?: { id: string; name: string; type: string }[] }>(`/api/categorias?empresaId=${empresaId}`),
+      const [c, k, e] = await Promise.all([
+        fetchComTimeout<{ categorias?: CategoriaDoMenu[] }>(`/api/empresas/${empresaId}/categorias`),
         fetchComTimeout<{ cards?: { id: string; name: string }[] }>(`/api/empresas/${empresaId}/cartoes`),
+        fetchComTimeout<{ loans?: { id: string; lender: string; contractNumber: string | null; proximaParcelaNumero: number | null; proximaParcelaDate: string | null; proximaParcelaValor: number | null }[] }>(`/api/empresas/${empresaId}/emprestimos`),
       ])
-      if (c.ok && c.data?.categories) setCategorias(c.data.categories)
+      if (c.ok && c.data?.categorias) setCategorias(c.data.categorias)
       if (k.ok && k.data?.cards) setCartoes(k.data.cards)
+      if (e.ok && e.data?.loans) {
+        // ⭐ o menu do contrato já leva A PARCELA — o servidor exige as duas coisas, e
+        // pedir contrato num toque e parcela noutro seria o gesto pela metade de novo.
+        setContratos(e.data.loans
+          .filter((l) => l.proximaParcelaNumero != null)
+          .map((l) => ({
+            id: l.id,
+            parcela: l.proximaParcelaNumero!,
+            nome: `${l.lender}${l.contractNumber ? ` · ${l.contractNumber}` : ''}`,
+            detalhe: `parcela ${l.proximaParcelaNumero}${l.proximaParcelaDate ? ` · vence ${dia(l.proximaParcelaDate.slice(0, 10))}` : ''}${l.proximaParcelaValor != null ? ` · ${brl(l.proximaParcelaValor)}` : ''}`,
+          })))
+      }
     })()
   }, [empresaId])
 
@@ -92,6 +136,13 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
    * **Silêncio não é desfecho** (14/09).
    */
   const gesto = useCallback(async (linha: LinhaDTO, acao: string, alvo: Record<string, unknown> = {}) => {
+    /**
+     * ⭐⭐ CASAR ABRE O PAINEL **AQUI**, sem sair da tela. ⛔ O servidor continua sendo o
+     * dono da lei do sentido (ele recusa `CASAR_PAGAR` num crédito), mas *escolher a conta*
+     * é trabalho de tela — e a gravação de verdade acontece no `reconcile` do painel, a
+     * mesma porta que o card do fornecedor usa. Uma decisão, um lugar.
+     */
+    if (acao === 'CASAR_PAGAR' || acao === 'CASAR_RECEBER') { setProcurando(linha); return }
     setOcupado(linha.id); setErro(null)
     try {
       const r = await fetchComTimeout<{ efeito?: string; deepLink?: string }>(`/api/conciliacao/resolver`, {
@@ -217,8 +268,45 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
 
       {/* ══════════ 4. OS CARTÕES ≍ ══════════ */}
       {visiveis.map((l) => (
-        <CartaoDaLinha key={l.id} linha={l} ocupado={ocupado === l.id}
-          categorias={categorias} cartoes={cartoes} onGesto={gesto} />
+        <div key={l.id} className="flex flex-col gap-2">
+          <CartaoDaLinha linha={l} ocupado={ocupado === l.id}
+            categorias={categorias} cartoes={cartoes} contratos={contratos} onGesto={gesto} />
+
+          {/*
+            ⭐⭐⭐ O PAINEL ABRE **DEBAIXO DA PRÓPRIA LINHA** — nunca noutra tela, nunca
+            abaixo da dobra. É o gesto terminando onde começou.
+
+            ⛔ E ele só existe pra ESTA linha (`procurando.id === l.id`): um painel solto no
+            rodapé faria o dono procurar de novo qual linha ele estava casando — que é
+            exatamente o defeito que este conserto mata.
+          */}
+          {procurando?.id === l.id && (
+            <div className="rounded-[22px] border-[1.5px] bg-white p-3 dark:bg-slate-950"
+              style={{ borderColor: V3.roxo }}>
+              <p className="px-1 pb-2 text-[12px] leading-relaxed" style={{ color: V3.sub }}>
+                <b style={{ color: V3.ink }}>
+                  Escolha {l.sentido === 'SAIDA' ? 'a(s) conta(s) que este pagamento quita' : 'a(s) conta(s) a receber que esta entrada liquida'}.
+                </b>{' '}
+                O rodapé soma e só libera quando bater com a linha do banco — sobrando
+                juros/tarifa, dá pra lançar como ajuste.
+              </p>
+              <FindAndMatchPanel
+                empresaId={empresaId}
+                ofx={{ id: l.id, description: l.descricao, amount: l.valor, date: l.data, type: l.tipo }}
+                /* ⭐ chega com o nome que a LINHA traz na busca — o dono não procura o
+                   fornecedor de novo numa lista de 100 (a lição do lote, 13/09) */
+                buscaInicial={nomeDaBusca(l.descricao)}
+                onCancel={() => setProcurando(null)}
+                onReconciled={() => {
+                  setProcurando(null)
+                  setFeito({ id: l.id, titulo: `${l.descricao || '(sem descrição)'} ${brl(l.valor)}`, selo: 'conciliada · no arquivo' })
+                  // ⭐ a linha SAI DA CAIXA na hora — o efeito fecha o gesto
+                  void carregar()
+                }}
+              />
+            </div>
+          )}
+        </div>
       ))}
 
       {/* ══════════ 7. INBOX ZERO ══════════ */}
@@ -239,10 +327,11 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
 // ⭐⭐⭐ O CARTÃO ≍ — banco à esquerda, palpite à direita, chips embaixo
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, onGesto }: {
+function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, onGesto }: {
   linha: LinhaDTO; ocupado: boolean
-  categorias: { id: string; name: string; type: string }[]
+  categorias: CategoriaDoMenu[]
   cartoes: { id: string; name: string }[]
+  contratos: { id: string; nome: string; detalhe: string; parcela: number }[]
   onGesto: (l: LinhaDTO, acao: string, alvo?: Record<string, unknown>) => void
 }) {
   const credito = l.sentido === 'ENTRADA'
@@ -326,26 +415,51 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, onGesto }: {
             {l.acoes.filter((a) => a.acao !== l.palpite?.acao).map((a) => {
               const cor = { background: V3.card, borderColor: V3.line, color: a.acao === 'IGNORAR' ? V3.sub : V3.ink }
 
+              /**
+               * ⭐⭐⭐ TODO CHIP QUE PEDE ALVO ABRE UM MENU — nenhum é botão mudo.
+               *
+               * ⛔⛔ Era aqui que 10 dos 12 chips morriam. `CATEGORIA` e `CARTAO` eram
+               * `<select>` NATIVO (o widget do sistema, não a pílula do mock — e no celular
+               * ele cobre a tela, que foi o que o dono viu nos 4 cartões da fatura); e
+               * `CONTRATO` e `SAIDA_ORIGINAL` eram **botão sem seletor nenhum**: clicar
+               * mandava a ação sem alvo e o servidor devolvia 422 *"Escolha o contrato…"*
+               * — um erro no lugar de um painel.
+               *
+               * ⭐ Agora `pedeAlvo` é a ÚNICA declaração de "este gesto precisa de alvo", e
+               * a tela é obrigada a desenhar o menu daquele tipo. O guard de família cobra
+               * exatamente isto, chip a chip, nos dois sentidos.
+               */
               if (a.pedeAlvo === 'CATEGORIA') {
+                const secoes: SecaoDoChip[] = secoesDoMenu(categorias, l.sentido).map((s) => ({
+                  titulo: s.titulo, ajuda: s.ajuda,
+                  itens: s.itens.map((c2) => ({ id: c2.id, nome: c2.name })),
+                }))
                 return (
-                  <select key={a.acao} defaultValue="" disabled={ocupado} aria-label={a.rotulo}
-                    onChange={(e) => e.target.value && onGesto(l, a.acao, { categoryId: e.target.value })}
-                    className={`${chip} max-w-[12rem]`} style={cor}>
-                    <option value="">{ICONE[a.acao] ?? ''} {a.rotulo}</option>
-                    {categorias
-                      .filter((c2) => (credito ? c2.type === 'INCOME' : c2.type === 'EXPENSE'))
-                      .map((c2) => <option key={c2.id} value={c2.id}>{c2.name}</option>)}
-                  </select>
+                  <MenuDoChip key={a.acao} rotulo={a.rotulo} icone={ICONE[a.acao]} secoes={secoes}
+                    ocupado={ocupado} className={chip} style={cor}
+                    vazio="Não consegui carregar as categorias desta empresa — recarregue a página."
+                    onEscolher={(id) => onGesto(l, a.acao, { categoryId: id })} />
                 )
               }
               if (a.pedeAlvo === 'CARTAO') {
                 return (
-                  <select key={a.acao} defaultValue="" disabled={ocupado} aria-label={a.rotulo}
-                    onChange={(e) => e.target.value && onGesto(l, a.acao, { cardId: e.target.value })}
-                    className={`${chip} max-w-[11rem]`} style={cor}>
-                    <option value="">{ICONE[a.acao] ?? ''} {a.rotulo}</option>
-                    {cartoes.map((k) => <option key={k.id} value={k.id}>{k.name}</option>)}
-                  </select>
+                  <MenuDoChip key={a.acao} rotulo={a.rotulo} icone={ICONE[a.acao]} ocupado={ocupado}
+                    className={chip} style={cor}
+                    secoes={[{ titulo: '💳 qual cartão esta linha quita?', itens: cartoes.map((k) => ({ id: k.id, nome: k.name })) }]}
+                    vazio="Nenhum cartão cadastrado nesta empresa."
+                    onEscolher={(id) => onGesto(l, a.acao, { cardId: id })} />
+                )
+              }
+              if (a.pedeAlvo === 'CONTRATO') {
+                return (
+                  <MenuDoChip key={a.acao} rotulo={a.rotulo} icone={ICONE[a.acao]} ocupado={ocupado}
+                    className={chip} style={cor}
+                    secoes={[{ titulo: '🏦 qual parcela esta linha paga?', ajuda: 'a próxima em aberto de cada contrato', itens: contratos.map((k) => ({ id: k.id, nome: k.nome, detalhe: k.detalhe })) }]}
+                    vazio="Nenhum contrato com parcela em aberto."
+                    onEscolher={(id) => {
+                      const c2 = contratos.find((x) => x.id === id)
+                      if (c2) onGesto(l, a.acao, { loanId: c2.id, installmentNumber: c2.parcela })
+                    }} />
                 )
               }
               return (

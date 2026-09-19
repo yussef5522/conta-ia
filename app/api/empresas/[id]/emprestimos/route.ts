@@ -192,6 +192,13 @@ export async function GET(request: NextRequest, { params }: Params) {
         totalPaid,
         // FLEXIBLE: sem parcela fixa nem vencimento (2.1).
         proximaParcelaDate: flexible ? null : (forecast.dueDate?.toISOString() ?? null),
+        /**
+         * ⭐ O NÚMERO da próxima em aberto (aditivo, 17/09) — o menu "parcela de
+         * empréstimo" da caixa de entrada precisa mandar `loanId` **e**
+         * `installmentNumber`, que é o que `vincularPagamentoDeParcela` exige. Sem ele o
+         * chip pediria o contrato num toque e a parcela noutro; com ele o gesto é um só.
+         */
+        proximaParcelaNumero: flexible ? null : (proximaOpen?.number ?? null),
         // Fase 2: valor é PREVISÃO (POS, última casada) ou FATO (PRE/agenda);
         // null = "a apurar". A tela marca "~previsto" quando isForecast.
         proximaParcelaValor: flexible ? null : forecast.valor,

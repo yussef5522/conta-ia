@@ -13,7 +13,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { useParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
+import { pernaDoDeepLink } from '@/lib/transfers/perna-do-deep-link'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   ArrowLeft,
@@ -59,6 +60,7 @@ function formatDateSmart(iso: string): string {
 
 export default function PearearTransferenciasPage() {
   const { id: empresaId } = useParams<{ id: string }>()
+  const searchParams = useSearchParams()
   const { toast } = useToast()
   const [data, setData] = useState<ParearSugestoesResponse | null>(null)
   const [loading, setLoading] = useState(true)
@@ -203,6 +205,25 @@ export default function PearearTransferenciasPage() {
       creditOptions: Array.from(cMap.values()).sort((a, b) => b.date.localeCompare(a.date)),
     }
   }, [data?.sugestoes, data?.manualDebits, data?.manualCredits])
+
+  /**
+   * ⭐⭐ O `?abrir=` DA CAIXA DE ENTRADA — a perna que o dono tocou já vem MARCADA.
+   *
+   * ⛔ Até 17/09 esta tela ignorava o parâmetro: o chip *"transferência enviada"* abria a
+   * lista genérica e o dono procurava de novo a linha que ele acabou de tocar. A regra de
+   * qual lado marcar mora em `pernaDoDeepLink` (pura, testada) — e ela **não chuta a outra
+   * perna**: achar o par é trabalho do detector, que sugere pro dono confirmar.
+   */
+  const abrirId = searchParams.get('abrir')
+  const [avisoDeepLink, setAvisoDeepLink] = useState<string | null>(null)
+  useEffect(() => {
+    if (!abrirId || (!debitOptions.length && !creditOptions.length)) return
+    const p = pernaDoDeepLink(abrirId, debitOptions, creditOptions)
+    if (p.achou === 'DEBITO') { setDebitId(p.debitId); setAvisoDeepLink('A saída que você tocou na caixa de entrada já está marcada abaixo — escolha a entrada que é o outro lado.') }
+    else if (p.achou === 'CREDITO') { setCreditId(p.creditId); setAvisoDeepLink('A entrada que você tocou na caixa de entrada já está marcada abaixo — escolha a saída que é o outro lado.') }
+    // ⛔ não achou NÃO é silêncio: a linha pode já ter sido pareada ou não ser órfã
+    else setAvisoDeepLink('Não achei essa linha entre as que estão sem par — ela pode já ter sido casada.')
+  }, [abrirId, debitOptions, creditOptions])
 
   const handleManualPair = useCallback(async () => {
     if (!debitId || !creditId) {
@@ -375,6 +396,12 @@ export default function PearearTransferenciasPage() {
               <Link2 className="h-3.5 w-3.5 text-slate-500" aria-hidden />
               Casar manualmente
             </h2>
+            {/* ⭐ quem chegou pelo chip da caixa de entrada vê a perna dele JÁ marcada */}
+            {avisoDeepLink && (
+              <p className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-[12.5px] leading-relaxed text-violet-900">
+                {avisoDeepLink}
+              </p>
+            )}
             <Card className="border-slate-200">
               <CardContent className="space-y-3 p-4">
                 <p className="text-xs text-slate-500">

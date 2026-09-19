@@ -213,13 +213,24 @@ describe('⭐⭐⭐ CADA GESTO EFETIVA — o efeito é conferido NO DESTINO', ()
   })
 
   /**
-   * ⛔⛔ AS AÇÕES DE VÍNCULO **LEVAM AO ALVO** em vez de gravar por baixo — a escolha de
-   * QUAL nota / QUAL linha tem casa própria e provada. ⚠️ Mas elas **nunca calam**: o gesto
-   * responde com o caminho. *Gesto mudo foi o defeito de 14/09.*
+   * ⚠️⚠️ **TESTE INVERTIDO EM 17/09 COM O MOTIVO ESCRITO — não apagado.**
+   *
+   * Ele afirmava que `CASAR_PAGAR` devolve `DEEP_LINK`, e isso era verdade **do mundo de
+   * 15/09**. Medido em prod, aquele caminho era a porta pintada: o href apontava pra
+   * `/conciliacao?abrir=` — **a própria tela** —, então o `window.location` recarregava
+   * tudo, **o cartão ≍ fechava, o scroll ia pro topo e o painel ficava abaixo da dobra**.
+   * Do lado da entrada era pior: `CASAR_RECEBER` apontava pra uma rota que **não existe**.
+   *
+   * ⭐ A metade CERTA do teste antigo continua valendo e está travada aqui: **o gesto
+   * nunca cala**. O que mudou é que a escolha do alvo acontece **na própria caixa** (o
+   * `FindAndMatchPanel` embaixo da linha), então o servidor, chamado sem alvo, recusa
+   * **ensinando** — como todos os outros gestos que pedem alvo.
    */
-  it('⭐ casar com conta a pagar leva ao card do vínculo — e não fica em silêncio', async () => {
+  it('⭐ casar com conta a pagar pede o alvo ENSINANDO — e não fica em silêncio', async () => {
     await expect(resolverLinha({ companyId, txId: tx['debito_conta_aberta'], acao: 'CASAR_PAGAR' }, prisma))
-      .rejects.toThrow(/DEEP_LINK/)
+      .rejects.toThrow(/painel desta linha/)
+    // ⛔ e continua sem gravar nada por baixo: a linha segue disponível
+    expect(await prisma.transaction.count({ where: { ...LINHA_DISPONIVEL_WHERE, id: tx['debito_conta_aberta'] } })).toBe(1)
   })
 
   it('⭐ ignorar tira a linha das filas, e é reversível', async () => {

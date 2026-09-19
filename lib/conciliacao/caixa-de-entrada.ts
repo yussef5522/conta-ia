@@ -68,7 +68,16 @@ const ENTRADA: readonly AcaoOferecida[] = [
    */
   { acao: 'RECEBIMENTO_VENDA', rotulo: 'recebimento de venda', pedeAlvo: 'CATEGORIA' },
   { acao: 'TRANSFERENCIA_RECEBIDA', rotulo: 'transferência recebida', pedeAlvo: 'PAR' },
-  { acao: 'ESTORNO', rotulo: 'estorno', pedeAlvo: 'SAIDA_ORIGINAL' },
+  /**
+   * ⛔⛔ **ERA `SAIDA_ORIGINAL` E NASCEU MUDO** (corrigido 17/09). O chip virava um botão
+   * sem seletor nenhum, mandava a ação sem alvo, e o servidor — que **EXIGE `categoryId`**
+   * — devolvia 422 *"Escolha a categoria do estorno"*. Um erro no lugar de um gesto.
+   *
+   * ⭐ O alvo obrigatório do estorno **sempre foi a CATEGORIA**; a saída original é o
+   * vínculo OPCIONAL (decisão do dono em 15/09: *"quando houver par; sem par, categoria
+   * «estorno» e segue"*). O `pedeAlvo` passa a dizer a verdade sobre o que o servidor pede.
+   */
+  { acao: 'ESTORNO', rotulo: 'estorno', pedeAlvo: 'CATEGORIA' },
   { acao: 'CATEGORIA', rotulo: 'aporte / outra receita', pedeAlvo: 'CATEGORIA' },
   { acao: 'IGNORAR', rotulo: 'ignorar', pedeAlvo: null },
 ]

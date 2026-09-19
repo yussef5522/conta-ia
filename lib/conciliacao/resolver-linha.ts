@@ -154,19 +154,46 @@ export async function resolverLinha(input: ResolverInput, db: PrismaClient = def
      * ⚠️ Por isso elas devolvem um `href` em vez de um efeito — e o guard sabe disso: ele
      * exige que a ação **leve ao lugar onde o vínculo acontece**, nunca que ela cale.
      */
+    /**
+     * ⭐ CASAR pede o alvo **na própria caixa** (o painel abre embaixo da linha desde
+     * 17/09) — então, chamado sem alvo, o servidor recusa **ensinando**, como todos os
+     * outros gestos que pedem alvo. Ele nunca mais devolve um caminho: os dois que ele
+     * devolvia estavam quebrados (um 404, o outro recarregando a própria tela).
+     */
     case 'CASAR_PAGAR':
+      throw new ResolverError('Escolha a(s) conta(s) a pagar no painel desta linha.')
     case 'CASAR_RECEBER':
+      throw new ResolverError('Escolha a(s) conta(s) a receber no painel desta linha.')
+
     case 'TRANSFERENCIA_ENVIADA':
     case 'TRANSFERENCIA_RECEBIDA':
       throw new ResolverError('DEEP_LINK')
   }
 }
 
-/** ⭐ pra onde a ação leva, quando ela é de VÍNCULO (a escolha do alvo tem casa própria) */
+/**
+ * ⭐ PRA ONDE A AÇÃO LEVA — e **todo destino daqui é provado** (rota existe E a tela
+ * consome o parâmetro). O guard de família cobra os dois lados.
+ *
+ * ⛔⛔ **DUAS PORTAS PINTADAS MORRERAM AQUI (17/09), as duas medidas em prod:**
+ *
+ *  1. `CASAR_RECEBER` apontava pra `/empresas/<id>/contas-a-receber` — **rota que não
+ *     existe** (a tela real é `/contas-a-receber`, global). O chip dava **404**.
+ *  2. `CASAR_PAGAR` apontava pra `/conciliacao?abrir=` — a rota existe e o card abre, mas
+ *     é a **PRÓPRIA TELA**: o `window.location` recarregava tudo, o cartão ≍ fechava, o
+ *     scroll ia pro topo e o painel ficava abaixo da dobra. *"Não abre painel nenhum —
+ *     pior: a tela SAI/fecha o cartão."*
+ *
+ * ⭐ As duas agora resolvem **onde o gesto nasceu** (o `FindAndMatchPanel` embaixo da
+ * própria linha), então elas deixam de ser caminho e voltam a ser o que sempre foram: um
+ * gesto que **precisa do alvo**. A recusa ENSINA, como as outras — nunca aponta pro vazio.
+ *
+ * ⚠️ Só as transferências continuam levando pra outra tela, porque o par mora mesmo lá —
+ * e o `/parear` passou a **consumir o `?abrir=`** no mesmo commit; deep-link que abre a
+ * tela sem o alvo é porta pintada na parede (a régua de 13/09).
+ */
 export function destinoDaAcao(acao: AcaoDoBalcao, empresaId: string, txId: string): string | null {
   switch (acao) {
-    case 'CASAR_PAGAR': return `/conciliacao?empresaId=${empresaId}&abrir=${txId}`
-    case 'CASAR_RECEBER': return `/empresas/${empresaId}/contas-a-receber?extrato=${txId}`
     case 'TRANSFERENCIA_ENVIADA':
     case 'TRANSFERENCIA_RECEBIDA': return `/empresas/${empresaId}/transferencias/parear?abrir=${txId}`
     default: return null
