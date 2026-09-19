@@ -176,3 +176,19 @@ describe('⚠️⚠️ o PREVIEW fala a mesma língua da POSIÇÃO', () => {
     expect(e, 'aggregate cru de quantidade é outra pergunta').not.toMatch(/stockMovement\.aggregate\([\s\S]{0,140}_sum: \{ quantidade: true \}/)
   })
 })
+
+describe('⛔⛔⛔ o ESTORNO de um movimento interno também é interno', () => {
+  it('⭐ a régua de prateleira exclui estorno de PRODUCAO_CONSUMO', () => {
+    const s = fonte('lib/stock/saldo.ts')
+    expect(usosDe(s, 'idsDeEstornoInterno'), 'sem isto o consumo sai por fora e volta por dentro').toBeGreaterThan(0)
+    // ⚠️ as DUAS portas do saldo têm que excluir — uma só deixaria Posição e item divergindo
+    const porItem = s.slice(s.indexOf('export async function saldoItem'), s.indexOf('export async function saldosDaEmpresa'))
+    const daEmpresa = s.slice(s.indexOf('export async function saldosDaEmpresa'))
+    expect(porItem).toMatch(/idsDeEstornoInterno/)
+    expect(daEmpresa).toMatch(/idsDeEstornoInterno/)
+  })
+
+  it('⭐ e o guard do estado impossível usa a MESMA régua (TIPOS_FORA_DA_PRATELEIRA)', () => {
+    expect(fonte('lib/stock/movement.ts')).toMatch(/notIn: \[\.\.\.TIPOS_FORA_DA_PRATELEIRA\]/)
+  })
+})

@@ -42,15 +42,56 @@ export function movePrateleira(tipo: string): boolean {
 
 const NAO_PRATELEIRA = { tipo: { notIn: TIPOS_FORA_DA_PRATELEIRA } }
 
+/**
+ * ⛔⛔⛔ O ESTORNO DE UM MOVIMENTO INTERNO TAMBÉM É INTERNO (19/09/2026).
+ *
+ * **O defeito, achado durante a cirurgia da maionese:** `estornarMovimento` cria a linha
+ * oposta com `tipo: 'ESTORNO'` — e ESTORNO **conta na prateleira**. Então desfazer um
+ * `PRODUCAO_CONSUMO` (que é interno, e NÃO conta) **adicionava ao saldo**: o consumo saía
+ * por fora e voltava por dentro. A CUBA MAIONESE ficou com **72,74 kg** onde a
+ * reconstrução previa **36,49** — a diferença de **36,25** é a soma exata dos 6 consumos.
+ *
+ * ⚠️⚠️ **E O DEFEITO NÃO ERA MEU — a cirurgia só o expôs.** Medido: 9 estornos nessa
+ * situação em prod, em 2 itens, e o «Patinho Bife (mesclado)» carregava **+38,16 kg /
+ * R$ 1.754,36** a mais **desde uma mescla antiga**. *O estorno perde a informação do tipo
+ * original, e a régua de prateleira olhava só o tipo da linha.*
+ *
+ * ⭐ **A cura é de LEITURA, não de dado:** o ledger está certo (estornar um consumo é
+ * legítimo); quem estava errado era quem somava. Nada de UPDATE, nada de movimento novo —
+ * é a mesma família do E2, que contava linha crua e acusava toda correção legítima.
+ */
+async function idsDeEstornoInterno(db: Db, companyId: string, itemId?: string): Promise<string[]> {
+  const estornos = await db.stockMovement.findMany({
+    where: { companyId, tipo: 'ESTORNO', estornoDeId: { not: null }, ...(itemId ? { itemId } : {}) },
+    select: { id: true, estornoDeId: true },
+  })
+  if (!estornos.length) return []
+  const originais = await db.stockMovement.findMany({
+    where: { id: { in: estornos.map((e) => e.estornoDeId as string) }, tipo: { in: TIPOS_FORA_DA_PRATELEIRA } },
+    select: { id: true },
+  })
+  const fora = new Set(originais.map((o) => o.id))
+  return estornos.filter((e) => fora.has(e.estornoDeId as string)).map((e) => e.id)
+}
+
 /** Saldo derivado de UM item (Σ movimentos de prateleira). */
 export async function saldoItem(db: Db, companyId: string, itemId: string): Promise<SaldoItem> {
-  const agg = await db.stockMovement.aggregate({ where: { companyId, itemId, ...NAO_PRATELEIRA }, _sum: { quantidade: true, custoTotal: true } })
+  const excluir = await idsDeEstornoInterno(db, companyId, itemId)
+  const agg = await db.stockMovement.aggregate({
+    where: { companyId, itemId, ...NAO_PRATELEIRA, ...(excluir.length ? { id: { notIn: excluir } } : {}) },
+    _sum: { quantidade: true, custoTotal: true },
+  })
   return montar(itemId, agg._sum.quantidade ?? 0, agg._sum.custoTotal ?? 0)
 }
 
 /** Saldo de TODOS os itens da empresa (só os que têm movimento de prateleira). */
 export async function saldosDaEmpresa(db: Db, companyId: string): Promise<SaldoItem[]> {
-  const grupos = await db.stockMovement.groupBy({ by: ['itemId'], where: { companyId, ...NAO_PRATELEIRA }, _sum: { quantidade: true, custoTotal: true } })
+  const excluir = await idsDeEstornoInterno(db, companyId)
+  const grupos = await db.stockMovement.groupBy({
+    by: ['itemId'],
+    where: { companyId, ...NAO_PRATELEIRA, ...(excluir.length ? { id: { notIn: excluir } } : {}) },
+    _sum: { quantidade: true, custoTotal: true },
+  })
   return grupos.map((g) => montar(g.itemId, g._sum.quantidade ?? 0, g._sum.custoTotal ?? 0))
 }
 
