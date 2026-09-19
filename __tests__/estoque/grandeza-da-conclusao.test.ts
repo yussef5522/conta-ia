@@ -166,3 +166,13 @@ describe('⭐ a cozinha vê a unidade e o número em um toque', () => {
     expect(t).toMatch(/import type \{ MinhaTarefa \}/)
   })
 })
+
+describe('⚠️⚠️ o PREVIEW fala a mesma língua da POSIÇÃO', () => {
+  it('⛔ o saldo do preview vem de saldosDaEmpresa, nunca do aggregate cru', () => {
+    const e = fonte('lib/stock/producao/estorna-e-relanca.ts')
+    expect(usosDe(e, 'saldosDaEmpresa'), 'o preview voltou a somar tudo').toBeGreaterThan(0)
+    // ⚠️ bug meu pego ANTES do OK do dono: o aggregate cru inclui PRODUCAO_CONSUMO, que é
+    // transferência interna e não conta na prateleira — dava 3,12 onde a Posição diz 36,494
+    expect(e, 'aggregate cru de quantidade é outra pergunta').not.toMatch(/stockMovement\.aggregate\([\s\S]{0,140}_sum: \{ quantidade: true \}/)
+  })
+})

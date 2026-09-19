@@ -27,7 +27,7 @@
 import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { criarMovimento, estornarMovimento } from '../movement'
-import { recomputeSaldoCache } from '../saldo'
+import { recomputeSaldoCache, saldosDaEmpresa } from '../saldo'
 import { TIPO_GERACAO, OrdemError } from './ordens'
 import { marcarConclusaoEstornada } from './conclusao-estornada'
 
@@ -69,8 +69,17 @@ export async function preverRelancamento(
   })
   if (!ger) throw new OrdemError('Não achei o movimento de geração desta conclusão — ele pode já ter sido estornado.')
 
-  const agg = await db.stockMovement.aggregate({ where: { companyId, itemId: ordem.itemProduzidoId }, _sum: { quantidade: true } })
-  const saldoAntes = Math.round((agg._sum.quantidade ?? 0) * 1000) / 1000
+  /**
+   * ⚠️⚠️ O SALDO VEM DA MESMA FONTE DA POSIÇÃO (19/09) — e isto foi bug meu, pego antes do
+   * OK do dono. A 1ª versão somava TODOS os movimentos (`aggregate` cru) e mostrava
+   * **3,12 KG** onde a Posição mostra **36,494**: `PRODUCAO_CONSUMO` é transferência
+   * interna e não conta na prateleira (`saldo.ts`), então a soma bruta é outra pergunta.
+   *
+   * ⛔ *A prévia fala a MESMA língua da tela que ela prevê* (a régua de 29/08) — senão o
+   * dono confere o número no preview, vai na Posição e vê outro.
+   */
+  const saldos = await saldosDaEmpresa(db, companyId)
+  const saldoAntes = saldos.find((x) => x.itemId === ordem.itemProduzidoId)?.saldo ?? 0
 
   return {
     conclusaoId, ordemId: c.ordemId,
