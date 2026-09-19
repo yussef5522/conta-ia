@@ -27,6 +27,7 @@ import { criarMovimento, estornarMovimento } from './movement'
 import { unidadeFisicaDosMovimentos, planejarConversao, type PlanoDeConversao } from './unidade-do-movimento'
 import { saldoItem, recomputeSaldoCache } from './saldo'
 
+const round3 = (n: number) => Math.round((n + 1e-9) * 1000) / 1000
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 const norm = (u: string) => u.trim().toUpperCase()
 
@@ -302,10 +303,24 @@ export async function reunitizarNaTransacao(
       const jaEstornado = await tx.stockMovement.findFirst({ where: { estornoDeId: m.id, tipo: 'ESTORNO' } })
       if (jaEstornado) continue
       await estornarMovimento(tx as unknown as PrismaClient, m.id, { criadoPorId: input.userId ?? null })
+      /**
+       * ⛔⛔ QUANTIDADE EM 3 CASAS, E O UNITÁRIO DERIVADO DELA (19/09/2026).
+       *
+       * **O defeito, pego pelo CHECK do ledger ao reunitizar a MAIONESE:** era
+       * `round2(quantidade)`, e o estoque trabalha em **3 casas** (grama e mililitro — a
+       * régua do próprio módulo, `MAX_CASAS` em `quantidade.ts`). `22,864` virava
+       * `22,86`, e aí `22,86 × 9,79103 = 223,82` contra os `223,86` do dinheiro: o banco
+       * recusou a linha por 4 centavos. *Arredondar quantidade perde massa.*
+       *
+       * ⭐ E o unitário passa a ser **derivado da quantidade final**: o dinheiro é a
+       * âncora (`custoTotal` não muda — é a invariante da conversão), então quem se ajusta
+       * é o unitário. Assim o CHECK fecha por construção, em vez de fechar por sorte.
+       */
+      const qtdFinal = round3(m.quantidade * fator)
       await criarMovimento(tx as unknown as PrismaClient, {
         companyId, itemId, tipo: m.tipo,
-        quantidade: round2(m.quantidade * fator),
-        custoUnitario: m.custoUnitario / fator, // precisão CHEIA — quem arredonda é a tela
+        quantidade: qtdFinal,
+        custoUnitario: qtdFinal !== 0 ? m.custoTotal / qtdFinal : m.custoUnitario / fator,
         custoTotal: m.custoTotal, // o dinheiro é o MESMO; é a âncora da conversão
         receiptId: m.receiptId, nfeChave: m.nfeChave, nItem: m.nItem,
         origem: m.origem, criadoPorId: input.userId ?? null, dataMovimento: m.dataMovimento,

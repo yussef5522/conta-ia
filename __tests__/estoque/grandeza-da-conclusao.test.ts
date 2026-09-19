@@ -201,3 +201,29 @@ describe('⛔⛔ o ESTORNO herda a unidade física do ORIGINAL', () => {
     expect(u).toMatch(/m\.tipo === 'ESTORNO' && m\.estornoDeId \? porId\.get\(m\.estornoDeId\)/)
   })
 })
+
+describe('⛔⛔ reunitizar não pode perder massa no arredondamento', () => {
+  it('⭐ quantidade em 3 casas (grama/ml é a régua do módulo), não 2', () => {
+    const r = fonte('lib/stock/reunitizar-item.ts')
+    expect(r, 'round2 na quantidade perde a 3ª casa — 22,864 virava 22,86')
+      .not.toMatch(/quantidade: round2\(m\.quantidade \* fator\)/)
+    expect(r).toMatch(/const qtdFinal = round3\(m\.quantidade \* fator\)/)
+  })
+
+  it('⭐ e o unitário é DERIVADO da quantidade final — o CHECK fecha por construção', () => {
+    const r = fonte('lib/stock/reunitizar-item.ts')
+    expect(r).toMatch(/custoUnitario: qtdFinal !== 0 \? m\.custoTotal \/ qtdFinal/)
+    // ⛔ o dinheiro continua sendo a âncora da conversão
+    expect(r).toMatch(/custoTotal: m\.custoTotal/)
+  })
+
+  it('⛔ o caso real: 22,864 × R$ 223,86 fecha no CHECK de ±0,01/linha', () => {
+    const q = Math.round((22.864 + 1e-9) * 1000) / 1000
+    const cu = 223.86 / q
+    expect(q).toBe(22.864)
+    expect(Math.abs(223.86 - q * cu)).toBeLessThanOrEqual(0.01)
+    // e o contrafactual: com round2 o banco recusa
+    const qRuim = Math.round((22.864 + 1e-9) * 100) / 100
+    expect(Math.abs(223.86 - qRuim * 9.791032)).toBeGreaterThan(0.01)
+  })
+})
