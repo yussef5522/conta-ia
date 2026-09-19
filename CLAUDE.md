@@ -752,6 +752,53 @@ TELA → 200 · "revisar" ✓ · "sem destino" ✓ · "parece" ✓ · o aviso do
 📋 **FALTA PRA FECHAR O CASO DE HOJE — e é o que só o PDF resolve:** o **V1** (Σ Brasil 11.376,89 × 11.358,89). A fixture que temos aponta a classe (linha em moeda estrangeira), mas **a fatura de hoje é outra**, e o texto dela não existe mais em lugar nenhum. **Da próxima recusa em diante isso não se repete** — a quarentena guarda.
 
 
+### ⛔⛔⛔ 10 DOS 12 CHIPS DO CARTÃO ≍ NÃO ENTREGAVAM O GESTO (17-18/09/2026)
+
+**O dono, navegando em prod no celular:** *"clico «casar com conta a pagar» na linha do BAMBERG (que TEM candidata — o card dela está logo abaixo no PRA TUA MÃO) e não abre painel nenhum — pior: a tela SAI/fecha o cartão. **Gesto principal do balcão mudo = REGRA 2.**"*
+
+**⭐ A PERÍCIA COMEÇOU MEDINDO, e o que ela achou é maior que o relato.** O deep-link estava certo, o card existia no destino e a fila até abria o grupo. **O defeito era NAVEGACIONAL:** `window.location.href` levava pra `/conciliacao?abrir=` — **a PRÓPRIA tela**. O reload fechava o cartão ≍, jogava o scroll pro topo e deixava o painel **abaixo da dobra**. No celular ele nunca chegava a vê-lo.
+
+**⛔⛔ E AÍ A VARREDURA DOS 12 CHIPS (6 saída + 6 entrada) MOSTROU QUE SÓ DOIS FUNCIONAVAM:**
+
+| chip | o que acontecia |
+|---|---|
+| casar com conta a pagar | reload da própria tela — painel fora da dobra |
+| **casar com conta a receber** | deep-link pra `/empresas/<id>/contas-a-receber` — **rota que NÃO EXISTE**, 404 |
+| **é despesa: categoria** · recebimento de venda · aporte | `<select>` alimentado por **`/api/categorias`** — **rota que NÃO EXISTE**: o menu nascia **VAZIO** |
+| **parcela de empréstimo** · **estorno** | botão **sem seletor nenhum** → ação sem alvo → **422** *"Escolha o contrato…"* |
+| transferência enviada/recebida | levava ao `/parear`, que **ignorava o `?abrir=`** |
+| pagamento de fatura · ignorar | ✓ os dois únicos que entregavam |
+
+**⭐⭐ A LEI QUE FICOU, e é o que o guard de família cobra chip a chip:**
+
+> **todo chip ou EFETIVA com o alvo que a TELA consegue fornecer, ou LEVA a uma rota que EXISTE e que CONSOME o parâmetro.** Não há terceira saída: chip que manda a ação sem alvo é **mudo**; chip que aponta pra rota inexistente é **porta pintada**.
+
+**O QUE MUDOU:**
+- **Casar resolve ONDE O GESTO NASCEU:** o `FindAndMatchPanel` abre **embaixo da própria linha** (não é um segundo card — é o mesmo componente que o lote e a sugestão já abrem por props, e ele cobre PAYABLE **e** RECEIVABLE, o que dá destino real ao "casar com conta a receber"). Conciliar → a linha **sai da caixa na hora**.
+- ⛔ **`destinoDaAcao` só devolve destino PROVADO.** As duas ações de casar deixaram de ser caminho e voltaram a ser *"gesto que pede alvo"*: o servidor recusa **ensinando**, como todos os outros. Sobram as transferências — e o `/parear` **passou a consumir o `?abrir=`**, pré-marcando a perna tocada (⛔ **sem chutar a outra**: achar o par é do detector, que sugere pro dono confirmar).
+- **O menu virou o do mock:** pílula que **abre só ao tocar**, com seções, busca a partir de 8 opções e ESC/clique-fora pelo hook único da casa. Morreu o `<select>` nativo — era ele que no celular cobria a tela com os 4 cartões.
+- **⭐ A RETIRADA GANHOU CASA, SEM VIRAR DESPESA.** ⚠️ A hipótese óbvia (*"o seletor filtra só EXPENSE"*) **caiu na medição**: as 5 categorias de retirada **já são `EXPENSE`** com `dreGroup DISTRIBUICAO_LUCROS`. O que as escondia era o menu chapado. A cura **NOMEIA a classe** — seção *«💰 retirada / distribuição de lucros»*, primeira, com a frase *"dinheiro do sócio — não é despesa operacional e fica fora do DRE"* — e **nada é reclassificado pra caber**.
+
+**⚠️⚠️ E A PROVA EM PROD PEGOU DOIS DEFEITOS MEUS que teste nenhum pegaria:**
+1. **O menu ofereceria 203 ARMADILHAS.** A rota devolve o catálogo INTEIRO — **263 categorias, 60 ativas**. É o defeito de 17/09 na fatura do cartão de novo (*"o que a tela oferece é SUBCONJUNTO do que a gravação aceita"*). A trava ficou na **régua pura** (vale mesmo se a chamada esquecer o `?soAtivas=true`), não só no parâmetro.
+2. **⭐ O BANCO ABREVIA — e semear a busca com o nome inteiro devolvia ZERO.** Extrato: `BAMBERG COMERCIO E REPRES LTDA`; cadastro: `…REPRESENTACOES LTDA`. Busca cheia → **0 candidatas** (o painel abriria dizendo *"nada encontrado"* com **3 contas abertas dele** logo abaixo — *erro disfarçado de vazio*); `BAMBERG COMERCIO` → **as 3**. A semente virou o **prefixo com 2 palavras significativas**, com o conector junto (a busca é `contains`: o fragmento tem que ser **contíguo** — `CIA DA FRUTA`, nunca `CIA FRUTA`).
+
+**PROVADO EM PROD, pelas rotas reais e no BUNDLE SERVIDO (REGRA 12, os dois viewports):**
+```
+BAMBERG → casar → o painel abre AQUI, buscando "BAMBERG COMERCIO" → 3 candidatas
+   · NF 1746952 · R$ 2.870,70 · venceu 14/09 · dif R$ 165,06   ← a "1 vencida" do dono
+   · NF 1748144 · R$ 1.477,28 · vence 21/09
+   · NF 1749209 · R$ 1.341,80 · vence 28/09
+FRANCIELE R$ 500 → 1ª seção do menu: 💰 retirada / distribuição (5) · depois despesa (44)
+menu de categoria: 263 → 60 ativas     ⛔ /api/categorias: 404 (era daqui que vinha o vazio)
+bundle celular e desktop: menu ao toque ✓ · retirada ✓ · painel na linha ✓ · <select> nativo: NÃO ✓
+/parear?abrir= → lê o alvo ✓ · marca a perna ✓ · e DIZ quando não achou ✓
+```
+**REGRA 11 — 6 defeitos repostos, todos vermelhos** (o do casar-receber dá **3**: a lista de destinos, a rota inexistente e o alvo ignorado). **2 testes invertidos com o motivo escrito** (o E2E que afirmava `DEEP_LINK` e as 4 asserções que afirmavam o nome inteiro na busca). **10.345 verdes · TS 0 · deploys `QLzcIxYKSkuYyCb3IoU8O`, `SC5edWDFe6PLMCPJMh3DC` e `zQzIWczVVh_q2CXi5Salq`, os três 4/4 · Δ bundle +8 KB.**
+
+📋 **FICA PRO DONO (REGRA 2, o clique é dele):** BAMBERG → casar → escolher a NF 1746952 (a diferença de R$ 165,06 é 5,4% da linha, dentro do degrau que **pergunta** — o painel pede pra nomear como juros) → conciliar e ver a linha sair da caixa. E o PIX da FRANCIELE → *"é despesa: categoria"* → **Distribuição de Lucros**.
+
+
 ### ⛔⛔⛔ IMPORT MISTO NÃO GRAVAVA — A TELA APRENDEU A PARTIÇÃO E O VALIDADOR FICOU PRA TRÁS (17/09)
 
 **O dono, na fatura Sicredi:** *"40 linhas, 8 já no sistema (R$ 828,50, em leitura sem checkbox — como a tela de ontem manda), 32 novas marcadas (R$ 2.365,85). Confirmar → 'a soma das linhas 2.365,85 não fecha com o total 3.194,35, diferença 828,50'."*
