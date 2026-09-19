@@ -86,8 +86,39 @@ export async function vincularPagamentoDeParcela(input: VincularInput): Promise<
     select: { id: true, amount: true, date: true },
   })
   if (txs.length !== transactionIds.length) {
-    throw new VinculoDeParcelaError('TX_INELIGIBLE',
-      'Alguns lançamentos não são elegíveis (conta errada, já vinculados, ou não são débito)')
+    /**
+     * ⛔⛔ **A RECUSA TEM QUE DIZER QUAL DOS TRÊS MOTIVOS FOI** (19/09).
+     *
+     * A mensagem antiga listava *"conta errada, já vinculados, ou não são débito"* e
+     * deixava o dono adivinhar. No caso real, a linha do `C41022570` já estava vinculada
+     * **à parcela de OUTRO contrato** — e ele leu *"nada aconteceu"*, porque nem o motivo
+     * nem o ONDE apareciam. *Recusa que não ensina a saída é a mesma coisa que silêncio*
+     * (a régua do tradutor 422 do estoque).
+     */
+    const achadas = new Set(txs.map((t) => t.id))
+    const faltando = transactionIds.filter((id) => !achadas.has(id))
+    const detalhes = await prisma.transaction.findMany({
+      where: { id: { in: faltando } },
+      select: {
+        id: true, type: true, bankAccountId: true, description: true,
+        loanInstallmentPaid: { select: { number: true, loan: { select: { contractNumber: true } } } },
+        loanInstallmentPayments: { select: { installment: { select: { number: true, loan: { select: { contractNumber: true } } } } } },
+      },
+    })
+    const porques = detalhes.map((t) => {
+      const nome = (t.description ?? t.id).slice(0, 34)
+      const um = t.loanInstallmentPaid
+      const n = t.loanInstallmentPayments[0]?.installment
+      // ⭐ o caso que mordeu: já vinculada — e a frase DIZ em qual contrato/parcela
+      if (um) return `«${nome}» já está vinculada à parcela ${um.number} do contrato ${um.loan.contractNumber} — desfaça lá primeiro`
+      if (n) return `«${nome}» já está vinculada à parcela ${n.number} do contrato ${n.loan.contractNumber} — desfaça lá primeiro`
+      if (t.type !== 'DEBIT') return `«${nome}» é uma ENTRADA — parcela se paga com saída`
+      if (loan.bankAccountId && t.bankAccountId !== loan.bankAccountId) {
+        return `«${nome}» está em outra conta bancária — este contrato debita numa conta diferente`
+      }
+      return `«${nome}» não pôde ser usada`
+    })
+    throw new VinculoDeParcelaError('TX_INELIGIBLE', porques.join(' · '))
   }
 
   const paidTotal = txs.reduce((s, t) => s + t.amount, 0)

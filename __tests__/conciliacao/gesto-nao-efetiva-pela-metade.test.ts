@@ -78,8 +78,15 @@ describe('⭐⭐ 1. RETIRADA OFERECE A PONTE — meia-ponte não se grava em sil
     expect(t, 'reescreveu a ponte em vez de usar o WithdrawalPanel').toMatch(/<WithdrawalPanel/)
   })
 
+  /**
+   * ⚠️ ASSERÇÃO ATUALIZADA EM 19/09 com o motivo: o destino do "pular" deixou de ser a
+   * frase solta *"Retiradas pendentes"* e passou a nomear a TELA **Retiradas** — que no
+   * mesmo commit ganhou entrada no menu e a seção das concluídas. O que o teste cobra
+   * continua sendo o mesmo: *pular tem que dizer onde o gesto continua existindo*.
+   */
   it('⛔ PULAR é legítimo — e a tela diz onde reabrir, senão pular vira perder', () => {
-    expect(fonte(TELA)).toMatch(/Retiradas pendentes/)
+    expect(fonte(TELA)).toMatch(/fica em Retiradas/)
+    expect(fonte(TELA)).toMatch(/ponte pendente em Retiradas/)
   })
 
   it('⭐ o selo do sucesso nomeia AS DUAS PONTAS', () => {
@@ -164,5 +171,60 @@ describe('⭐ DONO ÚNICO — seletor e painel de empréstimos leem a MESMA font
   it('⛔ e a tela de Empréstimos lê a mesma — se divergirem, uma lista contrato que a outra não', () => {
     const carteira = fonte('app/(dashboard)/empresas/[id]/emprestimos/page.tsx')
     expect(carteira).toMatch(/\/api\/empresas\/\$\{[a-zA-Z]+\}\/emprestimos/)
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('⛔⛔ NADA QUE SOME SOZINHO CARREGA DECISÃO (19/09)', () => {
+  /**
+   * **O dono:** *"clico «Distribuição de Lucros» e aparece uma mensagem em cima que
+   * DESAPARECE sozinha — não abre a tela de escolher na hora, e depois eu não sei ONDE
+   * achar as retiradas. Fiz 2 que teriam ido pra PF e não sei se deram certo."*
+   *
+   * ⭐ O convite deixou de ser faixa no topo: ele abre **ancorado na linha**, como o Find &
+   * Match — e a linha **fica na caixa** até ele responder (mandar ou pular, explícito).
+   */
+  const t = () => fonte(TELA)
+
+  it('⭐ o painel da ponte abre NA LINHA que ele categorizou', () => {
+    expect(t(), 'o convite voltou a ser uma faixa solta no topo')
+      .toMatch(/ponte\?\.linha\.id === l\.id/)
+  })
+
+  it('⛔⛔ e a linha NÃO sai da caixa antes de ele responder', () => {
+    // no ramo da retirada o gesto retorna ANTES do carregar()
+    expect(t(), 'voltou a recarregar na hora — a linha some e o convite fica órfão')
+      .toMatch(/if \(convite\) \{ setPonte\(\{ linha, convite \}\); return \}/)
+  })
+
+  it('⭐ pular é explícito e diz onde o gesto continua', () => {
+    expect(t()).toMatch(/pular — fica em Retiradas/)
+    expect(t()).toMatch(/ponte pendente em Retiradas/)
+  })
+})
+
+describe('⭐⭐ RETIRADAS tem UM LUGAR VISÍVEL (19/09)', () => {
+  it('⛔ a tela existia desde 08/08 e NÃO estava no menu — a maçaneta que faltava', () => {
+    const menu = fonte('components/sidebar/global-sidebar.tsx')
+    expect(menu, 'o item Retiradas sumiu do menu — a tela volta a ser inalcançável')
+      .toMatch(/label="Retiradas"/)
+    expect(menu).toMatch(/\/empresas\/\$\{empresaAtiva\}\/retiradas/)
+  })
+
+  it('⭐ e a tela mostra as CONCLUÍDAS, não só as pendentes', () => {
+    const pag = fonte('app/(dashboard)/empresas/[id]/retiradas/page.tsx')
+    expect(pag, 'a seção das concluídas sumiu — "deu certo?" fica sem resposta')
+      .toMatch(/<RetiradasConcluidas/)
+  })
+
+  it('⭐ cada concluída linka pra ponte, que mostra AS DUAS pontas', () => {
+    const c = fonte('components/withdrawals/RetiradasConcluidas.tsx')
+    expect(c).toMatch(/\/pontes\/\$\{p\.id\}/)
+    expect(c).toMatch(/conferir as 2 pontas/)
+  })
+
+  it('⛔ e ali erro NÃO vira "nenhuma ponte"', () => {
+    const c = fonte('components/withdrawals/RetiradasConcluidas.tsx')
+    expect(c).toMatch(/não<\/b> quer dizer que não existam/)
   })
 })

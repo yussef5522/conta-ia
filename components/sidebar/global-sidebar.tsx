@@ -274,6 +274,22 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
             onClick={onNavigate}
           />
         )}
+        {/*
+          ⭐ RETIRADAS (19/09) — a tela existia desde 08/08 e **ninguém alcançava**: só se
+          chegava nela por um banner de órfãs ou de dentro do próprio painel da ponte. O
+          dono: *"depois eu não sei ONDE achar as retiradas pra completar/conferir"*.
+          ⚠️ É a maçaneta que faltava numa porta que já existia (a 9ª volta da família).
+        */}
+        {empresaAtiva && !soEstoque && (
+          <SidebarItem
+          perm="transaction.view"
+            icon={ArrowLeftRight}
+            label="Retiradas"
+            href={`/empresas/${empresaAtiva}/retiradas`}
+            isActive={/^\/empresas\/[^/]+\/retiradas(\/|$)/.test(pathname)}
+            onClick={onNavigate}
+          />
+        )}
         {empresaAtiva && !soEstoque && (
           <SidebarItem
           perm="transaction.view"

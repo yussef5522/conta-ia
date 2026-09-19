@@ -87,7 +87,16 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
    * de linhas de propósito — a linha sai da caixa assim que é categorizada, e se o convite
    * morasse nela sumiria junto, no instante exato em que ele precisa aparecer.
    */
-  const [ponte, setPonte] = useState<{ linha: LinhaDTO; convite: ConviteDaPonte; abrir: boolean } | null>(null)
+  const [ponte, setPonte] = useState<{ linha: LinhaDTO; convite: ConviteDaPonte } | null>(null)
+  /**
+   * ⛔⛔ **O ERRO DO GESTO MORA NA LINHA, NÃO NO TOPO DA TELA** (19/09).
+   *
+   * O dono clicou *"parcela de empréstimo"* e concluiu que *"nada aconteceu"* — o servidor
+   * tinha RECUSADO, e a recusa foi parar num bloco no **topo da caixa**. No celular, com o
+   * dedo num cartão no meio da lista, aquilo está fora da tela. ***Mensagem que o dono não
+   * vê é silêncio*** — é a REGRA 2 de novo, agora na mensagem de erro.
+   */
+  const [erroDaLinha, setErroDaLinha] = useState<{ id: string; texto: string } | null>(null)
   const [categorias, setCategorias] = useState<CategoriaDoMenu[]>([])
   const [contratos, setContratos] = useState<{ id: string; nome: string; detalhe: string; parcela: number }[]>([])
   /**
@@ -171,13 +180,13 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
      * mesma porta que o card do fornecedor usa. Uma decisão, um lugar.
      */
     if (acao === 'CASAR_PAGAR' || acao === 'CASAR_RECEBER') { setProcurando(linha); return }
-    setOcupado(linha.id); setErro(null)
+    setOcupado(linha.id); setErro(null); setErroDaLinha(null)
     try {
       const r = await fetchComTimeout<{ efeito?: string; deepLink?: string }>(`/api/conciliacao/resolver`, {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ empresaId, txId: linha.id, acao, ...alvo }), timeoutMs: 30_000,
       })
-      if (!r.ok || !r.data) { setErro(r.erro ?? 'Não consegui resolver esta linha.'); return }
+      if (!r.ok || !r.data) { setErroDaLinha({ id: linha.id, texto: r.erro ?? 'Não consegui resolver esta linha.' }); return }
       if (r.data.deepLink) { window.location.href = r.data.deepLink; return }
       // ⭐ a faixa verde carrega O SELO DO COMO — a linha nunca sai em silêncio
       setFeito({
@@ -186,12 +195,19 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
         selo: `${r.data.efeito ?? 'resolvida'} · no arquivo`,
       })
       /**
-       * ⭐⭐ RETIRADA GRAVADA → O PASSO 2 É OFERECIDO NA HORA. A régua de quem é retirada é
-       * o `dreGroup` (a MESMA que separa a seção 💰 do menu — uma decisão, um lugar).
+       * ⭐⭐ RETIRADA GRAVADA → O PASSO 2 ABRE **NA LINHA**, e a linha FICA até ele responder.
+       *
+       * ⛔⛔ A 1ª versão (18/09) mostrava o convite numa faixa acima da lista e recarregava
+       * na hora — a linha saía da caixa e a faixa ficava solta no topo. O dono: *"aparece
+       * uma mensagem em cima e ela DESAPARECE sozinha — depois eu não sei onde achar as
+       * retiradas"*. ***Nada que some sozinho carrega decisão.***
+       *
+       * ⭐ Agora o gesto **não termina** na categoria: enquanto a ponte não for respondida
+       * (mandar ou pular, explícito), a linha continua na caixa com o painel aberto nela.
        */
       const cat = categorias.find((x) => x.id === alvo.categoryId)
       const convite = conviteDaPonte(cat)
-      if (convite) setPonte({ linha, convite, abrir: false })
+      if (convite) { setPonte({ linha, convite }); return }
       await carregar()   // ⭐ a linha sai da caixa NA HORA
     } finally { setOcupado(null) }
   }, [empresaId, carregar, categorias])
@@ -301,60 +317,12 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
         </div>
       )}
 
-      {/* ══════════ 5b. O PASSO 2 DA RETIRADA — A PONTE PRO PERFIL PF ══════════
-          ⛔ Categorizar como retirada gravava só a categoria: o dinheiro saía da PJ e não
-          entrava em lugar nenhum da PF. **Meia-ponte.** O convite aparece aqui, fora da
-          lista, porque a linha SAI da caixa no instante em que é categorizada. */}
-      {ponte && (
-        <div className="rounded-2xl border-[1.5px] px-4 py-3" style={{ borderColor: V3.roxo, background: V3.roxoBg }}>
-          {!ponte.abrir ? (
-            <div className="flex flex-wrap items-center gap-2.5">
-              <span className="text-[13px] leading-relaxed" style={{ color: V3.ink }}>
-                <b className="font-extrabold">{ponte.convite.titulo}</b>{' '}
-                a saída de <b>{brl(ponte.linha.valor)}</b> virou retirada na empresa — falta a
-                ENTRADA no perfil pessoal, com as duas pontas vinculadas.
-              </span>
-              <button type="button" onClick={() => setPonte({ ...ponte, abrir: true })}
-                className="ml-auto rounded-full px-3.5 py-[7px] text-[12.5px] font-extrabold text-white"
-                style={{ background: V3.roxo }}>
-                mandar pro perfil PF →
-              </button>
-              {/* ⛔ PULAR É LEGÍTIMO — e a tela diz ONDE o gesto continua existindo, senão
-                  "pular" vira "perder" e nasce a meia-ponte que o dono não quer. */}
-              <button type="button" onClick={() => setPonte(null)}
-                className="rounded-full border px-3 py-[6px] text-[12px] font-bold"
-                style={{ borderColor: V3.line, color: V3.sub }}>
-                pular — fica em <u>Retiradas pendentes</u>
-              </button>
-            </div>
-          ) : (
-            <WithdrawalPanel
-              empresaId={empresaId}
-              pjTransactionId={ponte.linha.id}
-              pjAmount={ponte.linha.valor}
-              pjDescription={ponte.linha.descricao}
-              /* ⭐ SUGESTÃO, não decisão: o painel pergunta sócio, conta e tipo */
-              initialKind={ponte.convite.tipo ?? undefined}
-              onCancel={() => setPonte(null)}
-              onConfirmed={() => {
-                setFeito({
-                  id: ponte.linha.id,
-                  titulo: `${ponte.linha.descricao || '(sem descrição)'} ${brl(ponte.linha.valor)}`,
-                  selo: 'retirada na empresa + entrada no perfil PF · pontas vinculadas',
-                })
-                setPonte(null)
-                void carregar()
-              }}
-            />
-          )}
-        </div>
-      )}
-
       {/* ══════════ 4. OS CARTÕES ≍ ══════════ */}
       {visiveis.map((l) => (
         <div key={l.id} className="flex flex-col gap-2">
           <CartaoDaLinha linha={l} ocupado={ocupado === l.id}
-            categorias={categorias} cartoes={cartoes} contratos={contratos} cargas={cargas} onGesto={gesto} />
+            categorias={categorias} cartoes={cartoes} contratos={contratos} cargas={cargas}
+            erro={erroDaLinha?.id === l.id ? erroDaLinha.texto : null} onGesto={gesto} />
 
           {/*
             ⭐⭐⭐ O PAINEL ABRE **DEBAIXO DA PRÓPRIA LINHA** — nunca noutra tela, nunca
@@ -364,6 +332,54 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
             rodapé faria o dono procurar de novo qual linha ele estava casando — que é
             exatamente o defeito que este conserto mata.
           */}
+          {/*
+            ⭐⭐⭐ O PASSO 2 DA RETIRADA — **ancorado na linha**, como o Find & Match.
+            ⛔ Era uma faixa no topo que sumia sozinha; *nada que some sozinho carrega
+            decisão*. A linha SÓ sai da caixa quando ele responde: mandar ou pular.
+          */}
+          {ponte?.linha.id === l.id && (
+            <div className="rounded-[22px] border-[1.5px] bg-white p-3 dark:bg-slate-950" style={{ borderColor: V3.roxo }}>
+              <div className="mb-2 flex flex-wrap items-center gap-2 px-1">
+                <span className="text-[13px] leading-relaxed" style={{ color: V3.ink }}>
+                  <b className="font-extrabold">{ponte.convite.titulo}</b>{' '}
+                  a saída virou retirada na empresa — falta a ENTRADA no perfil pessoal, com
+                  as duas pontas vinculadas.
+                </span>
+                {/* ⛔ pular é legítimo — e DIZ onde o gesto continua existindo */}
+                <button type="button"
+                  onClick={() => {
+                    setFeito({
+                      id: l.id,
+                      titulo: `${l.descricao || '(sem descrição)'} ${brl(l.valor)}`,
+                      selo: 'retirada gravada · ponte pendente em Retiradas',
+                    })
+                    setPonte(null); void carregar()
+                  }}
+                  className="ml-auto rounded-full border px-3 py-[6px] text-[12px] font-bold"
+                  style={{ borderColor: V3.line, color: V3.sub }}>
+                  pular — fica em Retiradas
+                </button>
+              </div>
+              <WithdrawalPanel
+                empresaId={empresaId}
+                pjTransactionId={l.id}
+                pjAmount={l.valor}
+                pjDescription={l.descricao}
+                /* ⭐ SUGESTÃO, não decisão: o painel pergunta sócio, conta e tipo */
+                initialKind={ponte.convite.tipo ?? undefined}
+                onCancel={() => { setPonte(null); void carregar() }}
+                onConfirmed={() => {
+                  setFeito({
+                    id: l.id,
+                    titulo: `${l.descricao || '(sem descrição)'} ${brl(l.valor)}`,
+                    selo: 'retirada na empresa + entrada no perfil PF · pontas vinculadas',
+                  })
+                  setPonte(null); void carregar()
+                }}
+              />
+            </div>
+          )}
+
           {procurando?.id === l.id && (
             <div className="rounded-[22px] border-[1.5px] bg-white p-3 dark:bg-slate-950"
               style={{ borderColor: V3.roxo }}>
@@ -411,12 +427,14 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
 // ⭐⭐⭐ O CARTÃO ≍ — banco à esquerda, palpite à direita, chips embaixo
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, cargas, onGesto }: {
+function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, cargas, erro, onGesto }: {
   linha: LinhaDTO; ocupado: boolean
   categorias: CategoriaDoMenu[]
   cartoes: { id: string; name: string }[]
   contratos: { id: string; nome: string; detalhe: string; parcela: number }[]
   cargas: Record<'categorias' | 'cartoes' | 'contratos', EstadoDaCarga>
+  /** ⛔ a recusa do gesto aparece AQUI, ao lado do dedo — no topo da tela ela é silêncio */
+  erro: string | null
   onGesto: (l: LinhaDTO, acao: string, alvo?: Record<string, unknown>) => void
 }) {
   const credito = l.sentido === 'ENTRADA'
@@ -492,6 +510,19 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, carg
           {l.palpite && (
             <div className="my-2 text-center text-[10.5px] font-bold tracking-[0.05em]" style={{ color: V3.sub }}>
               OU ESCOLHA OUTRO CAMINHO
+            </div>
+          )}
+
+          {/*
+            ⛔⛔ A RECUSA APARECE AQUI, COLADA NO DEDO. O dono clicou "parcela de
+            empréstimo", o servidor recusou, e a mensagem foi parar no topo da tela — fora
+            da vista no celular. Ele concluiu "nada aconteceu". *Mensagem que ele não vê é
+            silêncio.*
+          */}
+          {erro && (
+            <div className="mb-2 rounded-xl border px-3 py-2 text-[12.5px] leading-relaxed"
+              style={{ borderColor: V3.coral, background: '#fdecea', color: '#8a2018' }}>
+              {erro}
             </div>
           )}
 

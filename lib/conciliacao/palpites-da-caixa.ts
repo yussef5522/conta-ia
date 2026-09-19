@@ -50,9 +50,22 @@ export async function palpitesDaCaixa(
   // ── o que cada motor precisa, buscado UMA vez ─────────────────────────────
   const [cartoes, loans, fornecedores, recusados, padroes] = await Promise.all([
     db.businessCreditCard.findMany({ where: { companyId: empresaId, isActive: true }, select: { id: true, name: true } }),
+    /**
+     * ⛔⛔⛔ **O `status` FALTAVA NESTE SELECT — e isso matava TODO palpite de empréstimo**
+     * (achado em prod, 19/09). `detectLoanPayment` começa com
+     * `loans.filter(l => l.status === 'ACTIVE' || l.status === 'LATE')`: com o campo
+     * **undefined**, a lista ficava **vazia**, nenhum contrato casava, e a caixa nunca
+     * mostrou um palpite de parcela — nem pra `LIQUIDACAO DE PARCELA-C41022570`, que a lib
+     * resolve sozinha (medido: contrato `C41022570-0`, parcela 14).
+     *
+     * ⚠️⚠️ **É a doença do SELECT INCOMPLETO, a mesma do PIX de 7.000 (17/08)**: o motor
+     * decide com um campo que a consulta não trouxe, e **não dá erro** — dá silêncio. O que
+     * deixou passar foi o `as never` no call-site (removido abaixo): sem o cast, o
+     * TypeScript teria acusado o campo faltando.
+     */
     db.loan.findMany({
       where: { companyId: empresaId, status: { not: 'PAID' } },
-      select: { id: true, contractNumber: true, lender: true, bankAccountId: true },
+      select: { id: true, contractNumber: true, lender: true, bankAccountId: true, status: true },
     }),
     fornecedoresDaEmpresa(db, empresaId),
     paresRecusados(db, empresaId),
@@ -136,9 +149,16 @@ export async function palpitesDaCaixa(
     // ── 2. PARCELA DE EMPRÉSTIMO (só débito) ───────────────────────────────
     if (l.type === 'DEBIT' && loans.length > 0) {
       try {
+        /**
+         * ⛔ **SEM `as never`, de propósito.** Era o cast que escondia o `status` faltando
+         * no select — o TypeScript tinha como pegar e foi calado. `dueDay` é sinal
+         * auxiliar de ranking e não existe em `Loan`; vai `null` explícito, que é o que
+         * ele significa aqui (a identificação vem do NÚMERO do contrato na descrição).
+         */
         const s = sugerirVinculoEmprestimo(
           { description: descricao, type: l.type, date: l.date, amount: l.amount },
-          loans as never, parcelasPorLoan,
+          loans.map((x) => ({ id: x.id, contractNumber: x.contractNumber, lender: x.lender, status: x.status, dueDay: null })),
+          parcelasPorLoan,
         )
         if (s && s.kind === 'SUGERIDO') {
           candidatos.push({

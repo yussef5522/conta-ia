@@ -27,7 +27,7 @@
 import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { casarPagamentoDeCartao, CasarPagamentoError } from '@/lib/credit-card-pj/casar-pagamento'
-import { vincularPagamentoDeParcela } from '@/lib/loans/vincular-pagamento'
+import { vincularPagamentoDeParcela, VinculoDeParcelaError } from '@/lib/loans/vincular-pagamento'
 import { recomputeVendasSeVenda } from '@/lib/vendas/recompute-hook'
 import { acaoValePraSentido, sentidoDaLinha, type AcaoDoBalcao } from './caixa-de-entrada'
 
@@ -95,11 +95,23 @@ export async function resolverLinha(input: ResolverInput, db: PrismaClient = def
 
     case 'PARCELA_EMPRESTIMO': {
       if (!input.loanId || input.installmentNumber == null) throw new ResolverError('Escolha o contrato e a parcela que esta linha paga.')
-      const r = await vincularPagamentoDeParcela({
-        db, companyId: input.companyId, loanId: input.loanId,
-        installmentNumber: input.installmentNumber, transactionIds: [tx.id],
-      })
-      return { efeito: `parcela ${input.installmentNumber} ${r.status === 'PAID' ? 'PAGA' : 'parcialmente paga'} · split ${r.splitInjected ? 'aplicado' : 'não aplicável'}`, saiuDaCaixa: true }
+      /**
+       * ⛔⛔ **A RECUSA DO VÍNCULO VIRAVA 500 SEM CORPO** (19/09). `VinculoDeParcelaError`
+       * não é `ResolverError`, então escapava pelo `throw e` da rota — o cliente recebia um
+       * 500 vazio e a tela dizia o genérico. **O dono leu isso como "nada aconteceu".**
+       * Traduzir aqui é o mesmo desenho do tradutor 422 do estoque: erro de domínio vira
+       * mensagem; o que ninguém previu continua 500, que ali é honesto.
+       */
+      try {
+        const r = await vincularPagamentoDeParcela({
+          db, companyId: input.companyId, loanId: input.loanId,
+          installmentNumber: input.installmentNumber, transactionIds: [tx.id],
+        })
+        return { efeito: `parcela ${input.installmentNumber} ${r.status === 'PAID' ? 'PAGA' : 'parcialmente paga'} · split ${r.splitInjected ? 'aplicado' : 'não aplicável'}`, saiuDaCaixa: true }
+      } catch (e) {
+        if (e instanceof VinculoDeParcelaError) throw new ResolverError(e.message)
+        throw e
+      }
     }
 
     case 'CATEGORIA':
