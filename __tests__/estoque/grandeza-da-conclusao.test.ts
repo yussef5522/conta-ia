@@ -192,3 +192,12 @@ describe('⛔⛔⛔ o ESTORNO de um movimento interno também é interno', () =>
     expect(fonte('lib/stock/movement.ts')).toMatch(/notIn: \[\.\.\.TIPOS_FORA_DA_PRATELEIRA\]/)
   })
 })
+
+describe('⛔⛔ o ESTORNO herda a unidade física do ORIGINAL', () => {
+  it('⭐ a reunitização enxerga os estornos — senão converte metade e cala', () => {
+    const u = fonte('lib/stock/unidade-do-movimento.ts')
+    expect(u, 'excluir o estorno daqui faz o plano deixá-lo na régua antiga')
+      .not.toMatch(/where: \{ companyId, itemId, tipo: \{ not: 'ESTORNO' \} \}/)
+    expect(u).toMatch(/m\.tipo === 'ESTORNO' && m\.estornoDeId \? porId\.get\(m\.estornoDeId\)/)
+  })
+})

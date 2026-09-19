@@ -42,10 +42,27 @@ export interface UnidadeDoMovimento {
 export async function unidadeFisicaDosMovimentos(
   db: Db, companyId: string, itemId: string, unidadeControleAtual: string,
 ): Promise<Map<string, UnidadeDoMovimento>> {
+  /**
+   * ⛔⛔⛔ O ESTORNO HERDA A UNIDADE DO ORIGINAL (19/09/2026).
+   *
+   * **O defeito, achado ao reunitizar a MAIONESE logo depois de uma correção:** os
+   * ESTORNOS eram EXCLUÍDOS daqui, e como o plano de conversão nasce desta lista, eles
+   * (a) não entravam no saldo previsto e (b) **não eram convertidos ao aplicar**. O preview
+   * anunciou **22.915,44 KG** onde o saldo é **51,44** — a diferença é exatamente a
+   * geração torta cujo estorno sumiu da conta.
+   *
+   * ⚠️ E o estrago maior seria na GRAVAÇÃO: converter os movimentos e deixar os estornos
+   * na régua antiga produziria um item com metade do ledger em cada unidade — o
+   * *"nunca converte metade e cala"* acontecendo por omissão.
+   *
+   * ⭐ Um estorno é a linha oposta do original: ele está **na mesma unidade física** que
+   * ele. Resolver pelo `estornoDeId` é a única resposta que não chuta.
+   */
   const movs = await db.stockMovement.findMany({
-    where: { companyId, itemId, tipo: { not: 'ESTORNO' } },
-    select: { id: true, quantidade: true, receiptId: true },
+    where: { companyId, itemId },
+    select: { id: true, quantidade: true, receiptId: true, tipo: true, estornoDeId: true },
   })
+  const porId = new Map(movs.map((m) => [m.id, m]))
   const receipts = [...new Set(movs.map((m) => m.receiptId).filter((r): r is string => !!r))]
   const [conf, corr] = await Promise.all([
     receipts.length
@@ -59,9 +76,11 @@ export async function unidadeFisicaDosMovimentos(
   const porCorr = new Map(corr.map((c) => [c.conferenceId!, c.unidadeEntrada]))
 
   return new Map<string, UnidadeDoMovimento>(movs.map((m): [string, UnidadeDoMovimento] => {
-    const corrigida = m.receiptId ? porCorr.get(m.receiptId) : undefined
+    // ⭐ o estorno usa o receipt do ORIGINAL — é dele que vem a unidade da nota
+    const base = m.tipo === 'ESTORNO' && m.estornoDeId ? porId.get(m.estornoDeId) ?? m : m
+    const corrigida = base.receiptId ? porCorr.get(base.receiptId) : undefined
     if (corrigida) return [m.id, { movimentoId: m.id, quantidade: m.quantidade, unidade: corrigida, origem: 'CORRECAO' as const }]
-    const daNota = m.receiptId ? porConf.get(m.receiptId) : undefined
+    const daNota = base.receiptId ? porConf.get(base.receiptId) : undefined
     if (daNota) return [m.id, { movimentoId: m.id, quantidade: m.quantidade, unidade: daNota, origem: 'CONFERENCIA' as const }]
     return [m.id, { movimentoId: m.id, quantidade: m.quantidade, unidade: unidadeControleAtual, origem: 'PADRAO' as const }]
   }))
