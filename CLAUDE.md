@@ -752,6 +752,50 @@ TELA → 200 · "revisar" ✓ · "sem destino" ✓ · "parece" ✓ · o aviso do
 📋 **FALTA PRA FECHAR O CASO DE HOJE — e é o que só o PDF resolve:** o **V1** (Σ Brasil 11.376,89 × 11.358,89). A fixture que temos aponta a classe (linha em moeda estrangeira), mas **a fatura de hoje é outra**, e o texto dela não existe mais em lugar nenhum. **Da próxima recusa em diante isso não se repete** — a quarentena guarda.
 
 
+### ⛔⛔⛔ O LOTE QUE ENTROU MIL VEZES MAIOR — E A CAUSA NÃO ERA O PARSE (19/09/2026)
+
+**O dono:** *"a receita de maionese está descontando demais."* E ele apontou a causa: *"PAGA A DÍVIDA DE 08/09 — costura os 4 campos de parse próprio no `sanitizarQtd`."*
+
+**⚠️⚠️ A MEDIÇÃO REFUTOU A CAUSA APONTADA, e isso mudou o conserto inteiro:**
+```
+digitou "22.864" → sanitizarQtd(KG) "22,864" → 22.864   |  parse do tablet: 22.864
+digitou "22,864" → sanitizarQtd(KG) "22,864" → 22.864   |  parse do tablet: 22.864
+digitou "22864"  → sanitizarQtd(KG) "22864"  → 22864    |  parse do tablet: 22864
+```
+**Os dois caminhos concordam** — costurar os parses não teria impedido nada. O que produz 22864 é digitar **sem separador**. *A dívida dos 4 parses é legítima (o `|| 0` engolindo lixo), e não era a cura daqui.*
+
+**⭐⭐ A CAUSA REAL, e ela tem nome:** as duas conclusões podres são da **viviane** (14/09 e 16/09), com uma boa da mesma pessoa no meio (28,58 em 15/09). O fator é **EXATAMENTE MIL**:
+```
+14/09 CUBA MAIONESE  gerou 22864 · rendimento 2855,50 (a média: 2,85)  · custo un R$ 0,01 (era 10,95)
+16/09 MAIONESE       gerou 22864 · rendimento 2858,00 (a média: 2,858) · custo un R$ 0,01 (era  9,79)
+```
+**A balança da cozinha mostra GRAMA e o item é controlado em KG.** 22.864 g **são** 22,864 kg. Não é erro aleatório de digitação: é **unidade mental ≠ unidade de controle**, e por isso se repete.
+
+**⭐ O GUARD DE PLAUSIBILIDADE (`plausibilidade.ts`) COMPARA O LOTE COM ELE MESMO NO PASSADO.** *"22864 é muito?"* não tem resposta sem contexto — 22.864 porções é um dia normal. O que não existe é **mil vezes o rendimento histórico da MESMA ficha**. **10× PERGUNTA · 100× RECUSA**, e a assinatura de grandeza (500×–2000×) **sugere o número certo em um toque**.
+
+**⛔ E ELE NÃO É RUIDOSO — é o que o separa dos 111 alarmes falsos:** produção do DOBRO passa (variação ≠ grandeza) · **sem histórico não julga** (primeira receita nunca é alarme) · **com UM lote só também não** (um lote atípico viraria a régua).
+
+**⚠️⚠️ ACHADO AO LIGAR O GUARD — a etapa fechava ANTES da conclusão.** Com a recusa dentro do `concluir`, a cozinha digitava 22864, levava o aviso **e a tarefa já estava fechada**, sem como repetir: estado pela metade no meio do turno. A pergunta passou pra **antes de qualquer escrita** (`avaliarGrandezaDaConclusao`). ⛔ **E não é uma segunda régua:** é a MESMA composição chamada mais cedo, com o guard do motor de pé pros outros caminhos.
+
+**⭐ E O TABLET PASSOU A DIZER A UNIDADE** (*"Quantos saíram? **em KG**"*) — a cura da causa na raiz, porque quem pesa em grama vê a régua do sistema antes de digitar.
+
+**⛔⛔ LOTE ESTORNADO NUNCA ENTRA NA MÉDIA** (`stock_conclusao_estornada`, CREATE-only, **unique por conclusão** — estornar 2× é impossível, não "checado"). Sem isso o rendimento podre de **2858** continuaria sendo *"o histórico"* da maionese e envenenaria toda conclusão seguinte — **inclusive o próprio guard**, que passaria a aprovar o erro por ele ter virado a norma. *É o dado ruim mais perigoso: o que se legitima com o tempo.*
+
+**⭐ O ESTORNA-E-RELANÇA (`estorna-e-relanca.ts`) NÃO É CONTAGEM** — e a diferença é o ponto: um ajuste deixaria no ledger um `AJUSTE_CONTAGEM` de **−22.841 kg**, um buraco com cara de perda física que envenenaria o Real vs Teórico pra sempre. Não houve perda: **houve um número digitado errado**. Correção = **estorno + novo**, e o **custo do lote NÃO muda** (R$ 248,56), o que é justamente a prova de que é grandeza.
+
+**⭐⭐ "RECEITA JÁ EXISTE" — AS TRÊS PORTAS.** Medido: as fichas da CUBA e da MAIONESE estão `ativo=false` **com o item-invólucro ATIVO**, e como `seContaFisicamente` inclui INTERMEDIARIO, o dono levava a frase sobre **NOTA FISCAL** num produto que a cozinha FAZ. Em PRODUTO_FINAL era pior: **nascia um segundo item em silêncio**. Agora é uma recusa só (409, pergunta), com **reativar** (primária — é o caso dele) · **renomear a antiga** (pela porta única de rename, que grava o apelido de busca) · **criar assim mesmo** (o escape que já existia — nenhuma terceira porta de escrita nasceu).
+
+**⭐⭐ A QUARENTENA DE VENDAS NASCEU** — nos DOIS relatórios, por uma **porta única de leitura**. É a **terceira** vez que esta casa paga pela mesma ausência (`rawOfxBlob` 13/08 · `fatura_quarentena` 16/09). ⭐ E o *"não leu nada"* deixou de ser uma frase só: as pistas separam **arquivo vazio** · **sem tabela** (o `.xls` do Suitable é HTML) · **outro relatório** · **dia sem venda**. O expurgo de 12 meses **nasceu com chamador** no cron (a lição do E10: promessa escrita que não roda é pior que nada).
+
+**⚠️⚠️ REGRA 11 PEGOU DOIS GUARDS MEUS — "menção, não uso" pela QUARTA vez.** Repondo os defeitos, eles ficaram **verdes**: a linha do `import` no topo já bastava pro `toMatch`, e o `indexOf` da ordem achava o símbolo no próprio import. Apertados com `usosDe`/`posDoUso`, os três defeitos mordem.
+
+**⚠️ 1 TESTE DE 01/09 INVERTIDO COM O MOTIVO ESCRITO:** ele afirmava *"ficha INATIVA não bloqueia — arquivar e recriar continua possível"*. Medido, isso é a fábrica de duplicata.
+
+**10.435 verdes · TS 0 · `pg_dump pre-sprintB-20260919-033749` (6,5 MB) antes das 2 migrations (CREATE-only, guard de isolamento verde).**
+
+📋 **PENDENTE, E É DECISÃO DO DONO (preview pronto, NADA gravado):** o estorno das 2 gerações podres. A cascata (as porções de maionese que consumiram a cuba a R$ 0,04/kg em vez de R$ 10,87) tem o Δ CMV medido no preview.
+
+
 ### ⛔⛔⛔ A RECUSA NÃO DIZIA QUAL DOS 58 ITENS — E O TETO DE 5 CENTAVOS CAIU NA MEDIÇÃO (19/09/2026)
 
 **O dono, travado na baixa de 18/09:** *"o confirmar recusa com «Este item ficaria com 0 unidades e valor R$ -0.04» mas NÃO DIZ QUAL ITEM dos 58 — fico travado sem saber onde agir (e os outros 57 reféns do 1)."*
