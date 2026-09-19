@@ -752,6 +752,31 @@ TELA → 200 · "revisar" ✓ · "sem destino" ✓ · "parece" ✓ · o aviso do
 📋 **FALTA PRA FECHAR O CASO DE HOJE — e é o que só o PDF resolve:** o **V1** (Σ Brasil 11.376,89 × 11.358,89). A fixture que temos aponta a classe (linha em moeda estrangeira), mas **a fatura de hoje é outra**, e o texto dela não existe mais em lugar nenhum. **Da próxima recusa em diante isso não se repete** — a quarentena guarda.
 
 
+### ✅ O VÍNCULO CRUZADO FOI DESFEITO (19/09/2026, autorizado: *"preview conferido"*)
+
+`pg_dump pre-vinculo-cruzado-20260919-010501.dump` (6,5 MB) antes · preview conferido contra o estado do minuto · aplicado **pelas portas únicas**, nunca por script replicando a lógica.
+
+```
+ANTES  C41022227-1 #24: PAID · paidTotal 5.617,23 · 2 pagamentos somando 12.520,68 ⛔ não fecha
+DEPOIS C41022227-1 #24: PAID · paidTotal 6.903,45 · 1 pagamento ✓ · juros 2.517,49 · amort 4.385,96
+       C41022570-0 #14: PAID · paidTotal 5.617,23 · 1 pagamento ✓
+              amortização 4.166,64 + encargos 1.450,59 (juros 466,52 + correção 984,07)
+              saldo 95.833,36 → 91.666,72   ⭐ ao centavo o que o dono aprovou
+INTEGRIDADE: 22 parcelas com N:1 na empresa · 0 inconsistentes
+JUIZ: 10/10 contratos · balance 0 · dup 0 · venda 0
+```
+
+**⭐⭐ E A CIRURGIA CRIOU A PORTA QUE FALTAVA — `desfazerVinculoDeParcela`.** Não existia jeito de soltar um vínculo N:1: o `DELETE .../parcelas/[number]` mexe **só no caminho 1:1** e **deixa os `LoanInstallmentPayment` de pé** — usá-lo aqui deixaria a parcela **OPEN segurando pagamento**, pior que o defeito. ⚠️ *Cirurgia que se faz uma vez vira script perdido; gesto que fica vira porta* — e o dono vai errar de novo (dois contratos do mesmo banco adjacentes num menu é caso de repetir).
+
+⛔ **A porta devolve a parcela ao estado de quem NUNCA foi paga** (pagamentos soltos, split limpo, status OPEN) e **quem re-grava é sempre `vincularPagamentoDeParcela`**, que recalcula do zero. *Nada de ajustar `paidTotal` na mão: número de dinheiro corrigido a dedo é o começo do dado que ninguém explica depois.*
+
+**⚠️ E EU QUASE REPORTEI UM ALARME FALSO:** vi `paidInterest 466,52` e anunciei que o split tinha saído diferente dos R$ 1.450,59 aprovados. **Medi antes de afirmar** e os encargos estavam inteiros — num contrato POS eles vêm **partidos em juros + correção monetária** (466,52 + 984,07), que é mais preciso que a linha única do meu preview. *Olhar um campo e concluir sobre a soma é a mesma pressa que produziu o `'categoryId' in t`.*
+
+⚠️ **DRE de setembro (mês aberto):** estas duas parcelas somam **R$ 3.968,08** de despesa financeira — antes a #24 sozinha lançava 1.231,27 sobre um `paidTotal` que não era o dela.
+
+⚠️ E a **ponte da RGE (R$ 307,22) FICA** — decisão do dono: *"era retirada de verdade, conta de luz da minha casa paga pela empresa"*.
+
+
 ### ⛔⛔⛔ O PALPITE DE EMPRÉSTIMO NUNCA EXISTIU — SELECT INCOMPLETO, E O ESTRAGO FOI VÍNCULO CRUZADO (19/09/2026)
 
 **O dono:** *"vinculei a parcela pelo gesto da caixa e nada aconteceu."* E a cadeia, medida por id, é mais longa que o relato:
