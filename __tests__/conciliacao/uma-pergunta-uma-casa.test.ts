@@ -190,6 +190,21 @@ describe('⭐ as TRÊS superfícies passam pela MESMA porta', () => {
     }
   })
 
+  /**
+   * ⛔⛔⛔ **E CADA ROTA TEM QUE USAR O PREDICADO, NÃO REIMPLEMENTAR.** A prova em prod
+   * pegou a `/caixa` testando `casa === 'CARD'` depois que o ambíguo passou a morar em
+   * `FILA` — o `casoNoCard` vinha `null` e **o botão voltava na tela do dono**.
+   * ***Guard que exercita a lib aprova a rota que a ignora.***
+   */
+  it('⛔⛔ as rotas CHAMAM os predicados — nenhuma compara a casa na mão', () => {
+    expect(fonte('app/api/conciliacao/caixa/route.ts'), 'a caixa voltou a decidir por comparação própria')
+      .toContain('aCaixaDesenhaBotao(')
+    expect(fonte('app/api/conciliacao/escolher-na-mao/route.ts')).toContain('oCardDesenhaBotao(')
+    for (const r of ['app/api/conciliacao/caixa/route.ts', 'app/api/conciliacao/escolher-na-mao/route.ts'])
+      expect(fonte(r), `${r} compara a casa na mão — é assim que a 3ª casa passa despercebida`)
+        .not.toMatch(/\.casa === '(CARD|FILA|CAIXA)'/)
+  })
+
   it('⛔ a fila ESCONDE a conta que a caixa reivindicou', () => {
     expect(fonte('lib/conciliacao/fila-de-conciliacao.ts'))
       .toMatch(/!contasQueMoramNaCaixa\.has\(c\.conta\.id\)/)

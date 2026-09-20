@@ -22,7 +22,7 @@ import { progressoDoMes } from '@/lib/conciliacao/palpite-da-linha'
  * os chips de sempre — a caixa de ontem, que funciona.
  */
 import { palpitesDaCaixa } from '@/lib/conciliacao/palpites-da-caixa'
-import { fraseDoCasoNoCard } from '@/lib/conciliacao/uma-casa-por-caso'
+import { fraseDoCasoNoCard, aCaixaDesenhaBotao } from '@/lib/conciliacao/uma-casa-por-caso'
 import { divisaoDaTela } from '@/lib/conciliacao/divisao-da-tela'
 
 export async function GET(request: NextRequest) {
@@ -104,7 +104,15 @@ export async function GET(request: NextRequest) {
        * ⭐ quando o caso mora no CARD, a linha perde o botão e ganha o CAMINHO.
        * ⛔ Nunca as duas com botão — e nunca a linha muda sem dizer pra onde ir.
        */
-      casoNoCard: divisao.linhas.get(r.id)?.casa === 'CARD'
+      /**
+       * ⛔⛔ **AQUI EU ERREI DE NOVO, e a prova na página pegou:** esta linha testava
+       * `casa === 'CARD'` e o ambíguo passou a morar em **`FILA`** — então o `casoNoCard`
+       * vinha `null` e **o botão voltava**. *Meu guard exercitava o predicado da lib e a
+       * ROTA não o usava* — a lição "guard que testa a lib aprova a tela que a ignora".
+       *
+       * ⭐ Agora quem decide é o predicado: a caixa desenha botão **só** quando é a dona.
+       */
+      casoNoCard: !aCaixaDesenhaBotao(divisao.linhas.get(r.id), !!palpites.get(r.id)) && divisao.linhas.get(r.id)?.ancora
         ? { texto: fraseDoCasoNoCard(divisao.linhas.get(r.id)!), ancora: divisao.linhas.get(r.id)!.ancora! }
         : null,
     }
