@@ -49,7 +49,8 @@ export async function POST(request: NextRequest) {
       if (e.message === 'DEEP_LINK') {
         return NextResponse.json({ ok: true, deepLink: destinoDaAcao(p.data.acao, p.data.empresaId, p.data.txId), saiuDaCaixa: false })
       }
-      return NextResponse.json({ erro: e.message }, { status: 422 })
+      // ⭐ o code chega na tela pra ela oferecer o gesto certo (o chip de categoria)
+      return NextResponse.json({ erro: e.message, code: e.code }, { status: 422 })
     }
     throw e
   }

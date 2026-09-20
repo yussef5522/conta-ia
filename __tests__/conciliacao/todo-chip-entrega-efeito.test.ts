@@ -145,9 +145,20 @@ describe('⛔ as portas que estavam pintadas não voltam', () => {
 })
 
 describe('⭐ REGRA 12 — a caixa tem UMA composição, então celular e desktop não divergem', () => {
-  it('⭐ os chips são desenhados uma vez só (sem bloco sm:hidden paralelo)', () => {
+  /**
+   * ⚠️ REAPONTADO em 20/09, NÃO afrouxado. A régua era `<MenuDoChip` no ARQUIVO inteiro
+   * == 3, e ela quebrou com a tela CERTA: o painel do `PEDE_CATEGORIA` (*"essa conta não
+   * tem categoria — qual é?"*) desenha um 4º menu **fora do cartão**, e ele não é a mesma
+   * pergunta duas vezes — é a resposta que falta ao gesto.
+   *
+   * ⭐ A pergunta continua a mesma (*o CARTÃO desenha os chips uma vez só?*); o que mudou é
+   * que ela passou a ser feita **ao cartão**, em vez de ao arquivo. *Contar no arquivo
+   * inteiro era o proxy, não a régua.*
+   */
+  it('⭐ os chips do CARTÃO são desenhados uma vez só (sem bloco sm:hidden paralelo)', () => {
     const t = fonte(TELA)
-    expect((t.match(/<MenuDoChip/g) ?? []).length, 'chip duplicado por viewport = duas telas divergindo')
+    const cartao = t.slice(t.indexOf('function CartaoDaLinha'))
+    expect((cartao.match(/<MenuDoChip/g) ?? []).length, 'chip duplicado por viewport = duas telas divergindo')
       .toBe(3)
     expect((t.match(/<FindAndMatchPanel/g) ?? []).length).toBe(1)
   })

@@ -104,6 +104,20 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
    * vê é silêncio*** — é a REGRA 2 de novo, agora na mensagem de erro.
    */
   const [erroDaLinha, setErroDaLinha] = useState<{ id: string; texto: string } | null>(null)
+  /**
+   * ⭐⭐⭐ **NADA SAI DA CAIXA SEM CATEGORIA** (20/09) — e a pergunta vem JUNTO DO GESTO.
+   *
+   * A régua do dono: *"casar com conta a pagar → HERDA da conta; ⛔ se a conta casada NÃO
+   * TEM categoria, o confirmar pede ali e grava NA CONTA (aprende pra próxima)"*.
+   *
+   * ⛔ O servidor recusa com `code: 'PEDE_CATEGORIA'` e a tela reabre **o mesmo gesto**,
+   * agora com o chip de categoria. ***Não é um segundo caminho*** — é o gesto esperando a
+   * resposta que falta, na linha onde ele nasceu. Pedir depois seria pedir nunca: a linha
+   * já teria saído da caixa.
+   */
+  const [pedeCategoria, setPedeCategoria] = useState<
+    { linha: LinhaDTO; acao: string; alvo: Record<string, unknown>; texto: string } | null
+  >(null)
   const [categorias, setCategorias] = useState<CategoriaDoMenu[]>([])
   const [contratos, setContratos] = useState<{ id: string; nome: string; detalhe: string; parcela: number }[]>([])
   /**
@@ -204,7 +218,21 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ empresaId, txId: linha.id, acao, ...alvo }), timeoutMs: 30_000,
       })
-      if (!r.ok || !r.data) { setErroDaLinha({ id: linha.id, texto: r.erro ?? 'Não consegui resolver esta linha.' }); return }
+      if (!r.ok || !r.data) {
+        /**
+         * ⭐⭐ A RECUSA QUE PEDE CATEGORIA NÃO É ERRO — É O GESTO PERGUNTANDO.
+         *
+         * ⛔ Mostrá-la só como texto vermelho deixaria o dono lendo *"diga qual é"* sem
+         * ter onde dizer — a porta sem maçaneta, dentro de uma mensagem de erro.
+         */
+        const code = (r.corpo as { code?: string } | null)?.code
+        if (code === 'PEDE_CATEGORIA') {
+          setPedeCategoria({ linha, acao, alvo, texto: r.erro ?? 'Essa conta não tem categoria — qual é?' })
+          return
+        }
+        setErroDaLinha({ id: linha.id, texto: r.erro ?? 'Não consegui resolver esta linha.' }); return
+      }
+      setPedeCategoria(null)
       if (r.data.deepLink) { window.location.href = r.data.deepLink; return }
       // ⭐ a faixa verde carrega O SELO DO COMO — a linha nunca sai em silêncio
       setFeito({
@@ -395,6 +423,40 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
                   setPonte(null); void carregar()
                 }}
               />
+            </div>
+          )}
+
+          {/*
+            ⭐⭐⭐ «ESSA CONTA NÃO TEM CATEGORIA — QUAL É?» — a pergunta do servidor com o
+            gesto de responder ao lado.
+
+            ⚠️ A resposta **grava NA CONTA A PAGAR**, não só nesta linha: a próxima nota do
+            mesmo fornecedor já vem com ela. *O sistema aprende com o gesto, em vez de
+            repetir a mesma pergunta todo mês.*
+          */}
+          {pedeCategoria?.linha.id === l.id && (
+            <div className="rounded-[22px] border-[1.5px] bg-white p-3 dark:bg-slate-950" style={{ borderColor: V3.ambar }}>
+              <p className="px-1 pb-2 text-[12.5px] leading-relaxed" style={{ color: V3.ink }}>
+                {pedeCategoria.texto}
+              </p>
+              <div className="flex flex-wrap items-center gap-2 px-1">
+                <MenuDoChip
+                  rotulo="escolher a categoria" icone="🏷️" ocupado={ocupado === l.id}
+                  className="inline-flex items-center gap-1.5 rounded-full border-[1.5px] px-3 py-[7px] text-[12.5px] font-bold disabled:opacity-40"
+                  style={{ background: V3.card, borderColor: V3.ambar, color: V3.ink }}
+                  secoes={secoesDoMenu(categorias, l.sentido).map((s) => ({
+                    titulo: s.titulo, ajuda: s.ajuda,
+                    itens: s.itens.map((c2) => ({ id: c2.id, nome: c2.name })),
+                  }))}
+                  vazio={VAZIO.categorias(cargas.categorias).texto}
+                  /* ⭐ o MESMO gesto, com a resposta que faltava — nenhum caminho novo */
+                  onEscolher={(id) => { void gesto(l, pedeCategoria.acao, { ...pedeCategoria.alvo, categoryId: id }) }} />
+                <button type="button" onClick={() => setPedeCategoria(null)}
+                  className="rounded-full border px-3 py-[6px] text-[12px] font-bold"
+                  style={{ borderColor: V3.line, color: V3.sub }}>
+                  agora não
+                </button>
+              </div>
             </div>
           )}
 

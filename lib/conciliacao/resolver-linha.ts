@@ -32,7 +32,11 @@ import { recomputeVendasSeVenda } from '@/lib/vendas/recompute-hook'
 import { acaoValePraSentido, sentidoDaLinha, type AcaoDoBalcao } from './caixa-de-entrada'
 import { reconcileTransactions } from './reconcile'
 
-export class ResolverError extends Error {}
+export class ResolverError extends Error {
+  /** ⭐ o código deixa a tela oferecer o gesto certo (ex.: abrir o chip de categoria) */
+  readonly code?: string
+  constructor(message: string, code?: string) { super(message); this.name = 'ResolverError'; this.code = code }
+}
 
 export interface ResolverInput {
   companyId: string
@@ -203,6 +207,33 @@ export async function resolverLinha(input: ResolverInput, db: PrismaClient = def
             : 'Escolha a(s) conta(s) a receber no painel desta linha.',
         )
       }
+      /**
+       * ⛔⛔⛔ NADA SAI DA CAIXA SEM CATEGORIA (20/09) — regra do dono.
+       *
+       * A linha conciliada **HERDA a categoria da conta** (é o que o reconcile já faz). Mas
+       * se a conta casada **não tem categoria**, a linha sairia da caixa sem nenhuma — e a
+       * despesa não apareceria em DRE nenhum. *Resolver é terminar com a linha classificada;
+       * o contrário é empurrar o trabalho pra frente e esquecer dele.*
+       *
+       * ⭐ E a recusa ENSINA, com o `categoryId` do gesto sendo gravado **NA CONTA**: a
+       * próxima nota daquele fornecedor já vem classificada (aprende, não repete a pergunta).
+       */
+      const semCategoria = await db.transaction.findMany({
+        where: { id: { in: contas }, categoryId: null },
+        select: { id: true, description: true },
+      })
+      if (semCategoria.length && !input.categoryId) {
+        throw new ResolverError(
+          `A conta «${semCategoria[0].description ?? 'sem descrição'}» não tem categoria — ` +
+          'diga qual é pra eu conciliar. Ela fica gravada na conta, e a próxima do mesmo fornecedor já vem com ela.',
+          'PEDE_CATEGORIA',
+        )
+      }
+      if (semCategoria.length && input.categoryId) {
+        // ⭐ grava NA CONTA (aprende), não só na linha do banco
+        await db.transaction.updateMany({ where: { id: { in: semCategoria.map((c) => c.id) } }, data: { categoryId: input.categoryId } })
+      }
+
       const grupo = contas.length > 1 ? `caixa-${input.txId}` : null
       for (const contaId of contas) {
         await reconcileTransactions({

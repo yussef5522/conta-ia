@@ -100,3 +100,23 @@ describe('⭐ e a TELA não abre o painel quando já tem a resposta', () => {
     expect(t).toMatch(/contaIds: idsDoAlvo, contaId: undefined/)
   })
 })
+
+describe('⛔⛔⛔ NADA sai da caixa sem categoria', () => {
+  const r = fonte('lib/conciliacao/resolver-linha.ts')
+
+  it('⭐ conta casada SEM categoria faz o confirmar PERGUNTAR', () => {
+    expect(r, 'a linha sairia da caixa sem categoria e a despesa não entraria em DRE nenhum')
+      .toMatch(/categoryId: null[\s\S]{0,400}PEDE_CATEGORIA/)
+  })
+
+  it('⭐⭐ e a resposta grava NA CONTA — aprende, não repete a pergunta', () => {
+    expect(r).toMatch(/transaction\.updateMany\(\{ where: \{ id: \{ in: semCategoria/)
+    expect(r, 'gravar só na linha do banco deixaria a próxima nota do mesmo fornecedor igual')
+      .toMatch(/data: \{ categoryId: input\.categoryId \}/)
+  })
+
+  it('⭐ o code chega na tela pra ela oferecer o chip certo', () => {
+    expect(fonte('app/api/conciliacao/resolver/route.ts')).toMatch(/erro: e\.message, code: e\.code/)
+    expect(fonte('lib/conciliacao/resolver-linha.ts')).toMatch(/readonly code\?: string/)
+  })
+})
