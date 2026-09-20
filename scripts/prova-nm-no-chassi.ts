@@ -42,6 +42,13 @@ async function main() {
     console.log(`   ⛔ o rodapé vivo do N:M                         : ${js.includes('soma crava com o pagamento')}`)
     console.log(`   ⛔ uma linha por vez ("pular pra próxima")      : ${js.includes('pular pra próxima')}`)
     console.log(`   ⛔ um grupo por vez ("abrir o caso")            : ${js.includes('abrir o caso')}`)
+
+    // ⭐⭐ A LIMPEZA DO TOPO (20/09) — os lemas somem, as FUNÇÕES ficam alcançáveis
+    console.log(`   ⛔ lema "o banco diz o que aconteceu…"           : ${js.includes('o banco diz o que aconteceu')}  (tem que ser false)`)
+    console.log(`   ⛔ lema "o banco diz o que saiu…"                : ${js.includes('o banco diz o que saiu')}  (tem que ser false)`)
+    console.log(`   ⭐ o card 💤 LEVA pro Contas a Pagar             : ${js.includes('contas abertas · ver no Contas a Pagar')}`)
+    console.log(`   ⭐ o rodapé discreto tem o ⚙️ mudar               : ${js.includes('⚙️ mudar')}`)
+    console.log(`   ⭐ e o caminho pros sem-par                      : ${js.includes('em aberto sem par')}`)
   }
 
   // ⭐ E a rota que a página chama no load — os cards continuam chegando

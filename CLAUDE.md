@@ -864,6 +864,26 @@ ROTA /escolher-na-mao → 200 · 2 cards (CASPER 2.120,81 e 2.275,05, stone)
 ```
 **4 defeitos repostos, 4 vermelhos** (a faixa fria de volta · o grid no ternário · o rótulo condicional · a navegação removida). **10.592 verdes · TS 0 · deploy 4/4 (`br70Lcw-_mfey_Y9YDl9P`) · Δ bundle +0 KB.**
 
+### ⭐⭐ A LIMPEZA DO TOPO — OS LEMAS SOMEM, AS FUNÇÕES DESCEM (20/09)
+
+**O dono:** *"os subtítulos-lema não ajudam mais (a tela já se explica) e ocupam a primeira dobra — **somem de vez**. E a linha «conciliando a partir de… mudar» + «104 em aberto sem par» SAI da posição atual: está estragando o topo. Mas **a FUNÇÃO não pode morrer**."*
+
+**⛔⛔ E É AÍ QUE ESTE PEDIDO SE DIFERENCIA DE "APAGAR COISA DA TELA":** a régua da casa desde 10/09 é ***remoção sem realocação é perda***. As duas ofertas não sumiram — **mudaram de casa**:
+- o **`RodapeDaTela`** (linha de 11px no FIM da seção) carrega o corte de época com o **⚙️ mudar** e o caminho pros "em aberto sem par";
+- ⭐⭐ e o **card 💤 SEM PAGAMENTO virou LINK de verdade** pro Contas a Pagar. **Ele nunca tinha clicado** — o `Stat` tinha `onClick` na assinatura e o `StatsDoMock` **não passava nenhum**: os três cards eram números decorativos. Agora o 💤 diz pra onde leva (*"contas abertas · ver no Contas a Pagar →"*, o texto que o mock já pedia desde 16/09) — **afordância, não adivinhação** (30/08).
+
+⚠️ **O PORQUÊ DO CORTE NÃO MORREU COM A LINHA:** *"a fila mostrando menos do que existe precisa DIZER por quê"* — a frase virou **`title`**, o mesmo padrão do ⓘ que absorveu a doutrina em 10/09. Ela parou de ocupar a dobra, não de existir.
+
+**⭐ E O `Stat` COM DESTINO É `Link`, NUNCA `onClick` FINGINDO NAVEGAÇÃO** — o que muda é a **tag**, nunca o estilo: um card com visual próprio pro caso "tem link" divergiria no primeiro ajuste de tom.
+
+**⚠️⚠️ REGRA 11 — 4 DEFEITOS REPOSTOS, E O DO CARD 💤 VEIO VERDE:** o guard pedia `toContain('hrefSemPagamento')`; eu tirei o `href` do card **com a declaração da prop intacta** e ele passou. ***"Menção, não uso" pela TERCEIRA vez nesta casa*** (o `acaoValePraSentido` de 15/09, o `respostaDeErroDoEstoque` de 16/09) — apertado pro **uso dentro do bloco do card**. Os outros três morderam de primeira (o lema de volta · o rodapé sem chamador na página · coisa voltando entre os stats e os cards).
+
+**⚠️ 2 GUARDS REAPONTADOS, e um ficou MAIS APERTADO:** o critério da dobra era *"stats + a frase das sem-par, mais nada"*; agora é **só os stats**. E a frase-lema saiu da lista de "textos que o mock imprime" **invertida com o motivo escrito**, não apagada: a **ausência dela** nos dois (mock e tela) é o que o guard afirma.
+
+**PROVADO EM PROD, no bundle servido, nos DOIS viewports.** **10.593 verdes · TS 0.**
+
+⚠️ **E o deploy abortou uma vez por culpa minha:** eu tinha copiado a sonda da prova pro servidor com `scp` (untracked) e depois a commitei — o `git pull` recusou sobrescrever. **O blue-green segurou**: prod seguiu no build anterior, intacto. Limpo com `saferm` (que confere git-tracked antes de apagar) e repetido. *Lição pequena: arquivo que vai virar commit não se adianta por `scp`.*
+
 ### ⛔⛔⛔ ERAM TRÊS SUPERFÍCIES — E A MINHA PROVA MEDIU A ERRADA (20/09)
 
 **O dono, com o print na mão, DEPOIS da minha entrega:** *"a linha FRANCIELE está na caixa COM palpite e botão E o card dela está no PRA TUA MÃO com [Vincular] nas duas linhas. Tua entrega mediu «pares com botão nas duas: NENHUM» — a minha tela mostra o oposto."*
