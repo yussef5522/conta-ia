@@ -113,3 +113,13 @@ describe('⭐ a tela existe e tem PORTA', () => {
     expect(fonte('app/(dashboard)/contas-a-pagar/removidas/page.tsx')).toMatch(/!r\.vencimento && \(/)
   })
 })
+
+describe('⛔⛔ o metadata do audit vem como STRING ou OBJETO', () => {
+  it('⭐ a lixeira dá parse — senão lista "(sem descrição) R$ 0,00" em tudo', () => {
+    const l = fonte('lib/contas-pagar/lixeira.ts')
+    expect(l, 'ler sem parse devolve undefined SEM erro — vazio com cara de "não havia dado"')
+      .not.toMatch(/\(l\.metadata \?\? \{\}\) as MetaDoDelete/)
+    expect(l).toMatch(/function meta\(v: unknown\): MetaDoDelete/)
+    expect(l).toMatch(/JSON\.parse\(v\) as MetaDoDelete/)
+  })
+})

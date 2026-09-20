@@ -56,6 +56,19 @@ interface MetaDoDelete {
   bankAccountId?: unknown; competenceDate?: unknown
 }
 
+/**
+ * ⛔⛔ O `metadata` DO AUDIT VEM COMO STRING **OU** OBJETO (20/09) — e isto foi bug meu,
+ * pego na prova em prod: a lixeira listou *"(sem descrição) R$ 0,00"* em tudo.
+ *
+ * ⚠️ É a mesma classe do `detail` do juiz (17/09): a coluna é `Json`, mas parte das linhas
+ * foi gravada como **texto JSON**. Ler sem parse devolve campos `undefined` — e o pior é
+ * que **não dá erro**: a tela mostra vazio com cara de "não havia dado".
+ */
+function meta(v: unknown): MetaDoDelete {
+  if (typeof v === 'string') { try { return JSON.parse(v) as MetaDoDelete } catch { return {} } }
+  return (v ?? {}) as MetaDoDelete
+}
+
 const str = (v: unknown) => (typeof v === 'string' ? v : null)
 const dat = (v: unknown) => (typeof v === 'string' && v ? new Date(v) : null)
 
@@ -77,7 +90,7 @@ export async function contasRemovidas(
   })
   if (!logs.length) return []
 
-  const metas = logs.map((l) => (l.metadata ?? {}) as MetaDoDelete)
+  const metas = logs.map((l) => meta(l.metadata))
   const fornIds = [...new Set(metas.map((m) => str(m.supplierId)).filter((x): x is string => !!x))]
   const forn = fornIds.length
     ? new Map((await db.supplier.findMany({ where: { id: { in: fornIds } }, select: { id: true, razaoSocial: true, nomeFantasia: true } }))
@@ -175,7 +188,7 @@ export async function restaurarConta(
     select: { metadata: true, entityId: true },
   })
   if (!log) throw new RestaurarError('Não achei o registro dessa remoção.')
-  const m = (log.metadata ?? {}) as MetaDoDelete
+  const m = meta(log.metadata)
 
   const venc = input.dueDate ?? dat(m.dueDate)
   if (!venc) {
