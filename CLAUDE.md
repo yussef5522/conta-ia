@@ -785,6 +785,35 @@ REGRA 12 — celular e desktop: PAGE 200 · code no bundle ✓ · chip ✓ · "a
 ```
 **REGRA 11 — 3 defeitos repostos, 1 vermelho cada** (a recusa removida · a resposta não gravando na conta · a tela voltando a só pintar vermelho). ⚠️ **E um guard de 18/09 foi REAPONTADO, não afrouxado:** ele contava `<MenuDoChip` no **arquivo** (== 3) e quebrou **com a tela certa**, porque o painel da pergunta desenha um 4º menu **fora do cartão** — e ele não é a mesma pergunta duas vezes. A régua continua *"o CARTÃO desenha os chips uma vez só"*; o que mudou é que ela passou a ser feita **ao cartão**. **10.512 verdes · TS 0 · deploys `fzOljl6Al8zyKA7n-cX39` e `cUkptofC-Qa2EAeHr74Jg`, os dois 4/4 · Δ bundle +0 KB.**
 
+### ⛔⛔⛔ E A LIXEIRA ESTREOU COM CARREGANDO ETERNO — **O FETCH QUE NÃO SAI** (20/09)
+
+**O dono, na estreia:** *"abro a tela e fica «carregando…» pra sempre — nada aparece, nem erro. (…) O guard de família claramente não cobria a tela nova — **TELA NOVA NASCE COM O GUARD**."*
+
+**⭐ AS TRÊS HIPÓTESES DELE CAÍRAM NA MEDIÇÃO — e o que sobrou é pior:** a rota respondeu **200 em 104 ms com 19 KB e as 42 removidas**, e a página **200 nos dois viewports**. Não era 500, nem payload grande, nem parse quebrado. ***O fetch nunca aconteceu.***
+
+**A CAUSA, provada no header real de prod:** a tela descobria a empresa com `document.cookie.match(/current_empresa_id=…/)` — e esse cookie é **`httpOnly`** desde o Sprint 4.0.5.b (`Set-Cookie: current_empresa_id=…; HttpOnly`). `document.cookie` **nunca** o enxerga → `empresaId` ficava `''` → `if (!empresaId) return` → o estado nunca saía de `undefined`. ⚠️ E a rota, chamada sem `empresaId`, devolvia **403** — dois defeitos na mesma linha: o cliente não podia saber a empresa, e o servidor exigia que ele soubesse.
+
+**⚠️⚠️ E O `fetchComTimeout` ESTAVA INSTALADO — ele não tinha como morder.** O guard de 14/09 cobre ***fetch que não VOLTA***; este é ***fetch que não SAI***, e **nenhum teto de tempo alcança uma requisição que não aconteceu**. ⭐ **A régua que fica:** ***estado de carregamento refém de um pré-requisito que pode nunca chegar é spinner eterno com outro nome.***
+
+**A CURA, em três camadas:** a tela usa a **porta única `useEmpresa()`** (inventar um 2º jeito de saber a empresa foi o erro — e ele nem podia funcionar) · o estado virou **EXPLÍCITO** (`CARREGANDO | SEM_EMPRESA | FALHOU | OK`), porque *enquanto "ausência de dado" servir de estado, o caso não previsto vira spinner* · e a **rota resolve a empresa do cookie no SERVIDOR**, pela mesma porta das páginas globais (*o fallback resolve QUEM, nunca afrouxa o SE* — a permissão segue checada contra a empresa resolvida).
+
+**⭐ O GUARD DE FAMÍLIA FOI ESTENDIDO, não duplicado** (2 detectores novos no arquivo de 14/09): **(1)** nenhuma tela lê cookie `httpOnly` no cliente; **(2)** nenhum carregamento automático tem `return` antes do fetch **sem tocar no estado**. ⚠️ A restrição *"carregamento automático"* não é folga: sem ela o detector acusava **5 telas sadias** onde o early-return é de **GESTO** (`if (!file) return` num "gerar preview" está certo — o dono ainda não escolheu o arquivo) — *alarme falso no dia 1 é como um guard morre*.
+
+**⭐⭐ E O DETECTOR ACHOU UMA 2ª INSTÂNCIA QUE NINGUÉM TINHA REPORTADO:** o **`historico-table`** da conciliação tinha o **mesmo** `if (!empresaId) return` com `loading` nascendo `true` — *"Carregando..."* pra sempre — **e** o `if (res.ok)` **sem else** (o padrão banido em 06/08), que fazia um 500 virar lista vazia. Foi junto.
+
+**⚠️⚠️ REGRA 11 PEGOU O GUARD DUAS VEZES, e o furo é uma lição por si:** repondo o defeito no `historico-table` ele passou **verde** — o detector procurava **`fetch(` literal** e o padrão da casa é **`fetchComTimeout(`** (`'fetchComTimeout('.includes('fetch(')` é **false**). ***O guard nascia cego justamente nas telas que seguem a régua.*** Alargado pra `fetch*`, ele **ainda** passou: a chamada real é **`fetchComTimeout<{ items: … }>(`**, com o **genérico entre o nome e o parêntese**. Só na 3ª versão mordeu (2 vermelhos). ⚠️ O detector de 14/09 tinha **o mesmo furo** e foi corrigido junto — varredura do app inteiro depois: **0 violações**.
+
+**PROVADO EM PROD, nos dois viewports:**
+```
+celular  PAGE 200 em 749ms · rota 200 em 254ms · 42 removidas
+desktop  PAGE 200 em 287ms · rota 200 em 104ms · 42 removidas
+  ⛔ document.cookie: SUMIU ✓ · useEmpresa ✓ · "tentar de novo" ✓ · sem-empresa ✓
+  porDia: 14/09=1 · 13/09=26 · 09/09=4 · 02/09=1 · 14/08=1 · 09/08=2 · 24/06=7
+ROTA DERRUBADA (empresa inexistente) → HTTP 403 → estado FALHOU + "tentar de novo"
+SEM empresaId na URL → HTTP 200 · 42 removidas   (antes: 403 mudo)
+```
+**10.521 verdes · TS 0 · deploy `dXMGy5iJz6E62i2yKiBUs` 4/4 · Δ bundle +4 KB.** ⚠️ Uma sonda minha marcou o timeout como ausente no bundle — era a frase montada por template, que o minificador parte; conferido por `TempoEsgotado` (4 chunks).
+
 📋 **FICA PRO DONO (REGRA 2, o clique é dele):** abrir a lixeira e reconhecer o que sumiu (restaurar o que faltar — o aviso de duplicata mostra as duas lado a lado), e conciliar uma nota pra ver a pergunta da categoria aparecer e **ficar gravada na conta**.
 
 
