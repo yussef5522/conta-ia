@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Radar do Estoque — mock v1 (20/09/2026)</title>
+<!--
+  ⭐⭐⭐ RADAR DO ESTOQUE — MOCK VERSIONADO DA CASA (20/09/2026)
+
+  **O desenho aprovado pelo dono, em duas telas:** o AvT (Real vs Teórico) diário na
+  língua da cozinha — *"ontem pra hoje, sumiram R$ X"* — com a CONTA DE PADEIRO atrás de
+  cada linha.
+
+  ⚠️ **ESTE ARQUIVO É A RÉGUA** (a disciplina de 10/09): enquanto o desenho viver só em
+  palavras, *"igual ao mock"* é memória minha — e memória foi o que falhou nas duas voltas
+  da Conciliação. Versionado, ele é DADO: o guard lê o `:root{}` e as medidas daqui.
+
+  ⭐ **OS NOMES E OS CUSTOS SÃO REAIS** (lidos da Caçula em 20/09, read-only): queijo
+  mussarela 30,95/kg · coxão mole 48,23/kg · calabresa 18,14/kg · filé de frango 16,25/kg
+  · bacon 31,38/kg · porção de queijo 4,21/un · porção de coxão 8,21/un. Mock com nome
+  inventado faz o dono aprovar uma tela que ele nunca vai ver.
+
+  ⛔ **OS NÚMEROS DE VARIÂNCIA SÃO ILUSTRATIVOS** — eles só existem de verdade quando a
+  FASE 2 rodar a porta única contra as contagens. Estão aqui pra o dono julgar o DESENHO,
+  e estão marcados no rodapé pra ninguém os citar como medição.
+
+  ⚠️ **DOIS VIEWPORTS NUM ARQUIVO SÓ, por `@container`:** o botão 📱/🖥 troca a largura do
+  container, então o dono vê o layout do computador NO CELULAR. Na tela real o container
+  É a página, então lá o Tailwind usa `min-[900px]:` (media query) — **o número 900 é o
+  mesmo dos dois lados**, e é ele que o guard confere.
+-->
+<style>
+  /* ═══ TOKENS — os mesmos do mock v3 da Conciliação (a casa tem UMA paleta) ═══ */
+  :root{
+    --bg:#f6f5fb; --card:#fff; --ink:#171a26; --sub:#7b8194; --line:#eae9f2;
+    --roxo:#534AB7; --roxo2:#6f63d8; --roxo-bg:#efedfb;
+    --verde:#0f9d58; --verde2:#12b768; --verde-bg:#e7f7ee;
+    --coral:#e5484d; --coral-bg:#fdecec;
+    --ambar:#c47b0a; --ambar-bg:#fdf3e0;
+    --azul:#2563eb; --azul-bg:#e8effd;
+    --sombra:0 1px 2px rgba(23,26,38,.05),0 8px 28px rgba(83,74,183,.08);
+    --sombra-up:0 2px 4px rgba(23,26,38,.06),0 16px 44px rgba(83,74,183,.14);
+    /* ⭐ o CINZA do "falta contar" — é estado próprio, nunca um verde pálido */
+    --mudo:#94a0b8; --mudo-bg:#f1f3f8;
+  }
+  /*
+    ⭐⭐ DARK MODE — os tokens trocam, o DESENHO não. ⚠️ Só as VARIÁVEIS são redefinidas:
+    componente que pinta cor literal fora do token fica com a cor do tema errado, e foi
+    assim que meia dúzia de telas nasceram ilegíveis em dark em outros projetos.
+  */
+  @media (prefers-color-scheme: dark){
+    :root:not([data-tema="claro"]){
+      --bg:#101119; --card:#191b25; --ink:#eceef6; --sub:#949bb0; --line:#282b39;
+      --roxo:#8b80f0; --roxo2:#a89df7; --roxo-bg:#241f45;
+      --verde:#3ecf8e; --verde2:#2fbd7c; --verde-bg:#12301f;
+      --coral:#ff6b6f; --coral-bg:#341a1d;
+      --ambar:#e8a33d; --ambar-bg:#332612;
+      --azul:#6ea8fe; --azul-bg:#16243f;
+      --sombra:0 1px 2px rgba(0,0,0,.4),0 8px 28px rgba(0,0,0,.35);
+      --sombra-up:0 2px 4px rgba(0,0,0,.45),0 16px 44px rgba(0,0,0,.5);
+      --mudo:#7c879e; --mudo-bg:#20232e;
+    }
+  }
+  :root[data-tema="escuro"]{
+    --bg:#101119; --card:#191b25; --ink:#eceef6; --sub:#949bb0; --line:#282b39;
+    --roxo:#8b80f0; --roxo2:#a89df7; --roxo-bg:#241f45;
+    --verde:#3ecf8e; --verde2:#2fbd7c; --verde-bg:#12301f;
+    --coral:#ff6b6f; --coral-bg:#341a1d;
+    --ambar:#e8a33d; --ambar-bg:#332612;
+    --azul:#6ea8fe; --azul-bg:#16243f;
+    --sombra:0 1px 2px rgba(0,0,0,.4),0 8px 28px rgba(0,0,0,.35);
+    --sombra-up:0 2px 4px rgba(0,0,0,.45),0 16px 44px rgba(0,0,0,.5);
+    --mudo:#7c879e; --mudo-bg:#20232e;
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:-apple-system,'Inter',BlinkMacSystemFont,'Segoe UI',sans-serif;
+       background:var(--bg);color:var(--ink);padding:18px 14px 50px;
+       -webkit-font-smoothing:antialiased;}
+  .app{max-width:1180px;margin:0 auto;container-type:inline-size;}
+  .app.celular{max-width:430px;}
+  b,strong{font-weight:800;}
+  .num{font-variant-numeric:tabular-nums;}
+
+  /* ═══ BARRA DE DEMONSTRAÇÃO (só do mock, não existe na tela) ═══ */
+  .demo{display:flex;gap:6px;justify-content:flex-end;margin-bottom:12px;}
+  .demo button{border:1px solid var(--line);background:var(--card);color:var(--sub);
+               border-radius:99px;padding:5px 11px;font-size:11.5px;font-weight:700;cursor:pointer;}
+  .demo button.on{border-color:var(--roxo);color:var(--roxo);background:var(--roxo-bg);}
+
+  /* ═══ CABEÇALHO ═══ */
+  .topo{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:12px;}
+  h1{font-size:21px;letter-spacing:-.01em;}
+  .fluxo{display:flex;gap:6px;font-size:11px;color:var(--sub);font-weight:600;align-items:center;flex-wrap:wrap;}
+  .fluxo b{background:var(--roxo-bg);color:var(--roxo);border-radius:99px;padding:3px 10px;}
+
+  /* ═══ PERÍODO (pílulas) ═══ */
+  .periodo{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;margin-bottom:14px;
+           scrollbar-width:none;}
+  .periodo::-webkit-scrollbar{display:none;}
+  .pil{white-space:nowrap;border:1.5px solid var(--line);background:var(--card);color:var(--sub);
+       border-radius:99px;padding:7px 14px;font-size:12.5px;font-weight:700;cursor:pointer;}
+  .pil.on{border-color:var(--roxo);background:var(--roxo);color:#fff;}
+  .pil.data{color:var(--roxo);border-style:dashed;}
+
+  /* ═══ PLACAR ═══ */
+  .placar{background:var(--card);border:1px solid var(--line);border-radius:22px;
+          box-shadow:var(--sombra);padding:20px;margin-bottom:12px;}
+  .placar .frase{font-size:13px;color:var(--sub);font-weight:600;}
+  /* ⭐ UM número grande — é a pergunta da tela, e de longe é a única coisa que precisa ser legível */
+  .placar .n{font-size:40px;font-weight:800;letter-spacing:-.02em;margin:2px 0 4px;line-height:1.05;}
+  .placar .n.faltou{color:var(--coral);} .placar .n.sobrou{color:var(--verde);} .placar .n.bateu{color:var(--verde);}
+  .placar .miuda{font-size:12px;color:var(--sub);}
+  .placar .miuda b{color:var(--ink);}
+
+  /* ═══ GRÁFICOS (só no computador) ═══ */
+  .graficos{display:none;}
+  .g-card{background:var(--card);border:1px solid var(--line);border-radius:18px;
+          box-shadow:var(--sombra);padding:16px 18px;}
+  .g-rot{font-size:10px;font-weight:800;letter-spacing:.07em;color:var(--sub);margin-bottom:12px;}
+  /* barras dos 7 dias — flat, sem gradiente nem sombra */
+  .barras{display:flex;align-items:flex-end;gap:8px;height:96px;}
+  .barras .d{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:5px;height:100%;}
+  .barras .b{width:100%;border-radius:6px 6px 3px 3px;}
+  .barras .b.neg{background:var(--coral);} .barras .b.pos{background:var(--verde);}
+  .barras .b.vazio{background:var(--mudo-bg);border:1px dashed var(--line);}
+  .barras .dia{font-size:10px;color:var(--sub);font-weight:700;}
+  .pior{margin-top:10px;font-size:11.5px;color:var(--sub);}
+  .pior b{color:var(--coral);}
+  /* barras horizontais do "onde escapou" */
+  .escapou{display:flex;flex-direction:column;gap:9px;}
+  .escapou .l{display:grid;grid-template-columns:1fr auto;gap:4px 10px;align-items:center;}
+  .escapou .nm{font-size:12.5px;font-weight:700;grid-column:1;}
+  .escapou .vl{font-size:12.5px;font-weight:800;grid-column:2;}
+  .escapou .tr{grid-column:1 / -1;height:8px;border-radius:99px;background:var(--mudo-bg);overflow:hidden;}
+  .escapou .tr i{display:block;height:100%;border-radius:99px;}
+
+  /* ═══ BLOCOS (os caros · porções) ═══ */
+  .blocos{display:flex;flex-direction:column;gap:12px;}
+  .bloco{background:var(--card);border:1px solid var(--line);border-radius:18px;
+         box-shadow:var(--sombra);overflow:hidden;}
+  .b-cab{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px 10px;}
+  .b-cab .t{font-size:10px;font-weight:800;letter-spacing:.07em;color:var(--sub);}
+  .b-cab .t small{display:block;font-size:11px;font-weight:600;letter-spacing:0;text-transform:none;margin-top:3px;}
+  .mais{border:1.5px dashed var(--line);background:none;color:var(--roxo);border-radius:99px;
+        padding:5px 11px;font-size:11.5px;font-weight:700;cursor:pointer;white-space:nowrap;}
+
+  /* ⭐ A LINHA-VEREDITO: nome à esquerda, veredito EM DINHEIRO à direita. Uma linha fechada. */
+  .linha{display:flex;align-items:center;gap:10px;width:100%;border:0;background:none;
+         border-top:1px solid var(--line);padding:12px 16px;text-align:left;cursor:pointer;color:inherit;font:inherit;}
+  .linha:hover{background:var(--roxo-bg);}
+  .linha .nm{flex:1;min-width:0;font-size:13.5px;font-weight:700;
+             overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .linha .nm small{display:block;font-size:11px;font-weight:500;color:var(--sub);}
+  /* o veredito é PÍLULA: cor = semáforo semântico, nunca decoração */
+  .ver{white-space:nowrap;border-radius:99px;padding:4px 11px;font-size:12.5px;font-weight:800;}
+  .ver.grande{background:var(--coral-bg);color:var(--coral);}
+  .ver.pequeno{background:var(--ambar-bg);color:var(--ambar);}
+  .ver.ok{background:var(--verde-bg);color:var(--verde);}
+  /* ⛔ dia sem contagem NUNCA mostra variância inventada — é estado próprio, cinza */
+  .ver.mudo{background:var(--mudo-bg);color:var(--mudo);}
+  .seta{color:var(--sub);font-size:12px;}
+
+  /* ═══ A CONTA DE PADEIRO ═══ */
+  .conta{border-top:1px solid var(--line);background:var(--roxo-bg);padding:14px 16px 16px;}
+  .conta table{width:100%;border-collapse:collapse;font-size:13px;}
+  .conta td{padding:6px 0;}
+  .conta td.v{text-align:right;font-variant-numeric:tabular-nums;font-weight:700;white-space:nowrap;}
+  .conta td.r{text-align:right;font-variant-numeric:tabular-nums;color:var(--sub);
+              white-space:nowrap;padding-left:10px;font-size:12px;}
+  .conta tr.tot td{border-top:1.5px solid var(--line);padding-top:9px;font-weight:800;}
+  .conta tr.res td{border-top:2px solid var(--coral);padding-top:9px;font-weight:800;color:var(--coral);font-size:14.5px;}
+  .conta tr.res.ok td{border-top-color:var(--verde);color:var(--verde);}
+  .conta .rot{color:var(--sub);}
+  .conta .rot b{color:var(--ink);}
+  .verlink{display:inline-block;margin-top:12px;font-size:12.5px;font-weight:700;color:var(--roxo);text-decoration:none;}
+
+  /* ═══ RODAPÉ HONESTO ═══ */
+  .honesto{margin-top:16px;padding:0 4px;font-size:11px;color:var(--sub);line-height:1.5;}
+
+  /* ═══════════ COMPUTADOR — @container, ver o comentário do topo ═══════════ */
+  @container (min-width:900px){
+    h1{font-size:23px;}
+    .graficos{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;}
+    .placar{display:flex;align-items:center;gap:26px;}
+    .placar .lado{flex:1;}
+    .placar .barras-wrap{flex:1.1;}
+    .blocos{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start;}
+    /* ⚠️ no computador o placar já mora dentro do bloco de gráficos */
+    .placar.solo{display:none;}
+  }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+
+  <!-- ⚠️ ESTA BARRA NÃO EXISTE NA TELA — é só pro dono ver os dois viewports e os dois
+       temas no aparelho que ele tiver na mão. -->
+  <div class="demo">
+    <button id="bt-vp" onclick="vp()">📱 ver como celular</button>
+    <button id="bt-tema" onclick="tema()">🌙 tema escuro</button>
+  </div>
+
+  <div class="topo">
+    <div>
+      <h1>Radar do estoque</h1>
+    </div>
+    <div class="fluxo"><b>COMPRA</b><span>→</span><b>PRODUÇÃO</b><span>→</span><b>VENDA</b><span>→</span><b>CONTAGEM</b></div>
+  </div>
+
+  <!-- ═══ PERÍODO ═══ -->
+  <div class="periodo">
+    <div class="pil on">ontem → hoje</div>
+    <div class="pil">7 dias</div>
+    <div class="pil">setembro</div>
+    <div class="pil data">📅 escolher datas</div>
+  </div>
+
+  <!-- ═══ PLACAR (celular) ═══ -->
+  <div class="placar solo">
+    <div class="frase">de ontem pra hoje, sumiram</div>
+    <div class="n faltou num">R$ 184,20</div>
+    <div class="miuda"><b>29</b> itens contados de <b>30</b> · quase todo no <b>queijo mussarela</b></div>
+  </div>
+
+  <!-- ═══ COMPUTADOR: placar + os dois gráficos ═══ -->
+  <div class="graficos">
+    <div class="g-card">
+      <div class="g-rot">DE ONTEM PRA HOJE</div>
+      <div class="placar" style="border:0;box-shadow:none;padding:0;margin:0;">
+        <div class="lado">
+          <div class="frase">sumiram</div>
+          <div class="n faltou num">R$ 184,20</div>
+          <div class="miuda"><b>29</b> de <b>30</b> contados</div>
+        </div>
+        <div class="barras-wrap">
+          <div class="barras">
+            <div class="d"><div class="b neg" style="height:38%"></div><div class="dia">seg</div></div>
+            <div class="d"><div class="b pos" style="height:16%"></div><div class="dia">ter</div></div>
+            <div class="d"><div class="b neg" style="height:62%"></div><div class="dia">qua</div></div>
+            <div class="d"><div class="b vazio" style="height:10%"></div><div class="dia">qui</div></div>
+            <div class="d"><div class="b neg" style="height:100%"></div><div class="dia">sex</div></div>
+            <div class="d"><div class="b pos" style="height:22%"></div><div class="dia">sáb</div></div>
+            <div class="d"><div class="b neg" style="height:55%"></div><div class="dia">hoje</div></div>
+          </div>
+          <!-- ⚠️ a barra VAZIA tracejada é dia SEM contagem — nunca uma barra de valor zero,
+               que se leria como "bateu certinho" -->
+          <div class="pior">pior foi <b>sexta (R$ 331,80)</b> · quinta sem contagem</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="g-card">
+      <div class="g-rot">ONDE O DINHEIRO ESCAPOU HOJE</div>
+      <div class="escapou">
+        <div class="l">
+          <span class="nm">QUEIJO MUSSARELA EM PEÇA</span><span class="vl" style="color:var(--coral)">R$ 118,40</span>
+          <span class="tr"><i style="width:100%;background:var(--coral)"></i></span>
+        </div>
+        <div class="l">
+          <span class="nm">porção de queijo 135g</span><span class="vl" style="color:var(--coral)">R$ 46,31</span>
+          <span class="tr"><i style="width:39%;background:var(--coral)"></i></span>
+        </div>
+        <div class="l">
+          <span class="nm">Coxão Mole</span><span class="vl" style="color:var(--ambar)">R$ 38,60</span>
+          <span class="tr"><i style="width:33%;background:var(--ambar)"></i></span>
+        </div>
+        <div class="l">
+          <span class="nm">porção de coxão 80g</span><span class="vl" style="color:var(--ambar)">R$ 24,63</span>
+          <span class="tr"><i style="width:21%;background:var(--ambar)"></i></span>
+        </div>
+      </div>
+      <div class="pior">as 4 somam <b>R$ 227,94</b> · o bacon sobrou R$ 12,10 e abate</div>
+    </div>
+  </div>
+
+  <!-- ═══ OS DOIS BLOCOS ═══ -->
+  <div class="blocos">
+
+    <!-- ───────── OS CAROS ───────── -->
+    <section class="bloco">
+      <div class="b-cab">
+        <div class="t">💰 OS CAROS<small>matéria-prima que você escolheu vigiar</small></div>
+        <button class="mais">+ adicionar</button>
+      </div>
+
+      <!-- ⭐ ORDEM: quem faltou mais DINHEIRO primeiro (régua mundial: R$, não %) -->
+      <button class="linha">
+        <span class="nm">QUEIJO MUSSARELA EM PEÇA<small>30,95/kg · contado hoje 14:20</small></span>
+        <span class="ver grande num">faltou R$ 118,40</span><span class="seta">▾</span>
+      </button>
+
+      <!-- ⭐⭐ A CONTA DE PADEIRO — aberta pra o dono julgar o desenho -->
+      <div class="conta">
+        <table>
+          <tr><td class="rot">tinha ontem</td><td class="v num">62,400 KG</td><td class="r num">R$ 1.931,28</td></tr>
+          <tr><td class="rot">comprou <b>1 nota</b></td><td class="v num">+ 40,000 KG</td><td class="r num">R$ 1.238,00</td></tr>
+          <tr><td class="rot">vendeu <small>(pelas fichas)</small></td><td class="v num">− 38,200 KG</td><td class="r num">R$ 1.182,29</td></tr>
+          <tr><td class="rot">perdas lançadas</td><td class="v num">− 0,000 KG</td><td class="r num">R$ 0,00</td></tr>
+          <tr class="tot"><td class="rot"><b>DEVIA TER</b></td><td class="v num">64,200 KG</td><td class="r num">R$ 1.987,00</td></tr>
+          <tr><td class="rot"><b>CONTAMOS</b></td><td class="v num">60,375 KG</td><td class="r num">R$ 1.868,60</td></tr>
+          <tr class="res"><td class="rot">FALTOU</td><td class="v num">− 3,825 KG</td><td class="r num" style="color:inherit">− R$ 118,40</td></tr>
+        </table>
+        <a class="verlink" href="#">ver cada movimento →</a>
+      </div>
+
+      <button class="linha">
+        <span class="nm">Coxão Mole<small>48,23/kg · contado hoje 14:22</small></span>
+        <span class="ver pequeno num">faltou R$ 38,60</span><span class="seta">▸</span>
+      </button>
+      <button class="linha">
+        <span class="nm">BACON<small>31,38/kg · contado hoje 14:25</small></span>
+        <span class="ver ok num">sobrou R$ 12,10</span><span class="seta">▸</span>
+      </button>
+      <button class="linha">
+        <span class="nm">CALABRESA<small>18,14/kg · contado hoje 14:26</small></span>
+        <span class="ver ok">✓ bateu</span><span class="seta">▸</span>
+      </button>
+      <!-- ⛔ SEM CONTAGEM = estado próprio. Mostrar "R$ 0,00" aqui seria inventar que bateu. -->
+      <button class="linha">
+        <span class="nm">FILÉ DE PEITO DE FRANGO<small>16,25/kg · última contagem 18/09</small></span>
+        <span class="ver mudo">falta contar hoje</span><span class="seta">▸</span>
+      </button>
+    </section>
+
+    <!-- ───────── PORÇÕES ───────── -->
+    <section class="bloco">
+      <div class="b-cab">
+        <div class="t">🍳 PORÇÕES<small>o que a cozinha produz — em unidades</small></div>
+        <button class="mais">editar lista</button>
+      </div>
+
+      <button class="linha">
+        <span class="nm">porção de queijo 135 grama<small>4,21/un · 11 un a menos</small></span>
+        <span class="ver grande num">faltou R$ 46,31</span><span class="seta">▸</span>
+      </button>
+      <button class="linha">
+        <span class="nm">porção de coxão 80 grama<small>8,21/un · 3 un a menos</small></span>
+        <span class="ver pequeno num">faltou R$ 24,63</span><span class="seta">▸</span>
+      </button>
+      <button class="linha">
+        <span class="nm">beef de xis<small>5,11/un · 2 un a mais</small></span>
+        <span class="ver ok num">sobrou R$ 10,22</span><span class="seta">▸</span>
+      </button>
+      <button class="linha">
+        <span class="nm">porção de calabresa 120 grama<small>2,34/un</small></span>
+        <span class="ver ok">✓ bateu</span><span class="seta">▸</span>
+      </button>
+      <button class="linha">
+        <span class="nm">porção de bacon 80 grama<small>5,05/un · última contagem 19/09</small></span>
+        <span class="ver mudo">falta contar hoje</span><span class="seta">▸</span>
+      </button>
+    </section>
+  </div>
+
+  <!--
+    ⭐⭐ A HONESTIDADE NO RODAPÉ (exigência do dono): o Radar APONTA, não fecha.
+    ⚠️ E a 2ª linha é a que separa este mock de uma medição: os números de variância aqui
+    são ilustrativos — os reais nascem na FASE 2, da porta única contra as contagens.
+  -->
+  <div class="honesto">
+    O radar aponta <b>onde o dinheiro escapa</b> — não é fechamento contábil.<br>
+    Item sem contagem no período aparece como <b>“falta contar”</b>, nunca como zero.<br>
+    <span style="opacity:.7">mock · números de variância ILUSTRATIVOS · nomes e custos lidos da Caçula em 20/09</span>
+  </div>
+</div>
+
+<script>
+  // ⚠️ só a demonstração: a tela real não tem nenhum destes dois botões.
+  function vp(){
+    const a=document.getElementById('app'), b=document.getElementById('bt-vp');
+    const cel=a.classList.toggle('celular');
+    b.classList.toggle('on',cel);
+    b.textContent=cel?'🖥 ver como computador':'📱 ver como celular';
+  }
+  function tema(){
+    const r=document.documentElement, b=document.getElementById('bt-tema');
+    const escuro=r.getAttribute('data-tema')==='escuro';
+    r.setAttribute('data-tema',escuro?'claro':'escuro');
+    b.classList.toggle('on',!escuro);
+    b.textContent=escuro?'🌙 tema escuro':'☀️ tema claro';
+  }
+</script>
+</body>
+</html>
