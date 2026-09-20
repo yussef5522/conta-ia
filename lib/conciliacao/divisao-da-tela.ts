@@ -64,6 +64,6 @@ export async function divisaoDaTela(
       }),
     })
   } catch {
-    return { linhas: new Map(), contasQueMoramNaCaixa: new Set() }
+    return { linhas: new Map(), contasQueMoramNaCaixa: new Set(), casos: new Map(), anfitriaDoCaso: new Map() }
   }
 }

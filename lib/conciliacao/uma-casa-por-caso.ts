@@ -59,14 +59,33 @@ export interface CasoDaLinha {
   motivo?: MotivoDoCard
   nomeDoCaso?: string
   ancora?: string
+  /** a conta do caso — é ela que reúne as N candidatas */
+  contaDoCaso?: string
+  /** ⭐ esta linha HOSPEDA o painel do caso? (só uma hospeda; as outras apontam) */
+  hospeda?: boolean
 }
 
 export interface Divisao {
   /** por linha da caixa: quem é o dono da decisão */
   linhas: Map<string, CasoDaLinha>
   /**
-   * ⭐ as contas cujo par mora na CAIXA — a fila **não pode** desenhar botão pra elas.
-   * ⛔ É esta metade que faltava: sem ela, o 1↔1 aparecia nos dois lugares.
+   * ⭐⭐ O CASO INTEIRO, por conta — pra ele ser **renderizado DENTRO do cartão ≍** em vez
+   * de virar seção separada (régua do dono, 20/09: *"uma decisão aparece UMA vez na página,
+   * SEMPRE no mesmo modelo visual"*).
+   */
+  casos: Map<string, SugestaoDaConta>
+  /**
+   * ⭐ qual linha de cada caso **hospeda** o painel. As outras dizem "parte do caso acima".
+   * ⛔ Sem isso, um caso com 2 linhas na caixa renderizaria o mesmo painel duas vezes —
+   * a duplicação de novo, agora dentro do modelo certo.
+   */
+  anfitriaDoCaso: Map<string, string>
+  /**
+   * ⭐ as contas cujo caso mora na CAIXA — a fila **não pode** desenhar botão pra elas.
+   *
+   * ⛔ São DUAS famílias: o **1↔1** (o palpite resolve na própria linha) e o **ambíguo
+   * HOSPEDADO** (o painel do caso renderiza dentro do cartão ≍ da linha anfitriã). O que
+   * sobra pra fila é o caso **sem nenhuma linha na caixa** — que, sem ela, ficaria invisível.
    */
   contasQueMoramNaCaixa: Set<string>
 }
@@ -89,6 +108,8 @@ export function dividir(entrada: {
   const porConta = new Map(entrada.sugestoesPorConta.map((s) => [s.contaId, s]))
   const linhas = new Map<string, CasoDaLinha>()
   const contasQueMoramNaCaixa = new Set<string>()
+  const casos = new Map<string, SugestaoDaConta>()
+  const anfitriaDoCaso = new Map<string, string>()
 
   for (const p of entrada.palpites) {
     if (!p.contaIds.length) { linhas.set(p.linhaId, { casa: 'CAIXA' }); continue }
@@ -101,10 +122,22 @@ export function dividir(entrada: {
     const s = porConta.get(contaId)
     // ⭐⭐ O CASO É DA FILA: 2+ linhas oferecidas pra mesma conta → a caixa só APONTA
     if (s && s.linhaIds.length > 1) {
+      casos.set(contaId, s)
+      // ⭐ a PRIMEIRA linha do caso que aparece hospeda o painel; as outras apontam pra ela
+      if (!anfitriaDoCaso.has(contaId)) anfitriaDoCaso.set(contaId, p.linhaId)
+      /**
+       * ⭐⭐⭐ O CASO HOSPEDADO **SAI DA FILA** (20/09) — ele passou a morar DENTRO do
+       * cartão ≍ daquela linha. ⛔ Sem isto, a mesma decisão apareceria no cartão **e** na
+       * seção de baixo: foi exatamente o que o dono viu, *"a mesma coisa duas vezes, em
+       * dois MODELOS visuais diferentes"*.
+       */
+      contasQueMoramNaCaixa.add(contaId)
       linhas.set(p.linhaId, {
         casa: 'FILA', motivo: 'AMBIGUO',
         nomeDoCaso: s.nomeDaConta || p.nomeDoCaso,
         ancora: ancoraDoPar(contaId),
+        contaDoCaso: contaId,
+        hospeda: anfitriaDoCaso.get(contaId) === p.linhaId,
       })
       continue
     }
@@ -118,7 +151,7 @@ export function dividir(entrada: {
     linhas.set(p.linhaId, { casa: 'CAIXA' })
     if (s && s.linhaIds.length === 1 && s.linhaIds[0] === p.linhaId) contasQueMoramNaCaixa.add(contaId)
   }
-  return { linhas, contasQueMoramNaCaixa }
+  return { linhas, contasQueMoramNaCaixa, casos, anfitriaDoCaso }
 }
 
 /**
@@ -133,9 +166,20 @@ export const aCaixaDesenhaBotao = (c: CasoDaLinha | undefined, temAlvo: boolean)
 
 export const aFilaDesenhaBotao = (contaId: string, d: Divisao) => !d.contasQueMoramNaCaixa.has(contaId)
 
-/** ⛔ CAIXA e FILA já são donas do caso — o card só desenha o que sobra (lote N:M) */
+/**
+ * ⛔ CAIXA e FILA já são donas do caso — o card só desenha o que sobra (lote N:M).
+ *
+ * ⛔⛔⛔ **O `?? 'CAIXA'` ESCONDEU O CASPER** (achado pelo dono em 20/09): a linha dele
+ * **não está na caixa** (é de 04/09, já categorizada), então a divisão **não a conhece** —
+ * e o default tratava "desconhecida" como *"a caixa é dona"*. Resultado: o card sumiu e o
+ * caso ficou **invisível na página inteira**. ***É o "some dos dois" que esta própria régua
+ * proíbe, cometido pelo default dela.***
+ *
+ * ⭐ O default seguro é **APARECER**: quem a divisão não conhece não foi reivindicado por
+ * ninguém, então o card desenha. *Duplicar é feio; sumir é perder trabalho.*
+ */
 export const oCardDesenhaBotao = (c: CasoDaLinha | undefined, veioPelaPorta: boolean) =>
-  veioPelaPorta || !['CAIXA', 'FILA'].includes(c?.casa ?? 'CAIXA')
+  veioPelaPorta || !c || !['CAIXA', 'FILA'].includes(c.casa)
 
 /** ⭐ a frase que a linha da caixa imprime quando o caso mora no card */
 export function fraseDoCasoNoCard(c: CasoDaLinha): string {

@@ -26,6 +26,7 @@ import { estadoDoSeletor, podeDisparar, AVISO_CATEGORIA } from '@/lib/conciliaca
 import type { AcaoDoBalcao } from '@/lib/conciliacao/caixa-de-entrada'
 import { nomeDaBusca } from '@/lib/conciliacao/nome-da-busca'
 import { conviteDaPonte, type ConviteDaPonte } from '@/lib/conciliacao/convite-da-ponte'
+import { consequenciaDeVincular } from '@/lib/conciliacao/uma-casa-por-caso'
 import { VAZIO, type EstadoDaCarga } from '@/lib/conciliacao/vazio-do-menu'
 import { WithdrawalPanel } from '@/components/withdrawals/WithdrawalPanel'
 
@@ -44,10 +45,22 @@ interface LinhaDTO {
   /** ⭐ a categoria da conta que o palpite de CASAR aponta (o seletor DIZ, não pede) */
   categoriaDaConta: string | null
   /**
-   * ⭐⭐ QUANDO O CASO MORA NO CARD (20/09) — a linha perde o botão e ganha o CAMINHO.
-   * ⛔ Nunca as duas superfícies com botão pro mesmo par.
+   * ⭐⭐⭐ O CASO — e ele mora **DENTRO do cartão ≍** (20/09), no lugar do palpite.
+   *
+   * ⛔ Era seção separada embaixo, com visual próprio: o dono via *"a mesma coisa duas
+   * vezes, em dois MODELOS visuais diferentes"*. ***Uma decisão, uma aparição, um modelo.***
+   *
+   * ⚠️ `hospeda: false` é a 2ª linha do mesmo caso: ela APONTA pra quem hospeda, nunca
+   * redesenha o painel — senão a duplicação volta, agora dentro do modelo certo.
    */
-  casoNoCard: { texto: string; ancora: string } | null
+  caso:
+    | { tipo: string; hospeda: false; ancora: string; nome: string }
+    | {
+        tipo: string; hospeda: true; ancora: string; nome: string
+        conta: { id: string; descricao: string; valor: number; vencimento: string }
+        candidatas: { id: string; descricao: string; valor: number; data: string; categoria: string | null; diferenca: number }[]
+      }
+    | null
 }
 interface CaixaDTO {
   contadores: { saidas: number; entradas: number; arquivo: number; total: number }
@@ -282,6 +295,20 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
     } finally { setOcupado(null) }
   }, [empresaId, carregar, categorias])
 
+  /**
+   * ⭐⭐ RESOLVER O CASO DENTRO DO CARTÃO — e pela **porta de sempre**.
+   *
+   * ⛔ Nenhum caminho novo de gravação nasceu: é o MESMO `CASAR_PAGAR` do balcão, com a
+   * candidata escolhida como `txId`. *Uma tela nova não pode significar um motor novo.*
+   */
+  const resolverCaso = useCallback(async (candidataId: string, contaId: string) => {
+    const linha = (caixa?.linhas ?? []).find((x) => x.id === candidataId)
+      // ⚠️ a candidata pode NÃO estar na caixa (já categorizada, como a Tiele) — aí a linha
+      // que o gesto usa é ela mesma, montada do caso; o servidor resolve pelo id.
+      ?? { id: candidataId, descricao: '', valor: 0 } as unknown as LinhaDTO
+    await gesto(linha, 'CASAR_PAGAR', { contaIds: [contaId] })
+  }, [caixa, gesto])
+
   const visiveis = useMemo(() => (caixa?.linhas ?? []).filter((l) => l.sentido === aba), [caixa, aba])
 
   if (erro && !caixa) {
@@ -393,6 +420,7 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
           <CartaoDaLinha linha={l} ocupado={ocupado === l.id}
             categorias={categorias} cartoes={cartoes} contratos={contratos} cargas={cargas}
             erro={erroDaLinha?.id === l.id ? erroDaLinha.texto : null}
+            onResolvido={resolverCaso}
             onTentarDeNovo={erroDaLinha?.id === l.id
               ? () => { const e = erroDaLinha; void gesto(l, e.acao, e.alvo) }
               : undefined}
@@ -535,10 +563,89 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// ⭐⭐⭐ O PAINEL DO CASO — dentro do cartão ≍, no lugar do palpite (20/09)
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// **A régua do dono:** *"o caso ambíguo/N:M renderiza DENTRO do cartão ≍ da própria linha
+// (o lado direito vira o painel do caso — as 2+ candidatas com Vincular/Não é isso, o
+// aviso), no lugar do palpite. UM modelo, UMA aparição."*
+//
+// ⛔ Antes isto era uma **seção separada embaixo**, com visual próprio: o dono via a mesma
+// decisão duas vezes, em dois modelos. ***Uma decisão aparece uma vez, sempre no mesmo
+// desenho.***
+
+interface CasoHospedado {
+  tipo: string; hospeda: true; ancora: string; nome: string
+  conta: { id: string; descricao: string; valor: number; vencimento: string }
+  candidatas: { id: string; descricao: string; valor: number; data: string; categoria: string | null; diferenca: number }[]
+}
+
+function PainelDoCaso({ caso, linhaAtual, ocupado, onResolvido }: {
+  caso: CasoHospedado
+  linhaAtual: string
+  ocupado: boolean
+  onResolvido: (candidataId: string, contaId: string) => void
+}) {
+  return (
+    <div id={caso.ancora} className="scroll-mt-4 rounded-2xl border-[1.5px] px-4 py-3.5"
+      style={{ background: V3.ambarBg, borderColor: V3.ambar }}>
+      <div className="text-[10px] font-extrabold tracking-[0.06em]" style={{ color: V3.ambar }}>
+        ⚠️ {caso.candidatas.length} LINHAS PODEM SER ESTE PAGAMENTO
+      </div>
+      <div className="mb-[1px] mt-1.5 text-[14.5px] font-extrabold" style={{ color: V3.ink }}>
+        {caso.conta.descricao} · {brl(caso.conta.valor)}
+      </div>
+      <div className="mb-2.5 text-[12px]" style={{ color: V3.sub }}>
+        vence {dia(caso.conta.vencimento)} · <b>só uma pode ser</b> — escolha qual pagou
+      </div>
+
+      {caso.candidatas.map((c) => (
+        <div key={c.id} className="mb-1.5 rounded-xl border bg-white px-3 py-2 dark:bg-slate-950"
+          style={{ borderColor: c.id === linhaAtual ? V3.roxo : V3.line }}>
+          <div className="flex flex-wrap items-baseline gap-x-2 text-[13px]" style={{ color: V3.ink }}>
+            <b className="font-extrabold tabular-nums">{brl(c.valor)}</b>
+            <span>{dia(c.data)}</span>
+            {c.id === linhaAtual && (
+              <span className="rounded-full px-2 py-[1px] text-[10px] font-extrabold"
+                style={{ background: V3.roxoBg, color: V3.roxo }}>esta linha</span>
+            )}
+          </div>
+          <div className="truncate text-[11.5px]" style={{ color: V3.sub }}>{c.descricao}</div>
+          {/*
+            ⭐⭐ A CONSEQUÊNCIA ESCRITA (a pergunta do dono sobre a Tiele): a candidata já
+            categorizada CONTINUA sendo oferecida (a régua de 07/09 — *ter categoria não
+            quita conta nenhuma*), e o texto diz o efeito MEDIDO: a categoria dela **fica**.
+          */}
+          {c.categoria && (
+            <div className="mt-1 text-[11.5px] font-semibold" style={{ color: V3.ambar }}>
+              ⚠️ {consequenciaDeVincular(c.categoria, caso.conta.descricao).texto}
+            </div>
+          )}
+          {Math.abs(c.diferenca) >= 0.01 && (
+            <div className="mt-0.5 text-[11.5px]" style={{ color: V3.sub }}>
+              diferença de {brl(Math.abs(c.diferenca))}
+            </div>
+          )}
+          <button type="button" disabled={ocupado} onClick={() => onResolvido(c.id, caso.conta.id)}
+            className="mt-1.5 w-full rounded-xl py-2 text-[13px] font-extrabold text-white disabled:opacity-50"
+            style={{ background: `linear-gradient(135deg,${V3.verde},${V3.verde2})` }}>
+            {ocupado ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : 'foi esta — vincular'}
+          </button>
+        </div>
+      ))}
+      {/* ⛔ "nenhuma" é resposta: sem ela o dono fica preso num caso que não é dele */}
+      <div className="pt-0.5 text-center text-[11.5px]" style={{ color: V3.sub }}>
+        nenhuma delas? deixe o caso aberto e resolva a linha pelos caminhos abaixo
+      </div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // ⭐⭐⭐ O CARTÃO ≍ — banco à esquerda, palpite à direita, chips embaixo
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, cargas, erro, onTentarDeNovo, onGesto }: {
+function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, cargas, erro, onTentarDeNovo, onResolvido, onGesto }: {
   linha: LinhaDTO; ocupado: boolean
   categorias: CategoriaDoMenu[]
   cartoes: { id: string; name: string }[]
@@ -548,6 +655,8 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, carg
   erro: string | null
   /** ⭐ e ela SEMPRE carrega a saída: repetir o MESMO gesto, com o mesmo alvo */
   onTentarDeNovo?: () => void
+  /** ⭐ o caso resolvido DENTRO do cartão: a candidata escolhida vira o pagamento da conta */
+  onResolvido: (candidataId: string, contaId: string) => void
   onGesto: (l: LinhaDTO, acao: string, alvo?: Record<string, unknown>) => void
 }) {
   const credito = l.sentido === 'ENTRADA'
@@ -653,23 +762,25 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, carg
         {/* ── MELHOR PALPITE (ou direto nos chips) ────────────────────── */}
         <div className="px-5 py-[18px]">
           <div className="mb-2.5 text-[10px] font-extrabold tracking-[0.07em]" style={{ color: V3.sub }}>
-            {l.casoNoCard ? 'ESTA LINHA FAZ PARTE DE UM CASO' : l.palpite ? 'MELHOR PALPITE' : 'O QUE ESTA LINHA É?'}
+            {l.caso ? 'ESTE CASO TEM MAIS DE UMA CANDIDATA' : l.palpite ? 'MELHOR PALPITE' : 'O QUE ESTA LINHA É?'}
           </div>
 
           {/*
-            ⭐⭐⭐ O CASO MORA NO CARD → a linha APONTA, não decide (20/09).
-            ⛔ Com botão nos dois lugares, o dono resolve num e o outro fica lá — foi assim
-            que a nota errada do Cancian entrou. *Uma pergunta, uma casa.*
+            ⭐⭐⭐ O PAINEL DO CASO — no lugar do palpite, no MESMO cartão ≍.
+            ⛔ A 2ª linha do caso não redesenha nada: ela aponta pra quem hospeda.
           */}
-          {l.casoNoCard && (
-            <a href={`#${l.casoNoCard.ancora}`}
+          {l.caso?.hospeda === false && (
+            <a href={`#${l.caso.ancora}`}
               className="mb-2 block rounded-2xl border-[1.5px] px-4 py-3 text-[13px] font-bold leading-relaxed"
               style={{ background: V3.ambarBg, borderColor: V3.ambar, color: V3.ambar }}>
-              {l.casoNoCard.texto}
+              parte do caso «{l.caso.nome}» acima ↑
             </a>
           )}
+          {l.caso?.hospeda === true && (
+            <PainelDoCaso caso={l.caso} linhaAtual={l.id} ocupado={ocupado} onResolvido={onResolvido} />
+          )}
 
-          {l.palpite && !l.casoNoCard && (
+          {l.palpite && !l.caso && (
             <div className="rounded-2xl border-[1.5px] px-4 py-3.5"
               style={{ background: `linear-gradient(160deg,#fbfbff,${V3.verdeBg})`, borderColor: '#cdebd9' }}>
               <div className="text-[10px] font-extrabold tracking-[0.06em]" style={{ color: V3.verde }}>{l.palpite.familia}</div>
@@ -698,7 +809,7 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, carg
             </div>
           )}
 
-          {l.palpite && !l.casoNoCard && (
+          {l.palpite && !l.caso && (
             <div className="my-2 text-center text-[10.5px] font-bold tracking-[0.05em]" style={{ color: V3.sub }}>
               OU ESCOLHA OUTRO CAMINHO
             </div>

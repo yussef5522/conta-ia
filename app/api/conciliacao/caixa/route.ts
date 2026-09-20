@@ -22,7 +22,7 @@ import { progressoDoMes } from '@/lib/conciliacao/palpite-da-linha'
  * os chips de sempre — a caixa de ontem, que funciona.
  */
 import { palpitesDaCaixa } from '@/lib/conciliacao/palpites-da-caixa'
-import { fraseDoCasoNoCard, aCaixaDesenhaBotao } from '@/lib/conciliacao/uma-casa-por-caso'
+import { ancoraDoPar } from '@/lib/conciliacao/uma-casa-por-caso'
 import { divisaoDaTela } from '@/lib/conciliacao/divisao-da-tela'
 
 export async function GET(request: NextRequest) {
@@ -86,6 +86,67 @@ export async function GET(request: NextRequest) {
    */
   const divisao = await divisaoDaTela(empresaId, prisma)
 
+  /**
+   * ⭐⭐⭐ O CASO VAI **DENTRO DO CARTÃO ≍** (20/09) — régua do dono: *"uma decisão aparece
+   * UMA vez na página, SEMPRE no mesmo modelo visual"*.
+   *
+   * ⛔ Antes ele virava seção separada embaixo (a FILA, com visual próprio), e o dono via
+   * *"a mesma coisa duas vezes, em dois MODELOS visuais diferentes"*. Aqui as candidatas
+   * viajam junto da linha pra o lado direito do cartão renderizá-las no lugar do palpite.
+   */
+  const idsDasCandidatas = [...new Set([...divisao.casos.values()].flatMap((c) => c.linhaIds))]
+  const dadosDaCandidata = new Map(
+    (idsDasCandidatas.length
+      ? await prisma.transaction.findMany({
+          where: { id: { in: idsDasCandidatas } },
+          select: { id: true, description: true, amount: true, date: true, category: { select: { name: true } } },
+        })
+      : []).map((t) => [t.id, t]),
+  )
+  const contasDoCaso = new Map(
+    (divisao.casos.size
+      ? await prisma.transaction.findMany({
+          where: { id: { in: [...divisao.casos.keys()] } },
+          select: { id: true, description: true, amount: true, dueDate: true, date: true },
+        })
+      : []).map((t) => [t.id, t]),
+  )
+
+  /** ⭐ o painel que o lado direito do cartão desenha — ou o ponteiro pra quem hospeda */
+  function montarCaso(c: ReturnType<typeof divisao.linhas.get>) {
+    if (!c?.contaDoCaso) return null
+    const s = divisao.casos.get(c.contaDoCaso)
+    const conta = contasDoCaso.get(c.contaDoCaso)
+    if (!s || !conta) return null
+    if (!c.hospeda) {
+      // ⛔ mesma decisão, mesma página: a 2ª linha do caso APONTA, não repete o painel
+      return { tipo: c.motivo ?? 'AMBIGUO', hospeda: false as const,
+        ancora: ancoraDoPar(c.contaDoCaso), nome: s.nomeDaConta }
+    }
+    return {
+      tipo: c.motivo ?? 'AMBIGUO',
+      hospeda: true as const,
+      ancora: ancoraDoPar(c.contaDoCaso),
+      nome: s.nomeDaConta,
+      conta: {
+        id: conta.id, descricao: (conta.description ?? '').trim() || '(sem descrição)',
+        valor: Math.abs(conta.amount),
+        vencimento: (conta.dueDate ?? conta.date).toISOString().slice(0, 10),
+      },
+      candidatas: s.linhaIds.map((id) => {
+        const t = dadosDaCandidata.get(id)
+        return {
+          id,
+          descricao: (t?.description ?? '').trim() || '(sem descrição)',
+          valor: t ? Math.abs(t.amount) : 0,
+          data: t ? t.date.toISOString().slice(0, 10) : '',
+          categoria: t?.category?.name ?? null,
+          diferenca: t ? Math.round((Math.abs(t.amount) - Math.abs(conta.amount)) * 100) / 100 : 0,
+        }
+      }),
+    }
+  }
+
   const linhas = rows.map((r) => {
     const l = paraLei(r)
     return {
@@ -112,9 +173,11 @@ export async function GET(request: NextRequest) {
        *
        * ⭐ Agora quem decide é o predicado: a caixa desenha botão **só** quando é a dona.
        */
-      casoNoCard: !aCaixaDesenhaBotao(divisao.linhas.get(r.id), !!palpites.get(r.id)) && divisao.linhas.get(r.id)?.ancora
-        ? { texto: fraseDoCasoNoCard(divisao.linhas.get(r.id)!), ancora: divisao.linhas.get(r.id)!.ancora! }
-        : null,
+      /**
+       * ⭐ O PAINEL DO CASO — só na linha que HOSPEDA. As outras do mesmo caso apontam
+       * pra ela ("parte do caso acima ↑"), nunca desenham o painel de novo.
+       */
+      caso: montarCaso(divisao.linhas.get(r.id)),
     }
   })
 

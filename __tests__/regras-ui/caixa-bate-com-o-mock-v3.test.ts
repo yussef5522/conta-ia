@@ -156,6 +156,29 @@ describe('⭐⭐ o SELETOR DE CATEGORIA mora na coluna da esquerda', () => {
   })
 })
 
+/**
+ * ⭐⭐⭐ O PAINEL DO CASO (20/09) — *"uma decisão aparece UMA vez na página, SEMPRE no mesmo
+ * modelo visual"*. O mock foi atualizado junto com a tela, como manda a régua.
+ */
+describe('⭐⭐ o CASO renderiza DENTRO do cartão ≍, no lugar do palpite', () => {
+  it('⛔ o mock desenha o painel no LADO DIREITO, não numa seção separada', () => {
+    const direita = MOCK.slice(MOCK.indexOf('MELHOR PALPITE'), MOCK.indexOf('class="acoes"'))
+    expect(direita, 'o caso virou seção própria de novo').toContain('class="caso"')
+    expect(MOCK, 'o mock perdeu o estilo da candidata').toContain('.cand{')
+    expect(MOCK, 'a 2ª linha do caso precisa de um jeito de apontar').toContain('.parte-do-caso{')
+  })
+
+  it('⭐ a tela desenha o painel no mesmo lugar, e a 2ª linha APONTA', () => {
+    expect(CAIXA).toContain('<PainelDoCaso')
+    expect(CAIXA, 'a 2ª linha do caso voltaria a redesenhar o painel').toMatch(/hospeda === false/)
+    expect(CAIXA).toMatch(/parte do caso «\{l\.caso\.nome\}» acima/)
+  })
+
+  it('⛔⛔ e o palpite NÃO coexiste com o caso — seriam dois botões no mesmo cartão', () => {
+    expect(CAIXA).toContain('{l.palpite && !l.caso && (')
+  })
+})
+
 describe('⭐ o INBOX ZERO e a FAIXA DE RESOLVIDA foram copiados', () => {
   it('o 🎉 do mock e a frase dele', () => {
     expect(MOCK).toContain('🎉')

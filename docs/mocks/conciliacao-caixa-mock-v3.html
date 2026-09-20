@@ -76,6 +76,21 @@
   .cat-diz{border:1px solid var(--line);border-radius:999px;padding:7px 12px;font-size:12.5px;
            font-weight:700;color:var(--sub);background:#f7f7fb;}
   .aviso-cat{margin-top:6px;text-align:center;font-size:11.5px;font-weight:700;color:var(--roxo);}
+  /* ⭐⭐ 20/09 — O PAINEL DO CASO: quando 2+ linhas podem ser o mesmo pagamento, a decisão
+     renderiza AQUI DENTRO, no lugar do palpite. Uma decisão, uma aparição, um modelo. */
+  .caso{border:1.5px solid var(--ambar);background:var(--ambar-bg);border-radius:16px;padding:14px 16px;}
+  .caso .c-rot{font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--ambar);}
+  .caso .c-nome{font-size:14.5px;font-weight:800;margin:6px 0 1px;}
+  .caso .c-det{font-size:12px;color:var(--sub);margin-bottom:10px;}
+  .cand{border:1px solid var(--line);background:var(--card);border-radius:12px;padding:8px 12px;margin-bottom:6px;}
+  .cand.esta{border-color:var(--roxo);}
+  .cand .c-val{font-size:13px;font-weight:800;font-variant-numeric:tabular-nums;}
+  .cand .c-aviso{margin-top:4px;font-size:11.5px;font-weight:600;color:var(--ambar);}
+  .cand .btn-vinc{width:100%;margin-top:6px;border:0;border-radius:12px;padding:8px;font-size:13px;
+                  font-weight:800;color:#fff;background:linear-gradient(135deg,var(--verde),var(--verde2));}
+  /* ⚠️ a 2ª linha do mesmo caso NÃO redesenha o painel — ela aponta pra quem hospeda */
+  .parte-do-caso{border:1.5px solid var(--ambar);background:var(--ambar-bg);color:var(--ambar);
+                 border-radius:16px;padding:12px 16px;font-size:13px;font-weight:700;}
   .meio{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:12px 0;}
   .meio .fio{width:2px;height:100%;min-height:34px;background:linear-gradient(var(--line),var(--roxo-bg),var(--line));border-radius:2px;flex:1;}
   .meio .simb{width:34px;height:34px;border-radius:50%;background:var(--roxo-bg);color:var(--roxo);font-weight:800;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;}
@@ -168,6 +183,21 @@
         <div class="p-det">fatura 2026-08 · R$ 3.194,35 · vence 15/09</div>
         <div class="dif">✓ valor exato — fecha em R$ 0,00</div>
         <button class="btn-ok">✓ Confirmar — baixa a fatura</button>
+      </div>
+      <!-- ⭐ o CASO, no lugar do palpite: 2+ candidatas pra mesma conta -->
+      <div class="caso" id="par-exemplo">
+        <div class="c-rot">⚠️ 2 LINHAS PODEM SER ESTE PAGAMENTO</div>
+        <div class="c-nome">franciele · R$ 500,00</div>
+        <div class="c-det">vence 15/09 · <b>só uma pode ser</b> — escolha qual pagou</div>
+        <div class="cand esta">
+          <div class="c-val">R$ 500,00 · 15/09</div>
+          <button class="btn-vinc">foi esta — vincular</button>
+        </div>
+        <div class="cand">
+          <div class="c-val">R$ 500,00 · 08/09</div>
+          <div class="c-aviso">⚠️ já categorizada como Salários — a categoria dela fica</div>
+          <button class="btn-vinc">foi esta — vincular</button>
+        </div>
       </div>
       <div class="ou">OU ESCOLHA OUTRO CAMINHO</div>
       <div class="acoes">

@@ -41,7 +41,17 @@ const P_LOTE: PalpiteDaLinha = { linhaId: 'l_casper', contaIds: ['c1', 'c2'], no
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /** o que cada superfície desenharia, dada a divisão */
-function paginaMontada(entrada: { sugestoesPorConta: SugestaoDaConta[]; palpites: PalpiteDaLinha[] }) {
+function paginaMontada(entrada: {
+  sugestoesPorConta: SugestaoDaConta[]
+  palpites: PalpiteDaLinha[]
+  /**
+   * ⭐⭐ AS LINHAS QUE SÓ EXISTEM NO CARD (o CASPER) — elas **não estão na caixa**, então
+   * não têm palpite. ⛔ A 1ª versão deste guard derivava o card dos PALPITES e por isso
+   * **o CASPER nunca entrou no cenário**: o "some dos dois" passou despercebido justamente
+   * na linha que sumiu. *Guard que só imagina o caminho conhecido não cobre o que some.*
+   */
+  linhasSoNoCard?: string[]
+}) {
   const d = dividir(entrada)
   return {
     /** ⭐ a CAIXA só põe botão onde ela é a dona */
@@ -53,9 +63,8 @@ function paginaMontada(entrada: { sugestoesPorConta: SugestaoDaConta[]; palpites
       .filter((s) => aFilaDesenhaBotao(s.contaId, d))
       .flatMap((s) => s.linhaIds),
     /** ⭐ o CARD do escolher-na-mão só desenha o que a caixa E a fila NÃO resolvem */
-    botaoNoCard: entrada.palpites
-      .filter((p) => oCardDesenhaBotao(d.linhas.get(p.linhaId), false))
-      .map((p) => p.linhaId),
+    botaoNoCard: [...entrada.palpites.map((p) => p.linhaId), ...(entrada.linhasSoNoCard ?? [])]
+      .filter((id) => oCardDesenhaBotao(d.linhas.get(id), false)),
     divisao: d,
   }
 }
@@ -72,9 +81,14 @@ describe('⛔⛔⛔ a PÁGINA MONTADA nunca tem o mesmo par com botão em duas s
   it('⛔⛔ O CASO DO PRINT: franciele ambíguo — caixa aponta, fila decide', () => {
     const pg = paginaMontada({ sugestoesPorConta: [SUG_AMBIGUA], palpites: [P_FRANCIELE] })
     expect(linhasComBotaoEmDuas(pg), 'é exatamente o que o dono vê na tela dele').toEqual([])
-    expect(pg.botaoNaCaixa, 'a linha voltou a ter botão num caso que a fila decide').toEqual([])
-    expect(pg.botaoNaFila).toContain('l_franciele')
-    expect(pg.divisao.linhas.get('l_franciele')).toMatchObject({ casa: 'FILA', motivo: 'AMBIGUO', nomeDoCaso: 'franciele' })
+    // ⭐ o palpite não desenha botão: quem decide é o PAINEL DO CASO, no mesmo cartão
+    expect(pg.botaoNaCaixa, 'a linha voltou a ter botão de palpite num caso ambíguo').toEqual([])
+    // ⭐⭐ e a FILA soltou o caso — ele mora dentro do cartão ≍ agora
+    expect(pg.botaoNaFila, 'a mesma decisão voltou a aparecer na seção de baixo').toEqual([])
+    expect(pg.divisao.linhas.get('l_franciele')).toMatchObject({
+      casa: 'FILA', motivo: 'AMBIGUO', nomeDoCaso: 'franciele', hospeda: true,
+    })
+    expect(pg.divisao.casos.get(CONTA_FRANCIELE)!.linhaIds).toEqual(['l_franciele', 'l_tiele'])
   })
 
   it('⭐ 1↔1: a caixa é a dona e a FILA esconde — a outra metade do defeito', () => {
@@ -91,7 +105,7 @@ describe('⛔⛔⛔ a PÁGINA MONTADA nunca tem o mesmo par com botão em duas s
     })
     expect(linhasComBotaoEmDuas(pg)).toEqual([])
     expect(pg.botaoNaCaixa).toEqual(['l_doceoli'])
-    expect(pg.botaoNaFila).toEqual(['l_franciele', 'l_tiele'])
+    expect(pg.botaoNaFila, 'o ambíguo hospedado não pode voltar pra seção de baixo').toEqual([])
     expect(pg.botaoNoCard, 'o ambíguo voltou a ter card — a fila já o desenha').toEqual(['l_casper'])
   })
 
@@ -197,8 +211,14 @@ describe('⭐ as TRÊS superfícies passam pela MESMA porta', () => {
    * ***Guard que exercita a lib aprova a rota que a ignora.***
    */
   it('⛔⛔ as rotas CHAMAM os predicados — nenhuma compara a casa na mão', () => {
-    expect(fonte('app/api/conciliacao/caixa/route.ts'), 'a caixa voltou a decidir por comparação própria')
-      .toContain('aCaixaDesenhaBotao(')
+    /**
+     * ⚠️ REAPONTADO em 20/09, não afrouxado: a `/caixa` deixou de perguntar *"quem desenha
+     * botão?"* porque o caso agora **mora dentro do cartão** — ela monta o PAINEL. A régua
+     * que continua valendo (e é a que pegou o bug da 3ª casa) é *nenhuma rota compara a
+     * casa na mão*.
+     */
+    expect(fonte('app/api/conciliacao/caixa/route.ts'), 'a caixa parou de montar o painel do caso')
+      .toContain('function montarCaso(')
     expect(fonte('app/api/conciliacao/escolher-na-mao/route.ts')).toContain('oCardDesenhaBotao(')
     for (const r of ['app/api/conciliacao/caixa/route.ts', 'app/api/conciliacao/escolher-na-mao/route.ts'])
       expect(fonte(r), `${r} compara a casa na mão — é assim que a 3ª casa passa despercebida`)
@@ -223,10 +243,101 @@ describe('⭐ as TRÊS superfícies passam pela MESMA porta', () => {
     const t = fonte('components/conciliacao/caixa-de-entrada.tsx')
     const iBotao = t.indexOf('l.palpite.botao')
     expect(t.slice(t.lastIndexOf('{l.palpite &&', iBotao), iBotao),
-      'o botão do palpite voltou a existir num caso que mora no card').toContain('!l.casoNoCard')
+      'o palpite voltou a desenhar botão num caso — dois botões pra mesma decisão').toContain('!l.caso')
+    // ⭐ e o painel do caso renderiza DENTRO do cartão, no lugar do palpite
+    expect(t, 'o caso voltou a ser seção separada').toContain('<PainelDoCaso')
     expect(fonte('components/conciliacao/escolher-na-mao-card.tsx')).toContain('id={ancoraDoCard(card.linha.id)}')
     // ⛔ e o par da FILA também é alcançável — "resolver lá" sem o "lá" é ordem, não caminho
     expect(fonte('components/conciliacao/par-sugerido.tsx'), 'o ponteiro do ambíguo apontaria pro nada')
       .toContain('id={ancoraDoPar(item.conta.id)}')
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ⛔⛔⛔ NENHUM CASO INVISÍVEL — o CASPER que sumiu (20/09, achado pelo dono)
+//
+// **Ele:** *"o CASPER (N:M → CARD) SUMIU da página: cadê o card dele? Se foi pro «esconde»,
+// é o some-dos-dois que tua régua proíbe."*
+//
+// **Medido:** as duas linhas do CASPER são de **04/09 e já categorizadas** — elas **não
+// estão na caixa**, então `divisaoDaTela` **não as conhece**. O predicado fazia
+// `c?.casa ?? 'CAIXA'` e tratava desconhecida como *"a caixa é dona"* → escondeu.
+// ***O default da régua cometeu o erro que a régua proíbe.***
+describe('⛔⛔⛔ linha que a divisão NÃO conhece continua visível', () => {
+  it('⭐ o caso do CASPER: sem palpite, sem sugestão — o card DESENHA', () => {
+    const pg = paginaMontada({ sugestoesPorConta: [], palpites: [], linhasSoNoCard: ['l_casper1', 'l_casper2'] })
+    expect(pg.botaoNoCard, 'o caso ficou invisível na página inteira').toEqual(['l_casper1', 'l_casper2'])
+    expect(linhasComBotaoEmDuas(pg)).toEqual([])
+  })
+
+  it('⛔ e o default é APARECER — duplicar é feio, sumir é perder trabalho', () => {
+    expect(oCardDesenhaBotao(undefined, false), 'desconhecida voltou a ser tratada como "da caixa"').toBe(true)
+  })
+
+  it('⭐ o que a caixa OU a fila reivindicou continua escondido do card', () => {
+    expect(oCardDesenhaBotao({ casa: 'CAIXA' }, false)).toBe(false)
+    expect(oCardDesenhaBotao({ casa: 'FILA' }, false)).toBe(false)
+    expect(oCardDesenhaBotao({ casa: 'CARD' }, false)).toBe(true)
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ⛔⛔⛔ AS DUAS AFIRMAÇÕES QUE O DONO EXIGIU DO GUARD DE PÁGINA (20/09)
+//
+//   1. *"nenhuma decisão renderizada 2× na página"*
+//   2. *"nenhum caso invisível — toda linha da caixa ou resolve ou aponta pra algo VISÍVEL
+//      na mesma página"*
+//
+// ⚠️ A segunda é a que faltava: o CASPER sumiu porque **ninguém perguntava se o caso ainda
+// tinha onde aparecer**. *O guard que só procura duplicata nunca acha o que some.*
+describe('⛔⛔⛔ nenhuma decisão 2× · nenhum caso invisível', () => {
+  /** o que a página inteira renderiza, por decisão (conta) */
+  function aparicoesPorConta(e: Parameters<typeof paginaMontada>[0]) {
+    const d = dividir(e)
+    const mapa = new Map<string, string[]>()
+    const add = (conta: string, onde: string) => mapa.set(conta, [...(mapa.get(conta) ?? []), onde])
+    // ⭐ o painel do caso aparece UMA vez: no cartão da linha ANFITRIÃ
+    for (const [conta, anfitria] of d.anfitriaDoCaso) add(conta, `cartao:${anfitria}`)
+    // ⭐ a fila desenha o que ninguém reivindicou
+    for (const s of e.sugestoesPorConta) if (aFilaDesenhaBotao(s.contaId, d)) add(s.contaId, 'fila')
+    return mapa
+  }
+
+  it('⛔ o caso ambíguo aparece UMA vez — no cartão, nunca também na fila', () => {
+    const ap = aparicoesPorConta({ sugestoesPorConta: [SUG_AMBIGUA], palpites: [P_FRANCIELE] })
+    expect(ap.get(CONTA_FRANCIELE), 'a mesma decisão em dois modelos visuais — é o print do dono')
+      .toEqual(['cartao:l_franciele'])
+  })
+
+  it('⛔⛔ duas linhas do MESMO caso na caixa → só UMA hospeda o painel', () => {
+    const d = dividir({
+      sugestoesPorConta: [SUG_AMBIGUA],
+      palpites: [P_FRANCIELE, { linhaId: 'l_tiele', contaIds: [CONTA_FRANCIELE], nomeDoCaso: 'franciele' }],
+    })
+    expect(d.linhas.get('l_franciele')!.hospeda, 'a 1ª linha do caso hospeda').toBe(true)
+    expect(d.linhas.get('l_tiele')!.hospeda, 'a 2ª redesenharia o painel — duplicação no modelo certo').toBe(false)
+    expect([...d.anfitriaDoCaso.values()]).toEqual(['l_franciele'])
+  })
+
+  it('⭐⭐ NENHUM CASO INVISÍVEL: sem linha na caixa, a fila é a casa dele', () => {
+    // é a situação do CASPER: a linha não está na caixa, então não há cartão pra hospedar
+    const ap = aparicoesPorConta({
+      sugestoesPorConta: [{ contaId: 'c_orfa', nomeDaConta: 'CASPER', linhaIds: ['l_fora1', 'l_fora2'] }],
+      palpites: [],
+    })
+    expect(ap.get('c_orfa'), 'o caso ficou sem casa — invisível na página inteira').toEqual(['fila'])
+  })
+
+  it('⛔ e toda linha da caixa ou RESOLVE ou APONTA pra algo que existe', () => {
+    const d = dividir({
+      sugestoesPorConta: [SUG_AMBIGUA],
+      palpites: [P_FRANCIELE, { linhaId: 'l_tiele', contaIds: [CONTA_FRANCIELE], nomeDoCaso: 'franciele' }],
+    })
+    for (const [id, c] of d.linhas) {
+      if (c.casa === 'CAIXA') continue                       // resolve nela mesma
+      if (c.hospeda) { expect(d.casos.has(c.contaDoCaso!)).toBe(true); continue }  // hospeda o painel
+      // aponta — e o alvo TEM que estar na página
+      expect(d.anfitriaDoCaso.get(c.contaDoCaso!), `${id} aponta pro nada`).toBeTruthy()
+    }
   })
 })
