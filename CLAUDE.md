@@ -814,6 +814,50 @@ SEM empresaId na URL → HTTP 200 · 42 removidas   (antes: 403 mudo)
 ```
 **10.521 verdes · TS 0 · deploy `dXMGy5iJz6E62i2yKiBUs` 4/4 · Δ bundle +4 KB.** ⚠️ Uma sonda minha marcou o timeout como ausente no bundle — era a frase montada por template, que o minificador parte; conferido por `TempoEsgotado` (4 chunks).
 
+### ⛔⛔⛔ "NÃO CONSEGUI CARREGAR." ERA 500 SEM CORPO — O `as never` ESCONDIA O CONTRATO (20/09)
+
+**O dono:** *"clico «✓ Confirmar — concilia a eliane» e aparece só «Não consegui carregar.» — sem motivo, sem «tentar de novo», e não sei nem O QUE falhou (o painel? a conciliação em si? gravou ou não?)."*
+
+**MEDIDO NA ROTA REAL, com a sessão dele:** `HTTP 500 · content-type: null · corpo VAZIO`. O `fetchComTimeout` lê `{erro}` do corpo; **sem corpo**, ele cai no fallback genérico — daí a frase que não diz nada.
+
+**⛔⛔ A CAUSA É MINHA, DE ONTEM:** o `CASAR_PAGAR` chamava `reconcileTransactions(input, { userId, companyId } as never)` — e o reconcile usa **`ctx.company?.id`** e **`ctx.requirePermission()`**, que aquele objeto não tem. ***O `as never` calou o compilador*** e o gesto estourava em runtime. É **literalmente a lição de 19/09 escrita neste doc** — *"cast que cala o compilador é o lugar onde o contrato incompleto se esconde"* — cometida por mim no dia seguinte.
+
+**⚠️⚠️ E OS MEUS TESTES PASSARAM VERDES PORQUE MOCKAVAM O RECONCILE.** O mock aceita qualquer coisa: ele substituiu **justamente a peça que cobra o contrato**. ***Guard que troca a peça não prova o encaixe dela*** — os mocks agora cobram `company.id` e `requirePermission`, como o original.
+
+**AS QUATRO CAMADAS DO CONSERTO:** o **AuthContext real** vai da rota até a lib (o `as never` morreu) · a rota **nunca mais devolve 500 sem corpo** (o inesperado continua 500 — ali o genérico é honesto —, mas com JSON que DIZ o que falhou e `code` pra a tela agir) · `ReconciliationError` vira recusa que a tela entende · e a tela **diz O QUE falhou e sempre oferece [tentar de novo]**, repetindo o MESMO gesto com o MESMO alvo.
+
+**⛔ E NADA GRAVA PELA METADE.** A categoria aprendida é escrita **antes** do reconcile (forçado: ele faz *backfill cooperativo*, então a conta precisa estar categorizada antes). Se o reconcile falha, a compensação **desfaz exatamente o que este gesto escreveu** — e só nas contas que estavam `null`. ⚠️ Compensação e não transação porque o `reconcileTransactions` usa o prisma global e **não entra numa `$transaction` nossa**; envolvê-lo exigiria ele aceitar client transacional. *Medido no caso real: nada tinha gravado — mas por sorte (a conta da ELIANE já tinha categoria).*
+
+### ⭐⭐⭐ A CATEGORIA MUDOU PRO LADO ESQUERDO, E VIROU OBRIGATÓRIA ANTES (20/09)
+
+**A decisão do dono:** *"o lado esquerdo tem menos conteúdo e sobra espaço; assim a categoria não fica espremida na fileira de chips da direita, e o cartão equilibra visualmente."* O seletor mora **sob o valor**, na coluna *"O BANCO DIZ"*.
+
+**⛔⛔ E A METADE QUE FAZ A RÉGUA FUNCIONAR É A DAS EXCEÇÕES.** A régua não é *"tem categoria?"* — é ***"de onde vem a categoria desta linha?"***, com três respostas (`lib/conciliacao/categoria-antes-do-gesto.ts`): **ESCOLHER** (despesa/receita avulsa e estorno — a natureza deles É a categoria) · **ESTRUTURAL** (fatura, parcela, transferência, ignorar — *exigir categoria de um pagamento de fatura é cobrar duas vezes pelo mesmo fato*, e foi por isso que o Fluxo criou os rótulos `[sistema]` em 26/08) · **HERDA_DA_CONTA** (casar). ⭐ *Parede é como o dono aprende a contornar o sistema por fora.*
+
+⭐ **O seletor DIZ em vez de pedir** quando o palpite é casar (*"herda da conta: Salários"*) — pedir ali faria o dono classificar uma linha que o backfill ia sobrescrever. ⛔ **E quando a conta não tem categoria, ele PEDE ANTES do clique** — a mesma recusa que o servidor daria, dita no cartão: *fazer o dono clicar pra levar um não é trabalho que dava pra poupar.*
+
+⭐⭐ **O chip de categoria deixou de abrir menu próprio** — ele dispara com a escolha da esquerda. *Dois menus pra mesma pergunta seriam duas réguas na mesma tela: ele escolheria num, clicaria no outro, e a linha sairia com a categoria errada.*
+
+**REGRA 12 DE GRAÇA:** o seletor é o **último bloco da coluna esquerda**, então no celular (que empilha pelo mesmo `min-[900px]` do mock) ele cai **entre o valor e o palpite — sem uma segunda composição pra manter**. O **mock v3 versionado foi atualizado junto** (`.cat`, `.cat-sel`, `.cat-diz`, `.aviso-cat`) e o guard de tokens acompanha, conferindo inclusive **que o bloco está do lado esquerdo e depois do valor**.
+
+### ⛔⛔⛔ E A PROVA EM PROD ACHOU QUE "HERDA DA CONTA" VALIA SÓ NA METADE DOS CASOS
+
+A ELIANE conciliou (HTTP 200, conta `EFFECTED/RECONCILED`, vínculo certo) — e a **linha do banco saiu pro arquivo SEM CATEGORIA**, aparecendo como **"A CLASSIFICAR"** no Fluxo de Caixa. **Exatamente o vermelho que a régua de hoje existe pra impedir.**
+
+**A causa:** o *backfill cooperativo* (a linha herdar a categoria da conta) existia **só no ORPHAN MODE**. No **CLASSIC** — conta a pagar em aberto, o caminho COMUM — ele **não existia**. ⚠️ Eu escrevi *"a linha HERDA a categoria da conta (é o que o reconcile já faz)"* no código e no doc de manhã: ***valia pra metade***, e só a prova navegando mostrou.
+
+⭐ Agora o CLASSIC herda **categoria e fornecedor** (cooperativo: só o que está `null`, nunca sobrescreve o dono), **sobe o status** (a escada de 28/06 — linha categorizada não fica com badge "Pendente"), o **audit guarda o que foi escrito**, e o **desfazer restaura nos dois modos por um helper único** — *desfazer pela metade deixaria na linha uma categoria que ela nunca escolheu*.
+
+**PROVADO EM PROD, pelas portas reais (desfazer → refazer):**
+```
+ANTES    LINHA: ARQUIVO · categoria ⛔ nenhuma · no Fluxo: "A CLASSIFICAR"
+desfazer LINHA: CAIXA (volta pra fila)          CONTA: PAYABLE/PENDING
+refazer  LINHA: ARQUIVO · categoria Salários · no Fluxo: "Salários" ⭐
+         CONTA: EFFECTED/RECONCILED · vínculo ✓
+REGRA 12 — celular e desktop: seletor ✓ · aviso ✓ · "herda da conta" ✓ · "vem do gesto" ✓ · retry ✓
+```
+**REGRA 11 — 5 defeitos repostos** (o ctx falso: **5 vermelhos** · sem compensação: **1** · o `throw` mudo: **1** · o palpite disparando sem categoria: **1** · o CLASSIC sem backfill: **2** · o undo sem restaurar: **1**). **10.557 verdes · TS 0 · deploys `dXMGy5iJz6E62i2yKiBUs`, `CvSrjyJDe3F-Mv6UWDX54` e `HUtCRiqcjplFiY1eTDuX1`, os três 4/4.**
+
 ### ⛔⛔⛔ A FLAG DIZ "PARECE", O VÍNCULO DIZ "É" — E A LEI DA ESTAÇÃO CONFIAVA NA FLAG (20/09)
 
 **O dono:** *"o mapa dizia «pagamento órfão 8.626,98 (17/09) bate a fatura OPEN do Carter, palpite aceso na caixa», mas a caixa hoje tem só 4 linhas e ela NÃO está."*
