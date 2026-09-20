@@ -18,7 +18,7 @@ import { contarEstacoes, type ContadoresDoBalcao, type LinhaParaEstacao } from '
 /** ⚠️ o que basta ler pra a lei das estações decidir — nada além disso */
 export const SELECT_DA_CAIXA = {
   id: true, type: true, amount: true, date: true, description: true, counterpartyName: true,
-  categoryId: true, reconciledWithId: true, isCardPayment: true, transferGroupId: true,
+  categoryId: true, reconciledWithId: true, isCardPayment: true, businessCreditCardId: true, transferGroupId: true,
   isInternalTransfer: true, pendingTransfer: true, ignoredAt: true, bankAccountId: true,
   reconciledFrom: { select: { id: true } },
   loanInstallmentPaid: { select: { id: true } },
@@ -36,8 +36,11 @@ export type LinhaCrua = {
   id: string; type: string; amount: number; date: Date
   description: string | null; counterpartyName: string | null
   categoryId: string | null; reconciledWithId: string | null; isCardPayment: boolean
+  businessCreditCardId: string | null
   transferGroupId: string | null; isInternalTransfer: boolean; pendingTransfer: boolean
-  ignoredAt: Date | null; bankAccountId: string
+  ignoredAt: Date | null
+  /** ⚠️ NULL de verdade: compra de cartão nasce sem conta bancária (o consumidor já trata) */
+  bankAccountId: string | null
   reconciledFrom: { id: string }[]
   loanInstallmentPaid: { id: string } | null
   loanInstallmentPayments: { id: string }[]
@@ -50,6 +53,7 @@ export function paraLei(r: LinhaCrua): LinhaParaEstacao {
     reconciledWithId: r.reconciledWithId,
     temReconciledFrom: r.reconciledFrom.length > 0,
     isCardPayment: r.isCardPayment,
+    faturaVinculada: !!r.businessCreditCardId,
     temParcelaVinculada: !!r.loanInstallmentPaid || r.loanInstallmentPayments.length > 0,
     transferGroupId: r.transferGroupId,
     isInternalTransfer: r.isInternalTransfer,

@@ -57,6 +57,15 @@ export async function casarPagamentoDeCartao(
     transactionId: updated.id,
     paidInvoiceMonth: updated.paidInvoiceMonth,
     previousCategoryId: tx.categoryId,
-    deltaDespesaRemovidoDoDRE: tx.amount,
+    /**
+     * ⚠️ **SÓ É DELTA SE HAVIA O QUE REMOVER** (achado em 20/09): este campo devolvia
+     * `tx.amount` SEMPRE — e a tela leu *"R$ 8.626,98 removidos do DRE"* numa linha que
+     * **nunca teve categoria** (nada saiu de lugar nenhum). *Número que afirma um efeito
+     * que não houve é a família do "número sem régua em tela de dinheiro".*
+     *
+     * ⚠️ Ressalva honesta: categoria de grupo não-DRE (transferência) ainda contaria aqui
+     * — o que a régua garante é que **sem categoria o delta é ZERO**.
+     */
+    deltaDespesaRemovidoDoDRE: tx.categoryId ? tx.amount : 0,
   }
 }

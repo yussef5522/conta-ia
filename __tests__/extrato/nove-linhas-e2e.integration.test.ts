@@ -17,6 +17,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { prisma } from '@/lib/db'
 import { resolverLinha, ResolverError } from '@/lib/conciliacao/resolver-linha'
 import { LINHA_DISPONIVEL_WHERE } from '@/lib/conciliacao/fila-de-conciliacao'
+import { SELECT_DA_CAIXA, paraLei } from '@/lib/conciliacao/leitura-da-caixa'
 import { contarEstacoes, estacoesFecham, estacaoDaLinha, comoFoiResolvida, acoesDoSentido, sentidoDaLinha, type LinhaParaEstacao } from '@/lib/conciliacao/caixa-de-entrada'
 
 const CNPJ = '50607080001122'
@@ -99,7 +100,16 @@ afterEach(async () => {
   await prisma.loanInstallmentPayment.deleteMany({ where: { installment: { loan: { companyId } } } })
   await prisma.loanInstallment.deleteMany({ where: { loan: { companyId } } })
   await prisma.loan.deleteMany({ where: { companyId } })
-  await prisma.transaction.deleteMany({ where: { OR: [{ bankAccountId: { in: contas.map((c) => c.id) } }, { businessCreditCardId: { not: null }, bankAccountId: null }] } })
+  /**
+   * ⛔⛔ **ESTE `deleteMany` APAGAVA LINHA DE FATURA DE QUALQUER EMPRESA** — o segundo ramo
+   * era `{ businessCreditCardId: { not: null }, bankAccountId: null }`, **sem escopo**.
+   *
+   * Como a suíte roda arquivos em **PARALELO contra o mesmo banco**, ele varria as compras
+   * do `palpite-acende-com-dado-real` no meio da rodada e o palpite de lá sumia — vermelho
+   * que **mudava de teste a cada rodada** e não era de ninguém. *A mesma família do flake do
+   * `snapshotClosedModules` (23/08): limpeza sem escopo é teste mexendo no teste do vizinho.*
+   */
+  await prisma.transaction.deleteMany({ where: { OR: [{ bankAccountId: { in: contas.map((c) => c.id) } }, { businessCreditCard: { companyId } }] } })
   await prisma.businessCreditCard.deleteMany({ where: { companyId } })
   await prisma.bankAccount.deleteMany({ where: { companyId } })
   await prisma.category.deleteMany({ where: { companyId } })
@@ -109,24 +119,17 @@ afterEach(async () => {
 
 /** as 9 linhas no formato que a lei das estações lê */
 async function estacoes(): Promise<LinhaParaEstacao[]> {
+  /**
+   * ⚠️ **ERA UMA SEGUNDA DERIVAÇÃO, ESCRITA À MÃO** (corrigido 20/09). Este teste montava o
+   * `LinhaParaEstacao` campo a campo — exatamente o que o `paraLei` existe pra impedir. O
+   * efeito: ele podia **passar verde com a tela lendo outro campo**, e foi o `tsc` que
+   * cobrou quando o vínculo do cartão entrou na lei. Agora lê pela porta única.
+   */
   const rows = await prisma.transaction.findMany({
     where: { id: { in: Object.values(tx).filter((id) => LINHAS.some((l) => tx[l.chave] === id)) } },
-    select: {
-      id: true, type: true, categoryId: true, reconciledWithId: true, isCardPayment: true,
-      transferGroupId: true, isInternalTransfer: true, pendingTransfer: true, ignoredAt: true,
-      reconciledFrom: { select: { id: true } },
-      loanInstallmentPaid: { select: { id: true } },
-      loanInstallmentPayments: { select: { id: true } },
-    },
+    select: SELECT_DA_CAIXA,
   })
-  return rows.map((r) => ({
-    categoryId: r.categoryId, reconciledWithId: r.reconciledWithId,
-    temReconciledFrom: r.reconciledFrom.length > 0,
-    isCardPayment: r.isCardPayment,
-    temParcelaVinculada: !!r.loanInstallmentPaid || r.loanInstallmentPayments.length > 0,
-    transferGroupId: r.transferGroupId, isInternalTransfer: r.isInternalTransfer,
-    pendingTransfer: r.pendingTransfer, ignoredAt: r.ignoredAt, tipo: r.type,
-  }))
+  return rows.map(paraLei)
 }
 
 describe('⛔⛔⛔ A LEI DO SENTIDO — crédito nunca vê fila de dívida', () => {

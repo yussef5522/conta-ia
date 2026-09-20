@@ -114,6 +114,8 @@ export interface LinhaParaEstacao {
   reconciledWithId: string | null
   temReconciledFrom: boolean
   isCardPayment: boolean
+  /** ⭐ o VÍNCULO com o cartão — a flag sozinha não resolve nada (20/09) */
+  faturaVinculada: boolean
   temParcelaVinculada: boolean
   transferGroupId: string | null
   isInternalTransfer: boolean
@@ -135,7 +137,25 @@ export interface LinhaParaEstacao {
 export function comoFoiResolvida(l: LinhaParaEstacao): string | null {
   if (l.ignoredAt) return 'ignorada por você'
   if (l.reconciledWithId || l.temReconciledFrom) return 'conciliada com conta'
-  if (l.isCardPayment) return 'pagamento de fatura de cartão'
+  /**
+   * ⛔⛔⛔ **A FLAG DIZ "PARECE"; O VÍNCULO DIZ "É"** — e este `if` confiava na flag.
+   *
+   * **O caso, medido (20/09):** a linha `PAGAMENTO CARTAO DE CREDITO` de **R$ 8.626,98
+   * (17/09)** tinha `isCardPayment: true` — marcada pelo passo 8.5 do import, por
+   * **heurística de DESCRIÇÃO** — e `businessCreditCardId: null`. Ela **não quitava fatura
+   * nenhuma**, e mesmo assim a lei a declarava resolvida e a mandava pro ARQUIVO com o selo
+   * *"pagamento de fatura de cartão"*. Resultado: a fatura do Carter ficou **OPEN com o
+   * pagamento dela no extrato**, o **K3 gritando todo dia**, e ***nenhuma tela onde
+   * resolver*** — o palpite nunca pôde ser oferecido porque a linha nunca chegou na caixa.
+   *
+   * ⚠️⚠️ **ESTA LIÇÃO JÁ ESTAVA ESCRITA, em 29/08, com estas palavras:** *"a flag não quita
+   * nada, **só tira da fila**"*. Ela virou comentário num teste e não virou régua — e o
+   * defeito nasceu depois, na lei da estação.
+   *
+   * ⭐ Agora o selo exige o VÍNCULO. Sem ele a linha **volta pra caixa**, onde o palpite do
+   * cartão (`mesQueBateOValor`) a reconhece e oferece o gesto que a resolve de verdade.
+   */
+  if (l.isCardPayment && l.faturaVinculada) return 'pagamento de fatura de cartão'
   if (l.temParcelaVinculada) return 'parcela de empréstimo'
   if (l.transferGroupId || l.isInternalTransfer || l.tipo === 'TRANSFER') return 'transferência entre contas'
   if (l.categoryId) return 'categorizada'
