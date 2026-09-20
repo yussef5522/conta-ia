@@ -112,3 +112,49 @@ describe('⭐ a TELA consome a régua — e o aviso aponta pro seletor', () => {
       .toMatch(/categoriaEscolhida \? \{ \.\.\.alvo, categoryId: categoriaEscolhida\.id \} : alvo/)
   })
 })
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ⛔⛔⛔ "HERDA DA CONTA" SÓ VALIA NA METADE DOS CASOS (achado na prova em prod, 20/09)
+//
+// **Medido com a ELIANE, depois de conciliar pela rota real:** a conta virou
+// `EFFECTED/RECONCILED` com o vínculo certo — e a **linha do banco saiu pro arquivo SEM
+// CATEGORIA**, aparecendo como **"A CLASSIFICAR"** no Fluxo de Caixa.
+//
+// **A causa:** o *backfill cooperativo* (a linha herdar a categoria da conta) existia **só
+// no ORPHAN MODE**. No **CLASSIC** — que é o caminho COMUM, conta a pagar em aberto — ele
+// simplesmente não existia. ⚠️ Eu escrevi *"a linha HERDA a categoria da conta (é o que o
+// reconcile já faz)"* no código e no doc; ***valia pra metade***.
+describe('⛔⛔ o backfill cooperativo vale nos DOIS modos', () => {
+  const fonte = (arq: string) =>
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    require('node:fs').readFileSync(require('node:path').join(process.cwd(), arq), 'utf-8')
+
+  const REC = fonte('lib/conciliacao/reconcile.ts')
+  const classic = REC.slice(REC.indexOf("if (candidateMode === 'CLASSIC')"), REC.indexOf('// ORPHAN MODE'))
+
+  it('⭐ o CLASSIC herda categoria e fornecedor da conta casada', () => {
+    expect(classic, 'a linha volta a sair da caixa como A CLASSIFICAR')
+      .toMatch(/ofx\.categoryId === null && candidate\.categoryId !== null/)
+    expect(classic).toMatch(/ofx\.supplierId === null && candidate\.supplierId !== null/)
+  })
+
+  it('⛔ e é COOPERATIVO — nunca sobrescreve o que o dono já pôs', () => {
+    // a condição é `=== null`: categoria existente na linha fica intacta
+    expect(classic).not.toMatch(/categoryId: candidate\.categoryId\s*[,}]\s*$/m)
+  })
+
+  it('⭐⭐ ganhar categoria sobe o status — linha categorizada não fica "Pendente"', () => {
+    expect(classic).toMatch(/'categoryId' in backfillClassic/)
+    expect(classic).toContain("status: 'RECONCILED' as const")
+  })
+
+  it('⛔⛔ e o DESFAZER devolve — um helper, os dois modos', () => {
+    expect(REC, 'o undo do CLASSIC deixaria uma categoria que a linha nunca escolheu')
+      .toMatch(/restaurarOfxDoBackfill\(trx, metadata\)[\s\S]{0,600}mode: 'CLASSIC'/)
+    expect((REC.match(/await restaurarOfxDoBackfill\(/g) ?? []).length, 'um dos dois ramos ficou sem restaurar')
+      .toBe(2)
+    // ⭐ e o audit do CLASSIC guarda o que foi escrito (sem isso o undo é cego)
+    expect(classic).toMatch(/ofxBefore: \{ categoryId: ofx\.categoryId/)
+    expect(classic).toMatch(/ofxBackfilled: backfillClassic/)
+  })
+})

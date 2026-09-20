@@ -87,6 +87,31 @@ function resolveCandidateDate(candidate: {
   return candidate.paymentDate ?? candidate.dueDate ?? candidate.date
 }
 
+/**
+ * ⭐⭐ DESFAZER DEVOLVE A LINHA AO ESTADO ANTERIOR — **um helper, os dois modos** (20/09).
+ *
+ * ⛔ O backfill cooperativo passou a existir no CLASSIC também, e sem isto o desfazer
+ * deixaria na linha uma categoria que ela **nunca escolheu** — a conciliação sumiria e a
+ * classificação ficaria. *Desfazer pela metade é pior que não desfazer.*
+ *
+ * ⚠️ Ele só restaura o que ESTE vínculo escreveu (lê do audit), então categoria posta pelo
+ * dono depois não é tocada.
+ */
+async function restaurarOfxDoBackfill(
+  trx: { transaction: { update: (a: { where: { id: string }; data: Record<string, string | null> }) => Promise<unknown> } },
+  metadata: AuditMetadata,
+): Promise<void> {
+  const backfilled = metadata.ofxBackfilled ?? {}
+  const ofxBefore = metadata.ofxBefore
+  if (!metadata.ofxTransactionId || !ofxBefore || Object.keys(backfilled).length === 0) return
+  const restoreData: Record<string, string | null> = {}
+  if ('categoryId' in backfilled) restoreData.categoryId = ofxBefore.categoryId
+  if ('supplierId' in backfilled) restoreData.supplierId = ofxBefore.supplierId
+  if (Object.keys(restoreData).length > 0) {
+    await trx.transaction.update({ where: { id: metadata.ofxTransactionId }, data: restoreData })
+  }
+}
+
 export async function reconcileTransactions(
   input: ReconcileInput,
   ctx: AuthContext,
@@ -262,6 +287,33 @@ export async function reconcileTransactions(
         },
       })
 
+      /**
+       * ⛔⛔⛔ **O BACKFILL COOPERATIVO FALTAVA AQUI — e isto era metade da régua de hoje.**
+       *
+       * *"Casar com conta a pagar → a linha HERDA a categoria da conta"* é a regra do dono
+       * (20/09), e eu a escrevi no código dizendo *"é o que o reconcile já faz"*. **Ele fazia
+       * só no ORPHAN MODE.** No CLASSIC — que é o caminho COMUM (conta a pagar em aberto) —
+       * a conta virava EFFECTED e **a linha do banco ficava sem categoria nenhuma**.
+       *
+       * **Medido em prod com a ELIANE:** conciliou certo (conta RECONCILED, vínculo ok) e a
+       * linha saiu pro arquivo aparecendo como **"A CLASSIFICAR"** no Fluxo de Caixa —
+       * exatamente o vermelho que a régua existe pra impedir.
+       *
+       * ⚠️ E é **cooperativo**: só preenche o que está VAZIO. Categoria que o dono já pôs na
+       * linha não é sobrescrita por conciliação nenhuma.
+       */
+      const backfillClassic: Record<string, string> = {}
+      if (ofx.categoryId === null && candidate.categoryId !== null) backfillClassic.categoryId = candidate.categoryId
+      if (ofx.supplierId === null && candidate.supplierId !== null) backfillClassic.supplierId = candidate.supplierId
+      if (Object.keys(backfillClassic).length > 0) {
+        await trx.transaction.update({
+          where: { id: ofx.id },
+          // ⭐ ganhou categoria → sobe pra RECONCILED (a escada de 28/06: linha categorizada
+          //   não pode continuar com o badge "Pendente" em /movimentacoes)
+          data: 'categoryId' in backfillClassic ? { ...backfillClassic, status: 'RECONCILED' as const } : backfillClassic,
+        })
+      }
+
       await logAudit(
         ctx,
         {
@@ -283,6 +335,12 @@ export async function reconcileTransactions(
             candidateAmount: candidate.amount,
             diferencaAceita: input.diferencaAceita ?? null,
             reconcileGroupId: input.reconcileGroupId ?? null,
+            /**
+             * ⭐ o que a linha do banco GANHOU — sem isto o desfazer não tem como devolver
+             * a linha ao estado anterior (e deixaria uma categoria que ela nunca escolheu).
+             */
+            ofxBefore: { categoryId: ofx.categoryId, supplierId: ofx.supplierId },
+            ofxBackfilled: backfillClassic,
           },
         },
         trx,
@@ -490,6 +548,8 @@ export async function undoReconciliation(
           status: 'PENDING',
         },
       })
+      // ⭐ desfazer devolve a linha ao estado anterior — inclusive a categoria herdada
+      await restaurarOfxDoBackfill(trx, metadata)
       await logAudit(
         ctx,
         {
@@ -516,24 +576,8 @@ export async function undoReconciliation(
       },
     })
 
-    // Restaura OFX se houve backfill cooperativo
-    const backfilled = metadata.ofxBackfilled ?? {}
-    const ofxBefore = metadata.ofxBefore
-    if (
-      metadata.ofxTransactionId &&
-      ofxBefore &&
-      Object.keys(backfilled).length > 0
-    ) {
-      const restoreData: Record<string, string | null> = {}
-      if ('categoryId' in backfilled) restoreData.categoryId = ofxBefore.categoryId
-      if ('supplierId' in backfilled) restoreData.supplierId = ofxBefore.supplierId
-      if (Object.keys(restoreData).length > 0) {
-        await trx.transaction.update({
-          where: { id: metadata.ofxTransactionId },
-          data: restoreData,
-        })
-      }
-    }
+    // Restaura OFX se houve backfill cooperativo (⭐ MESMO helper do CLASSIC)
+    await restaurarOfxDoBackfill(trx, metadata)
 
     await logAudit(
       ctx,
@@ -545,7 +589,7 @@ export async function undoReconciliation(
           undone: true,
           mode: 'EFFECTED_ORPHAN',
           restoredStatus: statusBefore,
-          ofxRestored: backfilled,
+          ofxRestored: metadata.ofxBackfilled ?? {},
         },
       },
       trx,
