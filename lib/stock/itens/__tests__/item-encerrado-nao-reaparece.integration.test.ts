@@ -124,6 +124,16 @@ describe('⛔⛔ o item ENCERRADO some de tudo que é vivo', () => {
     expect((await listCatalogo(companyId)).map((l) => l.id), 'o catálogo é onde o passado se consulta').toContain(itemId)
   })
 
+it('⛔ o contrafactual: item com ESTORNO de consumo encerra normal', async () => {
+    const m = await criarMovimento(prisma, { companyId, itemId, tipo: 'PRODUCAO_CONSUMO', quantidade: -3, custoUnitario: 1, custoTotal: -3, origem: 'MANUAL' })
+    await prisma.stockMovement.create({
+      data: { companyId, itemId, tipo: 'ESTORNO', quantidade: 3, custoUnitario: 1, custoTotal: 3, estornoDeId: m.id, origem: 'MANUAL' },
+    })
+    // ⭐ o par consumo+estorno não move a prateleira — o item segue zerado e ENCERRA.
+    //   Com a régua antiga (aggregate próprio) isto acusava saldo e RECUSAVA.
+    await expect(encerrarItem({ companyId, itemId, motivo: 'com estorno interno' }, prisma)).resolves.toBeTruthy()
+  })
+
   it('⭐ encerrar 2× é idempotente (unique no banco), não erro', async () => {
     await encerrarItem({ companyId, itemId, motivo: 'primeira' }, prisma)
     await expect(encerrarItem({ companyId, itemId, motivo: 'segunda' }, prisma)).resolves.toBeTruthy()
@@ -160,5 +170,14 @@ describe('⭐ o SELO chega às telas — registro que ninguém desenha é enfeit
     expect(m).not.toMatch(/ALTER TABLE|DROP TABLE/)
     expect(m).toMatch(/CHECK \(length\(trim\("motivo"\)\) > 0\)/)
     expect(m).toMatch(/CREATE UNIQUE INDEX .*itemId/)
+  })
+})
+
+describe('⛔⛔ o saldo do encerramento vem da PORTA ÚNICA', () => {
+  it('⭐ usa saldoItem, não um aggregate próprio', () => {
+    const l = fonte('lib/stock/itens/encerrar-item.ts')
+    expect(usosDe(l, 'saldoItem'), 'segunda régua de saldo diverge no 1º caso de borda').toBeGreaterThan(0)
+    expect(l, 'foi exatamente esta régua que acusou 36,25 num item já zerado')
+      .not.toMatch(/stockMovement\.aggregate/)
   })
 })

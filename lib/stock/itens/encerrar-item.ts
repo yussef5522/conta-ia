@@ -21,6 +21,7 @@
 
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
+import { saldoItem } from '../saldo'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -47,12 +48,21 @@ export async function encerrarItem(e: EncerramentoDeItem, db: Db = defaultPrisma
   const item = await db.stockItem.findFirst({ where: { id: e.itemId, companyId: e.companyId }, select: { id: true, nome: true, unidadeControle: true } })
   if (!item) throw new EncerrarItemError('Item não encontrado nesta empresa.')
 
-  const agg = await db.stockMovement.aggregate({
-    where: { companyId: e.companyId, itemId: e.itemId, tipo: { not: 'PRODUCAO_CONSUMO' } },
-    _sum: { quantidade: true, custoTotal: true },
-  })
-  const saldo = Math.round(((agg._sum.quantidade ?? 0) + 1e-9) * 1000) / 1000
-  const valor = Math.round(((agg._sum.custoTotal ?? 0) + 1e-9) * 100) / 100
+  /**
+   * ⛔⛔ O SALDO VEM DA PORTA ÚNICA (`saldoItem`) — e isto foi erro meu, pego na hora.
+   *
+   * A 1ª versão montou um `aggregate` próprio com `tipo: { not: 'PRODUCAO_CONSUMO' }` e
+   * **repetiu o defeito dos estornos internos que eu tinha acabado de corrigir** em
+   * `saldo.ts`: acusou **36,25 KG / R$ 1,51** num item já zerado pela contagem — a soma
+   * exata dos estornos de consumo.
+   *
+   * ⭐ *Segunda derivação da mesma pergunta diverge no primeiro caso de borda* — a lição
+   * do B1, e ela vale inclusive quando quem escreve a segunda acabou de consertar a
+   * primeira.
+   */
+  const s = await saldoItem(db, e.companyId, e.itemId)
+  const saldo = s.saldo
+  const valor = s.valor
   if (Math.abs(saldo) > 0.001 || Math.abs(valor) > 0.01) {
     throw new EncerrarItemError(
       `«${item.nome}» ainda tem ${saldo} ${item.unidadeControle} valendo R$ ${valor.toFixed(2)} no estoque. ` +
