@@ -164,6 +164,8 @@ describe('⭐ REGRA 12 — a caixa tem UMA composição, então celular e deskto
   })
 
   it('⭐ e o cartão empilha no celular pela medida do mock (min-[900px])', () => {
-    expect(fonte(TELA)).toMatch(/grid-cols-1 min-\[900px\]:grid-cols-\[1fr_64px_1fr\]/)
+    // ⚠️ o grid mora no CHASSI desde 20/09 — uma medida, todas as casas
+    expect(fonte('components/conciliacao/chassi-do-cartao.tsx'))
+      .toMatch(/grid-cols-1 min-\[900px\]:grid-cols-\[1fr_64px_1fr\]/)
   })
 })

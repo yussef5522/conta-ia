@@ -20,7 +20,14 @@ const MOCK = readFileSync(join(raiz, 'docs/mocks/conciliacao-caixa-mock-v3.html'
  * aparece no cabeçalho de documentação do arquivo. *Guard que conta a MENÇÃO aprova a
  * tela que não imprime nada* — a mesma lição do `acaoValePraSentido` de 15/09.
  */
+/**
+ * ⚠️ **A TELA SÃO DOIS ARQUIVOS desde 20/09** — o chassi ≍ (lado esquerdo + conector) virou
+ * componente compartilhado, pra o "pra tua mão" usar o MESMO desenho. O guard passou a ler
+ * a composição: a pergunta continua *"a tela imprime isto?"*, só o arquivo mudou de nome.
+ * ⛔ Ler só a caixa daria vermelho com a tela CERTA — e ler só o chassi perderia o resto.
+ */
 const CAIXA = semComentario(readFileSync(join(raiz, 'components/conciliacao/caixa-de-entrada.tsx'), 'utf-8'))
+  + semComentario(readFileSync(join(raiz, 'components/conciliacao/chassi-do-cartao.tsx'), 'utf-8'))
 
 export function semComentario(src: string): string {
   return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
@@ -133,11 +140,11 @@ describe('⭐⭐ o SELETOR DE CATEGORIA mora na coluna da esquerda', () => {
     expect(direita.slice(0, 400)).not.toContain('é despesa: categoria</span>\n        <span class="chip">🏷')
   })
 
-  it('⭐ a tela põe o seletor no MESMO lugar — depois do valor, antes do conector', () => {
-    const i = CAIXA.indexOf('O BANCO DIZ')
-    const esquerda = CAIXA.slice(i, CAIXA.indexOf('O CONECTOR', i))
-    expect(esquerda, 'o seletor não está na coluna da esquerda').toContain('CATEGORIA')
-    expect(esquerda, 'a régua tem que vir da lib, não de um if na tela').toContain('sel.modo')
+  it('⭐ a tela põe o seletor no MESMO lugar — abaixo do valor, na coluna da esquerda', () => {
+    // ⭐ o chassi recebe o bloco por `abaixoDoValor`: é literalmente "depois do valor"
+    expect(CAIXA).toMatch(/abaixoDoValor=\{<>[\s\S]{0,600}CATEGORIA/)
+    expect(CAIXA, 'a régua tem que vir da lib, não de um if na tela').toContain('sel.modo')
+    expect(CAIXA, 'o chassi deixou de desenhar o abaixoDoValor').toContain('{abaixoDoValor}')
   })
 
   it('⛔⛔ e o gesto ESPERA a categoria — com o aviso que APONTA pro seletor', () => {
@@ -176,6 +183,75 @@ describe('⭐⭐ o CASO renderiza DENTRO do cartão ≍, no lugar do palpite', (
 
   it('⛔⛔ e o palpite NÃO coexiste com o caso — seriam dois botões no mesmo cartão', () => {
     expect(CAIXA).toContain('{l.palpite && !l.caso && (')
+  })
+})
+
+/**
+ * ⭐⭐⭐ A ÚLTIMA VOLTA DO MODELO ÚNICO (20/09) — o N:M no chassi ≍.
+ *
+ * **A ordem do dono:** *"embrulha o EscolherNaMaoCard (N:M) no chassi do cartão ≍ — mesmo
+ * visual das outras casas, mock v3 junto. Sem pressa, **sem mexer no motor**."*
+ *
+ * ⛔ O que este bloco trava são as DUAS metades: (a) o caso N:M desenha a coluna do banco
+ * pelo chassi COMPARTILHADO, nunca por uma faixa própria; (b) o MOTOR continua onde estava
+ * — um grupo aberto por vez, uma linha por vez, e o Conciliar preso à conta fechada.
+ * *Sem (b), "só a pintura mudou" vira promessa em vez de fato.*
+ */
+describe('⭐⭐ o CASO N:M mora no MESMO chassi ≍ das outras casas', () => {
+  const CARD = semComentario(
+    readFileSync(join(raiz, 'components/conciliacao/escolher-na-mao-card.tsx'), 'utf-8'),
+  )
+  const CHASSI = semComentario(
+    readFileSync(join(raiz, 'components/conciliacao/chassi-do-cartao.tsx'), 'utf-8'),
+  )
+
+  it('⛔ o mock desenha o caso N:M dentro do `.par-grid`, com O BANCO DIZ e o conector', () => {
+    const grupo = MOCK.slice(MOCK.indexOf('<div class="grupo">'))
+    expect(grupo, 'o caso N:M voltou a ter visual próprio no mock').toContain('class="par sem-moldura"')
+    expect(grupo, 'o chassi perdeu a coluna do banco').toContain('O BANCO DIZ')
+    expect(grupo, 'o conector sumiu do caso N:M').toContain(`>${CONECTOR}<`)
+    expect(grupo, 'a lista de notas saiu do painel da direita').toContain('class="lado colado"')
+  })
+
+  it('⭐ a TELA usa o chassi — e a faixa fria própria morreu', () => {
+    expect(CARD, 'o card do N:M deixou de usar o chassi compartilhado').toContain('<ChassiDoCartao')
+    expect(CARD, 'a `.linha-banco` própria voltou — é o segundo modelo visual que a régua proíbe')
+      .not.toContain('MOCK.frio')
+  })
+
+  it('⛔⛔ o chassi ainda DESENHA o mesmo grid e o mesmo conector com a moldura desligada', () => {
+    // ⚠️ `moldura={false}` só tira a BORDA (o cartão do fornecedor já é a caixa); se um dia
+    // ela passar a tirar o grid ou a coluna do banco, deixa de ser o mesmo modelo visual.
+    expect(CHASSI).toMatch(/moldura \? 'overflow-hidden rounded-\[22px\] border' : ''/)
+    /**
+     * ⚠️⚠️ REGRA 11 REPROVOU A 1ª VERSÃO DISTO: eu fatiava o arquivo a partir do primeiro
+     * `moldura ?` e perguntava se o grid aparecia no resto — e ele aparecia **DENTRO do
+     * ternário** que eu tinha acabado de repor como defeito. Repor o defeito deixava o
+     * guard VERDE. ⭐ O que morde é exigir o `className` **LITERAL**: enquanto o grid e a
+     * coluna do banco não puderem ser escritos atrás de nenhuma condição, `moldura` não
+     * tem como virar "meio chassi".
+     */
+    expect(CHASSI, 'o grid ficou condicionado — a moldura só pode tirar a BORDA')
+      .toContain('className="grid grid-cols-1 min-[900px]:grid-cols-[1fr_64px_1fr]"')
+    // ⚠️ E o rótulo do banco tem que ser TEXTO, não expressão: `{moldura ? 'O BANCO DIZ'
+    // : null}` passava pela versão anterior deste guard (a frase continuava no arquivo).
+    const linhaDoRotulo = CHASSI.split('\n').find((l) => l.includes('O BANCO DIZ')) ?? ''
+    expect(linhaDoRotulo, 'o rótulo do banco virou condicional — a moldura só tira a BORDA')
+      .not.toMatch(/[?{]/)
+  })
+
+  it('⛔⛔⛔ O MOTOR NÃO MUDOU — as travas do N:M continuam no lugar', () => {
+    const FILA = semComentario(
+      readFileSync(join(raiz, 'components/conciliacao/fila-escolher-na-mao.tsx'), 'utf-8'),
+    )
+    // um grupo aberto por vez
+    expect(FILA).toContain('useState<string | null>(null)')
+    expect(FILA).toMatch(/setAberto\(estaAberto \? null : g\.fornecedorId\)/)
+    // uma linha por vez, da mais antiga
+    expect(FILA).toContain('navegacao=')
+    // e o Conciliar só acende com a conta fechada
+    expect(CARD).toContain('disabled={ocupado || !podeConciliar}')
+    expect(CARD).toMatch(/pointerEvents: podeConciliar && !ocupado \? 'auto' : 'none'/)
   })
 })
 

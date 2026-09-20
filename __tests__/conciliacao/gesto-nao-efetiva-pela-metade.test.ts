@@ -34,6 +34,8 @@ const fonte = (arq: string) =>
     .replace(/^\s*\/\/.*$/gm, '')
 
 const TELA = 'components/conciliacao/caixa-de-entrada.tsx'
+/** ⚠️ o chassi ≍ virou componente em 20/09 — o cartão (e o overflow) moram nele agora */
+const CHASSI = 'components/conciliacao/chassi-do-cartao.tsx'
 const MENU = 'components/conciliacao/menu-do-chip.tsx'
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -105,7 +107,7 @@ describe('⛔⛔ 2. O MENU NÃO PODE SER RECORTADO PELO CARTÃO', () => {
 
   it('⛔ e o cartão CONTINUA com overflow-hidden (é o que arredonda os dois lados)', () => {
     // ⚠️ o guard prova que o conserto foi no MENU, não removendo o arredondamento do cartão
-    expect(fonte(TELA)).toMatch(/overflow-hidden rounded-\[22px\]/)
+    expect(fonte(CHASSI), 'o cartão perdeu o overflow que arredonda os dois lados').toMatch(/overflow-hidden rounded-\[22px\]/)
   })
 
   it('⭐ abre pra BAIXO quando há espaço', () => {

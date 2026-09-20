@@ -107,6 +107,33 @@
   .chip:hover{border-color:var(--roxo);color:var(--roxo);background:var(--roxo-bg);}
   .chip.mudo{color:var(--sub);}
 
+  /* ⭐⭐⭐ 20/09 — O CASO N:M NO MESMO CHASSI ≍ ("pra tua mão" deixou de ter visual próprio).
+     A régua do dono: *uma decisão aparece UMA vez na página, SEMPRE no mesmo modelo visual*.
+     O cartão do FORNECEDOR é a moldura; o chassi entra SEM a dele (caixa dentro de caixa é
+     ruído) e o painel da direita COLA nas bordas, porque a lista de notas sangra de ponta a
+     ponta e o rodapé é sticky. ⛔ O MOTOR não muda: um grupo aberto por vez, uma linha por
+     vez, e as três travas do rodapé (só acende com a conta fechada). */
+  .grupo{background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:var(--sombra);overflow:hidden;margin-bottom:12px;}
+  .grupo .forn{border:0;border-radius:0;box-shadow:none;}
+  .grupo-corpo{border-top:1px solid var(--line);}
+  .par.sem-moldura{border:0;border-radius:0;box-shadow:none;margin-bottom:0;}
+  .lado.colado{padding:0;}
+  .lado.colado .rot{padding:16px 16px 0;margin-bottom:0;}
+  .instr{padding:10px 16px 2px;font-size:13px;color:var(--sub);}
+  .grupo-t{padding:10px 16px 4px;font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--sub);}
+  .fech{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;font-size:13.5px;color:var(--sub);}
+  .nota{display:flex;align-items:center;gap:12px;padding:10px 16px;border-top:1px solid #f1efe9;font-size:14px;cursor:pointer;}
+  .nota input{width:19px;height:19px;accent-color:var(--roxo);flex-shrink:0;}
+  .nota .n-txt{flex:1;min-width:0;}
+  .nota .n-txt small{display:block;font-size:12px;color:var(--sub);}
+  .nota .n-val{font-weight:600;font-variant-numeric:tabular-nums;}
+  .nota.sugerida{background:var(--roxo-bg);}
+  .rodape{position:sticky;bottom:0;background:var(--card);border-top:2px solid var(--line);padding:12px 16px;display:flex;align-items:center;gap:12px;}
+  .rodape .conta{flex:1;font-size:13.5px;}
+  .btn-g{border:1px solid var(--line);background:none;color:var(--sub);border-radius:12px;padding:12px 18px;font-size:14.5px;font-weight:700;}
+  /* ⛔ nasce opacity .35 e sem pointer-events — o Conciliar só acende com a conta fechada */
+  .btn-p{border:0;background:var(--roxo);color:#fff;border-radius:12px;padding:12px 18px;font-size:14.5px;font-weight:700;opacity:.35;pointer-events:none;}
+
   /* linha resolvida (feedback) */
   .feita{display:flex;align-items:center;gap:12px;background:var(--verde-bg);border:1px solid #cdebd9;border-radius:16px;padding:11px 16px;margin-bottom:14px;font-size:13px;animation:pop .3s ease;}
   @keyframes pop{from{opacity:0;transform:translateY(-6px)}to{opacity:1}}
@@ -212,10 +239,51 @@
 </div>
 
 <h2>🖐 PRA TUA MÃO — O PAGAMENTO EXISTE, VOCÊ DIZ O QUE ELE PAGOU</h2>
+<!-- fechado: o cabeçalho do fornecedor é a porta -->
 <div class="forn">
   <div class="avatar">CA</div>
-  <div class="nm"><b>Casper Distribuidora</b><small>2 pagamentos na Stone · 04/09 · 7 notas a vencer</small></div>
+  <div class="nm"><b>Casper Distribuidora</b><small>2 pagamentos · 04/09 a 08/09</small></div>
   <div class="st"><span class="pill">1 vencida</span><span class="qt">abrir o caso →</span></div>
+</div>
+
+<!-- ⭐⭐ ABERTO: o caso mora DENTRO do chassi ≍ — mesmo lado esquerdo, mesmo conector -->
+<div class="grupo">
+  <div class="forn">
+    <div class="avatar">IV</div>
+    <div class="nm"><b>Ivan Distribuidora</b><small>3 pagamentos · 24/08 a 08/09</small></div>
+    <div class="st"><span class="pill">3 vencidas</span><span class="qt">fechar o caso</span></div>
+  </div>
+  <div class="grupo-corpo">
+    <div class="par sem-moldura">
+      <div class="par-grid">
+        <div class="lado">
+          <div class="rot">O BANCO DIZ <span class="banco-chip"><i></i>stone</span></div>
+          <div class="memo">MAURO IVAN LUNARDI - Pagamento<small>24/08/2026</small></div>
+          <div class="valor">− R$ 1.743,25</div>
+        </div>
+        <div class="meio"><div class="fio"></div><div class="simb">≍</div><div class="fio"></div></div>
+        <div class="lado colado">
+          <div class="rot">QUAIS NOTAS ESTE PAGAMENTO COBRIU</div>
+          <div class="fech">
+            <span>linha 1 de 3</span>
+            <span><span class="chip mudo">‹ anterior</span> <span class="chip">pular pra próxima ›</span></span>
+          </div>
+          <div class="instr">Marca as notas que esse pagamento cobriu — vale misturar vencidas e a vencer:</div>
+          <div class="grupo-t">Vencidas</div>
+          <label class="nota sugerida"><input type="checkbox" checked><span class="n-txt">NF 39<small>venc 07/09 · <b style="color:var(--roxo)">⭐ com essa, a soma crava</b></small></span><span class="n-val">R$ 625,00</span></label>
+          <label class="nota sugerida"><input type="checkbox" checked><span class="n-txt">NF 41<small>venc 07/09</small></span><span class="n-val">R$ 613,50</span></label>
+          <label class="nota sugerida"><input type="checkbox" checked><span class="n-txt">NF 40<small>venc 07/09</small></span><span class="n-val">R$ 350,00</span></label>
+          <div class="grupo-t">A vencer (o pagamento pode ter levado junto)</div>
+          <label class="nota"><input type="checkbox"><span class="n-txt">NF 42<small>venc 14/09</small></span><span class="n-val">R$ 350,00</span></label>
+          <div class="rodape">
+            <span class="conta">selecionado R$ 1.588,50 · <b style="color:var(--ambar)">faltam R$ 154,75</b></span>
+            <button class="btn-g">não é isso</button>
+            <button class="btn-p">Conciliar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="zero" style="margin-top:20px">

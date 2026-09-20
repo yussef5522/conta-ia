@@ -18,7 +18,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Loader2, ArrowDownLeft, ArrowUpRight, Check, RefreshCw } from 'lucide-react'
 import { fetchComTimeout } from '@/lib/http/fetch-com-timeout'
-import { V3, SOMBRA, CONECTOR } from './mock-v3-tokens'
+import { V3, SOMBRA } from './mock-v3-tokens'
+import { ChassiDoCartao } from './chassi-do-cartao'
 import { MenuDoChip, type SecaoDoChip } from './menu-do-chip'
 import { FindAndMatchPanel } from './find-and-match-panel'
 import { secoesDoMenu, type CategoriaDoMenu } from '@/lib/conciliacao/categorias-do-gesto'
@@ -678,37 +679,16 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, carg
     categoriaEscolhida ? { ...alvo, categoryId: categoriaEscolhida.id } : alvo
 
   return (
-    <div className="overflow-hidden rounded-[22px] border" style={{ background: V3.card, borderColor: V3.line, boxShadow: SOMBRA }}>
-      {/*
-        ⭐ REGRA 12 — o mock manda: desktop lado a lado (1fr 64px 1fr), celular EMPILHA.
-        A media query do mock é 900px; aqui é a variante arbitrária do Tailwind, pra a
-        medida sair do MESMO número que o guard lê no arquivo.
-      */}
-      <div className="grid grid-cols-1 min-[900px]:grid-cols-[1fr_64px_1fr]">
-        {/* ── O BANCO DIZ ─────────────────────────────────────────────── */}
-        <div className="px-5 py-[18px]">
-          <div className="mb-2.5 flex flex-wrap items-center gap-1.5 text-[10px] font-extrabold tracking-[0.07em]" style={{ color: V3.sub }}>
-            O BANCO DIZ
-            {l.conta && (
-              <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-[3px] text-[11.5px] font-bold"
-                style={{ background: '#f2f1f8', color: V3.ink }}>
-                <i className="h-4 w-4 rounded-full not-italic" style={{ background: 'linear-gradient(135deg,#7ac142,#4a8f2a)' }} />
-                {l.conta}
-              </span>
-            )}
-          </div>
-          <div className="text-[14.5px] font-bold leading-[1.35]" style={{ color: V3.ink }}>
-            {l.descricao || '(sem descrição)'}
-            <small className="mt-0.5 block text-[12px] font-medium" style={{ color: V3.sub }}>
-              {dia(l.data)}{l.contraparte ? ` · ${l.contraparte}` : ''}
-            </small>
-          </div>
-          {/* ⭐ o valor GIGANTE — coral débito, verde crédito */}
-          <div className="mt-2 text-[28px] font-extrabold tracking-[-0.01em] tabular-nums"
-            style={{ color: credito ? V3.verde : V3.coral }}>
-            {credito ? '+' : '−'} {brl(l.valor)}
-          </div>
-
+    /**
+     * ⭐⭐⭐ O CHASSI É COMPARTILHADO (20/09) — o mesmo do "pra tua mão".
+     *
+     * ⛔ O lado esquerdo e o conector moravam AQUI, escritos à mão, e o card do N:M tinha o
+     * desenho dele: o dono via *"a mesma coisa em dois MODELOS visuais diferentes"*.
+     * ***Quando N telas precisam do MESMO desenho, o desenho vira componente.***
+     */
+    <ChassiDoCartao
+      banco={{ conta: l.conta, descricao: l.descricao, data: l.data, contraparte: l.contraparte, valor: l.valor, credito }}
+      abaixoDoValor={<>
           {/*
             ⭐⭐⭐ O SELETOR DE CATEGORIA MORA AQUI (20/09) — decisão do dono: *"o lado
             esquerdo tem menos conteúdo e sobra espaço; assim a categoria não fica espremida
@@ -747,20 +727,10 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, carg
               </div>
             )}
           </div>
-        </div>
-
-        {/* ── O CONECTOR ──────────────────────────────────────────────── */}
-        <div className="flex flex-row items-center justify-center gap-1.5 px-4 pb-1 min-[900px]:flex-col min-[900px]:px-0 min-[900px]:py-3">
-          <div className="h-[2px] w-full flex-1 rounded-sm min-[900px]:h-auto min-[900px]:min-h-[34px] min-[900px]:w-[2px]"
-            style={{ background: `linear-gradient(${V3.line},${V3.roxoBg},${V3.line})` }} />
-          <div className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full text-[15px] font-extrabold"
-            style={{ background: V3.roxoBg, color: V3.roxo }}>{CONECTOR}</div>
-          <div className="h-[2px] w-full flex-1 rounded-sm min-[900px]:h-auto min-[900px]:min-h-[34px] min-[900px]:w-[2px]"
-            style={{ background: `linear-gradient(${V3.line},${V3.roxoBg},${V3.line})` }} />
-        </div>
-
-        {/* ── MELHOR PALPITE (ou direto nos chips) ────────────────────── */}
-        <div className="px-5 py-[18px]">
+      </>}
+    >
+      {/* ── O PAINEL DESTA CASA: palpite, caso, ou direto nos chips ──── */}
+      <>
           <div className="mb-2.5 text-[10px] font-extrabold tracking-[0.07em]" style={{ color: V3.sub }}>
             {l.caso ? 'ESTE CASO TEM MAIS DE UMA CANDIDATA' : l.palpite ? 'MELHOR PALPITE' : 'O QUE ESTA LINHA É?'}
           </div>
@@ -900,8 +870,7 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, carg
               )
             })}
           </div>
-        </div>
-      </div>
-    </div>
+      </>
+    </ChassiDoCartao>
   )
 }
