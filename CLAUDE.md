@@ -814,6 +814,31 @@ SEM empresaId na URL → HTTP 200 · 42 removidas   (antes: 403 mudo)
 ```
 **10.521 verdes · TS 0 · deploy `dXMGy5iJz6E62i2yKiBUs` 4/4 · Δ bundle +4 KB.** ⚠️ Uma sonda minha marcou o timeout como ausente no bundle — era a frase montada por template, que o minificador parte; conferido por `TempoEsgotado` (4 chunks).
 
+### ⛔⛔⛔ O CASO FOI PRA DENTRO DO CARTÃO ≍ — E O CASPER TINHA SUMIDO (20/09)
+
+**O dono:** *"o teu mapa de 3 casas está certo por DENTRO, mas na MINHA PÁGINA as casas empilham: o ponteiro da FRANCIELE e a FILA dela aparecem um em cima do outro — pra mim é a mesma coisa duas vezes, em dois MODELOS visuais diferentes. E o CASPER SUMIU."*
+
+**⛔⛔⛔ O CASPER — e a causa é o default da minha própria régua.** As duas linhas dele são de **04/09 e já categorizadas**: elas **não estão na caixa**, então `divisaoDaTela` **não as conhece**. O predicado fazia `c?.casa ?? 'CAIXA'` e tratou *"desconhecida"* como *"a caixa é dona"* → escondeu. ***É o "some dos dois" que esta própria régua proíbe, cometido pelo default dela.*** ⭐ O default seguro é **APARECER**: *duplicar é feio; sumir é perder trabalho.*
+
+**⚠️⚠️ E POR QUE O GUARD NÃO PEGOU:** ele derivava o card dos **PALPITES** — e linha que não está na caixa **não tem palpite**, então o CASPER **nunca entrou no cenário**. ***Guard que só imagina o caminho conhecido não cobre o que some.*** Agora ele recebe `linhasSoNoCard` e cobre a família.
+
+**⭐⭐⭐ A RÉGUA DE APRESENTAÇÃO (dele):** ***uma decisão aparece UMA vez na página, SEMPRE no mesmo modelo visual — o cartão ≍.*** O caso ambíguo deixou de ser seção embaixo e renderiza **no lado direito do próprio cartão, no lugar do palpite**: a conta, as 2+ candidatas com `[foi esta — vincular]`, e o aviso da já-categorizada. ⛔ O ponteiro morreu junto — *não se aponta pra baixo quando o caso mora aqui*.
+
+⭐ **SÓ A LINHA ANFITRIÃ HOSPEDA O PAINEL.** Duas linhas do mesmo caso na caixa: a 1ª desenha, as outras dizem *"parte do caso «X» acima ↑"*. **Sem isso a duplicação voltaria — agora dentro do modelo certo.** E a **fila solta** a conta hospedada: ela passou a morar no cartão.
+
+**PROVADO EM PROD, na página montada (celular):**
+```
+⭐ CARTÃO COM O CASO — R$ 500 «FRANCIELE»
+     conta «franciele» R$ 500 · vence 15/09
+       · R$ 500 15/09 «FRANCIELE…»                      [vincular]
+       · R$ 500 08/09 «Tiele…»  ⚠️ já Salários          [vincular]
+FILA (seção de baixo): 0 conta(s)      CARDS: 2 ⭐ CASPER DE VOLTA
+⛔ alguma decisão 2× na página: NENHUMA ✓
+```
+**REGRA 11 — o `?? 'CAIXA'` reposto: 2 vermelhos.** ⚠️ E **2 guards ficaram vermelhos COM A TELA CERTA** (o campo virou `caso`, e a rota passou a montar o painel em vez de perguntar quem desenha botão) — **reapontados, não afrouxados**; a régua que continua mordendo é *"nenhuma rota compara a casa na mão"*. **10.588 verdes · TS 0 · deploy `Do7JsHhPedkkE3gji-41b` 4/4 · Δ bundle +0 KB.**
+
+📋 **O QUE NÃO ENTROU, e é decisão dele:** o item 2 pedia que o **N:M (CASPER) também virasse cartão ≍** — hoje ele voltou **visível**, mas ainda no visual do card de 10/09 (seção própria). Embrulhar o `EscolherNaMaoCard` no chassi do cartão ≍ é a próxima volta; entreguei o que fecha o aceite dele (*"o CASPER de volta como caso visível, zero seções duplicadas"*) e **declaro o resto** em vez de dizer que está pronto.
+
 ### ⛔⛔⛔ ERAM TRÊS SUPERFÍCIES — E A MINHA PROVA MEDIU A ERRADA (20/09)
 
 **O dono, com o print na mão, DEPOIS da minha entrega:** *"a linha FRANCIELE está na caixa COM palpite e botão E o card dela está no PRA TUA MÃO com [Vincular] nas duas linhas. Tua entrega mediu «pares com botão nas duas: NENHUM» — a minha tela mostra o oposto."*
