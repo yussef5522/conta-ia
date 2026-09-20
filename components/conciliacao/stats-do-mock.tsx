@@ -18,6 +18,7 @@
 // móvel fixo da tela"*. Um card vermelho zerado toda vez treina o dono a não olhar, e aí
 // no dia em que ele acender ninguém vê (a lição dos 111 alarmes falsos das vendas).
 
+import Link from 'next/link'
 import { formatBRL } from '@/lib/format/money'
 import { MOCK } from './mock-tokens'
 /**
@@ -35,20 +36,31 @@ export interface FilasDTO {
   valorEmDuplaContagem: number
 }
 
-function Stat({ rotulo, valor, descricao, acao, tom, ativo, onClick }: {
+function Stat({ rotulo, valor, descricao, acao, tom, ativo, onClick, href }: {
   rotulo: string; valor: string; descricao: string
   acao?: boolean; tom?: 'verde' | 'roxo' | 'slate'
   ativo?: boolean; onClick?: () => void
+  /**
+   * ⭐⭐ O NÚMERO É A PORTA (20/09) — ordem do dono: *"o card 💤 SEM PAGAMENTO continua
+   * sendo o caminho natural pros 104; se ele ainda não clica pro Contas a Pagar, passa a
+   * clicar."* Com `href` o card vira LINK de verdade (abre em nova aba, o teclado
+   * alcança, o leitor de tela anuncia) — nunca um `onClick` que finge ser navegação.
+   */
+  href?: string
 }) {
   const corDoNumero = tom === 'verde' ? V3.verde : tom === 'slate' ? '#475569' : acao || tom === 'roxo' ? V3.roxo : V3.ink
+  // ⚠️ o CORPO muda, o DESENHO não: um card com visual próprio pro caso "tem link"
+  // divergiria no primeiro ajuste de tom — o que muda é a tag, nunca o estilo.
+  const Corpo = (href ? Link : 'button') as React.ElementType
   return (
     /*
       ⚠️ É <button> e não <div> porque ELE FILTRA — o dono clica no número e a lista
       recorta. Elemento clicável que não é botão perde teclado e leitor de tela, e a casa
       já pagou isso no "ação escondida sem afordância não existe" (30/08).
     */
-    <button type="button" onClick={onClick} aria-pressed={ativo ? true : undefined}
-      className={`rounded-[${MEDIDA.raioStat}px] border-[1.5px] px-4 py-[13px] text-left transition-all duration-150 hover:-translate-y-px`}
+    <Corpo {...(href ? { href } : { type: 'button' as const, onClick })}
+      aria-pressed={ativo ? true : undefined}
+      className={`block rounded-[${MEDIDA.raioStat}px] border-[1.5px] px-4 py-[13px] text-left transition-all duration-150 hover:-translate-y-px`}
       style={{
         background: ativo ? `linear-gradient(160deg,#fff, ${V3.roxoBg})` : V3.card,
         borderColor: ativo ? V3.roxo : V3.line,
@@ -61,11 +73,15 @@ function Stat({ rotulo, valor, descricao, acao, tom, ativo, onClick }: {
         {valor}
       </div>
       <div className="text-[11px]" style={{ color: V3.sub }}>{descricao}</div>
-    </button>
+    </Corpo>
   )
 }
 
-export function StatsDoMock({ filas }: { filas: FilasDTO }) {
+export function StatsDoMock({ filas, hrefSemPagamento }: {
+  filas: FilasDTO
+  /** ⭐ o destino dos "sem pagamento" — o Contas a Pagar, onde eles se resolvem */
+  hrefSemPagamento?: string
+}) {
   return (
     <div className="mb-[18px] grid grid-cols-3 gap-[10px]">
       <Stat
@@ -86,7 +102,10 @@ export function StatsDoMock({ filas }: { filas: FilasDTO }) {
         tom="slate"
         rotulo="💤 Sem pagamento"
         valor={String(filas.semPagamento)}
-        descricao="pagar, ou registrar saída do cofre"
+        // ⭐ o texto do mock: o card DIZ pra onde leva, senão é um número que não se sabe
+        // que é clicável — a lição do *"ação sem afordância não existe"* (30/08).
+        descricao={hrefSemPagamento ? 'contas abertas · ver no Contas a Pagar →' : 'pagar, ou registrar saída do cofre'}
+        href={hrefSemPagamento}
       />
       {/* ⚠️ a anomalia entra na grade só quando existe — e em DINHEIRO, que é o que
           torna o problema legível (duas linhas com o mesmo dinheiro). */}

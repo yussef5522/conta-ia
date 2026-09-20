@@ -31,7 +31,7 @@ import {
   ParSugerido, type ContaDaFilaDTO, type SugestaoDTO,
 } from '@/components/conciliacao/par-sugerido'
 import {
-  CabecalhoDaFila, type TotaisDTO, type SemParDTO,
+  CabecalhoDaFila, RodapeDaTela, type TotaisDTO, type SemParDTO,
 } from '@/components/conciliacao/cabecalho-da-fila'
 import { LoteSugerido, type LoteDTO } from '@/components/conciliacao/lote-sugerido'
 import { type FilasDTO } from '@/components/conciliacao/stats-do-mock'
@@ -279,13 +279,12 @@ function ConciliacaoInner() {
           código: `LINHA_DISPONIVEL_WHERE` não olha `categoryId`, de propósito. */}
       <Header
         title="Conciliação"
-        description={
-          empresaId
-            ? t
-              ? 'o banco diz o que saiu · você diz o que cada pagamento pagou'
-              : 'Carregando…'
-            : 'Selecione uma empresa'
-        }
+        /**
+         * ⛔ O LEMA SAIU (20/09, ordem do dono): *"não ajuda mais — a tela já se explica —
+         * e ocupa a primeira dobra."* O que fica na descrição são **ESTADOS** (carregando,
+         * sem empresa), que são informação; frase de efeito não é.
+         */
+        description={empresaId ? (t ? undefined : 'Carregando…') : 'Selecione uma empresa'}
       >
         {/* ⓘ — a doutrina que saiu da tela. Fica no `title` (nativo, zero componente
             novo); no celular não abre, e tudo bem: é referência, não instrução de uso. */}
@@ -304,22 +303,7 @@ function ConciliacaoInner() {
           própria e contradizia a aba de duplicatas na mesma tela (69 × 0), com o
           dinheiro errado até sob a própria régua. */}
       {empresaId && fila && (
-        <CabecalhoDaFila
-          empresaId={empresaId}
-          filas={fila.filas}
-          semPar={fila.semPar}
-          corte={corte}
-          aoTrocarCorte={async (novo) => {
-            const r = await fetchJson(`/api/conciliacao/corte`, {
-              method: 'PUT', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ empresaId, data: novo }),
-            })
-            if (!r.ok) { toast({ variant: 'destructive', title: 'Não consegui salvar o corte', description: r.message ?? '' }); return }
-            setCorte(novo)
-            // ⭐ recarrega: o corte muda o que a fila OFERECE, e a tela tem que refletir na hora
-            carregar()
-          }}
-        />
+        <CabecalhoDaFila empresaId={empresaId} filas={fila.filas} />
       )}
 
       {empresaId && (
@@ -546,6 +530,28 @@ function ConciliacaoInner() {
             )}
           </div>
         </div>
+      )}
+
+      {/* ⭐⭐ O RODAPÉ DISCRETO (20/09) — o corte de época e o caminho pros "sem pagamento"
+          saíram do topo e vieram pro fim da seção, miúdos. ⛔ A função não morreu: mudar o
+          corte continua a um toque, e os "sem par" têm DUAS portas — esta linha e o card
+          💤 lá em cima, que agora É o link. */}
+      {empresaId && fila && (
+        <RodapeDaTela
+          empresaId={empresaId}
+          semPar={fila.semPar}
+          corte={corte}
+          aoTrocarCorte={async (novo: string | null) => {
+            const r = await fetchJson(`/api/conciliacao/corte`, {
+              method: 'PUT', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ empresaId, data: novo }),
+            })
+            if (!r.ok) { toast({ variant: 'destructive', title: 'Não consegui salvar o corte', description: r.message ?? '' }); return }
+            setCorte(novo)
+            // ⭐ recarrega: o corte muda o que a fila OFERECE, e a tela tem que refletir na hora
+            carregar()
+          }}
+        />
       )}
 
       {/* ⚠️ o card do "escolher na mão" NÃO mora mais aqui embaixo — ele É a seção dos que

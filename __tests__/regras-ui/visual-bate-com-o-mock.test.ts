@@ -277,11 +277,45 @@ describe('⛔⛔ conferência de saldo: fora da Conciliação, viva em Bancos', 
     expect(cabecalho).not.toContain('registrar saída do cofre')
   })
 
+  /**
+   * ⚠️ REAPONTADO em 20/09 — e ficou MAIS APERTADO, não mais frouxo. O topo era *"stats +
+   * a frase das sem-par"*; por ordem do dono (*"a linha do corte + os 104 SAEM da posição
+   * atual, estão estragando o topo"*) a frase desceu pro rodapé. Agora o topo é SÓ os stats.
+   */
   it('⛔ NADA entre os stats e os cards — o critério da dobra do celular', () => {
-    // o topo é: <StatsDoMock> e, no máximo, a frase das sem-par. Mais nada.
-    const corpo = cabecalho.slice(cabecalho.indexOf('return ('))
+    const corpo = cabecalho.slice(
+      cabecalho.indexOf('export function CabecalhoDaFila'),
+      cabecalho.indexOf('export function RodapeDaTela'),
+    )
     const tags = [...corpo.matchAll(/<([A-Z][A-Za-z]*)/g)].map((m) => m[1])
-    expect(tags).toEqual(['StatsDoMock', 'Link', 'ArrowRight'])
+    expect(tags, 'voltou a ter coisa entre os stats e os cards').toEqual(['StatsDoMock'])
+  })
+
+  /**
+   * ⛔⛔ **REMOÇÃO SEM REALOCAÇÃO É PERDA** (a régua da conferência de saldo, 10/09).
+   * Guard que só provasse a saída aprovaria o dia em que as duas ofertas sumissem de vez —
+   * e aí não teria sido mudança de casa, teria sido buraco.
+   */
+  it('⭐ e as DUAS funções continuam alcançáveis — o rodapé e o card 💤', () => {
+    const rodape = cabecalho.slice(cabecalho.indexOf('export function RodapeDaTela'))
+    expect(rodape, 'o gesto de mudar o corte morreu junto com a linha do topo').toContain('mudar')
+    expect(rodape, 'o caminho pros "sem par" morreu').toContain('Ver no Contas a Pagar')
+    expect(paginaRender, 'a página parou de desenhar o rodapé — as duas ofertas sumiriam')
+      .toContain('<RodapeDaTela')
+    /**
+     * ⭐ A OUTRA PORTA: o número do card 💤 VIRA link pro Contas a Pagar.
+     *
+     * ⚠️⚠️ REGRA 11 REPROVOU A 1ª VERSÃO DISTO — ela pedia `toContain('hrefSemPagamento')`,
+     * e eu repus o defeito (tirei o `href` do card) com a **declaração da prop intacta**:
+     * verde. É a "menção, não uso" pela terceira vez nesta casa (o `acaoValePraSentido`
+     * de 15/09, o `respostaDeErroDoEstoque` de 16/09). O que morde é o **USO no card**.
+     */
+    const stats = semComentarios(ler('components/conciliacao/stats-do-mock.tsx'))
+    const cardDormindo = stats.slice(stats.indexOf('💤 Sem pagamento'))
+    expect(cardDormindo.slice(0, 400), 'o card 💤 voltou a ser um número que não clica')
+      .toContain('href={hrefSemPagamento}')
+    expect(stats, 'o card com href tem que ser Link de verdade, não onClick fingindo')
+      .toContain("(href ? Link : 'button')")
   })
 })
 

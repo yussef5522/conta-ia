@@ -160,16 +160,20 @@
   .zero b{display:block;font-size:16px;margin:8px 0 3px;}
   .zero span{color:var(--sub);font-size:13px;}
 
+  /* ⭐ o rodapé discreto: 11px, cor --sub, as duas pontas nas extremidades */
+  .rodape-tela{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 16px;
+               font-size:11px;color:var(--sub);padding:4px 4px 0;margin-top:10px;}
+  .rodape-tela a{color:var(--roxo);font-weight:700;text-decoration:none;}
+
   .nota{font-size:11px;color:var(--sub);text-align:center;margin-top:26px;}
 </style>
 </head>
 <body>
 
 <div class="top">
-  <div>
-    <h1>Caixa de entrada do banco</h1>
-    <div class="sub">o banco diz o que aconteceu · você diz o que cada linha é</div>
-  </div>
+  <!-- ⛔ 20/09: o lema-subtítulo SAIU (ordem do dono) — a tela já se explica e ele comia
+       a primeira dobra do celular. O que fica no topo é o nome da tela e o estado. -->
+  <div><h1>Caixa de entrada do banco</h1></div>
   <div class="flow"><b>BANCO</b><span>→</span><b>IMPORT</b><span>→</span><b style="background:var(--roxo);color:#fff">CAIXA</b><span>→</span><b>ARQUIVO</b></div>
   <div class="prog"><div class="ring"><i>86%</i></div><div><div class="t">setembro</div><div class="n">190 resolvidas · 1 na caixa</div></div></div>
 </div>
@@ -185,7 +189,9 @@
     <div class="tab on">Saídas <span class="b">1</span></div>
     <div class="tab">Entradas <span class="b zero">0</span></div>
   </div>
-  <div class="mini">conciliando a partir de <b>01/09</b> · <a href="#">mudar</a> · <a href="#">220 no arquivo →</a></div>
+  <!-- ⚠️ aqui a linha só CONTEXTUALIZA (de quando a fila fala, quanto já foi) — o gesto
+       de mudar o corte desceu pro rodapé da seção -->
+  <div class="mini">conciliando a partir de <b>01/09</b> · 220 no arquivo · 221 no período</div>
 </div>
 
 <div class="feita"><span class="ok">✓</span><div><b>PIX Elevepan R$ 308,50</b> resolvida agora</div><span class="selo">recebimento de venda · no arquivo</span></div>
@@ -284,6 +290,16 @@
       </div>
     </div>
   </div>
+</div>
+
+<!-- ⭐⭐ 20/09 — O RODAPÉ DISCRETO: as duas funções que saíram do topo (mudar o corte de
+     época · chegar nas contas sem pagamento), miúdas e no FIM. ⛔ Remoção sem realocação
+     seria perda; o card 💤 lá em cima é a outra porta pros "sem pagamento". -->
+<div class="rodape-tela">
+  <span title="O que é anterior a esta data continua nas Movimentações e na busca — só não é oferecido na fila.">
+    conciliando a partir de <b>01/09</b> <a href="#">⚙️ mudar</a>
+  </span>
+  <a href="#"><b>91</b> em aberto sem par · Ver no Contas a Pagar →</a>
 </div>
 
 <div class="zero" style="margin-top:20px">

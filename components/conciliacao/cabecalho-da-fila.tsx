@@ -42,28 +42,47 @@ export interface TotaisDTO {
   duplaContagem: number; valorEmDuplaContagem: number
 }
 
-export function CabecalhoDaFila({ empresaId, filas, semPar, corte, aoTrocarCorte }: {
-  empresaId: string; filas: FilasDTO; semPar: SemParDTO
+/**
+ * ⭐⭐⭐ O TOPO ENXUGOU (20/09/2026) — ordem do dono.
+ *
+ * *"A linha «conciliando a partir de… mudar» + «104 em aberto sem par · Ver no Contas a
+ * Pagar» SAI da posição atual (está estragando o topo). A FUNÇÃO não pode morrer: vão pra
+ * um lugar discreto — ⚙️ pequeno ou uma linha miúda no RODAPÉ da seção."*
+ *
+ * ⛔ **REMOÇÃO SEM REALOCAÇÃO É PERDA** (a régua da conferência de saldo, 10/09): as duas
+ * ofertas não sumiram — desceram pro `RodapeDaTela`, e os "sem pagamento" ganharam o
+ * caminho natural que faltava: **o próprio card 💤 agora É o link**.
+ */
+export function CabecalhoDaFila({ filas, empresaId }: { filas: FilasDTO; empresaId: string }) {
+  return <StatsDoMock filas={filas} hrefSemPagamento={`/contas-a-pagar?empresaId=${empresaId}`} />
+}
+
+/**
+ * ⭐⭐ O RODAPÉ DISCRETO — as duas funções que saíram do topo, em uma linha miúda.
+ *
+ * ⚠️ **O PORQUÊ DO CORTE NÃO SE PERDEU, virou `title`** (o padrão do ⓘ da doutrina, 10/09):
+ * *"a fila mostrando menos do que existe precisa DIZER por quê, senão o dono procura o card
+ * que ele não vê"* — a frase continua alcançável, só parou de ocupar a dobra.
+ */
+export function RodapeDaTela({ empresaId, semPar, corte, aoTrocarCorte }: {
+  empresaId: string
+  semPar: SemParDTO
   /** AAAA-MM-DD ou null (sem corte). Ver `lib/conciliacao/corte-de-epoca.ts`. */
   corte?: string | null
   aoTrocarCorte?: (novo: string | null) => void
 }) {
   return (
-    <div>
-      <StatsDoMock filas={filas} />
-
-      {/* ⭐⭐ O CORTE DE ÉPOCA, à vista (11/09/2026) — decisão do dono: *"comecei a usar a
-          conciliação em setembro; agosto fica pra trás POR DECISÃO"*.
-          ⛔ Tem que estar NA TELA, não escondido numa config: a fila mostrando menos do que
-          existe precisa DIZER por quê, senão o dono procura o card que ele não vê. */}
-      {corte !== undefined && (
-        <p className="mb-[10px] text-[11.5px]" style={{ color: MOCK.sub }}>
-          {corte ? (
-            <>conciliando a partir de <b style={{ color: MOCK.ink }}>{corte.split('-').reverse().join('/')}</b>
-              {' '}· o que é anterior continua nas Movimentações e na busca, só não é oferecido aqui</>
-          ) : (
-            <>sem corte de época — a fila oferece todo o extrato importado</>
-          )}
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-1 pt-1 text-[11px]"
+      style={{ color: MOCK.sub }}>
+      {corte !== undefined ? (
+        <span
+          title={corte
+            ? 'O que é anterior a esta data continua nas Movimentações e na busca — só não é oferecido na fila.'
+            : 'Sem corte de época: a fila oferece todo o extrato importado.'}
+        >
+          {corte
+            ? <>conciliando a partir de <b style={{ color: MOCK.ink }}>{corte.split('-').reverse().join('/')}</b></>
+            : <>sem corte de época</>}
           {aoTrocarCorte && (
             <button
               onClick={() => {
@@ -74,31 +93,24 @@ export function CabecalhoDaFila({ empresaId, filas, semPar, corte, aoTrocarCorte
                 if (v === null) return
                 aoTrocarCorte(v.trim() === '' ? null : v.trim())
               }}
-              className="ml-1.5 font-medium hover:underline"
+              className="ml-1.5 font-semibold hover:underline"
               style={{ color: MOCK.roxo }}
             >
-              mudar
+              ⚙️ mudar
             </button>
           )}
-        </p>
-      )}
+        </span>
+      ) : <span />}
 
-      {/* ⭐ UMA FRASE, e o resto mora no Contas a Pagar (ordem do dono): a quebra em três
-          (não venceram · esperam extrato · já dava pra pagar) e o gesto do cofre saíram
-          daqui. ⚠️ Elas continuam existindo — conta em aberto sem par é o estado NORMAL
-          de quem ainda não pagou; o que não podia é ocupar a dobra do celular acima do
-          trabalho. */}
       {semPar.total > 0 && (
-        <p className="mb-[18px] text-[12px] tabular-nums" style={{ color: MOCK.sub }}>
-          <b style={{ color: MOCK.ink }}>{semPar.total}</b> em aberto sem par ·{' '}
-          <Link
-            href={`/contas-a-pagar?empresaId=${empresaId}`}
-            className="inline-flex items-center gap-0.5 font-medium hover:underline"
-            style={{ color: MOCK.roxo }}
-          >
-            Ver no Contas a Pagar <ArrowRight className="h-3 w-3" />
-          </Link>
-        </p>
+        <Link
+          href={`/contas-a-pagar?empresaId=${empresaId}`}
+          className="inline-flex items-center gap-0.5 tabular-nums hover:underline"
+          style={{ color: MOCK.roxo }}
+        >
+          <b>{semPar.total}</b> em aberto sem par · Ver no Contas a Pagar
+          <ArrowRight className="h-3 w-3" />
+        </Link>
       )}
     </div>
   )

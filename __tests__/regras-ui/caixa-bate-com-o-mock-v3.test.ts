@@ -28,6 +28,8 @@ const MOCK = readFileSync(join(raiz, 'docs/mocks/conciliacao-caixa-mock-v3.html'
  */
 const CAIXA = semComentario(readFileSync(join(raiz, 'components/conciliacao/caixa-de-entrada.tsx'), 'utf-8'))
   + semComentario(readFileSync(join(raiz, 'components/conciliacao/chassi-do-cartao.tsx'), 'utf-8'))
+/** ⚠️ o outro lema morava no `description` do Header da PÁGINA — o guard olha os dois */
+const PAGINA = semComentario(readFileSync(join(raiz, 'app/(dashboard)/conciliacao/page.tsx'), 'utf-8'))
 
 export function semComentario(src: string): string {
   return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
@@ -98,7 +100,13 @@ describe('⭐⭐ os TEXTOS que o mock imprime existem na tela', () => {
    */
   const frases = [
     'Caixa de entrada do banco',
-    'o banco diz o que aconteceu · você diz o que cada linha é',
+    /**
+     * ⛔ **O LEMA SAIU DAQUI EM 20/09, POR ORDEM DO DONO** — não é frase esquecida:
+     * *"não ajudam mais (a tela já se explica) e ocupam a primeira dobra. Somem de vez."*
+     * A linha `'o banco diz o que aconteceu · você diz o que cada linha é'` era a 2ª
+     * desta lista; **inverti o teste em vez de apagar**, como manda a casa: a ausência
+     * dela nos DOIS (mock e tela) passou a ser o que o guard afirma, logo abaixo.
+     */
     'O BANCO DIZ',
     'MELHOR PALPITE',
     'OU ESCOLHA OUTRO CAMINHO',
@@ -109,6 +117,18 @@ describe('⭐⭐ os TEXTOS que o mock imprime existem na tela', () => {
       expect(CAIXA, `a tela não imprime "${f}"`).toContain(f)
     })
   }
+
+  /** ⭐ TESTE INVERTIDO COM O MOTIVO ESCRITO (20/09) — ver o comentário na lista acima */
+  it('⛔ os LEMAS-SUBTÍTULO não voltam — nem no mock, nem na tela', () => {
+    for (const lema of [
+      'o banco diz o que aconteceu · você diz o que cada linha é',
+      'o banco diz o que saiu · você diz o que cada pagamento pagou',
+    ]) {
+      expect(MOCK, `o lema "${lema}" voltou pro mock`).not.toContain(lema)
+      expect(CAIXA, `o lema "${lema}" voltou pra tela`).not.toContain(lema)
+      expect(PAGINA, `o lema "${lema}" voltou pro cabeçalho da página`).not.toContain(lema)
+    }
+  })
 
   /**
    * ⭐ O glifo mora no TOKEN e a tela o CONSOME — por isso o guard confere o uso de

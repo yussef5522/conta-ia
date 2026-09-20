@@ -20,7 +20,7 @@ const DESKTOP = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537
 async function main() {
   await exigirEmpresaNesteBanco(prisma, CO)
   const u = await prisma.user.findFirstOrThrow({ where: { email: 'yussefmusa5522@gmail.com' } })
-  const token = await signToken({ sub: u.id, email: u.email, name: u.name })
+  const token = await signToken({ sub: u.id, email: u.email, name: u.name, role: (u as never as { role: string }).role ?? 'ADMIN' })
   const cookie = `auth_token=${token}; current_empresa_id=${CO}`
 
   for (const [nome, ua] of [['celular', CELULAR], ['desktop', DESKTOP]] as const) {

@@ -334,8 +334,9 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
       {/* ══════════ 1. CABEÇALHO — título, fluxo em pílulas, anel do mês ══════════ */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
+          {/* ⛔ o lema "o banco diz o que aconteceu · você diz o que cada linha é" SAIU
+              (20/09, ordem do dono) — a tela já se explica, e ele comia a dobra do celular. */}
           <h2 className="text-[22px] font-bold tracking-[-0.01em]" style={{ color: V3.ink }}>Caixa de entrada do banco</h2>
-          <p className="mt-0.5 text-[13px]" style={{ color: V3.sub }}>o banco diz o que aconteceu · você diz o que cada linha é</p>
         </div>
 
         {/* ⭐ o fluxo com a estação ACESA — o dono sempre sabe onde está */}
