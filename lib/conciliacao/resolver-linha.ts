@@ -30,7 +30,26 @@ import { casarPagamentoDeCartao, CasarPagamentoError } from '@/lib/credit-card-p
 import { vincularPagamentoDeParcela, VinculoDeParcelaError } from '@/lib/loans/vincular-pagamento'
 import { recomputeVendasSeVenda } from '@/lib/vendas/recompute-hook'
 import { acaoValePraSentido, sentidoDaLinha, type AcaoDoBalcao } from './caixa-de-entrada'
-import { reconcileTransactions } from './reconcile'
+import { reconcileTransactions, ReconciliationError } from './reconcile'
+import type { AuthContext } from '@/lib/auth/rbac'
+
+/**
+ * ⭐ O CONTEXTO QUE O RECONCILE EXIGE — e a recusa aqui **ENSINA** em vez de estourar.
+ *
+ * ⛔ Chamar sem contexto é erro de PROGRAMAÇÃO (a rota sempre tem um), então a mensagem é
+ * pra quem lê o log — mas ela é uma `ResolverError`, e por isso vira **422 com corpo**, não
+ * um 500 mudo. *A tela nunca mais fica sem saber o que falhou.*
+ */
+function ctxDoReconcile(input: ResolverInput): AuthContext {
+  const c = input.authCtx
+  if (!c?.company?.id || typeof c.requirePermission !== 'function') {
+    throw new ResolverError(
+      'Não consegui conciliar: o contexto da sessão não chegou completo ao servidor. Tente de novo.',
+      'CONTEXTO_INCOMPLETO',
+    )
+  }
+  return c
+}
 
 export class ResolverError extends Error {
   /** ⭐ o código deixa a tela oferecer o gesto certo (ex.: abrir o chip de categoria) */
@@ -43,6 +62,18 @@ export interface ResolverInput {
   txId: string
   acao: AcaoDoBalcao
   userId?: string
+  /**
+   * ⛔⛔⛔ **O CONTEXTO REAL — e a ausência dele foi o defeito de 20/09.**
+   *
+   * O `CASAR_PAGAR` montava `{ userId, companyId } as never` pro `reconcileTransactions`.
+   * Só que ele usa **`ctx.company?.id`** e **`ctx.requirePermission()`** — nenhum dos dois
+   * existe naquele objeto. O ***`as never` calou o compilador*** e o gesto estourava em
+   * runtime, virando **500 sem corpo** e *"Não consegui carregar."* na tela do dono.
+   *
+   * ⚠️ E os MEUS testes não pegaram porque **mockavam o `reconcileTransactions`** — o mock
+   * escondeu o contrato. *Guard que substitui a peça não prova o encaixe dela.*
+   */
+  authCtx?: AuthContext
   /** o alvo escolhido — qual deles vale depende da ação */
   cardId?: string
   invoiceMonth?: string | null
@@ -229,18 +260,43 @@ export async function resolverLinha(input: ResolverInput, db: PrismaClient = def
           'PEDE_CATEGORIA',
         )
       }
-      if (semCategoria.length && input.categoryId) {
+      /**
+       * ⚠️ A ORDEM É FORÇADA: o reconcile faz **backfill cooperativo** (a linha do banco
+       * herda a categoria da conta), então a categoria tem que estar na conta ANTES dele.
+       */
+      const aprendidas = semCategoria.map((c) => c.id)
+      if (aprendidas.length && input.categoryId) {
         // ⭐ grava NA CONTA (aprende), não só na linha do banco
-        await db.transaction.updateMany({ where: { id: { in: semCategoria.map((c) => c.id) } }, data: { categoryId: input.categoryId } })
+        await db.transaction.updateMany({ where: { id: { in: aprendidas } }, data: { categoryId: input.categoryId } })
       }
 
       const grupo = contas.length > 1 ? `caixa-${input.txId}` : null
-      for (const contaId of contas) {
-        await reconcileTransactions({
-          ofxTransactionId: input.txId, candidateId: contaId,
-          allowMultiReconcile: contas.length > 1, reconcileGroupId: grupo,
-          diferencaAceita: input.diferencaAceita,
-        }, { userId: input.userId ?? '', companyId: input.companyId } as never)
+      try {
+        for (const contaId of contas) {
+          await reconcileTransactions({
+            ofxTransactionId: input.txId, candidateId: contaId,
+            allowMultiReconcile: contas.length > 1, reconcileGroupId: grupo,
+            diferencaAceita: input.diferencaAceita,
+          }, ctxDoReconcile(input))
+        }
+      } catch (e) {
+        /**
+         * ⛔⛔ **NADA GRAVA PELA METADE** — a exigência do dono, e ela precisa de compensação
+         * porque `reconcileTransactions` usa o prisma global e **não entra numa `$transaction`
+         * nossa** (envolvê-lo exigiria ele aceitar client transacional — refactor grande).
+         *
+         * ⭐ A compensação é EXATA: só desfaz o que este gesto escreveu, e só nas contas que
+         * estavam com `categoryId: null` — voltar a `null` é restaurar o estado anterior, não
+         * apagar decisão de ninguém.
+         */
+        if (aprendidas.length && input.categoryId) {
+          await db.transaction.updateMany({ where: { id: { in: aprendidas } }, data: { categoryId: null } }).catch(() => {})
+        }
+        // ⭐ erro de domínio do reconcile vira recusa que a TELA entende (nunca 500 mudo)
+        if (e instanceof ReconciliationError) {
+          throw new ResolverError(`A conciliação não gravou: ${e.message}`, 'RECONCILE_RECUSOU')
+        }
+        throw e
       }
       return { efeito: `linha conciliada com ${contas.length} conta(s)`, saiuDaCaixa: true }
     }

@@ -109,7 +109,7 @@ describe('⭐ a recusa do vínculo ENSINA — e chega até a tela', () => {
   it('⛔ a recusa aparece NA LINHA, não no topo da tela', () => {
     const t = fonte('components/conciliacao/caixa-de-entrada.tsx')
     expect(t, 'o erro do gesto voltou pro topo — no celular isso é silêncio')
-      .toMatch(/setErroDaLinha\(\{ id: linha\.id/)
+      .toMatch(/setErroDaLinha\(\{[\s\S]{0,80}id: linha\.id/)
     expect(t).toMatch(/erro=\{erroDaLinha\?\.id === l\.id/)
   })
 })

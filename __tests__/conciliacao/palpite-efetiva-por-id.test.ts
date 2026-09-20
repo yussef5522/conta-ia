@@ -110,9 +110,12 @@ describe('⛔⛔⛔ NADA sai da caixa sem categoria', () => {
   })
 
   it('⭐⭐ e a resposta grava NA CONTA — aprende, não repete a pergunta', () => {
-    expect(r).toMatch(/transaction\.updateMany\(\{ where: \{ id: \{ in: semCategoria/)
+    expect(r).toMatch(/transaction\.updateMany\(\{ where: \{ id: \{ in: aprendidas \} \}, data: \{ categoryId: input\.categoryId \} \}\)/)
     expect(r, 'gravar só na linha do banco deixaria a próxima nota do mesmo fornecedor igual')
       .toMatch(/data: \{ categoryId: input\.categoryId \}/)
+    // ⛔ e a compensação: falhou o reconcile, a categoria aprendida VOLTA (20/09)
+    expect(r, 'sem isso a conta fica categorizada com a conciliação não tendo acontecido')
+      .toMatch(/data: \{ categoryId: null \}/)
   })
 
   it('⭐ o code chega na tela pra ela oferecer o chip certo', () => {

@@ -16,7 +16,7 @@
 // não pode virar linha morta*.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Loader2, ArrowDownLeft, ArrowUpRight, Check } from 'lucide-react'
+import { Loader2, ArrowDownLeft, ArrowUpRight, Check, RefreshCw } from 'lucide-react'
 import { fetchComTimeout } from '@/lib/http/fetch-com-timeout'
 import { V3, SOMBRA, CONECTOR } from './mock-v3-tokens'
 import { MenuDoChip, type SecaoDoChip } from './menu-do-chip'
@@ -103,7 +103,9 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
    * dedo num cartão no meio da lista, aquilo está fora da tela. ***Mensagem que o dono não
    * vê é silêncio*** — é a REGRA 2 de novo, agora na mensagem de erro.
    */
-  const [erroDaLinha, setErroDaLinha] = useState<{ id: string; texto: string } | null>(null)
+  const [erroDaLinha, setErroDaLinha] = useState<
+    { id: string; texto: string; acao: string; alvo: Record<string, unknown> } | null
+  >(null)
   /**
    * ⭐⭐⭐ **NADA SAI DA CAIXA SEM CATEGORIA** (20/09) — e a pergunta vem JUNTO DO GESTO.
    *
@@ -230,7 +232,20 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
           setPedeCategoria({ linha, acao, alvo, texto: r.erro ?? 'Essa conta não tem categoria — qual é?' })
           return
         }
-        setErroDaLinha({ id: linha.id, texto: r.erro ?? 'Não consegui resolver esta linha.' }); return
+        /**
+         * ⛔⛔ **A FRASE DIZ O QUE FALHOU E SEMPRE TEM SAÍDA** (20/09). O dono via só
+         * *"Não consegui carregar."* — o fallback do `fetchComTimeout` quando a resposta
+         * **não traz `{erro}`** (era um 500 com corpo VAZIO). Sem motivo, sem saber se
+         * gravou, e sem [tentar de novo]. ***Erro sem saída é beco.***
+         */
+        setErroDaLinha({
+          id: linha.id, acao, alvo,
+          texto: r.erro && r.erro !== 'Não consegui carregar.'
+            ? r.erro
+            : r.timeout
+              ? 'O servidor demorou demais pra responder. Nada foi gravado.'
+              : 'A conciliação não gravou — não consegui falar com o servidor. Nada foi alterado.',
+        }); return
       }
       setPedeCategoria(null)
       if (r.data.deepLink) { window.location.href = r.data.deepLink; return }
@@ -368,7 +383,11 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
         <div key={l.id} className="flex flex-col gap-2">
           <CartaoDaLinha linha={l} ocupado={ocupado === l.id}
             categorias={categorias} cartoes={cartoes} contratos={contratos} cargas={cargas}
-            erro={erroDaLinha?.id === l.id ? erroDaLinha.texto : null} onGesto={gesto} />
+            erro={erroDaLinha?.id === l.id ? erroDaLinha.texto : null}
+            onTentarDeNovo={erroDaLinha?.id === l.id
+              ? () => { const e = erroDaLinha; void gesto(l, e.acao, e.alvo) }
+              : undefined}
+            onGesto={gesto} />
 
           {/*
             ⭐⭐⭐ O PAINEL ABRE **DEBAIXO DA PRÓPRIA LINHA** — nunca noutra tela, nunca
@@ -510,7 +529,7 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
 // ⭐⭐⭐ O CARTÃO ≍ — banco à esquerda, palpite à direita, chips embaixo
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, cargas, erro, onGesto }: {
+function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, cargas, erro, onTentarDeNovo, onGesto }: {
   linha: LinhaDTO; ocupado: boolean
   categorias: CategoriaDoMenu[]
   cartoes: { id: string; name: string }[]
@@ -518,6 +537,8 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, carg
   cargas: Record<'categorias' | 'cartoes' | 'contratos', EstadoDaCarga>
   /** ⛔ a recusa do gesto aparece AQUI, ao lado do dedo — no topo da tela ela é silêncio */
   erro: string | null
+  /** ⭐ e ela SEMPRE carrega a saída: repetir o MESMO gesto, com o mesmo alvo */
+  onTentarDeNovo?: () => void
   onGesto: (l: LinhaDTO, acao: string, alvo?: Record<string, unknown>) => void
 }) {
   const credito = l.sentido === 'ENTRADA'
@@ -606,6 +627,12 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, carg
             <div className="mb-2 rounded-xl border px-3 py-2 text-[12.5px] leading-relaxed"
               style={{ borderColor: V3.coral, background: '#fdecea', color: '#8a2018' }}>
               {erro}
+              {onTentarDeNovo && (
+                <button type="button" onClick={onTentarDeNovo} disabled={ocupado}
+                  className="ml-1.5 inline-flex items-center gap-1 font-bold underline disabled:opacity-40">
+                  <RefreshCw className="h-3 w-3" /> tentar de novo
+                </button>
+              )}
             </div>
           )}
 

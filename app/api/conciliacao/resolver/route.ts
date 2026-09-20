@@ -37,7 +37,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ erro: 'Sem permissão pra resolver linhas do extrato.', permission: 'transaction.update' }, { status: 403 })
   }
   try {
-    const r = await resolverLinha({ ...p.data, companyId: p.data.empresaId, userId: ctx.user?.id }, prisma)
+    // ⭐ o CONTEXTO REAL vai junto — o reconcile exige `company.id` e `requirePermission`
+    const r = await resolverLinha({ ...p.data, companyId: p.data.empresaId, userId: ctx.user?.id, authCtx: ctx }, prisma)
     return NextResponse.json({ ok: true, ...r })
   } catch (e) {
     if (e instanceof ResolverError) {
@@ -52,6 +53,21 @@ export async function POST(request: NextRequest) {
       // ⭐ o code chega na tela pra ela oferecer o gesto certo (o chip de categoria)
       return NextResponse.json({ erro: e.message, code: e.code }, { status: 422 })
     }
-    throw e
+    /**
+     * ⛔⛔⛔ **500 SEM CORPO ERA SILÊNCIO** (20/09). O `throw e` daqui devolvia a página de
+     * erro do Next — **sem JSON, sem `content-type`** — e o cliente caía no fallback
+     * genérico *"Não consegui carregar."*: o dono não sabia **o que** falhou, se gravou, nem
+     * tinha como tentar de novo. *É a mesma família do 500 mudo do vínculo de parcela
+     * (19/09), agora no ramo de baixo.*
+     *
+     * ⭐ Agora o inesperado continua sendo **500** (ali o genérico é honesto — ninguém
+     * previu), mas com **corpo que DIZ o que falhou** e com `code` pra a tela oferecer o
+     * "tentar de novo". O detalhe técnico vai pro log, não pra tela.
+     */
+    console.error('[conciliacao/resolver] erro inesperado', { acao: p.data.acao, txId: p.data.txId, erro: e })
+    return NextResponse.json({
+      erro: 'A conciliação não gravou — o servidor falhou no meio do gesto. Nada foi alterado; dá pra tentar de novo.',
+      code: 'FALHA_INESPERADA',
+    }, { status: 500 })
   }
 }

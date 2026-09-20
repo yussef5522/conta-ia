@@ -37,8 +37,14 @@ vi.mock('@/lib/loans/vincular-pagamento', () => ({
   }),
 }))
 vi.mock('@/lib/conciliacao/reconcile', () => ({
-  // ⭐ o reconcile HERDA a categoria da conta casada — é o comportamento real dele
-  reconcileTransactions: vi.fn(async ({ candidateId }: { candidateId: string }) => {
+  ReconciliationError: class extends Error {},
+  /**
+   * ⭐ o reconcile HERDA a categoria da conta casada — é o comportamento real dele.
+   * ⚠️ E ele **COBRA O CONTRATO DO ctx** (20/09): sem `company.id` e `requirePermission`
+   * o reconcile de verdade estoura — foi um mock permissivo que escondeu isso um dia.
+   */
+  reconcileTransactions: vi.fn(async ({ candidateId }: { candidateId: string }, ctx: { company?: { id?: string } }) => {
+    if (!ctx?.company?.id) throw new Error('Contexto de autenticação não corresponde à empresa')
     estado.categoriaNome = contas[candidateId] ?? null
   }),
 }))
@@ -86,9 +92,12 @@ const db = {
   },
 } as never
 
+/** ⭐ o AuthContext REAL — a forma que a rota entrega (o reconcile exige os dois campos) */
+const CTX = { user: { id: 'u1', name: 'Y', email: 'y@x' }, company: { id: 'emp' }, permissions: ['*'], requirePermission: () => {} }
+
 async function resolver(acao: string, alvo: Record<string, unknown> = {}, txId = 'linha_saida') {
   const { resolverLinha } = await import('@/lib/conciliacao/resolver-linha')
-  return resolverLinha({ companyId: 'emp', txId, userId: 'u1', acao, ...alvo } as never, db)
+  return resolverLinha({ companyId: 'emp', txId, userId: 'u1', acao, authCtx: CTX, ...alvo } as never, db)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
