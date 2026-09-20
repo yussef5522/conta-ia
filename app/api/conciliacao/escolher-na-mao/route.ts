@@ -23,6 +23,10 @@ import { handleApiError } from '@/lib/api/handle-error'
 import { fornecedoresDaEmpresa, lotesDaFila } from '@/lib/conciliacao/fila-de-conciliacao'
 import { reconhecerFornecedorComIrmaos, canonizadorDeFornecedor } from '@/lib/conciliacao/sugestao-de-vinculo'
 import { montarCardDeEscolha, linhasCandidatasDaConta, identidadeDoCard } from '@/lib/conciliacao/escolher-na-mao'
+import { dividirPorCasa } from '@/lib/conciliacao/uma-casa-por-caso'
+import { lerCaixa, paraLei } from '@/lib/conciliacao/leitura-da-caixa'
+import { palpitesDaCaixa } from '@/lib/conciliacao/palpites-da-caixa'
+import { estacaoDaLinha } from '@/lib/conciliacao/caixa-de-entrada'
 import { jaPagoPorConta } from '@/lib/conciliacao/aplicar-baixa-parcial'
 
 const querySchema = z.object({
@@ -212,7 +216,35 @@ export async function GET(request: NextRequest) {
     // ⚠️ a mais ANTIGA primeiro — a ordem que o dono pediu no mock ("da mais antiga")
     cards.sort((a, b) => a.linha.data.getTime() - b.linha.data.getTime())
 
-    return NextResponse.json({ cards })
+    /**
+     * ⭐⭐⭐ UMA PERGUNTA, UMA CASA (20/09) — **o card não repete o par 1↔1 da caixa.**
+     *
+     * O dono viu a linha FRANCIELE na caixa **com palpite e botão** e o MESMO par aqui
+     * embaixo **com botões próprios**. ⛔ *Duas superfícies com botão pro mesmo par é como
+     * a nota errada do Cancian foi vinculada — o desenho certo é nem criar a disputa.*
+     *
+     * ⭐ A régua é a MESMA função que a caixa consulta (`dividirPorCasa`), com a MESMA
+     * entrada (os palpites das linhas em aberto) — uma régua em cada rota divergiria no
+     * primeiro caso de borda e o par voltaria a aparecer duas vezes.
+     *
+     * ⚠️ **Quem veio PELA PORTA (`?abrir=` / `?conta=`) nunca é escondido**: ali o dono
+     * apontou a linha de propósito, e devolver tela vazia seria a porta pintada de novo.
+     */
+    const { rows } = await lerCaixa(data.empresaId, prisma)
+    const naCaixa = rows.filter((r) => estacaoDaLinha(paraLei(r)) === 'CAIXA')
+    const palpites = await palpitesDaCaixa(data.empresaId, naCaixa).catch(() => new Map())
+    const casas = dividirPorCasa(naCaixa.map((r) => {
+      const p = palpites.get(r.id) as { alvo?: Record<string, unknown>; titulo?: string } | undefined
+      const a = p?.alvo ?? {}
+      const contaIds = Array.isArray(a.contaIds)
+        ? (a.contaIds as string[])
+        : typeof a.contaId === 'string' ? [a.contaId] : []
+      return { linhaId: r.id, contaIds, nomeDoCaso: p?.titulo?.trim() || (r.description ?? 'este pagamento') }
+    }))
+    const visiveis = cards.filter((c) =>
+      c.linha.id === data.abrir || porConta.includes(c.linha.id) || casas.get(c.linha.id)?.casa !== 'CAIXA')
+
+    return NextResponse.json({ cards: visiveis })
   } catch (error) {
     return handleApiError(error)
   }

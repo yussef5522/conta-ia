@@ -32,6 +32,7 @@ import { Loader2 } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
 import { JANELA_A_VENCER_DIAS } from '@/lib/conciliacao/escolher-na-mao'
+import { ancoraDoCard, consequenciaDeVincular } from '@/lib/conciliacao/uma-casa-por-caso'
 import { avaliarDiferenca, TETO_QUE_O_SISTEMA_OFERECE, FECHA_AO_CENTAVO } from '@/lib/conciliacao/regua-da-diferenca'
 import { MOCK, LINHA_ENTRE_NOTAS, HOVER_NOTA, chip } from './mock-tokens'
 
@@ -111,6 +112,11 @@ export function EscolherNaMaoCard({ empresaId, card, onConciliado, onFechar, nav
   const aVencerLonge = useMemo(() => card.aVencer.filter((n) => n.foraDaJanela), [card])
   /** ⭐ lista longa ROLA dentro do card — o rodapé sticky não pode sair do polegar */
   const listaLonga = todas.length > 8
+  /**
+   * ⭐ A CONSEQUÊNCIA DE VINCULAR ESTA LINHA — a régua mora na lib, não num `if` de tela:
+   * a mesma frase serve qualquer superfície que ofereça a linha.
+   */
+  const consequencia = consequenciaDeVincular(card.linha.categoria, card.fornecedorNome || 'esta conta')
 
   // ⚠️ a ORDEM importa: quem recebe a baixa parcial é a ÚLTIMA marcada (vencimento mais
   // distante), e a tela DIZ qual é — o dono desmarca se quiser outra.
@@ -233,7 +239,8 @@ export function EscolherNaMaoCard({ empresaId, card, onConciliado, onFechar, nav
   }
 
   return (
-    <div>
+    /* ⭐ a ÂNCORA — a linha da caixa aponta pra cá em vez de mandar o dono procurar */
+    <div id={ancoraDoCard(card.linha.id)} className="scroll-mt-4">
       {/* ── `.linha-banco` — chão FRIO ── */}
       <div
         className="flex items-center justify-between gap-[12px] px-[16px] py-[12px] text-[13.5px]"
@@ -245,6 +252,21 @@ export function EscolherNaMaoCard({ empresaId, card, onConciliado, onFechar, nav
         </span>
         <b className="shrink-0 text-[15px] tabular-nums">{menos(card.linha.valor)}</b>
       </div>
+
+      {/*
+        ⭐⭐⭐ A CONSEQUÊNCIA ESCRITA (20/09) — a pergunta do dono sobre a Tiele.
+        *"Ela já está resolvida como Salários — ainda deve ser oferecida?"* **Sim** (a régua
+        de 07/09: *ter categoria não quita conta nenhuma*; escondê-la esconderia justo o caso
+        em que o pagamento virou despesa avulsa — a dupla contagem).
+        ⚠️ E o texto diz o EFEITO MEDIDO: a categoria **não** é desfeita (o backfill é
+        cooperativo, só preenche o que é `null`) — o que muda é a conta sair do "em aberto".
+      */}
+      {consequencia.precisaAvisar && (
+        <div className="mx-[16px] mt-[10px] rounded-[10px] px-[12px] py-[10px] text-[12.5px] font-semibold"
+          style={{ background: MOCK.ambarFraco, color: MOCK.ambar }}>
+          ⚠️ {consequencia.texto}
+        </div>
+      )}
 
       {/* ── uma linha por vez: `.fech` do mock (padding 14px 16px · 13.5px · --sub) ── */}
       {navegacao && navegacao.total > 1 && (

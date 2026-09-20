@@ -43,6 +43,11 @@ interface LinhaDTO {
   palpite: PalpiteDTO | null
   /** ⭐ a categoria da conta que o palpite de CASAR aponta (o seletor DIZ, não pede) */
   categoriaDaConta: string | null
+  /**
+   * ⭐⭐ QUANDO O CASO MORA NO CARD (20/09) — a linha perde o botão e ganha o CAMINHO.
+   * ⛔ Nunca as duas superfícies com botão pro mesmo par.
+   */
+  casoNoCard: { texto: string; ancora: string } | null
 }
 interface CaixaDTO {
   contadores: { saidas: number; entradas: number; arquivo: number; total: number }
@@ -648,10 +653,23 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, carg
         {/* ── MELHOR PALPITE (ou direto nos chips) ────────────────────── */}
         <div className="px-5 py-[18px]">
           <div className="mb-2.5 text-[10px] font-extrabold tracking-[0.07em]" style={{ color: V3.sub }}>
-            {l.palpite ? 'MELHOR PALPITE' : 'O QUE ESTA LINHA É?'}
+            {l.casoNoCard ? 'ESTA LINHA FAZ PARTE DE UM CASO' : l.palpite ? 'MELHOR PALPITE' : 'O QUE ESTA LINHA É?'}
           </div>
 
-          {l.palpite && (
+          {/*
+            ⭐⭐⭐ O CASO MORA NO CARD → a linha APONTA, não decide (20/09).
+            ⛔ Com botão nos dois lugares, o dono resolve num e o outro fica lá — foi assim
+            que a nota errada do Cancian entrou. *Uma pergunta, uma casa.*
+          */}
+          {l.casoNoCard && (
+            <a href={`#${l.casoNoCard.ancora}`}
+              className="mb-2 block rounded-2xl border-[1.5px] px-4 py-3 text-[13px] font-bold leading-relaxed"
+              style={{ background: V3.ambarBg, borderColor: V3.ambar, color: V3.ambar }}>
+              {l.casoNoCard.texto}
+            </a>
+          )}
+
+          {l.palpite && !l.casoNoCard && (
             <div className="rounded-2xl border-[1.5px] px-4 py-3.5"
               style={{ background: `linear-gradient(160deg,#fbfbff,${V3.verdeBg})`, borderColor: '#cdebd9' }}>
               <div className="text-[10px] font-extrabold tracking-[0.06em]" style={{ color: V3.verde }}>{l.palpite.familia}</div>
@@ -680,7 +698,7 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, carg
             </div>
           )}
 
-          {l.palpite && (
+          {l.palpite && !l.casoNoCard && (
             <div className="my-2 text-center text-[10.5px] font-bold tracking-[0.05em]" style={{ color: V3.sub }}>
               OU ESCOLHA OUTRO CAMINHO
             </div>
