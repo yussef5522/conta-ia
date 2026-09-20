@@ -21,6 +21,9 @@ const schema = z.object({
   categoryId: z.string().optional(),
   estornoDeTxId: z.string().optional(),
   parTxId: z.string().optional(),
+  /** ⭐ o(s) alvo(s) do CASAR quando o palpite já os traz POR ID (20/09) */
+  contaIds: z.array(z.string().min(1)).max(50).optional(),
+  diferencaAceita: z.number().optional(),
 })
 
 export async function POST(request: NextRequest) {

@@ -854,6 +854,13 @@ function ContasAPagarInner() {
             : 'Selecione uma empresa pra ver as contas a pagar'
         }
       >
+        {/* ⭐⭐ A PORTA DA LIXEIRA (20/09) — e ela fica SEMPRE, não só quando há algo
+            removido: *fila zerada esconde o TRABALHO, nunca a FERRAMENTA* (12/09). Foi a
+            ausência dela que deixou o dono dias sem saber se tinha apagado 26 contas. */}
+        <a href="/contas-a-pagar/removidas"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50">
+          contas removidas
+        </a>
         {/* Sprint 5.0.3.1 (UX #1) — Toolbar minimal: removidos DensityToggle
             e ColumnsButton. Componentes mantidos no projeto pra reuso futuro. */}
         <ExportButton

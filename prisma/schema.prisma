@@ -3850,6 +3850,18 @@ model StockProductionOrder {
 // contra o consumo REAL (nunca a escala planejada). Custo real do lote = Σ consumido ×
 // custoMedio. Os movimentos (PRODUCAO_CONSUMO/GERACAO) vivem no ledger; aqui é o registro
 // + os números derivados (rendimento, custo unit, validade da etiqueta). CREATE-only.
+model StockContaRemovida {
+  id            String   @id @default(cuid())
+  companyId     String
+  payableLinkId String   @unique // ⭐ uma explicação por amarra
+  transactionId String
+  removidaPorId String?
+  removidaEm    DateTime @default(now())
+
+  @@index([companyId])
+  @@map("stock_conta_removida")
+}
+
 model StockItemEncerrado {
   id          String   @id @default(cuid())
   companyId   String

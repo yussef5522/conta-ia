@@ -7,6 +7,7 @@
 // Audit log em ambos.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { avisarEstoqueQueContaFoiRemovida } from '@/lib/stock/ponte/conta-removida'
 import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
@@ -255,6 +256,15 @@ export async function DELETE(request: NextRequest, { params }: Params) {
           action: 'DELETE',
           entityType: 'Transaction',
           entityId: id,
+          /**
+           * ⭐⭐ O RETRATO INTEIRO DA LINHA (20/09) — é o que faz a LIXEIRA poder
+           * RESTAURAR em vez de mandar o dono redigitar.
+           *
+           * ⛔ Antes guardava só descrição, valor e lifecycle. As 26 contas apagadas em
+           * 13/09 viraram um mistério: *"eu não lembro de ter apagado"* — e o sistema não
+           * tinha como mostrar o que sumiu nem como trazer de volta. **Registro que não
+           * basta pra desfazer é registro que só serve pra dar razão ao arrependimento.**
+           */
           metadata: {
             description: tx.description,
             amount: tx.amount,
@@ -262,12 +272,34 @@ export async function DELETE(request: NextRequest, { params }: Params) {
             wasEffected: !!(tx.bankAccountId && tx.paymentDate),
             balanceReverted: reverso,
             source: 'contas-a-pagar DELETE',
+            supplierId: tx.supplierId ?? null,
+            dueDate: tx.dueDate?.toISOString() ?? null,
+            categoryId: tx.categoryId ?? null,
+            bankAccountId: tx.bankAccountId ?? null,
+            competenceDate: tx.competenceDate?.toISOString() ?? null,
+            type: tx.type,
           },
           request,
         },
         innerTx,
       )
     })
+
+    /**
+     * ⭐⭐ O ESTOQUE FICA SABENDO (20/09) — o conserto já combinado do **F2**.
+     *
+     * ⛔ O módulo de estoque amarra a conta que ele criou (`stock_payable_link`). Quando o
+     * financeiro apagava a conta, a amarra virava **órfã** e o juiz passava a gritar todo
+     * dia *"o estoque diz ter enviado R$ X, mas essa conta não existe mais"* — **26 delas
+     * em prod**, sem ninguém saber por quê. Avisar aqui fecha o círculo na origem.
+     *
+     * ⚠️ **Fail-soft de propósito**: o estoque não pode derrubar um gesto do financeiro.
+     * Se a marcação falhar, o juiz continua vendo a órfã — que é o comportamento de hoje,
+     * nunca pior.
+     */
+    try {
+      if (ctx.company?.id) await avisarEstoqueQueContaFoiRemovida(id, ctx.company.id, ctx.user?.id ?? null)
+    } catch { /* fail-soft — ver acima */ }
 
     return NextResponse.json({
       mensagem: 'Conta excluída',

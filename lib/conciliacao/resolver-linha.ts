@@ -30,6 +30,7 @@ import { casarPagamentoDeCartao, CasarPagamentoError } from '@/lib/credit-card-p
 import { vincularPagamentoDeParcela, VinculoDeParcelaError } from '@/lib/loans/vincular-pagamento'
 import { recomputeVendasSeVenda } from '@/lib/vendas/recompute-hook'
 import { acaoValePraSentido, sentidoDaLinha, type AcaoDoBalcao } from './caixa-de-entrada'
+import { reconcileTransactions } from './reconcile'
 
 export class ResolverError extends Error {}
 
@@ -48,6 +49,10 @@ export interface ResolverInput {
   estornoDeTxId?: string
   /** o par da transferência (a linha da outra conta) */
   parTxId?: string
+  /** ⭐ a(s) conta(s) a pagar/receber escolhida(s) — o palpite já as traz POR ID */
+  contaIds?: string[]
+  /** o aceite da diferença nomeada (juros/tarifa), quando ela existe */
+  diferencaAceita?: number
 }
 
 export interface ResolverResultado {
@@ -172,10 +177,42 @@ export async function resolverLinha(input: ResolverInput, db: PrismaClient = def
      * outros gestos que pedem alvo. Ele nunca mais devolve um caminho: os dois que ele
      * devolvia estavam quebrados (um 404, o outro recarregando a própria tela).
      */
+    /**
+     * ⭐⭐⭐ COM O ALVO, EFETIVA AQUI MESMO (20/09) — o fim da segunda régua.
+     *
+     * ⛔⛔ **O defeito, na descrição do dono:** a linha da ELIANE acendia o palpite
+     * (*"eliane · valor exato · 1 dia depois do vencimento"*) e o botão verde abria o
+     * painel **VAZIO** — *"0 ranqueados · nenhuma conta bate com ELIANE GARCIA"*.
+     *
+     * **A causa:** o palpite tinha o candidato **POR ID** (`alvo.contaId`) e o botão o
+     * **descartava**, mandando reabrir a busca — que procura **POR NOME** do extrato. Medido
+     * em prod: não existe fornecedor nem conta a pagar com "eliane" no nome. *Duas réguas
+     * pra mesma pergunta, e a segunda jogava fora a resposta que a primeira já tinha.*
+     *
+     * ⭐ **E ISTO NÃO É UMA SEGUNDA PORTA DE GRAVAÇÃO:** delega ao MESMO
+     * `reconcileTransactions` que o Find & Match usa — o balcão passa o id, a régua é a de
+     * sempre (degraus, teto, diferença nomeada). Sem alvo, a recusa continua ENSINANDO.
+     */
     case 'CASAR_PAGAR':
-      throw new ResolverError('Escolha a(s) conta(s) a pagar no painel desta linha.')
-    case 'CASAR_RECEBER':
-      throw new ResolverError('Escolha a(s) conta(s) a receber no painel desta linha.')
+    case 'CASAR_RECEBER': {
+      const contas = input.contaIds ?? []
+      if (!contas.length) {
+        throw new ResolverError(
+          input.acao === 'CASAR_PAGAR'
+            ? 'Escolha a(s) conta(s) a pagar no painel desta linha.'
+            : 'Escolha a(s) conta(s) a receber no painel desta linha.',
+        )
+      }
+      const grupo = contas.length > 1 ? `caixa-${input.txId}` : null
+      for (const contaId of contas) {
+        await reconcileTransactions({
+          ofxTransactionId: input.txId, candidateId: contaId,
+          allowMultiReconcile: contas.length > 1, reconcileGroupId: grupo,
+          diferencaAceita: input.diferencaAceita,
+        }, { userId: input.userId ?? '', companyId: input.companyId } as never)
+      }
+      return { efeito: `linha conciliada com ${contas.length} conta(s)`, saiuDaCaixa: true }
+    }
 
     case 'TRANSFERENCIA_ENVIADA':
     case 'TRANSFERENCIA_RECEBIDA':

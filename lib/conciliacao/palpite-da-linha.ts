@@ -141,9 +141,30 @@ export function escolherPalpite(
   }
 }
 
-/** ⭐ a ação do palpite grava aqui mesmo, ou leva ao alvo? (a tela precisa saber) */
+/**
+ * ⭐ a ação do palpite grava aqui mesmo, ou leva ao alvo? (a tela precisa saber)
+ *
+ * ⛔⛔ **COM O ALVO POR ID, ELA GRAVA (20/09).** Antes `CASAR_PAGAR` levava SEMPRE ao
+ * painel — e o painel re-busca **por NOME**, jogando fora o id que o palpite já tinha. Foi
+ * o bug da ELIANE: palpite aceso (*"valor exato · 1 dia depois do vencimento"*) e painel
+ * dizendo *"nenhuma conta bate com ELIANE GARCIA"*, porque no cadastro não existe esse
+ * nome. ***Duas réguas pra mesma pergunta, e a segunda descartava a resposta da primeira.***
+ *
+ * ⚠️ O painel continua sendo o caminho MANUAL — e quando ele abre a partir de um palpite,
+ * abre **com o candidato já marcado**, nunca numa busca em branco.
+ */
 export function palpiteLevaAoAlvo(p: PalpiteDaLinha): boolean {
-  return LEVAM_AO_ALVO.includes(p.acao)
+  if (!LEVAM_AO_ALVO.includes(p.acao)) return false
+  // ⭐ tem id? então o gesto se resolve aqui — sem reabrir busca nenhuma
+  return !idsDoAlvo(p).length
+}
+
+/** ⭐ os ids de conta que o palpite já carrega — a resposta que o painel não pode perder */
+export function idsDoAlvo(p: { alvo: Record<string, unknown> }): string[] {
+  const um = p.alvo.contaId
+  const varios = p.alvo.contaIds
+  if (Array.isArray(varios)) return varios.filter((x): x is string => typeof x === 'string')
+  return typeof um === 'string' ? [um] : []
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

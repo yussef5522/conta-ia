@@ -72,12 +72,25 @@ export async function checkPonteInvariants(db: Db, now: Date = new Date()): Prom
 
   // ---- F2: amarra órfã (a conta sumiu do financeiro) ----
   const todosLinks = await db.stockPayableLink.findMany({ select: { id: true, companyId: true, transactionId: true, valor: true } })
+  // ⭐ as amarras cuja conta foi removida POR GESTO (o aviso que o DELETE agora manda)
+  const explicadas = new Set((await db.stockContaRemovida.findMany({ select: { payableLinkId: true } })).map((r) => r.payableLinkId))
   if (todosLinks.length) {
     const existentes = new Set((await db.transaction.findMany({
       where: { id: { in: todosLinks.map((l) => l.transactionId) } }, select: { id: true },
     })).map((t) => t.id))
     for (const l of todosLinks) {
-      if (!existentes.has(l.transactionId)) {
+      /**
+       * ⭐⭐ A ÓRFÃ COM EXPLICAÇÃO SAI DO ALARME (20/09).
+       *
+       * ⛔ O F2 gritava sobre **26 amarras** todo dia, sem ninguém saber por quê — e a
+       * resposta estava na auditoria: o dono apagou aquelas contas em 13/09, num gesto
+       * dele. *Alarme sem resposta possível é alarme que se aprende a ignorar.*
+       *
+       * ⚠️ E a amarra **continua existindo** — some do alarme, nunca do registro: ela é a
+       * prova de que a nota já foi pro financeiro, e apagá-la faria a próxima conferência
+       * reenviar a mesma nota.
+       */
+      if (!existentes.has(l.transactionId) && !explicadas.has(l.id)) {
         fails.push({ invariante: 'F2', companyId: l.companyId, detalhe: `o estoque diz ter enviado R$ ${round2(l.valor).toFixed(2)} pro contas a pagar (conta ${l.transactionId}), mas essa conta não existe mais — apagada pelo financeiro?` })
       }
     }

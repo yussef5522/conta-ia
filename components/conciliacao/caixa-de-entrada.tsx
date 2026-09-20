@@ -47,6 +47,13 @@ interface CaixaDTO {
   linhas: LinhaDTO[]
 }
 
+/** ⭐ os ids de conta que o palpite desta linha já carrega (um lugar só) */
+function idsDoPalpite(l: LinhaDTO): string[] {
+  const alvo = l.palpite?.alvo ?? {}
+  if (Array.isArray(alvo.contaIds)) return (alvo.contaIds as string[]).filter((x) => typeof x === 'string')
+  return typeof alvo.contaId === 'string' ? [alvo.contaId] : []
+}
+
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const dia = (d: string) => d.split('-').reverse().join('/')
 
@@ -174,12 +181,23 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
    */
   const gesto = useCallback(async (linha: LinhaDTO, acao: string, alvo: Record<string, unknown> = {}) => {
     /**
-     * ⭐⭐ CASAR ABRE O PAINEL **AQUI**, sem sair da tela. ⛔ O servidor continua sendo o
-     * dono da lei do sentido (ele recusa `CASAR_PAGAR` num crédito), mas *escolher a conta*
-     * é trabalho de tela — e a gravação de verdade acontece no `reconcile` do painel, a
-     * mesma porta que o card do fornecedor usa. Uma decisão, um lugar.
+     * ⭐⭐ CASAR ABRE O PAINEL **AQUI**, sem sair da tela — mas só quando ainda não há alvo.
+     *
+     * ⛔⛔ **O BUG DA ELIANE (20/09):** o palpite acendia com o candidato **POR ID** e este
+     * ramo o **descartava**, abrindo o painel — que re-busca **POR NOME** do extrato e
+     * devolvia *"nenhuma conta bate com ELIANE GARCIA"* (medido: não existe fornecedor nem
+     * conta com esse nome). ***Palpite aceso e painel dizendo "não achei" eram duas réguas
+     * discordando sobre a mesma linha.***
+     *
+     * ⭐ Com id, o gesto segue pro servidor e EFETIVA pela porta de sempre
+     * (`reconcileTransactions`). Sem id, o painel abre — ele é o caminho MANUAL.
      */
-    if (acao === 'CASAR_PAGAR' || acao === 'CASAR_RECEBER') { setProcurando(linha); return }
+    const idsDoAlvo = Array.isArray(alvo.contaIds)
+      ? (alvo.contaIds as string[])
+      : typeof alvo.contaId === 'string' ? [alvo.contaId] : []
+    if ((acao === 'CASAR_PAGAR' || acao === 'CASAR_RECEBER') && !idsDoAlvo.length) { setProcurando(linha); return }
+    // ⭐ o servidor recebe SEMPRE a lista — `contaId` sozinho seria um 2º formato pro mesmo alvo
+    if (idsDoAlvo.length) alvo = { ...alvo, contaIds: idsDoAlvo, contaId: undefined }
     setOcupado(linha.id); setErro(null); setErroDaLinha(null)
     try {
       const r = await fetchComTimeout<{ efeito?: string; deepLink?: string }>(`/api/conciliacao/resolver`, {
@@ -396,6 +414,9 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
                 /* ⭐ chega com o nome que a LINHA traz na busca — o dono não procura o
                    fornecedor de novo numa lista de 100 (a lição do lote, 13/09) */
                 buscaInicial={nomeDaBusca(l.descricao)}
+                /* ⭐ se o palpite já resolveu o alvo, o painel abre COM ele marcado —
+                   o dono confere em vez de procurar de novo (o bug da ELIANE) */
+                preSelecionados={idsDoPalpite(l)}
                 onCancel={() => setProcurando(null)}
                 onReconciled={() => {
                   setProcurando(null)

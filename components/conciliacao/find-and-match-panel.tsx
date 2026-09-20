@@ -108,6 +108,14 @@ interface Props {
    * procurar de novo, numa lista de 100 contas, o fornecedor que o card nomeava.
    */
   buscaInicial?: string
+  /**
+   * ⭐ os ids que o PALPITE já resolveu (20/09) — o painel abre com eles MARCADOS.
+   *
+   * ⛔ Sem isto, abrir o painel a partir de uma linha que já tem palpite mandava o dono
+   * procurar de novo o que o sistema acabou de achar — e pior, procurar **por nome**, que
+   * é justamente a régua que não acha "ELIANE GARCIA" no cadastro.
+   */
+  preSelecionados?: readonly string[]
 }
 
 const SEARCH_DEBOUNCE_MS = 300
@@ -168,6 +176,7 @@ export function FindAndMatchPanel({
   onReconciled,
   onSwitchToCreate,
   buscaInicial,
+  preSelecionados,
 }: Props) {
   const { toast } = useToast()
   const [busca, setBusca] = useState(buscaInicial ?? '')
@@ -176,7 +185,7 @@ export function FindAndMatchPanel({
   const [candidates, setCandidates] = useState<Candidate[]>([])
   const [ranking, setRanking] = useState<RankingInfo | null>(null)
   const [page, setPage] = useState(0)
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set(preSelecionados ?? []))
   const [submitting, setSubmitting] = useState(false)
   const debounceRef = useRef<NodeJS.Timeout | null>(null)
   const abortRef = useRef<AbortController | null>(null)
