@@ -837,7 +837,32 @@ FILA (seção de baixo): 0 conta(s)      CARDS: 2 ⭐ CASPER DE VOLTA
 ```
 **REGRA 11 — o `?? 'CAIXA'` reposto: 2 vermelhos.** ⚠️ E **2 guards ficaram vermelhos COM A TELA CERTA** (o campo virou `caso`, e a rota passou a montar o painel em vez de perguntar quem desenha botão) — **reapontados, não afrouxados**; a régua que continua mordendo é *"nenhuma rota compara a casa na mão"*. **10.588 verdes · TS 0 · deploy `Do7JsHhPedkkE3gji-41b` 4/4 · Δ bundle +0 KB.**
 
-📋 **O QUE NÃO ENTROU, e é decisão dele:** o item 2 pedia que o **N:M (CASPER) também virasse cartão ≍** — hoje ele voltou **visível**, mas ainda no visual do card de 10/09 (seção própria). Embrulhar o `EscolherNaMaoCard` no chassi do cartão ≍ é a próxima volta; entreguei o que fecha o aceite dele (*"o CASPER de volta como caso visível, zero seções duplicadas"*) e **declaro o resto** em vez de dizer que está pronto.
+📋 **O QUE NÃO ENTROU NAQUELA VOLTA, e foi declarado em vez de disfarçado:** o item 2 pedia que o **N:M (CASPER) também virasse cartão ≍** — ele voltou **visível**, mas ainda no visual do card de 10/09. **Fechado na volta seguinte, abaixo.**
+
+### ⭐⭐⭐ A ÚLTIMA VOLTA DO MODELO ÚNICO — O N:M ENTROU NO CHASSI ≍ (20/09)
+
+**O dono:** *"embrulha o EscolherNaMaoCard (N:M) no chassi do cartão ≍ — mesmo visual das outras casas, mock v3 junto. Sem pressa, **sem mexer no motor**."*
+
+**⛔ O QUE EXISTIA ERA UM SEGUNDO MODELO PRO MESMO FATO.** O "pra tua mão" abria com a `.linha-banco`: uma faixa fria com `conta · data · "descrição"` e o valor, tudo **numa linha só**. É exatamente o que a coluna **O BANCO DIZ** das outras casas desenha — mesmo dado, dois desenhos. Era a última superfície fora do modelo.
+
+**⭐⭐ O CHASSI GANHOU DUAS CHAVES, NÃO UMA SEGUNDA CÓPIA:**
+- **`moldura={false}`** — a moldura é de quem já tem uma. O caso N:M mora **dentro** do cartão do fornecedor (que já desenha borda, raio e sombra), e caixa dentro de caixa é ruído. ⛔ **O que ela NÃO pode tirar é o desenho:** grid, coluna do banco e conector ficam **fora de qualquer condição** — senão `moldura` vira "meio chassi" e as casas voltam a divergir.
+- **`painelColado`** — o painel da direita cola nas bordas (`p-0`) porque a lista de notas **sangra de ponta a ponta** e o rodapé é **sticky**; com o padrão do chassi as duas coisas quebravam.
+
+⭐ E o painel ganhou o rótulo irmão do *"MELHOR PALPITE"*: **"QUAIS NOTAS ESTE PAGAMENTO COBRIU"**.
+
+**⛔⛔ MOTOR INTOCADO, E O GUARD AFIRMA ISSO** — não é promessa no commit: um grupo aberto por vez · uma linha por vez (‹ anterior / pular ›) · o Conciliar preso à conta fechada (`pointerEvents: 'none'` até fechar). **Nenhuma linha do `escolher-na-mao.ts` foi tocada.**
+
+**⚠️⚠️ REGRA 11 REPROVOU O GUARD DUAS VEZES, e as duas são a mesma armadilha:** (a) eu fatiava o arquivo a partir do primeiro `moldura ?` e perguntava se o grid aparecia no resto — e ele aparecia **dentro do ternário que eu tinha acabado de repor como defeito**; (b) trocar o rótulo por `{moldura ? 'O BANCO DIZ' : null}` passava, porque a frase **continuava no arquivo**. ***Guard que pergunta "a string está aí?" aprova o condicional que esvazia a string.*** O que morde é exigir o **`className` LITERAL** e a **linha do rótulo sem expressão**.
+
+**PROVADO EM PROD, no bundle servido, nos DOIS viewports (REGRA 12):**
+```
+celular 200 em 699ms · 1.097 KB      desktop 200 em 194ms · 1.097 KB
+  ⭐ "O BANCO DIZ" ✓ · "QUAIS NOTAS ESTE PAGAMENTO COBRIU" ✓ · min-[900px] ✓
+  ⛔ o motor: rodapé vivo ✓ · "pular pra próxima" ✓ · "abrir o caso" ✓
+ROTA /escolher-na-mao → 200 · 2 cards (CASPER 2.120,81 e 2.275,05, stone)
+```
+**4 defeitos repostos, 4 vermelhos** (a faixa fria de volta · o grid no ternário · o rótulo condicional · a navegação removida). **10.592 verdes · TS 0 · deploy 4/4 (`br70Lcw-_mfey_Y9YDl9P`) · Δ bundle +0 KB.**
 
 ### ⛔⛔⛔ ERAM TRÊS SUPERFÍCIES — E A MINHA PROVA MEDIU A ERRADA (20/09)
 
