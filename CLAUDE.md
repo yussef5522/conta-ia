@@ -752,6 +752,42 @@ TELA → 200 · "revisar" ✓ · "sem destino" ✓ · "parece" ✓ · o aviso do
 📋 **FALTA PRA FECHAR O CASO DE HOJE — e é o que só o PDF resolve:** o **V1** (Σ Brasil 11.376,89 × 11.358,89). A fixture que temos aponta a classe (linha em moeda estrangeira), mas **a fatura de hoje é outra**, e o texto dela não existe mais em lugar nenhum. **Da próxima recusa em diante isso não se repete** — a quarentena guarda.
 
 
+### ⛔⛔⛔ CONCILIAÇÃO + CONTAS A PAGAR — 4 FRENTES (20/09/2026)
+
+**⭐⭐ 1. O BUG DA ELIANE — DUAS RÉGUAS PRA MESMA PERGUNTA, e a segunda jogava fora a resposta da primeira.** O palpite acendia (*"eliane · valor exato · 1 dia depois do vencimento"*) e o botão verde abria o painel **VAZIO**: *"0 ranqueados · nenhuma conta bate com ELIANE GARCIA"*. **A causa, medida:** o palpite tem o candidato **POR ID** (`alvo.contaId`) e o botão o **descartava**, mandando reabrir a busca — que procura **POR NOME do extrato**. E no cadastro **não existe fornecedor nem conta com "eliane"**: a conta foi achada por **valor + data**. ⚠️ O nome gravado é **`"eliane "` com espaço no fim** — a mesma cicatriz da conta `'sicredi '` de 25/08.
+
+⭐ **O conserto é o palpite EFETIVAR por id** (`idsDoAlvo` → `contaIds` → o MESMO `reconcileTransactions` do Find & Match — **nenhuma segunda porta de gravação**). O painel fica sendo o caminho **manual**, e quando aberto a partir de um palpite **já abre COM o candidato marcado** — o dono confere em vez de procurar de novo.
+
+**⭐ 2. FATURA E EMPRÉSTIMO JÁ MORAVAM NA CAIXA — medido, não construído.** Os dois palpites acendem em prod: **Carter fatura 2026-09 R$ 8.626,98** (`{cardId, invoiceMonth}`) e a **ELIANE** (`{contaId}`). A linha do Carter **está na caixa**, não foi parar em lugar nenhum. ⚠️ O caminho da parcela de empréstimo ficou vivo desde o fix do `select` sem `status` (19/09).
+
+**⛔⛔⛔ 3. NADA SAI DA CAIXA SEM CATEGORIA — e a pergunta vem JUNTO DO GESTO.** Casar com conta a pagar **HERDA** a categoria da conta (é o que o reconcile já faz). ⛔ Mas **se a conta casada não tem categoria, a linha saía da caixa sem nenhuma** — e a despesa não entrava em DRE nenhum. Agora o confirmar **recusa com `code: PEDE_CATEGORIA`**, a tela abre o chip **NA LINHA** e **reenvia o MESMO gesto** com a resposta. ⭐ **E a resposta grava NA CONTA, não só na linha do banco:** a próxima nota do mesmo fornecedor já vem classificada — *o sistema aprende com o gesto em vez de repetir a pergunta todo mês*. ⚠️ Pedir depois seria pedir nunca: a linha já teria saído da caixa.
+
+**⚠️⚠️ E O TAMANHO DISSO, medido em prod: 95 das 106 contas a pagar em aberto estão SEM categoria (R$ 159.104,38) — e as 95 vieram do `ESTOQUE_NF`.** A ponte da nota cria a conta **sem categoria** por desenho (categoria é decisão do dono), então **toda conciliação de nota caía nesse buraco**. A régua vai perguntar muito nos próximos dias — e cada resposta ensina uma.
+
+⭐⭐ **O GUARD NÃO INVENTOU UMA SEGUNDA RÉGUA DE "TEM CATEGORIA"** (REGRA 4): quem responde *"esta linha tem nome?"* é o **`rotularLinha` do Fluxo de Caixa** (26/08), que já conhece as famílias que o banco não categoriza mas o sistema sabe pela **ESTRUTURA** — fatura de cartão (`isCardPayment`) e parcela de empréstimo (o vínculo). ***`A CLASSIFICAR` é o vermelho.*** Uma régua nova aqui faria a caixa e o Fluxo discordarem sobre a mesma linha. ⛔ **`IGNORAR` é a exceção NOMEADA**: não vira movimentação, sai das filas e é reversível — cobrar categoria de uma linha que o dono já classificou como nada seria cobrar duas vezes.
+
+**⭐⭐ 4. A LIXEIRA VISÍVEL — *"eu NÃO lembro de ter apagado"*.** **Medido, 30 dias de auditoria:** `02/09 1 · 09/09 4 · 13/09 26 (TODAS às 19:09) · 14/09 1`. As 26 saíram pelo `source: "contas-a-pagar DELETE"`, **todas do mesmo fornecedor**, e o DELETE é **um por vez com dialog** — **não existe ação em massa nem caminho que apague sem gesto**. Foram 26 cliques confirmados num minuto: faxina de duplicata, o tipo de gesto que não fica na memória como *"apaguei contas"*. ⛔⛔ **O defeito não era o delete — era não ter onde VER.** A auditoria guardava; nenhuma tela lia. *Registro que ninguém desenha é a mesma família da porta sem maçaneta.*
+
+⚠️ **E O QUE ELA GUARDAVA NÃO BASTAVA PRA RESTAURAR** (só `description`/`amount`/`lifecycle`): sem fornecedor, vencimento e categoria, restaurar seria **redigitar**. O DELETE passou a guardar o retrato inteiro; as 26 antigas entram com o que existe, marcadas **restauração parcial** — e **sem vencimento a tela PEDE a data** em vez de inventar uma. ⭐ A duplicata é por **fornecedor + valor + vencimento, NUNCA pela descrição** (a recriada à mão quase nunca tem o texto da nota), e ela **avisa, não bloqueia**: duas contas iguais existem no mundo real. ⛔ **Nenhuma tabela de lixeira nasceu** — seria uma 2ª verdade do mesmo fato; a lixeira LÊ o audit, e restaurar passa pela **porta única** `createContaPendente` (`bankAccountId: null` — restaurar traz a obrigação de volta, nunca reafirma que ela foi paga).
+
+**⭐ E O DELETE PASSOU A AVISAR O ESTOQUE (o conserto do F2, na origem), fail-soft.** A amarra **não é apagada, é MARCADA** (`stock_conta_removida`): apagá-la jogaria fora a única prova de que aquela nota **já foi** pro financeiro, e na conferência seguinte o sistema mandaria a mesma nota de novo. *O alarme some porque foi EXPLICADO, nunca porque a evidência sumiu.* **Prod: 42 contas removidas, R$ 72.400,71 — e as 26 de 13/09 têm amarra do estoque, que são exatamente as 26 órfãs que o F2 acusava.**
+
+**⚠️⚠️ BUG MEU PEGO NA PROVA EM PROD: a lixeira listou *"(sem descrição) R$ 0,00"* em tudo.** O `metadata` do audit vem como **STRING em parte das linhas** (a coluna é `Json`, mas parte foi gravada como texto) — ler sem parse devolve `undefined` **sem dar erro**: vazio com cara de *"não havia dado"*. É a mesma classe do `detail` do juiz (17/09). Curado com parser resiliente.
+
+**PROVADO EM PROD, pela rota real (a recusa não grava nada):**
+```
+POST /resolver CASAR_PAGAR com conta sem categoria → HTTP 422 · code PEDE_CATEGORIA
+  "A conta «LATICINIOS SANTO CRISTO — NF 179080 (parcela 003)» não tem categoria —
+   diga qual é pra eu conciliar. Ela fica gravada na conta, e a próxima do mesmo
+   fornecedor já vem com ela."
+  ⛔ nada gravado: categoria null · vínculo null
+REGRA 12 — celular e desktop: PAGE 200 · code no bundle ✓ · chip ✓ · "agora não" ✓
+```
+**REGRA 11 — 3 defeitos repostos, 1 vermelho cada** (a recusa removida · a resposta não gravando na conta · a tela voltando a só pintar vermelho). ⚠️ **E um guard de 18/09 foi REAPONTADO, não afrouxado:** ele contava `<MenuDoChip` no **arquivo** (== 3) e quebrou **com a tela certa**, porque o painel da pergunta desenha um 4º menu **fora do cartão** — e ele não é a mesma pergunta duas vezes. A régua continua *"o CARTÃO desenha os chips uma vez só"*; o que mudou é que ela passou a ser feita **ao cartão**. **10.512 verdes · TS 0 · deploys `fzOljl6Al8zyKA7n-cX39` e `cUkptofC-Qa2EAeHr74Jg`, os dois 4/4 · Δ bundle +0 KB.**
+
+📋 **FICA PRO DONO (REGRA 2, o clique é dele):** abrir a lixeira e reconhecer o que sumiu (restaurar o que faltar — o aviso de duplicata mostra as duas lado a lado), e conciliar uma nota pra ver a pergunta da categoria aparecer e **ficar gravada na conta**.
+
+
 ### ⭐⭐⭐ ITEM ENCERRADO — "PRA OPERAÇÃO, ELE NÃO EXISTE MAIS" (19-20/09/2026)
 
 **A ordem do dono, sobre a CUBA MAIONESE:** *"sai DE TUDO que é vivo (…) nenhum lugar oferece ela pra nada. O passado fica legível: as ordens e movimentos antigos continuam mostrando o nome dela — apagar isso reescreveria custos de poções já vendidas."*
