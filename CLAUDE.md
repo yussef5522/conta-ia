@@ -814,6 +814,36 @@ SEM empresaId na URL → HTTP 200 · 42 removidas   (antes: 403 mudo)
 ```
 **10.521 verdes · TS 0 · deploy `dXMGy5iJz6E62i2yKiBUs` 4/4 · Δ bundle +4 KB.** ⚠️ Uma sonda minha marcou o timeout como ausente no bundle — era a frase montada por template, que o minificador parte; conferido por `TempoEsgotado` (4 chunks).
 
+### ⛔⛔⛔ UMA PERGUNTA, UMA CASA — O MESMO PAR EM DUAS SUPERFÍCIES (20/09)
+
+**O dono:** *"a linha FRANCIELE está na caixa COM palpite e o MESMO par aparece embaixo como card no PRA TUA MÃO (com botões próprios)."*
+
+**⛔⛔ A CAUSA É ESTRUTURAL: as duas superfícies decidem sozinhas.** A caixa monta palpites, o card monta a escolha manual, e **nenhuma sabe da outra** — a página busca as duas em paralelo. Dois botões pro mesmo par é a família do **caso Cancian** (08/09), em que a nota errada foi vinculada porque dois cards ficaram quase idênticos: ***o desenho certo é nem criar a disputa visual.***
+
+**A DIVISÃO (`lib/conciliacao/uma-casa-por-caso.ts`, pura):** **1↔1 com palpite** → mora **só na linha da caixa** · **AMBÍGUO** (2+ linhas da caixa disputando a mesma conta) ou **N:M** (lote) → mora **só no card**, e a linha da caixa **perde o botão e vira PONTEIRO**, com o nome do caso, o porquê e a **âncora** (*"faz parte do caso «franciele» — mais de uma linha pode ser o pagamento desta conta. Resolver lá →"*). ⛔ *"Resolver lá" sem o "lá" seria ordem, não caminho.*
+
+⭐ **AS DUAS ROTAS CHAMAM A MESMA FUNÇÃO.** Uma régua em cada uma divergiria no primeiro caso de borda e o par voltaria a aparecer duas vezes — a doença que este módulo mais paga. ⚠️ Custou **+166 ms** nos cards (o `palpitesDaCaixa` roda lá também); medido em prod, caixa **145 ms** e cards **200 ms**. *Correção primeiro: "performance se resolve com cache, nunca com número errado".*
+
+**⚠️⚠️ A AMBIGUIDADE É MEDIDA SOBRE QUEM ESTÁ NA CAIXA — e isso foi escolha, com número.** A conta «franciele» tem **8 linhas candidatas** por valor+data (medido: Tiele, CEREALISTA GIRUA, MARIA LUIZA, JANAINA ×2, E-CAIXAS, Viviane…). Se *"2+ candidatas"* bastasse pra chamar de ambíguo, **toda** conta viraria caso de card e o palpite nunca mais teria botão. O que cria a disputa é **duas linhas em aberto** reivindicando a mesma conta.
+
+⭐ **E QUEM VEIO PELA PORTA (`?abrir=` / `?conta=`) NUNCA É ESCONDIDO** — ali o dono apontou a linha de propósito, e devolver tela vazia seria a porta pintada de novo (a lição de 13/09).
+
+**⭐⭐ A PERGUNTA SOBRE A TIELE, RESPONDIDA — E A CONSEQUÊNCIA CORRIGIDA.** *"Ela já está resolvida como Salários — ainda deve ser oferecida como candidata?"* **Sim**, e a régua já era de 07/09: *"ter categoria não quita conta nenhuma"* — escondê-la esconderia justamente o caso em que o pagamento verdadeiro virou **despesa avulsa**, que é o que produz dupla contagem.
+
+⚠️⚠️ **MAS O TEXTO QUE ELE PROPÔS PRECISOU DE CORREÇÃO MEDIDA:** *"vincular aqui DESFAZ aquilo"* — **não desfaz**. O backfill é **cooperativo** (só preenche o que é `null`), então a Tiele continuaria "Salários". O que muda é outra coisa, e é a que importa: **a conta sai do "em aberto" e aquela linha vira o pagamento dela**. O aviso diz isso. *Repetir a frase dele seria inventar um efeito — e é o erro que este doc já registra sobre mim em 29/08.*
+
+**PROVADO EM PROD:**
+```
+CAIXA 3 linhas · CARDS 2 · pares com botão nas DUAS: ⭐ NENHUM
+FRANCIELE hoje é 1↔1 → fica na caixa, com botão
+cena reposta (2 linhas na mesma conta) → as DUAS vão pro CARD, a caixa aponta
+guard de integração: conciliada/ignorada some das duas · categorizada sai da caixa
+  e CONTINUA no card (a exceção de 07/09, travada)
+```
+**REGRA 11 — 3 defeitos repostos** (o card repetindo o par 1↔1 · o botão do palpite num caso do card · o texto prometendo desfazer a categoria). ⚠️ **E o guard do 2º não mordeu na 1ª versão**: ele procurava `{l.palpite && !l.casoNoCard && (` no arquivo e a string aparece **duas vezes** — tirar o gate de uma passava verde; o que morde é olhar **o bloco que desenha o botão**. **10.574 verdes · TS 0 · deploy `KLMlDpj3oUS3b7zho6lp-` 4/4 · Δ bundle +0 KB.**
+
+⚠️ **DOIS REGISTROS HONESTOS:** (a) o **teste de integração novo ficou vermelho 1× em 4 rodadas** e eu **não reproduzi nem nomeei a causa** — é meu, não é pré-existente, e fica **vigiado**, não rotulado; (b) a sonda da cena reposta pegou **outra** linha da Franciele (05/06, R$ 250) por `findFirst` sem ordenação — a régua demonstrada é a mesma, o id não é o do caso.
+
 ### ⛔⛔⛔ "NÃO CONSEGUI CARREGAR." ERA 500 SEM CORPO — O `as never` ESCONDIA O CONTRATO (20/09)
 
 **O dono:** *"clico «✓ Confirmar — concilia a eliane» e aparece só «Não consegui carregar.» — sem motivo, sem «tentar de novo», e não sei nem O QUE falhou (o painel? a conciliação em si? gravou ou não?)."*
