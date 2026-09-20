@@ -22,7 +22,8 @@ import { progressoDoMes } from '@/lib/conciliacao/palpite-da-linha'
  * os chips de sempre — a caixa de ontem, que funciona.
  */
 import { palpitesDaCaixa } from '@/lib/conciliacao/palpites-da-caixa'
-import { dividirPorCasa, fraseDoCasoNoCard } from '@/lib/conciliacao/uma-casa-por-caso'
+import { fraseDoCasoNoCard } from '@/lib/conciliacao/uma-casa-por-caso'
+import { divisaoDaTela } from '@/lib/conciliacao/divisao-da-tela'
 
 export async function GET(request: NextRequest) {
   const url = new URL(request.url)
@@ -76,14 +77,14 @@ export async function GET(request: NextRequest) {
    * embaixo como card, **com botões próprios**. Duas superfícies decidindo o mesmo par é a
    * família do caso Cancian: o desenho certo é **nem criar a disputa visual**.
    */
-  const casas = dividirPorCasa(naCaixa.map((r) => {
-    const p = palpites.get(r.id) as { alvo?: Record<string, unknown>; titulo?: string } | undefined
-    const a = p?.alvo ?? {}
-    const contaIds = Array.isArray(a.contaIds)
-      ? (a.contaIds as string[])
-      : typeof a.contaId === 'string' ? [a.contaId] : []
-    return { linhaId: r.id, contaIds, nomeDoCaso: p?.titulo?.trim() || (r.description ?? 'este pagamento') }
-  }))
+  /**
+   * ⭐⭐⭐ UMA PERGUNTA, UMA CASA (20/09) — **a mesma porta que a fila e os cards chamam.**
+   *
+   * ⛔ A 1ª versão tinha régua PRÓPRIA aqui (contava linhas na caixa) e a fila tinha a dela
+   * (conta candidatas incluindo categorizadas). **As duas divergiram no franciele e o dono
+   * viu botão nos dois lados.** Agora a divisão vem de um lugar só.
+   */
+  const divisao = await divisaoDaTela(empresaId, prisma)
 
   const linhas = rows.map((r) => {
     const l = paraLei(r)
@@ -103,8 +104,8 @@ export async function GET(request: NextRequest) {
        * ⭐ quando o caso mora no CARD, a linha perde o botão e ganha o CAMINHO.
        * ⛔ Nunca as duas com botão — e nunca a linha muda sem dizer pra onde ir.
        */
-      casoNoCard: casas.get(r.id)?.casa === 'CARD'
-        ? { texto: fraseDoCasoNoCard(casas.get(r.id)!), ancora: casas.get(r.id)!.ancora! }
+      casoNoCard: divisao.linhas.get(r.id)?.casa === 'CARD'
+        ? { texto: fraseDoCasoNoCard(divisao.linhas.get(r.id)!), ancora: divisao.linhas.get(r.id)!.ancora! }
         : null,
     }
   })

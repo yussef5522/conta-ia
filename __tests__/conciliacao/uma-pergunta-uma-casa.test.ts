@@ -1,145 +1,217 @@
-// ⛔⛔⛔ O MESMO PAR EM DUAS SUPERFÍCIES, COM BOTÕES NOS DOIS (20/09/2026)
+// ⛔⛔⛔ O MESMO PAR COM BOTÃO EM DUAS SUPERFÍCIES (20/09/2026)
 //
-// **O dono:** *"a linha FRANCIELE está na caixa COM palpite e o MESMO par aparece embaixo
-// como card no PRA TUA MÃO (com botões próprios)."*
+// **O dono, com o print na mão, DEPOIS da minha 1ª entrega:** *"a linha FRANCIELE está na
+// caixa COM palpite e botão E o card dela está no PRA TUA MÃO com [Vincular] nas duas linhas
+// + o aviso de ambiguidade. Tua entrega mediu «pares com botão nas duas: NENHUM» — a minha
+// tela mostra o oposto."*
 //
-// ⛔ **A causa é estrutural: as duas superfícies decidem sozinhas.** A caixa monta palpites,
-// o card monta a escolha manual, e **nenhuma sabe da outra**. Duas telas com botão pro mesmo
-// par é a família do **caso Cancian** (08/09), em que a nota errada foi vinculada porque dois
-// cards ficaram quase idênticos — ***o desenho certo é nem criar a disputa visual***.
+// ⛔⛔⛔ **ELE ESTAVA CERTO E A MINHA PROVA ESTAVA ERRADA — eu medi a superfície errada.**
+// A página faz **QUATRO** chamadas (`/caixa`, `/fila`, `/escolher-na-mao`, `/corte`); quem
+// desenha o `[Vincular]` do *"pra tua mão"* é a **`/fila`**, e eu tinha ligado a régua em
+// `/caixa` + `/escolher-na-mao`. ***Guard que roda contra as rotas separadas aprova o que o
+// dono não vê*** — por isso este arquivo monta **o que a PÁGINA recebe** e pergunta a ela.
 //
-// ⭐ **A DIVISÃO (régua do dono):** 1↔1 com palpite → **só na caixa**; ambíguo (2+ linhas
-// pra mesma conta) ou N:M → **só no card**, e a linha na caixa vira PONTEIRO.
+// ⛔⛔ **E HAVIA DUAS DEFINIÇÕES DE CASO** (ele apontou antes de mim, e a medição confirmou):
+// a fila conta candidatas **incluindo categorizadas** (07/09) → franciele = **2** → caso;
+// a minha régua contava linhas **na caixa** → franciele = **1** → 1↔1. Cada lado se achou
+// dono. A definição que fica é a **da fila**, por decisão dele: *"se a Tiele-categorizada
+// mantém o caso vivo, então o caso EXISTE e a linha da caixa vira PONTEIRO"*.
 
 import { describe, it, expect } from 'vitest'
 import {
-  dividirPorCasa, fraseDoCasoNoCard, ancoraDoCard, consequenciaDeVincular,
+  dividir, fraseDoCasoNoCard, ancoraDoCard, ancoraDoPar, consequenciaDeVincular,
+  aCaixaDesenhaBotao, aFilaDesenhaBotao, oCardDesenhaBotao,
+  type SugestaoDaConta, type PalpiteDaLinha,
 } from '@/lib/conciliacao/uma-casa-por-caso'
 
-/** o caso real: duas linhas de R$ 500 disputando a conta «franciele» */
-const FRANCIELE = { linhaId: 'l_franciele', contaIds: ['c_franciele'], nomeDoCaso: 'franciele' }
-const TIELE = { linhaId: 'l_tiele', contaIds: ['c_franciele'], nomeDoCaso: 'franciele' }
-const DOCEOLI = { linhaId: 'l_doceoli', contaIds: ['c_doceoli'], nomeDoCaso: 'DOCEOLI ALIMENTOS' }
-const LOTE = { linhaId: 'l_casper', contaIds: ['c1', 'c2', 'c3'], nomeDoCaso: 'CASPER' }
-const SEM_PALPITE = { linhaId: 'l_nada', contaIds: [], nomeDoCaso: 'eletrosul' }
+/** ⭐ o caso REAL, com os números medidos em prod */
+const CONTA_FRANCIELE = 'c_franciele'
+const SUG_AMBIGUA: SugestaoDaConta = {
+  contaId: CONTA_FRANCIELE, nomeDaConta: 'franciele',
+  // a de 15/09 (score 95) e a Tiele de 08/09 já categorizada (score 55)
+  linhaIds: ['l_franciele', 'l_tiele'],
+}
+const SUG_SIMPLES: SugestaoDaConta = { contaId: 'c_doceoli', nomeDaConta: 'DOCEOLI', linhaIds: ['l_doceoli'] }
+const P_FRANCIELE: PalpiteDaLinha = { linhaId: 'l_franciele', contaIds: [CONTA_FRANCIELE], nomeDoCaso: 'franciele' }
+const P_DOCEOLI: PalpiteDaLinha = { linhaId: 'l_doceoli', contaIds: ['c_doceoli'], nomeDoCaso: 'DOCEOLI' }
+const P_LOTE: PalpiteDaLinha = { linhaId: 'l_casper', contaIds: ['c1', 'c2'], nomeDoCaso: 'CASPER' }
 
-describe('⛔⛔⛔ um par, uma casa', () => {
-  it('⭐ 1↔1 com palpite mora SÓ na caixa — o card não repete', () => {
-    const casas = dividirPorCasa([DOCEOLI, SEM_PALPITE])
-    expect(casas.get('l_doceoli')!.casa).toBe('CAIXA')
-    expect(casas.get('l_nada')!.casa).toBe('CAIXA')
+// ═══════════════════════════════════════════════════════════════════════════════
+// ⭐⭐⭐ O GUARD QUE MONTA A PÁGINA — as três superfícies, como o dono vê
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** o que cada superfície desenharia, dada a divisão */
+function paginaMontada(entrada: { sugestoesPorConta: SugestaoDaConta[]; palpites: PalpiteDaLinha[] }) {
+  const d = dividir(entrada)
+  return {
+    /** ⭐ a CAIXA só põe botão onde ela é a dona */
+    botaoNaCaixa: entrada.palpites
+      .filter((p) => aCaixaDesenhaBotao(d.linhas.get(p.linhaId), p.contaIds.length > 0))
+      .map((p) => p.linhaId),
+    /** ⭐ a FILA (o "pra tua mão") esconde o que a caixa reivindicou */
+    botaoNaFila: entrada.sugestoesPorConta
+      .filter((s) => aFilaDesenhaBotao(s.contaId, d))
+      .flatMap((s) => s.linhaIds),
+    /** ⭐ o CARD do escolher-na-mão só desenha o que a caixa E a fila NÃO resolvem */
+    botaoNoCard: entrada.palpites
+      .filter((p) => oCardDesenhaBotao(d.linhas.get(p.linhaId), false))
+      .map((p) => p.linhaId),
+    divisao: d,
+  }
+}
+
+/** ⛔ a pergunta que o dono faz olhando a tela: alguma linha tem botão em DUAS superfícies? */
+function linhasComBotaoEmDuas(pg: ReturnType<typeof paginaMontada>): string[] {
+  const conta = new Map<string, number>()
+  for (const s of [pg.botaoNaCaixa, pg.botaoNaFila, pg.botaoNoCard])
+    for (const id of new Set(s)) conta.set(id, (conta.get(id) ?? 0) + 1)
+  return [...conta.entries()].filter(([, n]) => n > 1).map(([id]) => id)
+}
+
+describe('⛔⛔⛔ a PÁGINA MONTADA nunca tem o mesmo par com botão em duas superfícies', () => {
+  it('⛔⛔ O CASO DO PRINT: franciele ambíguo — caixa aponta, fila decide', () => {
+    const pg = paginaMontada({ sugestoesPorConta: [SUG_AMBIGUA], palpites: [P_FRANCIELE] })
+    expect(linhasComBotaoEmDuas(pg), 'é exatamente o que o dono vê na tela dele').toEqual([])
+    expect(pg.botaoNaCaixa, 'a linha voltou a ter botão num caso que a fila decide').toEqual([])
+    expect(pg.botaoNaFila).toContain('l_franciele')
+    expect(pg.divisao.linhas.get('l_franciele')).toMatchObject({ casa: 'FILA', motivo: 'AMBIGUO', nomeDoCaso: 'franciele' })
   })
 
-  it('⛔⛔ o caso franciele×tiele: AMBÍGUO → as DUAS vão pro card', () => {
-    const casas = dividirPorCasa([FRANCIELE, TIELE, DOCEOLI])
-    for (const id of ['l_franciele', 'l_tiele']) {
-      expect(casas.get(id)!.casa, `${id} ficou com botão na caixa — duas telas decidindo o mesmo par`).toBe('CARD')
-      expect(casas.get(id)!.motivo).toBe('AMBIGUO')
-    }
-    // ⭐ e o vizinho não-ambíguo continua na caixa: a régua não é uma parede
-    expect(casas.get('l_doceoli')!.casa).toBe('CAIXA')
+  it('⭐ 1↔1: a caixa é a dona e a FILA esconde — a outra metade do defeito', () => {
+    const pg = paginaMontada({ sugestoesPorConta: [SUG_SIMPLES], palpites: [P_DOCEOLI] })
+    expect(linhasComBotaoEmDuas(pg)).toEqual([])
+    expect(pg.botaoNaCaixa).toEqual(['l_doceoli'])
+    expect(pg.botaoNaFila, 'a fila continuou oferecendo o par que a caixa já resolve').toEqual([])
   })
 
-  it('⭐ N:M (lote) também é decisão do card', () => {
-    expect(dividirPorCasa([LOTE]).get('l_casper')).toMatchObject({ casa: 'CARD', motivo: 'N_PARA_M' })
+  it('⭐ os dois casos na MESMA tela — um de cada lado, nenhum nos dois', () => {
+    const pg = paginaMontada({
+      sugestoesPorConta: [SUG_AMBIGUA, SUG_SIMPLES],
+      palpites: [P_FRANCIELE, P_DOCEOLI, P_LOTE],
+    })
+    expect(linhasComBotaoEmDuas(pg)).toEqual([])
+    expect(pg.botaoNaCaixa).toEqual(['l_doceoli'])
+    expect(pg.botaoNaFila).toEqual(['l_franciele', 'l_tiele'])
+    expect(pg.botaoNoCard, 'o ambíguo voltou a ter card — a fila já o desenha').toEqual(['l_casper'])
+  })
+
+  it('⭐ N:M (lote) é decisão do card, nunca da caixa', () => {
+    const pg = paginaMontada({ sugestoesPorConta: [], palpites: [P_LOTE] })
+    expect(pg.divisao.linhas.get('l_casper')).toMatchObject({ casa: 'CARD', motivo: 'N_PARA_M' })
+    expect(pg.botaoNaCaixa).toEqual([])
   })
 
   /**
-   * ⚠️⚠️ A AMBIGUIDADE É MEDIDA SOBRE QUEM ESTÁ **NA CAIXA** — e isso foi escolha, com
-   * número: a conta «franciele» tem **8 linhas candidatas** por valor+data em prod. Se
-   * "2+ candidatas" bastasse, TODA conta viraria caso de card e o palpite nunca mais teria
-   * botão. O que cria a disputa é duas linhas **em aberto** reivindicando a mesma conta.
+   * ⛔⛔ **SOME DOS DOIS É PIOR QUE APARECER NOS DOIS.** A caixa só reivindica a conta
+   * quando a fila oferece **aquela mesma linha**. Se a sugestão apontasse outra, esconder
+   * faria o par sumir das duas superfícies — e trabalho que some é trabalho perdido.
    */
-  it('⛔ linha já resolvida NÃO cria ambiguidade — ela não está na caixa', () => {
-    // a Tiele resolvida simplesmente não entra na lista de entrada
-    expect(dividirPorCasa([FRANCIELE]).get('l_franciele')!.casa).toBe('CAIXA')
+  it('⛔ a caixa NÃO reivindica conta cuja única sugestão é OUTRA linha', () => {
+    const pg = paginaMontada({
+      sugestoesPorConta: [{ contaId: 'c_x', nomeDaConta: 'x', linhaIds: ['l_outra'] }],
+      palpites: [{ linhaId: 'l_essa', contaIds: ['c_x'], nomeDoCaso: 'x' }],
+    })
+    expect(pg.botaoNaFila, 'o par sumiu das duas telas').toContain('l_outra')
   })
 
-  it('⭐ a linha que vai pro card carrega o NOME e a ÂNCORA — nunca "resolve lá" sem lá', () => {
-    const c = dividirPorCasa([FRANCIELE, TIELE]).get('l_franciele')!
-    expect(c.nomeDoCaso).toBe('franciele')
-    expect(c.ancora).toBe(ancoraDoCard('l_franciele'))
-    expect(fraseDoCasoNoCard(c)).toMatch(/faz parte do caso «franciele»[\s\S]*Resolver lá/)
-  })
-
-  it('⛔ e a frase DIZ o porquê — "resolver lá" sem motivo é ordem, não explicação', () => {
-    expect(fraseDoCasoNoCard(dividirPorCasa([FRANCIELE, TIELE]).get('l_tiele')!))
-      .toMatch(/mais de uma linha pode ser o pagamento/)
-    expect(fraseDoCasoNoCard(dividirPorCasa([LOTE]).get('l_casper')!))
-      .toMatch(/cobre mais de uma nota/)
+  it('⛔ linha sem palpite não é reivindicada por ninguém', () => {
+    const pg = paginaMontada({ sugestoesPorConta: [], palpites: [{ linhaId: 'l_nada', contaIds: [], nomeDoCaso: 'x' }] })
+    expect(pg.divisao.linhas.get('l_nada')!.casa).toBe('CAIXA')
+    expect(pg.botaoNaCaixa).toEqual([])   // sem alvo, o que ela mostra são os chips
   })
 })
 
-describe('⭐⭐ a candidata JÁ CATEGORIZADA é oferecida — com a consequência escrita', () => {
+describe('⭐ o ponteiro DIZ o caso, o porquê e o caminho', () => {
+  it('⭐ nome + âncora + motivo — "resolver lá" sem o "lá" seria ordem, não caminho', () => {
+    const c = dividir({ sugestoesPorConta: [SUG_AMBIGUA], palpites: [P_FRANCIELE] }).linhas.get('l_franciele')!
+    expect(c.ancora, 'o ambíguo é ancorado pela CONTA — é ela que reúne as N linhas').toBe(ancoraDoPar(CONTA_FRANCIELE))
+    expect(fraseDoCasoNoCard(c)).toMatch(/faz parte do caso «franciele»[\s\S]*mais de uma linha[\s\S]*Resolver lá/)
+  })
+
+  it('⭐ e o lote diz o motivo DELE', () => {
+    const c = dividir({ sugestoesPorConta: [], palpites: [P_LOTE] }).linhas.get('l_casper')!
+    expect(fraseDoCasoNoCard(c)).toMatch(/cobre mais de uma nota/)
+  })
+})
+
+describe('⭐⭐ a candidata JÁ CATEGORIZADA mantém o caso vivo — e tem a consequência escrita', () => {
   /**
-   * ⭐ A pergunta do dono sobre a Tiele. A resposta é **sim**, e ela já era a régua de
-   * 07/09: *"ter categoria não quita conta nenhuma"*. Escondê-la esconderia justamente o
-   * caso em que o pagamento verdadeiro virou despesa avulsa — a dupla contagem.
+   * ⭐ Foi a Tiele (categorizada como Salários) que deixou o caso ambíguo. Ela **continua**
+   * sendo oferecida — a régua de 07/09, *"ter categoria não quita conta nenhuma"* —, e é
+   * justamente isso que tira o botão da caixa.
    */
-  it('⭐ linha com categoria: o aviso é OBRIGATÓRIO', () => {
+  it('⛔ tirar a categorizada da lista faria o caso virar 1↔1 (e o botão voltar)', () => {
+    const semTiele = dividir({
+      sugestoesPorConta: [{ ...SUG_AMBIGUA, linhaIds: ['l_franciele'] }],
+      palpites: [P_FRANCIELE],
+    })
+    expect(semTiele.linhas.get('l_franciele')!.casa, 'é o contraste que prova de onde vem o caso').toBe('CAIXA')
+  })
+
+  it('⭐ o aviso é obrigatório na candidata com categoria', () => {
     const c = consequenciaDeVincular('Salários', 'franciele')
     expect(c.precisaAvisar).toBe(true)
     expect(c.texto).toContain('já categorizada como Salários')
   })
 
   /**
-   * ⚠️⚠️ **E A CONSEQUÊNCIA É A MEDIDA, NÃO A SUPOSTA.** O dono escreveu *"vincular aqui
+   * ⚠️⚠️ **A CONSEQUÊNCIA É A MEDIDA, NÃO A SUPOSTA.** O dono escreveu *"vincular aqui
    * DESFAZ aquilo"*; medido no código, **a categoria NÃO é desfeita** — o backfill é
-   * cooperativo (só preenche o que é `null`). O que muda é a conta sair do "em aberto" e
-   * a linha virar o pagamento dela. *Repetir a frase dele seria inventar um efeito.*
+   * cooperativo. O que muda é a conta sair do "em aberto".
    */
-  it('⛔ o texto NÃO promete desfazer a categoria — ele diz o que de fato muda', () => {
+  it('⛔ o texto não promete desfazer a categoria', () => {
     const c = consequenciaDeVincular('Salários', 'franciele')
-    expect(c.texto, 'voltou a prometer que a categoria é desfeita').not.toMatch(/desfaz|desfazer/i)
+    expect(c.texto).not.toMatch(/desfaz|desfazer/i)
     expect(c.texto).toContain('a categoria dela fica')
-    expect(c.texto).toMatch(/sai do "em aberto"/)
   })
 
-  it('⭐ linha sem categoria: sem alarme — o aviso só existe quando há consequência', () => {
+  it('⭐ sem categoria, sem alarme', () => {
     expect(consequenciaDeVincular(null, 'franciele').precisaAvisar).toBe(false)
   })
 })
 
-describe('⭐ as DUAS rotas consultam a MESMA régua', () => {
+describe('⭐ as TRÊS superfícies passam pela MESMA porta', () => {
   const fonte = (arq: string) =>
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     require('node:fs').readFileSync(require('node:path').join(process.cwd(), arq), 'utf-8')
 
-  it('⛔ a caixa publica o caso quando ele mora no card', () => {
-    const r = fonte('app/api/conciliacao/caixa/route.ts')
-    expect(r).toContain('dividirPorCasa(')
-    expect(r, 'a linha voltaria a mostrar botão num par que o card também decide').toContain('casoNoCard')
-  })
-
-  it('⛔⛔ e o card ESCONDE o par 1↔1 que já mora na caixa', () => {
-    const r = fonte('app/api/conciliacao/escolher-na-mao/route.ts')
-    expect(r, 'o card voltou a repetir o par da caixa').toContain('dividirPorCasa(')
-    expect(r).toMatch(/casas\.get\(c\.linha\.id\)\?\.casa !== 'CAIXA'/)
-    // ⭐ quem veio PELA PORTA nunca é escondido — abrir e não ter nada atrás é porta pintada
-    expect(r).toMatch(/c\.linha\.id === data\.abrir \|\| porConta\.includes\(c\.linha\.id\)/)
-  })
-
   /**
-   * ⚠️⚠️ **A 1ª VERSÃO DESTE TESTE NÃO MORDEU** (REGRA 11): ele procurava a string
-   * `{l.palpite && !l.casoNoCard && (` no arquivo, e ela aparece em **DOIS** blocos (o
-   * palpite e o *"OU ESCOLHA OUTRO CAMINHO"*) — tirar o gate de UM passava verde.
-   * ⭐ O que morde é olhar **o bloco que desenha o BOTÃO**: é ele que não pode existir
-   * quando o caso mora no card.
+   * ⛔⛔ O GUARD QUE FALTAVA: a 1ª versão cobriu duas rotas e deixou a `/fila` decidindo
+   * sozinha — e foi exatamente ela que o dono viu com botão.
    */
-  it('⭐ a tela aponta pro card em vez de decidir', () => {
+  it('⛔ /caixa, /fila e /escolher-na-mao chamam divisaoDaTela', () => {
+    for (const r of [
+      'app/api/conciliacao/caixa/route.ts',
+      'app/api/conciliacao/fila/route.ts',
+      'app/api/conciliacao/escolher-na-mao/route.ts',
+    ]) {
+      expect(fonte(r), `${r} voltou a decidir sozinha — é assim que as réguas divergem`)
+        .toContain('divisaoDaTela(')
+    }
+  })
+
+  it('⛔ a fila ESCONDE a conta que a caixa reivindicou', () => {
+    expect(fonte('lib/conciliacao/fila-de-conciliacao.ts'))
+      .toMatch(/!contasQueMoramNaCaixa\.has\(c\.conta\.id\)/)
+    // ⚠️ e a dupla contagem NUNCA é escondida — ela é anomalia, não espera
+    expect(fonte('lib/conciliacao/fila-de-conciliacao.ts'))
+      .toMatch(/c\.situacao === 'DUPLA_CONTAGEM'/)
+  })
+
+  it('⛔ e a porta única lê as DUAS fontes — senão ela decide com meia verdade', () => {
+    const d = fonte('lib/conciliacao/divisao-da-tela.ts')
+    expect(d, 'perdeu a fonte dos [Vincular]').toContain('contasEsperandoPagamento(')
+    expect(d, 'perdeu a fonte dos palpites').toContain('palpitesDaCaixa(')
+  })
+
+  it('⭐ a tela aponta em vez de decidir, e o card carrega a âncora', () => {
     const t = fonte('components/conciliacao/caixa-de-entrada.tsx')
     const iBotao = t.indexOf('l.palpite.botao')
-    expect(iBotao, 'o botão do palpite sumiu da tela').toBeGreaterThan(0)
-    const abertura = t.lastIndexOf('{l.palpite', t.lastIndexOf('{l.palpite', iBotao) - 1) >= 0
-      ? t.slice(t.lastIndexOf('{l.palpite &&', iBotao), iBotao)
-      : ''
-    expect(abertura, 'o botão do palpite voltou a existir num caso que mora no card')
-      .toContain('!l.casoNoCard')
-    expect(t).toMatch(/href=\{`#\$\{l\.casoNoCard\.ancora\}`\}/)
-  })
-
-  it('⛔ e a âncora do card é a MESMA função dos dois lados', () => {
-    expect(fonte('components/conciliacao/escolher-na-mao-card.tsx'))
-      .toContain('id={ancoraDoCard(card.linha.id)}')
+    expect(t.slice(t.lastIndexOf('{l.palpite &&', iBotao), iBotao),
+      'o botão do palpite voltou a existir num caso que mora no card').toContain('!l.casoNoCard')
+    expect(fonte('components/conciliacao/escolher-na-mao-card.tsx')).toContain('id={ancoraDoCard(card.linha.id)}')
+    // ⛔ e o par da FILA também é alcançável — "resolver lá" sem o "lá" é ordem, não caminho
+    expect(fonte('components/conciliacao/par-sugerido.tsx'), 'o ponteiro do ambíguo apontaria pro nada')
+      .toContain('id={ancoraDoPar(item.conta.id)}')
   })
 })

@@ -18,6 +18,7 @@ import { useState } from 'react'
 import { Link2, X, Loader2, Search, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
+import { ancoraDoPar } from '@/lib/conciliacao/uma-casa-por-caso'
 import { formatBRL } from '@/lib/format/money'
 
 export interface LadoDoParDTO {
@@ -132,7 +133,8 @@ export function ParSugerido({
   }
 
   return (
-    <article className={`overflow-hidden rounded-xl border bg-white shadow-sm transition-shadow hover:shadow dark:bg-slate-950 ${
+    /* ⭐ a ÂNCORA do caso (20/09): a linha da caixa aponta pra cá em vez de mandar procurar */
+    <article id={ancoraDoPar(item.conta.id)} className={`scroll-mt-4 overflow-hidden rounded-xl border bg-white shadow-sm transition-shadow hover:shadow dark:bg-slate-950 ${
       disputadaPor > 1
         ? 'border-amber-300 dark:border-amber-800'
         : 'border-slate-200 dark:border-slate-800'

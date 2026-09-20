@@ -536,6 +536,15 @@ export function resumirSemPar(
 /** as três pilhas de uma vez — o que a tela carrega num fetch só */
 export async function filaDeConciliacao(
   companyId: string, db: Db = defaultPrisma, agora: Date = new Date(),
+  /**
+   * ⭐ as contas que a CAIXA reivindicou (1↔1 com palpite) — vem da porta única
+   * `divisaoDaTela`, calculada pela ROTA.
+   *
+   * ⚠️ Entra por PARÂMETRO e não por import pra não criar ciclo: a `divisaoDaTela` lê
+   * `contasEsperandoPagamento` **daqui**. Quem junta as duas pontas é a rota, que já é o
+   * lugar onde a tela é montada.
+   */
+  contasQueMoramNaCaixa: ReadonlySet<string> = new Set(),
 ): Promise<FilaDeConciliacao> {
   // ⛔⛔ A CONFERÊNCIA DE SALDO SAIU DAQUI (10/09/2026, decisão do dono): *"conferência
   // de saldo tem casa própria — o card da conta em BANCOS. Repetir na Conciliação é
@@ -561,7 +570,22 @@ export async function filaDeConciliacao(
   // sem pagamento", que é o estado normal que saiu da tela; ela é uma conta marcada
   // como PAGA e sem vínculo, ou seja **o mesmo dinheiro em duas linhas**. Isso é
   // anomalia, não espera. Some daqui e não sobra lugar nenhum onde ela apareça.
-  const contas = todas.filter((c) => c.sugestoes.length > 0 || c.situacao === 'DUPLA_CONTAGEM')
+  /**
+   * ⛔⛔⛔ **A CONTA CUJO PAR MORA NA CAIXA NÃO GANHA BOTÃO AQUI** (20/09).
+   *
+   * Era esta a **terceira superfície** que o dono via: a linha FRANCIELE com palpite e botão
+   * na caixa **e** o `[Vincular]` desta lista, pro MESMO par. ***Duas telas decidindo o mesmo
+   * dinheiro é como a nota errada do Cancian entrou.***
+   *
+   * ⭐ A régua vem da porta única (`divisaoDaTela`), a MESMA que a caixa e os cards
+   * consultam — e ela reivindica a conta pra caixa **só** no 1↔1 (uma sugestão, e apontando
+   * pra linha que tem o palpite). Ambíguo continua aqui, que é onde ele se resolve.
+   *
+   * ⚠️ A **dupla contagem** nunca é escondida: ela não é "conta esperando pagamento", é
+   * anomalia — e se sumisse daqui não sobraria lugar nenhum onde aparecesse.
+   */
+  const contas = todas.filter((c) =>
+    (c.sugestoes.length > 0 && !contasQueMoramNaCaixa.has(c.conta.id)) || c.situacao === 'DUPLA_CONTAGEM')
   // ⚠️ a dupla contagem conta TODAS, inclusive as sem par: é dinheiro contado
   // duas vezes exista ou não sugestão, e esconder isso seria o oposto do ponto.
   const dc = todas.filter((c) => c.situacao === 'DUPLA_CONTAGEM')
