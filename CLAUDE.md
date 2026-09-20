@@ -814,6 +814,37 @@ SEM empresaId na URL → HTTP 200 · 42 removidas   (antes: 403 mudo)
 ```
 **10.521 verdes · TS 0 · deploy `dXMGy5iJz6E62i2yKiBUs` 4/4 · Δ bundle +4 KB.** ⚠️ Uma sonda minha marcou o timeout como ausente no bundle — era a frase montada por template, que o minificador parte; conferido por `TempoEsgotado` (4 chunks).
 
+### ⛔⛔⛔ ERAM TRÊS SUPERFÍCIES — E A MINHA PROVA MEDIU A ERRADA (20/09)
+
+**O dono, com o print na mão, DEPOIS da minha entrega:** *"a linha FRANCIELE está na caixa COM palpite e botão E o card dela está no PRA TUA MÃO com [Vincular] nas duas linhas. Tua entrega mediu «pares com botão nas duas: NENHUM» — a minha tela mostra o oposto."*
+
+**⛔⛔⛔ ELE ESTAVA CERTO E EU MEDI A SUPERFÍCIE ERRADA.** A página `/conciliacao` faz **QUATRO** chamadas — `/caixa`, `/fila`, `/escolher-na-mao`, `/corte` — e **três desenham botão**. Eu tinha ligado a régua em duas; quem desenha o `[Vincular]` do *"pra tua mão"* é a **`/fila`** (`contasEsperandoPagamento`), que ficou de fora. ***Guard que roda contra as rotas separadas aprova exatamente o que o dono vê e eu não.***
+
+**⛔⛔ E HAVIA DUAS DEFINIÇÕES DE "CASO" — ele diagnosticou antes de mim, e a medição confirmou:**
+```
+a FILA conta candidatas INCLUINDO categorizadas (07/09) → franciele = 2 → caso existe
+a minha régua contava linhas NA CAIXA                  → franciele = 1 → 1↔1
+```
+*Cada lado se achava dono, e os dois desenhavam botão.* ⭐ A definição que fica é **a da fila**, por decisão dele: *"se a Tiele-categorizada mantém o caso vivo, então o caso EXISTE e a linha da caixa vira PONTEIRO"*. Medido: a fila oferece **2 linhas** pra «franciele» (a de 15/09 com score 95 e a Tiele categorizada com 55) — não as 8 candidatas cruas de valor+data, mas **a lista que produz botão**.
+
+**⭐⭐ TRÊS CASAS, e a terceira nasceu do guard da página montada:** minha 1ª correção mandava o ambíguo pro CARD e **a fila continuava desenhando** — duas superfícies de novo, as duas do lado direito. Agora: **1↔1 → CAIXA** · **AMBÍGUO → FILA** (é lá que as N linhas aparecem lado a lado com o aviso) · **N:M → CARD**. A `divisaoDaTela` é a **porta única** que as três rotas chamam; ⚠️ ela entra na fila **por parâmetro** (a rota a calcula) pra não criar ciclo de import.
+
+⭐ **A METADE QUE FALTAVA:** a fila **esconde** a conta que a caixa reivindicou. ⛔ E só reivindica quando a fila oferece **aquela mesma linha** — *some dos dois é pior que aparecer nos dois*.
+
+**⚠️⚠️ A PROVA EM PROD PEGOU MAIS UM ERRO MEU, e ele é a lição do dia:** depois de tudo, a página **ainda** mostrava botão nos dois — a rota `/caixa` comparava **`casa === 'CARD'`** na mão, e o ambíguo passara a morar em **`FILA`**: `casoNoCard` vinha `null` e o botão voltava. ***Meu guard exercitava o predicado da lib e a ROTA não o usava*** — "guard que testa a lib aprova a tela que a ignora", pela minha mão. Os predicados (`aCaixaDesenhaBotao` / `aFilaDesenhaBotao` / `oCardDesenhaBotao`) viraram lib, as rotas os **chamam**, e o guard proíbe comparar casa na mão.
+
+**⭐ O GUARD RODA CONTRA A PÁGINA MONTADA** (exigência dele): ele junta as três superfícies e pergunta *"alguma linha tem botão em duas?"*. ⚠️ Ele também nasceu frouxo — derivava o card da `casa` em vez de chamar o predicado da rota, e **repor o defeito passava verde**; só mordeu depois de executar a régua real.
+
+**PROVADO EM PROD, nas 3 chamadas que a página faz:**
+```
+CAIXA  → APONTA R$ 500 «FRANCIELE» · "faz parte do caso «franciele» … Resolver lá →"
+                                      âncora #par-cmu8w6qv107ja12f0r2kppjjd
+FILA   → «franciele» R$ 500 · 2 [Vincular]  ⭐ É AQUI que ele resolve
+CARDS  → 0
+⛔ linha com botão em duas superfícies: NENHUMA ✓
+```
+**REGRA 11 — 4 defeitos repostos** (a fila decidindo sozinha · o ambíguo contando só a caixa · o card desenhando o ambíguo · a rota comparando a casa na mão). **10.578 verdes · TS 0 · deploys `TviO8JYqpafRdemR8oEua` e `4lghCP06Pm0HtfwqneF83`, os dois 4/4 · Δ bundle +0 KB.** ⚠️ Custo: cada rota paga as duas fontes (~380 ms medidos) — *"performance se resolve com cache, nunca com número errado"*.
+
 ### ⛔⛔⛔ UMA PERGUNTA, UMA CASA — O MESMO PAR EM DUAS SUPERFÍCIES (20/09)
 
 **O dono:** *"a linha FRANCIELE está na caixa COM palpite e o MESMO par aparece embaixo como card no PRA TUA MÃO (com botões próprios)."*
