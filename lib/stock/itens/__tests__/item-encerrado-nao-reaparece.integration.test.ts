@@ -16,6 +16,7 @@ import { listPosicao } from '../../posicao'
 import { getQuadro } from '../../contagem'
 import { categoriasDoUniverso, type UniversoDoSeletor } from '../../universo-do-seletor'
 import { listCatalogo } from '../../catalogo'
+import { saldoItem } from '../../saldo'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -134,6 +135,26 @@ it('⛔ o contrafactual: item com ESTORNO de consumo encerra normal', async () =
     await expect(encerrarItem({ companyId, itemId, motivo: 'com estorno interno' }, prisma)).resolves.toBeTruthy()
   })
 
+  it('⭐⭐ quantidade ZERADA com centavos sobrando: o resíduo vai junto, como AJUSTE', async () => {
+    // entra 36 kg e sai tudo, com o custo médio arredondado deixando 7 centavos
+    await criarMovimento(prisma, { companyId, itemId, tipo: 'ENTRADA_NF', quantidade: 36, custoUnitario: 10, custoTotal: 360, origem: 'SEFAZ' })
+    await criarMovimento(prisma, { companyId, itemId, tipo: 'BAIXA_VENDA', quantidade: -36, custoUnitario: 9.998, custoTotal: -359.93, origem: 'MANUAL' })
+
+    await expect(encerrarItem({ companyId, itemId, motivo: 'resíduo de centavos' }, prisma)).resolves.toBeTruthy()
+    // ⭐ zerar quantidade zera valor, SEMPRE — e o ajuste fica REGISTRADO, não some calado
+    const s = await saldoItem(prisma, companyId, itemId)
+    expect(Math.abs(s.saldo), 'o -0 do ponto flutuante também é zero').toBe(0)
+    expect(Math.abs(s.valor)).toBe(0)
+    expect(await prisma.stockMovement.count({ where: { companyId, itemId, tipo: 'AJUSTE_CONTAGEM' } })).toBe(1)
+  })
+
+  it('⛔ mas ACIMA do teto do arredondamento continua recusando — ali não é centavo', async () => {
+    await criarMovimento(prisma, { companyId, itemId, tipo: 'ENTRADA_NF', quantidade: 2, custoUnitario: 10, custoTotal: 20, origem: 'SEFAZ' })
+    await criarMovimento(prisma, { companyId, itemId, tipo: 'BAIXA_VENDA', quantidade: -2, custoUnitario: 2.5, custoTotal: -5, origem: 'MANUAL' })
+    // sobra R$ 15 com saldo zero: entrada ou saída faltando, não arredondamento
+    await expect(encerrarItem({ companyId, itemId, motivo: 'x' }, prisma)).rejects.toThrow(/passa do resíduo esperado/)
+  })
+
   it('⭐ encerrar 2× é idempotente (unique no banco), não erro', async () => {
     await encerrarItem({ companyId, itemId, motivo: 'primeira' }, prisma)
     await expect(encerrarItem({ companyId, itemId, motivo: 'segunda' }, prisma)).resolves.toBeTruthy()
@@ -177,7 +198,10 @@ describe('⛔⛔ o saldo do encerramento vem da PORTA ÚNICA', () => {
   it('⭐ usa saldoItem, não um aggregate próprio', () => {
     const l = fonte('lib/stock/itens/encerrar-item.ts')
     expect(usosDe(l, 'saldoItem'), 'segunda régua de saldo diverge no 1º caso de borda').toBeGreaterThan(0)
-    expect(l, 'foi exatamente esta régua que acusou 36,25 num item já zerado')
-      .not.toMatch(/stockMovement\.aggregate/)
+    // ⚠️ a asserção foi APERTADA, não afrouxada: o `aggregate` que sobrou soma só
+    // `quantidade` (o GIRO do item, pro teto do resíduo). O proibido é somar `custoTotal`
+    // aqui — era ESSA a segunda régua de saldo que acusou 36,25 num item já zerado.
+    expect(l, 'voltou a derivar saldo por conta própria')
+      .not.toMatch(/_sum: \{ quantidade: true, custoTotal: true \}/)
   })
 })

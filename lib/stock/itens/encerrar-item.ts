@@ -22,6 +22,8 @@
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { saldoItem } from '../saldo'
+import { avaliarResiduo } from '../residuo-de-centavos'
+import { criarMovimento } from '../movement'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -63,12 +65,53 @@ export async function encerrarItem(e: EncerramentoDeItem, db: Db = defaultPrisma
   const s = await saldoItem(db, e.companyId, e.itemId)
   const saldo = s.saldo
   const valor = s.valor
-  if (Math.abs(saldo) > 0.001 || Math.abs(valor) > 0.01) {
+  if (Math.abs(saldo) > 0.001) {
     throw new EncerrarItemError(
       `«${item.nome}» ainda tem ${saldo} ${item.unidadeControle} valendo R$ ${valor.toFixed(2)} no estoque. ` +
       'Encerrar agora esconderia esse dinheiro em vez de resolver — conte o item (ou dê saída) primeiro, ' +
       'e então ele pode ser encerrado.',
     )
+  }
+
+  /**
+   * ⭐⭐ QUANTIDADE ZERADA COM CENTAVOS SOBRANDO — a régua do dono, de 19/09 de manhã:
+   * ***zerar quantidade zera valor, SEMPRE***.
+   *
+   * ⚠️ O caso real: a CUBA foi contada a zero e sobraram **R$ 0,07** — resíduo do custo
+   * médio arredondado ao longo de ~36 kg movimentados. Recusar por 7 centavos deixaria o
+   * item preso pra sempre, e o dono num beco.
+   *
+   * ⛔ Mas o teto é o MESMO limite matemático do arredondamento (`residuo-de-centavos.ts`,
+   * a régua do E16), proporcional ao que **passou** pelo item — não um número a dedo.
+   * Acima dele não é centavo: é dado torto, e aí a recusa continua.
+   */
+  if (Math.abs(valor) > 0.01) {
+    const giro = await db.stockMovement.aggregate({
+      where: { companyId: e.companyId, itemId: e.itemId, quantidade: { gt: 0 } }, _sum: { quantidade: true },
+    })
+    const v = avaliarResiduo({ saldoAntes: 0, valorAntes: valor, qtdDaBaixa: giro._sum.quantidade ?? 0, valorDaBaixa: 0 })
+    if (Math.abs(valor) > v.teto) {
+      throw new EncerrarItemError(
+        `«${item.nome}» tem 0 ${item.unidadeControle} mas ainda R$ ${valor.toFixed(2)} de valor — ` +
+        `isso passa do resíduo esperado de arredondamento (R$ ${v.teto.toFixed(2)}). ` +
+        'Não é centavo sobrando: é entrada ou saída que falta. Resolva o histórico antes de encerrar.',
+      )
+    }
+    // ⭐ o resíduo vai junto, como AJUSTE registrado — nunca some em silêncio
+    /**
+     * ⚠️ A quantidade não pode ser ZERO (o CHECK do ledger recusa), então vai o menor
+     * passo que o módulo reconhece — **0,001**, que o `round2` do saldo absorve: o item
+     * fica em 0,00 e o valor, em 0,00.
+     *
+     * ⛔ E o unitário é DERIVADO do total (`custoTotal / quantidade`): montá-lo na mão
+     * errava o sinal e o banco recusava por 14 centavos — pego no primeiro teste.
+     */
+    const q = -0.001
+    await criarMovimento(db, {
+      companyId: e.companyId, itemId: e.itemId, tipo: 'AJUSTE_CONTAGEM',
+      quantidade: q, custoUnitario: -valor / q, custoTotal: -valor,
+      origem: 'MANUAL', criadoPorId: e.userId ?? null,
+    })
   }
 
   // ⚠️ o item deixa de existir pra OPERAÇÃO, e a ficha dele vai junto: ficha ativa de um
