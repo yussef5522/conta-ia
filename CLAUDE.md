@@ -814,6 +814,42 @@ SEM empresaId na URL → HTTP 200 · 42 removidas   (antes: 403 mudo)
 ```
 **10.521 verdes · TS 0 · deploy `dXMGy5iJz6E62i2yKiBUs` 4/4 · Δ bundle +4 KB.** ⚠️ Uma sonda minha marcou o timeout como ausente no bundle — era a frase montada por template, que o minificador parte; conferido por `TempoEsgotado` (4 chunks).
 
+### ⛔⛔⛔ A FLAG DIZ "PARECE", O VÍNCULO DIZ "É" — E A LEI DA ESTAÇÃO CONFIAVA NA FLAG (20/09)
+
+**O dono:** *"o mapa dizia «pagamento órfão 8.626,98 (17/09) bate a fatura OPEN do Carter, palpite aceso na caixa», mas a caixa hoje tem só 4 linhas e ela NÃO está."*
+
+**⭐ MEDIDO POR ID (`cmu7qr6ow000o7tu9960fi9wg`) — e a hipótese da dupla contagem CAIU:** a linha **não foi categorizada**, não foi ignorada, não tem vínculo e **não tem UM registro de auditoria**. Ninguém mexeu nela. O que ela tinha era **`isCardPayment: true`** (marcado pelo passo 8.5 do import, por **heurística de DESCRIÇÃO**) com **`businessCreditCardId: null`**.
+
+**⛔ E `comoFoiResolvida` declarava isso RESOLVIDO** (`if (l.isCardPayment) return 'pagamento de fatura de cartão'`): a linha ia pro **ARQUIVO com um selo que afirma uma quitação que nunca houve**. Daí a fatura do Carter ficou **OPEN com o pagamento dela no extrato**, o **K3 gritando todo dia** — e ***nenhuma tela onde resolver***. **A resposta à pergunta 3 do dono é esta: o palpite nunca pôde ser oferecido porque a LINHA nunca chegou na caixa.**
+
+**⚠️⚠️ E A LIÇÃO JÁ ESTAVA ESCRITA NESTE DOC, em 29/08, com estas palavras:** *"a flag diz «parece»; o vínculo diz «é» (…) sem `businessCreditCardId` a fatura fica aberta pra sempre: **a flag não quita nada, só tira da fila**"*. ***Ela virou comentário de teste e não virou régua*** — e o defeito nasceu **depois**, na lei das estações (15/09). *Lição que não vira executável volta.*
+
+**A CURA:** o selo exige o **VÍNCULO**; sem ele a linha **volta pra caixa**, onde o palpite do cartão (`mesQueBateOValor`) a reconhece. ⚠️ O `SELECT_DA_CAIXA` passou a carregar `businessCreditCardId` — *sem o campo, `faturaVinculada` seria sempre `false` e TODA linha de cartão voltaria pra caixa*; a derivação mora no `paraLei`, um lugar só. ⭐ E a **parcela de empréstimo sempre olhou o vínculo** — o cartão era a exceção, não a régua.
+
+**📋 A VARREDURA DA FAMÍLIA (as 3 perguntas, respondidas com número):**
+| pergunta | resposta medida |
+|---|---|
+| pagamento de fatura categorizado como DESPESA (dupla contagem no DRE) | **ZERO** — não existe nenhuma |
+| órfãs da flag (invisíveis na caixa) | **1** — exatamente a do Carter |
+| faturas abertas sem pagamento vinculado | 5, mas **só a do Carter tem débito de valor exato no extrato**; as outras 4 esperam dinheiro que não está no sistema |
+
+**⭐ APLICADO PELA PORTA REAL** (`POST /casar-pagamento`, `pg_dump pre-casar-carter.dump` antes), **nunca por script replicando a lógica**. ⚠️ E o motor é o **`casarPagamentoDeCartao`, não o `payInvoice`**: aquele **CRIA** a saída (é o caminho do PF, quando o dono digita "paguei"); aqui **o dinheiro já saiu e já está no extrato**, então o gesto é **AMARRAR** — usar o outro duplicaria o dinheiro.
+
+**⚠️ ACHADO NO CAMINHO: o `deltaDespesaRemovidoDoDRE` mentia.** Ele devolvia `tx.amount` **sempre** — a rota respondeu *"R$ 8.626,98 removidos do DRE"* numa linha que **nunca teve categoria** (nada saiu de lugar nenhum). Agora é zero sem categoria. *Número que afirma um efeito que não houve é a família do "número sem régua em tela de dinheiro".*
+
+**⚠️⚠️ E UM FLAKE PRÉ-EXISTENTE FOI DIAGNOSTICADO, não rotulado** (a régua de 01/09): o `afterEach` do E2E das 9 linhas apagava transação com `{ businessCreditCardId: { not: null }, bankAccountId: null }` — **sem escopo de empresa** —, varrendo as compras do `palpite-acende-com-dado-real` **no meio da rodada paralela**. O vermelho **mudava de teste a cada rodada** e não era de ninguém. Escopado; 3 rodadas verdes. ⭐ E o mesmo E2E montava o `LinhaParaEstacao` **à mão** (a 2ª derivação que o `paraLei` existe pra impedir) — *ele podia passar verde com a tela lendo outro campo*; foi o `tsc` que cobrou quando o vínculo entrou na lei.
+
+**PROVADO EM PROD, depois do deploy:**
+```
+FATURA Carter 2026-09: net 8.626,98 · 1 pagamento vinculado (17/09) → PAGA ✓
+A LINHA: estação ARQUIVO · selo "pagamento de fatura de cartão" · categoria: nenhuma
+A CAIXA: saídas 4 · entradas 0 · arquivo 275 · total 279 · Σ fecha ✓
+ÓRFÃS DA FLAG: 0        K3 (órfão × fatura OPEN): 0 — o do Carter APAGOU ✓
+```
+**REGRA 11 — 3 defeitos repostos** (a lei voltando à flag: **2 vermelhos** · o `faturaVinculada` cego: **1** · o delta mentindo: **1**). **10.527 verdes · TS 0 · deploy `NBzIqdI3hBhTAJoCvqgVn` 4/4 · Δ bundle +0 KB.** ⚠️ Uma sonda minha chamou o `checkCardInvariants` **sem o `now`** da assinatura e estourou `TypeError` — refeita antes de eu reportar qualquer coisa sobre o juiz.
+
+📋 **ACHADOS DO JUIZ, REGISTRADOS E NÃO ATACADOS** (fora do escopo deste pedido): **K1/K2** *"sicredi 2026-09: total gravado 3.194,35 vs recomputado 2.365,85 (cache podre)"* e **K5** *"fila A_CLASSIFICAR: 109 linhas / R$ 10.262,17 — a mais antiga tem 36 dias"*.
+
 📋 **FICA PRO DONO (REGRA 2, o clique é dele):** abrir a lixeira e reconhecer o que sumiu (restaurar o que faltar — o aviso de duplicata mostra as duas lado a lado), e conciliar uma nota pra ver a pergunta da categoria aparecer e **ficar gravada na conta**.
 
 
