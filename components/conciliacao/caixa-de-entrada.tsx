@@ -22,6 +22,8 @@ import { V3, SOMBRA, CONECTOR } from './mock-v3-tokens'
 import { MenuDoChip, type SecaoDoChip } from './menu-do-chip'
 import { FindAndMatchPanel } from './find-and-match-panel'
 import { secoesDoMenu, type CategoriaDoMenu } from '@/lib/conciliacao/categorias-do-gesto'
+import { estadoDoSeletor, podeDisparar, AVISO_CATEGORIA } from '@/lib/conciliacao/categoria-antes-do-gesto'
+import type { AcaoDoBalcao } from '@/lib/conciliacao/caixa-de-entrada'
 import { nomeDaBusca } from '@/lib/conciliacao/nome-da-busca'
 import { conviteDaPonte, type ConviteDaPonte } from '@/lib/conciliacao/convite-da-ponte'
 import { VAZIO, type EstadoDaCarga } from '@/lib/conciliacao/vazio-do-menu'
@@ -39,6 +41,8 @@ interface LinhaDTO {
   sentido: 'SAIDA' | 'ENTRADA'; estacao: 'CAIXA' | 'ARQUIVO'
   resolvidaComo: string | null; acoes: AcaoDTO[]
   palpite: PalpiteDTO | null
+  /** ⭐ a categoria da conta que o palpite de CASAR aponta (o seletor DIZ, não pede) */
+  categoriaDaConta: string | null
 }
 interface CaixaDTO {
   contadores: { saidas: number; entradas: number; arquivo: number; total: number }
@@ -544,6 +548,21 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, carg
   const credito = l.sentido === 'ENTRADA'
   const chip = 'inline-flex items-center gap-1.5 rounded-full border-[1.5px] px-3 py-[7px] text-[12.5px] font-bold disabled:opacity-40'
 
+  /**
+   * ⭐⭐⭐ A CATEGORIA VEM ANTES DO GESTO (20/09) — régua do dono.
+   *
+   * ⛔ E quem decide **se** ela é pedida é a lib (`origemDaCategoria`), nunca esta tela: o
+   * pagamento de fatura, a parcela e a transferência são **estruturais** (o gesto já É a
+   * classificação) e o casar **herda da conta**. *Exigir escolha ali seria cobrar duas vezes
+   * pelo mesmo fato — e parede é como o dono aprende a contornar o sistema por fora.*
+   */
+  const [categoriaEscolhida, setCategoriaEscolhida] = useState<{ id: string; nome: string } | null>(null)
+  const sel = estadoDoSeletor((l.palpite?.acao ?? null) as AcaoDoBalcao | null, l.categoriaDaConta ?? null)
+  const temCategoria = !!categoriaEscolhida || sel.modo === 'HERDA'
+  /** ⭐ o alvo que TODO gesto leva junto — a escolha da esquerda, quando houver */
+  const comCategoria = (alvo: Record<string, unknown> = {}) =>
+    categoriaEscolhida ? { ...alvo, categoryId: categoriaEscolhida.id } : alvo
+
   return (
     <div className="overflow-hidden rounded-[22px] border" style={{ background: V3.card, borderColor: V3.line, boxShadow: SOMBRA }}>
       {/*
@@ -575,6 +594,45 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, carg
             style={{ color: credito ? V3.verde : V3.coral }}>
             {credito ? '+' : '−'} {brl(l.valor)}
           </div>
+
+          {/*
+            ⭐⭐⭐ O SELETOR DE CATEGORIA MORA AQUI (20/09) — decisão do dono: *"o lado
+            esquerdo tem menos conteúdo e sobra espaço; assim a categoria não fica espremida
+            na fileira de chips da direita, e o cartão equilibra visualmente."*
+
+            ⚠️ **REGRA 12 de graça:** como ele é o último bloco da coluna da esquerda, no
+            celular (que empilha) ele cai exatamente ENTRE o valor e o palpite — sem uma
+            segunda composição pra manter.
+          */}
+          <div className="mt-3">
+            <div className="mb-1 text-[10px] font-extrabold tracking-[0.07em]" style={{ color: V3.sub }}>
+              CATEGORIA
+            </div>
+            {sel.modo === 'PEDE' ? (
+              <MenuDoChip
+                rotulo={categoriaEscolhida?.nome ?? sel.texto}
+                icone={categoriaEscolhida ? '✓' : '🏷'} ocupado={ocupado}
+                className={`${chip} w-full justify-start`}
+                style={categoriaEscolhida
+                  ? { background: V3.verdeBg, borderColor: '#cdebd9', color: V3.ink }
+                  : { background: V3.card, borderColor: V3.roxo, color: V3.roxo }}
+                secoes={secoesDoMenu(categorias, l.sentido).map((x) => ({
+                  titulo: x.titulo, ajuda: x.ajuda,
+                  itens: x.itens.map((c2) => ({ id: c2.id, nome: c2.name })),
+                }))}
+                vazio={VAZIO.categorias(cargas.categorias).texto}
+                onEscolher={(id) => {
+                  const c2 = categorias.find((x) => x.id === id)
+                  setCategoriaEscolhida(c2 ? { id, nome: c2.name } : null)
+                }} />
+            ) : (
+              /* ⛔ HERDA / ESTRUTURAL não PEDEM — eles DIZEM de onde a categoria vem */
+              <div className="rounded-full border px-3 py-[7px] text-[12.5px] font-bold"
+                style={{ background: '#f7f7fb', borderColor: V3.line, color: V3.sub }}>
+                {sel.modo === 'HERDA' ? '↳ ' : '⚙ '}{sel.texto}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* ── O CONECTOR ──────────────────────────────────────────────── */}
@@ -602,12 +660,23 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, carg
               {/* ⛔ A DIFERENÇA SEMPRE NOMEADA — mesmo quando é zero */}
               <div className="mt-2 inline-flex items-center gap-1.5 rounded-full px-2.5 py-[3px] text-[11.5px] font-extrabold"
                 style={{ background: V3.ambarBg, color: V3.ambar }}>{l.palpite.diferenca}</div>
-              {/* ⭐ o botão diz O EFEITO — e é o MESMO confirmar de ontem */}
-              <button type="button" disabled={ocupado} onClick={() => onGesto(l, l.palpite!.acao, l.palpite!.alvo)}
+              {/*
+                ⭐ o botão diz O EFEITO — e é o MESMO confirmar de ontem.
+                ⛔ Só que agora ele **espera a categoria** quando o gesto é dos que pedem
+                escolha; nos estruturais e no casar ele segue livre (a régua está na lib).
+              */}
+              <button type="button"
+                disabled={ocupado || !podeDisparar(l.palpite.acao as AcaoDoBalcao, temCategoria)}
+                onClick={() => onGesto(l, l.palpite!.acao, comCategoria(l.palpite!.alvo))}
                 className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl py-[13px] text-[15px] font-extrabold text-white disabled:opacity-50"
                 style={{ background: `linear-gradient(135deg,${V3.verde},${V3.verde2})`, boxShadow: '0 6px 18px rgba(15,157,88,.35)' }}>
                 {ocupado ? <Loader2 className="h-4 w-4 animate-spin" /> : l.palpite.botao}
               </button>
+              {!podeDisparar(l.palpite.acao as AcaoDoBalcao, temCategoria) && (
+                <div className="mt-1.5 text-center text-[11.5px] font-bold" style={{ color: V3.roxo }}>
+                  {AVISO_CATEGORIA}
+                </div>
+              )}
             </div>
           )}
 
@@ -655,16 +724,23 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, carg
                * a tela é obrigada a desenhar o menu daquele tipo. O guard de família cobra
                * exatamente isto, chip a chip, nos dois sentidos.
                */
+              /**
+               * ⭐⭐⭐ O CHIP DE CATEGORIA NÃO ABRE MAIS MENU PRÓPRIO (20/09) — ele DISPARA
+               * com a escolha do seletor da esquerda.
+               *
+               * ⛔ Dois menus pra mesma pergunta seriam **duas réguas na mesma tela**: o dono
+               * escolheria num, clicaria no outro, e a linha sairia com a categoria errada.
+               * *Uma pergunta, um lugar* — e o lugar é onde sobra espaço pra ela.
+               */
               if (a.pedeAlvo === 'CATEGORIA') {
-                const secoes: SecaoDoChip[] = secoesDoMenu(categorias, l.sentido).map((s) => ({
-                  titulo: s.titulo, ajuda: s.ajuda,
-                  itens: s.itens.map((c2) => ({ id: c2.id, nome: c2.name })),
-                }))
+                const livre = podeDisparar(a.acao as AcaoDoBalcao, temCategoria)
                 return (
-                  <MenuDoChip key={a.acao} rotulo={a.rotulo} icone={ICONE[a.acao]} secoes={secoes}
-                    ocupado={ocupado} className={chip} style={cor}
-                    vazio={VAZIO.categorias(cargas.categorias).texto}
-                    onEscolher={(id) => onGesto(l, a.acao, { categoryId: id })} />
+                  <button key={a.acao} type="button" disabled={ocupado || !livre}
+                    onClick={() => onGesto(l, a.acao, comCategoria())}
+                    title={livre ? undefined : AVISO_CATEGORIA}
+                    className={chip} style={cor}>
+                    {ocupado ? <Loader2 className="h-3 w-3 animate-spin" /> : <>{ICONE[a.acao] ?? ''} {a.rotulo}</>}
+                  </button>
                 )
               }
               if (a.pedeAlvo === 'CARTAO') {

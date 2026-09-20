@@ -39,6 +39,35 @@ export async function GET(request: NextRequest) {
   const naCaixa = rows.filter((r) => estacaoDaLinha(paraLei(r)) === 'CAIXA')
   const palpites = await palpitesDaCaixa(empresaId, naCaixa).catch(() => new Map())
 
+  /**
+   * ⭐⭐ A CATEGORIA DA CONTA CASADA — pra o seletor da esquerda DIZER *"herda da conta: X"*
+   * em vez de pedir uma escolha que o reconcile vai descartar (ele faz backfill da conta).
+   *
+   * ⛔ E quando a conta **não tem**, a tela mostra *"a conta casada não tem categoria —
+   * escolha"* — a mesma recusa que o servidor daria no clique (`PEDE_CATEGORIA`), só que
+   * **antes** dele. *Descobrir no confirmar o que dava pra dizer no cartão é fazer o dono
+   * clicar pra levar um não.*
+   */
+  const alvosDeCasar = [...palpites.values()].flatMap((p: { alvo?: Record<string, unknown> }) => {
+    const a = p?.alvo ?? {}
+    if (Array.isArray(a.contaIds)) return a.contaIds as string[]
+    return typeof a.contaId === 'string' ? [a.contaId] : []
+  })
+  const catDaConta = new Map<string, string | null>()
+  if (alvosDeCasar.length) {
+    const contas = await prisma.transaction.findMany({
+      where: { id: { in: alvosDeCasar } },
+      select: { id: true, category: { select: { name: true } } },
+    })
+    for (const c of contas) catDaConta.set(c.id, c.category?.name ?? null)
+  }
+  /** ⚠️ a 1ª conta do palpite basta: o seletor fala do gesto, não de cada nota do lote */
+  const categoriaDoAlvo = (p: { alvo?: Record<string, unknown> } | null | undefined) => {
+    const a = p?.alvo ?? {}
+    const id = Array.isArray(a.contaIds) ? (a.contaIds as string[])[0] : typeof a.contaId === 'string' ? a.contaId : null
+    return id ? catDaConta.get(id) ?? null : null
+  }
+
   const linhas = rows.map((r) => {
     const l = paraLei(r)
     return {
@@ -51,6 +80,8 @@ export async function GET(request: NextRequest) {
       resolvidaComo: comoFoiResolvida(l),
       acoes: estacaoDaLinha(l) === 'CAIXA' ? acoesDoSentido(sentidoDaLinha(r.type)) : [],
       palpite: palpites.get(r.id) ?? null,
+      /** ⭐ o que o seletor da esquerda mostra quando o palpite é CASAR */
+      categoriaDaConta: categoriaDoAlvo(palpites.get(r.id)),
     }
   })
 

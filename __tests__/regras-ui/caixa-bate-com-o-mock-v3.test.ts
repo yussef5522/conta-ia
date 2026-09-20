@@ -115,6 +115,47 @@ describe('⭐⭐ os TEXTOS que o mock imprime existem na tela', () => {
   })
 })
 
+/**
+ * ⭐⭐⭐ A CATEGORIA NO LADO ESQUERDO (20/09) — o mock foi ATUALIZADO junto com a tela.
+ *
+ * **A decisão do dono:** *"o lado esquerdo tem menos conteúdo e sobra espaço; assim a
+ * categoria não fica espremida na fileira de chips da direita, e o cartão equilibra
+ * visualmente."* — e a régua de sempre: ***o mock é o arquivo, divergir dele é defeito***.
+ */
+describe('⭐⭐ o SELETOR DE CATEGORIA mora na coluna da esquerda', () => {
+  it('⛔ o mock desenha o bloco embaixo do VALOR, não entre os chips', () => {
+    const esquerda = MOCK.slice(MOCK.indexOf('O BANCO DIZ'), MOCK.indexOf('class="meio"'))
+    expect(esquerda, 'o bloco de categoria saiu do lado esquerdo do mock').toContain('class="cat"')
+    expect(esquerda.indexOf('class="valor"'), 'a categoria tem que vir DEPOIS do valor')
+      .toBeLessThan(esquerda.indexOf('class="cat"'))
+    // ⛔ e NÃO pode ter voltado pra fileira de chips da direita
+    const direita = MOCK.slice(MOCK.indexOf('class="acoes"'))
+    expect(direita.slice(0, 400)).not.toContain('é despesa: categoria</span>\n        <span class="chip">🏷')
+  })
+
+  it('⭐ a tela põe o seletor no MESMO lugar — depois do valor, antes do conector', () => {
+    const i = CAIXA.indexOf('O BANCO DIZ')
+    const esquerda = CAIXA.slice(i, CAIXA.indexOf('O CONECTOR', i))
+    expect(esquerda, 'o seletor não está na coluna da esquerda').toContain('CATEGORIA')
+    expect(esquerda, 'a régua tem que vir da lib, não de um if na tela').toContain('sel.modo')
+  })
+
+  it('⛔⛔ e o gesto ESPERA a categoria — com o aviso que APONTA pro seletor', () => {
+    expect(CAIXA).toContain('podeDisparar(')
+    expect(CAIXA, 'o aviso sumiu — chip bloqueado sem explicação é botão quebrado')
+      .toContain('AVISO_CATEGORIA')
+    expect(MOCK, 'o mock perdeu o estilo do aviso').toContain('.aviso-cat{')
+  })
+
+  it('⭐ REGRA 12: o cartão empilha pela MESMA medida do mock, e o seletor vai junto', () => {
+    // ⚠️ o seletor é o último bloco da coluna esquerda: no celular ele cai entre o valor e
+    // o palpite **sem uma segunda composição** — é o empilhamento do grid fazendo o trabalho
+    expect(CAIXA).toContain('grid-cols-1 min-[900px]:grid-cols-[1fr_64px_1fr]')
+    expect((CAIXA.match(/CATEGORIA\n/g) ?? []).length, 'seletor duplicado por viewport = duas telas')
+      .toBeLessThanOrEqual(1)
+  })
+})
+
 describe('⭐ o INBOX ZERO e a FAIXA DE RESOLVIDA foram copiados', () => {
   it('o 🎉 do mock e a frase dele', () => {
     expect(MOCK).toContain('🎉')
