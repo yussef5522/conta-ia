@@ -10,7 +10,7 @@ import { checkPonteInvariants, F3_DIAS } from '../ponte-invariants'
 import { enviarParaContasPagar, ORIGEM_PONTE } from '../ponte-contas-pagar'
 
 const CNPJ = '50607080000222'
-const CHAVE = '43260888728027000146550010000999991234567890'
+const CHAVE = '43260888728027000147550010000999991234567890'
 let companyId: string, userId: string, nfeId: string, sugId: string, txId: string
 
 const soDesta = (fs: StockInvariantFail[], inv: string) => fs.filter((f) => f.companyId === companyId && f.invariante === inv)
@@ -19,8 +19,8 @@ beforeEach(async () => {
   await prisma.company.deleteMany({ where: { cnpj: CNPJ } })
   companyId = (await prisma.company.create({ data: { cnpj: CNPJ, name: 'EMPRESA JUIZ PONTE' } })).id
   userId = (await prisma.user.create({ data: { email: `juizponte-${Date.now()}@teste.com`, name: 'Dono', password: 'x' } })).id
-  nfeId = (await prisma.stockNfe.create({ data: { companyId, chave: CHAVE, nsu: '1', status: 'CONFIRMADA', temXmlCompleto: true, emitNome: 'FORN JUIZ', emitCnpj: '88728027000146', vNF: 500 } })).id
-  sugId = (await prisma.stockPayableSuggestion.create({ data: { companyId, nfeId, chave: CHAVE, supplierCnpj: '88728027000146', supplierNome: 'FORN JUIZ', nDup: '001', dVenc: new Date('2026-09-10'), valor: 500 } })).id
+  nfeId = (await prisma.stockNfe.create({ data: { companyId, chave: CHAVE, nsu: '1', status: 'CONFIRMADA', temXmlCompleto: true, emitNome: 'FORN JUIZ', emitCnpj: '88728027000147', vNF: 500 } })).id
+  sugId = (await prisma.stockPayableSuggestion.create({ data: { companyId, nfeId, chave: CHAVE, supplierCnpj: '88728027000147', supplierNome: 'FORN JUIZ', nDup: '001', dVenc: new Date('2026-09-10'), valor: 500 } })).id
   const r = await enviarParaContasPagar({ companyId, suggestionIds: [sugId], cadastrarFornecedores: true, ctx: buildAuthContextForTest({ user: { id: userId }, company: { id: companyId }, permissions: ['*'] }) }, prisma)
   txId = r.transactionIds[0]
 })

@@ -19,7 +19,7 @@ import { upsertVendaMap } from '../../vendas/venda-map'
 import { filtrarPorBusca } from '@/lib/busca-texto'
 
 const CNPJ = '55901224000199'
-const CNPJ_FORN = '11222333000181'
+const CNPJ_FORN = '11222333000182'
 let companyId = ''
 let item = ''
 let userId = ''

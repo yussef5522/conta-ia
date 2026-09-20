@@ -94,14 +94,18 @@ describe('⭐⭐ o que o OPERADOR_ESTOQUE enxerga', () => {
 
   it('⭐⭐ o menu dela cabe numa mão: SÓ estoque', () => {
     const visiveis = itensDoMenu().filter((i) => veria(i.perm))
-    const daEmpresa = visiveis.filter((i) => i.perm !== '@sempre').map((i) => i.label)
-    // toda label visível tem que ser do grupo Estoque
-    const ESTOQUE = [
-      'Cardápio', 'Recebimentos', 'Posição', 'Catálogo', 'Movimentos', 'Contagem',
-      'Real vs Teórico', 'Produção', 'Vendas (Suitable)',
-      'Etiquetas', 'Impressão', 'Certificado', 'Fichas técnicas', 'Receitas', 'Perdas', 'Entrada manual',
-    ]
-    const forintrusos = daEmpresa.filter((l) => !ESTOQUE.includes(l))
+    const daEmpresa = visiveis.filter((i) => i.perm !== '@sempre')
+    /**
+     * ⚠️⚠️ **ERA UMA LISTA DE LABELS NA MÃO — e ela ficava vermelha com a tela CERTA.**
+     * (20/09: o "Radar" nasceu, é tela de estoque, e o guard o chamou de intruso só por
+     * não estar na lista.) *Guard que exige manutenção a cada tela nova é guard que
+     * alguém afrouxa no dia em que estiver com pressa.*
+     *
+     * ⭐ A régua estrutural é mais forte E não pede manutenção: item que o OPERADOR vê
+     * tem que APONTAR pro estoque. Item financeiro marcado `stock.view` por engano
+     * continua sendo pego — e agora pelo DESTINO, que é o que importa.
+     */
+    const forintrusos = daEmpresa.filter((i) => !i.href.includes('/estoque/')).map((i) => i.label)
     expect(forintrusos, `itens FORA do estoque visíveis pra ela: ${forintrusos.join(', ')}`).toEqual([])
     expect(daEmpresa.length).toBeGreaterThan(5)
   })

@@ -12,9 +12,9 @@ import { createContaPendente } from '@/lib/contas-ap-ar/create'
 import { notasDeOrigem } from '../nota-de-origem'
 
 const CNPJ = '50607080000212'
-const CNPJ_FORN = '88728027000146'
+const CNPJ_FORN = '88728027000148'
 // nº da NF nas posições 26..34 da chave → 000012345 → "12345"
-const CHAVE = '43260888728027000146550010000123451234567890'
+const CHAVE = '43260888728027000148550010000123451234567890'
 
 let companyId: string
 let userId: string

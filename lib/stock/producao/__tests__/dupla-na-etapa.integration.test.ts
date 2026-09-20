@@ -32,7 +32,7 @@ async function liberarEtapas(ordemId: string) {
   for (const e of es) await definirPlanoDaEtapa({ companyId, etapaId: e.id, liberadaParaEquipe: true }, prisma)
 }
 
-const CNPJ = '50505050000199'
+const CNPJ = '50505050000202'
 let companyId = ''
 let fichaBeef = ''
 let ana = ''

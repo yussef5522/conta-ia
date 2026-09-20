@@ -49,6 +49,7 @@ import {
   Printer,
   Tag,
   ChefHat,
+  Radar as RadarIcon,
 } from 'lucide-react'
 import { SidebarItem } from './sidebar-item'
 import { useSidebarBadges } from '@/lib/hooks/use-sidebar-badges'
@@ -457,6 +458,17 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
               label="Contagem"
               href={`/empresas/${empresaAtiva}/estoque/contagem`}
               isActive={/^\/empresas\/[^/]+\/estoque\/contag/.test(pathname)}
+              onClick={onNavigate}
+            />
+            {/* ⭐⭐ O RADAR (20/09) vem ANTES do Real vs Teórico de propósito: ele é o AvT
+                na língua da cozinha (*"ontem pra hoje, sumiram R$ X"*), e é a tela do dia
+                a dia. O relatório completo continua logo abaixo, pra quem quer a planilha. */}
+            <SidebarItem
+          perm="stock.view"
+              icon={RadarIcon}
+              label="Radar"
+              href={`/empresas/${empresaAtiva}/estoque/radar`}
+              isActive={/^\/empresas\/[^/]+\/estoque\/radar/.test(pathname)}
               onClick={onNavigate}
             />
             <SidebarItem

@@ -11,7 +11,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { prisma } from '@/lib/db'
 import { listRecebimentos } from '@/lib/stock/sefaz/recebimentos'
 
-const CNPJ = '50607080000616'
+const CNPJ = '50607080000617'
 let companyId = ''
 
 /** uma nota + a conferência que a recebeu (o FATO que aconteceu no tempo) */

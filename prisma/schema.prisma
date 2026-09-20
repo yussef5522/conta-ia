@@ -4161,6 +4161,23 @@ model StockSaida {
 // AJUSTE_CONTAGEM entra no ledger ao confirmar a linha, o saldo bate andando); (c) a
 // CONTAGEM INICIAL é a mesma tela no 1º uso, só marcada tipo=INICIAL.
 // Isolamento mantido: só stock_, companyId é VALOR sem @relation, migration só CRIA.
+// ⭐⭐ RADAR DO ESTOQUE — as duas listas que o dono vigia (20/09/2026).
+// ⚠️ Lista é CONFIGURAÇÃO do dono, não dado derivado: o que ele escolhe vigiar hoje não
+// pode mudar sozinho porque o estoque mudou. Por isso é tabela, não heurística de "os N
+// mais caros" — heurística trocaria a lista dele sem ninguém pedir.
+model StockRadarWatchlist {
+  id          String   @id @default(cuid())
+  companyId   String // REGRA 8 — valor, sem @relation
+  lista       String // CAROS | PORCOES (CHECK no banco)
+  itemId      String
+  criadoEm    DateTime @default(now())
+  criadoPorId String?
+
+  @@unique([companyId, lista, itemId])
+  @@index([companyId, lista])
+  @@map("stock_radar_watchlist")
+}
+
 model StockContagem {
   id            String    @id @default(cuid())
   companyId     String // REGRA 8 — valor, sem @relation
