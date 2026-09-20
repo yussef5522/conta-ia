@@ -752,6 +752,40 @@ TELA → 200 · "revisar" ✓ · "sem destino" ✓ · "parece" ✓ · o aviso do
 📋 **FALTA PRA FECHAR O CASO DE HOJE — e é o que só o PDF resolve:** o **V1** (Σ Brasil 11.376,89 × 11.358,89). A fixture que temos aponta a classe (linha em moeda estrangeira), mas **a fatura de hoje é outra**, e o texto dela não existe mais em lugar nenhum. **Da próxima recusa em diante isso não se repete** — a quarentena guarda.
 
 
+### ⭐⭐⭐ ITEM ENCERRADO — "PRA OPERAÇÃO, ELE NÃO EXISTE MAIS" (19-20/09/2026)
+
+**A ordem do dono, sobre a CUBA MAIONESE:** *"sai DE TUDO que é vivo (…) nenhum lugar oferece ela pra nada. O passado fica legível: as ordens e movimentos antigos continuam mostrando o nome dela — apagar isso reescreveria custos de poções já vendidas."*
+
+**⛔⛔ POR QUE NÃO É SÓ `ativo = false`.** Desativado é *"parei de usar, posso voltar"* — e o Catálogo mostra os inativos num toggle, de propósito. **Encerrado é decisão final**, e a diferença precisa estar ESCRITA: sem ela, em três meses ninguém sabe se o item sumiu por engano, por faxina ou porque o dono aposentou a receita. ⭐ É a mesma distinção que a casa já fez em **mesclado ≠ arquivado** (30/08) e **`ENCERRADA_SEM_FINALIZAR` ≠ FEITA** (07/09): estado com significado próprio ganha nome próprio.
+
+**⛔ E O GESTO RECUSA COM SALDO ≠ 0** — é o coração dele: encerrar um item com estoque dentro **esconderia o dinheiro** em vez de resolvê-lo. O valor não evapora por sumir da tela; continuaria no ledger, invisível, contaminando o total e o Real vs Teórico. *A saída é contar primeiro; o encerramento é o último passo, nunca o atalho.*
+
+**⭐⭐ QUANTIDADE ZERADA COM CENTAVOS SOBRANDO — a régua do dono, reusada.** A CUBA foi contada a zero e sobraram **R$ 0,07** (resíduo do custo médio arredondado ao longo de ~36 kg). Recusar por 7 centavos deixaria o item preso pra sempre. Vale o que ele ditou de manhã: ***zerar quantidade zera valor, SEMPRE*** — com o **mesmo teto** do `residuo-de-centavos.ts` (o limite matemático do arredondamento, proporcional ao giro) e o ajuste **registrado**, nunca sumindo calado. Acima do teto continua recusando: *ali não é centavo, é entrada que falta*.
+
+**═══ TRÊS ERROS MEUS NO CAMINHO, os três pegos pelo próprio guard ═══**
+
+**⛔⛔ 1. ESCREVI UMA SEGUNDA RÉGUA DE SALDO** dentro do `encerrarItem` — um `aggregate` próprio em vez de `saldoItem` — e ela **repetiu o defeito dos estornos internos que eu tinha acabado de corrigir**: acusou **36,25 KG / R$ 1,51** num item já zerado pela contagem. ***Segunda derivação da mesma pergunta diverge no primeiro caso de borda — inclusive quando quem escreve a segunda acabou de consertar a primeira.***
+
+**⚠️ 2. ERREI O SINAL DO CUSTO UNITÁRIO** no ajuste do resíduo; o CHECK do ledger recusou por 14 centavos. Agora o unitário é **derivado do total** (`custoTotal / quantidade`), que fecha por construção.
+
+**⚠️ 3. UMA ASSERÇÃO MINHA FICOU OBSOLETA COM A MINHA PRÓPRIA CORREÇÃO** — o guard proibia `stockMovement.aggregate` no arquivo, e o aggregate que sobrou soma só `quantidade` (o giro, pro teto). **Apertado, não afrouxado**: o proibido passou a ser somar `custoTotal` ali, que era exatamente a segunda régua.
+
+**⭐ O GUARD EXECUTA os 5 universos + Posição + Contagem** (REGRA 3) — grep não distingue *"filtra"* de *"seleciona o campo e esquece de usar"*, que é como a Posição deixou 9 itens invisíveis em 11/09, pelo lado contrário.
+
+**PROVADO EM PROD, pelas funções que as telas chamam:**
+```
+COMPRAVEL 0 · PRATELEIRA 0 · RECEITA 0 · VENDAVEL 0 · CATALOGO 0
+POSIÇÃO 0 · CONTAGEM 0 · FICHAS ativas 0 · PRODUÇÃO aberta 0 · componente de ficha 0
+
+O PASSADO:  extrato 28 linhas · 28 COM SELO · ficha 28 linhas de histórico
+   «CUBA MAIONESE» → item encerrado em 20/09/2026 — a família virou uma MAIONESE só, em KG
+   10 ordens antigas preservadas · o Catálogo (a casa do passado) continua achando
+```
+**REGRA 11 — 3 defeitos repostos, 1 vermelho cada** (a ficha não indo junto · encerrar com saldo · o selo sumindo do extrato). **10.475 verdes · TS 0 · `pg_dump pre-encerrar-cuba-20260919-212908` · deploy `ZDh5ejNBCMLX899Zho8Xw` 4/4.**
+
+⚠️ **E a interface da ficha do item passou a DERIVAR do tipo da lib** — a mesma dívida do tablet (*"interface escrita à mão sobre payload é promessa, não prova"*): o campo novo ficava invisível e um rename lá passava verde no `tsc`.
+
+
 ### ⭐⭐⭐ A FAMÍLIA MAIONESE VIROU UMA SÓ — E A CIRURGIA ACHOU 4 DEFEITOS DE LEDGER (19/09/2026)
 
 **Autorizado pelo dono** (*"DISPARA A SEQUÊNCIA COMPLETA"*), `pg_dump pre-familia-maionese-20260919-203347` (6,5 MB) antes.
