@@ -9,11 +9,38 @@
  * ⛔ A auditoria sempre guardou os deletes — **nenhuma tela lia**. Registro que ninguém
  * desenha é a porta sem maçaneta de novo, e aqui ela custou caro: o dono passou dias sem
  * saber se tinha apagado as contas ou se algo as apagou por ele.
+ *
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * ⛔⛔⛔ E ELA ESTREOU COM **CARREGANDO ETERNO** — o defeito é meu, e a lição é nova.
+ *
+ * A 1ª versão descobria a empresa assim:
+ *
+ *     const m = document.cookie.match(/current_empresa_id=([^;]+)/)   // ⛔ sempre null
+ *     if (!empresaId) return                                          // ⛔ o fetch nunca sai
+ *
+ * **O cookie `current_empresa_id` é `httpOnly`** (`lib/auth/current-empresa-cookie.ts`,
+ * desde o Sprint 4.0.5.b) — `document.cookie` **NUNCA** o enxerga. Medido no header real de
+ * prod: `Set-Cookie: current_empresa_id=…; HttpOnly`. Resultado: `empresaId` ficava `''`,
+ * `carregar()` retornava antes do fetch, e o estado **nunca saía de "carregando…"**.
+ *
+ * ⚠️⚠️ **E O TIMEOUT ESTAVA INSTALADO — ele não tinha como morder.** O guard da casa
+ * (14/09) cobre ***fetch que não VOLTA***; este era ***fetch que não SAI***. ***Estado de
+ * carregamento refém de um pré-requisito que pode nunca chegar é spinner eterno com outro
+ * nome*** — e nenhum timeout do mundo alcança uma requisição que não aconteceu.
+ *
+ * ⭐ **A CURA É A PORTA ÚNICA:** quem responde *"qual empresa?"* nesta casa é o
+ * `useEmpresa()` (o contexto que o layout já provê e que a `/conciliacao` e o resto usam).
+ * Inventar um segundo caminho foi o erro — e ele nem podia funcionar.
+ *
+ * ⭐⭐ **E O ESTADO VIROU EXPLÍCITO** (`CARREGANDO | OK | FALHOU | SEM_EMPRESA`): não existe
+ * mais "ausência de dado" servindo de estado. Cada um tem frase própria, e os dois que
+ * pedem ação têm **botão de tentar de novo**.
  */
 
 import { useEffect, useState, useCallback } from 'react'
-import { Trash2, RotateCcw, AlertTriangle, Loader2 } from 'lucide-react'
+import { Trash2, RotateCcw, AlertTriangle, Loader2, RefreshCw } from 'lucide-react'
 import { fetchComTimeout } from '@/lib/http/fetch-com-timeout'
+import { useEmpresa } from '@/lib/contexts/empresa-context'
 
 interface Parecida { id: string; descricao: string; valor: number; vencimento: string | null; criadaEm: string }
 interface Removida {
@@ -27,29 +54,41 @@ interface Dia { dia: string; quantas: number; quem: string[]; caminhos: string[]
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const dia = (iso: string | null) => (iso ? iso.slice(0, 10).split('-').reverse().join('/') : '—')
 
+interface Dados { removidas: Removida[]; porDia: Dia[] }
+/** ⭐ o estado é EXPLÍCITO — ausência de dado nunca mais serve de estado */
+type Estado =
+  | { t: 'CARREGANDO' }
+  | { t: 'SEM_EMPRESA' }
+  | { t: 'FALHOU'; texto: string }
+  | { t: 'OK'; dados: Dados }
+
 export default function LixeiraPage() {
-  const [empresaId, setEmpresaId] = useState('')
-  const [dados, setDados] = useState<{ removidas: Removida[]; porDia: Dia[] } | null | undefined>(undefined)
+  /** ⭐ a PORTA ÚNICA da casa — o cookie é httpOnly e o cliente não tem como lê-lo */
+  const { currentEmpresaId, loading: carregandoEmpresa } = useEmpresa()
+  const [estado, setEstado] = useState<Estado>({ t: 'CARREGANDO' })
   const [busy, setBusy] = useState<string | null>(null)
   const [erro, setErro] = useState<string | null>(null)
   const [venc, setVenc] = useState<Record<string, string>>({})
 
-  useEffect(() => {
-    const m = document.cookie.match(/current_empresa_id=([^;]+)/)
-    setEmpresaId(m?.[1] ?? '')
-  }, [])
-
   const carregar = useCallback(async () => {
-    if (!empresaId) return
-    const r = await fetchComTimeout<{ removidas: Removida[]; porDia: Dia[] }>(`/api/contas-a-pagar/removidas?empresaId=${empresaId}`)
+    // ⛔ enquanto o contexto resolve, é CARREGANDO — e ele SEMPRE termina
+    if (carregandoEmpresa) { setEstado({ t: 'CARREGANDO' }); return }
+    // ⛔ sem empresa é um estado com NOME e com saída, nunca um spinner parado
+    if (!currentEmpresaId) { setEstado({ t: 'SEM_EMPRESA' }); return }
+    setEstado({ t: 'CARREGANDO' })
+    const r = await fetchComTimeout<Dados>(`/api/contas-a-pagar/removidas?empresaId=${currentEmpresaId}`)
     // ⛔ falha ao carregar NUNCA vira "nada foi removido" — erro disfarçado de vazio
-    setDados(r.ok && r.data ? r.data : null)
-  }, [empresaId])
+    setEstado(r.ok && r.data
+      ? { t: 'OK', dados: r.data }
+      : { t: 'FALHOU', texto: r.erro ?? 'Não consegui carregar a lista.' })
+  }, [currentEmpresaId, carregandoEmpresa])
   useEffect(() => { void carregar() }, [carregar])
+
+  const dados = estado.t === 'OK' ? estado.dados : null
 
   async function restaurar(r: Removida) {
     setBusy(r.auditId); setErro(null)
-    const body: Record<string, unknown> = { empresaId, auditId: r.auditId }
+    const body: Record<string, unknown> = { empresaId: currentEmpresaId, auditId: r.auditId }
     if (venc[r.auditId]) body.dueDate = venc[r.auditId]
     const res = await fetchComTimeout<{ ok: boolean }>('/api/contas-a-pagar/removidas/restaurar', {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), timeoutMs: 30_000,
@@ -72,11 +111,32 @@ export default function LixeiraPage() {
         </div>
       </div>
 
-      {dados === undefined && <p className="text-sm text-slate-400">carregando…</p>}
-      {dados === null && (
-        <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-          Não consegui carregar a lista — isso não quer dizer que nada foi removido. Tente de novo.
+      {estado.t === 'CARREGANDO' && (
+        <p className="flex items-center gap-2 text-sm text-slate-400">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" /> carregando…
         </p>
+      )}
+
+      {/* ⛔ falha DIZ que não é "nada foi removido" — e carrega o gesto de tentar de novo */}
+      {estado.t === 'FALHOU' && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          {estado.texto} — <b>isso não quer dizer que nada foi removido.</b>
+          <button type="button" onClick={() => void carregar()}
+            className="ml-2 inline-flex items-center gap-1 font-semibold underline">
+            <RefreshCw className="h-3 w-3" /> tentar de novo
+          </button>
+        </div>
+      )}
+
+      {/* ⚠️ "sem empresa" é ESTADO PRÓPRIO: o spinner aqui seria o defeito de novo */}
+      {estado.t === 'SEM_EMPRESA' && (
+        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+          Escolha uma empresa no seletor do topo pra ver o que foi removido dela.
+          <button type="button" onClick={() => void carregar()}
+            className="ml-2 inline-flex items-center gap-1 font-semibold underline">
+            <RefreshCw className="h-3 w-3" /> tentar de novo
+          </button>
+        </div>
       )}
 
       {/* ⭐ o mapa por dia responde "existe algo apagando sem meu gesto?" */}

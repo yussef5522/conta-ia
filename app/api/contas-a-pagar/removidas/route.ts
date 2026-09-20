@@ -8,10 +8,21 @@ import { prisma } from '@/lib/db'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { handleApiError } from '@/lib/api/handle-error'
 import { contasRemovidas, parecidasComARemovida } from '@/lib/contas-pagar/lixeira'
+import { getCurrentEmpresaIdFromCookie } from '@/lib/auth/current-empresa-cookie'
 
 export async function GET(request: NextRequest) {
   try {
-  const empresaId = new URL(request.url).searchParams.get('empresaId') ?? ''
+  /**
+   * ⭐ A EMPRESA VEM DO PARÂMETRO **OU** DO COOKIE — a mesma resolução das páginas globais
+   * (`/dre`, `/categorias`), pela porta única do servidor.
+   *
+   * ⛔ Sem isso, chamada sem `empresaId` devolvia **403** — e a tela, que não tinha como
+   * saber a empresa (o cookie é `httpOnly`), ficava girando. *A permissão continua sendo
+   * checada contra a empresa resolvida: o fallback resolve QUEM, nunca afrouxa o SE.*
+   */
+  const empresaId = new URL(request.url).searchParams.get('empresaId')
+    || await getCurrentEmpresaIdFromCookie()
+    || ''
   const ctx = await getAuthContext(request, empresaId)
   ctx.requirePermission('transaction.view')
 

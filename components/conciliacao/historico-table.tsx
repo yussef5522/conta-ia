@@ -12,6 +12,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
+import { fetchComTimeout } from '@/lib/http/fetch-com-timeout'
 
 interface HistoricoItem {
   id: string
@@ -63,30 +64,36 @@ export function HistoricoTable({ empresaId, onAfterUndo }: Props) {
   const [page, setPage] = useState(1)
   const [busca, setBusca] = useState('')
   const [loading, setLoading] = useState(true)
+  /** ⛔ erro NUNCA vira lista vazia — e ele carrega o gesto de tentar de novo */
+  const [erro, setErro] = useState<string | null>(null)
   const [undoingId, setUndoingId] = useState<string | null>(null)
   const limit = 25
 
+  /**
+   * ⛔⛔ **CARREGAMENTO REFÉM — a mesma família da lixeira (20/09).** Este `if (!empresaId)
+   * return` saía **antes de tocar no `loading`**, que nasce `true`: sem empresa, a tabela
+   * dizia *"Carregando..."* pra sempre. ***Fetch que não SAI é spinner eterno com outro
+   * nome*** — e nenhum timeout alcança uma requisição que não aconteceu.
+   *
+   * ⚠️ E ela engolia a falha: `if (res.ok)` **sem else** (o padrão banido em 06/08) fazia
+   * um 500 virar lista vazia — *erro disfarçado de vazio*.
+   */
   const fetchData = useCallback(async () => {
-    if (!empresaId) return
-    setLoading(true)
+    if (!empresaId) { setLoading(false); setErro('Escolha uma empresa pra ver o histórico.'); return }
+    setLoading(true); setErro(null)
     const qs = new URLSearchParams({
       empresaId,
       page: String(page),
       limit: String(limit),
     })
     if (busca.trim()) qs.set('busca', busca.trim())
-    try {
-      const res = await fetch(`/api/conciliacao/historico?${qs}`, {
-        credentials: 'include',
-      })
-      if (res.ok) {
-        const data = await res.json()
-        setItems(data.items)
-        setTotal(data.total)
-      }
-    } finally {
-      setLoading(false)
-    }
+    const r = await fetchComTimeout<{ items: HistoricoItem[]; total: number }>(
+      `/api/conciliacao/historico?${qs}`, { credentials: 'include' },
+    )
+    setLoading(false)
+    if (!r.ok || !r.data) { setErro(r.erro ?? 'Não consegui carregar o histórico.'); return }
+    setItems(r.data.items)
+    setTotal(r.data.total)
   }, [empresaId, page, busca])
 
   useEffect(() => {
@@ -219,6 +226,15 @@ export function HistoricoTable({ empresaId, onAfterUndo }: Props) {
         <Card>
           <CardContent className="py-10 text-center text-sm text-muted-foreground">
             Carregando...
+          </CardContent>
+        </Card>
+      ) : erro ? (
+        <Card>
+          <CardContent className="py-6 text-center text-sm text-amber-800">
+            {erro}
+            <button type="button" onClick={() => void fetchData()} className="ml-2 font-semibold underline">
+              tentar de novo
+            </button>
           </CardContent>
         </Card>
       ) : items.length === 0 ? (

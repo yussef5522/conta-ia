@@ -41,6 +41,17 @@ function arquivosTsx(dir: string, out: string[] = []): string[] {
   return out
 }
 
+/**
+ * ⚠️ **O QUE CONTA COMO "BUSCAR" — um lugar só pros dois detectores.** `fetch(` literal não
+ * casa `fetchComTimeout(` nem `fetchJson(`, que são o padrão da casa: os detectores nasciam
+ * **cegos justamente nas telas que fazem certo** (pego pela REGRA 11 em 20/09).
+ *
+ * ⚠️ E o **genérico** precisou entrar na régua na 2ª volta: a chamada real é
+ * `fetchComTimeout<{ items: … }>(` — com o tipo ENTRE o nome e o parêntese. Repondo o
+ * defeito no `historico-table`, o detector ainda passava verde. *Duas voltas até morder.*
+ */
+const BUSCA = /\bfetch\w*(<[\s\S]*?>)?\s*\(/
+
 /** as props que são FUNÇÃO (o `onX: () => …` do destructuring tipado) */
 export function propsQueSaoFuncao(src: string): string[] {
   return [...new Set([...src.matchAll(/\b(\w+)\??:\s*\([^)]*\)\s*=>/g)].map((m) => m[1]))]
@@ -72,12 +83,12 @@ export function lacosArmados(src: string): string[] {
   for (const m of src.matchAll(/useEffect\(([\s\S]*?)\}, \[([^\]]*)\]\)/g)) {
     for (const d of m[2].split(',').map((x) => x.trim())) depsDeEfeito.add(d)
     // (A) direta: o efeito busca e depende de prop-função
-    if (m[1].includes('fetch(')) for (const d of m[2].split(',').map((x) => x.trim())) if (props.has(d)) achados.push(d)
+    if (BUSCA.test(m[1])) for (const d of m[2].split(',').map((x) => x.trim())) if (props.has(d)) achados.push(d)
   }
   for (const [nome, deps] of callbacks) {
     const usadoPorEfeito = depsDeEfeito.has(nome)
     const corpo = src.slice(src.indexOf(`const ${nome} = useCallback(`))
-    const buscaDireto = corpo.slice(0, corpo.indexOf('}, [')).includes('fetch(')
+    const buscaDireto = BUSCA.test(corpo.slice(0, corpo.indexOf('}, [')))
     // (B) indireta: identidade instável chegando ao efeito · (A) no callback que busca
     if (!usadoPorEfeito && !buscaDireto) continue
     for (const d of deps) if (props.has(d)) achados.push(d)
@@ -106,6 +117,163 @@ describe('⛔⛔ efeito que BUSCA não depende de função vinda de prop (o laç
     expect(src).toContain('recarregarRef.current')
     // ⛔ e o `recarregarExterna` não pode voltar pra dependência de efeito nenhum
     expect(lacosArmados(src)).toEqual([])
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ⛔⛔⛔ A SEGUNDA FORMA DO SPINNER ETERNO: **O FETCH QUE NÃO SAI** (20/09/2026)
+//
+// **O dono, na estreia da lixeira:** *"abro a tela e fica «carregando…» pra sempre — nada
+// aparece, nem erro. (…) O guard de família claramente não cobria a tela nova — TELA NOVA
+// NASCE COM O GUARD."*
+//
+// **MEDIDO EM PROD, e as três hipóteses dele CAÍRAM:** a rota respondeu **200 em 104 ms com
+// 19 KB e as 42 removidas**, e a página 200 nos dois viewports. Não era 500, nem payload
+// grande, nem parse quebrado. ***O fetch nunca aconteceu.***
+//
+// A tela descobria a empresa com `document.cookie.match(/current_empresa_id=…/)` — e esse
+// cookie é **`httpOnly`** desde o Sprint 4.0.5.b (provado no header real de prod:
+// `Set-Cookie: current_empresa_id=…; HttpOnly`). `document.cookie` **nunca** o enxerga →
+// `empresaId` ficava `''` → `if (!empresaId) return` → o estado nunca saía de `undefined`.
+//
+// ⚠️⚠️ **E O `fetchComTimeout` ESTAVA LÁ.** O guard de 14/09 cobre ***fetch que não
+// VOLTA***; este é ***fetch que não SAI*** — e nenhum teto de tempo alcança uma requisição
+// que não aconteceu. ***Estado de carregamento refém de um pré-requisito que pode nunca
+// chegar é spinner eterno com outro nome.***
+
+/** ⛔ os cookies httpOnly da casa — quem tenta lê-los no cliente lê SEMPRE vazio */
+export const COOKIES_HTTPONLY = ['current_empresa_id', 'auth_token']
+
+const semComentario = (s: string) =>
+  s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/^\s*\/\/.*$/gm, '')
+
+/**
+ * ⭐ DETECTOR 1 — tela lendo cookie httpOnly. É **impossível por construção**, então o
+ * defeito não é "às vezes falha": ele nunca funciona, e falha **em silêncio**.
+ */
+export function leCookieHttpOnly(src: string): string[] {
+  const s = semComentario(src)
+  if (!s.includes('document.cookie')) return []
+  return COOKIES_HTTPONLY.filter((c) => s.includes(c))
+}
+
+/**
+ * ⭐ DETECTOR 2 — carregamento REFÉM: o `useCallback` que busca **roda sozinho** (é
+ * dependência de um `useEffect`) e tem um `return` ANTES do fetch que **não toca no
+ * estado**. Sai da função deixando o "carregando" ligado pra sempre.
+ *
+ * ⛔ A restrição *"roda sozinho"* não é folga — é o que separa o defeito do **gesto**:
+ * `if (!file) return` num "gerar preview" está CERTO (o dono ainda não escolheu o arquivo,
+ * e não há spinner ligado). Sem ela o detector acusava 5 telas sadias, e *alarme falso no
+ * dia 1 é como um guard morre*.
+ */
+export function carregamentoRefem(src: string): string[] {
+  const s = semComentario(src)
+  const rodamSozinhos = new Set<string>()
+  for (const m of s.matchAll(/useEffect\(([\s\S]*?)\}, \[([^\]]*)\]\)/g))
+    for (const d of m[2].split(',').map((x) => x.trim())) if (d) rodamSozinhos.add(d)
+
+  const achados: string[] = []
+  for (const m of s.matchAll(/const\s+(\w+)\s*=\s*useCallback\(([\s\S]*?)\}, \[([^\]]*)\]\)/g)) {
+    if (!rodamSozinhos.has(m[1])) continue
+    const i = m[2].search(BUSCA)
+    if (i < 0) continue
+    for (const linha of m[2].slice(0, i).split('\n'))
+      // ⭐ sair SETANDO estado é legítimo — o que mata é sair calado
+      if (/^\s*if\s*\(.*\)\s*return\b/.test(linha) && !/set[A-Z]/.test(linha))
+        achados.push(`${m[1]}: ${linha.trim()}`)
+  }
+  return achados
+}
+
+describe('⛔⛔⛔ fetch que NÃO SAI — o carregamento nunca fica refém', () => {
+  const telas = [...arquivosTsx('components'), ...arquivosTsx('app')]
+
+  it('⛔ nenhuma tela descobre a empresa por document.cookie (o cookie é httpOnly)', () => {
+    const culpados = telas
+      .map((f) => ({ f, c: leCookieHttpOnly(readFileSync(join(raiz, f), 'utf-8')) }))
+      .filter((x) => x.c.length)
+      .map((x) => `${x.f} → lê \`${x.c.join(', ')}\` (httpOnly: sempre vazio no cliente)`)
+    expect(culpados, 'quem responde "qual empresa?" é o useEmpresa(), nunca o document.cookie').toEqual([])
+  })
+
+  it('⛔ nenhum carregamento automático sai calado antes do fetch', () => {
+    const culpados = telas
+      .map((f) => ({ f, r: carregamentoRefem(readFileSync(join(raiz, f), 'utf-8')) }))
+      .filter((x) => x.r.length)
+      .map((x) => `${x.f} → ${x.r.join(' · ')}`)
+    expect(culpados, 'return antes do fetch sem setar estado = "carregando…" pra sempre').toEqual([])
+  })
+
+  /**
+   * ⭐⭐ A CURA ESTRUTURAL DA LIXEIRA: estado EXPLÍCITO. Enquanto "ausência de dado" servir
+   * de estado, o caso que ninguém previu vira spinner — aqui cada um tem nome e frase.
+   */
+  it('⭐ a lixeira tem os 4 estados, e os que pedem ação têm "tentar de novo"', () => {
+    const src = readFileSync(join(raiz, 'app/(dashboard)/contas-a-pagar/removidas/page.tsx'), 'utf-8')
+    for (const t of ['CARREGANDO', 'SEM_EMPRESA', 'FALHOU', 'OK'])
+      expect(src, `o estado ${t} sumiu — ausência de dado voltou a servir de estado`).toContain(`'${t}'`)
+    expect(src, 'a lixeira voltou a buscar sem teto de tempo').toContain('fetchComTimeout')
+    expect((src.match(/tentar de novo/g) ?? []).length, 'erro sem saída é beco').toBeGreaterThanOrEqual(2)
+    expect(src, 'voltou a inventar um segundo jeito de saber a empresa').toContain('useEmpresa()')
+  })
+
+  it('⭐ e o histórico da conciliação — a 2ª instância que o detector achou — foi junto', () => {
+    const src = readFileSync(join(raiz, 'components/conciliacao/historico-table.tsx'), 'utf-8')
+    expect(src).toContain('fetchComTimeout')
+    expect(src, 'o erro voltou a virar lista vazia').toContain('tentar de novo')
+    expect(carregamentoRefem(src)).toEqual([])
+  })
+})
+
+// ⭐⭐ REGRA 11 — os dois detectores novos mordem o defeito que os motivou.
+describe('os detectores do "fetch que não sai" mordem (auto-teste)', () => {
+  const REFEM = `
+    function X() {
+      const [dados, setDados] = useState(undefined)
+      const carregar = useCallback(async () => {
+        if (!empresaId) return
+        const r = await fetch('/api/x'); setDados(r)
+      }, [empresaId])
+      useEffect(() => { void carregar() }, [carregar])
+    }`
+  const CURADO = REFEM.replace('if (!empresaId) return', "if (!empresaId) { setDados(null); return }")
+  const GESTO = `
+    function X() {
+      const gerar = useCallback(async () => {
+        if (!file) return
+        await fetch('/api/preview')
+      }, [file])
+      return <button onClick={gerar} />
+    }`
+
+  it('acusa o refém exato da lixeira', () => {
+    expect(carregamentoRefem(REFEM)).toEqual(['carregar: if (!empresaId) return'])
+  })
+
+  it('não acusa a versão que SAI SETANDO estado', () => {
+    expect(carregamentoRefem(CURADO)).toEqual([])
+  })
+
+  /**
+   * ⛔⛔ O FURO QUE CUSTOU DUAS VOLTAS — o detector tem que enxergar a família INTEIRA de
+   * fetch da casa, **com genérico e tudo**. `fetch(` literal aprovava quem usa a régua.
+   */
+  it('⛔ enxerga fetchComTimeout — inclusive com o genérico no meio', () => {
+    const comHelper = REFEM.replace("await fetch('/api/x')", "await fetchComTimeout<{ a: number }>('/api/x')")
+    expect(carregamentoRefem(comHelper)).toEqual(['carregar: if (!empresaId) return'])
+    expect(carregamentoRefem(REFEM.replace("await fetch('/api/x')", "await fetchJson('/api/x')")))
+      .toEqual(['carregar: if (!empresaId) return'])
+  })
+
+  it('⛔ e não acusa GESTO do dono (o "gerar preview" sem arquivo escolhido)', () => {
+    expect(carregamentoRefem(GESTO)).toEqual([])
+  })
+
+  it('acusa a leitura do cookie httpOnly, e só dela', () => {
+    expect(leCookieHttpOnly("const m = document.cookie.match(/current_empresa_id=([^;]+)/)")).toEqual(['current_empresa_id'])
+    expect(leCookieHttpOnly("document.cookie = 'tema=escuro'")).toEqual([])
+    expect(leCookieHttpOnly('const x = useEmpresa()')).toEqual([])
   })
 })
 
