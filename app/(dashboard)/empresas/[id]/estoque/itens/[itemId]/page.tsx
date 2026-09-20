@@ -6,6 +6,7 @@
 // ⛔ Era "Histórico de compras" e mostrava o ledger inteiro sob esse nome (08/09/2026).
 
 import { useEffect, useState, use, useMemo, Fragment } from 'react'
+import type { FichaItem } from '@/lib/stock/ficha-item'
 import { Card, CardContent } from '@/components/ui/card'
 import { Package, Loader2, ArrowLeft, TrendingUp, ChevronDown, Ruler, ExternalLink, History } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
@@ -15,15 +16,15 @@ import { CategoriaEditavel } from '@/components/estoque/categoria-editavel'
 import { statusEstoque, type StatusEstoqueResult } from '@/lib/stock/status-estoque'
 import type { LinhaDoHistorico, FamiliaMovimento } from '@/lib/stock/movimento-explicado'
 
-interface Ficha {
-  item: { id: string; nome: string; unidadeControle: string; categoria: string; categoriaLabel: string; ativo: boolean; estoqueMin: number | null; estoqueMax: number | null }
-  saldo: number; custoMedio: number | null; valor: number; status: StatusEstoqueResult
-  historico: LinhaDoHistorico[]
-  tipos: { tipo: string; chip: string; n: number }[]
-  conferencia: { somaQuantidade: number; saldo: number; somaValor: number; valor: number; confere: boolean }
-  anulados: number
-  precoTempo: { data: string; preco: number }[]
-}
+/**
+ * ⭐ O TIPO VEM DA LIB (19/09) — a mesma dívida do tablet, resolvida do mesmo jeito.
+ *
+ * ⚠️ Era copiado à mão sobre o payload da rota: campo novo no servidor (o `encerrado`)
+ * ficava invisível aqui, e campo renomeado lá passava verde no `tsc`. Derivando, o
+ * compilador cobra — é o guard que a interface escrita à mão não dá.
+ */
+type Ficha = FichaItem
+
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const num = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 3 })
@@ -103,6 +104,19 @@ export default function FichaItemPage({ params }: { params: Promise<{ id: string
       </div>
 
       {/* trocar a régua do item (unidade de compra → unidade de consumo) */}
+      {/* ⭐⭐ ITEM ENCERRADO (19/09) — a faixa vem ANTES dos gestos: quem abre a ficha
+          precisa saber que este item não volta pra operação antes de tentar mexer nele. */}
+      {ficha.encerrado && (
+        <div className="rounded-xl border-[1.5px] border-slate-300 bg-slate-50 px-3.5 py-2.5">
+          <p className="text-[13px] font-semibold text-slate-700">⊘ {ficha.encerrado}</p>
+          <p className="mt-0.5 text-[11.5px] leading-snug text-slate-500">
+            Ele não aparece em nenhuma lista de trabalho — posição, contagem, receitas, produção.
+            O histórico abaixo continua inteiro: as produções antigas usaram este item, e apagá-las
+            reescreveria o custo do que já foi vendido.
+          </p>
+        </div>
+      )}
+
       <ReunitizarBloco companyId={id} itemId={itemId} nome={ficha.item.nome} unidade={ficha.item.unidadeControle} saldo={ficha.saldo} custoMedio={ficha.custoMedio} />
 
       {/* faixa de estoque (mín/máx) + status */}

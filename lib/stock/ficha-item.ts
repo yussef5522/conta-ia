@@ -11,6 +11,7 @@
 // e de onde veio é `movimento-explicado.ts` — o MESMO dono que o extrato usa (REGRA 4).
 
 import type { PrismaClient, Prisma } from '@prisma/client'
+import { selosDeEncerrado, fraseDoSelo } from './itens/encerrar-item'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { saldoItem } from './saldo'
 import { statusEstoque, type StatusEstoqueResult } from './status-estoque'
@@ -25,6 +26,8 @@ const nNFdaChave = (chave: string | null) => (chave && chave.length === 44 ? Str
 
 export interface FichaItem {
   item: { id: string; nome: string; unidadeControle: string; categoria: string; categoriaLabel: string; ativo: boolean; estoqueMin: number | null; estoqueMax: number | null }
+  /** ⭐ "item encerrado em DD/MM — motivo" (19/09). null = não foi encerrado. */
+  encerrado: string | null
   saldo: number
   custoMedio: number | null
   valor: number
@@ -93,7 +96,11 @@ export async function buildFichaItem(companyId: string, itemId: string, db: Db =
     .map((l) => ({ data: l.data.slice(0, 10), preco: l.custoUnitario }))
     .sort((a, b) => a.data.localeCompare(b.data))
 
+  // ⭐ o selo do encerrado — a ficha é onde o histórico dele é consultado
+  const selo = (await selosDeEncerrado(companyId, [itemId], db)).get(itemId)
+
   return {
+    encerrado: selo ? fraseDoSelo(selo) : null,
     item: { ...item, categoriaLabel: CAT_LABEL[item.categoria] ?? item.categoria },
     saldo: saldo.saldo,
     custoMedio: saldo.custoMedio,

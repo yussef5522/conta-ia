@@ -3850,6 +3850,18 @@ model StockProductionOrder {
 // contra o consumo REAL (nunca a escala planejada). Custo real do lote = Σ consumido ×
 // custoMedio. Os movimentos (PRODUCAO_CONSUMO/GERACAO) vivem no ledger; aqui é o registro
 // + os números derivados (rendimento, custo unit, validade da etiqueta). CREATE-only.
+model StockItemEncerrado {
+  id          String   @id @default(cuid())
+  companyId   String
+  itemId      String   @unique // ⭐ encerrar 2× é impossível por construção
+  motivo      String
+  criadoPorId String?
+  criadoEm    DateTime @default(now())
+
+  @@index([companyId])
+  @@map("stock_item_encerrado")
+}
+
 model StockVendaQuarentena {
   id             String    @id @default(cuid())
   companyId      String

@@ -10,6 +10,7 @@
 // payload **só pra não quebrar o consumidor atual**, derivada da explicação.
 
 import type { PrismaClient, Prisma } from '@prisma/client'
+import { selosDeEncerrado, fraseDoSelo } from './itens/encerrar-item'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { explicarMovimentos, dobrarProducao, colapsarAnulados, anotarSaldo, somaDasLinhas, type ParAnulado } from './movimento-explicado'
 import { saldosDaEmpresa } from './saldo'
@@ -93,6 +94,15 @@ export async function listMovimentos(companyId: string, filtro: MovimentosFiltro
     ? anotarSaldo(explicadasCruas, new Map(saldosHoje.map((s) => [s.itemId, s.saldo])))
     : explicadasCruas
   const itemNome = new Map(items.map((i) => [i.id, i.nome]))
+  /**
+   * ⭐ O SELO DO ITEM ENCERRADO (19/09) — *"o passado fica legível"*.
+   *
+   * ⚠️ Sem ele, o item encerrado aparece no extrato **igual a qualquer outro** e quem lê
+   * não sabe que aquele nome não volta: a CUBA MAIONESE continua citada nas ordens de
+   * setembro (apagar reescreveria o custo de poções já vendidas), e a linha precisa dizer
+   * que ela foi encerrada, não que sumiu.
+   */
+  const selos = await selosDeEncerrado(companyId, itemIds, db)
   const nfeIdPorChave = new Map(notas.map((n) => [n.chave, n.id]))
   const expPorId = new Map(explicadas.map((e) => [e.movimentoId, e]))
 
@@ -113,6 +123,8 @@ export async function listMovimentos(companyId: string, filtro: MovimentosFiltro
       estornoDeId: e.estornoDe?.movimentoId ?? null,
       itemId: e.itemId,
       itemNome: itemNome.get(e.itemId) ?? '(item removido)',
+      // ⭐ a frase mora num lugar só (`fraseDoSelo`) — telas diferentes diriam coisas diferentes
+      itemEncerrado: selos.has(e.itemId) ? fraseDoSelo(selos.get(e.itemId)!) : null,
       quantidade: e.quantidade,
       custoUnitario: e.custoUnitario,
       custoTotal: e.custoTotal,

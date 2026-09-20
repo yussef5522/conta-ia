@@ -11,7 +11,7 @@ import { SortableTh, useSort } from '@/components/ui/sortable-th'
 import { ArrowLeftRight, Loader2, Download, FileText } from 'lucide-react'
 
 interface Mov {
-  id: string; data: string; tipo: string; estorno: boolean; itemNome: string
+  id: string; data: string; tipo: string; estorno: boolean; itemNome: string; itemEncerrado?: string | null
   quantidade: number; custoUnitario: number; custoTotal: number
   referencia: { tipo: 'nota' | 'conferencia' | null; label: string; nfeId: string | null }; quem: string
   /** ⭐ par lançamento+estorno que se anula, colapsado (null = linha normal) */
@@ -120,7 +120,16 @@ export default function MovimentosPage({ params }: { params: Promise<{ id: strin
                   <tr key={m.id} className={`border-b border-slate-50 last:border-0 ${m.estorno ? 'bg-rose-50/40' : ''}`}>
                     <td className="px-3 py-0 text-[13px] tabular-nums text-slate-700">{fmtDia(m.data)}</td>
                     <td className="px-3 py-0 text-[13px]"><span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${tipoBadge(m.tipo)}`}>{TIPO_LABEL[m.tipo] ?? m.tipo}</span></td>
-                    <td className="px-3 py-0 text-[13px] font-medium text-slate-800">{m.itemNome}</td>
+                    <td className="px-3 py-0 text-[13px] font-medium text-slate-800">
+                      {m.itemNome}
+                      {/* ⭐ o passado fica legível: o nome continua, com o selo dizendo que ele
+                          não volta — apagar a linha reescreveria custo de produto já vendido */}
+                      {m.itemEncerrado && (
+                        <span title={m.itemEncerrado} className="ml-1.5 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-normal text-slate-500">
+                          encerrado
+                        </span>
+                      )}
+                    </td>
                     <td className={`px-3 py-0 text-[13px] text-right tabular-nums ${m.quantidade < 0 ? 'text-rose-600' : 'text-slate-700'}`}>{num(m.quantidade)}</td>
                     <td className="hidden px-3 py-0 text-[12px] text-right tabular-nums text-slate-400 sm:table-cell">{brl(m.custoUnitario)}</td>
                     <td className={`px-3 py-0 text-[13px] text-right font-medium tabular-nums ${m.custoTotal < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{brl(m.custoTotal)}</td>
