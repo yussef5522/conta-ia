@@ -77,7 +77,12 @@ export default function ContagemPage({ params }: { params: Promise<{ id: string 
   const [erro, setErro] = useState<{ msg: string; saida?: { rotulo: string; href: string } } | null>(null)
   const [iniciando, setIniciando] = useState(false)
   const [finalizando, setFinalizando] = useState(false)
-  const [freio, setFreio] = useState<{ itemId: string; qtd: number; msg: string; opts: { viuSistema: boolean; observacao: string | null } } | null>(null)
+  /** ⭐ v1.1: o freio passa a carregar a SUGESTÃO — o número certo em 1 toque */
+  const [freio, setFreio] = useState<{
+    itemId: string; qtd: number; msg: string
+    opts: { viuSistema: boolean; observacao: string | null }
+    sugestao?: { qtdProvavel: number | null; fator: number | null } | null
+  } | null>(null)
   const [historico, setHistorico] = useState<Record<string, VersaoLinha[]>>({})
   const [decisoes, setDecisoes] = useState<Record<string, { decisao: string; motivo: string | null; decididoPorNome: string | null }>>({})
 
@@ -126,7 +131,15 @@ export default function ContagemPage({ params }: { params: Promise<{ id: string 
       const j = await r.json().catch(() => ({}))
       // ⛔ o FREIO é do SERVIDOR: divergência grande sem 2ª confirmação = 409 e o ledger
       // não se move. A tela só PERGUNTA — não é ela que decide (REGRA 5).
-      if (r.status === 409 && j.code === 'FREIO') { setFreio({ itemId, qtd, msg: j.erro, opts }); return }
+      /**
+       * ⛔ o FREIO é do SERVIDOR nos dois casos. ⭐ `FREIO_ESCALA` é o mesmo freio com a
+       * PERGUNTA ESPECÍFICA (20/09) — ele vem com o número provável, e a tela oferece
+       * *"usar 166"* em 1 toque em vez de só perguntar se é isso mesmo.
+       */
+      if (r.status === 409 && (j.code === 'FREIO' || j.code === 'FREIO_ESCALA')) {
+        setFreio({ itemId, qtd, msg: j.erro, opts, sugestao: j.grandeza ?? null })
+        return
+      }
       if (!r.ok) { setErro(comoErro(j, 'gravar a contagem')); return }
       setFreio(null)
       await carregar()
@@ -325,12 +338,29 @@ export default function ContagemPage({ params }: { params: Promise<{ id: string 
             <p className="flex items-start gap-2 text-sm text-slate-800">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" /> {freio.msg}
             </p>
-            <div className="mt-3 flex gap-2">
+            {/*
+              ⭐⭐ O NÚMERO CERTO EM 1 TOQUE (20/09) — a cura do creme de leite.
+              ⛔ E ele é o botão PRIMÁRIO: quando o sistema sabe qual era o número, a saída
+              fácil tem que ser a CERTA. *"Confirmar mesmo assim" continua ali* — um dia o
+              número absurdo vai ser verdade, e travar empurraria a cozinha pra fora do
+              sistema.
+            */}
+            {freio.sugestao?.qtdProvavel != null && (
+              <button
+                onClick={() => contar(freio.itemId, freio.sugestao!.qtdProvavel!, freio.opts, false)}
+                className="mt-3 h-11 w-full rounded-lg bg-emerald-600 text-sm font-bold text-white">
+                usar {String(freio.sugestao.qtdProvavel).replace('.', ',')}
+              </button>
+            )}
+            <div className="mt-2 flex gap-2">
               <button onClick={() => setFreio(null)} className="h-10 flex-1 rounded-lg border border-slate-300 text-sm text-slate-600">
                 <X className="mr-1 inline h-4 w-4" /> voltar e conferir
               </button>
               <button onClick={() => contar(freio.itemId, freio.qtd, freio.opts, true)}
-                className="h-10 flex-1 rounded-lg bg-[#185FA5] text-sm font-semibold text-white">
+                className={`h-10 flex-1 rounded-lg text-sm font-semibold ${
+                  freio.sugestao?.qtdProvavel != null
+                    ? 'border border-slate-300 text-slate-600'
+                    : 'bg-[#185FA5] text-white'}`}>
                 confirmar mesmo assim
               </button>
             </div>

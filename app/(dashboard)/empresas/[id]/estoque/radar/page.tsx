@@ -26,6 +26,8 @@ import type { ChavePeriodo } from '@/lib/stock/radar/periodo'
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const qtd = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 3 })
 const br = (d: string) => d.split('-').reverse().slice(0, 2).join('/')
+/** ⚠️ o dia do BRASIL — o rótulo "AGORA" não pode virar ontem às 21h */
+const hoje = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date())
 
 type Estado = 'CARREGANDO' | 'FALHOU' | 'OK'
 
@@ -82,6 +84,13 @@ function ContaDePadeiro({ l, empresaId }: { l: LinhaDoRadar; empresaId: string }
               <td className="py-1.5" style={{ color: RADAR.sub }}>
                 {b.rotulo}
                 {b.movimentos > 0 && <span className="ml-1 opacity-70">({b.movimentos})</span>}
+                {/* ⛔ o número é o que o sistema SABE — a ressalva impede que ele se passe
+                    por completo (*"nunca fingir que já desceu o que não desceu"*) */}
+                {b.ressalva && (
+                  <span className="mt-0.5 block text-[11px] font-semibold" style={{ color: RADAR.ambar }}>
+                    ⚠️ {b.ressalva}
+                  </span>
+                )}
               </td>
               <td className="py-1.5 text-right font-bold tabular-nums">
                 {b.qtd >= 0 ? '+' : '−'} {qtd(Math.abs(b.qtd))} {un}
@@ -89,20 +98,31 @@ function ContaDePadeiro({ l, empresaId }: { l: LinhaDoRadar; empresaId: string }
             </tr>
           ))}
           <tr className="border-t" style={{ borderColor: RADAR.line }}>
-            <td className="pt-2 font-extrabold">DEVIA TER</td>
+            {/* ⭐ v1.1 — o tempo verbal segue a janela: com contagem é o que DEVIA ter no
+                instante dela; sem contagem, o que o sistema diz que tem AGORA. */}
+            <td className="pt-2 font-extrabold">{c.contamos == null ? (c.ate === hoje ? 'DEVE TER AGORA' : `DEVIA TER EM ${br(c.ate)}`) : 'DEVIA TER'}</td>
             <td className="pt-2 text-right font-extrabold tabular-nums">{qtd(c.deviaTer)} {un}</td>
           </tr>
+          {/* ⛔ SEM CONTAGEM as duas últimas dizem que FALTA CONTAR — o sistema mostra o
+              que sabe e para onde não sabe. Um zero aqui afirmaria que bateu. */}
           <tr>
-            <td className="py-1.5 font-extrabold">CONTAMOS</td>
-            <td className="py-1.5 text-right font-extrabold tabular-nums">{qtd(c.contamos)} {un}</td>
+            <td className="py-1.5 font-extrabold" style={{ color: c.contamos == null ? RADAR.mudo : undefined }}>CONTAMOS</td>
+            <td className="py-1.5 text-right font-extrabold tabular-nums"
+              style={{ color: c.contamos == null ? RADAR.mudo : undefined }}>
+              {c.contamos == null ? '— falta contar' : `${qtd(c.contamos)} ${un}`}
+            </td>
           </tr>
-          <tr className="border-t-2" style={{ borderColor: c.faltouValor < 0 ? RADAR.coral : RADAR.verde }}>
-            <td className="pt-2 text-[14.5px] font-extrabold" style={{ color: c.faltouValor < 0 ? RADAR.coral : RADAR.verde }}>
-              {c.faltouValor < 0 ? 'FALTOU' : c.faltouValor > 0 ? 'SOBROU' : 'BATEU'}
+          <tr className="border-t-2"
+            style={{ borderColor: c.faltouValor == null ? RADAR.line : c.faltouValor < 0 ? RADAR.coral : RADAR.verde }}>
+            <td className="pt-2 text-[14.5px] font-extrabold"
+              style={{ color: c.faltouValor == null ? RADAR.mudo : c.faltouValor < 0 ? RADAR.coral : RADAR.verde }}>
+              {c.faltouValor == null ? 'FALTOU / SOBROU' : c.faltouValor < 0 ? 'FALTOU' : c.faltouValor > 0 ? 'SOBROU' : 'BATEU'}
             </td>
             <td className="pt-2 text-right text-[14.5px] font-extrabold tabular-nums"
-              style={{ color: c.faltouValor < 0 ? RADAR.coral : RADAR.verde }}>
-              {qtd(Math.abs(c.faltou))} {un} · {brl(Math.abs(c.faltouValor))}
+              style={{ color: c.faltouValor == null ? RADAR.mudo : c.faltouValor < 0 ? RADAR.coral : RADAR.verde }}>
+              {c.faltouValor == null || c.faltou == null
+                ? '— falta contar'
+                : `${qtd(Math.abs(c.faltou))} ${un} · ${brl(Math.abs(c.faltouValor))}`}
             </td>
           </tr>
         </tbody>
@@ -210,8 +230,12 @@ function Bloco({ titulo, subtitulo, linhas, empresaId, lista, podeEditar, aoMuda
                 className="flex min-w-0 flex-1 items-center gap-2.5 text-left disabled:cursor-default">
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[13.5px] font-bold" style={{ color: RADAR.ink }}>{l.nome}</span>
+                  {/* ⭐⭐ v1.1 — TODA LINHA DIZ O QUE O SISTEMA ACHA QUE TEM AGORA.
+                      ⛔ Vem da porta da Posição: a tela do Radar e a da Posição não podem
+                      discordar sobre o mesmo item. */}
                   <span className="block text-[11px]" style={{ color: RADAR.sub }}>
-                    {l.custoMedio != null ? `${brl(l.custoMedio)}/${l.unidadeControle.toLowerCase()}` : 'custo a definir'}
+                    no sistema: <b style={{ color: RADAR.ink }}>{qtd(l.saldoSistema)} {l.unidadeControle.toLowerCase()}</b>
+                    {' · '}<b style={{ color: RADAR.ink }}>{brl(l.valorSistema)}</b>
                     {l.veredito === 'SEM_CONTAGEM' && l.ultimaContagem && <> · última contagem {br(l.ultimaContagem)}</>}
                     {l.veredito === 'SEM_CONTAGEM' && !l.ultimaContagem && <> · nunca contado</>}
                   </span>
@@ -277,7 +301,7 @@ export default function RadarPage({ params }: { params: Promise<{ id: string }> 
   const frase = useMemo(() => {
     if (!placar) return ''
     const janela = dados?.janela.rotulo === 'ontem → hoje' ? 'de ontem pra hoje' : `no período (${dados?.janela.rotulo})`
-    if (placar.tom === 'SEM_CONTAGEM') return `${janela}, ninguém contou ainda`
+    if (placar.tom === 'SEM_CONTAGEM') return 'suas listas somam, no sistema agora'
     if (placar.tom === 'FALTOU') return `${janela}, sumiram`
     if (placar.tom === 'SOBROU') return `${janela}, sobraram`
     return `${janela}, bateu`
@@ -341,9 +365,11 @@ export default function RadarPage({ params }: { params: Promise<{ id: string }> 
           <div className="rounded-[22px] border p-5"
             style={{ background: RADAR.card, borderColor: RADAR.line, boxShadow: RADAR.sombra }}>
             <div className="text-[13px] font-semibold" style={{ color: RADAR.sub }}>{frase}</div>
+            {/* ⭐ v1.1 — sem contagem o placar deixa de ser um traço: ele diz o TAMANHO do
+                que está sendo vigiado. ⛔ Em cinza, nunca em vermelho — não é variância. */}
             <div className="my-[2px] text-[40px] font-extrabold leading-[1.05] tracking-[-0.02em] tabular-nums"
-              style={{ color: placar.tom === 'FALTOU' ? RADAR.coral : placar.tom === 'SEM_CONTAGEM' ? RADAR.mudo : RADAR.verde }}>
-              {placar.tom === 'SEM_CONTAGEM' ? '—' : placar.tom === 'BATEU' ? 'bateu' : brl(placar.valor)}
+              style={{ color: placar.tom === 'FALTOU' ? RADAR.coral : placar.tom === 'SEM_CONTAGEM' ? RADAR.ink : RADAR.verde }}>
+              {placar.tom === 'SEM_CONTAGEM' ? brl(placar.valorNoSistema) : placar.tom === 'BATEU' ? 'bateu' : brl(placar.valor)}
             </div>
             <div className="text-[12px]" style={{ color: RADAR.sub }}>
               <b style={{ color: RADAR.ink }}>{placar.itensContados}</b> itens contados de{' '}

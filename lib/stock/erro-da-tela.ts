@@ -85,6 +85,21 @@ export function respostaDeErroDoEstoque(e: unknown, ctx?: { empresaId?: string; 
 
   // ⛔ o FREIO é 409 de propósito: a tela PERGUNTA de novo, não é erro final (23/08)
   if (e instanceof ContagemError && code === 'FREIO') return { erro: e.message, code, status: 409 }
+  /**
+   * ⭐⭐ O FREIO COM A PERGUNTA ESPECÍFICA (20/09) — a recusa carrega o NÚMERO CERTO, pra a
+   * tela oferecer "usar 16,6" em 1 toque. ⛔ Continua 409 (é pergunta, não erro) e
+   * continua confirmável: o que mudou foi a pergunta deixar de ser vaga.
+   */
+  if (e instanceof ContagemError && code === 'FREIO_ESCALA') {
+    // ⭐ REGRA 4: o campo `grandeza` JÁ EXISTE (nasceu pro guard da produção, 19/09) e
+    // carrega exatamente isto — o número provável + o fator. Um `sugestao` paralelo faria
+    // a tela ter dois lugares pra procurar a MESMA resposta.
+    const sug = (e as ContagemError & { sugestao?: { provavel: number; fator: number } }).sugestao
+    return {
+      erro: e.message, code, status: 409,
+      grandeza: { qtdProvavel: sug?.provavel ?? null, fator: sug?.fator ?? null },
+    }
+  }
 
   /**
    * ⛔ A GRANDEZA É 409, IGUAL AO FREIO — e pelo mesmo motivo: não é erro final, é uma

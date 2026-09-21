@@ -30,7 +30,7 @@
 
 import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
-import { custoMedioPorItem } from '@/lib/stock/saldo'
+import { saldosDaEmpresa } from '@/lib/stock/saldo'
 import { TIPOS, PISO_DADOS } from '@/lib/stock/real-vs-teorico'
 
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
@@ -60,21 +60,34 @@ export interface BaldeDaConta {
   valor: number
   /** quantos movimentos formaram o balde — o "1 nota" / "3 ordens" da tela */
   movimentos: number
+  /**
+   * ⭐⭐ A RESSALVA ESCRITA (v1.1, ordem do dono): *"se a baixa de vendas de HOJE ainda não
+   * foi lançada, a linha do «vendeu» diz isso — nunca fingir que já desceu o que não
+   * desceu."* O número continua sendo o que o sistema SABE; o que muda é ele parar de se
+   * passar por completo.
+   */
+  ressalva?: string
 }
 
 export interface ContaDePadeiro {
   /** AAAA-MM-DD da contagem anterior (o "tinha") — null na 1ª contagem do item */
   desde: string | null
-  /** AAAA-MM-DD da contagem que dá o veredito */
+  /** AAAA-MM-DD da contagem que dá o veredito — ou HOJE, quando ainda não houve contagem */
   ate: string
   /** ⭐ o tamanho REAL da janela, escrito na tela pra nunca mentir */
   diasDaJanela: number | null
   tinha: number
   baldes: BaldeDaConta[]
+  /**
+   * ⭐⭐ v1.1: com contagem é o **DEVIA TER** (o `saldoSistema` gravado no instante); sem
+   * contagem é o **DEVE TER AGORA** (o saldo do sistema hoje). O número é o mesmo tipo de
+   * coisa — o que muda é o tempo verbal, e a tela troca o rótulo.
+   */
   deviaTer: number
-  contamos: number
-  faltou: number
-  faltouValor: number
+  /** ⛔ `null` quando ainda não contaram — a variância continua exigindo contagem */
+  contamos: number | null
+  faltou: number | null
+  faltouValor: number | null
   /**
    * ⛔ `tinha + Σbaldes` tem que dar `deviaTer`. Quando não dá (movimento datado fora de
    * ordem, ajuste avulso no meio), a tela **DIZ** em vez de mostrar uma conta que não
@@ -88,6 +101,13 @@ export interface LinhaDoRadar {
   nome: string
   unidadeControle: string
   custoMedio: number | null
+  /**
+   * ⭐⭐ v1.1 — **TODA LINHA DIZ QUANTO O SISTEMA ACHA QUE TEM AGORA** (decisão do dono).
+   * ⛔ Vem da MESMA porta da Posição (`saldosDaEmpresa`): segunda régua de saldo aqui
+   * faria a tela do Radar e a da Posição discordarem sobre o mesmo item.
+   */
+  saldoSistema: number
+  valorSistema: number
   veredito: Veredito
   /** null quando SEM_CONTAGEM — nunca 0 */
   faltou: number | null
@@ -101,6 +121,12 @@ export interface PlacarDoRadar {
   /** Σ dos vereditos das listas — o número grande */
   valor: number
   tom: 'FALTOU' | 'SOBROU' | 'BATEU' | 'SEM_CONTAGEM'
+  /**
+   * ⭐ v1.1 — o que as listas valem NO SISTEMA agora. Sem contagem o placar mostra ISTO no
+   * lugar do traço: *"suas listas somam R$ X no sistema agora"*. ⛔ Não é variância e a
+   * tela não pode pintá-lo de vermelho — é o tamanho do que está sendo vigiado.
+   */
+  valorNoSistema: number
   itensContados: number
   itensNasListas: number
   /** o item que mais pesou ("quase todo no queijo") — null quando nada faltou */
@@ -129,6 +155,8 @@ export interface RadarDoEstoque {
 function diaBR(d: Date): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(d)
 }
+const hojeBR = () => diaBR(new Date())
+const br = (d: string) => d.split('-').reverse().slice(0, 2).join('/')
 
 export function vereditoDe(faltouValor: number | null): Veredito {
   if (faltouValor == null) return 'SEM_CONTAGEM'
@@ -182,7 +210,7 @@ export async function calcularFechamentoDoDia(
   const fim = new Date(`${ate}T23:59:59.999-03:00`)
   const daLista = [...new Set([...input.caros, ...input.porcoes])]
 
-  const [itens, contagensNoPeriodo, custos] = await Promise.all([
+  const [itens, contagensNoPeriodo, saldos, baixaNaPonta] = await Promise.all([
     db.stockItem.findMany({
       where: { companyId: input.companyId, id: { in: daLista } },
       select: { id: true, nome: true, unidadeControle: true },
@@ -194,20 +222,44 @@ export async function calcularFechamentoDoDia(
       select: { itemId: true, contadoEm: true, saldoSistema: true, qtdContada: true, divergencia: true, valorDivergencia: true },
       orderBy: { contadoEm: 'asc' },
     }),
-    custoMedioPorItem(db, input.companyId),
+    // ⭐ a MESMA porta da Posição — saldo, valor e custo médio de uma vez só
+    saldosDaEmpresa(db, input.companyId),
+    /**
+     * ⭐⭐ v1.1 — *"nunca fingir que já desceu o que não desceu"*: o dia da ponta já teve
+     * baixa de venda? Uma consulta por TELA (não por item), e a ressalva sai daqui.
+     */
+    db.stockMovement.findFirst({
+      where: {
+        companyId: input.companyId, tipo: { in: [...TIPOS.VENDA] },
+        dataMovimento: { gte: new Date(`${ate}T00:00:00-03:00`), lte: new Date(`${ate}T23:59:59.999-03:00`) },
+      },
+      select: { id: true },
+    }),
   ])
+  const custos = new Map(saldos.map((x) => [x.itemId, x.custoMedio]))
+  const saldoDe = new Map(saldos.map((x) => [x.itemId, x.saldo]))
+  const valorDe = new Map(saldos.map((x) => [x.itemId, x.valor]))
+  const ressalvaDaVenda = baixaNaPonta
+    ? undefined
+    : `as vendas de ${ate === hojeBR() ? 'hoje' : br(ate)} ainda não foram baixadas`
 
   /** a contagem de REFERÊNCIA de cada item = a mais recente dentro do período */
   const refPorItem = new Map<string, ContagemDaLinha>()
   for (const c of contagensNoPeriodo) refPorItem.set(c.itemId, c)
 
-  // ⭐ a contagem ANTERIOR à de referência — é ela que dá o "tinha" e o tamanho da janela
+  /**
+   * ⭐ A CONTAGEM ANTERIOR — é ela que dá o "tinha" e o tamanho da janela.
+   *
+   * ⭐⭐ v1.1: a busca virou **"a última contagem antes do fim da janela"**, e isso cobre os
+   * DOIS casos com uma régua só — com contagem de referência a janela fecha nela; sem
+   * contagem ela fecha no fim do período, e o "tinha" continua sendo a última vez que
+   * alguém contou. *Um caminho, não um `if` por caso.*
+   */
+  const fimDaJanelaDe = (itemId: string) => refPorItem.get(itemId)?.contadoEm ?? fim
   const anteriores = daLista.length
     ? await Promise.all(daLista.map(async (itemId) => {
-      const ref = refPorItem.get(itemId)
-      if (!ref) return [itemId, null] as const
       const ant = await db.stockContagemItem.findFirst({
-        where: { companyId: input.companyId, itemId, contadoEm: { lt: ref.contadoEm } },
+        where: { companyId: input.companyId, itemId, contadoEm: { lt: fimDaJanelaDe(itemId) } },
         orderBy: { contadoEm: 'desc' },
         select: { contadoEm: true, qtdContada: true },
       })
@@ -229,14 +281,12 @@ export async function calcularFechamentoDoDia(
   for (const u of ultimas) if (!ultimaPorItem.has(u.itemId)) ultimaPorItem.set(u.itemId, u.contadoEm)
 
   // ── os baldes: o ledger entre as duas contagens de cada item ──────────────────
-  const janelas = daLista
-    .map((itemId) => {
-      const ref = refPorItem.get(itemId)
-      if (!ref) return null
-      const ant = antPorItem.get(itemId) ?? null
-      return { itemId, t0: ant?.contadoEm ?? null, t1: ref.contadoEm }
-    })
-    .filter((x): x is { itemId: string; t0: Date | null; t1: Date } => x !== null)
+  // ⭐ v1.1 — TODO item da lista tem janela, tenha contagem ou não
+  const janelas = daLista.map((itemId) => ({
+    itemId,
+    t0: antPorItem.get(itemId)?.contadoEm ?? null,
+    t1: fimDaJanelaDe(itemId),
+  }))
 
   const movs = janelas.length
     ? await db.stockMovement.findMany({
@@ -262,15 +312,26 @@ export async function calcularFechamentoDoDia(
       nome: it?.nome ?? '(item removido)',
       unidadeControle: it?.unidadeControle ?? '—',
       custoMedio,
+      // ⭐ v1.1 — o que o SISTEMA diz que tem agora, em toda linha (a porta da Posição)
+      saldoSistema: round3(saldoDe.get(itemId) ?? 0),
+      valorSistema: round2(valorDe.get(itemId) ?? 0),
       veredito: 'SEM_CONTAGEM',
       faltou: null,
       faltouValor: null,
       ultimaContagem: ultima ? diaBR(ultima) : null,
       conta: null,
     }
-    if (!ref) return base
 
-    const j = janelas.find((x) => x.itemId === itemId)!
+    /**
+     * ⭐⭐ v1.1 — A CONTA DE PADEIRO ABRE **MESMO SEM CONTAGEM** (decisão do dono).
+     *
+     * ⛔ E ela continua **não inventando variância**: sem contagem, `contamos` e `faltou`
+     * vão `null`, e a tela escreve *"— falta contar"* nas duas últimas linhas. O que o
+     * sistema SABE (tinha → comprou → vendeu → deve ter agora) ele mostra; o que depende
+     * de alguém ir lá contar, ele diz que falta.
+     */
+    const j = janelas.find((x) => x.itemId === itemId)
+    if (!j) return base
     const ms = (movsPorItem.get(itemId) ?? []).filter(
       (m) => (j.t0 === null || m.dataMovimento > j.t0) && m.dataMovimento <= j.t1,
     )
@@ -280,17 +341,28 @@ export async function calcularFechamentoDoDia(
       const v = sel.reduce((s, m) => s + m.custoTotal, 0)
       return { chave, rotulo, qtd: round3(inverter ? -q : q), valor: round2(Math.abs(v)), movimentos: sel.length }
     }
+    const vendeu = balde('vendeu', 'vendeu (pelas fichas)', TIPOS.VENDA)
+    // ⭐ a ressalva só faz sentido se a janela ALCANÇA o dia da ponta
+    if (ressalvaDaVenda && diaBR(j.t1) === ate) vendeu.ressalva = ressalvaDaVenda
     const baldes = [
       balde('comprou', 'comprou', TIPOS.ENTRADA),
       balde('produziu', 'produziu', TIPOS.GERACAO),
-      balde('vendeu', 'vendeu (pelas fichas)', TIPOS.VENDA),
+      vendeu,
       balde('perdas', 'perdas lançadas', TIPOS.PERDA),
       balde('devolveu', 'separado pra produção', [...TIPOS.SEPARACAO, ...TIPOS.DEVOLUCAO]),
       balde('estornos', 'estornos', TIPOS.ESTORNO),
     ]
-    const tinha = round3(antPorItem.get(itemId)?.qtdContada ?? ref.saldoSistema - baldes.reduce((s, b) => s + b.qtd, 0))
-    const deviaTer = round3(ref.saldoSistema)
-    const naoExplicado = round3(deviaTer - (tinha + baldes.reduce((s, b) => s + b.qtd, 0)))
+    const somaBaldes = baldes.reduce((s, b) => s + b.qtd, 0)
+    const tinha = round3(antPorItem.get(itemId)?.qtdContada
+      ?? (ref ? ref.saldoSistema - somaBaldes : 0))
+    /**
+     * ⭐ COM contagem, o "devia ter" é o `saldoSistema` **gravado** no instante dela.
+     * ⭐ SEM contagem, é o que o ledger explica no fim da janela (`tinha + baldes`) —
+     * ⛔ e NÃO o saldo de hoje: num período passado, o saldo de hoje seria outro número e
+     * a conta mentiria o fechamento daquela janela.
+     */
+    const deviaTer = ref ? round3(ref.saldoSistema) : round3(tinha + somaBaldes)
+    const naoExplicado = round3(deviaTer - (tinha + somaBaldes))
     const t0 = j.t0
     const conta: ContaDePadeiro = {
       desde: t0 ? diaBR(t0) : null,
@@ -299,11 +371,13 @@ export async function calcularFechamentoDoDia(
       tinha,
       baldes: baldes.filter((b) => Math.abs(b.qtd) > EPS || b.movimentos > 0),
       deviaTer,
-      contamos: round3(ref.qtdContada),
-      faltou: round3(ref.divergencia),
-      faltouValor: round2(ref.valorDivergencia),
+      // ⛔ sem contagem não existe "real" — `null`, e a tela escreve "— falta contar"
+      contamos: ref ? round3(ref.qtdContada) : null,
+      faltou: ref ? round3(ref.divergencia) : null,
+      faltouValor: ref ? round2(ref.valorDivergencia) : null,
       naoExplicado: Math.abs(naoExplicado) < 0.005 ? 0 : naoExplicado,
     }
+    if (!ref) return { ...base, conta }
     return {
       ...base,
       veredito: vereditoDe(round2(ref.valorDivergencia)),
@@ -335,6 +409,9 @@ export async function calcularFechamentoDoDia(
     maiorOfensor: piores[0]?.nome ?? null,
     foraDasListasValor: round2([...foraPorItem.values()].reduce((s, v) => s + v, 0)),
     foraDasListasItens: foraPorItem.size,
+    // ⭐ v1.1: sem contagem o placar deixa de ser um traço — ele diz o tamanho do que
+    // está sendo vigiado. ⛔ Não é variância: a tela não pinta de vermelho.
+    valorNoSistema: round2(todas.reduce((s, l) => s + l.valorSistema, 0)),
   }
 
   // ── o gráfico por dia (o computador desenha; o celular ignora) ────────────────

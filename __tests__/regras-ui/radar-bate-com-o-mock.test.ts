@@ -115,6 +115,57 @@ describe('⛔⛔ as RÉGUAS DE HONESTIDADE do desenho, travadas', () => {
   })
 })
 
+/**
+ * ⭐⭐⭐ v1.1 — O QUE O SISTEMA SABE, ELE MOSTRA (20/09/2026).
+ *
+ * **A decisão do dono:** *"cada item mostra, na linha fechada, QUANTO O SISTEMA DIZ QUE TEM
+ * AGORA"* e *"a conta de padeiro abre MESMO SEM CONTAGEM, com as duas últimas linhas como
+ * «— falta contar»"*. ⛔ A variância continua exigindo contagem — o que mudou é a tela
+ * parar de calar sobre o que ela já sabe.
+ */
+describe('⭐⭐ v1.1 — toda linha diz o saldo do sistema, e a conta abre sem contagem', () => {
+  it('⛔ o mock mostra "no sistema:" em TODA linha das duas listas', () => {
+    const blocos = MOCK.slice(MOCK.indexOf('OS CAROS'))
+    const linhas = [...blocos.matchAll(/<span class="nm">([\s\S]*?)<\/span>/g)]
+    expect(linhas.length, 'o mock perdeu as linhas dos blocos').toBeGreaterThan(8)
+    for (const l of linhas) {
+      expect(l[1], `uma linha do mock não diz o saldo do sistema: ${l[1]!.slice(0, 40)}`).toContain('no sistema:')
+    }
+  })
+
+  it('⭐ e a TELA desenha o mesmo, da porta da Posição', () => {
+    expect(TELA).toContain('no sistema:')
+    expect(TELA).toContain('saldoSistema')
+    expect(TELA).toContain('valorSistema')
+    // ⛔ a fonte é a da Posição — segunda régua de saldo faria as duas telas divergirem
+    expect(MOTOR).toContain('saldosDaEmpresa')
+    expect(MOTOR, 'o Radar voltou a ter conta própria de saldo').not.toMatch(/groupBy[\s\S]{0,200}_sum:\s*\{\s*quantidade/)
+  })
+
+  it('⛔⛔ sem contagem a conta ABRE e diz "— falta contar" nas duas últimas', () => {
+    expect(MOCK, 'o mock perdeu a conta que abre sem contagem').toContain('DEVE TER AGORA')
+    expect(MOCK).toContain('— falta contar')
+    expect(TELA).toContain('DEVE TER AGORA')
+    expect(TELA).toContain('— falta contar')
+    // ⛔ e o tipo continua impedindo o zero de entrar em silêncio
+    expect(MOTOR).toContain('contamos: number | null')
+  })
+
+  it('⛔ a RESSALVA da baixa não deixa o número se passar por completo', () => {
+    expect(MOTOR).toContain('ressalva')
+    expect(MOTOR).toContain('ainda não foram baixadas')
+    expect(TELA, 'a tela parou de desenhar a ressalva do balde').toContain('b.ressalva')
+    expect(MOCK).toContain('ainda não foram baixadas')
+  })
+
+  it('⭐ o placar sem contagem soma o SISTEMA em vez de um traço', () => {
+    expect(MOTOR).toContain('valorNoSistema')
+    expect(TELA).toContain('valorNoSistema')
+    expect(TELA, 'o traço voltou — o placar sem contagem perdeu a utilidade')
+      .not.toContain("'SEM_CONTAGEM' ? '—'")
+  })
+})
+
 describe('⛔⛔ TELA NOVA NASCE COM O GUARD (a lição da lixeira, 20/09)', () => {
   /**
    * ⚠️⚠️ **REGRA 11 REPROVOU A 1ª VERSÃO DESTE TESTE.** Ela tinha um detector PRÓPRIO de

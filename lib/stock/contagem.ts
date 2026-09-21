@@ -18,6 +18,7 @@ import { recomputeSaldoCache, saldosDaEmpresa } from './saldo'
 import { partirNome } from './contagem/nome-produto'
 import { avisoUnidadeSuspeita } from './contagem/unidade-suspeita'
 import { ordenarFila } from './contagem/ordem-fila'
+import { acharTrocaDeEscala } from './escala'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -50,6 +51,16 @@ export interface FreioResult {
   motivo: string | null
   pct: number | null // |divergência| / saldoSistema (null quando saldo é 0)
   valorDivergencia: number
+  /**
+   * ⭐⭐ A PERGUNTA ESPECÍFICA (20/09/2026) — *"você quis dizer 16,6?"*.
+   *
+   * ⛔ Nasceu de prod: `CREME LEITE 200GR` contada como **16.600** com o sistema em **177**,
+   * **freio confirmado**, R$ 39.342,36 de fantasma até hoje. O freio tinha PERGUNTADO — e a
+   * pergunta era *"a contagem está 9280% fora"*. ***Pergunta vaga é pergunta que se
+   * confirma sem ler.*** Quando existe a assinatura de troca de escala, a tela oferece o
+   * número certo em 1 toque; confirmar o absurdo continua possível.
+   */
+  sugestao: { provavel: number; fator: number } | null
 }
 
 /**
@@ -62,26 +73,51 @@ export interface FreioResult {
  * Saldo do sistema ZERO não dispara por percentual (item que nunca teve nota entrando na
  * contagem inicial é normal) — só pela regra de dinheiro.
  */
-export function avaliarFreio(saldoSistema: number, qtdContada: number, custoUnitario: number): FreioResult {
+export function avaliarFreio(
+  saldoSistema: number,
+  qtdContada: number,
+  custoUnitario: number,
+  item?: { unidadeControle?: string },
+): FreioResult {
   const divergencia = round3(qtdContada - saldoSistema)
   const valorDivergencia = round2(divergencia * (custoUnitario || 0))
   const absValor = Math.abs(valorDivergencia)
 
-  if (Math.abs(divergencia) <= EPS) return { grande: false, motivo: null, pct: null, valorDivergencia: 0 }
+  if (Math.abs(divergencia) <= EPS) return { grande: false, motivo: null, pct: null, valorDivergencia: 0, sugestao: null }
+
+  /**
+   * ⭐⭐ A ASSINATURA DE ESCALA VEM PRIMEIRO — porque ela troca a pergunta, não só a
+   * decisão. ⚠️ A régua mora em `lib/stock/escala.ts` (pura, testada): aqui não se
+   * reimplementa "o que é mil vezes", senão vira a segunda régua de sempre.
+   */
+  const un = (item?.unidadeControle ?? '').toUpperCase()
+  const escala = acharTrocaDeEscala(qtdContada, saldoSistema, {
+    unidadeInteira: un === 'UN',
+    unidade: item?.unidadeControle,
+  })
+  if (escala) {
+    return {
+      grande: true,
+      motivo: escala.pergunta,
+      pct: saldoSistema > 0 ? Math.abs(divergencia) / saldoSistema : null,
+      valorDivergencia,
+      sugestao: { provavel: escala.provavel, fator: escala.fator },
+    }
+  }
 
   if (absValor > FREIO_VALOR) {
-    return { grande: true, motivo: `a diferença vale R$ ${absValor.toFixed(2)} — acima de R$ ${FREIO_VALOR} pede conferência`, pct: saldoSistema > 0 ? Math.abs(divergencia) / saldoSistema : null, valorDivergencia }
+    return { grande: true, motivo: `a diferença vale R$ ${absValor.toFixed(2)} — acima de R$ ${FREIO_VALOR} pede conferência`, pct: saldoSistema > 0 ? Math.abs(divergencia) / saldoSistema : null, valorDivergencia, sugestao: null }
   }
 
   if (saldoSistema > 0) {
     const pct = Math.abs(divergencia) / saldoSistema
     if (pct > FREIO_PCT && absValor >= FREIO_VALOR_MIN) {
-      return { grande: true, motivo: `a contagem está ${Math.round(pct * 100)}% fora do sistema (esperado ${round3(saldoSistema)}, contado ${round3(qtdContada)})`, pct, valorDivergencia }
+      return { grande: true, motivo: `a contagem está ${Math.round(pct * 100)}% fora do sistema (esperado ${round3(saldoSistema)}, contado ${round3(qtdContada)})`, pct, valorDivergencia, sugestao: null }
     }
-    return { grande: false, motivo: null, pct, valorDivergencia }
+    return { grande: false, motivo: null, pct, valorDivergencia, sugestao: null }
   }
 
-  return { grande: false, motivo: null, pct: null, valorDivergencia }
+  return { grande: false, motivo: null, pct: null, valorDivergencia, sugestao: null }
 }
 
 /** KG/LT aceitam decimal (balança); UN é inteiro — meia unidade não existe. */
@@ -318,14 +354,23 @@ export async function contarLinha(input: ContarLinhaInput, db: PrismaClient = de
   const saldoSistema = s?.saldo ?? 0
   const custoUnitario = s?.custoMedio ?? 0
 
-  const freio = avaliarFreio(saldoSistema, input.qtdContada, custoUnitario)
+  const freio = avaliarFreio(saldoSistema, input.qtdContada, custoUnitario, item)
   if (freio.grande && !input.confirmarFreio) {
     // O SERVIDOR recusa. A 2ª confirmação não é enfeite de tela — sem o aceite explícito
     // o ledger não se move (REGRA 5).
-    throw new ContagemError(
-      `Confirme: ${item.nome} — ${freio.motivo}. Se estiver certo, confirme de novo pra gravar o ajuste.`,
-      'FREIO',
-    )
+    //
+    // ⭐⭐ E QUANDO HÁ ASSINATURA DE ESCALA, a recusa carrega o NÚMERO CERTO (20/09): o
+    // `code` muda pra `FREIO_ESCALA` e a `sugestao` vai no erro, pra a tela oferecer
+    // *"usar 16,6"* em 1 toque. ⛔ Confirmar o absurdo continua possível — o que morreu
+    // foi a pergunta vaga que se confirma sem ler.
+    const err = new ContagemError(
+      freio.sugestao
+        ? `${item.nome}: ${freio.motivo} Se for isso mesmo, confirme de novo pra gravar.`
+        : `Confirme: ${item.nome} — ${freio.motivo}. Se estiver certo, confirme de novo pra gravar o ajuste.`,
+      freio.sugestao ? 'FREIO_ESCALA' : 'FREIO',
+    ) as ContagemError & { sugestao?: { provavel: number; fator: number } }
+    if (freio.sugestao) err.sugestao = freio.sugestao
+    throw err
   }
 
   const divergencia = round3(input.qtdContada - saldoSistema)

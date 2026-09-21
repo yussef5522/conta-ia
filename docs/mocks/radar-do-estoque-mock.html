@@ -152,6 +152,12 @@
   .linha .nm{flex:1;min-width:0;font-size:13.5px;font-weight:700;
              overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .linha .nm small{display:block;font-size:11px;font-weight:500;color:var(--sub);}
+  /* ⭐⭐ v1.1 — TODA linha diz quanto o SISTEMA acha que tem agora (porta da Posição) */
+  .linha .nm small b{color:var(--ink);font-weight:800;}
+  /* ⛔ v1.1 — as duas últimas linhas da conta, quando ninguém contou ainda */
+  .conta tr.falta td{color:var(--mudo);}
+  .conta tr.res.falta td{border-top-color:var(--line);color:var(--mudo);}
+  .conta .ressalva{display:block;margin-top:2px;font-size:11px;font-weight:700;color:var(--ambar);}
   /* o veredito é PÍLULA: cor = semáforo semântico, nunca decoração */
   .ver{white-space:nowrap;border-radius:99px;padding:4px 11px;font-size:12.5px;font-weight:800;}
   .ver.grande{background:var(--coral-bg);color:var(--coral);}
@@ -286,7 +292,7 @@
 
       <!-- ⭐ ORDEM: quem faltou mais DINHEIRO primeiro (régua mundial: R$, não %) -->
       <button class="linha">
-        <span class="nm">QUEIJO MUSSARELA EM PEÇA<small>30,95/kg · contado hoje 14:20</small></span>
+        <span class="nm">QUEIJO MUSSARELA EM PEÇA<small>no sistema: <b>60,375 kg · R$ 1.868,60</b> · 30,95/kg · contado hoje 14:20</small></span>
         <span class="ver grande num">faltou R$ 118,40</span><span class="seta">▾</span>
       </button>
 
@@ -295,7 +301,7 @@
         <table>
           <tr><td class="rot">tinha ontem</td><td class="v num">62,400 KG</td><td class="r num">R$ 1.931,28</td></tr>
           <tr><td class="rot">comprou <b>1 nota</b></td><td class="v num">+ 40,000 KG</td><td class="r num">R$ 1.238,00</td></tr>
-          <tr><td class="rot">vendeu <small>(pelas fichas)</small></td><td class="v num">− 38,200 KG</td><td class="r num">R$ 1.182,29</td></tr>
+          <tr><td class="rot">vendeu <small>(pelas fichas)</small><span class="ressalva">⚠️ as vendas de hoje ainda não foram baixadas</span></td><td class="v num">− 38,200 KG</td><td class="r num">R$ 1.182,29</td></tr>
           <tr><td class="rot">perdas lançadas</td><td class="v num">− 0,000 KG</td><td class="r num">R$ 0,00</td></tr>
           <tr class="tot"><td class="rot"><b>DEVIA TER</b></td><td class="v num">64,200 KG</td><td class="r num">R$ 1.987,00</td></tr>
           <tr><td class="rot"><b>CONTAMOS</b></td><td class="v num">60,375 KG</td><td class="r num">R$ 1.868,60</td></tr>
@@ -305,22 +311,39 @@
       </div>
 
       <button class="linha">
-        <span class="nm">Coxão Mole<small>48,23/kg · contado hoje 14:22</small></span>
+        <span class="nm">Coxão Mole<small>no sistema: <b>31,2 kg · R$ 1.504,78</b> · 48,23/kg · contado hoje 14:22</small></span>
         <span class="ver pequeno num">faltou R$ 38,60</span><span class="seta">▸</span>
       </button>
       <button class="linha">
-        <span class="nm">BACON<small>31,38/kg · contado hoje 14:25</small></span>
+        <span class="nm">BACON<small>no sistema: <b>63,1 kg · R$ 1.980,08</b> · 31,38/kg · contado hoje 14:25</small></span>
         <span class="ver ok num">sobrou R$ 12,10</span><span class="seta">▸</span>
       </button>
       <button class="linha">
-        <span class="nm">CALABRESA<small>18,14/kg · contado hoje 14:26</small></span>
+        <span class="nm">CALABRESA<small>no sistema: <b>45,93 kg · R$ 833,17</b> · 18,14/kg · contado hoje 14:26</small></span>
         <span class="ver ok">✓ bateu</span><span class="seta">▸</span>
       </button>
       <!-- ⛔ SEM CONTAGEM = estado próprio. Mostrar "R$ 0,00" aqui seria inventar que bateu. -->
       <button class="linha">
-        <span class="nm">FILÉ DE PEITO DE FRANGO<small>16,25/kg · última contagem 18/09</small></span>
-        <span class="ver mudo">falta contar hoje</span><span class="seta">▸</span>
+        <span class="nm">FILÉ DE PEITO DE FRANGO<small>no sistema: <b>123,76 kg · R$ 2.011,10</b> · 16,25/kg · última contagem 18/09</small></span>
+        <span class="ver mudo">falta contar hoje</span><span class="seta">▾</span>
       </button>
+
+      <!--
+        ⭐⭐ v1.1 — A CONTA ABRE MESMO SEM CONTAGEM (decisão do dono): o sistema mostra o
+        que SABE e DIZ onde falta contar. ⛔ Sem contagem não existe "real", então as duas
+        últimas linhas não inventam número — elas dizem "— falta contar".
+      -->
+      <div class="conta">
+        <table>
+          <tr><td class="rot">tinha <small>(contagem de 18/09)</small></td><td class="v num">140,000 KG</td><td class="r num">R$ 2.275,00</td></tr>
+          <tr><td class="rot">comprou <b>1 nota</b></td><td class="v num">+ 20,000 KG</td><td class="r num">R$ 325,00</td></tr>
+          <tr><td class="rot">vendeu <small>(pelas fichas)</small><span class="ressalva">⚠️ as vendas de hoje ainda não foram baixadas</span></td><td class="v num">− 36,240 KG</td><td class="r num">R$ 588,90</td></tr>
+          <tr class="tot"><td class="rot"><b>DEVE TER AGORA</b></td><td class="v num">123,760 KG</td><td class="r num">R$ 2.011,10</td></tr>
+          <tr class="falta"><td class="rot"><b>CONTAMOS</b></td><td class="v">— falta contar</td><td class="r"></td></tr>
+          <tr class="res falta"><td class="rot">FALTOU / SOBROU</td><td class="v">— falta contar</td><td class="r"></td></tr>
+        </table>
+        <a class="verlink" href="#">ver cada movimento →</a>
+      </div>
     </section>
 
     <!-- ───────── PORÇÕES ───────── -->
@@ -331,23 +354,23 @@
       </div>
 
       <button class="linha">
-        <span class="nm">porção de queijo 135 grama<small>4,21/un · 11 un a menos</small></span>
+        <span class="nm">porção de queijo 135 grama<small>no sistema: <b>84 un · R$ 353,64</b> · 4,21/un · 11 un a menos</small></span>
         <span class="ver grande num">faltou R$ 46,31</span><span class="seta">▸</span>
       </button>
       <button class="linha">
-        <span class="nm">porção de coxão 80 grama<small>8,21/un · 3 un a menos</small></span>
+        <span class="nm">porção de coxão 80 grama<small>no sistema: <b>182 un · R$ 1.494,22</b> · 8,21/un · 3 un a menos</small></span>
         <span class="ver pequeno num">faltou R$ 24,63</span><span class="seta">▸</span>
       </button>
       <button class="linha">
-        <span class="nm">beef de xis<small>5,11/un · 2 un a mais</small></span>
+        <span class="nm">beef de xis<small>no sistema: <b>220 un · R$ 1.124,20</b> · 5,11/un · 2 un a mais</small></span>
         <span class="ver ok num">sobrou R$ 10,22</span><span class="seta">▸</span>
       </button>
       <button class="linha">
-        <span class="nm">porção de calabresa 120 grama<small>2,34/un</small></span>
+        <span class="nm">porção de calabresa 120 grama<small>no sistema: <b>249 un · R$ 582,66</b> · 2,34/un</small></span>
         <span class="ver ok">✓ bateu</span><span class="seta">▸</span>
       </button>
       <button class="linha">
-        <span class="nm">porção de bacon 80 grama<small>5,05/un · última contagem 19/09</small></span>
+        <span class="nm">porção de bacon 80 grama<small>no sistema: <b>228 un · R$ 1.151,40</b> · 5,05/un · última contagem 19/09</small></span>
         <span class="ver mudo">falta contar hoje</span><span class="seta">▸</span>
       </button>
     </section>
@@ -360,7 +383,8 @@
   -->
   <div class="honesto">
     O radar aponta <b>onde o dinheiro escapa</b> — não é fechamento contábil.<br>
-    Item sem contagem no período aparece como <b>“falta contar”</b>, nunca como zero.<br>
+    Item sem contagem no período aparece como <b>“falta contar”</b>, nunca como zero —<br>
+    e o placar, nesse caso, mostra <b>quanto suas listas valem no sistema agora</b>.<br>
     <span style="opacity:.7">mock · números de variância ILUSTRATIVOS · nomes e custos lidos da Caçula em 20/09</span>
   </div>
 </div>

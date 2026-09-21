@@ -23,7 +23,7 @@ function mostrar(l: LinhaDoRadar) {
   const v = l.veredito === 'SEM_CONTAGEM' ? 'falta contar'
     : l.veredito === 'BATEU' ? '✓ bateu'
       : `${l.faltouValor! < 0 ? 'faltou' : 'sobrou'} ${brl(Math.abs(l.faltouValor!))}`
-  console.log(`   ${v.padEnd(22)} ${l.nome}`)
+  console.log(`   ${v.padEnd(22)} ${l.nome}  [no sistema: ${q(l.saldoSistema)} · ${brl(l.valorSistema)}]`)
 }
 
 async function main() {
@@ -106,10 +106,10 @@ async function main() {
       const c = l.conta
       console.log(`   janela: ${c.desde ?? '(1ª contagem)'} → ${c.ate}${c.diasDaJanela != null ? ` (${c.diasDaJanela}d)` : ''}`)
       console.log(`   tinha        ${q(c.tinha)} ${alvo.unidadeControle}`)
-      for (const b of c.baldes) console.log(`   ${b.rotulo.padEnd(22)} ${b.qtd >= 0 ? '+' : '−'} ${q(Math.abs(b.qtd))}`)
-      console.log(`   DEVIA TER    ${q(c.deviaTer)}`)
-      console.log(`   CONTAMOS     ${q(c.contamos)}`)
-      console.log(`   FALTOU       ${q(c.faltou)} · ${brl(c.faltouValor)}`)
+      for (const b of c.baldes) console.log(`   ${b.rotulo.padEnd(22)} ${b.qtd >= 0 ? '+' : '−'} ${q(Math.abs(b.qtd))}${b.ressalva ? `  ⚠️ ${b.ressalva}` : ''}`)
+      console.log(`   ${c.contamos == null ? 'DEVE TER AGORA' : 'DEVIA TER   '} ${q(c.deviaTer)}`)
+      console.log(`   CONTAMOS     ${c.contamos == null ? '— falta contar' : q(c.contamos)}`)
+      console.log(`   FALTOU       ${c.faltou == null ? '— falta contar' : `${q(c.faltou)} · ${brl(c.faltouValor!)}`}`)
       if (c.naoExplicado !== 0) console.log(`   ⚠️ não explicado: ${q(c.naoExplicado)}`)
     } else {
       console.log('   (sem contagem no período — o Radar não inventa variância)')

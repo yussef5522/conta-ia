@@ -92,17 +92,18 @@ describe('⭐⭐⭐ Σ(conta de padeiro) == veredito == placar', () => {
     expect(c.naoExplicado, 'sobrou quantidade sem movimento que explique').toBe(0)
 
     // ⛔ O VEREDITO É A CONTA: contamos − devia ter
-    expect(Math.abs(c.contamos - c.deviaTer - c.faltou)).toBeLessThan(0.005)
+    expect(c.contamos, 'a linha contada tem que trazer o CONTAMOS').not.toBeNull()
+    expect(Math.abs(c.contamos! - c.deviaTer - c.faltou!)).toBeLessThan(0.005)
     expect(l.faltouValor).toBe(c.faltouValor)
 
     // ⛔ E O PLACAR É A SOMA DAS LINHAS
-    expect(r.placar.valor).toBe(Math.abs(c.faltouValor))
+    expect(r.placar.valor).toBe(Math.abs(c.faltouValor!))
     expect(r.placar.tom).toBe('FALTOU')
     expect(r.placar.maiorOfensor).toBe('QUEIJO MUSSARELA EM PECA 02 KG')
 
     // ⭐ e o número bate com a realidade: 60 + 40 − 38,2 = 61,8 esperados, 58 contados
     expect(c.deviaTer).toBeCloseTo(61.8, 2)
-    expect(c.faltou).toBeCloseTo(-3.8, 2)
+    expect(c.faltou!).toBeCloseTo(-3.8, 2)
   })
 
   it('⭐⭐ o placar soma MAIS DE UMA linha — e continua sendo a soma das contas', async () => {
@@ -129,7 +130,39 @@ describe('⛔⛔ "falta contar" é estado próprio — NUNCA zero', () => {
     // ⛔ o par que importa: `null`, não `0` — zero afirmaria que bateu
     expect(l.faltouValor).toBeNull()
     expect(l.faltou).toBeNull()
-    expect(l.conta, 'sem contagem não existe conta de padeiro pra mostrar').toBeNull()
+    /**
+     * ⭐⭐ v1.1 — A CONTA ABRE MESMO ASSIM (decisão do dono): o sistema mostra o que SABE
+     * (tinha → comprou → vendeu → deve ter agora) e **diz que falta contar** onde depende
+     * de alguém ir lá. ⛔ O que continua proibido é inventar variância.
+     */
+    expect(l.conta, 'a conta de padeiro tem que abrir mesmo sem contagem').not.toBeNull()
+    expect(l.conta!.contamos, 'sem contagem, CONTAMOS é null — nunca 0').toBeNull()
+    expect(l.conta!.faltou).toBeNull()
+    expect(l.conta!.faltouValor).toBeNull()
+    // ⭐ e o que o sistema sabe fecha: tinha + baldes == deve ter agora
+    const soma = l.conta!.baldes.reduce((s, b) => s + b.qtd, 0)
+    expect(Math.abs(l.conta!.tinha + soma - l.conta!.deviaTer)).toBeLessThan(0.005)
+  })
+
+  it('⭐⭐ v1.1 — TODA linha diz o saldo do sistema, contada ou não', async () => {
+    const r = await radar([calabresa, queijo])
+    for (const linha of r.caros) {
+      expect(typeof linha.saldoSistema, `${linha.nome} sem saldo do sistema`).toBe('number')
+      expect(typeof linha.valorSistema).toBe('number')
+    }
+    // ⛔ e o saldo é o MESMO da porta da Posição — não uma segunda conta
+    const { saldosDaEmpresa } = await import('../saldo')
+    const posicao = new Map((await saldosDaEmpresa(prisma, companyId)).map((x) => [x.itemId, x]))
+    for (const linha of r.caros) {
+      expect(linha.saldoSistema, `${linha.nome} divergiu da Posição`)
+        .toBeCloseTo(posicao.get(linha.itemId)?.saldo ?? 0, 2)
+    }
+  })
+
+  it('⭐ o placar sem contagem soma o SISTEMA em vez de mostrar um traço', async () => {
+    const r = await radar([calabresa])
+    expect(r.placar.tom).toBe('SEM_CONTAGEM')
+    expect(r.placar.valorNoSistema, 'o placar não sabe o tamanho do que vigia').toBeGreaterThan(0)
   })
 
   it('⭐ e ele NÃO entra na conta do placar (nem pra somar zero)', async () => {
@@ -160,6 +193,7 @@ describe('⭐ a JANELA é por item, e vem ESCRITA (a decisão do dono)', () => {
 describe('⭐ a ORDEM é pelo DINHEIRO (régua mundial: R$, não %)', () => {
   const l = (nome: string, v: number | null): LinhaDoRadar => ({
     itemId: nome, nome, unidadeControle: 'KG', custoMedio: 10,
+    saldoSistema: 0, valorSistema: 0,
     veredito: vereditoDe(v), faltou: v, faltouValor: v, ultimaContagem: null, conta: null,
   })
 
