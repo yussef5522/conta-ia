@@ -158,6 +158,23 @@
   .conta tr.falta td{color:var(--mudo);}
   .conta tr.res.falta td{border-top-color:var(--line);color:var(--mudo);}
   .conta .ressalva{display:block;margin-top:2px;font-size:11px;font-weight:700;color:var(--ambar);}
+  /* ⭐⭐ v1.2 — VIDA no dia sem contagem: o último veredito MEDIDO (com data) + 7 dias.
+     ⛔ Nada aqui é número de hoje — é história verdadeira, e é por isso que pode ter cor. */
+  .historia{display:flex;align-items:center;gap:6px;margin-top:4px;}
+  .chip-ult{white-space:nowrap;border-radius:99px;padding:2px 7px;font-size:10.5px;font-weight:700;}
+  .chip-ult.ok{background:var(--verde-bg);color:var(--verde);}
+  .chip-ult.falta{background:var(--ambar-bg);color:var(--ambar);}
+  /* ⭐ a sparkline: LACUNA no traço quando o dia não foi contado (nunca ponto em zero) */
+  .spark{flex-shrink:0;}
+  /* ⭐ v1.2 — a barra da semana vale no CELULAR também (antes só no computador) */
+  .semana{margin-top:12px;}
+  .semana .cols{display:flex;align-items:flex-end;gap:5px;height:52px;}
+  .semana .cols span{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;}
+  .semana .cols i{width:100%;border-radius:4px 4px 0 0;}
+  .semana .cols i.neg{background:var(--coral);} .semana .cols i.pos{background:var(--verde);}
+  .semana .cols i.vazio{height:8px;background:var(--mudo-bg);border:1px dashed var(--line);}
+  .semana .cols small{font-size:9.5px;font-weight:700;color:var(--sub);}
+  .semana .leg{margin-top:6px;font-size:11px;color:var(--sub);}
   /* o veredito é PÍLULA: cor = semáforo semântico, nunca decoração */
   .ver{white-space:nowrap;border-radius:99px;padding:4px 11px;font-size:12.5px;font-weight:800;}
   .ver.grande{background:var(--coral-bg);color:var(--coral);}
@@ -227,6 +244,19 @@
     <div class="frase">de ontem pra hoje, sumiram</div>
     <div class="n faltou num">R$ 184,20</div>
     <div class="miuda"><b>29</b> itens contados de <b>30</b> · quase todo no <b>queijo mussarela</b></div>
+    <!-- ⭐ v1.2 — a semana no placar, no CELULAR também (ordem do dono) -->
+    <div class="semana">
+      <div class="cols">
+        <span><i class="neg" style="height:18px"></i><small>15</small></span>
+        <span><i class="pos" style="height:7px"></i><small>16</small></span>
+        <span><i class="neg" style="height:29px"></i><small>17</small></span>
+        <span><i class="vazio"></i><small>18</small></span>
+        <span><i class="neg" style="height:46px"></i><small>19</small></span>
+        <span><i class="pos" style="height:10px"></i><small>20</small></span>
+        <span><i class="neg" style="height:25px"></i><small>21</small></span>
+      </div>
+      <div class="leg">pior foi <b style="color:var(--coral)">19/09 (R$ 331,80)</b> · 1 sem contagem</div>
+    </div>
   </div>
 
   <!-- ═══ COMPUTADOR: placar + os dois gráficos ═══ -->
@@ -300,8 +330,8 @@
       <div class="conta">
         <table>
           <tr><td class="rot">tinha ontem</td><td class="v num">62,400 KG</td><td class="r num">R$ 1.931,28</td></tr>
-          <tr><td class="rot">comprou <b>1 nota</b></td><td class="v num">+ 40,000 KG</td><td class="r num">R$ 1.238,00</td></tr>
-          <tr><td class="rot">vendeu <small>(pelas fichas)</small><span class="ressalva">⚠️ as vendas de hoje ainda não foram baixadas</span></td><td class="v num">− 38,200 KG</td><td class="r num">R$ 1.182,29</td></tr>
+          <tr><td class="rot">comprou <small>(nota de 19/09)</small></td><td class="v num">+ 40,000 KG</td><td class="r num">R$ 1.238,00</td></tr>
+          <tr><td class="rot">vendeu <small>(baixas de 18 e 19/09)</small><span class="ressalva">⚠️ o dia 20/09 ainda não tem baixa de vendas</span></td><td class="v num">− 38,200 KG</td><td class="r num">R$ 1.182,29</td></tr>
           <tr><td class="rot">perdas lançadas</td><td class="v num">− 0,000 KG</td><td class="r num">R$ 0,00</td></tr>
           <tr class="tot"><td class="rot"><b>DEVIA TER</b></td><td class="v num">64,200 KG</td><td class="r num">R$ 1.987,00</td></tr>
           <tr><td class="rot"><b>CONTAMOS</b></td><td class="v num">60,375 KG</td><td class="r num">R$ 1.868,60</td></tr>
@@ -324,7 +354,20 @@
       </button>
       <!-- ⛔ SEM CONTAGEM = estado próprio. Mostrar "R$ 0,00" aqui seria inventar que bateu. -->
       <button class="linha">
-        <span class="nm">FILÉ DE PEITO DE FRANGO<small>no sistema: <b>123,76 kg · R$ 2.011,10</b> · 16,25/kg · última contagem 18/09</small></span>
+        <span class="nm">FILÉ DE PEITO DE FRANGO<small>no sistema: <b>123,76 kg · R$ 2.011,10</b> · 16,25/kg</small>
+          <span class="historia">
+            <span class="chip-ult ok">18/09: sobrou R$ 2,10</span>
+            <svg class="spark" width="62" height="16" aria-hidden>
+              <line x1="0" y1="8" x2="62" y2="8" stroke="var(--line)" stroke-width="1"/>
+              <!-- ⛔ o traço se INTERROMPE nos dias sem contagem — lacuna, nunca zero -->
+              <path d="M 0 11 L 10.3 6" fill="none" stroke="var(--sub)" stroke-width="1.5" stroke-linecap="round"/>
+              <path d="M 41.3 12 L 51.6 7" fill="none" stroke="var(--sub)" stroke-width="1.5" stroke-linecap="round"/>
+              <circle cx="0" cy="11" r="1.9" fill="var(--coral)"/>
+              <circle cx="10.3" cy="6" r="1.9" fill="var(--verde)"/>
+              <circle cx="41.3" cy="12" r="1.9" fill="var(--coral)"/>
+              <circle cx="51.6" cy="7" r="1.9" fill="var(--verde)"/>
+            </svg>
+          </span></span>
         <span class="ver mudo">falta contar hoje</span><span class="seta">▾</span>
       </button>
 
@@ -336,8 +379,8 @@
       <div class="conta">
         <table>
           <tr><td class="rot">tinha <small>(contagem de 18/09)</small></td><td class="v num">140,000 KG</td><td class="r num">R$ 2.275,00</td></tr>
-          <tr><td class="rot">comprou <b>1 nota</b></td><td class="v num">+ 20,000 KG</td><td class="r num">R$ 325,00</td></tr>
-          <tr><td class="rot">vendeu <small>(pelas fichas)</small><span class="ressalva">⚠️ as vendas de hoje ainda não foram baixadas</span></td><td class="v num">− 36,240 KG</td><td class="r num">R$ 588,90</td></tr>
+          <tr><td class="rot">comprou <small>(nota de 19/09)</small></td><td class="v num">+ 20,000 KG</td><td class="r num">R$ 325,00</td></tr>
+          <tr><td class="rot">vendeu <small>(baixas de 18 e 19/09)</small><span class="ressalva">⚠️ o dia 20/09 ainda não tem baixa de vendas</span></td><td class="v num">− 36,240 KG</td><td class="r num">R$ 588,90</td></tr>
           <tr class="tot"><td class="rot"><b>DEVE TER AGORA</b></td><td class="v num">123,760 KG</td><td class="r num">R$ 2.011,10</td></tr>
           <tr class="falta"><td class="rot"><b>CONTAMOS</b></td><td class="v">— falta contar</td><td class="r"></td></tr>
           <tr class="res falta"><td class="rot">FALTOU / SOBROU</td><td class="v">— falta contar</td><td class="r"></td></tr>
@@ -370,7 +413,8 @@
         <span class="ver ok">✓ bateu</span><span class="seta">▸</span>
       </button>
       <button class="linha">
-        <span class="nm">porção de bacon 80 grama<small>no sistema: <b>228 un · R$ 1.151,40</b> · 5,05/un · última contagem 19/09</small></span>
+        <span class="nm">porção de bacon 80 grama<small>no sistema: <b>228 un · R$ 1.151,40</b> · 5,05/un</small>
+          <span class="historia"><span class="chip-ult falta">19/09: faltou R$ 5,05</span></span></span>
         <span class="ver mudo">falta contar hoje</span><span class="seta">▸</span>
       </button>
     </section>

@@ -65,8 +65,17 @@ export interface BaldeDaConta {
    * foi lançada, a linha do «vendeu» diz isso — nunca fingir que já desceu o que não
    * desceu."* O número continua sendo o que o sistema SABE; o que muda é ele parar de se
    * passar por completo.
+   *
+   * ⭐ v1.2 — **a ressalva nomeia o DIA** (`"o dia 20/09 ainda não tem baixa de vendas"`).
+   * ⛔ Nunca *"hoje"*: quem abre a tela amanhã de manhã lê "hoje" e entende outro dia.
    */
   ressalva?: string
+  /**
+   * ⭐⭐ v1.2 — **os DIAS que formaram o balde** (`"baixas de 18 e 19/09"`). *O leitor sabe
+   * de onde veio cada número sem deduzir* — e sem isso o "− 319 UN" é um número que só eu
+   * consigo explicar.
+   */
+  dias?: string[]
 }
 
 export interface ContaDePadeiro {
@@ -115,6 +124,18 @@ export interface LinhaDoRadar {
   /** AAAA-MM-DD da última contagem do item (mesmo fora do período) */
   ultimaContagem: string | null
   conta: ContaDePadeiro | null
+  /**
+   * ⭐⭐ v1.2 — **O ÚLTIMO VEREDITO, com data.** No dia sem contagem a linha deixa de ser
+   * um cinza mudo: ela carrega a última vez que esse item foi medido (*"18/09: sobrou
+   * R$ 2,10"*). ⛔ É HISTÓRIA VERDADEIRA, não número inventado pro dia de hoje.
+   */
+  ultimoVeredito: { dia: string; valor: number; veredito: Veredito } | null
+  /**
+   * ⭐ v1.2 — a mini-sparkline: os últimos 7 dias de variância deste item.
+   * ⛔ `valor: null` = dia SEM contagem, e a tela desenha **LACUNA no traço** — nunca um
+   * ponto em zero, que se leria como "bateu certinho" (a mesma régua do placar).
+   */
+  historico: { dia: string; valor: number | null }[]
 }
 
 export interface PlacarDoRadar {
@@ -155,7 +176,6 @@ export interface RadarDoEstoque {
 function diaBR(d: Date): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(d)
 }
-const hojeBR = () => diaBR(new Date())
 const br = (d: string) => d.split('-').reverse().slice(0, 2).join('/')
 
 export function vereditoDe(faltouValor: number | null): Veredito {
@@ -239,9 +259,11 @@ export async function calcularFechamentoDoDia(
   const custos = new Map(saldos.map((x) => [x.itemId, x.custoMedio]))
   const saldoDe = new Map(saldos.map((x) => [x.itemId, x.saldo]))
   const valorDe = new Map(saldos.map((x) => [x.itemId, x.valor]))
-  const ressalvaDaVenda = baixaNaPonta
-    ? undefined
-    : `as vendas de ${ate === hojeBR() ? 'hoje' : br(ate)} ainda não foram baixadas`
+  /**
+   * ⭐ v1.2 — **A DATA É EXPLÍCITA, nunca "hoje"** (ordem do dono): quem abre a tela amanhã
+   * de manhã lê "hoje" e entende outro dia. O dia vem escrito, e pronto.
+   */
+  const ressalvaDaVenda = baixaNaPonta ? undefined : `o dia ${br(ate)} ainda não tem baixa de vendas`
 
   /** a contagem de REFERÊNCIA de cada item = a mais recente dentro do período */
   const refPorItem = new Map<string, ContagemDaLinha>()
@@ -279,6 +301,56 @@ export async function calcularFechamentoDoDia(
     : []
   const ultimaPorItem = new Map<string, Date>()
   for (const u of ultimas) if (!ultimaPorItem.has(u.itemId)) ultimaPorItem.set(u.itemId, u.contadoEm)
+
+  /**
+   * ⭐⭐ v1.2 — A HISTÓRIA VERDADEIRA: os últimos 7 dias de variância de cada item.
+   *
+   * ⚠️ **Uma query pra TODOS os itens**, não uma por linha: com 35 itens na lista, uma
+   * consulta por item seriam 35 idas ao banco só pra pintar a sparkline — e a tela tem
+   * teto de 2 s (a exigência do sprint).
+   */
+  const DIAS_DA_HISTORIA = 7
+  const inicioHistoria = new Date(`${ate}T00:00:00-03:00`)
+  inicioHistoria.setDate(inicioHistoria.getDate() - (DIAS_DA_HISTORIA - 1))
+  const linhasDaHistoria = daLista.length
+    ? await db.stockContagemItem.findMany({
+      where: { companyId: input.companyId, itemId: { in: daLista }, contadoEm: { gte: inicioHistoria, lte: fim } },
+      select: { itemId: true, contadoEm: true, valorDivergencia: true },
+      orderBy: { contadoEm: 'asc' },
+    })
+    : []
+  /** ⚠️ duas contagens do MESMO item no MESMO dia SOMAM — é o que o dia mediu */
+  const historiaPorItem = new Map<string, Map<string, number>>()
+  for (const l of linhasDaHistoria) {
+    const d = diaBR(l.contadoEm)
+    const m = historiaPorItem.get(l.itemId) ?? new Map<string, number>()
+    m.set(d, round2((m.get(d) ?? 0) + l.valorDivergencia))
+    historiaPorItem.set(l.itemId, m)
+  }
+  const diasDaHistoria: string[] = []
+  for (let i = DIAS_DA_HISTORIA - 1; i >= 0; i--) {
+    const d = new Date(`${ate}T12:00:00-03:00`)
+    d.setDate(d.getDate() - i)
+    diasDaHistoria.push(diaBR(d))
+  }
+
+  /** ⭐ o ÚLTIMO veredito medido de cada item (pode ser mais antigo que a janela) */
+  const ultimoVeredictoPorItem = new Map<string, { dia: string; valor: number; veredito: Veredito }>()
+  if (daLista.length) {
+    const ultimasComValor = await db.stockContagemItem.findMany({
+      where: { companyId: input.companyId, itemId: { in: daLista } },
+      select: { itemId: true, contadoEm: true, valorDivergencia: true },
+      orderBy: { contadoEm: 'desc' },
+    })
+    for (const u of ultimasComValor) {
+      if (ultimoVeredictoPorItem.has(u.itemId)) continue
+      ultimoVeredictoPorItem.set(u.itemId, {
+        dia: diaBR(u.contadoEm),
+        valor: round2(u.valorDivergencia),
+        veredito: vereditoDe(round2(u.valorDivergencia)),
+      })
+    }
+  }
 
   // ── os baldes: o ledger entre as duas contagens de cada item ──────────────────
   // ⭐ v1.1 — TODO item da lista tem janela, tenha contagem ou não
@@ -320,6 +392,9 @@ export async function calcularFechamentoDoDia(
       faltouValor: null,
       ultimaContagem: ultima ? diaBR(ultima) : null,
       conta: null,
+      ultimoVeredito: ultimoVeredictoPorItem.get(itemId) ?? null,
+      // ⛔ dia sem contagem vai `null` — na tela é LACUNA no traço, nunca ponto em zero
+      historico: diasDaHistoria.map((d) => ({ dia: d, valor: historiaPorItem.get(itemId)?.get(d) ?? null })),
     }
 
     /**
@@ -339,7 +414,12 @@ export async function calcularFechamentoDoDia(
       const sel = ms.filter((m) => tipos.includes(m.tipo))
       const q = sel.reduce((s, m) => s + m.quantidade, 0)
       const v = sel.reduce((s, m) => s + m.custoTotal, 0)
-      return { chave, rotulo, qtd: round3(inverter ? -q : q), valor: round2(Math.abs(v)), movimentos: sel.length }
+      // ⭐ v1.2 — os DIAS que formaram o balde, pra o número não precisar de dedução
+      const dias = [...new Set(sel.map((m) => diaBR(m.dataMovimento)))].sort()
+      return {
+        chave, rotulo, qtd: round3(inverter ? -q : q), valor: round2(Math.abs(v)),
+        movimentos: sel.length, ...(dias.length ? { dias } : {}),
+      }
     }
     const vendeu = balde('vendeu', 'vendeu (pelas fichas)', TIPOS.VENDA)
     // ⭐ a ressalva só faz sentido se a janela ALCANÇA o dia da ponta

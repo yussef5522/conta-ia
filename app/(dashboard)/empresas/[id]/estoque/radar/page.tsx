@@ -38,6 +38,96 @@ const PILULAS: { chave: ChavePeriodo; rotulo: string }[] = [
   { chave: 'MES', rotulo: 'mês' },
 ]
 
+/**
+ * ⭐⭐ v1.2 — A MINI-SPARKLINE DOS 7 DIAS.
+ *
+ * ⛔ **Dia sem contagem é LACUNA, nunca ponto em zero** — zero se leria como "bateu
+ * certinho", que é a mentira que esta tela inteira existe pra não contar. O traço
+ * literalmente se interrompe, e o olho entende "aqui ninguém mediu".
+ */
+function Sparkline({ pontos }: { pontos: { dia: string; valor: number | null }[] }) {
+  const medidos = pontos.filter((p) => p.valor != null)
+  if (medidos.length === 0) return null
+  const L = 62, A = 16
+  const max = Math.max(1, ...medidos.map((p) => Math.abs(p.valor!)))
+  const x = (i: number) => (pontos.length === 1 ? L / 2 : (i / (pontos.length - 1)) * L)
+  const y = (v: number) => A / 2 - (v / max) * (A / 2 - 1.5)
+  // ⭐ os segmentos só ligam dias VIZINHOS que os dois foram medidos — o resto é lacuna
+  const segmentos: string[] = []
+  for (let i = 1; i < pontos.length; i++) {
+    const a = pontos[i - 1]!, b = pontos[i]!
+    if (a.valor == null || b.valor == null) continue
+    segmentos.push(`M ${x(i - 1).toFixed(1)} ${y(a.valor).toFixed(1)} L ${x(i).toFixed(1)} ${y(b.valor).toFixed(1)}`)
+  }
+  return (
+    <svg width={L} height={A} className="shrink-0" aria-hidden
+      role="img" style={{ overflow: 'visible' }}>
+      <line x1="0" y1={A / 2} x2={L} y2={A / 2} stroke={RADAR.line} strokeWidth="1" />
+      {segmentos.map((d) => (
+        <path key={d} d={d} fill="none" stroke={RADAR.sub} strokeWidth="1.5" strokeLinecap="round" />
+      ))}
+      {pontos.map((p, i) => p.valor == null ? null : (
+        <circle key={p.dia} cx={x(i)} cy={y(p.valor)} r="1.9"
+          fill={p.valor < 0 ? RADAR.coral : p.valor > 0 ? RADAR.verde : RADAR.sub} />
+      ))}
+    </svg>
+  )
+}
+
+/**
+ * ⭐⭐ v1.2 — A MINI-BARRA DA SEMANA, no CELULAR também (ordem do dono).
+ *
+ * ⛔ **Dia sem contagem é barra VAZIA tracejada**, nunca uma barra de altura zero — é a
+ * mesma régua do mock e da sparkline: *zero se leria como "bateu certinho"*.
+ */
+function BarraDaSemana({ dias }: { dias: { dia: string; valor: number | null }[] }) {
+  const medidos = dias.filter((d) => d.valor != null)
+  if (dias.length === 0) return null
+  const max = Math.max(1, ...medidos.map((d) => Math.abs(d.valor!)))
+  const pior = medidos.filter((d) => d.valor! < 0).sort((a, b) => a.valor! - b.valor!)[0]
+  return (
+    <div className="mt-3">
+      <div className="flex h-[52px] items-end gap-[5px]">
+        {dias.map((d) => {
+          const v = d.valor
+          const alt = v == null ? 8 : Math.max(4, (Math.abs(v) / max) * 46)
+          return (
+            <span key={d.dia} className="flex flex-1 flex-col items-center gap-1">
+              <i className="w-full rounded-t-[4px]"
+                title={`${br(d.dia)}: ${v == null ? 'sem contagem' : brl(v)}`}
+                style={v == null
+                  ? { height: 8, background: RADAR.mudoBg, border: `1px dashed ${RADAR.line}` }
+                  : { height: alt, background: v < 0 ? RADAR.coral : RADAR.verde }} />
+              <small className="text-[9.5px] font-bold" style={{ color: RADAR.sub }}>{d.dia.slice(8)}</small>
+            </span>
+          )
+        })}
+      </div>
+      <p className="mt-1.5 text-[11px]" style={{ color: RADAR.sub }}>
+        {pior
+          ? <>pior foi <b style={{ color: RADAR.coral }}>{br(pior.dia)} ({brl(Math.abs(pior.valor!))})</b></>
+          : medidos.length === 0
+            ? 'nenhum dia desta semana foi contado'
+            : <>nenhum dia desta semana fechou com falta</>}
+        {dias.length - medidos.length > 0 && <> · {dias.length - medidos.length} sem contagem</>}
+      </p>
+    </div>
+  )
+}
+
+/** ⭐ v1.2 — o último veredito MEDIDO, com data: história verdadeira no dia sem contagem */
+function ChipDoUltimo({ u }: { u: NonNullable<LinhaDoRadar['ultimoVeredito']> }) {
+  const t = TOM[u.veredito]
+  const texto = u.veredito === 'BATEU' ? 'bateu'
+    : `${u.valor < 0 ? 'faltou' : 'sobrou'} ${brl(Math.abs(u.valor))}`
+  return (
+    <span className="whitespace-nowrap rounded-full px-[7px] py-[2px] text-[10.5px] font-bold"
+      style={{ background: t.bg, color: t.cor }}>
+      {br(u.dia)}: {texto}
+    </span>
+  )
+}
+
 /** ⛔ o veredito EM DINHEIRO, com o semáforo semântico do mock */
 function Pilula({ l }: { l: LinhaDoRadar }) {
   const t = TOM[l.veredito]
@@ -83,7 +173,16 @@ function ContaDePadeiro({ l, empresaId }: { l: LinhaDoRadar; empresaId: string }
             <tr key={b.chave}>
               <td className="py-1.5" style={{ color: RADAR.sub }}>
                 {b.rotulo}
-                {b.movimentos > 0 && <span className="ml-1 opacity-70">({b.movimentos})</span>}
+                {/* ⭐⭐ v1.2 — OS DIAS, escritos: "vendeu (baixas de 18 e 19/09)".
+                    ⛔ Sem isto o "− 319 UN" é um número que só quem escreveu o código
+                    consegue explicar. Acima de 3 dias vira intervalo, senão a linha estoura. */}
+                {b.dias && b.dias.length > 0 && (
+                  <span className="ml-1 opacity-70">
+                    ({b.dias.length <= 3
+                      ? `${b.chave === 'vendeu' ? 'baixas de ' : ''}${b.dias.map(br).join(' e ')}`
+                      : `${b.dias.length} dias, de ${br(b.dias[0]!)} a ${br(b.dias[b.dias.length - 1]!)}`})
+                  </span>
+                )}
                 {/* ⛔ o número é o que o sistema SABE — a ressalva impede que ele se passe
                     por completo (*"nunca fingir que já desceu o que não desceu"*) */}
                 {b.ressalva && (
@@ -236,9 +335,17 @@ function Bloco({ titulo, subtitulo, linhas, empresaId, lista, podeEditar, aoMuda
                   <span className="block text-[11px]" style={{ color: RADAR.sub }}>
                     no sistema: <b style={{ color: RADAR.ink }}>{qtd(l.saldoSistema)} {l.unidadeControle.toLowerCase()}</b>
                     {' · '}<b style={{ color: RADAR.ink }}>{brl(l.valorSistema)}</b>
-                    {l.veredito === 'SEM_CONTAGEM' && l.ultimaContagem && <> · última contagem {br(l.ultimaContagem)}</>}
                     {l.veredito === 'SEM_CONTAGEM' && !l.ultimaContagem && <> · nunca contado</>}
                   </span>
+                  {/* ⭐⭐ v1.2 — VIDA no dia sem contagem: o ÚLTIMO veredito medido (com
+                      data e cor) + os 7 dias de história. ⛔ Nada aqui é número do dia de
+                      hoje: é o que já foi medido, e só. */}
+                  {l.veredito === 'SEM_CONTAGEM' && (l.ultimoVeredito || l.historico.some((h) => h.valor != null)) && (
+                    <span className="mt-1 flex items-center gap-1.5">
+                      {l.ultimoVeredito && <ChipDoUltimo u={l.ultimoVeredito} />}
+                      <Sparkline pontos={l.historico} />
+                    </span>
+                  )}
                 </span>
                 <Pilula l={l} />
                 {l.conta && (abertaAqui
@@ -296,6 +403,23 @@ export default function RadarPage({ params }: { params: Promise<{ id: string }> 
     })
     return () => { vivo = false }
   }, [empresaId])
+
+  /**
+   * ⭐⭐ v1.2 — a barra mostra a SEMANA, mesmo no período "ontem → hoje".
+   *
+   * ⚠️ O `porDia` do payload cobre o período ESCOLHIDO (2 dias no ontem→hoje), e uma barra
+   * de 2 colunas não conta história nenhuma. ⛔ Em vez de uma 2ª consulta, a semana sai do
+   * **histórico que as linhas já trazem** — mesma fonte, zero ida a mais ao banco.
+   */
+  const semana = useMemo(() => {
+    if (!dados) return []
+    const todas = [...dados.caros, ...dados.porcoes]
+    const base = todas[0]?.historico ?? []
+    return base.map((p, i) => {
+      const doDia = todas.map((l) => l.historico[i]?.valor).filter((v): v is number => v != null)
+      return { dia: p.dia, valor: doDia.length ? Math.round(doDia.reduce((a, b) => a + b, 0) * 100) / 100 : null }
+    })
+  }, [dados])
 
   const placar = dados?.placar
   const frase = useMemo(() => {
@@ -376,6 +500,10 @@ export default function RadarPage({ params }: { params: Promise<{ id: string }> 
               <b style={{ color: RADAR.ink }}>{placar.itensNasListas}</b>
               {placar.maiorOfensor && <> · quase todo no <b style={{ color: RADAR.ink }}>{placar.maiorOfensor}</b></>}
             </div>
+            {/* ⭐ v1.2 — a semana no placar, nos DOIS viewports: uma composição só, então
+                o celular não fica com menos informação que o computador (REGRA 12). */}
+            <BarraDaSemana dias={semana} />
+
             {/* ⭐⭐ o que está FORA das listas aparece NOMEADO — senão o número grande
                 subestimaria em silêncio, que é a família do "erro disfarçado de vazio" */}
             {placar.foraDasListasItens > 0 && Math.abs(placar.foraDasListasValor) >= 0.005 && (

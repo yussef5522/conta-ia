@@ -18,7 +18,17 @@ const MOCK = readFileSync(join(raiz, 'docs/mocks/radar-do-estoque-mock.html'), '
 const semComentario = (src: string) =>
   src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/^\s*\/\/.*$/gm, '')
 const TELA = semComentario(readFileSync(join(raiz, 'app/(dashboard)/empresas/[id]/estoque/radar/page.tsx'), 'utf-8'))
-const MOTOR = readFileSync(join(raiz, 'lib/stock/radar/fechamento.ts'), 'utf-8')
+/**
+ * ⚠️⚠️ **O MOTOR TAMBÉM É LIDO SEM COMENTÁRIO — e isso custou a REGRA 11 do v1.2.**
+ * Repondo dois defeitos (a ressalva voltando a dizer "hoje"; os dias somindo do balde) o
+ * guard ficou **VERDE**, porque as duas frases aparecem no **comentário de documentação**
+ * logo acima do código. ***"Menção, não uso" pela QUARTA vez nesta casa*** (o
+ * `acaoValePraSentido` 15/09, o `respostaDeErroDoEstoque` 16/09, o `hrefSemPagamento`
+ * 20/09). O arquivo que documenta o próprio defeito não pode ser o que o absolve.
+ */
+const MOTOR = semComentario(readFileSync(join(raiz, 'lib/stock/radar/fechamento.ts'), 'utf-8'))
+/** ⭐ o texto CRU, pra quando a pergunta é sobre o TIPO declarado (aí o comentário não atrapalha) */
+const MOTOR_CRU = readFileSync(join(raiz, 'lib/stock/radar/fechamento.ts'), 'utf-8')
 
 /**
  * ⭐ Lê a DECLARAÇÃO do token no `:root{}` — nunca "a cor aparece em algum lugar".
@@ -83,13 +93,13 @@ describe('⛔⛔ as RÉGUAS DE HONESTIDADE do desenho, travadas', () => {
   it('⛔ "sem contagem" é ESTADO PRÓPRIO — o motor devolve null, nunca 0', () => {
     // ⚠️ o que morde não é a palavra: é o tipo. `faltouValor: number` deixaria o zero
     // entrar em silêncio, e zero afirmaria que bateu.
-    expect(MOTOR).toContain('faltou: number | null')
-    expect(MOTOR).toContain('faltouValor: number | null')
+    expect(MOTOR_CRU).toContain('faltou: number | null')
+    expect(MOTOR_CRU).toContain('faltouValor: number | null')
     expect(MOTOR, 'o veredito perdeu o estado próprio').toContain("'SEM_CONTAGEM'")
   })
 
   it('⛔ o dia sem contagem vai `null` pro gráfico — barra vazia, nunca zero', () => {
-    expect(MOTOR).toContain('valor: number | null')
+    expect(MOTOR_CRU).toContain('valor: number | null')
     expect(MOTOR).toMatch(/porDiaMap\.has\(d\) \? porDiaMap\.get\(d\)! : null/)
     // e o mock desenha a barra vazia tracejada, que é a leitura honesta disso
     expect(MOCK, 'o mock perdeu a barra vazia do dia sem contagem').toContain('.b.vazio')
@@ -97,9 +107,15 @@ describe('⛔⛔ as RÉGUAS DE HONESTIDADE do desenho, travadas', () => {
 
   it('⭐ a ORDEM é pelo DINHEIRO, e a régua mora no SERVIDOR', () => {
     expect(MOTOR).toContain('export function ordenarPorDinheiro')
-    // ⛔ a tela NÃO pode reordenar por conta própria — seria a segunda régua, e as duas
-    // divergiriam no primeiro empate
-    expect(TELA, 'a tela voltou a ordenar sozinha').not.toMatch(/\.sort\(/)
+    /**
+     * ⛔ A tela não pode reordenar AS LINHAS — seria a segunda régua, e as duas divergiriam
+     * no primeiro empate.
+     * ⚠️ REAPONTADO em v1.2: a régua era `não existe .sort() na tela`, e ela ficou vermelha
+     * com a tela CERTA — o `.sort()` novo acha o **pior DIA** da barra da semana, que não é
+     * ordenar linha nenhuma. *Guard largo demais reprova o certo e ensina a afrouxar.*
+     */
+    expect(TELA, 'a tela voltou a ordenar as LINHAS por conta própria')
+      .not.toMatch(/(caros|porcoes|linhas)\s*[.)]?\s*\.sort\(/)
   })
 
   it('⭐⭐ o rodapé honesto está nos DOIS — "aponta, não fecha"', () => {
@@ -148,14 +164,16 @@ describe('⭐⭐ v1.1 — toda linha diz o saldo do sistema, e a conta abre sem 
     expect(TELA).toContain('DEVE TER AGORA')
     expect(TELA).toContain('— falta contar')
     // ⛔ e o tipo continua impedindo o zero de entrar em silêncio
-    expect(MOTOR).toContain('contamos: number | null')
+    expect(MOTOR_CRU).toContain('contamos: number | null')
   })
 
   it('⛔ a RESSALVA da baixa não deixa o número se passar por completo', () => {
     expect(MOTOR).toContain('ressalva')
-    expect(MOTOR).toContain('ainda não foram baixadas')
+    // ⚠️ REAPONTADO em v1.2: a frase ganhou a DATA ("o dia 20/09 ainda não tem baixa de
+    // vendas") por ordem do dono — a pergunta do guard é a mesma, o texto é que mudou.
+    expect(MOTOR).toContain('ainda não tem baixa de vendas')
     expect(TELA, 'a tela parou de desenhar a ressalva do balde').toContain('b.ressalva')
-    expect(MOCK).toContain('ainda não foram baixadas')
+    expect(MOCK).toContain('ainda não tem baixa de vendas')
   })
 
   it('⭐ o placar sem contagem soma o SISTEMA em vez de um traço', () => {
@@ -163,6 +181,66 @@ describe('⭐⭐ v1.1 — toda linha diz o saldo do sistema, e a conta abre sem 
     expect(TELA).toContain('valorNoSistema')
     expect(TELA, 'o traço voltou — o placar sem contagem perdeu a utilidade')
       .not.toContain("'SEM_CONTAGEM' ? '—'")
+  })
+})
+
+/**
+ * ⭐⭐⭐ v1.2 — CLAREZA E VIDA NO DIA SEM CONTAGEM (20/09/2026).
+ *
+ * **A ordem do dono:** *"a linha «vendeu» NOMEIA os dias incluídos"*, *"cada linha «falta
+ * contar» ganha o chip do ÚLTIMO VEREDITO com data e cor + mini-sparkline dos últimos 7
+ * dias (ponto só em dia contado — dia sem contagem é LACUNA, nunca zero)"* e *"o placar
+ * ganha a mini-barra da semana no celular também"*.
+ *
+ * ⛔ **E A HONESTIDADE NÃO MUDOU:** tudo que a tela ganhou de cor é HISTÓRIA MEDIDA. Nada
+ * aqui é número do dia de hoje — `number | null` continua mandando.
+ */
+describe('⭐⭐ v1.2 — os dias NOMEADOS e a história verdadeira', () => {
+  it('⭐ o balde carrega os DIAS que o formaram', () => {
+    expect(MOTOR_CRU, 'o balde parou de declarar os dias').toContain('dias?: string[]')
+    // ⛔ o que morde é o `dias` CHEGAR no objeto devolvido — declarar não basta
+    expect(MOTOR, 'o balde parou de ENTREGAR os dias').toMatch(/\.\.\.\(dias\.length \? \{ dias \} : \{\}\)/)
+    expect(TELA, 'a tela parou de escrever os dias do balde').toContain('b.dias')
+    expect(MOCK).toContain('baixas de 18 e 19/09')
+  })
+
+  it('⛔⛔ a ressalva diz a DATA, nunca "hoje"', () => {
+    // ⚠️ quem abre a tela amanhã de manhã lê "hoje" e entende outro dia
+    expect(MOTOR).toContain('ainda não tem baixa de vendas')
+    expect(MOTOR, 'a ressalva voltou a dizer "hoje", que é ambíguo no dia seguinte')
+      .not.toMatch(/as vendas de \$\{.*'hoje'/)
+    expect(MOCK).toMatch(/o dia \d{2}\/\d{2} ainda não tem baixa de vendas/)
+  })
+
+  it('⭐ a linha sem contagem carrega o ÚLTIMO VEREDITO, com data', () => {
+    expect(MOTOR).toContain('ultimoVeredito')
+    expect(MOTOR_CRU).toMatch(/ultimoVeredito: \{ dia: string; valor: number; veredito: Veredito \} \| null/)
+    expect(TELA).toContain('<ChipDoUltimo')
+    expect(MOCK, 'o mock perdeu o chip do último veredito').toContain('chip-ult')
+  })
+
+  it('⛔⛔ a sparkline tem LACUNA no dia sem contagem — nunca ponto em zero', () => {
+    // ⭐ o tipo é quem garante: `valor: number | null` no histórico
+    expect(MOTOR_CRU).toContain('historico: { dia: string; valor: number | null }[]')
+    expect(MOTOR).toMatch(/historiaPorItem\.get\(itemId\)\?\.get\(d\) \?\? null/)
+    // ⛔ e a TELA pula o segmento quando um dos vizinhos não foi medido
+    expect(TELA).toMatch(/if \(a\.valor == null \|\| b\.valor == null\) continue/)
+    expect(TELA, 'a sparkline voltou a desenhar ponto em dia sem contagem')
+      .toMatch(/p\.valor == null \? null :/)
+  })
+
+  it('⭐ o placar tem a barra da semana — e ela é UMA composição (REGRA 12)', () => {
+    expect(TELA).toContain('<BarraDaSemana')
+    expect(MOCK, 'o mock perdeu a barra da semana no celular').toContain('class="semana"')
+    // ⛔ dia sem contagem é barra VAZIA tracejada, a mesma régua do resto
+    expect(TELA).toMatch(/border: `1px dashed \$\{RADAR\.line\}`/)
+    expect(MOCK).toContain('i.vazio')
+  })
+
+  it('⛔ e a semana sai do histórico que a tela JÁ tem — sem 2ª consulta', () => {
+    // ⚠️ uma query a mais por causa de uma barrinha é como o badge virou 1,3s (11/09)
+    expect(TELA).toMatch(/const semana = useMemo/)
+    expect(TELA).toContain('l.historico[i]?.valor')
   })
 })
 

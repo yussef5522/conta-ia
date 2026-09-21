@@ -195,6 +195,7 @@ describe('⭐ a ORDEM é pelo DINHEIRO (régua mundial: R$, não %)', () => {
     itemId: nome, nome, unidadeControle: 'KG', custoMedio: 10,
     saldoSistema: 0, valorSistema: 0,
     veredito: vereditoDe(v), faltou: v, faltouValor: v, ultimaContagem: null, conta: null,
+    ultimoVeredito: null, historico: [],
   })
 
   it('quem faltou mais dinheiro primeiro; sem contagem por ÚLTIMO', () => {
