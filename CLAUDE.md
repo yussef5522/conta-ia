@@ -1118,6 +1118,39 @@ celular 200 · 710ms · desktop 200 · 139ms · Δ bundle +4 KB
 
 **10.673 verdes · TS 0 · deploy 4/4 (`_OgFrXK9xtPjPG7vNNBjf`).**
 
+### ⭐⭐ RADAR v1.3 — A QUANTIDADE PRIMEIRO, O TOTAL POR SEÇÃO E A CASA DA REVENDA (21/09)
+
+**⭐ 1. O VEREDITO DIZ QUANTIDADE, DEPOIS DINHEIRO** — decisão do dono: *"quantidade é o número MAIS importante"*. `faltou 1 un · R$ 3,31` · `faltou 0,5 kg · R$ 18,42`, na unidade do item. ⭐ **Uma função (`textoDoVeredito`), os TRÊS lugares** — pílula, chip do último veredito e conta de padeiro; uma segunda formatação faria o chip e a linha discordarem sobre o mesmo fato.
+
+**⛔⛔ 2. O RODAPÉ DA SEÇÃO, E A LEI QUE ELE OBEDECE: UN E KG NUNCA SOMAM NUM NÚMERO SÓ.** A quantidade sai **por unidade** (`faltouPorUnidade: Record<string, number>`) e só o **dinheiro** soma tudo. ⛔ **Item "falta contar" fica FORA do total** (`continue`, nunca zero) e é **dito** no rodapé (*"29 ainda sem contagem (fora do total)"*) — zero afirmaria que bateu, que é a mentira que esta tela existe pra não contar. ⭐ `totalDaSecao` é **UMA função pros três blocos**: soma por seção escrita na tela seria a segunda régua, e ela divergiria do placar no primeiro caso de borda.
+
+**⭐ 3. A SEÇÃO 🥤 REVENDA** entre os caros e as porções — *"os caros fica só matéria-prima, como o nome diz"*. As bebidas **migram na própria migration** (`INSERT...SELECT` com `categoria = 'REVENDA'` → lista REVENDA), CREATE-only.
+
+**⛔⛔ E O CHECK DO BANCO VALIDA FORMA, NUNCA VOCABULÁRIO.** Ontem eu criei `stock_radar_watchlist` com `CHECK (lista IN ('CAROS','PORCOES'))`; hoje o dono pediu a 3ª lista e o CHECK **virou parede**, porque este módulo é CREATE-only e `ALTER` é proibido. A tabela nova valida `lista <> '' AND lista = upper(lista)`; **o vocabulário mora no TypeScript**, onde se acrescenta. ⭐ *CHECK com vocabulário fechado numa tabela de CONFIGURAÇÃO envelhece mal — e o prazo foi de um dia.*
+
+**⭐ O UNIVERSO `REVENDA` NASCEU ESCRITO ITEM A ITEM** (`universo-do-seletor.ts`, o dono único). Eu tinha ligado a busca da seção em `PRATELEIRA`, que oferece **queijo e coxão na lista da bebida** — recriando exatamente a mistura que a seção nasceu pra desfazer. ⚠️ E **derivar de COMPRAVEL seria o erro de 16/09** (quando `RECEITA = [...COMPRAVEL, ...]` arrastou LIMPEZA e o editor ofereceu desengraxante como ingrediente). ⭐ O tipo do `universo` na tela passou a **DERIVAR** de `UniversoDoSeletor` em vez de enumerar à mão — a lista à mão envelheceu no primeiro universo novo, e o `tsc` cobrou.
+
+**⚠️⚠️ REGRA 11 — 5 DEFEITOS REPOSTOS, E O DO TOTAL VEIO VERDE: "MENÇÃO, NÃO USO" PELA QUINTA VEZ.** O guard fazia `toContain('faltouPorUnidade: Record<string, number>')` e passou com o campo da interface trocado por um escalar — porque a MESMA frase existe na **variável local** que acumula o total, sessenta linhas abaixo. O que morde é ler **dentro do bloco da interface** (o contrato, não o rascunho), e proibir ali qualquer escalar de quantidade. ⚠️ **E o guard do CHECK mordia o COMENTÁRIO** que documenta o defeito removido: o SQL passou a ser lido **sem comentário**, como já se fazia com o motor. ***O arquivo que documenta o defeito não pode ser o que o absolve*** — agora em SQL.
+
+**⛔ O FLAKE DO `isolamento-pf-pj` TINHA CAUSA MEDIDA, e é a TERCEIRA ocorrência da classe.** Ele ficou vermelho na suíte cheia e **verde 3/3 sozinho**; `fotoDaPJ()` fazia `prisma.transaction.count()` **sem `where`**, e a suíte roda arquivos em PARALELO contra o mesmo banco — outro teste criou 2 transações entre as duas fotos. É o `snapshotClosedModules` global de novo (23/08 e 24/08). **Escopado por empresa — e isso APERTA**: a pergunta virou exatamente *"o import PF mexeu em alguma coisa DESTA empresa?"*, que é a única coisa que aquele teste pode afirmar. ⚠️ Medido antes de rotular, a régua de 01/09.
+
+**PROVADO EM PROD, pelo motor real e nos DOIS viewports (REGRA 12):**
+```
+🥤 REVENDA   COCA COLA 600ML   faltou 1 un · R$ 3,31   [sistema 109 un]
+             └─ faltaram no total: 1 un · R$ 3,31
+💰 OS CAROS  └─ nada faltou · 5 ainda sem contagem (fora do total)
+🍳 PORÇÕES   └─ nada faltou · 29 ainda sem contagem (fora do total)
+⛔ Σ(seções) R$ 3,31 == placar R$ 3,31 ✓   ·   Coca nos CAROS? ✓ não
+busca da 🥤: 30 itens, TODOS REVENDA · FANTA UVA 2L entre eles ✓ · matéria-prima: 0
+celular 200 · desktop 200 (37.478B idênticos) · bundle 24KB com as 3 seções e o rodapé
+⛔ o veredito só-dinheiro ("faltou R$ …" sem quantidade): SUMIU ✓
+```
+⚠️ **E UM NÚMERO DO PEDIDO SAIU DIFERENTE, medido:** o dono escreveu *"faltou 2 un · R$ 3,31"*; o dado diz **1 un · R$ 3,31** (o custo é 3,31/un). Repetir o número dele seria inventar meia unidade — a disciplina de 29/08.
+
+**10.690 verdes · TS 0 · `pg_dump pre-radar-v13-20260921-004058.dump` (6,6 MB) antes da migration · deploy 4/4 (`HuW6zzhh58s0dKk0I517r`).**
+
+📋 **FICA PRO DONO (REGRA 2, o clique é dele):** adicionar a **FANTA UVA 2L** na 🥤 REVENDA pela tela — o universo já a oferece — e a recontagem do creme de leite, que segue pendente.
+
 ### 📋 O RASTRO DA RECONTAGEM DO CREME DE LEITE — ELA NÃO ESTÁ NO BANCO (21/09)
 
 **O dono:** *"Recontei o creme de leite pela tela (o freio ofereceu o número certo e usei). Confere o rastro."*
