@@ -1060,6 +1060,41 @@ LISTAS semeadas: CAROS=5 · PORCOES=30
 
 **REGRA 11 — 6 defeitos repostos, e DOIS vieram VERDES:** (a) o do **seed** — quem barrava a reposição era o **índice único do banco**, não o early-return que eu testava; no dia em que alguém trocasse o `createMany` por `upsert`, o seed reporia **com o guard verde**. Apertado pra a INTENÇÃO (com lista existente, a semente não pode nem ser consultada — um `db` espião explode se for). (b) o do **fetch cru** — eu tinha escrito um detector PRÓPRIO e a forma reposta não casava o regex; ⭐ a cura não é regex melhor: **o detector do `fetch*` já tem dono** (`spinner-eterno-nao-existe`), que varre o app inteiro. *Um detector, um lugar* — a duplicata saiu.
 
+### ⭐⭐ RADAR v1.1 — O SISTEMA MOSTRA O QUE SABE, E O FREIO APRENDE A PERGUNTA (20/09)
+
+**⭐ 1. TODA LINHA DIZ O SALDO DO SISTEMA, e a conta de padeiro ABRE MESMO SEM CONTAGEM.** Decisão do dono. O saldo vem da **porta da Posição** (`saldosDaEmpresa`) — segunda régua aqui faria o Radar e a Posição discordarem sobre o mesmo item. ⛔ E a variância **continua exigindo contagem**: `contamos`/`faltou` vão `null` e a tela escreve *"— falta contar"* nas duas últimas linhas. ***É o TIPO que impede o zero de entrar em silêncio***, não uma lembrança.
+
+⭐ **A ressalva escrita** (*"as vendas de hoje ainda não foram baixadas"*) entra no balde do "vendeu" quando a janela alcança a ponta e não há `BAIXA_VENDA` no dia: *o número é o que o sistema SABE, sem se passar por completo*. E o **placar sem contagem deixou de ser um traço** — ele diz o tamanho do que está sendo vigiado.
+
+**⭐⭐ 2. O FREIO APRENDE A PERGUNTA CERTA (`lib/stock/escala.ts`).** O freio **já tinha disparado** nos dois casos de 14/09 e a marcyelle **confirmou** — porque a pergunta era *"a contagem está 9280% fora do sistema"*. ***Pergunta vaga é pergunta que se confirma sem ler.*** Agora, quando existe assinatura de troca de escala, a recusa vira a frase com o número e a tela oferece **em 1 toque**:
+```
+"Você quis dizer 166 un? 16600 é cem vezes o que o sistema tem (177 un)."   sugestão: 166 (100×)
+```
+⛔ **Confirmar o absurdo continua possível** — um dia o número absurdo vai ser verdade, e travar empurraria a cozinha pra fora do sistema. ⭐ **REGRA 4 duas vezes:** a recusa reusa o campo **`grandeza`** que já existia (do guard da produção, 19/09), e a varredura usa a **MESMA** `acharTrocaDeEscala` do freio — varredura e freio não têm como discordar.
+
+⚠️⚠️ **E ELA NÃO SE UNIFICA COM O `plausibilidade.ts` DA PRODUÇÃO, de propósito:** lá a régua compara o lote com o **rendimento histórico da própria ficha**; aqui compara o digitado com o **saldo do sistema**. São perguntas diferentes com fontes diferentes — juntar faria a produção passar a olhar saldo, que não é o número dela. O que as duas compartilham é a leitura do mundo: ***unidade mental ≠ unidade de controle***.
+
+**⚠️⚠️ 3. O DEGRAU ">100×" DO PEDIDO NÃO PEGAVA O CASO QUE O MOTIVOU** — medido: o creme de leite é `16600 / 177 = **93,8×**`, e ficaria de fora por seis décimos. A varredura passou a usar a **assinatura** (fator 10/100/1000 com o palpite caindo perto do saldo). **Resultado na Caçula — são exatamente 2, e só um segue de pé:**
+```
+⛔ NUNCA RECONTADO  CREME LEITE ITALAC 200GR · 14/09 · sistema 177 → 16.600 · provável 166 (100×)
+                    saldo HOJE 16.600 UN · R$ 39.342,36  ← o fantasma vivo
+✓ RECONTADO DEPOIS  REQUEIJAO CHEDDAR · 14/09 · sistema 31 → 28.500 · provável 28,5 (1000×)
+                    saldo HOJE 28,5 KG · R$ 1.225,22
+```
+
+**PROVADO EM PROD, nos dois viewports:**
+```
+celular 200 · 525ms · desktop 200 · 129ms — "no sistema" em toda linha ✓
+⛔ contas de padeiro que FECHAM: 34 de 34   ·   Σ(vereditos) == placar ✓
+placar sem contagem: R$ 39.980,87 (o que as listas valem no sistema)
+FILE DE PEITO DE FRANGO — a conta que abre SEM contagem:
+   desde 14/09 (6d) · tinha 44,4 · comprou +160 · separado −80,64
+   DEVE TER AGORA 123,76 · CONTAMOS — falta contar · a conta fecha ✓
+```
+**REGRA 11 — 5 defeitos repostos, 5 vermelhos.** **10.667 verdes · TS 0 · deploy 4/4 (`6Dry2Ykrn_DrkDDBjjHJF`) · Δ bundle +0 KB.**
+
+📋 **PENDENTE, e é o gesto do dono:** recontar o **creme de leite** pela tela (o freio agora vai oferecer *"usar 166"*). Depois disso eu confiro o rastro — posição, juiz e o Δ de custo dos consumos entre 14/09 e a recontagem — **sem corrigir nada sem o OK**.
+
 ### ⛔⛔⛔ O FLAKE VIGIADO DE 20/09 TINHA CAUSA — E ERA COLISÃO DE CNPJ ENTRE ARQUIVOS DE TESTE
 
 **O `resolvido-de-um-lado-some-do-outro` ficou vermelho *"1× em 4 rodadas"* e eu registrei como vigiado, sem rotular de pré-existente** (a régua: *"'pré-existente' só depois de MEDIR a causa"*). Hoje ele caiu de novo e deixou pista: `prisma.transaction.create()` inválido. **Sozinho passa 3/3; só quebra em paralelo.**
