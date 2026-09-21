@@ -23,7 +23,9 @@ function mostrar(l: LinhaDoRadar) {
   const v = l.veredito === 'SEM_CONTAGEM' ? 'falta contar'
     : l.veredito === 'BATEU' ? '✓ bateu'
       : `${l.faltouValor! < 0 ? 'faltou' : 'sobrou'} ${brl(Math.abs(l.faltouValor!))}`
-  console.log(`   ${v.padEnd(22)} ${l.nome}  [no sistema: ${q(l.saldoSistema)} · ${brl(l.valorSistema)}]`)
+  const hist = l.historico.map((h) => h.valor == null ? '·' : h.valor < 0 ? '▼' : '▲').join('')
+  const ult = l.ultimoVeredito ? ` ⟨${l.ultimoVeredito.dia.slice(5)}: ${brl(l.ultimoVeredito.valor)}⟩` : ''
+  console.log(`   ${v.padEnd(22)} ${l.nome}  [sistema ${q(l.saldoSistema)} · ${brl(l.valorSistema)}]${ult} ${hist}`)
 }
 
 async function main() {

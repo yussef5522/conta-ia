@@ -1095,6 +1095,54 @@ FILE DE PEITO DE FRANGO — a conta que abre SEM contagem:
 
 📋 **PENDENTE, e é o gesto do dono:** recontar o **creme de leite** pela tela (o freio agora vai oferecer *"usar 166"*). Depois disso eu confiro o rastro — posição, juiz e o Δ de custo dos consumos entre 14/09 e a recontagem — **sem corrigir nada sem o OK**.
 
+### ⭐⭐ RADAR v1.2 — OS DIAS NOMEADOS E A HISTÓRIA VERDADEIRA (21/09)
+
+**⭐ 1. O NÚMERO DIZ DE ONDE VEIO.** O balde carrega os dias que o formaram (*"vendeu (baixas de 18 e 19/09)"*), e a ressalva **nomeia a DATA**: *"o dia 20/09 ainda não tem baixa de vendas"*. ⛔ **Nunca "hoje"** — quem abre a tela amanhã de manhã lê *"hoje"* e entende outro dia. Acima de 3 dias o rótulo vira intervalo, senão a linha estoura no celular.
+
+**⭐⭐ 2. VIDA NO DIA SEM CONTAGEM — e ela é HISTÓRIA MEDIDA, não número inventado.** Cada linha *"falta contar"* ganha o **chip do último veredito com data e cor** (*"18/09: sobrou R$ 2,10"*) e uma **sparkline de 7 dias**. ⛔ **Dia sem contagem é LACUNA no traço**: o segmento é pulado quando um dos vizinhos não foi medido — *ponto em zero se leria como "bateu certinho"*, que é a mentira que esta tela inteira existe pra não contar.
+
+**⭐ 3. A BARRA DA SEMANA no placar dos DOIS viewports** (uma composição só — o celular não fica com menos informação que o computador). ⚠️ E ela sai do **histórico que as linhas já trazem**: uma consulta a mais por causa de uma barrinha é como o badge virou 1,3 s em 11/09.
+
+**PROVADO EM PROD** (a sparkline impressa como `▼▲·`, lacuna no dia sem contagem):
+```
+faltou R$ 3,31  COCA COLA 600ML  [sistema 109 · R$ 360,47] ⟨20/09: −R$ 3,31⟩ ▼▲▲▲·▼·
+falta contar    porçao queijo 135 grama [sistema 1.266 · R$ 5.325,20] ⟨18/09: R$ 206,78⟩ ▲▼▲▲···
+falta contar    beef de xis   [sistema 220 · R$ 1.123,21] ⟨18/09: −R$ 22,85⟩ ··▼▼···
+⛔ Σ(vereditos) == placar ✓  ·  contas de padeiro que FECHAM: 35 de 35
+celular 200 · 710ms · desktop 200 · 139ms · Δ bundle +4 KB
+```
+
+**⚠️⚠️ REGRA 11 — 5 defeitos repostos, e DOIS VIERAM VERDES: "MENÇÃO, NÃO USO" PELA QUARTA VEZ.** Repus a ressalva voltando a dizer *"hoje"* e os dias somindo do balde: **verde nos dois**, porque as frases aparecem no **comentário de documentação do próprio motor**, e eu lia o arquivo CRU. ***O arquivo que documenta o defeito não pode ser o que o absolve.*** (As outras três: `acaoValePraSentido` 15/09 · `respostaDeErroDoEstoque` 16/09 · `hrefSemPagamento` 20/09.) O guard passou a ler o motor **sem comentário**, e a afirmar o **USO** (`...(dias.length ? { dias } : {})`), não a declaração — o tipo continua conferido no texto cru, onde o comentário não atrapalha.
+
+**⚠️ E 2 GUARDS FORAM REAPONTADOS por ficarem vermelhos COM A TELA CERTA:** o de ordenação proibia qualquer `.sort()` na tela e pegou o `.sort` que acha **o pior DIA** da barra — *guard largo demais reprova o certo e ensina a afrouxar*.
+
+**10.673 verdes · TS 0 · deploy 4/4 (`_OgFrXK9xtPjPG7vNNBjf`).**
+
+### 📋 O RASTRO DA RECONTAGEM DO CREME DE LEITE — ELA NÃO ESTÁ NO BANCO (21/09)
+
+**O dono:** *"Recontei o creme de leite pela tela (o freio ofereceu o número certo e usei). Confere o rastro."*
+
+**⛔ MEDIDO, E A RESPOSTA É DURA: não há recontagem.** O item tem **uma única** linha de contagem (14/09 14:51) e o saldo segue **16.600 UN · R$ 39.342,36** — **23% do estoque inteiro da empresa** (total R$ 167.944,20). ⚠️ E o fato que fecha a questão: **a última contagem de QUALQUER item foi 20/09 às 11:22**, e o botão *"usar 166"* só existe desde o deploy das **23:40**. ***Desde que o botão existe, ninguém contou nada*** — então não dá pra dizer nem que ele funcionou nem que falhou; o que dá pra dizer é que a recontagem não chegou ao banco.
+
+| pergunta dele | resposta medida |
+|---|---|
+| **(a)** a posição zerou o fantasma? | **não** — 16.600 UN · R$ 39.342,36, intactos |
+| **(b)** juiz limpo? | **nada mudou por causa do Radar nem da recontagem** (comparação dos relatórios abaixo) |
+| **(c)** Δ de custo dos consumos? | **ZERO saídas na janela** — nenhum consumo levou custo desta janela. ⭐ E o custo médio **não foi distorcido**: R$ 2,37 antes e depois, porque o `AJUSTE_CONTAGEM` entrou com o custo médio vigente. **O que está errado é a QUANTIDADE (e o valor total), nunca o custo unitário** — então nenhuma receita saiu com preço torto. |
+
+**⭐ O JUIZ, COMPARADO EM VEZ DE ROTULADO** (a régua: *"pré-existente só depois de medir"*):
+```
+19/09 03:53  E15=7 E7=82 F2=26        P2=1 P3=24 P5=1 P6=84 V1=77   143 issues
+20/09 03:00  E15=7 E7=85 F2=26        P1=1 P3=24 P5=1 P6=84 V1=79   143 issues
+21/09 00:00  E15=7 E7=86 F2=26 F3=1   P1=1 P3=24 P5=1 P6=84 V1=90   143 issues
+```
+⭐ **O P1 já existia em 20/09 — ANTES do Radar subir** (18:55). O que cresceu foi E7 (82→86, itens com saldo nunca contados), V1 (77→90, vendas sem destino) e o F3 novo — **crescimento da operação, não do sprint**. Os três achados que **não estão registrados** e valem o olho dele:
+- **P1** — `ordem cmu1l8uj · separado 5,58 ≠ consumido 11,16 + devolvido 0` (**algo evaporou entre a câmara e a panela** — o invariante contábil da produção);
+- **P5** — uma ficha de produto final sem preço há >14 dias;
+- **F3** — boleto do **M. IVAN LUNARDI R$ 326,50 (venceu 14/09)** conferido e **nunca enviado ao financeiro**.
+
+**⚠️⚠️ E UM ERRO MEU DE LEITURA, pego antes de virar relatório:** a contagem de hoje `MAIONESE · 3 → 11.432` me pareceu um segundo fantasma de grandeza. **É `11,432 kg`** — o ponto era o decimal do JavaScript, não separador de milhar. O que me salvou foi conferir o VALOR (R$ 82,80, não R$ 100 mil). *Número formatado por engano vira achado falso tão convincente quanto um real.*
+
 ### ⛔⛔⛔ O FLAKE VIGIADO DE 20/09 TINHA CAUSA — E ERA COLISÃO DE CNPJ ENTRE ARQUIVOS DE TESTE
 
 **O `resolvido-de-um-lado-some-do-outro` ficou vermelho *"1× em 4 rodadas"* e eu registrei como vigiado, sem rotular de pré-existente** (a régua: *"'pré-existente' só depois de MEDIR a causa"*). Hoje ele caiu de novo e deixou pista: `prisma.transaction.create()` inválido. **Sozinho passa 3/3; só quebra em paralelo.**
