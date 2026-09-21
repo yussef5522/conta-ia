@@ -1025,6 +1025,75 @@ A CAIXA: saídas 4 · entradas 0 · arquivo 275 · total 279 · Σ fecha ✓
 
 📋 **ACHADOS DO JUIZ, REGISTRADOS E NÃO ATACADOS** (fora do escopo deste pedido): **K1/K2** *"sicredi 2026-09: total gravado 3.194,35 vs recomputado 2.365,85 (cache podre)"* e **K5** *"fila A_CLASSIFICAR: 109 linhas / R$ 10.262,17 — a mais antiga tem 36 dias"*.
 
+## ⭐⭐⭐ RADAR DO ESTOQUE — O AvT DIÁRIO NA LÍNGUA DA COZINHA (20/09/2026)
+
+**Mock aprovado em `docs/mocks/radar-do-estoque-mock.html` (versionado, com os DOIS temas e os dois viewports), e só então construído.** Tela `/empresas/:id/estoque/radar` + sidebar.
+
+**⛔⛔ A MAIOR PARTE DO TRABALHO FOI *NÃO* ESCREVER MOTOR.** A ordem era *"porta única lendo das funções que JÁ EXISTEM — NENHUMA segunda régua de saldo/consumo"*, e a medição mostrou que a variância **já está gravada**:
+
+| pergunta | de onde vem |
+|---|---|
+| **DEVIA TER** | `stock_contagem_item.saldoSistema` — snapshot GRAVADO no instante da contagem |
+| **CONTAMOS** | `qtdContada` |
+| **FALTOU/SOBROU** | `divergencia` · `valorDivergencia` |
+| os baldes do meio | o LEDGER, pelos **MESMOS `TIPOS`** do Real vs Teórico |
+| custo | `custoMedioPorItem` — a MESMA fonte da Posição |
+
+⭐ E o *"vendeu"* é **as mesmas fichas da baixa por construção**: o `BAIXA_VENDA` do ledger foi escrito pela explosão da ficha quando a venda baixou. **Re-explodir aqui seria a segunda régua que a ordem proíbe.**
+
+**⭐⭐ A JANELA É POR ITEM (decisão do dono):** *"usa a ÚLTIMA CONTAGEM do item como ponto de partida — variância ENTRE contagens — com o período ESCRITO na conta de padeiro."* Cada linha carrega `desde`/`diasDaJanela`, porque **duas linhas da mesma tela podem falar de janelas diferentes, e esconder isso mentiria o tamanho do furo**.
+
+**AS RÉGUAS DE HONESTIDADE, todas travadas em teste:** *"falta contar"* é **estado próprio** (`null`, nunca 0) no item **e** no gráfico por dia (lá vira barra vazia tracejada — zero se leria como *"bateu certinho"*) · a ordem é pelo **DINHEIRO** e *"sem contagem"* fica **por último** (no topo empurraria o furo real pra baixo) · o degrau vermelho×âmbar é em **R$**, não em % · e **o que está FORA das listas aparece NOMEADO**, senão o número grande subestimaria em silêncio.
+
+**⭐ AS LISTAS SÃO CONFIGURAÇÃO, NÃO DADO DERIVADO.** A tentação era *"mostrar sempre os N mais caros do momento"* — e aí a lista **mudaria sozinha**. Tabela `stock_radar_watchlist` (CREATE-only, CHECK na lista, **único por item**: dois toques no "+ adicionar" não duplicam). **O seed só roda no PRIMEIRO acesso** — rodando sempre, sobrescreveria a edição do dono.
+
+**⚠️⚠️ E O GUARD DE FAMÍLIA PEGOU UM DEFEITO MEU:** `aoMudar` (função vinda de PROP) numa dep de `useCallback` — **a bomba armada do laço de 20 req/s de 14/09**. Hoje só roda por gesto; foi assim que o `LinkPaymentModal` ficou com a mesma bomba esperando alguém ligar um efeito. Curado pelo **ref**, o padrão da casa.
+
+**PROVADO EM PROD, nos dois viewports:**
+```
+celular 200 em 414ms · 830 KB      desktop 200 em 176ms
+  OS CAROS/PORÇÕES ✓ · DEVIA TER+CONTAMOS ✓ · "falta contar hoje" ✓
+  rodapé honesto ✓ · min-[900px] ✓ · paleta escura não vazou ✓
+ROTA ontem→hoje: ⛔ Σ(vereditos) = placar → BATE ✓ · contas que FECHAM: 1 de 1
+LISTAS semeadas: CAROS=5 · PORCOES=30
+```
+
+**REGRA 11 — 6 defeitos repostos, e DOIS vieram VERDES:** (a) o do **seed** — quem barrava a reposição era o **índice único do banco**, não o early-return que eu testava; no dia em que alguém trocasse o `createMany` por `upsert`, o seed reporia **com o guard verde**. Apertado pra a INTENÇÃO (com lista existente, a semente não pode nem ser consultada — um `db` espião explode se for). (b) o do **fetch cru** — eu tinha escrito um detector PRÓPRIO e a forma reposta não casava o regex; ⭐ a cura não é regex melhor: **o detector do `fetch*` já tem dono** (`spinner-eterno-nao-existe`), que varre o app inteiro. *Um detector, um lugar* — a duplicata saiu.
+
+### ⛔⛔⛔ O FLAKE VIGIADO DE 20/09 TINHA CAUSA — E ERA COLISÃO DE CNPJ ENTRE ARQUIVOS DE TESTE
+
+**O `resolvido-de-um-lado-some-do-outro` ficou vermelho *"1× em 4 rodadas"* e eu registrei como vigiado, sem rotular de pré-existente** (a régua: *"'pré-existente' só depois de MEDIR a causa"*). Hoje ele caiu de novo e deixou pista: `prisma.transaction.create()` inválido. **Sozinho passa 3/3; só quebra em paralelo.**
+
+**A CAUSA, medida:** dois arquivos usavam `const CNPJ = '50607080000616'` e **os dois** fazem `company.deleteMany({ where: { cnpj } })` no setup. A suíte roda arquivos **em paralelo contra o mesmo banco**: um apaga a empresa do outro no meio, o cascade leva `bankAccount`/`category`/`supplier` junto, e o `transaction.create` seguinte morre com FK inválida. ***É a terceira vez que esta casa paga por escopo de teste***: o `afterEach` sem empresa (20/09) e o `snapshotClosedModules` global (23/08).
+
+**⭐ A varredura achou 5 colisões — e uma era MINHA, criada neste mesmo sprint.** Todas corrigidas, e a classe virou **impossibilidade** (`__tests__/regras-testes/cnpj-de-teste-nao-colide.test.ts`): CNPJ criado/apagado por dois arquivos = vermelho com os nomes na mensagem.
+
+**⚠️ E O DETECTOR NASCEU LARGO DEMAIS:** a 1ª versão pegava qualquer literal de 14 dígitos e acusou **CNPJ de FORNECEDOR** (o `36603841000130` da CIA DA FRUTA, dado real de dois testes) e até o literal do meu próprio auto-teste. *Alarme falso no dia 1 é como um guard morre.* Ele ficou estreito: resolve a indireção da constante e olha **só dentro da chamada a `company.*`**. Red-then-green nos dois sentidos — morde a colisão real, não morde o fornecedor. **Suíte: 10.649 verdes em 3 rodadas seguidas.**
+
+### ⭐⭐⭐ O RADAR ACHOU DINHEIRO NA ESTREIA — R$ 39.342,36 DE ESTOQUE FANTASMA
+
+A prova em prod trouxe `FORA DAS LISTAS: R$ 1.619.008,87`, que é absurdo — e **o absurdo é REAL, está no ledger**:
+```
+REQUEIJAO CHEDDAR 1,5KG   14/09 15:27 · sistema 31 → contou 28500 · +R$ 1.622.448,31  [freio confirmado]
+                          14/09 23:35 · sistema 42750 → contou 28,5 · −R$ 1.622.989,78 [freio confirmado]
+                          ⭐ a marcyelle CORRIGIU no mesmo dia · saldo hoje 28,5 KG
+CREME LEITE ITALAC 200GR  14/09 14:51 · sistema 177 → contou 16600 · +R$ 38.922,51    [freio confirmado]
+                          ⛔ NUNCA corrigido · SALDO HOJE 16.600 UN · R$ 39.342,36
+```
+**É a família do lote que entrou mil vezes maior (19/09, a maionese 22.864 g × 22,864 kg), agora na CONTAGEM.** ⚠️ E **o FREIO foi confirmado nos dois** — ele PERGUNTA e a pessoa confirma; **ele não distingue "divergência real" de "erro de grandeza"**. O `plausibilidade.ts` (que compara o lote com o histórico dele) existe pra a PRODUÇÃO e **não cobre a contagem**.
+
+📋 **NÃO CORRIGI NADA** — cirurgia de dado é decisão do dono. Duas frentes registradas: **(a)** o creme de leite (contar de novo pela tela zera os R$ 39 mil fantasma); **(b)** levar a régua de **plausibilidade de grandeza** pra a contagem, que é o que impediria o próximo.
+
+📋 **E O CASO QUE VOCÊ MANDOU DEIXAR APARECER** — `PORÇAO CALABRESA 85g congelada`, a conta de padeiro dela:
+```
+janela: (1ª contagem) → 14/09      tinha 0 · produziu +15 · vendeu −13 · estornos +8
+DEVIA TER 10 · CONTAMOS 15 · SOBROU 5 (R$ 11,60)
+saldo hoje no ledger: −7 · valor R$ 0,02
+```
+⭐ Ou seja: em 14/09 ela **sobrava 5**; o saldo −7 de hoje é **posterior à contagem** — vendeu sem produzir DEPOIS. O Radar a mostra como *"falta contar"* no período de hoje, que é o estado honesto. **O gesto é teu: contar ou concluir a produção que falta.**
+
+📋 **DÍVIDA REGISTRADA — DARK MODE GLOBAL (decisão do dono, 20/09):** o Radar nasce CLARO como o resto do app (*"nada de prefers-color-scheme sozinho — duas metades do sistema com temas diferentes, não"*). ⚠️ **Medido, não herdado do doc: 107 arquivos usam `dark:` e NINGUÉM liga a classe** (`darkMode:['class']`, zero chamadores). Ligar o interruptor global é **sprint próprio**, e o escopo tem que incluir **conferir os 107** — eles nunca renderizaram. O mock guarda os dois temas versionados até lá.
+
 📋 **FICA PRO DONO (REGRA 2, o clique é dele):** abrir a lixeira e reconhecer o que sumiu (restaurar o que faltar — o aviso de duplicata mostra as duas lado a lado), e conciliar uma nota pra ver a pergunta da categoria aparecer e **ficar gravada na conta**.
 
 
