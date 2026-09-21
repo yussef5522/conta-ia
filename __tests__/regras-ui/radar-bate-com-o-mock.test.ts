@@ -214,7 +214,9 @@ describe('⭐⭐ v1.2 — os dias NOMEADOS e a história verdadeira', () => {
 
   it('⭐ a linha sem contagem carrega o ÚLTIMO VEREDITO, com data', () => {
     expect(MOTOR).toContain('ultimoVeredito')
-    expect(MOTOR_CRU).toMatch(/ultimoVeredito: \{ dia: string; valor: number; veredito: Veredito \} \| null/)
+    // ⚠️ v1.3 acrescentou `qtd` — a quantidade vem primeiro na pílula, então ela
+    // precisa viajar junto do valor. O guard afirma os DOIS, não a forma antiga.
+    expect(MOTOR_CRU).toMatch(/ultimoVeredito: \{ dia: string; qtd: number; valor: number; veredito: Veredito \} \| null/)
     expect(TELA).toContain('<ChipDoUltimo')
     expect(MOCK, 'o mock perdeu o chip do último veredito').toContain('chip-ult')
   })
@@ -241,6 +243,96 @@ describe('⭐⭐ v1.2 — os dias NOMEADOS e a história verdadeira', () => {
     // ⚠️ uma query a mais por causa de uma barrinha é como o badge virou 1,3s (11/09)
     expect(TELA).toMatch(/const semana = useMemo/)
     expect(TELA).toContain('l.historico[i]?.valor')
+  })
+})
+
+/**
+ * ⭐⭐⭐ v1.3 — QUANTIDADE PRIMEIRO, TOTAL POR SEÇÃO E A CASA DA REVENDA (21/09/2026).
+ *
+ * **As decisões do dono:** *"quantidade é o número MAIS importante"* · *"UN e KG separados
+ * SEMPRE"* · *"os caros fica só matéria-prima, como o nome diz"*.
+ */
+describe('⭐⭐ v1.3 — a quantidade vem primeiro, em toda parte', () => {
+  it('⭐ a pílula do veredito diz QUANTIDADE e depois dinheiro', () => {
+    expect(TELA).toContain('function textoDoVeredito')
+    // ⛔ o verbo, a quantidade COM unidade, e só então o R$
+    expect(TELA).toMatch(/\$\{verbo\} \$\{qtd\(Math\.abs\(qtdFaltou\)\)\} \$\{unidade\.toLowerCase\(\)\} · \$\{brl/)
+    expect(MOCK, 'o mock perdeu a quantidade na pílula').toMatch(/faltou [\d.,]+ (un|kg) · R\$/)
+  })
+
+  it('⭐ e o CHIP do último veredito usa a MESMA função — não uma 2ª régua', () => {
+    expect(MOTOR_CRU, 'o último veredito não carrega a quantidade').toContain('qtd: number')
+    expect(TELA).toMatch(/ChipDoUltimo[\s\S]{0,400}textoDoVeredito\(u\.qtd, u\.valor, unidade\)/)
+    expect(MOCK).toMatch(/chip-ult[^>]*>[^<]*(faltou|sobrou) [\d.,]+ (un|kg) · R\$/)
+  })
+})
+
+describe('⛔⛔ v1.3 — o TOTAL da seção e a LEI das unidades', () => {
+  it('⛔⛔ UN e KG nunca somam num número só — a quantidade sai POR UNIDADE', () => {
+    // ⚠️⚠️ A 1ª versão deste guard fazia `toContain('faltouPorUnidade: Record<…>')` e
+    // veio VERDE com o defeito reposto: a mesma frase existe na VARIÁVEL LOCAL que
+    // acumula o total, três dezenas de linhas abaixo. "Menção, não uso" pela 5ª vez.
+    // O que morde é olhar DENTRO do bloco da interface — o contrato, não o rascunho.
+    const i = MOTOR_CRU.indexOf('export interface TotalDaSecao')
+    const contrato = MOTOR_CRU.slice(i, MOTOR_CRU.indexOf('\n}', i))
+    expect(contrato, 'o total voltou a ser UM número de quantidade — UN e KG somando')
+      .toMatch(/faltouPorUnidade: Record<string, number>/)
+    expect(contrato).toMatch(/sobrouPorUnidade: Record<string, number>/)
+    // ⛔ e nenhum escalar de QUANTIDADE no contrato: só dinheiro pode ser um número só
+    expect(contrato).not.toMatch(/faltouQtd|faltouTotal|sobrouQtd|sobrouTotal/)
+    // ⛔ e o dinheiro, esse sim, soma tudo
+    expect(MOTOR).toContain('faltouValor')
+    expect(TELA, 'a tela parou de desenhar o rodapé da seção').toContain('<RodapeDaSecao')
+    expect(MOCK, 'o mock perdeu o rodapé da seção').toContain('rodape-secao')
+    expect(MOCK, 'o mock perdeu a soma por unidade').toMatch(/faltaram no total:[\s\S]{0,120}(un|kg)/)
+  })
+
+  it('⛔ "falta contar" fica FORA do total — o motor nem o soma', () => {
+    expect(MOTOR).toMatch(/if \(l\.faltouValor == null \|\| l\.faltou == null\) \{ semContagem\+\+; continue \}/)
+    expect(TELA, 'o rodapé parou de dizer quantos ficaram de fora').toContain('itensSemContagem')
+  })
+
+  it('⭐ o total é UMA função pros três blocos — nunca uma soma por seção na tela', () => {
+    expect(MOTOR).toContain('export function totalDaSecao')
+    expect(MOTOR).toMatch(/totais: \{ caros: totalDaSecao\(caros\), revenda: totalDaSecao\(revenda\), porcoes: totalDaSecao\(porcoes\) \}/)
+  })
+})
+
+describe('⭐⭐ v1.3 — a seção REVENDA tem casa própria', () => {
+  it('⭐ são TRÊS listas, e a ordem é caros · revenda · porções', async () => {
+    const { LISTAS } = await import('@/lib/stock/radar/watchlist')
+    expect(LISTAS).toEqual(['CAROS', 'REVENDA', 'PORCOES'])
+  })
+
+  it('⭐ a tela desenha as três, e a revenda fica no meio', () => {
+    const i1 = TELA.indexOf('💰 OS CAROS')
+    const i2 = TELA.indexOf('🥤 REVENDA')
+    const i3 = TELA.indexOf('🍳 PORÇÕES')
+    expect(i1).toBeGreaterThan(-1)
+    expect(i2, 'a seção de revenda sumiu da tela').toBeGreaterThan(i1)
+    expect(i3).toBeGreaterThan(i2)
+    for (const t of ['💰 OS CAROS', '🥤 REVENDA', '🍳 PORÇÕES']) {
+      expect(MOCK, `o mock perdeu a seção ${t}`).toContain(t)
+    }
+  })
+
+  it('⛔ "os caros" é só matéria-prima — o seed não mistura mais bebida', async () => {
+    const w = readFileSync(join(raiz, 'lib/stock/radar/watchlist.ts'), 'utf-8')
+    expect(w).toMatch(/categoria === 'REVENDA'/)
+    expect(w, 'o seed dos caros voltou a pescar fora da matéria-prima')
+      .toMatch(/const materia = itens\.filter\(\(i\) => i\.categoria === 'MATERIA_PRIMA'\)/)
+  })
+
+  it('⛔⛔ e o vocabulário das listas NÃO volta pro CHECK do banco', () => {
+    // ⚠️ a lição de 21/09: `CHECK (lista IN (...))` virou parede no dia seguinte, porque o
+    // módulo é CREATE-only. O banco valida FORMA; o vocabulário mora no TypeScript.
+    const migrCru = readFileSync(join(raiz, 'prisma/migrations/20260921010000_stock_radar_item/migration.sql'), 'utf-8')
+    // ⛔ o arquivo que DOCUMENTA o defeito não pode ser o que o absolve — a lição de
+    // 21/09 ("menção, não uso"), agora em SQL: `-- CHECK (lista IN (...))` é comentário.
+    const migr = migrCru.replace(/^\s*--.*$/gm, '')
+    expect(migr, 'voltou a enumerar as listas no banco — e ALTER é proibido aqui')
+      .not.toMatch(/CHECK\s*\(\s*"?lista"?\s+IN\s*\(/i)
+    expect(migr).toContain('upper("lista")')
   })
 })
 

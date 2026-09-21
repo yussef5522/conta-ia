@@ -129,7 +129,12 @@ export interface LinhaDoRadar {
    * um cinza mudo: ela carrega a última vez que esse item foi medido (*"18/09: sobrou
    * R$ 2,10"*). ⛔ É HISTÓRIA VERDADEIRA, não número inventado pro dia de hoje.
    */
-  ultimoVeredito: { dia: string; valor: number; veredito: Veredito } | null
+  /**
+   * ⭐ v1.3 — **a QUANTIDADE vem junto** (decisão do dono: *"quantidade é o número MAIS
+   * importante"*). O chip diz *"14/09: faltou 8 un · R$ 15,43"* — dinheiro sozinho não
+   * diz se o furo é meia caixa ou o estoque inteiro.
+   */
+  ultimoVeredito: { dia: string; qtd: number; valor: number; veredito: Veredito } | null
   /**
    * ⭐ v1.2 — a mini-sparkline: os últimos 7 dias de variância deste item.
    * ⛔ `valor: null` = dia SEM contagem, e a tela desenha **LACUNA no traço** — nunca um
@@ -161,12 +166,36 @@ export interface PlacarDoRadar {
   foraDasListasItens: number
 }
 
+/**
+ * ⭐⭐ v1.3 — O TOTAL DE CADA SEÇÃO (decisão do dono).
+ *
+ * ⛔⛔ **UN E KG NUNCA SOMAM NUM NÚMERO SÓ** — é lei da casa desde o placar de 13/09
+ * (*"1.415,84 un" somava porção UN com massa KG, e aquele `,84` era um número que não
+ * existe*). Por isso a quantidade vem **por unidade**, num mapa; o DINHEIRO soma tudo,
+ * porque real é real venha de onde vier.
+ *
+ * ⚠️ E só entra item **CONTADO no período**: *"falta-contar fica fora, nunca vira zero"*.
+ */
+export interface TotalDaSecao {
+  /** { KG: 2.3, UN: 14 } — o que FALTOU, por unidade */
+  faltouPorUnidade: Record<string, number>
+  faltouValor: number
+  sobrouPorUnidade: Record<string, number>
+  sobrouValor: number
+  itensContados: number
+  itensSemContagem: number
+}
+
 export interface RadarDoEstoque {
   de: string
   ate: string
   placar: PlacarDoRadar
   caros: LinhaDoRadar[]
+  /** ⭐ v1.3 — bebida e revenda têm casa própria: "os caros" é matéria-prima, como o nome diz */
+  revenda: LinhaDoRadar[]
   porcoes: LinhaDoRadar[]
+  /** ⭐ o rodapé de cada bloco — a MESMA régua pros três */
+  totais: { caros: TotalDaSecao; revenda: TotalDaSecao; porcoes: TotalDaSecao }
   /** ⭐ o gráfico do computador: um ponto por dia do período (null = dia sem contagem) */
   porDia: { dia: string; valor: number | null }[]
   avisos: string[]
@@ -202,6 +231,33 @@ export function ordenarPorDinheiro(linhas: LinhaDoRadar[]): LinhaDoRadar[] {
   })
 }
 
+/**
+ * ⭐ O TOTAL DE UMA SEÇÃO — pura, e a MESMA pros três blocos.
+ *
+ * ⛔ Uma soma por bloco escrita na tela seria a segunda régua: os três divergiriam no
+ * primeiro caso de borda (item sem custo, unidade nova), e o rodapé deixaria de bater com
+ * o placar.
+ */
+export function totalDaSecao(linhas: LinhaDoRadar[]): TotalDaSecao {
+  const faltouPorUnidade: Record<string, number> = {}
+  const sobrouPorUnidade: Record<string, number> = {}
+  let faltouValor = 0, sobrouValor = 0, contados = 0, semContagem = 0
+  for (const l of linhas) {
+    // ⛔ falta-contar fica FORA do total — nunca vira zero
+    if (l.faltouValor == null || l.faltou == null) { semContagem++; continue }
+    contados++
+    const un = l.unidadeControle || '—'
+    if (l.faltou < 0) {
+      faltouPorUnidade[un] = round3((faltouPorUnidade[un] ?? 0) + Math.abs(l.faltou))
+      faltouValor = round2(faltouValor + Math.abs(l.faltouValor))
+    } else if (l.faltou > 0) {
+      sobrouPorUnidade[un] = round3((sobrouPorUnidade[un] ?? 0) + l.faltou)
+      sobrouValor = round2(sobrouValor + l.faltouValor)
+    }
+  }
+  return { faltouPorUnidade, faltouValor, sobrouPorUnidade, sobrouValor, itensContados: contados, itensSemContagem: semContagem }
+}
+
 interface ContagemDaLinha {
   itemId: string
   contadoEm: Date
@@ -216,7 +272,7 @@ interface ContagemDaLinha {
  * padeiro e gráfico. Uma segunda consulta na tela seria a segunda derivação de sempre.
  */
 export async function calcularFechamentoDoDia(
-  input: { companyId: string; de: string; ate: string; caros: string[]; porcoes: string[] },
+  input: { companyId: string; de: string; ate: string; caros: string[]; revenda?: string[]; porcoes: string[] },
   db: PrismaClient = defaultPrisma,
 ): Promise<RadarDoEstoque> {
   const avisos: string[] = []
@@ -228,7 +284,8 @@ export async function calcularFechamentoDoDia(
   const ate = input.ate
   const inicio = new Date(`${de}T00:00:00-03:00`)
   const fim = new Date(`${ate}T23:59:59.999-03:00`)
-  const daLista = [...new Set([...input.caros, ...input.porcoes])]
+  const revendaIds = input.revenda ?? []
+  const daLista = [...new Set([...input.caros, ...revendaIds, ...input.porcoes])]
 
   const [itens, contagensNoPeriodo, saldos, baixaNaPonta] = await Promise.all([
     db.stockItem.findMany({
@@ -335,17 +392,18 @@ export async function calcularFechamentoDoDia(
   }
 
   /** ⭐ o ÚLTIMO veredito medido de cada item (pode ser mais antigo que a janela) */
-  const ultimoVeredictoPorItem = new Map<string, { dia: string; valor: number; veredito: Veredito }>()
+  const ultimoVeredictoPorItem = new Map<string, { dia: string; qtd: number; valor: number; veredito: Veredito }>()
   if (daLista.length) {
     const ultimasComValor = await db.stockContagemItem.findMany({
       where: { companyId: input.companyId, itemId: { in: daLista } },
-      select: { itemId: true, contadoEm: true, valorDivergencia: true },
+      select: { itemId: true, contadoEm: true, divergencia: true, valorDivergencia: true },
       orderBy: { contadoEm: 'desc' },
     })
     for (const u of ultimasComValor) {
       if (ultimoVeredictoPorItem.has(u.itemId)) continue
       ultimoVeredictoPorItem.set(u.itemId, {
         dia: diaBR(u.contadoEm),
+        qtd: round3(u.divergencia),
         valor: round2(u.valorDivergencia),
         veredito: vereditoDe(round2(u.valorDivergencia)),
       })
@@ -468,8 +526,9 @@ export async function calcularFechamentoDoDia(
   }
 
   const caros = ordenarPorDinheiro(input.caros.map(linhaDe))
+  const revenda = ordenarPorDinheiro(revendaIds.map(linhaDe))
   const porcoes = ordenarPorDinheiro(input.porcoes.map(linhaDe))
-  const todas = [...caros, ...porcoes]
+  const todas = [...caros, ...revenda, ...porcoes]
 
   // ── o placar: Σ dos vereditos das listas ─────────────────────────────────────
   const comContagem = todas.filter((l) => l.faltouValor != null)
@@ -515,5 +574,9 @@ export async function calcularFechamentoDoDia(
     avisos.push('Nenhum item das suas listas foi contado neste período. Sem contagem não existe "real", então não há variância a mostrar.')
   }
 
-  return { de, ate, placar, caros, porcoes, porDia, avisos }
+  return {
+    de, ate, placar, caros, revenda, porcoes, porDia, avisos,
+    // ⭐ v1.3 — a MESMA função pros três rodapés (uma régua, três blocos)
+    totais: { caros: totalDaSecao(caros), revenda: totalDaSecao(revenda), porcoes: totalDaSecao(porcoes) },
+  }
 }

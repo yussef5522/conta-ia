@@ -15,12 +15,14 @@
 // registrado como dívida com a conferência dos 107 arquivos no escopo.
 
 import { useCallback, useEffect, useMemo, useRef, useState, use } from 'react'
+import type { UniversoDoSeletor } from '@/lib/stock/universo-do-seletor'
 import Link from 'next/link'
 import { Radar, Loader2, Plus, X, ChevronRight, ChevronDown } from 'lucide-react'
 import { fetchComTimeout } from '@/lib/http/fetch-com-timeout'
 import { BuscaItem } from '@/components/estoque/busca-item'
 import { RADAR, TOM } from '@/components/estoque/radar-tokens'
-import type { RadarDoEstoque, LinhaDoRadar, Veredito } from '@/lib/stock/radar/fechamento'
+import type { RadarDoEstoque, LinhaDoRadar, Veredito, TotalDaSecao } from '@/lib/stock/radar/fechamento'
+import type { Lista } from '@/lib/stock/radar/watchlist'
 import type { ChavePeriodo } from '@/lib/stock/radar/periodo'
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -45,6 +47,46 @@ const PILULAS: { chave: ChavePeriodo; rotulo: string }[] = [
  * certinho", que é a mentira que esta tela inteira existe pra não contar. O traço
  * literalmente se interrompe, e o olho entende "aqui ninguém mediu".
  */
+/**
+ * ⭐⭐ v1.3 — O RODAPÉ DE CADA SEÇÃO.
+ *
+ * ⛔⛔ **UN e KG NUNCA somam num número só** — é lei da casa desde o placar de 13/09, onde
+ * *"1.415,84 un"* misturava porção (UN) com massa (KG) e aquele `,84` era um número que
+ * **não existe**. Aqui a quantidade sai por unidade (*"14 un e 2,3 kg"*) e só o DINHEIRO
+ * soma tudo, porque real é real venha de onde vier.
+ *
+ * ⛔ E só o que foi CONTADO entra: *"falta-contar fica fora, nunca vira zero"*.
+ */
+function RodapeDaSecao({ t }: { t: TotalDaSecao }) {
+  const porUn = (m: Record<string, number>) =>
+    Object.entries(m).map(([un, v]) => `${qtd(v)} ${un.toLowerCase()}`).join(' e ')
+  const temFalta = Object.keys(t.faltouPorUnidade).length > 0
+  const temSobra = Object.keys(t.sobrouPorUnidade).length > 0
+  // ⛔ nada contado no período: o rodapé DIZ isso, em vez de mostrar zeros
+  if (t.itensContados === 0) {
+    return (
+      <p className="border-t px-4 py-2.5 text-[11.5px]" style={{ borderColor: RADAR.line, color: RADAR.mudo }}>
+        nenhum item desta lista foi contado no período — sem contagem não há total a somar
+      </p>
+    )
+  }
+  return (
+    <p className="border-t px-4 py-2.5 text-[11.5px]" style={{ borderColor: RADAR.line, color: RADAR.sub }}>
+      {temFalta && (
+        <>faltaram no total: <b style={{ color: RADAR.coral }}>{porUn(t.faltouPorUnidade)} · {brl(t.faltouValor)}</b></>
+      )}
+      {temFalta && temSobra && ' — '}
+      {temSobra && (
+        <>sobraram: <b style={{ color: RADAR.verde }}>{porUn(t.sobrouPorUnidade)} · {brl(t.sobrouValor)}</b></>
+      )}
+      {!temFalta && !temSobra && <>os {t.itensContados} contados <b style={{ color: RADAR.verde }}>bateram</b></>}
+      {t.itensSemContagem > 0 && (
+        <span style={{ color: RADAR.mudo }}> · {t.itensSemContagem} ainda sem contagem (fora do total)</span>
+      )}
+    </p>
+  )
+}
+
 function Sparkline({ pontos }: { pontos: { dia: string; valor: number | null }[] }) {
   const medidos = pontos.filter((p) => p.valor != null)
   if (medidos.length === 0) return null
@@ -116,10 +158,10 @@ function BarraDaSemana({ dias }: { dias: { dia: string; valor: number | null }[]
 }
 
 /** ⭐ v1.2 — o último veredito MEDIDO, com data: história verdadeira no dia sem contagem */
-function ChipDoUltimo({ u }: { u: NonNullable<LinhaDoRadar['ultimoVeredito']> }) {
+function ChipDoUltimo({ u, unidade }: { u: NonNullable<LinhaDoRadar['ultimoVeredito']>; unidade: string }) {
   const t = TOM[u.veredito]
-  const texto = u.veredito === 'BATEU' ? 'bateu'
-    : `${u.valor < 0 ? 'faltou' : 'sobrou'} ${brl(Math.abs(u.valor))}`
+  // ⭐ v1.3 — a mesma régua da pílula: quantidade primeiro
+  const texto = u.veredito === 'BATEU' ? 'bateu' : textoDoVeredito(u.qtd, u.valor, unidade)
   return (
     <span className="whitespace-nowrap rounded-full px-[7px] py-[2px] text-[10.5px] font-bold"
       style={{ background: t.bg, color: t.cor }}>
@@ -128,13 +170,23 @@ function ChipDoUltimo({ u }: { u: NonNullable<LinhaDoRadar['ultimoVeredito']> })
   )
 }
 
-/** ⛔ o veredito EM DINHEIRO, com o semáforo semântico do mock */
+/**
+ * ⭐⭐ v1.3 — **QUANTIDADE PRIMEIRO, dinheiro depois** (decisão do dono: *"quantidade é o
+ * número MAIS importante"*). *"faltou 2 un · R$ 3,31"* — o dinheiro sozinho não diz se o
+ * furo é meia caixa ou o estoque inteiro, e é a quantidade que a cozinha reconhece.
+ */
+function textoDoVeredito(qtdFaltou: number, valor: number, unidade: string): string {
+  const verbo = valor < 0 ? 'faltou' : 'sobrou'
+  return `${verbo} ${qtd(Math.abs(qtdFaltou))} ${unidade.toLowerCase()} · ${brl(Math.abs(valor))}`
+}
+
+/** ⛔ o veredito com o semáforo semântico do mock */
 function Pilula({ l }: { l: LinhaDoRadar }) {
   const t = TOM[l.veredito]
   const texto =
     l.veredito === 'SEM_CONTAGEM' ? 'falta contar hoje'
       : l.veredito === 'BATEU' ? '✓ bateu'
-        : `${l.faltouValor! < 0 ? 'faltou' : 'sobrou'} ${brl(Math.abs(l.faltouValor!))}`
+        : textoDoVeredito(l.faltou!, l.faltouValor!, l.unidadeControle)
   return (
     <span className="shrink-0 whitespace-nowrap rounded-full px-[11px] py-[4px] text-[12.5px] font-extrabold tabular-nums"
       style={{ background: t.bg, color: t.cor }}>
@@ -244,9 +296,15 @@ function ContaDePadeiro({ l, empresaId }: { l: LinhaDoRadar; empresaId: string }
   )
 }
 
-function Bloco({ titulo, subtitulo, linhas, empresaId, lista, podeEditar, aoMudar }: {
+function Bloco({ titulo, subtitulo, linhas, empresaId, lista, podeEditar, aoMudar, total, universo }: {
   titulo: string; subtitulo: string; linhas: LinhaDoRadar[]; empresaId: string
-  lista: 'CAROS' | 'PORCOES'; podeEditar: boolean; aoMudar: () => void
+  lista: Lista; podeEditar: boolean; aoMudar: () => void
+  total: TotalDaSecao
+  /** ⭐ v1.3 — cada lista busca no SEU universo: revenda não oferece matéria-prima */
+  // ⛔ DERIVADO do dono único (`universo-do-seletor.ts`), nunca enumerado aqui — lista
+  // à mão envelhece no primeiro universo novo, que foi exatamente o que aconteceu com o
+  // REVENDA. O tipo é o contrato: universo que não existe lá não compila aqui.
+  universo: UniversoDoSeletor
 }) {
   const [aberta, setAberta] = useState<string | null>(null)
   const [adicionando, setAdicionando] = useState(false)
@@ -298,7 +356,7 @@ function Bloco({ titulo, subtitulo, linhas, empresaId, lista, podeEditar, aoMuda
           {/* ⭐ o seletor ÚNICO da casa, no universo da PRATELEIRA — o que se conta */}
           <BuscaItem
             companyId={empresaId}
-            universo="PRATELEIRA"
+            universo={universo}
             jaAdicionados={linhas.map((l) => l.itemId)}
             placeholder={lista === 'CAROS' ? 'buscar matéria-prima…' : 'buscar porção…'}
             onEscolher={(item) => void mexer('POST', item.id)}
@@ -342,7 +400,7 @@ function Bloco({ titulo, subtitulo, linhas, empresaId, lista, podeEditar, aoMuda
                       hoje: é o que já foi medido, e só. */}
                   {l.veredito === 'SEM_CONTAGEM' && (l.ultimoVeredito || l.historico.some((h) => h.valor != null)) && (
                     <span className="mt-1 flex items-center gap-1.5">
-                      {l.ultimoVeredito && <ChipDoUltimo u={l.ultimoVeredito} />}
+                      {l.ultimoVeredito && <ChipDoUltimo u={l.ultimoVeredito} unidade={l.unidadeControle} />}
                       <Sparkline pontos={l.historico} />
                     </span>
                   )}
@@ -363,6 +421,9 @@ function Bloco({ titulo, subtitulo, linhas, empresaId, lista, podeEditar, aoMuda
           </div>
         )
       })}
+
+      {/* ⭐ v1.3 — o total da seção, com UN e KG separados */}
+      {linhas.length > 0 && <RodapeDaSecao t={total} />}
     </section>
   )
 }
@@ -413,7 +474,7 @@ export default function RadarPage({ params }: { params: Promise<{ id: string }> 
    */
   const semana = useMemo(() => {
     if (!dados) return []
-    const todas = [...dados.caros, ...dados.porcoes]
+    const todas = [...dados.caros, ...dados.revenda, ...dados.porcoes]
     const base = todas[0]?.historico ?? []
     return base.map((p, i) => {
       const doDia = todas.map((l) => l.historico[i]?.valor).filter((v): v is number => v != null)
@@ -522,13 +583,18 @@ export default function RadarPage({ params }: { params: Promise<{ id: string }> 
           ))}
 
           {/* ═══ OS DOIS BLOCOS — REGRA 12: empilham no celular, lado a lado no computador ═══ */}
+          {/* ⭐ v1.3 — TRÊS seções, na ordem do dono: caros · revenda · porções.
+              ⚠️ REGRA 12: empilham no celular pela MESMA medida de sempre. */}
           <div className="grid grid-cols-1 gap-3 min-[900px]:grid-cols-2 min-[900px]:items-start">
             <Bloco titulo="💰 OS CAROS" subtitulo="matéria-prima que você escolheu vigiar"
-              linhas={dados.caros} empresaId={empresaId} lista="CAROS"
-              podeEditar={podeEditar} aoMudar={() => void carregar()} />
+              linhas={dados.caros} total={dados.totais.caros} empresaId={empresaId} lista="CAROS"
+              universo="COMPRAVEL" podeEditar={podeEditar} aoMudar={() => void carregar()} />
+            <Bloco titulo="🥤 REVENDA" subtitulo="bebida e revenda — o que entra pronto e sai pronto"
+              linhas={dados.revenda} total={dados.totais.revenda} empresaId={empresaId} lista="REVENDA"
+              universo="REVENDA" podeEditar={podeEditar} aoMudar={() => void carregar()} />
             <Bloco titulo="🍳 PORÇÕES" subtitulo="o que a cozinha produz — em unidades"
-              linhas={dados.porcoes} empresaId={empresaId} lista="PORCOES"
-              podeEditar={podeEditar} aoMudar={() => void carregar()} />
+              linhas={dados.porcoes} total={dados.totais.porcoes} empresaId={empresaId} lista="PORCOES"
+              universo="PRATELEIRA" podeEditar={podeEditar} aoMudar={() => void carregar()} />
           </div>
 
           {/* ⭐⭐ A HONESTIDADE NO RODAPÉ (exigência do dono) */}

@@ -58,11 +58,17 @@ afterAll(async () => {
 /** o retrato do mundo PJ — o que NÃO pode mudar */
 async function fotoDaPJ() {
   return {
-    transactions: await prisma.transaction.count(),
-    bankAccounts: await prisma.bankAccount.count(),
+    // ⚠️⚠️ ESCOPADO POR EMPRESA, e é a TERCEIRA vez que esta casa paga por isto (o
+    // `snapshotClosedModules` global, 23/08 e 24/08). A suíte roda arquivos em PARALELO
+    // contra o MESMO banco: `count()` sem `where` conta a transação que OUTRO teste
+    // acabou de criar entre as duas fotos, e pinta de vermelho um isolamento intacto.
+    // ⭐ E escopar não afrouxa — deixa a pergunta EXATA: *"o import PF mexeu em alguma
+    // coisa DESTA empresa?"*, que é a única coisa que este teste pode afirmar.
+    transactions: await prisma.transaction.count({ where: { bankAccount: { companyId } } }),
+    bankAccounts: await prisma.bankAccount.count({ where: { companyId } }),
     saldoDaConta: (await prisma.bankAccount.findUniqueOrThrow({ where: { id: contaPJId }, select: { balance: true } })).balance,
-    categories: await prisma.category.count(),
-    suppliers: await prisma.supplier.count(),
+    categories: await prisma.category.count({ where: { companyId } }),
+    suppliers: await prisma.supplier.count({ where: { companyId } }),
   }
 }
 

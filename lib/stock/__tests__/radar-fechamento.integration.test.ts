@@ -15,7 +15,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { prisma } from '@/lib/db'
 import { criarMovimento } from '../movement'
 import { iniciarContagem, contarLinha, finalizarContagem } from '../contagem'
-import { calcularFechamentoDoDia, vereditoDe, ordenarPorDinheiro, DEGRAU_VERMELHO, type LinhaDoRadar } from '../radar/fechamento'
+import { calcularFechamentoDoDia, vereditoDe, ordenarPorDinheiro, totalDaSecao, DEGRAU_VERMELHO, type LinhaDoRadar } from '../radar/fechamento'
 import { listasDoRadar, porNaLista, tirarDaLista, montarSemente } from '../radar/watchlist'
 import { diaEmSaoPaulo } from '@/lib/datas/dia-sao-paulo'
 
@@ -47,7 +47,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await prisma.$executeRawUnsafe('DROP TRIGGER IF EXISTS trg_stock_movement_no_update;').catch(() => {})
   await prisma.$executeRawUnsafe('DROP TRIGGER IF EXISTS trg_stock_movement_no_delete;').catch(() => {})
-  await prisma.stockRadarWatchlist.deleteMany({ where: { companyId } })
+  await prisma.stockRadarItem.deleteMany({ where: { companyId } })
   await prisma.stockContagemItem.deleteMany({ where: { companyId } })
   await prisma.stockContagem.deleteMany({ where: { companyId } })
   await prisma.stockMovement.deleteMany({ where: { companyId } })
@@ -68,8 +68,8 @@ async function contar(itemId: string, qtd: number) {
   await finalizarContagem(companyId, s.id, prisma)
 }
 
-const radar = (caros: string[], porcoes: string[] = []) =>
-  calcularFechamentoDoDia({ companyId, de: ontem, ate: hoje, caros, porcoes }, prisma)
+const radar = (caros: string[], porcoes: string[] = [], revenda: string[] = []) =>
+  calcularFechamentoDoDia({ companyId, de: ontem, ate: hoje, caros, revenda, porcoes }, prisma)
 
 describe('⭐⭐⭐ Σ(conta de padeiro) == veredito == placar', () => {
   it('⭐ a conta explica a variância AO CENTAVO, e o placar soma as linhas', async () => {
@@ -198,6 +198,11 @@ describe('⭐ a ORDEM é pelo DINHEIRO (régua mundial: R$, não %)', () => {
     ultimoVeredito: null, historico: [],
   })
 
+  /** ⭐ v1.3 — um fabricante de linha com unidade, pro teste do total */
+  const linhaCom = (nome: string, faltou: number | null, un: string): LinhaDoRadar => ({
+    ...l(nome, faltou), unidadeControle: un, faltou, faltouValor: faltou == null ? null : faltou * 2,
+  })
+
   it('quem faltou mais dinheiro primeiro; sem contagem por ÚLTIMO', () => {
     const ord = ordenarPorDinheiro([l('bateu', 0), l('sem', null), l('pequeno', -10), l('grande', -900), l('sobrou', 5)])
     expect(ord.map((x) => x.nome)).toEqual(['grande', 'pequeno', 'sobrou', 'bateu', 'sem'])
@@ -247,7 +252,7 @@ describe('⭐⭐ as listas: semeiam UMA vez e depois são do dono', () => {
    */
   it('⛔⛔ com lista existente, a SEMENTE não é nem consultada', async () => {
     const espiao = {
-      stockRadarWatchlist: {
+      stockRadarItem: {
         findMany: async () => [{ lista: 'CAROS', itemId: 'i1' }, { lista: 'PORCOES', itemId: 'i2' }],
       },
       stockItem: {
@@ -263,7 +268,7 @@ describe('⭐⭐ as listas: semeiam UMA vez e depois são do dono', () => {
   it('⭐ pôr é idempotente — dois toques, uma linha', async () => {
     await porNaLista({ companyId, lista: 'CAROS', itemId: coxao }, prisma)
     await porNaLista({ companyId, lista: 'CAROS', itemId: coxao }, prisma)
-    const n = await prisma.stockRadarWatchlist.count({ where: { companyId, lista: 'CAROS', itemId: coxao } })
+    const n = await prisma.stockRadarItem.count({ where: { companyId, lista: 'CAROS', itemId: coxao } })
     expect(n).toBe(1)
   })
 })
@@ -277,5 +282,79 @@ describe('⭐⭐ o que está FORA das listas aparece NOMEADO', () => {
     const r = await radar([queijo])
     expect(r.placar.foraDasListasItens).toBeGreaterThan(0)
     expect(r.placar.foraDasListasValor, 'o furo de fora das listas sumiu do payload').toBeLessThan(0)
+  })
+})
+
+
+describe('⭐⭐⭐ v1.3 — o TOTAL da seção, e a LEI das unidades', () => {
+  const l = (nome: string, faltou: number | null, un: string, valor?: number): LinhaDoRadar => ({
+    itemId: nome, nome, unidadeControle: un, custoMedio: 10, saldoSistema: 0, valorSistema: 0,
+    veredito: vereditoDe(valor ?? faltou), faltou, faltouValor: faltou == null ? null : (valor ?? faltou),
+    ultimaContagem: null, conta: null, ultimoVeredito: null, historico: [],
+  })
+
+  it('⛔⛔ UN e KG NUNCA somam num número só', () => {
+    const t = totalDaSecao([
+      l('a', -14, 'UN', -100),
+      l('b', -2.3, 'KG', -145.1),
+    ])
+    // ⭐ a quantidade sai POR UNIDADE…
+    expect(t.faltouPorUnidade).toEqual({ UN: 14, KG: 2.3 })
+    // …e o DINHEIRO soma tudo, porque real é real venha de onde vier
+    expect(t.faltouValor).toBe(245.1)
+  })
+
+  it('⭐ faltou e sobrou são baldes SEPARADOS — um não abate o outro', () => {
+    const t = totalDaSecao([l('a', -14, 'UN', -100), l('b', 3, 'UN', 12.6)])
+    expect(t.faltouPorUnidade).toEqual({ UN: 14 })
+    expect(t.faltouValor).toBe(100)
+    expect(t.sobrouPorUnidade).toEqual({ UN: 3 })
+    expect(t.sobrouValor).toBe(12.6)
+  })
+
+  it('⛔⛔ "falta contar" fica FORA do total — nunca vira zero', () => {
+    const t = totalDaSecao([l('a', -5, 'UN', -50), l('sem', null, 'UN')])
+    expect(t.itensContados).toBe(1)
+    expect(t.itensSemContagem).toBe(1)
+    expect(t.faltouPorUnidade).toEqual({ UN: 5 })
+    // ⛔ o item sem contagem não acrescentou 0 a unidade nenhuma
+    expect(Object.keys(t.faltouPorUnidade)).toEqual(['UN'])
+  })
+
+  it('⭐ quem BATEU não entra em falta nem em sobra', () => {
+    const t = totalDaSecao([l('bateu', 0, 'UN', 0)])
+    expect(t.itensContados).toBe(1)
+    expect(t.faltouPorUnidade).toEqual({})
+    expect(t.sobrouPorUnidade).toEqual({})
+  })
+})
+
+describe('⭐⭐ v1.3 — a seção REVENDA e o Σ das três', () => {
+  it('⭐ a revenda é uma lista PRÓPRIA no payload', async () => {
+    const r = await radar([queijo], [], [calabresa])
+    expect(r.revenda.map((x) => x.itemId)).toEqual([calabresa])
+    expect(r.caros.map((x) => x.itemId)).toEqual([queijo])
+    expect(r.totais.revenda).toBeTruthy()
+  })
+
+  it('⛔⛔ Σ das TRÊS seções == placar (o guard do dono)', async () => {
+    const r = await radar([queijo, coxao], [], [calabresa])
+    const somaSecoes = [...r.caros, ...r.revenda, ...r.porcoes]
+      .reduce((s, x) => s + (x.faltouValor ?? 0), 0)
+    expect(Math.abs(Math.abs(somaSecoes) - r.placar.valor)).toBeLessThan(0.005)
+    // ⭐ e os rodapés somam o mesmo dinheiro que as linhas
+    const doRodape = (['caros', 'revenda', 'porcoes'] as const)
+      .reduce((s, k) => s + r.totais[k].faltouValor - r.totais[k].sobrouValor, 0)
+    expect(Math.abs(Math.abs(doRodape) - r.placar.valor), 'o rodapé não bate com o placar').toBeLessThan(0.005)
+  })
+})
+
+describe('⭐ v1.3 — o último veredito carrega a QUANTIDADE', () => {
+  it('o chip tem qtd e valor — dinheiro sozinho não diz o tamanho do furo', async () => {
+    const r = await radar([queijo])
+    const u = r.caros[0]!.ultimoVeredito
+    expect(u, 'o item contado perdeu o último veredito').not.toBeNull()
+    expect(typeof u!.qtd, 'o último veredito não traz quantidade').toBe('number')
+    expect(u!.qtd).not.toBe(0)
   })
 })

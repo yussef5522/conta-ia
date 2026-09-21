@@ -16,8 +16,18 @@ import type { PrismaClient } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { saldosDaEmpresa } from '@/lib/stock/saldo'
 
-export type Lista = 'CAROS' | 'PORCOES'
-export const LISTAS: Lista[] = ['CAROS', 'PORCOES']
+/**
+ * ⭐ O VOCABULÁRIO DAS LISTAS — e ele mora AQUI, não num CHECK do banco.
+ *
+ * ⚠️⚠️ A lição de 21/09: eu tinha posto `CHECK (lista IN ('CAROS','PORCOES'))` como
+ * "camada 1" e, no dia seguinte, a 3ª lista (REVENDA) esbarrou nele — **o módulo é
+ * CREATE-only, então enum fechada no banco custa uma tabela nova a cada valor novo**.
+ * ⭐ O banco protege o que não muda (não-vazio, único por item); o vocabulário, que é
+ * decisão de produto, mora no TypeScript com guard de teste.
+ */
+export type Lista = 'CAROS' | 'REVENDA' | 'PORCOES'
+/** ⭐ a ORDEM importa: é a ordem das seções na tela (caros · revenda · porções) */
+export const LISTAS: Lista[] = ['CAROS', 'REVENDA', 'PORCOES']
 
 /**
  * ⭐ Os nomes que o dono nomeou, pra semear a Caçula com o que ele pediu.
@@ -36,23 +46,25 @@ const SEMENTE_CAROS = [
 
 /** ⭐ quantas porções o dono pediu pra começar */
 export const PORCOES_NO_SEED = 30
+/** ⭐ e quantas de revenda — bebida é item de giro, a lista curta é a que se olha */
+export const REVENDA_NO_SEED = 10
 
-export interface ListasDoRadar { caros: string[]; porcoes: string[]; semeadaAgora: boolean }
+export interface ListasDoRadar { caros: string[]; revenda: string[]; porcoes: string[]; semeadaAgora: boolean }
 
 export async function listasDoRadar(
   companyId: string,
   db: PrismaClient = defaultPrisma,
   quemSemeou?: string,
 ): Promise<ListasDoRadar> {
-  const linhas = await db.stockRadarWatchlist.findMany({
+  const linhas = await db.stockRadarItem.findMany({
     where: { companyId },
     select: { lista: true, itemId: true },
   })
   if (linhas.length > 0) return { ...agrupar(linhas), semeadaAgora: false }
 
   const semente = await montarSemente(companyId, db)
-  if (semente.caros.length === 0 && semente.porcoes.length === 0) {
-    return { caros: [], porcoes: [], semeadaAgora: false }
+  if (semente.caros.length === 0 && semente.revenda.length === 0 && semente.porcoes.length === 0) {
+    return { caros: [], revenda: [], porcoes: [], semeadaAgora: false }
   }
   /**
    * ⚠️ **A CORRIDA DO PRIMEIRO ACESSO NÃO PODE DERRUBAR A TELA.** Duas abas abrindo junto
@@ -63,24 +75,21 @@ export async function listasDoRadar(
    * case-sensitive (28/08).
    */
   try {
-    await db.stockRadarWatchlist.createMany({
-      data: [
-        ...semente.caros.map((itemId) => ({ companyId, lista: 'CAROS', itemId, criadoPorId: quemSemeou ?? null })),
-        ...semente.porcoes.map((itemId) => ({ companyId, lista: 'PORCOES', itemId, criadoPorId: quemSemeou ?? null })),
-      ],
+    await db.stockRadarItem.createMany({
+      data: LISTAS.flatMap((lista) =>
+        semente[lista === 'CAROS' ? 'caros' : lista === 'REVENDA' ? 'revenda' : 'porcoes']
+          .map((itemId) => ({ companyId, lista, itemId, criadoPorId: quemSemeou ?? null }))),
     })
   } catch {
-    const denovo = await db.stockRadarWatchlist.findMany({ where: { companyId }, select: { lista: true, itemId: true } })
+    const denovo = await db.stockRadarItem.findMany({ where: { companyId }, select: { lista: true, itemId: true } })
     return { ...agrupar(denovo), semeadaAgora: false }
   }
   return { ...semente, semeadaAgora: true }
 }
 
-function agrupar(linhas: { lista: string; itemId: string }[]): { caros: string[]; porcoes: string[] } {
-  return {
-    caros: linhas.filter((l) => l.lista === 'CAROS').map((l) => l.itemId),
-    porcoes: linhas.filter((l) => l.lista === 'PORCOES').map((l) => l.itemId),
-  }
+function agrupar(linhas: { lista: string; itemId: string }[]): { caros: string[]; revenda: string[]; porcoes: string[] } {
+  const da = (lista: Lista) => linhas.filter((l) => l.lista === lista).map((l) => l.itemId)
+  return { caros: da('CAROS'), revenda: da('REVENDA'), porcoes: da('PORCOES') }
 }
 
 /**
@@ -94,10 +103,11 @@ function agrupar(linhas: { lista: string; itemId: string }[]): { caros: string[]
 export async function montarSemente(
   companyId: string,
   db: PrismaClient = defaultPrisma,
-): Promise<{ caros: string[]; porcoes: string[] }> {
+): Promise<{ caros: string[]; revenda: string[]; porcoes: string[] }> {
   const [itens, saldos] = await Promise.all([
     db.stockItem.findMany({
-      where: { companyId, ativo: true, categoria: { in: ['MATERIA_PRIMA', 'INTERMEDIARIO'] } },
+      // ⭐ v1.3 — REVENDA entra: *"os caros fica só matéria-prima, como o nome diz"*
+      where: { companyId, ativo: true, categoria: { in: ['MATERIA_PRIMA', 'INTERMEDIARIO', 'REVENDA'] } },
       select: { id: true, nome: true, categoria: true },
     }),
     saldosDaEmpresa(db, companyId),
@@ -119,7 +129,14 @@ export async function montarSemente(
     .slice(0, PORCOES_NO_SEED)
     .map((i) => i.id)
 
-  return { caros, porcoes }
+  /** ⭐ v1.3 — a revenda começa pelo que tem mais dinheiro parado na prateleira */
+  const revenda = itens
+    .filter((i) => i.categoria === 'REVENDA')
+    .sort((a, b) => (valorPorItem.get(b.id) ?? 0) - (valorPorItem.get(a.id) ?? 0))
+    .slice(0, REVENDA_NO_SEED)
+    .map((i) => i.id)
+
+  return { caros, revenda, porcoes }
 }
 
 /** ⭐ pôr é IDEMPOTENTE pelo ÚNICO do banco — o dono toca duas vezes e o resultado é o mesmo */
@@ -127,7 +144,7 @@ export async function porNaLista(
   input: { companyId: string; lista: Lista; itemId: string; quem?: string },
   db: PrismaClient = defaultPrisma,
 ): Promise<void> {
-  await db.stockRadarWatchlist.upsert({
+  await db.stockRadarItem.upsert({
     where: { companyId_lista_itemId: { companyId: input.companyId, lista: input.lista, itemId: input.itemId } },
     create: { companyId: input.companyId, lista: input.lista, itemId: input.itemId, criadoPorId: input.quem ?? null },
     update: {},
@@ -138,7 +155,7 @@ export async function tirarDaLista(
   input: { companyId: string; lista: Lista; itemId: string },
   db: PrismaClient = defaultPrisma,
 ): Promise<void> {
-  await db.stockRadarWatchlist.deleteMany({
+  await db.stockRadarItem.deleteMany({
     where: { companyId: input.companyId, lista: input.lista, itemId: input.itemId },
   })
 }

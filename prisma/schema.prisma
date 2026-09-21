@@ -4161,6 +4161,27 @@ model StockSaida {
 // AJUSTE_CONTAGEM entra no ledger ao confirmar a linha, o saldo bate andando); (c) a
 // CONTAGEM INICIAL é a mesma tela no 1º uso, só marcada tipo=INICIAL.
 // Isolamento mantido: só stock_, companyId é VALOR sem @relation, migration só CRIA.
+// ⭐⭐ RADAR DO ESTOQUE — as TRÊS listas que o dono vigia (21/09/2026).
+// ⚠️ `lista` é String com CHECK de FORMA (não de vocabulário): o módulo é CREATE-only, e
+// enum fechada no banco custaria uma tabela nova a cada lista nova. O vocabulário mora em
+// `lib/stock/radar/watchlist.ts` (`LISTAS`), com guard de teste.
+model StockRadarItem {
+  id          String   @id @default(cuid())
+  companyId   String // REGRA 8 — valor, sem @relation
+  lista       String // CAROS | REVENDA | PORCOES
+  itemId      String
+  criadoEm    DateTime @default(now())
+  criadoPorId String?
+
+  @@unique([companyId, lista, itemId])
+  @@index([companyId, lista])
+  @@map("stock_radar_item")
+}
+
+// ⚠️ ÓRFÃ desde 21/09 (substituída por `StockRadarItem`) — fica porque o módulo proíbe DROP.
+// ⭐⭐ A LIÇÃO: o `CHECK (lista IN ('CAROS','PORCOES'))` que eu chamei de "camada 1" virou
+// parede no dia seguinte, quando a 3ª lista nasceu. ***Vocabulário fechado no banco só
+// serve onde ALTER é possível*** — aqui não é.
 // ⭐⭐ RADAR DO ESTOQUE — as duas listas que o dono vigia (20/09/2026).
 // ⚠️ Lista é CONFIGURAÇÃO do dono, não dado derivado: o que ele escolhe vigiar hoje não
 // pode mudar sozinho porque o estoque mudou. Por isso é tabela, não heurística de "os N

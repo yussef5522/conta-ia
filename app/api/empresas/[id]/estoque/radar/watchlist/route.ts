@@ -8,13 +8,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { requireStock } from '@/lib/stock/require-stock'
-import { porNaLista, tirarDaLista, LISTAS } from '@/lib/stock/radar/watchlist'
+import { porNaLista, tirarDaLista, LISTAS, type Lista } from '@/lib/stock/radar/watchlist'
 import { respostaDeErroDoEstoque } from '@/lib/stock/erro-da-tela'
 
 interface Params { params: Promise<{ id: string }> }
 
+/** ⚠️ o vocabulário vem da LIB — enum repetido aqui seria a 2ª lista de listas */
 const corpo = z.object({
-  lista: z.enum(['CAROS', 'PORCOES']),
+  lista: z.enum(LISTAS as [Lista, ...Lista[]]),
   itemId: z.string().min(1),
 })
 

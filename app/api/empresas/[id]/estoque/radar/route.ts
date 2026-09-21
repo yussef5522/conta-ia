@@ -27,7 +27,7 @@ export async function GET(request: NextRequest, { params }: Params) {
     )
     const listas = await listasDoRadar(companyId, prisma, auth.userId)
     const radar = await calcularFechamentoDoDia(
-      { companyId, de: janela.de, ate: janela.ate, caros: listas.caros, porcoes: listas.porcoes },
+      { companyId, de: janela.de, ate: janela.ate, caros: listas.caros, revenda: listas.revenda, porcoes: listas.porcoes },
       prisma,
     )
     return NextResponse.json({ ...radar, janela, listaSemeadaAgora: listas.semeadaAgora })

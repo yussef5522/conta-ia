@@ -160,6 +160,12 @@
   .conta .ressalva{display:block;margin-top:2px;font-size:11px;font-weight:700;color:var(--ambar);}
   /* ⭐⭐ v1.2 — VIDA no dia sem contagem: o último veredito MEDIDO (com data) + 7 dias.
      ⛔ Nada aqui é número de hoje — é história verdadeira, e é por isso que pode ter cor. */
+  /* ⭐⭐ v1.3 — o RODAPÉ da seção. ⛔ UN e KG nunca somam num número só (a lei desde o
+     placar de 13/09); o dinheiro soma tudo. Falta-contar fica FORA, nunca vira zero. */
+  .rodape-secao{border-top:1px solid var(--line);padding:10px 16px;font-size:11.5px;color:var(--sub);}
+  .rodape-secao .falt{color:var(--coral);font-weight:800;}
+  .rodape-secao .sobr{color:var(--verde);font-weight:800;}
+  .rodape-secao .mudo{color:var(--mudo);}
   .historia{display:flex;align-items:center;gap:6px;margin-top:4px;}
   .chip-ult{white-space:nowrap;border-radius:99px;padding:2px 7px;font-size:10.5px;font-weight:700;}
   .chip-ult.ok{background:var(--verde-bg);color:var(--verde);}
@@ -323,7 +329,7 @@
       <!-- ⭐ ORDEM: quem faltou mais DINHEIRO primeiro (régua mundial: R$, não %) -->
       <button class="linha">
         <span class="nm">QUEIJO MUSSARELA EM PEÇA<small>no sistema: <b>60,375 kg · R$ 1.868,60</b> · 30,95/kg · contado hoje 14:20</small></span>
-        <span class="ver grande num">faltou R$ 118,40</span><span class="seta">▾</span>
+        <span class="ver grande num">faltou 3,825 kg · R$ 118,40</span><span class="seta">▾</span>
       </button>
 
       <!-- ⭐⭐ A CONTA DE PADEIRO — aberta pra o dono julgar o desenho -->
@@ -342,11 +348,11 @@
 
       <button class="linha">
         <span class="nm">Coxão Mole<small>no sistema: <b>31,2 kg · R$ 1.504,78</b> · 48,23/kg · contado hoje 14:22</small></span>
-        <span class="ver pequeno num">faltou R$ 38,60</span><span class="seta">▸</span>
+        <span class="ver pequeno num">faltou 0,8 kg · R$ 38,60</span><span class="seta">▸</span>
       </button>
       <button class="linha">
         <span class="nm">BACON<small>no sistema: <b>63,1 kg · R$ 1.980,08</b> · 31,38/kg · contado hoje 14:25</small></span>
-        <span class="ver ok num">sobrou R$ 12,10</span><span class="seta">▸</span>
+        <span class="ver ok num">sobrou 0,386 kg · R$ 12,10</span><span class="seta">▸</span>
       </button>
       <button class="linha">
         <span class="nm">CALABRESA<small>no sistema: <b>45,93 kg · R$ 833,17</b> · 18,14/kg · contado hoje 14:26</small></span>
@@ -356,7 +362,7 @@
       <button class="linha">
         <span class="nm">FILÉ DE PEITO DE FRANGO<small>no sistema: <b>123,76 kg · R$ 2.011,10</b> · 16,25/kg</small>
           <span class="historia">
-            <span class="chip-ult ok">18/09: sobrou R$ 2,10</span>
+            <span class="chip-ult ok">18/09: sobrou 0,13 kg · R$ 2,10</span>
             <svg class="spark" width="62" height="16" aria-hidden>
               <line x1="0" y1="8" x2="62" y2="8" stroke="var(--line)" stroke-width="1"/>
               <!-- ⛔ o traço se INTERROMPE nos dias sem contagem — lacuna, nunca zero -->
@@ -387,6 +393,34 @@
         </table>
         <a class="verlink" href="#">ver cada movimento →</a>
       </div>
+      <div class="rodape-secao">
+        faltaram no total: <span class="falt">4,625 kg · R$ 157,00</span> — sobraram:
+        <span class="sobr">0,386 kg · R$ 12,10</span><span class="mudo"> · 1 ainda sem contagem (fora do total)</span>
+      </div>
+    </section>
+
+    <!-- ───────── 🥤 REVENDA (v1.3) — bebida sai do meio da matéria-prima ───────── -->
+    <section class="bloco">
+      <div class="b-cab">
+        <div class="t">🥤 REVENDA<small>bebida e revenda — o que entra pronto e sai pronto</small></div>
+        <button class="mais">+ adicionar</button>
+      </div>
+      <button class="linha">
+        <span class="nm">COCA COLA 600ML<small>no sistema: <b>109 un · R$ 360,47</b> · 3,31/un</small></span>
+        <span class="ver pequeno num">faltou 2 un · R$ 3,31</span><span class="seta">▸</span>
+      </button>
+      <button class="linha">
+        <span class="nm">FANTA UVA 2L<small>no sistema: <b>24 un · R$ 163,44</b> · 6,81/un</small>
+          <span class="historia"><span class="chip-ult ok">19/09: bateu</span></span></span>
+        <span class="ver mudo">falta contar hoje</span><span class="seta">▸</span>
+      </button>
+      <button class="linha">
+        <span class="nm">CERV SKOL 600ML<small>no sistema: <b>81 un · R$ 503,01</b> · 6,21/un</small></span>
+        <span class="ver ok">✓ bateu</span><span class="seta">▸</span>
+      </button>
+      <div class="rodape-secao">
+        faltaram no total: <span class="falt">2 un · R$ 3,31</span><span class="mudo"> · 1 ainda sem contagem (fora do total)</span>
+      </div>
     </section>
 
     <!-- ───────── PORÇÕES ───────── -->
@@ -398,15 +432,15 @@
 
       <button class="linha">
         <span class="nm">porção de queijo 135 grama<small>no sistema: <b>84 un · R$ 353,64</b> · 4,21/un · 11 un a menos</small></span>
-        <span class="ver grande num">faltou R$ 46,31</span><span class="seta">▸</span>
+        <span class="ver grande num">faltou 11 un · R$ 46,31</span><span class="seta">▸</span>
       </button>
       <button class="linha">
         <span class="nm">porção de coxão 80 grama<small>no sistema: <b>182 un · R$ 1.494,22</b> · 8,21/un · 3 un a menos</small></span>
-        <span class="ver pequeno num">faltou R$ 24,63</span><span class="seta">▸</span>
+        <span class="ver pequeno num">faltou 3 un · R$ 24,63</span><span class="seta">▸</span>
       </button>
       <button class="linha">
         <span class="nm">beef de xis<small>no sistema: <b>220 un · R$ 1.124,20</b> · 5,11/un · 2 un a mais</small></span>
-        <span class="ver ok num">sobrou R$ 10,22</span><span class="seta">▸</span>
+        <span class="ver ok num">sobrou 2 un · R$ 10,22</span><span class="seta">▸</span>
       </button>
       <button class="linha">
         <span class="nm">porção de calabresa 120 grama<small>no sistema: <b>249 un · R$ 582,66</b> · 2,34/un</small></span>
@@ -414,9 +448,13 @@
       </button>
       <button class="linha">
         <span class="nm">porção de bacon 80 grama<small>no sistema: <b>228 un · R$ 1.151,40</b> · 5,05/un</small>
-          <span class="historia"><span class="chip-ult falta">19/09: faltou R$ 5,05</span></span></span>
+          <span class="historia"><span class="chip-ult falta">19/09: faltou 1 un · R$ 5,05</span></span></span>
         <span class="ver mudo">falta contar hoje</span><span class="seta">▸</span>
       </button>
+      <div class="rodape-secao">
+        faltaram no total: <span class="falt">14 un · R$ 70,94</span> — sobraram:
+        <span class="sobr">2 un · R$ 10,22</span><span class="mudo"> · 1 ainda sem contagem (fora do total)</span>
+      </div>
     </section>
   </div>
 

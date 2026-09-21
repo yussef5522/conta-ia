@@ -42,6 +42,16 @@ export type UniversoDoSeletor =
   | 'RECEITA'
   /** ⭐ **VENDÁVEL** (mapa do PDV): o que o cliente compra — fichas e revenda. */
   | 'VENDAVEL'
+  /**
+   * ⭐ **REVENDA** (a watchlist 🥤 do Radar, 21/09): o que entra pronto e sai pronto.
+   *
+   * ⛔ **Lista de UM item de propósito, e ela NÃO é "COMPRAVEL menos coisas".** O dono
+   * separou a seção justamente porque *"os caros hoje mistura matéria-prima com bebida
+   * (COCA COLA 600ML no meio do queijo)"* — oferecer queijo aqui recriaria a mistura que
+   * a seção nasceu pra desfazer. Universo se escreve item a item (a lição do LIMPEZA que
+   * vazou pra RECEITA em 16/09 por ter sido derivado de outro).
+   */
+  | 'REVENDA'
   /** ⚠️ **CATALOGO**: a lista administrativa, que mostra TUDO de propósito. */
   | 'CATALOGO'
 
@@ -77,11 +87,15 @@ const RECEITA = [CAT.MATERIA_PRIMA, CAT.INTERMEDIARIO, CAT.PRODUTO_FINAL, CAT.RE
 /** ⚠️ o vendável é o inverso: invólucro de cardápio + revenda (a bebida) */
 const VENDAVEL = [CAT.PRODUTO_FINAL, CAT.SABOR, CAT.REVENDA]
 
+/** ⭐ só bebida e revenda — ver a razão no tipo acima */
+const REVENDA = [CAT.REVENDA]
+
 const CATEGORIAS: Record<UniversoDoSeletor, readonly string[] | null> = {
   COMPRAVEL,
   PRATELEIRA,
   RECEITA,
   VENDAVEL,
+  REVENDA,
   // ⚠️ `null` = sem filtro. É o ÚNICO universo que mostra tudo, e o nome diz isso.
   CATALOGO: null,
 }
@@ -125,6 +139,7 @@ export function fraseDoVazio(u: UniversoDoSeletor, busca: string): string {
     PRATELEIRA: 'itens que existem na prateleira (inclui as porções produzidas)',
     RECEITA: 'itens que podem ser ingrediente',
     VENDAVEL: 'produtos do cardápio e itens de revenda',
+    REVENDA: 'itens de REVENDA (bebida e o que entra pronto)',
     CATALOGO: 'itens do catálogo',
   }
   return `Nada com "${busca}" entre os ${alvo[u]}.`
