@@ -194,10 +194,19 @@ describe('⭐ as TRÊS superfícies passam pela MESMA porta', () => {
    * sozinha — e foi exatamente ela que o dono viu com botão.
    */
   it('⛔ /caixa, /fila e /escolher-na-mao chamam divisaoDaTela', () => {
+    /**
+     * ⚠️ REAPONTADO EM 23/09, NÃO AFROUXADO. A orquestração dos cards **saiu da rota** pra
+     * `cards-de-escolha.ts` — o caixa precisava dos MESMOS cards ("uma lista só") e copiar
+     * as ~150 linhas seria a 2ª derivação. A régua é idêntica; o alvo é que mudou de
+     * arquivo, e ***grep não distingue "refatorei" de "quebrei"*** (a razão da REGRA 3).
+     *
+     * ⛔ A rota continua na lista de propósito: ela é casca fina, mas se alguém voltar a
+     * orquestrar lá dentro, tem que passar pela porta igual.
+     */
     for (const r of [
       'app/api/conciliacao/caixa/route.ts',
       'app/api/conciliacao/fila/route.ts',
-      'app/api/conciliacao/escolher-na-mao/route.ts',
+      'lib/conciliacao/cards-de-escolha.ts',
     ]) {
       expect(fonte(r), `${r} voltou a decidir sozinha — é assim que as réguas divergem`)
         .toContain('divisaoDaTela(')
@@ -219,8 +228,11 @@ describe('⭐ as TRÊS superfícies passam pela MESMA porta', () => {
      */
     expect(fonte('app/api/conciliacao/caixa/route.ts'), 'a caixa parou de montar o painel do caso')
       .toContain('function montarCaso(')
-    expect(fonte('app/api/conciliacao/escolher-na-mao/route.ts')).toContain('oCardDesenhaBotao(')
-    for (const r of ['app/api/conciliacao/caixa/route.ts', 'app/api/conciliacao/escolher-na-mao/route.ts'])
+    expect(fonte('lib/conciliacao/cards-de-escolha.ts')).toContain('oCardDesenhaBotao(')
+    // ⛔ e a rota que ficou casca NÃO pode ter orquestração própria de volta
+    expect(fonte('app/api/conciliacao/escolher-na-mao/route.ts'), 'a rota voltou a orquestrar por fora da lib')
+      .toContain('cardsDeEscolha(')
+    for (const r of ['app/api/conciliacao/caixa/route.ts', 'lib/conciliacao/cards-de-escolha.ts'])
       expect(fonte(r), `${r} compara a casa na mão — é assim que a 3ª casa passa despercebida`)
         .not.toMatch(/\.casa === '(CARD|FILA|CAIXA)'/)
   })

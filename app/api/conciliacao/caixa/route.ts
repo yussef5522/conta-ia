@@ -23,6 +23,9 @@ import { progressoDoMes } from '@/lib/conciliacao/palpite-da-linha'
  */
 import { palpitesDaCaixa } from '@/lib/conciliacao/palpites-da-caixa'
 import { ancoraDoPar } from '@/lib/conciliacao/uma-casa-por-caso'
+import { lotesDaFila } from '@/lib/conciliacao/fila-de-conciliacao'
+import { cardsDeEscolha } from '@/lib/conciliacao/cards-de-escolha'
+import { contadoresDaLista, linhasDaLista, type CasoNaLinha } from '@/lib/conciliacao/lista-unica'
 import { divisaoDaTela } from '@/lib/conciliacao/divisao-da-tela'
 
 export async function GET(request: NextRequest) {
@@ -39,6 +42,7 @@ export async function GET(request: NextRequest) {
   // ⚠️ só as linhas que ESTÃO na caixa ganham palpite — palpitar sobre o arquivo é
   // trabalho (e consulta) pra quem já está resolvido.
   const naCaixa = rows.filter((r) => estacaoDaLinha(paraLei(r)) === 'CAIXA')
+  const naCaixaIds = new Set(naCaixa.map((r) => r.id))
   const palpites = await palpitesDaCaixa(empresaId, naCaixa).catch(() => new Map())
 
   /**
@@ -87,6 +91,20 @@ export async function GET(request: NextRequest) {
   const divisao = await divisaoDaTela(empresaId, prisma)
 
   /**
+   * ⭐⭐⭐ UMA LISTA SÓ (23/09) — o LOTE e a ESCOLHA deixam de ser seções e viram CASO da
+   * linha. A página parava de perguntar *"o que esta linha é?"* em três lugares.
+   *
+   * ⚠️ Fail-soft nos dois: se uma fonte cair, a lista continua (sem aquele caso) em vez de
+   * a tela inteira sumir. *Some dos dois é pior que aparecer nos dois.*
+   */
+  const [lotes, cardsEscolha] = await Promise.all([
+    lotesDaFila(empresaId, prisma).then((r) => r.lotes).catch(() => []),
+    cardsDeEscolha({ empresaId }, prisma).catch(() => []),
+  ])
+  const lotePorLinha = new Map(lotes.map((l) => [l.extratoId, l]))
+  const escolhaPorLinha = new Map(cardsEscolha.map((c) => [c.linha.id, c]))
+
+  /**
    * ⭐⭐⭐ O CASO VAI **DENTRO DO CARTÃO ≍** (20/09) — régua do dono: *"uma decisão aparece
    * UMA vez na página, SEMPRE no mesmo modelo visual"*.
    *
@@ -111,6 +129,24 @@ export async function GET(request: NextRequest) {
         })
       : []).map((t) => [t.id, t]),
   )
+
+  /**
+   * ⭐⭐ QUAL CASO ESTA LINHA TEM — a decisão num lugar só.
+   *
+   * ⚠️ Ela responde pela lista INTEIRA (inclusive pela linha que só está aqui por ter
+   * caso), então a ordem é do mais específico pro mais genérico.
+   */
+  function casoDaLinha(id: string): { tipo: string; hospeda: boolean; nome?: string; ancora?: string } | null {
+    // ⭐ LOTE: um pagamento que liquida N notas — a linha É a anfitriã, por construção
+    const lo = lotePorLinha.get(id)
+    if (lo) return { tipo: 'LOTE', hospeda: true, nome: lo.fornecedorNome }
+    // ⭐ ESCOLHA: o card de "pra tua mão" (N:M / não fecha) vira o caso desta linha
+    const es = escolhaPorLinha.get(id)
+    if (es) return { tipo: 'ESCOLHA', hospeda: true, nome: es.fornecedorNome }
+    // ⭐ e o ambíguo/N:M de sempre, com o ponteiro pra anfitriã
+    const c = montarCaso(divisao.linhas.get(id))
+    return c ? { ...c, tipo: c.tipo === 'N_PARA_M' ? 'ESCOLHA' : 'AMBIGUO' } as never : null
+  }
 
   /** ⭐ o painel que o lado direito do cartão desenha — ou o ponteiro pra quem hospeda */
   function montarCaso(c: ReturnType<typeof divisao.linhas.get>) {
@@ -177,9 +213,37 @@ export async function GET(request: NextRequest) {
        * ⭐ O PAINEL DO CASO — só na linha que HOSPEDA. As outras do mesmo caso apontam
        * pra ela ("parte do caso acima ↑"), nunca desenham o painel de novo.
        */
-      caso: montarCaso(divisao.linhas.get(r.id)),
+      /**
+       * ⭐⭐⭐ UMA LISTA SÓ (23/09) — o caso de QUALQUER família renderiza aqui dentro.
+       *
+       * ⛔ A ordem importa e não é estética: **lote** e **escolha** vêm antes do ambíguo
+       * porque são mais específicos — uma linha que é anfitriã de um lote fechado não deve
+       * cair no painel genérico. E só UM painel por linha: dois seria a duplicação de
+       * volta, agora dentro do mesmo cartão.
+       */
+      caso: casoDaLinha(r.id),
+      /** ⚠️ o painel do LOTE precisa do lote inteiro (as N notas + a soma) */
+      lote: lotePorLinha.get(r.id) ?? null,
+      /** ⚠️ o painel da ESCOLHA precisa das candidatas do fornecedor */
+      escolha: escolhaPorLinha.get(r.id) ?? null,
     }
   })
+
+  /**
+   * ⭐⭐ A LISTA QUE A TELA DESENHA — a régua é PURA (`linhasDaLista`) e tem teste próprio.
+   *
+   * ⛔ Ela não mora aqui: a rota só junta as duas entradas (quem está na caixa, quem tem
+   * caso) e pergunta. Régua dentro de rota é régua que ninguém consegue provar.
+   */
+  const casos = new Map(linhas.flatMap((l) => (l.caso ? [[l.id, l.caso as CasoNaLinha]] : [])))
+  const daLista = new Set(linhasDaLista(linhas, naCaixaIds, casos).map((x) => x.id))
+  const soPeloCaso = new Set(
+    linhasDaLista(linhas, naCaixaIds, casos).filter((x) => x.soPeloCaso).map((x) => x.id),
+  )
+  const paraTela = linhas
+    .filter((l) => daLista.has(l.id))
+    // ⭐ marcada: sem isto, uma linha já categorizada aparecendo do nada parece defeito
+    .map((l) => ({ ...l, soPeloCaso: soPeloCaso.has(l.id) }))
 
   return NextResponse.json({
     contadores,
@@ -187,7 +251,16 @@ export async function GET(request: NextRequest) {
     progresso: progressoDoMes(contadores),
     /** a tela DIZ de quando ela conta: fila que mostra menos precisa dizer por quê */
     corte: corte ? corte.toISOString().slice(0, 10) : null,
-    // ⚠️ a tela desenha SÓ a caixa; o arquivo tem casa própria (Movimentações)
-    linhas: linhas.filter((l) => l.estacao === 'CAIXA'),
+    /**
+     * ⭐⭐⭐ A LISTA ÚNICA (23/09) — **caixa ∪ caso aberto**, e a régua mora na lib.
+     *
+     * ⚠️⚠️ A linha que entra **só pelo caso** já está CATEGORIZADA (estação ARQUIVO): são
+     * os 14 cards de *"pra tua mão"* medidos em prod. ⛔ Filtrar só por `estacao==='CAIXA'`
+     * — o que esta linha fazia — os faria **sumir** junto com as seções, perdendo
+     * R$ 2.120,81 · 2.275,05 · 3.510,78 … de trabalho real. *Categoria não quita conta.*
+     */
+    linhas: paraTela,
+    /** ⭐ os contadores saem da MESMA lista — contador ≠ lista é o badge de 10/09 de novo */
+    filtros: contadoresDaLista(paraTela.map((l) => ({ caso: l.caso as CasoNaLinha | null }))),
   })
 }
