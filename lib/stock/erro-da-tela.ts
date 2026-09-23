@@ -22,6 +22,7 @@ import { PonteError } from './ponte-contas-pagar'
 import { RecusaError } from './recusa-nota'
 import { ReunitizarError } from './reunitizar-item'
 import { SaidaError } from './saida'
+import { portaDoNegativo, type FatosDoNegativo } from './porta-do-negativo'
 import { VendaMapError } from './vendas/venda-map'
 import { GrandezaImplausivelError } from './producao/conclusao'
 
@@ -66,7 +67,18 @@ export function ehErroDeDominio(e: unknown): e is Error {
  * (ela costuma ser o sintoma)"* — mas aqui a quantidade dele está certa; o sintoma é o
  * VALOR. Mensagem que acusa o campo errado faz o dono caçar um erro que não existe.
  */
-export function saidaDoEstadoImpossivel(empresaId: string, itemId?: string): RespostaDeErro['saida'] {
+/**
+ * ⭐⭐ 22/09 — COM OS FATOS, A PORTA É A CERTA; SEM ELES, AINDA EXISTE UMA.
+ *
+ * ⛔ *"E se NÃO existir ordem nem produção plausível, a saída honesta é a entrada/ajuste
+ * com motivo, **nunca beco sem saída**"* — ordem do dono. Por isso esta função **não tem
+ * caminho que devolva `undefined`**: a recusa sem porta é o único desfecho proibido.
+ */
+export function saidaDoEstadoImpossivel(
+  empresaId: string, itemId?: string, fatos?: FatosDoNegativo,
+): RespostaDeErro['saida'] {
+  // ⭐ a decisão mora na função PURA — aqui é só a casca (REGRA 4)
+  if (fatos) return portaDoNegativo(fatos)
   return itemId
     ? { rotulo: 'ver o histórico deste item e corrigir a entrada que faltou', href: `/empresas/${empresaId}/estoque/itens/${itemId}` }
     : { rotulo: 'ver a posição do estoque', href: `/empresas/${empresaId}/estoque/posicao` }
@@ -118,7 +130,11 @@ export function respostaDeErroDoEstoque(e: unknown, ctx?: { empresaId?: string; 
   }
 
   if (e instanceof MovementInvalidError && ctx?.empresaId) {
-    return { erro: e.message, code: 'ESTADO_IMPOSSIVEL', status: 422, saida: saidaDoEstadoImpossivel(ctx.empresaId, ctx.itemId) }
+    const fatos = e.culpado?.fatos
+    return {
+      erro: e.message, code: 'ESTADO_IMPOSSIVEL', status: 422,
+      saida: saidaDoEstadoImpossivel(ctx.empresaId, ctx.itemId ?? fatos?.itemId, fatos),
+    }
   }
 
   return { erro: e.message, code, status: 422 }

@@ -4,11 +4,16 @@
 
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { TIPOS_FORA_DA_PRATELEIRA } from './saldo'
+import { familiaDoItem, porQueEstaNegativo, type FatosDoNegativo } from './porta-do-negativo'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 const CUSTO_TOL = 0.01 // por LINHA (o mesmo do CHECK do banco)
+
+/** ⚠️ dia do CALENDÁRIO em UTC — `dataProducao` é data, não instante; formatar no fuso a
+ *  puxaria pro dia anterior (a cicatriz do card do cartão, 09/09). */
+const diaCurto = (d: Date) => `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}`
 
 /** ⭐ quem é o item barrado — a tela precisa disto pra oferecer "deixa este pendente" */
 export interface CulpadoDoMovimento {
@@ -16,6 +21,12 @@ export interface CulpadoDoMovimento {
   nome: string
   saldoDepois: number
   valorDepois: number
+  /**
+   * ⭐ 22/09 — os FATOS que decidem a porta da recusa, resolvidos AQUI porque aqui tem
+   * banco. O tradutor (`erro-da-tela`) é puro e só os traduz em rótulo+href; sem isto ele
+   * teria que consultar o banco, e aí a decisão da porta nasceria em dois lugares.
+   */
+  fatos?: FatosDoNegativo
 }
 
 export class MovementInvalidError extends Error {
@@ -112,19 +123,48 @@ async function assertSaldoNaoFicaImpossivel(db: Db, m: NovoMovimento, custoTotal
      * travado sem saber onde agir, e os outros 57 viravam reféns do 1. ***Recusa que não
      * nomeia o réu é a mesma coisa que silêncio*** (a régua do 422 do estoque).
      */
-    const item = await db.stockItem.findUnique({ where: { id: m.itemId }, select: { nome: true, unidadeControle: true } })
+    const item = await db.stockItem.findUnique({ where: { id: m.itemId }, select: { nome: true, unidadeControle: true, categoria: true } })
     const nome = item?.nome ?? m.itemId
     const un = item?.unidadeControle ?? ''
+
+    /**
+     * ⭐⭐ 22/09 — O ITEM PRODUZIDO NEGATIVO NÃO PEDE NOTA, PEDE PRODUÇÃO.
+     *
+     * A frase acima ("falta a COMPRA") nasceu do FERMENTO, que é matéria-prima. Cravada
+     * pra todo item, ela mandava o dono caçar uma nota de `PORÇAO CALABRESA 85g` — que
+     * ninguém compra. Os fatos que decidem a frase E a porta são resolvidos aqui, onde
+     * há banco; quem os traduz em rótulo+href é uma função PURA (`porta-do-negativo`).
+     *
+     * ⚠️ As duas consultas só rodam no caminho da RECUSA (que é raro), nunca no feliz.
+     */
+    const familia = familiaDoItem(item?.categoria)
+    const ordem = familia === 'PRODUZIDO'
+      ? await db.stockProductionOrder.findFirst({
+          where: { companyId: m.companyId, itemProduzidoId: m.itemId, estado: { in: ['PLANEJADA', 'SEPARADA', 'EM_PRODUCAO'] } },
+          select: { id: true, dataProducao: true },
+          orderBy: { dataProducao: 'desc' },
+        })
+      : null
+    const ficha = familia === 'PRODUZIDO'
+      ? await db.stockFicha.findFirst({ where: { companyId: m.companyId, itemProduzidoId: m.itemId, ativo: true }, select: { id: true } })
+      : null
+
+    const fatos: FatosDoNegativo = {
+      empresaId: m.companyId, itemId: m.itemId, nome, unidade: un, saldoAntes, familia,
+      ordemAberta: ordem ? { id: ordem.id, dia: diaCurto(ordem.dataProducao) } : null,
+      fichaAtivaId: ficha?.id ?? null,
+    }
+
     throw new MovementInvalidError(
       `«${nome}» ficaria com ${saldoDepois} ${un || unidadeOuUnidades(saldoDepois)} e valor `
       + `R$ ${valorDepois.toFixed(2)} — dinheiro negativo com saldo positivo é um estado que não existe. `
       + `Hoje ele tem ${saldoAntes} ${un} valendo R$ ${valorAntes.toFixed(2)}; esta baixa tira `
       + `${Math.abs(m.quantidade)} ${un} (R$ ${Math.abs(custoTotal).toFixed(2)}). `
       + (cruzouOZero
-        ? `O saldo estava em ${saldoAntes} (saiu mais do que entrou), então falta registrar `
-          + 'a COMPRA que não foi lançada — não é a sua contagem que está errada.'
+        // ⭐ a frase agora segue a FAMÍLIA do item, não um só caso
+        ? porQueEstaNegativo(fatos)
         : 'Confira a quantidade: ela costuma ser o sintoma.'),
-      { itemId: m.itemId, nome, saldoDepois, valorDepois },
+      { itemId: m.itemId, nome, saldoDepois, valorDepois, fatos },
     )
   }
 }

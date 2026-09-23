@@ -74,7 +74,15 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
   const { id } = use(params)
   const [ordens, setOrdens] = useState<Ordem[] | null | undefined>(undefined)
   const [sugestoes, setSugestoes] = useState<Sugestao[]>([])
-  const [novo, setNovo] = useState(false)
+  /**
+   * ⭐ 22/09 — `?ficha=` abre a nova ordem COM a ficha escolhida. É a porta que a recusa
+   * do item negativo oferece ("registrar a produção que faltou"); sem ler o parâmetro, o
+   * dono cairia num dropdown pra procurar de novo o que o sistema acabou de nomear — o
+   * defeito do Bamberg (13/09). Lido no 1º render, como o `?aba=`: em `useEffect` a tela
+   * piscaria fechada antes de abrir, e "voltar e não ver nada" parece que não gravou.
+   */
+  const fichaDaUrl = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('ficha') : null
+  const [novo, setNovo] = useState(!!fichaDaUrl)
   const [criando, setCriando] = useState<string | null>(null)
   const [painel, setPainel] = useState<Painel | null>(null)
   const [abertas, setAbertas] = useState<Aberta[]>([])
@@ -231,7 +239,7 @@ export default function ProducaoPage({ params }: { params: Promise<{ id: string 
         </div>
       )}
 
-      {novo && <NovaOrdem id={id} onCriada={(ordemId) => { window.location.href = `/empresas/${id}/estoque/producao/${ordemId}` }} onFechar={() => setNovo(false)} />}
+      {novo && <NovaOrdem id={id} fichaInicial={fichaDaUrl} onCriada={(ordemId) => { window.location.href = `/empresas/${id}/estoque/producao/${ordemId}` }} onFechar={() => setNovo(false)} />}
 
       {/* sugestão de produção (min/max) */}
       {sugestoes.length > 0 && (
@@ -338,10 +346,10 @@ function Secao({ titulo, ordens, id }: { titulo: string; ordens: Ordem[]; id: st
   )
 }
 
-function NovaOrdem({ id, onCriada, onFechar }: { id: string; onCriada: (ordemId: string) => void; onFechar: () => void }) {
+function NovaOrdem({ id, fichaInicial, onCriada, onFechar }: { id: string; fichaInicial?: string | null; onCriada: (ordemId: string) => void; onFechar: () => void }) {
   const [fichas, setFichas] = useState<FichaOpt[]>([])
   const [setores, setSetores] = useState<Setor[]>([])
-  const [fichaId, setFichaId] = useState('')
+  const [fichaId, setFichaId] = useState(fichaInicial ?? '')
   // ⭐ o dono pensa em UNIDADES ("faz 200 porções"); a escala é derivada na hora de gravar.
   const [quanto, setQuanto] = useState('')
   const [data, setData] = useState('')
