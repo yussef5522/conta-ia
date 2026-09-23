@@ -82,6 +82,27 @@ describe('⭐⭐ o CASO renderiza DENTRO do cartão ≍ da linha', () => {
   })
 })
 
+describe('⛔ O MOCK v3 acompanha — ele é a RÉGUA versionada', () => {
+  const MOCK = ler('docs/mocks/conciliacao-caixa-mock-v3.html')
+
+  it('⛔ as seções morreram no mock também', () => {
+    /**
+     * ⚠️ *"Divergência do mock = defeito"* (10/09). Se o mock ainda desenhasse as seções,
+     * o guard de tokens aprovaria o dia em que alguém as ressuscitasse na tela.
+     */
+    expect(MOCK, 'a seção PRA TUA MÃO voltou ao mock').not.toContain('PRA TUA MÃO — O PAGAMENTO EXISTE')
+    expect(MOCK).not.toContain('PRONTOS PRA CONFIRMAR')
+  })
+
+  it('⭐ e os filtros da lista única estão lá', () => {
+    expect(MOCK).toContain('class="filtros"')
+    expect(MOCK).toContain('⭐ prontos')
+    expect(MOCK).toContain('🖐 na mão')
+    // ⭐ e a marca da linha que entra só pelo caso
+    expect(MOCK).toContain('já classificada')
+  })
+})
+
 describe('⛔⛔ NENHUMA LINHA EM DOIS LUGARES, e Σ dos filtros == a lista', () => {
   const lista: LinhaDaLista[] = [
     { id: 'a', soPeloCaso: false, caso: { tipo: 'PALPITE', hospeda: true } },

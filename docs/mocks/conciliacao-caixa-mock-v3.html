@@ -141,6 +141,13 @@
   .feita b{font-weight:800;}
   .feita .selo{margin-left:auto;background:#fff;border-radius:99px;padding:3px 10px;font-size:11px;font-weight:800;color:var(--verde);white-space:nowrap;}
 
+  /* ===== FILTROS DA LISTA ÚNICA (23/09) ===== */
+  .filtros{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 8px}
+  .chip{border:1.5px solid var(--line);background:var(--card);color:var(--sub);
+        border-radius:999px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer}
+  .chip.on{background:var(--roxo);border-color:var(--roxo);color:#fff}
+  .nota-arq{font-size:11px;color:var(--sub);margin:2px 0 6px}
+
   /* ===== PRA TUA MÃO (fornecedores) ===== */
   h2{font-size:12px;font-weight:800;letter-spacing:.06em;color:var(--sub);margin:22px 0 10px;}
   .forn{background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:var(--sombra);padding:14px 18px;display:flex;align-items:center;gap:13px;cursor:pointer;transition:.15s;}
@@ -178,10 +185,20 @@
   <div class="prog"><div class="ring"><i>86%</i></div><div><div class="t">setembro</div><div class="n">190 resolvidas · 1 na caixa</div></div></div>
 </div>
 
+<!-- ⭐⭐⭐ 23/09 — OS CONTADORES VIRARAM FILTROS DA MESMA LISTA.
+     ⛔ Eles não são mais o topo de SEÇÕES: tocar "⭐" recorta a lista única.
+     O "💤" continua LINK (as contas sem pagamento moram no Contas a Pagar). -->
 <div class="stats">
-  <div class="stat verde"><div class="k">⭐ PRONTOS PRA CONFIRMAR</div><div class="v">0</div><div class="d">nada esperando clique</div></div>
-  <div class="stat roxo on"><div class="k">🖐 PRA TUA MÃO</div><div class="v">1</div><div class="d">linha esperando decisão</div></div>
+  <div class="stat verde"><div class="k">⭐ PRONTOS</div><div class="v">1</div><div class="d">palpite ou lote fechado · filtra a lista</div></div>
+  <div class="stat roxo"><div class="k">🖐 NA MÃO</div><div class="v">14</div><div class="d">você escolhe as notas · filtra a lista</div></div>
   <div class="stat slate"><div class="k">💤 SEM PAGAMENTO</div><div class="v">91</div><div class="d">contas abertas · ver no Contas a Pagar →</div></div>
+</div>
+
+<!-- ⭐ os CHIPS do filtro, acima da lista — Σ(prontos+mão) nunca passa do total -->
+<div class="filtros">
+  <button class="chip on">tudo 49</button>
+  <button class="chip">⭐ prontos 1</button>
+  <button class="chip">🖐 na mão 14</button>
 </div>
 
 <div class="barra">
@@ -244,7 +261,13 @@
   </div>
 </div>
 
-<h2>🖐 PRA TUA MÃO — O PAGAMENTO EXISTE, VOCÊ DIZ O QUE ELE PAGOU</h2>
+<!-- ⭐⭐⭐ 23/09 — ESTA SEÇÃO MORREU. O card de escolha virou o CASO de uma LINHA da
+     lista única, renderizado no lado direito do chassi ≍ dela (modo painel).
+     ⚠️ E a linha dele entra na lista mesmo JÁ CATEGORIZADA: medido em prod, as 14 estão
+     em "Matéria-Prima - Alimentos" e a régua antiga (estação === CAIXA) as excluía.
+     Categoria não quita conta — colapsar sem carregá-las perderia R$ 2.120,81 · 2.275,05
+     · 3.510,78 … de trabalho real. Elas vêm marcadas "já classificada · conta em aberto". -->
+<p class="nota-arq">já classificada · a conta segue em aberto</p>
 <!-- fechado: o cabeçalho do fornecedor é a porta -->
 <div class="forn">
   <div class="avatar">CA</div>
