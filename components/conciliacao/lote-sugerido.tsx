@@ -244,7 +244,12 @@ export function LoteSugerido({ lote, onVinculado, onProcurar, empresaId, categor
       </Button>
       {faltamCategoria.length > 0 && (
         <span className="text-[11px] text-amber-700 dark:text-amber-400">
-          diga a categoria primeiro — ela grava nas {faltamCategoria.length}
+          {/*
+            ⛔ A frase TEM que apontar pro controle. *"diga a categoria primeiro"* sozinho
+            é a exigência sem a porta — foi exatamente o beco de 23/09, em que o botão
+            cobrava e a esquerda dizia "não é comigo". Exigência aponta pra onde responder.
+          */}
+          escolha a categoria na esquerda ← · ela grava nas {faltamCategoria.length} contas
         </span>
       )}
       <Button size="sm" variant="ghost" disabled={ocupado}

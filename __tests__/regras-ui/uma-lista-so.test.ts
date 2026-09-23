@@ -122,6 +122,14 @@ describe('⛔⛔⛔ O BECO — toda exigência aponta pra um controle QUE ABRE',
       .toMatch(/l\.caso\?\.tipo === 'LOTE'[\s\S]{0,120}estadoDoSeletorDoLote/)
   })
 
+  it('⛔⛔ e a exigência APONTA pro controle — cobrar sem dizer onde é meia-porta', () => {
+    const lote = semComentario(ler('components/conciliacao/lote-sugerido.tsx'))
+    expect(lote, 'o botão exige categoria e não diz mais ONDE responder')
+      .toContain('escolha a categoria na esquerda ←')
+    // ⭐ e ele diz o TAMANHO da resposta: uma escolha, N contas
+    expect(lote).toMatch(/grava nas \{faltamCategoria\.length\} contas/)
+  })
+
   it('⭐ a resposta da ESQUERDA chega no Vincular — uma pergunta, um lugar', () => {
     expect(c).toContain('categoriaEscolhida={categoriaEscolhida?.id ?? null}')
     const lote = semComentario(ler('components/conciliacao/lote-sugerido.tsx'))
