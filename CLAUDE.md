@@ -1156,7 +1156,14 @@ celular 200 · desktop 200 · bundle com a seção, o "tirar … do cardápio?" 
 
 ⚠️ **DÍVIDA REGISTRADA:** a página do Cardápio declara `Status` e `Hub` **à mão** sobre o payload, então o `IGNORADO` precisou ser acrescentado nos dois lugares. É a dívida de 01/09 (*"interface escrita à mão sobre payload é promessa, não prova"*) cobrando juros — derivar de `StatusCardapio`/`HubCardapio` é o certo e fica pro sprint dela.
 
-📋 **FICA PRO DONO — a CALABRESA BLACK precisa de UMA resposta:** a ficha de sabor dela consome só a `CALABRESA BLACK 120 GRAMAS`, ou **também** o `QUEIJO Black Friday 200G` (como a MUSSARELA e o FRANGO)? Com a resposta, a ficha nasce e a linha aparece ao lado das outras duas — e as próximas vendas passam a baixar a porção certa.
+**✅ E A CALABRESA BLACK VOLTOU — receita confirmada pelo dono** (*calabresa black + queijo black*, o mesmo padrão do FRANGO). `pg_dump pre-ficha-calabresa-black-20260923-102654` antes; criada pela **porta real** (`criarFicha` com `mapearComplemento`, ficha e vínculo na MESMA transação — a trava que existe porque 3 fichas nasceram órfãs em 01/09 e a PIZZA saiu duplicada).
+```
+⭐ «CALABRESA BLACK FRIDAY»  172 ocorr · ficha cmue509vb…  ↳ 1× CALABRESA BLACK 120 GRAMAS + 1× QUEIJO Black Friday 200G
+⭐ «FRANGO BLACK FRIDAY»      60 ocorr
+⭐ «MUSSARELA BLACK FRIDAY»   42 ocorr
+   e a «CALABRESA» comum voltou aos 3 apelidos dela (CALABRESA | calabresa | Calabresa)
+```
+⚠️ **O passado NÃO foi reescrito:** as 172 ocorrências já baixadas consumiram a porção comum, e o ledger é imutável. Da venda de hoje em diante a baixa é a certa; acertar o histórico seria reprocessar os dias — **decisão do dono**, não feita.
 
 ### ⛔⛔⛔ A RECUSA DO ITEM NEGATIVO MANDAVA CAÇAR UMA NOTA QUE NÃO EXISTE (22/09)
 
