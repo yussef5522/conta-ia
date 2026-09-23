@@ -1118,6 +1118,50 @@ celular 200 · 710ms · desktop 200 · 139ms · Δ bundle +4 KB
 
 **10.673 verdes · TS 0 · deploy 4/4 (`_OgFrXK9xtPjPG7vNNBjf`).**
 
+### ⛔⛔⛔ A RECUSA DO ITEM NEGATIVO MANDAVA CAÇAR UMA NOTA QUE NÃO EXISTE (22/09)
+
+**O dono, contando a `PORÇAO CALABRESA 85g congelada`** (−8 UN · −R$ 135,20): *"a recusa diz só 'estoque negativo, não aceita' — sem explicar POR QUE nem O QUE FAZER."*
+
+**⛔⛔ E A FRASE ESTAVA PIOR QUE VAGA: ela mandava registrar a COMPRA.** Ninguém **compra** porção de calabresa — ela se **produz**. A frase nasceu do **FERMENTO** (16/09), que é matéria-prima e onde o buraco era mesmo uma nota; cravada pra todo item negativo, passou a mandar o dono procurar um documento que não existe. ***É a lição de 16/09 — "mensagem que acusa o campo errado faz o dono caçar um erro que não existe" — cometida um degrau acima***, na mesma função que aquele dia consertou.
+
+**⛔ A RÉGUA NÃO MUDOU** (ordem do dono: *"FIX na mensagem, não na régua"*). O guard de 11/09 recusa o mesmo estado impossível; o que mudou foi a **frase** e a **porta**.
+
+**⭐⭐ O PORQUÊ É O QUE IMPORTA, e ele justifica a recusa:** item PRODUZIDO negativo significa **vendeu sem ter produção registrada** — e ***contar por cima ENTERRA o lote que ninguém lançou***: o ajuste entra, o saldo fecha, e a produção perdida some do Real vs Teórico pra sempre. A recusa existe exatamente pra impedir isso, então agora ela **diz** isso.
+
+**⭐ A PORTA — três casos, nenhum beco** (`lib/stock/porta-do-negativo.ts`, pura):
+| caso | porta |
+|---|---|
+| **ordem PARADA** do item | link **direto nela** — *"concluir a ordem aberta de 19/09"* |
+| ficha ativa, sem ordem | `/producao?ficha=<id>`, com o formulário **já aberto e a ficha escolhida** |
+| sem ordem nem ficha · ou item **COMPRADO** | a entrada/ajuste pelo histórico do item |
+
+⚠️ **Sem o `?ficha=` a porta seria meia-porta:** o dono cairia num dropdown pra procurar de novo o que o sistema acabou de nomear — o defeito do Bamberg (13/09). A tela de produção passou a ler o parâmetro **no 1º render** (em `useEffect` ela piscaria fechada antes de abrir).
+
+**⭐ OS FATOS SÃO RESOLVIDOS ONDE HÁ BANCO; A DECISÃO MORA NA FUNÇÃO PURA.** O guard consulta ordem/ficha e manda tudo no `culpado`; o tradutor só traduz em rótulo+href. Consultar o banco no tradutor faria a decisão da porta **nascer em dois lugares** — e as duas divergiriam no primeiro caso de borda.
+
+**⚠️ A FAMÍLIA SAI DA CATEGORIA, NÃO DA EXISTÊNCIA DE FICHA:** item produzido cuja ficha foi **arquivada** continua produzido, e mandá-lo pra *"registrar a compra"* seria o bug de hoje por outro caminho. A lista de tipos produzidos tem **dono único** (`tipos-ficha.ts`) — reescrevê-la aqui faria o `SABOR` divergir entre dois arquivos.
+
+**📋 A VARREDURA — são 8 negativos, e a frase errada valia pra 3:**
+```
+MATERIA_PRIMA (pedem NOTA)   ARROZ −9,5 kg · FEIJÃO −7,72 · ERVILHA −40,53 · sal −0,1 · PAO DE XIS −224
+INTERMEDIARIO (pedem PRODUÇÃO)  PORÇAO CALABRESA 85g −8 UN · Porçao aneis de cebola −7 · porcao file xis −3
+⭐ ordens de produção abertas hoje: ZERO
+```
+⚠️⚠️ **E ISSO CORRIGE DUAS PREMISSAS DO PEDIDO:** *"linka DIRETO nela (o caso de hoje: a ordem do P2)"* — **não há ordem aberta nenhuma** (a do ano 202 foi fechada), então **hoje todas caem na 2ª porta**; a 1ª está construída e travada em teste, mas não dispara com o dado atual. E o item é a **85g congelada**, não a *"calabresa ralada"*.
+
+**PROVADO EM PROD, com os itens reais e `$transaction` de rollback forçado — 0 movimentos gravados:**
+```
+ARROZ [MATERIA_PRIMA]      422 · "…falta registrar a COMPRA que não foi lançada"
+                           → [ver o histórico deste item e corrigir a entrada que faltou →]
+CALABRESA 85g [INTERMED.]  422 · "…vendeu sem ter produção registrada. Contar por cima
+                                  ENTERRA o lote que ninguém lançou — por isso a contagem espera."
+                           → [registrar a produção que faltou →] /producao?ficha=cmtxfpxll…
+celular e desktop: contagem 200 · a PORTA (/producao?ficha=) 200 · as 5 frases no bundle
+```
+**REGRA 11 — 5 defeitos repostos** (frase cravada **1** · porta vazia **4** · ordem não linkada **1** · `?ficha=` ignorado **1** · um dos 2 estados da tela sem o link **1**). **10.701 verdes · TS 0 · deploy 4/4 (`kXAmH7e2IB6Tfu1iYgB-K`) · Δ bundle +0 KB.**
+
+⚠️ **TRÊS SONDAS MINHAS ERRARAM ANTES DE EU MEDIR** — assinatura invertida (`saldosDaEmpresa(db, id)`), `StockFicha` sem campo `nome`, `StockProductionOrder` sem `@relation` (o isolamento proíbe). **Parei de supor e li o schema.** *Sonda errada dá um vermelho tão convincente quanto um defeito real* — e aqui ela quase virou "a produção não tem ficha".
+
 ### ⭐⭐ RADAR v1.3 — A QUANTIDADE PRIMEIRO, O TOTAL POR SEÇÃO E A CASA DA REVENDA (21/09)
 
 **⭐ 1. O VEREDITO DIZ QUANTIDADE, DEPOIS DINHEIRO** — decisão do dono: *"quantidade é o número MAIS importante"*. `faltou 1 un · R$ 3,31` · `faltou 0,5 kg · R$ 18,42`, na unidade do item. ⭐ **Uma função (`textoDoVeredito`), os TRÊS lugares** — pílula, chip do último veredito e conta de padeiro; uma segunda formatação faria o chip e a linha discordarem sobre o mesmo fato.
