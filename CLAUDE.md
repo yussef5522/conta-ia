@@ -1118,6 +1118,46 @@ celular 200 · 710ms · desktop 200 · 139ms · Δ bundle +4 KB
 
 **10.673 verdes · TS 0 · deploy 4/4 (`_OgFrXK9xtPjPG7vNNBjf`).**
 
+### ⛔⛔⛔ A "CALABRESA BLACK QUE SUMIU" — E O IGNORAR QUE NUNCA FUNCIONOU (23/09)
+
+**O dono, urgente:** *"cliquei sem querer num botão e a CALABRESA BLACK sumiu da minha frente"*.
+
+**⭐⭐ A MEDIÇÃO REFUTOU A HIPÓTESE — ela não foi ignorada nem desmapeada.** Os três estão no mapa de complementos, os três como `FICHA`, e `atualizadoEm == criadoEm` nos três: **nenhuma linha foi tocada depois de criada**.
+```
+CALABRESA BLACK FRIDAY  → ficha cmtkwy7pl…  criado 21/09 04:57:56   (= a ficha da CALABRESA COMUM)
+FRANGO BLACK FRIDAY     → ficha cmuarysgk…  criado 21/09 04:58:34   (ficha PRÓPRIA)
+MUSSARELA BLACK FRIDAY  → ficha cmuarzsha…  criado 21/09 04:59:21   (ficha PRÓPRIA)
+```
+**A tela agrupa por FICHA** (`chaveDeApresentacao`, 03/09), então a CALABRESA BLACK **não sumiu: ela foi absorvida pela linha "CALABRESA"**, que hoje mostra 4 apelidos — `CALABRESA | CALABRESA BLACK FRIDAY | calabresa | Calabresa`. Os outros dois têm linha própria porque ganharam ficha própria, 38 e 85 segundos depois.
+
+**⛔⛔ E O ACHADO QUE VALE DINHEIRO É OUTRO: 172 ocorrências estão baixando a porção ERRADA.** A ficha comum consome `porcao de calabresa 120 grama`; existe um item `CALABRESA BLACK 120 GRAMAS` (INTERMEDIARIO, 248 un) criado justamente pra a promoção, **e ele não é consumido por ninguém**. ⚠️ **NÃO corrigido** — a receita é decisão do dono (*"o sistema não cria ficha de sabor nenhuma automaticamente"*, 14/09), e as duas que funcionam consomem coisas diferentes (FRANGO = frango + queijo black; MUSSARELA = só queijo black). Inventar o que a pizza leva seria decidir a receita por ele.
+
+**⛔⛔⛔ E AO PROVAR O RED-THEN-GREEN, O ACHADO MAIOR: IGNORAR PRODUTO NUNCA FUNCIONOU EM PROD.** `POST /vendas/mapear` com `alvoTipo=IGNORAR` devolve **HTTP 500 de corpo vazio, toda vez, desde 14/09** — o CHECK de 22/08 (`chk_venda_map_alvo IN ('FICHA','REVENDA')`) recusa a linha. **Nove dias de feature morta**, e os *"0 IGNORAR no mapa de produtos"* que eu tinha medido de manhã não eram *"ninguém usou"*: eram ***"é impossível"***.
+
+⚠️⚠️ **É A MESMA LIÇÃO QUE EU ESCREVI ANTEONTEM**, no radar: ***"CHECK com vocabulário fechado numa tabela de CONFIGURAÇÃO envelhece mal"***. Lá o prazo foi de **um dia**; aqui o CHECK é de agosto e a palavra nova chegou em setembro. E só apareceu porque a prova em prod **executou o gesto** em vez de conferir o código.
+
+**⭐ A CURA NÃO FOI CLONAR O MAPA.** Renomear o model custaria **61 usos em 34 arquivos**, um deles a **baixa de venda** (mexe em estoque). E mais fundo: `alvoTipo` responde *"para onde baixa"*, e **ignorar não responde isso** — ignorar é ***ausência de destino + decisão tomada***, que é exatamente o que separa o IGNORADO do SEM_DESTINO. `stock_venda_ignorado` (CREATE-only, CHECK na FORMA, unique por nome): ignorar apaga o destino **e** grava a marca numa transação (meio gesto deixaria o nome indistinguível de quem nunca foi tocado); o [voltar] apaga as duas. ⭐ **Efeito colateral bom:** sem linha no mapa, a baixa **já não baixa** o ignorado — por construção, sem nenhum leitor novo precisar aprender a palavra.
+
+**⭐⭐ E O IGNORADO VOLTOU A EXISTIR NO CARDÁPIO.** No `hubCardapio` ele caía num `else { continue }` e **desaparecia**: sem seção, sem contador, sem volta. Agora é seção **última e colapsada**, com **[voltar] por item**, e **some quando não há nenhum** (móvel fixo zerado treina o dono a não olhar). ⛔ Ele viaja **à parte** de `linhas`: misturá-lo o poria nas seções, no CSV e em todo contador — *decisão tomada não disputa espaço, nem número, com trabalho pendente*. ⭐ E o [voltar] **não escolhe destino**: devolve o nome pra fila como pergunta.
+
+**⭐ E O GESTO PASSOU A PERGUNTAR** — *"tirar «X» do cardápio?"*, modal NOSSO (nunca `confirm()` nativo, que já falhou em silêncio no Safari em fluxo async, 22/08). **Leve de propósito**: ignorar é reversível, e cobrar cerimônia por um gesto que se desfaz num clique seria pesar a mão.
+
+**PROVADO EM PROD, navegando pelas rotas reais (efeito líquido ZERO — ignorei e devolvi):**
+```
+ANTES     ignorados=0 · fila sem destino=111 · produtos=206
+IGNORO    HTTP 200 → ignorados=1 · fila=110 · produtos=205
+          🗂 seção: «Açaí 250ml» chave=ignorado:Açaí 250ml · 1 un · fora da fila
+[VOLTAR]  HTTP 200 → ignorados=0 · fila=111 · produtos=206 · volta como SEM_DESTINO
+celular 200 · desktop 200 · bundle com a seção, o "tirar … do cardápio?" e o voltar
+```
+**REGRA 11 — 6 defeitos repostos, 6 vermelhos.** ⚠️ **DOIS vieram VERDES na 1ª versão, os dois por asserção não ancorada:** `toContain('IgnoradosDoCardapio')` passou **com a seção arrancada do JSX**, porque a **definição** da função ainda tem o nome (*"menção, não uso"*, 7ª vez — o que morde é a TAG); e o `useState(false)` do colapsado casou com o **componente VIZINHO**, porque minha fatia ia até o fim do arquivo. ⚠️ E um terceiro guard mordeu **o próprio comentário** que proíbe `confirm()` nativo — passou a ler sem comentário.
+
+**10.710 verdes · TS 0 · guard de isolamento 48 · `pg_dump pre-venda-ignorado-20260923-101151.dump` (6,7 MB) · deploys 4/4 (`jo9AgBzBqpDJvL3BW_dI_` e `116UNYBFuDoH144UoPiqc`) · Δ bundle +4 KB.**
+
+⚠️ **DÍVIDA REGISTRADA:** a página do Cardápio declara `Status` e `Hub` **à mão** sobre o payload, então o `IGNORADO` precisou ser acrescentado nos dois lugares. É a dívida de 01/09 (*"interface escrita à mão sobre payload é promessa, não prova"*) cobrando juros — derivar de `StatusCardapio`/`HubCardapio` é o certo e fica pro sprint dela.
+
+📋 **FICA PRO DONO — a CALABRESA BLACK precisa de UMA resposta:** a ficha de sabor dela consome só a `CALABRESA BLACK 120 GRAMAS`, ou **também** o `QUEIJO Black Friday 200G` (como a MUSSARELA e o FRANGO)? Com a resposta, a ficha nasce e a linha aparece ao lado das outras duas — e as próximas vendas passam a baixar a porção certa.
+
 ### ⛔⛔⛔ A RECUSA DO ITEM NEGATIVO MANDAVA CAÇAR UMA NOTA QUE NÃO EXISTE (22/09)
 
 **O dono, contando a `PORÇAO CALABRESA 85g congelada`** (−8 UN · −R$ 135,20): *"a recusa diz só 'estoque negativo, não aceita' — sem explicar POR QUE nem O QUE FAZER."*
