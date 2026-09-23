@@ -1118,6 +1118,37 @@ celular 200 · 710ms · desktop 200 · 139ms · Δ bundle +4 KB
 
 **10.673 verdes · TS 0 · deploy 4/4 (`_OgFrXK9xtPjPG7vNNBjf`).**
 
+### ⛔⛔⛔ O LOTE FURAVA O "NADA SAI SEM CATEGORIA" — E O PALPITE PEDIA ASSINATURA NO ESCURO (23/09)
+
+**Quatro itens do dono, e o segundo tinha risco de dado.**
+
+**⛔⛔ O FURO (item 2).** As 6 notas da MARIA LUIZA (R$ 2.886,37) estão **todas sem categoria**, e o *"Vincular 6"* deixaria passar. **A causa é estrutural:** o card do lote postava em **`/find-and-match/reconcile`** — uma rota **PRÓPRIA**, **fora** do `resolverLinha`, que é onde o `PEDE_CATEGORIA` mora desde 20/09. Conciliadas por ali, as 6 sairiam da caixa **sem classificação nenhuma** e a despesa não entraria em DRE nenhum. ***"N caminhos, 1 esquecido"*** — agora na regra que existe justamente pra isso não acontecer.
+
+**⭐ A cura é a PORTA ÚNICA**, não um segundo check: o lote passou a postar no `/resolver`, e a regra vale **de graça, pro N inteiro**. ⭐ E a nota passou a carregar **`temCategoria`**, então a tela **PEDE ANTES do clique** — *fazer o dono clicar pra levar um não é trabalho que dava pra poupar* (a régua do seletor da caixa). **UMA pergunta pras N**, do lado esquerdo do chassi, e a resposta **grava em CADA conta** (aprende). ⛔ Por-nota diferente continua sendo *"Escolher na mão"*: oferecer N seletores aqui transformaria o card do lote no painel manual, e o lote existe pro caso *"todas iguais"*.
+
+**⭐ ITEM 1 — o lote veste o chassi ≍** (`moldura={false}` + `painelColado`, como o N:M em 20/09). O **grid próprio morreu**: dois modelos convivendo é exatamente o que o guard proíbe.
+
+**⭐⭐ ITEM 3 — O PALPITE MOSTRA A CONTA INTEIRA.** Ele mostrava **só o nome da empresa**; agora traz **valor · vencimento · NF/parcela**, **espelhando a coluna da esquerda** (a anatomia que os cards de CASO já usam; o 1↔1 é que tinha ficado pra trás). *"Eu confiro valor e data ANTES de confirmar, não depois."* ⚠️ Os dados saem da **MESMA conta que o matcher escolheu** — uma 2ª leitura poderia mostrar um valor e conciliar outro. ⛔ E o vencimento compara com o **dia do BRASIL**: em UTC, das 21h à meia-noite **toda conta que vence hoje apareceria como vencida** (a cicatriz do card do cartão, 09/09, e do Contas a Pagar, 13/09). O ano só aparece quando **não** é o corrente — *"venceu 22/09"* numa conta de 2025 se lê como deste mês.
+
+**⭐ ITEM 4 — "NÃO É ESSA — ESCOLHER OUTRA"**, ao lado do ✓ Confirmar: abre o Find & Match **SEM a sugerida pré-marcada**. ⛔ Marcar a errada de novo é obrigar o dono a **desmarcar antes de escolher**, e desmarcar é o gesto que ninguém lembra de fazer. Sem ela, palpite errado só se resolvia **abandonando o palpite**. ⚠️ O botão só **ABRE** o painel — nenhuma porta de gravação nova.
+
+**⚠️⚠️ E A PROVA EM PROD PEGOU UM BUG MEU QUE A SUÍTE NÃO PEGAVA:** o corpo do lote ia **sem `empresaId`**, que o schema da rota exige → **HTTP 400 "Gesto inválido"**, ou seja o botão simplesmente não funcionaria. Os 8 testes chamam o **`resolverLinha` direto** e passam por cima do zod. ***Testar a lib não prova o encaixe da rota*** — a mesma lição do mock que escondeu o contrato em 20/09. O guard passou a exigir os campos **dentro do corpo do fetch**.
+
+**PROVADO EM PROD, pelas rotas reais:**
+```
+ITEM 3   TOZZO       linha R$ 1.081,44 → A CONTA R$ 1.081,44 · venc 23/09 · NF 25926 (parcela 001)
+         BORTOLAZZO  linha R$   948,50 → A CONTA R$   946,50 · venc 23/09 · NF 618318
+                                                   ⭐ R$ 2,00 de diferença, VISTA antes de confirmar
+ITEM 2   vincular as 6 sem categoria → HTTP 422 · PEDE_CATEGORIA, nomeando a NF 69009352
+         ⛔ conciliadas: 0 · com categoria: 0 — INTACTAS
+celular 200 · desktop 200 · bundle com o retrato, o "não é essa", o "são da mesma?" e o aviso
+```
+**REGRA 11 — 7 furos repostos, 7 vermelhos** (rota própria de volta · Vincular liberando sem categoria · servidor parando de exigir · palpite só com o nome · palpite sem porta de troca · troca reabrindo com a sugerida marcada · lote fora do chassi). ⚠️ **E dois guards meus não morderam de primeira**, os dois por asserção não ancorada: o do `empresaId` casou com a **declaração da prop** (*"menção, não uso"*), e um guard de 20/09 ficou **vermelho com a tela CERTA** — ele afirmava o literal do `preSelecionados`, e a régua ganhou uma **exceção explícita**. **REAPONTADO, não afrouxado:** passou a exigir as duas metades (com palpite, marcado; na troca, vazio).
+
+**10.727 verdes · TS 0 · deploys 4/4 (`E4XwEwat8mxvuUvdbbdv2` e `LeB6ed-mZ91q_umhaEG1W`) · Δ bundle +4 KB.**
+
+📋 **NOMEADO, NÃO FEITO:** o palpite de **fatura de cartão** traz valor no `detalhe` (*"fatura 2026-09 · R$ 2.886,37"*) mas **não o vencimento** — é outra família, com outros campos, e o pedido era sobre a conta a pagar. Fica registrado em vez de eu estender por conta própria.
+
 ### ⛔⛔⛔ A "CALABRESA BLACK QUE SUMIU" — E O IGNORAR QUE NUNCA FUNCIONOU (23/09)
 
 **O dono, urgente:** *"cliquei sem querer num botão e a CALABRESA BLACK sumiu da minha frente"*.
