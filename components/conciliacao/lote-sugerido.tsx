@@ -109,6 +109,13 @@ export function LoteSugerido({ lote, linha, onVinculado, onProcurar, empresaId }
         method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          /**
+           * ⚠️⚠️ `empresaId` É OBRIGATÓRIO na rota — e a PROVA EM PROD foi quem pegou a
+           * falta: HTTP 400 *"Gesto inválido"*. Os testes chamam o `resolverLinha` direto
+           * e passam por cima do schema do zod. ***Testar a lib não prova o encaixe da
+           * rota*** — a mesma lição do mock que escondeu o contrato em 20/09.
+           */
+          empresaId,
           txId: lote.extratoId, acao: 'CASAR_PAGAR',
           contaIds: [...marcadas],
           ...(categoryId ? { categoryId } : {}),

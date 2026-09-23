@@ -163,6 +163,25 @@ describe('⛔ A PORTA É UMA SÓ — o lote não pode ter rota própria', () => 
       .not.toContain('find-and-match/reconcile')
     expect(semComentario).toContain("'/api/conciliacao/resolver'")
     expect(semComentario).toContain("acao: 'CASAR_PAGAR'")
+    /**
+     * ⚠️⚠️ O CORPO TEM QUE CASAR COM O SCHEMA DA ROTA — e foi a PROVA EM PROD que pegou a
+     * falta do `empresaId` (HTTP 400 *"Gesto inválido"*), não a suíte: os testes acima
+     * chamam o `resolverLinha` DIRETO e passam por cima do zod. ***Testar a lib não prova
+     * o encaixe da rota.***
+     */
+    /**
+     * ⚠️ E a 1ª versão deste guard NÃO MORDEU: `\\bempresaId[,:]` casava com a DECLARAÇÃO
+     * da prop (`empresaId: string`) lá em cima. *"Menção, não uso"* de novo — o que morde
+     * é olhar DENTRO do corpo que vai pro servidor.
+     */
+    const corpo = semComentario.slice(
+      semComentario.indexOf("'/api/conciliacao/resolver'"),
+      semComentario.indexOf('const body', semComentario.indexOf("'/api/conciliacao/resolver'")),
+    )
+    for (const campo of ['empresaId', 'txId', 'contaIds']) {
+      expect(corpo, `o corpo do lote não manda \`${campo}\` — a rota recusa com 400`)
+        .toContain(campo)
+    }
   })
 
   it('⭐ a tela PEDE antes do clique — e o Vincular não libera sem resposta', () => {
