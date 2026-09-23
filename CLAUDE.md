@@ -1118,6 +1118,37 @@ celular 200 · 710ms · desktop 200 · 139ms · Δ bundle +4 KB
 
 **10.673 verdes · TS 0 · deploy 4/4 (`_OgFrXK9xtPjPG7vNNBjf`).**
 
+### ⭐⭐⭐ UMA LISTA SÓ — A ARQUITETURA FINAL DA CONCILIAÇÃO (23/09)
+
+**O dono, com o cartão do lote já no chassi:** *"a PÁGINA ainda tem SEÇÕES separadas. Mesma pergunta («o que esta linha do banco é?») em duas casas = 2 modelos pra mim, igual antes."*
+
+**⛔ É a última forma da doença de 20/09** — lá era o mesmo **PAR** em duas superfícies; aqui, a mesma **PERGUNTA** em duas listas. A página tinha **três** superfícies de decisão além da caixa: os cards de **lote**, os de **escolha** e os pares **1↔1**. As três morreram: **toda linha do banco mora na caixa**, e o caso dela renderiza **dentro do cartão ≍ da própria linha**.
+
+**⚠️⚠️ E A MEDIÇÃO MUDOU O DESENHO ANTES DE EU ESCREVER A PRIMEIRA LINHA.** Os **14 cards** de *"pra tua mão"* têm a linha **FORA da caixa** — elas já estão **categorizadas** (`Matéria-Prima - Alimentos`), e `estacaoDaLinha` as manda pro ARQUIVO. ⭐ É a régua de 07/09 (***"ter categoria não quita conta nenhuma"***), e é **por isso** que aquela seção existia. **Colapsar sem carregá-las perderia R$ 2.120,81 · 2.275,05 · 3.510,78 … de trabalho real** — *duplicar é feio; sumir é perder trabalho*. Então a lista é **CAIXA ∪ CASO ABERTO**, e quem entra só pelo caso vem **marcado** (`soPeloCaso`): linha já classificada aparecendo do nada parece defeito.
+
+**AS PEÇAS:**
+- **`lista-unica.ts`** — a régua PURA: quem entra, os filtros, os contadores. ⛔ Régua dentro de rota é régua que ninguém prova.
+- **`cards-de-escolha.ts`** — a orquestração (~150 linhas, queries pesadas) **saiu da rota**: o caixa precisa dos MESMOS cards, e copiá-la seria a **segunda derivação** que custou os 7 detectores de par. A rota virou casca.
+- **`comoPainel`** no lote e no card de escolha — ⛔ os dois desenham o próprio `ChassiDoCartao`; dentro do cartão da linha isso mostraria **a linha do banco duas vezes no mesmo cartão**. O motor deles é o mesmo (uma linha por vez, rodapé vivo, Conciliar preso à conta fechada).
+- **Os contadores viraram FILTROS** da mesma lista (`passaNoFiltro`/`contadoresDaLista`) — ⭐ contador e lista **não têm COMO divergir**, que era a ordem do dono. ⚠️ A 2ª linha de um caso **não conta**: ela é ponteiro, não trabalho a mais.
+
+**⛔⛔ E O GUARD PEGOU UM BUG QUE EU ACABEI DE CRIAR:** com o filtro `⭐ prontos` ligado e zero prontos, `visiveis.length === 0` e a caixa dizia ***"tudo resolvido"* com 35 linhas esperando**. ***Ausência de resultado NESTE recorte não é ausência de trabalho*** — a família do *"Tudo conciliado ✓ em cima de 16 pagamentos"* (10/09). O vazio de festa só sai com `filtro === 'TUDO'`; o do filtro **diz quantas linhas a lista ainda tem** e oferece o *"ver tudo →"*.
+
+**PROVADO EM PROD, pelas rotas reais:**
+```
+UMA LISTA: 49 linhas · filtros {tudo 49 · prontos 1 · mão 14} · Σ 15 ≤ 49 ✓
+  ⭐ entraram SÓ pelo caso (já categorizadas): 14  ← eram os 14 cards
+  casos por família: ESCOLHA 14 · LOTE 1
+  MARIA LUIZA R$ 2.886,37 → é UMA LINHA da lista, caso LOTE, 6 notas no painel
+  CASPER → 5 linhas NA LISTA (todas soPeloCaso), antes só existiam nos cards
+celular 200 · desktop 200 · bundre −8 KB (as seções saíram)
+```
+**REGRA 11 — 6 furos repostos, 6 vermelhos.** ⚠️ **O mais caro veio VERDE na 1ª versão:** o guard da lista larga fazia `toContain('linhasDaLista(')` e a **menção** sobreviveu à reposição — *"menção, não uso"*. Apertado pro filtro velho ter MORRIDO e a resposta sair de `paraTela`. ⚠️ **E a própria sonda da REGRA 11 nasceu quebrada:** `$G` sem aspas **não faz word-splitting em zsh**, então os 6 rodaram contra zero arquivo e "passaram". *Sonda errada dá um verde tão convincente quanto um vermelho.*
+
+**⚠️ 4 GUARDS FICARAM VERMELHOS COM O CÓDIGO CERTO** (o alvo mudou de casa num refactor — a razão de existir da REGRA 3). **Reapontados, não afrouxados**, e **dois ficaram mais fortes**: o `card-nao-nasce-escondido` passou a exigir que o painel exista **E** que a linha dele **entre na lista**; o `um-modelo-so` passou a proibir o lote de voltar pra página.
+
+**10.751 verdes · TS 0 · deploys 4/4 (`cBP8IOOmsVAWkUcsh2HR_` e `fRsGTCf3sYjG2lApQcxwp`) · Δ bundle −8 KB · mock v3 atualizado com os filtros e a marca "já classificada".**
+
 ### ⛔⛔⛔ O LOTE FURAVA O "NADA SAI SEM CATEGORIA" — E O PALPITE PEDIA ASSINATURA NO ESCURO (23/09)
 
 **Quatro itens do dono, e o segundo tinha risco de dado.**
