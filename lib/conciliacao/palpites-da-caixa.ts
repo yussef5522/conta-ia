@@ -203,6 +203,18 @@ export async function palpitesDaCaixa(
             confianca: top.confianca === 'alta' ? 'ALTA' : top.confianca === 'media' ? 'MEDIA' : 'BAIXA',
             alvo: { contaId: top.contaId },
             alvoNome: conta?.description ?? nome,
+            /**
+             * ⭐⭐ O RETRATO DA CONTA (23/09) — *"eu confiro valor e data ANTES de
+             * confirmar, não depois"*. Sai da MESMA `conta` que o matcher escolheu: uma
+             * segunda leitura poderia mostrar um valor e conciliar outro.
+             */
+            alvoDetalhe: conta ? {
+              descricao: conta.description ?? nome,
+              valor: Math.abs(conta.amount),
+              // ⚠️ o VENCIMENTO, nunca a emissão — é a data que o dono confere
+              vencimento: (conta.dueDate ?? conta.date)?.toISOString().slice(0, 10) ?? null,
+              fornecedor: conta.supplier?.nomeFantasia ?? conta.supplier?.razaoSocial ?? null,
+            } : undefined,
           })
         }
       } catch { /* fail-soft */ }

@@ -14,8 +14,12 @@
 // do `/find-and-match/reconcile`), e deixar o botão vivo seria prometer o que não vai
 // acontecer.
 
-import { useState, useMemo } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { Link2, Loader2, Search, Layers } from 'lucide-react'
+import { ChassiDoCartao } from './chassi-do-cartao'
+import { MenuDoChip } from './menu-do-chip'
+import { fetchComTimeout } from '@/lib/http/fetch-com-timeout'
+import { secoesDoMenu, type CategoriaDoMenu } from '@/lib/conciliacao/categorias-do-gesto'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
@@ -29,6 +33,8 @@ export interface LinhaDoLoteDTO {
 }
 
 export interface NotaDoLoteDTO {
+  /** ⭐ 23/09 — sem isto a tela prometia um gesto que o servidor ia recusar */
+  temCategoria?: boolean
   id: string
   descricao: string
   valor: number
@@ -59,11 +65,14 @@ interface Props {
   linha: LinhaDoLoteDTO
   onVinculado: (extratoId: string, notasIds: string[]) => void
   onProcurar: (extratoId: string, busca: string) => void
+  /** ⭐ 23/09 — pra carregar as categorias do menu (a mesma rota que o balcão usa) */
+  empresaId: string
 }
 
-export function LoteSugerido({ lote, linha, onVinculado, onProcurar }: Props) {
+export function LoteSugerido({ lote, linha, onVinculado, onProcurar, empresaId }: Props) {
   const { toast } = useToast()
   const [ocupado, setOcupado] = useState(false)
+  const [pedindoCategoria, setPedindoCategoria] = useState(false)
   const [marcadas, setMarcadas] = useState<Set<string>>(
     () => new Set(lote.notas.map((n) => n.id)),
   )
@@ -75,26 +84,54 @@ export function LoteSugerido({ lote, linha, onVinculado, onProcurar }: Props) {
   )
   const diferenca = Math.round((lote.valorDaLinha - soma) * 100) / 100
   const bate = Math.abs(diferenca) <= TOLERANCIA && marcadas.size > 0
+  /**
+   * ⭐⭐ A PERGUNTA VEM ANTES DO CLIQUE — *"fazer o dono clicar pra levar um não é trabalho
+   * que dava pra poupar"* (a régua de 20/09, do seletor da caixa).
+   * ⚠️ Só conta o que está MARCADO: desmarcar a única sem categoria resolve sozinho.
+   */
+  const faltamCategoria = lote.notas.filter((n) => marcadas.has(n.id) && n.temCategoria === false)
 
-  async function vincular() {
+  /**
+   * ⭐⭐⭐ 23/09 — O LOTE PASSOU A USAR A PORTA ÚNICA, e isso fecha um furo real.
+   *
+   * ⛔⛔ Ele postava em `/find-and-match/reconcile` — uma rota PRÓPRIA, **fora** do
+   * `resolverLinha`, que é onde o `PEDE_CATEGORIA` mora (20/09). Resultado: as 6 notas da
+   * MARIA LUIZA, **todas sem categoria**, seriam conciliadas e sairiam da caixa sem
+   * classificação nenhuma — a despesa não entraria em DRE nenhum. *"N caminhos, 1
+   * esquecido"*, agora na regra que existe justamente pra isso não acontecer.
+   *
+   * ⭐ Com a porta única, a regra vale de graça — e vale pro N inteiro, não pra 1.
+   */
+  async function vincular(categoryId?: string) {
     setOcupado(true)
     try {
-      const res = await fetch('/api/conciliacao/find-and-match/reconcile', {
+      const res = await fetch('/api/conciliacao/resolver', {
         method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ofxTransactionId: lote.extratoId,
-          candidateIds: [...marcadas],
+          txId: lote.extratoId, acao: 'CASAR_PAGAR',
+          contaIds: [...marcadas],
+          ...(categoryId ? { categoryId } : {}),
         }),
       })
       const body = await res.json().catch(() => ({}))
       if (!res.ok) {
+        /**
+         * ⭐ A RECUSA VIRA A PERGUNTA, NA PRÓPRIA TELA — e ela é UMA pra as N.
+         * ⚠️ O dono não deve descobrir isto clicando: a tela já pede antes (ver
+         * `faltamCategoria`). Este ramo é a rede — a régua mora no SERVIDOR, e quem só
+         * escondesse o botão perderia a trava no dia em que a rota fosse chamada de outro
+         * lugar (a lição do FREIO da contagem, 23/08).
+         */
+        if (body?.code === 'PEDE_CATEGORIA') { setPedindoCategoria(true); return }
         toast({ variant: 'destructive', title: 'Não deu pra vincular o lote', description: body?.erro ?? `HTTP ${res.status}` })
         return
       }
       toast({
-        title: `${body.reconciled ?? marcadas.size} notas liquidadas`,
-        description: `Todas apontam pra a mesma linha do extrato — o pagamento do ${lote.fornecedorNome}.`,
+        title: `${marcadas.size} notas liquidadas`,
+        description: categoryId
+          ? `Todas apontam pra a mesma linha do extrato — e a categoria ficou gravada nas ${marcadas.size}.`
+          : `Todas apontam pra a mesma linha do extrato — o pagamento do ${lote.fornecedorNome}.`,
       })
       onVinculado(lote.extratoId, [...marcadas])
     } catch {
@@ -112,27 +149,33 @@ export function LoteSugerido({ lote, linha, onVinculado, onProcurar }: Props) {
         </span>
       </div>
 
-      <div className="grid md:grid-cols-[1fr_36px_1.4fr]">
-        {/* ── lado FRIO: a linha do banco ── */}
-        <div className="flex min-w-0 flex-col gap-1 bg-slate-50 px-4 py-3 dark:bg-slate-900/60">
-          <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400">
-            linha do extrato{linha.conta ? ` · ${linha.conta}` : ''}
-          </span>
-          <span className="text-[19px] font-semibold leading-none tabular-nums text-slate-900 dark:text-slate-50">
-            − {formatBRL(lote.valorDaLinha)}
-          </span>
-          <span className="break-words text-[12.5px] leading-snug text-slate-600 dark:text-slate-300">
-            {linha.descricao}
-          </span>
-          <span className="text-[11px] tabular-nums text-slate-400">
-            {dia(linha.data)}{linha.categoria ? ` · ${linha.categoria}` : ' · sem categoria'}
-          </span>
-        </div>
-
-        <div className="flex h-7 items-center justify-center border-y border-slate-200 bg-white text-slate-300 dark:border-slate-800 dark:bg-slate-950 md:h-auto md:flex-col md:border-x md:border-y-0">
-          <Link2 className="h-3.5 w-3.5" />
-        </div>
-
+      <ChassiDoCartao
+        moldura={false}
+        painelColado
+        banco={{
+          conta: linha.conta, descricao: linha.descricao, data: linha.data.slice(0, 10),
+          valor: lote.valorDaLinha, credito: false,
+        }}
+        abaixoDoValor={
+          /**
+           * ⭐⭐ UMA PERGUNTA PRAS N (decisão do dono). O seletor mora do lado ESQUERDO,
+           * como na caixa (20/09) — e a frase diz que a resposta vale pras N e FICA.
+           * ⛔ Por-nota diferente não se resolve aqui: aí é "Escolher na mão", onde cada
+           * nota tem a sua linha. Oferecer N seletores aqui seria transformar o card do
+           * lote no painel manual, e o lote existe justamente pra o caso "todas iguais".
+           */
+          faltamCategoria.length ? (
+            <SeletorDoLote
+              empresaId={empresaId}
+              quantas={faltamCategoria.length}
+              total={marcadas.size}
+              aberto={pedindoCategoria}
+              aoAbrir={setPedindoCategoria}
+              aoEscolher={(id) => { setPedindoCategoria(false); void vincular(id) }}
+            />
+          ) : null
+        }
+      >
         {/* ── lado QUENTE: as notas ── */}
         <div className="min-w-0 bg-amber-50/40 px-4 py-3 dark:bg-amber-950/10">
           <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400">
@@ -185,7 +228,7 @@ export function LoteSugerido({ lote, linha, onVinculado, onProcurar }: Props) {
             </span>
           </div>
         </div>
-      </div>
+      </ChassiDoCartao>
 
       {/* ⛔ A TIRA DO PORQUÊ — sem ela a sugestão não pode existir */}
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2 border-t border-slate-200 bg-white px-4 py-2.5 dark:border-slate-800 dark:bg-slate-950">
@@ -196,10 +239,18 @@ export function LoteSugerido({ lote, linha, onVinculado, onProcurar }: Props) {
           {lote.porQue}
         </span>
         <span className="ml-auto flex items-center gap-1">
-          <Button size="sm" disabled={ocupado || !bate} onClick={vincular} className="h-8 gap-1.5 px-3 text-xs">
+          {/* ⛔ SEM CATEGORIA, O VINCULAR NÃO LIBERA — e a frase DIZ por quê. Botão
+              desabilitado mudo é o dono clicando e não entendendo. */}
+          <Button size="sm" disabled={ocupado || !bate || faltamCategoria.length > 0}
+            onClick={() => void vincular()} className="h-8 gap-1.5 px-3 text-xs">
             {ocupado ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
             Vincular {marcadas.size} nota{marcadas.size === 1 ? '' : 's'}
           </Button>
+          {faltamCategoria.length > 0 && (
+            <span className="text-[11px] text-amber-700 dark:text-amber-400">
+              diga a categoria primeiro — ela grava nas {faltamCategoria.length}
+            </span>
+          )}
           <Button size="sm" variant="ghost" disabled={ocupado}
             onClick={() => onProcurar(lote.extratoId, lote.fornecedorNome)}
             className="h-8 gap-1 px-2.5 text-xs text-slate-500"
@@ -210,5 +261,70 @@ export function LoteSugerido({ lote, linha, onVinculado, onProcurar }: Props) {
         </span>
       </div>
     </article>
+  )
+}
+
+/**
+ * ⭐⭐ O SELETOR DO LOTE — UMA pergunta pras N.
+ *
+ * ⛔ Ele **não inventa uma segunda régua de categoria**: as seções vêm do mesmo
+ * `secoesDoMenu` que a caixa usa (`CASAR_PAGAR`), então o que o lote oferece é exatamente
+ * o que o balcão oferece. Um menu próprio aqui divergiria no primeiro grupo novo.
+ */
+function SeletorDoLote({ empresaId, quantas, total, aberto, aoAbrir, aoEscolher }: {
+  empresaId: string
+  quantas: number; total: number; aberto: boolean
+  aoAbrir: (v: boolean) => void
+  aoEscolher: (categoryId: string) => void
+}) {
+  const [categorias, setCategorias] = useState<CategoriaDoMenu[]>([])
+  const [carga, setCarga] = useState<'CARREGANDO' | 'OK' | 'FALHOU'>('CARREGANDO')
+
+  // ⚠️ `soAtivas=true`: a rota devolve o catálogo INTEIRO (263, das quais 60 ativas) e
+  // oferecer inativa é oferecer o que a gravação recusa (a prova em prod de 18/09).
+  useEffect(() => {
+    let vivo = true
+    fetchComTimeout<{ categorias?: CategoriaDoMenu[] }>(`/api/empresas/${empresaId}/categorias?soAtivas=true`)
+      .then((r) => {
+        if (!vivo) return
+        if (r.ok && r.data?.categorias) { setCategorias(r.data.categorias); setCarga('OK') } else setCarga('FALHOU')
+      })
+    return () => { vivo = false }
+  }, [empresaId])
+
+  return (
+    <div className="mt-2">
+      <button
+        onClick={() => aoAbrir(!aberto)}
+        aria-expanded={aberto}
+        className="w-full rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-left text-[11.5px] leading-snug text-amber-900 hover:bg-amber-100 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200"
+      >
+        {quantas === total
+          ? <>as <b>{total}</b> estão sem categoria — são da mesma?</>
+          : <><b>{quantas}</b> de {total} estão sem categoria — são da mesma?</>}
+        <span className="mt-0.5 block text-amber-700/80 dark:text-amber-300/70">
+          a resposta grava em CADA conta — a próxima nota do fornecedor já vem com ela
+        </span>
+      </button>
+      {aberto && (
+        <div className="mt-1.5">
+          <MenuDoChip
+            rotulo={carga === 'CARREGANDO' ? 'carregando…' : `aplicar nas ${quantas}`}
+            icone="🏷️"
+            className="inline-flex items-center gap-1.5 rounded-full border-[1.5px] border-amber-400 bg-white px-3 py-[7px] text-[12.5px] font-bold"
+            /* ⛔ SAIDA: lote de conta a PAGAR. O menu é o MESMO do balcão (`secoesDoMenu`)
+               — um menu próprio aqui divergiria no primeiro grupo novo. */
+            secoes={secoesDoMenu(categorias, 'SAIDA').map((sec) => ({
+              titulo: sec.titulo, ajuda: sec.ajuda,
+              itens: sec.itens.map((c) => ({ id: c.id, nome: c.name })),
+            }))}
+            /* ⚠️ vazio que DIZ: "nenhuma categoria" com a carga falha seria uma afirmação
+               sobre a empresa feita a partir de um erro de rede (18/09). */
+            vazio={carga === 'FALHOU' ? 'não consegui carregar as categorias — tenta de novo' : 'nenhuma categoria ativa'}
+            onEscolher={(id) => aoEscolher(id)}
+          />
+        </div>
+      )}
+    </div>
   )
 }

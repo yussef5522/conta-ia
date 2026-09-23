@@ -91,7 +91,19 @@ describe('⭐ e a TELA não abre o painel quando já tem a resposta', () => {
   })
 
   it('⭐ e quando o painel abre, ele vem COM o candidato marcado', () => {
-    expect(t).toMatch(/preSelecionados=\{idsDoPalpite\(l\)\}/)
+    /**
+     * ⚠️ REAPONTADO EM 23/09, NÃO AFROUXADO. A régua continua a mesma — *"se o palpite já
+     * resolveu o alvo, o painel abre COM ele marcado"* (o bug da ELIANE) — mas ela ganhou
+     * **uma exceção explícita**: o *"não é essa — escolher outra"*, em que o dono ACABOU
+     * de dizer que a sugerida está errada. Marcar a errada ali seria obrigá-lo a desmarcar
+     * antes de escolher, e desmarcar é o gesto que ninguém lembra de fazer.
+     *
+     * ⛔ O guard passou a exigir as DUAS metades: com o palpite, marcado; na troca, vazio.
+     * Aceitar só `preSelecionados={...}` genérico deixaria passar o dia em que alguém
+     * apagasse a pré-marcação de vez.
+     */
+    expect(t, 'a pré-marcação do palpite sumiu — é o bug da ELIANE de volta')
+      .toMatch(/preSelecionados=\{trocandoConta \? \[\] : idsDoPalpite\(l\)\}/)
     expect(fonte('components/conciliacao/find-and-match-panel.tsx'))
       .toMatch(/useState<Set<string>>\(new Set\(preSelecionados \?\? \[\]\)\)/)
   })

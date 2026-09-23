@@ -354,6 +354,7 @@ function ConciliacaoInner() {
                 {(fila?.lotes ?? []).map((l) => (
                   <LoteSugerido
                     key={l.extratoId}
+                    empresaId={empresaId}
                     lote={l}
                     linha={{
                       descricao: l.linha.descricao, data: l.linha.data,

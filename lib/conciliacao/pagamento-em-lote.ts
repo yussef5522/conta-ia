@@ -36,6 +36,16 @@ export interface NotaAberta {
   valor: number
   vencimento: Date
   fornecedorId: string
+  /**
+   * ⭐⭐ 23/09 — A NOTA DIZ SE JÁ TEM CATEGORIA.
+   *
+   * ⛔ Sem isto a tela **não tinha como saber** que as 6 da MARIA LUIZA estão sem, e o
+   * "Vincular 6" prometia um gesto que o servidor ia recusar. E o furo era maior: o lote
+   * postava numa rota PRÓPRIA (`find-and-match/reconcile`), **fora** do `resolverLinha`
+   * onde o `PEDE_CATEGORIA` mora — *"N caminhos, 1 esquecido"*, agora na regra que existe
+   * pra nada sair da caixa sem classificação.
+   */
+  temCategoria: boolean
 }
 
 export interface LinhaParaLote {

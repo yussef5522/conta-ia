@@ -339,6 +339,8 @@ export async function lotesDaFila(
       select: {
         id: true, description: true, amount: true, dueDate: true, date: true,
         type: true, supplierId: true,
+        // ⭐ 23/09: a tela precisa saber ANTES do clique — pedir depois é pedir nunca
+        categoryId: true,
       },
     }),
     fornecedoresDaEmpresa(db, companyId),
@@ -398,6 +400,7 @@ export async function lotesDaFila(
   const notas: NotaAberta[] = contas.map((c) => ({
     id: c.id, descricao: c.description, valor: Math.abs(c.amount),
     vencimento: c.dueDate ?? c.date, fornecedorId: canon(c.supplierId)!,
+    temCategoria: c.categoryId != null,
   }))
 
   return sugerirPagamentosEmLote({

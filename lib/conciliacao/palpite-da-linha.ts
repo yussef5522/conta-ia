@@ -18,6 +18,29 @@
 import type { AcaoDoBalcao, SentidoDaLinha } from './caixa-de-entrada'
 import { acaoValePraSentido } from './caixa-de-entrada'
 
+/**
+ * ⭐⭐⭐ O RETRATO DA CONTA SUGERIDA (23/09/2026) — decisão do dono.
+ *
+ * *"Hoje o melhor palpite mostra só o NOME da empresa. Eu confiro valor e data ANTES de
+ * confirmar, não depois."*
+ *
+ * ⛔ E ele **espelha a coluna da esquerda**: a linha do extrato mostra valor · data ·
+ * descrição, e a conta a pagar passa a mostrar as mesmas três coisas. É a anatomia que os
+ * cards de CASO já usam (LINHA DO EXTRATO × CONTA A PAGAR); o palpite 1↔1 é que ficou pra
+ * trás. ***Confirmar sem ver o outro lado é assinar no escuro.***
+ *
+ * ⚠️ Os dados NÃO são consultados de novo: saem da MESMA conta que o matcher escolheu.
+ * Uma segunda leitura poderia mostrar um valor e conciliar outro.
+ */
+export interface AlvoDetalhado {
+  /** a descrição inteira, com NF e parcela ("… — NF 25926 (parcela 001)") */
+  descricao: string
+  valor: number
+  /** YYYY-MM-DD — o VENCIMENTO da conta (nunca a data de emissão) */
+  vencimento: string | null
+  fornecedor: string | null
+}
+
 /** ⭐ o que a tela desenha no lado direito do cartão ≍ */
 export interface PalpiteDaLinha {
   acao: AcaoDoBalcao
@@ -27,6 +50,8 @@ export interface PalpiteDaLinha {
   titulo: string
   /** a linha fina de baixo ("fatura 2026-08 · R$ 3.194,35 · vence 15/09") */
   detalhe: string
+  /** ⭐ 23/09 — o retrato da conta sugerida, pro dono conferir ANTES de confirmar */
+  alvoDetalhe?: AlvoDetalhado
   /**
    * ⛔ A DIFERENÇA É SEMPRE NOMEADA — é a pílula âmbar do mock, e ela existe mesmo
    * quando é ZERO (*"✓ valor exato — fecha em R$ 0,00"*). Diferença escondida foi o
@@ -94,6 +119,8 @@ export interface CandidatoBruto {
   alvo: Record<string, unknown>
   /** nome curto do alvo, pro rótulo do botão ("NF 1240679") */
   alvoNome?: string
+  /** ⭐ 23/09 — o retrato da conta sugerida (ver `AlvoDetalhado`) */
+  alvoDetalhe?: AlvoDetalhado
 }
 
 const PESO = { ALTA: 3, MEDIA: 2, BAIXA: 1 } as const
@@ -137,6 +164,7 @@ export function escolherPalpite(
     diferenca: frasePraDiferenca(melhor.diferenca, valorDaLinha),
     botao: rotuloDoBotao(melhor.acao, melhor.alvoNome),
     alvo: melhor.alvo,
+    alvoDetalhe: melhor.alvoDetalhe,
     confianca: melhor.confianca,
   }
 }

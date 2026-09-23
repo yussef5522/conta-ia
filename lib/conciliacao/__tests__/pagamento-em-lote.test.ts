@@ -21,19 +21,24 @@ const nomeDoFornecedor = (id: string) => NOMES[id] ?? id
 
 const d = (iso: string) => new Date(`${iso}T12:00:00.000Z`)
 
+// ⚠️ `temCategoria: true` está ESCRITO em cada nota de propósito: o assunto destes testes é
+// o CASAMENTO do lote, não a categoria, e fixture que se apoia num default sem dizer foi
+// exatamente o que mordeu nas 6 fixtures de produção em 15/09. A regra da categoria tem
+// arquivo próprio (`lote-pede-categoria`).
+
 /** as 11 notas abertas da Odissea, como estão em prod */
 const NOTAS_ODISSEA: NotaAberta[] = [
-  { id: 'o721', descricao: 'NF 721', valor: 793.73, vencimento: d('2026-09-07'), fornecedorId: ODISSEA },
-  { id: 'o716', descricao: 'NF 716', valor: 160.19, vencimento: d('2026-09-07'), fornecedorId: ODISSEA },
-  { id: 'o719', descricao: 'NF 719', valor: 89.91, vencimento: d('2026-09-07'), fornecedorId: ODISSEA },
-  { id: 'o722', descricao: 'NF 722', valor: 71.05, vencimento: d('2026-09-07'), fornecedorId: ODISSEA },
-  { id: 'o723', descricao: 'NF 723', valor: 22.90, vencimento: d('2026-09-07'), fornecedorId: ODISSEA },
-  { id: 'o711', descricao: 'NF 711', valor: 122.47, vencimento: d('2026-09-07'), fornecedorId: ODISSEA },
-  { id: 'o707', descricao: 'NF 707', valor: 62.89, vencimento: d('2026-09-07'), fornecedorId: ODISSEA },
-  { id: 'o712', descricao: 'NF 712', valor: 184.10, vencimento: d('2026-09-05'), fornecedorId: ODISSEA },
-  { id: 'o710', descricao: 'NF 710', valor: 95.75, vencimento: d('2026-09-04'), fornecedorId: ODISSEA },
-  { id: 'o709', descricao: 'NF 709', valor: 59.68, vencimento: d('2026-09-04'), fornecedorId: ODISSEA },
-  { id: 'o708', descricao: 'NF 708', valor: 69.28, vencimento: d('2026-09-04'), fornecedorId: ODISSEA },
+  { id: 'o721', descricao: 'NF 721', valor: 793.73, vencimento: d('2026-09-07'), fornecedorId: ODISSEA, temCategoria: true },
+  { id: 'o716', descricao: 'NF 716', valor: 160.19, vencimento: d('2026-09-07'), fornecedorId: ODISSEA, temCategoria: true },
+  { id: 'o719', descricao: 'NF 719', valor: 89.91, vencimento: d('2026-09-07'), fornecedorId: ODISSEA, temCategoria: true },
+  { id: 'o722', descricao: 'NF 722', valor: 71.05, vencimento: d('2026-09-07'), fornecedorId: ODISSEA, temCategoria: true },
+  { id: 'o723', descricao: 'NF 723', valor: 22.90, vencimento: d('2026-09-07'), fornecedorId: ODISSEA, temCategoria: true },
+  { id: 'o711', descricao: 'NF 711', valor: 122.47, vencimento: d('2026-09-07'), fornecedorId: ODISSEA, temCategoria: true },
+  { id: 'o707', descricao: 'NF 707', valor: 62.89, vencimento: d('2026-09-07'), fornecedorId: ODISSEA, temCategoria: true },
+  { id: 'o712', descricao: 'NF 712', valor: 184.10, vencimento: d('2026-09-05'), fornecedorId: ODISSEA, temCategoria: true },
+  { id: 'o710', descricao: 'NF 710', valor: 95.75, vencimento: d('2026-09-04'), fornecedorId: ODISSEA, temCategoria: true },
+  { id: 'o709', descricao: 'NF 709', valor: 59.68, vencimento: d('2026-09-04'), fornecedorId: ODISSEA, temCategoria: true },
+  { id: 'o708', descricao: 'NF 708', valor: 69.28, vencimento: d('2026-09-04'), fornecedorId: ODISSEA, temCategoria: true },
 ]
 
 const linhaOdissea: LinhaParaLote = {
@@ -73,10 +78,10 @@ describe('⭐⭐ o PIX em lote da ODISSEA — o caso real', () => {
 
   it('⛔ DUAS combinações que fecham = não sabe qual foi, e não sugere', () => {
     const gemeas: NotaAberta[] = [
-      { id: 'g1', descricao: 'NF A', valor: 100, vencimento: d('2026-09-07'), fornecedorId: ODISSEA },
-      { id: 'g2', descricao: 'NF B', valor: 100, vencimento: d('2026-09-07'), fornecedorId: ODISSEA },
-      { id: 'g3', descricao: 'NF C', valor: 50, vencimento: d('2026-09-07'), fornecedorId: ODISSEA },
-      { id: 'g4', descricao: 'NF D', valor: 50, vencimento: d('2026-09-07'), fornecedorId: ODISSEA },
+      { id: 'g1', descricao: 'NF A', valor: 100, vencimento: d('2026-09-07'), fornecedorId: ODISSEA, temCategoria: true },
+      { id: 'g2', descricao: 'NF B', valor: 100, vencimento: d('2026-09-07'), fornecedorId: ODISSEA, temCategoria: true },
+      { id: 'g3', descricao: 'NF C', valor: 50, vencimento: d('2026-09-07'), fornecedorId: ODISSEA, temCategoria: true },
+      { id: 'g4', descricao: 'NF D', valor: 50, vencimento: d('2026-09-07'), fornecedorId: ODISSEA, temCategoria: true },
     ]
     const { lotes, naoFecham } = sugerirPagamentosEmLote({
       linhas: [{ ...linhaOdissea, valor: 150 }], notas: gemeas, nomeDoFornecedor,
@@ -94,8 +99,8 @@ describe('⭐⭐ o PIX em lote da ODISSEA — o caso real', () => {
 
   it('⛔ uma nota só não é lote — esse é o caminho 1:1, que já existe', () => {
     const uma: NotaAberta[] = [
-      { id: 'u1', descricao: 'NF X', valor: 1137.78, vencimento: d('2026-09-07'), fornecedorId: ODISSEA },
-      { id: 'u2', descricao: 'NF Y', valor: 10, vencimento: d('2026-09-07'), fornecedorId: ODISSEA },
+      { id: 'u1', descricao: 'NF X', valor: 1137.78, vencimento: d('2026-09-07'), fornecedorId: ODISSEA, temCategoria: true },
+      { id: 'u2', descricao: 'NF Y', valor: 10, vencimento: d('2026-09-07'), fornecedorId: ODISSEA, temCategoria: true },
     ]
     const { lotes } = sugerirPagamentosEmLote({ linhas: [linhaOdissea], notas: uma, nomeDoFornecedor })
     expect(lotes).toEqual([])
@@ -104,14 +109,14 @@ describe('⭐⭐ o PIX em lote da ODISSEA — o caso real', () => {
 
 describe('⭐ o lote do ALAN — 5 das 12, com uma nota paga adiantada', () => {
   const NOTAS_ALAN: NotaAberta[] = [
-    { id: 'a1609', descricao: 'NF 1609', valor: 797.05, vencimento: d('2026-09-20'), fornecedorId: ALAN },
-    { id: 'a1604', descricao: 'NF 1604', valor: 283.64, vencimento: d('2026-09-07'), fornecedorId: ALAN },
-    { id: 'a1596', descricao: 'NF 1596', valor: 159.80, vencimento: d('2026-09-07'), fornecedorId: ALAN },
-    { id: 'a1605', descricao: 'NF 1605', valor: 71.88, vencimento: d('2026-09-07'), fornecedorId: ALAN },
-    { id: 'a1594', descricao: 'NF 1594', valor: 57.96, vencimento: d('2026-09-07'), fornecedorId: ALAN },
-    { id: 'a1538', descricao: 'NF 1538', valor: 231.60, vencimento: d('2026-09-05'), fornecedorId: ALAN },
-    { id: 'a1545', descricao: 'NF 1545', valor: 64.95, vencimento: d('2026-09-06'), fornecedorId: ALAN },
-    { id: 'a1532', descricao: 'NF 1532', valor: 19.00, vencimento: d('2026-09-03'), fornecedorId: ALAN },
+    { id: 'a1609', descricao: 'NF 1609', valor: 797.05, vencimento: d('2026-09-20'), fornecedorId: ALAN, temCategoria: true },
+    { id: 'a1604', descricao: 'NF 1604', valor: 283.64, vencimento: d('2026-09-07'), fornecedorId: ALAN, temCategoria: true },
+    { id: 'a1596', descricao: 'NF 1596', valor: 159.80, vencimento: d('2026-09-07'), fornecedorId: ALAN, temCategoria: true },
+    { id: 'a1605', descricao: 'NF 1605', valor: 71.88, vencimento: d('2026-09-07'), fornecedorId: ALAN, temCategoria: true },
+    { id: 'a1594', descricao: 'NF 1594', valor: 57.96, vencimento: d('2026-09-07'), fornecedorId: ALAN, temCategoria: true },
+    { id: 'a1538', descricao: 'NF 1538', valor: 231.60, vencimento: d('2026-09-05'), fornecedorId: ALAN, temCategoria: true },
+    { id: 'a1545', descricao: 'NF 1545', valor: 64.95, vencimento: d('2026-09-06'), fornecedorId: ALAN, temCategoria: true },
+    { id: 'a1532', descricao: 'NF 1532', valor: 19.00, vencimento: d('2026-09-03'), fornecedorId: ALAN, temCategoria: true },
   ]
   const linhaAlan: LinhaParaLote = {
     id: 'ext-alan', descricao: 'ALAN SALBEGO DA SILVA - Transferência | Pix',
@@ -133,9 +138,9 @@ describe('⭐⭐ IVAN / MARIA LUIZA / OESA — nomeiam o fornecedor e NÃO fecha
   // disfarçado de vazio"; o certo é aparecer dizendo o que é.
   const IVAN = 'forn-ivan'
   const notas: NotaAberta[] = [
-    { id: 'i39', descricao: 'NF 39', valor: 625.00, vencimento: d('2026-09-07'), fornecedorId: IVAN },
-    { id: 'i41', descricao: 'NF 41', valor: 613.50, vencimento: d('2026-09-07'), fornecedorId: IVAN },
-    { id: 'i40', descricao: 'NF 40', valor: 350.00, vencimento: d('2026-09-07'), fornecedorId: IVAN },
+    { id: 'i39', descricao: 'NF 39', valor: 625.00, vencimento: d('2026-09-07'), fornecedorId: IVAN, temCategoria: true },
+    { id: 'i41', descricao: 'NF 41', valor: 613.50, vencimento: d('2026-09-07'), fornecedorId: IVAN, temCategoria: true },
+    { id: 'i40', descricao: 'NF 40', valor: 350.00, vencimento: d('2026-09-07'), fornecedorId: IVAN, temCategoria: true },
   ]
   const linha: LinhaParaLote = {
     id: 'ext-ivan', descricao: 'M. Ivan Lunardi Ourique Ltda - Transferência | Pix',

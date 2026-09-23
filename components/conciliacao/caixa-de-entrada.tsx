@@ -28,12 +28,15 @@ import type { AcaoDoBalcao } from '@/lib/conciliacao/caixa-de-entrada'
 import { nomeDaBusca } from '@/lib/conciliacao/nome-da-busca'
 import { conviteDaPonte, type ConviteDaPonte } from '@/lib/conciliacao/convite-da-ponte'
 import { consequenciaDeVincular } from '@/lib/conciliacao/uma-casa-por-caso'
+import { venceuOuVence } from '@/lib/conciliacao/vencimento-na-tela'
 import { VAZIO, type EstadoDaCarga } from '@/lib/conciliacao/vazio-do-menu'
 import { WithdrawalPanel } from '@/components/withdrawals/WithdrawalPanel'
 
 interface AcaoDTO { acao: string; rotulo: string; pedeAlvo: string | null }
 interface PalpiteDTO {
   acao: string; familia: string; titulo: string; detalhe: string
+  /** ⭐ 23/09 — o retrato da conta sugerida (valor · vencimento · NF/parcela) */
+  alvoDetalhe?: { descricao: string; valor: number; vencimento: string | null; fornecedor: string | null }
   diferenca: string; botao: string; alvo: Record<string, unknown>
   confianca: 'ALTA' | 'MEDIA' | 'BAIXA'
 }
@@ -109,6 +112,15 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
    * rota que **não existe**) passa a ter destino de verdade.
    */
   const [procurando, setProcurando] = useState<LinhaDTO | null>(null)
+  /**
+   * ⭐⭐ 23/09 — "NÃO É ESSA": o painel abre SEM a sugerida marcada.
+   *
+   * ⛔ Quando o palpite erra a conta, marcar a errada de novo é fazer o dono desmarcar
+   * antes de escolher — e desmarcar é o gesto que ninguém lembra de fazer. É a porta
+   * *"Não é isso / Procurar outra"* que os cards de CASO já têm desde 07/09; o palpite
+   * 1↔1 nunca ganhou a dele.
+   */
+  const [trocandoConta, setTrocandoConta] = useState(false)
   /**
    * ⭐⭐ O CONVITE DA PONTE — o passo 2 da retirada (18/09).
    *
@@ -423,6 +435,7 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
             categorias={categorias} cartoes={cartoes} contratos={contratos} cargas={cargas}
             erro={erroDaLinha?.id === l.id ? erroDaLinha.texto : null}
             onResolvido={resolverCaso}
+            onTrocarConta={(linha) => { setTrocandoConta(true); setProcurando(linha) }}
             onTentarDeNovo={erroDaLinha?.id === l.id
               ? () => { const e = erroDaLinha; void gesto(l, e.acao, e.alvo) }
               : undefined}
@@ -536,10 +549,12 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
                 buscaInicial={nomeDaBusca(l.descricao)}
                 /* ⭐ se o palpite já resolveu o alvo, o painel abre COM ele marcado —
                    o dono confere em vez de procurar de novo (o bug da ELIANE) */
-                preSelecionados={idsDoPalpite(l)}
-                onCancel={() => setProcurando(null)}
+                /* ⛔ aberto por "não é essa" → NADA pré-marcado (ver `trocandoConta`) */
+                preSelecionados={trocandoConta ? [] : idsDoPalpite(l)}
+                onCancel={() => { setProcurando(null); setTrocandoConta(false) }}
                 onReconciled={() => {
                   setProcurando(null)
+                  setTrocandoConta(false)
                   setFeito({ id: l.id, titulo: `${l.descricao || '(sem descrição)'} ${brl(l.valor)}`, selo: 'conciliada · no arquivo' })
                   // ⭐ a linha SAI DA CAIXA na hora — o efeito fecha o gesto
                   void carregar()
@@ -647,7 +662,7 @@ function PainelDoCaso({ caso, linhaAtual, ocupado, onResolvido }: {
 // ⭐⭐⭐ O CARTÃO ≍ — banco à esquerda, palpite à direita, chips embaixo
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, cargas, erro, onTentarDeNovo, onResolvido, onGesto }: {
+function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, cargas, erro, onTentarDeNovo, onResolvido, onGesto, onTrocarConta }: {
   linha: LinhaDTO; ocupado: boolean
   categorias: CategoriaDoMenu[]
   cartoes: { id: string; name: string }[]
@@ -660,6 +675,8 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, carg
   /** ⭐ o caso resolvido DENTRO do cartão: a candidata escolhida vira o pagamento da conta */
   onResolvido: (candidataId: string, contaId: string) => void
   onGesto: (l: LinhaDTO, acao: string, alvo?: Record<string, unknown>) => void
+  /** ⭐ 23/09 — "não é essa": abre o Find & Match SEM a sugerida marcada */
+  onTrocarConta: (l: LinhaDTO) => void
 }) {
   const credito = l.sentido === 'ENTRADA'
   const chip = 'inline-flex items-center gap-1.5 rounded-full border-[1.5px] px-3 py-[7px] text-[12.5px] font-bold disabled:opacity-40'
@@ -756,7 +773,37 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, carg
               style={{ background: `linear-gradient(160deg,#fbfbff,${V3.verdeBg})`, borderColor: '#cdebd9' }}>
               <div className="text-[10px] font-extrabold tracking-[0.06em]" style={{ color: V3.verde }}>{l.palpite.familia}</div>
               <div className="mb-[1px] mt-1.5 text-[14.5px] font-extrabold" style={{ color: V3.ink }}>{l.palpite.titulo}</div>
-              <div className="text-[12px]" style={{ color: V3.sub }}>{l.palpite.detalhe}</div>
+              {/*
+                ⭐⭐⭐ O RETRATO DA CONTA SUGERIDA (23/09) — decisão do dono: *"eu confiro
+                valor e data ANTES de confirmar, não depois"*.
+
+                ⛔ E ele ESPELHA a coluna da esquerda: lá a linha do banco mostra valor ·
+                data · descrição; aqui a conta a pagar mostra as MESMAS três coisas, na
+                mesma ordem. É a anatomia que os cards de CASO já usam (LINHA DO EXTRATO ×
+                CONTA A PAGAR) — o palpite 1↔1 é que tinha ficado só com o nome da empresa.
+              */}
+              {l.palpite.alvoDetalhe && (
+                <div className="mt-1.5 rounded-xl border px-2.5 py-2"
+                  style={{ background: V3.card, borderColor: V3.line }}>
+                  <div className="text-[9.5px] font-extrabold tracking-[0.07em]" style={{ color: V3.sub }}>
+                    A CONTA A PAGAR
+                  </div>
+                  <div className="mt-1 flex items-baseline gap-2">
+                    <span className="text-[15px] font-extrabold tabular-nums" style={{ color: V3.ink }}>
+                      {brl(l.palpite.alvoDetalhe.valor)}
+                    </span>
+                    {l.palpite.alvoDetalhe.vencimento && (
+                      <span className="text-[11.5px] tabular-nums" style={{ color: V3.sub }}>
+                        {venceuOuVence(l.palpite.alvoDetalhe.vencimento)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-0.5 break-words text-[12px] leading-snug" style={{ color: V3.sub }}>
+                    {l.palpite.alvoDetalhe.descricao}
+                  </div>
+                </div>
+              )}
+              <div className="mt-1.5 text-[12px]" style={{ color: V3.sub }}>{l.palpite.detalhe}</div>
               {/* ⛔ A DIFERENÇA SEMPRE NOMEADA — mesmo quando é zero */}
               <div className="mt-2 inline-flex items-center gap-1.5 rounded-full px-2.5 py-[3px] text-[11.5px] font-extrabold"
                 style={{ background: V3.ambarBg, color: V3.ambar }}>{l.palpite.diferenca}</div>
@@ -776,6 +823,21 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, carg
                 <div className="mt-1.5 text-center text-[11.5px] font-bold" style={{ color: V3.roxo }}>
                   {AVISO_CATEGORIA}
                 </div>
+              )}
+              {/*
+                ⭐⭐ "NÃO É ESSA" (23/09) — a porta de troca que o palpite 1↔1 não tinha.
+                ⛔ Sem ela, palpite errado só se resolve ABANDONANDO o palpite (fechar o
+                card e procurar por fora). É a mesma porta do *"Não é isso / Procurar
+                outra"* dos cards de caso, e ela ENSINA: o painel abre com as candidatas do
+                fornecedor e a busca, SEM a sugerida marcada.
+              */}
+              {(l.palpite.acao === 'CASAR_PAGAR' || l.palpite.acao === 'CASAR_RECEBER') && (
+                <button type="button" disabled={ocupado}
+                  onClick={() => onTrocarConta(l)}
+                  className="mt-2 w-full rounded-xl border-[1.5px] py-[9px] text-[12.5px] font-bold disabled:opacity-50"
+                  style={{ background: V3.card, borderColor: V3.line, color: V3.sub }}>
+                  não é essa — escolher outra →
+                </button>
               )}
             </div>
           )}
