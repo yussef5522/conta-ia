@@ -4439,6 +4439,27 @@ model StockVendaComplementoLinha {
 // ⭐ Mapa nome-do-PDV → destino, SEPARADO do de produtos. 25 nomes aparecem nos DOIS
 // relatórios (COCA COLA 2L: 337 produto / 134 complemento) — com um mapa só, cada um
 // baixaria duas vezes. `alvoTipo`: FICHA | IGNORAR (reversível).
+// ⭐ A DECISÃO "este nome do PDV NÃO controla estoque" (23/09/2026).
+//
+// ⛔ Não é um `alvoTipo` do mapa: `alvoTipo` responde "para onde baixa", e ignorar não
+// responde isso. Ignorar é AUSÊNCIA de destino + DECISÃO tomada — e é justamente esse
+// marcador que separa o IGNORADO do SEM_DESTINO (o mesmo nome, sem ninguém ter dito nada).
+//
+// ⚠️ Nasceu porque o CHECK de 22/08 do `stock_venda_produto_map` só admite FICHA|REVENDA,
+// e o módulo é CREATE-only (ALTER é proibido pelo guard de isolamento). A feature de
+// ignorar produto existia no código desde 14/09 e era IMPOSSÍVEL no banco: 500 toda vez.
+model StockVendaIgnorado {
+  id           String   @id @default(cuid())
+  companyId    String
+  nomeSuitable String
+  criadoPorId  String?
+  criadoEm     DateTime @default(now())
+
+  @@unique([companyId, nomeSuitable])
+  @@index([companyId])
+  @@map("stock_venda_ignorado")
+}
+
 model StockVendaComplementoMap {
   id           String   @id @default(cuid())
   companyId    String

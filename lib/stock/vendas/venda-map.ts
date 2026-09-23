@@ -114,14 +114,27 @@ export async function upsertVendaMap(companyId: string, nomeSuitable: string, al
    * (o `REMOVER`/desmapear devolve à fila) e **datado** (`criadoEm` vira o rastro do "por
    * você, em DD/MM" que a revisão mostra).
    */
+  /**
+   * ⛔⛔ **E ELE NÃO MORA NO `alvoTipo` — descoberto em prod, 23/09.** A gravação acima era
+   * `{ alvoTipo: 'IGNORAR' }` e o CHECK de 22/08 (`chk_venda_map_alvo IN
+   * ('FICHA','REVENDA')`) **recusava a linha**: HTTP 500 de corpo vazio, toda vez, desde
+   * 14/09. A feature existia no código e era **impossível** no banco.
+   *
+   * ⭐ Agora ignorar é o que ele sempre foi: **tirar o destino E marcar que a ausência é
+   * decisão**. Os dois passos numa transação — meio gesto deixaria o nome sem destino e
+   * sem marca, indistinguível de quem nunca foi tocado.
+   */
   if (alvo.tipo === 'IGNORAR') {
-    const data = { alvoTipo: 'IGNORAR', fichaId: null, itemId: null }
-    return db.stockVendaProdutoMap.upsert({
-      where: { companyId_nomeSuitable: { companyId, nomeSuitable } },
-      create: { companyId, nomeSuitable, ...data, criadoPorId: userId ?? null },
-      update: data,
-      select: { id: true },
-    })
+    await db.$transaction([
+      db.stockVendaProdutoMap.deleteMany({ where: { companyId, nomeSuitable } }),
+      db.stockVendaIgnorado.upsert({
+        where: { companyId_nomeSuitable: { companyId, nomeSuitable } },
+        create: { companyId, nomeSuitable, criadoPorId: userId ?? null },
+        update: {},
+        select: { id: true },
+      }),
+    ])
+    return
   }
   // GUARD dos 3 níveis (na FONTE, não só na tela): venda só casa com PRODUTO_FINAL (ficha)
   // ou item REVENDA. Matéria-prima/intermediário NUNCA — senão cada venda baixaria insumo cru.
@@ -163,6 +176,16 @@ export async function upsertVendaMap(companyId: string, nomeSuitable: string, al
   })
 }
 
+/**
+ * ⭐ DESMAPEAR / DESFAZER O IGNORAR — devolve o nome pra fila, como pergunta.
+ *
+ * ⚠️ Apaga **os dois**: o destino e a marca de ignorado. Apagar só um deixaria o nome
+ * ignorado sem jeito de voltar (ou com destino e marca ao mesmo tempo, que é um estado
+ * que não significa nada).
+ */
 export async function removerVendaMap(companyId: string, nomeSuitable: string, db: PrismaClient = defaultPrisma) {
-  await db.stockVendaProdutoMap.deleteMany({ where: { companyId, nomeSuitable } })
+  await db.$transaction([
+    db.stockVendaProdutoMap.deleteMany({ where: { companyId, nomeSuitable } }),
+    db.stockVendaIgnorado.deleteMany({ where: { companyId, nomeSuitable } }),
+  ])
 }

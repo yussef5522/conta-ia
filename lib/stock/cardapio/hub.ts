@@ -114,12 +114,16 @@ export async function hubCardapio(
   const dias = opts.dias ?? null
   const desde = dias != null ? new Date(Date.now() - dias * 86400000) : null
 
-  const [linhasVenda, mapa, fichas, itens, ctx, custoDe] = await Promise.all([
+  const [linhasVenda, mapa, ignoradosDb, fichas, itens, ctx, custoDe] = await Promise.all([
     db.stockVendaLinha.findMany({
       where: { companyId, ...(desde ? { data: { gte: desde } } : {}) },
       select: { nomeSuitable: true, quantidade: true, valorTotal: true, data: true },
     }),
     db.stockVendaProdutoMap.findMany({ where: { companyId }, select: { nomeSuitable: true, alvoTipo: true, fichaId: true, itemId: true } }),
+    // ⭐ 23/09 — o marcador de "não controla estoque". Ele NÃO vive no `alvoTipo` (o CHECK
+    // de 22/08 nunca admitiu a palavra, e o módulo é CREATE-only) — e não deveria mesmo:
+    // ignorar é ausência de destino + decisão, não um destino.
+    db.stockVendaIgnorado.findMany({ where: { companyId }, select: { nomeSuitable: true } }),
     db.stockFicha.findMany({ where: { companyId, tipoProduto: 'PRODUTO_FINAL' }, select: { id: true, itemProduzidoId: true, valorVenda: true, ativo: true } }),
     db.stockItem.findMany({ where: { companyId }, select: { id: true, nome: true, categoria: true } }),
     montarCtx(companyId, db),
@@ -138,6 +142,7 @@ export async function hubCardapio(
     if (comps.length === 1 && comps[0].qtdPlanejada === 1) passaDireto.set(f.id, comps[0].itemId)
   }
   const mapaPorNome = new Map(mapa.map((m) => [m.nomeSuitable, m]))
+  const ignoradoPorNome = new Set(ignoradosDb.map((i) => i.nomeSuitable))
 
   // ⭐ A linha é por DESTINO, não por nome do PDV: "XIS COMPLETO" e "XIS - COMPLETO" são o
   // mesmo produto e as vendas SOMAM assim que os dois apontam pro mesmo lugar. Enquanto não
@@ -154,7 +159,20 @@ export async function hubCardapio(
   for (const l of linhasVenda) {
     const m = mapaPorNome.get(l.nomeSuitable)
     let linha: LinhaCardapio
-    if (!m) {
+    if (ignoradoPorNome.has(l.nomeSuitable)) {
+      /**
+       * ⚠️ agrupa por NOME, nunca por destino: ignorar é decisão POR NOME (um `GRANDE`
+       * não tem nada a ver com um `PEQUENO`), e juntá-los esconderia o que foi ignorado.
+       * É a mesma régua do `chaveDeApresentacao` dos complementos (08/09) — não uma
+       * segunda; as duas telas respondem a mesma pergunta do mesmo jeito.
+       */
+      linha = pegar(`ignorado:${l.nomeSuitable}`, () => ({
+        chave: `ignorado:${l.nomeSuitable}`, nome: l.nomeSuitable, nomesSuitable: [], destinoTipo: null,
+        baixaItemId: null, fichaId: null, itemId: null, status: 'IGNORADO', vendasQtd: 0, vendasValor: 0,
+        custoUnitario: null, componentesSemCusto: 0, precoCardapio: null, precoPraticado: null,
+        precoUsado: null, precoOrigem: null, margem: null,
+      }))
+    } else if (!m) {
       linha = pegar(`nome:${l.nomeSuitable}`, () => ({
         chave: `nome:${l.nomeSuitable}`, nome: l.nomeSuitable, nomesSuitable: [], destinoTipo: null, baixaItemId: null,
         fichaId: null, itemId: null, status: 'SEM_DESTINO', vendasQtd: 0, vendasValor: 0,
@@ -177,19 +195,6 @@ export async function hubCardapio(
         destinoTipo: 'REVENDA', fichaId: null, itemId: m.itemId, baixaItemId: m.itemId, status: 'REVENDA', vendasQtd: 0,
         vendasValor: 0, custoUnitario: null, componentesSemCusto: 0, precoCardapio: null,
         precoPraticado: null, precoUsado: null, precoOrigem: null, margem: null,
-      }))
-    } else if (m.alvoTipo === 'IGNORAR') {
-      /**
-       * ⚠️ agrupa por NOME, nunca por destino: ignorar é decisão POR NOME (um `GRANDE`
-       * não tem nada a ver com um `PEQUENO`), e juntá-los esconderia o que foi ignorado.
-       * É a mesma régua do `chaveDeApresentacao` dos complementos (08/09) — não uma
-       * segunda; as duas telas respondem a mesma pergunta do mesmo jeito.
-       */
-      linha = pegar(`ignorado:${l.nomeSuitable}`, () => ({
-        chave: `ignorado:${l.nomeSuitable}`, nome: l.nomeSuitable, nomesSuitable: [], destinoTipo: null,
-        baixaItemId: null, fichaId: null, itemId: null, status: 'IGNORADO', vendasQtd: 0, vendasValor: 0,
-        custoUnitario: null, componentesSemCusto: 0, precoCardapio: null, precoPraticado: null,
-        precoUsado: null, precoOrigem: null, margem: null,
       }))
     } else {
       continue
