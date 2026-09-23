@@ -14,12 +14,8 @@
 // do `/find-and-match/reconcile`), e deixar o botão vivo seria prometer o que não vai
 // acontecer.
 
-import { useEffect, useState, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import { Link2, Loader2, Search, Layers } from 'lucide-react'
-import { ChassiDoCartao } from './chassi-do-cartao'
-import { MenuDoChip } from './menu-do-chip'
-import { fetchComTimeout } from '@/lib/http/fetch-com-timeout'
-import { secoesDoMenu, type CategoriaDoMenu } from '@/lib/conciliacao/categorias-do-gesto'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import { formatBRL } from '@/lib/format/money'
@@ -69,6 +65,15 @@ interface Props {
   empresaId: string
   /** ⭐ 23/09 — renderiza SÓ o painel: o chassi ≍ é do cartão da linha (uma lista só) */
   comoPainel?: boolean
+  /**
+   * ⭐⭐ A RESPOSTA DO SELETOR ESQUERDO (23/09) — uma pergunta, UM lugar.
+   *
+   * ⛔ O seletor de categoria mora na coluna da esquerda do chassi, que é do cartão da
+   * LINHA. Este componente desenha só o painel da direita; sem receber a resposta, o
+   * Vincular exigiria algo que a esquerda entrega e ele não vê — foi exatamente o beco
+   * que o dono achou navegando.
+   */
+  categoriaEscolhida?: string | null
 }
 
 /**
@@ -81,7 +86,7 @@ interface Props {
  * ⚠️ Nada de REGRA mudou: é o mesmo corpo, com o mesmo `vincular()` pela porta única e a
  * mesma pergunta da categoria. Só a moldura saiu.
  */
-export function LoteSugerido({ lote, linha, onVinculado, onProcurar, empresaId, comoPainel }: Props) {
+export function LoteSugerido({ lote, onVinculado, onProcurar, empresaId, categoriaEscolhida }: Props) {
   const { toast } = useToast()
   const [ocupado, setOcupado] = useState(false)
   const [pedindoCategoria, setPedindoCategoria] = useState(false)
@@ -101,7 +106,10 @@ export function LoteSugerido({ lote, linha, onVinculado, onProcurar, empresaId, 
    * que dava pra poupar"* (a régua de 20/09, do seletor da caixa).
    * ⚠️ Só conta o que está MARCADO: desmarcar a única sem categoria resolve sozinho.
    */
-  const faltamCategoria = lote.notas.filter((n) => marcadas.has(n.id) && n.temCategoria === false)
+  const faltamCategoria = categoriaEscolhida
+    // ⭐ respondido na esquerda: o servidor grava nas N e o botão libera
+    ? []
+    : lote.notas.filter((n) => marcadas.has(n.id) && n.temCategoria === false)
 
   /**
    * ⭐⭐⭐ 23/09 — O LOTE PASSOU A USAR A PORTA ÚNICA, e isso fecha um furo real.
@@ -230,7 +238,7 @@ export function LoteSugerido({ lote, linha, onVinculado, onProcurar, empresaId, 
       {/* ⛔ SEM CATEGORIA, O VINCULAR NÃO LIBERA — e a frase DIZ por quê. Botão
           desabilitado mudo é o dono clicando e não entendendo. */}
       <Button size="sm" disabled={ocupado || !bate || faltamCategoria.length > 0}
-        onClick={() => void vincular()} className="h-8 gap-1.5 px-3 text-xs">
+        onClick={() => void vincular(categoriaEscolhida ?? undefined)} className="h-8 gap-1.5 px-3 text-xs">
         {ocupado ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
         Vincular {marcadas.size} nota{marcadas.size === 1 ? '' : 's'}
       </Button>
@@ -251,109 +259,22 @@ export function LoteSugerido({ lote, linha, onVinculado, onProcurar, empresaId, 
   )
 
   /**
-   * ⭐⭐ MODO PAINEL (23/09) — o lote é o CASO de uma linha da lista única, e o chassi ≍
-   * (com a coluna *O BANCO DIZ*) é desenhado pelo cartão DELA. Trazer o chassi aqui
-   * mostraria a linha do banco **duas vezes no mesmo cartão**.
+   * ⭐⭐ ESTE COMPONENTE É SÓ O PAINEL (23/09) — o chassi ≍ (com a coluna *O BANCO DIZ*) e
+   * o seletor de categoria são do cartão da LINHA, na lista única.
+   *
+   * ⛔ O ramo do card inteiro (com chassi próprio + o cabeçalho "Um pagamento, N notas")
+   * **morreu junto com a seção**: ficou com ZERO chamadores, e código sem chamador é o que
+   * alguém religa por descuido — foi assim que o `<select>` morto do Pendentes sobreviveu
+   * meses guardando um gesto que caía no vazio (15/09).
    */
-  if (comoPainel) return <div className="min-w-0">{painel}{rodape}</div>
-
-  return (
-    <article className="overflow-hidden rounded-xl border border-[#534AB7]/30 bg-white shadow-sm transition-shadow hover:shadow dark:border-indigo-900 dark:bg-slate-950">
-      <div className="flex items-center gap-2 border-b border-[#534AB7]/20 bg-[#534AB7]/[0.06] px-4 py-2 text-[12px] text-[#3d3688] dark:border-indigo-900 dark:bg-indigo-950/30 dark:text-indigo-200">
-        <Layers className="h-3.5 w-3.5 shrink-0" />
-        <span>
-          <b>Um pagamento, {lote.notas.length} notas.</b> Parece o PIX que liquidou várias
-          notinhas do {lote.fornecedorNome} de uma vez.
-        </span>
-      </div>
-      <ChassiDoCartao
-        moldura={false}
-        painelColado
-        banco={{
-          conta: linha.conta, descricao: linha.descricao, data: linha.data.slice(0, 10),
-          valor: lote.valorDaLinha, credito: false,
-        }}
-        abaixoDoValor={
-          faltamCategoria.length ? (
-            <SeletorDoLote
-              empresaId={empresaId}
-              quantas={faltamCategoria.length}
-              total={marcadas.size}
-              aberto={pedindoCategoria}
-              aoAbrir={setPedindoCategoria}
-              aoEscolher={(id) => { setPedindoCategoria(false); void vincular(id) }}
-            />
-          ) : null
-        }
-      >
-        {painel}
-      </ChassiDoCartao>
-      {rodape}
-    </article>
-  )
+  return <div className="min-w-0">{painel}{rodape}</div>
 }
 
-/**
- * ⭐⭐ O SELETOR DO LOTE — UMA pergunta pras N.
+/*
+ * ⛔ O `SeletorDoLote` MORREU AQUI (23/09) — ele vivia no `abaixoDoValor` do chassi que
+ * este componente desenhava, e no modo painel esse chassi não existe. Era essa a metade
+ * invisível do beco: o botão exigia categoria e o seletor não renderizava.
  *
- * ⛔ Ele **não inventa uma segunda régua de categoria**: as seções vêm do mesmo
- * `secoesDoMenu` que a caixa usa (`CASAR_PAGAR`), então o que o lote oferece é exatamente
- * o que o balcão oferece. Um menu próprio aqui divergiria no primeiro grupo novo.
+ * ⭐ A pergunta passou pra coluna ESQUERDA do cartão da linha, que é onde ela sempre
+ * morou nas outras famílias (a régua de 20/09) — uma pergunta, um lugar.
  */
-function SeletorDoLote({ empresaId, quantas, total, aberto, aoAbrir, aoEscolher }: {
-  empresaId: string
-  quantas: number; total: number; aberto: boolean
-  aoAbrir: (v: boolean) => void
-  aoEscolher: (categoryId: string) => void
-}) {
-  const [categorias, setCategorias] = useState<CategoriaDoMenu[]>([])
-  const [carga, setCarga] = useState<'CARREGANDO' | 'OK' | 'FALHOU'>('CARREGANDO')
-
-  // ⚠️ `soAtivas=true`: a rota devolve o catálogo INTEIRO (263, das quais 60 ativas) e
-  // oferecer inativa é oferecer o que a gravação recusa (a prova em prod de 18/09).
-  useEffect(() => {
-    let vivo = true
-    fetchComTimeout<{ categorias?: CategoriaDoMenu[] }>(`/api/empresas/${empresaId}/categorias?soAtivas=true`)
-      .then((r) => {
-        if (!vivo) return
-        if (r.ok && r.data?.categorias) { setCategorias(r.data.categorias); setCarga('OK') } else setCarga('FALHOU')
-      })
-    return () => { vivo = false }
-  }, [empresaId])
-
-  return (
-    <div className="mt-2">
-      <button
-        onClick={() => aoAbrir(!aberto)}
-        aria-expanded={aberto}
-        className="w-full rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-left text-[11.5px] leading-snug text-amber-900 hover:bg-amber-100 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200"
-      >
-        {quantas === total
-          ? <>as <b>{total}</b> estão sem categoria — são da mesma?</>
-          : <><b>{quantas}</b> de {total} estão sem categoria — são da mesma?</>}
-        <span className="mt-0.5 block text-amber-700/80 dark:text-amber-300/70">
-          a resposta grava em CADA conta — a próxima nota do fornecedor já vem com ela
-        </span>
-      </button>
-      {aberto && (
-        <div className="mt-1.5">
-          <MenuDoChip
-            rotulo={carga === 'CARREGANDO' ? 'carregando…' : `aplicar nas ${quantas}`}
-            icone="🏷️"
-            className="inline-flex items-center gap-1.5 rounded-full border-[1.5px] border-amber-400 bg-white px-3 py-[7px] text-[12.5px] font-bold"
-            /* ⛔ SAIDA: lote de conta a PAGAR. O menu é o MESMO do balcão (`secoesDoMenu`)
-               — um menu próprio aqui divergiria no primeiro grupo novo. */
-            secoes={secoesDoMenu(categorias, 'SAIDA').map((sec) => ({
-              titulo: sec.titulo, ajuda: sec.ajuda,
-              itens: sec.itens.map((c) => ({ id: c.id, nome: c.name })),
-            }))}
-            /* ⚠️ vazio que DIZ: "nenhuma categoria" com a carga falha seria uma afirmação
-               sobre a empresa feita a partir de um erro de rede (18/09). */
-            vazio={carga === 'FALHOU' ? 'não consegui carregar as categorias — tenta de novo' : 'nenhuma categoria ativa'}
-            onEscolher={(id) => aoEscolher(id)}
-          />
-        </div>
-      )}
-    </div>
-  )
-}

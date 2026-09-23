@@ -76,6 +76,39 @@ export interface EstadoDoSeletor {
   modo: 'PEDE' | 'HERDA' | 'ESTRUTURAL'
   /** a frase que a tela imprime (nunca vazia) */
   texto: string
+  /** ⭐ quantas CONTAS a resposta vai gravar (o lote grava em N; o 1↔1 em 1) */
+  gravaEm?: number
+}
+
+/**
+ * ⭐⭐⭐ O SELETOR DA LINHA — e o LOTE é CASAR, nunca estrutural (23/09/2026).
+ *
+ * ⛔⛔ **O BECO que o dono achou navegando:** no lote da MARIA LUIZA o botão exigia
+ * categoria (*"Vincular 6 · diga a categoria primeiro"*) e o seletor da esquerda dizia
+ * ***"⚙ categoria vem do gesto"*** — ou seja, *"não é comigo"*. **As duas metades se
+ * contradiziam e não havia onde responder.**
+ *
+ * ⚠️ Eram DOIS defeitos somados, e os dois meus:
+ *  1. a régua lia a ação do **PALPITE** daquela linha — que ali era *pagamento de fatura*
+ *     (ESTRUTURAL). ⭐ Mas quem manda é o **CASO**: lote é **CASAR**, e casar **HERDA**.
+ *  2. o seletor que eu tinha construído vivia no `abaixoDoValor` do chassi do próprio
+ *     card do lote — e no modo painel (a lista única) **esse chassi não é renderizado**.
+ *
+ * ⭐ Com as N notas sem categoria, o caso é o **herda-pedindo** — o mesmo da TOZZO
+ * (*"a conta casada não tem categoria — escolha"*), só que a resposta grava **nas N**.
+ */
+export function estadoDoSeletorDoLote(notasSemCategoria: number, total: number): EstadoDoSeletor {
+  if (notasSemCategoria === 0) {
+    // ⭐ honesto: ele não pede nada, porque as contas já dizem
+    return { modo: 'HERDA', texto: 'herda das contas' }
+  }
+  return {
+    modo: 'PEDE',
+    texto: notasSemCategoria === total
+      ? `as ${total} notas sem categoria — escolha`
+      : `${notasSemCategoria} de ${total} notas sem categoria — escolha`,
+    gravaEm: notasSemCategoria,
+  }
 }
 
 export function estadoDoSeletor(

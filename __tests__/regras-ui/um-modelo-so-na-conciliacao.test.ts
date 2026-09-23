@@ -27,12 +27,24 @@ const CAIXA = ler('components/conciliacao/caixa-de-entrada.tsx')
 const PAGINA = ler('app/(dashboard)/conciliacao/page.tsx')
 
 describe('⛔⛔ 1. UM MODELO SÓ — nenhuma decisão fora do chassi ≍', () => {
-  it('⭐ o card do LOTE veste o chassi', () => {
+  it('⭐ o LOTE é PAINEL do cartão da linha — nunca um cartão dele', () => {
+    /**
+     * ⚠️⚠️ REAPONTADO em 23/09, horas depois, e ficou MAIS FORTE. A régua não mudou —
+     * *nenhuma decisão fora do chassi ≍* —; mudou **quem desenha**. Com *"uma lista só"*
+     * o lote virou o CASO de uma linha da caixa, e o cartão já é da linha.
+     *
+     * ⛔ Desenhar o próprio chassi aqui mostraria **a linha do banco DUAS VEZES no mesmo
+     * cartão** — e o ramo do card inteiro, sem chamador, é o que alguém religa por descuido.
+     * Ele não tem mais um `if` a checar: ele **não sabe** desenhar chassi.
+     */
     const l = semComentario(LOTE)
-    expect(l, 'o lote voltou a ter visual próprio').toContain('<ChassiDoCartao')
-    // ⛔ moldura=false: ele mora DENTRO do card, e caixa dentro de caixa é ruído (20/09)
-    expect(l).toMatch(/moldura=\{false\}/)
-    expect(l).toContain('painelColado')
+    expect(l, 'o lote voltou a desenhar o próprio chassi — a linha apareceria 2×')
+      .not.toContain('ChassiDoCartao')
+    // ⭐ e o painel dele continua sendo o LADO QUENTE de um cartão, não uma tela solta
+    expect(l).toContain('contas a pagar em aberto')
+    // ⛔ quem veste o chassi é a LINHA, e ela hospeda o lote lá dentro
+    expect(semComentario(CAIXA)).toContain('<ChassiDoCartao')
+    expect(semComentario(CAIXA)).toContain('<LoteSugerido')
   })
 
   it('⛔⛔ e o grid PRÓPRIO morreu — senão são dois modelos convivendo', () => {
@@ -46,10 +58,13 @@ describe('⛔⛔ 1. UM MODELO SÓ — nenhuma decisão fora do chassi ≍', () =
      * ⚠️ O guard é sobre os COMPONENTES que a página desenha, não sobre o texto dela: a
      * página compõe, os cards decidem. Cada um destes desenha um gesto que grava.
      */
+    /**
+     * ⚠️ O lote SAIU desta lista em 23/09 — ele deixou de ser um decisor com chassi próprio
+     * e virou o PAINEL do cartão da linha (o teste acima afirma isso, e é mais forte).
+     */
     const decisores = [
       'components/conciliacao/caixa-de-entrada.tsx',
       'components/conciliacao/escolher-na-mao-card.tsx',
-      'components/conciliacao/lote-sugerido.tsx',
     ]
     for (const d of decisores) {
       expect(semComentario(ler(d)), `${d} decide fora do chassi ≍`).toContain('ChassiDoCartao')

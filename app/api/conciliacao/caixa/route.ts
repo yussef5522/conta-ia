@@ -31,6 +31,18 @@ import { divisaoDaTela } from '@/lib/conciliacao/divisao-da-tela'
 export async function GET(request: NextRequest) {
   const url = new URL(request.url)
   const empresaId = url.searchParams.get('empresaId') ?? ''
+  /**
+   * ⭐⭐⭐ O DEEP-LINK SOBREVIVE À LISTA ÚNICA (23/09) — e ele quase morreu aqui.
+   *
+   * ⛔ Com as seções mortas, o `?abrir=` continuava sendo LIDO pela página e alimentava um
+   * bloco que não existe mais: a linha apontada **não entrava em lugar nenhum**. É a
+   * ***porta pintada na parede*** de 13/09 de volta, agora por dentro.
+   *
+   * ⭐ Agora ele entra na LISTA: `cardsDeEscolha` monta o card daquela linha mesmo que ela
+   * não esteja na fila, e a régua `caixa ∪ caso aberto` a carrega.
+   */
+  const abrir = url.searchParams.get('abrir') ?? undefined
+  const conta = url.searchParams.get('conta') ?? undefined
   const ctx = await getAuthContext(request, empresaId)
   if (!ctx) return NextResponse.json({ erro: 'Sessão expirada ou não autenticado' }, { status: 401 })
   if (!ctx.permissions.some((k) => k === '*' || k === 'transaction.view')) {
@@ -99,7 +111,7 @@ export async function GET(request: NextRequest) {
    */
   const [lotes, cardsEscolha] = await Promise.all([
     lotesDaFila(empresaId, prisma).then((r) => r.lotes).catch(() => []),
-    cardsDeEscolha({ empresaId }, prisma).catch(() => []),
+    cardsDeEscolha({ empresaId, abrir, conta }, prisma).catch(() => []),
   ])
   const lotePorLinha = new Map(lotes.map((l) => [l.extratoId, l]))
   const escolhaPorLinha = new Map(cardsEscolha.map((c) => [c.linha.id, c]))

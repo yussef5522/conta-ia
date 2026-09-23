@@ -12,6 +12,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { passaNoFiltro, contadoresDaLista, linhasDaLista, type LinhaDaLista } from '@/lib/conciliacao/lista-unica'
+import { estadoDoSeletorDoLote } from '@/lib/conciliacao/categoria-antes-do-gesto'
 
 const ler = (p: string) => readFileSync(join(process.cwd(), p), 'utf-8')
 const semComentario = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
@@ -70,8 +71,17 @@ describe('⭐⭐ o CASO renderiza DENTRO do cartão ≍ da linha', () => {
      */
     expect(c).toMatch(/<LoteSugerido\s+comoPainel/)
     expect(c).toMatch(/<EscolherNaMaoCard\s+comoPainel/)
-    for (const arq of ['components/conciliacao/lote-sugerido.tsx', 'components/conciliacao/escolher-na-mao-card.tsx'])
-      expect(semComentario(ler(arq)), `${arq} perdeu o modo painel`).toContain('if (comoPainel) return')
+    /**
+     * ⚠️ REAPONTADO no mesmo dia, e ficou MAIS FORTE: o lote virou **painel-only** — o
+     * ramo do card inteiro (com chassi próprio) ficou sem chamador quando a seção morreu,
+     * e código sem chamador é o que alguém religa por descuido. Ele não tem mais um `if`
+     * a checar: ele **não sabe** desenhar chassi.
+     */
+    expect(semComentario(ler('components/conciliacao/lote-sugerido.tsx')),
+      'o lote voltou a desenhar o próprio chassi — a linha do banco apareceria 2×')
+      .not.toContain('<ChassiDoCartao')
+    expect(semComentario(ler('components/conciliacao/escolher-na-mao-card.tsx')))
+      .toContain('if (comoPainel) return')
   })
 
   it('⛔ a 2ª linha do caso APONTA, nunca redesenha o painel', () => {
@@ -79,6 +89,59 @@ describe('⭐⭐ o CASO renderiza DENTRO do cartão ≍ da linha', () => {
     expect(CAIXA).toContain('parte do caso')
     // ⛔ e o painel só sai quando hospeda === true
     expect(c).toMatch(/l\.caso\?\.hospeda === true && l\.caso\.tipo === 'LOTE'/)
+  })
+})
+
+describe('⛔⛔⛔ O BECO — toda exigência aponta pra um controle QUE ABRE', () => {
+  const c = semComentario(CAIXA)
+
+  /**
+   * **O que o dono viveu:** o lote exigia categoria (*"Vincular 6 · diga a categoria
+   * primeiro"*) e o seletor da esquerda dizia ***"⚙ categoria vem do gesto"*** — *"não é
+   * comigo"*. ⛔ ***Botão exigindo resposta + nenhum lugar pra responder = beco.***
+   */
+  it('⛔⛔ o LOTE nunca é ESTRUTURAL — ele é CASAR, e casar HERDA', () => {
+    expect(estadoDoSeletorDoLote(6, 6).modo, 'o lote voltou a dizer "vem do gesto"').toBe('PEDE')
+    expect(estadoDoSeletorDoLote(6, 6).texto).toContain('as 6 notas sem categoria')
+    // ⭐ e com todas classificadas ele DIZ, não pede
+    expect(estadoDoSeletorDoLote(0, 6)).toEqual({ modo: 'HERDA', texto: 'herda das contas' })
+    // ⭐ parcial: o número tem que ser o que FALTA, não o total
+    expect(estadoDoSeletorDoLote(2, 6).texto).toContain('2 de 6')
+    expect(estadoDoSeletorDoLote(2, 6).gravaEm).toBe(2)
+  })
+
+  it('⛔⛔ e o modo PEDE abre a PÍLULA — exigência sem controle é beco', () => {
+    /**
+     * ⚠️ A régua estrutural: o único ramo que renderiza um controle é o `PEDE`. Se o lote
+     * caísse em HERDA/ESTRUTURAL (uma caixinha de texto), o botão exigiria algo que a tela
+     * não oferece — que é exatamente o defeito.
+     */
+    expect(c).toMatch(/sel\.modo === 'PEDE' \?[\s\S]{0,120}<MenuDoChip/)
+    // ⭐ e a tela escolhe a régua pelo CASO, não pelo palpite da linha
+    expect(c, 'o seletor voltou a ler o palpite — o lote tinha palpite de FATURA')
+      .toMatch(/l\.caso\?\.tipo === 'LOTE'[\s\S]{0,120}estadoDoSeletorDoLote/)
+  })
+
+  it('⭐ a resposta da ESQUERDA chega no Vincular — uma pergunta, um lugar', () => {
+    expect(c).toContain('categoriaEscolhida={categoriaEscolhida?.id ?? null}')
+    const lote = semComentario(ler('components/conciliacao/lote-sugerido.tsx'))
+    expect(lote, 'o Vincular ignora a resposta da esquerda')
+      .toContain('void vincular(categoriaEscolhida ?? undefined)')
+    // ⛔ e o seletor MORTO (que vivia no chassi não-renderizado) não pode voltar
+    expect(lote, 'o seletor do lote voltou pro chassi que o modo painel não desenha')
+      .not.toContain('function SeletorDoLote')
+  })
+
+  it('⛔⛔ e o DEEP-LINK sobrevive: `?abrir=` entra na LISTA', () => {
+    /**
+     * ⛔ Com as seções mortas, o `?abrir=` continuava sendo lido e alimentava um bloco que
+     * não existe mais: a linha apontada não entrava em lugar nenhum. ***Porta pintada na
+     * parede*** (13/09) de volta, por dentro.
+     */
+    const rota = semComentario(ler('app/api/conciliacao/caixa/route.ts'))
+    expect(rota, 'a rota da lista parou de aceitar o deep-link')
+      .toContain('cardsDeEscolha({ empresaId, abrir, conta }')
+    expect(c, 'a caixa parou de repassar o ?abrir= na carga').toContain('deepLink()')
   })
 })
 

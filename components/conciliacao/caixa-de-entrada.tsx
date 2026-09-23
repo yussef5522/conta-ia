@@ -23,7 +23,7 @@ import { ChassiDoCartao } from './chassi-do-cartao'
 import { MenuDoChip, type SecaoDoChip } from './menu-do-chip'
 import { FindAndMatchPanel } from './find-and-match-panel'
 import { secoesDoMenu, type CategoriaDoMenu } from '@/lib/conciliacao/categorias-do-gesto'
-import { estadoDoSeletor, podeDisparar, AVISO_CATEGORIA } from '@/lib/conciliacao/categoria-antes-do-gesto'
+import { estadoDoSeletor, estadoDoSeletorDoLote, podeDisparar, AVISO_CATEGORIA } from '@/lib/conciliacao/categoria-antes-do-gesto'
 import type { AcaoDoBalcao } from '@/lib/conciliacao/caixa-de-entrada'
 import { nomeDaBusca } from '@/lib/conciliacao/nome-da-busca'
 import { conviteDaPonte, type ConviteDaPonte } from '@/lib/conciliacao/convite-da-ponte'
@@ -126,6 +126,16 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
    * menu passou meses dizendo um número e a tela outro (10/09).
    */
   const [filtro, setFiltro] = useState<FiltroDaLista>('TUDO')
+  /**
+   * ⭐ O DEEP-LINK VIAJA COM A CARGA (23/09) — `?abrir=` / `?conta=` vindos dos Pendentes
+   * ou do Contas a Pagar. ⛔ Sem repassar, a linha que o dono APONTOU não entra na lista:
+   * a porta abriria numa tela sem o alvo (a lição de 13/09).
+   */
+  const deepLink = () => {
+    if (typeof window === 'undefined') return ''
+    const q = new URLSearchParams(window.location.search)
+    return ['abrir', 'conta'].map((k) => (q.get(k) ? `&${k}=${encodeURIComponent(q.get(k)!)}` : '')).join('')
+  }
   const [erro, setErro] = useState<string | null>(null)
   const [ocupado, setOcupado] = useState<string | null>(null)
   const [feito, setFeito] = useState<{ id: string; titulo: string; selo: string } | null>(null)
@@ -203,7 +213,7 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
 
   const carregar = useCallback(async () => {
     // ⛔ COM TIMEOUT: spinner eterno é a ausência fingindo progresso (14/09)
-    const r = await fetchComTimeout<CaixaDTO>(`/api/conciliacao/caixa?empresaId=${empresaId}`)
+    const r = await fetchComTimeout<CaixaDTO>(`/api/conciliacao/caixa?empresaId=${empresaId}${deepLink()}`)
     if (!r.ok || !r.data) { setErro(r.erro ?? 'Não consegui carregar a caixa de entrada.'); return }
     setErro(null); setCaixa(r.data)
   }, [empresaId])
@@ -784,7 +794,18 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, carg
    * pelo mesmo fato — e parede é como o dono aprende a contornar o sistema por fora.*
    */
   const [categoriaEscolhida, setCategoriaEscolhida] = useState<{ id: string; nome: string } | null>(null)
-  const sel = estadoDoSeletor((l.palpite?.acao ?? null) as AcaoDoBalcao | null, l.categoriaDaConta ?? null)
+  /**
+   * ⭐⭐⭐ QUEM MANDA É O CASO, NÃO O PALPITE (23/09) — o beco da MARIA LUIZA.
+   *
+   * ⛔ A linha do lote tinha palpite de *pagamento de fatura* (ESTRUTURAL), e o seletor
+   * dizia *"⚙ categoria vem do gesto"* enquanto o botão exigia categoria. **As duas
+   * metades se contradiziam e não havia onde responder.** Lote é **CASAR** — herda das
+   * contas, e pede quando elas não têm.
+   */
+  const semCatNoLote = (l.lote?.notas ?? []).filter((n) => n.temCategoria === false).length
+  const sel = l.caso?.tipo === 'LOTE' && l.lote
+    ? estadoDoSeletorDoLote(semCatNoLote, l.lote.notas.length)
+    : estadoDoSeletor((l.palpite?.acao ?? null) as AcaoDoBalcao | null, l.categoriaDaConta ?? null)
   const temCategoria = !!categoriaEscolhida || sel.modo === 'HERDA'
   /** ⭐ o alvo que TODO gesto leva junto — a escolha da esquerda, quando houver */
   const comCategoria = (alvo: Record<string, unknown> = {}) =>
@@ -838,13 +859,27 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, carg
                 {sel.modo === 'HERDA' ? '↳ ' : '⚙ '}{sel.texto}
               </div>
             )}
+            {/*
+              ⭐⭐ A PROMESSA DE ONTEM, DITA NO LUGAR DA RESPOSTA: uma pergunta pras N, e
+              ela grava em CADA conta — a próxima nota do fornecedor já vem classificada.
+              ⛔ Sem esta linha o dono não sabe que responder aqui resolve as 6.
+            */}
+            {sel.modo === 'PEDE' && sel.gravaEm != null && (
+              <p className="mt-1 text-[11px] leading-snug" style={{ color: V3.sub }}>
+                a resposta grava nas {sel.gravaEm} contas — a próxima nota do fornecedor já vem com ela
+              </p>
+            )}
           </div>
       </>}
     >
       {/* ── O PAINEL DESTA CASA: palpite, caso, ou direto nos chips ──── */}
       <>
           <div className="mb-2.5 text-[10px] font-extrabold tracking-[0.07em]" style={{ color: V3.sub }}>
-            {l.caso ? 'ESTE CASO TEM MAIS DE UMA CANDIDATA' : l.palpite ? 'MELHOR PALPITE' : 'O QUE ESTA LINHA É?'}
+            {/* ⚠️ o rótulo segue a FAMÍLIA: "mais de uma candidata" é falso num lote, que
+                tem UMA combinação fechada — rótulo que mente é como a tela perde crédito */}
+            {l.caso?.tipo === 'LOTE' ? 'QUAIS NOTAS ESTE PAGAMENTO COBRIU'
+              : l.caso ? 'ESTE CASO TEM MAIS DE UMA CANDIDATA'
+                : l.palpite ? 'MELHOR PALPITE' : 'O QUE ESTA LINHA É?'}
           </div>
 
           {/*
@@ -873,6 +908,9 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, carg
               comoPainel
               empresaId={empresaId}
               lote={l.lote}
+              /* ⭐ a resposta do seletor ESQUERDO é a que o Vincular usa — uma pergunta,
+                 um lugar. Sem isto o botão exigiria algo que a esquerda não entrega. */
+              categoriaEscolhida={categoriaEscolhida?.id ?? null}
               linha={{ descricao: l.descricao, data: l.data, conta: l.conta, categoria: null }}
               onVinculado={onRecarregar}
               onProcurar={() => onTrocarConta(l)}
