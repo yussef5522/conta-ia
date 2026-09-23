@@ -13,7 +13,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { guardStock } from '@/lib/stock/require-stock'
-import { upsertVendaMap, VendaMapError } from '@/lib/stock/vendas/venda-map'
+import { removerVendaMap, upsertVendaMap, VendaMapError } from '@/lib/stock/vendas/venda-map'
 import { parseChave } from '@/lib/stock/cardapio/detalhe'
 
 interface Params { params: Promise<{ id: string; chave: string }> }
@@ -25,6 +25,13 @@ interface Params { params: Promise<{ id: string; chave: string }> }
 const schema = z.union([
   z.object({ itemId: z.string().min(1) }),
   z.object({ fichaId: z.string().min(1) }),
+  /**
+   * ⭐⭐ 23/09 — O CAMINHO DE VOLTA. *"Clique sem querer nunca mais é sumiço sem volta."*
+   * `voltar` desfaz o IGNORAR: o nome sai do mapa e volta pra fila do Cardápio, como
+   * produto sem destino. ⛔ NÃO aponta pra lugar nenhum — dizer pra onde ele vai é
+   * decisão do dono; desfazer só devolve a pergunta.
+   */
+  z.object({ voltar: z.literal(true) }),
 ])
 
 export async function POST(request: NextRequest, { params }: Params) {
@@ -37,6 +44,18 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (!body.success) return NextResponse.json({ erro: 'Escolha o item de revenda ou a ficha.' }, { status: 400 })
 
   const alvo = parseChave(decodeURIComponent(chave))
+
+  // ⭐ desfazer o ignorar: a chave é `ignorado:<nome do PDV>` e o nome volta pra fila
+  if ('voltar' in body.data) {
+    if (!alvo || alvo.tipo !== 'ignorado') {
+      return NextResponse.json({ erro: 'Só dá pra desfazer um produto ignorado.' }, { status: 422 })
+    }
+    // REGRA 4: a MESMA porta que o "desmapear" da revisão usa — não nasce um 2º jeito de
+    // tirar nome do mapa, senão os dois divergem no 1º ajuste.
+    await removerVendaMap(companyId, alvo.valor, prisma)
+    return NextResponse.json({ ok: true, chave: `nome:${alvo.valor}` })
+  }
+
   // só produto AINDA sem destino entra por aqui: a chave carrega o nome exato do PDV.
   if (!alvo || alvo.tipo !== 'nome') {
     return NextResponse.json({ erro: 'Este produto já tem destino. Troque pelo mapeamento de vendas.' }, { status: 422 })

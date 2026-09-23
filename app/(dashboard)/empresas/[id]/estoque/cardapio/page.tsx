@@ -27,7 +27,11 @@ import { normalizarNome } from '@/lib/stock/vendas/grupo-complemento'
 import { ordenarPrateleira } from '@/lib/stock/vendas/ordem-da-prateleira'
 import { UtensilsCrossed, Loader2, Download, Search, AlertTriangle, ChevronRight, ChevronDown, Sparkles, CircleDollarSign, PackageCheck, HelpCircle } from 'lucide-react'
 
-type Status = 'SEM_DESTINO' | 'SEM_FICHA' | 'REVENDA' | 'FICHA_INCOMPLETA' | 'FICHA_OK'
+// ⚠️ DÍVIDA REGISTRADA (01/09) reaparecendo: este tipo é escrito À MÃO sobre o payload, e
+// por isso o `IGNORADO` precisou ser acrescentado aqui além da lib. Derivar de
+// `StatusCardapio` é o certo e fica pro sprint da dívida — trocar agora mexeria em toda a
+// tela no meio de um conserto urgente.
+type Status = 'SEM_DESTINO' | 'SEM_FICHA' | 'REVENDA' | 'FICHA_INCOMPLETA' | 'FICHA_OK' | 'IGNORADO'
 interface Linha {
   chave: string; nome: string; nomesSuitable: string[]
   destinoTipo: 'FICHA' | 'REVENDA' | null; fichaId: string | null; itemId: string | null
@@ -50,9 +54,11 @@ interface GrupoSecao {
 }
 interface Hub {
   linhas: (Linha & { secao: string; secaoSugerida: boolean; secaoPorQue: string | null })[]
+  /** ⭐ 23/09 — à parte das `linhas` de propósito: fora das seções, do CSV e dos contadores */
+  ignorados: Linha[]
   periodo: { desde: string | null; ate: string | null; dias: number | null }
   campeaoSemFicha: { nome: string; vendasQtd: number } | null
-  totais: { produtos: number; vendasQtd: number; vendasValor: number; semDestino: number; semCusto: number; prontos: number }
+  totais: { produtos: number; vendasQtd: number; vendasValor: number; semDestino: number; semCusto: number; prontos: number; ignorados: number }
   /** ⭐ 08/09: as seções do dono e o progresso de cada uma, vindos do SERVIDOR */
   secoes: Secao[]
   grupos: GrupoSecao[]
@@ -72,6 +78,9 @@ const BADGE: Record<Status, { txt: string; cls: string }> = {
   FICHA_INCOMPLETA: { txt: 'ficha incompleta', cls: 'bg-amber-50 text-amber-700 ring-amber-200' },
   REVENDA: PRONTO,
   FICHA_OK: PRONTO,
+  // ⚠️ cinza, não vermelho: ignorar é DECISÃO tomada, não pendência. Pintar de alarme
+  // faria a seção cobrar trabalho que já foi resolvido (a lição dos 111 falsos).
+  IGNORADO: { txt: 'ignorado', cls: 'bg-slate-100 text-slate-500 ring-slate-200' },
 }
 type Filtro = 'todos' | 'semficha' | 'semcusto' | 'ok'
 type Col = 'nome' | 'vendas' | 'custo' | 'preco' | 'margem'
@@ -119,9 +128,14 @@ export default function CardapioHubPage({ params }: { params: Promise<{ id: stri
   const [secaoFiltro, setSecaoFiltro] = useState<string | null>(null)
   const { col, dir, alternar, ordenar } = useSort<Col>('vendas', 'desc')
 
-  useEffect(() => {
+  // ⭐ a recarga tem NOME e um dono só: o efeito e o [voltar] dos ignorados chamam a MESMA
+  const recarregarHub = useCallback(() => {
     fetch(`/api/empresas/${id}/estoque/cardapio`)
       .then((r) => r.json()).then(setHub).catch(() => setHub(null))
+  }, [id])
+
+  useEffect(() => {
+    recarregarHub()
   }, [id])
 
   // ⭐⭐ A PRATELEIRA CARREGA POR ESTADO, NÃO POR CLIQUE — ver `precisaCarregarPrateleira`.
@@ -390,6 +404,8 @@ export default function CardapioHubPage({ params }: { params: Promise<{ id: stri
             total={linhas.reduce((s, l) => s + l.vendasValor - (l.custoUnitario ?? 0) * l.vendasQtd, 0)}
             totalLabel="Margem bruta (do que tem custo)"
           />
+          <IgnoradosDoCardapio id={id} linhas={hub?.ignorados ?? []} onVoltou={recarregarHub} />
+
           {/* honestidade: a régua só soma o que TEM custo — dizer o contrário seria margem inflada */}
           {linhas.some((l) => l.custoUnitario == null && l.vendasQtd > 0) && (
             <p className="flex items-center gap-1.5 px-1 text-[11px] text-amber-600">
@@ -400,6 +416,64 @@ export default function CardapioHubPage({ params }: { params: Promise<{ id: stri
         </>
       )}
       </>}
+    </div>
+  )
+}
+
+/**
+ * ⭐⭐⭐ OS IGNORADOS — *"clique sem querer nunca mais é sumiço sem volta"* (23/09/2026).
+ *
+ * **O caso:** o dono clicou sem querer e a linha **sumiu da frente dele**, sem seção, sem
+ * contador, sem volta. No hub, `IGNORAR` caía num `continue` e o produto desaparecia.
+ *
+ * ⛔ **O default é APARECER: sumir é perder trabalho.** Mas decisão tomada também não
+ * disputa espaço com trabalho pendente — por isso a seção é a ÚLTIMA e nasce **colapsada**
+ * (o mesmo desenho que os complementos já usam desde 02/09; uma régua, duas abas).
+ *
+ * ⭐ E o [voltar] **não escolhe destino** — devolve o nome pra fila. Dizer pra onde ele vai
+ * continua sendo decisão do dono.
+ */
+function IgnoradosDoCardapio({ id, linhas, onVoltou }: {
+  id: string; linhas: Linha[]; onVoltou: () => void
+}) {
+  const [aberto, setAberto] = useState(false)
+  const [voltando, setVoltando] = useState<string | null>(null)
+  // ⛔ seção que não existe quando não há ignorado — móvel fixo zerado treina a não olhar
+  if (!linhas.length) return null
+
+  const voltar = async (l: Linha) => {
+    setVoltando(l.chave)
+    try {
+      const r = await fetch(`/api/empresas/${id}/estoque/cardapio/${encodeURIComponent(l.chave)}/mapear`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ voltar: true }),
+      })
+      if (r.ok) onVoltou()
+    } finally { setVoltando(null) }
+  }
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50/60">
+      <button onClick={() => setAberto((v) => !v)} aria-expanded={aberto}
+        className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-xs text-slate-500 hover:text-slate-800">
+        <HelpCircle className="h-3.5 w-3.5" />
+        <span className="font-medium">{linhas.length} ignorado(s)</span>
+        <span className="text-slate-400">— não baixam estoque · decisão reversível</span>
+        <span className="ml-auto">{aberto ? '▾' : '▸'}</span>
+      </button>
+      {aberto && (
+        <div className="divide-y divide-slate-200 border-t border-slate-200">
+          {linhas.map((l) => (
+            <div key={l.chave} className="flex items-center gap-3 px-4 py-2">
+              <span className="min-w-0 flex-1 truncate text-[13px] text-slate-600">{l.nome}</span>
+              <span className="text-[11px] tabular-nums text-slate-400">{l.vendasQtd} un</span>
+              <button onClick={() => voltar(l)} disabled={voltando === l.chave}
+                className="rounded-lg border border-slate-300 px-2.5 py-1 text-[11px] font-medium text-slate-700 hover:bg-white disabled:opacity-50">
+                {voltando === l.chave ? '…' : 'voltar'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -428,6 +502,17 @@ function PrateleiraComplementos({ id, linhas, periodo, onMapear, onMoverGrupo, o
   const [aberta, setAberta] = useState<Record<string, boolean>>({ SABORES: true, OUTROS: true, IGNORADOS: false })
   const [apelidosAbertos, setApelidosAbertos] = useState<Record<string, boolean>>({})
   const [ocupadoLinha, setOcupadoLinha] = useState(false)
+  /**
+   * ⭐⭐ 23/09 — A PERGUNTA LEVE ANTES DE SUMIR COM A LINHA. Ordem do dono:
+   * *"sumiço de 1 toque sem pergunta é como a linha some"*.
+   *
+   * ⛔ Modal NOSSO, nunca `confirm()` nativo — o nativo já falhou em silêncio no Safari
+   * dentro de fluxo async (22/08, o reprocessar que não reprocessava).
+   * ⚠️ E ela é LEVE de propósito: uma linha na própria row, não um diálogo de página.
+   * Ignorar é reversível (a seção de ignorados devolve); pesar a mão aqui seria cobrar
+   * cerimônia por um gesto que se desfaz num clique.
+   */
+  const [confirmando, setConfirmando] = useState<string | null>(null)
   // ⭐ o dono INCLUI a parecida por clique — o sistema nunca a inclui sozinho
   const [ocupado, setOcupado] = useState(false)
   // ⭐ as fichas existentes, pro "apontar a que existe" na LINHA (o dropdown da faixa amarela
@@ -714,9 +799,17 @@ function PrateleiraComplementos({ id, linhas, periodo, onMapear, onMoverGrupo, o
                               title="voltar a seguir o cardápio"
                               className="text-[11px] text-slate-300 hover:text-slate-600">seguir cardápio</button>
                           )}
-                          {l.destino !== 'IGNORAR' && (
-                            <button onClick={() => todosOsApelidos(l, 'IGNORAR')}
+                          {l.destino !== 'IGNORAR' && confirmando !== l.titulo && (
+                            <button onClick={() => setConfirmando(l.titulo)}
                               className="text-[11px] text-slate-400 hover:text-slate-700">ignorar</button>
+                          )}
+                          {confirmando === l.titulo && (
+                            <span className="inline-flex items-center gap-1.5 rounded-lg bg-amber-50 px-2 py-0.5 text-[11px] text-amber-800">
+                              tirar «{l.titulo}» do cardápio?
+                              <button onClick={async () => { setConfirmando(null); await todosOsApelidos(l, 'IGNORAR') }}
+                                className="font-semibold underline">sim</button>
+                              <button onClick={() => setConfirmando(null)} className="text-amber-600">não</button>
+                            </span>
                           )}
                           {l.destino !== 'SEM_FICHA' && (
                             <button onClick={() => todosOsApelidos(l, 'LIMPAR')}

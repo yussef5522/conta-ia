@@ -33,6 +33,13 @@ export type StatusCardapio =
   | 'REVENDA' // bebida etc: não precisa de receita, o custo vem da nota
   | 'FICHA_INCOMPLETA' // tem receita, mas algum insumo sem custo → "a definir"
   | 'FICHA_OK'
+  /**
+   * ⭐⭐ 23/09 — O IGNORADO VOLTA A EXISTIR. Antes ele caía num `continue` e a linha
+   * **sumia inteira do Cardápio**: um toque sem querer e o produto desaparecia sem volta.
+   * ⛔ *"O default é APARECER: sumir é perder trabalho"* — e a decisão de ignorar é
+   * legítima, então ela mora numa seção própria, colapsada, com o caminho de volta.
+   */
+  | 'IGNORADO'
 
 export interface LinhaCardapio {
   chave: string // ficha:<id> | item:<id> | nome:<nomeSuitable>
@@ -65,10 +72,12 @@ export interface LinhaCardapio {
 
 export interface HubCardapio {
   linhas: LinhaCardapio[]
+  /** ⭐ 23/09 — os ignorados, à parte: seção própria colapsada, com o caminho de volta */
+  ignorados: LinhaCardapio[]
   periodo: { desde: string | null; ate: string | null; dias: number | null }
   /** o campeão de vendas ainda sem destino — o banner de onboarding. */
   campeaoSemFicha: { nome: string; vendasQtd: number } | null
-  totais: { produtos: number; vendasQtd: number; vendasValor: number; semDestino: number; semCusto: number; prontos: number }
+  totais: { produtos: number; vendasQtd: number; vendasValor: number; semDestino: number; semCusto: number; prontos: number; ignorados: number }
 }
 
 /** Custo de 1 unidade vendida = Σ (qtd que sai do estoque × custo médio do insumo).
@@ -169,6 +178,19 @@ export async function hubCardapio(
         vendasValor: 0, custoUnitario: null, componentesSemCusto: 0, precoCardapio: null,
         precoPraticado: null, precoUsado: null, precoOrigem: null, margem: null,
       }))
+    } else if (m.alvoTipo === 'IGNORAR') {
+      /**
+       * ⚠️ agrupa por NOME, nunca por destino: ignorar é decisão POR NOME (um `GRANDE`
+       * não tem nada a ver com um `PEQUENO`), e juntá-los esconderia o que foi ignorado.
+       * É a mesma régua do `chaveDeApresentacao` dos complementos (08/09) — não uma
+       * segunda; as duas telas respondem a mesma pergunta do mesmo jeito.
+       */
+      linha = pegar(`ignorado:${l.nomeSuitable}`, () => ({
+        chave: `ignorado:${l.nomeSuitable}`, nome: l.nomeSuitable, nomesSuitable: [], destinoTipo: null,
+        baixaItemId: null, fichaId: null, itemId: null, status: 'IGNORADO', vendasQtd: 0, vendasValor: 0,
+        custoUnitario: null, componentesSemCusto: 0, precoCardapio: null, precoPraticado: null,
+        precoUsado: null, precoOrigem: null, margem: null,
+      }))
     } else {
       continue
     }
@@ -209,12 +231,22 @@ export async function hubCardapio(
     linha.margem = margemDe(linha.precoUsado, linha.custoUnitario)
   }
 
-  const linhas = [...agrup.values()].sort((a, b) => b.vendasQtd - a.vendasQtd || a.nome.localeCompare(b.nome, 'pt-BR'))
+  const ordenar = (ls: LinhaCardapio[]) =>
+    ls.sort((a, b) => b.vendasQtd - a.vendasQtd || a.nome.localeCompare(b.nome, 'pt-BR'))
+  const todas = [...agrup.values()]
+  /**
+   * ⛔⛔ O IGNORADO VIAJA À PARTE, e isso não é arrumação: misturá-lo em `linhas` o poria
+   * nas SEÇÕES do cardápio, no CSV e em TODO contador (`produtos`, `semCusto`, `prontos`).
+   * Decisão tomada não disputa espaço — nem número — com trabalho pendente.
+   */
+  const ignorados = ordenar(todas.filter((l) => l.status === 'IGNORADO'))
+  const linhas = ordenar(todas.filter((l) => l.status !== 'IGNORADO'))
   const semDestino = linhas.filter((l) => l.status === 'SEM_DESTINO')
   const datas = linhasVenda.map((l) => l.data.toISOString().slice(0, 10)).sort()
 
   return {
     linhas,
+    ignorados,
     periodo: { desde: datas[0] ?? null, ate: datas[datas.length - 1] ?? null, dias },
     campeaoSemFicha: semDestino.length ? { nome: semDestino[0].nome, vendasQtd: semDestino[0].vendasQtd } : null,
     totais: {
@@ -224,6 +256,8 @@ export async function hubCardapio(
       semDestino: semDestino.length,
       semCusto: linhas.filter((l) => l.custoUnitario == null).length,
       prontos: linhas.filter(ehProntoNoCardapio).length,
+      /** ⭐ contado e DITO — número que ninguém desenha é número que some */
+      ignorados: ignorados.length,
     },
   }
 }
@@ -281,4 +315,5 @@ export const ROTULO: Record<StatusCardapio, string> = {
   REVENDA: 'baixa certo',
   FICHA_INCOMPLETA: 'ficha incompleta',
   FICHA_OK: 'baixa certo',
+  IGNORADO: 'ignorado',
 }

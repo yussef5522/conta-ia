@@ -44,12 +44,14 @@ export interface DetalheProduto {
 }
 
 /** Chave do hub: `ficha:<id>` | `item:<id>` | `nome:<nomeSuitable>`. */
-export function parseChave(chave: string): { tipo: 'ficha' | 'item' | 'nome'; valor: string } | null {
+export function parseChave(chave: string): { tipo: 'ficha' | 'item' | 'nome' | 'ignorado'; valor: string } | null {
   const i = chave.indexOf(':')
   if (i < 0) return null
   const tipo = chave.slice(0, i)
   const valor = chave.slice(i + 1)
-  if (tipo !== 'ficha' && tipo !== 'item' && tipo !== 'nome') return null
+  // ⭐ 23/09: `ignorado:<nome do PDV>` — a linha que voltou a existir no Cardápio. O valor
+  // é o nome CRU, porque ignorar é decisão por NOME (nunca por destino).
+  if (tipo !== 'ficha' && tipo !== 'item' && tipo !== 'nome' && tipo !== 'ignorado') return null
   return { tipo, valor }
 }
 
