@@ -338,37 +338,23 @@ function ConciliacaoInner() {
               </div>
             ) : aba === 'contas' ? (
               <>
-                {/* ⭐⭐ "PRONTOS PRA CONFIRMAR" — nunca "fecham sozinhos" (10/09/2026).
-                    ⛔ Regra do dono: **o sistema NUNCA concilia sem o clique dele**; ele
-                    sugere e espera. Um título que diga "sozinho" promete o que a casa se
-                    recusa a fazer — e é assim que a confiança na tela se perde. */}
-                {((fila?.lotes.length ?? 0) > 0 || comSugestao.length > 0) && (
-                  <p className="px-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400">
-                    prontos pra confirmar
-                  </p>
-                )}
+                {/*
+                  ⭐⭐⭐ UMA LISTA SÓ (23/09/2026) — a arquitetura final, decisão do dono.
 
-                {/* ⭐ OS LOTES PRIMEIRO: um PIX que liquida N notas resolve mais trabalho
-                    por decisão do que qualquer card 1:1, e as notas dele sumiriam da lista
-                    de baixo de qualquer jeito. */}
-                {(fila?.lotes ?? []).map((l) => (
-                  <LoteSugerido
-                    key={l.extratoId}
-                    empresaId={empresaId}
-                    lote={l}
-                    linha={{
-                      descricao: l.linha.descricao, data: l.linha.data,
-                      conta: l.linha.conta, categoria: l.linha.categoria,
-                    }}
-                    onVinculado={removerLote}
-                    onProcurar={(extratoId, busca) => setProcurandoLote({
-                      ofx: { id: extratoId, description: l.linha.descricao,
-                        amount: l.valorDaLinha, date: l.linha.data, type: 'DEBIT' },
-                      busca,
-                    })}
-                  />
-                ))}
+                  ⛔⛔ Aqui moravam TRÊS superfícies de decisão além da caixa: a seção
+                  "PRONTOS PRA CONFIRMAR" (com os cards de lote e os pares 1↔1) e a
+                  "PRA TUA MÃO" (os cards de escolha). *"Mesma pergunta em duas casas =
+                  2 modelos pra mim"* — a última forma da doença de 20/09, que lá era o
+                  mesmo PAR em duas superfícies e aqui era a mesma PERGUNTA em duas listas.
 
+                  ⭐ Agora **toda linha do banco mora na caixa**, e o caso dela — palpite,
+                  lote, ambíguo, N:M — renderiza DENTRO do cartão ≍ da própria linha.
+
+                  ⚠️⚠️ E a lista precisou ficar MAIS LARGA que a caixa de ontem: medido em
+                  prod, os 14 cards de "pra tua mão" têm a linha FORA dela (já
+                  categorizadas). Colapsar sem carregá-las perderia R$ 2.120,81 ·
+                  2.275,05 · 3.510,78 … de trabalho real. *Categoria não quita conta.*
+                */}
                 {duplaContagem > 0 && (
                   <div className="flex items-start gap-2.5 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-[12.5px] leading-relaxed text-rose-900 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">
                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400" />
@@ -381,32 +367,9 @@ function ConciliacaoInner() {
                   </div>
                 )}
 
-                {/* ⭐⭐⭐ ESCOLHER NA MÃO — a seção dos que não fecham É esta lista.
-                    ⛔ Aqui morava a frase colapsada ("N pagamentos nomeiam um fornecedor…")
-                    com o card escondido atrás de dois cliques. E a 1ª correção foi longe
-                    demais pro outro lado: 16 cards ABERTOS, o mesmo fornecedor repetido 5×
-                    com as mesmas notas. O mock sempre disse UM card por fornecedor,
-                    FECHADO — e a linha de dentro, uma por vez. */}
-                {/* ⭐⭐⭐ A CAIXA DE ENTRADA DO BANCO (15/09) — o balcão único, duas abas.
-                    **A Conciliação VIRA esta tela**: toda linha confirmada e não-resolvida
-                    mora aqui, com o menu do SEU SENTIDO. ⛔ Crédito nunca vê "casar com conta
-                    a pagar" — era o buraco que punha 5.705 créditos (87% da fila) na fila de
-                    dívida.
-                    ⚠️ Ela fica FORA do gate dos cards: a caixa existe mesmo quando não há
-                    card nenhum (é a fila de TODAS as linhas), e prendê-la ali a faria sumir
-                    justamente no dia em que o dono só tem linhas soltas pra resolver. */}
+
                 <CaixaDeEntrada empresaId={empresaId} />
 
-                {cardsEscolha.length > 0 && (
-                  <FilaEscolherNaMao
-                    empresaId={empresaId}
-                    cards={cardsEscolha}
-                    onConciliado={cardConciliado}
-                    // ⭐ quem chegou de outra tela já cai no card certo, aberto
-                    abrirExtratoId={searchParams.get('abrir')}
-                    abrirContaId={searchParams.get('conta')}
-                  />
-                )}
 
                 {/* ⛔ ERRO NUNCA VIRA VAZIO: se os cards não carregaram, a tela diz isso em
                     vez de deixar o dono achar que não há trabalho. */}
@@ -420,60 +383,17 @@ function ConciliacaoInner() {
                   </div>
                 )}
 
-                {/* ⛔ "Tudo conciliado" só quando NÃO HÁ card de escolha na tela — senão a
-                    frase apareceria em cima de 16 pagamentos esperando decisão. */}
-                {comSugestao.length === 0 && (fila?.lotes.length ?? 0) === 0
-                  && cardsEscolha.length === 0 && !cardsFalharam ? (
-                  <Vazio
-                    titulo="Tudo conciliado ✓"
-                    texto="Nenhum vínculo esperando decisão. O próximo extrato traz os novos pares — com o motivo escrito, pra você só confirmar."
-                  />
-                ) : (
-                  comSugestao.map((c) => (
-                    <div key={c.conta.id} className="space-y-2.5">
-                      {/* ⚠️ dupla contagem SEM par: não há gesto honesto a oferecer
-                          (o Find & Match parte de uma linha do extrato, e aqui não
-                          existe candidata). Então ela aparece dizendo exatamente o
-                          que é — sumir seria pior. */}
-                      {c.sugestoes.length === 0 && (
-                        <div className="rounded-xl border border-rose-200 bg-white px-4 py-3 dark:border-rose-900 dark:bg-slate-950">
-                          <div className="flex flex-wrap items-baseline gap-x-2.5">
-                            <span className="text-[17px] font-semibold tabular-nums text-slate-900 dark:text-slate-50">
-                              {formatBRL(Math.abs(c.conta.valor))}
-                            </span>
-                            <span className="text-[12.5px] text-slate-600 dark:text-slate-300">{c.conta.descricao}</span>
-                            <span className="text-[11px] tabular-nums text-slate-400">vence {dia(c.conta.data)}</span>
-                          </div>
-                          <p className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700 dark:bg-rose-950/50 dark:text-rose-300">
-                            marcada como paga e sem vínculo — o mesmo dinheiro em duas linhas
-                          </p>
-                          <p className="mt-1.5 text-[11.5px] leading-relaxed text-slate-400">
-                            Nenhum pagamento parecido no extrato importado. Quando o extrato que
-                            contém esse pagamento entrar, o par aparece aqui.
-                          </p>
-                        </div>
-                      )}
-                      {c.sugestoes.map((s) => (
-                        <ParSugerido
-                          key={`${s.extratoId}|${s.contaId}`}
-                          empresaId={empresaId}
-                          item={c}
-                          sugestao={s}
-                          disputadaPor={disputaPorExtrato.get(s.extratoId) ?? 1}
-                          onVinculado={removerConta}
-                          onRecusado={removerPar}
-                          onProcurar={setProcurando}
-                        />
-                      ))}
-                      {c.sugestoes.length > 1 && (
-                        <p className="px-1 text-[11.5px] leading-relaxed text-slate-400">
-                          ⚠️ <b>Mais de um pagamento parecido no extrato pra esta conta.</b> Esconder
-                          um seria a régua decidindo qual foi — a escolha é sua.
-                        </p>
-                      )}
-                    </div>
-                  ))
-                )}
+                {/*
+                  ⛔⛔ E OS PARES 1↔1 TAMBÉM DEIXARAM DE SER CARDS AQUI (23/09). Eles já
+                  renderizam como PALPITE dentro do cartão da própria linha, na caixa —
+                  desenhá-los de novo aqui era **a mesma decisão em duas casas**, que é
+                  exatamente o que este sprint veio matar.
+
+                  ⚠️ O vazio ("Tudo conciliado ✓") mudou de dono junto: quem sabe se há
+                  trabalho é a LISTA, não esta página. Ela o desenha a partir dos próprios
+                  contadores — senão a frase apareceria em cima de linhas esperando
+                  decisão, que foi o defeito de 10/09.
+                */}
 
               </>
             ) : aba === 'transferencias' ? (

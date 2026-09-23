@@ -30,7 +30,19 @@ import { conviteDaPonte, type ConviteDaPonte } from '@/lib/conciliacao/convite-d
 import { consequenciaDeVincular } from '@/lib/conciliacao/uma-casa-por-caso'
 import { venceuOuVence } from '@/lib/conciliacao/vencimento-na-tela'
 import { VAZIO, type EstadoDaCarga } from '@/lib/conciliacao/vazio-do-menu'
+import { passaNoFiltro, contadoresDaLista, type FiltroDaLista } from '@/lib/conciliacao/lista-unica'
 import { WithdrawalPanel } from '@/components/withdrawals/WithdrawalPanel'
+import { LoteSugerido, type LoteDTO } from './lote-sugerido'
+import { EscolherNaMaoCard } from './escolher-na-mao-card'
+import type { CardDeEscolha } from '@/lib/conciliacao/escolher-na-mao'
+/**
+ * ⚠️ O card chega **serializado**: o `Date` do servidor vira `string` no JSON. Usar o tipo
+ * do servidor aqui prometeria um `Date` que nunca chega — a dívida de 01/09 ("interface
+ * sobre payload é promessa, não prova") pelo avesso. O componente já lê `data` como texto.
+ */
+type CardDeEscolhaDTO = Omit<CardDeEscolha, 'linha'> & {
+  linha: Omit<CardDeEscolha['linha'], 'data'> & { data: string }
+}
 
 interface AcaoDTO { acao: string; rotulo: string; pedeAlvo: string | null }
 interface PalpiteDTO {
@@ -60,11 +72,23 @@ interface LinhaDTO {
   caso:
     | { tipo: string; hospeda: false; ancora: string; nome: string }
     | {
-        tipo: string; hospeda: true; ancora: string; nome: string
-        conta: { id: string; descricao: string; valor: number; vencimento: string }
-        candidatas: { id: string; descricao: string; valor: number; data: string; categoria: string | null; diferenca: number }[]
+        tipo: string; hospeda: true; ancora?: string; nome?: string
+        conta?: { id: string; descricao: string; valor: number; vencimento: string }
+        candidatas?: { id: string; descricao: string; valor: number; data: string; categoria: string | null; diferenca: number }[]
       }
     | null
+  /**
+   * ⭐⭐ 23/09 — UMA LISTA SÓ: o painel do LOTE e o da ESCOLHA viajam com a linha, porque
+   * eles deixaram de ser seções e viraram o CASO dela.
+   */
+  lote?: LoteDTO | null
+  escolha?: CardDeEscolhaDTO | null
+  /**
+   * ⚠️ a linha entrou na lista **só** por ter caso aberto (a estação dela é ARQUIVO,
+   * porque ela já está categorizada). ⛔ Sem dizer isso, uma linha já classificada
+   * aparecendo do nada parece defeito — e *categoria não quita conta* (07/09).
+   */
+  soPeloCaso?: boolean
 }
 interface CaixaDTO {
   contadores: { saidas: number; entradas: number; arquivo: number; total: number }
@@ -94,6 +118,14 @@ const ICONE: Record<string, string> = {
 export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
   const [caixa, setCaixa] = useState<CaixaDTO | null>(null)
   const [aba, setAba] = useState<'SAIDA' | 'ENTRADA'>('SAIDA')
+  /**
+   * ⭐⭐ 23/09 — OS CONTADORES DO TOPO VIRARAM FILTROS DA MESMA LISTA (decisão do dono).
+   *
+   * ⛔ *"O contador e a lista LEEM DA MESMA FONTE"* — a régua é `passaNoFiltro`, a mesma
+   * que o servidor usa pra contar. Um contador com consulta própria é como o badge do
+   * menu passou meses dizendo um número e a tela outro (10/09).
+   */
+  const [filtro, setFiltro] = useState<FiltroDaLista>('TUDO')
   const [erro, setErro] = useState<string | null>(null)
   const [ocupado, setOcupado] = useState<string | null>(null)
   const [feito, setFeito] = useState<{ id: string; titulo: string; selo: string } | null>(null)
@@ -322,7 +354,16 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
     await gesto(linha, 'CASAR_PAGAR', { contaIds: [contaId] })
   }, [caixa, gesto])
 
-  const visiveis = useMemo(() => (caixa?.linhas ?? []).filter((l) => l.sentido === aba), [caixa, aba])
+  const visiveis = useMemo(
+    () => (caixa?.linhas ?? []).filter((l) => l.sentido === aba && passaNoFiltro(l as never, filtro)),
+    [caixa, aba, filtro],
+  )
+  /**
+   * ⭐ os números dos chips saem da MESMA lista que a tela desenha, já recortada pelo
+   * sentido — assim o "⭐ 24" nunca promete trabalho que a aba não mostra.
+   */
+  const doSentido = useMemo(() => (caixa?.linhas ?? []).filter((l) => l.sentido === aba), [caixa, aba])
+  const contagens = useMemo(() => contadoresDaLista(doSentido as never), [doSentido])
 
   if (erro && !caixa) {
     return (
@@ -429,6 +470,34 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
       )}
 
       {/* ══════════ 4. OS CARTÕES ≍ ══════════ */}
+      {/*
+        ⭐⭐⭐ OS FILTROS — os contadores do topo viraram recorte da MESMA lista (23/09).
+        ⛔ Eles NÃO consultam nada: `contadoresDaLista` roda sobre o que a tela tem em
+        mãos, então contador e lista não têm COMO divergir. Era isso que o dono pediu
+        ("contador ≠ lista no primeiro dessinc = vermelho").
+      */}
+      {contagens.tudo > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {([
+            ['TUDO', `tudo ${contagens.tudo}`],
+            ['PRONTOS', `⭐ prontos ${contagens.prontos}`],
+            ['MAO', `🖐 na mão ${contagens.mao}`],
+          ] as const).map(([f, rotulo]) => (
+            <button key={f} type="button" onClick={() => setFiltro(f)}
+              aria-pressed={filtro === f}
+              className="rounded-full border-[1.5px] px-3 py-[6px] text-[12px] font-bold disabled:opacity-40"
+              /* ⚠️ o filtro vazio fica DESABILITADO em vez de sumir: um chip que aparece e
+                 some conforme o dado é um chip que o dono aprende a não procurar. */
+              disabled={f !== 'TUDO' && (f === 'PRONTOS' ? contagens.prontos : contagens.mao) === 0}
+              style={filtro === f
+                ? { background: V3.roxo, borderColor: V3.roxo, color: '#fff' }
+                : { background: V3.card, borderColor: V3.line, color: V3.sub }}>
+              {rotulo}
+            </button>
+          ))}
+        </div>
+      )}
+
       {visiveis.map((l) => (
         <div key={l.id} className="flex flex-col gap-2">
           <CartaoDaLinha linha={l} ocupado={ocupado === l.id}
@@ -436,6 +505,8 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
             erro={erroDaLinha?.id === l.id ? erroDaLinha.texto : null}
             onResolvido={resolverCaso}
             onTrocarConta={(linha) => { setTrocandoConta(true); setProcurando(linha) }}
+            empresaId={empresaId}
+            onRecarregar={() => void carregar()}
             onTentarDeNovo={erroDaLinha?.id === l.id
               ? () => { const e = erroDaLinha; void gesto(l, e.acao, e.alvo) }
               : undefined}
@@ -566,7 +637,27 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
       ))}
 
       {/* ══════════ 7. INBOX ZERO ══════════ */}
-      {visiveis.length === 0 && (
+      {/*
+        ⛔⛔ O VAZIO DO FILTRO NÃO É O VAZIO DA CAIXA (23/09) — e este guard pegou o bug
+        que EU acabei de criar: com `⭐ prontos` ligado e zero prontos, a tela dizia
+        *"tudo resolvido"* com **35 linhas esperando decisão**.
+
+        ⭐ É a mesma família do *"Tudo conciliado ✓ em cima de 16 pagamentos"* (10/09) e do
+        *"erro disfarçado de vazio"*: ***ausência de resultado NESTE recorte não é ausência
+        de trabalho***. O vazio de festa só sai quando a lista inteira está vazia.
+      */}
+      {visiveis.length === 0 && filtro !== 'TUDO' && (
+        <div className="rounded-[22px] border-[1.5px] border-dashed p-6 text-center" style={{ background: V3.card, borderColor: '#d9d7ea' }}>
+          <b className="block text-[14px]" style={{ color: V3.ink }}>
+            nada neste filtro — e ainda há {contagens.tudo} linha{contagens.tudo === 1 ? '' : 's'} na lista
+          </b>
+          <button type="button" onClick={() => setFiltro('TUDO')}
+            className="mt-1.5 text-[12.5px] font-bold underline" style={{ color: V3.roxo }}>
+            ver tudo →
+          </button>
+        </div>
+      )}
+      {visiveis.length === 0 && filtro === 'TUDO' && (
         <div className="rounded-[22px] border-[1.5px] border-dashed p-8 text-center" style={{ background: V3.card, borderColor: '#d9d7ea' }}>
           <div className="text-[34px]">🎉</div>
           <b className="mb-1 mt-2 block text-[16px]" style={{ color: V3.ink }}>É assim que a caixa fica quando você termina</b>
@@ -662,7 +753,7 @@ function PainelDoCaso({ caso, linhaAtual, ocupado, onResolvido }: {
 // ⭐⭐⭐ O CARTÃO ≍ — banco à esquerda, palpite à direita, chips embaixo
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, cargas, erro, onTentarDeNovo, onResolvido, onGesto, onTrocarConta }: {
+function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, cargas, erro, onTentarDeNovo, onResolvido, onGesto, onTrocarConta, empresaId, onRecarregar }: {
   linha: LinhaDTO; ocupado: boolean
   categorias: CategoriaDoMenu[]
   cartoes: { id: string; name: string }[]
@@ -677,6 +768,9 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, carg
   onGesto: (l: LinhaDTO, acao: string, alvo?: Record<string, unknown>) => void
   /** ⭐ 23/09 — "não é essa": abre o Find & Match SEM a sugerida marcada */
   onTrocarConta: (l: LinhaDTO) => void
+  /** ⭐ 23/09 — os painéis de LOTE/ESCOLHA precisam da empresa e de recarregar a lista */
+  empresaId: string
+  onRecarregar: () => void
 }) {
   const credito = l.sentido === 'ENTRADA'
   const chip = 'inline-flex items-center gap-1.5 rounded-full border-[1.5px] px-3 py-[7px] text-[12.5px] font-bold disabled:opacity-40'
@@ -764,8 +858,39 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, carg
               parte do caso «{l.caso.nome}» acima ↑
             </a>
           )}
-          {l.caso?.hospeda === true && (
-            <PainelDoCaso caso={l.caso} linhaAtual={l.id} ocupado={ocupado} onResolvido={onResolvido} />
+          {/*
+            ⭐⭐⭐ UMA LISTA SÓ (23/09) — o caso da linha renderiza AQUI, qualquer que seja
+            a família. As seções "PRONTOS PRA CONFIRMAR" e "PRA TUA MÃO" deixaram de
+            existir: era a mesma pergunta (*"o que esta linha do banco é?"*) em duas
+            listas, e o dono via **dois modelos**.
+
+            ⛔ Cada painel é o MESMO componente de antes, em `comoPainel` — o chassi ≍ (e a
+            coluna *O BANCO DIZ*) é deste cartão. Trazer o chassi deles mostraria a linha
+            do banco duas vezes no mesmo cartão.
+          */}
+          {l.caso?.hospeda === true && l.caso.tipo === 'LOTE' && l.lote && (
+            <LoteSugerido
+              comoPainel
+              empresaId={empresaId}
+              lote={l.lote}
+              linha={{ descricao: l.descricao, data: l.data, conta: l.conta, categoria: null }}
+              onVinculado={onRecarregar}
+              onProcurar={() => onTrocarConta(l)}
+            />
+          )}
+          {l.caso?.hospeda === true && l.caso.tipo === 'ESCOLHA' && l.escolha && (
+            <EscolherNaMaoCard
+              comoPainel
+              empresaId={empresaId}
+              card={l.escolha as never}
+              onConciliado={onRecarregar}
+              /* ⚠️ no modo painel não há "fechar": o cartão é a linha, e ela some da
+                 lista quando é resolvida — fechar seria esconder trabalho pendente */
+              onFechar={() => {}}
+            />
+          )}
+          {l.caso?.hospeda === true && l.caso.tipo === 'AMBIGUO' && (
+            <PainelDoCaso caso={l.caso as never} linhaAtual={l.id} ocupado={ocupado} onResolvido={onResolvido} />
           )}
 
           {l.palpite && !l.caso && (

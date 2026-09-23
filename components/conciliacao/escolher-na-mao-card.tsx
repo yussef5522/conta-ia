@@ -91,9 +91,11 @@ interface Props {
   onFechar: () => void
   /** ⭐ navegação entre as linhas do mesmo fornecedor — *"uma linha por vez, da mais antiga"* */
   navegacao?: { indice: number; total: number; onIr: (i: number) => void }
+  /** ⭐ 23/09 — renderiza SÓ o painel: o chassi ≍ é do cartão da linha (uma lista só) */
+  comoPainel?: boolean
 }
 
-export function EscolherNaMaoCard({ empresaId, card, onConciliado, onFechar, navegacao }: Props) {
+export function EscolherNaMaoCard({ empresaId, card, onConciliado, onFechar, navegacao, comoPainel }: Props) {
   const { toast } = useToast()
   const [marcadas, setMarcadas] = useState<Set<string>>(
     () => new Set([...card.vencidas, ...card.aVencer].filter((n) => n.sugerida).map((n) => n.id)),
@@ -239,33 +241,8 @@ export function EscolherNaMaoCard({ empresaId, card, onConciliado, onFechar, nav
     )
   }
 
-  return (
-    /* ⭐ a ÂNCORA — a linha da caixa aponta pra cá em vez de mandar o dono procurar */
-    <div id={ancoraDoCard(card.linha.id)} className="scroll-mt-4">
-      {/*
-        ⭐⭐⭐ O CASO N:M NO CHASSI DO CARTÃO ≍ (20/09/2026) — a última volta do modelo único.
-        **A régua do dono:** *"uma decisão aparece UMA vez na página, SEMPRE no mesmo modelo
-        visual — o cartão ≍."* Aqui morava a `.linha-banco` (uma faixa fria com conta·data·
-        valor numa linha só): **o MESMO fato**, desenhado de um jeito próprio. Agora a
-        coluna da esquerda é a do chassi compartilhado, igual à da caixa e à da fila.
-        ⛔ **MOTOR INTOCADO** (ordem dele): um grupo aberto por vez, uma linha por vez, as
-        três travas do rodapé — nada disso passa por aqui. Só a pintura mudou.
-        ⚠️ `moldura={false}` porque o cartão do fornecedor já é a caixa; `painelColado`
-        porque a lista de notas sangra de ponta a ponta e o rodapé é sticky.
-      */}
-      <ChassiDoCartao
-        moldura={false}
-        painelColado
-        banco={{
-          conta: card.linha.conta,
-          descricao: card.linha.descricao,
-          // ⚠️ o chassi formata DO TEXTO (YYYY-MM-DD), nunca de `new Date` — é o que
-          // impede o dia de rolar pra trás no fuso de São Paulo.
-          data: card.linha.data.slice(0, 10),
-          valor: card.linha.valor,
-          credito: false,
-        }}
-      >
+  /** ⭐ o painel da direita — as notas, o rodapé vivo e as travas do motor */
+  const painel = (<>
       {/* ⭐ o rótulo da coluna da direita — o irmão do "MELHOR PALPITE" da caixa */}
       <p className="px-[16px] pt-[16px] text-[10px] font-extrabold tracking-[0.07em]"
         style={{ color: MOCK.sub }}>
@@ -478,8 +455,36 @@ export function EscolherNaMaoCard({ empresaId, card, onConciliado, onFechar, nav
           Conciliar
         </button>
       </div>
+  </>)
+
+  /**
+   * ⭐⭐ MODO PAINEL (23/09) — na arquitetura de **uma lista só**, este card virou o CASO
+   * de uma linha, e quem desenha o chassi ≍ é o cartão DELA. Trazer o chassi aqui
+   * mostraria a linha do banco duas vezes dentro do mesmo cartão.
+   *
+   * ⛔ **MOTOR INTOCADO**: uma linha por vez, o rodapé vivo e o Conciliar preso à conta
+   * fechada continuam idênticos — é o mesmo `painel`.
+   */
+  if (comoPainel) return <div className="min-w-0">{painel}</div>
+
+  return (
+    /* ⭐ a ÂNCORA — a linha da caixa aponta pra cá em vez de mandar o dono procurar */
+    <div id={ancoraDoCard(card.linha.id)} className="scroll-mt-4">
+      <ChassiDoCartao
+        moldura={false}
+        painelColado
+        banco={{
+          conta: card.linha.conta,
+          descricao: card.linha.descricao,
+          data: card.linha.data.slice(0, 10),
+          valor: card.linha.valor,
+          credito: false,
+        }}
+      >
+        {painel}
       </ChassiDoCartao>
       <span className="hidden" data-empresa={empresaId} />
     </div>
   )
 }
+

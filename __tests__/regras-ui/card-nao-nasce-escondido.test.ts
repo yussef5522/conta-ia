@@ -90,7 +90,23 @@ describe('⛔⛔ /conciliacao — os cards do "escolher na mão" aparecem SEM cl
   })
 
   it('a página renderiza a fila de verdade (não só importa)', () => {
-    expect(fonte).toContain('<FilaEscolherNaMao')
+    /**
+     * ⚠️ REAPONTADO EM 23/09, NÃO AFROUXADO — a régua é a mesma: ***o card que o dono
+     * precisa VER não pode ficar inalcançável***. O que mudou é a CASA: com *"uma lista
+     * só"*, o card de escolha deixou de ser uma seção e virou o **caso de uma linha da
+     * caixa**, renderizado em `comoPainel` dentro do cartão ≍ dela.
+     *
+     * ⛔ E o guard ficou MAIS forte, não mais fraco: ele passou a exigir que o painel
+     * exista E que a linha daquele card **entre na lista** — porque as 14 dela estão
+     * categorizadas, e a régua antiga (`estacao === 'CAIXA'`) as excluía.
+     */
+    const caixa = readFileSync(join(raiz, 'components/conciliacao/caixa-de-entrada.tsx'), 'utf-8')
+    expect(caixa, 'o card de escolha ficou sem casa — é a porta sem maçaneta de novo')
+      .toMatch(/<EscolherNaMaoCard\s+comoPainel/)
+    // ⛔ e a lista tem que CARREGAR a linha dele (caixa ∪ caso aberto)
+    const rotaCaixa = readFileSync(join(raiz, 'app/api/conciliacao/caixa/route.ts'), 'utf-8')
+    expect(rotaCaixa, 'a lista voltou a filtrar só a caixa — as 14 linhas somem')
+      .toContain('linhasDaLista(')
   })
 
   // ⛔⛔ O CARD NÃO PODE VOLTAR A SER RENDERIZADO DIRETO NA PÁGINA: foi assim que
@@ -118,13 +134,23 @@ describe('⛔⛔ /conciliacao — os cards do "escolher na mão" aparecem SEM cl
     expect(rota).not.toContain('extratoId: z.string()')
   })
 
-  it('⛔ "Tudo conciliado ✓" não pode aparecer com card na tela', () => {
-    // a frase do vazio só sai quando NÃO há card visível — senão ela apareceria em cima
-    // de 16 pagamentos esperando decisão, que é a mentira mais cara desta tela.
-    // ⚠️ até o `?` do TERNÁRIO (seguido de `(`), não o `?.` do optional chaining
-    const cond = /\{comSugestao\.length === 0([\s\S]{0,300}?)\?\s*\(/.exec(renderizado)
-    expect(cond, 'a condição do vazio sumiu — reescreveram o bloco?').not.toBeNull()
-    expect(cond![1]).toContain('cardsEscolha.length === 0')
+  it('⛔ o vazio de festa não pode aparecer com trabalho na tela', () => {
+    /**
+     * ⚠️ REAPONTADO EM 23/09. A régua — ***a frase do vazio só sai quando NÃO há trabalho
+     * visível*** — é a mesma; o vazio é que mudou de dono: quem sabe se há trabalho é a
+     * LISTA, não a página.
+     *
+     * ⛔⛔ E ele pegou um bug que eu ACABEI de criar: com o filtro `⭐ prontos` ligado e
+     * zero prontos, `visiveis.length === 0` e a caixa dizia *"tudo resolvido"* com **35
+     * linhas esperando**. ***Ausência de resultado NESTE recorte não é ausência de
+     * trabalho*** — a família do "erro disfarçado de vazio".
+     */
+    const caixa = readFileSync(join(raiz, 'components/conciliacao/caixa-de-entrada.tsx'), 'utf-8')
+    expect(caixa, 'o vazio de festa voltou a sair com filtro ligado')
+      .toContain("{visiveis.length === 0 && filtro === 'TUDO' && (")
+    // ⭐ e o vazio DO FILTRO existe e DIZ quantas linhas a lista ainda tem
+    expect(caixa).toContain("{visiveis.length === 0 && filtro !== 'TUDO' && (")
+    expect(caixa).toContain('nada neste filtro')
   })
 })
 

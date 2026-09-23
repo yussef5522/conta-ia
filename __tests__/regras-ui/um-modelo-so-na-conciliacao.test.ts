@@ -54,8 +54,16 @@ describe('⛔⛔ 1. UM MODELO SÓ — nenhuma decisão fora do chassi ≍', () =
     for (const d of decisores) {
       expect(semComentario(ler(d)), `${d} decide fora do chassi ≍`).toContain('ChassiDoCartao')
     }
-    // ⛔ e a página não pode desenhar um card de decisão por conta própria
-    expect(PAGINA).toContain('<LoteSugerido')
+    /**
+     * ⚠️ REAPONTADO horas depois, em 23/09: com *"uma lista só"* o lote **saiu da página**
+     * e virou o caso de uma linha da caixa. A régua não mudou — *nenhuma decisão fora do
+     * chassi ≍* —; mudou quem desenha. ⛔ E o guard ficou mais forte: a página **não pode**
+     * voltar a desenhá-lo, porque isso seria a seção de volta.
+     */
+    expect(semComentario(PAGINA), 'o lote voltou a ser uma seção da página')
+      .not.toContain('<LoteSugerido')
+    expect(semComentario(CAIXA), 'o lote perdeu a casa — ele é o caso de uma linha agora')
+      .toContain('<LoteSugerido')
   })
 })
 

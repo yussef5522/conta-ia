@@ -67,9 +67,21 @@ interface Props {
   onProcurar: (extratoId: string, busca: string) => void
   /** ⭐ 23/09 — pra carregar as categorias do menu (a mesma rota que o balcão usa) */
   empresaId: string
+  /** ⭐ 23/09 — renderiza SÓ o painel: o chassi ≍ é do cartão da linha (uma lista só) */
+  comoPainel?: boolean
 }
 
-export function LoteSugerido({ lote, linha, onVinculado, onProcurar, empresaId }: Props) {
+/**
+ * ⭐⭐⭐ O PAINEL DO LOTE — extraído em 23/09 pra a arquitetura de **UMA LISTA SÓ**.
+ *
+ * ⛔ Com o lote virando o CASO de uma linha da caixa, quem desenha o chassi ≍ (e a coluna
+ * *O BANCO DIZ*) é o cartão da própria linha. Se este componente continuasse trazendo o
+ * chassi junto, a coluna do banco apareceria **duas vezes dentro do mesmo cartão**.
+ *
+ * ⚠️ Nada de REGRA mudou: é o mesmo corpo, com o mesmo `vincular()` pela porta única e a
+ * mesma pergunta da categoria. Só a moldura saiu.
+ */
+export function LoteSugerido({ lote, linha, onVinculado, onProcurar, empresaId, comoPainel }: Props) {
   const { toast } = useToast()
   const [ocupado, setOcupado] = useState(false)
   const [pedindoCategoria, setPedindoCategoria] = useState(false)
@@ -146,6 +158,105 @@ export function LoteSugerido({ lote, linha, onVinculado, onProcurar, empresaId }
     } finally { setOcupado(false) }
   }
 
+  /** ⭐ o painel da direita — as N notas, a conta viva e o gesto */
+  const painel = (
+    <>
+  {/* ── lado QUENTE: as notas ── */}
+  <div className="min-w-0 bg-amber-50/40 px-4 py-3 dark:bg-amber-950/10">
+    <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+      {lote.notas.length} contas a pagar em aberto · {lote.fornecedorNome}
+    </span>
+    <ul className="mt-1.5 space-y-1">
+      {lote.notas.map((n) => (
+        <li key={n.id}>
+          {/* ⭐ a linha inteira é clicável — o alvo do dedo no celular é a linha,
+              não um quadradinho de 16px */}
+          <label className="flex cursor-pointer items-baseline gap-2 rounded-md px-1 py-0.5 hover:bg-white/70 dark:hover:bg-slate-900/50">
+            <input
+              type="checkbox"
+              checked={marcadas.has(n.id)}
+              onChange={(e) => setMarcadas((m) => {
+                const novo = new Set(m)
+                if (e.target.checked) novo.add(n.id); else novo.delete(n.id)
+                return novo
+              })}
+              className="h-3.5 w-3.5 shrink-0 translate-y-0.5 rounded border-slate-300 accent-[#534AB7]"
+            />
+            <span className="w-[86px] shrink-0 text-right text-[12.5px] font-semibold tabular-nums text-slate-900 dark:text-slate-50">
+              {formatBRL(n.valor)}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-[12px] text-slate-600 dark:text-slate-300">
+              {n.descricao}
+            </span>
+            <span className="shrink-0 text-[11px] tabular-nums text-slate-400">
+              vence {dia(n.vencimento)}
+            </span>
+          </label>
+        </li>
+      ))}
+    </ul>
+
+    {/* ⛔ A CONTA À VISTA: o dono confere a soma contra a linha ANTES de confirmar,
+        e ela muda a cada caixa desmarcada. */}
+    <div className={`mt-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 rounded-lg border px-2.5 py-1.5 text-[12px] tabular-nums ${
+      bate
+        ? 'border-emerald-200 bg-emerald-50/70 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300'
+        : 'border-rose-200 bg-rose-50/70 text-rose-800 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-300'
+    }`}>
+      <span>
+        {marcadas.size} marcada{marcadas.size === 1 ? '' : 's'}: <b>{formatBRL(soma)}</b>
+      </span>
+      <span>
+        {bate
+          ? '✓ bate com a linha do extrato'
+          : `falta ${formatBRL(Math.abs(diferenca))} pra fechar${diferenca < 0 ? ' (passou)' : ''}`}
+      </span>
+    </div>
+  </div>
+    </>
+  )
+
+  /** ⛔ a tira do PORQUÊ viaja junto do painel: sugestão sem motivo não existe (07/09) */
+  const rodape = (
+  /* ⛔ A TIRA DO PORQUÊ — sem ela a sugestão não pode existir */
+  <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2 border-t border-slate-200 bg-white px-4 py-2.5 dark:border-slate-800 dark:bg-slate-950">
+    <span className="shrink-0 rounded-full bg-[#534AB7]/10 px-2 py-0.5 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-[#534AB7] dark:bg-indigo-950/50 dark:text-indigo-300">
+      pagamento em lote
+    </span>
+    <span className="min-w-[180px] flex-1 text-[12px] leading-relaxed text-slate-500 dark:text-slate-400">
+      {lote.porQue}
+    </span>
+    <span className="ml-auto flex items-center gap-1">
+      {/* ⛔ SEM CATEGORIA, O VINCULAR NÃO LIBERA — e a frase DIZ por quê. Botão
+          desabilitado mudo é o dono clicando e não entendendo. */}
+      <Button size="sm" disabled={ocupado || !bate || faltamCategoria.length > 0}
+        onClick={() => void vincular()} className="h-8 gap-1.5 px-3 text-xs">
+        {ocupado ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
+        Vincular {marcadas.size} nota{marcadas.size === 1 ? '' : 's'}
+      </Button>
+      {faltamCategoria.length > 0 && (
+        <span className="text-[11px] text-amber-700 dark:text-amber-400">
+          diga a categoria primeiro — ela grava nas {faltamCategoria.length}
+        </span>
+      )}
+      <Button size="sm" variant="ghost" disabled={ocupado}
+        onClick={() => onProcurar(lote.extratoId, lote.fornecedorNome)}
+        className="h-8 gap-1 px-2.5 text-xs text-slate-500"
+        title="escolher as notas na mão, com a soma conferida">
+        <Search className="h-3.5 w-3.5" />
+        <span className="hidden sm:inline">Escolher na mão</span>
+      </Button>
+    </span>
+  </div>
+  )
+
+  /**
+   * ⭐⭐ MODO PAINEL (23/09) — o lote é o CASO de uma linha da lista única, e o chassi ≍
+   * (com a coluna *O BANCO DIZ*) é desenhado pelo cartão DELA. Trazer o chassi aqui
+   * mostraria a linha do banco **duas vezes no mesmo cartão**.
+   */
+  if (comoPainel) return <div className="min-w-0">{painel}{rodape}</div>
+
   return (
     <article className="overflow-hidden rounded-xl border border-[#534AB7]/30 bg-white shadow-sm transition-shadow hover:shadow dark:border-indigo-900 dark:bg-slate-950">
       <div className="flex items-center gap-2 border-b border-[#534AB7]/20 bg-[#534AB7]/[0.06] px-4 py-2 text-[12px] text-[#3d3688] dark:border-indigo-900 dark:bg-indigo-950/30 dark:text-indigo-200">
@@ -155,7 +266,6 @@ export function LoteSugerido({ lote, linha, onVinculado, onProcurar, empresaId }
           notinhas do {lote.fornecedorNome} de uma vez.
         </span>
       </div>
-
       <ChassiDoCartao
         moldura={false}
         painelColado
@@ -164,13 +274,6 @@ export function LoteSugerido({ lote, linha, onVinculado, onProcurar, empresaId }
           valor: lote.valorDaLinha, credito: false,
         }}
         abaixoDoValor={
-          /**
-           * ⭐⭐ UMA PERGUNTA PRAS N (decisão do dono). O seletor mora do lado ESQUERDO,
-           * como na caixa (20/09) — e a frase diz que a resposta vale pras N e FICA.
-           * ⛔ Por-nota diferente não se resolve aqui: aí é "Escolher na mão", onde cada
-           * nota tem a sua linha. Oferecer N seletores aqui seria transformar o card do
-           * lote no painel manual, e o lote existe justamente pra o caso "todas iguais".
-           */
           faltamCategoria.length ? (
             <SeletorDoLote
               empresaId={empresaId}
@@ -183,90 +286,9 @@ export function LoteSugerido({ lote, linha, onVinculado, onProcurar, empresaId }
           ) : null
         }
       >
-        {/* ── lado QUENTE: as notas ── */}
-        <div className="min-w-0 bg-amber-50/40 px-4 py-3 dark:bg-amber-950/10">
-          <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400">
-            {lote.notas.length} contas a pagar em aberto · {lote.fornecedorNome}
-          </span>
-          <ul className="mt-1.5 space-y-1">
-            {lote.notas.map((n) => (
-              <li key={n.id}>
-                {/* ⭐ a linha inteira é clicável — o alvo do dedo no celular é a linha,
-                    não um quadradinho de 16px */}
-                <label className="flex cursor-pointer items-baseline gap-2 rounded-md px-1 py-0.5 hover:bg-white/70 dark:hover:bg-slate-900/50">
-                  <input
-                    type="checkbox"
-                    checked={marcadas.has(n.id)}
-                    onChange={(e) => setMarcadas((m) => {
-                      const novo = new Set(m)
-                      if (e.target.checked) novo.add(n.id); else novo.delete(n.id)
-                      return novo
-                    })}
-                    className="h-3.5 w-3.5 shrink-0 translate-y-0.5 rounded border-slate-300 accent-[#534AB7]"
-                  />
-                  <span className="w-[86px] shrink-0 text-right text-[12.5px] font-semibold tabular-nums text-slate-900 dark:text-slate-50">
-                    {formatBRL(n.valor)}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-[12px] text-slate-600 dark:text-slate-300">
-                    {n.descricao}
-                  </span>
-                  <span className="shrink-0 text-[11px] tabular-nums text-slate-400">
-                    vence {dia(n.vencimento)}
-                  </span>
-                </label>
-              </li>
-            ))}
-          </ul>
-
-          {/* ⛔ A CONTA À VISTA: o dono confere a soma contra a linha ANTES de confirmar,
-              e ela muda a cada caixa desmarcada. */}
-          <div className={`mt-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 rounded-lg border px-2.5 py-1.5 text-[12px] tabular-nums ${
-            bate
-              ? 'border-emerald-200 bg-emerald-50/70 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300'
-              : 'border-rose-200 bg-rose-50/70 text-rose-800 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-300'
-          }`}>
-            <span>
-              {marcadas.size} marcada{marcadas.size === 1 ? '' : 's'}: <b>{formatBRL(soma)}</b>
-            </span>
-            <span>
-              {bate
-                ? '✓ bate com a linha do extrato'
-                : `falta ${formatBRL(Math.abs(diferenca))} pra fechar${diferenca < 0 ? ' (passou)' : ''}`}
-            </span>
-          </div>
-        </div>
+        {painel}
       </ChassiDoCartao>
-
-      {/* ⛔ A TIRA DO PORQUÊ — sem ela a sugestão não pode existir */}
-      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2 border-t border-slate-200 bg-white px-4 py-2.5 dark:border-slate-800 dark:bg-slate-950">
-        <span className="shrink-0 rounded-full bg-[#534AB7]/10 px-2 py-0.5 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-[#534AB7] dark:bg-indigo-950/50 dark:text-indigo-300">
-          pagamento em lote
-        </span>
-        <span className="min-w-[180px] flex-1 text-[12px] leading-relaxed text-slate-500 dark:text-slate-400">
-          {lote.porQue}
-        </span>
-        <span className="ml-auto flex items-center gap-1">
-          {/* ⛔ SEM CATEGORIA, O VINCULAR NÃO LIBERA — e a frase DIZ por quê. Botão
-              desabilitado mudo é o dono clicando e não entendendo. */}
-          <Button size="sm" disabled={ocupado || !bate || faltamCategoria.length > 0}
-            onClick={() => void vincular()} className="h-8 gap-1.5 px-3 text-xs">
-            {ocupado ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
-            Vincular {marcadas.size} nota{marcadas.size === 1 ? '' : 's'}
-          </Button>
-          {faltamCategoria.length > 0 && (
-            <span className="text-[11px] text-amber-700 dark:text-amber-400">
-              diga a categoria primeiro — ela grava nas {faltamCategoria.length}
-            </span>
-          )}
-          <Button size="sm" variant="ghost" disabled={ocupado}
-            onClick={() => onProcurar(lote.extratoId, lote.fornecedorNome)}
-            className="h-8 gap-1 px-2.5 text-xs text-slate-500"
-            title="escolher as notas na mão, com a soma conferida">
-            <Search className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Escolher na mão</span>
-          </Button>
-        </span>
-      </div>
+      {rodape}
     </article>
   )
 }
