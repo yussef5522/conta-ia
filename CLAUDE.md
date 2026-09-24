@@ -1149,6 +1149,81 @@ celular 200 · desktop 200 · bundre −8 KB (as seções saíram)
 
 **10.751 verdes · TS 0 · deploys 4/4 (`cBP8IOOmsVAWkUcsh2HR_` e `fRsGTCf3sYjG2lApQcxwp`) · Δ bundle −8 KB · mock v3 atualizado com os filtros e a marca "já classificada".**
 
+### ⛔⛔⛔ ITEM NEGATIVO TRAVAVA O FLUXO ALHEIO — 4 FRENTES (23/09)
+
+**A régua do dono, e ela fecha as quatro:** ***"negativo ACONTECE na vida real; o sistema AVISA e oferece a porta (a compra/produção que falta), mas NUNCA bloqueia fluxo alheio."***
+
+### ⭐⭐ 1. O RECEBIMENTO NÃO ACHAVA O SAL — e a hipótese caiu na medição
+
+**O dono:** *"chegou nota do ALAN com SAL e o recebimento NÃO ACHA o item «sal» pra casar — só criando produto novo. Filtra saldo negativo?"*
+
+**⚠️⚠️ NÃO FILTRA NADA DE SALDO.** Medido em prod, as causas eram **duas, nenhuma a suspeita**:
+```
+a rota mandava: findMany({ companyId, ativo: true }, take: 300, orderBy: nome asc)
+ativos na empresa: 348  →  ⛔ TRUNCOU, e "sal" (minúsculo) cai no fim da ordem
+```
+**⭐⭐ E A RAIZ É O UNIVERSO QUE NUNCA FOI DECLARADO.** Esta rota nasceu antes da régua de 16/09 (*"cada gesto tem seu universo"*) e ficou de fora do contrato obrigatório. Sem ele a lista traz **189 invólucros de CARDÁPIO** (95 PRODUTO_FINAL + 50 SABOR + 44 INTERMEDIARIO) que **ninguém compra**, e eles comem as vagas: o universo COMPRAVEL tem **159**, e o sal entra.
+
+**⛔ É A TERCEIRA VEZ QUE UM TETO DE LEITURA ESCONDE O ITEM** — o `take: 50` que sumiu com o fermento (16/09), o `take: 200` que sumiu com a ordem do ano 202 (19/09), e agora o `take: 300` do recebimento. ⚠️ **E o modo teste escondia MAIS que a tela real** (`take: 200`): as duas rotas passaram pelo mesmo dono da pergunta.
+
+**⛔⛔ SEGUNDO DEFEITO, ACHADO NO CAMINHO: a busca da conferência era uma SEGUNDA RÉGUA.** Ela fazia `nome.toLowerCase().includes(busca.toLowerCase())` em vez da `casaBusca` da casa, e **diverge no acento**: medido, digitar **`"feijão"`** (como o dono escreve) achava **ZERO** onde a régua da casa acha **2** (`FEIJAO PRETO…`, como a NOTA escreve). É literalmente o bug de 09/09 sobrevivendo nesta tela.
+
+**⭐ E O NEGATIVO APARECE COM AVISO NA LINHA DELE** — *"saldo −0,9 KG, saiu mais do que entrou · esta nota conserta"* —, porque ele é quem **mais** precisa daquela tela. O vazio também passou a dizer o recorte (*"nada com «x» entre os 159 itens que se COMPRAM"*).
+
+**⭐ E A CONFERÊNCIA QUE ELE PEDIU: NÃO NASCEU SAL DUPLICADO.** Existe **1 item** chamado exatamente `sal`, criado em 08/09. Nada a mesclar.
+
+### ⭐⭐ 2. A ENTRADA QUE CRUZA O ZERO LIMPA O RESÍDUO — a régua IRMÃ
+
+`avaliarResiduo` (19/09) responde *"a BAIXA pode levar o resíduo junto?"* e só diz sim **quando a quantidade vai a ZERO**. `avaliarEntrada` responde a oposta: *"a ENTRADA pode limpar o que ficou pendurado?"* — e diz sim **justamente porque a compra que faltava acabou de chegar**. Dentro do teto (o mesmo limite matemático, proporcional ao que saiu sem lastro) **absorve e registra**; acima, **PERGUNTA com a conta na tela**, nunca beco.
+
+**⛔⛔ E O RESÍDUO NÃO ENTRA NO CUSTO DA NOTA.** A baixa absorve somando no `custoTotal` do próprio movimento; aqui isso seria errado **duas vezes**: quebraria o **CHECK do ledger** (`|custoTotal − qtd×custoUnit| ≤ 0,01`) **e o E16** (`Σ(ENTRADA_NF da nota) == Σ(vProd)`) — o documento assinado pela SEFAZ passaria a *valer* 22 centavos a mais. ***A nota é FATO e não se reescreve.*** O ajuste é linha própria (`AJUSTE_RESIDUO`), pelo idioma do `encerrar-item` (0,001 e unitário **derivado** do total).
+
+**⛔⛔⛔ E A FRONTEIRA VEIO DE UM TESTE VERMELHO, NÃO DE UM RACIOCÍNIO MEU.** A 1ª versão valia pra **qualquer** movimento que cruzasse o zero — e **engoliu a porta do negativo** (22/09): a CONTAGEM sobre item negativo passou a perguntar sobre centavos em vez de dizer *"vendeu sem ter produção registrada — contar por cima ENTERRA o lote que ninguém lançou"*. ⭐ A régua do dono é ***"a ENTRADA é o conserto"***: `ENTRADA_NF` · `ENTRADA_MANUAL` · `PRODUCAO_GERACAO` (a própria porta que a recusa oferece) · `DEVOLUCAO_PRODUCAO`. **`AJUSTE_CONTAGEM` fica FORA — contar por cima não é o conserto, é o enterro.**
+
+### ⭐⭐ 3. A FICHA NÃO QUEBRA POR COMPONENTE NEGATIVO
+
+**⚠️ A causa de fundo:** `custoMedio` é `valor/saldo` e **não existe com saldo ≤ 0** — então um item negativo entra na receita **sem custo** e a ficha inteira caía pra *"a definir"*. **O conserto não é inventar custo: é mostrar o parcial e nomear o que falta.**
+
+- **`dá pra fazer` nunca é negativo.** Era `Math.floor(saldo/qtd)` cru: com a ERVILHA em **−45,48** a tela dizia ***"dá pra fazer −4.548"***. Falta é **ZERO**; o que muda é a frase — *"limitado por ERVILHA — em falta"*.
+- **o custo mostra o PARCIAL** (*"R$ 10,35 + falta ERVILHA"*). O `custoUnitario` segue `null` (margem inventada é pior que margem ausente), e a **margem parcial vai marcada como TETO** (*"até X% · teto — falta custo de componente"*): o que falta só pode **derrubar**.
+- **a linha do componente explica o PORQUÊ** — *"saldo −45,48 — saiu mais do que entrou, por isso sem custo médio"*, em vez de um *"sem custo"* que mandaria o dono esperar uma nota que já chegou.
+
+⚠️ **Um número do pedido saiu diferente, medido:** ele escreveu *"R$ 8,58 + ervilha"*; o parcial real do XIS COMPLETO é **R$ 10,35**. Repetir o número dele seria inventar.
+
+### ⭐ 4. A VARREDURA (mapa executável, `negativo-nao-trava-fluxo-alheio.test.ts`)
+
+| fluxo | com item negativo |
+|---|---|
+| **recebimento** | ⭐ **AVISA** — aparece na lista com o saldo e *"esta nota conserta"* |
+| **entrada (nota/manual/produção)** | ⭐ **AVISA e PERGUNTA** — absorve dentro do teto, pergunta acima |
+| **ficha / cardápio** | ⭐ **AVISA** — custo parcial, margem-teto, *"limitado por X — em falta"* |
+| **contagem** | ⭐ **PORTA de 22/09** (intacta) — *"vendeu sem produção registrada"* + o link |
+| **baixa de venda** | ⚠️ **passa** — saldo negativo é o sinal *"vendeu sem produzir"*, e barrar esconderia o aviso |
+| **produção** | ⭐ *"produzir agora"* na linha do componente em falta |
+
+**PROVADO EM PROD, pelo caminho da tela, nos DOIS viewports (REGRA 12):**
+```
+1. a lista do recebimento: 159 itens · ⛔ invólucros de cardápio: 0
+   "sal" → 3 · 1 NEGATIVO com aviso (sal −0,9)      "feijão" → 1 (com acento!)
+   "ervilha" → 2 · 1 NEGATIVO (−45,48)              "xis pao" → 1 (ordem livre)
+   ⭐ o sal que ele citou: ✓ NA LISTA     ⭐ itens chamados "sal": 1 (nada a mesclar)
+
+2. as 4 entradas que cruzam o zero → PERGUNTA (resíduo acima do teto), com a conta na tela
+   sal −0,22/teto 0,05 · arroz −32,77/0,06 · feijão −12,47/0,05 · ervilha −3,26/0,23
+
+3. XIS COMPLETO: custo fechado "a definir" · ⭐ PARCIAL R$ 10,35 · falta ERVILHA
+   ⭐ dá pra fazer 0 (limitado por ERVILHA — em falta) · ⛔ rendeAte negativo: NÃO
+
+celular recebimento 113ms · cardápio 57ms · produto 64ms   desktop 78/45/48ms · 6/6 frases
+```
+**REGRA 11 — 7 becos repostos, 7 vermelhos** (sem universo · filtrando por saldo · busca virando 2ª régua · entrada recusada · rendeAte cru · custo parcial sumindo · contagem tratada como entrada).
+
+⚠️ **E A SONDA DA REGRA 11 NASCEU QUEBRADA DE NOVO — `$G` sem aspas NÃO faz word-splitting em zsh** (a cicatriz de 23/09, no mesmo mês): os 7 rodaram contra zero arquivo e "passaram" com saída vazia. Refeita com array. ⚠️ Outras duas sondas minhas erraram antes: `saldosDaEmpresa` tem o campo **`saldo`**, não `quantidade` (eu media `undefined < 0`, sempre falso, e quase reportei *"zero negativos"*), e inventei a forma do `Ctx` do `explodir` em vez de ler. **Parei de supor e li a assinatura** — é a 4ª vez que isso aparece no doc.
+
+**10.791 verdes · TS 0 · deploy 4/4 (`rHzyJW80XykbSm943faoo`) · Δ bundle +4 KB.**
+
+📋 **FICA PRO DONO (o clique é dele):** conferir a nota do ALAN pela tela — o `sal` agora aparece na busca com o aviso, e o confirmar vai **perguntar** sobre os R$ 0,22 antes de gravar. As outras 3 (arroz, feijão, ervilha) seguem negativas até a nota delas chegar.
+
 ### ⛔⛔⛔ O LOTE EXIGIA CATEGORIA E NÃO HAVIA ONDE RESPONDER — O BECO (23/09)
 
 **O dono:** *"o cartão exige categoria («Vincular 6 · diga a categoria primeiro — ela grava nas 6») mas NÃO EXISTE onde responder: o seletor esquerdo mostra «⚙ categoria vem do gesto» e NÃO ABRE nada. As duas metades se contradizem — a esquerda diz «não é comigo», o botão diz «é com você»."*
