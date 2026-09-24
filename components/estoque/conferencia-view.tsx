@@ -13,6 +13,7 @@ import { ItensManuaisEditor } from './itens-manuais-editor'
 import { EditorParcelas, type ParcelaEditavel } from './editor-parcelas'
 import { sanitizarQtd, valorQtd, textoQtd, descreverQtd, aceitaFracao } from '@/lib/stock/quantidade'
 import { filtrarPorBusca } from '@/lib/busca-texto'
+import { avaliarUnidadeDeEntrada, normalizarUnidade } from '@/lib/stock/unidade-de-entrada'
 
 export type Unidade = 'KG' | 'UN' | 'LT'
 export type Categoria = 'MATERIA_PRIMA' | 'REVENDA' | 'EMBALAGEM' | 'LIMPEZA' | 'USO_INTERNO'
@@ -165,15 +166,44 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
    */
   useEffect(() => {
     let vivo = true
+    /**
+     * ⛔⛔⛔ **REUNITIZAR O ITEM NUNCA É EFEITO COLATERAL DO RECEBIMENTO (24/09).**
+     *
+     * **O caso do dono:** nota do ALAN com *"SAL CISNE REFINADO 1KG · 10 UN · R$ 4,79"*
+     * apontada pro `sal` (controlado em **KG**) — e o preview propunha ***"o item passa a
+     * ser controlado em UN"***, com **41 movimentos e 18 fichas** convertidos.
+     *
+     * ⚠️ **SÃO DUAS PERGUNTAS DIFERENTES que "a unidade difere" não separa:**
+     *   - **a nota veio noutra unidade** (`uCom` ≠ régua do item) → isso é o **FATOR**, e
+     *     converte **SÓ A ENTRADA**: *1 UN da nota = 1 KG* → entram 10 KG a R$ 4,79/KG.
+     *     O item continua em KG e as 18 fichas ficam intactas. **É o caso comum.**
+     *   - **o dono CORRIGIU a unidade de entrada** (`unidadeEntrada` preenchida) → aí ele
+     *     está dizendo *"a régua do item está errada"*, e é o caso do QUEIJO (11/09), em
+     *     que reunitizar é o certo.
+     *
+     * ⛔ A condição antiga (`unidadeEntrada ?? uCom`) colapsava as duas e disparava a
+     * reunitização **toda vez que a nota vinha em outra unidade** — ou seja, no caso comum.
+     * ***Gesto raro e global não pode nascer de um gesto diário.***
+     */
+    /**
+     * ⭐⭐ E A CONDIÇÃO É **A MESMA FUNÇÃO DO SERVIDOR** (REGRA 4), não uma que concorda
+     * por acaso: `avaliarUnidadeDeEntrada` é pura e é ela que o `confirmarConferencia`
+     * consulta pra decidir se reunitiza. Duas condições escritas em paralelo divergiriam
+     * no 1º caso de borda — e aí a tela voltaria a prometer o que o confirmar não faz.
+     */
     const alvos = data.itens.filter((it) => {
       const e = estado[it.nfeItemId]
-      const entrada = e?.unidadeEntrada ?? it.uCom
-      return !!e?.mapeado && !e.mapeado.novo && entrada.toUpperCase() !== e.mapeado.unidadeControle.toUpperCase()
+      if (!e?.mapeado || e.mapeado.novo) return false
+      const aval = avaliarUnidadeDeEntrada({
+        unidadeNota: it.uCom, unidadeTributaria: it.uTrib, unidadeEntrada: e.unidadeEntrada ?? null,
+        unidadeItem: e.mapeado.unidadeControle, fator: e.mapeado.fatorConversao,
+      })
+      return aval.corrigida && normalizarUnidade(aval.unidade) !== normalizarUnidade(e.mapeado.unidadeControle)
     })
     if (!alvos.length) { setEfeitoNoItem({}); return }
     Promise.all(alvos.map(async (it) => {
       const e = estado[it.nfeItemId]!
-      const unidade = (e.unidadeEntrada ?? it.uCom).toUpperCase()
+      const unidade = normalizarUnidade(e.unidadeEntrada ?? it.uCom)
       const fator = e.mapeado!.fatorConversao || 1
       try {
         const r = await fetch(`/api/empresas/${companyId}/estoque/itens/${e.mapeado!.itemId}/reunitizar?fator=${fator}&unidade=${unidade}`)

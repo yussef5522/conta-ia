@@ -8,7 +8,7 @@
 import { useEffect, useState, use, useMemo, Fragment } from 'react'
 import type { FichaItem } from '@/lib/stock/ficha-item'
 import { Card, CardContent } from '@/components/ui/card'
-import { Package, Loader2, ArrowLeft, TrendingUp, ChevronDown, Ruler, ExternalLink, History } from 'lucide-react'
+import { Package, Loader2, ArrowLeft, TrendingUp, ChevronDown, Ruler, ExternalLink, History, AlertTriangle, PackagePlus } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { NomeEditavel } from '@/components/estoque/nome-editavel'
 import { MinMaxEditor } from '@/components/estoque/min-max-editor'
@@ -79,6 +79,32 @@ export default function FichaItemPage({ params }: { params: Promise<{ id: string
   return (
     <div className="space-y-6">
       <a href={`/empresas/${id}/estoque/posicao`} className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700"><ArrowLeft className="h-3.5 w-3.5" /> voltar pra posição</a>
+
+      {/*
+        ⛔⛔⛔ A PORTA QUE FALTAVA (24/09) — a **maçaneta**, não a placa.
+
+        A recusa do item negativo manda o dono pra cá dizendo *"ver o histórico deste item e
+        corrigir a entrada que faltou"* — e esta tela **não oferecia gesto nenhum**. Porta
+        sem maçaneta, a mesma família que esta casa já pagou nove vezes.
+
+        ⚠️ Botão de VERDADE (borda + ícone + verbo), nunca texto cinza com hover: *"ação
+        escondida sem afordância não existe, principalmente no celular"* (30/08) — e é no
+        celular que o dono opera.
+      */}
+      {ficha.saldo < 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
+          <p className="min-w-0 flex-1 text-[12px] leading-snug text-amber-900">
+            <b>{num(ficha.saldo)} {ficha.item.unidadeControle}</b> — saiu mais do que entrou.
+            Se foi compra que não chegou por nota, lance a entrada com a <b>quantidade e o valor
+            verdadeiros</b> da compra que faltou; o saldo volta ao positivo e o custo médio se refaz.
+          </p>
+          <a href={`/empresas/${id}/estoque/entrada-manual?item=${itemId}`}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-amber-500 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100">
+            <PackagePlus className="h-3.5 w-3.5" /> lançar a entrada que faltou
+          </a>
+        </div>
+      )}
 
       {/* cabeçalho */}
       <div>

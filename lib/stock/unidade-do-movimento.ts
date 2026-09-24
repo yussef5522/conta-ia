@@ -30,6 +30,13 @@ export interface UnidadeDoMovimento {
   unidade: string
   /** de onde a resposta saiu — `PADRAO` é o fallback da régua do próprio item */
   origem: 'CORRECAO' | 'CONFERENCIA' | 'PADRAO'
+  /**
+   * ⭐ 24/09 — o TIPO viaja porque quem lê este plano precisa saber se a linha **move a
+   * prateleira**. Sem ele, o `previewReunitizar` somava o plano CRU (incluindo o
+   * `PRODUCAO_CONSUMO`, que é transferência interna) e comparava com um `antes` que vinha
+   * do `saldoItem` — **duas réguas de saldo lado a lado no mesmo card**.
+   */
+  tipo: string
 }
 
 /**
@@ -79,10 +86,10 @@ export async function unidadeFisicaDosMovimentos(
     // ⭐ o estorno usa o receipt do ORIGINAL — é dele que vem a unidade da nota
     const base = m.tipo === 'ESTORNO' && m.estornoDeId ? porId.get(m.estornoDeId) ?? m : m
     const corrigida = base.receiptId ? porCorr.get(base.receiptId) : undefined
-    if (corrigida) return [m.id, { movimentoId: m.id, quantidade: m.quantidade, unidade: corrigida, origem: 'CORRECAO' as const }]
+    if (corrigida) return [m.id, { movimentoId: m.id, quantidade: m.quantidade, unidade: corrigida, origem: 'CORRECAO' as const , tipo: m.tipo }]
     const daNota = base.receiptId ? porConf.get(base.receiptId) : undefined
-    if (daNota) return [m.id, { movimentoId: m.id, quantidade: m.quantidade, unidade: daNota, origem: 'CONFERENCIA' as const }]
-    return [m.id, { movimentoId: m.id, quantidade: m.quantidade, unidade: unidadeControleAtual, origem: 'PADRAO' as const }]
+    if (daNota) return [m.id, { movimentoId: m.id, quantidade: m.quantidade, unidade: daNota, origem: 'CONFERENCIA' as const , tipo: m.tipo }]
+    return [m.id, { movimentoId: m.id, quantidade: m.quantidade, unidade: unidadeControleAtual, origem: 'PADRAO' as const , tipo: m.tipo }]
   }))
 }
 

@@ -25,7 +25,7 @@ import type { PrismaClient, Prisma } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { criarMovimento, estornarMovimento } from './movement'
 import { unidadeFisicaDosMovimentos, planejarConversao, type PlanoDeConversao } from './unidade-do-movimento'
-import { saldoItem, recomputeSaldoCache } from './saldo'
+import { movePrateleira, saldoItem, recomputeSaldoCache } from './saldo'
 
 const round3 = (n: number) => Math.round((n + 1e-9) * 1000) / 1000
 const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
@@ -163,9 +163,24 @@ export async function previewReunitizar(
 
   // ⭐⭐ O SALDO DEPOIS sai do PLANO, não de `saldo × fator`: só o que está na régua antiga
   // dobra. No queijo real, `59,2 × 2 = 118,4` inventaria 51,2 kg — o certo é 67,2.
+  /**
+   * ⛔⛔⛔ **E ELE APLICA A MESMA RÉGUA DE PRATELEIRA DO `saldoItem` (24/09).**
+   *
+   * **O defeito, medido no SAL:** o `antes` vinha do `saldoItem` (que exclui o
+   * `PRODUCAO_CONSUMO`, transferência interna) e o `depois` somava o plano **CRU**. Com
+   * **fator 1 — ou seja, sem mudar NADA** — o card dizia ***"saldo −0,9 KG → −12,76 UN"***,
+   * porque −12,76 é a soma dos 41 movimentos incluindo os 19 consumos de produção
+   * (−11,86) que o saldo não conta.
+   *
+   * ⚠️ ***Duas réguas de saldo no mesmo card.*** O `movePrateleira` é o dono único da
+   * pergunta desde 09/09 — e era ele que faltava aqui. A GRAVAÇÃO sempre esteve certa
+   * (ela converte movimento a movimento e o saldo é derivado depois): **quem mentia era
+   * o preview**, que é o pior lugar pra mentir, porque é onde o dono decide.
+   */
+  const naPrateleira = (m: { tipo: string }) => movePrateleira(m.tipo)
   const saldoDepois = round2(
-    plano.converte.reduce((acc, m) => acc + m.quantidade * fator, 0)
-    + plano.jaEstaCerto.reduce((acc, m) => acc + m.quantidade, 0),
+    plano.converte.filter(naPrateleira).reduce((acc, m) => acc + m.quantidade * fator, 0)
+    + plano.jaEstaCerto.filter(naPrateleira).reduce((acc, m) => acc + m.quantidade, 0),
   )
 
   return {

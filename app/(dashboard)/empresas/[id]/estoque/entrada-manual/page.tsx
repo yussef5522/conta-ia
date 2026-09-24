@@ -36,6 +36,20 @@ const CATEGORIAS = [
 
 export default function EntradaManualPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
+  /**
+   * ⭐⭐ 24/09 — A ENTRADA JÁ ABRE COM O ITEM ESCOLHIDO (`?item=<id>`).
+   *
+   * ⛔ A porta do negativo manda o dono pra cá dizendo *"lançar a entrada que faltou"* —
+   * e sem isto ele teria que **achar o item de novo numa lista de 159**, logo depois de o
+   * sistema ter acabado de nomeá-lo. ***Perder no caminho a informação que a tela acabou
+   * de mostrar é obrigar o dono a repetir*** (a lição do "definir ficha", 14/09).
+   *
+   * ⚠️ Lido no 1º render (como o `?aba=` do cardápio): em `useEffect` a tela piscaria
+   * vazia antes de preencher, e "voltar e não ver nada" é indistinguível de "não pegou".
+   */
+  const itemDaUrl = typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search).get('item')?.trim() || ''
+    : ''
   const [cat, setCat] = useState<ItemCat[]>([])
   const [forns, setForns] = useState<Forn[]>([])
   const [buscaForn, setBuscaForn] = useState('')
@@ -46,7 +60,8 @@ export default function EntradaManualPage({ params }: { params: Promise<{ id: st
   const [nomeNovo, setNomeNovo] = useState('')
   const [data, setData] = useState(hoje())
   const [obs, setObs] = useState('')
-  const [linhas, setLinhas] = useState<Linha[]>([vazia(), vazia()])
+  const [linhas, setLinhas] = useState<Linha[]>(() =>
+    itemDaUrl ? [{ ...vazia(), itemId: itemDaUrl }, vazia()] : [vazia(), vazia()])
   const [aPrazo, setAPrazo] = useState(false)
   const [venc, setVenc] = useState('')
   const [valorParcela, setValorParcela] = useState('')
