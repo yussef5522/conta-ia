@@ -6,6 +6,7 @@ import { prisma } from '@/lib/db'
 import { guardStock } from '@/lib/stock/require-stock'
 import { getAuthContext } from '@/lib/auth/rbac'
 import { buildConferenceView } from '@/lib/stock/conference'
+import { itensParaCasarNoRecebimento } from '@/lib/stock/itens-do-recebimento'
 
 interface Params { params: Promise<{ id: string; nfeId: string }> }
 
@@ -16,7 +17,12 @@ export async function GET(request: NextRequest, { params }: Params) {
   const user = a.user
   const [conference, itensExistentes] = await Promise.all([
     buildConferenceView(companyId, nfeId),
-    prisma.stockItem.findMany({ where: { companyId, ativo: true }, select: { id: true, nome: true, unidadeControle: true, categoria: true }, orderBy: { nome: 'asc' }, take: 300 }),
+    /**
+     * ⭐ 23/09: esta rota listava `{ companyId, ativo: true }` com `take: 300` — **sem
+     * declarar universo**, então 189 invólucros de cardápio comiam as vagas e o `sal`
+     * (o 341º em ordem alfabética) **não chegava na tela**. Um dono só da pergunta.
+     */
+    itensParaCasarNoRecebimento(companyId, prisma),
   ])
   if (!conference) return NextResponse.json({ erro: 'Nota não encontrada' }, { status: 404 })
   // PONTE 1 — a tela precisa saber se ESTE usuário pode criar conta a pagar (stock.manage).

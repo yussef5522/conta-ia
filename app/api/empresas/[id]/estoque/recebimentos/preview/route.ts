@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { guardStock } from '@/lib/stock/require-stock'
 import { buildPreviewConference } from '@/lib/stock/conference-preview'
+import { itensParaCasarNoRecebimento } from '@/lib/stock/itens-do-recebimento'
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -14,11 +15,8 @@ export async function GET(request: NextRequest, { params }: Params) {
   const a = await guardStock(request, companyId, 'stock.view')
   if (a.erro) return a.erro
   const user = a.user
-  const itensExistentes = await prisma.stockItem.findMany({
-    where: { companyId, ativo: true },
-    select: { id: true, nome: true, unidadeControle: true, categoria: true },
-    orderBy: { nome: 'asc' },
-    take: 200,
-  })
+  // ⭐ REGRA 4 — o MESMO dono da pergunta que a conferência real usa. Aqui o teto era
+  // ainda menor (`take: 200`), ou seja o modo teste escondia MAIS que a tela de verdade.
+  const itensExistentes = await itensParaCasarNoRecebimento(companyId, prisma)
   return NextResponse.json({ preview: buildPreviewConference(), itensExistentes })
 }

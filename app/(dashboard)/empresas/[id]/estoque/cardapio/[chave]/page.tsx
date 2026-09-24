@@ -39,7 +39,8 @@ interface Detalhe {
   /** ⭐ a seção do cardápio deste produto + a lista pra trocar (12/09) */
   secao?: string; secaoSugerida?: boolean
   secoes?: { chave: string; nome: string }[]
-  podeFazer: number | null; gargalo: { nome: string; rendeAte: number } | null
+  podeFazer: number | null; gargalo: { nome: string; rendeAte: number; emFalta: boolean } | null
+  custoParcial: number; faltamCusto: string[]
   loteBase: number | null; validadeDias: number | null; versaoAtual: number | null
 }
 
@@ -168,10 +169,29 @@ export default function ProdutoCardapioPage({ params }: { params: Promise<{ id: 
 
       <StatCardGrid>
         <StatCard tone="slate" label="Vendas" value={l.vendasQtd > 0 ? String(l.vendasQtd) : '—'} sub={l.vendasQtd > 0 ? brl(l.vendasValor) : 'sem venda no período'} icon={TrendingUp} />
-        <StatCard tone={l.custoUnitario == null ? 'amber' : 'sky'} label="Custo" value={l.custoUnitario != null ? brl(l.custoUnitario) : 'a definir'} sub="por unidade vendida" icon={CircleDollarSign} />
+        {/*
+          ⭐⭐ 23/09 — O CUSTO MOSTRA O PARCIAL E NOMEIA O QUE FALTA.
+          ⛔ Antes: um componente sem custo (uma ERVILHA negativa, que não tem custo médio)
+          fazia o card inteiro dizer "a definir" — R$ 8,58 de custo conhecido sumiam da tela.
+          ***Item em falta é aviso na linha dele, não veneno na ficha.***
+        */}
+        <StatCard tone={l.custoUnitario == null ? 'amber' : 'sky'} label="Custo"
+          value={l.custoUnitario != null ? brl(l.custoUnitario) : det && det.custoParcial > 0 ? `${brl(det.custoParcial)} +` : 'a definir'}
+          sub={l.custoUnitario != null ? 'por unidade vendida'
+            : det && det.faltamCusto.length > 0 ? `falta ${det.faltamCusto.slice(0, 2).join(', ')}${det.faltamCusto.length > 2 ? ` +${det.faltamCusto.length - 2}` : ''}`
+            : 'por unidade vendida'}
+          icon={CircleDollarSign} />
         <StatCard tone="slate" label="Preço" value={l.precoUsado != null ? brl(l.precoUsado) : 'a definir'} sub={l.precoOrigem === 'praticado' ? 'praticado no PDV' : l.precoOrigem === 'cardapio' ? 'cadastrado' : '—'} icon={UtensilsCrossed} />
         <StatCard tone={l.margem == null ? 'slate' : l.margem < 0.15 ? 'rose' : l.margem < 0.3 ? 'amber' : 'emerald'}
-          label="Margem" value={l.margem != null ? `${Math.round(l.margem * 100)}%` : 'a definir'} sub={l.margem != null ? brl((l.precoUsado ?? 0) - (l.custoUnitario ?? 0)) + ' por unidade' : 'falta custo ou preço'} icon={Percent} />
+          label="Margem"
+          value={l.margem != null ? `${Math.round(l.margem * 100)}%`
+            : l.precoUsado != null && det && det.custoParcial > 0 ? `até ${Math.round(((l.precoUsado - det.custoParcial) / l.precoUsado) * 100)}%`
+            : 'a definir'}
+          sub={l.margem != null ? brl((l.precoUsado ?? 0) - (l.custoUnitario ?? 0)) + ' por unidade'
+            /* ⚠️ "até X%" é TETO, nunca a margem: o que falta só pode DERRUBAR. O selo diz isso. */
+            : l.precoUsado != null && det && det.custoParcial > 0 ? 'teto — falta custo de componente'
+            : 'falta custo ou preço'}
+          icon={Percent} />
       </StatCardGrid>
 
       {erro && <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{erro}</p>}
@@ -283,8 +303,15 @@ export default function ProdutoCardapioPage({ params }: { params: Promise<{ id: 
             <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Receita — o que sai do estoque por unidade</p>
             {det.podeFazer != null && (
               <span className={`ml-auto text-xs ${det.podeFazer === 0 ? 'text-rose-600' : 'text-slate-500'}`}>
+                {/*
+                  ⛔ 23/09 — era `Math.floor(saldo/qtd)` cru: com a ERVILHA em −45,48 a tela
+                  dizia "dá pra fazer −4548". Saldo negativo é FALTA, e falta é ZERO — o que
+                  muda é a frase, que passa a nomear quem está em falta.
+                */}
                 dá pra fazer <b>{det.podeFazer}</b>
-                {det.gargalo && det.podeFazer < 20 && <span className="text-slate-400"> (limitado por {det.gargalo.nome})</span>}
+                {det.gargalo && (det.podeFazer < 20 || det.gargalo.emFalta) && (
+                  <span className="text-slate-400"> (limitado por {det.gargalo.nome}{det.gargalo.emFalta ? ' — em falta' : ''})</span>
+                )}
               </span>
             )}
           </div>
@@ -325,10 +352,17 @@ export default function ProdutoCardapioPage({ params }: { params: Promise<{ id: 
                              que promete fonte errada me deixa esperando o que não vem"*.
                              ⭐ O sinal é o mesmo que o botão "produzir agora" já usa:
                              tem ficha que o produz → o custo nasce da PRODUÇÃO. */
+                          /*
+                            ⭐ 23/09 — e quando o item está NEGATIVO, o motivo de não haver
+                            custo médio é esse: `valor/saldo` não existe com saldo ≤ 0. Dizer
+                            só "sem custo" mandaria o dono esperar uma nota que já chegou.
+                          */
                           <span className="text-[11px] text-amber-600">
-                            {c.fichaIdComponente
-                              ? 'sem custo — nasce na 1ª produção concluída'
-                              : 'sem custo — entra na 1ª nota'}
+                            {c.saldo < 0
+                              ? `saldo ${num(c.saldo)} — saiu mais do que entrou, por isso sem custo médio`
+                              : c.fichaIdComponente
+                                ? 'sem custo — nasce na 1ª produção concluída'
+                                : 'sem custo — entra na 1ª nota'}
                           </span>
                         ) : zerado && c.fichaIdComponente ? (
                           <button onClick={() => produzirAgora(c.fichaIdComponente!)} disabled={busy}

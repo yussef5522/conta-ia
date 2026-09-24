@@ -3,6 +3,7 @@
 // valida ANTES de gravar (mesma regra, runtime) e implementa a correção = estorno+novo.
 
 import type { PrismaClient, Prisma } from '@prisma/client'
+import { avaliarEntrada, ehEntradaQueConserta, frasePergunta, TIPO_AJUSTE_RESIDUO } from './entrada-cruza-o-zero'
 import { TIPOS_FORA_DA_PRATELEIRA } from './saldo'
 import { familiaDoItem, porQueEstaNegativo, type FatosDoNegativo } from './porta-do-negativo'
 
@@ -27,6 +28,14 @@ export interface CulpadoDoMovimento {
    * teria que consultar o banco, e aí a decisão da porta nasceria em dois lugares.
    */
   fatos?: FatosDoNegativo
+  /**
+   * ⭐ 23/09 — o code que a TELA usa pra oferecer a porta certa. `RESIDUO_AO_CRUZAR_O_ZERO`
+   * é uma **pergunta**, não uma recusa: reenviar com `confirmouResiduo` passa.
+   */
+  code?: string
+  /** o dinheiro pendurado (negativo) e o teto que este item absorveria calado */
+  residuo?: number
+  teto?: number
 }
 
 export class MovementInvalidError extends Error {
@@ -53,6 +62,12 @@ export interface NovoMovimento {
   origem: string // SEFAZ | MANUAL | CAMERA
   criadoPorId?: string | null
   dataMovimento?: Date
+  /**
+   * ⭐ 23/09 — o dono JÁ VIU a conta na tela e confirmou que a entrada pode limpar o
+   * resíduo de custo pendurado. Sem isso, resíduo acima do teto **PERGUNTA** (nunca beco,
+   * nunca recusa cega — a régua do `confirmouSanidade`).
+   */
+  confirmouResiduo?: boolean
 }
 
 /** Valida a MESMA regra do CHECK do banco (quantidade≠0; custoTotal==qtd×custo ±0,01/linha).
@@ -87,6 +102,42 @@ export function assertMovementValid(m: { quantidade: number; custoUnitario: numb
 /** ⚠️ "1 unidade" e não "1 unidade(s)" — parêntese em mensagem de erro é ruído */
 function unidadeOuUnidades(n: number): string {
   return Math.abs(n) === 1 ? 'unidade' : 'unidades'
+}
+
+/**
+ * ⭐⭐ 23/09 — A ENTRADA QUE CRUZA O ZERO NÃO É BARRADA: ela LIMPA.
+ *
+ * ⛔ O guard abaixo nasceu pra a BAIXA (*"dinheiro negativo com saldo positivo não existe"*)
+ * e, cravado, travava também a **entrada que conserta** — a nota do ALAN com SAL parou por
+ * causa de R$ 0,22 pendurados. ***Item negativo não pode travar o fluxo alheio; a compra
+ * que falta é justamente a cura.***
+ *
+ * Devolve o resíduo a absorver (negativo) quando há o que absorver.
+ */
+async function residuoAAbsorverNaEntrada(
+  db: Db, m: NovoMovimento, custoTotal: number,
+): Promise<number | null> {
+  // ⛔ só a ENTRADA conserta — contagem sobre negativo continua na porta de 22/09
+  if (m.quantidade <= 0 || !ehEntradaQueConserta(m.tipo)) return null
+  const atual = await db.stockMovement.aggregate({
+    where: { companyId: m.companyId, itemId: m.itemId, tipo: { notIn: [...TIPOS_FORA_DA_PRATELEIRA] } },
+    _sum: { quantidade: true, custoTotal: true },
+  })
+  const v = avaliarEntrada({
+    saldoAntes: round2(atual._sum.quantidade ?? 0),
+    valorAntes: round2(atual._sum.custoTotal ?? 0),
+    qtdDaEntrada: m.quantidade,
+    valorDaEntrada: custoTotal,
+  })
+  if (v.decisao === 'OK' || v.decisao === 'RECUSA') return null
+  if (v.decisao === 'AJUSTA_RESIDUO' || m.confirmouResiduo) return v.residuo
+
+  // ⭐ PERGUNTA — com a conta na tela. Nunca beco.
+  const item = await db.stockItem.findUnique({ where: { id: m.itemId }, select: { nome: true, unidadeControle: true } })
+  throw new MovementInvalidError(frasePergunta(v, item?.nome ?? m.itemId, item?.unidadeControle ?? ''), {
+    itemId: m.itemId, nome: item?.nome ?? m.itemId, saldoDepois: v.saldoDepois, valorDepois: v.valorDepois,
+    code: 'RESIDUO_AO_CRUZAR_O_ZERO', residuo: v.residuo, teto: v.teto,
+  })
 }
 
 async function assertSaldoNaoFicaImpossivel(db: Db, m: NovoMovimento, custoTotal: number) {
@@ -173,7 +224,46 @@ async function assertSaldoNaoFicaImpossivel(db: Db, m: NovoMovimento, custoTotal
 export async function criarMovimento(db: Db, m: NovoMovimento) {
   const custoTotal = m.custoTotal ?? round2(m.quantidade * m.custoUnitario)
   assertMovementValid({ quantidade: m.quantidade, custoUnitario: m.custoUnitario, custoTotal })
-  await assertSaldoNaoFicaImpossivel(db, m, custoTotal)
+  /**
+   * ⭐⭐ A ORDEM IMPORTA: a entrada que CRUZA O ZERO é avaliada ANTES do guard da baixa —
+   * senão o guard barraria (valorDepois < 0) o movimento que existe pra consertar isso.
+   */
+  const residuo = await residuoAAbsorverNaEntrada(db, m, custoTotal)
+  /**
+   * ⛔ Com resíduo a absorver, o guard da BAIXA **não pode disparar**: ele veria o estado
+   * do meio (saldo já positivo, valor ainda negativo) e barraria justamente o movimento
+   * que existe pra consertar isso. O estado FINAL — depois do ajuste, logo abaixo — é
+   * válido, e é ele que importa. Sem resíduo, o guard roda normal (inclusive pra dar a
+   * frase certa no caso do FERMENTO, que é RECUSA por não cruzar o zero).
+   */
+  if (residuo == null) await assertSaldoNaoFicaImpossivel(db, m, custoTotal)
+  if (residuo != null) {
+    /**
+     * ⛔⛔ O AJUSTE É UMA LINHA PRÓPRIA, nunca um `custoTotal` inflado na entrada.
+     * Somar no movimento da nota quebraria (a) o CHECK do ledger e (b) o invariante **E16**
+     * (`Σ(ENTRADA_NF da nota) == Σ(vProd)`) — a nota passaria a valer mais do que o
+     * documento assinado diz. ***A nota é FATO e não se reescreve.***
+     *
+     * ⚠️ Sem `nfeChave` de propósito: ele é do ITEM, não do documento.
+     */
+    /**
+     * ⚠️ O IDIOMA É O DO `encerrar-item` (REGRA 4): a quantidade **não pode ser zero** (o
+     * CHECK do ledger recusa), então vai **0,001** — o menor passo que o módulo reconhece,
+     * que o `round2` do saldo absorve. E o unitário é **DERIVADO do total**, nunca montado
+     * na mão: lá isso errou o sinal e o banco recusou por 14 centavos.
+     */
+    const q = 0.001
+    const custoDoAjuste = round2(-residuo)
+    assertMovementValid({ quantidade: q, custoUnitario: custoDoAjuste / q, custoTotal: custoDoAjuste })
+    await db.stockMovement.create({
+      data: {
+        companyId: m.companyId, itemId: m.itemId, tipo: TIPO_AJUSTE_RESIDUO,
+        quantidade: q, custoUnitario: custoDoAjuste / q, custoTotal: custoDoAjuste,
+        receiptId: m.receiptId ?? null, origem: m.origem, criadoPorId: m.criadoPorId ?? null,
+        ...(m.dataMovimento ? { dataMovimento: m.dataMovimento } : {}),
+      },
+    })
+  }
   return db.stockMovement.create({
     data: {
       companyId: m.companyId, itemId: m.itemId, tipo: m.tipo, quantidade: m.quantidade,

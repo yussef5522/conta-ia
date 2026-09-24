@@ -36,6 +36,12 @@ const itemSchema = z.object({
 const bodySchema = z.object({
   fornecedor: z.object({ cnpj: z.string(), nome: z.string(), uf: z.string().nullable().optional() }),
   /**
+   * ⭐ 23/09 — a resposta do dono à pergunta do resíduo (409 `RESIDUO_AO_CRUZAR_O_ZERO`):
+   * *"sim, esta entrada pode limpar o custo pendurado do item que estava negativo"*.
+   * ⚠️ Nasce ausente de propósito — confirmar tem que ser um GESTO, nunca um default.
+   */
+  confirmouResiduo: z.boolean().optional(),
+  /**
    * ⭐ O BOLETO DE PAPEL (04/09) — OPCIONAL. Quando o XML não traz duplicata mas o boleto veio
    * junto com a mercadoria, o dono digita aqui e o payable nasce com a data certa, no fluxo
    * normal. ⚠️ Sem isso a parcela nasce "A DEFINIR" — o certo pra pix/dinheiro combinado.
@@ -66,6 +72,7 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   try {
     const r = await confirmarConferencia({ companyId, nfeId, userId: user.sub, fornecedor: parsed.data.fornecedor, itens: parsed.data.itens,
+      confirmouResiduo: parsed.data.confirmouResiduo,
       pagamento: parsed.data.pagamento
         ? { parcelas: parsed.data.pagamento.parcelas.map((p) => ({ dVenc: new Date(`${p.dVenc}T00:00:00.000Z`), valor: p.valor })) }
         : undefined })

@@ -46,6 +46,12 @@ export interface ConfirmInput {
   fornecedor: { cnpj: string; nome: string; uf?: string | null }
   itens: ConfirmItemInput[]
   /**
+   * ⭐ 23/09 — o dono viu na tela o resíduo de custo pendurado num item que estava NEGATIVO
+   * e confirmou que esta entrada pode limpá-lo. Sem isso, o `criarMovimento` **PERGUNTA**
+   * (409 `RESIDUO_AO_CRUZAR_O_ZERO`) em vez de gravar calado — ou de barrar a nota.
+   */
+  confirmouResiduo?: boolean
+  /**
    * ⭐ O BOLETO DE PAPEL, quando o XML não traz duplicata (04/09). OPCIONAL: sem ele a
    * parcela nasce "A DEFINIR", que é o caminho certo pra pix/dinheiro combinado.
    * ⚠️ A soma tem que fechar com o total da nota AO CENTAVO (`conferirPagamentoDoPapel`).
@@ -268,6 +274,7 @@ export async function confirmarConferencia(input: ConfirmInput): Promise<Confirm
         companyId, itemId: itemIdReal.get(it.nfeItemId)!, tipo: 'ENTRADA_NF',
         quantidade: it.qtdRecebida, custoUnitario, custoTotal,
         receiptId: conference.id, nfeChave: nfe.chave, nItem: null, origem, criadoPorId: userId,
+        confirmouResiduo: input.confirmouResiduo,
       })
 
       // ⭐⭐ O RASTRO DA CORREÇÃO — só quando houve correção de verdade. A NOTA fica como

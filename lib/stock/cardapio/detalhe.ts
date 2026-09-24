@@ -27,8 +27,17 @@ export interface ComponenteProduto {
   /** o componente é PRODUZIDO (tem ficha) → dá pra "produzir agora" quando faltar */
   fichaIdComponente: string | null
   tipoComponente: 'INSUMO' | 'INTERMEDIARIO' | 'PRODUTO_FINAL'
-  /** quantas unidades do produto dá pra fazer com o saldo atual deste componente */
+  /**
+   * quantas unidades do produto dá pra fazer com o saldo atual deste componente.
+   *
+   * ⛔⛔ **NUNCA negativo** (23/09). Era `Math.floor(saldo / qtdPorUnidade)` cru, e com a
+   * ERVILHA em **−45,48** o XIS dizia ***"dá pra fazer −4.548"*** — um número absurdo numa
+   * tela de decisão. Saldo negativo significa **falta**, e falta é ZERO: o que muda é a
+   * FRASE, que passa a nomear o item em falta.
+   */
   rendeAte: number | null
+  /** ⭐ o componente está em falta (saldo <= 0)? é aviso NA LINHA DELE, não veneno na ficha */
+  emFalta: boolean
 }
 
 export interface DetalheProduto {
@@ -37,7 +46,17 @@ export interface DetalheProduto {
   componentes: ComponenteProduto[]
   /** limite de produção: o componente mais escasso manda */
   podeFazer: number | null
-  gargalo: { nome: string; rendeAte: number } | null
+  gargalo: { nome: string; rendeAte: number; emFalta: boolean } | null
+  /**
+   * ⭐ 23/09 — o custo PARCIAL e o que falta pra ele fechar.
+   *
+   * ⛔ `custo` continua `null` quando falta componente (margem inventada é pior que
+   * margem ausente), **mas a tela deixou de mostrar só "a definir"**: ela mostra
+   * *"R$ 8,58 + ervilha a definir"*. ***Item negativo é aviso na linha dele, não veneno
+   * na ficha inteira.***
+   */
+  custoParcial: number
+  faltamCusto: string[]
   loteBase: number | null
   validadeDias: number | null
   versaoAtual: number | null
@@ -106,11 +125,11 @@ export async function detalheProduto(
 
   if (linha.destinoTipo !== 'FICHA' || !linha.fichaId) {
     // revenda e "sem destino" não têm receita — a tela mostra o caminho de mapear/criar.
-    return { linha, componentes: [], podeFazer: null, gargalo: null, loteBase: null, validadeDias: null, versaoAtual: null }
+    return { linha, componentes: [], podeFazer: null, gargalo: null, custoParcial: 0, faltamCusto: [], loteBase: null, validadeDias: null, versaoAtual: null }
   }
 
   const ficha = await db.stockFicha.findFirst({ where: { id: linha.fichaId, companyId }, select: { id: true, versaoAtual: true } })
-  if (!ficha) return { linha, componentes: [], podeFazer: null, gargalo: null, loteBase: null, validadeDias: null, versaoAtual: null }
+  if (!ficha) return { linha, componentes: [], podeFazer: null, gargalo: null, custoParcial: 0, faltamCusto: [], loteBase: null, validadeDias: null, versaoAtual: null }
 
   const versao = await db.stockFichaVersao.findFirst({ where: { companyId, fichaId: ficha.id, versao: ficha.versaoAtual } })
   const comps = versao
@@ -149,17 +168,32 @@ export async function detalheProduto(
       saldo,
       fichaIdComponente: fc?.id ?? null,
       tipoComponente: fc ? (fc.tipoProduto === 'PRODUTO_FINAL' ? 'PRODUTO_FINAL' : 'INTERMEDIARIO') : 'INSUMO',
-      rendeAte: qtdPorUnidade > 0 ? Math.floor(saldo / qtdPorUnidade) : null,
+      // ⛔ saldo negativo/zero = EM FALTA = rende 0. Nunca um número negativo.
+      rendeAte: qtdPorUnidade > 0 ? Math.max(0, Math.floor(saldo / qtdPorUnidade)) : null,
+      emFalta: saldo <= 0,
     }
   })
 
   // o gargalo: quantas unidades dá pra montar hoje. Null se a receita está vazia.
   let podeFazer: number | null = null
-  let gargalo: { nome: string; rendeAte: number } | null = null
+  let gargalo: { nome: string; rendeAte: number; emFalta: boolean } | null = null
   for (const c of componentes) {
     if (c.rendeAte == null) continue
-    if (podeFazer == null || c.rendeAte < podeFazer) { podeFazer = c.rendeAte; gargalo = { nome: c.nome, rendeAte: c.rendeAte } }
+    if (podeFazer == null || c.rendeAte < podeFazer) {
+      podeFazer = c.rendeAte
+      gargalo = { nome: c.nome, rendeAte: c.rendeAte, emFalta: c.emFalta }
+    }
   }
 
-  return { linha, componentes, podeFazer, gargalo, loteBase: versao?.loteBase ?? null, validadeDias: versao?.validadeDias ?? null, versaoAtual: ficha.versaoAtual }
+  /**
+   * ⭐ O CUSTO PARCIAL — a soma do que JÁ tem custo, com os que faltam NOMEADOS.
+   *
+   * ⚠️ Ele é do 1º nível (o que a receita lista), que é o que a tela desenha. O `custo`
+   * da LINHA continua vindo do `custoDeUmaUnidade`, que explode até a folha — as duas
+   * perguntas são diferentes e a tela diz qual está mostrando.
+   */
+  const custoParcial = round2(componentes.reduce((t, c) => t + (c.subtotal ?? 0), 0))
+  const faltamCusto = componentes.filter((c) => c.custoMedio == null).map((c) => c.nome)
+
+  return { linha, componentes, podeFazer, gargalo, custoParcial, faltamCusto, loteBase: versao?.loteBase ?? null, validadeDias: versao?.validadeDias ?? null, versaoAtual: ficha.versaoAtual }
 }

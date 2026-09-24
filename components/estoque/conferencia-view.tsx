@@ -12,6 +12,7 @@ import { interpretarAjusteQtd } from '@/lib/stock/ajuste-quantidade'
 import { ItensManuaisEditor } from './itens-manuais-editor'
 import { EditorParcelas, type ParcelaEditavel } from './editor-parcelas'
 import { sanitizarQtd, valorQtd, textoQtd, descreverQtd, aceitaFracao } from '@/lib/stock/quantidade'
+import { filtrarPorBusca } from '@/lib/busca-texto'
 
 export type Unidade = 'KG' | 'UN' | 'LT'
 export type Categoria = 'MATERIA_PRIMA' | 'REVENDA' | 'EMBALAGEM' | 'LIMPEZA' | 'USO_INTERNO'
@@ -48,7 +49,15 @@ export interface ConferenciaData {
   /** o usuário pode criar conta a pagar? (stock.manage) */
   podeEnviarBoletos?: boolean
 }
-export interface ItemExistente { id: string; nome: string; unidadeControle: string; categoria: string }
+export interface ItemExistente {
+  id: string; nome: string; unidadeControle: string; categoria: string
+  /**
+   * ⭐ 23/09 — o saldo VIAJA, e **nunca filtra**. Régua do dono: *"o universo COMPRAVEL
+   * NUNCA esconde item por saldo; item negativo é quem MAIS precisa aparecer no
+   * recebimento — a entrada é o conserto."* Ele serve pra a linha AVISAR.
+   */
+  saldo?: number
+}
 
 export interface MapeadoSel { itemId: string; nome: string; unidadeControle: Unidade; categoria?: Categoria; fatorConversao: number; novo: boolean }
 
@@ -100,6 +109,8 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
   const [sheetItem, setSheetItem] = useState<ConfItem | null>(null)
   const [enviando, setEnviando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
+  /** ⭐ 23/09 — a pergunta do resíduo (item negativo que esta nota vai consertar) */
+  const [perguntaResiduo, setPerguntaResiduo] = useState<string | null>(null)
   const [recibo, setRecibo] = useState<any | null>(null)
   // nota só-resumo: o dono opta por digitar os itens do DANFE de papel
   const [digitando, setDigitando] = useState(false)
@@ -174,9 +185,18 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
     // ⚠️ depende da unidade/fator/item escolhidos — não do objeto inteiro, que muda a cada tecla
   }, [companyId, data.itens, estado])
 
-  async function confirmar() {
+  /**
+   * ⭐⭐ 23/09 — A PERGUNTA DO RESÍDUO. Quando um item da nota está NEGATIVO com custo
+   * pendurado, o servidor devolve **409 `RESIDUO_AO_CRUZAR_O_ZERO`** — uma pergunta, não
+   * uma recusa. A tela mostra a conta e reenvia o MESMO gesto com a resposta.
+   *
+   * ⛔ Nasce `null` e é limpo a cada tentativa: confirmar tem que ser um GESTO por nota,
+   * nunca um estado que fica ligado e vaza pro próximo recebimento.
+   */
+  async function confirmar(confirmouResiduo = false) {
     if (!companyId || !nfeId) return
     setEnviando(true); setErro(null)
+    if (!confirmouResiduo) setPerguntaResiduo(null)
     try {
       const itens = data.itens.map((it) => {
         const e = estado[it.nfeItemId]!
@@ -190,6 +210,7 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
           enviarBoletos: boletos.length > 0,
           boletosSelecionados: boletos,
           cadastrarFornecedor: cadastrarForn,
+          ...(confirmouResiduo ? { confirmouResiduo: true } : {}),
           // ⚠️ só manda se o dono preencheu: lista vazia é "a definir", não erro
           pagamento: parcelasPapel.length && parcelasPapel.every((p) => p.dVenc && Number(p.valor.replace(',', '.')) > 0)
             ? { parcelas: parcelasPapel.map((p) => ({ dVenc: p.dVenc, valor: Number(p.valor.replace(',', '.')) })) }
@@ -199,7 +220,11 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
         }),
       })
       const j = await r.json().catch(() => ({ erro: 'Resposta inválida' }))
-      if (!r.ok) { setErro(j.erro ?? 'Erro ao confirmar'); return }
+      if (!r.ok) {
+        // ⭐ pergunta ≠ erro: ela tem RESPOSTA, e a tela oferece o botão em vez do vermelho
+        if (j.code === 'RESIDUO_AO_CRUZAR_O_ZERO') { setPerguntaResiduo(j.erro); return }
+        setErro(j.erro ?? 'Erro ao confirmar'); return
+      }
       setRecibo(j.resultado)
     } catch { setErro('Falha de rede ao confirmar.') } finally { setEnviando(false) }
   }
@@ -697,6 +722,26 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
       {/* BARRA FIXA de largura total (era bloco `mx-auto max-w-md` = solto no meio
        * da tela no desktop). `md:left-60` = largura da sidebar (w-60). */}
       <div className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white/95 px-4 py-2.5 backdrop-blur md:left-60">
+        {/*
+          ⭐⭐ A PERGUNTA DO RESÍDUO — com a CONTA na tela, que é o que a torna respondível.
+          ⛔ Âmbar, não vermelho: item negativo é um fato da vida real e esta nota é a CURA.
+          Pintar de erro faria o dono achar que precisa consertar algo antes.
+        */}
+        {perguntaResiduo && (
+          <div className="mb-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2">
+            <p className="text-[12px] leading-snug text-amber-900">{perguntaResiduo}</p>
+            <div className="mt-2 flex gap-2">
+              <button onClick={() => setPerguntaResiduo(null)} disabled={enviando}
+                className="rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-slate-600 ring-1 ring-slate-300 disabled:opacity-50">
+                agora não
+              </button>
+              <button onClick={() => void confirmar(true)} disabled={enviando}
+                className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50">
+                {enviando ? 'Confirmando…' : 'Confirmar — a nota entra e o resíduo vira ajuste'}
+              </button>
+            </div>
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <span className="text-xs tabular-nums text-slate-500"><b className="text-slate-800">{nMapeados}/{data.itens.length}</b> mapeados</span>
           {divergencias > 0 && <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-600"><AlertTriangle className="h-3.5 w-3.5" /> {divergencias} divergência{divergencias > 1 ? 's' : ''}</span>}
@@ -704,7 +749,7 @@ export function ConferenciaView({ data, itensExistentes, companyId, nfeId, podeC
           {erro && <span className="rounded-md bg-rose-50 px-2 py-1 text-xs text-rose-700">{erro}</span>}
           <div className="ml-auto">
             {podeConfirmar ? (
-              <button onClick={confirmar} disabled={!totalMapeado || !pagamentoRespondido || enviando}
+              <button onClick={() => void confirmar()} disabled={!totalMapeado || !pagamentoRespondido || enviando}
                 className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#185FA5] px-5 text-sm font-semibold text-white hover:bg-[#0F4A8C] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 sm:w-auto">
                 {enviando
                   ? <><Loader2 className="h-4 w-4 animate-spin" /> Confirmando…</>
@@ -752,7 +797,18 @@ function MapearSheet({ item, existentes, onClose, onEscolher }: {
   const [selExistente, setSelExistente] = useState<ItemExistente | null>(null)
   const [sugExist, setSugExist] = useState<ReturnType<typeof sugerirFator> | null>(null)
   const [fatorExist, setFatorExist] = useState(1)
-  const filtrados = existentes.filter((e) => e.nome.toLowerCase().includes(busca.toLowerCase()))
+  /**
+   * ⭐⭐ A BUSCA É A DA CASA (`casaBusca`), não uma segunda régua (23/09 — REGRA 4).
+   *
+   * ⛔ Aqui era `nome.toLowerCase().includes(busca.toLowerCase())`, uma **segunda
+   * implementação** da mesma pergunta — e ela **diverge no acento**: medido em prod,
+   * digitar `"feijão"` (como o dono escreve) achava **0** onde a régua da casa acha **2**
+   * (`"FEIJAO PRETO CALDO DE OURO"`, como a NOTA escreve). É literalmente o bug de 09/09
+   * (*"a nota escreve PAO e o dono escreve Pão"*) sobrevivendo nesta tela.
+   *
+   * ⭐ E ela casa **palavra em qualquer ordem**: o nome vem da nota, não da cabeça do dono.
+   */
+  const filtrados = filtrarPorBusca(existentes, busca, (e) => e.nome)
   const difUnidade = item.uCom.toUpperCase() !== unidade
   // fecha no ESC (o backdrop e o X já fechavam). Mesma família do dropdown de ingredientes.
   useEscape(true, onClose)
@@ -769,13 +825,35 @@ function MapearSheet({ item, existentes, onClose, onEscolher }: {
         {modo === 'buscar' ? (
           <div className="space-y-2">
             <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="buscar no estoque…" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-            {filtrados.length === 0 && <p className="py-4 text-center text-xs text-slate-400">Nenhum item ainda. Use "Criar novo".</p>}
+            {/*
+              ⛔ O VAZIO DIZ O RECORTE (a régua de 16/09). *"Nenhum item"* faria o dono
+              concluir que o produto não existe — quando ele pode só não ser COMPRÁVEL.
+            */}
+            {filtrados.length === 0 && (
+              <p className="py-4 text-center text-xs text-slate-400">
+                {busca.trim()
+                  ? <>Nada com «{busca.trim()}» entre os {existentes.length} itens que se COMPRAM. Use &quot;Criar novo&quot;.</>
+                  : <>Nenhum item ainda. Use &quot;Criar novo&quot;.</>}
+              </p>
+            )}
             {!selExistente && filtrados.map((e) => {
               const dif = item.uCom.toUpperCase() !== e.unidadeControle.toUpperCase()
               return (
                 <button key={e.id} onClick={() => (dif ? (setSelExistente(e), (() => { const sg = sugestaoPara(e.unidadeControle); setSugExist(sg); setFatorExist(sg.fator ?? 1) })()) : onEscolher({ itemId: e.id, nome: e.nome, unidadeControle: e.unidadeControle as Unidade, categoria: e.categoria as Categoria, fatorConversao: 1, novo: false }))} className="flex w-full items-center justify-between rounded-lg border border-slate-200 px-3 py-2.5 text-sm active:bg-slate-50">
-                  <span className="font-medium text-slate-800">{e.nome}</span>
-                  <span className="text-xs text-slate-400">{e.unidadeControle}{dif && <span className="ml-1 text-amber-600">· converter de {item.uCom}</span>}</span>
+                  <span className="min-w-0 text-left">
+                    <span className="font-medium text-slate-800">{e.nome}</span>
+                    {/*
+                      ⭐ O AVISO DO NEGATIVO, na linha dele. Item negativo é o que MAIS
+                      precisa desta tela — a entrada é o conserto —, então ele aparece
+                      NOMEANDO o estado em vez de sumir da lista.
+                    */}
+                    {(e.saldo ?? 0) < 0 && (
+                      <span className="mt-0.5 block text-[10.5px] font-medium text-amber-700">
+                        saldo {e.saldo} {e.unidadeControle} — saiu mais do que entrou · esta nota conserta
+                      </span>
+                    )}
+                  </span>
+                  <span className="shrink-0 text-xs text-slate-400">{e.unidadeControle}{dif && <span className="ml-1 text-amber-600">· converter de {item.uCom}</span>}</span>
                 </button>
               )
             })}

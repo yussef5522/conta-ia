@@ -61,6 +61,16 @@ export interface LinhaCardapio {
   vendasValor: number
   custoUnitario: number | null
   componentesSemCusto: number
+  /**
+   * ⭐ 23/09 — O CUSTO PARCIAL: a soma das folhas que JÁ têm custo.
+   *
+   * ⛔ Antes a linha tinha só `custoUnitario: null` quando faltava UM insumo, e a tela
+   * dizia *"a definir"* — ***um componente negativo (que não tem custo médio) envenenava
+   * a ficha inteira***. O XIS some com R$ 8,58 de custo conhecido por causa da ERVILHA.
+   * `custoUnitario` segue `null` (margem inventada é pior que margem ausente); o parcial
+   * é o que a tela mostra ao lado do que falta.
+   */
+  custoParcial: number
   /** preço de cardápio: o que o dono cadastrou na ficha (revenda não tem onde guardar). */
   precoCardapio: number | null
   /** preço praticado: Σ valor ÷ Σ qtd do próprio relatório do PDV no período. */
@@ -86,7 +96,7 @@ export function custoDeUmaUnidade(
   alvo: { tipo: 'REVENDA'; itemId: string } | { tipo: 'FICHA'; fichaId: string },
   ctx: Ctx,
   custoDe: Map<string, number | null>,
-): { custo: number | null; semCusto: number } {
+): { custo: number | null; semCusto: number; parcial: number } {
   const folhas = new Map<string, number>()
   explodir(alvo, 1, ctx, folhas)
   let total = 0
@@ -97,8 +107,9 @@ export function custoDeUmaUnidade(
     else total += c * qtd
   }
   // ficha vazia (sem componente) não é custo zero — é ficha por fazer.
-  if (folhas.size === 0) return { custo: null, semCusto: 0 }
-  return { custo: semCusto > 0 ? null : round2(total), semCusto }
+  if (folhas.size === 0) return { custo: null, semCusto: 0, parcial: 0 }
+  // ⭐ `parcial` é sempre a soma do que TEM custo — é ele que salva a ficha de "a definir" seco
+  return { custo: semCusto > 0 ? null : round2(total), semCusto, parcial: round2(total) }
 }
 
 function margemDe(preco: number | null, custo: number | null): number | null {
@@ -169,14 +180,14 @@ export async function hubCardapio(
       linha = pegar(`ignorado:${l.nomeSuitable}`, () => ({
         chave: `ignorado:${l.nomeSuitable}`, nome: l.nomeSuitable, nomesSuitable: [], destinoTipo: null,
         baixaItemId: null, fichaId: null, itemId: null, status: 'IGNORADO', vendasQtd: 0, vendasValor: 0,
-        custoUnitario: null, componentesSemCusto: 0, precoCardapio: null, precoPraticado: null,
+        custoUnitario: null, componentesSemCusto: 0, custoParcial: 0, precoCardapio: null, precoPraticado: null,
         precoUsado: null, precoOrigem: null, margem: null,
       }))
     } else if (!m) {
       linha = pegar(`nome:${l.nomeSuitable}`, () => ({
         chave: `nome:${l.nomeSuitable}`, nome: l.nomeSuitable, nomesSuitable: [], destinoTipo: null, baixaItemId: null,
         fichaId: null, itemId: null, status: 'SEM_DESTINO', vendasQtd: 0, vendasValor: 0,
-        custoUnitario: null, componentesSemCusto: 0, precoCardapio: null, precoPraticado: null,
+        custoUnitario: null, componentesSemCusto: 0, custoParcial: 0, precoCardapio: null, precoPraticado: null,
         precoUsado: null, precoOrigem: null, margem: null,
       }))
     } else if (m.alvoTipo === 'FICHA' && m.fichaId) {
@@ -186,14 +197,14 @@ export async function hubCardapio(
         nomesSuitable: [], destinoTipo: 'FICHA', fichaId: m.fichaId, itemId: f?.itemProduzidoId ?? null,
         baixaItemId: m.fichaId ? passaDireto.get(m.fichaId) ?? null : null,
         status: f ? 'FICHA_OK' : 'SEM_FICHA', vendasQtd: 0, vendasValor: 0, custoUnitario: null,
-        componentesSemCusto: 0, precoCardapio: f?.valorVenda ?? null, precoPraticado: null,
+        componentesSemCusto: 0, custoParcial: 0, precoCardapio: f?.valorVenda ?? null, precoPraticado: null,
         precoUsado: null, precoOrigem: null, margem: null,
       }))
     } else if (m.alvoTipo === 'REVENDA' && m.itemId) {
       linha = pegar(`item:${m.itemId}`, () => ({
         chave: `item:${m.itemId}`, nome: nomeItem.get(m.itemId!) ?? '(item removido)', nomesSuitable: [],
         destinoTipo: 'REVENDA', fichaId: null, itemId: m.itemId, baixaItemId: m.itemId, status: 'REVENDA', vendasQtd: 0,
-        vendasValor: 0, custoUnitario: null, componentesSemCusto: 0, precoCardapio: null,
+        vendasValor: 0, custoUnitario: null, componentesSemCusto: 0, custoParcial: 0, precoCardapio: null,
         precoPraticado: null, precoUsado: null, precoOrigem: null, margem: null,
       }))
     } else {
@@ -212,7 +223,7 @@ export async function hubCardapio(
       chave: `ficha:${f.id}`, nome: nomeItem.get(f.itemProduzidoId) ?? '(produto)', nomesSuitable: [],
       destinoTipo: 'FICHA', fichaId: f.id, itemId: f.itemProduzidoId, baixaItemId: passaDireto.get(f.id) ?? null,
       status: 'FICHA_OK', vendasQtd: 0,
-      vendasValor: 0, custoUnitario: null, componentesSemCusto: 0, precoCardapio: f.valorVenda,
+      vendasValor: 0, custoUnitario: null, componentesSemCusto: 0, custoParcial: 0, precoCardapio: f.valorVenda,
       precoPraticado: null, precoUsado: null, precoOrigem: null, margem: null,
     }))
   }
@@ -223,9 +234,11 @@ export async function hubCardapio(
       const r = custoDeUmaUnidade({ tipo: 'FICHA', fichaId: linha.fichaId }, ctx, custoDe)
       linha.custoUnitario = r.custo
       linha.componentesSemCusto = r.semCusto
+      linha.custoParcial = r.parcial
       if (r.custo == null) linha.status = 'FICHA_INCOMPLETA'
     } else if (linha.destinoTipo === 'REVENDA' && linha.itemId) {
       linha.custoUnitario = custoDe.get(linha.itemId) ?? null
+      linha.custoParcial = linha.custoUnitario ?? 0
       if (linha.custoUnitario == null) linha.componentesSemCusto = 1
     }
     // preço PRATICADO vem do próprio relatório do PDV — é o que o cliente pagou de fato.

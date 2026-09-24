@@ -33,6 +33,10 @@ export interface RespostaDeErro {
   code?: string
   /** ⭐ o número que a cozinha provavelmente quis dizer — a tela oferece em 1 toque */
   grandeza?: { qtdProvavel: number | null; fator: number | null }
+  /** ⭐ 23/09 — o dinheiro pendurado num item que esta entrada vai tirar do negativo */
+  residuo?: number
+  /** o item da pergunta, pra a tela nomear quem é */
+  item?: string
   status: number
 }
 
@@ -126,6 +130,21 @@ export function respostaDeErroDoEstoque(e: unknown, ctx?: { empresaId?: string; 
       erro: e.message, status: 409,
       code: e.veredicto.decisao === 'RECUSA' ? 'GRANDEZA' : 'GRANDEZA_AVISO',
       grandeza: { qtdProvavel: e.veredicto.qtdProvavel, fator: e.veredicto.fator },
+    }
+  }
+
+  /**
+   * ⭐⭐ 23/09 — O RESÍDUO AO CRUZAR O ZERO É **PERGUNTA**, NÃO RECUSA.
+   *
+   * ⛔ Cair no `ESTADO_IMPOSSIVEL` mandaria a tela oferecer *"corrija o histórico"* — a
+   * porta ERRADA, porque o histórico está sendo corrigido AGORA, por esta nota. A saída
+   * daqui é **confirmar**, e é por isso que ele tem `code` próprio: a tela reenvia o MESMO
+   * gesto com `confirmouResiduo`. *Pergunta, nunca recusa cega* (a régua do 05/09).
+   */
+  if (e instanceof MovementInvalidError && e.culpado?.code === 'RESIDUO_AO_CRUZAR_O_ZERO') {
+    return {
+      erro: e.message, code: 'RESIDUO_AO_CRUZAR_O_ZERO', status: 409,
+      residuo: e.culpado.residuo, item: e.culpado.nome,
     }
   }
 
