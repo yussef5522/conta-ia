@@ -1149,6 +1149,53 @@ celular 200 · desktop 200 · bundre −8 KB (as seções saíram)
 
 **10.751 verdes · TS 0 · deploys 4/4 (`cBP8IOOmsVAWkUcsh2HR_` e `fRsGTCf3sYjG2lApQcxwp`) · Δ bundle −8 KB · mock v3 atualizado com os filtros e a marca "já classificada".**
 
+### ⛔⛔⛔ O LOTE EXIGIA CATEGORIA E NÃO HAVIA ONDE RESPONDER — O BECO (23/09)
+
+**O dono:** *"o cartão exige categoria («Vincular 6 · diga a categoria primeiro — ela grava nas 6») mas NÃO EXISTE onde responder: o seletor esquerdo mostra «⚙ categoria vem do gesto» e NÃO ABRE nada. As duas metades se contradizem — a esquerda diz «não é comigo», o botão diz «é com você»."*
+
+**⛔⛔ ERAM DOIS DEFEITOS SOMADOS, OS DOIS MEUS, dos dois sprints anteriores:**
+1. **`estadoDoSeletor` lia a ação do PALPITE da linha** — e o palpite da MARIA LUIZA é **pagamento de fatura**, que é ESTRUTURAL. Daí o ⚙. **Mas lote é CASAR, e casar HERDA da conta**; com as 6 sem categoria, o caso é o **herda-pedindo** (o mesmo da TOZZO).
+2. **o `SeletorDoLote` que eu construí ontem vivia no `abaixoDoValor` do chassi — e o modo painel NÃO desenha chassi.** Ou seja: ele existia no arquivo e **não era renderizado em lugar nenhum**.
+
+**⭐ FIX NA RÉGUA, NÃO COM REMENDO** (ordem do dono): `estadoDoSeletorDoLote(notasSemCategoria, total)` — **PEDE** quando falta (com o número do que FALTA, não do total: *"2 de 6 notas sem categoria"*) · **HERDA** quando todas têm (*"herda das contas"*, honesto) · e carrega **`gravaEm`**, que é o que faz a tela dizer *"a resposta grava nas 6 contas"*. A escolha vai pela **porta única** (`resolverLinha` com `categoryId`), que já grava em CADA conta desde 20/09.
+
+**⛔ E O LOTE VIROU PAINEL-ONLY.** O ramo do card inteiro (com chassi próprio) ficou **sem chamador** quando a seção morreu em *"uma lista só"* — e **código sem chamador é o que alguém religa por descuido**. Ele não tem mais um `if` a checar: **ele não sabe desenhar chassi**. Desenhar ali mostraria a linha do banco **duas vezes no mesmo cartão**.
+
+**⭐⭐ A REGRA DE PÁGINA (a REGRA 11 do beco, palavras do dono):** ***botão exigindo resposta + nenhum lugar pra responder = vermelho — toda exigência aponta pra um controle QUE ABRE.*** O guard afirma que o único ramo que renderiza controle é o `PEDE`, que a tela escolhe a régua pelo **CASO** (não pelo palpite), e que a resposta da esquerda **chega no Vincular**.
+
+**⚠️⚠️ E A PROVA EM PROD ACHOU UM SEGUNDO BECO, MENOR, QUE EU TINHA DEIXADO:** o botão dizia *"diga a categoria primeiro — ela grava nas 6"* e **parava ali** — cobrava a resposta **sem dizer onde responder**. Meia-porta. Agora: ***"escolha a categoria na esquerda ← · ela grava nas 6 contas"***. *Exigência que não aponta é a mesma doença, um degrau menor.*
+
+**⛔ REGRESSÃO MINHA CORRIGIDA JUNTO:** com as seções mortas, o **deep-link `?abrir=`/`?conta=`** continuava sendo lido e alimentava um bloco que **não existe mais** — a linha apontada não entrava em lugar nenhum. É a ***porta pintada na parede*** (13/09) de volta, por dentro. A rota da caixa passou a aceitar `abrir`/`conta` e repassar pro `cardsDeEscolha`; a tela forwarda por um `deepLink()`.
+
+**PROVADO EM PROD, pelo caminho da tela, nos DOIS viewports (REGRA 12):**
+```
+A LISTA 49 linhas · filtros {tudo 49 · prontos 1 · mão 14}
+⭐ MARIA LUIZA R$ 2.886,37 · 6 notas · SEM categoria 6
+   SELETOR DA ESQUERDA: PEDE · "as 6 notas sem categoria — escolha" · gravaEm=6 · ABRE ✓
+⛔ vincular SEM categoria → HTTP 422 · PEDE_CATEGORIA · nada gravado
+
+E o resto da lista, cada um na sua régua:
+   TOZZO / BORTOLAZZO / LAMANA / NESTLÉ …  PEDE       "a conta casada não tem categoria"
+   TOZZO / CENTERMIX                       HERDA      "herda da conta: Matéria-Prima - Alimentos"
+   PIX_DEB / CARTÓRIO                      ESTRUTURAL "categoria vem do gesto"   ⭐ o ⚙ só onde é
+celular 200 em 594ms · desktop 200 em 201ms · 1.089 KB · as 4 frases nos dois
+```
+**REGRA 11 — 6 becos repostos, 6 vermelhos** (lote voltando a ler o palpite · a resposta não chegando no Vincular · a régua devolvendo ESTRUTURAL · o deep-link sumindo da rota · o seletor morto voltando pro chassi · a exigência sem apontar).
+
+**⚠️ 2 GUARDS REAPONTADOS, os dois MAIS FORTES:** o `comoPainel` do lote virou ***"ele não pode conter `ChassiDoCartao`"*** (antes era *"tem que ter o `if`"*) e o `um-modelo-so` tirou o lote da lista de decisores **afirmando quem hospeda** — a régua não mudou (*nenhuma decisão fora do chassi ≍*), mudou **quem desenha**.
+
+**10.756 verdes · TS 0 · deploys 4/4 (`m11SvNjxI8Tx1ddzSdJWp` e `L7_lA5h1b1WDoH6zX93-O`) · Δ bundle −8 KB.**
+
+### ⛔⛔ E O DEPLOY DECLAROU 4/4 VERDE COM O CÓDIGO ANTIGO (23/09) — o gate prova SAÚDE, não NOVIDADE
+
+**Eu rodei `bash scripts/deploy.sh` direto e ele respondeu `✓ DEPLOY OK` com BUILD_ID novo.** Prod continuou no commit **anterior ao meu**. Só apareceu porque a prova em prod estourou `estadoDoSeletorDoLote is not a function` — e eu quase rotulei de sonda errada.
+
+**A CAUSA:** o **`deploy.sh` NÃO FAZ `git pull`** — ele builda o que está na árvore de trabalho. O pull é passo do runbook, feito na mão antes. Eu pulei. **E a armadilha documentada agrava:** o swap-postgres deixa `prisma/schema.prisma` e `migration_lock.toml` **modificados**, então o `git pull` seguinte **aborta calado** — é preciso `git checkout --` nos dois antes.
+
+**⚠️ E O GATE NÃO TINHA COMO PEGAR, honestamente:** ele mede BUILD_ID novo, pm2 estável, CSS servindo e banco respondendo — e **um rebuild do código velho passa nos quatro**. ***Gate de saúde não é gate de versão.*** É a mesma família do incidente de 28/08 (*"o gate provava presença, não saúde"*), um degrau acima: **agora prova saúde, e não prova qual código**.
+
+📋 **DÍVIDA REGISTRADA (não construída):** o `deploy.sh` devia **imprimir o SHA que buildou × `origin/main`** e avisar quando estiverem diferentes — ou fazer o pull ele mesmo, com o `git checkout --` do swap embutido (a REGRA 5: *disciplina vira impossibilidade*). Enquanto não for, **a sequência é `git checkout -- prisma/schema.prisma prisma/migrations/migration_lock.toml && git pull && bash scripts/deploy.sh`**, e conferir o `git log --oneline -1` do servidor depois.
+
 ### ⛔⛔⛔ O LOTE FURAVA O "NADA SAI SEM CATEGORIA" — E O PALPITE PEDIA ASSINATURA NO ESCURO (23/09)
 
 **Quatro itens do dono, e o segundo tinha risco de dado.**
