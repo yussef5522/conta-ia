@@ -29,6 +29,7 @@ import { nomeDaBusca } from '@/lib/conciliacao/nome-da-busca'
 import { conviteDaPonte, type ConviteDaPonte } from '@/lib/conciliacao/convite-da-ponte'
 import { consequenciaDeVincular } from '@/lib/conciliacao/uma-casa-por-caso'
 import { venceuOuVence } from '@/lib/conciliacao/vencimento-na-tela'
+import { secoesDeFatura, alvoDaFatura } from '@/lib/credit-card-pj/faturas-pra-quitar'
 import { avaliarDiferenca, MOTIVOS_DA_DIFERENCA, type MotivoDaDiferenca } from '@/lib/conciliacao/regua-da-diferenca'
 
 /** ⚠️ o mesmo arredondamento da régua — comparar float cru daria diferença de 1e-13 */
@@ -56,6 +57,13 @@ interface PalpiteDTO {
   diferenca: string; botao: string; alvo: Record<string, unknown>
   confianca: 'ALTA' | 'MEDIA' | 'BAIXA'
 }
+/** ⭐ 25/09 — um cartão registrado e as faturas que ele tem, pro menu oferecer a competência */
+interface CartaoComFaturasDTO {
+  id: string
+  nome: string
+  faturas: { invoiceMonth: string; net: number; vencimento: string | null; jaPaga: boolean }[]
+}
+
 interface LinhaDTO {
   id: string; tipo: string; valor: number; data: string; descricao: string
   contraparte: string | null; conta: string | null
@@ -219,6 +227,14 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
     { categorias: 'CARREGANDO', cartoes: 'CARREGANDO', contratos: 'CARREGANDO' },
   )
   const [cartoes, setCartoes] = useState<{ id: string; name: string }[]>([])
+  /**
+   * ⭐⭐ 25/09 — OS CARTÕES **COM AS FATURAS** (mês · valor · vencimento).
+   *
+   * ⛔ O menu listava só o NOME do cartão, e escolher *"mercado pago"* não diz QUAL
+   * competência baixa — sendo que o palpite pode ter apontado o mês errado, que é a queixa
+   * que abriu este sprint. É o mesmo idioma do menu do empréstimo, que mostra a parcela.
+   */
+  const [cartoesComFaturas, setCartoesComFaturas] = useState<CartaoComFaturasDTO[]>([])
 
   const carregar = useCallback(async () => {
     // ⛔ COM TIMEOUT: spinner eterno é a ausência fingindo progresso (14/09)
@@ -244,7 +260,7 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
       const [c, k, e] = await Promise.all([
         // ⛔ `soAtivas=true` — a rota devolve o catálogo inteiro (263 na Caçula, 60 ativas)
         fetchComTimeout<{ categorias?: CategoriaDoMenu[] }>(`/api/empresas/${empresaId}/categorias?soAtivas=true`),
-        fetchComTimeout<{ cards?: { id: string; name: string }[] }>(`/api/empresas/${empresaId}/cartoes`),
+        fetchComTimeout<{ cards?: { id: string; name: string }[]; comFaturas?: CartaoComFaturasDTO[] }>(`/api/empresas/${empresaId}/cartoes`),
         fetchComTimeout<{ loans?: { id: string; lender: string; contractNumber: string | null; proximaParcelaNumero: number | null; proximaParcelaDate: string | null; proximaParcelaValor: number | null }[] }>(`/api/empresas/${empresaId}/emprestimos`),
       ])
       setCargas({
@@ -254,6 +270,7 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
       })
       if (c.ok && c.data?.categorias) setCategorias(c.data.categorias)
       if (k.ok && k.data?.cards) setCartoes(k.data.cards)
+      if (k.ok && k.data?.comFaturas) setCartoesComFaturas(k.data.comFaturas)
       if (e.ok && e.data?.loans) {
         // ⭐ o menu do contrato já leva A PARCELA — o servidor exige as duas coisas, e
         // pedir contrato num toque e parcela noutro seria o gesto pela metade de novo.
@@ -520,7 +537,7 @@ export function CaixaDeEntrada({ empresaId }: { empresaId: string }) {
       {visiveis.map((l) => (
         <div key={l.id} className="flex flex-col gap-2">
           <CartaoDaLinha linha={l} ocupado={ocupado === l.id}
-            categorias={categorias} cartoes={cartoes} contratos={contratos} cargas={cargas}
+            categorias={categorias} cartoes={cartoes} cartoesComFaturas={cartoesComFaturas} contratos={contratos} cargas={cargas}
             erro={erroDaLinha?.id === l.id ? erroDaLinha.texto : null}
             onResolvido={resolverCaso}
             onTrocarConta={(linha) => { setTrocandoConta(true); setProcurando(linha) }}
@@ -772,10 +789,11 @@ function PainelDoCaso({ caso, linhaAtual, ocupado, onResolvido }: {
 // ⭐⭐⭐ O CARTÃO ≍ — banco à esquerda, palpite à direita, chips embaixo
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, cargas, erro, onTentarDeNovo, onResolvido, onGesto, onTrocarConta, empresaId, onRecarregar }: {
+function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, cartoesComFaturas, contratos, cargas, erro, onTentarDeNovo, onResolvido, onGesto, onTrocarConta, empresaId, onRecarregar }: {
   linha: LinhaDTO; ocupado: boolean
   categorias: CategoriaDoMenu[]
   cartoes: { id: string; name: string }[]
+  cartoesComFaturas: CartaoComFaturasDTO[]
   contratos: { id: string; nome: string; detalhe: string; parcela: number }[]
   cargas: Record<'categorias' | 'cartoes' | 'contratos', EstadoDaCarga>
   /** ⛔ a recusa do gesto aparece AQUI, ao lado do dedo — no topo da tela ela é silêncio */
@@ -793,6 +811,21 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, carg
 }) {
   const credito = l.sentido === 'ENTRADA'
   const chip = 'inline-flex items-center gap-1.5 rounded-full border-[1.5px] px-3 py-[7px] text-[12.5px] font-bold disabled:opacity-40'
+
+  /**
+   * ⭐⭐ O MENU DE CARTÃO/COMPETÊNCIA, MONTADO UMA VEZ E USADO NOS DOIS LUGARES — o chip
+   * *"💳 pagamento de fatura ▾"* da fileira e o *"não é essa"* do palpite de fatura.
+   *
+   * ⚠️ **FALLBACK que NÃO pode cair:** `cartoesComFaturas` chega por uma leitura própria
+   * (fail-soft, `.catch(() => [])`). Se ela falhar, o menu volta a oferecer os cartões pelo
+   * NOME — pior que o ideal, **e infinitamente melhor que um menu vazio dizendo que a
+   * empresa não tem cartão**, que é a ausência fingindo verdade.
+   */
+  const menuDeFaturas: SecaoDoChip[] = useMemo(() => (
+    cartoesComFaturas.length
+      ? secoesDeFatura(cartoesComFaturas, brl)
+      : cartoes.length ? [{ titulo: '💳 seus cartões', itens: cartoes.map((k) => ({ id: k.id, nome: k.name })) }] : []
+  ), [cartoesComFaturas, cartoes])
 
   /**
    * ⭐⭐⭐ A CATEGORIA VEM ANTES DO GESTO (20/09) — régua do dono.
@@ -1094,6 +1127,20 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, carg
                   não é essa — escolher outra →
                 </button>
               )}
+              {/*
+                ⭐⭐ 25/09 — **O IRMÃO, pro palpite de FATURA.** A conta a pagar ganhou a porta
+                de troca em 23/09 e o cartão ficou sem: palpite de fatura errado só se resolvia
+                abandonando o card. ⚠️ E aqui ela abre o MESMO menu do chip (cartão →
+                competência), não um painel novo — uma pergunta, um lugar.
+              */}
+              {l.palpite.acao === 'PGTO_CARTAO' && (
+                <MenuDoChip rotulo="não é essa — escolher outro cartão/fatura →" ocupado={ocupado}
+                  className="mt-2 flex w-full items-center justify-center rounded-xl border-[1.5px] py-[9px] text-[12.5px] font-bold disabled:opacity-50"
+                  style={{ background: V3.card, borderColor: V3.line, color: V3.sub }}
+                  secoes={menuDeFaturas}
+                  vazio={VAZIO.cartoes(cargas.cartoes).texto}
+                  onEscolher={(id) => onGesto(l, 'PGTO_CARTAO', alvoDaFatura(id))} />
+              )}
             </div>
           )}
 
@@ -1137,7 +1184,17 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, carg
 
           {/* ⭐ OS CHIPS — são os MENUS DO SENTIDO que já existiam, com outra roupa */}
           <div className="flex flex-wrap gap-[7px]">
-            {l.acoes.filter((a) => a.acao !== l.palpite?.acao).map((a) => {
+            {/*
+              ⭐⭐⭐ 25/09 — **PALPITE PRESENTE NÃO ESCONDE CAMINHO.**
+              ⛔ Aqui era `l.acoes.filter(a => a.acao !== l.palpite?.acao)`: o chip da ação
+              que o palpite sugeriu **desaparecia da fileira**. Na linha do MERCADO PAGO (PIX
+              2.900,34) isso tirava justamente o *"💳 pagamento de fatura ▾"* — e se o palpite
+              apontasse o cartão ou a competência ERRADA, **não havia como escolher outro**.
+              ***Palpite é atalho, não muro*** (régua do dono).
+              ⚠️ E os dois não são o mesmo gesto: o botão do palpite é UM TOQUE no alvo
+              adivinhado; o chip ABRE a lista. Mostrar os dois é o certo.
+            */}
+            {l.acoes.map((a) => {
               const cor = { background: V3.card, borderColor: V3.line, color: a.acao === 'IGNORAR' ? V3.sub : V3.ink }
 
               /**
@@ -1174,12 +1231,23 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, carg
                 )
               }
               if (a.pedeAlvo === 'CARTAO') {
+                /**
+                 * ⭐⭐⭐ UMA SEÇÃO POR CARTÃO, AS FATURAS COMO ITENS (25/09).
+                 *
+                 * ⛔ Antes: uma lista de NOMES. Escolher *"mercado pago"* não dizia QUAL
+                 * competência baixava — e o servidor precisa das duas coisas. Era o gesto
+                 * pela metade que o menu do empréstimo já tinha resolvido em 18/09.
+                 *
+                 * ⚠️ As seções vêm da LIB (`secoesDeFatura`), a MESMA que o *"não é essa"* do
+                 * palpite usa: eu tinha montado as duas na mão e isso é a segunda derivação
+                 * da mesma pergunta — ela divergiria no primeiro campo novo.
+                 */
                 return (
                   <MenuDoChip key={a.acao} rotulo={a.rotulo} icone={ICONE[a.acao]} ocupado={ocupado}
                     className={chip} style={cor}
-                    secoes={[{ titulo: '💳 qual cartão esta linha quita?', itens: cartoes.map((k) => ({ id: k.id, nome: k.name })) }]}
+                    secoes={menuDeFaturas}
                     vazio={VAZIO.cartoes(cargas.cartoes).texto}
-                    onEscolher={(id) => onGesto(l, a.acao, { cardId: id })} />
+                    onEscolher={(id) => onGesto(l, a.acao, alvoDaFatura(id))} />
                 )
               }
               if (a.pedeAlvo === 'CONTRATO') {

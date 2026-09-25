@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAuthUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { cartoesComFaturas } from '@/lib/credit-card-pj/faturas-pra-quitar'
 import { listCardsForCompany } from '@/lib/credit-card-pj/queries'
 
 interface Params { params: Promise<{ id: string }> }
@@ -32,7 +33,17 @@ export async function GET(request: NextRequest, { params }: Params) {
     return NextResponse.json({ erro: 'Empresa não encontrada' }, { status: 404 })
   }
   const cards = await listCardsForCompany(companyId)
-  return NextResponse.json({ cards })
+  /**
+   * ⭐⭐ 25/09 — AS FATURAS VÃO JUNTO (`comFaturas`), pro menu da conciliação poder oferecer
+   * **cartão → competência** em vez de só o nome do cartão.
+   *
+   * ⛔ Escolher *"mercado pago"* não diz QUAL competência baixa — e o palpite pode ter
+   * apontado o mês errado, que é exatamente a queixa que abriu este sprint. ⚠️ Fail-soft: se
+   * a leitura das faturas falhar, a lista de cartões abre do mesmo jeito (menu sem
+   * competência é pior que menu nenhum? não — mas tela caída é pior que os dois).
+   */
+  const comFaturas = await cartoesComFaturas(companyId).catch(() => [])
+  return NextResponse.json({ cards, comFaturas })
 }
 
 const createSchema = z.object({

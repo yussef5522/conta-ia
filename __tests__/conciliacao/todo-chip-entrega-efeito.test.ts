@@ -46,13 +46,48 @@ const SENTIDOS: SentidoDaLinha[] = ['SAIDA', 'ENTRADA']
  * procurar. `pedeAlvo` novo sem entrada neste mapa **quebra o teste** — que é como um chip
  * mudo deixa de conseguir nascer.
  */
-const COMO_A_TELA_PEDE_O_ALVO: Record<string, { procurar: RegExp; descricao: string }> = {
-  CATEGORIA: { procurar: /pedeAlvo === 'CATEGORIA'[\s\S]{0,900}<MenuDoChip/, descricao: 'menu de categorias com seções' },
-  CARTAO: { procurar: /pedeAlvo === 'CARTAO'[\s\S]{0,700}<MenuDoChip/, descricao: 'menu dos cartões' },
-  CONTRATO: { procurar: /pedeAlvo === 'CONTRATO'[\s\S]{0,900}<MenuDoChip/, descricao: 'menu de contrato + parcela' },
-  CONTA_PAGAR: { procurar: /<FindAndMatchPanel/, descricao: 'painel de casar, aberto na própria linha' },
-  CONTA_RECEBER: { procurar: /<FindAndMatchPanel/, descricao: 'painel de casar, aberto na própria linha' },
-  PAR: { procurar: /deepLink[\s\S]{0,200}window\.location/, descricao: 'deep-link pro /parear' },
+/**
+ * ⚠️⚠️ **DETECTOR REESCRITO EM 25/09 — ELE MEDIA DISTÂNCIA, e isso deu FALSO VERMELHO.**
+ *
+ * As entradas de menu eram `/pedeAlvo === 'X'[\s\S]{0,700}<MenuDoChip/`: uma **janela de
+ * caracteres**. Ao o menu do CARTÃO ganhar as faturas (mês · valor · vencimento), ~30 linhas
+ * entraram no meio e o `<MenuDoChip` ficou **além da janela** — com o código CERTO.
+ *
+ * ⛔ É a **5ª vez** que janela de distância produz falso positivo ou falso negativo nesta casa
+ * (o rastro em 12/09, o menu do PF em 13/09, o rodapé em 14/09, o toggle em 17/09). A lição
+ * já estava escrita: ***o que morde é ESTRUTURA, não distância.***
+ *
+ * ⭐ Agora o guard **fatia o RAMO** daquele `pedeAlvo` (do `if` dele até o `if` seguinte ou o
+ * fim do laço dos chips) e pergunta pelo desenho DENTRO dele. Comentário novo, lógica nova,
+ * ordem trocada: nada disso quebra o guard — só arrancar o desenho quebra.
+ */
+function ramoDoAlvo(fonte: string, alvo: string): string {
+  const i = fonte.indexOf(`a.pedeAlvo === '${alvo}'`)
+  if (i < 0) return ''
+  const resto = fonte.slice(i + 1)
+  const fim = resto.indexOf('a.pedeAlvo === ')
+  return fim < 0 ? resto : resto.slice(0, fim)
+}
+
+const COMO_A_TELA_PEDE_O_ALVO: Record<string, { desenho: RegExp; descricao: string; noRamo: boolean }> = {
+  /**
+   * ⚠️⚠️ **O CATEGORIA ESTAVA VERDE PELO MOTIVO ERRADO — ele NÃO desenha menu nenhum.**
+   *
+   * Desde 20/09 o chip de categoria **dispara com a escolha do seletor da ESQUERDA**
+   * (*"dois menus pra mesma pergunta seriam duas réguas na mesma tela: ele escolheria num,
+   * clicaria no outro, e a linha sairia com a categoria errada"*). O ramo dele desenha um
+   * `<button>`, e a janela de 900 caracteres alcançava o `<MenuDoChip` do ramo **VIZINHO**
+   * (o do CARTÃO, logo abaixo) — o guard media o desenho de outro alvo e chamava de verde.
+   *
+   * ⭐ Agora ele pergunta pelo que o ramo do CATEGORIA de fato entrega: o gesto sai **com a
+   * resposta da esquerda junto** (`comCategoria()`). Arrancar isso volta a ser vermelho.
+   */
+  CATEGORIA: { desenho: /onGesto\(l, a\.acao, comCategoria\(\)\)/, descricao: 'chip que dispara com a categoria escolhida na esquerda', noRamo: true },
+  CARTAO: { desenho: /<MenuDoChip/, descricao: 'menu dos cartões', noRamo: true },
+  CONTRATO: { desenho: /<MenuDoChip/, descricao: 'menu de contrato + parcela', noRamo: true },
+  CONTA_PAGAR: { desenho: /<FindAndMatchPanel/, descricao: 'painel de casar, aberto na própria linha', noRamo: false },
+  CONTA_RECEBER: { desenho: /<FindAndMatchPanel/, descricao: 'painel de casar, aberto na própria linha', noRamo: false },
+  PAR: { desenho: /deepLink[\s\S]{0,200}window\.location/, descricao: 'deep-link pro /parear', noRamo: false },
 }
 
 /**
@@ -89,7 +124,10 @@ describe('⭐⭐⭐ os 12 chips do cartão ≍ — nenhum é mudo', () => {
 
         const mapa = COMO_A_TELA_PEDE_O_ALVO[a.pedeAlvo!]
         expect(mapa, `pedeAlvo «${a.pedeAlvo}» não tem desenho declarado na tela`).toBeDefined()
-        expect(fonte(TELA), `a tela não desenha ${mapa.descricao} pro alvo ${a.pedeAlvo}`).toMatch(mapa.procurar)
+        // ⭐ o desenho é procurado DENTRO do ramo daquele alvo (estrutura, não distância)
+        const onde = mapa.noRamo ? ramoDoAlvo(fonte(TELA), a.pedeAlvo!) : fonte(TELA)
+        expect(onde, `o ramo do alvo ${a.pedeAlvo} não existe na tela`).not.toBe('')
+        expect(onde, `a tela não desenha ${mapa.descricao} pro alvo ${a.pedeAlvo}`).toMatch(mapa.desenho)
       })
     }
   }
@@ -159,26 +197,36 @@ describe('⛔ as portas que estavam pintadas não voltam', () => {
 
 describe('⭐ REGRA 12 — a caixa tem UMA composição, então celular e desktop não divergem', () => {
   /**
-   * ⚠️ REAPONTADO em 20/09, NÃO afrouxado. A régua era `<MenuDoChip` no ARQUIVO inteiro
-   * == 3, e ela quebrou com a tela CERTA: o painel do `PEDE_CATEGORIA` (*"essa conta não
-   * tem categoria — qual é?"*) desenha um 4º menu **fora do cartão**, e ele não é a mesma
-   * pergunta duas vezes — é a resposta que falta ao gesto.
+   * ⚠️⚠️ **REAPONTADO DUAS VEZES, E A SEGUNDA ENSINA MAIS QUE A PRIMEIRA — porque as duas
+   * vezes ele ficou vermelho COM A TELA CERTA.**
    *
-   * ⭐ A pergunta continua a mesma (*o CARTÃO desenha os chips uma vez só?*); o que mudou é
-   * que ela passou a ser feita **ao cartão**, em vez de ao arquivo. *Contar no arquivo
-   * inteiro era o proxy, não a régua.*
+   * Em 20/09 a régua era `<MenuDoChip` no ARQUIVO inteiro == 3, e quebrou quando o painel
+   * do `PEDE_CATEGORIA` desenhou um 4º menu fora do cartão. Passou a contar DENTRO do
+   * cartão == 3, e quebrou de novo em 25/09, quando o palpite de fatura ganhou o
+   * *"não é essa — escolher outro cartão/fatura →"*. ⭐ **Guard que CONTA cresce junto com
+   * a tela e cobra por cada controle novo — ele mede o tamanho, não a doença.**
+   *
+   * ⛔ A doença é **DUAS COMPOSIÇÕES**: um bloco de chips pro celular e outro pro desktop,
+   * que divergem no primeiro gesto novo (a REGRA 12 nasceu disso). Ela tem forma própria:
+   * o laço `l.acoes.map` aparecendo mais de uma vez, ou um par `sm:hidden` × `hidden sm:`
+   * desenhando chip. É isso que o guard afirma agora — e controle novo (um menu de troca,
+   * um painel) não o move, porque nenhum deles é uma segunda fileira de chips.
    */
-  it('⭐ os chips do CARTÃO são desenhados uma vez só (sem bloco sm:hidden paralelo)', () => {
+  it('⭐ os chips do CARTÃO saem de UM laço só — nunca um bloco por viewport', () => {
     const t = fonte(TELA)
     const cartao = t.slice(t.indexOf('function CartaoDaLinha'))
-    expect((cartao.match(/<MenuDoChip/g) ?? []).length, 'chip duplicado por viewport = duas telas divergindo')
-      .toBe(3)
-    expect((t.match(/<FindAndMatchPanel/g) ?? []).length).toBe(1)
+    expect((cartao.match(/l\.acoes\.map\(/g) ?? []).length,
+      'a fileira de chips foi desenhada mais de uma vez — é a composição por viewport voltando')
+      .toBe(1)
   })
 
-  it('⭐ e o cartão empilha no celular pela medida do mock (min-[900px])', () => {
-    // ⚠️ o grid mora no CHASSI desde 20/09 — uma medida, todas as casas
-    expect(fonte('components/conciliacao/chassi-do-cartao.tsx'))
-      .toMatch(/grid-cols-1 min-\[900px\]:grid-cols-\[1fr_64px_1fr\]/)
+  it('⛔ nenhum bloco de viewport desenha chip dentro do cartão', () => {
+    const t = fonte(TELA)
+    const cartao = t.slice(t.indexOf('function CartaoDaLinha'))
+    // ⚠️ o que o mock manda é empilhar por `min-[900px]` no GRID, nunca duplicar conteúdo
+    expect(cartao, 'bloco só-celular dentro do cartão = segunda composição dos chips')
+      .not.toMatch(/sm:hidden[\s\S]{0,400}(<MenuDoChip|l\.acoes\.map)/)
+    expect(cartao, 'bloco só-desktop dentro do cartão = segunda composição dos chips')
+      .not.toMatch(/hidden sm:[\s\S]{0,400}(<MenuDoChip|l\.acoes\.map)/)
   })
 })

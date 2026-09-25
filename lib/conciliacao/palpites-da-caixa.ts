@@ -25,6 +25,17 @@ import { sugerirVinculoEmprestimo, type ParcelaLite } from '@/lib/loans/sugerir-
  * com um valor que não bate nenhum. Palpite com fallback é palpite inventado.
  */
 import { mesQueBateOValor } from '@/lib/credit-card-pj/fatura-net-total'
+import { vencimentoDaCompetencia } from '@/lib/credit-card-pj/faturas-pra-quitar'
+
+/**
+ * ⭐ o vencimento da competência — `null` quando o cartão não tem `dueDay` conhecido.
+ * ⛔ Sem `dueDay` a linha NÃO inventa uma data: o retrato mostra só o valor, como antes.
+ */
+const vencimentoDaFatura = (mes: string, c: { dueDay?: number | null }): string | null =>
+  c.dueDay ? vencimentoDaCompetencia(mes, c.dueDay) : null
+
+/** ⚠️ dia/mês curto, em UTC — a data é de CALENDÁRIO (o fuso a puxaria pro dia anterior) */
+const diaCurto = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
 import { signedFaturaAmount } from '@/lib/credit-card-pj/fatura-net-total'
 import type { LinhaCrua } from './leitura-da-caixa'
 
@@ -49,7 +60,13 @@ export async function palpitesDaCaixa(
 
   // ── o que cada motor precisa, buscado UMA vez ─────────────────────────────
   const [cartoes, loans, fornecedores, recusados, padroes] = await Promise.all([
-    db.businessCreditCard.findMany({ where: { companyId: empresaId, isActive: true }, select: { id: true, name: true } }),
+    /**
+     * ⚠️ `dueDay` entrou em 25/09 — sem ele o retrato da fatura não tem como dizer o
+     * vencimento, e é a MESMA doença que o comentário abaixo documenta (o `status` que
+     * faltava e matava todo palpite de empréstimo): **o motor decide com um campo que a
+     * consulta não trouxe, e não dá erro — dá silêncio.** Aqui o `tsc` cobrou.
+     */
+    db.businessCreditCard.findMany({ where: { companyId: empresaId, isActive: true }, select: { id: true, name: true, dueDay: true } }),
     /**
      * ⛔⛔⛔ **O `status` FALTAVA NESTE SELECT — e isso matava TODO palpite de empréstimo**
      * (achado em prod, 19/09). `detectLoanPayment` começa com
@@ -136,8 +153,16 @@ export async function palpitesDaCaixa(
             acao: 'PGTO_CARTAO',
             familia: '💳 PAGAMENTO DE FATURA',
             titulo: `Fatura do cartão ${c.name}`,
-            /** ⚠️ a competência aparece NOMEADA — foi a régua de 17/08 (casa por VALOR, nunca "a mais recente") */
-            detalhe: `fatura ${mes} · ${brl(l.amount)}`,
+            /**
+             * ⚠️ a competência aparece NOMEADA — foi a régua de 17/08 (casa por VALOR, nunca
+             * "a mais recente").
+             *
+             * ⭐⭐ 25/09 — **E O VENCIMENTO VAI JUNTO** (o *"nomeado, não feito"* de 23/09).
+             * O retrato da conta a pagar mostra valor E vencimento desde 23/09 — *"eu confiro
+             * valor e data ANTES de confirmar, não depois"* —, e o da fatura mostrava só o
+             * valor. Mesma honestidade, mesma linha.
+             */
+            detalhe: `fatura ${mes} · ${brl(l.amount)}${vencimentoDaFatura(mes, c) ? ` · vence ${diaCurto(vencimentoDaFatura(mes, c)!)}` : ''}`,
             diferenca: 0, // ⭐ o `resolvePaidInvoiceMonth` só devolve o mês cujo NET BATE
             confianca: 'ALTA',
             alvo: { cardId: c.id, invoiceMonth: mes },
