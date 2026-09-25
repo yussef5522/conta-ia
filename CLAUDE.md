@@ -1308,6 +1308,65 @@ a CAIXA (14 linhas): 0 palpite de fatura · 3 CASAR_PAGAR
 
 ⚠️ **FLAKE VIGIADO, NÃO ROTULADO:** uma rodada da suíte deu **1 vermelho** e **não reproduzi em 4 rodadas seguintes**; não capturei o arquivo e **não medi a causa**, então não chamo de pré-existente (a régua de 01/09).
 
+### ⛔⛔⛔ DATA DISTANTE PERGUNTA, NÃO RECUSA — o caso da LAMANA (25/09)
+
+**O dono:** *"paguei com atraso (venc 15/09, pago 21/09) e a conciliação recusa: «Datas distantes — 6 dias. Máximo 5». SEM PORTA — mas é a conta certa, só foi paga atrasada."* ⭐ A régua que fica: ***"a régua de datas existe pra evitar casamento ERRADO, não pra proibir atraso VERDADEIRO"***.
+
+**⭐⭐ É A MESMA FAMÍLIA DO JUROS (24/09), e por isso a anatomia é idêntica:** o sinal que recusava passa a **PERGUNTAR**, a resposta viaja **no gesto** (nunca num estado de tela que ninguém envia — o bug de 12/09) e fica **no rastro**. `regua-da-data.ts` é a irmã de `regua-da-diferenca.ts`, e **a TELA e o SERVIDOR chamam a mesma função**.
+
+**OS TRÊS DEGRAUS:** ≤ 5 dias **PASSA** direto · 6 a 45 **PERGUNTA** (com as duas datas à vista) · acima de 45 **RECUSA nomeando a saída**. ⛔ E confirmar **não** abre a porta acima de 45 — senão o teto não existe.
+
+**⛔ NÃO É UM `force`:** o `distanciaAceita` tem que **bater com os dias reais**, igual ao `diferencaAceita` de 07/09. *Bater exato é o que separa "vi os 6 dias e aceito" de "ignora a trava"*.
+
+**⭐ O CAMINHO MANUAL FOI CONFERIDO, NÃO PROMETIDO** (item 2 do dono — *"senão o beco só mudou de sala"*): o Find & Match aceita `windowDays: 'all'` **e** a gravação de lá usa `allowMultiReconcile`, que **pula esta pré-validação inteira**. Os dois travados em teste.
+
+**⭐⭐ O CASO COMBINADO — atrasou E pagou juros, um confirmar só.** As duas perguntas no mesmo card, o botão espera **as duas** respostas, e o aviso do que falta **diz as duas** quando faltam as duas. ⭐ E o rastro é **UM texto com N pedaços**, nunca dois brigando pelo mesmo campo: *meia história é o contador voltando a perguntar*.
+
+**⚠️ ADIANTAMENTO NÃO É CHAMADO DE ATRASO** — a caixa da Caçula tem várias linhas *"pago N dias antes"*, e perguntar *"foi pago com atraso?"* ali seria o sistema errando o nome do fato na cara de quem sabe a verdade.
+
+**⚠️⚠️ E O RASTRO GANHOU DONO PRÓPRIO — porque enterrado ele não era testável.** `montarRastro` saiu do `reconcile.ts` (uma função de 300 linhas que só roda com banco): lá ele **só podia ser conferido por MENÇÃO**, e a REGRA 11 provou o custo disso — **arranquei o rastro do atraso e o guard ficou VERDE**. Extraído, ele é EXECUTADO no teste, com os números reais da LAMANA.
+
+### ⛔⛔ E A PROVA EM PROD ACHOU UM ERRO DE UM DIA — nas MINHAS contas
+
+O card diria **"7 dias"** onde o dono conta **6**. As horas das duas datas **não são a mesma convenção**:
+```
+linha do extrato : 2026-09-21T12:00:00Z   (meio-dia — a convenção das transações)
+dueDate da conta : 2026-09-15T00:00:00Z   (data de calendário pura)
+diferença crua   : 6,5 dias  →  Math.round = 7     ⛔ o dono conta 6
+```
+⛔ ***Número que o dono SABE que está errado destrói a confiança na tela inteira*** — e o rastro mentiria pro contador. Minha premissa (*"as datas do módulo são carimbadas ao meio-dia"*) valia pras TRANSAÇÕES, não pro `dueDate`.
+
+**⚠️ E o erro não era só de texto: a régua VELHA sofria do mesmo problema.** `days > 5` sobre a diferença crua fazia **5 dias de calendário com meia diferença de horas** virarem 6 → **recusa sem porta**. *Parte da queixa do dono nascia daqui, não do teto.* Agora a contagem é de **DIA DE CALENDÁRIO** — a mesma que a pessoa faz no dedo.
+
+**PROVADO EM PROD, pelas rotas reais:**
+```
+⭐ LAMANA  linha R$ 918,46 (21/09) × conta R$ 883,34 (venceu 15/09)   — O CASO COMBINADO
+   DATA  [PERGUNTA] "esta conta venceu 15/09 e o pagamento é de 21/09 — 6 dias depois.
+                     Foi pago com atraso?"
+   VALOR [PERGUNTA] "a diferença de R$ 35,12 é juros/multa de atraso — confirmar"
+   confirmando → podeFechar TRUE, e UM rastro com os dois pedaços:
+   "…de 2026-09-21 (R$ 918.46) · diferença de R$ 35.12 = juros de atraso, confirmada por
+    quem conciliou · 6 dias de atraso, confirmado por quem conciliou"
+
+⭐ MOINHO DO NORDESTE (22/09 × vence 29/09) → "6 dias ANTES. Foi pago adiantado?"
+   rastro: "6 dias de adiantamento" — nunca "atraso"
+⭐ 62 dias → RECUSA · podeFechar false mesmo confirmando
+   "…acima dos 45 que o atalho alcança. Se é esta conta mesmo, use o «procurar outra» e
+    busque sem janela de data."
+```
+
+**REGRA 11 — 7 becos repostos, e DOIS vieram VERDES:** a recusa sem porta de volta (**1 vermelho**) · virar `force` (**1**) · a resposta não chegando no gesto (**2**) · a rota deixando de declarar o campo, o zod recortando em silêncio (**1**) · contar horas em vez de calendário (**2**) · ⛔ **o botão deixando de esperar a resposta** veio VERDE — a string `!difRespondida || !dataRespondida` também existe no **AVISO** logo abaixo (*"menção, não uso"*; apertado pro `disabled=` do próprio botão) · ⛔ **o rastro do atraso sumindo** veio VERDE — só era conferido por menção (virou `montarRastro`, executado).
+
+**⚠️ 3 GUARDS DE 24/09 REAPONTADOS, nenhum afrouxado:** a montagem do rastro **mudou de arquivo** (é a razão de existir da REGRA 3 — *grep não distingue "refatorei" de "quebrei"*), e o do botão ficou **mais forte** (ele agora trava por duas razões, e o guard exige as duas).
+
+**10.897 verdes · TS 0 · deploys 4/4 (`WYAS2-BjS05mZT_GUmFHz` e `zwHKyshQHJ0ovUK-ZREb_`) · Δ bundle +4 KB.**
+
+### ⭐ O FLAKE VIGIADO DESDE 24/09 FECHOU — e a causa não era a que eu carregava
+
+O `ponte/renegociacao` ficava vermelho ~1 vez a cada 5 rodadas cheias. Eu suspeitava de **colisão de dado** (a classe do CNPJ compartilhado, 13/09). **Medido: `Test timed out in 5000ms`** — e **sozinho ele leva 958 ms**. Era **contenção** de CPU/banco com os outros 838 arquivos em paralelo.
+
+⭐ **A cura é da CLASSE, não da instância:** o teto de 5 s do vitest é pra teste **puro**, e a suíte tem **98 arquivos de integração** contra banco real — qualquer um deles pode estourar; o `renegociacao` só era o mais perto do limite. `testTimeout: 20_000`, com o motivo escrito. ⛔ **Nenhuma asserção mudou** — o que muda é parar de chamar de falha o que é fila. ***Alarme falso repetido é como um alarme morre***, e suíte que fica vermelha sozinha ensina a ignorar o vermelho. **3 rodadas cheias verdes seguidas.**
+
 ### ⛔⛔⛔ REUNITIZAR O ITEM NUNCA É EFEITO COLATERAL DO RECEBIMENTO (24/09)
 
 **O dono, na nota do ALAN:** *"item da nota «SAL CISNE REFINADO 1KG · 10 UN · R$ 4,79», destino «sal» (controlado em KG). O preview propõe «o item passa a ser controlado em UN» + converter 41 movimentos e 18 fichas + «saldo −0,9 KG → −12,76 UN» (número sem sentido)."*
