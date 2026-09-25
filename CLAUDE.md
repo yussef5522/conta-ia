@@ -1274,6 +1274,40 @@ R$ 4.337,52 «LIQUIDACAO DE PARCELA-C61021346» → banco caixa 2026-06 (dif R$ 
 ```
 ⚠️ É a classe do **guard do falso-amigo** de 11/09 (*"quase-exato SEM nome compatível NUNCA sugere; diferença de centavos não compra identidade"*), que vale igual aqui — **pagamento de fatura é valor EXATO**; a folga de 2% nasceu pro `pickInvoiceMonthByValue`, onde o dono **JÁ disse** que a linha é daquele cartão e um juro cabe. **Aqui a pergunta é outra** (*"este pagamento é de ALGUM cartão?"*), e ali a folga é veneno — o mesmo raciocínio que o próprio arquivo já escreve sobre o fallback. **O mapa está medido e o conserto é de uma linha; a decisão é do dono.**
 
+### ⛔⛔⛔ O PALPITE DE FATURA EXIGIA "PERTO"; AGORA EXIGE O VALOR (25/09) — a folga de 2% era veneno
+
+**Ordem do dono, depois do mapa medido:** *"APERTA — o matcher que PROPÕE «é pagamento de fatura» passa a exigir match exato; a tolerância de 2% fica só pra DEPOIS que eu já escolhi o cartão (juros/encargos da fatura confirmada, e nomeados como a régua de ontem manda)."*
+
+**O TAMANHO DO BURACO, medido em prod:** 2% de um débito de R$ 5.210,78 são **R$ 104,22 de folga** — e com ela **17 dos 18 palpites de fatura da Caçula apontavam pagamento de FORNECEDOR**.
+
+**⛔⛔ E O ESTRAGO IA ALÉM DO PALPITE ERRADO — o candidato MATAVA o palpite certo.** Ele se declara `diferenca: 0` com confiança **ALTA** (o comentário dizia *"só devolve o mês cujo NET BATE"* — e a folga de 2% fazia disso uma **afirmação falsa**). No ranking, que ordena por confiança e depois por `|diferença|`, ele **ganhava** da conta a pagar certa (que carrega a diferença REAL) **ou empatava com ela em ALTA → empate técnico → nenhum palpite**. *A linha ficava sem palpite nenhum por causa de um candidato inventado.*
+
+**⭐ É A CLASSE DO FALSO-AMIGO (11/09):** *"quase-exato SEM nome compatível NUNCA sugere; diferença de centavos não compra identidade"*. Lá havia nome pra desempatar; **aqui o único sinal é o valor** — então ele tem que ser **o valor**.
+
+**⚠️⚠️ E AS DUAS RÉGUAS DEIXARAM DE SER A MESMA FUNÇÃO — o que parecia REGRA 4 era o oposto.** De 16/09 até hoje `tolerânciaDaFatura` servia os dois leitores, com o comentário *"uma régua, dois leitores"*. ⛔ **As PERGUNTAS são diferentes, então a mesma folga significa coisas diferentes em cada uma:** `pickInvoiceMonthByValue` responde *"o dono JÁ disse que é deste cartão — qual competência?"* (e ali 2% é certo: o que sobra é juros/encargo, que a régua de 24/09 manda **nomear**); `mesQueBateOValor` responde *"este pagamento é de ALGUM cartão?"*, e ali a folga é veneno. Agora são `folgaDepoisDeEscolherOCartao` e o `CENTAVO` (0,02 — *não é folga, é ruído de arredondamento*, o mesmo degrau `FECHA` de 24/09).
+
+⭐ **Pagamento de fatura COM juros continua resolvível** — pelo **gesto**: o dono escolhe cartão e competência no menu novo, e aí vale a folga de depois.
+
+**PROVADO EM PROD, pelas rotas reais — as linhas trocaram de palpite sozinhas:**
+```
+                                       ANTES (folga 2%)              AGORA (exato)
+FRIGORIFICO SILVA    R$ 5.210,78   fatura banco caixa (dif 103,79) → ⭐ CASAR_PAGAR (o nome bate)
+LATICINIOS S. CRISTO R$ 1.940,59   fatura mercado pago (dif 37,55) → ⭐ CASAR_PAGAR · VALOR EXATO
+LIQUIDACAO PARCELA   R$ 4.337,52   fatura banco caixa 2026-06      → ⭐ PARCELA_EMPRESTIMO · exato
+PAGAMENTO CARTAO     R$ 8.626,98   fatura Carter banrisul ✓        → ✓ fatura (1 toque)
+PIX MERCADO PAGO     R$ 2.900,34   fatura mercado pago ✓           → ✓ fatura (1 toque)
+
+palpites de fatura: 18 → 2    ·    as liberadas viraram 26 CASAR_PAGAR + 3 PARCELA_EMPRESTIMO
+a CAIXA (14 linhas): 0 palpite de fatura · 3 CASAR_PAGAR
+```
+⚠️ **CARTÓRIO (2.017,05) e CASPER (2.275,05) ficaram SEM palpite** — e é o desfecho honesto: não há conta em aberto que case, e o sistema **não inventa** um destino pra preencher a lacuna.
+
+**REGRA 11 — 3 becos repostos:** a folga de 2% de volta no palpite (**20 vermelhos**) · uma folga *"pequenininha"* de 0,5%, a porta dos fundos (**8**) · as duas réguas voltando a ser uma só (**2**). ⭐ O guard trava os **16 falsos com os valores REAIS**, inclusive o menor deles (R$ 3,49 de diferença, 0,15% — *é o teste que impede o "então põe uma tolerância pequenininha"*).
+
+**10.873 verdes · TS 0 · deploy 4/4 (`TXAzPch9ZcfToqQ_sh2yU`) · Δ bundle +0 KB.**
+
+⚠️ **FLAKE VIGIADO, NÃO ROTULADO:** uma rodada da suíte deu **1 vermelho** e **não reproduzi em 4 rodadas seguintes**; não capturei o arquivo e **não medi a causa**, então não chamo de pré-existente (a régua de 01/09).
+
 ### ⛔⛔⛔ REUNITIZAR O ITEM NUNCA É EFEITO COLATERAL DO RECEBIMENTO (24/09)
 
 **O dono, na nota do ALAN:** *"item da nota «SAL CISNE REFINADO 1KG · 10 UN · R$ 4,79», destino «sal» (controlado em KG). O preview propõe «o item passa a ser controlado em UN» + converter 41 movimentos e 18 fichas + «saldo −0,9 KG → −12,76 UN» (número sem sentido)."*
