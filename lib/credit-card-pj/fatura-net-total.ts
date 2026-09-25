@@ -50,21 +50,34 @@ export function pickInvoiceMonthByValue(netByMonth: Map<string, number>, amount:
     const d = Math.abs(round2(net) - amount)
     if (d < bestDiff) { bestDiff = d; best = m }
   }
-  // ⭐ a MESMA tolerância que o `mesQueBateOValor` usa — uma régua, dois leitores
-  if (best && bestDiff <= tolerânciaDaFatura(amount)) return best
+  if (best && bestDiff <= folgaDepoisDeEscolherOCartao(amount)) return best
   return [...netByMonth.keys()].sort().pop() ?? null
 }
 
 /**
- * ⭐⭐ A TOLERÂNCIA DO "BATE" — num lugar só, porque agora ela tem DOIS leitores.
+ * ⭐⭐ A FOLGA DE **DEPOIS** — vale só quando o dono JÁ DISSE que a linha é daquele cartão.
  *
- * ⚠️ Ela nasceu embutida no `pickInvoiceMonthByValue` e foi extraída em 16/09, quando o
- * palpite do cartão ≍ precisou fazer a **outra** pergunta (ver abaixo). Duas cópias de
- * "quanto é perto o bastante" divergiriam no primeiro ajuste.
+ * ⚠️⚠️ **25/09 — ELA DEIXOU DE SER COMPARTILHADA, e a razão é medida.** De 16/09 até hoje
+ * esta mesma função servia os DOIS leitores, com o comentário *"uma régua, dois leitores"*.
+ * Parecia REGRA 4 e era o oposto: **as duas perguntas são diferentes**, então a mesma folga
+ * significa coisas diferentes em cada uma.
+ *
+ * ⭐ **AQUI (depois de escolher o cartão) 2% é CERTO:** o dono confirmou a premissa, e o que
+ * sobra é juros/encargo da fatura — que a régua da diferença de 24/09 manda **nomear**.
+ *
+ * ⛔ **LÁ (o palpite) 2% era VENENO** — ver `mesQueBateOValor`.
  */
-export function tolerânciaDaFatura(amount: number): number {
+export function folgaDepoisDeEscolherOCartao(amount: number): number {
   return Math.max(0.02, amount * 0.02)
 }
+
+/**
+ * ⭐ O CENTAVO DE ARREDONDAMENTO — não é folga, é ruído.
+ *
+ * ⚠️ É o mesmo degrau `FECHA` da régua da diferença (24/09): *um centavo de arredondamento
+ * bancário não é diferença*. Acima disso, é.
+ */
+const CENTAVO = 0.02
 
 /**
  * ⭐⭐⭐ EXISTE FATURA QUE **BATE** O VALOR? — `null` quando não existe, SEM FALLBACK.
@@ -82,6 +95,30 @@ export function tolerânciaDaFatura(amount: number): number {
  * 2.666,44). Usado como palpite, isso poria um botão verde gigante *"baixa a fatura"*
  * sobre o cartão errado. **Quem segurou foi a trava do empate** (4 candidatos ALTA
  * empatados → nenhum palpite), mas depender dela seria depender de sorte.
+ *
+ * ⛔⛔⛔ **25/09 — O VALOR TEM QUE SER EXATO, E A FOLGA DE 2% ERA VENENO AQUI.** Régua do
+ * dono: *"o matcher que PROPÕE «é pagamento de fatura» passa a exigir match exato; a
+ * tolerância de 2% fica só pra DEPOIS que eu já escolhi o cartão"*.
+ *
+ * **MEDIDO EM PROD:** 2% de uma linha de R$ 5.210,78 são **R$ 104,22 de folga** — e com ela
+ * **17 dos 18 palpites de fatura apontavam pagamento de FORNECEDOR**:
+ * ```
+ * R$ 5.210,78 «FRIGORIFICO SILVA…»     → banco caixa 2026-09 (net 5.106,99 · dif 103,79)
+ * R$ 2.017,05 «CARTORIO DO REGISTRO…»  → mercado pago 2026-07 (net 1.978,14 · dif  38,91)
+ * R$ 4.337,52 «LIQUIDACAO DE PARCELA…» → banco caixa 2026-06 (net 4.345,95 · dif   8,43)
+ * ```
+ * ⛔⛔ **E O ESTRAGO IA ALÉM DO PALPITE ERRADO:** este candidato se declara `diferenca: 0`
+ * com confiança ALTA — então, no ranking, ele **ganhava** do palpite certo (casar com a
+ * conta do fornecedor, que carrega a diferença real) **ou matava os dois por empate
+ * técnico**, deixando a linha sem palpite nenhum. *O comentário do campo dizia "só devolve
+ * o mês cujo NET BATE" — e a folga de 2% fazia dele uma afirmação falsa.*
+ *
+ * ⭐ **É A CLASSE DO FALSO-AMIGO (11/09):** *"quase-exato SEM nome compatível NUNCA sugere;
+ * diferença de centavos não compra identidade"*. Aqui não há nome nenhum pra desempatar —
+ * o único sinal é o valor —, então ele tem que ser **o valor**.
+ *
+ * ⚠️ Pagamento de fatura com juros continua resolvível: pelo **gesto** (o dono escolhe o
+ * cartão e a competência no menu), e aí vale a `folgaDepoisDeEscolherOCartao`.
  */
 export function mesQueBateOValor(netByMonth: Map<string, number>, amount: number): string | null {
   let best: string | null = null
@@ -90,6 +127,6 @@ export function mesQueBateOValor(netByMonth: Map<string, number>, amount: number
     const d = Math.abs(round2(net) - amount)
     if (d < bestDiff) { bestDiff = d; best = m }
   }
-  return best && bestDiff <= tolerânciaDaFatura(amount) ? best : null
+  return best && bestDiff <= CENTAVO ? best : null
 }
 
