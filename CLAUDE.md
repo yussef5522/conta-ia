@@ -1149,6 +1149,49 @@ celular 200 · desktop 200 · bundre −8 KB (as seções saíram)
 
 **10.751 verdes · TS 0 · deploys 4/4 (`cBP8IOOmsVAWkUcsh2HR_` e `fRsGTCf3sYjG2lApQcxwp`) · Δ bundle −8 KB · mock v3 atualizado com os filtros e a marca "já classificada".**
 
+### ⛔⛔⛔ REUNITIZAR O ITEM NUNCA É EFEITO COLATERAL DO RECEBIMENTO (24/09)
+
+**O dono, na nota do ALAN:** *"item da nota «SAL CISNE REFINADO 1KG · 10 UN · R$ 4,79», destino «sal» (controlado em KG). O preview propõe «o item passa a ser controlado em UN» + converter 41 movimentos e 18 fichas + «saldo −0,9 KG → −12,76 UN» (número sem sentido)."*
+
+**⭐⭐ SÃO DUAS PERGUNTAS DIFERENTES, e *"a unidade difere"* não as separa:**
+- **a nota veio noutra unidade** (`uCom` ≠ régua do item) → isso é o **FATOR**, e converte **SÓ A ENTRADA**: *1 UN da nota = 1 KG* → entram 10 KG a R$ 4,79/KG, o item continua em KG e as 18 fichas ficam intactas. **É o caso comum, o de todo dia.**
+- **o dono CORRIGIU a unidade de entrada** → aí ele está dizendo *"a régua do ITEM está errada"*, e é o caso do QUEIJO (11/09), em que reunitizar é o certo.
+
+A condição da tela era `unidadeEntrada ?? uCom`, que **colapsava as duas** e disparava a proposta de reunitização **toda vez que a nota vinha noutra unidade**. ***Gesto raro e global não pode nascer de um gesto diário.***
+
+**⭐⭐ E A GRAVAÇÃO SEMPRE ESTEVE CERTA** — o `confirmarConferencia` só reunitiza com `aval.corrigida`. **Quem mentia era o PREVIEW**, que é o pior lugar possível pra mentir: é onde o dono decide. É a família *"preview e confirm discordando"* de cabeça pra baixo — a tela prometendo um estrago que a gravação não faria.
+
+**⚠️ E AS DUAS CONDIÇÕES CONCORDAVAM POR ACASO.** Eu conferi os três casos e batiam; **é exatamente assim que a divergência nasce no quarto**. A tela passou a chamar **a mesma função pura do servidor** (`avaliarUnidadeDeEntrada`) — REGRA 4.
+
+### ⛔⛔ O −12,76 INVESTIGADO: ERAM DUAS RÉGUAS DE SALDO NO MESMO CARD
+
+Medido: **−12,76 é a soma CRUA dos 41 movimentos do sal**, incluindo os **19 `PRODUCAO_CONSUMO` (−11,86)** que o saldo **exclui** por serem transferência interna. O `antes` vinha do `saldoItem` (régua da prateleira) e o `depois` somava o plano cru — então, **com fator 1, ou seja SEM MUDAR NADA**, o card anunciava *"−0,9 KG → −12,76 UN"*.
+
+⭐ O `movePrateleira` é o dono único dessa pergunta desde 09/09, e era ele que faltava ali. O `UnidadeDoMovimento` passou a carregar o **`tipo`** — sem ele a régua não tinha como ser aplicada. **Provado em prod: fator 1 agora dá `13,29 → 13,29`.**
+
+### ⛔ E A PORTA DO NEGATIVO NÃO TINHA MAÇANETA DO OUTRO LADO
+
+A recusa manda o dono pra ficha do item dizendo *"corrigir a entrada que faltou"* — e a ficha **não oferecia gesto nenhum**. É a **10ª volta** da família. Agora, com saldo negativo, ela mostra o botão *"lançar a entrada que faltou"* (borda + ícone + verbo — *ação sem afordância não existe no celular*, 30/08), pedindo a **quantidade e o valor VERDADEIROS** da compra que faltou; e a entrada manual **abre com o item já escolhido** (`?item=`), porque perder no caminho a informação que a tela acabou de mostrar é obrigar o dono a procurar de novo entre 159 itens.
+
+**⭐⭐⭐ E O RED-THEN-GREEN ACONTECEU EM PROD PELA MÃO DELE, melhor que a minha simulação:**
+```
+24/09 13:51  ENTRADA_NF   10 KG · R$ 47,90   (a nota do ALAN: 10 UN × 4,79, fator 1)
+24/09 13:53  ENTRADA_NF    5 KG · R$ 13,75   (a 2ª: SAL CBS 1KG, 5 UN × 2,75)
+⭐ o item continua em KG · as 18 fichas continuam em KG · saldo −0,9 → 13,29 · R$ 61,43
+⭐ o resíduo de −0,22 nem precisou de pergunta: a entrada trouxe valor de sobra (decisão OK)
+
+o preview com fator 1: 13,29 → 13,29 ✓   (antes dizia −0,9 → −12,76)
+a contagem depois: conto 2,5 kg → o FREIO PERGUNTA ("89% fora do sistema"), eu respondo
+celular ficha 158ms · entrada 53ms    desktop 49ms · 48ms    4/4 frases nos dois
+```
+**REGRA 11 — 4 becos repostos, 4 vermelhos** (a tela colapsando as duas perguntas · o preview somando o plano cru · a ficha perdendo a maçaneta · a entrada manual ignorando o `?item=`).
+
+⚠️ **Três sondas minhas erraram antes de eu medir:** chamei `previewReunitizar` com um objeto (a assinatura é posicional), inventei a forma do `Ctx` do `explodir`, e comparei `'R$ 4,79/KG'` com espaço comum quando o `Intl` usa **espaço não-quebrável**. **Parei de supor e li a assinatura** — é o que separa *"a sonda está errada"* de *"prod está quebrada"*.
+
+**10.805 verdes · TS 0 · deploy 4/4 (`9CHm5M_5vyXbKmQPrMFTA`) · Δ bundle +4 KB.**
+
+📋 **FICA PRO DONO:** a contagem do sal (o freio vai perguntar, é o desenho) e a **entrada manual retroativa** dos 3 que seguem negativos sem nota por vir — **ervilha −45,48 · arroz −11,5 · feijão −9,34** —, com a quantidade e o valor verdadeiros da compra que faltou. A porta está na ficha de cada um.
+
 ### ⛔⛔⛔ ITEM NEGATIVO TRAVAVA O FLUXO ALHEIO — 4 FRENTES (23/09)
 
 **A régua do dono, e ela fecha as quatro:** ***"negativo ACONTECE na vida real; o sistema AVISA e oferece a porta (a compra/produção que falta), mas NUNCA bloqueia fluxo alheio."***
