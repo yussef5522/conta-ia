@@ -1224,6 +1224,56 @@ celular 242ms · desktop 176ms · a tela lê o campo ✓ · faixa âmbar (#fdf3e
 
 📋 **ACHADO À PARTE, NÃO TOCADO:** o juiz tem **26 F2** (ERRO) — amarras do estoque apontando contas que não existem mais, ~R$ 7,9 mil. É a consequência conhecida da faxina de 13/09 (as 26 contas apagadas). Decisão do dono: restaurar pela lixeira ou limpar as amarras órfãs.
 
+### 💳 PALPITE É ATALHO, NUNCA MURO — A PORTA DO CARTÃO REGISTRADO (25/09)
+
+**O dono, na linha do Mercado Pago (PIX 2.900,34, palpite = fatura 2026-09):** *"quando o MELHOR PALPITE é fatura, o botão «💳 pagamento de fatura ▾» SOME da fileira «OU ESCOLHA OUTRO CAMINHO» — se o palpite apontar o cartão/competência ERRADA, não tenho como escolher outro cartão registrado."*
+
+**⛔ A CAUSA ERA UMA LINHA:** `l.acoes.filter((a) => a.acao !== l.palpite?.acao)` — a fileira escondia **justamente o gesto que o palpite usou**. ⭐ A régua que fica é a dele: ***palpite presente não esconde caminho — palpite é atalho, não muro.***
+
+**⭐⭐ E O MENU LISTAVA SÓ O NOME DO CARTÃO.** Escolher *"mercado pago"* não dizia QUAL competência baixava — e o servidor precisa das duas coisas. Era o **gesto pela metade** que o menu do empréstimo já tinha resolvido em 18/09 (*"pedir contrato num toque e parcela noutro"*). Agora cada cartão é uma seção e cada fatura um item, com **mês · valor · vencimento · já paga**, e o **id composto (`cartão|competência`)** mantém **um** toque.
+
+⛔ **O "já paga" sai do VÍNCULO, nunca de status gravado** — a régua de 20/09 (*a flag diz "parece", o vínculo diz "é"*), e é o que impede o menu de afirmar uma quitação que não houve. ⚠️ **Cartão SEM fatura importada continua na lista, marcado:** o dono pode estar quitando uma competência que ele ainda vai importar, e sumir com o cartão seria a lista mentindo sobre o que existe.
+
+**⭐ O PALPITE DE FATURA GANHOU O `[não é essa — escolher outro cartão/fatura →]`** — o irmão do que a conta a pagar ganhou em 23/09 —, abrindo **o MESMO menu**: uma pergunta, um lugar. E o **retrato da fatura passou a dizer o VENCIMENTO junto do valor** (*"fatura 2026-09 · R$ 2.900,34 · vence 20/09"*), fechando o *"nomeado, não feito"* de 23/09. ⚠️ O `dueDay` entrou no `select` — **sem ele o vencimento sumiria do retrato sem nada quebrar**, a doença do PIX de 7.000.
+
+**⚠️⚠️ E EU CRIEI UMA SEGUNDA DERIVAÇÃO NO MEIO DO PRÓPRIO SPRINT:** montei as seções do menu **duas vezes** (no chip e na porta de troca). Duas derivações da mesma pergunta divergem no primeiro campo novo — bastaria alguém acrescentar o *"já paga"* num lado só. Viraram `secoesDeFatura`/`alvoDaFatura` na lib, com o guard contando os usos.
+
+**⚠️⚠️ DOIS GUARDS REPONTADOS DE DISTÂNCIA PRA ESTRUTURA — a 5ª ocorrência da classe, e um deles escondia um defeito grave.** Os detectores usavam **janela de caracteres** (`pedeAlvo === 'X'[\s\S]{0,700}<MenuDoChip`). ⛔ **O do CATEGORIA estava verde pelo motivo errado: aquele ramo NÃO desenha menu nenhum desde 20/09** (o chip dispara com o seletor da esquerda) — a janela alcançava o `<MenuDoChip` do ramo **VIZINHO**. Medido: com a janela, **arrancar a categoria do gesto** (`onGesto(l, a.acao)` sem `comCategoria()` — a linha sairia da caixa **sem classificação**) passava **38/38 VERDE**; com o detector estrutural, 4 vermelhos. ⭐ O guard passou a **fatiar o RAMO** daquele `pedeAlvo` e perguntar pelo desenho DENTRO dele.
+
+**⚠️ E O GUARD DA REGRA 12 CONTAVA — por isso quebrou COM A TELA CERTA, duas vezes** (20/09 e hoje, quando o botão de troca virou o 4º menu). ***Guard que conta cresce junto com a tela e cobra por cada controle novo: ele mede o tamanho, não a doença.*** A doença é **duas composições** (um bloco de chips por viewport), e ela tem forma própria: `l.acoes.map` mais de uma vez, ou um par `sm:hidden` × `hidden sm:` desenhando chip. É isso que ele afirma agora.
+
+**PROVADO EM PROD, nas rotas reais, nos DOIS viewports (REGRA 12):**
+```
+PAGE /conciliacao  celular 200 em 114ms · desktop 200 em 55ms · bundle 1.093 KB
+⭐ a linha com palpite de fatura tem os 7 CAMINHOS, o de fatura ENTRE ELES:
+   «CASPER DISTRIBUIDORA…» R$ 2.275,05
+   palpite: fatura 2026-07 · R$ 2.275,05 · vence 13/07      ⭐ o vencimento no retrato
+   fileira: casar com conta a pagar · pagamento de fatura · parcela de empréstimo ·
+            transferência enviada · é despesa: categoria · é despesa avulsa · ignorar
+⛔ o filtro do palpite no bundle servido: AUSENTE ✓
+
+O MENU (a régua única, 4 cartões):
+   💳 Carter banrisul  fatura 2026-09 — R$ 8.626,98 · vence 15/09 · já paga
+   💳 banco caixa      fatura 2026-09 — R$ 5.106,99 · vence 12/09
+   💳 mercado pago     fatura 2026-09 — R$ 2.900,34 · vence 20/09 · já paga
+   💳 sicredi          fatura 2026-09 — R$ 2.365,85 · vence 13/09 · já paga
+```
+⭐ **A linha que motivou o sprint já foi conciliada pelo dono** (`paidInvoiceMonth: 2026-09`, a fatura consta paga) — o mecanismo ficou provado na que restou.
+
+**REGRA 11 — 7 becos repostos, e UM veio VERDE:** o filtro de volta (**2 vermelhos**) · o menu sem vencimento (**2**) · o `dueDay` fora do select (**1**) · o retrato sem vencimento (**1**) · as seções remontadas à mão (**1**) · a janela de distância no detector (**4**) · ⛔ **o palpite perdendo o "não é essa" passou VERDE**, porque eu troquei o gate por `{false && (` e **a frase continua no arquivo** — *"menção, não uso"* de novo (o `moldura ? 'O BANCO DIZ' : null` de 20/09, o `hrefSemPagamento`, o `IgnoradosDoCardapio`). Apertado pro **GATE que renderiza**: o último `&& (` antes do controle tem que ser o do palpite de fatura.
+
+**10.849 verdes · TS 0 · deploy 4/4 (`6I3wGwgOMwHNkN6F_8fwz`, SHA `4883d264`) · Δ bundle +0 KB.**
+
+**⛔⛔ ACHADO GRAVE NO CAMINHO — NÃO É REGRESSÃO DESTE SPRINT E NÃO FOI CORRIGIDO (decisão do dono):** a tolerância do `mesQueBateOValor` é **2% do valor** (`Math.max(0.02, amount * 0.02)`), e numa linha de R$ 5.210,78 isso são **R$ 104,22 de folga**. Resultado medido em prod: **17 dos 18 palpites de fatura apontam pagamento de FORNECEDOR**.
+```
+R$ 5.210,78 «FRIGORIFICO SILVA…»  → banco caixa 2026-09 (net 5.106,99 · dif R$ 103,79)
+R$ 2.017,05 «CARTORIO DO REGISTRO…» → mercado pago 2026-07 (net 1.978,14 · dif  38,91)
+R$ 1.940,59 «LATICINIOS SANTO CRISTO» → mercado pago 2026-07 (net 1.978,14 · dif  37,55)
+R$ 4.337,52 «LIQUIDACAO DE PARCELA-C61021346» → banco caixa 2026-06 (dif R$ 8,43)
+⭐ com tolerância EXATA (R$ 0,02): 20 palpites → 2, e os 2 são pagamento de fatura de verdade
+```
+⚠️ É a classe do **guard do falso-amigo** de 11/09 (*"quase-exato SEM nome compatível NUNCA sugere; diferença de centavos não compra identidade"*), que vale igual aqui — **pagamento de fatura é valor EXATO**; a folga de 2% nasceu pro `pickInvoiceMonthByValue`, onde o dono **JÁ disse** que a linha é daquele cartão e um juro cabe. **Aqui a pergunta é outra** (*"este pagamento é de ALGUM cartão?"*), e ali a folga é veneno — o mesmo raciocínio que o próprio arquivo já escreve sobre o fallback. **O mapa está medido e o conserto é de uma linha; a decisão é do dono.**
+
 ### ⛔⛔⛔ REUNITIZAR O ITEM NUNCA É EFEITO COLATERAL DO RECEBIMENTO (24/09)
 
 **O dono, na nota do ALAN:** *"item da nota «SAL CISNE REFINADO 1KG · 10 UN · R$ 4,79», destino «sal» (controlado em KG). O preview propõe «o item passa a ser controlado em UN» + converter 41 movimentos e 18 fichas + «saldo −0,9 KG → −12,76 UN» (número sem sentido)."*
