@@ -1149,6 +1149,81 @@ celular 200 · desktop 200 · bundre −8 KB (as seções saíram)
 
 **10.751 verdes · TS 0 · deploys 4/4 (`cBP8IOOmsVAWkUcsh2HR_` e `fRsGTCf3sYjG2lApQcxwp`) · Δ bundle −8 KB · mock v3 atualizado com os filtros e a marca "já classificada".**
 
+### ⛔⛔⛔ TRÊS PROBLEMAS NUMERADOS (24-25/09) — o F3 sem tela, o palpite sem controle, e a régua de 07/09 virando estação
+
+### ⭐ PROBLEMA 1 — o boleto do M. IVAN LUNARDI (R$ 326,50) ficou 10 dias com o F3 gritando e nenhuma tela mostrando
+
+**A história, medida:** a nota **não tem duplicata no XML** (pix/dinheiro), o dono digitou o boleto do papel na conferência — o que criou a sugestão, com data, em **13/09 20:38** — e não marcou o envio. Ficou `SUGERIDA` para sempre. **Não falhou calado: nunca foi disparado.**
+
+**⛔⛔ A CAUSA É UMA ASSIMETRIA QUE ESTAVA ESCRITA NO CÓDIGO.** A única fila desenhada filtrava `dVenc: null` — o domínio do **F5**. A parcela conferida **com data** e nunca enviada não aparecia em tela nenhuma. ⚠️ A fila do F5 ganhou tela em 13/09 com esta lição no topo do arquivo — *"e-mail noturno não é lugar de dívida vencendo — o dono lê TELA (a lição dos R$ 21.968,02 de 30/08)"* — **e o F3 ficou de fora**. É o episódio de 30/08 se repetindo exatamente onde o comentário avisava. ***Alarme sem porta é a porta sem maçaneta, do lado do alarme.***
+
+**⭐ A mesma fila responde os dois** (a pergunta é uma: *o que falta ir pro financeiro?*), com os trabalhos **separados** porque os gestos diferem: sem data → *"combine e defina"*; com data → **um clique** *"mandar pro contas a pagar"*, pelo MESMO `POST` que a conferência usa.
+
+⚠️ **E O NOME MUDOU COM A PERGUNTA:** `parcelasSemData` → **`parcelasNaoEnviadas`**. Um nome que diz *"sem data"* sobre uma lista que traz as COM data é o *"nenhum rótulo promete mais do que entrega"* de 13/09. ⭐ E o filtro das já-enviadas saiu do **CLIENTE** pra a fonte — régua repetida por chamador é como duas listas divergem.
+
+**A FAMÍLIA: exatamente 1 caso.** Não há vazamento sistêmico. **3 asserções invertidas com o motivo escrito** — as três afirmavam o vão, e uma **contradizia o próprio título** (*"sai da lista"* conferindo que estava nela).
+
+### ⭐ PROBLEMA 2 — o palpite com diferença não deixava nomear o juro
+
+O servidor só fecha com a diferença **nomeada** (`podeFechar: nomeada`), então o ✓ Confirmar exigia uma resposta que a tela **não oferecia**. É a régua de 23/09 no segundo caso: ***toda exigência aponta pra um controle QUE ABRE.***
+
+**⚠️ A família são CINCO palpites travados, não um:** BORTOLAZZO 2,00 · TOZZO 6,40 · LAMANA 35,12 · LATICINIOS 70,58 · DALMOLIN 72,00 = **R$ 186,10** de juros esperando.
+
+**O controle:** motivos em botão — **juros de atraso · multa · tarifa do boleto · desconto concedido · outro** —, o botão **trava sem resposta e DIZ o que falta**, e a resposta **chega no gesto** (coletar e não enviar foi o bug de 12/09; o guard olha o corpo do gesto). A régua da tela é a **mesma função** do servidor.
+
+**⛔⛔ E UM DEFEITO APARECEU NO CAMINHO: o rastro era CRAVADO** em *"= juros/tarifa de boleto"* — então um **DESCONTO**, que é o oposto, ficava gravado como juros no histórico da conta. ***Número no rastro com o nome errado é pior que número sem nome*** — e é o contador que lê isso em três meses. ⛔ A régua **não afrouxou**: acima do teto do gesto (10% da linha) continua recusando.
+
+### ⭐⭐⭐ PROBLEMA 3 — O MAPA, e o caminho 1: a régua de 07/09 virou ESTAÇÃO
+
+**⚠️⚠️ A PREMISSA DA PERGUNTA CAIU NA MEDIÇÃO — as 2 linhas nunca sumiram.** Elas existem, estão **conciliadas** e no **arquivo com selo**. O dono não as achou porque **buscou o valor da NOTA e o extrato traz o valor PAGO**:
+```
+procurou R$ 2.079,98 (NF 967122 p003)  →  o extrato tem R$ 2.107,42  (R$ 27,44 de juros)
+procurou R$ 3.476,37 (NF 968530 p002)  →  o extrato tem R$ 3.510,78  (R$ 34,41 de juros)
+```
+E os valores nominais que EXISTEM com aquela data são `origin: ESTOQUE_NF` — as **parcelas** da ponte, não linhas de extrato. **O import da Stone cobre 21/09 com folga** (8 imports, o último de 23/09, 25 linhas naquele dia): zero buraco de período.
+
+**⭐ O INVARIANTE DA ESTAÇÃO FECHA:** `358 linhas ≥ o corte = CAIXA 10 + ARQUIVO 348`, e **0 no arquivo sem selo**. O teto de 400 **não morde**. Nenhuma linha está em lugar nenhum.
+
+**⛔⛔ MAS O MAPA ACHOU O DEFEITO DE VERDADE, e é grande: o selo `categorizada` resolvia coisas que não foram resolvidas.** São 68 saídas (R$ 93.893,78) arquivadas assim, e separando por natureza:
+- **legítimas (R$ 77.692,77)** — salário, retirada de sócio, juros do banco, tarifa: **não existe boleto pra casar**;
+- **⛔ 18 de FORNECEDOR que emite nota (R$ 16.201,01)** — DOCEOLI 5.234,88, **as duas do CASPER de 04/09**, DIVINE, CEREALISTA, E-CAIXAS, frete. ***Dinheiro que saiu, não baixou conta a pagar nenhuma, fora da caixa e sem ninguém cobrando.***
+
+⚠️⚠️ **E O COMENTÁRIO DA LEI DA ESTAÇÃO DEFENDIA ISSO**, com estas palavras: *"ter categoria conta como resolvida AQUI, e isso NÃO contradiz a régua de 07/09 — lá a pergunta era «esta linha ainda pode pagar um boleto?»; aqui é «esta linha ainda pede decisão minha?», e não pede"*. ⭐ **O argumento vale pro salário e pra retirada de sócio; não vale pro fornecedor** — ali a linha ainda pede uma decisão, e a decisão é *qual nota ela pagou*.
+
+**A RÉGUA (decisão do dono, `categoria-nao-quita.ts`):**
+- **por GRUPO DO DRE, lista FECHADA** — *"a régua de quem decide, não palpite por nome"*. Nome de categoria é texto livre que cada cliente escreve como quer; `dreGroup` é escolha estrutural.
+- **grupo novo cai no lado que EXIGE vínculo** — o erro seguro; o inseguro é pagamento de fornecedor sumindo em silêncio.
+- **categoria sem `dreGroup` não resolve** — é a lição do `?? 'CAIXA'` que sumiu com o CASPER em 20/09: ***default que resolve é default que esconde.***
+- **⭐ a saída honesta existe:** *"é despesa avulsa — não tem nota"* arquiva com selo **PRÓPRIO** (`avulsa confirmada`), com **autor e data**. ⛔ Reusar *"categorizada"* misturaria *"o dono disse que não tem nota"* com *"ninguém olhou ainda"* — **a mistura que escondeu os R$ 16.201,01**. Compra pré-sistema é caso legítimo: *decisão, nunca silêncio*.
+
+**⭐⭐ A AUDITORIA DA CAIXA (item 2 do dono):** o mapa mediu **0 eventos** pelo id das linhas conciliadas — *"dá pra ver o estado, mas não quem o produziu"*, e o dono ficou sem saber se tinha sido ele às 00:27. Agora todo gesto grava evento com o id da **LINHA**, num **choke-point** envolvendo o `switch`: são **11 ações**, e dentro de cada ramo o próximo gesto nasceria sem rastro (*"N caminhos, 1 esquecido"*). **Fail-soft:** rastro que derruba o gesto seria pior que rastro nenhum.
+
+**📋 ITEM 3 — AS 12 `RECEIVABLE` DE JUNHO (investigado, NÃO corrigido, por ordem do dono):**
+```
+12 linhas · sicredi · R$ 732,49 · criadas no MESMO import (14/06 01:05) · data 15/06 — o DIA SEGUINTE
+lifecycle RECEIVABLE/RECONCILED · dueDate 15/06 · dedupHash sim · categoria sim · vínculo nenhum
+⛔ 2 têm gêmea EFFECTED (duplicata pendente): R$ 128,99
+⚠️ 10 sem gêmea — entrada que nunca virou caixa: R$ 603,50
+⭐ e a porta JÁ FECHOU: 0 linhas nesse estado depois de 09/08 (o descarte-de-futuro)
+```
+⭐ **A causa:** o import de 14/06 trouxe as **movimentações FUTURAS** que o Sicredi lista, e naquela época o `partitionFutureLines` **não existia** (entrou 09/08). Ele marcou-as `RECEIVABLE` — honesto pro que sabia —, e elas **nunca transicionaram pra EFFECTED** quando o dia chegou. Junho é pré-corte e pré-marco; fica **documentado**, e a porta está fechada.
+
+**PROVADO EM PROD, nos DOIS viewports (REGRA 12):**
+```
+A CAIXA: 10 → 26 linhas · ⭐ as 18 voltaram com o aviso: R$ 16.201,01 ao centavo
+   DIVINE 933,39 ✓ · CASPER 04/09: 2.275,05 e 2.120,81 ✓ · DOCEOLI 5.234,88 ✓
+   cada uma com "categorizada, mas sem vínculo — casa com a nota ou confirma que não tem"
+   e o gesto "é despesa avulsa — não tem nota" oferecido em TODAS
+celular 242ms · desktop 176ms · a tela lê o campo ✓ · faixa âmbar (#fdf3e0) ✓
+```
+**REGRA 11 — 6 becos repostos no P3, 6 vermelhos** · 5 no P2 · 3 no P1. ⚠️ **E uma asserção minha era TAUTOLOGIA:** ela comparava `selo()` com a própria constante `SELO_AVULSA_CONFIRMADA` — trocar a constante mudava os dois lados e passava verde. Apertada pro **literal**, mais a afirmação de que ele é **diferente** de `'categorizada'`. ⚠️ 3 testes ajustados com o motivo escrito (afirmavam a lei antiga) e 1 guard dos chips atualizado (a SAÍDA ganhou o 7º gesto).
+
+**10.837 verdes · TS 0 · migration ADITIVA PURA (CREATE TABLE nova, zero ALTER) · `pg_dump pre-categoria-nao-quita-20260924-234428.dump` (7,3 MB) · deploys 4/4 (`18pCYfkSZO467dVVZOA60`, `jUv1fLnsiRo_3QeRlqmVn`, `wVN_n_bK-E7axLSARpY7d`).**
+
+⚠️ **FLAKE VIGIADO, NÃO ROTULADO:** `ponte/renegociacao` ficou vermelho **1× em 2 rodadas cheias** e **verde 3/3 sozinho** e junto do arquivo novo; o CNPJ dele (`41414141000141`) não colide e a asserção é escopada por empresa. **Não medi a causa** — fica vigiado (a régua de 01/09).
+
+📋 **ACHADO À PARTE, NÃO TOCADO:** o juiz tem **26 F2** (ERRO) — amarras do estoque apontando contas que não existem mais, ~R$ 7,9 mil. É a consequência conhecida da faxina de 13/09 (as 26 contas apagadas). Decisão do dono: restaurar pela lixeira ou limpar as amarras órfãs.
+
 ### ⛔⛔⛔ REUNITIZAR O ITEM NUNCA É EFEITO COLATERAL DO RECEBIMENTO (24/09)
 
 **O dono, na nota do ALAN:** *"item da nota «SAL CISNE REFINADO 1KG · 10 UN · R$ 4,79», destino «sal» (controlado em KG). O preview propõe «o item passa a ser controlado em UN» + converter 41 movimentos e 18 fichas + «saldo −0,9 KG → −12,76 UN» (número sem sentido)."*
