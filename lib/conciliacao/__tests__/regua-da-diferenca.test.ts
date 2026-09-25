@@ -144,8 +144,18 @@ describe('⛔⛔ o rastro da diferença vale pros DOIS ramos', () => {
   }
 
   it('⭐ o texto é montado UMA vez — não há segunda cópia pra divergir', () => {
-    const montagens = fonte.split('= juros/tarifa de boleto, confirmada por quem conciliou').length - 1
+    /**
+     * ⚠️ REAPONTADO em 24/09, e ficou MAIS FORTE: a frase era **cravada** (*"= juros/tarifa
+     * de boleto"*), então um **DESCONTO** — que é o oposto de juros — ficava gravado no
+     * rastro como juros. Agora o nome vem do MOTIVO que o dono escolheu, por um dono único
+     * (`textoDoMotivo`), e o guard exige as duas coisas: a montagem única **e** que ela
+     * passe pela função, nunca por um literal.
+     */
+    const montagens = fonte.split(', confirmada por quem conciliou').length - 1
     expect(montagens).toBe(1)
+    expect(fonte, 'a frase voltou a ser cravada — desconto vira juros de novo')
+      .toContain('textoDoMotivo(input.motivoDaDiferenca, input.motivoLivre)')
+    expect(fonte).not.toMatch(/= juros\/tarifa de boleto, confirmada/)
   })
 
   it('⛔⛔ os DOIS ramos ESCREVEM o rastro — um só era o defeito da OESA', () => {

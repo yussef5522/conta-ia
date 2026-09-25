@@ -29,6 +29,10 @@ import { nomeDaBusca } from '@/lib/conciliacao/nome-da-busca'
 import { conviteDaPonte, type ConviteDaPonte } from '@/lib/conciliacao/convite-da-ponte'
 import { consequenciaDeVincular } from '@/lib/conciliacao/uma-casa-por-caso'
 import { venceuOuVence } from '@/lib/conciliacao/vencimento-na-tela'
+import { avaliarDiferenca, MOTIVOS_DA_DIFERENCA, type MotivoDaDiferenca } from '@/lib/conciliacao/regua-da-diferenca'
+
+/** ⚠️ o mesmo arredondamento da régua — comparar float cru daria diferença de 1e-13 */
+const round2 = (n: number) => Math.round((n + 1e-9) * 100) / 100
 import { VAZIO, type EstadoDaCarga } from '@/lib/conciliacao/vazio-do-menu'
 import { passaNoFiltro, contadoresDaLista, type FiltroDaLista } from '@/lib/conciliacao/lista-unica'
 import { WithdrawalPanel } from '@/components/withdrawals/WithdrawalPanel'
@@ -795,6 +799,46 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, carg
    */
   const [categoriaEscolhida, setCategoriaEscolhida] = useState<{ id: string; nome: string } | null>(null)
   /**
+   * ⭐⭐⭐ 24/09 — O CONTROLE QUE NOMEIA A DIFERENÇA.
+   *
+   * **O caso do dono:** o palpite do BORTOLAZZO mostrava *"diferença de R$ 2,00 — dá pra
+   * fechar como juros/tarifa"* e **não havia como responder**. O servidor (corretamente)
+   * só fecha com a diferença NOMEADA (`podeFechar: nomeada`), então o ✓ Confirmar levaria
+   * um não — ou, pior, ficava mudo. ***Exigência sem controle que abre é beco***, a régua
+   * de 23/09 no segundo caso.
+   *
+   * ⚠️ Nasce `null` de propósito: nomear é um GESTO. Pré-selecionar "juros" faria o dono
+   * confirmar sem ler — e a diferença pode ser DESCONTO, que é o oposto.
+   */
+  const [motivoDif, setMotivoDif] = useState<MotivoDaDiferenca | null>(null)
+  const [motivoLivre, setMotivoLivre] = useState('')
+
+  /**
+   * ⭐⭐ O VEREDICTO DA DIFERENÇA — da MESMA função que o servidor usa (REGRA 4).
+   *
+   * ⚠️ Só existe pro palpite que traz o retrato da conta: sem `alvoDetalhe` não há o que
+   * comparar, e inventar uma diferença a partir do nada seria pior que não mostrar.
+   */
+  const vd = useMemo(() => {
+    const d = l.palpite?.alvoDetalhe
+    if (!d || typeof d.valor !== 'number') return null
+    const linha = Math.abs(l.valor)
+    return avaliarDiferenca(linha, round2(linha - d.valor), motivoDif !== null)
+  }, [l.palpite?.alvoDetalhe, l.valor, motivoDif])
+
+  /** ⛔ o degrau que EXIGE nome só libera nomeado; FECHA e RECUSA não dependem disto */
+  const difRespondida = !vd || vd.degrau === 'FECHA' || vd.degrau === 'RECUSA' || vd.podeFechar
+
+  /**
+   * ⭐ o que vai no corpo do gesto — **o número EXATO que esta tela mostrou**, com o motivo.
+   * ⛔ O servidor recusa se o número não bater ao centavo: é confirmação do que o dono viu,
+   * nunca um `force` (a régua de 07/09).
+   */
+  const comDiferenca = (alvo: Record<string, unknown>) =>
+    vd && motivoDif && (vd.degrau === 'OFERECE' || vd.degrau === 'PERGUNTA')
+      ? { ...alvo, diferencaAceita: vd.diferenca, motivoDaDiferenca: motivoDif, ...(motivoDif === 'OUTRO' ? { motivoLivre } : {}) }
+      : alvo
+  /**
    * ⭐⭐⭐ QUEM MANDA É O CASO, NÃO O PALPITE (23/09) — o beco da MARIA LUIZA.
    *
    * ⛔ A linha do lote tinha palpite de *pagamento de fatura* (ESTRUTURAL), e o seletor
@@ -971,13 +1015,50 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, carg
               <div className="mt-2 inline-flex items-center gap-1.5 rounded-full px-2.5 py-[3px] text-[11.5px] font-extrabold"
                 style={{ background: V3.ambarBg, color: V3.ambar }}>{l.palpite.diferenca}</div>
               {/*
+                ⭐⭐⭐ O CONTROLE QUE RESPONDE A DIFERENÇA (24/09).
+                ⛔ A régua é a MESMA dos 4 chamadores (`avaliarDiferenca`) — uma segunda aqui
+                faria a tela oferecer o que o servidor recusa, que é o defeito de 12/09
+                (*"o card coletava o nome da diferença, acendia o botão com ele e NUNCA o
+                enviava"*) com outra roupa.
+              */}
+              {vd && vd.degrau !== 'FECHA' && vd.degrau !== 'RECUSA' && (
+                <div className="mt-2 rounded-xl border-[1.5px] p-2.5" style={{ borderColor: V3.ambar, background: V3.ambarBg }}>
+                  <p className="text-[12px] font-bold" style={{ color: V3.ambar }}>
+                    {vd.diferenca > 0 ? 'os' : 'a menos:'} {brl(Math.abs(vd.diferenca))} {vd.diferenca > 0 ? 'a mais são' : 'são'}:
+                  </p>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {MOTIVOS_DA_DIFERENCA.map((m) => (
+                      <button key={m.chave} type="button" disabled={ocupado}
+                        onClick={() => setMotivoDif(motivoDif === m.chave ? null : m.chave)}
+                        className="rounded-full border-[1.5px] px-2.5 py-[5px] text-[11.5px] font-bold disabled:opacity-40"
+                        style={motivoDif === m.chave
+                          ? { borderColor: V3.ambar, background: V3.ambar, color: '#fff' }
+                          : { borderColor: V3.ambar, background: '#fff', color: V3.ambar }}>
+                        {m.rotulo}
+                      </button>
+                    ))}
+                  </div>
+                  {/* ⭐ OUTRO é o único que pede a palavra do dono — e ela vai pro rastro */}
+                  {motivoDif === 'OUTRO' && (
+                    <input value={motivoLivre} onChange={(e) => setMotivoLivre(e.target.value)}
+                      aria-label="qual é o motivo da diferença?" placeholder="ex.: correção de preço combinada"
+                      maxLength={80}
+                      className="mt-1.5 w-full rounded-lg border-[1.5px] px-2.5 py-1.5 text-[12px]"
+                      style={{ borderColor: V3.ambar }} />
+                  )}
+                  <p className="mt-1.5 text-[11px]" style={{ color: V3.sub }}>
+                    fica escrito no histórico da conta — é o que o contador lê depois
+                  </p>
+                </div>
+              )}
+              {/*
                 ⭐ o botão diz O EFEITO — e é o MESMO confirmar de ontem.
                 ⛔ Só que agora ele **espera a categoria** quando o gesto é dos que pedem
                 escolha; nos estruturais e no casar ele segue livre (a régua está na lib).
               */}
               <button type="button"
-                disabled={ocupado || !podeDisparar(l.palpite.acao as AcaoDoBalcao, temCategoria)}
-                onClick={() => onGesto(l, l.palpite!.acao, comCategoria(l.palpite!.alvo))}
+                disabled={ocupado || !podeDisparar(l.palpite.acao as AcaoDoBalcao, temCategoria) || !difRespondida}
+                onClick={() => onGesto(l, l.palpite!.acao, comDiferenca(comCategoria(l.palpite!.alvo)))}
                 className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl py-[13px] text-[15px] font-extrabold text-white disabled:opacity-50"
                 style={{ background: `linear-gradient(135deg,${V3.verde},${V3.verde2})`, boxShadow: '0 6px 18px rgba(15,157,88,.35)' }}>
                 {ocupado ? <Loader2 className="h-4 w-4 animate-spin" /> : l.palpite.botao}
@@ -985,6 +1066,12 @@ function CartaoDaLinha({ linha: l, ocupado, categorias, cartoes, contratos, carg
               {!podeDisparar(l.palpite.acao as AcaoDoBalcao, temCategoria) && (
                 <div className="mt-1.5 text-center text-[11.5px] font-bold" style={{ color: V3.roxo }}>
                   {AVISO_CATEGORIA}
+                </div>
+              )}
+              {/* ⛔ e o botão travado DIZ o que falta — desabilitado mudo é o dono adivinhando */}
+              {podeDisparar(l.palpite.acao as AcaoDoBalcao, temCategoria) && !difRespondida && (
+                <div className="mt-1.5 text-center text-[11.5px] font-bold" style={{ color: V3.ambar }}>
+                  diga o que é a diferença ↑ — ela vai pro histórico da conta
                 </div>
               )}
               {/*

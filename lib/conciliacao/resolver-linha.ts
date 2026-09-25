@@ -31,6 +31,7 @@ import { vincularPagamentoDeParcela, VinculoDeParcelaError } from '@/lib/loans/v
 import { recomputeVendasSeVenda } from '@/lib/vendas/recompute-hook'
 import { acaoValePraSentido, sentidoDaLinha, type AcaoDoBalcao } from './caixa-de-entrada'
 import { reconcileTransactions, ReconciliationError } from './reconcile'
+import type { MotivoDaDiferenca } from './regua-da-diferenca'
 import type { AuthContext } from '@/lib/auth/rbac'
 
 /**
@@ -88,6 +89,9 @@ export interface ResolverInput {
   contaIds?: string[]
   /** o aceite da diferença nomeada (juros/tarifa), quando ela existe */
   diferencaAceita?: number
+  /** ⭐ 24/09 — o motivo que o dono deu à diferença (vai pro rastro da conta) */
+  motivoDaDiferenca?: MotivoDaDiferenca | null
+  motivoLivre?: string | null
 }
 
 export interface ResolverResultado {
@@ -277,6 +281,8 @@ export async function resolverLinha(input: ResolverInput, db: PrismaClient = def
             ofxTransactionId: input.txId, candidateId: contaId,
             allowMultiReconcile: contas.length > 1, reconcileGroupId: grupo,
             diferencaAceita: input.diferencaAceita,
+            motivoDaDiferenca: input.motivoDaDiferenca,
+            motivoLivre: input.motivoLivre,
           }, ctxDoReconcile(input))
         }
       } catch (e) {

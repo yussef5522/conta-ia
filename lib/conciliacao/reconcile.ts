@@ -33,6 +33,7 @@
 //   - ORPHAN: candidato.origin IN (IMPORT_EXCEL, MANUAL) — nunca OFX-vs-OFX
 
 import { processadoraDaLinha, chaveDoPadrao } from './processadora-de-boleto'
+import { textoDoMotivo, type MotivoDaDiferenca } from './regua-da-diferenca'
 import { prisma } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
 import type { AuthContext } from '@/lib/auth/rbac'
@@ -70,6 +71,16 @@ export interface ReconcileInput {
    * deixar o mesmo dinheiro em duas linhas; casar sozinho seria inventar juros.
    */
   diferencaAceita?: number
+  /**
+   * ⭐ 24/09 — **O MOTIVO da diferença**, escolhido pelo dono. Vai pro rastro da conta.
+   *
+   * ⛔ Antes o texto era cravado em *"juros/tarifa de boleto"*, então um **DESCONTO** — que
+   * é o oposto — ficava gravado como juros. ***Número no rastro com o nome errado é pior
+   * que número sem nome.*** Sem motivo, o texto segue o genérico honesto de antes.
+   */
+  motivoDaDiferenca?: MotivoDaDiferenca | null
+  /** o texto do dono quando o motivo é OUTRO */
+  motivoLivre?: string | null
 }
 
 const MAX_DAYS_APART = 5
@@ -257,7 +268,7 @@ export async function reconcileTransactions(
     input.diferencaAceita !== undefined && Math.abs(input.diferencaAceita) >= AMOUNT_EQ_TOLERANCE
       ? `pagamento conciliado com a linha do extrato de ${ofx.date.toISOString().slice(0, 10)}`
         + ` (R$ ${ofx.amount.toFixed(2)}) · diferença de R$ ${input.diferencaAceita.toFixed(2)}`
-        + ` = juros/tarifa de boleto, confirmada por quem conciliou`
+        + ` = ${textoDoMotivo(input.motivoDaDiferenca, input.motivoLivre)}, confirmada por quem conciliou`
       : null
 
   const updated = await prisma.$transaction(async (trx) => {

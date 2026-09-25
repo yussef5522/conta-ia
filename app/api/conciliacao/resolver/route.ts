@@ -24,6 +24,12 @@ const schema = z.object({
   /** ⭐ o(s) alvo(s) do CASAR quando o palpite já os traz POR ID (20/09) */
   contaIds: z.array(z.string().min(1)).max(50).optional(),
   diferencaAceita: z.number().optional(),
+  /**
+   * ⭐ 24/09 — o MOTIVO da diferença, escolhido na tela. Vai pro rastro da conta.
+   * ⚠️ Lista fechada (o rastro é o que o contador lê); `OUTRO` traz o texto do dono.
+   */
+  motivoDaDiferenca: z.enum(['JUROS', 'MULTA', 'TARIFA', 'DESCONTO', 'OUTRO']).optional(),
+  motivoLivre: z.string().trim().max(80).optional(),
 })
 
 export async function POST(request: NextRequest) {

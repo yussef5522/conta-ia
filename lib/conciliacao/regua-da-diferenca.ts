@@ -58,6 +58,46 @@ export interface VeredictoDaDiferenca {
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
+/**
+ * ⭐⭐⭐ OS MOTIVOS QUE A DIFERENÇA PODE TER (24/09/2026) — decisão do dono.
+ *
+ * **O caso:** o palpite do BORTOLAZZO mostrava *"diferença de R$ 2,00 — dá pra fechar como
+ * juros/tarifa"* e **não tinha como responder**: o ✓ Confirmar não perguntava nada, e o
+ * servidor (corretamente) recusa sem a diferença nomeada. ***Exigência sem controle que
+ * abre é beco*** — a régua de 23/09, agora no palpite.
+ *
+ * ⚠️ **LISTA FECHADA de propósito.** O motivo vai pro RASTRO da conta e é o que o contador
+ * vai ler em três meses; texto livre ali vira 200 grafias da mesma coisa (a lição das duas
+ * grafias do `OP.CREDITO`). `OUTRO` existe porque a vida real não cabe numa lista — e é o
+ * único que pede a palavra do dono.
+ */
+export const MOTIVOS_DA_DIFERENCA = [
+  { chave: 'JUROS', rotulo: 'juros de atraso' },
+  { chave: 'MULTA', rotulo: 'multa' },
+  { chave: 'TARIFA', rotulo: 'tarifa do boleto' },
+  { chave: 'DESCONTO', rotulo: 'desconto concedido' },
+  { chave: 'OUTRO', rotulo: 'outro' },
+] as const
+
+export type MotivoDaDiferenca = (typeof MOTIVOS_DA_DIFERENCA)[number]['chave']
+
+/**
+ * ⭐ O TEXTO QUE VAI PRO RASTRO — um dono só, pros 4 chamadores.
+ *
+ * ⛔ Antes era cravado (*"= juros/tarifa de boleto"*) em `reconcile.ts`, o que fazia toda
+ * diferença virar "juros" no histórico — inclusive um DESCONTO, que é o oposto. Número no
+ * rastro com o nome errado é pior que número sem nome.
+ */
+export function textoDoMotivo(motivo: MotivoDaDiferenca | null | undefined, livre?: string | null): string {
+  if (motivo === 'OUTRO') {
+    const t = (livre ?? '').trim()
+    return t ? t : 'motivo informado pelo dono'
+  }
+  const achado = MOTIVOS_DA_DIFERENCA.find((m) => m.chave === motivo)
+  // ⚠️ sem motivo declarado, o texto NÃO inventa um: ele diz o que dá pra afirmar.
+  return achado ? achado.rotulo : 'juros/tarifa de boleto'
+}
+
 /** ⭐ até onde o dono pode confirmar uma diferença nomeada nesta linha */
 export function tetoDoGestoManual(valorDaLinha: number): number {
   return round2(Math.abs(valorDaLinha) * PERCENTUAL_DO_GESTO_MANUAL)
